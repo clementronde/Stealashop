@@ -111,6 +111,30 @@ Ces scripts vivent dans la place (pas dans Git) : leur seul historique est celui
 - **Agents** : chaque session d'agent travaille dans son propre worktree Git, dans le dossier `agents\` à la racine du projet, `F:\StealAShop\agents\<id>` (par exemple `a01`), jamais directement dans `F:\StealAShop` ni à la racine du disque. Le dossier `agents/` est ignoré par Git (`.gitignore`) et la synchro ne lit que `src/`, donc le travail des agents n'arrive jamais dans la place DEV avant d'être fusionné. Une branche fusionnée l'est d'abord dans un worktree temporaire, puis `main` avance en `--ff-only` : jamais de fichier à moitié fusionné dans Studio. Toujours `git fetch` avant (l'autre pousse souvent), jamais de `push --force`.
 - **Pousser** : un changement validé à deux part directement sur `main`, sans branche ni PR.
 
+### 3.5 Ce que le Claude de Clément ne touche jamais (code d'Ironix)
+
+Le Claude de Clément peut **lire** le code pour comprendre comment son travail est utilisé. Il ne le modifie jamais : s'il voit un bug ou un besoin, il ajoute une ligne « Pour : Ironix » en section 1.
+
+**Dans Studio**
+
+1. Les 3 dossiers synchronisés et tout ce qu'ils contiennent : `ReplicatedStorage/Shared`, `ServerScriptService/Server`, `StarterPlayer/StarterPlayerScripts/Client`. Ni créer, ni modifier, ni supprimer, ni renommer, ni déplacer. Ils sont reliés au disque d'Ironix : la moindre modification part chez lui.
+2. Les scripts d'Ironix, où qu'ils soient : ne pas les dupliquer, les sortir de leur dossier, les désactiver (`Enabled`) ni changer leur `RunContext`.
+3. Les objets créés par le code pendant le jeu (RemoteEvents, dossiers générés) : ne pas en créer à la main pour « aider ».
+4. Le `execute_luau` du MCP Studio : jamais pour écrire dans ces dossiers ni dans une DataStore (les sauvegardes des joueurs).
+
+**Sur le disque et dans Git**
+
+5. Le dossier `src/` (`src/shared`, `src/server`, `src/client`) : jamais modifié, même dans son propre clone.
+6. Aucune synchro lancée chez Clément (ni Script Sync, ni Rojo) : seul Ironix synchronise (3.1).
+7. Les worktrees des agents d'Ironix (`agents/`) et le `.gitignore`.
+
+**Ce dont le code dépend : ne pas changer sans l'annoncer ici d'abord**
+
+8. Les noms du contrat : tags et attributs, enfants obligatoires des modèles (doc, 10.4), éléments d'UI (doc, 2.2), objets `Animation` et marqueurs (3.2). Renommer ou supprimer = annoncer dans la liaison, attendre qu'Ironix adapte le code, puis seulement changer.
+9. Les produits Robux (gamepasses, produits développeur) une fois leur ID dans `Config` : ne jamais les supprimer ni les recréer.
+10. Les paramètres du jeu qui changent le comportement du code : `StreamingEnabled` et réglages du `Workspace`, accès aux API et HTTP, type d'avatar (R15).
+11. La publication en PROD : uniquement Ironix, après un playtest (doc, 2.1).
+
 ## 4. Historique
 
 | Date | ID | Ce qui a été fait |
