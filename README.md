@@ -1,4 +1,4 @@
-# Stealashop — doc de suivi
+# Steal a Shop — doc de suivi
 
 Game design et suivi de production du jeu Roblox de Clément (modèles 3D et UI) et Ironix (développement).
 

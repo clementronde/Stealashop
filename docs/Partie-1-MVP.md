@@ -1,4 +1,4 @@
-# SMASH A SHOP — Doc de suivi
+# STEAL A SHOP — Doc de suivi
 
 Nov 6, 2026 · @Clément RONDEPIERRE
 
@@ -6,7 +6,7 @@ Ce doc a deux parties. **Partie 1 · MVP** (ce fichier) : tout ce qui sort au la
 
 ## 1. Pitch & TL;DR
 
-**Smash a Shop** (titre de travail) est un « Steal a … » à 6 joueurs : on casse la vitrine de magasins PNJ, on vole un colis mystère en 10 secondes, on sème le vigile, et l'objet déballé rapporte de l'argent par seconde dans sa propre boutique. Les 5 autres joueurs peuvent braquer cette boutique à leur tour.
+**Steal a Shop** est un « Steal a … » à 6 joueurs : on casse la vitrine de magasins PNJ, on vole un colis mystère en 10 secondes, on sème le vigile, et l'objet déballé rapporte de l'argent par seconde dans sa propre boutique. Les 5 autres joueurs peuvent braquer cette boutique à leur tour.
 
 **La boucle en une phrase** : s'entraîner → casser une vitrine → voler un colis → semer le vigile → déballer → exposer → encaisser → améliorer → braquer plus loin, ou braquer un joueur.
 
@@ -39,7 +39,7 @@ Ce doc a deux parties. **Partie 1 · MVP** (ce fichier) : tout ce qui sort au la
 3. **La poursuite** : le vigile rend la vitesse concrète. On sent physiquement si on est assez rapide pour la zone.
 4. **Le PvP lisible** : chacun voit les vitrines et les $/s des autres. La victime défend à la batte et investit dans des défenses (vitres, caméras, pièges, rideau).
 
-**Règle de propriété intellectuelle** : on reprend la mécanique de genre, jamais les noms, modèles, sons ou UI du jeu de référence. Le titre est à vérifier sur Roblox avant publication (alternatives : Rob a Shop, Smash & Grab Tycoon).
+**Règle de propriété intellectuelle** : on reprend la mécanique de genre, jamais les noms, modèles, sons ou UI du jeu de référence. Le titre « Steal a Shop » suit la convention de nommage du genre ; avant publication, vérifier sur Roblox qu'aucun jeu connu ne porte déjà exactement ce nom.
 
 ## 2. Équipe & règles de collaboration
 
@@ -99,7 +99,7 @@ Un dossier de Studio = un seul propriétaire. Le code trouve les choses par tags
 
 ```json
 {
-  "name": "SmashAShop",
+  "name": "StealAShop",
   "tree": {
     "$className": "DataModel",
     "ReplicatedStorage": {
@@ -868,7 +868,7 @@ Chaque étape est envoyée une seule fois par joueur avec `AnalyticsService:LogO
 
 ## 15. Questions ouvertes & journal des décisions
 
-11 décisions restent à prendre. Chacune a une proposition par défaut, appliquée si personne ne tranche avant le jalon indiqué. Une fois tranchée : on coche, et on ajoute une ligne au journal.
+10 décisions restent à prendre. Chacune a une proposition par défaut, appliquée si personne ne tranche avant le jalon indiqué. Une fois tranchée : on coche, et on ajoute une ligne au journal.
 
 - [ ] **Partage des revenus (M0)** : répartition des Robux entre Clément et Ironix, écrite noir sur blanc avant toute publication. Proposition : publier sous un groupe Roblox commun, pour que revenus et droits ne dépendent pas d'un compte perso.
 - [ ] **Animations (M0)** : course, frappe, banc, vigile. Proposition : Clément, avec l'Animation Editor de Studio ; Ironix intègre.
@@ -876,7 +876,7 @@ Chaque étape est envoyée une seule fois par joueur avec `AnalyticsService:LogO
 - [ ] **Vitrine PNJ partagée (M1)** : proposition : oui, tout le monde entre pendant les 10 s, le casseur a 1 s d'avance. Alternative : une instance par joueur, plus calme mais moins drôle.
 - [ ] **Attente d'ouverture hors ligne (M1)** : proposition : oui, elle continue quand le joueur est déconnecté.
 - [ ] **Qui peut frapper le voleur (M3)** : proposition V1 : le propriétaire seul. Alternative : tous les joueurs, plus chaotique, avec un risque d'acharnement.
-- [ ] **Titre définitif (M4)** : Smash a Shop, Rob a Shop ou autre. Vérifier sur Roblox qu'aucun jeu connu ne porte déjà le nom.
+- [x] **Titre définitif (M4)** : Steal a Shop, tranché le 6 novembre 2026. Reste à vérifier sur Roblox qu'aucun jeu connu ne porte déjà ce nom.
 - [ ] **Testeurs bêta (M4)** : qui recrute les 20 à 30 testeurs, et où (Discord, amis, groupe).
 - [ ] **Budget publicité au lancement (M5)** : montant pour les publicités Roblox, ou zéro.
 - [ ] **Renaissance (avant la MAJ 3)** : garde-t-on les défenses achetées ? Proposition : oui.
@@ -886,6 +886,7 @@ Chaque étape est envoyée une seule fois par joueur avec `AnalyticsService:LogO
 
 | Date | Décision | Par |
 | --- | --- | --- |
+| 2026-11-06 | Titre du jeu : Steal a Shop (remplace le titre de travail Smash a Shop) | Clément |
 | 2026-11-06 | Cycle jour/nuit au MVP : la nuit, un mur ferme le couloir, des vigiles de nuit patrouillent et les rayons PNJ se remplissent. Lobby simple au MVP ; grand centre commercial en Partie 2 | Clément |
 | 2026-11-06 | 3 boutiques d'achat : armes et auras (argent du jeu, MVP), Robux (MAJ 1). Un colis ou objet volé flotte au-dessus de la tête avec sa rareté et son halo ; la rareté d'un colis PNJ se révèle quand on le soulève, l'objet exact à l'ouverture | Clément |
 | 2026-11-06 | Doc scindé en Partie 1 · MVP et [Partie 2 · Features à ajouter](Partie-2-Features-a-ajouter.md). Les 6 zones, la boutique d'auras et de trails et le tutoriel entrent dans le MVP. Défenses avancées, boutique Robux, renaissances, récompenses et index passent en Partie 2. Toute l'UI est faite par Clément. Objet volé à un joueur : disponible tout de suite ; colis volé à un PNJ : attente selon la rareté | Clément |
