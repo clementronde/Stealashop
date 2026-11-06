@@ -774,7 +774,7 @@ Secrets, toutes zones (0,2 % des colis Luxe) : Chat porte-bonheur doré (MVP), T
 
 ### 10.6 Planche de style (MOD-002)
 
-Direction retenue : un Roblox « mode studs », d'après les références de Clément (section 2.3). Sol vert en damier avec des studs, décor en blocs, couleurs pleines et saturées, UI à gros boutons cernés de noir. Palette, raretés et objets validés par Ironix le 2026-11-06, couleurs des raretés passées dans le code (`Rarities.luau` ; liaison, L-018). Style d'UI refait le même jour par Clément d'après une référence de boutique (voir « Style d'UI » plus bas). Les images (palette, rendu des objets, maquette d'UI) sont dans le doc partagé et dans le dossier d'art de Clément (`StyleBoard`).
+Direction retenue : un Roblox « mode studs », d'après les références de Clément (section 2.3). Sol vert en damier avec des studs, décor en blocs, couleurs pleines et saturées, UI à gros boutons cernés de noir. Palette, raretés et objets validés à deux le 2026-11-06 (Ironix, puis Clément), couleurs des raretés passées dans le code (`Rarities.luau` ; liaison, L-018). Style d'UI refait le même jour par Clément d'après une référence de boutique (voir « Style d'UI » plus bas). Les images (palette, rendu des objets, maquette d'UI) sont dans le doc partagé et dans le dossier d'art de Clément (`StyleBoard`).
 
 **Palette.** Le vert « Peu commun » est un vert menthe, pour ne pas disparaître sur l'herbe vert citron.
 
