@@ -1,0 +1,1147 @@
+--!strict
+-- GuardService (DEV-018) : vigile de jour des magasins PNJ, de l'apparition à l'abandon
+-- (Partie 1, sections 4, 5.5 et 9.7 ; animations : 2.4 et liaison 3.2).
+--
+-- Déroulé d'un vigile :
+--   1. Apparition. Quand CarryService commence le portage d'un colis PNJ (OnCarryStarted,
+--      payload.Kind = "NPCBox"), un vigile apparaît au GuardSpawn du magasin du colis
+--      (payload.StoreId). Un vigile par voleur ; au plus Balance.Guard.MaxPerStore en poursuite
+--      par magasin et Balance.Guard.MaxActivePerServer en jeu sur le serveur (9.7) : au
+--      plafond, un vigile qui rentre disparaît pour laisser sa place ; sans vigile qui rentre,
+--      pas de vigile. Le serveur possède sa physique ; nage, escalade et autres états
+--      inutiles sont coupés (9.7).
+--   2. Poursuite, après REACTION_DELAY s : WalkSpeed = Zones[zone].GuardSpeed (section 4).
+--      Course directe s'il voit le joueur, sinon PathfindingService recalculé toutes les
+--      Balance.Guard.PathRecomputeInterval s.
+--   3. Capture : distance ≤ Balance.Guard.CatchDistance entre les deux HumanoidRootPart, sans
+--      mur entre eux, mesurée ici, côté serveur. Alors CarryService.Fail(player, "Caught") (le
+--      colis revole vers son rayon), joueur étourdi Balance.Guard.CatchStunDuration s
+--      (StatsService, modificateur STUN_KEY = 0), coup qui le projette (au marqueur Impact de
+--      Catch) et Notify « Rattrapé ! Vitesse conseillée : X ».
+--   4. Abandon : le joueur entre en zone safe (tag SafeZone), GiveUpChaseDuration s de
+--      poursuite, GiveUpLead studs d'avance, ou le portage finit autrement (OnCarryEnded :
+--      colis posé, mort, départ…). Le vigile s'arrête essoufflé (Tired), rentre en marchant
+--      (Walk) vers son GuardSpawn, puis disparaît. Il ne vise jamais un point de la zone safe :
+--      il ne la franchit pas.
+--   5. Le joueur poursuivi reçoit ChaseState(true, vigile) à l'apparition et ChaseState(false)
+--      à la fin (capture ou abandon). Pour lui, le vigile reste chargé (streaming) tant que
+--      dure la poursuite.
+--
+-- Animations (contrat 2.4, Shared/Contract/Animations), jouées par AnimPlayer depuis le dossier
+-- Animations du modèle : Idle (toujours, en fond), Run (poursuite), Catch (capture), Tired
+-- (abandon), Walk (retour). Une animation pas encore livrée ne joue rien. Sons des marqueurs :
+-- MarkerSounds.Guard.
+--
+-- Modèle du vigile (V0 proposé, absent du doc : emplacement et noms à écrire dans la liaison) :
+-- un Model avec Humanoid R15 et HumanoidRootPart, dans un dossier Guards de
+-- ReplicatedStorage/Assets (ou de ServerStorage/Assets), nommé Guard_Z<zone> (un look par zone,
+-- 5.5), sinon Guard (look commun). Sans lui, un rig R15 de remplacement créé par le code. Le
+-- clone en jeu est vidé de ses scripts et désancré.
+--
+-- Posé par le code :
+--   - vigiles en jeu dans Workspace/ActiveGuards, avec l'attribut TargetUserId (UserId du
+--     joueur poursuivi, 0 hors poursuite) ;
+--   - sur le joueur rattrapé, pendant la poussée : un Attachment KNOCKBACK_NAME (avec sa
+--     LinearVelocity) dans son HumanoidRootPart. ChaseController le reconnaît à ce nom pour
+--     jouer Knockback et Stunned.
+--
+-- API (serveur) :
+--   GuardService.IsChased(player) -> boolean
+--   GuardService.GetGuard(player) -> Model?    le vigile qui poursuit ce joueur
+--   GuardService.GetSpeedOverride(player, zone) -> number?
+--       Point d'accroche du tutoriel (5.11, vigile lent : Config.Tutorial.GuardSpeed). Renvoie
+--       nil ici : la vitesse de la zone s'applique. TutorialService le remplace
+--       (GuardService.GetSpeedOverride = function(player, zone) ... end). Une valeur qui n'est
+--       pas un nombre fini > 0, ou une erreur, compte pour nil.
+
+local CollectionService = game:GetService("CollectionService")
+local Debris = game:GetService("Debris")
+local PathfindingService = game:GetService("PathfindingService")
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local ServerStorage = game:GetService("ServerStorage")
+local Workspace = game:GetService("Workspace")
+
+local Shared = ReplicatedStorage.Shared
+local Balance = require(Shared.Config.Balance)
+local Zones = require(Shared.Config.Zones)
+local Animations = require(Shared.Contract.Animations)
+local Find = require(Shared.Contract.Find)
+local AnimPlayer = require(Shared.Anim.AnimPlayer)
+local MarkerSounds = require(Shared.Anim.MarkerSounds)
+local Net = require(Shared.Net.Net)
+
+local StatsService = require(script.Parent.StatsService)
+
+-- Ce que ce service utilise de CarryService (DEV-017), qui ne requiert jamais GuardService.
+type CarryApi = {
+	IsCarrying: (player: Player) -> boolean,
+	Fail: (player: Player, reason: string) -> (),
+	OnCarryStarted: (listener: (player: Player, payload: any) -> ()) -> any,
+	OnCarryEnded: (listener: (player: Player, payload: any, result: string, reason: string) -> ()) -> any,
+}
+local CarryService: CarryApi = require(script.Parent.CarryService) :: any
+
+type AnimPlayerT = AnimPlayer.AnimPlayer
+
+-- Wait : vient d'apparaître ; Chase : poursuit ; Catch : vient de rattraper ; Tired : essoufflé
+-- après un abandon ; Return : rentre en marchant.
+type GuardState = "Wait" | "Chase" | "Catch" | "Tired" | "Return"
+
+type Guard = {
+	model: Model,
+	humanoid: Humanoid,
+	root: BasePart,
+	rootHeight: number, -- hauteur du centre du HumanoidRootPart au-dessus des pieds
+	anims: AnimPlayerT,
+	store: Model,
+	home: Vector3, -- GuardSpawn, but du retour
+	zone: number,
+	speed: number, -- WalkSpeed de poursuite
+	target: Player?, -- joueur poursuivi, nil hors poursuite
+	state: GuardState,
+	spawnedAt: number,
+	stateEndsAt: number, -- fin de Wait, Catch ou Tired
+	returnedAt: number,
+	nextSteerAt: number,
+	nextPathAt: number,
+	path: Path,
+	pathToken: number, -- change à chaque changement d'état : périme les calculs en cours
+	computing: boolean,
+	waypoints: { PathWaypoint }?,
+	waypointIndex: number,
+	progressPos: Vector3,
+	progressAt: number,
+	knockTarget: Player?, -- joueur à projeter au marqueur Impact de Catch
+	connections: { RBXScriptConnection },
+	alive: boolean,
+}
+
+-- Noms du contrat (2.1, 10.4) lus ici.
+local STORE_TAG = "NPCStore"
+local SAFE_ZONE_TAG = "SafeZone"
+local GUARD_SPAWN = "GuardSpawn"
+local BOUNDS = "Bounds"
+local WINDOW = "Window"
+local INBOX_NAME = "_INBOX_CLEMENT" -- livraisons de Clément : pas encore dans la map
+local WINDOW_ID_ATTRIBUTE = "WindowId" -- posé par WindowService sur la vitrine
+
+-- V0 proposé, absent du doc : où le code cherche le modèle de vigile de Clément.
+local GUARD_FOLDER = "Guards" -- dans ReplicatedStorage/Assets, puis ServerStorage/Assets
+local GUARD_ZONE_NAME = "Guard_Z%d" -- un look par zone (5.5)
+local GUARD_COMMON_NAME = "Guard" -- look des zones sans modèle propre
+
+-- Noms posés par le code. KNOCKBACK_NAME, ACTIVE_FOLDER et TARGET_ATTRIBUTE sont aussi écrits
+-- dans ChaseController : les changer dans les deux fichiers.
+local ACTIVE_FOLDER = "ActiveGuards"
+local TARGET_ATTRIBUTE = "TargetUserId"
+local KNOCKBACK_NAME = "GuardKnockback"
+local STUN_KEY = "GuardStun" -- modificateur de vitesse de StatsService
+local FALLBACK_NAME = "Guard_Fallback"
+
+-- V0 proposé, absent du doc : le coup du vigile qui projette le joueur rattrapé (5.5, comme
+-- dans le jeu de référence). Réglable ici.
+local KNOCKBACK_SPEED = 40 -- vitesse horizontale donnée au joueur, à l'opposé du vigile (studs/s)
+local KNOCKBACK_UP = 25 -- vitesse verticale (studs/s)
+local KNOCKBACK_DURATION = 0.15 -- durée de la poussée (s)
+local KNOCKBACK_MAX_WAIT = 0.6 -- sans marqueur Impact de Catch après ce délai, la poussée part quand même (s)
+
+-- V0 proposé, absent du doc : comportement du vigile.
+local REACTION_DELAY = 0.5 -- il apparaît, puis s'élance après ce délai, sans capture avant (s)
+local STEER_INTERVAL = 0.1 -- cadence du pilotage : ligne de vue, MoveTo (s)
+local WAYPOINT_REACHED = 2 -- distance horizontale à laquelle un point du chemin est atteint (studs)
+local KNEE_HEIGHT = 1.5 -- second rayon de la ligne de vue, au-dessus des pieds : voit les obstacles bas (studs)
+local SPAWN_SPACING = 3 -- écart entre vigiles apparus au même GuardSpawn, vers la vitrine (studs)
+local RETURN_WALK_SPEED = 10 -- retour en marchant (WalkSpeed)
+local RETURN_PATH_INTERVAL = 1 -- recalcul du chemin du retour (s)
+local RETURN_MAX_DURATION = 20 -- au-delà, il disparaît là où il est (s)
+local RETURN_STUCK_TIME = 2 -- sans avancer d'un stud pendant ce temps, il disparaît (s)
+local ARRIVE_DISTANCE = 3 -- à cette distance du GuardSpawn, il est rentré et disparaît (studs)
+local TIRED_PAUSE = 1.5 -- pause essoufflée si Tired n'est pas livrée (s)
+local TIRED_MAX = 4 -- pause essoufflée maximale, même si Tired est plus longue (s)
+local CATCH_PAUSE = 1 -- pause après la capture si Catch n'est pas livrée (s)
+local CATCH_MAX = 3 -- pause maximale après la capture (s)
+
+-- V0 proposé, absent du doc : couleurs du rig de remplacement (gilet orange).
+local FALLBACK_VEST = Color3.fromRGB(255, 160, 20)
+local FALLBACK_SKIN = Color3.fromRGB(234, 184, 146)
+local FALLBACK_PANTS = Color3.fromRGB(45, 50, 65)
+
+-- Agent du PathfindingService : valeurs par défaut de Roblox (rig R15 standard), escalade coupée.
+local AGENT = {
+	AgentRadius = 2,
+	AgentHeight = 5,
+	AgentCanJump = true,
+	AgentCanClimb = false,
+	WaypointSpacing = 4,
+}
+
+-- États du Humanoid jamais utiles à un vigile (9.7 : nage, escalade ; le reste en V0).
+local DISABLED_STATES = {
+	Enum.HumanoidStateType.Swimming,
+	Enum.HumanoidStateType.Climbing,
+	Enum.HumanoidStateType.Seated,
+	Enum.HumanoidStateType.FallingDown,
+	Enum.HumanoidStateType.Ragdoll,
+	Enum.HumanoidStateType.GettingUp,
+	Enum.HumanoidStateType.PlatformStanding,
+}
+
+local IS_STUDIO = RunService:IsStudio()
+
+local GuardService = {}
+
+local guards: { Guard } = {}
+local chasedBy: { [Player]: Guard } = {}
+local stunTokens: { [Player]: number } = {}
+local activeFolder: Folder? = nil
+local fallbackTemplate: Model? = nil
+local fallbackBuilding = false
+local warned: { [string]: boolean } = {}
+-- Boîte englobante des zones safe sans Bounds, calculée une fois.
+local boxCache: { [Instance]: { cframe: CFrame, size: Vector3 } } = setmetatable({}, { __mode = "k" }) :: any
+
+local rayParams = RaycastParams.new()
+rayParams.FilterType = Enum.RaycastFilterType.Exclude
+rayParams.RespectCanCollide = true -- volumes Bounds, vitre cassée, colis porté : ne cachent rien
+rayParams.IgnoreWater = true
+
+-- Le marqueur de Catch dans le contrat 2.4 (Impact).
+local CATCH_MARKER = "Impact"
+for _, spec in Animations.Guard do
+	local marker = spec.Marker
+	if spec.Name == "Catch" and marker then
+		CATCH_MARKER = marker
+	end
+end
+
+-- Outils ----------------------------------------------------------------------------------
+
+local function log(message: string)
+	if IS_STUDIO then
+		print(`[GuardService] {message}`)
+	end
+end
+
+local function warnOnce(key: string, message: string)
+	if warned[key] then
+		return
+	end
+	warned[key] = true
+	warn(`[GuardService] {message}`)
+end
+
+-- 28 → « 28 » ; 13.4 → « 13,4 ».
+local function formatNumber(n: number): string
+	if n == math.floor(n) then
+		return string.format("%d", n)
+	end
+	return (string.gsub(string.format("%.1f", n), "%.", ","))
+end
+
+local function isPositiveNumber(value: any): boolean
+	return type(value) == "number" and value == value and value > 0 and value < math.huge
+end
+
+local function flat(v: Vector3): Vector3
+	return Vector3.new(v.X, 0, v.Z)
+end
+
+-- Dans la map : Workspace, hors du dépôt des livraisons de Clément.
+local function inMap(inst: Instance): boolean
+	if not inst:IsDescendantOf(Workspace) then
+		return false
+	end
+	local inbox = Workspace:FindFirstChild(INBOX_NAME)
+	return inbox == nil or not inst:IsDescendantOf(inbox)
+end
+
+-- HumanoidRootPart et Humanoid vivant d'un joueur, sinon nil.
+local function bodyOf(player: Player): (BasePart?, Humanoid?)
+	local character = player.Character
+	if character == nil then
+		return nil, nil
+	end
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	local root = character:FindFirstChild("HumanoidRootPart")
+	if humanoid == nil or humanoid.Health <= 0 or root == nil or not root:IsA("BasePart") then
+		return nil, nil
+	end
+	return root :: BasePart, humanoid
+end
+
+-- Zone safe ---------------------------------------------------------------------------------
+
+local function insideBox(cframe: CFrame, size: Vector3, position: Vector3): boolean
+	local p = cframe:PointToObjectSpace(position)
+	return math.abs(p.X) <= size.X / 2 and math.abs(p.Y) <= size.Y / 2 and math.abs(p.Z) <= size.Z / 2
+end
+
+-- Le volume d'un objet taggé SafeZone : la pièce elle-même, sinon son enfant direct Bounds
+-- (pas ceux des parcelles qu'il contient peut-être), sinon la boîte englobante du modèle.
+local function insideSafeZone(inst: Instance, position: Vector3): boolean
+	local part: Instance? = if inst:IsA("BasePart") then inst else inst:FindFirstChild(BOUNDS)
+	if part and part:IsA("BasePart") then
+		local box = part :: BasePart
+		return insideBox(box.CFrame, box.Size, position)
+	end
+	if inst:IsA("Model") then
+		local cached = boxCache[inst]
+		if cached == nil then
+			local cframe, size = (inst :: Model):GetBoundingBox()
+			cached = { cframe = cframe, size = size }
+			boxCache[inst] = cached
+		end
+		return insideBox(cached.cframe, cached.size, position)
+	end
+	return false
+end
+
+local function isInSafeZone(position: Vector3): boolean
+	for _, inst in CollectionService:GetTagged(SAFE_ZONE_TAG) do
+		if inMap(inst) and insideSafeZone(inst, position) then
+			return true
+		end
+	end
+	return false
+end
+
+-- Magasin et modèle -------------------------------------------------------------------------
+
+-- Le magasin d'un colis : payload.StoreId = nom du modèle, ou WindowId de sa vitrine
+-- (WindowService : nom du modèle, suffixe _2… en cas de doublon).
+local function findStore(storeId: string): Model?
+	for _, inst in CollectionService:GetTagged(STORE_TAG) do
+		if inst:IsA("Model") and inMap(inst) then
+			if inst.Name == storeId then
+				return inst :: Model
+			end
+			local window = Find.path(inst, WINDOW)
+			if window and window:GetAttribute(WINDOW_ID_ATTRIBUTE) == storeId then
+				return inst :: Model
+			end
+		end
+	end
+	return nil
+end
+
+-- Le point d'apparition, à plat, tourné comme le GuardSpawn (vers la vitrine).
+local function spawnFrame(store: Model): CFrame
+	local spawn = Find.path(store, GUARD_SPAWN)
+	local frame: CFrame
+	if spawn and spawn:IsA("Attachment") then
+		frame = (spawn :: Attachment).WorldCFrame
+	else
+		warnOnce(`spawn:{store.Name}`, `{store.Name} : GuardSpawn absent (10.4), vigile posé au pivot du magasin`)
+		frame = store:GetPivot()
+	end
+	local look = flat(frame.LookVector)
+	if look.Magnitude < 1e-3 then
+		look = Vector3.new(0, 0, -1)
+	end
+	return CFrame.lookAt(frame.Position, frame.Position + look.Unit)
+end
+
+-- Le modèle de Clément pour cette zone, s'il est livré.
+local function findTemplate(zone: number): Model?
+	for _, name in { string.format(GUARD_ZONE_NAME, zone), GUARD_COMMON_NAME } do
+		for _, service in { ReplicatedStorage, ServerStorage } :: { Instance } do
+			local assets = service:FindFirstChild("Assets")
+			local folder = if assets then assets:FindFirstChild(GUARD_FOLDER) else nil
+			local model = if folder then folder:FindFirstChild(name) else nil
+			if model and model:IsA("Model") and model:FindFirstChildOfClass("Humanoid") then
+				return model :: Model
+			end
+		end
+	end
+	return nil
+end
+
+-- Dernier recours si Roblox ne crée pas de rig : des blocs soudés et un Humanoid R15 sans jambes,
+-- porté par sa HipHeight.
+local function buildBlockRig(): Model
+	local model = Instance.new("Model")
+	local function block(name: string, size: Vector3, y: number, color: Color3): Part
+		local part = Instance.new("Part")
+		part.Name = name
+		part.Size = size
+		part.CFrame = CFrame.new(0, y, 0)
+		part.Color = color
+		part.TopSurface = Enum.SurfaceType.Smooth
+		part.BottomSurface = Enum.SurfaceType.Smooth
+		part.Parent = model
+		return part
+	end
+	local root = block("HumanoidRootPart", Vector3.new(2, 2, 1), 3, FALLBACK_VEST)
+	root.Transparency = 1
+	local torso = block("UpperTorso", Vector3.new(2, 2.5, 1), 3.25, FALLBACK_VEST)
+	local head = block("Head", Vector3.new(1.2, 1.2, 1.2), 5.1, FALLBACK_SKIN)
+	for _, part in { torso, head } do
+		local weld = Instance.new("WeldConstraint")
+		weld.Part0 = root
+		weld.Part1 = part
+		weld.Parent = root
+	end
+	local humanoid = Instance.new("Humanoid")
+	humanoid.RigType = Enum.HumanoidRigType.R15
+	humanoid.HipHeight = 2
+	humanoid.RequiresNeck = false
+	humanoid.Parent = model
+	model.PrimaryPart = root
+	return model
+end
+
+-- Rig R15 de remplacement, tant que Clément n'a pas livré de vigile. Construit une seule fois
+-- (attend : Players:CreateHumanoidModelFromDescriptionAsync).
+local function buildFallback(): Model
+	local description = Instance.new("HumanoidDescription")
+	description.HeadColor = FALLBACK_SKIN
+	description.LeftArmColor = FALLBACK_SKIN
+	description.RightArmColor = FALLBACK_SKIN
+	description.TorsoColor = FALLBACK_VEST
+	description.LeftLegColor = FALLBACK_PANTS
+	description.RightLegColor = FALLBACK_PANTS
+	local ok, result = pcall(function(): Model
+		return Players:CreateHumanoidModelFromDescriptionAsync(description, Enum.HumanoidRigType.R15)
+	end)
+	description:Destroy()
+	local model: Model
+	if ok then
+		model = result :: Model
+	else
+		warnOnce("fallback", `rig R15 de remplacement impossible ({result}) : vigile en blocs`)
+		model = buildBlockRig()
+	end
+	model.Name = FALLBACK_NAME
+	-- Le rig de Roblox arrive avec son script Animate : aucun script dans un vigile (10.4).
+	for _, descendant in model:GetDescendants() do
+		if descendant:IsA("LuaSourceContainer") then
+			descendant:Destroy()
+		end
+	end
+	local humanoid = model:FindFirstChildOfClass("Humanoid")
+	if humanoid then
+		humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+		humanoid.HealthDisplayType = Enum.HumanoidHealthDisplayType.AlwaysOff
+	end
+	return model
+end
+
+local function getFallback(): Model?
+	if fallbackTemplate == nil and not fallbackBuilding then
+		fallbackBuilding = true
+		local ok, result = pcall(buildFallback)
+		fallbackBuilding = false
+		if ok then
+			fallbackTemplate = result
+		else
+			warn(`[GuardService] rig de remplacement : {result}`)
+		end
+	end
+	local deadline = os.clock() + 10
+	while fallbackTemplate == nil and fallbackBuilding and os.clock() < deadline do
+		task.wait(0.1) -- un autre appel le construit déjà
+	end
+	return fallbackTemplate
+end
+
+-- Un modèle de Clément utilisable : un Humanoid et un HumanoidRootPart (10.4).
+local function isUsable(template: Model): boolean
+	local root = template:FindFirstChild("HumanoidRootPart")
+	return template:FindFirstChildOfClass("Humanoid") ~= nil and root ~= nil and root:IsA("BasePart")
+end
+
+-- Prépare un clone : scripts retirés (aucun script dans un modèle animé, 10.4), pièces
+-- désancrées (le Humanoid doit pouvoir le déplacer). Renvoie son Humanoid et son
+-- HumanoidRootPart, ou nil s'il lui en manque un.
+local function prepare(model: Model, label: string): (Humanoid?, BasePart?)
+	for _, descendant in model:GetDescendants() do
+		if descendant:IsA("LuaSourceContainer") then
+			warnOnce(`script:{label}`, `{label} : script « {descendant.Name} » retiré du vigile en jeu (aucun script dans un modèle animé, 10.4)`)
+			descendant:Destroy()
+		elseif descendant:IsA("BasePart") then
+			(descendant :: BasePart).Anchored = false
+		end
+	end
+	local humanoid = model:FindFirstChildOfClass("Humanoid")
+	local root = model:FindFirstChild("HumanoidRootPart")
+	if humanoid == nil or root == nil or not root:IsA("BasePart") then
+		return nil, nil
+	end
+	if humanoid.RigType ~= Enum.HumanoidRigType.R15 then
+		warnOnce(`rig:{label}`, `{label} : rig {humanoid.RigType.Name}, attendu R15 (2.4)`)
+	end
+	return humanoid, root :: BasePart
+end
+
+local function getActiveFolder(): Folder
+	local folder = activeFolder
+	if folder == nil or folder.Parent ~= Workspace then
+		local created = Instance.new("Folder")
+		created.Name = ACTIVE_FOLDER
+		created.Parent = Workspace
+		activeFolder = created
+		return created
+	end
+	return folder
+end
+
+-- Vue et déplacements -----------------------------------------------------------------------
+
+-- Les rayons ignorent les vigiles et tous les personnages : seuls les murs et le décor cachent.
+local function refreshRayFilter()
+	local list: { Instance } = {}
+	if activeFolder then
+		table.insert(list, activeFolder)
+	end
+	for _, player in Players:GetPlayers() do
+		local character = player.Character
+		if character then
+			table.insert(list, character)
+		end
+	end
+	rayParams.FilterDescendantsInstances = list
+end
+
+local function clearLine(from: Vector3, to: Vector3): boolean
+	local direction = to - from
+	if direction.Magnitude < 1e-3 then
+		return true
+	end
+	return Workspace:Raycast(from, direction, rayParams) == nil
+end
+
+-- Le vigile voit-il le joueur ? Un rayon à hauteur du HumanoidRootPart, un autre à KNEE_HEIGHT
+-- au-dessus des pieds (rayons, comptoirs : il ne court pas droit dedans).
+local function canSee(guard: Guard, targetRoot: BasePart, targetHumanoid: Humanoid): boolean
+	local from = guard.root.Position
+	local to = targetRoot.Position
+	if not clearLine(from, to) then
+		return false
+	end
+	local targetHeight = targetHumanoid.HipHeight + targetRoot.Size.Y / 2
+	local fromKnee = from - Vector3.new(0, guard.rootHeight - KNEE_HEIGHT, 0)
+	local toKnee = to - Vector3.new(0, targetHeight - KNEE_HEIGHT, 0)
+	return clearLine(fromKnee, toKnee)
+end
+
+local function stop(guard: Guard)
+	guard.humanoid:MoveTo(guard.root.Position)
+end
+
+-- Avance vers `position`, sauf si elle est en zone safe : alors il s'arrête. Pas de marge : un
+-- joueur juste avant la ligne reste attrapable.
+local function moveTo(guard: Guard, position: Vector3)
+	if isInSafeZone(position) then
+		stop(guard)
+	else
+		guard.humanoid:MoveTo(position)
+	end
+end
+
+-- Lance le calcul d'un chemin vers `goal`, dans sa propre tâche (ComputeAsync attend).
+local function computePath(guard: Guard, goal: Vector3)
+	guard.computing = true
+	local token = guard.pathToken
+	local start = guard.root.Position
+	task.spawn(function()
+		local ok = pcall(function()
+			guard.path:ComputeAsync(start, goal)
+		end)
+		guard.computing = false
+		if not guard.alive or guard.pathToken ~= token then
+			return
+		end
+		if ok and guard.path.Status == Enum.PathStatus.Success then
+			guard.waypoints = guard.path:GetWaypoints()
+			guard.waypointIndex = 2 -- le premier point est le départ
+		else
+			guard.waypoints = nil
+		end
+	end)
+end
+
+-- Suit le dernier chemin calculé ; sans chemin, ou au bout, va droit vers `goal`.
+local function followPath(guard: Guard, goal: Vector3)
+	local waypoints = guard.waypoints
+	if waypoints == nil then
+		moveTo(guard, goal)
+		return
+	end
+	local position = guard.root.Position
+	local index = guard.waypointIndex
+	while index <= #waypoints and flat(waypoints[index].Position - position).Magnitude <= WAYPOINT_REACHED do
+		index += 1
+	end
+	guard.waypointIndex = index
+	if index > #waypoints then
+		moveTo(guard, goal)
+		return
+	end
+	local waypoint = waypoints[index]
+	if waypoint.Action == Enum.PathWaypointAction.Jump then
+		guard.humanoid.Jump = true
+	end
+	moveTo(guard, waypoint.Position) -- jamais par la zone safe
+end
+
+-- Changements d'état ----------------------------------------------------------------------
+
+-- Le calcul de chemin en cours continue (un seul à la fois par Path) ; son résultat sera jeté.
+local function setState(guard: Guard, state: GuardState)
+	guard.state = state
+	guard.pathToken += 1
+	guard.waypoints = nil
+end
+
+-- Fin de la poursuite pour le joueur (capture, abandon ou disparition du vigile).
+local function endChase(guard: Guard)
+	local player = guard.target
+	if player == nil then
+		return
+	end
+	guard.target = nil
+	if chasedBy[player] == guard then
+		chasedBy[player] = nil
+	end
+	guard.model:SetAttribute(TARGET_ATTRIBUTE, 0)
+	pcall(function()
+		guard.model:RemovePersistentPlayer(player)
+	end)
+	if player.Parent == Players then
+		Net.Server.ChaseState:Fire(player, false)
+	end
+end
+
+local function despawn(guard: Guard, reason: string)
+	if not guard.alive then
+		return
+	end
+	guard.alive = false
+	endChase(guard)
+	local index = table.find(guards, guard)
+	if index then
+		table.remove(guards, index)
+	end
+	for _, connection in guard.connections do
+		connection:Disconnect()
+	end
+	guard.pathToken += 1
+	guard.anims:Destroy()
+	guard.model:Destroy()
+	log(`vigile de {guard.store.Name} parti ({reason})`)
+end
+
+local function startChase(guard: Guard, now: number)
+	setState(guard, "Chase")
+	guard.humanoid.WalkSpeed = guard.speed
+	guard.nextSteerAt = now
+	guard.nextPathAt = now
+	guard.anims:Play("Run")
+end
+
+local function startReturn(guard: Guard, now: number)
+	setState(guard, "Return")
+	guard.humanoid.WalkSpeed = RETURN_WALK_SPEED
+	guard.returnedAt = now
+	guard.progressPos = guard.root.Position
+	guard.progressAt = now
+	guard.nextSteerAt = now
+	guard.nextPathAt = now
+	guard.anims:Stop("Run")
+	guard.anims:Stop("Tired")
+	guard.anims:Play("Walk")
+end
+
+-- Durée d'une animation sans boucle qui vient d'être lancée, bornée ; `default` si elle n'est
+-- pas livrée ou pas encore chargée.
+local function pauseFor(track: AnimationTrack?, default: number, max: number): number
+	if track and track.Length > 0 then
+		return math.min(track.Length, max)
+	end
+	return default
+end
+
+-- Abandon : le vigile s'arrête, essoufflé, puis rentre.
+local function giveUp(guard: Guard, reason: string)
+	local state = guard.state
+	if state ~= "Wait" and state ~= "Chase" then
+		return
+	end
+	local player = guard.target
+	endChase(guard)
+	log(`vigile de {guard.store.Name} : abandonne {if player then player.Name else "?"} ({reason})`)
+	local now = os.clock()
+	stop(guard)
+	if state == "Wait" then
+		startReturn(guard, now) -- il ne s'est pas encore élancé : pas d'essoufflement
+		return
+	end
+	setState(guard, "Tired")
+	guard.anims:Stop("Run")
+	guard.stateEndsAt = now + pauseFor(guard.anims:Play("Tired"), TIRED_PAUSE, TIRED_MAX)
+end
+
+-- Capture ---------------------------------------------------------------------------------
+
+local function stun(player: Player)
+	local token = (stunTokens[player] or 0) + 1
+	stunTokens[player] = token
+	StatsService.SetSpeedModifier(player, STUN_KEY, 0)
+	task.delay(Balance.Guard.CatchStunDuration, function()
+		if stunTokens[player] == token then
+			stunTokens[player] = nil
+			StatsService.SetSpeedModifier(player, STUN_KEY, nil)
+		end
+	end)
+end
+
+-- Projette le joueur à l'opposé de `from` : une LinearVelocity posée par le serveur dans son
+-- HumanoidRootPart, que son client simule (il possède son personnage), retirée après
+-- KNOCKBACK_DURATION s.
+local function knockback(player: Player, from: Vector3)
+	if player.Parent ~= Players then
+		return
+	end
+	local root = bodyOf(player)
+	if root == nil then
+		return
+	end
+	local away = flat(root.Position - from)
+	if away.Magnitude < 1e-3 then
+		away = flat(root.CFrame.LookVector)
+	end
+	local direction = if away.Magnitude > 1e-3 then away.Unit else Vector3.new(0, 0, 1)
+	local attachment = Instance.new("Attachment")
+	attachment.Name = KNOCKBACK_NAME
+	local mover = Instance.new("LinearVelocity")
+	mover.Name = KNOCKBACK_NAME
+	mover.Attachment0 = attachment
+	mover.RelativeTo = Enum.ActuatorRelativeTo.World
+	mover.VelocityConstraintMode = Enum.VelocityConstraintMode.Vector
+	mover.MaxForce = math.huge
+	mover.VectorVelocity = direction * KNOCKBACK_SPEED + Vector3.new(0, KNOCKBACK_UP, 0)
+	mover.Parent = attachment
+	attachment.Parent = root
+	Debris:AddItem(attachment, KNOCKBACK_DURATION)
+end
+
+-- La poussée en attente part (marqueur Impact de Catch, ou délai écoulé).
+local function releaseKnockback(guard: Guard)
+	local player = guard.knockTarget
+	if player then
+		guard.knockTarget = nil
+		knockback(player, guard.root.Position)
+	end
+end
+
+local function catch(guard: Guard, player: Player)
+	local now = os.clock()
+	endChase(guard)
+	setState(guard, "Catch")
+	stop(guard)
+	guard.anims:Stop("Run")
+	local track = guard.anims:Play("Catch")
+	guard.stateEndsAt = now + pauseFor(track, CATCH_PAUSE, CATCH_MAX)
+	log(`vigile de {guard.store.Name} : {player.Name} rattrapé`)
+
+	-- Le coup : au marqueur Impact de Catch, ou tout de suite si Catch n'est pas livrée.
+	if track then
+		guard.knockTarget = player
+		task.delay(KNOCKBACK_MAX_WAIT, function()
+			if guard.knockTarget == player then
+				releaseKnockback(guard)
+			end
+		end)
+	else
+		knockback(player, guard.root.Position)
+	end
+
+	-- Colis, étourdissement, message : décidés ici, dans leur propre tâche pour qu'un appel
+	-- qui attend ne bloque pas les autres vigiles.
+	local zone = guard.zone
+	task.spawn(function()
+		local ok, err = pcall(CarryService.Fail :: any, player, "Caught")
+		if not ok then
+			warn(`[GuardService] CarryService.Fail({player.Name}, "Caught") : {err}`)
+		end
+		stun(player)
+		if player.Parent == Players then
+			Net.Server.Notify:Fire(
+				player,
+				`Rattrapé ! Vitesse conseillée : {formatNumber(Zones[zone].AdvisedSpeed)}`,
+				"Warning"
+			)
+		end
+	end)
+end
+
+-- Boucle ----------------------------------------------------------------------------------
+
+local function chaseStep(guard: Guard, now: number)
+	local player = guard.target
+	if player == nil then
+		giveUp(guard, "plus de cible")
+		return
+	end
+	local targetRoot, targetHumanoid = bodyOf(player)
+	if targetRoot == nil or targetHumanoid == nil then
+		giveUp(guard, "plus de personnage")
+		return
+	end
+	if not CarryService.IsCarrying(player) then
+		giveUp(guard, "ne porte plus de colis")
+		return
+	end
+	if isInSafeZone(targetRoot.Position) then
+		giveUp(guard, "zone safe")
+		return
+	end
+	if isInSafeZone(guard.root.Position) then
+		giveUp(guard, "vigile poussé en zone safe")
+		return
+	end
+	local distance = (targetRoot.Position - guard.root.Position).Magnitude
+	if distance <= Balance.Guard.CatchDistance and clearLine(guard.root.Position, targetRoot.Position) then
+		catch(guard, player)
+		return
+	end
+	if now - guard.spawnedAt >= Balance.Guard.GiveUpChaseDuration then
+		giveUp(guard, `{Balance.Guard.GiveUpChaseDuration} s de poursuite`)
+		return
+	end
+	if distance >= Balance.Guard.GiveUpLead then
+		giveUp(guard, `{Balance.Guard.GiveUpLead} studs d'avance`)
+		return
+	end
+	if now < guard.nextSteerAt then
+		return
+	end
+	guard.nextSteerAt = now + STEER_INTERVAL
+	if canSee(guard, targetRoot, targetHumanoid) then
+		guard.waypoints = nil
+		moveTo(guard, targetRoot.Position)
+		return
+	end
+	if now >= guard.nextPathAt and not guard.computing then
+		guard.nextPathAt = now + Balance.Guard.PathRecomputeInterval
+		computePath(guard, targetRoot.Position)
+	end
+	followPath(guard, targetRoot.Position)
+end
+
+local function returnStep(guard: Guard, now: number)
+	local position = guard.root.Position
+	if flat(guard.home - position).Magnitude <= ARRIVE_DISTANCE then
+		despawn(guard, "rentré")
+		return
+	end
+	if now - guard.returnedAt >= RETURN_MAX_DURATION then
+		despawn(guard, "retour trop long")
+		return
+	end
+	if (position - guard.progressPos).Magnitude >= 1 then
+		guard.progressPos = position
+		guard.progressAt = now
+	elseif now - guard.progressAt >= RETURN_STUCK_TIME then
+		despawn(guard, "bloqué sur le retour")
+		return
+	end
+	if now < guard.nextSteerAt then
+		return
+	end
+	guard.nextSteerAt = now + STEER_INTERVAL
+	if now >= guard.nextPathAt and not guard.computing then
+		guard.nextPathAt = now + RETURN_PATH_INTERVAL
+		computePath(guard, guard.home)
+	end
+	followPath(guard, guard.home)
+end
+
+local function update(guard: Guard, now: number)
+	if not guard.root:IsDescendantOf(Workspace) or guard.humanoid.Health <= 0 then
+		despawn(guard, "sorti du jeu")
+		return
+	end
+	local state = guard.state
+	if state == "Wait" then
+		local player = guard.target
+		if player == nil or bodyOf(player) == nil or not CarryService.IsCarrying(player) then
+			giveUp(guard, "portage fini avant le départ")
+		elseif now >= guard.stateEndsAt then
+			startChase(guard, now)
+		end
+	elseif state == "Chase" then
+		chaseStep(guard, now)
+	elseif state == "Catch" or state == "Tired" then
+		if now >= guard.stateEndsAt then
+			startReturn(guard, now)
+		end
+	elseif state == "Return" then
+		returnStep(guard, now)
+	end
+end
+
+local function step()
+	if #guards == 0 then
+		return
+	end
+	refreshRayFilter()
+	local now = os.clock()
+	for _, guard in table.clone(guards) do
+		if guard.alive then
+			local ok, err = pcall(update :: any, guard, now)
+			if not ok then
+				warn(`[GuardService] vigile de {guard.store.Name} : {err}`)
+				despawn(guard, "erreur")
+			end
+		end
+	end
+end
+
+-- Apparition ------------------------------------------------------------------------------
+
+local function chaseSpeed(player: Player, zone: number): number
+	local ok, value = pcall(GuardService.GetSpeedOverride, player, zone)
+	if not ok then
+		warn(`[GuardService] GetSpeedOverride({player.Name}) : {value}`)
+	elseif value ~= nil then
+		if isPositiveNumber(value) then
+			return value :: number
+		end
+		warn(`[GuardService] GetSpeedOverride({player.Name}) invalide ({value}) : vitesse de la zone`)
+	end
+	return Zones[zone].GuardSpeed
+end
+
+-- Vigiles qui poursuivent pour ce magasin (ceux qui rentrent ne comptent pas).
+local function countChasing(store: Model): number
+	local count = 0
+	for _, guard in guards do
+		if guard.store == store and (guard.state == "Wait" or guard.state == "Chase" or guard.state == "Catch") then
+			count += 1
+		end
+	end
+	return count
+end
+
+-- Au plafond du serveur : fait disparaître le vigile qui rentre depuis le plus longtemps.
+-- Renvoie false s'il n'y en a aucun.
+local function freeSlot(): boolean
+	local oldest: Guard? = nil
+	for _, guard in guards do
+		if guard.state == "Tired" or guard.state == "Return" then
+			if oldest == nil or guard.spawnedAt < oldest.spawnedAt then
+				oldest = guard
+			end
+		end
+	end
+	if oldest == nil then
+		return false
+	end
+	despawn(oldest, "place libérée pour un nouveau vigile")
+	return true
+end
+
+-- Le point d'apparition : le GuardSpawn, ou la première place libre devant lui (vers la
+-- vitrine), de SPAWN_SPACING en SPAWN_SPACING, si des vigiles y sont déjà.
+local function spawnSpot(store: Model): CFrame
+	local base = spawnFrame(store)
+	local spot = base
+	for slot = 0, Balance.Guard.MaxActivePerServer do
+		spot = base + base.LookVector * (SPAWN_SPACING * slot)
+		local taken = false
+		for _, other in guards do
+			if flat(other.root.Position - spot.Position).Magnitude < SPAWN_SPACING * 0.9 then
+				taken = true
+				break
+			end
+		end
+		if not taken then
+			break
+		end
+	end
+	return spot
+end
+
+-- Crée le vigile du voleur `player` dans le magasin `store`. N'attend pas.
+local function spawnGuard(player: Player, store: Model, zone: number, template: Model, label: string)
+	if chasedBy[player] ~= nil then
+		return -- un vigile par voleur (Balance.Guard.PerThief)
+	end
+	if countChasing(store) >= Balance.Guard.MaxPerStore then
+		log(`{store.Name} : déjà {Balance.Guard.MaxPerStore} vigiles en poursuite, pas de vigile pour {player.Name}`)
+		return
+	end
+	if #guards >= Balance.Guard.MaxActivePerServer and not freeSlot() then
+		log(`déjà {Balance.Guard.MaxActivePerServer} vigiles en poursuite sur le serveur (9.7), pas de vigile pour {player.Name}`)
+		return
+	end
+
+	local model = template:Clone()
+	local humanoid, root = prepare(model, label)
+	if humanoid == nil or root == nil then
+		warnOnce(`bad:{label}`, `{label} : Humanoid ou HumanoidRootPart manquant, vigile non créé`)
+		model:Destroy()
+		return
+	end
+
+	-- Placement : pieds sur le point d'apparition.
+	local frame = spawnSpot(store)
+	local rootHeight = humanoid.HipHeight + root.Size.Y / 2
+	local offset = model:GetPivot():ToObjectSpace(root.CFrame)
+	model:PivotTo(frame * CFrame.new(0, rootHeight, 0) * offset:Inverse())
+
+	model:SetAttribute(TARGET_ATTRIBUTE, player.UserId)
+	pcall(function()
+		model.ModelStreamingMode = Enum.ModelStreamingMode.PersistentPerPlayer
+		model:AddPersistentPlayer(player)
+	end)
+	humanoid.BreakJointsOnDeath = false
+	humanoid.WalkSpeed = 0
+	model.Parent = getActiveFolder()
+	pcall(function()
+		root:SetNetworkOwner(nil)
+	end)
+	for _, state in DISABLED_STATES do
+		humanoid:SetStateEnabled(state, false)
+	end
+
+	local animator = humanoid:FindFirstChildOfClass("Animator")
+	if animator == nil then
+		local created = Instance.new("Animator")
+		created.Parent = humanoid
+		animator = created
+	end
+	local now = os.clock()
+	local guard: Guard = {
+		model = model,
+		humanoid = humanoid,
+		root = root,
+		rootHeight = rootHeight,
+		anims = AnimPlayer.new(animator :: Animator, AnimPlayer.modelFolder(model), Animations.Guard, "Vigile"),
+		store = store,
+		home = frame.Position,
+		zone = zone,
+		speed = chaseSpeed(player, zone),
+		target = player,
+		state = "Wait",
+		spawnedAt = now,
+		stateEndsAt = now + REACTION_DELAY,
+		returnedAt = now,
+		nextSteerAt = now,
+		nextPathAt = now,
+		path = PathfindingService:CreatePath(AGENT),
+		pathToken = 0,
+		computing = false,
+		waypoints = nil,
+		waypointIndex = 2,
+		progressPos = root.Position,
+		progressAt = now,
+		knockTarget = nil,
+		connections = {},
+		alive = true,
+	}
+	table.insert(guard.connections, humanoid.Died:Connect(function()
+		despawn(guard, "mort")
+	end))
+	for _, entry in MarkerSounds.Guard do
+		guard.anims:OnMarker(entry.Anim, entry.Marker, function()
+			MarkerSounds.play(entry.Sound, guard.root)
+		end)
+	end
+	guard.anims:OnMarker("Catch", CATCH_MARKER, function()
+		releaseKnockback(guard)
+	end)
+	guard.anims:Play("Idle")
+
+	table.insert(guards, guard)
+	chasedBy[player] = guard
+	Net.Server.ChaseState:Fire(player, true, model)
+	log(
+		`vigile ({label}) lancé sur {player.Name} depuis {store.Name}, zone {zone}, vitesse {formatNumber(guard.speed)} ({#guards} en jeu)`
+	)
+end
+
+local function onCarryStarted(player: Player, payload: any)
+	if type(payload) ~= "table" or payload.Kind ~= "NPCBox" then
+		return -- seuls les colis PNJ ont un vigile (5.5)
+	end
+	-- Hors de l'appel de CarryService : le rig de remplacement peut demander d'attendre.
+	task.spawn(function()
+		local storeId = payload.StoreId
+		local store = if type(storeId) == "string" then findStore(storeId) else nil
+		if store == nil then
+			warn(`[GuardService] magasin « {storeId} » du colis de {player.Name} introuvable : pas de vigile`)
+			return
+		end
+		local zone = payload.Zone
+		if type(zone) ~= "number" or Zones[zone] == nil then
+			zone = store:GetAttribute("Zone")
+		end
+		if type(zone) ~= "number" or Zones[zone] == nil then
+			warn(`[GuardService] zone du colis de {player.Name} inconnue ({payload.Zone}) : pas de vigile`)
+			return
+		end
+		local template = findTemplate(zone)
+		if template and not isUsable(template) then
+			warnOnce(
+				`bad:{template:GetFullName()}`,
+				`{template:GetFullName()} : Humanoid ou HumanoidRootPart manquant (10.4), rig de remplacement utilisé`
+			)
+			template = nil
+		end
+		local label = if template then template:GetFullName() else FALLBACK_NAME
+		if template == nil then
+			template = getFallback()
+		end
+		-- Revérifié après une éventuelle attente.
+		if template == nil or player.Parent ~= Players or not CarryService.IsCarrying(player) then
+			return
+		end
+		local ok, err = pcall(spawnGuard :: any, player, store, zone, template, label)
+		if not ok then
+			warn(`[GuardService] vigile de {player.Name} non créé : {err}`)
+		end
+	end)
+end
+
+local function onCarryEnded(player: Player, _payload: any, result: string, reason: string)
+	local guard = chasedBy[player]
+	if guard then
+		giveUp(guard, `portage fini : {result} ({reason})`)
+	end
+end
+
+-- API ---------------------------------------------------------------------------------------
+
+function GuardService.IsChased(player: Player): boolean
+	return chasedBy[player] ~= nil
+end
+
+function GuardService.GetGuard(player: Player): Model?
+	local guard = chasedBy[player]
+	return if guard then guard.model else nil
+end
+
+function GuardService.GetSpeedOverride(_player: Player, _zone: number): number?
+	return nil
+end
+
+function GuardService.Start()
+	CarryService.OnCarryStarted(onCarryStarted)
+	CarryService.OnCarryEnded(onCarryEnded)
+	RunService.Heartbeat:Connect(step)
+	Players.PlayerRemoving:Connect(function(player: Player)
+		local guard = chasedBy[player]
+		if guard then
+			giveUp(guard, "départ du joueur")
+		end
+		stunTokens[player] = nil
+	end)
+	-- Prépare le rig de remplacement dès le démarrage : le premier vigile apparaît sans attendre.
+	task.spawn(getFallback)
+end
+
+return GuardService
