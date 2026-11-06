@@ -8,6 +8,10 @@ local Attributes = {
 	Tier = { Name = "Tier", Values = { "Standard", "Premium", "Luxe" } },
 	-- Identifiant de catalogue d'un objet exposé ITM_* (texte non vide).
 	ItemId = { Name = "ItemId" },
+	-- Numéro d'une parcelle taggée PlayerPlot : entier de 1 à 6, chaque numéro une seule
+	-- fois, égal au numéro écrit sur la parcelle (« Parcelle 2 » = 2). Ajouté le 2026-11-06
+	-- (liaison L-015 et L-017).
+	PlotIndex = { Name = "PlotIndex", Min = 1, Max = 6 },
 }
 
 return Attributes

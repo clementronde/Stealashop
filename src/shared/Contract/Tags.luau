@@ -32,6 +32,10 @@ Tags.List = {
 	{ Tag = "WeaponShop", Count = 1, For = "boutique d'armes" },
 	{ Tag = "AuraShop", Count = 1, For = "boutique d'auras" },
 	{ Tag = "RobuxShop", Count = 1, For = "comptoir Robux (MAJ 1, posé dès MOD-029)" },
+	-- Comptoir du receleur, à l'entrée de l'allée (sections 4 et 5.9). Ajouté le 2026-11-06
+	-- (liaison L-015 et L-017) : « PawnShop » plutôt que « Fence », qui veut d'abord dire
+	-- clôture en anglais.
+	{ Tag = "PawnShop", Count = 1, For = "comptoir du receleur" },
 	{ Tag = "SafeZone", For = "zone safe" },
 	-- Une arche à l'entrée de chaque zone (section 4, MOD-028).
 	{ Tag = "ZoneGate", Count = 6, PerZone = 1, NeedsZone = true, For = "arches de zone" },

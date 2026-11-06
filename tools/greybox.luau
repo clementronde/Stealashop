@@ -635,7 +635,7 @@ local function buildSafe(root: Instance)
 	buildCounter(shops, "WeaponShop", "WeaponShop", "BOUTIQUE D'ARMES", SHOP_X_NEAR, 1, tint(C.Button, 0.4))
 	buildCounter(shops, "AuraShop", "AuraShop", "BOUTIQUE D'AURAS", SHOP_X_NEAR, -1, tint(Color3.fromRGB(150, 80, 230), 0.4))
 	buildCounter(shops, "RobuxShop", "RobuxShop", "BOUTIQUE ROBUX", SHOP_X_FAR, 1, C.Gold)
-	buildCounter(shops, "Receleur", nil, "RECELEUR", SHOP_X_FAR, -1, tint(C.Door, 0.6)) -- pas de tag au contrat
+	buildCounter(shops, "Receleur", "PawnShop", "RECELEUR", SHOP_X_FAR, -1, tint(C.Door, 0.6)) -- tag ajouté au contrat le 2026-11-06 (liaison L-017)
 	task.wait()
 
 	-- 6 parcelles : 1 à 3 côté N, 4 à 6 côté S, de la sortie vers le fond
@@ -766,6 +766,7 @@ local TAGS = {
 	"WeaponShop",
 	"AuraShop",
 	"RobuxShop",
+	"PawnShop",
 	"CashPad",
 	"Treadmill",
 	"Bench",

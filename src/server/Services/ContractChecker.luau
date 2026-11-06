@@ -272,6 +272,33 @@ local function checkAttributes(scanned: { Instance })
 	end
 end
 
+-- Parcelles : chacune porte un PlotIndex entier de 1 à 6, chaque numéro une seule fois
+-- (liaison L-015 et L-017). Les parcelles rangées dans l'inbox ou hors de la map sont ignorées.
+local function checkPlotIndex()
+	local spec = Attributes.PlotIndex
+	local byIndex: { [number]: { string } } = {}
+	for _, plot in CollectionService:GetTagged("PlayerPlot") do
+		if isInside(plot, sandbox) or isInside(plot, inbox) or not plot:IsDescendantOf(Workspace) then
+			continue
+		end
+		local value = plot:GetAttribute(spec.Name)
+		if value == nil then
+			problem("Parcelles", `{plot:GetFullName()} : attribut {spec.Name} manquant (entier de {spec.Min} à {spec.Max}, le numéro écrit sur la parcelle)`)
+		elseif type(value) ~= "number" or value % 1 ~= 0 or value < spec.Min or value > spec.Max then
+			problem("Parcelles", `{plot:GetFullName()} : {spec.Name} = {tostring(value)}, attendu un entier de {spec.Min} à {spec.Max}`)
+		else
+			local list = byIndex[value] or {}
+			table.insert(list, plot:GetFullName())
+			byIndex[value] = list
+		end
+	end
+	for index, list in byIndex do
+		if #list > 1 then
+			problem("Parcelles", `{spec.Name} = {index} posé sur {#list} parcelles (une seule attendue) : {table.concat(list, ", ")}`)
+		end
+	end
+end
+
 local function checkTags()
 	local zone = Attributes.Zone
 	local known: { [string]: string } = {}
@@ -1052,6 +1079,7 @@ local function run()
 
 	checkAttributes(scanned)
 	checkTags()
+	checkPlotIndex()
 	checkModels(scanned)
 	checkGuiSet("UI", UI.Screens, StarterGui, "StarterGui", "écran", false)
 	local billboardPath = `ReplicatedStorage.{table.concat(UI.BillboardFolder, ".")}`
