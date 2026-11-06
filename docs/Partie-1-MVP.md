@@ -26,7 +26,7 @@ Ce doc a deux parties. **Partie 1 · MVP** (ce fichier) : tout ce qui sort au la
 - Tapis de course (vitesse) et banc de musculation (force), améliorables.
 - Boutique d'armes : les outils de casse, des poings à la disqueuse.
 - Boutique d'auras : auras (multiplicateur de puissance) et trails (multiplicateur de vitesse).
-- Vol entre joueurs à la batte, avec les règles anti-frustration.
+- Vol entre joueurs à la batte, avec les règles anti-frustration : on défend sa boutique, et on peut faire tomber le colis d'un autre joueur dans le couloir pour le lui prendre.
 - Tutoriel de départ.
 - UI de base, faite par Clément : HUD, magasins, déballage, alerte de vol, tuto.
 
@@ -299,6 +299,7 @@ C'est la séquence des miniatures et des vidéos : priorité absolue en qualité
 - **Tout le monde le voit** : un colis Légendaire qui traverse la rue se repère de loin, ce qui rend la fuite plus tendue et attire les autres joueurs.
 - **Malus de vitesse** : −10 % pour un colis PNJ, −25 % pour un objet volé à un joueur. Saut autorisé. Impossible d'équiper un outil ou la batte.
 - **Échec** : mort, déconnexion ou anomalie anti-triche, le colis ou l'objet retourne d'où il vient.
+- **Coup de batte d'un autre joueur** (hors zone safe) : le colis PNJ tombe au sol et devient ramassable par tous (6.2).
 - **Arrivée** : un colis PNJ se pose sur un établi d'ouverture ; un objet volé à un joueur s'expose tout de suite.
 
 ### 5.7 Attente d'ouverture et révélation
@@ -401,13 +402,26 @@ Toute boutique se braque avec la même mécanique que les magasins PNJ. La victi
 5. **Réussite** : le voleur entre dans la zone de dépôt de SA boutique. L'objet est à lui tout de suite, sans attente ni déballage : il peut l'exposer immédiatement et il rapporte aussitôt.
 6. **Échec** : coup de batte de la victime, mort ou déconnexion du voleur, ou déconnexion de la victime. L'objet revient à son présentoir d'origine.
 
-### 6.2 Défendre à la batte
+### 6.2 La batte : défendre sa boutique et braquer les porteurs
+
+La batte (slot 2) a deux usages, avec le même coup : portée 7 studs, recharge 0,8 s, validé par le serveur, un seul coup réussi suffit. Elle ne frappe jamais en zone safe, sauf le propriétaire contre le voleur de sa boutique.
+
+**Usage 1 · Défendre sa boutique**
 
 - **Alerte** : bannière rouge plein écran « \[Pseudo\] VOLE TON \[Objet\] ! FRAPPE-LE ! », sirène, flèche permanente vers le voleur, voleur surligné à travers les murs.
 - **Réaction** : la batte s'équipe automatiquement. Bonus Adrénaline de +25 % de vitesse jusqu'à la fin de la poursuite.
-- **Coup** : portée 7 studs, recharge 0,8 s, validé par le serveur. Un seul coup réussi suffit : le voleur est étourdi 2 s, l'objet revole en arc vers son présentoir.
-- **Qui peut frapper** : le propriétaire seul en V1 (proposition, section 15).
+- **Coup** : le voleur est étourdi 2 s, l'objet revole en arc vers son présentoir d'origine.
 - **Retour base** : bouton gratuit, recharge 90 s, interdit en portant quelque chose. Il permet de rentrer défendre depuis le boulevard.
+
+**Usage 2 · Braquer un porteur dans le couloir** (comme dans le jeu de référence)
+
+- **Qui** : n'importe quel joueur peut frapper n'importe quel joueur qui porte un colis PNJ, partout hors de la zone safe (boulevard et intérieur des magasins).
+- **Effet** : le porteur est projeté (knockback) et étourdi 2 s. Le colis tombe au sol à l'endroit du coup, avec sa couleur, son halo et son étiquette `BB_Carry` : tout le monde voit ce qui est par terre.
+- **Colis au sol** : n'importe qui peut le ramasser (prise en 0,5 s, mains vides, comme sur un rayon), le frappeur n'a aucune priorité. Le contenu tiré au vol ne change pas : le nouveau porteur récupère la même rareté et le même objet caché.
+- **Abandonné** : au bout de 15 s au sol sans être ramassé, le colis retourne sur son rayon d'origine.
+- **Le vigile suit le colis** : s'il était en poursuite, il change de cible et poursuit le nouveau porteur (mêmes règles d'abandon qu'en 5.5).
+- **Objet volé à un joueur** : un coup de batte d'un tiers fait tomber le voleur, mais l'objet ne va pas au sol : il revole vers le présentoir de son propriétaire (transfert sûr, 6.4).
+- **Valeurs V0** dans `Config/Bat` : durée au sol, temps de prise, durée d'étourdissement, immunité après un coup.
 
 ### 6.3 Défenses achetables : en Partie 2
 
@@ -417,7 +431,8 @@ Toute boutique se braque avec la même mécanique que les magasins PNJ. La victi
 
 Le vol d'objets est le cœur émotionnel du genre, mais aussi la première cause d'abandon le premier jour. Ces règles protègent les nouveaux joueurs.
 
-- **Bouclier débutant** : boutique inviolable pendant les 10 premières minutes de jeu cumulées.
+- **Bouclier débutant** : boutique inviolable pendant les 10 premières minutes de jeu cumulées. Pendant ce temps, les autres joueurs ne peuvent pas non plus faire tomber son colis à la batte.
+- **Pas d'acharnement** : après un coup de batte, 3 s d'immunité aux coups de batte, le temps de se relever.
 - **Immunité après un vol subi** : 120 s de vitrine invulnérable.
 - **Pas de racket** : impossible de voler un joueur dont la valeur exposée est inférieure à 10 % de la tienne.
 - **Coffre-fort** : au moins 1 objet est toujours à l'abri.
@@ -560,7 +575,7 @@ Modeles (Team Create)     -> ReplicatedStorage/Assets/<Categorie>
 | WindowService | PV, régénération, casse, reconstruction ; commun aux PNJ et aux joueurs | MVP |
 | StoreHeistService | Magasins PNJ : chrono de 10 s, rayons, tirage des colis, rideau du magasin | MVP |
 | GuardService | Vigiles : apparition, IA, capture, abandon | MVP |
-| CarryService | Port d'un colis ou d'un objet, malus, dépôt, retour en cas d'échec | MVP |
+| CarryService | Port d'un colis ou d'un objet, malus, dépôt, retour en cas d'échec, colis au sol après un coup de batte (ramassage, retour au rayon à 15 s) | MVP |
 | UnboxService | Établis, attente selon la rareté (horodatée), envoi de l'objet révélé | MVP |
 | DisplayService | Présentoirs, revenus par seconde, caisse, encaissement | MVP |
 | PvPService | Vol entre joueurs, alerte, batte, protections, transfert d'objet sans attente | MVP |
@@ -582,7 +597,8 @@ Contrôleurs client : Input, Hit, Shatter, Carry, Unbox (caméra de révélation
 | PlaceBox | benchIndex | Sur sa parcelle, porte un colis, établi libre |
 | OpenBox | benchIndex | Attente écoulée (horodatage serveur), joueur sur sa parcelle ; le serveur renvoie alors l'objet révélé |
 | PlaceItem | itemUid, slotIndex | Possède l'objet, présentoir débloqué et libre |
-| SwingBat | — | Recharge 0,8 s, un voleur de SON objet à ≤ 7 studs |
+| SwingBat | — | Recharge 0,8 s, cible à ≤ 7 studs : soit le voleur de SON objet, soit un porteur de colis PNJ hors zone safe (sans bouclier débutant ni immunité de 3 s) |
+| GrabDropped | dropId | Colis au sol, mains vides, distance ≤ 8 studs, durée de maintien respectée, hors zone safe |
 | BuyItem | catalogId | Prix lu dans `Config` (outils, auras, trails, améliorations), argent suffisant, prérequis remplis |
 | EquipCosmetic | cosmeticId | Possédé, bon type (aura ou trail) |
 | TrainTap | — | Joueur sur une machine, ≤ 3 taps/s au banc, ≤ 6 taps/s au tapis |
@@ -731,7 +747,7 @@ Le MVP sort le vendredi 18 décembre 2026, six semaines après le démarrage du 
 
 ## 12. Backlog MVP Ironix (DEV)
 
-39 tâches pour le MVP, jalons M0 à M5. Ordre de travail = ordre du tableau ; une tâche ne démarre que si ses dépendances sont « Fait ». P0 = bloquant pour le jalon, P1 = important. Les tâches d'après le lancement sont dans [Partie 2 · Features à ajouter](Partie-2-Features-a-ajouter.md).
+40 tâches pour le MVP, jalons M0 à M5. Ordre de travail = ordre du tableau ; une tâche ne démarre que si ses dépendances sont « Fait ». P0 = bloquant pour le jalon, P1 = important. Les tâches d'après le lancement sont dans [Partie 2 · Features à ajouter](Partie-2-Features-a-ajouter.md).
 
 | ID | Tâche | Fini quand… | Jalon | Prio | Dépend de | Statut |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -761,7 +777,8 @@ Le MVP sort le vendredi 18 décembre 2026, six semaines après le démarrage du 
 | DEV-041 | Vol PvP : objet direct sans attente, malus −25 %, dépôt, transfert sûr | Objet exposé et rentable dès le dépôt ; aucune duplication en test | M3 | P0 | DEV-040 | À faire |
 | DEV-042 | Alerte victime + Adrénaline | Bannière, sirène, flèche, surbrillance, +25 % de vitesse | M3 | P0 | DEV-041, UI-005 | À faire |
 | DEV-043 | Batte : équipement auto, coup validé serveur, retour de l'objet | Portée 7 studs, recharge 0,8 s, étourdissement 2 s | M3 | P0 | DEV-042 | À faire |
-| DEV-044 | Protections anti-frustration + coffre-fort offert | Les 6 règles de la section 6.4 testées une par une | M3 | P0 | DEV-041 | À faire |
+| DEV-044 | Protections anti-frustration + coffre-fort offert | Les 7 règles de la section 6.4 testées une par une | M3 | P0 | DEV-041 | À faire |
+| DEV-048 | Batte dans le couloir : coup sur un porteur de colis PNJ, knockback, colis au sol, ramassage par tous, retour au rayon à 15 s, vigile qui change de cible | Usage 2 de la section 6.2 testé à 3 clients ; aucune duplication de colis sur 20 essais | M3 | P0 | DEV-043, DEV-018 | À faire |
 | DEV-045 | Bouton Retour base | Recharge 90 s, interdit en portant | M3 | P0 | DEV-010 | À faire |
 | DEV-046 | TutorialService : étapes, flèches, résultats garantis, reprise, bouton Passer | Un nouveau joueur va du spawn à son 1er objet exposé sans aide | M3 | P0 | DEV-030, UI-006 | À faire |
 | DEV-047 | NightCycleService : jour, alerte, nuit, aube ; mur à sens unique ; vigiles de nuit ; réinitialisation des rayons | Les 4 phases de la section 5.12 ; un joueur dans le couloir peut rentrer, aucun ne peut entrer la nuit | M3 | P0 | DEV-015, DEV-018, MOD-032 | À faire |
@@ -849,7 +866,7 @@ Chaque étape est envoyée une seule fois par joueur avec `AnalyticsService:LogO
 9. Premier encaissement
 10. Premier achat d'outil
 
-**Économie** : chaque gain (revenus, quotidien, code, Robux) et chaque dépense (outil, amélioration, défense) part avec `LogEconomyEvent`. **Événements custom** : vol PvP réussi ou raté, capture par un vigile (par zone), achat de défense.
+**Économie** : chaque gain (revenus, quotidien, code, Robux) et chaque dépense (outil, amélioration, défense) part avec `LogEconomyEvent`. **Événements custom** : vol PvP réussi ou raté, colis volé à la batte dans le couloir, capture par un vigile (par zone), achat de défense.
 
 ### 14.3 Risques
 
@@ -868,14 +885,14 @@ Chaque étape est envoyée une seule fois par joueur avec `AnalyticsService:LogO
 
 ## 15. Questions ouvertes & journal des décisions
 
-10 décisions restent à prendre. Chacune a une proposition par défaut, appliquée si personne ne tranche avant le jalon indiqué. Une fois tranchée : on coche, et on ajoute une ligne au journal.
+9 décisions restent à prendre. Chacune a une proposition par défaut, appliquée si personne ne tranche avant le jalon indiqué. Une fois tranchée : on coche, et on ajoute une ligne au journal.
 
 - [ ] **Partage des revenus (M0)** : répartition des Robux entre Clément et Ironix, écrite noir sur blanc avant toute publication. Proposition : publier sous un groupe Roblox commun, pour que revenus et droits ne dépendent pas d'un compte perso.
 - [ ] **Animations (M0)** : course, frappe, banc, vigile. Proposition : Clément, avec l'Animation Editor de Studio ; Ironix intègre.
 - [ ] **PvP de base dans le MVP (M1)** : proposition : oui, vol entre joueurs + batte + règles anti-frustration dès le lancement ; seules les défenses achetables attendent la Partie 2. Alternative : tout le PvP en Partie 2.
 - [ ] **Vitrine PNJ partagée (M1)** : proposition : oui, tout le monde entre pendant les 10 s, le casseur a 1 s d'avance. Alternative : une instance par joueur, plus calme mais moins drôle.
 - [ ] **Attente d'ouverture hors ligne (M1)** : proposition : oui, elle continue quand le joueur est déconnecté.
-- [ ] **Qui peut frapper le voleur (M3)** : proposition V1 : le propriétaire seul. Alternative : tous les joueurs, plus chaotique, avec un risque d'acharnement.
+- [x] **Qui peut frapper à la batte (M3)** : tranché le 2026-11-06. Le voleur d'une boutique : le propriétaire seul. Un porteur de colis PNJ hors zone safe : tous les joueurs, le colis tombe au sol (section 6.2). Acharnement limité par 3 s d'immunité et le bouclier débutant (6.4).
 - [x] **Titre définitif (M4)** : Steal a Shop, tranché le 6 novembre 2026. Reste à vérifier sur Roblox qu'aucun jeu connu ne porte déjà ce nom.
 - [ ] **Testeurs bêta (M4)** : qui recrute les 20 à 30 testeurs, et où (Discord, amis, groupe).
 - [ ] **Budget publicité au lancement (M5)** : montant pour les publicités Roblox, ou zéro.
@@ -886,6 +903,7 @@ Chaque étape est envoyée une seule fois par joueur avec `AnalyticsService:LogO
 
 | Date | Décision | Par |
 | --- | --- | --- |
+| 2026-11-06 | La batte sert aussi dans le couloir : n'importe quel joueur peut frapper un porteur de colis PNJ hors zone safe ; le colis tombe au sol, ramassable par tous, retour au rayon après 15 s, le vigile suit le colis. Défense de boutique inchangée (propriétaire seul). Le reset suit le cycle jour/nuit de la section 5.12, sans téléportation | Ironix, à valider par Clément |
 | 2026-11-06 | Renaissances progressives : la 1re très simple (10 K$ + l'objet Rare du tuto, environ 20 min), puis ×10 d'argent et un objet plus rare à chaque palier (Partie 2, section 3.2) | Clément |
 | 2026-11-06 | Titre du jeu : Steal a Shop (remplace le titre de travail Smash a Shop) | Clément |
 | 2026-11-06 | Cycle jour/nuit au MVP : la nuit, un mur ferme le couloir, des vigiles de nuit patrouillent et les rayons PNJ se remplissent. Lobby simple au MVP ; grand centre commercial en Partie 2 | Clément |
