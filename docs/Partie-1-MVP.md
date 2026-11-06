@@ -151,16 +151,25 @@ La priorité va aux références de l'animation d'ouverture, de la casse de vitr
 | --- | --- | --- | --- | --- |
 | Animation d'ouverture | 2 à 3 vidéos d'ouvertures qui donnent envie (Roblox, jeux mobiles, unboxings) : montée de tension, explosion de lumière, révélation | Storyboard 5.7 |  |  |
 | Casse de vitrine | Verre qui éclate au ralenti, jeux où casser est jouissif | Séquence 5.4, MOD-010 |  |  |
-| Style visuel général | 3 à 5 captures de jeux dont vous aimez les couleurs, les matières et la lumière | Planche de style MOD-002 |  |  |
+| Style visuel général | 3 à 5 captures de jeux dont vous aimez les couleurs, les matières et la lumière | Planche de style MOD-002 | Captures 1, 3, 4 et 6 sous le tableau (map en mode studs) | Clément |
 | Objets exposés | Objets cartoon low-poly au niveau de détail voulu | Catalogue 10.5 |  |  |
 | Magasins PNJ et boulevard | Façades de supérette, magasin de jouets, électronique, bijouterie, galerie, banque | MOD-012 à MOD-022 |  |  |
 | Parcelle-boutique du joueur | À quoi ressemble « ma boutique » au départ | MOD-015 |  |  |
 | Vigiles | Look des agents selon la zone, du gilet de supérette à l'agent de banque | MOD-017 |  |  |
-| UI | 3 jeux dont l'UI vous plaît (HUD, boutiques, popups), sur téléphone de préférence | Contrat 2.2 |  |  |
+| UI | 3 jeux dont l'UI vous plaît (HUD, boutiques, popups), sur téléphone de préférence | Contrat 2.2 | Captures 1, 2 et 5 sous le tableau (HUD, boutiques) | Clément |
 | Auras et trails | Auras et trails de simulateurs Roblox qui donnent envie de les acheter | Section 5.10 |  |  |
 | Alerte de vol | Alertes plein écran percutantes | Section 6.2 |  |  |
 | Sons | Verre, caisse enregistreuse, sirène, ouverture de colis | DEV-051 |  |  |
 | Icône et miniatures | Icônes de jeux du genre qui donnent envie de cliquer | MOD-043 |  |  |
+
+**Références reçues le 2026-11-06 (Clément)** : une map en « mode studs » (sol vert en damier avec des studs, arbres en blocs, clôtures en bois, route grise, falaises en damier ocre) et une UI à gros boutons saturés cernés de noir, texte blanc contouré, panneaux violet nuit à bordure dorée. Elles servent à la planche de style (MOD-002, section 10.6). Les 6 captures sont affichées dans le doc partagé ; une copie est dans le dossier d'art de Clément (`References/2026-11-06_Studs`).
+
+1. Plateau et HUD
+2. Boutique : panneau violet, bordure dorée, onglets
+3. Allée en damier, route, clôtures
+4. Arbres en blocs, stands, boutons du HUD
+5. Boutique d'œufs : cadres par rareté, arc-en-ciel au sommet
+6. Couloir entre falaises en damier
 
 ### 2.4 Contrat d'animations
 
@@ -763,6 +772,47 @@ Un objet par rareté et par zone. Le MVP compte les 36 objets des 6 zones + 1 Se
 
 Secrets, toutes zones (0,2 % des colis Luxe) : Chat porte-bonheur doré (MVP), Toilettes en or (Partie 2).
 
+### 10.6 Planche de style (MOD-002)
+
+Direction retenue : un Roblox « mode studs », d'après les références de Clément (section 2.3). Sol vert en damier avec des studs, décor en blocs, couleurs pleines et saturées, UI à gros boutons cernés de noir. Proposition du 2026-11-06, à valider à deux (liaison, L-018). Les trois images (palette, rendu des objets, aperçu d'UI) sont dans le doc partagé et dans le dossier d'art de Clément (`StyleBoard`).
+
+**Palette.** Le vert « Peu commun » est un vert menthe, pour ne pas disparaître sur l'herbe vert citron.
+
+| Groupe | Couleurs |
+| --- | --- |
+| Décor | Herbe claire `#7ED957`, herbe foncée `#5CC23A`, route `#4E5560`, pierre `#B7BEC8`, bois `#9A5B2E`, falaise `#C0693D`, sable `#EBD9A2`, ciel `#8FD0FF` |
+| Interface | Contour `#1B1B24`, panneau `#2C2163`, bordure or `#FFC52E`, texte `#FFFFFF`, acheter / OK `#35C93B`, fermer `#E8413C`, navigation `#2EA6F2`, récompenses `#F04FA5`, renaissance `#9B5CF6`, améliorations `#FF8C1A` |
+
+**Langage des raretés.** La couleur sert partout : halo de l'objet, cadre de carte, nom affiché. Les noms de halo sont ceux du code (`Rarities.luau`).
+
+| Rareté | Couleur | Matière de l'objet | Halo |
+| --- | --- | --- | --- |
+| Commun | `#B0B7C3` gris | Mat, couleurs pleines | Aucun |
+| Peu commun | `#2FE08F` vert menthe | Mat | Léger |
+| Rare | `#2F9BFF` bleu | Légèrement brillant | Net |
+| Épique | `#A855F7` violet | Brillant, un accent néon | Net (anneau violet) |
+| Légendaire | `#FFC21A` or | Doré métallique | Rayons dorés + petite animation idle |
+| Mythique | `#FF3B5C` rouge rose | Doré ou précieux, effets | Rayons |
+| Secret | Arc-en-ciel animé (`#FF3B3B` → `#FFC21A` → `#3BE15A` → `#2F9BFF` → `#A855F7`) | Doré, animé | Arc-en-ciel |
+
+**Objets test.** Modélisés dans Blender, pivot en bas au centre, face avant vers la caméra. Formes simples à 12 côtés, couleurs pleines, détails en relief plutôt qu'en texture (lisibles à 40 studs et en icône de 64 px). Tailles proposées : environ 1,5 à 2 studs de haut pour un objet exposé.
+
+| Objet | Rareté | Taille (studs) | Triangles | Budget 10.2 |
+| --- | --- | --- | --- | --- |
+| `ITM_Z1_Canette` | Commun | 1,0 × 1,6 | 276 | 2 000 |
+| `ITM_Z1_BoissonEnergisante` | Épique | 0,8 × 2,0 | 288 | 2 000 |
+| `ITM_Z1_TicketGagnant` | Légendaire | 1,4 × 2,1 (socle compris) | 1 200 | 4 000 |
+
+**Décor en studs.** Sol en damier à deux verts, cases de 2 studs, studs visibles sur le sol, les falaises et les arbres en blocs ; route gris foncé à flèches blanches ; clôtures en bois. Le rendu des studs dans Studio (texture répétée ou matériau personnalisé) reste à tester sur la greybox.
+
+**Style d'UI.**
+
+- **Polices** : titres en Luckiest Guy, boutons et textes en Fredoka One. Texte blanc avec un contour `#1B1B24` (`UIStroke` de 2 à 3 px, 4 sur les titres).
+- **Boutons** : couleur pleine selon le rôle (vert acheter ou valider, rouge fermer, bleu navigation, rose récompenses, violet renaissance, orange améliorations), contour `#1B1B24` de 3 px, reflet plus clair sur la moitié haute (`UIGradient`), ombre portée `#1B1B24` décalée de 4 px vers le bas, coins arrondis (`UICorner`). Au moins 44 px de haut sur téléphone.
+- **Panneaux** : fond violet nuit `#2C2163`, bordure or `#FFC52E`, bandeau de titre or en haut à gauche, bouton fermer rouge carré en haut à droite.
+- **Cartes d'objets** : cadre et nom à la couleur de la rareté, fond de la même teinte assombrie avec des rayons diagonaux discrets ; cadre arc-en-ciel animé pour le Secret.
+- **Disposition** : boutons du HUD à gauche, argent en bas à gauche, rien d'important en haut (barre Roblox) ; tailles en Scale avec `UIAspectRatioConstraint` (section 2.2).
+
 ## 11. Roadmap & jalons
 
 Le MVP sort le vendredi 18 décembre 2026, six semaines après le démarrage du lundi 9 novembre ; ensuite, une mise à jour chaque samedi.
@@ -837,7 +887,7 @@ Le MVP sort le vendredi 18 décembre 2026, six semaines après le démarrage du 
 | ID | Tâche | Fini quand… | Jalon | Prio | Dépend de | Statut |
 | --- | --- | --- | --- | --- | --- | --- |
 | MOD-001 | Valider la chaîne Blender vers Studio | Le cube 4 × 4 × 4 arrive à la bonne taille et orientation ; réglages notés en 10.1 | M0 | P0 | DEV-001 | Fait |
-| MOD-002 | Planche de style, modèles et UI | Palette, 3 objets test, langage visuel des raretés et style d'UI validés à deux | M0 | P0 | Références 2.3 | À faire |
+| MOD-002 | Planche de style, modèles et UI | Palette, 3 objets test, langage visuel des raretés et style d'UI validés à deux | M0 | P0 | Références 2.3 | En revue |
 | MOD-010 | Vitre M intacte + pré-fracturée | 30 à 40 éclats `Shard_xx`, ≤ 1 500 triangles, test de casse validé | M1 | P0 | MOD-001 | À faire |
 | MOD-011 | 3 textures de fissures (75, 50, 25 %) | Lisibles de loin, calées sur la vitre M | M1 | P0 | MOD-010 | À faire |
 | MOD-012 | Magasin zone 1 « Supérette » : extérieur, intérieur, rayons | Contrat 10.4 complet, 10 `ShelfSlot`, tag `NPCStore` | M1 | P0 | MOD-001, DEV-003 | À faire |
