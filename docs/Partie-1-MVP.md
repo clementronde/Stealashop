@@ -886,6 +886,7 @@ Chaque étape est envoyée une seule fois par joueur avec `AnalyticsService:LogO
 
 | Date | Décision | Par |
 | --- | --- | --- |
+| 2026-11-06 | Renaissances progressives : la 1re très simple (10 K$ + l'objet Rare du tuto, environ 20 min), puis ×10 d'argent et un objet plus rare à chaque palier (Partie 2, section 3.2) | Clément |
 | 2026-11-06 | Titre du jeu : Steal a Shop (remplace le titre de travail Smash a Shop) | Clément |
 | 2026-11-06 | Cycle jour/nuit au MVP : la nuit, un mur ferme le couloir, des vigiles de nuit patrouillent et les rayons PNJ se remplissent. Lobby simple au MVP ; grand centre commercial en Partie 2 | Clément |
 | 2026-11-06 | 3 boutiques d'achat : armes et auras (argent du jeu, MVP), Robux (MAJ 1). Un colis ou objet volé flotte au-dessus de la tête avec sa rareté et son halo ; la rareté d'un colis PNJ se révèle quand on le soulève, l'objet exact à l'ouverture | Clément |

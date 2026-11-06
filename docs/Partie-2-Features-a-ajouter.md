@@ -27,7 +27,7 @@ Le joueur dépense son argent pour rendre sa boutique plus dure à braquer. Chaq
 | Rideau métallique | Bouton dans la boutique : vitrine invulnérable 30 s, recharge 180 s, impossible si un voleur est déjà dedans | 30 s offert ; 60 s pour 50 K $, 90 s pour 1 M $ | MAJ 2 |
 | Coffre-fort | Présentoirs non volables (1 offert dès le MVP) | +1 à 250 K $, +1 à 25 M $ | MAJ 2 |
 | Niveau de boutique | Stand, Boutique, Magasin, Concept store, Flagship : la boutique grandit visuellement et gagne 1 emplacement de piège par niveau | 10 K, 250 K, 6,25 M, 156 M $ | MAJ 2 |
-| Agents de sécurité | Un vigile PNJ posté dans ta boutique. Dès qu'un voleur prend un objet, il le poursuit comme les vigiles des magasins PNJ ; s'il le touche, l'objet revient. Vitesse de l'agent : 20, 28, 36, 44, 52 | 1 agent ; niveaux à 100 K, 2 M, 40 M, 800 M, 16 Md $. Un 2e agent avec la 3e renaissance | MAJ 3 |
+| Agents de sécurité | Un vigile PNJ posté dans ta boutique. Dès qu'un voleur prend un objet, il le poursuit comme les vigiles des magasins PNJ ; s'il le touche, l'objet revient. Vitesse de l'agent : 20, 28, 36, 44, 52 | 1 agent ; niveaux à 100 K, 2 M, 40 M, 800 M, 16 Md $. Un 2e agent avec la 8e renaissance | MAJ 3 |
 | Pièges | Derrière la vitrine, recharge 45 s. Peau de banane (glissade 1,5 s), colle (−60 % de vitesse 3 s), trappe (éjecte dehors), laser (étourdit 2 s), filet (immobilise 3 s) | 1 emplacement par niveau de boutique, 4 max ; 20 K à 20 M $ selon le piège | MAJ 4 |
 | Régénération de vitre | +1 % des PV/s par niveau (base 3 %) | 50 K, 500 K, 5 M, 50 M, 500 M $ | MAJ 4 |
 
@@ -45,14 +45,20 @@ Toute l'UI est conçue et construite par Clément dans Studio. Ironix branche la
 
 ### 3.2 Renaissances (MAJ 3)
 
-Pour renaître, il faut un montant d'argent ET un objet précis, que l'on remet (il disparaît). L'objet oblige à viser une zone et une rareté précises au lieu de seulement attendre.
+Pour renaître, il faut un montant d'argent ET un objet précis, que l'on remet (il disparaît). Les premières renaissances sont très simples : la 1re se fait en 20 minutes environ, avec l'objet Rare offert par le tutoriel. Ensuite, chaque palier demande 10 fois plus d'argent et un objet plus rare, venu d'une zone plus lointaine. Chaque renaissance donne +50 % de revenus permanents, qui s'additionnent (×1,5 après la 1re, ×2 après la 2e, ×3 après la 4e). Les temps de jeu visés sont cumulés depuis la première connexion, à ajuster en bêta.
 
-| Renaissance | Argent requis | Objet requis (remis) | Récompense permanente |
-| --- | --- | --- | --- |
-| 1 | 1 Md $ | Couronne (Légendaire, zone 4) | +50 % de revenus, +25 % de gains d'entraînement, aura « Renaissance » |
-| 2 | 10 Md $ | Masque ancien (Légendaire, zone 5) | +50 % de revenus en plus, Marteau-piqueur débloqué |
-| 3 | 100 Md $ | Coffre de diamants (Légendaire, zone 6) | +50 % de revenus en plus, 2e agent de sécurité |
-| 4 et suivantes | ×10 à chaque fois | Un objet Mythique de la zone 6 | +50 % de revenus en plus à chaque fois |
+| Renaissance | Argent requis | Objet requis (remis) | Récompense en plus des +50 % de revenus | Temps de jeu visé |
+| --- | --- | --- | --- | --- |
+| 1 | 10 K$ | Pot de nouilles (Rare, zone 1) | Aura « Renaissance » | 20 min |
+| 2 | 100 K$ | Voiture télécommandée (Rare, zone 2) | +1 coffre-fort | 45 min |
+| 3 | 1 M$ | Robot jouet (Épique, zone 2) | +25 % de gains d'entraînement | 1 h 15 |
+| 4 | 10 M$ | Console portable (Épique, zone 3) | Trail « Renaissance » | 2 h |
+| 5 | 100 M$ | Diamant brut (Épique, zone 4) | Marteau-piqueur débloqué | 3 h |
+| 6 | 1 Md$ | Couronne (Légendaire, zone 4) | +25 % de gains d'entraînement | 5 h |
+| 7 | 10 Md$ | Masque ancien (Légendaire, zone 5) | Bélier débloqué | 8 h |
+| 8 | 100 Md$ | Coffre de diamants (Légendaire, zone 6) | 2e agent de sécurité | 12 h |
+| 9 | 1 000 Md$ | Météorite (Mythique, zone 5) | Aura « Légende » | 18 h |
+| 10 et suivantes | ×10 à chaque fois | Clé du coffre ultime (Mythique, zone 6) | Titre affiché au-dessus de la tête | — |
 
 - **Remis à zéro** : argent, outils, Vitesse et Force, améliorations du tapis, du banc et des présentoirs, auras et trails.
 - **Gardé** : 3 objets au choix, l'index, les défenses, tous les achats Robux.
