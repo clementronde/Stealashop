@@ -15,8 +15,9 @@ export type Rarity = {
 	DisplayName: string,
 	DisplayNameUpper: string, -- string.upper ne met pas les lettres accentuées en majuscules
 	ColorName: string, -- couleur écrite dans le doc (7.3)
-	Color: Color3, -- V0 proposé, absent du doc : à remplacer par la palette de Clément (MOD-002)
+	Color: Color3, -- planche de style de Clément (doc 10.6, MOD-002), validée à deux le 2026-11-06 (liaison L-018)
 	Rainbow: boolean, -- couleur animée arc-en-ciel (Secret)
+	RainbowColors: { Color3 }?, -- suite de couleurs de l'arc-en-ciel animé (Secret, doc 10.6)
 	IncomeMultiplier: number, -- M rareté de la formule du revenu (7.1)
 	OpenDelay: number, -- attente d'ouverture d'un colis PNJ, en secondes
 	Halo: Halo,
@@ -33,7 +34,7 @@ local List: { Rarity } = {
 		DisplayName = "Commun",
 		DisplayNameUpper = "COMMUN",
 		ColorName = "Gris",
-		Color = Color3.fromRGB(158, 158, 158),
+		Color = Color3.fromHex("#B0B7C3"),
 		Rainbow = false,
 		IncomeMultiplier = 1,
 		OpenDelay = 10,
@@ -49,7 +50,7 @@ local List: { Rarity } = {
 		DisplayName = "Peu commun",
 		DisplayNameUpper = "PEU COMMUN",
 		ColorName = "Vert",
-		Color = Color3.fromRGB(76, 175, 80),
+		Color = Color3.fromHex("#2FE08F"), -- vert menthe : ne disparaît pas sur l'herbe
 		Rainbow = false,
 		IncomeMultiplier = 2,
 		OpenDelay = 20,
@@ -65,7 +66,7 @@ local List: { Rarity } = {
 		DisplayName = "Rare",
 		DisplayNameUpper = "RARE",
 		ColorName = "Bleu",
-		Color = Color3.fromRGB(33, 150, 243),
+		Color = Color3.fromHex("#2F9BFF"),
 		Rainbow = false,
 		IncomeMultiplier = 5,
 		OpenDelay = 45,
@@ -81,7 +82,7 @@ local List: { Rarity } = {
 		DisplayName = "Épique",
 		DisplayNameUpper = "ÉPIQUE",
 		ColorName = "Violet",
-		Color = Color3.fromRGB(156, 39, 176),
+		Color = Color3.fromHex("#A855F7"),
 		Rainbow = false,
 		IncomeMultiplier = 15,
 		OpenDelay = 90,
@@ -97,7 +98,7 @@ local List: { Rarity } = {
 		DisplayName = "Légendaire",
 		DisplayNameUpper = "LÉGENDAIRE",
 		ColorName = "Or",
-		Color = Color3.fromRGB(255, 193, 7),
+		Color = Color3.fromHex("#FFC21A"),
 		Rainbow = false,
 		IncomeMultiplier = 50,
 		OpenDelay = 3 * 60,
@@ -113,7 +114,7 @@ local List: { Rarity } = {
 		DisplayName = "Mythique",
 		DisplayNameUpper = "MYTHIQUE",
 		ColorName = "Rouge",
-		Color = Color3.fromRGB(229, 57, 53),
+		Color = Color3.fromHex("#FF3B5C"),
 		Rainbow = false,
 		IncomeMultiplier = 200,
 		OpenDelay = 8 * 60,
@@ -129,8 +130,15 @@ local List: { Rarity } = {
 		DisplayName = "Secret",
 		DisplayNameUpper = "SECRET",
 		ColorName = "Arc-en-ciel animé",
-		Color = Color3.fromRGB(255, 255, 255),
+		Color = Color3.fromHex("#FF3B3B"), -- première couleur de l'arc-en-ciel, pour un affichage fixe
 		Rainbow = true,
+		RainbowColors = {
+			Color3.fromHex("#FF3B3B"),
+			Color3.fromHex("#FFC21A"),
+			Color3.fromHex("#3BE15A"),
+			Color3.fromHex("#2F9BFF"),
+			Color3.fromHex("#A855F7"),
+		},
 		IncomeMultiplier = 1_000,
 		OpenDelay = 15 * 60,
 		Halo = "Rainbow",
