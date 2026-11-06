@@ -23,6 +23,10 @@ Le parcours pas à pas de Clément avec Claude est dans [docs/claude/Etapes-Clem
 1. **Le doc de suivi partagé** (version à jour, avec statuts et commentaires) : https://claude.ai/artifact/QKsqfJ3YEjFn41GERuTGUx
 2. Ses copies figées dans ce dépôt : [docs/Partie-1-MVP.md](docs/Partie-1-MVP.md) et [docs/Partie-2-Features-a-ajouter.md](docs/Partie-2-Features-a-ajouter.md).
 
+3. **La liaison code ↔ visuel** : [docs/Liaison-Code-Visuel.md](docs/Liaison-Code-Visuel.md). Ce que Clément attend d'Ironix et inversement, le registre des animations et les contrats qui relient les deux travaux.
+
+**À chaque session, pour les deux** : `git pull`, puis lire la liaison et dire à la personne ce qui l'attend et ce qui a changé (mode d'emploi en tête du fichier). Dès que la conversation produit quelque chose que l'autre doit faire, livrer ou savoir, l'écrire dans la liaison et le pousser dans le même tour. Qui est qui : `git config user.name` = `Ironix` ou `Clement`.
+
 En cas de doute, le doc partagé gagne. Ne jamais inventer une valeur (PV, prix, vitesse, raretés, durées) : la lire dans les sections 4, 5 et 7 de la Partie 1, ou dans `Config` côté code.
 
 ## Règles à ne jamais casser
