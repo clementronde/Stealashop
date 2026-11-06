@@ -941,6 +941,7 @@ Chaque étape est envoyée une seule fois par joueur avec `AnalyticsService:LogO
 
 | Date | Décision | Par |
 | --- | --- | --- |
+| 2026-11-06 | Deux ajouts au contrat de noms (liaison, L-015) : attribut PlotIndex (1 à 6) sur chaque parcelle PlayerPlot, égal au numéro écrit sur la parcelle ; tag PawnShop sur le comptoir du receleur (nom retenu à la place de Fence, qui désigne d'abord une clôture en anglais). Ironix les écrit en 2.1 et 10.4 (L-017) | Clément, sur proposition d'Ironix |
 | 2026-11-06 | Groupe Roblox du studio créé : RoundStone Studio (ID 207192094), propriétaire Clément (compte charmentvideo), Ironix y a le rôle « Dev ». L'expérience existante passe au groupe et devient la place DEV « Steal a Shop [DEV] » (mêmes ID, Team Create) ; la place PROD « Steal a Shop » est créée dans le groupe, privée, publiée uniquement par Ironix (liaison, L-001 et section 3.4) | Clément |
 | 2026-11-06 | Scripts d'effets visuels de Clément acceptés (proposition d'Ironix, liaison 3.3, L-003) : nommés FX\_, côté client, visuel uniquement, seulement dans le décor unique ; jamais sur les objets répétés ni dans l'UI, où l'on passe par des objets natifs ou un effet par tag demandé à Ironix | Clément, sur proposition d'Ironix |
 | 2026-11-06 | Script Sync de Studio remplace Rojo pour les 3 dossiers de code ; la synchro marche dans les deux sens et seul Ironix synchronise (liaison, L-005) | Ironix |
