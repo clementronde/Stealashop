@@ -819,6 +819,8 @@ Direction retenue : un Roblox « mode studs », d'après les références de Cl�
 - **Disposition** : rien d'important en haut de l'écran (barre Roblox) ; tailles en Scale avec `UIAspectRatioConstraint` (section 2.2).
 - **Question ouverte** : le bouton cadeau suppose qu'on puisse offrir un gamepass à un autre joueur, ce que la Partie 2 ne prévoit pas encore.
 
+**HUD (UI_HUD), maquette du 2026-11-06** d'après les références de Clément, dans le même [fichier Figma](https://www.figma.com/design/fXjkvf39sRhlsL94YicwDH?node-id=8-82). Boutons en pilule à gauche (Shop vert, Index bleu, Rebirth violet, composant HudPill) ; en bas à gauche, Strength et Damage en petit, puis Speed et l'argent en grand avec le revenu par seconde ; en bas à droite, le compte à rebours de la nuit sur un bandeau sombre ; à droite, le bouton de retour à la base ; en haut au centre, sous la barre Roblox, le chrono du vol et la jauge du vigile, affichés seulement pendant un vol. Les calques portent les noms du contrat 2.2 ; IndexButton et RebirthButton sont à ajouter au contrat (liaison, L-026).
+
 ## 11. Roadmap & jalons
 
 Le MVP sort le vendredi 18 décembre 2026, six semaines après le démarrage du lundi 9 novembre ; ensuite, une mise à jour chaque samedi.
