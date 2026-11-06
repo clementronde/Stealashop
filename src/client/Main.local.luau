@@ -1,0 +1,3 @@
+--!strict
+-- Point d'entrée client de Steal a Shop (StarterPlayerScripts/Client/Main).
+-- Chargera les contrôleurs de src/client/Controllers (DEV-002).

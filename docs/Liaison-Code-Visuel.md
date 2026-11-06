@@ -24,8 +24,10 @@ C'est **la liste d'attente de Clément** (lignes « Pour : Clément ») et celle
 | L-002 | Clément | Valider la liste des noms d'animation | Validée et complétée : marqueurs, priorités, boucles et 7 animations en plus (section 3.2) | DEV-012, DEV-018, DEV-043 | 2026-11-06 | Fait (2026-11-06) |
 | L-003 | Clément | Valider ou refuser la règle « scripts FX de Clément » | Section 3.3. Tant qu'elle n'est pas validée, la règle de [CLAUDE.md](../CLAUDE.md) s'applique : aucun script laissé dans un modèle ou dans l'UI | — | 2026-11-06 | À faire |
 | L-004 | Clément | Reporter dans le doc partagé : animations faites par Clément, intégrées par Ironix via le contrat de noms | Fait dans le doc partagé : section 2.4 « Contrat d'animations », question « Animations (M0) » cochée, ligne « Modèle animé » ajoutée au tableau 10.4 | — | 2026-11-06 | Fait (2026-11-06) |
+| L-005 | Clément | Reporter dans le doc partagé : Script Sync remplace Rojo | Sections 2.1 (circuit d'une journée, fichier `default.project.json`), 9.1 (stack) et tâche DEV-001 ; règle inchangée : seul Ironix synchronise, les 3 dossiers sont à lui | DEV-001 | 2026-11-06 | À faire |
 | L-010 | Ironix | Jouer toutes les animations par leur nom, jamais par un ID écrit dans le code | Le code cherche l'objet `Animation` par son nom (section 3.2) ; un nom manquant est signalé par le ContractChecker | DEV-005, DEV-018 | 2026-11-06 | À faire |
 | L-011 | Ironix | Brancher les 7 animations ajoutées et les marqueurs | Joueur : `HitWindowHeavy`, `Grab`, `Place`, `Unbox`, `Celebrate` ; vendeur : `Idle`, `Wave`. Marqueurs `Impact`, `Grab`, `Release`, `Top`, `Open`, `Land` (tableau 3.2) ; tâche DEV-006 du doc partagé | DEV-006 | 2026-11-06 | À faire |
+| L-012 | Ironix | Relier les 3 dossiers à `F:\StealAShop\src` avec Script Sync | Dossiers et premiers fichiers déjà créés des deux côtés (Studio et disque) ; clic droit sur chacun → synchroniser vers `F:\StealAShop\src` (section 3.1) | DEV-001 | 2026-11-06 | À faire |
 
 ## 2. Registre des animations
 
@@ -39,7 +41,11 @@ Clément remplit une ligne dès qu'une animation est publiée ; Ironix coche « 
 
 ### 3.1 Les 3 dossiers synchronisés (code d'Ironix)
 
-Seuls ces 3 dossiers viennent du disque d'Ironix (synchro Rojo, section 2.1 du doc). Tout ce qui est posé dedans depuis Studio est effacé à la synchro ; tout ce qui est ailleurs n'est jamais touché par elle.
+Seuls ces 3 dossiers sont reliés au disque d'Ironix, par **Script Sync** de Studio (décidé le 2026-11-06, à la place de Rojo). La synchro marche dans les deux sens : un script créé ou modifié dedans depuis Studio part sur le disque d'Ironix, donc personne d'autre n'y touche. Tout ce qui est ailleurs n'est jamais touché par elle.
+
+**Mise en place** (une fois, dans le Studio d'Ironix) : clic droit sur chacun des 3 dossiers dans l'explorateur → synchroniser vers `F:\StealAShop\src`. Studio relie le dossier `Shared` à `src\shared` (Windows ne distingue pas les majuscules), et ainsi de suite. Si Studio demande quel côté garder, choisir le disque.
+
+**Noms des fichiers** imposés par Script Sync : `.legacy.luau` = `Script`, `.local.luau` = `LocalScript`, `.luau` = `ModuleScript`. Les points d'entrée sont `src/server/Main.legacy.luau` et `src/client/Main.local.luau`.
 
 | Disque (`src/`) | Studio |
 | --- | --- |
@@ -101,7 +107,7 @@ Ces scripts vivent dans la place (pas dans Git) : leur seul historique est celui
 ### 3.4 Méthode de travail
 
 - **Synchro** : toujours et uniquement sur le PC d'Ironix. Le dossier `F:\StealAShop` d'Ironix est relié à la place DEV : mettre à jour ce dossier, c'est mettre à jour Studio. Personne d'autre ne synchronise, même pour tester.
-- **« Pull »** (Ironix dit « pull » ou « récupère le GitHub ») : Claude fait toute la routine sans demander. `git fetch`, mise à jour de `main` en avance rapide (jamais de force), contrôle du code (compilation Rojo, puis les vérifications ajoutées au fil du projet), puis dans Studio : le nombre de scripts correspond au disque, et un court test en Play sans erreur dans la sortie. Il dit ce qui est arrivé (commits, fichiers) et ce qui casse.
+- **« Pull »** (Ironix dit « pull » ou « récupère le GitHub ») : Claude fait toute la routine sans demander. `git fetch`, mise à jour de `main` en avance rapide (jamais de force), contrôle du code (les vérifications ajoutées au fil du projet), puis dans Studio : le nombre de scripts correspond au disque, et un court test en Play sans erreur dans la sortie. Il dit ce qui est arrivé (commits, fichiers) et ce qui casse.
 - **Agents** : chaque session d'agent travaille dans son propre worktree Git, dans le dossier `agents\` à la racine du projet, `F:\StealAShop\agents\<id>` (par exemple `a01`), jamais directement dans `F:\StealAShop` ni à la racine du disque. Le dossier `agents/` est ignoré par Git (`.gitignore`) et la synchro ne lit que `src/`, donc le travail des agents n'arrive jamais dans la place DEV avant d'être fusionné. Une branche fusionnée l'est d'abord dans un worktree temporaire, puis `main` avance en `--ff-only` : jamais de fichier à moitié fusionné dans Studio. Toujours `git fetch` avant (l'autre pousse souvent), jamais de `push --force`.
 - **Pousser** : un changement validé à deux part directement sur `main`, sans branche ni PR.
 

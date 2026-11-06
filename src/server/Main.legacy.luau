@@ -1,0 +1,3 @@
+--!strict
+-- Point d'entrée serveur de Steal a Shop (ServerScriptService/Server/Main).
+-- Chargera les services de src/server/Services dans l'ordre (DEV-002).

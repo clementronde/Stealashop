@@ -35,7 +35,7 @@ En cas de doute, le doc partagé gagne. Ne jamais inventer une valeur (PV, prix,
 
 | Emplacement | Propriétaire | Règle pour Claude |
 | --- | --- | --- |
-| `ServerScriptService/Server`, `StarterPlayerScripts/Client`, `ReplicatedStorage/Shared` | Ironix, via Rojo | Ne rien y créer depuis Studio : Rojo efface tout ce qui n'est pas dans Git |
+| `ServerScriptService/Server`, `StarterPlayerScripts/Client`, `ReplicatedStorage/Shared` | Ironix, via Script Sync | Ne rien y créer ni modifier depuis Studio : ces dossiers sont le miroir du disque d'Ironix (`src/`), tout changement part chez lui |
 | `Workspace/Map`, `ReplicatedStorage/Assets` (modèles, UI, animations), `ServerStorage/Assets` | Clément | Ne déplacer ni renommer sans que Clément le demande |
 | `ServerStorage/AnimRigs`, `ServerStorage/RBX_ANIMSAVES` | Clément | Rigs et brouillons d'animation : ne jamais les supprimer |
 | `StarterGui` (toute l'UI), `Lighting` | Clément | Aucun script dans l'UI |
