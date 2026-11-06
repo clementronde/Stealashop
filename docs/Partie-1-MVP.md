@@ -774,7 +774,7 @@ Secrets, toutes zones (0,2 % des colis Luxe) : Chat porte-bonheur doré (MVP), T
 
 ### 10.6 Planche de style (MOD-002)
 
-Direction retenue : un Roblox « mode studs », d'après les références de Clément (section 2.3). Sol vert en damier avec des studs, décor en blocs, couleurs pleines et saturées, UI à gros boutons cernés de noir. Proposition du 2026-11-06, à valider à deux (liaison, L-018). Les trois images (palette, rendu des objets, aperçu d'UI) sont dans le doc partagé et dans le dossier d'art de Clément (`StyleBoard`).
+Direction retenue : un Roblox « mode studs », d'après les références de Clément (section 2.3). Sol vert en damier avec des studs, décor en blocs, couleurs pleines et saturées, UI à gros boutons cernés de noir. Palette, raretés et objets validés par Ironix le 2026-11-06, couleurs des raretés passées dans le code (`Rarities.luau` ; liaison, L-018). Style d'UI refait le même jour par Clément d'après une référence de boutique (voir « Style d'UI » plus bas). Les images (palette, rendu des objets, maquette d'UI) sont dans le doc partagé et dans le dossier d'art de Clément (`StyleBoard`).
 
 **Palette.** Le vert « Peu commun » est un vert menthe, pour ne pas disparaître sur l'herbe vert citron.
 
@@ -805,13 +805,19 @@ Direction retenue : un Roblox « mode studs », d'après les références de Cl�
 
 **Décor en studs.** Sol en damier à deux verts, cases de 2 studs, studs visibles sur le sol, les falaises et les arbres en blocs ; route gris foncé à flèches blanches ; clôtures en bois. Le rendu des studs dans Studio (texture répétée ou matériau personnalisé) reste à tester sur la greybox.
 
-**Style d'UI.**
+**Style d'UI.** Refait le 2026-11-06 d'après une capture de boutique envoyée par Clément : on reprend sa construction, avec notre contenu et nos icônes. Maquette éditable dans Figma, [fichier « Steal a Shop — UI »](https://www.figma.com/design/fXjkvf39sRhlsL94YicwDH?node-id=4-5), frame UI_RobuxShop (onglet Gamepasses, prix de la Partie 2, section 4.1), avec les composants Card_Gamepass, Btn_Price, Btn_Gift et SideTab. Remplace l'aperçu de la première version (polices Luckiest Guy et Fredoka One, panneau violet).
 
-- **Polices** : titres en Luckiest Guy, boutons et textes en Fredoka One. Texte blanc avec un contour `#1B1B24` (`UIStroke` de 2 à 3 px, 4 sur les titres).
-- **Boutons** : couleur pleine selon le rôle (vert acheter ou valider, rouge fermer, bleu navigation, rose récompenses, violet renaissance, orange améliorations), contour `#1B1B24` de 3 px, reflet plus clair sur la moitié haute (`UIGradient`), ombre portée `#1B1B24` décalée de 4 px vers le bas, coins arrondis (`UICorner`). Au moins 44 px de haut sur téléphone.
-- **Panneaux** : fond violet nuit `#2C2163`, bordure or `#FFC52E`, bandeau de titre or en haut à gauche, bouton fermer rouge carré en haut à droite.
-- **Cartes d'objets** : cadre et nom à la couleur de la rareté, fond de la même teinte assombrie avec des rayons diagonaux discrets ; cadre arc-en-ciel animé pour le Secret.
-- **Disposition** : boutons du HUD à gauche, argent en bas à gauche, rien d'important en haut (barre Roblox) ; tailles en Scale avec `UIAspectRatioConstraint` (section 2.2).
+- **Fenêtre** : fond sombre `#3A404B` avec studs, contour noir de 4 px, coins de 12 px, ombre dure dessous.
+- **Bandeau** : vert `#8DF03E` → `#46C41A` avec studs et reflets en biais, trait noir dessous. Titre à gauche dans le bandeau.
+- **Fermer** : carré rouge `#FB303E` → `#D00709`, lèvre `#AB0808`, contour noir, X blanc. Pas de studs sur le X.
+- **Cartes** : dégradé radial bleu `#6FD8FF` → `#1B80E0`, rayons blancs à 20 % et halo derrière l'icône, contour noir de 3 px, ombre dure de 4 px. Icône en haut, nom en capitales, puis la rangée cadeau et prix.
+- **Boutons** : ce qui s'appuie a une lèvre (bas plus foncé de 4 px), des studs et un contour noir de 3 px. Prix vert `#91F630` → `#31DD22` (lèvre `#08A917`) avec le logo Robux blanc ; cadeau violet carré `#C33BF5` → `#9A0EE4` (lèvre `#6106A1`). Au moins 44 px de haut sur téléphone.
+- **Onglets** : hors de la fenêtre, à droite ; grande icône, mot dessous ; le mot de l'onglet ouvert est jaune `#FFE600`.
+- **Texte** : Montserrat Black partout, blanc, `UIStroke` noir de 3,7 en `LineJoinMode` Bevel ; ombre dure seulement sous les textes de 30 px et plus.
+- **Studs** : texture Roblox « Stud (Transparent) » (image 3014551673), tuile de 50 × 46 à 0,8 de transparence sur les fonds, de 48 × 48 à 0,55 sur les boutons.
+- **Icônes** : FOLK Icon Pack. Sa licence n'est donnée que pour les dossiers Ranks et Keyboard Keys (CC0) : à vérifier avant la sortie pour les autres.
+- **Disposition** : rien d'important en haut de l'écran (barre Roblox) ; tailles en Scale avec `UIAspectRatioConstraint` (section 2.2).
+- **Question ouverte** : le bouton cadeau suppose qu'on puisse offrir un gamepass à un autre joueur, ce que la Partie 2 ne prévoit pas encore.
 
 ## 11. Roadmap & jalons
 
@@ -991,6 +997,7 @@ Chaque étape est envoyée une seule fois par joueur avec `AnalyticsService:LogO
 
 | Date | Décision | Par |
 | --- | --- | --- |
+| 2026-11-06 | Style d'UI refait (MOD-002, section 10.6) : on reprend la construction d'une boutique de référence envoyée par Clément (bandeau vert à studs, fenêtre sombre, cartes bleues à rayons, prix vert et cadeau violet, onglets à droite), police Montserrat Black avec un contour de 3,7, icônes du FOLK Icon Pack. Remplace Luckiest Guy, Fredoka One et le panneau violet. Maquette Figma « Steal a Shop — UI » (liaison, L-018) | Clément |
 | 2026-11-06 | Deux ajouts au contrat de noms (liaison, L-015) : attribut PlotIndex (1 à 6) sur chaque parcelle PlayerPlot, égal au numéro écrit sur la parcelle ; tag PawnShop sur le comptoir du receleur (nom retenu à la place de Fence, qui désigne d'abord une clôture en anglais). Ironix les écrit en 2.1 et 10.4 (L-017) | Clément, sur proposition d'Ironix |
 | 2026-11-06 | Groupe Roblox du studio créé : RoundStone Studio (ID 207192094), propriétaire Clément (compte charmentvideo), Ironix y a le rôle « Dev ». L'expérience existante passe au groupe et devient la place DEV « Steal a Shop [DEV] » (mêmes ID, Team Create) ; la place PROD « Steal a Shop » est créée dans le groupe, privée, publiée uniquement par Ironix (liaison, L-001 et section 3.4) | Clément |
 | 2026-11-06 | Scripts d'effets visuels de Clément acceptés (proposition d'Ironix, liaison 3.3, L-003) : nommés FX\_, côté client, visuel uniquement, seulement dans le décor unique ; jamais sur les objets répétés ni dans l'UI, où l'on passe par des objets natifs ou un effet par tag demandé à Ironix | Clément, sur proposition d'Ironix |
