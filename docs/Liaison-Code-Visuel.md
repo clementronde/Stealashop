@@ -22,7 +22,7 @@ C'est **la liste d'attente de Clément** (lignes « Pour : Clément ») et celle
 | --- | --- | --- | --- | --- | --- | --- |
 | L-001 | Clément | Créer le groupe Roblox du studio et y mettre Ironix (remplace l'ajout comme collaborateur) | Nom de studio, pas le nom du jeu ; Clément propriétaire ; rôle « Dev » avec les droits de modifier les jeux du groupe et de publier des assets, attribué à Ironix ; places DEV et PROD créées ou transférées dans le groupe. Sans ça, Ironix ne peut ni coder en Team Create ni publier | DEV-001 | 2026-11-06 | À faire |
 | L-002 | Clément | Valider la liste des noms d'animation | Validée et complétée : marqueurs, priorités, boucles et 7 animations en plus (section 3.2) | DEV-012, DEV-018, DEV-043 | 2026-11-06 | Fait (2026-11-06) |
-| L-003 | Clément | Valider ou refuser la règle « scripts FX de Clément » | Section 3.3. Tant qu'elle n'est pas validée, la règle de [CLAUDE.md](../CLAUDE.md) s'applique : aucun script laissé dans un modèle ou dans l'UI | — | 2026-11-06 | À faire |
+| L-003 | Clément | Valider ou refuser la règle « scripts FX de Clément » | Acceptée par Clément le 2026-11-06, avec une limite : jamais sur les objets répétés ni dans l'UI (section 3.3, règle 7) | — | 2026-11-06 | Fait (2026-11-06) |
 | L-004 | Clément | Reporter dans le doc partagé : animations faites par Clément, intégrées par Ironix via le contrat de noms | Fait dans le doc partagé : section 2.4 « Contrat d'animations », question « Animations (M0) » cochée, ligne « Modèle animé » ajoutée au tableau 10.4 | — | 2026-11-06 | Fait (2026-11-06) |
 | L-005 | Clément | Reporter dans le doc partagé : Script Sync remplace Rojo | Fait dans le doc partagé : sections 2 (outils, rôles), 2.1 (tableau des dossiers, Script Sync et noms de fichiers à la place du fichier `default.project.json`, circuit d'une journée), 9.1, 9.2, M0, DEV-001, risques et journal | DEV-001 | 2026-11-06 | Fait (2026-11-06) |
 | L-006 | Clément et Ironix | Écrire la part des Robux du groupe reversée à chacun | Avant toute publication ; 1re question ouverte du doc partagé (section 15) | Lancement | 2026-11-06 | À faire |
@@ -92,7 +92,7 @@ Une seule personne synchronise : Ironix. Clément ne lance aucune synchro ; il t
 | Vendeur | `Idle` | Derrière son comptoir (ajout) | Oui | Idle | — |
 | Vendeur | `Wave` | Salue quand on approche (ajout) | Non | Action | — |
 
-### 3.3 Scripts FX de Clément (proposition d'Ironix, à valider : L-003)
+### 3.3 Scripts FX de Clément (proposition d'Ironix, validée par Clément le 2026-11-06 avec une limite : L-003)
 
 Clément peut écrire de petits scripts d'effets visuels, à ces conditions :
 
@@ -102,6 +102,7 @@ Clément peut écrire de petits scripts d'effets visuels, à ces conditions :
 4. **Nommé `FX_<Nom>`**, pour qu'on les retrouve tous d'une recherche dans l'explorateur.
 5. **Pas de script quand un objet suffit** : ParticleEmitter, Beam, Trail, Highlight ou matériau néon n'en ont pas besoin.
 6. **Les animations ne passent pas par ces scripts** : elles suivent la section 3.2.
+7. **Jamais sur les objets répétés ni dans l'UI** (limite ajoutée par Clément) : objets exposés, présentoirs, colis, outils, magasins PNJ dupliqués… Un script par exemplaire ferait vite une centaine de scripts en même temps. Pour ces objets : un objet natif (règle 5), sinon une ligne « Pour : Ironix » en section 1 qui demande un effet unique appliqué par tag. Dans l'UI, les animations restent au code d'Ironix (contrat UI, section 2.2 du doc). Les scripts FX servent au décor unique : enseigne, fontaine, lumière d'ambiance.
 
 Ces scripts vivent dans la place (pas dans Git) : leur seul historique est celui des versions de la place. Une logique de jeu passe toujours par le code d'Ironix et GitHub.
 

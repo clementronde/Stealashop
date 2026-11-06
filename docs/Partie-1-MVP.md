@@ -116,7 +116,7 @@ Un dossier de Studio = un seul propriétaire. Le code trouve les choses par tags
 
 **Règles d'or**
 
-- Clément n'écrit et n'ouvre aucun script ; Ironix ne modifie aucun visuel.
+- Clément n'ouvre jamais les scripts d'Ironix et n'écrit aucun script, sauf de petits scripts d'effets visuels FX\_ dans le décor unique (enseigne, fontaine, lumière), jamais sur les objets répétés ni dans l'UI (liaison, section 3.3). Ironix ne modifie aucun visuel.
 - On ne renomme ni ne supprime rien du contrat sans l'annoncer dans `#contrat` et mettre à jour les tableaux 2.2 et 10.4 d'abord.
 - Si quelque chose casse : on revient à la version précédente de la place, puis on cherche la cause.
 
@@ -935,6 +935,7 @@ Chaque étape est envoyée une seule fois par joueur avec `AnalyticsService:LogO
 
 | Date | Décision | Par |
 | --- | --- | --- |
+| 2026-11-06 | Scripts d'effets visuels de Clément acceptés (proposition d'Ironix, liaison 3.3, L-003) : nommés FX\_, côté client, visuel uniquement, seulement dans le décor unique ; jamais sur les objets répétés ni dans l'UI, où l'on passe par des objets natifs ou un effet par tag demandé à Ironix | Clément, sur proposition d'Ironix |
 | 2026-11-06 | Script Sync de Studio remplace Rojo pour les 3 dossiers de code ; la synchro marche dans les deux sens et seul Ironix synchronise (liaison, L-005) | Ironix |
 | 2026-11-06 | Le jeu et tous ses assets passent sous un groupe Roblox de studio (nom de studio, pas le nom du jeu), dont Clément est propriétaire ; Ironix y a un rôle « Dev ». Le groupe servira aussi aux jeux suivants. Animations publiées au nom du groupe | Clément |
 | 2026-11-06 | Clément fait toutes les animations (joueurs, vigiles, PNJ). Noms et emplacements proposés par Ironix (liaison, L-002), complétés par les marqueurs, priorités, boucles et 7 animations ; publication depuis le compte qui possède le jeu (contrat 2.4) | Clément et Ironix |

@@ -44,7 +44,7 @@ En cas de doute, le doc partagé gagne. Ne jamais inventer une valeur (PV, prix,
 | `Workspace/_INBOX_CLEMENT` | Clément | Zone de dépôt des livraisons, vidée par Ironix |
 | `Workspace/_SANDBOX_IRONIX` | Ironix | Tests temporaires |
 
-- **Quand Claude travaille pour Clément** : il peut exécuter du Luau dans Studio pour construire ou vérifier (comme la barre de commande), mais il ne laisse jamais de `Script`, `LocalScript` ou `ModuleScript` dans un modèle ou dans l'UI.
+- **Quand Claude travaille pour Clément** : il peut exécuter du Luau dans Studio pour construire ou vérifier (comme la barre de commande), mais il ne laisse jamais de `Script`, `LocalScript` ou `ModuleScript` dans un modèle ou dans l'UI. Seule exception, acceptée par Clément le 2026-11-06 (liaison, section 3.3) : un petit script d'effet visuel nommé `FX_<Nom>`, en `Script` avec `RunContext = Client`, visuel uniquement (jamais d'argent, de stats, de vitesse, de dégâts, de collisions, de Humanoid ni de RemoteEvent), seulement dans le décor unique (enseigne, fontaine, lumière d'ambiance). Jamais sur un objet répété (objets exposés, présentoirs, colis, outils), jamais dans l'UI ni dans un modèle animé, et jamais quand un objet natif suffit (ParticleEmitter, Beam, Trail, néon).
 - **Quand Claude travaille pour Ironix** : il ne modifie aucun visuel (couleurs, tailles, images, positions de la map ou de l'UI).
 
 ### Le contrat de noms

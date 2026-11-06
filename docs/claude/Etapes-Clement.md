@@ -20,7 +20,7 @@ Claude lit [CLAUDE.md](../../CLAUDE.md) au démarrage : il connaît déjà les n
 1. Dépose le modèle dans `Workspace/_INBOX_CLEMENT`.
 2. Demande la vérification :
 
-   > Vérifie `<NOM DU MODÈLE>` dans `_INBOX_CLEMENT` avec le contrat de CLAUDE.md : nom, enfants obligatoires (section 10.4), tags, attributs, triangles, pivot, taille à côté d'un perso R15, aucun script. Corrige ce qui est purement technique (collisions, ancrage) et liste le reste sans le modifier.
+   > Vérifie `<NOM DU MODÈLE>` dans `_INBOX_CLEMENT` avec le contrat de CLAUDE.md : nom, enfants obligatoires (section 10.4), tags, attributs, triangles, pivot, taille à côté d'un perso R15, aucun script (sauf un script d'effet `FX_` autorisé par la liaison, section 3.3). Corrige ce qui est purement technique (collisions, ancrage) et liste le reste sans le modifier.
 
 3. Lance un test dans Studio : le ContractChecker ne doit afficher aucune ligne rouge.
 4. Passe la tâche en « En revue » dans le doc partagé ; Ironix valide et range le modèle.
