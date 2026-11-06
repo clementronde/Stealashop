@@ -47,6 +47,8 @@ export type Item = {
 	Id: string, -- identifiant du catalogue, ex. « Z3_Smartphone »
 	Source: ItemSource,
 	At: number, -- os.time() de l'obtention
+	Zone: number?, -- zone du magasin d'origine : nécessaire au revenu d'un objet présent dans
+	-- plusieurs zones (le Secret) ; absent des objets créés avant le 2026-11-06 (zone 1 par défaut)
 }
 
 -- Un colis posé sur un établi, en attente d'ouverture (horodatée serveur).

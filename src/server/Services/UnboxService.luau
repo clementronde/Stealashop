@@ -725,7 +725,8 @@ local function onOpenBox(player: Player, benchIndex: number)
 	-- D'un seul tenant, sans yield : l'objet entre dans Items quand le colis quitte Boxes.
 	local itemId = box.ItemId
 	local uid = newUid(data)
-	data.Items[uid] = { Id = itemId, Source = "NPC", At = os.time() }
+	-- Zone gardée pour le revenu du Secret, qui n'a pas de zone au catalogue (DisplayService la lit).
+	data.Items[uid] = { Id = itemId, Source = "NPC", At = os.time(), Zone = box.Zone }
 	data.Boxes[key] = nil
 	clearSlot(session, benchIndex)
 	setState(session, benchIndex, stateFor(session, data, benchIndex))
