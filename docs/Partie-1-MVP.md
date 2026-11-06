@@ -809,9 +809,9 @@ Direction retenue : un Roblox « mode studs », d'après les références de Cl�
 
 - **Fenêtre** : fond sombre `#3A404B` avec studs, contour noir de 4 px, coins de 12 px, ombre dure dessous.
 - **Bandeau** : vert `#8DF03E` → `#46C41A` avec studs et reflets en biais, trait noir dessous. Titre à gauche dans le bandeau.
-- **Fermer** : carré rouge `#FB303E` → `#D00709`, lèvre `#AB0808`, contour noir, X blanc. Pas de studs sur le X.
+- **Fermer** : carré rouge `#FB303E` → `#D00709`, contour noir, X blanc. Pas de studs sur le X.
 - **Cartes** : dégradé radial bleu `#6FD8FF` → `#1B80E0`, rayons blancs à 20 % et halo derrière l'icône, contour noir de 3 px, ombre dure de 4 px. Icône en haut, nom en capitales, puis la rangée cadeau et prix.
-- **Boutons** : ce qui s'appuie a une lèvre (bas plus foncé de 4 px), des studs et un contour noir de 3 px. Prix vert `#91F630` → `#31DD22` (lèvre `#08A917`) avec le logo Robux blanc ; cadeau violet carré `#C33BF5` → `#9A0EE4` (lèvre `#6106A1`). Au moins 44 px de haut sur téléphone.
+- **Boutons** : studs et contour noir de 3 px, **sans lèvre** (pas d'ombre intérieure en bas : retirée le 2026-11-07, le filet noir suffit). Prix vert `#91F630` → `#31DD22` avec le logo Robux blanc ; cadeau violet carré `#C33BF5` → `#9A0EE4`. Au moins 44 px de haut sur téléphone.
 - **Onglets** : hors de la fenêtre, à droite ; grande icône, mot dessous ; le mot de l'onglet ouvert est jaune `#FFE600`.
 - **Texte** : Montserrat Black partout, blanc, `UIStroke` noir de 3,7 en `LineJoinMode` Bevel ; ombre dure seulement sous les textes de 30 px et plus.
 - **Studs** : texture Roblox « Stud (Transparent) » (image 3014551673), tuile de 50 × 46 à 0,8 de transparence sur les fonds, de 48 × 48 à 0,55 sur les boutons.
@@ -896,8 +896,8 @@ Le MVP sort le vendredi 18 décembre 2026, six semaines après le démarrage du 
 | --- | --- | --- | --- | --- | --- | --- |
 | MOD-001 | Valider la chaîne Blender vers Studio | Le cube 4 × 4 × 4 arrive à la bonne taille et orientation ; réglages notés en 10.1 | M0 | P0 | DEV-001 | Fait |
 | MOD-002 | Planche de style, modèles et UI | Palette, 3 objets test, langage visuel des raretés et style d'UI validés à deux | M0 | P0 | Références 2.3 | En revue |
-| MOD-010 | Vitre M intacte + pré-fracturée | 30 à 40 éclats `Shard_xx`, ≤ 1 500 triangles, test de casse validé | M1 | P0 | MOD-001 | À faire |
-| MOD-011 | 3 textures de fissures (75, 50, 25 %) | Lisibles de loin, calées sur la vitre M | M1 | P0 | MOD-010 | À faire |
+| MOD-010 | Vitre M intacte + pré-fracturée | 30 à 40 éclats `Shard_xx`, ≤ 1 500 triangles, test de casse validé | M1 | P0 | MOD-001 | En cours |
+| MOD-011 | 3 textures de fissures (75, 50, 25 %) | Lisibles de loin, calées sur la vitre M | M1 | P0 | MOD-010 | En cours |
 | MOD-012 | Magasin zone 1 « Supérette » : extérieur, intérieur, rayons | Contrat 10.4 complet, 10 `ShelfSlot`, tag `NPCStore` | M1 | P0 | MOD-001, DEV-003 | À faire |
 | MOD-013 | Colis Standard, Premium, Luxe | `Lid` séparé, `CarryAttachment`, pièce `Tint` recolorée selon la rareté, ≤ 300 triangles | M1 | P0 | MOD-002 | À faire |
 | MOD-014 | 6 objets de la zone 1 | Budgets et nommage 10.2 et 10.3, idle sur Légendaire et Mythique | M1 | P0 | MOD-002 | À faire |
@@ -999,6 +999,8 @@ Chaque étape est envoyée une seule fois par joueur avec `AnalyticsService:LogO
 
 | Date | Décision | Par |
 | --- | --- | --- |
+| 2026-11-07 | Casse de vitrine : elle doit être très réaliste et animée, et la fissure comme la brisure partent de l'endroit où le joueur frappe. Fissures livrées en étoiles d'impact à poser au point de frappe ; vitre fracturée en 3 variantes (impact à gauche, au centre, à droite) ; animation dans le code (liaison, L-028) | Clément |
+| 2026-11-07 | Boutons sans lèvre : plus d'ombre intérieure en bas des boutons, le contour noir suffit (section 10.6, maquettes Figma) | Clément |
 | 2026-11-07 | Réponses aux questions d'Ironix (liaison, L-019 à L-023) : OwnerName dans NameSign et SpawnPoint dans la parcelle acceptés ; animation BenchIdle ajoutée au contrat (en boucle, assis au banc entre deux répétitions) ; sons des marqueurs dans Assets/Sounds, nommés <Animation>_<Marqueur> ; le GuardSpawn va au fond du magasin, jamais entre le voleur et la sortie (le Luxe reste dur mais jouable) ; sur l'étiquette d'un colis porté, la rareté s'écrit à sa couleur | Clément, sur proposition d'Ironix |
 | 2026-11-06 | Style d'UI refait (MOD-002, section 10.6) : on reprend la construction d'une boutique de référence envoyée par Clément (bandeau vert à studs, fenêtre sombre, cartes bleues à rayons, prix vert et cadeau violet, onglets à droite), police Montserrat Black avec un contour de 3,7, icônes du FOLK Icon Pack. Remplace Luckiest Guy, Fredoka One et le panneau violet. Maquette Figma « Steal a Shop — UI » (liaison, L-018) | Clément |
 | 2026-11-06 | Deux ajouts au contrat de noms (liaison, L-015) : attribut PlotIndex (1 à 6) sur chaque parcelle PlayerPlot, égal au numéro écrit sur la parcelle ; tag PawnShop sur le comptoir du receleur (nom retenu à la place de Fence, qui désigne d'abord une clôture en anglais). Ironix les écrit en 2.1 et 10.4 (L-017) | Clément, sur proposition d'Ironix |
