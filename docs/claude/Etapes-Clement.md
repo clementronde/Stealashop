@@ -51,7 +51,7 @@ Claude lit [CLAUDE.md](../../CLAUDE.md) au démarrage : il connaît déjà les n
 - **Toi** : tu colles d'abord tes références dans la section 2.3 du doc (style, objets, UI).
 - **Consigne** :
 
-  > À partir des références de la section 2.3, propose une palette (fond, accents, 7 couleurs de raretés du gris à l'arc-en-ciel). Modélise dans Blender 3 objets test low-poly : `ITM_Z1_Canette` (Commun), `ITM_Z1_BoissonEnergisante` (Épique), `ITM_Z1_TicketGagnant` (Légendaire), dans les budgets de la section 10.2. Fais un rendu des trois côte à côte, puis propose un style d'UI (police, coins, ombres, couleurs de boutons).
+  > À partir des références de la section 2.3, propose une palette (fond, accents, 7 couleurs de raretés du gris à l'arc-en-ciel). Modélise dans Blender 3 objets test low-poly : `ITM_Z1_CanetteDeSoda` (Commun), `ITM_Z1_BoissonEnergisante` (Épique), `ITM_Z1_TicketAGratterGagnant` (Légendaire), dans les budgets de la section 10.2. Fais un rendu des trois côte à côte, puis propose un style d'UI (police, coins, ombres, couleurs de boutons).
 
 - **Fini quand** : palette, objets test et style d'UI validés avec Ironix.
 

@@ -799,9 +799,9 @@ Direction retenue : un Roblox « mode studs », d'après les références de Cl�
 
 | Objet | Rareté | Taille (studs) | Triangles | Budget 10.2 |
 | --- | --- | --- | --- | --- |
-| `ITM_Z1_Canette` | Commun | 1,0 × 1,6 | 276 | 2 000 |
+| `ITM_Z1_CanetteDeSoda` | Commun | 1,0 × 1,6 | 276 | 2 000 |
 | `ITM_Z1_BoissonEnergisante` | Épique | 0,8 × 2,0 | 288 | 2 000 |
-| `ITM_Z1_TicketGagnant` | Légendaire | 1,4 × 2,1 (socle compris) | 1 200 | 4 000 |
+| `ITM_Z1_TicketAGratterGagnant` | Légendaire | 1,4 × 2,1 (socle compris) | 1 200 | 4 000 |
 
 **Décor en studs.** Sol en damier à deux verts, cases de 2 studs, studs visibles sur le sol, les falaises et les arbres en blocs ; route gris foncé à flèches blanches ; clôtures en bois. Le rendu des studs dans Studio (texture répétée ou matériau personnalisé) reste à tester sur la greybox.
 
