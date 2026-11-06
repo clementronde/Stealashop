@@ -116,6 +116,8 @@ Ces scripts vivent dans la place (pas dans Git) : leur seul historique est celui
 
 Le Claude de Clément peut **lire** le code pour comprendre comment son travail est utilisé. Il ne le modifie jamais : s'il voit un bug ou un besoin, il ajoute une ligne « Pour : Ironix » en section 1.
 
+**Garde-fou** : le hook `.claude/hooks/guard-src-push.sh` (déclaré dans `.claude/settings.json`) bloque tout `git push` lancé par Claude dont les commits modifient `src/`, sauf si `git config user.name` vaut `Ironix`. Il ne couvre pas un push fait à la main depuis un terminal ou GitHub Desktop.
+
 **Dans Studio**
 
 1. Les 3 dossiers synchronisés et tout ce qu'ils contiennent : `ReplicatedStorage/Shared`, `ServerScriptService/Server`, `StarterPlayer/StarterPlayerScripts/Client`. Ni créer, ni modifier, ni supprimer, ni renommer, ni déplacer. Ils sont reliés au disque d'Ironix : la moindre modification part chez lui.

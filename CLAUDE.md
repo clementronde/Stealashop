@@ -108,6 +108,7 @@ Le code retrouve tout par **tags** et par **noms convenus**, jamais par chemin.
 - Avant une tâche, citer son ID du backlog (`MOD-012`, `UI-001`, `DEV-018`…) et relire ses colonnes « Fini quand… » et « Dépend de ».
 - Une décision nouvelle se note dans le journal des décisions du doc partagé (section 15), pas seulement dans le chat.
 - Git : messages de commit en français, préfixés `Docs :`, `Modèle :`, `UI :` ou `Code :`. Ne jamais pousser sur `main` sans accord explicite.
+- **Avant chaque push** : `git pull`, puis relire la section 3.5 de la [liaison](docs/Liaison-Code-Visuel.md) (ce que le Claude de Clément ne touche jamais). Un hook du projet (`.claude/settings.json`) refuse tout push qui modifie `src/` quand `git config user.name` n'est pas `Ironix` : ne jamais le contourner, retirer les changements de `src/` et noter le besoin dans la liaison.
 
 ## Lexique
 
