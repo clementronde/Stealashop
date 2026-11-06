@@ -53,6 +53,7 @@ Ironix possède tout ce qui s'exécute (code, systèmes, intégration, publicati
 | Objets, colis, outils, batte | Clément | MeshParts nommés + attachments | Ironix fournit la liste et les raretés |
 | Vitres pré-fracturées + fissures | Clément | 3 tailles de vitre fracturée + 3 textures de fissure | Ironix code la casse |
 | Vigiles | Clément | Accessoires sur rig R15 standard (pas de rig custom) | Ironix code l'IA |
+| Animations (joueurs, vigiles, PNJ) | Clément | Objets `Animation` publiés depuis le compte qui possède le jeu, avec priorité et marqueurs (contrat 2.4) | Ironix les joue et branche sons et effets sur les marqueurs |
 | UI, tous les écrans | Clément | ScreenGuis dans StarterGui, sans aucun script, noms du contrat UI (section 2.2) | Ironix code la logique et les animations d'UI |
 | Icônes, auras, trails (visuel) | Clément | Rendus 3D des objets, textures de particules et de trails | Ironix intègre les effets |
 | VFX de casse et de déballage | Ironix | Séquences intégrées (sections 5.4 et 5.7) | Clément fait les textures |
@@ -60,7 +61,7 @@ Ironix possède tout ce qui s'exécute (code, systèmes, intégration, publicati
 | Équilibrage | Ironix | Valeurs dans `Config` | Validation à deux en playtest |
 | Page du jeu | Ironix | Description, paramètres, publication | Clément fait l'icône et les miniatures |
 
-Seules les animations (course, frappe, banc, vigile) restent à attribuer : voir section 15.
+Toutes les animations sont faites par Clément, selon le contrat de la section 2.4.
 
 **Outils et emplacements**
 
@@ -89,7 +90,8 @@ Un dossier de Studio = un seul propriétaire. Le code trouve les choses par tags
 | --- | --- | --- | --- |
 | `ServerScriptService/Server`, `StarterPlayerScripts/Client`, `ReplicatedStorage/Shared` | Ironix | Rojo (fichiers dans Git) | Clément n'y met jamais rien : Rojo efface tout ce qui n'est pas dans Git |
 | `Workspace/Map` | Clément | Team Create | Ironix ne déplace rien, il lit les tags et les attributs |
-| `ReplicatedStorage/Assets`, `ServerStorage/Assets` | Clément, validé par Ironix | Team Create | Modèles finis, nommés selon 10.3 et 10.4 |
+| `ReplicatedStorage/Assets` (modèles, UI, animations), `ServerStorage/Assets` | Clément, validé par Ironix | Team Create | Modèles finis nommés selon 10.3 et 10.4, animations selon 2.4 |
+| `ServerStorage/AnimRigs`, `ServerStorage/RBX_ANIMSAVES` | Clément | Éditeur d'animation | Rigs et brouillons d'animation ; Ironix n'y touche pas |
 | `StarterGui` (toute l'UI) | Clément | Team Create | Aucun script dans l'UI ; noms selon le contrat UI (2.2) |
 | `Lighting` (ambiance) | Clément | Team Create | Ironix n'y touche pas |
 | `Workspace/_INBOX_CLEMENT` | Clément | Team Create | Zone de dépôt, vidée par Ironix après validation |
@@ -123,7 +125,7 @@ Un dossier de Studio = un seul propriétaire. Le code trouve les choses par tags
 
 **Tags et attributs plutôt que chemins.** Clément pose les tags avec l'éditeur de tags de Studio (fenêtre Propriétés) et les attributs (`Zone = 3`, `Tier = "Luxe"`). Tags utilisés par le code : `NPCStore`, `PlayerPlot`, `Treadmill`, `Bench`, `WeaponShop`, `AuraShop`, `RobuxShop`, `SafeZone`, `ZoneGate`, `CashPad`, `NightWall`, `NightPatrol`.
 
-**Vérificateur de contrat.** À chaque lancement en Studio, un script d'Ironix contrôle tout le contrat (tags, modèles, UI) et liste ce qui manque dans la sortie, par exemple « UI\_WeaponShop.List.Template.Price introuvable ». Clément lance un test avant chaque livraison : zéro ligne rouge = livrable.
+**Vérificateur de contrat.** À chaque lancement en Studio, un script d'Ironix contrôle tout le contrat (tags, modèles, UI, animations) et liste ce qui manque dans la sortie, par exemple « UI\_WeaponShop.List.Template.Price introuvable ». Clément lance un test avant chaque livraison : zéro ligne rouge = livrable.
 
 **Le circuit d'une journée**
 
@@ -181,6 +183,57 @@ La priorité va aux références de l'animation d'ouverture, de la casse de vitr
 | Alerte de vol | Alertes plein écran percutantes | Section 6.2 |  |  |
 | Sons | Verre, caisse enregistreuse, sirène, ouverture de colis | DEV-051 |  |  |
 | Icône et miniatures | Icônes de jeux du genre qui donnent envie de cliquer | MOD-043 |  |  |
+
+### 2.4 Contrat d'animations
+
+Clément fait toutes les animations (joueurs, vigiles, PNJ) ; Ironix décide quand elles se jouent. Ils se retrouvent sur un nom, jamais sur un timing en secondes. Ce contrat reprend la proposition d'Ironix (fichier « Liaison code ↔ visuel » du dépôt, section 3.2), validée par Clément le 6 novembre 2026, et la complète avec les marqueurs, les priorités, les boucles et 7 animations.
+
+- **Outil** : éditeur d'animation de Studio, sur un rig R15 standard. Une animation complexe peut se faire dans Blender sur un rig R15, puis s'importer en FBX dans l'éditeur.
+- **Où** : un dossier `Animations` d'objets `Animation`. Pour un modèle animé (vigile, vigile de nuit, vendeur), dans le modèle lui-même : `<Modèle>/Animations/<Nom>`. Pour le joueur : `ReplicatedStorage/Assets/Animations/Player/<Nom>`. Rigs de travail dans `ServerStorage/AnimRigs`, brouillons de l'éditeur dans `ServerStorage/RBX_ANIMSAVES`.
+- **Publication** : depuis le compte qui possède le jeu, aujourd'hui celui de Clément. Une animation publiée par un autre compte ne se joue pas (personnage figé, « Failed to load animation » dans la sortie). Si le jeu passe un jour sur un groupe, toutes les animations seront republiées au nom du groupe.
+- **Mettre à jour** : remplacer l'`AnimationId` de l'objet existant. Ne jamais supprimer ni renommer l'objet : le code ne le retrouverait plus.
+- **Côté code** : Ironix cherche l'objet `Animation` par son nom, jamais un ID écrit dans le code, et accroche sons et effets aux marqueurs. Il ne retouche jamais une animation ; si le rythme ne va pas, il le demande.
+- **Réglé par Clément** : la priorité, la boucle et les marqueurs du tableau ci-dessous, posés sur l'image clé concernée. `CarryIdle` et `CarryRun` n'animent que le haut du corps, en priorité Action, pour se mélanger à la marche.
+- **Registre** : chaque animation publiée est notée dans le registre du fichier « Liaison code ↔ visuel » (nom, emplacement, ID) ; Ironix y coche « Branchée » quand le code la joue.
+- **Objets Légendaires** : leurs petites animations (rotation, rebond) se font en code ; Clément prépare seulement des pièces séparées.
+
+20 animations : 13 pour le joueur, 5 dans chaque modèle de vigile (jour et nuit, mêmes noms), 2 dans chaque vendeur.
+
+| Pour | Nom | Quand | Boucle | Priorité | Marqueur | Proposé par |
+| --- | --- | --- | --- | --- | --- | --- |
+| Joueur | `HitWindow` | Coup sur une vitrine, des poings au pied-de-biche | Non | Action | `Impact` | Ironix |
+| Joueur | `HitWindowHeavy` | Coup sur une vitrine, du marteau à la disqueuse | Non | Action | `Impact` | Ajout |
+| Joueur | `Grab` | Prise d'un colis sur un rayon ou au sol | Non | Action | `Grab` | Ajout |
+| Joueur | `CarryIdle` | Colis au-dessus de la tête, à l'arrêt, bras seuls | Oui | Action | — | Ironix |
+| Joueur | `CarryRun` | Colis au-dessus de la tête, en courant, bras seuls | Oui | Action | — | Ironix |
+| Joueur | `Place` | Poser un colis sur l'établi | Non | Action | `Release` | Ajout |
+| Joueur | `TreadmillRun` | Course sur le tapis | Oui | Movement | — | Ironix |
+| Joueur | `BenchLift` | Une répétition au banc | Non | Action | `Top` | Ironix |
+| Joueur | `Unbox` | Ouvrir un colis | Non | Action | `Open` | Ajout |
+| Joueur | `Celebrate` | Objet Légendaire ou mieux révélé | Non | Action | — | Ajout |
+| Joueur | `SwingBat` | Coup de batte | Non | Action | `Impact` | Ironix |
+| Joueur | `Stunned` | Étourdi pendant 2 s | Oui | Action | — | Ironix |
+| Joueur | `Knockback` | Projeté par un coup | Non | Action | `Land` | Ironix |
+| Vigile, jour et nuit | `Idle` | En attente | Oui | Idle | — | Ironix |
+| Vigile, jour et nuit | `Walk` | Ronde ; le vigile de nuit tient sa lampe torche | Oui | Movement | — | Ironix |
+| Vigile, jour et nuit | `Run` | Poursuite | Oui | Movement | — | Ironix |
+| Vigile, jour et nuit | `Catch` | Le coup qui projette le joueur | Non | Action | `Impact` | Ironix |
+| Vigile, jour et nuit | `Tired` | Retour essoufflé | Non | Action | — | Ironix |
+| Vendeur | `Idle` | Derrière son comptoir | Oui | Idle | — | Ajout |
+| Vendeur | `Wave` | Salue quand on approche | Non | Action | — | Ajout |
+
+**Tâches d'animation**
+
+| ID | Tâche | Fini quand… | Qui | Jalon | Prio | Statut |
+| --- | --- | --- | --- | --- | --- | --- |
+| ANI-001 | Rig R15 de travail + une animation test publiée depuis le compte qui possède le jeu | L'animation test se joue dans la place DEV et figure dans le registre de la liaison | Clément | M0 | P0 | À faire |
+| DEV-006 | Chargement des animations par leur nom (dossiers `Animations` des modèles et `Assets/Animations/Player`), préchargement, écoute des marqueurs ; le ContractChecker vérifie les 20 noms | L'animation test se lance et son marqueur déclenche un son | Ironix | M0 | P0 | À faire |
+| ANI-010 | Braquage : `HitWindow`, `HitWindowHeavy`, `Grab`, `CarryIdle`, `CarryRun`, `Place` | Marqueurs posés, colis fluide à l'arrêt comme en courant | Clément | M1 | P0 | À faire |
+| ANI-011 | Base : `TreadmillRun`, `BenchLift`, `Unbox` | Synchronisées avec le tapis, le banc et le couvercle du colis | Clément | M1 | P0 | À faire |
+| ANI-012 | Vigile de jour : `Idle`, `Walk`, `Run`, `Catch`, `Tired` | Lisibles de loin, l'essoufflement fait sourire | Clément | M1 | P0 | À faire |
+| ANI-020 | PvP : `SwingBat`, `Stunned`, `Knockback` | Le coup se lit en une demi-seconde | Clément | M3 | P0 | À faire |
+| ANI-021 | Vigile de nuit (mêmes 5 noms, avec lampe torche) + vendeurs `Idle` et `Wave` | Lampe tenue dans toutes les poses | Clément | M3 | P1 | À faire |
+| ANI-030 | `Celebrate` + passe de finition sur toutes les animations | Validé en playtest à deux | Clément | M4 | P1 | À faire |
 
 ## 3. Boucle de jeu
 
@@ -586,7 +639,7 @@ Modeles (Team Create)     -> ReplicatedStorage/Assets/<Categorie>
 | ContractChecker | Vérifie tags, modèles et UI au lancement, en Studio uniquement (section 2.1) | MVP |
 | DefenseService, MonetizationService, RewardService, RebirthService, IndexService | Voir la Partie 2 | Partie 2 |
 
-Contrôleurs client : Input, Hit, Shatter, Carry, Unbox (caméra de révélation), Alert, Tutorial, Sound, et un contrôleur par écran d'UI. Ils ne créent aucune UI : ils récupèrent les ScreenGuis de Clément par leur nom (contrat 2.2), puis remplissent, montrent, cachent et animent.
+Contrôleurs client : Input, Hit, Shatter, Carry, Unbox (caméra de révélation), Alert, Tutorial, Sound, Animation (charge les animations par leur nom et écoute leurs marqueurs), et un contrôleur par écran d'UI. Ils ne créent aucune UI : ils récupèrent les ScreenGuis de Clément par leur nom (contrat 2.2), puis remplissent, montrent, cachent et animent.
 
 ### 9.4 Remotes
 
@@ -707,6 +760,7 @@ Ces noms sont lus par le code : un nom faux = une fonctionnalité qui ne marche 
 | Outil `TOOL_*` | `Handle` (MeshPart), `HitPoint` (Attachment à la tête de l'outil, pour les effets) |
 | Tapis et banc | `UsePoint` (Attachment où se place le perso), `Belt` (surface qui défile, tapis seulement) |
 | Accessoire `ACC_*` | Accessory Roblox standard avec son attachment de corps (`HatAttachment`, `BodyFrontAttachment`, etc.) |
+| Modèle animé (vigile, vigile de nuit, vendeur) | Humanoid sur rig R15 standard avec un Animator dans le Humanoid, aucun script, dossier Animations contenant les objets Animation nommés selon la section 2.4 (Idle, Walk, Run, Catch, Tired pour un vigile ; Idle, Wave pour un vendeur) |
 
 Les points `Shutter`, `ShutterButton`, `TrapSlot_xx` et `VaultSlot_02` / `_03` de la parcelle servent en Partie 2 : on les place dès le MVP pour ne pas remodeler la parcelle plus tard. Pour les auras et les trails, Clément livre des textures PNG sur fond transparent (`FX_Aura_<Nom>`, `FX_Trail_<Nom>`, 256 × 256) et une couleur principale par palier.
 
@@ -747,7 +801,7 @@ Le MVP sort le vendredi 18 décembre 2026, six semaines après le démarrage du 
 
 ## 12. Backlog MVP Ironix (DEV)
 
-40 tâches pour le MVP, jalons M0 à M5. Ordre de travail = ordre du tableau ; une tâche ne démarre que si ses dépendances sont « Fait ». P0 = bloquant pour le jalon, P1 = important. Les tâches d'après le lancement sont dans [Partie 2 · Features à ajouter](Partie-2-Features-a-ajouter.md).
+40 tâches pour le MVP, jalons M0 à M5, plus DEV-006 dans le tableau des animations (section 2.4). Ordre de travail = ordre du tableau ; une tâche ne démarre que si ses dépendances sont « Fait ». P0 = bloquant pour le jalon, P1 = important. Les tâches d'après le lancement sont dans [Partie 2 · Features à ajouter](Partie-2-Features-a-ajouter.md).
 
 | ID | Tâche | Fini quand… | Jalon | Prio | Dépend de | Statut |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -794,7 +848,7 @@ Le MVP sort le vendredi 18 décembre 2026, six semaines après le démarrage du 
 
 ## 13. Backlog MVP Clément (MOD et UI)
 
-36 tâches pour le MVP : modèles (MOD) et écrans (UI). C'est la charge la plus lourde de l'équipe, d'où trois raccourcis. Le 2e magasin de chaque zone est une variante du 1er. Le décor simple (voitures, lampadaires, arbres) peut venir du Creator Store, après suppression de tout script caché dedans. Les écrans arrivent d'abord en gris pour qu'Ironix avance sans attendre. Livraison dans `_INBOX_CLEMENT`, statut « En revue », puis Ironix lance le ContractChecker.
+36 tâches pour le MVP : modèles (MOD) et écrans (UI), plus 7 tâches d'animation (ANI) dans la section 2.4. C'est la charge la plus lourde de l'équipe, d'où trois raccourcis. Le 2e magasin de chaque zone est une variante du 1er. Le décor simple (voitures, lampadaires, arbres) peut venir du Creator Store, après suppression de tout script caché dedans. Les écrans arrivent d'abord en gris pour qu'Ironix avance sans attendre. Livraison dans `_INBOX_CLEMENT`, statut « En revue », puis Ironix lance le ContractChecker.
 
 | ID | Tâche | Fini quand… | Jalon | Prio | Dépend de | Statut |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -873,7 +927,7 @@ Chaque étape est envoyée une seule fois par joueur avec `AnalyticsService:LogO
 | Risque | Gravité | Parade | Responsable |
 | --- | --- | --- | --- |
 | Duplication d'objets lors d'un vol PvP | Critique | Transfert atomique, uid uniques, annulation à la déconnexion, test dédié | Ironix |
-| Charge de Clément : 6 zones, 37 objets et toute l'UI en 6 semaines | Élevée | Variantes de magasins, décor du Creator Store, écrans gris d'abord, go / no-go du 6 décembre (zones 5 et 6 repoussables en MAJ 1) | Clément |
+| Charge de Clément : 6 zones, 37 objets, toute l'UI et 20 animations en 6 semaines | Élevée | Variantes de magasins, décor du Creator Store, écrans gris et animations simples d'abord (finition en M4), go / no-go du 6 décembre (zones 5 et 6 repoussables en MAJ 1) | Clément |
 | Code et visuel qui se cassent mutuellement | Élevée | Un dossier = un propriétaire, Rojo limité au code, tags et contrat UI, ContractChecker (section 2.1) | Les deux |
 | Frustration PvP sans défenses achetables au MVP | Élevée | Vitrine à 50 × les dégâts du propriétaire, règles 6.4, batte, retour base ; défenses dès la MAJ 2 | Ironix |
 | Exploits de vitesse ou de téléport pendant un vol | Élevée | Contrôles serveur de la section 9.6, colis rendu | Ironix |
@@ -885,10 +939,10 @@ Chaque étape est envoyée une seule fois par joueur avec `AnalyticsService:LogO
 
 ## 15. Questions ouvertes & journal des décisions
 
-9 décisions restent à prendre. Chacune a une proposition par défaut, appliquée si personne ne tranche avant le jalon indiqué. Une fois tranchée : on coche, et on ajoute une ligne au journal.
+8 décisions restent à prendre. Chacune a une proposition par défaut, appliquée si personne ne tranche avant le jalon indiqué. Une fois tranchée : on coche, et on ajoute une ligne au journal.
 
 - [ ] **Partage des revenus (M0)** : répartition des Robux entre Clément et Ironix, écrite noir sur blanc avant toute publication. Proposition : publier sous un groupe Roblox commun, pour que revenus et droits ne dépendent pas d'un compte perso.
-- [ ] **Animations (M0)** : course, frappe, banc, vigile. Proposition : Clément, avec l'Animation Editor de Studio ; Ironix intègre.
+- [x] **Animations (M0)** : tranché le 2026-11-06. Clément fait toutes les animations (joueurs, vigiles, PNJ), Ironix les joue, selon le contrat de la section 2.4.
 - [ ] **PvP de base dans le MVP (M1)** : proposition : oui, vol entre joueurs + batte + règles anti-frustration dès le lancement ; seules les défenses achetables attendent la Partie 2. Alternative : tout le PvP en Partie 2.
 - [ ] **Vitrine PNJ partagée (M1)** : proposition : oui, tout le monde entre pendant les 10 s, le casseur a 1 s d'avance. Alternative : une instance par joueur, plus calme mais moins drôle.
 - [ ] **Attente d'ouverture hors ligne (M1)** : proposition : oui, elle continue quand le joueur est déconnecté.
@@ -903,6 +957,7 @@ Chaque étape est envoyée une seule fois par joueur avec `AnalyticsService:LogO
 
 | Date | Décision | Par |
 | --- | --- | --- |
+| 2026-11-06 | Clément fait toutes les animations (joueurs, vigiles, PNJ). Noms et emplacements proposés par Ironix (liaison, L-002), complétés par les marqueurs, priorités, boucles et 7 animations ; publication depuis le compte qui possède le jeu (contrat 2.4) | Clément et Ironix |
 | 2026-11-06 | La batte sert aussi dans le couloir : n'importe quel joueur peut frapper un porteur de colis PNJ hors zone safe ; le colis tombe au sol, ramassable par tous, retour au rayon après 15 s, le vigile suit le colis. Défense de boutique inchangée (propriétaire seul). Le reset suit le cycle jour/nuit de la section 5.12, sans téléportation | Ironix, validé par Clément |
 | 2026-11-06 | Renaissances progressives : la 1re très simple (10 K$ + l'objet Rare du tuto, environ 20 min), puis ×10 d'argent et un objet plus rare à chaque palier (Partie 2, section 3.2) | Clément |
 | 2026-11-06 | Titre du jeu : Steal a Shop (remplace le titre de travail Smash a Shop) | Clément |

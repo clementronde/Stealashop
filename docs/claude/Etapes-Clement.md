@@ -1,6 +1,6 @@
 # Parcours de Clément avec Claude
 
-Les 36 tâches MVP de Clément (backlog, Partie 1 section 13), regroupées en 20 étapes dans l'ordre où les faire. Chaque étape donne ce que tu fais toi-même, la consigne à copier-coller dans Claude, et le critère « fini quand ».
+Les 43 tâches MVP de Clément : les 36 de modèles et d'UI (backlog, Partie 1 section 13), regroupées en 20 étapes dans l'ordre où les faire, plus les 7 tâches d'animation (section 2.4), à mener en parallèle (piste « Animations » en fin de fichier). Chaque étape donne ce que tu fais toi-même, la consigne à copier-coller dans Claude, et le critère « fini quand ».
 
 Claude lit [CLAUDE.md](../../CLAUDE.md) au démarrage : il connaît déjà les noms, tags, budgets et règles. Les consignes ci-dessous restent courtes pour cette raison.
 
@@ -187,6 +187,58 @@ La variante Kiosque de la zone 1 et les accessoires de vigile des zones 2 à 6.
   > Crée les textures de particules en PNG 256 × 256 transparent : éclats de verre, étincelles, confettis, rayons de révélation, et les halos des 7 raretés. Puis propose 3 compositions de miniatures 1920 × 1080 avec la casse de vitrine en vedette, et une icône 512 × 512 lisible en tout petit.
 
 **Gel du 13 décembre** : plus aucune nouveauté, seulement des corrections jusqu'au lancement du 18.
+
+## Piste « Animations » (en parallèle)
+
+Toutes les animations suivent le contrat de la section 2.4 du doc partagé (le même que la section 3.2 de la [liaison](../Liaison-Code-Visuel.md)) : 20 animations, avec leur boucle, leur priorité et leurs marqueurs. **C'est toi qui animes dans l'éditeur d'animation de Studio** ; Claude prépare, découpe et vérifie, mais ne peut pas animer à ta place.
+
+- **Joueur** : objets `Animation` dans `ReplicatedStorage/Assets/Animations/Player/`.
+- **Vigiles et vendeurs** : dans le modèle lui-même, `<Modèle>/Animations/`. Le modèle n'a besoin d'aucun script : un Humanoid avec un `Animator`, plus son dossier `Animations`, suffit. C'est le code d'Ironix qui fait marcher, courir et attraper le vigile en jouant ces animations.
+- **Publication** : depuis ton compte, puisque le jeu t'appartient. Chaque animation publiée va dans le registre de la liaison (nom, emplacement, ID).
+
+### Étape A1 · ANI-001 · Rig et animation test (M0)
+
+- **Consigne** :
+
+  > Dans la place DEV, ajoute un rig R15 standard nommé `Rig_Player` dans `ServerStorage/AnimRigs`, et un deuxième nommé `Rig_Guard` habillé avec les accessoires du vigile de la zone 1. Crée le dossier `ReplicatedStorage/Assets/Animations/Player`.
+
+- **Toi** : anime un geste test d'une seconde sur `Rig_Player`, ajoute un marqueur `Test`, puis publie-le depuis ton compte.
+- **Consigne** :
+
+  > Crée l'objet `Test` dans `ReplicatedStorage/Assets/Animations/Player` avec l'identifiant `<ID>`, puis pendant un test, joue-la sur mon personnage pour vérifier qu'elle se lance bien dans le jeu. Ajoute la ligne au registre de la liaison.
+
+- **Fini quand** : l'animation test se joue en jeu. Ironix peut faire DEV-006 dessus.
+
+### Étape A2 · ANI-010, ANI-011 et ANI-012 · Braquage, base et vigile de jour (M1)
+
+- **Joueur** : `HitWindow`, `HitWindowHeavy`, `Grab`, `CarryIdle`, `CarryRun`, `Place`, `TreadmillRun`, `BenchLift`, `Unbox`.
+- **Vigile de jour** (dans son modèle) : `Idle`, `Walk`, `Run`, `Catch`, `Tired`.
+- **Avant d'animer** :
+
+  > Pour `<Nom>`, propose-moi un découpage d'après la section 2.4 : les poses clés, la durée totale, la priorité, la boucle, et à quelle image poser le marqueur.
+
+- **Toi** : tu animes, tu règles priorité, boucle et marqueurs, tu publies depuis ton compte.
+- **Après publication** :
+
+  > Crée ou mets à jour ces objets `Animation` : `<emplacement>/<Nom>` = `<ID>`, … Vérifie chacun contre le tableau 2.4 (nom, priorité, boucle, marqueurs), puis ajoute-les au registre de la liaison.
+
+- **Fini quand** : `CarryIdle` et `CarryRun` restent fluides, et les marqueurs tombent au bon moment quand Ironix y branche les sons.
+
+### Étape A3 · ANI-020 et ANI-021 · PvP, vigile de nuit et vendeurs (M3)
+
+- **Joueur** : `SwingBat`, `Stunned`, `Knockback`.
+- **Vigile de nuit** (dans son modèle, mêmes 5 noms que le vigile de jour, avec la lampe torche) et **vendeurs** (`Idle`, `Wave`).
+- Même méthode qu'à l'étape A2.
+- **Fini quand** : un coup de batte se lit en une demi-seconde, et la lampe torche reste bien en main dans toutes les poses.
+
+### Étape A4 · ANI-030 · Célébration et finition (M4)
+
+- **Consigne** :
+
+  > Pendant un test, joue toutes les animations l'une après l'autre sur mon personnage, sur un vigile et sur un vendeur, et signale celles qui glissent, qui se coupent mal ou dont la boucle saute.
+
+- **Toi** : tu animes `Celebrate`, puis tu corriges ce qui a été signalé.
+- **Fini quand** : validé en playtest à deux.
 
 ## Consignes utiles à tout moment
 

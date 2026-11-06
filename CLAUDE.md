@@ -13,8 +13,8 @@ Ce fichier est lu par Claude à chaque session ouverte dans ce dossier. Il dit c
 
 | Personne | Rôle | Ce que Claude fait pour lui |
 | --- | --- | --- |
-| Clément | Modèles 3D, map, **toute l'UI** (ScreenGuis), icônes, textures | Modélise et vérifie dans Blender, importe et range dans Studio, pose tags et attributs, construit les écrans d'UI, vérifie le contrat |
-| Ironix | Code Luau (serveur + client), intégration, publication | Écrit et relit le code dans `src/`, branche l'UI de Clément, teste |
+| Clément | Modèles 3D, map, **toute l'UI** (ScreenGuis), **toutes les animations** (joueurs, vigiles, PNJ), icônes, textures | Modélise et vérifie dans Blender, importe et range dans Studio, pose tags et attributs, construit les écrans d'UI, prépare et vérifie les animations, vérifie le contrat |
+| Ironix | Code Luau (serveur + client), intégration, publication | Écrit et relit le code dans `src/`, branche l'UI et les animations de Clément, teste |
 
 Le parcours pas à pas de Clément avec Claude est dans [docs/claude/Etapes-Clement.md](docs/claude/Etapes-Clement.md).
 
@@ -36,7 +36,8 @@ En cas de doute, le doc partagé gagne. Ne jamais inventer une valeur (PV, prix,
 | Emplacement | Propriétaire | Règle pour Claude |
 | --- | --- | --- |
 | `ServerScriptService/Server`, `StarterPlayerScripts/Client`, `ReplicatedStorage/Shared` | Ironix, via Rojo | Ne rien y créer depuis Studio : Rojo efface tout ce qui n'est pas dans Git |
-| `Workspace/Map`, `ReplicatedStorage/Assets`, `ServerStorage/Assets` | Clément | Ne déplacer ni renommer sans que Clément le demande |
+| `Workspace/Map`, `ReplicatedStorage/Assets` (modèles, UI, animations), `ServerStorage/Assets` | Clément | Ne déplacer ni renommer sans que Clément le demande |
+| `ServerStorage/AnimRigs`, `ServerStorage/RBX_ANIMSAVES` | Clément | Rigs et brouillons d'animation : ne jamais les supprimer |
 | `StarterGui` (toute l'UI), `Lighting` | Clément | Aucun script dans l'UI |
 | `Workspace/_INBOX_CLEMENT` | Clément | Zone de dépôt des livraisons, vidée par Ironix |
 | `Workspace/_SANDBOX_IRONIX` | Ironix | Tests temporaires |
@@ -61,6 +62,20 @@ Le code retrouve tout par **tags** et par **noms convenus**, jamais par chemin.
 - Budgets de triangles de la section 10.2 (objet ≤ 2 000, Légendaire et plus ≤ 4 000, colis ≤ 300, outil ≤ 1 500, magasin ≤ 12 000 dehors et 15 000 dedans).
 - `CollisionFidelity = Box` par défaut, `Hull` si la forme compte ; `CanCollide` coupé pour le petit décor.
 - Tout modèle venu du Creator Store est vidé de ses scripts avant usage.
+
+### Animations (Partie 1, section 2.4)
+
+- Clément fait toutes les animations ; Ironix décide quand elles se jouent. Ils se retrouvent sur un nom (animation et marqueurs), jamais sur un timing en secondes. Contrat complet : section 2.4 du doc partagé et section 3.2 de la liaison (mêmes noms).
+- Rig R15 standard pour tout (joueurs, vigiles, vendeurs). Rigs de travail dans `ServerStorage/AnimRigs`.
+- **Où** : objets `Animation` dans un dossier `Animations`. Modèle animé (vigile, vigile de nuit, vendeur) : dans le modèle, `<Modèle>/Animations/<Nom>` (`Idle`, `Walk`, `Run`, `Catch`, `Tired` ; vendeur : `Idle`, `Wave`). Joueur : `ReplicatedStorage/Assets/Animations/Player/<Nom>` (`HitWindow`, `HitWindowHeavy`, `Grab`, `CarryIdle`, `CarryRun`, `Place`, `TreadmillRun`, `BenchLift`, `Unbox`, `Celebrate`, `SwingBat`, `Stunned`, `Knockback`).
+- **Aucun script dans un modèle animé** : il contient un Humanoid avec un `Animator` et son dossier `Animations` ; c'est le code d'Ironix qui joue les animations, déplacements compris.
+- **Publication** : depuis le compte qui possède le jeu, aujourd'hui celui de Clément. Une animation publiée par un autre compte ne se joue pas (« Failed to load animation »). Si le jeu passe sur un groupe, tout se republie au nom du groupe.
+- **Mettre à jour** : remplacer l'`AnimationId` de l'objet existant, ne jamais le supprimer ni le renommer.
+- Clément règle dans chaque animation la priorité (Idle, Movement, Action), la boucle et les marqueurs (`Impact`, `Grab`, `Release`, `Top`, `Open`, `Land`) posés sur l'image clé concernée.
+- Ironix charge l'animation par son nom (jamais un ID dans le code) et accroche sons et effets aux marqueurs. Il ne retouche jamais une animation.
+- `CarryIdle` et `CarryRun` n'animent que le haut du corps, en priorité Action.
+- Chaque animation publiée va dans le registre de la liaison (nom, emplacement, ID).
+- Claude ne peut pas animer à la place de Clément dans l'éditeur d'animation : il prépare les rigs et les dossiers, propose un découpage des poses, crée les objets `Animation` avec les identifiants fournis et vérifie noms, priorités, boucles et marqueurs.
 
 ### UI
 
@@ -107,3 +122,4 @@ Le code retrouve tout par **tags** et par **noms convenus**, jamais par chemin.
 | Boutiques d'achat | Boutique d'armes et boutique d'auras (argent du jeu), boutique Robux |
 | Nuit | Phase de 2 min où le couloir est fermé et les rayons PNJ se remplissent |
 | Renaissance | Remise à zéro contre argent + un objet précis, pour un bonus permanent |
+| Marqueur | Nom posé sur une image clé d'une animation (`Impact`, `Grab`…), auquel le code accroche un son ou un effet |

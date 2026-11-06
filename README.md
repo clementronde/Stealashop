@@ -8,6 +8,6 @@ Game design et suivi de production du jeu Roblox de Clément (modèles 3D et UI)
 | [Partie 2 · Features à ajouter](docs/Partie-2-Features-a-ajouter.md) | Ce qui sort ensuite : défenses avancées, écrans d'UI, boutique Robux, idées de rétention, centre commercial |
 | [CLAUDE.md](CLAUDE.md) | Contexte et règles du projet, lus automatiquement par Claude quand on l'ouvre dans ce dossier |
 | [Liaison code ↔ visuel](docs/Liaison-Code-Visuel.md) | Ce que Clément et Ironix attendent l'un de l'autre, registre des animations, contrats qui relient le code et le visuel ; lu par les deux Claude à chaque session |
-| [Parcours de Clément](docs/claude/Etapes-Clement.md) | Les 36 tâches MVP de Clément en 20 étapes, avec une consigne à copier dans Claude pour chacune |
+| [Parcours de Clément](docs/claude/Etapes-Clement.md) | Les tâches MVP de Clément (modèles, UI, animations) étape par étape, avec une consigne à copier dans Claude pour chacune |
 
 Ces fichiers sont un export du doc de suivi partagé, daté du 6 novembre 2026. La version de travail, avec les statuts des tâches et les commentaires, reste le doc partagé.

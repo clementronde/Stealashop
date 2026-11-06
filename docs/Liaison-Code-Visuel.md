@@ -21,10 +21,11 @@ C'est **la liste d'attente de Clément** (lignes « Pour : Clément ») et celle
 | ID | Pour | Quoi | Détail, noms exacts | Débloque | Ajouté | Statut |
 | --- | --- | --- | --- | --- | --- | --- |
 | L-001 | Clément | Ajouter Ironix comme collaborateur sur les places DEV et PROD | Droit « Modifier » (Creator Hub → l'expérience → Collaborateurs), sinon Ironix ne peut ni coder en Team Create ni publier | DEV-001 | 2026-11-06 | À faire |
-| L-002 | Clément | Valider la liste des noms d'animation | Section 3.2 ci-dessous ; changer un nom avant que le code existe ne coûte rien, après si | DEV-012, DEV-018, DEV-043 | 2026-11-06 | À faire |
+| L-002 | Clément | Valider la liste des noms d'animation | Validée et complétée : marqueurs, priorités, boucles et 7 animations en plus (section 3.2) | DEV-012, DEV-018, DEV-043 | 2026-11-06 | Fait (2026-11-06) |
 | L-003 | Clément | Valider ou refuser la règle « scripts FX de Clément » | Section 3.3. Tant qu'elle n'est pas validée, la règle de [CLAUDE.md](../CLAUDE.md) s'applique : aucun script laissé dans un modèle ou dans l'UI | — | 2026-11-06 | À faire |
-| L-004 | Clément | Reporter dans le doc partagé : animations faites par Clément, intégrées par Ironix via le contrat de noms | Section 15 (question « Animations (M0) ») et une ligne « modèle animé » dans le tableau 10.4 | — | 2026-11-06 | À faire |
+| L-004 | Clément | Reporter dans le doc partagé : animations faites par Clément, intégrées par Ironix via le contrat de noms | Fait dans le doc partagé : section 2.4 « Contrat d'animations », question « Animations (M0) » cochée, ligne « Modèle animé » ajoutée au tableau 10.4 | — | 2026-11-06 | Fait (2026-11-06) |
 | L-010 | Ironix | Jouer toutes les animations par leur nom, jamais par un ID écrit dans le code | Le code cherche l'objet `Animation` par son nom (section 3.2) ; un nom manquant est signalé par le ContractChecker | DEV-005, DEV-018 | 2026-11-06 | À faire |
+| L-011 | Ironix | Brancher les 7 animations ajoutées et les marqueurs | Joueur : `HitWindowHeavy`, `Grab`, `Place`, `Unbox`, `Celebrate` ; vendeur : `Idle`, `Wave`. Marqueurs `Impact`, `Grab`, `Release`, `Top`, `Open`, `Land` (tableau 3.2) ; tâche DEV-006 du doc partagé | DEV-006 | 2026-11-06 | À faire |
 
 ## 2. Registre des animations
 
@@ -53,17 +54,36 @@ Une seule personne synchronise : Ironix. Clément ne lance aucune synchro ; il t
 **Le principe** : Clément décide à quoi ressemble une animation, Ironix décide quand elle se joue. Ils se retrouvent sur un nom.
 
 - **Où** : un dossier `Animations` contenant des objets `Animation`.
-  - Animations d'un modèle animé (vigile, vigile de nuit…) : dans le modèle lui-même, `<Modèle>/Animations/<Nom>`.
+  - Animations d'un modèle animé (vigile, vigile de nuit, vendeur) : dans le modèle lui-même, `<Modèle>/Animations/<Nom>`. Le modèle contient un Humanoid avec un `Animator`, et aucun script : c'est le code d'Ironix qui joue les animations.
   - Animations du personnage joueur : `ReplicatedStorage/Assets/Animations/Player/<Nom>`.
 - **Publication** : le jeu appartient à Clément, donc **toutes les animations sont publiées depuis le compte de Clément**. Une animation publiée par un autre compte ne se joue pas dans son jeu (personnage figé, « Failed to load animation » dans la sortie). Si le jeu passe un jour sous un groupe Roblox, les animations se publient sous ce groupe.
 - **Tester** : dans l'Animation Editor (aucune dépendance au code), puis en Play une fois que le code joue ce nom.
 - **Mettre à jour** : remplacer l'`AnimationId` de l'objet existant. **Ne jamais supprimer ni renommer l'objet** : le code ne le retrouverait plus.
-- **Noms proposés** (à valider, L-002) :
+- **Réglé par Clément dans l'éditeur** : priorité, boucle et marqueurs du tableau ci-dessous, posés sur l'image clé concernée. Ironix accroche sons et effets aux marqueurs. `CarryIdle` et `CarryRun` n'animent que le haut du corps, en priorité Action.
+- **Noms validés** (L-002, 2026-11-06), complétés par Clément ; même contrat que la section 2.4 du doc partagé :
 
-| Pour | Noms |
-| --- | --- |
-| Vigile (jour et nuit) | `Idle`, `Walk`, `Run`, `Catch` (le coup qui projette le joueur), `Tired` (retour essoufflé) |
-| Joueur | `HitWindow` (frappe sur une vitrine), `SwingBat`, `BenchLift`, `TreadmillRun`, `CarryIdle`, `CarryRun` (colis sur la tête), `Stunned`, `Knockback` |
+| Pour | Nom | Quand | Boucle | Priorité | Marqueur |
+| --- | --- | --- | --- | --- | --- |
+| Joueur | `HitWindow` | Coup sur une vitrine, des poings au pied-de-biche | Non | Action | `Impact` |
+| Joueur | `HitWindowHeavy` | Coup sur une vitrine, du marteau à la disqueuse (ajout) | Non | Action | `Impact` |
+| Joueur | `Grab` | Prise d'un colis sur un rayon ou au sol (ajout) | Non | Action | `Grab` |
+| Joueur | `CarryIdle` | Colis au-dessus de la tête, à l'arrêt, bras seuls | Oui | Action | — |
+| Joueur | `CarryRun` | Colis au-dessus de la tête, en courant, bras seuls | Oui | Action | — |
+| Joueur | `Place` | Poser un colis sur l'établi (ajout) | Non | Action | `Release` |
+| Joueur | `TreadmillRun` | Course sur le tapis | Oui | Movement | — |
+| Joueur | `BenchLift` | Une répétition au banc | Non | Action | `Top` |
+| Joueur | `Unbox` | Ouvrir un colis (ajout) | Non | Action | `Open` |
+| Joueur | `Celebrate` | Objet Légendaire ou mieux révélé (ajout) | Non | Action | — |
+| Joueur | `SwingBat` | Coup de batte | Non | Action | `Impact` |
+| Joueur | `Stunned` | Étourdi pendant 2 s | Oui | Action | — |
+| Joueur | `Knockback` | Projeté par un coup | Non | Action | `Land` |
+| Vigile, jour et nuit | `Idle` | En attente | Oui | Idle | — |
+| Vigile, jour et nuit | `Walk` | Ronde ; le vigile de nuit tient sa lampe torche | Oui | Movement | — |
+| Vigile, jour et nuit | `Run` | Poursuite | Oui | Movement | — |
+| Vigile, jour et nuit | `Catch` | Le coup qui projette le joueur | Non | Action | `Impact` |
+| Vigile, jour et nuit | `Tired` | Retour essoufflé | Non | Action | — |
+| Vendeur | `Idle` | Derrière son comptoir (ajout) | Oui | Idle | — |
+| Vendeur | `Wave` | Salue quand on approche (ajout) | Non | Action | — |
 
 ### 3.3 Scripts FX de Clément (proposition d'Ironix, à valider : L-003)
 
