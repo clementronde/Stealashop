@@ -27,7 +27,7 @@ C'est **la liste d'attente de Clément** (lignes « Pour : Clément ») et celle
 | L-005 | Clément | Reporter dans le doc partagé : Script Sync remplace Rojo | Sections 2.1 (circuit d'une journée, fichier `default.project.json`), 9.1 (stack) et tâche DEV-001 ; règle inchangée : seul Ironix synchronise, les 3 dossiers sont à lui | DEV-001 | 2026-11-06 | À faire |
 | L-010 | Ironix | Jouer toutes les animations par leur nom, jamais par un ID écrit dans le code | Le code cherche l'objet `Animation` par son nom (section 3.2) ; un nom manquant est signalé par le ContractChecker | DEV-005, DEV-018 | 2026-11-06 | À faire |
 | L-011 | Ironix | Brancher les 7 animations ajoutées et les marqueurs | Joueur : `HitWindowHeavy`, `Grab`, `Place`, `Unbox`, `Celebrate` ; vendeur : `Idle`, `Wave`. Marqueurs `Impact`, `Grab`, `Release`, `Top`, `Open`, `Land` (tableau 3.2) ; tâche DEV-006 du doc partagé | DEV-006 | 2026-11-06 | À faire |
-| L-012 | Ironix | Relier les 3 dossiers à `F:\StealAShop\src` avec Script Sync | Dossiers et premiers fichiers déjà créés des deux côtés (Studio et disque) ; clic droit sur chacun → synchroniser vers `F:\StealAShop\src` (section 3.1) | DEV-001 | 2026-11-06 | À faire |
+| L-012 | Ironix | Relier les 3 dossiers à `F:\StealAShop\src` avec Script Sync | Dossiers et premiers fichiers déjà créés des deux côtés (Studio et disque) ; clic droit sur chacun → synchroniser vers `F:\StealAShop\src` (section 3.1) | DEV-001 | 2026-11-06 | Fait (2026-11-06, testé dans les deux sens) |
 
 ## 2. Registre des animations
 
