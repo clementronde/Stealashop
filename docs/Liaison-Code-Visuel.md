@@ -16,6 +16,8 @@ Statuts : `À faire`, `En cours`, `À vérifier` (livré, l'autre doit tester), 
 
 ## 1. Attentes ouvertes
 
+C'est **la liste d'attente de Clément** (lignes « Pour : Clément ») et celle d'Ironix. Chaque fois que Claude dit à Ironix « Clément doit faire… » (un modèle, une animation, un son, un écran, une action sur le Creator Hub, une décision), la ligne est ajoutée ici avec le nom exact attendu et la section du doc qui le définit, puis poussée dans le même tour. Une ligne ne se ferme qu'une fois vérifiée en jeu.
+
 | ID | Pour | Quoi | Détail, noms exacts | Débloque | Ajouté | Statut |
 | --- | --- | --- | --- | --- | --- | --- |
 | L-001 | Clément | Ajouter Ironix comme collaborateur sur les places DEV et PROD | Droit « Modifier » (Creator Hub → l'expérience → Collaborateurs), sinon Ironix ne peut ni coder en Team Create ni publier | DEV-001 | 2026-11-06 | À faire |
@@ -36,7 +38,7 @@ Clément remplit une ligne dès qu'une animation est publiée ; Ironix coche « 
 
 ### 3.1 Les 3 dossiers synchronisés (code d'Ironix)
 
-Seuls ces 3 dossiers viennent du disque d'Ironix (Rojo). Tout ce qui est posé dedans depuis Studio est effacé à la synchro ; tout ce qui est ailleurs n'est jamais touché par elle.
+Seuls ces 3 dossiers viennent du disque d'Ironix (synchro Rojo, section 2.1 du doc). Tout ce qui est posé dedans depuis Studio est effacé à la synchro ; tout ce qui est ailleurs n'est jamais touché par elle.
 
 | Disque (`src/`) | Studio |
 | --- | --- |
@@ -75,6 +77,13 @@ Clément peut écrire de petits scripts d'effets visuels, à ces conditions :
 6. **Les animations ne passent pas par ces scripts** : elles suivent la section 3.2.
 
 Ces scripts vivent dans la place (pas dans Git) : leur seul historique est celui des versions de la place. Une logique de jeu passe toujours par le code d'Ironix et GitHub.
+
+### 3.4 Méthode de travail
+
+- **Synchro** : toujours et uniquement sur le PC d'Ironix. Le dossier `F:\StealAShop` d'Ironix est relié à la place DEV : mettre à jour ce dossier, c'est mettre à jour Studio. Personne d'autre ne synchronise, même pour tester.
+- **« Pull »** (Ironix dit « pull » ou « récupère le GitHub ») : Claude fait toute la routine sans demander. `git fetch`, mise à jour de `main` en avance rapide (jamais de force), contrôle du code (compilation Rojo, puis les vérifications ajoutées au fil du projet), puis dans Studio : le nombre de scripts correspond au disque, et un court test en Play sans erreur dans la sortie. Il dit ce qui est arrivé (commits, fichiers) et ce qui casse.
+- **Agents** : chaque session d'agent travaille dans son propre worktree Git, sous `F:\StealAShop-agents\<id>` (par exemple `a01`), jamais dans `F:\StealAShop` lui-même, puisque ce dossier alimente la place DEV. Une branche fusionnée l'est d'abord dans un worktree temporaire, puis `main` avance en `--ff-only` : jamais de fichier à moitié fusionné dans Studio. Toujours `git fetch` avant (l'autre pousse souvent), jamais de `push --force`.
+- **Pousser** : un changement validé à deux part directement sur `main`, sans branche ni PR.
 
 ## 4. Historique
 
