@@ -684,7 +684,13 @@ Un modèle est livrable quand il respecte 5 règles : échelle en studs, pivot e
 
 ### 10.1 Règles techniques
 
-- **Chaîne d'export** : 1 unité Blender = 1 stud. Première tâche (MOD-001) : exporter un cube de 4 × 4 × 4 en `.fbx`, l'importer avec le 3D Importer, vérifier qu'il arrive à 4 × 4 × 4 studs et bien orienté. Noter ici les réglages validés.
+- **Chaîne d'export** (validée le 2026-11-06, MOD-001) : 1 unité Blender = 1 stud. Un cube de 4 × 4 × 4 exporté en `.fbx` arrive à 4 × 4 × 4 studs, avec sa face avant et son pivot. Réglages validés :
+    - **Blender** : unités Métrique, échelle d'unité 1,0. L'origine de l'objet, en bas au centre, devient le pivot dans Studio.
+    - **Export FBX** : Objets sélectionnés, type Maillage ; **Échelle (Scale) 0,01** ; Appliquer les échelles (Apply Scalings) : Tout local ; Avant : -Z ; Haut : Y ; Appliquer l'unité coché ; Appliquer la transformation (Apply Transform) décoché ; Lissage : Face ; Appliquer les modificateurs coché.
+    - **Pourquoi 0,01** : Blender convertit ses mètres en centimètres à l'export (×100) et Studio lit ce nombre comme des studs. Sans l'échelle 0,01, le cube arrive à 400 studs, que « Appliquer l'unité » soit coché ou non.
+    - **Import** : 3D Importer de Studio, réglages par défaut.
+    - **Orientation** : la face avant dans Blender (vue de face, côté -Y) devient la face avant dans Roblox (-Z, LookVector) ; le haut reste en haut ; pas d'effet miroir.
+    - **Après import** : le 3D Importer laisse les pièces non ancrées, en `CollisionFidelity` Default. La routine de livraison règle `Anchored` et les collisions (règle Collisions ci-dessous).
 - **Repères d'échelle** : un perso R15 fait environ 5 studs de haut. Porte = 4 × 7,5 studs. Rayon de 2 studs de profondeur, 3 étages, étagère du haut à 5 studs maximum.
 - **Vitrines standard** : 3 tailles réutilisées partout. S = 8 × 6, M = 12 × 7, L = 16 × 8 studs (largeur × hauteur), épaisseur 0,4 stud. Un modèle fracturé par taille.
 - **Pivot** : en bas au centre. Face avant tournée vers la rue (ou vers la caméra pour les objets).
@@ -830,7 +836,7 @@ Le MVP sort le vendredi 18 décembre 2026, six semaines après le démarrage du 
 
 | ID | Tâche | Fini quand… | Jalon | Prio | Dépend de | Statut |
 | --- | --- | --- | --- | --- | --- | --- |
-| MOD-001 | Valider la chaîne Blender vers Studio | Le cube 4 × 4 × 4 arrive à la bonne taille et orientation ; réglages notés en 10.1 | M0 | P0 | DEV-001 | À faire |
+| MOD-001 | Valider la chaîne Blender vers Studio | Le cube 4 × 4 × 4 arrive à la bonne taille et orientation ; réglages notés en 10.1 | M0 | P0 | DEV-001 | Fait |
 | MOD-002 | Planche de style, modèles et UI | Palette, 3 objets test, langage visuel des raretés et style d'UI validés à deux | M0 | P0 | Références 2.3 | À faire |
 | MOD-010 | Vitre M intacte + pré-fracturée | 30 à 40 éclats `Shard_xx`, ≤ 1 500 triangles, test de casse validé | M1 | P0 | MOD-001 | À faire |
 | MOD-011 | 3 textures de fissures (75, 50, 25 %) | Lisibles de loin, calées sur la vitre M | M1 | P0 | MOD-010 | À faire |
