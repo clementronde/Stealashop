@@ -7,13 +7,23 @@ Claude lit [CLAUDE.md](../../CLAUDE.md) au démarrage : il connaît déjà les n
 ## Avant de commencer (une seule fois)
 
 1. Crée le groupe Roblox du studio, avec un nom de studio et pas le nom du jeu. Ajoute un rôle « Dev » qui peut modifier les jeux du groupe et publier des assets, et mets-y Ironix (L-001 dans la [liaison](../Liaison-Code-Visuel.md)).
-2. Ouvre Claude dans le dossier de ce dépôt, pour qu'il lise `CLAUDE.md`.
+2. Clone le dépôt dans un dossier permanent, par exemple dans tes Documents :
+
+   ```bash
+   git clone https://github.com/clementronde/Stealashop
+   ```
+
+   Puis ouvre Claude Code dans ce dossier `Stealashop`, pour qu'il lise `CLAUDE.md`. Quand Claude Code te demande d'accepter les réglages du projet, réponds **oui** : sinon le garde-fou d'Ironix, qui refuse tout envoi modifiant `src/`, ne s'active pas. Ce garde-fou ne contrôle que les envois faits par Claude : à la main, depuis un terminal ou GitHub Desktop, rien ne t'arrête. Ne touche donc jamais à `src/`.
 3. Ouvre la place DEV du groupe en Team Create (tâche DEV-001).
 4. Connecte le MCP Roblox Studio (plugin actif dans Studio) et le MCP Blender (add-on activé dans Blender).
 5. Dans Blender, active l'extension **Cell Fracture** (pour les vitres).
 6. Vérifie que tout répond :
 
    > Liste ce que tu vois dans Workspace et dans StarterGui de la place ouverte dans Studio, puis dis-moi quels objets sont dans la scène Blender.
+
+7. **À chaque session ensuite**, commence par :
+
+   > Récupère les derniers commits du dépôt, lis la liaison et dis-moi ce qui m'attend et ce qui a changé.
 
 ## Routine de livraison (à chaque asset)
 
