@@ -43,7 +43,7 @@ Clément remplit une ligne dès qu'une animation est publiée ; Ironix coche « 
 
 | Pour | Nom (objet `Animation`) | Où dans Studio | ID publié | Branchée dans le code |
 | --- | --- | --- | --- | --- |
-| — | — | — | — | — |
+| Test (ANI-001, hors contrat) | `Test` : geste du bras droit, 1 s, priorité Action, sans boucle, marqueur `Test` à 0,50 s | `ServerStorage/AnimRigs/Test` (pas dans `Assets/Animations/Player`, où le ContractChecker refuse les noms hors contrat) | 94775059087364 (groupe RoundStone Studio) | Non. Jouée en Play le 2026-11-06 sur le personnage de Clément : marqueur atteint à 0,50 s. Sert de support à DEV-006 |
 
 ## 3. Contrats en vigueur
 

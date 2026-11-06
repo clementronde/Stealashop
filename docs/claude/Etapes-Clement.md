@@ -216,7 +216,9 @@ Toutes les animations suivent le contrat de la section 2.4 du doc partagé (le m
 - **Toi** : anime un geste test d'une seconde sur `Rig_Player`, ajoute un marqueur `Test`, puis publie-le au nom du groupe.
 - **Consigne** :
 
-  > Crée l'objet `Test` dans `ReplicatedStorage/Assets/Animations/Player` avec l'identifiant `<ID>`, puis pendant un test, joue-la sur mon personnage pour vérifier qu'elle se lance bien dans le jeu. Ajoute la ligne au registre de la liaison.
+  > Crée l'objet `Test` dans `ServerStorage/AnimRigs` avec l'identifiant `<ID>`, puis pendant un test, joue-la sur mon personnage pour vérifier qu'elle se lance bien dans le jeu. Ajoute la ligne au registre de la liaison.
+
+  `Test` ne va pas dans `Assets/Animations/Player` : le ContractChecker y signale en rouge tout nom hors du contrat 2.4. Ce dossier ne reçoit que les 13 animations du contrat.
 
 - **Fini quand** : l'animation test se joue en jeu. Ironix peut faire DEV-006 dessus.
 

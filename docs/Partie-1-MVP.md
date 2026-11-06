@@ -204,7 +204,7 @@ Clément fait toutes les animations (joueurs, vigiles, PNJ) ; Ironix décide qua
 
 | ID | Tâche | Fini quand… | Qui | Jalon | Prio | Statut |
 | --- | --- | --- | --- | --- | --- | --- |
-| ANI-001 | Rig R15 de travail + une animation test publiée au nom du groupe | L'animation test se joue dans la place DEV et figure dans le registre de la liaison | Clément | M0 | P0 | À faire |
+| ANI-001 | Rig R15 de travail + une animation test publiée au nom du groupe | L'animation test se joue dans la place DEV et figure dans le registre de la liaison | Clément | M0 | P0 | Fait |
 | DEV-006 | Chargement des animations par leur nom (dossiers `Animations` des modèles et `Assets/Animations/Player`), préchargement, écoute des marqueurs ; le ContractChecker vérifie les 20 noms | L'animation test se lance et son marqueur déclenche un son | Ironix | M0 | P0 | À faire |
 | ANI-010 | Braquage : `HitWindow`, `HitWindowHeavy`, `Grab`, `CarryIdle`, `CarryRun`, `Place` | Marqueurs posés, colis fluide à l'arrêt comme en courant | Clément | M1 | P0 | À faire |
 | ANI-011 | Base : `TreadmillRun`, `BenchLift`, `Unbox` | Synchronisées avec le tapis, le banc et le couvercle du colis | Clément | M1 | P0 | À faire |
