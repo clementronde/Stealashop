@@ -1,0 +1,865 @@
+--!strict
+-- CarryService (DEV-017) : le colis ou l'objet porté au-dessus de la tête (Partie 1, sections
+-- 5.6, 5.5, 6.1, 6.2, 9.3, 9.4 et 9.6).
+--
+-- Un seul colis porté à la fois (5.3). Dès qu'un joueur le soulève, il flotte au-dessus de sa
+-- tête, soudé à la tête et sans masse, à la couleur de sa rareté, avec son halo et son étiquette
+-- BB_Carry : tout le monde le voit (objets créés par le serveur, répliqués à tous). Pendant le
+-- portage : malus de vitesse (StatsService, clé "Carry"), saut autorisé, aucun outil en main.
+-- Le portage finit par une réussite (Consume), un échec (Fail : mort, départ, capture, anomalie)
+-- ou, au jalon M3, un coup de batte qui fait tomber le colis (Drop). Ce service ne remet jamais
+-- rien en place lui-même : le service d'origine réagit à OnCarryEnded (le braquage remet le colis
+-- sur son rayon, le vol PvP rend l'objet à son présentoir). Aucun remote ici : la prise arrive par
+-- GrabItem (StoreHeistService), la pose par PlaceBox (UnboxService).
+--
+-- Payload (Shared/Types/Carry) : { Kind = "NPCBox", Tier, Zone, Rarity, ItemId, StoreId, SlotId }
+-- pour un colis PNJ ; Kind = "PlayerItem" pour un objet volé à un joueur (M3, pas encore branché).
+-- Fabriqué par le serveur, vérifié par StartCarry, puis toujours repassé tel quel (même table) aux
+-- écouteurs : le lire, ne jamais le modifier.
+--
+-- API (serveur) :
+--   CarryService.StartCarry(player, payload) -> boolean
+--       Le joueur soulève `payload`. false, et rien ne change (le colis reste où il est), si le
+--       joueur porte déjà, n'a pas de personnage vivant avec une tête, ou si le payload est
+--       invalide ou déjà porté ou au sol (ces deux derniers cas avertissent, avec la pile d'appel).
+--   CarryService.IsCarrying(player) -> boolean
+--   CarryService.GetPayload(player) -> Payload?
+--   CarryService.Consume(player, reason?) -> Payload?
+--       Fin réussie (colis posé sur un établi, objet déposé) : visuels et malus retirés, puis
+--       OnCarryEnded(…, "Consumed", reason ou "Consumed"). Renvoie le payload, nil si le joueur ne
+--       portait rien. Ne regarde pas le type : l'appelant vérifie GetPayload(player).Kind avant.
+--   CarryService.Fail(player, reason) -> boolean
+--       Échec : le colis est perdu pour le porteur, OnCarryEnded(…, "Failed", reason). false si le
+--       joueur ne portait rien. Raisons posées ici : "Died" (mort) ; "Left" (départ) ;
+--       "CharacterRemoved" (personnage retiré sans mourir ; à une déconnexion, selon l'ordre des
+--       événements de Roblox, la raison est "Left" ou "CharacterRemoved") ; "Anomaly"
+--       (ReportAnomaly) ; "Bat" (Drop d'un objet volé). Les autres services passent la leur
+--       (GuardService : "Caught").
+--   CarryService.ReportAnomaly(player, detail) -> boolean
+--       Point d'accroche de l'anti-triche (9.6, AntiCheatService DEV-060) : écrit `detail` dans la
+--       sortie (warn), puis Fail(player, "Anomaly"). false si le joueur ne portait rien.
+--   CarryService.OnCarryStarted(listener) -> déconnexion
+--       listener(player, payload), une fois le colis sur la tête.
+--   CarryService.OnCarryEnded(listener) -> déconnexion
+--       listener(player, payload, result, reason), result = "Consumed", "Failed" ou "Dropped".
+--       Visuels, malus et attribut sont déjà retirés : IsCarrying(player) vaut false.
+--   Jalon M3, DEV-048 : prévu, pas encore branché ni testé en jeu.
+--   CarryService.Drop(player, position) -> string?
+--       Coup de batte sur un porteur hors zone safe (6.2) : le colis PNJ tombe au sol à `position`
+--       (point du sol, calculé par l'appelant), avec sa couleur, son halo et BB_Carry, dans
+--       Workspace/CarryDrops (attribut DropId). OnCarryEnded(…, "Dropped", "Bat"). Renvoie son
+--       dropId. Un objet volé à un joueur ne tombe jamais : Fail(player, "Bat"), il revole chez son
+--       propriétaire (6.2), et Drop renvoie nil.
+--   CarryService.PickUpDrop(player, dropId) -> boolean
+--       Ramassage d'un colis au sol (GrabDropped, 9.4) : le nouveau porteur reçoit le même payload
+--       (même rareté, même objet caché, 6.2), par StartCarry. L'appelant vérifie avant la distance,
+--       le temps de prise (Bat.DroppedGrabTime), la zone safe et les protections (6.4).
+--   CarryService.GetDrop(dropId) -> (Payload?, Vector3?)   payload et position d'un colis au sol.
+--   CarryService.OnDropExpired(listener) -> déconnexion
+--       listener(dropId, payload) quand un colis reste Bat.DroppedLifetime secondes au sol sans être
+--       ramassé (6.2 : 15 s) : StoreHeistService le remet alors sur son rayon.
+--
+-- Ce que voient les autres :
+--   - attribut Carrying du Player = Id de la rareté portée (« Legendary »), nil sinon. Le client le
+--     suit (CarryController : animations CarryIdle et CarryRun) ;
+--   - Model « CarryVisual » dans le personnage : BOX_<Tier> de Clément (ITM_<ItemId> pour un objet
+--     volé), cherché dans ReplicatedStorage/Assets, soudé à la tête par son CarryAttachment (10.4 :
+--     dessous, au centre ; à défaut, par le pivot du modèle, en bas au centre). Pièces nommées Tint
+--     teintes à la couleur de la rareté (colis seulement). Modèle pas encore livré : bloc V0 ;
+--   - halo de rareté (5.6) en objets natifs (lumière, particules, rayons), V0 en attendant les
+--     textures de Clément (MOD-041) : Commun aucun, Peu commun léger, Rare et Épique net,
+--     Légendaire et Mythique rayons, Secret arc-en-ciel (couleurs animées par CarryController,
+--     tag CarryRainbow posé par le code, hors du contrat de la section 2.1) ;
+--   - étiquette : copie de ReplicatedStorage/Assets/UI/BB_Carry (contrat 2.2 : ItemName, Rarity,
+--     Income), accrochée au sommet du colis (Attachment LabelPoint ; Clément règle la hauteur avec
+--     le StudsOffset de BB_Carry). Colis PNJ : ItemName = « Colis Luxe », Rarity = « LÉGENDAIRE »
+--     à la couleur de la rareté, Income caché (l'objet reste secret, 5.6). Objet volé : nom,
+--     rareté, $/s, et un contour rouge (6.1). BB_Carry pas encore livré : étiquette V0, rareté seule.
+
+local CollectionService = game:GetService("CollectionService")
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+
+local Shared = ReplicatedStorage.Shared
+local Balance = require(Shared.Config.Balance)
+local Bat = require(Shared.Config.Bat)
+local Items = require(Shared.Config.Items)
+local Rarities = require(Shared.Config.Rarities)
+local Zones = require(Shared.Config.Zones)
+local Find = require(Shared.Contract.Find)
+local UI = require(Shared.Contract.UI)
+local CarryTypes = require(Shared.Types.Carry)
+
+local StatsService = require(script.Parent.StatsService)
+
+type Payload = CarryTypes.Payload
+type EndResult = CarryTypes.EndResult
+type Rarity = Rarities.Rarity
+
+-- Noms du contrat (10.4 et 2.2).
+local ASSETS_FOLDER = "Assets"
+local BOX_PREFIX = "BOX_"
+local CARRY_ATTACHMENT = "CarryAttachment"
+local TINT = "Tint"
+local BB_CARRY = "BB_Carry"
+-- Noms posés par ce service (mêmes noms dans CarryController pour l'attribut et le tag).
+local CARRYING_ATTRIBUTE = "Carrying"
+local SPEED_KEY = "Carry"
+local RAINBOW_TAG = "CarryRainbow"
+local VISUAL_NAME = "CarryVisual"
+local WELD_NAME = "CarryWeld"
+local HALO_POINT = "HaloPoint"
+local LABEL_POINT = "LabelPoint"
+local DROPS_FOLDER = "CarryDrops"
+local DROP_ID_ATTRIBUTE = "DropId"
+
+-- V0 proposé, absent du doc : espace (studs) entre le haut de la tête et le dessous du colis.
+local HEAD_GAP = 0.25
+-- V0 proposé, absent du doc : blocs gris tant que BOX_<Tier> ou ITM_<ItemId> n'est pas livré.
+local PLACEHOLDER_BOX_SIZE = Vector3.new(2, 1.6, 2)
+local PLACEHOLDER_ITEM_SIZE = Vector3.new(1.2, 1.2, 1.2)
+-- V0 proposé, absent du doc : contour de l'objet volé (6.1), rouge « fermer » de la planche 10.6.
+local OUTLINE_COLOR = Color3.fromHex("#E8413C")
+-- V0 proposé, absent du doc : contour du texte de l'étiquette V0 (couleur de contour de 10.6).
+local TEXT_STROKE_COLOR = Color3.fromHex("#1B1B24")
+-- V0 proposé, absent du doc : texture de particules livrée avec Roblox (aucun asset publié).
+local SPARKLE_TEXTURE = "rbxasset://textures/particles/sparkles_main.dds"
+
+-- V0 proposé, absent du doc : intensité de chaque palier de halo (Rarities.Halo). Le doc dit
+-- seulement « plus denses à chaque palier » ; Commun (None) n'a rien.
+type HaloSpec = {
+	LightRange: number, -- studs
+	LightBrightness: number,
+	ParticleRate: number, -- particules par seconde
+	ParticleSize: number, -- studs
+	Rays: boolean, -- rayons de lumière autour du colis
+}
+local HALOS: { [string]: HaloSpec } = {
+	Light = { LightRange = 6, LightBrightness = 1, ParticleRate = 4, ParticleSize = 0.25, Rays = false },
+	Clear = { LightRange = 10, LightBrightness = 2, ParticleRate = 10, ParticleSize = 0.35, Rays = false },
+	Rays = { LightRange = 14, LightBrightness = 3, ParticleRate = 14, ParticleSize = 0.4, Rays = true },
+	Rainbow = { LightRange = 16, LightBrightness = 3, ParticleRate = 20, ParticleSize = 0.45, Rays = true },
+}
+-- V0 proposé, absent du doc : 8 rayons vers les coins d'un cube ; longueur et largeur en studs.
+local RAY_LENGTH = 2.6
+local RAY_WIDTH = 0.35
+local RAY_DIRECTIONS: { Vector3 } = {}
+for _, x in { -1, 1 } do
+	for _, y in { -1, 1 } do
+		for _, z in { -1, 1 } do
+			table.insert(RAY_DIRECTIONS, Vector3.new(x, y, z).Unit)
+		end
+	end
+end
+
+-- Revenu affiché comme dans le doc (6.1 : « 12,4 K$/s »).
+local INCOME_UNITS: { { Size: number, Suffix: string } } = {
+	{ Size = 1e9, Suffix = "Md" },
+	{ Size = 1e6, Suffix = "M" },
+	{ Size = 1e3, Suffix = "K" },
+}
+
+type Visual = {
+	model: Model,
+	anchor: BasePart, -- pièce soudée à la tête (celle du CarryAttachment), ancrée quand le colis est au sol
+	offset: CFrame, -- point posé sur la tête (dessous du colis), dans l'espace de anchor
+}
+
+type Carry = {
+	payload: Payload,
+	humanoid: Humanoid,
+	visual: Visual,
+	connections: { RBXScriptConnection },
+}
+
+type Drop = {
+	payload: Payload,
+	visual: Visual,
+	position: Vector3,
+	timer: thread,
+}
+
+type StartedListener = (player: Player, payload: Payload) -> ()
+type EndedListener = (player: Player, payload: Payload, result: EndResult, reason: string) -> ()
+type DropExpiredListener = (dropId: string, payload: Payload) -> ()
+
+local IS_STUDIO = RunService:IsStudio()
+
+local CarryService = {}
+
+local carries: { [Player]: Carry } = {}
+-- Payloads portés ou au sol, contre les doublons : la table elle-même pour un colis PNJ (un nouveau
+-- tirage est une nouvelle table), l'uid pour un objet volé (unique, 9.6).
+local held: { [any]: boolean } = {}
+local drops: { [string]: Drop } = {}
+local dropCount = 0
+local startedListeners: { StartedListener } = {}
+local endedListeners: { EndedListener } = {}
+local dropExpiredListeners: { DropExpiredListener } = {}
+local noticed: { [string]: boolean } = {}
+
+-- Renvoie une fonction qui retire `listener` de `list`.
+local function subscribe<T>(list: { T }, listener: T): () -> ()
+	table.insert(list, listener)
+	return function()
+		local index = table.find(list, listener)
+		if index then
+			table.remove(list, index)
+		end
+	end
+end
+
+-- Écrit un message une seule fois par serveur : avertissement (modèle mal formé), ou simple ligne
+-- en Studio (asset pas encore livré, c'est attendu tant que Clément n'a pas livré).
+local function once(key: string, message: string, isWarning: boolean)
+	if noticed[key] then
+		return
+	end
+	noticed[key] = true
+	if isWarning then
+		warn(message)
+	elseif IS_STUDIO then
+		print(message)
+	end
+end
+
+local function keyOf(payload: Payload): any
+	if payload.Kind == "PlayerItem" then
+		return "PlayerItem:" .. payload.ItemUid
+	end
+	return payload
+end
+
+local function describe(payload: Payload): string
+	if payload.Kind == "NPCBox" then
+		return `colis {payload.Tier} {payload.Rarity} ({payload.StoreId}, {payload.SlotId})`
+	end
+	return `objet {payload.ItemId} ({payload.Rarity}) du joueur {payload.VictimUserId}`
+end
+
+local function speedMultiplier(payload: Payload): number
+	if payload.Kind == "PlayerItem" then
+		return Balance.Carry.StolenItemSpeedMultiplier -- −25 % (6.1)
+	end
+	return Balance.Carry.NPCBoxSpeedMultiplier -- −10 % (5.6)
+end
+
+-- Vérification ---------------------------------------------------------------------
+
+local function isInteger(value: any): boolean
+	return type(value) == "number" and value == math.floor(value)
+end
+
+local function isText(value: any): boolean
+	return type(value) == "string" and value ~= ""
+end
+
+-- Raison du refus d'un payload, ou nil s'il est valide. Le payload vient toujours du serveur :
+-- un refus est un bogue du service appelant, à corriger.
+local function invalidReason(payload: any): string?
+	if type(payload) ~= "table" then
+		return `payload absent ({payload})`
+	end
+	local rarity = Rarities.ById[payload.Rarity]
+	if rarity == nil then
+		return `rareté inconnue ({payload.Rarity})`
+	end
+	local item = Items.ById[payload.ItemId]
+	if item == nil then
+		return `objet inconnu ({payload.ItemId})`
+	end
+	if item.Rarity ~= rarity.Id then
+		return `{item.Id} est {item.Rarity}, pas {rarity.Id}`
+	end
+	if payload.Kind == "NPCBox" then
+		if Balance.Heist.BoxTiers[payload.Tier] == nil then
+			return `type de colis inconnu ({payload.Tier})`
+		end
+		if not isInteger(payload.Zone) or Zones[payload.Zone] == nil then
+			return `zone inconnue ({payload.Zone})`
+		end
+		if item.Zone ~= nil and item.Zone ~= payload.Zone then
+			return `{item.Id} est un objet de la zone {item.Zone}, pas de la zone {payload.Zone}`
+		end
+		if not isText(payload.StoreId) or not isText(payload.SlotId) then
+			return "StoreId ou SlotId manquant"
+		end
+	elseif payload.Kind == "PlayerItem" then
+		if not isText(payload.ItemUid) then
+			return "ItemUid manquant"
+		end
+		local income = payload.Income
+		if type(income) ~= "number" or income ~= income or income < 0 or income == math.huge then
+			return `revenu invalide ({income})`
+		end
+		if not isInteger(payload.VictimUserId) or not isInteger(payload.SlotIndex) then
+			return "VictimUserId ou SlotIndex manquant"
+		end
+	else
+		return `Kind inconnu ({payload.Kind})`
+	end
+	return nil
+end
+
+-- Visuel ---------------------------------------------------------------------------
+
+-- Copie du modèle de Clément nommé `name`, cherché dans ReplicatedStorage/Assets (comme
+-- ToolService), ou nil s'il n'est pas livré.
+local function cloneAsset(name: string): Model?
+	local assets = ReplicatedStorage:FindFirstChild(ASSETS_FOLDER)
+	local asset = if assets then assets:FindFirstChild(name, true) else nil
+	if asset == nil then
+		once(name, `[CarryService] {name} pas encore livré dans ReplicatedStorage/{ASSETS_FOLDER} : bloc V0 à la place`, false)
+		return nil
+	end
+	if asset:IsA("Model") then
+		return asset:Clone() :: Model
+	elseif asset:IsA("BasePart") then
+		local model = Instance.new("Model")
+		local part = asset:Clone() :: BasePart
+		part.Parent = model
+		model.PrimaryPart = part
+		return model
+	end
+	once(name, `[CarryService] {asset:GetFullName()} n'est ni un Model ni une pièce : bloc V0 à la place`, true)
+	return nil
+end
+
+-- Pièce d'accroche d'un modèle et point (dans l'espace de cette pièce) qui se pose sur la tête :
+-- son CarryAttachment (10.4), sinon le pivot du modèle (en bas au centre, 10.1).
+local function anchorOf(model: Model): (BasePart?, CFrame)
+	local attachment = model:FindFirstChild(CARRY_ATTACHMENT, true)
+	if attachment and attachment:IsA("Attachment") then
+		local parent = attachment.Parent
+		if parent and parent:IsA("BasePart") then
+			return parent, attachment.CFrame
+		end
+	end
+	local root = model.PrimaryPart or (model:FindFirstChildWhichIsA("BasePart", true) :: BasePart?)
+	if root == nil then
+		return nil, CFrame.identity
+	end
+	local pivot: CFrame = root.CFrame:ToObjectSpace(model:GetPivot())
+	return root, pivot
+end
+
+-- Bloc gris V0 : une pièce Tint (teinte à la couleur de la rareté), le point d'accroche dessous.
+local function placeholder(size: Vector3): (Model, BasePart, CFrame)
+	local model = Instance.new("Model")
+	local part = Instance.new("Part")
+	part.Name = TINT
+	part.Size = size
+	part.Material = Enum.Material.SmoothPlastic
+	part.Parent = model
+	model.PrimaryPart = part
+	return model, part, CFrame.new(0, -size.Y / 2, 0)
+end
+
+-- Modèle du visuel, sa pièce d'accroche, le point d'accroche, et true si c'est le bloc V0.
+local function sourceModel(payload: Payload, assetName: string): (Model, BasePart, CFrame, boolean)
+	local model = cloneAsset(assetName)
+	if model then
+		local anchor, offset = anchorOf(model)
+		if anchor then
+			return model, anchor, offset, false
+		end
+		once(`{assetName}.anchor`, `[CarryService] {assetName} ne contient aucune pièce : bloc V0 à la place`, true)
+		model:Destroy()
+	end
+	local block, part, offset = placeholder(if payload.Kind == "NPCBox" then PLACEHOLDER_BOX_SIZE else PLACEHOLDER_ITEM_SIZE)
+	return block, part, offset, true
+end
+
+-- Pièces d'un visuel : sans script ni invite, jamais ancrées, sans collision, sans masse, ignorées
+-- par les rayons (caméra, ligne de vue des vigiles), toutes soudées à la pièce d'accroche.
+local function prepare(model: Model, anchor: BasePart)
+	for _, descendant in model:GetDescendants() do
+		if not descendant:IsDescendantOf(model) then
+			continue -- dans un objet déjà retiré
+		end
+		if descendant:IsA("LuaSourceContainer") or descendant:IsA("ProximityPrompt") or descendant:IsA("ClickDetector") then
+			descendant:Destroy() -- jamais de script dans un modèle (CLAUDE.md), aucune invite sur la tête
+		elseif descendant:IsA("BasePart") then
+			descendant.Anchored = false
+			descendant.CanCollide = false
+			descendant.CanTouch = false
+			descendant.CanQuery = false
+			descendant.Massless = true
+			if descendant ~= anchor then
+				local weld = Instance.new("WeldConstraint")
+				weld.Part0 = anchor
+				weld.Part1 = descendant
+				weld.Parent = descendant
+			end
+		end
+	end
+end
+
+-- Teint les pièces Tint (10.4). Renvoie leur nombre.
+local function tint(model: Model, color: Color3): number
+	local count = 0
+	for _, descendant in model:GetDescendants() do
+		if descendant.Name == TINT and descendant:IsA("BasePart") then
+			descendant.Color = color
+			count += 1
+		end
+	end
+	return count
+end
+
+local function colorSequence(rarity: Rarity): ColorSequence
+	local colors = rarity.RainbowColors
+	if rarity.Rainbow and colors and #colors >= 2 then
+		local keypoints: { ColorSequenceKeypoint } = {}
+		for index, color in colors do
+			table.insert(keypoints, ColorSequenceKeypoint.new((index - 1) / (#colors - 1), color))
+		end
+		return ColorSequence.new(keypoints)
+	end
+	return ColorSequence.new(rarity.Color)
+end
+
+-- Halo de rareté (5.6) autour de `center` (CFrame dans l'espace de anchor).
+local function addHalo(anchor: BasePart, center: CFrame, rarity: Rarity)
+	local spec = HALOS[rarity.Halo]
+	if spec == nil then
+		return -- Commun : aucun halo
+	end
+	local colors = colorSequence(rarity)
+	local point = Instance.new("Attachment")
+	point.Name = HALO_POINT
+	point.CFrame = center
+	point.Parent = anchor
+
+	local light = Instance.new("PointLight")
+	light.Color = rarity.Color
+	light.Range = spec.LightRange
+	light.Brightness = spec.LightBrightness
+	light.Shadows = false
+	light.Parent = point
+
+	local sparkles = Instance.new("ParticleEmitter")
+	sparkles.Name = "HaloSparkles"
+	sparkles.Texture = SPARKLE_TEXTURE
+	sparkles.Color = colors
+	sparkles.LightEmission = 1
+	sparkles.LightInfluence = 0
+	sparkles.Rate = spec.ParticleRate
+	sparkles.Lifetime = NumberRange.new(0.8, 1.4)
+	sparkles.Speed = NumberRange.new(1.5, 2.5)
+	sparkles.SpreadAngle = Vector2.new(180, 180)
+	sparkles.Size = NumberSequence.new(spec.ParticleSize, 0)
+	sparkles.Transparency = NumberSequence.new(0.1, 1)
+	sparkles.LockedToPart = true -- un halo qui suit le colis, pas une traînée
+	sparkles.Parent = point
+
+	if not spec.Rays then
+		return
+	end
+	for index, direction in RAY_DIRECTIONS do
+		local tip = Instance.new("Attachment")
+		tip.Name = `HaloRayTip_{index}`
+		tip.CFrame = center * CFrame.new(direction * RAY_LENGTH)
+		tip.Parent = anchor
+		local ray = Instance.new("Beam")
+		ray.Name = `HaloRay_{index}`
+		ray.Attachment0 = point
+		ray.Attachment1 = tip
+		ray.FaceCamera = true
+		ray.Color = colors
+		ray.LightEmission = 1
+		ray.LightInfluence = 0
+		ray.Width0 = RAY_WIDTH
+		ray.Width1 = 0
+		ray.Transparency = NumberSequence.new(0.15, 1)
+		ray.Segments = 1
+		ray.Parent = point
+	end
+end
+
+local function formatIncome(income: number): string
+	for _, unit in INCOME_UNITS do
+		if income >= unit.Size then
+			local value = income / unit.Size
+			local text = if value < 100 then string.format("%.1f", value) else string.format("%d", math.floor(value))
+			text = (string.gsub(text, "%.0$", ""))
+			text = (string.gsub(text, "%.", ","))
+			return `{text} {unit.Suffix}$/s`
+		end
+	end
+	return `{math.floor(income)} $/s`
+end
+
+-- Écrit `text` dans l'élément `name` de l'étiquette (TextLabel ou TextButton, cherché parmi les
+-- descendants), ou le cache si `text` est nil ; `color` colore le texte. Élément absent : rien
+-- (le ContractChecker le signale déjà).
+local function fill(gui: Instance, name: string, text: string?, color: Color3?)
+	local element = Find.path(gui, name)
+	if element == nil or not (element:IsA("TextLabel") or element:IsA("TextButton")) then
+		return
+	end
+	local label = element :: any
+	if text == nil then
+		label.Visible = false
+		return
+	end
+	label.Text = text
+	label.Visible = true
+	if color then
+		label.TextColor3 = color
+	end
+end
+
+-- Modèle BB_Carry de Clément (ReplicatedStorage/Assets/UI, contrat 2.2), ou nil.
+local function labelTemplate(): BillboardGui?
+	local folder: Instance? = ReplicatedStorage
+	for _, name in UI.BillboardFolder do
+		folder = if folder then folder:FindFirstChild(name) else nil
+	end
+	local template = if folder then folder:FindFirstChild(BB_CARRY) else nil
+	if template and template:IsA("BillboardGui") then
+		return template
+	end
+	local path = `ReplicatedStorage/{table.concat(UI.BillboardFolder, "/")}`
+	if template then
+		once(BB_CARRY, `[CarryService] {template:GetFullName()} n'est pas un BillboardGui : étiquette V0 à la place`, true)
+	else
+		once(BB_CARRY, `[CarryService] {BB_CARRY} pas encore livré dans {path} : étiquette V0 (rareté seule)`, false)
+	end
+	return nil
+end
+
+-- Étiquette V0 en attendant BB_Carry (UI-001) : la rareté seule, à sa couleur.
+local function placeholderLabel(): BillboardGui
+	local gui = Instance.new("BillboardGui")
+	gui.Size = UDim2.fromScale(4, 0.9)
+	gui.StudsOffsetWorldSpace = Vector3.new(0, 0.7, 0)
+	gui.LightInfluence = 0
+	local label = Instance.new("TextLabel")
+	label.Name = "Rarity"
+	label.Size = UDim2.fromScale(1, 1)
+	label.BackgroundTransparency = 1
+	label.Font = Enum.Font.FredokaOne
+	label.TextScaled = true
+	label.TextStrokeTransparency = 0
+	label.TextStrokeColor3 = TEXT_STROKE_COLOR
+	label.Parent = gui
+	return gui
+end
+
+-- Étiquette au sommet du visuel (`top`, CFrame dans l'espace de anchor).
+local function addLabel(anchor: BasePart, top: CFrame, payload: Payload, rarity: Rarity)
+	local point = Instance.new("Attachment")
+	point.Name = LABEL_POINT
+	point.CFrame = top
+	point.Parent = anchor
+
+	local template = labelTemplate()
+	local gui = if template then template:Clone() :: BillboardGui else placeholderLabel()
+	gui.Name = BB_CARRY
+	gui.Adornee = point
+	fill(gui, "Rarity", rarity.DisplayNameUpper, rarity.Color)
+	if payload.Kind == "NPCBox" then
+		-- L'objet reste caché jusqu'à l'ouverture (5.6) : le type de colis, pas de $/s.
+		fill(gui, "ItemName", `Colis {Balance.Heist.BoxTiers[payload.Tier].DisplayName}`)
+		fill(gui, "Income", nil)
+	else
+		fill(gui, "ItemName", Items.ById[payload.ItemId].DisplayName)
+		fill(gui, "Income", formatIncome(payload.Income))
+	end
+	gui.Parent = point
+end
+
+-- Contour rouge de l'objet volé, visible par tous (6.1).
+local function addOutline(model: Model)
+	local outline = Instance.new("Highlight")
+	outline.Name = "StolenOutline"
+	outline.FillTransparency = 1
+	outline.OutlineColor = OUTLINE_COLOR
+	outline.OutlineTransparency = 0
+	outline.DepthMode = Enum.HighlightDepthMode.Occluded
+	outline.Parent = model
+end
+
+-- Visuel complet d'un payload (modèle, teinte, halo, étiquette), pas encore placé ni parenté.
+local function buildVisual(payload: Payload): Visual
+	local rarity = Rarities.ById[payload.Rarity]
+	local assetName = if payload.Kind == "NPCBox" then BOX_PREFIX .. payload.Tier else Items.ById[payload.ItemId].Asset
+	local model, anchor, offset, isPlaceholder = sourceModel(payload, assetName)
+	model.Name = VISUAL_NAME
+	model.ModelStreamingMode = Enum.ModelStreamingMode.Atomic -- arrive en entier chez les clients
+	prepare(model, anchor)
+	-- Un objet volé garde ses couleurs ; seuls le colis et le bloc V0 prennent celle de la rareté.
+	if (payload.Kind == "NPCBox" or isPlaceholder) and tint(model, rarity.Color) == 0 then
+		once(`{assetName}.{TINT}`, `[CarryService] {assetName} : aucune pièce {TINT} (10.4), colis pas teint à la couleur de sa rareté`, true)
+	end
+	local height = model:GetExtentsSize().Y
+	addHalo(anchor, offset * CFrame.new(0, height / 2, 0), rarity)
+	addLabel(anchor, offset * CFrame.new(0, height, 0), payload, rarity)
+	if payload.Kind == "PlayerItem" then
+		addOutline(model)
+	end
+	if rarity.Rainbow then
+		CollectionService:AddTag(model, RAINBOW_TAG)
+	end
+	return { model = model, anchor = anchor, offset = offset }
+end
+
+-- Déplace tout le visuel pour que son point d'accroche arrive sur `target` (CFrame monde).
+local function place(visual: Visual, target: CFrame)
+	local model = visual.model
+	local anchorFromPivot = model:GetPivot():ToObjectSpace(visual.anchor.CFrame)
+	model:PivotTo(target * visual.offset:Inverse() * anchorFromPivot:Inverse())
+end
+
+-- Soude le point d'accroche du visuel juste au-dessus de la tête (5.6 : soudé à la tête).
+local function weldToHead(visual: Visual, head: BasePart)
+	local headTop = CFrame.new(0, head.Size.Y / 2 + HEAD_GAP, 0)
+	place(visual, head.CFrame * headTop)
+	local weld = Instance.new("Weld")
+	weld.Name = WELD_NAME
+	weld.Part0 = head
+	weld.Part1 = visual.anchor
+	weld.C0 = headTop
+	weld.C1 = visual.offset
+	weld.Parent = visual.anchor
+end
+
+-- Portage -------------------------------------------------------------------------
+
+-- Finit le portage en cours : retire visuel, malus et attribut, puis prévient les écouteurs.
+-- Renvoie le payload, ou nil si le joueur ne portait rien.
+local function finish(player: Player, result: EndResult, reason: string): Payload?
+	local carry = carries[player]
+	if carry == nil then
+		return nil
+	end
+	carries[player] = nil
+	for _, connection in carry.connections do
+		connection:Disconnect()
+	end
+	carry.visual.model:Destroy()
+	if result ~= "Dropped" then
+		held[keyOf(carry.payload)] = nil -- un colis tombé au sol reste tenu (Drop)
+	end
+	player:SetAttribute(CARRYING_ATTRIBUTE, nil)
+	StatsService.SetSpeedModifier(player, SPEED_KEY, nil)
+	if IS_STUDIO then
+		print(`[CarryService] {player.Name} : fin du portage, {result} ({reason})`)
+	end
+	for _, listener in table.clone(endedListeners) do
+		task.spawn(listener, player, carry.payload, result, reason)
+	end
+	return carry.payload
+end
+
+-- Range l'outil tenu dans le Backpack (5.6 : ni outil ni batte en main pendant le portage).
+local function stowTools(player: Player)
+	local carry = carries[player]
+	if carry and carry.humanoid.Parent ~= nil then
+		carry.humanoid:UnequipTools()
+	end
+end
+
+function CarryService.StartCarry(player: Player, payload: Payload): boolean
+	if carries[player] ~= nil or player.Parent ~= Players then
+		return false
+	end
+	local problem = invalidReason(payload)
+	if problem then
+		warn(debug.traceback(`[CarryService] StartCarry({player.Name}) refusé : {problem}`, 2))
+		return false
+	end
+	if held[keyOf(payload)] then
+		warn(debug.traceback(`[CarryService] StartCarry({player.Name}) refusé : {describe(payload)} déjà porté ou au sol`, 2))
+		return false
+	end
+	local character = player.Character
+	local humanoid = if character then character:FindFirstChildOfClass("Humanoid") else nil
+	local headInstance = if character then character:FindFirstChild("Head") else nil
+	if
+		character == nil
+		or humanoid == nil
+		or humanoid.Health <= 0
+		or headInstance == nil
+		or not headInstance:IsA("BasePart")
+	then
+		return false -- pas de personnage vivant : le colis reste où il est
+	end
+	local head = headInstance :: BasePart
+
+	local visual = buildVisual(payload)
+	weldToHead(visual, head)
+	visual.model.Parent = character
+
+	local carry: Carry = { payload = payload, humanoid = humanoid, visual = visual, connections = {} }
+	carries[player] = carry
+	held[keyOf(payload)] = true
+	player:SetAttribute(CARRYING_ATTRIBUTE, payload.Rarity)
+	StatsService.SetSpeedModifier(player, SPEED_KEY, speedMultiplier(payload))
+	humanoid:UnequipTools()
+
+	local connections = carry.connections
+	table.insert(
+		connections,
+		humanoid.Died:Connect(function()
+			finish(player, "Failed", "Died")
+		end)
+	)
+	table.insert(
+		connections,
+		character.AncestryChanged:Connect(function()
+			if not character:IsDescendantOf(Workspace) then
+				finish(player, "Failed", if player.Parent == Players then "CharacterRemoved" else "Left")
+			end
+		end)
+	)
+	table.insert(
+		connections,
+		character.ChildAdded:Connect(function(child: Instance)
+			if child:IsA("Tool") then
+				task.defer(stowTools, player) -- pas pendant l'événement : Roblox refuse de changer le parent
+			end
+		end)
+	)
+
+	if IS_STUDIO then
+		print(`[CarryService] {player.Name} soulève : {describe(payload)}`)
+	end
+	for _, listener in table.clone(startedListeners) do
+		task.spawn(listener, player, payload)
+	end
+	return true
+end
+
+function CarryService.IsCarrying(player: Player): boolean
+	return carries[player] ~= nil
+end
+
+function CarryService.GetPayload(player: Player): Payload?
+	local carry = carries[player]
+	return if carry then carry.payload else nil
+end
+
+function CarryService.Consume(player: Player, reason: string?): Payload?
+	return finish(player, "Consumed", reason or "Consumed")
+end
+
+function CarryService.Fail(player: Player, reason: string): boolean
+	local text = if type(reason) == "string" and reason ~= "" then reason else "Unknown"
+	return finish(player, "Failed", text) ~= nil
+end
+
+function CarryService.ReportAnomaly(player: Player, detail: string): boolean
+	if carries[player] == nil then
+		return false
+	end
+	warn(`[CarryService] anomalie anti-triche de {player.Name} ({detail}) : colis rendu`)
+	return CarryService.Fail(player, "Anomaly")
+end
+
+function CarryService.OnCarryStarted(listener: StartedListener): () -> ()
+	return subscribe(startedListeners, listener)
+end
+
+function CarryService.OnCarryEnded(listener: EndedListener): () -> ()
+	return subscribe(endedListeners, listener)
+end
+
+-- Colis au sol (jalon M3, DEV-048 : prévu, pas encore branché) ---------------------
+
+local function dropsFolder(): Instance
+	local existing = Workspace:FindFirstChild(DROPS_FOLDER)
+	if existing then
+		return existing
+	end
+	local folder = Instance.new("Folder")
+	folder.Name = DROPS_FOLDER
+	folder.Parent = Workspace
+	return folder
+end
+
+local function expire(dropId: string)
+	local drop = drops[dropId]
+	if drop == nil then
+		return
+	end
+	drops[dropId] = nil
+	held[keyOf(drop.payload)] = nil
+	drop.visual.model:Destroy()
+	if IS_STUDIO then
+		print(`[CarryService] {dropId} : {Bat.DroppedLifetime} s au sol sans preneur, rendu ({describe(drop.payload)})`)
+	end
+	for _, listener in table.clone(dropExpiredListeners) do
+		task.spawn(listener, dropId, drop.payload)
+	end
+end
+
+function CarryService.Drop(player: Player, position: Vector3): string?
+	local carry = carries[player]
+	if carry == nil then
+		return nil
+	end
+	local payload = carry.payload
+	if payload.Kind ~= "NPCBox" then
+		CarryService.Fail(player, "Bat") -- 6.2 : l'objet revole vers le présentoir de son propriétaire
+		return nil
+	end
+	dropCount += 1
+	local dropId = `Drop_{dropCount}`
+	local visual = buildVisual(payload)
+	place(visual, CFrame.new(position))
+	visual.anchor.Anchored = true
+	visual.model.Name = dropId
+	visual.model:SetAttribute(DROP_ID_ATTRIBUTE, dropId)
+	visual.model.Parent = dropsFolder()
+	drops[dropId] = {
+		payload = payload,
+		visual = visual,
+		position = position,
+		timer = task.delay(Bat.DroppedLifetime, expire, dropId),
+	}
+	finish(player, "Dropped", "Bat") -- le colis reste tenu : il est au sol
+	return dropId
+end
+
+function CarryService.PickUpDrop(player: Player, dropId: string): boolean
+	local drop = drops[dropId]
+	if drop == nil or carries[player] ~= nil then
+		return false
+	end
+	-- Retiré du sol avant StartCarry (jamais deux exemplaires), remis si StartCarry refuse.
+	local key = keyOf(drop.payload)
+	drops[dropId] = nil
+	held[key] = nil
+	if not CarryService.StartCarry(player, drop.payload) then
+		drops[dropId] = drop
+		held[key] = true
+		return false
+	end
+	task.cancel(drop.timer)
+	drop.visual.model:Destroy()
+	return true
+end
+
+function CarryService.GetDrop(dropId: string): (Payload?, Vector3?)
+	local drop = drops[dropId]
+	if drop == nil then
+		return nil, nil
+	end
+	return drop.payload, drop.position
+end
+
+function CarryService.OnDropExpired(listener: DropExpiredListener): () -> ()
+	return subscribe(dropExpiredListeners, listener)
+end
+
+function CarryService.Init()
+	Players.PlayerRemoving:Connect(function(player: Player)
+		finish(player, "Failed", "Left")
+	end)
+end
+
+return CarryService
