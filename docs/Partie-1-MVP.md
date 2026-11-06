@@ -904,7 +904,7 @@ Le MVP sort le vendredi 18 décembre 2026, six semaines après le démarrage du 
 | MOD-015 | Parcelle niveau 1 « Stand » | Tous les points du contrat 10.4, y compris ceux prévus pour la Partie 2 | M1 | P0 | DEV-003 | À faire |
 | MOD-016 | Tapis de course et banc | `UsePoint` et `Belt`, ≤ 3 000 triangles chacun | M1 | P0 | MOD-001 | À faire |
 | MOD-017 | Accessoires vigile zone 1 | Casquette + gilet sur rig R15 standard | M1 | P0 | MOD-001 | À faire |
-| UI-001 | Écrans gris : `UI_HUD`, `UI_Unbox`, `BB_WindowHP`, `BB_OpenTimer`, `BB_Item`, `BB_Carry` | Noms du contrat 2.2, zéro erreur du ContractChecker | M1 | P0 | DEV-005 | En cours |
+| UI-001 | Écrans gris : `UI_HUD`, `UI_Unbox`, `BB_WindowHP`, `BB_OpenTimer`, `BB_Item`, `BB_Carry` | Noms du contrat 2.2, zéro erreur du ContractChecker | M1 | P0 | DEV-005 | En revue |
 | MOD-020 | Zone 2 : Jouets + variante Confiserie | Contrat 10.4 complet | M2 | P0 | MOD-012 | À faire |
 | MOD-021 | Zone 3 : Électronique + variante Jeux vidéo | Contrat 10.4 complet | M2 | P0 | MOD-012 | À faire |
 | MOD-022 | Zone 4 : Bijouterie + variante Horlogerie | Contrat 10.4 complet | M2 | P0 | MOD-012 | À faire |
