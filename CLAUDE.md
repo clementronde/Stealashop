@@ -16,6 +16,8 @@ Ce fichier est lu par Claude à chaque session ouverte dans ce dossier. Il dit c
 | Clément | Modèles 3D, map, **toute l'UI** (ScreenGuis), **toutes les animations** (joueurs, vigiles, PNJ), icônes, textures | Modélise et vérifie dans Blender, importe et range dans Studio, pose tags et attributs, construit les écrans d'UI, prépare et vérifie les animations, vérifie le contrat |
 | Ironix | Code Luau (serveur + client), intégration, publication | Écrit et relit le code dans `src/`, branche l'UI et les animations de Clément, teste |
 
+Le jeu, ses places DEV et PROD et tous ses assets (modèles, animations, sons) appartiennent au **groupe Roblox du studio** : Clément en est propriétaire, Ironix y a un rôle « Dev ». Tout se publie au nom du groupe, jamais sur un compte perso. Le groupe servira aussi aux jeux suivants.
+
 Le parcours pas à pas de Clément avec Claude est dans [docs/claude/Etapes-Clement.md](docs/claude/Etapes-Clement.md).
 
 ## Sources de vérité
@@ -69,7 +71,7 @@ Le code retrouve tout par **tags** et par **noms convenus**, jamais par chemin.
 - Rig R15 standard pour tout (joueurs, vigiles, vendeurs). Rigs de travail dans `ServerStorage/AnimRigs`.
 - **Où** : objets `Animation` dans un dossier `Animations`. Modèle animé (vigile, vigile de nuit, vendeur) : dans le modèle, `<Modèle>/Animations/<Nom>` (`Idle`, `Walk`, `Run`, `Catch`, `Tired` ; vendeur : `Idle`, `Wave`). Joueur : `ReplicatedStorage/Assets/Animations/Player/<Nom>` (`HitWindow`, `HitWindowHeavy`, `Grab`, `CarryIdle`, `CarryRun`, `Place`, `TreadmillRun`, `BenchLift`, `Unbox`, `Celebrate`, `SwingBat`, `Stunned`, `Knockback`).
 - **Aucun script dans un modèle animé** : il contient un Humanoid avec un `Animator` et son dossier `Animations` ; c'est le code d'Ironix qui joue les animations, déplacements compris.
-- **Publication** : depuis le compte qui possède le jeu, aujourd'hui celui de Clément. Une animation publiée par un autre compte ne se joue pas (« Failed to load animation »). Si le jeu passe sur un groupe, tout se republie au nom du groupe.
+- **Publication** : au nom du groupe Roblox du studio, propriétaire du jeu, par Clément ou par Ironix. Une animation publiée sur un compte perso ne se joue pas dans le jeu (« Failed to load animation »).
 - **Mettre à jour** : remplacer l'`AnimationId` de l'objet existant, ne jamais le supprimer ni le renommer.
 - Clément règle dans chaque animation la priorité (Idle, Movement, Action), la boucle et les marqueurs (`Impact`, `Grab`, `Release`, `Top`, `Open`, `Land`) posés sur l'image clé concernée.
 - Ironix charge l'animation par son nom (jamais un ID dans le code) et accroche sons et effets aux marqueurs. Il ne retouche jamais une animation.

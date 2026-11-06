@@ -6,11 +6,12 @@ Claude lit [CLAUDE.md](../../CLAUDE.md) au démarrage : il connaît déjà les n
 
 ## Avant de commencer (une seule fois)
 
-1. Ouvre Claude dans le dossier de ce dépôt, pour qu'il lise `CLAUDE.md`.
-2. Ouvre la place DEV en Team Create (créée par Ironix, tâche DEV-001).
-3. Connecte le MCP Roblox Studio (plugin actif dans Studio) et le MCP Blender (add-on activé dans Blender).
-4. Dans Blender, active l'extension **Cell Fracture** (pour les vitres).
-5. Vérifie que tout répond :
+1. Crée le groupe Roblox du studio, avec un nom de studio et pas le nom du jeu. Ajoute un rôle « Dev » qui peut modifier les jeux du groupe et publier des assets, et mets-y Ironix (L-001 dans la [liaison](../Liaison-Code-Visuel.md)).
+2. Ouvre Claude dans le dossier de ce dépôt, pour qu'il lise `CLAUDE.md`.
+3. Ouvre la place DEV du groupe en Team Create (tâche DEV-001).
+4. Connecte le MCP Roblox Studio (plugin actif dans Studio) et le MCP Blender (add-on activé dans Blender).
+5. Dans Blender, active l'extension **Cell Fracture** (pour les vitres).
+6. Vérifie que tout répond :
 
    > Liste ce que tu vois dans Workspace et dans StarterGui de la place ouverte dans Studio, puis dis-moi quels objets sont dans la scène Blender.
 
@@ -194,7 +195,7 @@ Toutes les animations suivent le contrat de la section 2.4 du doc partagé (le m
 
 - **Joueur** : objets `Animation` dans `ReplicatedStorage/Assets/Animations/Player/`.
 - **Vigiles et vendeurs** : dans le modèle lui-même, `<Modèle>/Animations/`. Le modèle n'a besoin d'aucun script : un Humanoid avec un `Animator`, plus son dossier `Animations`, suffit. C'est le code d'Ironix qui fait marcher, courir et attraper le vigile en jouant ces animations.
-- **Publication** : depuis ton compte, puisque le jeu t'appartient. Chaque animation publiée va dans le registre de la liaison (nom, emplacement, ID).
+- **Publication** : au nom du groupe du studio, jamais depuis ton compte perso, sinon l'animation ne se joue pas dans le jeu. Chaque animation publiée va dans le registre de la liaison (nom, emplacement, ID).
 
 ### Étape A1 · ANI-001 · Rig et animation test (M0)
 
@@ -202,7 +203,7 @@ Toutes les animations suivent le contrat de la section 2.4 du doc partagé (le m
 
   > Dans la place DEV, ajoute un rig R15 standard nommé `Rig_Player` dans `ServerStorage/AnimRigs`, et un deuxième nommé `Rig_Guard` habillé avec les accessoires du vigile de la zone 1. Crée le dossier `ReplicatedStorage/Assets/Animations/Player`.
 
-- **Toi** : anime un geste test d'une seconde sur `Rig_Player`, ajoute un marqueur `Test`, puis publie-le depuis ton compte.
+- **Toi** : anime un geste test d'une seconde sur `Rig_Player`, ajoute un marqueur `Test`, puis publie-le au nom du groupe.
 - **Consigne** :
 
   > Crée l'objet `Test` dans `ReplicatedStorage/Assets/Animations/Player` avec l'identifiant `<ID>`, puis pendant un test, joue-la sur mon personnage pour vérifier qu'elle se lance bien dans le jeu. Ajoute la ligne au registre de la liaison.
@@ -217,7 +218,7 @@ Toutes les animations suivent le contrat de la section 2.4 du doc partagé (le m
 
   > Pour `<Nom>`, propose-moi un découpage d'après la section 2.4 : les poses clés, la durée totale, la priorité, la boucle, et à quelle image poser le marqueur.
 
-- **Toi** : tu animes, tu règles priorité, boucle et marqueurs, tu publies depuis ton compte.
+- **Toi** : tu animes, tu règles priorité, boucle et marqueurs, tu publies au nom du groupe.
 - **Après publication** :
 
   > Crée ou mets à jour ces objets `Animation` : `<emplacement>/<Nom>` = `<ID>`, … Vérifie chacun contre le tableau 2.4 (nom, priorité, boucle, marqueurs), puis ajoute-les au registre de la liaison.

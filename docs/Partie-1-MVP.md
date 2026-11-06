@@ -47,13 +47,13 @@ Ironix possède tout ce qui s'exécute (code, systèmes, intégration, publicati
 
 | Domaine | Propriétaire | Livrable attendu | L'autre fournit |
 | --- | --- | --- | --- |
-| Code Luau serveur + client | Ironix | Scripts dans Git, synchronisés par Rojo | — |
+| Code Luau serveur + client | Ironix | Scripts dans Git, synchronisés par Script Sync | — |
 | Greybox de la map (blocs) | Ironix | Map jouable en blocs gris, distances finales | Clément valide les volumes |
 | Map finale, parcelles, magasins PNJ | Clément | Modèles dans Team Create avec les tags et noms du contrat (sections 2.1 et 10.4) | Ironix branche les scripts |
 | Objets, colis, outils, batte | Clément | MeshParts nommés + attachments | Ironix fournit la liste et les raretés |
 | Vitres pré-fracturées + fissures | Clément | 3 tailles de vitre fracturée + 3 textures de fissure | Ironix code la casse |
 | Vigiles | Clément | Accessoires sur rig R15 standard (pas de rig custom) | Ironix code l'IA |
-| Animations (joueurs, vigiles, PNJ) | Clément | Objets `Animation` publiés depuis le compte qui possède le jeu, avec priorité et marqueurs (contrat 2.4) | Ironix les joue et branche sons et effets sur les marqueurs |
+| Animations (joueurs, vigiles, PNJ) | Clément | Objets `Animation` publiés au nom du groupe, avec priorité et marqueurs (contrat 2.4) | Ironix les joue et branche sons et effets sur les marqueurs |
 | UI, tous les écrans | Clément | ScreenGuis dans StarterGui, sans aucun script, noms du contrat UI (section 2.2) | Ironix code la logique et les animations d'UI |
 | Icônes, auras, trails (visuel) | Clément | Rendus 3D des objets, textures de particules et de trails | Ironix intègre les effets |
 | VFX de casse et de déballage | Ironix | Séquences intégrées (sections 5.4 et 5.7) | Clément fait les textures |
@@ -65,8 +65,8 @@ Toutes les animations sont faites par Clément, selon le contrat de la section 2
 
 **Outils et emplacements**
 
-- **Places Roblox** : une place DEV (Team Create, on casse ce qu'on veut) et une place PROD (publiée uniquement par Ironix).
-- **Code** : GitHub privé + Rojo. Branche `main` protégée, une branche par tâche nommée avec l'ID (`dev/DEV-018-vigile`).
+- **Places Roblox** : une place DEV (Team Create, on casse ce qu'on veut) et une place PROD (publiée uniquement par Ironix). Les deux appartiennent au groupe Roblox du studio, dont Clément est propriétaire ; Ironix y a un rôle « Dev ».
+- **Code** : GitHub + Script Sync de Studio (section 2.1). Un changement validé à deux part directement sur `main`, sans branche ni PR ; avant de pousser, on récupère toujours les derniers commits de l'autre (méthode de la liaison, section 3.4).
 - **Sources 3D** : fichiers `.blend` dans un drive partagé, `/Art/<Catégorie>/<Nom>.blend`, export `.fbx` à côté.
 - **Livraison d'un modèle** : Clément dépose dans `Workspace/_INBOX_CLEMENT`, passe la tâche en « En revue ». Ironix vérifie le contrat d'intégration, puis range dans `ReplicatedStorage/Assets/<Catégorie>`.
 - **Communication** : Discord, un salon par pôle + `#bugs`. Ce doc est la source de vérité : une décision non écrite ici n'existe pas.
@@ -88,7 +88,7 @@ Un dossier de Studio = un seul propriétaire. Le code trouve les choses par tags
 
 | Emplacement dans Studio | Propriétaire | Outil | Règle |
 | --- | --- | --- | --- |
-| `ServerScriptService/Server`, `StarterPlayerScripts/Client`, `ReplicatedStorage/Shared` | Ironix | Rojo (fichiers dans Git) | Clément n'y met jamais rien : Rojo efface tout ce qui n'est pas dans Git |
+| `ServerScriptService/Server`, `StarterPlayerScripts/Client`, `ReplicatedStorage/Shared` | Ironix | Script Sync (fichiers dans Git) | Personne d'autre n'y crée ni n'y modifie rien : la synchro marche dans les deux sens et tout changement part sur le disque d'Ironix |
 | `Workspace/Map` | Clément | Team Create | Ironix ne déplace rien, il lit les tags et les attributs |
 | `ReplicatedStorage/Assets` (modèles, UI, animations), `ServerStorage/Assets` | Clément, validé par Ironix | Team Create | Modèles finis nommés selon 10.3 et 10.4, animations selon 2.4 |
 | `ServerStorage/AnimRigs`, `ServerStorage/RBX_ANIMSAVES` | Clément | Éditeur d'animation | Rigs et brouillons d'animation ; Ironix n'y touche pas |
@@ -97,31 +97,9 @@ Un dossier de Studio = un seul propriétaire. Le code trouve les choses par tags
 | `Workspace/_INBOX_CLEMENT` | Clément | Team Create | Zone de dépôt, vidée par Ironix après validation |
 | `Workspace/_SANDBOX_IRONIX` | Ironix | Team Create | Tests temporaires, jamais publiés |
 
-**Rojo ne gère que les dossiers de code.** Le fichier `default.project.json` d'Ironix ne déclare ni `Workspace` ni `StarterGui`, et protège le reste de `ReplicatedStorage` :
+**Script Sync ne relie que les dossiers de code.** Dans le Studio d'Ironix, chacun des 3 dossiers est relié à son dossier sur disque : `ReplicatedStorage/Shared` et `src/shared`, `ServerScriptService/Server` et `src/server`, `StarterPlayer/StarterPlayerScripts/Client` et `src/client`. La synchro marche dans les deux sens : un script créé ou modifié dans ces dossiers depuis Studio part sur le disque d'Ironix, donc personne d'autre n'y touche. Le reste de la place (map, assets, UI, animations) n'est jamais touché. Seul Ironix synchronise, depuis son PC.
 
-```json
-{
-  "name": "StealAShop",
-  "tree": {
-    "$className": "DataModel",
-    "ReplicatedStorage": {
-      "$ignoreUnknownInstances": true,
-      "Shared": { "$path": "src/shared" }
-    },
-    "ServerScriptService": {
-      "$ignoreUnknownInstances": true,
-      "Server": { "$path": "src/server" }
-    },
-    "StarterPlayer": {
-      "$ignoreUnknownInstances": true,
-      "StarterPlayerScripts": {
-        "$ignoreUnknownInstances": true,
-        "Client": { "$path": "src/client" }
-      }
-    }
-  }
-}
-```
+**Noms des fichiers imposés par Script Sync** : `.legacy.luau` = `Script`, `.local.luau` = `LocalScript`, `.luau` = `ModuleScript`. Points d'entrée : `src/server/Main.legacy.luau` et `src/client/Main.local.luau`.
 
 **Tags et attributs plutôt que chemins.** Clément pose les tags avec l'éditeur de tags de Studio (fenêtre Propriétés) et les attributs (`Zone = 3`, `Tier = "Luxe"`). Tags utilisés par le code : `NPCStore`, `PlayerPlot`, `Treadmill`, `Bench`, `WeaponShop`, `AuraShop`, `RobuxShop`, `SafeZone`, `ZoneGate`, `CashPad`, `NightWall`, `NightPatrol`.
 
@@ -130,7 +108,7 @@ Un dossier de Studio = un seul propriétaire. Le code trouve les choses par tags
 **Le circuit d'une journée**
 
 1. Clément travaille dans la place DEV en Team Create (map, assets, UI).
-2. Ironix code en local ; `rojo serve` est connecté à la même place DEV, ses scripts arrivent en direct.
+2. Ironix code en local ; `Script Sync` relie son dossier src à la place DEV, ses scripts arrivent en direct ; lui seul synchronise.
 3. Avant de livrer, Clément lance un test, vérifie le vérificateur de contrat et passe la tâche en « En revue ».
 4. Le jeudi, playtest à deux sur DEV.
 5. Seul Ironix publie de DEV vers PROD, uniquement après un playtest réussi.
@@ -190,7 +168,7 @@ Clément fait toutes les animations (joueurs, vigiles, PNJ) ; Ironix décide qua
 
 - **Outil** : éditeur d'animation de Studio, sur un rig R15 standard. Une animation complexe peut se faire dans Blender sur un rig R15, puis s'importer en FBX dans l'éditeur.
 - **Où** : un dossier `Animations` d'objets `Animation`. Pour un modèle animé (vigile, vigile de nuit, vendeur), dans le modèle lui-même : `<Modèle>/Animations/<Nom>`. Pour le joueur : `ReplicatedStorage/Assets/Animations/Player/<Nom>`. Rigs de travail dans `ServerStorage/AnimRigs`, brouillons de l'éditeur dans `ServerStorage/RBX_ANIMSAVES`.
-- **Publication** : depuis le compte qui possède le jeu, aujourd'hui celui de Clément. Une animation publiée par un autre compte ne se joue pas (personnage figé, « Failed to load animation » dans la sortie). Si le jeu passe un jour sur un groupe, toutes les animations seront republiées au nom du groupe.
+- **Publication** : au nom du groupe Roblox du studio, propriétaire du jeu (décidé le 6 novembre 2026), par Clément ou par Ironix. Une animation publiée sur un compte perso ne se joue pas dans le jeu (personnage figé, « Failed to load animation » dans la sortie).
 - **Mettre à jour** : remplacer l'`AnimationId` de l'objet existant. Ne jamais supprimer ni renommer l'objet : le code ne le retrouverait plus.
 - **Côté code** : Ironix cherche l'objet `Animation` par son nom, jamais un ID écrit dans le code, et accroche sons et effets aux marqueurs. Il ne retouche jamais une animation ; si le rythme ne va pas, il le demande.
 - **Réglé par Clément** : la priorité, la boucle et les marqueurs du tableau ci-dessous, posés sur l'image clé concernée. `CarryIdle` et `CarryRun` n'animent que le haut du corps, en priorité Action, pour se mélanger à la marche.
@@ -226,7 +204,7 @@ Clément fait toutes les animations (joueurs, vigiles, PNJ) ; Ironix décide qua
 
 | ID | Tâche | Fini quand… | Qui | Jalon | Prio | Statut |
 | --- | --- | --- | --- | --- | --- | --- |
-| ANI-001 | Rig R15 de travail + une animation test publiée depuis le compte qui possède le jeu | L'animation test se joue dans la place DEV et figure dans le registre de la liaison | Clément | M0 | P0 | À faire |
+| ANI-001 | Rig R15 de travail + une animation test publiée au nom du groupe | L'animation test se joue dans la place DEV et figure dans le registre de la liaison | Clément | M0 | P0 | À faire |
 | DEV-006 | Chargement des animations par leur nom (dossiers `Animations` des modèles et `Assets/Animations/Player`), préchargement, écoute des marqueurs ; le ContractChecker vérifie les 20 noms | L'animation test se lance et son marqueur déclenche un son | Ironix | M0 | P0 | À faire |
 | ANI-010 | Braquage : `HitWindow`, `HitWindowHeavy`, `Grab`, `CarryIdle`, `CarryRun`, `Place` | Marqueurs posés, colis fluide à l'arrêt comme en courant | Clément | M1 | P0 | À faire |
 | ANI-011 | Base : `TreadmillRun`, `BenchLift`, `Unbox` | Synchronisées avec le tapis, le banc et le couvercle du colis | Clément | M1 | P0 | À faire |
@@ -593,7 +571,7 @@ Le serveur fait autorité sur tout ce qui touche à l'argent, aux PV, aux stats 
 
 ### 9.1 Stack
 
-- **Langage** : Luau en mode strict (`--!strict`), Rojo 7, GitHub, Wally pour les dépendances.
+- **Langage** : Luau en mode strict (`--!strict`), Script Sync de Studio (à la place de Rojo), GitHub, Wally pour les dépendances.
 - **Sauvegarde** : ProfileStore (verrou de session, pas de duplication entre serveurs).
 - **Réseau** : RemoteEvent et UnreliableRemoteEvent natifs, tous déclarés dans un module `Net`, avec validation de type et limite de débit par remote.
 - **Tests** : mode Studio « Serveur + 2 clients » obligatoire pour toute fonctionnalité PvP.
@@ -601,18 +579,18 @@ Le serveur fait autorité sur tout ce qui touche à l'argent, aux PV, aux stats 
 ### 9.2 Arborescence
 
 ```text
-src/
-  server/                 -> ServerScriptService
-    Main.server.luau      (charge les services dans l'ordre)
+src/                        (dossier F:\StealAShop\src d'Ironix, relié par Script Sync)
+  server/                   -> ServerScriptService/Server
+    Main.legacy.luau        (Script : charge les services dans l'ordre)
     Services/
-  client/                 -> StarterPlayerScripts
-    Main.client.luau
+  client/                   -> StarterPlayer/StarterPlayerScripts/Client
+    Main.local.luau         (LocalScript)
     Controllers/
-  shared/                 -> ReplicatedStorage/Shared
+  shared/                   -> ReplicatedStorage/Shared
     Config/   Balance, Zones, Tools, Items, Upgrades, Defenses, Products
     Net/      définition de tous les remotes
     Types/
-Modeles (Team Create)     -> ReplicatedStorage/Assets/<Categorie>
+Modeles, UI, animations (Team Create, Clement) -> ReplicatedStorage/Assets/<Categorie>
 ```
 
 ### 9.3 Services serveur
@@ -789,7 +767,7 @@ Le MVP sort le vendredi 18 décembre 2026, six semaines après le démarrage du 
 
 **Critères de sortie** : on ne passe pas au jalon suivant tant qu'ils ne sont pas tenus.
 
-1. **M0** : Clément édite la map en Team Create, le code se synchronise par Rojo sans toucher à son travail, la sauvegarde fonctionne, le cube de test arrive à la bonne échelle.
+1. **M0** : Clément édite la map en Team Create, le code se synchronise par Script Sync sans toucher à son travail, la sauvegarde fonctionne, le cube de test arrive à la bonne échelle.
 2. **M1** : un joueur fait toute la boucle en zone 1 (casse, vol, vigile, attente, ouverture, présentoir, caisse) avec les vrais modèles de la Supérette et de la vitre, et les écrans gris de Clément branchés.
 3. **M2** : zones 1 à 6 jouables ; outils, auras, trails et améliorations achetables ; un testeur atteint la zone 3 en moins d'1 h.
 4. **Go / no-go du 6 décembre** : si les magasins des zones 5 et 6 ne sont pas prêts, on lance avec les zones 1 à 4 et on ajoute 5 et 6 dans la MAJ 1. La date du 18 décembre ne bouge pas.
@@ -805,7 +783,7 @@ Le MVP sort le vendredi 18 décembre 2026, six semaines après le démarrage du 
 
 | ID | Tâche | Fini quand… | Jalon | Prio | Dépend de | Statut |
 | --- | --- | --- | --- | --- | --- | --- |
-| DEV-001 | Places DEV et PROD, Team Create, repo GitHub, Rojo (projet de la section 2.1) | Clément édite en Team Create ; `rojo serve` ne touche à rien hors des dossiers de code | M0 | P0 | — | À faire |
+| DEV-001 | Places DEV et PROD dans le groupe, Team Create, repo GitHub, Script Sync des 3 dossiers de code (section 2.1) | Clément édite en Team Create ; `Script Sync` ne touche à rien hors des dossiers de code | M0 | P0 | — | À faire |
 | DEV-002 | Squelette : chargeur de services et contrôleurs, `Config`, module `Net` | Un service vide démarre côté serveur et client sans erreur | M0 | P0 | DEV-001 | À faire |
 | DEV-003 | Greybox : zone safe, 6 parcelles, couloir, 12 magasins en blocs | On court du spawn à la zone 6 aux distances de la section 4 | M0 | P0 | DEV-001 | À faire |
 | DEV-004 | DataService : ProfileStore, schéma v1, migrations | Argent sauvegardé et rechargé ; verrou de session testé sur 2 serveurs | M0 | P0 | DEV-002 | À faire |
@@ -928,7 +906,7 @@ Chaque étape est envoyée une seule fois par joueur avec `AnalyticsService:LogO
 | --- | --- | --- | --- |
 | Duplication d'objets lors d'un vol PvP | Critique | Transfert atomique, uid uniques, annulation à la déconnexion, test dédié | Ironix |
 | Charge de Clément : 6 zones, 37 objets, toute l'UI et 20 animations en 6 semaines | Élevée | Variantes de magasins, décor du Creator Store, écrans gris et animations simples d'abord (finition en M4), go / no-go du 6 décembre (zones 5 et 6 repoussables en MAJ 1) | Clément |
-| Code et visuel qui se cassent mutuellement | Élevée | Un dossier = un propriétaire, Rojo limité au code, tags et contrat UI, ContractChecker (section 2.1) | Les deux |
+| Code et visuel qui se cassent mutuellement | Élevée | Un dossier = un propriétaire, Script Sync limité aux 3 dossiers de code, tags et contrat UI, ContractChecker (section 2.1) | Les deux |
 | Frustration PvP sans défenses achetables au MVP | Élevée | Vitrine à 50 × les dégâts du propriétaire, règles 6.4, batte, retour base ; défenses dès la MAJ 2 | Ironix |
 | Exploits de vitesse ou de téléport pendant un vol | Élevée | Contrôles serveur de la section 9.6, colis rendu | Ironix |
 | Aucun trafic au lancement | Élevée | Plusieurs miniatures testées, budget pub à décider (section 15), Discord prêt le jour J | Les deux |
@@ -941,7 +919,7 @@ Chaque étape est envoyée une seule fois par joueur avec `AnalyticsService:LogO
 
 8 décisions restent à prendre. Chacune a une proposition par défaut, appliquée si personne ne tranche avant le jalon indiqué. Une fois tranchée : on coche, et on ajoute une ligne au journal.
 
-- [ ] **Partage des revenus (M0)** : répartition des Robux entre Clément et Ironix, écrite noir sur blanc avant toute publication. Proposition : publier sous un groupe Roblox commun, pour que revenus et droits ne dépendent pas d'un compte perso.
+- [ ] **Partage des revenus (M0)** : le jeu passe sous le groupe Roblox du studio (décidé le 6 novembre 2026). Reste à écrire noir sur blanc, avant toute publication, la part des Robux du groupe reversée à chacun.
 - [x] **Animations (M0)** : tranché le 2026-11-06. Clément fait toutes les animations (joueurs, vigiles, PNJ), Ironix les joue, selon le contrat de la section 2.4.
 - [ ] **PvP de base dans le MVP (M1)** : proposition : oui, vol entre joueurs + batte + règles anti-frustration dès le lancement ; seules les défenses achetables attendent la Partie 2. Alternative : tout le PvP en Partie 2.
 - [ ] **Vitrine PNJ partagée (M1)** : proposition : oui, tout le monde entre pendant les 10 s, le casseur a 1 s d'avance. Alternative : une instance par joueur, plus calme mais moins drôle.
@@ -957,6 +935,8 @@ Chaque étape est envoyée une seule fois par joueur avec `AnalyticsService:LogO
 
 | Date | Décision | Par |
 | --- | --- | --- |
+| 2026-11-06 | Script Sync de Studio remplace Rojo pour les 3 dossiers de code ; la synchro marche dans les deux sens et seul Ironix synchronise (liaison, L-005) | Ironix |
+| 2026-11-06 | Le jeu et tous ses assets passent sous un groupe Roblox de studio (nom de studio, pas le nom du jeu), dont Clément est propriétaire ; Ironix y a un rôle « Dev ». Le groupe servira aussi aux jeux suivants. Animations publiées au nom du groupe | Clément |
 | 2026-11-06 | Clément fait toutes les animations (joueurs, vigiles, PNJ). Noms et emplacements proposés par Ironix (liaison, L-002), complétés par les marqueurs, priorités, boucles et 7 animations ; publication depuis le compte qui possède le jeu (contrat 2.4) | Clément et Ironix |
 | 2026-11-06 | La batte sert aussi dans le couloir : n'importe quel joueur peut frapper un porteur de colis PNJ hors zone safe ; le colis tombe au sol, ramassable par tous, retour au rayon après 15 s, le vigile suit le colis. Défense de boutique inchangée (propriétaire seul). Le reset suit le cycle jour/nuit de la section 5.12, sans téléportation | Ironix, validé par Clément |
 | 2026-11-06 | Renaissances progressives : la 1re très simple (10 K$ + l'objet Rare du tuto, environ 20 min), puis ×10 d'argent et un objet plus rare à chaque palier (Partie 2, section 3.2) | Clément |
