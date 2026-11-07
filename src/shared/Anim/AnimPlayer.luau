@@ -10,6 +10,7 @@
 --   local anims = AnimPlayer.new(animator, AnimPlayer.modelFolder(guard), Animations.Guard, "Vigile")
 --   anims:LoadAll()               -- facultatif : charge tout de suite les pistes livrées
 --   anims:Play("Run")             -- sinon, piste chargée au premier besoin ; puis gardée en cache
+--   anims:AdjustSpeed("Run", 1.3) -- vitesse de lecture d'une piste en cours (rien si elle ne joue pas)
 --   local off = anims:OnMarker("Catch", "Impact", function(param) ... end)
 --   anims:Stop("Run") ; anims:StopAll() ; off()
 --   anims:Destroy()               -- appelé tout seul si l'Animator est détruit
@@ -250,6 +251,18 @@ function AnimPlayer.StopAll(self: AnimPlayer, fadeTime: number?)
 			track:Stop(fadeTime)
 		end
 	end
+end
+
+-- Change la vitesse de lecture de `name` si elle joue déjà (AnimationTrack:AdjustSpeed), sans la
+-- relancer ni rien charger : pour une boucle dont le rythme suit une vitesse qui change en cours
+-- de route (Run et Walk des vigiles). Renvoie true si une piste a été réglée.
+function AnimPlayer.AdjustSpeed(self: AnimPlayer, name: string, speed: number): boolean
+	local track = self.tracks[name]
+	if track and track.IsPlaying then
+		track:AdjustSpeed(speed)
+		return true
+	end
+	return false
 end
 
 function AnimPlayer.IsPlaying(self: AnimPlayer, name: string): boolean
