@@ -739,6 +739,8 @@ Format : `PREFIXE_Zone-ou-Categorie_Nom_Variante`, en PascalCase, sans accents n
 | ACC | Accessoire de vigile | `ACC_Z1_Casquette` |
 | ENV | Décor | `ENV_Lampadaire_A` |
 | FX | Texture de particule | `FX_GlassSparkle` |
+| ICON | Icône d'objet : Decal dans `ReplicatedStorage/Assets/Icons` (liaison L-055) | `ICON_Z3_Smartphone` |
+| MUS | Musique de fond : Sound en boucle dans `ReplicatedStorage/Assets/Music` (liaison L-056) | `MUS_Z1` |
 
 ### 10.4 Contrat d'intégration
 
@@ -1069,6 +1071,7 @@ Chaque étape est envoyée une seule fois par joueur avec `AnalyticsService:LogO
 
 | Date | Décision | Par |
 | --- | --- | --- |
+| 2026-11-07 | Pas de bouton cadeau dans la boutique Robux (L-051). Les sons de pas de Roblox sont retirés et chaque zone a sa musique de fond, hub compris (L-056). Le HUD gagne, en bas à droite, un bouton pour inviter un ami contre un bonus et un bouton Rewards : cadeaux quotidiens en série de 7 jours et cadeaux de temps de jeu (L-057). Valeurs à fixer | Clément |
 | 2026-11-07 | Hub « Place du Mall » : place en plein air devant une immense façade « STEAL A SHOP », 6 boutiques des joueurs alignées sous la façade en arc doux, comptoirs en food trucks, parking en décor. La boutique du joueur a 5 niveaux, comme au doc (Stand, Boutique, Magasin, Concept store, Flagship) : stand ouvert avec porte à casser au départ, puis murs, toit et rideau, jusqu'au Flagship à porte blindée et façade de luxe (liaison, L-050) | Clément |
 | 2026-11-07 | Nouvel événement « camion » : il apparaît au hasard, les joueurs le cassent à plusieurs et il lâche beaucoup de colis de raretés différentes, qu'ils se disputent. La zone safe devient le hub et touche directement la zone 1 (plus de couloir d'entrée), avec le mur de nuit à l'entrée de la zone 1 (liaison, L-049) | Clément |
 | 2026-11-07 | Catalogue d'objets v2 (74 objets, 4 catégories par zone, noms anglais) validé pour la zone 1, et maquettes Shop, Index et Rebirth validées ; leurs noms d'UI attendent Ironix (liaison, L-045 et L-047) | Clément |

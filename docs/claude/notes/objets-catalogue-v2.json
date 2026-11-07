@@ -198,6 +198,28 @@
        "note": null
       },
       {
+       "itemId": "Z2_BallonDeFoot",
+       "asset": "ITM_Z2_BallonDeFoot",
+       "name": "Ballon de foot",
+       "nameEn": "Soccer Ball",
+       "rarity": "Common",
+       "origin": "new",
+       "idea": "Ballon blanc à pentagones noirs, sur son anneau",
+       "idle": null,
+       "note": "ajout du 2026-11-07"
+      },
+      {
+       "itemId": "Z2_BoosterDeCartes",
+       "asset": "ITM_Z2_BoosterDeCartes",
+       "name": "Booster de cartes",
+       "nameEn": "Card Booster Pack",
+       "rarity": "Uncommon",
+       "origin": "new",
+       "idea": "Paquet brillant, créature inventée",
+       "idle": null,
+       "note": "ajout du 2026-11-07"
+      },
+      {
        "itemId": "Z2_YoYo",
        "asset": "ITM_Z2_YoYo",
        "name": "Yo-yo",
@@ -207,6 +229,17 @@
        "idea": "Deux disques et leur ficelle",
        "idle": null,
        "note": null
+      },
+      {
+       "itemId": "Z2_CarteHolographique",
+       "asset": "ITM_Z2_CarteHolographique",
+       "name": "Carte holographique",
+       "nameEn": "Holo Card",
+       "rarity": "Epic",
+       "origin": "new",
+       "idea": "Carte rare dans son boîtier de collection",
+       "idle": null,
+       "note": "ajout du 2026-11-07"
       },
       {
        "itemId": "Z2_RobotJouet",
@@ -316,6 +349,17 @@
        "idea": "Bus rouge à deux étages",
        "idle": null,
        "note": null
+      },
+      {
+       "itemId": "Z2_Skateboard",
+       "asset": "ITM_Z2_Skateboard",
+       "name": "Skateboard",
+       "nameEn": "Skateboard",
+       "rarity": "Uncommon",
+       "origin": "new",
+       "idea": "Planche décorée, debout sur son support",
+       "idle": null,
+       "note": "ajout du 2026-11-07"
       },
       {
        "itemId": "Z2_VoitureTelecommandee",
@@ -495,6 +539,28 @@
        "note": null
       },
       {
+       "itemId": "Z3_ConsoleADoubleEcran",
+       "asset": "ITM_Z3_ConsoleADoubleEcran",
+       "name": "Console à double écran",
+       "nameEn": "Dual-Screen Console",
+       "rarity": "Rare",
+       "origin": "new",
+       "idea": "Console pliable à deux écrans (générique)",
+       "idle": null,
+       "note": "ajout du 2026-11-07"
+      },
+      {
+       "itemId": "Z3_ConsoleDeSalon",
+       "asset": "ITM_Z3_ConsoleDeSalon",
+       "name": "Console de salon",
+       "nameEn": "Home Console",
+       "rarity": "Epic",
+       "origin": "new",
+       "idea": "Console debout et sa manette (générique)",
+       "idle": null,
+       "note": "ajout du 2026-11-07"
+      },
+      {
        "itemId": "Z3_ConsolePortable",
        "asset": "ITM_Z3_ConsolePortable",
        "name": "Console portable",
@@ -619,6 +685,46 @@
        "idea": "Grande horloge en bois, balancier doré",
        "idle": null,
        "note": null
+      }
+     ]
+    },
+    {
+     "name": "Mode",
+     "nameEn": "Fashion",
+     "id": "Mode",
+     "items": [
+      {
+       "itemId": "Z4_Parfum",
+       "asset": "ITM_Z4_Parfum",
+       "name": "Parfum",
+       "nameEn": "Perfume",
+       "rarity": "Common",
+       "origin": "new",
+       "idea": "Flacon facetté rose, bouchon doré, poire",
+       "idle": null,
+       "note": "ajout du 2026-11-07"
+      },
+      {
+       "itemId": "Z4_LunettesDeStar",
+       "asset": "ITM_Z4_LunettesDeStar",
+       "name": "Lunettes de star",
+       "nameEn": "Star Sunglasses",
+       "rarity": "Uncommon",
+       "origin": "new",
+       "idea": "Lunettes à verres en étoile, monture dorée",
+       "idle": null,
+       "note": "ajout du 2026-11-07"
+      },
+      {
+       "itemId": "Z4_BasketsDeCollection",
+       "asset": "ITM_Z4_BasketsDeCollection",
+       "name": "Baskets de collection",
+       "nameEn": "Collector Sneakers",
+       "rarity": "Rare",
+       "origin": "new",
+       "idea": "Basket montante bleue à éclair doré, sur son socle",
+       "idle": null,
+       "note": "ajout du 2026-11-07"
       }
      ]
     },
