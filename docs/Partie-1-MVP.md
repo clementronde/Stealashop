@@ -141,7 +141,7 @@ Clément livre d'abord chaque écran en version grise (bons noms, aucun style) e
 | `UI_Tutorial` | `Bubble` avec `Label`, `NextButton` |
 | `UI_Notify` | `Template` avec `Icon`, `Label` |
 
-Les éléments au-dessus des objets du monde sont des BillboardGui modèles rangés dans `ReplicatedStorage/Assets/UI` : `BB_WindowHP` (`Fill`, `Label`), `BB_OpenTimer` (`Label`), `BB_Item` (`ItemName`, `Rarity`, `Income`) et `BB_Carry` (`ItemName`, `Rarity`, `Income`), l'étiquette au-dessus de la tête de celui qui porte un colis ou un objet volé (section 5.6).
+Les éléments au-dessus des objets du monde sont des BillboardGui modèles rangés dans `ReplicatedStorage/Assets/UI` : `BB_WindowHP` (`Fill`, `Label`), `BB_OpenTimer` (`Label`), `BB_Item` (`ItemName`, `Rarity`, `Income`) et `BB_Carry` (`ItemName`, `Rarity`, `Income`), l'étiquette au-dessus de la tête de celui qui porte un colis ou un objet volé (section 5.6), et `BB_Box` (`Category`, `Rarity`, `Mutation`), l'étiquette au-dessus de chaque colis, sur le rayon comme porté (décision du 2026-11-07).
 
 ### 2.3 Références à envoyer
 
@@ -899,7 +899,7 @@ Le MVP sort le vendredi 18 décembre 2026, six semaines après le démarrage du 
 | MOD-010 | Vitre M intacte + pré-fracturée | 30 à 40 éclats `Shard_xx`, ≤ 1 500 triangles, test de casse validé | M1 | P0 | MOD-001 | En revue |
 | MOD-011 | 3 textures de fissures (75, 50, 25 %) | Lisibles de loin, calées sur la vitre M | M1 | P0 | MOD-010 | En revue |
 | MOD-012 | Magasin zone 1 « Supérette » : extérieur, intérieur, rayons | Contrat 10.4 complet, 10 `ShelfSlot`, tag `NPCStore` | M1 | P0 | MOD-001, DEV-003 | En revue |
-| MOD-013 | Colis Standard, Premium, Luxe | `Lid` séparé, `CarryAttachment`, pièce `Tint` recolorée selon la rareté, ≤ 300 triangles | M1 | P0 | MOD-002 | À faire |
+| MOD-013 | Colis Standard, Premium, Luxe | `Lid` séparé, `CarryAttachment`, pièce `Tint` recolorée selon la rareté, ≤ 300 triangles | M1 | P0 | MOD-002 | En revue |
 | MOD-014 | 6 objets de la zone 1 | Budgets et nommage 10.2 et 10.3, idle sur Légendaire et Mythique | M1 | P0 | MOD-002 | À faire |
 | MOD-015 | Parcelle niveau 1 « Stand » | Tous les points du contrat 10.4, y compris ceux prévus pour la Partie 2 | M1 | P0 | DEV-003 | À faire |
 | MOD-016 | Tapis de course et banc | `UsePoint` et `Belt`, ≤ 3 000 triangles chacun | M1 | P0 | MOD-001 | À faire |
@@ -999,6 +999,9 @@ Chaque étape est envoyée une seule fois par joueur avec `AnalyticsService:LogO
 
 | Date | Décision | Par |
 | --- | --- | --- |
+| 2026-11-07 | Colis : cartons kraft scotchés en croix sur le dessus, avec un contour noir (Highlight demandé par Clément, arêtes en secours) ; scotch beige pour Standard, bleu pour Premium, or pour Luxe (remplace « carton bleu scellé » et « caisse en bois cerclée d'or » de 7.3). Livrés dans ReplicatedStorage/Assets/Boxes (MOD-013, liaison L-031) | Clément |
+| 2026-11-07 | Au-dessus de chaque colis, dès le rayon : la catégorie de l'objet, sa rareté et sa mutation (étiquette BB_Box) ; le contenu se tire donc à la mise en rayon. Catégories d'objets : Boisson, Snack, Fruit, Légumes, Montre, Télé, Ordinateur, Vélo, Voiture… (catalogue 10.5 à revoir). Zone 1 = zone tuto : uniquement des objets Communs (liaison, L-031) | Clément |
+| 2026-11-07 | Zone vitrine de développement Workspace/_SHOWROOM_CLEMENT : tous les assets livrés et la place des prochains modèles (outils, auras, trails, entraînement, boutiques, vigile, objets), à exclure de la PROD (liaison, L-032) | Clément |
 | 2026-11-07 | Zone 1 : la Supérette devient un grand supermarché à longues allées (40 × 48 studs, 3 allées, rayons de 24 studs à 3 étages), sur le modèle d'une allée de supermarché Roblox ; le Kiosque est le même magasin dans d'autres couleurs (bleu et menthe). Les deux remplacent les magasins gris de la zone 1 (Workspace/Map/Zone_1). La boutique des joueurs (MOD-015) prendra le même style d'allées (liaison, L-029) | Clément |
 | 2026-11-07 | Magasins PNJ : passages d'au moins 6 studs, et 8 pour l'allée qui longe la réserve, pour que le vigile (rayon 2 dans GuardService) trouve son chemin sans sauter par-dessus les rayons ; testé sur la Supérette (MOD-012). Les studs du décor passent par un MaterialVariant « Studs » teinté par la couleur de chaque pièce (liaison, L-029 et L-030) | Clément |
 | 2026-11-07 | Casse de vitrine en style Roblox plutôt que réaliste (remplace le « très réaliste » de la ligne suivante) : persos R6 qui frappent, décor en studs, verre Roblox bleu clair, éclats et petits cubes de verre, gravité Roblox (196,2 studs/s²). Cible : le prototype interactif et le rendu WIN_M_Casse_Roblox.mp4 (liaison, L-028) | Clément |
