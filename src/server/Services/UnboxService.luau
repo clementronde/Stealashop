@@ -355,8 +355,11 @@ end
 -- Au moins un objet tirable de cette zone et de cette rareté (catalogue v2 : une liste par case).
 local function hasItem(zone: number, rarityId: string): boolean
 	local byZone = Items.ByZone[zone]
-	local list = if byZone then byZone[rarityId] else nil
-	return list ~= nil and #list > 0
+	local list: { Items.Item }? = if byZone then byZone[rarityId :: Rarities.RarityId] else nil
+	if list == nil then
+		return false
+	end
+	return #list > 0
 end
 
 -- Chance du joueur (UnboxService.GetLuck, remplaçable) ; 1 si l'accroche renvoie une valeur invalide.
@@ -877,7 +880,7 @@ local function onOpenBox(player: Player, benchIndex: number)
 	local finalRarity = startRarity
 	if #steps > 0 then
 		local target = steps[#steps]
-		local picked = Items.Pick(box.Zone, target, random)
+		local picked = Items.Pick(box.Zone, target :: Rarities.RarityId, random)
 		if picked ~= nil and picked.Rarity == target then
 			itemId, finalRarity = picked.Id, target
 		else
