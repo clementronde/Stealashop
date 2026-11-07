@@ -252,10 +252,17 @@ local List: { RemoteDef } = {
 		},
 	},
 	{
+		-- Guidage du tuto (DEV-046, TutorialService) : step = étape en cours, 0 = plus de tuto (tout
+		-- cacher) ; hint = clé de Config.Tutorial.Hints à afficher à la place de la bulle de l'étape
+		-- (nil = la bulle de l'étape) ; target = point visé par la flèche au sol (nil = pas de flèche).
 		Name = "TutorialStep",
 		Direction = "ServerToClient",
 		Reliable = true,
-		Args = { { Name = "step", Kind = "int", Min = 0, Max = MAX_INDEX } },
+		Args = {
+			{ Name = "step", Kind = "int", Min = 0, Max = MAX_INDEX },
+			{ Name = "hint", Kind = "string", Max = 32, Optional = true },
+			{ Name = "target", Kind = "Vector3", Optional = true },
+		},
 	},
 	{
 		-- kind : catégorie libre pour le style du message (ex. "Info", "Warning").
