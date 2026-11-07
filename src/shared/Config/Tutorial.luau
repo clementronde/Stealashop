@@ -1,8 +1,12 @@
 --!strict
--- Tutoriel de départ (Partie 1, sections 3, 5.11 et 14.2 ; TutorialService).
+-- Tutoriel de départ (Partie 1, sections 3, 5.11, 5.12, 6.4 et 14.2 ; TutorialService et
+-- TutorialController, DEV-046).
 -- Guidage par flèche au sol et bulle courte (`UI_Tutorial`), jamais de mur de texte.
 -- L'étape est sauvegardée (Tutorial.Step, 9.5 : 0 = pas commencé) : un joueur qui
 -- part au milieu reprend au même endroit.
+--
+-- Origine des valeurs, notée en commentaire : « doc » = Partie 1 (section citée) ; « V0 » = V0
+-- proposé, absent du doc, à régler en playtest.
 
 local DeepFreeze = require(script.Parent.DeepFreeze)
 local Balance = require(script.Parent.Balance)
@@ -30,7 +34,16 @@ local Steps: { Step } = {
 	{ Index = 10, Id = "ShieldEnd", At = 10 * 60, Goal = "Fin du bouclier débutant, la boutique devient braquable", Bubble = nil },
 }
 
+-- Textes écrits dans le doc, traduits en anglais (L-036). ShieldEndMessage dépasse les 8 mots
+-- d'une bulle : c'est le message du doc (section 3, étape 10), gardé tel quel.
+local SHIELD_END_MESSAGE = "Your shop can now be robbed: keep your bat close!"
+local NIGHT_BUBBLE = "Night is falling: hurry home!" -- 5.12, pour les nouveaux joueurs
+
 local Tutorial = {
+	-- V0 : interrupteur. false = aucun tutoriel : TutorialService ne pose aucune accroche, ne
+	-- change aucun profil et n'envoie rien (ni bulle, ni flèche, ni funnel).
+	Enabled = true,
+
 	Steps = Steps,
 	SkipFromStep = 5, -- bouton Passer à partir de l'étape 5 (TutorialSkip, 9.4)
 	BubbleMaxWords = 8,
@@ -47,9 +60,43 @@ local Tutorial = {
 	-- seule tirerait dans la zone, où aucun Rare n'est tirable).
 	GuaranteedItemId = "Z1_PotDeNouilles",
 
+	-- Étapes 1 à 4 (section 3) : le braquage de la Supérette, en zone 1 (zone tuto, L-033).
+	TutorialZone = 1, -- doc : tout magasin de cette zone compte (la Supérette ou le Kiosque)
+	TargetStoreId = "Superette", -- doc : flèche vers la Supérette (STORE_Z1_Superette, Zones[1].StoreIds)
+	-- V0 : un joueur des étapes 1 et 2 à cette distance (studs) d'une vitrine de la zone 1 ouverte passe
+	-- à l'étape 3, même si c'est un autre joueur qui l'a cassée (même rayon que le chrono HeistTimer).
+	StoreNearRadius = 60,
+	TrainDuration = 30, -- doc, section 3, étape 6 : « 30 s d'entraînement guidé » (tapis et banc cumulés)
+	ToolToBuy = "Wrench", -- doc, étape 7 : la clé à molette (300 $, table 7.2) ; un outil plus fort compte aussi
+	GoalZone = 2, -- doc, étape 9 : objectif la zone 2 (vitesse conseillée 22, dégâts conseillés 10)
+	MessageDuration = 8, -- V0 : secondes d'affichage de ShieldEndMessage avant la fin du tuto
+	Tick = 0.5, -- V0 : secondes entre deux contrôles de TutorialService (seuils, zone 2, bouclier, nuit)
+
 	-- Textes écrits dans le doc, traduits en anglais (L-036)
-	ShieldEndMessage = "Your shop can now be robbed: keep your bat close!",
-	NightBubble = "Night is falling: hurry home!", -- 5.12, pour les nouveaux joueurs
+	ShieldEndMessage = SHIELD_END_MESSAGE,
+	NightBubble = NIGHT_BUBBLE,
+
+	-- Indices de phase : TutorialService choisit l'indice (remote TutorialStep), TutorialController
+	-- affiche son texte à la place de la bulle de l'étape. En anglais (L-036), 8 mots au plus ; V0
+	-- proposés, absents du doc, sauf Night et ShieldEnd (textes du doc ci-dessus).
+	Hints = {
+		EquipFists = "Equip your Fists, then hit!", -- étapes 1 et 2, près de la vitrine sans outil en main (client)
+		WindowRebuilding = "Wait, the window is coming back!", -- étape 2 : vitrine cassée, rideau baissé
+		WaitBox = "Wait for your box to open!", -- étape 5 : colis sur l'établi, attente pas finie
+		OpenBox = "Open your box!", -- étape 5 : colis prêt à ouvrir
+		CollectCash = "Step on the cash pad to collect!", -- étape 5 (objet exposé), 7 et 8 (pas assez d'argent)
+		NightClosed = "The street opens again at dawn!", -- nuit, étapes 1 à 3 et 9, côté zone safe
+		Night = NIGHT_BUBBLE, -- 5.12 : alerte et nuit, joueur dans le couloir
+		ShieldEnd = SHIELD_END_MESSAGE, -- 6.4 : fin du bouclier débutant
+	} :: { [string]: string },
+
+	-- Flèche au sol de Clément (UI-006, pas encore livrée) : noms proposés, pas encore au contrat. Cherchés
+	-- dans ReplicatedStorage/Assets (sous-dossiers compris) ; tant qu'ils manquent, TutorialController
+	-- fait une flèche V0. ArrowAsset : un Beam (texture, couleur, largeurs, défilement de Clément),
+	-- copié entre les pieds du joueur et la cible. MarkerAsset : un Model ou une pièce, pivot en bas au
+	-- centre, posé sur la cible.
+	ArrowAsset = "FX_Tutorial_Arrow",
+	MarkerAsset = "FX_Tutorial_Marker",
 
 	-- 14.2 : étapes du funnel d'onboarding, envoyées une seule fois par joueur avec
 	-- AnalyticsService:LogOnboardingFunnelStepEvent (index = numéro d'étape). En français : l'équipe
