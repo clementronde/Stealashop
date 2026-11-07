@@ -133,6 +133,14 @@ local PLOT_SHOP_W, PLOT_SHOP_D, PLOT_SHOP_H = 32, 28, 16 -- boutique de la parce
 local SHOP_X_NEAR, SHOP_X_FAR, SHOP_Z = -14, -34, 24 -- comptoirs à l'entrée de l'allée
 local NIGHTWALL_X, NIGHTWALL_H = 12, 24 -- mur de nuit, à l'entrée du couloir
 local CORRIDOR_END = 700 -- fond du couloir, 40 studs après le magasin de zone 6
+-- Gabarit ×1.5 de Clément (L-040, 2026-11-07), relevé dans la place : tronçons des zones
+-- seulement, l'entrée du couloir garde 40 de large (mur de nuit de 42). Les vrais magasins
+-- ×1.5 de Clément (Workspace/Map, pivots (X, 0, ±66), X = 65 en zone 1) sont gardés tels
+-- quels ; les magasins gris de secours, eux, restent à l'ancienne taille.
+local ZONE_STREET_HALF = 22.5 -- chaussée z −22.5..22.5
+local ZONE_SIDE_OUTER = 62.5 -- Side_N et Side_S à |z| 22.5..62.5
+local MURET_Z0, MURET_Z1, MURET_H = 30, 31.5, 18 -- murets SideWall_* (façades des magasins à z = ±30)
+local GATE_SCALE = 1.5 -- arches ZoneGate_N : 69 de profondeur, 36 de haut, base à y = 0
 
 ------------------------------------------------------------------------------
 -- Outils
@@ -402,14 +410,14 @@ local function realStore(name: string): Model?
 end
 
 -- Étendue en X (le long de la rue) d'un vrai magasin : sa boîte `Bounds` (10.4)
--- plus 1 stud de mur de chaque côté. Pour la zone 1 de Clément : 40 à 80, ses
--- murets SideWall (L-029).
+-- plus 1,5 stud de mur de chaque côté (gabarit ×1.5, L-040 ; 1 stud avant). Pour la
+-- zone 1 de Clément : 35 à 95, ses murets SideWall (L-029).
 local function realStoreX(model: Model): (number, number)
 	local bounds = model:FindFirstChild("Bounds", true)
 	local cf: CFrame, size: Vector3
 	local margin = 0
 	if bounds and bounds:IsA("BasePart") then
-		cf, size, margin = bounds.CFrame, bounds.Size, 1
+		cf, size, margin = bounds.CFrame, bounds.Size, 1.5
 	else
 		cf, size = model:GetBoundingBox()
 	end
@@ -754,7 +762,9 @@ local function buildCorridor(root: Instance)
 		zf.Name = if zone then "Zone_" .. zi else "Entry"
 		local geo = Instance.new("Folder")
 		geo.Name = "Ground"
-		local street = box(geo, "Street", I, V(x0, -2, -hs), V(x1, 0, hs), Color3.fromRGB(80, 80, 85):Lerp(color, 0.15))
+		local shs = if zone then ZONE_STREET_HALF else hs -- demi-largeur de la chaussée du tronçon
+		local outer = if zone then ZONE_SIDE_OUTER else sideOuter
+		local street = box(geo, "Street", I, V(x0, -2, -shs), V(x1, 0, shs), Color3.fromRGB(80, 80, 85):Lerp(color, 0.15))
 		local look = streetLooks[zf.Name]
 		if look then
 			street.Color = look.Color
@@ -762,8 +772,8 @@ local function buildCorridor(root: Instance)
 			street.MaterialVariant = look.MaterialVariant
 			table.insert(keptLooks, zf.Name)
 		end
-		box(geo, "Side_N", I, V(x0, -2, hs), V(x1, 0, sideOuter), tint(color, 0.25))
-		box(geo, "Side_S", I, V(x0, -2, -sideOuter), V(x1, 0, -hs), tint(color, 0.25))
+		box(geo, "Side_N", I, V(x0, -2, shs), V(x1, 0, outer), tint(color, 0.25))
+		box(geo, "Side_S", I, V(x0, -2, -outer), V(x1, 0, -shs), tint(color, 0.25))
 		-- Façades de remplissage entre les magasins : le couloir est fermé sur les
 		-- côtés. Côté N le premier magasin de la zone, côté S le second ; un vrai
 		-- magasin de Clément (Workspace/Map) garde sa propre largeur (L-029).
@@ -781,11 +791,16 @@ local function buildCorridor(root: Instance)
 			end
 			return { { x0, a }, { b, x1 } }
 		end
+		-- Murets : au bord de la chaussée dans l'entrée, sur la ligne des façades (gabarit ×1.5) dans les zones.
+		local mz0, mz1, mh = hs, hs + 1, WALL_H
+		if zone then
+			mz0, mz1, mh = MURET_Z0, MURET_Z1, MURET_H
+		end
 		for j, g in gapsFor(if zone then zone.Stores[1] else nil) do
-			box(geo, "SideWall_N" .. j, I, V(g[1], 0, hs), V(g[2], WALL_H, hs + 1), tint(color, 0.35))
+			box(geo, "SideWall_N" .. j, I, V(g[1], 0, mz0), V(g[2], mh, mz1), tint(color, 0.35))
 		end
 		for j, g in gapsFor(if zone then zone.Stores[2] else nil) do
-			box(geo, "SideWall_S" .. j, I, V(g[1], 0, -hs - 1), V(g[2], WALL_H, -hs), tint(color, 0.35))
+			box(geo, "SideWall_S" .. j, I, V(g[1], 0, -mz1), V(g[2], mh, -mz0), tint(color, 0.35))
 		end
 		geo.Parent = zf
 		zf.Parent = folder
@@ -814,6 +829,7 @@ local function buildCorridor(root: Instance)
 			label(sign, Enum.NormalId.Left, text, color)
 			label(sign, Enum.NormalId.Right, text, color)
 			gate.WorldPivot = CFrame.new(gx, 0, 0)
+			gate:ScaleTo(GATE_SCALE) -- autour du pivot (gx, 0, 0) : la base reste à y = 0
 			gate:SetAttribute("Zone", zi)
 			CollectionService:AddTag(gate, "ZoneGate")
 			gate.Parent = zf
@@ -849,7 +865,9 @@ local function buildCorridor(root: Instance)
 		end
 	end
 
-	box(folder, "EndWall", I, V(CORRIDOR_END, 0, -hs - 1), V(CORRIDOR_END + 2, 16, hs + 1), C.Wall)
+	-- Fond du couloir : jusqu'aux murets, pour ne laisser aucun passage le long des trottoirs
+	-- (dans la place, l'EndFacade du décor de Clément ferme aussi le bout).
+	box(folder, "EndWall", I, V(CORRIDOR_END, 0, -MURET_Z1), V(CORRIDOR_END + 2, MURET_H, MURET_Z1), C.Wall)
 end
 
 ------------------------------------------------------------------------------
