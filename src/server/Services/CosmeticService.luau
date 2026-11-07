@@ -63,6 +63,7 @@ local RunService = game:GetService("RunService")
 
 local Shared = ReplicatedStorage.Shared
 local Cosmetics = require(Shared.Config.Cosmetics)
+local Find = require(Shared.Contract.Find)
 local Net = require(Shared.Net.Net)
 local ProfileTypes = require(Shared.Types.Profile)
 
@@ -228,15 +229,14 @@ end
 
 -- Effets -------------------------------------------------------------------------------------
 
--- Texture du Decal de Clément nommé `name` (ReplicatedStorage/Assets, sous-dossiers compris), ou
--- nil s'il n'est pas livré.
+-- Texture du premier Decal de Clément nommé `name` (ReplicatedStorage/Assets, sous-dossiers
+-- compris), ou nil s'il n'est pas livré. On cherche un Decal, pas le premier objet de ce nom : les
+-- modèles d'effet de Clément portent les mêmes noms (Assets/FX/Auras, Assets/FX/Trails, L-042).
 local function clementTexture(name: string): string?
 	local assets = ReplicatedStorage:FindFirstChild(ASSETS_FOLDER)
-	local found = if assets then assets:FindFirstChild(name, true) else nil
-	if found and found:IsA("Decal") then
-		local texture = (found :: Decal).Texture
-		if texture ~= "" then
-			return texture
+	for _, found in if assets then Find.all(assets, name) else {} do
+		if found:IsA("Decal") and (found :: Decal).Texture ~= "" then
+			return (found :: Decal).Texture
 		end
 	end
 	reportOnce(name, `[CosmeticService] texture {name} pas encore livrée dans ReplicatedStorage/Assets (MOD-045) : effet V0`)

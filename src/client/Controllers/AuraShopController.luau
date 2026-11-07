@@ -128,14 +128,14 @@ local function bonusText(def: Cosmetic): string
 	return `×{string.format("%g", def.Multiplier)} {word}`
 end
 
--- Texture du Decal de Clément nommé `name` (ReplicatedStorage/Assets, sous-dossiers compris), ou nil.
+-- Texture du premier Decal de Clément nommé `name` (ReplicatedStorage/Assets, sous-dossiers
+-- compris), ou nil. Un Decal, pas le premier objet de ce nom : les modèles d'effet portent les mêmes
+-- noms (L-042).
 local function textureOf(name: string): string?
 	local assets = ReplicatedStorage:FindFirstChild(ASSETS_FOLDER)
-	local found = if assets then assets:FindFirstChild(name, true) else nil
-	if found and found:IsA("Decal") then
-		local texture = (found :: Decal).Texture
-		if texture ~= "" then
-			return texture
+	for _, found in if assets then Find.all(assets, name) else {} do
+		if found:IsA("Decal") and (found :: Decal).Texture ~= "" then
+			return (found :: Decal).Texture
 		end
 	end
 	return nil

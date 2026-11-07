@@ -13,12 +13,13 @@
 -- `Id` est la clé de la sauvegarde (Cosmetics.Auras, Cosmetics.Trails, 9.5) et de
 -- BuyItem / EquipCosmetic (9.4). `DisplayName` est le nom affiché, en anglais (L-036).
 -- `Texture` est le nom du Decal de Clément (MOD-045 : PNG 256 × 256 sur fond transparent),
--- cherché dans ReplicatedStorage/Assets, sous-dossiers compris, au format `FX_Aura_<Nom>` /
--- `FX_Trail_<Nom>` de 10.4. Le <Nom> est le nom français d'origine sans accents : c'est un nom
--- technique, que L-036 ne traduit pas. À confirmer avec Clément tant que MOD-045 n'est pas livré.
+-- cherché dans ReplicatedStorage/Assets, sous-dossiers compris (le premier Decal de ce nom), au
+-- format `FX_Aura_<Nom>` / `FX_Trail_<Nom>` de 10.4. Le <Nom> est le nom français d'origine sans
+-- accents : c'est un nom technique, que L-036 ne traduit pas. Les 11 Decals sont livrés dans
+-- ReplicatedStorage/Assets/FX (Clément, 2026-11-07, L-042).
 -- `Color` est la couleur principale du palier (10.4) : elle teinte les particules, la lumière et
--- le trail (texture de Clément en gris ou en blanc, comme ENV_Texture_Stud, L-030). V0 en
--- attendant les couleurs de Clément (MOD-045), qui la remplaceront ici.
+-- le trail (texture de Clément en gris ou en blanc, comme ENV_Texture_Stud, L-030). Couleurs de
+-- Clément (MOD-045, L-042).
 
 local DeepFreeze = require(script.Parent.DeepFreeze)
 
@@ -36,23 +37,23 @@ export type Cosmetic = {
 	Color: Color3,
 }
 
--- doc 7.4 : multiplicateurs, prix et zones visées. Color : V0.
+-- doc 7.4 : multiplicateurs, prix et zones visées. Color : couleurs de Clément (MOD-045, liaison L-042, 2026-11-07).
 local Auras: { Cosmetic } = {
-	{ Id = "Spark", Kind = "Aura", Order = 1, DisplayName = "Spark", Multiplier = 1.5, Price = 500, TargetZones = { 1, 2 }, Texture = "FX_Aura_Etincelle", Color = Color3.fromRGB(255, 236, 140) },
-	{ Id = "Flame", Kind = "Aura", Order = 2, DisplayName = "Flame", Multiplier = 2, Price = 15_000, TargetZones = { 2, 3 }, Texture = "FX_Aura_Flamme", Color = Color3.fromRGB(255, 122, 26) },
-	{ Id = "Lightning", Kind = "Aura", Order = 3, DisplayName = "Lightning", Multiplier = 3, Price = 400_000, TargetZones = { 3, 4 }, Texture = "FX_Aura_Foudre", Color = Color3.fromRGB(92, 214, 255) },
+	{ Id = "Spark", Kind = "Aura", Order = 1, DisplayName = "Spark", Multiplier = 1.5, Price = 500, TargetZones = { 1, 2 }, Texture = "FX_Aura_Etincelle", Color = Color3.fromRGB(255, 217, 59) },
+	{ Id = "Flame", Kind = "Aura", Order = 2, DisplayName = "Flame", Multiplier = 2, Price = 15_000, TargetZones = { 2, 3 }, Texture = "FX_Aura_Flamme", Color = Color3.fromRGB(255, 106, 26) },
+	{ Id = "Lightning", Kind = "Aura", Order = 3, DisplayName = "Lightning", Multiplier = 3, Price = 400_000, TargetZones = { 3, 4 }, Texture = "FX_Aura_Foudre", Color = Color3.fromRGB(47, 196, 255) },
 	{ Id = "Plasma", Kind = "Aura", Order = 4, DisplayName = "Plasma", Multiplier = 5, Price = 10_000_000, TargetZones = { 4, 5 }, Texture = "FX_Aura_Plasma", Color = Color3.fromRGB(255, 59, 212) },
-	{ Id = "Galaxy", Kind = "Aura", Order = 5, DisplayName = "Galaxy", Multiplier = 8, Price = 250_000_000, TargetZones = { 5, 6 }, Texture = "FX_Aura_Galaxie", Color = Color3.fromRGB(123, 77, 255) },
-	{ Id = "Royal", Kind = "Aura", Order = 6, DisplayName = "Royal", Multiplier = 11, Price = 3_000_000_000, TargetZones = { 6, 6 }, Texture = "FX_Aura_Royale", Color = Color3.fromRGB(255, 197, 46) },
+	{ Id = "Galaxy", Kind = "Aura", Order = 5, DisplayName = "Galaxy", Multiplier = 8, Price = 250_000_000, TargetZones = { 5, 6 }, Texture = "FX_Aura_Galaxie", Color = Color3.fromRGB(139, 92, 255) },
+	{ Id = "Royal", Kind = "Aura", Order = 6, DisplayName = "Royal", Multiplier = 11, Price = 3_000_000_000, TargetZones = { 6, 6 }, Texture = "FX_Aura_Royale", Color = Color3.fromRGB(255, 194, 26) },
 }
 
--- doc 7.4 : multiplicateurs, prix et zones visées. Color : V0.
+-- doc 7.4 : multiplicateurs, prix et zones visées. Color : couleurs de Clément (MOD-045, liaison L-042, 2026-11-07).
 local Trails: { Cosmetic } = {
-	{ Id = "Dust", Kind = "Trail", Order = 1, DisplayName = "Dust", Multiplier = 1.1, Price = 300, TargetZones = { 1, 2 }, Texture = "FX_Trail_Poussiere", Color = Color3.fromRGB(217, 195, 160) },
-	{ Id = "Wind", Kind = "Trail", Order = 2, DisplayName = "Wind", Multiplier = 1.25, Price = 10_000, TargetZones = { 2, 3 }, Texture = "FX_Trail_Vent", Color = Color3.fromRGB(191, 244, 255) },
-	{ Id = "Turbo", Kind = "Trail", Order = 3, DisplayName = "Turbo", Multiplier = 1.4, Price = 300_000, TargetZones = { 3, 4 }, Texture = "FX_Trail_Turbo", Color = Color3.fromRGB(255, 90, 46) },
-	{ Id = "Comet", Kind = "Trail", Order = 4, DisplayName = "Comet", Multiplier = 1.6, Price = 8_000_000, TargetZones = { 4, 5 }, Texture = "FX_Trail_Comete", Color = Color3.fromRGB(63, 169, 255) },
-	{ Id = "Hyperspace", Kind = "Trail", Order = 5, DisplayName = "Hyperspace", Multiplier = 1.8, Price = 200_000_000, TargetZones = { 5, 6 }, Texture = "FX_Trail_Hyperespace", Color = Color3.fromRGB(176, 92, 255) },
+	{ Id = "Dust", Kind = "Trail", Order = 1, DisplayName = "Dust", Multiplier = 1.1, Price = 300, TargetZones = { 1, 2 }, Texture = "FX_Trail_Poussiere", Color = Color3.fromRGB(229, 195, 138) },
+	{ Id = "Wind", Kind = "Trail", Order = 2, DisplayName = "Wind", Multiplier = 1.25, Price = 10_000, TargetZones = { 2, 3 }, Texture = "FX_Trail_Vent", Color = Color3.fromRGB(140, 255, 212) },
+	{ Id = "Turbo", Kind = "Trail", Order = 3, DisplayName = "Turbo", Multiplier = 1.4, Price = 300_000, TargetZones = { 3, 4 }, Texture = "FX_Trail_Turbo", Color = Color3.fromRGB(255, 122, 26) },
+	{ Id = "Comet", Kind = "Trail", Order = 4, DisplayName = "Comet", Multiplier = 1.6, Price = 8_000_000, TargetZones = { 4, 5 }, Texture = "FX_Trail_Comete", Color = Color3.fromRGB(79, 195, 255) },
+	{ Id = "Hyperspace", Kind = "Trail", Order = 5, DisplayName = "Hyperspace", Multiplier = 1.8, Price = 200_000_000, TargetZones = { 5, 6 }, Texture = "FX_Trail_Hyperespace", Color = Color3.fromRGB(155, 92, 255) },
 }
 
 -- Auras et trails partagent le même espace d'Id (un seul catalogId pour BuyItem).
