@@ -72,6 +72,16 @@ Pour renaître, il faut un montant d'argent ET un objet précis, que l'on remet 
 - **Hebdomadaire** : un coffre se débloque après 5 jours de connexion entre lundi et dimanche. Il contient l'aura ou le trail exclusif de la semaine + 1 colis Luxe.
 - **Écran** : calendrier avec le jour actuel mis en avant, jauge des 5 jours pour le coffre, pastille rouge sur le bouton du HUD quand une récompense attend.
 
+**Proposition V0 d'Ironix (2026-11-08), à valider par Clément** : boutons Invite et Rewards du HUD et écran `UI_Rewards` (liaison L-057), avancés avant la MAJ 1. Le calendrier, le jour manqué et le bonus d'amis restent ceux du doc ; ce qui suit complète ce qu'il ne dit pas.
+
+- **« X min de revenus »** : X minutes du revenu par seconde du joueur au moment où il réclame, avec au moins 50 $ par minute (J1 : 250 $ au moins, J3 : 750 $, J6 : 1 500 $), pour qu'un nouveau joueur reçoive quelque chose.
+- **Colis offerts** : de la zone la plus haute parmi les objets du joueur (zone 1 s'il n'en a pas), posés sur un établi libre, avec l'attente d'ouverture habituelle. Sans établi libre, la récompense attend et reste réclamable. J7 : zone 2 au moins, puisque la zone 1 n'a que des Communs (L-033).
+- **Boost ×2 argent** : double les revenus des présentoirs, compté seulement pendant le jeu (le temps restant est sauvegardé) ; il se multiplie avec les autres bonus ; un deuxième boost prolonge le premier au lieu de le doubler.
+- **Temps de jeu** (onglet `PlaytimeTab`) : paliers à 5, 15, 30 et 60 min de jeu **dans la journée** plutôt que par session, pour qu'on ne les refasse pas en se reconnectant ; remise à zéro à minuit UTC ; chaque palier se réclame avec `ClaimButton`. 5 min : 2 min de revenus (100 $ au moins). 15 min : colis Standard. 30 min : boost ×2 argent pendant 10 min. 60 min : colis Premium.
+- **Hebdomadaire** : le coffre reste pour la MAJ 1 ; `UI_Rewards` n'a pas d'onglet pour lui.
+- **Inviter un ami** : le bouton ouvre l'invitation de Roblox. Le bonus est celui de la section 5 : +10 % de revenus par ami Roblox présent dans le serveur (30 % au plus), et +10 % pour les membres du groupe Roblox du studio. L'envoi d'une invitation ne donne rien à lui seul.
+- **Mesure** : chaque gain part avec `LogEconomyEvent` (Partie 1, 14.2).
+
 ### 3.4 Index d'objets (MAJ 2)
 
 - **Grille** par zone (6 onglets + Secrets). Objet découvert en couleur ; non découvert = silhouette noire avec la couleur de sa rareté.
