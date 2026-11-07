@@ -34,7 +34,9 @@
 --     ContractChecker ne la prenne pas pour un modèle livré), est rangée dans la parcelle et porte
 --     les attributs Rarity et ReadyAt ;
 --   - au-dessus, le minuteur : copie de BB_OpenTimer (ReplicatedStorage/Assets/UI, élément Label),
---     sinon un billboard V0. Le serveur y écrit le temps restant (m:ss), puis « Prêt ! » ;
+--     accrochée au pied du colis (le dessus de l'établi, où se pose son pivot : le
+--     StudsOffsetWorldSpace de Clément part de là, liaison L-027), sinon un billboard V0. Le serveur
+--     y écrit le temps restant (m:ss), puis « Prêt ! » ;
 --   - attribut UnboxState sur chaque UnboxBench_xx d'une parcelle attribuée, lu par UnboxController :
 --     "Locked" (pas encore débloqué), "Free", "Waiting" (colis en attente), "Ready" (colis prêt).
 --     Retiré quand la parcelle se libère.
@@ -132,6 +134,7 @@ local RARITY_ATTRIBUTE = "Rarity"
 local READY_AT_ATTRIBUTE = "ReadyAt"
 local BOX_MODEL_FORMAT = "BenchBox_%02d"
 local TIMER_NAME = "OpenTimer"
+local TIMER_POINT = "TimerPoint"
 
 -- V0 proposé, absent du doc : portée (studs) de l'invite d'un établi, la même que celle
 -- d'UnboxController, et marge du serveur pour la gigue réseau. Le serveur accepte PlaceBox et
@@ -417,12 +420,20 @@ local function buildBoxModel(index: number, box: Box, benchCFrame: CFrame): (Mod
 	return model, anchor
 end
 
--- Minuteur au-dessus du colis : copie de BB_OpenTimer, sinon billboard V0. Renvoie son texte.
-local function buildTimer(anchor: BasePart): TextLabel?
+-- Minuteur au-dessus du colis : copie de BB_OpenTimer, accrochée au pied du colis (`base` : le
+-- dessus de l'établi, où se pose le pivot du colis, avec ses axes ; le StudsOffsetWorldSpace de
+-- Clément part de là, quelle que soit l'orientation de la pièce `anchor`) ; sinon billboard V0,
+-- accroché au centre de son bloc. Renvoie son texte.
+local function buildTimer(anchor: BasePart, base: CFrame): TextLabel?
 	local template = findTimerTemplate()
 	local gui: BillboardGui
 	if template then
 		gui = template:Clone() :: BillboardGui
+		local point = Instance.new("Attachment")
+		point.Name = TIMER_POINT
+		point.CFrame = anchor.CFrame:ToObjectSpace(base)
+		point.Parent = anchor
+		gui.Adornee = point
 	else
 		gui = Instance.new("BillboardGui")
 		gui.Size = V0_TIMER_SIZE
@@ -439,9 +450,9 @@ local function buildTimer(anchor: BasePart): TextLabel?
 		label.TextStrokeTransparency = 0
 		label.Text = ""
 		label.Parent = gui
+		gui.Adornee = anchor
 	end
 	gui.Name = TIMER_NAME
-	gui.Adornee = anchor
 	gui.Parent = anchor
 	local label = Find.path(gui, TIMER_LABEL)
 	if label ~= nil and label:IsA("TextLabel") then
@@ -521,7 +532,7 @@ local function showBox(player: Player, session: Session, index: number, box: Box
 	local model, anchor = buildBoxModel(index, box, bench.WorldCFrame)
 	local slot: Slot = {
 		model = model,
-		label = buildTimer(anchor),
+		label = buildTimer(anchor, bench.WorldCFrame),
 		readyAt = box.ReadyAt,
 		ready = false,
 		text = nil,

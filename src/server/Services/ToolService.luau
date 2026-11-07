@@ -29,6 +29,14 @@
 --       Outil équipé ; un outil enregistré inconnu ou pas possédé compte comme les poings.
 --   ToolService.IsHoldingTool(player) -> boolean
 --       true si le joueur a son outil de casse en main (vérifié par WindowService).
+--   ToolService.RefreshDamage(player)
+--       Recalcule l'attribut Damage du Player. Appelé ici au chargement du profil, à chaque Equip
+--       et à chaque changement de Force (attribut Strength posé par StatsService) ; CosmeticService
+--       l'appellera quand l'aura équipée change (après avoir remplacé GetAuraMultiplier).
+--
+-- Attribut du Player (écrit seulement ici) : Damage = GetHitDamage, les dégâts d'un coup avec
+-- l'outil équipé, les poings par défaut (7.1). Le HUD l'affiche (HudController, DEV-021) ; il ne
+-- sert qu'à l'affichage : WindowService rappelle GetHitDamage à chaque coup.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -45,6 +53,10 @@ type ToolDef = Tools.Tool
 
 -- Attribut du Tool donné au joueur : Id de l'outil (Config.Tools). Même nom dans HitController.
 local TOOL_ID_ATTRIBUTE = "ToolId"
+-- Attribut du Player lu par le HUD (même nom dans HudController).
+local DAMAGE_ATTRIBUTE = "Damage"
+-- Attribut du Player posé par StatsService : la Force, qui entre dans les dégâts.
+local STRENGTH_ATTRIBUTE = "Strength"
 -- Dossier des modèles de Clément (9.2).
 local ASSETS_FOLDER = "Assets"
 -- V0 proposé, absent du doc : poignée grise des outils dont le TOOL_* n'est pas encore livré.
@@ -222,6 +234,9 @@ local function watchPlayer(player: Player)
 			task.defer(ensureTool, player)
 		end
 	end)
+	player:GetAttributeChangedSignal(STRENGTH_ATTRIBUTE):Connect(function()
+		ToolService.RefreshDamage(player)
+	end)
 	task.defer(ensureTool, player)
 end
 
@@ -244,6 +259,7 @@ function ToolService.Equip(player: Player, toolId: string): boolean
 	else
 		ensureTool(player)
 	end
+	ToolService.RefreshDamage(player)
 	return true
 end
 
@@ -274,6 +290,12 @@ function ToolService.IsHoldingTool(player: Player): boolean
 	return tool ~= nil and character ~= nil and tool.Parent == character
 end
 
+function ToolService.RefreshDamage(player: Player)
+	if DataService.Get(player) ~= nil then
+		player:SetAttribute(DAMAGE_ATTRIBUTE, ToolService.GetHitDamage(player))
+	end
+end
+
 function ToolService.Init()
 	Players.PlayerAdded:Connect(watchPlayer)
 	Players.PlayerRemoving:Connect(function(player: Player)
@@ -282,7 +304,10 @@ function ToolService.Init()
 	for _, player in Players:GetPlayers() do
 		watchPlayer(player)
 	end
-	DataService.OnProfileLoaded(ensureTool)
+	DataService.OnProfileLoaded(function(player: Player)
+		ensureTool(player)
+		ToolService.RefreshDamage(player)
+	end)
 end
 
 return ToolService

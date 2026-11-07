@@ -10,8 +10,9 @@
 --   - pour chaque objet exposé : le modèle ITM_<ItemId> de Clément s'il est livré
 --     (ReplicatedStorage/Assets/Items, sous-dossiers permis), sinon un bloc V0 à la couleur de
 --     sa rareté ; autour, le halo de sa rareté (5.6) ; au-dessus, le billboard BB_Item de Clément
---     (ReplicatedStorage/Assets/UI, contrat 2.2 : ItemName, Rarity, Income), sinon un billboard
---     V0. Tout est créé par le serveur dans la parcelle : visible par tous les joueurs ;
+--     (ReplicatedStorage/Assets/UI, contrat 2.2 : ItemName, Rarity, Income), adossé au pied de
+--     l'objet (son StudsOffset part de là, liaison L-027), sinon un billboard V0 adossé à son
+--     sommet. Tout est créé par le serveur dans la parcelle : visible par tous les joueurs ;
 --   - revenus : chaque objet exposé rapporte Formulas.ItemIncome(zone, rareté) $/s (7.1), zone
 --     et rareté lues dans Config.Items. L'argent s'accumule au temps exact dans la caisse de la
 --     parcelle, pas dans Cash. Quand le propriétaire marche sur son CashPad, la caisse passe dans
@@ -743,19 +744,21 @@ local function setText(gui: Instance, name: string, text: string, color: Color3?
 	return element :: GuiObject
 end
 
--- Billboard visible par tous : nom, rareté (couleur), $/s (5.8). Accroché au sommet de l'objet.
+-- Billboard visible par tous : nom, rareté (couleur), $/s (5.8). BB_Item de Clément : accroché au
+-- pied de l'objet (son pivot, en bas au centre, posé sur le présentoir, 10.1), car Clément règle
+-- son StudsOffset depuis la base (liaison L-027). Billboard V0 : accroché au sommet.
 local function addBillboard(model: Model, def: ItemDef, rarity: Rarity, income: number, boxCFrame: CFrame, boxSize: Vector3)
 	local anchor = model.PrimaryPart or (model:FindFirstChildWhichIsA("BasePart", true) :: BasePart?)
 	if anchor == nil then
 		return
 	end
+	local template = billboardTemplate()
+	local gui: BillboardGui? = if template then template:Clone() :: BillboardGui? else nil
 	local point = Instance.new("Attachment")
 	point.Name = BILLBOARD_POINT
 	point.Parent = anchor
-	point.WorldPosition = boxCFrame.Position + Vector3.new(0, boxSize.Y / 2, 0)
+	point.WorldPosition = if gui then model:GetPivot().Position else boxCFrame.Position + Vector3.new(0, boxSize.Y / 2, 0)
 
-	local template = billboardTemplate()
-	local gui: BillboardGui? = if template then template:Clone() :: BillboardGui? else nil
 	if gui == nil then
 		reportOnce(
 			"billboard",

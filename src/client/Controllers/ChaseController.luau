@@ -3,10 +3,12 @@
 --
 -- Écoute ChaseState(active, guard) de GuardService. Pendant la poursuite, mesure à chaque image
 -- la distance entre son HumanoidRootPart et celui du vigile (la même mesure que la capture,
--- vérifiée par le serveur). En attendant la jauge GuardMeter de Clément (UI_HUD, contrat 2.2) et
--- le son des battements de cœur (DEV-051), la distance est écrite dans la sortie, en Studio
--- seulement : au début et à la fin, toutes les PRINT_INTERVAL s, et un repère « ♥ » quand elle
--- passe sous Balance.Guard.HeartbeatDistance (puis quand elle en ressort).
+-- vérifiée par le serveur). Le vigile peut arriver à nil (pas encore répliqué) ou disparaître un
+-- moment (streaming) : il est alors retrouvé dans Workspace/ActiveGuards par l'attribut de cible
+-- que GuardService pose sur son modèle. HudController lit GetDistance et IsClose : jauge GuardMeter
+-- de UI_HUD et battements de cœur (DEV-021). En Studio, la sortie note le début et la fin de la
+-- poursuite, et un repère « ♥ » quand la distance passe sous Balance.Guard.HeartbeatDistance (puis
+-- quand elle en ressort).
 --
 -- Coup du vigile : quand GuardService pousse le joueur rattrapé (Attachment GuardKnockback posé
 -- dans son HumanoidRootPart), joue Knockback puis Stunned jusqu'à la fin de l'étourdissement
@@ -35,8 +37,8 @@ local ACTIVE_FOLDER = "ActiveGuards"
 local TARGET_ATTRIBUTE = "TargetUserId"
 
 -- V0 proposé, absent du doc.
-local PRINT_INTERVAL = 0.5 -- écriture de la distance dans la sortie, en Studio (s)
-local GUARD_WAIT = 3 -- attente max du vigile s'il n'arrive pas avec ChaseState (streaming) (s)
+local GUARD_WAIT = 3 -- vigile toujours introuvable au bout de ce délai : avertissement, en Studio (s)
+local GUARD_SEARCH_INTERVAL = 0.1 -- recherche du vigile par son attribut tant qu'il manque (s)
 
 local IS_STUDIO = RunService:IsStudio()
 
@@ -50,8 +52,9 @@ local active = false
 local guard: Model? = nil
 local distance: number? = nil
 local close = false
-local lastPrint = -math.huge
-local chaseToken = 0
+local chaseStartedAt = 0
+local nextGuardSearch = 0
+local guardMissingWarned = false
 local stunToken = 0
 local rootConnection: RBXScriptConnection? = nil
 
@@ -119,8 +122,6 @@ local function findGuard(): Model?
 end
 
 local function onChaseState(isActive: boolean, model: Instance?)
-	chaseToken += 1
-	local token = chaseToken
 	if not isActive then
 		if active and IS_STUDIO then
 			print("[Poursuite] fin de la poursuite")
@@ -134,26 +135,30 @@ local function onChaseState(isActive: boolean, model: Instance?)
 	active = true
 	close = false
 	distance = nil
-	lastPrint = -math.huge
 	guard = if model and model:IsA("Model") then model :: Model else nil
+	chaseStartedAt = os.clock()
+	nextGuardSearch = 0
+	guardMissingWarned = false
 	if IS_STUDIO then
 		print("[Poursuite] un vigile te poursuit !")
 	end
-	if guard ~= nil then
-		return
+end
+
+-- Vigile absent côté client (pas encore répliqué à l'arrivée de ChaseState, ou sorti puis revenu
+-- avec le streaming) : retrouvé par son attribut, au plus toutes les GUARD_SEARCH_INTERVAL s.
+local function searchGuard(): Model?
+	local now = os.clock()
+	if now < nextGuardSearch then
+		return nil
 	end
-	task.spawn(function()
-		local deadline = os.clock() + GUARD_WAIT
-		while token == chaseToken and guard == nil and os.clock() < deadline do
-			guard = findGuard()
-			if guard == nil then
-				task.wait(0.1)
-			end
-		end
-		if token == chaseToken and guard == nil and IS_STUDIO then
-			warn("[Poursuite] vigile introuvable côté client (streaming ?) : distance inconnue")
-		end
-	end)
+	nextGuardSearch = now + GUARD_SEARCH_INTERVAL
+	local found = findGuard()
+	guard = found
+	if found == nil and IS_STUDIO and not guardMissingWarned and now - chaseStartedAt >= GUARD_WAIT then
+		guardMissingWarned = true
+		warn("[Poursuite] vigile introuvable côté client (streaming ?) : distance inconnue")
+	end
+	return found
 end
 
 local function update()
@@ -161,10 +166,14 @@ local function update()
 		return
 	end
 	local model = guard
+	if model == nil or model.Parent == nil then
+		model = searchGuard()
+	end
 	local mine = rootOf(localPlayer.Character)
-	local theirs = if model and model.Parent then rootOf(model) else nil
+	local theirs = rootOf(model)
 	if mine == nil or theirs == nil then
 		distance = nil
+		close = false
 		return
 	end
 	local d = (theirs.Position - mine.Position).Magnitude
@@ -178,11 +187,6 @@ local function update()
 		print(`[Poursuite] ♥ vigile à moins de {heartbeatDistance} studs ({format(d)}) : battements de cœur`)
 	elseif wasClose and not close then
 		print(`[Poursuite] vigile de nouveau à {heartbeatDistance} studs ou plus ({format(d)})`)
-	end
-	local now = os.clock()
-	if now - lastPrint >= PRINT_INTERVAL then
-		lastPrint = now
-		print(`[Poursuite] vigile à {format(d)} studs{if close then " ♥" else ""}`)
 	end
 end
 
