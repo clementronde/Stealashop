@@ -739,6 +739,8 @@ Format : `PREFIXE_Zone-ou-Categorie_Nom_Variante`, en PascalCase, sans accents n
 | ACC | Accessoire de vigile | `ACC_Z1_Casquette` |
 | ENV | Décor | `ENV_Lampadaire_A` |
 | FX | Texture de particule | `FX_GlassSparkle` |
+| ICON | Icône d'objet : Decal dans `ReplicatedStorage/Assets/Icons` (liaison L-055) | `ICON_Z3_Smartphone` |
+| MUS | Musique de fond : Sound en boucle dans `ReplicatedStorage/Assets/Music` (liaison L-056) | `MUS_Z1` |
 
 ### 10.4 Contrat d'intégration
 
