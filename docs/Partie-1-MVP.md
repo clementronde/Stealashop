@@ -757,20 +757,88 @@ Ces noms sont lus par le code : un nom faux = une fonctionnalité qui ne marche 
 
 Les points `Shutter`, `ShutterButton`, `TrapSlot_xx` et `VaultSlot_02` / `_03` de la parcelle servent en Partie 2 : on les place dès le MVP pour ne pas remodeler la parcelle plus tard. Pour les auras et les trails, Clément livre des textures PNG sur fond transparent (`FX_Aura_<Nom>`, `FX_Trail_<Nom>`, 256 × 256) et une couleur principale par palier.
 
-### 10.5 Catalogue d'objets V1
+### 10.5 Catalogue d'objets v2
 
-Un objet par rareté et par zone. Le MVP compte les 36 objets des 6 zones + 1 Secret. Chaque objet Légendaire et plus a une petite animation idle (rotation, rebond ou étincelles) : des objets drôles et vivants se partagent en capture.
+Validé par Clément et adopté par Ironix le 2026-11-07 (liaison L-045 ; source machine : `docs/claude/notes/objets-catalogue-v2.json`). 74 objets : 4 catégories par zone. Zone 1 (zone tuto) : 12 Communs, plus le Pot de nouilles (Rare), qui ne sort que du premier colis du tuto. Zones 2 à 6 : 12 objets chacune, 3 Communs, 3 Peu communs, 2 Rares, 2 Épiques, 1 Légendaire et 1 Mythique. Tirage : la rareté selon la table 7.3, puis un objet au hasard parmi ceux de la zone et de cette rareté. Le jeu affiche le nom et la catégorie en anglais (`BB_Box` : catégorie + rareté ; « ??? » pour le Secret). Modèle `ITM_<ItemId>`. Les objets Légendaire et plus ont une animation idle sans script : attribut `Idle` (`Spin`, `Bob` ou `SpinBob`) sur le modèle et pièces `Spin_<Nom>`, jouées par le code côté client (10.4).
 
-| Zone | Commun | Peu commun | Rare | Épique | Légendaire | Mythique |
-| --- | --- | --- | --- | --- | --- | --- |
-| 1 Supérette | Canette de soda | Paquet de chips | Pot de nouilles | Boisson énergisante | Ticket à gratter gagnant | Hot-dog en or |
-| 2 Jouets | Canard en plastique | Yo-yo | Voiture télécommandée | Robot jouet | Peluche géante | Figurine holographique |
-| 3 Électronique | Écouteurs | Manette | Smartphone | Console portable | PC gamer | Carte graphique en or |
-| 4 Bijouterie | Bague | Montre | Collier de perles | Diamant brut | Couronne | Œuf en diamant |
-| 5 Galerie | Vase | Buste en marbre | Toile abstraite | Statue dorée | Masque ancien | Météorite |
-| 6 Banque | Liasse de billets | Sac de pièces | Lingot d'or | Mallette de billets | Coffre de diamants | Clé du coffre ultime |
+| Zone | Catégorie | Objet | Nom affiché (EN) | Rareté | ItemId |
+| --- | --- | --- | --- | --- | --- |
+| 1 | Boisson (Drink) | Canette de soda | Soda Can | Commun | `Z1_CanetteDeSoda` |
+| 1 | Boisson (Drink) | Boisson énergisante | Energy Drink | Commun | `Z1_BoissonEnergisante` |
+| 1 | Boisson (Drink) | Brique de lait | Milk Carton | Commun | `Z1_BriqueDeLait` |
+| 1 | Snack (Snack) | Paquet de chips | Bag of Chips | Commun | `Z1_PaquetDeChips` |
+| 1 | Snack (Snack) | Donut | Donut | Commun | `Z1_Donut` |
+| 1 | Snack (Snack) | Hot-dog | Hot Dog | Commun | `Z1_HotDog` |
+| 1 | Snack (Snack) | Pot de nouilles (tuto seulement) | Instant Noodles | Rare | `Z1_PotDeNouilles` |
+| 1 | Fruit (Fruit) | Banane | Banana | Commun | `Z1_Banane` |
+| 1 | Fruit (Fruit) | Ananas | Pineapple | Commun | `Z1_Ananas` |
+| 1 | Fruit (Fruit) | Pastèque | Watermelon | Commun | `Z1_Pasteque` |
+| 1 | Légumes (Vegetable) | Carotte | Carrot | Commun | `Z1_Carotte` |
+| 1 | Légumes (Vegetable) | Brocoli | Broccoli | Commun | `Z1_Brocoli` |
+| 1 | Légumes (Vegetable) | Épi de maïs | Corn Cob | Commun | `Z1_EpiDeMais` |
+| 2 | Jouet (Toy) | Canard en plastique | Rubber Duck | Commun | `Z2_CanardEnPlastique` |
+| 2 | Jouet (Toy) | Yo-yo | Yo-Yo | Peu commun | `Z2_YoYo` |
+| 2 | Jouet (Toy) | Robot jouet | Toy Robot | Épique | `Z2_RobotJouet` |
+| 2 | Jouet (Toy) | Figurine holographique | Hologram Figure | Mythique | `Z2_FigurineHolographique` |
+| 2 | Peluche (Plush) | Ours en peluche | Teddy Bear | Commun | `Z2_OursEnPeluche` |
+| 2 | Peluche (Plush) | Peluche géante | Giant Plush | Légendaire | `Z2_PelucheGeante` |
+| 2 | Bonbon (Candy) | Sucette | Lollipop | Commun | `Z2_Sucette` |
+| 2 | Bonbon (Candy) | Barbe à papa | Cotton Candy | Peu commun | `Z2_BarbeAPapa` |
+| 2 | Bonbon (Candy) | Maison en pain d'épices | Gingerbread House | Rare | `Z2_MaisonEnPainDEpices` |
+| 2 | Véhicule (Vehicle) | Bus à impériale | Double-Decker Bus | Peu commun | `Z2_BusAImperiale` |
+| 2 | Véhicule (Vehicle) | Voiture télécommandée | RC Car | Rare | `Z2_VoitureTelecommandee` |
+| 2 | Véhicule (Vehicle) | Train électrique | Toy Train | Épique | `Z2_TrainElectrique` |
+| 3 | Téléphone (Phone) | Écouteurs | Earbuds | Commun | `Z3_Ecouteurs` |
+| 3 | Téléphone (Phone) | Téléphone à clapet | Flip Phone | Peu commun | `Z3_TelephoneAClapet` |
+| 3 | Téléphone (Phone) | Smartphone | Smartphone | Rare | `Z3_Smartphone` |
+| 3 | Ordinateur (Computer) | Souris | Computer Mouse | Commun | `Z3_Souris` |
+| 3 | Ordinateur (Computer) | Ordinateur portable | Laptop | Peu commun | `Z3_OrdinateurPortable` |
+| 3 | Ordinateur (Computer) | PC gamer | Gaming PC | Légendaire | `Z3_PcGamer` |
+| 3 | Ordinateur (Computer) | Carte graphique en or | Golden Graphics Card | Mythique | `Z3_CarteGraphiqueEnOr` |
+| 3 | Télé (TV) | Télé rétro | Retro TV | Commun | `Z3_TeleRetro` |
+| 3 | Télé (TV) | Télé géante | Giant TV | Épique | `Z3_TeleGeante` |
+| 3 | Console (Console) | Manette | Game Controller | Peu commun | `Z3_Manette` |
+| 3 | Console (Console) | Casque VR | VR Headset | Rare | `Z3_CasqueVr` |
+| 3 | Console (Console) | Console portable | Handheld Console | Épique | `Z3_ConsolePortable` |
+| 4 | Bijou (Jewelry) | Bague | Ring | Commun | `Z4_Bague` |
+| 4 | Bijou (Jewelry) | Chaîne en or | Gold Chain | Peu commun | `Z4_ChaineEnOr` |
+| 4 | Bijou (Jewelry) | Collier de perles | Pearl Necklace | Rare | `Z4_CollierDePerles` |
+| 4 | Montre (Watch) | Montre en or | Gold Watch | Commun | `Z4_MontreEnOr` |
+| 4 | Montre (Watch) | Coffret de montres | Watch Box | Peu commun | `Z4_CoffretDeMontres` |
+| 4 | Montre (Watch) | Montre à gousset | Pocket Watch | Rare | `Z4_MontreAGousset` |
+| 4 | Horloge (Clock) | Pendule dorée | Golden Clock | Commun | `Z4_PenduleDoree` |
+| 4 | Horloge (Clock) | Horloge de parquet | Grandfather Clock | Épique | `Z4_HorlogeDeParquet` |
+| 4 | Joyau (Jewel) | Rubis | Ruby | Peu commun | `Z4_Rubis` |
+| 4 | Joyau (Jewel) | Diamant brut | Rough Diamond | Épique | `Z4_DiamantBrut` |
+| 4 | Joyau (Jewel) | Couronne | Crown | Légendaire | `Z4_Couronne` |
+| 4 | Joyau (Jewel) | Œuf en diamant | Diamond Egg | Mythique | `Z4_OeufEnDiamant` |
+| 5 | Tableau (Painting) | Tableau de maître | Classic Painting | Commun | `Z5_TableauDeMaitre` |
+| 5 | Tableau (Painting) | La Joconde | Mona Lisa | Épique | `Z5_LaJoconde` |
+| 5 | Sculpture (Sculpture) | Buste en marbre | Marble Bust | Commun | `Z5_BusteEnMarbre` |
+| 5 | Sculpture (Sculpture) | Tour Eiffel en bronze | Bronze Eiffel Tower | Peu commun | `Z5_TourEiffelEnBronze` |
+| 5 | Sculpture (Sculpture) | Le Penseur | The Thinker | Peu commun | `Z5_LePenseur` |
+| 5 | Sculpture (Sculpture) | Statue dorée | Golden Statue | Rare | `Z5_StatueDoree` |
+| 5 | Antiquité (Antique) | Vase ancien | Ancient Vase | Commun | `Z5_VaseAncien` |
+| 5 | Antiquité (Antique) | Lustre en cristal | Crystal Chandelier | Peu commun | `Z5_LustreEnCristal` |
+| 5 | Antiquité (Antique) | Armure de chevalier | Knight Armor | Rare | `Z5_ArmureDeChevalier` |
+| 5 | Relique (Relic) | Sarcophage | Sarcophagus | Épique | `Z5_Sarcophage` |
+| 5 | Relique (Relic) | Masque ancien | Ancient Mask | Légendaire | `Z5_MasqueAncien` |
+| 5 | Relique (Relic) | Météorite | Meteorite | Mythique | `Z5_Meteorite` |
+| 6 | Trésor (Treasure) | Lingot d'or | Gold Bar | Commun | `Z6_LingotDOr` |
+| 6 | Trésor (Treasure) | Sceptre royal | Royal Scepter | Commun | `Z6_SceptreRoyal` |
+| 6 | Trésor (Treasure) | Pyramide de lingots | Gold Bar Pyramid | Peu commun | `Z6_PyramideDeLingots` |
+| 6 | Trésor (Treasure) | Trône en or | Golden Throne | Épique | `Z6_TroneEnOr` |
+| 6 | Joyau (Jewel) | Sac de diamants | Bag of Diamonds | Peu commun | `Z6_SacDeDiamants` |
+| 6 | Joyau (Jewel) | Diamant géant | Giant Diamond | Rare | `Z6_DiamantGeant` |
+| 6 | Statue (Statue) | Aigle de cristal | Crystal Eagle | Commun | `Z6_AigleDeCristal` |
+| 6 | Statue (Statue) | Taureau en or | Golden Bull | Rare | `Z6_TaureauEnOr` |
+| 6 | Statue (Statue) | Statue de la Liberté | Statue of Liberty | Épique | `Z6_StatueDeLaLiberte` |
+| 6 | Coffre (Vault) | Coffre-fort blindé | Armored Safe | Peu commun | `Z6_CoffreFortBlinde` |
+| 6 | Coffre (Vault) | Coffre de diamants | Diamond Chest | Légendaire | `Z6_CoffreDeDiamants` |
+| 6 | Coffre (Vault) | Clé du coffre ultime | Ultimate Vault Key | Mythique | `Z6_CleDuCoffreUltime` |
+| Toutes | ??? | Chat porte-bonheur doré | Golden Lucky Cat | Secret | `Secret_ChatPorteBonheurDore` |
 
-Secrets, toutes zones (0,2 % des colis Luxe) : Chat porte-bonheur doré (MVP), Toilettes en or (Partie 2).
+Retirés de la v1 (anciens profils migrés en v2, section 9.5) : Ticket à gratter gagnant et Hot-dog en or (remplacés par la Canette de soda), Toile abstraite (Statue dorée), Liasse de billets (Lingot d'or), Sac de pièces (Pyramide de lingots), Mallette de billets (Trône en or). Renommés : `Z4_Montre` → `Z4_MontreEnOr`, `Z5_Vase` → `Z5_VaseAncien`. Toilettes en or : Partie 2.
 
 ### 10.6 Planche de style (MOD-002)
 
