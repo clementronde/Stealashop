@@ -11,7 +11,9 @@
 --     le saut est coupé pendant le portage ;
 --   - colis et objets Secret, portés ou au sol (tag CarryRainbow posé par CarryService) : anime en
 --     local leur arc-en-ciel (RainbowColors de la rareté) sur les pièces Tint, la lumière du halo
---     et le texte Rarity de l'étiquette.
+--     et le texte Rarity de l'étiquette (BB_Box ou BB_Carry). Colis Secret d'un rayon : le tag est
+--     posé sur son étiquette BB_Box seule (CarryService.AttachBoxLabel), seul le texte Rarity
+--     change, le colis garde l'aspect de son type.
 -- Aucun remote, aucune UI créée.
 --
 -- API (client) :

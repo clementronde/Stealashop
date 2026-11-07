@@ -5,8 +5,11 @@
 -- Rôle :
 --   - Sur chaque colis d'un rayon (dossier `ShelfBoxes` d'un magasin taggé NPCStore, rempli par
 --     StoreHeistService), une invite ProximityPrompt créée ici, sur l'Attachment ShelfSlot_xx du
---     colis : maintien = temps de prise de son type (Balance.Heist.BoxTiers[Tier].GrabTime),
---     portée = Balance.Heist.GrabMaxDistance. L'invite n'est active que si le magasin est ouvert
+--     colis : maintien = temps de prise du type du colis (attribut Tier du colis, plus de
+--     l'emplacement : les colis sont placés au hasard, L-033 ; Balance.Heist.BoxTiers[Tier].GrabTime),
+--     portée = Balance.Heist.GrabMaxDistance. Textes en anglais (L-036) : « Steal », « Premium Box ».
+--     L'étiquette BB_Box et le contour du colis sont gérés par ShelfBoxController. L'invite n'est
+--     active que si le magasin est ouvert
 --     (HeistOpen), le colis posé (Landed), les mains vides (attribut Carrying du joueur, posé par
 --     CarryService), le joueur dans le volume Bounds du magasin et, pendant l'avance du casseur,
 --     seulement pour le casseur.
@@ -67,8 +70,10 @@ local REFRESH_INTERVAL = 0.2
 -- V0 proposé, absent du doc : invite visible un demi-stud avant la portée du serveur, pour qu'un
 -- léger retard de la position côté serveur ne fasse pas refuser la prise.
 local PROMPT_DISTANCE_MARGIN = 0.5
--- V0 proposé, absent du doc : texte de l'invite.
-local ACTION_TEXT = "Voler"
+-- V0 proposé, absent du doc : texte de l'invite, en anglais (L-036). Sous lui, le type du colis :
+-- « Standard Box », « Premium Box », « Luxury Box » (BoxTiers[Tier].DisplayName + BOX_SUFFIX).
+local ACTION_TEXT = "Steal"
+local BOX_SUFFIX = "Box"
 
 local IS_STUDIO = RunService:IsStudio()
 
@@ -178,7 +183,7 @@ local function addPrompt(watch: StoreWatch, box: Instance)
 	local prompt = Instance.new("ProximityPrompt")
 	prompt.Name = PROMPT_NAME
 	prompt.ActionText = ACTION_TEXT
-	prompt.ObjectText = `Colis {info.DisplayName}`
+	prompt.ObjectText = `{info.DisplayName} {BOX_SUFFIX}`
 	prompt.HoldDuration = info.GrabTime
 	prompt.MaxActivationDistance = math.max(Balance.Heist.GrabMaxDistance - PROMPT_DISTANCE_MARGIN, 1)
 	prompt.RequiresLineOfSight = false -- les rayons cachent parfois le colis
