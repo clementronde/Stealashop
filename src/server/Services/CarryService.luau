@@ -58,6 +58,14 @@
 --   CarryService.OnDropExpired(listener) -> déconnexion
 --       listener(dropId, payload) quand un colis reste Bat.DroppedLifetime secondes au sol sans être
 --       ramassé (6.2 : 15 s) : StoreHeistService le remet alors sur son rayon.
+--   Événement camion (liaison L-049, TruckEventService) :
+--   CarryService.PlaceDrop(payload, position, lifetime?, attributes?) -> string?
+--       Pose au sol à `position` un colis PNJ qu'aucun joueur ne porte : le même colis au sol que
+--       Drop (couleur, halo, BB_Box, Workspace/CarryDrops, attribut DropId, PickUpDrop, GetDrop),
+--       sans OnCarryEnded. Il expire (OnDropExpired, modèle retiré) au bout de `lifetime` secondes
+--       (défaut Bat.DroppedLifetime). `attributes` : posés sur le modèle avant qu'il entre dans la map
+--       (lus par le client ; DropId ne se remplace pas). Renvoie le dropId ; nil, avec un
+--       avertissement, si le payload est invalide, déjà porté ou au sol, ou n'est pas un colis PNJ.
 --   Étiquette des colis du rayon (L-031) :
 --   CarryService.AttachBoxLabel(model, rarityId, itemId) -> BillboardGui?
 --       Pose sur `model`, un colis qui n'est pas porté (StoreHeistService : chaque colis du rayon),
@@ -189,6 +197,7 @@ type Drop = {
 	payload: Payload,
 	visual: Visual,
 	position: Vector3,
+	lifetime: number, -- secondes au sol avant d'expirer
 	timer: thread,
 }
 
@@ -848,11 +857,38 @@ local function expire(dropId: string)
 	held[keyOf(drop.payload)] = nil
 	drop.visual.model:Destroy()
 	if IS_STUDIO then
-		print(`[CarryService] {dropId} : {Bat.DroppedLifetime} s au sol sans preneur, rendu ({describe(drop.payload)})`)
+		print(`[CarryService] {dropId} : {drop.lifetime} s au sol sans preneur, retiré ({describe(drop.payload)})`)
 	end
 	for _, listener in table.clone(dropExpiredListeners) do
 		task.spawn(listener, dropId, drop.payload)
 	end
+end
+
+-- Colis au sol : visuel posé à `position` (point du sol), ancré, dans Workspace/CarryDrops, tenu
+-- (held) jusqu'à sa prise ou son expiration au bout de `lifetime` secondes. Renvoie son dropId.
+local function createDrop(payload: Payload, position: Vector3, lifetime: number, attributes: { [string]: any }?): string
+	dropCount += 1
+	local dropId = `Drop_{dropCount}`
+	local visual = buildVisual(payload)
+	place(visual, CFrame.new(position))
+	visual.anchor.Anchored = true
+	visual.model.Name = dropId
+	if attributes then
+		for name, value in attributes do
+			visual.model:SetAttribute(name, value)
+		end
+	end
+	visual.model:SetAttribute(DROP_ID_ATTRIBUTE, dropId)
+	visual.model.Parent = dropsFolder()
+	held[keyOf(payload)] = true
+	drops[dropId] = {
+		payload = payload,
+		visual = visual,
+		position = position,
+		lifetime = lifetime,
+		timer = task.delay(lifetime, expire, dropId),
+	}
+	return dropId
 end
 
 function CarryService.Drop(player: Player, position: Vector3): string?
@@ -865,21 +901,31 @@ function CarryService.Drop(player: Player, position: Vector3): string?
 		CarryService.Fail(player, "Bat") -- 6.2 : l'objet revole vers le présentoir de son propriétaire
 		return nil
 	end
-	dropCount += 1
-	local dropId = `Drop_{dropCount}`
-	local visual = buildVisual(payload)
-	place(visual, CFrame.new(position))
-	visual.anchor.Anchored = true
-	visual.model.Name = dropId
-	visual.model:SetAttribute(DROP_ID_ATTRIBUTE, dropId)
-	visual.model.Parent = dropsFolder()
-	drops[dropId] = {
-		payload = payload,
-		visual = visual,
-		position = position,
-		timer = task.delay(Bat.DroppedLifetime, expire, dropId),
-	}
+	local dropId = createDrop(payload, position, Bat.DroppedLifetime, nil)
 	finish(player, "Dropped", "Bat") -- le colis reste tenu : il est au sol
+	return dropId
+end
+
+function CarryService.PlaceDrop(payload: Payload, position: Vector3, lifetime: number?, attributes: { [string]: any }?): string?
+	local problem = invalidReason(payload)
+	if problem == nil and payload.Kind ~= "NPCBox" then
+		problem = "seul un colis PNJ se pose au sol (6.2)"
+	end
+	if problem == nil and held[keyOf(payload)] then
+		problem = `{describe(payload)} déjà porté ou au sol`
+	end
+	if problem == nil and (typeof(position) ~= "Vector3" or position ~= position) then
+		problem = `position invalide ({position})`
+	end
+	if problem then
+		warn(debug.traceback(`[CarryService] PlaceDrop refusé : {problem}`, 2))
+		return nil
+	end
+	local seconds = if type(lifetime) == "number" and lifetime > 0 and lifetime < math.huge then lifetime else Bat.DroppedLifetime
+	local dropId = createDrop(payload, position, seconds, attributes)
+	if IS_STUDIO then
+		print(`[CarryService] {dropId} posé au sol sans porteur pour {seconds} s : {describe(payload)}`)
+	end
 	return dropId
 end
 

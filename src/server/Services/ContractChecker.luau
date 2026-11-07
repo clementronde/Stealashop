@@ -49,7 +49,7 @@ local ContractChecker = {}
 ContractChecker.Priority = 1
 
 local PREFIX = "[Contrat]"
-local CATEGORIES = { "Tags", "Magasins PNJ", "Parcelles", "UI", "Billboards", "Animations", "Objets", "Scripts" }
+local CATEGORIES = { "Tags", "Magasins PNJ", "Parcelles", "UI", "Billboards", "Animations", "Objets", "Événements", "Scripts" }
 local INBOX_NAME = "_INBOX_CLEMENT" -- livraisons : vérifiées, mais pas comptées dans la map
 local SANDBOX_NAME = "_SANDBOX_IRONIX" -- tests d'Ironix : ignorés
 
@@ -622,6 +622,16 @@ local function checkModels(scanned: { Instance })
 		if prefix then
 			for _, inst in scanned do
 				if isPrefixed(inst, prefix) then
+					push(inst)
+				end
+			end
+		end
+		-- Noms exacts (camion de l'événement, sa traînée : L-049) : le modèle lui-même, pas une pièce
+		-- ou une image qui porterait le même nom.
+		local exactNames = spec.Names
+		if exactNames then
+			for _, inst in scanned do
+				if (inst:IsA("PVInstance") or inst:IsA("Folder")) and table.find(exactNames, inst.Name) then
 					push(inst)
 				end
 			end
