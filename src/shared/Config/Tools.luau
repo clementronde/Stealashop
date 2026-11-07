@@ -4,9 +4,9 @@
 -- et le Bélier sont réservés aux renaissances (Partie 2) : absents ici.
 --
 -- `Id` est la clé utilisée dans la sauvegarde (Tools.Owned, Tools.Equipped, 9.5) et
--- dans BuyItem (9.4). `Asset` est le nom du modèle dans ReplicatedStorage/Assets :
--- dérivé de la convention 10.3 (exemple `TOOL_PiedDeBiche`), absent du tableau
--- 10.4, à confirmer avec Clément.
+-- dans BuyItem (9.4). `Asset` est le nom du modèle de Clément dans
+-- ReplicatedStorage/Assets/Tools (convention 10.3, noms confirmés par Clément le
+-- 2026-11-07, MOD-027).
 
 local DeepFreeze = require(script.Parent.DeepFreeze)
 
