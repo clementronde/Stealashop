@@ -999,6 +999,7 @@ Chaque étape est envoyée une seule fois par joueur avec `AnalyticsService:LogO
 
 | Date | Décision | Par |
 | --- | --- | --- |
+| 2026-11-07 | Casse de vitrine en style Roblox plutôt que réaliste (remplace le « très réaliste » de la ligne suivante) : persos R6 qui frappent, décor en studs, verre Roblox bleu clair, éclats et petits cubes de verre, gravité Roblox (196,2 studs/s²). Cible : le prototype interactif et le rendu WIN_M_Casse_Roblox.mp4 (liaison, L-028) | Clément |
 | 2026-11-07 | Casse de vitrine : elle doit être très réaliste et animée, et la fissure comme la brisure partent de l'endroit où le joueur frappe. Fissures livrées en étoiles d'impact à poser au point de frappe ; vitre fracturée en 3 variantes (impact à gauche, au centre, à droite) ; animation dans le code (liaison, L-028) | Clément |
 | 2026-11-07 | Boutons sans lèvre : plus d'ombre intérieure en bas des boutons, le contour noir suffit (section 10.6, maquettes Figma) | Clément |
 | 2026-11-07 | Réponses aux questions d'Ironix (liaison, L-019 à L-023) : OwnerName dans NameSign et SpawnPoint dans la parcelle acceptés ; animation BenchIdle ajoutée au contrat (en boucle, assis au banc entre deux répétitions) ; sons des marqueurs dans Assets/Sounds, nommés <Animation>_<Marqueur> ; le GuardSpawn va au fond du magasin, jamais entre le voleur et la sortie (le Luxe reste dur mais jouable) ; sur l'étiquette d'un colis porté, la rareté s'écrit à sa couleur | Clément, sur proposition d'Ironix |
