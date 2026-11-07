@@ -82,6 +82,18 @@ local List: { RemoteDef } = {
 		RatePerSecond = 5, -- V0 proposé, absent du doc ; maintien vérifié par le service
 	},
 	{
+		-- Ajout de la vague 10 (DEV-041, 2026-11-08), absent du tableau 9.4 : prise d'un objet exposé
+		-- dans la boutique d'un autre joueur, porte cassée (6.1). plotIndex = attribut PlotIndex de la
+		-- parcelle, slotIndex = numéro du présentoir (DisplaySlot_xx). Deux appels, comme GrabItem :
+		-- début du maintien, puis fin (PvP.StealGrabTime). Un remote à part de GrabItem : les règles
+		-- (protections 6.4, coffre-fort, transfert sûr) sont celles de PvPService, pas du braquage PNJ.
+		Name = "StealItem",
+		Direction = "ClientToServer",
+		Reliable = true,
+		Args = { index("plotIndex"), index("slotIndex") },
+		RatePerSecond = 5, -- V0 proposé, absent du doc ; maintien vérifié par le service
+	},
+	{
 		Name = "PlaceBox",
 		Direction = "ClientToServer",
 		Reliable = true,
@@ -216,7 +228,8 @@ local List: { RemoteDef } = {
 		},
 	},
 	{
-		-- Envoyé à la victime : active = vol en cours ; thief et itemId nil à la fin.
+		-- Envoyé à la victime : active = vol en cours ; thief et itemId nil à la fin. Envoyé par
+		-- PvPService à la prise de l'objet (true, voleur, ItemId) et à la fin du vol (false).
 		Name = "TheftAlert",
 		Direction = "ServerToClient",
 		Reliable = true,

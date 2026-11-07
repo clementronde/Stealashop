@@ -55,9 +55,27 @@
 --       objet volé sur son présentoir d'origine, 6.1). Sans yield.
 --   DisplayService.Unplace(player, itemUid) -> number?
 --       Retire l'objet de son présentoir ; il reste dans Items (inventaire). Renvoie le numéro du
---       présentoir libéré, nil s'il n'était pas exposé. Sans yield. À appeler AVANT de retirer un
---       objet de Items (vol PvP, receleur) ; sinon il disparaît quand même du présentoir à la
---       mise à jour suivante (au plus 1 s).
+--       présentoir libéré, nil s'il n'était pas exposé (ou s'il est tenu par un voleur, plus bas).
+--       Sans yield. À appeler AVANT de retirer un objet de Items (receleur) ; sinon il disparaît
+--       quand même du présentoir à la mise à jour suivante (au plus 1 s).
+--   Vol entre joueurs (DEV-041, PvPService, 6.1) : pendant la fuite, l'objet volé est « tenu ». Son
+--   présentoir se vide et il ne rapporte plus, mais le profil du propriétaire ne change pas (Display
+--   et Items gardent l'objet) jusqu'au dépôt. Un objet tenu ne bouge pas : PlaceItem (« Held »),
+--   PlaceAuto et Unplace le refusent. Sans yield :
+--   DisplayService.Hold(player, itemUid) -> number?
+--       L'objet exposé devient tenu ; renvoie son présentoir, nil s'il n'est pas exposé sur un
+--       présentoir de la parcelle (ou déjà tenu).
+--   DisplayService.Release(player, itemUid) -> boolean
+--       Échec du vol : l'objet tenu revient sur son présentoir et rapporte de nouveau.
+--   DisplayService.TakeHeld(player, itemUid) -> boolean
+--       Dépôt : l'objet tenu quitte son présentoir pour de bon (Display) ; il reste dans Items, que
+--       l'appelant vide dans la même exécution (transfert sûr, 9.6). false s'il n'était pas tenu.
+--   DisplayService.IsHeld(player, itemUid) -> boolean
+--   DisplayService.GetExposed(player) -> { [présentoir]: { Uid, ItemId, Income } }
+--       Objets exposés et affichés en ce moment (tenus exclus), avec leur revenu ($/s).
+--   DisplayService.HasRoom(player) -> boolean
+--       Un présentoir débloqué libre, ou moins de Balance.Display.InventoryMax objets dans
+--       l'inventaire (même compte qu'UnboxService) : un objet de plus a sa place.
 --   DisplayService.GetIncome(player) -> number      $/s total exposé (0 sans parcelle)
 --   DisplayService.GetRegister(player) -> number    argent en caisse, en dollars entiers
 --   DisplayService.CashOut(player) -> number
@@ -69,8 +87,8 @@
 --
 -- Remote PlaceItem(itemUid, slotIndex) : refusé (Notify « Warning » au joueur, avertissement en
 -- Studio) si le joueur n'a pas de parcelle, n'est pas dans le volume Bounds de sa parcelle, ne
--- possède pas l'objet, l'a rangé au coffre-fort, ou si le présentoir est verrouillé, absent ou
--- déjà occupé. Un objet déjà exposé sur un autre présentoir y est déplacé.
+-- possède pas l'objet, l'a rangé au coffre-fort, si un voleur l'emporte (tenu), ou si le présentoir
+-- est verrouillé, absent ou déjà occupé. Un objet déjà exposé sur un autre présentoir y est déplacé.
 --
 -- Choix V0 (marqués « V0 proposé, absent du doc » plus bas) :
 --   - encaissement à chaque arrivée sur le CashPad : Touched par le personnage du propriétaire,
@@ -110,7 +128,10 @@ type Rarity = Rarities.Rarity
 
 export type CashOutSource = "Pad" | "Leave" | "Api"
 export type CashOutListener = (player: Player, amount: number, source: CashOutSource) -> ()
-export type PlaceError = "NoProfile" | "NoPlot" | "UnknownItem" | "InVault" | "NoSlot" | "Locked" | "Taken" | "NotOnPlot"
+export type PlaceError = "NoProfile" | "NoPlot" | "UnknownItem" | "InVault" | "Held" | "NoSlot" | "Locked" | "Taken" | "NotOnPlot"
+
+-- Objet exposé en ce moment (GetExposed).
+export type ExposedItem = { Uid: string, ItemId: string, Income: number }
 
 local IS_STUDIO = RunService:IsStudio()
 
@@ -202,6 +223,7 @@ local MESSAGES: { [string]: string } = {
 	NoPlot = "You don't have a shop yet: wait for one to free up.",
 	NotOnPlot = "Go back to your shop to display an item.",
 	InVault = "This item is in your safe.",
+	Held = "This item is being stolen: hit the thief to get it back!",
 	NoSlot = "This stand doesn't exist.",
 	Locked = "This stand is locked: upgrade your Display Stands.",
 	Taken = "This stand is already taken.",
@@ -251,6 +273,8 @@ local DisplayService = {}
 local accounts: { [Player]: Account } = {}
 local views: { [Model]: View } = {}
 local refsOf: { [Model]: PlotRefs } = {}
+-- Objets tenus par un voleur pendant sa fuite (voir l'en-tête) : [propriétaire][uid] = true.
+local held: { [Player]: { [string]: boolean } } = {}
 local cashOutListeners: { CashOutListener } = {}
 local reported: { [string]: boolean } = {}
 local padClock = 0
@@ -310,6 +334,12 @@ local function isInVault(data: Data, uid: string): boolean
 		end
 	end
 	return false
+end
+
+-- L'objet est-il tenu par un voleur (vol en cours, voir l'en-tête) ?
+local function isHeld(player: Player, uid: string): boolean
+	local byUid = held[player]
+	return byUid ~= nil and byUid[uid] == true
 end
 
 -- Présentoir où l'objet est exposé, d'après le profil.
@@ -909,6 +939,15 @@ local function reconcile(player: Player, account: Account, data: Data, plot: Mod
 	end
 	local refs = refsFor(plot)
 	local wanted = sanitize(player, data, refs)
+	-- Objet tenu par un voleur : présentoir vide, revenu arrêté, profil inchangé (6.1, DEV-041).
+	local heldBy = held[player]
+	if heldBy then
+		for slot, uid in wanted do
+			if heldBy[uid] then
+				wanted[slot] = nil
+			end
+		end
+	end
 
 	for slot, visual in view.visuals do
 		local uid = wanted[slot]
@@ -1097,6 +1136,9 @@ local function onProfileReleasing(player: Player)
 end
 
 local function onPlayerRemoving(player: Player)
+	-- Un objet tenu par un voleur n'a jamais quitté le profil : il part avec lui (PvPService annule
+	-- le vol).
+	held[player] = nil
 	-- Profil encore ouvert : OnProfileReleasing va encaisser puis effacer le compte. Sinon (profil
 	-- déjà fermé, repris par un autre serveur), il n'y a plus rien à sauvegarder.
 	if not DataService.IsLoaded(player) then
@@ -1123,6 +1165,9 @@ local function place(player: Player, itemUid: string, slot: number, fromClient: 
 	end
 	if isInVault(data, itemUid) then
 		return false, "InVault"
+	end
+	if isHeld(player, itemUid) then
+		return false, "Held"
 	end
 	if slot % 1 ~= 0 or slot < 1 or slot > Balance.Display.MaxSlots then
 		return false, "NoSlot"
@@ -1230,7 +1275,7 @@ function DisplayService.PlaceAuto(player: Player, itemUid: string, near: Vector3
 	end
 	reconcile(player, account, data, plot)
 	local entry, def = lookup(data, itemUid)
-	if entry == nil or def == nil or isInVault(data, itemUid) then
+	if entry == nil or def == nil or isInVault(data, itemUid) or isHeld(player, itemUid) then
 		return nil
 	end
 	local current = slotOf(data, itemUid)
@@ -1277,7 +1322,7 @@ end
 
 function DisplayService.Unplace(player: Player, itemUid: string): number?
 	local data = DataService.Get(player)
-	if data == nil then
+	if data == nil or isHeld(player, itemUid) then
 		return nil
 	end
 	local slot = slotOf(data, itemUid)
@@ -1290,6 +1335,122 @@ function DisplayService.Unplace(player: Player, itemUid: string): number?
 		reconcile(player, account, data, plot)
 	end
 	return slot
+end
+
+-- Remet l'affichage du joueur d'accord avec son profil, s'il est installé sur sa parcelle.
+local function refresh(player: Player)
+	local data, account, plot = context(player)
+	if data and account and plot then
+		reconcile(player, account, data, plot)
+	end
+end
+
+function DisplayService.Hold(player: Player, itemUid: string): number?
+	local data = DataService.Get(player)
+	if data == nil or type(itemUid) ~= "string" or isHeld(player, itemUid) then
+		return nil
+	end
+	local _, account, plot = context(player)
+	local view = if plot then views[plot] else nil
+	if account == nil or plot == nil or view == nil then
+		return nil
+	end
+	reconcile(player, account, data, plot)
+	local slot = slotOf(data, itemUid)
+	local visual = if slot then view.visuals[slot] else nil
+	if slot == nil or visual == nil or visual.uid ~= itemUid then
+		return nil -- pas exposé sur un présentoir de la parcelle (inventaire, coffre-fort, présentoir absent)
+	end
+	local byUid = held[player] or {}
+	held[player] = byUid
+	byUid[itemUid] = true
+	reconcile(player, account, data, plot)
+	if IS_STUDIO then
+		print(`[DisplayService] {player.Name} : {describe(data, itemUid, slot)} tenu par un voleur, revenu {Format.money(account.income)}/s`)
+	end
+	return slot
+end
+
+-- Oublie le maintien de l'objet ; true s'il était tenu.
+local function forget(player: Player, itemUid: string): boolean
+	local byUid = held[player]
+	if byUid == nil or byUid[itemUid] ~= true then
+		return false
+	end
+	byUid[itemUid] = nil
+	if next(byUid) == nil then
+		held[player] = nil
+	end
+	return true
+end
+
+function DisplayService.Release(player: Player, itemUid: string): boolean
+	if not forget(player, itemUid) then
+		return false
+	end
+	refresh(player)
+	return true
+end
+
+function DisplayService.TakeHeld(player: Player, itemUid: string): boolean
+	if not isHeld(player, itemUid) then
+		return false
+	end
+	local data = DataService.Get(player)
+	if data == nil then
+		return false
+	end
+	forget(player, itemUid)
+	for key, uid in table.clone(data.Display) do
+		if uid == itemUid then
+			data.Display[key] = nil
+		end
+	end
+	refresh(player)
+	return true
+end
+
+function DisplayService.IsHeld(player: Player, itemUid: string): boolean
+	return isHeld(player, itemUid)
+end
+
+function DisplayService.GetExposed(player: Player): { [number]: ExposedItem }
+	local exposed: { [number]: ExposedItem } = {}
+	local account = accounts[player]
+	local plot = if account then account.plot else nil
+	local view = if plot then views[plot] else nil
+	if view == nil or view.owner ~= player then
+		return exposed
+	end
+	for slot, visual in view.visuals do
+		exposed[slot] = { Uid = visual.uid, ItemId = visual.itemId, Income = visual.income }
+	end
+	return exposed
+end
+
+function DisplayService.HasRoom(player: Player): boolean
+	local data = DataService.Get(player)
+	if data == nil then
+		return false
+	end
+	local placed: { [string]: boolean } = {}
+	local displayed = 0
+	for _, uid in data.Display do
+		if not placed[uid] then
+			placed[uid] = true
+			displayed += 1
+		end
+	end
+	for _, uid in data.Vault do
+		placed[uid] = true
+	end
+	local stored = 0
+	for uid in data.Items do
+		if not placed[uid] then
+			stored += 1
+		end
+	end
+	return displayed < unlockedSlots(data) or stored < Balance.Display.InventoryMax
 end
 
 function DisplayService.GetIncome(player: Player): number

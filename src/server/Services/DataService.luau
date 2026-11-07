@@ -32,6 +32,11 @@
 --   DataService.OnCashChanged(listener) -> déconnexion
 --       listener(player, cash) après chaque AddCash ou SpendCash (côté serveur).
 --       L'argent ne se modifie que par AddCash et SpendCash.
+--   DataService.Save(player) -> boolean
+--       Demande tout de suite une sauvegarde du profil (Profile:Save de ProfileStore, lancée en
+--       tâche de fond : sans yield ici) ; false si le profil n'est pas chargé. Pour une écriture qui
+--       ne doit pas attendre la sauvegarde automatique (5 min) : le transfert d'un objet volé
+--       (PvPService, 9.6 et 14.3), sauvegardé chez la victime puis chez le voleur.
 --
 -- Attribut du Player (écrit seulement ici) : Cash, l'argent du profil, posé au chargement puis à
 -- chaque AddCash ou SpendCash. Le HUD l'affiche (HudController, DEV-021) ; il ne sert qu'à
@@ -79,6 +84,7 @@ type StoreProfile = {
 	Data: Data,
 	Key: string,
 	IsActive: (self: StoreProfile) -> boolean,
+	Save: (self: StoreProfile) -> (),
 	Reconcile: (self: StoreProfile) -> (),
 	EndSession: (self: StoreProfile) -> (),
 	AddUserId: (self: StoreProfile, userId: number) -> (),
@@ -469,6 +475,21 @@ function DataService.SpendCash(player: Player, amount: number): boolean
 	end
 	data.Cash -= amount
 	notifyCash(player, data.Cash)
+	return true
+end
+
+function DataService.Save(player: Player): boolean
+	local profile = profiles[player]
+	if profile == nil or not profile:IsActive() then
+		return false
+	end
+	local ok, err = pcall(function()
+		profile:Save()
+	end)
+	if not ok then
+		warn(`[DataService] {player.Name} : sauvegarde immédiate impossible : {err}`)
+		return false
+	end
 	return true
 end
 

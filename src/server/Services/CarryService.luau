@@ -10,12 +10,14 @@
 -- ou un coup de batte qui fait tomber le colis (Drop, BatService). Ce service ne remet jamais
 -- rien en place lui-même : le service d'origine réagit à OnCarryEnded (le braquage remet le colis
 -- sur son rayon, le vol PvP rend l'objet à son présentoir). Aucun remote ici : la prise arrive par
--- GrabItem (StoreHeistService), la pose par PlaceBox (UnboxService).
+-- GrabItem (StoreHeistService) ou StealItem (PvPService), la pose par PlaceBox (UnboxService), le
+-- dépôt d'un objet volé par PvPService (Consume, raison « Deposited »).
 --
 -- Payload (Shared/Types/Carry) : { Kind = "NPCBox", Tier, Zone, Rarity, ItemId, StoreId, SlotId }
--- pour un colis PNJ ; Kind = "PlayerItem" pour un objet volé à un joueur (M3, pas encore branché).
--- Fabriqué par le serveur, vérifié par StartCarry, puis toujours repassé tel quel (même table) aux
--- écouteurs : le lire, ne jamais le modifier.
+-- pour un colis PNJ ; { Kind = "PlayerItem", ItemUid, ItemId, Rarity, Income, VictimUserId,
+-- SlotIndex } pour un objet volé à un joueur (DEV-041, PvPService : malus −25 %, contour rouge,
+-- BB_Carry). Fabriqué par le serveur, vérifié par StartCarry, puis toujours repassé tel quel (même
+-- table) aux écouteurs : le lire, ne jamais le modifier.
 --
 -- API (serveur) :
 --   CarryService.StartCarry(player, payload) -> boolean
@@ -34,7 +36,8 @@
 --       "CharacterRemoved" (personnage retiré sans mourir ; à une déconnexion, selon l'ordre des
 --       événements de Roblox, la raison est "Left" ou "CharacterRemoved") ; "Anomaly"
 --       (ReportAnomaly) ; "Bat" (Drop d'un objet volé). Les autres services passent la leur
---       (GuardService : "Caught").
+--       (GuardService : "Caught" ; PvPService : "VictimLeft", la victime part pendant la fuite, et
+--       "NoRoom", plus de place chez le voleur au dépôt ; la batte, DEV-043 : "Bat").
 --   CarryService.ReportAnomaly(player, detail) -> boolean
 --       Point d'accroche de l'anti-triche (9.6, AntiCheatService DEV-060) : écrit `detail` dans la
 --       sortie (warn), puis Fail(player, "Anomaly"). false si le joueur ne portait rien.

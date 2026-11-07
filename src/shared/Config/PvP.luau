@@ -1,7 +1,8 @@
 --!strict
 -- Vol entre joueurs et règles anti-frustration (Partie 1, sections 6, 6.1, 6.2 et 6.4).
 -- Régénération de la vitrine : Balance.Window ; malus de portage −25 % :
--- Balance.Carry.StolenItemSpeedMultiplier ; batte : Bat.
+-- Balance.Carry.StolenItemSpeedMultiplier ; batte : Bat. Règles de jeu : PvPService (serveur) et
+-- PvPController (client).
 
 local DeepFreeze = require(script.Parent.DeepFreeze)
 
@@ -14,6 +15,7 @@ local PvP = {
 	ScoutDistance = 15, -- panneau propriétaire, valeur exposée, PV de la vitrine
 	StealDuration = 10, -- temps pour prendre un objet exposé après la casse
 	StealGrabTime = 1.0,
+	StealMaxDistance = 8, -- V0 proposé, absent du doc : comme GrabItem (9.4), du voleur au présentoir
 
 	-- 6.2, usage 1 : défense de sa boutique
 	AdrenalineSpeedBonus = 0.25, -- +25 % de vitesse pour la victime jusqu'à la fin de la poursuite
@@ -23,7 +25,11 @@ local PvP = {
 	BeginnerShieldDuration = 10 * 60, -- 10 premières minutes de jeu cumulées : boutique inviolable, colis non frappable
 	TheftImmunityDuration = 120, -- vitrine invulnérable après un vol subi
 	AntiRacketRatio = 0.1, -- impossible de voler un joueur dont la valeur exposée est < 10 % de la sienne
-	VaultSlots = 1, -- coffre-fort offert : au moins 1 objet toujours à l'abri (9.5, VaultSlot_01)
+	-- Coffre-fort offert : au moins 1 objet toujours à l'abri. V0 (PvPService) : les VaultSlots objets
+	-- exposés qui rapportent le plus ne sont jamais volables (« présentoirs non volables », Partie 2,
+	-- section 2) ; ils restent sur leur présentoir et rapportent. Coffre physique (VaultSlot_01, champ
+	-- Vault du profil, 9.5) : MAJ 2 (DEV-110).
+	VaultSlots = 1,
 }
 
 export type PvP = typeof(PvP)

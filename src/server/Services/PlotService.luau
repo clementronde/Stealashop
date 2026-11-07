@@ -41,6 +41,16 @@
 --       parcelle ou pas de personnage. Les règles (recharge, mains vides) restent à
 --       l'appelant ; `canMove`, s'il est donné, est rappelé juste avant le déplacement, après
 --       l'attente : false = on ne bouge pas (le joueur a pris un colis entre-temps, par exemple).
+--   PlotService.GetPlots() -> { Model }
+--       Parcelles valides de la map, triées par PlotIndex (copie de la liste).
+--   PlotService.GetPlotByIndex(index) -> Model?
+--       Parcelle de numéro PlotIndex `index`, ou nil (StealItem, PvPService).
+--   PlotService.PutOutside(player, plot) -> boolean
+--       Sort le personnage devant la porte de la boutique `plot` (boutique du hub, liaison L-050) :
+--       au sol, à OUTSIDE_DISTANCE studs devant l'objet Window (`PlotDoor/Window`), au hasard sur la
+--       largeur de la porte, tourné vers l'extérieur (du centre de Bounds vers la porte). Il garde ce
+--       qu'il porte (le colis ou l'objet est soudé à sa tête). Sans yield ; false sans personnage
+--       vivant. Qui sortir et quand : PvPService.
 --
 -- Exemple (dans un autre service) :
 --   local PlotService = require(script.Parent.PlotService)
@@ -105,6 +115,11 @@ local CHARACTER_TIMEOUT = 10
 -- V0 proposé, absent du doc : attente maximale du chargement de la zone chez le client
 -- avant de le déplacer (StreamingEnabled, 9.7) ; au-delà, il est déplacé quand même.
 local STREAM_TIMEOUT = 2
+-- V0 proposé, absent du doc : PutOutside pose le joueur à 6 studs devant la porte (comme
+-- StoreHeistService devant une vitrine), à 1 stud au moins des bords de la porte.
+local OUTSIDE_DISTANCE = 6
+local OUTSIDE_EDGE = 1
+local BOUNDS = "Bounds"
 
 -- Messages lus par le joueur (Notify), en anglais (L-036).
 local MESSAGES = {
@@ -125,9 +140,9 @@ local waiting: { Player } = {} -- joueurs chargés sans parcelle, du plus ancien
 -- Joueurs dont PlayerRemoving est passé : un profil chargé à ce moment-là ne reçoit
 -- rien. Clés faibles : l'entrée part avec le Player.
 local leaving: { [Player]: boolean } = setmetatable({}, { __mode = "k" }) :: any
--- Point d'apparition et vitrine de chaque parcelle, trouvés à l'Init (avant que des
+-- Point d'apparition, vitrine et volume de chaque parcelle, trouvés à l'Init (avant que des
 -- objets exposés, qui peuvent contenir les mêmes noms, soient posés dans la parcelle).
-local spawnRefs: { [Model]: { point: Attachment?, window: PVInstance? } } = {}
+local spawnRefs: { [Model]: { point: Attachment?, window: PVInstance?, bounds: BasePart? } } = {}
 local labels: { [Model]: TextLabel } = {} -- texte du panneau de chaque parcelle
 local createdGuis: { [Model]: SurfaceGui } = {} -- SurfaceGui créé par ce service
 local spawnConnections: { [Player]: RBXScriptConnection } = {}
@@ -350,9 +365,11 @@ end
 local function findSpawnRefs(plot: Model)
 	local point = Find.path(plot, SPAWN_POINT)
 	local window = Find.path(plot, WINDOW)
+	local bounds = Find.path(plot, BOUNDS)
 	local refs = {
 		point = if point ~= nil and point:IsA("Attachment") then point :: Attachment else nil,
 		window = if window ~= nil and window:IsA("PVInstance") then window :: PVInstance else nil,
+		bounds = if bounds ~= nil and bounds:IsA("BasePart") then bounds :: BasePart else nil,
 	}
 	if refs.point == nil and refs.window == nil then
 		warn(`[PlotService] {plot:GetFullName()} : ni {SPAWN_POINT} ni {WINDOW}, le propriétaire apparaîtra au pivot de la parcelle`)
@@ -389,6 +406,43 @@ local function rootTarget(plot: Model, humanoid: Humanoid, root: BasePart): CFra
 	local hip = if humanoid.RigType == Enum.HumanoidRigType.R15 then humanoid.HipHeight else 2
 	local position = ground + Vector3.new(0, hip + root.Size.Y / 2 + SPAWN_LIFT, 0)
 	return CFrame.lookAt(position, position + facing)
+end
+
+-- Étendue de la boîte (cf, size) le long de la direction unitaire `axis`.
+local function extentAlong(cf: CFrame, size: Vector3, axis: Vector3): number
+	return math.abs(cf.RightVector:Dot(axis)) * size.X
+		+ math.abs(cf.UpVector:Dot(axis)) * size.Y
+		+ math.abs(cf.LookVector:Dot(axis)) * size.Z
+end
+
+-- Boîte orientée d'une pièce ou d'un modèle.
+local function boxOf(object: PVInstance): (CFrame, Vector3)
+	if object:IsA("BasePart") then
+		return object.CFrame, object.Size
+	end
+	return (object :: Model):GetBoundingBox()
+end
+
+-- Point au sol devant la porte de la boutique (PutOutside) et direction vers l'extérieur : du centre
+-- de Bounds vers la porte, sinon l'avant de la parcelle.
+local function outsideSpot(plot: Model): (Vector3, Vector3)
+	local refs = spawnRefs[plot]
+	local pivot = plot:GetPivot()
+	local front = frontOf(plot)
+	local door = refs and refs.window
+	local bounds = refs and refs.bounds
+	local center = if bounds then bounds.Position else pivot.Position
+	local doorPosition = if door then door:GetPivot().Position else center + front * 40
+	local toDoor = Vector3.new(doorPosition.X - center.X, 0, doorPosition.Z - center.Z)
+	local out = if toDoor.Magnitude > 1e-3 then toDoor.Unit else front
+	local side = Vector3.yAxis:Cross(out).Unit
+	local halfWidth = 0
+	if door then
+		local cf, size = boxOf(door)
+		halfWidth = math.max(extentAlong(cf, size, side) / 2 - OUTSIDE_EDGE, 0)
+	end
+	local spot = doorPosition + out * OUTSIDE_DISTANCE + side * ((math.random() * 2 - 1) * halfWidth)
+	return Vector3.new(spot.X, groundY(spot, doorPosition.Y), spot.Z), out
 end
 
 -- Déplace `character` sur la parcelle `plot` de `player`. Peut yield (zone chargée chez
@@ -589,6 +643,41 @@ function PlotService.TeleportHome(player: Player, canMove: (() -> boolean)?): bo
 		return false
 	end
 	return moveCharacter(player, character, plot, canMove)
+end
+
+function PlotService.GetPlots(): { Model }
+	return table.clone(plots)
+end
+
+function PlotService.GetPlotByIndex(index: number): Model?
+	for _, plot in plots do
+		if indexOf[plot] == index then
+			return plot
+		end
+	end
+	return nil
+end
+
+function PlotService.PutOutside(player: Player, plot: Model): boolean
+	local character = player.Character
+	if character == nil or not character:IsDescendantOf(Workspace) or spawnRefs[plot] == nil then
+		return false
+	end
+	local root = character:FindFirstChild("HumanoidRootPart")
+	local humanoid = character:FindFirstChildOfClass("Humanoid") :: Humanoid?
+	if root == nil or not root:IsA("BasePart") or humanoid == nil or humanoid.Health <= 0 then
+		return false
+	end
+	local rootPart = root :: BasePart
+	local ground, out = outsideSpot(plot)
+	-- R15 : HipHeight = du bas du HumanoidRootPart au sol ; R6 : jambes de 2 studs.
+	local hip = if humanoid.RigType == Enum.HumanoidRigType.R15 then humanoid.HipHeight else 2
+	local position = ground + Vector3.new(0, hip + rootPart.Size.Y / 2 + SPAWN_LIFT, 0)
+	local target = CFrame.lookAt(position, position + out)
+	character:PivotTo(target * rootPart.CFrame:ToObjectSpace(character:GetPivot()))
+	rootPart.AssemblyLinearVelocity = Vector3.zero
+	rootPart.AssemblyAngularVelocity = Vector3.zero
+	return true
 end
 
 function PlotService.Init()
