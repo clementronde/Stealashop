@@ -4,7 +4,9 @@
 local Attributes = {
 	-- Numéro de zone d'un magasin PNJ ou d'une arche : entier de 1 à 6.
 	Zone = { Name = "Zone", Min = 1, Max = 6 },
-	-- Type de colis d'un emplacement de rayon (ShelfSlot_xx).
+	-- Type de colis. Posé par le code sur chaque colis du rayon (StoreHeistService) ; plus
+	-- exigé sur les emplacements ShelfSlot_xx, où le code ne le lit plus (L-033, 2026-11-07).
+	-- Partout où il se trouve, il doit valoir l'une de ces valeurs.
 	Tier = { Name = "Tier", Values = { "Standard", "Premium", "Luxe" } },
 	-- Identifiant de catalogue d'un objet exposé ITM_* (texte non vide).
 	ItemId = { Name = "ItemId" },

@@ -60,15 +60,10 @@ local Store: ModelSpec = {
 		{ Name = "Shutter" },
 		{ Name = "Door" },
 		{ Name = "Bounds", Class = "BasePart", Invisible = true },
-		{
-			Name = "ShelfSlot_%02d",
-			From = 1,
-			To = 10,
-			Class = "Attachment",
-			Tier = true,
-			-- 6 Standard, 3 Premium, 1 Luxe (section 5.3).
-			TierCounts = { Standard = 6, Premium = 3, Luxe = 1 },
-		},
+		-- Plus d'attribut Tier exigé ni de contrôle 6/3/1 (L-033, accepté par Ironix le
+		-- 2026-11-07) : le code répartit au hasard 6 Standard, 3 Premium et 1 Luxe sur les 10
+		-- emplacements à chaque remplissage. Un Tier laissé sur un emplacement est ignoré.
+		{ Name = "ShelfSlot_%02d", From = 1, To = 10, Class = "Attachment" },
 		{ Name = "GuardSpawn", Class = "Attachment" },
 		{ Name = "SignPart" },
 	},
@@ -95,7 +90,8 @@ local Plot: ModelSpec = {
 		{ Name = "DepositZone", Class = "BasePart" },
 		{ Name = "Treadmill", Tag = "Treadmill" },
 		{ Name = "Bench", Tag = "Bench" },
-		-- Le code écrit « Boutique de <Pseudo> » dans OwnerName (L-019, validé le 2026-11-07).
+		-- Le code écrit « <Pseudo>'s Shop » dans OwnerName (L-019, validé le 2026-11-07 ; en
+		-- anglais depuis L-036).
 		{ Name = "NameSign", Inside = { { Name = "OwnerName", Class = "TextLabel" } } },
 		-- Point d'apparition du propriétaire, axe −Z tourné vers l'allée (L-019).
 		{ Name = "SpawnPoint", Class = "Attachment" },
@@ -148,6 +144,9 @@ local Box: ModelSpec = {
 		{ Name = "Tint", Class = "BasePart" },
 		-- Où s'accroche l'étiquette du colis (L-023, livré par Clément le 2026-11-07, L-031).
 		{ Name = "LabelPoint", Class = "Attachment" },
+		-- Contour noir du colis (L-031) : ShelfBoxController le retrouve par ce nom et n'en
+		-- garde que 25 actifs à la fois (Roblox en affiche 31 au plus).
+		{ Name = "OutlineHighlight", Class = "Highlight" },
 	},
 	-- Un colis par type (MOD-013), nommés comme l'exemple BOX_Luxe du 10.3.
 	Expected = { "BOX_Standard", "BOX_Premium", "BOX_Luxe" },
