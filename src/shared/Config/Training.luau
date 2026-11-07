@@ -11,7 +11,7 @@ local Training = {
 	BaseMultiplier = 1,
 
 	Treadmill = {
-		Prompt = "Courir",
+		Prompt = "Run",
 		GainPerSecond = 1, -- +1 Vitesse par seconde × multiplicateur du tapis
 		AfkAllowed = true,
 		TapBonus = 0.5, -- taper l'écran donne +50 % de gain
@@ -20,7 +20,7 @@ local Training = {
 	},
 
 	Bench = {
-		Prompt = "Soulever",
+		Prompt = "Lift",
 		GainPerRep = 1, -- +1 Force par répétition × multiplicateur du banc
 		MaxRepsPerSecond = 3, -- 1 tap = 1 répétition, 3 par seconde au plus (5.1, 9.4)
 	},

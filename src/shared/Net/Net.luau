@@ -13,7 +13,7 @@
 --   local connection = Net.Server.HitWindow:Connect(function(player: Player, windowId: string) end)
 --   connection:Disconnect()
 --   -- Serveur → client :
---   Net.Server.Notify:Fire(player, "Rattrapé !", "Warning")
+--   Net.Server.Notify:Fire(player, "Caught!", "Warning")
 --   Net.Server.WindowHP:FireAll(windowId, hp, maxHp)
 --   -- Rappel des appels refusés, à remplacer par AntiCheatService (un seul rappel) :
 --   Net.OnViolation = function(player, remoteName, reason, detail) end

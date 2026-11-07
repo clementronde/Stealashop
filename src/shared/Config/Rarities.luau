@@ -31,8 +31,8 @@ local List: { Rarity } = {
 	{
 		Id = "Common",
 		Order = 1,
-		DisplayName = "Commun",
-		DisplayNameUpper = "COMMUN",
+		DisplayName = "Common",
+		DisplayNameUpper = "COMMON",
 		ColorName = "Gris",
 		Color = Color3.fromHex("#B0B7C3"),
 		Rainbow = false,
@@ -47,8 +47,8 @@ local List: { Rarity } = {
 	{
 		Id = "Uncommon",
 		Order = 2,
-		DisplayName = "Peu commun",
-		DisplayNameUpper = "PEU COMMUN",
+		DisplayName = "Uncommon",
+		DisplayNameUpper = "UNCOMMON",
 		ColorName = "Vert",
 		Color = Color3.fromHex("#2FE08F"), -- vert menthe : ne disparaît pas sur l'herbe
 		Rainbow = false,
@@ -79,8 +79,8 @@ local List: { Rarity } = {
 	{
 		Id = "Epic",
 		Order = 4,
-		DisplayName = "Épique",
-		DisplayNameUpper = "ÉPIQUE",
+		DisplayName = "Epic",
+		DisplayNameUpper = "EPIC",
 		ColorName = "Violet",
 		Color = Color3.fromHex("#A855F7"),
 		Rainbow = false,
@@ -95,8 +95,8 @@ local List: { Rarity } = {
 	{
 		Id = "Legendary",
 		Order = 5,
-		DisplayName = "Légendaire",
-		DisplayNameUpper = "LÉGENDAIRE",
+		DisplayName = "Legendary",
+		DisplayNameUpper = "LEGENDARY",
 		ColorName = "Or",
 		Color = Color3.fromHex("#FFC21A"),
 		Rainbow = false,
@@ -111,8 +111,8 @@ local List: { Rarity } = {
 	{
 		Id = "Mythic",
 		Order = 6,
-		DisplayName = "Mythique",
-		DisplayNameUpper = "MYTHIQUE",
+		DisplayName = "Mythic",
+		DisplayNameUpper = "MYTHIC",
 		ColorName = "Rouge",
 		Color = Color3.fromHex("#FF3B5C"),
 		Rainbow = false,

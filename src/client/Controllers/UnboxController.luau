@@ -6,10 +6,10 @@
 --   - sur chaque UnboxBench_xx de la parcelle du joueur (attribut OwnerUserId = son UserId, posé
 --     par PlotService), une invite créée ici, côté client seulement (ProximityPrompt
 --     « UnboxPrompt ») :
---       « Poser le colis » quand le joueur porte un colis (attribut Carrying du Player, posé par
+--       « Place Box » quand le joueur porte un colis (attribut Carrying du Player, posé par
 --       CarryService) et que l'établi est libre (attribut UnboxState = "Free" de l'établi, posé
 --       par UnboxService) : envoie PlaceBox(benchIndex) ;
---       « Ouvrir » quand BoxReady(benchIndex) est arrivé (ou UnboxState = "Ready") : envoie
+--       « Open » quand BoxReady(benchIndex) est arrivé (ou UnboxState = "Ready") : envoie
 --       OpenBox(benchIndex) ;
 --     sinon l'invite est cachée. Le serveur revérifie tout (parcelle, portée, établi débloqué et
 --     libre, colis porté, attente écoulée) ;
@@ -64,11 +64,11 @@ local STATE_ATTRIBUTE = "UnboxState" -- UnboxService : "Locked", "Free", "Waitin
 local BENCH_PATTERN = "^UnboxBench_(%d+)$"
 local PROMPT_NAME = "UnboxPrompt"
 
--- V0 proposé, absent du doc : textes et portée de l'invite. Le serveur accepte la portée
--- + 4 studs (UnboxService).
-local PLACE_TEXT = "Poser le colis"
-local OPEN_TEXT = "Ouvrir"
-local OBJECT_TEXT = "Établi"
+-- V0 proposé, absent du doc : textes (en anglais, L-036) et portée de l'invite. Le serveur
+-- accepte la portée + 4 studs (UnboxService).
+local PLACE_TEXT = "Place Box"
+local OPEN_TEXT = "Open"
+local OBJECT_TEXT = "Workbench"
 local PROMPT_DISTANCE = 8
 
 -- Écran de révélation (contrat 2.2) et ce qu'il lit ailleurs.

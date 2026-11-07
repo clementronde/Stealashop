@@ -11,8 +11,8 @@ local DeepFreeze = require(script.Parent.DeepFreeze)
 
 export type Zone = {
 	Index: number,
-	Theme: string, -- nom affiché de la zone (catalogue 10.5)
-	Stores: { string }, -- noms affichés des 2 magasins PNJ
+	Theme: string, -- nom affiché de la zone, en anglais (catalogue 10.5, liaison L-036)
+	Stores: { string }, -- noms affichés des 2 magasins PNJ, en anglais comme leurs enseignes (L-036)
 	WindowHP: number, -- PV de la vitrine
 	AdvisedDamage: number, -- dégâts par coup conseillés
 	AdvisedSpeed: number, -- WalkSpeed conseillé
@@ -24,8 +24,8 @@ export type Zone = {
 local Zones: { Zone } = {
 	{
 		Index = 1,
-		Theme = "Supérette",
-		Stores = { "Supérette", "Kiosque" },
+		Theme = "Mini Mart",
+		Stores = { "Mini Mart", "Kiosk" },
 		WindowHP = 35,
 		AdvisedDamage = 1,
 		AdvisedSpeed = 16,
@@ -35,8 +35,8 @@ local Zones: { Zone } = {
 	},
 	{
 		Index = 2,
-		Theme = "Jouets",
-		Stores = { "Magasin de jouets", "Confiserie" },
+		Theme = "Toys",
+		Stores = { "Toy Shop", "Sweet Shop" },
 		WindowHP = 350,
 		AdvisedDamage = 10,
 		AdvisedSpeed = 22,
@@ -46,8 +46,8 @@ local Zones: { Zone } = {
 	},
 	{
 		Index = 3,
-		Theme = "Électronique",
-		Stores = { "Électronique", "Jeux vidéo" },
+		Theme = "Electronics",
+		Stores = { "Electronics", "Video Games" },
 		WindowHP = 2_800,
 		AdvisedDamage = 80,
 		AdvisedSpeed = 28,
@@ -57,8 +57,8 @@ local Zones: { Zone } = {
 	},
 	{
 		Index = 4,
-		Theme = "Bijouterie",
-		Stores = { "Bijouterie", "Horlogerie" },
+		Theme = "Jewelry",
+		Stores = { "Jewelry", "Watches & Clocks" },
 		WindowHP = 21_000,
 		AdvisedDamage = 600,
 		AdvisedSpeed = 34,
@@ -68,8 +68,8 @@ local Zones: { Zone } = {
 	},
 	{
 		Index = 5,
-		Theme = "Galerie",
-		Stores = { "Galerie d'art", "Antiquaire" },
+		Theme = "Gallery",
+		Stores = { "Art Gallery", "Antiques" },
 		WindowHP = 175_000,
 		AdvisedDamage = 5_000,
 		AdvisedSpeed = 40,
@@ -79,8 +79,8 @@ local Zones: { Zone } = {
 	},
 	{
 		Index = 6,
-		Theme = "Banque",
-		Stores = { "Banque", "Salle des coffres" },
+		Theme = "Bank",
+		Stores = { "Bank", "Vault" },
 		WindowHP = 1_400_000,
 		AdvisedDamage = 40_000,
 		AdvisedSpeed = 48,

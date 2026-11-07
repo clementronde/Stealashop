@@ -23,13 +23,15 @@
 --   DisplayController.PlaceItem(itemUid, slotIndex)
 --       Demande au serveur d'exposer un objet de l'inventaire sur un présentoir (pour l'écran
 --       d'inventaire de Clément). Le serveur vérifie tout et répond par Notify en cas de refus.
---   DisplayController.FormatMoney(amount) -> string  « 300 $ », « 12,4 K$ », « 2 M$ », « 3 Md$ »
+--   DisplayController.FormatMoney(amount) -> string  Shared/Format.money : « $300 », « $12.4K », « $2M »
 
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
+
+local Format = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Format"))
 
 type Listener = (value: number) -> ()
 
@@ -113,47 +115,6 @@ local function numberAttribute(instance: Instance?, name: string): number
 end
 
 ------------------------------------------------------------------------------
--- Montants (même écriture que les billboards de DisplayService)
-------------------------------------------------------------------------------
-
-local function oneDecimal(value: number): string
-	local tenths = math.floor(value * 10 + 1e-9)
-	local whole, decimal = tenths // 10, tenths % 10
-	if decimal == 0 then
-		return string.format("%d", whole)
-	end
-	return string.format("%d,%d", whole, decimal)
-end
-
-local function groupThousands(value: number): string
-	local digits = string.format("%d", math.floor(value))
-	local grouped = string.reverse((string.gsub(string.reverse(digits), "(%d%d%d)", "%1 ")))
-	return (string.gsub(grouped, "^ ", ""))
-end
-
-local MONEY_UNITS = {
-	{ Value = 1e9, Suffix = "Md$" },
-	{ Value = 1e6, Suffix = "M$" },
-	{ Value = 1e3, Suffix = "K$" },
-}
-local function formatMoney(amount: number): string
-	if amount ~= amount or amount < 0 then
-		amount = 0
-	end
-	for i, unit in MONEY_UNITS do
-		if amount >= unit.Value then
-			local scaled = amount / unit.Value
-			if scaled < 100 then
-				return `{oneDecimal(scaled)} {unit.Suffix}`
-			elseif scaled < 1000 or i == 1 then
-				return `{groupThousands(scaled)} {unit.Suffix}`
-			end
-		end
-	end
-	return `{groupThousands(amount)} $`
-end
-
-------------------------------------------------------------------------------
 -- Revenus et caisse
 ------------------------------------------------------------------------------
 
@@ -204,7 +165,7 @@ local function onCollectedChanged()
 		return
 	end
 	if IS_STUDIO then
-		print(`[Caisse] +{formatMoney(amount)} encaissés (revenu de ta boutique : {formatMoney(DisplayController.GetIncome())}/s)`)
+		print(`[Caisse] +{Format.money(amount)} encaissés (revenu de ta boutique : {Format.money(DisplayController.GetIncome())}/s)`)
 	end
 	emit(cashOutListeners, amount)
 end
@@ -352,7 +313,7 @@ function DisplayController.PlaceItem(itemUid: string, slotIndex: number)
 	net.Client.PlaceItem:Fire(itemUid, slotIndex)
 end
 
-DisplayController.FormatMoney = formatMoney
+DisplayController.FormatMoney = Format.money
 
 function DisplayController.Start()
 	local shared = ReplicatedStorage:WaitForChild("Shared")

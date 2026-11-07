@@ -23,7 +23,7 @@
 --     du WindowFractured du magasin, dans l'orientation de la vitre, jamais sur le pivot (bas au
 --     centre chez Clément, centre dans la greybox) ;
 --   - arrêt sur image (les éclats restent en place, l'animation de celui qui a frappé s'arrête),
---     flash blanc, tremblement de caméra, « CASSÉ ! » ; éclair au point d'impact ;
+--     flash blanc, tremblement de caméra, « SMASHED! » ; éclair au point d'impact ;
 --   - les éclats partent du vrai point d'impact, plus vite près de lui, poussés vers l'intérieur
 --     du magasin (côté de son volume Bounds), tournent, tombent, rebondissent, se couchent à plat,
 --     puis s'effacent ; petits cubes de verre, paillettes et poussière ; son en 3 couches ;
@@ -1089,8 +1089,8 @@ local function hitstop(duration: number)
 	end)
 end
 
--- « CASSÉ ! » : l'écran de Clément s'il existe (Assets.BrokenScreen avec Assets.BrokenLabel),
--- sinon un texte V0 créé ici, gris, facile à remplacer.
+-- « SMASHED! » (Shatter.Break.Text) : l'écran de Clément s'il existe (Assets.BrokenScreen avec
+-- Assets.BrokenLabel), sinon un texte V0 créé ici, gris, facile à remplacer.
 local function brokenLabel(): (GuiObject?, ScreenGui?)
 	local playerGui = player:FindFirstChildOfClass("PlayerGui")
 	if playerGui == nil then

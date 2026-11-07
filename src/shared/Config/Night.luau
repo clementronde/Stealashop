@@ -14,7 +14,7 @@ local Night = {
 	NightDuration = 2 * 60,
 	CycleDuration = 10 * 60, -- DayDuration + NightDuration
 
-	WarningText = "LA NUIT TOMBE DANS 30 S",
+	WarningText = "NIGHT FALLS IN 30s", -- doc : « LA NUIT TOMBE DANS 30 S », en anglais (L-036)
 
 	-- Vigiles de nuit (tag `NightPatrol` sur les points de ronde)
 	GuardsPerZone = 2,
