@@ -158,6 +158,19 @@ UI.Billboards = {
 		Class = "BillboardGui",
 		Elements = { { Path = "Category" }, { Path = "Rarity" }, { Path = "Mutation" } },
 	},
+	-- Panneau d'approche au-dessus de la vitrine de chaque magasin PNJ (5.3, point 1 ; noms de L-044
+	-- acceptés par Clément le 2026-11-07) : nom du magasin, PV de la vitrine, dégâts et vitesse
+	-- conseillés. StoreInfoController écrit les 4 textes et colore Damage et Speed pour le joueur local.
+	{
+		Name = "BB_StoreInfo",
+		Class = "BillboardGui",
+		Elements = {
+			{ Path = "StoreName", Class = "TextLabel" },
+			{ Path = "HP", Class = "TextLabel" },
+			{ Path = "Damage", Class = "TextLabel" },
+			{ Path = "Speed", Class = "TextLabel" },
+		},
+	},
 } :: { Screen }
 
 -- Dossier des billboards, depuis ReplicatedStorage.

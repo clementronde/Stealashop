@@ -25,6 +25,10 @@ export type Part = {
 	Tag: string?, -- tag porté par l'élément ou un de ses descendants
 	Inside: { Part }?, -- enfants obligatoires de cet élément
 	Note: string?, -- précision du doc, ajoutée au message
+	-- Élément facultatif : le code a un repli quand il manque. Absent, le ContractChecker écrit un
+	-- avertissement (orange, pas compté comme un problème) ; mal nommé ou de la mauvaise classe, un
+	-- problème, comme les autres.
+	Optional: boolean?,
 }
 
 export type ModelSpec = {
@@ -75,6 +79,15 @@ local Store: ModelSpec = {
 		{ Name = "ShelfSlot_%02d", From = 1, To = 10, Class = "Attachment" },
 		{ Name = "GuardSpawn", Class = "Attachment" },
 		{ Name = "SignPart" },
+		-- Point d'accroche du panneau d'approche BB_StoreInfo, au-dessus de la vitrine (5.3, point 1 ;
+		-- L-044, nom accepté par Clément le 2026-11-07). Facultatif : sans lui, StoreInfoController
+		-- pose le panneau au-dessus de Window.
+		{
+			Name = "InfoPoint",
+			Class = "Attachment",
+			Optional = true,
+			Note = "facultatif : sans lui, le panneau BB_StoreInfo se pose au-dessus de Window, L-044",
+		},
 	},
 }
 
