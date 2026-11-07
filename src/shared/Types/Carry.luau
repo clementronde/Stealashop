@@ -30,9 +30,10 @@ export type NPCBoxPayload = {
 	SlotId: string, -- emplacement de rayon d'origine, au format choisi par StoreHeistService
 }
 
--- Objet volé à un joueur (6.1, jalon M3, DEV-041) : prévu ici, pas encore branché. C'est
--- l'objet lui-même qui flotte, avec son nom, sa rareté et son $/s. Champs à confirmer par
--- PvPService quand il sera écrit.
+-- Objet volé à un joueur (6.1, jalon M3, DEV-041), fabriqué par PvPService à la prise (StealItem).
+-- C'est l'objet lui-même qui flotte, avec son nom, sa rareté et son $/s, et un contour rouge. Le
+-- profil de la victime ne change pas avant le dépôt : en cas d'échec, l'objet revient sur son
+-- présentoir (DisplayService.Release), rien n'est à défaire dans les profils.
 export type PlayerItemPayload = {
 	Kind: "PlayerItem",
 	ItemUid: string, -- uid de l'objet dans le profil de la victime (Items[uid], 9.5)
@@ -46,7 +47,8 @@ export type PlayerItemPayload = {
 export type Payload = NPCBoxPayload | PlayerItemPayload
 
 -- Fin d'un portage, passée à CarryService.OnCarryEnded :
---   "Consumed"  réussite : le colis est posé sur un établi (ou l'objet déposé chez le voleur) ;
+--   "Consumed"  réussite : le colis est posé sur un établi (ou l'objet déposé chez le voleur,
+--               raison « Deposited », après le transfert entre les deux profils) ;
 --   "Failed"    échec : le colis ou l'objet retourne d'où il vient, remis par le service
 --               d'origine (StoreHeistService remet le colis sur son rayon) ;
 --   "Dropped"   jalon M3 (DEV-048), pas encore branché : coup de batte, le colis est tombé au

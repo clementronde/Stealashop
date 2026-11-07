@@ -7,8 +7,10 @@
 -- quand le propriétaire approche (visuel local, comme Clément le prévoit). Rien n'est envoyé au
 -- serveur, rien ne change chez les autres.
 --
--- V0 en attendant le code complet de la boutique (niveaux, porte cassable selon le doc, voleur
--- sorti quand la porte se reconstruit) : le serveur ne vérifie pas encore qui est à l'intérieur.
+-- Côté serveur (PvPService, DEV-041) : la porte se casse selon le doc (WindowService), et un
+-- non-propriétaire est sorti devant la porte s'il se trouve dans `Bounds` alors qu'elle est intacte,
+-- ou quand elle se reconstruit (même un voleur chargé, qui garde ce qu'il porte). Le passage du
+-- propriétaire reste ici, sur son seul client. Niveaux de boutique : Partie 2 (MAJ 2).
 --
 -- Ma boutique = le modèle taggé `PlayerPlot` dont l'attribut `OwnerUserId` (PlotService) vaut mon
 -- UserId. Les pièces arrivent par le streaming et la porte est refaite par le serveur après une
