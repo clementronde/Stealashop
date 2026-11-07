@@ -906,10 +906,10 @@ Le MVP sort le vendredi 18 décembre 2026, six semaines après le démarrage du 
 | MOD-017 | Accessoires vigile zone 1 | Casquette + gilet sur rig R15 standard | M1 | P0 | MOD-001 | À faire |
 | UI-001 | Écrans gris : `UI_HUD`, `UI_Unbox`, `BB_WindowHP`, `BB_OpenTimer`, `BB_Item`, `BB_Carry` | Noms du contrat 2.2, zéro erreur du ContractChecker | M1 | P0 | DEV-005 | En revue |
 | MOD-020 | Zone 2 : Jouets + variante Confiserie | Contrat 10.4 complet | M2 | P0 | MOD-012 | En revue |
-| MOD-021 | Zone 3 : Électronique + variante Jeux vidéo | Contrat 10.4 complet | M2 | P0 | MOD-012 | À faire |
-| MOD-022 | Zone 4 : Bijouterie + variante Horlogerie | Contrat 10.4 complet | M2 | P0 | MOD-012 | À faire |
-| MOD-023 | Zone 5 : Galerie + variante Antiquaire | Contrat 10.4 complet, avant le go / no-go du 6 décembre | M2 | P0 | MOD-012 | À faire |
-| MOD-024 | Zone 6 : Banque + variante Salle des coffres | Contrat 10.4 complet, avant le go / no-go du 6 décembre | M2 | P0 | MOD-012 | À faire |
+| MOD-021 | Zone 3 : Électronique + variante Jeux vidéo | Contrat 10.4 complet | M2 | P0 | MOD-012 | En revue |
+| MOD-022 | Zone 4 : Bijouterie + variante Horlogerie | Contrat 10.4 complet | M2 | P0 | MOD-012 | En revue |
+| MOD-023 | Zone 5 : Galerie + variante Antiquaire | Contrat 10.4 complet, avant le go / no-go du 6 décembre | M2 | P0 | MOD-012 | En revue |
+| MOD-024 | Zone 6 : Banque + variante Salle des coffres | Contrat 10.4 complet, avant le go / no-go du 6 décembre | M2 | P0 | MOD-012 | En revue |
 | MOD-025 | Vitres S et L intactes + pré-fracturées | Mêmes règles que MOD-010 | M2 | P0 | MOD-010 | À faire |
 | MOD-026 | 30 objets des zones 2 à 6 | Budgets, nommage, idle à partir de Légendaire | M2 | P0 | MOD-014 | À faire |
 | MOD-027 | Outils : clé, pied-de-biche, marteau, masse, hache, disqueuse + batte | `Handle` + `HitPoint`, ≤ 1 500 triangles | M2 | P0 | MOD-001 | À faire |
