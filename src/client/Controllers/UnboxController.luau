@@ -29,7 +29,13 @@
 --   - OpenNextButton (« OPEN NEXT ») : seulement si un autre établi de la parcelle est prêt et à
 --     portée selon la règle d'OpenBox (Config.Unbox : 8 + 4 studs entre le HumanoidRootPart et
 --     l'établi, moins une marge) ; il envoie OpenBox de cet établi, à distance, et la séquence
---     suivante part à son UnboxReveal.
+--     suivante part à son UnboxReveal ;
+--   - revenu du HUD (vague 8) : le serveur expose l'objet, donc l'attribut Income du Player monte,
+--     dès l'ouverture. Pour ne pas gâcher la surprise, chaque UnboxReveal retient le revenu du HUD
+--     (HudController.HoldIncome) jusqu'à ce que l'écran ait fini de compter le revenu de l'objet
+--     (événement CountEnd de la séquence, avec le son Unbox_Cash). Sans HudController, rien n'est
+--     retenu. La retenue est relâchée tout de suite si l'écran manque, si l'objet est inconnu, et
+--     dès que l'écran se ferme (réapparition, erreur) avant ce moment.
 -- En Studio, l'objet révélé est aussi écrit dans la sortie. Sans UI_Unbox, la sortie seulement.
 -- Les invites suivent le streaming : un établi qui sort de la zone chargée perd son invite, elle
 -- revient avec lui. Aucune règle de jeu : le serveur décide (amélioration et objet compris).
@@ -67,11 +73,17 @@ type BenchView = {
 	connections: { RBXScriptConnection },
 }
 
+-- Ce que ce contrôleur utilise de HudController.
+type HudApi = {
+	HoldIncome: () -> () -> (),
+}
+
 -- Copie locale d'un colis d'établi, prise à l'appui sur « Open ».
 type Pending = { model: Model, at: number }
 
--- Révélation reçue, en attente d'affichage, avec la copie locale de son colis.
-type Queued = { reveal: Sequence.Reveal, box: Model? }
+-- Révélation reçue, en attente d'affichage, avec la copie locale de son colis et la retenue du
+-- revenu du HUD (nil : rien de retenu).
+type Queued = { reveal: Sequence.Reveal, box: Model?, release: (() -> ())? }
 
 type Running = {
 	reveal: Sequence.Reveal,
@@ -80,6 +92,7 @@ type Running = {
 	screen: ScreenGui,
 	connections: { RBXScriptConnection },
 	nextCheck: number,
+	release: (() -> ())?, -- retenue du revenu, relâchée à CountEnd ou à la fermeture
 }
 
 -- Contrat et attributs posés par les services serveur (lus sans require).
@@ -118,6 +131,7 @@ local UnboxController = {}
 local localPlayer = Players.LocalPlayer
 local net: any = nil
 local animation: AnimationApi? = nil
+local hudApi: HudApi? = nil
 local plot: Model? = nil
 local plotConnections: { RBXScriptConnection } = {}
 local watchedPlots: { [Instance]: RBXScriptConnection } = {}
@@ -141,6 +155,38 @@ local function loadAnimationController(): AnimationApi?
 		return result :: any
 	end
 	return nil
+end
+
+local function loadHud(): HudApi?
+	local folder = script.Parent
+	local module = if folder then folder:FindFirstChild("HudController") else nil
+	if module == nil or not module:IsA("ModuleScript") then
+		return nil
+	end
+	local ok, result = pcall(require, module)
+	if ok and type(result) == "table" and type((result :: any).HoldIncome) == "function" then
+		return result :: any
+	end
+	return nil
+end
+
+-- Retient le revenu du HUD jusqu'à la révélation (HudController.HoldIncome) ; nil sans HUD.
+local function holdIncome(): (() -> ())?
+	local api = hudApi
+	if api == nil then
+		return nil
+	end
+	local ok, release = pcall(api.HoldIncome)
+	if ok and type(release) == "function" then
+		return release
+	end
+	return nil
+end
+
+local function releaseIncome(release: (() -> ())?)
+	if release then
+		pcall(release)
+	end
 end
 
 -- Joue une animation du joueur ; true si elle joue (livrée, personnage présent).
@@ -444,7 +490,20 @@ local function closeReveal()
 	if not ok then
 		warn(`[Unbox] fermeture de {REVEAL_SCREEN} : {err}`)
 	end
+	-- Fermé avant d'avoir montré le revenu (réapparition, erreur) : le HUD n'attend plus.
+	local release = current.release
+	current.release = nil
+	releaseIncome(release)
 	showNextReveal()
+end
+
+-- L'écran a fini de compter le revenu de l'objet (CountEnd) : le HUD peut le montrer.
+local function checkIncome(current: Running)
+	local release = current.release
+	if release and current.runner:IsFired("CountEnd") then
+		current.release = nil
+		releaseIncome(release)
+	end
 end
 
 -- Une image de la séquence en cours (dt réel, en secondes).
@@ -466,6 +525,7 @@ local function stepReveal(dt: number)
 		closeReveal()
 		return
 	end
+	checkIncome(current)
 	local since = current.runner:SinceButtons()
 	if since == nil then
 		return
@@ -529,10 +589,12 @@ local function startReveal(entry: Queued, screen: ScreenGui, plan: Sequence.Plan
 		screen = screen,
 		connections = {},
 		nextCheck = 0,
+		release = entry.release,
 	}
 	running = current
 	bindButton(current, "SkipButton", function()
 		runner:Skip()
+		checkIncome(current) -- après le rouleau, Skip montre tout d'un coup, revenu compris
 	end)
 	bindButton(current, "ContinueButton", function()
 		if runner:SinceButtons() ~= nil then
@@ -558,6 +620,7 @@ showNextReveal = function()
 			if entry.box then
 				entry.box:Destroy()
 			end
+			releaseIncome(entry.release)
 			continue
 		end
 		if IS_STUDIO and plan.Mismatch then
@@ -574,12 +637,24 @@ showNextReveal = function()
 				if queued.box then
 					queued.box:Destroy()
 				end
+				releaseIncome(queued.release) -- sans écran, le revenu se montre tout de suite
 			end
 			table.clear(revealQueue)
 			return
 		end
-		startReveal(entry, screen, plan)
-		return
+		local ok, err = pcall(startReveal, entry, screen, plan)
+		if ok then
+			return
+		end
+		warn(`[Unbox] établi {entry.reveal.BenchIndex} : écran {REVEAL_SCREEN} impossible à lancer ({err})`)
+		if running then
+			closeReveal() -- relâche le revenu et passe à la révélation suivante
+			return
+		end
+		if entry.box then
+			entry.box:Destroy()
+		end
+		releaseIncome(entry.release)
 	end
 end
 
@@ -600,7 +675,8 @@ local function onReveal(index: any, itemUid: any, itemId: any, zone: any, tier: 
 		StartRarity = if type(startRarity) == "string" then startRarity elseif item then item.Rarity else "Common",
 		Upgrades = if type(upgrades) == "number" then upgrades else 0,
 	}
-	table.insert(revealQueue, { reveal = reveal, box = takeBox(index) })
+	-- Retenue prise ici, avant que le HUD traite la hausse d'Income qui suit UnboxReveal.
+	table.insert(revealQueue, { reveal = reveal, box = takeBox(index), release = holdIncome() })
 	showNextReveal()
 	if not IS_STUDIO then
 		return
@@ -624,6 +700,7 @@ function UnboxController.Start()
 	-- Peut attendre que le serveur ait créé les remotes.
 	net = require(Shared:WaitForChild("Net"):WaitForChild("Net") :: ModuleScript) :: any
 	animation = loadAnimationController()
+	hudApi = loadHud()
 
 	net.Client.BoxReady:Connect(onBoxReady)
 	net.Client.UnboxReveal:Connect(onReveal)

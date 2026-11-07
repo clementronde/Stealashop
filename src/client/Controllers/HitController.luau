@@ -11,6 +11,21 @@
 -- tremblement, au marqueur Impact de l'animation). Le serveur valide, applique les PV et les
 -- renvoie à tous (WindowService).
 --
+-- Moment du coup (vague 8, 2026-11-07) : la vitrine visée est choisie au clic, mais HitWindow
+-- part quand le coup touche, au marqueur Impact de l'animation (2.4 ; 0,133 s pour HitWindow,
+-- 0,233 s pour HitWindowHeavy chez Clément), comme le retour local de ShatterController :
+--   - animation pas livrée (ou AnimationController absent) : HitWindow part au clic, comme avant ;
+--   - marqueur pas arrivé après Config.Shatter.Hit.ImpactMaxWait (0,3 s, le délai du retour
+--     local) : le coup part quand même ;
+--   - clic suivant avant le marqueur : le coup en attente part tout de suite, avant que
+--     l'animation reparte du début (elle repart à chaque clic : son marqueur ne viendrait plus).
+-- Un clic donne au plus un coup : un seul coup en attente à la fois, envoyé une seule fois par le
+-- premier de ces trois moments. Les envois suivent l'ordre et le rythme des clics (à une image
+-- près) : le débit vu par le serveur (10 coups/s au plus, Net) ne change pas. Au moment d'envoyer,
+-- l'outil doit être encore en main et le personnage vivant, sinon le coup est abandonné (le
+-- serveur l'aurait refusé). WindowService ne change pas : il mesure la portée à la réception,
+-- donc au moment où le coup touche.
+--
 -- Lu sur les objets (rien n'est cherché par chemin) :
 --   Tool de casse : attribut ToolId (ToolService) ;
 --   vitrine `Window` des modèles taggés NPCStore et PlayerPlot : WindowId, MaxHP, Broken
@@ -24,6 +39,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = Shared:WaitForChild("Config")
 local Balance = require(Config:WaitForChild("Balance"))
+local Shatter = require(Config:WaitForChild("Shatter"))
 local Tools = require(Config:WaitForChild("Tools"))
 
 -- Ce que ce contrôleur utilise d'AnimationController (a09).
@@ -45,13 +61,26 @@ local OWNER_ATTRIBUTE = "OwnerUserId" -- posé par PlotService sur la parcelle
 local PLOT_TAG = "PlayerPlot"
 local WINDOW_TAGS = { "NPCStore", PLOT_TAG } -- contrat 2.1
 local DEFAULT_ANIMATION = "HitWindow"
+local IMPACT_MARKER = "Impact" -- marqueur de HitWindow et HitWindowHeavy (2.4)
 
 local MIN_INTERVAL = 1 / Balance.Hit.MaxHitsPerSecond
+-- Attente max du marqueur Impact : la même que le retour local (ShatterController), pour que le
+-- coup et ses mini-éclats partent ensemble même sans marqueur.
+local IMPACT_MAX_WAIT: number = Shatter.Hit.ImpactMaxWait
 -- V0 proposé, absent du doc : « devant lui » = dans le demi-espace devant le joueur
 -- (produit scalaire ≥ 0, à plat, entre son regard et la direction de la vitre).
 local FRONT_MIN_DOT = 0
 
 local player = Players.LocalPlayer
+
+-- Coup d'un clic qui attend le marqueur Impact de son animation.
+type PendingHit = {
+	WindowId: string,
+	Tool: Tool,
+	Character: Model,
+	Sent: boolean, -- déjà parti (ou abandonné) : plus rien ne le renvoie
+	Connection: RBXScriptConnection?, -- marqueur Impact de la piste jouée pour ce clic
+}
 
 local HitController = {}
 
@@ -59,6 +88,7 @@ local Net: any = nil
 local animation: AnimationApi? = nil
 local shatter: ShatterApi? = nil
 local lastHitAt = -math.huge
+local pending: PendingHit? = nil -- un seul à la fois
 local hookedTools = setmetatable({} :: { [Tool]: boolean }, { __mode = "k" })
 
 local function windowBox(object: Instance): (CFrame?, Vector3?)
@@ -134,6 +164,65 @@ local function playHit(tool: Tool): AnimationTrack?
 	return if ok then track else nil
 end
 
+-- Personnage vivant, outil en main : le coup peut partir (mêmes conditions qu'au clic).
+local function canStrike(tool: Tool, character: Model): boolean
+	if player.Character ~= character or tool.Parent ~= character then
+		return false
+	end
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	return humanoid ~= nil and humanoid.Health > 0
+end
+
+-- Envoie le coup en attente `hit`, une seule fois, quel que soit celui qui l'appelle en premier
+-- (marqueur, délai max, clic suivant).
+local function sendHit(hit: PendingHit)
+	if hit.Sent then
+		return
+	end
+	hit.Sent = true
+	local connection = hit.Connection
+	hit.Connection = nil
+	if connection then
+		connection:Disconnect()
+	end
+	if pending == hit then
+		pending = nil
+	end
+	if canStrike(hit.Tool, hit.Character) then
+		Net.Client.HitWindow:Fire(hit.WindowId)
+	end
+end
+
+-- Le coup du clic précédent part tout de suite (avant que son animation reparte du début).
+local function flushPending()
+	local hit = pending
+	if hit then
+		sendHit(hit)
+	end
+end
+
+-- Coup sur `windowId` qui part au marqueur Impact de `track`, au plus tard après IMPACT_MAX_WAIT.
+local function deferHit(windowId: string, tool: Tool, character: Model, track: AnimationTrack)
+	local hit: PendingHit = {
+		WindowId = windowId,
+		Tool = tool,
+		Character = character,
+		Sent = false,
+		Connection = nil,
+	}
+	pending = hit
+	-- Branché après le Play de ce clic : un marqueur de la lecture précédente ne peut pas l'atteindre.
+	local ok, signal = pcall(function()
+		return track:GetMarkerReachedSignal(IMPACT_MARKER)
+	end)
+	if ok and signal then
+		hit.Connection = signal:Connect(function()
+			sendHit(hit)
+		end)
+	end
+	task.delay(IMPACT_MAX_WAIT, sendHit, hit)
+end
+
 local function onActivated(tool: Tool)
 	local now = os.clock()
 	if now - lastHitAt < MIN_INTERVAL then
@@ -149,10 +238,15 @@ local function onActivated(tool: Tool)
 		return
 	end
 	lastHitAt = now
+	flushPending()
 	local track = playHit(tool)
 	local windowId, point = findTarget(root :: BasePart)
 	if windowId then
-		Net.Client.HitWindow:Fire(windowId)
+		if track then
+			deferHit(windowId, tool, character, track)
+		else
+			Net.Client.HitWindow:Fire(windowId) -- pas d'animation : le coup part au clic
+		end
 		local api = shatter
 		if api and point then
 			pcall(api.LocalHit, windowId, point, track)

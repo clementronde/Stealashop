@@ -11,6 +11,13 @@
 --     dans le profil : Boxes["<n>"] = { Tier, Zone, ItemId, Rarity, ReadyAt } (9.5, clé = numéro
 --     de l'établi en texte, Types/Profile), avec ReadyAt = heure serveur + attente de sa rareté
 --     (table 7.3, Config.Rarities[..].OpenDelay).
+--   - Braquage réussi : Lifetime.Heists + 1 dans le profil (9.5) au même moment, d'un seul tenant
+--     avec l'écriture du colis. Un braquage réussit quand le colis volé arrive sur l'établi (5.6
+--     « Arrivée », 14.2 étape 6, réussite « Consumed » de Types/Carry) : avant, le colis peut
+--     encore retourner sur son rayon (rattrapé, mort, départ, anomalie : 5.5, 5.6) ou tomber au
+--     sol (coup de batte, 6.2). Une seule fois par colis : un colis n'est consommé qu'une fois.
+--     Celui qui ramasse un colis tombé au sol et le pose compte le braquage, pas celui qui l'a
+--     perdu.
 --   - L'attente est horodatée : elle continue hors ligne et d'un serveur à l'autre. Au retour du
 --     joueur (profil chargé et parcelle attribuée), ses colis réapparaissent sur leurs établis, et
 --     BoxReady part pour ceux qui sont déjà prêts.
@@ -20,6 +27,10 @@
 --     ({ Id = ItemId, Source = "NPC", At = os.time(), Zone }), l'établi se libère,
 --     UnboxReveal(benchIndex, itemUid, itemId, zone, tier, startRarity, upgrades) au joueur, puis
 --     DisplayService.PlaceAuto(player, itemUid).
+--   - Présentoirs pleins (PlaceAuto renvoie nil) : l'objet reste dans l'inventaire et le joueur
+--     reçoit un Notify (MESSAGES.StandsFull, catégorie « Info ») au moment où l'objet se révèle
+--     chez lui, pas avant : même délai que l'annonce plus bas (le nom de l'objet ne doit pas
+--     arriver avant la révélation).
 --   - L'objet exact reste caché jusqu'à l'ouverture (5.7) : l'ItemId ne quitte le serveur que dans
 --     UnboxReveal. Aucun attribut, nom ni modèle d'objet ne le montre avant.
 --
@@ -194,7 +205,11 @@ local MESSAGES = {
 	Busy = "This workbench is already in use.",
 	NotReady = "This box isn't ready yet.",
 	InventoryFull = "Inventory full: display or sell an item before opening this box.",
+	-- %s = nom de l'objet (Config.Items, DisplayName)
+	StandsFull = "Your display stands are full: %s went to your inventory.",
 }
+-- Catégorie du Notify des présentoirs pleins : l'objet est bien gardé, rien n'est refusé.
+local STANDS_FULL_KIND = "Info"
 
 local IS_STUDIO = RunService:IsStudio()
 local REACH = PROMPT_DISTANCE + REACH_TOLERANCE
@@ -321,6 +336,23 @@ local function inventoryFull(data: Data): boolean
 	return displayed >= slots and stored >= display.InventoryMax
 end
 
+-- Braquage réussi (en-tête) : Lifetime.Heists + 1. Sans yield. Un Lifetime illisible (profil
+-- abîmé : Reconcile ne remplace pas une valeur du mauvais type) est signalé, pas réparé ici.
+local function countHeist(player: Player, data: Data): number?
+	local lifetime = (data :: any).Lifetime
+	if type(lifetime) ~= "table" then
+		warn(`[UnboxService] {player.Name} : Lifetime absent du profil, braquage non compté`)
+		return nil
+	end
+	local heists = lifetime.Heists
+	if type(heists) ~= "number" or heists ~= heists then
+		warn(`[UnboxService] {player.Name} : Lifetime.Heists illisible ({tostring(heists)}), repart de 0`)
+		heists = 0
+	end
+	lifetime.Heists = heists + 1
+	return heists + 1
+end
+
 local function newUid(data: Data): string
 	local uid = HttpService:GenerateGUID(false)
 	while data.Items[uid] ~= nil do
@@ -420,6 +452,24 @@ local function revealDelay(full: boolean, upgrades: number): number
 		+ Unbox.LastNotch
 		+ Unbox.StopPause
 		+ Unbox.ColorIn
+end
+
+-- Délai jusqu'à l'objet révélé chez celui qui ouvre, pour un objet de rareté finale `rarityId`.
+local function revealDelayFor(rarityId: string, upgrades: number): number
+	local rarity = Rarities.ById[rarityId]
+	return revealDelay(if rarity then rarity.FullReveal else true, upgrades)
+end
+
+-- Notify à `player` au moment où son objet se révèle chez lui (même délai que l'annonce) ; rien
+-- s'il est parti entre-temps. Renvoie le délai.
+local function notifyAtReveal(player: Player, message: string, kind: string, rarityId: string, upgrades: number): number
+	local delay = revealDelayFor(rarityId, upgrades)
+	task.delay(delay, function()
+		if player.Parent == Players then
+			notify(player, message, kind)
+		end
+	end)
+	return delay
 end
 
 -- Annonce à tout le serveur d'un objet Légendaire ou mieux (Rarities.Announce, 5.7 étape 6) : un
@@ -832,8 +882,9 @@ local function onPlaceBox(player: Player, benchIndex: number)
 	end
 	box.ReadyAt = serverNow() + delay
 	data.Boxes[key] = box
+	local heists = countHeist(player, data) -- d'un seul tenant avec le colis : sauvegardés ensemble
 	showBox(player, session, benchIndex, box)
-	log(`{player.Name} : colis {box.Tier} {box.Rarity} posé sur l'établi {benchIndex}, prêt dans {delay} s`)
+	log(`{player.Name} : colis {box.Tier} {box.Rarity} posé sur l'établi {benchIndex}, prêt dans {delay} s (braquages réussis : {heists or "?"})`)
 	for _, listener in table.clone(placedListeners) do
 		task.spawn(listener, player, benchIndex, table.clone(box))
 	end
@@ -908,7 +959,10 @@ local function onOpenBox(player: Player, benchIndex: number)
 	if not ok then
 		warn(`[UnboxService] DisplayService.PlaceAuto ({player.Name}, {uid}) : {result}`)
 	elseif result == nil then
-		log(`{player.Name} : tous les présentoirs sont pris, {itemId} reste dans l'inventaire`)
+		local item = Items.ById[itemId]
+		local message = string.format(MESSAGES.StandsFull, if item then item.DisplayName else itemId)
+		local delay = notifyAtReveal(player, message, STANDS_FULL_KIND, finalRarity, #steps)
+		log(`{player.Name} : tous les présentoirs sont pris, {itemId} reste dans l'inventaire (message dans {delay} s)`)
 	else
 		log(`{player.Name} : {itemId} exposé sur le présentoir {result}`)
 	end
