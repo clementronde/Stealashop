@@ -174,9 +174,9 @@ end
 local function closestPoint(cf: CFrame, size: Vector3, point: Vector3): Vector3
 	local p = cf:PointToObjectSpace(point)
 	local h = size / 2
-	return cf:PointToWorldSpace(
+	return (cf:PointToWorldSpace(
 		Vector3.new(math.clamp(p.X, -h.X, h.X), math.clamp(p.Y, -h.Y, h.Y), math.clamp(p.Z, -h.Z, h.Z))
-	)
+	)) -- parenthèses : une seule valeur (PointToWorldSpace est déclarée variadique)
 end
 
 local function computeMaxHP(window: Window): number
@@ -267,13 +267,14 @@ local function breakWindow(window: Window, breaker: Player, impactPoint: Vector3
 			rebuild(window)
 		end
 	end)
-	local info: BreakInfo = table.freeze({
+	local info: BreakInfo = {
 		WindowId = window.Id,
 		Kind = window.Kind,
 		Model = window.Model,
 		Breaker = breaker,
 		ImpactPoint = impactPoint,
-	})
+	}
+	table.freeze(info :: any) -- gelée sur place ; :: any : le nouveau solveur bute sur le type générique de table.freeze
 	for _, listener in table.clone(brokenListeners) do
 		task.spawn(listener, info)
 	end

@@ -915,7 +915,11 @@ local function readClip(id: string): ClipResult
 end
 
 local function isEmptyClip(clip: any): boolean
-	return typeof(clip) == "Instance" and clip:IsA("KeyframeSequence") and #clip:GetChildren() == 0
+	if typeof(clip) ~= "Instance" then
+		return false
+	end
+	local instance = clip :: Instance
+	return instance:IsA("KeyframeSequence") and #instance:GetChildren() == 0
 end
 
 local function compareClip(job: Job, clip: AnimationClip)

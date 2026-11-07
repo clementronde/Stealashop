@@ -148,7 +148,7 @@ local cashListeners: { CashListener } = {}
 
 local function deepCopy<T>(value: T): T
 	if type(value) ~= "table" then
-		return value
+		return value :: any -- le nouveau solveur ne voit pas qu'une valeur affinée reste un T
 	end
 	local copy = {}
 	for key, child in value :: any do

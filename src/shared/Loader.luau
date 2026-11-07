@@ -65,7 +65,7 @@ function Loader.start(folder: Instance?, label: string): number
 	for _, entry in list do
 		local init = entry.mod.Init
 		if init then
-			local ok, err = pcall(init)
+			local ok, err = pcall(init :: any) -- :: any : sans lui, l'ancien solveur croit que pcall ne renvoie qu'une valeur
 			if not ok then
 				warn(`[Loader {label}] {entry.name}.Init : {err}`)
 			end
@@ -76,7 +76,9 @@ function Loader.start(folder: Instance?, label: string): number
 		local start = entry.mod.Start
 		if start then
 			task.spawn(function()
-				local ok, err = xpcall(start, debug.traceback)
+				local ok, err = xpcall(start :: any, function(message: any): string
+					return debug.traceback(tostring(message), 2)
+				end)
 				if not ok then
 					warn(`[Loader {label}] {entry.name}.Start : {err}`)
 				end

@@ -195,7 +195,7 @@ local function makeServerRemote(def: RemoteDef, instance: any): ServerRemote
 			reportFlood(player, name, window, now, "RateLimit")
 			return
 		end
-		local reason, detail = Validate.check(def.Args, ...)
+		local reason: Validate.Reason?, detail: string? = Validate.check(def.Args, ...)
 		if reason then
 			report(player, name, reason, detail or "")
 			return
