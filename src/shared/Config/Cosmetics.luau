@@ -1,12 +1,24 @@
 --!strict
 -- Auras (multiplicateur de puissance) et trails (multiplicateur de vitesse) de la
--- boutique d'auras (Partie 1, sections 5.10 et 7.4).
+-- boutique d'auras (Partie 1, sections 5.10 et 7.4). Lu par CosmeticService (possession,
+-- équipement, multiplicateurs, effets), ShopService (prix), CosmeticController et
+-- AuraShopController (client).
 -- Une aura et un trail équipés à la fois ; on garde tout ce qu'on a acheté, et
 -- acheter un palier ne demande pas d'avoir le précédent.
 --
+-- Origine de chaque valeur, notée en commentaire :
+--   doc   valeur de la Partie 1 (tables 7.4, sections 5.10 et 7.1) ;
+--   V0    V0 proposé, absent du doc, à régler à l'œil.
+--
 -- `Id` est la clé de la sauvegarde (Cosmetics.Auras, Cosmetics.Trails, 9.5) et de
--- BuyItem / EquipCosmetic (9.4). `Texture` suit le format `FX_Aura_<Nom>` /
--- `FX_Trail_<Nom>` de 10.4 ; le <Nom> exact est dérivé du nom affiché, à confirmer avec Clément.
+-- BuyItem / EquipCosmetic (9.4). `DisplayName` est le nom affiché, en anglais (L-036).
+-- `Texture` est le nom du Decal de Clément (MOD-045 : PNG 256 × 256 sur fond transparent),
+-- cherché dans ReplicatedStorage/Assets, sous-dossiers compris, au format `FX_Aura_<Nom>` /
+-- `FX_Trail_<Nom>` de 10.4. Le <Nom> est le nom français d'origine sans accents : c'est un nom
+-- technique, que L-036 ne traduit pas. À confirmer avec Clément tant que MOD-045 n'est pas livré.
+-- `Color` est la couleur principale du palier (10.4) : elle teinte les particules, la lumière et
+-- le trail (texture de Clément en gris ou en blanc, comme ENV_Texture_Stud, L-030). V0 en
+-- attendant les couleurs de Clément (MOD-045), qui la remplaceront ici.
 
 local DeepFreeze = require(script.Parent.DeepFreeze)
 
@@ -21,23 +33,26 @@ export type Cosmetic = {
 	Price: number, -- en $ du jeu
 	TargetZones: { number }, -- { première, dernière } zone visée
 	Texture: string,
+	Color: Color3,
 }
 
+-- doc 7.4 : multiplicateurs, prix et zones visées. Color : V0.
 local Auras: { Cosmetic } = {
-	{ Id = "Spark", Kind = "Aura", Order = 1, DisplayName = "Spark", Multiplier = 1.5, Price = 500, TargetZones = { 1, 2 }, Texture = "FX_Aura_Etincelle" },
-	{ Id = "Flame", Kind = "Aura", Order = 2, DisplayName = "Flame", Multiplier = 2, Price = 15_000, TargetZones = { 2, 3 }, Texture = "FX_Aura_Flamme" },
-	{ Id = "Lightning", Kind = "Aura", Order = 3, DisplayName = "Lightning", Multiplier = 3, Price = 400_000, TargetZones = { 3, 4 }, Texture = "FX_Aura_Foudre" },
-	{ Id = "Plasma", Kind = "Aura", Order = 4, DisplayName = "Plasma", Multiplier = 5, Price = 10_000_000, TargetZones = { 4, 5 }, Texture = "FX_Aura_Plasma" },
-	{ Id = "Galaxy", Kind = "Aura", Order = 5, DisplayName = "Galaxy", Multiplier = 8, Price = 250_000_000, TargetZones = { 5, 6 }, Texture = "FX_Aura_Galaxie" },
-	{ Id = "Royal", Kind = "Aura", Order = 6, DisplayName = "Royal", Multiplier = 11, Price = 3_000_000_000, TargetZones = { 6, 6 }, Texture = "FX_Aura_Royale" },
+	{ Id = "Spark", Kind = "Aura", Order = 1, DisplayName = "Spark", Multiplier = 1.5, Price = 500, TargetZones = { 1, 2 }, Texture = "FX_Aura_Etincelle", Color = Color3.fromRGB(255, 236, 140) },
+	{ Id = "Flame", Kind = "Aura", Order = 2, DisplayName = "Flame", Multiplier = 2, Price = 15_000, TargetZones = { 2, 3 }, Texture = "FX_Aura_Flamme", Color = Color3.fromRGB(255, 122, 26) },
+	{ Id = "Lightning", Kind = "Aura", Order = 3, DisplayName = "Lightning", Multiplier = 3, Price = 400_000, TargetZones = { 3, 4 }, Texture = "FX_Aura_Foudre", Color = Color3.fromRGB(92, 214, 255) },
+	{ Id = "Plasma", Kind = "Aura", Order = 4, DisplayName = "Plasma", Multiplier = 5, Price = 10_000_000, TargetZones = { 4, 5 }, Texture = "FX_Aura_Plasma", Color = Color3.fromRGB(255, 59, 212) },
+	{ Id = "Galaxy", Kind = "Aura", Order = 5, DisplayName = "Galaxy", Multiplier = 8, Price = 250_000_000, TargetZones = { 5, 6 }, Texture = "FX_Aura_Galaxie", Color = Color3.fromRGB(123, 77, 255) },
+	{ Id = "Royal", Kind = "Aura", Order = 6, DisplayName = "Royal", Multiplier = 11, Price = 3_000_000_000, TargetZones = { 6, 6 }, Texture = "FX_Aura_Royale", Color = Color3.fromRGB(255, 197, 46) },
 }
 
+-- doc 7.4 : multiplicateurs, prix et zones visées. Color : V0.
 local Trails: { Cosmetic } = {
-	{ Id = "Dust", Kind = "Trail", Order = 1, DisplayName = "Dust", Multiplier = 1.1, Price = 300, TargetZones = { 1, 2 }, Texture = "FX_Trail_Poussiere" },
-	{ Id = "Wind", Kind = "Trail", Order = 2, DisplayName = "Wind", Multiplier = 1.25, Price = 10_000, TargetZones = { 2, 3 }, Texture = "FX_Trail_Vent" },
-	{ Id = "Turbo", Kind = "Trail", Order = 3, DisplayName = "Turbo", Multiplier = 1.4, Price = 300_000, TargetZones = { 3, 4 }, Texture = "FX_Trail_Turbo" },
-	{ Id = "Comet", Kind = "Trail", Order = 4, DisplayName = "Comet", Multiplier = 1.6, Price = 8_000_000, TargetZones = { 4, 5 }, Texture = "FX_Trail_Comete" },
-	{ Id = "Hyperspace", Kind = "Trail", Order = 5, DisplayName = "Hyperspace", Multiplier = 1.8, Price = 200_000_000, TargetZones = { 5, 6 }, Texture = "FX_Trail_Hyperespace" },
+	{ Id = "Dust", Kind = "Trail", Order = 1, DisplayName = "Dust", Multiplier = 1.1, Price = 300, TargetZones = { 1, 2 }, Texture = "FX_Trail_Poussiere", Color = Color3.fromRGB(217, 195, 160) },
+	{ Id = "Wind", Kind = "Trail", Order = 2, DisplayName = "Wind", Multiplier = 1.25, Price = 10_000, TargetZones = { 2, 3 }, Texture = "FX_Trail_Vent", Color = Color3.fromRGB(191, 244, 255) },
+	{ Id = "Turbo", Kind = "Trail", Order = 3, DisplayName = "Turbo", Multiplier = 1.4, Price = 300_000, TargetZones = { 3, 4 }, Texture = "FX_Trail_Turbo", Color = Color3.fromRGB(255, 90, 46) },
+	{ Id = "Comet", Kind = "Trail", Order = 4, DisplayName = "Comet", Multiplier = 1.6, Price = 8_000_000, TargetZones = { 4, 5 }, Texture = "FX_Trail_Comete", Color = Color3.fromRGB(63, 169, 255) },
+	{ Id = "Hyperspace", Kind = "Trail", Order = 5, DisplayName = "Hyperspace", Multiplier = 1.8, Price = 200_000_000, TargetZones = { 5, 6 }, Texture = "FX_Trail_Hyperespace", Color = Color3.fromRGB(176, 92, 255) },
 }
 
 -- Auras et trails partagent le même espace d'Id (un seul catalogId pour BuyItem).
@@ -53,12 +68,16 @@ local Cosmetics = {
 	Auras = Auras,
 	Trails = Trails,
 	ById = ById,
-	-- Sans aura ou sans trail équipé, le multiplicateur vaut 1 (7.1).
+	-- doc 7.1 : sans aura ou sans trail équipé, le multiplicateur vaut 1.
 	NoneMultiplier = 1,
+	-- doc 7.4 : acheter le palier suivant ne demande pas d'avoir le précédent.
 	RequiresPreviousTier = false,
-	-- 5.10 : les auras des autres joueurs perdent la moitié de leurs particules au-delà de 60 studs
+	-- doc 5.10 : les auras des autres joueurs perdent la moitié de leurs particules au-delà de
+	-- 60 studs (distance à la caméra du joueur local ; CosmeticController).
 	RemoteParticleCutDistance = 60,
 	RemoteParticleCutFactor = 0.5,
+	-- V0 : intervalle (s) entre deux mesures de distance des auras des autres joueurs.
+	RemoteParticleCheckInterval = 0.5,
 }
 
 export type Cosmetics = typeof(Cosmetics)
