@@ -96,7 +96,7 @@ local ZONES: { ZoneDef } = {
 	{
 		Distance = 500,
 		Speed = 40,
-		Damage = "5 000",
+		Damage = "5K",
 		Window = "L",
 		Color = Color3.fromRGB(240, 130, 50),
 		Stores = { { Id = "GalerieDArt", Label = "Art Gallery" }, { Id = "Antiquaire", Label = "Antiques" } },
@@ -104,7 +104,7 @@ local ZONES: { ZoneDef } = {
 	{
 		Distance = 660,
 		Speed = 48,
-		Damage = "40 000",
+		Damage = "40K",
 		Window = "L",
 		Color = Color3.fromRGB(220, 60, 60),
 		Stores = { { Id = "Banque", Label = "Bank" }, { Id = "SalleDesCoffres", Label = "Vault" } },
