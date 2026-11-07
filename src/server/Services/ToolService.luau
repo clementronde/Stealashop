@@ -99,14 +99,26 @@ local function auraMultiplier(player: Player): number
 end
 
 -- Pièces d'un outil cloné : jamais ancrées, sans collision ni masse (elles suivent la main),
--- et soudées à la poignée si elles ne tiennent à rien.
+-- et soudées à la poignée si elles ne tiennent à rien. Les soudures déjà là (les WeldToHandle des
+-- modèles de Clément, MOD-027) sont lues dans l'outil : GetJoints ne marche pas hors du Workspace.
 local function prepareParts(tool: Tool, handle: BasePart)
+	local joined: { [BasePart]: boolean } = {}
+	for _, descendant in tool:GetDescendants() do
+		if descendant:IsA("WeldConstraint") or descendant:IsA("JointInstance") then
+			local joint = descendant :: any
+			for _, part in { joint.Part0, joint.Part1 } do
+				if typeof(part) == "Instance" and part:IsA("BasePart") then
+					joined[part] = true
+				end
+			end
+		end
+	end
 	for _, descendant in tool:GetDescendants() do
 		if descendant:IsA("BasePart") then
 			descendant.Anchored = false
 			descendant.CanCollide = false
 			descendant.Massless = true
-			if descendant ~= handle and #descendant:GetJoints() == 0 then
+			if descendant ~= handle and not joined[descendant] then
 				local weld = Instance.new("WeldConstraint")
 				weld.Part0 = handle
 				weld.Part1 = descendant

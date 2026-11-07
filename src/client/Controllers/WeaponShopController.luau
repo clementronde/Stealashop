@@ -296,6 +296,13 @@ local function bind(gui: ScreenGui)
 	local template = found :: GuiObject
 	template.Visible = false
 	gui.Enabled = false
+	-- Lignes d'exemple de la maquette de Clément (Preview_*, à côté du Template) : retirées de la
+	-- copie du joueur, seules les lignes du code restent (liaison L-041).
+	for _, sibling in (template.Parent :: Instance):GetChildren() do
+		if string.sub(sibling.Name, 1, 8) == "Preview_" then
+			sibling:Destroy()
+		end
+	end
 
 	local connections: { RBXScriptConnection } = {}
 	local rows: { Row } = {}
