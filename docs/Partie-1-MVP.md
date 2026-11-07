@@ -918,7 +918,7 @@ Le MVP sort le vendredi 18 décembre 2026, six semaines après le démarrage du 
 | MOD-045 | Textures et couleurs des 6 auras et des 5 trails | PNG 256 × 256 sur fond transparent, une couleur par palier | M2 | P0 | MOD-002 | À faire |
 | UI-002 | `UI_WeaponShop` en gris | Noms du contrat 2.2 | M2 | P0 | UI-001 | À faire |
 | UI-003 | `UI_AuraShop` en gris, 2 onglets | Noms du contrat 2.2 | M2 | P0 | UI-001 | À faire |
-| MOD-018 | Variante zone 1 « Kiosque » | Même structure que la Supérette, enseigne et couleurs différentes | M2 | P1 | MOD-012 | À faire |
+| MOD-018 | Variante zone 1 « Kiosque » | Même structure que la Supérette, enseigne et couleurs différentes | M2 | P1 | MOD-012 | En revue |
 | MOD-030 | Accessoires vigiles zones 2 à 6 | Un look distinct par zone | M2 | P1 | MOD-017 | À faire |
 | MOD-032 | Nuit : mur géant qui monte du sol (2 états), look des vigiles de nuit (lampe torche, casquette), lampadaires lumineux | Tags `NightWall` et `NightPatrol` posés, mur testé dans les deux états | M3 | P0 | DEV-003 | À faire |
 | UI-005 | `UI_TheftAlert` | Bannière lisible en une demi-seconde, flèche vers le voleur | M3 | P0 | UI-001 | À faire |
@@ -999,6 +999,7 @@ Chaque étape est envoyée une seule fois par joueur avec `AnalyticsService:LogO
 
 | Date | Décision | Par |
 | --- | --- | --- |
+| 2026-11-07 | Zone 1 : la Supérette devient un grand supermarché à longues allées (40 × 48 studs, 3 allées, rayons de 24 studs à 3 étages), sur le modèle d'une allée de supermarché Roblox ; le Kiosque est le même magasin dans d'autres couleurs (bleu et menthe). Les deux remplacent les magasins gris de la zone 1 (Workspace/Map/Zone_1). La boutique des joueurs (MOD-015) prendra le même style d'allées (liaison, L-029) | Clément |
 | 2026-11-07 | Magasins PNJ : passages d'au moins 6 studs, et 8 pour l'allée qui longe la réserve, pour que le vigile (rayon 2 dans GuardService) trouve son chemin sans sauter par-dessus les rayons ; testé sur la Supérette (MOD-012). Les studs du décor passent par un MaterialVariant « Studs » teinté par la couleur de chaque pièce (liaison, L-029 et L-030) | Clément |
 | 2026-11-07 | Casse de vitrine en style Roblox plutôt que réaliste (remplace le « très réaliste » de la ligne suivante) : persos R6 qui frappent, décor en studs, verre Roblox bleu clair, éclats et petits cubes de verre, gravité Roblox (196,2 studs/s²). Cible : le prototype interactif et le rendu WIN_M_Casse_Roblox.mp4 (liaison, L-028) | Clément |
 | 2026-11-07 | Casse de vitrine : elle doit être très réaliste et animée, et la fissure comme la brisure partent de l'endroit où le joueur frappe. Fissures livrées en étoiles d'impact à poser au point de frappe ; vitre fracturée en 3 variantes (impact à gauche, au centre, à droite) ; animation dans le code (liaison, L-028) | Clément |
