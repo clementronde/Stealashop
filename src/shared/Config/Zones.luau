@@ -13,6 +13,11 @@ export type Zone = {
 	Index: number,
 	Theme: string, -- nom affiché de la zone, en anglais (catalogue 10.5, liaison L-036)
 	Stores: { string }, -- noms affichés des 2 magasins PNJ, en anglais comme leurs enseignes (L-036)
+	-- Les mêmes magasins, dans le même ordre, sous leur nom d'asset (10.3) : le modèle de Clément
+	-- s'appelle STORE_Z<n>_<Id> (« STORE_Z1_Superette »). Ce sont les noms de la colonne « Magasins
+	-- PNJ » de la section 4, sans accents ni espaces, tels qu'ils sont dans la place. Ils servent
+	-- seulement à retrouver le nom affiché d'un magasin (StoreInfoController, DEV-030).
+	StoreIds: { string },
 	WindowHP: number, -- PV de la vitrine
 	AdvisedDamage: number, -- dégâts par coup conseillés
 	AdvisedSpeed: number, -- WalkSpeed conseillé
@@ -26,6 +31,7 @@ local Zones: { Zone } = {
 		Index = 1,
 		Theme = "Mini Mart",
 		Stores = { "Mini Mart", "Kiosk" },
+		StoreIds = { "Superette", "Kiosque" },
 		WindowHP = 35,
 		AdvisedDamage = 1,
 		AdvisedSpeed = 16,
@@ -37,6 +43,7 @@ local Zones: { Zone } = {
 		Index = 2,
 		Theme = "Toys",
 		Stores = { "Toy Shop", "Sweet Shop" },
+		StoreIds = { "MagasinDeJouets", "Confiserie" },
 		WindowHP = 350,
 		AdvisedDamage = 10,
 		AdvisedSpeed = 22,
@@ -48,6 +55,7 @@ local Zones: { Zone } = {
 		Index = 3,
 		Theme = "Electronics",
 		Stores = { "Electronics", "Video Games" },
+		StoreIds = { "Electronique", "JeuxVideo" },
 		WindowHP = 2_800,
 		AdvisedDamage = 80,
 		AdvisedSpeed = 28,
@@ -59,6 +67,7 @@ local Zones: { Zone } = {
 		Index = 4,
 		Theme = "Jewelry",
 		Stores = { "Jewelry", "Watches & Clocks" },
+		StoreIds = { "Bijouterie", "Horlogerie" },
 		WindowHP = 21_000,
 		AdvisedDamage = 600,
 		AdvisedSpeed = 34,
@@ -70,6 +79,7 @@ local Zones: { Zone } = {
 		Index = 5,
 		Theme = "Gallery",
 		Stores = { "Art Gallery", "Antiques" },
+		StoreIds = { "GalerieDArt", "Antiquaire" },
 		WindowHP = 175_000,
 		AdvisedDamage = 5_000,
 		AdvisedSpeed = 40,
@@ -81,6 +91,7 @@ local Zones: { Zone } = {
 		Index = 6,
 		Theme = "Bank",
 		Stores = { "Bank", "Vault" },
+		StoreIds = { "Banque", "SalleDesCoffres" },
 		WindowHP = 1_400_000,
 		AdvisedDamage = 40_000,
 		AdvisedSpeed = 48,

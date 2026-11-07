@@ -3,13 +3,16 @@
 -- respecte le contrat entre le code et le visuel (doc, sections 2.1, 2.2, 2.4, 10.3 et
 -- 10.4 ; liaison, sections 3.2 et 3.3) et écrit un rapport lisible par Clément.
 --
--- Trois sortes de lignes, toutes préfixées « [Contrat] » (à taper dans le filtre de la
+-- Quatre sortes de lignes, toutes préfixées « [Contrat] » (à taper dans le filtre de la
 -- sortie), regroupées par catégorie :
 --   - problème (warn, orange) : quelque chose de livré ne respecte pas le contrat ;
+--   - avertissement (warn, orange, pas compté comme un problème) : un élément facultatif du
+--     contrat manque et le code se rabat sur autre chose (InfoPoint d'un magasin, L-044) ;
 --   - pas encore livré (print) : un écran, un modèle ou une animation n'existe pas encore,
 --     une seule ligne pour un écran ou un modèle entièrement absent ;
 --   - note (print) : ce que le vérificateur n'a pas pu contrôler.
--- Dernière ligne : « Contrat : N problème(s) » ou « Contrat : OK ». Zéro problème = livrable.
+-- Dernière ligne : « Contrat : N problème(s) » ou « Contrat : OK », suivie du nombre
+-- d'avertissements et de points pas encore livrés. Zéro problème = livrable.
 --
 -- Ne tourne qu'en Studio, côté serveur, et ne modifie jamais rien dans la place.
 -- Les noms vérifiés viennent tous de ReplicatedStorage/Shared/Contract.
@@ -36,7 +39,7 @@ type Part = typeof(Models.Store.Parts[1])
 type ModelSpec = typeof(Models.Store)
 type Screen = typeof(UI.Screens[1])
 
-type Kind = "problem" | "pending" | "note"
+type Kind = "problem" | "warning" | "pending" | "note"
 type Line = { kind: Kind, text: string }
 type Job = { shown: string, id: string, spec: Anim }
 type ClipResult = { ok: boolean, value: any }
@@ -73,7 +76,7 @@ end
 
 -- État d'une vérification, remis à zéro par run().
 local lines: { [string]: { Line } } = {}
-local counts: { [string]: number } = { problem = 0, pending = 0, note = 0 }
+local counts: { [string]: number } = { problem = 0, warning = 0, pending = 0, note = 0 }
 local indexCache: { [Instance]: { [string]: { Instance } } } = {}
 local contractModels: { [Instance]: boolean } = {}
 local assetRoots: { Instance } = {}
@@ -93,6 +96,10 @@ local function problem(category: string, text: string)
 	add("problem", category, text)
 end
 
+local function warning(category: string, text: string)
+	add("warning", category, text)
+end
+
 local function pending(category: string, text: string)
 	add("pending", category, text)
 end
@@ -106,11 +113,11 @@ local function printReport()
 	for _, category in CATEGORIES do
 		local list = lines[category]
 		if list then
-			for _, kind in { "problem", "pending", "note" } :: { Kind } do
+			for _, kind in { "problem", "warning", "pending", "note" } :: { Kind } do
 				for _, line in list do
 					if line.kind == kind then
 						local text = `{PREFIX} {category} · {line.text}`
-						if kind == "problem" then
+						if kind == "problem" or kind == "warning" then
 							warn(text)
 						else
 							print(text)
@@ -120,11 +127,12 @@ local function printReport()
 			end
 		end
 	end
+	local warnings = if counts.warning > 0 then ` · {counts.warning} avertissement(s)` else ""
 	local later = if counts.pending > 0 then ` · {counts.pending} point(s) pas encore livré(s)` else ""
 	if counts.problem > 0 then
-		warn(`{PREFIX} Contrat : {counts.problem} problème(s){later}`)
+		warn(`{PREFIX} Contrat : {counts.problem} problème(s){warnings}{later}`)
 	else
-		print(`{PREFIX} Contrat : OK{later}`)
+		print(`{PREFIX} Contrat : OK{warnings}{later}`)
 	end
 end
 
@@ -512,8 +520,13 @@ checkParts = function(category: string, root: Instance, label: string, parts: { 
 			local found = index[part.Name]
 			if found == nil then
 				local noteText = if part.Note then ` ({part.Note})` else ""
-				local detail = `{hint(nearName(index, part.Name), part.Name)}{noteText}`
-				table.insert(missing, { name = part.Name, detail = detail, plural = false })
+				local near = nearName(index, part.Name)
+				if part.Optional and near == nil then
+					-- Facultatif et vraiment absent : le code a un repli, ce n'est pas un problème.
+					warning(category, `{label}.{part.Name} introuvable{noteText}`)
+				else
+					table.insert(missing, { name = part.Name, detail = `{hint(near, part.Name)}{noteText}`, plural = false })
+				end
 			else
 				if #found > 1 then
 					problem(category, `{label} : {#found} éléments nommés {part.Name}, un seul attendu`)
@@ -1211,7 +1224,7 @@ end
 
 local function run()
 	lines = {}
-	counts = { problem = 0, pending = 0, note = 0 }
+	counts = { problem = 0, warning = 0, pending = 0, note = 0 }
 	indexCache = {}
 	contractModels = {}
 	inbox = Workspace:FindFirstChild(INBOX_NAME)
