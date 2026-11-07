@@ -68,7 +68,10 @@
 -- de l'étape) ; target = point du monde visé par la flèche (nil = pas de flèche). Cibles : vitrine
 -- du magasin (étapes 1 à 3 ; la Supérette tant que le joueur n'en a pas choisi un autre), établi
 -- libre (4), établi du colis puis tapis de caisse (5), tapis puis banc (6), tapis de caisse ou
--- comptoir WeaponShop (7) et AuraShop (8) selon l'argent, arche de la zone 2 (9).
+-- comptoir WeaponShop (7) et AuraShop (8) selon l'argent, arche de la zone 2 (9). Tapis, banc et
+-- tapis de caisse sont trouvés par leur tag dans la parcelle. Boutique du hub (PLOT_Shop, L-050) :
+-- entre l'intérieur de la boutique (volume Bounds) et l'extérieur, la flèche vise d'abord la porte
+-- (PlotDoor/Window) ; le joueur apparaît dans sa boutique, la première flèche va donc à sa porte.
 -- Indices (Hints) : WindowRebuilding (étape 2, vitrine cassée rideau baissé) ; WaitBox, OpenBox,
 -- CollectCash (étape 5) ; CollectCash (7 et 8 sans assez d'argent) ; Night (bulle de nuit 5.12 :
 -- alerte ou nuit, joueur dans le couloir ; flèche vers sa parcelle) ; NightClosed (la nuit, côté
@@ -203,9 +206,13 @@ local ZONE_ATTRIBUTE = "Zone"
 local INBOX_NAME = "_INBOX_CLEMENT"
 local WINDOW = "Window"
 local BOUNDS = "Bounds"
-local CASH_PAD = "CashPad"
 local SPAWN_POINT = "SpawnPoint"
 local USE_POINT = "UsePoint"
+local TREADMILL_TAG = "Treadmill"
+local BENCH_TAG = "Bench"
+local CASH_PAD_TAG = "CashPad"
+-- Entrée de la boutique du joueur (PLOT_Shop, nom validé par Ironix en L-050, pas encore au contrat).
+local PLOT_DOOR = "PlotDoor"
 local BENCH_FORMAT = "UnboxBench_%02d"
 local SLOT_FORMAT = "DisplaySlot_%02d"
 -- Attribut du Player posé par TrainingService : la machine utilisée, nil sinon.
@@ -305,6 +312,55 @@ local function plotPart(player: Player, path: string): Instance?
 		return nil
 	end
 	return Find.path(plot, path)
+end
+
+-- Objet de la parcelle du joueur qui porte ce tag (Treadmill, Bench, CashPad : comme TrainingService,
+-- le tag plutôt que le nom, qu'un décor de la boutique pourrait porter aussi), sinon celui de ce nom.
+local function plotTagged(player: Player, tag: string): Instance?
+	local plot = PlotService.GetPlot(player)
+	if plot == nil then
+		return nil
+	end
+	for _, inst in CollectionService:GetTagged(tag) do
+		if inst:IsDescendantOf(plot) then
+			return inst
+		end
+	end
+	return Find.path(plot, tag)
+end
+
+-- Point d'usage d'une machine de la parcelle (tag Treadmill ou Bench) : son UsePoint, sinon elle.
+local function machinePoint(player: Player, tag: string): Vector3?
+	local machine = plotTagged(player, tag)
+	if machine == nil then
+		return nil
+	end
+	return positionOf(Find.path(machine, USE_POINT)) or positionOf(machine)
+end
+
+-- Boutique du joueur (PLOT_Shop du hub, liaison L-050) : quand le joueur et la cible ne sont pas du
+-- même côté de ses murs (volume Bounds de la parcelle), la flèche vise d'abord sa porte : le pivot de
+-- PlotDoor/Window, au sol au milieu de l'entrée (sinon celui de PlotDoor). Le joueur apparaît dans sa
+-- boutique : la première flèche le mène donc à sa porte, puis vers la Supérette. Sans PlotDoor ou
+-- sans Bounds (parcelle grise) : la cible elle-même.
+local function throughDoor(player: Player, position: Vector3?, target: Vector3?): Vector3?
+	if position == nil or target == nil then
+		return target
+	end
+	local plot = PlotService.GetPlot(player)
+	if plot == nil then
+		return target
+	end
+	local bounds = plot:FindFirstChild(BOUNDS) or Find.path(plot, BOUNDS)
+	local door = plot:FindFirstChild(PLOT_DOOR, true)
+	if bounds == nil or not bounds:IsA("BasePart") or door == nil then
+		return target
+	end
+	local box = bounds :: BasePart
+	if insideBox(box.CFrame, box.Size, position) == insideBox(box.CFrame, box.Size, target) then
+		return target
+	end
+	return positionOf(door:FindFirstChild(WINDOW, true)) or positionOf(door) or target
 end
 
 local function serverNow(): number
@@ -739,8 +795,8 @@ local function transition(session: Session, data: Data, position: Vector3?, carr
 	return nil, nil
 end
 
--- Indice et cible de la flèche pour l'étape en cours (voir l'en-tête).
-local function guidance(session: Session, data: Data, position: Vector3?): (string?, Vector3?)
+-- Indice et cible de la flèche pour l'étape en cours (voir l'en-tête), avant le passage par la porte.
+local function rawGuidance(session: Session, data: Data, position: Vector3?): (string?, Vector3?)
 	local player = session.player
 	local step = session.step
 	if session.messageUntil > os.clock() then
@@ -777,29 +833,35 @@ local function guidance(session: Session, data: Data, position: Vector3?): (stri
 			return hint, positionOf(plotPart(player, string.format(BENCH_FORMAT, index)))
 		end
 		if next(data.Display) ~= nil then
-			return "CollectCash", positionOf(plotPart(player, CASH_PAD))
+			return "CollectCash", positionOf(plotTagged(player, CASH_PAD_TAG))
 		end
 		return nil, freeSlotTarget(player, data)
 	elseif step == STEP_TRAIN then
 		if player:GetAttribute(MACHINE_ATTRIBUTE) ~= nil then
 			return nil, nil
 		end
-		local machine = if session.used.Treadmill then "Bench" else "Treadmill"
-		return nil, positionOf(plotPart(player, `{machine}.{USE_POINT}`)) or positionOf(plotPart(player, machine))
+		local machine = if session.used.Treadmill then BENCH_TAG else TREADMILL_TAG
+		return nil, machinePoint(player, machine)
 	elseif step == STEP_TOOL then
 		if data.Cash < toolPrice() then
-			return "CollectCash", positionOf(plotPart(player, CASH_PAD))
+			return "CollectCash", positionOf(plotTagged(player, CASH_PAD_TAG))
 		end
 		return nil, positionOf(taggedInMap(WEAPON_SHOP_TAG))
 	elseif step == STEP_AURA then
 		if data.Cash < cheapestAura() then
-			return "CollectCash", positionOf(plotPart(player, CASH_PAD))
+			return "CollectCash", positionOf(plotTagged(player, CASH_PAD_TAG))
 		end
 		return nil, positionOf(taggedInMap(AURA_SHOP_TAG))
 	elseif step == STEP_ZONE then
 		return nil, positionOf(taggedInMap(GATE_TAG, Tutorial.GoalZone))
 	end
 	return nil, nil
+end
+
+-- Indice et cible de la flèche, qui passe par la porte de la boutique du joueur (throughDoor).
+local function guidance(session: Session, data: Data, position: Vector3?): (string?, Vector3?)
+	local hint, target = rawGuidance(session, data, position)
+	return hint, throughDoor(session.player, position, target)
 end
 
 -- Relit tout pour ce joueur : étape, fin du tuto, guidage envoyé au client.
