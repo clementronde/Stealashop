@@ -135,7 +135,7 @@ Un magasin par zone, puis sa variante (même structure, autre enseigne et autres
 
 - **Consigne** :
 
-  > Refais la vitre comme `WIN_M` en taille S (8 × 6) et L (16 × 8), versions intacte et fracturée. Puis modélise les outils `TOOL_CleAMolette`, `TOOL_PiedDeBiche`, `TOOL_Marteau`, `TOOL_Masse`, `TOOL_HacheIncendie`, `TOOL_Disqueuse` et la batte `TOOL_Batte` : 1 500 triangles maximum, une pièce `Handle` et un attachment `HitPoint` à la tête de l'outil.
+  > Refais la vitre comme `WIN_M` en taille S (8 × 6) et L (16 × 8), versions intacte et fracturée. Puis modélise les outils `TOOL_CleAMolette`, `TOOL_PiedDeBiche`, `TOOL_Marteau`, `TOOL_Masse`, `TOOL_HacheDIncendie`, `TOOL_Disqueuse` et la batte `TOOL_Batte` : 1 500 triangles maximum, une pièce `Handle` et un attachment `HitPoint` à la tête de l'outil.
 
 ### Étape 12 · MOD-026 · Les 30 objets des zones 2 à 6
 

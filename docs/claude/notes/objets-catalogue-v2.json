@@ -1,0 +1,1031 @@
+{
+ "zones": [
+  {
+   "zone": 1,
+   "stores": "Supérette · Kiosque",
+   "categories": [
+    {
+     "name": "Boisson",
+     "nameEn": "Drink",
+     "id": "Boisson",
+     "items": [
+      {
+       "itemId": "Z1_CanetteDeSoda",
+       "asset": "ITM_Z1_CanetteDeSoda",
+       "name": "Canette de soda",
+       "nameEn": "Soda Can",
+       "rarity": "Common",
+       "origin": "done",
+       "idea": "Canette rouge à languette",
+       "idle": null,
+       "note": null
+      },
+      {
+       "itemId": "Z1_BoissonEnergisante",
+       "asset": "ITM_Z1_BoissonEnergisante",
+       "name": "Boisson énergisante",
+       "nameEn": "Energy Drink",
+       "rarity": "Common",
+       "origin": "done",
+       "idea": "Canette haute, repassée en mat",
+       "idle": null,
+       "note": "était Épique"
+      },
+      {
+       "itemId": "Z1_BriqueDeLait",
+       "asset": "ITM_Z1_BriqueDeLait",
+       "name": "Brique de lait",
+       "nameEn": "Milk Carton",
+       "rarity": "Common",
+       "origin": "new",
+       "idea": "Brique à toit pointu, vache dessinée",
+       "idle": null,
+       "note": null
+      }
+     ]
+    },
+    {
+     "name": "Snack",
+     "nameEn": "Snack",
+     "id": "Snack",
+     "items": [
+      {
+       "itemId": "Z1_PaquetDeChips",
+       "asset": "ITM_Z1_PaquetDeChips",
+       "name": "Paquet de chips",
+       "nameEn": "Bag of Chips",
+       "rarity": "Common",
+       "origin": "v1",
+       "idea": "Sachet gonflé, chips qui dépassent",
+       "idle": null,
+       "note": "était Peu commun"
+      },
+      {
+       "itemId": "Z1_Donut",
+       "asset": "ITM_Z1_Donut",
+       "name": "Donut",
+       "nameEn": "Donut",
+       "rarity": "Common",
+       "origin": "new",
+       "idea": "Glaçage rose et vermicelles",
+       "idle": null,
+       "note": null
+      },
+      {
+       "itemId": "Z1_HotDog",
+       "asset": "ITM_Z1_HotDog",
+       "name": "Hot-dog",
+       "nameEn": "Hot Dog",
+       "rarity": "Common",
+       "origin": "new",
+       "idea": "Pain, saucisse, trait de moutarde",
+       "idle": null,
+       "note": null
+      },
+      {
+       "itemId": "Z1_PotDeNouilles",
+       "asset": "ITM_Z1_PotDeNouilles",
+       "name": "Pot de nouilles",
+       "nameEn": "Instant Noodles",
+       "rarity": "Rare",
+       "origin": "v1",
+       "idea": "Pot fumant, baguettes plantées",
+       "idle": null,
+       "note": "tuto · renaissance 1"
+      }
+     ]
+    },
+    {
+     "name": "Fruit",
+     "nameEn": "Fruit",
+     "id": "Fruit",
+     "items": [
+      {
+       "itemId": "Z1_Banane",
+       "asset": "ITM_Z1_Banane",
+       "name": "Banane",
+       "nameEn": "Banana",
+       "rarity": "Common",
+       "origin": "new",
+       "idea": "Banane courbée, bout brun",
+       "idle": null,
+       "note": null
+      },
+      {
+       "itemId": "Z1_Ananas",
+       "asset": "ITM_Z1_Ananas",
+       "name": "Ananas",
+       "nameEn": "Pineapple",
+       "rarity": "Common",
+       "origin": "new",
+       "idea": "Écailles et couronne de feuilles",
+       "idle": null,
+       "note": null
+      },
+      {
+       "itemId": "Z1_Pasteque",
+       "asset": "ITM_Z1_Pasteque",
+       "name": "Pastèque",
+       "nameEn": "Watermelon",
+       "rarity": "Common",
+       "origin": "new",
+       "idea": "Entière, une tranche découpée",
+       "idle": null,
+       "note": null
+      }
+     ]
+    },
+    {
+     "name": "Légumes",
+     "nameEn": "Vegetable",
+     "id": "Legumes",
+     "items": [
+      {
+       "itemId": "Z1_Carotte",
+       "asset": "ITM_Z1_Carotte",
+       "name": "Carotte",
+       "nameEn": "Carrot",
+       "rarity": "Common",
+       "origin": "new",
+       "idea": "Orange, fanes vertes",
+       "idle": null,
+       "note": null
+      },
+      {
+       "itemId": "Z1_Brocoli",
+       "asset": "ITM_Z1_Brocoli",
+       "name": "Brocoli",
+       "nameEn": "Broccoli",
+       "rarity": "Common",
+       "origin": "new",
+       "idea": "Petit arbre vert",
+       "idle": null,
+       "note": null
+      },
+      {
+       "itemId": "Z1_EpiDeMais",
+       "asset": "ITM_Z1_EpiDeMais",
+       "name": "Épi de maïs",
+       "nameEn": "Corn Cob",
+       "rarity": "Common",
+       "origin": "new",
+       "idea": "Grains jaunes, feuilles ouvertes",
+       "idle": null,
+       "note": null
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "zone": 2,
+   "stores": "Londres · Magasin de jouets, Confiserie",
+   "categories": [
+    {
+     "name": "Jouet",
+     "nameEn": "Toy",
+     "id": "Jouet",
+     "items": [
+      {
+       "itemId": "Z2_CanardEnPlastique",
+       "asset": "ITM_Z2_CanardEnPlastique",
+       "name": "Canard en plastique",
+       "nameEn": "Rubber Duck",
+       "rarity": "Common",
+       "origin": "v1",
+       "idea": "Canard de bain jaune",
+       "idle": null,
+       "note": null
+      },
+      {
+       "itemId": "Z2_YoYo",
+       "asset": "ITM_Z2_YoYo",
+       "name": "Yo-yo",
+       "nameEn": "Yo-Yo",
+       "rarity": "Uncommon",
+       "origin": "v1",
+       "idea": "Deux disques et leur ficelle",
+       "idle": null,
+       "note": null
+      },
+      {
+       "itemId": "Z2_RobotJouet",
+       "asset": "ITM_Z2_RobotJouet",
+       "name": "Robot jouet",
+       "nameEn": "Toy Robot",
+       "rarity": "Epic",
+       "origin": "v1",
+       "idea": "Robot rétro, clé dans le dos",
+       "idle": null,
+       "note": "renaissance 3"
+      },
+      {
+       "itemId": "Z2_FigurineHolographique",
+       "asset": "ITM_Z2_FigurineHolographique",
+       "name": "Figurine holographique",
+       "nameEn": "Hologram Figure",
+       "rarity": "Mythic",
+       "origin": "v1",
+       "idea": "Figurine sur socle lumineux, anneau d'hologramme",
+       "idle": "L'hologramme tourne et scintille",
+       "note": null
+      }
+     ]
+    },
+    {
+     "name": "Peluche",
+     "nameEn": "Plush",
+     "id": "Peluche",
+     "items": [
+      {
+       "itemId": "Z2_OursEnPeluche",
+       "asset": "ITM_Z2_OursEnPeluche",
+       "name": "Ours en peluche",
+       "nameEn": "Teddy Bear",
+       "rarity": "Common",
+       "origin": "new",
+       "idea": "Ourson brun, nœud rouge",
+       "idle": null,
+       "note": null
+      },
+      {
+       "itemId": "Z2_PelucheGeante",
+       "asset": "ITM_Z2_PelucheGeante",
+       "name": "Peluche géante",
+       "nameEn": "Giant Plush",
+       "rarity": "Legendary",
+       "origin": "v1",
+       "idea": "Licorne en peluche géante",
+       "idle": "Rebond moelleux, étincelles",
+       "note": null
+      }
+     ]
+    },
+    {
+     "name": "Bonbon",
+     "nameEn": "Candy",
+     "id": "Bonbon",
+     "items": [
+      {
+       "itemId": "Z2_Sucette",
+       "asset": "ITM_Z2_Sucette",
+       "name": "Sucette",
+       "nameEn": "Lollipop",
+       "rarity": "Common",
+       "origin": "new",
+       "idea": "Spirale arc-en-ciel sur bâton",
+       "idle": null,
+       "note": null
+      },
+      {
+       "itemId": "Z2_BarbeAPapa",
+       "asset": "ITM_Z2_BarbeAPapa",
+       "name": "Barbe à papa",
+       "nameEn": "Cotton Candy",
+       "rarity": "Uncommon",
+       "origin": "new",
+       "idea": "Nuage rose sur bâton",
+       "idle": null,
+       "note": null
+      },
+      {
+       "itemId": "Z2_MaisonEnPainDEpices",
+       "asset": "ITM_Z2_MaisonEnPainDEpices",
+       "name": "Maison en pain d'épices",
+       "nameEn": "Gingerbread House",
+       "rarity": "Rare",
+       "origin": "new",
+       "idea": "Maison en biscuit, toit de glaçage et bonbons",
+       "idle": null,
+       "note": null
+      }
+     ]
+    },
+    {
+     "name": "Véhicule",
+     "nameEn": "Vehicle",
+     "id": "Vehicule",
+     "items": [
+      {
+       "itemId": "Z2_BusAImperiale",
+       "asset": "ITM_Z2_BusAImperiale",
+       "name": "Bus à impériale",
+       "nameEn": "Double-Decker Bus",
+       "rarity": "Uncommon",
+       "origin": "new",
+       "idea": "Bus rouge à deux étages",
+       "idle": null,
+       "note": null
+      },
+      {
+       "itemId": "Z2_VoitureTelecommandee",
+       "asset": "ITM_Z2_VoitureTelecommandee",
+       "name": "Voiture télécommandée",
+       "nameEn": "RC Car",
+       "rarity": "Rare",
+       "origin": "v1",
+       "idea": "Bolide et son antenne",
+       "idle": null,
+       "note": "renaissance 2"
+      },
+      {
+       "itemId": "Z2_TrainElectrique",
+       "asset": "ITM_Z2_TrainElectrique",
+       "name": "Train électrique",
+       "nameEn": "Toy Train",
+       "rarity": "Epic",
+       "origin": "new",
+       "idea": "Locomotive sur un bout de rails",
+       "idle": null,
+       "note": null
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "zone": 3,
+   "stores": "Tokyo · Électronique, Jeux vidéo",
+   "categories": [
+    {
+     "name": "Téléphone",
+     "nameEn": "Phone",
+     "id": "Telephone",
+     "items": [
+      {
+       "itemId": "Z3_Ecouteurs",
+       "asset": "ITM_Z3_Ecouteurs",
+       "name": "Écouteurs",
+       "nameEn": "Earbuds",
+       "rarity": "Common",
+       "origin": "v1",
+       "idea": "Boîtier ouvert, deux écouteurs",
+       "idle": null,
+       "note": null
+      },
+      {
+       "itemId": "Z3_TelephoneAClapet",
+       "asset": "ITM_Z3_TelephoneAClapet",
+       "name": "Téléphone à clapet",
+       "nameEn": "Flip Phone",
+       "rarity": "Uncommon",
+       "origin": "new",
+       "idea": "Clapet ouvert, grosses touches",
+       "idle": null,
+       "note": null
+      },
+      {
+       "itemId": "Z3_Smartphone",
+       "asset": "ITM_Z3_Smartphone",
+       "name": "Smartphone",
+       "nameEn": "Smartphone",
+       "rarity": "Rare",
+       "origin": "v1",
+       "idea": "Écran plein d'icônes",
+       "idle": null,
+       "note": null
+      }
+     ]
+    },
+    {
+     "name": "Ordinateur",
+     "nameEn": "Computer",
+     "id": "Ordinateur",
+     "items": [
+      {
+       "itemId": "Z3_Souris",
+       "asset": "ITM_Z3_Souris",
+       "name": "Souris",
+       "nameEn": "Computer Mouse",
+       "rarity": "Common",
+       "origin": "new",
+       "idea": "Souris à molette",
+       "idle": null,
+       "note": null
+      },
+      {
+       "itemId": "Z3_OrdinateurPortable",
+       "asset": "ITM_Z3_OrdinateurPortable",
+       "name": "Ordinateur portable",
+       "nameEn": "Laptop",
+       "rarity": "Uncommon",
+       "origin": "new",
+       "idea": "Ouvert, écran allumé",
+       "idle": null,
+       "note": null
+      },
+      {
+       "itemId": "Z3_PcGamer",
+       "asset": "ITM_Z3_PcGamer",
+       "name": "PC gamer",
+       "nameEn": "Gaming PC",
+       "rarity": "Legendary",
+       "origin": "v1",
+       "idea": "Tour vitrée aux néons",
+       "idle": "Ventilateurs qui tournent, lumières qui défilent",
+       "note": null
+      },
+      {
+       "itemId": "Z3_CarteGraphiqueEnOr",
+       "asset": "ITM_Z3_CarteGraphiqueEnOr",
+       "name": "Carte graphique en or",
+       "nameEn": "Golden Graphics Card",
+       "rarity": "Mythic",
+       "origin": "v1",
+       "idea": "Carte dorée à trois ventilateurs",
+       "idle": "Ventilateurs, éclairs dorés",
+       "note": null
+      }
+     ]
+    },
+    {
+     "name": "Télé",
+     "nameEn": "TV",
+     "id": "Tele",
+     "items": [
+      {
+       "itemId": "Z3_TeleRetro",
+       "asset": "ITM_Z3_TeleRetro",
+       "name": "Télé rétro",
+       "nameEn": "Retro TV",
+       "rarity": "Common",
+       "origin": "new",
+       "idea": "Écran bombé, deux antennes",
+       "idle": null,
+       "note": null
+      },
+      {
+       "itemId": "Z3_TeleGeante",
+       "asset": "ITM_Z3_TeleGeante",
+       "name": "Télé géante",
+       "nameEn": "Giant TV",
+       "rarity": "Epic",
+       "origin": "new",
+       "idea": "Grand écran plat sur pied",
+       "idle": null,
+       "note": null
+      }
+     ]
+    },
+    {
+     "name": "Console",
+     "nameEn": "Console",
+     "id": "Console",
+     "items": [
+      {
+       "itemId": "Z3_Manette",
+       "asset": "ITM_Z3_Manette",
+       "name": "Manette",
+       "nameEn": "Game Controller",
+       "rarity": "Uncommon",
+       "origin": "v1",
+       "idea": "Manette de console",
+       "idle": null,
+       "note": null
+      },
+      {
+       "itemId": "Z3_CasqueVr",
+       "asset": "ITM_Z3_CasqueVr",
+       "name": "Casque VR",
+       "nameEn": "VR Headset",
+       "rarity": "Rare",
+       "origin": "new",
+       "idea": "Casque de réalité virtuelle",
+       "idle": null,
+       "note": null
+      },
+      {
+       "itemId": "Z3_ConsolePortable",
+       "asset": "ITM_Z3_ConsolePortable",
+       "name": "Console portable",
+       "nameEn": "Handheld Console",
+       "rarity": "Epic",
+       "origin": "v1",
+       "idea": "Écran et boutons colorés",
+       "idle": null,
+       "note": "renaissance 4"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "zone": 4,
+   "stores": "Los Angeles · Bijouterie, Horlogerie",
+   "categories": [
+    {
+     "name": "Bijou",
+     "nameEn": "Jewelry",
+     "id": "Bijou",
+     "items": [
+      {
+       "itemId": "Z4_Bague",
+       "asset": "ITM_Z4_Bague",
+       "name": "Bague",
+       "nameEn": "Ring",
+       "rarity": "Common",
+       "origin": "v1",
+       "idea": "Anneau doré, pierre bleue",
+       "idle": null,
+       "note": null
+      },
+      {
+       "itemId": "Z4_ChaineEnOr",
+       "asset": "ITM_Z4_ChaineEnOr",
+       "name": "Chaîne en or",
+       "nameEn": "Gold Chain",
+       "rarity": "Uncommon",
+       "origin": "new",
+       "idea": "Grosse chaîne dorée, pendentif étoile",
+       "idle": null,
+       "note": null
+      },
+      {
+       "itemId": "Z4_CollierDePerles",
+       "asset": "ITM_Z4_CollierDePerles",
+       "name": "Collier de perles",
+       "nameEn": "Pearl Necklace",
+       "rarity": "Rare",
+       "origin": "v1",
+       "idea": "Rang de perles sur présentoir",
+       "idle": null,
+       "note": null
+      }
+     ]
+    },
+    {
+     "name": "Montre",
+     "nameEn": "Watch",
+     "id": "Montre",
+     "items": [
+      {
+       "itemId": "Z4_MontreEnOr",
+       "asset": "ITM_Z4_MontreEnOr",
+       "name": "Montre en or",
+       "nameEn": "Gold Watch",
+       "rarity": "Common",
+       "origin": "v1",
+       "idea": "Montre dorée, bracelet en cuir",
+       "idle": null,
+       "note": "v1 : Montre, était Peu commun"
+      },
+      {
+       "itemId": "Z4_CoffretDeMontres",
+       "asset": "ITM_Z4_CoffretDeMontres",
+       "name": "Coffret de montres",
+       "nameEn": "Watch Box",
+       "rarity": "Uncommon",
+       "origin": "new",
+       "idea": "Écrin ouvert, rangée de montres",
+       "idle": null,
+       "note": null
+      },
+      {
+       "itemId": "Z4_MontreAGousset",
+       "asset": "ITM_Z4_MontreAGousset",
+       "name": "Montre à gousset",
+       "nameEn": "Pocket Watch",
+       "rarity": "Rare",
+       "origin": "new",
+       "idea": "Montre dorée et sa chaîne",
+       "idle": null,
+       "note": null
+      }
+     ]
+    },
+    {
+     "name": "Horloge",
+     "nameEn": "Clock",
+     "id": "Horloge",
+     "items": [
+      {
+       "itemId": "Z4_PenduleDoree",
+       "asset": "ITM_Z4_PenduleDoree",
+       "name": "Pendule dorée",
+       "nameEn": "Golden Clock",
+       "rarity": "Common",
+       "origin": "new",
+       "idea": "Pendule de cheminée dorée",
+       "idle": null,
+       "note": null
+      },
+      {
+       "itemId": "Z4_HorlogeDeParquet",
+       "asset": "ITM_Z4_HorlogeDeParquet",
+       "name": "Horloge de parquet",
+       "nameEn": "Grandfather Clock",
+       "rarity": "Epic",
+       "origin": "new",
+       "idea": "Grande horloge en bois, balancier doré",
+       "idle": null,
+       "note": null
+      }
+     ]
+    },
+    {
+     "name": "Joyau",
+     "nameEn": "Jewel",
+     "id": "Joyau",
+     "items": [
+      {
+       "itemId": "Z4_Rubis",
+       "asset": "ITM_Z4_Rubis",
+       "name": "Rubis",
+       "nameEn": "Ruby",
+       "rarity": "Uncommon",
+       "origin": "new",
+       "idea": "Gros rubis taillé sur coussin",
+       "idle": null,
+       "note": null
+      },
+      {
+       "itemId": "Z4_DiamantBrut",
+       "asset": "ITM_Z4_DiamantBrut",
+       "name": "Diamant brut",
+       "nameEn": "Rough Diamond",
+       "rarity": "Epic",
+       "origin": "v1",
+       "idea": "Cristaux sur un bloc de roche",
+       "idle": null,
+       "note": "renaissance 5"
+      },
+      {
+       "itemId": "Z4_Couronne",
+       "asset": "ITM_Z4_Couronne",
+       "name": "Couronne",
+       "nameEn": "Crown",
+       "rarity": "Legendary",
+       "origin": "v1",
+       "idea": "Couronne d'or sertie de pierres",
+       "idle": "Rotation lente, éclats",
+       "note": "renaissance 6"
+      },
+      {
+       "itemId": "Z4_OeufEnDiamant",
+       "asset": "ITM_Z4_OeufEnDiamant",
+       "name": "Œuf en diamant",
+       "nameEn": "Diamond Egg",
+       "rarity": "Mythic",
+       "origin": "v1",
+       "idea": "Œuf précieux sur socle",
+       "idle": "Rotation, reflets qui balaient",
+       "note": null
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "zone": 5,
+   "stores": "Paris · Galerie d'art, Antiquaire",
+   "categories": [
+    {
+     "name": "Tableau",
+     "nameEn": "Painting",
+     "id": "Tableau",
+     "items": [
+      {
+       "itemId": "Z5_TableauDeMaitre",
+       "asset": "ITM_Z5_TableauDeMaitre",
+       "name": "Tableau de maître",
+       "nameEn": "Classic Painting",
+       "rarity": "Common",
+       "origin": "new",
+       "idea": "Portrait ancien, grand cadre doré",
+       "idle": null,
+       "note": null
+      },
+      {
+       "itemId": "Z5_LaJoconde",
+       "asset": "ITM_Z5_LaJoconde",
+       "name": "La Joconde",
+       "nameEn": "Mona Lisa",
+       "rarity": "Epic",
+       "origin": "new",
+       "idea": "Le célèbre portrait, cadre doré",
+       "idle": null,
+       "note": null
+      }
+     ]
+    },
+    {
+     "name": "Sculpture",
+     "nameEn": "Sculpture",
+     "id": "Sculpture",
+     "items": [
+      {
+       "itemId": "Z5_BusteEnMarbre",
+       "asset": "ITM_Z5_BusteEnMarbre",
+       "name": "Buste en marbre",
+       "nameEn": "Marble Bust",
+       "rarity": "Common",
+       "origin": "v1",
+       "idea": "Tête antique sur colonne",
+       "idle": null,
+       "note": "était Peu commun"
+      },
+      {
+       "itemId": "Z5_TourEiffelEnBronze",
+       "asset": "ITM_Z5_TourEiffelEnBronze",
+       "name": "Tour Eiffel en bronze",
+       "nameEn": "Bronze Eiffel Tower",
+       "rarity": "Uncommon",
+       "origin": "new",
+       "idea": "Maquette de la tour en bronze",
+       "idle": null,
+       "note": null
+      },
+      {
+       "itemId": "Z5_LePenseur",
+       "asset": "ITM_Z5_LePenseur",
+       "name": "Le Penseur",
+       "nameEn": "The Thinker",
+       "rarity": "Uncommon",
+       "origin": "new",
+       "idea": "Statue assise, menton sur la main",
+       "idle": null,
+       "note": null
+      },
+      {
+       "itemId": "Z5_StatueDoree",
+       "asset": "ITM_Z5_StatueDoree",
+       "name": "Statue dorée",
+       "nameEn": "Golden Statue",
+       "rarity": "Rare",
+       "origin": "v1",
+       "idea": "Lion doré sur socle",
+       "idle": null,
+       "note": "était Épique"
+      }
+     ]
+    },
+    {
+     "name": "Antiquité",
+     "nameEn": "Antique",
+     "id": "Antiquite",
+     "items": [
+      {
+       "itemId": "Z5_VaseAncien",
+       "asset": "ITM_Z5_VaseAncien",
+       "name": "Vase ancien",
+       "nameEn": "Ancient Vase",
+       "rarity": "Common",
+       "origin": "v1",
+       "idea": "Vase de porcelaine bleu et blanc",
+       "idle": null,
+       "note": "v1 : Vase"
+      },
+      {
+       "itemId": "Z5_LustreEnCristal",
+       "asset": "ITM_Z5_LustreEnCristal",
+       "name": "Lustre en cristal",
+       "nameEn": "Crystal Chandelier",
+       "rarity": "Uncommon",
+       "origin": "new",
+       "idea": "Lustre doré à pampilles",
+       "idle": null,
+       "note": null
+      },
+      {
+       "itemId": "Z5_ArmureDeChevalier",
+       "asset": "ITM_Z5_ArmureDeChevalier",
+       "name": "Armure de chevalier",
+       "nameEn": "Knight Armor",
+       "rarity": "Rare",
+       "origin": "new",
+       "idea": "Armure complète sur support",
+       "idle": null,
+       "note": null
+      }
+     ]
+    },
+    {
+     "name": "Relique",
+     "nameEn": "Relic",
+     "id": "Relique",
+     "items": [
+      {
+       "itemId": "Z5_Sarcophage",
+       "asset": "ITM_Z5_Sarcophage",
+       "name": "Sarcophage",
+       "nameEn": "Sarcophagus",
+       "rarity": "Epic",
+       "origin": "new",
+       "idea": "Sarcophage égyptien doré et bleu",
+       "idle": null,
+       "note": null
+      },
+      {
+       "itemId": "Z5_MasqueAncien",
+       "asset": "ITM_Z5_MasqueAncien",
+       "name": "Masque ancien",
+       "nameEn": "Ancient Mask",
+       "rarity": "Legendary",
+       "origin": "v1",
+       "idea": "Masque d'or antique",
+       "idle": "Flotte, les yeux s'allument",
+       "note": "renaissance 7"
+      },
+      {
+       "itemId": "Z5_Meteorite",
+       "asset": "ITM_Z5_Meteorite",
+       "name": "Météorite",
+       "nameEn": "Meteorite",
+       "rarity": "Mythic",
+       "origin": "v1",
+       "idea": "Roche noire, veines de lave",
+       "idle": "Lévite et tourne, braises",
+       "note": "renaissance 9"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "zone": 6,
+   "stores": "New York · Banque, Salle des coffres",
+   "categories": [
+    {
+     "name": "Trésor",
+     "nameEn": "Treasure",
+     "id": "Tresor",
+     "items": [
+      {
+       "itemId": "Z6_LingotDOr",
+       "asset": "ITM_Z6_LingotDOr",
+       "name": "Lingot d'or",
+       "nameEn": "Gold Bar",
+       "rarity": "Common",
+       "origin": "v1",
+       "idea": "Lingot estampillé",
+       "idle": null,
+       "note": "était Rare"
+      },
+      {
+       "itemId": "Z6_SceptreRoyal",
+       "asset": "ITM_Z6_SceptreRoyal",
+       "name": "Sceptre royal",
+       "nameEn": "Royal Scepter",
+       "rarity": "Common",
+       "origin": "new",
+       "idea": "Sceptre doré à orbe de rubis",
+       "idle": null,
+       "note": null
+      },
+      {
+       "itemId": "Z6_PyramideDeLingots",
+       "asset": "ITM_Z6_PyramideDeLingots",
+       "name": "Pyramide de lingots",
+       "nameEn": "Gold Bar Pyramid",
+       "rarity": "Uncommon",
+       "origin": "new",
+       "idea": "Lingots empilés en pyramide",
+       "idle": null,
+       "note": null
+      },
+      {
+       "itemId": "Z6_TroneEnOr",
+       "asset": "ITM_Z6_TroneEnOr",
+       "name": "Trône en or",
+       "nameEn": "Golden Throne",
+       "rarity": "Epic",
+       "origin": "new",
+       "idea": "Trône doré, velours rouge, joyaux",
+       "idle": null,
+       "note": null
+      }
+     ]
+    },
+    {
+     "name": "Joyau",
+     "nameEn": "Jewel",
+     "id": "Joyau",
+     "items": [
+      {
+       "itemId": "Z6_SacDeDiamants",
+       "asset": "ITM_Z6_SacDeDiamants",
+       "name": "Sac de diamants",
+       "nameEn": "Bag of Diamonds",
+       "rarity": "Uncommon",
+       "origin": "new",
+       "idea": "Sac de velours qui déborde de diamants",
+       "idle": null,
+       "note": null
+      },
+      {
+       "itemId": "Z6_DiamantGeant",
+       "asset": "ITM_Z6_DiamantGeant",
+       "name": "Diamant géant",
+       "nameEn": "Giant Diamond",
+       "rarity": "Rare",
+       "origin": "new",
+       "idea": "Énorme diamant sur coussin",
+       "idle": null,
+       "note": null
+      }
+     ]
+    },
+    {
+     "name": "Statue",
+     "nameEn": "Statue",
+     "id": "Statue",
+     "items": [
+      {
+       "itemId": "Z6_AigleDeCristal",
+       "asset": "ITM_Z6_AigleDeCristal",
+       "name": "Aigle de cristal",
+       "nameEn": "Crystal Eagle",
+       "rarity": "Common",
+       "origin": "new",
+       "idea": "Aigle aux ailes ouvertes, en cristal",
+       "idle": null,
+       "note": null
+      },
+      {
+       "itemId": "Z6_TaureauEnOr",
+       "asset": "ITM_Z6_TaureauEnOr",
+       "name": "Taureau en or",
+       "nameEn": "Golden Bull",
+       "rarity": "Rare",
+       "origin": "new",
+       "idea": "Taureau doré qui charge",
+       "idle": null,
+       "note": null
+      },
+      {
+       "itemId": "Z6_StatueDeLaLiberte",
+       "asset": "ITM_Z6_StatueDeLaLiberte",
+       "name": "Statue de la Liberté",
+       "nameEn": "Statue of Liberty",
+       "rarity": "Epic",
+       "origin": "new",
+       "idea": "Statue verte, flamme dorée",
+       "idle": null,
+       "note": null
+      }
+     ]
+    },
+    {
+     "name": "Coffre",
+     "nameEn": "Vault",
+     "id": "Coffre",
+     "items": [
+      {
+       "itemId": "Z6_CoffreFortBlinde",
+       "asset": "ITM_Z6_CoffreFortBlinde",
+       "name": "Coffre-fort blindé",
+       "nameEn": "Armored Safe",
+       "rarity": "Uncommon",
+       "origin": "new",
+       "idea": "Coffre d'acier à volant doré",
+       "idle": null,
+       "note": null
+      },
+      {
+       "itemId": "Z6_CoffreDeDiamants",
+       "asset": "ITM_Z6_CoffreDeDiamants",
+       "name": "Coffre de diamants",
+       "nameEn": "Diamond Chest",
+       "rarity": "Legendary",
+       "origin": "v1",
+       "idea": "Coffre ouvert, débordant de diamants",
+       "idle": "Le couvercle bâille, éclats",
+       "note": "renaissance 8"
+      },
+      {
+       "itemId": "Z6_CleDuCoffreUltime",
+       "asset": "ITM_Z6_CleDuCoffreUltime",
+       "name": "Clé du coffre ultime",
+       "nameEn": "Ultimate Vault Key",
+       "rarity": "Mythic",
+       "origin": "v1",
+       "idea": "Clé géante ornée, gemme lumineuse",
+       "idle": "Tourne sur elle-même, halo",
+       "note": "renaissance 10"
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "secret": {
+  "itemId": "Secret_ChatPorteBonheurDore",
+  "asset": "ITM_Secret_ChatPorteBonheurDore",
+  "name": "Chat porte-bonheur doré",
+  "nameEn": "Golden Lucky Cat",
+  "rarity": "Secret",
+  "category": "???",
+  "categoryEn": "???",
+  "origin": "v1",
+  "idea": "Chat doré qui salue de la patte",
+  "idle": "La patte s'agite, reflets arc-en-ciel"
+ },
+ "removed": [
+  "Ticket à gratter gagnant",
+  "Hot-dog en or",
+  "Toile abstraite",
+  "Liasse de billets",
+  "Sac de pièces",
+  "Mallette de billets"
+ ]
+}
