@@ -54,7 +54,7 @@ local TruckEvent = {
 	DebrisBounce = 0.3, -- V0 : rebond au sol (part de la vitesse verticale gardée)
 	DebrisLifetime = 3, -- V0 : les pièces restent 3 s…
 	DebrisFadeTime = 1, -- V0 : … puis s'effacent en 1 s
-	RemoveDelay = 4.5, -- V0 : le serveur retire la copie du camion 4,5 s après l'explosion
+	RemoveDelay = 4.5, -- V0 : le serveur retire la copie du camion 4,5 s après l'explosion (garder ≥ DebrisLifetime + DebrisFadeTime)
 	ExplosionFx = true, -- V0 : explosion native de Roblox (feu et son) en attendant un effet de Clément
 	ExplosionRadius = 14, -- V0 : taille de cette explosion (aucune force, aucun dégât)
 
