@@ -16,6 +16,10 @@ export type Item = {
 	Zone: number?, -- nil pour un Secret (toutes zones)
 	Rarity: Rarities.RarityId,
 	Asset: string, -- nom du modèle dans ReplicatedStorage/Assets
+	-- Catégorie affichée sur l'étiquette BB_Box des colis, dès le rayon (L-031). Vide pour tous les
+	-- objets en attendant le catalogue v2 de Clément (une catégorie et un nom anglais par objet) :
+	-- la ligne Category de BB_Box reste alors cachée.
+	Category: string?,
 }
 
 -- Raretés des 6 colonnes du catalogue, dans l'ordre.

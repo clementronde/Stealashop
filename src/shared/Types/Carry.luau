@@ -7,21 +7,25 @@
 -- Le payload est fabriqué par le serveur seulement (StoreHeistService pour un colis PNJ,
 -- PvPService pour un objet volé), jamais avec une valeur envoyée par le client (9.6).
 -- CarryService garde la même table pendant tout le portage et la repasse à ses écouteurs :
--- ne plus la modifier une fois donnée à StartCarry (6.2 : le contenu tiré au vol ne change pas,
--- même quand le colis change de porteur).
+-- ne plus la modifier une fois donnée à StartCarry (6.2 : le contenu tiré ne change pas, même
+-- quand le colis change de porteur). StoreHeistService reconnaît un colis qui revient sur son
+-- rayon à cette table.
 
--- Type de colis (attribut `Tier` des ShelfSlot, contrat 10.4).
+-- Type de colis : attribut `Tier` du colis posé sur le rayon par StoreHeistService (L-033 : le
+-- type appartient au colis, plus à l'emplacement). « Luxe » est l'identifiant technique ; à
+-- l'écran, le type s'écrit « Luxury » (L-036).
 export type BoxTier = "Standard" | "Premium" | "Luxe"
 
--- Colis volé à un magasin PNJ (5.3, 5.6). Rareté et objet sont tirés au vol par le serveur.
--- La rareté se voit dès qu'on soulève le colis ; l'objet reste caché jusqu'à l'ouverture (5.7) :
--- CarryService ne l'affiche jamais.
+-- Colis volé à un magasin PNJ (5.3, 5.6). Rareté et objet sont tirés par le serveur à la mise en
+-- rayon (L-031), ou remplacés à la prise par l'accroche du tuto (StoreHeistService.SetContentOverride).
+-- La rareté et la catégorie de l'objet se voient dès le rayon, sur l'étiquette BB_Box ; l'objet
+-- lui-même reste caché jusqu'à l'ouverture (5.7) : son nom et son ItemId ne sont jamais affichés.
 export type NPCBoxPayload = {
 	Kind: "NPCBox",
 	Tier: BoxTier,
 	Zone: number, -- 1 à 6, zone du magasin
 	Rarity: string, -- Id de Config.Rarities, ex. « Epic »
-	ItemId: string, -- Id de Config.Items, ex. « Z3_Smartphone » (de la même rareté)
+	ItemId: string, -- Id de Config.Items, ex. « Z3_Smartphone » (de la même rareté), secret jusqu'à OpenBox
 	StoreId: string, -- magasin d'origine, ex. « STORE_Z1_Superette » (Id de sa vitrine)
 	SlotId: string, -- emplacement de rayon d'origine, au format choisi par StoreHeistService
 }
@@ -34,7 +38,7 @@ export type PlayerItemPayload = {
 	ItemUid: string, -- uid de l'objet dans le profil de la victime (Items[uid], 9.5)
 	ItemId: string, -- Id de Config.Items
 	Rarity: string, -- Id de Config.Rarities (celle de l'objet)
-	Income: number, -- $/s de l'objet, calculé par le serveur, affiché sur BB_Carry
+	Income: number, -- $/s de l'objet, calculé par le serveur, affiché sur BB_Carry (Format.income)
 	VictimUserId: number, -- propriétaire, chez qui l'objet revient en cas d'échec (6.1)
 	SlotIndex: number, -- présentoir d'origine (Display, 9.5)
 }
