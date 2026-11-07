@@ -999,6 +999,7 @@ Chaque étape est envoyée une seule fois par joueur avec `AnalyticsService:LogO
 
 | Date | Décision | Par |
 | --- | --- | --- |
+| 2026-11-07 | Colis placés au hasard : chaque type n'a plus sa place (vol trop mécanique). À chaque remplissage, les 6 Standard, 3 Premium et 1 Luxe sont répartis au hasard sur les 10 emplacements du magasin, pour que les joueurs fouillent. Le tuto garde son premier objet Rare garanti ; hors tuto, la zone 1 ne contient que des objets Communs (liaison, L-033) | Clément |
 | 2026-11-07 | Colis : cartons kraft scotchés en croix sur le dessus, avec un contour noir (Highlight demandé par Clément, arêtes en secours) ; scotch beige pour Standard, bleu pour Premium, or pour Luxe (remplace « carton bleu scellé » et « caisse en bois cerclée d'or » de 7.3). Livrés dans ReplicatedStorage/Assets/Boxes (MOD-013, liaison L-031) | Clément |
 | 2026-11-07 | Au-dessus de chaque colis, dès le rayon : la catégorie de l'objet, sa rareté et sa mutation (étiquette BB_Box) ; le contenu se tire donc à la mise en rayon. Catégories d'objets : Boisson, Snack, Fruit, Légumes, Montre, Télé, Ordinateur, Vélo, Voiture… (catalogue 10.5 à revoir). Zone 1 = zone tuto : uniquement des objets Communs (liaison, L-031) | Clément |
 | 2026-11-07 | Zone vitrine de développement Workspace/_SHOWROOM_CLEMENT : tous les assets livrés et la place des prochains modèles (outils, auras, trails, entraînement, boutiques, vigile, objets), à exclure de la PROD (liaison, L-032) | Clément |
