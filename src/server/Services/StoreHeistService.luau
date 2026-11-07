@@ -11,7 +11,7 @@
 -- les joueurs devant elle).
 --
 -- Règles :
---   - Rayons : à chaque remplissage (démarrage, RefillAll, remplissage V0 automatique), le
+--   - Rayons : à chaque remplissage (démarrage, RefillAll à la tombée de la nuit), le
 --     serveur répartit au hasard sur les ShelfSlot du magasin un jeu neuf de colis :
 --     Balance.Heist.BoxTiers[Tier].Count de chaque type (6 Standard, 3 Premium, 1 Luxe, L-033).
 --     Le type appartient au colis, plus à l'emplacement : le temps de prise est celui du colis
@@ -61,8 +61,7 @@
 --   - Les colis pris ne reviennent pas avant la nuit : RefillAll() est un nouveau tirage (5.12).
 --     Pour chaque magasin, tous les colis encore posés (ou en vol de retour) sont retirés et un
 --     jeu neuf est réparti au hasard, chacun avec son contenu tiré. NightCycleService (DEV-047)
---     l'appellera. En attendant, remplissage V0 automatique toutes les 10 min
---     (Night.CycleDuration), dans un bloc marqué À RETIRER.
+--     l'appelle à chaque tombée de la nuit.
 --   - Remplissage d'un magasin ouvert (choix V0, absent du doc) : il attend la fermeture du
 --     magasin (fin du chrono, ou vitrine reconstruite avant). Aucun colis ne change donc sous les
 --     mains d'un joueur pendant les 10 s, et la nouvelle répartition se fait rideau baissé, une fois
@@ -135,7 +134,6 @@ local Workspace = game:GetService("Workspace")
 local Shared = ReplicatedStorage.Shared
 local Balance = require(Shared.Config.Balance)
 local Items = require(Shared.Config.Items)
-local Night = require(Shared.Config.Night)
 local Rarities = require(Shared.Config.Rarities)
 local ShelfBoxes = require(Shared.Config.ShelfBoxes)
 local Zones = require(Shared.Config.Zones)
@@ -335,13 +333,6 @@ local V0_LOOKS: { [string]: BoxLook } = {
 local MESSAGES = {
 	Closed = "Too late: the shutter came down!",
 }
-
--- V0 À RETIRER avec DEV-047 (NightCycleService) ------------------------------------------
--- En attendant le cycle jour/nuit, les rayons se remplissent tout seuls toutes les 10 min
--- (Night.CycleDuration). Quand NightCycleService appellera RefillAll() à la nuit, supprimer
--- cette constante et le bloc « remplissage V0 » de Start.
-local AUTO_REFILL_V0 = true
--- ------------------------------------------------------------------------------------------
 
 local IS_STUDIO = RunService:IsStudio()
 
@@ -1569,19 +1560,6 @@ function StoreHeistService.Init()
 end
 
 function StoreHeistService.Start()
-	-- V0 À RETIRER avec DEV-047 : remplissage V0 automatique (voir AUTO_REFILL_V0).
-	if AUTO_REFILL_V0 then
-		task.spawn(function()
-			while true do
-				task.wait(Night.CycleDuration)
-				xpcall(StoreHeistService.RefillAll, function(err: any)
-					warn(`[StoreHeistService] remplissage V0 : {err}`)
-				end)
-			end
-		end)
-	end
-	-- Fin du bloc à retirer.
-
 	while true do
 		task.wait(TICK)
 		xpcall(step, function(err: any)
