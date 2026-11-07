@@ -6,8 +6,10 @@
 -- et envoie HitWindow(windowId) au serveur, au plus 10 coups par seconde
 -- (Balance.Hit.MaxHitsPerSecond). Il joue tout de suite l'animation du coup (5.2), même dans
 -- le vide : HitWindow, ou HitWindowHeavy du Marteau à la Disqueuse (2.4, champ HitAnimation
--- de Config.Tools), via AnimationController s'il est là. Le serveur valide, applique les PV
--- et les renvoie à tous (WindowService).
+-- de Config.Tools), via AnimationController s'il est là. Sur une vitrine, il passe aussi le
+-- coup à ShatterController.LocalHit (retour local : mini-éclats, son de verre, léger
+-- tremblement, au marqueur Impact de l'animation). Le serveur valide, applique les PV et les
+-- renvoie à tous (WindowService).
 --
 -- Lu sur les objets (rien n'est cherché par chemin) :
 --   Tool de casse : attribut ToolId (ToolService) ;
@@ -27,6 +29,11 @@ local Tools = require(Config:WaitForChild("Tools"))
 -- Ce que ce contrôleur utilise d'AnimationController (a09).
 type AnimationApi = {
 	PlayPlayer: (name: string) -> AnimationTrack?,
+}
+
+-- Ce que ce contrôleur utilise de ShatterController (a16, DEV-016).
+type ShatterApi = {
+	LocalHit: (windowId: string, point: Vector3, track: AnimationTrack?) -> (),
 }
 
 local TOOL_ID_ATTRIBUTE = "ToolId" -- posé par ToolService sur le Tool de casse
@@ -50,6 +57,7 @@ local HitController = {}
 
 local Net: any = nil
 local animation: AnimationApi? = nil
+local shatter: ShatterApi? = nil
 local lastHitAt = -math.huge
 local hookedTools = setmetatable({} :: { [Tool]: boolean }, { __mode = "k" })
 
@@ -71,12 +79,14 @@ local function closestPoint(cf: CFrame, size: Vector3, point: Vector3): Vector3
 	)
 end
 
--- Id de la vitrine cassable la plus proche devant le joueur et à portée, ou nil.
-local function findTarget(root: BasePart): string?
+-- Id de la vitrine cassable la plus proche devant le joueur et à portée, et le point de la vitre
+-- le plus proche de lui (même calcul que le serveur), ou nil.
+local function findTarget(root: BasePart): (string?, Vector3?)
 	local origin = root.Position
 	local look = root.CFrame.LookVector
 	local flatLook = Vector3.new(look.X, 0, look.Z)
 	local bestId: string? = nil
+	local bestPoint: Vector3? = nil
 	local bestDistance = Balance.Hit.Range
 	for _, tag in WINDOW_TAGS do
 		for _, model in CollectionService:GetTagged(tag) do
@@ -96,7 +106,8 @@ local function findTarget(root: BasePart): string?
 			if cf == nil or size == nil then
 				continue
 			end
-			local offset = closestPoint(cf, size, origin) - origin
+			local point = closestPoint(cf, size, origin)
+			local offset = point - origin
 			local distance = offset.Magnitude
 			if distance > bestDistance then
 				continue
@@ -105,19 +116,21 @@ local function findTarget(root: BasePart): string?
 			if flat.Magnitude > 0.01 and flatLook.Magnitude > 0.01 and flat.Unit:Dot(flatLook.Unit) < FRONT_MIN_DOT then
 				continue -- derrière lui
 			end
-			bestId, bestDistance = id, distance
+			bestId, bestPoint, bestDistance = id, point, distance
 		end
 	end
-	return bestId
+	return bestId, bestPoint
 end
 
-local function playHit(tool: Tool)
+-- Joue l'animation du coup ; renvoie sa piste (nil si l'animation n'est pas encore livrée).
+local function playHit(tool: Tool): AnimationTrack?
 	local api = animation
 	if api == nil then
-		return
+		return nil
 	end
 	local def = Tools.ById[tool:GetAttribute(TOOL_ID_ATTRIBUTE)]
-	pcall(api.PlayPlayer, if def then def.HitAnimation else DEFAULT_ANIMATION)
+	local ok, track = pcall(api.PlayPlayer, if def then def.HitAnimation else DEFAULT_ANIMATION)
+	return if ok then track else nil
 end
 
 local function onActivated(tool: Tool)
@@ -135,10 +148,14 @@ local function onActivated(tool: Tool)
 		return
 	end
 	lastHitAt = now
-	playHit(tool)
-	local windowId = findTarget(root :: BasePart)
+	local track = playHit(tool)
+	local windowId, point = findTarget(root :: BasePart)
 	if windowId then
 		Net.Client.HitWindow:Fire(windowId)
+		local api = shatter
+		if api and point then
+			pcall(api.LocalHit, windowId, point, track)
+		end
 	end
 end
 
@@ -171,6 +188,13 @@ function HitController.Start()
 		local ok, result = pcall(require, module)
 		if ok and type(result) == "table" and type((result :: any).PlayPlayer) == "function" then
 			animation = result :: any
+		end
+	end
+	local shatterModule = script.Parent:FindFirstChild("ShatterController")
+	if shatterModule and shatterModule:IsA("ModuleScript") then
+		local ok, result = pcall(require, shatterModule)
+		if ok and type(result) == "table" and type((result :: any).LocalHit) == "function" then
+			shatter = result :: any
 		end
 	end
 	player.CharacterAdded:Connect(watchCharacter)
