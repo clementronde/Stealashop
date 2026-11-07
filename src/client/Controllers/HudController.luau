@@ -5,9 +5,12 @@
 -- Rôle :
 --   - Cash (« $11.1B »), Income (« +$1.2K/s »), Speed, Strength et Damage (« 1.4K ») : écrits au
 --     format court (Shared/Format) depuis les attributs du Player posés par le serveur : Cash
---     (DataService), Income (DisplayService), Speed et Strength (StatsService), Damage
+--     (DataService), Income (DisplayService), WalkSpeed et Strength (StatsService), Damage
 --     (ToolService). Le client n'envoie rien. Attribut pas encore posé (profil en cours de
 --     chargement) : « … ».
+--     Speed affiche la vitesse de marche (attribut WalkSpeed : 16 au départ, formule 5.1 avec le
+--     trail), pas les points d'entraînement (attribut Speed) : c'est le nombre que comparent les
+--     panneaux des vitrines, les arches et le message du vigile (décision d'Ironix, 2026-11-07).
 --   - HeistTimer : chrono du braquage (« HEIST: 7s »), visible pendant un vol, masqué le reste du
 --     temps. Piloté par le remote HeistTimer(storeId, endsAt) que HeistController relaie (endsAt
 --     en heure serveur, workspace:GetServerTimeNow() ; 0 = masquer). Plusieurs chronos à la fois
@@ -102,7 +105,7 @@ local SCREEN = "UI_HUD"
 local STATS: { Stat } = {
 	{ Attribute = "Cash", Element = "Cash", Write = Format.money },
 	{ Attribute = "Income", Element = "Income", Write = Format.income },
-	{ Attribute = "Speed", Element = "Speed", Write = Format.short },
+	{ Attribute = "WalkSpeed", Element = "Speed", Write = Format.short }, -- vitesse de marche, pas les points
 	{ Attribute = "Strength", Element = "Strength", Write = Format.short },
 	{ Attribute = "Damage", Element = "Damage", Write = Format.short },
 }
