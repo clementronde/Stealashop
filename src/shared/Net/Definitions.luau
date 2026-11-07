@@ -127,6 +127,15 @@ local List: { RemoteDef } = {
 		RatePerSecond = 4, -- V0 proposé, absent du doc
 	},
 	{
+		-- Ajout du 2026-11-07 (DEV-031), absent du tableau 9.4 : bouton EquipButton de
+		-- UI_WeaponShop. ShopService vérifie que l'outil existe et qu'il est possédé.
+		Name = "EquipTool",
+		Direction = "ClientToServer",
+		Reliable = true,
+		Args = { id("toolId") },
+		RatePerSecond = 4, -- V0 proposé, absent du doc
+	},
+	{
 		Name = "TrainTap",
 		Direction = "ClientToServer",
 		Reliable = true,
