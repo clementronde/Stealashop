@@ -22,9 +22,14 @@
 --     du joueur lui-même ; outil de casse pas en main ; plus de 10 studs entre le joueur et
 --     le point le plus proche de la vitre (Balance.Hit.ServerMaxDistance) ; CanBeHit refuse.
 --     Le débit (≤ 10 coups/s) est déjà limité par Net. Dégâts = ToolService.GetHitDamage.
+--   - Chaque coup validé qui laisse des PV : WindowHit(windowId, point de frappe, frappeur), non
+--     fiable, au frappeur et aux joueurs à moins de Config.Shatter.HitBroadcastRadius studs du
+--     point (L-028 a) : chacun voit les fissures des autres (ShatterController, DEV-016).
 --   - À 0 PV : la vitre est cachée et ne bloque plus (Transparency, CanCollide, CanQuery),
 --     Broken = true, WindowBroken(windowId, point d'impact) part à tous ; la casse elle-même
---     (éclats, flash, son) est jouée par les clients (5.4, ShatterController, DEV-016).
+--     (éclats, flash, son) est jouée par les clients (5.4, ShatterController, DEV-016). Les
+--     éclats sont ancrés et déplacés par le client, sans collision : aucun groupe de collision
+--     n'est nécessaire pour qu'ils ignorent les joueurs.
 --   - Reconstruction automatique, PV pleins : 5.3 dit « 20 s après la fermeture », et le
 --     rideau tombe à la fin du chrono de 10 s, soit 10 + 20 = 30 s après la casse
 --     (Balance.Heist.Duration + Balance.Window.RebuildDelay). Parcelle : même mécanique (6),
@@ -59,6 +64,7 @@ local Shared = ReplicatedStorage.Shared
 local Balance = require(Shared.Config.Balance)
 local Formulas = require(Shared.Config.Formulas)
 local PvP = require(Shared.Config.PvP)
+local Shatter = require(Shared.Config.Shatter)
 local Zones = require(Shared.Config.Zones)
 local Attributes = require(Shared.Contract.Attributes)
 local Net = require(Shared.Net.Net)
@@ -273,6 +279,25 @@ local function breakWindow(window: Window, breaker: Player, impactPoint: Vector3
 	end
 end
 
+-- Coup validé qui laisse des PV : WindowHit au frappeur (son étoile de fissure, au point calculé
+-- ici) et aux joueurs proches du point de frappe (L-028 a). Un joueur sans personnage ne reçoit
+-- rien, sauf le frappeur.
+local function broadcastHit(window: Window, hitter: Player, point: Vector3)
+	for _, other in Players:GetPlayers() do
+		if other ~= hitter then
+			local character = other.Character
+			local root = if character then character:FindFirstChild("HumanoidRootPart") else nil
+			if root == nil or not root:IsA("BasePart") then
+				continue
+			end
+			if ((root :: BasePart).Position - point).Magnitude > Shatter.HitBroadcastRadius then
+				continue
+			end
+		end
+		Net.Server.WindowHit:Fire(other, window.Id, point, hitter)
+	end
+end
+
 local function canBeHit(player: Player, windowId: string): boolean
 	local ok, allowed = pcall(WindowService.CanBeHit, player, windowId)
 	if ok then
@@ -329,6 +354,8 @@ local function onHitWindow(player: Player, windowId: string)
 	window.Dirty = true
 	if window.HP <= 0 then
 		breakWindow(window, player, impactPoint)
+	else
+		broadcastHit(window, player, impactPoint)
 	end
 end
 

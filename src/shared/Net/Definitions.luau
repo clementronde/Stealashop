@@ -171,6 +171,21 @@ local List: { RemoteDef } = {
 		Args = { id("windowId"), { Name = "impactPoint", Kind = "Vector3" } },
 	},
 	{
+		-- Chaque coup validé qui ne casse pas la vitre (liaison L-028 a, DEV-016), pour que chacun
+		-- voie les fissures des autres : point = point de frappe calculé par le serveur ; hitter =
+		-- le joueur qui a frappé (son client a déjà joué son retour local). Envoyé par WindowService
+		-- au frappeur et aux joueurs proches (Config.Shatter.HitBroadcastRadius). Non fiable : un
+		-- coup perdu ne coûte qu'une fissure.
+		Name = "WindowHit",
+		Direction = "ServerToClient",
+		Reliable = false,
+		Args = {
+			id("windowId"),
+			{ Name = "point", Kind = "Vector3" },
+			{ Name = "hitter", Kind = "Player", Optional = true },
+		},
+	},
+	{
 		-- endsAt = workspace:GetServerTimeNow() de fin du chrono ; 0 = masquer le chrono.
 		Name = "HeistTimer",
 		Direction = "ServerToClient",
