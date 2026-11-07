@@ -32,7 +32,8 @@
 -- de verre (ShatterController.LocalHit), ce n'est pas une vitre.
 --
 -- Lu sur les objets (rien n'est cherché par chemin) :
---   Tool de casse : attribut ToolId (ToolService) ;
+--   Tool de casse : attribut ToolId (ToolService). La batte (slot 2, attribut BatTool, jamais
+--   ToolId) est ignorée ici : son coup est à BatController ;
 --   vitrine `Window` des modèles taggés NPCStore et PlayerPlot : WindowId, MaxHP, Broken
 --   (WindowService) ; parcelle : OwnerUserId (PlotService) ;
 --   modèle taggé HitTarget : WindowId, MaxHP, Broken (WindowService).
@@ -59,6 +60,7 @@ type ShatterApi = {
 }
 
 local TOOL_ID_ATTRIBUTE = "ToolId" -- posé par ToolService sur le Tool de casse
+local BAT_ATTRIBUTE = "BatTool" -- posé par ToolService sur la batte (BatController)
 local WINDOW_NAME = "Window" -- enfant obligatoire (10.4)
 local WINDOW_ID_ATTRIBUTE = "WindowId" -- posés par WindowService sur la vitrine
 local MAX_HP_ATTRIBUTE = "MaxHP"
@@ -271,8 +273,8 @@ local function onActivated(tool: Tool)
 end
 
 local function hookTool(child: Instance)
-	if not child:IsA("Tool") or child:GetAttribute(TOOL_ID_ATTRIBUTE) == nil then
-		return
+	if not child:IsA("Tool") or child:GetAttribute(TOOL_ID_ATTRIBUTE) == nil or child:GetAttribute(BAT_ATTRIBUTE) == true then
+		return -- pas un outil de casse (la batte est à BatController)
 	end
 	local tool = child :: Tool
 	if hookedTools[tool] then

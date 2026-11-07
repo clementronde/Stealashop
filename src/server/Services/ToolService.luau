@@ -11,6 +11,16 @@
 -- `ToolId` (Id de Config.Tools), lu par HitController (client).
 -- Aucun remote ici : les achats passeront par ShopService (BuyItem), les coups par WindowService.
 --
+-- La batte (DEV-043, 6.2 ; valeurs : Config/Bat) : tout le monde l'a, en slot 2 de la hotbar
+-- (Bat.HotbarSlot). Un Tool fait du modèle `TOOL_Batte` de Clément (Bat.Asset, même recherche et
+-- même préparation que les outils de casse), poignée grise V0 s'il n'est pas livré, nommé Bat.DisplayName.
+-- Donné juste après l'outil de casse, à chaque apparition comme lui : la hotbar de Roblox range les
+-- outils dans l'ordre où ils arrivent dans le Backpack, et un outil de casse remplacé (achat, Equip)
+-- reprend la place libérée, le slot 1. Jamais avant l'outil de casse (profil pas encore chargé : ni
+-- l'un ni l'autre). Elle porte l'attribut `BatTool` = true et jamais `ToolId` : HitController,
+-- TutorialController et WindowService (IsHoldingTool) ne la prennent pas pour un outil de casse.
+-- Son coup : BatService (serveur) et BatController (client).
+--
 -- API (serveur) :
 --   ToolService.GetHitDamage(player) -> number
 --       Dégâts par coup (7.1) = puissance de l'outil équipé × (1 + Force / 100) × M aura,
@@ -28,7 +38,10 @@
 --   ToolService.GetEquippedId(player) -> string?
 --       Outil équipé ; un outil enregistré inconnu ou pas possédé compte comme les poings.
 --   ToolService.IsHoldingTool(player) -> boolean
---       true si le joueur a son outil de casse en main (vérifié par WindowService).
+--       true si le joueur a son outil de casse en main (vérifié par WindowService). La batte n'en
+--       est pas un.
+--   ToolService.IsHoldingBat(player) -> boolean
+--       true si le joueur a la batte en main (vérifié par BatService à chaque SwingBat).
 --   ToolService.RefreshDamage(player)
 --       Recalcule l'attribut Damage du Player. Appelé ici au chargement du profil, à chaque Equip
 --       et à chaque changement de Force (attribut Strength posé par StatsService) ; CosmeticService
@@ -42,6 +55,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage.Shared
+local Bat = require(Shared.Config.Bat)
 local Formulas = require(Shared.Config.Formulas)
 local Tools = require(Shared.Config.Tools)
 local ProfileTypes = require(Shared.Types.Profile)
@@ -53,6 +67,8 @@ type ToolDef = Tools.Tool
 
 -- Attribut du Tool donné au joueur : Id de l'outil (Config.Tools). Même nom dans HitController.
 local TOOL_ID_ATTRIBUTE = "ToolId"
+-- Attribut du Tool de la batte (true). Même nom dans BatController et HitController.
+local BAT_ATTRIBUTE = "BatTool"
 -- Attribut du Player lu par le HUD (même nom dans HudController).
 local DAMAGE_ATTRIBUTE = "Damage"
 -- Attribut du Player posé par StatsService : la Force, qui entre dans les dégâts.
@@ -66,6 +82,7 @@ local PLACEHOLDER_COLOR = Color3.fromRGB(150, 150, 150)
 local ToolService = {}
 
 local liveTools: { [Player]: Tool } = {} -- Tool de casse donné, dans le Backpack ou en main
+local liveBats: { [Player]: Tool } = {} -- batte donnée, dans le Backpack ou en main
 local warnedAssets: { [string]: boolean } = {}
 local auraHookWarned = false
 
@@ -168,9 +185,10 @@ local function fromAsset(assetName: string): Tool?
 	return tool
 end
 
-local function placeholder(def: ToolDef): Tool
+-- Tool V0 : poignée grise (modèle pas livré), ou rien en main (`withHandle` false : les poings).
+local function placeholder(withHandle: boolean): Tool
 	local tool = Instance.new("Tool")
-	if def.Asset == nil then
+	if not withHandle then
 		tool.RequiresHandle = false -- les poings : rien en main
 		return tool
 	end
@@ -188,7 +206,7 @@ end
 
 local function buildTool(def: ToolDef): Tool
 	local asset = def.Asset
-	local tool = (if asset then fromAsset(asset) else nil) or placeholder(def)
+	local tool = (if asset then fromAsset(asset) else nil) or placeholder(asset ~= nil)
 	tool.Name = def.DisplayName
 	tool.ToolTip = def.DisplayName
 	tool.CanBeDropped = false
@@ -196,13 +214,54 @@ local function buildTool(def: ToolDef): Tool
 	return tool
 end
 
-local function hasLiveTool(player: Player): boolean
-	local tool = liveTools[player]
+-- La batte : TOOL_Batte de Clément, sinon une poignée grise V0 ; attribut BatTool, jamais ToolId.
+local function buildBat(): Tool
+	local tool = fromAsset(Bat.Asset)
+	if tool == nil then
+		if not warnedAssets[Bat.Asset] then
+			warnedAssets[Bat.Asset] = true
+			print(`[ToolService] {Bat.Asset} pas trouvé dans ReplicatedStorage/{ASSETS_FOLDER} : batte en poignée grise V0`)
+		end
+		tool = placeholder(true)
+	end
+	local bat = tool :: Tool
+	bat.Name = Bat.DisplayName
+	bat.ToolTip = Bat.DisplayName
+	bat.CanBeDropped = false
+	bat:SetAttribute(BAT_ATTRIBUTE, true)
+	return bat
+end
+
+-- `tool` est-il au joueur, dans son Backpack actuel ou en main ?
+local function isLive(player: Player, tool: Tool?): boolean
 	if tool == nil then
 		return false
 	end
 	local parent = tool.Parent
 	return parent ~= nil and (parent == player.Character or parent == player:FindFirstChildOfClass("Backpack"))
+end
+
+local function hasLiveTool(player: Player): boolean
+	return isLive(player, liveTools[player])
+end
+
+-- Donne la batte si elle manque, seulement une fois l'outil de casse donné : elle arrive après lui
+-- dans le Backpack, donc en slot 2 (Bat.HotbarSlot).
+local function ensureBat(player: Player)
+	if player.Parent ~= Players or not hasLiveTool(player) or isLive(player, liveBats[player]) then
+		return
+	end
+	local backpack = player:FindFirstChildOfClass("Backpack")
+	if backpack == nil then
+		return
+	end
+	local old = liveBats[player]
+	if old then
+		old:Destroy()
+	end
+	local bat = buildBat()
+	bat.Parent = backpack
+	liveBats[player] = bat
 end
 
 -- (Re)donne l'outil équipé : l'ancien Tool est détruit d'abord, pour que le nouveau reprenne
@@ -230,11 +289,16 @@ local function giveTool(player: Player)
 	end
 end
 
--- Donne l'outil s'il manque (nouvelle apparition, nouveau Backpack, profil tout juste chargé).
+-- Donne l'outil s'il manque (nouvelle apparition, nouveau Backpack, profil tout juste chargé), puis
+-- la batte derrière lui.
 local function ensureTool(player: Player)
-	if player.Parent == Players and not hasLiveTool(player) then
+	if player.Parent ~= Players then
+		return
+	end
+	if not hasLiveTool(player) then
 		giveTool(player)
 	end
+	ensureBat(player)
 end
 
 local function watchPlayer(player: Player)
@@ -268,7 +332,8 @@ function ToolService.Equip(player: Player, toolId: string): boolean
 	end
 	if data.Tools.Equipped ~= toolId then
 		data.Tools.Equipped = toolId
-		giveTool(player)
+		giveTool(player) -- reprend le slot 1 libéré ; la batte garde le sien
+		ensureBat(player)
 	else
 		ensureTool(player)
 	end
@@ -303,6 +368,12 @@ function ToolService.IsHoldingTool(player: Player): boolean
 	return tool ~= nil and character ~= nil and tool.Parent == character
 end
 
+function ToolService.IsHoldingBat(player: Player): boolean
+	local bat: Tool? = liveBats[player]
+	local character = player.Character
+	return bat ~= nil and character ~= nil and bat.Parent == character
+end
+
 function ToolService.RefreshDamage(player: Player)
 	if DataService.Get(player) ~= nil then
 		player:SetAttribute(DAMAGE_ATTRIBUTE, ToolService.GetHitDamage(player))
@@ -313,6 +384,7 @@ function ToolService.Init()
 	Players.PlayerAdded:Connect(watchPlayer)
 	Players.PlayerRemoving:Connect(function(player: Player)
 		liveTools[player] = nil
+		liveBats[player] = nil
 	end)
 	for _, player in Players:GetPlayers() do
 		watchPlayer(player)
