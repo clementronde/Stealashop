@@ -1806,6 +1806,9 @@ local function onCarryStarted(player: Player, payload: any)
 	if type(payload) ~= "table" or payload.Kind ~= "NPCBox" then
 		return -- seuls les colis PNJ ont un vigile (5.5)
 	end
+	if type(payload.StoreId) == "string" and string.sub(payload.StoreId, 1, 6) == "Truck_" then
+		return -- colis du camion (TruckEventService, StoreId « Truck_<n> ») : pas de magasin, pas de vigile
+	end
 	-- Hors de l'appel de CarryService : le rig de remplacement peut demander d'attendre.
 	task.spawn(function()
 		local storeId = payload.StoreId
