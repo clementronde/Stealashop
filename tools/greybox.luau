@@ -126,7 +126,7 @@ local WALL_H = 12 -- enceinte de la zone safe et façades du couloir
 local FLOOR_TOP = 0.2 -- dessus des sols des bâtiments
 local PLOT_FLOOR_TOP = 0.1 -- dessus du sol des parcelles
 local SILL = 0.5 -- allège des vitrines
-local STORE_D = 28 -- profondeur d'un magasin PNJ
+local STORE_D = 36 -- profondeur d'un magasin PNJ (36 depuis L-029 : allées de 6 à 8 studs pour le vigile)
 local STORE_W: { [string]: number } = { S = 24, M = 28, L = 32 } -- largeur selon la vitrine
 local STORE_H: { [string]: number } = { S = 14, M = 16, L = 18 } -- le rideau ouvert tient sous le toit
 local PLOT_SHOP_W, PLOT_SHOP_D, PLOT_SHOP_H = 32, 28, 16 -- boutique de la parcelle, vitrine M
@@ -375,6 +375,47 @@ end
 -- Magasin PNJ (10.4)
 ------------------------------------------------------------------------------
 
+local function storeName(zi: number, def: StoreDef): string
+	return string.format("STORE_Z%d_%s", zi, def.Id)
+end
+
+-- Vrais magasins de Clément gardés à la place des magasins gris (rempli par buildCorridor)
+local kept: { string } = {}
+
+-- Le vrai magasin de Clément posé dans Workspace/Map (L-029), ou nil. Quand il
+-- existe, la greybox ne construit pas le magasin gris du même nom.
+local function realStore(name: string): Model?
+	local map = Workspace:FindFirstChild("Map")
+	local found = if map then map:FindFirstChild(name, true) else nil
+	if found and found:IsA("Model") and CollectionService:HasTag(found, "NPCStore") then
+		return found :: Model
+	end
+	return nil
+end
+
+-- Étendue en X (le long de la rue) d'un vrai magasin : sa boîte `Bounds` (10.4)
+-- plus 1 stud de mur de chaque côté. Pour la zone 1 de Clément : 40 à 80, ses
+-- murets SideWall (L-029).
+local function realStoreX(model: Model): (number, number)
+	local bounds = model:FindFirstChild("Bounds", true)
+	local cf: CFrame, size: Vector3
+	local margin = 0
+	if bounds and bounds:IsA("BasePart") then
+		cf, size, margin = bounds.CFrame, bounds.Size, 1
+	else
+		cf, size = model:GetBoundingBox()
+	end
+	local lo, hi = math.huge, -math.huge
+	for _, sx in { -1, 1 } do
+		for _, sz in { -1, 1 } do
+			local x = cf:PointToWorldSpace(Vector3.new(sx * size.X / 2, 0, sz * size.Z / 2)).X
+			lo = math.min(lo, x)
+			hi = math.max(hi, x)
+		end
+	end
+	return lo - margin, hi + margin
+end
+
 local function buildStore(parent: Instance, zi: number, zone: ZoneDef, def: StoreDef, side: number)
 	local size = zone.Window
 	local win = WINDOWS[size]
@@ -385,7 +426,7 @@ local function buildStore(parent: Instance, zi: number, zone: ZoneDef, def: Stor
 	local wallColor = tint(zone.Color, 0.45)
 
 	local model = Instance.new("Model")
-	model.Name = string.format("STORE_Z%d_%s", zi, def.Id)
+	model.Name = storeName(zi, def)
 
 	local floor = building(model, frame, {
 		W = W,
@@ -401,33 +442,41 @@ local function buildStore(parent: Instance, zi: number, zone: ZoneDef, def: Stor
 
 	-- 5.3 : 6 Standard sur les rayons avant, 3 Premium au milieu, 1 Luxe dans la
 	-- réserve du fond. Rayons de 2 de profondeur (10.1), colis posés à 3 de haut.
+	-- Allées d'au moins 6 studs et 8 le long de la réserve (mesures de Clément,
+	-- L-029) : le vigile (rayon 2 de GuardService) passe partout sans sauter.
+	local zf = -D / 2 -- façade
 	local slot = 0
 	local function addSlot(p: BasePart, x: number, y: number, z: number, tier: string)
 		slot += 1
 		attach(p, string.format("ShelfSlot_%02d", slot), frame * CFrame.new(x, y, z), { Tier = tier })
 	end
-	local shelfL = box(model, "Shelf_Front_L", frame, V(-inner, 0, -10.5), V(-inner + 2, 3, -1.5), C.Shelf)
-	local shelfR = box(model, "Shelf_Front_R", frame, V(inner - 2, 0, -10.5), V(inner, 3, -1.5), C.Shelf)
-	for _, z in { -9, -6, -3 } do
-		addSlot(shelfL, -inner + 1, 3, z, "Standard")
+	local shelfL = box(model, "Shelf_Front_L", frame, V(-inner, 0, zf + 4), V(-inner + 2, 3, zf + 12), C.Shelf)
+	local shelfR = box(model, "Shelf_Front_R", frame, V(inner - 2, 0, zf + 4), V(inner, 3, zf + 12), C.Shelf)
+	for _, dz in { 5.5, 8, 10.5 } do
+		addSlot(shelfL, -inner + 1, 3, zf + dz, "Standard")
 	end
-	for _, z in { -9, -6, -3 } do
-		addSlot(shelfR, inner - 1, 3, z, "Standard")
+	for _, dz in { 5.5, 8, 10.5 } do
+		addSlot(shelfR, inner - 1, 3, zf + dz, "Standard")
 	end
-	local middle = box(model, "Shelf_Middle", frame, V(-4.5, 0, 0.5), V(4.5, 3, 2.5), C.Shelf)
+	-- Rayon du milieu : 6,5 studs ou plus de chaque côté jusqu'au mur
+	local middle = box(model, "Shelf_Middle", frame, V(-4.5, 0, -2), V(4.5, 3, 0), C.Shelf)
 	for _, x in { -3, 0, 3 } do
-		addSlot(middle, x, 3, 1.5, "Premium")
+		addSlot(middle, x, 3, -1, "Premium")
 	end
 
-	-- Réserve : cloison avec un passage de 5 de large, socle du colis Luxe
-	box(model, "ReserveWall_L", frame, V(-inner, 0, 6.5), V(-2.5, top, 7.5), wallColor)
-	box(model, "ReserveWall_R", frame, V(2.5, 0, 6.5), V(inner, top, 7.5), wallColor)
-	box(model, "ReserveWall_Top", frame, V(-2.5, 8, 6.5), V(2.5, top, 7.5), wallColor)
-	local reserve = box(model, "Shelf_Reserve", frame, V(-1, 0, 9.5), V(1, 3, 11.5), C.Luxe)
-	addSlot(reserve, 0, 3, 10.5, "Luxe")
+	-- Réserve au fond à droite (comme la Supérette de Clément) : cloison à 8 studs
+	-- derrière le rayon du milieu, passage de 6 de large, socle du Luxe contre le
+	-- mur du fond.
+	local zr = 8
+	box(model, "ReserveWall_L", frame, V(-inner, 0, zr), V(3, top, zr + 1), wallColor)
+	box(model, "ReserveWall_R", frame, V(9, 0, zr), V(inner, top, zr + 1), wallColor)
+	box(model, "ReserveWall_Top", frame, V(3, 8, zr), V(9, top, zr + 1), wallColor)
+	local reserve = box(model, "Shelf_Reserve", frame, V(5, 0, D / 2 - 3.5), V(7, 3, D / 2 - 1.5), C.Luxe)
+	addSlot(reserve, 6, 3, D / 2 - 2.5, "Luxe")
 
-	-- 5.5 : le vigile apparaît à la porte de la réserve, tourné vers la vitrine
-	attach(floor, "GuardSpawn", frame * CFrame.new(0, FLOOR_TOP, 7))
+	-- 5.5 et L-022 : le vigile part du fond à gauche de la salle, tourné vers la
+	-- vitrine, loin du Luxe et jamais entre le voleur et la sortie.
+	attach(floor, "GuardSpawn", frame * CFrame.new(-(inner - 3), FLOOR_TOP, 4))
 
 	box(model, "Bounds", frame, V(-inner, FLOOR_TOP, -D / 2 + 1), V(inner, top, D / 2 - 1), C.Volume, VOLUME)
 
@@ -683,14 +732,27 @@ local function buildCorridor(root: Instance)
 		box(geo, "Street", I, V(x0, -2, -hs), V(x1, 0, hs), Color3.fromRGB(80, 80, 85):Lerp(color, 0.15))
 		box(geo, "Side_N", I, V(x0, -2, hs), V(x1, 0, sideOuter), tint(color, 0.25))
 		box(geo, "Side_S", I, V(x0, -2, -sideOuter), V(x1, 0, -hs), tint(color, 0.25))
-		-- Façades de remplissage entre les magasins : le couloir est fermé sur les côtés
-		local gaps = { { x0, x1 } }
-		if zone then
-			local w = STORE_W[zone.Window]
-			gaps = { { x0, zone.Distance - w / 2 }, { zone.Distance + w / 2, x1 } }
+		-- Façades de remplissage entre les magasins : le couloir est fermé sur les
+		-- côtés. Côté N le premier magasin de la zone, côté S le second ; un vrai
+		-- magasin de Clément (Workspace/Map) garde sa propre largeur (L-029).
+		local function gapsFor(def: StoreDef?): { { number } }
+			if not zone or not def then
+				return { { x0, x1 } }
+			end
+			local real = realStore(storeName(zi, def))
+			local a, b
+			if real then
+				a, b = realStoreX(real)
+			else
+				local w = STORE_W[zone.Window]
+				a, b = zone.Distance - w / 2, zone.Distance + w / 2
+			end
+			return { { x0, a }, { b, x1 } }
 		end
-		for j, g in gaps do
+		for j, g in gapsFor(if zone then zone.Stores[1] else nil) do
 			box(geo, "SideWall_N" .. j, I, V(g[1], 0, hs), V(g[2], WALL_H, hs + 1), tint(color, 0.35))
+		end
+		for j, g in gapsFor(if zone then zone.Stores[2] else nil) do
 			box(geo, "SideWall_S" .. j, I, V(g[1], 0, -hs - 1), V(g[2], WALL_H, -hs), tint(color, 0.35))
 		end
 		geo.Parent = zf
@@ -725,11 +787,17 @@ local function buildCorridor(root: Instance)
 			gate.Parent = zf
 			task.wait()
 
-			-- Un magasin de chaque côté : le premier du tableau côté N
-			buildStore(zf, zi, zone, zone.Stores[1], 1)
-			task.wait()
-			buildStore(zf, zi, zone, zone.Stores[2], -1)
-			task.wait()
+			-- Un magasin de chaque côté : le premier du tableau côté N. Pas de
+			-- magasin gris quand le vrai de Clément est dans Workspace/Map (L-029).
+			for k, side in { 1, -1 } do
+				local def = zone.Stores[k]
+				if realStore(storeName(zi, def)) then
+					table.insert(kept, storeName(zi, def))
+				else
+					buildStore(zf, zi, zone, def, side)
+					task.wait()
+				end
+			end
 
 			-- 2 points de ronde de nuit, au quart et aux trois quarts du tronçon
 			for k, f in { 0.25, 0.75 } do
@@ -831,6 +899,9 @@ local function report(root: Instance): string
 	out("== Éléments taggés (Workspace/Greybox)")
 	for _, tag in TAGS do
 		out(string.format("  %-12s %d", tag, #tagged(root, tag)))
+	end
+	if #kept > 0 then
+		out("  Vrais magasins gardés dans Workspace/Map (L-029) : " .. table.concat(kept, ", "))
 	end
 
 	local safe = tagged(root, "SafeZone")[1]
