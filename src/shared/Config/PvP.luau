@@ -20,6 +20,9 @@ local PvP = {
 	-- 6.2, usage 1 : défense de sa boutique
 	AdrenalineSpeedBonus = 0.25, -- +25 % de vitesse pour la victime jusqu'à la fin de la poursuite
 	AutoEquipBatOnAlert = true,
+	-- Alerte de la victime (DEV-042) : serveur TheftAlertService (Adrénaline, défenses comptées),
+	-- client TheftAlertController (bannière, sirène, flèche, voleur surligné).
+	AlertSirenSound = "TheftAlert_Siren", -- V0 proposé, absent du doc : Sound de Clément dans ReplicatedStorage/Assets/Sounds (DEV-051), pas encore livré
 
 	-- 6.4 : règles anti-frustration (non négociables)
 	BeginnerShieldDuration = 10 * 60, -- 10 premières minutes de jeu cumulées : boutique inviolable, colis non frappable
