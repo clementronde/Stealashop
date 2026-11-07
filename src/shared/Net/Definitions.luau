@@ -53,6 +53,10 @@ local MAX_INDEX = 100
 -- V0 proposé, absent du doc : longueur maximale d'un message Notify.
 local MAX_MESSAGE_LENGTH = 200
 
+-- V0 proposé, absent du doc : borne de sécurité du nombre de crans d'amélioration d'un colis
+-- (6 = de Commun à Secret). La vraie limite est Config.Unbox.UpgradeMax (2).
+local MAX_UPGRADES = 6
+
 local function id(name: string): ArgSpec
 	return { Name = name, Kind = "string", Max = MAX_ID_LENGTH }
 end
@@ -230,10 +234,22 @@ local List: { RemoteDef } = {
 	},
 	{
 		-- Seulement après OpenBox : l'identité de l'objet n'est jamais envoyée avant (5.7).
+		-- Ouverture v2 (DEV-050, 2026-11-07) : itemId = l'objet final, après l'amélioration du
+		-- colis ; zone et tier = ceux du colis (composition du rouleau, revenu du Secret) ;
+		-- startRarity = la rareté du colis avant amélioration ; upgrades = le nombre de crans
+		-- réussis, chacun monte d'une rareté (le client en déduit les raretés des crans).
 		Name = "UnboxReveal",
 		Direction = "ServerToClient",
 		Reliable = true,
-		Args = { index("benchIndex"), id("itemUid"), id("itemId") },
+		Args = {
+			index("benchIndex"),
+			id("itemUid"),
+			id("itemId"),
+			{ Name = "zone", Kind = "int", Min = 1, Max = MAX_INDEX },
+			id("tier"),
+			id("startRarity"),
+			{ Name = "upgrades", Kind = "int", Min = 0, Max = MAX_UPGRADES },
+		},
 	},
 	{
 		Name = "TutorialStep",
