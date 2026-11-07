@@ -905,7 +905,7 @@ Le MVP sort le vendredi 18 décembre 2026, six semaines après le démarrage du 
 | MOD-016 | Tapis de course et banc | `UsePoint` et `Belt`, ≤ 3 000 triangles chacun | M1 | P0 | MOD-001 | À faire |
 | MOD-017 | Accessoires vigile zone 1 | Casquette + gilet sur rig R15 standard | M1 | P0 | MOD-001 | À faire |
 | UI-001 | Écrans gris : `UI_HUD`, `UI_Unbox`, `BB_WindowHP`, `BB_OpenTimer`, `BB_Item`, `BB_Carry` | Noms du contrat 2.2, zéro erreur du ContractChecker | M1 | P0 | DEV-005 | En revue |
-| MOD-020 | Zone 2 : Jouets + variante Confiserie | Contrat 10.4 complet | M2 | P0 | MOD-012 | À faire |
+| MOD-020 | Zone 2 : Jouets + variante Confiserie | Contrat 10.4 complet | M2 | P0 | MOD-012 | En revue |
 | MOD-021 | Zone 3 : Électronique + variante Jeux vidéo | Contrat 10.4 complet | M2 | P0 | MOD-012 | À faire |
 | MOD-022 | Zone 4 : Bijouterie + variante Horlogerie | Contrat 10.4 complet | M2 | P0 | MOD-012 | À faire |
 | MOD-023 | Zone 5 : Galerie + variante Antiquaire | Contrat 10.4 complet, avant le go / no-go du 6 décembre | M2 | P0 | MOD-012 | À faire |
@@ -999,6 +999,7 @@ Chaque étape est envoyée une seule fois par joueur avec `AnalyticsService:LogO
 
 | Date | Décision | Par |
 | --- | --- | --- |
+| 2026-11-07 | Zones du couloir = quartiers du monde réel : un style par zone, avec ses deux magasins (noms du doc gardés). Zone 1 : quartier de la Supérette (tuto) ; 2 : Londres (Jouets, Confiserie) ; 3 : Tokyo (Électronique, Jeux vidéo) ; 4 : Los Angeles (Bijouterie, Horlogerie) ; 5 : Paris (Galerie, Antiquaire) ; 6 : New York (Banque, Salle des coffres). Zone 2 faite : façades de Londres sur 3 étages, intérieur du supermarché de la zone 1, rue habillée ; tous les magasins passent par le constructeur commun tools/clement/store_builder.luau (MOD-020, liaison L-035) | Clément |
 | 2026-11-07 | Colis placés au hasard : chaque type n'a plus sa place (vol trop mécanique). À chaque remplissage, les 6 Standard, 3 Premium et 1 Luxe sont répartis au hasard sur les 10 emplacements du magasin, pour que les joueurs fouillent. Le tuto garde son premier objet Rare garanti ; hors tuto, la zone 1 ne contient que des objets Communs (liaison, L-033) | Clément |
 | 2026-11-07 | Colis : cartons kraft scotchés en croix sur le dessus, avec un contour noir (Highlight demandé par Clément, arêtes en secours) ; scotch beige pour Standard, bleu pour Premium, or pour Luxe (remplace « carton bleu scellé » et « caisse en bois cerclée d'or » de 7.3). Livrés dans ReplicatedStorage/Assets/Boxes (MOD-013, liaison L-031) | Clément |
 | 2026-11-07 | Au-dessus de chaque colis, dès le rayon : la catégorie de l'objet, sa rareté et sa mutation (étiquette BB_Box) ; le contenu se tire donc à la mise en rayon. Catégories d'objets : Boisson, Snack, Fruit, Légumes, Montre, Télé, Ordinateur, Vélo, Voiture… (catalogue 10.5 à revoir). Zone 1 = zone tuto : uniquement des objets Communs (liaison, L-031) | Clément |
