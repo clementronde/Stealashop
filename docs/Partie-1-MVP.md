@@ -999,6 +999,7 @@ Chaque étape est envoyée une seule fois par joueur avec `AnalyticsService:LogO
 
 | Date | Décision | Par |
 | --- | --- | --- |
+| 2026-11-07 | Nouvel événement « camion » : il apparaît au hasard, les joueurs le cassent à plusieurs et il lâche beaucoup de colis de raretés différentes, qu'ils se disputent. La zone safe devient le hub et touche directement la zone 1 (plus de couloir d'entrée), avec le mur de nuit à l'entrée de la zone 1 (liaison, L-049) | Clément |
 | 2026-11-07 | Catalogue d'objets v2 (74 objets, 4 catégories par zone, noms anglais) validé pour la zone 1, et maquettes Shop, Index et Rebirth validées ; leurs noms d'UI attendent Ironix (liaison, L-045 et L-047) | Clément |
 | 2026-11-07 | Carte à ×1.5 (magasins, décor, arches) et couloir de 60 studs entre façades, plus de décor derrière les magasins, et un séparateur visuel par zone (pétales à Tokyo, neige à Paris, pluie à Londres…). Six vigiles du plus faible au plus fort (Guard_Z1 à Guard_Z6). Les animations sont faites par Claude dans Blender et publiées par Clément au nom du groupe (liaison, L-040) | Clément |
 | 2026-11-07 | Tous les textes du jeu sont en anglais : enseignes et décor, UI, étiquettes, invites, notifications, noms des objets, des raretés (Common à Secret), des mutations et des colis, titre et description de l'expérience. Le doc, la liaison et les commentaires du code restent en français ; les noms techniques (modèles, ItemId, attributs) ne changent pas (liaison, L-036) | Clément |
