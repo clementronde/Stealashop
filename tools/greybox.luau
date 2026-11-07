@@ -67,7 +67,7 @@ local ZONES: { ZoneDef } = {
 		Damage = "1",
 		Window = "S",
 		Color = Color3.fromRGB(90, 190, 90),
-		Stores = { { Id = "Superette", Label = "Supérette" }, { Id = "Kiosque", Label = "Kiosque" } },
+		Stores = { { Id = "Superette", Label = "Mini Mart" }, { Id = "Kiosque", Label = "Kiosk" } },
 	},
 	{
 		Distance = 140,
@@ -75,7 +75,7 @@ local ZONES: { ZoneDef } = {
 		Damage = "10",
 		Window = "S",
 		Color = Color3.fromRGB(230, 200, 60),
-		Stores = { { Id = "MagasinDeJouets", Label = "Magasin de jouets" }, { Id = "Confiserie", Label = "Confiserie" } },
+		Stores = { { Id = "MagasinDeJouets", Label = "Toy Shop" }, { Id = "Confiserie", Label = "Sweet Shop" } },
 	},
 	{
 		Distance = 240,
@@ -83,7 +83,7 @@ local ZONES: { ZoneDef } = {
 		Damage = "80",
 		Window = "M",
 		Color = Color3.fromRGB(70, 140, 230),
-		Stores = { { Id = "Electronique", Label = "Électronique" }, { Id = "JeuxVideo", Label = "Jeux vidéo" } },
+		Stores = { { Id = "Electronique", Label = "Electronics" }, { Id = "JeuxVideo", Label = "Video Games" } },
 	},
 	{
 		Distance = 360,
@@ -91,23 +91,23 @@ local ZONES: { ZoneDef } = {
 		Damage = "600",
 		Window = "M",
 		Color = Color3.fromRGB(170, 90, 220),
-		Stores = { { Id = "Bijouterie", Label = "Bijouterie" }, { Id = "Horlogerie", Label = "Horlogerie" } },
+		Stores = { { Id = "Bijouterie", Label = "Jewelry" }, { Id = "Horlogerie", Label = "Watches & Clocks" } },
 	},
 	{
 		Distance = 500,
 		Speed = 40,
-		Damage = "5 000",
+		Damage = "5K",
 		Window = "L",
 		Color = Color3.fromRGB(240, 130, 50),
-		Stores = { { Id = "GalerieDArt", Label = "Galerie d'art" }, { Id = "Antiquaire", Label = "Antiquaire" } },
+		Stores = { { Id = "GalerieDArt", Label = "Art Gallery" }, { Id = "Antiquaire", Label = "Antiques" } },
 	},
 	{
 		Distance = 660,
 		Speed = 48,
-		Damage = "40 000",
+		Damage = "40K",
 		Window = "L",
 		Color = Color3.fromRGB(220, 60, 60),
-		Stores = { { Id = "Banque", Label = "Banque" }, { Id = "SalleDesCoffres", Label = "Salle des coffres" } },
+		Stores = { { Id = "Banque", Label = "Bank" }, { Id = "SalleDesCoffres", Label = "Vault" } },
 	},
 }
 
@@ -382,6 +382,14 @@ end
 -- Vrais magasins de Clément gardés à la place des magasins gris (rempli par buildCorridor)
 local kept: { string } = {}
 
+-- Aspect de la `Street` de chaque tronçon, gardé d'une génération à l'autre : Clément la
+-- recolore à chaque zone habillée (asphalte et MaterialVariant `Studs`, liaisons L-035, L-037
+-- et L-038). Relevé par main() avant de détruire l'ancienne greybox, remis par buildCorridor.
+-- Pour revenir aux couleurs de la greybox : supprimer Workspace/Greybox avant de la lancer.
+type StreetLook = { Color: Color3, Material: Enum.Material, MaterialVariant: string }
+local streetLooks: { [string]: StreetLook } = {}
+local keptLooks: { string } = {}
+
 -- Le vrai magasin de Clément posé dans Workspace/Map (L-029), ou nil. Quand il
 -- existe, la greybox ne construit pas le magasin gris du même nom.
 local function realStore(name: string): Model?
@@ -511,7 +519,7 @@ local function buildPlot(parent: Instance, index: number, x: number, side: numbe
 		Color = C.PlotWall,
 		FloorColor = C.PlotFloor:Lerp(Color3.new(1, 1, 1), 0.3),
 		SignName = "NameSign",
-		SignText = string.format("PARCELLE %d", index),
+		SignText = string.format("SHOP %d", index),
 	})
 
 	-- L-019 : OwnerName dans NameSign, où le code écrit « Boutique de <Pseudo> », sous
@@ -589,7 +597,7 @@ local function buildPlot(parent: Instance, index: number, x: number, side: numbe
 		C.Cash,
 		{ Material = Enum.Material.Neon, CanCollide = false, CanQuery = false, CanTouch = true }
 	)
-	label(cash, Enum.NormalId.Top, "CAISSE", Color3.new(0, 0, 0))
+	label(cash, Enum.NormalId.Top, "CASH", Color3.new(0, 0, 0))
 	CollectionService:AddTag(cash, "CashPad")
 
 	-- Pièges (Partie 2) : devant la vitrine et à l'entrée de la cour
@@ -670,8 +678,8 @@ local function buildSafe(root: Instance)
 	box(safe, "ArchPillar_N", I, V(-1.5, 0, hs), V(1.5, 22, hs + 3), C.Gold)
 	box(safe, "ArchPillar_S", I, V(-1.5, 0, -hs - 3), V(1.5, 22, -hs), C.Gold)
 	local arch = box(safe, "ArchSign", I, V(-1.5, 22, -hs - 3), V(1.5, 28, hs + 3), C.SignBg)
-	label(arch, Enum.NormalId.Left, "ZONE SAFE", C.SafeLine)
-	label(arch, Enum.NormalId.Right, "ZONE SAFE", C.SafeLine)
+	label(arch, Enum.NormalId.Left, "SAFE ZONE", C.SafeLine)
+	label(arch, Enum.NormalId.Right, "SAFE ZONE", C.SafeLine)
 	box(safe, "SafeLine", I, V(-0.75, -0.1, -hs), V(0.75, 0.06, hs), C.SafeLine, MARK)
 	box(safe, "Bounds", I, V(-S, 0, -S / 2), V(0, 40, S / 2), C.Volume, VOLUME)
 	safe.WorldPivot = CFrame.new(-S / 2, 0, 0)
@@ -698,10 +706,10 @@ local function buildSafe(root: Instance)
 	local shops = Instance.new("Folder")
 	shops.Name = "Shops"
 	shops.Parent = folder
-	buildCounter(shops, "WeaponShop", "WeaponShop", "BOUTIQUE D'ARMES", SHOP_X_NEAR, 1, tint(C.Button, 0.4))
-	buildCounter(shops, "AuraShop", "AuraShop", "BOUTIQUE D'AURAS", SHOP_X_NEAR, -1, tint(Color3.fromRGB(150, 80, 230), 0.4))
-	buildCounter(shops, "RobuxShop", "RobuxShop", "BOUTIQUE ROBUX", SHOP_X_FAR, 1, C.Gold)
-	buildCounter(shops, "Receleur", "PawnShop", "RECELEUR", SHOP_X_FAR, -1, tint(C.Door, 0.6)) -- tag ajouté au contrat le 2026-11-06 (liaison L-017)
+	buildCounter(shops, "WeaponShop", "WeaponShop", "WEAPON SHOP", SHOP_X_NEAR, 1, tint(C.Button, 0.4))
+	buildCounter(shops, "AuraShop", "AuraShop", "AURA SHOP", SHOP_X_NEAR, -1, tint(Color3.fromRGB(150, 80, 230), 0.4))
+	buildCounter(shops, "RobuxShop", "RobuxShop", "ROBUX SHOP", SHOP_X_FAR, 1, C.Gold)
+	buildCounter(shops, "Receleur", "PawnShop", "PAWN SHOP", SHOP_X_FAR, -1, tint(C.Door, 0.6)) -- tag ajouté au contrat le 2026-11-06 (liaison L-017)
 	task.wait()
 
 	-- 6 parcelles : 1 à 3 côté N, 4 à 6 côté S, de la sortie vers le fond
@@ -746,7 +754,14 @@ local function buildCorridor(root: Instance)
 		zf.Name = if zone then "Zone_" .. zi else "Entry"
 		local geo = Instance.new("Folder")
 		geo.Name = "Ground"
-		box(geo, "Street", I, V(x0, -2, -hs), V(x1, 0, hs), Color3.fromRGB(80, 80, 85):Lerp(color, 0.15))
+		local street = box(geo, "Street", I, V(x0, -2, -hs), V(x1, 0, hs), Color3.fromRGB(80, 80, 85):Lerp(color, 0.15))
+		local look = streetLooks[zf.Name]
+		if look then
+			street.Color = look.Color
+			street.Material = look.Material
+			street.MaterialVariant = look.MaterialVariant
+			table.insert(keptLooks, zf.Name)
+		end
 		box(geo, "Side_N", I, V(x0, -2, hs), V(x1, 0, sideOuter), tint(color, 0.25))
 		box(geo, "Side_S", I, V(x0, -2, -sideOuter), V(x1, 0, -hs), tint(color, 0.25))
 		-- Façades de remplissage entre les magasins : le couloir est fermé sur les
@@ -795,7 +810,7 @@ local function buildCorridor(root: Instance)
 			box(gate, "Pillar_N", I, V(gx - 1, 0, hs), V(gx + 1, 18, hs + 3), tint(color, 0.7))
 			box(gate, "Pillar_S", I, V(gx - 1, 0, -hs - 3), V(gx + 1, 18, -hs), tint(color, 0.7))
 			local sign = box(gate, "SignPart", I, V(gx - 1, 18, -hs - 3), V(gx + 1, 24, hs + 3), C.SignBg)
-			local text = string.format("ZONE %d\nVitesse conseillée %d · Dégâts conseillés %s", zi, zone.Speed, zone.Damage)
+			local text = string.format("ZONE %d\nRecommended speed %d · Recommended damage %s", zi, zone.Speed, zone.Damage)
 			label(sign, Enum.NormalId.Left, text, color)
 			label(sign, Enum.NormalId.Right, text, color)
 			gate.WorldPivot = CFrame.new(gx, 0, 0)
@@ -922,6 +937,9 @@ local function report(root: Instance): string
 	if #kept > 0 then
 		out("  Vrais magasins gardés dans Workspace/Map (L-029) : " .. table.concat(kept, ", "))
 	end
+	if #keptLooks > 0 then
+		out("  Aspect des rues gardé (L-035, L-037, L-038) : " .. table.concat(keptLooks, ", "))
+	end
 
 	local safe = tagged(root, "SafeZone")[1]
 	local line = safe and safe:FindFirstChild("SafeLine") :: BasePart?
@@ -1006,6 +1024,20 @@ local function main(): string
 	local removed = {}
 	local old = Workspace:FindFirstChild("Greybox")
 	if old then
+		local corridor = old:FindFirstChild("Corridor")
+		if corridor then
+			for _, section in corridor:GetChildren() do
+				local ground = section:FindFirstChild("Ground")
+				local street = if ground then ground:FindFirstChild("Street") else nil
+				if street and street:IsA("BasePart") then
+					streetLooks[section.Name] = {
+						Color = street.Color,
+						Material = street.Material,
+						MaterialVariant = street.MaterialVariant,
+					}
+				end
+			end
+		end
 		old:Destroy()
 	end
 	if SUPPRIMER_DEFAUTS then

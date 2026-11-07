@@ -40,6 +40,7 @@ local Contract = Shared:WaitForChild("Contract")
 local Find = require(Contract:WaitForChild("Find"))
 local UI = require(Contract:WaitForChild("UI"))
 local Shatter = require(Shared:WaitForChild("Config"):WaitForChild("Shatter"))
+local Format = require(Shared:WaitForChild("Format"))
 
 type HPListener = (windowId: string, hp: number, maxHp: number) -> ()
 type HitListener = (windowId: string, point: Vector3, hitter: Player?) -> ()
@@ -117,25 +118,6 @@ local function hpOf(entry: Entry, maxHp: number): number
 		return maxHp
 	end
 	return math.min(known.hp, maxHp)
-end
-
--- « 35 », « 2800 », « 21K », « 1.4M » : même écriture abrégée que le HUD de Clément (L-027).
-local function formatHP(value: number): string
-	local n = math.max(0, value)
-	if n < 10_000 then
-		return tostring(math.ceil(n - 1e-6))
-	end
-	for _, unit in { { 1e9, "B" }, { 1e6, "M" }, { 1e3, "K" } } do
-		local size = unit[1] :: number
-		if n >= size then
-			local scaled = n / size
-			local text = if scaled < 100
-				then string.format("%.1f", math.floor(scaled * 10) / 10)
-				else tostring(math.floor(scaled))
-			return (string.gsub(text, "%.0$", "")) .. (unit[2] :: string)
-		end
-	end
-	return tostring(math.floor(n))
 end
 
 ------------------------------------------------------------------------------
@@ -252,7 +234,7 @@ local function refresh(entry: Entry, position: Vector3?)
 	end
 	local label = entry.Label
 	if label then
-		label.Text = `{formatHP(hp)} / {formatHP(maxHp)}`
+		label.Text = `{Format.hp(hp)} / {Format.hp(maxHp)}`
 	end
 	local fill = entry.Fill
 	if fill and entry.Fraction ~= fraction then

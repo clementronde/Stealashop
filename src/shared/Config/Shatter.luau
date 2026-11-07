@@ -22,7 +22,7 @@ local Shatter = {
 		DustDecal = "FX_Dust", -- V0 : nom proposé ; tant qu'il manque, DustTexture ci-dessous
 		WindowsFolder = { "Assets", "Windows" }, -- vitres fracturées (MOD-010)
 		FracturedVariants = { "WIN_M_Fractured", "WIN_M_Fractured_Left", "WIN_M_Fractured_Right" },
-		-- V0 : écran « CASSÉ ! » proposé à Clément (ScreenGui de StarterGui avec un TextLabel Label) ;
+		-- V0 : écran « SMASHED! » proposé à Clément (ScreenGui de StarterGui avec un TextLabel Label) ;
 		-- tant qu'il n'existe pas, le code affiche son propre texte gris.
 		BrokenScreen = "UI_Shatter",
 		BrokenLabel = "Label",
@@ -74,10 +74,10 @@ local Shatter = {
 		FreezeFrame = Balance.Shatter.FreezeFrame, -- doc : arrêt sur image de 0,06 s
 		FlashDuration = Balance.Shatter.FlashDuration, -- doc : flash blanc de 0,08 s
 		ShakeDuration = Balance.Shatter.CameraShakeDuration, -- doc : tremblement de 0,25 s
-		Text = "CASSÉ !", -- doc
+		Text = "SMASHED!", -- doc : « CASSÉ ! », en anglais (L-036)
 		PitchVariation = Balance.Shatter.SoundPitchVariation, -- doc : ± 10 % sur chaque couche
 		-- V0 : le joueur qui a frappé cette vitre il y a moins de 3 s participe : flash, tremblement,
-		-- arrêt de son animation et « CASSÉ ! » en entier. Les autres : flash et tremblement de plus
+		-- arrêt de son animation et « SMASHED! » en entier. Les autres : flash et tremblement de plus
 		-- en plus faibles avec la distance, nuls à EffectRadius ; pas de texte.
 		ParticipantWindow = 3,
 		EffectRadius = 80, -- V0
@@ -88,7 +88,7 @@ local Shatter = {
 		LightRange = 18, -- V0
 		ShakeAmplitude = 0.35, -- V0 : studs
 		ShakeAngle = 1.2, -- V0 : degrés
-		TextPopTime = 0.18, -- V0 : « CASSÉ ! » apparaît en grossissant…
+		TextPopTime = 0.18, -- V0 : « SMASHED! » apparaît en grossissant…
 		TextHold = 0.7, -- V0 : … reste…
 		TextHideTime = 0.15, -- V0 : … puis rétrécit et disparaît
 		Sparkles = 30, -- V0 : paillettes

@@ -36,7 +36,7 @@
 --   - au-dessus, le minuteur : copie de BB_OpenTimer (ReplicatedStorage/Assets/UI, élément Label),
 --     accrochée au pied du colis (le dessus de l'établi, où se pose son pivot : le
 --     StudsOffsetWorldSpace de Clément part de là, liaison L-027), sinon un billboard V0. Le serveur
---     y écrit le temps restant (m:ss), puis « Prêt ! » ;
+--     y écrit le temps restant (m:ss), puis « Ready! » ;
 --   - attribut UnboxState sur chaque UnboxBench_xx d'une parcelle attribuée, lu par UnboxController :
 --     "Locked" (pas encore débloqué), "Free", "Waiting" (colis en attente), "Ready" (colis prêt).
 --     Retiré quand la parcelle se libère.
@@ -143,8 +143,8 @@ local PROMPT_DISTANCE = 8
 local REACH_TOLERANCE = 4
 -- V0 proposé, absent du doc : cadence (s) de la boucle qui fait avancer les minuteurs.
 local TICK = 0.25
--- V0 proposé, absent du doc : texte du minuteur quand le colis est prêt.
-local READY_TEXT = "Prêt !"
+-- V0 proposé, absent du doc : texte du minuteur quand le colis est prêt, en anglais (L-036).
+local READY_TEXT = "Ready!"
 -- V0 proposé, absent du doc : bloc de remplacement de BOX_<Tier> (studs).
 local V0_BOX_SIZE = Vector3.new(2, 2, 2)
 -- V0 proposé, absent du doc : billboard de remplacement de BB_OpenTimer.
@@ -152,12 +152,12 @@ local V0_TIMER_SIZE = UDim2.fromScale(4, 1.2) -- en studs
 local V0_TIMER_GAP = 1.2 -- studs entre le haut du colis et le bas du minuteur
 local V0_TIMER_MAX_DISTANCE = 60
 
--- Messages lus par le joueur (Notify). V0 proposé, absent du doc.
+-- Messages lus par le joueur (Notify), en anglais (L-036). V0 proposé, absent du doc.
 local MESSAGES = {
-	Locked = "Cet établi est verrouillé : achète l'amélioration Établis d'ouverture.",
-	Busy = "Cet établi est déjà occupé.",
-	NotReady = "Ce colis n'est pas encore prêt.",
-	InventoryFull = "Inventaire plein : expose ou vends un objet avant d'ouvrir ce colis.",
+	Locked = "This workbench is locked: buy the Workbenches upgrade.",
+	Busy = "This workbench is already in use.",
+	NotReady = "This box isn't ready yet.",
+	InventoryFull = "Inventory full: display or sell an item before opening this box.",
 }
 
 local IS_STUDIO = RunService:IsStudio()

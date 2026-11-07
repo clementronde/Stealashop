@@ -76,7 +76,7 @@ local OWNER_ATTRIBUTE = "OwnerUserId"
 local INDEX_ATTRIBUTE = "PlotIndex"
 
 -- Absents du contrat 10.4, proposés pour y entrer (à valider par Clément) :
---   OwnerName (TextLabel dans NameSign) : le code y écrit « Boutique de <Pseudo> »,
+--   OwnerName (TextLabel dans NameSign) : le code y écrit « <Pseudo>'s Shop » (anglais, L-036),
 --     vide quand la parcelle est libre. Sans lui, ce service crée un SurfaceGui minimal.
 --   SpawnPoint (Attachment dans la parcelle) : point d'apparition du propriétaire,
 --     axe avant (−Z) tourné vers l'allée. Sans lui, le point est devant la vitrine.
@@ -105,10 +105,10 @@ local CHARACTER_TIMEOUT = 10
 -- avant de le déplacer (StreamingEnabled, 9.7) ; au-delà, il est déplacé quand même.
 local STREAM_TIMEOUT = 2
 
--- Messages lus par le joueur (Notify).
+-- Messages lus par le joueur (Notify), en anglais (L-036).
 local MESSAGES = {
-	Waiting = "Toutes les boutiques sont prises : tu auras la prochaine qui se libère.",
-	Freed = "Une boutique vient de se libérer : elle est à toi !",
+	Waiting = "All shops are taken: you'll get the next one that frees up.",
+	Freed = "A shop just freed up: it's yours!",
 }
 
 local PlotService = {}
@@ -302,15 +302,12 @@ local function setupSign(plot: Model)
 	labels[plot] = createLabel(plot, part)
 end
 
--- « Boutique d'Alice », « Boutique de Bob » ; vide pour une parcelle libre.
+-- « Alice's Shop », « Bob's Shop » (anglais, L-036) ; vide pour une parcelle libre.
 local function signText(owner: Player?): string
 	if owner == nil then
 		return ""
 	end
-	local name = owner.DisplayName
-	local first = string.lower(string.sub(name, 1, 1))
-	local of = if string.find("aeiouh", first, 1, true) then "d'" else "de "
-	return `Boutique {of}{name}`
+	return `{owner.DisplayName}'s Shop`
 end
 
 local function updateSign(plot: Model)

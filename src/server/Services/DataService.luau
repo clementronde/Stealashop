@@ -127,12 +127,12 @@ local MIGRATIONS: { [number]: (data: any) -> () } = {
 	[1] = function(_data: any) end,
 }
 
--- Messages d'expulsion, lus par le joueur.
+-- Messages d'expulsion, lus par le joueur : en anglais (L-036).
 local MESSAGES = {
-	LoadFailed = "Ta sauvegarde n'a pas pu être chargée. Reviens dans quelques instants.",
-	SessionEnded = "Ta partie a été fermée sur ce serveur, sans doute parce qu'elle s'est ouverte sur un autre. Reconnecte-toi pour continuer.",
-	TooNew = "Le jeu vient d'être mis à jour. Rejoins un nouveau serveur pour retrouver ta progression.",
-	MigrationFailed = "Ta sauvegarde n'a pas pu être mise à jour. Reviens dans quelques instants ; si ça continue, préviens l'équipe.",
+	LoadFailed = "Your save couldn't be loaded. Please come back in a moment.",
+	SessionEnded = "Your game was closed on this server, probably because it opened on another one. Rejoin to keep playing.",
+	TooNew = "The game was just updated. Join a new server to get your progress back.",
+	MigrationFailed = "Your save couldn't be updated. Please come back in a moment. If it keeps happening, let us know.",
 }
 
 local DataService = {}

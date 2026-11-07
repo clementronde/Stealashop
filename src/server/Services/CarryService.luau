@@ -58,6 +58,13 @@
 --   CarryService.OnDropExpired(listener) -> déconnexion
 --       listener(dropId, payload) quand un colis reste Bat.DroppedLifetime secondes au sol sans être
 --       ramassé (6.2 : 15 s) : StoreHeistService le remet alors sur son rayon.
+--   Étiquette des colis du rayon (L-031) :
+--   CarryService.AttachBoxLabel(model, rarityId, itemId) -> BillboardGui?
+--       Pose sur `model`, un colis qui n'est pas porté (StoreHeistService : chaque colis du rayon),
+--       la même étiquette BB_Box que sur la tête (voir plus bas), à son LabelPoint. Secret : tag
+--       CarryRainbow sur l'étiquette seule, CarryController anime sa rareté (le colis du rayon
+--       garde l'aspect de son type). nil, avec un avertissement, si la rareté ou l'objet est
+--       inconnu ; nil si le modèle n'a aucune pièce.
 --
 -- Ce que voient les autres :
 --   - attribut Carrying du Player = Id de la rareté portée (« Legendary »), nil sinon. Le client le
@@ -70,12 +77,17 @@
 --     textures de Clément (MOD-041) : Commun aucun, Peu commun léger, Rare et Épique net,
 --     Légendaire et Mythique rayons, Secret arc-en-ciel (couleurs animées par CarryController,
 --     tag CarryRainbow posé par le code, hors du contrat de la section 2.1) ;
---   - étiquette : copie de ReplicatedStorage/Assets/UI/BB_Carry (contrat 2.2 : ItemName, Rarity,
---     Income), accrochée à l'Attachment LabelPoint du colis de Clément (BOX_*, liaison L-023 ; il
---     règle la hauteur avec le StudsOffset de BB_Carry), sinon à un LabelPoint créé au sommet du
---     visuel (objet volé, bloc V0). Colis PNJ : ItemName = « Colis Luxe », Rarity = « LÉGENDAIRE »
---     à la couleur de la rareté, Income caché (l'objet reste secret, 5.6). Objet volé : nom,
---     rareté, $/s, et un contour rouge (6.1). BB_Carry pas encore livré : étiquette V0, rareté seule.
+--   - étiquette, accrochée à l'Attachment LabelPoint du modèle de Clément (BOX_*, liaison L-023 et
+--     L-031 ; il règle la hauteur avec le StudsOffset de l'étiquette), sinon à un LabelPoint créé
+--     au sommet du visuel (objet volé, bloc V0) :
+--       colis PNJ : copie de ReplicatedStorage/Assets/UI/BB_Box (contrat 2.2, L-031), la même que
+--       sur le rayon : Category = catégorie de l'objet (Items, ligne cachée tant qu'elle est vide),
+--       Rarity = nom de la rareté en capitales (« LEGENDARY ») à sa couleur, Mutation cachée (les
+--       mutations arrivent à la MAJ 4). Ni le nom ni l'ItemId de l'objet : il reste secret
+--       jusqu'à l'ouverture (5.7). Taille, décalage, AlwaysOnTop et MaxDistance : ceux de Clément ;
+--       objet volé à un joueur : copie de BB_Carry (contrat 2.2 : ItemName, Rarity, Income) : nom,
+--       rareté, $/s (Format.income, « +$15/s »), et un contour rouge (6.1).
+--     Étiquette pas encore livrée : étiquette V0, rareté seule.
 
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
@@ -88,23 +100,28 @@ local Balance = require(Shared.Config.Balance)
 local Bat = require(Shared.Config.Bat)
 local Items = require(Shared.Config.Items)
 local Rarities = require(Shared.Config.Rarities)
+local ShelfBoxes = require(Shared.Config.ShelfBoxes)
 local Zones = require(Shared.Config.Zones)
 local Find = require(Shared.Contract.Find)
 local UI = require(Shared.Contract.UI)
+local Format = require(Shared.Format)
 local CarryTypes = require(Shared.Types.Carry)
 
 local StatsService = require(script.Parent.StatsService)
 
 type Payload = CarryTypes.Payload
+type PlayerItemPayload = CarryTypes.PlayerItemPayload
 type EndResult = CarryTypes.EndResult
 type Rarity = Rarities.Rarity
+type Item = Items.Item
 
 -- Noms du contrat (10.4 et 2.2).
 local ASSETS_FOLDER = "Assets"
 local BOX_PREFIX = "BOX_"
 local CARRY_ATTACHMENT = "CarryAttachment"
 local TINT = "Tint"
-local BB_CARRY = "BB_Carry"
+local BB_CARRY = "BB_Carry" -- objet volé à un joueur
+local BB_BOX = "BB_Box" -- colis PNJ, sur le rayon comme sur la tête (L-031)
 -- Noms posés par ce service (mêmes noms dans CarryController pour l'attribut et le tag).
 local CARRYING_ATTRIBUTE = "Carrying"
 local SPEED_KEY = "Carry"
@@ -154,13 +171,6 @@ for _, x in { -1, 1 } do
 		end
 	end
 end
-
--- Revenu affiché comme dans le doc (6.1 : « 12,4 K$/s »).
-local INCOME_UNITS: { { Size: number, Suffix: string } } = {
-	{ Size = 1e9, Suffix = "Md" },
-	{ Size = 1e6, Suffix = "M" },
-	{ Size = 1e3, Suffix = "K" },
-}
 
 type Visual = {
 	model: Model,
@@ -480,32 +490,22 @@ local function addHalo(anchor: BasePart, center: CFrame, rarity: Rarity)
 	end
 end
 
-local function formatIncome(income: number): string
-	for _, unit in INCOME_UNITS do
-		if income >= unit.Size then
-			local value = income / unit.Size
-			local text = if value < 100 then string.format("%.1f", value) else string.format("%d", math.floor(value))
-			text = (string.gsub(text, "%.0$", ""))
-			text = (string.gsub(text, "%.", ","))
-			return `{text} {unit.Suffix}$/s`
-		end
-	end
-	return `{math.floor(income)} $/s`
-end
-
 -- Écrit `text` dans l'élément `name` de l'étiquette (TextLabel ou TextButton, cherché parmi les
--- descendants), ou le cache si `text` est nil ; `color` colore le texte. Élément absent : rien
--- (le ContractChecker le signale déjà).
+-- descendants, Contract/Find), ou cache l'élément (tout GuiObject) si `text` est nil ; `color`
+-- colore le texte. Élément absent : rien (le ContractChecker le signale déjà).
 local function fill(gui: Instance, name: string, text: string?, color: Color3?)
 	local element = Find.path(gui, name)
-	if element == nil or not (element:IsA("TextLabel") or element:IsA("TextButton")) then
+	if element == nil or not element:IsA("GuiObject") then
+		return
+	end
+	if text == nil then
+		(element :: GuiObject).Visible = false
+		return
+	end
+	if not (element:IsA("TextLabel") or element:IsA("TextButton")) then
 		return
 	end
 	local label = element :: any
-	if text == nil then
-		label.Visible = false
-		return
-	end
 	label.Text = text
 	label.Visible = true
 	if color then
@@ -513,31 +513,35 @@ local function fill(gui: Instance, name: string, text: string?, color: Color3?)
 	end
 end
 
--- Modèle BB_Carry de Clément (ReplicatedStorage/Assets/UI, contrat 2.2), ou nil.
-local function labelTemplate(): BillboardGui?
+-- Modèle de billboard `name` de Clément (ReplicatedStorage/Assets/UI, contrat 2.2), ou nil.
+local function labelTemplate(name: string): BillboardGui?
 	local folder: Instance? = ReplicatedStorage
-	for _, name in UI.BillboardFolder do
-		folder = if folder then folder:FindFirstChild(name) else nil
+	for _, segment in UI.BillboardFolder do
+		folder = if folder then folder:FindFirstChild(segment) else nil
 	end
-	local template = if folder then folder:FindFirstChild(BB_CARRY) else nil
+	local template = if folder then folder:FindFirstChild(name) else nil
 	if template and template:IsA("BillboardGui") then
 		return template
 	end
 	local path = `ReplicatedStorage/{table.concat(UI.BillboardFolder, "/")}`
 	if template then
-		once(BB_CARRY, `[CarryService] {template:GetFullName()} n'est pas un BillboardGui : étiquette V0 à la place`, true)
+		once(name, `[CarryService] {template:GetFullName()} n'est pas un BillboardGui : étiquette V0 à la place`, true)
 	else
-		once(BB_CARRY, `[CarryService] {BB_CARRY} pas encore livré dans {path} : étiquette V0 (rareté seule)`, false)
+		once(name, `[CarryService] {name} pas encore livré dans {path} : étiquette V0 (rareté seule)`, false)
 	end
 	return nil
 end
 
--- Étiquette V0 en attendant BB_Carry (UI-001) : la rareté seule, à sa couleur.
-local function placeholderLabel(): BillboardGui
+-- Étiquette V0 en attendant BB_Box ou BB_Carry (UI-001) : la rareté seule, à sa couleur.
+-- `maxDistance` : portée (studs), illimitée si nil.
+local function placeholderLabel(maxDistance: number?): BillboardGui
 	local gui = Instance.new("BillboardGui")
 	gui.Size = UDim2.fromScale(4, 0.9)
 	gui.StudsOffsetWorldSpace = Vector3.new(0, 0.7, 0)
 	gui.LightInfluence = 0
+	if maxDistance then
+		gui.MaxDistance = maxDistance
+	end
 	local label = Instance.new("TextLabel")
 	label.Name = "Rarity"
 	label.Size = UDim2.fromScale(1, 1)
@@ -565,23 +569,42 @@ local function labelPoint(model: Model, anchor: BasePart, top: CFrame): Attachme
 	return point
 end
 
--- Étiquette au-dessus du visuel (voir labelPoint).
+-- Étiquette BB_Box d'un colis PNJ (L-031), sur le rayon comme sur la tête : la catégorie de
+-- l'objet (ligne cachée tant qu'elle est vide), la rareté à sa couleur, la mutation cachée. Jamais
+-- le nom ni l'ItemId de l'objet (5.7).
+local function boxLabel(rarity: Rarity, item: Item): BillboardGui
+	local template = labelTemplate(BB_BOX)
+	local gui = if template then template:Clone() :: BillboardGui else placeholderLabel(ShelfBoxes.V0LabelMaxDistance)
+	gui.Name = BB_BOX
+	local category = item.Category
+	fill(gui, "Category", if category ~= nil and category ~= "" then category else nil)
+	fill(gui, "Rarity", rarity.DisplayNameUpper, rarity.Color)
+	fill(gui, "Mutation", nil) -- mutations (Gold, Diamond, Neon) : MAJ 4
+	return gui
+end
+
+-- Étiquette BB_Carry d'un objet volé à un joueur (6.1) : nom, rareté à sa couleur, $/s.
+local function itemLabel(payload: PlayerItemPayload, rarity: Rarity): BillboardGui
+	local template = labelTemplate(BB_CARRY)
+	local gui = if template then template:Clone() :: BillboardGui else placeholderLabel(nil)
+	gui.Name = BB_CARRY
+	fill(gui, "ItemName", Items.ById[payload.ItemId].DisplayName)
+	fill(gui, "Rarity", rarity.DisplayNameUpper, rarity.Color)
+	fill(gui, "Income", Format.income(payload.Income))
+	return gui
+end
+
+-- Étiquette au-dessus du visuel (voir labelPoint) : BB_Box pour un colis PNJ, BB_Carry pour un
+-- objet volé.
 local function addLabel(model: Model, anchor: BasePart, top: CFrame, payload: Payload, rarity: Rarity)
 	local point = labelPoint(model, anchor, top)
-
-	local template = labelTemplate()
-	local gui = if template then template:Clone() :: BillboardGui else placeholderLabel()
-	gui.Name = BB_CARRY
-	gui.Adornee = point
-	fill(gui, "Rarity", rarity.DisplayNameUpper, rarity.Color)
+	local gui: BillboardGui
 	if payload.Kind == "NPCBox" then
-		-- L'objet reste caché jusqu'à l'ouverture (5.6) : le type de colis, pas de $/s.
-		fill(gui, "ItemName", `Colis {Balance.Heist.BoxTiers[payload.Tier].DisplayName}`)
-		fill(gui, "Income", nil)
+		gui = boxLabel(rarity, Items.ById[payload.ItemId])
 	else
-		fill(gui, "ItemName", Items.ById[payload.ItemId].DisplayName)
-		fill(gui, "Income", formatIncome(payload.Income))
+		gui = itemLabel(payload, rarity)
 	end
+	gui.Adornee = point
 	gui.Parent = point
 end
 
@@ -779,6 +802,28 @@ end
 
 function CarryService.OnCarryEnded(listener: EndedListener): () -> ()
 	return subscribe(endedListeners, listener)
+end
+
+-- Étiquette BB_Box d'un colis qui n'est pas porté (colis du rayon, L-031) : voir l'en-tête.
+function CarryService.AttachBoxLabel(model: Model, rarityId: string, itemId: string): BillboardGui?
+	local rarity = Rarities.ById[rarityId]
+	local item = Items.ById[itemId]
+	if rarity == nil or item == nil then
+		warn(debug.traceback(`[CarryService] AttachBoxLabel({model.Name}) : rareté « {rarityId} » ou objet « {itemId} » inconnu`, 2))
+		return nil
+	end
+	local anchor, offset = anchorOf(model)
+	if anchor == nil then
+		return nil
+	end
+	local point = labelPoint(model, anchor, offset * CFrame.new(0, model:GetExtentsSize().Y, 0))
+	local gui = boxLabel(rarity, item)
+	if rarity.Rainbow then
+		CollectionService:AddTag(gui, RAINBOW_TAG) -- l'étiquette seule : le colis garde l'aspect de son type
+	end
+	gui.Adornee = point
+	gui.Parent = point
+	return gui
 end
 
 -- Colis au sol (jalon M3, DEV-048 : prévu, pas encore branché) ---------------------
