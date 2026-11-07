@@ -1,11 +1,11 @@
 # Session « objets » : catalogue v2 VALIDÉ (MOD-014, MOD-026)
 
-**Validé par Clément le 2026-11-07.** 74 objets : 31 repris de la v1, 43 nouveaux, 6 retirés. Données machine : `objets-catalogue-v2.json` (même dossier). **Noms affichés en anglais** (consigne de Clément du 2026-11-07 : tout le texte du jeu est en anglais) ; les identifiants `ITM_<Zone>_<Nom>` ne changent pas.
+**Validé par Clément le 2026-11-07, plus 9 objets du quotidien ajoutés à sa demande le même jour.** 83 objets : 31 repris de la v1, 52 nouveaux, 6 retirés. Données machine : `objets-catalogue-v2.json` (même dossier). **Noms affichés en anglais** (consigne de Clément du 2026-11-07 : tout le texte du jeu est en anglais) ; les identifiants `ITM_<Zone>_<Nom>` ne changent pas.
 
 ## Règles validées
 
 - Zone 1 (Supérette, Kiosque) = zone tuto : 12 Communs (3 par catégorie) ; le Pot de nouilles (Rare) ne sort que du premier colis du tuto.
-- Zones 2 à 6 : 12 objets chacune, 4 catégories ; 3 Communs, 3 Peu communs, 2 Rares, 2 Épiques, 1 Légendaire, 1 Mythique.
+- Zones 2 à 6 : 12 objets chacune au départ (3 Communs, 3 Peu communs, 2 Rares, 2 Épiques, 1 Légendaire, 1 Mythique), plus les 9 ajouts : zone 2 = 16 objets, zone 3 = 14, zone 4 = 15 (nouvelle catégorie Mode / Fashion). Les ajouts sont des versions génériques (pas de marque : pas de DS, PlayStation ni Pokémon).
 - Progression : le moins cher d'une zone vaut entre le Rare et l'Épique de la zone d'avant (comme les revenus). Pas de billets ni de chèques (demande de Clément).
 - Tirage inchangé : rareté selon la table 7.3, puis un objet au hasard parmi ceux de (zone, rareté). Aucun chiffre d'équilibrage ne change.
 - Étiquette `BB_Box` : catégorie + rareté (+ mutation cachée), en anglais. Vélo et Voiture réunis dans « Vehicle » (zone 2). Secret : catégorie affichée « ??? ».
@@ -30,7 +30,10 @@
 | 1 Supérette | Légumes | Vegetable | Brocoli | Broccoli | Commun | `Z1_Brocoli` | nouveau |
 | 1 Supérette | Légumes | Vegetable | Épi de maïs | Corn Cob | Commun | `Z1_EpiDeMais` | nouveau |
 | 2 Londres | Jouet | Toy | Canard en plastique | Rubber Duck | Commun | `Z2_CanardEnPlastique` | v1 |
+| 2 Londres | Jouet | Toy | Ballon de foot | Soccer Ball | Commun | `Z2_BallonDeFoot` | nouveau (ajout du 2026-11-07) |
+| 2 Londres | Jouet | Toy | Booster de cartes | Card Booster Pack | Peu commun | `Z2_BoosterDeCartes` | nouveau (ajout du 2026-11-07) |
 | 2 Londres | Jouet | Toy | Yo-yo | Yo-Yo | Peu commun | `Z2_YoYo` | v1 |
+| 2 Londres | Jouet | Toy | Carte holographique | Holo Card | Épique | `Z2_CarteHolographique` | nouveau (ajout du 2026-11-07) |
 | 2 Londres | Jouet | Toy | Robot jouet | Toy Robot | Épique | `Z2_RobotJouet` | v1 (renaissance 3) |
 | 2 Londres | Jouet | Toy | Figurine holographique | Hologram Figure | Mythique | `Z2_FigurineHolographique` | v1 |
 | 2 Londres | Peluche | Plush | Ours en peluche | Teddy Bear | Commun | `Z2_OursEnPeluche` | nouveau |
@@ -39,6 +42,7 @@
 | 2 Londres | Bonbon | Candy | Barbe à papa | Cotton Candy | Peu commun | `Z2_BarbeAPapa` | nouveau |
 | 2 Londres | Bonbon | Candy | Maison en pain d'épices | Gingerbread House | Rare | `Z2_MaisonEnPainDEpices` | nouveau |
 | 2 Londres | Véhicule | Vehicle | Bus à impériale | Double-Decker Bus | Peu commun | `Z2_BusAImperiale` | nouveau |
+| 2 Londres | Véhicule | Vehicle | Skateboard | Skateboard | Peu commun | `Z2_Skateboard` | nouveau (ajout du 2026-11-07) |
 | 2 Londres | Véhicule | Vehicle | Voiture télécommandée | RC Car | Rare | `Z2_VoitureTelecommandee` | v1 (renaissance 2) |
 | 2 Londres | Véhicule | Vehicle | Train électrique | Toy Train | Épique | `Z2_TrainElectrique` | nouveau |
 | 3 Tokyo | Téléphone | Phone | Écouteurs | Earbuds | Commun | `Z3_Ecouteurs` | v1 |
@@ -52,6 +56,8 @@
 | 3 Tokyo | Télé | TV | Télé géante | Giant TV | Épique | `Z3_TeleGeante` | nouveau |
 | 3 Tokyo | Console | Console | Manette | Game Controller | Peu commun | `Z3_Manette` | v1 |
 | 3 Tokyo | Console | Console | Casque VR | VR Headset | Rare | `Z3_CasqueVr` | nouveau |
+| 3 Tokyo | Console | Console | Console à double écran | Dual-Screen Console | Rare | `Z3_ConsoleADoubleEcran` | nouveau (ajout du 2026-11-07) |
+| 3 Tokyo | Console | Console | Console de salon | Home Console | Épique | `Z3_ConsoleDeSalon` | nouveau (ajout du 2026-11-07) |
 | 3 Tokyo | Console | Console | Console portable | Handheld Console | Épique | `Z3_ConsolePortable` | v1 (renaissance 4) |
 | 4 Los Angeles | Bijou | Jewelry | Bague | Ring | Commun | `Z4_Bague` | v1 |
 | 4 Los Angeles | Bijou | Jewelry | Chaîne en or | Gold Chain | Peu commun | `Z4_ChaineEnOr` | nouveau |
@@ -61,6 +67,9 @@
 | 4 Los Angeles | Montre | Watch | Montre à gousset | Pocket Watch | Rare | `Z4_MontreAGousset` | nouveau |
 | 4 Los Angeles | Horloge | Clock | Pendule dorée | Golden Clock | Commun | `Z4_PenduleDoree` | nouveau |
 | 4 Los Angeles | Horloge | Clock | Horloge de parquet | Grandfather Clock | Épique | `Z4_HorlogeDeParquet` | nouveau |
+| 4 Los Angeles | Mode | Fashion | Parfum | Perfume | Commun | `Z4_Parfum` | nouveau (ajout du 2026-11-07) |
+| 4 Los Angeles | Mode | Fashion | Lunettes de star | Star Sunglasses | Peu commun | `Z4_LunettesDeStar` | nouveau (ajout du 2026-11-07) |
+| 4 Los Angeles | Mode | Fashion | Baskets de collection | Collector Sneakers | Rare | `Z4_BasketsDeCollection` | nouveau (ajout du 2026-11-07) |
 | 4 Los Angeles | Joyau | Jewel | Rubis | Ruby | Peu commun | `Z4_Rubis` | nouveau |
 | 4 Los Angeles | Joyau | Jewel | Diamant brut | Rough Diamond | Épique | `Z4_DiamantBrut` | v1 (renaissance 5) |
 | 4 Los Angeles | Joyau | Jewel | Couronne | Crown | Légendaire | `Z4_Couronne` | v1 (renaissance 6) |
@@ -103,7 +112,7 @@
 ## À faire par la session principale (doc et liaison)
 
 - Doc 10.5 : remplacer le tableau « un objet par rareté et par zone » par ce catalogue (catégories et noms anglais compris) ; 10.6 inchangé (objets test).
-- Backlog : MOD-014 = 13 objets de la zone 1 ; MOD-026 = 60 objets des zones 2 à 6 ; MOD-040 = icônes des 74 objets ; Partie 2 3.4 : compteur de l'index sur 74.
+- Backlog : MOD-014 = 13 objets de la zone 1 ; MOD-026 = 69 objets des zones 2 à 6 ; MOD-040 = icônes des 83 objets ; Partie 2 3.4 : compteur de l'index sur 83.
 - Renaissances (Partie 2, 3.2) : les 10 objets demandés restent au même endroit et à la même rareté.
 - Pour Ironix (`Config/Items.luau`) : nom affiché = colonne Name (EN), catégorie affichée = colonne Category (EN) ; plusieurs objets par (zone, rareté) au lieu d'un seul ; un champ catégorie (id sans accent + nom anglais) ; zone 1 = Communs seulement, sauf le colis du tuto (Pot de nouilles) ; deux ItemId v1 renommés : `Z4_Montre` → `Z4_MontreEnOr`, `Z5_Vase` → `Z5_VaseAncien` ; ItemId retirés : `Z1_TicketAGratterGagnant`, `Z1_HotDogEnOr`, `Z5_ToileAbstraite`, `Z6_LiasseDeBillets`, `Z6_SacDePieces`, `Z6_MalletteDeBillets`.
 - Point de conception à trancher avant la MAJ 3 : le Pot de nouilles (renaissance 1) ne s'obtient qu'une fois, au tuto ; vendu au receleur ou volé, la renaissance 1 devient impossible (sauf à le revoler).
@@ -111,4 +120,4 @@
 
 ## Pour `ouverture-colis`
 
-- Ensembles par (zone, rareté) : 3, 3, 2, 2, 1, 1 en zones 2 à 6 ; 12 Communs en zone 1. Catégorie + rareté désigne presque toujours un seul objet en zones 2 à 6, sauf deux cases à 2 objets (zone 5 Sculpture + Peu commun : Tour Eiffel en bronze, Le Penseur ; zone 6 Trésor + Commun : Lingot d'or, Sceptre royal), et 3 en zone 1. Clément a validé l'étiquette telle quelle.
+- Ensembles par (zone, rareté) : 3, 3, 2, 2, 1, 1 en zones 5 et 6 ; zone 2 : 4, 5, 2, 3, 1, 1 ; zone 3 : 3, 3, 3, 3, 1, 1 ; zone 4 : 4, 4, 3, 2, 1, 1 ; 12 Communs en zone 1. Catégorie + rareté désigne presque toujours un seul objet en zones 2 à 6, sauf deux cases à 2 objets (zone 5 Sculpture + Peu commun : Tour Eiffel en bronze, Le Penseur ; zone 6 Trésor + Commun : Lingot d'or, Sceptre royal), et 3 en zone 1. Clément a validé l'étiquette telle quelle.
