@@ -24,9 +24,12 @@
 --     cerclée d'or, 7.3). Sur le rayon, le colis garde l'aspect de son type (pas teint).
 --   - Contenu tiré à la mise en rayon (L-031), plus à la prise : la rareté selon
 --     ShelfBoxes.ZoneOdds[zone][Tier] s'il existe (zone 1 = zone tuto : Communs seulement, L-033),
---     sinon Rarities.BoxOdds[Tier] (7.3) ; puis l'objet de la zone et de cette rareté
---     (Items.ByZone ; Items.Secrets pour un Secret). Ce contenu ne quitte jamais le serveur avant
---     OpenBox (5.7) : ni le colis ni son étiquette ne portent l'ItemId ou le nom de l'objet.
+--     sinon Rarities.BoxOdds[Tier] (7.3) ; puis un objet au hasard parmi ceux de la zone et de
+--     cette rareté (Items.Pick, catalogue v2 : plusieurs objets par case, jamais un objet
+--     TutorialOnly ; un Secret, toutes zones). Case vide (Config incohérente) : la rareté tirable
+--     la plus proche en dessous, avec un avertissement par case (drawContent). Ce contenu ne quitte
+--     jamais le serveur avant OpenBox (5.7) : ni le colis ni son étiquette ne portent l'ItemId ou
+--     le nom de l'objet.
 --   - Étiquette : chaque colis du rayon porte BB_Box (CarryService.AttachBoxLabel : copie de
 --     ReplicatedStorage/Assets/UI/BB_Box accrochée à son LabelPoint) : catégorie de l'objet (ligne
 --     cachée tant qu'elle est vide), rareté à sa couleur, mutation cachée (MAJ 4). Le colis porté
@@ -47,7 +50,8 @@
 --     (« le chrono ne compte plus pour lui », 5.3 point 5).
 --   - Accroche du tuto (5.11) : StoreHeistService.SetContentOverride(fn), appelée à chaque prise
 --     avant StartCarry. fn peut remplacer, pour ce joueur, le type, la rareté et l'objet du colis
---     qu'il soulève (1er colis Premium, objet Rare : Tutorial.FirstBoxTier et GuaranteedRarity) ;
+--     qu'il soulève (1er colis Premium, objet Rare garanti : Tutorial.FirstBoxTier et
+--     GuaranteedItemId, le Pot de nouilles, qu'aucun tirage ne donne) ;
 --     le BB_Box du colis porté, construit par CarryService d'après le payload, montre alors le
 --     contenu remplacé. Le colis du rayon, lui, garde le sien : s'il revient (porteur rattrapé),
 --     c'est avec son contenu d'origine. TutorialService (pas encore écrit) posera cette accroche.
@@ -115,7 +119,8 @@
 --       ne doit pas yield. drawn = { StoreId, SlotId, Zone, Tier, Rarity, ItemId } (contenu du
 --       colis du rayon). override = nil (rien ne change) ou { Tier?, Rarity?, ItemId? } : Tier =
 --       type du colis porté (clé de Balance.Heist.BoxTiers) ; ItemId = objet (de la zone du
---       magasin, ou un Secret) ; Rarity seule = un objet de cette rareté est tiré dans la zone.
+--       magasin, ou un Secret) ; Rarity seule = un objet de cette rareté est tiré dans la zone
+--       (Items.Pick : jamais un objet TutorialOnly, sans le repli de la mise en rayon).
 --       Un remplacement invalide est ignoré, avec un avertissement. nil retire l'accroche.
 --   StoreHeistService.GetStoreId(model) -> string? et GetStoreModel(storeId) -> Model?
 --       StoreId = l'id de vitrine de WindowService (le nom du modèle, « STORE_Z1_Superette »).
@@ -521,30 +526,46 @@ local function drawRarity(tier: string, zone: number): string?
 	return last -- arrondi des nombres à virgule : la dernière rareté possible
 end
 
--- Objet de la zone et de la rareté (un par case au catalogue 10.5) ; un Secret, toutes zones.
+-- Un objet au hasard parmi ceux de la zone et de la rareté (Items.Pick : plusieurs objets par case
+-- au catalogue v2, jamais un objet TutorialOnly) ; un Secret, toutes zones. nil si la case est vide.
 local function drawItem(zone: number, rarityId: string): string?
-	if rarityId == "Secret" then
-		local secrets = Items.Secrets
-		if #secrets == 0 then
-			return nil
-		end
-		return secrets[random:NextInteger(1, #secrets)].Id
-	end
-	local byZone = Items.ByZone[zone]
-	local item = if byZone then byZone[rarityId] else nil
+	local item = Items.Pick(zone, rarityId :: Rarities.RarityId, random)
 	return if item then item.Id else nil
 end
 
+-- Contenu d'un colis de la mise en rayon. Repli (V0 proposé, absent du doc) si la case (zone,
+-- rareté) tirée est vide : la rareté tirable la plus proche en dessous, avec un avertissement par
+-- case ; rien en dessous : nil (rayon laissé vide, signalé par fillStore). Le catalogue v2 n'a
+-- aucune case vide qu'un tirage puisse atteindre (zone 1 : Communs seulement, ShelfBoxes.ZoneOdds) :
+-- ce repli ne sert qu'à une Config incohérente. La rareté du contenu reste celle de son objet.
 local function drawContent(tier: string, zone: number): Content?
 	local rarity = drawRarity(tier, zone)
 	if rarity == nil then
 		return nil
 	end
 	local itemId = drawItem(zone, rarity)
-	if itemId == nil then
-		return nil
+	if itemId then
+		return { Rarity = rarity, ItemId = itemId }
 	end
-	return { Rarity = rarity, ItemId = itemId }
+	-- Rarities.List va de Commun à Secret : en partant de la fin, la première rareté plus basse qui
+	-- a un objet est la plus proche en dessous.
+	local drawnOrder = Rarities.ById[rarity].Order
+	local list = Rarities.List
+	for index = #list, 1, -1 do
+		local candidate = list[index]
+		if candidate.Order < drawnOrder then
+			local fallbackRarity: string = candidate.Id
+			local fallbackItem = drawItem(zone, fallbackRarity)
+			if fallbackItem then
+				warnOnce(
+					`empty.{zone}.{rarity}`,
+					`aucun objet {rarity} tirable en zone {zone} (Config/Items) : ces colis reçoivent un objet {fallbackRarity} à la place`
+				)
+				return { Rarity = fallbackRarity, ItemId = fallbackItem }
+			end
+		end
+	end
+	return nil
 end
 
 -- Types des colis d'un remplissage, du plus rare au plus courant (1 Luxe, 3 Premium, 6 Standard) :

@@ -52,16 +52,19 @@
 -- Studio : sans « Accès Studio aux services d'API », ProfileStore passe tout seul en mode
 -- mock (rien n'est sauvegardé) ; ce service l'écrit dans la sortie au démarrage.
 --
--- Nouvelle version du schéma (ex. v2 de la Partie 2) :
+-- Versions du schéma : v1 = section 9.5 ; v2 (2026-11-07) = même forme, ItemId du catalogue
+-- d'objets v2 (Config/Items, liaison L-045 ; voir MIGRATIONS[2]).
+-- Nouvelle version du schéma (ex. v3 de la Partie 2) :
 --   1. ajouter les champs dans Types/Profile et dans TEMPLATE ci-dessous ;
---   2. ajouter MIGRATIONS[2] (transforme un profil v1 en v2 ; ce qui est seulement
+--   2. ajouter MIGRATIONS[3] (transforme un profil v2 en v3 ; ce qui est seulement
 --      nouveau est complété depuis TEMPLATE, inutile de le recopier) ;
---   3. passer CURRENT_VERSION à 2.
+--   3. passer CURRENT_VERSION à 3.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
+local Catalog = require(ReplicatedStorage.Shared.Config.Items)
 local ProfileTypes = require(ReplicatedStorage.Shared.Types.Profile)
 
 local Server = (script.Parent :: Instance).Parent :: Instance
@@ -92,13 +95,13 @@ local STORE_NAME = "PlayerData"
 -- reprend une session bloquée sur un autre serveur au bout d'environ 40 s.
 local DEFAULT_WAIT_TIMEOUT = 60
 
--- Version courante du schéma de sauvegarde (section 9.5).
-local CURRENT_VERSION = 1
+-- Version courante du schéma de sauvegarde (section 9.5 ; v2 : catalogue d'objets v2).
+local CURRENT_VERSION = 2
 
 -- Attribut du Player lu par le HUD (même nom dans HudController).
 local CASH_ATTRIBUTE = "Cash"
 
--- Modèle d'un nouveau profil, schéma v1 de la section 9.5. Il sert aussi à compléter
+-- Modèle d'un nouveau profil, schéma v2 (forme de la section 9.5). Il sert aussi à compléter
 -- les champs manquants d'un profil existant (Profile:Reconcile de ProfileStore).
 local TEMPLATE: Data = {
 	Version = CURRENT_VERSION,
@@ -116,15 +119,105 @@ local TEMPLATE: Data = {
 	Purchases = {},
 }
 
--- MIGRATIONS[n] fait passer un profil de la version n - 1 à la version n, en place.
--- Un profil sans Version est traité comme une version 0. La v1 est la première :
--- rien à transformer, Reconcile complète tout depuis TEMPLATE.
--- Exemple pour la Partie 2 :
---   MIGRATIONS[2] = function(data)
---       -- renommer ou convertir un champ v1 ici ; les champs neufs viennent de TEMPLATE
---   end
-local MIGRATIONS: { [number]: (data: any) -> () } = {
-	[1] = function(_data: any) end,
+-- Journal d'une migration : chaque ligne part dans la sortie, préfixée du joueur et de sa clé.
+-- warning = true (orange) pour ce qui change la valeur d'un objet ou reste douteux.
+type MigrationLog = (message: string, warning: boolean?) -> ()
+
+type ItemIdChange = "Same" | "Renamed" | "Retired" | "Unknown" | "Invalid"
+
+-- ItemId v2 d'un ItemId lu dans un profil v1 : inchangé s'il est au catalogue v2, renommé ou
+-- remplacé s'il est dans Catalog.RenamedV1 ou Catalog.RetiredV1, gardé tel quel sinon.
+local function itemIdV2(id: any): (any, ItemIdChange)
+	if type(id) ~= "string" then
+		return id, "Invalid"
+	end
+	if Catalog.ById[id] ~= nil then
+		return id, "Same"
+	end
+	local renamed = Catalog.RenamedV1[id]
+	if renamed then
+		return renamed, "Renamed"
+	end
+	local replacement = Catalog.RetiredV1[id]
+	if replacement then
+		return replacement, "Retired"
+	end
+	return id, "Unknown"
+end
+
+-- Écrit le changement d'un ItemId ; `what` = « objet <uid> » ou « colis de l'établi <n> ».
+-- `change` : un ItemIdChange (typé string : l'ancien solveur l'élargit après les comparaisons).
+local function logItemId(log: MigrationLog, what: string, old: any, new: any, change: string)
+	if change == "Renamed" then
+		log(`{what} : {old} renommé {new} (catalogue v2)`)
+	elseif change == "Retired" then
+		log(`{what} : {old}, retiré du catalogue v2, remplacé par {new}`, true)
+	elseif change == "Unknown" then
+		log(`{what} : ItemId « {old} » inconnu du catalogue v2, gardé tel quel (ignoré par le jeu)`, true)
+	elseif change == "Invalid" then
+		log(`{what} : ItemId absent ou qui n'est pas un texte ({tostring(old)}), gardé tel quel`, true)
+	end
+end
+
+-- v1 → v2 (catalogue d'objets v2, 2026-11-07, liaison L-045). Même forme de profil, seuls les
+-- ItemId changent ; rien n'est effacé et chaque changement est écrit dans la sortie :
+--   - Items[uid].Id : un ItemId renommé prend son nouveau nom (Z4_Montre → Z4_MontreEnOr,
+--     Z5_Vase → Z5_VaseAncien) ; un ItemId retiré devient l'objet qui le remplace (règle dans
+--     Config/Items, RetiredV1 : premier objet tirable de même zone et de même rareté, sinon de la
+--     rareté la plus proche en dessous). L'objet garde son uid, sa source, son heure et sa zone ; sa
+--     rareté suit le catalogue (Items ne la stocke pas) ;
+--   - Boxes[n] : même règle pour ItemId, et Rarity remise à celle de l'objet au catalogue v2, pour
+--     tous les colis (5.7 : la rareté d'un colis est celle de son objet ; plusieurs objets v1 ont
+--     changé de rareté). ReadyAt ne change pas : l'attente promise reste la même ;
+--   - un ItemId inconnu (ni au catalogue v2 ni dans ces tables) est gardé tel quel, avec un
+--     avertissement : les services l'ignorent sans planter (DisplayService, UnboxService).
+local function migrateToV2(data: any, log: MigrationLog)
+	local items = data.Items
+	if type(items) == "table" then
+		for uid, entry in items do
+			if type(entry) ~= "table" then
+				log(`Items[{tostring(uid)}] n'est pas une table : gardé tel quel`, true)
+				continue
+			end
+			local old = entry.Id
+			local new, change = itemIdV2(old)
+			if change == "Renamed" or change == "Retired" then
+				entry.Id = new
+			end
+			logItemId(log, `objet {tostring(uid)}`, old, new, change)
+		end
+	end
+
+	local boxes = data.Boxes
+	if type(boxes) == "table" then
+		for key, box in boxes do
+			local what = `colis de l'établi {tostring(key)}`
+			if type(box) ~= "table" then
+				log(`{what} : n'est pas une table, gardé tel quel`, true)
+				continue
+			end
+			local old = box.ItemId
+			local new, change = itemIdV2(old)
+			if change == "Renamed" or change == "Retired" then
+				box.ItemId = new
+			end
+			logItemId(log, what, old, new, change)
+			local item = if change == "Unknown" or change == "Invalid" then nil else Catalog.ById[new]
+			if item and box.Rarity ~= item.Rarity then
+				log(`{what} : rareté {tostring(box.Rarity)} remise à {item.Rarity}, celle de {item.Id} au catalogue v2`)
+				box.Rarity = item.Rarity
+			end
+		end
+	end
+end
+
+-- MIGRATIONS[n] fait passer un profil de la version n - 1 à la version n, en place, et écrit ce
+-- qu'elle change avec `log`. Un profil sans Version est traité comme une version 0. La v1 est la
+-- première : rien à transformer, Reconcile complète tout depuis TEMPLATE. Les champs seulement
+-- nouveaux d'une version viennent de TEMPLATE, inutile de les recopier.
+local MIGRATIONS: { [number]: (data: any, log: MigrationLog) -> () } = {
+	[1] = function(_data: any, _log: MigrationLog) end,
+	[2] = migrateToV2,
 }
 
 -- Messages d'expulsion, lus par le joueur : en anglais (L-036).
@@ -180,7 +273,7 @@ end
 
 -- Met `data` à la version courante. "TooNew" : profil écrit par une version plus
 -- récente du jeu (serveur pas encore à jour) ; on n'y touche pas.
-local function migrate(data: any): "Ok" | "TooNew"
+local function migrate(data: any, log: MigrationLog): "Ok" | "TooNew"
 	local version = if type(data.Version) == "number" then data.Version else 0
 	if version > CURRENT_VERSION then
 		return "TooNew"
@@ -190,7 +283,9 @@ local function migrate(data: any): "Ok" | "TooNew"
 		if step == nil then
 			error(`migration vers la v{target} absente`)
 		end
-		step(data)
+		step(data, function(message: string, warning: boolean?)
+			log(`migration v{target} : {message}`, warning)
+		end)
 		data.Version = target
 	end
 	return "Ok"
@@ -235,7 +330,15 @@ local function loadProfile(player: Player)
 
 	-- Migration sur une copie : en cas d'erreur, la sauvegarde d'origine reste intacte.
 	local migrated = deepCopy(profile.Data)
-	local migrateOk, status = pcall(migrate, migrated)
+	local function migrationLog(message: string, warning: boolean?)
+		local line = `[DataService] {player.Name} ({key}) : {message}`
+		if warning then
+			warn(line)
+		else
+			print(line)
+		end
+	end
+	local migrateOk, status = pcall(migrate, migrated, migrationLog)
 	if not migrateOk then
 		warn(`[DataService] {player.Name} ({key}) : échec de la migration : {status}`)
 		profile:EndSession()

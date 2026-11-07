@@ -41,6 +41,11 @@ local Tutorial = {
 	GuardSpeed = 12, -- vigile lent du tuto
 	OpenDelay = 5, -- attente raccourcie du premier colis
 	GuaranteedRarity = "Rare" :: Rarities.RarityId,
+	-- Objet du premier colis (catalogue v2, L-045) : le Pot de nouilles, Rare de la zone 1, marqué
+	-- TutorialOnly dans Config/Items : il ne sort d'aucun tirage, Items.Pick(1, "Rare") ne le donne
+	-- pas. TutorialService le passe en ItemId à StoreHeistService.SetContentOverride (une Rarity
+	-- seule tirerait dans la zone, où aucun Rare n'est tirable).
+	GuaranteedItemId = "Z1_PotDeNouilles",
 
 	-- Textes écrits dans le doc, traduits en anglais (L-036)
 	ShieldEndMessage = "Your shop can now be robbed: keep your bat close!",
