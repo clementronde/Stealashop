@@ -634,6 +634,7 @@ Contrôleurs client : Input, Hit, Shatter, Carry, Unbox (caméra de révélation
 | --- | --- | --- |
 | HitWindow | windowId | Outil équipé, distance ≤ 10 studs, ≤ 10 coups/s, vitrine cassable (pas de bouclier ni d'immunité) |
 | GrabItem | slotId | Magasin ouvert, joueur dans le volume `Bounds`, mains vides, distance ≤ 8 studs, durée de maintien respectée |
+| StealItem | plotIndex, slotIndex | Porte de la boutique cassée depuis moins de 10 s, pas la sienne, mains vides, aucune protection (bouclier débutant, immunité de 120 s, anti-racket), une boutique à soi avec de la place, joueur dans `Bounds` à ≤ 8 studs du présentoir, objet exposé et pas à l'abri (coffre-fort), maintien de 1 s (deux appels), ≤ 5 appels/s (ajouté le 2026-11-08, vol entre joueurs) |
 | PlaceBox | benchIndex | Sur sa parcelle, porte un colis, établi libre |
 | OpenBox | benchIndex | Attente écoulée (horodatage serveur), joueur sur sa parcelle ; le serveur renvoie alors l'objet révélé |
 | PlaceItem | itemUid, slotIndex | Possède l'objet, présentoir débloqué et libre |
