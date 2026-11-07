@@ -382,6 +382,14 @@ end
 -- Vrais magasins de Clément gardés à la place des magasins gris (rempli par buildCorridor)
 local kept: { string } = {}
 
+-- Aspect de la `Street` de chaque tronçon, gardé d'une génération à l'autre : Clément la
+-- recolore à chaque zone habillée (asphalte et MaterialVariant `Studs`, liaisons L-035, L-037
+-- et L-038). Relevé par main() avant de détruire l'ancienne greybox, remis par buildCorridor.
+-- Pour revenir aux couleurs de la greybox : supprimer Workspace/Greybox avant de la lancer.
+type StreetLook = { Color: Color3, Material: Enum.Material, MaterialVariant: string }
+local streetLooks: { [string]: StreetLook } = {}
+local keptLooks: { string } = {}
+
 -- Le vrai magasin de Clément posé dans Workspace/Map (L-029), ou nil. Quand il
 -- existe, la greybox ne construit pas le magasin gris du même nom.
 local function realStore(name: string): Model?
@@ -746,7 +754,14 @@ local function buildCorridor(root: Instance)
 		zf.Name = if zone then "Zone_" .. zi else "Entry"
 		local geo = Instance.new("Folder")
 		geo.Name = "Ground"
-		box(geo, "Street", I, V(x0, -2, -hs), V(x1, 0, hs), Color3.fromRGB(80, 80, 85):Lerp(color, 0.15))
+		local street = box(geo, "Street", I, V(x0, -2, -hs), V(x1, 0, hs), Color3.fromRGB(80, 80, 85):Lerp(color, 0.15))
+		local look = streetLooks[zf.Name]
+		if look then
+			street.Color = look.Color
+			street.Material = look.Material
+			street.MaterialVariant = look.MaterialVariant
+			table.insert(keptLooks, zf.Name)
+		end
 		box(geo, "Side_N", I, V(x0, -2, hs), V(x1, 0, sideOuter), tint(color, 0.25))
 		box(geo, "Side_S", I, V(x0, -2, -sideOuter), V(x1, 0, -hs), tint(color, 0.25))
 		-- Façades de remplissage entre les magasins : le couloir est fermé sur les
@@ -922,6 +937,9 @@ local function report(root: Instance): string
 	if #kept > 0 then
 		out("  Vrais magasins gardés dans Workspace/Map (L-029) : " .. table.concat(kept, ", "))
 	end
+	if #keptLooks > 0 then
+		out("  Aspect des rues gardé (L-035, L-037, L-038) : " .. table.concat(keptLooks, ", "))
+	end
 
 	local safe = tagged(root, "SafeZone")[1]
 	local line = safe and safe:FindFirstChild("SafeLine") :: BasePart?
@@ -1006,6 +1024,20 @@ local function main(): string
 	local removed = {}
 	local old = Workspace:FindFirstChild("Greybox")
 	if old then
+		local corridor = old:FindFirstChild("Corridor")
+		if corridor then
+			for _, section in corridor:GetChildren() do
+				local ground = section:FindFirstChild("Ground")
+				local street = if ground then ground:FindFirstChild("Street") else nil
+				if street and street:IsA("BasePart") then
+					streetLooks[section.Name] = {
+						Color = street.Color,
+						Material = street.Material,
+						MaterialVariant = street.MaterialVariant,
+					}
+				end
+			end
+		end
 		old:Destroy()
 	end
 	if SUPPRIMER_DEFAUTS then
