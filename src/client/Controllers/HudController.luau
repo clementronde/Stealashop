@@ -31,12 +31,25 @@
 --     (« BASE ») n'est jamais touché.
 --   - Cache les éléments des fonctions pas encore livrées (Config/Features) : RobuxShopButton,
 --     IndexButton, RebirthButton, NightCountdown, ReturnBaseButton.
+--   - Revenu retenu pendant l'ouverture d'un colis (vague 8) : le serveur expose l'objet, et
+--     l'attribut Income monte, dès l'ouverture, plusieurs secondes avant que l'écran UI_Unbox
+--     révèle l'objet. UnboxController retient donc Income (HoldIncome) à l'arrivée d'UnboxReveal et
+--     le relâche quand l'écran a montré le revenu de l'objet. Pendant ce temps, Income garde la
+--     valeur d'avant l'objet ; rien ne change côté serveur (argent et sauvegarde). Plusieurs
+--     ouvertures d'affilée : chacune montre la hausse de son objet, dans l'ordre.
 -- Les éléments sont cherchés par leur nom parmi les descendants de l'écran (Contract/Find) : les
 -- cadres autour (LeftRail, StatsPanel…) sont décoratifs et peuvent changer. Seuls les textes, la
 -- visibilité et la largeur de Fill sont touchés (2.2, « Libre pour Ironix »), jamais un style.
 -- Roblox copie UI_HUD de StarterGui dans PlayerGui ; un écran recréé (ResetOnSpawn) est rebranché.
 --
--- API (client) : aucune.
+-- API (client) :
+--   HudController.HoldIncome() -> relâcher
+--       Income garde la valeur que ce contrôleur connaît à cet instant (la dernière qu'il a vue
+--       arriver, même si la suivante est déjà posée sur le Player sans qu'il l'ait encore traitée)
+--       jusqu'à l'appel de `relâcher` (sans effet la deuxième fois). Plusieurs retenues : Income
+--       montre la valeur gardée par la plus ancienne encore active, puis, quand toutes sont
+--       relâchées, la valeur réelle. Une retenue oubliée se relâche toute seule au bout de
+--       MAX_INCOME_HOLD secondes.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -93,6 +106,19 @@ local STATS: { Stat } = {
 	{ Attribute = "Strength", Element = "Strength", Write = Format.short },
 	{ Attribute = "Damage", Element = "Damage", Write = Format.short },
 }
+
+local INCOME_ATTRIBUTE = "Income" -- posé par DisplayService ; retenu par HoldIncome
+local INCOME_STAT: Stat = STATS[2]
+for _, stat in STATS do
+	if stat.Attribute == INCOME_ATTRIBUTE then
+		INCOME_STAT = stat
+	end
+end
+
+-- V0 proposé, absent du doc : durée max (s) d'une retenue du revenu, filet de sécurité si elle
+-- n'était jamais relâchée. Une ouverture montre son revenu en moins de 10 s ; une file de trois ou
+-- quatre ouvertures d'affilée tient dans ce délai.
+local MAX_INCOME_HOLD = 60
 
 -- Éléments cachés tant que leur fonction n'existe pas (Config/Features, liaison L-026).
 local GATED: { { Element: string, Enabled: boolean } } = {
@@ -151,6 +177,12 @@ local heartbeatOn = false
 local heartbeatSound: Sound? = nil
 local warned: { [string]: boolean } = {}
 
+-- Retenues du revenu (HoldIncome), dans l'ordre de création.
+type IncomeHold = { base: any, expiresAt: number }
+local incomeHolds: { IncomeHold } = {}
+local incomeSeen: any = nil -- dernière valeur d'Income traitée par ce contrôleur
+local incomeTracked = false -- incomeSeen suit l'attribut (Start est passé)
+
 local function warnOnce(key: string, message: string)
 	if IS_STUDIO and not warned[key] then
 		warned[key] = true
@@ -187,14 +219,64 @@ end
 
 -- Valeurs -------------------------------------------------------------------------------------
 
+-- Dernière valeur d'Income connue de ce contrôleur (avant Start : celle du Player).
+local function latestIncome(): any
+	return if incomeTracked then incomeSeen else localPlayer:GetAttribute(INCOME_ATTRIBUTE)
+end
+
+-- Valeur d'Income à afficher : celle de la plus ancienne retenue active, sinon la dernière connue.
+local function shownIncome(): any
+	local hold = incomeHolds[1]
+	if hold then
+		return hold.base
+	end
+	return latestIncome()
+end
+
 local function writeStat(stat: Stat)
 	local current = hud
 	local label = if current then current.stats[stat] else nil
 	if label == nil then
 		return
 	end
-	local value = localPlayer:GetAttribute(stat.Attribute)
+	local value = if stat == INCOME_STAT then shownIncome() else localPlayer:GetAttribute(stat.Attribute)
 	label.Text = if type(value) == "number" then stat.Write(value) else UNKNOWN_TEXT
+end
+
+local function releaseHold(hold: IncomeHold)
+	local index = table.find(incomeHolds, hold)
+	if index == nil then
+		return -- déjà relâchée (ou expirée)
+	end
+	table.remove(incomeHolds, index)
+	writeStat(INCOME_STAT)
+end
+
+-- Filet de sécurité : relâche les retenues trop vieilles.
+local function expireHolds()
+	if #incomeHolds == 0 then
+		return
+	end
+	local now = os.clock()
+	local expired = false
+	for index = #incomeHolds, 1, -1 do
+		if incomeHolds[index].expiresAt <= now then
+			table.remove(incomeHolds, index)
+			expired = true
+		end
+	end
+	if expired then
+		warnOnce("incomeHold", `[HUD] revenu retenu plus de {MAX_INCOME_HOLD} s : relâché (UnboxController ne l'a pas fait)`)
+		writeStat(INCOME_STAT)
+	end
+end
+
+function HudController.HoldIncome(): () -> ()
+	local hold: IncomeHold = { base = latestIncome(), expiresAt = os.clock() + MAX_INCOME_HOLD }
+	table.insert(incomeHolds, hold)
+	return function()
+		releaseHold(hold)
+	end
 end
 
 -- Chrono du braquage --------------------------------------------------------------------------
@@ -437,6 +519,7 @@ local function bind(gui: ScreenGui)
 end
 
 local function update()
+	expireHolds()
 	local api = chase
 	setHeartbeat(api ~= nil and api.IsClose())
 	local current = hud
@@ -463,8 +546,13 @@ function HudController.Start()
 		end
 	end)
 
+	incomeSeen = localPlayer:GetAttribute(INCOME_ATTRIBUTE)
+	incomeTracked = true
 	for _, stat in STATS do
 		localPlayer:GetAttributeChangedSignal(stat.Attribute):Connect(function()
+			if stat == INCOME_STAT then
+				incomeSeen = localPlayer:GetAttribute(INCOME_ATTRIBUTE)
+			end
 			writeStat(stat)
 		end)
 	end
