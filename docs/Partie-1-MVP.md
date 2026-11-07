@@ -754,6 +754,8 @@ Ces noms sont lus par le code : un nom faux = une fonctionnalité qui ne marche 
 | Tapis et banc | `UsePoint` (Attachment où se place le perso), `Belt` (surface qui défile, tapis seulement) |
 | Accessoire `ACC_*` | Accessory Roblox standard avec son attachment de corps (`HatAttachment`, `BodyFrontAttachment`, etc.) |
 | Modèle animé (vigile, vigile de nuit, vendeur) | Humanoid sur rig R15 standard avec un Animator dans le Humanoid, aucun script, dossier Animations contenant les objets Animation nommés selon la section 2.4 (Idle, Walk, Run, Catch, Tired pour un vigile ; Idle, Wave pour un vendeur) |
+| Camion de l'événement `ENV_Event_Truck` (liaison L-049) | `Root` (Part invisible en PrimaryPart, pivot en bas au centre ; elle reste en place quand les pièces partent), `Pieces` (Model avec `Piece_01` à `Piece_20` : le camion intact, ce sont ces pièces qui volent à l'explosion), les Attachments `BoxSpawn_01` à `BoxSpawn_12` (d'où sortent les colis), `BlastPoint` (centre de l'explosion) et `HealthBarPoint` (barre de vie), `OutlineHighlight` (Highlight du contour) ; aucun script ; cabine côté −Z |
+| Traînée des colis `FX_BoxTrail` (liaison L-049) | `Trail` (Trail), `TrailTop` et `TrailBottom` (ses deux Attachments) ; le code les copie sur chaque colis qui vole |
 
 Les points `Shutter`, `ShutterButton`, `TrapSlot_xx` et `VaultSlot_02` / `_03` de la parcelle servent en Partie 2 : on les place dès le MVP pour ne pas remodeler la parcelle plus tard. Pour les auras et les trails, Clément livre des textures PNG sur fond transparent (`FX_Aura_<Nom>`, `FX_Trail_<Nom>`, 256 × 256) et une couleur principale par palier.
 
