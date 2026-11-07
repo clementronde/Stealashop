@@ -13,7 +13,7 @@
 -- Les fonctions de façade des blocs A travaillent à l'échelle 1 : le constructeur agrandit ensuite tout le magasin (scale).
 -- Règles : aucun script laissé dans la map ; noms du contrat 10.4 (Window, WindowFractured, Shutter, Door,
 -- Bounds, GuardSpawn, SignPart, ShelfSlot_xx) jamais réutilisés pour le décor ; aucune marque réelle ;
--- tous les textes visibles en anglais.
+-- tous les textes visibles en anglais ; partie lumineuse des lampadaires taggée NightLight, livrée éteinte (L-043).
 
 -- Bloc A1 : fonctions communes et façade de la banque.
 do
@@ -582,14 +582,17 @@ do
 	-- 2) Mobilier des trottoirs, construit à l'échelle 1 puis agrandi (hors des devantures des magasins, x 630..690)
 	local D = fresh("Props")
 	local poleC = rgb(64, 68, 72)
-	-- Lampadaire à crosse : bras et tête au-dessus de la chaussée, sans collision
+	-- Lampadaire à crosse : bras et tête au-dessus de la chaussée, sans collision. Sa partie lumineuse porte le tag
+	-- NightLight (L-043) et est livrée éteinte (pas de Neon, lumière coupée) : le code l'allume la nuit.
 	local function lamp(m, a)
 		Bx(m, a, "Base", -0.5, 0.3, -0.5, 0.5, 1.4, 0.5, poleC, {})
 		vcyl(m, a, "Pole", 0, 1.4, 12.3, 0, 0.4, poleC, {})
 		Bx(m, a, "Arm", -0.15, 12.0, 0, 0.15, 12.3, -3.2, poleC, { decor = true })
 		Bx(m, a, "Head", -0.45, 11.75, -2.6, 0.45, 12.35, -4.0, rgb(150, 156, 162), { decor = true })
-		local glow = Bx(m, a, "Glow", -0.35, 11.62, -2.75, 0.35, 11.75, -3.85, rgb(255, 226, 170), { mat = Enum.Material.Neon, decor = true, noShadow = true })
-		local pl = Instance.new("PointLight"); pl.Color = rgb(255, 214, 160); pl.Range = 24 * K; pl.Brightness = 1.1; pl.Shadows = false; pl.Parent = glow
+		local glow = Bx(m, a, "Glow", -0.35, 11.62, -2.75, 0.35, 11.75, -3.85, rgb(255, 226, 170), { decor = true, noShadow = true })
+		game:GetService("CollectionService"):AddTag(glow, "NightLight")
+		local pl = Instance.new("PointLight"); pl.Color = rgb(255, 214, 160); pl.Range = 24 * K; pl.Brightness = 1.1; pl.Shadows = false
+		pl.Enabled = false; pl.Parent = glow
 	end
 	for tag, xs in { N = { 605.5, 627, 694.5 }, S = { 587, 628.5, 696.5 } } do
 		local s = tag == "N" and 1 or -1

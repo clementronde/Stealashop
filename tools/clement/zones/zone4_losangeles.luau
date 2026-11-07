@@ -15,6 +15,7 @@
 -- chemins du vigile).
 
 local rgb = Color3.fromRGB
+local CollectionService = game:GetService("CollectionService")
 local Store = _G.ClaudeStore
 assert(Store, "charger d'abord tools/clement/store_builder.luau")
 
@@ -723,7 +724,9 @@ do
 		end
 	end
 
-	-- Réverbères « tête de cobra » : tête au-dessus de la bordure, jamais au-dessus de la chaussée
+	-- Réverbères « tête de cobra » : tête au-dessus de la bordure, jamais au-dessus de la chaussée.
+	-- La lentille (Lens) porte le tag NightLight (liaison L-043, point 3) et elle est livrée éteinte : en verre,
+	-- lumière coupée. SkyController l'allume la nuit (Neon, lumières activées), puis rend l'état livré au jour.
 	local D = folder("Props")
 	local poleC, headC = rgb(118, 122, 128), rgb(70, 74, 80)
 	for tag, xs in { N = { 326.5, 386.5, 408.5, 424.5 }, S = { 321.5, 401, 419.5 } } do
@@ -735,8 +738,10 @@ do
 			vcyl(m, "Pole", x, 1.8, 21.3, z, 0.63, poleC)
 			Bx(m, W, "Arm", x - 0.18, 20.55, s * 23.85, x + 0.18, 20.925, z, poleC, { decor = true })
 			Bx(m, W, "Head", x - 0.675, 20.325, s * 22.575, x + 0.675, 21.075, s * 24.9, headC, { decor = true })
-			local lens = Bx(m, W, "Lens", x - 0.48, 20.22, s * 22.8, x + 0.48, 20.325, s * 24.675, rgb(255, 238, 205), { mat = NEON, decor = true, noShadow = true })
-			local pl = Instance.new("PointLight"); pl.Color = rgb(255, 222, 170); pl.Range = 39; pl.Brightness = 1.1; pl.Shadows = false; pl.Parent = lens
+			local lens = Bx(m, W, "Lens", x - 0.48, 20.22, s * 22.8, x + 0.48, 20.325, s * 24.675, rgb(255, 238, 205), { mat = GLASS, decor = true, noShadow = true })
+			local pl = Instance.new("PointLight"); pl.Color = rgb(255, 222, 170); pl.Range = 39; pl.Brightness = 1.1; pl.Shadows = false
+			pl.Enabled = false; pl.Parent = lens
+			CollectionService:AddTag(lens, "NightLight")
 		end
 	end
 
@@ -1246,6 +1251,16 @@ do
 	table.insert(report, string.format("Chaussée z -22.5..22.5 jusqu'à 18 studs : %s ; hors emprise : %s ; chevauchements avec le greybox : %s ; rue %d pièces, quartier %d pièces ; scripts dans Map/Zone_4 : %d ; émetteurs %d (%d particules/s) ; point le plus haut %.0f studs (%s) ; produits : bijouterie %d, horlogerie %d",
 		#onRoad == 0 and "libre" or table.concat(onRoad, ", "), #outside == 0 and "rien" or table.concat(outside, ", "),
 		#clash == 0 and "aucun" or table.concat(clash, ", "), nStreet, nDistrict, scriptsMap, emitters, rate, top, topName, bijN, horN))
+	-- lampadaires de nuit (L-043) : tag NightLight sur des pièces livrées éteintes (pas de Neon, lumières coupées)
+	local lamps, lampNeon, lampLit = 0, 0, 0
+	for _, inst in CS:GetTagged("NightLight") do
+		if inst:IsDescendantOf(zoneFolder) and inst:IsA("BasePart") then
+			lamps += 1
+			if inst.Material == Enum.Material.Neon then lampNeon += 1 end
+			for _, d in inst:GetDescendants() do if d:IsA("Light") and d.Enabled then lampLit += 1 end end
+		end
+	end
+	table.insert(report, string.format("Lampadaires NightLight : %d, en Neon %d, lumières allumées %d", lamps, lampNeon, lampLit))
 end
 
 return table.concat(report, "\n")

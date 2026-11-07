@@ -12,6 +12,7 @@
 -- Règles : aucun script laissé dans la map ; noms du contrat (10.4) jamais réutilisés pour le décor ; rien hors de x 100..190.
 
 local rgb = Color3.fromRGB
+local CS = game:GetService("CollectionService")
 local Store = _G.ClaudeStore
 assert(Store, "charger d'abord tools/clement/store_builder.luau")
 
@@ -405,6 +406,8 @@ end
 
 -- 3b) Mobilier de rue (ancienne taille, puis ×1.5) : réverbères à paniers de fleurs, cabines, boîte aux lettres,
 --     balises du passage piéton, arrêt de bus ; guirlandes de fanions rouges, blancs et bleus le long des trottoirs.
+--     Lanterne des réverbères (Glow) taggée NightLight (L-043), livrée éteinte : verre, PointLight coupée ; le code
+--     (SkyController) la passe en Neon et l'allume la nuit. Balises orange et lanternes des façades restent allumées.
 do
 	local D = group("Props")
 	local function lamp(name, x, z)
@@ -414,10 +417,12 @@ do
 		vcyl(m, "Collar", 0, 3.7, 3.95, 0, 0.5, gold, { decor = true })
 		Bx(m, O, "Arm", -0.7, 7.3, -0.08, 0.7, 7.45, 0.08, iron, { decor = true })
 		Bx(m, O, "LampPlate", -0.4, 8.5, -0.4, 0.4, 8.65, 0.4, iron, { decor = true })
-		local glow = Bx(m, O, "Glow", -0.31, 8.65, -0.31, 0.31, 9.75, 0.31, rgb(255, 222, 160), { mat = Neon, decor = true, noShadow = true })
+		local glow = Bx(m, O, "Glow", -0.31, 8.65, -0.31, 0.31, 9.75, 0.31, rgb(255, 222, 160), { mat = Glass, decor = true, noShadow = true })
 		Bx(m, O, "Cap", -0.45, 9.75, -0.45, 0.45, 10.0, 0.45, iron, { decor = true })
 		Bx(m, O, "Finial", -0.12, 10.0, -0.12, 0.12, 10.35, 0.12, iron, { decor = true })
-		local pl = Instance.new("PointLight"); pl.Color = rgb(255, 214, 150); pl.Range = 22; pl.Brightness = 1.1; pl.Shadows = false; pl.Parent = glow
+		local pl = Instance.new("PointLight"); pl.Color = rgb(255, 214, 150); pl.Range = 22; pl.Brightness = 1.1; pl.Shadows = false
+		pl.Enabled = false; pl.Parent = glow
+		CS:AddTag(glow, "NightLight")
 		for i, sx in { -0.62, 0.62 } do
 			Bx(m, O, "BasketChain_" .. i, sx - 0.02, 6.4, -0.02, sx + 0.02, 7.3, 0.02, iron, { decor = true, noShadow = true })
 			P(m, "Basket_" .. i, CFrame.new(sx, 6.1, 0), Vector3.new(0.7, 0.7, 0.7), rgb(46, 110, 56), { shape = Ball, decor = true })
@@ -846,7 +851,6 @@ end
 -- 4) Vérification (mode Edit) : contrat, chaussée, emprise, chevauchements solides, chemins du vigile ---------------------
 local report = { string.format("Zone 2 Londres : jouets %d produits, confiserie %d produits", toyN, candyN), gateInfo }
 local function add(s) table.insert(report, s) end
-local CS = game:GetService("CollectionService")
 local function aabb(p)
 	local cf, s = p.CFrame, p.Size
 	local e = cf:VectorToWorldSpace(Vector3.new(s.X, 0, 0)):Abs() + cf:VectorToWorldSpace(Vector3.new(0, s.Y, 0)):Abs() + cf:VectorToWorldSpace(Vector3.new(0, 0, s.Z)):Abs()
@@ -892,6 +896,16 @@ do
 	add(string.format("Street_Londres : %d pièces ; scripts dans Map/Zone_2 : %d ; hors emprise : %d%s ; sur la chaussée : %d%s",
 		nDecor, nScripts, #outside, (#outside > 0) and (" (" .. table.concat(outside, ", ", 1, math.min(#outside, 5)) .. ")") or "",
 		#onRoad, (#onRoad > 0) and (" (" .. table.concat(onRoad, ", ", 1, math.min(#onRoad, 8)) .. ")") or ""))
+	local nLamp, lit = 0, 0
+	for _, p in CS:GetTagged("NightLight") do
+		if p:IsDescendantOf(Z) then
+			nLamp += 1
+			local on = (not p:IsA("BasePart")) or p.Material == Enum.Material.Neon
+			for _, l in p:GetDescendants() do if l:IsA("Light") and l.Enabled then on = true end end
+			if on then lit += 1 end
+		end
+	end
+	add(string.format("NightLight : %d lanternes de réverbère taggées, %d livrée(s) allumée(s)", nLamp, lit))
 end
 do
 	local params = OverlapParams.new()

@@ -443,6 +443,8 @@ local function buildStore(spec)
 	-- 8) volume intérieur
 	local bounds = B("Bounds", -19, 0.3, -23, 19, 9.9, 23, rgb(255, 255, 255), { studs = false, decor = true, T = 1, noShadow = true })
 	bounds.CanQuery = false
+	-- InfoPoint (L-044) : où flotte le panneau BB_StoreInfo, au-dessus de l'enseigne, devant la façade
+	att("InfoPoint", bounds, 0, sy1 + 0.8, -25.5, Vector3.new(0, 0, -1))
 
 	-- 9) style de la zone
 	if spec.facade then

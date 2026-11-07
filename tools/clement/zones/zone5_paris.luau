@@ -554,6 +554,13 @@ task.wait()
 --    140..270). ScaleTo n'agrandit pas la portée des lumières : elle est multipliée à part.
 do
 	local K = SCALE
+	local CS = game:GetService("CollectionService")
+	-- Lanternes des réverbères et des candélabres (L-043) : tag NightLight, livrées éteintes (verre, lumière coupée) ;
+	-- le code les passe en Neon et allume leur lumière la nuit. Ni les enseignes ni les néons décoratifs n'ont ce tag.
+	local function nightLantern(glow, light)
+		CS:AddTag(glow, "NightLight")
+		if light then light.Enabled = false end
+	end
 	local XC = 500
 	local XA, XB = XC - 70 / K, XC + 80 / K       -- 453,33 et 553,33 : les bouts de la zone (monde 430 et 580)
 	local XH, XE = XA + 1.1, XB - 1.1             -- immeubles sur rue, à l'écart des piliers des arches
@@ -619,9 +626,10 @@ do
 	local function lampS(parent, name, x, z)
 		local m = Instance.new("Model"); m.Name = name; m.Parent = parent
 		vcyl(m, "Pole", x, 0, 8.6, z, 0.34, green, { decor = true })
-		local glow = Bx(m, W, "Lantern", x - 0.36, 8.6, z - 0.36, x + 0.36, 9.7, z + 0.36, rgb(255, 222, 160), { mat = Enum.Material.Neon, decor = true, noShadow = true })
+		local glow = Bx(m, W, "Lantern", x - 0.36, 8.6, z - 0.36, x + 0.36, 9.7, z + 0.36, rgb(255, 222, 160), { mat = Enum.Material.Glass, decor = true, noShadow = true })
 		Bx(m, W, "LanternRoof", x - 0.55, 9.7, z - 0.55, x + 0.55, 10.0, z + 0.55, snowy(SNOW, green), { decor = true })
 		local pl = Instance.new("PointLight"); pl.Color = rgb(255, 214, 150); pl.Range = 18; pl.Brightness = 0.9; pl.Shadows = false; pl.Parent = glow
+		nightLantern(glow, pl)
 	end
 	local function treeS(parent, name, x, z, sc)
 		sc = sc or 1
@@ -763,8 +771,9 @@ do
 		vcyl(m, "Pole", x, 1.4, 8.7, z, 0.34, green)
 		vcyl(m, "Collar", x, 3.1, 3.4, z, 0.55, green, { decor = true })
 		Bx(m, W, "Crown", x - 0.42, 8.7, z - 0.42, x + 0.42, 8.95, z + 0.42, green, { decor = true })
-		local glow = Bx(m, W, "Lantern", x - 0.36, 8.95, z - 0.36, x + 0.36, 10.1, z + 0.36, rgb(255, 222, 160), { mat = Enum.Material.Neon, decor = true, noShadow = true })
+		local glow = Bx(m, W, "Lantern", x - 0.36, 8.95, z - 0.36, x + 0.36, 10.1, z + 0.36, rgb(255, 222, 160), { mat = Enum.Material.Glass, decor = true, noShadow = true })
 		local pl = Instance.new("PointLight"); pl.Color = rgb(255, 214, 150); pl.Range = 22; pl.Brightness = 1.1; pl.Shadows = false; pl.Parent = glow
+		nightLantern(glow, pl)
 		Bx(m, W, "LanternRoof", x - 0.55, 10.1, z - 0.55, x + 0.55, 10.4, z + 0.55, snowy(SNOW, green), { decor = true })
 		Bx(m, W, "Finial", x - 0.1, 10.4, z - 0.1, x + 0.1, 10.9, z + 0.1, GOLD, { decor = true })
 	end
@@ -1101,11 +1110,13 @@ do
 		vcyl(m, "Pole", x, 1.9, 10.6, z, 0.5, green)
 		Bx(m, W, "Arms", x - 2.1, 10.2, z - 0.13, x + 2.1, 10.45, z + 0.13, green, { decor = true })
 		for k, l in { { x - 1.95, 10.45 }, { x + 1.95, 10.45 }, { x, 10.6 } } do
-			local glow = Bx(m, W, "Lantern_" .. k, l[1] - 0.38, l[2], z - 0.38, l[1] + 0.38, l[2] + 1.15, z + 0.38, rgb(255, 222, 160), { mat = Enum.Material.Neon, decor = true, noShadow = true })
+			local glow = Bx(m, W, "Lantern_" .. k, l[1] - 0.38, l[2], z - 0.38, l[1] + 0.38, l[2] + 1.15, z + 0.38, rgb(255, 222, 160), { mat = Enum.Material.Glass, decor = true, noShadow = true })
 			Bx(m, W, "LanternRoof_" .. k, l[1] - 0.55, l[2] + 1.15, z - 0.55, l[1] + 0.55, l[2] + 1.45, z + 0.55, snowy(SNOW, green), { decor = true })
+			local pl = nil
 			if k == 3 then
-				local pl = Instance.new("PointLight"); pl.Color = rgb(255, 214, 150); pl.Range = 24; pl.Brightness = 1.2; pl.Shadows = false; pl.Parent = glow
+				pl = Instance.new("PointLight"); pl.Color = rgb(255, 214, 150); pl.Range = 24; pl.Brightness = 1.2; pl.Shadows = false; pl.Parent = glow
 			end
+			nightLantern(glow, pl)
 		end
 		Bx(m, W, "Finial", x - 0.1, 12.05, z - 0.1, x + 0.1, 12.6, z + 0.1, GOLD, { decor = true })
 	end
@@ -1309,6 +1320,16 @@ for _, p in workspace:GetPartBoundsInBox(CFrame.new(505, 7.6, 0), Vector3.new(15
 end
 table.insert(lines, string.format("Street_Paris : %d pièces (%s), %d lignes de treillis (Beams), %d émetteurs de neige, %d lumières ; chaussée %s",
 	nStreet, table.concat(per, ", "), nBeams, nEmit, nLights, (#blocking == 0) and "libre" or ("encombrée : " .. table.concat(blocking, ", "))))
+-- lanternes NightLight (L-043) : livrées éteintes (pas de Neon, lumières coupées)
+local nNight, nNeon, nLit = 0, 0, 0
+for _, p in CS:GetTagged("NightLight") do
+	if p:IsDescendantOf(zoneFolder) then
+		nNight += 1
+		if p:IsA("BasePart") and p.Material == Enum.Material.Neon then nNeon += 1 end
+		for _, l in p:GetDescendants() do if l:IsA("Light") and l.Enabled then nLit += 1 end end
+	end
+end
+table.insert(lines, string.format("NightLight : %d lanternes, %d en Neon, %d lumières allumées", nNight, nNeon, nLit))
 local gz = workspace.Greybox.Corridor.Zone_5
 local gate = gz:FindFirstChild("ZoneGate_5")
 if gate then

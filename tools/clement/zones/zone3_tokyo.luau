@@ -6,6 +6,7 @@
 --   1) façade de temple et habillage intérieur ; 2) greybox et magasins ; 3) rue Map/Zone_3/Street_Tokyo.
 -- Gabarit du 2026-11-07 (L-039) : magasins et décor ×1.5, pivots (240, 0, ±66), façades à z = ±30,
 -- couloir de 60 studs (chaussée z -22.5..22.5), sol du quartier jusqu'à |z| 140.
+-- Lampadaires et lanternes (rue et façades) : tag NightLight, livrés éteints ; le code les allume la nuit (L-043).
 -- Règles : aucun script laissé dans la map ; aucun nom du contrat 10.4 réutilisé pour le décor
 -- (le code cherche « Shutter » en profondeur) ; aucune marque réelle sur les enseignes ni les produits.
 
@@ -117,11 +118,13 @@ do
 			local z = -27.0
 			B("LanternCord_" .. i, x - 0.04, 7.75, z - 0.04, x + 0.04, 9.2, z + 0.04, lac, d(F, { noShadow = true }))
 			vcyl("LanternCapTop_" .. i, x, 7.5, 7.75, z, 0.75, lac, d(F))
-			local body = vcyl("Lantern_" .. i, x, 6.05, 7.5, z, 1.05, T.lantern, d(F, neon))
+			-- lanterne livrée éteinte et taggée NightLight : le code l'allume la nuit (Neon et lumière, L-043)
+			local body = vcyl("Lantern_" .. i, x, 6.05, 7.5, z, 1.05, T.lantern, d(F, { mat = Enum.Material.SmoothPlastic, noShadow = true }))
 			vcyl("LanternCapBot_" .. i, x, 5.8, 6.05, z, 0.75, lac, d(F))
 			if i % 2 == 1 then
-				local pl = Instance.new("PointLight"); pl.Range = 10; pl.Brightness = 0.6; pl.Color = T.lanternLight; pl.Shadows = false; pl.Parent = body
+				local pl = Instance.new("PointLight"); pl.Range = 10; pl.Brightness = 0.6; pl.Color = T.lanternLight; pl.Shadows = false; pl.Enabled = false; pl.Parent = body
 			end
+			game:GetService("CollectionService"):AddTag(body, "NightLight")
 		end
 		B("NorenRod", 11.1, 7.25, -24.45, 14.9, 7.4, -24.3, lac, d(F))
 		for i, xr in { { 11.3, 12.95 }, { 13.05, 14.7 } } do
@@ -559,6 +562,15 @@ do
 	local function light(part, color, range, brightness)
 		local pl = Instance.new("PointLight"); pl.Color = color; pl.Range = range; pl.Brightness = brightness; pl.Shadows = false; pl.Parent = part
 	end
+	-- lampadaires et lanternes : tag NightLight sur la partie lumineuse, livrée éteinte (pas de Neon,
+	-- lumières coupées) ; le code l'allume la nuit (Neon et lumières, L-043). Ni enseignes ni néons décoratifs.
+	local CS = game:GetService("CollectionService")
+	local function nightLight(part)
+		if part.Material == Enum.Material.Neon then part.Material = Enum.Material.SmoothPlastic end
+		for _, l in part:GetDescendants() do if l:IsA("Light") then l.Enabled = false end end
+		CS:AddTag(part, "NightLight")
+		return part
+	end
 	-- objet de décor : modèle dessiné à l'échelle 1 autour du repère A, puis agrandi ×K autour de A
 	local function item(parent, name) local m = Instance.new("Model"); m.Name = name; m.Parent = parent; return m end
 	local function grow(m, A) m.WorldPivot = A; m:ScaleTo(K); return m end
@@ -646,8 +658,9 @@ do
 		vc(m, A, "Post", 0, y0 + 0.5, y0 + 2.5, 0, 0.7, stone)
 		b("Deck", -0.75, 2.5, -0.75, 0.75, 2.8, 0.75, stone, { decor = true })
 		b("Box", -0.5, 2.8, -0.5, 0.5, 3.7, 0.5, stone, { decor = true })
-		local glow = b("Glow", -0.52, 3.0, -0.52, 0.52, 3.5, 0.52, rgb(255, 214, 140), neon())
+		local glow = b("Glow", -0.52, 3.0, -0.52, 0.52, 3.5, 0.52, rgb(255, 214, 140), { decor = true, noShadow = true })
 		light(glow, rgb(255, 200, 130), 14, 0.7)
+		nightLight(glow)
 		b("Roof", -0.95, 3.7, -0.95, 0.95, 4.0, 0.95, stone, { decor = true })
 		b("Cap", -0.55, 4.0, -0.55, 0.55, 4.3, 0.55, stone, { decor = true })
 		b("Finial", -0.2, 4.3, -0.2, 0.2, 4.6, 0.2, stone, { decor = true })
@@ -686,6 +699,7 @@ do
 		for k, y in { 16.7, 19.3 } do vcyl(m, "LanternRib_" .. k, 200, y, y + 0.2, 0, 4.06, black, { decor = true }) end
 		vcyl(m, "LanternBottom", 200, 15.7, 16.1, 0, 3.0, black, { decor = true })
 		light(body, rgb(255, 170, 120), 30, 0.8)
+		nightLight(body)
 		grow(m, A)
 	end
 	for _, s in { 1, -1 } do
@@ -839,8 +853,9 @@ do
 		if transformer then vc(m, A, "Transformer", 0, 10.3, 12.0, 0.8, 0.9, rgb(150, 154, 150), { decor = true }) end
 		if lamp then
 			seg(m, "LampArm", A:PointToWorldSpace(Vector3.new(0, 9.0, 0)), A:PointToWorldSpace(Vector3.new(0, 9.4, 1.4)), 0.15, 0.15, steel, { decor = true })
-			local head = Bx(m, A, "LampHead", -0.3, 8.95, 1.15, 0.3, 9.25, 1.75, rgb(240, 250, 255), neon())
+			local head = Bx(m, A, "LampHead", -0.3, 8.95, 1.15, 0.3, 9.25, 1.75, rgb(240, 250, 255), { decor = true, noShadow = true })
 			light(head, rgb(235, 245, 255), 27, 0.9)
+			nightLight(head)
 		end
 		grow(m, A)
 	end
@@ -858,7 +873,7 @@ do
 		Bx(Pr, W, "FestivalWire_" .. nm, x - 0.06, 19.05, -23.8, x + 0.06, 19.17, 23.8, rgb(30, 30, 30), { decor = true, noShadow = true })
 		for k = -3, 3 do
 			local col = (k % 2 == 0) and rgb(226, 64, 48) or rgb(250, 244, 230)
-			vcyl(Pr, "FestivalLantern_" .. nm .. "_" .. (k + 4), x, 16.95, 18.6, k * 6, 1.275, col, neon())
+			nightLight(vcyl(Pr, "FestivalLantern_" .. nm .. "_" .. (k + 4), x, 16.95, 18.6, k * 6, 1.275, col, { decor = true, noShadow = true }))
 			vcyl(Pr, "FestivalCap_" .. nm .. "_" .. (k + 4), x, 18.6, 19.05, k * 6, 0.825, black, { decor = true })
 		end
 	end

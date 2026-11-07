@@ -12,18 +12,24 @@
 --     en (65, 0, 66), façade vers -Z, et KIOSK (Kiosque) en (65, 0, -66), tourné de 180°, couleurs et textes d'avant ;
 --     plus UpperFloors (volume derrière la fausse façade) et BladeSign (enseigne verticale sur le toit, côté arche) ;
 --  3) Map/Zone_1/Street_Zone1 : trottoirs de 0,45 à |z| 22,5..30, marquages plats, mobilier ×1,5, panneaux, décor
---     d'entrée (murs de raccord avec l'entrée de 40 de large, colonnes, mâts à drapeaux visibles de loin, tapis peint),
---     feuilles vertes en ParticleEmitter (aucun script, débit modéré) ;
+--     d'entrée (colonnes, mâts à drapeaux visibles de loin, tapis peint), feuilles vertes en ParticleEmitter (aucun
+--     script, débit modéré). Le hub (zone safe) touche la zone 1 à x = 30 : plus de couloir d'entrée à raccorder ;
 --  4) Map/Zone_1/Neighborhood_Zone1 : gazon de |z| 62,5 à 140 (sans toucher le greybox), ruelles, petites boutiques
 --     (BAKERY, PHARMACY, CAFÉ, FLOWERS, ICE CREAM) et maisons, parcs, peupliers le long des magasins, château d'eau ;
---  5) vérification en mode Edit : contrat 10.4, arche, chaussée libre, emprise, chevauchements, chemins du vigile
---     (vitre sans collision le temps du test), aucun script. Le script renvoie le compte rendu.
+--  5) nuit (L-043) : le tag NightLight sur la partie lumineuse des réverbères et des lanternes, livrée éteinte (pas en
+--     Neon, lumières à Enabled = false ; le code l'allume la nuit), et le vrai mur de nuit Map/Entry/NightWall (tag
+--     NightWall, livré baissé, RiseHeight 24) à l'entrée de la zone 1, côté hub, juste avant l'arche (x 27, z ±34,5) ;
+--     l'ancien mur gris du greybox est rangé dans ServerStorage/_GREYBOX_REMPLACE ;
+--  6) vérification en mode Edit : contrat 10.4, arche, chaussée libre, emprise, chevauchements, chemins du vigile
+--     (vitre sans collision le temps du test), mur de nuit, lumières de nuit, aucun script. Le script renvoie le compte rendu.
 -- Règles : aucun script dans la map ; noms du contrat et tags jamais réutilisés pour le décor ; textes en anglais (L-036).
 
 local Store = _G.ClaudeStore
 assert(Store and Store.build, "charger d'abord tools/clement/store_builder.luau (avec l'option scale)")
 
 local K = 1.5 -- gabarit de la carte (L-040)
+local CS = game:GetService("CollectionService")
+local NIGHT_LIGHT = "NightLight" -- partie lumineuse d'un lampadaire, livrée éteinte ; le code l'allume la nuit (L-043)
 local rgb = Color3.fromRGB
 local CYL, BALL = Enum.PartType.Cylinder, Enum.PartType.Ball
 local NEON, GLASS, SMOOTH = Enum.Material.Neon, Enum.Material.Glass, Enum.Material.SmoothPlastic
@@ -237,19 +243,21 @@ flush(G)
 
 local D = group("Props")
 do
-	-- Réverbères à deux têtes (×1,5), couleur du magasin d'en face
+	-- Réverbères à deux têtes (×1,5), couleur du magasin d'en face. Chaque tête a sa partie lumineuse (Glow), taguée
+	-- NightLight et livrée éteinte : SmoothPlastic, lumière à Enabled = false ; la nuit, le code la passe en Neon.
 	local function lamp(name, x, z, accent)
 		local m = sub(D, name)
 		Bx(m, W, "Base", x - 0.6, 0.45, z - 0.6, x + 0.6, 1.35, z + 0.6, DARK)
 		Vc(m, W, "Pole", x, 1.35, 15.3, z, 0.54, DARK)
 		Vc(m, W, "Ring", x, 3.9, 4.5, z, 0.75, accent, { decor = true })
-		local arm = Bx(m, W, "Arm", x - 2.03, 14.93, z - 0.17, x + 2.03, 15.3, z + 0.17, DARK, { decor = true })
+		Bx(m, W, "Arm", x - 2.03, 14.93, z - 0.17, x + 2.03, 15.3, z + 0.17, DARK, { decor = true })
 		for i, dx in { -1.875, 1.875 } do
 			Bx(m, W, "Head_" .. i, x + dx - 0.75, 14.63, z - 0.53, x + dx + 0.75, 15.08, z + 0.53, accent, { decor = true })
-			Bx(m, W, "Glow_" .. i, x + dx - 0.6, 14.54, z - 0.42, x + dx + 0.6, 14.63, z + 0.42, rgb(255, 240, 210), { decor = true, mat = NEON, noShadow = true })
+			local glow = Bx(m, W, "Glow_" .. i, x + dx - 0.6, 14.54, z - 0.42, x + dx + 0.6, 14.63, z + 0.42, rgb(255, 240, 210), { decor = true, noShadow = true })
+			CS:AddTag(glow, NIGHT_LIGHT)
+			local pl = Instance.new("PointLight"); pl.Name = "LampLight"; pl.Range = 22; pl.Brightness = 0.9
+			pl.Color = rgb(255, 224, 176); pl.Shadows = false; pl.Enabled = false; pl.Parent = glow
 		end
-		local pl = Instance.new("PointLight"); pl.Name = "LampLight"; pl.Range = 28; pl.Brightness = 1.2
-		pl.Color = rgb(255, 224, 176); pl.Shadows = false; pl.Parent = arm
 	end
 	for i, x in { 52.6, 78.6, 97.2 } do lamp("Lamp_N" .. i, x, 24, RED) end
 	for i, x in { 34.2, 51.4, 89.0 } do lamp("Lamp_S" .. i, x, -24, BLUE) end
@@ -385,25 +393,11 @@ do
 end
 flush(SG)
 
--- Entrée et sortie de la zone : murs de raccord avec l'entrée (40 de large) qui ferment le passage vers l'arrière
--- de ses murs (avec collision), colonnes aux couleurs de la zone sur les murets (décor, le muret reste le mur),
+-- Entrée et sortie de la zone : colonnes aux couleurs de la zone sur les murets (décor, le muret reste le mur),
 -- mâts à drapeaux de 45 studs à l'entrée (visibles de loin, au-dessus de l'arche), lanternes à la sortie.
+-- Le hub touche la zone 1 à x = 30 : toute la largeur de l'arche reste ouverte (le mur de nuit la ferme la nuit).
 local GT = group("Gate")
 do
-	for _, s in { 1, -1 } do
-		local tag = s > 0 and "N" or "S"
-		local body, band = (s > 0) and CREAM or MINT, (s > 0) and RED or BLUE
-		local m = sub(GT, "LinkWall_" .. tag)
-		Bx(m, W, "WallBody", 30, 0, s * 20, 31.5, 16.5, s * 30, body, { studs = true })
-		Bx(m, W, "WallBand", 30, 16.5, s * 20, 31.5, 18, s * 30, band, { studs = true })
-		Bx(m, W, "FlowerTrough", 30.05, 18, s * 20.6, 31.45, 18.8, s * 29.4, BROWN, { decor = true })
-		for k = 0, 5 do
-			Ball(m, W, "TroughFlower_" .. k, 30.75, 19.0, s * (21.6 + k * 1.55), 1.1, FLOWERS[k % #FLOWERS + 1], { decor = true, noShadow = true })
-		end
-		for k, p in { { 5.0, 23.6 }, { 9.0, 26.0 }, { 13.0, 23.9 }, { 7.5, 26.6 } } do
-			Ball(m, W, "Ivy_" .. k, 31.6, p[1], s * p[2], 1.6, LEAF, { decor = true })
-		end
-	end
 	local function column(name, x0, x1, s, body, band, flagA, flagB, withLantern)
 		local m = sub(GT, name)
 		local dk = { decor = true }
@@ -415,9 +409,11 @@ do
 		Bx(m, W, "Banner", x0 + 0.35, 7.5, s * 29.3, x1 - 0.35, 17.6, s * 29.42, flagA, dk)
 		Bx(m, W, "BannerStripe", x0 + 0.35, 11.5, s * 29.25, x1 - 0.35, 13.6, s * 29.3, flagB, dk)
 		if withLantern then
+			-- lanterne : partie lumineuse taguée NightLight, livrée éteinte comme les réverbères
 			local cx = (x0 + x1) / 2
-			local lan = Bx(m, W, "Lantern", cx - 0.45, 21.6, s * 30.15, cx + 0.45, 22.8, s * 31.05, rgb(255, 230, 170), { decor = true, mat = NEON, noShadow = true })
-			local pl = Instance.new("PointLight"); pl.Range = 14; pl.Brightness = 0.9; pl.Color = rgb(255, 220, 160); pl.Shadows = false; pl.Parent = lan
+			local lan = Bx(m, W, "Lantern", cx - 0.45, 21.6, s * 30.15, cx + 0.45, 22.8, s * 31.05, rgb(255, 230, 170), { decor = true, noShadow = true })
+			CS:AddTag(lan, NIGHT_LIGHT)
+			local pl = Instance.new("PointLight"); pl.Range = 14; pl.Brightness = 0.9; pl.Color = rgb(255, 220, 160); pl.Shadows = false; pl.Enabled = false; pl.Parent = lan
 		end
 	end
 	column("Column_N1", 31.6, 34.3, 1, CREAM, RED, RED, CREAM, false)
@@ -763,7 +759,77 @@ upperFloors(superette, CREAM, RED); upperFloors(kiosque, MINT, BLUE)
 roofBlade(superette, -27.75, NAME_N, RED, WHITE); roofBlade(kiosque, 27.75, NAME_S, BLUE, GOLDY)
 task.wait()
 
--- 6) Vérification (mode Edit) ----------------------------------------------------------------------------------
+-- 6) Mur de nuit (L-043) : Map/Entry/NightWall, à l'entrée de la zone 1, côté hub, juste avant l'arche ZoneGate_1 ----
+--    Le hub (zone safe) touche la zone 1 à x = 30 (plus de couloir d'entrée) : le mur est à x 27 (x 25,45..28,55 avec
+--    ses feux, l'arche commence à 28,5) et ferme toute la largeur de l'arche (z -34,5..34,5). Rideau de fer à lames
+--    entre deux montants, bandeau jaune et noir, feux orange, panneau de chaque côté. Livré baissé : le haut à y -0,2,
+--    juste sous le sol (le sol du hub doit le couvrir) ; la nuit, NightCycleService le monte de RiseHeight (24).
+--    L'ancien mur gris du greybox est rangé, avec son trait au sol, dans ServerStorage/_GREYBOX_REMPLACE. Une fente au
+--    sol, à fleur, montre d'où il sort. Un seul tag NightWall reste dans le Workspace.
+do
+	local SS = game:GetService("ServerStorage")
+	local keep = SS:FindFirstChild("_GREYBOX_REMPLACE")
+	if not keep then keep = Instance.new("Folder"); keep.Name = "_GREYBOX_REMPLACE"; keep.Parent = SS end
+	local entryG = workspace.Greybox.Corridor:FindFirstChild("Entry")
+	if entryG then
+		for _, nm in { "NightWall", "NightWallLine" } do
+			local o = entryG:FindFirstChild(nm)
+			if o then
+				local prev = keep:FindFirstChild(nm); if prev then prev:Destroy() end
+				o.Parent = keep
+			end
+		end
+	end
+	local mapEntry = workspace.Map:FindFirstChild("Entry")
+	if not mapEntry then mapEntry = Instance.new("Folder"); mapEntry.Name = "Entry"; mapEntry.Parent = workspace.Map end
+	for _, nm in { "NightWall", "NightWallSlot" } do local o = mapEntry:FindFirstChild(nm); if o then o:Destroy() end end
+	local X, TOP, H, HW = 27, -0.2, 24, 34.5
+	local B0 = TOP - H
+	local STEEL_L, STEEL_M, HAZ_Y, HAZ_K = rgb(167, 176, 188), rgb(140, 149, 162), rgb(255, 204, 40), rgb(30, 30, 34)
+	local m = Instance.new("Model"); m.Name = "NightWall"
+	for i, z in { -HW, HW - 1.4 } do
+		Bx(m, W, "Post_" .. i, X - 1.4, B0, z, X + 1.4, TOP - 2, z + 1.4, DARK, { studs = true })
+	end
+	local nSlat = 11
+	local sh = (H - 2) / nSlat
+	for i = 0, nSlat - 1 do
+		Bx(m, W, string.format("Slat_%02d", i + 1), X - 0.9, B0 + i * sh, -HW + 1.4, X + 0.9, B0 + (i + 1) * sh, HW - 1.4,
+			(i % 2 == 0) and STEEL_L or STEEL_M, { mat = Enum.Material.DiamondPlate })
+	end
+	for i = 0, math.floor(2 * HW / 3 + 0.5) - 1 do
+		local z0 = -HW + i * 3
+		Bx(m, W, "Hazard_" .. (i + 1), X - 1.4, TOP - 2, z0, X + 1.4, TOP, z0 + 3, (i % 2 == 0) and HAZ_Y or HAZ_K, { studs = true })
+	end
+	for _, side in { -1, 1 } do
+		local tag = side < 0 and "Lobby" or "Corridor"
+		local xf = X + side * 0.9
+		Bx(m, W, "SignBorder_" .. tag, xf, B0 + 8.6, -12.3, xf + side * 0.2, B0 + 16.9, 12.3, HAZ_Y, { decor = true })
+		local panel = Bx(m, W, "SignPanel_" .. tag, xf, B0 + 8.9, -12, xf + side * 0.3, B0 + 16.6, 12, rgb(24, 30, 48), { decor = true })
+		local g = surface(panel, (side < 0) and LEFT or RIGHT, 30)
+		if side < 0 then
+			txt(g, "CLOSED AT NIGHT", HAZ_Y, 0.04, 0.08, 0.92, 0.55, { strokeT = 3 })
+			txt(g, "OPENS AT DAWN", WHITE, 0.1, 0.62, 0.8, 0.3, { stroke = false })
+		else
+			txt(g, "NIGHT GUARDS ARE OUT!", HAZ_Y, 0.04, 0.08, 0.92, 0.55, { strokeT = 3 })
+			txt(g, "BACK TO THE SAFE ZONE", WHITE, 0.1, 0.62, 0.8, 0.3, { stroke = false })
+		end
+		for k, z in { -24, -8, 8, 24 } do
+			Bx(m, W, "WarningLight_" .. tag .. k, X + side * 1.4, TOP - 1.7, z - 0.6, X + side * 1.55, TOP - 0.5, z + 0.6, rgb(255, 160, 40), { decor = true, mat = NEON, noShadow = true })
+		end
+	end
+	m.WorldPivot = CFrame.new(X, B0, 0)
+	m:SetAttribute("RiseHeight", H)
+	CS:AddTag(m, "NightWall")
+	m.Parent = mapEntry
+	local slot = Instance.new("Model"); slot.Name = "NightWallSlot"
+	Bx(slot, W, "SlotPlate", X - 1.4, 0, -HW, X + 1.4, 0.03, HW, DARK, { decor = true, noShadow = true })
+	for i, dx in { -1.5, 1.5 } do
+		Bx(slot, W, "SlotEdge_" .. i, X + dx - 0.1, 0, -HW, X + dx + 0.1, 0.03, HW, HAZ_Y, { decor = true, noShadow = true })
+	end
+	slot.Parent = mapEntry
+end
+
+-- 7) Vérification (mode Edit) ----------------------------------------------------------------------------------
 local report = {}
 local function add(s) table.insert(report, s) end
 local function aabb(p)
@@ -891,10 +957,37 @@ do
 		add(st.Name .. " : vitre fermée → " .. closed .. " ; vitre ouverte → " .. table.concat(res, " ; "))
 	end
 end
+-- Nuit : un seul mur taggé dans le Workspace, livré baissé ; lumières de nuit de la zone 1 livrées éteintes
+do
+	local walls = {}
+	for _, w in CS:GetTagged("NightWall") do if w:IsDescendantOf(workspace) then table.insert(walls, w) end end
+	local s = "Mur de nuit : " .. #walls .. " tag NightWall dans le Workspace"
+	local w = walls[1]
+	if w and w:IsA("Model") then
+		local cf, size = w:GetBoundingBox()
+		s ..= string.format(" (%s, %.1f × %.1f × %.1f, haut à y %.2f, RiseHeight %s)", w:GetFullName(), size.X, size.Y, size.Z, cf.Y + size.Y / 2, tostring(w:GetAttribute("RiseHeight")))
+	end
+	add(s)
+	local nl, bad = 0, {}
+	for _, p in CS:GetTagged(NIGHT_LIGHT) do
+		if p:IsDescendantOf(zoneFolder) then
+			nl += 1
+			if not p:IsA("BasePart") or p.Material == NEON then table.insert(bad, p:GetFullName() .. " en Neon") end
+			local lights = 0
+			for _, d in p:GetDescendants() do
+				if d:IsA("Light") then lights += 1; if d.Enabled then table.insert(bad, p:GetFullName() .. " allumée") end end
+			end
+			if lights == 0 then table.insert(bad, p:GetFullName() .. " sans lumière") end
+		end
+	end
+	add("NightLight dans la zone 1 : " .. nl .. " parties lumineuses, livrées éteintes" .. ((#bad > 0) and (" ; à revoir : " .. table.concat(bad, ", ")) or ""))
+end
 do
 	local scripts = 0
 	for _, d in zoneFolder:GetDescendants() do if d:IsA("LuaSourceContainer") then scripts += 1 end end
 	for _, d in gz1:GetDescendants() do if d:IsA("LuaSourceContainer") then scripts += 1 end end
-	add("Scripts dans Map/Zone_1 et le greybox de la zone 1 : " .. scripts)
+	local me = workspace.Map:FindFirstChild("Entry")
+	if me then for _, d in me:GetDescendants() do if d:IsA("LuaSourceContainer") then scripts += 1 end end end
+	add("Scripts dans Map/Zone_1, Map/Entry et le greybox de la zone 1 : " .. scripts)
 end
 return table.concat(report, "\n")

@@ -1,0 +1,194 @@
+--!strict
+-- Importe les animations faites dans Blender pour Clément : vigile (ANI-012 : Idle, Walk, Run,
+-- Catch, Tired) et joueur (ANI-010 : HitWindow, HitWindowHeavy). Crée des KeyframeSequence dans
+-- ServerStorage/RBX_ANIMSAVES/<rig> (Rig_Guard, Rig_Player), à ouvrir dans l'éditeur
+-- d'animation et à publier au nom du groupe. Rien n'est publié ici.
+--
+-- Mêmes courbes que dans Blender (StealAShop-Art/Guards, rig du plugin RBX Animations) :
+-- interpolation de Hermite entre les poses clés, tangentes bridées aux extrêmes, cuite à
+-- 30 images/s. Priorité, boucle et marqueurs (Impact) du contrat 2.4.
+-- Relançable en mode Edit : remplace les KeyframeSequence de même nom.
+-- Données générées depuis StealAShop-Art/Guards/_scripts/anim_defs.py (make_anims_luau.py).
+
+local HttpService = game:GetService("HttpService")
+local ServerStorage = game:GetService("ServerStorage")
+
+local DATA = HttpService:JSONDecode([==[{"fps":30,"rigs":{"Guard":{"Idle":{"loop":true,"priority":"Idle","length":120,"upper":false,"markers":[],"frames":[0,30,60,84,105,120],"lin":[0,0,0,0,0,0],"bones":{"LowerTorso":[[0,0,0,0,0,0],[0,0,0,0,0,0],[0,0,2,2,0,0],[0,0,0.05,0.05,0,0],[0,0.02,0,0,0,0],[0,0,0,0,0,0]],"UpperTorso":[[3,6,3,3,5,3],[0,0,8,-8,0,0],[0,0,0,0,0,0]],"Head":[[0,2,0,-3,1,0],[0,0,32,-32,0,0],[0,0,0,0,0,0]],"RightUpperArm":[[2,2,2,2,2,2],[0,0,0,0,0,0],[5,8,5,5,7,5]],"RightLowerArm":[[8,8,8,8,8,8],[0,0,0,0,0,0],[0,0,0,0,0,0]],"RightHand":[[0,0,0,0,0,0],[0,0,0,0,0,0],[0,0,0,0,0,0]],"LeftUpperArm":[[2,2,2,2,2,2],[0,0,0,0,0,0],[-5,-8,-5,-5,-7,-5]],"LeftLowerArm":[[8,8,8,8,8,8],[0,0,0,0,0,0],[0,0,0,0,0,0]],"LeftHand":[[0,0,0,0,0,0],[0,0,0,0,0,0],[0,0,0,0,0,0]],"RightUpperLeg":[[0,0,0,0,0,0],[0,0,0,0,0,0],[2,2,0,0,2,2]],"RightLowerLeg":[[0,0,0,0,0,0],[0,0,0,0,0,0],[0,0,0,0,0,0]],"RightFoot":[[0,0,0,0,0,0],[0,0,0,0,0,0],[-2,-2,-2,-2,-2,-2]],"LeftUpperLeg":[[0,0,0,0,0,0],[0,0,0,0,0,0],[-2,-2,-4,-4,-2,-2]],"LeftLowerLeg":[[0,0,0,0,0,0],[0,0,0,0,0,0],[0,0,0,0,0,0]],"LeftFoot":[[0,0,0,0,0,0],[0,0,0,0,0,0],[2,2,2,2,2,2]]}},"Walk":{"loop":true,"priority":"Movement","length":24,"upper":false,"markers":[],"frames":[0,6,12,18,24],"lin":[0,0,0,0,0],"bones":{"LowerTorso":[[0,0,0,0,0],[6,0,-6,0,6],[0,0,0,0,0],[0,0,0,0,0],[-0.07,0.06,-0.07,0.06,-0.07],[0,0,0,0,0]],"UpperTorso":[[3,3,3,3,3],[-10,0,10,0,-10],[0,0,0,0,0]],"Head":[[0,0,0,0,0],[4,0,-4,0,4],[0,0,0,0,0]],"RightUpperArm":[[-24,2,26,4,-24],[0,0,0,0,0],[6,6,6,6,6]],"RightLowerArm":[[14,12,28,16,14],[0,0,0,0,0],[0,0,0,0,0]],"RightHand":[[0,0,0,0,0],[0,0,0,0,0],[0,0,0,0,0]],"LeftUpperArm":[[26,4,-24,2,26],[0,0,0,0,0],[-6,-6,-6,-6,-6]],"LeftLowerArm":[[28,16,14,12,28],[0,0,0,0,0],[0,0,0,0,0]],"LeftHand":[[0,0,0,0,0],[0,0,0,0,0],[0,0,0,0,0]],"RightUpperLeg":[[32,4,-22,14,32],[0,0,0,0,0],[0,0,0,0,0]],"RightLowerLeg":[[-6,-4,-14,-50,-6],[0,0,0,0,0],[0,0,0,0,0]],"RightFoot":[[-14,0,22,18,-14],[0,0,0,0,0],[0,0,0,0,0]],"LeftUpperLeg":[[-22,14,32,4,-22],[0,0,0,0,0],[0,0,0,0,0]],"LeftLowerLeg":[[-14,-50,-6,-4,-14],[0,0,0,0,0],[0,0,0,0,0]],"LeftFoot":[[22,18,-14,0,22],[0,0,0,0,0],[0,0,0,0,0]]}},"Run":{"loop":true,"priority":"Movement","length":12,"upper":false,"markers":[],"frames":[0,3,6,9,12],"lin":[0,0,0,0,0],"bones":{"LowerTorso":[[-8,-8,-8,-8,-8],[6,0,-6,0,6],[0,0,0,0,0],[0,0,0,0,0],[0.15,-0.08,0.15,-0.08,0.15],[0,0,0,0,0]],"UpperTorso":[[0,0,0,0,0],[-12,0,12,0,-12],[0,0,0,0,0]],"Head":[[8,8,8,8,8],[6,0,-6,0,6],[0,0,0,0,0]],"RightUpperArm":[[-45,25,95,25,-45],[0,0,0,0,0],[8,10,15,10,8]],"RightLowerArm":[[90,90,90,90,90],[0,0,0,0,0],[0,0,0,0,0]],"RightHand":[[0,0,0,0,0],[0,0,0,0,0],[0,0,0,0,0]],"LeftUpperArm":[[95,25,-45,25,95],[0,0,0,0,0],[-15,-10,-8,-10,-15]],"LeftLowerArm":[[90,90,90,90,90],[0,0,0,0,0],[0,0,0,0,0]],"LeftHand":[[0,0,0,0,0],[0,0,0,0,0],[0,0,0,0,0]],"RightUpperLeg":[[98,30,-38,35,98],[0,0,0,0,0],[0,0,0,0,0]],"RightLowerLeg":[[-92,-25,-22,-110,-92],[0,0,0,0,0],[0,0,0,0,0]],"RightFoot":[[-13,3,40,10,-13],[0,0,0,0,0],[0,0,0,0,0]],"LeftUpperLeg":[[-38,35,98,30,-38],[0,0,0,0,0],[0,0,0,0,0]],"LeftLowerLeg":[[-22,-110,-92,-25,-22],[0,0,0,0,0],[0,0,0,0,0]],"LeftFoot":[[40,10,-13,3,40],[0,0,0,0,0],[0,0,0,0,0]]}},"Catch":{"loop":false,"priority":"Action","length":42,"upper":false,"markers":[["Impact",9]],"frames":[0,5,7,9,14,22,25,29,33,42],"lin":[0,0,1,0,0,0,0,0,0,0],"bones":{"LowerTorso":[[-10,6,8,-12,-10,-2,-2,-2,-2,0],[0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0],[0,-0.05,-0.08,-0.18,-0.16,0,0,0,0,0],[0,0.15,0.22,-0.35,-0.3,0,0,0,0,0]],"UpperTorso":[[-5,10,14,-14,-14,0,0,0,0,3],[0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0]],"Head":[[12,-8,-8,14,14,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0]],"RightUpperArm":[[30,-8,-20,110,104,40,48,36,48,2],[0,0,0,0,0,25,35,20,35,0],[10,22,26,-4,-4,-2,-2,-2,-2,5]],"RightLowerArm":[[60,125,135,4,12,95,90,100,90,8],[0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0]],"RightHand":[[0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0]],"LeftUpperArm":[[30,-8,-20,110,104,40,36,48,36,2],[0,0,0,0,0,-25,-20,-35,-20,0],[-10,-22,-26,4,4,2,2,2,2,-5]],"LeftLowerArm":[[60,125,135,4,12,95,100,90,100,8],[0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0]],"LeftHand":[[0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0]],"RightUpperLeg":[[15,-15,-15,-30,-30,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,2,2,2,2,2]],"RightLowerLeg":[[-20,-20,-20,-5,-5,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0]],"RightFoot":[[0,10,10,25,25,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,-2,-2,-2,-2,-2]],"LeftUpperLeg":[[-10,25,25,40,40,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,-2,-2,-2,-2,-2]],"LeftLowerLeg":[[-10,-30,-30,-45,-45,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0]],"LeftFoot":[[0,5,5,5,5,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,2,2,2,2,2]]}},"Tired":{"loop":false,"priority":"Action","length":99,"upper":false,"markers":[],"frames":[0,12,18,24,30,36,42,48,54,60,72,80,86,99],"lin":[0,0,0,0,0,0,0,0,0,0,0,0,0,0],"bones":{"LowerTorso":[[-8,-42,-38,-42,-38,-42,-38,-42,-38,-42,-10,-10,-4,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,-0.4,-0.3,-0.4,-0.3,-0.4,-0.3,-0.4,-0.3,-0.4,-0.1,-0.1,0,0],[0,0.3,0.27,0.3,0.27,0.3,0.27,0.3,0.27,0.3,0.05,0.05,0,0]],"UpperTorso":[[-4,-18,-4,-18,-4,-18,-4,-18,-4,-18,-6,-6,-6,-3],[0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0]],"Head":[[6,35,20,35,20,35,20,35,20,35,4,4,2,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,-5,0,0]],"RightUpperArm":[[-6,40,32,40,32,40,32,40,32,40,130,130,80,0],[0,0,0,0,0,0,0,0,0,0,20,-10,0,0],[6,12,16,12,16,12,16,12,16,12,-10,15,40,3]],"RightLowerArm":[[10,10,10,10,10,10,10,10,10,10,120,110,40,8],[0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0]],"RightHand":[[0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0]],"LeftUpperArm":[[-6,40,32,40,32,40,32,40,32,40,5,5,5,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0],[-6,-12,-16,-12,-16,-12,-16,-12,-16,-12,-6,-6,-6,-3]],"LeftLowerArm":[[10,10,10,10,10,10,10,10,10,10,10,10,10,8],[0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0]],"LeftHand":[[0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0]],"RightUpperLeg":[[0,50,50,50,50,50,50,50,50,50,10,10,10,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,2]],"RightLowerLeg":[[0,-25,-25,-25,-25,-25,-25,-25,-25,-25,-8,-8,-8,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0]],"RightFoot":[[0,17,17,17,17,17,17,17,17,17,8,8,8,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,-2]],"LeftUpperLeg":[[0,50,50,50,50,50,50,50,50,50,10,10,10,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,-2]],"LeftLowerLeg":[[0,-25,-25,-25,-25,-25,-25,-25,-25,-25,-8,-8,-8,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0]],"LeftFoot":[[0,17,17,17,17,17,17,17,17,17,8,8,8,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,2]]}}},"Player":{"HitWindow":{"loop":false,"priority":"Action","length":12,"upper":true,"markers":[["Impact",4]],"frames":[0,4,6,12],"lin":[1,0,0,0],"bones":{"UpperTorso":[[6,-10,-6,0],[-20,18,12,0],[0,0,0,0]],"Head":[[0,0,0,0],[16,-12,-12,0],[0,0,0,0]],"RightUpperArm":[[150,80,86,0],[0,0,0,0],[20,-6,-6,0]],"RightLowerArm":[[70,12,25,0],[0,0,0,0],[0,0,0,0]],"RightHand":[[-20,10,10,0],[0,0,0,0],[0,0,0,0]],"LeftUpperArm":[[55,20,20,0],[0,0,0,0],[-10,-8,-8,0]],"LeftLowerArm":[[70,100,100,0],[0,0,0,0],[0,0,0,0]],"LeftHand":[[0,0,0,0],[0,0,0,0],[0,0,0,0]]}},"HitWindowHeavy":{"loop":false,"priority":"Action","length":21,"upper":true,"markers":[["Impact",7]],"frames":[0,3,7,10,21],"lin":[0,1,0,0,0],"bones":{"UpperTorso":[[18,22,-32,-36,0],[-8,-8,4,4,0],[0,0,0,0,0]],"Head":[[-12,-12,18,18,0],[0,0,0,0,0],[0,0,0,0,0]],"RightUpperArm":[[165,172,70,60,0],[0,0,0,0,0],[8,8,-12,-12,0]],"RightLowerArm":[[55,55,6,6,0],[0,0,0,0,0],[0,0,0,0,0]],"RightHand":[[-25,-25,15,15,0],[0,0,0,0,0],[0,0,0,0,0]],"LeftUpperArm":[[165,172,70,60,0],[0,0,0,0,0],[-8,-8,12,12,0]],"LeftLowerArm":[[55,55,6,6,0],[0,0,0,0,0],[0,0,0,0,0]],"LeftHand":[[-25,-25,15,15,0],[0,0,0,0,0],[0,0,0,0,0]]}},"Grab":{"loop":false,"priority":"Action","length":18,"upper":true,"markers":[["Grab",5]],"frames":[0,4,5,11,18],"lin":[0,0,0,0,0],"bones":{"UpperTorso":[[0,-18,-18,8,0],[0,0,0,0,0],[0,0,0,0,0]],"Head":[[0,10,10,4,0],[0,0,0,0,0],[0,0,0,0,0]],"RightUpperArm":[[18,78,74,150,178],[0,0,0,0,0],[6,-4,-3,6,2],[0,0,0,0,0],[0,0,0,0,0.25],[0,0,0,0,0]],"RightLowerArm":[[20,14,26,40,8],[0,0,0,0,0],[0,0,0,0,0]],"RightHand":[[0,0,0,0,0],[0,0,0,0,0],[0,0,0,0,0]],"LeftUpperArm":[[18,78,74,150,178],[0,0,0,0,0],[-6,4,3,-6,-2],[0,0,0,0,0],[0,0,0,0,0.25],[0,0,0,0,0]],"LeftLowerArm":[[20,14,26,40,8],[0,0,0,0,0],[0,0,0,0,0]],"LeftHand":[[0,0,0,0,0],[0,0,0,0,0],[0,0,0,0,0]]}},"CarryIdle":{"loop":true,"priority":"Action","length":60,"upper":false,"markers":[],"frames":[0,30,60],"lin":[0,0,0],"bones":{"RightUpperArm":[[178,175,178],[0,0,0],[2,3,2],[0,0,0],[0.25,0.21,0.25],[0,0,0]],"RightLowerArm":[[8,14,8],[0,0,0],[0,0,0]],"RightHand":[[0,0,0],[0,0,0],[0,0,0]],"LeftUpperArm":[[178,175,178],[0,0,0],[-2,-3,-2],[0,0,0],[0.25,0.21,0.25],[0,0,0]],"LeftLowerArm":[[8,14,8],[0,0,0],[0,0,0]],"LeftHand":[[0,0,0],[0,0,0],[0,0,0]]}},"CarryRun":{"loop":true,"priority":"Action","length":12,"upper":false,"markers":[],"frames":[0,3,6,9,12],"lin":[0,0,0,0,0],"bones":{"LowerTorso":[[-6,-6,-6,-6,-6],[4,0,-4,0,4],[0,0,0,0,0],[0,0,0,0,0],[0.12,-0.07,0.12,-0.07,0.12],[0,0,0,0,0]],"UpperTorso":[[2,2,2,2,2],[-4,0,4,0,-4],[0,0,0,0,0]],"Head":[[4,4,4,4,4],[0,0,0,0,0],[0,0,0,0,0]],"RightUpperArm":[[178,174,178,174,178],[0,0,0,0,0],[2,2,2,2,2],[0,0,0,0,0],[0.25,0.2,0.25,0.2,0.25],[0,0,0,0,0]],"RightLowerArm":[[8,16,8,16,8],[0,0,0,0,0],[0,0,0,0,0]],"RightHand":[[0,0,0,0,0],[0,0,0,0,0],[0,0,0,0,0]],"LeftUpperArm":[[178,174,178,174,178],[0,0,0,0,0],[-2,-2,-2,-2,-2],[0,0,0,0,0],[0.25,0.2,0.25,0.2,0.25],[0,0,0,0,0]],"LeftLowerArm":[[8,16,8,16,8],[0,0,0,0,0],[0,0,0,0,0]],"LeftHand":[[0,0,0,0,0],[0,0,0,0,0],[0,0,0,0,0]],"RightUpperLeg":[[98,30,-38,35,98],[0,0,0,0,0],[0,0,0,0,0]],"RightLowerLeg":[[-92,-25,-22,-110,-92],[0,0,0,0,0],[0,0,0,0,0]],"RightFoot":[[-13,3,40,10,-13],[0,0,0,0,0],[0,0,0,0,0]],"LeftUpperLeg":[[-38,35,98,30,-38],[0,0,0,0,0],[0,0,0,0,0]],"LeftLowerLeg":[[-22,-110,-92,-25,-22],[0,0,0,0,0],[0,0,0,0,0]],"LeftFoot":[[40,10,-13,3,40],[0,0,0,0,0],[0,0,0,0,0]]}}}}}]==])
+
+local RIG_NAMES = { Guard = "Rig_Guard", Player = "Rig_Player" }
+local PARENT = {
+	LowerTorso = "HumanoidRootPart", UpperTorso = "LowerTorso", Head = "UpperTorso",
+	RightUpperArm = "UpperTorso", RightLowerArm = "RightUpperArm", RightHand = "RightLowerArm",
+	LeftUpperArm = "UpperTorso", LeftLowerArm = "LeftUpperArm", LeftHand = "LeftLowerArm",
+	RightUpperLeg = "LowerTorso", RightLowerLeg = "RightUpperLeg", RightFoot = "RightLowerLeg",
+	LeftUpperLeg = "LowerTorso", LeftLowerLeg = "LeftUpperLeg", LeftFoot = "LeftLowerLeg",
+}
+local ORDER = { "LowerTorso", "UpperTorso", "Head", "RightUpperArm", "RightLowerArm", "RightHand",
+	"LeftUpperArm", "LeftLowerArm", "LeftHand", "RightUpperLeg", "RightLowerLeg", "RightFoot",
+	"LeftUpperLeg", "LeftLowerLeg", "LeftFoot" }
+local HOLDERS = { LowerTorso = true, UpperTorso = true } -- gardés à poids 0 pour la hiérarchie
+
+local function tangents(times: { number }, vals: { number }, loop: boolean): { number }
+	local n = #vals
+	local m = table.create(n, 0)
+	local L = times[n]
+	for k = 1, n do
+		local tp, vp, tn, vn, v0
+		if loop and (k == 1 or k == n) then
+			tp, vp, tn, vn, v0 = times[n - 1] - L, vals[n - 1], times[2], vals[2], vals[1]
+		elseif k == 1 or k == n then
+			continue
+		else
+			tp, vp, tn, vn, v0 = times[k - 1], vals[k - 1], times[k + 1], vals[k + 1], vals[k]
+		end
+		if (v0 - vp) * (vn - v0) > 0 then
+			m[k] = (vn - vp) / (tn - tp)
+		end
+	end
+	return m
+end
+
+local function evaluate(times: { number }, vals: { number }, m: { number }, lin: { number }, t: number): number
+	local n = #times
+	if t <= times[1] then
+		return vals[1]
+	elseif t >= times[n] then
+		return vals[n]
+	end
+	local k = 1
+	while times[k + 1] < t do
+		k += 1
+	end
+	local h = times[k + 1] - times[k]
+	local s = (t - times[k]) / h
+	if lin[k] == 1 then
+		return vals[k] + (vals[k + 1] - vals[k]) * s
+	end
+	local s2, s3 = s * s, s * s * s
+	return (2 * s3 - 3 * s2 + 1) * vals[k] + (s3 - 2 * s2 + s) * h * m[k]
+		+ (-2 * s3 + 3 * s2) * vals[k + 1] + (s3 - s2) * h * m[k + 1]
+end
+
+local function savesFolder(rigName: string): Instance
+	local saves = ServerStorage:FindFirstChild("RBX_ANIMSAVES")
+	if saves == nil then
+		local model = Instance.new("Model")
+		model.Name = "RBX_ANIMSAVES"
+		model.Parent = ServerStorage
+		saves = model
+	end
+	local rigs = ServerStorage:FindFirstChild("AnimRigs")
+	local rig = rigs and rigs:FindFirstChild(rigName)
+	local holder = (saves :: Instance):FindFirstChild(rigName)
+	if holder == nil then
+		local ov = Instance.new("ObjectValue")
+		ov.Name = rigName
+		ov.Value = rig
+		ov.Parent = saves
+		holder = ov
+	end
+	if rig and rig:FindFirstChild("AnimSaves") == nil then
+		local link = Instance.new("ObjectValue")
+		link.Name = "AnimSaves"
+		link.Value = holder
+		link.Parent = rig
+	end
+	return holder :: Instance
+end
+
+local function build(rigKey: string, name: string, a: any, hipHeight: number): KeyframeSequence
+	local fps = DATA.fps
+	local times = {}
+	for i, f in a.frames do
+		times[i] = f / fps
+	end
+	local curves = {}
+	for bone, chans in a.bones do
+		local c = {}
+		for i, vals in chans do
+			c[i] = { vals = vals, m = tangents(times, vals, a.loop) }
+		end
+		curves[bone] = c
+	end
+	local markers = {}
+	for _, mk in a.markers do
+		markers[mk[2]] = mk[1]
+	end
+	local ks = Instance.new("KeyframeSequence")
+	ks.Name = `{rigKey}_{name}`
+	ks.Loop = a.loop
+	ks.Priority = (Enum.AnimationPriority :: any)[a.priority]
+	ks.AuthoredHipHeight = hipHeight
+	for f = 0, a.length do
+		local t = f / fps
+		local kf = Instance.new("Keyframe")
+		kf.Time = t
+		local poses: { [string]: Pose } = {}
+		local root = Instance.new("Pose")
+		root.Name = "HumanoidRootPart"
+		root.Weight = 0
+		root.Parent = kf
+		poses.HumanoidRootPart = root
+		for _, bone in ORDER do
+			local c = curves[bone]
+			if c == nil and not HOLDERS[bone] then
+				continue
+			end
+			local pose = Instance.new("Pose")
+			pose.Name = bone
+			pose.EasingStyle = Enum.PoseEasingStyle.Linear
+			pose.EasingDirection = Enum.PoseEasingDirection.In
+			if c then
+				local v = {}
+				for i = 1, 6 do
+					v[i] = if c[i] then evaluate(times, c[i].vals, c[i].m, a.lin, t) else 0
+				end
+				pose.CFrame = CFrame.new(v[4], v[5], v[6])
+					* CFrame.Angles(0, 0, math.rad(v[3]))
+					* CFrame.Angles(math.rad(v[1]), 0, 0)
+					* CFrame.Angles(0, math.rad(v[2]), 0)
+				pose.Weight = 1
+			else
+				pose.Weight = 0
+			end
+			pose.Parent = poses[PARENT[bone]]
+			poses[bone] = pose
+		end
+		local marker = markers[f]
+		if marker then
+			local km = Instance.new("KeyframeMarker")
+			km.Name = marker
+			km.Value = ""
+			kf:AddMarker(km)
+		end
+		kf.Parent = ks
+	end
+	return ks
+end
+
+local report = {}
+for rigKey, anims in DATA.rigs do
+	local rigName = RIG_NAMES[rigKey]
+	local holder = savesFolder(rigName)
+	local rigs = ServerStorage:FindFirstChild("AnimRigs")
+	local rig = rigs and rigs:FindFirstChild(rigName)
+	local humanoid = rig and rig:FindFirstChildOfClass("Humanoid")
+	local hip = if humanoid then humanoid.HipHeight else 2
+	for name, a in anims do
+		local old = holder:FindFirstChild(`{rigKey}_{name}`)
+		if old then
+			old:Destroy()
+		end
+		local ks = build(rigKey, name, a, hip)
+		ks.Parent = holder
+		local marks = {}
+		for _, mk in a.markers do
+			table.insert(marks, `{mk[1]}@{string.format("%.3f", mk[2] / DATA.fps)}s`)
+		end
+		table.insert(report, string.format("%s/%s : %d images, %.2f s, %s, boucle=%s %s",
+			rigName, ks.Name, a.length + 1, a.length / DATA.fps, a.priority, tostring(a.loop), table.concat(marks, " ")))
+		task.wait()
+	end
+end
+table.sort(report)
+return table.concat(report, "\n")
