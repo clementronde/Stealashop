@@ -10,8 +10,9 @@
 -- Bulle :
 --   - texte : Hints[hint] s'il est donné, sinon Steps[step].Bubble (rien à l'étape 10, sauf un
 --     indice). Seul choix fait ici : EquipFists aux étapes 1 et 2, quand le serveur n'envoie pas
---     d'indice, que le joueur est à EQUIP_HINT_RADIUS studs de la cible et qu'il n'a pas son outil de
---     casse en main (Tool avec l'attribut ToolId de ToolService) ;
+--     d'indice, que la cible est la vitrine d'un magasin PNJ (pas la porte de la boutique, par où la
+--     flèche passe d'abord), que le joueur en est à EQUIP_HINT_RADIUS studs et qu'il n'a pas son
+--     outil de casse en main (Tool avec l'attribut ToolId de ToolService) ;
 --   - écran de Clément, s'il est livré : PlayerGui/UI_Tutorial (copié depuis StarterGui), texte dans
 --     Bubble.Label. Seuls Enabled de l'écran, le texte et la visibilité du bouton Passer sont
 --     touchés (2.2, « Libre pour Ironix ») ;
@@ -34,6 +35,7 @@
 --   TutorialController.GetState() -> { Step, Hint, Text, Target, Shown, Fallback, Arrow }
 --       Ce qui est affiché, pour un test dans Studio (barre de commande côté client).
 
+local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -53,6 +55,10 @@ local COVERING_SCREENS = { "UI_Unbox", "UI_WeaponShop", "UI_AuraShop" }
 -- Attribut posé par ToolService sur le Tool de casse.
 local TOOL_ID_ATTRIBUTE = "ToolId"
 local ASSETS = "Assets"
+-- Vitrine d'un magasin PNJ (contrat 2.1 et 10.4) : seule cible où EquipFists a un sens.
+local STORE_TAG = "NPCStore"
+local WINDOW_NAME = "Window"
+local SAME_POINT = 1 -- studs : la cible reçue est cette vitrine (le serveur vise son centre)
 
 -- Étapes où le joueur doit frapper la vitrine (Config/Tutorial.Steps).
 local STEP_ARRIVE = 1
@@ -137,6 +143,25 @@ local function holdingTool(): boolean
 	return false
 end
 
+-- La cible est-elle la vitrine d'un magasin PNJ ? Aux étapes 1 et 2, la flèche passe d'abord par la
+-- porte de la boutique du joueur (TutorialService, L-050) : près de cette porte, pas d'EquipFists.
+-- Même point que le serveur : le centre de la pièce Window, ou le pivot si c'est un Model.
+local function isStoreWindow(target: Vector3): boolean
+	for _, store in CollectionService:GetTagged(STORE_TAG) do
+		local window = Find.path(store, WINDOW_NAME)
+		local position: Vector3? = nil
+		if window and window:IsA("BasePart") then
+			position = (window :: BasePart).Position
+		elseif window and window:IsA("Model") then
+			position = (window :: Model):GetPivot().Position
+		end
+		if position and (position - target).Magnitude <= SAME_POINT then
+			return true
+		end
+	end
+	return false
+end
+
 local function covered(): boolean
 	local gui = playerGui()
 	if gui == nil then
@@ -169,7 +194,13 @@ local function currentText(): string?
 	if hint == nil and (state.step == STEP_ARRIVE or state.step == STEP_HIT) then
 		local root = rootOf()
 		local target = state.target
-		if root and target and (root.Position - target).Magnitude <= EQUIP_HINT_RADIUS and not holdingTool() then
+		if
+			root
+			and target
+			and (root.Position - target).Magnitude <= EQUIP_HINT_RADIUS
+			and not holdingTool()
+			and isStoreWindow(target)
+		then
 			hint = "EquipFists"
 		end
 	end

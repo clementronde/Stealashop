@@ -100,18 +100,20 @@ local Tutorial = {
 
 	-- 14.2 : étapes du funnel d'onboarding, envoyées une seule fois par joueur avec
 	-- AnalyticsService:LogOnboardingFunnelStepEvent (index = numéro d'étape). En français : l'équipe
-	-- les lit dans le Creator Dashboard, le joueur ne les voit pas (L-036)
+	-- les lit dans le Creator Dashboard, le joueur ne les voit pas (L-036). Jamais de virgule, de
+	-- guillemet ni d'apostrophe : Roblox refuse alors l'étape (« Event field stepName is invalid »,
+	-- vu en Studio le 2026-11-07) ; les étapes 6 et 10 du doc sont donc reformulées.
 	FunnelSteps = {
 		"Arrivée sur sa parcelle",
 		"Premier coup sur une vitrine",
 		"Première vitrine cassée",
 		"Premier colis volé",
 		"Arrivée en zone safe avec le colis",
-		"Colis posé sur l'établi",
+		"Colis posé sur un établi",
 		"Premier objet révélé",
 		"Premier objet exposé",
 		"Premier encaissement",
-		"Premier achat d'outil",
+		"Premier outil acheté",
 	},
 }
 
