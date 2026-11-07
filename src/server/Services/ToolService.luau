@@ -106,9 +106,10 @@ local function prepareParts(tool: Tool, handle: BasePart)
 	for _, descendant in tool:GetDescendants() do
 		if descendant:IsA("WeldConstraint") or descendant:IsA("JointInstance") then
 			local joint = descendant :: any
-			for _, part in { joint.Part0, joint.Part1 } do
-				if typeof(part) == "Instance" and part:IsA("BasePart") then
-					joined[part] = true
+			local ends: { Instance? } = { joint.Part0, joint.Part1 }
+			for _, part in ends do
+				if part ~= nil and part:IsA("BasePart") then
+					joined[part :: BasePart] = true
 				end
 			end
 		end
