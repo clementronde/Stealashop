@@ -42,6 +42,10 @@ UI.Screens = {
 			{ Path = "RobuxShopButton", Class = BUTTON }, -- caché jusqu'à la MAJ 1
 			{ Path = "IndexButton", Class = BUTTON }, -- caché jusqu'à la MAJ 2 (L-026)
 			{ Path = "RebirthButton", Class = BUTTON }, -- caché jusqu'à la MAJ 3 (L-026)
+			-- Bouton « inviter un ami » de Clément, dans le cadre SocialRow (L-057, livré le
+			-- 2026-11-07) : ouvre l'invitation de Roblox (InviteController). RewardsButton, à côté,
+			-- n'est pas encore lu par le code.
+			{ Path = "InviteButton", Class = BUTTON },
 		},
 	},
 	{
@@ -140,6 +144,9 @@ UI.Screens = {
 -- Billboards modèles, des BillboardGui directement dans ReplicatedStorage/Assets/UI.
 UI.Billboards = {
 	{ Name = "BB_WindowHP", Class = "BillboardGui", Elements = { { Path = "Fill" }, { Path = "Label" } } },
+	-- Barre de vie du camion de l'événement (nom proposé par Ironix en L-052, livré par Clément le
+	-- 2026-11-07) : mêmes éléments que BB_WindowHP (TruckController ; sans elle, BB_WindowHP agrandie).
+	{ Name = "BB_TruckHP", Class = "BillboardGui", Elements = { { Path = "Fill" }, { Path = "Label" } } },
 	{ Name = "BB_OpenTimer", Class = "BillboardGui", Elements = { { Path = "Label" } } },
 	{
 		Name = "BB_Item",

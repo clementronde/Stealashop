@@ -3,12 +3,15 @@
 -- TruckEventService ; valeurs : Config/TruckEvent). Rien de ce qui compte ne se décide ici : PV,
 -- colis, contenu et ramassage sont au serveur.
 --
---   - Barre de vie : une copie de ReplicatedStorage/Assets/UI/BB_WindowHP (contrat 2.2, la barre
---     des vitrines), accrochée à l'Attachment HealthBarPoint du camion (modèle taggé EventTruck),
---     agrandie de HealthBarScale et visible jusqu'à HealthBarMaxDistance studs : `Label` écrit
+--   - Barre de vie : une copie de ReplicatedStorage/Assets/UI/BB_TruckHP, la barre du camion de
+--     Clément (L-052, contrat 2.2 : `Label` et `Fill`, comme BB_WindowHP), telle qu'il l'a faite
+--     (taille et portée), accrochée à l'Attachment HealthBarPoint du camion (modèle taggé
+--     EventTruck). Repli tant qu'elle manque : une copie de BB_WindowHP (la barre des vitrines),
+--     agrandie de HealthBarScale et visible jusqu'à HealthBarMaxDistance studs. `Label` écrit
 --     « PV / PV max » (Format.hp), `Fill` prend la largeur des PV. Lue sur les attributs HP et MaxHP
 --     du camion (WindowService) : juste aussi pour un joueur qui arrive en cours de route. Cachée à
---     l'explosion. Modèle de barre absent : pas de barre (une ligne en Studio).
+--     l'explosion. Ni l'une ni l'autre : pas de barre (une ligne en Studio). Les deux modèles sont
+--     cherchés dans Assets/UI et ses sous-dossiers, comme le fait le ContractChecker.
 --   - Explosion (attribut ExplodedAt du camion, heure serveur) : chaque pièce Pieces/Piece_xx part
 --     à l'horizontale à l'opposé de BlastPoint, avec une montée (vitesses et rotation tirées entre
 --     les valeurs Debris*), retombe et rebondit sur le sol du camion, reste DebrisLifetime s, puis
@@ -105,8 +108,9 @@ type Flight = {
 	Trail: { Instance }, -- traînée et ses Attachments : la traînée d'abord
 }
 
--- Noms du contrat (2.2 ; L-049, Contract/Models).
-local BILLBOARD_NAME = "BB_WindowHP"
+-- Noms du contrat (2.2 ; L-049, L-052, Contract/Models).
+local BILLBOARD_NAME = "BB_TruckHP" -- la barre du camion de Clément (L-052)
+local FALLBACK_BILLBOARD = "BB_WindowHP" -- repli : la barre des vitrines, agrandie
 local HEALTH_BAR_POINT = "HealthBarPoint"
 local PIECES_NAME = "Pieces"
 local BLAST_POINT = "BlastPoint"
@@ -170,17 +174,36 @@ end
 
 -- Barre de vie ----------------------------------------------------------------------------------
 
-local function billboardTemplate(): BillboardGui?
+-- Modèle de billboard `name` de Clément, dans Assets/UI ou un de ses sous-dossiers (2.2).
+local function billboard(name: string): BillboardGui?
 	local current: Instance? = ReplicatedStorage
 	for _, segment in UI.BillboardFolder do
 		current = if current then current:FindFirstChild(segment) else nil
 	end
-	local template = if current then current:FindFirstChild(BILLBOARD_NAME) else nil
-	if template and template:IsA("BillboardGui") then
-		return template
+	local found = if current then current:FindFirstChild(name, true) else nil
+	if found and found:IsA("BillboardGui") then
+		return found :: BillboardGui
 	end
-	once("billboard", `{BILLBOARD_NAME} absent de ReplicatedStorage.{table.concat(UI.BillboardFolder, ".")} : pas de barre de vie sur le camion`)
 	return nil
+end
+
+-- Modèle de la barre du camion : BB_TruckHP, sinon BB_WindowHP ; et vrai pour ce repli (à agrandir).
+local function billboardTemplate(): (BillboardGui?, boolean)
+	local own = billboard(BILLBOARD_NAME)
+	if own then
+		return own, false
+	end
+	local folder = table.concat(UI.BillboardFolder, ".")
+	local fallback = billboard(FALLBACK_BILLBOARD)
+	if fallback then
+		once(
+			"billboard.fallback",
+			`{BILLBOARD_NAME} absent de ReplicatedStorage.{folder} : barre de vie du camion = copie de {FALLBACK_BILLBOARD} agrandie (L-052)`
+		)
+		return fallback, true
+	end
+	once("billboard", `{BILLBOARD_NAME} et {FALLBACK_BILLBOARD} absents de ReplicatedStorage.{folder} : pas de barre de vie sur le camion`)
+	return nil, false
 end
 
 local function refreshBar(watch: TruckWatch)
@@ -220,7 +243,7 @@ local function makeBillboard(watch: TruckWatch)
 	if watch.Billboard or playerGui == nil then
 		return
 	end
-	local template = billboardTemplate()
+	local template, fallback = billboardTemplate()
 	local point = Find.path(watch.Model, HEALTH_BAR_POINT)
 	if template == nil or point == nil then
 		if template and point == nil then
@@ -229,11 +252,14 @@ local function makeBillboard(watch: TruckWatch)
 		return
 	end
 	local gui = template:Clone()
-	local scale = TruckEvent.HealthBarScale
-	local size = gui.Size
-	gui.Name = `{BILLBOARD_NAME}_{watch.Model.Name}`
-	gui.Size = UDim2.new(size.X.Scale * scale, size.X.Offset * scale, size.Y.Scale * scale, size.Y.Offset * scale)
-	gui.MaxDistance = TruckEvent.HealthBarMaxDistance
+	gui.Name = `{template.Name}_{watch.Model.Name}`
+	if fallback then
+		-- La barre d'une vitrine, agrandie et visible de loin ; BB_TruckHP garde la taille et la portée de Clément.
+		local scale = TruckEvent.HealthBarScale
+		local size = gui.Size
+		gui.Size = UDim2.new(size.X.Scale * scale, size.X.Offset * scale, size.Y.Scale * scale, size.Y.Offset * scale)
+		gui.MaxDistance = TruckEvent.HealthBarMaxDistance
+	end
 	gui.Adornee = point
 	gui.ResetOnSpawn = false
 	gui.Enabled = false
