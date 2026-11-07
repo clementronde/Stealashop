@@ -1,9 +1,10 @@
 --!strict
 -- Colis des rayons des magasins PNJ (DEV-015, DEV-017) : tirage à la mise en rayon, étiquette
 -- BB_Box et contour des colis (liaison L-031 et L-033, décisions de Clément acceptées par Ironix
--- le 2026-11-07). Lu par StoreHeistService et CarryService (serveur) et par ShelfBoxController
--- (client). Le nombre de colis de chaque type, leur temps de prise et leurs probabilités de
--- rareté restent dans Balance.Heist.BoxTiers et Rarities.BoxOdds.
+-- le 2026-11-07). Lu par StoreHeistService, CarryService et UnboxService (serveur) et par
+-- ShelfBoxController et le rouleau d'UnboxController (client). Le nombre de colis de chaque type,
+-- leur temps de prise et leurs probabilités de rareté restent dans Balance.Heist.BoxTiers et
+-- Rarities.BoxOdds.
 --
 -- Origine de chaque valeur, notée en commentaire :
 --   L-031, L-033  décision écrite dans la liaison ;
@@ -11,6 +12,7 @@
 -- Unités : studs, secondes ; pourcentages de 0 à 100.
 
 local DeepFreeze = require(script.Parent.DeepFreeze)
+local Rarities = require(script.Parent.Rarities)
 
 -- ZoneOdds[zone][BoxTier][RarityId] = pourcentage (chaque type fait 100).
 export type ZoneOdds = { [number]: { [string]: { [string]: number } } }
@@ -34,6 +36,17 @@ local ShelfBoxes = {
 	-- Probabilités de rareté propres à une zone : remplacent Rarities.BoxOdds[Tier] dans cette
 	-- zone. Une zone absente tire avec Rarities.BoxOdds (7.3).
 	ZoneOdds = ZONE_ODDS,
+
+	-- Probabilités d'un type de colis dans une zone : ZoneOdds[zone][tier] s'il existe, sinon
+	-- Rarities.BoxOdds[tier] (7.3) ; nil pour un type inconnu. [RarityId] = pourcentage, une
+	-- rareté absente vaut 0. Fonction pure, sans tirage : lue par UnboxService (amélioration du
+	-- colis) et par le rouleau d'UnboxController (DEV-050). StoreHeistService garde pour l'instant
+	-- sa fonction locale, qui fait la même chose.
+	OddsFor = function(zone: number, tier: string): { [string]: number }?
+		local byZone = ZONE_ODDS[zone]
+		local odds = if byZone then byZone[tier] else nil
+		return odds or Rarities.BoxOdds[tier]
+	end,
 
 	-- Client (ShelfBoxController) ------------------------------------------------------------
 

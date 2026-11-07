@@ -83,7 +83,27 @@ UI.Screens = {
 			{ Path = "Rarity", Class = "TextLabel" },
 			{ Path = "ItemName", Class = "TextLabel" },
 			{ Path = "Income", Class = "TextLabel" },
+			-- Dans un cadre Buttons depuis la v2 (avec OpenNextButton) : chemin inchangé (Contract/Find).
 			{ Path = "ContinueButton", Class = BUTTON },
+			-- Ouverture des colis v2 (spec ouverture-colis, liaison L-046, UI_Unbox v2 de Clément du
+			-- 2026-11-07, DEV-050) : cachés au repos, sauf ItemPreview, Backdrop et les cadres vides.
+			{ Path = "Backdrop", Class = "Frame" }, -- scène assombrie (version complète)
+			{ Path = "SkipButton", Class = BUTTON }, -- « TAP TO SKIP », plein écran
+			{ Path = "Upgrade", Class = "Frame" }, -- amélioration du colis, au-dessus du colis
+			{ Path = "Upgrade.UpgradeLabel", Class = "TextLabel" }, -- « UPGRADE! »
+			{ Path = "Upgrade.UpgradeRarity", Class = "TextLabel" }, -- rareté atteinte, à sa couleur
+			{ Path = "Reel", Class = "Frame" }, -- rouleau, un objet à la fois
+			{ Path = "Reel.ReelGlow", Class = "Frame" }, -- lueur à la couleur de l'objet au centre
+			{ Path = "Reel.ReelView", Class = "ViewportFrame" }, -- clones ITM_*, silhouettes par ImageColor3
+			{ Path = "ItemPreview", Class = "Frame" }, -- l'objet révélé (ViewportFrame posé par le code)
+			{ Path = "Rays", Class = "ImageLabel" }, -- rayons à la couleur de la rareté (texture MOD-041)
+			{ Path = "Rarity.Rainbow", Class = "UIGradient" }, -- arc-en-ciel du Secret, désactivé au repos
+			{ Path = "Rays.Rainbow", Class = "UIGradient" },
+			{ Path = "UpgradeRarity.Rainbow", Class = "UIGradient" },
+			{ Path = "Confetti", Class = "Frame" },
+			{ Path = "Confetti.Template", Class = "Frame", Template = true }, -- cloné par le code
+			{ Path = "Flash", Class = "Frame" }, -- flash blanc
+			{ Path = "OpenNextButton", Class = BUTTON }, -- « OPEN NEXT », caché au repos
 		},
 	},
 	{

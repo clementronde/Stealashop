@@ -16,11 +16,35 @@
 --     BoxReady part pour ceux qui sont déjà prêts.
 --   - Attente écoulée : BoxReady(benchIndex) au propriétaire.
 --   - OpenBox(benchIndex) : attente écoulée (heure serveur), joueur sur sa parcelle, à portée de
---     l'établi → nouvel objet dans Items sous un uid unique ({ Id = ItemId, Source = "NPC",
---     At = os.time() }), l'établi se libère, UnboxReveal(benchIndex, itemUid, itemId) au joueur,
---     puis DisplayService.PlaceAuto(player, itemUid).
+--     l'établi → amélioration du colis tirée (plus bas), nouvel objet dans Items sous un uid unique
+--     ({ Id = ItemId, Source = "NPC", At = os.time(), Zone }), l'établi se libère,
+--     UnboxReveal(benchIndex, itemUid, itemId, zone, tier, startRarity, upgrades) au joueur, puis
+--     DisplayService.PlaceAuto(player, itemUid).
 --   - L'objet exact reste caché jusqu'à l'ouverture (5.7) : l'ItemId ne quitte le serveur que dans
 --     UnboxReveal. Aucun attribut, nom ni modèle d'objet ne le montre avant.
+--
+-- Amélioration du colis (DEV-050, étape 0 de la spec ouverture-colis, règle nouvelle de Clément du
+-- 2026-11-07, valeurs dans Config.Unbox) : à OpenBox, avant tout envoi, jusqu'à UpgradeMax (2)
+-- crans ; chaque cran réussit avec UpgradeChance (10 %) × la chance du joueur (GetLuck, 1 par
+-- défaut ; probabilité bornée à 1) et fait monter le colis d'une rareté, dans l'ordre de
+-- Rarities.List (Commun → Peu commun → Rare). Un cran n'est tenté que si la rareté visée :
+--   - n'est pas Secret ;
+--   - peut sortir de ce colis dans sa zone (ShelfBoxes.OddsFor(zone, tier) > 0) : jamais en zone 1,
+--     qui ne tire que des Communs (L-033) ;
+--   - a au moins un objet tirable dans la zone (Items.ByZone[zone][rareté]).
+-- Sinon, comme au premier échec, l'amélioration s'arrête (V0 à confirmer par Clément : la spec ne
+-- pose la condition « que ce colis peut donner » que pour le frôlement). Un colis au contenu imposé
+-- n'est jamais amélioré : c'est un colis dont la propre rareté ne peut pas sortir de son type dans
+-- sa zone, comme le colis garanti du tuto (objet Rare en zone 1, posé par
+-- StoreHeistService.SetContentOverride). Un colis amélioré change d'objet : Items.Pick(zone,
+-- rareté finale) ; sans cran, l'objet tiré à la mise en rayon reste. UnboxReveal donne au client
+-- la rareté de départ et le nombre de crans (chaque cran monte d'une rareté : le client en déduit
+-- les raretés), la zone et le type du colis (composition du rouleau, revenu du Secret).
+--
+-- Annonce (5.7, étape 6 : « Légendaire et plus, annonce à tout le serveur » ; Rarities.Announce) :
+-- un Notify (catégorie Config.Unbox.AnnounceKind) aux autres joueurs du serveur, au moment où
+-- l'objet se révèle chez celui qui ouvre (durées de Config.Unbox, ouverture au secours de 0,45 s).
+-- Texte V0 en anglais (L-036) : « Alice unboxed a LEGENDARY Giant Plush! ».
 --
 -- Heure serveur : ReadyAt est en secondes depuis l'époque Unix, la même échelle que os.time(),
 -- mais lue avec Workspace:GetServerTimeNow(), précise au millième : avec os.time(), entier, un
@@ -55,12 +79,21 @@
 --       (5 s, Config.Tutorial.OpenDelay) :
 --         UnboxService.GetOpenDelay = function(player, box) ... end
 --       Ne doit pas yield. Une valeur qui n'est pas un nombre fini ≥ 0 est ignorée.
+--   UnboxService.GetLuck(player, box) -> number
+--       Chance du joueur pour l'amélioration du colis qu'il ouvre (box : copie du colis sauvegardé).
+--       1 par défaut : aucune source de chance au MVP (un bonus en Partie 2). Remplaçable comme
+--       GetOpenDelay ; 0 = aucun cran pour ce colis. Ne doit pas yield. Une valeur qui n'est pas un
+--       nombre fini ≥ 0 est ignorée (chance 1).
+--   UnboxService.RollUpgrades(box, luck, rng?) -> { RarityId }
+--       Le tirage de l'amélioration (règle plus haut), sans rien changer : les raretés atteintes,
+--       cran par cran (vide : aucun cran). Pur, sans yield ; rng = un Random (celui du service par
+--       défaut). Appelé par OpenBox ; exposé pour les bancs d'essai et la télémétrie.
 --   UnboxService.OnBoxPlaced(listener) -> déconnexion
 --       listener(player, benchIndex, box) après chaque colis posé (tutoriel, télémétrie). box est
 --       une copie du colis sauvegardé, ItemId compris : ne jamais l'envoyer à un client.
 --   UnboxService.OnBoxOpened(listener) -> déconnexion
---       listener(player, benchIndex, itemUid, itemId) après chaque ouverture (tutoriel, télémétrie,
---       annonce des objets Légendaires et plus).
+--       listener(player, benchIndex, itemUid, itemId) après chaque ouverture (tutoriel,
+--       télémétrie) ; itemId = l'objet final, après l'amélioration.
 
 local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
@@ -73,6 +106,8 @@ local Shared = ReplicatedStorage.Shared
 local Balance = require(Shared.Config.Balance)
 local Items = require(Shared.Config.Items)
 local Rarities = require(Shared.Config.Rarities)
+local ShelfBoxes = require(Shared.Config.ShelfBoxes)
+local Unbox = require(Shared.Config.Unbox)
 local Zones = require(Shared.Config.Zones)
 local Find = require(Shared.Contract.Find)
 local UI = require(Shared.Contract.UI)
@@ -138,9 +173,10 @@ local TIMER_POINT = "TimerPoint"
 
 -- V0 proposé, absent du doc : portée (studs) de l'invite d'un établi, la même que celle
 -- d'UnboxController, et marge du serveur pour la gigue réseau. Le serveur accepte PlaceBox et
--- OpenBox jusqu'à PROMPT_DISTANCE + REACH_TOLERANCE entre le HumanoidRootPart et l'établi.
-local PROMPT_DISTANCE = 8
-local REACH_TOLERANCE = 4
+-- OpenBox jusqu'à PROMPT_DISTANCE + REACH_TOLERANCE entre le HumanoidRootPart et l'établi. Valeurs
+-- dans Config.Unbox, partagées avec le client (OpenNextButton suit la même règle).
+local PROMPT_DISTANCE = Unbox.PromptDistance
+local REACH_TOLERANCE = Unbox.ReachTolerance
 -- V0 proposé, absent du doc : cadence (s) de la boucle qui fait avancer les minuteurs.
 local TICK = 0.25
 -- V0 proposé, absent du doc : texte du minuteur quand le colis est prêt, en anglais (L-036).
@@ -169,6 +205,7 @@ local sessions: { [Player]: Session } = {}
 local benchCache: { [Model]: { [number]: Attachment } } = {}
 local placedListeners: { PlacedListener } = {}
 local openedListeners: { OpenedListener } = {}
+local random = Random.new()
 
 ------------------------------------------------------------------------------
 -- Outils
@@ -184,9 +221,9 @@ local function serverNow(): number
 	return Workspace:GetServerTimeNow()
 end
 
-local function notify(player: Player, message: string)
+local function notify(player: Player, message: string, kind: string?)
 	local ok, err = pcall(function()
-		Net.Server.Notify:Fire(player, message, "Warning")
+		Net.Server.Notify:Fire(player, message, kind or "Warning")
 	end)
 	if not ok then
 		warn(`[UnboxService] Notify vers {player.Name} : {err}`)
@@ -302,6 +339,106 @@ local function openDelay(player: Player, box: Box): number
 	local reason = if ok then "valeur invalide " .. tostring(value) else tostring(value)
 	warn(`[UnboxService] GetOpenDelay ({player.Name}) : {reason}, attente de la rareté utilisée`)
 	return Rarities.ById[box.Rarity].OpenDelay
+end
+
+------------------------------------------------------------------------------
+-- Amélioration du colis (DEV-050, règle dans l'en-tête) et annonce
+------------------------------------------------------------------------------
+
+-- Probabilité (en %) que le colis `tier` de la zone `zone` donne `rarityId` (ShelfBoxes.OddsFor).
+local function oddsOf(zone: number, tier: string, rarityId: string): number
+	local odds = ShelfBoxes.OddsFor(zone, tier)
+	local value = if odds then odds[rarityId] else nil
+	return if type(value) == "number" then value else 0
+end
+
+-- Au moins un objet tirable de cette zone et de cette rareté (catalogue v2 : une liste par case).
+local function hasItem(zone: number, rarityId: string): boolean
+	local byZone = Items.ByZone[zone]
+	local list = if byZone then byZone[rarityId] else nil
+	return list ~= nil and #list > 0
+end
+
+-- Chance du joueur (UnboxService.GetLuck, remplaçable) ; 1 si l'accroche renvoie une valeur invalide.
+local function luckOf(player: Player, box: Box): number
+	local ok, value = pcall(UnboxService.GetLuck, player, table.clone(box))
+	if ok and type(value) == "number" and value >= 0 and value < math.huge then
+		return value
+	end
+	local reason = if ok then "valeur invalide " .. tostring(value) else tostring(value)
+	warn(`[UnboxService] GetLuck ({player.Name}) : {reason}, chance 1 utilisée`)
+	return 1
+end
+
+-- Raretés atteintes cran par cran (règle de l'en-tête). Rarities.List est rangée par Order (1 à 7) :
+-- la rareté au-dessus de `r` est Rarities.List[r.Order + 1].
+local function rollUpgrades(box: Box, luck: number, rng: Random): { string }
+	local steps: { string } = {}
+	local chance = Unbox.UpgradeChance * luck
+	chance = if chance == chance then math.clamp(chance, 0, 1) else 0 -- NaN : aucun cran
+	local current = Rarities.ById[box.Rarity]
+	if chance <= 0 or current == nil then
+		return steps -- règle coupée (UpgradeChance ou chance à 0), ou colis illisible
+	end
+	if oddsOf(box.Zone, box.Tier, box.Rarity) <= 0 then
+		return steps -- contenu imposé (colis garanti du tuto) : jamais amélioré
+	end
+	for _ = 1, Unbox.UpgradeMax do
+		local nextRarity = Rarities.List[current.Order + 1]
+		if nextRarity == nil or nextRarity.Id == "Secret" then
+			break
+		end
+		if oddsOf(box.Zone, box.Tier, nextRarity.Id) <= 0 or not hasItem(box.Zone, nextRarity.Id) then
+			break -- ce colis ne peut pas donner cette rareté dans sa zone (V0, à confirmer par Clément)
+		end
+		if rng:NextNumber() >= chance then
+			break
+		end
+		table.insert(steps, nextRarity.Id)
+		current = nextRarity
+	end
+	return steps
+end
+
+-- Article anglais devant un mot en capitales : « a LEGENDARY », « an EPIC ».
+local function article(word: string): string
+	return if string.find(word, "^[AEIOU]") then "an" else "a"
+end
+
+-- Délai (s) entre UnboxReveal et l'objet révélé chez celui qui ouvre, si rien ne le presse :
+-- `upgrades` crans, ouverture au secours de 0,45 s, rouleau, dernier cran, pause, couleurs
+-- (Config.Unbox ; même calcul que la séquence d'UnboxController).
+local function revealDelay(full: boolean, upgrades: number): number
+	local reel = if full then Unbox.ReelDuration.Full else Unbox.ReelDuration.Short
+	return upgrades * Unbox.UpgradeStep
+		+ Unbox.OpenFallback
+		+ Unbox.ReelExit
+		+ reel
+		+ Unbox.LastNotch
+		+ Unbox.StopPause
+		+ Unbox.ColorIn
+end
+
+-- Annonce à tout le serveur d'un objet Légendaire ou mieux (Rarities.Announce, 5.7 étape 6) : un
+-- Notify aux autres joueurs, quand l'objet se révèle chez `player`. V0 : le texte, la catégorie
+-- (Config.Unbox.AnnounceKind) et l'affichage (UI_Notify, pas encore livré).
+local function announce(player: Player, itemId: string, rarityId: string, upgrades: number)
+	local rarity = Rarities.ById[rarityId]
+	local item = Items.ById[itemId]
+	if rarity == nil or item == nil or not rarity.Announce then
+		return
+	end
+	local name = rarity.DisplayNameUpper
+	local message = `{player.DisplayName} unboxed {article(name)} {name} {item.DisplayName}!`
+	local delay = revealDelay(rarity.FullReveal, upgrades)
+	log(`annonce dans {delay} s aux autres joueurs : {message}`)
+	task.delay(delay, function()
+		for _, other in Players:GetPlayers() do
+			if other ~= player then
+				notify(other, message, Unbox.AnnounceKind)
+			end
+		end
+	end)
 end
 
 ------------------------------------------------------------------------------
@@ -733,8 +870,23 @@ local function onOpenBox(player: Player, benchIndex: number)
 		return
 	end
 
-	-- D'un seul tenant, sans yield : l'objet entre dans Items quand le colis quitte Boxes.
+	-- Amélioration du colis (en-tête) : le serveur décide des crans et de l'objet avant tout envoi.
+	local startRarity = box.Rarity
+	local steps = rollUpgrades(box, luckOf(player, box), random)
 	local itemId = box.ItemId
+	local finalRarity = startRarity
+	if #steps > 0 then
+		local target = steps[#steps]
+		local picked = Items.Pick(box.Zone, target, random)
+		if picked ~= nil and picked.Rarity == target then
+			itemId, finalRarity = picked.Id, target
+		else
+			warn(`[UnboxService] {player.Name} : amélioration en {target} sans objet tirable en zone {box.Zone}, colis ouvert sans cran`)
+			table.clear(steps)
+		end
+	end
+
+	-- D'un seul tenant, sans yield : l'objet entre dans Items quand le colis quitte Boxes.
 	local uid = newUid(data)
 	-- Zone gardée pour le revenu du Secret, qui n'a pas de zone au catalogue (DisplayService la lit).
 	data.Items[uid] = { Id = itemId, Source = "NPC", At = os.time(), Zone = box.Zone }
@@ -742,9 +894,12 @@ local function onOpenBox(player: Player, benchIndex: number)
 	clearSlot(session, benchIndex)
 	setState(session, benchIndex, stateFor(session, data, benchIndex))
 
-	-- 5.7 : l'identité de l'objet ne part vers le client qu'ici.
-	Net.Server.UnboxReveal:Fire(player, benchIndex, uid, itemId)
-	log(`{player.Name} : établi {benchIndex} ouvert, {itemId} ({box.Rarity}), uid {uid}`)
+	-- 5.7 : l'identité de l'objet ne part vers le client qu'ici, avec ce qu'il faut pour jouer les
+	-- crans et composer le rouleau.
+	Net.Server.UnboxReveal:Fire(player, benchIndex, uid, itemId, box.Zone, box.Tier, startRarity, #steps)
+	local upgraded = if #steps > 0 then `, {#steps} cran(s) : {startRarity} → {table.concat(steps, " → ")}` else ""
+	log(`{player.Name} : établi {benchIndex} ouvert, {itemId} ({finalRarity}){upgraded}, uid {uid}`)
+	announce(player, itemId, finalRarity, #steps)
 
 	local ok, result = pcall(DisplayService.PlaceAuto, player, uid)
 	if not ok then
@@ -766,6 +921,14 @@ end
 
 function UnboxService.GetOpenDelay(_player: Player, box: Box): number
 	return Rarities.ById[box.Rarity].OpenDelay
+end
+
+function UnboxService.GetLuck(_player: Player, _box: Box): number
+	return 1
+end
+
+function UnboxService.RollUpgrades(box: Box, luck: number, rng: Random?): { string }
+	return rollUpgrades(box, luck, rng or random)
 end
 
 function UnboxService.Refresh(player: Player)
