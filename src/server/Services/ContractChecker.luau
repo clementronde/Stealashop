@@ -642,11 +642,166 @@ local function checkModels(scanned: { Instance })
 				pending(spec.Category, `{spec.Label} pas encore livrés : {listNames(missing)}`)
 			end
 		elseif expectedCount then
-			if #list < expectedCount then
-				pending(spec.Category, `{spec.Label} {prefix or ""}* : {#list} sur {expectedCount} livrés`)
+			-- Noms différents seulement (un objet livré dans l'inbox et rangé dans Assets compte une
+			-- fois), et, si le contrat les donne, seulement les noms acceptés (checkItems signale les autres).
+			local known = spec.Known
+			local delivered = 0
+			for name in names do
+				if known == nil or known[name] then
+					delivered += 1
+				end
+			end
+			if delivered < expectedCount then
+				pending(spec.Category, `{spec.Label} {prefix or ""}* : {delivered} sur {expectedCount} livrés`)
 			end
 		elseif tag == nil and #list == 0 then
 			pending(spec.Category, `{spec.Label} {prefix or ""}* : aucun livré`)
+		end
+	end
+end
+
+-- Objets ITM_ (catalogue v2 et animation idle, liaison L-045) -----------------------------------
+
+local function isSpinPiece(inst: Instance, spinPrefix: string): boolean
+	return startsWith(inst.Name, spinPrefix)
+end
+
+-- Premier ancêtre de `inst`, sous `model`, dont le nom commence par le préfixe des pièces Spin_.
+local function spinAncestor(inst: Instance, model: Instance, spinPrefix: string): Instance?
+	local parent = inst.Parent
+	while parent and parent ~= model do
+		if isSpinPiece(parent, spinPrefix) then
+			return parent
+		end
+		parent = parent.Parent
+	end
+	return nil
+end
+
+local function isInsideOrSelf(inst: Instance?, root: Instance): boolean
+	return inst ~= nil and (inst == root or inst:IsDescendantOf(root))
+end
+
+-- Pièces d'une soudure (Weld, Motor6D, WeldConstraint…), nil si ce n'en est pas une.
+local function jointParts(inst: Instance): (Instance?, Instance?)
+	if inst:IsA("JointInstance") then
+		local joint = inst :: JointInstance
+		return joint.Part0, joint.Part1
+	elseif inst:IsA("WeldConstraint") then
+		local weld = inst :: WeldConstraint
+		return weld.Part0, weld.Part1
+	end
+	return nil, nil
+end
+
+-- Modèle ITM_ qui contient `inst` (pas lui-même), ou nil.
+local function itemAncestor(inst: Instance, prefix: string): Instance?
+	local parent = inst.Parent
+	while parent and parent ~= game do
+		if isPrefixed(parent, prefix) then
+			return parent
+		end
+		parent = parent.Parent
+	end
+	return nil
+end
+
+-- Pour chaque modèle ITM_ : nom du catalogue (Config/Items, par Contract/Models), anciens noms du
+-- catalogue v1 refusés, ItemId = nom sans ITM_, un seul Root, ni pièce Spin_ ni dans une pièce
+-- Spin_, pièces Spin_ = BasePart ou Model, sans soudure vers le reste du modèle, attribut Idle à
+-- une valeur connue. Un attribut Idle posé sur une pièce d'un ITM_ est signalé (le code ne le lit
+-- que sur le modèle) ; ailleurs, il n'est pas regardé (les copies exposées le gardent).
+local function checkItems(scanned: { Instance })
+	local spec = Models.Item
+	local prefix = spec.Prefix or "ITM_"
+	local spinPrefix = spec.SpinPrefix or "Spin_"
+	local known = spec.Known or {}
+	local renamed = spec.Renamed or {}
+	local retired = spec.Retired or {}
+	local idleSpec = Attributes.Idle
+	local idleValues = `{table.concat(idleSpec.Values, ", ")} ou rien`
+	for _, inst in scanned do
+		local isItem = isPrefixed(inst, prefix)
+		local idle = inst:GetAttribute(idleSpec.Name)
+		if idle ~= nil and not isItem then
+			local holder = itemAncestor(inst, prefix)
+			if holder then
+				problem(
+					"Objets",
+					`{inst:GetFullName()} : attribut Idle ignoré par le code ici, le poser sur le modèle {holder.Name} lui-même (L-045)`
+				)
+			end
+		end
+		if not isItem then
+			continue
+		end
+		if idle ~= nil and (type(idle) ~= "string" or table.find(idleSpec.Values, idle) == nil) then
+			problem("Objets", `{inst:GetFullName()} : Idle = « {tostring(idle)} », attendu {idleValues} (L-045)`)
+		end
+
+		local label = inst:GetFullName()
+		local name = inst.Name
+		if not known[name] then
+			local newName = renamed[name]
+			if newName then
+				problem("Objets", `{label} : objet renommé au catalogue v2 (L-045), le renommer {newName} (ItemId compris)`)
+			elseif retired[name] then
+				problem("Objets", `{label} : objet retiré du catalogue v2 (L-045), le jeu ne l'utilise plus`)
+			else
+				local near = nearName(known, name)
+				local fix = if near then ` : le renommer {near}` else ""
+				problem("Objets", `{label} : {name} n'est pas au catalogue d'objets (Config/Items){fix}`)
+			end
+		end
+
+		local itemId = inst:GetAttribute(Attributes.ItemId.Name)
+		local expectedId = string.sub(name, #prefix + 1)
+		if type(itemId) == "string" and itemId ~= "" and itemId ~= expectedId then
+			problem("Objets", `{label} : ItemId = « {itemId} », attendu « {expectedId} » (le nom du modèle sans {prefix}, 10.3)`)
+		end
+
+		local primary = spec.PrimaryPart or "Root"
+		local roots: { Instance } = indexOf(inst)[primary] or {}
+		if #roots > 1 then
+			problem("Objets", `{label} : {#roots} éléments nommés {primary}, un seul attendu (la pièce PrimaryPart)`)
+		end
+		for _, root in roots do
+			local holder = spinAncestor(root, inst, spinPrefix)
+			if holder then
+				problem(
+					"Objets",
+					`{label}.{primary} est dans {holder.Name} : une pièce {spinPrefix} tourne, le pivot du modèle tournerait avec elle (L-045)`
+				)
+			end
+		end
+
+		local spinPieces: { Instance } = {}
+		for _, descendant in inst:GetDescendants() do
+			if isSpinPiece(descendant, spinPrefix) then
+				if descendant:IsA("BasePart") or descendant:IsA("Model") then
+					table.insert(spinPieces, descendant)
+				else
+					problem(
+						"Objets",
+						`{label}.{descendant.Name} : une pièce {spinPrefix} doit être une pièce (BasePart) ou un Model (trouvé : {descendant.ClassName})`
+					)
+				end
+			end
+		end
+		if #spinPieces > 0 then
+			for _, descendant in inst:GetDescendants() do
+				local part0, part1 = jointParts(descendant)
+				if part0 and part1 then
+					for _, piece in spinPieces do
+						if isInsideOrSelf(part0, piece) ~= isInsideOrSelf(part1, piece) then
+							problem(
+								"Objets",
+								`{label}.{piece.Name} : soudée au reste du modèle par {descendant.Name} ({descendant.ClassName}), elle ne pourrait pas tourner seule : retirer la soudure (L-045)`
+							)
+						end
+					end
+				end
+			end
 		end
 	end
 end
@@ -1085,6 +1240,7 @@ local function run()
 	checkTags()
 	checkPlotIndex()
 	checkModels(scanned)
+	checkItems(scanned)
 	checkGuiSet("UI", UI.Screens, StarterGui, "StarterGui", "écran", false)
 	local billboardPath = `ReplicatedStorage.{table.concat(UI.BillboardFolder, ".")}`
 	checkGuiSet("Billboards", UI.Billboards, walk(ReplicatedStorage, UI.BillboardFolder), billboardPath, "billboard", true)

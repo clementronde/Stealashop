@@ -36,8 +36,10 @@
 --   sur la parcelle :
 --     CashRegister (number)          argent en caisse, en dollars entiers ; 0 si libre
 --   sur chaque objet exposé (Model `DisplayItem_<nn>`, tag de code `DisplayItem`, rangé dans le
---   dossier `DisplayItems` de la parcelle) :
---     ItemUid, ItemId, Rarity, Halo, Income, DisplaySlot, OwnerUserId, Placeholder (bloc V0)
+--   dossier `DisplayItems` de la parcelle, ModelStreamingMode Atomic) :
+--     ItemUid, ItemId, Rarity, Halo, Income, DisplaySlot, OwnerUserId, Placeholder (bloc V0) ;
+--     la copie du modèle ITM_ garde aussi l'attribut Idle de Clément et ses pièces Spin_ (L-045),
+--     qu'ItemIdleController anime côté client (le halo RarityHalo et le billboard restent fixes)
 --
 -- API (côté serveur) :
 --   DisplayService.PlaceAuto(player, itemUid, near?) -> number?
@@ -754,6 +756,9 @@ local function buildVisual(owner: Player, refs: PlotRefs, slot: number, uid: str
 	local placeholder = model == nil
 	local display = model or placeholderModel(rarity)
 	display.Name = string.format(MODEL_FORMAT, slot)
+	-- Arrive en entier chez les clients (StreamingEnabled) : ItemIdleController y lit la position de
+	-- repos de toutes les pièces avant de les animer (L-045).
+	display.ModelStreamingMode = Enum.ModelStreamingMode.Atomic
 	display:PivotTo((refs.slots[slot] :: Attachment).WorldCFrame) -- présentoir vérifié par sanitize
 
 	local boxCFrame, boxSize = display:GetBoundingBox()

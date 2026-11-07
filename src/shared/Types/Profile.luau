@@ -1,6 +1,8 @@
 --!strict
 -- Type du profil sauvegardé d'un joueur (ReplicatedStorage/Shared/Types/Profile).
--- Schéma v1 de la section 9.5 de la Partie 1 ; valeurs de départ dans DataService.
+-- Schéma v2 : la forme de la v1 (section 9.5 de la Partie 1), avec les ItemId du catalogue
+-- d'objets v2 (Config/Items, liaison L-045 ; DataService, MIGRATIONS[2], renomme ou remplace ceux
+-- de la v1). Valeurs de départ dans DataService.
 -- Ce module ne contient que des types : on l'utilise avec
 --   local ProfileTypes = require(ReplicatedStorage.Shared.Types.Profile)
 --   local data: ProfileTypes.Data = ...
@@ -44,7 +46,7 @@ export type Cosmetics = {
 
 -- Un objet possédé, rangé par son uid unique (anti-duplication, section 9.6).
 export type Item = {
-	Id: string, -- identifiant du catalogue, ex. « Z3_Smartphone »
+	Id: string, -- identifiant du catalogue (Config/Items), ex. « Z3_Smartphone » ; sa rareté vient du catalogue
 	Source: ItemSource,
 	At: number, -- os.time() de l'obtention
 	Zone: number?, -- zone du magasin d'origine : nécessaire au revenu d'un objet présent dans
@@ -55,8 +57,8 @@ export type Item = {
 export type Box = {
 	Tier: BoxTier,
 	Zone: number, -- 1 à 6
-	ItemId: string, -- objet tiré par le serveur au vol
-	Rarity: string, -- rareté tirée, ex. « Epic »
+	ItemId: string, -- objet tiré par le serveur à la mise en rayon (Config/Items)
+	Rarity: string, -- rareté tirée, ex. « Epic » : toujours celle de l'objet au catalogue
 	ReadyAt: number, -- os.time() à partir duquel OpenBox est accepté
 }
 
@@ -87,7 +89,8 @@ export type Data = {
 	Tutorial: Tutorial,
 	Lifetime: Lifetime,
 	Purchases: { [string]: boolean }, -- [PurchaseId] = true (achats Robux idempotents)
-	-- Partie 2 : Defenses, Rebirths, Index, Rewards, ajoutés par migration (Version = 2).
+	-- Partie 2 : Defenses, Rebirths, Index, Rewards, ajoutés par migration (Version = 3 : la v2 est
+	-- prise par le catalogue d'objets v2).
 }
 
 return {}

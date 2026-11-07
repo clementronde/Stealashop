@@ -7,6 +7,11 @@
 --
 -- Part.Name est un nom exact, ou un format ("ShelfSlot_%02d") quand From et To sont
 -- donnés : série numérotée de From à To. Min = nombre minimum de la série (défaut : To).
+--
+-- Les objets ITM_* suivent le catalogue (Config/Items, catalogue v2) : noms acceptés et nombre
+-- attendu en sont tirés, comme les anciens noms du catalogue v1 que le ContractChecker refuse.
+
+local Items = require(script.Parent.Parent:WaitForChild("Config"):WaitForChild("Items"))
 
 export type Part = {
 	Name: string,
@@ -34,7 +39,11 @@ export type ModelSpec = {
 	BodyAttachment: boolean?, -- accessoire : un attachment de corps dans Handle
 	Parts: { Part },
 	Expected: { string }?, -- noms d'exemplaires attendus
-	ExpectedCount: number?, -- nombre d'exemplaires attendus
+	ExpectedCount: number?, -- nombre d'exemplaires attendus (noms différents)
+	Known: { [string]: boolean }?, -- seuls noms acceptés ; un autre nom est signalé (objets ITM_)
+	Renamed: { [string]: string }?, -- ancien nom → nom à prendre
+	Retired: { [string]: boolean }?, -- anciens noms retirés du contrat
+	SpinPrefix: string?, -- préfixe des pièces qui tournent sur leur propre axe Y (objets ITM_)
 }
 
 -- Vitre pré-fracturée : 30 à 40 éclats (5.4 et MOD-010) ; le 10.4 écrit Shard_01 à
@@ -120,6 +129,20 @@ local Bench: ModelSpec = {
 	},
 }
 
+-- Noms de modèles des objets du catalogue v2, et anciens noms du catalogue v1 (Config/Items).
+local itemNames: { [string]: boolean } = {}
+for _, item in Items.List do
+	itemNames[item.Asset] = true
+end
+local itemRenamed: { [string]: string } = {}
+for old, new in Items.RenamedV1 do
+	itemRenamed[`ITM_{old}`] = `ITM_{new}`
+end
+local itemRetired: { [string]: boolean } = {}
+for old in Items.RetiredV1 do
+	itemRetired[`ITM_{old}`] = true
+end
+
 local Item: ModelSpec = {
 	Key = "Item",
 	Label = "objets exposés",
@@ -127,10 +150,19 @@ local Item: ModelSpec = {
 	Prefix = "ITM_",
 	Class = "Model",
 	PrimaryPart = "Root",
-	Attributes = { "ItemId" },
+	Attributes = { "ItemId" }, -- = nom du modèle sans ITM_ (10.3)
 	Parts = {},
-	-- 36 objets des 6 zones + 1 Secret (10.5).
-	ExpectedCount = 37,
+	-- Les 74 objets du catalogue v2 (liaison L-045) : 13 en zone 1, 12 par zone de 2 à 6, 1 Secret.
+	ExpectedCount = #Items.List,
+	Known = itemNames,
+	Renamed = itemRenamed, -- Z4_Montre, Z5_Vase
+	Retired = itemRetired, -- les 6 objets retirés du catalogue v1
+	-- Animation idle (L-045, proposition de Clément validée par Ironix le 2026-11-07), jouée côté
+	-- client par ItemIdleController, aucun script dans le modèle : attribut Idle du modèle
+	-- (Contract/Attributes) et pièces Spin_<Nom>, qui tournent sur leur propre axe Y autour de leur
+	-- centre (BasePart, ou Model autour de son pivot), avec ou sans Idle. Root n'est jamais une
+	-- pièce Spin_ ni dans une pièce Spin_ (le pivot du modèle bougerait).
+	SpinPrefix = "Spin_",
 }
 
 local Box: ModelSpec = {
