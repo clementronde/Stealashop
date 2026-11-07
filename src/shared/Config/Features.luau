@@ -4,6 +4,7 @@
 -- (HudController). Repasser un interrupteur à true suffit à les réafficher, tels que Clément
 -- les a posés (le code ne force jamais Visible = true). NightCycle et ReturnToBase coupent aussi
 -- leur service serveur (NightCycleService, ReturnBaseService) et le ciel animé (SkyController).
+-- TruckEvent n'a pas d'UI : false coupe TruckEventService (aucun camion) et TruckController.
 
 local DeepFreeze = require(script.Parent.DeepFreeze)
 
@@ -13,6 +14,7 @@ local Features = {
 	Rebirth = false, -- MAJ 3, renaissance : UI_HUD.RebirthButton
 	NightCycle = true, -- DEV-047, cycle jour/nuit (5.12) : UI_HUD.NightCountdown, NightCycleService, SkyController
 	ReturnToBase = true, -- DEV-045, bouton Retour base : UI_HUD.ReturnBaseButton, ReturnBaseService
+	TruckEvent = true, -- L-049, événement camion (Config/TruckEvent) : TruckEventService, TruckController
 }
 
 export type Features = typeof(Features)

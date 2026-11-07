@@ -37,6 +37,9 @@ export type ModelSpec = {
 	Category: string, -- catégorie du rapport
 	Tag: string?, -- tag qui désigne ces modèles
 	Prefix: string?, -- préfixe de nom (10.3) qui désigne ces modèles
+	-- Noms exacts qui désignent ces modèles, quand ni un tag ni un préfixe ne suffisent (ENV_ et FX_
+	-- sont les préfixes de tout le décor et de tous les effets).
+	Names: { string }?,
 	Class: string?,
 	PrimaryPart: string?,
 	Attributes: { string }?,
@@ -220,6 +223,49 @@ local Accessory: ModelSpec = {
 	},
 }
 
+-- Camion de l'événement (liaison L-049, livré par Clément le 2026-11-07, noms à valider) : rangé dans
+-- ReplicatedStorage/Assets (Events). TruckEventService en pose une copie dans le couloir, qu'il
+-- renomme EventTruck. Le camion intact, ce sont les pièces de Pieces assemblées : à l'explosion, ce
+-- sont elles qui partent depuis BlastPoint ; Root (invisible) reste sur place.
+local Truck: ModelSpec = {
+	Key = "Truck",
+	Label = "modèles du camion de l'événement",
+	Category = "Événements",
+	Names = { "ENV_Event_Truck" },
+	Class = "Model",
+	PrimaryPart = "Root", -- pivot en bas au centre (10.1), long dans l'axe Z
+	Parts = {
+		{ Name = "Root", Class = "BasePart", Invisible = true, Note = "elle reste en place quand les pièces partent" },
+		{
+			Name = "Pieces",
+			Class = "Model",
+			Inside = { { Name = "Piece_%02d", From = 1, To = 20, Note = "Model ou pièce, la version en pièces" } },
+		},
+		-- Attachments (dans Root chez Clément) : d'où sortent les 12 colis, centre de l'explosion,
+		-- point de la barre de vie.
+		{ Name = "BoxSpawn_%02d", From = 1, To = 12, Class = "Attachment" },
+		{ Name = "BlastPoint", Class = "Attachment" },
+		{ Name = "HealthBarPoint", Class = "Attachment" },
+		{ Name = "OutlineHighlight", Class = "Highlight" },
+	},
+	Expected = { "ENV_Event_Truck" },
+}
+
+-- Traînée des colis du camion qui volent (L-049) : TruckController copie le Trail et ses deux
+-- Attachments sur chaque colis, le temps du vol.
+local BoxTrail: ModelSpec = {
+	Key = "BoxTrail",
+	Label = "traînées des colis du camion",
+	Category = "Événements",
+	Names = { "FX_BoxTrail" },
+	Parts = {
+		{ Name = "Trail", Class = "Trail" },
+		{ Name = "TrailTop", Class = "Attachment" },
+		{ Name = "TrailBottom", Class = "Attachment" },
+	},
+	Expected = { "FX_BoxTrail" },
+}
+
 local Models = {}
 
 Models.Store = Store
@@ -230,8 +276,10 @@ Models.Item = Item
 Models.Box = Box
 Models.Tool = Tool
 Models.Accessory = Accessory
+Models.Truck = Truck
+Models.BoxTrail = BoxTrail
 
 -- Ordre du rapport.
-Models.List = { Store, Plot, Treadmill, Bench, Item, Box, Tool, Accessory } :: { ModelSpec }
+Models.List = { Store, Plot, Treadmill, Bench, Item, Box, Tool, Accessory, Truck, BoxTrail } :: { ModelSpec }
 
 return Models

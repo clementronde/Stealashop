@@ -26,10 +26,16 @@
 -- serveur l'aurait refusé). WindowService ne change pas : il mesure la portée à la réception,
 -- donc au moment où le coup touche.
 --
+-- Cible d'événement (camion de l'événement, liaison L-049) : un modèle taggé HitTarget par
+-- WindowService, visé comme une vitrine (même portée, même « devant lui », même coup au marqueur
+-- Impact, même HitWindow), la boîte du modèle tenant lieu de vitre. Seule différence : pas de retour
+-- de verre (ShatterController.LocalHit), ce n'est pas une vitre.
+--
 -- Lu sur les objets (rien n'est cherché par chemin) :
 --   Tool de casse : attribut ToolId (ToolService) ;
 --   vitrine `Window` des modèles taggés NPCStore et PlayerPlot : WindowId, MaxHP, Broken
---   (WindowService) ; parcelle : OwnerUserId (PlotService).
+--   (WindowService) ; parcelle : OwnerUserId (PlotService) ;
+--   modèle taggé HitTarget : WindowId, MaxHP, Broken (WindowService).
 -- Pas d'API pour l'instant.
 
 local CollectionService = game:GetService("CollectionService")
@@ -60,6 +66,7 @@ local BROKEN_ATTRIBUTE = "Broken"
 local OWNER_ATTRIBUTE = "OwnerUserId" -- posé par PlotService sur la parcelle
 local PLOT_TAG = "PlayerPlot"
 local WINDOW_TAGS = { "NPCStore", PLOT_TAG } -- contrat 2.1
+local HIT_TARGET_TAG = "HitTarget" -- posé par WindowService sur une cible d'événement (hors contrat 2.1)
 local DEFAULT_ANIMATION = "HitWindow"
 local IMPACT_MARKER = "Impact" -- marqueur de HitWindow et HitWindowHeavy (2.4)
 
@@ -109,47 +116,56 @@ local function closestPoint(cf: CFrame, size: Vector3, point: Vector3): Vector3
 	)) -- parenthèses : une seule valeur (PointToWorldSpace est déclarée variadique)
 end
 
--- Id de la vitrine cassable la plus proche devant le joueur et à portée, et le point de la vitre
--- le plus proche de lui (même calcul que le serveur), ou nil.
-local function findTarget(root: BasePart): (string?, Vector3?)
+-- Id de la vitrine (ou de la cible d'événement) cassable la plus proche devant le joueur et à
+-- portée, le point de sa boîte le plus proche de lui (même calcul que le serveur), et true si c'est
+-- une vitre (false : cible d'événement) ; nil si rien n'est à portée.
+local function findTarget(root: BasePart): (string?, Vector3?, boolean)
 	local origin = root.Position
 	local look = root.CFrame.LookVector
 	local flatLook = Vector3.new(look.X, 0, look.Z)
 	local bestId: string? = nil
 	local bestPoint: Vector3? = nil
 	local bestDistance = Balance.Hit.Range
+	local bestIsWindow = false
+	-- `object` porte les attributs de WindowService ; sa boîte est ce qu'on frappe.
+	local function consider(object: Instance, isWindow: boolean)
+		local id = object:GetAttribute(WINDOW_ID_ATTRIBUTE)
+		local maxHP = object:GetAttribute(MAX_HP_ATTRIBUTE)
+		if type(id) ~= "string" or type(maxHP) ~= "number" or maxHP <= 0 or object:GetAttribute(BROKEN_ATTRIBUTE) == true then
+			return -- pas encore prête, incassable ou cassée
+		end
+		local cf, size = windowBox(object)
+		if cf == nil or size == nil then
+			return
+		end
+		local point = closestPoint(cf, size, origin)
+		local offset = point - origin
+		local distance = offset.Magnitude
+		if distance > bestDistance then
+			return
+		end
+		local flat = Vector3.new(offset.X, 0, offset.Z)
+		if flat.Magnitude > 0.01 and flatLook.Magnitude > 0.01 and flat.Unit:Dot(flatLook.Unit) < FRONT_MIN_DOT then
+			return -- derrière lui
+		end
+		bestId, bestPoint, bestDistance, bestIsWindow = id, point, distance, isWindow
+	end
 	for _, tag in WINDOW_TAGS do
 		for _, model in CollectionService:GetTagged(tag) do
 			local object = model:FindFirstChild(WINDOW_NAME) or model:FindFirstChild(WINDOW_NAME, true)
 			if object == nil then
 				continue
 			end
-			local id = object:GetAttribute(WINDOW_ID_ATTRIBUTE)
-			local maxHP = object:GetAttribute(MAX_HP_ATTRIBUTE)
-			if type(id) ~= "string" or type(maxHP) ~= "number" or maxHP <= 0 or object:GetAttribute(BROKEN_ATTRIBUTE) == true then
-				continue -- pas encore prête, incassable ou cassée
-			end
 			if tag == PLOT_TAG and model:GetAttribute(OWNER_ATTRIBUTE) == player.UserId then
 				continue -- sa propre boutique
 			end
-			local cf, size = windowBox(object)
-			if cf == nil or size == nil then
-				continue
-			end
-			local point = closestPoint(cf, size, origin)
-			local offset = point - origin
-			local distance = offset.Magnitude
-			if distance > bestDistance then
-				continue
-			end
-			local flat = Vector3.new(offset.X, 0, offset.Z)
-			if flat.Magnitude > 0.01 and flatLook.Magnitude > 0.01 and flat.Unit:Dot(flatLook.Unit) < FRONT_MIN_DOT then
-				continue -- derrière lui
-			end
-			bestId, bestPoint, bestDistance = id, point, distance
+			consider(object, true)
 		end
 	end
-	return bestId, bestPoint
+	for _, target in CollectionService:GetTagged(HIT_TARGET_TAG) do
+		consider(target, false)
+	end
+	return bestId, bestPoint, bestIsWindow
 end
 
 -- Joue l'animation du coup ; renvoie sa piste (nil si l'animation n'est pas encore livrée).
@@ -240,7 +256,7 @@ local function onActivated(tool: Tool)
 	lastHitAt = now
 	flushPending()
 	local track = playHit(tool)
-	local windowId, point = findTarget(root :: BasePart)
+	local windowId, point, isWindow = findTarget(root :: BasePart)
 	if windowId then
 		if track then
 			deferHit(windowId, tool, character, track)
@@ -248,8 +264,8 @@ local function onActivated(tool: Tool)
 			Net.Client.HitWindow:Fire(windowId) -- pas d'animation : le coup part au clic
 		end
 		local api = shatter
-		if api and point then
-			pcall(api.LocalHit, windowId, point, track)
+		if api and point and isWindow then
+			pcall(api.LocalHit, windowId, point, track) -- retour de verre : vitres seulement
 		end
 	end
 end

@@ -37,6 +37,20 @@
 --   - WindowHP(windowId, hp, maxHp), non fiable : au plus 10 fois par seconde par vitrine
 --     (Balance.Window.HPSyncHz), et seulement si les PV ou les PV max ont changé.
 --
+-- Cible d'événement (Kind = "Event" ; camion de l'événement, liaison L-049, TruckEventService) : un
+-- modèle ajouté par le code avec AddTarget, frappé par la même chaîne que les vitrines : HitWindow,
+-- outil de casse en main, 10 studs au plus du point le plus proche de la boîte du modèle, débit de
+-- Net, CanBeHit, dégâts de ToolService.GetHitDamage. Ce qui change pour elle seulement :
+--   - PV max fixes (donnés à AddTarget), sans régénération ni reconstruction ;
+--   - aucun remote : ni WindowHit, ni WindowHP, ni WindowBroken (les effets de verre de
+--     ShatterController n'ont rien à y faire). Ses PV sont l'attribut HP du modèle, écrit au tick
+--     (10 fois par seconde au plus), lisible aussi par un client qui arrive en cours de route ;
+--   - à 0 PV : Broken = true et HP = 0, puis OnBroken (Kind = "Event") ; rien n'est caché ni
+--     reconstruit, le service qui l'a ajoutée décide de la suite ;
+--   - le modèle porte le tag HitTarget (posé par le code, hors du contrat de la section 2.1) et les
+--     attributs WindowId, MaxHP, HP et Broken : HitController la vise comme une vitrine.
+-- Les vitrines (magasins PNJ et parcelles) ne changent pas.
+--
 -- API (serveur) :
 --   WindowService.CanBeHit(player, windowId) -> boolean
 --       Point d'accroche des protections du jalon M3 (bouclier débutant, immunité après un
@@ -53,6 +67,14 @@
 --   WindowService.Rebuild(windowId) -> boolean
 --       Reconstruit tout de suite (ex. à l'aube, NightCycleService) ; false si la vitrine
 --       est inconnue ou déjà intacte.
+--   WindowService.AddTarget(model, maxHP) -> string?
+--       Ajoute la cible d'événement `model` (voir plus haut), PV pleins ; renvoie son id (le nom du
+--       modèle, suffixe _2… s'il est pris). nil, avec un avertissement, si le modèle n'est pas dans
+--       le Workspace, s'il est déjà une cible ou une vitrine, ou si maxHP n'est pas un nombre > 0.
+--       Retirée toute seule quand le modèle quitte le Workspace (Destroy compris).
+--   WindowService.RemoveTarget(windowId) -> boolean
+--       Retire une cible d'événement : plus aucun coup, tag HitTarget retiré (les attributs restent).
+--       false si `windowId` n'est pas une cible d'événement enregistrée.
 
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
@@ -71,7 +93,7 @@ local Net = require(Shared.Net.Net)
 
 local ToolService = require(script.Parent.ToolService)
 
-export type WindowKind = "NPC" | "Plot"
+export type WindowKind = "NPC" | "Plot" | "Event"
 
 export type BreakInfo = {
 	WindowId: string,
@@ -97,6 +119,7 @@ type Window = {
 	OwnerUserId: number, -- parcelle ; 0 = libre
 	HP: number,
 	MaxHP: number, -- 0 = incassable
+	FixedMaxHP: number, -- cible d'événement : PV max donnés à AddTarget ; 0 pour une vitrine
 	Broken: boolean,
 	Dirty: boolean, -- PV à envoyer au prochain tick
 	RebuildToken: number, -- change à chaque casse ou reconstruction : périme l'ancien délai
@@ -118,6 +141,9 @@ local PLOT_INDEX_ATTRIBUTE = "PlotIndex" -- posé sur la parcelle (greybox, L-01
 local WINDOW_ID_ATTRIBUTE = "WindowId"
 local MAX_HP_ATTRIBUTE = "MaxHP"
 local BROKEN_ATTRIBUTE = "Broken"
+-- Cible d'événement seulement (mêmes noms dans HitController et TruckController).
+local HP_ATTRIBUTE = "HP"
+local HIT_TARGET_TAG = "HitTarget"
 -- Longueur max d'un id accepté par Net (Definitions, windowId) ; 4 de marge pour « _n ».
 local MAX_ID_LENGTH = 64
 
@@ -180,6 +206,9 @@ local function closestPoint(cf: CFrame, size: Vector3, point: Vector3): Vector3
 end
 
 local function computeMaxHP(window: Window): number
+	if window.Kind == "Event" then
+		return window.FixedMaxHP
+	end
 	if window.Kind == "NPC" then
 		return Zones[window.Zone].WindowHP
 	end
@@ -253,6 +282,21 @@ local function rebuildDelay(window: Window): number
 	return openFor + Balance.Window.RebuildDelay
 end
 
+-- Prévient les écouteurs d'OnBroken.
+local function emitBroken(window: Window, breaker: Player, impactPoint: Vector3)
+	local info: BreakInfo = {
+		WindowId = window.Id,
+		Kind = window.Kind,
+		Model = window.Model,
+		Breaker = breaker,
+		ImpactPoint = impactPoint,
+	}
+	table.freeze(info :: any) -- gelée sur place ; :: any : le nouveau solveur bute sur le type générique de table.freeze
+	for _, listener in table.clone(brokenListeners) do
+		task.spawn(listener, info)
+	end
+end
+
 local function breakWindow(window: Window, breaker: Player, impactPoint: Vector3)
 	window.Broken = true
 	window.HP = 0
@@ -267,17 +311,18 @@ local function breakWindow(window: Window, breaker: Player, impactPoint: Vector3
 			rebuild(window)
 		end
 	end)
-	local info: BreakInfo = {
-		WindowId = window.Id,
-		Kind = window.Kind,
-		Model = window.Model,
-		Breaker = breaker,
-		ImpactPoint = impactPoint,
-	}
-	table.freeze(info :: any) -- gelée sur place ; :: any : le nouveau solveur bute sur le type générique de table.freeze
-	for _, listener in table.clone(brokenListeners) do
-		task.spawn(listener, info)
-	end
+	emitBroken(window, breaker, impactPoint)
+end
+
+-- Cible d'événement à 0 PV : ni verre caché, ni remote, ni reconstruction (voir l'en-tête).
+local function breakTarget(window: Window, breaker: Player, impactPoint: Vector3)
+	window.Broken = true
+	window.HP = 0
+	window.Dirty = false
+	window.RebuildToken += 1
+	window.Object:SetAttribute(HP_ATTRIBUTE, 0)
+	window.Object:SetAttribute(BROKEN_ATTRIBUTE, true)
+	emitBroken(window, breaker, impactPoint)
 end
 
 -- Coup validé qui laisse des PV : WindowHit au frappeur (son étoile de fissure, au point calculé
@@ -353,7 +398,11 @@ local function onHitWindow(player: Player, windowId: string)
 	end
 	window.HP = math.max(0, window.HP - damage)
 	window.Dirty = true
-	if window.HP <= 0 then
+	if window.Kind == "Event" then
+		if window.HP <= 0 then
+			breakTarget(window, player, impactPoint)
+		end
+	elseif window.HP <= 0 then
 		breakWindow(window, player, impactPoint)
 	else
 		broadcastHit(window, player, impactPoint)
@@ -364,6 +413,14 @@ end
 local function step(dt: number)
 	local regen = Balance.Window.RegenPerSecond * dt
 	for _, window in windows do
+		if window.Kind == "Event" then
+			-- Cible d'événement : ni régénération ni WindowHP, ses PV sont l'attribut HP (en-tête).
+			if window.Dirty then
+				window.Dirty = false
+				window.Object:SetAttribute(HP_ATTRIBUTE, window.HP)
+			end
+			continue
+		end
 		if window.Kind == "Plot" then
 			setMaxHP(window, computeMaxHP(window))
 		end
@@ -457,6 +514,7 @@ local function register(instance: Instance, kind: WindowKind)
 		OwnerUserId = if kind == "Plot" then readOwner(model) else 0,
 		HP = 0,
 		MaxHP = 0,
+		FixedMaxHP = 0,
 		Broken = false,
 		Dirty = false,
 		RebuildToken = 0,
@@ -512,6 +570,70 @@ end
 function WindowService.Rebuild(windowId: string): boolean
 	local window = windows[windowId]
 	return window ~= nil and rebuild(window)
+end
+
+-- Cibles d'événement (voir l'en-tête) -------------------------------------------------------
+
+local function removeTarget(window: Window): boolean
+	if window.Kind ~= "Event" or windows[window.Id] ~= window then
+		return false
+	end
+	unregister(window.Model)
+	CollectionService:RemoveTag(window.Model, HIT_TARGET_TAG)
+	return true
+end
+
+function WindowService.AddTarget(model: Model, maxHP: number): string?
+	if typeof(model) ~= "Instance" or not model:IsA("Model") or not model:IsDescendantOf(Workspace) then
+		warn(debug.traceback(`[WindowService] AddTarget({model}) refusé : il faut un Model posé dans le Workspace`, 2))
+		return nil
+	end
+	if byModel[model] ~= nil then
+		warn(debug.traceback(`[WindowService] AddTarget({model:GetFullName()}) refusé : déjà une cible ou une vitrine`, 2))
+		return nil
+	end
+	if type(maxHP) ~= "number" or maxHP ~= maxHP or maxHP <= 0 or maxHP == math.huge then
+		warn(debug.traceback(`[WindowService] AddTarget({model:GetFullName()}) refusé : PV max invalides ({maxHP})`, 2))
+		return nil
+	end
+	local window: Window = {
+		Id = makeId("Event", model),
+		Kind = "Event",
+		Model = model,
+		Object = model,
+		Parts = {},
+		Saved = {},
+		Zone = 0,
+		OwnerUserId = 0,
+		HP = maxHP,
+		MaxHP = maxHP,
+		FixedMaxHP = maxHP,
+		Broken = false,
+		Dirty = false,
+		RebuildToken = 0,
+		Connections = {},
+	}
+	windows[window.Id] = window
+	byModel[model] = window
+	model:SetAttribute(WINDOW_ID_ATTRIBUTE, window.Id)
+	model:SetAttribute(MAX_HP_ATTRIBUTE, maxHP)
+	model:SetAttribute(HP_ATTRIBUTE, maxHP)
+	model:SetAttribute(BROKEN_ATTRIBUTE, false)
+	table.insert(
+		window.Connections,
+		model.AncestryChanged:Connect(function()
+			if not model:IsDescendantOf(Workspace) then
+				removeTarget(window)
+			end
+		end)
+	)
+	CollectionService:AddTag(model, HIT_TARGET_TAG)
+	return window.Id
+end
+
+function WindowService.RemoveTarget(windowId: string): boolean
+	local window = windows[windowId]
+	return window ~= nil and removeTarget(window)
 end
 
 function WindowService.Init()
