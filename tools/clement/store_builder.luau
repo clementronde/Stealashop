@@ -453,6 +453,8 @@ local function buildStore(spec)
 	model:SetAttribute("Zone", spec.zone or 1)
 	CS:AddTag(model, "NPCStore")
 	model.Parent = spec.parent or workspace:FindFirstChild("_INBOX_CLEMENT") or workspace
+	-- spec.scale : agrandit tout le magasin autour de son pivot (allées, ShelfSlot, vitre, Bounds) ; gabarit 2026-11-07 : 1.5
+	if spec.scale and spec.scale ~= 1 then model:ScaleTo(spec.scale) end
 	return model, count
 end
 
