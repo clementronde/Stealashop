@@ -8,7 +8,7 @@
 --     (DataService), Income (DisplayService), Speed et Strength (StatsService), Damage
 --     (ToolService). Le client n'envoie rien. Attribut pas encore posé (profil en cours de
 --     chargement) : « … ».
---   - HeistTimer : chrono du braquage (« VOL : 7 s »), visible pendant un vol, masqué le reste du
+--   - HeistTimer : chrono du braquage (« HEIST: 7s »), visible pendant un vol, masqué le reste du
 --     temps. Piloté par le remote HeistTimer(storeId, endsAt) que HeistController relaie (endsAt
 --     en heure serveur, workspace:GetServerTimeNow() ; 0 = masquer). Plusieurs chronos à la fois
 --     (deux magasins proches) : celui qui finit le plus tard, donc le plus récent.
@@ -93,9 +93,9 @@ local HEARTBEAT_SOUND = "Chase_Heartbeat"
 -- V0 proposé, absent du doc : texte d'une valeur pas encore posée par le serveur.
 local UNKNOWN_TEXT = "…"
 
--- V0 proposé, absent du doc : texte du chrono, sur l'exemple de Clément (« VOL : 7 s »).
+-- V0 proposé, absent du doc : texte du chrono « HEIST: 7s », en anglais (L-036).
 local function timerText(seconds: number): string
-	return `VOL : {seconds} s`
+	return `HEIST: {seconds}s`
 end
 
 local IS_STUDIO = RunService:IsStudio()

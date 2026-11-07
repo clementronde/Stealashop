@@ -19,13 +19,13 @@ export type Upgrade = {
 
 local List: { Upgrade } = {
 	-- +0,5 au multiplicateur de gain de vitesse du tapis
-	{ Id = "Treadmill", DisplayName = "Tapis de course", EffectPerLevel = 0.5, MaxLevel = 20, BaseCost = 200, Growth = 1.9 },
+	{ Id = "Treadmill", DisplayName = "Treadmill", EffectPerLevel = 0.5, MaxLevel = 20, BaseCost = 200, Growth = 1.9 },
 	-- +0,5 au multiplicateur de gain de force du banc
-	{ Id = "Bench", DisplayName = "Banc de musculation", EffectPerLevel = 0.5, MaxLevel = 20, BaseCost = 200, Growth = 1.9 },
+	{ Id = "Bench", DisplayName = "Weight Bench", EffectPerLevel = 0.5, MaxLevel = 20, BaseCost = 200, Growth = 1.9 },
 	-- +1 présentoir, de 4 à 20 (Balance.Display)
-	{ Id = "DisplaySlots", DisplayName = "Présentoirs", EffectPerLevel = 1, MaxLevel = 16, BaseCost = 500, Growth = 2.5 },
+	{ Id = "DisplaySlots", DisplayName = "Display Stands", EffectPerLevel = 1, MaxLevel = 16, BaseCost = 500, Growth = 2.5 },
 	-- +1 établi d'ouverture, de 1 à 4 (Balance.Unbox)
-	{ Id = "UnboxBenches", DisplayName = "Établis d'ouverture", EffectPerLevel = 1, MaxLevel = 3, BaseCost = 2_000, Growth = 12 },
+	{ Id = "UnboxBenches", DisplayName = "Workbenches", EffectPerLevel = 1, MaxLevel = 3, BaseCost = 2_000, Growth = 12 },
 }
 
 local ById: { [string]: Upgrade } = {}

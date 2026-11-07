@@ -93,6 +93,7 @@ local Formulas = require(ReplicatedStorage.Shared.Config.Formulas)
 local ItemsConfig = require(ReplicatedStorage.Shared.Config.Items)
 local Rarities = require(ReplicatedStorage.Shared.Config.Rarities)
 local Zones = require(ReplicatedStorage.Shared.Config.Zones)
+local Format = require(ReplicatedStorage.Shared.Format)
 local Find = require(ReplicatedStorage.Shared.Contract.Find)
 local UI = require(ReplicatedStorage.Shared.Contract.UI)
 local Net = require(ReplicatedStorage.Shared.Net.Net)
@@ -192,15 +193,16 @@ local RAY_REACH = 1.2 -- les rayons dépassent l'objet de cette longueur
 local RAY_START_WIDTH = 0.05
 local RAY_END_WIDTH = 0.4 -- × longueur du rayon
 
--- Messages lus par le joueur (Notify « Warning ») quand PlaceItem est refusé. Les refus qui ne
--- viennent pas d'un joueur honnête (objet qui n'est pas à lui, profil absent) restent muets.
+-- Messages lus par le joueur (Notify « Warning ») quand PlaceItem est refusé, en anglais (L-036).
+-- Les refus qui ne viennent pas d'un joueur honnête (objet qui n'est pas à lui, profil absent)
+-- restent muets.
 local MESSAGES: { [string]: string } = {
-	NoPlot = "Tu n'as pas encore de boutique : attends qu'une parcelle se libère.",
-	NotOnPlot = "Reviens dans ta boutique pour exposer un objet.",
-	InVault = "Cet objet est dans ton coffre-fort.",
-	NoSlot = "Ce présentoir n'existe pas.",
-	Locked = "Ce présentoir n'est pas encore débloqué : améliore tes présentoirs.",
-	Taken = "Ce présentoir est déjà occupé.",
+	NoPlot = "You don't have a shop yet: wait for one to free up.",
+	NotOnPlot = "Go back to your shop to display an item.",
+	InVault = "This item is in your safe.",
+	NoSlot = "This stand doesn't exist.",
+	Locked = "This stand is locked: upgrade your Display Stands.",
+	Taken = "This stand is already taken.",
 }
 
 local SOURCE_LABELS: { [string]: string } = {
@@ -287,47 +289,6 @@ local function notify(player: Player, message: string, kind: string)
 	if not ok then
 		warn(`[DisplayService] Notify vers {player.Name} : {err}`)
 	end
-end
-
--- Tronque à une décimale, virgule française, sans « ,0 » : 12.46 -> « 12,4 ».
-local function oneDecimal(value: number): string
-	local tenths = math.floor(value * 10 + 1e-9)
-	local whole, decimal = tenths // 10, tenths % 10
-	if decimal == 0 then
-		return string.format("%d", whole)
-	end
-	return string.format("%d,%d", whole, decimal)
-end
-
--- Espace entre les milliers : 1234567 -> « 1 234 567 ».
-local function groupThousands(value: number): string
-	local digits = string.format("%d", math.floor(value))
-	local grouped = string.reverse((string.gsub(string.reverse(digits), "(%d%d%d)", "%1 ")))
-	return (string.gsub(grouped, "^ ", ""))
-end
-
--- Montant lisible, à la façon du doc : « 300 $ », « 12,4 K$ », « 120 K$ », « 2 M$ », « 3 Md$ ».
--- Toujours arrondi vers le bas : on n'affiche jamais plus que ce qu'il y a.
-local MONEY_UNITS = {
-	{ Value = 1e9, Suffix = "Md$" },
-	{ Value = 1e6, Suffix = "M$" },
-	{ Value = 1e3, Suffix = "K$" },
-}
-local function formatMoney(amount: number): string
-	if amount ~= amount or amount < 0 then
-		amount = 0
-	end
-	for i, unit in MONEY_UNITS do
-		if amount >= unit.Value then
-			local scaled = amount / unit.Value
-			if scaled < 100 then
-				return `{oneDecimal(scaled)} {unit.Suffix}`
-			elseif scaled < 1000 or i == 1 then
-				return `{groupThousands(scaled)} {unit.Suffix}`
-			end
-		end
-	end
-	return `{groupThousands(amount)} $`
 end
 
 ------------------------------------------------------------------------------
@@ -772,7 +733,7 @@ local function addBillboard(model: Model, def: ItemDef, rarity: Rarity, income: 
 	billboard.Adornee = point
 
 	setText(billboard, "ItemName", def.DisplayName)
-	setText(billboard, "Income", `{formatMoney(income)}/s`)
+	setText(billboard, "Income", Format.income(income))
 	local rarityLabel = setText(billboard, "Rarity", rarity.DisplayNameUpper, if rarity.Rainbow then TEXT_COLOR else rarity.Color)
 	-- Secret : arc-en-ciel (DisplayController le fait tourner). Un dégradé déjà posé par Clément
 	-- sur ce texte est gardé.
@@ -859,7 +820,7 @@ local function cashOut(player: Player, account: Account, source: CashOutSource):
 	player:SetAttribute(COLLECTED_ATTRIBUTE, account.collected)
 	publish(player, account, nil)
 	if IS_STUDIO then
-		print(`[DisplayService] {player.Name} encaisse {formatMoney(amount)} ({SOURCE_LABELS[source]}) : {formatMoney(cash)} en tout`)
+		print(`[DisplayService] {player.Name} encaisse {Format.money(amount)} ({SOURCE_LABELS[source]}) : {Format.money(cash)} en tout`)
 	end
 	for _, listener in table.clone(cashOutListeners) do
 		task.spawn(listener, player, amount, source)
@@ -1092,7 +1053,7 @@ local function install(player: Player, plot: Model)
 		count += 1
 	end
 	print(
-		`[DisplayService] {player.Name} : {count} objet(s) exposé(s) sur {unlockedSlots(data)} présentoir(s) débloqué(s), revenu {formatMoney(current.income)}/s`
+		`[DisplayService] {player.Name} : {count} objet(s) exposé(s) sur {unlockedSlots(data)} présentoir(s) débloqué(s), revenu {Format.money(current.income)}/s`
 	)
 end
 
@@ -1125,7 +1086,7 @@ local function onProfileReleasing(player: Player)
 	end
 	local amount = cashOut(player, account, "Leave")
 	if amount > 0 then
-		print(`[DisplayService] {player.Name} part : {formatMoney(amount)} de sa caisse encaissés automatiquement`)
+		print(`[DisplayService] {player.Name} part : {Format.money(amount)} de sa caisse encaissés automatiquement`)
 	end
 	accounts[player] = nil
 end
@@ -1188,7 +1149,7 @@ local function place(player: Player, itemUid: string, slot: number, fromClient: 
 	reconcile(player, account, data, plot)
 	if IS_STUDIO then
 		local moved = if previous then ` (déplacé du présentoir {previous})` else ""
-		print(`[DisplayService] {player.Name} : {describe(data, itemUid, slot)}{moved}, revenu {formatMoney(account.income)}/s`)
+		print(`[DisplayService] {player.Name} : {describe(data, itemUid, slot)}{moved}, revenu {Format.money(account.income)}/s`)
 	end
 	return true, nil
 end
@@ -1300,7 +1261,7 @@ function DisplayService.PlaceAuto(player: Player, itemUid: string, near: Vector3
 		return nil
 	end
 	if IS_STUDIO then
-		print(`[DisplayService] {player.Name} : {describe(data, itemUid, slot)}, revenu {formatMoney(account.income)}/s`)
+		print(`[DisplayService] {player.Name} : {describe(data, itemUid, slot)}, revenu {Format.money(account.income)}/s`)
 	end
 	return slot
 end

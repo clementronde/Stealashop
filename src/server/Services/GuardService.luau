@@ -17,7 +17,7 @@
 --      mur entre eux, mesurée ici, côté serveur. Alors CarryService.Fail(player, "Caught") (le
 --      colis revole vers son rayon), joueur étourdi Balance.Guard.CatchStunDuration s
 --      (StatsService, modificateur STUN_KEY = 0), coup qui le projette (au marqueur Impact de
---      Catch) et Notify « Rattrapé ! Vitesse conseillée : X ».
+--      Catch) et Notify « Caught! Recommended speed: X » (anglais, L-036).
 --   4. Abandon : le joueur entre en zone safe (tag SafeZone), GiveUpChaseDuration s de
 --      poursuite, GiveUpLead studs d'avance, ou le portage finit autrement (OnCarryEnded :
 --      colis posé, mort, départ…). Le vigile s'arrête essoufflé (Tired), rentre en marchant
@@ -66,6 +66,7 @@ local Workspace = game:GetService("Workspace")
 local Shared = ReplicatedStorage.Shared
 local Balance = require(Shared.Config.Balance)
 local Zones = require(Shared.Config.Zones)
+local Format = require(Shared.Format)
 local Animations = require(Shared.Contract.Animations)
 local Find = require(Shared.Contract.Find)
 local AnimPlayer = require(Shared.Anim.AnimPlayer)
@@ -230,14 +231,6 @@ local function warnOnce(key: string, message: string)
 	end
 	warned[key] = true
 	warn(`[GuardService] {message}`)
-end
-
--- 28 → « 28 » ; 13.4 → « 13,4 ».
-local function formatNumber(n: number): string
-	if n == math.floor(n) then
-		return string.format("%d", n)
-	end
-	return (string.gsub(string.format("%.1f", n), "%.", ","))
 end
 
 local function isPositiveNumber(value: any): boolean
@@ -770,7 +763,7 @@ local function catch(guard: Guard, player: Player)
 		if player.Parent == Players then
 			Net.Server.Notify:Fire(
 				player,
-				`Rattrapé ! Vitesse conseillée : {formatNumber(Zones[zone].AdvisedSpeed)}`,
+				`Caught! Recommended speed: {Format.short(Zones[zone].AdvisedSpeed)}`,
 				"Warning"
 			)
 		end
@@ -1060,7 +1053,7 @@ local function spawnGuard(player: Player, store: Model, zone: number, template: 
 	chasedBy[player] = guard
 	Net.Server.ChaseState:Fire(player, true, model)
 	log(
-		`vigile ({label}) lancé sur {player.Name} depuis {store.Name}, zone {zone}, vitesse {formatNumber(guard.speed)} ({#guards} en jeu)`
+		`vigile ({label}) lancé sur {player.Name} depuis {store.Name}, zone {zone}, vitesse {Format.short(guard.speed)} ({#guards} en jeu)`
 	)
 end
 

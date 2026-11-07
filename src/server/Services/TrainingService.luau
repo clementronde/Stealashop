@@ -4,8 +4,8 @@
 --
 -- Rôle :
 --   - pose une invite (ProximityPrompt) sur le UsePoint de chaque machine taggée Treadmill ou
---     Bench d'une parcelle (PlayerPlot) de Workspace : « Courir » ou « Soulever »
---     (Config.Training), « Arrêter » pendant l'entraînement ;
+--     Bench d'une parcelle (PlayerPlot) de Workspace : « Run » ou « Lift »
+--     (Config.Training), « Stop » pendant l'entraînement (textes en anglais, L-036) ;
 --   - n'accepte que le propriétaire de la parcelle qui contient la machine (attribut
 --     OwnerUserId de la parcelle, posé par PlotService) ;
 --   - place le perso sur le UsePoint (debout, pieds sur le point, tourné vers son axe −Z)
@@ -90,7 +90,7 @@ local SPEED_MODIFIER = "Training"
 local TREADMILL_TICK = 1
 
 -- V0 proposé, absent du doc : texte de l'invite pendant l'entraînement.
-local STOP_TEXT = "Arrêter"
+local STOP_TEXT = "Stop"
 -- V0 proposé, absent du doc : maintien (s) pour arrêter, pour qu'un tap d'entraînement qui
 -- tombe sur l'invite ne fasse pas descendre de la machine.
 local STOP_HOLD_DURATION = 0.5
@@ -106,7 +106,7 @@ local SETTLE_TIME = 0.5
 -- démarrage. Empêche de déclencher l'invite de loin pour se téléporter chez soi.
 local START_TOLERANCE = 4
 -- V0 proposé, absent du doc : message au joueur qui essaie la machine d'un autre.
-local NOT_OWNER_MESSAGE = "Entraîne-toi sur ta propre parcelle"
+local NOT_OWNER_MESSAGE = "You can only train in your own shop."
 
 -- États du Humanoid qui font descendre de la machine : saut, chute, siège, nage…
 local LEAVE_STATES: { [Enum.HumanoidStateType]: boolean } = {

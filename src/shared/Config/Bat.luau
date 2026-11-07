@@ -7,7 +7,7 @@
 local DeepFreeze = require(script.Parent.DeepFreeze)
 
 local Bat = {
-	DisplayName = "Batte",
+	DisplayName = "Bat",
 	Asset = "TOOL_Batte", -- V0 proposé, absent du doc : nom dérivé de la convention 10.3, à confirmer avec Clément
 	HotbarSlot = 2,
 

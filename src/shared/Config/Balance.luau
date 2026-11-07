@@ -9,8 +9,8 @@ local DeepFreeze = require(script.Parent.DeepFreeze)
 export type BoxTier = "Standard" | "Premium" | "Luxe"
 
 export type BoxTierInfo = {
-	DisplayName: string,
-	Look: string, -- aspect sur le rayon, avant la révélation de la rareté (7.3)
+	DisplayName: string, -- nom affiché, en anglais (L-036) ; la clé reste le Tier (Luxe)
+	Look: string, -- aspect sur le rayon, avant la révélation de la rareté (7.3) ; description, jamais affichée
 	Count: number, -- colis de ce type par magasin (5.3)
 	GrabTime: number, -- durée de maintien pour le prendre (5.3)
 }
@@ -21,7 +21,7 @@ local TIER_ORDER: { BoxTier } = { "Standard", "Premium", "Luxe" }
 local BOX_TIERS: { [string]: BoxTierInfo } = {
 	Standard = { DisplayName = "Standard", Look = "Carton brun", Count = 6, GrabTime = 0.3 },
 	Premium = { DisplayName = "Premium", Look = "Carton bleu scellé", Count = 3, GrabTime = 0.6 },
-	Luxe = { DisplayName = "Luxe", Look = "Caisse en bois cerclée d'or", Count = 1, GrabTime = 1.0 },
+	Luxe = { DisplayName = "Luxury", Look = "Caisse en bois cerclée d'or", Count = 1, GrabTime = 1.0 },
 }
 
 local Balance = {
