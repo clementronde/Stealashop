@@ -98,6 +98,8 @@
 --       listener(thief, victim, itemId, result, reason) ; result = "Stolen" (dépôt) ou "Returned"
 --       (échec : l'objet est revenu sur son présentoir), reason = raison du portage. Pour DEV-042
 --       (UI_TheftAlert, Adrénaline, batte équipée) et la télémétrie.
+--   Branchés par TheftAlertService (DEV-042) : Adrénaline de la victime, réannonce de l'alerte quand
+--   plusieurs vols ont lieu chez elle, Lifetime.Defenses ; côté client, TheftAlertController.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")

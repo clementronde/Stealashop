@@ -230,6 +230,9 @@ local List: { RemoteDef } = {
 	{
 		-- Envoyé à la victime : active = vol en cours ; thief et itemId nil à la fin. Envoyé par
 		-- PvPService à la prise de l'objet (true, voleur, ItemId) et à la fin du vol (false).
+		-- Plusieurs vols en même temps chez la même victime (DEV-042, 2026-11-08) : juste après chaque
+		-- false, TheftAlertService renvoie (true, voleur, ItemId) pour chaque vol encore en cours, du
+		-- plus ancien au plus récent ; TheftAlertController garde l'alerte ouverte sur le dernier.
 		Name = "TheftAlert",
 		Direction = "ServerToClient",
 		Reliable = true,
