@@ -72,11 +72,14 @@
 --     les joueurs sans colis sortis. Les autres magasins sont remplis tout de suite.
 --   - Colis en vol de retour au moment d'un remplissage : retiré avec les autres (il était du
 --     tirage précédent).
---   - Colis sortis du magasin (portés, ou au sol au jalon M3) : ils gardent leur contenu. Échec du
---     porteur (CarryService.OnCarryEnded, résultat « Failed », colis PNJ) : le colis revole vers
---     son emplacement (5.5), depuis la tête du porteur si elle existe encore, avec son contenu
---     d'origine (sinon mourir exprès relancerait le dé). Si son magasin a été rempli depuis sa
---     prise (nuit), il ne revient pas : nouveau tirage, pas de doublon.
+--   - Colis sortis du magasin (portés, ou tombés au sol après un coup de batte) : ils gardent leur
+--     contenu. Échec du porteur (CarryService.OnCarryEnded, résultat « Failed », colis PNJ) : le
+--     colis revole vers son emplacement (5.5), depuis la tête du porteur si elle existe encore, avec
+--     son contenu d'origine (sinon mourir exprès relancerait le dé). Colis au sol (« Dropped ») :
+--     rien tant qu'il est au sol (n'importe qui peut le ramasser, il reste sorti) ; resté
+--     Bat.DroppedLifetime s sans preneur (CarryService.OnDropExpired, 6.2), il revole vers son
+--     emplacement depuis sa place au sol. Si son magasin a été rempli depuis sa prise (nuit), il ne
+--     revient pas : nouveau tirage, pas de doublon.
 --
 -- Maintien (temps de prise de 5.3, vérifié par le serveur) : le client envoie GrabItem(slotId)
 -- au début du maintien de l'invite, puis une seconde fois quand elle se déclenche. Le premier
@@ -112,7 +115,7 @@
 --       Remet sur son emplacement, avec son contenu d'origine, le colis sorti de ce payload NPCBox,
 --       en vol depuis `from` (Vector3) s'il est donné. false si le colis est inconnu, déjà revenu,
 --       d'avant un remplissage de son magasin, ou si son emplacement est occupé. Utilisé ici à
---       l'échec du porteur ; servira au colis tombé au sol qui revient au bout de 15 s (DEV-048) :
+--       l'échec du porteur et pour le colis tombé au sol qui revient au bout de 15 s (DEV-048) :
 --       le payload doit être la même table que celle donnée à StartCarry (CarryService la garde).
 --   StoreHeistService.SetContentOverride(fn?)
 --       Accroche du tuto (voir plus haut). fn(player, drawn) -> override?, appelée à chaque prise,
@@ -182,6 +185,7 @@ type CarryApi = {
 	StartCarry: (player: Player, payload: NPCBoxPayload) -> boolean,
 	IsCarrying: (player: Player) -> boolean,
 	OnCarryEnded: (listener: (player: Player, payload: any, result: string, reason: string) -> ()) -> any,
+	OnDropExpired: (listener: (dropId: string, payload: any, position: Vector3) -> ()) -> any,
 	AttachBoxLabel: (model: Model, rarityId: string, itemId: string) -> BillboardGui?,
 }
 
@@ -308,6 +312,8 @@ local FLIGHT_MAX_TIME = 1.5
 local FLIGHT_ARC = 0.2
 local FLIGHT_ARC_MIN = 2
 local FLIGHT_ARC_MAX = 12
+-- V0 proposé, absent du doc : un colis resté au sol (6.2) part 1 stud au-dessus de sa place au sol.
+local DROP_RETURN_LIFT = 1
 
 -- V0 proposé, absent du doc : blocs de remplacement tant que BOX_<Tier> n'est pas livré
 -- (MOD-013). Aspect de 7.3 ; bois et or de la planche de style (10.6).
@@ -1286,7 +1292,7 @@ local function onCarryEnded(player: Player, payload: any, result: string, reason
 		return
 	end
 	if result ~= "Failed" then
-		return -- « Dropped » (DEV-048) : au sol, il reviendra par ReturnBox s'il n'est pas ramassé
+		return -- « Dropped » (DEV-048) : au sol, il revient par onDropExpired s'il n'est pas ramassé
 	end
 	if returnBox(payload, carrierPosition(player)) then
 		log(`colis {payload.Tier} de {player.Name} ({reason}) : revient sur {payload.SlotId}`)
@@ -1294,6 +1300,27 @@ local function onCarryEnded(player: Player, payload: any, result: string, reason
 		log(
 			`colis {payload.Tier} de {player.Name} ({reason}) : ne revient pas sur {payload.SlotId} (magasin rempli depuis, ou colis inconnu)`
 		)
+	end
+end
+
+-- Colis tombé au sol après un coup de batte, jamais ramassé (6.2 : Bat.DroppedLifetime s) : il
+-- revole vers son emplacement depuis l'endroit où il était, avec son contenu d'origine. Un colis
+-- qui n'est pas d'un magasin (camion) est inconnu ici : il disparaît, rien à faire.
+local function onDropExpired(dropId: string, payload: any, position: Vector3?)
+	if type(payload) ~= "table" or payload.Kind ~= "NPCBox" then
+		return
+	end
+	if outBoxes[payload] == nil then
+		if storesById[payload.StoreId] then
+			log(`colis {payload.Tier} {dropId} resté au sol : ne revient pas sur {payload.SlotId} (magasin rempli depuis)`)
+		end
+		return -- colis du camion, ou d'avant un remplissage de son magasin : il disparaît
+	end
+	local from = if typeof(position) == "Vector3" then position + Vector3.new(0, DROP_RETURN_LIFT, 0) else nil
+	if returnBox(payload, from) then
+		log(`colis {payload.Tier} {dropId} resté au sol : revient sur {payload.SlotId}`)
+	else
+		log(`colis {payload.Tier} {dropId} resté au sol : ne revient pas sur {payload.SlotId} (emplacement occupé)`)
 	end
 end
 
@@ -1550,6 +1577,7 @@ function StoreHeistService.Init()
 	WindowService.OnBroken(onBroken)
 	WindowService.OnRebuilt(onRebuilt)
 	CarryService.OnCarryEnded(onCarryEnded)
+	CarryService.OnDropExpired(onDropExpired)
 	Net.Server.GrabItem:Connect(onGrabItem)
 	Players.PlayerRemoving:Connect(function(player: Player)
 		holds[player] = nil

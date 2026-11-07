@@ -27,6 +27,23 @@
 --      à la fin (capture ou abandon). Pour lui, le vigile reste chargé (streaming) tant que
 --      dure la poursuite.
 --
+-- Le vigile suit le colis (6.2, DEV-048) : quand un coup de batte fait tomber le colis de la cible
+-- (OnCarryEnded, résultat « Dropped »), le vigile de jour qui la poursuivait (Wait ou Chase) ne
+-- l'abandonne pas : la poursuite de cette cible finit (ChaseState(false) pour elle) et il court vers
+-- l'endroit du coup (état Follow, là où était la cible quand le colis est tombé), s'arrête à
+-- FOLLOW_STOP_DISTANCE studs, sans jamais entrer en zone safe. Il ne capture personne en Follow.
+--   - Quelqu'un ramasse le colis (OnCarryStarted, même payload) : le vigile change de cible et
+--     poursuit le nouveau porteur, comme un vigile qui vient d'apparaître : REACTION_DELAY s
+--     d'attente sans capture, puis poursuite neuve (vitesse de la zone pour ce joueur, 20 s
+--     comptées de là) avec les mêmes règles d'abandon (5.5 : zone safe, GiveUpChaseDuration,
+--     GiveUpLead) et la même capture. Ramassé par un joueur déjà poursuivi par un autre vigile :
+--     cet autre vigile abandonne.
+--   - Personne ne le ramasse (OnDropExpired, 6.2 : 15 s, le colis revole vers son rayon), ou rien
+--     au bout de Bat.DroppedLifetime + FOLLOW_MARGIN s : le vigile abandonne (Tired, puis retour).
+--   - Un colis ramassé au sol alors qu'aucun vigile ne le suivait (vigile déjà reparti, ou aucun
+--     vigile à l'origine) ne fait apparaître aucun vigile : il n'apparaît qu'à la prise sur le rayon.
+--   - Les vigiles de nuit ne suivent pas les colis : ils poursuivent toute personne dans le couloir.
+--
 -- Vigiles de nuit (DEV-047, section 5.12), lancés par NightCycleService à la tombée de la nuit
 -- (StartNightPatrol) et retirés à l'aube (StopNightPatrol). Même poursuite, même capture, mêmes
 -- animations que le vigile de jour ; ce qui change :
@@ -111,6 +128,7 @@ local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage.Shared
 local Balance = require(Shared.Config.Balance)
+local Bat = require(Shared.Config.Bat)
 local Night = require(Shared.Config.Night)
 local Zones = require(Shared.Config.Zones)
 local Format = require(Shared.Format)
@@ -128,15 +146,17 @@ type CarryApi = {
 	Fail: (player: Player, reason: string) -> (),
 	OnCarryStarted: (listener: (player: Player, payload: any) -> ()) -> any,
 	OnCarryEnded: (listener: (player: Player, payload: any, result: string, reason: string) -> ()) -> any,
+	OnDropExpired: (listener: (dropId: string, payload: any, position: Vector3) -> ()) -> any,
 }
 local CarryService: CarryApi = require(script.Parent.CarryService) :: any
 
 type AnimPlayerT = AnimPlayer.AnimPlayer
 
--- Wait : vient d'apparaître (ou, la nuit, vient de repérer un joueur) ; Chase : poursuit ; Catch :
--- vient de rattraper ; Tired : essoufflé après un abandon ; Return : rentre en marchant (la nuit :
--- vers sa ronde) ; Patrol : ronde de nuit.
-type GuardState = "Wait" | "Chase" | "Catch" | "Tired" | "Return" | "Patrol"
+-- Wait : vient d'apparaître (ou, la nuit, vient de repérer un joueur ; ou vient de changer de cible
+-- pour le nouveau porteur d'un colis tombé) ; Chase : poursuit ; Catch : vient de rattraper ;
+-- Tired : essoufflé après un abandon ; Return : rentre en marchant (la nuit : vers sa ronde) ;
+-- Patrol : ronde de nuit ; Follow : va vers le colis tombé au sol de sa cible (6.2).
+type GuardState = "Wait" | "Chase" | "Catch" | "Tired" | "Return" | "Patrol" | "Follow"
 
 -- Day : vigile de jour d'un magasin (5.5) ; Night : vigile de nuit (5.12).
 type GuardKind = "Day" | "Night"
@@ -183,6 +203,8 @@ type Guard = {
 	progressPos: Vector3,
 	progressAt: number,
 	knockTarget: Player?, -- joueur à projeter au marqueur Impact de Catch
+	followPayload: any?, -- Follow : le payload du colis tombé au sol que le vigile suit
+	followPosition: Vector3, -- Follow : où il est tombé (là où était la cible au coup)
 	connections: { RBXScriptConnection },
 	alive: boolean,
 }
@@ -256,6 +278,10 @@ local TIRED_PAUSE = 1.5 -- pause essoufflée si Tired n'est pas livrée (s)
 local TIRED_MAX = 4 -- pause essoufflée maximale, même si Tired est plus longue (s)
 local CATCH_PAUSE = 1 -- pause après la capture si Catch n'est pas livrée (s)
 local CATCH_MAX = 3 -- pause maximale après la capture (s)
+-- V0 proposé, absent du doc : le vigile qui suit un colis tombé (6.2) s'arrête à 3 studs de
+-- l'endroit du coup, et abandonne de lui-même 2 s après la durée au sol (si OnDropExpired manque).
+local FOLLOW_STOP_DISTANCE = 3
+local FOLLOW_MARGIN = 2
 
 -- V0 proposé, absent du doc : couleurs du rig de remplacement (gilet orange).
 local FALLBACK_VEST = Color3.fromRGB(255, 160, 20)
@@ -305,6 +331,10 @@ local nightToken = 0 -- change à chaque StartNightPatrol et StopNightPatrol : p
 local chaseSent: { [Player]: Model } = {} -- vigile annoncé au joueur par ChaseState(true, …)
 local caughtAtNight: { [Player]: boolean } = {} -- attrapé la nuit, pas encore renvoyé : plus visé
 local stunTokens: { [Player]: number } = {}
+-- Colis tombés au sol après un coup de batte (6.2), par payload (la table que CarryService garde) :
+-- le vigile qui le suit, et tous les colis au sol (suivis ou non) jusqu'à leur prise ou leur fin.
+local following: { [any]: Guard } = {}
+local droppedPayloads: { [any]: boolean } = setmetatable({}, { __mode = "k" }) :: any
 local activeFolder: Folder? = nil
 local fallbackTemplate: Model? = nil
 local fallbackBuilding = false
@@ -835,12 +865,25 @@ local function endChase(guard: Guard)
 	refreshChaseState(player)
 end
 
+-- Le vigile ne suit plus de colis tombé au sol (6.2).
+local function releaseFollow(guard: Guard)
+	local payload = guard.followPayload
+	if payload == nil then
+		return
+	end
+	guard.followPayload = nil
+	if following[payload] == guard then
+		following[payload] = nil
+	end
+end
+
 local function despawn(guard: Guard, reason: string)
 	if not guard.alive then
 		return
 	end
 	guard.alive = false
 	endChase(guard)
+	releaseFollow(guard)
 	local list = if guard.kind == "Night" then nightGuards else guards
 	local index = table.find(list, guard)
 	if index then
@@ -906,15 +949,20 @@ local function pauseFor(track: AnimationTrack?, default: number, max: number): n
 	return default
 end
 
--- Abandon : le vigile s'arrête, essoufflé, puis rentre.
+-- Abandon : le vigile s'arrête, essoufflé, puis rentre. Aussi depuis Follow (colis au sol, 6.2).
 local function giveUp(guard: Guard, reason: string)
 	local state = guard.state
-	if state ~= "Wait" and state ~= "Chase" then
+	if state ~= "Wait" and state ~= "Chase" and state ~= "Follow" then
 		return
 	end
 	local player = guard.target
 	endChase(guard)
-	log(`{guard.label} : abandonne {if player then player.Name else "?"} ({reason})`)
+	releaseFollow(guard)
+	if state == "Follow" then
+		log(`{guard.label} : abandonne le colis tombé au sol ({reason})`)
+	else
+		log(`{guard.label} : abandonne {if player then player.Name else "?"} ({reason})`)
+	end
 	local now = os.clock()
 	stop(guard)
 	if state == "Wait" then
@@ -1174,6 +1222,41 @@ local function chaseStep(guard: Guard, now: number)
 	followPath(guard, targetRoot.Position)
 end
 
+-- Colis tombé au sol (6.2) : le vigile court vers l'endroit du coup et attend à côté qu'on le
+-- ramasse (retarget) ou qu'il reparte vers son rayon (giveUp). Aucune capture ici.
+local function followStep(guard: Guard, now: number)
+	if now >= guard.stateEndsAt then
+		giveUp(guard, `{Bat.DroppedLifetime + FOLLOW_MARGIN} s sans nouvelles du colis au sol`)
+		return
+	end
+	if isInSafeZone(guard.root.Position) then
+		giveUp(guard, "vigile poussé en zone safe")
+		return
+	end
+	if now < guard.nextSteerAt then
+		return
+	end
+	guard.nextSteerAt = now + STEER_INTERVAL
+	local goal = guard.followPosition
+	if flat(goal - guard.root.Position).Magnitude <= FOLLOW_STOP_DISTANCE then
+		stop(guard)
+		guard.anims:Stop("Run") -- Idle joue toujours en fond
+		guard.waypoints = nil
+		return
+	end
+	playGait(guard, "Run")
+	if clearLine(guard.root.Position, goal) then
+		guard.waypoints = nil
+		moveTo(guard, goal)
+		return
+	end
+	if now >= guard.nextPathAt and not guard.computing then
+		guard.nextPathAt = now + Balance.Guard.PathRecomputeInterval
+		computePath(guard, goal)
+	end
+	followPath(guard, goal)
+end
+
 -- Ronde de nuit ----------------------------------------------------------------------------
 
 local function startPatrol(guard: Guard, now: number)
@@ -1393,6 +1476,8 @@ local function update(guard: Guard, now: number)
 		end
 	elseif state == "Chase" then
 		chaseStep(guard, now)
+	elseif state == "Follow" then
+		followStep(guard, now)
 	elseif state == "Catch" or state == "Tired" then
 		if now >= guard.stateEndsAt then
 			startReturn(guard, now)
@@ -1438,11 +1523,13 @@ local function chaseSpeed(player: Player, zone: number): number
 	return Zones[zone].GuardSpeed
 end
 
--- Vigiles qui poursuivent pour ce magasin (ceux qui rentrent ne comptent pas).
+-- Vigiles qui poursuivent pour ce magasin, ou suivent un de ses colis tombé au sol (ceux qui
+-- rentrent ne comptent pas).
 local function countChasing(store: Model): number
 	local count = 0
 	for _, guard in guards do
-		if guard.store == store and (guard.state == "Wait" or guard.state == "Chase" or guard.state == "Catch") then
+		local state = guard.state
+		if guard.store == store and (state == "Wait" or state == "Chase" or state == "Catch" or state == "Follow") then
 			count += 1
 		end
 	end
@@ -1575,6 +1662,8 @@ local function spawnGuard(player: Player, store: Model, zone: number, template: 
 		progressPos = root.Position,
 		progressAt = now,
 		knockTarget = nil,
+		followPayload = nil,
+		followPosition = Vector3.zero,
 		connections = {},
 		alive = true,
 	}
@@ -1782,6 +1871,8 @@ local function spawnNightGuard(zone: number, number: number, points: { Vector3 }
 		progressPos = root.Position,
 		progressAt = now,
 		knockTarget = nil,
+		followPayload = nil,
+		followPosition = Vector3.zero,
 		connections = {},
 		alive = true,
 	}
@@ -1802,9 +1893,65 @@ local function spawnNightGuard(zone: number, number: number, points: { Vector3 }
 	log(`{guard.label} ({label}) en ronde, zone {zone}, {#points} point(s), poursuite à {Format.short(guard.speed)}, {sizeText(scale, agent)}`)
 end
 
+-- Colis tombé au sol (6.2) ----------------------------------------------------------------------
+
+-- Le colis de la cible du vigile vient de tomber à `position` (coup de batte) : il le suit.
+local function followDrop(guard: Guard, payload: any, position: Vector3)
+	local player = guard.target
+	endChase(guard)
+	local now = os.clock()
+	setState(guard, "Follow")
+	guard.followPayload = payload
+	guard.followPosition = position
+	following[payload] = guard
+	guard.stateEndsAt = now + Bat.DroppedLifetime + FOLLOW_MARGIN
+	guard.nextSteerAt = now
+	guard.nextPathAt = now
+	guard.anims:Stop("Walk")
+	setWalkSpeed(guard, guard.speed) -- encore à 0 s'il ne s'était pas élancé (Wait)
+	log(`{guard.label} : le colis de {if player then player.Name else "?"} est tombé au sol, il va vers lui`)
+end
+
+-- Le colis que suit le vigile vient d'être ramassé par `player` : nouvelle poursuite, comme un
+-- vigile qui vient d'apparaître (Wait : REACTION_DELAY s sans capture, puis Chase).
+local function retarget(guard: Guard, player: Player)
+	local other = chasedBy[player]
+	if other and other ~= guard then
+		giveUp(other, "cible reprise par le vigile du colis ramassé")
+	end
+	releaseFollow(guard)
+	local now = os.clock()
+	guard.target = player
+	chasedBy[player] = guard
+	guard.model:SetAttribute(TARGET_ATTRIBUTE, player.UserId)
+	pcall(function()
+		guard.model:AddPersistentPlayer(player)
+	end)
+	setState(guard, "Wait")
+	stop(guard)
+	guard.anims:Stop("Run")
+	guard.speed = chaseSpeed(player, guard.zone)
+	guard.chaseStartedAt = now
+	guard.stateEndsAt = now + REACTION_DELAY
+	refreshChaseState(player)
+	log(`{guard.label} : change de cible, poursuit {player.Name} qui a ramassé le colis (vitesse {Format.short(guard.speed)})`)
+end
+
 local function onCarryStarted(player: Player, payload: any)
 	if type(payload) ~= "table" or payload.Kind ~= "NPCBox" then
 		return -- seuls les colis PNJ ont un vigile (5.5)
+	end
+	if droppedPayloads[payload] then
+		-- Ramassé au sol (6.2) : le vigile qui suivait ce colis change de cible ; sans lui, aucun
+		-- vigile (il n'apparaît qu'à la prise sur le rayon).
+		droppedPayloads[payload] = nil
+		local guard = following[payload]
+		if guard and guard.alive and guard.state == "Follow" then
+			retarget(guard, player)
+		else
+			log(`{player.Name} ramasse un colis tombé au sol : aucun vigile ne le suivait`)
+		end
+		return
 	end
 	if type(payload.StoreId) == "string" and string.sub(payload.StoreId, 1, 6) == "Truck_" then
 		return -- colis du camion (TruckEventService, StoreId « Truck_<n> ») : pas de magasin, pas de vigile
@@ -1848,10 +1995,33 @@ local function onCarryStarted(player: Player, payload: any)
 	end)
 end
 
-local function onCarryEnded(player: Player, _payload: any, result: string, reason: string)
+local function onCarryEnded(player: Player, payload: any, result: string, reason: string)
+	local dropped = result == "Dropped" and type(payload) == "table"
+	if dropped then
+		droppedPayloads[payload] = true -- au sol jusqu'à sa prise (onCarryStarted) ou sa fin
+	end
 	local guard = chasedBy[player]
+	if guard == nil then
+		return
+	end
+	if dropped and (guard.state == "Wait" or guard.state == "Chase") then
+		-- Appelé pendant CarryService.Drop : la cible est encore à l'endroit du coup.
+		local root = bodyOf(player)
+		followDrop(guard, payload, if root then root.Position else guard.root.Position)
+		return
+	end
+	giveUp(guard, `portage fini : {result} ({reason})`)
+end
+
+-- Colis resté au sol sans preneur (6.2) : il revole vers son rayon, le vigile qui le suivait abandonne.
+local function onDropExpired(_dropId: string, payload: any, _position: Vector3)
+	if type(payload) ~= "table" then
+		return
+	end
+	droppedPayloads[payload] = nil
+	local guard = following[payload]
 	if guard then
-		giveUp(guard, `portage fini : {result} ({reason})`)
+		giveUp(guard, "colis resté au sol, reparti vers son rayon")
 	end
 end
 
@@ -1930,6 +2100,7 @@ end
 function GuardService.Start()
 	CarryService.OnCarryStarted(onCarryStarted)
 	CarryService.OnCarryEnded(onCarryEnded)
+	CarryService.OnDropExpired(onDropExpired)
 	RunService.Heartbeat:Connect(step)
 	Players.PlayerRemoving:Connect(function(player: Player)
 		local guard = chasedBy[player]

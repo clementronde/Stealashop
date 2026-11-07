@@ -7,7 +7,7 @@
 -- BB_Carry : tout le monde le voit (objets créés par le serveur, répliqués à tous). Pendant le
 -- portage : malus de vitesse (StatsService, clé "Carry"), saut autorisé, aucun outil en main.
 -- Le portage finit par une réussite (Consume), un échec (Fail : mort, départ, capture, anomalie)
--- ou, au jalon M3, un coup de batte qui fait tomber le colis (Drop). Ce service ne remet jamais
+-- ou un coup de batte qui fait tomber le colis (Drop, BatService). Ce service ne remet jamais
 -- rien en place lui-même : le service d'origine réagit à OnCarryEnded (le braquage remet le colis
 -- sur son rayon, le vol PvP rend l'objet à son présentoir). Aucun remote ici : la prise arrive par
 -- GrabItem (StoreHeistService), la pose par PlaceBox (UnboxService).
@@ -43,21 +43,29 @@
 --   CarryService.OnCarryEnded(listener) -> déconnexion
 --       listener(player, payload, result, reason), result = "Consumed", "Failed" ou "Dropped".
 --       Visuels, malus et attribut sont déjà retirés : IsCarrying(player) vaut false.
---   Jalon M3, DEV-048 : prévu, pas encore branché ni testé en jeu.
+--   Colis au sol après un coup de batte (DEV-048, branché par BatService, vague 10) :
 --   CarryService.Drop(player, position) -> string?
 --       Coup de batte sur un porteur hors zone safe (6.2) : le colis PNJ tombe au sol à `position`
---       (point du sol, calculé par l'appelant), avec sa couleur, son halo et BB_Carry, dans
---       Workspace/CarryDrops (attribut DropId). OnCarryEnded(…, "Dropped", "Bat"). Renvoie son
---       dropId. Un objet volé à un joueur ne tombe jamais : Fail(player, "Bat"), il revole chez son
---       propriétaire (6.2), et Drop renvoie nil.
+--       (point du sol, calculé par l'appelant), avec sa couleur, son halo et son étiquette BB_Box,
+--       dans Workspace/CarryDrops (attribut DropId, plus Tier = type du colis et BatDrop = true,
+--       lus par BatController pour l'invite). Puis OnCarryEnded(…, "Dropped", "Bat"), écouteurs
+--       appelés avant le retour de Drop (le porteur est encore à l'endroit du coup). Renvoie son
+--       dropId ; nil si le joueur ne portait rien. Position invalide : avertissement, le colis tombe
+--       au pied du porteur. Un objet volé à un joueur ne tombe jamais : Fail(player, "Bat"), il
+--       revole chez son propriétaire (6.2, remis par PvPService), et Drop renvoie nil.
 --   CarryService.PickUpDrop(player, dropId) -> boolean
 --       Ramassage d'un colis au sol (GrabDropped, 9.4) : le nouveau porteur reçoit le même payload
---       (même rareté, même objet caché, 6.2), par StartCarry. L'appelant vérifie avant la distance,
---       le temps de prise (Bat.DroppedGrabTime), la zone safe et les protections (6.4).
---   CarryService.GetDrop(dropId) -> (Payload?, Vector3?)   payload et position d'un colis au sol.
+--       (même table : même rareté, même objet caché, 6.2), par StartCarry ; le colis quitte le sol
+--       avant (jamais deux exemplaires) et y revient si StartCarry refuse. L'appelant vérifie avant
+--       la distance, le temps de prise, la zone safe et les protections (BatService, TruckEventService).
+--   CarryService.GetDrop(dropId) -> (Payload?, Vector3?)
+--       Payload et position (point du sol) d'un colis encore au sol ; nil, nil sinon (ramassé,
+--       expiré, inconnu, ou dropId qui n'est pas une chaîne).
 --   CarryService.OnDropExpired(listener) -> déconnexion
---       listener(dropId, payload) quand un colis reste Bat.DroppedLifetime secondes au sol sans être
---       ramassé (6.2 : 15 s) : StoreHeistService le remet alors sur son rayon.
+--       listener(dropId, payload, position) quand un colis reste au sol sans être ramassé :
+--       Bat.DroppedLifetime secondes (6.2 : 15 s) après un coup de batte, le `lifetime` de PlaceDrop
+--       sinon. Le modèle est déjà retiré et GetDrop(dropId) vaut nil. StoreHeistService remet alors
+--       sur son rayon un colis de magasin (vol depuis `position`) ; un colis du camion disparaît.
 --   Événement camion (liaison L-049, TruckEventService) :
 --   CarryService.PlaceDrop(payload, position, lifetime?, attributes?) -> string?
 --       Pose au sol à `position` un colis PNJ qu'aucun joueur ne porte : le même colis au sol que
@@ -203,7 +211,7 @@ type Drop = {
 
 type StartedListener = (player: Player, payload: Payload) -> ()
 type EndedListener = (player: Player, payload: Payload, result: EndResult, reason: string) -> ()
-type DropExpiredListener = (dropId: string, payload: Payload) -> ()
+type DropExpiredListener = (dropId: string, payload: Payload, position: Vector3) -> ()
 
 local IS_STUDIO = RunService:IsStudio()
 
@@ -835,7 +843,11 @@ function CarryService.AttachBoxLabel(model: Model, rarityId: string, itemId: str
 	return gui
 end
 
--- Colis au sol (jalon M3, DEV-048 : prévu, pas encore branché) ---------------------
+-- Colis au sol (DEV-048 : coup de batte, BatService ; camion : PlaceDrop) ------------
+
+-- Attributs posés sur un colis tombé après un coup de batte, lus par BatController (même nom là-bas).
+local TIER_ATTRIBUTE = "Tier"
+local BAT_DROP_ATTRIBUTE = "BatDrop"
 
 local function dropsFolder(): Instance
 	local existing = Workspace:FindFirstChild(DROPS_FOLDER)
@@ -860,8 +872,27 @@ local function expire(dropId: string)
 		print(`[CarryService] {dropId} : {drop.lifetime} s au sol sans preneur, retiré ({describe(drop.payload)})`)
 	end
 	for _, listener in table.clone(dropExpiredListeners) do
-		task.spawn(listener, dropId, drop.payload)
+		task.spawn(listener, dropId, drop.payload, drop.position)
 	end
+end
+
+local function isValidPosition(position: any): boolean
+	return typeof(position) == "Vector3"
+		and position == position -- pas de NaN
+		and math.abs(position.X) < math.huge
+		and math.abs(position.Y) < math.huge
+		and math.abs(position.Z) < math.huge
+end
+
+-- Pied du porteur (repli d'un Drop sans position valide) : sous son HumanoidRootPart, sinon le
+-- pivot de son personnage, sinon l'origine.
+local function feetOf(player: Player, humanoid: Humanoid): Vector3
+	local character = player.Character
+	local root = if character then character:FindFirstChild("HumanoidRootPart") else nil
+	if root and root:IsA("BasePart") then
+		return root.Position - Vector3.new(0, humanoid.HipHeight + root.Size.Y / 2, 0)
+	end
+	return if character then character:GetPivot().Position else Vector3.zero
 end
 
 -- Colis au sol : visuel posé à `position` (point du sol), ancré, dans Workspace/CarryDrops, tenu
@@ -901,7 +932,16 @@ function CarryService.Drop(player: Player, position: Vector3): string?
 		CarryService.Fail(player, "Bat") -- 6.2 : l'objet revole vers le présentoir de son propriétaire
 		return nil
 	end
-	local dropId = createDrop(payload, position, Bat.DroppedLifetime, nil)
+	local at = position
+	if not isValidPosition(at) then
+		warn(debug.traceback(`[CarryService] Drop({player.Name}) : position invalide ({position}), colis posé au pied du porteur`, 2))
+		at = feetOf(player, carry.humanoid)
+	end
+	local attributes: { [string]: any } = { [TIER_ATTRIBUTE] = payload.Tier, [BAT_DROP_ATTRIBUTE] = true }
+	local dropId = createDrop(payload, at, Bat.DroppedLifetime, attributes)
+	if IS_STUDIO then
+		print(`[CarryService] {dropId} : {player.Name} frappé, {describe(payload)} au sol pour {Bat.DroppedLifetime} s`)
+	end
 	finish(player, "Dropped", "Bat") -- le colis reste tenu : il est au sol
 	return dropId
 end
@@ -930,7 +970,7 @@ function CarryService.PlaceDrop(payload: Payload, position: Vector3, lifetime: n
 end
 
 function CarryService.PickUpDrop(player: Player, dropId: string): boolean
-	local drop = drops[dropId]
+	local drop = if type(dropId) == "string" then drops[dropId] else nil
 	if drop == nil or carries[player] ~= nil then
 		return false
 	end
@@ -949,7 +989,7 @@ function CarryService.PickUpDrop(player: Player, dropId: string): boolean
 end
 
 function CarryService.GetDrop(dropId: string): (Payload?, Vector3?)
-	local drop = drops[dropId]
+	local drop = if type(dropId) == "string" then drops[dropId] else nil
 	if drop == nil then
 		return nil, nil
 	end

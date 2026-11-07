@@ -34,8 +34,10 @@
 --       Pose le multiplicateur de vitesse nommé `key` (nombre fini ≥ 0 ; 0 immobilise), ou le
 --       retire avec nil, puis recalcule. Clés prévues : "Carry" (Balance.Carry : 0,9 colis PNJ,
 --       0,75 objet volé), "Adrenaline" (1 + PvP.AdrenalineSpeedBonus), "Training" (0, posé
---       par TrainingService). Le service qui pose une clé la retire lui-même, à la mort
---       comme au départ : un modificateur survit à la réapparition.
+--       par TrainingService), "GuardStun" (0, joueur rattrapé par un vigile, GuardService),
+--       "BatStun" (0, étourdi Bat.StunDuration s par un coup de batte, BatService). Le service
+--       qui pose une clé la retire lui-même, à la mort comme au départ : un modificateur survit
+--       à la réapparition.
 --   StatsService.Refresh(player)
 --       Recalcule et applique tout. À appeler quand le multiplicateur de trail change.
 --   StatsService.GetTrailMultiplier(player) -> number
