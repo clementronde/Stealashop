@@ -5,8 +5,8 @@
 -- Rôle :
 --   - lit les attributs posés par DisplayService : Income ($/s total), CashCollected (argent
 --     encaissé depuis l'arrivée, qui ne fait que monter) et DisplaySlotsUnlocked (présentoirs
---     débloqués) sur le Player ; CashRegister (argent en caisse) sur sa parcelle. Prêt pour le
---     HUD (DEV-021) : UI_HUD.Income se branche sur GetIncome et OnIncomeChanged ;
+--     débloqués) sur le Player ; CashRegister (argent en caisse) sur sa parcelle. Le revenu est à
+--     l'écran : HudController écrit UI_HUD.Income depuis le même attribut Income (DEV-021) ;
 --   - à chaque encaissement au CashPad, écrit le montant dans la sortie (en Studio seulement)
 --     et prévient les écouteurs d'OnCashOut (plus tard : chiffre flottant, son de caisse DEV-051) ;
 --   - anime en local les halos créés par le serveur : les rayons des objets Légendaire, Mythique
@@ -210,11 +210,7 @@ local function onCollectedChanged()
 end
 
 local function onIncomeChanged()
-	local income = numberAttribute(localPlayer, INCOME_ATTRIBUTE)
-	if IS_STUDIO then
-		print(`[Présentoirs] revenu de ta boutique : {formatMoney(income)}/s`)
-	end
-	emit(incomeListeners, income)
+	emit(incomeListeners, numberAttribute(localPlayer, INCOME_ATTRIBUTE))
 end
 
 ------------------------------------------------------------------------------

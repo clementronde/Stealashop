@@ -30,8 +30,12 @@
 --   DataService.SpendCash(player, amount) -> boolean
 --       Retire `amount` si le joueur l'a ; false sinon (rien n'est retiré).
 --   DataService.OnCashChanged(listener) -> déconnexion
---       listener(player, cash) après chaque AddCash ou SpendCash (pour le HUD).
+--       listener(player, cash) après chaque AddCash ou SpendCash (côté serveur).
 --       L'argent ne se modifie que par AddCash et SpendCash.
+--
+-- Attribut du Player (écrit seulement ici) : Cash, l'argent du profil, posé au chargement puis à
+-- chaque AddCash ou SpendCash. Le HUD l'affiche (HudController, DEV-021) ; il ne sert qu'à
+-- l'affichage : le code serveur lit Get(player).Cash.
 --
 -- Exemple (dans un autre service) :
 --   local DataService = require(script.Parent.DataService)
@@ -90,6 +94,9 @@ local DEFAULT_WAIT_TIMEOUT = 60
 
 -- Version courante du schéma de sauvegarde (section 9.5).
 local CURRENT_VERSION = 1
+
+-- Attribut du Player lu par le HUD (même nom dans HudController).
+local CASH_ATTRIBUTE = "Cash"
 
 -- Modèle d'un nouveau profil, schéma v1 de la section 9.5. Il sert aussi à compléter
 -- les champs manquants d'un profil existant (Profile:Reconcile de ProfileStore).
@@ -257,6 +264,7 @@ local function loadProfile(player: Player)
 
 	profiles[player] = profile
 	joinedAt[player] = os.time()
+	player:SetAttribute(CASH_ATTRIBUTE, profile.Data.Cash)
 	local mode = if isSaving() then "" else ", mode mock : non sauvegardé"
 	print(`[DataService] {player.Name} : profil {key} chargé (v{profile.Data.Version}{mode})`)
 
@@ -286,6 +294,7 @@ local function releaseProfile(player: Player)
 end
 
 local function notifyCash(player: Player, cash: number)
+	player:SetAttribute(CASH_ATTRIBUTE, cash)
 	for _, listener in table.clone(cashListeners) do
 		task.spawn(listener, player, cash)
 	end

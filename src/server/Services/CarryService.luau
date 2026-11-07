@@ -71,8 +71,9 @@
 --     Légendaire et Mythique rayons, Secret arc-en-ciel (couleurs animées par CarryController,
 --     tag CarryRainbow posé par le code, hors du contrat de la section 2.1) ;
 --   - étiquette : copie de ReplicatedStorage/Assets/UI/BB_Carry (contrat 2.2 : ItemName, Rarity,
---     Income), accrochée au sommet du colis (Attachment LabelPoint ; Clément règle la hauteur avec
---     le StudsOffset de BB_Carry). Colis PNJ : ItemName = « Colis Luxe », Rarity = « LÉGENDAIRE »
+--     Income), accrochée à l'Attachment LabelPoint du colis de Clément (BOX_*, liaison L-023 ; il
+--     règle la hauteur avec le StudsOffset de BB_Carry), sinon à un LabelPoint créé au sommet du
+--     visuel (objet volé, bloc V0). Colis PNJ : ItemName = « Colis Luxe », Rarity = « LÉGENDAIRE »
 --     à la couleur de la rareté, Income caché (l'objet reste secret, 5.6). Objet volé : nom,
 --     rareté, $/s, et un contour rouge (6.1). BB_Carry pas encore livré : étiquette V0, rareté seule.
 
@@ -549,12 +550,24 @@ local function placeholderLabel(): BillboardGui
 	return gui
 end
 
--- Étiquette au sommet du visuel (`top`, CFrame dans l'espace de anchor).
-local function addLabel(anchor: BasePart, top: CFrame, payload: Payload, rarity: Rarity)
+-- Point d'accroche de l'étiquette : le LabelPoint livré dans le modèle (Attachment dans une pièce),
+-- sinon un LabelPoint créé au sommet du visuel (`top`, CFrame dans l'espace de anchor).
+local function labelPoint(model: Model, anchor: BasePart, top: CFrame): Attachment
+	local delivered = model:FindFirstChild(LABEL_POINT, true)
+	local holder = if delivered then delivered.Parent else nil
+	if delivered and delivered:IsA("Attachment") and holder and holder:IsA("BasePart") then
+		return delivered
+	end
 	local point = Instance.new("Attachment")
 	point.Name = LABEL_POINT
 	point.CFrame = top
 	point.Parent = anchor
+	return point
+end
+
+-- Étiquette au-dessus du visuel (voir labelPoint).
+local function addLabel(model: Model, anchor: BasePart, top: CFrame, payload: Payload, rarity: Rarity)
+	local point = labelPoint(model, anchor, top)
 
 	local template = labelTemplate()
 	local gui = if template then template:Clone() :: BillboardGui else placeholderLabel()
@@ -597,7 +610,7 @@ local function buildVisual(payload: Payload): Visual
 	end
 	local height = model:GetExtentsSize().Y
 	addHalo(anchor, offset * CFrame.new(0, height / 2, 0), rarity)
-	addLabel(anchor, offset * CFrame.new(0, height, 0), payload, rarity)
+	addLabel(model, anchor, offset * CFrame.new(0, height, 0), payload, rarity)
 	if payload.Kind == "PlayerItem" then
 		addOutline(model)
 	end

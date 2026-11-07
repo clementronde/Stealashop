@@ -14,8 +14,8 @@
 --     (le serveur vérifie la durée entre les deux) et animation Grab (AnimationController s'il est
 --     là). Le serveur décide de tout : ce contrôleur ne fait que demander.
 --   - HeistTimer(storeId, endsAt) : chrono du braquage, endsAt en heure serveur
---     (workspace:GetServerTimeNow()), 0 = masqué. En attendant l'écran de Clément (UI_HUD,
---     élément HeistTimer, branché par DEV-021), le chrono est écrit dans la sortie, en Studio.
+--     (workspace:GetServerTimeNow()), 0 = masqué. Relayé à OnTimer : HudController l'affiche dans
+--     UI_HUD.HeistTimer (DEV-021). En Studio, une ligne dans la sortie à chaque envoi du serveur.
 --
 -- API (client) :
 --   HeistController.OnTimer(fn(storeId, endsAt)) -> déconnexion   (endsAt = 0 : chrono masqué)
@@ -80,7 +80,6 @@ local Net: any = nil
 local animation: AnimationApi? = nil
 local watches: { [Instance]: StoreWatch } = {}
 local timers: { [string]: number } = {}
-local timerTokens: { [string]: number } = {}
 local timerListeners: { TimerListener } = {}
 
 local function inside(part: BasePart, point: Vector3): boolean
@@ -280,30 +279,6 @@ end
 
 -- Chrono ---------------------------------------------------------------------------------------
 
--- Studio : écrit le chrono dans la sortie, une ligne par seconde, jusqu'à 0 ou au masquage.
-local function printTimer(storeId: string, endsAt: number)
-	local token = (timerTokens[storeId] or 0) + 1
-	timerTokens[storeId] = token
-	if endsAt <= 0 then
-		print(`[Heist] {storeId} : chrono masqué`)
-		return
-	end
-	task.spawn(function()
-		local shown: number? = nil
-		while timerTokens[storeId] == token do
-			local left = math.ceil(endsAt - Workspace:GetServerTimeNow())
-			if left <= 0 then
-				break
-			end
-			if left ~= shown then
-				shown = left
-				print(`[Heist] {storeId} : {left} s`)
-			end
-			task.wait(0.1)
-		end
-	end)
-end
-
 local function onHeistTimer(storeId: string, endsAt: number)
 	if endsAt > 0 then
 		timers[storeId] = endsAt
@@ -311,7 +286,12 @@ local function onHeistTimer(storeId: string, endsAt: number)
 		timers[storeId] = nil
 	end
 	if IS_STUDIO then
-		printTimer(storeId, endsAt)
+		-- Le compte à rebours lui-même est à l'écran (HudController, UI_HUD.HeistTimer).
+		if endsAt > 0 then
+			print(`[Heist] {storeId} : chrono de {math.ceil(endsAt - Workspace:GetServerTimeNow())} s`)
+		else
+			print(`[Heist] {storeId} : chrono masqué`)
+		end
 	end
 	for _, listener in table.clone(timerListeners) do
 		task.spawn(listener, storeId, endsAt)
