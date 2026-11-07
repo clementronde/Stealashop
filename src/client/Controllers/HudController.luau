@@ -18,6 +18,17 @@
 --     (Balance.Guard.GiveUpLead), linéaire entre les deux. Seule la largeur en Scale change.
 --   - Battements de cœur sous Balance.Guard.HeartbeatDistance (ChaseController.IsClose) : le son
 --     HEARTBEAT_SOUND de ReplicatedStorage/Assets/Sounds, en boucle ; silence s'il manque.
+--   - NightCountdown (DEV-047) : depuis les attributs du Workspace posés par NightCycleService
+--     (NightPhase, NightPhaseEndsAt, NightFallsAt, heures serveur) : le jour « Night in 7:42 »
+--     (Night.DayCountdownText), pendant l'alerte « NIGHT FALLS IN 29s » (Night.WarningCountdownText),
+--     la nuit « Dawn in 1:42 » (Night.NightCountdownText) ; « 45s » sous une minute. Phase pas
+--     encore posée : « … ».
+--   - ReturnBaseButton (DEV-045) : un clic envoie ReturnToBase ; le serveur décide (recharge, mains
+--     vides) et répond par Notify s'il refuse. Recharge affichée (« 84s ») depuis l'attribut
+--     ReturnBaseReadyAt du Player (ReturnBaseService) : dans l'enfant Cooldown (TextLabel) du bouton
+--     s'il existe (proposé à Clément, montré pendant la recharge, caché sinon), à défaut dans le
+--     texte du bouton lui-même (TextButton), remis tel quel à la fin. Le label décoratif BaseLabel
+--     (« BASE ») n'est jamais touché.
 --   - Cache les éléments des fonctions pas encore livrées (Config/Features) : RobuxShopButton,
 --     IndexButton, RebirthButton, NightCountdown, ReturnBaseButton.
 -- Les éléments sont cherchés par leur nom parmi les descendants de l'écran (Contract/Find) : les
@@ -37,6 +48,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = Shared:WaitForChild("Config")
 local Balance = require(Config:WaitForChild("Balance"))
 local Features = require(Config:WaitForChild("Features"))
+local Night = require(Config:WaitForChild("Night"))
 local Find = require(Shared:WaitForChild("Contract"):WaitForChild("Find"))
 local Format = require(Shared:WaitForChild("Format"))
 local MarkerSounds = require(Shared:WaitForChild("Anim"):WaitForChild("MarkerSounds"))
@@ -66,6 +78,10 @@ type Hud = {
 	guardMeter: GuiObject?,
 	fill: GuiObject?,
 	fillSize: UDim2, -- taille de Fill posée par Clément : seule la largeur en Scale change
+	nightCountdown: TextLabel?,
+	returnButton: GuiButton?,
+	cooldownLabel: TextLabel?, -- ReturnBaseButton.Cooldown, s'il existe
+	buttonText: string?, -- texte d'origine du bouton (TextButton sans Cooldown), remis après la recharge
 }
 
 local SCREEN = "UI_HUD"
@@ -98,6 +114,23 @@ local function timerText(seconds: number): string
 	return `HEIST: {seconds}s`
 end
 
+-- Attributs posés par le serveur (mêmes noms dans NightCycleService et ReturnBaseService).
+local PHASE_ATTRIBUTE = "NightPhase"
+local ENDS_AT_ATTRIBUTE = "NightPhaseEndsAt"
+local FALLS_AT_ATTRIBUTE = "NightFallsAt"
+local READY_AT_ATTRIBUTE = "ReturnBaseReadyAt"
+-- V0 proposé, absent du contrat 2.2 : enfant facultatif de ReturnBaseButton où écrire la recharge.
+local COOLDOWN_LABEL = "Cooldown"
+
+-- Durée restante : « 7:42 » à partir d'une minute, « 45s » en dessous (secondes arrondies vers le haut).
+local function clockText(seconds: number): string
+	local s = math.max(0, math.ceil(seconds - 1e-6))
+	if s >= 60 then
+		return string.format("%d:%02d", s // 60, s % 60)
+	end
+	return `{s}s`
+end
+
 local IS_STUDIO = RunService:IsStudio()
 local CATCH_DISTANCE: number = Balance.Guard.CatchDistance
 local GIVE_UP_LEAD: number = Balance.Guard.GiveUpLead
@@ -107,7 +140,10 @@ local HudController = {}
 local localPlayer = Players.LocalPlayer
 local heist: HeistApi? = nil
 local chase: ChaseApi? = nil
+local net: any = nil -- Shared/Net, chargé au démarrage (attend les remotes du serveur)
 local hud: Hud? = nil
+local shownCountdown: string? = nil -- texte affiché par NightCountdown
+local shownCooldown: string? = nil -- recharge affichée sur ReturnBaseButton ; nil = prêt
 local timers: { [string]: number } = {} -- storeId → endsAt (heure serveur)
 local shownSeconds: number? = nil -- secondes affichées par HeistTimer ; nil = masqué
 local chased = false -- GuardMeter affiché
@@ -266,6 +302,69 @@ local function setHeartbeat(on: boolean)
 	end
 end
 
+-- Cycle jour / nuit ---------------------------------------------------------------------------
+
+local function countdownText(now: number): string
+	local phase = Workspace:GetAttribute(PHASE_ATTRIBUTE)
+	local endsAt = Workspace:GetAttribute(ENDS_AT_ATTRIBUTE)
+	if type(endsAt) ~= "number" then
+		return UNKNOWN_TEXT
+	end
+	if phase == "Day" then
+		local fallsAt = Workspace:GetAttribute(FALLS_AT_ATTRIBUTE)
+		local at = if type(fallsAt) == "number" then fallsAt else endsAt + Night.WarningDuration
+		return string.format(Night.DayCountdownText, clockText(at - now))
+	elseif phase == "Warning" then
+		return string.format(Night.WarningCountdownText, math.max(0, math.ceil(endsAt - now - 1e-6)))
+	elseif phase == "Night" then
+		return string.format(Night.NightCountdownText, clockText(endsAt - now))
+	end
+	return UNKNOWN_TEXT
+end
+
+local function updateNightCountdown(current: Hud, now: number)
+	local label = current.nightCountdown
+	if label == nil then
+		return
+	end
+	local text = countdownText(now)
+	if text ~= shownCountdown then
+		shownCountdown = text
+		label.Text = text
+	end
+end
+
+-- Retour base ---------------------------------------------------------------------------------
+
+local function onReturnBase()
+	if net then
+		net.Client.ReturnToBase:Fire()
+	end
+end
+
+local function updateReturnButton(current: Hud, now: number)
+	local button = current.returnButton
+	if button == nil then
+		return
+	end
+	local readyAt = localPlayer:GetAttribute(READY_AT_ATTRIBUTE)
+	local left = if type(readyAt) == "number" then math.ceil(readyAt - now - 1e-6) else 0
+	local text = if left > 0 then `{left}s` else nil -- « 84s », comme le Notify du serveur
+	if text == shownCooldown then
+		return
+	end
+	shownCooldown = text
+	local label = current.cooldownLabel
+	if label then
+		if text then
+			label.Text = text
+		end
+		label.Visible = text ~= nil
+	elseif button:IsA("TextButton") then
+		(button :: TextButton).Text = text or current.buttonText or ""
+	end
+end
+
 -- Écran ---------------------------------------------------------------------------------------
 
 local function bind(gui: ScreenGui)
@@ -287,6 +386,29 @@ local function bind(gui: ScreenGui)
 		end
 	end
 
+	local nightCountdown = if Features.NightCycle then element(gui, "NightCountdown", "TextLabel") :: TextLabel? else nil
+	local returnButton = if Features.ReturnToBase then element(gui, "ReturnBaseButton", "GuiButton") :: GuiButton? else nil
+	local cooldownLabel: TextLabel? = nil
+	local buttonText: string? = nil
+	if returnButton then
+		returnButton.Activated:Connect(onReturnBase)
+		local found = Find.path(returnButton, COOLDOWN_LABEL)
+		if found and found:IsA("TextLabel") then
+			local label = found :: TextLabel
+			label.Visible = false -- montré pendant la recharge
+			cooldownLabel = label
+		elseif returnButton:IsA("TextButton") then
+			buttonText = (returnButton :: TextButton).Text
+		else
+			warnOnce(
+				"cooldown",
+				`[HUD] ReturnBaseButton n'est pas un TextButton et n'a pas d'enfant {COOLDOWN_LABEL} (TextLabel) : la recharge n'est pas affichée`
+			)
+		end
+	end
+	shownCountdown = nil
+	shownCooldown = nil
+
 	-- Chrono et jauge masqués jusqu'à la prochaine image (update les affiche s'il le faut).
 	if heistTimer then
 		heistTimer.Visible = false
@@ -304,6 +426,10 @@ local function bind(gui: ScreenGui)
 		guardMeter = meter,
 		fill = fill,
 		fillSize = if fill then fill.Size else UDim2.new(),
+		nightCountdown = nightCountdown,
+		returnButton = returnButton,
+		cooldownLabel = cooldownLabel,
+		buttonText = buttonText,
 	}
 	for _, stat in STATS do
 		writeStat(stat)
@@ -319,11 +445,23 @@ local function update()
 	end
 	updateHeistTimer(current)
 	updateGuardMeter(current)
+	local now = Workspace:GetServerTimeNow()
+	updateNightCountdown(current, now)
+	updateReturnButton(current, now)
 end
 
 function HudController.Start()
 	heist = sibling("HeistController")
 	chase = sibling("ChaseController")
+	-- Le bouton Retour base attend les remotes du serveur ; le reste du HUD, non.
+	task.spawn(function()
+		local ok, result = pcall(require, Shared:WaitForChild("Net"):WaitForChild("Net"))
+		if ok then
+			net = result
+		else
+			warnOnce("net", `[HUD] Net : require impossible ({result}) ; ReturnBaseButton ne fait rien`)
+		end
+	end)
 
 	for _, stat in STATS do
 		localPlayer:GetAttributeChangedSignal(stat.Attribute):Connect(function()

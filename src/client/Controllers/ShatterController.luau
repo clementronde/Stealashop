@@ -315,7 +315,8 @@ local function boxOf(parts: { BasePart }, rotation: CFrame): (CFrame?, Vector3?)
 	if low == nil or high == nil then
 		return nil, nil
 	end
-	return rot + rot:PointToWorldSpace((low + high) / 2), high - low
+	local lo, hi = low :: Vector3, high :: Vector3 -- affinage que le nouveau solveur ne garde pas
+	return rot + rot:PointToWorldSpace((lo + hi) / 2), hi - lo
 end
 
 -- Repère d'une boîte (cf, size) : l'axe le plus fin = normale (Z), l'axe restant le plus vertical

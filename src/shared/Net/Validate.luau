@@ -91,7 +91,7 @@ function Validate.check(args: { ArgSpec }, ...: any): (Reason?, string?)
 		return "ArgCount", `{expected} argument(s) attendu(s), reçu {count}`
 	end
 	for i = 1, count do
-		local reason, detail = checkOne(args[i], (select(i, ...)))
+		local reason: Reason?, detail: string? = checkOne(args[i], (select(i, ...)))
 		if reason then
 			return reason, `argument {i}, {detail}`
 		end

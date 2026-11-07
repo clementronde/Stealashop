@@ -320,7 +320,7 @@ function HeistController.GetTimers(): { [string]: number }
 end
 
 function HeistController.Start()
-	Net = require(Shared:WaitForChild("Net"):WaitForChild("Net"))
+	Net = require(Shared:WaitForChild("Net"):WaitForChild("Net")) :: any
 	local module = script.Parent:FindFirstChild("AnimationController")
 	if module and module:IsA("ModuleScript") then
 		local ok, result = pcall(require, module)

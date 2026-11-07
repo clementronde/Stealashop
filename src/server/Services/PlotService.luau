@@ -35,11 +35,12 @@
 --       DataService.OnProfileReleasing n'est pas garanti (Roblox ne garantit pas l'ordre
 --       des PlayerRemoving) : ce qui s'écrit dans le profil au départ va dans
 --       OnProfileReleasing, pas ici.
---   PlotService.TeleportHome(player) -> boolean
+--   PlotService.TeleportHome(player, canMove?) -> boolean
 --       Ramène le personnage sur sa parcelle, au point d'apparition (retour base DEV-045,
 --       vigile de nuit 5.12). Peut yield (2 s au plus) ; false si le joueur n'a pas de
 --       parcelle ou pas de personnage. Les règles (recharge, mains vides) restent à
---       l'appelant.
+--       l'appelant ; `canMove`, s'il est donné, est rappelé juste avant le déplacement, après
+--       l'attente : false = on ne bouge pas (le joueur a pris un colis entre-temps, par exemple).
 --
 -- Exemple (dans un autre service) :
 --   local PlotService = require(script.Parent.PlotService)
@@ -391,8 +392,8 @@ local function rootTarget(plot: Model, humanoid: Humanoid, root: BasePart): CFra
 end
 
 -- Déplace `character` sur la parcelle `plot` de `player`. Peut yield (zone chargée chez
--- le client). Renvoie true si le personnage a été déplacé.
-local function moveCharacter(player: Player, character: Model, plot: Model): boolean
+-- le client). Renvoie true si le personnage a été déplacé. `canMove` : voir TeleportHome.
+local function moveCharacter(player: Player, character: Model, plot: Model, canMove: (() -> boolean)?): boolean
 	local root = character:FindFirstChild("HumanoidRootPart")
 	local humanoid = character:FindFirstChildOfClass("Humanoid") :: Humanoid?
 	if root == nil or not root:IsA("BasePart") or humanoid == nil or humanoid.Health <= 0 then
@@ -409,6 +410,9 @@ local function moveCharacter(player: Player, character: Model, plot: Model): boo
 		if plotOf[player] ~= plot or player.Character ~= character or not character:IsDescendantOf(Workspace) then
 			return false
 		end
+	end
+	if canMove and not canMove() then
+		return false
 	end
 
 	-- Le pivot d'un personnage standard est son HumanoidRootPart ; le décalage couvre les autres cas.
@@ -578,13 +582,13 @@ function PlotService.OnPlotReleased(listener: PlotListener): () -> ()
 	return subscribe(releasedListeners, listener)
 end
 
-function PlotService.TeleportHome(player: Player): boolean
+function PlotService.TeleportHome(player: Player, canMove: (() -> boolean)?): boolean
 	local plot = plotOf[player]
 	local character = player.Character
 	if plot == nil or character == nil or not character:IsDescendantOf(Workspace) then
 		return false
 	end
-	return moveCharacter(player, character, plot)
+	return moveCharacter(player, character, plot, canMove)
 end
 
 function PlotService.Init()

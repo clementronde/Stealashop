@@ -27,6 +27,38 @@
 --      à la fin (capture ou abandon). Pour lui, le vigile reste chargé (streaming) tant que
 --      dure la poursuite.
 --
+-- Vigiles de nuit (DEV-047, section 5.12), lancés par NightCycleService à la tombée de la nuit
+-- (StartNightPatrol) et retirés à l'aube (StopNightPatrol). Même poursuite, même capture, mêmes
+-- animations que le vigile de jour ; ce qui change :
+--   - Night.GuardsPerZone (2) par zone, posés sur les points taggés `NightPatrol` de leur zone
+--     (attribut Zone), triés par nom : le 1er vigile part du 1er point, le 2e du point du milieu
+--     de la liste (avec 2 points : chacun le sien). Ronde à Night.PatrolSpeed, en aller-retour
+--     d'un point au suivant, pause de Night.PatrolPause s à chaque point (Walk, puis Idle). Une
+--     zone sans point n'a pas de vigile de nuit (avertissement) ; un seul point : ils y restent.
+--   - Repérage, pendant la ronde et le retour à la ronde : un joueur vivant, dans le couloir
+--     (règle de NightCycleService), pas ignoré (bouclier débutant), pas déjà poursuivi par un
+--     autre vigile de nuit, à Night.DetectionRange (40) studs au plus, dans le cône de la lampe
+--     torche (Night.DetectionConeAngle autour de l'avant du vigile, à l'horizontale) et sans mur
+--     entre eux (même ligne de vue que la poursuite). Le plus proche. Puis délai de réaction et
+--     poursuite à Zones[zone].AdvisedSpeed + Night.ChaseSpeedBonus, avec ou sans colis.
+--   - Abandon : comme le jour (zone safe, Night.GiveUpChaseDuration s depuis le repérage,
+--     Night.GiveUpLead studs), et aussi quand la cible quitte le couloir (passée à travers le mur
+--     de nuit), devient ignorée ou n'a plus de personnage. Puis essoufflé, il retourne au point de
+--     ronde le plus proche et reprend sa ronde. Il ne disparaît qu'à l'aube.
+--   - Attrapé la nuit (5.12) : joueur immobilisé tout de suite ; CarryService.Fail(player,
+--     "Caught") s'il porte (le colis revole vers son rayon, s'il n'a pas été rempli depuis) ; au
+--     marqueur Impact de Catch, le même coup que le jour, puis Night.SendHomeDelay s plus tard,
+--     renvoi chez lui (SendHome de NightCycleService), étourdi Night.CaughtStunDuration (2) s à
+--     partir de là, et Notify. Aucune autre perte.
+--   - Modèle : Assets/Guards/NightGuard_Z<zone>, sinon NightGuard (look de Clément, MOD-032),
+--     sinon le modèle de jour (Guard_Z<zone>, Guard), sinon le même rig de remplacement que le
+--     jour, auquel le code ajoute une SpotLight (lampe torche de remplacement, portée et angle du
+--     cône de détection). Rien n'est ajouté aux modèles de Clément. Clone nommé NightGuard_Z<n>_<k>.
+--   - Ils ne comptent pas dans le plafond de 9.7 (Balance.Guard.MaxActivePerServer, vigiles de
+--     jour) : 2 × 6 zones = 12 au plus, seulement la nuit.
+--   - ChaseState : le joueur reçoit le vigile de jour qui le poursuit s'il y en a un, sinon le
+--     vigile de nuit ; ChaseState(false) quand plus aucun ne le poursuit.
+--
 -- Animations (contrat 2.4, Shared/Contract/Animations), jouées par AnimPlayer depuis le dossier
 -- Animations du modèle : Idle (toujours, en fond), Run (poursuite), Catch (capture), Tired
 -- (abandon), Walk (retour). Une animation pas encore livrée ne joue rien. Sons des marqueurs :
@@ -53,10 +85,17 @@
 --       nil ici : la vitesse de la zone s'applique. TutorialService le remplace
 --       (GuardService.GetSpeedOverride = function(player, zone) ... end). Une valeur qui n'est
 --       pas un nombre fini > 0, ou une erreur, compte pour nil.
+--   GuardService.StartNightPatrol(hooks) -> number
+--       Lance les vigiles de nuit (voir plus haut), sans attendre ; renvoie le nombre prévu. hooks
+--       (NightCycleService) : InCorridor(position) -> boolean, Ignores(player) -> boolean,
+--       SendHome(player) -> boolean (peut attendre). Déjà lancés : les anciens partent d'abord.
+--   GuardService.StopNightPatrol() -> number    retire les vigiles de nuit, renvoie leur nombre
+--   GuardService.IsNightChased(player) -> boolean   poursuivi par un vigile de nuit
 
 local CollectionService = game:GetService("CollectionService")
 local Debris = game:GetService("Debris")
 local PathfindingService = game:GetService("PathfindingService")
+local PhysicsService = game:GetService("PhysicsService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -65,6 +104,7 @@ local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage.Shared
 local Balance = require(Shared.Config.Balance)
+local Night = require(Shared.Config.Night)
 local Zones = require(Shared.Config.Zones)
 local Format = require(Shared.Format)
 local Animations = require(Shared.Contract.Animations)
@@ -86,9 +126,20 @@ local CarryService: CarryApi = require(script.Parent.CarryService) :: any
 
 type AnimPlayerT = AnimPlayer.AnimPlayer
 
--- Wait : vient d'apparaître ; Chase : poursuit ; Catch : vient de rattraper ; Tired : essoufflé
--- après un abandon ; Return : rentre en marchant.
-type GuardState = "Wait" | "Chase" | "Catch" | "Tired" | "Return"
+-- Wait : vient d'apparaître (ou, la nuit, vient de repérer un joueur) ; Chase : poursuit ; Catch :
+-- vient de rattraper ; Tired : essoufflé après un abandon ; Return : rentre en marchant (la nuit :
+-- vers sa ronde) ; Patrol : ronde de nuit.
+type GuardState = "Wait" | "Chase" | "Catch" | "Tired" | "Return" | "Patrol"
+
+-- Day : vigile de jour d'un magasin (5.5) ; Night : vigile de nuit (5.12).
+type GuardKind = "Day" | "Night"
+
+-- Règles de la nuit, données par NightCycleService à StartNightPatrol.
+export type NightHooks = {
+	InCorridor: (position: Vector3) -> boolean,
+	Ignores: (player: Player) -> boolean,
+	SendHome: (player: Player) -> boolean,
+}
 
 type Guard = {
 	model: Model,
@@ -96,13 +147,22 @@ type Guard = {
 	root: BasePart,
 	rootHeight: number, -- hauteur du centre du HumanoidRootPart au-dessus des pieds
 	anims: AnimPlayerT,
-	store: Model,
-	home: Vector3, -- GuardSpawn, but du retour
+	kind: GuardKind,
+	label: string, -- pour la sortie : « vigile de STORE_Z1_Superette », « vigile de nuit NightGuard_Z1_1 »
+	store: Model?, -- magasin du vigile de jour ; nil la nuit
+	home: Vector3, -- GuardSpawn, but du retour ; la nuit : point de ronde visé
 	zone: number,
 	speed: number, -- WalkSpeed de poursuite
 	target: Player?, -- joueur poursuivi, nil hors poursuite
 	state: GuardState,
 	spawnedAt: number,
+	chaseStartedAt: number, -- début de la poursuite (le jour : l'apparition)
+	patrol: { Vector3 }, -- points de ronde de sa zone, dans l'ordre (vide le jour)
+	patrolIndex: number, -- point visé
+	patrolStep: number, -- +1 ou −1 : sens de l'aller-retour
+	pauseUntil: number, -- fin de la pause au point de ronde ; 0 = en marche
+	onKnock: ((player: Player) -> ())?, -- après le coup (la nuit : renvoi chez lui)
+	nextScanAt: number, -- prochain repérage (vigile de nuit)
 	stateEndsAt: number, -- fin de Wait, Catch ou Tired
 	returnedAt: number,
 	nextSteerAt: number,
@@ -141,6 +201,26 @@ local KNOCKBACK_NAME = "GuardKnockback"
 local STUN_KEY = "GuardStun" -- modificateur de vitesse de StatsService
 local FALLBACK_NAME = "Guard_Fallback"
 
+-- Vigiles de nuit (5.12). Tag et attribut du contrat (2.1, 10.4) ; noms des modèles : V0 proposé,
+-- absent du doc, comme ceux du jour (à écrire dans la liaison pour Clément).
+local NIGHT_PATROL_TAG = "NightPatrol"
+local ZONE_ATTRIBUTE = "Zone"
+local NIGHT_ZONE_NAME = "NightGuard_Z%d" -- un look par zone, s'il le faut
+local NIGHT_COMMON_NAME = "NightGuard" -- look commun des vigiles de nuit (MOD-032)
+local NIGHT_CLONE_NAME = "NightGuard_Z%d_%d" -- nom du clone en jeu : zone, numéro
+-- V0 proposé, absent du doc : lampe torche du rig de remplacement seulement (le look de Clément
+-- apporte la sienne) : une SpotLight dans la tête, portée et angle du cône de détection.
+local FLASHLIGHT_NAME = "NightFlashlight"
+local FLASHLIGHT_COLOR = Color3.fromRGB(255, 244, 214)
+local FLASHLIGHT_BRIGHTNESS = 2
+-- V0 proposé, absent du doc : sans animation Catch livrée, le renvoi part tout de suite après le coup.
+local NIGHT_FREEZE_MAX = 8 -- immobilisé au plus ce temps entre la capture et le renvoi (s)
+
+-- Messages lus par le joueur (Notify), en anglais (L-036).
+local MESSAGES = {
+	NightCaught = "Caught by a night guard! Back to your shop.",
+}
+
 -- V0 proposé, absent du doc : le coup du vigile qui projette le joueur rattrapé (5.5, comme
 -- dans le jeu de référence). Réglable ici.
 local KNOCKBACK_SPEED = 40 -- vitesse horizontale donnée au joueur, à l'opposé du vigile (studs/s)
@@ -154,6 +234,11 @@ local STEER_INTERVAL = 0.1 -- cadence du pilotage : ligne de vue, MoveTo (s)
 local WAYPOINT_REACHED = 2 -- distance horizontale à laquelle un point du chemin est atteint (studs)
 local KNEE_HEIGHT = 1.5 -- second rayon de la ligne de vue, au-dessus des pieds : voit les obstacles bas (studs)
 local SPAWN_SPACING = 3 -- écart entre vigiles apparus au même GuardSpawn, vers la vitrine (studs)
+-- Groupe de collision des vigiles, qui ne se heurte pas lui-même : deux vigiles qui se croisent
+-- (les 2 vigiles de nuit d'une zone font la même ronde en ligne droite) passent l'un à travers
+-- l'autre au lieu de se bloquer et de faire demi-tour au milieu de la ronde (vu en Play le
+-- 2026-11-07). Ils restent arrêtés par la map, les joueurs et le mur de nuit.
+local GUARD_GROUP = "Guards"
 local RETURN_WALK_SPEED = 10 -- retour en marchant (WalkSpeed)
 local RETURN_PATH_INTERVAL = 1 -- recalcul du chemin du retour (s)
 local RETURN_MAX_DURATION = 20 -- au-delà, il disparaît là où il est (s)
@@ -193,8 +278,14 @@ local IS_STUDIO = RunService:IsStudio()
 
 local GuardService = {}
 
-local guards: { Guard } = {}
-local chasedBy: { [Player]: Guard } = {}
+local guards: { Guard } = {} -- vigiles de jour
+local chasedBy: { [Player]: Guard } = {} -- par un vigile de jour
+local nightGuards: { Guard } = {}
+local nightChasedBy: { [Player]: Guard } = {}
+local nightHooks: NightHooks? = nil -- règles de la nuit en cours ; nil le jour
+local nightToken = 0 -- change à chaque StartNightPatrol et StopNightPatrol : périme les lancements en cours
+local chaseSent: { [Player]: Model } = {} -- vigile annoncé au joueur par ChaseState(true, …)
+local caughtAtNight: { [Player]: boolean } = {} -- attrapé la nuit, pas encore renvoyé : plus visé
 local stunTokens: { [Player]: number } = {}
 local activeFolder: Folder? = nil
 local fallbackTemplate: Model? = nil
@@ -448,13 +539,31 @@ end
 -- Prépare un clone : scripts retirés (aucun script dans un modèle animé, 10.4), pièces
 -- désancrées (le Humanoid doit pouvoir le déplacer). Renvoie son Humanoid et son
 -- HumanoidRootPart, ou nil s'il lui en manque un.
+local function guardGroup(): string?
+	local ok = pcall(function()
+		if not PhysicsService:IsCollisionGroupRegistered(GUARD_GROUP) then
+			PhysicsService:RegisterCollisionGroup(GUARD_GROUP)
+		end
+		PhysicsService:CollisionGroupSetCollidable(GUARD_GROUP, GUARD_GROUP, false)
+	end)
+	if not ok then
+		warnOnce("group", `groupe de collision {GUARD_GROUP} indisponible : les vigiles peuvent se bloquer entre eux`)
+		return nil
+	end
+	return GUARD_GROUP
+end
+
 local function prepare(model: Model, label: string): (Humanoid?, BasePart?)
+	local group = guardGroup()
 	for _, descendant in model:GetDescendants() do
 		if descendant:IsA("LuaSourceContainer") then
 			warnOnce(`script:{label}`, `{label} : script « {descendant.Name} » retiré du vigile en jeu (aucun script dans un modèle animé, 10.4)`)
 			descendant:Destroy()
 		elseif descendant:IsA("BasePart") then
 			(descendant :: BasePart).Anchored = false
+			if group then
+				(descendant :: BasePart).CollisionGroup = group
+			end
 		end
 	end
 	local humanoid = model:FindFirstChildOfClass("Humanoid")
@@ -588,6 +697,27 @@ local function setState(guard: Guard, state: GuardState)
 	guard.waypoints = nil
 end
 
+-- ChaseState du joueur : le vigile de jour qui le poursuit, sinon celui de nuit ; ChaseState(false)
+-- quand plus aucun ne le poursuit. N'envoie rien si rien n'a changé.
+local function refreshChaseState(player: Player)
+	if player.Parent ~= Players then
+		chaseSent[player] = nil
+		return
+	end
+	local guard = chasedBy[player] or nightChasedBy[player]
+	local model = if guard then guard.model else nil
+	if model == chaseSent[player] then
+		return
+	end
+	if model then
+		chaseSent[player] = model
+		Net.Server.ChaseState:Fire(player, true, model)
+	else
+		chaseSent[player] = nil
+		Net.Server.ChaseState:Fire(player, false)
+	end
+end
+
 -- Fin de la poursuite pour le joueur (capture, abandon ou disparition du vigile).
 local function endChase(guard: Guard)
 	local player = guard.target
@@ -598,13 +728,14 @@ local function endChase(guard: Guard)
 	if chasedBy[player] == guard then
 		chasedBy[player] = nil
 	end
+	if nightChasedBy[player] == guard then
+		nightChasedBy[player] = nil
+	end
 	guard.model:SetAttribute(TARGET_ATTRIBUTE, 0)
 	pcall(function()
 		guard.model:RemovePersistentPlayer(player)
 	end)
-	if player.Parent == Players then
-		Net.Server.ChaseState:Fire(player, false)
-	end
+	refreshChaseState(player)
 end
 
 local function despawn(guard: Guard, reason: string)
@@ -613,9 +744,10 @@ local function despawn(guard: Guard, reason: string)
 	end
 	guard.alive = false
 	endChase(guard)
-	local index = table.find(guards, guard)
+	local list = if guard.kind == "Night" then nightGuards else guards
+	local index = table.find(list, guard)
 	if index then
-		table.remove(guards, index)
+		table.remove(list, index)
 	end
 	for _, connection in guard.connections do
 		connection:Disconnect()
@@ -623,7 +755,7 @@ local function despawn(guard: Guard, reason: string)
 	guard.pathToken += 1
 	guard.anims:Destroy()
 	guard.model:Destroy()
-	log(`vigile de {guard.store.Name} parti ({reason})`)
+	log(`{guard.label} parti ({reason})`)
 end
 
 local function startChase(guard: Guard, now: number)
@@ -631,12 +763,33 @@ local function startChase(guard: Guard, now: number)
 	guard.humanoid.WalkSpeed = guard.speed
 	guard.nextSteerAt = now
 	guard.nextPathAt = now
+	guard.anims:Stop("Walk") -- vigile de nuit : il marchait sur sa ronde
 	guard.anims:Play("Run")
+end
+
+-- Ronde de nuit : point le plus proche, à l'horizontale.
+local function nearestPatrolIndex(guard: Guard): number
+	local best, bestDistance = 1, math.huge
+	local position = guard.root.Position
+	for index, point in guard.patrol do
+		local distance = flat(point - position).Magnitude
+		if distance < bestDistance then
+			best, bestDistance = index, distance
+		end
+	end
+	return best
 end
 
 local function startReturn(guard: Guard, now: number)
 	setState(guard, "Return")
-	guard.humanoid.WalkSpeed = RETURN_WALK_SPEED
+	if guard.kind == "Night" and #guard.patrol > 0 then
+		-- La nuit, il rentre au point de ronde le plus proche, à l'allure de la ronde.
+		guard.patrolIndex = nearestPatrolIndex(guard)
+		guard.home = guard.patrol[guard.patrolIndex]
+		guard.humanoid.WalkSpeed = Night.PatrolSpeed
+	else
+		guard.humanoid.WalkSpeed = RETURN_WALK_SPEED
+	end
 	guard.returnedAt = now
 	guard.progressPos = guard.root.Position
 	guard.progressAt = now
@@ -664,7 +817,7 @@ local function giveUp(guard: Guard, reason: string)
 	end
 	local player = guard.target
 	endChase(guard)
-	log(`vigile de {guard.store.Name} : abandonne {if player then player.Name else "?"} ({reason})`)
+	log(`{guard.label} : abandonne {if player then player.Name else "?"} ({reason})`)
 	local now = os.clock()
 	stop(guard)
 	if state == "Wait" then
@@ -678,11 +831,12 @@ end
 
 -- Capture ---------------------------------------------------------------------------------
 
-local function stun(player: Player)
+-- Immobilise le joueur `duration` s ; un nouvel appel remplace le précédent.
+local function stun(player: Player, duration: number)
 	local token = (stunTokens[player] or 0) + 1
 	stunTokens[player] = token
 	StatsService.SetSpeedModifier(player, STUN_KEY, 0)
-	task.delay(Balance.Guard.CatchStunDuration, function()
+	task.delay(duration, function()
 		if stunTokens[player] == token then
 			stunTokens[player] = nil
 			StatsService.SetSpeedModifier(player, STUN_KEY, nil)
@@ -720,12 +874,18 @@ local function knockback(player: Player, from: Vector3)
 	Debris:AddItem(attachment, KNOCKBACK_DURATION)
 end
 
--- La poussée en attente part (marqueur Impact de Catch, ou délai écoulé).
+-- La poussée en attente part (marqueur Impact de Catch, ou délai écoulé), suivie de ce qui doit
+-- venir après le coup (la nuit : le renvoi chez lui).
 local function releaseKnockback(guard: Guard)
 	local player = guard.knockTarget
 	if player then
 		guard.knockTarget = nil
 		knockback(player, guard.root.Position)
+		local after = guard.onKnock
+		if after then
+			guard.onKnock = nil
+			task.spawn(after, player)
+		end
 	end
 end
 
@@ -737,7 +897,7 @@ local function catch(guard: Guard, player: Player)
 	guard.anims:Stop("Run")
 	local track = guard.anims:Play("Catch")
 	guard.stateEndsAt = now + pauseFor(track, CATCH_PAUSE, CATCH_MAX)
-	log(`vigile de {guard.store.Name} : {player.Name} rattrapé`)
+	log(`{guard.label} : {player.Name} rattrapé`)
 
 	-- Le coup : au marqueur Impact de Catch, ou tout de suite si Catch n'est pas livrée.
 	if track then
@@ -759,7 +919,7 @@ local function catch(guard: Guard, player: Player)
 		if not ok then
 			warn(`[GuardService] CarryService.Fail({player.Name}, "Caught") : {err}`)
 		end
-		stun(player)
+		stun(player, Balance.Guard.CatchStunDuration)
 		if player.Parent == Players then
 			Net.Server.Notify:Fire(
 				player,
@@ -768,6 +928,85 @@ local function catch(guard: Guard, player: Player)
 			)
 		end
 	end)
+end
+
+-- Attrapé la nuit (5.12) : immobilisé tout de suite, colis rendu, le même coup que le jour, puis
+-- renvoyé chez lui et étourdi Night.CaughtStunDuration s. Aucune autre perte.
+local function nightCatch(guard: Guard, player: Player)
+	local now = os.clock()
+	local hooks = nightHooks
+	endChase(guard)
+	setState(guard, "Catch")
+	stop(guard)
+	guard.anims:Stop("Run")
+	local track = guard.anims:Play("Catch")
+	guard.stateEndsAt = now + pauseFor(track, CATCH_PAUSE, CATCH_MAX)
+	log(`{guard.label} : {player.Name} attrapé, renvoyé chez lui`)
+
+	stun(player, NIGHT_FREEZE_MAX) -- jusqu'au renvoi ; l'étourdissement de 2 s part de là
+	caughtAtNight[player] = true
+	task.spawn(function()
+		local ok, err = pcall(CarryService.Fail :: any, player, "Caught")
+		if not ok then
+			warn(`[GuardService] CarryService.Fail({player.Name}, "Caught") : {err}`)
+		end
+	end)
+
+	local function sendHome(caught: Player)
+		task.wait(Night.SendHomeDelay)
+		if caught.Parent ~= Players then
+			caughtAtNight[caught] = nil
+			return
+		end
+		if hooks then
+			local ok, err = pcall(hooks.SendHome, caught)
+			if not ok then
+				warn(`[GuardService] SendHome({caught.Name}) : {err}`)
+			end
+		end
+		caughtAtNight[caught] = nil
+		stun(caught, Night.CaughtStunDuration)
+		if caught.Parent == Players then
+			Net.Server.Notify:Fire(caught, MESSAGES.NightCaught, "Warning")
+		end
+	end
+
+	-- Le coup : au marqueur Impact de Catch, ou tout de suite si Catch n'est pas livrée.
+	if track then
+		guard.knockTarget = player
+		guard.onKnock = sendHome
+		task.delay(KNOCKBACK_MAX_WAIT, function()
+			if guard.knockTarget == player then
+				releaseKnockback(guard)
+			end
+		end)
+	else
+		knockback(player, guard.root.Position)
+		task.spawn(sendHome, player)
+	end
+end
+
+-- Pourquoi un vigile de nuit lâche (ou ne vise pas) ce joueur, nil s'il peut le poursuivre.
+local function nightRefusal(player: Player, position: Vector3): string?
+	local hooks = nightHooks
+	if hooks == nil then
+		return "fin de la nuit"
+	end
+	local okInside, inside = pcall(hooks.InCorridor, position)
+	if not okInside then
+		warnOnce("hook:InCorridor", `InCorridor : {inside}`)
+		return "couloir inconnu"
+	elseif inside ~= true then
+		return "sorti du couloir"
+	end
+	local okIgnored, ignored = pcall(hooks.Ignores, player)
+	if not okIgnored then
+		warnOnce("hook:Ignores", `Ignores : {ignored} (joueur ignoré)`)
+		return "joueur ignoré"
+	elseif ignored == true then
+		return "joueur ignoré (bouclier débutant)"
+	end
+	return nil
 end
 
 -- Boucle ----------------------------------------------------------------------------------
@@ -783,7 +1022,14 @@ local function chaseStep(guard: Guard, now: number)
 		giveUp(guard, "plus de personnage")
 		return
 	end
-	if not CarryService.IsCarrying(player) then
+	local night = guard.kind == "Night"
+	if night then
+		local reason = nightRefusal(player, targetRoot.Position)
+		if reason then
+			giveUp(guard, reason)
+			return
+		end
+	elseif not CarryService.IsCarrying(player) then
 		giveUp(guard, "ne porte plus de colis")
 		return
 	end
@@ -796,16 +1042,23 @@ local function chaseStep(guard: Guard, now: number)
 		return
 	end
 	local distance = (targetRoot.Position - guard.root.Position).Magnitude
-	if distance <= Balance.Guard.CatchDistance and clearLine(guard.root.Position, targetRoot.Position) then
-		catch(guard, player)
+	local catchDistance = if night then Night.CatchDistance else Balance.Guard.CatchDistance
+	if distance <= catchDistance and clearLine(guard.root.Position, targetRoot.Position) then
+		if night then
+			nightCatch(guard, player)
+		else
+			catch(guard, player)
+		end
 		return
 	end
-	if now - guard.spawnedAt >= Balance.Guard.GiveUpChaseDuration then
-		giveUp(guard, `{Balance.Guard.GiveUpChaseDuration} s de poursuite`)
+	local giveUpAfter = if night then Night.GiveUpChaseDuration else Balance.Guard.GiveUpChaseDuration
+	if now - guard.chaseStartedAt >= giveUpAfter then
+		giveUp(guard, `{giveUpAfter} s de poursuite`)
 		return
 	end
-	if distance >= Balance.Guard.GiveUpLead then
-		giveUp(guard, `{Balance.Guard.GiveUpLead} studs d'avance`)
+	local giveUpLead = if night then Night.GiveUpLead else Balance.Guard.GiveUpLead
+	if distance >= giveUpLead then
+		giveUp(guard, `{giveUpLead} studs d'avance`)
 		return
 	end
 	if now < guard.nextSteerAt then
@@ -824,21 +1077,179 @@ local function chaseStep(guard: Guard, now: number)
 	followPath(guard, targetRoot.Position)
 end
 
-local function returnStep(guard: Guard, now: number)
-	local position = guard.root.Position
-	if flat(guard.home - position).Magnitude <= ARRIVE_DISTANCE then
-		despawn(guard, "rentré")
+-- Ronde de nuit ----------------------------------------------------------------------------
+
+local function startPatrol(guard: Guard, now: number)
+	setState(guard, "Patrol")
+	guard.humanoid.WalkSpeed = Night.PatrolSpeed
+	guard.pauseUntil = 0
+	guard.progressPos = guard.root.Position
+	guard.progressAt = now
+	guard.nextSteerAt = now
+	guard.nextPathAt = now
+	guard.anims:Stop("Run")
+	guard.anims:Stop("Tired")
+	if #guard.patrol > 1 then
+		guard.anims:Play("Walk")
+	else
+		guard.anims:Stop("Walk")
+	end
+end
+
+-- Point suivant de l'aller-retour ; le calcul de chemin en cours est périmé.
+local function nextPatrolPoint(guard: Guard, now: number)
+	local count = #guard.patrol
+	if count > 1 then
+		local index = guard.patrolIndex + guard.patrolStep
+		if index < 1 or index > count then
+			guard.patrolStep = -guard.patrolStep
+			index = guard.patrolIndex + guard.patrolStep
+		end
+		guard.patrolIndex = index
+	end
+	guard.pathToken += 1
+	guard.waypoints = nil
+	guard.progressPos = guard.root.Position
+	guard.progressAt = now
+	guard.nextPathAt = now
+end
+
+local function patrolStep(guard: Guard, now: number)
+	local count = #guard.patrol
+	if count == 0 then
 		return
 	end
-	if now - guard.returnedAt >= RETURN_MAX_DURATION then
-		despawn(guard, "retour trop long")
+	local position = guard.root.Position
+	if guard.pauseUntil > 0 then
+		if now >= guard.pauseUntil then
+			guard.pauseUntil = 0
+			nextPatrolPoint(guard, now)
+			guard.anims:Play("Walk")
+		end
+		return
+	end
+	local goal = guard.patrol[guard.patrolIndex]
+	if flat(goal - position).Magnitude <= ARRIVE_DISTANCE then
+		stop(guard)
+		if count > 1 then
+			guard.pauseUntil = now + Night.PatrolPause
+			guard.anims:Stop("Walk")
+		end
 		return
 	end
 	if (position - guard.progressPos).Magnitude >= 1 then
 		guard.progressPos = position
 		guard.progressAt = now
 	elseif now - guard.progressAt >= RETURN_STUCK_TIME then
-		despawn(guard, "bloqué sur le retour")
+		log(`{guard.label} : bloqué sur sa ronde, point suivant`)
+		nextPatrolPoint(guard, now)
+		return
+	end
+	if now < guard.nextSteerAt then
+		return
+	end
+	guard.nextSteerAt = now + STEER_INTERVAL
+	-- Rue dégagée (presque toujours) : tout droit, sans calcul de chemin ; sinon PathfindingService.
+	local from = guard.root.Position
+	local to = goal + Vector3.new(0, guard.rootHeight, 0)
+	local knee = Vector3.new(0, guard.rootHeight - KNEE_HEIGHT, 0)
+	if clearLine(from, to) and clearLine(from - knee, to - knee) then
+		guard.waypoints = nil
+		moveTo(guard, goal)
+		return
+	end
+	if now >= guard.nextPathAt and not guard.computing then
+		guard.nextPathAt = now + RETURN_PATH_INTERVAL
+		computePath(guard, goal)
+	end
+	followPath(guard, goal)
+end
+
+-- Le cône de la lampe torche, à l'horizontale (Night.DetectionConeAngle autour de l'avant).
+local COS_CONE = math.cos(math.rad(math.clamp(Night.DetectionConeAngle, 0, 180)))
+
+local function inCone(guard: Guard, offset: Vector3): boolean
+	local look = flat(guard.root.CFrame.LookVector)
+	local direction = flat(offset)
+	if look.Magnitude < 1e-3 or direction.Magnitude < 1e-3 then
+		return true -- juste au-dessus ou en dessous de lui
+	end
+	return look.Unit:Dot(direction.Unit) >= COS_CONE
+end
+
+-- Le joueur le plus proche que ce vigile de nuit repère (voir l'en-tête), ou nil.
+local function scan(guard: Guard): Player?
+	local best: Player? = nil
+	local bestDistance = math.huge
+	for _, player in Players:GetPlayers() do
+		if nightChasedBy[player] == nil and not caughtAtNight[player] then
+			local root, humanoid = bodyOf(player)
+			if root and humanoid then
+				local offset = root.Position - guard.root.Position
+				local distance = offset.Magnitude
+				if
+					distance <= Night.DetectionRange
+					and distance < bestDistance
+					and inCone(guard, offset)
+					and nightRefusal(player, root.Position) == nil
+					and canSee(guard, root, humanoid)
+				then
+					best, bestDistance = player, distance
+				end
+			end
+		end
+	end
+	return best
+end
+
+-- Repéré : délai de réaction, puis poursuite.
+local function spot(guard: Guard, player: Player, now: number)
+	setState(guard, "Wait")
+	stop(guard)
+	guard.anims:Stop("Walk")
+	guard.pauseUntil = 0
+	guard.target = player
+	guard.chaseStartedAt = now
+	guard.stateEndsAt = now + REACTION_DELAY
+	nightChasedBy[player] = guard
+	guard.model:SetAttribute(TARGET_ATTRIBUTE, player.UserId)
+	pcall(function()
+		guard.model:AddPersistentPlayer(player)
+	end)
+	refreshChaseState(player)
+	local root = bodyOf(player)
+	local distance = if root then (root.Position - guard.root.Position).Magnitude else 0
+	log(`{guard.label} : repère {player.Name} à {Format.short(distance)} studs, poursuite à {Format.short(guard.speed)}`)
+end
+
+local function returnStep(guard: Guard, now: number)
+	local position = guard.root.Position
+	local night = guard.kind == "Night"
+	if flat(guard.home - position).Magnitude <= ARRIVE_DISTANCE then
+		if night then
+			startPatrol(guard, now)
+		else
+			despawn(guard, "rentré")
+		end
+		return
+	end
+	if now - guard.returnedAt >= RETURN_MAX_DURATION then
+		if night then
+			startPatrol(guard, now) -- reprend la ronde d'où il est
+		else
+			despawn(guard, "retour trop long")
+		end
+		return
+	end
+	if (position - guard.progressPos).Magnitude >= 1 then
+		guard.progressPos = position
+		guard.progressAt = now
+	elseif now - guard.progressAt >= RETURN_STUCK_TIME then
+		if night then
+			startPatrol(guard, now)
+		else
+			despawn(guard, "bloqué sur le retour")
+		end
 		return
 	end
 	if now < guard.nextSteerAt then
@@ -858,9 +1269,27 @@ local function update(guard: Guard, now: number)
 		return
 	end
 	local state = guard.state
+	local night = guard.kind == "Night"
+	-- Vigile de nuit : il cherche une cible pendant sa ronde et sur le chemin du retour.
+	if night and (state == "Patrol" or state == "Return") and now >= guard.nextScanAt then
+		guard.nextScanAt = now + STEER_INTERVAL
+		local found = scan(guard)
+		if found then
+			spot(guard, found, now)
+			return
+		end
+	end
 	if state == "Wait" then
 		local player = guard.target
-		if player == nil or bodyOf(player) == nil or not CarryService.IsCarrying(player) then
+		local root = if player then bodyOf(player) else nil
+		if night then
+			local reason = if player == nil or root == nil then "plus de cible" else nightRefusal(player, root.Position)
+			if reason then
+				giveUp(guard, `{reason}, avant le départ`)
+			elseif now >= guard.stateEndsAt then
+				startChase(guard, now)
+			end
+		elseif player == nil or root == nil or not CarryService.IsCarrying(player) then
 			giveUp(guard, "portage fini avant le départ")
 		elseif now >= guard.stateEndsAt then
 			startChase(guard, now)
@@ -873,21 +1302,25 @@ local function update(guard: Guard, now: number)
 		end
 	elseif state == "Return" then
 		returnStep(guard, now)
+	elseif state == "Patrol" then
+		patrolStep(guard, now)
 	end
 end
 
 local function step()
-	if #guards == 0 then
+	if #guards == 0 and #nightGuards == 0 then
 		return
 	end
 	refreshRayFilter()
 	local now = os.clock()
-	for _, guard in table.clone(guards) do
-		if guard.alive then
-			local ok, err = pcall(update :: any, guard, now)
-			if not ok then
-				warn(`[GuardService] vigile de {guard.store.Name} : {err}`)
-				despawn(guard, "erreur")
+	for _, list in { guards, nightGuards } do
+		for _, guard in table.clone(list) do
+			if guard.alive then
+				local ok, err = pcall(update :: any, guard, now)
+				if not ok then
+					warn(`[GuardService] {guard.label} : {err}`)
+					despawn(guard, "erreur")
+				end
 			end
 		end
 	end
@@ -1014,6 +1447,8 @@ local function spawnGuard(player: Player, store: Model, zone: number, template: 
 		root = root,
 		rootHeight = rootHeight,
 		anims = AnimPlayer.new(animator :: Animator, AnimPlayer.modelFolder(model), Animations.Guard, "Vigile"),
+		kind = "Day",
+		label = `vigile de {store.Name}`,
 		store = store,
 		home = frame.Position,
 		zone = zone,
@@ -1021,6 +1456,13 @@ local function spawnGuard(player: Player, store: Model, zone: number, template: 
 		target = player,
 		state = "Wait",
 		spawnedAt = now,
+		chaseStartedAt = now,
+		patrol = {},
+		patrolIndex = 1,
+		patrolStep = 1,
+		pauseUntil = 0,
+		onKnock = nil,
+		nextScanAt = 0,
 		stateEndsAt = now + REACTION_DELAY,
 		returnedAt = now,
 		nextSteerAt = now,
@@ -1051,10 +1493,210 @@ local function spawnGuard(player: Player, store: Model, zone: number, template: 
 
 	table.insert(guards, guard)
 	chasedBy[player] = guard
-	Net.Server.ChaseState:Fire(player, true, model)
+	refreshChaseState(player)
 	log(
 		`vigile ({label}) lancé sur {player.Name} depuis {store.Name}, zone {zone}, vitesse {Format.short(guard.speed)} ({#guards} en jeu)`
 	)
+end
+
+-- Vigiles de nuit : apparition ---------------------------------------------------------------
+
+-- Position d'un point de ronde : une pièce, un Attachment ou un modèle.
+local function pointPosition(instance: Instance): Vector3?
+	if instance:IsA("BasePart") then
+		return (instance :: BasePart).Position
+	elseif instance:IsA("Attachment") then
+		return (instance :: Attachment).WorldPosition
+	elseif instance:IsA("PVInstance") then
+		return (instance :: PVInstance):GetPivot().Position
+	end
+	return nil
+end
+
+-- Points de ronde de la map, par zone, triés par nom (puis le long de la rue, pour départager).
+local function patrolPoints(): { [number]: { Vector3 } }
+	type Entry = { name: string, position: Vector3 }
+	local byZone: { [number]: { Entry } } = {}
+	for _, instance in CollectionService:GetTagged(NIGHT_PATROL_TAG) do
+		if inMap(instance) then
+			local zone = instance:GetAttribute(ZONE_ATTRIBUTE)
+			local position = pointPosition(instance)
+			if type(zone) == "number" and Zones[zone] ~= nil and position then
+				local list = byZone[zone] or {}
+				byZone[zone] = list
+				table.insert(list, { name = instance.Name, position = position })
+			else
+				warnOnce(
+					`patrol:{instance:GetFullName()}`,
+					`{instance:GetFullName()} : point de ronde sans attribut Zone de 1 à 6 (ou sans position), ignoré`
+				)
+			end
+		end
+	end
+	local result: { [number]: { Vector3 } } = {}
+	for zone, list in byZone do
+		table.sort(list, function(a: Entry, b: Entry): boolean
+			if a.name ~= b.name then
+				return a.name < b.name
+			end
+			return a.position.X < b.position.X
+		end)
+		local points: { Vector3 } = {}
+		for _, entry in list do
+			table.insert(points, entry.position)
+		end
+		result[zone] = points
+	end
+	return result
+end
+
+-- Le modèle d'un vigile de nuit de cette zone, et s'il faut lui ajouter la lampe torche de
+-- remplacement (rig du code seulement).
+local function nightTemplate(zone: number): (Model?, string, boolean)
+	local template: Model? = nil
+	for _, name in { string.format(NIGHT_ZONE_NAME, zone), NIGHT_COMMON_NAME } do
+		for _, service in { ReplicatedStorage, ServerStorage } :: { Instance } do
+			local assets = service:FindFirstChild("Assets")
+			local folder = if assets then assets:FindFirstChild(GUARD_FOLDER) else nil
+			local model = if folder then folder:FindFirstChild(name) else nil
+			if template == nil and model and model:IsA("Model") and model:FindFirstChildOfClass("Humanoid") then
+				template = model :: Model
+			end
+		end
+	end
+	if template == nil then
+		template = findTemplate(zone) -- look de jour de Clément, s'il est livré
+	end
+	if template and not isUsable(template) then
+		warnOnce(
+			`bad:{template:GetFullName()}`,
+			`{template:GetFullName()} : Humanoid ou HumanoidRootPart manquant (10.4), rig de remplacement utilisé`
+		)
+		template = nil
+	end
+	if template then
+		return template, template:GetFullName(), false
+	end
+	return getFallback(), FALLBACK_NAME, true
+end
+
+-- Lampe torche du rig de remplacement : une SpotLight vers l'avant, aux dimensions du cône.
+local function addFlashlight(model: Model, root: BasePart)
+	local head = model:FindFirstChild("Head")
+	local holder: BasePart = if head and head:IsA("BasePart") then head :: BasePart else root
+	local light = Instance.new("SpotLight")
+	light.Name = FLASHLIGHT_NAME
+	light.Face = Enum.NormalId.Front
+	light.Range = math.clamp(Night.DetectionRange, 0, 60)
+	light.Angle = math.clamp(Night.DetectionConeAngle * 2, 0, 180)
+	light.Brightness = FLASHLIGHT_BRIGHTNESS
+	light.Color = FLASHLIGHT_COLOR
+	light.Shadows = false
+	light.Parent = holder
+end
+
+-- Pose le vigile de nuit n° `number` de la zone sur le point `startIndex` de sa ronde. N'attend pas.
+local function spawnNightGuard(zone: number, number: number, points: { Vector3 }, startIndex: number, template: Model, label: string, fallback: boolean)
+	local model = template:Clone()
+	model.Name = string.format(NIGHT_CLONE_NAME, zone, number)
+	local humanoid, root = prepare(model, label)
+	if humanoid == nil or root == nil then
+		warnOnce(`bad:{label}`, `{label} : Humanoid ou HumanoidRootPart manquant, vigile de nuit non créé`)
+		model:Destroy()
+		return
+	end
+
+	-- Sur son point, tourné vers le suivant ; à côté si un autre vigile de nuit y est déjà.
+	local start = points[startIndex]
+	local direction = if startIndex < #points then 1 else -1
+	local towards = points[startIndex + direction] or start
+	local look = flat(towards - start)
+	local frame = if look.Magnitude > 1e-3 then CFrame.lookAt(start, start + look.Unit) else CFrame.new(start)
+	for _, other in nightGuards do
+		if flat(other.root.Position - frame.Position).Magnitude < SPAWN_SPACING * 0.9 then
+			frame += frame.RightVector * SPAWN_SPACING
+		end
+	end
+	local rootHeight = humanoid.HipHeight + root.Size.Y / 2
+	local offset = model:GetPivot():ToObjectSpace(root.CFrame)
+	model:PivotTo(frame * CFrame.new(0, rootHeight, 0) * offset:Inverse())
+
+	model:SetAttribute(TARGET_ATTRIBUTE, 0)
+	pcall(function()
+		model.ModelStreamingMode = Enum.ModelStreamingMode.PersistentPerPlayer -- Atomic pour les autres
+	end)
+	humanoid.BreakJointsOnDeath = false
+	humanoid.WalkSpeed = Night.PatrolSpeed
+	if fallback then
+		addFlashlight(model, root)
+	end
+	model.Parent = getActiveFolder()
+	pcall(function()
+		root:SetNetworkOwner(nil)
+	end)
+	for _, state in DISABLED_STATES do
+		humanoid:SetStateEnabled(state, false)
+	end
+
+	local animator = humanoid:FindFirstChildOfClass("Animator")
+	if animator == nil then
+		local created = Instance.new("Animator")
+		created.Parent = humanoid
+		animator = created
+	end
+	local now = os.clock()
+	local guard: Guard = {
+		model = model,
+		humanoid = humanoid,
+		root = root,
+		rootHeight = rootHeight,
+		anims = AnimPlayer.new(animator :: Animator, AnimPlayer.modelFolder(model), Animations.Guard, "Vigile de nuit"),
+		kind = "Night",
+		label = `vigile de nuit {model.Name}`,
+		store = nil,
+		home = start,
+		zone = zone,
+		speed = Zones[zone].AdvisedSpeed + Night.ChaseSpeedBonus,
+		target = nil,
+		state = "Patrol",
+		spawnedAt = now,
+		chaseStartedAt = now,
+		patrol = points,
+		patrolIndex = startIndex,
+		patrolStep = direction,
+		pauseUntil = 0,
+		onKnock = nil,
+		nextScanAt = now,
+		stateEndsAt = now,
+		returnedAt = now,
+		nextSteerAt = now,
+		nextPathAt = now,
+		path = PathfindingService:CreatePath(AGENT),
+		pathToken = 0,
+		computing = false,
+		waypoints = nil,
+		waypointIndex = 2,
+		progressPos = root.Position,
+		progressAt = now,
+		knockTarget = nil,
+		connections = {},
+		alive = true,
+	}
+	table.insert(guard.connections, humanoid.Died:Connect(function()
+		despawn(guard, "mort")
+	end))
+	for _, entry in MarkerSounds.Guard do
+		guard.anims:OnMarker(entry.Anim, entry.Marker, function()
+			MarkerSounds.play(entry.Sound, guard.root)
+		end)
+	end
+	guard.anims:OnMarker("Catch", CATCH_MARKER, function()
+		releaseKnockback(guard)
+	end)
+	guard.anims:Play("Idle")
+	table.insert(nightGuards, guard)
+	startPatrol(guard, now)
+	log(`{guard.label} ({label}) en ronde, zone {zone}, {#points} point(s), poursuite à {Format.short(guard.speed)}`)
 end
 
 local function onCarryStarted(player: Player, payload: any)
@@ -1122,6 +1764,63 @@ function GuardService.GetSpeedOverride(_player: Player, _zone: number): number?
 	return nil
 end
 
+function GuardService.IsNightChased(player: Player): boolean
+	return nightChasedBy[player] ~= nil
+end
+
+function GuardService.StopNightPatrol(): number
+	nightToken += 1
+	nightHooks = nil
+	local count = #nightGuards
+	for _, guard in table.clone(nightGuards) do
+		despawn(guard, "aube")
+	end
+	return count
+end
+
+function GuardService.StartNightPatrol(hooks: NightHooks): number
+	GuardService.StopNightPatrol()
+	nightHooks = hooks
+	local token = nightToken
+	local points = patrolPoints()
+	type Plan = { zone: number, number: number, start: number }
+	local plans: { Plan } = {}
+	local perZone = math.max(math.floor(Night.GuardsPerZone), 0)
+	for zone = 1, #Zones do
+		local list = points[zone]
+		if list == nil or #list == 0 then
+			warnOnce(`nopatrol:{zone}`, `zone {zone} : aucun point de ronde (tag {NIGHT_PATROL_TAG}, attribut Zone), pas de vigile de nuit`)
+		else
+			for number = 1, perZone do
+				-- Le 1er au 1er point, les suivants répartis le long de la liste.
+				table.insert(plans, { zone = zone, number = number, start = 1 + ((number - 1) * #list) // perZone })
+			end
+		end
+	end
+	-- Hors de l'appel : le rig de remplacement peut demander d'attendre.
+	task.spawn(function()
+		for _, plan in plans do
+			if nightToken ~= token then
+				return -- l'aube est passée entre-temps
+			end
+			local template, label, fallback = nightTemplate(plan.zone)
+			if nightToken ~= token then
+				return
+			end
+			if template == nil then
+				warnOnce("nighttemplate", "aucun modèle de vigile de nuit ni rig de remplacement : pas de vigile de nuit")
+				return
+			end
+			local list = points[plan.zone]
+			local ok, err = pcall(spawnNightGuard :: any, plan.zone, plan.number, list, plan.start, template, label, fallback)
+			if not ok then
+				warn(`[GuardService] vigile de nuit {plan.number} de la zone {plan.zone} non créé : {err}`)
+			end
+		end
+	end)
+	return #plans
+end
+
 function GuardService.Start()
 	CarryService.OnCarryStarted(onCarryStarted)
 	CarryService.OnCarryEnded(onCarryEnded)
@@ -1131,7 +1830,13 @@ function GuardService.Start()
 		if guard then
 			giveUp(guard, "départ du joueur")
 		end
+		local nightGuard = nightChasedBy[player]
+		if nightGuard then
+			giveUp(nightGuard, "départ du joueur")
+		end
 		stunTokens[player] = nil
+		chaseSent[player] = nil
+		caughtAtNight[player] = nil
 	end)
 	-- Prépare le rig de remplacement dès le démarrage : le premier vigile apparaît sans attendre.
 	task.spawn(getFallback)

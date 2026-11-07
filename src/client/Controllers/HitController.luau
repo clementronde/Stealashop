@@ -74,9 +74,9 @@ end
 local function closestPoint(cf: CFrame, size: Vector3, point: Vector3): Vector3
 	local p = cf:PointToObjectSpace(point)
 	local h = size / 2
-	return cf:PointToWorldSpace(
+	return (cf:PointToWorldSpace(
 		Vector3.new(math.clamp(p.X, -h.X, h.X), math.clamp(p.Y, -h.Y, h.Y), math.clamp(p.Z, -h.Z, h.Z))
-	)
+	)) -- parenthèses : une seule valeur (PointToWorldSpace est déclarée variadique)
 end
 
 -- Id de la vitrine cassable la plus proche devant le joueur et à portée, et le point de la vitre
@@ -128,7 +128,8 @@ local function playHit(tool: Tool): AnimationTrack?
 	if api == nil then
 		return nil
 	end
-	local def = Tools.ById[tool:GetAttribute(TOOL_ID_ATTRIBUTE)]
+	local toolId = tool:GetAttribute(TOOL_ID_ATTRIBUTE)
+	local def = if type(toolId) == "string" then Tools.ById[toolId] else nil
 	local ok, track = pcall(api.PlayPlayer, if def then def.HitAnimation else DEFAULT_ANIMATION)
 	return if ok then track else nil
 end
