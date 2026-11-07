@@ -61,14 +61,21 @@
 --
 -- Animations (contrat 2.4, Shared/Contract/Animations), jouées par AnimPlayer depuis le dossier
 -- Animations du modèle : Idle (toujours, en fond), Run (poursuite), Catch (capture), Tired
--- (abandon), Walk (retour). Une animation pas encore livrée ne joue rien. Sons des marqueurs :
--- MarkerSounds.Guard.
+-- (abandon), Walk (retour, ronde). Une animation pas encore livrée ne joue rien : un seul
+-- avertissement par nom, en Studio, pour tous les vigiles de jour et de nuit. Sons des marqueurs :
+-- MarkerSounds.Guard. Run et Walk suivent le pas du vigile (L-048) : Clément les a faites pour
+-- ~20 et ~10 studs/s à l'échelle 1, donc vitesse de lecture = WalkSpeed / (20 ou 10 × échelle du
+-- modèle), bornée de 0,6 à 1,6, et remise à jour à chaque changement de WalkSpeed (setWalkSpeed).
 --
--- Modèle du vigile (V0 proposé, absent du doc : emplacement et noms à écrire dans la liaison) :
--- un Model avec Humanoid R15 et HumanoidRootPart, dans un dossier Guards de
--- ReplicatedStorage/Assets (ou de ServerStorage/Assets), nommé Guard_Z<zone> (un look par zone,
--- 5.5), sinon Guard (look commun). Sans lui, un rig R15 de remplacement créé par le code. Le
--- clone en jeu est vidé de ses scripts et désancré.
+-- Modèle du vigile (liaison L-048) : un Model avec Humanoid R15 et HumanoidRootPart, dans un
+-- dossier Guards de ReplicatedStorage/Assets (ou de ServerStorage/Assets), nommé Guard_Z<zone>
+-- (un look par zone, 5.5 ; ceux de Clément vont de 1 à 1,4 fois un R15, par Model:ScaleTo),
+-- sinon Guard (look commun). Sans lui, un rig R15 de remplacement créé par le code. Tout se règle
+-- sur le clone en jeu, jamais sur le modèle de Clément : scripts retirés, pièces désancrées et
+-- dans le groupe de collision GUARD_GROUP, accessoires sans collision ni masse, WalkSpeed imposé
+-- par le code ; la HipHeight de Clément est gardée telle quelle. Chaque vigile calcule ses chemins
+-- avec un agent à sa taille (agentFor, L-040). Capture et abandon se mesurent toujours entre les
+-- deux HumanoidRootPart.
 --
 -- Posé par le code :
 --   - vigiles en jeu dans Workspace/ActiveGuards, avec l'attribut TargetUserId (UserId du
@@ -146,6 +153,7 @@ type Guard = {
 	humanoid: Humanoid,
 	root: BasePart,
 	rootHeight: number, -- hauteur du centre du HumanoidRootPart au-dessus des pieds
+	scale: number, -- Model:GetScale() du modèle (1 pour les rigs du code) : rythme de Run et de Walk
 	anims: AnimPlayerT,
 	kind: GuardKind,
 	label: string, -- pour la sortie : « vigile de STORE_Z1_Superette », « vigile de nuit NightGuard_Z1_1 »
@@ -254,14 +262,24 @@ local FALLBACK_VEST = Color3.fromRGB(255, 160, 20)
 local FALLBACK_SKIN = Color3.fromRGB(234, 184, 146)
 local FALLBACK_PANTS = Color3.fromRGB(45, 50, 65)
 
--- Agent du PathfindingService : valeurs par défaut de Roblox (rig R15 standard), escalade coupée.
-local AGENT = {
-	AgentRadius = 2,
-	AgentHeight = 5,
-	AgentCanJump = true,
-	AgentCanClimb = false,
-	WaypointSpacing = 4,
-}
+-- Agent du PathfindingService, calculé pour chaque vigile d'après sa boîte (agentFor, L-040) :
+-- les valeurs par défaut de Roblox pour un rig R15 standard (rayon 2, hauteur 5) sont un plancher.
+-- Saut permis, escalade coupée. Le dictionnaire que PathfindingService:CreatePath attend.
+type AgentParams = { [string]: any }
+local AGENT_RADIUS_MIN = 2
+local AGENT_HEIGHT_MIN = 5
+local WAYPOINT_SPACING = 4
+
+-- Rythme des boucles de marche et de course de Clément (L-048) : la vitesse au sol (studs/s) pour
+-- laquelle chacune est faite, à l'échelle 1 (Run : 0,4 s pour ~20 ; Walk : 0,8 s pour ~10), et
+-- les bornes de la vitesse de lecture, pour que les pieds ne glissent pas de la zone 1 à la zone 6.
+local GAIT_REFERENCE: { [string]: number } = { Run = 20, Walk = 10 }
+local GAIT_SPEED_MIN = 0.6
+local GAIT_SPEED_MAX = 1.6
+
+-- Nom des vigiles dans les avertissements d'AnimPlayer, le même de jour et de nuit (mêmes modèles,
+-- mêmes noms d'animations) : une animation pas encore livrée n'est signalée qu'une fois.
+local ANIM_LABEL = "Vigile"
 
 -- États du Humanoid jamais utiles à un vigile (9.7 : nage, escalade ; le reste en V0).
 local DISABLED_STATES = {
@@ -536,9 +554,7 @@ local function isUsable(template: Model): boolean
 	return template:FindFirstChildOfClass("Humanoid") ~= nil and root ~= nil and root:IsA("BasePart")
 end
 
--- Prépare un clone : scripts retirés (aucun script dans un modèle animé, 10.4), pièces
--- désancrées (le Humanoid doit pouvoir le déplacer). Renvoie son Humanoid et son
--- HumanoidRootPart, ou nil s'il lui en manque un.
+-- Le groupe de collision des vigiles, enregistré au premier besoin ; nil s'il est indisponible.
 local function guardGroup(): string?
 	local ok = pcall(function()
 		if not PhysicsService:IsCollisionGroupRegistered(GUARD_GROUP) then
@@ -553,6 +569,24 @@ local function guardGroup(): string?
 	return GUARD_GROUP
 end
 
+-- Pièce d'un accessoire porté (Accessory, Hat), à n'importe quelle profondeur sous le modèle.
+local function inAccessory(part: Instance, model: Model): boolean
+	local parent = part.Parent
+	while parent ~= nil and parent ~= model do
+		if parent:IsA("Accoutrement") then
+			return true
+		end
+		parent = parent.Parent
+	end
+	return false
+end
+
+-- Prépare un clone, jamais le modèle de Clément : scripts retirés (aucun script dans un modèle
+-- animé, 10.4) ; pièces désancrées (le Humanoid doit pouvoir le déplacer) et dans le groupe des
+-- vigiles, accessoires compris ; accessoires comme sur un personnage, sans collision (ils ne
+-- bloquent pas le vigile dans une allée) et sans masse (ils ne le déséquilibrent pas). La
+-- HipHeight n'est pas touchée. Renvoie le Humanoid et le HumanoidRootPart du clone, ou nil s'il
+-- lui en manque un.
 local function prepare(model: Model, label: string): (Humanoid?, BasePart?)
 	local group = guardGroup()
 	for _, descendant in model:GetDescendants() do
@@ -560,9 +594,14 @@ local function prepare(model: Model, label: string): (Humanoid?, BasePart?)
 			warnOnce(`script:{label}`, `{label} : script « {descendant.Name} » retiré du vigile en jeu (aucun script dans un modèle animé, 10.4)`)
 			descendant:Destroy()
 		elseif descendant:IsA("BasePart") then
-			(descendant :: BasePart).Anchored = false
+			local part = descendant :: BasePart
+			part.Anchored = false
 			if group then
-				(descendant :: BasePart).CollisionGroup = group
+				part.CollisionGroup = group
+			end
+			if inAccessory(part, model) then
+				part.CanCollide = false
+				part.Massless = true
 			end
 		end
 	end
@@ -575,6 +614,39 @@ local function prepare(model: Model, label: string): (Humanoid?, BasePart?)
 		warnOnce(`rig:{label}`, `{label} : rig {humanoid.RigType.Name}, attendu R15 (2.4)`)
 	end
 	return humanoid, root :: BasePart
+end
+
+-- Échelle du modèle (Model:ScaleTo de Clément ; 1 pour les rigs du code), 1 si elle est illisible.
+local function scaleOf(model: Model): number
+	local ok, scale = pcall(function(): number
+		return model:GetScale()
+	end)
+	return if ok and isPositiveNumber(scale) then scale else 1
+end
+
+-- Au dixième au-dessus ; la marge évite qu'une erreur d'arrondi (2,0000001) ajoute un dixième.
+local function tenthAbove(value: number): number
+	return math.ceil(value * 10 - 1e-6) / 10
+end
+
+-- L'agent du PathfindingService de ce vigile, à sa taille (L-040, L-048) : rayon = moitié de la
+-- plus grande largeur de sa boîte, hauteur = celle de sa boîte, au dixième au-dessus, jamais moins
+-- qu'un R15 standard. Boîte accessoires compris, pour qu'une casquette ou un bâton ne passent ni
+-- dans un mur ni dans un plafond ; elle suit l'orientation du HumanoidRootPart (PrimaryPart).
+local function agentFor(model: Model): AgentParams
+	local _, size = model:GetBoundingBox()
+	return {
+		AgentRadius = math.max(AGENT_RADIUS_MIN, tenthAbove(math.max(size.X, size.Z) / 2)),
+		AgentHeight = math.max(AGENT_HEIGHT_MIN, tenthAbove(size.Y)),
+		AgentCanJump = true,
+		AgentCanClimb = false,
+		WaypointSpacing = WAYPOINT_SPACING,
+	}
+end
+
+-- Pour la sortie : « échelle 1.40, agent 2.8 × 7.7 ».
+local function sizeText(scale: number, agent: AgentParams): string
+	return `échelle {string.format("%.2f", scale)}, agent {Format.short(agent.AgentRadius)} × {Format.short(agent.AgentHeight)}`
 end
 
 local function getActiveFolder(): Folder
@@ -688,6 +760,31 @@ local function followPath(guard: Guard, goal: Vector3)
 	moveTo(guard, waypoint.Position) -- jamais par la zone safe
 end
 
+-- Vitesse de lecture de Run ou de Walk pour le WalkSpeed actuel du vigile (L-048) :
+-- WalkSpeed / (référence × échelle), bornée. 1 pour un autre nom.
+local function gaitSpeed(guard: Guard, name: string): number
+	local reference = GAIT_REFERENCE[name]
+	if reference == nil then
+		return 1
+	end
+	return math.clamp(guard.humanoid.WalkSpeed / (reference * guard.scale), GAIT_SPEED_MIN, GAIT_SPEED_MAX)
+end
+
+-- Joue Run ou Walk au pas du vigile ; déjà en cours, seule sa vitesse change.
+local function playGait(guard: Guard, name: string)
+	guard.anims:Play(name, nil, nil, gaitSpeed(guard, name))
+end
+
+-- Toute écriture du WalkSpeed d'un vigile en jeu passe par ici : Run et Walk, s'ils jouent,
+-- prennent aussitôt le nouveau pas (jour : vitesse de la zone ; nuit : vitesse conseillée + 4 ;
+-- retour essoufflé ou ronde : la marche).
+local function setWalkSpeed(guard: Guard, value: number)
+	guard.humanoid.WalkSpeed = value
+	for name in GAIT_REFERENCE do
+		guard.anims:AdjustSpeed(name, gaitSpeed(guard, name))
+	end
+end
+
 -- Changements d'état ----------------------------------------------------------------------
 
 -- Le calcul de chemin en cours continue (un seul à la fois par Path) ; son résultat sera jeté.
@@ -760,11 +857,11 @@ end
 
 local function startChase(guard: Guard, now: number)
 	setState(guard, "Chase")
-	guard.humanoid.WalkSpeed = guard.speed
 	guard.nextSteerAt = now
 	guard.nextPathAt = now
 	guard.anims:Stop("Walk") -- vigile de nuit : il marchait sur sa ronde
-	guard.anims:Play("Run")
+	setWalkSpeed(guard, guard.speed)
+	playGait(guard, "Run")
 end
 
 -- Ronde de nuit : point le plus proche, à l'horizontale.
@@ -786,9 +883,9 @@ local function startReturn(guard: Guard, now: number)
 		-- La nuit, il rentre au point de ronde le plus proche, à l'allure de la ronde.
 		guard.patrolIndex = nearestPatrolIndex(guard)
 		guard.home = guard.patrol[guard.patrolIndex]
-		guard.humanoid.WalkSpeed = Night.PatrolSpeed
+		setWalkSpeed(guard, Night.PatrolSpeed)
 	else
-		guard.humanoid.WalkSpeed = RETURN_WALK_SPEED
+		setWalkSpeed(guard, RETURN_WALK_SPEED)
 	end
 	guard.returnedAt = now
 	guard.progressPos = guard.root.Position
@@ -797,7 +894,7 @@ local function startReturn(guard: Guard, now: number)
 	guard.nextPathAt = now
 	guard.anims:Stop("Run")
 	guard.anims:Stop("Tired")
-	guard.anims:Play("Walk")
+	playGait(guard, "Walk")
 end
 
 -- Durée d'une animation sans boucle qui vient d'être lancée, bornée ; `default` si elle n'est
@@ -1081,7 +1178,7 @@ end
 
 local function startPatrol(guard: Guard, now: number)
 	setState(guard, "Patrol")
-	guard.humanoid.WalkSpeed = Night.PatrolSpeed
+	setWalkSpeed(guard, Night.PatrolSpeed)
 	guard.pauseUntil = 0
 	guard.progressPos = guard.root.Position
 	guard.progressAt = now
@@ -1090,7 +1187,7 @@ local function startPatrol(guard: Guard, now: number)
 	guard.anims:Stop("Run")
 	guard.anims:Stop("Tired")
 	if #guard.patrol > 1 then
-		guard.anims:Play("Walk")
+		playGait(guard, "Walk")
 	else
 		guard.anims:Stop("Walk")
 	end
@@ -1124,7 +1221,7 @@ local function patrolStep(guard: Guard, now: number)
 		if now >= guard.pauseUntil then
 			guard.pauseUntil = 0
 			nextPatrolPoint(guard, now)
-			guard.anims:Play("Walk")
+			playGait(guard, "Walk")
 		end
 		return
 	end
@@ -1412,6 +1509,8 @@ local function spawnGuard(player: Player, store: Model, zone: number, template: 
 		model:Destroy()
 		return
 	end
+	local scale = scaleOf(model)
+	local agent = agentFor(model)
 
 	-- Placement : pieds sur le point d'apparition.
 	local frame = spawnSpot(store)
@@ -1446,7 +1545,8 @@ local function spawnGuard(player: Player, store: Model, zone: number, template: 
 		humanoid = humanoid,
 		root = root,
 		rootHeight = rootHeight,
-		anims = AnimPlayer.new(animator :: Animator, AnimPlayer.modelFolder(model), Animations.Guard, "Vigile"),
+		scale = scale,
+		anims = AnimPlayer.new(animator :: Animator, AnimPlayer.modelFolder(model), Animations.Guard, ANIM_LABEL),
 		kind = "Day",
 		label = `vigile de {store.Name}`,
 		store = store,
@@ -1467,7 +1567,7 @@ local function spawnGuard(player: Player, store: Model, zone: number, template: 
 		returnedAt = now,
 		nextSteerAt = now,
 		nextPathAt = now,
-		path = PathfindingService:CreatePath(AGENT),
+		path = PathfindingService:CreatePath(agent),
 		pathToken = 0,
 		computing = false,
 		waypoints = nil,
@@ -1495,7 +1595,7 @@ local function spawnGuard(player: Player, store: Model, zone: number, template: 
 	chasedBy[player] = guard
 	refreshChaseState(player)
 	log(
-		`vigile ({label}) lancé sur {player.Name} depuis {store.Name}, zone {zone}, vitesse {Format.short(guard.speed)} ({#guards} en jeu)`
+		`vigile ({label}) lancé sur {player.Name} depuis {store.Name}, zone {zone}, vitesse {Format.short(guard.speed)}, {sizeText(scale, agent)} ({#guards} en jeu)`
 	)
 end
 
@@ -1605,6 +1705,8 @@ local function spawnNightGuard(zone: number, number: number, points: { Vector3 }
 		model:Destroy()
 		return
 	end
+	local scale = scaleOf(model)
+	local agent = agentFor(model)
 
 	-- Sur son point, tourné vers le suivant ; à côté si un autre vigile de nuit y est déjà.
 	local start = points[startIndex]
@@ -1650,7 +1752,8 @@ local function spawnNightGuard(zone: number, number: number, points: { Vector3 }
 		humanoid = humanoid,
 		root = root,
 		rootHeight = rootHeight,
-		anims = AnimPlayer.new(animator :: Animator, AnimPlayer.modelFolder(model), Animations.Guard, "Vigile de nuit"),
+		scale = scale,
+		anims = AnimPlayer.new(animator :: Animator, AnimPlayer.modelFolder(model), Animations.Guard, ANIM_LABEL),
 		kind = "Night",
 		label = `vigile de nuit {model.Name}`,
 		store = nil,
@@ -1671,7 +1774,7 @@ local function spawnNightGuard(zone: number, number: number, points: { Vector3 }
 		returnedAt = now,
 		nextSteerAt = now,
 		nextPathAt = now,
-		path = PathfindingService:CreatePath(AGENT),
+		path = PathfindingService:CreatePath(agent),
 		pathToken = 0,
 		computing = false,
 		waypoints = nil,
@@ -1696,7 +1799,7 @@ local function spawnNightGuard(zone: number, number: number, points: { Vector3 }
 	guard.anims:Play("Idle")
 	table.insert(nightGuards, guard)
 	startPatrol(guard, now)
-	log(`{guard.label} ({label}) en ronde, zone {zone}, {#points} point(s), poursuite à {Format.short(guard.speed)}`)
+	log(`{guard.label} ({label}) en ronde, zone {zone}, {#points} point(s), poursuite à {Format.short(guard.speed)}, {sizeText(scale, agent)}`)
 end
 
 local function onCarryStarted(player: Player, payload: any)
