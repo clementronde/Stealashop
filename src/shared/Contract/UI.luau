@@ -40,6 +40,8 @@ UI.Screens = {
 			{ Path = "GuardMeter.Fill" },
 			{ Path = "ReturnBaseButton", Class = BUTTON },
 			{ Path = "RobuxShopButton", Class = BUTTON }, -- caché jusqu'à la MAJ 1
+			{ Path = "IndexButton", Class = BUTTON }, -- caché jusqu'à la MAJ 2 (L-026)
+			{ Path = "RebirthButton", Class = BUTTON }, -- caché jusqu'à la MAJ 3 (L-026)
 		},
 	},
 	{
@@ -128,6 +130,13 @@ UI.Billboards = {
 		Name = "BB_Carry",
 		Class = "BillboardGui",
 		Elements = { { Path = "ItemName" }, { Path = "Rarity" }, { Path = "Income" } },
+	},
+	-- Étiquette de chaque colis PNJ, dès le rayon (décision de Clément du 2026-11-07, L-031) :
+	-- catégorie de l'objet, rareté, mutation (cachée jusqu'à la MAJ 4).
+	{
+		Name = "BB_Box",
+		Class = "BillboardGui",
+		Elements = { { Path = "Category" }, { Path = "Rarity" }, { Path = "Mutation" } },
 	},
 } :: { Screen }
 

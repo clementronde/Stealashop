@@ -95,7 +95,10 @@ local Plot: ModelSpec = {
 		{ Name = "DepositZone", Class = "BasePart" },
 		{ Name = "Treadmill", Tag = "Treadmill" },
 		{ Name = "Bench", Tag = "Bench" },
-		{ Name = "NameSign" },
+		-- Le code écrit « Boutique de <Pseudo> » dans OwnerName (L-019, validé le 2026-11-07).
+		{ Name = "NameSign", Inside = { { Name = "OwnerName", Class = "TextLabel" } } },
+		-- Point d'apparition du propriétaire, axe −Z tourné vers l'allée (L-019).
+		{ Name = "SpawnPoint", Class = "Attachment" },
 		{ Name = "Bounds", Class = "BasePart" },
 	},
 }

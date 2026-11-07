@@ -1,5 +1,5 @@
 --!strict
--- Contrat d'animations (doc, section 2.4 ; liaison, section 3.2) : 20 animations.
+-- Contrat d'animations (doc, section 2.4 ; liaison, section 3.2) : 21 animations.
 -- Le code cherche chaque objet Animation par son nom, jamais par un ID.
 --
 -- Où : joueur dans ReplicatedStorage/Assets/Animations/Player/<Nom> ; modèle animé
@@ -21,7 +21,7 @@ local Animations = {}
 Animations.FolderName = "Animations"
 Animations.PlayerFolder = { "Assets", "Animations", "Player" }
 
--- 13 animations du joueur.
+-- 14 animations du joueur.
 Animations.Player = {
 	{ Name = "HitWindow", Loop = false, Priority = "Action", Marker = "Impact" },
 	{ Name = "HitWindowHeavy", Loop = false, Priority = "Action", Marker = "Impact" },
@@ -31,6 +31,10 @@ Animations.Player = {
 	{ Name = "Place", Loop = false, Priority = "Action", Marker = "Release" },
 	{ Name = "TreadmillRun", Loop = true, Priority = "Movement" },
 	{ Name = "BenchLift", Loop = false, Priority = "Action", Marker = "Top" },
+	-- Assis au banc entre deux répétitions (L-020, ajout validé par Clément le 2026-11-07).
+	-- Priorité Idle : BenchLift (Action) passe par-dessus pendant une répétition, sans
+	-- arrêter la boucle, et le BenchIdle bat l'attente par défaut de Roblox (Core).
+	{ Name = "BenchIdle", Loop = true, Priority = "Idle" },
 	{ Name = "Unbox", Loop = false, Priority = "Action", Marker = "Open" },
 	{ Name = "Celebrate", Loop = false, Priority = "Action" },
 	{ Name = "SwingBat", Loop = false, Priority = "Action", Marker = "Impact" },

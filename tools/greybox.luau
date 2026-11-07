@@ -514,6 +514,23 @@ local function buildPlot(parent: Instance, index: number, x: number, side: numbe
 		SignText = string.format("PARCELLE %d", index),
 	})
 
+	-- L-019 : OwnerName dans NameSign, où le code écrit « Boutique de <Pseudo> », sous
+	-- le numéro de la parcelle (règle du PlotIndex : « Parcelle 2 » = 2).
+	local sign = model:FindFirstChild("NameSign") :: BasePart
+	local signGui = sign:FindFirstChild("SignFront") :: SurfaceGui
+	local number = signGui:FindFirstChild("Label") :: TextLabel
+	number.Size = UDim2.fromScale(1, 0.55)
+	local owner = number:Clone()
+	owner.Name = "OwnerName"
+	owner.Text = ""
+	owner.Position = UDim2.fromScale(0, 0.55)
+	owner.Size = UDim2.fromScale(1, 0.45)
+	owner.Parent = signGui
+
+	-- L-019 : point d'apparition du propriétaire, 6 studs devant la vitrine, axe −Z
+	-- tourné vers l'allée (le même endroit que le repli de PlotService).
+	attach(plotFloor, "SpawnPoint", bframe * CFrame.new(0, PLOT_FLOOR_TOP, -PLOT_SHOP_D / 2 - 6))
+
 	-- 20 présentoirs (5.8 : 20 max en V1), grille 5 × 4 dans la boutique
 	local i = 0
 	for _, z in { -8, -4, 0, 4 } do
@@ -859,6 +876,8 @@ local PLOT_CHILDREN = {
 	"Treadmill",
 	"Bench",
 	"NameSign",
+	"OwnerName",
+	"SpawnPoint",
 	"Bounds",
 }
 numbered(PLOT_CHILDREN, "Shard", 40)

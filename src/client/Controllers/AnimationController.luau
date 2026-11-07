@@ -7,6 +7,7 @@
 -- l'état en cours. Préchargement une fois par session. Déjà branché, sans autre service :
 --   - TreadmillRun en boucle tant que l'attribut TrainingMachine du Player vaut "Treadmill" ;
 --   - BenchLift à chaque hausse de l'attribut BenchReps du Player (TrainingService) ;
+--   - BenchIdle en boucle tant que TrainingMachine vaut "Bench" (L-020) ;
 --   - portage prêt : SetCarrying(true) joue CarryIdle à l'arrêt et CarryRun en mouvement, à
 --     appeler par le code du portage (DEV-017).
 -- En Studio, mode test de DEV-006 : voir Shared/Anim/AnimTest.
@@ -153,10 +154,18 @@ end
 -- Entraînement (attributs du Player tenus par TrainingService) ------------------
 
 local function applyTreadmill()
-	if player:GetAttribute(TRAINING_MACHINE) == "Treadmill" then
+	local machine = player:GetAttribute(TRAINING_MACHINE)
+	if machine == "Treadmill" then
 		AnimationController.PlayPlayer("TreadmillRun")
 	else
 		AnimationController.StopPlayer("TreadmillRun")
+	end
+	-- BenchIdle en boucle tant qu'on est au banc (L-020) ; BenchLift, en Action, passe
+	-- par-dessus à chaque répétition.
+	if machine == "Bench" then
+		AnimationController.PlayPlayer("BenchIdle")
+	else
+		AnimationController.StopPlayer("BenchIdle")
 	end
 end
 
