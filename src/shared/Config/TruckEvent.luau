@@ -58,9 +58,10 @@ local TruckEvent = {
 	ExplosionFx = true, -- V0 : explosion native de Roblox (feu et son) en attendant un effet de Clément
 	ExplosionRadius = 14, -- V0 : taille de cette explosion (aucune force, aucun dégât)
 
-	-- Barre de vie : copie de BB_WindowHP au point HealthBarPoint (côté client) ------------------------
-	HealthBarScale = 2, -- V0 : deux fois la taille de la barre d'une vitrine (le camion fait 34 studs)
-	HealthBarMaxDistance = 250, -- V0 : visible de loin (la barre d'une vitrine garde la portée de Clément)
+	-- Barre de vie au point HealthBarPoint (côté client) : BB_TruckHP de Clément (L-052), telle qu'il
+	-- l'a faite. Ces deux valeurs ne servent qu'au repli, une copie de BB_WindowHP, tant qu'elle manque.
+	HealthBarScale = 2, -- V0 : repli, deux fois la taille de la barre d'une vitrine (le camion fait 34 studs)
+	HealthBarMaxDistance = 250, -- V0 : repli, visible de loin (la barre d'une vitrine garde la portée de Clément)
 
 	-- Messages lus par le joueur (Notify à tous), en anglais (L-036) ----------------------------------
 	Messages = {
