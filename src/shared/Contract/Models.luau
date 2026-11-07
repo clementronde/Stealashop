@@ -146,6 +146,8 @@ local Box: ModelSpec = {
 		{ Name = "CarryAttachment", Class = "Attachment" },
 		{ Name = "Lid" },
 		{ Name = "Tint", Class = "BasePart" },
+		-- Où s'accroche l'étiquette du colis (L-023, livré par Clément le 2026-11-07, L-031).
+		{ Name = "LabelPoint", Class = "Attachment" },
 	},
 	-- Un colis par type (MOD-013), nommés comme l'exemple BOX_Luxe du 10.3.
 	Expected = { "BOX_Standard", "BOX_Premium", "BOX_Luxe" },
