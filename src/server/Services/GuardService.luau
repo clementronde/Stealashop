@@ -95,6 +95,7 @@
 local CollectionService = game:GetService("CollectionService")
 local Debris = game:GetService("Debris")
 local PathfindingService = game:GetService("PathfindingService")
+local PhysicsService = game:GetService("PhysicsService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -233,6 +234,11 @@ local STEER_INTERVAL = 0.1 -- cadence du pilotage : ligne de vue, MoveTo (s)
 local WAYPOINT_REACHED = 2 -- distance horizontale à laquelle un point du chemin est atteint (studs)
 local KNEE_HEIGHT = 1.5 -- second rayon de la ligne de vue, au-dessus des pieds : voit les obstacles bas (studs)
 local SPAWN_SPACING = 3 -- écart entre vigiles apparus au même GuardSpawn, vers la vitrine (studs)
+-- Groupe de collision des vigiles, qui ne se heurte pas lui-même : deux vigiles qui se croisent
+-- (les 2 vigiles de nuit d'une zone font la même ronde en ligne droite) passent l'un à travers
+-- l'autre au lieu de se bloquer et de faire demi-tour au milieu de la ronde (vu en Play le
+-- 2026-11-07). Ils restent arrêtés par la map, les joueurs et le mur de nuit.
+local GUARD_GROUP = "Guards"
 local RETURN_WALK_SPEED = 10 -- retour en marchant (WalkSpeed)
 local RETURN_PATH_INTERVAL = 1 -- recalcul du chemin du retour (s)
 local RETURN_MAX_DURATION = 20 -- au-delà, il disparaît là où il est (s)
@@ -533,13 +539,31 @@ end
 -- Prépare un clone : scripts retirés (aucun script dans un modèle animé, 10.4), pièces
 -- désancrées (le Humanoid doit pouvoir le déplacer). Renvoie son Humanoid et son
 -- HumanoidRootPart, ou nil s'il lui en manque un.
+local function guardGroup(): string?
+	local ok = pcall(function()
+		if not PhysicsService:IsCollisionGroupRegistered(GUARD_GROUP) then
+			PhysicsService:RegisterCollisionGroup(GUARD_GROUP)
+		end
+		PhysicsService:CollisionGroupSetCollidable(GUARD_GROUP, GUARD_GROUP, false)
+	end)
+	if not ok then
+		warnOnce("group", `groupe de collision {GUARD_GROUP} indisponible : les vigiles peuvent se bloquer entre eux`)
+		return nil
+	end
+	return GUARD_GROUP
+end
+
 local function prepare(model: Model, label: string): (Humanoid?, BasePart?)
+	local group = guardGroup()
 	for _, descendant in model:GetDescendants() do
 		if descendant:IsA("LuaSourceContainer") then
 			warnOnce(`script:{label}`, `{label} : script « {descendant.Name} » retiré du vigile en jeu (aucun script dans un modèle animé, 10.4)`)
 			descendant:Destroy()
 		elseif descendant:IsA("BasePart") then
 			(descendant :: BasePart).Anchored = false
+			if group then
+				(descendant :: BasePart).CollisionGroup = group
+			end
 		end
 	end
 	local humanoid = model:FindFirstChildOfClass("Humanoid")
