@@ -1017,18 +1017,18 @@ Cibles internes, à revoir après 2 semaines de données réelles.
 
 ### 14.2 Funnel d'onboarding
 
-Chaque étape est envoyée une seule fois par joueur avec `AnalyticsService:LogOnboardingFunnelStepEvent`.
+Chaque étape est envoyée une seule fois par joueur avec `AnalyticsService:LogOnboardingFunnelStepEvent`, sous un nom sans virgule, guillemet ni apostrophe (Roblox refuse ces caractères).
 
 1. Arrivée sur sa parcelle
 2. Premier coup sur une vitrine
 3. Première vitrine cassée
 4. Premier colis volé
 5. Arrivée en zone safe avec le colis
-6. Colis posé sur l'établi
+6. Colis posé sur un établi
 7. Premier objet révélé
 8. Premier objet exposé
 9. Premier encaissement
-10. Premier achat d'outil
+10. Premier outil acheté
 
 **Économie** : chaque gain (revenus, quotidien, code, Robux) et chaque dépense (outil, amélioration, défense) part avec `LogEconomyEvent`. **Événements custom** : vol PvP réussi ou raté, colis volé à la batte dans le couloir, capture par un vigile (par zone), achat de défense.
 
