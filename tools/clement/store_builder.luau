@@ -50,16 +50,16 @@ local DEFAULTS = {
 		neon = rgb(205, 205, 198), wood = rgb(94, 59, 33), gold = rgb(255, 194, 26), carton = rgb(181, 130, 76),
 		pot = rgb(200, 100, 60), leaf = rgb(63, 191, 58), promo = rgb(255, 230, 0), promoText = rgb(232, 65, 60),
 	},
-	sign = "SUPÉRETTE",
+	sign = "MINI MART",
 	signColors = { bg = rgb(232, 65, 60), text = rgb(255, 255, 255) },
 	signRect = { -10, 10, 10, 13.4 },
 	facadeTop = 16.4,
 	awning = { a = rgb(232, 65, 60), b = rgb(255, 255, 255) },
-	promo = "PROMO",
+	promo = "SALE",
 	headers = {
-		A_L = { "PÂTES ET RIZ", rgb(53, 201, 59) }, A_R = { "CONSERVES", rgb(53, 201, 59) },
-		B_L = { "PETIT-DÉJEUNER", rgb(155, 92, 246) }, B_R = { "BOISSONS", rgb(155, 92, 246) },
-		WallL = { "HYGIÈNE", rgb(46, 166, 242) }, WallR = { "SNACKS", rgb(255, 140, 40) }, Back = { "FRAIS", rgb(0, 190, 220) },
+		A_L = { "PASTA & RICE", rgb(53, 201, 59) }, A_R = { "CANNED FOOD", rgb(53, 201, 59) },
+		B_L = { "BREAKFAST", rgb(155, 92, 246) }, B_R = { "DRINKS", rgb(155, 92, 246) },
+		WallL = { "PERSONAL CARE", rgb(46, 166, 242) }, WallR = { "SNACKS", rgb(255, 140, 40) }, Back = { "CHILLED", rgb(0, 190, 220) },
 	},
 	designs = {
 		pates = { body = rgb(40, 100, 210), cap = rgb(255, 210, 40), w = 1.0, h = 0.8, ch = 0.24, d = 0.5 },
@@ -424,7 +424,7 @@ local function buildStore(spec)
 	B("ReserveFrame_R", 16.5, 0.35, 15.9, 16.7, 7.8, 17.1, C.frame, { parent = RSv })
 	B("ReserveFrame_T", 10.3, 7.8, 15.9, 16.7, 8.1, 17.1, C.frame, { parent = RSv })
 	local rsg = B("ReserveSign", 11.5, 8.3, 15.8, 15.5, 9.3, 16.0, C.frame, { parent = RSv, studs = false, decor = true })
-	label(rsg, Enum.NormalId.Front, "RÉSERVE", rgb(255, 230, 0), 60)
+	label(rsg, Enum.NormalId.Front, "STOCKROOM", rgb(255, 230, 0), 60)
 	for i = 0, 6 do
 		B(string.format("StripCurtain_%02d", i + 1), 10.55 + i * 0.84, 1.2, 16.45, 10.55 + i * 0.84 + 0.72, 7.8, 16.5, rgb(220, 235, 245), { parent = RSv, studs = false, decor = true, T = 0.55 })
 	end

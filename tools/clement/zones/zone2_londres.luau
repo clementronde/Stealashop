@@ -129,7 +129,7 @@ local navy = rgb(35, 55, 110)
 local toy, toyN = Store.build({
 	name = "STORE_Z2_MagasinDeJouets", zone = 2,
 	origin = CFrame.new(140, 0, 44), parent = zoneFolder,
-	sign = "MAGASIN DE JOUETS",
+	sign = "TOY SHOP",
 	signColors = { bg = rgb(24, 38, 84), text = rgb(255, 204, 72), border = gold },
 	signRect = { -16, 16, 8.95, 10.75 }, facadeTop = 22,
 	awning = { a = rgb(35, 150, 90), b = rgb(250, 248, 240) },
@@ -142,9 +142,9 @@ local toy, toyN = Store.build({
 		pot = rgb(36, 38, 44), leaf = rgb(52, 140, 64), promo = rgb(255, 204, 72), promoText = navy,
 	},
 	headers = {
-		A_L = { "PELUCHES", rgb(232, 90, 140) }, A_R = { "JEUX DE SOCIÉTÉ", rgb(46, 134, 222) },
-		B_L = { "CONSTRUCTION", rgb(255, 150, 30) }, B_R = { "POUPÉES", rgb(186, 92, 220) },
-		WallL = { "ROBOTS", rgb(60, 160, 200) }, WallR = { "SPORT", rgb(53, 170, 70) }, Back = { "NOUVEAUTÉS", rgb(232, 65, 60) },
+		A_L = { "PLUSHIES", rgb(232, 90, 140) }, A_R = { "BOARD GAMES", rgb(46, 134, 222) },
+		B_L = { "BUILDING SETS", rgb(255, 150, 30) }, B_R = { "DOLLS", rgb(186, 92, 220) },
+		WallL = { "ROBOTS", rgb(60, 160, 200) }, WallR = { "SPORTS", rgb(53, 170, 70) }, Back = { "NEW IN", rgb(232, 65, 60) },
 	},
 	designs = {
 		peluche = { body = rgb(170, 118, 72), cap = rgb(222, 178, 128), w = 0.85, h = 0.95, ch = 0.35, d = 0.7 },
@@ -175,8 +175,8 @@ local toy, toyN = Store.build({
 	london = {
 		brick = brick, stucco = stucco, shop = navy, gold = gold,
 		box = rgb(30, 70, 45), flowerA = rgb(220, 40, 50), flowerB = rgb(250, 250, 250), pot = rgb(190, 95, 60),
-		plaque = "ICI EST NÉ\nLE PREMIER\nOURS EN PELUCHE\n1887", hanging = "JOUETS",
-		panel = "JOUETS\n& JEUX", panelColor = rgb(28, 44, 92),
+		plaque = "THE FIRST\nTEDDY BEAR\nWAS BORN HERE\n1887", hanging = "TOYS",
+		panel = "TOYS\n& GAMES", panelColor = rgb(28, 44, 92),
 	},
 	facade = londonFacade,
 })
@@ -186,7 +186,7 @@ local pink, mint, white = rgb(240, 172, 192), rgb(98, 192, 160), rgb(250, 248, 2
 local candy, candyN = Store.build({
 	name = "STORE_Z2_Confiserie", zone = 2,
 	origin = CFrame.new(140, 0, -44) * CFrame.Angles(0, math.pi, 0), parent = zoneFolder,
-	sign = "CONFISERIE",
+	sign = "SWEET SHOP",
 	signColors = { bg = rgb(255, 246, 240), text = rgb(226, 72, 130), border = gold },
 	signRect = { -16, 16, 8.95, 10.75 }, facadeTop = 22,
 	awning = { a = rgb(240, 120, 165), b = rgb(255, 250, 250) },
@@ -199,9 +199,9 @@ local candy, candyN = Store.build({
 		pot = rgb(255, 255, 255), leaf = rgb(52, 160, 90), promo = rgb(255, 120, 170), promoText = rgb(255, 255, 255),
 	},
 	headers = {
-		A_L = { "BONBONS", rgb(240, 100, 160) }, A_R = { "CHOCOLATS", rgb(130, 80, 50) },
-		B_L = { "SUCETTES", rgb(255, 150, 40) }, B_R = { "GUIMAUVES", rgb(170, 120, 220) },
-		WallL = { "CARAMELS", rgb(220, 150, 60) }, WallR = { "GÂTEAUX", rgb(232, 80, 110) }, Back = { "GLACES", rgb(60, 180, 220) },
+		A_L = { "SWEETS", rgb(240, 100, 160) }, A_R = { "CHOCOLATE", rgb(130, 80, 50) },
+		B_L = { "LOLLIPOPS", rgb(255, 150, 40) }, B_R = { "MARSHMALLOWS", rgb(170, 120, 220) },
+		WallL = { "TOFFEE", rgb(220, 150, 60) }, WallR = { "CAKES", rgb(232, 80, 110) }, Back = { "ICE CREAM", rgb(60, 180, 220) },
 	},
 	designs = {
 		bocal = { body = rgb(255, 150, 190), cap = rgb(245, 245, 245), w = 0.6, h = 0.85, ch = 0.18, d = 0.6 },
@@ -232,8 +232,8 @@ local candy, candyN = Store.build({
 	london = {
 		brick = brick, stucco = white, shop = mint, gold = gold,
 		box = mint, flowerA = rgb(240, 100, 160), flowerB = rgb(255, 255, 255), pot = rgb(190, 95, 60),
-		plaque = "ICI EST NÉE\nLA PREMIÈRE\nGUIMAUVE\n1887", hanging = "BONBONS",
-		panel = "BONBONS\n& DOUCEURS", panelColor = rgb(70, 160, 130), panelText = rgb(255, 255, 255),
+		plaque = "THE FIRST\nMARSHMALLOW\nWAS MADE HERE\n1887", hanging = "SWEETS",
+		panel = "SWEETS\n& TREATS", panelColor = rgb(70, 160, 130), panelText = rgb(255, 255, 255),
 	},
 	facade = londonFacade,
 })
@@ -365,7 +365,7 @@ do
 			end
 			sideBox("VBar_" .. sd[1], -0.06, 1.3, 0.06, 5.7, 1.12, 1.24, red, { decor = true })
 			local hdr = sideBox("Header_" .. sd[1], -1.02, 5.7, 1.02, 6.4, 1.1, 1.26, rgb(20, 20, 24), { decor = true })
-			label(hdr, faceFor(nx, nz), "TÉLÉPHONE", rgb(255, 255, 255), 50)
+			label(hdr, faceFor(nx, nz), "TELEPHONE", rgb(255, 255, 255), 50)
 		end
 		Bx(m, fr, "Roof1", -1.5, 6.4, -1.5, 1.5, 6.8, 1.5, red)
 		Bx(m, fr, "Roof2", -1.25, 6.8, -1.25, 1.25, 7.15, 1.25, red, { decor = true })
@@ -385,7 +385,7 @@ do
 		P(m, "Dome", CFrame.new(cx, 3.65, cz), Vector3.new(1.3, 1.3, 1.3), red, { shape = Enum.PartType.Ball, decor = true })
 		Bx(m, W, "Slot", cx - 0.35, 2.75, cz + facing * 0.52, cx + 0.35, 2.87, cz + facing * 0.69, rgb(20, 20, 24), { decor = true })
 		local plate = Bx(m, W, "Plate", cx - 0.3, 1.9, cz + facing * 0.55, cx + 0.3, 2.45, cz + facing * 0.7, rgb(250, 250, 245), { decor = true })
-		label(plate, Enum.NormalId.Front, "LETTRES", red, 80, rgb(250, 250, 245))
+		label(plate, Enum.NormalId.Front, "LETTERS", red, 80, rgb(250, 250, 245))
 	end
 
 	-- Maisons mitoyennes plaquées sur les murets (le muret reste le vrai mur, la maison n'a pas de collision)
