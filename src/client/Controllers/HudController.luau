@@ -33,7 +33,10 @@
 --     texte du bouton lui-même (TextButton), remis tel quel à la fin. Le label décoratif BaseLabel
 --     (« BASE ») n'est jamais touché.
 --   - Cache les éléments des fonctions pas encore livrées (Config/Features) : RobuxShopButton,
---     IndexButton, RebirthButton, NightCountdown, ReturnBaseButton.
+--     IndexButton, RebirthButton, NightCountdown, ReturnBaseButton. Shop et Rebirth restent visibles
+--     pendant leur aperçu (RobuxShopPreview, RebirthPreview : L-071, les trois boutons de gauche sont
+--     visibles dès maintenant) ; leur clic est branché par RobuxShopController, IndexController et
+--     RebirthController, pas ici.
 --   - Revenu retenu pendant l'ouverture d'un colis (vague 8) : le serveur expose l'objet, et
 --     l'attribut Income monte, dès l'ouverture, plusieurs secondes avant que l'écran UI_Unbox
 --     révèle l'objet. UnboxController retient donc Income (HoldIncome) à l'arrivée d'UnboxReveal et
@@ -132,11 +135,12 @@ end
 -- quatre ouvertures d'affilée tient dans ce délai.
 local MAX_INCOME_HOLD = 60
 
--- Éléments cachés tant que leur fonction n'existe pas (Config/Features, liaison L-026).
+-- Éléments cachés tant que leur fonction n'existe pas (Config/Features, liaison L-026). Les boutons
+-- Shop et Rebirth restent visibles pendant leur aperçu (L-071).
 local GATED: { { Element: string, Enabled: boolean } } = {
-	{ Element = "RobuxShopButton", Enabled = Features.RobuxShop },
+	{ Element = "RobuxShopButton", Enabled = Features.RobuxShop or Features.RobuxShopPreview },
 	{ Element = "IndexButton", Enabled = Features.Index },
-	{ Element = "RebirthButton", Enabled = Features.Rebirth },
+	{ Element = "RebirthButton", Enabled = Features.Rebirth or Features.RebirthPreview },
 	{ Element = "NightCountdown", Enabled = Features.NightCycle },
 	{ Element = "ReturnBaseButton", Enabled = Features.ReturnToBase },
 }

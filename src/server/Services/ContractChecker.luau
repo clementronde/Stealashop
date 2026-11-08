@@ -7,7 +7,8 @@
 -- sortie), regroupées par catégorie :
 --   - problème (warn, orange) : quelque chose de livré ne respecte pas le contrat ;
 --   - avertissement (warn, orange, pas compté comme un problème) : un élément facultatif du
---     contrat manque et le code se rabat sur autre chose (InfoPoint d'un magasin, L-044) ;
+--     contrat manque et le code se rabat sur autre chose (InfoPoint d'un magasin, L-044 ; ShopPad
+--     d'un comptoir du hub, L-071) ;
 --   - pas encore livré (print) : un écran, un modèle ou une animation n'existe pas encore,
 --     une seule ligne pour un écran ou un modèle entièrement absent ;
 --   - note (print) : ce que le vérificateur n'a pas pu contrôler.
@@ -54,7 +55,7 @@ local ContractChecker = {}
 ContractChecker.Priority = 1
 
 local PREFIX = "[Contrat]"
-local CATEGORIES = { "Tags", "Magasins PNJ", "Parcelles", "UI", "Billboards", "Animations", "Objets", "Événements", "Scripts" }
+local CATEGORIES = { "Tags", "Magasins PNJ", "Parcelles", "Boutiques d'achat", "UI", "Billboards", "Animations", "Objets", "Événements", "Scripts" }
 local INBOX_NAME = "_INBOX_CLEMENT" -- livraisons : vérifiées, mais pas comptées dans la map
 local SANDBOX_NAME = "_SANDBOX_IRONIX" -- tests d'Ironix : ignorés
 
@@ -561,12 +562,23 @@ local function isPrefixed(inst: Instance, prefix: string): boolean
 	return true
 end
 
+-- Tous les éléments du contrat sont facultatifs (comptoirs du hub et leur ShopPad, L-071) : un modèle
+-- qui n'en a aucun n'est pas un bloc de greybox, chaque élément absent est un avertissement.
+local function allOptional(parts: { Part }): boolean
+	for _, part in parts do
+		if not part.Optional then
+			return false
+		end
+	end
+	return true
+end
+
 -- Vérifie un modèle. Renvoie false s'il n'a aucun élément du contrat (bloc de greybox).
 local function checkModel(spec: ModelSpec, inst: Instance): boolean
 	local category = spec.Category
 	local label = inst:GetFullName()
 	contractModels[inst] = true
-	if spec.Tag and #spec.Parts > 0 and not hasAnyPart(inst, spec.Parts) then
+	if spec.Tag and #spec.Parts > 0 and not allOptional(spec.Parts) and not hasAnyPart(inst, spec.Parts) then
 		return false
 	end
 

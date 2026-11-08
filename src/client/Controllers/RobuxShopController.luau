@@ -1,13 +1,25 @@
 --!strict
 -- RobuxShopController (DEV-100, client) : boutique Robux, écran UI_RobuxShop de Clément (UI-100, noms
 -- validés en L-047 ; Partie 2, sections 3.1 et 4 ; offres : Config/Monetization). Seulement si
--- Features.RobuxShop : à false (jusqu'à la MAJ 1), rien n'est branché et l'écran reste fermé.
+-- Features.RobuxShop ou Features.RobuxShopPreview : les deux à false, rien n'est branché et l'écran
+-- reste fermé.
+--
+-- Vitrine (L-071, décision d'Ironix du 2026-11-08) : avec Features.RobuxShop à false (jusqu'à la
+-- MAJ 1 ; MonetizationService coupé) et Features.RobuxShopPreview à true, l'écran s'ouvre comme
+-- ci-dessous (bouton du HUD, invite du comptoir, plaque ShopPad), avec les mêmes onglets, cartes et
+-- prix, mais rien ne s'achète : aucun appel à MarketplaceService (ni fenêtre d'achat, ni lecture des
+-- prix chez Roblox : ceux de la Config), et un clic sur BuyButton écrit SOON_TEXT (« Soon ») à la
+-- place du prix pendant SOON_DURATION secondes. Le même retour vaut, boutique ouverte, pour une offre
+-- dont l'Id est encore à 0. Le serveur étant coupé, la vitrine ne montre ni gamepass possédé, ni pack
+-- de départ (onglet Offers vide), ni colis à ouvrir (« No box is waiting »). Avec Features.RobuxShop à
+-- true, tout marche comme ci-dessous (vague 13), sauf ce retour « Soon » sur une offre à l'Id 0.
 --
 -- Rôle :
 --   - ouvre l'écran par UI_HUD.RobuxShopButton (partout ; un 2e appui le ferme) et par une invite
 --     (ProximityPrompt « RobuxShopPrompt » : « Shop », « Robux Shop ») sur le comptoir taggé RobuxShop
---     de la zone safe (sa PrimaryPart, sinon sa première pièce) ; CloseButton le ferme. Il ne se ferme
---     pas quand on s'éloigne du comptoir : la boutique Robux s'ouvre partout (5.9) ;
+--     de la zone safe (sa PrimaryPart, sinon sa première pièce), ou en marchant sur la plaque ShopPad
+--     du comptoir (ShopPadController, L-071) ; CloseButton le ferme. Il ne se ferme pas quand on
+--     s'éloigne du comptoir : la boutique Robux s'ouvre partout (5.9) ;
 --   - 4 onglets : Tabs.OffersTab (pack de départ, tant que l'attribut StarterPackEndsAt le propose),
 --     GamepassesTab, CashTab (packs d'argent), BoostsTab (Ouvrir maintenant). À l'ouverture : Offres si
 --     le pack de départ est proposé, sinon Gamepasses ; ensuite le dernier onglet choisi ;
@@ -24,8 +36,8 @@
 --                  cache) quand l'Id existe, sinon celui de la Config ; Ouvrir maintenant : le palier de
 --                  l'attente restante (Monetization.OpenNowTier) ;
 --       BuyButton  ouvre la fenêtre d'achat de Roblox (PromptGamePassPurchase, PromptProductPurchase) ;
---                  Id à 0 : rien, une ligne dans la sortie en Studio. Caché pour Ouvrir maintenant sans
---                  colis à ouvrir ;
+--                  Id à 0 : pas d'achat, « Soon » à la place du prix (vitrine, plus haut) et une ligne
+--                  dans la sortie en Studio. Caché pour Ouvrir maintenant sans colis à ouvrir ;
 --       Owned      gamepass possédé (attribut Pass<Clé> du Player, posé par MonetizationService) :
 --                  Owned visible et BuyButton caché (la coche verte et le bouton gris de la maquette).
 --     Les cartes suivent les attributs du Player (Pass…, StarterPackEndsAt, OpenNowReadyAt, Income) et
@@ -41,7 +53,11 @@
 -- (« ×2 CASH »). Le serveur décide tout (MonetizationService) : le client n'envoie rien, il ouvre la
 -- fenêtre d'achat de Roblox et affiche.
 --
--- API (client) : aucune.
+-- API (client) :
+--   RobuxShopController.Open(anchor?)
+--       Ouvre l'écran, comme le bouton du HUD (sans effet s'il est déjà ouvert, ou si la boutique et
+--       sa vitrine sont coupées). `anchor` est ignoré : la boutique Robux ne se ferme pas quand on
+--       s'éloigne. Appelé par ShopPadController (plaque ShopPad du comptoir, L-071).
 
 local CollectionService = game:GetService("CollectionService")
 local MarketplaceService = game:GetService("MarketplaceService")
@@ -81,6 +97,7 @@ type Card = {
 	frame: GuiObject,
 	buy: GuiObject?,
 	owned: GuiObject?,
+	soonUntil: number?, -- os.clock() jusqu'où Price montre SOON_TEXT (clic sans achat possible)
 }
 
 -- Écran branché.
@@ -129,12 +146,21 @@ local OPEN_NOW_TEXT = {
 local CASH_PACK_TEXT = "+%s · %s" -- montant, effet
 -- V0 proposé, absent du doc : cadence (s) de la mise à jour des cartes, écran ouvert.
 local REFRESH_INTERVAL = 1
+-- V0 proposé, absent du doc (L-071) : texte écrit à la place du prix quand on clique sur une offre
+-- qu'on ne peut pas encore acheter (vitrine, ou Id à 0), en anglais (L-036), et durée (s) de ce texte.
+local SOON_TEXT = "Soon"
+local SOON_DURATION = 2
 
 local IS_STUDIO = RunService:IsStudio()
+-- Achats réels (MAJ 1) ; sinon, la vitrine (Features.RobuxShopPreview) : aucun appel à
+-- MarketplaceService.
+local LIVE = Features.RobuxShop
+local ACTIVE = Features.RobuxShop or Features.RobuxShopPreview
 
 local RobuxShopController = {}
 
 local localPlayer = Players.LocalPlayer
+local started = false -- Start est passé avec la boutique ou sa vitrine
 local offers: { Offer } = {}
 local shop: Shop? = nil
 local isOpen = false
@@ -387,10 +413,17 @@ end
 local function refreshCard(card: Card)
 	local offer = card.offer
 	local id, isPass, configPrice = purchaseOf(offer)
-	local price = if id and id ~= 0 then robloxPrice(id, isPass) or configPrice else configPrice
+	-- Vitrine : jamais de lecture chez Roblox, le prix de la Config.
+	local price = if LIVE and id and id ~= 0 then robloxPrice(id, isPass) or configPrice else configPrice
 	setText(card.frame, "ItemName", offer.displayName)
 	setText(card.frame, "Effect", effectOf(offer))
-	setText(card.frame, "Price", tostring(math.floor(price)))
+	local soonUntil = card.soonUntil
+	if soonUntil and os.clock() < soonUntil then
+		setText(card.frame, "Price", SOON_TEXT)
+	else
+		card.soonUntil = nil
+		setText(card.frame, "Price", tostring(math.floor(price)))
+	end
 	local owned = owns(offer)
 	setVisible(card.owned, owned)
 	setVisible(card.buy, not owned and id ~= nil)
@@ -403,13 +436,32 @@ local function clearCards(current: Shop)
 	table.clear(current.cards)
 end
 
-local function buy(offer: Offer)
+-- Pas d'achat possible (vitrine, Id à 0) : « Soon » à la place du prix, puis le prix de nouveau.
+local function showSoon(card: Card)
+	card.soonUntil = os.clock() + SOON_DURATION
+	refreshCard(card)
+	task.delay(SOON_DURATION, function()
+		local current = shop
+		if isOpen and current and table.find(current.cards, card) then
+			refreshCard(card)
+		end
+	end)
+end
+
+local function buy(card: Card)
+	local offer = card.offer
 	local id, isPass = purchaseOf(offer)
 	if id == nil or owns(offer) then
 		return -- rien à acheter (Ouvrir maintenant sans colis, gamepass possédé) : bouton caché, clic tardif ignoré
 	end
+	if not LIVE then
+		reportOnce("preview", `[RobuxShop] vitrine (Features.RobuxShop = false, RobuxShopPreview = true) : pas d'achat, « {SOON_TEXT} » à la place du prix`)
+		showSoon(card)
+		return
+	end
 	if id == 0 then
 		reportOnce(`id0:{offer.key}`, `[RobuxShop] {offer.key} : Id à 0 dans Config/Monetization (pas encore créé sur le Creator Hub) : pas d'achat`)
+		showSoon(card)
 		return
 	end
 	local ok, err = pcall(function()
@@ -445,9 +497,9 @@ local function buildCards()
 		if image and icon and (icon:IsA("ImageLabel") or icon:IsA("ImageButton")) then
 			(icon :: any).Image = image
 		end
-		local card: Card = { offer = offer, frame = frame, buy = guiObject(frame, "BuyButton"), owned = guiObject(frame, "Owned") }
+		local card: Card = { offer = offer, frame = frame, buy = guiObject(frame, "BuyButton"), owned = guiObject(frame, "Owned"), soonUntil = nil }
 		onClick(card.buy, function()
-			buy(offer)
+			buy(card)
 		end)
 		table.insert(current.cards, card)
 		refreshCard(card)
@@ -589,6 +641,12 @@ local function toggleShop()
 	end
 end
 
+function RobuxShopController.Open(_anchor: Instance?)
+	if started and not isOpen then
+		openShop()
+	end
+end
+
 -- Bouton du HUD --------------------------------------------------------------------------------
 
 local hudBound: { [Instance]: boolean } = setmetatable({}, { __mode = "k" }) :: any
@@ -683,9 +741,10 @@ local function removeCounter(counter: Instance)
 end
 
 function RobuxShopController.Start()
-	if not Features.RobuxShop then
-		return -- MAJ 1 : rien n'est branché, l'écran reste fermé
+	if not ACTIVE then
+		return -- ni boutique (MAJ 1) ni vitrine : rien n'est branché, l'écran reste fermé
 	end
+	started = true
 	buildOffers()
 
 	local watched = { INCOME_ATTRIBUTE, STARTER_ATTRIBUTE, OPEN_NOW_ATTRIBUTE }

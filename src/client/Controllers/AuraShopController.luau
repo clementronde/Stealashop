@@ -6,6 +6,8 @@
 --   - une invite (ProximityPrompt « AuraShopPrompt » : « Shop », « Aura Shop »), créée ici côté
 --     client sur le comptoir taggé AuraShop (sa PrimaryPart, sinon sa première pièce), ouvre
 --     l'écran ; CloseButton le ferme, et il se ferme seul quand le joueur s'éloigne du comptoir ;
+--     marcher sur la plaque ShopPad du comptoir l'ouvre aussi (ShopPadController, L-071, par Open
+--     plus bas) : la distance de fermeture se compte alors depuis la plaque ;
 --   - deux onglets, Tabs.AurasTab et Tabs.TrailsTab (auras à l'ouverture, puis le dernier
 --     onglet choisi). Une ligne par aura ou par trail de Config/Cosmetics, dans l'ordre des
 --     paliers, clonée depuis List.Template :
@@ -34,7 +36,11 @@
 -- (« SPARK », « UNEQUIP ») ; sinon le texte est écrit tel quel.
 -- Le serveur décide tout (prix, argent, possession) : le client demande et affiche.
 --
--- API (client) : aucune.
+-- API (client) :
+--   AuraShopController.Open(anchor)
+--       Ouvre l'écran comme l'invite du comptoir ; il se ferme quand le joueur s'éloigne de la pièce
+--       `anchor` de plus de CLOSE_DISTANCE studs. Écran absent : rien (une ligne en Studio). Appelé
+--       par ShopPadController avec la plaque ShopPad du comptoir.
 
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
@@ -364,6 +370,10 @@ local function openShop(counter: BasePart)
 	openAt = counter
 	buildRows()
 	Motion.Open(current.gui)
+end
+
+function AuraShopController.Open(anchor: BasePart)
+	openShop(anchor)
 end
 
 -- Fermeture quand le joueur s'éloigne du comptoir, ou que le comptoir ou l'écran disparaît.

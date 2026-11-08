@@ -291,4 +291,42 @@ Models.BoxTrail = BoxTrail
 -- Ordre du rapport.
 Models.List = { Store, Plot, Treadmill, Bench, Item, Box, Tool, Accessory, Truck, BoxTrail } :: { ModelSpec }
 
+-- Comptoirs des boutiques d'achat du hub (tags WeaponShop, AuraShop, RobuxShop, 2.1 et 5.9) et leur
+-- plaque ShopPad (nom proposé par Clément le 2026-11-08, L-071) : une pièce sous et devant le stand ;
+-- marcher dessus ouvre l'écran du comptoir (ShopPadController). Facultative : sans elle, l'invite
+-- « Shop » du comptoir ouvre l'écran comme avant. Le reste du comptoir (vendeur, décor) est libre.
+local SHOP_PAD: Part = {
+	Name = "ShopPad",
+	Class = "BasePart",
+	Optional = true,
+	Note = "facultative : marcher dessus ouvre l'écran du comptoir ; sans elle, seule l'invite « Shop » l'ouvre, L-071",
+}
+local WeaponShopCounter: ModelSpec = {
+	Key = "WeaponShopCounter",
+	Label = "comptoirs de la boutique d'armes",
+	Category = "Boutiques d'achat",
+	Tag = "WeaponShop",
+	Parts = { SHOP_PAD },
+}
+local AuraShopCounter: ModelSpec = {
+	Key = "AuraShopCounter",
+	Label = "comptoirs de la boutique d'auras",
+	Category = "Boutiques d'achat",
+	Tag = "AuraShop",
+	Parts = { SHOP_PAD },
+}
+local RobuxShopCounter: ModelSpec = {
+	Key = "RobuxShopCounter",
+	Label = "comptoirs de la boutique Robux",
+	Category = "Boutiques d'achat",
+	Tag = "RobuxShop",
+	Parts = { SHOP_PAD },
+}
+Models.WeaponShopCounter = WeaponShopCounter
+Models.AuraShopCounter = AuraShopCounter
+Models.RobuxShopCounter = RobuxShopCounter
+for _, spec in { WeaponShopCounter, AuraShopCounter, RobuxShopCounter } do
+	table.insert(Models.List, spec) -- à la fin du rapport
+end
+
 return Models
