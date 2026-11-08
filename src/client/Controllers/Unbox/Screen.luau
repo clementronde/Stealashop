@@ -3,16 +3,18 @@
 -- d'UnboxController (client) : ce que le déroulé (Unbox/Sequence) montre, dans l'écran UI_Unbox v2
 -- de Clément (contrat 2.2) et sur la copie locale du colis de l'établi.
 --
---   Screen.new(screen, plan, box, hooks) -> view
+--   Screen.new(screen, plan, box, hooks, anchor?) -> view
 --       screen : la copie de UI_Unbox dans PlayerGui ; box : copie locale du colis (BenchBox_<nn>,
 --       prise par UnboxController à l'appui sur « Open »), ou nil ; la vue la détruit à la fin.
+--       anchor : point du monde de l'établi (UnboxBench_<nn>), où se placent Upgrade et Reel
+--       quand il n'y a pas de copie du colis.
 --   view:SetOpenNext(available)   montre ou cache OpenNextButton, une fois les boutons affichés
 --   view:Close()                  remet l'écran dans l'état de Studio (DEV-052)
 -- Les autres méthodes sont les événements du déroulé (voir Unbox/Sequence).
 --
--- Ce que le code anime (liste de la spec) : Backdrop (transparence), SkipButton et Reel (Visible),
--- Upgrade (position au-dessus du colis, Visible, échelle), UpgradeRarity (texte, couleur ; Secret :
--- Rainbow), ReelGlow (couleur), ReelView (modèles, ou icônes ICON_ quand elles sont livrées, L-055 ;
+-- Ce que le code anime (liste de la spec) : Backdrop (transparence), SkipButton (Visible), Reel
+-- (Visible, position au-dessus du colis : L-080), Upgrade (position au-dessus du colis, Visible,
+-- échelle), UpgradeRarity (texte, couleur ; Secret : Rainbow), ReelGlow (couleur), ReelView (modèles, ou icônes ICON_ quand elles sont livrées, L-055 ;
 -- caméra, ImageColor3), Rays (rotation, ImageColor3, taille), Rarity, ItemName et Income (textes,
 -- échelle), ItemPreview (le ViewportFrame posé ici, toujours en 3D), boutons (Visible, échelle),
 -- Confetti (clones de Confetti.Template), Flash (transparence). Le code ne change ni les tailles,
@@ -21,6 +23,16 @@
 -- est notée au premier changement et remise à la fermeture ; tout ce qui est créé ici (icônes du
 -- rouleau comprises) est détruit.
 --
+-- Fenêtre du rouleau (liaison L-080) : Reel ne reste plus où il est dans Studio (au centre).
+-- Pendant le rouleau, son bas (ReelGlow compris) est posé Config.Unbox.ReelAbove studs au-dessus du
+-- haut du colis (pris à l'ouverture, avant que le couvercle saute), centré sur lui, à chaque image
+-- (Camera:WorldToViewportPoint, comme Upgrade) ; une liaison BindToRenderStep juste après la caméra
+-- refait ce placement quand la caméra a bougé dans l'image. Colis hors du champ : la fenêtre est
+-- bornée à l'écran (marge ReelEdge), au bord le plus proche du colis ; derrière la caméra, sa
+-- projection est retournée, donc la fenêtre va au bord du côté où il se trouve. Sans copie du colis,
+-- elle se place au-dessus de l'établi (anchor) ; sans l'un ni l'autre (cas d'école : établi sorti
+-- du streaming), elle reste à sa place de Studio. Seule sa Position change (remise à la fermeture).
+--
 -- Cadres de la révélation : les cadres de premier niveau de l'écran qui contiennent Rarity, ItemName,
 -- Income, ItemPreview, Rays ou les boutons (RevealPanel chez Clément), sauf s'ils contiennent aussi
 -- un élément des étapes d'avant (Backdrop, SkipButton, Upgrade, Reel, Confetti, Flash), sont cachés
@@ -28,8 +40,9 @@
 --
 -- Effets 3D V0 (absents de la spec, sur la copie locale du colis, côté client seulement) :
 -- tremblement et lueur (PointLight) de la charge, teinte de la pièce Tint, colis qui grossit,
--- onde (disque néon), couvercle Lid qui saute, faisceau de lumière (pièce néon) à l'ouverture ;
--- le colis disparaît à l'éclat. Sons Unbox_* (spec) joués seulement s'ils existent dans
+-- onde (disque néon), couvercle Lid qui saute (détaché des soudures de la copie locale, pour ne
+-- pas emporter le colis), faisceau de lumière (pièce néon) à l'ouverture ; le colis disparaît à
+-- l'éclat. Sons Unbox_* (spec) joués seulement s'ils existent dans
 -- ReplicatedStorage/Assets/Sounds (une seule ligne en Studio s'il en manque).
 
 local Players = game:GetService("Players")
@@ -107,6 +120,9 @@ type Fields = {
 	raysRotation: number,
 	silhouette: Color3,
 	-- colis local
+	anchor: Vector3?, -- point de l'établi (sans copie du colis)
+	openTop: Vector3?, -- haut du colis à l'ouverture (sous la fenêtre du rouleau)
+	followStep: string?, -- nom de la liaison BindToRenderStep du placement
 	boxBase: CFrame?,
 	light: PointLight?,
 	beam: BasePart?,
@@ -147,6 +163,8 @@ local SCALE_NAME = "UnboxScale" -- UIScale ajouté par le code (retiré à la fe
 local PREVIEW_NAME = "ItemViewport" -- ViewportFrame posé par le code dans ItemPreview
 local PIECE_NAME = "Piece" -- clone de Confetti.Template
 local EFFECT_NAME = "UnboxEffect" -- pièces 3D V0 (onde, faisceau)
+local FOLLOW_STEP = "UnboxFollow" -- liaison BindToRenderStep du placement (suivi d'un numéro)
+local LID_NAME = "Lid" -- couvercle du colis (contrat 10.4)
 local WHITE = Color3.new(1, 1, 1)
 local RARE_ORDER = Rarities.ById.Rare.Order
 -- Éléments des étapes d'avant l'éclat : un cadre qui en contient un n'est pas caché avec la révélation.
@@ -155,6 +173,7 @@ local REVEAL_ELEMENTS = { "Rarity", "ItemName", "Income", "ItemPreview", "Rays",
 
 local rng = Random.new()
 local soundsWarned = false
+local followCount = 0
 
 ------------------------------------------------------------------------------
 -- Outils
@@ -353,6 +372,149 @@ local function tintPart(box: Model): BasePart?
 	return nil
 end
 
+-- Détache le couvercle `lid` du reste de la copie locale : une soudure (Weld, WeldConstraint…)
+-- entre lui et le colis ferait suivre tout le colis quand il saute. Les pièces sont déjà ancrées
+-- (UnboxService) ; la copie est détruite à l'éclat.
+local function freeLid(box: Model, lid: Instance)
+	local function inLid(part: Instance?): boolean
+		return part ~= nil and (part == lid or part:IsDescendantOf(lid))
+	end
+	for _, descendant in box:GetDescendants() do
+		local a: Instance?, b: Instance? = nil, nil
+		if descendant:IsA("JointInstance") then
+			a, b = (descendant :: JointInstance).Part0, (descendant :: JointInstance).Part1
+		elseif descendant:IsA("WeldConstraint") then
+			a, b = (descendant :: WeldConstraint).Part0, (descendant :: WeldConstraint).Part1
+		else
+			continue
+		end
+		if inLid(a) ~= inLid(b) then
+			descendant:Destroy()
+		end
+	end
+end
+
+-- Point du monde vu à l'écran (même repère que toScreen), même derrière la caméra : la projection y
+-- est retournée par rapport au centre de l'écran, donc on la retourne à nouveau et on la pousse
+-- hors de l'écran, du côté où se trouve le point ; le bornage la ramène au bord le plus proche.
+local function towardScreen(self: View, world: Vector3): Vector2?
+	local camera = Workspace.CurrentCamera
+	if camera == nil then
+		return nil
+	end
+	local raw: Vector3
+	if self.screen.IgnoreGuiInset then
+		raw = (camera:WorldToViewportPoint(world))
+	else
+		raw = (camera:WorldToScreenPoint(world))
+	end
+	local point = Vector2.new(raw.X, raw.Y)
+	if raw.Z > 0 then
+		return point
+	end
+	local area = self.screen.AbsoluteSize
+	local center = area / 2
+	local away = center - point
+	local length = away.Magnitude
+	if length < 1e-3 then
+		away, length = Vector2.new(0, 1), 1 -- juste derrière : en bas
+	end
+	return center + away * ((area.X + area.Y) / length)
+end
+
+-- Upgrade : centré au-dessus du colis (ou de l'établi).
+local function placeUpgrade(self: View)
+	local upgrade = self.upgrade
+	if upgrade == nil or not upgrade.Visible or self.lastPop == nil then
+		return
+	end
+	local top = boxTop(self) or self.anchor
+	local point = if top then toScreen(self, top + Vector3.new(0, Unbox.UpgradeAbove, 0)) else nil
+	if point ~= nil then
+		local origin = originOf(upgrade)
+		set(self, upgrade, "Position", UDim2.fromOffset(point.X - origin.X, point.Y - origin.Y))
+	end
+end
+
+-- Bornes [lo, hi] d'un coin haut gauche ; au centre si la fenêtre ne tient pas.
+local function bound(value: number, lo: number, hi: number): number
+	if lo > hi then
+		return (lo + hi) / 2
+	end
+	return math.clamp(value, lo, hi)
+end
+
+-- Reel : le bas de la fenêtre (ReelGlow compris) au-dessus du colis, centré sur lui, et toute la
+-- fenêtre à l'écran (voir l'en-tête).
+local function placeReel(self: View)
+	local reel = self.reel
+	if reel == nil or not reel.Visible then
+		return
+	end
+	local top = self.openTop or boxTop(self) or self.anchor
+	local point = if top then towardScreen(self, top + Vector3.new(0, Unbox.ReelAbove, 0)) else nil
+	if point == nil then
+		return
+	end
+	-- La fenêtre : Reel et sa lueur ReelGlow (qui déborde un peu), vues depuis le coin de Reel.
+	local corner = reel.AbsolutePosition
+	local size = reel.AbsoluteSize
+	local lo, hi = Vector2.zero, size
+	local glow = self.reelGlow
+	if glow ~= nil and glow.Visible then
+		local from = glow.AbsolutePosition - corner
+		local to = from + glow.AbsoluteSize
+		lo = Vector2.new(math.min(lo.X, from.X), math.min(lo.Y, from.Y))
+		hi = Vector2.new(math.max(hi.X, to.X), math.max(hi.Y, to.Y))
+	end
+	local area = self.screen.AbsoluteSize
+	local margin = Unbox.ReelEdge * math.min(area.X, area.Y)
+	local x = bound(point.X - size.X / 2, margin - lo.X, area.X - margin - hi.X)
+	local y = bound(point.Y - hi.Y, margin - lo.Y, area.Y - margin - hi.Y)
+	local origin = originOf(reel)
+	local anchorPoint = reel.AnchorPoint
+	set(self, reel, "Position", UDim2.fromOffset(x - origin.X + anchorPoint.X * size.X, y - origin.Y + anchorPoint.Y * size.Y))
+end
+
+-- Ce qui suit le colis à l'écran.
+local function follow(self: View)
+	if self.closed then
+		return
+	end
+	placeUpgrade(self)
+	placeReel(self)
+end
+
+-- Placement refait juste après la caméra (comme le tremblement de ShatterController) : sans lui, il
+-- pourrait se faire avec la caméra de l'image d'avant (un petit retard quand elle tourne). Sans
+-- BindToRenderStep (bancs hors Studio), le placement de chaque image (Frame) suffit.
+local function bindFollow(self: View)
+	if self.followStep ~= nil then
+		return
+	end
+	followCount += 1
+	local name = `{FOLLOW_STEP}_{followCount}`
+	local ok = pcall(function()
+		RunService:BindToRenderStep(name, Enum.RenderPriority.Camera.Value + 1, function()
+			follow(self)
+		end)
+	end)
+	if ok then
+		self.followStep = name
+	end
+end
+
+local function unbindFollow(self: View)
+	local name = self.followStep
+	if name == nil then
+		return
+	end
+	self.followStep = nil
+	pcall(function()
+		RunService:UnbindFromRenderStep(name)
+	end)
+end
+
 ------------------------------------------------------------------------------
 -- Confettis (clones de Confetti.Template, en pixels dans le cadre Confetti)
 ------------------------------------------------------------------------------
@@ -496,12 +658,15 @@ local function revealGroups(screen: Instance): { GuiObject }
 	return groups
 end
 
-function Screen.new(screen: ScreenGui, plan: Plan, box: Model?, hooks: Hooks): View
+function Screen.new(screen: ScreenGui, plan: Plan, box: Model?, hooks: Hooks, anchor: Vector3?): View
 	local fields: Fields = {
 		screen = screen,
 		plan = plan,
 		box = box,
 		hooks = hooks,
+		anchor = anchor,
+		openTop = nil,
+		followStep = nil,
 		saved = {},
 		made = {},
 		scales = {},
@@ -590,6 +755,7 @@ function Screen.Begin(self: View, _plan: Plan)
 	if rays then
 		self.raysRotation = rays.Rotation
 	end
+	bindFollow(self)
 end
 
 -- Lueur du colis local (PointLight sur son ancre), créée au premier besoin.
@@ -700,8 +866,12 @@ function Screen.Open(self: View, fromMarker: boolean, _at: number)
 		if base then
 			box:PivotTo(base)
 		end
-		local lid = Find.path(box, "Lid")
+		-- Haut du colis fermé : la fenêtre du rouleau et le faisceau partent de là, même quand le
+		-- couvercle s'envole (il agrandirait la boîte englobante).
+		self.openTop = boxTop(self)
+		local lid = Find.path(box, LID_NAME)
 		if lid ~= nil and lid:IsA("PVInstance") then
+			freeLid(box, lid)
 			self.lid = lid :: PVInstance
 			self.lidBase = (lid :: PVInstance):GetPivot()
 		end
@@ -718,6 +888,9 @@ function Screen.Open(self: View, fromMarker: boolean, _at: number)
 		end
 	end
 	set(self, self.reel, "Visible", true)
+	-- Placé tout de suite : le marqueur Open peut tomber entre deux images, la fenêtre ne doit pas
+	-- apparaître à sa place de Studio.
+	placeReel(self)
 	set(self, self.skip, "Visible", true) -- spec : visible pendant le rouleau (et jusqu'aux boutons)
 	local reelView = self.reelView
 	if reelView then
@@ -788,6 +961,7 @@ function Screen.Reveal(self: View, _at: number)
 		self.move = { fromPos = fromPos, fromSize = fromSize, toPos = toPos, toSize = toSize, settled = false }
 	end
 	set(self, self.reel, "Visible", false)
+	unbindFollow(self) -- plus rien ne suit le colis (Upgrade caché depuis l'ouverture)
 	local strip = self.strip
 	if strip then
 		strip:Destroy()
@@ -914,16 +1088,10 @@ local function frameUpgrade(self: View, info: FrameInfo)
 			light.Brightness = Unbox.UpgradeGlow * math.max(0, 1 - (t - (self.lastPop :: number)) / 0.3)
 		end
 	end
-	-- Upgrade : au-dessus du colis, échelle qui saute.
+	-- Upgrade : échelle qui saute (placé au-dessus du colis par follow).
 	local upgrade = self.upgrade
 	if upgrade ~= nil and upgrade.Visible and self.lastPop ~= nil then
 		setScale(self, upgrade, Sequence.backOut((t - (self.lastPop :: number)) / Unbox.UpgradePop))
-		local top = boxTop(self)
-		local point = if top then toScreen(self, top + Vector3.new(0, Unbox.UpgradeAbove, 0)) else nil
-		if point ~= nil then
-			local origin = originOf(upgrade)
-			set(self, upgrade, "Position", UDim2.fromOffset(point.X - origin.X, point.Y - origin.Y))
-		end
 	end
 	-- Ondes.
 	local waves = self.waves
@@ -969,7 +1137,7 @@ local function frameOpen(self: View, info: FrameInfo)
 		end
 	end
 	local beam = self.beam
-	local top = boxTop(self)
+	local top = self.openTop or boxTop(self)
 	if beam ~= nil and top ~= nil then
 		local height = math.max(0.05, Unbox.BeamHeight * Sequence.quadOut(since / Unbox.BeamGrow))
 		beam.Size = Vector3.new(0.8, height, 0.8)
@@ -1112,6 +1280,7 @@ function Screen.Frame(self: View, info: FrameInfo)
 	self.t = info.T
 	frameUpgrade(self, info)
 	frameOpen(self, info)
+	follow(self)
 	frameReel(self, info)
 	frameReveal(self, info)
 	updatePieces(self, info.Dt)
@@ -1126,6 +1295,7 @@ function Screen.Close(self: View)
 		return
 	end
 	self.closed = true
+	unbindFollow(self)
 	stopSound(self.riser)
 	stopSound(self.music)
 	self.riser = nil

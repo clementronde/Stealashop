@@ -63,6 +63,9 @@ local Unbox = {
 	StopPause = 0.25, -- spec : pause à l'arrêt
 	ColorIn = 0.3, -- spec : l'objet prend ses couleurs (ReelView.ImageColor3 du noir au blanc)
 	SkipGlide = 0.4, -- spec : SkipButton amène le gagnant au centre
+	-- Fenêtre du rouleau au-dessus du colis (liaison L-080) : placée à chaque image par la caméra.
+	ReelAbove = 0.4, -- V0 : écart (studs) entre le haut du colis et le bas de la fenêtre Reel (ReelGlow compris)
+	ReelEdge = 0.03, -- V0 : marge au bord de l'écran (part de son plus petit côté) quand le colis sort du champ
 	ReelSlot = 2.4, -- V0 : hauteur (studs) d'une case dans ReelView
 	ReelFit = 1.7, -- V0 : taille max (studs) d'un objet dans sa case
 	ReelFov = 30, -- V0 : champ de vision (degrés) de la caméra fixe de ReelView
