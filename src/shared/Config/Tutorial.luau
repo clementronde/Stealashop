@@ -24,7 +24,7 @@ local Steps: { Step } = {
 	{ Index = 1, Id = "ArriveAtPlot", At = 0, Goal = "Arrivée sur sa parcelle, flèche au sol vers la Supérette", Bubble = "Smash the Mini Mart window!" },
 	{ Index = 2, Id = "HitWindow", At = 15, Goal = "Premiers coups aux poings sur la vitre (35 PV)", Bubble = "Hit the glass again and again!" },
 	{ Index = 3, Id = "GrabBox", At = 25, Goal = "Casse et chrono de 10 s ; colis Premium, vigile lent", Bubble = "Grab a box and run!" },
-	{ Index = 4, Id = "PlaceBox", At = 45, Goal = "Retour en zone safe, colis sur l'établi, attente de 5 s, objet Rare", Bubble = "Put the box on the workbench" },
+	{ Index = 4, Id = "PlaceBox", At = 45, Goal = "Retour en zone safe, colis sur un présentoir libre (L-086), attente de 5 s, objet Rare", Bubble = "Put the box on a free stand" },
 	{ Index = 5, Id = "DisplayItem", At = 60, Goal = "Objet sur un présentoir (5 $/s), premier encaissement", Bubble = "Display your item to earn cash!" },
 	{ Index = 6, Id = "Train", At = 2 * 60, Goal = "Le tapis et le banc s'allument, 30 s d'entraînement guidé", Bubble = "Train on the treadmill and bench" },
 	{ Index = 7, Id = "BuyTool", At = 3 * 60, Goal = "Flèche vers la boutique d'armes, clé à molette (300 $)", Bubble = "Buy the Wrench!" },
@@ -82,7 +82,7 @@ local Tutorial = {
 	Hints = {
 		EquipFists = "Equip your Fists, then hit!", -- étapes 1 et 2, près de la vitrine sans outil en main (client)
 		WindowRebuilding = "Wait, the window is coming back!", -- étape 2 : vitrine cassée, rideau baissé
-		WaitBox = "Wait for your box to open!", -- étape 5 : colis sur l'établi, attente pas finie
+		WaitBox = "Wait for your box to open!", -- étape 5 : colis sur le présentoir, attente pas finie
 		OpenBox = "Open your box!", -- étape 5 : colis prêt à ouvrir
 		CollectCash = "Step on the cash pad to collect!", -- étape 5 (objet exposé), 7 et 8 (pas assez d'argent)
 		-- étape 6, flèche vers le tapis : il n'a plus d'invite, on s'entraîne en s'arrêtant dessus (L-071)
@@ -111,7 +111,7 @@ local Tutorial = {
 		"Première vitrine cassée",
 		"Premier colis volé",
 		"Arrivée en zone safe avec le colis",
-		"Colis posé sur un établi",
+		"Colis posé sur un établi", -- nom gardé (L-086 : le colis se pose sur un présentoir) pour ne pas couper le funnel du Creator Dashboard
 		"Premier objet révélé",
 		"Premier objet exposé",
 		"Premier encaissement",

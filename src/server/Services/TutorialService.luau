@@ -8,7 +8,7 @@
 --   - un profil au tuto pas commencé (Tutorial.Step = 0, Done = false) commence à l'étape 1 ;
 --   - sauf un ancien joueur, qui a joué avant que le tuto existe (profil DEV d'Ironix, testeurs) :
 --     il est marqué Done = true sans rien afficher, Step reste à 0. Règle exacte (hasPlayed) : au
---     moins un objet (Items), un colis sur un établi (Boxes), un braquage ou un vol réussi
+--     moins un objet (Items), un colis sur un présentoir ou dans la file (Boxes, BoxQueue), un braquage ou un vol réussi
 --     (Lifetime.Heists ou Lifetime.Steals > 0), un outil autre que les poings (Tools.Owned), une aura
 --     ou un trail (Cosmetics.Auras, Cosmetics.Trails), ou une amélioration achetée (un niveau de
 --     Upgrades > 0). L'argent, les stats et le temps de jeu seuls ne comptent pas : un joueur qui n'a
@@ -29,7 +29,7 @@
 --           StoreHeistService.IsOpen) et le joueur à StoreNearRadius studs au plus de sa vitrine :
 --           c'est lui qui l'a cassée, ou un autre joueur juste devant lui. Possible dès l'étape 1 ;
 --   3 → 4   un colis PNJ sur la tête (CarryService) ;
---   4 → 5   un colis posé sur un établi (UnboxService.OnBoxPlaced) ;
+--   4 → 5   un colis posé sur un présentoir (UnboxService.OnBoxPlaced ; plus d'établi depuis L-086) ;
 --   5 → 6   premier encaissement au tapis de caisse (DisplayService.OnCashOut, sauf « Leave »,
 --           l'encaissement automatique au départ) ;
 --   6 → 7   TrainDuration (30) s sur le tapis ou le banc, cumulées (attribut TrainingMachine, posé
@@ -68,8 +68,8 @@
 -- changement, jamais deux fois le même. step = étape en cours (0 = plus de tuto : tout cacher) ;
 -- hint = clé de Config/Tutorial.Hints à afficher à la place de la bulle de l'étape (nil = la bulle
 -- de l'étape) ; target = point du monde visé par la flèche (nil = pas de flèche). Cibles : vitrine
--- du magasin (étapes 1 à 3 ; la Supérette tant que le joueur n'en a pas choisi un autre), établi
--- libre (4), établi du colis puis tapis de caisse (5), tapis puis banc (6), tapis de caisse ou
+-- du magasin (étapes 1 à 3 ; la Supérette tant que le joueur n'en a pas choisi un autre), présentoir
+-- libre (4), présentoir du colis puis tapis de caisse (5), tapis puis banc (6), tapis de caisse ou
 -- comptoir WeaponShop (7) et AuraShop (8) selon l'argent, arche de la zone 2 (9). Tapis, banc et
 -- tapis de caisse sont trouvés par leur tag dans la parcelle. Boutique du hub (PLOT_Shop, L-050) :
 -- entre l'intérieur de la boutique (volume Bounds) et l'extérieur, la flèche vise d'abord la porte
@@ -102,8 +102,8 @@
 -- Crochet de test, STUDIO SEULEMENT : workspace:SetAttribute("TutorialReset", userId) (barre de
 -- commande serveur ; un nom de joueur marche aussi). Le tuto de ce joueur repart de l'étape 1
 -- (Done = false), funnel compris, même pour un ancien joueur. Les objets, colis et outils du profil
--- ne changent pas : un établi déjà occupé reste occupé, et un colis du tuto (Pot de nouilles) encore
--- sur un établi fait reprendre à l'étape 5 (l'ouvrir avant pour rejouer le braquage). Hors de Studio,
+-- ne changent pas : un présentoir déjà occupé reste occupé, et un colis du tuto (Pot de nouilles) encore
+-- sur un présentoir fait reprendre à l'étape 5 (l'ouvrir avant pour rejouer le braquage). Hors de Studio,
 -- l'attribut n'est pas écouté.
 --
 -- Attributs du Player (pour les tests en Studio : la barre de commande a son propre cache de modules,
@@ -218,7 +218,6 @@ local BENCH_TAG = "Bench"
 local CASH_PAD_TAG = "CashPad"
 -- Entrée de la boutique du joueur (PLOT_Shop, nom validé par Ironix en L-050, pas encore au contrat).
 local PLOT_DOOR = "PlotDoor"
-local BENCH_FORMAT = "UnboxBench_%02d"
 local SLOT_FORMAT = "DisplaySlot_%02d"
 -- Attribut du Player posé par TrainingService : la machine utilisée, nil sinon.
 local MACHINE_ATTRIBUTE = "TrainingMachine"
@@ -504,8 +503,8 @@ end
 local function hasPlayed(data: Data): string?
 	if next(data.Items) ~= nil then
 		return "objets"
-	elseif next(data.Boxes) ~= nil then
-		return "colis sur un établi"
+	elseif next(data.Boxes) ~= nil or (type(data.BoxQueue) == "table" and #data.BoxQueue > 0) then
+		return "colis en attente"
 	elseif data.Lifetime.Heists > 0 or data.Lifetime.Steals > 0 then
 		return "braquages ou vols réussis"
 	elseif ownsBoughtTool(data) then
@@ -539,8 +538,8 @@ local function loggedFunnel(data: Data): { [number]: boolean }
 	}
 end
 
--- Établi du colis du tuto (le Pot de nouilles), sinon du premier colis posé : (numéro, colis).
-local function benchBox(data: Data): (number?, Box?)
+-- Présentoir du colis du tuto (le Pot de nouilles), sinon du premier colis posé : (numéro, colis).
+local function standBox(data: Data): (number?, Box?)
 	local foundIndex: number? = nil
 	local foundBox: Box? = nil
 	for key, box in data.Boxes do
@@ -562,22 +561,13 @@ local function unlockedCount(base: number, level: any, max: number): number
 	return math.clamp(base + bought, 1, max)
 end
 
--- Premier établi débloqué et libre (sinon le 1er) : la cible de l'étape 4.
-local function freeBenchTarget(player: Player, data: Data): Vector3?
-	local count = unlockedCount(Balance.Unbox.StartBenches, data.Upgrades.UnboxBenches, Balance.Unbox.MaxBenches)
-	for index = 1, count do
-		if data.Boxes[tostring(index)] == nil then
-			return positionOf(plotPart(player, string.format(BENCH_FORMAT, index)))
-		end
-	end
-	return positionOf(plotPart(player, string.format(BENCH_FORMAT, 1)))
-end
-
--- Premier présentoir débloqué et libre (sinon le 1er).
+-- Premier présentoir débloqué et libre, ni objet ni colis (sinon le 1er) : la cible de l'étape 4 (on y
+-- pose son colis, L-086) et de l'étape 5 sans objet exposé.
 local function freeSlotTarget(player: Player, data: Data): Vector3?
 	local count = unlockedCount(Balance.Display.StartSlots, data.Upgrades.DisplaySlots, Balance.Display.MaxSlots)
 	for index = 1, count do
-		if data.Display[tostring(index)] == nil then
+		local key = tostring(index)
+		if data.Display[key] == nil and data.Boxes[key] == nil then
 			return positionOf(plotPart(player, string.format(SLOT_FORMAT, index)))
 		end
 	end
@@ -744,9 +734,9 @@ end
 local function transition(session: Session, data: Data, position: Vector3?, carrying: boolean): (number?, string?)
 	local step = session.step
 	if step <= STEP_PLACE then
-		local _, box = benchBox(data)
+		local _, box = standBox(data)
 		if box ~= nil and box.ItemId == Tutorial.GuaranteedItemId then
-			return STEP_DISPLAY, "colis du tuto sur l'établi"
+			return STEP_DISPLAY, "colis du tuto sur un présentoir"
 		end
 	end
 	if step < STEP_PLACE and carrying then
@@ -832,13 +822,13 @@ local function rawGuidance(session: Session, data: Data, position: Vector3?): (s
 		end
 		return hint, target
 	elseif step == STEP_PLACE then
-		return nil, freeBenchTarget(player, data)
+		return nil, freeSlotTarget(player, data)
 	elseif step == STEP_DISPLAY then
-		local index, box = benchBox(data)
+		local index, box = standBox(data)
 		if index and box then
 			local ready = type(box.ReadyAt) ~= "number" or serverNow() >= box.ReadyAt
 			local hint = if ready then "OpenBox" else "WaitBox"
-			return hint, positionOf(plotPart(player, string.format(BENCH_FORMAT, index)))
+			return hint, positionOf(plotPart(player, string.format(SLOT_FORMAT, index)))
 		end
 		if next(data.Display) ~= nil then
 			return "CollectCash", positionOf(plotTagged(player, CASH_PAD_TAG))
@@ -1104,20 +1094,20 @@ local function onCarryEnded(player: Player, _payload: any, result: string, _reas
 	end
 end
 
-local function onBoxPlaced(player: Player, _benchIndex: number, _box: Box)
+local function onBoxPlaced(player: Player, _slotIndex: number, _box: Box)
 	logFunnel(player, FUNNEL_SAFE)
 	logFunnel(player, FUNNEL_PLACED)
 	local session = sessions[player]
 	local data = DataService.Get(player)
 	if session and data and session.step <= STEP_PLACE then
-		setStep(session, data, STEP_DISPLAY, "colis posé sur l'établi")
+		setStep(session, data, STEP_DISPLAY, "colis posé sur un présentoir")
 	end
 	if session then
 		evaluate(session)
 	end
 end
 
-local function onBoxOpened(player: Player, _benchIndex: number, itemUid: string, _itemId: string)
+local function onBoxOpened(player: Player, _slotIndex: number, itemUid: string, _itemId: string)
 	logFunnel(player, FUNNEL_REVEALED)
 	local data = DataService.Get(player)
 	if data and isDisplayed(data, itemUid) then

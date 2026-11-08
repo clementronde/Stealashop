@@ -43,7 +43,7 @@ type Rarity = Rarities.Rarity
 
 -- Ce qu'UnboxReveal apporte (Net/Definitions), déjà contrôlé par UnboxController.
 export type Reveal = {
-	BenchIndex: number,
+	SlotIndex: number, -- présentoir du colis (DisplaySlot_xx, L-086)
 	ItemUid: string,
 	ItemId: string, -- objet final, après l'amélioration
 	Zone: number, -- zone du colis

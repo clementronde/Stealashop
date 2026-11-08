@@ -17,8 +17,10 @@
 --     possédé, 7.5) ; refusé au niveau max ou hors de sa parcelle (volume Bounds, sinon l'emprise
 --     de la parcelle). Niveau + 1 dans Upgrades du profil. Effet : le tapis et le banc relisent
 --     leur niveau à chaque gain (TrainingService), les présentoirs à chaque pose (DisplayService,
---     qui republie DisplaySlotsUnlocked chaque seconde) ; les établis passent par
---     UnboxService.Refresh (leur attribut UnboxState change tout de suite) ;
+--     qui republie DisplaySlotsUnlocked chaque seconde), et UnboxService.Refresh remet tout de suite
+--     à jour leur attribut UnboxState (un colis peut s'y poser, L-086). L'ancienne amélioration
+--     « Workbenches » (UnboxBenches) n'est plus au catalogue depuis L-086 : BuyItem("UnboxBenches")
+--     est refusé comme un Id inconnu ;
 --   - aura ou trail (Config/Cosmetics) : prix et argent gérés ici, au comptoir taggé AuraShop
 --     (même portée), puis CosmeticService.Grant(player, id) (agent a20). Sans CosmeticService
 --     (module absent ou sans Owns et Grant), ces achats sont refusés (« This item isn't available
@@ -39,8 +41,8 @@
 --   OwnedTools          Id des outils possédés, dans l'ordre de Config/Tools, séparés par des
 --                       virgules (« Fists,Wrench ») ;
 --   EquippedTool        Id de l'outil équipé (ToolService.GetEquippedId) ;
---   TreadmillLevel, BenchLevel, DisplaySlotsLevel, UnboxBenchesLevel
---                       niveau acheté de chaque amélioration (Upgrades du profil).
+--   TreadmillLevel, BenchLevel, DisplaySlotsLevel
+--                       niveau acheté de chaque amélioration de Config/Upgrades (Upgrades du profil).
 --
 -- API (côté serveur) :
 --   ShopService.RefreshPlayer(player)
@@ -122,7 +124,6 @@ local MESSAGES = {
 	CosmeticOwned = "You already own %s.",
 	MachineMax = "Your %s is already at max level.",
 	StandsMax = "All your stands are unlocked.",
-	WorkbenchesMax = "All your workbenches are unlocked.",
 	FarFromWeaponShop = "Go to the Weapon Shop to buy tools.",
 	FarFromAuraShop = "Go to the Aura Shop to buy auras and trails.",
 	NotOnPlot = "Go back to your shop to buy upgrades.",
@@ -132,7 +133,6 @@ local MESSAGES = {
 	CosmeticBought = "%s bought!",
 	MachineUpgraded = "%s upgraded to level %d!",
 	StandUnlocked = "New stand unlocked! (%d/%d)",
-	WorkbenchUnlocked = "New workbench unlocked! (%d/%d)",
 }
 
 local ShopService = {}
@@ -340,7 +340,6 @@ local function buyUpgrade(player: Player, data: Data, upgrade: UpgradeDef)
 	if cost == nil then
 		local message = if upgrade.Id == "DisplaySlots"
 			then MESSAGES.StandsMax
-			elseif upgrade.Id == "UnboxBenches" then MESSAGES.WorkbenchesMax
 			else string.format(MESSAGES.MachineMax, upgrade.DisplayName)
 		notify(player, message, "Warning")
 		return
@@ -360,19 +359,17 @@ local function buyUpgrade(player: Player, data: Data, upgrade: UpgradeDef)
 	end
 	local newLevel = level + 1
 	;(data.Upgrades :: any)[upgrade.Id] = newLevel
-	if upgrade.Id == "UnboxBenches" then
+	if upgrade.Id == "DisplaySlots" then
+		-- L-086 : le présentoir acheté peut tout de suite recevoir un colis (attribut UnboxState).
 		guarded("UnboxService.Refresh", UnboxService.Refresh, player)
 	end
 	publish(player)
 
-	-- Présentoirs et établis débloqués = départ + niveau, au plus le maximum (7.5 : 4 à 20, 1 à 4).
+	-- Présentoirs débloqués = départ + niveau, au plus le maximum (7.5 : 4 à 20).
 	local message: string
 	if upgrade.Id == "DisplaySlots" then
 		local display = Balance.Display
 		message = string.format(MESSAGES.StandUnlocked, math.min(display.StartSlots + newLevel, display.MaxSlots), display.MaxSlots)
-	elseif upgrade.Id == "UnboxBenches" then
-		local unbox = Balance.Unbox
-		message = string.format(MESSAGES.WorkbenchUnlocked, math.min(unbox.StartBenches + newLevel, unbox.MaxBenches), unbox.MaxBenches)
 	else
 		message = string.format(MESSAGES.MachineUpgraded, upgrade.DisplayName, newLevel)
 	end

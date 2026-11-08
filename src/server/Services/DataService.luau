@@ -69,17 +69,20 @@
 -- d'objets v2 (Config/Items, liaison L-045 ; voir MIGRATIONS[2]) ; v3 (2026-11-08, DEV-100) =
 -- boutique Robux : Monetization et Boosts ajoutés, Purchases[PurchaseId] = date du don (voir
 -- MIGRATIONS[3]) ; v4 (2026-11-08, DEV-111) = index des objets : Index[ItemId] = date de la
--- découverte (IndexService), les objets déjà possédés comptés comme découverts (voir MIGRATIONS[4]).
--- Nouvelle version du schéma (ex. v5 de la Partie 2) :
+-- découverte (IndexService), les objets déjà possédés comptés comme découverts (voir MIGRATIONS[4]) ;
+-- v5 (2026-11-08, L-086) = colis posés sur les présentoirs : Boxes rangé par numéro de présentoir, file
+-- BoxQueue des colis sans présentoir (voir MIGRATIONS[5]).
+-- Nouvelle version du schéma (ex. v6 de la Partie 2) :
 --   1. ajouter les champs dans Types/Profile et dans TEMPLATE ci-dessous ;
---   2. ajouter MIGRATIONS[5] (transforme un profil v4 en v5 ; ce qui est seulement
+--   2. ajouter MIGRATIONS[6] (transforme un profil v5 en v6 ; ce qui est seulement
 --      nouveau est complété depuis TEMPLATE, inutile de le recopier) ;
---   3. passer CURRENT_VERSION à 5.
+--   3. passer CURRENT_VERSION à 6.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
+local Balance = require(ReplicatedStorage.Shared.Config.Balance)
 local Catalog = require(ReplicatedStorage.Shared.Config.Items)
 local ProfileTypes = require(ReplicatedStorage.Shared.Types.Profile)
 
@@ -115,26 +118,28 @@ local STORE_NAME = "PlayerData"
 local DEFAULT_WAIT_TIMEOUT = 60
 
 -- Version courante du schéma de sauvegarde (section 9.5 ; v2 : catalogue d'objets v2 ; v3 : boutique
--- Robux ; v4 : index des objets).
-local CURRENT_VERSION = 4
+-- Robux ; v4 : index des objets ; v5 : colis sur les présentoirs).
+local CURRENT_VERSION = 5
 
 -- Attribut du Player lu par le HUD (même nom dans HudController).
 local CASH_ATTRIBUTE = "Cash"
 
--- Modèle d'un nouveau profil, schéma v4 (forme de la section 9.5, plus la boutique Robux et l'index).
+-- Modèle d'un nouveau profil, schéma v5 (forme de la section 9.5, plus la boutique Robux, l'index et la
+-- file des colis à poser).
 -- Il sert aussi à compléter les champs manquants d'un profil existant (Profile:Reconcile de
 -- ProfileStore).
 local TEMPLATE: Data = {
 	Version = CURRENT_VERSION,
 	Cash = 0,
 	Stats = { Speed = 0, Strength = 0 },
-	Upgrades = { Treadmill = 0, Bench = 0, DisplaySlots = 0, UnboxBenches = 0 },
+	Upgrades = { Treadmill = 0, Bench = 0, DisplaySlots = 0, UnboxBenches = 0 }, -- UnboxBenches : sans effet depuis la v5 (L-086)
 	Tools = { Owned = { "Fists" }, Equipped = "Fists" },
 	Cosmetics = { Auras = {}, Trails = {}, EquippedAura = nil, EquippedTrail = nil },
 	Items = {},
 	Display = {},
 	Vault = {},
-	Boxes = {},
+	Boxes = {}, -- v5 : [numéro de présentoir en texte] = colis en attente (UnboxService)
+	BoxQueue = {}, -- v5 : colis sans présentoir, posés dès qu'un présentoir se libère (UnboxService)
 	Tutorial = { Step = 0, Done = false },
 	Lifetime = { Heists = 0, Steals = 0, Defenses = 0, PlaySeconds = 0 },
 	Purchases = {}, -- [PurchaseId] = os.time() du don (MonetizationService)
@@ -306,6 +311,77 @@ local function migrateToV4(data: any, log: MigrationLog)
 	end
 end
 
+-- v4 → v5 (colis sur les présentoirs, 2026-11-08, L-086 ; UnboxService). Plus d'établis : Boxes passe
+-- de [numéro d'établi] à [numéro de présentoir]. Chaque colis en attente sur un établi, dans l'ordre des
+-- numéros d'établi, va sur le premier présentoir débloqué et libre : débloqué = Balance.Display.StartSlots
+-- + niveau Upgrades.DisplaySlots, au plus MaxSlots (les présentoirs bonus de la boutique Robux ne sont pas
+-- connus ici) ; libre = sans objet dans Display (même une entrée douteuse, que DisplayService retirera
+-- plus tard) et sans colis déjà déplacé. Sans place, le colis va dans BoxQueue (nouveau), la file des
+-- colis à poser : UnboxService le pose tout seul dès qu'un présentoir se libère. Aucun colis n'est
+-- perdu : ReadyAt, Tier, Zone, ItemId et Rarity ne changent pas, et un colis illisible part aussi dans
+-- la file, tel quel. Upgrades.UnboxBenches reste dans le profil, sans effet. Un Boxes qui n'est pas une
+-- table (profil abîmé) est gardé tel quel dans la file, avec un avertissement.
+local function migrateToV5(data: any, log: MigrationLog)
+	local queue: { any } = {}
+	local oldQueue = data.BoxQueue
+	if type(oldQueue) == "table" then
+		for _, box in oldQueue do
+			table.insert(queue, box)
+		end
+	elseif oldQueue ~= nil then
+		log(`BoxQueue n'est pas une table ({tostring(oldQueue)}) : repart vide`, true)
+	end
+	local boxes = data.Boxes
+	local moved: { [string]: any } = {}
+	if type(boxes) == "table" then
+		local upgrades = data.Upgrades
+		local level = if type(upgrades) == "table" then upgrades.DisplaySlots else nil
+		local bought = if type(level) == "number" and level == level then math.max(0, math.floor(level)) else 0
+		local unlocked = math.min(Balance.Display.StartSlots + bought, Balance.Display.MaxSlots)
+		local display: { [string]: any } = if type(data.Display) == "table" then data.Display else {}
+		-- Établis dans l'ordre de leur numéro (les clés qui ne sont pas des numéros à la fin).
+		local keys: { any } = {}
+		for key in boxes do
+			table.insert(keys, key)
+		end
+		table.sort(keys, function(a: any, b: any): boolean
+			local na, nb = tonumber(a), tonumber(b)
+			if na ~= nil and nb ~= nil then
+				return na < nb
+			elseif na ~= nil or nb ~= nil then
+				return na ~= nil
+			end
+			return tostring(a) < tostring(b)
+		end)
+		for _, key in keys do
+			local box = boxes[key]
+			local target: string? = nil
+			if type(box) == "table" then
+				for index = 1, unlocked do
+					local slot = tostring(index)
+					if display[slot] == nil and moved[slot] == nil then
+						target = slot
+						break
+					end
+				end
+			end
+			if target ~= nil then
+				moved[target] = box
+				log(`colis de l'établi {tostring(key)} posé sur le présentoir {target}`)
+			else
+				table.insert(queue, box)
+				local why = if type(box) == "table" then "aucun présentoir libre" else "colis illisible"
+				log(`colis de l'établi {tostring(key)} mis dans la file des colis à poser ({why})`, true)
+			end
+		end
+	elseif boxes ~= nil then
+		table.insert(queue, boxes)
+		log(`Boxes n'est pas une table ({tostring(boxes)}) : gardé dans la file des colis à poser`, true)
+	end
+	data.Boxes = moved
+	data.BoxQueue = queue
+end
+
 -- MIGRATIONS[n] fait passer un profil de la version n - 1 à la version n, en place, et écrit ce
 -- qu'elle change avec `log`. Un profil sans Version est traité comme une version 0. La v1 est la
 -- première : rien à transformer, Reconcile complète tout depuis TEMPLATE. Les champs seulement
@@ -315,6 +391,7 @@ local MIGRATIONS: { [number]: (data: any, log: MigrationLog) -> () } = {
 	[2] = migrateToV2,
 	[3] = migrateToV3,
 	[4] = migrateToV4,
+	[5] = migrateToV5,
 }
 
 -- Messages d'expulsion, lus par le joueur : en anglais (L-036).

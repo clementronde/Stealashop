@@ -94,17 +94,18 @@ local List: { RemoteDef } = {
 		RatePerSecond = 5, -- V0 proposé, absent du doc ; maintien vérifié par le service
 	},
 	{
+		-- L-086 : slotIndex = numéro du présentoir (DisplaySlot_xx) où poser ou ouvrir le colis (plus d'établi).
 		Name = "PlaceBox",
 		Direction = "ClientToServer",
 		Reliable = true,
-		Args = { index("benchIndex") },
+		Args = { index("slotIndex") },
 		RatePerSecond = 4, -- V0 proposé, absent du doc
 	},
 	{
 		Name = "OpenBox",
 		Direction = "ClientToServer",
 		Reliable = true,
-		Args = { index("benchIndex") },
+		Args = { index("slotIndex") },
 		RatePerSecond = 4, -- V0 proposé, absent du doc
 	},
 	{
@@ -252,7 +253,7 @@ local List: { RemoteDef } = {
 		Name = "BoxReady",
 		Direction = "ServerToClient",
 		Reliable = true,
-		Args = { index("benchIndex") },
+		Args = { index("slotIndex") },
 	},
 	{
 		-- Seulement après OpenBox : l'identité de l'objet n'est jamais envoyée avant (5.7).
@@ -264,7 +265,7 @@ local List: { RemoteDef } = {
 		Direction = "ServerToClient",
 		Reliable = true,
 		Args = {
-			index("benchIndex"),
+			index("slotIndex"),
 			id("itemUid"),
 			id("itemId"),
 			{ Name = "zone", Kind = "int", Min = 1, Max = MAX_INDEX },

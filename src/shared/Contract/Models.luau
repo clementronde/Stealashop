@@ -29,6 +29,10 @@ export type Part = {
 	-- avertissement (orange, pas compté comme un problème) ; mal nommé ou de la mauvaise classe, un
 	-- problème, comme les autres.
 	Optional: boolean?,
+	-- L-086 (a46) : élément sur le départ, que le code ne lit plus. Absent (en tout ou en partie), rien
+	-- n'est écrit ; présent, il est contrôlé comme les autres (classe, doublons). Pour une série, aucun
+	-- numéro n'est obligatoire.
+	Silent: boolean?,
 }
 
 export type ModelSpec = {
@@ -114,8 +118,11 @@ local Plot: ModelSpec = {
 		{ Name = "Shutter" }, -- Partie 2, placé dès le MVP
 		{ Name = "ShutterButton" }, -- Partie 2, placé dès le MVP
 		{ Name = "DisplaySlot_%02d", From = 1, To = 20 },
-		{ Name = "VaultSlot_%02d", From = 1, To = 3 }, -- 02 et 03 : Partie 2
-		{ Name = "UnboxBench_%02d", From = 1, To = 4 },
+		-- L-086 (2026-11-08) : plus de coffre ni d'établis dans la boutique, le code ne lit plus ces noms
+		-- (colis posés et ouverts sur les présentoirs). Facultatifs et muets en attendant que Clément les
+		-- retire du modèle et des 6 boutiques du hub (L-086, point 4).
+		{ Name = "VaultSlot_%02d", From = 1, To = 3, Silent = true },
+		{ Name = "UnboxBench_%02d", From = 1, To = 4, Silent = true },
 		{ Name = "TrapSlot_%02d", From = 1, To = 4 }, -- Partie 2
 		{ Name = "CashPad", Tag = "CashPad" },
 		{ Name = "DepositZone", Class = "BasePart" },

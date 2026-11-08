@@ -6,7 +6,10 @@
 
 local DeepFreeze = require(script.Parent.DeepFreeze)
 
-export type UpgradeId = "Treadmill" | "Bench" | "DisplaySlots" | "UnboxBenches"
+-- L-086 (2026-11-08) : plus d'établis d'ouverture, les colis s'ouvrent sur les présentoirs.
+-- L'amélioration « Workbenches » (UnboxBenches) n'est plus vendue ; son niveau reste dans le profil
+-- (Upgrades.UnboxBenches, Types/Profile), sans effet.
+export type UpgradeId = "Treadmill" | "Bench" | "DisplaySlots"
 
 export type Upgrade = {
 	Id: UpgradeId,
@@ -24,8 +27,6 @@ local List: { Upgrade } = {
 	{ Id = "Bench", DisplayName = "Weight Bench", EffectPerLevel = 0.5, MaxLevel = 20, BaseCost = 200, Growth = 1.9 },
 	-- +1 présentoir, de 4 à 20 (Balance.Display)
 	{ Id = "DisplaySlots", DisplayName = "Display Stands", EffectPerLevel = 1, MaxLevel = 16, BaseCost = 500, Growth = 2.5 },
-	-- +1 établi d'ouverture, de 1 à 4 (Balance.Unbox)
-	{ Id = "UnboxBenches", DisplayName = "Workbenches", EffectPerLevel = 1, MaxLevel = 3, BaseCost = 2_000, Growth = 12 },
 }
 
 local ById: { [string]: Upgrade } = {}

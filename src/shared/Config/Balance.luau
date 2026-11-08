@@ -120,6 +120,8 @@ local Balance = {
 
 	-- 5.7 et 7.5 : établis et révélation. Attente par rareté : Rarities.
 	Unbox = {
+		-- Plus lus par le code depuis L-086 (2026-11-08) : les colis s'ouvrent sur les présentoirs, sans
+		-- établi. Gardés pour la trace des anciens profils (Upgrades.UnboxBenches).
 		StartBenches = 1,
 		MaxBenches = 4,
 		FullRevealDuration = 4, -- version complète (Rare et plus), jusqu'à l'objet

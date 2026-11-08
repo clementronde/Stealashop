@@ -413,6 +413,9 @@ local function hasAnyPart(root: Instance, parts: { Part }): boolean
 	local index = indexOf(root)
 	for _, part in parts do
 		local from = part.From
+		if part.Silent then
+			continue -- L-086 : un élément sur le départ ne fait pas d'un bloc un modèle livré
+		end
 		if from then
 			for i = from, part.To or from do
 				if index[seriesName(part, i)] then
@@ -464,6 +467,9 @@ local function checkSeries(category: string, root: Instance, label: string, part
 	local from = part.From or 1
 	local to = part.To or from
 	local min = part.Min or to
+	if part.Silent then
+		min = from - 1 -- L-086 : aucun numéro obligatoire, rien d'écrit s'ils manquent
+	end
 	local missing: { string } = {}
 	local byTier: { [string]: number } = {}
 	local tiersComplete = true
@@ -490,7 +496,7 @@ local function checkSeries(category: string, root: Instance, label: string, part
 	end
 
 	local noteText = if part.Note then ` ({part.Note})` else ""
-	if #missing == min - from + 1 then
+	if #missing > 0 and #missing == min - from + 1 then
 		return `{seriesName(part, from)} à {seriesName(part, min)}`
 	elseif #missing > 0 then
 		problem(category, `{label} : {listNames(missing)} introuvable(s){noteText}`)
@@ -544,7 +550,9 @@ checkParts = function(category: string, root: Instance, label: string, parts: { 
 			if found == nil then
 				local noteText = if part.Note then ` ({part.Note})` else ""
 				local near = nearName(index, part.Name)
-				if part.Optional and near == nil then
+				if part.Silent then
+					-- L-086 : sur le départ, rien à écrire.
+				elseif part.Optional and near == nil then
 					-- Facultatif et vraiment absent : le code a un repli, ce n'est pas un problème.
 					warning(category, `{label}.{part.Name} introuvable{noteText}`)
 				else

@@ -1,40 +1,58 @@
 --!strict
--- UnboxService (DEV-019) : établis d'ouverture, attente selon la rareté, ouverture des colis PNJ
--- (Partie 1, sections 5.6, 5.7, 7.3, 7.5, 9.4 et 9.5).
+-- UnboxService (DEV-019, L-086) : colis posés et ouverts sur les présentoirs, attente selon la
+-- rareté, ouverture des colis PNJ (Partie 1, sections 5.6, 5.7, 5.8, 7.3, 9.4 et 9.5).
+--
+-- Décision de Clément du 2026-11-08 (liaison L-086) : plus d'établis ni de coffre dans la boutique.
+-- Le joueur pose son colis sur un présentoir libre et débloqué (DisplaySlot_xx, contrat 10.4), le
+-- colis attend là, s'ouvre là, puis l'objet reste exposé sur ce même présentoir.
 --
 -- Rôle :
---   - Établis : les UnboxBench_01 à _04 (Attachments, contrat 10.4) de la parcelle du joueur.
---     Débloqués : Balance.Unbox.StartBenches + niveau Upgrades.UnboxBenches du profil, au plus
---     Balance.Unbox.MaxBenches (7.5 : de 1 à 4).
---   - PlaceBox(benchIndex) : le joueur pose le colis PNJ qu'il porte sur un établi débloqué et
---     libre de sa parcelle, à portée. Juste avant, AntiCheatService.Verify (DEV-060) contrôle tout
---     de suite son dernier déplacement (téléport chez lui, colis sur la tête) et le trajet depuis
---     le point où ce portage a commencé (OnCarryStarted : au rayon, ou là où il a ramassé le colis
---     au sol) : sanctionné, le colis vient de revoler vers son rayon et rien n'est posé. Puis
---     CarryService.Consume le lui retire et le colis est écrit dans le profil :
---     Boxes["<n>"] = { Tier, Zone, ItemId, Rarity, ReadyAt } (9.5, clé = numéro de l'établi en
---     texte, Types/Profile), avec ReadyAt = heure serveur + attente de sa rareté (table 7.3,
---     Config.Rarities[..].OpenDelay).
+--   - Présentoirs : ceux de la parcelle du joueur, tels que DisplayService les trouve et les juge
+--     (DisplayService.GetSlots, GetSlotStates : débloqués = StartSlots + niveau DisplaySlots, plus les
+--     présentoirs bonus de la boutique Robux). Un présentoir qui porte un colis en attente compte comme
+--     occupé pour DisplayService : aucun objet ne s'y pose, et rien n'y est volable (les colis ne sont
+--     pas volables, 6.1). L'ancienne amélioration « Workbenches » (Upgrades.UnboxBenches) ne sert plus
+--     à rien : le nombre de colis ouverts en même temps n'est limité que par les présentoirs libres.
+--   - PlaceBox(slotIndex) : le joueur pose le colis PNJ qu'il porte sur un présentoir débloqué et
+--     libre (ni objet ni colis) de sa parcelle, à portée. Juste avant, AntiCheatService.Verify
+--     (DEV-060) contrôle tout de suite son dernier déplacement (téléport chez lui, colis sur la tête)
+--     et le trajet depuis le point où ce portage a commencé (OnCarryStarted : au rayon, ou là où il a
+--     ramassé le colis au sol) : sanctionné, le colis vient de revoler vers son rayon et rien n'est
+--     posé. Puis CarryService.Consume le lui retire et le colis est écrit dans le profil :
+--     Boxes["<n>"] = { Tier, Zone, ItemId, Rarity, ReadyAt } (9.5, profil v5 : clé = numéro du
+--     présentoir en texte, Types/Profile), avec ReadyAt = heure serveur + attente de sa rareté
+--     (table 7.3, Config.Rarities[..].OpenDelay).
+--   - Présentoirs pleins (DisplayService garde la règle) : sans présentoir libre et débloqué, pas de
+--     pose ; le joueur qui porte un colis près de ses présentoirs reçoit un Notify (MESSAGES.StandsFull)
+--     une fois par colis porté, et PlaceBox sur un présentoir pris lui renvoie le même message.
 --   - Braquage réussi : Lifetime.Heists + 1 dans le profil (9.5) au même moment, d'un seul tenant
---     avec l'écriture du colis. Un braquage réussit quand le colis volé arrive sur l'établi (5.6
+--     avec l'écriture du colis. Un braquage réussit quand le colis volé arrive sur le présentoir (5.6
 --     « Arrivée », 14.2 étape 6, réussite « Consumed » de Types/Carry) : avant, le colis peut
 --     encore retourner sur son rayon (rattrapé, mort, départ, anomalie : 5.5, 5.6) ou tomber au
 --     sol (coup de batte, 6.2). Une seule fois par colis : un colis n'est consommé qu'une fois.
 --     Celui qui ramasse un colis tombé au sol et le pose compte le braquage, pas celui qui l'a
 --     perdu.
 --   - L'attente est horodatée : elle continue hors ligne et d'un serveur à l'autre. Au retour du
---     joueur (profil chargé et parcelle attribuée), ses colis réapparaissent sur leurs établis, et
+--     joueur (profil chargé et parcelle attribuée), ses colis réapparaissent sur leurs présentoirs, et
 --     BoxReady part pour ceux qui sont déjà prêts.
---   - Attente écoulée : BoxReady(benchIndex) au propriétaire.
---   - OpenBox(benchIndex) : attente écoulée (heure serveur), joueur sur sa parcelle, à portée de
---     l'établi → amélioration du colis tirée (plus bas), nouvel objet dans Items sous un uid unique
---     ({ Id = ItemId, Source = "NPC", At = os.time(), Zone }), l'établi se libère,
---     UnboxReveal(benchIndex, itemUid, itemId, zone, tier, startRarity, upgrades) au joueur, puis
---     DisplayService.PlaceAuto(player, itemUid).
---   - Présentoirs pleins (PlaceAuto renvoie nil) : l'objet reste dans l'inventaire et le joueur
---     reçoit un Notify (MESSAGES.StandsFull, catégorie « Info ») au moment où l'objet se révèle
---     chez lui, pas avant : même délai que l'annonce plus bas (le nom de l'objet ne doit pas
---     arriver avant la révélation).
+--   - File des colis à poser (BoxQueue, profil v5) : un colis qui n'a pas de présentoir (migration
+--     v4 → v5 sans place libre, ou présentoir absent de la parcelle au retour du joueur) y attend, sans
+--     jamais être perdu. Dès qu'un présentoir débloqué se libère, le plus ancien y est posé tout seul
+--     (contrôle une fois par seconde), avec son ReadyAt d'origine, et le joueur est prévenu
+--     (MESSAGES.QueuePlaced). Pas de nouveau braquage compté : il l'a été à la première pose.
+--   - Attente écoulée : BoxReady(slotIndex) au propriétaire.
+--   - OpenBox(slotIndex) : attente écoulée (heure serveur), joueur sur sa parcelle, à portée du
+--     présentoir → amélioration du colis tirée (plus bas), nouvel objet dans Items sous un uid unique
+--     ({ Id = ItemId, Source = "NPC", At = os.time(), Zone }), le colis quitte Boxes,
+--     UnboxReveal(slotIndex, itemUid, itemId, zone, tier, startRarity, upgrades) au joueur, puis
+--     DisplayService.PlaceItem(player, itemUid, slotIndex) : l'objet est exposé sur ce même présentoir
+--     et rapporte tout de suite.
+--   - Cas d'erreur (le présentoir ne peut plus prendre l'objet : présentoir bonus dont le gamepass
+--     n'est plus possédé, boutique pas encore installée par DisplayService) : l'objet va sur le
+--     présentoir libre le plus proche (DisplayService.PlaceAuto), sinon dans l'inventaire, et le joueur
+--     reçoit un Notify (MESSAGES.ToInventory, catégorie « Info ») au moment où l'objet se révèle chez
+--     lui, pas avant (le nom de l'objet ne doit pas arriver avant la révélation). Dans ce cas seulement,
+--     l'ouverture est refusée si l'objet n'aurait ni présentoir ni place dans l'inventaire.
 --   - L'objet exact reste caché jusqu'à l'ouverture (5.7) : l'ItemId ne quitte le serveur que dans
 --     UnboxReveal. Aucun attribut, nom ni modèle d'objet ne le montre avant.
 --
@@ -67,27 +85,30 @@
 --
 -- Dans le monde (visible par tous, rien de secret : la rareté se voit dès qu'on soulève le colis,
 -- 5.6) :
---   - sur l'établi, une copie du modèle BOX_<Tier> de Clément (cherché dans ReplicatedStorage/Assets,
---     puis ServerStorage/Assets), sa pièce Tint teinte à la couleur de la rareté ; sans lui, un bloc
---     V0 de cette couleur. La copie s'appelle BenchBox_<nn> (sans le préfixe BOX_, pour que le
---     ContractChecker ne la prenne pas pour un modèle livré), est rangée dans la parcelle et porte
---     les attributs Rarity et ReadyAt ;
+--   - sur le présentoir, une copie du modèle BOX_<Tier> de Clément (cherché dans
+--     ReplicatedStorage/Assets, puis ServerStorage/Assets), sa pièce Tint teinte à la couleur de la
+--     rareté ; sans lui, un bloc V0 de cette couleur. La copie s'appelle StandBox_<nn> (sans le préfixe
+--     BOX_, pour que le ContractChecker ne la prenne pas pour un modèle livré), est rangée dans la
+--     parcelle et porte les attributs Rarity et ReadyAt. Son pivot (en bas au centre, 10.1) se pose sur
+--     l'Attachment DisplaySlot_xx, là où DisplayService posera l'objet ;
 --   - au-dessus, le minuteur : copie de BB_OpenTimer (ReplicatedStorage/Assets/UI, élément Label),
---     accrochée au pied du colis (le dessus de l'établi, où se pose son pivot : le
+--     accrochée au pied du colis (le dessus du présentoir, où se pose son pivot : le
 --     StudsOffsetWorldSpace de Clément part de là, liaison L-027), sinon un billboard V0. Le serveur
 --     y écrit le temps restant (m:ss), puis « Ready! » ;
---   - attribut UnboxState sur chaque UnboxBench_xx d'une parcelle attribuée, lu par UnboxController :
---     "Locked" (pas encore débloqué), "Free", "Waiting" (colis en attente), "Ready" (colis prêt).
---     Retiré quand la parcelle se libère.
+--   - attribut UnboxState sur chaque DisplaySlot_xx d'une parcelle attribuée, lu par UnboxController :
+--     "Locked" (pas encore débloqué), "Free" (ni objet ni colis), "Taken" (un objet exposé, ou volé
+--     en ce moment), "Waiting" (colis en attente), "Ready" (colis prêt). Remis à jour 4 fois par
+--     seconde (un objet posé ou retiré par DisplayService, un présentoir acheté) ; retiré quand la
+--     parcelle se libère.
 --
 -- Remotes : PlaceBox et OpenBox (client → serveur, forme et débit déjà contrôlés par Net) ;
 -- BoxReady, UnboxReveal et Notify (serveur → client).
 --
 -- API (côté serveur) :
 --   UnboxService.Refresh(player)
---       Recalcule les établis débloqués (attribut UnboxState), à appeler après l'achat d'un niveau
---       UnboxBenches (ShopService, DEV-033). PlaceBox relit toujours le profil : ce n'est que
---       l'affichage côté client qui attend ce rafraîchissement.
+--       Recalcule tout de suite l'attribut UnboxState des présentoirs (après l'achat d'un présentoir,
+--       ShopService) ; sinon la boucle le fait au plus 0,25 s plus tard. PlaceBox relit toujours le
+--       profil : ce n'est que l'affichage côté client qui attend ce rafraîchissement.
 --   UnboxService.GetOpenDelay(player, box) -> number
 --       Attente d'ouverture, en secondes, du colis qu'on pose (box : Tier, Zone, ItemId, Rarity).
 --       Par défaut, celle de sa rareté (7.3). TutorialService la remplace pour le premier colis
@@ -104,21 +125,23 @@
 --       cran par cran (vide : aucun cran). Pur, sans yield ; rng = un Random (celui du service par
 --       défaut). Appelé par OpenBox ; exposé pour les bancs d'essai et la télémétrie.
 --   UnboxService.OnBoxPlaced(listener) -> déconnexion
---       listener(player, benchIndex, box) après chaque colis posé (tutoriel, télémétrie). box est
---       une copie du colis sauvegardé, ItemId compris : ne jamais l'envoyer à un client.
+--       listener(player, slotIndex, box) après chaque colis posé par le joueur (tutoriel,
+--       télémétrie ; pas pour un colis de la file posé tout seul). box est une copie du colis
+--       sauvegardé, ItemId compris : ne jamais l'envoyer à un client.
 --   UnboxService.OnBoxOpened(listener) -> déconnexion
---       listener(player, benchIndex, itemUid, itemId, revealDelay) après chaque ouverture (tutoriel,
+--       listener(player, slotIndex, itemUid, itemId, revealDelay) après chaque ouverture (tutoriel,
 --       télémétrie, index des objets) ; itemId = l'objet final, après l'amélioration ; revealDelay =
---       secondes jusqu'à l'objet révélé chez celui qui ouvre (le délai de l'annonce et du message des
---       présentoirs pleins), pour un message qui ne doit pas arriver avant la révélation (DEV-111).
+--       secondes jusqu'à l'objet révélé chez celui qui ouvre (le délai de l'annonce et du message de
+--       l'inventaire), pour un message qui ne doit pas arriver avant la révélation (DEV-111).
 --   Boutique Robux (DEV-100, MonetizationService : « Ouvrir maintenant », « Ouverture rapide ») :
 --   UnboxService.GetWaiting(player) -> { [number]: number }
---       Colis du joueur pas encore prêts, affichés sur leurs établis : [numéro d'établi] = heure
---       serveur (ReadyAt) où chacun le sera. Vide sans colis en attente.
---   UnboxService.SkipWait(player, benchIndex, seconds) -> number?
+--       Colis du joueur pas encore prêts, affichés sur leurs présentoirs : [numéro de présentoir] =
+--       heure serveur (ReadyAt) où chacun le sera. Vide sans colis en attente.
+--   UnboxService.SkipWait(player, slotIndex, seconds) -> number?
 --       Avance de `seconds` (au plus jusqu'à maintenant) l'heure d'ouverture du colis en attente sur
---       cet établi, dans le profil et sur l'établi ; renvoie l'attente restante (0 = prêt : BoxReady
---       part tout de suite), nil s'il n'y a pas de colis en attente sur cet établi. Sans yield.
+--       ce présentoir, dans le profil et sur le présentoir ; renvoie l'attente restante (0 = prêt :
+--       BoxReady part tout de suite), nil s'il n'y a pas de colis en attente sur ce présentoir. Sans
+--       yield.
 
 local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
@@ -144,10 +167,10 @@ local PlotService = require(script.Parent.PlotService)
 
 type Box = ProfileTypes.Box
 type Data = ProfileTypes.Data
-type BenchState = "Locked" | "Free" | "Waiting" | "Ready"
+type StandState = "Locked" | "Free" | "Taken" | "Waiting" | "Ready"
 
--- Ce qu'UnboxService utilise de CarryService (a11) et de DisplayService (a14), écrits dans la même
--- vague. Payload d'un colis PNJ : { Kind = "NPCBox", Tier, Zone, Rarity, ItemId, StoreId, SlotId }.
+-- Ce qu'UnboxService utilise de CarryService (a11) et de DisplayService (a14, a46). Payload d'un colis
+-- PNJ : { Kind = "NPCBox", Tier, Zone, Rarity, ItemId, StoreId, SlotId }.
 type CarryApi = {
 	IsCarrying: (player: Player) -> boolean,
 	GetPayload: (player: Player) -> any,
@@ -157,19 +180,23 @@ type CarryApi = {
 }
 type DisplayApi = {
 	PlaceAuto: (player: Player, itemUid: string) -> number?,
-	-- Place pour un objet de plus, présentoirs bonus de la boutique Robux compris (DEV-100) ; sans elle
-	-- (bouchons des bancs d'essai), le compte des présentoirs de base ci-dessous.
-	HasRoom: ((player: Player) -> boolean)?,
+	PlaceItem: (player: Player, itemUid: string, slotIndex: number) -> (boolean, string?),
+	-- Place pour un objet de plus, présentoirs bonus de la boutique Robux compris (DEV-100).
+	HasRoom: (player: Player) -> boolean,
+	-- Présentoirs de la parcelle du joueur ([numéro] = Attachment DisplaySlot_xx, bonus posés compris)
+	-- et leur état : "Free", "Locked", "Taken" (objet), "Boxed" (colis), "NoSlot" (L-086).
+	GetSlots: (player: Player) -> { [number]: Attachment },
+	GetSlotStates: (player: Player) -> { [number]: string },
 }
 
 local CarryService: CarryApi = require(script.Parent.CarryService) :: any
 local DisplayService: DisplayApi = require(script.Parent.DisplayService) :: any
 
-export type PlacedListener = (player: Player, benchIndex: number, box: Box) -> ()
-export type OpenedListener = (player: Player, benchIndex: number, itemUid: string, itemId: string, revealDelay: number) -> ()
+export type PlacedListener = (player: Player, slotIndex: number, box: Box) -> ()
+export type OpenedListener = (player: Player, slotIndex: number, itemUid: string, itemId: string, revealDelay: number) -> ()
 
--- Colis affiché sur un établi.
-type Slot = {
+-- Colis affiché sur un présentoir.
+type Shown = {
 	model: Model,
 	label: TextLabel?, -- texte du minuteur
 	readyAt: number,
@@ -180,16 +207,18 @@ type Slot = {
 -- Parcelle d'un joueur présent, telle que ce service l'affiche.
 type Session = {
 	plot: Model,
-	benches: { [number]: Attachment },
-	slots: { [number]: Slot },
+	slots: { [number]: Attachment }, -- présentoirs de la parcelle (DisplayService.GetSlots)
+	shown: { [number]: Shown }, -- colis affichés, par présentoir
+	states: { [number]: StandState? }, -- dernier UnboxState écrit sur chaque présentoir
+	fullNotified: any, -- payload du colis porté pour lequel « présentoirs pleins » est déjà parti
+	queueWarned: boolean, -- colis illisible de la file déjà signalé
 }
 
 -- Début du portage d'un colis PNJ (DEV-060), pour le contrôle du trajet à la pose : la table du
 -- payload (celle de CarryService), la position du HumanoidRootPart et os.clock() à ce moment.
 type CarryStart = { Payload: any, From: Vector3, At: number }
 
--- Contrat (10.3, 10.4 et 2.2).
-local BENCH_FORMAT = "UnboxBench_%02d"
+-- Contrat (10.3 et 2.2).
 local BOX_PREFIX = "BOX_" -- BOX_Standard, BOX_Premium, BOX_Luxe
 local TINT = "Tint" -- pièce du colis recolorée selon la rareté
 local TIMER_BILLBOARD = "BB_OpenTimer"
@@ -202,18 +231,20 @@ local NPC_BOX_KIND = "NPCBox"
 local STATE_ATTRIBUTE = "UnboxState"
 local RARITY_ATTRIBUTE = "Rarity"
 local READY_AT_ATTRIBUTE = "ReadyAt"
-local BOX_MODEL_FORMAT = "BenchBox_%02d"
+local BOX_MODEL_FORMAT = "StandBox_%02d"
 local TIMER_NAME = "OpenTimer"
 local TIMER_POINT = "TimerPoint"
 
--- V0 proposé, absent du doc : portée (studs) de l'invite d'un établi, la même que celle
+-- V0 proposé, absent du doc : portée (studs) de l'invite d'un présentoir, la même que celle
 -- d'UnboxController, et marge du serveur pour la gigue réseau. Le serveur accepte PlaceBox et
--- OpenBox jusqu'à PROMPT_DISTANCE + REACH_TOLERANCE entre le HumanoidRootPart et l'établi. Valeurs
--- dans Config.Unbox, partagées avec le client (OpenNextButton suit la même règle).
+-- OpenBox jusqu'à PROMPT_DISTANCE + REACH_TOLERANCE entre le HumanoidRootPart et le présentoir.
+-- Valeurs dans Config.Unbox, partagées avec le client (OpenNextButton suit la même règle).
 local PROMPT_DISTANCE = Unbox.PromptDistance
 local REACH_TOLERANCE = Unbox.ReachTolerance
--- V0 proposé, absent du doc : cadence (s) de la boucle qui fait avancer les minuteurs.
+-- V0 proposé, absent du doc : cadence (s) de la boucle qui fait avancer les minuteurs et remet à jour
+-- UnboxState ; cadence (s) de la file des colis à poser et du message « présentoirs pleins ».
 local TICK = 0.25
+local SLOW_TICK = 1
 -- V0 proposé, absent du doc : texte du minuteur quand le colis est prêt, en anglais (L-036).
 local READY_TEXT = "Ready!"
 -- V0 proposé, absent du doc : bloc de remplacement de BOX_<Tier> (studs).
@@ -225,15 +256,17 @@ local V0_TIMER_MAX_DISTANCE = 60
 
 -- Messages lus par le joueur (Notify), en anglais (L-036). V0 proposé, absent du doc.
 local MESSAGES = {
-	Locked = "This workbench is locked: buy the Workbenches upgrade.",
-	Busy = "This workbench is already in use.",
+	Locked = "This stand is locked: upgrade your Display Stands.",
+	Busy = "This stand is already in use.",
+	StandsFull = "All your stands are full: make room to place your box.",
 	NotReady = "This box isn't ready yet.",
 	InventoryFull = "Inventory full: display or sell an item before opening this box.",
 	-- %s = nom de l'objet (Config.Items, DisplayName)
-	StandsFull = "Your display stands are full: %s went to your inventory.",
+	ToInventory = "Your display stands are full: %s went to your inventory.",
+	QueuePlaced = "Your waiting box is now on a free stand.",
 }
--- Catégorie du Notify des présentoirs pleins : l'objet est bien gardé, rien n'est refusé.
-local STANDS_FULL_KIND = "Info"
+-- Catégorie du Notify de l'inventaire et de la file : l'objet ou le colis est bien gardé.
+local INFO_KIND = "Info"
 
 local IS_STUDIO = RunService:IsStudio()
 local REACH = PROMPT_DISTANCE + REACH_TOLERANCE
@@ -241,7 +274,6 @@ local REACH = PROMPT_DISTANCE + REACH_TOLERANCE
 local UnboxService = {}
 
 local sessions: { [Player]: Session } = {}
-local benchCache: { [Model]: { [number]: Attachment } } = {}
 local placedListeners: { PlacedListener } = {}
 local openedListeners: { OpenedListener } = {}
 local carryStarts: { [Player]: CarryStart } = {}
@@ -281,23 +313,16 @@ local function subscribe<T>(list: { T }, listener: T): () -> ()
 	end
 end
 
--- Clé d'un établi dans Boxes : son numéro écrit en texte (Types/Profile).
-local function benchKey(index: number): string
+-- Clé d'un présentoir dans Boxes : son numéro écrit en texte (Types/Profile).
+local function slotKey(index: number): string
 	return tostring(index)
 end
 
--- Niveau d'amélioration lu dans le profil (entier ≥ 0).
-local function level(value: any): number
-	if type(value) ~= "number" or value ~= value or value < 0 then
-		return 0
-	end
-	return math.floor(value)
-end
-
--- Établis débloqués (7.5) : StartBenches + niveau acheté, au plus MaxBenches.
-local function unlockedCount(data: Data): number
-	local unbox = Balance.Unbox
-	return math.min(unbox.StartBenches + level(data.Upgrades.UnboxBenches), unbox.MaxBenches)
+-- File des colis à poser (v5) ; une file absente ou abîmée (Reconcile ne remplace pas une valeur du
+-- mauvais type) est signalée et ignorée, jamais écrasée.
+local function queueOf(data: Data): { Box }?
+	local queue = (data :: any).BoxQueue
+	return if type(queue) == "table" then queue else nil
 end
 
 -- Raison du refus si `content` (colis porté ou sauvegardé) est mal formé, sinon nil.
@@ -320,6 +345,15 @@ local function checkContent(content: any): string?
 	return nil
 end
 
+-- checkContent, plus l'heure d'ouverture d'un colis sauvegardé.
+local function checkSaved(box: any): string?
+	local problem = checkContent(box)
+	if problem == nil and (type(box.ReadyAt) ~= "number" or box.ReadyAt ~= box.ReadyAt) then
+		problem = `ReadyAt invalide ({tostring(box.ReadyAt)})`
+	end
+	return problem
+end
+
 local function ownsPlot(player: Player, plot: Model): boolean
 	return PlotService.GetPlot(player) == plot and plot:GetAttribute(OWNER_ATTRIBUTE) == player.UserId
 end
@@ -330,45 +364,30 @@ local function rootOf(player: Player): BasePart?
 	return if root and root:IsA("BasePart") then root else nil
 end
 
-local function inReach(player: Player, bench: Attachment): boolean
+local function inReach(player: Player, slot: Attachment): boolean
 	local root = rootOf(player)
 	if root == nil then
 		return false
 	end
-	return (root.Position - bench.WorldPosition).Magnitude <= REACH
+	return (root.Position - slot.WorldPosition).Magnitude <= REACH
 end
 
--- 5.8 : 30 objets non exposés au plus (Balance.Display.InventoryMax). V0 proposé, absent du doc :
--- l'ouverture n'est refusée que si le nouvel objet ne trouverait ni présentoir libre ni place dans
--- l'inventaire ; le colis reste alors prêt sur son établi. Présentoirs débloqués : StartSlots +
--- niveau Upgrades.DisplaySlots, au plus MaxSlots (5.8, 7.5), plus les présentoirs bonus du gamepass
--- (DEV-100) : DisplayService.HasRoom fait le compte quand il est là. Un objet du coffre-fort (Vault)
--- n'est pas compté dans l'inventaire.
-local function inventoryFull(player: Player, data: Data): boolean
-	local hasRoom = DisplayService.HasRoom
-	if hasRoom then
-		return not hasRoom(player)
+-- État d'un présentoir selon DisplayService (voir DisplayApi), "NoSlot" s'il ne répond pas.
+local function slotStates(player: Player): { [number]: string }
+	local ok, states = pcall(DisplayService.GetSlotStates, player)
+	if ok and type(states) == "table" then
+		return states
 	end
-	local display = Balance.Display
-	local placed: { [string]: boolean } = {}
-	local displayed = 0
-	for _, uid in data.Display do
-		if not placed[uid] then
-			placed[uid] = true
-			displayed += 1
-		end
-	end
-	for _, uid in data.Vault do
-		placed[uid] = true
-	end
-	local stored = 0
-	for uid in data.Items do
-		if not placed[uid] then
-			stored += 1
-		end
-	end
-	local slots = math.min(display.StartSlots + level(data.Upgrades.DisplaySlots), display.MaxSlots)
-	return displayed >= slots and stored >= display.InventoryMax
+	warn(`[UnboxService] DisplayService.GetSlotStates ({player.Name}) : {tostring(states)}`)
+	return {}
+end
+
+-- 5.8 : 30 objets non exposés au plus (Balance.Display.InventoryMax). Ne sert qu'au cas d'erreur de
+-- l'ouverture (l'objet ne peut pas rester sur son présentoir) : DisplayService.HasRoom fait le compte
+-- (présentoirs bonus compris ; un présentoir qui porte un colis compte comme occupé).
+local function inventoryFull(player: Player): boolean
+	local ok, room = pcall(DisplayService.HasRoom, player)
+	return ok and room == false
 end
 
 -- Braquage réussi (en-tête) : Lifetime.Heists + 1. Sans yield. Un Lifetime illisible (profil
@@ -530,32 +549,8 @@ local function announce(player: Player, itemId: string, rarityId: string, upgrad
 end
 
 ------------------------------------------------------------------------------
--- Établis et colis affichés
+-- Colis affichés sur les présentoirs
 ------------------------------------------------------------------------------
-
--- Établis de `plot`, cherchés une fois par parcelle (la structure de la map ne change pas).
-local function benchesOf(plot: Model): { [number]: Attachment }
-	local cached = benchCache[plot]
-	if cached then
-		return cached
-	end
-	local benches: { [number]: Attachment } = {}
-	local missing: { string } = {}
-	for index = 1, Balance.Unbox.MaxBenches do
-		local name = string.format(BENCH_FORMAT, index)
-		local found = Find.path(plot, name)
-		if found ~= nil and found:IsA("Attachment") then
-			benches[index] = found :: Attachment
-		else
-			table.insert(missing, name)
-		end
-	end
-	if #missing > 0 then
-		warn(`[UnboxService] {plot:GetFullName()} : {table.concat(missing, ", ")} absent(s) ou pas un Attachment (contrat 10.4), établi(s) inutilisable(s)`)
-	end
-	benchCache[plot] = benches
-	return benches
-end
 
 -- Premier élément nommé `name` dans ReplicatedStorage/Assets, puis dans ServerStorage/Assets.
 local function findAsset(name: string): Instance?
@@ -612,9 +607,9 @@ local function cloneBoxTemplate(tier: string): (Model?, BasePart?)
 	return model, anchor
 end
 
--- Modèle du colis posé sur l'établi `index`, teint à la couleur de sa rareté, et la pièce qui
+-- Modèle du colis posé sur le présentoir `index`, teint à la couleur de sa rareté, et la pièce qui
 -- porte le minuteur.
-local function buildBoxModel(index: number, box: Box, benchCFrame: CFrame): (Model, BasePart)
+local function buildBoxModel(index: number, box: Box, slotCFrame: CFrame): (Model, BasePart)
 	local color = Rarities.ById[box.Rarity].Color
 	local cloned, clonedAnchor = cloneBoxTemplate(box.Tier)
 	local model: Model
@@ -625,7 +620,7 @@ local function buildBoxModel(index: number, box: Box, benchCFrame: CFrame): (Mod
 		if tint ~= nil and tint:IsA("BasePart") then
 			(tint :: BasePart).Color = color
 		end
-		model:PivotTo(benchCFrame) -- pivot en bas au centre (10.1), posé sur le dessus de l'établi
+		model:PivotTo(slotCFrame) -- pivot en bas au centre (10.1), posé sur le présentoir
 	else
 		model = Instance.new("Model")
 		local block = Instance.new("Part")
@@ -634,7 +629,7 @@ local function buildBoxModel(index: number, box: Box, benchCFrame: CFrame): (Mod
 		block.Color = color
 		block.Material = Enum.Material.SmoothPlastic
 		prepare(block)
-		block.CFrame = benchCFrame * CFrame.new(0, V0_BOX_SIZE.Y / 2, 0)
+		block.CFrame = slotCFrame * CFrame.new(0, V0_BOX_SIZE.Y / 2, 0)
 		block.Parent = model
 		model.PrimaryPart = block
 		anchor = block
@@ -646,7 +641,7 @@ local function buildBoxModel(index: number, box: Box, benchCFrame: CFrame): (Mod
 end
 
 -- Minuteur au-dessus du colis : copie de BB_OpenTimer, accrochée au pied du colis (`base` : le
--- dessus de l'établi, où se pose le pivot du colis, avec ses axes ; le StudsOffsetWorldSpace de
+-- dessus du présentoir, où se pose le pivot du colis, avec ses axes ; le StudsOffsetWorldSpace de
 -- Clément part de là, quelle que soit l'orientation de la pièce `anchor`) ; sinon billboard V0,
 -- accroché au centre de son bloc. Renvoie son texte.
 local function buildTimer(anchor: BasePart, base: CFrame): TextLabel?
@@ -692,33 +687,41 @@ local function timerText(remaining: number): string
 	return string.format("%d:%02d", math.floor(seconds / 60), seconds % 60)
 end
 
-local function setLabel(slot: Slot, text: string)
-	if slot.text == text then
+local function setLabel(shown: Shown, text: string)
+	if shown.text == text then
 		return
 	end
-	slot.text = text
-	local label = slot.label
+	shown.text = text
+	local label = shown.label
 	if label then
 		label.Text = text
 	end
 end
 
-local function setState(session: Session, index: number, state: BenchState?)
-	local bench: Attachment? = session.benches[index]
-	if bench then
-		bench:SetAttribute(STATE_ATTRIBUTE, state)
+local function setState(session: Session, index: number, state: StandState?)
+	if session.states[index] == state then
+		return
+	end
+	session.states[index] = state
+	local slot: Attachment? = session.slots[index]
+	if slot then
+		slot:SetAttribute(STATE_ATTRIBUTE, state)
 	end
 end
 
-local function stateFor(session: Session, data: Data, index: number): BenchState
-	local slot = session.slots[index]
-	if slot then
-		return if slot.ready then "Ready" else "Waiting"
+-- UnboxState du présentoir `index` : son colis d'abord, puis ce qu'en dit DisplayService.
+local function stateFor(session: Session, data: Data, index: number, displayState: string?): StandState?
+	local shown = session.shown[index]
+	if shown then
+		return if shown.ready then "Ready" else "Waiting"
 	end
-	if data.Boxes[benchKey(index)] ~= nil then
-		return "Waiting" -- colis sauvegardé mais illisible (déjà signalé) : l'établi reste occupé
+	if data.Boxes[slotKey(index)] ~= nil or displayState == "Boxed" then
+		return "Waiting" -- colis sauvegardé mais illisible (déjà signalé) : le présentoir reste occupé
 	end
-	return if index <= unlockedCount(data) then "Free" else "Locked"
+	if displayState == "Free" or displayState == "Locked" or displayState == "Taken" then
+		return displayState :: StandState
+	end
+	return nil
 end
 
 local function refreshStates(player: Player)
@@ -727,49 +730,129 @@ local function refreshStates(player: Player)
 	if session == nil or data == nil then
 		return
 	end
-	for index in session.benches do
-		setState(session, index, stateFor(session, data, index))
+	local states = slotStates(player)
+	for index in session.slots do
+		setState(session, index, stateFor(session, data, index, states[index]))
 	end
 end
 
-local function markReady(player: Player, session: Session, index: number, slot: Slot)
-	slot.ready = true
-	setLabel(slot, READY_TEXT)
+-- Un présentoir débloqué de la parcelle est-il libre (ni objet ni colis) ?
+local function hasFreeSlot(player: Player, session: Session, data: Data): boolean
+	for index, state in slotStates(player) do
+		if state == "Free" and session.slots[index] and data.Boxes[slotKey(index)] == nil then
+			return true
+		end
+	end
+	return false
+end
+
+local function markReady(player: Player, session: Session, index: number, shown: Shown)
+	shown.ready = true
+	setLabel(shown, READY_TEXT)
 	setState(session, index, "Ready")
 	Net.Server.BoxReady:Fire(player, index)
 end
 
-local function clearSlot(session: Session, index: number)
-	local slot = session.slots[index]
-	if slot then
-		session.slots[index] = nil
-		slot.model:Destroy()
+local function clearShown(session: Session, index: number)
+	local shown = session.shown[index]
+	if shown then
+		session.shown[index] = nil
+		shown.model:Destroy()
 	end
 end
 
--- Affiche le colis `box` sur l'établi `index` ; BoxReady part tout de suite s'il est déjà prêt.
+-- Affiche le colis `box` sur le présentoir `index` ; BoxReady part tout de suite s'il est déjà prêt.
 local function showBox(player: Player, session: Session, index: number, box: Box)
-	local bench: Attachment? = session.benches[index]
-	if bench == nil then
+	local slot: Attachment? = session.slots[index]
+	if slot == nil then
 		return
 	end
-	clearSlot(session, index)
-	local model, anchor = buildBoxModel(index, box, bench.WorldCFrame)
-	local slot: Slot = {
+	clearShown(session, index)
+	local model, anchor = buildBoxModel(index, box, slot.WorldCFrame)
+	local shown: Shown = {
 		model = model,
-		label = buildTimer(anchor, bench.WorldCFrame),
+		label = buildTimer(anchor, slot.WorldCFrame),
 		readyAt = box.ReadyAt,
 		ready = false,
 		text = nil,
 	}
-	session.slots[index] = slot
+	session.shown[index] = shown
 	model.Parent = session.plot
 	local remaining = box.ReadyAt - serverNow()
 	if remaining <= 0 then
-		markReady(player, session, index, slot)
+		markReady(player, session, index, shown)
 	else
-		setLabel(slot, timerText(remaining))
+		setLabel(shown, timerText(remaining))
 		setState(session, index, "Waiting")
+	end
+end
+
+-- File des colis à poser (en-tête) : pose les plus anciens sur les présentoirs débloqués libres, dans
+-- l'ordre des numéros. Un colis illisible reste dans la file (signalé une fois). Sans yield.
+local function drainQueue(player: Player, session: Session, data: Data)
+	local queue = queueOf(data)
+	if queue == nil or #queue == 0 then
+		return
+	end
+	local free: { number } = {}
+	for index, state in slotStates(player) do
+		if state == "Free" and session.slots[index] and data.Boxes[slotKey(index)] == nil then
+			table.insert(free, index)
+		end
+	end
+	table.sort(free)
+	local placed = 0
+	local position = 1
+	while position <= #queue and placed < #free do
+		local box = queue[position]
+		local problem = checkSaved(box)
+		if problem then
+			if not session.queueWarned then
+				session.queueWarned = true
+				warn(`[UnboxService] {player.Name} : colis n° {position} de la file illisible ({problem}) : gardé dans la file`)
+			end
+			position += 1
+		else
+			placed += 1
+			local index = free[placed]
+			table.remove(queue, position)
+			data.Boxes[slotKey(index)] = box
+			showBox(player, session, index, box)
+			log(`{player.Name} : colis {box.Tier} {box.Rarity} de la file posé sur le présentoir {index} ({#queue} encore dans la file)`)
+		end
+	end
+	if placed > 0 then
+		notify(player, MESSAGES.QueuePlaced, INFO_KIND)
+		refreshStates(player)
+	end
+end
+
+-- Message « présentoirs pleins » au joueur qui porte un colis près de ses présentoirs sans place
+-- libre, une fois par colis porté.
+local function checkStandsFull(player: Player, session: Session, data: Data)
+	if not CarryService.IsCarrying(player) then
+		session.fullNotified = nil
+		return
+	end
+	local payload = CarryService.GetPayload(player)
+	if type(payload) ~= "table" or payload.Kind ~= NPC_BOX_KIND or session.fullNotified == payload then
+		return
+	end
+	local root = rootOf(player)
+	if root == nil then
+		return
+	end
+	local near = false
+	for _, slot in session.slots do
+		if (root.Position - slot.WorldPosition).Magnitude <= PROMPT_DISTANCE then
+			near = true
+			break
+		end
+	end
+	if near and not hasFreeSlot(player, session, data) then
+		session.fullNotified = payload
+		notify(player, MESSAGES.StandsFull)
+		log(`{player.Name} : porte un colis, aucun présentoir libre`)
 	end
 end
 
@@ -777,15 +860,27 @@ end
 local function advance()
 	local now = serverNow()
 	for player, session in sessions do
-		for index, slot in session.slots do
-			if not slot.ready then
-				local remaining = slot.readyAt - now
+		for index, shown in session.shown do
+			if not shown.ready then
+				local remaining = shown.readyAt - now
 				if remaining <= 0 then
-					markReady(player, session, index, slot)
+					markReady(player, session, index, shown)
 				else
-					setLabel(slot, timerText(remaining))
+					setLabel(shown, timerText(remaining))
 				end
 			end
+		end
+		refreshStates(player)
+	end
+end
+
+-- File des colis et message des présentoirs pleins (une fois par seconde).
+local function slowAdvance()
+	for player, session in sessions do
+		local data = DataService.Get(player)
+		if data then
+			drainQueue(player, session, data)
+			checkStandsFull(player, session, data)
 		end
 	end
 end
@@ -800,16 +895,17 @@ local function teardown(player: Player)
 		return
 	end
 	sessions[player] = nil
-	for index in session.slots do
-		clearSlot(session, index)
+	for index in session.shown do
+		clearShown(session, index)
 	end
-	for index in session.benches do
-		setState(session, index, nil)
+	for index, slot in session.slots do
+		session.states[index] = nil
+		slot:SetAttribute(STATE_ATTRIBUTE, nil)
 	end
 end
 
--- Profil chargé et parcelle attribuée : remet les colis sauvegardés sur leurs établis. Sans yield,
--- appelable plusieurs fois (profil chargé, parcelle attribuée).
+-- Profil chargé et parcelle attribuée : remet les colis sauvegardés sur leurs présentoirs. Sans
+-- yield, appelable plusieurs fois (profil chargé, parcelle attribuée).
 local function setup(player: Player)
 	local data = DataService.Get(player)
 	local plot = PlotService.GetPlot(player)
@@ -823,69 +919,92 @@ local function setup(player: Player)
 		end
 		teardown(player)
 	end
-	local session: Session = { plot = plot, benches = benchesOf(plot), slots = {} }
+	local ok, slots = pcall(DisplayService.GetSlots, player)
+	if not ok or type(slots) ~= "table" then
+		warn(`[UnboxService] DisplayService.GetSlots ({player.Name}) : {tostring(slots)}, aucun présentoir`)
+		slots = {}
+	end
+	local session: Session = {
+		plot = plot,
+		slots = slots,
+		shown = {},
+		states = {},
+		fullNotified = nil,
+		queueWarned = false,
+	}
 	sessions[player] = session
 
 	local restored = 0
-	for key, box in data.Boxes do
+	local queue = queueOf(data)
+	if queue == nil then
+		warn(`[UnboxService] {player.Name} : BoxQueue absent ou illisible ({tostring((data :: any).BoxQueue)}) : file des colis inutilisable`)
+	end
+	for key, box in table.clone(data.Boxes) do
 		local index = tonumber(key)
-		local problem = checkContent(box)
-		if problem == nil and (type(box.ReadyAt) ~= "number" or box.ReadyAt ~= box.ReadyAt) then
-			problem = `ReadyAt invalide ({tostring(box.ReadyAt)})`
-		end
-		local bench: Attachment? = if index then session.benches[index] else nil
-		if index == nil or bench == nil then
-			warn(`[UnboxService] {player.Name} : colis sauvegardé sur l'établi « {key} », absent de {plot:GetFullName()} : gardé dans le profil, non affiché`)
-		elseif problem then
-			warn(`[UnboxService] {player.Name} : colis de l'établi {key} illisible ({problem}) : gardé dans le profil, non affiché`)
+		local problem = checkSaved(box)
+		local slot: Attachment? = if index then session.slots[index] else nil
+		if problem then
+			warn(`[UnboxService] {player.Name} : colis du présentoir {key} illisible ({problem}) : gardé dans le profil, non affiché`)
+		elseif index == nil or slot == nil then
+			-- Présentoir absent de cette parcelle : le colis passe dans la file, rien n'est perdu.
+			if queue then
+				data.Boxes[key] = nil
+				table.insert(queue, box)
+				warn(`[UnboxService] {player.Name} : colis sauvegardé sur le présentoir « {key} », absent de {plot:GetFullName()} : mis dans la file des colis à poser`)
+			else
+				warn(`[UnboxService] {player.Name} : colis sauvegardé sur le présentoir « {key} », absent de {plot:GetFullName()} : gardé dans le profil, non affiché`)
+			end
 		else
-			showBox(player, session, index, box)
+			showBox(player, session, index :: number, box)
 			restored += 1
 		end
 	end
+	drainQueue(player, session, data)
 	refreshStates(player)
-	log(`{player.Name} : {unlockedCount(data)} établi(s) débloqué(s), {restored} colis remis en place`)
+	local waiting = if queue then #queue else 0
+	log(`{player.Name} : {restored} colis remis sur les présentoirs, {waiting} dans la file`)
 end
 
 ------------------------------------------------------------------------------
 -- Remotes
 ------------------------------------------------------------------------------
 
-local function onPlaceBox(player: Player, benchIndex: number)
+local function onPlaceBox(player: Player, slotIndex: number)
 	local data = DataService.Get(player)
 	local session = sessions[player]
 	if data == nil or session == nil or not ownsPlot(player, session.plot) then
-		log(`{player.Name} : PlaceBox({benchIndex}) refusé : profil ou parcelle pas encore prêts`)
+		log(`{player.Name} : PlaceBox({slotIndex}) refusé : profil ou parcelle pas encore prêts`)
 		return
 	end
-	local bench: Attachment? = session.benches[benchIndex]
-	if bench == nil then
-		log(`{player.Name} : PlaceBox({benchIndex}) refusé : pas d'établi n° {benchIndex} sur sa parcelle`)
+	local slot: Attachment? = session.slots[slotIndex]
+	if slot == nil then
+		log(`{player.Name} : PlaceBox({slotIndex}) refusé : pas de présentoir n° {slotIndex} sur sa parcelle`)
 		return
 	end
 	if not CarryService.IsCarrying(player) then
-		log(`{player.Name} : PlaceBox({benchIndex}) refusé : ne porte rien`)
+		log(`{player.Name} : PlaceBox({slotIndex}) refusé : ne porte rien`)
 		return
 	end
 	local payload = CarryService.GetPayload(player)
 	if type(payload) ~= "table" or payload.Kind ~= NPC_BOX_KIND then
-		log(`{player.Name} : PlaceBox({benchIndex}) refusé : ne porte pas un colis PNJ`)
+		log(`{player.Name} : PlaceBox({slotIndex}) refusé : ne porte pas un colis PNJ`)
 		return
 	end
-	if not inReach(player, bench) then
-		log(`{player.Name} : PlaceBox({benchIndex}) refusé : trop loin de l'établi (plus de {REACH} studs)`)
+	if not inReach(player, slot) then
+		log(`{player.Name} : PlaceBox({slotIndex}) refusé : trop loin du présentoir (plus de {REACH} studs)`)
 		return
 	end
-	local unlocked = unlockedCount(data)
-	if benchIndex > unlocked then
-		log(`{player.Name} : PlaceBox({benchIndex}) refusé : établi verrouillé ({unlocked} débloqué(s))`)
+	local key = slotKey(slotIndex)
+	local state = slotStates(player)[slotIndex]
+	if state == "Locked" then
+		log(`{player.Name} : PlaceBox({slotIndex}) refusé : présentoir verrouillé`)
 		notify(player, MESSAGES.Locked)
 		return
 	end
-	local key = benchKey(benchIndex)
-	if data.Boxes[key] ~= nil then
-		log(`{player.Name} : PlaceBox({benchIndex}) refusé : établi déjà occupé`)
-		notify(player, MESSAGES.Busy)
+	if data.Boxes[key] ~= nil or state ~= "Free" then
+		local full = not hasFreeSlot(player, session, data)
+		log(`{player.Name} : PlaceBox({slotIndex}) refusé : présentoir occupé ({tostring(state)}){if full then ", aucun de libre" else ""}`)
+		notify(player, if full then MESSAGES.StandsFull else MESSAGES.Busy)
 		return
 	end
 	local problem = checkContent(payload)
@@ -915,11 +1034,11 @@ local function onPlaceBox(player: Player, benchIndex: number)
 		from, since = start.From, start.At
 	end
 	if not AntiCheatService.Verify(player, from, since) then
-		log(`{player.Name} : PlaceBox({benchIndex}) refusé : déplacement sanctionné par l'anti-triche, colis rendu`)
+		log(`{player.Name} : PlaceBox({slotIndex}) refusé : déplacement sanctionné par l'anti-triche, colis rendu`)
 		return
 	end
 	if CarryService.Consume(player) == nil then
-		log(`{player.Name} : PlaceBox({benchIndex}) refusé : CarryService.Consume n'a rien rendu`)
+		log(`{player.Name} : PlaceBox({slotIndex}) refusé : CarryService.Consume n'a rien rendu`)
 		return
 	end
 	-- Consume ne devrait pas yield ; s'il l'a fait, le profil a pu partir entre-temps.
@@ -928,45 +1047,60 @@ local function onPlaceBox(player: Player, benchIndex: number)
 		return
 	end
 	box.ReadyAt = serverNow() + delay
+	if data.Boxes[key] ~= nil then
+		-- Ne devrait pas arriver (contrôlé plus haut, sans yield) : le colis va dans la file plutôt
+		-- que d'écraser l'autre.
+		local queue = queueOf(data)
+		if queue then
+			table.insert(queue, box)
+		end
+		warn(`[UnboxService] {player.Name} : présentoir {slotIndex} pris pendant la pose, colis mis dans la file`)
+		return
+	end
 	data.Boxes[key] = box
 	local heists = countHeist(player, data) -- d'un seul tenant avec le colis : sauvegardés ensemble
-	showBox(player, session, benchIndex, box)
-	log(`{player.Name} : colis {box.Tier} {box.Rarity} posé sur l'établi {benchIndex}, prêt dans {delay} s (braquages réussis : {heists or "?"})`)
+	session.fullNotified = nil
+	showBox(player, session, slotIndex, box)
+	log(`{player.Name} : colis {box.Tier} {box.Rarity} posé sur le présentoir {slotIndex}, prêt dans {delay} s (braquages réussis : {heists or "?"})`)
 	for _, listener in table.clone(placedListeners) do
-		task.spawn(listener, player, benchIndex, table.clone(box))
+		task.spawn(listener, player, slotIndex, table.clone(box))
 	end
 end
 
-local function onOpenBox(player: Player, benchIndex: number)
+local function onOpenBox(player: Player, slotIndex: number)
 	local data = DataService.Get(player)
 	local session = sessions[player]
 	if data == nil or session == nil or not ownsPlot(player, session.plot) then
-		log(`{player.Name} : OpenBox({benchIndex}) refusé : profil ou parcelle pas encore prêts`)
+		log(`{player.Name} : OpenBox({slotIndex}) refusé : profil ou parcelle pas encore prêts`)
 		return
 	end
-	local bench: Attachment? = session.benches[benchIndex]
-	local key = benchKey(benchIndex)
+	local slot: Attachment? = session.slots[slotIndex]
+	local key = slotKey(slotIndex)
 	local box = data.Boxes[key]
-	if bench == nil or box == nil then
-		log(`{player.Name} : OpenBox({benchIndex}) refusé : aucun colis sur cet établi`)
+	if slot == nil or box == nil then
+		log(`{player.Name} : OpenBox({slotIndex}) refusé : aucun colis sur ce présentoir`)
 		return
 	end
-	if not inReach(player, bench) then
-		log(`{player.Name} : OpenBox({benchIndex}) refusé : trop loin de l'établi (plus de {REACH} studs)`)
+	if not inReach(player, slot) then
+		log(`{player.Name} : OpenBox({slotIndex}) refusé : trop loin du présentoir (plus de {REACH} studs)`)
 		return
 	end
 	if type(box.ReadyAt) ~= "number" or serverNow() < box.ReadyAt then
-		log(`{player.Name} : OpenBox({benchIndex}) refusé : attente pas écoulée`)
+		log(`{player.Name} : OpenBox({slotIndex}) refusé : attente pas écoulée`)
 		notify(player, MESSAGES.NotReady)
 		return
 	end
 	local problem = checkContent(box)
 	if problem then
-		warn(`[UnboxService] {player.Name} : colis de l'établi {benchIndex} illisible ({problem}), ouverture refusée`)
+		warn(`[UnboxService] {player.Name} : colis du présentoir {slotIndex} illisible ({problem}), ouverture refusée`)
 		return
 	end
-	if inventoryFull(player, data) then
-		log(`{player.Name} : OpenBox({benchIndex}) refusé : présentoirs et inventaire pleins`)
+	-- Le présentoir garde l'objet s'il est débloqué et sans autre objet (état "Boxed" de
+	-- DisplayService : c'est son colis qui l'occupe). Sinon (cas d'erreur de l'en-tête), il faut une
+	-- autre place.
+	local keepHere = slotStates(player)[slotIndex] == "Boxed"
+	if not keepHere and inventoryFull(player) then
+		log(`{player.Name} : OpenBox({slotIndex}) refusé : présentoir indisponible, présentoirs et inventaire pleins`)
 		notify(player, MESSAGES.InventoryFull)
 		return
 	end
@@ -992,31 +1126,50 @@ local function onOpenBox(player: Player, benchIndex: number)
 	-- Zone gardée pour le revenu du Secret, qui n'a pas de zone au catalogue (DisplayService la lit).
 	data.Items[uid] = { Id = itemId, Source = "NPC", At = os.time(), Zone = box.Zone }
 	data.Boxes[key] = nil
-	clearSlot(session, benchIndex)
-	setState(session, benchIndex, stateFor(session, data, benchIndex))
+	clearShown(session, slotIndex)
 
 	-- 5.7 : l'identité de l'objet ne part vers le client qu'ici, avec ce qu'il faut pour jouer les
 	-- crans et composer le rouleau.
-	Net.Server.UnboxReveal:Fire(player, benchIndex, uid, itemId, box.Zone, box.Tier, startRarity, #steps)
+	Net.Server.UnboxReveal:Fire(player, slotIndex, uid, itemId, box.Zone, box.Tier, startRarity, #steps)
 	local upgraded = if #steps > 0 then `, {#steps} cran(s) : {startRarity} → {table.concat(steps, " → ")}` else ""
-	log(`{player.Name} : établi {benchIndex} ouvert, {itemId} ({finalRarity}){upgraded}, uid {uid}`)
+	log(`{player.Name} : présentoir {slotIndex} ouvert, {itemId} ({finalRarity}){upgraded}, uid {uid}`)
 	announce(player, itemId, finalRarity, #steps)
 
-	local ok, result = pcall(DisplayService.PlaceAuto, player, uid)
-	if not ok then
-		warn(`[UnboxService] DisplayService.PlaceAuto ({player.Name}, {uid}) : {result}`)
-	elseif result == nil then
-		local item = Items.ById[itemId]
-		local message = string.format(MESSAGES.StandsFull, if item then item.DisplayName else itemId)
-		local delay = notifyAtReveal(player, message, STANDS_FULL_KIND, finalRarity, #steps)
-		log(`{player.Name} : tous les présentoirs sont pris, {itemId} reste dans l'inventaire (message dans {delay} s)`)
-	else
-		log(`{player.Name} : {itemId} exposé sur le présentoir {result}`)
+	-- L-086 : l'objet reste sur le présentoir de son colis ; sinon le plus proche, sinon l'inventaire.
+	local placedOn: number? = nil
+	if keepHere then
+		local ok, done, reason = pcall(DisplayService.PlaceItem, player, uid, slotIndex)
+		if ok and done == true then
+			placedOn = slotIndex
+		else
+			warn(`[UnboxService] {player.Name} : {itemId} pas exposé sur le présentoir {slotIndex} ({if ok then tostring(reason) else tostring(done)}), autre place cherchée`)
+		end
 	end
+	local failed = false
+	if placedOn == nil then
+		local ok, result = pcall(DisplayService.PlaceAuto, player, uid)
+		if not ok then
+			failed = true -- panne : on ne sait pas où est l'objet, pas de message au joueur
+			warn(`[UnboxService] DisplayService.PlaceAuto ({player.Name}, {uid}) : {result}`)
+		elseif type(result) == "number" then
+			placedOn = result
+		end
+	end
+	if failed then
+		log(`{player.Name} : {itemId} gardé dans Items, présentoir inconnu (panne de DisplayService)`)
+	elseif placedOn == nil then
+		local item = Items.ById[itemId]
+		local message = string.format(MESSAGES.ToInventory, if item then item.DisplayName else itemId)
+		local delay = notifyAtReveal(player, message, INFO_KIND, finalRarity, #steps)
+		log(`{player.Name} : aucun présentoir pour {itemId}, il reste dans l'inventaire (message dans {delay} s)`)
+	else
+		log(`{player.Name} : {itemId} exposé sur le présentoir {placedOn}`)
+	end
+	refreshStates(player)
 
 	local revealAt = revealDelayFor(finalRarity, #steps)
 	for _, listener in table.clone(openedListeners) do
-		task.spawn(listener, player, benchIndex, uid, itemId, revealAt)
+		task.spawn(listener, player, slotIndex, uid, itemId, revealAt)
 	end
 end
 
@@ -1055,23 +1208,23 @@ function UnboxService.GetWaiting(player: Player): { [number]: number }
 		return waiting
 	end
 	local now = serverNow()
-	for index, slot in session.slots do
-		if not slot.ready and slot.readyAt > now then
-			waiting[index] = slot.readyAt
+	for index, shown in session.shown do
+		if not shown.ready and shown.readyAt > now then
+			waiting[index] = shown.readyAt
 		end
 	end
 	return waiting
 end
 
-function UnboxService.SkipWait(player: Player, benchIndex: number, seconds: number): number?
+function UnboxService.SkipWait(player: Player, slotIndex: number, seconds: number): number?
 	local data = DataService.Get(player)
 	local session = sessions[player]
 	if data == nil or session == nil or type(seconds) ~= "number" or seconds ~= seconds or seconds < 0 then
 		return nil
 	end
-	local slot = session.slots[benchIndex]
-	local box = data.Boxes[benchKey(benchIndex)]
-	if slot == nil or slot.ready or box == nil or type(box.ReadyAt) ~= "number" then
+	local shown = session.shown[slotIndex]
+	local box = data.Boxes[slotKey(slotIndex)]
+	if shown == nil or shown.ready or box == nil or type(box.ReadyAt) ~= "number" then
 		return nil
 	end
 	local now = serverNow()
@@ -1080,16 +1233,16 @@ function UnboxService.SkipWait(player: Player, benchIndex: number, seconds: numb
 	end
 	local readyAt = math.max(now, box.ReadyAt - seconds)
 	box.ReadyAt = readyAt
-	slot.readyAt = readyAt
-	slot.model:SetAttribute(READY_AT_ATTRIBUTE, readyAt)
+	shown.readyAt = readyAt
+	shown.model:SetAttribute(READY_AT_ATTRIBUTE, readyAt)
 	local left = readyAt - now
 	if left <= 0 then
-		markReady(player, session, benchIndex, slot)
+		markReady(player, session, slotIndex, shown)
 		left = 0
 	else
-		setLabel(slot, timerText(left))
+		setLabel(shown, timerText(left))
 	end
-	log(`{player.Name} : attente du colis de l'établi {benchIndex} réduite de {string.format("%.1f", seconds)} s, reste {string.format("%.1f", left)} s`)
+	log(`{player.Name} : attente du colis du présentoir {slotIndex} réduite de {string.format("%.1f", seconds)} s, reste {string.format("%.1f", left)} s`)
 	return left
 end
 
@@ -1128,11 +1281,17 @@ function UnboxService.Init()
 	end)
 
 	local elapsed = 0
+	local slowElapsed = 0
 	RunService.Heartbeat:Connect(function(dt: number)
 		elapsed += dt
+		slowElapsed += dt
 		if elapsed >= TICK then
 			elapsed = 0
 			advance()
+		end
+		if slowElapsed >= SLOW_TICK then
+			slowElapsed = 0
+			slowAdvance()
 		end
 	end)
 end

@@ -79,8 +79,19 @@
 --   DisplayService.GetExposed(player) -> { [présentoir]: { Uid, ItemId, Income } }
 --       Objets exposés et affichés en ce moment (tenus exclus), avec leur revenu ($/s).
 --   DisplayService.HasRoom(player) -> boolean
---       Un présentoir débloqué libre, ou moins de Balance.Display.InventoryMax objets dans
---       l'inventaire (même compte qu'UnboxService) : un objet de plus a sa place.
+--       Un présentoir débloqué libre (ni objet ni colis), ou moins de Balance.Display.InventoryMax
+--       objets dans l'inventaire : un objet de plus a sa place.
+--   Colis posés sur les présentoirs (L-086, UnboxService) : un présentoir dont le numéro est une clé
+--   de Boxes du profil porte un colis en attente. Il compte comme occupé : PlaceItem le refuse
+--   (« Boxed »), PlaceAuto le saute, et une entrée de Display sur ce présentoir est retirée (l'objet
+--   reste dans l'inventaire). Rien n'y est exposé, donc rien n'y est volable. Sans yield :
+--   DisplayService.GetSlots(player) -> { [number]: Attachment }
+--       Présentoirs DisplaySlot_xx de la parcelle du joueur (bonus posés compris), cherchés une fois
+--       par parcelle comme pour les objets ; vide sans parcelle.
+--   DisplayService.GetSlotStates(player) -> { [number]: SlotState }
+--       État de chacun de ces présentoirs : "Locked" (pas débloqué), "Taken" (un objet exposé, ou tenu
+--       par un voleur), "Boxed" (un colis en attente), "Free" (débloqué, ni objet ni colis). Vide sans
+--       profil ou sans parcelle.
 --   DisplayService.GetIncome(player) -> number      $/s total exposé, sans bonus (0 sans parcelle)
 --   DisplayService.GetRegister(player) -> number    argent en caisse, en dollars entiers
 --   DisplayService.CashOut(player) -> number
@@ -159,7 +170,9 @@ type Rarity = Rarities.Rarity
 
 export type CashOutSource = "Pad" | "Leave" | "Api" | "Auto"
 export type CashOutListener = (player: Player, amount: number, source: CashOutSource) -> ()
-export type PlaceError = "NoProfile" | "NoPlot" | "UnknownItem" | "InVault" | "Held" | "NoSlot" | "Locked" | "Taken" | "NotOnPlot"
+export type PlaceError = "NoProfile" | "NoPlot" | "UnknownItem" | "InVault" | "Held" | "NoSlot" | "Locked" | "Taken" | "NotOnPlot" | "Boxed"
+-- État d'un présentoir pour UnboxService (L-086, GetSlotStates).
+export type SlotState = "Free" | "Locked" | "Taken" | "Boxed"
 
 -- Objet exposé en ce moment (GetExposed).
 export type ExposedItem = { Uid: string, ItemId: string, Income: number }
@@ -263,6 +276,7 @@ local MESSAGES: { [string]: string } = {
 	NoSlot = "This stand doesn't exist.",
 	Locked = "This stand is locked: upgrade your Display Stands.",
 	Taken = "This stand is already taken.",
+	Boxed = "A box is waiting on this stand.", -- L-086 : colis posé sur ce présentoir
 }
 
 local SOURCE_LABELS: { [string]: string } = {
@@ -448,6 +462,12 @@ local function isInVault(data: Data, uid: string): boolean
 		end
 	end
 	return false
+end
+
+-- Un colis attend-il sur le présentoir `index` (Boxes du profil, L-086) ?
+local function isBoxed(data: Data, index: number): boolean
+	local boxes = (data :: any).Boxes
+	return type(boxes) == "table" and boxes[tostring(index)] ~= nil
 end
 
 -- L'objet est-il tenu par un voleur (vol en cours, voir l'en-tête) ?
@@ -1018,6 +1038,8 @@ local function sanitize(player: Player, data: Data, refs: PlotRefs): { [number]:
 			why = `présentoir {index} verrouillé ({unlockedCount(player, data, refs)} débloqué(s))`
 		elseif refs.slots[index] == nil then
 			why = `présentoir {index} absent de la parcelle`
+		elseif isBoxed(data, index) then
+			why = `un colis attend sur le présentoir {index}`
 		elseif type(uid) ~= "string" then
 			why = "uid invalide"
 		else
@@ -1315,6 +1337,9 @@ local function place(player: Player, itemUid: string, slot: number, fromClient: 
 	if refs.slots[slot] == nil then
 		return false, "NoSlot"
 	end
+	if isBoxed(data, slot) then
+		return false, "Boxed"
+	end
 	local key = tostring(slot)
 	local occupant = data.Display[key]
 	if occupant == itemUid then
@@ -1433,7 +1458,7 @@ function DisplayService.PlaceAuto(player: Player, itemUid: string, near: Vector3
 	local bestScore = math.huge
 	for _, index in unlockedList(player, data, refs) do
 		local attachment = refs.slots[index]
-		if attachment and data.Display[tostring(index)] == nil then
+		if attachment and data.Display[tostring(index)] == nil and not isBoxed(data, index) then
 			-- Sans position, le score est le numéro : premier présentoir libre.
 			local score = if origin then (attachment.WorldPosition - origin).Magnitude else index
 			if score < bestScore then
@@ -1590,9 +1615,62 @@ function DisplayService.HasRoom(player: Player): boolean
 			stored += 1
 		end
 	end
+	-- Un colis en attente occupe son présentoir (L-086).
+	local boxes = (data :: any).Boxes
+	if type(boxes) == "table" then
+		for key in boxes do
+			if data.Display[key] == nil then
+				displayed += 1
+			end
+		end
+	end
 	local account = accounts[player]
 	local plot = if account then account.plot else nil
 	return displayed < unlockedCount(player, data, if plot then refsFor(plot) else nil) or stored < Balance.Display.InventoryMax
+end
+
+-- Présentoirs de la parcelle du joueur et leur état (L-086, UnboxService ; voir l'en-tête).
+local function playerRefs(player: Player): PlotRefs?
+	local plot = PlotService.GetPlot(player)
+	return if plot then refsFor(plot) else nil
+end
+
+function DisplayService.GetSlots(player: Player): { [number]: Attachment }
+	local slots: { [number]: Attachment } = {}
+	local refs = playerRefs(player)
+	if refs then
+		for index, attachment in refs.slots do
+			if attachment then
+				slots[index] = attachment
+			end
+		end
+	end
+	return slots
+end
+
+function DisplayService.GetSlotStates(player: Player): { [number]: SlotState }
+	local states: { [number]: SlotState } = {}
+	local data = DataService.Get(player)
+	local refs = playerRefs(player)
+	if data == nil or refs == nil then
+		return states
+	end
+	for index, attachment in refs.slots do
+		if attachment then
+			local state: SlotState
+			if not isUnlocked(player, data, refs, index) then
+				state = "Locked"
+			elseif data.Display[tostring(index)] ~= nil then
+				state = "Taken"
+			elseif isBoxed(data, index) then
+				state = "Boxed"
+			else
+				state = "Free"
+			end
+			states[index] = state
+		end
+	end
+	return states
 end
 
 function DisplayService.GetIncome(player: Player): number

@@ -3,20 +3,21 @@
 -- parcelle (Partie 1, sections 5.1, 5.8, 7.5 et 9.4).
 --
 -- Rôle : sur la parcelle dont le joueur est propriétaire (attribut OwnerUserId = son UserId, posé
--- par PlotService), quatre invites créées ici, côté client seulement (ProximityPrompt
+-- par PlotService), trois invites créées ici, côté client seulement (ProximityPrompt
 -- « UpgradePrompt », touche F ou bouton Y, maintien de HOLD_DURATION s) :
 --   - « Upgrade ($380) » sur le tapis (tag Treadmill) et sur le banc (tag Bench), avec le nom et le
 --     niveau (« Treadmill Lv 1/20 »). Posée sur l'Attachment UpgradePoint du modèle s'il existe
 --     (proposition de contrat, hors 10.4 pour l'instant), sinon sur un point créé ici au-dessus du
 --     modèle. Jamais sur le UsePoint, qui porte l'invite « Run » / « Lift » de TrainingService :
 --     les deux invites n'ont pas la même touche, elles s'affichent ensemble ;
---   - « Unlock stand ($500) » sur le prochain DisplaySlot_xx verrouillé (« Stands 4/20 ») ;
---   - « Unlock workbench ($2K) » sur le prochain UnboxBench_xx verrouillé (« Workbenches 1/4 »).
+--   - « Unlock stand ($500) » sur le prochain DisplaySlot_xx verrouillé (« Stands 4/20 »).
+-- Plus d'invite « Unlock workbench » depuis L-086 (2026-11-08) : les établis ne sont plus là, les
+-- colis se posent et s'ouvrent sur les présentoirs ; l'amélioration UnboxBenches n'est plus vendue.
 -- Chacune envoie BuyItem(Id de l'amélioration) ; le serveur (ShopService) revérifie tout et prévient
 -- le joueur (Notify). Le prix affiché est Formulas.UpgradeCost(Id, niveau), avec le niveau lu dans
--- les attributs TreadmillLevel, BenchLevel, DisplaySlotsLevel et UnboxBenchesLevel du Player
+-- les attributs TreadmillLevel, BenchLevel et DisplaySlotsLevel du Player
 -- (ShopService) : pour l'affichage seulement. Le prochain présentoir verrouillé est le n° départ +
--- niveau + 1 (Balance.Display, Balance.Unbox), comme côté serveur. Au niveau max, l'invite
+-- niveau + 1 (Balance.Display), comme côté serveur. Au niveau max, l'invite
 -- disparaît. Après un achat, l'invite est coupée jusqu'au nouveau niveau, ou PENDING_TIMEOUT s si
 -- le serveur refuse : un 2e maintien ne paie jamais un prix qui n'était pas affiché.
 -- Les invites suivent le streaming et les changements de parcelle. Aucune UI créée ici.
@@ -35,7 +36,7 @@ local Upgrades = require(Config:WaitForChild("Upgrades"))
 local Find = require(Shared:WaitForChild("Contract"):WaitForChild("Find"))
 local Format = require(Shared:WaitForChild("Format"))
 
-type Kind = "Machine" | "Stand" | "Workbench"
+type Kind = "Machine" | "Stand"
 
 type Offer = {
 	id: string, -- Id de Config/Upgrades
@@ -51,7 +52,6 @@ local PLOT_TAG = "PlayerPlot"
 local OWNER_ATTRIBUTE = "OwnerUserId" -- PlotService
 local LEVEL_FORMAT = "%sLevel" -- ShopService : TreadmillLevel, BenchLevel…
 local SLOT_FORMAT = "DisplaySlot_%02d"
-local BENCH_FORMAT = "UnboxBench_%02d"
 local POINT_NAME = "UpgradePoint" -- proposé à Clément : lu s'il existe dans le tapis ou le banc
 local MADE_POINT_NAME = "UpgradePointV0" -- point créé ici à défaut, côté client seulement
 local PROMPT_NAME = "UpgradePrompt"
@@ -62,10 +62,8 @@ local PROMPT_NAME = "UpgradePrompt"
 local TEXT = {
 	Upgrade = "Upgrade (%s)",
 	UnlockStand = "Unlock stand (%s)",
-	UnlockWorkbench = "Unlock workbench (%s)",
 	MachineLevel = "%s Lv %d/%d",
 	Stands = "Stands %d/%d",
-	Workbenches = "Workbenches %d/%d",
 }
 local PROMPT_DISTANCE = 8
 local HOLD_DURATION = 0.5
@@ -88,7 +86,6 @@ local offers: { Offer } = {
 	{ id = "Treadmill", kind = "Machine", tag = "Treadmill", pendingUntil = 0 },
 	{ id = "Bench", kind = "Machine", tag = "Bench", pendingUntil = 0 },
 	{ id = "DisplaySlots", kind = "Stand", pendingUntil = 0 },
-	{ id = "UnboxBenches", kind = "Workbench", pendingUntil = 0 },
 }
 
 local function levelOf(id: string): number?
@@ -153,12 +150,9 @@ local function targetFor(offer: Offer, plotModel: Model, level: number): Attachm
 			end
 		end
 		return nil
-	elseif offer.kind == "Stand" then
-		local index = Balance.Display.StartSlots + level + 1
-		return if index <= Balance.Display.MaxSlots then attachmentIn(plotModel, string.format(SLOT_FORMAT, index)) else nil
 	end
-	local index = Balance.Unbox.StartBenches + level + 1
-	return if index <= Balance.Unbox.MaxBenches then attachmentIn(plotModel, string.format(BENCH_FORMAT, index)) else nil
+	local index = Balance.Display.StartSlots + level + 1
+	return if index <= Balance.Display.MaxSlots then attachmentIn(plotModel, string.format(SLOT_FORMAT, index)) else nil
 end
 
 -- Textes de l'invite : action (avec le prix) et objet (avec le niveau ou le compte).
@@ -167,14 +161,10 @@ local function textsFor(offer: Offer, level: number, cost: number): (string, str
 	if offer.kind == "Machine" then
 		local upgrade = Upgrades.ById[offer.id]
 		return string.format(TEXT.Upgrade, price), string.format(TEXT.MachineLevel, upgrade.DisplayName, level, upgrade.MaxLevel)
-	elseif offer.kind == "Stand" then
-		local display = Balance.Display
-		local unlocked = math.min(display.StartSlots + level, display.MaxSlots)
-		return string.format(TEXT.UnlockStand, price), string.format(TEXT.Stands, unlocked, display.MaxSlots)
 	end
-	local unbox = Balance.Unbox
-	local unlocked = math.min(unbox.StartBenches + level, unbox.MaxBenches)
-	return string.format(TEXT.UnlockWorkbench, price), string.format(TEXT.Workbenches, unlocked, unbox.MaxBenches)
+	local display = Balance.Display
+	local unlocked = math.min(display.StartSlots + level, display.MaxSlots)
+	return string.format(TEXT.UnlockStand, price), string.format(TEXT.Stands, unlocked, display.MaxSlots)
 end
 
 local scheduleRefresh: () -> ()
