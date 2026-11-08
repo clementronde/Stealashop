@@ -43,6 +43,15 @@ local TruckEvent = {
 	FlightHeight = 9, -- V0 : hauteur de la cloche du vol, au-dessus de la ligne droite
 	FlightSpins = 1.5, -- V0 : tours sur lui-même pendant le vol
 	LaunchStagger = 0.04, -- V0 : écart entre deux départs de colis (12 colis : 0,44 s en tout)
+	-- Colis qui ne se chevauchent pas au sol (demande d'Ironix du 2026-11-08, a42) : entre deux colis,
+	-- au moins BoxGap studs bord à bord, d'après la largeur du modèle BOX_<Tier> de Clément. Sans place
+	-- dans le cône de ScatterSpread, le point s'écarte de son côté, puis tout autour, puis plus loin.
+	BoxGap = 1, -- V0 : 1 stud entre deux colis (la largeur d'un colis + 1 stud, centre à centre)
+	BoxFallbackWidth = 2, -- V0 : largeur d'un colis dont le modèle BOX_<Tier> n'est pas livré (bloc gris de CarryService)
+	-- Invite des colis au sol (côté client) : quand plusieurs sont à portée, une seule s'allume, celle du
+	-- colis le plus proche, un colis hors de l'axe de la caméra comptant plus loin : distance ×
+	-- (1 + GrabCameraWeight × (1 − cos de l'angle)), donc × 1 devant, × 1,5 de côté, × 2 derrière.
+	GrabCameraWeight = 0.5, -- V0
 
 	-- Explosion (effet seulement, côté client : rien de ce qui compte n'en dépend) ------------------
 	DebrisSpeedMin = 22, -- V0 : vitesse des pièces depuis BlastPoint…
@@ -57,6 +66,18 @@ local TruckEvent = {
 	RemoveDelay = 4.5, -- V0 : le serveur retire la copie du camion 4,5 s après l'explosion (garder ≥ DebrisLifetime + DebrisFadeTime)
 	ExplosionFx = true, -- V0 : explosion native de Roblox (feu et son) en attendant un effet de Clément
 	ExplosionRadius = 14, -- V0 : taille de cette explosion (aucune force, aucun dégât)
+
+	-- Sons de Clément (liaison L-071, point 7), des Sound cherchés par leur nom dans
+	-- ReplicatedStorage/Assets/Sounds (sous-dossiers permis), joués côté client avec le volume et la
+	-- portée de Clément. Absents : muets (une ligne en Studio). Le son de chaque coup reçu, SFX_TruckHit,
+	-- est dans Config/HitFeedback.Truck.
+	ExplosionSound = "SFX_TruckExplosion", -- à l'explosion, au point BlastPoint
+	AlarmSound = "SFX_TruckAlarm", -- V0, choix d'Ironix : l'alarme se déclenche quand le camion est frappé…
+	AlarmHold = 4, -- V0 : … et se tait 4 s après le dernier coup, ou à l'explosion (une boucle si Looped)
+
+	-- Conducteurs (L-071, point 7) : les modèles avec un Humanoid que Clément range dans ENV_Event_Truck.
+	-- Avec une animation Idle dans leur dossier Animations (Contract/Animations.Driver), le serveur la
+	-- joue en boucle tant que le camion est là ; sans elle, ils restent immobiles.
 
 	-- Barre de vie au point HealthBarPoint (côté client) : BB_TruckHP de Clément (L-052), telle qu'il
 	-- l'a faite. Ces deux valeurs ne servent qu'au repli, une copie de BB_WindowHP, tant qu'elle manque.

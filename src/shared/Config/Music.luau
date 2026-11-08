@@ -19,6 +19,18 @@ local Music = {
 	-- revenir : un joueur arrêté sous l'arche ne fait pas aller et venir la musique.
 	GateMargin = 2,
 
+	-- Musiques d'événement (liaison L-071, points 6 et 7 ; noms de Clément, Sound en boucle dans le même
+	-- dossier). Elles passent avant celle de la zone, dans cet ordre (V0, choix d'Ironix : la poursuite
+	-- est le danger du moment) : 1. la poursuite, 2. le camion, 3. la zone. Même fondu enchaîné. Une
+	-- musique d'événement pas encore livrée ne change rien : la suivante (ou celle de la zone) joue.
+	ChaseTrack = "MUS_Chase", -- tant qu'un vigile poursuit le joueur local (ChaseController)
+	TruckTrack = "MUS_Truck", -- près du camion de l'événement, ou de ses colis au sol après l'explosion
+	TruckRadius = 100, -- V0 : MUS_Truck commence à moins de 100 studs du camion ou d'un de ses colis au sol…
+	TruckExitMargin = 10, -- V0 : … et s'arrête au-delà de 110 studs (pas d'aller-retour au bord du cercle)
+	-- V0 : une musique d'événement redescendue au silence repart du début au prochain événement, au lieu
+	-- de reprendre où elle en était comme celles des zones.
+	RestartEventTracks = true,
+
 	-- Réglage du volume, point d'accroche sans écran (pas encore d'écran de réglages chez Clément) :
 	-- attribut du Player local, de 0 (muet) à 1 (le volume de Clément) ; absent ou invalide : 1.
 	-- Un futur écran le pose côté client, ou le serveur depuis la sauvegarde.

@@ -198,6 +198,20 @@ local function walk(root: Instance, segments: { string }): Instance?
 	return current
 end
 
+-- a42 : `inst` est-il dans un personnage rangé sous `root` (un Model avec un Humanoid, comme les
+-- conducteurs du camion, L-071) ? Les pièces d'un rig R15 (son Motor6D « Root »…) ne sont pas des
+-- éléments du modèle qui le contient.
+local function insideNestedRig(inst: Instance, root: Instance): boolean
+	local parent = inst.Parent
+	while parent and parent ~= root do
+		if parent:IsA("Model") and parent:FindFirstChildOfClass("Humanoid") then
+			return true
+		end
+		parent = parent.Parent
+	end
+	return false
+end
+
 -- Index nom → descendants de `root`, calculé une fois par vérification.
 local function indexOf(root: Instance): { [string]: { Instance } }
 	local cached = indexCache[root]
@@ -206,6 +220,9 @@ local function indexOf(root: Instance): { [string]: { Instance } }
 	end
 	local index: { [string]: { Instance } } = {}
 	for _, descendant in root:GetDescendants() do
+		if insideNestedRig(descendant, root) then
+			continue -- a42 : pièces d'un conducteur
+		end
 		local list = index[descendant.Name] or {}
 		index[descendant.Name] = list
 		table.insert(list, descendant)
@@ -1088,6 +1105,21 @@ local function isVendor(model: Instance, folder: Instance?): boolean
 	return false
 end
 
+-- Conducteur du camion de l'événement (L-071, point 7 ; a42) : un Model avec Humanoid rangé dans le
+-- camion de Clément (ou dans sa copie posée par TruckEventService). Son seul contrat : Idle, facultatif.
+local DRIVER_HOLDERS = { "ENV_Event_Truck", "EventTruck" }
+
+local function isDriver(model: Instance): boolean
+	local parent = model.Parent
+	while parent and parent ~= game do
+		if table.find(DRIVER_HOLDERS, parent.Name) then
+			return true
+		end
+		parent = parent.Parent
+	end
+	return false
+end
+
 -- Modèle animé = Model avec un Humanoid, rangé dans Assets ou livré dans _INBOX_CLEMENT,
 -- ou posé dans la map avec un dossier Animations (un mannequin d'échelle est ignoré).
 local function checkAnimatedModels(scanned: { Instance }, jobs: { Job })
@@ -1106,6 +1138,7 @@ local function checkAnimatedModels(scanned: { Instance }, jobs: { Job })
 		contractModels[inst] = true
 		local label = inst:GetFullName()
 		local vendor = isVendor(inst, folder)
+		local driver = isDriver(inst) -- a42 : conducteur du camion, Idle seulement
 		if humanoid:FindFirstChildOfClass("Animator") == nil then
 			problem("Animations", `{label}.Humanoid : Animator manquant (10.4)`)
 		end
@@ -1113,18 +1146,22 @@ local function checkAnimatedModels(scanned: { Instance }, jobs: { Job })
 			problem("Animations", `{label}.Humanoid : rig {humanoid.RigType.Name}, attendu R15 (2.4)`)
 		end
 		if folder == nil then
-			local specs = if vendor then Animations.Vendor else Animations.Guard
+			local specs = if driver then Animations.Driver elseif vendor then Animations.Vendor else Animations.Guard
 			local names: { string } = {}
 			for _, spec in specs do
 				table.insert(names, spec.Name)
 			end
-			local kind = if vendor then "vendeur" else "vigile"
+			local kind = if driver then "conducteur" elseif vendor then "vendeur" else "vigile"
 			pending(
 				"Animations",
 				`{label}.{Animations.FolderName} absent : animations de {kind} pas encore livrées ({table.concat(names, ", ")})`
 			)
 		else
-			checkAnimFolder(folder, if vendor then Animations.Vendor else Animations.Guard, jobs)
+			checkAnimFolder(
+				folder,
+				if driver then Animations.Driver elseif vendor then Animations.Vendor else Animations.Guard,
+				jobs
+			)
 		end
 	end
 	if models == 0 then

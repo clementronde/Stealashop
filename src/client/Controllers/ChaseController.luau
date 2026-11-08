@@ -14,6 +14,14 @@
 -- dans son HumanoidRootPart), joue Knockback puis Stunned jusqu'à la fin de l'étourdissement
 -- (Balance.Guard.CatchStunDuration), via AnimationController s'il est là (rien sinon).
 --
+-- Écran de poursuite (liaison L-071, point 6 ; contrat 2.2) : PlayerGui/UI_Chase de Clément (copié
+-- depuis StarterGui) est allumé pendant la poursuite et éteint sinon, avec l'entrée et la sortie de
+-- Controllers/UI/Motion (Open et Close ; sans Motion, Enabled tout court). Seul Enabled de l'écran
+-- est touché (plus l'échelle passagère de Motion) : ses noms internes ne sont pas fixés. Une nouvelle
+-- copie de l'écran (ResetOnSpawn) est reprise dans les SCREEN_REFRESH s ; arrivée allumée de
+-- StarterGui hors poursuite, elle s'éteint d'un coup. Pas encore livré : rien à l'écran (une ligne
+-- en Studio, une fois). La musique de poursuite est à MusicController (il lit IsChased).
+--
 -- API (client) :
 --   ChaseController.IsChased() -> boolean
 --   ChaseController.GetGuard() -> Model?       le vigile qui poursuit le joueur local
@@ -31,14 +39,23 @@ type AnimationApi = {
 	StopPlayer: (name: string, fadeTime: number?) -> (),
 }
 
+-- Ce que ce contrôleur utilise de Controllers/UI/Motion (a37).
+type MotionApi = {
+	Open: (gui: ScreenGui) -> (),
+	Close: (gui: ScreenGui, after: (() -> ())?) -> (),
+}
+
 -- Mêmes noms que dans GuardService (serveur) : les changer dans les deux fichiers.
 local KNOCKBACK_NAME = "GuardKnockback"
 local ACTIVE_FOLDER = "ActiveGuards"
 local TARGET_ATTRIBUTE = "TargetUserId"
+-- Écran de poursuite de Clément (contrat 2.2, L-071 point 6).
+local SCREEN_NAME = "UI_Chase"
 
 -- V0 proposé, absent du doc.
 local GUARD_WAIT = 3 -- vigile toujours introuvable au bout de ce délai : avertissement, en Studio (s)
 local GUARD_SEARCH_INTERVAL = 0.1 -- recherche du vigile par son attribut tant qu'il manque (s)
+local SCREEN_REFRESH = 0.2 -- écran de poursuite repris (nouvelle copie, ResetOnSpawn) toutes les 0,2 s
 
 local IS_STUDIO = RunService:IsStudio()
 
@@ -57,6 +74,11 @@ local nextGuardSearch = 0
 local guardMissingWarned = false
 local stunToken = 0
 local rootConnection: RBXScriptConnection? = nil
+local motion: MotionApi? = nil
+local motionSearched = false
+local screenDirty = false -- la poursuite a commencé ou fini : écran revu à la prochaine image
+local sinceScreen = 0
+local screenMissingSaid = false
 
 -- 12.34 → « 12,3 ».
 local function format(n: number): string
@@ -122,6 +144,7 @@ local function findGuard(): Model?
 end
 
 local function onChaseState(isActive: boolean, model: Instance?)
+	screenDirty = true
 	if not isActive then
 		if active and IS_STUDIO then
 			print("[Poursuite] fin de la poursuite")
@@ -190,6 +213,62 @@ local function update()
 	end
 end
 
+-- Écran de poursuite (L-071, point 6) ---------------------------------------------------------
+
+-- Controllers/UI/Motion, s'il est là ; sinon nil (l'écran s'allume et s'éteint d'un coup).
+local function motionApi(): MotionApi?
+	if motionSearched then
+		return motion
+	end
+	motionSearched = true
+	local folder = script.Parent:FindFirstChild("UI")
+	local module = if folder then folder:FindFirstChild("Motion") else nil
+	if module and module:IsA("ModuleScript") then
+		local ok, result = pcall(require, module)
+		if ok and type(result) == "table" then
+			motion = result :: any
+		end
+	end
+	return motion
+end
+
+-- Allume UI_Chase pendant la poursuite, l'éteint sinon (voir l'en-tête).
+local function applyScreen()
+	local gui = localPlayer:FindFirstChildOfClass("PlayerGui")
+	local screen = if gui then gui:FindFirstChild(SCREEN_NAME) else nil
+	if screen == nil or not screen:IsA("ScreenGui") then
+		if active and IS_STUDIO and not screenMissingSaid then
+			screenMissingSaid = true
+			print(`[Poursuite] {SCREEN_NAME} pas encore livré : rien à l'écran pendant la poursuite (L-071)`)
+		end
+		return
+	end
+	local chaseScreen = screen :: ScreenGui
+	local api = motionApi()
+	if active then
+		if api then
+			api.Open(chaseScreen) -- déjà ouvert : rien
+		elseif not chaseScreen.Enabled then
+			chaseScreen.Enabled = true
+		end
+	elseif chaseScreen.Enabled then
+		if api then
+			api.Close(chaseScreen) -- sortie animée ; arrivé allumé au repos : éteint d'un coup
+		else
+			chaseScreen.Enabled = false
+		end
+	end
+end
+
+local function stepScreen(deltaTime: number)
+	sinceScreen += deltaTime
+	if screenDirty or sinceScreen >= SCREEN_REFRESH then
+		screenDirty = false
+		sinceScreen = 0
+		applyScreen()
+	end
+end
+
 -- Coup du vigile ----------------------------------------------------------------------------
 
 -- Knockback, puis Stunned jusqu'à la fin de l'étourdissement.
@@ -249,6 +328,7 @@ function ChaseController.Start()
 		task.spawn(watchCharacter, character)
 	end
 	RunService.Heartbeat:Connect(update)
+	RunService.Heartbeat:Connect(stepScreen)
 
 	-- Peut attendre que le serveur ait créé les remotes.
 	local net = require(shared:WaitForChild("Net"):WaitForChild("Net") :: ModuleScript) :: any

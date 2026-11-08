@@ -30,11 +30,26 @@
 -- revient dans sa zone. Piste absente : rien ne joue dans cette zone (l'ancienne piste s'éteint),
 -- avec une ligne en Studio ; elle est cherchée à nouveau tant que le joueur y reste.
 --
+-- Musiques d'événement (liaison L-071, points 6 et 7 ; Config/Music), avant celle de la zone, dans
+-- cet ordre (V0, choix d'Ironix) :
+--   1. poursuite : Music.ChaseTrack (MUS_Chase) tant qu'un vigile poursuit le joueur local
+--      (ChaseController.IsChased, d'après le remote ChaseState de GuardService) ;
+--   2. camion : Music.TruckTrack (MUS_Truck) tant que le joueur est à moins de TruckRadius studs d'un
+--      camion de l'événement (tag EventTruck, posé par TruckEventService) ou, après l'explosion, d'un de
+--      ses colis au sol (Workspace/CarryDrops, attribut TruckBox). Une fois dedans, il en sort au-delà
+--      de TruckRadius + TruckExitMargin. Camion et colis hors du streaming : pas comptés ;
+--   3. sinon la musique de la zone (plus haut).
+-- Même fondu enchaîné que d'une zone à l'autre. Une musique d'événement absente (ou qui n'est pas un
+-- Sound) ne change rien : la suivante, ou celle de la zone, continue (une ligne en Studio, une fois).
+-- Redescendue au silence, elle repart du début au prochain événement (RestartEventTracks) ; reprise
+-- pendant son fondu de sortie, elle continue sans saut.
+--
 -- Rien n'est envoyé au serveur. API (client) :
---   MusicController.GetState() -> { Zone, Track, Levels }
+--   MusicController.GetState() -> { Zone, Track, Levels, Event }
 --       Zone du joueur (0 = zone safe, 1 à 6 ; nil avant le premier personnage), piste visée (nil :
---       silence) et part du volume plein de chaque copie (0 à 1), pour un test dans Studio (barre
---       de commande côté client).
+--       silence), part du volume plein de chaque copie (0 à 1) et événement dont la musique joue
+--       ("Chase", "Truck", nil : celle de la zone), pour un test dans Studio (barre de commande côté
+--       client).
 
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
@@ -56,10 +71,18 @@ type Track = {
 	Written: number, -- dernier Volume écrit sur la copie
 }
 
+export type EventKind = string -- "Chase" ou "Truck"
+
 export type State = {
 	Zone: number?,
 	Track: string?,
 	Levels: { [string]: number },
+	Event: EventKind?,
+}
+
+-- Ce que ce contrôleur utilise de ChaseController.
+type ChaseApi = {
+	IsChased: () -> boolean,
 }
 
 -- Noms du contrat (2.1 et 10.4).
@@ -70,6 +93,10 @@ local ROOT_PART = "HumanoidRootPart"
 local INBOX_NAME = "_INBOX_CLEMENT" -- livraisons pas encore posées : ignorées, comme dans les services
 local ZONE = Attributes.Zone
 local HUB = 0 -- zone safe
+-- Posés par le serveur (mêmes noms dans TruckEventService et CarryService).
+local TRUCK_TAG = "EventTruck"
+local DROPS_FOLDER = "CarryDrops"
+local TRUCK_BOX_ATTRIBUTE = "TruckBox"
 
 local IS_STUDIO = RunService:IsStudio()
 local FOLDER_PATH = `ReplicatedStorage.{table.concat(Music.Folder, ".")}`
@@ -86,6 +113,9 @@ local target: string? = nil -- piste visée ; nil = silence
 local volumeScale = 1
 local sinceCheck = math.huge -- première vérification à la première image
 local said: { [string]: boolean } = {}
+local chase: ChaseApi? = nil
+local event: EventKind? = nil -- événement dont la musique joue
+local nearTruck = false -- dans le cercle du camion (avec la marge de sortie)
 
 local function sayOnce(key: string, message: string, isProblem: boolean?)
 	if not IS_STUDIO or said[key] then
@@ -226,7 +256,8 @@ local function trackName(n: number): string
 	return if n == HUB then Music.HubTrack else string.format(Music.ZoneTrack, n)
 end
 
-local function findTemplate(name: string): Sound?
+-- `effect` : ce que le manque de la piste change, pour la ligne de Studio.
+local function findTemplate(name: string, effect: string): Sound?
 	local current: Instance? = ReplicatedStorage
 	for _, segment in Music.Folder do
 		current = if current then current:FindFirstChild(segment) else nil
@@ -239,22 +270,24 @@ local function findTemplate(name: string): Sound?
 	if found and found:IsA("Sound") then
 		return found :: Sound
 	end
-	sayOnce(`track:{name}`, `{name} absent de {FOLDER_PATH} (ou pas un Sound) : pas de musique dans cette zone (L-056)`)
+	sayOnce(`track:{name}`, `{name} absent de {FOLDER_PATH} (ou pas un Sound) : {effect}`)
 	return nil
 end
 
+local ZONE_EFFECT = "pas de musique dans cette zone (L-056)"
+
 -- La copie de la piste `name`, faite au besoin ; false si la piste manque.
-local function ensureTrack(name: string): boolean
+local function ensureTrack(name: string, effect: string?): boolean
 	if tracks[name] then
 		return true
 	end
-	local template = findTemplate(name)
+	local template = findTemplate(name, effect or ZONE_EFFECT)
 	if template == nil then
 		return false
 	end
 	local copy = template:Clone() :: Sound?
 	if copy == nil then
-		sayOnce(`archivable:{name}`, `{name} ne se copie pas (Archivable = false) : pas de musique dans cette zone`, true)
+		sayOnce(`archivable:{name}`, `{name} ne se copie pas (Archivable = false) : {effect or ZONE_EFFECT}`, true)
 		return false
 	end
 	copy.Looped = true
@@ -273,18 +306,79 @@ local function localPosition(): Vector3?
 	return if root and root:IsA("BasePart") then (root :: BasePart).Position else nil
 end
 
+-- Événements (L-071) ----------------------------------------------------------------------------------
+
+local CHASE: EventKind = "Chase"
+local TRUCK: EventKind = "Truck"
+local CHASE_EFFECT = "la musique de la zone continue pendant les poursuites (L-071)"
+local TRUCK_EFFECT = "la musique de la zone continue près du camion (L-071)"
+
+local function within(instance: Instance, position: Vector3, radius: number): boolean
+	return instance:IsA("PVInstance") and ((instance :: PVInstance):GetPivot().Position - position).Magnitude <= radius
+end
+
+-- Le joueur, en `position`, est-il près du camion de l'événement ou d'un de ses colis au sol ? Une fois
+-- dedans, le cercle grandit de TruckExitMargin.
+local function truckNear(position: Vector3): boolean
+	local radius = Music.TruckRadius + (if nearTruck then Music.TruckExitMargin else 0)
+	for _, truck in CollectionService:GetTagged(TRUCK_TAG) do
+		if truck:IsDescendantOf(Workspace) and within(truck, position, radius) then
+			return true
+		end
+	end
+	local drops = Workspace:FindFirstChild(DROPS_FOLDER)
+	if drops then
+		for _, drop in drops:GetChildren() do
+			if drop:GetAttribute(TRUCK_BOX_ATTRIBUTE) == true and within(drop, position, radius) then
+				return true
+			end
+		end
+	end
+	return false
+end
+
+-- Musique d'événement à jouer, dans l'ordre de priorité, et son événement ; nil : celle de la zone.
+local function eventTrack(position: Vector3?): (string?, EventKind?)
+	local api = chase
+	if api and api.IsChased() and ensureTrack(Music.ChaseTrack, CHASE_EFFECT) then
+		return Music.ChaseTrack, CHASE
+	end
+	if position then
+		nearTruck = truckNear(position)
+	end
+	if nearTruck and ensureTrack(Music.TruckTrack, TRUCK_EFFECT) then
+		return Music.TruckTrack, TRUCK
+	end
+	return nil, nil
+end
+
+-- Boucle (suite) ---------------------------------------------------------------------------------------
+
 local function check()
 	refreshMap()
 	local position = localPosition()
 	if position then
 		zone = zoneAt(position, zone)
 	end
-	local current = zone
-	if current == nil then
-		return
+	local name, kind = eventTrack(position)
+	if kind == nil then
+		local current = zone
+		if current == nil then
+			event = nil
+			return
+		end
+		local zoneTrack = trackName(current)
+		name = if ensureTrack(zoneTrack) then zoneTrack else nil
 	end
-	local name = trackName(current)
-	target = if ensureTrack(name) then name else nil
+	-- Musique d'événement qui revient du silence : elle repart du début.
+	if name and name ~= target and kind ~= nil and Music.RestartEventTracks then
+		local track = tracks[name]
+		if track and track.Level <= 0 then
+			track.Copy.TimePosition = 0
+		end
+	end
+	event = kind
+	target = name
 end
 
 local function fade(dt: number)
@@ -332,10 +426,25 @@ function MusicController.GetState(): State
 	for name, track in tracks do
 		levels[name] = track.Level
 	end
-	return { Zone = zone, Track = target, Levels = levels }
+	return { Zone = zone, Track = target, Levels = levels, Event = event }
+end
+
+-- ChaseController, s'il est là (poursuite : L-071, point 6) ; sans lui, pas de musique de poursuite.
+local function loadChase(): ChaseApi?
+	local module = script.Parent:FindFirstChild("ChaseController")
+	if module == nil or not module:IsA("ModuleScript") then
+		return nil
+	end
+	local ok, result = pcall(require, module)
+	if ok and type(result) == "table" and type((result :: any).IsChased) == "function" then
+		return result :: any
+	end
+	sayOnce("chase", `ChaseController : require impossible ({result}) : pas de musique de poursuite`, true)
+	return nil
 end
 
 function MusicController.Start()
+	chase = loadChase()
 	readVolumeScale()
 	localPlayer:GetAttributeChangedSignal(Music.VolumeAttribute):Connect(readVolumeScale)
 	RunService.Heartbeat:Connect(function(dt: number)

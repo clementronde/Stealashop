@@ -161,6 +161,14 @@ UI.Screens = {
 			{ Path = "List.Template.Owned" },
 		},
 	},
+	-- Écran de poursuite (liaison L-071, point 6 ; a42, en cours chez Clément : sirènes rouges et
+	-- bleues, liseré rouge, avertissement). Ses noms internes ne sont pas fixés : le code n'allume et
+	-- n'éteint que l'écran (ChaseController, pendant qu'un vigile poursuit le joueur local).
+	{
+		Name = "UI_Chase",
+		Class = "ScreenGui",
+		Elements = {},
+	},
 } :: { Screen }
 
 -- Billboards modèles, des BillboardGui directement dans ReplicatedStorage/Assets/UI.
@@ -198,6 +206,18 @@ UI.Billboards = {
 			{ Path = "HP", Class = "TextLabel" },
 			{ Path = "Damage", Class = "TextLabel" },
 			{ Path = "Speed", Class = "TextLabel" },
+		},
+	},
+	-- Panneau de chaque arche de zone (liaison L-071, point 9 ; a42, noms de Clément, à remplir par le
+	-- code) : nom de la zone, dégâts et vitesse conseillés. ZoneGateController écrit les 3 textes et
+	-- colore Damage et Speed pour le joueur local, comme sur BB_StoreInfo.
+	{
+		Name = "BB_ZoneGate",
+		Class = "BillboardGui",
+		Elements = {
+			{ Path = "ZoneName", Class = "TextLabel" },
+			{ Path = "Speed", Class = "TextLabel" },
+			{ Path = "Damage", Class = "TextLabel" },
 		},
 	},
 } :: { Screen }

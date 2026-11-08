@@ -32,14 +32,30 @@
 --     (Balance.Heist.BoxTiers[Tier].GrabTime), portée Bat.DroppedGrabMaxDistance − 0,5. Début du
 --     maintien : GrabDropped(dropId) ; invite déclenchée : GrabDropped(dropId) une seconde fois et
 --     animation Grab (AnimationController s'il est là). Le serveur vérifie tout.
+--     Plusieurs colis à portée (demande d'Ironix du 2026-11-08) : une seule invite allumée, celle du
+--     colis le plus proche du HumanoidRootPart, un colis hors de l'axe de la caméra comptant plus loin
+--     (TruckEvent.GrabCameraWeight) ; E prend donc le colis visé, jamais un voisin. L'invite tenue
+--     garde la main jusqu'à la fin du maintien. Choix revu 5 fois par seconde et quand Carrying change ;
+--     aucun colis à portée (ou pas de personnage) : toutes les invites des colis atterris restent
+--     allumées, Roblox n'en montre aucune hors de portée.
 --   - Son du coup sur le camion (DEV-053, liaison L-052 point 3 ; réglages : Config/HitFeedback.Truck) :
---     le Sound Truck.HitSound (« Truck_Hit », nom proposé à Clément) de ReplicatedStorage/Assets/Sounds
+--     le Sound Truck.HitSound (« SFX_TruckHit », nom de Clément, L-071) de ReplicatedStorage/Assets/Sounds
 --     (sous-dossiers permis), joué au point de frappe, plus aigu quand les PV baissent (de PitchMin
 --     à PV pleins à PitchMax à 0 PV, attributs HP et MaxHP, ± PitchJitter), comme le verre des
 --     vitrines. Celui qui frappe l'entend tout de suite, au moment où son coup part (LocalHit,
 --     appelé par HitController) ; les autres à chaque coup validé par le serveur (WindowHit, qui part
 --     aussi pour le camion), si leur caméra est à moins de FxRadius studs. Son absent : muet (une
 --     ligne en Studio). Le chiffre de dégâts de chaque coup est à DamageNumberController.
+--   - Sons de Clément (L-071, point 7 ; noms dans Config/TruckEvent, même dossier que le son du coup) :
+--     TruckEvent.ExplosionSound (SFX_TruckExplosion) à l'explosion, au point BlastPoint, si on la voit
+--     dans la demi-seconde (comme l'explosion native) ; TruckEvent.AlarmSound (SFX_TruckAlarm, choix
+--     V0 d'Ironix) quand le camion est frappé : elle part à la première baisse de l'attribut HP, sur la
+--     pièce Root du camion (son 3D), et se tait AlarmHold s après le dernier coup, à l'explosion ou au
+--     départ du camion ; si Clément ne l'a pas mise en boucle, un coup après sa fin la relance. Absents :
+--     muets (une ligne en Studio, une fois). La musique MUS_Truck est à MusicController.
+--   - Conducteurs (L-071, point 7) : à l'explosion, chaque modèle avec un Humanoid rangé dans le camion
+--     hors de Pieces (Clément les met dans la cabine) part avec les pièces, comme une pièce de plus,
+--     puis s'efface avec elles. Leur Idle est jouée par le serveur (TruckEventService).
 --
 -- Coupé par Config/Features.TruckEvent = false.
 --
@@ -102,6 +118,9 @@ type TruckWatch = {
 	Fraction: number?,
 	Exploded: boolean,
 	Connections: { RBXScriptConnection },
+	LastHP: number?, -- dernier attribut HP vu (alarme : une baisse = un coup)
+	Alarm: Sound?, -- copie de SFX_TruckAlarm qui sonne
+	AlarmUntil: number, -- os.clock() : l'alarme se tait à cette heure
 }
 
 type BoxWatch = {
@@ -151,6 +170,9 @@ local WINDOW_ID_ATTRIBUTE = "WindowId" -- posé par WindowService (cible d'évé
 local PROMPT_NAME = "GrabPrompt"
 local BOX_SUFFIX = "Box" -- « Premium Box » (L-036)
 local SOUND_HOLDER = "TruckHitSound" -- Attachment local du Terrain qui porte un son de coup
+local EXPLOSION_HOLDER = "TruckExplosionSound" -- Attachment local du Terrain qui porte le son de l'explosion
+local ALARM_NAME = "TruckAlarm" -- copie locale de l'alarme
+local ROOT_NAME = "Root" -- pièce invisible du camion (10.4), qui ne part pas à l'explosion
 local TruckHit = HitFeedback.Truck
 
 -- V0 proposé, absent du doc : invites revues 5 fois par seconde (atterrissage).
@@ -179,6 +201,7 @@ local animation: AnimationApi? = nil
 local playerGui: Instance? = nil
 local trucks: { [Instance]: TruckWatch } = {}
 local boxes: { [Instance]: BoxWatch } = {}
+local holding: BoxWatch? = nil -- colis dont l'invite est tenue (maintien en cours)
 local blasts: { Blast } = {}
 local flights: { Flight } = {}
 local noticed: { [string]: boolean } = {}
@@ -190,6 +213,47 @@ local function once(key: string, message: string)
 	end
 	noticed[key] = true
 	print(`[TruckController] {message}`)
+end
+
+-- Le Sound `name` de Clément, dans TruckHit.SoundsFolder ou un de ses sous-dossiers, ou nil.
+local function findSound(name: string): Sound?
+	local current: Instance? = ReplicatedStorage
+	for _, segment in TruckHit.SoundsFolder do
+		current = if current then current:FindFirstChild(segment) else nil
+	end
+	local found = if current then current:FindFirstChild(name, true) else nil
+	if found and found:IsA("Sound") then
+		return found :: Sound
+	end
+	return nil
+end
+
+-- Le Sound `name`, ou nil avec une ligne en Studio (une fois) : `effect` dit ce que son absence change.
+local function soundOrSay(name: string, effect: string): Sound?
+	local template = findSound(name)
+	if template == nil then
+		once(`sound:{name}`, `{name} absent de ReplicatedStorage.{table.concat(TruckHit.SoundsFolder, ".")} : {effect}`)
+	end
+	return template
+end
+
+-- Joue une copie de `template` au point `position` (Attachment local du Terrain nommé `holderName`),
+-- retirée à sa fin, au plus tard SOUND_MAX_LIFETIME s après. Renvoie la copie.
+local function playAt(template: Sound, position: Vector3, holderName: string): Sound
+	local holder = Instance.new("Attachment")
+	holder.Name = holderName
+	holder.Position = position
+	local sound = template:Clone()
+	sound.Parent = holder
+	holder.Parent = Workspace.Terrain
+	sound.Ended:Once(function()
+		holder:Destroy()
+	end)
+	task.delay(SOUND_MAX_LIFETIME, function()
+		holder:Destroy()
+	end)
+	sound:Play()
+	return sound
 end
 
 -- Barre de vie ----------------------------------------------------------------------------------
@@ -328,6 +392,34 @@ local function setFade(parts: { BasePart }, fade: number)
 	end
 end
 
+-- Conducteurs (L-071, point 7) : les Model du camion qui ont un Humanoid, hors de Pieces (une pièce
+-- qui en contient un l'emporte déjà) et hors d'un autre conducteur.
+local function driversOf(model: Model, pieces: Instance?): { Model }
+	local list: { Model } = {}
+	for _, descendant in model:GetDescendants() do
+		local rig = descendant.Parent
+		if
+			descendant:IsA("Humanoid")
+			and rig
+			and rig ~= model
+			and rig:IsA("Model")
+			and not (pieces and rig:IsDescendantOf(pieces))
+		then
+			local nested = false
+			for _, other in list do
+				if rig:IsDescendantOf(other) then
+					nested = true
+				end
+			end
+			if not nested then
+				table.insert(list, rig :: Model)
+			end
+		end
+	end
+	return list
+end
+
+-- Ce qui vole à l'explosion : les pièces Pieces/Piece_xx, puis les conducteurs.
 local function pieceList(model: Model): { PVInstance }
 	local list: { PVInstance } = {}
 	local folder = Find.path(model, PIECES_NAME)
@@ -337,6 +429,9 @@ local function pieceList(model: Model): { PVInstance }
 				table.insert(list, child :: PVInstance)
 			end
 		end
+	end
+	for _, driver in driversOf(model, folder) do
+		table.insert(list, driver)
 	end
 	return list
 end
@@ -376,6 +471,12 @@ local function startBlast(watch: TruckWatch, age: number)
 		})
 	end
 	table.insert(blasts, blast)
+	if age <= FX_MAX_AGE then
+		local boom = soundOrSay(TruckEvent.ExplosionSound, "explosion du camion sans son de Clément (L-071)")
+		if boom then
+			playAt(boom, origin, EXPLOSION_HOLDER)
+		end
+	end
 	if TruckEvent.ExplosionFx and age <= FX_MAX_AGE then
 		local fx = Instance.new("Explosion")
 		fx.Position = origin
@@ -425,6 +526,69 @@ local function stepBlast(blast: Blast, dt: number): boolean
 	return true
 end
 
+-- Alarme (L-071, point 7) -------------------------------------------------------------------------
+
+local function stopAlarm(watch: TruckWatch)
+	local sound = watch.Alarm
+	watch.Alarm = nil
+	if sound then
+		sound:Stop()
+		sound:Destroy()
+	end
+end
+
+-- Pièce où sonne l'alarme : Root (10.4), sinon la PrimaryPart, sinon une pièce du camion.
+local function alarmPart(model: Model): BasePart?
+	local root = model:FindFirstChild(ROOT_NAME)
+	if root and root:IsA("BasePart") then
+		return root :: BasePart
+	end
+	if model.PrimaryPart then
+		return model.PrimaryPart
+	end
+	local any = model:FindFirstChildWhichIsA("BasePart", true)
+	return if any then any :: BasePart else nil
+end
+
+-- Le camion vient d'être frappé : l'alarme sonne (ou sonne encore) jusqu'à AlarmHold s après ce coup.
+local function triggerAlarm(watch: TruckWatch)
+	if watch.Exploded then
+		return
+	end
+	watch.AlarmUntil = os.clock() + TruckEvent.AlarmHold
+	local current = watch.Alarm
+	if current and current.Parent ~= nil then
+		return
+	end
+	local template = soundOrSay(TruckEvent.AlarmSound, "camion frappé sans alarme (L-071)")
+	local part = alarmPart(watch.Model)
+	if template == nil or part == nil then
+		return
+	end
+	local sound = template:Clone()
+	sound.Name = ALARM_NAME
+	sound.Parent = part
+	sound.Ended:Once(function()
+		if watch.Alarm == sound then
+			watch.Alarm = nil -- pas en boucle : le prochain coup la relance
+		end
+		sound:Destroy()
+	end)
+	watch.Alarm = sound
+	sound:Play()
+end
+
+-- Une baisse de l'attribut HP (WindowService) = un coup reçu.
+local function onHpChanged(watch: TruckWatch)
+	local value = watch.Model:GetAttribute(HP_ATTRIBUTE)
+	local hp: number? = if type(value) == "number" then value else nil
+	local last = watch.LastHP
+	watch.LastHP = hp
+	if hp and last and hp < last then
+		triggerAlarm(watch)
+	end
+end
+
 local function maybeExplode(watch: TruckWatch)
 	if watch.Exploded then
 		return
@@ -434,6 +598,7 @@ local function maybeExplode(watch: TruckWatch)
 		return
 	end
 	watch.Exploded = true
+	stopAlarm(watch)
 	refreshBar(watch)
 	local age = math.max(Workspace:GetServerTimeNow() - at, 0)
 	if age >= TruckEvent.DebrisLifetime then
@@ -456,6 +621,7 @@ local function untrackTruck(model: Instance)
 	for _, connection in watch.Connections do
 		connection:Disconnect()
 	end
+	stopAlarm(watch)
 	local gui = watch.Billboard
 	watch.Billboard = nil
 	if gui then
@@ -482,13 +648,21 @@ local function trackTruck(instance: Instance)
 		Fraction = nil,
 		Exploded = false,
 		Connections = {},
+		LastHP = nil,
+		Alarm = nil,
+		AlarmUntil = 0,
 	}
 	trucks[instance] = watch
+	local hpValue = model:GetAttribute(HP_ATTRIBUTE)
+	watch.LastHP = if type(hpValue) == "number" then hpValue else nil
 	for _, name in { HP_ATTRIBUTE, MAX_HP_ATTRIBUTE } do
 		table.insert(
 			watch.Connections,
 			model:GetAttributeChangedSignal(name):Connect(function()
 				refreshBar(watch)
+				if name == HP_ATTRIBUTE then
+					onHpChanged(watch)
+				end
 			end)
 		)
 	end
@@ -518,19 +692,6 @@ local function truckFor(targetId: string): TruckWatch?
 		if watch.Model:GetAttribute(WINDOW_ID_ATTRIBUTE) == targetId then
 			return watch
 		end
-	end
-	return nil
-end
-
--- Le Sound `name` de Clément, dans TruckHit.SoundsFolder ou un de ses sous-dossiers, ou nil.
-local function findSound(name: string): Sound?
-	local current: Instance? = ReplicatedStorage
-	for _, segment in TruckHit.SoundsFolder do
-		current = if current then current:FindFirstChild(segment) else nil
-	end
-	local found = if current then current:FindFirstChild(name, true) else nil
-	if found and found:IsA("Sound") then
-		return found :: Sound
 	end
 	return nil
 end
@@ -705,10 +866,56 @@ local function playGrab()
 	end
 end
 
-local function refreshPrompt(watch: BoxWatch, serverNow: number)
-	local prompt = watch.Prompt
-	if prompt then
-		prompt.Enabled = serverNow >= watch.LandsAt and player:GetAttribute(CARRYING_ATTRIBUTE) == nil
+-- Le colis dont l'invite reste seule allumée, parmi les colis atterris à portée : celui que le joueur
+-- tient (maintien en cours), sinon le meilleur score (voir l'en-tête), sinon nil (aucun à portée).
+local function chosenBox(serverNow: number): BoxWatch?
+	local character = player.Character
+	local found = if character then character:FindFirstChild("HumanoidRootPart") else nil
+	if found == nil or not found:IsA("BasePart") then
+		return nil
+	end
+	local root = (found :: BasePart).Position
+	local held = holding
+	if held and boxes[held.Model] == held and held.Prompt and serverNow >= held.LandsAt then
+		return held
+	end
+	local camera = Workspace.CurrentCamera
+	local look = if camera then Vector3.new(camera.CFrame.LookVector.X, 0, camera.CFrame.LookVector.Z) else Vector3.zero
+	local best: BoxWatch? = nil
+	local bestScore = math.huge
+	for _, watch in boxes do
+		local prompt = watch.Prompt
+		local part = if prompt then prompt.Parent else nil
+		if prompt and part and part:IsA("BasePart") and serverNow >= watch.LandsAt then
+			local offset = (part :: BasePart).Position - root
+			local distance = offset.Magnitude
+			if distance <= prompt.MaxActivationDistance then
+				local flat = Vector3.new(offset.X, 0, offset.Z)
+				local alignment = if look.Magnitude > 1e-3 and flat.Magnitude > 1e-3 then look.Unit:Dot(flat.Unit) else 1
+				local score = distance * (1 + TruckEvent.GrabCameraWeight * (1 - alignment))
+				if score < bestScore then
+					best, bestScore = watch, score
+				end
+			end
+		end
+	end
+	return best
+end
+
+-- Invites des colis : coupées en vol et mains pleines ; une seule allumée quand plusieurs colis sont à
+-- portée (chosenBox) ; toutes celles des colis atterris quand aucun n'est à portée.
+local function refreshPrompts()
+	local serverNow = Workspace:GetServerTimeNow()
+	local free = player:GetAttribute(CARRYING_ATTRIBUTE) == nil
+	local chosen = if free then chosenBox(serverNow) else nil
+	for _, watch in boxes do
+		local prompt = watch.Prompt
+		if prompt then
+			local enabled = free and serverNow >= watch.LandsAt and (chosen == nil or chosen == watch)
+			if prompt.Enabled ~= enabled then
+				prompt.Enabled = enabled
+			end
+		end
 	end
 end
 
@@ -726,15 +933,24 @@ local function addPrompt(watch: BoxWatch, part: BasePart)
 	prompt.RequiresLineOfSight = false
 	prompt.Enabled = false
 	prompt.PromptButtonHoldBegan:Connect(function()
+		holding = watch -- cette invite garde la main pendant le maintien
 		Net.Client.GrabDropped:Fire(watch.DropId) -- début du maintien
 	end)
+	prompt.PromptButtonHoldEnded:Connect(function()
+		if holding == watch then
+			holding = nil
+		end
+	end)
 	prompt.Triggered:Connect(function()
+		if holding == watch then
+			holding = nil
+		end
 		Net.Client.GrabDropped:Fire(watch.DropId) -- fin du maintien
 		playGrab()
 	end)
 	prompt.Parent = part
 	watch.Prompt = prompt
-	refreshPrompt(watch, Workspace:GetServerTimeNow())
+	refreshPrompts()
 end
 
 local function untrackBox(model: Instance)
@@ -743,6 +959,9 @@ local function untrackBox(model: Instance)
 		return
 	end
 	boxes[model] = nil
+	if holding == watch then
+		holding = nil
+	end
 	local prompt = watch.Prompt
 	watch.Prompt = nil
 	if prompt then
@@ -813,6 +1032,12 @@ end
 -- Démarrage ---------------------------------------------------------------------------------------
 
 local function onFrame(dt: number)
+	local clock = os.clock()
+	for _, watch in trucks do
+		if watch.Alarm and clock >= watch.AlarmUntil then
+			stopAlarm(watch) -- plus de coup depuis AlarmHold s
+		end
+	end
 	for index = #blasts, 1, -1 do
 		if not stepBlast(blasts[index], dt) then
 			table.remove(blasts, index)
@@ -825,13 +1050,6 @@ local function onFrame(dt: number)
 				table.remove(flights, index)
 			end
 		end
-	end
-end
-
-local function refreshPrompts()
-	local serverNow = Workspace:GetServerTimeNow()
-	for _, watch in boxes do
-		refreshPrompt(watch, serverNow)
 	end
 end
 

@@ -18,21 +18,10 @@
 --   Speed      « Speed 16 » : vitesse conseillée (AdvisedSpeed, un WalkSpeed), Format.short.
 --
 -- Couleur du texte de Damage et de Speed, chez le joueur local (5.3 : « verts si le joueur les
--- atteint, orange entre 50 et 99 %, rouges en dessous ») :
---   valeur du joueur ≥ valeur conseillée                                       vert
---   valeur du joueur ≥ Balance.StorePanel.OrangeFrom (50 %) de la conseillée    orange
---   en dessous                                                                 rouge
--- Valeurs du joueur, attributs du Player posés par le serveur :
---   Damage     dégâts d'un coup avec l'outil équipé, la Force et l'aura (ToolService, 7.1) : la
---              grandeur de la colonne « Dégâts/coup conseillés » de la section 4 ;
---   WalkSpeed  WalkSpeed de la formule 5.1, trail compris, sans les effets passagers (StatsService).
---              La section 4 donne la vitesse conseillée en WalkSpeed (16 en zone 1 : la vitesse de
---              départ), et StatsService réserve cet attribut à cette comparaison. Ce n'est ni la stat
---              Speed (Vitesse entraînée au tapis, 0 au départ), ni Humanoid.WalkSpeed (0 sur le tapis,
---              −10 % avec un colis : le panneau ne change pas de couleur pendant une fuite).
---   Attribut absent (profil pas encore chargé) : 0, donc rouge.
--- Les couleurs sont refaites dès que l'un de ces attributs change : outil équipé, aura, trail,
--- entraînement.
+-- atteint, orange entre 50 et 99 %, rouges en dessous ») : vert, orange ou rouge d'après les
+-- attributs Damage et WalkSpeed du Player. Règle, couleurs et textes sont communs avec les panneaux
+-- des arches (ZoneGateController) : Shared/AdvicePanel. Les couleurs sont refaites dès que l'un de
+-- ces attributs change : outil équipé, aura, trail, entraînement.
 --
 -- Point d'accroche :
 --   - l'Attachment InfoPoint du magasin (10.4, facultatif), posé par Clément au-dessus de la
@@ -65,14 +54,15 @@ local Workspace = game:GetService("Workspace")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = Shared:WaitForChild("Config")
 local Contract = Shared:WaitForChild("Contract")
-local Balance = require(Config:WaitForChild("Balance"))
 local Zones = require(Config:WaitForChild("Zones"))
 local Attributes = require(Contract:WaitForChild("Attributes"))
 local Find = require(Contract:WaitForChild("Find"))
 local UI = require(Contract:WaitForChild("UI"))
 local Format = require(Shared:WaitForChild("Format"))
+-- Textes, couleurs et modèles communs avec les panneaux des arches (ZoneGateController).
+local AdvicePanel = require(Shared:WaitForChild("AdvicePanel"))
 
-export type Level = "Green" | "Orange" | "Red"
+export type Level = AdvicePanel.Level
 export type AnchorKind = "InfoPoint" | "Window"
 
 export type PanelInfo = {
@@ -106,27 +96,11 @@ local WINDOW_NAME = "Window" -- contrat 10.4
 local SIGN_NAME = "SignPart" -- contrat 10.4 : l'enseigne du magasin
 -- Suivis dans le magasin : leur arrivée ou leur départ refait l'accroche.
 local WATCHED: { [string]: boolean } = { [INFO_POINT_NAME] = true, [WINDOW_NAME] = true, [SIGN_NAME] = true }
--- Attributs du Player posés par le serveur (mêmes noms dans ToolService et StatsService).
-local DAMAGE_ATTRIBUTE = "Damage"
-local WALK_SPEED_ATTRIBUTE = "WalkSpeed"
--- Textes de L-044 (exemples de Clément : « Mini Mart », « HP 35 », « Damage 1 », « Speed 16 »).
+-- Texte de L-044 (exemples de Clément : « Mini Mart », « HP 35 », « Damage 1 », « Speed 16 » ;
+-- ceux de Damage et de Speed sont dans Shared/AdvicePanel).
 local HP_TEXT = "HP %s"
-local DAMAGE_TEXT = "Damage %s"
-local SPEED_TEXT = "Speed %s"
 -- Nom d'un magasin : STORE_Z<n>_<Id>, puis une variante éventuelle (_<Variante>, 10.3).
 local STORE_NAME_PATTERN = "^STORE_Z%d+_(.+)$"
-
--- V0 proposé, absent du doc : couleurs prises dans la planche de style (10.6), à valider par Clément.
--- Vert = celui de l'exemple de Clément sur BB_StoreInfo (#91F630, le vert des prix) ; orange =
--- « améliorations » (#FF8C1A) ; rouge = « fermer » (#E8413C).
-local COLORS: { [Level]: Color3 } = {
-	Green = Color3.fromHex("#91F630"),
-	Orange = Color3.fromHex("#FF8C1A"),
-	Red = Color3.fromHex("#E8413C"),
-}
-local ORANGE_FROM: number = Balance.StorePanel.OrangeFrom -- 50 % (5.3)
--- Marge contre les erreurs d'arrondi des nombres à virgule (10 × 1,07 ne donne pas exactement 10,7).
-local EPSILON = 1e-9
 
 -- V0 proposé, absent du doc : repli sans InfoPoint, d'après les InfoPoint posés par Clément (relevé
 -- Studio du 2026-11-07) : 0,4 stud au-dessus de l'enseigne (zones 2 à 4), 3,05 studs devant la vitre.
@@ -158,33 +132,7 @@ end
 -- Modèles et valeurs ------------------------------------------------------------------------------
 
 -- Billboard modèle de Clément, dans ReplicatedStorage/Assets/UI ou un de ses sous-dossiers (2.2).
-local function billboard(name: string): BillboardGui?
-	local current: Instance? = ReplicatedStorage
-	for _, segment in UI.BillboardFolder do
-		current = if current then current:FindFirstChild(segment) else nil
-	end
-	local found = if current then current:FindFirstChild(name, true) else nil
-	if found and found:IsA("BillboardGui") then
-		return found
-	end
-	return nil
-end
-
--- Vert, orange ou rouge : `value` comparée à `advised` (5.3).
-local function levelOf(value: number, advised: number): Level
-	if advised <= 0 or value >= advised * (1 - EPSILON) then
-		return "Green"
-	elseif value >= advised * (ORANGE_FROM - EPSILON) then
-		return "Orange"
-	end
-	return "Red"
-end
-
--- Valeur d'un attribut du joueur local ; 0 s'il n'est pas encore posé.
-local function playerValue(attribute: string): number
-	local value = localPlayer:GetAttribute(attribute)
-	return if type(value) == "number" and value == value then value else 0
-end
+local billboard = AdvicePanel.template
 
 -- Nom anglais du magasin (Config/Zones), ou le nom de la zone si son modèle n'y est pas.
 local function storeNameOf(store: Instance, zone: Zones.Zone): string
@@ -223,28 +171,8 @@ end
 
 -- Repli sans InfoPoint ------------------------------------------------------------------------------
 
-local function boxOf(object: Instance?): (CFrame?, Vector3?)
-	if object and object:IsA("BasePart") then
-		return object.CFrame, object.Size
-	elseif object and object:IsA("Model") then
-		return object:GetBoundingBox()
-	end
-	return nil, nil
-end
-
 -- Bas et haut (Y du monde) de la boîte d'une pièce ou d'un modèle, ou nil.
-local function verticalSpan(object: Instance?): (number?, number?)
-	local frame, size = boxOf(object)
-	if frame == nil or size == nil then
-		return nil, nil
-	end
-	local half = (
-		math.abs(frame.RightVector.Y) * size.X
-		+ math.abs(frame.UpVector.Y) * size.Y
-		+ math.abs(frame.LookVector.Y) * size.Z
-	) / 2
-	return frame.Position.Y - half, frame.Position.Y + half
-end
+local verticalSpan = AdvicePanel.verticalSpan
 
 -- Pièce de la vitre où s'accroche la barre de PV (même choix que WindowController).
 local function windowPart(store: Model): BasePart?
@@ -289,16 +217,14 @@ end
 -- Panneaux ------------------------------------------------------------------------------------------
 
 local function recolor(panel: Panel)
-	local zone = Zones[panel.Zone]
-	local damageLevel: Level = levelOf(playerValue(DAMAGE_ATTRIBUTE), zone.AdvisedDamage)
-	local speedLevel: Level = levelOf(playerValue(WALK_SPEED_ATTRIBUTE), zone.AdvisedSpeed)
+	local damageLevel: Level, speedLevel: Level = AdvicePanel.levels(localPlayer, Zones[panel.Zone])
 	panel.DamageLevel, panel.SpeedLevel = damageLevel, speedLevel
 	local damage, speed = panel.Damage, panel.Speed
 	if damage then
-		damage.TextColor3 = COLORS[damageLevel]
+		damage.TextColor3 = AdvicePanel.Colors[damageLevel]
 	end
 	if speed then
-		speed.TextColor3 = COLORS[speedLevel]
+		speed.TextColor3 = AdvicePanel.Colors[speedLevel]
 	end
 end
 
@@ -324,11 +250,11 @@ local function build(panel: Panel, template: BillboardGui): BillboardGui
 	end
 	local damage = label(gui, "Damage")
 	if damage then
-		damage.Text = string.format(DAMAGE_TEXT, Format.short(zone.AdvisedDamage))
+		damage.Text = AdvicePanel.damageText(zone)
 	end
 	local speed = label(gui, "Speed")
 	if speed then
-		speed.Text = string.format(SPEED_TEXT, Format.short(zone.AdvisedSpeed))
+		speed.Text = AdvicePanel.speedText(zone)
 	end
 	panel.Damage, panel.Speed = damage, speed
 	return gui
@@ -486,7 +412,7 @@ end
 
 function StoreInfoController.Start()
 	playerGui = localPlayer:WaitForChild("PlayerGui")
-	for _, attribute in { DAMAGE_ATTRIBUTE, WALK_SPEED_ATTRIBUTE } do
+	for _, attribute in { AdvicePanel.DamageAttribute, AdvicePanel.WalkSpeedAttribute } do
 		localPlayer:GetAttributeChangedSignal(attribute):Connect(recolorAll)
 	end
 	-- Avec StreamingEnabled, les magasins arrivent et repartent avec la zone autour du joueur.
