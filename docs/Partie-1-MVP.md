@@ -646,7 +646,7 @@ Contrôleurs client : Input, Hit, Shatter, Carry, Unbox (caméra de révélation
 | ReturnToBase | — | Recharge 90 s, mains vides |
 | TutorialSkip | — | Étape 5 ou plus |
 
-L'encaissement passe par le contact serveur avec le tapis de caisse, sans remote. Serveur vers client : WindowHP (non fiable, 10 Hz max), WindowBroken (id, point d'impact), HeistTimer, ChaseState, TheftAlert, BoxReady, UnboxReveal, TutorialStep, Notify. La Partie 2 ajoutera ToggleShutter, ClaimReward et Rebirth.
+L'encaissement passe par le contact serveur avec le tapis de caisse, sans remote. Serveur vers client : WindowHP (non fiable, 10 Hz max), WindowHit (id, point de frappe, frappeur, dégâts ; non fiable, à chaque coup validé, celui qui casse et les coups sur le camion compris), WindowBroken (id, point d'impact), HeistTimer, ChaseState, TheftAlert, BoxReady, UnboxReveal, TutorialStep, Notify. La Partie 2 ajoutera ToggleShutter, ClaimReward et Rebirth.
 
 ### 9.5 Schéma de sauvegarde v1
 
@@ -1045,6 +1045,8 @@ Chaque étape est envoyée une seule fois par joueur avec `AnalyticsService:LogO
 10. Premier outil acheté
 
 **Économie** : chaque gain (revenus, quotidien, code, Robux) et chaque dépense (outil, amélioration, défense) part avec `LogEconomyEvent`. **Événements custom** : vol PvP réussi ou raté, colis volé à la batte dans le couloir, capture par un vigile (par zone), achat de défense.
+
+**Codé (DEV-054, 2026-11-08)** : `TelemetryService`, noms en anglais dans `Config/Telemetry`, monnaie `Cash`. Revenus encaissés regroupés par joueur, un envoi par minute au plus (limite de Roblox : 120 + 20 × joueurs requêtes par minute et par serveur) ; achats (`Tool`, `Upgrade` avec `Level - n`, `Aura`, `Trail`) en dépense Shop. Événements custom : `PvPTheftSuccess`, `PvPTheftFail` (avec `Reason`), `BatBoxKnockdown`, `GuardCatch` (avec `Zone` et `Phase`) ; `DefenseBought` attend les défenses. Champs au format « Dimension - valeur ». Un interrupteur coupe tout, funnel compris.
 
 ### 14.3 Risques
 
