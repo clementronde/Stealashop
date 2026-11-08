@@ -1,0 +1,10 @@
+# Vitre qui se creuse à chaque coup : validé par Clément (2026-11-08), à intégrer par Ironix
+
+1. **Ce que veut Clément** (référence : un jeu de bûcheron où chaque coup de hache creuse l'arbre) : aucune image de fissure. À chaque coup, des éclats sont arrachés dans la face frappée ; le creux s'élargit et s'enfonce sans percer la vitre, et les éclats partent vers celui qui frappe. La casse finale actuelle ne change pas. Il a validé le prototype en Play, y compris la version sans latence.
+2. **Référence** : `tools/clement/vitre_creuse_prototype.luau` (dans le dépôt, sans commit). C'est du code client injecté en Play, à reprendre dans ShatterController.
+   - À chaque coup, `GeometryService:FragmentAsync` reçoit des points placés à la main : chaque éclat a un point à mi-profondeur et un « plancher » deux fois plus bas qui reste dans la vitre, et un anneau de points borde le creux.
+   - Le rayon (0,6 à 2,6 studs) et la profondeur (22 à 88 % de l'épaisseur) suivent les PV.
+   - Un coup coûte 15 à 45 ms, en asynchrone. Il faut partir d'une simple `Part` à la taille de la vitre : le MeshPart `Window` coûte 350 ms au premier coup.
+3. **Sans latence** : celui qui frappe creuse dès le marqueur `Impact`, au point calculé comme HitController (le point de la vitre le plus proche du personnage). Son écho `WindowHit` est alors ignoré. Les coups des autres joueurs suivent l'écho. La vitre revient pleine à la reconstruction ou quand les PV sont pleins ; à `WindowBroken`, le verre creusé disparaît et la casse actuelle joue.
+4. **Déjà fait côté Clément** : les textures `WIN_Crack_75/50/25` sont vidées (anciens ID dans l'attribut `AncienneTexture`), donc les étoiles de fissure n'apparaissent plus. Les 4 sons `Glass_*` attendus par le code sont posés dans `Assets/Sounds`.
+5. **Pour Ironix** : retirer les étoiles de fissure du code. Il reste à régler la version mobile (moins d'éclats, plafond de débris) et à décider si chaque joueur voit son propre creux, ce qui est le cas aujourd'hui : la forme est tirée au hasard.
