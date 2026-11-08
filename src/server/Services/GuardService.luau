@@ -2559,12 +2559,12 @@ end
 function GuardService.Start()
 	-- La reconstruction d'une vitrine de magasin attend le retour de ses vigiles (StoreReadyToReopen).
 	-- require au démarrage et protégé : sans WindowService (bancs), le vigile marche comme avant.
-	local windowModule = script.Parent:FindFirstChild("WindowService")
-	local okWindow, WindowService = pcall(function(): any
-		return if windowModule then require(windowModule :: ModuleScript) else nil
+	local okWindow, windowApi = pcall(function(): any
+		return require(script.Parent.WindowService) :: any
 	end)
-	if okWindow and WindowService and type(WindowService.AddRebuildGate) == "function" then
-		WindowService.AddRebuildGate(function(_windowId: string, model: Model?): boolean
+	local WindowService: any = if okWindow then windowApi else nil
+	if WindowService then
+		pcall(WindowService.AddRebuildGate, function(_windowId: string, model: Model?): boolean
 			if model == nil or not model:HasTag("NPCStore") then
 				return true
 			end
