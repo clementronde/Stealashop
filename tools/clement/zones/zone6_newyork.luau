@@ -6,10 +6,12 @@
 -- ou bloc par bloc dans l'ordre (A1 d'abord) si Studio peine : A1 fonctions communes et façade de la banque,
 -- A2 façade de la salle des coffres et intérieur, B greybox, arche et magasins, C rue et mobilier,
 -- D1 immeubles de la rue et parking des taxis, D2 terrain, gratte-ciel et fond de ville.
--- Gabarit du 2026-11-07, le même pour toutes les zones : magasins et décor ×1.5, couloir de 60 studs entre les façades.
--- Où : zone x 580..700 ; arche ZoneGate_6 à x = 580 ; EndWall à x = 700. Chaussée z -22.5..22.5 libre de tout obstacle,
--- trottoirs à |z| 22.5..30 (0,45 de haut), façades et murets à |z| = 30, terrain ajouté jusqu'à |z| = 140 et derrière x = 700.
--- Banque : pivot (660, 0, 66), façade vers -Z. Salle des coffres : pivot (660, 0, -66), tournée de 180°.
+-- Gabarit du 2026-11-07, le même pour toutes les zones : magasins et décor ×1.5, couloir de 60 studs entre les façades ;
+-- zones allongées ×1.25 le 2026-11-08 (x' = 30 + (x - 30) × 1.25).
+-- Où : zone x 718..868 (repères X0, XC, X1 posés par le bloc B) ; arche ZoneGate_6 à x = 718 ; bout du couloir à x = 868.
+-- Chaussée z -22.5..22.5 libre de tout obstacle, trottoirs à |z| 22.5..30 (0,45 de haut), façades et murets à |z| = 30,
+-- terrain ajouté jusqu'à |z| = 140 et sur 70 studs derrière le bout du couloir.
+-- Banque : pivot (818, 0, 66), façade vers -Z. Salle des coffres : pivot (818, 0, -66), tournée de 180°.
 -- Les fonctions de façade des blocs A travaillent à l'échelle 1 : le constructeur agrandit ensuite tout le magasin (scale).
 -- Règles : aucun script laissé dans la map ; noms du contrat 10.4 (Window, WindowFractured, Shutter, Door,
 -- Bounds, GuardSpawn, SignPart, ShelfSlot_xx) jamais réutilisés pour le décor ; aucune marque réelle ;
@@ -295,10 +297,13 @@ do
 	assert(Store, "charger d'abord tools/clement/store_builder.luau")
 	local rgb = Color3.fromRGB
 	local K = 1.5   -- gabarit du 2026-11-07, le même pour toutes les zones
-	NY.K = K
+	-- Zones allongées ×1.25 le 2026-11-08 (x' = 30 + (x - 30) × 1.25) : zone x 718..868, magasins centrés sur x = 818.
+	-- Tout le décor se place à partir de ces trois repères : X0 début de zone (arche), XC centre des magasins, X1 bout du couloir.
+	local X0, XC, X1 = 718, 818, 868
+	NY.K, NY.X0, NY.XC, NY.X1 = K, X0, XC, X1
 
 	-- 1) Greybox de la zone 6 : magasins gris rangés ; chaussée z -22.5..22.5 ; côtés |z| 22.5..62.5 sans chevauchement ;
-	--    murets z ±(30..31.5), hauts de 18, hors de l'emprise des magasins (x 630..690) ;
+	--    murets z ±(30..31.5), hauts de 18, hors de l'emprise des magasins (x XC-30..XC+30) ;
 	--    couleurs du quartier : asphalte presque noir (lignes jaunes et voies de bus rouges posées par le bloc C), béton gris
 	local SS = game:GetService("ServerStorage")
 	local gz6 = workspace.Greybox.Corridor.Zone_6
@@ -311,23 +316,23 @@ do
 		end
 	end
 	local g = gz6.Ground
-	g.Street.Size = Vector3.new(120, 2, 45); g.Street.Position = Vector3.new(640, -1, 0)
+	g.Street.Size = Vector3.new(X1 - X0, 2, 45); g.Street.Position = Vector3.new((X0 + X1) / 2, -1, 0)
 	g.Street.Color = rgb(40, 40, 44); g.Street.Material = Enum.Material.Plastic; g.Street.MaterialVariant = "Studs"
 	for _, s in { 1, -1 } do
 		local t = s > 0 and "N" or "S"
 		local side = g["Side_" .. t]
-		side.Size = Vector3.new(120, 2, 40); side.Position = Vector3.new(640, -1, s * 42.5)
+		side.Size = Vector3.new(X1 - X0, 2, 40); side.Position = Vector3.new((X0 + X1) / 2, -1, s * 42.5)
 		side.Color = rgb(128, 128, 132); side.Material = Enum.Material.Plastic; side.MaterialVariant = "Studs"
 		local w1, w2 = g["SideWall_" .. t .. "1"], g["SideWall_" .. t .. "2"]
-		w1.Size = Vector3.new(50, 18, 1.5); w1.Position = Vector3.new(605, 9, s * 30.75)
-		w2.Size = Vector3.new(10, 18, 1.5); w2.Position = Vector3.new(695, 9, s * 30.75)
+		w1.Size = Vector3.new(XC - 30 - X0, 18, 1.5); w1.Position = Vector3.new((X0 + XC - 30) / 2, 9, s * 30.75)
+		w2.Size = Vector3.new(X1 - XC - 30, 18, 1.5); w2.Position = Vector3.new((XC + 30 + X1) / 2, 9, s * 30.75)
 	end
 
-	-- 2) Arche ZoneGate_6 : ×1.5 autour de son pivot, puis base à y = 0, centrée sur z = 0, même x (nom, tag et structure inchangés)
+	-- 2) Arche ZoneGate_6 : ×1.5 autour de son pivot, puis base à y = 0, centrée sur z = 0, à x = X0 (nom, tag et structure inchangés)
 	local gate = gz6.ZoneGate_6
 	gate:ScaleTo(K)
 	local gcf, gsz = gate:GetBoundingBox()
-	gate:PivotTo(gate:GetPivot() + Vector3.new(580 - gcf.Position.X, gsz.Y / 2 - gcf.Position.Y, -gcf.Position.Z))
+	gate:PivotTo(gate:GetPivot() + Vector3.new(X0 - gcf.Position.X, gsz.Y / 2 - gcf.Position.Y, -gcf.Position.Z))
 
 	-- 3) Dossier de la zone
 	local zoneFolder = workspace.Map:FindFirstChild("Zone_6")
@@ -335,6 +340,13 @@ do
 	for _, nm in { "STORE_Z6_Banque", "STORE_Z6_SalleDesCoffres" } do
 		local old = zoneFolder:FindFirstChild(nm); if old then old:Destroy() end
 	end
+
+	-- 4) Repères posés par d'autres (points de patrouille de nuit, départ du camion) : seul x change, d'après la formule
+	-- du 2026-11-08 ; hauteur, z et orientation gardés
+	local function moveX(p, x) if p then p.CFrame = p.CFrame + Vector3.new(x - p.Position.X, 0, 0) end end
+	moveX(gz6:FindFirstChild("NightPatrol_Z6_A"), 755)
+	moveX(gz6:FindFirstChild("NightPatrol_Z6_B"), 830)
+	moveX(zoneFolder:FindFirstChild("TruckSpawn"), 817.5)
 
 	local stone, stoneDark = rgb(228, 220, 200), rgb(198, 188, 164)
 	local gold, goldLight, bronze = rgb(212, 172, 60), rgb(250, 214, 100), rgb(104, 74, 40)
@@ -371,7 +383,7 @@ do
 	-- 4) Banque : pierre calcaire, colonnes, fronton, toit de cuivre ; intérieur crème, marbre blanc et vert
 	local bank, bankN = Store.build({
 		name = "STORE_Z6_Banque", zone = 6, scale = K,
-		origin = CFrame.new(660, 0, 66), parent = zoneFolder,
+		origin = CFrame.new(XC, 0, 66), parent = zoneFolder,
 		sign = "BANK",
 		signColors = { bg = green, text = goldLight, border = gold },
 		signRect = { -6.4, 6.4, 9.4, 12.2 }, facadeTop = 16.4,
@@ -414,7 +426,7 @@ do
 	-- 5) Salle des coffres : façade d'acier blindée, auvent jaune et noir ; intérieur acier, marbre gris et noir
 	local vault, vaultN = Store.build({
 		name = "STORE_Z6_SalleDesCoffres", zone = 6, scale = K,
-		origin = CFrame.new(660, 0, -66) * CFrame.Angles(0, math.pi, 0), parent = zoneFolder,
+		origin = CFrame.new(XC, 0, -66) * CFrame.Angles(0, math.pi, 0), parent = zoneFolder,
 		sign = "VAULT",
 		signColors = { bg = rgb(40, 44, 52), text = hazard, border = hazard },
 		signRect = { -11, 11, 18.7, 20.7 }, facadeTop = 22,
@@ -464,6 +476,7 @@ do
 	assert(NY, "envoyer d'abord le bloc A1")
 	local rgb = Color3.fromRGB
 	local K = NY.K or 1.5
+	local X0, XC, X1 = NY.X0 or 718, NY.XC or 818, NY.X1 or 868   -- repères posés par le bloc B
 	local zoneFolder = workspace.Map:FindFirstChild("Zone_6")
 	if not zoneFolder then zoneFolder = Instance.new("Folder"); zoneFolder.Name = "Zone_6"; zoneFolder.Parent = workspace.Map end
 	local S = zoneFolder:FindFirstChild("Street_NewYork")
@@ -547,11 +560,11 @@ do
 	local G = fresh("Ground")
 	for _, s in { 1, -1 } do
 		local tag = s > 0 and "N" or "S"
-		Bx(G, W, "Kerb_" .. tag, 580, 0, s * 22.5, 700, 0.45, s * 23.25, rgb(140, 140, 144), { studs = true })
-		Bx(G, W, "Pavement_" .. tag, 580, 0, s * 23.25, 700, 0.45, s * 30, rgb(186, 184, 178), { studs = true })
+		Bx(G, W, "Kerb_" .. tag, X0, 0, s * 22.5, X1, 0.45, s * 23.25, rgb(140, 140, 144), { studs = true })
+		Bx(G, W, "Pavement_" .. tag, X0, 0, s * 23.25, X1, 0.45, s * 30, rgb(186, 184, 178), { studs = true })
 	end
-	local cw0, cw1 = 589, 598   -- passage piéton de l'entrée
-	for _, seg in { { 580, cw0 - 1.4 }, { cw1 + 1.4, 700 } } do
+	local cw0, cw1 = X0 + 9, X0 + 18   -- passage piéton de l'entrée
+	for _, seg in { { X0, cw0 - 1.4 }, { cw1 + 1.4, X1 } } do
 		for _, zz in { { 0.3, 0.54 }, { -0.54, -0.3 } } do
 			Bx(G, W, string.format("YellowLine_%d_%s", seg[1], zz[1] > 0 and "N" or "S"), seg[1], 0, zz[1], seg[2], 0.04, zz[2], yellow, flat())
 		end
@@ -561,8 +574,10 @@ do
 			Bx(G, W, string.format("BusLaneEdge_%s%d", tag, seg[1]), seg[1], 0, s * 16.25, seg[2], 0.04, s * 16.6, white, flat())
 		end
 	end
+	local dashes = { X0 + 0.5 }
+	for x = X0 + 21.5, X1 - 6, 15 do table.insert(dashes, x) end
 	for _, s in { 1, -1 } do
-		for _, x0 in { 580.5, 601.5, 616.5, 631.5, 646.5, 661.5, 676.5, 691.5 } do
+		for _, x0 in dashes do
 			Bx(G, W, string.format("LaneDash_%s%d", s > 0 and "N" or "S", x0), x0, 0, s * 8.3, x0 + 6, 0.04, s * 8.6, white, flat())
 		end
 	end
@@ -572,14 +587,14 @@ do
 	end
 	Bx(G, W, "StopLine_N", cw0 - 1.4, 0, 0.9, cw0 - 0.5, 0.04, 21.9, white, flat())
 	Bx(G, W, "StopLine_S", cw1 + 0.5, 0, -21.9, cw1 + 1.4, 0.04, -0.9, white, flat())
-	for i, pos in { { 607, -10.5 }, { 641, 5 }, { 664, -12.5 }, { 690, 11 } } do
+	for i, pos in { { X0 + 27, -10.5 }, { X0 + 54, 8 }, { XC - 6, -12.5 }, { XC + 33, 10 } } do
 		local mh = vcyl(G, W, "SteamVent_" .. i, pos[1], 0, 0.07, pos[2], 3.6, rgb(64, 62, 60), flat())
 		vcyl(G, W, "SteamVentRing_" .. i, pos[1], 0, 0.05, pos[2], 4.2, rgb(40, 40, 42), flat())
 		steam(mh, Enum.NormalId.Right, 5, K)
 	end
 	G.Parent = S
 
-	-- 2) Mobilier des trottoirs, construit à l'échelle 1 puis agrandi (hors des devantures des magasins, x 630..690)
+	-- 2) Mobilier des trottoirs, construit à l'échelle 1 puis agrandi (hors des devantures des magasins, x XC-30..XC+30)
 	local D = fresh("Props")
 	local poleC = rgb(64, 68, 72)
 	-- Lampadaire à crosse : bras et tête au-dessus de la chaussée, sans collision. Sa partie lumineuse porte le tag
@@ -594,7 +609,7 @@ do
 		local pl = Instance.new("PointLight"); pl.Color = rgb(255, 214, 160); pl.Range = 24 * K; pl.Brightness = 1.1; pl.Shadows = false
 		pl.Enabled = false; pl.Parent = glow
 	end
-	for tag, xs in { N = { 605.5, 627, 694.5 }, S = { 587, 628.5, 696.5 } } do
+	for tag, xs in { N = { X0 + 25.5, X0 + 47, XC - 32.5, XC + 36 }, S = { X0 + 7, X0 + 48.5, XC - 32.5, XC + 37 } } do
 		local s = tag == "N" and 1 or -1
 		for i, x in xs do scaled(D, "StreetLamp_" .. tag .. i, side(s, x, 24.45), lamp) end
 	end
@@ -608,15 +623,15 @@ do
 		P(m, "Outlets", a * CFrame.new(0, 1.35, 0), Vector3.new(1.35, 0.34, 0.34), hydCap, { shape = Enum.PartType.Cylinder, decor = true })
 		P(m, "Nozzle", a * CFrame.new(0, 1.15, -0.45) * CFrame.Angles(0, math.rad(90), 0), Vector3.new(0.6, 0.48, 0.48), hydCap, { shape = Enum.PartType.Cylinder, decor = true })
 	end
-	for i, pos in { { 1, 611 }, { -1, 626 }, { -1, 584.5 } } do scaled(D, "Hydrant_" .. i, side(pos[1], pos[2], 24.3), hydrant) end
+	for i, pos in { { 1, X0 + 31 }, { -1, X0 + 46 }, { -1, X0 + 4.5 } } do scaled(D, "Hydrant_" .. i, side(pos[1], pos[2], 24.3), hydrant) end
 	-- Cheminée de vapeur rayée orange et blanc, à l'entrée de la zone (trottoir sud)
 	local orange = rgb(250, 120, 30)
-	scaled(D, "SteamStack", side(-1, 603.5, 24.75), function(m, a)
+	scaled(D, "SteamStack", side(-1, X0 + 23.5, 24.75), function(m, a)
 		for k = 0, 3 do vcyl(m, a, "Ring_" .. k, 0, 0.3 + k * 1.2, 1.5 + k * 1.2, 0, 1.5, (k % 2 == 0) and orange or white, {}) end
 		steam(vcyl(m, a, "Rim", 0, 5.1, 5.4, 0, 1.7, orange, { decor = true }), Enum.NormalId.Right, 6)
 	end)
 	-- Kiosque à journaux et ses distributeurs (trottoir sud, guichet face à la chaussée, contre la boutique fermée)
-	scaled(D, "NewsKiosk", side(-1, 615, 30), function(m, a)
+	scaled(D, "NewsKiosk", side(-1, X0 + 35, 30), function(m, a)
 		local kg, kd = rgb(38, 104, 70), rgb(24, 70, 48)
 		Bx(m, a, "Body", -3, 0.3, -3.6, 3, 6.0, -0.4, kg, { studs = true })
 		Bx(m, a, "Roof", -3.4, 6.0, -4.3, 3.4, 6.45, -0.1, kd, { decor = true })
@@ -635,7 +650,7 @@ do
 		end
 	end)
 	-- Corbeilles
-	for i, pos in { { 1, 616.5 }, { -1, 692 } } do
+	for i, pos in { { 1, X0 + 36.5 }, { -1, XC + 33 } } do
 		scaled(D, "TrashCan_" .. i, side(pos[1], pos[2], 24.6), function(m, a)
 			vcyl(m, a, "Can", 0, 0.3, 2.4, 0, 1.3, rgb(56, 104, 64), {})
 			vcyl(m, a, "Rim", 0, 2.4, 2.55, 0, 1.4, iron, { decor = true })
@@ -661,11 +676,11 @@ do
 		label(sb, Enum.NormalId.Left, "BROADWAY", rgb(255, 255, 255), 40, green)
 		label(sb, Enum.NormalId.Right, "BROADWAY", rgb(255, 255, 255), 40, green)
 	end
-	scaled(D, "TrafficPole_N", side(1, 586.5, 24.45), trafficPole)    -- avant le passage, côté nord
-	scaled(D, "TrafficPole_S", side(-1, 600.5, 24.45), trafficPole)   -- après le passage, côté sud
+	scaled(D, "TrafficPole_N", side(1, X0 + 6.5, 24.45), trafficPole)    -- avant le passage, côté nord
+	scaled(D, "TrafficPole_S", side(-1, X0 + 20.5, 24.45), trafficPole)   -- après le passage, côté sud
 	-- Bouche de métro au coin de l'entrée (trottoir nord, côté bordure : le passage reste libre devant la tour) :
 	-- garde-corps verts, globes verts allumés, enseigne
-	scaled(D, "SubwayEntrance", side(1, 597.5, 28), function(m, a)
+	scaled(D, "SubwayEntrance", side(1, X0 + 17.5, 28), function(m, a)
 		local rail, globe = rgb(28, 92, 58), rgb(120, 255, 150)
 		Bx(m, a, "Stairwell", -3, 0.3, -3.2, 3, 0.33, -0.8, rgb(18, 18, 22), { decor = true, noShadow = true })
 		for k = 0, 2 do
@@ -691,13 +706,14 @@ end
 
 -- Bloc D1 : immeubles plaqués sur les murets. À l'entrée, deux tours Art déco à panneaux lumineux (esprit Times Square,
 -- marquise de théâtre, pomme géante) ; puis des immeubles de brique brune (escaliers de secours, châteaux d'eau, boutiques
--- fermées par un rideau de fer) et, au bout de la rue, un immeuble étroit et le parking à étages des taxis jaunes.
+-- fermées par un rideau de fer) et, au bout de la rue, un dernier immeuble et le parking à étages des taxis jaunes.
 -- Le muret reste le vrai mur : les façades n'ont pas de collision, sauf les marches des perrons.
 do
 	local NY = _G.ClaudeNY
 	assert(NY and NY.scaled, "envoyer d'abord le bloc C")
 	local rgb = Color3.fromRGB
 	local K = NY.K or 1.5
+	local X0, XC, X1 = NY.X0 or 718, NY.XC or 818, NY.X1 or 868   -- repères posés par le bloc B
 	local P, Bx, vcyl, label, fresh, scaled, S = NY.P, NY.Bx, NY.vcylW, NY.labelW, NY.fresh, NY.scaled, NY.street
 	local iron, stoneT, glassD, lit = rgb(30, 30, 34), rgb(222, 214, 196), rgb(46, 58, 72), rgb(255, 214, 140)
 	local gold, bronze = rgb(212, 172, 60), rgb(104, 74, 40)
@@ -772,7 +788,7 @@ do
 		vcyl(m, fr, "Spire", w / 2, 116, t.h, 10, 1.0, cr, dk())
 		P(m, "SpireTip", fr * CFrame.new(w / 2, t.h + 0.6, 10), Vector3.new(1.4, 1.4, 1.4), rgb(255, 70, 60), { shape = Enum.PartType.Ball, mat = Enum.Material.Neon, decor = true })
 	end
-	gatewayTower({ name = "GatewayTower_N", side = "N", x0 = 582, x1 = 606, h = 138,
+	gatewayTower({ name = "GatewayTower_N", side = "N", x0 = X0 + 2, x1 = X0 + 26, h = 138,
 		stone = rgb(214, 198, 166), dark = rgb(150, 132, 104), crown = gold, ring = rgb(255, 204, 110),
 		boards = {
 			{ "NEW YORK", 1.5, 22.5, 11, 19, rgb(18, 22, 40), rgb(255, 214, 60), rgb(70, 160, 255) },
@@ -780,7 +796,7 @@ do
 			{ "BIG APPLE", 12, 22.5, 20.5, 27, rgb(30, 120, 60), rgb(255, 240, 200), rgb(140, 255, 120) },
 		},
 		blade = "THEATER", bladeBg = rgb(150, 20, 30), bladeText = rgb(255, 230, 120), apple = 17.25 })
-	gatewayTower({ name = "GatewayTower_S", side = "S", x0 = 582, x1 = 606, h = 124,
+	gatewayTower({ name = "GatewayTower_S", side = "S", x0 = X0 + 2, x1 = X0 + 26, h = 124,
 		stone = rgb(176, 178, 186), dark = rgb(118, 120, 128), crown = rgb(200, 206, 214), ring = rgb(120, 220, 255),
 		boards = {
 			{ "SALE", 1.5, 9, 11, 19, rgb(255, 214, 40), rgb(210, 30, 40), rgb(255, 90, 60) },
@@ -872,17 +888,19 @@ do
 	end
 	local trimA, trimB = rgb(226, 218, 200), rgb(196, 190, 176)
 	for _, b in {
-		{ name = "Tenement_N", side = "N", x0 = 606, x1 = 630, h = 28, brick = rgb(150, 68, 52), trim = trimA, door = rgb(30, 45, 95), shop = "PIZZA", shopColor = rgb(40, 120, 60), fe = true, wt = true, wtx = 12, entry = "R" },
-		{ name = "Tenement_S", side = "S", x0 = 606, x1 = 630, h = 26, brick = rgb(124, 72, 52), trim = trimB, door = rgb(120, 30, 34), shop = "DELI", shopColor = rgb(170, 40, 40), fe = true, wt = true, wtx = 4, entry = "L" },
-		{ name = "Tenement_End", side = "N", x0 = 690, x1 = 700, h = 30, brick = rgb(134, 82, 60), trim = trimA, door = rgb(25, 25, 30), shop = "COFFEE", shopColor = rgb(110, 70, 40), fe = true, wt = true, narrow = true },
+		{ name = "Tenement_N", side = "N", x0 = X0 + 26, x1 = X0 + 50, h = 28, brick = rgb(150, 68, 52), trim = trimA, door = rgb(30, 45, 95), shop = "PIZZA", shopColor = rgb(40, 120, 60), fe = true, wt = true, wtx = 12, entry = "R" },
+		{ name = "Tenement_S", side = "S", x0 = X0 + 26, x1 = X0 + 50, h = 26, brick = rgb(124, 72, 52), trim = trimB, door = rgb(120, 30, 34), shop = "DELI", shopColor = rgb(170, 40, 40), fe = true, wt = true, wtx = 4, entry = "L" },
+		{ name = "Tenement_N2", side = "N", x0 = X0 + 50, x1 = XC - 30, h = 24, brick = rgb(102, 62, 46), trim = trimB, door = rgb(120, 30, 34), shop = "LAUNDROMAT", shopColor = rgb(40, 110, 180), fe = true, entry = "L" },
+		{ name = "Tenement_S2", side = "S", x0 = X0 + 50, x1 = XC - 30, h = 30, brick = rgb(190, 152, 104), trim = trimB, door = rgb(30, 70, 50), shop = "FLOWERS", shopColor = rgb(200, 80, 140), wt = true, wtx = 9, entry = "R" },
+		{ name = "Tenement_End", side = "N", x0 = XC + 30, x1 = X1, h = 30, brick = rgb(134, 82, 60), trim = trimA, door = rgb(25, 25, 30), shop = "COFFEE", shopColor = rgb(110, 70, 40), fe = true, wt = true, wtx = 4, entry = "R", narrow = (X1 - XC - 30) < 15 },
 	} do tenement(b) end
 	H.Parent = S
 
-	-- 3) Parking à étages (sud, x 690..700), à l'échelle 1 puis agrandi : façade fermée sur le muret, deux niveaux ouverts
-	-- et le toit, un taxi jaune garé sur chacun, nez vers la rue, derrière le muret (hors de la chaussée)
+	-- 3) Parking à étages (sud, de la fin du magasin au bout du couloir), à l'échelle 1 puis agrandi : façade fermée sur le
+	-- muret, deux niveaux ouverts et le toit, des taxis jaunes garés nez vers la rue, derrière le muret (hors de la chaussée)
 	local Pk = fresh("Parking")
-	local fr = frameFor("S", 690, 700)
-	local w = 10 / K
+	local fr = frameFor("S", XC + 30, X1)
+	local w = (X1 - XC - 30) / K
 	local conc, concD, railC = rgb(176, 174, 168), rgb(140, 138, 134), rgb(200, 200, 196)
 	local D = 13
 	Bx(Pk, fr, "GroundWall", 0, 0, 0, w, 12.4, 1.4, conc, { studs = true, decor = true })
@@ -896,7 +914,7 @@ do
 	end
 	Bx(Pk, fr, "RoofDeck", 0, 24.8, 0, w, 25.4, D, concD, { studs = true, decor = true })
 	Bx(Pk, fr, "RoofParapet", 0, 25.4, -0.1, w, 26.4, 0.5, conc, dk())
-	for k, x in { 0, w - 0.6 } do
+	for k, x in { 0, w / 2 - 0.3, w - 0.6 } do
 		Bx(Pk, fr, "GaragePillar_" .. k, x, 13.0, 0, x + 0.6, 24.8, 0.6, concD, dk())
 	end
 	Bx(Pk, fr, "GarageSide_L", -0.05, 12.4, 0.6, 0.35, 24.8, D, concD, dk())
@@ -923,22 +941,24 @@ do
 		Bx(m, cf, "BumperF", -1.95, 0.6, -4.25, 1.95, 1.0, -4.0, rgb(150, 154, 160), dk())
 		Bx(m, cf, "BumperB", -1.95, 0.6, 4.0, 1.95, 1.0, 4.25, rgb(150, 154, 160), dk())
 	end
-	taxi("Taxi_1", fr * CFrame.new(w / 2, 13.0, 6.5))
-	taxi("Taxi_2", fr * CFrame.new(w / 2, 19.2, 6.8) * CFrame.Angles(0, math.rad(-5), 0))
-	taxi("Taxi_3", fr * CFrame.new(w / 2, 25.4, 6.6) * CFrame.Angles(0, math.rad(6), 0))
+	taxi("Taxi_1", fr * CFrame.new(w / 4, 13.0, 6.5))
+	taxi("Taxi_2", fr * CFrame.new(3 * w / 4, 13.0, 6.8) * CFrame.Angles(0, math.rad(-4), 0))
+	taxi("Taxi_3", fr * CFrame.new(w / 2 + 1.5, 19.2, 6.6) * CFrame.Angles(0, math.rad(5), 0))
+	taxi("Taxi_4", fr * CFrame.new(w / 2 - 2, 25.4, 6.5) * CFrame.Angles(0, math.rad(-6), 0))
 	Pk.WorldPivot = fr
 	Pk:ScaleTo(K)
 	Pk.Parent = S
 end
 
--- Bloc D2 : terrain ajouté (|z| 62.5..140 et derrière x = 700), deuxième rang d'immeubles, gratte-ciel derrière et à côté
--- des magasins, et fond de ville au bout du couloir : façade Art déco plaquée à x = 700 (son cœur ferme le couloir sur
+-- Bloc D2 : terrain ajouté (|z| 62.5..140 et derrière le bout du couloir), deuxième rang d'immeubles, gratte-ciel derrière et
+-- à côté des magasins, et fond de ville au bout du couloir : façade Art déco plaquée à x = X1 (son cœur ferme le couloir sur
 -- toute sa largeur, |z| <= 31.5, plus large que l'EndWall), grande tour et tours voisines visibles de loin.
 do
 	local NY = _G.ClaudeNY
 	assert(NY and NY.Bx, "envoyer d'abord le bloc C")
 	local rgb = Color3.fromRGB
 	local P, Bx, vcyl, label, fresh, S = NY.P, NY.Bx, NY.vcylW, NY.labelW, NY.fresh, NY.street
+	local X0, XC, X1 = NY.X0 or 718, NY.XC or 818, NY.X1 or 868   -- repères posés par le bloc B
 	local W = CFrame.identity
 	local gold, iron, bronze = rgb(212, 172, 60), rgb(30, 30, 34), rgb(104, 74, 40)
 	local glassC, tipC = rgb(52, 64, 80), rgb(255, 70, 60)
@@ -946,12 +966,12 @@ do
 	local beige, grey, brick, sand, brown = rgb(214, 198, 166), rgb(176, 176, 184), rgb(150, 84, 64), rgb(196, 170, 130), rgb(112, 70, 54)
 	local capC = rgb(150, 156, 164)
 
-	-- 1) Terrain : béton gris au-delà du greybox (|z| 62.5..140) et derrière le bout du couloir (x 700..770)
+	-- 1) Terrain : béton gris au-delà du greybox (|z| 62.5..140) et derrière le bout du couloir (70 studs)
 	local L = fresh("Land")
 	local concrete = rgb(128, 128, 132)
-	Bx(L, W, "Land_N", 580, -2, 62.5, 700, 0, 140, concrete, { studs = true })
-	Bx(L, W, "Land_S", 580, -2, -140, 700, 0, -62.5, concrete, { studs = true })
-	Bx(L, W, "Land_E", 700, -2, -140, 770, 0, 140, concrete, { studs = true })
+	Bx(L, W, "Land_N", X0, -2, 62.5, X1, 0, 140, concrete, { studs = true })
+	Bx(L, W, "Land_S", X0, -2, -140, X1, 0, -62.5, concrete, { studs = true })
+	Bx(L, W, "Land_E", X1, -2, -140, X1 + 70, 0, 140, concrete, { studs = true })
 	L.Parent = S
 
 	-- Château d'eau en bois (à l'échelle 1.5)
@@ -998,125 +1018,147 @@ do
 
 	local Sk = fresh("Skyline")
 	-- 2) Deuxième rang derrière les immeubles de brique, visible au-dessus d'eux depuis la rue
-	local mN = tower(Sk, "Midrise_N", { { x0 = 607, x1 = 629, z0 = 44, z1 = 60, y0 = 0, y1 = 64, color = brown, nx = 4, nz = 3, from = 20 } })
-	Bx(mN, W, "Cornice", 606.6, 64, 43.6, 629.4, 65.2, 60.4, iron, { decor = true })
-	waterTower(mN, 614, 52, 65.2)
-	local mS = tower(Sk, "Midrise_S", { { x0 = 607, x1 = 629, z0 = -60, z1 = -44, y0 = 0, y1 = 56, color = rgb(132, 96, 80), nx = 4, nz = 3, from = 20 } })
-	Bx(mS, W, "Cornice", 606.6, 56, -60.4, 629.4, 57.2, -43.6, iron, { decor = true })
-	waterTower(mS, 621, -52, 57.2)
+	local mN = tower(Sk, "Midrise_N", { { x0 = X0 + 27, x1 = X0 + 49, z0 = 44, z1 = 60, y0 = 0, y1 = 64, color = brown, nx = 4, nz = 3, from = 20 } })
+	Bx(mN, W, "Cornice", X0 + 26.6, 64, 43.6, X0 + 49.4, 65.2, 60.4, iron, { decor = true })
+	waterTower(mN, X0 + 34, 52, 65.2)
+	local mS = tower(Sk, "Midrise_S", { { x0 = X0 + 27, x1 = X0 + 49, z0 = -60, z1 = -44, y0 = 0, y1 = 56, color = rgb(132, 96, 80), nx = 4, nz = 3, from = 20 } })
+	Bx(mS, W, "Cornice", X0 + 26.6, 56, -60.4, X0 + 49.4, 57.2, -43.6, iron, { decor = true })
+	waterTower(mS, X0 + 41, -52, 57.2)
+	local mN2 = tower(Sk, "Midrise_N2", { { x0 = X0 + 51, x1 = XC - 31, z0 = 44, z1 = 60, y0 = 0, y1 = 72, color = rgb(150, 120, 96), nx = 3, nz = 3, from = 20 } })
+	Bx(mN2, W, "Cornice", X0 + 50.6, 72, 43.6, XC - 30.6, 73.2, 60.4, iron, { decor = true })
+	local mS2 = tower(Sk, "Midrise_S2", { { x0 = X0 + 51, x1 = XC - 31, z0 = -60, z1 = -44, y0 = 0, y1 = 66, color = rgb(120, 112, 104), nx = 3, nz = 3, from = 20 } })
+	Bx(mS2, W, "Cornice", X0 + 50.6, 66, -60.4, XC - 30.6, 67.2, -43.6, iron, { decor = true })
+	waterTower(mS2, X0 + 60, -52, 67.2)
 
-	-- 3) Gratte-ciel du côté nord : à côté de la banque (x 584..628) et derrière elle (z 104..140)
+	-- 3) Gratte-ciel du côté nord : à côté de la banque et derrière elle (z 104..140)
 	tower(Sk, "Tower_N1", {   -- Art déco beige
-		{ x0 = 584, x1 = 606, z0 = 68, z1 = 90, y0 = 0, y1 = 70, color = beige, nx = 5, nz = 5, from = 20 },
-		{ x0 = 587, x1 = 603, z0 = 71, z1 = 87, y0 = 70, y1 = 100, color = beige, nx = 4, nz = 4, ring = neonW },
-		{ x0 = 590, x1 = 600, z0 = 74, z1 = 84, y0 = 100, y1 = 118, color = beige, nx = 2, nz = 2, ring = neonW },
-		{ x0 = 592.5, x1 = 597.5, z0 = 76.5, z1 = 81.5, y0 = 118, y1 = 126, color = gold },
-	}, { 595, 79, 126, 150, 1.0, gold })
+		{ x0 = X0 + 4, x1 = X0 + 26, z0 = 68, z1 = 90, y0 = 0, y1 = 70, color = beige, nx = 5, nz = 5, from = 20 },
+		{ x0 = X0 + 7, x1 = X0 + 23, z0 = 71, z1 = 87, y0 = 70, y1 = 100, color = beige, nx = 4, nz = 4, ring = neonW },
+		{ x0 = X0 + 10, x1 = X0 + 20, z0 = 74, z1 = 84, y0 = 100, y1 = 118, color = beige, nx = 2, nz = 2, ring = neonW },
+		{ x0 = X0 + 12.5, x1 = X0 + 17.5, z0 = 76.5, z1 = 81.5, y0 = 118, y1 = 126, color = gold },
+	}, { X0 + 15, 79, 126, 150, 1.0, gold })
 	tower(Sk, "Tower_N2", {   -- verre bleu à bandeaux blancs
-		{ x0 = 608, x1 = 628, z0 = 64, z1 = 86, y0 = 0, y1 = 120, color = rgb(86, 128, 170), mat = Enum.Material.Glass, bands = 9 },
-		{ x0 = 610, x1 = 626, z0 = 66, z1 = 84, y0 = 120, y1 = 124, color = capC },
-	}, { 618, 75, 124, 140, 0.6 })
+		{ x0 = X0 + 28, x1 = X0 + 48, z0 = 64, z1 = 86, y0 = 0, y1 = 120, color = rgb(86, 128, 170), mat = Enum.Material.Glass, bands = 9 },
+		{ x0 = X0 + 30, x1 = X0 + 46, z0 = 66, z1 = 84, y0 = 120, y1 = 124, color = capC },
+	}, { X0 + 38, 75, 124, 140, 0.6 })
+	tower(Sk, "Tower_N6", {   -- verre clair, contre la banque
+		{ x0 = X0 + 50, x1 = XC - 32, z0 = 66, z1 = 96, y0 = 0, y1 = 110, color = rgb(120, 156, 190), mat = Enum.Material.Glass, bands = 8 },
+		{ x0 = X0 + 52, x1 = XC - 34, z0 = 68, z1 = 94, y0 = 110, y1 = 114, color = capC },
+	}, { X0 + 59, 81, 114, 128, 0.6 })
 	tower(Sk, "Tower_N3", {   -- grande tour de pierre grise, la plus haute du côté nord
-		{ x0 = 586, x1 = 614, z0 = 100, z1 = 130, y0 = 0, y1 = 90, color = grey, nx = 6, nz = 6, from = 20 },
-		{ x0 = 590, x1 = 610, z0 = 104, z1 = 126, y0 = 90, y1 = 140, color = grey, nx = 4, nz = 4, ring = neonG },
-		{ x0 = 594, x1 = 606, z0 = 108, z1 = 122, y0 = 140, y1 = 170, color = grey, nx = 2, nz = 2, ring = neonG },
-		{ x0 = 597, x1 = 603, z0 = 112, z1 = 118, y0 = 170, y1 = 182, color = rgb(200, 206, 214) },
-	}, { 600, 115, 182, 214, 1.2, rgb(200, 206, 214) })
+		{ x0 = X0 + 6, x1 = X0 + 34, z0 = 100, z1 = 130, y0 = 0, y1 = 90, color = grey, nx = 6, nz = 6, from = 20 },
+		{ x0 = X0 + 10, x1 = X0 + 30, z0 = 104, z1 = 126, y0 = 90, y1 = 140, color = grey, nx = 4, nz = 4, ring = neonG },
+		{ x0 = X0 + 14, x1 = X0 + 26, z0 = 108, z1 = 122, y0 = 140, y1 = 170, color = grey, nx = 2, nz = 2, ring = neonG },
+		{ x0 = X0 + 17, x1 = X0 + 23, z0 = 112, z1 = 118, y0 = 170, y1 = 182, color = rgb(200, 206, 214) },
+	}, { X0 + 20, 115, 182, 214, 1.2, rgb(200, 206, 214) })
+	tower(Sk, "Tower_N7", {   -- Art déco grège à couronne dorée, entre la grande tour et la banque
+		{ x0 = X0 + 38, x1 = XC - 32, z0 = 104, z1 = 136, y0 = 0, y1 = 80, color = rgb(168, 156, 140), nx = 5, nz = 5, from = 20 },
+		{ x0 = X0 + 42, x1 = XC - 36, z0 = 108, z1 = 132, y0 = 80, y1 = 125, color = rgb(168, 156, 140), nx = 4, nz = 4, ring = neonW },
+		{ x0 = X0 + 47, x1 = XC - 41, z0 = 113, z1 = 127, y0 = 125, y1 = 150, color = gold, ring = neonW },
+	}, { X0 + 53, 120, 150, 175, 1.0, gold })
 	tower(Sk, "Tower_N4", {   -- verre vert d'eau derrière la banque
-		{ x0 = 640, x1 = 678, z0 = 108, z1 = 136, y0 = 0, y1 = 150, color = rgb(96, 150, 150), mat = Enum.Material.Glass, bands = 11 },
-		{ x0 = 644, x1 = 674, z0 = 112, z1 = 132, y0 = 150, y1 = 156, color = capC },
+		{ x0 = XC - 20, x1 = XC + 18, z0 = 108, z1 = 136, y0 = 0, y1 = 150, color = rgb(96, 150, 150), mat = Enum.Material.Glass, bands = 11 },
+		{ x0 = XC - 16, x1 = XC + 14, z0 = 112, z1 = 132, y0 = 150, y1 = 156, color = capC },
 	})
 	local n5 = tower(Sk, "Tower_N5", {   -- brique, château d'eau sur le toit
-		{ x0 = 682, x1 = 700, z0 = 106, z1 = 132, y0 = 0, y1 = 80, color = brick, nx = 3, nz = 4, from = 20 },
+		{ x0 = XC + 22, x1 = X1 - 2, z0 = 106, z1 = 132, y0 = 0, y1 = 80, color = brick, nx = 4, nz = 4, from = 20 },
 	})
-	Bx(n5, W, "Cornice", 681.6, 80, 105.6, 700, 81.2, 132.4, iron, { decor = true })
-	waterTower(n5, 691, 120, 81.2)
+	Bx(n5, W, "Cornice", XC + 21.6, 80, 105.6, X1 - 1.6, 81.2, 132.4, iron, { decor = true })
+	waterTower(n5, XC + 35, 120, 81.2)
 
 	-- 4) Gratte-ciel du côté sud (variantes)
 	tower(Sk, "Tower_S1", {   -- Art déco grise
-		{ x0 = 584, x1 = 606, z0 = -90, z1 = -68, y0 = 0, y1 = 64, color = grey, nx = 5, nz = 5, from = 20 },
-		{ x0 = 587.5, x1 = 602.5, z0 = -86.5, z1 = -71.5, y0 = 64, y1 = 94, color = grey, nx = 3, nz = 3, ring = neonG },
-		{ x0 = 591, x1 = 599, z0 = -83, z1 = -75, y0 = 94, y1 = 108, color = rgb(200, 206, 214), ring = neonG },
-	}, { 595, -79, 108, 130, 0.8 })
+		{ x0 = X0 + 4, x1 = X0 + 26, z0 = -90, z1 = -68, y0 = 0, y1 = 64, color = grey, nx = 5, nz = 5, from = 20 },
+		{ x0 = X0 + 7.5, x1 = X0 + 22.5, z0 = -86.5, z1 = -71.5, y0 = 64, y1 = 94, color = grey, nx = 3, nz = 3, ring = neonG },
+		{ x0 = X0 + 11, x1 = X0 + 19, z0 = -83, z1 = -75, y0 = 94, y1 = 108, color = rgb(200, 206, 214), ring = neonG },
+	}, { X0 + 15, -79, 108, 130, 0.8 })
 	tower(Sk, "Tower_S2", {   -- verre sombre
-		{ x0 = 608, x1 = 628, z0 = -88, z1 = -64, y0 = 0, y1 = 140, color = rgb(40, 48, 60), mat = Enum.Material.Glass, bands = 10, bandColor = capC },
-		{ x0 = 611, x1 = 625, z0 = -85, z1 = -67, y0 = 140, y1 = 146, color = capC, ring = neonW },
-	}, { 618, -76, 146, 164, 0.6 })
+		{ x0 = X0 + 28, x1 = X0 + 48, z0 = -88, z1 = -64, y0 = 0, y1 = 140, color = rgb(40, 48, 60), mat = Enum.Material.Glass, bands = 10, bandColor = capC },
+		{ x0 = X0 + 31, x1 = X0 + 45, z0 = -85, z1 = -67, y0 = 140, y1 = 146, color = capC, ring = neonW },
+	}, { X0 + 38, -76, 146, 164, 0.6 })
+	tower(Sk, "Tower_S6", {   -- pierre ocre à gradins, contre la salle des coffres
+		{ x0 = X0 + 50, x1 = XC - 32, z0 = -96, z1 = -66, y0 = 0, y1 = 70, color = sand, nx = 4, nz = 5, from = 20 },
+		{ x0 = X0 + 53, x1 = XC - 35, z0 = -93, z1 = -69, y0 = 70, y1 = 95, color = sand, nx = 3, nz = 3, ring = neonG },
+	}, { X0 + 59, -81, 95, 112, 0.8 })
 	tower(Sk, "Tower_S3", {   -- grande tour beige à couronne dorée, la plus haute du côté sud
-		{ x0 = 586, x1 = 614, z0 = -132, z1 = -102, y0 = 0, y1 = 100, color = beige, nx = 6, nz = 6, from = 20 },
-		{ x0 = 590, x1 = 610, z0 = -128, z1 = -106, y0 = 100, y1 = 150, color = beige, nx = 4, nz = 4, ring = neonW },
-		{ x0 = 594, x1 = 606, z0 = -124, z1 = -110, y0 = 150, y1 = 176, color = gold, ring = neonW },
-		{ x0 = 597, x1 = 603, z0 = -120, z1 = -114, y0 = 176, y1 = 186, color = gold },
-	}, { 600, -117, 186, 226, 1.2, gold })
+		{ x0 = X0 + 6, x1 = X0 + 34, z0 = -132, z1 = -102, y0 = 0, y1 = 100, color = beige, nx = 6, nz = 6, from = 20 },
+		{ x0 = X0 + 10, x1 = X0 + 30, z0 = -128, z1 = -106, y0 = 100, y1 = 150, color = beige, nx = 4, nz = 4, ring = neonW },
+		{ x0 = X0 + 14, x1 = X0 + 26, z0 = -124, z1 = -110, y0 = 150, y1 = 176, color = gold, ring = neonW },
+		{ x0 = X0 + 17, x1 = X0 + 23, z0 = -120, z1 = -114, y0 = 176, y1 = 186, color = gold },
+	}, { X0 + 20, -117, 186, 226, 1.2, gold })
+	tower(Sk, "Tower_S7", {   -- verre sombre à bandeaux gris, entre la grande tour et la salle des coffres
+		{ x0 = X0 + 38, x1 = XC - 32, z0 = -136, z1 = -104, y0 = 0, y1 = 150, color = rgb(46, 54, 68), mat = Enum.Material.Glass, bands = 10, bandColor = capC },
+		{ x0 = X0 + 41, x1 = XC - 35, z0 = -133, z1 = -107, y0 = 150, y1 = 156, color = capC, ring = neonW },
+	}, { X0 + 53, -120, 156, 176, 0.8 })
 	tower(Sk, "Tower_S4", {   -- verre bleu derrière la salle des coffres
-		{ x0 = 640, x1 = 676, z0 = -136, z1 = -108, y0 = 0, y1 = 124, color = rgb(70, 110, 160), mat = Enum.Material.Glass, bands = 9 },
-		{ x0 = 643, x1 = 673, z0 = -133, z1 = -111, y0 = 124, y1 = 130, color = capC },
-	}, { 658, -122, 130, 146, 0.6 })
+		{ x0 = XC - 20, x1 = XC + 16, z0 = -136, z1 = -108, y0 = 0, y1 = 124, color = rgb(70, 110, 160), mat = Enum.Material.Glass, bands = 9 },
+		{ x0 = XC - 17, x1 = XC + 13, z0 = -133, z1 = -111, y0 = 124, y1 = 130, color = capC },
+	}, { XC - 2, -122, 130, 146, 0.6 })
 	local s5 = tower(Sk, "Tower_S5", {   -- pierre ocre, château d'eau sur le toit
-		{ x0 = 682, x1 = 700, z0 = -132, z1 = -106, y0 = 0, y1 = 70, color = sand, nx = 3, nz = 4, from = 20 },
+		{ x0 = XC + 22, x1 = X1 - 2, z0 = -132, z1 = -106, y0 = 0, y1 = 70, color = sand, nx = 4, nz = 4, from = 20 },
 	})
-	Bx(s5, W, "Cornice", 681.6, 70, -132.4, 700, 71.2, -105.6, iron, { decor = true })
-	waterTower(s5, 691, -118, 71.2)
+	Bx(s5, W, "Cornice", XC + 21.6, 70, -132.4, X1 - 1.6, 71.2, -105.6, iron, { decor = true })
+	waterTower(s5, XC + 35, -118, 71.2)
 	Sk.Parent = S
 
-	-- 5) Fond du couloir : façade plaquée à x = 700 (cœur solide, décor devant sans collision), grande tour et tours voisines
+	-- 5) Fond du couloir : façade plaquée à x = X1 (cœur solide, décor devant sans collision), grande tour et tours voisines
 	local E = fresh("Backdrop")
 	local dark = rgb(206, 190, 158)
-	Bx(E, W, "EndFacade", 700, 0, -31.5, 703.2, 36, 31.5, beige, { studs = true })
+	Bx(E, W, "EndFacade", X1, 0, -31.5, X1 + 3.2, 36, 31.5, beige, { studs = true })
 	for k, z in { -29.7, -21, -7.5, 7.5, 21, 29.7 } do
-		Bx(E, W, "EndPier_" .. k, 699.475, 0.45, z - 1.2, 700, 39, z + 1.2, dark, { studs = true, decor = true })
+		Bx(E, W, "EndPier_" .. k, X1 - 0.525, 0.45, z - 1.2, X1, 39, z + 1.2, dark, { studs = true, decor = true })
 	end
 	for k, zr in { { -28.3, -22.4 }, { -19.6, -9 }, { 9, 19.6 }, { 22.4, 28.3 } } do
-		Bx(E, W, "EndWindow_" .. k, 699.85, 3, zr[1], 700, (math.abs(zr[1]) > 21) and 33 or 27, zr[2], glassC, { decor = true, mat = Enum.Material.Glass })
+		Bx(E, W, "EndWindow_" .. k, X1 - 0.15, 3, zr[1], X1, (math.abs(zr[1]) > 21) and 33 or 27, zr[2], glassC, { decor = true, mat = Enum.Material.Glass })
 	end
-	Bx(E, W, "EndDoorFrame", 699.7, 0.45, -6.9, 700, 13.95, 6.9, bronze, { decor = true })
-	Bx(E, W, "EndDoors", 699.55, 0.45, -6.0, 699.7, 12.9, 6.0, gold, { decor = true })
+	Bx(E, W, "EndDoorFrame", X1 - 0.3, 0.45, -6.9, X1, 13.95, 6.9, bronze, { decor = true })
+	Bx(E, W, "EndDoors", X1 - 0.45, 0.45, -6.0, X1 - 0.3, 12.9, 6.0, gold, { decor = true })
 	for k = 1, 5 do
 		local a = math.rad(k * 30)
-		P(E, "Sunburst_" .. k, CFrame.new(699.625, 13.95 + 3.6 * math.sin(a), 3.6 * math.cos(a)) * CFrame.Angles(-a, 0, 0), Vector3.new(0.15, 0.45, 6.0), gold, { decor = true })
+		P(E, "Sunburst_" .. k, CFrame.new(X1 - 0.375, 13.95 + 3.6 * math.sin(a), 3.6 * math.cos(a)) * CFrame.Angles(-a, 0, 0), Vector3.new(0.15, 0.45, 6.0), gold, { decor = true })
 	end
-	P(E, "ClockRim", CFrame.new(699.7, 24.75, 0), Vector3.new(0.45, 7.5, 7.5), gold, { shape = Enum.PartType.Cylinder, decor = true })
-	P(E, "ClockFace", CFrame.new(699.4, 24.75, 0), Vector3.new(0.22, 6.6, 6.6), rgb(250, 246, 232), { shape = Enum.PartType.Cylinder, decor = true })
-	P(E, "MinuteHand", CFrame.new(699.22, 26.1, 0), Vector3.new(0.09, 2.7, 0.24), iron, { decor = true })
-	P(E, "HourHand", CFrame.new(699.22, 24.75, 0.9), Vector3.new(0.09, 0.27, 1.8), iron, { decor = true })
-	P(E, "ClockPin", CFrame.new(699.18, 24.75, 0), Vector3.new(0.5, 0.5, 0.5), gold, { shape = Enum.PartType.Ball, decor = true })
-	label(Bx(E, W, "EndSign", 699.625, 30, -15, 700, 33, 15, rgb(36, 40, 48), { decor = true }), Enum.NormalId.Left, "FORTUNE TOWER", gold, 40)
-	Bx(E, W, "EndBand", 699.775, 33.6, -31.5, 700, 34.2, 31.5, gold, { decor = true })
-	Bx(E, W, "EndCornice", 699.325, 36, -31.8, 703.2, 36.9, 31.8, dark, { decor = true })
+	P(E, "ClockRim", CFrame.new(X1 - 0.3, 24.75, 0), Vector3.new(0.45, 7.5, 7.5), gold, { shape = Enum.PartType.Cylinder, decor = true })
+	P(E, "ClockFace", CFrame.new(X1 - 0.6, 24.75, 0), Vector3.new(0.22, 6.6, 6.6), rgb(250, 246, 232), { shape = Enum.PartType.Cylinder, decor = true })
+	P(E, "MinuteHand", CFrame.new(X1 - 0.78, 26.1, 0), Vector3.new(0.09, 2.7, 0.24), iron, { decor = true })
+	P(E, "HourHand", CFrame.new(X1 - 0.78, 24.75, 0.9), Vector3.new(0.09, 0.27, 1.8), iron, { decor = true })
+	P(E, "ClockPin", CFrame.new(X1 - 0.82, 24.75, 0), Vector3.new(0.5, 0.5, 0.5), gold, { shape = Enum.PartType.Ball, decor = true })
+	label(Bx(E, W, "EndSign", X1 - 0.375, 30, -15, X1, 33, 15, rgb(36, 40, 48), { decor = true }), Enum.NormalId.Left, "FORTUNE TOWER", gold, 40)
+	Bx(E, W, "EndBand", X1 - 0.225, 33.6, -31.5, X1, 34.2, 31.5, gold, { decor = true })
+	Bx(E, W, "EndCornice", X1 - 0.675, 36, -31.8, X1 + 3.2, 36.9, 31.8, dark, { decor = true })
 	tower(E, "EndTower", {
-		{ x0 = 703.2, x1 = 743.5, z0 = -19.5, z1 = 19.5, y0 = 0, y1 = 108, color = beige, nx = 7, nz = 7, from = 39 },
-		{ x0 = 709, x1 = 739, z0 = -15, z1 = 15, y0 = 108, y1 = 144, color = beige, nx = 5, nz = 5, ring = neonW },
-		{ x0 = 713.5, x1 = 734.5, z0 = -10.5, z1 = 10.5, y0 = 144, y1 = 168, color = beige, nx = 3, nz = 3, ring = neonW },
-		{ x0 = 716.5, x1 = 731.5, z0 = -7.5, z1 = 7.5, y0 = 168, y1 = 180, color = gold, ring = neonW },
-		{ x0 = 719.5, x1 = 728.5, z0 = -4.5, z1 = 4.5, y0 = 180, y1 = 189, color = gold },
-	}, { 724, 0, 189, 228, 1.5, gold })
+		{ x0 = X1 + 3.2, x1 = X1 + 43.5, z0 = -19.5, z1 = 19.5, y0 = 0, y1 = 108, color = beige, nx = 7, nz = 7, from = 39 },
+		{ x0 = X1 + 9, x1 = X1 + 39, z0 = -15, z1 = 15, y0 = 108, y1 = 144, color = beige, nx = 5, nz = 5, ring = neonW },
+		{ x0 = X1 + 13.5, x1 = X1 + 34.5, z0 = -10.5, z1 = 10.5, y0 = 144, y1 = 168, color = beige, nx = 3, nz = 3, ring = neonW },
+		{ x0 = X1 + 16.5, x1 = X1 + 31.5, z0 = -7.5, z1 = 7.5, y0 = 168, y1 = 180, color = gold, ring = neonW },
+		{ x0 = X1 + 19.5, x1 = X1 + 28.5, z0 = -4.5, z1 = 4.5, y0 = 180, y1 = 189, color = gold },
+	}, { X1 + 24, 0, 189, 228, 1.5, gold })
 	tower(E, "Tower_E1", {   -- verre sombre, côté nord
-		{ x0 = 708, x1 = 738, z0 = 36, z1 = 64, y0 = 0, y1 = 140, color = rgb(40, 48, 60), mat = Enum.Material.Glass, bands = 10, bandColor = capC },
-		{ x0 = 711, x1 = 735, z0 = 39, z1 = 61, y0 = 140, y1 = 146, color = capC, ring = neonG },
-	}, { 723, 50, 146, 168, 0.8 })
+		{ x0 = X1 + 8, x1 = X1 + 38, z0 = 36, z1 = 64, y0 = 0, y1 = 140, color = rgb(40, 48, 60), mat = Enum.Material.Glass, bands = 10, bandColor = capC },
+		{ x0 = X1 + 11, x1 = X1 + 35, z0 = 39, z1 = 61, y0 = 140, y1 = 146, color = capC, ring = neonG },
+	}, { X1 + 23, 50, 146, 168, 0.8 })
 	tower(E, "Tower_E2", {   -- Art déco grise, la plus haute du fond nord
-		{ x0 = 716, x1 = 756, z0 = 74, z1 = 112, y0 = 0, y1 = 110, color = grey, nx = 7, nz = 7, from = 20 },
-		{ x0 = 721, x1 = 751, z0 = 79, z1 = 107, y0 = 110, y1 = 150, color = grey, nx = 5, nz = 5, ring = neonG },
-		{ x0 = 727, x1 = 745, z0 = 85, z1 = 101, y0 = 150, y1 = 175, color = rgb(200, 206, 214), ring = neonG },
-	}, { 736, 93, 175, 205, 1.2 })
+		{ x0 = X1 + 16, x1 = X1 + 56, z0 = 74, z1 = 112, y0 = 0, y1 = 110, color = grey, nx = 7, nz = 7, from = 20 },
+		{ x0 = X1 + 21, x1 = X1 + 51, z0 = 79, z1 = 107, y0 = 110, y1 = 150, color = grey, nx = 5, nz = 5, ring = neonG },
+		{ x0 = X1 + 27, x1 = X1 + 45, z0 = 85, z1 = 101, y0 = 150, y1 = 175, color = rgb(200, 206, 214), ring = neonG },
+	}, { X1 + 36, 93, 175, 205, 1.2 })
 	local e3 = tower(E, "Tower_E3", {   -- brique
-		{ x0 = 704, x1 = 730, z0 = 118, z1 = 140, y0 = 0, y1 = 95, color = brick, nx = 4, nz = 3, from = 20 },
+		{ x0 = X1 + 4, x1 = X1 + 30, z0 = 118, z1 = 140, y0 = 0, y1 = 95, color = brick, nx = 4, nz = 3, from = 20 },
 	})
-	Bx(e3, W, "Cornice", 703.6, 95, 117.6, 730.4, 96.2, 140, iron, { decor = true })
-	waterTower(e3, 716, 129, 96.2)
+	Bx(e3, W, "Cornice", X1 + 3.6, 95, 117.6, X1 + 30.4, 96.2, 140, iron, { decor = true })
+	waterTower(e3, X1 + 16, 129, 96.2)
 	tower(E, "Tower_E4", {   -- pierre ocre, côté sud
-		{ x0 = 708, x1 = 736, z0 = -64, z1 = -36, y0 = 0, y1 = 96, color = sand, nx = 5, nz = 5, from = 20 },
-		{ x0 = 712, x1 = 732, z0 = -60, z1 = -40, y0 = 96, y1 = 125, color = sand, nx = 3, nz = 3, ring = neonW },
-	}, { 722, -50, 125, 145, 0.8 })
+		{ x0 = X1 + 8, x1 = X1 + 36, z0 = -64, z1 = -36, y0 = 0, y1 = 96, color = sand, nx = 5, nz = 5, from = 20 },
+		{ x0 = X1 + 12, x1 = X1 + 32, z0 = -60, z1 = -40, y0 = 96, y1 = 125, color = sand, nx = 3, nz = 3, ring = neonW },
+	}, { X1 + 22, -50, 125, 145, 0.8 })
 	tower(E, "Tower_E5", {   -- verre bleu
-		{ x0 = 714, x1 = 752, z0 = -112, z1 = -74, y0 = 0, y1 = 160, color = rgb(86, 128, 170), mat = Enum.Material.Glass, bands = 12 },
-		{ x0 = 717, x1 = 749, z0 = -109, z1 = -77, y0 = 160, y1 = 166, color = capC },
-	}, { 733, -93, 166, 186, 0.8 })
+		{ x0 = X1 + 14, x1 = X1 + 52, z0 = -112, z1 = -74, y0 = 0, y1 = 160, color = rgb(86, 128, 170), mat = Enum.Material.Glass, bands = 12 },
+		{ x0 = X1 + 17, x1 = X1 + 49, z0 = -109, z1 = -77, y0 = 160, y1 = 166, color = capC },
+	}, { X1 + 33, -93, 166, 186, 0.8 })
 	local e6 = tower(E, "Tower_E6", {   -- brique claire
-		{ x0 = 704, x1 = 728, z0 = -140, z1 = -118, y0 = 0, y1 = 85, color = rgb(170, 110, 84), nx = 4, nz = 3, from = 20 },
+		{ x0 = X1 + 4, x1 = X1 + 28, z0 = -140, z1 = -118, y0 = 0, y1 = 85, color = rgb(170, 110, 84), nx = 4, nz = 3, from = 20 },
 	})
-	Bx(e6, W, "Cornice", 703.6, 85, -140, 728.4, 86.2, -117.6, iron, { decor = true })
-	waterTower(e6, 716, -129, 86.2)
+	Bx(e6, W, "Cornice", X1 + 3.6, 85, -140, X1 + 28.4, 86.2, -117.6, iron, { decor = true })
+	waterTower(e6, X1 + 16, -129, 86.2)
 	E.Parent = S
 end
 
@@ -1133,6 +1175,6 @@ do
 	end
 	table.sort(parts)
 	local c = NY.counts or {}
-	return string.format("Zone 6 New York (×1.5) : banque %d produits, salle des coffres %d produits, décor %d pièces (%s)",
-		c.bank or 0, c.vault or 0, n, table.concat(parts, ", "))
+	return string.format("Zone 6 New York (×1.5, zone x %s..%s) : banque %d produits, salle des coffres %d produits, décor %d pièces (%s)",
+		tostring(NY.X0), tostring(NY.X1), c.bank or 0, c.vault or 0, n, table.concat(parts, ", "))
 end

@@ -64,6 +64,14 @@ local function clean(root)
 			end
 		end
 	end
+	-- noms à préfixe du contrat (ACC_ des vendeurs, ITM_ posés en décor…) : le ContractChecker les compterait
+	for _, d in list do
+		if d ~= root and d.Parent then
+			for _, p in { "STORE_", "ITM_", "BOX_", "TOOL_", "ACC_" } do
+				if d.Name:sub(1, #p) == p then d.Name = "Show_" .. d.Name; break end
+			end
+		end
+	end
 	for _, d in root:GetDescendants() do
 		if d:IsA("BasePart") then d.Anchored = true end
 		if d:IsA("SpawnLocation") then d.Enabled = false end
@@ -181,18 +189,18 @@ do
 end
 task.wait()
 
--- COMPTOIRS DU HUB : les 4 food trucks, guichet vers les visiteurs
+-- COMPTOIRS DU HUB : les 4 stands de marché (vendeur en statue : sans Humanoid), comptoir vers les visiteurs
 do
 	local f = folder("COMPTOIRS DU HUB")
 	sign(f, "COMPTOIRS DU HUB", -190, 486)
 	local hub = workspace:FindFirstChild("Map") and workspace.Map:FindFirstChild("Hub")
-	local trucks = hub and hub:FindFirstChild("Trucks")
-	for i, t in { { "ENV_Hub_WeaponTruck", "Boutique d'armes" }, { "ENV_Hub_AuraTruck", "Boutique d'auras" },
-		{ "ENV_Hub_RobuxTruck", "Comptoir Robux" }, { "ENV_Hub_PawnTruck", "Receleur" } } do
-		local orig = trucks and trucks:FindFirstChild(t[1])
+	local stalls = hub and hub:FindFirstChild("Stalls")
+	for i, t in { { "ENV_Hub_WeaponStall", "Boutique d'armes" }, { "ENV_Hub_AuraStall", "Boutique d'auras" },
+		{ "ENV_Hub_RobuxStall", "Comptoir Robux" }, { "ENV_Hub_PawnStall", "Receleur" } } do
+		local orig = stalls and stalls:FindFirstChild(t[1])
 		if orig then
 			local x = -160 + (i - 1) * 35
-			local c = place(copy(orig, "Show_" .. t[1]), x, 498, 0) -- pivot = Counter, guichet vers -Z
+			local c = place(copy(orig, "Show_" .. t[1]), x, 498, 0) -- pivot = Counter, comptoir vers -Z
 			c.Parent = f
 			ped(f, t[2], x, 494, t[2], "LIVRÉ · MOD-029")
 			table.insert(added, c.Name)
@@ -362,6 +370,16 @@ do
 		if d:IsA("Highlight") and d.Name == "OutlineHighlight" then d:Destroy(); n += 1 end
 	end
 	if n > 0 then table.insert(out, string.format("Highlight OutlineHighlight retirés des copies déjà exposées : %d", n)) end
+	-- même chose pour les noms à préfixe du contrat dans les copies déjà exposées (accessoires ACC_ des vigiles…)
+	local r = 0
+	for _, d in sr:GetDescendants() do
+		if d:IsA("PVInstance") or d:IsA("Accessory") then
+			for _, p in { "STORE_", "ITM_", "BOX_", "TOOL_", "ACC_" } do
+				if d.Name:sub(1, #p) == p then d.Name = "Show_" .. d.Name; r += 1; break end
+			end
+		end
+	end
+	if r > 0 then table.insert(out, string.format("Noms à préfixe du contrat renommés Show_… dans les copies déjà exposées : %d", r)) end
 end
 
 -- Vérification : rien dans la vitrine que le code ou le ContractChecker pourrait compter

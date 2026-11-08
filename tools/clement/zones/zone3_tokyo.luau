@@ -4,7 +4,8 @@
 -- Relançable : les modèles du même nom sont remplacés. Trois blocs, à envoyer ensemble ou un par un
 -- (le bloc 1 pose _G.ClaudeTokyo, lu par le bloc 2) :
 --   1) façade de temple et habillage intérieur ; 2) greybox et magasins ; 3) rue Map/Zone_3/Street_Tokyo.
--- Gabarit du 2026-11-07 (L-039) : magasins et décor ×1.5, pivots (240, 0, ±66), façades à z = ±30,
+-- Zone allongée ×1.25 le 2026-11-08 (x' = 30 + (x - 30) × 1,25) : x 230..368, magasins à x 292.
+-- Gabarit du 2026-11-07 (L-039) : magasins et décor ×1.5, pivots (292, 0, ±66), façades à z = ±30,
 -- couloir de 60 studs (chaussée z -22.5..22.5), sol du quartier jusqu'à |z| 140.
 -- Lampadaires et lanternes (rue et façades) : tag NightLight, livrés éteints ; le code les allume la nuit (L-043).
 -- Règles : aucun script laissé dans la map ; aucun nom du contrat 10.4 réutilisé pour le décor
@@ -250,7 +251,7 @@ do
 		-- Réserve : ouverture élargie de 6 à 8 studs (x 9..17), socle du Luxe intact. À la position imposée
 		-- de l'Électronique (pivot 240, 0, 44), le navmesh fermait la porte de 6 studs (décalé de 4 studs,
 		-- elle passait) : le vigile n'atteignait plus le Luxe. 8 studs passent quel que soit l'alignement testé.
-		-- Au gabarit ×1.5, l'ouverture fait 12 studs (testée aux pivots 240, 0, ±66 : 11 chemins sur 11).
+		-- Au gabarit ×1.5, l'ouverture fait 12 studs (testée aux pivots 240 puis 292, 0, ±66 : 11 chemins sur 11).
 		local Rv = model:FindFirstChild("Reserve")
 		if Rv then
 			local function box(name, x0, y0, z0, x1, y1, z1)
@@ -290,9 +291,10 @@ do
 	assert(Store, "charger d'abord tools/clement/store_builder.luau")
 	assert(Tokyo, "lancer d'abord le bloc 1 de ce fichier")
 	local SCALE = 1.5   -- option scale du constructeur : magasin agrandi autour de son pivot, contrat compris
+	local X0, X1, XC = 230, 368, 292   -- zone (arches 3 et 4) et pivot des magasins : mêmes valeurs qu'au bloc 3
 
 	-- Greybox de la zone 3 : magasins gris rangés ; chaussée z -22.5..22.5 ; côtés à |z| 22.5..62.5 ;
-	-- murets à z ±(30..31.5), 18 de haut, hors de l'emprise des magasins (x 210..270) ; arche ×1.5,
+	-- murets à z ±(30..31.5), 18 de haut, hors de l'emprise des magasins (x XC ± 30) ; arche ×1.5 en x X0,
 	-- base au sol. Couleurs de la zone : chaussée indigo, sol de gravier clair (repris par le bloc 3).
 	local SS = game:GetService("ServerStorage")
 	local gz = workspace.Greybox.Corridor.Zone_3
@@ -308,22 +310,29 @@ do
 	local function put(p, x0, y0, z0, x1, y1, z1)
 		p.Size = Vector3.new(x1 - x0, y1 - y0, z1 - z0); p.Position = Vector3.new((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2)
 	end
-	put(g.Street, 190, -2, -22.5, 300, 0, 22.5)
-	put(g.Side_N, 190, -2, 22.5, 300, 0, 62.5)
-	put(g.Side_S, 190, -2, -62.5, 300, 0, -22.5)
-	put(g.SideWall_N1, 190, 0, 30, 210, 18, 31.5)
-	put(g.SideWall_S1, 190, 0, -31.5, 210, 18, -30)
-	put(g.SideWall_N2, 270, 0, 30, 300, 18, 31.5)
-	put(g.SideWall_S2, 270, 0, -31.5, 300, 18, -30)
+	put(g.Street, X0, -2, -22.5, X1, 0, 22.5)
+	put(g.Side_N, X0, -2, 22.5, X1, 0, 62.5)
+	put(g.Side_S, X0, -2, -62.5, X1, 0, -22.5)
+	put(g.SideWall_N1, X0, 0, 30, XC - 30, 18, 31.5)
+	put(g.SideWall_S1, X0, 0, -31.5, XC - 30, 18, -30)
+	put(g.SideWall_N2, XC + 30, 0, 30, X1, 18, 31.5)
+	put(g.SideWall_S2, XC + 30, 0, -31.5, X1, 18, -30)
+	-- repères de patrouille de nuit : x' = 30 + (x - 30) × 1,25 depuis 217,5 et 272,5
+	for nm, x in { NightPatrol_Z3_A = 264.4, NightPatrol_Z3_B = 333.1 } do
+		local p = gz:FindFirstChild(nm)
+		if p then p.Position = Vector3.new(x, p.Position.Y, 0) end
+	end
 	for _, p in { g.Street, g.Side_N, g.Side_S } do p.Material = Enum.Material.Plastic; p.MaterialVariant = "Studs" end
 	g.Street.Color = rgb(52, 48, 76); g.Side_N.Color = rgb(218, 206, 194); g.Side_S.Color = rgb(218, 206, 194)
 	local gate = gz.ZoneGate_3   -- même nom, même tag, même structure ; ScaleTo fixe l'échelle absolue (relançable)
 	gate:ScaleTo(SCALE)
 	local gcf, gsize = gate:GetBoundingBox()
-	gate:PivotTo(gate:GetPivot() + Vector3.new(190 - gcf.X, gsize.Y / 2 - gcf.Y, -gcf.Z))
+	gate:PivotTo(gate:GetPivot() + Vector3.new(X0 - gcf.X, gsize.Y / 2 - gcf.Y, -gcf.Z))
 
 	local zoneFolder = workspace.Map:FindFirstChild("Zone_3")
 	if not zoneFolder then zoneFolder = Instance.new("Folder"); zoneFolder.Name = "Zone_3"; zoneFolder.Parent = workspace.Map end
+	local truck = zoneFolder:FindFirstChild("TruckSpawn")   -- point du code : x' = 30 + (240 - 30) × 1,25
+	if truck then truck.Position = Vector3.new(292.5, truck.Position.Y, truck.Position.Z) end
 	for _, nm in { "STORE_Z3_Electronique", "STORE_Z3_JeuxVideo" } do
 		local old = zoneFolder:FindFirstChild(nm); if old then old:Destroy() end
 	end
@@ -335,7 +344,7 @@ do
 	-- Électronique : plâtre blanc et poteaux vermillon, tuiles sombres, néons cyan ; intérieur clair
 	local elec, elecN = Store.build({
 		name = "STORE_Z3_Electronique", zone = 3,
-		origin = CFrame.new(240, 0, 66), parent = zoneFolder, scale = SCALE,
+		origin = CFrame.new(XC, 0, 66), parent = zoneFolder, scale = SCALE,
 		sign = "ELECTRONICS",
 		signColors = { bg = rgb(18, 22, 34), text = cyan, border = gold },
 		signRect = { -13, 13, 11.4, 13.55 }, facadeTop = 21,
@@ -410,7 +419,7 @@ do
 	local maroon, black = rgb(176, 38, 36), rgb(30, 28, 34)
 	local game_, gameN = Store.build({
 		name = "STORE_Z3_JeuxVideo", zone = 3,
-		origin = CFrame.new(240, 0, -66) * CFrame.Angles(0, math.pi, 0), parent = zoneFolder, scale = SCALE,
+		origin = CFrame.new(XC, 0, -66) * CFrame.Angles(0, math.pi, 0), parent = zoneFolder, scale = SCALE,
 		sign = "VIDEO GAMES",
 		signColors = { bg = rgb(40, 16, 60), text = yellow, border = pink },
 		signRect = { -13, 13, 11.4, 13.55 }, facadeTop = 21,
@@ -489,24 +498,29 @@ do
 end
 
 ------------------------------------------------------------------------------------------------
--- BLOC 3 : rue et quartier, Map/Zone_3/Street_Tokyo (gabarit du 2026-11-07, L-039 : tout ×1.5,
--- couloir de 60 studs). Chaussée z -22.5..22.5 libre : marquages au sol seulement, rien de suspendu
--- sous 16,5 studs. Trottoirs à |z| 22.5..30, 0,45 de haut. Façades plaquées sur les murets
--- (z ±30..31.5), sans collision. Sol du quartier jusqu'à |z| 140, haies en limite de zone.
--- Entrée (x 190..210) : dallage, grand torii et sa lanterne, enceinte du temple, bannières, pagode
--- (62 studs, visible de loin), sanctuaire, clocher, jardin sec. Sortie (x 270..300) : maisons,
+-- BLOC 3 : rue et quartier, Map/Zone_3/Street_Tokyo. Gabarit du 2026-11-07 (L-039 : tout ×1.5,
+-- couloir de 60 studs) et zones allongées ×1.25 le 2026-11-08 : zone 3 de x 230 à 368, magasins à
+-- x 292. Chaussée z -22.5..22.5 libre : marquages au sol seulement, rien de suspendu sous 16,5 studs.
+-- Trottoirs à |z| 22.5..30, 0,45 de haut. Façades plaquées sur les murets (z ±30..31.5), sans
+-- collision. Sol du quartier jusqu'à |z| 140, haies en limite de zone.
+-- Entrée (x 230..262) : dallage, grand torii et sa lanterne, enceinte du temple, bannières, pagode
+-- (62 studs, visible de loin), sanctuaire, clocher, jardin sec. Sortie (x 322..368) : maisons,
 -- immeubles à néons, tour d'antenne (87 studs). Derrière les magasins : cerisiers et immeubles.
 -- Pétales qui tombent des cerisiers et au-dessus de l'entrée (ParticleEmitter, aucun script).
+-- Lampadaires et lanternes : tag NightLight, livrés éteints ; le code les allume la nuit (L-043).
 -- Chaque objet est dessiné à l'échelle 1 autour de son repère, puis agrandi ×1.5 (Model:ScaleTo :
 -- pièces, SurfaceGui et particules suivent, pas la portée des lumières, donnée à sa valeur finale).
+-- Ne dépend que du bloc 2 (magasins posés) : relançable seul.
 ------------------------------------------------------------------------------------------------
 do
 	local rgb = Color3.fromRGB
-	local Tokyo = _G.ClaudeTokyo
-	assert(Tokyo, "lancer d'abord le bloc 1 de ce fichier")
 	local Z = workspace.Map:FindFirstChild("Zone_3")
 	assert(Z, "lancer d'abord le bloc 2 de ce fichier")
 	local K = 1.5
+	local X0, X1, XC = 230, 368, 292                 -- zone (arches 3 et 4) et pivot des magasins : mêmes valeurs qu'au bloc 2
+	local XS0, XS1 = XC - 30, XC + 30                -- emprise des magasins ×1.5 (façades de x 261,1 à 322,9)
+	local XE, XX = (X0 + XS0) / 2, (XS1 + X1) / 2    -- milieux de l'entrée (temple) et de la sortie (ville)
+	local PA, PB = 264.4, 333.1                      -- repères NightPatrol_Z3_A et _B du greybox
 	local old = Z:FindFirstChild("Street_Tokyo"); if old then old:Destroy() end
 	local S = Instance.new("Folder"); S.Name = "Street_Tokyo"; S.Parent = Z
 	local function group(name) local f = Instance.new("Model"); f.Name = name; return f end
@@ -558,6 +572,19 @@ do
 		local s = Instance.new("UIStroke"); s.Color = stroke or Color3.new(0, 0, 0); s.Thickness = 3; s.LineJoinMode = Enum.LineJoinMode.Round; s.Parent = t
 		local pad = Instance.new("UIPadding"); pad.PaddingTop = UDim.new(0.1, 0); pad.PaddingBottom = UDim.new(0.1, 0); pad.Parent = t
 		t.Parent = g; g.Parent = part
+	end
+	local function lattice(part, face, color, cols, rows)   -- croisillons dessinés dans une SurfaceGui (comme au bloc 1)
+		local g = Instance.new("SurfaceGui"); g.Name = "LatticeGui"; g.Face = face
+		g.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud; g.PixelsPerStud = 20
+		for c = 1, cols - 1 do
+			local f = Instance.new("Frame"); f.Name = "Bar"; f.BorderSizePixel = 0; f.BackgroundColor3 = color
+			f.AnchorPoint = Vector2.new(0.5, 0); f.Position = UDim2.fromScale(c / cols, 0); f.Size = UDim2.new(0, 3, 1, 0); f.Parent = g
+		end
+		for r = 1, rows - 1 do
+			local f = Instance.new("Frame"); f.Name = "Bar"; f.BorderSizePixel = 0; f.BackgroundColor3 = color
+			f.AnchorPoint = Vector2.new(0, 0.5); f.Position = UDim2.fromScale(0, r / rows); f.Size = UDim2.new(1, 0, 0, 3); f.Parent = g
+		end
+		g.Parent = part
 	end
 	local function light(part, color, range, brightness)
 		local pl = Instance.new("PointLight"); pl.Color = color; pl.Range = range; pl.Brightness = brightness; pl.Shadows = false; pl.Parent = part
@@ -614,43 +641,45 @@ do
 	local G = group("Ground")
 	for _, s in { 1, -1 } do
 		local tag = (s > 0) and "N" or "S"
-		Bx(G, W, "Land_" .. tag, 190, -2, s * 62.5, 300, 0, s * 140, GROUND, { studs = true })
-		Bx(G, W, "Kerb_" .. tag, 190, 0, s * 22.5, 300, 0.45, s * 23.25, rgb(226, 222, 216), { studs = true })
-		Bx(G, W, "Pavement_" .. tag, 190, 0, s * 23.25, 300, 0.45, s * 30, rgb(200, 188, 186), { studs = true })
-		Bx(G, W, "TactileStrip_" .. tag, 190, 0.45, s * 24.6, 300, 0.5, s * 25.5, rgb(250, 205, 30), { decor = true, noShadow = true })
-		for _, sg in { { 209.5, 234.75 }, { 245.25, 300 } } do
-			flat(G, "EdgeLine_" .. tag .. sg[1], Vector3.new(sg[1], 0, s * 21.45), Vector3.new(sg[2], 0, s * 21.45), 0.3)
+		Bx(G, W, "Land_" .. tag, X0, -2, s * 62.5, X1, 0, s * 140, GROUND, { studs = true })
+		Bx(G, W, "Kerb_" .. tag, X0, 0, s * 22.5, X1, 0.45, s * 23.25, rgb(226, 222, 216), { studs = true })
+		Bx(G, W, "Pavement_" .. tag, X0, 0, s * 23.25, X1, 0.45, s * 30, rgb(200, 188, 186), { studs = true })
+		Bx(G, W, "TactileStrip_" .. tag, X0, 0.45, s * 24.6, X1, 0.5, s * 25.5, rgb(250, 205, 30), { decor = true, noShadow = true })
+		for _, sg in { { XS0 - 0.5, XC - 5.25 }, { XC + 5.25, X1 } } do
+			flat(G, "EdgeLine_" .. tag .. math.floor(sg[1]), Vector3.new(sg[1], 0, s * 21.45), Vector3.new(sg[2], 0, s * 21.45), 0.3)
 		end
 	end
-	for c = 0, 2 do
+	for c = 0, math.floor((XS0 - X0 - 1.2) / 6) - 1 do
 		for r = 0, 4 do
-			local x0, z0 = 191.2 + c * 6, -22.3 + r * 9
+			local x0, z0 = X0 + 1.2 + c * 6, -22.3 + r * 9
 			Bx(G, W, "EntryPaving_" .. (c * 5 + r + 1), x0, 0, z0, x0 + 5.6, 0.05, z0 + 8.6,
 				((c + r) % 2 == 0) and rgb(202, 196, 186) or rgb(184, 178, 170), { decor = true, noShadow = true })
 		end
 	end
 	local nd = 0
-	for x = 211, 292, 9 do   -- pointillés, sauf sur les repères de patrouille de nuit et au passage piéton
-		local x1 = x + 4.5
-		local blocked = (x1 > 215 and x < 220) or (x1 > 232 and x < 248) or (x1 > 270 and x < 275)
+	local skip = { { PA - 2.5, PA + 2.5 }, { PB - 2.5, PB + 2.5 }, { XC - 8, XC + 8 } }   -- repères de patrouille, passage piéton
+	for x = XS0 + 1, X1 - 5, 9 do
+		local x1, blocked = x + 4.5, false
+		for _, b in skip do if x1 > b[1] and x < b[2] then blocked = true end end
 		if not blocked then nd += 1; flat(G, "CenterDash_" .. nd, Vector3.new(x, 0, 0), Vector3.new(x1, 0, 0), 0.375) end
 	end
 	for i = 0, 11 do
 		local z0 = -20.7 + i * 3.6
-		Bx(G, W, "Crosswalk_" .. (i + 1), 235.5, 0, z0, 244.5, 0.04, z0 + 1.8, white, { decor = true, noShadow = true })
+		Bx(G, W, "Crosswalk_" .. (i + 1), XC - 4.5, 0, z0, XC + 4.5, 0.04, z0 + 1.8, white, { decor = true, noShadow = true })
 	end
-	flat(G, "StopLine_E", Vector3.new(233.1, 0, -21), Vector3.new(233.1, 0, -0.45), 0.675)
-	flat(G, "StopLine_W", Vector3.new(246.9, 0, 0.45), Vector3.new(246.9, 0, 21), 0.675)
-	for i, c in { { 219, -10.5 }, { 261, 10.5 } } do
+	flat(G, "StopLine_E", Vector3.new(XC - 6.9, 0, -21), Vector3.new(XC - 6.9, 0, -0.45), 0.675)
+	flat(G, "StopLine_W", Vector3.new(XC + 6.9, 0, 0.45), Vector3.new(XC + 6.9, 0, 21), 0.675)
+	for i, c in { { XC - 21, -10.5 }, { XC + 21, 10.5 } } do
 		local v = { Vector3.new(c[1] - 4.5, 0, c[2]), Vector3.new(c[1], 0, c[2] - 2.4), Vector3.new(c[1] + 4.5, 0, c[2]), Vector3.new(c[1], 0, c[2] + 2.4) }
 		for k = 1, 4 do flat(G, "Diamond_" .. i .. "_" .. k, v[k], v[k % 4 + 1], 0.375) end
 	end
 	flush(G)
 
-	-- 2) Entrée (arche x = 190) : grand torii au-dessus de la rue et sa lanterne de papier, enceinte du
-	-- temple plaquée sur les murets (jusqu'à x 209, avant l'angle du magasin), bannières, lanternes de
-	-- pierre, pluie de pétales au-dessus de l'entrée
+	-- 2) Entrée (arche x = X0) : grand torii au-dessus de la rue et sa lanterne de papier, enceinte du
+	-- temple plaquée sur les murets (jusqu'à 1 stud de l'angle du magasin), bannières, lanternes de pierre,
+	-- pluie de pétales au-dessus de l'entrée
 	local Sh = group("Entrance")
+	local XT = X0 + 11   -- torii
 	local function toro(parent, name, A, y0)   -- lanterne de pierre ; base à y0 (0,3 sur un trottoir, 0 au sol)
 		local m = item(parent, name)
 		local function b(n, x0, ya, z0, x1, yb, z1, c, o) return Bx(m, A, n, x0, y0 + ya, z0, x1, y0 + yb, z1, c, o) end
@@ -677,27 +706,27 @@ do
 		return grow(m, A)
 	end
 	do   -- torii : 43 studs de haut une fois agrandi, piliers sur les trottoirs (z ±27), lanterne à plus de 23 studs
-		local A = CFrame.new(200, 0, 0)
+		local A = CFrame.new(XT, 0, 0)
 		local m = item(Sh, "Torii")
 		for _, s in { 1, -1 } do
 			local tag = (s > 0) and "N" or "S"
-			vcyl(m, "Pillar_" .. tag, 200, 0.3, 27, s * 18, 1.6, red)
-			vcyl(m, "PillarBase_" .. tag, 200, 0.3, 1.4, s * 18, 2.0, black)
+			vcyl(m, "Pillar_" .. tag, XT, 0.3, 27, s * 18, 1.6, red)
+			vcyl(m, "PillarBase_" .. tag, XT, 0.3, 1.4, s * 18, 2.0, black)
 		end
-		Bx(m, W, "Nuki", 199.5, 21.5, -21, 200.5, 22.4, 21, red, { decor = true })
-		Bx(m, W, "Shimaki", 199.45, 26.0, -20.6, 200.55, 26.9, 20.6, red, { decor = true })
-		Bx(m, W, "Kasagi", 199.25, 26.9, -16, 200.75, 28.0, 16, black, { decor = true })
+		Bx(m, W, "Nuki", XT - 0.5, 21.5, -21, XT + 0.5, 22.4, 21, red, { decor = true })
+		Bx(m, W, "Shimaki", XT - 0.55, 26.0, -20.6, XT + 0.55, 26.9, 20.6, red, { decor = true })
+		Bx(m, W, "Kasagi", XT - 0.75, 26.9, -16, XT + 0.75, 28.0, 16, black, { decor = true })
 		for i, s in { 1, -1 } do
-			seg(m, "KasagiEnd_" .. i, Vector3.new(200, 27.45, s * 15.9), Vector3.new(200, 28.6, s * 22.8), 1.5, 1.1, black, { decor = true })
+			seg(m, "KasagiEnd_" .. i, Vector3.new(XT, 27.45, s * 15.9), Vector3.new(XT, 28.6, s * 22.8), 1.5, 1.1, black, { decor = true })
 		end
-		local plaque = Bx(m, W, "Plaque", 199.6, 22.4, -1.1, 200.4, 26.0, 1.1, black, { decor = true })
+		local plaque = Bx(m, W, "Plaque", XT - 0.4, 22.4, -1.1, XT + 0.4, 26.0, 1.1, black, { decor = true })
 		label(plaque, Enum.NormalId.Left, "T\nO\nK\nY\nO", gold, 40)
 		label(plaque, Enum.NormalId.Right, "T\nO\nK\nY\nO", gold, 40)
-		Bx(m, W, "LanternCord", 199.95, 20.7, -0.05, 200.05, 21.5, 0.05, black, { decor = true, noShadow = true })
-		vcyl(m, "LanternTop", 200, 20.1, 20.7, 0, 3.0, black, { decor = true })
-		local body = vcyl(m, "Lantern", 200, 16.1, 20.1, 0, 4.0, rgb(214, 40, 36), { decor = true })
-		for k, y in { 16.7, 19.3 } do vcyl(m, "LanternRib_" .. k, 200, y, y + 0.2, 0, 4.06, black, { decor = true }) end
-		vcyl(m, "LanternBottom", 200, 15.7, 16.1, 0, 3.0, black, { decor = true })
+		Bx(m, W, "LanternCord", XT - 0.05, 20.7, -0.05, XT + 0.05, 21.5, 0.05, black, { decor = true, noShadow = true })
+		vcyl(m, "LanternTop", XT, 20.1, 20.7, 0, 3.0, black, { decor = true })
+		local body = vcyl(m, "Lantern", XT, 16.1, 20.1, 0, 4.0, rgb(214, 40, 36), { decor = true })
+		for k, y in { 16.7, 19.3 } do vcyl(m, "LanternRib_" .. k, XT, y, y + 0.2, 0, 4.06, black, { decor = true }) end
+		vcyl(m, "LanternBottom", XT, 15.7, 16.1, 0, 3.0, black, { decor = true })
 		light(body, rgb(255, 170, 120), 30, 0.8)
 		nightLight(body)
 		grow(m, A)
@@ -705,20 +734,22 @@ do
 	for _, s in { 1, -1 } do
 		local tag = (s > 0) and "N" or "S"
 		local rot = (s > 0) and CFrame.identity or CFrame.Angles(0, math.pi, 0)
-		Bx(Sh, W, "ShrineWall_" .. tag, 191.6, 0, s * 29.8, 209, 18.6, s * 31.8, plaster, { studs = true, decor = true })
-		Bx(Sh, W, "ShrineWallBase_" .. tag, 191.6, 0.45, s * 29.65, 209, 2.4, s * 29.8, stone, { decor = true })
-		Bx(Sh, W, "ShrineWallBand_" .. tag, 191.6, 14.2, s * 29.65, 209, 15.4, s * 29.8, red, { decor = true })
-		seg(Sh, "ShrineWallCoping_" .. tag, Vector3.new(200.3, 18.2, s * 28.9), Vector3.new(200.3, 20.0, s * 32.0), 17.4, 0.6, tile, { decor = true, studs = true })
-		nobori(Sh, "Nobori_" .. tag .. "1", CFrame.new(193.2, 0, s * 28.6) * rot, "S\nA\nK\nU\nR\nA", white, red)
-		nobori(Sh, "Nobori_" .. tag .. "2", CFrame.new(196.6, 0, s * 28.6) * rot, "T\nO\nK\nY\nO", red, white)
-		toro(Sh, "StoneLantern_" .. tag, CFrame.new(203.6, 0, s * 27.4), 0.3)
+		local cw = (X0 + XS0 + 0.6) / 2   -- milieu de l'enceinte (x X0 + 1,6 .. XS0 - 1)
+		Bx(Sh, W, "ShrineWall_" .. tag, X0 + 1.6, 0, s * 29.8, XS0 - 1, 18.6, s * 31.8, plaster, { studs = true, decor = true })
+		Bx(Sh, W, "ShrineWallBase_" .. tag, X0 + 1.6, 0.45, s * 29.65, XS0 - 1, 2.4, s * 29.8, stone, { decor = true })
+		Bx(Sh, W, "ShrineWallBand_" .. tag, X0 + 1.6, 14.2, s * 29.65, XS0 - 1, 15.4, s * 29.8, red, { decor = true })
+		seg(Sh, "ShrineWallCoping_" .. tag, Vector3.new(cw, 18.2, s * 28.9), Vector3.new(cw, 20.0, s * 32.0), XS0 - X0 - 2.6, 0.6, tile, { decor = true, studs = true })
+		nobori(Sh, "Nobori_" .. tag .. "1", CFrame.new(X0 + 3.4, 0, s * 28.6) * rot, "S\nA\nK\nU\nR\nA", white, red)
+		nobori(Sh, "Nobori_" .. tag .. "2", CFrame.new(X0 + 6.8, 0, s * 28.6) * rot, "T\nO\nK\nY\nO", red, white)
+		toro(Sh, "StreetLantern_" .. tag .. "1", CFrame.new(XT + 4.6, 0, s * 27.4), 0.3)
+		toro(Sh, "StreetLantern_" .. tag .. "2", CFrame.new(XT + 10.6, 0, s * 27.4), 0.3)
 	end
-	local shower = Bx(Sh, W, "PetalShower", 191, 20, -21, 209, 22, 21, pinks[1], { decor = true, noShadow = true })
+	local shower = Bx(Sh, W, "PetalShower", X0 + 1, 20, -21, XS0 - 1, 22, 21, pinks[1], { decor = true, noShadow = true })
 	shower.Transparency = 1; shower.CanQuery = false
-	petals(shower, 7, true)
+	petals(shower, 9, true)
 	flush(Sh)
 
-	-- 3) Maisons de bois (machiya) plaquées sur les murets de la sortie (x 271.2..298.4, entre l'angle du
+	-- 3) Maisons de bois (machiya), trois par côté, plaquées sur les murets de la sortie (entre l'angle du
 	-- magasin et le pilier de l'arche 4) : treillis, noren, auvent, fenêtre à barreaux, toit de tuiles,
 	-- enseigne verticale ou panneau. Le muret reste le vrai mur.
 	local H = group("Houses")
@@ -730,14 +761,14 @@ do
 		Bx(m, fr, "Wall", 0, 0, 0, w, h, 1.35, st.body, { studs = true, decor = true })
 		Bx(m, fr, "Plinth", 0, 0.3, -0.08, w, 0.9, 0, stone, dk)
 		local koshi = Bx(m, fr, "Koshi", 0.5, 0.9, -0.12, w * 0.55 - 0.3, 6.2, 0, rgb(46, 34, 28), dk)
-		Tokyo.lattice(koshi, Enum.NormalId.Front, st.wood, 12, 1)
+		lattice(koshi, Enum.NormalId.Front, st.wood, 12, 1)
 		local dx0 = w * 0.55
 		Bx(m, fr, "Entry", dx0, 0.3, -0.1, dx0 + 2.4, 6.0, 0, rgb(30, 26, 24), dk)
 		local noren = Bx(m, fr, "Noren", dx0 - 0.1, 4.3, -0.3, dx0 + 2.5, 6.0, -0.25, st.noren, { decor = true, noShadow = true })
 		label(noren, Enum.NormalId.Front, st.mark, white, 50, st.noren)
 		seg(m, "Eave", L(w / 2, 7.4, 0.1), L(w / 2, 6.6, -1.7), w + 0.4, 0.3, tile, { decor = true, studs = true })
 		local upper = Bx(m, fr, "UpperWindow", w * 0.15, 8.4, -0.12, w * 0.85, 10.9, 0, rgb(70, 50, 38), dk)
-		Tokyo.lattice(upper, Enum.NormalId.Front, st.wood, 16, 2)
+		lattice(upper, Enum.NormalId.Front, st.wood, 16, 2)
 		seg(m, "Roof", L(w / 2, h - 0.2, -1.5), L(w / 2, h + 2.2, 1.5), w + 0.6, 0.45, tile, { decor = true, studs = true })
 		if st.vsign then   -- enseigne verticale au bout droit de la maison, ou au bout gauche (vsignLeft)
 			local top = math.min(13.0, h - 0.6)
@@ -755,25 +786,28 @@ do
 	local houses = {
 		N = {
 			{ h = 12.8, body = rgb(236, 230, 216), wood = rgb(90, 62, 42), noren = rgb(40, 90, 60), mark = "TEA", kanban = "TEA HOUSE", vbg = rgb(60, 40, 28), vtext = white },
-			{ h = 13.5, body = rgb(74, 52, 40), wood = rgb(150, 108, 70), noren = rgb(170, 30, 36), mark = "RAMEN", vsign = "R\nA\nM\nE\nN", vbg = rgb(200, 30, 40), vtext = white, vneon = rgb(255, 225, 60) },
+			{ h = 14.0, body = rgb(74, 52, 40), wood = rgb(150, 108, 70), noren = rgb(28, 48, 110), mark = "PHARMACY", kanban = "PHARMACY", vbg = rgb(28, 90, 170), vtext = white },
+			{ h = 13.5, body = rgb(110, 76, 52), wood = rgb(60, 40, 28), noren = rgb(170, 30, 36), mark = "RAMEN", vsign = "R\nA\nM\nE\nN", vbg = rgb(200, 30, 40), vtext = white, vneon = rgb(255, 225, 60) },
 		},
-		S = {   -- au sud, l'enseigne du karaoké passe au bout est, loin de l'auvent de tuiles du magasin
-			{ h = 15.0, body = rgb(44, 40, 44), wood = rgb(120, 90, 160), noren = rgb(120, 40, 160), mark = "SING", vsign = "K\nA\nR\nA\nO\nK\nE", vsignLeft = true, vbg = rgb(30, 20, 50), vtext = rgb(255, 120, 220), vneon = rgb(255, 70, 180) },
+		S = {   -- au sud, l'enseigne du karaoké passe au bout est, loin du poteau électrique
 			{ h = 13.0, body = rgb(236, 230, 216), wood = rgb(110, 76, 52), noren = rgb(200, 120, 160), mark = "SWEETS", kanban = "SWEET SHOP", vbg = rgb(240, 150, 190), vtext = white },
+			{ h = 15.0, body = rgb(44, 40, 44), wood = rgb(120, 90, 160), noren = rgb(120, 40, 160), mark = "SING", vsign = "K\nA\nR\nA\nO\nK\nE", vsignLeft = true, vbg = rgb(30, 20, 50), vtext = rgb(255, 120, 220), vneon = rgb(255, 70, 180) },
+			{ h = 12.6, body = rgb(150, 110, 74), wood = rgb(70, 48, 36), noren = rgb(240, 180, 40), mark = "COMICS", kanban = "COMICS", vbg = rgb(250, 210, 60), vtext = rgb(40, 30, 20) },
 		},
 	}
-	local hw = 13.6   -- largeur d'une maison une fois agrandie
+	local hx0, hx1 = XS1 + 1.2, X1 - 1.6   -- entre l'angle du magasin et le pilier de l'arche 4
+	local hw = (hx1 - hx0) / 3              -- largeur d'une maison une fois agrandie
 	for tag, list in houses do
 		local s = (tag == "N") and 1 or -1
-		for k = 0, 1 do
-			local x0, x1 = 271.2 + k * hw, 271.2 + (k + 1) * hw
+		for k = 0, 2 do
+			local x0, x1 = hx0 + k * hw, hx0 + (k + 1) * hw
 			local fr = (s > 0) and CFrame.new(x0, 0, 29.85) or (CFrame.new(x1, 0, -29.85) * CFrame.Angles(0, math.pi, 0))
 			house("House_" .. tag .. (k + 1), fr, hw / K, list[k + 1])
 		end
 	end
 	flush(H)
 
-	-- 4) Cerisiers : deux sur les trottoirs (tronc solide, couronne entre 12 et 20 studs, au-dessus du
+	-- 4) Cerisiers : trois sur les trottoirs (tronc solide, couronne entre 12 et 20 studs, au-dessus du
 	-- trottoir seulement), les grands dans l'enceinte du temple et derrière les magasins ; tous lâchent
 	-- des pétales
 	local Tr = group("Trees")
@@ -803,10 +837,11 @@ do
 		grow(m, A)
 		petals(m.Blossom_1, big and 3 or 2)
 	end
-	sakura("Sakura_N281", 281, 26.4, false)
-	sakura("Sakura_S289", 289.8, -26.4, false)
-	for _, t in { { 199.5, 63 }, { 199.5, 102 }, { 199.5, 126 }, { 220, 110 }, { 240, 110 }, { 260, 110 },
-		{ 199.5, -41 }, { 199.5, -112 }, { 199.5, -132 }, { 220, -110 }, { 240, -110 }, { 260, -110 } } do
+	for _, t in { { XS1 + 11, 26.4 }, { XS1 + 31.5, 26.4 }, { XS1 + 22.5, -26.4 } } do
+		sakura(string.format("Sakura_%s%d", (t[2] > 0) and "N" or "S", math.floor(t[1])), t[1], t[2], false)
+	end
+	for _, t in { { XE, 63 }, { XE, 102 }, { XE, 126 }, { XC - 20, 110 }, { XC, 110 }, { XC + 20, 110 },
+		{ XE, -41 }, { XE, -112 }, { XE, -132 }, { XC - 20, -110 }, { XC, -110 }, { XC + 20, -110 } } do
 		sakura(string.format("SakuraBig_%s%d_%d", (t[2] > 0) and "N" or "S", math.floor(t[1]), math.abs(t[2])), t[1], t[2], true)
 	end
 	flush(Tr)
@@ -840,10 +875,10 @@ do
 		Bx(m, A, "Tray", 0.3, 0.7, -1.68, 1.9, 1.4, -1.6, rgb(25, 25, 30), { decor = true })
 		grow(m, A)
 	end
-	vending("Vending_N1", 285.2, 1, rgb(220, 40, 50))
-	vending("Vending_N2", 288.6, 1, rgb(245, 245, 248))
-	vending("Vending_S1", 277.6, -1, rgb(40, 160, 90))
-	vending("Vending_S2", 281.0, -1, rgb(40, 110, 200))
+	vending("Vending_N1", XS1 + 16.4, 1, rgb(220, 40, 50))
+	vending("Vending_N2", XS1 + 19.8, 1, rgb(245, 245, 248))
+	vending("Vending_S1", XS1 + 8.0, -1, rgb(40, 160, 90))
+	vending("Vending_S2", XS1 + 11.4, -1, rgb(40, 110, 200))
 	local concrete = rgb(170, 170, 164)
 	local function pole(name, x, s, transformer, lamp)
 		local A = (s > 0) and CFrame.new(x, 0, 23.8) or (CFrame.new(x, 0, -23.8) * CFrame.Angles(0, math.pi, 0))
@@ -859,16 +894,18 @@ do
 		end
 		grow(m, A)
 	end
+	-- { x, côté, transformateur, lampe } : à l'entrée, devant la sortie des magasins, au milieu, au bout
+	for _, q in { { XS0 - 4.4, 1, true, true }, { XS0 - 4.4, -1, true, true }, { XS1 + 4.5, 1, false, true }, { XS1 + 4.5, -1, false, true },
+		{ XS1 + 21.5, 1, true, true }, { XS1 + 16, -1, false, true }, { X1 - 8, 1, true, true }, { X1 - 8, -1, true, true } } do
+		pole(string.format("Pole_%s%d", (q[2] > 0) and "N" or "S", math.floor(q[1])), q[1], q[2], q[3], q[4])
+	end
 	for _, s in { 1, -1 } do
 		local tag = (s > 0) and "N" or "S"
-		pole("Pole_" .. tag .. "205", 205.6, s, true, true)
-		pole("Pole_" .. tag .. "274", 274.5, s, false, true)
-		pole("Pole_" .. tag .. "294", 294, s, true, s > 0)   -- au sud, pas de lampe : le cerisier est à côté
 		for k, y in { 19.8, 21.15 } do
-			Bx(Pr, W, "Wire_" .. tag .. k, 274.5, y, s * 23.8 - 0.06, 294, y + 0.1, s * 23.8 + 0.06, rgb(30, 30, 30), { decor = true, noShadow = true })
+			Bx(Pr, W, "Wire_" .. tag .. k, XS1 + 4.5, y, s * 23.8 - 0.06, X1 - 8, y + 0.1, s * 23.8 + 0.06, rgb(30, 30, 30), { decor = true, noShadow = true })
 		end
 	end
-	for _, x in { 205.6, 274.5 } do
+	for _, x in { XS0 - 4.4, XS1 + 4.5 } do
 		local nm = tostring(math.floor(x))
 		Bx(Pr, W, "FestivalWire_" .. nm, x - 0.06, 19.05, -23.8, x + 0.06, 19.17, 23.8, rgb(30, 30, 30), { decor = true, noShadow = true })
 		for k = -3, 3 do
@@ -879,11 +916,12 @@ do
 	end
 	flush(Pr)
 
-	-- 6) Enceinte du temple, entre l'arche et les magasins (x 190..210) : pagode à cinq toits au nord
-	-- (62 studs, repère visible de loin), petit sanctuaire, clocher et jardin sec au sud, lanternes, haies
+	-- 6) Enceinte du temple, entre l'arche et les magasins (x X0..XS0, centrée en XE) : pagode à cinq
+	-- toits au nord (62 studs, repère visible de loin), petit sanctuaire, clocher et jardin sec au sud,
+	-- lanternes de pierre, haies
 	local Tm = group("Temple")
-	do   -- pagode : toits plus étroits en haut pour rester sous l'avant-toit du magasin voisin (x 205,35)
-		local A = CFrame.new(198.9, 0, 47)
+	do   -- pagode : toits plus étroits en haut (elle reste à 2,5 studs de l'avant-toit du magasin voisin)
+		local A = CFrame.new(XE, 0, 47)
 		local m = item(Tm, "Pagoda")
 		local function L(x, y, z) return A:PointToWorldSpace(Vector3.new(x, y, z)) end
 		local function b(n, x0, y0, z0, x1, y1, z1, c, o) return Bx(m, A, n, x0, y0, z0, x1, y1, z1, c, o) end
@@ -908,7 +946,7 @@ do
 		grow(m, A)
 	end
 	do   -- petit sanctuaire (hokora) et son torii, au nord derrière la pagode
-		local A = CFrame.new(199.5, 0, 88)
+		local A = CFrame.new(XE, 0, 88)
 		local m = item(Tm, "Shrine")
 		local function L(x, y, z) return A:PointToWorldSpace(Vector3.new(x, y, z)) end
 		local function b(n, x0, y0, z0, x1, y1, z1, c, o) return Bx(m, A, n, x0, y0, z0, x1, y1, z1, c, o) end
@@ -916,7 +954,7 @@ do
 		b("Hall", -2.6, 0.8, -1.8, 2.6, 4.4, 2.6, rgb(120, 78, 46), { studs = true, decor = true })
 		for i, x in { -2.45, 2.45 } do vc(m, A, "Post_" .. i, x, 0.8, 4.6, -2.0, 0.45, red, { decor = true }) end
 		local door = b("Doors", -1.6, 0.9, -1.86, 1.6, 3.9, -1.8, rgb(250, 242, 222), { decor = true })
-		Tokyo.lattice(door, Enum.NormalId.Front, rgb(60, 40, 28), 6, 4)
+		lattice(door, Enum.NormalId.Front, rgb(60, 40, 28), 6, 4)
 		b("Beam", -2.8, 4.4, -2.2, 2.8, 4.8, -1.8, red, { decor = true })
 		seg(m, "Roof_F", L(0, 4.5, -3.6), L(0, 6.7, -0.1), 6.8, 0.4, tile, { decor = true, studs = true })
 		seg(m, "Roof_B", L(0, 4.5, 4.3), L(0, 6.7, 0.1), 6.8, 0.4, tile, { decor = true, studs = true })
@@ -928,7 +966,7 @@ do
 		grow(m, A)
 	end
 	do   -- clocher (shoro) au sud : quatre poteaux rouges, toit de tuiles à coins relevés, cloche de bronze
-		local A = CFrame.new(200, 0, -64) * CFrame.Angles(0, math.pi, 0)
+		local A = CFrame.new(XE, 0, -64) * CFrame.Angles(0, math.pi, 0)
 		local m = item(Tm, "BellTower")
 		local function L(x, y, z) return A:PointToWorldSpace(Vector3.new(x, y, z)) end
 		local function b(n, x0, y0, z0, x1, y1, z1, c, o) return Bx(m, A, n, x0, y0, z0, x1, y1, z1, c, o) end
@@ -956,33 +994,31 @@ do
 		b("Striker", -0.25, 4.6, -3.2, 0.25, 5.0, -1.2, rgb(150, 110, 70), { decor = true })
 		grow(m, A)
 	end
-	toro(Tm, "StoneLantern_N1", CFrame.new(193.5, 0, 60), 0)
-	toro(Tm, "StoneLantern_N2", CFrame.new(204.5, 0, 60), 0)
-	toro(Tm, "StoneLantern_N3", CFrame.new(194, 0, 77), 0)
-	toro(Tm, "StoneLantern_N4", CFrame.new(205, 0, 77), 0)
-	toro(Tm, "StoneLantern_S1", CFrame.new(193.5, 0, -76), 0)
-	toro(Tm, "StoneLantern_S2", CFrame.new(206.5, 0, -76), 0)
-	-- jardin sec : gravier ratissé, trois rochers sur de la mousse, bordure de pierre
-	Bx(Tm, W, "ZenGravel", 192, 0, -100, 208, 0.12, -80, rgb(236, 232, 222), { decor = true, mat = Enum.Material.Sand, noShadow = true })
+	for i, t in { { -9.5, 60 }, { 9.5, 60 }, { -7.5, 77 }, { 7.5, 77 }, { -8.5, -76 }, { 8.5, -76 } } do
+		toro(Tm, "StoneLantern_" .. ((t[2] > 0) and "N" or "S") .. i, CFrame.new(XE + t[1], 0, t[2]), 0)
+	end
+	-- jardin sec : gravier ratissé, quatre rochers sur de la mousse, bordure de pierre
+	Bx(Tm, W, "ZenGravel", XE - 12, 0, -100, XE + 12, 0.12, -80, rgb(236, 232, 222), { decor = true, mat = Enum.Material.Sand, noShadow = true })
 	for k = 0, 5 do
 		local z = -97.6 + k * 3.2
-		Bx(Tm, W, "ZenRake_" .. (k + 1), 192.6, 0.12, z, 207.4, 0.16, z + 0.3, rgb(214, 208, 196), { decor = true, noShadow = true })
+		Bx(Tm, W, "ZenRake_" .. (k + 1), XE - 11.4, 0.12, z, XE + 11.4, 0.16, z + 0.3, rgb(214, 208, 196), { decor = true, noShadow = true })
 	end
-	for i, r in { { 196.5, -86, 3.4, 2.4, 2.8, rgb(118, 116, 110) }, { 203, -92, 2.6, 1.8, 2.2, rgb(134, 130, 122) }, { 199.5, -95.5, 1.8, 1.2, 1.6, rgb(104, 102, 98) } } do
-		disc(Tm, "ZenMoss_" .. i, r[1], 0.15, r[2], r[3] + 2.2, MOSS)
-		P(Tm, "ZenRock_" .. i, CFrame.new(r[1], r[4] * 0.35, r[2]) * CFrame.Angles(0.15 * i, i * 0.9, 0.2), Vector3.new(r[3], r[4], r[5]), r[6], { mat = Enum.Material.Slate })
+	for i, r in { { -5.25, -86, 3.4, 2.4, 2.8, rgb(118, 116, 110) }, { 4.5, -92, 2.6, 1.8, 2.2, rgb(134, 130, 122) },
+		{ -0.75, -95.5, 1.8, 1.2, 1.6, rgb(104, 102, 98) }, { 8.5, -84.5, 2.2, 1.5, 1.9, rgb(126, 122, 116) } } do
+		disc(Tm, "ZenMoss_" .. i, XE + r[1], 0.15, r[2], r[3] + 2.2, MOSS)
+		P(Tm, "ZenRock_" .. i, CFrame.new(XE + r[1], r[4] * 0.35, r[2]) * CFrame.Angles(0.15 * i, i * 0.9, 0.2), Vector3.new(r[3], r[4], r[5]), r[6], { mat = Enum.Material.Slate })
 	end
-	for i, e in { { 191.6, -100.4, 208.4, -100 }, { 191.6, -80, 208.4, -79.6 }, { 191.6, -100, 192, -80 }, { 208, -100, 208.4, -80 } } do
-		Bx(Tm, W, "ZenBorder_" .. i, e[1], 0, e[2], e[3], 0.35, e[4], rgb(120, 116, 108), { decor = true, studs = true })
+	for i, e in { { -12.4, -100.4, 12.4, -100 }, { -12.4, -80, 12.4, -79.6 }, { -12.4, -100, -12, -80 }, { 12, -100, 12.4, -80 } } do
+		Bx(Tm, W, "ZenBorder_" .. i, XE + e[1], 0, e[2], XE + e[3], 0.35, e[4], rgb(120, 116, 108), { decor = true, studs = true })
 	end
 	local hedge = rgb(70, 112, 62)   -- haies : limite de la zone côté arche et au fond du quartier
-	Bx(Tm, W, "Hedge_NW", 190.2, 0, 56, 191.4, 3.5, 139.5, hedge, { studs = true })
-	Bx(Tm, W, "Hedge_SW", 190.2, 0, -139.5, 191.4, 3.5, -34.6, hedge, { studs = true })
-	Bx(Tm, W, "Hedge_N", 190.2, 0, 139.5, 300, 3.5, 140, hedge, { studs = true })
-	Bx(Tm, W, "Hedge_S", 190.2, 0, -140, 300, 3.5, -139.5, hedge, { studs = true })
+	Bx(Tm, W, "Hedge_NW", X0 + 0.2, 0, 34.6, X0 + 1.4, 3.5, 139.5, hedge, { studs = true })
+	Bx(Tm, W, "Hedge_SW", X0 + 0.2, 0, -139.5, X0 + 1.4, 3.5, -34.6, hedge, { studs = true })
+	Bx(Tm, W, "Hedge_N", X0 + 0.2, 0, 139.5, X1, 3.5, 140, hedge, { studs = true })
+	Bx(Tm, W, "Hedge_S", X0 + 0.2, 0, -140, X1, 3.5, -139.5, hedge, { studs = true })
 	flush(Tm)
 
-	-- 7) Ville, côté sortie (x 270..300) et derrière les magasins : immeubles à bandeaux de fenêtres
+	-- 7) Ville, côté sortie (x XS1..X1) et derrière les magasins : immeubles à bandeaux de fenêtres
 	-- (un étage sur deux à quatre éclairé en néon), enseignes de toit ou verticales tournées vers la rue,
 	-- tour d'antenne rouge et blanche (87 studs, repère visible de loin)
 	local Ci = group("City")
@@ -1028,22 +1064,35 @@ do
 			Bx(m, W, "BladeNeon_B", bx - 0.3, y0 - 0.3, za, bx + 0.3, y0, zb, st.bladeNeon, neon())
 		end
 	end
-	building("Apartment_N", 277.5, 34, 298, 60, 33, { body = rgb(214, 198, 176), trim = rgb(150, 130, 110), shop = rgb(170, 40, 40), lit = 3, litColor = warm,
+	-- nord : l'immeuble bas reste à 7,5 studs du magasin (son avant-toit déborde jusqu'à x XS1 + 7)
+	building("Apartment_N", XS1 + 7.5, 34, XX + 2, 60, 33, { body = rgb(214, 198, 176), trim = rgb(150, 130, 110), shop = rgb(170, 40, 40), lit = 3, litColor = warm,
 		roofSign = "SAKURA", signH = 5, signBg = signDark, signText = rgb(255, 150, 200), signStroke = rgb(90, 20, 60) })
-	building("Tower_N1", 274, 66, 296, 96, 66, { body = rgb(58, 66, 84), trim = rgb(40, 44, 56), shop = rgb(30, 110, 200), lit = 4, litColor = rgb(120, 230, 255),
+	building("Shop_N2", XX + 4, 34, X1 - 2, 58, 40, { body = rgb(236, 226, 206), trim = rgb(60, 60, 70), shop = rgb(30, 110, 200), lit = 2, litColor = warm,
+		roofSign = "CAMERA", signH = 5, signBg = rgb(30, 90, 170), signText = white, signStroke = rgb(0, 30, 70) })
+	building("Tower_N1", XS1 + 4, 66, XX + 2, 96, 66, { body = rgb(58, 66, 84), trim = rgb(40, 44, 56), shop = rgb(30, 110, 200), lit = 4, litColor = rgb(120, 230, 255),
 		blade = "H\nO\nT\nE\nL", bladeBg = signDark, bladeText = rgb(120, 230, 255), bladeStroke = rgb(0, 40, 80), bladeNeon = rgb(80, 230, 255) })
-	building("Tower_N5", 272, 104, 298, 136, 84, { body = rgb(40, 44, 58), trim = rgb(30, 32, 40), shop = rgb(200, 40, 120), lit = 3, litColor = warm, antenna = 14,
-		roofSign = "ANIME", signH = 6, signBg = rgb(255, 225, 60), signText = rgb(200, 30, 60), signStroke = rgb(255, 255, 255) })
-	building("Hall_N", 214, 118, 266, 138, 40, { body = rgb(236, 230, 216), trim = red, shop = red, lit = 2, litColor = warm,
+	building("Tower_N2", XX + 5, 66, X1 - 2, 98, 74, { body = rgb(120, 62, 70), trim = rgb(70, 36, 40), shop = rgb(255, 170, 40), lit = 3, litColor = rgb(255, 120, 220),
+		roofSign = "MANGA", signH = 6, signBg = rgb(255, 225, 60), signText = rgb(30, 30, 36), signStroke = white })
+	building("Tower_N5", XS1 + 4, 104, XX + 1, 136, 84, { body = rgb(40, 44, 58), trim = rgb(30, 32, 40), shop = rgb(200, 40, 120), lit = 3, litColor = warm, antenna = 14,
+		roofSign = "ANIME", signH = 6, signBg = rgb(255, 225, 60), signText = rgb(200, 30, 60), signStroke = white })
+	building("Tower_N6", XX + 4, 104, X1 - 2, 136, 58, { body = rgb(196, 200, 206), trim = rgb(120, 124, 130), shop = rgb(60, 200, 120), lit = 4, litColor = warm, antenna = 10 })
+	building("Hall_N", XC - 26, 118, XC + 26, 138, 40, { body = rgb(236, 230, 216), trim = red, shop = red, lit = 2, litColor = warm,
 		roofSign = "HOTEL SAKURA", signH = 5, signBg = red, signText = white, signStroke = rgb(90, 0, 0) })
-	building("Tower_S1", 274, -96, 296, -66, 60, { body = rgb(70, 60, 86), trim = rgb(46, 40, 58), shop = rgb(255, 120, 40), lit = 3, litColor = rgb(255, 120, 220),
+	-- sud : tour d'antenne au milieu de la sortie, petite boutique à côté
+	building("Shop_S2", XX + 12, -58, X1 - 2, -34, 28, { body = rgb(90, 58, 40), trim = rgb(40, 30, 24), shop = red, lit = 2, litColor = warm,
+		roofSign = "SUSHI", signH = 4, signBg = rgb(28, 48, 110), signText = white, signStroke = rgb(0, 0, 40) })
+	building("Tower_S1", XS1 + 4, -96, XX + 2, -66, 60, { body = rgb(70, 60, 86), trim = rgb(46, 40, 58), shop = rgb(255, 120, 40), lit = 3, litColor = rgb(255, 120, 220),
 		roofSign = "GAME", signH = 6, signBg = signDark, signText = rgb(255, 225, 60), signStroke = rgb(120, 0, 80) })
-	building("Tower_S5", 272, -136, 298, -104, 78, { body = rgb(52, 58, 70), trim = rgb(36, 40, 50), shop = rgb(60, 200, 120), lit = 4, litColor = warm, antenna = 12,
+	building("Tower_S2", XX + 5, -98, X1 - 2, -66, 70, { body = rgb(60, 80, 96), trim = rgb(40, 52, 62), shop = rgb(240, 90, 60), lit = 3, litColor = warm,
+		blade = "N\nO\nO\nD\nL\nE\nS", bladeBg = rgb(240, 236, 226), bladeText = rgb(200, 30, 40), bladeStroke = rgb(90, 0, 0), bladeNeon = rgb(255, 160, 60) })
+	building("Tower_S5", XS1 + 4, -136, XX + 1, -104, 78, { body = rgb(52, 58, 70), trim = rgb(36, 40, 50), shop = rgb(60, 200, 120), lit = 4, litColor = warm, antenna = 12,
 		blade = "K\nA\nR\nA\nO\nK\nE", bladeBg = rgb(30, 20, 50), bladeText = rgb(255, 120, 220), bladeStroke = rgb(60, 0, 40), bladeNeon = rgb(255, 70, 180) })
-	building("Hall_S", 214, -138, 266, -118, 40, { body = rgb(200, 60, 50), trim = black, shop = rgb(255, 225, 60), lit = 2, litColor = warm,
+	building("Tower_S6", XX + 4, -136, X1 - 2, -104, 54, { body = rgb(226, 214, 190), trim = rgb(150, 120, 90), shop = rgb(200, 40, 120), lit = 3, litColor = warm,
+		roofSign = "HOTEL", signH = 5, signBg = signDark, signText = gold, signStroke = rgb(60, 40, 0) })
+	building("Hall_S", XC - 26, -138, XC + 26, -118, 40, { body = rgb(200, 60, 50), trim = black, shop = rgb(255, 225, 60), lit = 2, litColor = warm,
 		roofSign = "ARCADE", signH = 5, signBg = signDark, signText = rgb(80, 230, 255), signStroke = rgb(0, 40, 80) })
 	do
-		local A = CFrame.new(285, 0, -47)
+		local A = CFrame.new(XX, 0, -47)
 		local m = item(Ci, "RadioTower")
 		local function L(x, y, z) return A:PointToWorldSpace(Vector3.new(x, y, z)) end
 		local orange, wh = rgb(255, 90, 30), rgb(245, 245, 240)

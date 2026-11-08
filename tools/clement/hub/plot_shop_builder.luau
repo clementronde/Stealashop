@@ -12,12 +12,12 @@
 		_G.ClaudePlotShop.check(model)               -- triangles, noms du contrat, scripts
 
 	Gabarit : ReplicatedStorage/Assets/Plots/PLOT_Shop, tags PlayerPlot (boutique), CashPad,
-	Treadmill et Bench déjà posés, pas de PlotIndex (posé par install). 64 x 80 studs
+	Treadmill et Bench déjà posés, pas de PlotIndex (posé par install). Bâtiment 64 x 80 studs, plus la terrasse
 	(x -32..32, z -40..40), pivot en bas au centre, avant vers -Z.
 
 	Contrat 10.4 (cœur, présent à tous les niveaux) : Window (porte vitrée à 2 vantaux Leaf_L et
-	Leaf_R, 12 x 7 x 0,4 comme WIN_M), WindowFractured (copie de WIN_M_Fractured, cachée),
-	Shutter (caché dans le linteau, descend de 7,8), ShutterButton, DisplaySlot_01 à _20,
+	Leaf_R, 18 x 10,5 x 0,6 = WIN_M x 1,5), WindowFractured (WIN_M_Fractured x 1,5, cachée),
+	Shutter (caché dans le linteau, descend de 10,84), ShutterButton, DisplaySlot_01 à _20,
 	VaultSlot_01 à _03, UnboxBench_01 à _04, TrapSlot_01 à _04, CashPad, DepositZone,
 	Treadmill (UsePoint, Belt, UpgradePoint), Bench (UsePoint, UpgradePoint), NameSign/OwnerName,
 	SpawnPoint, Bounds.
@@ -27,13 +27,32 @@
 	  Décor ajouté à chaque niveau, cumulatif : au niveau n, Stage_1 à Stage_n sont là. Les 5 niveaux
 	  du doc (Partie 2, section 2) : Stand, Boutique, Magasin, Concept store, Flagship.
 	- Attribut HideFromStage (nombre) : la pièce ou le groupe disparaît à partir de ce niveau
-	  (remplacé par un niveau plus haut).
+	  (remplacé par un niveau plus haut). Attribut FromStage (nombre) : la pièce n'existe qu'à partir de
+	  ce niveau (murs invisibles et contours qui suivent l'agrandissement du niveau 2).
+	- Niveau 1 = petite boutique d'une seule rangée (z -40..-16) ; Stage_2 pose la suite du sol
+	  (PlotFloorExt, z -16..40) et les niveaux suivants l'habillent. Plus de coffre visible ni d'établis
+	  (L-086) : VaultSlot_01 à _03 sur VaultAnchor (invisible), UnboxBench_01 à _04 sur les présentoirs
+	  de Rayon_01, au même point que DisplaySlot_01 à _04.
 	- PlotDoor : Model de l'entrée (portique, Window, WindowFractured, Shutter, ShutterButton,
 	  NameSign). Window/Leaf_L et Window/Leaf_R : les vantaux que le code peut faire coulisser
 	  pour le propriétaire.
 	- PlotBarrier : Model de murs invisibles (côtés, fond, avant hors porte, couvercle) ; le code
 	  les rend franchissables pour le propriétaire seul. Les autres entrent en cassant Window.
 	- StageUpgradePoint : Attachment où flotte l'achat du niveau suivant.
+	- Rayon_01 à Rayon_05 : Models, 4 présentoirs chacun (DisplaySlot_01 à _04 dans Rayon_01, etc.).
+	  Seul Rayon_01 a ses visuels. Rayon_02 à _05 n'ont qu'une pièce invisible RayonAnchor qui porte
+	  leurs DisplaySlot ; leurs visuels (présentoirs, CollectPad, produits) sont rangés dans
+	  ReplicatedStorage/Assets/Plots/PLOT_Shop_Rayons/Rayon_0n, même repère que la boutique : le code
+	  les copie dans Rayon_0n au pivot de la boutique (showRayon) quand la rangée est débloquée.
+	  RayonSpot_02 à _05 (FromStage 2) : contour au sol de l'emplacement, retiré quand la rangée vient.
+	- CollectPad_01 à _20 : case verte au pied de chaque présentoir, dans le même rayon ; le
+	  propriétaire y marche pour ramasser l'argent de cet objet (remplace CashPad si Ironix valide).
+	- DisplayUpgradePoint : Attachment où flotte l'achat du présentoir suivant (borne à gauche de la porte).
+	- Terrace : terrasse z -52..-40 devant la façade, hors des murs ; le tapis et le banc y sont.
+	  Emprise totale : 64 x 92 studs (z -52..40), pivot au centre du bâtiment (z 0).
+	- RarestPedestal : Model du socle de l'objet le plus rare, sur la terrasse entre la porte et le
+	  banc (x 13, z -48,5), à tous les niveaux. RarestSlot : Attachment sur le plateau, où le code pose
+	  l'objet (face à la rue). RarestLabelPoint : Attachment 6 studs au-dessus, pour l'étiquette.
 	Aucun élément du contrat n'est dans un Stage_n.
 ]]
 
@@ -57,8 +76,9 @@ local C = {
 }
 
 -- Une couleur d'accent par boutique (PlotIndex 1 à 6), pour reconnaître la sienne de loin.
+-- La 2 passe du vert au rouge le 2026-11-08 : le hub est en pelouse, une boutique verte ne s'y voyait pas.
 local ACCENTS = {
-	rgb(46, 166, 242), rgb(53, 201, 59), rgb(155, 92, 246),
+	rgb(46, 166, 242), rgb(232, 65, 60), rgb(155, 92, 246),
 	rgb(255, 140, 40), rgb(255, 90, 170), rgb(0, 190, 200),
 }
 
@@ -189,36 +209,58 @@ local function products(parent, prefix, fx, sx, z0, z1, y, maxH)
 	return n
 end
 
--- Les 20 présentoirs, dans l'ordre de déblocage (les 4 premiers près de l'entrée, 7.5) :
--- îlots A (x -21,5), B (-7,5), C (7,5), D (21,5) ; rangées z -20, -13, -6, 1, 8.
-local ISLANDS = { -21.5, -7.5, 7.5, 21.5 }
-local ROWS = { -20, -13, -6, 1, 8 }
-local SLOT_ORDER = {
-	{ 2, 1 }, { 3, 1 }, { 2, 2 }, { 3, 2 }, { 1, 1 }, { 4, 1 }, { 1, 2 }, { 4, 2 }, { 2, 3 }, { 3, 3 },
-	{ 1, 3 }, { 4, 3 }, { 2, 4 }, { 3, 4 }, { 1, 4 }, { 4, 4 }, { 2, 5 }, { 3, 5 }, { 1, 5 }, { 4, 5 },
-}
-local BENCHES = { { -16, 26 }, { -26, 26 }, { -16, 34 }, { -26, 34 } } -- établis UnboxBench_01 à _04
+-- Même chose le long de X (z fixe, face vers sz = +1 ou -1).
+local function productsX(parent, prefix, x0, x1, fz, sz, y, maxH)
+	local x, n = x0 + 0.25, 0
+	while x < x1 - 0.6 do
+		local pair = PRODUCT_COLORS[math.floor(rnd() * #PRODUCT_COLORS) + 1]
+		local w = 0.55 + math.floor(rnd() * 3) * 0.2
+		local h = math.min(maxH, 0.7 + math.floor(rnd() * 4) * 0.15)
+		local run = 2 + math.floor(rnd() * 3)
+		for _ = 1, run do
+			if x + w > x1 - 0.25 then x = x1; break end
+			n += 1
+			local z0, z1 = fz - sz * 0.85, fz - sz * 0.05
+			local capH = (rnd() < 0.5) and 0.2 or 0
+			B(parent, prefix .. "_P" .. n, x, y, math.min(z0, z1), x + w, y + h - capH, math.max(z0, z1), pair[1], { studs = false, decor = true, noShadow = true })
+			if capH > 0 then
+				n += 1
+				B(parent, prefix .. "_P" .. n, x, y + h - capH, math.min(z0, z1), x + w, y + h, math.max(z0, z1), pair[2], { studs = false, decor = true, noShadow = true })
+			end
+			x += w + 0.08
+		end
+		x += 0.2
+	end
+	return n
+end
+
+-- 20 présentoirs en 5 rayons de 4 (Rayon_01 devant, près de l'entrée ; 7.5 : 4 au départ, +1 par
+-- achat). Chaque rayon court le long de la façade, en deux moitiés (x -25..-7 et 7..25) autour de
+-- l'allée centrale. Présentoirs d'un rayon, dans l'ordre : x -11, 11, -21, 21.
+local RAYON_Z = { -22, -13, -4, 5, 14 }
+local STAND_X = { -11, 11, -21, 21 }
+-- Fond de la boutique de niveau 1 (une seule rangée, Rayon_01) : z -40..SMALL_Z. Le niveau 2 l'agrandit à z 40.
+local SMALL_Z = -16
 
 _G.ClaudePlotShopParts = {
 	CS = CS, RS = RS, rgb = rgb, C = C, ACCENTS = ACCENTS, B = B, CYL = CYL, group = group, att = att,
-	label = label, light = light, rnd = rnd, products = products, PRODUCT_COLORS = PRODUCT_COLORS,
-	ISLANDS = ISLANDS, ROWS = ROWS, SLOT_ORDER = SLOT_ORDER, BENCHES = BENCHES,
+	label = label, light = light, rnd = rnd, products = products, productsX = productsX, PRODUCT_COLORS = PRODUCT_COLORS,
+	RAYON_Z = RAYON_Z, STAND_X = STAND_X, SMALL_Z = SMALL_Z,
 	setSeed = function(v) seed = v end,
 }
 
--- ===== Morceau 2 : cœur (sol, entrée, barrière, volumes, présentoirs, établis, coffre, caisse) =====
+-- ===== Morceau 2 : cœur (sol, entrée, barrière, volumes, rayons, ancrage du coffre, caisse) =====
 -- Le fichier peut s'envoyer d'un bloc, ou morceau par morceau (chaque morceau relit _G.ClaudePlotShopParts).
 local P = _G.ClaudePlotShopParts
 local CS, RS, C, B, CYL, group, att, label, light = P.CS, P.RS, P.C, P.B, P.CYL, P.group, P.att, P.label, P.light
-local ISLANDS, ROWS, SLOT_ORDER, BENCHES = P.ISLANDS, P.ROWS, P.SLOT_ORDER, P.BENCHES
+local RAYON_Z, STAND_X, SMALL_Z, productsX, PRODUCT_COLORS = P.RAYON_Z, P.STAND_X, P.SMALL_Z, P.productsX, P.PRODUCT_COLORS
 
-local function buildCore(M)
-	-- sol : dalle et damier de 4 studs
-	local floor = B(M, "PlotFloor", -32, -0.6, -40, 32, 0.3, 40, C.slab)
-	local tiles = group(M, "FloorTiles")
+-- Damier de 4 studs, rangées de carreaux iz0 à iz1 (z = -40 + 4 * iz).
+local function floorTiles(parent, name, iz0, iz1)
+	local tiles = group(parent, name)
 	local nt = 0
 	for ix = 0, 15 do
-		for iz = 0, 19 do
+		for iz = iz0, iz1 do
 			if (ix + iz) % 2 == 0 then
 				nt += 1
 				local x0, z0 = -32 + 4 * ix, -40 + 4 * iz
@@ -226,29 +268,44 @@ local function buildCore(M)
 			end
 		end
 	end
+	return tiles
+end
+P.floorTiles = floorTiles
+
+local function buildCore(M)
+	-- sol à la couleur de la boutique (Clément, 2026-11-08 : chaque boutique a sa couleur, personnalisable plus tard) :
+	-- damier couleur et blanc. Niveau 1 : une seule rangée (z -40..SMALL_Z) ; le niveau 2 pose la suite du sol.
+	local floor = B(M, "PlotFloor", -32, -0.6, -40, 32, 0.3, SMALL_Z, C.accent, { accent = true })
+	floorTiles(M, "FloorTiles", 0, (SMALL_Z + 40) / 4 - 1)
 
 	-- entrée : portique, porte vitrée (Window), éclats, rideau, bouton, enseigne
+	-- Grande vitre (Clément, 2026-11-08 : plus belle et plus facile à toucher) : 18 x 10,5 x 0,6, soit
+	-- WIN_M (12 x 7 x 0,4) x DOOR_SCALE. Le ShatterController ne trouve pas de variante WIN_M à cette
+	-- taille : il lance les éclats du WindowFractured de la boutique, posé ici à l'échelle.
+	local DOOR_SCALE = 1.5
 	local D = group(M, "PlotDoor")
-	B(D, "Post_L", -7, 0.3, -40.5, -6, 7.6, -38.5, C.frame)
-	B(D, "Post_R", 6, 0.3, -40.5, 7, 7.6, -38.5, C.frame)
-	B(D, "Header", -7, 7.6, -40.5, 7, 16.2, -38.5, C.accent, { accent = true })
-	B(D, "HeaderTrim_B", -7.1, 7.6, -40.6, 7.1, 8.3, -38.4, C.frame)
-	B(D, "HeaderTrim_T", -7.1, 15.6, -40.6, 7.1, 16.3, -38.4, C.frame)
-	B(D, "Threshold", -6, 0.3, -40, 6, 0.6, -39, C.metal, { studs = false })
+	B(D, "Post_L", -10, 0.3, -40.5, -9, 11.1, -38.5, C.frame)
+	B(D, "Post_R", 9, 0.3, -40.5, 10, 11.1, -38.5, C.frame)
+	-- linteau haut (au-dessus du toit) : il cache le rideau de 10,6 et porte l'enseigne
+	B(D, "Header", -10, 11.1, -40.5, 10, 22.6, -38.5, C.accent, { accent = true })
+	B(D, "HeaderTrim_B", -10.1, 11.1, -40.6, 10.1, 11.8, -38.4, C.frame)
+	B(D, "HeaderTrim_T", -10.1, 21.9, -40.6, 10.1, 22.7, -38.4, C.frame)
+	B(D, "Threshold", -9, 0.3, -40, 9, 0.6, -39, C.metal, { studs = false })
 	local W = group(D, "Window")
-	for _, leafSpec in { { "Leaf_L", -6 }, { "Leaf_R", 0 } } do
+	for _, leafSpec in { { "Leaf_L", -9 }, { "Leaf_R", 0 } } do
 		local leaf = group(W, leafSpec[1])
 		local x0 = leafSpec[2]
-		local x1 = x0 + 6
-		B(leaf, "Glass", x0 + 0.3, 0.9, -39.7, x1 - 0.3, 7.3, -39.3, C.glass, { mat = Enum.Material.Glass, T = 0.55 })
-		B(leaf, "Stile_A", x0, 0.6, -39.7, x0 + 0.3, 7.6, -39.3, C.chrome, { studs = false })
-		B(leaf, "Stile_B", x1 - 0.3, 0.6, -39.7, x1, 7.6, -39.3, C.chrome, { studs = false })
-		B(leaf, "Rail_Top", x0 + 0.3, 7.3, -39.7, x1 - 0.3, 7.6, -39.3, C.chrome, { studs = false })
-		B(leaf, "Rail_Bottom", x0 + 0.3, 0.6, -39.7, x1 - 0.3, 0.9, -39.3, C.chrome, { studs = false })
+		local x1 = x0 + 9
+		B(leaf, "Glass", x0 + 0.3, 0.9, -39.8, x1 - 0.3, 10.8, -39.2, C.glass, { mat = Enum.Material.Glass, T = 0.55 })
+		B(leaf, "Stile_A", x0, 0.6, -39.8, x0 + 0.3, 11.1, -39.2, C.chrome, { studs = false })
+		B(leaf, "Stile_B", x1 - 0.3, 0.6, -39.8, x1, 11.1, -39.2, C.chrome, { studs = false })
+		B(leaf, "Rail_Top", x0 + 0.3, 10.8, -39.8, x1 - 0.3, 11.1, -39.2, C.chrome, { studs = false })
+		B(leaf, "Rail_Bottom", x0 + 0.3, 0.6, -39.8, x1 - 0.3, 0.9, -39.2, C.chrome, { studs = false })
 	end
 	W.WorldPivot = CFrame.new(0, 0.6, -39.5)
 	local wf = RS.Assets.Windows.WIN_M_Fractured:Clone()
 	wf.Name = "WindowFractured"
+	wf:ScaleTo(wf:GetScale() * DOOR_SCALE)
 	wf:PivotTo(CFrame.new(0, 0.6, -39.5))
 	for _, s in wf:GetDescendants() do
 		if s:IsA("BasePart") then
@@ -257,37 +314,49 @@ local function buildCore(M)
 	end
 	wf.Parent = D
 	local sh = group(D, "Shutter")
-	B(sh, "BottomBar", -6.8, 8.0, -40.35, 6.8, 8.2, -40.05, C.frame, { studs = false })
-	for i = 0, 9 do
-		local y0 = 8.2 + i * 0.76
-		B(sh, string.format("Slat_%02d", i + 1), -6.8, y0, -40.3, 6.8, y0 + 0.76, -40.1, (i % 2 == 0) and C.metal or C.metal2,
+	-- rideau caché dans le linteau : 10,84 de haut, il descend de sa propre hauteur jusqu'au seuil
+	B(sh, "BottomBar", -9.8, 11.3, -40.35, 9.8, 11.5, -40.05, C.frame, { studs = false })
+	for i = 0, 13 do
+		local y0 = 11.5 + i * 0.76
+		B(sh, string.format("Slat_%02d", i + 1), -9.8, y0, -40.3, 9.8, y0 + 0.76, -40.1, (i % 2 == 0) and C.metal or C.metal2,
 			{ studs = false, mat = Enum.Material.DiamondPlate })
 	end
-	sh.WorldPivot = CFrame.new(0, 8.0, -40.2)
-	B(D, "ShutterButtonBox", 6.1, 3.3, -38.5, 6.9, 4.7, -38.3, C.yellow, { studs = false })
-	B(D, "ShutterButton", 6.25, 3.6, -38.3, 6.75, 4.1, -38.1, C.red, { studs = false })
-	local sign = B(D, "NameSign", -6.6, 11.0, -40.9, 6.6, 15.3, -40.5, C.dark, { studs = false })
+	sh.WorldPivot = CFrame.new(0, 11.3, -40.2)
+	B(D, "ShutterButtonBox", 9.1, 3.3, -38.5, 9.9, 4.7, -38.3, C.yellow, { studs = false })
+	B(D, "ShutterButton", 9.25, 3.6, -38.3, 9.75, 4.1, -38.1, C.red, { studs = false })
+	local sign = B(D, "NameSign", -8, 16.6, -40.9, 8, 21.2, -40.5, C.dark, { studs = false })
 	label(sign, Enum.NormalId.Front, "YOUR SHOP", C.white, 40, Color3.new(0, 0, 0), "OwnerName")
-	for i, b in { { -6.75, 15.3, 6.75, 15.45 }, { -6.75, 10.85, 6.75, 11.0 }, { -6.75, 10.85, -6.6, 15.45 }, { 6.6, 10.85, 6.75, 15.45 } } do
+	for i, b in { { -8.15, 21.2, 8.15, 21.35 }, { -8.15, 16.45, 8.15, 16.6 }, { -8.15, 16.45, -8, 21.35 }, { 8, 16.45, 8.15, 21.35 } } do
 		B(D, "SignBorder_" .. i, b[1], b[2], -40.95, b[3], b[4], -40.5, C.white, { studs = false, decor = true })
 	end
-	local badge = B(D, "NumberBadge", -3.2, 8.7, -40.85, 3.2, 10.5, -40.5, C.white, { studs = false })
+	local badge = B(D, "NumberBadge", -3.2, 13.4, -40.85, 3.2, 15.2, -40.5, C.white, { studs = false })
 	label(badge, Enum.NormalId.Front, "SHOP 1", C.dark, 40, C.white, "PlotNumberLabel")
 
-	-- barrière invisible : seul le propriétaire la franchit (code) ; les autres cassent Window
+	-- barrière invisible : seul le propriétaire la franchit (code) ; les autres cassent Window.
+	-- Côtés, fond et couvercle en deux versions : la petite (niveau 1, HideFromStage 2) et la grande
+	-- (FromStage 2 : la pièce n'existe qu'à partir du niveau 2).
 	local PB = group(M, "PlotBarrier")
 	local H = 30
+	local S = SMALL_Z
 	for _, w in {
-		{ "Barrier_L", -32, 0.3, -40, -31.6, H, 40 }, { "Barrier_R", 31.6, 0.3, -40, 32, H, 40 },
-		{ "Barrier_B", -32, 0.3, 39.6, 32, H, 40 }, { "Barrier_FL", -32, 0.3, -40, -6, H, -39.6 },
-		{ "Barrier_FR", 6, 0.3, -40, 32, H, -39.6 }, { "Barrier_FTop", -6, 7.6, -40, 6, H, -39.6 },
-		{ "Barrier_Lid", -32, H, -40, 32, H + 0.5, 40 },
+		{ "Barrier_L1", -32, 0.3, -40, -31.6, H, S, 1 }, { "Barrier_R1", 31.6, 0.3, -40, 32, H, S, 1 },
+		{ "Barrier_B1", -32, 0.3, S - 0.4, 32, H, S, 1 }, { "Barrier_Lid1", -32, H, -40, 32, H + 0.5, S, 1 },
+		{ "Barrier_L", -32, 0.3, -40, -31.6, H, 40, 2 }, { "Barrier_R", 31.6, 0.3, -40, 32, H, 40, 2 },
+		{ "Barrier_B", -32, 0.3, 39.6, 32, H, 40, 2 }, { "Barrier_Lid", -32, H, -40, 32, H + 0.5, 40, 2 },
+		{ "Barrier_FL", -32, 0.3, -40, -9, H, -39.6 }, { "Barrier_FR", 9, 0.3, -40, 32, H, -39.6 },
+		{ "Barrier_FTop", -9, 11.1, -40, 9, H, -39.6 },
 	} do
 		local p = B(PB, w[1], w[2], w[3], w[4], w[5], w[6], w[7], C.white, { studs = false, T = 1, noShadow = true })
 		p.CanTouch = false
+		if w[8] == 1 then p:SetAttribute("HideFromStage", 2) elseif w[8] == 2 then p:SetAttribute("FromStage", 2) end
 	end
 
 	-- volumes
+	-- terrasse devant la boutique (z -52..-40), hors des murs : le tapis et le banc y sont
+	B(M, "Terrace", -32, -0.6, -52, 32, 0.3, -40, C.accent, { accent = true }) -- à la couleur de la boutique
+	B(M, "TerraceEdge", -32, 0.3, -52, 32, 0.5, -51.6, C.frame, { studs = false })
+	-- volume de la boutique, sans la terrasse : PvPService sort les non-propriétaires de Bounds tant que la
+	-- porte est intacte ; la terrasse (tapis, banc, socle, vitre à casser) doit rester libre d'accès
 	local bounds = B(M, "Bounds", -32, 0.3, -40, 32, H, 40, C.white, { studs = false, decor = true, T = 1, noShadow = true })
 	bounds.CanQuery = false
 	local dep = B(M, "DepositZone", -31.5, 0.3, -39.5, 31.5, 12.3, 39.5, C.white, { studs = false, T = 1, noShadow = true })
@@ -301,58 +370,71 @@ local function buildCore(M)
 	return floor, D
 end
 
-local function buildInterior(M)
-	-- îlots de présentoirs (style gondole) et les 20 DisplaySlot
-	local DS = group(M, "DisplayStands")
-	for i, cx in ISLANDS do
-		B(DS, "Island_" .. i .. "_Spine", cx - 1.2, 0.6, -23, cx + 1.2, 3.0, 11, C.shelfBack, { studs = false })
-		B(DS, "Island_" .. i .. "_Kick", cx - 2, 0.3, -23.2, cx + 2, 0.6, 11.2, C.kick, { studs = false })
-		B(DS, "Island_" .. i .. "_Top", cx - 2, 3.0, -23.2, cx + 2, 3.25, 11.2, C.white, { studs = false })
-		B(DS, "Island_" .. i .. "_Band_L", cx - 2.02, 2.75, -23.2, cx - 1.98, 3.25, 11.2, C.accent, { studs = false, decor = true, accent = true })
-		B(DS, "Island_" .. i .. "_Band_R", cx + 1.98, 2.75, -23.2, cx + 2.02, 3.25, 11.2, C.accent, { studs = false, decor = true, accent = true })
-	end
-	for n, s in SLOT_ORDER do
-		local cx, z = ISLANDS[s[1]], ROWS[s[2]]
-		local stand = B(DS, string.format("DisplayStand_%02d", n), cx - 1.3, 3.25, z - 1.3, cx + 1.3, 3.75, z + 1.3, C.accent, { accent = true })
-		att(string.format("DisplaySlot_%02d", n), stand, cx, 3.75, z)
-		B(DS, string.format("PriceTag_%02d", n), cx - 0.7, 3.3, z - 1.42, cx + 0.7, 3.7, z - 1.3, C.price, { studs = false, decor = true })
-	end
-
-	-- établis d'ouverture (atelier au fond à gauche)
-	local WB = group(M, "Workbenches")
-	for n, p in BENCHES do
-		local cx, cz = p[1], p[2]
-		local top = B(WB, string.format("UnboxTable_%02d", n), cx - 1.9, 2.8, cz - 1.5, cx + 1.9, 3.1, cz + 1.5, C.wood, { studs = false, mat = Enum.Material.WoodPlanks })
-		att(string.format("UnboxBench_%02d", n), top, cx, 3.1, cz)
-		for k, l in { { -1.7, -1.3 }, { 1.7, -1.3 }, { -1.7, 1.3 }, { 1.7, 1.3 } } do
-			B(WB, string.format("TableLeg_%02d_%d", n, k), cx + l[1] - 0.15, 0.3, cz + l[2] - 0.15, cx + l[1] + 0.15, 2.8, cz + l[2] + 0.15, C.frame, { studs = false })
+local function buildInterior(M, store)
+	-- 5 rayons de 4 présentoirs (Rayon_01 à _05). Chaque présentoir a sa case CollectPad_xx au sol,
+	-- devant lui : le joueur y marche pour ramasser l'argent de cet objet. RayonSpot_xx = contour au
+	-- sol de l'emplacement d'un rayon pas encore là (à partir du niveau 2, quand le sol s'agrandit).
+	-- Rayon_01 est complet dans la boutique. Rayon_02 à _05 (L-082) : dans la boutique, seulement une
+	-- pièce d'ancrage invisible RayonAnchor qui porte les DisplaySlot (contrat) ; leurs visuels
+	-- (présentoirs, CollectPad, produits) sont rangés dans `store` (PLOT_Shop_Rayons), même repère.
+	local HEADERS = { "SNACKS", "DRINKS", "TOYS", "TECH", "GIFTS" }
+	local HEADER_COLORS = { C.orange, C.purple, C.green, C.red, C.pink }
+	local spots = group(M, "RayonSpots", { FromStage = 2 })
+	for r, zr in RAYON_Z do
+		local inPlot = group(M, string.format("Rayon_%02d", r))
+		local R = (r == 1) and inPlot or group(store, string.format("Rayon_%02d", r))
+		local anchor
+		if r > 1 then
+			anchor = B(inPlot, "RayonAnchor", -0.5, 3.5, zr - 0.5, 0.5, 4.0, zr + 0.5, C.white, { studs = false, decor = true, T = 1, noShadow = true })
 		end
-		B(WB, string.format("TableShelf_%02d", n), cx - 1.75, 1.0, cz - 1.35, cx + 1.75, 1.15, cz + 1.35, C.woodDark, { studs = false })
-		B(WB, string.format("TableVise_%02d", n), cx + 1.1, 3.1, cz + 0.8, cx + 1.7, 3.6, cz + 1.4, C.accent, { studs = false, decor = true, accent = true })
-	end
-
-	-- coffre-fort (fond au centre) : cage d'acier, 3 socles VaultSlot_01 à _03
-	local V = group(M, "Safe")
-	local plate = Enum.Material.DiamondPlate
-	B(V, "SafeFloor", -8, 0.3, 27, 8, 0.4, 38.5, C.steel, { mat = plate })
-	B(V, "SafeWall_L", -8.4, 0.3, 27, -8, 9.4, 38.5, C.steel, { mat = plate })
-	B(V, "SafeWall_R", 8, 0.3, 27, 8.4, 9.4, 38.5, C.steel, { mat = plate })
-	B(V, "SafeWall_B", -8.4, 0.3, 38.5, 8.4, 9.4, 38.9, C.steel, { mat = plate })
-	B(V, "SafeTop", -8.4, 9.4, 26.6, 8.4, 9.8, 38.9, C.frame, { studs = false })
-	B(V, "SafeLintel", -8.4, 8.6, 26.6, 8.4, 9.4, 27.0, C.frame, { studs = false })
-	for i = 0, 10 do
-		local x = -8 + i * 1.6
-		if math.abs(x) > 1.8 and math.abs(x) < 7.9 then
-			B(V, "SafeBar_" .. (i + 1), x - 0.12, 0.4, 26.7, x + 0.12, 8.6, 26.95, C.chrome, { studs = false })
+		local spot = (r > 1) and group(spots, string.format("RayonSpot_%02d", r)) or nil
+		for _, half in { { "L", -25, -7, -1 }, { "R", 7, 25, 1 } } do
+			local h, x0, x1, sx = half[1], half[2], half[3], half[4]
+			B(R, "Kick_" .. h, x0, 0.3, zr - 1.7, x1, 0.6, zr + 1.7, C.kick, { studs = false })
+			B(R, "Spine_" .. h, x0 + 0.2, 0.6, zr - 0.9, x1 - 0.2, 3.0, zr + 0.9, C.shelfBack, { studs = false })
+			B(R, "Top_" .. h, x0, 3.0, zr - 1.7, x1, 3.25, zr + 1.7, C.white, { studs = false })
+			B(R, "Band_F" .. h, x0, 2.75, zr - 1.72, x1, 3.25, zr - 1.68, C.accent, { studs = false, decor = true, accent = true })
+			B(R, "Band_B" .. h, x0, 2.75, zr + 1.68, x1, 3.25, zr + 1.72, C.accent, { studs = false, decor = true, accent = true })
+			B(R, "Board_" .. h, x0 + 0.2, 1.7, zr - 1.7, x1 - 0.2, 1.85, zr - 0.9, C.shelf, { studs = false })
+			B(R, "PriceStrip_" .. h, x0 + 0.2, 1.7, zr - 1.76, x1 - 0.2, 1.85, zr - 1.7, C.price, { studs = false, decor = true })
+			productsX(R, "Prod_" .. h, x0 + 0.2, x1 - 0.2, zr - 1.7, -1, 1.85, 1.1)
+			local x, k = x0 + 0.4, 0
+			while x < x1 - 1.9 do
+				k += 1
+				B(R, "Bulk_" .. h .. "_" .. k, x, 0.6, zr + 0.95, x + 1.5, 1.55, zr + 1.65, PRODUCT_COLORS[(r * 3 + k) % #PRODUCT_COLORS + 1][1], { studs = false, decor = true, noShadow = true })
+				x += 1.65
+			end
+			local ex = (sx < 0) and x0 or x1
+			local hdr = B(R, "Header_" .. h, math.min(ex, ex + sx * 0.25), 0.9, zr - 1.5, math.max(ex, ex + sx * 0.25), 2.75, zr + 1.5, HEADER_COLORS[r], { studs = false, decor = true })
+			label(hdr, (sx < 0) and Enum.NormalId.Left or Enum.NormalId.Right, HEADERS[r], C.white, 40)
+			if spot then
+				for i, b in { { x0, zr - 1.7, x1, zr - 1.4 }, { x0, zr + 1.4, x1, zr + 1.7 }, { x0, zr - 1.4, x0 + 0.3, zr + 1.4 }, { x1 - 0.3, zr - 1.4, x1, zr + 1.4 } } do
+					B(spot, "Outline_" .. h .. i, b[1], 0.32, b[2], b[3], 0.36, b[4], C.white, { studs = false, decor = true, noShadow = true })
+				end
+			end
+		end
+		for i, sxp in STAND_X do
+			local n = (r - 1) * 4 + i
+			local stand = B(R, string.format("DisplayStand_%02d", n), sxp - 1.3, 3.25, zr - 1.3, sxp + 1.3, 3.75, zr + 1.3, C.accent, { accent = true })
+			att(string.format("DisplaySlot_%02d", n), anchor or stand, sxp, 3.75, zr)
+			if r == 1 then
+				-- L-086 : on pose et on ouvre le colis sur le présentoir, plus d'établi
+				att(string.format("UnboxBench_%02d", i), stand, sxp, 3.75, zr)
+			end
+			B(R, string.format("PriceTag_%02d", n), sxp - 0.7, 3.3, zr - 1.42, sxp + 0.7, 3.7, zr - 1.3, C.price, { studs = false, decor = true })
+			local cp = B(R, string.format("CollectPad_%02d", n), sxp - 1.3, 0.3, zr - 4.5, sxp + 1.3, 0.42, zr - 1.9, C.green, { studs = false, mat = Enum.Material.Neon })
+			cp.CanCollide = false; cp.CanTouch = true; cp.CanQuery = false
+			label(cp, Enum.NormalId.Top, "$", C.white, 40)
 		end
 	end
-	B(V, "SafeGate", -1.75, 0.4, 24.4, -1.55, 8.4, 26.7, C.chrome, { studs = false }) -- grille ouverte
-	local safeSign = B(V, "SafeSign", -3, 8.65, 26.5, 3, 9.35, 26.6, C.frame, { studs = false, decor = true })
-	label(safeSign, Enum.NormalId.Front, "SAFE", C.gold, 60)
+	att("DisplayUpgradePoint", B(M, "DisplayKiosk", -11, 0.3, -37, -9, 4.2, -35, C.frame), -10, 6.2, -36)
+	B(M, "DisplayKioskScreen", -10.8, 2.8, -37.05, -9.2, 3.9, -37.0, C.green, { studs = false, decor = true, mat = Enum.Material.Neon })
+
+	-- coffre (Partie 2) : plus de coffre visible (L-086). VaultSlot_01 à _03 restent pour le contrat, en
+	-- Attachments sur une pièce d'ancrage invisible et sans collision, au fond au centre.
+	local va = B(M, "VaultAnchor", -5, 2.6, 33, 5, 2.85, 34, C.white, { studs = false, decor = true, T = 1, noShadow = true })
 	for i, x in { -4.5, 0, 4.5 } do
-		local ped = B(V, string.format("SafePedestal_%02d", i), x - 1.2, 0.4, 32.3, x + 1.2, 2.6, 34.7, C.frame, { studs = false })
-		B(V, string.format("SafePedestalTop_%02d", i), x - 1.35, 2.6, 32.15, x + 1.35, 2.85, 34.85, C.gold, { studs = false })
-		att(string.format("VaultSlot_%02d", i), ped, x, 2.85, 33.5)
+		att(string.format("VaultSlot_%02d", i), va, x, 2.85, 33.5)
 	end
 
 	-- caisse (devant à gauche) et CashPad
@@ -362,11 +444,12 @@ local function buildInterior(M)
 	B(K, "CounterBelt", -26.6, 3.1, -35.1, -21.5, 3.15, -33.9, C.rubber, { studs = false, decor = true })
 	B(K, "Register", -20.2, 3.1, -35.1, -18.2, 3.7, -33.9, C.frame, { studs = false, decor = true })
 	B(K, "RegisterScreen", -20.0, 3.7, -34.2, -18.4, 4.6, -34.0, C.dark, { studs = false, decor = true })
-	local pad = B(M, "CashPad", -25, 0.3, -31, -19, 0.45, -25, C.green, { studs = false })
+	-- CashPad : gardé tant que le contrat l'exige (les CollectPad_xx le remplacent si Ironix valide)
+	local pad = B(M, "CashPad", -25, 0.3, -32.5, -19, 0.45, -27.5, C.green, { studs = false })
 	pad.CanCollide = false; pad.CanTouch = true
 	label(pad, Enum.NormalId.Top, "$ CASH", C.white, 40)
-	B(K, "CashSignPost", -22.15, 0.45, -24.4, -21.85, 7.5, -24.1, C.frame, { studs = false })
-	local cs = B(K, "CashSign", -24, 7.5, -24.4, -20, 9.3, -24.1, C.green, { studs = false, decor = true })
+	B(K, "CashSignPost", -26.35, 0.3, -30.15, -26.05, 7.5, -29.85, C.frame, { studs = false })
+	local cs = B(K, "CashSign", -28.2, 7.5, -30.15, -24.2, 9.3, -29.85, C.green, { studs = false, decor = true })
 	label(cs, Enum.NormalId.Front, "CASH", C.white, 40)
 
 	-- point d'achat du niveau suivant : borne à droite de la porte
@@ -380,7 +463,7 @@ P.buildCore, P.buildInterior = buildCore, buildInterior
 -- ===== Morceau 3 : tapis, banc, niveaux 1 à 3 =====
 local P = _G.ClaudePlotShopParts
 local CS, RS, rgb, C, B, CYL, group, att, label, light = P.CS, P.RS, P.rgb, P.C, P.B, P.CYL, P.group, P.att, P.label, P.light
-local products, PRODUCT_COLORS, ISLANDS = P.products, P.PRODUCT_COLORS, P.ISLANDS
+local products, PRODUCT_COLORS = P.products, P.PRODUCT_COLORS
 
 -- Tapis de course (MOD-016) : coureur tourné vers -Z, console devant lui. Origine (ox, sol, oz).
 local function buildTreadmill(M, ox, oz)
@@ -464,15 +547,35 @@ end
 -- Pourtour (côtés, fond, avant hors portique) : { x0, z0, x1, z1 } le long duquel on pose barrières et murets.
 local SEGMENTS = {
 	{ "L", -31.6, -39.6, -31.6, 39.6 }, { "R", 31.6, -39.6, 31.6, 39.6 }, { "B", -31.6, 39.6, 31.6, 39.6 },
-	{ "FL", -31.6, -39.6, -7, -39.6 }, { "FR", 7, -39.6, 31.6, -39.6 },
+	{ "FL", -31.6, -39.6, -10, -39.6 }, { "FR", 10, -39.6, 31.6, -39.6 },
 }
 
--- Niveau 1 : stand ouvert. Barrière basse, champ de force léger au-dessus, tapis d'entrée, cartons.
+-- Pourtour de la petite boutique du niveau 1 : une seule rangée, z -40..SMALL_Z.
+local SZ = P.SMALL_Z - 0.4
+local SEGMENTS_SMALL = {
+	{ "L", -31.6, -39.6, -31.6, SZ }, { "R", 31.6, -39.6, 31.6, SZ }, { "B", -31.6, SZ, 31.6, SZ },
+	{ "FL", -31.6, -39.6, -10, -39.6 }, { "FR", 10, -39.6, 31.6, -39.6 },
+}
+
+-- Champ de force léger (matériau ForceField) au-dessus d'un pourtour.
+local function forceField(parent, segments, hideFrom)
+	local field = group(parent, "ForceField", { HideFromStage = hideFrom })
+	for _, sg in segments do
+		local name, x0, z0, x1, z1 = sg[1], sg[2], sg[3], sg[4], sg[5]
+		local f = B(field, "Field_" .. name, math.min(x0, x1) - 0.05, 3.3, math.min(z0, z1) - 0.05, math.max(x0, x1) + 0.05, 8.5, math.max(z0, z1) + 0.05, C.accent,
+			{ mat = Enum.Material.ForceField, decor = true, noShadow = true, T = 0.35, accent = true })
+		f.CastShadow = false
+	end
+	return field
+end
+
+-- Niveau 1 : petit stand ouvert d'une seule rangée. Barrière basse, champ de force léger, tapis d'entrée.
+-- Les niveaux suivants agrandissent la boutique (le niveau 2 pose la suite du sol jusqu'au fond).
 local function buildStage1(M)
 	local S = stage(M, 1)
 	local rails = group(S, "Railings", { HideFromStage = 2 })
-	local field = group(S, "ForceField", { HideFromStage = 3 })
-	for _, sg in SEGMENTS do
+	forceField(S, SEGMENTS_SMALL, 2)
+	for _, sg in SEGMENTS_SMALL do
 		local name, x0, z0, x1, z1 = sg[1], sg[2], sg[3], sg[4], sg[5]
 		local len = math.max(math.abs(x1 - x0), math.abs(z1 - z0))
 		local steps = math.max(1, math.floor(len / 5 + 0.5))
@@ -484,13 +587,19 @@ local function buildStage1(M)
 		for k, ry in { 1.6, 3.0 } do
 			B(rails, "Rail_" .. name .. "_" .. k, math.min(x0, x1) - 0.12, ry, math.min(z0, z1) - 0.12, math.max(x0, x1) + 0.12, ry + 0.25, math.max(z0, z1) + 0.12, C.chrome, { studs = false })
 		end
-		local f = B(field, "Field_" .. name, math.min(x0, x1) - 0.05, 3.3, math.min(z0, z1) - 0.05, math.max(x0, x1) + 0.05, 8.5, math.max(z0, z1) + 0.05, C.accent,
-			{ mat = Enum.Material.ForceField, decor = true, noShadow = true, T = 0.35, accent = true })
-		f.CastShadow = false
 	end
 	local mat = B(S, "EntryMat", -5, 0.32, -38.9, 5, 0.36, -36.4, C.accent, { studs = false, decor = true, noShadow = true, accent = true })
 	mat:SetAttribute("HideFromStage", 5)
 	label(mat, Enum.NormalId.Top, "WELCOME", C.white, 40)
+	return S
+end
+
+-- Niveau 2, la boutique s'agrandit : suite du sol jusqu'au fond (z SMALL_Z..40), champ de force sur tout
+-- le pourtour, cartons au fond.
+local function buildStage2Ext(S)
+	B(S, "PlotFloorExt", -32, -0.6, P.SMALL_Z, 32, 0.3, 40, C.accent, { accent = true })
+	P.floorTiles(S, "FloorTilesExt", (P.SMALL_Z + 40) / 4, 19)
+	forceField(S, SEGMENTS, 3)
 	local st = group(S, "Stock")
 	B(st, "Pallet_1", -31, 0.32, 19.5, -27, 0.6, 23.5, C.wood, { studs = false })
 	for i, c in { { -30.8, 19.7, -28.9, 21.5, 1.6 }, { -28.8, 19.7, -27.2, 21.4, 1.2 }, { -30.6, 21.7, -28.6, 23.3, 1.4 }, { -30.5, 19.9, -29.1, 21.3, 1.0 } } do
@@ -515,6 +624,7 @@ end
 -- Niveau 2 : murets et rayons garnis (produits sous les présentoirs, têtes de gondole, promo, haltères).
 local function buildStage2(M)
 	local S = stage(M, 2)
+	buildStage2Ext(S)
 	local front = group(S, "Murets_Front")
 	local sides = group(S, "Murets_Sides", { HideFromStage = 3 })
 	for _, sg in SEGMENTS do
@@ -522,35 +632,13 @@ local function buildStage2(M)
 		if isFront then
 			-- murets de façade sur z -40..-39, ils restent sous les vitrines du niveau 3
 			local a, b
-			if sg[1] == "FL" then a, b = -32, -7 else a, b = 7, 32 end
+			if sg[1] == "FL" then a, b = -32, -10 else a, b = 10, 32 end
 			B(front, "Muret_" .. sg[1], a, 0.3, -40, b, 3.3, -39, C.wall)
 			B(front, "MuretCap_" .. sg[1], a, 3.3, -40.1, b, 3.6, -38.9, C.accent, { accent = true })
 			B(front, "MuretBase_" .. sg[1], a, 0.3, -40.05, b, 0.9, -38.95, C.frame)
 		else
 			muret(sides, sg[1])
 		end
-	end
-	local G = group(S, "Gondolas")
-	local HEADERS = { { "SNACKS", C.orange }, { "DRINKS", C.purple }, { "TOYS", C.green }, { "TECH", C.red } }
-	for i, cx in ISLANDS do
-		for _, sx in { -1, 1 } do
-			local tag = i .. (sx < 0 and "L" or "R")
-			B(G, "Board_" .. tag, math.min(cx + sx * 1.2, cx + sx * 2), 1.7, -23, math.max(cx + sx * 1.2, cx + sx * 2), 1.85, 11, C.shelf, { studs = false })
-			B(G, "PriceStrip_" .. tag, math.min(cx + sx * 2, cx + sx * 2.06), 1.7, -23, math.max(cx + sx * 2, cx + sx * 2.06), 1.85, 11, C.price, { studs = false, decor = true })
-			products(G, "Prod_" .. tag, cx + sx * 2, sx, -23, 11, 1.85, 1.1)
-			-- bas : gros paquets
-			local z = -22.8
-			local k = 0
-			while z < 10.4 do
-				k += 1
-				local pair = PRODUCT_COLORS[(i * 3 + k) % #PRODUCT_COLORS + 1]
-				B(G, "Bulk_" .. tag .. "_" .. k, math.min(cx + sx * 1.25, cx + sx * 1.95), 0.6, z, math.max(cx + sx * 1.25, cx + sx * 1.95), 1.55, z + 1.5, pair[1], { studs = false, decor = true, noShadow = true })
-				z += 1.65
-			end
-		end
-		-- enseigne sur la tête de l'îlot, sous le plateau : elle ne cache pas le premier objet
-		local h = B(G, "Header_" .. i, cx - 1.9, 0.9, -23.45, cx + 1.9, 2.75, -23.2, HEADERS[i][2], { studs = false, decor = true })
-		label(h, Enum.NormalId.Front, HEADERS[i][1], C.white, 40)
 	end
 	local Pr = group(S, "Promo")
 	B(Pr, "PromoBin", -14, 0.3, -31, -10, 1.8, -28, C.yellow, { studs = false })
@@ -560,10 +648,10 @@ local function buildStage2(M)
 	B(Pr, "PromoPole", -12.05, 2.7, -29.6, -11.95, 4.2, -29.4, C.frame, { studs = false, decor = true })
 	local ps = B(Pr, "PromoSign", -13.4, 4.2, -29.6, -10.6, 5.4, -29.4, C.yellow, { studs = false, decor = true })
 	label(ps, Enum.NormalId.Front, "SALE", C.red, 60, C.white)
-	local GY = group(S, "GymRack")
-	B(GY, "DumbbellRack", 28.6, 0.3, -37, 31, 2.2, -27.5, C.frame, { studs = false })
+	local GY = group(S, "GymRack") -- sur la terrasse, à côté du banc
+	B(GY, "DumbbellRack", 28.6, 0.3, -50.5, 31, 2.2, -41, C.frame, { studs = false })
 	for k = 0, 5 do
-		local z = -36.2 + k * 1.5
+		local z = -49.7 + k * 1.5
 		B(GY, "Dumbbell_" .. k, 28.9, 2.2, z, 30.7, 2.6, z + 0.5, (k % 2 == 0) and C.dark or C.accent, { studs = false, decor = true, accent = k % 2 == 1 })
 	end
 	return S
@@ -581,11 +669,11 @@ local function buildStage3(M)
 	B(Wl, "InnerSkin_B", -30.9, 0.3, 38.9, 30.9, 16.1, 39, C.innerWall, { studs = false })
 	for _, side in { { "L", -1 }, { "R", 1 } } do
 		local s = side[2]
-		local a, b = (s < 0) and -32 or 7, (s < 0) and -7 or 32
+		local a, b = (s < 0) and -32 or 10, (s < 0) and -10 or 32
 		B(Wl, "FrontUpper_" .. side[1], a, 12.8, -40, b, 16.2, -39, C.wall)
 		B(Wl, "FrontPier_Out_" .. side[1], (s < 0) and -32 or 30, 3.6, -40, (s < 0) and -30 or 32, 12.8, -39, C.wall)
-		B(Wl, "FrontPier_In_" .. side[1], (s < 0) and -8 or 7, 3.6, -40, (s < 0) and -7 or 8, 12.8, -39, C.wall)
-		local v0, v1 = (s < 0) and -30 or 8, (s < 0) and -8 or 30
+		B(Wl, "FrontPier_In_" .. side[1], (s < 0) and -11 or 10, 3.6, -40, (s < 0) and -10 or 11, 12.8, -39, C.wall)
+		local v0, v1 = (s < 0) and -30 or 11, (s < 0) and -11 or 30
 		B(Wl, "Vitrine_" .. side[1], v0, 3.6, -39.7, v1, 12.3, -39.3, C.glass, { mat = Enum.Material.Glass, T = 0.55 })
 		B(Wl, "VitrineTransom_" .. side[1], v0, 12.3, -39.8, v1, 12.8, -39.2, C.frame, { studs = false })
 		B(Wl, "VitrineSill_" .. side[1], v0, 3.6, -39.85, v1, 3.8, -39.15, C.frame, { studs = false })
@@ -643,7 +731,6 @@ P.buildStage1, P.buildStage2, P.buildStage3 = buildStage1, buildStage2, buildSta
 -- ===== Morceau 4 : niveaux 4 à 6 =====
 local P = _G.ClaudePlotShopParts
 local rgb, C, B, CYL, group, label, light, stage = P.rgb, P.C, P.B, P.CYL, P.group, P.label, P.light, P.stage
-local ISLANDS, ROWS, SLOT_ORDER = P.ISLANDS, P.ROWS, P.SLOT_ORDER
 local NEON = Enum.Material.Neon
 
 -- Niveau 4 : toit et plafond éclairé, enseigne lumineuse, rideau de fer apparent, auvents.
@@ -666,14 +753,14 @@ local function buildStage4(M)
 	light(B(L, "Neon_Front", -26, 15.7, -35, 26, 16.0, -34.2, C.neon, { mat = NEON, decor = true, noShadow = true }), 24, 0.4)
 	light(B(L, "Neon_Back", -26, 15.7, 32, 26, 16.0, 32.8, C.neon, { mat = NEON, decor = true, noShadow = true }), 24, 0.4)
 	local SN = group(S, "SignNeon", { HideFromStage = 5 })
-	for i, b in { { -7.0, 15.45, 7.0, 15.75 }, { -7.0, 10.55, 7.0, 10.85 }, { -7.0, 10.55, -6.75, 15.75 }, { 6.75, 10.55, 7.0, 15.75 } } do
+	for i, b in { { -8.4, 21.35, 8.4, 21.65 }, { -8.4, 16.15, 8.4, 16.45 }, { -8.4, 16.15, -8.15, 21.65 }, { 8.15, 16.15, 8.4, 21.65 } } do
 		B(SN, "SignTube_" .. i, b[1], b[2], -41.05, b[3], b[4], -40.75, C.accent, { mat = NEON, studs = false, decor = true, accent = true })
 	end
 	local SLi = group(S, "SignLights")
-	for i, x in { -4.5, 4.5 } do
-		B(SLi, "LampArm_" .. i, x - 0.1, 16.3, -41.9, x + 0.1, 16.5, -40.5, C.frame, { studs = false, decor = true })
+	for i, x in { -5.5, 5.5 } do
+		B(SLi, "LampArm_" .. i, x - 0.1, 22.1, -41.9, x + 0.1, 22.3, -40.5, C.frame, { studs = false, decor = true })
 		local lamp = B(SLi, "Lamp_" .. i, -0.3, -0.3, -0.4, 0.3, 0.3, 0.4, C.frame, { studs = false, decor = true })
-		lamp.CFrame = CFrame.lookAt(Vector3.new(x, 16.3, -42.0), Vector3.new(x * 0.6, 12.5, -40.6))
+		lamp.CFrame = CFrame.lookAt(Vector3.new(x, 22.1, -42.0), Vector3.new(x * 0.6, 18.3, -40.6))
 		local spot = Instance.new("SpotLight")
 		spot.Face = Enum.NormalId.Front; spot.Range = 10; spot.Angle = 70; spot.Brightness = 1.5; spot.Shadows = false
 		spot.Color = rgb(255, 244, 220)
@@ -681,14 +768,14 @@ local function buildStage4(M)
 	end
 	local open = B(S, "OpenSign", -21, 8.6, -38.95, -15, 10.4, -38.8, C.dark, { studs = false, decor = true })
 	label(open, Enum.NormalId.Front, "OPEN", C.red, 40, C.white)
-	local SR = group(S, "ShutterRails", { HideFromStage = 5 })
-	B(SR, "ShutterRail_L", -6.9, 0.3, -40.8, -6.5, 7.6, -40.5, C.metal2, { studs = false })
-	B(SR, "ShutterRail_R", 6.5, 0.3, -40.8, 6.9, 7.6, -40.5, C.metal2, { studs = false })
-	B(SR, "ShutterHousing", -7.1, 7.6, -40.85, 7.1, 8.5, -40.6, C.metal, { studs = false, mat = Enum.Material.DiamondPlate })
+	local SR = group(S, "ShutterRails") -- restent au Flagship depuis le retrait du cadre de coffre (L-086)
+	B(SR, "ShutterRail_L", -9.9, 0.3, -40.8, -9.5, 11.1, -40.5, C.metal2, { studs = false })
+	B(SR, "ShutterRail_R", 9.5, 0.3, -40.8, 9.9, 11.1, -40.5, C.metal2, { studs = false })
+	B(SR, "ShutterHousing", -10.1, 11.1, -40.85, 10.1, 12.0, -40.6, C.metal, { studs = false, mat = Enum.Material.DiamondPlate })
 	local A = group(S, "Awnings")
 	local run, drop = 2.4, 1.0
 	local len = math.sqrt(run * run + drop * drop)
-	for _, aw in { { "L", -30, -8 }, { "R", 8, 30 } } do
+	for _, aw in { { "L", -30, -11 }, { "R", 11, 30 } } do
 		local n = 8
 		local w = (aw[3] - aw[2]) / n
 		for i = 0, n - 1 do
@@ -717,11 +804,11 @@ local function camera(parent, name, wall, pos, target)
 	led.CFrame = body.CFrame * CFrame.new(0.2, 0.36, -0.55)
 end
 
--- Sécurité du Flagship (niveau 5) : clavier sur le cadre du coffre, caméras (décor), alarme.
+-- Sécurité du Flagship (niveau 5) : clavier sur la colonne droite de la porte, caméras (décor), alarme.
 local function buildSecurity(S)
 	local SEC = group(S, "Security")
-	B(SEC, "Keypad", 6.5, 3.6, -41.5, 7.4, 4.9, -41.3, C.dark, { studs = false, decor = true })
-	B(SEC, "KeypadScreen", 6.65, 4.3, -41.55, 7.25, 4.7, -41.5, C.green, { studs = false, decor = true, mat = NEON })
+	B(SEC, "Keypad", 10.2, 3.6, -41.1, 11.1, 4.9, -40.9, C.dark, { studs = false, decor = true })
+	B(SEC, "KeypadScreen", 10.35, 4.3, -41.15, 10.95, 4.7, -41.1, C.green, { studs = false, decor = true, mat = NEON })
 	local CAM = group(S, "Cameras")
 	camera(CAM, "Cam_FrontL", Vector3.new(-27, 15.2, -40.0), Vector3.new(-27, 14.8, -40.9), Vector3.new(-20, 0, -54))
 	camera(CAM, "Cam_FrontR", Vector3.new(27, 15.2, -40.0), Vector3.new(27, 14.8, -40.9), Vector3.new(20, 0, -54))
@@ -734,71 +821,42 @@ local function buildSecurity(S)
 	light(dome, 10, 0.6, rgb(255, 60, 60))
 end
 
--- Niveau 5, Flagship : façade de luxe (marbre et or), porte de coffre-fort (la porte blindée),
+-- Niveau 5, Flagship : façade de luxe (marbre et or),
 -- sécurité (clavier, caméras, alarme), tapis rouge, lustres, palmiers.
 local function buildStage5(M)
 	local S = stage(M, 5)
 	local marble = Enum.Material.Marble
 	local F = group(S, "LuxFacade")
-	for _, side in { { "L", -31, -9 }, { "R", 9, 31 } } do
+	for _, side in { { "L", -31, -11.3 }, { "R", 11.3, 31 } } do
 		B(F, "MarbleBand_" .. side[1], side[2], 12.8, -40.3, side[3], 16.2, -40.0, C.marble, { mat = marble })
 		B(F, "GoldLine_Low_" .. side[1], side[2], 12.8, -40.4, side[3], 13.05, -40.3, C.gold, { studs = false })
 		B(F, "GoldLine_High_" .. side[1], side[2], 15.9, -40.4, side[3], 16.15, -40.3, C.gold, { studs = false })
 	end
-	for i, cx in { -31.25, -8.55, 8.55, 31.25 } do
+	for i, cx in { -31.25, -10.65, 10.65, 31.25 } do
 		local w = (math.abs(cx) > 20) and 0.75 or 0.65
 		B(F, "Column_" .. i, cx - w, 0.3, -40.9, cx + w, 16.2, -40.0, C.marble, { mat = marble })
 		B(F, "ColumnBase_" .. i, cx - w - 0.2, 0.3, -41.1, cx + w + 0.2, 1.2, -39.95, C.gold, { studs = false })
 		B(F, "ColumnCap_" .. i, cx - w - 0.2, 15.3, -41.1, cx + w + 0.2, 16.2, -39.95, C.gold, { studs = false })
 	end
-	B(F, "Cornice", -32.3, 16.2, -41.0, 32.3, 17.4, -39.6, C.marble, { mat = marble })
-	B(F, "CorniceGold", -32.35, 17.4, -41.05, 32.35, 17.7, -39.55, C.gold, { studs = false })
-	B(F, "Pediment", -9.2, 17.7, -40.9, 9.2, 21.0, -40.1, C.marble, { mat = marble })
-	B(F, "PedimentGold", -9.3, 21.0, -40.95, 9.3, 21.3, -40.05, C.gold, { studs = false })
+	-- corniche de part et d'autre du grand linteau ; couronne de marbre et diamant posés sur le linteau
+	for _, side in { { "L", -32.3, -10.1 }, { "R", 10.1, 32.3 } } do
+		B(F, "Cornice_" .. side[1], side[2], 16.2, -41.0, side[3], 17.4, -39.6, C.marble, { mat = marble })
+		B(F, "CorniceGold_" .. side[1], side[2] + (side[2] < 0 and -0.05 or 0), 17.4, -41.05, side[3] + (side[3] > 0 and 0.05 or 0), 17.7, -39.55, C.gold, { studs = false })
+	end
+	B(F, "Crown", -10.3, 22.7, -40.9, 10.3, 23.3, -38.2, C.marble, { mat = marble })
+	B(F, "CrownGold", -10.4, 23.3, -40.95, 10.4, 23.55, -38.15, C.gold, { studs = false })
 	local dia = B(F, "Diamond", -1.1, -1.1, -0.15, 1.1, 1.1, 0.15, C.gold, { studs = false, decor = true, mat = NEON })
-	dia.CFrame = CFrame.new(0, 19.35, -41.0) * CFrame.Angles(0, 0, math.rad(45))
+	dia.CFrame = CFrame.new(0, 25.15, -39.5) * CFrame.Angles(0, 0, math.rad(45))
 	local SG = group(S, "SignGold")
-	for i, b in { { -7.2, 15.45, 7.2, 15.9 }, { -7.2, 10.4, 7.2, 10.85 }, { -7.2, 10.4, -6.75, 15.9 }, { 6.75, 10.4, 7.2, 15.9 } } do
+	for i, b in { { -8.6, 21.4, 8.6, 21.85 }, { -8.6, 15.95, 8.6, 16.4 }, { -8.6, 15.95, -8.15, 21.85 }, { 8.15, 15.95, 8.6, 21.85 } } do
 		B(SG, "GoldFrame_" .. i, b[1], b[2], -41.1, b[3], b[4], -40.75, C.gold, { studs = false })
 	end
 	for k = 0, 9 do
-		local x = -6.3 + k * 1.4
-		B(SG, "Bulb_T" .. k, x - 0.13, 15.55, -41.22, x + 0.13, 15.8, -41.1, C.yellow, { studs = false, decor = true, mat = NEON })
-		B(SG, "Bulb_B" .. k, x - 0.13, 10.5, -41.22, x + 0.13, 10.75, -41.1, C.yellow, { studs = false, decor = true, mat = NEON })
+		local x = -7.65 + k * 1.7
+		B(SG, "Bulb_T" .. k, x - 0.13, 21.5, -41.22, x + 0.13, 21.75, -41.1, C.yellow, { studs = false, decor = true, mat = NEON })
+		B(SG, "Bulb_B" .. k, x - 0.13, 16.05, -41.22, x + 0.13, 16.3, -41.1, C.yellow, { studs = false, decor = true, mat = NEON })
 	end
-	-- cadre de coffre-fort autour de la porte : la porte blindée du Flagship
-	local VF = group(S, "VaultFrame")
-	local metal = Enum.Material.Metal
-	B(VF, "Collar_L", -7.85, 0.3, -41.3, -6.05, 6.6, -40.5, C.steel, { mat = metal })
-	B(VF, "Collar_R", 6.05, 0.3, -41.3, 7.85, 6.6, -40.5, C.steel, { mat = metal })
-	B(VF, "Collar_T", -4.9, 7.6, -41.3, 4.9, 8.6, -40.5, C.steel, { mat = metal })
-	for _, s in { -1, 1 } do
-		local c = B(VF, "Collar_Corner_" .. (s < 0 and "L" or "R"), -1.6, -0.6, -0.4, 1.6, 0.6, 0.4, C.steel, { mat = metal })
-		c.CFrame = CFrame.new(s * 6.8, 7.8, -40.9) * CFrame.Angles(0, 0, s * math.rad(-45)) -- hors de l'ouverture
-	end
-	for k, p in { { -6.95, 1.2 }, { -6.95, 3.4 }, { -6.95, 5.6 }, { 6.95, 1.2 }, { 6.95, 3.4 }, { 6.95, 5.6 }, { -3, 8.1 }, { 3, 8.1 } } do
-		B(VF, "Bolt_" .. k, p[1] - 0.2, p[2] - 0.2, -41.45, p[1] + 0.2, p[2] + 0.2, -41.3, C.gold, { studs = false, decor = true })
-	end
-	B(VF, "VaultThreshold", -7.85, 0.3, -41.6, 7.85, 0.5, -40.0, C.steel, { mat = metal })
-	-- porte ronde du coffre, ouverte, rangée contre le mur de façade (vue à travers la vitrine)
-	local VD = group(S, "VaultDoor")
-	local disc = CYL(VD, "Disc", -12.5, 4.7, -38.2, 1.2, 8.6, C.steel, { mat = metal })
-	disc.CFrame = CFrame.new(-12.5, 4.7, -38.2) * CFrame.Angles(0, math.rad(90), 0)
-	local rim = CYL(VD, "Rim", -12.5, 4.7, -38.2, 1.3, 7.2, C.metal2, { mat = metal })
-	rim.CFrame = disc.CFrame
-	for k = 0, 9 do
-		local a = math.rad(k * 36 + 18)
-		local x, yy = -12.5 + 3.75 * math.cos(a), 4.7 + 3.75 * math.sin(a)
-		B(VD, "DiscBolt_" .. k, x - 0.22, yy - 0.22, -38.95, x + 0.22, yy + 0.22, -38.8, C.gold, { studs = false, decor = true })
-	end
-	local hub = CYL(VD, "WheelHub", -12.5, 4.7, -37.4, 0.4, 0.9, C.gold, { decor = true })
-	hub.CFrame = CFrame.new(-12.5, 4.7, -37.4) * CFrame.Angles(0, math.rad(90), 0)
-	for k = 0, 2 do
-		local sp = B(VD, "WheelSpoke_" .. k, -1.6, -0.1, -0.1, 1.6, 0.1, 0.1, C.gold, { studs = false, decor = true })
-		sp.CFrame = CFrame.new(-12.5, 4.7, -37.45) * CFrame.Angles(0, 0, math.rad(k * 60))
-	end
-	B(VD, "Hinge_1", -8.3, 1.8, -38.9, -7.7, 2.8, -38.3, C.frame, { studs = false })
-	B(VD, "Hinge_2", -8.3, 6.6, -38.9, -7.7, 7.6, -38.3, C.frame, { studs = false })
+	-- plus de coffre-fort autour de la porte (L-086, 2026-11-08) : VaultFrame et VaultDoor retirés
 	-- tapis rouge et poteaux à corde
 	local RC = group(S, "RedCarpet")
 	B(RC, "Carpet", -3, 0.32, -39, 3, 0.36, -24, C.velvet, { studs = false, decor = true, noShadow = true, mat = Enum.Material.Fabric })
@@ -813,12 +871,6 @@ local function buildStage5(M)
 				B(RC, "Rope_" .. tag, s * 3.9 - 0.08, 2.5, z, s * 3.9 + 0.08, 2.66, z + 5, C.velvet, { studs = false, decor = true })
 			end
 		end
-	end
-	-- anneaux d'or sous les 20 présentoirs
-	local GT = group(S, "GoldTrims")
-	for n, s in SLOT_ORDER do
-		local cx, z = ISLANDS[s[1]], ROWS[s[2]]
-		B(GT, string.format("GoldRing_%02d", n), cx - 1.4, 3.25, z - 1.4, cx + 1.4, 3.42, z + 1.4, C.gold, { studs = false, decor = true })
 	end
 	-- lustres au-dessus de l'allée centrale
 	local CH = group(S, "Chandeliers")
@@ -871,18 +923,58 @@ local function plotsFolder()
 	return f
 end
 
+-- Socle de l'objet le plus rare, sur la terrasse entre la porte et le banc, bien en vue de l'allée.
+-- Socle sombre, tambour blanc, colonne, plateau ; anneaux néon et lumière à la couleur de la boutique.
+local function buildRarest(M)
+	local B, CYL, C, att, light = P.B, P.CYL, P.C, P.att, P.light
+	local NEON = Enum.Material.Neon
+	local X, Z = 13, -48.5 -- à gauche de la porte vu de l'allée (côté banc) : le passage reste libre
+	local UP = CFrame.Angles(0, 0, math.rad(90)) -- cylindre debout
+	local R = P.group(M, "RarestPedestal")
+	local function drum(name, y0, y1, d, color, opt)
+		opt = opt or {}
+		opt.rot = UP
+		return CYL(R, name, X, (y0 + y1) / 2, Z, y1 - y0, d, color, opt)
+	end
+	B(R, "Plinth", X - 2.8, 0.3, Z - 2.8, X + 2.8, 0.9, Z + 2.8, C.dark, { studs = false })
+	for _, e in { { "F", -2.8, -2.8, 2.8, -2.55 }, { "B", -2.8, 2.55, 2.8, 2.8 }, { "L", -2.8, -2.55, -2.55, 2.55 }, { "R", 2.55, -2.55, 2.8, 2.55 } } do
+		B(R, "PlinthNeon_" .. e[1], X + e[2], 0.9, Z + e[3], X + e[4], 1.02, Z + e[5], C.accent,
+			{ studs = false, decor = true, noShadow = true, mat = NEON, accent = true })
+	end
+	for _, c in { { "FL", -1, -1 }, { "FR", 1, -1 }, { "BL", -1, 1 }, { "BR", 1, 1 } } do
+		local cx, cz = X + c[2] * 2.35, Z + c[3] * 2.35
+		B(R, "CornerGem_" .. c[1], cx - 0.2, 0.9, cz - 0.2, cx + 0.2, 1.4, cz + 0.2, C.gold, { studs = false, decor = true })
+	end
+	drum("Drum", 0.9, 1.6, 4.4, C.white)
+	drum("DrumNeon", 1.6, 1.75, 4.6, C.accent, { mat = NEON, decor = true, noShadow = true, accent = true })
+	drum("Column", 1.75, 2.95, 3.4, C.dark)
+	drum("TopNeon", 2.95, 3.15, 4.2, C.accent, { mat = NEON, decor = true, noShadow = true, accent = true })
+	local top = drum("TopPlate", 3.15, 3.35, 3.9, C.white)
+	att("RarestSlot", top, X, 3.35, Z) -- l'objet, posé debout, face à la rue (-Z)
+	att("RarestLabelPoint", top, X, 9.35, Z)
+	local l = light(top, 12, 1.6, C.accent)
+	l:SetAttribute("Accent", true) -- recoloré par install, comme les pièces
+	return R
+end
+
 -- (Re)construit ReplicatedStorage/Assets/Plots/PLOT_Shop, morceau par morceau (task.wait entre deux).
 local function build()
 	P.setSeed(4242)
 	local folder = plotsFolder()
-	local old = folder:FindFirstChild("PLOT_Shop")
-	if old then old:Destroy() end
+	for _, n in { "PLOT_Shop", "PLOT_Shop_Rayons" } do
+		local old = folder:FindFirstChild(n)
+		if old then old:Destroy() end
+	end
 	local M = Instance.new("Model")
 	M.Name = "PLOT_Shop"
 	M.Parent = folder
+	-- visuels des rangées 2 à 5, rangés à côté du gabarit, même repère (L-082)
+	local store = Instance.new("Model")
+	store.Name = "PLOT_Shop_Rayons"
 	local steps = {
-		buildCore, buildInterior,
-		function(t) buildTreadmill(t, 18, -30); buildBench(t, 25.5, -30) end,
+		buildCore, function(t) buildInterior(t, store) end,
+		function(t) buildTreadmill(t, -24, -46); buildBench(t, 24, -46) end, -- sur la terrasse, hors des murs
+		buildRarest,
 		buildStage1, buildStage2, buildStage3, buildStage4, buildStage5,
 	}
 	for _, step in steps do
@@ -896,11 +988,13 @@ local function build()
 	CS:AddTag(pad, "CashPad")
 	M.WorldPivot = CFrame.identity
 	CS:AddTag(M, "PlayerPlot")
-	return M
+	store.WorldPivot = CFrame.identity
+	store.Parent = folder
+	return M, store
 end
 
--- Garde les niveaux 1 à s d'une boutique installée (jamais du gabarit) : retire les Stage_k au-dessus
--- et les pièces dont HideFromStage <= s.
+-- Garde les niveaux 1 à s d'une boutique installée (jamais du gabarit) : retire les Stage_k au-dessus,
+-- les pièces dont HideFromStage <= s et celles dont FromStage > s.
 local function preview(m, s)
 	assert(not m:IsDescendantOf(plotsFolder()), "preview ne touche pas au gabarit : installe d'abord une copie")
 	s = math.clamp(math.floor(s or 1), 1, 5)
@@ -909,10 +1003,25 @@ local function preview(m, s)
 		if st then st:Destroy() end
 	end
 	for _, d in m:GetDescendants() do
-		local h = d:GetAttribute("HideFromStage")
-		if type(h) == "number" and h <= s then d:Destroy() end
+		local h, f = d:GetAttribute("HideFromStage"), d:GetAttribute("FromStage")
+		if (type(h) == "number" and h <= s) or (type(f) == "number" and f > s) then d:Destroy() end
 	end
 	return m
+end
+
+-- Montre la rangée k (2 à 5) d'une boutique : copie ses visuels depuis PLOT_Shop_Rayons dans Rayon_k
+-- et retire le contour RayonSpot_k. La boutique doit être encore au pivot du gabarit, ou on suit son pivot.
+local function showRayon(m, k)
+	local store = plotsFolder():FindFirstChild("PLOT_Shop_Rayons")
+	local src = store and store:FindFirstChild(string.format("Rayon_%02d", k))
+	local dst = m:FindFirstChild(string.format("Rayon_%02d", k))
+	if not (src and dst) then return end
+	local copy = src:Clone()
+	copy:PivotTo(m:GetPivot())
+	for _, c in copy:GetChildren() do c.Parent = dst end
+	copy:Destroy()
+	local spot = m:FindFirstChild(string.format("RayonSpot_%02d", k), true)
+	if spot then spot:Destroy() end
 end
 
 -- Pose une boutique : copie du gabarit, PlotIndex, numéro SHOP n, couleur d'accent, niveau d'aperçu.
@@ -927,12 +1036,17 @@ local function install(opts)
 	m.Name = opts.name or string.format("PLOT_Shop_%02d", index)
 	m:SetAttribute("PlotIndex", index)
 	local accent = opts.accent or ACCENTS[index]
-	for _, d in m:GetDescendants() do
-		if d:IsA("BasePart") and d:GetAttribute("Accent") then d.Color = accent end
-	end
 	local num = m:FindFirstChild("PlotNumberLabel", true)
 	if num then num.Text = "SHOP " .. index end
-	preview(m, opts.stage or 1)
+	local stage = math.clamp(math.floor(opts.stage or 1), 1, 5)
+	preview(m, stage)
+	-- rayons = n (défaut 1, comme en jeu au départ) : montre les visuels des rangées 2 à n, pour un
+	-- aperçu. Les DisplaySlot_05 à _20 restent toujours dans la boutique (contrat).
+	local rayons = math.clamp(math.floor(opts.rayons or 1), 1, 5)
+	for k = 2, rayons do showRayon(m, k) end
+	for _, d in m:GetDescendants() do
+		if (d:IsA("BasePart") or d:IsA("Light")) and d:GetAttribute("Accent") then d.Color = accent end
+	end
 	m:PivotTo(opts.cframe or CFrame.identity)
 	local parent = opts.parent or workspace
 	local old = parent:FindFirstChild(m.Name)
@@ -988,6 +1102,16 @@ local function check(m)
 		if machine then checkSpec(machine, Models[key]) end
 		if not (machine and CS:HasTag(machine, key)) then table.insert(problems, key .. " sans son tag") end
 	end
+	for n = 1, 20 do
+		-- une case par présentoir montré (les rangées 2 à 5 n'ont leurs visuels qu'une fois montrées)
+		local stand = m:FindFirstChild(string.format("DisplayStand_%02d", n), true)
+		local pad = m:FindFirstChild(string.format("CollectPad_%02d", n), true)
+		if stand and not pad then table.insert(problems, "manque CollectPad_" .. n) end
+		if stand and pad and pad.Parent ~= stand.Parent then table.insert(problems, "CollectPad_" .. n .. " hors de son rayon") end
+	end
+	for _, n in { "Safe", "Workbenches", "VaultFrame", "VaultDoor" } do
+		if m:FindFirstChild(n, true) then table.insert(problems, n .. " encore là (L-086)") end
+	end
 	local shards = 0
 	for _, d in m.PlotDoor.WindowFractured:GetDescendants() do if d.Name:match("^Shard_%d+$") then shards += 1 end end
 	if shards < 30 or shards > 40 then table.insert(problems, "WindowFractured : " .. shards .. " éclats") end
@@ -1020,5 +1144,5 @@ local function check(m)
 	return table.concat(out, "\n"), problems
 end
 
-_G.ClaudePlotShop = { build = build, install = install, preview = preview, check = check, accents = ACCENTS }
+_G.ClaudePlotShop = { build = build, install = install, preview = preview, showRayon = showRayon, check = check, accents = ACCENTS }
 return "ClaudePlotShop chargé : build, install, preview, check"

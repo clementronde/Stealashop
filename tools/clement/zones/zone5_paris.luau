@@ -11,13 +11,16 @@
 -- (ParticleEmitter, aucun script). SNOWY = false rend le quartier sans neige à la prochaine relance.
 -- Textes visibles en anglais (consigne de Clément, 2026-11-07) ; « Café » reste, compris par un anglophone.
 -- Gabarit commun du 2026-11-07 (tout faisait la taille d'un personnage) : échelle ×1.5 (SCALE), magasins à
--- (500, 0, ±66) avec spec.scale, couloir de 60 entre les façades (|z| 30), décor ×1.5, quartier jusqu'à |z| 140.
+-- (STORE_X, 0, ±66) avec spec.scale, couloir de 60 entre les façades (|z| 30), décor ×1.5, quartier jusqu'à |z| 140.
+-- Zones allongées de ×1,25 (2026-11-08, pour courir plus longtemps) : x' = 30 + (x - 30) × 1,25 dans tout le couloir.
 
 local rgb = Color3.fromRGB
 local Store = _G.ClaudeStore
 assert(Store, "charger d'abord tools/clement/store_builder.luau")
 
 local SCALE = 1.5   -- gabarit 2026-11-07, le même pour toutes les zones
+local ZONE_X0, ZONE_X1 = 530, 718   -- la zone 5 dans le couloir allongé (arche ZoneGate_5 à x = 530)
+local STORE_X = 618                 -- milieu des deux magasins (emprise x 588..648)
 local SNOWY = true
 local SNOW = rgb(236, 242, 248)
 local function snowy(snowColor, plainColor) return SNOWY and snowColor or plainColor end
@@ -308,8 +311,9 @@ _G.ClaudeParis = { facade = parisFacade, interior = parisInterior }
 
 -- 1) Greybox de la zone 5 seulement (gabarit 2026-11-07) : magasins gris mis de côté ; chaussée élargie à
 --    |z| 22,5 ; Side_N et Side_S à |z| 22,5..62,5 ; murets de 18 de haut à |z| 30..31,5, hors de l'emprise des
---    magasins (x 470..530) ; rue en pavés gris (couleur et MaterialVariant « Studs ») ; arche ZoneGate_5 agrandie
---    ×1.5, base à y = 0, centrée sur z = 0, même x (nom, tag et structure inchangés).
+--    magasins (x 588..648) ; le tout de x 530 à 718 ; rue en pavés gris (couleur et MaterialVariant « Studs ») ;
+--    patrouilles de nuit sur l'axe ; arche ZoneGate_5 agrandie ×1.5, base à y = 0, centrée sur z = 0, à x = 530
+--    (nom, tag et structure inchangés).
 do
 	local SS = game:GetService("ServerStorage")
 	local gz = workspace.Greybox.Corridor.Zone_5
@@ -322,20 +326,27 @@ do
 		end
 	end
 	local g = gz.Ground
-	g.Street.Size = Vector3.new(150, 2, 45); g.Street.Position = Vector3.new(505, -1, 0)
+	local x0, x1 = ZONE_X0, ZONE_X1
+	local w0, w1 = STORE_X - 30, STORE_X + 30   -- emprise des magasins, sans muret
+	g.Street.Size = Vector3.new(x1 - x0, 2, 45); g.Street.Position = Vector3.new((x0 + x1) / 2, -1, 0)
 	g.Street.Color = snowy(rgb(104, 108, 118), rgb(92, 90, 96)); g.Street.Material = Enum.Material.Plastic; g.Street.MaterialVariant = "Studs"
 	for _, s in { 1, -1 } do
 		local t = (s > 0) and "N" or "S"
 		local side = g["Side_" .. t]
-		side.Size = Vector3.new(150, 2, 40); side.Position = Vector3.new(505, -1, s * 42.5)
-		g["SideWall_" .. t .. "1"].Size = Vector3.new(40, 18, 1.5); g["SideWall_" .. t .. "1"].Position = Vector3.new(450, 9, s * 30.75)
-		g["SideWall_" .. t .. "2"].Size = Vector3.new(50, 18, 1.5); g["SideWall_" .. t .. "2"].Position = Vector3.new(555, 9, s * 30.75)
+		side.Size = Vector3.new(x1 - x0, 2, 40); side.Position = Vector3.new((x0 + x1) / 2, -1, s * 42.5)
+		g["SideWall_" .. t .. "1"].Size = Vector3.new(w0 - x0, 18, 1.5); g["SideWall_" .. t .. "1"].Position = Vector3.new((x0 + w0) / 2, 9, s * 30.75)
+		g["SideWall_" .. t .. "2"].Size = Vector3.new(x1 - w1, 18, 1.5); g["SideWall_" .. t .. "2"].Position = Vector3.new((w1 + x1) / 2, 9, s * 30.75)
+	end
+	-- points de patrouille de nuit, sur l'axe de la rue : x' = 30 + (x - 30) × 1,25 depuis x 467,5 et 542,5
+	for nm, x in { NightPatrol_Z5_A = 576.875, NightPatrol_Z5_B = 670.625 } do
+		local p = gz:FindFirstChild(nm)
+		if p then p.Position = Vector3.new(x, p.Position.Y, 0) end
 	end
 	local gate = gz:FindFirstChild("ZoneGate_5")
 	if gate then
 		gate:ScaleTo(SCALE)
 		local cf, size = gate:GetBoundingBox()
-		gate:PivotTo(gate:GetPivot() + Vector3.new(0, size.Y / 2 - cf.Position.Y, -cf.Position.Z))
+		gate:PivotTo(gate:GetPivot() + Vector3.new(x0 - cf.Position.X, size.Y / 2 - cf.Position.Y, -cf.Position.Z))
 	end
 end
 
@@ -345,13 +356,16 @@ if not zoneFolder then zoneFolder = Instance.new("Folder"); zoneFolder.Name = "Z
 for _, nm in { "STORE_Z5_GalerieDArt", "STORE_Z5_Antiquaire" } do
 	local old = zoneFolder:FindFirstChild(nm); if old then old:Destroy() end
 end
+-- point d'apparition du camion (TruckSpawn, posé hors de ce script) : x' = 30 + (500 - 30) × 1,25
+local truck = zoneFolder:FindFirstChild("TruckSpawn")
+if truck then truck.Position = Vector3.new(617.5, truck.Position.Y, truck.Position.Z) end
 
 -- 3) Galerie d'art : pierre crème, devanture vert sapin à lettres dorées, auvent vert et crème, murs blancs,
 --    parquet de chêne clair, rayons de tableaux encadrés, sculptures et vases.
 local stoneG, trimG, darkG = rgb(230, 218, 192), rgb(242, 236, 220), rgb(200, 186, 160)
 local gallery, galleryN = Store.build({
 	name = "STORE_Z5_GalerieDArt", zone = 5,
-	origin = CFrame.new(500, 0, 44 * SCALE), scale = SCALE, parent = zoneFolder,
+	origin = CFrame.new(STORE_X, 0, 44 * SCALE), scale = SCALE, parent = zoneFolder,
 	sign = "ART GALLERY",
 	signColors = { bg = SAPIN, text = GOLD, border = GOLD },
 	signRect = { -16, 16, 8.95, 10.85 }, facadeTop = 23.2,
@@ -453,7 +467,7 @@ task.wait()
 local stoneA, trimA, darkA = rgb(226, 212, 184), rgb(240, 232, 214), rgb(196, 180, 152)
 local antique, antiqueN = Store.build({
 	name = "STORE_Z5_Antiquaire", zone = 5,
-	origin = CFrame.new(500, 0, -44 * SCALE) * CFrame.Angles(0, math.pi, 0), scale = SCALE, parent = zoneFolder,
+	origin = CFrame.new(STORE_X, 0, -44 * SCALE) * CFrame.Angles(0, math.pi, 0), scale = SCALE, parent = zoneFolder,
 	sign = "ANTIQUES",
 	signColors = { bg = BORDEAUX, text = GOLD, border = GOLD },
 	signRect = { -16, 16, 8.95, 10.85 }, facadeTop = 23.2,
@@ -546,8 +560,9 @@ local antique, antiqueN = Store.build({
 task.wait()
 
 -- 5) Décor de rue et quartier : Map/Zone_5/Street_Paris (gabarit 2026-11-07 : tout ×1.5, couloir de 60).
---    Chaque groupe est dessiné en unités du gabarit 1 (« u »), puis agrandi par ScaleTo(SCALE) autour de (500, 0, 0) :
---    monde x = 500 + 1,5 (u - 500), y = 1,5 u, z = 1,5 u. En u : zone x 453,33..553,33 (monde 430..580) ; chaussée
+--    Chaque groupe est dessiné en unités du gabarit 1 (« u »), agrandi par ScaleTo(SCALE) autour de (500, 0, 0), puis
+--    posé au milieu des magasins : monde x = 618 + 1,5 (u - 500), y = 1,5 u, z = 1,5 u. En u : zone x
+--    441,33..566,67 (monde 530..718), magasins x 480..520 ; chaussée
 --    |z| < 15 (monde 22,5), libre de tout obstacle ; trottoirs |z| 15..20 (22,5..30), 0,3 de haut (0,45 : le sol des
 --    magasins) ; immeubles plaqués sur les murets, façade à |z| 20 (30), sans collision ; magasins x 480..520,
 --    |z| 20..68 ; quartier jusqu'à |z| 93,33 (140) ; tour Eiffel au-delà, sur le Champ de Mars (z 93,33..180, monde
@@ -561,8 +576,8 @@ do
 		CS:AddTag(glow, "NightLight")
 		if light then light.Enabled = false end
 	end
-	local XC = 500
-	local XA, XB = XC - 70 / K, XC + 80 / K       -- 453,33 et 553,33 : les bouts de la zone (monde 430 et 580)
+	local XC, XW = 500, STORE_X                   -- milieu des magasins : en u, puis dans le monde
+	local XA, XB = XC - (XW - ZONE_X0) / K, XC + (ZONE_X1 - XW) / K   -- 441,33 et 566,67 : les bouts de la zone
 	local XH, XE = XA + 1.1, XB - 1.1             -- immeubles sur rue, à l'écart des piliers des arches
 	local ZG, ZD, ZM = 62.5 / K, 140 / K, 270 / K -- fin du greybox, fin du quartier, fin du Champ de Mars
 	local Z = zoneFolder
@@ -662,7 +677,7 @@ do
 		for i, band in { { -5, 5 }, { 6.6, 9.4 }, { -9.4, -6.6 }, { 11, 14.3 }, { -14.3, -11 } } do
 			Bx(G, W, "RoadSnow_" .. i, XA + 8, 0, band[1], XB, 0.02, band[2], SNOW, { decor = true, noShadow = true, studs = true })
 		end
-		for i, bank in { { 476.5, 479.5, 1 }, { 520.5, 524, 1 }, { 476, 479.5, -1 }, { 520.5, 524, -1 }, { 549, 552, -1 } } do
+		for i, bank in { { 476.5, 479.5, 1 }, { 520.5, 524, 1 }, { 561.5, 564.5, 1 }, { 476, 479.5, -1 }, { 520.5, 524, -1 }, { 561.5, 564.5, -1 } } do
 			P(G, "SnowBank_" .. i, CFrame.new((bank[1] + bank[2]) / 2, 0.3, bank[3] * 19.1), Vector3.new(bank[2] - bank[1], 1.4, 1.4), SNOW, { shape = Enum.PartType.Cylinder, decor = true, noShadow = true })
 		end
 	end
@@ -731,11 +746,13 @@ do
 		Bx(m, frame, "ChimneyBackCap", 0.4, 31.2, D - 4.5, 2.2, 31.5, D - 2.9, snowy(SNOW, rgb(190, 95, 60)), dk)
 	end
 	local doors = { SAPIN, BORDEAUX, rgb(30, 42, 80), rgb(28, 28, 32) }
-	local houses = {
-		{ "N", XH, 467.2 }, { "N", 467.2, 480, { "BAKERY", rgb(120, 70, 40), rgb(236, 220, 186) } },
-		{ "N", 520, 536.1, { "FLORIST", rgb(46, 92, 64), rgb(236, 130, 160) } }, { "N", 536.1, XE, { "CAFÉ", rgb(120, 28, 36), rgb(178, 34, 44) } },
-		{ "S", XH, 467.2 }, { "S", 467.2, 480, { "BOOKSHOP", rgb(30, 50, 96), rgb(70, 110, 170) } },
-		{ "S", 520, 536.1, { "CHEESE SHOP", rgb(150, 112, 40), rgb(60, 110, 70) } }, { "S", 536.1, XE, { "PASTRY SHOP", rgb(170, 70, 100), rgb(250, 214, 226) } },
+	local houses = {   -- trois immeubles de chaque côté des magasins, sur chaque trottoir
+		{ "N", XH, 455 }, { "N", 455, 467.5, { "BAKERY", rgb(120, 70, 40), rgb(236, 220, 186) } }, { "N", 467.5, 480 },
+		{ "N", 520, 535.2, { "FLORIST", rgb(46, 92, 64), rgb(236, 130, 160) } }, { "N", 535.2, 550.4, { "CAFÉ", rgb(120, 28, 36), rgb(178, 34, 44) } },
+		{ "N", 550.4, XE, { "CHOCOLATES", rgb(84, 50, 34), rgb(232, 196, 170) } },
+		{ "S", XH, 455 }, { "S", 455, 467.5, { "BOOKSHOP", rgb(30, 50, 96), rgb(70, 110, 170) } }, { "S", 467.5, 480 },
+		{ "S", 520, 535.2, { "CHEESE SHOP", rgb(150, 112, 40), rgb(60, 110, 70) } }, { "S", 535.2, 550.4, { "PASTRY SHOP", rgb(170, 70, 100), rgb(250, 214, 226) } },
+		{ "S", 550.4, XE },
 	}
 	for i, h in houses do
 		local side, x0, x1, shop = h[1], h[2], h[3], h[4]
@@ -749,7 +766,7 @@ do
 	-- 5c) Terrasse du café (tables et chaises sans collision, sur le trottoir nord, devant le café)
 	local T = folder("CafeTerrace")
 	local rattan, bistro = rgb(196, 160, 104), rgb(40, 40, 44)
-	for i, tx in { 540, 544.2, 548.4 } do
+	for i, tx in { 539.4, 543.4, 547.4 } do
 		local tz = 17.9
 		vcyl(T, "TableTop_" .. i, tx, 2.45, 2.57, tz, 1.5, snowy(SNOW, rgb(236, 232, 222)), { decor = true })
 		vcyl(T, "TableLeg_" .. i, tx, 0.3, 2.45, tz, 0.2, bistro, { decor = true })
@@ -777,7 +794,7 @@ do
 		Bx(m, W, "LanternRoof", x - 0.55, 10.1, z - 0.55, x + 0.55, 10.4, z + 0.55, snowy(SNOW, green), { decor = true })
 		Bx(m, W, "Finial", x - 0.1, 10.4, z - 0.1, x + 0.1, 10.9, z + 0.1, GOLD, { decor = true })
 	end
-	for tag, xs in { N = { 474.5, 536.2 }, S = { 474.5, 537.5 } } do
+	for tag, xs in { N = { 461.2, 536.2, 557.9 }, S = { 461.2, 537.5 } } do
 		local s = (tag == "N") and 1 or -1
 		for i, x in xs do lamp("Lamp_" .. tag .. i, x, s * 16.2) end
 	end
@@ -795,17 +812,17 @@ do
 			label(pp, Enum.NormalId.Front, p[3], p[4], 60, rgb(20, 20, 20), SERIF)
 		end
 	end
-	morris("MorrisColumn_N", 464.5, 17.4, {
+	morris("MorrisColumn_N", 473.7, 17.4, {
 		{ Vector3.new(0, 0, -1), rgb(176, 40, 44), "THEATRE\nTONIGHT", rgb(250, 240, 210) },
 		{ Vector3.new(1, 0, 0), rgb(240, 200, 70), "GRAND\nBALL", rgb(30, 30, 34) },
 	})
-	morris("MorrisColumn_S", 542.5, -16.25, {
+	morris("MorrisColumn_S", 557.9, -17.4, {
 		{ Vector3.new(0, 0, 1), rgb(40, 70, 130), "OPERA", rgb(250, 240, 210) },
 		{ Vector3.new(-1, 0, 0), rgb(230, 120, 60), "CIRCUS", rgb(30, 30, 34) },
 	})
 	do
 		local m = Instance.new("Model"); m.Name = "Fountain"; m.Parent = D
-		local x, z = 547.6, -16.4
+		local x, z = 473.7, -16.4
 		vcyl(m, "Base", x, 0.3, 0.9, z, 1.7, green)
 		vcyl(m, "Column", x, 0.9, 3.4, z, 0.6, green)
 		for k, c in { { 0.42, 0.42 }, { -0.42, 0.42 }, { 0.42, -0.42 }, { -0.42, -0.42 } } do
@@ -876,10 +893,15 @@ do
 		return m
 	end
 	-- à côté des magasins (cours de 7 u entre les immeubles sur rue et ceux-ci), le dôme doré tient le coin sud-ouest
-	block("Building_NW", XH, 479, 40, 66, { h = 24.2, stone = stones[2], faces = { "W", "N" } })
-	block("Building_NE", 521, XB - 1.5, 40, 66, { h = 23.2, stone = stones[4], faces = { "E", "N" } })
-	block("Building_SE", 521, XB - 1.5, -66, -40, { h = 23.8, stone = stones[1], faces = { "E", "S" } })
-	for i, t in { { 467, 36.6 }, { 537, 36.6 }, { 537, -36.6 }, { 477.6, -36.4 } } do treeS(Q, "YardTree_" .. i, t[1], t[2], 0.85) end
+	block("Building_NW1", XH, 460.2, 40, 66, { h = 24.2, stone = stones[2], faces = { "W", "N" } })
+	block("Building_NW2", 461.2, 479, 40, 66, { h = 22.8, stone = stones[5], faces = { "N" } })
+	block("Building_NE1", 521, 542.3, 40, 66, { h = 23.2, stone = stones[4], faces = { "N" } })
+	block("Building_NE2", 543.3, XB - 1.5, 40, 66, { h = 24.6, stone = stones[6], faces = { "E", "N" } })
+	block("Building_SE1", 521, 542.3, -66, -40, { h = 23.8, stone = stones[1], faces = { "S" } })
+	block("Building_SE2", 543.3, XB - 1.5, -66, -40, { h = 22.4, stone = stones[3], faces = { "E", "S" } })
+	for i, t in { { 450.5, 36.6 }, { 470.5, 36.6 }, { 532, 36.6 }, { 555, 36.6 }, { 532, -36.6 }, { 555, -36.6 }, { 476.8, -36.4 }, { 444.5, -36.6 } } do
+		treeS(Q, "YardTree_" .. i, t[1], t[2], 0.85)
+	end
 	-- boulevard arrière au sud (trottoirs, chaussée enneigée, arbres, réverbères), puis une rangée d'immeubles
 	Bx(Q, W, "Boulevard_SidewalkA", XA, 0, -71, XB, 0.3, -68.5, pave, { studs = true })
 	Bx(Q, W, "Boulevard_KerbA", XA, 0, -71.4, XB, 0.3, -71, rgb(188, 186, 180), { studs = true })
@@ -891,10 +913,10 @@ do
 			Bx(Q, W, "Boulevard_Snow" .. i, XA, 0.03, band[1], XB, 0.05, band[2], SNOW, { decor = true, noShadow = true, studs = true })
 		end
 	end
-	for k, x in { 461, 482, 503.3, 524.5, 545.5 } do treeS(Q, "BoulevardTree_A" .. k, x, -70.3, 0.8) end
-	for k, x in { 471.5, 492.5, 514, 535 } do treeS(Q, "BoulevardTree_B" .. k, x, -78.2, 0.8) end
-	for k, x in { 461, 503.3, 545.5 } do lampS(Q, "BoulevardLamp_" .. k, x, -78.4) end
-	for i, b in { { XA + 0.5, 473.3, 23.2 }, { 473.3, 493.3, 21.8 }, { 493.3, 513.3, 24.4 }, { 513.3, 533.3, 22.6 }, { 533.3, XB - 0.5, 23.6 } } do
+	for k, x in { 450, 470.5, 491, 511.5, 532, 552.5 } do treeS(Q, "BoulevardTree_A" .. k, x, -70.3, 0.8) end
+	for k, x in { 460, 480.5, 501, 521.5, 542, 562.5 } do treeS(Q, "BoulevardTree_B" .. k, x, -78.2, 0.8) end
+	for k, x in { 450.2, 491.2, 532.2 } do lampS(Q, "BoulevardLamp_" .. k, x, -78.4) end
+	for i, b in { { XA + 0.5, 462.2, 23.2 }, { 462.2, 483, 21.8 }, { 483, 503.8, 24.4 }, { 503.8, 524.6, 22.6 }, { 524.6, 545.4, 23.6 }, { 545.4, XB - 0.5, 22.2 } } do
 		block("BackRow_" .. i, b[1], b[2], -ZD + 0.5, -79.5, { h = b[3], stone = stones[i % #stones + 1], faces = { "N" } })
 	end
 
@@ -902,7 +924,7 @@ do
 	--     pelouses enneigées, haies, arbres, réverbères, bancs, manège
 	local Gd = folder("Garden")
 	local gravel = rgb(198, 186, 162)
-	local ax2 = XC + 5 / K   -- axe du jardin et de la tour (monde x 505)
+	local ax2 = XC + ((ZONE_X0 + ZONE_X1) / 2 - XW) / K   -- axe du jardin et de la tour : le milieu de la zone (monde x 624)
 	Bx(Gd, W, "Alley", ax2 - 5.3, 0, 68.5, ax2 + 5.3, 0.03, 97.3, gravel, { decor = true, noShadow = true })
 	Bx(Gd, W, "TowerPlaza", ax2 - 41, 0, 97.3, ax2 + 41, 0.03, 175.5, gravel, { decor = true, noShadow = true })
 	for i, s in { -1, 1 } do
@@ -913,8 +935,8 @@ do
 			if SNOWY then Bx(Gd, W, nm .. "_Snow", hx - 0.85, 1.5, zz[1] + 0.05, hx + 0.85, 1.72, zz[2] - 0.05, SNOW, { decor = true }) end
 		end
 	end
-	for k, t in { { 459, 72 }, { 459, 81 }, { 459, 90 }, { 547.5, 72 }, { 547.5, 81 }, { 547.5, 90 }, { ax2 - 11, 75 }, { ax2 - 11, 91 },
-		{ ax2 + 11, 75 }, { ax2 + 11, 91 }, { 458.5, 108 }, { 458.5, 130 }, { 458.5, 152 }, { 548, 108 }, { 548, 130 }, { 548, 152 } } do
+	for k, t in { { 447, 72 }, { 447, 81 }, { 447, 90 }, { 561.5, 72 }, { 561.5, 81 }, { 561.5, 90 }, { ax2 - 11, 75 }, { ax2 - 11, 91 },
+		{ ax2 + 11, 75 }, { ax2 + 11, 91 }, { 447, 108 }, { 447, 130 }, { 447, 152 }, { 561.5, 108 }, { 561.5, 130 }, { 561.5, 152 } } do
 		treeS(Gd, "Tree_" .. k, t[1], t[2])
 	end
 	for k, l in { { ax2 - 4.6, 75 }, { ax2 + 4.6, 75 }, { ax2 - 4.6, 91 }, { ax2 + 4.6, 91 } } do lampS(Gd, "Lamp_" .. k, l[1], l[2]) end
@@ -927,7 +949,7 @@ do
 	end
 	do
 		local m = Instance.new("Model"); m.Name = "Carousel"; m.Parent = Gd
-		local x, z = 471, 82
+		local x, z = 462, 82
 		local red, cream = rgb(150, 36, 48), rgb(244, 236, 214)
 		vcyl(m, "Platform", x, 0, 0.7, z, 9, red, { decor = true })
 		vcyl(m, "PlatformTrim", x, 0.7, 0.85, z, 9.2, GOLD, { decor = true, noShadow = true })
@@ -945,12 +967,27 @@ do
 		vcyl(m, "Roof3", x, 9.5, 10.1, z, 2.6, snowy(SNOW, cream), { decor = true })
 		vcyl(m, "Finial", x, 10.1, 11.4, z, 0.3, GOLD, { decor = true, noShadow = true })
 	end
+	do   -- kiosque à musique, de l'autre côté de l'allée
+		local m = Instance.new("Model"); m.Name = "Bandstand"; m.Parent = Gd
+		local x, z = 546, 82
+		vcyl(m, "Base", x, 0, 1.2, z, 9, rgb(222, 212, 190), { decor = true, studs = true })
+		vcyl(m, "Floor", x, 1.2, 1.4, z, 9.4, snowy(SNOW, rgb(240, 234, 218)), { decor = true })
+		for k = 0, 5 do
+			local a = k * math.pi / 3
+			vcyl(m, "Column_" .. k, x + math.cos(a) * 4, 1.4, 7.4, z + math.sin(a) * 4, 0.35, green, { decor = true, noShadow = true })
+		end
+		vcyl(m, "Eave", x, 7.4, 7.9, z, 10, green, { decor = true })
+		vcyl(m, "Roof1", x, 7.9, 8.8, z, 8.4, snowy(SNOW, ZINC), { decor = true })
+		vcyl(m, "Roof2", x, 8.8, 9.6, z, 5.6, snowy(SNOW, ZINC), { decor = true })
+		vcyl(m, "Roof3", x, 9.6, 10.2, z, 2.8, snowy(SNOW, ZINC), { decor = true })
+		vcyl(m, "Finial", x, 10.2, 11.4, z, 0.3, GOLD, { decor = true, noShadow = true })
+	end
 
 	-- 5g) Repères du quartier (sans collision ni ombre) : la tour Eiffel au bout du Champ de Mars, visible de loin dans
 	--     tout le couloir, et le dôme doré dans le coin sud-ouest, à côté de l'antiquaire, près de l'entrée
 	local L = folder("Landmarks")
 	do
-		-- Tour Eiffel (axe x 505 dans le monde, pied à 6 studs du bout du quartier) : quatre piles courbes en treillis
+		-- Tour Eiffel (axe x 624 dans le monde, pied à 6 studs du bout du quartier) : quatre piles courbes en treillis
 		-- sur leurs grandes arches, 1er étage à frise, 2e étage, flèche en treillis, campanile, antenne, lumières dorées
 		-- la nuit. Membrures en pièces ; croisillons du treillis en Beams (des lignes, sans pièce).
 		local m = Instance.new("Model"); m.Name = "EiffelTower"; m.Parent = L
@@ -1078,7 +1115,7 @@ do
 	end
 	do
 		local m = Instance.new("Model"); m.Name = "GoldenDome"; m.Parent = L
-		local x, z = 467.2, -46
+		local x, z = 461, -46
 		local stoneC, goldC = rgb(222, 212, 190), rgb(214, 172, 70)
 		local o = { decor = true, noShadow = true, studs = true }
 		local oS = { decor = true, noShadow = true }
@@ -1099,7 +1136,7 @@ do
 		vcyl(m, "Spire", x, 62, 69, z, 0.5, goldC, oS)
 	end
 
-	-- 5h) Entrée de la zone, sous l'arche ZoneGate_5 (monde x 430 ; en u, son linteau est à x 452,33..454,33,
+	-- 5h) Entrée de la zone, sous l'arche ZoneGate_5 (monde x 530 ; en u, son linteau est à x XA ± 1,
 	--     y 18..24) : neige et stalactites de glace sur l'arche, trois flocons lumineux au-dessus (visibles de loin
 	--     dans le couloir), candélabres à trois lanternes, sapins enneigés en bacs, congères au pied des piliers,
 	--     plaques « WELCOME TO PARIS ». Rien n'est accroché à l'arche : ce sont des pièces à part, posées dessus.
@@ -1132,18 +1169,19 @@ do
 		end
 		ball(m, "Tip", x, y + 0.55, z, 0.7, snowy(SNOW, rgb(30, 70, 50)), { decor = true })
 	end
+	local porch = (XH + 455) / 2   -- porte cochère du premier immeuble de chaque trottoir
 	for _, s in { 1, -1 } do
 		local tag = s > 0 and "N" or "S"
-		candelabra("Candelabra_" .. tag, 457.2, s * 17.6)
-		fir("Fir_" .. tag, 461, s * 18.2)
+		candelabra("Candelabra_" .. tag, XA + 3.87, s * 17.6)
+		fir("Fir_" .. tag, XA + 7.67, s * 18.2)
 		-- plaque de rue bleue au-dessus de la porte cochère du premier immeuble
-		local fr = (s > 0) and CFrame.new(458.3, 0, 19.85) or (CFrame.new(463.3, 0, -19.85) * CFrame.Angles(0, math.pi, 0))
+		local fr = (s > 0) and CFrame.new(porch - 2.5, 0, 19.85) or (CFrame.new(porch + 2.5, 0, -19.85) * CFrame.Angles(0, math.pi, 0))
 		Bx(E, fr, "WelcomeRim_" .. tag, 0, 9.75, -0.14, 5, 11.45, 0, rgb(40, 120, 90), { decor = true })
 		local wp = Bx(E, fr, "WelcomePlaque_" .. tag, 0.1, 9.85, -0.2, 4.9, 11.35, -0.14, rgb(26, 58, 128), { decor = true })
 		label(wp, Enum.NormalId.Front, "WELCOME TO\nPARIS", rgb(255, 255, 255), 60, rgb(26, 58, 128))
 		if SNOWY then
-			ball(E, "PillarSnow_" .. tag .. "1", 455.0, 0.1, s * 18.9, 2.6, SNOW, { decor = true, noShadow = true })
-			ball(E, "PillarSnow_" .. tag .. "2", 456.4, 0.0, s * 19.4, 1.6, SNOW, { decor = true, noShadow = true })
+			ball(E, "PillarSnow_" .. tag .. "1", XA + 1.67, 0.1, s * 18.9, 2.6, SNOW, { decor = true, noShadow = true })
+			ball(E, "PillarSnow_" .. tag .. "2", XA + 3.07, 0.0, s * 19.4, 1.6, SNOW, { decor = true, noShadow = true })
 		end
 	end
 	if SNOWY then
@@ -1204,6 +1242,7 @@ do
 	for _, f in groups do
 		f.WorldPivot = CFrame.new(XC, 0, 0)
 		f:ScaleTo(K)
+		f:PivotTo(CFrame.new(XW, 0, 0))
 		for _, l in f:GetDescendants() do
 			if l:IsA("Light") then l.Range = math.min(60, l.Range * K) end
 		end
@@ -1315,7 +1354,7 @@ local params = OverlapParams.new()
 params.FilterType = Enum.RaycastFilterType.Include
 params.FilterDescendantsInstances = { zoneFolder }
 local blocking = {}
-for _, p in workspace:GetPartBoundsInBox(CFrame.new(505, 7.6, 0), Vector3.new(150, 14.8, 44.9), params) do
+for _, p in workspace:GetPartBoundsInBox(CFrame.new((ZONE_X0 + ZONE_X1) / 2, 7.6, 0), Vector3.new(ZONE_X1 - ZONE_X0, 14.8, 44.9), params) do
 	table.insert(blocking, p:GetFullName())
 end
 table.insert(lines, string.format("Street_Paris : %d pièces (%s), %d lignes de treillis (Beams), %d émetteurs de neige, %d lumières ; chaussée %s",

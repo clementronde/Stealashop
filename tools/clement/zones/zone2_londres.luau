@@ -5,11 +5,12 @@
 -- À lancer dans Studio (MCP execute_luau, mode Edit), APRÈS tools/clement/store_builder.luau (option scale).
 -- Relançable : magasins et Street_Londres refaits à l'identique ; l'arche n'est agrandie qu'une fois (ScaleTo est absolu).
 -- Se termine par sa propre vérification : contrat 10.4, chaussée, emprise, chevauchements, chemins du vigile.
--- Plan, x 100..190 :
+-- Plan, x 118..230 (zones rallongées de ×1,25 le 2026-11-08, L-071 : x' = 30 + (x − 30) × 1,25) :
 --   chaussée z −22,5..22,5 libre ; trottoirs |z| 22,5..30, 0,45 de haut (le sol des magasins) ; façades à |z| = 30 ;
---   murets |z| 30..31,5, 18 de haut, à x 100..110 et 170..190 ; magasins x 110..170, |z| 30..102 ;
+--   murets |z| 30..31,5, 18 de haut, à x 118..138 et 198..230 ; magasins x 138..198 (centre x = 168), |z| 30..102 ;
 --   greybox jusqu'à |z| 62,5, sol ajouté de 62,5 à 140 dans Map/Zone_2 (au sud, la Tamise de 130 à 140).
--- Règles : aucun script laissé dans la map ; noms du contrat (10.4) jamais réutilisés pour le décor ; rien hors de x 100..190.
+-- Règles : aucun script laissé dans la map ; noms du contrat (10.4) jamais réutilisés pour le décor ; rien hors de x 118..230.
+-- Arbres : posés ici en pièces, puis remplacés par ceux du pack par tools/clement/env/trees_replace.luau (à relancer après).
 
 local rgb = Color3.fromRGB
 local CS = game:GetService("CollectionService")
@@ -18,6 +19,7 @@ assert(Store, "charger d'abord tools/clement/store_builder.luau")
 
 local K = 1.5                      -- échelle du gabarit : magasins, arche, décor
 local ROAD, FACADE = 22.5, 30      -- demi-largeur de la chaussée, ligne des façades
+local XS, XE, XC = 118, 230, 168   -- début (arche) et fin de la zone, centre des magasins
 local PAVE = 0.45                  -- dessus des trottoirs = sol des magasins
 local GROUND = rgb(84, 86, 92)     -- dallage sombre des sols latéraux et arrière
 local Neon, Glass = Enum.Material.Neon, Enum.Material.Glass
@@ -134,20 +136,25 @@ do
 		p.Size = Vector3.new(x1 - x0, y1 - y0, z1 - z0)
 		p.CFrame = CFrame.new((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2)
 	end
-	put(g.Street, 100, -2, -ROAD, 190, 0, ROAD)
-	put(g.Side_N, 100, -2, ROAD, 190, 0, 62.5)
-	put(g.Side_S, 100, -2, -62.5, 190, 0, -ROAD)
-	put(g.SideWall_N1, 100, 0, FACADE, 110, 18, FACADE + 1.5)
-	put(g.SideWall_S1, 100, 0, -FACADE - 1.5, 110, 18, -FACADE)
-	put(g.SideWall_N2, 170, 0, FACADE, 190, 18, FACADE + 1.5)
-	put(g.SideWall_S2, 170, 0, -FACADE - 1.5, 190, 18, -FACADE)
+	put(g.Street, XS, -2, -ROAD, XE, 0, ROAD)
+	put(g.Side_N, XS, -2, ROAD, XE, 0, 62.5)
+	put(g.Side_S, XS, -2, -62.5, XE, 0, -ROAD)
+	put(g.SideWall_N1, XS, 0, FACADE, XC - 30, 18, FACADE + 1.5)
+	put(g.SideWall_S1, XS, 0, -FACADE - 1.5, XC - 30, 18, -FACADE)
+	put(g.SideWall_N2, XC + 30, 0, FACADE, XE, 18, FACADE + 1.5)
+	put(g.SideWall_S2, XC + 30, 0, -FACADE - 1.5, XE, 18, -FACADE)
+	-- marques des vigiles de nuit, x' = 30 + (x − 30) × 1,25 : 122,5 → 145,625 et 167,5 → 201,875
+	for nm, x in { NightPatrol_Z2_A = 145.625, NightPatrol_Z2_B = 201.875 } do
+		local p = gz2:FindFirstChild(nm)
+		if p then p.CFrame = p.CFrame - p.Position + Vector3.new(x, p.Position.Y, 0) end
+	end
 	g.Street.Material = Enum.Material.Cobblestone; g.Street.MaterialVariant = ""
 	g.Street.Color = rgb(58, 60, 70); g.Street.Reflectance = 0.12
 	for _, p in { g.Side_N, g.Side_S } do p.Material = Enum.Material.Plastic; p.MaterialVariant = "Studs"; p.Color = GROUND end
 	local gate = gz2.ZoneGate_2
 	if math.abs(gate:GetScale() - K) > 1e-4 then gate:ScaleTo(K) end
 	local cf, sz = gate:GetBoundingBox()
-	gate:PivotTo(gate:GetPivot() + Vector3.new(100 - cf.X, sz.Y / 2 - cf.Y, -cf.Z))
+	gate:PivotTo(gate:GetPivot() + Vector3.new(XS - cf.X, sz.Y / 2 - cf.Y, -cf.Z))
 	cf, sz = gate:GetBoundingBox()
 	gateInfo = string.format("Arche ZoneGate_2 : échelle %.2f, x %.1f, base y %.2f, centre z %.2f, %.0f × %.0f studs",
 		gate:GetScale(), cf.X, cf.Y - sz.Y / 2, cf.Z, sz.Z, sz.Y)
@@ -159,6 +166,9 @@ if not zoneFolder then zoneFolder = Instance.new("Folder"); zoneFolder.Name = "Z
 for _, nm in { "STORE_Z2_MagasinDeJouets", "STORE_Z2_Confiserie" } do
 	local old = zoneFolder:FindFirstChild(nm); if old then old:Destroy() end
 end
+-- zone de départ du camion (TruckSpawn, posé par Ironix dans Map/Zone_2) : x' = 30 + (140 − 30) × 1,25 = 167,5
+local truck = zoneFolder:FindFirstChild("TruckSpawn")
+if truck then truck.CFrame = truck.CFrame - truck.Position + Vector3.new(167.5, truck.Position.Y, truck.Position.Z) end
 
 local brick, stucco, gold = rgb(176, 70, 52), rgb(240, 236, 224), rgb(212, 175, 55)
 local navy = rgb(35, 55, 110)
@@ -166,7 +176,7 @@ local navy = rgb(35, 55, 110)
 -- Magasin de jouets : brique rouge, devanture bleu marine et or, auvent vert et blanc
 local toy, toyN = Store.build({
 	name = "STORE_Z2_MagasinDeJouets", zone = 2,
-	origin = CFrame.new(140, 0, 66), parent = zoneFolder, scale = K,
+	origin = CFrame.new(XC, 0, 66), parent = zoneFolder, scale = K,
 	sign = "TOY SHOP",
 	signColors = { bg = rgb(24, 38, 84), text = rgb(255, 204, 72), border = gold },
 	signRect = { -16, 16, 8.95, 10.75 }, facadeTop = 22,
@@ -224,7 +234,7 @@ task.wait()
 local pink, mint, white = rgb(240, 172, 192), rgb(98, 192, 160), rgb(250, 248, 242)
 local candy, candyN = Store.build({
 	name = "STORE_Z2_Confiserie", zone = 2,
-	origin = CFrame.new(140, 0, -66) * CFrame.Angles(0, math.pi, 0), parent = zoneFolder, scale = K,
+	origin = CFrame.new(XC, 0, -66) * CFrame.Angles(0, math.pi, 0), parent = zoneFolder, scale = K,
 	sign = "SWEET SHOP",
 	signColors = { bg = rgb(255, 246, 240), text = rgb(226, 72, 130), border = gold },
 	signRect = { -16, 16, 8.95, 10.75 }, facadeTop = 22,
@@ -366,14 +376,14 @@ do
 	local G = group("Ground")
 	for _, s in { 1, -1 } do
 		local tag = s > 0 and "N" or "S"
-		Bx(G, W, "BackGround_" .. tag, 100, -2, s * 62.5, 190, 0, s * ((s > 0) and 140 or 130), GROUND, { studs = true })
-		Bx(G, W, "Kerb_" .. tag, 100, 0, s * ROAD, 190, PAVE, s * 23.25, rgb(196, 196, 192), { studs = true })
-		Bx(G, W, "Pavement_" .. tag, 100, 0, s * 23.25, 190, PAVE, s * FACADE, rgb(146, 147, 150), { studs = true, refl = 0.04 })
-		for _, seg in { { 100.5, 122.5 }, { 157.5, 189.5 } } do
+		Bx(G, W, "BackGround_" .. tag, XS, -2, s * 62.5, XE, 0, s * ((s > 0) and 140 or 130), GROUND, { studs = true })
+		Bx(G, W, "Kerb_" .. tag, XS, 0, s * ROAD, XE, PAVE, s * 23.25, rgb(196, 196, 192), { studs = true })
+		Bx(G, W, "Pavement_" .. tag, XS, 0, s * 23.25, XE, PAVE, s * FACADE, rgb(146, 147, 150), { studs = true, refl = 0.04 })
+		for _, seg in { { XS + 0.5, XC - 17.5 }, { XC + 17.5, XE - 0.5 } } do
 			Bx(G, W, "YellowLine_" .. tag .. "_A" .. seg[1], seg[1], 0, s * 21.67, seg[2], 0.04, s * 21.9, rgb(255, 200, 0), FLAT)
 			Bx(G, W, "YellowLine_" .. tag .. "_B" .. seg[1], seg[1], 0, s * 21.22, seg[2], 0.04, s * 21.45, rgb(255, 200, 0), FLAT)
 		end
-		for _, seg in { { 123, 134.5 }, { 145.5, 157 } } do
+		for _, seg in { { XC - 17, XC - 5.5 }, { XC + 5.5, XC + 17 } } do
 			local nSeg = 6
 			local dx = (seg[2] - seg[1]) / nSeg
 			for k = 0, nSeg - 1 do
@@ -387,20 +397,20 @@ do
 	end
 	for i = 0, 11 do
 		local z0 = -20.7 + i * 3.6
-		Bx(G, W, "Zebra_" .. (i + 1), 135.5, 0, z0, 144.5, 0.04, z0 + 1.8, whiteL, FLAT)
+		Bx(G, W, "Zebra_" .. (i + 1), XC - 4.5, 0, z0, XC + 4.5, 0.04, z0 + 1.8, whiteL, FLAT)
 	end
-	for i, x in { 101.5, 109.5, 157.5, 173.5, 181.5 } do   -- tirets centraux, coupés au passage piéton et aux NightPatrol
+	for i, x in { 119.5, 127.5, 135.5, 191.5, 207.5, 215.5, 223.5 } do   -- tirets centraux, coupés au passage piéton et aux NightPatrol
 		Bx(G, W, "CentreDash_" .. i, x, 0, -0.15, x + 4, 0.04, 0.15, whiteL, FLAT)
 	end
 	local wet = { refl = 0.35, T = 0.25, flat = true }
-	for i, p in { { 112, -12, 2.6 }, { 127, 14, 3.2 }, { 151, -8, 2.4 }, { 163, 12, 3.0 }, { 178, -15, 2.8 }, { 186, 6, 2.2 }, { 121, 26, 1.8, PAVE }, { 172, -26, 2.0, PAVE } } do
+	for i, p in { { 132.5, -12, 2.6 }, { 151.25, 14, 3.2 }, { 181.25, -8, 2.4 }, { 196.25, 12, 3.0 }, { 215, -15, 2.8 }, { 225, 6, 2.2 }, { 146, 26, 1.8, PAVE }, { 186, -26, 2.0, PAVE } } do
 		local y0 = p[4] or 0
 		disc(G, "Puddle_" .. i .. "_A", p[1], y0, p[2], p[3] * 2, 0.025, rgb(60, 70, 86), wet)
 		disc(G, "Puddle_" .. i .. "_B", p[1] + p[3] * 0.6, y0, p[2] - p[3] * 0.35, p[3] * 1.3, 0.035, rgb(60, 70, 86), wet)
 	end
-	Bx(G, W, "River", 100, -2, -130, 190, -0.9, -140, rgb(46, 70, 88), { refl = 0.3, decor = true })
-	Bx(G, W, "Embankment", 100, -0.9, -130, 190, 1.4, -129.2, rgb(176, 170, 156), { studs = true })
-	Bx(G, W, "GardenSquare", 104, 0, 127, 186, 0.3, 138, rgb(78, 128, 64), { studs = true })
+	Bx(G, W, "River", XS, -2, -130, XE, -0.9, -140, rgb(46, 70, 88), { refl = 0.3, decor = true })
+	Bx(G, W, "Embankment", XS, -0.9, -130, XE, 1.4, -129.2, rgb(176, 170, 156), { studs = true })
+	Bx(G, W, "GardenSquare", XS + 4, 0, 127, XE - 4, 0.3, 138, rgb(78, 128, 64), { studs = true })
 	flush(G)
 end
 
@@ -508,7 +518,7 @@ do
 		return settle(m, CFrame.new(x, PAVE, z))
 	end
 	-- réverbères côté chaussée (z ±24), hors vitrines, portes et pots des magasins ; guirlandes entre eux
-	for tag, xs in { N = { 109, 125, 153, 168, 184 }, S = { 110, 127, 153, 168, 184 } } do
+	for tag, xs in { N = { 130, 150, 180.5, 205, 225 }, S = { 130, 155.25, 180.5, 205, 225 } } do
 		local s = (tag == "N") and 1 or -1
 		for i, x in xs do lamp("Lamp_" .. tag .. i, x, s * 24) end
 		for i = 1, #xs - 1 do
@@ -516,17 +526,17 @@ do
 		end
 	end
 	-- à l'entrée, au pied des tours : une cabine de chaque côté, la boîte aux lettres au nord
-	phoneBox("PhoneBox_N", 103.3, 27.55, 0)
-	phoneBox("PhoneBox_S", 103.3, -27.55, math.pi)
-	postBox("PostBox", 107.6, 27.7, 0)
-	beacon("Beacon_N", 134.2, 24.2)
-	beacon("Beacon_S", 134.2, -24.2)
-	busStop("BusStop", 176, 27.9)
+	phoneBox("PhoneBox_N", XS + 3.3, 27.55, 0)
+	phoneBox("PhoneBox_S", XS + 3.3, -27.55, math.pi)
+	postBox("PostBox", XS + 7.6, 27.7, 0)
+	beacon("Beacon_N", XC - 5.8, 24.2)
+	beacon("Beacon_S", XC - 5.8, -24.2)
+	busStop("BusStop", 200.5, 27.9)
 	flush(D)
 end
 
 -- 3c) Maisons mitoyennes plaquées sur les murets, avec leur volume derrière (le muret reste le vrai mur ; seules les
---     marches ont des collisions). Au nord, x 170..180,5 : le mur de brique du dépôt où le bus est garé.
+--     marches ont des collisions). Au nord, x 198,45..208,5 : le mur de brique du dépôt où le bus est garé.
 do
 	local H = group("Houses")
 	local stuccoH, stone, glassD, slate = rgb(236, 230, 215), rgb(200, 198, 190), rgb(52, 66, 92), rgb(78, 84, 96)
@@ -570,16 +580,22 @@ do
 		return settle(m, target)
 	end
 	local flip = CFrame.Angles(0, math.pi, 0)
-	house("House_N1", 9.5, 14, rgb(176, 70, 52), rgb(190, 30, 40), CFrame.new(180.5, 0, FACADE - 0.15))
-	house("House_S1", 10, 14, rgb(242, 222, 150), rgb(40, 90, 170), CFrame.new(180, 0, -FACADE + 0.15) * flip)
-	house("House_S2", 9.9, 14, rgb(170, 220, 195), rgb(25, 25, 30), CFrame.new(189.9, 0, -FACADE + 0.15) * flip)
+	-- côté arche (x 128..138) : une maison de chaque côté ; côté est (x 198..230) : dépôt et deux maisons au nord, trois au sud
+	local zN, zS = FACADE - 0.15, -FACADE + 0.15
+	house("House_N1", 10, 14, rgb(176, 70, 52), rgb(190, 30, 40), CFrame.new(128, 0, zN))
+	house("House_N2", 10.5, 14, rgb(168, 200, 230), rgb(240, 190, 40), CFrame.new(208.5, 0, zN))
+	house("House_N3", 10.9, 14, rgb(236, 228, 210), rgb(30, 45, 95), CFrame.new(219, 0, zN))
+	house("House_S1", 10, 14, rgb(242, 222, 150), rgb(40, 90, 170), CFrame.new(138, 0, zS) * flip)
+	house("House_S2", 10.55, 14, rgb(170, 220, 195), rgb(25, 25, 30), CFrame.new(209, 0, zS) * flip)
+	house("House_S3", 10.5, 14, rgb(240, 236, 226), rgb(190, 30, 40), CFrame.new(219.5, 0, zS) * flip)
+	house("House_S4", 10.4, 14, rgb(140, 58, 46), rgb(30, 100, 60), CFrame.new(229.9, 0, zS) * flip)
 	-- dépôt de bus : brique sur le muret (qui reste le vrai mur), chaperon, piliers, enseigne
-	Bx(H, W, "DepotWall", 170.45, 0, 29.85, 180.5, 18, 31.65, rgb(150, 62, 48), { studs = true, decor = true })
-	Bx(H, W, "DepotCoping", 170.45, 18, 29.7, 180.5, 18.6, 31.8, stone, { studs = true, decor = true })
-	for i, x in { 172.4, 178.6 } do
+	Bx(H, W, "DepotWall", 198.45, 0, 29.85, 208.5, 18, 31.65, rgb(150, 62, 48), { studs = true, decor = true })
+	Bx(H, W, "DepotCoping", 198.45, 18, 29.7, 208.5, 18.6, 31.8, stone, { studs = true, decor = true })
+	for i, x in { 200.4, 206.6 } do
 		Bx(H, W, "DepotPier_" .. i, x - 0.9, PAVE, 29.55, x + 0.9, 18.3, 29.85, rgb(176, 70, 52), { studs = true, decor = true })
 	end
-	local depot = Bx(H, W, "DepotSign", 171.8, 12.5, 29.4, 179.2, 15.2, 29.55, rgb(28, 44, 92), { decor = true })
+	local depot = Bx(H, W, "DepotSign", 199.8, 12.5, 29.4, 207.2, 15.2, 29.55, rgb(28, 44, 92), { decor = true })
 	label(depot, Enum.NormalId.Front, "BUS DEPOT", whiteL, 40, rgb(10, 20, 50))
 	flush(H)
 end
@@ -640,15 +656,15 @@ do
 		streetSign(Bx(m, O, "StreetSign", -1.75, 8.0, -2.66, 1.75, 9.2, -2.6, rgb(250, 250, 248), d))
 		return settle(m, target)
 	end
-	clockTower("ClockTower_N", CFrame.new(105.3, 0, 34.1))
-	clockTower("ClockTower_S", CFrame.new(105.3, 0, -34.1) * CFrame.Angles(0, math.pi, 0))
+	clockTower("ClockTower_N", CFrame.new(XS + 5.3, 0, 34.1))
+	clockTower("ClockTower_S", CFrame.new(XS + 5.3, 0, -34.1) * CFrame.Angles(0, math.pi, 0))
 	flush(T)
 end
 
--- 3e) Bus rouge à impériale garé derrière le muret nord (dépôt x 170..180,5), l'avant tourné vers la rue (sans collision)
+-- 3e) Bus rouge à impériale garé derrière le muret nord (dépôt x 198,45..208,5), l'avant tourné vers la rue (sans collision)
 do
 	local Bm = group("DoubleDecker")
-	local f = CFrame.new(175.4, 0, 34.6)          -- avant du bus en bas au centre ; +z local vers l'arrière
+	local f = CFrame.new(203.4, 0, 34.6)          -- avant du bus en bas au centre ; +z local vers l'arrière
 	local busRed, cream, glassB, black, chrome = rgb(196, 18, 30), rgb(236, 226, 196), rgb(40, 50, 66), rgb(24, 24, 28), rgb(190, 194, 200)
 	local d = { decor = true }
 	local L = 36
@@ -691,7 +707,7 @@ end
 -- 3f) Grande roue derrière la confiserie, sur le quai de la Tamise : le repère qu'on voit de loin (94 studs, sans collision)
 do
 	local M = group("ObservationWheel")
-	local C = Vector3.new(145, 50, -124)
+	local C = Vector3.new(XC, 50, -124)
 	local R, R2 = 40, 36.5
 	local whiteW, steel, glassC = rgb(240, 242, 246), rgb(196, 202, 210), rgb(196, 226, 244)
 	local function ring(prefix, r, thick, depth, color, opt)
@@ -723,17 +739,17 @@ do
 	end
 	-- chevalet en A côté rue jusqu'au bout avant de l'axe, haubans à l'arrière, quai d'embarquement sous la roue
 	local axleFront = C + Vector3.new(0, 0, 4.2)
-	local feet = { Vector3.new(124, 0, -106), Vector3.new(166, 0, -106) }
+	local feet = { Vector3.new(XC - 21, 0, -106), Vector3.new(XC + 21, 0, -106) }
 	for k, ft in feet do
 		bar(M, "Leg_" .. k, ft, axleFront, 2.2, whiteW, { decor = true })
 		Bx(M, W, "LegFoot_" .. k, ft.X - 2, 0, ft.Z - 2, ft.X + 2, 1.2, ft.Z + 2, rgb(176, 170, 156), { studs = true, decor = true })
 	end
 	bar(M, "LegTie", feet[1]:Lerp(axleFront, 0.45), feet[2]:Lerp(axleFront, 0.45), 1.0, whiteW, { decor = true })
 	for k, sx in { -1, 1 } do
-		bar(M, "Stay_" .. k, Vector3.new(145 + sx * 12, 0.5, -129), C + Vector3.new(0, 0, -3.8), 0.3, steel, { decor = true, noShadow = true })
+		bar(M, "Stay_" .. k, Vector3.new(XC + sx * 12, 0.5, -129), C + Vector3.new(0, 0, -3.8), 0.3, steel, { decor = true, noShadow = true })
 	end
-	Bx(M, W, "BoardingDeck", 136, 0, -129.2, 154, 3.4, -118.5, rgb(200, 204, 210), { studs = true, decor = true })
-	Bx(M, W, "BoardingRoof", 137, 4.9, -128.5, 153, 5.3, -119.5, whiteW, { decor = true })
+	Bx(M, W, "BoardingDeck", XC - 9, 0, -129.2, XC + 9, 3.4, -118.5, rgb(200, 204, 210), { studs = true, decor = true })
+	Bx(M, W, "BoardingRoof", XC - 8, 4.9, -128.5, XC + 8, 5.3, -119.5, whiteW, { decor = true })
 	flush(M)
 end
 
@@ -773,20 +789,21 @@ do
 		return m
 	end
 	-- derrière le magasin de jouets : immeubles de 44 à 52 studs, façade tournée vers la rue
-	block("Mansion_1", 101, 123, 106, 124, 46, rgb(165, 72, 55), true)
-	block("Mansion_2", 123, 145, 106, 124, 52, rgb(196, 170, 120), true)
-	block("Mansion_3", 145, 167, 106, 124, 48, rgb(140, 58, 46), true)
-	block("Mansion_4", 167, 189, 106, 124, 44, rgb(226, 218, 196), true)
+	block("Mansion_1", 119, 141, 106, 124, 46, rgb(165, 72, 55), true)
+	block("Mansion_2", 141, 163, 106, 124, 52, rgb(196, 170, 120), true)
+	block("Mansion_3", 163, 185, 106, 124, 48, rgb(140, 58, 46), true)
+	block("Mansion_4", 185, 207, 106, 124, 44, rgb(226, 218, 196), true)
+	block("Mansion_5", 207, 229, 106, 124, 50, rgb(176, 82, 60), true)
 	-- le long des magasins, derrière les tours, le bus et les maisons plaquées
 	local terraces = {
-		{ "Terrace_NW1", 100.5, 109.5, 40, 60, 28, rgb(176, 70, 52) }, { "Terrace_NW2", 100.5, 109.5, 61, 81, 25, rgb(236, 228, 210) },
-		{ "Terrace_NW3", 100.5, 109.5, 82, 101, 30, rgb(140, 58, 46) },
-		{ "Terrace_SW1", 100.5, 109.5, -60, -40, 27, rgb(242, 222, 150) }, { "Terrace_SW2", 100.5, 109.5, -81, -61, 30, rgb(160, 66, 50) },
-		{ "Terrace_SW3", 100.5, 109.5, -101, -82, 26, rgb(170, 220, 195) },
-		{ "Terrace_NE1", 180.8, 189.5, 45, 72, 28, rgb(176, 70, 52) }, { "Terrace_NE2", 171, 189.5, 74, 87, 30, rgb(236, 228, 210) },
-		{ "Terrace_NE3", 171, 189.5, 88, 101, 26, rgb(140, 58, 46) },
-		{ "Terrace_SE1", 170.5, 189.5, -66, -45, 30, rgb(160, 66, 50) }, { "Terrace_SE2", 170.5, 189.5, -84, -67, 27, rgb(240, 236, 226) },
-		{ "Terrace_SE3", 170.5, 189.5, -101, -85, 32, rgb(176, 70, 52) },
+		{ "Terrace_NW1", 118.5, 137.5, 45, 62, 28, rgb(176, 70, 52) }, { "Terrace_NW2", 118.5, 137.5, 63, 81, 25, rgb(236, 228, 210) },
+		{ "Terrace_NW3", 118.5, 137.5, 82, 101, 30, rgb(140, 58, 46) },
+		{ "Terrace_SW1", 118.5, 137.5, -62, -45, 27, rgb(242, 222, 150) }, { "Terrace_SW2", 118.5, 137.5, -81, -63, 30, rgb(160, 66, 50) },
+		{ "Terrace_SW3", 118.5, 137.5, -101, -82, 26, rgb(170, 220, 195) },
+		{ "Terrace_NE1", 208.8, 229.5, 45, 72, 28, rgb(176, 70, 52) }, { "Terrace_NE2", 198.8, 229.5, 74, 87, 30, rgb(236, 228, 210) },
+		{ "Terrace_NE3", 198.8, 229.5, 88, 101, 26, rgb(140, 58, 46) },
+		{ "Terrace_SE1", 198.8, 229.5, -66, -45, 30, rgb(160, 66, 50) }, { "Terrace_SE2", 198.8, 229.5, -84, -67, 27, rgb(240, 236, 226) },
+		{ "Terrace_SE3", 198.8, 229.5, -101, -85, 32, rgb(176, 70, 52) },
 	}
 	for _, t in terraces do block(t[1], t[2], t[3], t[4], t[5], t[6], t[7], false) end
 	local function tree(name, x, z, hgt)
@@ -796,8 +813,10 @@ do
 		P(m, "Crown_2", CFrame.new(x + hgt * 0.16, hgt * 0.82, z - hgt * 0.1), Vector3.one * (hgt * 0.42), rgb(84, 136, 66), { shape = Ball, decor = true })
 		P(m, "Crown_3", CFrame.new(x - hgt * 0.15, hgt * 0.8, z + hgt * 0.12), Vector3.one * (hgt * 0.4), rgb(62, 110, 52), { shape = Ball, decor = true })
 	end
-	for i, x in { 106, 116, 174, 184 } do tree("Tree_S" .. i, x, -113, 16) end
-	for i, x in { 110, 128, 146, 164, 180 } do tree("Tree_N" .. i, x, 132, 18) end
+	-- places choisies pour les arbres du pack (16 à 17 studs de large) : 9 studs des bords de la zone, hors des pieds
+	-- de la roue (x 147..154 et 182..189 près du sol) et de son quai d'embarquement (x 159..177)
+	for i, x in { 127, 138, 201, 218 } do tree("Tree_S" .. i, x, -113, 16) end
+	for i, x in { 128, 147, 166, 185, 204, 221 } do tree("Tree_N" .. i, x, 132, 18) end
 	flush(Bk)
 end
 
@@ -825,7 +844,7 @@ do
 	rain.Color = ColorSequence.new(rgb(206, 216, 230))
 	rain.LightEmission = 0.15
 	rain.LightInfluence = 0.7
-	rain.Parent = emitterPart("DrizzleCloud", 102, 45.5, -24, 189, 46.5, 24)
+	rain.Parent = emitterPart("DrizzleCloud", XS + 2, 45.5, -24, XE - 1, 46.5, 24)
 	local mist = Instance.new("ParticleEmitter"); mist.Name = "Mist"
 	mist.Texture = "rbxasset://textures/particles/smoke_main.dds"
 	mist.EmissionDirection = Enum.NormalId.Top
@@ -842,9 +861,9 @@ do
 	mist.RotSpeed = NumberRange.new(-6, 6)
 	mist.LightEmission = 0
 	mist.LightInfluence = 1
-	mist.Parent = emitterPart("MistBank", 102, -1.2, -27, 189, -0.2, 27)
+	mist.Parent = emitterPart("MistBank", XS + 2, -1.2, -27, XE - 1, -0.2, 27)
 	local gateMist = mist:Clone(); gateMist.Name = "GateMist"; gateMist.Rate = 3
-	gateMist.Parent = emitterPart("GateMistBank", 101, -1.2, -20, 112, -0.2, 20)
+	gateMist.Parent = emitterPart("GateMistBank", XS + 1, -1.2, -20, XS + 12, -0.2, 20)
 	flush(Wx)
 end
 
@@ -857,7 +876,7 @@ local function aabb(p)
 	return cf.Position - e / 2, cf.Position + e / 2
 end
 do
-	local CONTRACT = { "Window", "WindowFractured", "Shutter", "Door", "Bounds", "GuardSpawn", "SignPart" }
+	local CONTRACT = { "Window", "WindowFractured", "Shutter", "Door", "Bounds", "GuardSpawn", "SignPart", "InfoPoint" }
 	for i = 1, 10 do table.insert(CONTRACT, string.format("ShelfSlot_%02d", i)) end
 	for _, m in { toy, candy } do
 		local counts, nParts, bad = {}, 0, {}
@@ -886,8 +905,9 @@ do
 		if d:IsA("LuaSourceContainer") then nScripts += 1 end
 		if d:IsA("BasePart") then
 			local lo, hi = aabb(d)
-			if lo.X < 99.99 or hi.X > 190.01 or lo.Z < -140.01 or hi.Z > 140.01 then table.insert(outside, d:GetFullName()) end
-			if hi.X > 100 and lo.X < 190 and hi.Z > -ROAD + 0.01 and lo.Z < ROAD - 0.01 and hi.Y > 0.05 and d.Name ~= "DrizzleCloud" then
+			if lo.X < XS - 0.01 or hi.X > XE + 0.01 or lo.Z < -140.01 or hi.Z > 140.01 then table.insert(outside, d:GetFullName()) end
+			if hi.X > XS and lo.X < XE and hi.Z > -ROAD + 0.01 and lo.Z < ROAD - 0.01 and hi.Y > 0.05
+				and d.Name ~= "DrizzleCloud" and d.Name ~= "TruckSpawn" then   -- émetteur invisible à y 46, zone du camion (Ironix)
 				table.insert(onRoad, d.Name)
 			end
 			if d:IsDescendantOf(S) then nDecor += 1 end
@@ -906,6 +926,14 @@ do
 		end
 	end
 	add(string.format("NightLight : %d lanternes de réverbère taggées, %d livrée(s) allumée(s)", nLamp, lit))
+	local gz = workspace.Greybox.Corridor.Zone_2
+	local function px(p) return p and string.format("%.3f", p.Position.X) or "absent" end
+	local gcf = gz.ZoneGate_2:GetBoundingBox()
+	add(string.format("Repères : arche x %.2f, NightPatrol A %s / B %s, TruckSpawn %s, Street x %.1f..%.1f, murets %s",
+		gcf.X, px(gz:FindFirstChild("NightPatrol_Z2_A")), px(gz:FindFirstChild("NightPatrol_Z2_B")), px(Z:FindFirstChild("TruckSpawn")),
+		gz.Ground.Street.Position.X - gz.Ground.Street.Size.X / 2, gz.Ground.Street.Position.X + gz.Ground.Street.Size.X / 2,
+		string.format("%.0f..%.0f / %.0f..%.0f", gz.Ground.SideWall_N1.Position.X - gz.Ground.SideWall_N1.Size.X / 2, gz.Ground.SideWall_N1.Position.X + gz.Ground.SideWall_N1.Size.X / 2,
+			gz.Ground.SideWall_N2.Position.X - gz.Ground.SideWall_N2.Size.X / 2, gz.Ground.SideWall_N2.Position.X + gz.Ground.SideWall_N2.Size.X / 2)))
 end
 do
 	local params = OverlapParams.new()
