@@ -18,10 +18,13 @@
 --     Tool     outil (« Wrench ») ;
 --     Upgrade  amélioration (« Treadmill »), champ 2 = niveau atteint ;
 --     Aura, Trail (« Spark », « Dust »).
+--   Robux (argent acheté en Robux, MAJ 1) : appelé par MonetizationService (DEV-100, LogEconomy plus
+--   bas ; packs d'argent et pack de départ, SKU = clé du produit), seulement quand Features.RobuxShop
+--   est vrai.
 --   Pas encore codés, genres déjà dans la config (points d'accroche : LogEconomy, plus bas) : Fence
 --   (receleur, DEV-034), DailyReward et PlaytimeReward (récompenses, MAJ 1, L-057), Code (codes
---   cadeaux), Robux (argent acheté en Robux, MAJ 1), Defense (défenses, MAJ 2). Une défense achetée
---   par ShopService (OnPurchase avec kind « Defense ») partirait aussi en DefenseBought.
+--   cadeaux), Defense (défenses, MAJ 2). Une défense achetée par ShopService (OnPurchase avec kind
+--   « Defense ») partirait aussi en DefenseBought.
 --
 -- Regroupement des revenus (limite de Roblox : 120 + 20 × joueurs requêtes par minute et par
 -- serveur, 240 à 6 joueurs) : un joueur qui fait des allers-retours sur son tapis de caisse

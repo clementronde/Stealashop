@@ -43,7 +43,7 @@ local Economy: { [string]: EconomyKind } = {
 	DailyReward = { Flow = "Source", Transaction = "TimedReward" }, -- quotidien (MAJ 1) ; SKU : Day1 à Day7
 	PlaytimeReward = { Flow = "Source", Transaction = "TimedReward" }, -- temps de jeu (L-057) ; SKU : Playtime5…
 	Code = { Flow = "Source", Transaction = "Code" }, -- code cadeau ; SKU : le code
-	Robux = { Flow = "Source", Transaction = "IAP" }, -- argent acheté en Robux (MAJ 1) ; SKU : nom du produit
+	Robux = { Flow = "Source", Transaction = "IAP" }, -- argent acheté en Robux (MAJ 1, MonetizationService) ; SKU : clé du produit (Cash10…)
 	Defense = { Flow = "Sink", Transaction = "Shop" }, -- défense de boutique (MAJ 2, DEV-110) ; SKU : Id
 }
 
