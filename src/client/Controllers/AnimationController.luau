@@ -20,8 +20,8 @@
 --
 -- « Grab a posé le colis » (AfterGrab) : au marqueur Grab de l'animation Grab (Clément le pose sur
 -- l'image où le colis arrive sur la tête), sinon à la fin de Grab, au plus tard GRAB_MAX_WAIT s
--- après son lancement. Côté client seulement, pour le joueur local : le serveur a déjà décidé la
--- prise, rien ne l'attend.
+-- (ou la durée de Grab, si elle est plus longue) après son lancement. Côté client seulement, pour le
+-- joueur local : le serveur a déjà décidé la prise, rien ne l'attend.
 --
 -- API (les autres contrôleurs le requièrent avec pcall et continuent sans lui) :
 --   AnimationController.PlayPlayer(name, fadeTime?) -> AnimationTrack?
@@ -115,15 +115,16 @@ local function grabReached(id: number)
 	end
 end
 
--- Un Grab vient d'être lancé (piste rendue par PlayPlayer) : sa fin, ou GRAB_MAX_WAIT, tiendra lieu
--- de marqueur s'il n'en a pas.
+-- Un Grab vient d'être lancé (piste rendue par PlayPlayer) : sa fin, ou au plus tard GRAB_MAX_WAIT
+-- (sa durée, si elle est plus longue : un marqueur tardif n'est jamais devancé), tiendra lieu de
+-- marqueur s'il n'en a pas.
 local function onGrabStarted(track: AnimationTrack)
 	grabPlays += 1
 	local id = grabPlays
 	track.Stopped:Once(function()
 		grabReached(id)
 	end)
-	task.delay(GRAB_MAX_WAIT, grabReached, id)
+	task.delay(math.max(GRAB_MAX_WAIT, track.Length), grabReached, id)
 end
 
 -- Un Grab joue et n'a pas encore posé son colis.

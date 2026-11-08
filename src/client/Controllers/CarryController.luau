@@ -9,10 +9,10 @@
 --   - colis posé sur la tête au geste de Grab (L-071, point 4), pour le porteur seulement : si Grab
 --     joue encore quand le colis arrive (AnimationController.AfterGrab), son visuel CarryVisual
 --     (soudé à la tête par CarryService dès que le serveur a accepté la prise) est caché en local
---     jusqu'à ce que Grab l'ait posé : marqueur Grab, sinon fin de Grab, au plus tard GRAB_MAX_WAIT
---     s (AnimationController). Pièces et décalques : LocalTransparencyModifier ; étiquette, halo et
---     contours : Enabled (Visible pour une SelectionBox). Rien n'attend côté serveur, et les autres
---     joueurs voient le colis dès la prise ;
+--     jusqu'à ce que Grab l'ait posé : marqueur Grab, sinon fin de Grab, sinon délai de secours
+--     (GRAB_MAX_WAIT d'AnimationController). Pièces et décalques : LocalTransparencyModifier ;
+--     étiquette, halo et contours : Enabled (Visible pour une SelectionBox). Rien n'attend côté
+--     serveur, et les autres joueurs voient le colis dès la prise ;
 --   - pendant le portage, range tout outil que le joueur sort (5.6 : ni outil ni batte en main).
 --     Le serveur fait de même et fait foi ; ici, c'est pour que l'outil ne s'affiche pas en main ;
 --   - saut : autorisé (Balance.Carry.CanJump = true, 5.6), rien à faire. Si CanJump passe à false,
