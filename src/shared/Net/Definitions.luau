@@ -196,11 +196,16 @@ local List: { RemoteDef } = {
 		Args = { id("windowId"), { Name = "impactPoint", Kind = "Vector3" } },
 	},
 	{
-		-- Chaque coup validé qui ne casse pas la vitre (liaison L-028 a, DEV-016), pour que chacun
-		-- voie les fissures des autres : point = point de frappe calculé par le serveur ; hitter =
-		-- le joueur qui a frappé (son client a déjà joué son retour local). Envoyé par WindowService
-		-- au frappeur et aux joueurs proches (Config.Shatter.HitBroadcastRadius). Non fiable : un
-		-- coup perdu ne coûte qu'une fissure.
+		-- Chaque coup validé (liaison L-028 a, DEV-016), pour que chacun voie les fissures des autres :
+		-- point = point de frappe calculé par le serveur ; hitter = le joueur qui a frappé (son client
+		-- a déjà joué son retour local). Envoyé par WindowService au frappeur et aux joueurs proches
+		-- (Config.Shatter.HitBroadcastRadius). Non fiable : un coup perdu ne coûte qu'une fissure et
+		-- un chiffre.
+		-- Ajout de la vague 12 (DEV-053, 2026-11-08) : damage = dégâts du coup appliqués par le serveur
+		-- (ToolService.GetHitDamage), pour le chiffre de dégâts flottant (DamageNumberController).
+		-- WindowHit part désormais pour chaque coup validé, celui qui casse compris (avant
+		-- WindowBroken), et sur toute cible : vitrine de magasin PNJ, porte de boutique, cible
+		-- d'événement (camion, dont TruckController joue le son du coup). Un coup refusé n'envoie rien.
 		Name = "WindowHit",
 		Direction = "ServerToClient",
 		Reliable = false,
@@ -208,6 +213,7 @@ local List: { RemoteDef } = {
 			id("windowId"),
 			{ Name = "point", Kind = "Vector3" },
 			{ Name = "hitter", Kind = "Player", Optional = true },
+			{ Name = "damage", Kind = "number", Min = 0, Optional = true }, -- toujours envoyé ; facultatif car après hitter
 		},
 	},
 	{

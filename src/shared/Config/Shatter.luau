@@ -44,7 +44,8 @@ local Shatter = {
 	},
 
 	-- WindowService : WindowHit part au frappeur et aux joueurs à moins de ce rayon du point de
-	-- frappe (6 joueurs au plus par serveur).
+	-- frappe (6 joueurs au plus par serveur), pour chaque coup validé sur une vitrine, une porte de
+	-- boutique ou le camion (fissures, chiffre de dégâts, son du coup ; DEV-016, DEV-053).
 	HitBroadcastRadius = 100, -- V0
 
 	-- Fissures : une étoile au point de chaque coup (5.3, L-028).

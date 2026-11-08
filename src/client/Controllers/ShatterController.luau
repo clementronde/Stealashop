@@ -13,8 +13,12 @@
 --   - régénération (proposition) : les étoiles rapetissent d'un niveau quand les PV repassent
 --     Cracks.HealHysteresis au-dessus du seuil, et s'effacent quand la vitre est à nouveau pleine ;
 --   - mini-éclats (petits cubes de verre), quelques paillettes et un son de verre dont la hauteur
---     monte quand les PV baissent. Celui qui frappe les joue lui-même, tout de suite (LocalHit,
---     appelé par HitController), au marqueur Impact de son animation, avec un léger tremblement.
+--     monte quand les PV baissent (Hit.PitchMin à PV pleins, Hit.PitchMax à 0 PV, 5.4 ; DEV-053).
+--     Celui qui frappe les joue lui-même, tout de suite (LocalHit, appelé par HitController), au
+--     marqueur Impact de son animation, avec un léger tremblement.
+--   Le coup qui casse arrive lui aussi par WindowHit (DEV-053 : son chiffre de dégâts, affiché par
+--   DamageNumberController), en général juste avant WindowBroken : son étoile part avec la casse ;
+--   arrivé après, il est ignoré comme tout coup sur une vitre cassée.
 -- À la casse (WindowBroken), séquence 5.4 :
 --   - la vitre fracturée apparaît à la place de la vitre intacte (cachée par le serveur) : parmi
 --     WIN_M_Fractured, _Left et _Right (Assets/Windows), celle dont l'impact (position de son
