@@ -85,6 +85,8 @@ local Tutorial = {
 		WaitBox = "Wait for your box to open!", -- étape 5 : colis sur l'établi, attente pas finie
 		OpenBox = "Open your box!", -- étape 5 : colis prêt à ouvrir
 		CollectCash = "Step on the cash pad to collect!", -- étape 5 (objet exposé), 7 et 8 (pas assez d'argent)
+		-- étape 6, flèche vers le tapis : il n'a plus d'invite, on s'entraîne en s'arrêtant dessus (L-071)
+		StandOnTreadmill = "Stand on the treadmill to train!",
 		NightClosed = "The street opens again at dawn!", -- nuit, étapes 1 à 3 et 9, côté zone safe
 		Night = NIGHT_BUBBLE, -- 5.12 : alerte et nuit, joueur dans le couloir
 		ShieldEnd = SHIELD_END_MESSAGE, -- 6.4 : fin du bouclier débutant

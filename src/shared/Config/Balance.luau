@@ -102,6 +102,10 @@ local Balance = {
 		NPCBoxSpeedMultiplier = 0.9, -- −10 % avec un colis PNJ
 		StolenItemSpeedMultiplier = 0.75, -- −25 % avec un objet volé à un joueur
 		CanJump = true,
+		-- V0 proposé, absent du doc (L-071, point 4) : espace (studs) entre le haut de la tête et le
+		-- dessous du colis ou de l'objet porté (CarryAttachment), soudé à la tête. À régler sur la
+		-- hauteur des mains de CarryIdle et CarryRun (bras levés), quand Clément les livre.
+		HeadGap = 0.25,
 	},
 
 	-- 5.7 et 7.5 : établis et révélation. Attente par rareté : Rarities.

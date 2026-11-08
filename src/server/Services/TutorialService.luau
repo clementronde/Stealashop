@@ -32,7 +32,9 @@
 --   4 → 5   un colis posé sur un établi (UnboxService.OnBoxPlaced) ;
 --   5 → 6   premier encaissement au tapis de caisse (DisplayService.OnCashOut, sauf « Leave »,
 --           l'encaissement automatique au départ) ;
---   6 → 7   TrainDuration (30) s sur le tapis ou le banc, cumulées (attribut TrainingMachine) ;
+--   6 → 7   TrainDuration (30) s sur le tapis ou le banc, cumulées (attribut TrainingMachine, posé
+--           par TrainingService : sur le tapis, quand le joueur s'arrête sur la bande, L-071 ; au
+--           banc, par son invite) ;
 --   7 → 8   la clé à molette possédée (ToolToBuy), ou un outil plus fort ;
 --   8 → 9   une aura possédée ;
 --   9 → 10  le joueur passe l'arche de la zone 2 (ZoneGate, attribut Zone = GoalZone) : au-delà du
@@ -73,7 +75,8 @@
 -- entre l'intérieur de la boutique (volume Bounds) et l'extérieur, la flèche vise d'abord la porte
 -- (PlotDoor/Window) ; le joueur apparaît dans sa boutique, la première flèche va donc à sa porte.
 -- Indices (Hints) : WindowRebuilding (étape 2, vitrine cassée rideau baissé) ; WaitBox, OpenBox,
--- CollectCash (étape 5) ; CollectCash (7 et 8 sans assez d'argent) ; Night (bulle de nuit 5.12 :
+-- CollectCash (étape 5) ; StandOnTreadmill (étape 6, flèche vers le tapis, qui n'a plus d'invite :
+-- L-071) ; CollectCash (7 et 8 sans assez d'argent) ; Night (bulle de nuit 5.12 :
 -- alerte ou nuit, joueur dans le couloir ; flèche vers sa parcelle) ; NightClosed (la nuit, côté
 -- zone safe, aux étapes qui visent le couloir : 1 à 3 et 9 ; pas de flèche) ; ShieldEnd (fin du
 -- bouclier débutant). EquipFists est choisi par le client (outil pas en main près de la vitrine).
@@ -845,8 +848,12 @@ local function rawGuidance(session: Session, data: Data, position: Vector3?): (s
 		if player:GetAttribute(MACHINE_ATTRIBUTE) ~= nil then
 			return nil, nil
 		end
-		local machine = if session.used.Treadmill then BENCH_TAG else TREADMILL_TAG
-		return nil, machinePoint(player, machine)
+		if session.used.Treadmill then
+			return nil, machinePoint(player, BENCH_TAG) -- le banc garde son invite « Lift »
+		end
+		-- Le tapis n'a plus d'invite (L-071) : l'indice dit de s'arrêter dessus.
+		local treadmill = machinePoint(player, TREADMILL_TAG)
+		return if treadmill then "StandOnTreadmill" else nil, treadmill
 	elseif step == STEP_TOOL then
 		if data.Cash < toolPrice() then
 			return "CollectCash", positionOf(plotTagged(player, CASH_PAD_TAG))

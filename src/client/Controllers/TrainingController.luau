@@ -8,8 +8,10 @@
 --   - n'envoie jamais plus de 6 taps au tapis ni 3 au banc sur WINDOW secondes
 --     (Config.Training) : au-delà, le serveur les ignorerait ;
 --   - joue TreadmillRun en boucle sur le tapis et BenchLift à chaque répétition envoyée, par
---     AnimationController s'il est là (rien sinon, sans erreur).
--- Aucune UI et aucun gain ici : l'invite est créée par TrainingService, le serveur décide.
+--     AnimationController s'il est là (rien sinon, sans erreur ; AnimationController joue aussi
+--     TreadmillRun et BenchIdle d'après l'attribut, et ne relance pas un BenchLift déjà parti).
+-- Aucune UI et aucun gain ici, le serveur décide : le tapis n'a pas d'invite (on monte dessus et on
+-- s'y arrête, L-071), l'invite du banc est créée par TrainingService.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
