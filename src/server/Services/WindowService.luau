@@ -282,6 +282,23 @@ local function rebuild(window: Window): boolean
 	return true
 end
 
+-- Points d'attente avant la reconstruction automatique d'une vitrine (voir AddRebuildGate). V0
+-- proposés, absents du doc : contrôle toutes les 0,25 s, 60 s d'attente en plus au plus.
+type RebuildGate = (windowId: string, model: Model?) -> boolean
+local rebuildGates: { RebuildGate } = {}
+local GATE_POLL = 0.25
+local GATE_MAX_WAIT = 60
+
+local function gatesOpen(window: Window): boolean
+	for _, gate in rebuildGates do
+		local ok, open = pcall(gate, window.Id, window.Model)
+		if ok and open == false then
+			return false
+		end
+	end
+	return true
+end
+
 local function rebuildDelay(window: Window): number
 	local openFor = if window.Kind == "NPC" then Balance.Heist.Duration else PvP.StealDuration
 	return openFor + Balance.Window.RebuildDelay
@@ -312,6 +329,13 @@ local function breakWindow(window: Window, breaker: Player, impactPoint: Vector3
 	window.Object:SetAttribute(BROKEN_ATTRIBUTE, true)
 	Net.Server.WindowBroken:FireAll(window.Id, impactPoint)
 	task.delay(rebuildDelay(window), function()
+		-- Points d'attente (AddRebuildGate) : le magasin ne se rouvre pas tant que ses vigiles ne
+		-- sont pas rentrés (GuardService). Au plus GATE_MAX_WAIT s d'attente en plus, par sécurité.
+		local waited = 0
+		while window.RebuildToken == token and windows[window.Id] == window and waited < GATE_MAX_WAIT and not gatesOpen(window) do
+			task.wait(GATE_POLL)
+			waited += GATE_POLL
+		end
 		if window.RebuildToken == token and windows[window.Id] == window then
 			rebuild(window)
 		end
@@ -570,6 +594,13 @@ end
 function WindowService.IsBroken(windowId: string): boolean
 	local window = windows[windowId]
 	return window ~= nil and window.Broken
+end
+
+-- Ajoute un point d'attente à la reconstruction automatique (après la casse) : tant qu'il renvoie
+-- false, la vitrine attend (au plus GATE_MAX_WAIT s). WindowService.Rebuild, appelé par le code (aube,
+-- tests), ne l'attend pas. Utilisé par GuardService : pas de rouverture tant qu'un vigile rentre.
+function WindowService.AddRebuildGate(gate: RebuildGate)
+	table.insert(rebuildGates, gate)
 end
 
 function WindowService.Rebuild(windowId: string): boolean

@@ -386,6 +386,9 @@ local IS_STUDIO = RunService:IsStudio()
 local GuardService = {}
 
 local guards: { Guard } = {} -- vigiles de jour
+-- Heure (os.clock) où le dernier vigile de jour d'un magasin est parti (rentré, effacé…) : la vitrine
+-- ne se reconstruit, et le magasin ne se rouvre, que Balance.Guard.ReopenAfterReturn s plus tard.
+local lastGoneAt: { [Model]: number } = {}
 local chasedBy: { [Player]: Guard } = {} -- par un vigile de jour
 local nightGuards: { Guard } = {}
 local nightChasedBy: { [Player]: Guard } = {}
@@ -963,6 +966,9 @@ local function despawn(guard: Guard, reason: string)
 	guard.pathToken += 1
 	guard.anims:Destroy()
 	guard.model:Destroy()
+	if guard.kind ~= "Night" and guard.store then
+		lastGoneAt[guard.store] = os.clock() -- rouverture du magasin : voir StoreReadyToReopen
+	end
 	log(`{guard.label} parti ({reason})`)
 end
 
@@ -2452,6 +2458,24 @@ end
 
 -- API ---------------------------------------------------------------------------------------
 
+-- Le magasin peut se rouvrir (vu en Play par Ironix le 2026-11-08 : la vitrine se reconstruisait et
+-- le rideau remontait pendant que le vigile rentrait de loin ; un nouveau vol faisait apparaître un
+-- 2e vigile) : aucun vigile de jour de ce magasin encore en jeu (poursuite, retour ou fondu), et le
+-- dernier parti depuis au moins Balance.Guard.ReopenAfterReturn s.
+function GuardService.StoreReadyToReopen(store: Model): boolean
+	for _, guard in guards do
+		if guard.alive and guard.store == store then
+			return false
+		end
+	end
+	local gone = lastGoneAt[store]
+	local delay = Balance.Guard.ReopenAfterReturn
+	if gone and type(delay) == "number" and os.clock() - gone < delay then
+		return false
+	end
+	return true
+end
+
 function GuardService.IsChased(player: Player): boolean
 	return chasedBy[player] ~= nil
 end
@@ -2533,6 +2557,20 @@ function GuardService.StartNightPatrol(hooks: NightHooks): number
 end
 
 function GuardService.Start()
+	-- La reconstruction d'une vitrine de magasin attend le retour de ses vigiles (StoreReadyToReopen).
+	-- require au démarrage et protégé : sans WindowService (bancs), le vigile marche comme avant.
+	local windowModule = script.Parent:FindFirstChild("WindowService")
+	local okWindow, WindowService = pcall(function(): any
+		return if windowModule then require(windowModule :: ModuleScript) else nil
+	end)
+	if okWindow and WindowService and type(WindowService.AddRebuildGate) == "function" then
+		WindowService.AddRebuildGate(function(_windowId: string, model: Model?): boolean
+			if model == nil or not model:HasTag("NPCStore") then
+				return true
+			end
+			return GuardService.StoreReadyToReopen(model)
+		end)
+	end
 	CarryService.OnCarryStarted(onCarryStarted)
 	CarryService.OnCarryEnded(onCarryEnded)
 	CarryService.OnDropExpired(onDropExpired)

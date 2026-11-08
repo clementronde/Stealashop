@@ -102,6 +102,9 @@ local Balance = {
 		-- deux cas. Déjà dans le magasin quand il rentre : jusqu'au GuardSpawn, dans les deux cas.
 		ReturnEnd = "Reserve",
 		ReturnFadeTime = 0.6, -- V0 proposé, absent du doc : durée du fondu de sa disparition (s)
+		-- Décision d'Ironix (2026-11-08) : le magasin ne se rouvre (vitrine reconstruite, rideau levé)
+		-- qu'une fois tous ses vigiles de jour rentrés, puis ce nombre de secondes (V0).
+		ReopenAfterReturn = 3,
 	},
 
 	-- 5.6 et 6.1 : porter un colis ou un objet volé
