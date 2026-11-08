@@ -64,6 +64,7 @@ export type ShownInfo = {
 -- Écran de Clément et ses éléments (contrat 2.2).
 local SCREEN_NAME = "UI_Notify"
 local TEMPLATE = "Template"
+local PREVIEW_PREFIX = "Preview_" -- cartes d'exemple de Clément, à côté du Template
 local LABEL = "Label"
 
 -- V0 proposés, absents du doc :
@@ -279,6 +280,16 @@ local function clementTemplate(playerGui: Instance): (ScreenGui?, GuiObject?)
 	end
 	local template = Find.path(screen, TEMPLATE)
 	if template and template:IsA("GuiObject") then
+		-- Cartes d'exemple de Clément (Preview_1, Preview_2…) : retirées de la copie du joueur, comme
+		-- dans les autres écrans. Vu en Play le 2026-11-08 : elles restaient affichées pour toujours.
+		local parent = template.Parent
+		if parent then
+			for _, child in parent:GetChildren() do
+				if string.sub(child.Name, 1, #PREVIEW_PREFIX) == PREVIEW_PREFIX then
+					child:Destroy()
+				end
+			end
+		end
 		return screen :: ScreenGui, template :: GuiObject
 	end
 	once("template", `{SCREEN_NAME} sans {TEMPLATE} (contrat 2.2) : messages dans le bandeau de secours`, true)
