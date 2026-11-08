@@ -566,7 +566,7 @@ Le multiplicateur de puissance vient désormais des auras, plus d'une améliorat
 | Tapis de course | +0,5 au multiplicateur de gain de vitesse | 20 | 200 $ | 1,9 |
 | Banc de musculation | +0,5 au multiplicateur de gain de force | 20 | 200 $ | 1,9 |
 | Présentoirs | +1 (de 4 à 20) | 16 | 500 $ | 2,5 |
-| Établis d'ouverture | +1 (de 1 à 4) | 3 | 2 000 $ | 12 |
+| Établis d'ouverture (supprimés le 2026-11-08, L-086 : les colis s'ouvrent sur les présentoirs) | — | — | — | — |
 
 ### 7.6 Sources et puits d'argent
 
@@ -674,7 +674,7 @@ L'encaissement passe par le contact serveur avec le tapis de caisse, sans remote
 }
 ```
 
-**Versions du schéma (DataService)** : v2 (2026-11-07) = même forme, `ItemId` du catalogue d'objets v2 (liaison L-045) ; v3 (2026-11-08, DEV-100) = boutique Robux : `Purchases[PurchaseId]` = date du don (`os.time()`), plus `Monetization = { Passes = {}, StarterPack = false, OpenNowCredit = 0 }` et `Boosts = { Cash = 0 }` ; v4 (2026-11-08, DEV-111) = index des objets : `Index = { [ItemId] = os.time() de la découverte }`, la migration compte comme découverts les objets déjà possédés (inventaire, présentoirs, coffre-fort). Les autres champs de la Partie 2 (Defenses, Rebirths, Rewards) arriveront en v5 et suivantes.
+**Versions du schéma (DataService)** : v2 (2026-11-07) = même forme, `ItemId` du catalogue d'objets v2 (liaison L-045) ; v3 (2026-11-08, DEV-100) = boutique Robux : `Purchases[PurchaseId]` = date du don (`os.time()`), plus `Monetization = { Passes = {}, StarterPack = false, OpenNowCredit = 0 }` et `Boosts = { Cash = 0 }` ; v4 (2026-11-08, DEV-111) = index des objets : `Index = { [ItemId] = os.time() de la découverte }`, la migration compte comme découverts les objets déjà possédés (inventaire, présentoirs, coffre-fort). v5 (2026-11-08, L-086) = colis posés sur les présentoirs : `Boxes = { [numéro de présentoir] = colis }` et `BoxQueue` (colis sans présentoir libre, posés dès qu'un présentoir se libère) ; la migration déplace chaque colis d'établi sur le premier présentoir libre, sinon dans la file. Les autres champs de la Partie 2 (Defenses, Rebirths, Rewards) arriveront en v6 et suivantes.
 
 ### 9.6 Anti-triche
 
@@ -1092,6 +1092,7 @@ Chaque étape est envoyée une seule fois par joueur avec `AnalyticsService:LogO
 
 | Date | Décision | Par |
 | --- | --- | --- |
+| 2026-11-08 | Vague 16 et correctifs, choix d'Ironix (liaison, L-078, L-080, L-086, L-087) : les colis se posent et s'ouvrent sur un présentoir libre (profil v5, file des colis sans place, plus d'établis ni d'amélioration Workbenches) ; un rayon de présentoirs apparaît dès que son premier présentoir est débloqué ; la nuit ne dure plus que 30 s quand le couloir est vide ; un magasin PNJ ne se rouvre qu'une fois son vigile rentré, plus 3 s ; un appui court passe le rouleau d'ouverture et la caméra reste libre ; un non-propriétaire est sorti hors du volume d'une boutique adverse | Ironix |
 | 2026-11-08 | La boutique du joueur n'a plus ni coffre ni établis d'ouverture : on pose et on ouvre le colis directement sur un présentoir, où l'objet reste exposé. Une seule rangée au départ (liaison, L-086) | Clément |
 | 2026-11-08 | Vague 15, choix d'Ironix (liaison, L-077, L-080, L-081) : la vitre se creuse à chaque coup à la place des fissures (même endroit et même taille pour tous, forme tirée sur chaque client ; le creux ne rétrécit pas quand les PV remontent et s'efface quand la vitre est pleine depuis 2 s ; version allégée sur appareil faible ou tactile) ; le rouleau d'ouverture tourne au-dessus du colis, à l'écran (pas de BillboardGui) ; le vigile rentre par un chemin, jusqu'à la réserve (devant la porte si le rideau est baissé), et s'efface en fondu de 0,6 s | Ironix |
 | 2026-11-08 | Vague 14, choix d'Ironix (liaison, L-071 et L-083) : boutons Shop, Index et Rebirth visibles dès le MVP ; boutique Robux en vitrine (prix visibles, aucun achat tant que `Features.RobuxShop` est coupé, « Soon » au clic) ; Index codé pour de vrai (découverte sauvegardée en profil v4, +5 % de revenus par zone complète, additionné aux autres bonus en %) ; écran Rebirth en aperçu (prochaine renaissance du tableau 3.2 de la Partie 2, « Coming soon ») ; plaques `ShopPad` devant les comptoirs ; tapis : on s'arrête sur la bande, plus d'invite ; colis : `CarryIdle` et `CarryRun` partent au marqueur `Grab` ; capture : projection au marqueur `Impact` de `Catch`, étourdissement compté depuis le coup ; musiques : poursuite, puis camion, puis zone ; colis lâchés par le camion espacés d'au moins 1 stud | Ironix |
