@@ -275,6 +275,24 @@ local BoxTrail: ModelSpec = {
 	Expected = { "FX_BoxTrail" },
 }
 
+-- Arches de zone (tag ZoneGate, attribut Zone ; liaison L-071, point 9, a42) : point d'accroche
+-- facultatif du panneau BB_ZoneGate, comme celui des magasins. Sans lui, ZoneGateController pose le
+-- panneau au-dessus de SignPart (le bandeau des arches du greybox).
+local ZoneGate: ModelSpec = {
+	Key = "ZoneGate",
+	Label = "arches de zone",
+	Category = "Magasins PNJ",
+	Tag = "ZoneGate",
+	Parts = {
+		{
+			Name = "InfoPoint",
+			Class = "Attachment",
+			Optional = true,
+			Note = "facultatif : sans lui, le panneau BB_ZoneGate se pose au-dessus de SignPart, L-071",
+		},
+	},
+}
+
 local Models = {}
 
 Models.Store = Store
@@ -287,8 +305,9 @@ Models.Tool = Tool
 Models.Accessory = Accessory
 Models.Truck = Truck
 Models.BoxTrail = BoxTrail
+Models.ZoneGate = ZoneGate
 
 -- Ordre du rapport.
-Models.List = { Store, Plot, Treadmill, Bench, Item, Box, Tool, Accessory, Truck, BoxTrail } :: { ModelSpec }
+Models.List = { Store, Plot, Treadmill, Bench, Item, Box, Tool, Accessory, Truck, BoxTrail, ZoneGate } :: { ModelSpec }
 
 return Models
