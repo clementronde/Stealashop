@@ -19,7 +19,7 @@
 	Leaf_R, 18 x 10,5 x 0,6 = WIN_M x 1,5), WindowFractured (WIN_M_Fractured x 1,5, cachée),
 	Shutter (caché dans le linteau, descend de 10,84), ShutterButton, DisplaySlot_01 à _20,
 	VaultSlot_01 à _03, UnboxBench_01 à _04, TrapSlot_01 à _04, CashPad, DepositZone,
-	Treadmill (UsePoint, Belt, UpgradePoint), Bench (UsePoint, UpgradePoint), NameSign/OwnerName,
+	Treadmill (copie de Assets/Plots/PLOT_Treadmill_Base : UsePoint, Belt, UpgradePoint), Bench (UsePoint, UpgradePoint), NameSign/OwnerName,
 	SpawnPoint, Bounds.
 
 	Noms proposés (à valider par Ironix) :
@@ -38,7 +38,7 @@
 	  pour le propriétaire.
 	- PlotBarrier : Model de murs invisibles (côtés, fond, avant hors porte, couvercle) ; le code
 	  les rend franchissables pour le propriétaire seul. Les autres entrent en cassant Window.
-	- StageUpgradePoint : Attachment où flotte l'achat du niveau suivant.
+	- StageUpgradePoint : Attachment au sol (y 0,3, face à -Z) où le code plante le panneau d'achat du niveau suivant, en (15,1, -36,5).
 	- Rayon_01 à Rayon_05 : Models, 4 présentoirs chacun (DisplaySlot_01 à _04 dans Rayon_01, etc.).
 	  Seul Rayon_01 a ses visuels. Rayon_02 à _05 n'ont qu'une pièce invisible RayonAnchor qui porte
 	  leurs DisplaySlot ; leurs visuels (présentoirs, CollectPad, produits) sont rangés dans
@@ -47,11 +47,11 @@
 	  RayonSpot_02 à _05 (FromStage 2) : contour au sol de l'emplacement, retiré quand la rangée vient.
 	- CollectPad_01 à _20 : case verte au pied de chaque présentoir, dans le même rayon ; le
 	  propriétaire y marche pour ramasser l'argent de cet objet (remplace CashPad si Ironix valide).
-	- DisplayUpgradePoint : Attachment où flotte l'achat du présentoir suivant (borne à gauche de la porte).
+	- DisplayUpgradePoint : Attachment au sol où se plante le panneau d'achat du présentoir suivant, en (-15,1, -36,5).
 	- Terrace : terrasse z -52..-40 devant la façade, hors des murs ; le tapis et le banc y sont.
 	  Emprise totale : 64 x 92 studs (z -52..40), pivot au centre du bâtiment (z 0).
 	- RarestPedestal : Model du socle de l'objet le plus rare, sur la terrasse entre la porte et le
-	  banc (x 13, z -48,5), à tous les niveaux. RarestSlot : Attachment sur le plateau, où le code pose
+	  banc (x 7,5, z -48,5), à tous les niveaux. RarestSlot : Attachment sur le plateau, où le code pose
 	  l'objet (face à la rue). RarestLabelPoint : Attachment 6 studs au-dessus, pour l'étiquette.
 	Aucun élément du contrat n'est dans un Stage_n.
 ]]
@@ -427,7 +427,7 @@ local function buildInterior(M, store)
 			label(cp, Enum.NormalId.Top, "$", C.white, 40)
 		end
 	end
-	att("DisplayUpgradePoint", B(M, "DisplayKiosk", -11, 0.3, -37, -9, 4.2, -35, C.frame), -10, 6.2, -36)
+	att("DisplayUpgradePoint", B(M, "DisplayKiosk", -11, 0.3, -37, -9, 4.2, -35, C.frame), -15.1, 0.3, -36.5) -- panneau au sol (session UI, 2026-11-08)
 	B(M, "DisplayKioskScreen", -10.8, 2.8, -37.05, -9.2, 3.9, -37.0, C.green, { studs = false, decor = true, mat = Enum.Material.Neon })
 
 	-- coffre (Partie 2) : plus de coffre visible (L-086). VaultSlot_01 à _03 restent pour le contrat, en
@@ -455,7 +455,7 @@ local function buildInterior(M, store)
 	-- point d'achat du niveau suivant : borne à droite de la porte
 	local kiosk = B(M, "UpgradeKiosk", 9, 0.3, -37, 11, 4.2, -35, C.frame)
 	B(M, "UpgradeKioskScreen", 9.2, 2.8, -37.05, 10.8, 3.9, -37.0, C.accent, { studs = false, decor = true, mat = Enum.Material.Neon, accent = true })
-	att("StageUpgradePoint", kiosk, 10, 6.2, -36)
+	att("StageUpgradePoint", kiosk, 15.1, 0.3, -36.5) -- panneau au sol (session UI, 2026-11-08)
 end
 
 P.buildCore, P.buildInterior = buildCore, buildInterior
@@ -465,37 +465,17 @@ local P = _G.ClaudePlotShopParts
 local CS, RS, rgb, C, B, CYL, group, att, label, light = P.CS, P.RS, P.rgb, P.C, P.B, P.CYL, P.group, P.att, P.label, P.light
 local products, PRODUCT_COLORS = P.products, P.PRODUCT_COLORS
 
--- Tapis de course (MOD-016) : coureur tourné vers -Z, console devant lui. Origine (ox, sol, oz).
+-- Tapis de course (MOD-016) : le modèle de Clément, PLOT_Treadmill_Base (Assets/Plots, rangé par
+-- treadmill_assets.luau), copié sous le nom Treadmill avec le tag. Coureur tourné vers -Z, console
+-- devant lui. Origine (ox, sol, oz) = pivot du modèle, en bas au centre. La variante argent
+-- PLOT_Treadmill_Silver a le même repère : le code l'échange au pivot de Treadmill.
 local function buildTreadmill(M, ox, oz)
-	local T = group(M, "Treadmill")
-	local y = 0.3
-	local function P(name, x0, y0, z0, x1, y1, z1, color, opt)
-		return B(T, name, ox + x0, y + y0, oz + z0, ox + x1, y + y1, oz + z1, color, opt)
-	end
-	P("Deck", -1.9, 0, -3.0, 1.9, 0.85, 4.0, C.frame)
-	P("DeckStripe_L", -1.95, 0.35, -3.0, -1.9, 0.6, 4.0, C.accent, { studs = false, decor = true, accent = true })
-	P("DeckStripe_R", 1.9, 0.35, -3.0, 1.95, 0.6, 4.0, C.accent, { studs = false, decor = true, accent = true })
-	local belt = P("Belt", -1.5, 0.85, -2.7, 1.5, 1.0, 3.8, C.rubber, { studs = false })
-	local tex = Instance.new("Texture")
-	tex.Name = "BeltTexture"; tex.Face = Enum.NormalId.Top
-	tex.Texture = "rbxassetid://95120777733359" -- ENV_Texture_Stud (L-030) : le code peut faire défiler OffsetStudsV
-	tex.StudsPerTileU = 1; tex.StudsPerTileV = 1; tex.Color3 = rgb(70, 70, 80); tex.Transparency = 0.3
-	tex.Parent = belt
-	P("Rail_L", -1.9, 0.85, -3.0, -1.5, 1.1, 4.0, C.metal, { studs = false })
-	P("Rail_R", 1.5, 0.85, -3.0, 1.9, 1.1, 4.0, C.metal, { studs = false })
-	P("RearCap", -1.9, 0, 4.0, 1.9, 0.95, 4.3, C.metal2, { studs = false })
-	P("MotorHood", -1.9, 0, -3.8, 1.9, 1.5, -3.0, C.accent, { accent = true })
-	P("Upright_L", -1.85, 1.5, -3.6, -1.55, 4.5, -3.3, C.metal, { studs = false })
-	P("Upright_R", 1.55, 1.5, -3.6, 1.85, 4.5, -3.3, C.metal, { studs = false })
-	local console = P("Console", -1.95, 4.4, -3.9, 1.95, 5.3, -3.1, C.frame, { studs = false })
-	P("ConsoleScreen", -1.2, 4.55, -3.1, 1.2, 5.15, -3.05, rgb(60, 200, 255), { studs = false, decor = true, mat = Enum.Material.Neon })
-	P("Handle_L", -1.9, 3.4, -3.3, -1.65, 3.65, -0.9, C.chrome, { studs = false })
-	P("Handle_R", 1.65, 3.4, -3.3, 1.9, 3.65, -0.9, C.chrome, { studs = false })
-	P("Grip_L", -1.95, 3.35, -1.7, -1.6, 3.7, -0.9, C.rubber, { studs = false, decor = true })
-	P("Grip_R", 1.6, 3.35, -1.7, 1.95, 3.7, -0.9, C.rubber, { studs = false, decor = true })
-	att("UsePoint", belt, ox, y + 1.0, oz + 0.6)
-	att("UpgradePoint", console, ox, y + 6.8, oz - 3.5)
-	T.WorldPivot = CFrame.new(ox, y, oz)
+	local src = RS.Assets.Plots:FindFirstChild("PLOT_Treadmill_Base")
+	assert(src, "PLOT_Treadmill_Base introuvable dans Assets/Plots : lancer treadmill_assets.luau")
+	local T = src:Clone()
+	T.Name = "Treadmill"
+	T:PivotTo(CFrame.new(ox, 0.3, oz))
+	T.Parent = M
 	CS:AddTag(T, "Treadmill")
 	return T
 end
@@ -532,7 +512,7 @@ local function buildBench(M, ox, oz)
 		CYL(bar, "Plate_" .. tag .. "2", ox + s * 2.78, by, bz, 0.3, 1.25, C.accent, { accent = true })
 	end
 	att("UsePoint", mat, ox, y + 0.06, oz - 3.0) -- 0,7 stud devant le coussin : le corps ne le touche pas
-	att("UpgradePoint", top, ox, y + 6.2, oz + 1.35)
+	att("UpgradePoint", top, ox - 6.75, y, oz + 2) -- panneau au sol, côté porte (session UI, 2026-11-08)
 	K.WorldPivot = CFrame.new(ox, y, oz)
 	CS:AddTag(K, "Bench")
 	return K
@@ -928,7 +908,7 @@ end
 local function buildRarest(M)
 	local B, CYL, C, att, light = P.B, P.CYL, P.C, P.att, P.light
 	local NEON = Enum.Material.Neon
-	local X, Z = 13, -48.5 -- à gauche de la porte vu de l'allée (côté banc) : le passage reste libre
+	local X, Z = 7.5, -48.5 -- à gauche de la porte vu de l'allée, côté banc (Clément : dégage la vue sur le panneau du banc)
 	local UP = CFrame.Angles(0, 0, math.rad(90)) -- cylindre debout
 	local R = P.group(M, "RarestPedestal")
 	local function drum(name, y0, y1, d, color, opt)

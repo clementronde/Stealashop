@@ -23,7 +23,13 @@ local M = {
 	PressScale = 0.88, PressTime = 0.07,     -- tuile qui s'enfonce
 	ReleaseTime = 0.3,                       -- retour après l'appui (Back)
 	ButtonHover = 1.05, ButtonPress = 0.92,  -- boutons (BUY, Close)
-	GlideTime = 0.2,                         -- halo de sélection qui glisse vers la tuile choisie
+	SelectOut = 0.08, SelectIn = 0.2, SelectFrom = 0.92, -- contour de sélection : s'efface, puis apparaît en douceur sur la tuile choisie
+	DragThreshold = 6,                       -- px avant qu'un appui devienne un glisser (sinon c'est un clic)
+	StartTilePx = 100,                       -- zoom de départ : les tuiles font au moins 100 px (téléphone)
+	ZoomMin = 0.75, ZoomMax = 1.8, ZoomStep = 0.12, ZoomTime = 0.14, -- molette : ±12 % par cran, lissé
+	PanLimit = 0.55,                         -- on peut décaler l'arbre de 55 % de sa taille (zoomée) au plus
+	Rubber = 0.35,                           -- au-delà de la limite, l'arbre suit à 35 % (élastique)
+	SnapTime = 0.35,                         -- au relâché hors limite, retour en douceur (Back)
 	PanelSwapFrom = 0.9, PanelSwapTime = 0.25, -- panneau qui « rebondit » quand il change de tuile
 	PunchScale = 1.3, PunchUp = 0.09,        -- achat : la tuile gonfle vite…
 	PunchSettle = 0.6,                       -- …puis revient avec un rebond élastique
@@ -276,11 +282,27 @@ local function shake(obj)
 end
 
 -- Sélection et achat ----------------------------------------------------------------------------
+local glow = tree.SelectionGlow
+local glowTarget = {}
+for _, c in glow:GetChildren() do if c:IsA("ImageLabel") then glowTarget[c] = c.ImageTransparency end end
+local glowToken = 0
 local function select(name)
-	if not D[name] or D[name].locked then return end
-	selected = name
 	local tile = tree:FindFirstChild(name)
-	tween(tree.SelectionGlow, M.GlideTime, { Position = tile.Position }, Enum.EasingStyle.Quad)
+	if not tile or not D[name] or D[name].locked then return end
+	if name == selected and glow.Position == tile.Position then refreshPanel() return end
+	selected = name
+	-- Le contour s'efface, se pose sous la nouvelle tuile, puis apparaît en douceur (la tuile ne bouge pas)
+	glowToken += 1
+	local token = glowToken
+	for c in glowTarget do tween(c, M.SelectOut, { ImageTransparency = 1 }) end
+	task.delay(M.SelectOut, function()
+		if token ~= glowToken then return end
+		glow.Position = tile.Position
+		local gs = scaleOf(glow)
+		gs.Scale = M.SelectFrom
+		tween(gs, M.SelectIn, { Scale = 1 }, Enum.EasingStyle.Quad)
+		for c, to in glowTarget do tween(c, M.SelectIn, { ImageTransparency = to }) end
+	end)
 	refreshPanel()
 	local s = scaleOf(panel)
 	s.Scale = M.PanelSwapFrom
@@ -315,11 +337,135 @@ local function hoverPress(btn, hoverScale, pressScale, onClick)
 	on(btn.MouseButton1Up, function() tween(s, M.ReleaseTime, { Scale = inside and hoverScale or 1 }, Enum.EasingStyle.Back) end)
 	if onClick then on(btn.MouseButton1Click, onClick) end
 end
-for _, tile in tree:GetChildren() do
-	if tile:IsA("TextButton") then
-		hoverPress(tile, M.HoverScale, M.PressScale, function() if tile.Name ~= "RootTile" then select(tile.Name) end end)
+-- Navigation : une couche transparente au-dessus de l'arbre (sous le panneau, l'argent et Close) reçoit
+-- souris, molette et doigts. Clic = tuile sous le pointeur ; glisser = déplacer ; molette ou pincement = zoom.
+local layer = Instance.new("TextButton")
+layer.Name = "NavLayer" layer.Text = "" layer.AutoButtonColor = false layer.BackgroundTransparency = 1
+layer.Size = UDim2.fromScale(1, 1) layer.ZIndex = 15 layer.Active = true
+layer.Parent = gui
+local treeBase = tree.Position
+local zoomScale = Instance.new("UIScale") zoomScale.Name = "ZoomScale" zoomScale.Parent = tree
+local zoom, pan = 1, Vector2.zero
+local function inHex(p, tile)
+	local s = tile.AbsoluteSize.X * 0.95
+	local c = tile.AbsolutePosition + tile.AbsoluteSize / 2
+	local x, y = math.abs(p.X - c.X) / (s / 2), (p.Y - c.Y) / (s / 2)
+	return x <= 1 and math.abs(y) <= 1 - x / 2
+end
+local function tileAt(p)
+	for _, t in tree:GetChildren() do if t:IsA("TextButton") and inHex(p, t) then return t end end
+	return nil
+end
+local function limits(z)
+	local size = tree.AbsoluteSize / zoomScale.Scale * z
+	return size.X * M.PanLimit, size.Y * M.PanLimit
+end
+local function clampPan(p, z, soft)
+	local lx, ly = limits(z)
+	local function c(v, l)
+		if math.abs(v) <= l then return v end
+		local excess = math.abs(v) - l
+		return math.sign(v) * (l + (soft and excess * M.Rubber or 0))
+	end
+	return Vector2.new(c(p.X, lx), c(p.Y, ly))
+end
+local function applyView(t)
+	local pos = treeBase + UDim2.fromOffset(pan.X, pan.Y)
+	if t and t > 0 then
+		tween(tree, t, { Position = pos }, Enum.EasingStyle.Quad)
+		tween(zoomScale, t, { Scale = zoom }, Enum.EasingStyle.Quad)
+	else
+		tree.Position = pos
+		zoomScale.Scale = zoom
 	end
 end
+local function zoomAt(p, newZoom)
+	newZoom = math.clamp(newZoom, M.ZoomMin, M.ZoomMax)
+	local k = newZoom / zoom
+	-- centre actuel de l'arbre à l'écran ; le point sous le pointeur reste sous le pointeur
+	local c = Vector2.new(treeBase.X.Scale * gui.AbsoluteSize.X + treeBase.X.Offset, treeBase.Y.Scale * gui.AbsoluteSize.Y + treeBase.Y.Offset) + pan
+	pan = pan + (p - c) * (1 - k)
+	zoom = newZoom
+	pan = clampPan(pan, zoom, false)
+	applyView(M.ZoomTime)
+end
+local hovered, pressed
+local function setHover(t)
+	if t == hovered then return end
+	if hovered and hovered ~= pressed then tween(scaleOf(hovered), M.HoverTime, { Scale = 1 }) end
+	hovered = t
+	if t and t ~= pressed then tween(scaleOf(t), M.HoverTime, { Scale = M.HoverScale }) end
+end
+local pointers, downPos, panStart, dragging, pinch = {}, nil, nil, false, nil
+local function count() local n = 0 for _ in pointers do n += 1 end return n end
+on(layer.InputBegan, function(input)
+	local kind = input.UserInputType
+	if kind ~= Enum.UserInputType.MouseButton1 and kind ~= Enum.UserInputType.Touch then return end
+	local p = Vector2.new(input.Position.X, input.Position.Y)
+	pointers[input] = p
+	if count() == 1 then
+		downPos, panStart, dragging = p, pan, false
+		pressed = tileAt(p)
+		if pressed then tween(scaleOf(pressed), M.PressTime, { Scale = M.PressScale }) end
+	elseif count() == 2 then
+		-- Pincement : distance de départ, zoom de départ ; l'appui en cours n'est plus un clic
+		local a, b
+		for _, q in pointers do if a then b = q else a = q end end
+		pinch = { dist = (a - b).Magnitude, zoom = zoom }
+		if pressed then tween(scaleOf(pressed), M.ReleaseTime, { Scale = 1 }, Enum.EasingStyle.Back) pressed = nil end
+		dragging = true
+	end
+end)
+on(layer.InputChanged, function(input)
+	local kind = input.UserInputType
+	local p = Vector2.new(input.Position.X, input.Position.Y)
+	if kind == Enum.UserInputType.MouseWheel then
+		zoomAt(p, zoom * (1 + M.ZoomStep * input.Position.Z))
+		return
+	end
+	if kind == Enum.UserInputType.Touch and pointers[input] then pointers[input] = p end
+	local moving = (kind == Enum.UserInputType.MouseMovement and downPos ~= nil and next(pointers) ~= nil) or (kind == Enum.UserInputType.Touch and pointers[input])
+	if not moving then
+		if kind == Enum.UserInputType.MouseMovement then setHover(tileAt(p)) end
+		return
+	end
+	if pinch and count() >= 2 then
+		local a, b
+		for _, q in pointers do if a then b = q elseif not b then a = q end end
+		if a and b then
+			local mid = (a + b) / 2
+			zoomAt(mid, pinch.zoom * (a - b).Magnitude / math.max(pinch.dist, 1))
+		end
+		return
+	end
+	local delta = p - downPos
+	if not dragging and delta.Magnitude > M.DragThreshold then
+		dragging = true
+		if pressed then tween(scaleOf(pressed), M.ReleaseTime, { Scale = 1 }, Enum.EasingStyle.Back) pressed = nil end
+		setHover(nil)
+	end
+	if dragging then
+		pan = clampPan(panStart + delta, zoom, true)
+		applyView(0)
+	end
+end)
+on(layer.InputEnded, function(input)
+	if not pointers[input] then return end
+	pointers[input] = nil
+	if count() > 0 then return end
+	if pinch then pinch = nil end
+	if not dragging and pressed then
+		local t = pressed
+		pressed = nil
+		tween(scaleOf(t), M.ReleaseTime, { Scale = (t == hovered) and M.HoverScale or 1 }, Enum.EasingStyle.Back)
+		if t.Name ~= "RootTile" then select(t.Name) end
+	end
+	if dragging then
+		local target = clampPan(pan, zoom, false)
+		if target ~= pan then pan = target tween(tree, M.SnapTime, { Position = treeBase + UDim2.fromOffset(pan.X, pan.Y) }, Enum.EasingStyle.Back) end
+	end
+	dragging, downPos = false, nil
+end)
 hoverPress(panel.BuyButton, M.ButtonHover, M.ButtonPress, buy)
 hoverPress(panel.NeedButton, M.ButtonHover, M.ButtonPress, function() shake(panel.NeedButton) end)
 
@@ -336,6 +482,14 @@ local panelPos, pillPos, closePos = panel.Position, gui.CashPill.Position, gui.C
 local function open()
 	gui.Enabled = true
 	if opener then opener.Enabled = false end
+	-- Zoom de départ : 1, ou plus si l'écran est petit (tuiles d'au moins StartTilePx)
+	local scr = gui.AbsoluteSize
+	local h = tree.Size.Y.Scale * scr.Y + tree.Size.Y.Offset
+	local w = math.min(h * 800 / 650, scr.X)
+	local tilePx = w * 150 / 800
+	zoom, pan = (tilePx > 0) and math.clamp(M.StartTilePx / tilePx, 1, M.ZoomMax) or 1, Vector2.zero
+	applyView(0)
+	for c, to in glowTarget do c.ImageTransparency = to end
 	gui.Backdrop.BackgroundTransparency = 1
 	tween(gui.Backdrop, M.OpenFade, { BackgroundTransparency = 0 })
 	for i, tile in orderedTiles() do
@@ -397,6 +551,9 @@ _G.SkillTreeProto = {
 		if glossImg then glossImg:Destroy() end
 	end,
 	Open = open, Close = close, Select = select, Buy = buy,
+	Pan = function(dx, dy) pan = clampPan(pan + Vector2.new(dx, dy), zoom, false) applyView(0) end,
+	ZoomAt = function(x, y, z) zoomAt(Vector2.new(x, y), z) end,
+	View = function() return zoom, pan end,
 	State = function() return { cash = cash, selected = selected, levels = (function() local r = {} for k, v in D do r[k] = v.lv end return r end)() } end,
 	Values = M,
 }
