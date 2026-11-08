@@ -133,7 +133,7 @@ Clément livre d'abord chaque écran en version grise (bons noms, aucun style) e
 
 | Écran (MVP) | Éléments obligatoires, noms exacts |
 | --- | --- |
-| `UI_HUD` | `Cash`, `Income`, `Speed`, `Strength`, `Damage` (TextLabels), `HeistTimer` (TextLabel), `NightCountdown` (TextLabel), `GuardMeter` (Frame avec un enfant `Fill`), `ReturnBaseButton`, `RobuxShopButton` (caché jusqu'à la MAJ 1) |
+| `UI_HUD` | `Cash`, `Income`, `Speed`, `Strength`, `Damage` (TextLabels), `HeistTimer` (TextLabel), `NightCountdown` (TextLabel), `GuardMeter` (Frame avec un enfant `Fill`), `ReturnBaseButton` (avec un TextLabel `Cooldown` pour la recharge, liaison L-043), `RobuxShopButton` (caché jusqu'à la MAJ 1), `IndexButton` (caché jusqu'à la MAJ 2), `RebirthButton` (caché jusqu'à la MAJ 3), `InviteButton` (ouvre l'invitation de Roblox, liaison L-057) |
 | `UI_WeaponShop` | `CloseButton`, `List` (ScrollingFrame), `List.Template` avec `Icon`, `ItemName`, `Power`, `Price`, `BuyButton`, `EquipButton` |
 | `UI_AuraShop` | `CloseButton`, `Tabs.AurasTab`, `Tabs.TrailsTab`, `List`, `List.Template` avec `Icon`, `ItemName`, `Bonus`, `Price`, `BuyButton`, `EquipButton` |
 | `UI_Unbox` | `Rarity`, `ItemName`, `Income` (TextLabels), `ContinueButton` |
@@ -141,7 +141,7 @@ Clément livre d'abord chaque écran en version grise (bons noms, aucun style) e
 | `UI_Tutorial` | `Bubble` avec `Label`, `NextButton` |
 | `UI_Notify` | `Template` avec `Icon`, `Label` |
 
-Les éléments au-dessus des objets du monde sont des BillboardGui modèles rangés dans `ReplicatedStorage/Assets/UI` : `BB_WindowHP` (`Fill`, `Label`), `BB_OpenTimer` (`Label`), `BB_Item` (`ItemName`, `Rarity`, `Income`) et `BB_Carry` (`ItemName`, `Rarity`, `Income`), l'étiquette au-dessus de la tête de celui qui porte un colis ou un objet volé (section 5.6), et `BB_Box` (`Category`, `Rarity`, `Mutation`), l'étiquette au-dessus de chaque colis, sur le rayon comme porté (décision du 2026-11-07).
+Les éléments au-dessus des objets du monde sont des BillboardGui modèles rangés dans `ReplicatedStorage/Assets/UI` : `BB_WindowHP` (`Fill`, `Label`), `BB_OpenTimer` (`Label`), `BB_Item` (`ItemName`, `Rarity`, `Income`) et `BB_Carry` (`ItemName`, `Rarity`, `Income`), l'étiquette au-dessus de la tête de celui qui porte un colis ou un objet volé (section 5.6), et `BB_Box` (`Category`, `Rarity`, `Mutation`), l'étiquette au-dessus de chaque colis, sur le rayon comme porté (décision du 2026-11-07), et `BB_StoreInfo` (`StoreName`, `HP`, `Damage`, `Speed`), le panneau au-dessus de chaque vitrine de magasin PNJ (DEV-030, liaison L-044), et `BB_TruckHP` (`Label`), la barre de vie du camion de l'événement (liaison L-049 et L-052).
 
 ### 2.3 Références à envoyer
 
