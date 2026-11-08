@@ -32,8 +32,21 @@
 --     (Balance.Heist.BoxTiers[Tier].GrabTime), portée Bat.DroppedGrabMaxDistance − 0,5. Début du
 --     maintien : GrabDropped(dropId) ; invite déclenchée : GrabDropped(dropId) une seconde fois et
 --     animation Grab (AnimationController s'il est là). Le serveur vérifie tout.
+--   - Son du coup sur le camion (DEV-053, liaison L-052 point 3 ; réglages : Config/HitFeedback.Truck) :
+--     le Sound Truck.HitSound (« Truck_Hit », nom proposé à Clément) de ReplicatedStorage/Assets/Sounds
+--     (sous-dossiers permis), joué au point de frappe, plus aigu quand les PV baissent (de PitchMin
+--     à PV pleins à PitchMax à 0 PV, attributs HP et MaxHP, ± PitchJitter), comme le verre des
+--     vitrines. Celui qui frappe l'entend tout de suite, au moment où son coup part (LocalHit,
+--     appelé par HitController) ; les autres à chaque coup validé par le serveur (WindowHit, qui part
+--     aussi pour le camion), si leur caméra est à moins de FxRadius studs. Son absent : muet (une
+--     ligne en Studio). Le chiffre de dégâts de chaque coup est à DamageNumberController.
 --
--- Coupé par Config/Features.TruckEvent = false. API (client) : aucune.
+-- Coupé par Config/Features.TruckEvent = false.
+--
+-- API (client) :
+--   TruckController.LocalHit(targetId, point)
+--       Retour local du coup du joueur sur un camion (son WindowId) : le son du coup, tout de suite.
+--       Appelé par HitController quand le coup part. Un id qui n'est pas un camion : rien.
 
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
@@ -47,6 +60,7 @@ local Config = Shared:WaitForChild("Config")
 local Balance = require(Config:WaitForChild("Balance"))
 local Bat = require(Config:WaitForChild("Bat"))
 local Features = require(Config:WaitForChild("Features"))
+local HitFeedback = require(Config:WaitForChild("HitFeedback"))
 local Shatter = require(Config:WaitForChild("Shatter"))
 local TruckEvent = require(Config:WaitForChild("TruckEvent"))
 local Contract = Shared:WaitForChild("Contract")
@@ -133,8 +147,11 @@ local FLIGHT_FROM_ATTRIBUTE = "FlightFrom"
 local FLIGHT_STARTS_AT_ATTRIBUTE = "FlightStartsAt"
 local FLIGHT_DURATION_ATTRIBUTE = "FlightDuration"
 local CARRYING_ATTRIBUTE = "Carrying" -- posé par CarryService sur le Player tant qu'il porte
+local WINDOW_ID_ATTRIBUTE = "WindowId" -- posé par WindowService (cible d'événement), renvoyé par WindowHit
 local PROMPT_NAME = "GrabPrompt"
 local BOX_SUFFIX = "Box" -- « Premium Box » (L-036)
+local SOUND_HOLDER = "TruckHitSound" -- Attachment local du Terrain qui porte un son de coup
+local TruckHit = HitFeedback.Truck
 
 -- V0 proposé, absent du doc : invites revues 5 fois par seconde (atterrissage).
 local REFRESH_INTERVAL = 0.2
@@ -147,6 +164,9 @@ local REST_SPEED = 4
 -- V0 proposé, absent du doc : traînée blanche de remplacement (FX_BoxTrail pas livré).
 local V0_TRAIL_LIFETIME = 0.35
 local V0_TRAIL_HALF_HEIGHT = 0.6
+-- V0 proposé, absent du doc : un son de coup joué est retiré au plus tard après 10 s (s'il ne finit
+-- jamais), comme ceux de la casse.
+local SOUND_MAX_LIFETIME = 10
 
 local IS_STUDIO = RunService:IsStudio()
 
@@ -490,6 +510,94 @@ local function trackTruck(instance: Instance)
 	maybeExplode(watch)
 end
 
+-- Son du coup (DEV-053) -------------------------------------------------------------------------
+
+-- Le camion suivi dont l'id de cible (WindowId, posé par WindowService) est `targetId`, ou nil.
+local function truckFor(targetId: string): TruckWatch?
+	for _, watch in trucks do
+		if watch.Model:GetAttribute(WINDOW_ID_ATTRIBUTE) == targetId then
+			return watch
+		end
+	end
+	return nil
+end
+
+-- Le Sound `name` de Clément, dans TruckHit.SoundsFolder ou un de ses sous-dossiers, ou nil.
+local function findSound(name: string): Sound?
+	local current: Instance? = ReplicatedStorage
+	for _, segment in TruckHit.SoundsFolder do
+		current = if current then current:FindFirstChild(segment) else nil
+	end
+	local found = if current then current:FindFirstChild(name, true) else nil
+	if found and found:IsA("Sound") then
+		return found :: Sound
+	end
+	return nil
+end
+
+-- Hauteur du son : de PitchMin à PV pleins à PitchMax à 0 PV (attributs HP et MaxHP), ± PitchJitter.
+local function hitPitch(model: Model): number
+	local maxValue = model:GetAttribute(MAX_HP_ATTRIBUTE)
+	local hpValue = model:GetAttribute(HP_ATTRIBUTE)
+	local maxHp = if type(maxValue) == "number" then maxValue else 0
+	local fraction = if maxHp > 0 and type(hpValue) == "number" then math.clamp(hpValue / maxHp, 0, 1) else 1
+	local jitter = 1 + random:NextNumber(-TruckHit.PitchJitter, TruckHit.PitchJitter)
+	return (TruckHit.PitchMin + (TruckHit.PitchMax - TruckHit.PitchMin) * (1 - fraction)) * jitter
+end
+
+-- Son du coup au point de frappe. Camion explosé ou son pas livré : rien (une ligne en Studio).
+local function playHitSound(watch: TruckWatch, point: Vector3)
+	if watch.Exploded then
+		return
+	end
+	local template = findSound(TruckHit.HitSound)
+	if template == nil then
+		once(
+			"sound",
+			`{TruckHit.HitSound} absent de ReplicatedStorage.{table.concat(TruckHit.SoundsFolder, ".")} : coups sur le camion muets (L-052)`
+		)
+		return
+	end
+	local holder = Instance.new("Attachment")
+	holder.Name = SOUND_HOLDER
+	holder.Position = point
+	local sound = template:Clone()
+	sound.PlaybackSpeed = template.PlaybackSpeed * hitPitch(watch.Model)
+	sound.Parent = holder
+	holder.Parent = Workspace.Terrain
+	sound.Ended:Once(function()
+		holder:Destroy()
+	end)
+	task.delay(SOUND_MAX_LIFETIME, function()
+		holder:Destroy()
+	end)
+	sound:Play()
+end
+
+function TruckController.LocalHit(targetId: string, point: Vector3)
+	local watch = truckFor(targetId)
+	if watch then
+		playHitSound(watch, point)
+	end
+end
+
+-- Coup d'un autre joueur, validé par le serveur (WindowHit) : son du coup si la caméra est assez près.
+-- Ses propres coups sont déjà joués par LocalHit, au moment où ils partent.
+local function onWindowHit(targetId: string, point: Vector3, hitter: Player?)
+	if hitter == player then
+		return
+	end
+	local watch = truckFor(targetId)
+	if watch == nil then
+		return -- une vitrine : ses effets sont à ShatterController
+	end
+	local camera = Workspace.CurrentCamera
+	if camera and (camera.CFrame.Position - point).Magnitude > TruckHit.FxRadius then
+		return
+	end
+	playHitSound(watch, point)
+end
+
 -- Colis du camion -------------------------------------------------------------------------------
 
 local function anchorOf(model: Model): BasePart?
@@ -744,6 +852,11 @@ function TruckController.Start()
 		xpcall(onFrame, function(err: any)
 			warn(`[TruckController] {err}`)
 		end, dt)
+	end)
+	Net.Client.WindowHit:Connect(function(targetId: string, point: Vector3, hitter: Player?)
+		xpcall(onWindowHit, function(err: any)
+			warn(`[TruckController] {err}`)
+		end, targetId, point, hitter)
 	end)
 
 	local drops = Workspace:FindFirstChild(DROPS_FOLDER)

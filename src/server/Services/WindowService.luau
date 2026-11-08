@@ -22,9 +22,11 @@
 --     du joueur lui-même ; outil de casse pas en main ; plus de 10 studs entre le joueur et
 --     le point le plus proche de la vitre (Balance.Hit.ServerMaxDistance) ; CanBeHit refuse.
 --     Le débit (≤ 10 coups/s) est déjà limité par Net. Dégâts = ToolService.GetHitDamage.
---   - Chaque coup validé qui laisse des PV : WindowHit(windowId, point de frappe, frappeur), non
---     fiable, au frappeur et aux joueurs à moins de Config.Shatter.HitBroadcastRadius studs du
---     point (L-028 a) : chacun voit les fissures des autres (ShatterController, DEV-016).
+--   - Chaque coup validé, celui qui casse compris : WindowHit(windowId, point de frappe, frappeur,
+--     dégâts), non fiable, au frappeur et aux joueurs à moins de Config.Shatter.HitBroadcastRadius
+--     studs du point (L-028 a) : chacun voit les fissures des autres (ShatterController, DEV-016) et
+--     le chiffre de dégâts de chaque coup (DamageNumberController, DEV-053). Le coup qui casse
+--     l'envoie juste avant WindowBroken. Un coup refusé n'envoie rien.
 --   - À 0 PV : la vitre est cachée et ne bloque plus (Transparency, CanCollide, CanQuery),
 --     Broken = true, WindowBroken(windowId, point d'impact) part à tous ; la casse elle-même
 --     (éclats, flash, son) est jouée par les clients (5.4, ShatterController, DEV-016). Les
@@ -42,9 +44,12 @@
 -- outil de casse en main, 10 studs au plus du point le plus proche de la boîte du modèle, débit de
 -- Net, CanBeHit, dégâts de ToolService.GetHitDamage. Ce qui change pour elle seulement :
 --   - PV max fixes (donnés à AddTarget), sans régénération ni reconstruction ;
---   - aucun remote : ni WindowHit, ni WindowHP, ni WindowBroken (les effets de verre de
---     ShatterController n'ont rien à y faire). Ses PV sont l'attribut HP du modèle, écrit au tick
---     (10 fois par seconde au plus), lisible aussi par un client qui arrive en cours de route ;
+--   - un seul remote, WindowHit, comme pour une vitrine (chaque coup validé, celui qui casse compris,
+--     avec ses dégâts : chiffre flottant, et son du coup joué par TruckController ; DEV-053) ; ni
+--     WindowHP ni WindowBroken. Les clients n'y posent aucun effet de verre (WindowController ne
+--     relaie à ShatterController que les coups sur ses vitrines). Ses PV sont l'attribut HP du
+--     modèle, écrit au tick (10 fois par seconde au plus), lisible aussi par un client qui arrive en
+--     cours de route ;
 --   - à 0 PV : Broken = true et HP = 0, puis OnBroken (Kind = "Event") ; rien n'est caché ni
 --     reconstruit, le service qui l'a ajoutée décide de la suite ;
 --   - le modèle porte le tag HitTarget (posé par le code, hors du contrat de la section 2.1) et les
@@ -325,10 +330,10 @@ local function breakTarget(window: Window, breaker: Player, impactPoint: Vector3
 	emitBroken(window, breaker, impactPoint)
 end
 
--- Coup validé qui laisse des PV : WindowHit au frappeur (son étoile de fissure, au point calculé
--- ici) et aux joueurs proches du point de frappe (L-028 a). Un joueur sans personnage ne reçoit
--- rien, sauf le frappeur.
-local function broadcastHit(window: Window, hitter: Player, point: Vector3)
+-- Coup validé (celui qui casse compris) : WindowHit au frappeur (son étoile de fissure, au point
+-- calculé ici, et son chiffre de dégâts) et aux joueurs proches du point de frappe (L-028 a,
+-- DEV-053). Un joueur sans personnage ne reçoit rien, sauf le frappeur.
+local function broadcastHit(window: Window, hitter: Player, point: Vector3, damage: number)
 	for _, other in Players:GetPlayers() do
 		if other ~= hitter then
 			local character = other.Character
@@ -340,7 +345,7 @@ local function broadcastHit(window: Window, hitter: Player, point: Vector3)
 				continue
 			end
 		end
-		Net.Server.WindowHit:Fire(other, window.Id, point, hitter)
+		Net.Server.WindowHit:Fire(other, window.Id, point, hitter, damage)
 	end
 end
 
@@ -398,14 +403,14 @@ local function onHitWindow(player: Player, windowId: string)
 	end
 	window.HP = math.max(0, window.HP - damage)
 	window.Dirty = true
+	-- Avant la casse : le chiffre du coup qui casse part comme les autres (DEV-053).
+	broadcastHit(window, player, impactPoint, damage)
 	if window.Kind == "Event" then
 		if window.HP <= 0 then
 			breakTarget(window, player, impactPoint)
 		end
 	elseif window.HP <= 0 then
 		breakWindow(window, player, impactPoint)
-	else
-		broadcastHit(window, player, impactPoint)
 	end
 end
 

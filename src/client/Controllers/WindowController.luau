@@ -8,6 +8,10 @@
 --     Une vitrine qui sort de la map (streaming) est oubliée, puis reprise à son retour ;
 --   - les derniers PV reçus (`WindowHP`, non fiable, 10 fois/s au plus), les coups (`WindowHit`)
 --     et les casses (`WindowBroken`), redistribués aux autres contrôleurs (ShatterController).
+--     WindowHit arrive aussi pour les coups sur une cible d'événement (camion, DEV-053) : seuls les
+--     coups sur une vitrine de ce registre sont relayés (pas d'effet de verre sur le camion). Les
+--     chiffres de dégâts de tous les coups sont à DamageNumberController, le son du coup sur le
+--     camion à TruckController : ils écoutent WindowHit eux-mêmes.
 --
 -- Barre de PV : une copie du modèle de Clément ReplicatedStorage/Assets/UI/BB_WindowHP (contrat
 -- 2.2) au-dessus de chaque vitre, avec la taille et le décalage du modèle : `Label` écrit
@@ -25,6 +29,8 @@
 --       L'objet `Window` (Part, MeshPart ou Model) et son magasin ou sa parcelle, s'ils sont là.
 --   WindowController.OnHP(fn(windowId, hp, maxHp)) -> déconnexion
 --   WindowController.OnHit(fn(windowId, point, hitter: Player?)) -> déconnexion
+--       Coups validés sur une vitrine du registre, celui qui casse compris (envoyé juste avant
+--       WindowBroken, mais non fiable : il peut aussi arriver juste après OnBroken).
 --   WindowController.OnBroken(fn(windowId, impactPoint)) -> déconnexion
 --   WindowController.OnRebuilt(fn(windowId)) -> déconnexion        Broken repasse à false
 --   WindowController.OnRemoved(fn(windowId)) -> déconnexion        vitrine sortie de la map
@@ -462,6 +468,9 @@ function WindowController.Start()
 	end)
 
 	Net.Client.WindowHit:Connect(function(windowId: string, point: Vector3, hitter: Player?)
+		if entries[windowId] == nil then
+			return -- cible d'événement (camion) ou vitrine pas encore là : rien à fissurer
+		end
 		for _, listener in table.clone(hitListeners) do
 			task.spawn(listener, windowId, point, hitter)
 		end

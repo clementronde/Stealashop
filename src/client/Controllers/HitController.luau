@@ -29,7 +29,10 @@
 -- Cible d'événement (camion de l'événement, liaison L-049) : un modèle taggé HitTarget par
 -- WindowService, visé comme une vitrine (même portée, même « devant lui », même coup au marqueur
 -- Impact, même HitWindow), la boîte du modèle tenant lieu de vitre. Seule différence : pas de retour
--- de verre (ShatterController.LocalHit), ce n'est pas une vitre.
+-- de verre (ShatterController.LocalHit), ce n'est pas une vitre. Son retour local est le son du
+-- coup sur le camion (TruckController.LocalHit, DEV-053), joué au moment où le coup part : au
+-- marqueur Impact, au délai max, au clic suivant, ou au clic sans animation, comme HitWindow.
+-- Le chiffre de dégâts de chaque coup, lui, attend la réponse du serveur (DamageNumberController).
 --
 -- Lu sur les objets (rien n'est cherché par chemin) :
 --   Tool de casse : attribut ToolId (ToolService). La batte (slot 2, attribut BatTool, jamais
@@ -59,6 +62,11 @@ type ShatterApi = {
 	LocalHit: (windowId: string, point: Vector3, track: AnimationTrack?) -> (),
 }
 
+-- Ce que ce contrôleur utilise de TruckController (a27 ; son du coup, DEV-053).
+type TruckApi = {
+	LocalHit: (targetId: string, point: Vector3) -> (),
+}
+
 local TOOL_ID_ATTRIBUTE = "ToolId" -- posé par ToolService sur le Tool de casse
 local BAT_ATTRIBUTE = "BatTool" -- posé par ToolService sur la batte (BatController)
 local WINDOW_NAME = "Window" -- enfant obligatoire (10.4)
@@ -85,6 +93,8 @@ local player = Players.LocalPlayer
 -- Coup d'un clic qui attend le marqueur Impact de son animation.
 type PendingHit = {
 	WindowId: string,
+	Point: Vector3, -- point visé (celui que le serveur calculera), pour le retour local du camion
+	IsWindow: boolean, -- false : cible d'événement
 	Tool: Tool,
 	Character: Model,
 	Sent: boolean, -- déjà parti (ou abandonné) : plus rien ne le renvoie
@@ -96,6 +106,7 @@ local HitController = {}
 local Net: any = nil
 local animation: AnimationApi? = nil
 local shatter: ShatterApi? = nil
+local truck: TruckApi? = nil
 local lastHitAt = -math.huge
 local pending: PendingHit? = nil -- un seul à la fois
 local hookedTools = setmetatable({} :: { [Tool]: boolean }, { __mode = "k" })
@@ -191,6 +202,16 @@ local function canStrike(tool: Tool, character: Model): boolean
 	return humanoid ~= nil and humanoid.Health > 0
 end
 
+-- Envoie le coup au serveur ; sur une cible d'événement, joue au même moment son retour local (son
+-- du coup sur le camion). Les vitres ont le leur dans ShatterController.LocalHit.
+local function strike(windowId: string, point: Vector3, isWindow: boolean)
+	Net.Client.HitWindow:Fire(windowId)
+	local api = truck
+	if api and not isWindow then
+		pcall(api.LocalHit, windowId, point)
+	end
+end
+
 -- Envoie le coup en attente `hit`, une seule fois, quel que soit celui qui l'appelle en premier
 -- (marqueur, délai max, clic suivant).
 local function sendHit(hit: PendingHit)
@@ -207,7 +228,7 @@ local function sendHit(hit: PendingHit)
 		pending = nil
 	end
 	if canStrike(hit.Tool, hit.Character) then
-		Net.Client.HitWindow:Fire(hit.WindowId)
+		strike(hit.WindowId, hit.Point, hit.IsWindow)
 	end
 end
 
@@ -220,9 +241,18 @@ local function flushPending()
 end
 
 -- Coup sur `windowId` qui part au marqueur Impact de `track`, au plus tard après IMPACT_MAX_WAIT.
-local function deferHit(windowId: string, tool: Tool, character: Model, track: AnimationTrack)
+local function deferHit(
+	windowId: string,
+	point: Vector3,
+	isWindow: boolean,
+	tool: Tool,
+	character: Model,
+	track: AnimationTrack
+)
 	local hit: PendingHit = {
 		WindowId = windowId,
+		Point = point,
+		IsWindow = isWindow,
 		Tool = tool,
 		Character = character,
 		Sent = false,
@@ -259,14 +289,14 @@ local function onActivated(tool: Tool)
 	flushPending()
 	local track = playHit(tool)
 	local windowId, point, isWindow = findTarget(root :: BasePart)
-	if windowId then
+	if windowId and point then
 		if track then
-			deferHit(windowId, tool, character, track)
+			deferHit(windowId, point, isWindow, tool, character, track)
 		else
-			Net.Client.HitWindow:Fire(windowId) -- pas d'animation : le coup part au clic
+			strike(windowId, point, isWindow) -- pas d'animation : le coup part au clic
 		end
 		local api = shatter
-		if api and point and isWindow then
+		if api and isWindow then
 			pcall(api.LocalHit, windowId, point, track) -- retour de verre : vitres seulement
 		end
 	end
@@ -308,6 +338,13 @@ function HitController.Start()
 		local ok, result = pcall(require, shatterModule)
 		if ok and type(result) == "table" and type((result :: any).LocalHit) == "function" then
 			shatter = result :: any
+		end
+	end
+	local truckModule = script.Parent:FindFirstChild("TruckController")
+	if truckModule and truckModule:IsA("ModuleScript") then
+		local ok, result = pcall(require, truckModule)
+		if ok and type(result) == "table" and type((result :: any).LocalHit) == "function" then
+			truck = result :: any
 		end
 	end
 	player.CharacterAdded:Connect(watchCharacter)
