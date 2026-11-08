@@ -780,6 +780,27 @@ local function enter(target: Phase, duration: number?)
 	end
 end
 
+-- Nuit raccourcie (liaison L-078, décision d'Ironix du 2026-11-08) : la nuit sert surtout aux
+-- joueurs restés dans le couloir (finir un vol, rentrer). Dès qu'il n'y en a plus aucun (passage de
+-- nuit : allowed, tenu à jour à chaque tick par guardCorridor, donc capture, renvoi chez soi, mort,
+-- déconnexion, bouton Retour base ou retour à pied derrière le mur), il ne reste au plus que
+-- Night.EmptyCorridorRemaining s. Le couloir ne se remplit plus de la nuit (mur à sens unique) : le
+-- raccourci ne se défait jamais.
+local function shortenIfCorridorEmpty()
+	local limit = Night.EmptyCorridorRemaining
+	if type(limit) ~= "number" or limit < 0 or next(allowed) ~= nil then
+		return
+	end
+	local remaining = phaseEndsAt - os.clock()
+	if remaining <= limit + 0.05 then
+		return
+	end
+	phaseEndsAt = os.clock() + limit
+	serverEndsAt = Workspace:GetServerTimeNow() + limit
+	publish(serverEndsAt + lengthOf("Day") + lengthOf("Warning"))
+	log(`plus personne dans le couloir : la nuit finit dans {limit} s (au lieu de {math.round(remaining)} s)`)
+end
+
 local function nextPhase(): Phase
 	if phase == "Day" then
 		return "Warning"
@@ -813,6 +834,7 @@ local function step()
 	end
 	if phase == "Night" then
 		guardCorridor()
+		shortenIfCorridorEmpty()
 	end
 end
 

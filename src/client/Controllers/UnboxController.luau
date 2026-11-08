@@ -45,6 +45,7 @@ local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
@@ -572,6 +573,50 @@ local function bindButton(current: Running, path: string, callback: () -> ())
 	)
 end
 
+-- Caméra libre pendant l'ouverture (demande d'Ironix, 2026-11-08) : le SkipButton de Clément couvre
+-- tout l'écran et captait la souris et le doigt, donc la caméra ne bougeait plus. Il ne capte plus
+-- rien (Interactable = false sur la copie du joueur ; son visuel ne change pas) et le code reconnaît
+-- lui-même un appui court et immobile, n'importe où : celui-là passe le rouleau, un glisser ou un
+-- clic droit tourne la caméra. Valeurs V0 proposées, absentes du doc.
+local TAP_MAX_TIME = 0.3 -- s entre l'appui et le relâché
+local TAP_MAX_MOVE = 12 -- px entre l'appui et le relâché
+
+local function isTapInput(input: InputObject): boolean
+	return input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch
+end
+
+local function bindTapToSkip(current: Running, button: GuiObject, callback: () -> ())
+	pcall(function()
+		(button :: any).Interactable = false
+	end)
+	local startedAt: number? = nil
+	local startedFrom: Vector3? = nil
+	table.insert(
+		current.connections,
+		UserInputService.InputBegan:Connect(function(input: InputObject, processed: boolean)
+			if processed or not isTapInput(input) then
+				return
+			end
+			startedAt, startedFrom = os.clock(), input.Position
+		end)
+	)
+	table.insert(
+		current.connections,
+		UserInputService.InputEnded:Connect(function(input: InputObject)
+			local at, from = startedAt, startedFrom
+			if not isTapInput(input) or at == nil or from == nil then
+				return
+			end
+			startedAt, startedFrom = nil, nil
+			local quick = os.clock() - at <= TAP_MAX_TIME
+			local still = (input.Position - from).Magnitude <= TAP_MAX_MOVE
+			if quick and still and running == current and button.Visible then
+				callback()
+			end
+		end)
+	)
+end
+
 local hooks: Screen.Hooks = {
 	PlayPlayer = playAnimation,
 	CanOpenNext = function(): boolean
@@ -596,10 +641,13 @@ local function startReveal(entry: Queued, screen: ScreenGui, plan: Sequence.Plan
 		release = entry.release,
 	}
 	running = current
-	bindButton(current, "SkipButton", function()
-		runner:Skip()
-		checkIncome(current) -- après le rouleau, Skip montre tout d'un coup, revenu compris
-	end)
+	local skipButton = Find.path(screen, "SkipButton")
+	if skipButton and skipButton:IsA("GuiObject") then
+		bindTapToSkip(current, skipButton :: GuiObject, function()
+			runner:Skip()
+			checkIncome(current) -- après le rouleau, Skip montre tout d'un coup, revenu compris
+		end)
+	end
 	bindButton(current, "ContinueButton", function()
 		if runner:SinceButtons() ~= nil then
 			closeReveal()
