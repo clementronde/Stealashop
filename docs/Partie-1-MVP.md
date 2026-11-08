@@ -1086,6 +1086,7 @@ Chaque étape est envoyée une seule fois par joueur avec `AnalyticsService:LogO
 
 | Date | Décision | Par |
 | --- | --- | --- |
+| 2026-11-08 | Une 8e rareté « Divin » (Divine) au-dessus du Secret ; camions et colis ont un design par rareté, avec de plus en plus de PV pour les camions (valeurs à proposer par Ironix, liaison L-049) | Clément |
 | 2026-11-08 | Les colis du camion ont plusieurs raretés, même en zone 1 : chances propres au camion, meilleures qu'un rayon sans abus, à proposer par Ironix (liaison, L-049) | Clément |
 | 2026-11-08 | Camion : son aspect change à 75, 50 et 25 % de PV (fêlures et fumée, pièces qui tombent, feu). Une cinématique d'arrivée le montre rouler puis se renverser, et il reste couché pendant l'événement. Après la casse, des policiers viennent récupérer les colis (liaison, L-049) | Clément |
 | 2026-11-08 | Boutique du joueur : panneaux d'amélioration plantés au sol (titre, « Level N > N+1 », bouton en $ et bouton Robux). Un seul rayon au départ (4 présentoirs, puis +1 par achat selon 7.5, un nouveau rayon tous les 4). Le tapis et le banc sont dehors. L'argent se ramasse sur une case verte au pied de chaque objet, à la place de la caisse unique (liaison, L-082) | Clément |
