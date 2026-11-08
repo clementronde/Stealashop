@@ -15,8 +15,10 @@
 
 	Repère :
 	  X = axe de la rue. Limite safe en X = 0, zone safe en X < 0, couloir en
-	      X > 0 : la coordonnée X de la vitrine d'un magasin PNJ est sa distance
-	      de retour.
+	      X > 0. Zones rallongées de ×1,25 par Clément (2026-11-08, liaison
+	      L-071) : x' = 30 + (x − 30) × 1,25 au-delà de l'arche 1 (x = 30) ; la
+	      vitrine d'un magasin PNJ est en ZONES[n].X, à quelques studs de sa
+	      distance de retour (ZONES[n].Distance, section 4).
 	  Y = haut, sol à Y = 0.
 	  Z = travers de la rue. Côté « N » en Z > 0, côté « S » en Z < 0.
 	  Chaque modèle a son pivot en bas au centre, face avant (−Z local) tournée
@@ -53,6 +55,8 @@ local WINDOWS: { [string]: Vector2 } = {
 type StoreDef = { Id: string, Label: string }
 type ZoneDef = {
 	Distance: number, -- distance de retour depuis la limite safe (section 4)
+	X: number, -- X des vitrines des 2 magasins (Clément, L-071 : x' = 30 + (x − 30) × 1,25)
+	GateX: number, -- X de l'arche de la zone, au début de la zone (même formule)
 	Speed: number, -- vitesse conseillée (section 4)
 	Damage: string, -- dégâts/coup conseillés, affichés sur l'arche (section 4)
 	Stores: { StoreDef }, -- les 2 magasins PNJ (section 4), Id selon 10.3
@@ -62,7 +66,9 @@ type ZoneDef = {
 
 local ZONES: { ZoneDef } = {
 	{
-		Distance = 60,
+		Distance = 75,
+		X = 74,
+		GateX = 30,
 		Speed = 16,
 		Damage = "1",
 		Window = "S",
@@ -70,7 +76,9 @@ local ZONES: { ZoneDef } = {
 		Stores = { { Id = "Superette", Label = "Mini Mart" }, { Id = "Kiosque", Label = "Kiosk" } },
 	},
 	{
-		Distance = 140,
+		Distance = 175,
+		X = 168,
+		GateX = 117.5,
 		Speed = 22,
 		Damage = "10",
 		Window = "S",
@@ -78,7 +86,9 @@ local ZONES: { ZoneDef } = {
 		Stores = { { Id = "MagasinDeJouets", Label = "Toy Shop" }, { Id = "Confiserie", Label = "Sweet Shop" } },
 	},
 	{
-		Distance = 240,
+		Distance = 300,
+		X = 292,
+		GateX = 230,
 		Speed = 28,
 		Damage = "80",
 		Window = "M",
@@ -86,7 +96,9 @@ local ZONES: { ZoneDef } = {
 		Stores = { { Id = "Electronique", Label = "Electronics" }, { Id = "JeuxVideo", Label = "Video Games" } },
 	},
 	{
-		Distance = 360,
+		Distance = 450,
+		X = 442,
+		GateX = 367.5,
 		Speed = 34,
 		Damage = "600",
 		Window = "M",
@@ -94,7 +106,9 @@ local ZONES: { ZoneDef } = {
 		Stores = { { Id = "Bijouterie", Label = "Jewelry" }, { Id = "Horlogerie", Label = "Watches & Clocks" } },
 	},
 	{
-		Distance = 500,
+		Distance = 625,
+		X = 618,
+		GateX = 530,
 		Speed = 40,
 		Damage = "5K",
 		Window = "L",
@@ -102,7 +116,9 @@ local ZONES: { ZoneDef } = {
 		Stores = { { Id = "GalerieDArt", Label = "Art Gallery" }, { Id = "Antiquaire", Label = "Antiques" } },
 	},
 	{
-		Distance = 660,
+		Distance = 825,
+		X = 818,
+		GateX = 717.5,
 		Speed = 48,
 		Damage = "40K",
 		Window = "L",
@@ -132,7 +148,7 @@ local STORE_H: { [string]: number } = { S = 14, M = 16, L = 18 } -- le rideau ou
 local PLOT_SHOP_W, PLOT_SHOP_D, PLOT_SHOP_H = 32, 28, 16 -- boutique de la parcelle, vitrine M
 local SHOP_X_NEAR, SHOP_X_FAR, SHOP_Z = -14, -34, 24 -- comptoirs à l'entrée de l'allée
 local NIGHTWALL_X, NIGHTWALL_H = 12, 24 -- mur de nuit, à l'entrée du couloir
-local CORRIDOR_END = 700 -- fond du couloir, 40 studs après le magasin de zone 6
+local CORRIDOR_END = 867.5 -- fond du couloir : 700 avant les zones ×1,25 de Clément (L-071), 30 + 670 × 1,25
 -- Gabarit ×1.5 de Clément (L-040, 2026-11-07), relevé dans la place : tronçons des zones
 -- seulement, l'entrée du couloir garde 40 de large (mur de nuit de 42). Les vrais magasins
 -- ×1.5 de Clément (Workspace/Map, pivots (X, 0, ±66), X = 65 en zone 1) sont gardés tels
@@ -258,11 +274,11 @@ local function facing(side: number): CFrame
 	return if side > 0 then CFrame.identity else CFrame.Angles(0, math.pi, 0)
 end
 
--- Arche de la zone zi : à mi-chemin entre le magasin précédent (ou la limite
--- safe) et ceux de la zone (V0).
+-- Arche de la zone zi, au début de la zone : à l'origine à mi-chemin entre le
+-- magasin précédent (ou la limite safe) et ceux de la zone (V0), puis passée aux
+-- zones ×1,25 de Clément (L-071, 2026-11-08).
 local function gateX(zi: number): number
-	local prev = if zi == 1 then 0 else ZONES[zi - 1].Distance
-	return (prev + ZONES[zi].Distance) / 2
+	return ZONES[zi].GateX
 end
 
 ------------------------------------------------------------------------------
@@ -438,7 +454,7 @@ local function buildStore(parent: Instance, zi: number, zone: ZoneDef, def: Stor
 	local W, H, D = STORE_W[size], STORE_H[size], STORE_D
 	local top = H - 1
 	local inner = W / 2 - 1
-	local frame = CFrame.new(zone.Distance, 0, side * (STREET_W / 2 + D / 2)) * facing(side)
+	local frame = CFrame.new(zone.X, 0, side * (STREET_W / 2 + D / 2)) * facing(side)
 	local wallColor = tint(zone.Color, 0.45)
 
 	local model = Instance.new("Model")
@@ -787,7 +803,7 @@ local function buildCorridor(root: Instance)
 				a, b = realStoreX(real)
 			else
 				local w = STORE_W[zone.Window]
-				a, b = zone.Distance - w / 2, zone.Distance + w / 2
+				a, b = zone.X - w / 2, zone.X + w / 2
 			end
 			return { { x0, a }, { b, x1 } }
 		end
@@ -978,11 +994,13 @@ local function report(root: Instance): string
 		if zone and window then
 			total += 1
 			local d = window.Position.X - lx
-			local ok = math.abs(d - zone.Distance) < 0.5
+			-- Depuis les zones ×1,25 (L-071), la vitrine est en ZONES[n].X, à quelques studs
+			-- de la distance de retour du doc : on compare à X, à 1 stud près.
+			local ok = math.abs(window.Position.X - zone.X) < 1
 			if ok then
 				okCount += 1
 			end
-			out(string.format("  %-26s zone %d : %.1f (doc %d) %s", store.Name, zi, d, zone.Distance, if ok then "OK" else "ÉCART"))
+			out(string.format("  %-26s zone %d : %.1f (X attendu %g, retour doc %d) %s", store.Name, zi, d, zone.X, zone.Distance, if ok then "OK" else "ÉCART"))
 		else
 			out("  " .. store.Name .. " : attribut Zone ou Window manquant")
 		end

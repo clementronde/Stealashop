@@ -22,7 +22,7 @@ export type Zone = {
 	AdvisedDamage: number, -- dégâts par coup conseillés
 	AdvisedSpeed: number, -- WalkSpeed conseillé
 	GuardSpeed: number, -- WalkSpeed du vigile de jour
-	ReturnDistance: number, -- studs jusqu'à la zone safe
+	ReturnDistance: number, -- studs jusqu'à la zone safe (zones ×1,25 de Clément, 2026-11-08, liaison L-071)
 	BaseIncome: number, -- $/s d'un objet Commun de la zone (R zone, section 7.1)
 }
 
@@ -36,7 +36,7 @@ local Zones: { Zone } = {
 		AdvisedDamage = 1,
 		AdvisedSpeed = 16,
 		GuardSpeed = 13.4,
-		ReturnDistance = 60,
+		ReturnDistance = 75,
 		BaseIncome = 1,
 	},
 	{
@@ -48,7 +48,7 @@ local Zones: { Zone } = {
 		AdvisedDamage = 10,
 		AdvisedSpeed = 22,
 		GuardSpeed = 18.8,
-		ReturnDistance = 140,
+		ReturnDistance = 175,
 		BaseIncome = 8,
 	},
 	{
@@ -60,7 +60,7 @@ local Zones: { Zone } = {
 		AdvisedDamage = 80,
 		AdvisedSpeed = 28,
 		GuardSpeed = 24.2,
-		ReturnDistance = 240,
+		ReturnDistance = 300,
 		BaseIncome = 60,
 	},
 	{
@@ -72,7 +72,7 @@ local Zones: { Zone } = {
 		AdvisedDamage = 600,
 		AdvisedSpeed = 34,
 		GuardSpeed = 29.6,
-		ReturnDistance = 360,
+		ReturnDistance = 450,
 		BaseIncome = 450,
 	},
 	{
@@ -84,7 +84,7 @@ local Zones: { Zone } = {
 		AdvisedDamage = 5_000,
 		AdvisedSpeed = 40,
 		GuardSpeed = 35,
-		ReturnDistance = 500,
+		ReturnDistance = 625,
 		BaseIncome = 3_500,
 	},
 	{
@@ -96,7 +96,7 @@ local Zones: { Zone } = {
 		AdvisedDamage = 40_000,
 		AdvisedSpeed = 48,
 		GuardSpeed = 42.2,
-		ReturnDistance = 660,
+		ReturnDistance = 825,
 		BaseIncome = 25_000,
 	},
 }
