@@ -764,7 +764,7 @@ Les points `Shutter`, `ShutterButton`, `TrapSlot_xx` et `VaultSlot_02` / `_03` d
 
 ### 10.5 Catalogue d'objets v2
 
-Validé par Clément et adopté par Ironix le 2026-11-07 (liaison L-045 ; source machine : `docs/claude/notes/objets-catalogue-v2.json`). 74 objets : 4 catégories par zone. Zone 1 (zone tuto) : 12 Communs, plus le Pot de nouilles (Rare), qui ne sort que du premier colis du tuto. Zones 2 à 6 : 12 objets chacune, 3 Communs, 3 Peu communs, 2 Rares, 2 Épiques, 1 Légendaire et 1 Mythique. Tirage : la rareté selon la table 7.3, puis un objet au hasard parmi ceux de la zone et de cette rareté. Le jeu affiche le nom et la catégorie en anglais (`BB_Box` : catégorie + rareté ; « ??? » pour le Secret). Modèle `ITM_<ItemId>`. Les objets Légendaire et plus ont une animation idle sans script : attribut `Idle` (`Spin`, `Bob` ou `SpinBob`) sur le modèle et pièces `Spin_<Nom>`, jouées par le code côté client (10.4).
+Validé par Clément et adopté par Ironix le 2026-11-07 (liaison L-045 ; source machine : `docs/claude/notes/objets-catalogue-v2.json`). 83 objets : 4 catégories par zone, 5 en zone 4 (Mode / Fashion). Zone 1 (zone tuto) : 12 Communs, plus le Pot de nouilles (Rare), qui ne sort que du premier colis du tuto. Zones 2 à 6 : 12 objets chacune (3 Communs, 3 Peu communs, 2 Rares, 2 Épiques, 1 Légendaire et 1 Mythique), plus 9 objets du quotidien ajoutés par Clément le 2026-11-07 : zone 2 = 16 objets, zone 3 = 14, zone 4 = 15 (liaison L-055). Tirage : la rareté selon la table 7.3, puis un objet au hasard parmi ceux de la zone et de cette rareté. Le jeu affiche le nom et la catégorie en anglais (`BB_Box` : catégorie + rareté ; « ??? » pour le Secret). Modèle `ITM_<ItemId>`. Les objets Légendaire et plus ont une animation idle sans script : attribut `Idle` (`Spin`, `Bob` ou `SpinBob`) sur le modèle , pièces `Spin_<Nom>` (rotation autour de leur pivot) et `Wave_<Nom>` (va-et-vient, la patte du Chat porte-bonheur), jouées par le code côté client (10.4). Icône de chaque objet : `ICON_<ItemId>` (10.3).
 
 | Zone | Catégorie | Objet | Nom affiché (EN) | Rareté | ItemId |
 | --- | --- | --- | --- | --- | --- |
@@ -782,7 +782,10 @@ Validé par Clément et adopté par Ironix le 2026-11-07 (liaison L-045 ; source
 | 1 | Légumes (Vegetable) | Brocoli | Broccoli | Commun | `Z1_Brocoli` |
 | 1 | Légumes (Vegetable) | Épi de maïs | Corn Cob | Commun | `Z1_EpiDeMais` |
 | 2 | Jouet (Toy) | Canard en plastique | Rubber Duck | Commun | `Z2_CanardEnPlastique` |
+| 2 | Jouet (Toy) | Ballon de foot | Soccer Ball | Commun | `Z2_BallonDeFoot` |
+| 2 | Jouet (Toy) | Booster de cartes | Card Booster Pack | Peu commun | `Z2_BoosterDeCartes` |
 | 2 | Jouet (Toy) | Yo-yo | Yo-Yo | Peu commun | `Z2_YoYo` |
+| 2 | Jouet (Toy) | Carte holographique | Holo Card | Épique | `Z2_CarteHolographique` |
 | 2 | Jouet (Toy) | Robot jouet | Toy Robot | Épique | `Z2_RobotJouet` |
 | 2 | Jouet (Toy) | Figurine holographique | Hologram Figure | Mythique | `Z2_FigurineHolographique` |
 | 2 | Peluche (Plush) | Ours en peluche | Teddy Bear | Commun | `Z2_OursEnPeluche` |
@@ -791,6 +794,7 @@ Validé par Clément et adopté par Ironix le 2026-11-07 (liaison L-045 ; source
 | 2 | Bonbon (Candy) | Barbe à papa | Cotton Candy | Peu commun | `Z2_BarbeAPapa` |
 | 2 | Bonbon (Candy) | Maison en pain d'épices | Gingerbread House | Rare | `Z2_MaisonEnPainDEpices` |
 | 2 | Véhicule (Vehicle) | Bus à impériale | Double-Decker Bus | Peu commun | `Z2_BusAImperiale` |
+| 2 | Véhicule (Vehicle) | Skateboard | Skateboard | Peu commun | `Z2_Skateboard` |
 | 2 | Véhicule (Vehicle) | Voiture télécommandée | RC Car | Rare | `Z2_VoitureTelecommandee` |
 | 2 | Véhicule (Vehicle) | Train électrique | Toy Train | Épique | `Z2_TrainElectrique` |
 | 3 | Téléphone (Phone) | Écouteurs | Earbuds | Commun | `Z3_Ecouteurs` |
@@ -804,6 +808,8 @@ Validé par Clément et adopté par Ironix le 2026-11-07 (liaison L-045 ; source
 | 3 | Télé (TV) | Télé géante | Giant TV | Épique | `Z3_TeleGeante` |
 | 3 | Console (Console) | Manette | Game Controller | Peu commun | `Z3_Manette` |
 | 3 | Console (Console) | Casque VR | VR Headset | Rare | `Z3_CasqueVr` |
+| 3 | Console (Console) | Console à double écran | Dual-Screen Console | Rare | `Z3_ConsoleADoubleEcran` |
+| 3 | Console (Console) | Console de salon | Home Console | Épique | `Z3_ConsoleDeSalon` |
 | 3 | Console (Console) | Console portable | Handheld Console | Épique | `Z3_ConsolePortable` |
 | 4 | Bijou (Jewelry) | Bague | Ring | Commun | `Z4_Bague` |
 | 4 | Bijou (Jewelry) | Chaîne en or | Gold Chain | Peu commun | `Z4_ChaineEnOr` |
@@ -813,6 +819,9 @@ Validé par Clément et adopté par Ironix le 2026-11-07 (liaison L-045 ; source
 | 4 | Montre (Watch) | Montre à gousset | Pocket Watch | Rare | `Z4_MontreAGousset` |
 | 4 | Horloge (Clock) | Pendule dorée | Golden Clock | Commun | `Z4_PenduleDoree` |
 | 4 | Horloge (Clock) | Horloge de parquet | Grandfather Clock | Épique | `Z4_HorlogeDeParquet` |
+| 4 | Mode (Fashion) | Parfum | Perfume | Commun | `Z4_Parfum` |
+| 4 | Mode (Fashion) | Lunettes de star | Star Sunglasses | Peu commun | `Z4_LunettesDeStar` |
+| 4 | Mode (Fashion) | Baskets de collection | Collector Sneakers | Rare | `Z4_BasketsDeCollection` |
 | 4 | Joyau (Jewel) | Rubis | Ruby | Peu commun | `Z4_Rubis` |
 | 4 | Joyau (Jewel) | Diamant brut | Rough Diamond | Épique | `Z4_DiamantBrut` |
 | 4 | Joyau (Jewel) | Couronne | Crown | Légendaire | `Z4_Couronne` |
