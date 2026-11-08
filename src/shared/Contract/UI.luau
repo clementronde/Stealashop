@@ -171,6 +171,36 @@ UI.Screens = {
 	},
 } :: { Screen }
 
+-- Renaissance (MAJ 3 ; Partie 2, 3.2) : écran UI_Rebirth de Clément (UI-120, noms validés par Ironix
+-- en L-047), ouvert en aperçu par RebirthController (L-071). Hint, le texte sous le bouton, est un nom
+-- de Clément relevé dans Studio le 2026-11-08 (le code y écrit « Coming soon »). Les colonnes Lose et
+-- Keep sont du texte fixe, pas au contrat.
+table.insert(UI.Screens, {
+	Name = "UI_Rebirth",
+	Class = "ScreenGui",
+	Elements = {
+		{ Path = "CloseButton", Class = BUTTON },
+		{ Path = "Level" },
+		{ Path = "CashRequirement" },
+		{ Path = "CashRequirement.CashAmount" },
+		{ Path = "CashRequirement.CashBar" },
+		{ Path = "CashRequirement.CashBar.Fill" },
+		{ Path = "CashRequirement.CashLabel" },
+		{ Path = "ItemRequirement" },
+		{ Path = "ItemRequirement.Icon" },
+		{ Path = "ItemRequirement.ItemName" },
+		{ Path = "ItemRequirement.Rarity" },
+		{ Path = "ItemRequirement.Status" },
+		{ Path = "GainList" },
+		-- Bouton en 2 temps : un cadre par état (Disabled → Ready → Confirm), un seul visible à la fois.
+		{ Path = "ConfirmButton", Class = BUTTON },
+		{ Path = "ConfirmButton.Disabled" },
+		{ Path = "ConfirmButton.Ready" },
+		{ Path = "ConfirmButton.Confirm" },
+		{ Path = "Hint" },
+	},
+})
+
 -- Billboards modèles, des BillboardGui directement dans ReplicatedStorage/Assets/UI.
 UI.Billboards = {
 	{ Name = "BB_WindowHP", Class = "BillboardGui", Elements = { { Path = "Fill" }, { Path = "Label" } } },

@@ -7,13 +7,21 @@
 -- TruckEvent n'a pas d'UI : false coupe TruckEventService (aucun camion) et TruckController.
 -- RobuxShop coupe aussi toute la boutique Robux (DEV-100) : MonetizationService (ni ProcessReceipt,
 -- ni gamepass, ni bonus de revenus, ni effet) et RobuxShopController (écran UI_RobuxShop, comptoir).
+-- Aperçus (L-071, décision de Clément du 2026-11-08 : les boutons Shop, Index et Rebirth du HUD sont
+-- visibles dès maintenant) : RobuxShopPreview montre le bouton Shop et ouvre UI_RobuxShop en vitrine
+-- tant que RobuxShop est false (RobuxShopController : aucun achat, aucun appel à MarketplaceService ;
+-- le serveur reste coupé) ; RebirthPreview montre le bouton Rebirth et ouvre UI_Rebirth en aperçu
+-- (RebirthController : la prochaine renaissance, sans confirmation) tant que la renaissance n'est pas
+-- codée (Rebirth, DEV-120). Index passe à true (L-071) : l'index est codé par IndexController.
 
 local DeepFreeze = require(script.Parent.DeepFreeze)
 
 local Features = {
 	RobuxShop = false, -- MAJ 1, boutique Robux (5.9) : UI_HUD.RobuxShopButton, MonetizationService, RobuxShopController
-	Index = false, -- MAJ 2, index des objets : UI_HUD.IndexButton
-	Rebirth = false, -- MAJ 3, renaissance : UI_HUD.RebirthButton
+	RobuxShopPreview = true, -- L-071 : avec RobuxShop à false, UI_HUD.RobuxShopButton visible et UI_RobuxShop en vitrine (aucun achat)
+	Index = true, -- MAJ 2, index des objets : UI_HUD.IndexButton (L-071 : visible dès maintenant, IndexController)
+	Rebirth = false, -- MAJ 3, renaissance (DEV-120, pas encore codée) : UI_HUD.RebirthButton
+	RebirthPreview = true, -- L-071 : UI_HUD.RebirthButton visible et UI_Rebirth en aperçu (RebirthController), sans renaissance
 	NightCycle = true, -- DEV-047, cycle jour/nuit (5.12) : UI_HUD.NightCountdown, NightCycleService, SkyController
 	AntiCheat = true, -- DEV-060, contrôle des déplacements (9.6, Config/AntiCheat) : false coupe AntiCheatService (Allow et Verify ne font rien), aucune UI
 	ReturnToBase = true, -- DEV-045, bouton Retour base : UI_HUD.ReturnBaseButton, ReturnBaseService

@@ -21,14 +21,21 @@
 --   - CloseButton ferme l'écran ; il se ferme aussi quand le joueur s'éloigne du comptoir, meurt
 --     ou réapparaît. Ouverture et fermeture animées (DEV-052) par UI/Motion : Motion.Open et
 --     Motion.Close allument et éteignent l'écran ; une invite déclenchée pendant la fermeture la
---     rattrape.
+--     rattrape ;
+--   - l'écran s'ouvre aussi quand le joueur marche sur la plaque ShopPad du comptoir
+--     (ShopPadController, L-071, par Open plus bas) ; la distance de fermeture se compte alors depuis
+--     la plaque.
 -- Les éléments sont cherchés par leur nom parmi les descendants (Contract/Find). Tant que l'écran
 -- manque (UI-002 pas encore livré), le contrôleur attend sans erreur, avec une seule ligne dans la
 -- sortie en Studio. Un écran recréé (ResetOnSpawn) est rebranché. Seuls les textes, la visibilité,
 -- les lignes clonées et ScreenGui.Enabled sont touchés (2.2, « Libre pour Ironix »), jamais un style ;
 -- l'effet d'échelle de Motion est passager.
 --
--- API (client) : aucune.
+-- API (client) :
+--   WeaponShopController.Open(anchor)
+--       Ouvre l'écran comme l'invite du comptoir ; il se ferme quand le joueur s'éloigne de `anchor`
+--       (pièce ou Attachment) de plus de CLOSE_DISTANCE studs. Écran pas encore branché : rien.
+--       Appelé par ShopPadController avec la plaque ShopPad du comptoir.
 
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
@@ -191,6 +198,10 @@ local function open(anchor: Instance)
 	openAnchor = anchor
 	refreshRows()
 	Motion.Open(current.gui)
+end
+
+function WeaponShopController.Open(anchor: Instance)
+	open(anchor)
 end
 
 local function onBuy(tool: ToolDef)
