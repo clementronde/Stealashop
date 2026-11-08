@@ -93,6 +93,7 @@ local Night = require(Shared.Config.Night)
 local PvP = require(Shared.Config.PvP)
 local Net = require(Shared.Net.Net)
 
+local AntiCheatService = require(script.Parent.AntiCheatService)
 local DataService = require(script.Parent.DataService)
 local GuardService = require(script.Parent.GuardService)
 local PlotService = require(script.Parent.PlotService)
@@ -582,6 +583,7 @@ local function moveToSafeSide(player: Player): boolean
 	local feet = root.Position.Y - hip - root.Size.Y / 2
 	local ground = groundY(spot, feet)
 	local position = Vector3.new(spot.X, ground + hip + root.Size.Y / 2 + MOVE_LIFT, spot.Z)
+	AntiCheatService.Allow(player, 0, "NightCycleService (renvoi derrière le mur)") -- déplacement du code (DEV-060)
 	character:PivotTo(CFrame.lookAt(position, position + facing) * root.CFrame:ToObjectSpace(character:GetPivot()))
 	root.AssemblyLinearVelocity = Vector3.zero
 	root.AssemblyAngularVelocity = Vector3.zero

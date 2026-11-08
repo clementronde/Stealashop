@@ -58,6 +58,10 @@
 -- dépasser ce qu'un porteur au plafond de vitesse parcourt dans ce temps (Balance.Stats.MaxWalkSpeed ×
 -- Balance.Carry.StolenItemSpeedMultiplier × Balance.AntiCheat.SpeedTolerance, plus ESCAPE_MARGIN s) :
 -- sinon CarryService.ReportAnomaly, l'objet revient. Un joueur lent ou qui rame n'est jamais pris.
+-- Avant lui, AntiCheatService.Verify(voleur, From, StartedAt) (DEV-060) contrôle tout de suite son
+-- dernier déplacement (téléport) et le trajet depuis la prise à sa vitesse réelle (speed hack) :
+-- sanctionné, le portage échoue et l'objet revient. Le contrôle du dépôt reste un filet : il marche
+-- aussi en Studio sans AntiCheatStrict et quand Features.AntiCheat = false.
 --
 -- Protections (6.4) : bouclier débutant ; 3 s d'immunité aux coups de batte (DEV-043) ; 120 s
 -- d'immunité après un vol subi (coups et prises refusés) ; anti-racket (coups et prises refusés) ;
@@ -115,6 +119,7 @@ local Format = require(Shared.Format)
 local Net = require(Shared.Net.Net)
 local CarryTypes = require(Shared.Types.Carry)
 
+local AntiCheatService = require(script.Parent.AntiCheatService)
 local CarryService = require(script.Parent.CarryService)
 local DataService = require(script.Parent.DataService)
 local DisplayService = require(script.Parent.DisplayService)
@@ -628,6 +633,15 @@ local function deposit(theft: Theft, root: BasePart)
 	local victimData = DataService.Get(victim)
 	if thiefData == nil or victimData == nil then
 		return -- profil en cours de libération : le départ va annuler le vol
+	end
+	-- Contrôle des déplacements tout de suite (DEV-060), sans attendre le suivant, et du trajet depuis la
+	-- prise (à la vitesse réelle du voleur) : un téléport dans sa propre DepositZone ou un speed hack
+	-- entre deux boutiques proches sont vus avant le transfert. Sanctionné : le portage vient d'échouer.
+	if not AntiCheatService.Verify(thief, theft.From, theft.StartedAt) then
+		if thefts[thief] == theft then
+			returnItem(theft, "Anomaly")
+		end
+		return
 	end
 	local elapsed = os.clock() - theft.StartedAt
 	local distance = (root.Position - theft.From).Magnitude

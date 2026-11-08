@@ -48,6 +48,7 @@ local Training = require(ReplicatedStorage.Shared.Config.Training)
 local Upgrades = require(ReplicatedStorage.Shared.Config.Upgrades)
 local Net = require(ReplicatedStorage.Shared.Net.Net)
 local RateLimiter = require(ReplicatedStorage.Shared.Net.RateLimiter)
+local AntiCheatService = require(script.Parent.AntiCheatService)
 local DataService = require(script.Parent.DataService)
 local StatsService = require(script.Parent.StatsService)
 
@@ -230,6 +231,7 @@ local function start(player: Player, machine: Machine)
 	sessions[player] = session
 	machine.occupant = player
 
+	AntiCheatService.Allow(player, 0, "TrainingService (placement sur la machine)") -- déplacement du code (DEV-060)
 	character:PivotTo(session.target)
 	StatsService.SetSpeedModifier(player, SPEED_MODIFIER, 0)
 	humanoid.AutoRotate = false

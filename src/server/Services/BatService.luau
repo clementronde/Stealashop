@@ -85,6 +85,7 @@ local Bat = require(Shared.Config.Bat)
 local Net = require(Shared.Net.Net)
 local CarryTypes = require(Shared.Types.Carry)
 
+local AntiCheatService = require(script.Parent.AntiCheatService)
 local CarryService = require(script.Parent.CarryService)
 local NightCycleService = require(script.Parent.NightCycleService)
 local StatsService = require(script.Parent.StatsService)
@@ -400,6 +401,7 @@ local function applyHit(hitter: Player, hitterRoot: BasePart, target: Candidate,
 		if dropId then
 			batDrops[dropId] = true
 		end
+		AntiCheatService.Allow(player, Bat.KnockbackDuration, "BatService (knockback)") -- poussée du code (DEV-060)
 		knockback(target.root, direction)
 		stun(player, "Knockback")
 		Net.Server.Notify:Fire(player, Bat.Messages.BoxKnockedDown, "Warning")
