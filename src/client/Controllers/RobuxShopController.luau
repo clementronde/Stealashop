@@ -32,8 +32,11 @@
 --     se mettent à jour chaque seconde tant que l'écran est ouvert ;
 --   - les cartes d'exemple de la maquette (Preview_*, à côté du Template) sont retirées de la copie du
 --     joueur, comme dans les boutiques d'armes et d'auras.
+-- Ouverture et fermeture animées (DEV-052) par UI/Motion, comme les boutiques d'armes et d'auras : les
+-- cartes sont retirées une fois l'écran éteint, et une réouverture pendant la fermeture la rattrape.
 -- Seuls sont touchés : Enabled de l'écran, les textes, la visibilité, le nom et l'ordre des cartes
--- clonées, l'image de Icon (2.2, « Libre pour Ironix ») ; jamais un style. Texte d'un élément : sur lui
+-- clonées, l'image de Icon (2.2, « Libre pour Ironix ») ; jamais un style (l'effet d'échelle de Motion
+-- est passager). Texte d'un élément : sur lui
 -- s'il en porte un, sinon dans son premier TextLabel ; en capitales si le texte d'exemple l'est
 -- (« ×2 CASH »). Le serveur décide tout (MonetizationService) : le client n'envoie rien, il ouvre la
 -- fenêtre d'achat de Roblox et affiche.
@@ -53,6 +56,7 @@ local Features = require(Config:WaitForChild("Features"))
 local Monetization = require(Config:WaitForChild("Monetization"))
 local Find = require(Shared:WaitForChild("Contract"):WaitForChild("Find"))
 local Format = require(Shared:WaitForChild("Format"))
+local Motion = require(script.Parent:WaitForChild("UI"):WaitForChild("Motion"))
 
 -- Onglet (Monetization.Tab), en texte : l'ancien solveur élargit ses valeurs d'un module à l'autre.
 type Tab = string
@@ -478,8 +482,10 @@ local function closeShop()
 	isOpen = false
 	local current = shop
 	if current then
-		current.gui.Enabled = false
-		clearCards(current)
+		-- Cartes retirées une fois l'écran éteint ; une réouverture d'ici là les reconstruit.
+		Motion.Close(current.gui, function()
+			clearCards(current)
+		end)
 	end
 end
 
@@ -572,7 +578,7 @@ local function openShop()
 	tab = chosenTab or (if starterOffered() then "Offers" else "Gamepasses")
 	isOpen = true
 	buildCards()
-	current.gui.Enabled = true
+	Motion.Open(current.gui)
 end
 
 local function toggleShop()
