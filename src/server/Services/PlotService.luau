@@ -122,6 +122,18 @@ local STREAM_TIMEOUT = 2
 -- StoreHeistService devant une vitrine), à 1 stud au moins des bords de la porte.
 local OUTSIDE_DISTANCE = 6
 local OUTSIDE_EDGE = 1
+-- Sortie hors du volume Bounds (voir outsideSpot) : pas de recherche, nombre de pas au plus, marge
+-- après le bord. V0 proposés, absents du doc.
+local OUTSIDE_STEP = 1
+local OUTSIDE_MAX_STEPS = 200
+local OUTSIDE_MARGIN = 2.5
+
+-- Le point est dans le volume (orienté) de la pièce.
+local function insideBox(part: BasePart, point: Vector3): boolean
+	local p = part.CFrame:PointToObjectSpace(point)
+	local h = part.Size / 2
+	return math.abs(p.X) <= h.X and math.abs(p.Y) <= h.Y and math.abs(p.Z) <= h.Z
+end
 local BOUNDS = "Bounds"
 
 -- Messages lus par le joueur (Notify), en anglais (L-036).
@@ -445,6 +457,21 @@ local function outsideSpot(plot: Model): (Vector3, Vector3)
 		halfWidth = math.max(extentAlong(cf, size, side) / 2 - OUTSIDE_EDGE, 0)
 	end
 	local spot = doorPosition + out * OUTSIDE_DISTANCE + side * ((math.random() * 2 - 1) * halfWidth)
+	-- Le point de sortie doit être hors du volume Bounds : dans la zone safe refaite par Clément
+	-- (2026-11-08), Bounds déborde de 12,5 studs devant la porte, et PvPService ressortait le joueur
+	-- 10 fois par seconde, en boucle (vu en Play par Ironix). On avance le long de `out` jusqu'à
+	-- quitter Bounds, à hauteur de torse, puis OUTSIDE_MARGIN de plus.
+	if bounds then
+		local probeY = doorPosition.Y + 3
+		local steps = 0
+		while steps < OUTSIDE_MAX_STEPS and insideBox(bounds, Vector3.new(spot.X, probeY, spot.Z)) do
+			spot += out * OUTSIDE_STEP
+			steps += 1
+		end
+		if steps > 0 then
+			spot += out * OUTSIDE_MARGIN
+		end
+	end
 	return Vector3.new(spot.X, groundY(spot, doorPosition.Y), spot.Z), out
 end
 
