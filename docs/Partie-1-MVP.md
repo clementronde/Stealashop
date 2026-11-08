@@ -304,7 +304,7 @@ Deux stats permanentes, entraînées dans sa propre parcelle.
 3. **Casse** : à 0 PV, séquence de casse (5.4) et chrono de 10 s affiché en grand.
 4. **Pillage** : 10 colis par magasin. 6 Standard sur les rayons avant (prise en 0,3 s), 3 Premium au milieu (0,6 s), 1 Luxe dans la réserve du fond (1,0 s). Un seul colis porté à la fois.
 5. **Fuite** : dès qu'un colis est soulevé, le vigile sort de la réserve (5.5). Le chrono ne compte plus pour ce joueur.
-6. **Fermeture** : à 10 s, le rideau métallique tombe. Les joueurs encore dedans sans colis sont éjectés devant l'entrée.
+6. **Fermeture** : à 10 s, plus aucune prise, et les joueurs encore dedans sans colis sont éjectés devant l'entrée. Le rideau métallique tombe dès que plus personne ne doit sortir : ni voleur avec un colis, ni vigile dans le magasin, sinon le vigile resterait enfermé (décision d'Ironix du 2026-11-08, liaison L-064).
 7. **Reconstruction** : la vitrine se reconstruit 20 s après la fermeture, mais les colis pris ne reviennent pas : les rayons ne se remplissent qu'à la nuit (section 5.12). Les magasins se vident donc au fil de la journée.
 8. **Multijoueur (proposition, à valider en section 15)** : la vitrine est partagée. Une fois cassée, tout le monde peut entrer pendant les 10 s ; le casseur a 1 s d'avance exclusive.
 
