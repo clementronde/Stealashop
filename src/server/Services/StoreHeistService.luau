@@ -55,10 +55,14 @@
 --     le BB_Box du colis porté, construit par CarryService d'après le payload, montre alors le
 --     contenu remplacé. Le colis du rayon, lui, garde le sien : s'il revient (porteur rattrapé),
 --     c'est avec son contenu d'origine. TutorialService (pas encore écrit) posera cette accroche.
---   - Fermeture, à la fin du chrono : plus aucune prise ; le rideau `Shutter` tombe (il descend
---     de sa propre hauteur, comme dans la greybox) ; les joueurs dedans sans colis sont sortis
---     devant la vitrine, avec un Notify. Tant que le magasin est fermé, un joueur sans colis qui
---     se retrouve dans le volume Bounds en est sorti de la même façon (pas de camping dedans).
+--   - Fermeture, à la fin du chrono : plus aucune prise ; les joueurs dedans sans colis sont
+--     sortis devant la vitrine, avec un Notify. Tant que le magasin est fermé, un joueur sans
+--     colis qui se retrouve dans le volume Bounds en est sorti de la même façon (pas de camping
+--     dedans). Le rideau `Shutter` tombe (il descend de sa propre hauteur, comme dans la greybox)
+--     dès que plus personne ne doit sortir : ni joueur qui porte un colis, ni vigile (les modèles
+--     de Workspace/ActiveGuards, GuardService) dans le volume Bounds. Décision d'Ironix du
+--     2026-11-08 : un rideau tombé à 10 s pile enfermait le vigile, qui ne pouvait plus poursuivre
+--     le voleur sorti juste avant.
 --   - Reconstruction : WindowService reconstruit la vitrine 20 s après la fermeture (30 s après
 --     la casse). Le rideau remonte alors, et tout joueur encore dedans est sorti, colis gardé
 --     (sinon il serait enfermé derrière la vitre).
@@ -231,6 +235,7 @@ type Store = {
 	ShutterOpen: CFrame,
 	ShutterClosed: CFrame,
 	ShutterDown: boolean,
+	ShutterPending: boolean, -- fermé, vitrine cassée : le rideau attend que tout le monde soit sorti
 	ShutterToken: number,
 	StopShutter: (() -> ())?,
 	Slots: { Slot },
@@ -261,6 +266,7 @@ local INBOX_NAME = "_INBOX_CLEMENT" -- livraisons pas encore posées : ignorées
 local SLOT_FORMAT = "ShelfSlot_%02d" -- contrat 10.4
 local BOUNDS_NAME = "Bounds"
 local SHUTTER_NAME = "Shutter"
+local GUARDS_FOLDER = "ActiveGuards" -- vigiles en jeu, posés par GuardService dans le Workspace
 local WINDOW_NAME = "Window"
 local ASSETS_NAME = "Assets" -- ReplicatedStorage/Assets et ServerStorage/Assets (Clément, 9.2)
 local BOX_PREFIX = "BOX_" -- BOX_Standard, BOX_Premium, BOX_Luxe (10.3, Contract/Models)
@@ -293,9 +299,9 @@ local GRAB_TIME_TOLERANCE = 0.1
 -- V0 proposé, absent du doc : un maintien non conclu expire 1 s après sa durée.
 local HOLD_EXPIRY = 1
 -- V0 proposé, absent du doc : rideau. Il tombe en 0,4 s, remonte en 0,8 s, et reste
--- franchissable 3 s après sa chute : un joueur qui a pris un colis dans les dernières
--- secondes, et son vigile, peuvent encore sortir. Un joueur sans colis qui entre pendant ce
--- temps est sorti comme les autres.
+-- franchissable 3 s après sa chute : il ne tombe qu'une fois le porteur et son vigile sortis
+-- (voir l'en-tête), juste derrière eux, et ne les pousse pas. Un joueur sans colis qui entre
+-- pendant ce temps est sorti comme les autres.
 local SHUTTER_FALL_TIME = 0.4
 local SHUTTER_RISE_TIME = 0.8
 local SHUTTER_EXIT_GRACE = 3
@@ -957,6 +963,50 @@ local function ejectInside(store: Store, everyone: boolean): { Player }
 	return moved
 end
 
+-- Ce qui retient le rideau (voir l'en-tête) : un joueur qui porte un colis ou un vigile dans le
+-- volume Bounds, décrit pour la sortie ; nil si plus personne ne doit sortir.
+local function shutterBlocker(store: Store): string?
+	local bounds = store.Bounds
+	if bounds == nil then
+		return nil
+	end
+	for _, player in Players:GetPlayers() do
+		local root = rootOf(player)
+		if root and isCarrying(player) and inside(bounds, root.Position) then
+			return `{player.Name} porte un colis`
+		end
+	end
+	local guards = Workspace:FindFirstChild(GUARDS_FOLDER)
+	if guards then
+		for _, guard in guards:GetChildren() do
+			local root = if guard:IsA("Model") then guard:FindFirstChild("HumanoidRootPart") else nil
+			if root and root:IsA("BasePart") and inside(bounds, root.Position) then
+				return `vigile {guard.Name}`
+			end
+		end
+	end
+	return nil
+end
+
+-- Rideau en attente : il tombe dès que plus personne ne doit sortir. Renvoie true s'il vient de
+-- tomber, sinon false et ce qui le retient encore (nil s'il n'y a plus rien à attendre).
+local function lowerWhenClear(store: Store): (boolean, string?)
+	if not store.ShutterPending then
+		return false, nil
+	end
+	if store.Open or not WindowService.IsBroken(store.Id) then
+		store.ShutterPending = false
+		return false, nil
+	end
+	local blocker = shutterBlocker(store)
+	if blocker then
+		return false, blocker
+	end
+	store.ShutterPending = false
+	lowerShutter(store)
+	return true, nil
+end
+
 -- Chrono -----------------------------------------------------------------------------------------
 
 local function hideTimer(store: Store, player: Player)
@@ -1007,8 +1057,9 @@ local function setHeistAttributes(store: Store)
 	end
 end
 
--- Ferme le magasin : plus de prise, chrono masqué, rideau baissé si la vitrine est cassée,
--- joueurs sans colis sortis, puis nouveau tirage si RefillAll est passé pendant le chrono.
+-- Ferme le magasin : plus de prise, chrono masqué, joueurs sans colis sortis, rideau baissé si la
+-- vitrine est cassée (tout de suite, ou dès que porteurs et vigiles sont sortis), puis nouveau
+-- tirage si RefillAll est passé pendant le chrono.
 local function closeStore(store: Store)
 	if not store.Open then
 		return
@@ -1021,14 +1072,17 @@ local function closeStore(store: Store)
 	for player in table.clone(store.Viewers) do
 		hideTimer(store, player)
 	end
-	if WindowService.IsBroken(store.Id) then
-		lowerShutter(store)
-	end
+	store.ShutterPending = WindowService.IsBroken(store.Id)
 	local moved = ejectInside(store, false)
 	for _, player in moved do
 		Net.Server.Notify:Fire(player, MESSAGES.Closed, "Warning")
 	end
-	log(`{store.Id} fermé, rideau baissé ; {#moved} joueur(s) sans colis sorti(s)`)
+	local _, blocker = lowerWhenClear(store)
+	local shutterText = if store.ShutterDown
+		then "rideau baissé"
+		elseif blocker then `rideau baissé dès que plus personne n'est dedans (pour l'instant : {blocker})`
+		else "vitrine intacte, rideau levé"
+	log(`{store.Id} fermé, {shutterText} ; {#moved} joueur(s) sans colis sorti(s)`)
 	if store.RefillPending then
 		log(`{store.Id} : remplissage reporté à la fermeture, {fillStore(store)} colis répartis au hasard`)
 	end
@@ -1045,6 +1099,7 @@ local function openStore(store: Store, breaker: Player?)
 	store.Breaker = if breaker and breaker.Parent == Players then breaker else nil
 	store.ExclusiveUntil = os.clock() + Balance.Heist.BreakerHeadStart
 	store.EndsAt = Workspace:GetServerTimeNow() + duration
+	store.ShutterPending = false
 	raiseShutter(store, true) -- au cas où il serait resté baissé
 	setHeistAttributes(store)
 	local first = store.Breaker
@@ -1390,6 +1445,7 @@ local function register(instance: Instance)
 		ShutterOpen = CFrame.identity,
 		ShutterClosed = CFrame.identity,
 		ShutterDown = false,
+		ShutterPending = false,
 		ShutterToken = 0,
 		StopShutter = nil,
 		Slots = {},
@@ -1496,6 +1552,9 @@ local function step()
 			for _, player in ejectInside(store, false) do
 				log(`{player.Name} sorti de {store.Id} (magasin fermé)`)
 			end
+			if store.ShutterPending and lowerWhenClear(store) then
+				log(`{store.Id} : rideau baissé, porteurs et vigiles sortis`)
+			end
 		end
 	end
 end
@@ -1517,6 +1576,7 @@ local function onRebuilt(_windowId: string, model: Model)
 		return
 	end
 	closeStore(store) -- vitrine reconstruite avant la fin du chrono (WindowService.Rebuild)
+	store.ShutterPending = false
 	raiseShutter(store, false)
 	for _, player in ejectInside(store, true) do
 		log(`{player.Name} sorti de {store.Id} : la vitrine est reconstruite`)
