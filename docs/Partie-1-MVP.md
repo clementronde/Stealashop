@@ -1047,7 +1047,7 @@ Chaque étape est envoyée une seule fois par joueur avec `AnalyticsService:LogO
 
 **Économie** : chaque gain (revenus, quotidien, code, Robux) et chaque dépense (outil, amélioration, défense) part avec `LogEconomyEvent`. **Événements custom** : vol PvP réussi ou raté, colis volé à la batte dans le couloir, capture par un vigile (par zone), achat de défense.
 
-**Codé (DEV-054, 2026-11-08)** : `TelemetryService`, noms en anglais dans `Config/Telemetry`, monnaie `Cash`. Revenus encaissés regroupés par joueur, un envoi par minute au plus (limite de Roblox : 120 + 20 × joueurs requêtes par minute et par serveur) ; achats (`Tool`, `Upgrade` avec `Level - n`, `Aura`, `Trail`) en dépense Shop. Événements custom : `PvPTheftSuccess`, `PvPTheftFail` (avec `Reason`), `BatBoxKnockdown`, `GuardCatch` (avec `Zone` et `Phase`) ; `DefenseBought` attend les défenses. Champs au format « Dimension - valeur ». Un interrupteur coupe tout, funnel compris.
+**Codé (DEV-054, 2026-11-08)** : `TelemetryService`, noms en anglais dans `Config/Telemetry`, monnaie `Cash`. Revenus encaissés regroupés par joueur, un envoi par minute au plus (limite de Roblox : 120 + 20 × joueurs requêtes par minute et par serveur) ; achats (`Tool`, `Upgrade` avec `Level - n`, `Aura`, `Trail`) en dépense Shop. Événements custom : `PvPTheftSuccess`, `PvPTheftFail` (avec `Reason`), `BatBoxKnockdown`, `GuardCatch` (avec `Zone` et `Phase` ; une capture de nuit sans colis compte aussi, avec `Rarity - None`) ; `DefenseBought` attend les défenses. Champs au format « Dimension - valeur ». Un interrupteur coupe tout, funnel compris.
 
 ### 14.3 Risques
 
