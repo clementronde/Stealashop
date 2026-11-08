@@ -40,9 +40,15 @@
 --     le relâche quand l'écran a montré le revenu de l'objet. Pendant ce temps, Income garde la
 --     valeur d'avant l'objet ; rien ne change côté serveur (argent et sauvegarde). Plusieurs
 --     ouvertures d'affilée : chacune montre la hausse de son objet, dans l'ordre.
+--   - Animations (DEV-052, module UI/Motion, valeurs dans Config/UiMotion) : Cash et Income
+--     défilent de l'ancienne valeur à la nouvelle (Motion.Roll), au même format ; au premier
+--     remplissage, la valeur s'écrit d'un coup. Le revenu retenu ne défile qu'à son relâchement,
+--     donc à la révélation de l'objet (DEV-050). HeistTimer et GuardMeter apparaissent et
+--     disparaissent par Motion.Show et Motion.Hide (un UIScale passager, créé et retiré par Motion).
 -- Les éléments sont cherchés par leur nom parmi les descendants de l'écran (Contract/Find) : les
 -- cadres autour (LeftRail, StatsPanel…) sont décoratifs et peuvent changer. Seuls les textes, la
--- visibilité et la largeur de Fill sont touchés (2.2, « Libre pour Ironix »), jamais un style.
+-- visibilité et la largeur de Fill sont touchés (2.2, « Libre pour Ironix »), jamais un style ;
+-- les effets de Motion sont passagers.
 -- Roblox copie UI_HUD de StarterGui dans PlayerGui ; un écran recréé (ResetOnSpawn) est rebranché.
 --
 -- API (client) :
@@ -68,6 +74,7 @@ local Night = require(Config:WaitForChild("Night"))
 local Find = require(Shared:WaitForChild("Contract"):WaitForChild("Find"))
 local Format = require(Shared:WaitForChild("Format"))
 local MarkerSounds = require(Shared:WaitForChild("Anim"):WaitForChild("MarkerSounds"))
+local Motion = require(script.Parent:WaitForChild("UI"):WaitForChild("Motion"))
 
 -- Ce que ce contrôleur utilise de HeistController (a10) et de ChaseController (a12).
 type HeistApi = {
@@ -84,12 +91,14 @@ type Stat = {
 	Attribute: string, -- attribut du Player, posé par le serveur
 	Element: string, -- TextLabel du contrat 2.2
 	Write: (value: number) -> string,
+	Roll: boolean, -- le nombre défile d'une valeur à l'autre (DEV-052)
 }
 
 -- Écran branché.
 type Hud = {
 	gui: ScreenGui,
 	stats: { [Stat]: TextLabel },
+	written: { [Stat]: number }, -- dernier nombre écrit (départ du défilement) ; absent = premier remplissage
 	heistTimer: TextLabel?,
 	guardMeter: GuiObject?,
 	fill: GuiObject?,
@@ -103,11 +112,11 @@ type Hud = {
 local SCREEN = "UI_HUD"
 
 local STATS: { Stat } = {
-	{ Attribute = "Cash", Element = "Cash", Write = Format.money },
-	{ Attribute = "Income", Element = "Income", Write = Format.income },
-	{ Attribute = "WalkSpeed", Element = "Speed", Write = Format.short }, -- vitesse de marche, pas les points
-	{ Attribute = "Strength", Element = "Strength", Write = Format.short },
-	{ Attribute = "Damage", Element = "Damage", Write = Format.short },
+	{ Attribute = "Cash", Element = "Cash", Write = Format.money, Roll = true },
+	{ Attribute = "Income", Element = "Income", Write = Format.income, Roll = true },
+	{ Attribute = "WalkSpeed", Element = "Speed", Write = Format.short, Roll = false }, -- vitesse de marche, pas les points
+	{ Attribute = "Strength", Element = "Strength", Write = Format.short, Roll = false },
+	{ Attribute = "Damage", Element = "Damage", Write = Format.short, Roll = false },
 }
 
 local INCOME_ATTRIBUTE = "Income" -- posé par DisplayService ; retenu par HoldIncome
@@ -239,11 +248,20 @@ end
 local function writeStat(stat: Stat)
 	local current = hud
 	local label = if current then current.stats[stat] else nil
-	if label == nil then
+	if current == nil or label == nil then
 		return
 	end
 	local value = if stat == INCOME_STAT then shownIncome() else localPlayer:GetAttribute(stat.Attribute)
-	label.Text = if type(value) == "number" then stat.Write(value) else UNKNOWN_TEXT
+	if type(value) ~= "number" then
+		Motion.StopRoll(label)
+		current.written[stat] = nil
+		label.Text = UNKNOWN_TEXT
+	elseif stat.Roll then
+		Motion.Roll(label, current.written[stat], value, stat.Write)
+		current.written[stat] = value
+	else
+		label.Text = stat.Write(value)
+	end
 end
 
 local function releaseHold(hold: IncomeHold)
@@ -313,9 +331,9 @@ local function updateHeistTimer(current: Hud)
 	shownSeconds = seconds
 	if seconds then
 		label.Text = timerText(seconds)
-		label.Visible = true
+		Motion.Show(label)
 	else
-		label.Visible = false
+		Motion.Hide(label)
 	end
 end
 
@@ -341,7 +359,11 @@ local function updateGuardMeter(current: Hud)
 		chased = active
 		local meter = current.guardMeter
 		if meter then
-			meter.Visible = active
+			if active then
+				Motion.Show(meter)
+			else
+				Motion.Hide(meter)
+			end
 		end
 		if active then
 			setFill(current, 0) -- jusqu'à la première mesure
@@ -507,6 +529,7 @@ local function bind(gui: ScreenGui)
 	hud = {
 		gui = gui,
 		stats = stats,
+		written = {},
 		heistTimer = heistTimer,
 		guardMeter = meter,
 		fill = fill,

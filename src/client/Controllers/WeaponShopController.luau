@@ -19,11 +19,14 @@
 --     OwnedTools et EquippedTool du Player (ShopService) : elle se met à jour après chaque achat
 --     ou équipement ;
 --   - CloseButton ferme l'écran ; il se ferme aussi quand le joueur s'éloigne du comptoir, meurt
---     ou réapparaît.
+--     ou réapparaît. Ouverture et fermeture animées (DEV-052) par UI/Motion : Motion.Open et
+--     Motion.Close allument et éteignent l'écran ; une invite déclenchée pendant la fermeture la
+--     rattrape.
 -- Les éléments sont cherchés par leur nom parmi les descendants (Contract/Find). Tant que l'écran
 -- manque (UI-002 pas encore livré), le contrôleur attend sans erreur, avec une seule ligne dans la
 -- sortie en Studio. Un écran recréé (ResetOnSpawn) est rebranché. Seuls les textes, la visibilité,
--- les lignes clonées et ScreenGui.Enabled sont touchés (2.2, « Libre pour Ironix »), jamais un style.
+-- les lignes clonées et ScreenGui.Enabled sont touchés (2.2, « Libre pour Ironix »), jamais un style ;
+-- l'effet d'échelle de Motion est passager.
 --
 -- API (client) : aucune.
 
@@ -38,6 +41,7 @@ local Config = Shared:WaitForChild("Config")
 local Tools = require(Config:WaitForChild("Tools"))
 local Find = require(Shared:WaitForChild("Contract"):WaitForChild("Find"))
 local Format = require(Shared:WaitForChild("Format"))
+local Motion = require(script.Parent:WaitForChild("UI"):WaitForChild("Motion"))
 
 type ToolDef = Tools.Tool
 
@@ -175,7 +179,7 @@ local function close()
 	openAnchor = nil
 	local current = screen
 	if current then
-		current.gui.Enabled = false
+		Motion.Close(current.gui)
 	end
 end
 
@@ -186,7 +190,7 @@ local function open(anchor: Instance)
 	end
 	openAnchor = anchor
 	refreshRows()
-	current.gui.Enabled = true
+	Motion.Open(current.gui)
 end
 
 local function onBuy(tool: ToolDef)
