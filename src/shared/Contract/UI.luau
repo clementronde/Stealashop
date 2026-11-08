@@ -293,6 +293,7 @@ table.insert(UI.Screens, {
 		{ Path = "List.Template.ItemName" },
 		{ Path = "List.Template.Rays" },
 		{ Path = "List.Template.Glow" },
+		{ Path = "List.Template.RarityBar.Rarity" }, -- nom de la rareté, écrit par le code (vu en Play le 2026-11-08)
 	},
 })
 

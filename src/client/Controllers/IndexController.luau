@@ -297,6 +297,13 @@ local function buildCards(current: Screen)
 				(tinted :: any).ImageColor3 = color
 			end
 		end
+		-- Nom de la rareté dans la bande du bas (RarityBar.Rarity, « COMMON » sur le modèle de Clément),
+		-- découvert ou pas : la silhouette garde sa rareté (doc 3.4). Vu en Play le 2026-11-08 : toutes
+		-- les cartes disaient « COMMON », le Pot de nouilles (Rare) compris.
+		local rarity = Rarities.ById[item.Rarity]
+		if rarity then
+			setText(Find.path(frame, "RarityBar.Rarity"), rarity.DisplayNameUpper)
+		end
 		local icon = Find.path(frame, "Icon")
 		local card: Card = {
 			item = item,
