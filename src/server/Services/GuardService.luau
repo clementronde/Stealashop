@@ -138,6 +138,7 @@ local AnimPlayer = require(Shared.Anim.AnimPlayer)
 local MarkerSounds = require(Shared.Anim.MarkerSounds)
 local Net = require(Shared.Net.Net)
 
+local AntiCheatService = require(script.Parent.AntiCheatService)
 local StatsService = require(script.Parent.StatsService)
 
 -- Ce que ce service utilise de CarryService (DEV-017), qui ne requiert jamais GuardService.
@@ -1005,6 +1006,7 @@ local function knockback(player: Player, from: Vector3)
 		away = flat(root.CFrame.LookVector)
 	end
 	local direction = if away.Magnitude > 1e-3 then away.Unit else Vector3.new(0, 0, 1)
+	AntiCheatService.Allow(player, KNOCKBACK_DURATION, "GuardService (coup du vigile)") -- poussée du code (DEV-060)
 	local attachment = Instance.new("Attachment")
 	attachment.Name = KNOCKBACK_NAME
 	local mover = Instance.new("LinearVelocity")

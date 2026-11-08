@@ -51,6 +51,8 @@
 --       largeur de la porte, tourné vers l'extérieur (du centre de Bounds vers la porte). Il garde ce
 --       qu'il porte (le colis ou l'objet est soudé à sa tête). Sans yield ; false sans personnage
 --       vivant. Qui sortir et quand : PvPService.
+--   Chaque déplacement de ce service (placement à l'apparition, TeleportHome, PutOutside) est déclaré
+--   juste avant à AntiCheatService.Allow (DEV-060) : jamais pris pour un téléport.
 --
 -- Exemple (dans un autre service) :
 --   local PlotService = require(script.Parent.PlotService)
@@ -70,6 +72,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
+local AntiCheatService = require(script.Parent.AntiCheatService)
 local DataService = require(script.Parent.DataService)
 local Find = require(ReplicatedStorage.Shared.Contract.Find)
 local Models = require(ReplicatedStorage.Shared.Contract.Models)
@@ -469,6 +472,7 @@ local function moveCharacter(player: Player, character: Model, plot: Model, canM
 		return false
 	end
 
+	AntiCheatService.Allow(player, 0, "PlotService (sur sa parcelle)") -- déplacement du code (DEV-060)
 	-- Le pivot d'un personnage standard est son HumanoidRootPart ; le décalage couvre les autres cas.
 	character:PivotTo(target * rootPart.CFrame:ToObjectSpace(character:GetPivot()))
 	rootPart.AssemblyLinearVelocity = Vector3.zero
@@ -674,6 +678,7 @@ function PlotService.PutOutside(player: Player, plot: Model): boolean
 	local hip = if humanoid.RigType == Enum.HumanoidRigType.R15 then humanoid.HipHeight else 2
 	local position = ground + Vector3.new(0, hip + rootPart.Size.Y / 2 + SPAWN_LIFT, 0)
 	local target = CFrame.lookAt(position, position + out)
+	AntiCheatService.Allow(player, 0, "PlotService.PutOutside") -- déplacement du code (DEV-060)
 	character:PivotTo(target * rootPart.CFrame:ToObjectSpace(character:GetPivot()))
 	rootPart.AssemblyLinearVelocity = Vector3.zero
 	rootPart.AssemblyAngularVelocity = Vector3.zero

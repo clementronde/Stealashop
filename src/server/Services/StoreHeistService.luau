@@ -148,6 +148,7 @@ local Zones = require(Shared.Config.Zones)
 local Attributes = require(Shared.Contract.Attributes)
 local Net = require(Shared.Net.Net)
 
+local AntiCheatService = require(script.Parent.AntiCheatService)
 local WindowService = require(script.Parent.WindowService)
 
 export type NPCBoxPayload = {
@@ -932,6 +933,7 @@ local function moveOut(store: Store, player: Player, root: BasePart, humanoid: H
 	local hip = if humanoid.RigType == Enum.HumanoidRigType.R15 then humanoid.HipHeight else 2
 	local position = ground + Vector3.new(0, hip + root.Size.Y / 2 + EJECT_LIFT, 0)
 	local target = CFrame.lookAt(position, position + out)
+	AntiCheatService.Allow(player, 0, "StoreHeistService (sortie du magasin)") -- déplacement du code (DEV-060)
 	character:PivotTo(target * root.CFrame:ToObjectSpace(character:GetPivot()))
 	root.AssemblyLinearVelocity = Vector3.zero
 	root.AssemblyAngularVelocity = Vector3.zero
