@@ -71,12 +71,13 @@
 -- MIGRATIONS[3]) ; v4 (2026-11-08, DEV-111) = index des objets : Index[ItemId] = date de la
 -- découverte (IndexService), les objets déjà possédés comptés comme découverts (voir MIGRATIONS[4]) ;
 -- v5 (2026-11-08, L-086) = colis posés sur les présentoirs : Boxes rangé par numéro de présentoir, file
--- BoxQueue des colis sans présentoir (voir MIGRATIONS[5]).
--- Nouvelle version du schéma (ex. v6 de la Partie 2) :
+-- BoxQueue des colis sans présentoir (voir MIGRATIONS[5]) ; v6 (2026-11-08, DEV-102) = gains hors ligne :
+-- Offline = heure et revenu de la dernière présence (OfflineService ; voir MIGRATIONS[6]).
+-- Nouvelle version du schéma (ex. v7 de la Partie 2) :
 --   1. ajouter les champs dans Types/Profile et dans TEMPLATE ci-dessous ;
---   2. ajouter MIGRATIONS[6] (transforme un profil v5 en v6 ; ce qui est seulement
+--   2. ajouter MIGRATIONS[7] (transforme un profil v6 en v7 ; ce qui est seulement
 --      nouveau est complété depuis TEMPLATE, inutile de le recopier) ;
---   3. passer CURRENT_VERSION à 6.
+--   3. passer CURRENT_VERSION à 7.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -118,14 +119,14 @@ local STORE_NAME = "PlayerData"
 local DEFAULT_WAIT_TIMEOUT = 60
 
 -- Version courante du schéma de sauvegarde (section 9.5 ; v2 : catalogue d'objets v2 ; v3 : boutique
--- Robux ; v4 : index des objets ; v5 : colis sur les présentoirs).
-local CURRENT_VERSION = 5
+-- Robux ; v4 : index des objets ; v5 : colis sur les présentoirs ; v6 : gains hors ligne).
+local CURRENT_VERSION = 6
 
 -- Attribut du Player lu par le HUD (même nom dans HudController).
 local CASH_ATTRIBUTE = "Cash"
 
--- Modèle d'un nouveau profil, schéma v5 (forme de la section 9.5, plus la boutique Robux, l'index et la
--- file des colis à poser).
+-- Modèle d'un nouveau profil, schéma v6 (forme de la section 9.5, plus la boutique Robux, l'index, la
+-- file des colis à poser et les gains hors ligne).
 -- Il sert aussi à compléter les champs manquants d'un profil existant (Profile:Reconcile de
 -- ProfileStore).
 local TEMPLATE: Data = {
@@ -146,6 +147,7 @@ local TEMPLATE: Data = {
 	Monetization = { Passes = {}, StarterPack = false, OpenNowCredit = 0 }, -- v3
 	Boosts = { Cash = 0 }, -- v3
 	Index = {}, -- v4 : [ItemId] = os.time() de la découverte (IndexService)
+	Offline = { LastSeenAt = 0, Income = 0 }, -- v6 : 0 = heure inconnue, aucun gain hors ligne (OfflineService)
 }
 
 -- Journal d'une migration : chaque ligne part dans la sortie, préfixée du joueur et de sa clé.
@@ -382,6 +384,30 @@ local function migrateToV5(data: any, log: MigrationLog)
 	data.BoxQueue = queue
 end
 
+-- v5 → v6 (gains hors ligne, 2026-11-08, DEV-102 ; OfflineService). Offline est nouveau : complété depuis
+-- TEMPLATE (LastSeenAt = 0, heure inconnue : aucun gain hors ligne au premier retour, puisqu'on ne sait
+-- pas depuis quand le joueur est parti). Rien d'autre ne change. Un Offline déjà là (jamais écrit avant
+-- la v6) garde ses valeurs lisibles (nombres finis ≥ 0) ; une valeur illisible repart à 0, un Offline qui
+-- n'est pas une table repart du modèle, avec un avertissement.
+local function migrateToV6(data: any, log: MigrationLog)
+	local offline = data.Offline
+	if offline == nil then
+		return -- complété depuis TEMPLATE
+	end
+	if type(offline) ~= "table" then
+		log(`Offline n'est pas une table ({tostring(offline)}) : repart du modèle (aucun gain hors ligne au retour)`, true)
+		data.Offline = { LastSeenAt = 0, Income = 0 }
+		return
+	end
+	for _, field in { "LastSeenAt", "Income" } do
+		local value = offline[field]
+		if value ~= nil and not (type(value) == "number" and value == value and value >= 0 and value < math.huge) then
+			log(`Offline.{field} illisible ({tostring(value)}) : remis à 0`, true)
+			offline[field] = 0
+		end
+	end
+end
+
 -- MIGRATIONS[n] fait passer un profil de la version n - 1 à la version n, en place, et écrit ce
 -- qu'elle change avec `log`. Un profil sans Version est traité comme une version 0. La v1 est la
 -- première : rien à transformer, Reconcile complète tout depuis TEMPLATE. Les champs seulement
@@ -392,6 +418,7 @@ local MIGRATIONS: { [number]: (data: any, log: MigrationLog) -> () } = {
 	[3] = migrateToV3,
 	[4] = migrateToV4,
 	[5] = migrateToV5,
+	[6] = migrateToV6,
 }
 
 -- Messages d'expulsion, lus par le joueur : en anglais (L-036).

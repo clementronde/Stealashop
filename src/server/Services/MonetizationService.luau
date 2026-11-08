@@ -86,6 +86,9 @@
 --   MonetizationService.HasPass(player, key) -> boolean  gamepass possédé (clé de Config/Monetization)
 --   MonetizationService.GetIncomeMultiplier(player) -> number
 --       Part de la boutique Robux dans le M global (Premium, ×2 Argent, boost) ; 1 si elle est coupée.
+--   MonetizationService.GetTemporaryIncomeMultiplier(player) -> number
+--       Part temporaire de ce M global : le boost ×2 argent s'il est en cours, sinon 1 (1 si la boutique
+--       est coupée). Pour les gains hors ligne (DEV-102, OfflineService), qui ne comptent pas les boosts.
 --   MonetizationService.AddCashBoost(player, seconds) -> boolean
 --       Boost ×2 argent : prolonge celui en cours de `seconds` (pour les récompenses, DEV-101) ; false
 --       si la boutique est coupée, le profil pas chargé ou la durée invalide. Sans yield.
@@ -833,6 +836,13 @@ end
 
 function MonetizationService.GetIncomeMultiplier(player: Player): number
 	return (1 + incomeBonus(player)) * incomeMultiplier(player)
+end
+
+function MonetizationService.GetTemporaryIncomeMultiplier(player: Player): number
+	if enabled and boostActive(player) then
+		return Monetization.CashBoost.Multiplier
+	end
+	return 1
 end
 
 function MonetizationService.AddCashBoost(player: Player, seconds: number): boolean

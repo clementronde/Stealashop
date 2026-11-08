@@ -1,11 +1,12 @@
 --!strict
 -- Type du profil sauvegardé d'un joueur (ReplicatedStorage/Shared/Types/Profile).
--- Schéma v5 : la forme de la v1 (section 9.5 de la Partie 1), avec les ItemId du catalogue
+-- Schéma v6 : la forme de la v1 (section 9.5 de la Partie 1), avec les ItemId du catalogue
 -- d'objets v2 (Config/Items, liaison L-045 ; DataService, MIGRATIONS[2], renomme ou remplace ceux
 -- de la v1), et, en v3 (DEV-100, boutique Robux de la Partie 2), Monetization et Boosts, et la date
 -- du don dans Purchases (MIGRATIONS[3]) ; en v4 (DEV-111, index des objets de la Partie 2), Index
 -- (MIGRATIONS[4]) ; en v5 (L-086, colis posés sur les présentoirs), Boxes rangé par numéro de
--- présentoir et BoxQueue (MIGRATIONS[5]). Valeurs de départ dans DataService.
+-- présentoir et BoxQueue (MIGRATIONS[5]) ; en v6 (DEV-102, gains hors ligne), Offline (MIGRATIONS[6]).
+-- Valeurs de départ dans DataService.
 -- Ce module ne contient que des types : on l'utilise avec
 --   local ProfileTypes = require(ReplicatedStorage.Shared.Types.Profile)
 --   local data: ProfileTypes.Data = ...
@@ -92,6 +93,16 @@ export type Boosts = {
 	Cash: number, -- boost ×2 argent (pack de départ ; récompenses plus tard)
 }
 
+-- Gains hors ligne (v6, DEV-102 ; OfflineService, Config/Offline). Écrit par le serveur seulement :
+-- au départ du joueur et toutes les Offline.SnapshotInterval s de jeu (un serveur qui plante ne fait
+-- pas perdre l'absence).
+export type Offline = {
+	LastSeenAt: number, -- os.time() de la dernière présence en jeu ; 0 = inconnue (profil d'avant la v6,
+	-- profil neuf) : aucun gain hors ligne au retour
+	Income: number, -- $/s de la boutique à ce moment : objets exposés × bonus permanents, sans les
+	-- boosts temporaires (au retour : absence × Income × Offline.Rate)
+}
+
 -- Profil complet, clé ProfileStore « Player_<UserId> ».
 export type Data = {
 	Version: number,
@@ -116,9 +127,10 @@ export type Data = {
 	Index: { [string]: number }, -- v4 : [ItemId] = os.time() de sa découverte, la 1re fois que le
 	-- joueur l'a possédé (IndexService ; Config/Index). Jamais retiré : un objet volé, remis ou perdu
 	-- reste découvert. La migration v3 → v4 y met les objets déjà possédés (DataService, MIGRATIONS[4])
-	-- Partie 2 : Defenses, Rebirths, Rewards, ajoutés par migration (Version = 6 et suivantes : la v2
+	Offline: Offline, -- v6 : heure et revenu de la dernière présence, pour les gains hors ligne (DEV-102)
+	-- Partie 2 : Defenses, Rebirths, Rewards, ajoutés par migration (Version = 7 et suivantes : la v2
 	-- est prise par le catalogue d'objets v2, la v3 par la boutique Robux, la v4 par l'index, la v5 par
-	-- les colis sur les présentoirs).
+	-- les colis sur les présentoirs, la v6 par les gains hors ligne).
 }
 
 return {}

@@ -100,6 +100,11 @@
 --       listener(player, amount, source) après chaque encaissement : source = "Pad" (CashPad),
 --       "Leave" (départ du joueur), "Api" (CashOut) ou "Auto" (encaissement automatique, plus bas).
 --       Pour le tutoriel et la télémétrie (« Premier encaissement », 14.2).
+--   DisplayService.AddOfflineEarnings(player, amount) -> boolean
+--       Gains hors ligne (DEV-102, OfflineService) : ajoute `amount` $ (nombre fini > 0, centimes
+--       compris) à la caisse du joueur, qu'il encaisse ensuite comme le reste. Sans parcelle pour
+--       l'instant, l'argent attend dans son compte (encaissé à son départ s'il n'a toujours pas de
+--       parcelle). false si le profil n'est pas chargé ou le montant invalide. Sans yield.
 --
 -- Points d'accroche de la boutique Robux (DEV-100, Partie 2, 4.1 ; MonetizationService les
 -- remplace en gardant ceux d'avant) et de l'index (DEV-111, IndexService). Par défaut : le MVP, sans
@@ -139,7 +144,8 @@
 --     donne des dollars entiers, les centimes restent dans la caisse ;
 --   - départ du joueur : sa caisse est encaissée automatiquement dans son argent, juste avant la
 --     sauvegarde (DataService.OnProfileReleasing). Il ne perd pas ce qu'il a gagné, et aucun
---     champ n'est ajouté au schéma 9.5. Pas de revenus hors ligne (Partie 2) ;
+--     champ n'est ajouté au schéma 9.5. Les revenus hors ligne (DEV-102) viennent d'OfflineService,
+--     qui les verse dans la caisse au retour (AddOfflineEarnings) ;
 --   - zone d'un Secret : le catalogue ne lui en donne pas, et Items[uid] ne la stocke pas (9.5).
 --     Ce service lit un champ Zone dans Items[uid] s'il existe, sinon prend la zone 1.
 --
@@ -1697,6 +1703,23 @@ end
 
 function DisplayService.OnCashOut(listener: CashOutListener): () -> ()
 	return subscribe(cashOutListeners, listener)
+end
+
+-- Gains hors ligne (DEV-102, voir l'en-tête) : versés dans la caisse, jamais directement dans Cash.
+function DisplayService.AddOfflineEarnings(player: Player, amount: number): boolean
+	if DataService.Get(player) == nil or type(amount) ~= "number" or amount ~= amount or amount <= 0 or amount >= math.huge then
+		return false
+	end
+	local account = accounts[player]
+	if account == nil then
+		-- Pas encore de parcelle : install reprendra ce compte (et sa caisse) à l'attribution.
+		account = newAccount()
+		accounts[player] = account
+	end
+	accrue(account, os.clock())
+	account.register += amount
+	publish(player, account, nil)
+	return true
 end
 
 function DisplayService.GetGlobalMultiplier(player: Player): number

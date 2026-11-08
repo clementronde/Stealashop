@@ -13,6 +13,9 @@
 --   Gain (Source) :
 --     Income   revenus encaissés : DisplayService.OnCashOut (tapis de caisse, départ du joueur,
 --              DisplayService.CashOut). Gameplay, SKU « Income ». Regroupés par joueur (plus bas).
+--     Offline  part d'un encaissement qui vient des gains hors ligne (DEV-102) : OfflineService la
+--              donne par l'accroche ClaimOfflineShare (plus bas) ; le reste part en Income. TimedReward,
+--              SKU « Offline », regroupés comme Income.
 --   Dépenses (Sink), ShopService.OnPurchase (achat payé et donné ; un achat refusé, ou rendu parce
 --   que l'octroi a échoué, ne part pas), type Shop, SKU = Id du catalogue :
 --     Tool     outil (« Wrench ») ;
@@ -76,6 +79,10 @@
 --       il ajoute un événement On…, branché ici.
 --   TelemetryService.LogEvent(player, key, fields?, value?) -> boolean
 --       key = clé de Telemetry.Events ; fields : jusqu'à 3 textes ; value : nombre (1 par défaut).
+-- Point d'accroche (OfflineService le remplace en gardant celui d'avant) :
+--   TelemetryService.ClaimOfflineShare(player, amount) -> number
+--       Appelé à chaque encaissement (amount $) : la part qui vient des gains hors ligne, retirée de ce
+--       qu'il reste à compter (0 par défaut). Une erreur ou une valeur invalide compte pour 0. Sans yield.
 
 local AnalyticsService = game:GetService("AnalyticsService")
 local Players = game:GetService("Players")
@@ -353,8 +360,24 @@ end
 -- Événements des services
 ------------------------------------------------------------------------------
 
+-- Part hors ligne d'un encaissement (accroche ClaimOfflineShare), bornée à [0, amount].
+local function offlineShare(player: Player, amount: number): number
+	local ok, value = pcall(TelemetryService.ClaimOfflineShare, player, amount)
+	if not ok or type(value) ~= "number" or value ~= value then
+		warnOnce("hook:ClaimOfflineShare", `ClaimOfflineShare : erreur ou valeur invalide ({tostring(value)}), compté en Income`)
+		return 0
+	end
+	return math.clamp(value, 0, amount)
+end
+
 local function onCashOut(player: Player, amount: number, source: DisplayService.CashOutSource)
-	logEconomy(player, "Income", amount, nil, nil, nil)
+	local offline = offlineShare(player, amount)
+	if amount - offline > 0 then
+		logEconomy(player, "Income", amount - offline, nil, nil, nil)
+	end
+	if offline > 0 then
+		logEconomy(player, "Offline", offline, nil, nil, nil)
+	end
 	if source == "Leave" then
 		flushPlayer(player) -- encaissement automatique du départ : le cumul part tout de suite
 	end
@@ -453,6 +476,11 @@ end
 function TelemetryService.LogEconomy(player: Player, kind: string, amount: number, sku: string?, fields: { string }?): boolean
 	local extra = fields or {}
 	return logEconomy(player, kind, amount, sku, extra[1], extra[2])
+end
+
+-- Accroche (voir l'en-tête) : sans gains hors ligne, tout encaissement est un revenu (Income).
+function TelemetryService.ClaimOfflineShare(_player: Player, _amount: number): number
+	return 0
 end
 
 function TelemetryService.LogEvent(player: Player, key: string, fields: { string }?, value: number?): boolean
