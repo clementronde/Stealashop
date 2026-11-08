@@ -47,6 +47,12 @@
 --       Republie les attributs ci-dessus. À appeler par un service qui donne ou équipe un outil,
 --       ou qui change un niveau, sans passer par la boutique (tutoriel, renaissance en Partie 2) :
 --       ToolService n'a pas de signal de changement.
+--   ShopService.OnPurchase(listener) -> déconnexion
+--       listener(player, kind, id, price, level?) après chaque achat payé et donné : kind = "Tool",
+--       "Upgrade", "Aura" ou "Trail", id = Id du catalogue, price = argent retiré, level = niveau
+--       atteint (amélioration seulement). L'argent est déjà retiré : DataService.Get(player).Cash
+--       est le solde après l'achat. Un achat refusé, ou rendu parce que l'octroi a échoué, ne
+--       prévient pas. Pour la télémétrie (TelemetryService, 14.2).
 --
 -- Interface attendue de CosmeticService (a20), chargé sans planter s'il manque :
 --   CosmeticService.Owns(player, cosmeticId) -> boolean
@@ -86,6 +92,9 @@ type CosmeticApi = {
 }
 
 type Entry = { kind: "Tool", tool: ToolDef } | { kind: "Upgrade", upgrade: UpgradeDef } | { kind: "Cosmetic", cosmetic: CosmeticDef }
+
+export type PurchaseKind = "Tool" | "Upgrade" | "Aura" | "Trail"
+export type PurchaseListener = (player: Player, kind: PurchaseKind, id: string, price: number, level: number?) -> ()
 
 local IS_STUDIO = RunService:IsStudio()
 
@@ -130,6 +139,7 @@ local ShopService = {}
 
 local catalog: { [string]: Entry } = {}
 local cosmeticApi: CosmeticApi? = nil
+local purchaseListeners: { PurchaseListener } = {}
 
 ------------------------------------------------------------------------------
 -- Outils
@@ -285,6 +295,13 @@ local function notEnoughCash(player: Player, price: number)
 	notify(player, string.format(MESSAGES.NotEnoughCash, Format.money(price)), "Warning")
 end
 
+-- Achat payé et donné : prévient les écouteurs d'OnPurchase (voir l'en-tête).
+local function emitPurchase(player: Player, kind: PurchaseKind, id: string, price: number, level: number?)
+	for _, listener in table.clone(purchaseListeners) do
+		task.spawn(listener, player, kind, id, price, level)
+	end
+end
+
 local function buyTool(player: Player, tool: ToolDef)
 	if ToolService.Owns(player, tool.Id) then
 		notify(player, string.format(MESSAGES.ToolOwned, tool.DisplayName), "Warning")
@@ -314,6 +331,7 @@ local function buyTool(player: Player, tool: ToolDef)
 	publish(player)
 	notify(player, string.format(if stronger then MESSAGES.ToolBoughtEquipped else MESSAGES.ToolBought, tool.DisplayName), "Info")
 	log(`{player.Name} : {tool.Id} acheté {Format.money(tool.Price)}{if stronger then ", équipé" else ""}`)
+	emitPurchase(player, "Tool", tool.Id, tool.Price, nil)
 end
 
 local function buyUpgrade(player: Player, data: Data, upgrade: UpgradeDef)
@@ -360,6 +378,7 @@ local function buyUpgrade(player: Player, data: Data, upgrade: UpgradeDef)
 	end
 	notify(player, message, "Info")
 	log(`{player.Name} : {upgrade.Id} niveau {level} → {newLevel} pour {Format.money(cost)}`)
+	emitPurchase(player, "Upgrade", upgrade.Id, cost, newLevel)
 end
 
 local function buyCosmetic(player: Player, cosmetic: CosmeticDef)
@@ -393,6 +412,7 @@ local function buyCosmetic(player: Player, cosmetic: CosmeticDef)
 	end
 	notify(player, string.format(MESSAGES.CosmeticBought, cosmetic.DisplayName), "Info")
 	log(`{player.Name} : {cosmetic.Kind} {cosmetic.Id} acheté {Format.money(cosmetic.Price)}`)
+	emitPurchase(player, cosmetic.Kind, cosmetic.Id, cosmetic.Price, nil)
 end
 
 local function onBuyItem(player: Player, catalogId: string)
@@ -487,6 +507,16 @@ end
 
 function ShopService.RefreshPlayer(player: Player)
 	publish(player)
+end
+
+function ShopService.OnPurchase(listener: PurchaseListener): () -> ()
+	table.insert(purchaseListeners, listener)
+	return function()
+		local index = table.find(purchaseListeners, listener)
+		if index then
+			table.remove(purchaseListeners, index)
+		end
+	end
 end
 
 function ShopService.Init()

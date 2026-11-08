@@ -93,7 +93,8 @@
 -- franchies d'après le profil au chargement (loggedFunnel). Roblox ne compte de toute façon que le
 -- premier envoi d'une étape. Étapes : 1 tuto commencé, 2 coup sur une vitrine de magasin PNJ, 3 vitrine
 -- PNJ cassée par lui, 4 colis PNJ soulevé, 5 dans la zone safe avec ce colis, 6 colis posé, 7 colis
--- ouvert, 8 un objet exposé, 9 premier encaissement, 10 un outil acheté.
+-- ouvert, 8 un objet exposé, 9 premier encaissement, 10 un outil acheté. Interrupteur de la télémétrie
+-- (Config/Telemetry.Enabled = false, DEV-054) : aucune étape n'est envoyée.
 --
 -- Crochet de test, STUDIO SEULEMENT : workspace:SetAttribute("TutorialReset", userId) (barre de
 -- commande serveur ; un nom de joueur marche aussi). Le tuto de ce joueur repart de l'étape 1
@@ -121,6 +122,7 @@ local Workspace = game:GetService("Workspace")
 local Shared = ReplicatedStorage.Shared
 local Balance = require(Shared.Config.Balance)
 local Cosmetics = require(Shared.Config.Cosmetics)
+local Telemetry = require(Shared.Config.Telemetry)
 local Tools = require(Shared.Config.Tools)
 local Tutorial = require(Shared.Config.Tutorial)
 local Find = require(Shared.Contract.Find)
@@ -645,6 +647,9 @@ local function logFunnel(player: Player, index: number)
 		return
 	end
 	logged[index] = true
+	if not Telemetry.Enabled then
+		return -- télémétrie coupée (voir l'en-tête)
+	end
 	local name = Tutorial.FunnelSteps[index] or tostring(index)
 	local ok, err = pcall(function()
 		AnalyticsService:LogOnboardingFunnelStepEvent(player, index, name)
