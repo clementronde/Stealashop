@@ -7,9 +7,9 @@
 --      payload.Kind = "NPCBox"), un vigile apparaît au GuardSpawn du magasin du colis
 --      (payload.StoreId). Un vigile par voleur ; au plus Balance.Guard.MaxPerStore en poursuite
 --      par magasin et Balance.Guard.MaxActivePerServer en jeu sur le serveur (9.7) : au
---      plafond, un vigile qui rentre disparaît pour laisser sa place ; sans vigile qui rentre,
---      pas de vigile. Le serveur possède sa physique ; nage, escalade et autres états
---      inutiles sont coupés (9.7).
+--      plafond, un vigile qui rentre s'efface (fondu, point 5) pour laisser sa place ; sans vigile
+--      qui rentre, pas de vigile. Un vigile en fondu ne compte plus dans ces plafonds. Le serveur
+--      possède sa physique ; nage, escalade et autres états inutiles sont coupés (9.7).
 --   2. Poursuite, après REACTION_DELAY s : WalkSpeed = Zones[zone].GuardSpeed (section 4).
 --      Course directe s'il voit le joueur, sinon PathfindingService recalculé toutes les
 --      Balance.Guard.PathRecomputeInterval s.
@@ -31,10 +31,33 @@
 --      ensemble à l'écran.
 --   4. Abandon : le joueur entre en zone safe (tag SafeZone), GiveUpChaseDuration s de
 --      poursuite, GiveUpLead studs d'avance, ou le portage finit autrement (OnCarryEnded :
---      colis posé, mort, départ…). Le vigile s'arrête essoufflé (Tired), rentre en marchant
---      (Walk) vers son GuardSpawn, puis disparaît. Il ne vise jamais un point de la zone safe :
---      il ne la franchit pas.
---   5. Le joueur poursuivi reçoit ChaseState(true, vigile) à l'apparition et ChaseState(false)
+--      colis posé, mort, départ…). Le vigile s'arrête essoufflé (Tired, 5.5), puis rentre en
+--      marchant (Walk, RETURN_WALK_SPEED) ; après une capture, il rentre dès la fin de Catch. Il
+--      ne vise jamais un point de la zone safe : il ne la franchit pas.
+--   5. Retour (liaison L-077, point 1). Comme la poursuite : tout droit s'il voit son but (les deux
+--      rayons de la ligne de vue, plus deux à ses flancs : seesGoal), sinon par PathfindingService
+--      (son agent, recalcul toutes les Balance.Guard.PathRecomputeInterval s). Jamais droit dans un
+--      mur : sans ligne de vue ni chemin (pas encore calculé, ou raté), il attend sur place (Idle)
+--      le calcul suivant. Son but (Balance.Guard.ReturnEnd, V0 « Reserve », question à Clément) :
+--        - "Reserve" (b) : son GuardSpawn, à travers le magasin. Le chemin n'y passe pas (rideau
+--          baissé, vitrine reconstruite) ou il reste bloqué en route : la porte, comme a) ;
+--        - "Door" (a) : un point au sol devant la porte du magasin (`Door`, sinon `Window`), côté
+--          rue, à DOOR_STOP_DISTANCE studs plus son rayon d'agent ;
+--        - déjà dans le volume Bounds du magasin (capture dedans, abandon avant le départ) : son
+--          GuardSpawn, dans les deux cas (il ne ressort pas pour rentrer).
+--      Arrivé, il s'efface en fondu (Balance.Guard.ReturnFadeTime s, état Fade), jamais d'un coup :
+--      à la porte en faisant un dernier pas vers elle, au GuardSpawn sur place. Disparition propre,
+--      toujours en fondu et là où il est, sans chemin ni ligne de vue pendant
+--      RETURN_NO_PATH_TIMEOUT s, bloqué devant la porte, ou au bout de RETURN_MAX_DURATION s de
+--      retour. Seuls la mort, la sortie du jeu et une erreur le retirent d'un coup.
+--      Rideau (StoreHeistService, L-064) : un vigile dans Bounds retient sa baisse. Celui qui rentre
+--      n'y reste qu'au plus le temps de son retour et de son fondu, puis le libère ; il n'est jamais
+--      enfermé (le rideau l'attend, et dedans il va au GuardSpawn).
+--      Magasin rouvert (nouvelle casse) ou vitrine reconstruite pendant son retour : il continue,
+--      change de but si le passage se ferme, et s'efface à l'arrivée. Le nouveau vol a son propre
+--      vigile tout de suite (un par voleur) ; celui qui rentre ne poursuit plus personne et ne
+--      compte pas dans MaxPerStore : pas de doublon de poursuite.
+--   6. Le joueur poursuivi reçoit ChaseState(true, vigile) à l'apparition et ChaseState(false)
 --      à la fin (capture ou abandon). Pour lui, le vigile reste chargé (streaming) tant que
 --      dure la poursuite.
 --
@@ -171,8 +194,12 @@ type AnimPlayerT = AnimPlayer.AnimPlayer
 -- Wait : vient d'apparaître (ou, la nuit, vient de repérer un joueur ; ou vient de changer de cible
 -- pour le nouveau porteur d'un colis tombé) ; Chase : poursuit ; Catch : vient de rattraper ;
 -- Tired : essoufflé après un abandon ; Return : rentre en marchant (la nuit : vers sa ronde) ;
--- Patrol : ronde de nuit ; Follow : va vers le colis tombé au sol de sa cible (6.2).
-type GuardState = "Wait" | "Chase" | "Catch" | "Tired" | "Return" | "Patrol" | "Follow"
+-- Patrol : ronde de nuit ; Follow : va vers le colis tombé au sol de sa cible (6.2) ; Fade :
+-- s'efface en fondu avant de disparaître (vigile de jour, L-077).
+type GuardState = "Wait" | "Chase" | "Catch" | "Tired" | "Return" | "Patrol" | "Follow" | "Fade"
+
+-- But du retour d'un vigile de jour (L-077) : son GuardSpawn, ou devant la porte du magasin.
+type ReturnTarget = "Reserve" | "Door"
 
 -- Day : vigile de jour d'un magasin (5.5) ; Night : vigile de nuit (5.12).
 type GuardKind = "Day" | "Night"
@@ -221,6 +248,17 @@ type Guard = {
 	knockTarget: Player?, -- joueur à projeter au marqueur Impact de Catch
 	followPayload: any?, -- Follow : le payload du colis tombé au sol que le vigile suit
 	followPosition: Vector3, -- Follow : où il est tombé (là où était la cible au coup)
+	agentRadius: number, -- rayon de son agent du PathfindingService (agentFor)
+	pathFailures: number, -- calculs de chemin ratés de suite, depuis le dernier changement d'état ou de but
+	returnTo: ReturnTarget, -- retour d'un vigile de jour : son but
+	returnGoal: Vector3, -- le point visé, au sol (GuardSpawn ou devant la porte)
+	doorSpot: Vector3?, -- devant la porte du magasin, côté rue, au sol ; nil sans Door ni Window
+	doorStep: Vector3?, -- le dernier pas vers la porte, pendant le fondu
+	noPathSince: number, -- retour : début de l'attente sans chemin ni ligne de vue (0 = il avance)
+	fadeStartedAt: number,
+	fadeReason: string, -- pour la sortie, à la disparition : « rentré », « retour trop long »…
+	fadeParts: { [BasePart]: number }, -- Transparency d'origine, pendant le fondu
+	fadeDecals: { [Decal]: number },
 	connections: { RBXScriptConnection },
 	alive: boolean,
 }
@@ -231,6 +269,7 @@ local SAFE_ZONE_TAG = "SafeZone"
 local GUARD_SPAWN = "GuardSpawn"
 local BOUNDS = "Bounds"
 local WINDOW = "Window"
+local DOOR = "Door"
 local INBOX_NAME = "_INBOX_CLEMENT" -- livraisons de Clément : pas encore dans la map
 local WINDOW_ID_ATTRIBUTE = "WindowId" -- posé par WindowService sur la vitrine
 
@@ -288,10 +327,16 @@ local SPAWN_SPACING = 3 -- écart entre vigiles apparus au même GuardSpawn, ver
 -- 2026-11-07). Ils restent arrêtés par la map, les joueurs et le mur de nuit.
 local GUARD_GROUP = "Guards"
 local RETURN_WALK_SPEED = 10 -- retour en marchant (WalkSpeed)
-local RETURN_PATH_INTERVAL = 1 -- recalcul du chemin du retour (s)
-local RETURN_MAX_DURATION = 20 -- au-delà, il disparaît là où il est (s)
-local RETURN_STUCK_TIME = 2 -- sans avancer d'un stud pendant ce temps, il disparaît (s)
-local ARRIVE_DISTANCE = 3 -- à cette distance du GuardSpawn, il est rentré et disparaît (studs)
+local RETURN_PATH_INTERVAL = 1 -- vigile de nuit : recalcul du chemin du retour à la ronde et de la ronde (s)
+local RETURN_MAX_DURATION = 20 -- au-delà, il s'efface là où il est (la nuit : reprend sa ronde) (s)
+local RETURN_STUCK_TIME = 2 -- sans avancer d'un stud pendant ce temps, il est bloqué (s)
+local ARRIVE_DISTANCE = 3 -- à cette distance du GuardSpawn, il est rentré et s'efface (studs)
+-- V0 proposé, absent du doc : retour du vigile de jour (L-077, point 1).
+local RETURN_NO_PATH_TIMEOUT = 3 -- sans chemin ni ligne de vue pendant ce temps, il s'efface sur place (s)
+local DOOR_STOP_DISTANCE = 2 -- arrêt devant la porte : à cette distance, plus son rayon d'agent (studs)
+local DOOR_ARRIVE_DISTANCE = 1.5 -- à cette distance du point devant la porte, il y est (studs)
+local GROUND_RAY_DOWN = 20 -- recherche du sol sous le point devant la porte (studs)
+local RETURN_SIDE_INSET = 0.5 -- rayons des flancs de sa ligne de vue : rayon d'agent moins ceci (studs)
 local TIRED_PAUSE = 1.5 -- pause essoufflée si Tired n'est pas livrée (s)
 local TIRED_MAX = 4 -- pause essoufflée maximale, même si Tired est plus longue (s)
 local CATCH_PAUSE = 1 -- pause après la capture si Catch n'est pas livrée (s)
@@ -780,8 +825,10 @@ local function computePath(guard: Guard, goal: Vector3)
 		if ok and guard.path.Status == Enum.PathStatus.Success then
 			guard.waypoints = guard.path:GetWaypoints()
 			guard.waypointIndex = 2 -- le premier point est le départ
+			guard.pathFailures = 0
 		else
 			guard.waypoints = nil
+			guard.pathFailures += 1
 		end
 	end)
 end
@@ -842,6 +889,7 @@ local function setState(guard: Guard, state: GuardState)
 	guard.state = state
 	guard.pathToken += 1
 	guard.waypoints = nil
+	guard.pathFailures = 0
 end
 
 -- ChaseState du joueur : le vigile de jour qui le poursuit, sinon celui de nuit ; ChaseState(false)
@@ -918,6 +966,66 @@ local function despawn(guard: Guard, reason: string)
 	log(`{guard.label} parti ({reason})`)
 end
 
+-- Durée du fondu (Balance.Guard.ReturnFadeTime) ; 0 si elle n'est pas un nombre fini ≥ 0.
+local function fadeDuration(): number
+	local value = Balance.Guard.ReturnFadeTime
+	return if type(value) == "number" and value >= 0 and value < math.huge then value else 0
+end
+
+-- Le vigile de jour s'efface (L-077, point 3) : toutes ses pièces et ses décalcomanies (visage)
+-- vont à Transparency 1 en Balance.Guard.ReturnFadeTime s (fadeStep), puis il disparaît.
+-- `stepTo` : un dernier pas vers ce point pendant le fondu (à la porte : il « passe la porte ») ;
+-- sinon il s'arrête sur place. Il ne poursuit plus personne et ne compte plus dans les plafonds.
+local function startFade(guard: Guard, now: number, reason: string, stepTo: Vector3?)
+	endChase(guard)
+	releaseFollow(guard)
+	setState(guard, "Fade")
+	guard.fadeStartedAt = now
+	guard.fadeReason = reason
+	table.clear(guard.fadeParts)
+	table.clear(guard.fadeDecals)
+	for _, descendant in guard.model:GetDescendants() do
+		if descendant:IsA("BasePart") then
+			local part = descendant :: BasePart
+			guard.fadeParts[part] = part.Transparency
+		elseif descendant:IsA("Decal") then
+			local decal = descendant :: Decal
+			guard.fadeDecals[decal] = decal.Transparency
+		end
+	end
+	local duration = fadeDuration()
+	local distance = if stepTo then flat(stepTo - guard.root.Position).Magnitude else 0
+	if stepTo and duration > 0 and distance > 0.5 then
+		guard.anims:Stop("Run")
+		setWalkSpeed(guard, math.min(distance / duration, RETURN_WALK_SPEED))
+		moveTo(guard, stepTo)
+		playGait(guard, "Walk")
+	else
+		stop(guard)
+		guard.anims:Stop("Run")
+		guard.anims:Stop("Walk")
+	end
+	log(`{guard.label} : s'efface en {Format.short(duration)} s ({reason})`)
+	if duration <= 0 then
+		despawn(guard, reason)
+	end
+end
+
+-- Pendant le fondu : transparence de chaque pièce entre la sienne et 1 ; à la fin, il disparaît.
+local function fadeStep(guard: Guard, now: number)
+	local duration = fadeDuration()
+	local alpha = if duration > 0 then math.clamp((now - guard.fadeStartedAt) / duration, 0, 1) else 1
+	for part, base in guard.fadeParts do
+		part.Transparency = base + (1 - base) * alpha
+	end
+	for decal, base in guard.fadeDecals do
+		decal.Transparency = base + (1 - base) * alpha
+	end
+	if alpha >= 1 then
+		despawn(guard, guard.fadeReason)
+	end
+end
+
 local function startChase(guard: Guard, now: number)
 	setState(guard, "Chase")
 	guard.nextSteerAt = now
@@ -940,6 +1048,141 @@ local function nearestPatrolIndex(guard: Guard): number
 	return best
 end
 
+-- Retour du vigile de jour (L-077) ------------------------------------------------------------
+
+-- Le choix de Balance.Guard.ReturnEnd ; une autre valeur compte pour "Reserve" (V0), avec un
+-- avertissement.
+local function returnEnd(): ReturnTarget
+	local value = Balance.Guard.ReturnEnd
+	if value == "Door" then
+		return "Door"
+	elseif value ~= "Reserve" then
+		warnOnce("returnEnd", `Balance.Guard.ReturnEnd = {value} : "Reserve" ou "Door" attendu, "Reserve" utilisé`)
+	end
+	return "Reserve"
+end
+
+-- Centre d'une pièce ou d'un modèle du contrat, nil sinon.
+local function centerOf(inst: Instance?): Vector3?
+	if inst == nil then
+		return nil
+	elseif inst:IsA("BasePart") then
+		return (inst :: BasePart).Position
+	elseif inst:IsA("Model") then
+		local model = inst :: Model
+		local ok, frame = pcall(function(): CFrame
+			local cframe = model:GetBoundingBox()
+			return cframe
+		end)
+		return if ok then frame.Position else nil
+	end
+	return nil
+end
+
+-- Hauteur du sol sous `position` (décor sans collision, vigiles et personnages ignorés), sinon
+-- `fallbackY`.
+local function groundBelow(position: Vector3, fallbackY: number): number
+	local result = Workspace:Raycast(position, Vector3.new(0, -GROUND_RAY_DOWN, 0), rayParams)
+	return if result then result.Position.Y else fallbackY
+end
+
+-- Devant la porte du magasin, côté rue (L-077, a) : la porte `Door` (10.4), sinon la vitrine
+-- `Window`. La rue, comme pour la sortie des joueurs (StoreHeistService) : du centre du volume
+-- Bounds (sinon du pivot du magasin) vers sa vitrine ; sans vitrine, l'avant du pivot (10.1 : face
+-- avant vers la rue). Renvoie le point d'arrêt (DOOR_STOP_DISTANCE studs plus son rayon d'agent
+-- devant la porte) et celui du dernier pas pendant le fondu (son rayon d'agent devant elle), au
+-- sol ; nil, nil sans porte ni vitrine.
+local function doorSpots(guard: Guard): (Vector3?, Vector3?)
+	local store = guard.store
+	if store == nil then
+		return nil, nil
+	end
+	local window = centerOf(Find.path(store, WINDOW))
+	local door = centerOf(Find.path(store, DOOR)) or window
+	if door == nil then
+		return nil, nil
+	end
+	local pivot = store:GetPivot()
+	local bounds = Find.path(store, BOUNDS)
+	local inner = if bounds and bounds:IsA("BasePart") then (bounds :: BasePart).Position else pivot.Position
+	local out = flat(pivot.LookVector)
+	if window then
+		local toWindow = flat(window - inner)
+		if toWindow.Magnitude > 1e-3 then
+			out = toWindow
+		end
+	end
+	if out.Magnitude < 1e-3 then
+		return nil, nil
+	end
+	out = out.Unit
+	local spot = door + out * (DOOR_STOP_DISTANCE + guard.agentRadius)
+	local stepPoint = door + out * guard.agentRadius
+	local ground = groundBelow(spot, guard.home.Y)
+	return Vector3.new(spot.X, ground, spot.Z), Vector3.new(stepPoint.X, ground, stepPoint.Z)
+end
+
+-- Le vigile est-il dans le volume Bounds de son magasin ?
+local function insideStore(guard: Guard): boolean
+	local store = guard.store
+	local bounds = if store then Find.path(store, BOUNDS) else nil
+	if bounds and bounds:IsA("BasePart") then
+		local box = bounds :: BasePart
+		return insideBox(box.CFrame, box.Size, guard.root.Position)
+	end
+	return false
+end
+
+-- Nouveau but du retour : le calcul de chemin en cours est périmé, l'attente repart de zéro.
+local function setReturnGoal(guard: Guard, target: ReturnTarget, now: number)
+	local spot = guard.doorSpot
+	if target == "Door" and spot then
+		guard.returnTo = "Door"
+		guard.returnGoal = spot
+	else
+		guard.returnTo = "Reserve"
+		guard.returnGoal = guard.home
+	end
+	guard.pathToken += 1
+	guard.waypoints = nil
+	guard.pathFailures = 0
+	guard.noPathSince = 0
+	guard.nextPathAt = now
+	guard.nextSteerAt = now
+	guard.progressPos = guard.root.Position
+	guard.progressAt = now
+end
+
+-- Passage fermé ou bloqué en route vers la réserve : il s'arrête devant la porte (L-077, b).
+-- false s'il n'y a ni porte ni vitrine (il garde son but).
+local function fallBackToDoor(guard: Guard, now: number, reason: string): boolean
+	if guard.doorSpot == nil then
+		return false
+	end
+	setReturnGoal(guard, "Door", now)
+	log(`{guard.label} : {reason}, il s'arrête devant la porte`)
+	return true
+end
+
+-- Le but du retour d'un vigile de jour (voir l'en-tête, point 5).
+local function beginDayReturn(guard: Guard, now: number)
+	guard.doorSpot, guard.doorStep = doorSpots(guard)
+	local target: ReturnTarget = "Reserve"
+	local why = "la réserve (GuardSpawn)"
+	if insideStore(guard) then
+		why = "la réserve (GuardSpawn), déjà dans le magasin"
+	elseif returnEnd() == "Door" then
+		if guard.doorSpot then
+			target = "Door"
+			why = "la porte du magasin"
+		else
+			why = "la réserve (GuardSpawn), le magasin n'a ni Door ni Window"
+		end
+	end
+	setReturnGoal(guard, target, now)
+	log(`{guard.label} : rentre en marchant vers {why}`)
+end
+
 local function startReturn(guard: Guard, now: number)
 	setState(guard, "Return")
 	if guard.kind == "Night" and #guard.patrol > 0 then
@@ -957,7 +1200,11 @@ local function startReturn(guard: Guard, now: number)
 	guard.nextPathAt = now
 	guard.anims:Stop("Run")
 	guard.anims:Stop("Tired")
-	playGait(guard, "Walk")
+	if guard.kind == "Night" then
+		playGait(guard, "Walk")
+	else
+		beginDayReturn(guard, now) -- Walk joue dès qu'il avance (dayReturnStep)
+	end
 end
 
 -- Durée d'une animation sans boucle qui vient d'être lancée, bornée ; `default` si elle n'est
@@ -1452,34 +1699,22 @@ local function spot(guard: Guard, player: Player, now: number)
 	log(`{guard.label} : repère {player.Name} à {Format.short(distance)} studs, poursuite à {Format.short(guard.speed)}`)
 end
 
-local function returnStep(guard: Guard, now: number)
+-- Vigile de nuit : retour au point de ronde le plus proche, puis la ronde reprend (inchangé par L-077).
+local function nightReturnStep(guard: Guard, now: number)
 	local position = guard.root.Position
-	local night = guard.kind == "Night"
 	if flat(guard.home - position).Magnitude <= ARRIVE_DISTANCE then
-		if night then
-			startPatrol(guard, now)
-		else
-			despawn(guard, "rentré")
-		end
+		startPatrol(guard, now)
 		return
 	end
 	if now - guard.returnedAt >= RETURN_MAX_DURATION then
-		if night then
-			startPatrol(guard, now) -- reprend la ronde d'où il est
-		else
-			despawn(guard, "retour trop long")
-		end
+		startPatrol(guard, now) -- reprend la ronde d'où il est
 		return
 	end
 	if (position - guard.progressPos).Magnitude >= 1 then
 		guard.progressPos = position
 		guard.progressAt = now
 	elseif now - guard.progressAt >= RETURN_STUCK_TIME then
-		if night then
-			startPatrol(guard, now)
-		else
-			despawn(guard, "bloqué sur le retour")
-		end
+		startPatrol(guard, now)
 		return
 	end
 	if now < guard.nextSteerAt then
@@ -1491,6 +1726,107 @@ local function returnStep(guard: Guard, now: number)
 		computePath(guard, guard.home)
 	end
 	followPath(guard, guard.home)
+end
+
+-- Le vigile qui rentre voit-il son but (au sol) ? Les deux rayons de canSee (HumanoidRootPart,
+-- genoux), plus deux à ses flancs (son rayon d'agent moins RETURN_SIDE_INSET, de chaque côté) :
+-- tout son corps passe, pas seulement son centre (montant de vitrine, bout de rayon).
+local function seesGoal(guard: Guard, goal: Vector3): boolean
+	local from = guard.root.Position
+	local to = Vector3.new(goal.X, goal.Y + guard.rootHeight, goal.Z)
+	local knee = Vector3.new(0, guard.rootHeight - KNEE_HEIGHT, 0)
+	if not (clearLine(from, to) and clearLine(from - knee, to - knee)) then
+		return false
+	end
+	local along = flat(to - from)
+	if along.Magnitude < 1e-3 then
+		return true
+	end
+	local side = Vector3.new(-along.Z, 0, along.X).Unit * math.max(guard.agentRadius - RETURN_SIDE_INSET, 0)
+	return clearLine(from + side, to + side) and clearLine(from - side, to - side)
+end
+
+-- Un pas du retour d'un vigile de jour vers `goal` (au sol), sans jamais marcher droit dans un
+-- mur : tout droit s'il voit son but (seesGoal) ; sinon le dernier chemin calculé (recalculé
+-- toutes les Balance.Guard.PathRecomputeInterval s) ; sans chemin, ou au bout du chemin sans voir
+-- le but, il s'arrête et attend le calcul suivant. Renvoie true s'il avance.
+local function walkHome(guard: Guard, goal: Vector3, now: number): boolean
+	local from = guard.root.Position
+	if seesGoal(guard, goal) then
+		guard.waypoints = nil
+		moveTo(guard, goal)
+		return true
+	end
+	if now >= guard.nextPathAt and not guard.computing then
+		guard.nextPathAt = now + Balance.Guard.PathRecomputeInterval
+		computePath(guard, goal)
+	end
+	local waypoints = guard.waypoints
+	if waypoints == nil then
+		stop(guard)
+		return false
+	end
+	local index = guard.waypointIndex
+	while index <= #waypoints and flat(waypoints[index].Position - from).Magnitude <= WAYPOINT_REACHED do
+		index += 1
+	end
+	guard.waypointIndex = index
+	if index > #waypoints then
+		stop(guard)
+		return false
+	end
+	local waypoint = waypoints[index]
+	if waypoint.Action == Enum.PathWaypointAction.Jump then
+		guard.humanoid.Jump = true
+	end
+	moveTo(guard, waypoint.Position) -- jamais par la zone safe
+	return true
+end
+
+-- Retour d'un vigile de jour (voir l'en-tête, point 5) : il s'efface en fondu à l'arrivée, ou
+-- plus tôt là où il est (retour trop long, aucun chemin, bloqué devant la porte).
+local function dayReturnStep(guard: Guard, now: number)
+	local position = guard.root.Position
+	local atDoor = guard.returnTo == "Door"
+	local arrive = if atDoor then DOOR_ARRIVE_DISTANCE else ARRIVE_DISTANCE
+	if flat(guard.returnGoal - position).Magnitude <= arrive then
+		startFade(guard, now, "rentré", if atDoor then guard.doorStep else nil)
+		return
+	end
+	if now - guard.returnedAt >= RETURN_MAX_DURATION then
+		startFade(guard, now, "retour trop long", nil)
+		return
+	end
+	if now < guard.nextSteerAt then
+		return
+	end
+	guard.nextSteerAt = now + STEER_INTERVAL
+	if walkHome(guard, guard.returnGoal, now) then
+		guard.noPathSince = 0
+		playGait(guard, "Walk")
+		if (position - guard.progressPos).Magnitude >= 1 then
+			guard.progressPos = position
+			guard.progressAt = now
+		elseif now - guard.progressAt >= RETURN_STUCK_TIME then
+			if atDoor or not fallBackToDoor(guard, now, "bloqué en route vers la réserve") then
+				startFade(guard, now, "bloqué sur le retour", nil)
+			end
+		end
+		return
+	end
+	-- Ni ligne de vue ni chemin : il attend sur place (Idle), sans pousser contre un mur.
+	guard.anims:Stop("Walk")
+	guard.progressPos = position
+	guard.progressAt = now
+	if guard.noPathSince == 0 then
+		guard.noPathSince = now
+	end
+	if not atDoor and guard.pathFailures > 0 and fallBackToDoor(guard, now, "pas de chemin jusqu'à la réserve (passage fermé)") then
+		return
+	end
+	if now - guard.noPathSince >= RETURN_NO_PATH_TIMEOUT then
+		startFade(guard, now, "aucun chemin pour rentrer", nil)
+	end
 end
 
 local function update(guard: Guard, now: number)
@@ -1533,9 +1869,15 @@ local function update(guard: Guard, now: number)
 			startReturn(guard, now)
 		end
 	elseif state == "Return" then
-		returnStep(guard, now)
+		if night then
+			nightReturnStep(guard, now)
+		else
+			dayReturnStep(guard, now)
+		end
 	elseif state == "Patrol" then
 		patrolStep(guard, now)
+	elseif state == "Fade" then
+		fadeStep(guard, now)
 	end
 end
 
@@ -1586,7 +1928,18 @@ local function countChasing(store: Model): number
 	return count
 end
 
--- Au plafond du serveur : fait disparaître le vigile qui rentre depuis le plus longtemps.
+-- Vigiles de jour en jeu pour le plafond du serveur (9.7) : ceux qui s'effacent ne comptent plus.
+local function countActive(): number
+	local count = 0
+	for _, guard in guards do
+		if guard.state ~= "Fade" then
+			count += 1
+		end
+	end
+	return count
+end
+
+-- Au plafond du serveur : le vigile qui rentre depuis le plus longtemps s'efface (fondu).
 -- Renvoie false s'il n'y en a aucun.
 local function freeSlot(): boolean
 	local oldest: Guard? = nil
@@ -1600,7 +1953,7 @@ local function freeSlot(): boolean
 	if oldest == nil then
 		return false
 	end
-	despawn(oldest, "place libérée pour un nouveau vigile")
+	startFade(oldest, os.clock(), "place libérée pour un nouveau vigile", nil)
 	return true
 end
 
@@ -1634,7 +1987,7 @@ local function spawnGuard(player: Player, store: Model, zone: number, template: 
 		log(`{store.Name} : déjà {Balance.Guard.MaxPerStore} vigiles en poursuite, pas de vigile pour {player.Name}`)
 		return
 	end
-	if #guards >= Balance.Guard.MaxActivePerServer and not freeSlot() then
+	if countActive() >= Balance.Guard.MaxActivePerServer and not freeSlot() then
 		log(`déjà {Balance.Guard.MaxActivePerServer} vigiles en poursuite sur le serveur (9.7), pas de vigile pour {player.Name}`)
 		return
 	end
@@ -1714,6 +2067,17 @@ local function spawnGuard(player: Player, store: Model, zone: number, template: 
 		knockTarget = nil,
 		followPayload = nil,
 		followPosition = Vector3.zero,
+		agentRadius = agent.AgentRadius,
+		pathFailures = 0,
+		returnTo = "Reserve",
+		returnGoal = frame.Position,
+		doorSpot = nil,
+		doorStep = nil,
+		noPathSince = 0,
+		fadeStartedAt = 0,
+		fadeReason = "",
+		fadeParts = {},
+		fadeDecals = {},
 		connections = {},
 		alive = true,
 	}
@@ -1923,6 +2287,17 @@ local function spawnNightGuard(zone: number, number: number, points: { Vector3 }
 		knockTarget = nil,
 		followPayload = nil,
 		followPosition = Vector3.zero,
+		agentRadius = agent.AgentRadius,
+		pathFailures = 0,
+		returnTo = "Reserve",
+		returnGoal = start,
+		doorSpot = nil,
+		doorStep = nil,
+		noPathSince = 0,
+		fadeStartedAt = 0,
+		fadeReason = "",
+		fadeParts = {},
+		fadeDecals = {},
 		connections = {},
 		alive = true,
 	}

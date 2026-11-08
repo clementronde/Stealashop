@@ -95,6 +95,13 @@ local Balance = {
 		GiveUpChaseDuration = 20, -- abandon après 20 s de poursuite…
 		GiveUpLead = 120, -- … ou 120 studs d'avance, ou passage de l'arche safe
 		HeartbeatDistance = 10, -- battements de cœur sous cette distance
+		-- V0 proposé, absent du doc (liaison L-077, question posée à Clément) : où s'arrête le retour
+		-- du vigile de jour, qui s'y efface en fondu. "Reserve" (b) : il traverse le magasin jusqu'à
+		-- son GuardSpawn ; "Door" (a) : il s'arrête à la porte du magasin (`Door`, sinon la vitrine),
+		-- côté rue. Passage fermé (rideau baissé, vitrine reconstruite) : devant la porte, dans les
+		-- deux cas. Déjà dans le magasin quand il rentre : jusqu'au GuardSpawn, dans les deux cas.
+		ReturnEnd = "Reserve",
+		ReturnFadeTime = 0.6, -- V0 proposé, absent du doc : durée du fondu de sa disparition (s)
 	},
 
 	-- 5.6 et 6.1 : porter un colis ou un objet volé
