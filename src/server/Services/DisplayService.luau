@@ -16,8 +16,8 @@
 --     sommet. Tout est créé par le serveur dans la parcelle : visible par tous les joueurs ;
 --   - revenus : chaque objet exposé rapporte Formulas.ItemIncome(zone, rareté) $/s (7.1), zone
 --     et rareté lues dans Config.Items. Le total des objets (la « valeur exposée », celle de
---     l'anti-racket, 6.4) est multiplié par le M global du joueur (7.1, GetIncomeMultiplier plus
---     bas : 1 au MVP). L'argent s'accumule au temps exact dans la caisse de la
+--     l'anti-racket, 6.4) est multiplié par le M global du joueur (7.1 : (1 + GetIncomeBonus) ×
+--     GetIncomeMultiplier, plus bas ; 1 au MVP). L'argent s'accumule au temps exact dans la caisse de la
 --     parcelle, pas dans Cash. Quand le propriétaire marche sur son CashPad, la caisse passe dans
 --     son argent (DataService.AddCash) et repart de 0 (5.8). L'argent en caisse n'est pas
 --     volable : rien ne permet à un autre joueur de le prendre ;
@@ -91,11 +91,19 @@
 --       Pour le tutoriel et la télémétrie (« Premier encaissement », 14.2).
 --
 -- Points d'accroche de la boutique Robux (DEV-100, Partie 2, 4.1 ; MonetizationService les
--- remplace en gardant ceux d'avant). Par défaut : le MVP, sans bonus. Ne doivent pas yield ; une
--- erreur ou une valeur invalide compte pour la valeur par défaut (un avertissement par serveur) :
+-- remplace en gardant ceux d'avant) et de l'index (DEV-111, IndexService). Par défaut : le MVP, sans
+-- bonus. Ne doivent pas yield ; une erreur ou une valeur invalide compte pour la valeur par défaut
+-- (un avertissement par serveur). M global des revenus (7.1) = (1 + GetIncomeBonus) ×
+-- GetIncomeMultiplier (Partie 2, section 4 : les bonus en pour cent s'additionnent, les ×2 se
+-- multiplient), relu à chaque mise à jour (une fois par seconde) : un changement compte dès cet
+-- instant, jamais en arrière.
+--   DisplayService.GetIncomeBonus(player) -> number
+--       Somme des bonus de revenus en pour cent, en fraction (0,15 = +15 %), nombre fini ≥ 0 ; 0 par
+--       défaut. Chaque accroche ajoute le sien à celui d'avant : Roblox Premium (MonetizationService),
+--       zones complètes de l'index (IndexService) ; plus tard amis, groupe, VIP, renaissances.
 --   DisplayService.GetIncomeMultiplier(player) -> number
---       M global des revenus (7.1), nombre fini > 0 ; 1 par défaut. Relu à chaque mise à jour (une
---       fois par seconde) : un changement compte dès cet instant, jamais en arrière.
+--       Produit des multiplicateurs de revenus (×2 Argent, boost ×2 argent), nombre fini > 0 ; 1 par
+--       défaut. Chaque accroche multiplie celui d'avant.
 --   DisplayService.GetExtraSlots(player) -> number
 --       Présentoirs bonus, au-delà de Balance.Display.MaxSlots : DisplaySlot_21 et suivants, optionnels
 --       dans la parcelle (aucun avertissement s'ils manquent ; seuls ceux posés comptent) ; 0 par défaut.
@@ -103,6 +111,10 @@
 --   DisplayService.HasAutoCollect(player) -> boolean
 --       true : la caisse se vide toute seule dans l'argent du joueur à chaque mise à jour (une fois par
 --       seconde), où qu'il soit (source « Auto », sans ligne dans la sortie) ; false par défaut.
+-- Et, sans être une accroche :
+--   DisplayService.GetGlobalMultiplier(player) -> number
+--       Le M global du joueur, lu tout de suite dans les accroches (bonus compris) : $/s de la caisse
+--       = GetIncome × GetGlobalMultiplier (packs d'argent de la boutique Robux). Sans yield.
 --
 -- Remote PlaceItem(itemUid, slotIndex) : refusé (Notify « Warning » au joueur, avertissement en
 -- Studio) si le joueur n'a pas de parcelle, n'est pas dans le volume Bounds de sa parcelle, ne
@@ -286,7 +298,7 @@ type PlotRefs = {
 type Account = {
 	plot: Model?,
 	income: number, -- $/s des objets exposés, sans bonus
-	multiplier: number, -- M global (GetIncomeMultiplier) : la caisse reçoit income × multiplier
+	multiplier: number, -- M global ((1 + GetIncomeBonus) × GetIncomeMultiplier) : la caisse reçoit income × multiplier
 	register: number, -- $ en caisse, centimes compris
 	lastAccrue: number, -- os.clock() du dernier ajout à la caisse
 	collected: number, -- argent encaissé depuis l'arrivée (attribut CashCollected)
@@ -355,15 +367,29 @@ local function baseSlots(data: Data): number
 	return math.min(Balance.Display.StartSlots + bought, Balance.Display.MaxSlots)
 end
 
--- Points d'accroche de la boutique Robux (voir l'en-tête), lus sans laisser une erreur casser la
--- boucle : une valeur invalide compte pour la valeur par défaut.
-local function incomeMultiplier(player: Player): number
+-- Points d'accroche de la boutique Robux et de l'index (voir l'en-tête), lus sans laisser une erreur
+-- casser la boucle : une valeur invalide compte pour la valeur par défaut.
+local function incomeFactor(player: Player): number
 	local ok, value = pcall(DisplayService.GetIncomeMultiplier, player)
 	if ok and type(value) == "number" and value == value and value > 0 and value < math.huge then
 		return value
 	end
 	reportOnce("hook:GetIncomeMultiplier", `[DisplayService] GetIncomeMultiplier : erreur ou valeur invalide ({value}), revenus × 1`, "warn")
 	return 1
+end
+
+local function incomeBonus(player: Player): number
+	local ok, value = pcall(DisplayService.GetIncomeBonus, player)
+	if ok and type(value) == "number" and value == value and value >= 0 and value < math.huge then
+		return value
+	end
+	reportOnce("hook:GetIncomeBonus", `[DisplayService] GetIncomeBonus : erreur ou valeur invalide ({value}), aucun bonus en pour cent`, "warn")
+	return 0
+end
+
+-- M global (7.1) : les bonus en pour cent s'additionnent, puis les multiplicateurs (Partie 2, 4).
+local function incomeMultiplier(player: Player): number
+	return (1 + incomeBonus(player)) * incomeFactor(player)
 end
 
 -- Présentoirs bonus débloqués : GetExtraSlots(player), au plus ceux posés dans la parcelle (`refs`).
@@ -1595,7 +1621,15 @@ function DisplayService.OnCashOut(listener: CashOutListener): () -> ()
 	return subscribe(cashOutListeners, listener)
 end
 
--- Points d'accroche (DEV-100, voir l'en-tête) : valeurs du MVP, sans bonus.
+function DisplayService.GetGlobalMultiplier(player: Player): number
+	return incomeMultiplier(player)
+end
+
+-- Points d'accroche (DEV-100 et DEV-111, voir l'en-tête) : valeurs du MVP, sans bonus.
+function DisplayService.GetIncomeBonus(_player: Player): number
+	return 0
+end
+
 function DisplayService.GetIncomeMultiplier(_player: Player): number
 	return 1
 end

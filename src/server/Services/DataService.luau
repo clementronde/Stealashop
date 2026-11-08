@@ -68,12 +68,13 @@
 -- Versions du schéma : v1 = section 9.5 ; v2 (2026-11-07) = même forme, ItemId du catalogue
 -- d'objets v2 (Config/Items, liaison L-045 ; voir MIGRATIONS[2]) ; v3 (2026-11-08, DEV-100) =
 -- boutique Robux : Monetization et Boosts ajoutés, Purchases[PurchaseId] = date du don (voir
--- MIGRATIONS[3]).
--- Nouvelle version du schéma (ex. v4 de la Partie 2) :
+-- MIGRATIONS[3]) ; v4 (2026-11-08, DEV-111) = index des objets : Index[ItemId] = date de la
+-- découverte (IndexService), les objets déjà possédés comptés comme découverts (voir MIGRATIONS[4]).
+-- Nouvelle version du schéma (ex. v5 de la Partie 2) :
 --   1. ajouter les champs dans Types/Profile et dans TEMPLATE ci-dessous ;
---   2. ajouter MIGRATIONS[4] (transforme un profil v3 en v4 ; ce qui est seulement
+--   2. ajouter MIGRATIONS[5] (transforme un profil v4 en v5 ; ce qui est seulement
 --      nouveau est complété depuis TEMPLATE, inutile de le recopier) ;
---   3. passer CURRENT_VERSION à 4.
+--   3. passer CURRENT_VERSION à 5.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -114,14 +115,15 @@ local STORE_NAME = "PlayerData"
 local DEFAULT_WAIT_TIMEOUT = 60
 
 -- Version courante du schéma de sauvegarde (section 9.5 ; v2 : catalogue d'objets v2 ; v3 : boutique
--- Robux).
-local CURRENT_VERSION = 3
+-- Robux ; v4 : index des objets).
+local CURRENT_VERSION = 4
 
 -- Attribut du Player lu par le HUD (même nom dans HudController).
 local CASH_ATTRIBUTE = "Cash"
 
--- Modèle d'un nouveau profil, schéma v3 (forme de la section 9.5, plus la boutique Robux). Il sert
--- aussi à compléter les champs manquants d'un profil existant (Profile:Reconcile de ProfileStore).
+-- Modèle d'un nouveau profil, schéma v4 (forme de la section 9.5, plus la boutique Robux et l'index).
+-- Il sert aussi à compléter les champs manquants d'un profil existant (Profile:Reconcile de
+-- ProfileStore).
 local TEMPLATE: Data = {
 	Version = CURRENT_VERSION,
 	Cash = 0,
@@ -138,6 +140,7 @@ local TEMPLATE: Data = {
 	Purchases = {}, -- [PurchaseId] = os.time() du don (MonetizationService)
 	Monetization = { Passes = {}, StarterPack = false, OpenNowCredit = 0 }, -- v3
 	Boosts = { Cash = 0 }, -- v3
+	Index = {}, -- v4 : [ItemId] = os.time() de la découverte (IndexService)
 }
 
 -- Journal d'une migration : chaque ligne part dans la sortie, préfixée du joueur et de sa clé.
@@ -259,6 +262,50 @@ local function migrateToV3(data: any, log: MigrationLog)
 	end
 end
 
+-- v3 → v4 (index des objets, 2026-11-08, DEV-111 ; IndexService). Index est nouveau : [ItemId] =
+-- os.time() de la découverte. Tout objet du catalogue que le joueur possède déjà compte comme
+-- découvert : ceux de Items, qui contient l'inventaire, les présentoirs et le coffre-fort (Display et
+-- Vault n'y renvoient que par uid). Date : l'obtention de sa plus ancienne copie (At), maintenant si
+-- elle est illisible. Ne comptent pas : un colis encore sur un établi (son objet reste caché jusqu'à
+-- l'ouverture, 5.7) et un ItemId inconnu du catalogue. Un Index déjà là (jamais écrit avant la v4)
+-- garde ses entrées lisibles ; un Index qui n'est pas une table repart vide, avec un avertissement.
+local function migrateToV4(data: any, log: MigrationLog)
+	local now = os.time()
+	local index: { [string]: number } = {}
+	local old = data.Index
+	if type(old) == "table" then
+		for itemId, at in old do
+			if type(itemId) == "string" and Catalog.ById[itemId] ~= nil and type(at) == "number" and at == at then
+				index[itemId] = at
+			end
+		end
+	elseif old ~= nil then
+		log(`Index n'est pas une table ({tostring(old)}) : repart vide`, true)
+	end
+	local counted = 0
+	local items = data.Items
+	if type(items) == "table" then
+		for _, entry in items do
+			local itemId = if type(entry) == "table" then entry.Id else nil
+			if type(itemId) == "string" and Catalog.ById[itemId] ~= nil then
+				local obtained = entry.At
+				local at = if type(obtained) == "number" and obtained == obtained and obtained > 0 then obtained else now
+				local known = index[itemId]
+				if known == nil then
+					counted += 1
+					index[itemId] = at
+				elseif at < known then
+					index[itemId] = at
+				end
+			end
+		end
+	end
+	data.Index = index
+	if counted > 0 then
+		log(`Index : {counted} objet(s) déjà possédé(s) compté(s) comme découvert(s)`)
+	end
+end
+
 -- MIGRATIONS[n] fait passer un profil de la version n - 1 à la version n, en place, et écrit ce
 -- qu'elle change avec `log`. Un profil sans Version est traité comme une version 0. La v1 est la
 -- première : rien à transformer, Reconcile complète tout depuis TEMPLATE. Les champs seulement
@@ -267,6 +314,7 @@ local MIGRATIONS: { [number]: (data: any, log: MigrationLog) -> () } = {
 	[1] = function(_data: any, _log: MigrationLog) end,
 	[2] = migrateToV2,
 	[3] = migrateToV3,
+	[4] = migrateToV4,
 }
 
 -- Messages d'expulsion, lus par le joueur : en anglais (L-036).
