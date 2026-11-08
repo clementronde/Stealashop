@@ -14,10 +14,21 @@
 --      Course directe s'il voit le joueur, sinon PathfindingService recalculé toutes les
 --      Balance.Guard.PathRecomputeInterval s.
 --   3. Capture : distance ≤ Balance.Guard.CatchDistance entre les deux HumanoidRootPart, sans
---      mur entre eux, mesurée ici, côté serveur. Alors CarryService.Fail(player, "Caught") (le
---      colis revole vers son rayon), joueur étourdi Balance.Guard.CatchStunDuration s
---      (StatsService, modificateur STUN_KEY = 0), coup qui le projette (au marqueur Impact de
---      Catch) et Notify « Caught! Recommended speed: X » (anglais, L-036).
+--      mur entre eux, mesurée ici, côté serveur. Alors, tout de suite : CarryService.Fail(player,
+--      "Caught") (le colis revole vers son rayon), joueur immobilisé (StatsService, modificateur
+--      STUN_KEY = 0), Notify « Caught! Recommended speed: X » (anglais, L-036), et le vigile joue
+--      Catch. Puis le coup, en un seul geste avec Catch (L-071, point 5) : au marqueur Impact de
+--      Catch, le joueur est projeté (poussée ci-dessous ; son client joue Knockback, puis Stunned,
+--      ChaseController) et reste étourdi Balance.Guard.CatchStunDuration s à partir de là. Délai de
+--      secours : sans marqueur, la poussée part à la fin de Catch (Catch pas encore chargée :
+--      KNOCKBACK_MAX_WAIT s) ; Catch pas livrée : tout de suite, étourdi CatchStunDuration s depuis
+--      la capture.
+--      Le marqueur est écouté ici, côté serveur (AnimPlayer:OnMarker sur la piste Catch du vigile),
+--      parce que c'est le serveur qui joue les animations des vigiles (il possède le vigile et son
+--      Animator), qu'il pose lui-même la poussée et l'étourdissement (StatsService, AntiCheatService
+--      .Allow juste avant la poussée) et que tous les joueurs doivent voir le même coup. Le client
+--      du joueur reçoit la Catch du vigile et la poussée avec le même délai réseau : elles restent
+--      ensemble à l'écran.
 --   4. Abandon : le joueur entre en zone safe (tag SafeZone), GiveUpChaseDuration s de
 --      poursuite, GiveUpLead studs d'avance, ou le portage finit autrement (OnCarryEnded :
 --      colis posé, mort, départ…). Le vigile s'arrête essoufflé (Tired), rentre en marchant
@@ -261,7 +272,9 @@ local MESSAGES = {
 local KNOCKBACK_SPEED = 40 -- vitesse horizontale donnée au joueur, à l'opposé du vigile (studs/s)
 local KNOCKBACK_UP = 25 -- vitesse verticale (studs/s)
 local KNOCKBACK_DURATION = 0.15 -- durée de la poussée (s)
-local KNOCKBACK_MAX_WAIT = 0.6 -- sans marqueur Impact de Catch après ce délai, la poussée part quand même (s)
+-- Catch lancée mais pas encore chargée (durée inconnue) : sans marqueur Impact après ce délai, la
+-- poussée part quand même (s). Une Catch chargée attend son marqueur jusqu'à sa fin (impactMaxWait).
+local KNOCKBACK_MAX_WAIT = 0.6
 
 -- V0 proposé, absent du doc : comportement du vigile.
 local REACTION_DELAY = 0.5 -- il apparaît, puis s'élance après ce délai, sans capture avant (s)
@@ -1027,8 +1040,19 @@ local function knockback(player: Player, from: Vector3)
 	Debris:AddItem(attachment, KNOCKBACK_DURATION)
 end
 
+-- Délai de secours de la poussée, Catch lancée (L-071, point 5) : le marqueur Impact est posé dans
+-- Catch, donc une Catch chargée l'attend jusqu'à sa fin (bornée à CATCH_MAX, la pause du vigile) :
+-- un Impact plus tardif dans la Catch refaite par Clément ne se fait jamais devancer. Pas encore
+-- chargée (durée inconnue) : KNOCKBACK_MAX_WAIT.
+local function impactMaxWait(track: AnimationTrack): number
+	if track.Length > 0 then
+		return math.min(track.Length, CATCH_MAX)
+	end
+	return KNOCKBACK_MAX_WAIT
+end
+
 -- La poussée en attente part (marqueur Impact de Catch, ou délai écoulé), suivie de ce qui doit
--- venir après le coup (la nuit : le renvoi chez lui).
+-- venir après le coup (le jour : l'étourdissement compté du coup ; la nuit : le renvoi chez lui).
 local function releaseKnockback(guard: Guard)
 	local player = guard.knockTarget
 	if player then
@@ -1061,10 +1085,16 @@ local function catch(guard: Guard, player: Player)
 	guard.stateEndsAt = now + pauseFor(track, CATCH_PAUSE, CATCH_MAX)
 	log(`{guard.label} : {player.Name} rattrapé`)
 
-	-- Le coup : au marqueur Impact de Catch, ou tout de suite si Catch n'est pas livrée.
+	-- Le coup : au marqueur Impact de Catch (délai de secours : impactMaxWait), ou tout de suite si
+	-- Catch n'est pas livrée (pas de geste à attendre). Immobilisé dès la capture (plus bas), le
+	-- joueur reste étourdi CatchStunDuration s à partir du coup, comme son client le montre avec
+	-- Knockback puis Stunned (ChaseController), et non à partir de la capture.
 	if track then
 		guard.knockTarget = player
-		task.delay(KNOCKBACK_MAX_WAIT, function()
+		guard.onKnock = function(caught: Player)
+			stun(caught, Balance.Guard.CatchStunDuration)
+		end
+		task.delay(impactMaxWait(track), function()
 			if guard.knockTarget == player then
 				releaseKnockback(guard)
 			end
@@ -1073,8 +1103,8 @@ local function catch(guard: Guard, player: Player)
 		knockback(player, guard.root.Position)
 	end
 
-	-- Colis, étourdissement, message : décidés ici, dans leur propre tâche pour qu'un appel
-	-- qui attend ne bloque pas les autres vigiles.
+	-- Colis, étourdissement, message : décidés ici, au moment de la capture, dans leur propre tâche
+	-- pour qu'un appel qui attend ne bloque pas les autres vigiles.
 	local zone = guard.zone
 	emitCatch(player, zone, false)
 	task.spawn(function()
@@ -1135,11 +1165,12 @@ local function nightCatch(guard: Guard, player: Player)
 		end
 	end
 
-	-- Le coup : au marqueur Impact de Catch, ou tout de suite si Catch n'est pas livrée.
+	-- Le coup : au marqueur Impact de Catch (délai de secours : impactMaxWait), ou tout de suite si
+	-- Catch n'est pas livrée.
 	if track then
 		guard.knockTarget = player
 		guard.onKnock = sendHome
-		task.delay(KNOCKBACK_MAX_WAIT, function()
+		task.delay(impactMaxWait(track), function()
 			if guard.knockTarget == player then
 				releaseKnockback(guard)
 			end

@@ -4,7 +4,15 @@
 -- Rôle :
 --   - suit l'attribut Carrying du joueur local (posé par CarryService : Id de la rareté portée,
 --     nil sinon) et appelle AnimationController.SetCarrying(true/false), qui joue CarryIdle à
---     l'arrêt et CarryRun en courant. Sans AnimationController, rien, sans erreur ;
+--     l'arrêt et CarryRun en courant (après Grab, s'il joue encore). Sans AnimationController,
+--     rien, sans erreur ;
+--   - colis posé sur la tête au geste de Grab (L-071, point 4), pour le porteur seulement : si Grab
+--     joue encore quand le colis arrive (AnimationController.AfterGrab), son visuel CarryVisual
+--     (soudé à la tête par CarryService dès que le serveur a accepté la prise) est caché en local
+--     jusqu'à ce que Grab l'ait posé : marqueur Grab, sinon fin de Grab, au plus tard GRAB_MAX_WAIT
+--     s (AnimationController). Pièces et décalques : LocalTransparencyModifier ; étiquette, halo et
+--     contours : Enabled (Visible pour une SelectionBox). Rien n'attend côté serveur, et les autres
+--     joueurs voient le colis dès la prise ;
 --   - pendant le portage, range tout outil que le joueur sort (5.6 : ni outil ni batte en main).
 --     Le serveur fait de même et fait foi ; ici, c'est pour que l'outil ne s'affiche pas en main ;
 --   - saut : autorisé (Balance.Carry.CanJump = true, 5.6), rien à faire. Si CanJump passe à false,
@@ -30,6 +38,8 @@ local Rarities = require(Config:WaitForChild("Rarities"))
 
 type AnimationApi = {
 	SetCarrying: (carrying: boolean) -> (),
+	-- Absent d'un AnimationController plus ancien : le colis n'est jamais caché.
+	AfterGrab: ((callback: (fromGrab: boolean) -> ()) -> boolean)?,
 }
 
 -- Mêmes noms que CarryService.
@@ -37,6 +47,7 @@ local CARRYING_ATTRIBUTE = "Carrying"
 local RAINBOW_TAG = "CarryRainbow"
 local TINT = "Tint"
 local RARITY_LABEL = "Rarity"
+local VISUAL_NAME = "CarryVisual"
 -- V0 proposé, absent du doc : durée d'un tour complet de l'arc-en-ciel, en secondes.
 local RAINBOW_PERIOD = 2
 
@@ -44,6 +55,14 @@ type Rainbow = {
 	tints: { BasePart },
 	lights: { Light },
 	labels: { TextLabel },
+}
+
+-- Visuel du colis caché en local en attendant que Grab l'ait posé : valeurs à remettre.
+type Switch = { inst: Instance, prop: string } -- propriété (Enabled ou Visible) passée de true à false
+type Hidden = {
+	modifiers: { [Instance]: number }, -- pièces et décalques : LocalTransparencyModifier d'avant
+	switches: { Switch }, -- étiquettes, halo, contours (Highlight, SelectionBox) éteints ici
+	added: RBXScriptConnection?, -- descendants arrivés après coup, cachés aussi
 }
 
 local CarryController = {}
@@ -55,6 +74,9 @@ local characterConnection: RBXScriptConnection? = nil
 local rainbowColors: { Color3 } = {}
 local rainbows: { [Instance]: Rainbow } = {}
 local rainbowConnection: RBXScriptConnection? = nil
+local holding = false -- colis du joueur local caché jusqu'à ce que Grab l'ait posé
+local holdToken = 0 -- change à chaque début ou fin de portage : périme une attente d'avant
+local hidden: { [Instance]: Hidden } = {}
 
 local function loadAnimationController(): AnimationApi?
 	local folder = script.Parent
@@ -83,6 +105,106 @@ local function stowTools()
 	end
 end
 
+-- Colis caché jusqu'au geste de Grab ----------------------------------------------
+
+-- Éteint `prop` (Enabled ou Visible) de `inst` s'il est allumé, et le note pour revealAll.
+local function switchOff(record: Hidden, inst: Instance, prop: string)
+	local target = inst :: any
+	if target[prop] == true then
+		target[prop] = false
+		table.insert(record.switches, { inst = inst, prop = prop })
+	end
+end
+
+local function hideOne(record: Hidden, descendant: Instance)
+	if descendant:IsA("BasePart") then
+		local part = descendant :: BasePart
+		if record.modifiers[part] == nil then -- déjà caché (déplacé dans le visuel) : garder sa valeur d'avant
+			record.modifiers[part] = part.LocalTransparencyModifier
+		end
+		part.LocalTransparencyModifier = 1
+	elseif descendant:IsA("Decal") then -- Texture compris
+		local decal = descendant :: Decal
+		if record.modifiers[decal] == nil then
+			record.modifiers[decal] = decal.LocalTransparencyModifier
+		end
+		decal.LocalTransparencyModifier = 1
+	elseif
+		descendant:IsA("LayerCollector")
+		or descendant:IsA("ParticleEmitter")
+		or descendant:IsA("Beam")
+		or descendant:IsA("Trail")
+		or descendant:IsA("Light")
+		or descendant:IsA("Highlight")
+	then
+		switchOff(record, descendant, "Enabled")
+	elseif descendant:IsA("GuiBase3d") then -- SelectionBox des arêtes noires (BOX_*, L-031)
+		switchOff(record, descendant, "Visible")
+	end
+end
+
+-- Cache en local le visuel `model` du colis porté (pièces, étiquette BB_Box ou BB_Carry, halo,
+-- contours), jusqu'à revealAll.
+local function hideVisual(model: Instance)
+	if hidden[model] then
+		return
+	end
+	local record: Hidden = { modifiers = {}, switches = {}, added = nil }
+	hidden[model] = record
+	for _, descendant in model:GetDescendants() do
+		hideOne(record, descendant)
+	end
+	record.added = model.DescendantAdded:Connect(function(descendant: Instance)
+		hideOne(record, descendant)
+	end)
+end
+
+-- Remet tout ce que hideVisual a caché (sur un visuel encore là ; un colis déjà retiré est oublié).
+local function revealAll()
+	holding = false
+	for _, record in hidden do
+		local added = record.added
+		if added then
+			added:Disconnect()
+		end
+		for inst, value in record.modifiers do
+			if inst.Parent ~= nil then
+				(inst :: any).LocalTransparencyModifier = value
+			end
+		end
+		for _, switch in record.switches do
+			if switch.inst.Parent ~= nil then
+				(switch.inst :: any)[switch.prop] = true
+			end
+		end
+	end
+	table.clear(hidden)
+end
+
+-- Début du portage : si Grab joue encore, le colis reste caché jusqu'à ce qu'il l'ait posé.
+local function holdUntilGrab()
+	local anim = animation
+	local afterGrab = if anim then anim.AfterGrab else nil
+	if afterGrab == nil then
+		return
+	end
+	local token = holdToken
+	local deferred = afterGrab(function(_fromGrab: boolean)
+		if token == holdToken then
+			revealAll()
+		end
+	end)
+	if not deferred then
+		return -- pas de Grab en cours : le colis se voit tout de suite
+	end
+	holding = true
+	local character = localPlayer.Character
+	local visual = if character then character:FindFirstChild(VISUAL_NAME) else nil
+	if visual then
+		hideVisual(visual)
+	end
+end
+
 local function applyJump()
 	if Balance.Carry.CanJump then
 		return -- saut autorisé pendant le portage (5.6) : on ne touche à rien
@@ -100,6 +222,8 @@ local function watchCharacter(character: Model)
 	characterConnection = character.ChildAdded:Connect(function(child: Instance)
 		if carrying and child:IsA("Tool") then
 			task.defer(stowTools) -- pas pendant l'événement : Roblox refuse de changer le parent
+		elseif holding and child.Name == VISUAL_NAME then
+			hideVisual(child) -- le colis arrive après l'attribut Carrying
 		end
 	end)
 	applyJump()
@@ -111,12 +235,16 @@ local function onCarryingChanged()
 		return
 	end
 	carrying = now
+	holdToken += 1
 	local anim = animation
 	if anim then
 		anim.SetCarrying(now)
 	end
 	if now then
 		stowTools()
+		holdUntilGrab()
+	else
+		revealAll()
 	end
 	applyJump()
 end

@@ -90,8 +90,13 @@
 --     suit (CarryController : animations CarryIdle et CarryRun) ;
 --   - Model « CarryVisual » dans le personnage : BOX_<Tier> de Clément (ITM_<ItemId> pour un objet
 --     volé), cherché dans ReplicatedStorage/Assets, soudé à la tête par son CarryAttachment (10.4 :
---     dessous, au centre ; à défaut, par le pivot du modèle, en bas au centre). Pièces nommées Tint
---     teintes à la couleur de la rareté (colis seulement). Modèle pas encore livré : bloc V0 ;
+--     dessous, au centre ; à défaut, par le pivot du modèle, en bas au centre), Balance.Carry.HeadGap
+--     studs au-dessus du haut de la tête (V0, à régler sur les bras levés de CarryIdle, L-071). Tout
+--     ce qui se porte passe par StartCarry, donc par cette soudure : colis du rayon (StoreHeistService),
+--     objet volé (PvPService), colis au sol après un coup de batte et colis du camion (PickUpDrop).
+--     Pièces nommées Tint teintes à la couleur de la rareté (colis seulement). Modèle pas encore
+--     livré : bloc V0. Pour le porteur seulement, CarryController le cache jusqu'à ce que Grab le pose
+--     sur la tête (marqueur Grab) ;
 --   - halo de rareté (5.6) en objets natifs (lumière, particules, rayons), V0 en attendant les
 --     textures de Clément (MOD-041) : Commun aucun, Peu commun léger, Rare et Épique net,
 --     Légendaire et Mythique rayons, Secret arc-en-ciel (couleurs animées par CarryController,
@@ -152,8 +157,8 @@ local LABEL_POINT = "LabelPoint"
 local DROPS_FOLDER = "CarryDrops"
 local DROP_ID_ATTRIBUTE = "DropId"
 
--- V0 proposé, absent du doc : espace (studs) entre le haut de la tête et le dessous du colis.
-local HEAD_GAP = 0.25
+-- Espace (studs) entre le haut de la tête et le dessous du colis : Balance.Carry.HeadGap (V0, L-071).
+local HEAD_GAP: number = Balance.Carry.HeadGap
 -- V0 proposé, absent du doc : blocs gris tant que BOX_<Tier> ou ITM_<ItemId> n'est pas livré.
 local PLACEHOLDER_BOX_SIZE = Vector3.new(2, 1.6, 2)
 local PLACEHOLDER_ITEM_SIZE = Vector3.new(1.2, 1.2, 1.2)

@@ -10,8 +10,8 @@ local Training = {
 	-- départ : 1, déduit de 5.1 (+1 par seconde ou par répétition au niveau 0).
 	BaseMultiplier = 1,
 
+	-- Tapis sans invite depuis L-071 (2026-11-08) : marcher dessus fait s'entraîner (TrainingService).
 	Treadmill = {
-		Prompt = "Run",
 		GainPerSecond = 1, -- +1 Vitesse par seconde × multiplicateur du tapis
 		AfkAllowed = true,
 		TapBonus = 0.5, -- taper l'écran donne +50 % de gain
