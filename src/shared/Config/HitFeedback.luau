@@ -40,7 +40,9 @@ local HitFeedback = {
 	-- Son du coup sur le camion (L-052, point 3), cherché par son nom dans SoundsFolder (sous-dossiers
 	-- permis), comme les sons de la casse et des marqueurs. Absent : le coup reste muet.
 	Truck = {
-		HitSound = "Truck_Hit", -- V0 : nom proposé à Clément (un Sound, publié au nom du groupe)
+		-- Nom de Clément (L-071, point 7), à la place de « Truck_Hit », proposé en L-052 (un Sound publié
+		-- au nom du groupe).
+		HitSound = "SFX_TruckHit",
 		SoundsFolder = { "Assets", "Sounds" }, -- depuis ReplicatedStorage : le dossier des sons validé en L-021
 		PitchMin = 0.9, -- V0 : hauteur du son à PV pleins…
 		PitchMax = 1.3, -- V0 : … et à 0 PV : il monte avec les dégâts, comme celui des vitres

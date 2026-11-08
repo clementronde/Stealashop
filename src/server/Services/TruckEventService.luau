@@ -22,6 +22,12 @@
 --      EventTruck (posé par le code), attributs Zone et TruckNumber. Son contour OutlineHighlight
 --      vient du modèle ; sa barre de vie (copie de BB_WindowHP à HealthBarPoint) est posée par
 --      TruckController, côté client. Notify à tous.
+--      Conducteurs (liaison L-071, point 7) : chaque Model du camion qui a un Humanoid. S'il a une
+--      animation Idle dans son dossier Animations (Contract/Animations.Driver), ce service la joue en
+--      boucle (Animator du Humanoid, créé s'il manque ; réplication aux clients) ; pour qu'il bouge,
+--      seule sa racine (RootPart, HumanoidRootPart ou PrimaryPart) est ancrée, ses membres reliés à
+--      elle par ses articulations restent libres. Sans Idle, il est ancré comme le reste et immobile.
+--      À l'explosion, TruckController le fait voler avec les pièces.
 --   2. PV partagés : cible d'événement de WindowService (AddTarget, MaxHP, sans régénération),
 --      frappée avec les outils et les règles des vitrines (HitController, HitWindow : dégâts du
 --      joueur, portée, débit, coup au marqueur Impact). Ses PV : attribut HP du camion.
@@ -38,7 +44,9 @@
 --        objet par Items.Pick, repli sur la rareté tirable la plus proche en dessous (comme
 --        StoreHeistService). Chaque colis est posé tout de suite à son point d'arrivée
 --        (CarryService.PlaceDrop), au sol, de ScatterMinRadius à ScatterRadius studs du centre du
---        camion, du côté de son point de sortie (ScatterSpread). Le client le fait voler depuis son
+--        camion, du côté de son point de sortie (ScatterSpread), et jamais sur un autre : au moins
+--        BoxGap studs bord à bord entre deux colis, d'après la largeur des modèles BOX_<Tier> (cône
+--        élargi, puis cercles plus grands si la place manque : voir landingPoint). Le client le fait voler depuis son
 --        BoxSpawn avec la traînée FX_BoxTrail (attributs TruckBox, Tier, FlightFrom, FlightStartsAt,
 --        FlightDuration) ; les départs sont espacés de LaunchStagger s. Ramassable une fois atterri.
 --      - Notify à tous.
@@ -82,6 +90,7 @@ local ShelfBoxes = require(Shared.Config.ShelfBoxes)
 local TruckEvent = require(Shared.Config.TruckEvent)
 local Zones = require(Shared.Config.Zones)
 local Find = require(Shared.Contract.Find)
+local Animations = require(Shared.Contract.Animations)
 local Net = require(Shared.Net.Net)
 local CarryTypes = require(Shared.Types.Carry)
 
@@ -108,6 +117,9 @@ type TruckBox = {
 }
 
 type Hold = { DropId: string, StartedAt: number }
+
+-- Point d'arrivée d'un colis déjà posé à l'explosion, et sa largeur au sol.
+type Landing = { Position: Vector3, Width: number }
 
 -- Noms du contrat lus ici (L-049, Contract/Models ; tags et attribut : 2.1).
 local TRUCK_ASSET = "ENV_Event_Truck"
@@ -153,6 +165,11 @@ local GROUND_RAY_UP = 20
 local GROUND_RAY_DOWN = 40
 -- V0 proposé, absent du doc : zone sans magasin ni arche suivante, le camion va à 40 studs après son arche.
 local GATE_FALLBACK_DISTANCE = 40
+-- V0 proposé, absent du doc (a42) : point d'arrivée d'un colis, 20 essais au hasard par largeur de cône,
+-- puis des cercles jusqu'à 20 studs au-delà de ScatterRadius si la place manque.
+local LANDING_TRIES = 20
+local LANDING_EXTRA_RADIUS = 20
+local BOX_PREFIX = "BOX_" -- modèles des colis de Clément (10.3), mesurés pour l'écart entre colis
 
 local IS_STUDIO = RunService:IsStudio()
 local ENABLED: boolean = Features.TruckEvent
@@ -424,6 +441,129 @@ local function findTemplate(): Model?
 	return nil
 end
 
+-- Conducteurs (L-071, point 7) ----------------------------------------------------------------------
+
+type Driver = { Rig: Model, Humanoid: Humanoid, Root: BasePart, Idle: boolean }
+
+-- Shared/Anim/AnimPlayer, chargé au premier conducteur (rien à charger sans conducteur).
+type AnimPlayerApi = typeof(require(Shared.Anim.AnimPlayer))
+local animPlayerModule: AnimPlayerApi? = nil
+local function animPlayer(): AnimPlayerApi
+	local loaded = animPlayerModule
+	if loaded then
+		return loaded
+	end
+	local module = require(Shared.Anim.AnimPlayer)
+	animPlayerModule = module
+	return module
+end
+
+-- Pièce racine d'un conducteur : RootPart du Humanoid, sinon HumanoidRootPart, sinon PrimaryPart.
+local function driverRoot(rig: Model, humanoid: Humanoid): BasePart?
+	local root = humanoid.RootPart
+	if root and root:IsDescendantOf(rig) then
+		return root
+	end
+	local named = rig:FindFirstChild("HumanoidRootPart")
+	if named and named:IsA("BasePart") then
+		return named :: BasePart
+	end
+	return rig.PrimaryPart
+end
+
+-- Les conducteurs du camion `model` : chaque Model qui a un Humanoid (le camion lui-même exclu), avec
+-- sa pièce racine. Idle = son dossier Animations a une animation Idle livrée (Contract/Animations.Driver).
+local function driversOf(model: Model): { Driver }
+	local list: { Driver } = {}
+	local idleName = Animations.Driver[1].Name
+	for _, descendant in model:GetDescendants() do
+		local rig = descendant.Parent
+		if descendant:IsA("Humanoid") and rig and rig ~= model and rig:IsA("Model") then
+			local humanoid = descendant :: Humanoid
+			local root = driverRoot(rig :: Model, humanoid)
+			if root then
+				local animation = animPlayer().findAnimation(animPlayer().modelFolder(rig), idleName)
+				table.insert(list, { Rig = rig :: Model, Humanoid = humanoid, Root = root, Idle = animation ~= nil })
+			end
+		end
+	end
+	return list
+end
+
+-- Les deux pièces d'une articulation ou d'une soudure (Motor6D, Weld, WeldConstraint…), sinon nil.
+local function jointParts(instance: Instance): (BasePart?, BasePart?)
+	if instance:IsA("JointInstance") then
+		local joint = instance :: JointInstance
+		return joint.Part0, joint.Part1
+	elseif instance:IsA("WeldConstraint") then
+		local weld = instance :: WeldConstraint
+		return weld.Part0, weld.Part1
+	end
+	return nil, nil
+end
+
+-- Pièces d'un conducteur animé qui doivent rester libres pour que ses articulations bougent : celles
+-- du conducteur reliées à sa racine, de proche en proche, par ses articulations et soudures (Motor6D
+-- d'un rig R15), racine exclue. Une pièce qui ne lui est pas reliée reste ancrée (elle tomberait).
+-- Lu sur les articulations elles-mêmes : la copie n'est pas encore dans le Workspace.
+local function animatedParts(driver: Driver): { [BasePart]: boolean }
+	local free: { [BasePart]: boolean } = {}
+	if not driver.Idle then
+		return free
+	end
+	local links: { [BasePart]: { BasePart } } = {}
+	local function link(a: BasePart, b: BasePart)
+		local list = links[a] or {}
+		links[a] = list
+		table.insert(list, b)
+	end
+	for _, descendant in driver.Rig:GetDescendants() do
+		local part0, part1 = jointParts(descendant)
+		if part0 and part1 and part0:IsDescendantOf(driver.Rig) and part1:IsDescendantOf(driver.Rig) then
+			link(part0, part1)
+			link(part1, part0)
+		end
+	end
+	local seen: { [BasePart]: boolean } = { [driver.Root] = true }
+	local queue: { BasePart } = { driver.Root }
+	while #queue > 0 do
+		local part = table.remove(queue) :: BasePart
+		local neighbours = links[part]
+		if neighbours then
+			for _, other in neighbours do
+				if not seen[other] then
+					seen[other] = true
+					free[other] = true
+					table.insert(queue, other)
+				end
+			end
+		end
+	end
+	return free
+end
+
+-- Joue l'Idle de chaque conducteur animé (le camion est déjà dans le Workspace). Animator absent : créé
+-- ici, côté serveur (il réplique les animations aux clients).
+local function playDriverIdles(drivers: { Driver })
+	for _, driver in drivers do
+		if driver.Idle then
+			local ok, err = pcall(function()
+				local animator = driver.Humanoid:FindFirstChildOfClass("Animator")
+				if animator == nil then
+					local created = Instance.new("Animator")
+					created.Parent = driver.Humanoid
+					animator = created
+				end
+				local anims = animPlayer().new(animator :: Animator, animPlayer().modelFolder(driver.Rig), Animations.Driver, "Conducteur")
+				anims:Play(Animations.Driver[1].Name)
+			end)
+			if not ok then
+				warnOnce(`driver.{driver.Rig.Name}`, `conducteur {driver.Rig.Name} : Idle non jouée ({err})`)
+			end
+		end
+	end
+end
+
 -- Tirage (comme un rayon de la zone, StoreHeistService) ------------------------------------------------
 
 local function drawRarity(tier: string, zone: number): string?
@@ -496,15 +636,97 @@ local function boxTiers(): { string }
 	return list
 end
 
--- Point d'arrivée au sol d'un colis sorti en `from` d'un camion centré en `center` (voir l'en-tête).
-local function landingPoint(from: Vector3, center: Vector3): Vector3
+-- Largeur au sol d'un colis de type `tier` : la plus grande dimension horizontale du modèle BOX_<Tier>
+-- de Clément (Assets), sinon TruckEvent.BoxFallbackWidth (le bloc gris de CarryService).
+local function boxWidth(tier: string): number
+	local name = BOX_PREFIX .. tier
+	for _, service in { ReplicatedStorage, ServerStorage } :: { Instance } do
+		local assets = service:FindFirstChild(ASSETS_NAME)
+		local found = if assets then assets:FindFirstChild(name, true) else nil
+		if found and found:IsA("Model") then
+			local size = (found :: Model):GetExtentsSize()
+			return math.max(size.X, size.Z)
+		elseif found and found:IsA("BasePart") then
+			local size = (found :: BasePart).Size
+			return math.max(size.X, size.Z)
+		end
+	end
+	return TruckEvent.BoxFallbackWidth
+end
+
+-- Place libre à `point` pour un colis de largeur `width` : marge (studs, bord à bord) avec le plus
+-- proche des colis déjà posés ; math.huge s'il n'y en a pas.
+local function clearance(point: Vector3, width: number, taken: { Landing }): number
+	local worst = math.huge
+	for _, other in taken do
+		local gap = flat(point - other.Position).Magnitude - (width + other.Width) / 2
+		if gap < worst then
+			worst = gap
+		end
+	end
+	return worst
+end
+
+-- Un point au hasard dans le cône de demi-angle `spread` autour de l'angle `base`, entre `minRadius`
+-- et `maxRadius` studs de `center` (à plat).
+local function scatterPoint(center: Vector3, base: number, spread: number, minRadius: number, maxRadius: number): Vector3
+	local angle = base + (random:NextNumber() * 2 - 1) * spread
+	local radius = minRadius + random:NextNumber() * (maxRadius - minRadius)
+	return center + Vector3.new(math.cos(angle), 0, math.sin(angle)) * radius
+end
+
+-- Point d'arrivée au sol d'un colis de largeur `width` sorti en `from` d'un camion centré en `center`
+-- (voir l'en-tête), à au moins BoxGap studs des colis déjà posés (`taken`, demande d'Ironix du
+-- 2026-11-08 : des colis l'un dans l'autre faisaient prendre le mauvais avec E). Essais au hasard, de
+-- plus en plus larges : dans le cône ScatterSpread, puis de son côté du camion (± 90°), puis tout
+-- autour ; toujours entre ScatterMinRadius et ScatterRadius. Sans place libre : cercles de plus en
+-- plus grands au-delà de ScatterRadius, un stud à la fois (premier point libre, jamais dans un autre
+-- colis) ; au pire, le point le moins serré essayé.
+local function landingPoint(from: Vector3, center: Vector3, width: number, taken: { Landing }): Vector3
 	local out = flat(from - center)
 	local base = if out.Magnitude > 1e-3 then math.atan2(out.Z, out.X) else random:NextNumber() * 2 * math.pi
-	local angle = base + (random:NextNumber() * 2 - 1) * TruckEvent.ScatterSpread
 	local maxRadius = math.max(TruckEvent.ScatterRadius, 0)
 	local minRadius = math.clamp(TruckEvent.ScatterMinRadius, 0, maxRadius)
-	local radius = minRadius + random:NextNumber() * (maxRadius - minRadius)
-	local target = center + Vector3.new(math.cos(angle), 0, math.sin(angle)) * radius
+	local gap = math.max(TruckEvent.BoxGap, 0)
+	local best: Vector3? = nil
+	local bestRoom = -math.huge
+	local function try(point: Vector3): boolean
+		local room = clearance(point, width, taken)
+		if room > bestRoom then
+			best, bestRoom = point, room
+		end
+		return room >= gap
+	end
+	local spreads = { TruckEvent.ScatterSpread, math.max(TruckEvent.ScatterSpread, math.pi / 2), math.pi }
+	local found: Vector3? = nil
+	for _, spread in spreads do
+		for _ = 1, LANDING_TRIES do
+			local point = scatterPoint(center, base, spread, minRadius, maxRadius)
+			if try(point) then
+				found = point
+				break
+			end
+		end
+		if found then
+			break
+		end
+	end
+	if found == nil then
+		local radius = maxRadius
+		while found == nil and radius <= maxRadius + LANDING_EXTRA_RADIUS do
+			radius += 1
+			local steps = math.max(8, math.ceil(2 * math.pi * radius / math.max(width + gap, 0.5)))
+			for step = 0, steps - 1 do
+				local angle = base + (if step % 2 == 0 then 1 else -1) * math.ceil(step / 2) * 2 * math.pi / steps
+				local point = center + Vector3.new(math.cos(angle), 0, math.sin(angle)) * radius
+				if try(point) then
+					found = point
+					break
+				end
+			end
+		end
+	end
+	local target = found or best or scatterPoint(center, base, TruckEvent.ScatterSpread, minRadius, maxRadius)
 	return Vector3.new(target.X, groundY(target, center.Y), target.Z)
 end
 
@@ -542,11 +764,20 @@ local function spawnTruck(zone: number): boolean
 		warnOnce("archivable", `{template:GetFullName()} n'est pas Archivable : pas de camion`)
 		return false
 	end
+	local drivers = driversOf(model)
+	local free: { [BasePart]: boolean } = {}
+	for _, driver in drivers do
+		for part in animatedParts(driver) do
+			free[part] = true
+		end
+	end
 	for _, descendant in model:GetDescendants() do
 		if descendant:IsA("LuaSourceContainer") then
 			descendant:Destroy() -- jamais de script dans un modèle (CLAUDE.md)
 		elseif descendant:IsA("BasePart") then
-			descendant.Anchored = true -- livré ancré ; il ne doit pas tomber en morceaux avant l'explosion
+			-- Livré ancré ; il ne doit pas tomber en morceaux avant l'explosion. Seuls les membres d'un
+			-- conducteur animé restent libres, tenus par ses articulations à sa racine ancrée.
+			descendant.Anchored = not free[descendant :: BasePart]
 		end
 	end
 	truckCount += 1
@@ -557,6 +788,7 @@ local function spawnTruck(zone: number): boolean
 	model:PivotTo(frame)
 	model.Parent = Workspace
 	CollectionService:AddTag(model, TRUCK_TAG)
+	playDriverIdles(drivers)
 	local windowId = WindowService.AddTarget(model, TruckEvent.MaxHP)
 	if windowId == nil then
 		model:Destroy()
@@ -607,6 +839,18 @@ local function explode(truck: Truck, impactPoint: Vector3?, breaker: Player?)
 	local storeId = `Truck_{truck.Number}`
 	local placed = 0
 	local byTier: { [string]: number } = {}
+	local widths: { [string]: number } = {}
+	-- Les colis déjà au sol (camion précédent, coup de batte) comptent aussi : rien ne tombe dessus.
+	local taken: { Landing } = {}
+	local drops = Workspace:FindFirstChild(DROPS_FOLDER)
+	if drops then
+		for _, drop in drops:GetChildren() do
+			if drop:IsA("Model") and drop:FindFirstChildWhichIsA("BasePart", true) then
+				local frame, size = (drop :: Model):GetBoundingBox()
+				table.insert(taken, { Position = frame.Position, Width = math.max(size.X, size.Z) })
+			end
+		end
+	end
 	for index, tier in boxTiers() do
 		local spawnPoint = Find.path(model, string.format(BOX_SPAWN_FORMAT, index))
 		local from: Vector3 = if spawnPoint and spawnPoint:IsA("Attachment")
@@ -635,8 +879,12 @@ local function explode(truck: Truck, impactPoint: Vector3?, breaker: Player?)
 			[FLIGHT_STARTS_AT_ATTRIBUTE] = serverNow + launch,
 			[FLIGHT_DURATION_ATTRIBUTE] = TruckEvent.FlightTime,
 		}
-		local dropId = CarryService.PlaceDrop(payload, landingPoint(from, center), landsIn + TruckEvent.BoxLifetime, attributes)
+		local width = widths[tier] or boxWidth(tier)
+		widths[tier] = width
+		local landing = landingPoint(from, center, width, taken)
+		local dropId = CarryService.PlaceDrop(payload, landing, landsIn + TruckEvent.BoxLifetime, attributes)
 		if dropId then
+			table.insert(taken, { Position = landing, Width = width })
 			boxes[dropId] = { DropId = dropId, Tier = tier, LandsAt = os.clock() + landsIn }
 			placed += 1
 			byTier[tier] = (byTier[tier] or 0) + 1

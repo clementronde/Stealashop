@@ -1,5 +1,6 @@
 --!strict
--- Contrat d'animations (doc, section 2.4 ; liaison, section 3.2) : 21 animations.
+-- Contrat d'animations (doc, section 2.4 ; liaison, section 3.2) : 21 animations, plus l'Idle facultatif des
+-- conducteurs du camion (Animations.Driver, L-071).
 -- Le code cherche chaque objet Animation par son nom, jamais par un ID.
 --
 -- Où : joueur dans ReplicatedStorage/Assets/Animations/Player/<Nom> ; modèle animé
@@ -55,6 +56,13 @@ Animations.Guard = {
 Animations.Vendor = {
 	{ Name = "Idle", Loop = true, Priority = "Idle" },
 	{ Name = "Wave", Loop = false, Priority = "Action" },
+} :: { Anim }
+
+-- Conducteurs du camion de l'événement (liaison L-071, point 7 ; a42) : des modèles avec un Humanoid,
+-- rangés par Clément dans ENV_Event_Truck. Une seule animation, facultative : Idle, jouée en boucle
+-- par TruckEventService tant que le camion est là ; sans elle, le conducteur reste immobile.
+Animations.Driver = {
+	{ Name = "Idle", Loop = true, Priority = "Idle" },
 } :: { Anim }
 
 return Animations
