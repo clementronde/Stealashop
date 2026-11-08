@@ -212,4 +212,38 @@ UI.Later = {} :: { string }
 -- Noms interdits pour un élément d'UI : ce sont aussi des propriétés Roblox (2.2).
 UI.ReservedNames = { "Name", "Text", "Size", "Position", "Visible", "Parent" }
 
+-- Index des objets (DEV-111, avancé avant la MAJ 2 : L-071 point 1 ; Partie 2, 3.4) : noms des calques
+-- de la maquette de Clément (UI-111, relevé de Studio du 2026-11-08), branchés par IndexController.
+-- Counter est dans CounterPill ; Rays et Glow (dans le cadre Clip de la carte) prennent la couleur de
+-- la rareté ; Lock = cadenas d'un objet pas encore découvert.
+table.insert(UI.Screens, {
+	Name = "UI_Index",
+	Class = "ScreenGui",
+	Elements = {
+		{ Path = "CloseButton", Class = BUTTON },
+		{ Path = "Counter" },
+		{ Path = "Tabs.Zone1Tab" },
+		{ Path = "Tabs.Zone2Tab" },
+		{ Path = "Tabs.Zone3Tab" },
+		{ Path = "Tabs.Zone4Tab" },
+		{ Path = "Tabs.Zone5Tab" },
+		{ Path = "Tabs.Zone6Tab" },
+		{ Path = "Tabs.SecretsTab" },
+		{ Path = "ZoneReward" },
+		{ Path = "ZoneReward.ZoneName" },
+		{ Path = "ZoneReward.ZoneBar" },
+		{ Path = "ZoneReward.ZoneBar.Fill" },
+		{ Path = "ZoneReward.ZoneCount" },
+		{ Path = "ZoneReward.Reward" },
+		{ Path = "ZoneReward.Reward.RewardLabel" },
+		{ Path = "List", Class = "ScrollingFrame" },
+		{ Path = "List.Template", Template = true },
+		{ Path = "List.Template.Icon" },
+		{ Path = "List.Template.Lock" },
+		{ Path = "List.Template.ItemName" },
+		{ Path = "List.Template.Rays" },
+		{ Path = "List.Template.Glow" },
+	},
+})
+
 return UI

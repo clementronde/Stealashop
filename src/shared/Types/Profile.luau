@@ -1,9 +1,10 @@
 --!strict
 -- Type du profil sauvegardé d'un joueur (ReplicatedStorage/Shared/Types/Profile).
--- Schéma v3 : la forme de la v1 (section 9.5 de la Partie 1), avec les ItemId du catalogue
+-- Schéma v4 : la forme de la v1 (section 9.5 de la Partie 1), avec les ItemId du catalogue
 -- d'objets v2 (Config/Items, liaison L-045 ; DataService, MIGRATIONS[2], renomme ou remplace ceux
 -- de la v1), et, en v3 (DEV-100, boutique Robux de la Partie 2), Monetization et Boosts, et la date
--- du don dans Purchases (MIGRATIONS[3]). Valeurs de départ dans DataService.
+-- du don dans Purchases (MIGRATIONS[3]) ; en v4 (DEV-111, index des objets de la Partie 2), Index
+-- (MIGRATIONS[4]). Valeurs de départ dans DataService.
 -- Ce module ne contient que des types : on l'utilise avec
 --   local ProfileTypes = require(ReplicatedStorage.Shared.Types.Profile)
 --   local data: ProfileTypes.Data = ...
@@ -106,8 +107,11 @@ export type Data = {
 	-- v1 et v2 : true, jamais écrit, devenu 0 en v3). Borné par MonetizationService (Config/Monetization)
 	Monetization: Monetization, -- v3
 	Boosts: Boosts, -- v3
-	-- Partie 2 : Defenses, Rebirths, Index, Rewards, ajoutés par migration (Version = 4 : la v2 est
-	-- prise par le catalogue d'objets v2, la v3 par la boutique Robux).
+	Index: { [string]: number }, -- v4 : [ItemId] = os.time() de sa découverte, la 1re fois que le
+	-- joueur l'a possédé (IndexService ; Config/Index). Jamais retiré : un objet volé, remis ou perdu
+	-- reste découvert. La migration v3 → v4 y met les objets déjà possédés (DataService, MIGRATIONS[4])
+	-- Partie 2 : Defenses, Rebirths, Rewards, ajoutés par migration (Version = 5 et suivantes : la v2
+	-- est prise par le catalogue d'objets v2, la v3 par la boutique Robux, la v4 par l'index).
 }
 
 return {}

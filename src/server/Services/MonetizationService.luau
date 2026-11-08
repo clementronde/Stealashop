@@ -42,7 +42,9 @@
 --                      ses 5 s
 --   +4 présentoirs     DisplayService.GetExtraSlots = 4 : DisplaySlot_21 à _24, au-delà du maximum de
 --                      20, s'ils sont posés dans la boutique (Clément)
---   Roblox Premium     +10 % de revenus (Player.MembershipType, relu chaque seconde)
+--   Roblox Premium     +10 % de revenus (Player.MembershipType, relu chaque seconde) :
+--                      DisplayService.GetIncomeBonus + 0,1, additionné aux autres bonus en pour cent
+--                      (zones complètes de l'index, IndexService)
 --   Packs d'argent     10, 60 ou 300 min des revenus actuels (ceux du HUD, bonus compris), au moins
 --                      CashPacks.MinPerMinute $ par minute (Monetization.CashPackAmount)
 --   Ouvrir maintenant  un produit par palier de prix (Monetization.OpenNowTier, que l'écran choisit
@@ -54,8 +56,10 @@
 --                      Marteau (équipé s'il est plus fort que l'outil équipé), 50 000 $ ;
 --                      Monetization.StarterPack = true. Racheté malgré tout (fenêtre d'achat ouverte
 --                      sans l'écran) : il est redonné, avec un avertissement (le joueur a payé)
--- M global des revenus (7.1) : (1 + Premium) × ×2 Argent × boost ×2 argent. V0 : les bonus en %
--- s'additionnent entre eux (amis, groupe et VIP viendront avec Premium), les ×2 se multiplient.
+-- M global des revenus (7.1) : (1 + Premium + les autres bonus en %) × ×2 Argent × boost ×2 argent.
+-- V0 : les bonus en % s'additionnent entre eux (DisplayService.GetIncomeBonus : Premium ici, l'index
+-- dans IndexService ; amis, groupe et VIP viendront de la même façon), les ×2 se multiplient
+-- (DisplayService.GetIncomeMultiplier).
 -- Télémétrie : l'argent acheté (packs, pack de départ) part en économie « Robux »
 -- (TelemetryService.LogEconomy, SKU = clé du produit).
 --
@@ -330,14 +334,21 @@ local function boostActive(player: Player): boolean
 	return untilClock ~= nil and untilClock > os.clock()
 end
 
+-- Bonus en pour cent de la boutique Robux (fraction) : Roblox Premium. Additionné aux autres bonus en %
+-- (DisplayService.GetIncomeBonus), pas multiplié.
+local function incomeBonus(player: Player): number
+	if enabled and player.MembershipType == Enum.MembershipType.Premium then
+		return Monetization.Premium.IncomeBonus
+	end
+	return 0
+end
+
+-- Multiplicateurs de la boutique Robux : ×2 Argent, boost ×2 argent (DisplayService.GetIncomeMultiplier).
 local function incomeMultiplier(player: Player): number
 	if not enabled then
 		return 1
 	end
 	local multiplier = 1
-	if player.MembershipType == Enum.MembershipType.Premium then
-		multiplier += Monetization.Premium.IncomeBonus
-	end
 	if hasPass(player, "DoubleCash") then
 		multiplier *= passValue("DoubleCash", "Multiplier", 1)
 	end
@@ -469,8 +480,8 @@ local function giveTool(player: Player, toolId: string): string
 end
 
 local function grantCashPack(player: Player, product: Product): string
-	local ok, multiplier = pcall(DisplayService.GetIncomeMultiplier, player)
-	local income = DisplayService.GetIncome(player) * (if ok and type(multiplier) == "number" then multiplier else 1)
+	-- Revenu actuel, tous les bonus compris (les % de Premium et de l'index, puis les ×2), comme le HUD.
+	local income = DisplayService.GetIncome(player) * DisplayService.GetGlobalMultiplier(player)
 	local minutes = product.Minutes :: number
 	local amount = Monetization.CashPackAmount(income, minutes)
 	if DataService.AddCash(player, amount) == nil then
@@ -821,7 +832,7 @@ function MonetizationService.HasPass(player: Player, key: string): boolean
 end
 
 function MonetizationService.GetIncomeMultiplier(player: Player): number
-	return incomeMultiplier(player)
+	return (1 + incomeBonus(player)) * incomeMultiplier(player)
 end
 
 function MonetizationService.AddCashBoost(player: Player, seconds: number): boolean
@@ -871,6 +882,10 @@ end
 
 -- Accroches des services (voir l'en-tête) : chacune garde et rappelle celle d'avant.
 local function installHooks()
+	local baseBonus = DisplayService.GetIncomeBonus
+	DisplayService.GetIncomeBonus = function(player: Player): number
+		return baseBonus(player) + incomeBonus(player)
+	end
 	local baseIncome = DisplayService.GetIncomeMultiplier
 	DisplayService.GetIncomeMultiplier = function(player: Player): number
 		return baseIncome(player) * incomeMultiplier(player)

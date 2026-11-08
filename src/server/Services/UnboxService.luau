@@ -107,8 +107,10 @@
 --       listener(player, benchIndex, box) après chaque colis posé (tutoriel, télémétrie). box est
 --       une copie du colis sauvegardé, ItemId compris : ne jamais l'envoyer à un client.
 --   UnboxService.OnBoxOpened(listener) -> déconnexion
---       listener(player, benchIndex, itemUid, itemId) après chaque ouverture (tutoriel,
---       télémétrie) ; itemId = l'objet final, après l'amélioration.
+--       listener(player, benchIndex, itemUid, itemId, revealDelay) après chaque ouverture (tutoriel,
+--       télémétrie, index des objets) ; itemId = l'objet final, après l'amélioration ; revealDelay =
+--       secondes jusqu'à l'objet révélé chez celui qui ouvre (le délai de l'annonce et du message des
+--       présentoirs pleins), pour un message qui ne doit pas arriver avant la révélation (DEV-111).
 --   Boutique Robux (DEV-100, MonetizationService : « Ouvrir maintenant », « Ouverture rapide ») :
 --   UnboxService.GetWaiting(player) -> { [number]: number }
 --       Colis du joueur pas encore prêts, affichés sur leurs établis : [numéro d'établi] = heure
@@ -164,7 +166,7 @@ local CarryService: CarryApi = require(script.Parent.CarryService) :: any
 local DisplayService: DisplayApi = require(script.Parent.DisplayService) :: any
 
 export type PlacedListener = (player: Player, benchIndex: number, box: Box) -> ()
-export type OpenedListener = (player: Player, benchIndex: number, itemUid: string, itemId: string) -> ()
+export type OpenedListener = (player: Player, benchIndex: number, itemUid: string, itemId: string, revealDelay: number) -> ()
 
 -- Colis affiché sur un établi.
 type Slot = {
@@ -1012,8 +1014,9 @@ local function onOpenBox(player: Player, benchIndex: number)
 		log(`{player.Name} : {itemId} exposé sur le présentoir {result}`)
 	end
 
+	local revealAt = revealDelayFor(finalRarity, #steps)
 	for _, listener in table.clone(openedListeners) do
-		task.spawn(listener, player, benchIndex, uid, itemId)
+		task.spawn(listener, player, benchIndex, uid, itemId, revealAt)
 	end
 end
 
