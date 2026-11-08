@@ -12,13 +12,14 @@
 --
 -- Ce que le code anime (liste de la spec) : Backdrop (transparence), SkipButton et Reel (Visible),
 -- Upgrade (position au-dessus du colis, Visible, échelle), UpgradeRarity (texte, couleur ; Secret :
--- Rainbow), ReelGlow (couleur), ReelView (modèles, caméra, ImageColor3), Rays (rotation,
--- ImageColor3, taille), Rarity, ItemName et Income (textes, échelle), ItemPreview (le ViewportFrame
--- posé ici), boutons (Visible, échelle), Confetti (clones de Confetti.Template), Flash
--- (transparence). Le code ne change ni les tailles, ni les images, ni les couleurs de Clément, sauf
--- celles qui suivent la rareté ; les échelles passent par un UIScale ajouté ici (ou par celui de
--- Clément, multiplié). Toute propriété touchée est notée au premier changement et remise à la
--- fermeture ; tout ce qui est créé ici est détruit.
+-- Rainbow), ReelGlow (couleur), ReelView (modèles, ou icônes ICON_ quand elles sont livrées, L-055 ;
+-- caméra, ImageColor3), Rays (rotation, ImageColor3, taille), Rarity, ItemName et Income (textes,
+-- échelle), ItemPreview (le ViewportFrame posé ici, toujours en 3D), boutons (Visible, échelle),
+-- Confetti (clones de Confetti.Template), Flash (transparence). Le code ne change ni les tailles,
+-- ni les images, ni les couleurs de Clément, sauf celles qui suivent la rareté ; les échelles
+-- passent par un UIScale ajouté ici (ou par celui de Clément, multiplié). Toute propriété touchée
+-- est notée au premier changement et remise à la fermeture ; tout ce qui est créé ici (icônes du
+-- rouleau comprises) est détruit.
 --
 -- Cadres de la révélation : les cadres de premier niveau de l'écran qui contiennent Rarity, ItemName,
 -- Income, ItemPreview, Rays ou les boutons (RevealPanel chez Clément), sauf s'ils contiennent aussi
@@ -722,7 +723,8 @@ function Screen.Open(self: View, fromMarker: boolean, _at: number)
 	if reelView then
 		set(self, reelView, "CurrentCamera", reelView.CurrentCamera) -- noté pour la fermeture
 		set(self, reelView, "ImageColor3", self.silhouette)
-		self.strip = Reel.newStrip(reelView, self.plan.Reel.Items)
+		-- Icônes ICON_ quand Clément les a livrées (L-055), sinon les clones ITM_ en 3D.
+		self.strip = Reel.newStrip(reelView, self.plan.Reel.Items, true)
 	end
 	playSound("Unbox_Whoosh")
 end
@@ -980,6 +982,12 @@ local function frameReel(self: View, info: FrameInfo)
 	local strip = self.strip
 	local items = self.plan.Reel.Items
 	local t = info.T
+	-- L'objet prend ses couleurs (ReelView.ImageColor3 du noir au blanc), avant de placer le
+	-- rouleau : ses icônes reprennent la teinte de la vue dans la même image.
+	local colorStart = info.At.ColorStart
+	if colorStart ~= nil and t >= colorStart then
+		set(self, self.reelView, "ImageColor3", self.silhouette:Lerp(WHITE, Sequence.clamp01((t - colorStart) / Unbox.ColorIn)))
+	end
 	if pos ~= nil and strip ~= nil then
 		strip:Set(pos, t * Unbox.ReelSpin * 2 * math.pi, info.ReelDrop)
 		-- ReelGlow : couleur de l'objet au centre, en fondu entre deux objets.
@@ -1021,11 +1029,6 @@ local function frameReel(self: View, info: FrameInfo)
 				playSound("Unbox_Heartbeat")
 			end
 		end
-	end
-	-- L'objet prend ses couleurs (ReelView.ImageColor3 du noir au blanc).
-	local colorStart = info.At.ColorStart
-	if colorStart ~= nil and t >= colorStart then
-		set(self, self.reelView, "ImageColor3", self.silhouette:Lerp(WHITE, Sequence.clamp01((t - colorStart) / Unbox.ColorIn)))
 	end
 end
 

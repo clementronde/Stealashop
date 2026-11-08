@@ -50,7 +50,8 @@ export type ModelSpec = {
 	Known: { [string]: boolean }?, -- seuls noms acceptés ; un autre nom est signalé (objets ITM_)
 	Renamed: { [string]: string }?, -- ancien nom → nom à prendre
 	Retired: { [string]: boolean }?, -- anciens noms retirés du contrat
-	SpinPrefix: string?, -- préfixe des pièces qui tournent sur leur propre axe Y (objets ITM_)
+	SpinPrefix: string?, -- préfixe des pièces qui tournent sans fin sur l'axe Y de leur pivot (objets ITM_)
+	WavePrefix: string?, -- préfixe des pièces qui font un va-et-vient sur l'axe Y de leur pivot (objets ITM_)
 }
 
 -- Vitre pré-fracturée : 30 à 40 éclats (5.4 et MOD-010) ; le 10.4 écrit Shard_01 à
@@ -168,17 +169,25 @@ local Item: ModelSpec = {
 	PrimaryPart = "Root",
 	Attributes = { "ItemId" }, -- = nom du modèle sans ITM_ (10.3)
 	Parts = {},
-	-- Les 74 objets du catalogue v2 (liaison L-045) : 13 en zone 1, 12 par zone de 2 à 6, 1 Secret.
+	-- Les 83 objets du catalogue v2 (liaisons L-045 et L-055) : 13 en zone 1, 16 en zone 2, 14 en
+	-- zone 3, 15 en zone 4, 12 en zones 5 et 6, 1 Secret.
 	ExpectedCount = #Items.List,
 	Known = itemNames,
 	Renamed = itemRenamed, -- Z4_Montre, Z5_Vase
 	Retired = itemRetired, -- les 6 objets retirés du catalogue v1
-	-- Animation idle (L-045, proposition de Clément validée par Ironix le 2026-11-07), jouée côté
-	-- client par ItemIdleController, aucun script dans le modèle : attribut Idle du modèle
-	-- (Contract/Attributes) et pièces Spin_<Nom>, qui tournent sur leur propre axe Y autour de leur
-	-- centre (BasePart, ou Model autour de son pivot), avec ou sans Idle. Root n'est jamais une
-	-- pièce Spin_ ni dans une pièce Spin_ (le pivot du modèle bougerait).
+	-- Animation idle (L-045, proposition de Clément validée par Ironix le 2026-11-07 ; Wave_ : L-055),
+	-- jouée côté client par ItemIdleController, aucun script dans le modèle :
+	--   - attribut Idle du modèle (Contract/Attributes : Spin, Bob, SpinBob) ;
+	--   - pièces Spin_<Nom> (BasePart ou Model) : rotation sans fin autour de l'axe Y de leur pivot
+	--     (GetPivot, PivotOffset compris : Clément y règle l'axe, vertical pour l'anneau de la
+	--     Figurine holographique, avant-arrière pour les ventilateurs du PC gamer) ;
+	--   - pièces Wave_<Nom> (BasePart ou Model) : va-et-vient autour de l'axe Y de leur pivot, de part
+	--     et d'autre de la pose de départ (patte du Chat porte-bonheur doré : Wave_Paw et
+	--     Wave_PawPads, même pivot, à l'épaule). Toutes les pièces Wave_ d'un objet ont le même angle ;
+	-- avec ou sans Idle. Une pièce rangée dans une autre bouge avec elle. Root n'est jamais une pièce
+	-- Spin_ ou Wave_ ni dans l'une d'elles (le pivot du modèle bougerait).
 	SpinPrefix = "Spin_",
+	WavePrefix = "Wave_",
 }
 
 local Box: ModelSpec = {
