@@ -35,6 +35,11 @@
 --     et l'autorisation (il ne peut plus ressortir). Un joueur côté couloir sans autorisation (mur
 --     contourné, sauté, glitch) est renvoyé chez lui (SendHome), avec un Notify : personne n'entre
 --     la nuit. Un personnage qui réapparaît perd son passage (il réapparaît chez lui).
+--   - Renvoyé chez lui la nuit (entré sans autorisation, ou attrapé par un vigile de nuit) : ce qu'il
+--     porte est perdu juste avant (CarryService.Fail, raison « NightClosed » ; GuardService l'a déjà
+--     fait, « Caught », pour un joueur attrapé), comme le dit 5.12 pour un joueur attrapé : le colis
+--     retourne au magasin, l'objet volé à son présentoir. Sinon le renvoi le poserait chez lui avec
+--     son colis, sans course (DEV-060).
 --   - Les pièces ajoutées au personnage pendant la nuit (accessoires, colis porté) prennent le
 --     passage ; à la fin, chaque pièce retrouve son groupe d'avant.
 --   - Sans mur dans la map : avertissement, la nuit a lieu quand même ; « côté couloir » = hors des
@@ -96,6 +101,13 @@ local Net = require(Shared.Net.Net)
 local AntiCheatService = require(script.Parent.AntiCheatService)
 local DataService = require(script.Parent.DataService)
 local GuardService = require(script.Parent.GuardService)
+
+-- Ce que ce service utilise de CarryService (DEV-017) : le portage perdu au renvoi.
+type CarryApi = {
+	IsCarrying: (player: Player) -> boolean,
+	Fail: (player: Player, reason: string) -> boolean,
+}
+local CarryService: CarryApi = require(script.Parent.CarryService) :: any
 local PlotService = require(script.Parent.PlotService)
 local StoreHeistService = require(script.Parent.StoreHeistService)
 local WindowService = require(script.Parent.WindowService)
@@ -591,6 +603,15 @@ local function moveToSafeSide(player: Player): boolean
 end
 
 local function sendHome(player: Player): boolean
+	-- Le portage est perdu avant le renvoi (voir l'en-tête), jamais posé chez lui par le code.
+	local carryOk, carryErr = pcall(function()
+		if CarryService.IsCarrying(player) then
+			CarryService.Fail(player, "NightClosed")
+		end
+	end)
+	if not carryOk then
+		warn(`[NightCycleService] CarryService.Fail({player.Name}, "NightClosed") : {carryErr}`)
+	end
 	local ok, moved = pcall(PlotService.TeleportHome, player, nil)
 	if not ok then
 		warn(`[NightCycleService] TeleportHome({player.Name}) : {moved}`)

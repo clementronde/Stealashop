@@ -7,10 +7,14 @@
 --     Débloqués : Balance.Unbox.StartBenches + niveau Upgrades.UnboxBenches du profil, au plus
 --     Balance.Unbox.MaxBenches (7.5 : de 1 à 4).
 --   - PlaceBox(benchIndex) : le joueur pose le colis PNJ qu'il porte sur un établi débloqué et
---     libre de sa parcelle, à portée. CarryService.Consume le lui retire, puis le colis est écrit
---     dans le profil : Boxes["<n>"] = { Tier, Zone, ItemId, Rarity, ReadyAt } (9.5, clé = numéro
---     de l'établi en texte, Types/Profile), avec ReadyAt = heure serveur + attente de sa rareté
---     (table 7.3, Config.Rarities[..].OpenDelay).
+--     libre de sa parcelle, à portée. Juste avant, AntiCheatService.Verify (DEV-060) contrôle tout
+--     de suite son dernier déplacement (téléport chez lui, colis sur la tête) et le trajet depuis
+--     le point où ce portage a commencé (OnCarryStarted : au rayon, ou là où il a ramassé le colis
+--     au sol) : sanctionné, le colis vient de revoler vers son rayon et rien n'est posé. Puis
+--     CarryService.Consume le lui retire et le colis est écrit dans le profil :
+--     Boxes["<n>"] = { Tier, Zone, ItemId, Rarity, ReadyAt } (9.5, clé = numéro de l'établi en
+--     texte, Types/Profile), avec ReadyAt = heure serveur + attente de sa rareté (table 7.3,
+--     Config.Rarities[..].OpenDelay).
 --   - Braquage réussi : Lifetime.Heists + 1 dans le profil (9.5) au même moment, d'un seul tenant
 --     avec l'écriture du colis. Un braquage réussit quand le colis volé arrive sur l'établi (5.6
 --     « Arrivée », 14.2 étape 6, réussite « Consumed » de Types/Carry) : avant, le colis peut
@@ -124,6 +128,7 @@ local Find = require(Shared.Contract.Find)
 local UI = require(Shared.Contract.UI)
 local Net = require(Shared.Net.Net)
 local ProfileTypes = require(Shared.Types.Profile)
+local AntiCheatService = require(script.Parent.AntiCheatService)
 local DataService = require(script.Parent.DataService)
 local PlotService = require(script.Parent.PlotService)
 
@@ -137,6 +142,8 @@ type CarryApi = {
 	IsCarrying: (player: Player) -> boolean,
 	GetPayload: (player: Player) -> any,
 	Consume: (player: Player) -> any,
+	OnCarryStarted: (listener: (player: Player, payload: any) -> ()) -> any,
+	OnCarryEnded: (listener: (player: Player, payload: any, result: string, reason: string) -> ()) -> any,
 }
 type DisplayApi = {
 	PlaceAuto: (player: Player, itemUid: string) -> number?,
@@ -163,6 +170,10 @@ type Session = {
 	benches: { [number]: Attachment },
 	slots: { [number]: Slot },
 }
+
+-- Début du portage d'un colis PNJ (DEV-060), pour le contrôle du trajet à la pose : la table du
+-- payload (celle de CarryService), la position du HumanoidRootPart et os.clock() à ce moment.
+type CarryStart = { Payload: any, From: Vector3, At: number }
 
 -- Contrat (10.3, 10.4 et 2.2).
 local BENCH_FORMAT = "UnboxBench_%02d"
@@ -220,6 +231,7 @@ local sessions: { [Player]: Session } = {}
 local benchCache: { [Model]: { [number]: Attachment } } = {}
 local placedListeners: { PlacedListener } = {}
 local openedListeners: { OpenedListener } = {}
+local carryStarts: { [Player]: CarryStart } = {}
 local random = Random.new()
 
 ------------------------------------------------------------------------------
@@ -299,13 +311,18 @@ local function ownsPlot(player: Player, plot: Model): boolean
 	return PlotService.GetPlot(player) == plot and plot:GetAttribute(OWNER_ATTRIBUTE) == player.UserId
 end
 
-local function inReach(player: Player, bench: Attachment): boolean
+local function rootOf(player: Player): BasePart?
 	local character = player.Character
 	local root = if character then character:FindFirstChild("HumanoidRootPart") else nil
-	if root == nil or not root:IsA("BasePart") then
+	return if root and root:IsA("BasePart") then root else nil
+end
+
+local function inReach(player: Player, bench: Attachment): boolean
+	local root = rootOf(player)
+	if root == nil then
 		return false
 	end
-	return ((root :: BasePart).Position - bench.WorldPosition).Magnitude <= REACH
+	return (root.Position - bench.WorldPosition).Magnitude <= REACH
 end
 
 -- 5.8 : 30 objets non exposés au plus (Balance.Display.InventoryMax). V0 proposé, absent du doc :
@@ -871,6 +888,18 @@ local function onPlaceBox(player: Player, benchIndex: number)
 		ReadyAt = 0,
 	}
 	local delay = openDelay(player, box)
+	-- Anti-triche (DEV-060), juste avant la réussite : le dernier déplacement (téléport chez soi) et
+	-- le trajet depuis la prise (speed hack), sans attendre le contrôle suivant. Sanctionné : le colis
+	-- vient de revoler vers son rayon (CarryService.ReportAnomaly), rien n'est posé.
+	local start = carryStarts[player]
+	local from: Vector3?, since: number? = nil, nil
+	if start and start.Payload == payload then
+		from, since = start.From, start.At
+	end
+	if not AntiCheatService.Verify(player, from, since) then
+		log(`{player.Name} : PlaceBox({benchIndex}) refusé : déplacement sanctionné par l'anti-triche, colis rendu`)
+		return
+	end
 	if CarryService.Consume(player) == nil then
 		log(`{player.Name} : PlaceBox({benchIndex}) refusé : CarryService.Consume n'a rien rendu`)
 		return
@@ -1013,7 +1042,26 @@ function UnboxService.Init()
 	PlotService.OnPlotReleased(function(player: Player, _plot: Model)
 		teardown(player)
 	end)
-	Players.PlayerRemoving:Connect(teardown)
+	Players.PlayerRemoving:Connect(function(player: Player)
+		carryStarts[player] = nil
+		teardown(player)
+	end)
+
+	-- Où et quand le portage du colis a commencé (contrôle du trajet à la pose, DEV-060).
+	CarryService.OnCarryStarted(function(player: Player, payload: any)
+		local root = rootOf(player)
+		if root and type(payload) == "table" and payload.Kind == NPC_BOX_KIND then
+			carryStarts[player] = { Payload = payload, From = root.Position, At = os.clock() }
+		else
+			carryStarts[player] = nil
+		end
+	end)
+	CarryService.OnCarryEnded(function(player: Player, payload: any)
+		local start = carryStarts[player]
+		if start and start.Payload == payload then
+			carryStarts[player] = nil
+		end
+	end)
 
 	local elapsed = 0
 	RunService.Heartbeat:Connect(function(dt: number)
