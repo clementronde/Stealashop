@@ -52,7 +52,7 @@ local Events: { [string]: string } = {
 	TheftSuccess = "PvPTheftSuccess", -- vol entre joueurs réussi (dépôt chez le voleur)
 	TheftFail = "PvPTheftFail", -- vol entre joueurs raté (l'objet revient à son présentoir)
 	BatBoxKnock = "BatBoxKnockdown", -- colis PNJ que la batte fait tomber hors zone safe
-	GuardCatch = "GuardCatch", -- porteur d'un colis PNJ rattrapé par un vigile
+	GuardCatch = "GuardCatch", -- porteur d'un colis PNJ rattrapé par un vigile, ou joueur attrapé la nuit sans colis
 	DefenseBought = "DefenseBought", -- achat d'une défense (MAJ 2) : point d'accroche
 }
 

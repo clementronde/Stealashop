@@ -562,7 +562,9 @@ end
 -- Suivi ---------------------------------------------------------------------------------------------------------
 
 local function watchPlot(instance: Instance): PlotWatch?
-	if not instance:IsA("Model") then
+	-- Seules les boutiques de la map : le gabarit PLOT_Shop de Clément (ReplicatedStorage/Assets/Plots)
+	-- porte aussi le tag, et il était suivi comme une 7e boutique.
+	if not instance:IsA("Model") or not instance:IsDescendantOf(Workspace) then
 		return nil
 	end
 	local existing = plotWatches[instance]
@@ -680,7 +682,11 @@ function PvPController.Start()
 	localPlayer:GetAttributeChangedSignal(CARRYING_ATTRIBUTE):Connect(refreshAll)
 
 	if RunService:IsStudio() then
-		print(`[PvPController] {#CollectionService:GetTagged(PLOT_TAG)} boutique(s) suivie(s) pour le repérage et le vol`)
+		local watched = 0
+		for _ in plotWatches do
+			watched += 1
+		end
+		print(`[PvPController] {watched} boutique(s) suivie(s) pour le repérage et le vol`)
 	end
 	while true do
 		task.wait(REFRESH_INTERVAL)

@@ -47,7 +47,8 @@
 --       et raison « Caught », que GuardService donne de jour comme de nuit ; colis PNJ seulement : un
 --       voleur d'objet attrapé la nuit part en TheftFail « Caught ») ; joueur = le porteur ; champs :
 --       Zone du colis, Phase (Day, Warning ou Night : NightCycleService.GetPhase), Rarity. Un joueur
---       attrapé la nuit sans rien porter ne passe pas par CarryService : il n'est pas compté.
+--       attrapé la nuit sans rien porter ne passe pas par CarryService : il est compté par
+--       GuardService.OnCatch, avec la Zone du vigile, Phase Night et Rarity None.
 --   DefenseBought  pas encore codé (défenses, MAJ 2) : point d'accroche LogEvent.
 --
 -- Noms et champs : texte sans virgule, guillemet ni apostrophe, droits ou typographiques (Roblox refuse
@@ -91,6 +92,7 @@ local BatService = require(script.Parent.BatService)
 local CarryService = require(script.Parent.CarryService)
 local DataService = require(script.Parent.DataService)
 local DisplayService = require(script.Parent.DisplayService)
+local GuardService = require(script.Parent.GuardService)
 local NightCycleService = require(script.Parent.NightCycleService)
 local PvPService = require(script.Parent.PvPService)
 local ShopService = require(script.Parent.ShopService)
@@ -393,6 +395,13 @@ local function onCarryEnded(player: Player, payload: Payload, result: CarryTypes
 	end
 end
 
+-- Attrapé la nuit sans rien porter (5.12) : pas de portage, onCarryEnded ne le voit pas.
+local function onGuardCatch(player: Player, zone: number, night: boolean, carrying: boolean)
+	if night and not carrying then
+		logEvent(player, "GuardCatch", field("Zone", zone), field("Phase", "Night"), field("Rarity", "None"), nil)
+	end
+end
+
 ------------------------------------------------------------------------------
 -- Démarrage
 ------------------------------------------------------------------------------
@@ -464,6 +473,7 @@ function TelemetryService.Init()
 	PvPService.OnTheftEnded(onTheftEnded)
 	BatService.OnHit(onBatHit)
 	CarryService.OnCarryEnded(onCarryEnded)
+	GuardService.OnCatch(onGuardCatch)
 	-- Départ : DisplayService a déjà encaissé la caisse (il s'abonne avant ce service).
 	DataService.OnProfileReleasing(flushPlayer)
 	Players.PlayerRemoving:Connect(function(player: Player)

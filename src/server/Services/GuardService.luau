@@ -104,6 +104,10 @@
 -- API (serveur) :
 --   GuardService.IsChased(player) -> boolean
 --   GuardService.GetGuard(player) -> Model?    le vigile qui poursuit ce joueur
+--   GuardService.OnCatch(listener) -> déconnexion
+--       listener(player, zone, night, carrying) à chaque capture, de jour ou de nuit, juste avant
+--       que le portage soit perdu : carrying = il portait quelque chose. TelemetryService s'en sert
+--       pour les captures de nuit sans colis (celles avec colis passent par OnCarryEnded).
 --   GuardService.GetSpeedOverride(player, zone) -> number?
 --       Point d'accroche du tutoriel (5.11, vigile lent : Config.Tutorial.GuardSpeed). Renvoie
 --       nil ici : la vitesse de la zone s'applique. TutorialService le remplace
@@ -332,6 +336,8 @@ local nightToken = 0 -- change à chaque StartNightPatrol et StopNightPatrol : p
 local chaseSent: { [Player]: Model } = {} -- vigile annoncé au joueur par ChaseState(true, …)
 local caughtAtNight: { [Player]: boolean } = {} -- attrapé la nuit, pas encore renvoyé : plus visé
 local stunTokens: { [Player]: number } = {}
+export type CatchListener = (player: Player, zone: number, night: boolean, carrying: boolean) -> ()
+local catchListeners: { CatchListener } = {}
 -- Colis tombés au sol après un coup de batte (6.2), par payload (la table que CarryService garde) :
 -- le vigile qui le suit, et tous les colis au sol (suivis ou non) jusqu'à leur prise ou leur fin.
 local following: { [any]: Guard } = {}
@@ -1036,6 +1042,15 @@ local function releaseKnockback(guard: Guard)
 	end
 end
 
+-- Prévient les écouteurs d'OnCatch, avant que le portage soit perdu (carrying = l'état à la capture).
+local function emitCatch(player: Player, zone: number, night: boolean)
+	local ok, result = pcall(CarryService.IsCarrying, player)
+	local carrying = ok and result == true
+	for _, listener in table.clone(catchListeners) do
+		task.spawn(listener, player, zone, night, carrying)
+	end
+end
+
 local function catch(guard: Guard, player: Player)
 	local now = os.clock()
 	endChase(guard)
@@ -1061,6 +1076,7 @@ local function catch(guard: Guard, player: Player)
 	-- Colis, étourdissement, message : décidés ici, dans leur propre tâche pour qu'un appel
 	-- qui attend ne bloque pas les autres vigiles.
 	local zone = guard.zone
+	emitCatch(player, zone, false)
 	task.spawn(function()
 		local ok, err = pcall(CarryService.Fail :: any, player, "Caught")
 		if not ok then
@@ -1092,6 +1108,7 @@ local function nightCatch(guard: Guard, player: Player)
 
 	stun(player, NIGHT_FREEZE_MAX) -- jusqu'au renvoi ; l'étourdissement de 2 s part de là
 	caughtAtNight[player] = true
+	emitCatch(player, guard.zone, true)
 	task.spawn(function()
 		local ok, err = pcall(CarryService.Fail :: any, player, "Caught")
 		if not ok then
@@ -2036,6 +2053,16 @@ end
 function GuardService.GetGuard(player: Player): Model?
 	local guard = chasedBy[player]
 	return if guard then guard.model else nil
+end
+
+function GuardService.OnCatch(listener: CatchListener): () -> ()
+	table.insert(catchListeners, listener)
+	return function()
+		local index = table.find(catchListeners, listener)
+		if index then
+			table.remove(catchListeners, index)
+		end
+	end
 end
 
 function GuardService.GetSpeedOverride(_player: Player, _zone: number): number?
