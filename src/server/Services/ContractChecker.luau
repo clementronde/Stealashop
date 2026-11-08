@@ -579,8 +579,9 @@ local function isPrefixed(inst: Instance, prefix: string): boolean
 	return true
 end
 
--- Tous les éléments du contrat sont facultatifs (comptoirs du hub et leur ShopPad, L-071) : un modèle
--- qui n'en a aucun n'est pas un bloc de greybox, chaque élément absent est un avertissement.
+-- Tous les éléments du contrat sont facultatifs. Avec WarnWhenEmpty (comptoirs du hub et leur ShopPad,
+-- L-071), un modèle qui n'en a aucun n'est pas un bloc de greybox : chaque élément absent est un
+-- avertissement. Sans (arches et leur InfoPoint), il reste « pas encore livré ».
 local function allOptional(parts: { Part }): boolean
 	for _, part in parts do
 		if not part.Optional then
@@ -595,7 +596,7 @@ local function checkModel(spec: ModelSpec, inst: Instance): boolean
 	local category = spec.Category
 	local label = inst:GetFullName()
 	contractModels[inst] = true
-	if spec.Tag and #spec.Parts > 0 and not allOptional(spec.Parts) and not hasAnyPart(inst, spec.Parts) then
+	if spec.Tag and #spec.Parts > 0 and not (spec.WarnWhenEmpty and allOptional(spec.Parts)) and not hasAnyPart(inst, spec.Parts) then
 		return false
 	end
 

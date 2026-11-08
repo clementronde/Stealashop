@@ -45,6 +45,11 @@ export type ModelSpec = {
 	Attributes: { string }?,
 	BodyAttachment: boolean?, -- accessoire : un attachment de corps dans Handle
 	Parts: { Part },
+	-- Tous les éléments facultatifs, et un modèle qui n'en a aucun doit quand même être signalé
+	-- (chaque élément absent = un avertissement) au lieu de compter comme un bloc de greybox « pas
+	-- encore livré » : comptoirs du hub sans ShopPad (L-071). Les arches (InfoPoint seul) restent
+	-- « pas encore livré » sans lui.
+	WarnWhenEmpty: boolean?,
 	Expected: { string }?, -- noms d'exemplaires attendus
 	ExpectedCount: number?, -- nombre d'exemplaires attendus (noms différents)
 	Known: { [string]: boolean }?, -- seuls noms acceptés ; un autre nom est signalé (objets ITM_)
@@ -326,6 +331,7 @@ local WeaponShopCounter: ModelSpec = {
 	Category = "Boutiques d'achat",
 	Tag = "WeaponShop",
 	Parts = { SHOP_PAD },
+	WarnWhenEmpty = true,
 }
 local AuraShopCounter: ModelSpec = {
 	Key = "AuraShopCounter",
@@ -333,6 +339,7 @@ local AuraShopCounter: ModelSpec = {
 	Category = "Boutiques d'achat",
 	Tag = "AuraShop",
 	Parts = { SHOP_PAD },
+	WarnWhenEmpty = true,
 }
 local RobuxShopCounter: ModelSpec = {
 	Key = "RobuxShopCounter",
@@ -340,6 +347,7 @@ local RobuxShopCounter: ModelSpec = {
 	Category = "Boutiques d'achat",
 	Tag = "RobuxShop",
 	Parts = { SHOP_PAD },
+	WarnWhenEmpty = true,
 }
 Models.WeaponShopCounter = WeaponShopCounter
 Models.AuraShopCounter = AuraShopCounter
