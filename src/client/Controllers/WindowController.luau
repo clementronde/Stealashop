@@ -469,7 +469,7 @@ function WindowController.Start()
 
 	Net.Client.WindowHit:Connect(function(windowId: string, point: Vector3, hitter: Player?)
 		if entries[windowId] == nil then
-			return -- cible d'événement (camion) ou vitrine pas encore là : rien à fissurer
+			return -- cible d'événement (camion) ou vitrine pas encore là : rien à creuser
 		end
 		for _, listener in table.clone(hitListeners) do
 			task.spawn(listener, windowId, point, hitter)

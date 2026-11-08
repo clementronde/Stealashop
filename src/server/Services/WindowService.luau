@@ -24,7 +24,7 @@
 --     Le débit (≤ 10 coups/s) est déjà limité par Net. Dégâts = ToolService.GetHitDamage.
 --   - Chaque coup validé, celui qui casse compris : WindowHit(windowId, point de frappe, frappeur,
 --     dégâts), non fiable, au frappeur et aux joueurs à moins de Config.Shatter.HitBroadcastRadius
---     studs du point (L-028 a) : chacun voit les fissures des autres (ShatterController, DEV-016) et
+--     studs du point (L-028 a) : chacun voit le creux des coups des autres (ShatterController, L-081) et
 --     le chiffre de dégâts de chaque coup (DamageNumberController, DEV-053). Le coup qui casse
 --     l'envoie juste avant WindowBroken. Un coup refusé n'envoie rien.
 --   - À 0 PV : la vitre est cachée et ne bloque plus (Transparency, CanCollide, CanQuery),
@@ -330,7 +330,7 @@ local function breakTarget(window: Window, breaker: Player, impactPoint: Vector3
 	emitBroken(window, breaker, impactPoint)
 end
 
--- Coup validé (celui qui casse compris) : WindowHit au frappeur (son étoile de fissure, au point
+-- Coup validé (celui qui casse compris) : WindowHit au frappeur (écho de son coup, au point
 -- calculé ici, et son chiffre de dégâts) et aux joueurs proches du point de frappe (L-028 a,
 -- DEV-053). Un joueur sans personnage ne reçoit rien, sauf le frappeur.
 local function broadcastHit(window: Window, hitter: Player, point: Vector3, damage: number)
