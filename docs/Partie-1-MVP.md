@@ -670,6 +670,8 @@ L'encaissement passe par le contact serveur avec le tapis de caisse, sans remote
 }
 ```
 
+**Versions du schéma (DataService)** : v2 (2026-11-07) = même forme, `ItemId` du catalogue d'objets v2 (liaison L-045) ; v3 (2026-11-08, DEV-100) = boutique Robux : `Purchases[PurchaseId]` = date du don (`os.time()`), plus `Monetization = { Passes = {}, StarterPack = false, OpenNowCredit = 0 }` et `Boosts = { Cash = 0 }`. Les champs de la Partie 2 (Defenses, Rebirths, Index, Rewards) arriveront en v4 et suivantes.
+
 ### 9.6 Anti-triche
 
 - **Déplacements** : toutes les 0,25 s, le serveur compare la distance parcourue à la vitesse autorisée × 1,25. 3 anomalies en 5 s : retour à la dernière position valide et colis rendu.
@@ -751,7 +753,7 @@ Ces noms sont lus par le code : un nom faux = une fonctionnalité qui ne marche 
 | Modèle | Enfants obligatoires (noms exacts) |
 | --- | --- |
 | Magasin PNJ `STORE_*` | `Window` (vitre intacte), `WindowFractured` (Model, éclats `Shard_01` à `Shard_40`), `Shutter` (rideau en position ouverte), `Door`, `Bounds` (Part invisible = volume intérieur), `ShelfSlot_01` à `ShelfSlot_10` (Attachments avec attribut `Tier` = Standard, Premium ou Luxe), `GuardSpawn` (Attachment), `SignPart` (support du panneau) |
-| Parcelle `PLOT_*` | `Window`, `WindowFractured`, `Shutter`, `ShutterButton`, `DisplaySlot_01` à `_20`, `VaultSlot_01` à `_03`, `UnboxBench_01` à `_04`, `TrapSlot_01` à `_04` (Attachments), `CashPad`, `DepositZone` (Part), `Treadmill`, `Bench`, `NameSign`, `Bounds` |
+| Parcelle `PLOT_*` | `Window`, `WindowFractured`, `Shutter`, `ShutterButton`, `DisplaySlot_01` à `_20` (et `DisplaySlot_21` à `_24`, optionnels : gamepass +4 présentoirs, MAJ 1, liaison L-066), `VaultSlot_01` à `_03`, `UnboxBench_01` à `_04`, `TrapSlot_01` à `_04` (Attachments), `CashPad`, `DepositZone` (Part), `Treadmill`, `Bench`, `NameSign`, `Bounds` |
 | Objet `ITM_*` | PrimaryPart nommé `Root` (pivot base centre), attribut `ItemId`, aucun script |
 | Colis `BOX_*` | `CarryAttachment` (dessous, au centre), `Lid` (couvercle séparé pour l'animation), Tint (pièce recolorée selon la rareté) |
 | Outil `TOOL_*` | `Handle` (MeshPart), `HitPoint` (Attachment à la tête de l'outil, pour les effets) |
