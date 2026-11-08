@@ -18,7 +18,8 @@
 --   - UnboxReveal(benchIndex, itemUid, itemId, zone, tier, startRarity, upgrades) : joue la
 --     séquence de la spec dans l'écran UI_Unbox v2 de Clément (contrat 2.2, Enabled = false au
 --     départ) : crans d'amélioration tirés par le serveur, animation Unbox (marqueur Open, secours
---     0,45 s), rouleau, éclat, textes, boutons ; version complète pour Rare et plus, courte pour
+--     0,45 s : le couvercle saute, un faisceau sort), rouleau dans la fenêtre Reel posée au-dessus
+--     du colis à chaque image (L-080), éclat, textes, boutons ; version complète pour Rare et plus, courte pour
 --     Commun et Peu commun ; toutes les durées dans Config.Unbox. Modules d'aide (dossier Unbox) :
 --     Sequence (le déroulé), Screen (l'affichage, remis dans l'état de Studio à la fermeture),
 --     Reel (le rouleau) ;
@@ -580,7 +581,10 @@ local hooks: Screen.Hooks = {
 }
 
 local function startReveal(entry: Queued, screen: ScreenGui, plan: Sequence.Plan)
-	local view = Screen.new(screen, plan, entry.box, hooks)
+	-- Point de l'établi : Upgrade et le rouleau s'y placent s'il n'y a pas de copie du colis (L-080).
+	local bench = views[entry.reveal.BenchIndex]
+	local anchor = if bench then bench.attachment.WorldPosition else nil
+	local view = Screen.new(screen, plan, entry.box, hooks, anchor)
 	local runner = Sequence.new(plan, view :: any)
 	local current: Running = {
 		reveal = entry.reveal,
