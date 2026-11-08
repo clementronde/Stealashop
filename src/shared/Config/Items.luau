@@ -1,14 +1,16 @@
 --!strict
 -- Catalogue des objets v2 (liaison L-045, validé par Clément le 2026-11-07 ; DEV-020, MOD-014,
--- MOD-026) : 74 objets, 4 catégories par zone, plusieurs objets par zone et par rareté, plus le
--- Secret. Source : docs/claude/notes/objets-catalogue-v2.json, recopié ici en Luau. Le JSON n'est
--- jamais lu à l'exécution ; le banc hors Studio de l'agent a22 vérifie que ce fichier lui est fidèle.
+-- MOD-026, MOD-031) : 83 objets, 4 catégories par zone (5 en zone 4), plusieurs objets par zone et
+-- par rareté, plus le Secret. Source : docs/claude/notes/objets-catalogue-v2.json, recopié ici en
+-- Luau. Le JSON n'est jamais lu à l'exécution ; le banc hors Studio a22-core vérifie que ce fichier
+-- lui est fidèle (mêmes objets, même ordre, mêmes champs).
 --
 -- Règles du catalogue (docs/claude/notes/objets-catalogue-v2.md) :
 --   - zone 1 (zone tuto) : 12 Communs, 3 par catégorie, plus le Pot de nouilles (Rare), qui ne sort
 --     que du premier colis du tuto (TutorialOnly ; Tutorial.GuaranteedItemId), jamais d'un tirage ;
---   - zones 2 à 6 : 12 objets chacune, 3 Communs, 3 Peu communs, 2 Rares, 2 Épiques, 1 Légendaire
---     et 1 Mythique ;
+--   - zones 2 à 6 : 12 objets chacune au départ (3 Communs, 3 Peu communs, 2 Rares, 2 Épiques,
+--     1 Légendaire, 1 Mythique), plus 9 objets du quotidien ajoutés par Clément le 2026-11-07
+--     (L-055) : zone 2 = 16 objets, zone 3 = 14, zone 4 = 15 avec la catégorie Mode (Fashion) ;
 --   - tirage d'un colis (StoreHeistService) : la rareté selon la table 7.3 (ShelfBoxes.ZoneOdds en
 --     zone 1), puis un objet au hasard parmi ceux de la zone et de cette rareté (Items.Pick).
 --
@@ -20,7 +22,7 @@
 --
 -- API (partagée avec l'ouverture des colis, agent a23) :
 --   Items.List: { Item }
---       Les 74 objets : zone par zone dans l'ordre du catalogue, puis le Secret.
+--       Les 83 objets : zone par zone dans l'ordre du catalogue, puis le Secret.
 --   Items.ById: { [ItemId]: Item }
 --   Items.ByZone[zone][rarity]: { Item }
 --       Objets tirables de cette zone et de cette rareté, dans l'ordre du catalogue, sans les
@@ -104,7 +106,10 @@ local CATALOG: { { CategoryEntry } } = {
 			Name = "Toy",
 			Items = {
 				{ Id = "Z2_CanardEnPlastique", Name = "Rubber Duck", Rarity = "Common" }, -- Canard en plastique
+				{ Id = "Z2_BallonDeFoot", Name = "Soccer Ball", Rarity = "Common" }, -- Ballon de foot (ajout du 2026-11-07)
+				{ Id = "Z2_BoosterDeCartes", Name = "Card Booster Pack", Rarity = "Uncommon" }, -- Booster de cartes (ajout du 2026-11-07)
 				{ Id = "Z2_YoYo", Name = "Yo-Yo", Rarity = "Uncommon" }, -- Yo-yo
+				{ Id = "Z2_CarteHolographique", Name = "Holo Card", Rarity = "Epic" }, -- Carte holographique (ajout du 2026-11-07)
 				{ Id = "Z2_RobotJouet", Name = "Toy Robot", Rarity = "Epic" }, -- Robot jouet
 				{ Id = "Z2_FigurineHolographique", Name = "Hologram Figure", Rarity = "Mythic" }, -- Figurine holographique
 			},
@@ -131,6 +136,7 @@ local CATALOG: { { CategoryEntry } } = {
 			Name = "Vehicle",
 			Items = {
 				{ Id = "Z2_BusAImperiale", Name = "Double-Decker Bus", Rarity = "Uncommon" }, -- Bus à impériale
+				{ Id = "Z2_Skateboard", Name = "Skateboard", Rarity = "Uncommon" }, -- Skateboard (ajout du 2026-11-07)
 				{ Id = "Z2_VoitureTelecommandee", Name = "RC Car", Rarity = "Rare" }, -- Voiture télécommandée
 				{ Id = "Z2_TrainElectrique", Name = "Toy Train", Rarity = "Epic" }, -- Train électrique
 			},
@@ -170,6 +176,8 @@ local CATALOG: { { CategoryEntry } } = {
 			Items = {
 				{ Id = "Z3_Manette", Name = "Game Controller", Rarity = "Uncommon" }, -- Manette
 				{ Id = "Z3_CasqueVr", Name = "VR Headset", Rarity = "Rare" }, -- Casque VR
+				{ Id = "Z3_ConsoleADoubleEcran", Name = "Dual-Screen Console", Rarity = "Rare" }, -- Console à double écran (ajout du 2026-11-07)
+				{ Id = "Z3_ConsoleDeSalon", Name = "Home Console", Rarity = "Epic" }, -- Console de salon (ajout du 2026-11-07)
 				{ Id = "Z3_ConsolePortable", Name = "Handheld Console", Rarity = "Epic" }, -- Console portable
 			},
 		},
@@ -199,6 +207,15 @@ local CATALOG: { { CategoryEntry } } = {
 			Items = {
 				{ Id = "Z4_PenduleDoree", Name = "Golden Clock", Rarity = "Common" }, -- Pendule dorée
 				{ Id = "Z4_HorlogeDeParquet", Name = "Grandfather Clock", Rarity = "Epic" }, -- Horloge de parquet
+			},
+		},
+		{
+			Id = "Mode", -- catégorie ajoutée par Clément le 2026-11-07 (L-055)
+			Name = "Fashion",
+			Items = {
+				{ Id = "Z4_Parfum", Name = "Perfume", Rarity = "Common" }, -- Parfum (ajout du 2026-11-07)
+				{ Id = "Z4_LunettesDeStar", Name = "Star Sunglasses", Rarity = "Uncommon" }, -- Lunettes de star (ajout du 2026-11-07)
+				{ Id = "Z4_BasketsDeCollection", Name = "Collector Sneakers", Rarity = "Rare" }, -- Baskets de collection (ajout du 2026-11-07)
 			},
 		},
 		{
@@ -408,7 +425,7 @@ end
 local Items = {
 	List = List, -- zone par zone, dans l'ordre du catalogue, puis les Secrets
 	ById = ById,
-	ByZone = ByZone, -- Items.ByZone[3].Rare = { Smartphone, Casque VR }
+	ByZone = ByZone, -- Items.ByZone[3].Rare = { Smartphone, Casque VR, Console à double écran }
 	Secrets = Secrets, -- tirés quand la rareté est Secret, quelle que soit la zone
 	Pick = pick,
 	RenamedV1 = RENAMED_V1,

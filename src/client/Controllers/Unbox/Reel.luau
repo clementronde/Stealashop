@@ -7,10 +7,16 @@
 --       (ShelfBoxes.OddsFor), puis un objet au hasard parmi ceux de (zone, rareté) ; le gagnant
 --       (l'objet choisi par le serveur, UnboxReveal) à l'index W = ReelLead + ReelCount ; dans 40 %
 --       des cas, frôlement : en W − 1, un objet d'une rareté plus haute que ce colis peut donner ;
---   Reel.newStrip(viewport, items) -> Strip
+--   Reel.newStrip(viewport, items, icons?) -> Strip
 --       rendu dans un ViewportFrame (ReelView de UI_Unbox, ou l'aperçu de ItemPreview) : trois
---       clones ITM_* à la fois au plus (le visible, celui qui entre, celui qui sort), sans leurs
---       scripts, caméra fixe ; les objets arrivent par le haut et ressortent par le bas ;
+--       objets à la fois au plus (le visible, celui qui entre, celui qui sort), caméra fixe ; les
+--       objets arrivent par le haut et ressortent par le bas. Chaque objet est un clone ITM_*,
+--       sans ses scripts, qui tourne sur lui-même ; avec `icons` (le rouleau ReelView, liaison
+--       L-055), un objet dont l'icône ICON_<ItemId> est livrée (Contract/Icons) est montré en 2D :
+--       un ImageLabel immobile, dans un cadre ReelIcons posé par le code sur la vue (mêmes cases,
+--       même taille que le modèle, et la teinte de la vue : ImageColor3 et ImageTransparency de
+--       ReelView, donc les mêmes silhouettes noires puis les couleurs). Sans icône, le clone 3D (ou
+--       le cube V0) comme avant. Les icônes du rouleau sont téléchargées dès sa création ;
 --   Reel.cloneModel(item) -> Model
 --       copie de l'ITM_* de l'objet (ReplicatedStorage/Assets/Items, sous-dossiers permis), sans
 --       scripts ; tant qu'il n'est pas livré, un cube V0 de la couleur de sa rareté.
@@ -25,6 +31,7 @@ local Items = require(Config:WaitForChild("Items"))
 local Rarities = require(Config:WaitForChild("Rarities"))
 local ShelfBoxes = require(Config:WaitForChild("ShelfBoxes"))
 local Unbox = require(Config:WaitForChild("Unbox"))
+local Icons = require(Shared:WaitForChild("Contract"):WaitForChild("Icons"))
 
 type Item = Items.Item
 
@@ -47,7 +54,8 @@ export type Strip = {
 -- Modèles ITM_ de Clément, depuis ReplicatedStorage (contrat 10.3, sous-dossiers permis).
 local ITEMS_FOLDER = { "Assets", "Items" }
 local V0_BLOCK = 1.2 -- V0 proposé, absent du doc : cube (studs) d'un ITM_* pas encore livré
-local VISIBLE_AROUND = 1 -- clones gardés de part et d'autre de l'objet au centre (3 en tout)
+local VISIBLE_AROUND = 1 -- objets gardés de part et d'autre de l'objet au centre (3 en tout)
+local ICON_LAYER = "ReelIcons" -- cadre des icônes, posé par le code sur la vue (détruit avec le rouleau)
 
 local Reel = {}
 
@@ -219,13 +227,16 @@ local function fit(model: Model, height: number, width: number): CFrame
 	return (box:ToObjectSpace(model:GetPivot()))
 end
 
-type Built = { model: Model, offset: CFrame }
+-- Une case montrée : le clone 3D (model, offset) ou l'icône 2D (icon).
+type Built = { model: Model?, offset: CFrame, icon: ImageLabel? }
 
 type StripFields = {
 	viewport: ViewportFrame,
 	items: { Item },
+	textures: { [number]: string }, -- [index] = icône de l'objet (mode icônes, icône livrée)
 	camera: Camera,
 	width: number,
+	layer: Frame?, -- cadre des icônes (créé à la première)
 	built: { [number]: Built },
 	destroyed: boolean,
 }
@@ -233,9 +244,34 @@ type StripFields = {
 local StripClass = {}
 StripClass.__index = StripClass
 
--- Rendu d'une liste d'objets dans `viewport`. La caméra fixe est posée comme CurrentCamera du
--- ViewportFrame : à l'appelant de garder l'ancienne valeur s'il doit la remettre.
-function Reel.newStrip(viewport: ViewportFrame, items: { Item }): Strip
+-- Icône de chaque case (une recherche par objet différent), et la liste des textures à télécharger.
+local function iconsOf(items: { Item }): ({ [number]: string }, { string })
+	local textures: { [number]: string } = {}
+	local byId: { [string]: string } = {}
+	local missing: { [string]: boolean } = {}
+	local distinct: { string } = {}
+	for index, item in items do
+		local texture: string? = byId[item.Id]
+		if texture == nil and not missing[item.Id] then
+			texture = Icons.get(item.Id)
+			if texture ~= nil then
+				byId[item.Id] = texture
+				table.insert(distinct, texture)
+			else
+				missing[item.Id] = true
+			end
+		end
+		if texture ~= nil then
+			textures[index] = texture
+		end
+	end
+	return textures, distinct
+end
+
+-- Rendu d'une liste d'objets dans `viewport` ; `icons` : les objets dont l'icône est livrée sont
+-- montrés en 2D. La caméra fixe est posée comme CurrentCamera du ViewportFrame : à l'appelant de
+-- garder l'ancienne valeur s'il doit la remettre.
+function Reel.newStrip(viewport: ViewportFrame, items: { Item }, icons: boolean?): Strip
 	local slot = Unbox.ReelSlot
 	local camera = Instance.new("Camera")
 	camera.FieldOfView = Unbox.ReelFov
@@ -247,15 +283,84 @@ function Reel.newStrip(viewport: ViewportFrame, items: { Item }): Strip
 	viewport.CurrentCamera = camera
 	local size = viewport.AbsoluteSize
 	local aspect = if size.Y > 0 then size.X / size.Y else 1
+	local textures: { [number]: string } = {}
+	if icons then
+		local distinct: { string }
+		textures, distinct = iconsOf(items)
+		if #distinct > 0 then
+			-- Les icônes se téléchargent pendant que le colis s'ouvre : au plus vite, chaque case
+			-- ne reste que quelques centièmes de seconde au centre.
+			task.spawn(Icons.preload, distinct)
+		end
+	end
 	local fields: StripFields = {
 		viewport = viewport,
 		items = items,
+		textures = textures,
 		camera = camera,
 		width = math.min(Unbox.ReelFit, slot * aspect * 0.85),
+		layer = nil,
 		built = {},
 		destroyed = false,
 	}
 	return (setmetatable(fields, StripClass) :: any) :: Strip
+end
+
+-- Cadre des icônes, de la taille de la vue : il coupe ce qui sort de la fenêtre du rouleau, comme
+-- la vue coupe les modèles. Créé par le code, il ne touche à aucune propriété de ReelView.
+local function iconLayer(self: StripFields): Frame
+	local existing = self.layer
+	if existing ~= nil then
+		return existing
+	end
+	local layer = Instance.new("Frame")
+	layer.Name = ICON_LAYER
+	layer.BackgroundTransparency = 1
+	layer.BorderSizePixel = 0
+	layer.Size = UDim2.fromScale(1, 1)
+	layer.ClipsDescendants = true
+	layer.ZIndex = self.viewport.ZIndex
+	layer.Parent = self.viewport
+	self.layer = layer
+	return layer
+end
+
+-- Icône d'une case : carrée, de la taille que prendrait le modèle (self.width sur une case de
+-- ReelSlot : la hauteur de la vue), centrée sur sa case.
+local function newIcon(self: StripFields, item: Item, texture: string): ImageLabel
+	local share = self.width / Unbox.ReelSlot
+	local icon = Instance.new("ImageLabel")
+	icon.Name = Icons.name(item.Id)
+	icon.BackgroundTransparency = 1
+	icon.BorderSizePixel = 0
+	icon.AnchorPoint = Vector2.new(0.5, 0.5)
+	icon.SizeConstraint = Enum.SizeConstraint.RelativeYY
+	icon.Size = UDim2.fromScale(share, share)
+	icon.ScaleType = Enum.ScaleType.Fit
+	icon.Image = texture
+	icon.ZIndex = self.viewport.ZIndex
+	icon.Parent = iconLayer(self)
+	return icon
+end
+
+-- Une case : l'icône si elle est livrée (mode icônes), sinon le clone 3D de l'objet.
+local function build(self: StripFields, item: Item, texture: string?): Built
+	if texture ~= nil then
+		return { model = nil, offset = CFrame.identity, icon = newIcon(self, item, texture) }
+	end
+	local model = Reel.cloneModel(item)
+	local offset = fit(model, Unbox.ReelFit, self.width)
+	model.Parent = self.viewport
+	return { model = model, offset = offset, icon = nil }
+end
+
+local function destroyBuilt(entry: Built)
+	if entry.model then
+		entry.model:Destroy()
+	end
+	if entry.icon then
+		entry.icon:Destroy()
+	end
 end
 
 function StripClass.Set(self: StripFields, pos: number, angle: number, drop: number?)
@@ -267,21 +372,31 @@ function StripClass.Set(self: StripFields, pos: number, angle: number, drop: num
 	for index, entry in self.built do
 		if math.abs(index - center) > VISIBLE_AROUND then
 			self.built[index] = nil
-			entry.model:Destroy()
+			destroyBuilt(entry)
 		end
 	end
+	local viewport = self.viewport
 	for index = center - VISIBLE_AROUND, center + VISIBLE_AROUND do
 		local item = self.items[index]
 		if item ~= nil then
 			local entry = self.built[index]
 			if entry == nil then
-				local model = Reel.cloneModel(item)
-				entry = { model = model, offset = fit(model, Unbox.ReelFit, self.width) }
-				self.built[index] = entry
-				model.Parent = self.viewport
+				local made = build(self, item, self.textures[index])
+				self.built[index] = made
+				entry = made
 			end
-			local y = (index - pos - (drop or 0)) * slot
-			entry.model:PivotTo(CFrame.new(0, y, 0) * CFrame.Angles(0, angle, 0) * entry.offset)
+			-- Écart à la case du centre, en cases (vers le haut) : une case = la hauteur de la vue.
+			local rise = index - pos - (drop or 0)
+			local model = entry.model
+			local icon = entry.icon
+			if model ~= nil then
+				model:PivotTo(CFrame.new(0, rise * slot, 0) * CFrame.Angles(0, angle, 0) * entry.offset)
+			elseif icon ~= nil then
+				icon.Position = UDim2.fromScale(0.5, 0.5 - rise)
+				-- La teinte de la vue ne s'applique qu'au rendu 3D : l'icône la reprend.
+				icon.ImageColor3 = viewport.ImageColor3
+				icon.ImageTransparency = viewport.ImageTransparency
+			end
 		end
 	end
 end
@@ -292,9 +407,14 @@ function StripClass.Destroy(self: StripFields)
 	end
 	self.destroyed = true
 	for _, entry in self.built do
-		entry.model:Destroy()
+		destroyBuilt(entry)
 	end
 	table.clear(self.built)
+	local layer = self.layer
+	if layer ~= nil then
+		layer:Destroy()
+		self.layer = nil
+	end
 	self.camera:Destroy()
 end
 

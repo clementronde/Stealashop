@@ -15,7 +15,8 @@
 -- d'avertissements et de points pas encore livrés. Zéro problème = livrable.
 --
 -- Ne tourne qu'en Studio, côté serveur, et ne modifie jamais rien dans la place.
--- Les noms vérifiés viennent tous de ReplicatedStorage/Shared/Contract.
+-- Les noms vérifiés viennent tous de ReplicatedStorage/Shared/Contract (et du catalogue d'objets,
+-- Config/Items, pour les ITM_ et leurs icônes ICON_).
 
 local AnimationClipProvider = game:GetService("AnimationClipProvider")
 local CollectionService = game:GetService("CollectionService")
@@ -26,13 +27,17 @@ local ServerStorage = game:GetService("ServerStorage")
 local StarterGui = game:GetService("StarterGui")
 local Workspace = game:GetService("Workspace")
 
-local ContractFolder = ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Contract")
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local ContractFolder = Shared:WaitForChild("Contract")
 local Animations = require(ContractFolder:WaitForChild("Animations"))
 local Attributes = require(ContractFolder:WaitForChild("Attributes"))
 local Find = require(ContractFolder:WaitForChild("Find"))
+local Icons = require(ContractFolder:WaitForChild("Icons"))
 local Models = require(ContractFolder:WaitForChild("Models"))
 local Tags = require(ContractFolder:WaitForChild("Tags"))
 local UI = require(ContractFolder:WaitForChild("UI"))
+-- Catalogue d'objets : icônes attendues, une par objet, dans l'ordre du catalogue (L-055).
+local Items = require(Shared:WaitForChild("Config"):WaitForChild("Items"))
 
 type Anim = typeof(Animations.Player[1])
 type Part = typeof(Models.Store.Parts[1])
@@ -683,17 +688,23 @@ local function checkModels(scanned: { Instance })
 	end
 end
 
--- Objets ITM_ (catalogue v2 et animation idle, liaison L-045) -----------------------------------
+-- Objets ITM_ (catalogue v2 et animation idle, liaisons L-045 et L-055) -------------------------
 
-local function isSpinPiece(inst: Instance, spinPrefix: string): boolean
-	return startsWith(inst.Name, spinPrefix)
+-- Préfixe de pièce mobile (Spin_, Wave_) par lequel commence le nom de `inst`, ou nil.
+local function moverPrefix(inst: Instance, prefixes: { string }): string?
+	for _, prefix in prefixes do
+		if startsWith(inst.Name, prefix) then
+			return prefix
+		end
+	end
+	return nil
 end
 
--- Premier ancêtre de `inst`, sous `model`, dont le nom commence par le préfixe des pièces Spin_.
-local function spinAncestor(inst: Instance, model: Instance, spinPrefix: string): Instance?
+-- Premier ancêtre de `inst`, sous `model`, qui est une pièce mobile (Spin_ ou Wave_).
+local function moverAncestor(inst: Instance, model: Instance, prefixes: { string }): Instance?
 	local parent = inst.Parent
 	while parent and parent ~= model do
-		if isSpinPiece(parent, spinPrefix) then
+		if moverPrefix(parent, prefixes) then
 			return parent
 		end
 		parent = parent.Parent
@@ -730,14 +741,14 @@ local function itemAncestor(inst: Instance, prefix: string): Instance?
 end
 
 -- Pour chaque modèle ITM_ : nom du catalogue (Config/Items, par Contract/Models), anciens noms du
--- catalogue v1 refusés, ItemId = nom sans ITM_, un seul Root, ni pièce Spin_ ni dans une pièce
--- Spin_, pièces Spin_ = BasePart ou Model, sans soudure vers le reste du modèle, attribut Idle à
--- une valeur connue. Un attribut Idle posé sur une pièce d'un ITM_ est signalé (le code ne le lit
--- que sur le modèle) ; ailleurs, il n'est pas regardé (les copies exposées le gardent).
+-- catalogue v1 refusés, ItemId = nom sans ITM_, un seul Root, ni pièce mobile (Spin_, Wave_) ni
+-- dans une pièce mobile, pièces mobiles = BasePart ou Model, sans soudure vers le reste du modèle,
+-- attribut Idle à une valeur connue. Un attribut Idle posé sur une pièce d'un ITM_ est signalé (le
+-- code ne le lit que sur le modèle) ; ailleurs, il n'est pas regardé (les copies exposées le gardent).
 local function checkItems(scanned: { Instance })
 	local spec = Models.Item
 	local prefix = spec.Prefix or "ITM_"
-	local spinPrefix = spec.SpinPrefix or "Spin_"
+	local movers = { spec.SpinPrefix or "Spin_", spec.WavePrefix or "Wave_" }
 	local known = spec.Known or {}
 	local renamed = spec.Renamed or {}
 	local retired = spec.Retired or {}
@@ -789,43 +800,79 @@ local function checkItems(scanned: { Instance })
 			problem("Objets", `{label} : {#roots} éléments nommés {primary}, un seul attendu (la pièce PrimaryPart)`)
 		end
 		for _, root in roots do
-			local holder = spinAncestor(root, inst, spinPrefix)
+			local holder = moverAncestor(root, inst, movers)
 			if holder then
 				problem(
 					"Objets",
-					`{label}.{primary} est dans {holder.Name} : une pièce {spinPrefix} tourne, le pivot du modèle tournerait avec elle (L-045)`
+					`{label}.{primary} est dans {holder.Name} : une pièce {moverPrefix(holder, movers)} bouge, le pivot du modèle bougerait avec elle (L-045)`
 				)
 			end
 		end
 
-		local spinPieces: { Instance } = {}
+		local pieces: { Instance } = {}
 		for _, descendant in inst:GetDescendants() do
-			if isSpinPiece(descendant, spinPrefix) then
+			local moverName = moverPrefix(descendant, movers)
+			if moverName then
 				if descendant:IsA("BasePart") or descendant:IsA("Model") then
-					table.insert(spinPieces, descendant)
+					table.insert(pieces, descendant)
 				else
 					problem(
 						"Objets",
-						`{label}.{descendant.Name} : une pièce {spinPrefix} doit être une pièce (BasePart) ou un Model (trouvé : {descendant.ClassName})`
+						`{label}.{descendant.Name} : une pièce {moverName} doit être une pièce (BasePart) ou un Model (trouvé : {descendant.ClassName})`
 					)
 				end
 			end
 		end
-		if #spinPieces > 0 then
+		if #pieces > 0 then
 			for _, descendant in inst:GetDescendants() do
 				local part0, part1 = jointParts(descendant)
 				if part0 and part1 then
-					for _, piece in spinPieces do
+					for _, piece in pieces do
 						if isInsideOrSelf(part0, piece) ~= isInsideOrSelf(part1, piece) then
 							problem(
 								"Objets",
-								`{label}.{piece.Name} : soudée au reste du modèle par {descendant.Name} ({descendant.ClassName}), elle ne pourrait pas tourner seule : retirer la soudure (L-045)`
+								`{label}.{piece.Name} : soudée au reste du modèle par {descendant.Name} ({descendant.ClassName}), elle ne pourrait pas bouger seule : retirer la soudure (L-045)`
 							)
 						end
 					end
 				end
 			end
 		end
+	end
+end
+
+-- Icônes ICON_<ItemId> (liaison L-055, doc 10.3) : une par objet du catalogue, trouvée par le code
+-- (Contract/Icons : un Decal à Texture non vide, dans ReplicatedStorage/Assets). Pas encore livrées :
+-- une ligne « pas encore livré » avec les noms qui manquent. Un nom ICON_ hors catalogue (faute de
+-- frappe, ancien objet) ou qui n'est pas un Decal, dans la place ou les assets : un problème.
+local function checkIcons(scanned: { Instance })
+	local iconPrefix = Icons.Prefix
+	local missing: { string } = {}
+	local names: { [string]: boolean } = {}
+	for _, item in Items.List do
+		local name = Icons.name(item.Id)
+		names[name] = true
+		if Icons.find(item.Id) == nil then
+			table.insert(missing, name)
+		end
+	end
+	for _, inst in scanned do
+		local name = inst.Name
+		if not startsWith(name, iconPrefix) then
+			continue
+		end
+		local label = inst:GetFullName()
+		if not inst:IsA("Decal") then
+			problem("Objets", `{label} : une icône d'objet doit être un Decal (trouvé : {inst.ClassName}, 10.3)`)
+		elseif not names[name] then
+			local near = nearName(names, name)
+			local fix = if near then ` : la renommer {near}` else ""
+			problem("Objets", `{label} : {string.sub(name, #iconPrefix + 1)} n'est pas au catalogue d'objets (Config/Items){fix}`)
+		end
+	end
+	if #missing > 0 then
+		local folder = `ReplicatedStorage.{table.concat(Icons.Folder, ".")}`
+		pending("Objets", `icônes ICON_* : {#Items.List - #missing} sur {#Items.List} livrées dans {folder} (manquent : {listNames(missing)})`)
 	end
 end
 
@@ -1264,6 +1311,7 @@ local function run()
 	checkPlotIndex()
 	checkModels(scanned)
 	checkItems(scanned)
+	checkIcons(scanned)
 	checkGuiSet("UI", UI.Screens, StarterGui, "StarterGui", "écran", false)
 	local billboardPath = `ReplicatedStorage.{table.concat(UI.BillboardFolder, ".")}`
 	checkGuiSet("Billboards", UI.Billboards, walk(ReplicatedStorage, UI.BillboardFolder), billboardPath, "billboard", true)

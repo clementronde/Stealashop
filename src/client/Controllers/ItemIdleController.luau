@@ -1,35 +1,42 @@
 --!strict
 -- ItemIdleController (DEV-020, client) : animation idle des objets exposés (liaison L-045 :
--- proposition de Clément, validée par Ironix le 2026-11-07). Aucun script dans les modèles : tout
--- se joue ici, en local. Rien n'est envoyé au serveur ; chaque joueur anime chez lui les objets
--- qu'il voit.
+-- proposition de Clément, validée par Ironix le 2026-11-07 ; pièces Wave_ : L-055). Aucun script
+-- dans les modèles : tout se joue ici, en local. Rien n'est envoyé au serveur ; chaque joueur anime
+-- chez lui les objets qu'il voit.
 --
--- Ce qui bouge (contrat : Contract/Attributes.Idle et Contract/Models.Item.SpinPrefix) :
+-- Ce qui bouge (contrat : Contract/Attributes.Idle, Contract/Models.Item.SpinPrefix et WavePrefix) :
 --   - l'attribut Idle du modèle ITM_ de Clément, gardé sur l'objet exposé (copie faite par
 --     DisplayService) :
 --       Spin     le modèle tourne sur l'axe Y de son pivot (en bas au centre, sur le présentoir) ;
 --       Bob      il monte puis redescend doucement, sans passer sous sa position de repos ;
 --       SpinBob  les deux ;
 --     absent : immobile ; une autre valeur est ignorée (le ContractChecker la signale) ;
---   - les pièces Spin_<Nom> (BasePart, ou Model autour de son pivot) tournent sur leur propre axe
---     Y, autour de leur centre, que le modèle ait l'attribut Idle ou non. Une pièce Spin_ rangée
---     dans une autre tourne sur elle-même et avec elle.
+--   - les pièces Spin_<Nom> (BasePart ou Model) tournent sans fin autour de l'axe Y de leur pivot
+--     (GetPivot, PivotOffset compris : c'est là que Clément règle l'axe), que le modèle ait
+--     l'attribut Idle ou non ;
+--   - les pièces Wave_<Nom> (BasePart ou Model) font un va-et-vient autour de l'axe Y de leur
+--     pivot, de part et d'autre de leur pose de départ (sinus, Config/ItemIdle.WaveAmplitude et
+--     WavePeriod), avec ou sans Idle : la patte du Chat porte-bonheur doré (Wave_Paw et
+--     Wave_PawPads, même pivot, à l'épaule, orienté gauche-droite). Toutes les pièces Wave_ d'un
+--     objet reçoivent le même angle au même instant.
+--   Une pièce Spin_ ou Wave_ rangée dans une autre bouge sur elle-même et avec elle.
 -- Ce qui reste fixe : le halo de rareté (pièce RarityHalo, que DisplayController anime) et le
 -- billboard BB_Item, posés par DisplayService : le point d'accroche du billboard (BillboardPoint,
 -- dans Root) est recalé à sa place de repos à chaque image.
 --
 -- Objets suivis : les objets exposés, Models taggés DisplayItem par DisplayService (rangés dans les
 -- parcelles, ModelStreamingMode Atomic : ils arrivent en entier avec le streaming). Un objet sans
--- Idle ni pièce Spin_ (la plupart) n'est pas suivi. Les objets portés ne sont pas animés : seul un
--- objet volé à un joueur en serait un (6.1, PvPService pas encore écrit), et il est soudé à la tête
--- (déplacer une de ses pièces déplacerait le personnage).
+-- Idle ni pièce Spin_ ou Wave_ (la plupart) n'est pas suivi. Les objets portés ne sont pas animés :
+-- l'objet volé à un joueur (6.1) est soudé à la tête, et déplacer une de ses pièces déplacerait le
+-- personnage.
 --
 -- Position de repos d'une pièce : celle qu'elle a en arrivant chez le client (le serveur ne déplace
 -- jamais un objet exposé : il le détruit et en crée un autre). À chaque image, chaque pièce est
--- replacée depuis sa position de repos, sans dérive. Plus loin de la caméra que
--- Config/ItemIdle.MaxDistance, l'objet reprend sa position de repos et n'est plus animé. Chaque
--- objet a son propre décalage dans le temps, tiré de sa position : deux objets voisins ne tournent
--- pas d'un même bloc.
+-- replacée depuis sa position de repos, l'angle calculé depuis l'instant (jamais ajouté image après
+-- image) : aucune dérive, et une pièce Wave_ repasse exactement par sa pose de départ. Plus loin de
+-- la caméra que Config/ItemIdle.MaxDistance, l'objet reprend sa position de repos et n'est plus
+-- animé. Chaque objet a son propre décalage dans le temps, tiré de sa position : deux objets voisins
+-- ne bougent pas d'un même bloc.
 --
 -- Réglages : Config/ItemIdle (V0, à faire valider par Clément).
 --
@@ -38,7 +45,10 @@
 --       Mouvement du modèle entier à l'instant t (secondes) pour une valeur d'Idle : rotation
 --       autour de l'axe Y du pivot (radians, de 0 à 2π) et hauteur au-dessus du repos (studs).
 --   ItemIdleController.PieceAngle(t) -> number
---       Rotation d'une pièce Spin_ sur son axe Y à l'instant t (radians, de 0 à 2π).
+--       Rotation d'une pièce Spin_ autour de l'axe Y de son pivot à l'instant t (radians, de 0 à 2π).
+--   ItemIdleController.WaveAngle(t) -> number
+--       Angle d'une pièce Wave_ autour de l'axe Y de son pivot à l'instant t, depuis sa pose de
+--       départ (radians, de −WaveAmplitude à +WaveAmplitude ; 0 à t = 0).
 --   ItemIdleController.GetStats() -> { Tracked: number, Animated: number }
 --       Objets suivis et objets animés en ce moment (à portée de la caméra), pour les tests.
 
@@ -59,7 +69,9 @@ local BILLBOARD_POINT = "BillboardPoint"
 
 local IDLE_ATTRIBUTE: string = Attributes.Idle.Name
 local SPIN_PREFIX: string = Models.Item.SpinPrefix or "Spin_"
+local WAVE_PREFIX: string = Models.Item.WavePrefix or "Wave_"
 local TAU = 2 * math.pi
+local WAVE_AMPLITUDE = math.rad(ItemIdle.WaveAmplitude)
 -- Décalage dans le temps d'un objet : de 0 à PHASE_SPAN secondes, tiré de sa position.
 local PHASE_SPAN = 10
 
@@ -68,18 +80,20 @@ for _, value in Attributes.Idle.Values do
 	MODES[value] = true
 end
 
--- Pièce Spin_ : sa rotation, et celle des pièces qui la contiennent.
-type Spin = {
-	pivot: CFrame, -- au repos : centre et axes de la pièce (BasePart), ou pivot (Model)
+-- Pièce mobile, Spin_ (rotation sans fin) ou Wave_ (va-et-vient) autour de l'axe Y de son pivot :
+-- son mouvement, et celui des pièces qui la contiennent.
+type Piece = {
+	wave: boolean, -- Wave_, sinon Spin_
+	pivot: CFrame, -- au repos : pivot de la pièce (GetPivot : PivotOffset d'une BasePart compris)
 	pivotInverse: CFrame,
-	parent: Spin?, -- pièce Spin_ qui la contient
+	parent: Piece?, -- pièce mobile qui la contient
 	current: CFrame, -- déplacement de l'image en cours, dans le repère du monde
 }
 
 type PartEntry = {
 	part: BasePart,
 	rest: CFrame,
-	spin: Spin?, -- pièce Spin_ la plus proche qui la contient (ou elle-même)
+	piece: Piece?, -- pièce mobile la plus proche qui la contient (ou elle-même)
 }
 
 -- Point d'accroche du billboard de DisplayService, gardé à sa place de repos.
@@ -97,7 +111,7 @@ type Entry = {
 	mode: string?, -- valeur d'Idle reconnue, ou nil
 	phase: number,
 	parts: { PartEntry },
-	spins: { Spin }, -- les pièces contenantes avant les pièces contenues
+	pieces: { Piece }, -- les pièces contenantes avant les pièces contenues
 	points: { PointEntry },
 	active: boolean, -- à portée de la caméra : animé
 	moved: boolean, -- des pièces sont hors de leur position de repos
@@ -131,12 +145,31 @@ function ItemIdleController.PieceAngle(t: number): number
 	return (t * ItemIdle.PieceTurnsPerSecond % 1) * TAU
 end
 
+-- Sinus d'une période ramenée à [0, 1[ : l'angle ne dépend que de l'instant, jamais des images
+-- d'avant, et reste précis même après des heures (t grandit, la fraction de période non).
+function ItemIdleController.WaveAngle(t: number): number
+	return WAVE_AMPLITUDE * math.sin((t / ItemIdle.WavePeriod % 1) * TAU)
+end
+
 ------------------------------------------------------------------------------
 -- Objets suivis
 ------------------------------------------------------------------------------
 
-local function isSpinPiece(inst: Instance): boolean
-	return string.sub(inst.Name, 1, #SPIN_PREFIX) == SPIN_PREFIX and (inst:IsA("BasePart") or inst:IsA("Model"))
+local function startsWith(text: string, prefix: string): boolean
+	return string.sub(text, 1, #prefix) == prefix
+end
+
+-- "Spin" ou "Wave" pour une pièce mobile (BasePart ou Model nommé Spin_… ou Wave_…), sinon nil.
+local function pieceKind(inst: Instance): string?
+	if not (inst:IsA("BasePart") or inst:IsA("Model")) then
+		return nil
+	end
+	if startsWith(inst.Name, SPIN_PREFIX) then
+		return "Spin"
+	elseif startsWith(inst.Name, WAVE_PREFIX) then
+		return "Wave"
+	end
+	return nil
 end
 
 -- Le halo de DisplayService (et ce qu'il contient) ne bouge pas.
@@ -151,12 +184,12 @@ local function inHalo(inst: Instance, model: Model): boolean
 	return false
 end
 
--- Nombre de pièces Spin_ au-dessus de `inst` dans le modèle.
-local function spinDepth(inst: Instance, model: Model): number
+-- Nombre de pièces mobiles (Spin_, Wave_) au-dessus de `inst` dans le modèle.
+local function pieceDepth(inst: Instance, model: Model): number
 	local depth = 0
 	local current = inst.Parent
 	while current ~= nil and current ~= model do
-		if isSpinPiece(current) then
+		if pieceKind(current) ~= nil then
 			depth += 1
 		end
 		current = current.Parent
@@ -164,63 +197,69 @@ local function spinDepth(inst: Instance, model: Model): number
 	return depth
 end
 
--- Pièce Spin_ la plus proche qui contient `inst` (lui compris), parmi celles déjà connues.
-local function spinOf(inst: Instance?, model: Model, spins: { [Instance]: Spin }): Spin?
+-- Pièce mobile la plus proche qui contient `inst` (lui compris), parmi celles déjà connues.
+local function pieceOf(inst: Instance?, model: Model, known: { [Instance]: Piece }): Piece?
 	local current = inst
 	while current ~= nil and current ~= model do
-		local spin = spins[current]
-		if spin then
-			return spin
+		local piece = known[current]
+		if piece then
+			return piece
 		end
 		current = current.Parent
 	end
 	return nil
 end
 
--- Lit le modèle au repos. nil s'il n'a rien à animer (ni Idle reconnu ni pièce Spin_).
+-- Lit le modèle au repos. nil s'il n'a rien à animer (ni Idle reconnu ni pièce Spin_ ou Wave_).
 local function build(model: Model): Entry?
 	local raw = model:GetAttribute(IDLE_ATTRIBUTE)
 	local mode: string? = if type(raw) == "string" and MODES[raw] then raw else nil
 	local descendants = model:GetDescendants()
 
-	local pieces: { Instance } = {}
+	local movers: { Instance } = {}
+	local waves: { [Instance]: boolean } = {}
 	local depths: { [Instance]: number } = {}
 	for _, descendant in descendants do
-		if isSpinPiece(descendant) and not inHalo(descendant, model) then
-			table.insert(pieces, descendant)
-			depths[descendant] = spinDepth(descendant, model)
+		local kind = pieceKind(descendant)
+		if kind ~= nil and not inHalo(descendant, model) then
+			table.insert(movers, descendant)
+			waves[descendant] = kind == "Wave"
+			depths[descendant] = pieceDepth(descendant, model)
 		end
 	end
-	if mode == nil and #pieces == 0 then
+	if mode == nil and #movers == 0 then
 		return nil
 	end
-	table.sort(pieces, function(a: Instance, b: Instance): boolean
+	table.sort(movers, function(a: Instance, b: Instance): boolean
 		return depths[a] < depths[b]
 	end)
 
-	local spinsOf: { [Instance]: Spin } = {}
-	local spins: { Spin } = {}
-	for _, piece in pieces do
-		local pivot = if piece:IsA("BasePart") then (piece :: BasePart).CFrame else (piece :: Model):GetPivot()
-		local spin: Spin = {
+	local piecesOf: { [Instance]: Piece } = {}
+	local pieces: { Piece } = {}
+	for _, mover in movers do
+		-- Le pivot, pas le centre : pour une BasePart, CFrame × PivotOffset (formule de Clément,
+		-- part:GetPivot()).
+		local pivot = (mover :: PVInstance):GetPivot()
+		local piece: Piece = {
+			wave = waves[mover] == true,
 			pivot = pivot,
 			pivotInverse = pivot:Inverse(),
-			parent = spinOf(piece.Parent, model, spinsOf),
+			parent = pieceOf(mover.Parent, model, piecesOf),
 			current = CFrame.identity,
 		}
-		spinsOf[piece] = spin
-		table.insert(spins, spin)
+		piecesOf[mover] = piece
+		table.insert(pieces, piece)
 	end
 
-	-- Sans Idle, seules les pièces Spin_ (et ce qu'elles contiennent) bougent : les autres ne sont
+	-- Sans Idle, seules les pièces mobiles (et ce qu'elles contiennent) bougent : les autres ne sont
 	-- pas réécrites.
 	local parts: { PartEntry } = {}
 	local points: { PointEntry } = {}
 	for _, descendant in descendants do
-		local spin = spinOf(descendant, model, spinsOf)
-		if descendant:IsA("BasePart") and not inHalo(descendant, model) and (mode ~= nil or spin ~= nil) then
+		local piece = pieceOf(descendant, model, piecesOf)
+		if descendant:IsA("BasePart") and not inHalo(descendant, model) and (mode ~= nil or piece ~= nil) then
 			local part = descendant :: BasePart
-			table.insert(parts, { part = part, rest = part.CFrame, spin = spin })
+			table.insert(parts, { part = part, rest = part.CFrame, piece = piece })
 			for _, child in part:GetChildren() do
 				if child.Name == BILLBOARD_POINT and child:IsA("Attachment") then
 					local attachment = child :: Attachment
@@ -244,7 +283,7 @@ local function build(model: Model): Entry?
 		mode = mode,
 		phase = (position.X * 0.37 + position.Z * 0.61) % PHASE_SPAN,
 		parts = parts,
-		spins = spins,
+		pieces = pieces,
 		points = points,
 		active = false,
 		moved = false,
@@ -261,14 +300,17 @@ local function apply(entry: Entry, t: number)
 	if angle ~= 0 or height ~= 0 then
 		whole = entry.pivot * CFrame.new(0, height, 0) * CFrame.Angles(0, angle, 0) * entry.pivotInverse
 	end
-	local pieceAngle = ItemIdleController.PieceAngle(time)
-	for _, spin in entry.spins do
-		local base = if spin.parent then spin.parent.current else whole
-		spin.current = base * spin.pivot * CFrame.Angles(0, pieceAngle, 0) * spin.pivotInverse
+	-- Même angle pour toutes les pièces d'une sorte : celles de la patte bougent d'un bloc.
+	local spinTurn = CFrame.Angles(0, ItemIdleController.PieceAngle(time), 0)
+	local waveTurn = CFrame.Angles(0, ItemIdleController.WaveAngle(time), 0)
+	for _, piece in entry.pieces do
+		local base = if piece.parent then piece.parent.current else whole
+		local turn = if piece.wave then waveTurn else spinTurn
+		piece.current = base * piece.pivot * turn * piece.pivotInverse
 	end
 	for _, entryPart in entry.parts do
-		local spin = entryPart.spin
-		local move = if spin then spin.current else whole
+		local piece = entryPart.piece
+		local move = if piece then piece.current else whole
 		entryPart.part.CFrame = move * entryPart.rest
 	end
 	for _, point in entry.points do
@@ -310,10 +352,10 @@ local function untrack(model: Model)
 	end
 end
 
--- Une pièce, une pièce Spin_ ou le point du billboard qui arrive ou repart change ce qu'il faut
--- animer : le modèle est relu à l'image suivante, depuis sa position de repos.
+-- Une pièce, une pièce mobile (Spin_, Wave_) ou le point du billboard qui arrive ou repart change
+-- ce qu'il faut animer : le modèle est relu à l'image suivante, depuis sa position de repos.
 local function matters(inst: Instance): boolean
-	return inst:IsA("BasePart") or isSpinPiece(inst) or inst.Name == BILLBOARD_POINT
+	return inst:IsA("BasePart") or pieceKind(inst) ~= nil or inst.Name == BILLBOARD_POINT
 end
 
 local function track(inst: Instance)
