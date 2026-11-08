@@ -42,7 +42,7 @@
 --        BoxSpawn_01 à _12 (BlastPoint pour un point qui manque). Contenu tiré comme sur un rayon de
 --        la zone du camion : rareté selon ShelfBoxes.OddsFor (zone 1 : Communs seulement, L-033),
 --        objet par Items.Pick, repli sur la rareté tirable la plus proche en dessous (comme
---        StoreHeistService). Chaque colis est posé tout de suite à son point d'arrivée
+--        StoreHeistService), mutation par Mutations.Roll (DEV-131, comme sur un rayon). Chaque colis est posé tout de suite à son point d'arrivée
 --        (CarryService.PlaceDrop), au sol, de ScatterMinRadius à ScatterRadius studs du centre du
 --        camion, du côté de son point de sortie (ScatterSpread), et jamais sur un autre : au moins
 --        BoxGap studs bord à bord entre deux colis, d'après la largeur des modèles BOX_<Tier> (cône
@@ -85,6 +85,7 @@ local Balance = require(Shared.Config.Balance)
 local Bat = require(Shared.Config.Bat)
 local Features = require(Shared.Config.Features)
 local Items = require(Shared.Config.Items)
+local Mutations = require(Shared.Config.Mutations)
 local Rarities = require(Shared.Config.Rarities)
 local ShelfBoxes = require(Shared.Config.ShelfBoxes)
 local TruckEvent = require(Shared.Config.TruckEvent)
@@ -869,6 +870,8 @@ local function explode(truck: Truck, impactPoint: Vector3?, breaker: Player?)
 			ItemId = itemId,
 			StoreId = storeId,
 			SlotId = `{storeId}/{string.format("%02d", index)}`,
+			-- DEV-131 (L-084) : mêmes règles que la mise en rayon, jamais pour un objet TutorialOnly.
+			Mutation = if Items.ById[itemId].TutorialOnly then nil else Mutations.Roll(random),
 		}
 		local launch = (index - 1) * TruckEvent.LaunchStagger
 		local landsIn = launch + TruckEvent.FlightTime

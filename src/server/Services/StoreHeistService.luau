@@ -30,9 +30,14 @@
 --     la plus proche en dessous, avec un avertissement par case (drawContent). Ce contenu ne quitte
 --     jamais le serveur avant OpenBox (5.7) : ni le colis ni son étiquette ne portent l'ItemId ou
 --     le nom de l'objet.
+--   - Mutation (DEV-131, L-084 point 3) : tirée au même moment, côté serveur (Mutations.Roll : une
+--     taille et un effet au plus, indépendants de la rareté), gardée avec le contenu : le colis qui
+--     revient sur son rayon garde la sienne, le payload la porte jusqu'au présentoir (UnboxService).
+--     Jamais pour un objet TutorialOnly, ni pour un contenu remplacé par l'accroche du tuto.
 --   - Étiquette : chaque colis du rayon porte BB_Box (CarryService.AttachBoxLabel : copie de
 --     ReplicatedStorage/Assets/UI/BB_Box accrochée à son LabelPoint) : catégorie de l'objet (ligne
---     cachée tant qu'elle est vide), rareté à sa couleur, mutation cachée (MAJ 4). Le colis porté
+--     cachée tant qu'elle est vide), rareté à sa couleur, mutation (« BIG · GOLD », cachée sans
+--     mutation). Le colis porté
 --     garde la même étiquette (CarryService). ShelfBoxController (client) ne montre que celles des
 --     colis en vue et ne garde que 25 contours.
 --   - Casse (WindowService.OnBroken, vitrine d'un magasin PNJ) : le magasin ouvre pour
@@ -124,7 +129,8 @@
 --   StoreHeistService.SetContentOverride(fn?)
 --       Accroche du tuto (voir plus haut). fn(player, drawn) -> override?, appelée à chaque prise,
 --       ne doit pas yield. drawn = { StoreId, SlotId, Zone, Tier, Rarity, ItemId } (contenu du
---       colis du rayon). override = nil (rien ne change) ou { Tier?, Rarity?, ItemId? } : Tier =
+--       colis du rayon). Un contenu remplacé n'a jamais de mutation (DEV-131 : jamais pour le colis
+--       du tuto). override = nil (rien ne change) ou { Tier?, Rarity?, ItemId? } : Tier =
 --       type du colis porté (clé de Balance.Heist.BoxTiers) ; ItemId = objet (de la zone du
 --       magasin, ou un Secret) ; Rarity seule = un objet de cette rareté est tiré dans la zone
 --       (Items.Pick : jamais un objet TutorialOnly, sans le repli de la mise en rayon).
@@ -133,7 +139,7 @@
 --       StoreId = l'id de vitrine de WindowService (le nom du modèle, « STORE_Z1_Superette »).
 --
 -- Payload d'un colis PNJ, transmis à CarryService : { Kind = "NPCBox", Tier, Zone, Rarity,
--- ItemId, StoreId, SlotId }. ItemId ne doit jamais partir vers un client avant OpenBox (5.7).
+-- ItemId, StoreId, SlotId, Mutation? }. ItemId ne doit jamais partir vers un client avant OpenBox (5.7).
 
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
@@ -148,6 +154,7 @@ local Balance = require(Shared.Config.Balance)
 local Items = require(Shared.Config.Items)
 local Rarities = require(Shared.Config.Rarities)
 local ShelfBoxes = require(Shared.Config.ShelfBoxes)
+local Mutations = require(Shared.Config.Mutations)
 local Zones = require(Shared.Config.Zones)
 local Attributes = require(Shared.Contract.Attributes)
 local Net = require(Shared.Net.Net)
@@ -163,6 +170,7 @@ export type NPCBoxPayload = {
 	ItemId: string, -- Id de Items ("Z3_Smartphone"…), secret jusqu'à OpenBox
 	StoreId: string,
 	SlotId: string,
+	Mutation: Mutations.Mutation?, -- DEV-131 : tirée à la mise en rayon ; nil = aucune
 }
 
 -- Contenu du colis du rayon, passé à l'accroche du tuto.
@@ -191,12 +199,13 @@ type CarryApi = {
 	IsCarrying: (player: Player) -> boolean,
 	OnCarryEnded: (listener: (player: Player, payload: any, result: string, reason: string) -> ()) -> any,
 	OnDropExpired: (listener: (dropId: string, payload: any, position: Vector3) -> ()) -> any,
-	AttachBoxLabel: (model: Model, rarityId: string, itemId: string) -> BillboardGui?,
+	AttachBoxLabel: (model: Model, rarityId: string, itemId: string, mutation: Mutations.Mutation?) -> BillboardGui?,
 }
 
 local CarryService: CarryApi = require(script.Parent.CarryService) :: any
 
-type Content = { Rarity: string, ItemId: string }
+-- Mutation (DEV-131) : nil = aucune ; jamais pour l'accroche du tuto.
+type Content = { Rarity: string, ItemId: string, Mutation: Mutations.Mutation? }
 
 -- Colis posé sur un rayon, ou en vol vers lui.
 type ShelfBox = {
@@ -551,6 +560,16 @@ end
 -- case ; rien en dessous : nil (rayon laissé vide, signalé par fillStore). Le catalogue v2 n'a
 -- aucune case vide qu'un tirage puisse atteindre (zone 1 : Communs seulement, ShelfBoxes.ZoneOdds) :
 -- ce repli ne sert qu'à une Config incohérente. La rareté du contenu reste celle de son objet.
+-- Mutation du colis (DEV-131, L-084 point 3) : tirée avec le contenu, jamais pour un objet
+-- TutorialOnly (qu'aucun tirage ne donne : garde-fou).
+local function drawMutation(itemId: string): Mutations.Mutation?
+	local item = Items.ById[itemId]
+	if item == nil or item.TutorialOnly then
+		return nil
+	end
+	return Mutations.Roll(random)
+end
+
 local function drawContent(tier: string, zone: number): Content?
 	local rarity = drawRarity(tier, zone)
 	if rarity == nil then
@@ -558,7 +577,7 @@ local function drawContent(tier: string, zone: number): Content?
 	end
 	local itemId = drawItem(zone, rarity)
 	if itemId then
-		return { Rarity = rarity, ItemId = itemId }
+		return { Rarity = rarity, ItemId = itemId, Mutation = drawMutation(itemId) }
 	end
 	-- Rarities.List va de Commun à Secret : en partant de la fin, la première rareté plus basse qui
 	-- a un objet est la plus proche en dessous.
@@ -574,7 +593,7 @@ local function drawContent(tier: string, zone: number): Content?
 					`empty.{zone}.{rarity}`,
 					`aucun objet {rarity} tirable en zone {zone} (Config/Items) : ces colis reçoivent un objet {fallbackRarity} à la place`
 				)
-				return { Rarity = fallbackRarity, ItemId = fallbackItem }
+				return { Rarity = fallbackRarity, ItemId = fallbackItem, Mutation = drawMutation(fallbackItem) }
 			end
 		end
 	end
@@ -706,7 +725,7 @@ local function makeBoxModel(slot: Slot, tier: string, content: Content): Model
 	box:SetAttribute(SLOT_ATTRIBUTE, slot.Name)
 	box:SetAttribute(TIER_ATTRIBUTE, tier)
 	CollectionService:AddTag(box, SHELF_BOX_TAG)
-	local ok, label = pcall(CarryService.AttachBoxLabel, box, content.Rarity, content.ItemId)
+	local ok, label = pcall(CarryService.AttachBoxLabel, box, content.Rarity, content.ItemId, content.Mutation)
 	if not ok then
 		warnOnce("label.error", `CarryService.AttachBoxLabel : {label}`)
 	elseif label == nil then
@@ -1222,7 +1241,8 @@ local function contentFor(player: Player, slot: Slot, box: ShelfBox): (string, C
 		return box.Tier, box.Content
 	end
 	log(`accroche du tuto : {player.Name} reçoit un colis {tier} {rarity} ({itemId}) au lieu de {box.Tier} {box.Content.Rarity}`)
-	local content: Content = { Rarity = rarity, ItemId = itemId }
+	-- Jamais de mutation pour le colis du tuto (DEV-131) : un contenu remplacé n'en a aucune.
+	local content: Content = { Rarity = rarity, ItemId = itemId, Mutation = nil }
 	return tier, content
 end
 
@@ -1241,6 +1261,7 @@ local function grant(player: Player, slot: Slot)
 		ItemId = content.ItemId,
 		StoreId = store.Id,
 		SlotId = slot.Id,
+		Mutation = content.Mutation,
 	}
 	-- Rayon réservé pendant l'appel : une autre prise ne peut pas passer si StartCarry attend.
 	slot.Box = nil
@@ -1261,7 +1282,8 @@ local function grant(player: Player, slot: Slot)
 	end
 	discard(box)
 	hideTimer(store, player)
-	log(`{player.Name} prend le colis {box.Tier} {slot.Name} de {store.Id} : {content.Rarity} ({content.ItemId})`)
+	local mutation = Mutations.Label(content.Mutation)
+	log(`{player.Name} prend le colis {box.Tier} {slot.Name} de {store.Id} : {content.Rarity} ({content.ItemId}){if mutation then ", " .. mutation else ""}`)
 	for _, listener in table.clone(grabbedListeners) do
 		task.spawn(listener, player, payload)
 	end

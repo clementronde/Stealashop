@@ -28,6 +28,15 @@ export type NPCBoxPayload = {
 	ItemId: string, -- Id de Config.Items, ex. « Z3_Smartphone » (de la même rareté), secret jusqu'à OpenBox
 	StoreId: string, -- magasin d'origine, ex. « STORE_Z1_Superette » (Id de sa vitrine)
 	SlotId: string, -- emplacement de rayon d'origine, au format choisi par StoreHeistService
+	-- DEV-131 (L-084) : mutation tirée avec le contenu (Config/Mutations) ; nil = aucune. Visible sur
+	-- BB_Box dès le rayon ; jamais pour le colis du tuto.
+	Mutation: Mutation?,
+}
+
+-- Mutation (Config/Mutations, Types/Profile) : { Size = "Big", Effect = "Gold" }, champs facultatifs.
+export type Mutation = {
+	Size: string?,
+	Effect: string?,
 }
 
 -- Objet volé à un joueur (6.1, jalon M3, DEV-041), fabriqué par PvPService à la prise (StealItem).
@@ -42,6 +51,7 @@ export type PlayerItemPayload = {
 	Income: number, -- $/s de l'objet, calculé par le serveur, affiché sur BB_Carry (Format.income)
 	VictimUserId: number, -- propriétaire, chez qui l'objet revient en cas d'échec (6.1)
 	SlotIndex: number, -- présentoir d'origine (Display, 9.5)
+	Mutation: Mutation?, -- DEV-131 : celle de l'objet de la victime (nom de BB_Carry) ; nil = aucune
 }
 
 export type Payload = NPCBoxPayload | PlayerItemPayload

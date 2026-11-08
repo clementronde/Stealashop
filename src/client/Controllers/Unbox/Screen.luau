@@ -52,6 +52,7 @@ local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = Shared:WaitForChild("Config")
+local Mutations = require(Config:WaitForChild("Mutations"))
 local Rarities = require(Config:WaitForChild("Rarities"))
 local Unbox = require(Config:WaitForChild("Unbox"))
 local Find = require(Shared:WaitForChild("Contract"):WaitForChild("Find"))
@@ -1021,7 +1022,8 @@ function Screen.RarityText(self: View, _at: number)
 end
 
 function Screen.ItemNameText(self: View, _at: number)
-	set(self, self.itemName, "Text", self.plan.Item.DisplayName)
+	-- Nom précédé de la mutation (DEV-131) : « Big Gold Soda Can ».
+	set(self, self.itemName, "Text", Mutations.ItemName(self.plan.Item.DisplayName, self.plan.Reveal.Mutation))
 	set(self, self.itemName, "Visible", true)
 end
 

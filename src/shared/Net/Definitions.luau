@@ -261,6 +261,8 @@ local List: { RemoteDef } = {
 		-- colis ; zone et tier = ceux du colis (composition du rouleau, revenu du Secret) ;
 		-- startRarity = la rareté du colis avant amélioration ; upgrades = le nombre de crans
 		-- réussis, chacun monte d'une rareté (le client en déduit les raretés des crans).
+		-- Mutations (DEV-131, L-084) : mutationSize et mutationEffect = Id de Config/Mutations de
+		-- l'objet ouvert (nom et revenu de l'écran d'ouverture), nil sans mutation dans la famille.
 		Name = "UnboxReveal",
 		Direction = "ServerToClient",
 		Reliable = true,
@@ -272,6 +274,8 @@ local List: { RemoteDef } = {
 			id("tier"),
 			id("startRarity"),
 			{ Name = "upgrades", Kind = "int", Min = 0, Max = MAX_UPGRADES },
+			{ Name = "mutationSize", Kind = "string", Max = 32, Optional = true },
+			{ Name = "mutationEffect", Kind = "string", Max = 32, Optional = true },
 		},
 	},
 	{

@@ -56,6 +56,15 @@ export type Item = {
 	At: number, -- os.time() de l'obtention
 	Zone: number?, -- zone du magasin d'origine : nécessaire au revenu d'un objet présent dans
 	-- plusieurs zones (le Secret) ; absent des objets créés avant le 2026-11-06 (zone 1 par défaut)
+	Mutation: Mutation?, -- DEV-131 (L-084) : mutation tirée avec le colis, gardée au vol ; absent =
+	-- aucune mutation. Champ facultatif, sans changement de version (un objet sans champ = sans mutation)
+}
+
+-- Mutation d'un objet ou d'un colis (DEV-131, L-084 point 3 ; Config/Mutations) : une par famille au
+-- plus, des Id en texte, ex. { Size = "Big", Effect = "Gold" } ; un champ absent = rien dans cette famille.
+export type Mutation = {
+	Size: string?,
+	Effect: string?,
 }
 
 -- Un colis posé sur un présentoir (v5, L-086 ; sur un établi avant), en attente d'ouverture
@@ -66,6 +75,7 @@ export type Box = {
 	ItemId: string, -- objet tiré par le serveur à la mise en rayon (Config/Items)
 	Rarity: string, -- rareté tirée, ex. « Epic » : toujours celle de l'objet au catalogue
 	ReadyAt: number, -- os.time() à partir duquel OpenBox est accepté
+	Mutation: Mutation?, -- DEV-131 : mutation tirée à la mise en rayon, donnée à l'objet à l'ouverture (facultatif)
 }
 
 export type Tutorial = {

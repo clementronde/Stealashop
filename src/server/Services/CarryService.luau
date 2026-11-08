@@ -13,7 +13,7 @@
 -- GrabItem (StoreHeistService) ou StealItem (PvPService), la pose par PlaceBox (UnboxService), le
 -- dépôt d'un objet volé par PvPService (Consume, raison « Deposited »).
 --
--- Payload (Shared/Types/Carry) : { Kind = "NPCBox", Tier, Zone, Rarity, ItemId, StoreId, SlotId }
+-- Payload (Shared/Types/Carry) : { Kind = "NPCBox", Tier, Zone, Rarity, ItemId, StoreId, SlotId, Mutation? }
 -- pour un colis PNJ ; { Kind = "PlayerItem", ItemUid, ItemId, Rarity, Income, VictimUserId,
 -- SlotIndex } pour un objet volé à un joueur (DEV-041, PvPService : malus −25 %, contour rouge,
 -- BB_Carry). Fabriqué par le serveur, vérifié par StartCarry, puis toujours repassé tel quel (même
@@ -78,7 +78,7 @@
 --       (lus par le client ; DropId ne se remplace pas). Renvoie le dropId ; nil, avec un
 --       avertissement, si le payload est invalide, déjà porté ou au sol, ou n'est pas un colis PNJ.
 --   Étiquette des colis du rayon (L-031) :
---   CarryService.AttachBoxLabel(model, rarityId, itemId) -> BillboardGui?
+--   CarryService.AttachBoxLabel(model, rarityId, itemId, mutation?) -> BillboardGui?
 --       Pose sur `model`, un colis qui n'est pas porté (StoreHeistService : chaque colis du rayon),
 --       la même étiquette BB_Box que sur la tête (voir plus bas), à son LabelPoint. Secret : tag
 --       CarryRainbow sur l'étiquette seule, CarryController anime sa rareté (le colis du rayon
@@ -106,11 +106,14 @@
 --     au sommet du visuel (objet volé, bloc V0) :
 --       colis PNJ : copie de ReplicatedStorage/Assets/UI/BB_Box (contrat 2.2, L-031), la même que
 --       sur le rayon : Category = catégorie de l'objet (Items, ligne cachée tant qu'elle est vide),
---       Rarity = nom de la rareté en capitales (« LEGENDARY ») à sa couleur, Mutation cachée (les
---       mutations arrivent à la MAJ 4). Ni le nom ni l'ItemId de l'objet : il reste secret
+--       Rarity = nom de la rareté en capitales (« LEGENDARY ») à sa couleur, Mutation = la mutation
+--       du payload en capitales (DEV-131, Mutations.Label : « BIG · GOLD »), cachée sans mutation. Ni
+--       le nom ni l'ItemId de l'objet : il reste secret
 --       jusqu'à l'ouverture (5.7). Taille, décalage, AlwaysOnTop et MaxDistance : ceux de Clément ;
---       objet volé à un joueur : copie de BB_Carry (contrat 2.2 : ItemName, Rarity, Income) : nom,
---       rareté, $/s (Format.income, « +$15/s »), et un contour rouge (6.1).
+--       objet volé à un joueur : copie de BB_Carry (contrat 2.2 : ItemName, Rarity, Income) : nom
+--       précédé de sa mutation (« Big Gold Soda Can » ; si Clément ajoute un champ Mutation à
+--       BB_Carry, la mutation y va et ItemName garde le nom seul), rareté, $/s (Format.income,
+--       « +$15/s », mutation comprise), et un contour rouge (6.1).
 --     Étiquette pas encore livrée : étiquette V0, rareté seule.
 
 local CollectionService = game:GetService("CollectionService")
@@ -123,6 +126,7 @@ local Shared = ReplicatedStorage.Shared
 local Balance = require(Shared.Config.Balance)
 local Bat = require(Shared.Config.Bat)
 local Items = require(Shared.Config.Items)
+local Mutations = require(Shared.Config.Mutations)
 local Rarities = require(Shared.Config.Rarities)
 local ShelfBoxes = require(Shared.Config.ShelfBoxes)
 local Zones = require(Shared.Config.Zones)
@@ -146,6 +150,8 @@ local CARRY_ATTACHMENT = "CarryAttachment"
 local TINT = "Tint"
 local BB_CARRY = "BB_Carry" -- objet volé à un joueur
 local BB_BOX = "BB_Box" -- colis PNJ, sur le rayon comme sur la tête (L-031)
+-- Champ de la mutation : au contrat de BB_Box ; facultatif dans BB_Carry (nom proposé à Clément, DEV-131).
+local MUTATION_FIELD = "Mutation"
 -- Noms posés par ce service (mêmes noms dans CarryController pour l'attribut et le tag).
 local CARRYING_ATTRIBUTE = "Carrying"
 local SPEED_KEY = "Carry"
@@ -308,6 +314,9 @@ local function invalidReason(payload: any): string?
 	end
 	if item.Rarity ~= rarity.Id then
 		return `{item.Id} est {item.Rarity}, pas {rarity.Id}`
+	end
+	if not Mutations.IsValid(payload.Mutation) then
+		return "mutation invalide (Config/Mutations)"
 	end
 	if payload.Kind == "NPCBox" then
 		if Balance.Heist.BoxTiers[payload.Tier] == nil then
@@ -595,25 +604,33 @@ local function labelPoint(model: Model, anchor: BasePart, top: CFrame): Attachme
 end
 
 -- Étiquette BB_Box d'un colis PNJ (L-031), sur le rayon comme sur la tête : la catégorie de
--- l'objet (ligne cachée tant qu'elle est vide), la rareté à sa couleur, la mutation cachée. Jamais
--- le nom ni l'ItemId de l'objet (5.7).
-local function boxLabel(rarity: Rarity, item: Item): BillboardGui
+-- l'objet (ligne cachée tant qu'elle est vide), la rareté à sa couleur, la mutation (DEV-131,
+-- « BIG · GOLD », cachée sans mutation). Jamais le nom ni l'ItemId de l'objet (5.7).
+local function boxLabel(rarity: Rarity, item: Item, mutation: Mutations.Mutation?): BillboardGui
 	local template = labelTemplate(BB_BOX)
 	local gui = if template then template:Clone() :: BillboardGui else placeholderLabel(ShelfBoxes.V0LabelMaxDistance)
 	gui.Name = BB_BOX
 	local category = item.Category
 	fill(gui, "Category", if category ~= nil and category ~= "" then category else nil)
 	fill(gui, "Rarity", rarity.DisplayNameUpper, rarity.Color)
-	fill(gui, "Mutation", nil) -- mutations (Gold, Diamond, Neon) : MAJ 4
+	fill(gui, "Mutation", Mutations.Label(mutation))
 	return gui
 end
 
--- Étiquette BB_Carry d'un objet volé à un joueur (6.1) : nom, rareté à sa couleur, $/s.
+-- Étiquette BB_Carry d'un objet volé à un joueur (6.1) : nom (précédé de sa mutation, DEV-131),
+-- rareté à sa couleur, $/s. Champ Mutation facultatif, hors contrat tant que Clément ne l'a pas
+-- créé : s'il existe, la mutation y va en capitales et ItemName garde le nom seul.
 local function itemLabel(payload: PlayerItemPayload, rarity: Rarity): BillboardGui
 	local template = labelTemplate(BB_CARRY)
 	local gui = if template then template:Clone() :: BillboardGui else placeholderLabel(nil)
 	gui.Name = BB_CARRY
-	fill(gui, "ItemName", Items.ById[payload.ItemId].DisplayName)
+	local name = Items.ById[payload.ItemId].DisplayName
+	if Find.path(gui, MUTATION_FIELD) ~= nil then
+		fill(gui, "ItemName", name)
+		fill(gui, MUTATION_FIELD, Mutations.Label(payload.Mutation))
+	else
+		fill(gui, "ItemName", Mutations.ItemName(name, payload.Mutation))
+	end
 	fill(gui, "Rarity", rarity.DisplayNameUpper, rarity.Color)
 	fill(gui, "Income", Format.income(payload.Income))
 	return gui
@@ -625,7 +642,7 @@ local function addLabel(model: Model, anchor: BasePart, top: CFrame, payload: Pa
 	local point = labelPoint(model, anchor, top)
 	local gui: BillboardGui
 	if payload.Kind == "NPCBox" then
-		gui = boxLabel(rarity, Items.ById[payload.ItemId])
+		gui = boxLabel(rarity, Items.ById[payload.ItemId], payload.Mutation)
 	else
 		gui = itemLabel(payload, rarity)
 	end
@@ -830,7 +847,7 @@ function CarryService.OnCarryEnded(listener: EndedListener): () -> ()
 end
 
 -- Étiquette BB_Box d'un colis qui n'est pas porté (colis du rayon, L-031) : voir l'en-tête.
-function CarryService.AttachBoxLabel(model: Model, rarityId: string, itemId: string): BillboardGui?
+function CarryService.AttachBoxLabel(model: Model, rarityId: string, itemId: string, mutation: Mutations.Mutation?): BillboardGui?
 	local rarity = Rarities.ById[rarityId]
 	local item = Items.ById[itemId]
 	if rarity == nil or item == nil then
@@ -842,7 +859,7 @@ function CarryService.AttachBoxLabel(model: Model, rarityId: string, itemId: str
 		return nil
 	end
 	local point = labelPoint(model, anchor, offset * CFrame.new(0, model:GetExtentsSize().Y, 0))
-	local gui = boxLabel(rarity, item)
+	local gui = boxLabel(rarity, item, Mutations.Sanitize(mutation))
 	if rarity.Rainbow then
 		CollectionService:AddTag(gui, RAINBOW_TAG) -- l'étiquette seule : le colis garde l'aspect de son type
 	end

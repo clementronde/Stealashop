@@ -33,6 +33,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = Shared:WaitForChild("Config")
 local Formulas = require(Config:WaitForChild("Formulas"))
 local Items = require(Config:WaitForChild("Items"))
+local Mutations = require(Config:WaitForChild("Mutations"))
 local Rarities = require(Config:WaitForChild("Rarities"))
 local Unbox = require(Config:WaitForChild("Unbox"))
 local Zones = require(Config:WaitForChild("Zones"))
@@ -50,6 +51,7 @@ export type Reveal = {
 	Tier: string, -- type du colis
 	StartRarity: string, -- rareté du colis avant l'amélioration
 	Upgrades: number, -- crans réussis
+	Mutation: Mutations.Mutation?, -- DEV-131 : mutation de l'objet (nom et revenu affichés) ; nil = aucune
 }
 
 export type Plan = {
@@ -59,7 +61,7 @@ export type Plan = {
 	Full: boolean, -- version complète (Rarity.FullReveal : Rare et plus), sinon courte
 	Steps: { Rarity }, -- rareté atteinte à chaque cran, dans l'ordre
 	Mismatch: boolean, -- StartRarity + crans ne tombe pas sur la rareté de l'objet (catalogues différents ?)
-	Income: number?, -- $/s de l'objet (Formulas.ItemIncome, zone du colis) ; nil si la zone est inconnue
+	Income: number?, -- $/s de l'objet (Formulas.ItemIncome, zone du colis, mutation comprise) ; nil si la zone est inconnue
 	Reel: Reel.Composition,
 	ReelTime: number, -- durée du défilement (T de rollPos)
 	CountTime: number, -- durée du comptage du revenu
@@ -172,7 +174,7 @@ function Sequence.plan(reveal: Reveal, rng: Random): (Plan?, string?)
 	local mismatch = start == nil or start.Order + upgrades ~= rarity.Order
 	-- Même zone que DisplayService : celle du catalogue, sinon celle du colis (Secret).
 	local zone = item.Zone or reveal.Zone
-	local income = if Zones[zone] ~= nil then Formulas.ItemIncome(zone, rarity.Id) else nil
+	local income = if Zones[zone] ~= nil then Formulas.ItemIncome(zone, rarity.Id) * Mutations.IncomeMultiplier(reveal.Mutation) else nil
 	local full = rarity.FullReveal
 	return {
 		Reveal = reveal,

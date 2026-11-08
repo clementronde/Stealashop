@@ -19,7 +19,7 @@
 --     et le trajet depuis le point où ce portage a commencé (OnCarryStarted : au rayon, ou là où il a
 --     ramassé le colis au sol) : sanctionné, le colis vient de revoler vers son rayon et rien n'est
 --     posé. Puis CarryService.Consume le lui retire et le colis est écrit dans le profil :
---     Boxes["<n>"] = { Tier, Zone, ItemId, Rarity, ReadyAt } (9.5, profil v5 : clé = numéro du
+--     Boxes["<n>"] = { Tier, Zone, ItemId, Rarity, ReadyAt, Mutation? } (9.5, profil v5 : clé = numéro du
 --     présentoir en texte, Types/Profile), avec ReadyAt = heure serveur + attente de sa rareté
 --     (table 7.3, Config.Rarities[..].OpenDelay).
 --   - Présentoirs pleins (DisplayService garde la règle) : sans présentoir libre et débloqué, pas de
@@ -43,8 +43,9 @@
 --   - Attente écoulée : BoxReady(slotIndex) au propriétaire.
 --   - OpenBox(slotIndex) : attente écoulée (heure serveur), joueur sur sa parcelle, à portée du
 --     présentoir → amélioration du colis tirée (plus bas), nouvel objet dans Items sous un uid unique
---     ({ Id = ItemId, Source = "NPC", At = os.time(), Zone }), le colis quitte Boxes,
---     UnboxReveal(slotIndex, itemUid, itemId, zone, tier, startRarity, upgrades) au joueur, puis
+--     ({ Id = ItemId, Source = "NPC", At = os.time(), Zone, Mutation? : celle du colis, DEV-131 }), le colis quitte Boxes,
+--     UnboxReveal(slotIndex, itemUid, itemId, zone, tier, startRarity, upgrades, mutationSize?,
+--     mutationEffect?) au joueur, puis
 --     DisplayService.PlaceItem(player, itemUid, slotIndex) : l'objet est exposé sur ce même présentoir
 --     et rapporte tout de suite.
 --   - Cas d'erreur (le présentoir ne peut plus prendre l'objet : présentoir bonus dont le gamepass
@@ -153,6 +154,7 @@ local Workspace = game:GetService("Workspace")
 local Shared = ReplicatedStorage.Shared
 local Balance = require(Shared.Config.Balance)
 local Items = require(Shared.Config.Items)
+local Mutations = require(Shared.Config.Mutations)
 local Rarities = require(Shared.Config.Rarities)
 local ShelfBoxes = require(Shared.Config.ShelfBoxes)
 local Unbox = require(Shared.Config.Unbox)
@@ -1023,6 +1025,7 @@ local function onPlaceBox(player: Player, slotIndex: number)
 		ItemId = payload.ItemId,
 		Rarity = payload.Rarity,
 		ReadyAt = 0,
+		Mutation = Mutations.Sanitize(payload.Mutation), -- DEV-131 : absente du profil sans mutation
 	}
 	local delay = openDelay(player, box)
 	-- Anti-triche (DEV-060), juste avant la réussite : le dernier déplacement (téléport chez soi) et
@@ -1121,18 +1124,29 @@ local function onOpenBox(player: Player, slotIndex: number)
 		end
 	end
 
+	-- Mutation du colis (DEV-131) : elle passe à l'objet, même amélioré (rareté et mutation sont
+	-- indépendantes) ; jamais sur un objet TutorialOnly (le colis du tuto n'en a pas : garde-fou).
+	local finalItem = Items.ById[itemId]
+	local mutation = if finalItem and finalItem.TutorialOnly then nil else Mutations.Sanitize(box.Mutation)
+
 	-- D'un seul tenant, sans yield : l'objet entre dans Items quand le colis quitte Boxes.
 	local uid = newUid(data)
 	-- Zone gardée pour le revenu du Secret, qui n'a pas de zone au catalogue (DisplayService la lit).
-	data.Items[uid] = { Id = itemId, Source = "NPC", At = os.time(), Zone = box.Zone }
+	data.Items[uid] = { Id = itemId, Source = "NPC", At = os.time(), Zone = box.Zone, Mutation = mutation }
 	data.Boxes[key] = nil
 	clearShown(session, slotIndex)
 
 	-- 5.7 : l'identité de l'objet ne part vers le client qu'ici, avec ce qu'il faut pour jouer les
-	-- crans et composer le rouleau.
-	Net.Server.UnboxReveal:Fire(player, slotIndex, uid, itemId, box.Zone, box.Tier, startRarity, #steps)
+	-- crans et composer le rouleau, et sa mutation (nom et revenu de l'écran d'ouverture). Sans mutation,
+	-- les deux derniers arguments (facultatifs) ne partent pas : la forme d'avant DEV-131.
+	if mutation then
+		Net.Server.UnboxReveal:Fire(player, slotIndex, uid, itemId, box.Zone, box.Tier, startRarity, #steps, mutation.Size, mutation.Effect)
+	else
+		Net.Server.UnboxReveal:Fire(player, slotIndex, uid, itemId, box.Zone, box.Tier, startRarity, #steps)
+	end
 	local upgraded = if #steps > 0 then `, {#steps} cran(s) : {startRarity} → {table.concat(steps, " → ")}` else ""
-	log(`{player.Name} : présentoir {slotIndex} ouvert, {itemId} ({finalRarity}){upgraded}, uid {uid}`)
+	local mutated = Mutations.Label(mutation)
+	log(`{player.Name} : présentoir {slotIndex} ouvert, {itemId} ({finalRarity}){upgraded}, uid {uid}{if mutated then ", mutation " .. mutated else ""}`)
 	announce(player, itemId, finalRarity, #steps)
 
 	-- L-086 : l'objet reste sur le présentoir de son colis ; sinon le plus proche, sinon l'inventaire.

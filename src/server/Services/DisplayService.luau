@@ -15,7 +15,8 @@
 --     l'objet (son StudsOffset part de là, liaison L-027), sinon un billboard V0 adossé à son
 --     sommet. Tout est créé par le serveur dans la parcelle : visible par tous les joueurs ;
 --   - revenus : chaque objet exposé rapporte Formulas.ItemIncome(zone, rareté) $/s (7.1), zone
---     et rareté lues dans Config.Items. Le total des objets (la « valeur exposée », celle de
+--     et rareté lues dans Config.Items, × le multiplicateur de sa mutation (DEV-131, champ Mutation
+--     de Items[uid] : taille × effet, Config/Mutations). Le total des objets (la « valeur exposée », celle de
 --     l'anti-racket, 6.4) est multiplié par le M global du joueur (7.1 : (1 + GetIncomeBonus) ×
 --     GetIncomeMultiplier, plus bas ; 1 au MVP). L'argent s'accumule au temps exact dans la caisse de la
 --     parcelle, pas dans Cash. Quand le propriétaire marche sur son CashPad, la caisse passe dans
@@ -42,7 +43,9 @@
 --     CashRegister (number)          argent en caisse, en dollars entiers ; 0 si libre
 --   sur chaque objet exposé (Model `DisplayItem_<nn>`, tag de code `DisplayItem`, rangé dans le
 --   dossier `DisplayItems` de la parcelle, ModelStreamingMode Atomic) :
---     ItemUid, ItemId, Rarity, Halo, Income, DisplaySlot, OwnerUserId, Placeholder (bloc V0) ;
+--     ItemUid, ItemId, Rarity, Halo, Income, DisplaySlot, OwnerUserId, Placeholder (bloc V0),
+--     MutationSize et MutationEffect (DEV-131 : Id de Config/Mutations, absents sans mutation ; les
+--     effets visuels sont à Clément, MOD-131 ; une taille met le modèle à l'échelle, Model:ScaleTo) ;
 --     la copie du modèle ITM_ garde aussi l'attribut Idle de Clément et ses pièces Spin_ (L-045),
 --     qu'ItemIdleController anime côté client (le halo RarityHalo et le billboard restent fixes)
 --
@@ -159,6 +162,7 @@ local RunService = game:GetService("RunService")
 local Balance = require(ReplicatedStorage.Shared.Config.Balance)
 local Formulas = require(ReplicatedStorage.Shared.Config.Formulas)
 local ItemsConfig = require(ReplicatedStorage.Shared.Config.Items)
+local Mutations = require(ReplicatedStorage.Shared.Config.Mutations)
 local Rarities = require(ReplicatedStorage.Shared.Config.Rarities)
 local Zones = require(ReplicatedStorage.Shared.Config.Zones)
 local Format = require(ReplicatedStorage.Shared.Format)
@@ -193,6 +197,11 @@ local BOUNDS = "Bounds"
 -- Contrat 2.2 : billboard modèle d'un objet exposé et ses 3 champs.
 local ITEM_BILLBOARD = "BB_Item"
 local BILLBOARD_FIELDS = { "ItemName", "Rarity", "Income" }
+-- Texte facultatif de BB_Item pour la mutation (DEV-131) : nom proposé à Clément, hors contrat.
+local MUTATION_FIELD = "Mutation"
+-- Attributs de la mutation sur l'objet exposé (DEV-131) : Clément y accroche ses effets (MOD-131).
+local MUTATION_SIZE_ATTRIBUTE = "MutationSize"
+local MUTATION_EFFECT_ATTRIBUTE = "MutationEffect"
 -- Rangement des modèles finis (2.1 : ReplicatedStorage/Assets/<Catégorie>) : ITM_<ItemId>.
 local ASSETS = "Assets"
 local ITEMS_FOLDER = "Items"
@@ -531,9 +540,10 @@ local function itemZone(def: ItemDef, entry: ItemEntry, uid: string): number
 	return SECRET_FALLBACK_ZONE
 end
 
--- Revenu d'un objet ($/s), formule 7.1 (M global = 1 au MVP).
+-- Revenu d'un objet ($/s), formule 7.1, mutation comprise (DEV-131 : taille × effet du champ
+-- Mutation de Items[uid], 1 sans champ) ; le M global s'applique au total (Account.multiplier).
 local function itemIncome(def: ItemDef, entry: ItemEntry, uid: string): number
-	return Formulas.ItemIncome(itemZone(def, entry, uid), def.Rarity)
+	return Formulas.ItemIncome(itemZone(def, entry, uid), def.Rarity) * Mutations.IncomeMultiplier(entry.Mutation)
 end
 
 ------------------------------------------------------------------------------
@@ -893,7 +903,15 @@ end
 -- Billboard visible par tous : nom, rareté (couleur), $/s (5.8). BB_Item de Clément : accroché au
 -- pied de l'objet (son pivot, en bas au centre, posé sur le présentoir, 10.1), car Clément règle
 -- son StudsOffset depuis la base (liaison L-027). Billboard V0 : accroché au sommet.
-local function addBillboard(model: Model, def: ItemDef, rarity: Rarity, income: number, boxCFrame: CFrame, boxSize: Vector3)
+local function addBillboard(
+	model: Model,
+	def: ItemDef,
+	rarity: Rarity,
+	income: number,
+	boxCFrame: CFrame,
+	boxSize: Vector3,
+	mutation: Mutations.Mutation?
+)
 	local anchor = model.PrimaryPart or (model:FindFirstChildWhichIsA("BasePart", true) :: BasePart?)
 	if anchor == nil then
 		return
@@ -903,7 +921,13 @@ local function addBillboard(model: Model, def: ItemDef, rarity: Rarity, income: 
 	local point = Instance.new("Attachment")
 	point.Name = BILLBOARD_POINT
 	point.Parent = anchor
-	point.WorldPosition = if gui then model:GetPivot().Position else boxCFrame.Position + Vector3.new(0, boxSize.Y / 2, 0)
+	-- Mutation de taille (DEV-131) : BB_Item de Clément monte (ou descend) de ce que l'objet a gagné en
+	-- hauteur, pour garder le même écart au-dessus de lui (V0 proposé). Le V0 suit déjà le sommet.
+	local scale = Mutations.Scale(mutation)
+	local lift = boxSize.Y - boxSize.Y / scale
+	point.WorldPosition = if gui
+		then (model:GetPivot() * CFrame.new(0, lift, 0)).Position
+		else boxCFrame.Position + Vector3.new(0, boxSize.Y / 2, 0)
 
 	if gui == nil then
 		reportOnce(
@@ -917,7 +941,19 @@ local function addBillboard(model: Model, def: ItemDef, rarity: Rarity, income: 
 	billboard.Name = ITEM_BILLBOARD
 	billboard.Adornee = point
 
-	setText(billboard, "ItemName", def.DisplayName)
+	-- Mutation (DEV-131) : devant le nom (« Big Gold Soda Can ») ; si Clément ajoute un texte
+	-- Mutation à BB_Item (nom proposé, hors contrat pour l'instant), elle y va en capitales
+	-- (« BIG · GOLD », caché sans mutation) et ItemName garde le nom seul.
+	local mutationField = Find.path(billboard, MUTATION_FIELD)
+	if mutationField ~= nil and mutationField:IsA("GuiObject") then
+		local mutationLabel = mutationField :: GuiObject
+		local text = Mutations.Label(mutation)
+		setText(billboard, "ItemName", def.DisplayName)
+		setText(billboard, MUTATION_FIELD, text or "")
+		mutationLabel.Visible = text ~= nil
+	else
+		setText(billboard, "ItemName", Mutations.ItemName(def.DisplayName, mutation))
+	end
 	setText(billboard, "Income", Format.income(income))
 	local rarityLabel = setText(billboard, "Rarity", rarity.DisplayNameUpper, if rarity.Rainbow then TEXT_COLOR else rarity.Color)
 	-- Secret : arc-en-ciel (DisplayController le fait tourner). Un dégradé déjà posé par Clément
@@ -942,11 +978,22 @@ local function buildVisual(owner: Player, refs: PlotRefs, slot: number, uid: str
 	-- Arrive en entier chez les clients (StreamingEnabled) : ItemIdleController y lit la position de
 	-- repos de toutes les pièces avant de les animer (L-045).
 	display.ModelStreamingMode = Enum.ModelStreamingMode.Atomic
+	-- Mutation de taille (DEV-131) : le modèle change vraiment d'échelle autour de son pivot (en bas
+	-- au centre, 10.1 : il reste posé sur le présentoir), avant le halo et le billboard qui suivent
+	-- sa nouvelle taille. Échec (modèle sans pièce ?) : taille normale, signalé une fois.
+	local mutation = Mutations.Sanitize(entry.Mutation)
+	local scale = Mutations.Scale(mutation)
+	if scale ~= 1 then
+		local ok, problem = pcall(display.ScaleTo, display, scale)
+		if not ok then
+			reportOnce(`scale:{uid}`, `[DisplayService] {def.Id} ({uid}) : Model:ScaleTo({scale}) a échoué ({problem}), taille normale`, "warn")
+		end
+	end
 	display:PivotTo((refs.slots[slot] :: Attachment).WorldCFrame) -- présentoir vérifié par sanitize
 
 	local boxCFrame, boxSize = display:GetBoundingBox()
 	addHalo(display, rarity, boxCFrame, boxSize)
-	addBillboard(display, def, rarity, income, boxCFrame, boxSize)
+	addBillboard(display, def, rarity, income, boxCFrame, boxSize, mutation)
 
 	display:SetAttribute("ItemUid", uid)
 	display:SetAttribute("ItemId", def.Id)
@@ -956,6 +1003,10 @@ local function buildVisual(owner: Player, refs: PlotRefs, slot: number, uid: str
 	display:SetAttribute("DisplaySlot", slot)
 	display:SetAttribute("OwnerUserId", owner.UserId)
 	display:SetAttribute("Placeholder", placeholder)
+	-- Mutation (DEV-131) : Id de Config/Mutations, absents sans mutation dans la famille. Les effets
+	-- visuels sont à Clément (MOD-131) : le code n'en pose aucun.
+	display:SetAttribute(MUTATION_SIZE_ATTRIBUTE, if mutation then mutation.Size else nil)
+	display:SetAttribute(MUTATION_EFFECT_ATTRIBUTE, if mutation then mutation.Effect else nil)
 	CollectionService:AddTag(display, DISPLAY_TAG)
 	return { model = display, uid = uid, itemId = def.Id, income = income }
 end

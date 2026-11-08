@@ -219,7 +219,9 @@ UI.Billboards = {
 		Elements = { { Path = "ItemName" }, { Path = "Rarity" }, { Path = "Income" } },
 	},
 	-- Étiquette de chaque colis PNJ, dès le rayon (décision de Clément du 2026-11-07, L-031) :
-	-- catégorie de l'objet, rareté, mutation (cachée jusqu'à la MAJ 4).
+	-- catégorie de l'objet, rareté, mutation (DEV-131 : « BIG · GOLD », cachée sans mutation). BB_Item et
+	-- BB_Carry peuvent avoir un texte Mutation facultatif (nom proposé à Clément, hors contrat : sans lui, la
+	-- mutation est écrite devant ItemName).
 	{
 		Name = "BB_Box",
 		Class = "BillboardGui",

@@ -32,7 +32,8 @@
 --      voleur, itemId) et un Notify à la victime (UI_TheftAlert et Adrénaline : DEV-042).
 --   5. Réussite : le voleur entre dans la DepositZone de SA boutique (contrôlé 10 fois par seconde :
 --      emprise au sol de la DepositZone, et dans le volume Bounds de sa boutique).
---      Transfert (voir « Transfert sûr ») : l'objet est à lui tout de suite, Source = "PvP", sur un
+--      Transfert (voir « Transfert sûr ») : l'objet est à lui tout de suite, Source = "PvP", avec sa
+--      zone et sa mutation (DEV-131 : même revenu, même nom, même taille chez le voleur), sur un
 --      présentoir libre (DisplayService.PlaceAuto, le plus proche de lui) sinon dans son inventaire,
 --      et il rapporte aussitôt. Puis Lifetime.Steals + 1 pour le voleur, immunité de 120 s pour la
 --      victime, TheftAlert(false), un Notify à chacun, et une sauvegarde des deux profils.
@@ -113,6 +114,7 @@ local Workspace = game:GetService("Workspace")
 local Shared = ReplicatedStorage.Shared
 local Balance = require(Shared.Config.Balance)
 local Items = require(Shared.Config.Items)
+local Mutations = require(Shared.Config.Mutations)
 local PvP = require(Shared.Config.PvP)
 local Find = require(Shared.Contract.Find)
 local Format = require(Shared.Format)
@@ -683,7 +685,8 @@ local function deposit(theft: Theft, root: BasePart)
 	thefts[thief] = nil
 	DisplayService.TakeHeld(victim, theft.Uid)
 	victimData.Items[theft.Uid] = nil
-	thiefData.Items[theft.Uid] = { Id = entry.Id, Source = "PvP", At = os.time(), Zone = entry.Zone }
+	-- La mutation suit l'objet (DEV-131), comme sa zone.
+	thiefData.Items[theft.Uid] = { Id = entry.Id, Source = "PvP", At = os.time(), Zone = entry.Zone, Mutation = Mutations.Sanitize(entry.Mutation) }
 	local slot = DisplayService.PlaceAuto(thief, theft.Uid, root.Position)
 	CarryService.Consume(thief, "Deposited")
 
@@ -790,6 +793,10 @@ local function grant(thief: Player, victim: Player, plot: Model, slot: number, u
 		refuse(thief, "StealItem", "DisplayService.Hold a refusé")
 		return
 	end
+	-- Mutation de l'objet (DEV-131) : sur BB_Carry pendant la fuite (le revenu d'item.Income la compte déjà).
+	local victimData = DataService.Get(victim)
+	local victimEntry = if victimData then victimData.Items[uid] else nil
+	local mutation = if victimEntry then Mutations.Sanitize(victimEntry.Mutation) else nil
 	local payload: PlayerItemPayload = {
 		Kind = "PlayerItem",
 		ItemUid = uid,
@@ -798,6 +805,7 @@ local function grant(thief: Player, victim: Player, plot: Model, slot: number, u
 		Income = item.Income,
 		VictimUserId = victim.UserId,
 		SlotIndex = slot,
+		Mutation = mutation,
 	}
 	local theft: Theft = {
 		Thief = thief,

@@ -16,7 +16,8 @@
 --       à l'ouverture), puis envoie OpenBox(slotIndex) ;
 --     sinon l'invite est cachée (présentoir verrouillé, objet exposé, colis qui attend). Le serveur
 --     revérifie tout (parcelle, portée, présentoir débloqué et libre, colis porté, attente écoulée) ;
---   - UnboxReveal(slotIndex, itemUid, itemId, zone, tier, startRarity, upgrades) : joue la
+--   - UnboxReveal(slotIndex, itemUid, itemId, zone, tier, startRarity, upgrades, mutationSize?,
+--     mutationEffect?) (mutation de l'objet, DEV-131 : nom et revenu à l'écran) : joue la
 --     séquence de la spec dans l'écran UI_Unbox v2 de Clément (contrat 2.2, Enabled = false au
 --     départ) : crans d'amélioration tirés par le serveur, animation Unbox (marqueur Open, secours
 --     0,45 s : le couvercle saute, un faisceau sort), rouleau dans la fenêtre Reel posée au-dessus
@@ -59,6 +60,7 @@ local Config = Shared:WaitForChild("Config")
 local Balance = require(Config:WaitForChild("Balance"))
 local Formulas = require(Config:WaitForChild("Formulas"))
 local Items = require(Config:WaitForChild("Items"))
+local Mutations = require(Config:WaitForChild("Mutations"))
 local Rarities = require(Config:WaitForChild("Rarities"))
 local Unbox = require(Config:WaitForChild("Unbox"))
 local Zones = require(Config:WaitForChild("Zones"))
@@ -799,13 +801,25 @@ showNextReveal = function()
 	end
 end
 
-local function onReveal(index: any, itemUid: any, itemId: any, zone: any, tier: any, startRarity: any, upgrades: any)
+local function onReveal(
+	index: any,
+	itemUid: any,
+	itemId: any,
+	zone: any,
+	tier: any,
+	startRarity: any,
+	upgrades: any,
+	mutationSize: any,
+	mutationEffect: any
+)
 	if type(index) ~= "number" or type(itemUid) ~= "string" or type(itemId) ~= "string" then
 		return
 	end
 	ready[index] = nil
 	refresh(index)
 	local item = Items.ById[itemId]
+	-- DEV-131 : mutation de l'objet (Id inconnus ignorés), pour son nom et son revenu à l'écran.
+	local mutation = Mutations.Sanitize({ Size = mutationSize, Effect = mutationEffect })
 	-- Défauts si le serveur n'envoie pas encore la forme v2 (zone, type, rareté de départ, crans).
 	local reveal: Sequence.Reveal = {
 		SlotIndex = index,
@@ -815,6 +829,7 @@ local function onReveal(index: any, itemUid: any, itemId: any, zone: any, tier: 
 		Tier = if type(tier) == "string" then tier else "Standard",
 		StartRarity = if type(startRarity) == "string" then startRarity elseif item then item.Rarity else "Common",
 		Upgrades = if type(upgrades) == "number" then upgrades else 0,
+		Mutation = mutation,
 	}
 	-- Retenue prise ici, avant que le HUD traite la hausse d'Income qui suit UnboxReveal.
 	-- L-086 : l'objet exposé sur ce présentoir reste caché jusqu'à la révélation (en-tête).
@@ -833,9 +848,12 @@ local function onReveal(index: any, itemUid: any, itemId: any, zone: any, tier: 
 	end
 	-- Même début de ligne qu'avant la v2 (bancs d'essai) ; zone, type et crans à la suite.
 	local itemZone = item.Zone or reveal.Zone
-	local income = if Zones[itemZone] then ` · {Formulas.ItemIncome(itemZone, rarity.Id)} $/s` else ""
+	local income = if Zones[itemZone] then ` · {Formulas.ItemIncome(itemZone, rarity.Id) * Mutations.IncomeMultiplier(mutation)} $/s` else ""
 	local upgraded = if reveal.Upgrades > 0 then `, {reveal.Upgrades} cran(s) depuis {reveal.StartRarity}` else ""
-	print(`[Unbox] présentoir {index} : {rarity.DisplayNameUpper} · {item.DisplayName}{income} ({itemId}, uid {itemUid}) ; colis {reveal.Tier} de la zone {reveal.Zone}{upgraded}`)
+	local mutated = Mutations.Label(mutation)
+	print(
+		`[Unbox] présentoir {index} : {rarity.DisplayNameUpper} · {Mutations.ItemName(item.DisplayName, mutation)}{income} ({itemId}, uid {itemUid}) ; colis {reveal.Tier} de la zone {reveal.Zone}{upgraded}{if mutated then ", mutation " .. mutated else ""}`
+	)
 end
 
 function UnboxController.Start()
