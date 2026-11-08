@@ -194,15 +194,70 @@ local function unlockedFor(plot: Model): number
 	return math.clamp(display.StartSlots + math.floor(level), 0, display.MaxSlots)
 end
 
+-- Étagères des rayons 2 à 5 (structure de Clément du 2026-11-08, `tools/clement/hub/plot_shop_builder`) :
+-- dans la boutique, `Rayon_0n` n'a plus qu'une RayonAnchor invisible qui porte ses DisplaySlot ; ses
+-- visuels (présentoirs, CollectPad, produits) sont rangés dans Assets/Plots/PLOT_Shop_Rayons/Rayon_0n,
+-- dans le repère du gabarit Assets/Plots/PLOT_Shop. Le code en pose une copie (`RayonVisuals`) dans
+-- `Rayon_0n`, au pivot de la boutique, quand la rangée est débloquée, et la retire sinon. Le contour
+-- au sol `RayonSpot_0n` (s'il existe) est caché quand la rangée est là.
+local VISUALS_NAME = "RayonVisuals"
+
+local function storedVisuals(rayonName: string): (Model?, CFrame?)
+	local assets = ReplicatedStorage:FindFirstChild("Assets")
+	local plots = assets and assets:FindFirstChild("Plots")
+	local store = plots and plots:FindFirstChild("PLOT_Shop_Rayons")
+	local template = plots and plots:FindFirstChild("PLOT_Shop")
+	local source = store and store:FindFirstChild(rayonName)
+	if source == nil or not source:IsA("Model") then
+		return nil, nil
+	end
+	local origin = if template and template:IsA("Model") then template:GetPivot() else CFrame.identity
+	return source :: Model, origin
+end
+
+local function addVisuals(plot: Model, rayon: Rayon)
+	if rayon.model:FindFirstChild(VISUALS_NAME) then
+		return
+	end
+	local source, origin = storedVisuals(rayon.model.Name)
+	if source == nil or origin == nil then
+		return -- rayon complet dans la boutique (Rayon_01), ou rien de rangé : rien à copier
+	end
+	local copy = source:Clone()
+	copy.Name = VISUALS_NAME
+	copy:PivotTo(plot:GetPivot() * origin:Inverse() * copy:GetPivot())
+	copy.Parent = rayon.model
+end
+
+local function removeVisuals(rayon: Rayon)
+	local copy = rayon.model:FindFirstChild(VISUALS_NAME)
+	if copy then
+		copy:Destroy()
+	end
+end
+
+local function spotOf(plot: Model, rayon: Rayon): Instance?
+	return plot:FindFirstChild(string.format("RayonSpot_%02d", rayon.index), true)
+end
+
 local function apply(plot: Model)
 	local count = unlockedFor(plot)
 	local shown = 0
 	for _, rayon in rayonsFor(plot) do
+		local spot = spotOf(plot, rayon)
 		if rayon.first <= count then
 			showRayon(rayon.model)
+			addVisuals(plot, rayon)
+			if spot then
+				hideRayon(spot)
+			end
 			shown += 1
 		else
+			removeVisuals(rayon)
 			hideRayon(rayon.model)
+			if spot then
+				showRayon(spot)
+			end
 		end
 	end
 	if countOf[plot] ~= count then
