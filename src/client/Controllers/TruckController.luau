@@ -146,6 +146,7 @@ local BILLBOARD_NAME = "BB_TruckHP" -- la barre du camion de Clément (L-052)
 local FALLBACK_BILLBOARD = "BB_WindowHP" -- repli : la barre des vitrines, agrandie
 local HEALTH_BAR_POINT = "HealthBarPoint"
 local PIECES_NAME = "Pieces"
+local CARGO_NAME = "Cargo" -- colis du décor dans la caisse (Clément), cachés à l'explosion
 local BLAST_POINT = "BlastPoint"
 local TRAIL_ASSET = "FX_BoxTrail"
 local TRAIL_NAME = "Trail"
@@ -469,6 +470,19 @@ local function startBlast(watch: TruckWatch, age: number)
 			HalfHeight = size.Y / 2,
 			Resting = false,
 		})
+	end
+	-- Colis du décor (Cargo, CargoBox_xx, hors de Pieces) : les vrais colis à ramasser partent de leurs
+	-- BoxSpawn_xx à l'explosion (L-049, b) ; le décor disparaît donc ici, sinon il restait en l'air
+	-- quand la carrosserie s'envolait (vu en Play par Ironix le 2026-11-08). Côté client seulement.
+	local cargo = Find.path(model, CARGO_NAME)
+	if cargo then
+		for _, part in cargo:GetDescendants() do
+			if part:IsA("BasePart") then
+				part.LocalTransparencyModifier = 1
+				part.CanCollide = false
+				part.CanQuery = false
+			end
+		end
 	end
 	table.insert(blasts, blast)
 	if age <= FX_MAX_AGE then
