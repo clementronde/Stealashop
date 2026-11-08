@@ -6,7 +6,8 @@
 --   - expose les objets du profil sur les présentoirs de la parcelle de leur propriétaire :
 --     Display["n"] = uid (9.5, numéro écrit en texte) pose l'objet Items[uid] sur l'Attachment
 --     DisplaySlot_0n de la parcelle (10.4). Présentoirs débloqués = Balance.Display.StartSlots
---     (4) + niveau Upgrades.DisplaySlots du profil, au plus Balance.Display.MaxSlots (20) ;
+--     (4) + niveau Upgrades.DisplaySlots du profil, au plus Balance.Display.MaxSlots (20), plus les
+--     présentoirs bonus du gamepass « +4 présentoirs » (DEV-100, plus bas) ;
 --   - pour chaque objet exposé : le modèle ITM_<ItemId> de Clément s'il est livré
 --     (ReplicatedStorage/Assets/Items, sous-dossiers permis), sinon un bloc V0 à la couleur de
 --     sa rareté ; autour, le halo de sa rareté (5.6) ; au-dessus, le billboard BB_Item de Clément
@@ -14,7 +15,9 @@
 --     l'objet (son StudsOffset part de là, liaison L-027), sinon un billboard V0 adossé à son
 --     sommet. Tout est créé par le serveur dans la parcelle : visible par tous les joueurs ;
 --   - revenus : chaque objet exposé rapporte Formulas.ItemIncome(zone, rareté) $/s (7.1), zone
---     et rareté lues dans Config.Items. L'argent s'accumule au temps exact dans la caisse de la
+--     et rareté lues dans Config.Items. Le total des objets (la « valeur exposée », celle de
+--     l'anti-racket, 6.4) est multiplié par le M global du joueur (7.1, GetIncomeMultiplier plus
+--     bas : 1 au MVP). L'argent s'accumule au temps exact dans la caisse de la
 --     parcelle, pas dans Cash. Quand le propriétaire marche sur son CashPad, la caisse passe dans
 --     son argent (DataService.AddCash) et repart de 0 (5.8). L'argent en caisse n'est pas
 --     volable : rien ne permet à un autre joueur de le prendre ;
@@ -29,10 +32,12 @@
 --
 -- Attributs posés par ce service (lus par DisplayController et, plus tard, par le HUD) :
 --   sur le Player :
---     Income (number)                $/s total des objets exposés
+--     Income (number)                $/s que la caisse reçoit : total des objets exposés × M global
+--     ExposedIncome (number)         $/s total des objets exposés, sans bonus (valeur exposée :
+--                                    anti-racket et panneau des boutiques, PvPController)
 --     CashCollected (number)         argent encaissé au CashPad depuis l'arrivée sur le serveur
 --                                    (il ne fait que monter : chaque hausse = un encaissement)
---     DisplaySlotsUnlocked (number)  présentoirs débloqués (4 à 20)
+--     DisplaySlotsUnlocked (number)  présentoirs débloqués (4 à 20, plus les présentoirs bonus)
 --   sur la parcelle :
 --     CashRegister (number)          argent en caisse, en dollars entiers ; 0 si libre
 --   sur chaque objet exposé (Model `DisplayItem_<nn>`, tag de code `DisplayItem`, rangé dans le
@@ -76,14 +81,28 @@
 --   DisplayService.HasRoom(player) -> boolean
 --       Un présentoir débloqué libre, ou moins de Balance.Display.InventoryMax objets dans
 --       l'inventaire (même compte qu'UnboxService) : un objet de plus a sa place.
---   DisplayService.GetIncome(player) -> number      $/s total exposé (0 sans parcelle)
+--   DisplayService.GetIncome(player) -> number      $/s total exposé, sans bonus (0 sans parcelle)
 --   DisplayService.GetRegister(player) -> number    argent en caisse, en dollars entiers
 --   DisplayService.CashOut(player) -> number
 --       Vide la caisse dans l'argent du joueur, sans passer par le CashPad ; renvoie le montant.
 --   DisplayService.OnCashOut(listener) -> déconnexion
 --       listener(player, amount, source) après chaque encaissement : source = "Pad" (CashPad),
---       "Leave" (départ du joueur) ou "Api" (CashOut). Pour le tutoriel et la télémétrie
---       (« Premier encaissement », 14.2).
+--       "Leave" (départ du joueur), "Api" (CashOut) ou "Auto" (encaissement automatique, plus bas).
+--       Pour le tutoriel et la télémétrie (« Premier encaissement », 14.2).
+--
+-- Points d'accroche de la boutique Robux (DEV-100, Partie 2, 4.1 ; MonetizationService les
+-- remplace en gardant ceux d'avant). Par défaut : le MVP, sans bonus. Ne doivent pas yield ; une
+-- erreur ou une valeur invalide compte pour la valeur par défaut (un avertissement par serveur) :
+--   DisplayService.GetIncomeMultiplier(player) -> number
+--       M global des revenus (7.1), nombre fini > 0 ; 1 par défaut. Relu à chaque mise à jour (une
+--       fois par seconde) : un changement compte dès cet instant, jamais en arrière.
+--   DisplayService.GetExtraSlots(player) -> number
+--       Présentoirs bonus, au-delà de Balance.Display.MaxSlots : DisplaySlot_21 et suivants, optionnels
+--       dans la parcelle (aucun avertissement s'ils manquent ; seuls ceux posés comptent) ; 0 par défaut.
+--       Un objet posé sur un présentoir bonus qui n'est plus débloqué retourne dans l'inventaire.
+--   DisplayService.HasAutoCollect(player) -> boolean
+--       true : la caisse se vide toute seule dans l'argent du joueur à chaque mise à jour (une fois par
+--       seconde), où qu'il soit (source « Auto », sans ligne dans la sortie) ; false par défaut.
 --
 -- Remote PlaceItem(itemUid, slotIndex) : refusé (Notify « Warning » au joueur, avertissement en
 -- Studio) si le joueur n'a pas de parcelle, n'est pas dans le volume Bounds de sa parcelle, ne
@@ -126,7 +145,7 @@ type ItemEntry = ProfileTypes.Item
 type ItemDef = ItemsConfig.Item
 type Rarity = Rarities.Rarity
 
-export type CashOutSource = "Pad" | "Leave" | "Api"
+export type CashOutSource = "Pad" | "Leave" | "Api" | "Auto"
 export type CashOutListener = (player: Player, amount: number, source: CashOutSource) -> ()
 export type PlaceError = "NoProfile" | "NoPlot" | "UnknownItem" | "InVault" | "Held" | "NoSlot" | "Locked" | "Taken" | "NotOnPlot"
 
@@ -149,6 +168,7 @@ local ITEMS_FOLDER = "Items"
 
 -- Attributs posés par ce service (voir l'en-tête).
 local INCOME_ATTRIBUTE = "Income"
+local EXPOSED_INCOME_ATTRIBUTE = "ExposedIncome"
 local COLLECTED_ATTRIBUTE = "CashCollected"
 local SLOTS_ATTRIBUTE = "DisplaySlotsUnlocked"
 local REGISTER_ATTRIBUTE = "CashRegister"
@@ -178,6 +198,10 @@ local PAD_BELOW = 1
 local PAD_ABOVE = 6
 -- V0 proposé, absent du doc : zone de revenu d'un Secret sans zone enregistrée (voir l'en-tête).
 local SECRET_FALLBACK_ZONE = 1
+-- V0 proposé, absent du doc : borne de la recherche des présentoirs bonus (DisplaySlot_21 et
+-- suivants, DEV-100) ; pas une règle de jeu, le gamepass en donne 4 (Config/Monetization).
+local BONUS_SLOT_LIMIT = 10
+local MAX_SLOT_INDEX = Balance.Display.MaxSlots + BONUS_SLOT_LIMIT
 
 -- V0 proposé, absent du doc : bloc de remplacement d'un objet pas encore livré, à la taille d'un
 -- objet exposé (environ 1,5 à 2 studs de haut, planche 10.6).
@@ -233,6 +257,7 @@ local SOURCE_LABELS: { [string]: string } = {
 	Pad = "tapis de caisse",
 	Leave = "départ du joueur",
 	Api = "CashOut",
+	Auto = "encaissement automatique",
 }
 
 type Visual = {
@@ -252,6 +277,7 @@ type View = {
 -- Pièces du contrat d'une parcelle, trouvées une fois avant d'y poser des objets.
 type PlotRefs = {
 	slots: { [number]: Attachment? }, -- nil : présentoir absent de la parcelle
+	extra: number, -- présentoirs bonus posés : DisplaySlot_21 à 20 + extra (DEV-100)
 	pads: { BasePart },
 	bounds: BasePart?,
 }
@@ -259,7 +285,8 @@ type PlotRefs = {
 -- Argent d'un joueur : revenu courant et caisse.
 type Account = {
 	plot: Model?,
-	income: number, -- $/s
+	income: number, -- $/s des objets exposés, sans bonus
+	multiplier: number, -- M global (GetIncomeMultiplier) : la caisse reçoit income × multiplier
 	register: number, -- $ en caisse, centimes compris
 	lastAccrue: number, -- os.clock() du dernier ajout à la caisse
 	collected: number, -- argent encaissé depuis l'arrivée (attribut CashCollected)
@@ -321,10 +348,71 @@ end
 -- Profil et catalogue
 ------------------------------------------------------------------------------
 
-local function unlockedSlots(data: Data): number
+-- Présentoirs de base débloqués (7.5) : StartSlots + niveau Upgrades.DisplaySlots, au plus MaxSlots.
+local function baseSlots(data: Data): number
 	local level = data.Upgrades.DisplaySlots
 	local bought = if type(level) == "number" and level == level then math.max(0, math.floor(level)) else 0
 	return math.min(Balance.Display.StartSlots + bought, Balance.Display.MaxSlots)
+end
+
+-- Points d'accroche de la boutique Robux (voir l'en-tête), lus sans laisser une erreur casser la
+-- boucle : une valeur invalide compte pour la valeur par défaut.
+local function incomeMultiplier(player: Player): number
+	local ok, value = pcall(DisplayService.GetIncomeMultiplier, player)
+	if ok and type(value) == "number" and value == value and value > 0 and value < math.huge then
+		return value
+	end
+	reportOnce("hook:GetIncomeMultiplier", `[DisplayService] GetIncomeMultiplier : erreur ou valeur invalide ({value}), revenus × 1`, "warn")
+	return 1
+end
+
+-- Présentoirs bonus débloqués : GetExtraSlots(player), au plus ceux posés dans la parcelle (`refs`).
+local function extraSlots(player: Player, refs: PlotRefs?): number
+	if refs == nil or refs.extra <= 0 then
+		return 0
+	end
+	local ok, value = pcall(DisplayService.GetExtraSlots, player)
+	if not ok or type(value) ~= "number" or value ~= value then
+		reportOnce("hook:GetExtraSlots", `[DisplayService] GetExtraSlots : erreur ou valeur invalide ({value}), aucun présentoir bonus`, "warn")
+		return 0
+	end
+	return math.clamp(math.floor(value), 0, refs.extra)
+end
+
+local function autoCollect(player: Player): boolean
+	local ok, value = pcall(DisplayService.HasAutoCollect, player)
+	if ok then
+		return value == true
+	end
+	reportOnce("hook:HasAutoCollect", `[DisplayService] HasAutoCollect : {value}, pas d'encaissement automatique`, "warn")
+	return false
+end
+
+-- Le présentoir `index` est-il débloqué ? Ceux de base (1 à baseSlots), puis les présentoirs bonus
+-- (MaxSlots + 1 à MaxSlots + extraSlots).
+local function isUnlocked(player: Player, data: Data, refs: PlotRefs?, index: number): boolean
+	if index >= 1 and index <= baseSlots(data) then
+		return true
+	end
+	local max = Balance.Display.MaxSlots
+	return index > max and index <= max + extraSlots(player, refs)
+end
+
+local function unlockedCount(player: Player, data: Data, refs: PlotRefs?): number
+	return baseSlots(data) + extraSlots(player, refs)
+end
+
+-- Présentoirs débloqués, dans l'ordre : ceux de base, puis les bonus.
+local function unlockedList(player: Player, data: Data, refs: PlotRefs?): { number }
+	local list: { number } = {}
+	for index = 1, baseSlots(data) do
+		table.insert(list, index)
+	end
+	local max = Balance.Display.MaxSlots
+	for index = max + 1, max + extraSlots(player, refs) do
+		table.insert(list, index)
+	end
+	return list
 end
 
 local function isInVault(data: Data, uid: string): boolean
@@ -424,6 +512,18 @@ local function refsFor(plot: Model): PlotRefs
 			`[DisplayService] {plot:GetFullName()} : {#missing} présentoir(s) absent(s) ou qui ne sont pas des Attachments (contrat 10.4) : {table.concat(missing, ", ")}`
 		)
 	end
+	-- Présentoirs bonus (gamepass « +4 présentoirs », DEV-100) : DisplaySlot_21 et suivants, à la
+	-- suite, optionnels (aucun avertissement s'ils manquent).
+	local extra = 0
+	while extra < BONUS_SLOT_LIMIT do
+		local index = Balance.Display.MaxSlots + extra + 1
+		local found = Find.path(plot, string.format(SLOT_FORMAT, index))
+		if found == nil or not found:IsA("Attachment") then
+			break
+		end
+		slots[index] = found :: Attachment
+		extra += 1
+	end
 
 	local pads: { BasePart } = {}
 	local pad = Find.path(plot, CASH_PAD)
@@ -443,6 +543,7 @@ local function refsFor(plot: Model): PlotRefs
 	local bounds = Find.path(plot, BOUNDS)
 	local refs: PlotRefs = {
 		slots = slots,
+		extra = extra,
 		pads = pads,
 		bounds = if bounds ~= nil and bounds:IsA("BasePart") then bounds :: BasePart else nil,
 	}
@@ -811,11 +912,11 @@ end
 -- Caisse
 ------------------------------------------------------------------------------
 
--- Ajoute à la caisse ce que les objets ont rapporté depuis le dernier ajout.
+-- Ajoute à la caisse ce que les objets ont rapporté depuis le dernier ajout (M global compris).
 local function accrue(account: Account, now: number)
 	local elapsed = now - account.lastAccrue
 	if elapsed > 0 then
-		account.register += account.income * elapsed
+		account.register += account.income * account.multiplier * elapsed
 	end
 	account.lastAccrue = now
 end
@@ -831,7 +932,7 @@ local function publish(player: Player, account: Account, data: Data?)
 		end
 	end
 	if data then
-		local slots = unlockedSlots(data)
+		local slots = unlockedCount(player, data, if plot then refsFor(plot) else nil)
 		if slots ~= account.shownSlots then
 			account.shownSlots = slots
 			player:SetAttribute(SLOTS_ATTRIBUTE, slots)
@@ -854,7 +955,7 @@ local function cashOut(player: Player, account: Account, source: CashOutSource):
 	account.collected += amount
 	player:SetAttribute(COLLECTED_ATTRIBUTE, account.collected)
 	publish(player, account, nil)
-	if IS_STUDIO then
+	if IS_STUDIO and source ~= "Auto" then -- l'encaissement automatique, chaque seconde, resterait muet
 		print(`[DisplayService] {player.Name} encaisse {Format.money(amount)} ({SOURCE_LABELS[source]}) : {Format.money(cash)} en tout`)
 	end
 	for _, listener in table.clone(cashOutListeners) do
@@ -877,17 +978,18 @@ end
 -- Retire de Display les entrées invalides (voir l'en-tête) et renvoie ce qu'il faut afficher :
 -- { [numéro de présentoir] = uid }. Un uid exposé deux fois reste sur le plus petit numéro.
 local function sanitize(player: Player, data: Data, refs: PlotRefs): { [number]: string }
-	local unlocked = unlockedSlots(data)
 	local valid: { [number]: string } = {}
 	local drops: { { key: string, why: string } } = {}
 
 	for key, uid in data.Display do
 		local index = tonumber(key)
 		local why: string? = nil
-		if index == nil or index % 1 ~= 0 or tostring(index) ~= key or index < 1 or index > Balance.Display.MaxSlots then
+		if index == nil or index % 1 ~= 0 or tostring(index) ~= key or index < 1 or index > MAX_SLOT_INDEX then
 			why = "numéro de présentoir invalide"
-		elseif index > unlocked then
-			why = `présentoir {index} verrouillé ({unlocked} débloqué(s))`
+		elseif index > Balance.Display.MaxSlots and refs.slots[index] == nil then
+			why = `présentoir bonus {index} absent de la parcelle`
+		elseif not isUnlocked(player, data, refs, index) then
+			why = `présentoir {index} verrouillé ({unlockedCount(player, data, refs)} débloqué(s))`
 		elseif refs.slots[index] == nil then
 			why = `présentoir {index} absent de la parcelle`
 		elseif type(uid) ~= "string" then
@@ -903,7 +1005,7 @@ local function sanitize(player: Player, data: Data, refs: PlotRefs): { [number]:
 			end
 		end
 		if why then
-			table.insert(drops, { key = key, why = why })
+			table.insert(drops, { key = key, why = why :: string })
 		else
 			valid[index :: number] = uid
 		end
@@ -911,7 +1013,7 @@ local function sanitize(player: Player, data: Data, refs: PlotRefs): { [number]:
 
 	local wanted: { [number]: string } = {}
 	local seenAt: { [string]: number } = {}
-	for index = 1, Balance.Display.MaxSlots do
+	for index = 1, MAX_SLOT_INDEX do
 		local uid = valid[index]
 		if uid then
 			local first = seenAt[uid]
@@ -978,10 +1080,13 @@ local function reconcile(player: Player, account: Account, data: Data, plot: Mod
 	for _, visual in view.visuals do
 		income += visual.income
 	end
-	if income ~= account.income then
+	local multiplier = incomeMultiplier(player)
+	if income ~= account.income or multiplier ~= account.multiplier then
 		accrue(account, os.clock()) -- l'ancien revenu compte jusqu'à maintenant
 		account.income = income
-		player:SetAttribute(INCOME_ATTRIBUTE, income)
+		account.multiplier = multiplier
+		player:SetAttribute(INCOME_ATTRIBUTE, income * multiplier)
+		player:SetAttribute(EXPOSED_INCOME_ATTRIBUTE, income)
 	end
 end
 
@@ -1016,6 +1121,7 @@ local function newAccount(): Account
 	return {
 		plot = nil,
 		income = 0,
+		multiplier = 1,
 		register = 0,
 		lastAccrue = os.clock(),
 		collected = 0,
@@ -1088,7 +1194,8 @@ local function install(player: Player, plot: Model)
 	current.shownRegister = nil
 
 	reconcile(player, current, data, plot)
-	player:SetAttribute(INCOME_ATTRIBUTE, current.income)
+	player:SetAttribute(INCOME_ATTRIBUTE, current.income * current.multiplier)
+	player:SetAttribute(EXPOSED_INCOME_ATTRIBUTE, current.income)
 	player:SetAttribute(COLLECTED_ATTRIBUTE, current.collected)
 	publish(player, current, data)
 
@@ -1097,7 +1204,7 @@ local function install(player: Player, plot: Model)
 		count += 1
 	end
 	print(
-		`[DisplayService] {player.Name} : {count} objet(s) exposé(s) sur {unlockedSlots(data)} présentoir(s) débloqué(s), revenu {Format.money(current.income)}/s`
+		`[DisplayService] {player.Name} : {count} objet(s) exposé(s) sur {unlockedCount(player, data, refsFor(plot))} présentoir(s) débloqué(s), revenu {Format.money(current.income)}/s`
 	)
 end
 
@@ -1169,13 +1276,16 @@ local function place(player: Player, itemUid: string, slot: number, fromClient: 
 	if isHeld(player, itemUid) then
 		return false, "Held"
 	end
-	if slot % 1 ~= 0 or slot < 1 or slot > Balance.Display.MaxSlots then
+	if slot % 1 ~= 0 or slot < 1 or slot > MAX_SLOT_INDEX then
 		return false, "NoSlot"
 	end
-	if slot > unlockedSlots(data) then
+	local refs = refsFor(plot)
+	if slot > Balance.Display.MaxSlots and refs.slots[slot] == nil then
+		return false, "NoSlot" -- présentoir bonus pas posé dans la parcelle
+	end
+	if not isUnlocked(player, data, refs, slot) then
 		return false, "Locked"
 	end
-	local refs = refsFor(plot)
 	if refs.slots[slot] == nil then
 		return false, "NoSlot"
 	end
@@ -1246,6 +1356,10 @@ local function refreshAll()
 		end
 		accrue(account, now)
 		publish(player, account, data)
+		-- Encaissement automatique (gamepass, DEV-100) : la caisse va dans l'argent, où que soit le joueur.
+		if data and account.plot and autoCollect(player) then
+			cashOut(player, account, "Auto")
+		end
 	end
 end
 
@@ -1291,7 +1405,7 @@ function DisplayService.PlaceAuto(player: Player, itemUid: string, near: Vector3
 	end
 	local best: number? = nil
 	local bestScore = math.huge
-	for index = 1, unlockedSlots(data) do
+	for _, index in unlockedList(player, data, refs) do
 		local attachment = refs.slots[index]
 		if attachment and data.Display[tostring(index)] == nil then
 			-- Sans position, le score est le numéro : premier présentoir libre.
@@ -1450,7 +1564,9 @@ function DisplayService.HasRoom(player: Player): boolean
 			stored += 1
 		end
 	end
-	return displayed < unlockedSlots(data) or stored < Balance.Display.InventoryMax
+	local account = accounts[player]
+	local plot = if account then account.plot else nil
+	return displayed < unlockedCount(player, data, if plot then refsFor(plot) else nil) or stored < Balance.Display.InventoryMax
 end
 
 function DisplayService.GetIncome(player: Player): number
@@ -1477,6 +1593,19 @@ end
 
 function DisplayService.OnCashOut(listener: CashOutListener): () -> ()
 	return subscribe(cashOutListeners, listener)
+end
+
+-- Points d'accroche (DEV-100, voir l'en-tête) : valeurs du MVP, sans bonus.
+function DisplayService.GetIncomeMultiplier(_player: Player): number
+	return 1
+end
+
+function DisplayService.GetExtraSlots(_player: Player): number
+	return 0
+end
+
+function DisplayService.HasAutoCollect(_player: Player): boolean
+	return false
 end
 
 function DisplayService.Init()

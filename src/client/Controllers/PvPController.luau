@@ -11,14 +11,17 @@
 --     seulement si la boutique est ouverte au vol (attribut StealOpen de la parcelle, posé par
 --     PvPService), mains vides (attribut Carrying du joueur, CarryService), joueur dans le volume
 --     Bounds de la boutique, objet pas à l'abri (SafeSlots), boutique pas protégée (Protection) et
---     pas trop petite pour lui (anti-racket : Income du propriétaire < PvP.AntiRacketRatio × le sien).
+--     pas trop petite pour lui (anti-racket : valeur exposée du propriétaire < PvP.AntiRacketRatio ×
+--     la sienne ; attribut ExposedIncome de DisplayService, sans les bonus de la boutique Robux comme
+--     le serveur, sinon Income).
 --     Début du maintien : StealItem(plotIndex, slotIndex) ; invite déclenchée : StealItem une seconde
 --     fois (le serveur mesure le maintien entre les deux) et animation Grab.
 --   - Panneau de repérage (6.1, point 1) : à PvP.ScoutDistance studs ou moins du volume Bounds de la
 --     boutique d'un autre joueur, un panneau au-dessus de sa porte (PlotDoor/Window), vu par le
 --     joueur local seul (rangé dans son PlayerGui) :
 --       OwnerName  « Alice's Shop » ;
---       Income     valeur exposée, attribut Income du propriétaire (DisplayService) : « +$12.4K/s » ;
+--       Income     valeur exposée, attribut ExposedIncome du propriétaire (DisplayService, sinon
+--                  Income) : « +$12.4K/s » ;
 --       HP         PV de la porte, « HP 840 » (WindowController.GetHP, sinon l'attribut MaxHP de la
 --                  porte ; 0 si elle est cassée), écrits comme la barre BB_WindowHP (Format.hp) ;
 --       Status     caché, sauf : « NEW PLAYER: PROTECTED » (bouclier débutant), « PROTECTED: 1:42 »
@@ -99,6 +102,7 @@ local PLOT_INDEX_ATTRIBUTE = "PlotIndex"
 local SLOT_ATTRIBUTE = "DisplaySlot"
 local ITEM_ID_ATTRIBUTE = "ItemId"
 local INCOME_ATTRIBUTE = "Income"
+local EXPOSED_INCOME_ATTRIBUTE = "ExposedIncome" -- sans les bonus de la boutique Robux (DEV-100)
 local CARRYING_ATTRIBUTE = "Carrying"
 local WINDOW_ID_ATTRIBUTE = "WindowId"
 local MAX_HP_ATTRIBUTE = "MaxHP"
@@ -188,6 +192,11 @@ local function number(instance: Instance, name: string): number?
 	return if type(value) == "number" and value == value then value else nil
 end
 
+-- Valeur exposée d'un joueur ($/s de ses objets, sans bonus : celle de l'anti-racket du serveur).
+local function exposedIncome(player: Player): number
+	return number(player, EXPOSED_INCOME_ATTRIBUTE) or number(player, INCOME_ATTRIBUTE) or 0
+end
+
 local function ownerOf(plot: Model): Player?
 	local id = number(plot, OWNER_ATTRIBUTE)
 	if id == nil or id == 0 then
@@ -253,9 +262,7 @@ end
 
 -- Anti-racket (6.4) vu du joueur local : la boutique est-elle trop petite pour lui ?
 local function tooSmall(owner: Player): boolean
-	local theirs = number(owner, INCOME_ATTRIBUTE) or 0
-	local mine = number(localPlayer, INCOME_ATTRIBUTE) or 0
-	return theirs < PvP.AntiRacketRatio * mine
+	return exposedIncome(owner) < PvP.AntiRacketRatio * exposedIncome(localPlayer)
 end
 
 -- Peut-il voler dans cette boutique, en ce moment ? (Le serveur revérifie tout.)
@@ -544,7 +551,7 @@ local function refreshPanel(watch: PlotWatch, root: BasePart?)
 	end
 	local text: PanelText = {
 		OwnerName = string.format(SHOP_NAME, owner.DisplayName),
-		Income = Format.income(number(owner, INCOME_ATTRIBUTE) or 0),
+		Income = Format.income(exposedIncome(owner)),
 		HP = string.format(HP_TEXT, Format.hp(doorHP(door))),
 		Status = statusOf(plot, owner),
 	}
