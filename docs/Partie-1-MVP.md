@@ -140,8 +140,11 @@ Clément livre d'abord chaque écran en version grise (bons noms, aucun style) e
 | `UI_TheftAlert` | `Banner`, `ThiefName`, `ItemName`, `Arrow` (ImageLabel) |
 | `UI_Tutorial` | `Bubble` avec `Label`, `NextButton` |
 | `UI_Notify` | `Template` avec `Icon`, `Label` |
+| `UI_Index` (index des objets, avancé au MVP, liaison L-071) | `CloseButton`, `Counter` (dans `CounterPill`), `Tabs.Zone1Tab` à `Tabs.Zone6Tab` et `Tabs.SecretsTab` (chacun avec `TabLabel`), `ZoneReward` avec `ZoneName`, `ZoneBar.Fill`, `ZoneCount`, `Reward.RewardLabel`, `List` (ScrollingFrame), `List.Template` avec `Icon`, `Lock`, `ItemName`, `Rays` et `Glow` (dans `Clip`), `RarityBar.Rarity` |
+| `UI_Rebirth` (aperçu avant la MAJ 3, liaison L-071 ; noms de L-047) | `CloseButton`, `Level`, `CashRequirement` avec `CashAmount`, `CashBar.Fill`, `CashLabel`, `ItemRequirement` avec `Icon`, `ItemName`, `Rarity`, `Status`, `GainList`, `ConfirmButton` avec `Disabled`, `Ready`, `Confirm`, et `Hint` |
+| `UI_Chase` (poursuite, liaison L-071) | Aucun élément imposé : le code allume l'écran pendant la poursuite |
 
-Les éléments au-dessus des objets du monde sont des BillboardGui modèles rangés dans `ReplicatedStorage/Assets/UI` : `BB_WindowHP` (`Fill`, `Label`), `BB_OpenTimer` (`Label`), `BB_Item` (`ItemName`, `Rarity`, `Income`) et `BB_Carry` (`ItemName`, `Rarity`, `Income`), l'étiquette au-dessus de la tête de celui qui porte un colis ou un objet volé (section 5.6), et `BB_Box` (`Category`, `Rarity`, `Mutation`), l'étiquette au-dessus de chaque colis, sur le rayon comme porté (décision du 2026-11-07), et `BB_StoreInfo` (`StoreName`, `HP`, `Damage`, `Speed`), le panneau au-dessus de chaque vitrine de magasin PNJ (DEV-030, liaison L-044), et `BB_TruckHP` (`Label`), la barre de vie du camion de l'événement (liaison L-049 et L-052).
+Les éléments au-dessus des objets du monde sont des BillboardGui modèles rangés dans `ReplicatedStorage/Assets/UI` : `BB_WindowHP` (`Fill`, `Label`), `BB_OpenTimer` (`Label`), `BB_Item` (`ItemName`, `Rarity`, `Income`) et `BB_Carry` (`ItemName`, `Rarity`, `Income`), l'étiquette au-dessus de la tête de celui qui porte un colis ou un objet volé (section 5.6), et `BB_Box` (`Category`, `Rarity`, `Mutation`), l'étiquette au-dessus de chaque colis, sur le rayon comme porté (décision du 2026-11-07), et `BB_StoreInfo` (`StoreName`, `HP`, `Damage`, `Speed`), le panneau au-dessus de chaque vitrine de magasin PNJ (DEV-030, liaison L-044), et `BB_TruckHP` (`Label`), la barre de vie du camion de l'événement (liaison L-049 et L-052), et `BB_ZoneGate` (`ZoneName`, `Speed`, `Damage`), le panneau au-dessus de chaque arche de zone, rempli comme `BB_StoreInfo` (liaison L-071).
 
 ### 2.3 Références à envoyer
 
@@ -285,7 +288,7 @@ Deux stats permanentes, entraînées dans sa propre parcelle.
 | Vitesse | Tapis de course | +1 par seconde × multiplicateur du tapis | WalkSpeed = 16 + Vitesse × 0,05 × multiplicateur du trail, plafonné à 70 |
 | Force | Banc de musculation | +1 par répétition (1 tap, 3 rép/s max) × multiplicateur du banc | Dégâts × (1 + Force / 100) |
 
-- **Tapis** : invite « Courir », le perso est placé sur le tapis, animation de course, la bande défile. AFK autorisé (bon pour le temps de jeu) ; taper l'écran donne +50 % de gain.
+- **Tapis** : on s'arrête sur la bande (0,25 s) et le perso est placé sur le tapis, animation de course, la bande défile ; on en descend pour arrêter. Plus d'invite « Courir » (vague 14, liaison L-071). AFK autorisé (bon pour le temps de jeu) ; taper l'écran donne +50 % de gain.
 - **Banc** : invite « Soulever », une répétition animée par tap, chiffre flottant « +1 Force ».
 - **Plafond de 70** : au-delà, collisions et caméra deviennent instables sur Roblox.
 - **Cible d'équilibrage** : passer d'une zone à la suivante demande environ 5 min d'entraînement et 5 min de revenus.
@@ -324,7 +327,7 @@ C'est la séquence des miniatures et des vidéos : priorité absolue en qualité
 - **Apparition** : à la porte de la réserve, au moment où un colis est soulevé. Un vigile par voleur, 3 max par magasin.
 - **Vitesse** : table de la section 4.
 - **IA** : course directe si ligne de vue, sinon PathfindingService recalculé toutes les 0,3 s. Le serveur possède la physique du vigile.
-- **Capture** : distance ≤ 4 studs, vérifiée côté serveur. Le colis revole vers son rayon, le joueur est étourdi 1,5 s, message « Rattrapé ! Vitesse conseillée : 28 ».
+- **Capture** : distance ≤ 4 studs, vérifiée côté serveur. Le colis revole vers son rayon, le joueur est projeté au marqueur `Impact` de l'animation `Catch` du vigile et étourdi 1,5 s à partir de ce coup (liaison L-071), message « Rattrapé ! Vitesse conseillée : 28 ».
 - **Abandon** : le joueur passe l'arche safe, ou 20 s de poursuite, ou 120 studs d'avance. Le vigile rentre en marchant, essoufflé.
 - **Tension** : jauge de distance vigile/joueur au bord de l'écran, battements de cœur sous 10 studs.
 - **Visuel** : un look par zone (gilet de supérette jusqu'à agent de banque), mêmes scripts.
@@ -670,7 +673,7 @@ L'encaissement passe par le contact serveur avec le tapis de caisse, sans remote
 }
 ```
 
-**Versions du schéma (DataService)** : v2 (2026-11-07) = même forme, `ItemId` du catalogue d'objets v2 (liaison L-045) ; v3 (2026-11-08, DEV-100) = boutique Robux : `Purchases[PurchaseId]` = date du don (`os.time()`), plus `Monetization = { Passes = {}, StarterPack = false, OpenNowCredit = 0 }` et `Boosts = { Cash = 0 }`. Les champs de la Partie 2 (Defenses, Rebirths, Index, Rewards) arriveront en v4 et suivantes.
+**Versions du schéma (DataService)** : v2 (2026-11-07) = même forme, `ItemId` du catalogue d'objets v2 (liaison L-045) ; v3 (2026-11-08, DEV-100) = boutique Robux : `Purchases[PurchaseId]` = date du don (`os.time()`), plus `Monetization = { Passes = {}, StarterPack = false, OpenNowCredit = 0 }` et `Boosts = { Cash = 0 }` ; v4 (2026-11-08, DEV-111) = index des objets : `Index = { [ItemId] = os.time() de la découverte }`, la migration compte comme découverts les objets déjà possédés (inventaire, présentoirs, coffre-fort). Les autres champs de la Partie 2 (Defenses, Rebirths, Rewards) arriveront en v5 et suivantes.
 
 ### 9.6 Anti-triche
 
@@ -762,6 +765,8 @@ Ces noms sont lus par le code : un nom faux = une fonctionnalité qui ne marche 
 | Modèle animé (vigile, vigile de nuit, vendeur) | Humanoid sur rig R15 standard avec un Animator dans le Humanoid, aucun script, dossier Animations contenant les objets Animation nommés selon la section 2.4 (Idle, Walk, Run, Catch, Tired pour un vigile ; Idle, Wave pour un vendeur) |
 | Camion de l'événement `ENV_Event_Truck` (liaison L-049) | `Root` (Part invisible en PrimaryPart, pivot en bas au centre ; elle reste en place quand les pièces partent), `Pieces` (Model avec `Piece_01` à `Piece_20` : le camion intact, ce sont ces pièces qui volent à l'explosion), les Attachments `BoxSpawn_01` à `BoxSpawn_12` (d'où sortent les colis), `BlastPoint` (centre de l'explosion) et `HealthBarPoint` (barre de vie), `OutlineHighlight` (Highlight du contour) ; aucun script ; cabine côté −Z |
 | Traînée des colis `FX_BoxTrail` (liaison L-049) | `Trail` (Trail), `TrailTop` et `TrailBottom` (ses deux Attachments) ; le code les copie sur chaque colis qui vole |
+| Comptoir du hub (tags `WeaponShop`, `AuraShop`, `RobuxShop`) | `ShopPad` (BasePart à plat devant le stand, facultative : marcher dessus ouvre l'écran du comptoir ; sans elle, l'invite « Shop » suffit ; liaison L-071) |
+| Arche de zone (tag `ZoneGate`) | `InfoPoint` (Attachment, facultatif : point d'accroche de `BB_ZoneGate` ; sans lui, le panneau se pose au-dessus de `SignPart` ; liaison L-071). Aucun script `FX_` dans une arche |
 
 Les points `Shutter`, `ShutterButton`, `TrapSlot_xx` et `VaultSlot_02` / `_03` de la parcelle servent en Partie 2 : on les place dès le MVP pour ne pas remodeler la parcelle plus tard. Pour les auras et les trails, Clément livre des textures PNG sur fond transparent (`FX_Aura_<Nom>`, `FX_Trail_<Nom>`, 256 × 256) et une couleur principale par palier.
 
@@ -1086,6 +1091,7 @@ Chaque étape est envoyée une seule fois par joueur avec `AnalyticsService:LogO
 
 | Date | Décision | Par |
 | --- | --- | --- |
+| 2026-11-08 | Vague 14, choix d'Ironix (liaison, L-071 et L-083) : boutons Shop, Index et Rebirth visibles dès le MVP ; boutique Robux en vitrine (prix visibles, aucun achat tant que `Features.RobuxShop` est coupé, « Soon » au clic) ; Index codé pour de vrai (découverte sauvegardée en profil v4, +5 % de revenus par zone complète, additionné aux autres bonus en %) ; écran Rebirth en aperçu (prochaine renaissance du tableau 3.2 de la Partie 2, « Coming soon ») ; plaques `ShopPad` devant les comptoirs ; tapis : on s'arrête sur la bande, plus d'invite ; colis : `CarryIdle` et `CarryRun` partent au marqueur `Grab` ; capture : projection au marqueur `Impact` de `Catch`, étourdissement compté depuis le coup ; musiques : poursuite, puis camion, puis zone ; colis lâchés par le camion espacés d'au moins 1 stud | Ironix |
 | 2026-11-08 | Une 8e rareté « Divin » (Divine) au-dessus du Secret ; camions et colis ont un design par rareté, avec de plus en plus de PV pour les camions (valeurs à proposer par Ironix, liaison L-049) | Clément |
 | 2026-11-08 | Les colis du camion ont plusieurs raretés, même en zone 1 : chances propres au camion, meilleures qu'un rayon sans abus, à proposer par Ironix (liaison, L-049) | Clément |
 | 2026-11-08 | Camion : son aspect change à 75, 50 et 25 % de PV (fêlures et fumée, pièces qui tombent, feu). Une cinématique d'arrivée le montre rouler puis se renverser, et il reste couché pendant l'événement. Après la casse, des policiers viennent récupérer les colis (liaison, L-049) | Clément |

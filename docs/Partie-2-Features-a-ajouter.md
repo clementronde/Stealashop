@@ -65,6 +65,8 @@ Pour renaître, il faut un montant d'argent ET un objet précis, que l'on remet 
 - **Écran** : barre de progression de l'argent, vignette de l'objet requis (grisée tant qu'on ne l'a pas), trois colonnes « tu perds / tu gardes / tu gagnes », confirmation en 2 temps.
 - **Prestige** : annonce à tout le serveur et titre au-dessus de la tête (« Renaissance 2 »).
 
+**Aperçu (2026-11-08, liaison L-071)** : le bouton Rebirth et l'écran `UI_Rebirth` montrent déjà la prochaine renaissance (tableau ci-dessus, recopié dans `Config/Rebirths`) avec la progression de l'argent. La renaissance elle-même (DEV-120) n'est pas codée : le bouton reste grisé, « Coming soon ».
+
 ### 3.3 Récompenses quotidiennes et hebdomadaires (MAJ 1)
 
 - **Quotidien** : calendrier de 7 jours, une réclamation par jour, remise à zéro à minuit UTC. J1 : 5 min de revenus. J2 : colis Standard. J3 : 15 min de revenus. J4 : colis Premium. J5 : boost ×2 argent 15 min. J6 : 30 min de revenus. J7 : colis Luxe garanti Épique ou mieux.
@@ -88,6 +90,8 @@ Pour renaître, il faut un montant d'argent ET un objet précis, que l'on remet 
 - **Compteur** : « 23 / 38 découverts ».
 - **Récompenses** : zone complète = +5 % de revenus permanents ; index complet = aura exclusive « Collectionneur ».
 - **Relance** : quand les mutations arrivent (MAJ 4), une colonne Or, Diamant, Néon par objet relance la collection.
+
+**Codé (DEV-111, 2026-11-08), avancé avant la MAJ 2** (Clément veut le bouton Index visible dès le MVP, liaison L-071) : découverte sauvegardée (profil v4, la migration compte les objets déjà possédés), écran `UI_Index` (onglets par zone et Secrets, silhouettes, compteur « X / 83 discovered »), +5 % de revenus permanents par zone complète, additionnés aux autres bonus en pour cent. Pas encore : l'aura « Collectionneur » de l'index complet, à créer par Clément (liaison L-083).
 
 ## 4. Monétisation (boutique Robux, MAJ 1)
 
@@ -123,7 +127,7 @@ On vend du confort, de la vitesse de progression et l'émotion du moment (vol su
 - **Bonus Premium** : +10 % de revenus pour les abonnés Roblox Premium, ce qui augmente les Premium Payouts.
 - **Achats** : traités côté serveur et idempotents (Partie 1, section 9.6).
 
-**Codé (DEV-100, 2026-11-08), caché derrière `Features.RobuxShop` jusqu'à la MAJ 1** : `MonetizationService` (reçus idempotents, `PurchaseGranted` seulement une fois le `PurchaseId` sauvegardé ; gamepasses lus à l'arrivée et à la fin d'un achat), `Config/Monetization` (Id = 0 tant que l'offre n'est pas créée sur le Creator Hub), `RobuxShopController` (écran `UI_RobuxShop` de Clément). Codés : ×2 Argent, ×2 Entraînement, Encaissement auto, Ouverture rapide, +4 présentoirs, bonus Premium, packs d'argent, Ouvrir maintenant, pack de départ. Pas encore : VIP, Gants hydrauliques, Vengeance, Rideau instantané, Chance ×3, Bouclier 30 min. **Valeurs V0 d'Ironix, à valider avec Clément (liaison L-066, L-067)** : Ouvrir maintenant en 4 produits selon le temps restant (jusqu'à 1 min : 19 ; 3 min : 39 ; 8 min : 59 ; au-delà : 99 ; pas proposé sous 10 s), les secondes payées sans colis en attente vont aux prochains colis posés ; packs d'argent = revenu actuel, bonus compris, × minutes, au moins 50 $ par minute ; revenus = valeur exposée × (1 + Premium) × ×2 Argent × boost ×2 (les pourcentages s'additionnent, les ×2 se multiplient) ; pack de départ : « 1re heure » = temps de jeu cumulé, boost compté en jeu seulement, Marteau équipé s'il est plus fort que l'outil en main ; Ouverture rapide divise aussi l'attente des colis déjà posés ; +4 présentoirs = `DisplaySlot_21` à `_24` de la boutique ; historique des reçus limité à 100.
+**Codé (DEV-100, 2026-11-08), caché derrière `Features.RobuxShop` jusqu'à la MAJ 1** : `MonetizationService` (reçus idempotents, `PurchaseGranted` seulement une fois le `PurchaseId` sauvegardé ; gamepasses lus à l'arrivée et à la fin d'un achat), `Config/Monetization` (Id = 0 tant que l'offre n'est pas créée sur le Creator Hub), `RobuxShopController` (écran `UI_RobuxShop` de Clément). Codés : ×2 Argent, ×2 Entraînement, Encaissement auto, Ouverture rapide, +4 présentoirs, bonus Premium, packs d'argent, Ouvrir maintenant, pack de départ. Pas encore : VIP, Gants hydrauliques, Vengeance, Rideau instantané, Chance ×3, Bouclier 30 min. **Valeurs V0 d'Ironix, à valider avec Clément (liaison L-066, L-067)** : Ouvrir maintenant en 4 produits selon le temps restant (jusqu'à 1 min : 19 ; 3 min : 39 ; 8 min : 59 ; au-delà : 99 ; pas proposé sous 10 s), les secondes payées sans colis en attente vont aux prochains colis posés ; packs d'argent = revenu actuel, bonus compris, × minutes, au moins 50 $ par minute ; revenus = valeur exposée × (1 + Premium) × ×2 Argent × boost ×2 (les pourcentages s'additionnent, les ×2 se multiplient) ; pack de départ : « 1re heure » = temps de jeu cumulé, boost compté en jeu seulement, Marteau équipé s'il est plus fort que l'outil en main ; Ouverture rapide divise aussi l'attente des colis déjà posés ; +4 présentoirs = `DisplaySlot_21` à `_24` de la boutique ; historique des reçus limité à 100. **Vitrine (2026-11-08, liaison L-071)** : `Features.RobuxShopPreview` montre déjà le bouton Shop et l'écran, avec les offres et leurs prix ; tant que `RobuxShop` est coupé, aucun achat ne part et « Soon » remplace le prix au clic.
 
 ## 5. Idées de rétention en plus
 
