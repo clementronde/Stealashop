@@ -303,7 +303,7 @@ Deux stats permanentes, entraînées dans sa propre parcelle.
 ### 5.3 Braquer un magasin PNJ
 
 1. **Approche** : un panneau au-dessus de la vitrine affiche nom, PV, dégâts et vitesse conseillés. Chiffres verts si le joueur les atteint, orange entre 50 et 99 %, rouges en dessous.
-2. **Frappe** : barre de PV au-dessus de la vitre, régénération continue de 3 % des PV max par seconde, fissures visibles à 75, 50 et 25 %.
+2. **Frappe** : barre de PV au-dessus de la vitre, régénération continue de 3 % des PV max par seconde ; à chaque coup, la vitre se creuse (éclats arrachés de la face frappée, creux qui s'élargit et s'enfonce avec les PV perdus, sans la percer), à la place des fissures à 75, 50 et 25 % (liaison L-081).
 3. **Casse** : à 0 PV, séquence de casse (5.4) et chrono de 10 s affiché en grand.
 4. **Pillage** : 10 colis par magasin. 6 Standard sur les rayons avant (prise en 0,3 s), 3 Premium au milieu (0,6 s), 1 Luxe dans la réserve du fond (1,0 s). Un seul colis porté à la fois.
 5. **Fuite** : dès qu'un colis est soulevé, le vigile sort de la réserve (5.5). Le chrono ne compte plus pour ce joueur.
@@ -328,7 +328,7 @@ C'est la séquence des miniatures et des vidéos : priorité absolue en qualité
 - **Vitesse** : table de la section 4.
 - **IA** : course directe si ligne de vue, sinon PathfindingService recalculé toutes les 0,3 s. Le serveur possède la physique du vigile.
 - **Capture** : distance ≤ 4 studs, vérifiée côté serveur. Le colis revole vers son rayon, le joueur est projeté au marqueur `Impact` de l'animation `Catch` du vigile et étourdi 1,5 s à partir de ce coup (liaison L-071), message « Rattrapé ! Vitesse conseillée : 28 ».
-- **Abandon** : le joueur passe l'arche safe, ou 20 s de poursuite, ou 120 studs d'avance. Le vigile rentre en marchant, essoufflé.
+- **Abandon** : le joueur passe l'arche safe, ou 20 s de poursuite, ou 120 studs d'avance. Le vigile rentre en marchant, essoufflé, par un chemin, jusqu'à la réserve (ou devant la porte si le rideau est baissé), puis s'efface en fondu (liaison L-077).
 - **Tension** : jauge de distance vigile/joueur au bord de l'écran, battements de cœur sous 10 studs.
 - **Visuel** : un look par zone (gilet de supérette jusqu'à agent de banque), mêmes scripts.
 - **P1** : comportements par zone (chien en zone 4, taser à distance en zone 6).
@@ -354,7 +354,7 @@ Un colis volé à un magasin PNJ attend avant de s'ouvrir, d'autant plus longtem
 - **Les colis en attente ne sont pas volables** : en PvP, on ne vole que des objets exposés.
 - **Accélérer** : produit « Ouvrir maintenant » de la boutique Robux (Partie 2, MAJ 1).
 
-**Storyboard de la révélation** (V0, à affiner avec les vidéos de la section 2.3). Version complète pour Rare et plus, environ 4 s jusqu'à l'objet :
+**Storyboard de la révélation** (V0, à affiner avec les vidéos de la section 2.3). Version complète pour Rare et plus, environ 4 s jusqu'à l'objet. Le rouleau d'objets tourne dans une fenêtre juste au-dessus du colis, qui le suit à l'écran (liaison L-080) :
 
 1. **Prêt** : l'attente finie, le colis brille et rebondit sur l'établi avec un « ding », bouton « Ouvrir » dessus. Le joueur déclenche le moment quand il veut.
 2. **Tension (0 à 1,5 s)** : la caméra glisse vers le colis en cadrage serré, le reste de l'écran s'assombrit, le colis tremble de plus en plus fort, le son monte.
@@ -1091,6 +1091,7 @@ Chaque étape est envoyée une seule fois par joueur avec `AnalyticsService:LogO
 
 | Date | Décision | Par |
 | --- | --- | --- |
+| 2026-11-08 | Vague 15, choix d'Ironix (liaison, L-077, L-080, L-081) : la vitre se creuse à chaque coup à la place des fissures (même endroit et même taille pour tous, forme tirée sur chaque client ; le creux ne rétrécit pas quand les PV remontent et s'efface quand la vitre est pleine depuis 2 s ; version allégée sur appareil faible ou tactile) ; le rouleau d'ouverture tourne au-dessus du colis, à l'écran (pas de BillboardGui) ; le vigile rentre par un chemin, jusqu'à la réserve (devant la porte si le rideau est baissé), et s'efface en fondu de 0,6 s | Ironix |
 | 2026-11-08 | Vague 14, choix d'Ironix (liaison, L-071 et L-083) : boutons Shop, Index et Rebirth visibles dès le MVP ; boutique Robux en vitrine (prix visibles, aucun achat tant que `Features.RobuxShop` est coupé, « Soon » au clic) ; Index codé pour de vrai (découverte sauvegardée en profil v4, +5 % de revenus par zone complète, additionné aux autres bonus en %) ; écran Rebirth en aperçu (prochaine renaissance du tableau 3.2 de la Partie 2, « Coming soon ») ; plaques `ShopPad` devant les comptoirs ; tapis : on s'arrête sur la bande, plus d'invite ; colis : `CarryIdle` et `CarryRun` partent au marqueur `Grab` ; capture : projection au marqueur `Impact` de `Catch`, étourdissement compté depuis le coup ; musiques : poursuite, puis camion, puis zone ; colis lâchés par le camion espacés d'au moins 1 stud | Ironix |
 | 2026-11-08 | Une 8e rareté « Divin » (Divine) au-dessus du Secret ; camions et colis ont un design par rareté, avec de plus en plus de PV pour les camions (valeurs à proposer par Ironix, liaison L-049) | Clément |
 | 2026-11-08 | Les colis du camion ont plusieurs raretés, même en zone 1 : chances propres au camion, meilleures qu'un rayon sans abus, à proposer par Ironix (liaison, L-049) | Clément |
