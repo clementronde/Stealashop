@@ -679,6 +679,7 @@ L'encaissement passe par le contact serveur avec le tapis de caisse, sans remote
 - **Objets uniques** : chaque objet a un uid. Un vol PvP retire l'objet de la victime et l'ajoute au voleur dans la même exécution serveur, les deux profils actifs.
 - **ProcessReceipt** : on applique l'achat, on enregistre le `PurchaseId` dans le profil, et seulement ensuite on renvoie `PurchaseGranted`.
 - **Pas de bannissement automatique en V1** : on journalise, on corrige, on revoit les cas à la main.
+- **Codé (DEV-060, 2026-11-08)** : `AntiCheatService`, valeurs dans `Config/AntiCheat`. Vitesse autorisée = la plus haute `WalkSpeed` des 2 dernières secondes (trail, Adrénaline, malus et étourdissement compris), avec une réserve de 1 s de déplacement + 4 studs contre les à-coups du réseau ; les chutes et sauts ne comptent pas. Les déplacements faits par le code (apparition, Retour base, sortie d'une boutique ou d'un magasin, nuit, machines, poussées de la batte et du vigile) passent par `AntiCheatService.Allow`. Le dépôt d'un objet volé est vérifié au moment même (`Verify`). Récidives comptées (attribut `AntiCheatStrikes`), jamais d'expulsion. En Studio : une ligne dans la sortie seulement, sauf avec l'attribut `AntiCheatStrict` du Workspace.
 
 ### 9.7 Performance
 
