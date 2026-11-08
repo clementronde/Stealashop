@@ -21,10 +21,14 @@
 --     Les lignes suivent les attributs OwnedCosmetics, EquippedAura et EquippedTrail du Player
 --     (posés par CosmeticService) : elles se mettent à jour après chaque achat ou équipement ;
 --   - tant que UI_AuraShop manque (UI-003 pas encore livré), l'invite reste mais n'ouvre rien :
---     une seule ligne dans la sortie, en Studio. Un écran recréé (ResetOnSpawn) est rebranché, fermé.
+--     une seule ligne dans la sortie, en Studio. Un écran recréé (ResetOnSpawn) est rebranché, fermé ;
+--   - ouverture et fermeture animées (DEV-052) par UI/Motion : Motion.Open et Motion.Close
+--     allument et éteignent l'écran ; les lignes sont retirées une fois l'écran éteint (pas pendant
+--     sa sortie), et une réouverture pendant la fermeture la rattrape.
 -- Les éléments sont cherchés par leur nom parmi les descendants de l'écran (Contract/Find). Seuls
 -- sont touchés : Enabled de l'écran, les textes, la visibilité, le nom et l'ordre des lignes
--- clonées, l'image de Icon (2.2, « Libre pour Ironix ») ; jamais un style. Texte d'un bouton :
+-- clonées, l'image de Icon (2.2, « Libre pour Ironix ») ; jamais un style (l'effet d'échelle de
+-- Motion est passager). Texte d'un bouton :
 -- écrit sur le bouton s'il en porte déjà un, sinon dans le premier TextLabel qu'il contient.
 -- Casse : un texte d'exemple en capitales (« AURA NAME », « EQUIP ») donne un texte en capitales
 -- (« SPARK », « UNEQUIP ») ; sinon le texte est écrit tel quel.
@@ -42,6 +46,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Cosmetics = require(Shared:WaitForChild("Config"):WaitForChild("Cosmetics"))
 local Find = require(Shared:WaitForChild("Contract"):WaitForChild("Find"))
 local Format = require(Shared:WaitForChild("Format"))
+local Motion = require(script.Parent:WaitForChild("UI"):WaitForChild("Motion"))
 
 type Kind = "Aura" | "Trail"
 type Cosmetic = typeof(Cosmetics.Auras[1])
@@ -282,8 +287,10 @@ local function closeShop()
 	openAt = nil
 	local current = shop
 	if current then
-		current.gui.Enabled = false
-		clearRows(current)
+		-- Lignes retirées une fois l'écran éteint ; une réouverture d'ici là les reconstruit.
+		Motion.Close(current.gui, function()
+			clearRows(current)
+		end)
 	end
 end
 
@@ -356,7 +363,7 @@ local function openShop(counter: BasePart)
 	end
 	openAt = counter
 	buildRows()
-	current.gui.Enabled = true
+	Motion.Open(current.gui)
 end
 
 -- Fermeture quand le joueur s'éloigne du comptoir, ou que le comptoir ou l'écran disparaît.

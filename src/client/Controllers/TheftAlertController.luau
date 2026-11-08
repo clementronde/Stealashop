@@ -12,7 +12,8 @@
 --   - bannière : écran de Clément s'il est livré, PlayerGui/UI_TheftAlert (copié depuis StarterGui) :
 --     ThiefName = pseudo du voleur, ItemName = nom de l'objet, tous deux en capitales (la bannière
 --     crie, 6.2). Seuls Enabled de l'écran, ces deux textes, Visible de Banner, ThiefName, ItemName et
---     Arrow, et Arrow.Rotation sont touchés (2.2, « Libre pour Ironix ») ; une nouvelle copie de
+--     Arrow, et Arrow.Rotation sont touchés (2.2, « Libre pour Ironix »), plus l'échelle passagère de
+--     Motion à l'apparition et à la disparition (voir plus bas) ; une nouvelle copie de
 --     l'écran (ResetOnSpawn) est reprise dans les REFRESH_INTERVAL s. Sinon un repli V0 fait par le
 --     code, TheftAlertV0 dans le PlayerGui, clairement provisoire et sans style : un voile rouge sur
 --     tout l'écran qui pulse et un bandeau rouge au tiers de la hauteur (rien d'important en haut,
@@ -37,6 +38,11 @@
 -- Tout disparaît à TheftAlert(false), à la mort ou au départ du voleur (vérifiés à chaque image). Les
 -- messages sont appliqués à l'image suivante : un false suivi d'une réannonce ne fait ni clignoter la
 -- bannière ni repartir la sirène.
+-- Apparition et disparition animées (DEV-052) par UI/Motion, pour l'écran de Clément comme pour le
+-- repli V0 : Motion.Open et Motion.Close allument et éteignent l'écran, ses cadres racine entrent et
+-- sortent par une échelle passagère (un voile plein écran n'est pas mis à l'échelle) ; une
+-- réannonce pendant la sortie la rattrape. Un écran arrivé allumé de StarterGui au repos s'éteint
+-- d'un coup ; arrivé allumé pendant un vol, il reste allumé et sa sortie sera animée.
 -- La batte s'équipe toute seule à l'alerte (6.2) : c'est BatController (PvP.AutoEquipBatOnAlert).
 --
 -- API (client) :
@@ -56,6 +62,7 @@ local Items = require(Config:WaitForChild("Items"))
 local PvP = require(Config:WaitForChild("PvP"))
 local Find = require(Shared:WaitForChild("Contract"):WaitForChild("Find"))
 local MarkerSounds = require(Shared:WaitForChild("Anim"):WaitForChild("MarkerSounds"))
+local Motion = require(script.Parent:WaitForChild("UI"):WaitForChild("Motion"))
 
 -- Un vol en cours chez le joueur local, tel qu'annoncé par le serveur.
 type Theft = {
@@ -347,21 +354,20 @@ local function showView(target: View, theft: Theft)
 	setVisible(target.banner, true)
 	setVisible(target.thiefName, true)
 	setVisible(target.itemName, true)
-	if not target.gui.Enabled then
-		target.gui.Enabled = true
-	end
+	Motion.Open(target.gui) -- déjà ouvert : rien
 end
 
 -- Rien à montrer : l'écran de Clément (qui peut arriver allumé de StarterGui, ou revenir à chaque
--- réapparition) et le repli restent éteints.
+-- réapparition) et le repli restent éteints. Motion.Close : sortie animée d'un écran ouvert pendant
+-- un vol, extinction immédiate d'un écran arrivé allumé au repos.
 local function hideScreens()
 	local gui = playerGui()
 	local screen = if gui then gui:FindFirstChild(SCREEN_NAME) else nil
 	if screen and screen:IsA("ScreenGui") and screen.Enabled then
-		screen.Enabled = false
+		Motion.Close(screen :: ScreenGui)
 	end
 	if fallback and fallback.gui.Enabled then
-		fallback.gui.Enabled = false
+		Motion.Close(fallback.gui)
 	end
 end
 
