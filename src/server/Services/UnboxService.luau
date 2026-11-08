@@ -109,6 +109,14 @@
 --   UnboxService.OnBoxOpened(listener) -> déconnexion
 --       listener(player, benchIndex, itemUid, itemId) après chaque ouverture (tutoriel,
 --       télémétrie) ; itemId = l'objet final, après l'amélioration.
+--   Boutique Robux (DEV-100, MonetizationService : « Ouvrir maintenant », « Ouverture rapide ») :
+--   UnboxService.GetWaiting(player) -> { [number]: number }
+--       Colis du joueur pas encore prêts, affichés sur leurs établis : [numéro d'établi] = heure
+--       serveur (ReadyAt) où chacun le sera. Vide sans colis en attente.
+--   UnboxService.SkipWait(player, benchIndex, seconds) -> number?
+--       Avance de `seconds` (au plus jusqu'à maintenant) l'heure d'ouverture du colis en attente sur
+--       cet établi, dans le profil et sur l'établi ; renvoie l'attente restante (0 = prêt : BoxReady
+--       part tout de suite), nil s'il n'y a pas de colis en attente sur cet établi. Sans yield.
 
 local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
@@ -147,6 +155,9 @@ type CarryApi = {
 }
 type DisplayApi = {
 	PlaceAuto: (player: Player, itemUid: string) -> number?,
+	-- Place pour un objet de plus, présentoirs bonus de la boutique Robux compris (DEV-100) ; sans elle
+	-- (bouchons des bancs d'essai), le compte des présentoirs de base ci-dessous.
+	HasRoom: ((player: Player) -> boolean)?,
 }
 
 local CarryService: CarryApi = require(script.Parent.CarryService) :: any
@@ -328,9 +339,14 @@ end
 -- 5.8 : 30 objets non exposés au plus (Balance.Display.InventoryMax). V0 proposé, absent du doc :
 -- l'ouverture n'est refusée que si le nouvel objet ne trouverait ni présentoir libre ni place dans
 -- l'inventaire ; le colis reste alors prêt sur son établi. Présentoirs débloqués : StartSlots +
--- niveau Upgrades.DisplaySlots, au plus MaxSlots (5.8, 7.5). Un objet du coffre-fort (Vault) n'est
--- pas compté dans l'inventaire.
-local function inventoryFull(data: Data): boolean
+-- niveau Upgrades.DisplaySlots, au plus MaxSlots (5.8, 7.5), plus les présentoirs bonus du gamepass
+-- (DEV-100) : DisplayService.HasRoom fait le compte quand il est là. Un objet du coffre-fort (Vault)
+-- n'est pas compté dans l'inventaire.
+local function inventoryFull(player: Player, data: Data): boolean
+	local hasRoom = DisplayService.HasRoom
+	if hasRoom then
+		return not hasRoom(player)
+	end
 	local display = Balance.Display
 	local placed: { [string]: boolean } = {}
 	local displayed = 0
@@ -947,7 +963,7 @@ local function onOpenBox(player: Player, benchIndex: number)
 		warn(`[UnboxService] {player.Name} : colis de l'établi {benchIndex} illisible ({problem}), ouverture refusée`)
 		return
 	end
-	if inventoryFull(data) then
+	if inventoryFull(player, data) then
 		log(`{player.Name} : OpenBox({benchIndex}) refusé : présentoirs et inventaire pleins`)
 		notify(player, MESSAGES.InventoryFull)
 		return
@@ -1027,6 +1043,51 @@ end
 
 function UnboxService.OnBoxOpened(listener: OpenedListener): () -> ()
 	return subscribe(openedListeners, listener)
+end
+
+function UnboxService.GetWaiting(player: Player): { [number]: number }
+	local waiting: { [number]: number } = {}
+	local session = sessions[player]
+	if session == nil then
+		return waiting
+	end
+	local now = serverNow()
+	for index, slot in session.slots do
+		if not slot.ready and slot.readyAt > now then
+			waiting[index] = slot.readyAt
+		end
+	end
+	return waiting
+end
+
+function UnboxService.SkipWait(player: Player, benchIndex: number, seconds: number): number?
+	local data = DataService.Get(player)
+	local session = sessions[player]
+	if data == nil or session == nil or type(seconds) ~= "number" or seconds ~= seconds or seconds < 0 then
+		return nil
+	end
+	local slot = session.slots[benchIndex]
+	local box = data.Boxes[benchKey(benchIndex)]
+	if slot == nil or slot.ready or box == nil or type(box.ReadyAt) ~= "number" then
+		return nil
+	end
+	local now = serverNow()
+	if box.ReadyAt <= now then
+		return nil -- déjà prêt : la boucle le marque au prochain pas
+	end
+	local readyAt = math.max(now, box.ReadyAt - seconds)
+	box.ReadyAt = readyAt
+	slot.readyAt = readyAt
+	slot.model:SetAttribute(READY_AT_ATTRIBUTE, readyAt)
+	local left = readyAt - now
+	if left <= 0 then
+		markReady(player, session, benchIndex, slot)
+		left = 0
+	else
+		setLabel(slot, timerText(left))
+	end
+	log(`{player.Name} : attente du colis de l'établi {benchIndex} réduite de {string.format("%.1f", seconds)} s, reste {string.format("%.1f", left)} s`)
+	return left
 end
 
 function UnboxService.Init()

@@ -1,8 +1,9 @@
 --!strict
 -- Type du profil sauvegardé d'un joueur (ReplicatedStorage/Shared/Types/Profile).
--- Schéma v2 : la forme de la v1 (section 9.5 de la Partie 1), avec les ItemId du catalogue
+-- Schéma v3 : la forme de la v1 (section 9.5 de la Partie 1), avec les ItemId du catalogue
 -- d'objets v2 (Config/Items, liaison L-045 ; DataService, MIGRATIONS[2], renomme ou remplace ceux
--- de la v1). Valeurs de départ dans DataService.
+-- de la v1), et, en v3 (DEV-100, boutique Robux de la Partie 2), Monetization et Boosts, et la date
+-- du don dans Purchases (MIGRATIONS[3]). Valeurs de départ dans DataService.
 -- Ce module ne contient que des types : on l'utilise avec
 --   local ProfileTypes = require(ReplicatedStorage.Shared.Types.Profile)
 --   local data: ProfileTypes.Data = ...
@@ -74,6 +75,19 @@ export type Lifetime = {
 	PlaySeconds: number,
 }
 
+-- Boutique Robux (v3, DEV-100 ; MonetizationService).
+export type Monetization = {
+	Passes: { [string]: boolean }, -- [clé du gamepass] = true : vu possédé à la dernière lecture (cache
+	-- de UserOwnsGamePassAsync, utilisé tant que Roblox n'a pas répondu à l'arrivée)
+	StarterPack: boolean, -- pack de départ acheté (offre unique)
+	OpenNowCredit: number, -- secondes d'« Ouvrir maintenant » payées sans colis à ouvrir, retirées des prochains colis posés
+}
+
+-- Boosts temporaires (v3) : secondes restantes, comptées seulement pendant le jeu.
+export type Boosts = {
+	Cash: number, -- boost ×2 argent (pack de départ ; récompenses plus tard)
+}
+
 -- Profil complet, clé ProfileStore « Player_<UserId> ».
 export type Data = {
 	Version: number,
@@ -88,9 +102,12 @@ export type Data = {
 	Boxes: { [string]: Box }, -- [numéro d'établi en texte] = colis
 	Tutorial: Tutorial,
 	Lifetime: Lifetime,
-	Purchases: { [string]: boolean }, -- [PurchaseId] = true (achats Robux idempotents)
-	-- Partie 2 : Defenses, Rebirths, Index, Rewards, ajoutés par migration (Version = 3 : la v2 est
-	-- prise par le catalogue d'objets v2).
+	Purchases: { [string]: number }, -- [PurchaseId] = os.time() du don (achats Robux idempotents, 9.6 ;
+	-- v1 et v2 : true, jamais écrit, devenu 0 en v3). Borné par MonetizationService (Config/Monetization)
+	Monetization: Monetization, -- v3
+	Boosts: Boosts, -- v3
+	-- Partie 2 : Defenses, Rebirths, Index, Rewards, ajoutés par migration (Version = 4 : la v2 est
+	-- prise par le catalogue d'objets v2, la v3 par la boutique Robux).
 }
 
 return {}

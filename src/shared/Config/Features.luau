@@ -5,11 +5,13 @@
 -- les a posés (le code ne force jamais Visible = true). NightCycle et ReturnToBase coupent aussi
 -- leur service serveur (NightCycleService, ReturnBaseService) et le ciel animé (SkyController).
 -- TruckEvent n'a pas d'UI : false coupe TruckEventService (aucun camion) et TruckController.
+-- RobuxShop coupe aussi toute la boutique Robux (DEV-100) : MonetizationService (ni ProcessReceipt,
+-- ni gamepass, ni bonus de revenus, ni effet) et RobuxShopController (écran UI_RobuxShop, comptoir).
 
 local DeepFreeze = require(script.Parent.DeepFreeze)
 
 local Features = {
-	RobuxShop = false, -- MAJ 1, boutique Robux (5.9) : UI_HUD.RobuxShopButton
+	RobuxShop = false, -- MAJ 1, boutique Robux (5.9) : UI_HUD.RobuxShopButton, MonetizationService, RobuxShopController
 	Index = false, -- MAJ 2, index des objets : UI_HUD.IndexButton
 	Rebirth = false, -- MAJ 3, renaissance : UI_HUD.RebirthButton
 	NightCycle = true, -- DEV-047, cycle jour/nuit (5.12) : UI_HUD.NightCountdown, NightCycleService, SkyController

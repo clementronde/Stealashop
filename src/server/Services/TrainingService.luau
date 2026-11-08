@@ -37,6 +37,11 @@
 --   TrainingService.Stop(player)
 --       Fait descendre le joueur de sa machine (sans effet s'il n'y est pas), pour un service
 --       qui a besoin de lui libre (alerte de vol et batte automatique, 6.2 ; tutoriel…).
+--   TrainingService.GetGainMultiplier(player, kind) -> number
+--       Point d'accroche (DEV-100) : multiplie chaque gain du tapis (kind = "Treadmill") et du banc
+--       ("Bench"), en plus de M tapis et M banc ; 1 par défaut. MonetizationService le remplace en
+--       gardant celui d'avant (gamepass ×2 Entraînement). Ne doit pas yield ; une erreur ou une
+--       valeur qui n'est pas un nombre fini > 0 compte pour 1.
 
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
@@ -128,6 +133,7 @@ local TrainingService = {}
 local machines: { [Instance]: Machine } = {}
 local sessions: { [Player]: Session } = {}
 local benchWindows: { [Player]: Window } = {}
+local gainHookWarned = false
 
 local function log(message: string)
 	if IS_STUDIO then
@@ -143,11 +149,25 @@ local function isOwner(player: Player, machine: Machine): boolean
 	return machine.plot:GetAttribute(OWNER_ATTRIBUTE) == player.UserId
 end
 
--- Multiplicateur de gain de la machine (5.1, 7.5) et niveau de son amélioration.
+-- Multiplicateur de l'accroche GetGainMultiplier (1 si elle échoue ou renvoie une valeur invalide).
+local function gainMultiplier(player: Player, kind: MachineKind): number
+	local ok, value = pcall(TrainingService.GetGainMultiplier, player, kind)
+	if ok and type(value) == "number" and value == value and value > 0 and value < math.huge then
+		return value
+	end
+	if not gainHookWarned then
+		gainHookWarned = true
+		warn(`[TrainingService] GetGainMultiplier : erreur ou valeur invalide ({value}), multiplicateur 1 utilisé`)
+	end
+	return 1
+end
+
+-- Multiplicateur de gain de la machine (5.1, 7.5 ; bonus de GetGainMultiplier compris) et niveau de
+-- son amélioration.
 local function machineMultiplier(player: Player, kind: MachineKind): (number, number)
 	local data = DataService.Get(player)
 	local level = if data == nil then 0 elseif kind == "Treadmill" then data.Upgrades.Treadmill else data.Upgrades.Bench
-	return Formulas.MachineMultiplier(kind, level), level
+	return Formulas.MachineMultiplier(kind, level) * gainMultiplier(player, kind), level
 end
 
 -- Place du HumanoidRootPart : debout, pieds sur le UsePoint, tourné vers l'avant du UsePoint
@@ -437,6 +457,10 @@ end
 
 function TrainingService.Stop(player: Player)
 	stop(player, "demandé par un service")
+end
+
+function TrainingService.GetGainMultiplier(_player: Player, _kind: MachineKind): number
+	return 1
 end
 
 function TrainingService.Init()

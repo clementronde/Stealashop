@@ -139,6 +139,28 @@ UI.Screens = {
 			{ Path = "Template.Label" },
 		},
 	},
+	-- Boutique Robux (MAJ 1, 5.9 ; Partie 2, 3.1) : noms de Clément validés par Ironix (L-047, sans
+	-- GiftButton depuis L-051), branchés par RobuxShopController (DEV-100). Price est dans BuyButton ;
+	-- Owned = coche et bouton gris d'un gamepass possédé.
+	{
+		Name = "UI_RobuxShop",
+		Class = "ScreenGui",
+		Elements = {
+			{ Path = "CloseButton", Class = BUTTON },
+			{ Path = "Tabs.OffersTab" },
+			{ Path = "Tabs.GamepassesTab" },
+			{ Path = "Tabs.CashTab" },
+			{ Path = "Tabs.BoostsTab" },
+			{ Path = "List", Class = "ScrollingFrame" },
+			{ Path = "List.Template", Template = true },
+			{ Path = "List.Template.Icon" },
+			{ Path = "List.Template.ItemName" },
+			{ Path = "List.Template.Effect" },
+			{ Path = "List.Template.Price" },
+			{ Path = "List.Template.BuyButton", Class = BUTTON },
+			{ Path = "List.Template.Owned" },
+		},
+	},
 } :: { Screen }
 
 -- Billboards modèles, des BillboardGui directement dans ReplicatedStorage/Assets/UI.
@@ -183,8 +205,9 @@ UI.Billboards = {
 -- Dossier des billboards, depuis ReplicatedStorage.
 UI.BillboardFolder = { "Assets", "UI" }
 
--- Écrans connus hors MVP : acceptés, pas encore vérifiés (UI_RobuxShop : MAJ 1, 5.9).
-UI.Later = { "UI_RobuxShop" }
+-- Écrans connus hors MVP : acceptés, pas encore vérifiés (UI_RobuxShop y était jusqu'à DEV-100 : il
+-- est maintenant dans UI.Screens).
+UI.Later = {} :: { string }
 
 -- Noms interdits pour un élément d'UI : ce sont aussi des propriétés Roblox (2.2).
 UI.ReservedNames = { "Name", "Text", "Size", "Position", "Visible", "Parent" }

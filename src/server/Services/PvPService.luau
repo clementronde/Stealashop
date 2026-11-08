@@ -359,6 +359,16 @@ local function refsFor(plot: Model): PlotRefs
 			slots[index] = found :: Attachment
 		end
 	end
+	-- Présentoirs bonus du gamepass « +4 présentoirs » (DEV-100) : DisplaySlot_21 et suivants, à la
+	-- suite, optionnels (même règle et même borne V0 de 10 que DisplayService) : leurs objets se volent
+	-- comme les autres.
+	for index = Balance.Display.MaxSlots + 1, Balance.Display.MaxSlots + 10 do
+		local found = Find.path(plot, string.format(SLOT_FORMAT, index))
+		if found == nil or not found:IsA("Attachment") then
+			break
+		end
+		slots[index] = found :: Attachment
+	end
 	local refs: PlotRefs = {
 		Bounds = if bounds and bounds:IsA("BasePart") then bounds :: BasePart else nil,
 		Deposit = if deposit and deposit:IsA("BasePart") then deposit :: BasePart else nil,

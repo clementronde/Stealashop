@@ -37,6 +37,14 @@
 --       tâche de fond : sans yield ici) ; false si le profil n'est pas chargé. Pour une écriture qui
 --       ne doit pas attendre la sauvegarde automatique (5 min) : le transfert d'un objet volé
 --       (PvPService, 9.6 et 14.3), sauvegardé chez la victime puis chez le voleur.
+--   DataService.SaveAsync(player, isSaved) -> boolean
+--       Yield. Demande une sauvegarde et attend qu'elle soit écrite : true dès que
+--       isSaved(saved) renvoie true, saved = la dernière version sauvegardée du profil
+--       (Profile.LastSavedData de ProfileStore, à ne pas modifier) ; false si le profil se ferme
+--       avant (joueur parti, session reprise) ou n'est pas chargé. Une sauvegarde ratée est reprise
+--       par la sauvegarde automatique ou celle du départ : l'attente continue jusque-là. Pour les
+--       achats Robux (9.6, MonetizationService) : PurchaseGranted seulement quand le PurchaseId est
+--       sauvegardé, comme le recommande ProfileStore.
 --
 -- Attribut du Player (écrit seulement ici) : Cash, l'argent du profil, posé au chargement puis à
 -- chaque AddCash ou SpendCash. Le HUD l'affiche (HudController, DEV-021) ; il ne sert qu'à
@@ -58,12 +66,14 @@
 -- mock (rien n'est sauvegardé) ; ce service l'écrit dans la sortie au démarrage.
 --
 -- Versions du schéma : v1 = section 9.5 ; v2 (2026-11-07) = même forme, ItemId du catalogue
--- d'objets v2 (Config/Items, liaison L-045 ; voir MIGRATIONS[2]).
--- Nouvelle version du schéma (ex. v3 de la Partie 2) :
+-- d'objets v2 (Config/Items, liaison L-045 ; voir MIGRATIONS[2]) ; v3 (2026-11-08, DEV-100) =
+-- boutique Robux : Monetization et Boosts ajoutés, Purchases[PurchaseId] = date du don (voir
+-- MIGRATIONS[3]).
+-- Nouvelle version du schéma (ex. v4 de la Partie 2) :
 --   1. ajouter les champs dans Types/Profile et dans TEMPLATE ci-dessous ;
---   2. ajouter MIGRATIONS[3] (transforme un profil v2 en v3 ; ce qui est seulement
+--   2. ajouter MIGRATIONS[4] (transforme un profil v3 en v4 ; ce qui est seulement
 --      nouveau est complété depuis TEMPLATE, inutile de le recopier) ;
---   3. passer CURRENT_VERSION à 3.
+--   3. passer CURRENT_VERSION à 4.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -83,12 +93,14 @@ export type CashListener = (player: Player, cash: number) -> ()
 type StoreProfile = {
 	Data: Data,
 	Key: string,
+	LastSavedData: any, -- dernière version écrite dans la DataStore (lecture seule)
 	IsActive: (self: StoreProfile) -> boolean,
 	Save: (self: StoreProfile) -> (),
 	Reconcile: (self: StoreProfile) -> (),
 	EndSession: (self: StoreProfile) -> (),
 	AddUserId: (self: StoreProfile, userId: number) -> (),
 	OnSessionEnd: { Connect: (self: any, listener: () -> ()) -> any },
+	OnAfterSave: { Connect: (self: any, listener: (lastSavedData: any) -> ()) -> { Disconnect: (self: any) -> () } },
 }
 
 type Store = {
@@ -101,14 +113,15 @@ local STORE_NAME = "PlayerData"
 -- reprend une session bloquée sur un autre serveur au bout d'environ 40 s.
 local DEFAULT_WAIT_TIMEOUT = 60
 
--- Version courante du schéma de sauvegarde (section 9.5 ; v2 : catalogue d'objets v2).
-local CURRENT_VERSION = 2
+-- Version courante du schéma de sauvegarde (section 9.5 ; v2 : catalogue d'objets v2 ; v3 : boutique
+-- Robux).
+local CURRENT_VERSION = 3
 
 -- Attribut du Player lu par le HUD (même nom dans HudController).
 local CASH_ATTRIBUTE = "Cash"
 
--- Modèle d'un nouveau profil, schéma v2 (forme de la section 9.5). Il sert aussi à compléter
--- les champs manquants d'un profil existant (Profile:Reconcile de ProfileStore).
+-- Modèle d'un nouveau profil, schéma v3 (forme de la section 9.5, plus la boutique Robux). Il sert
+-- aussi à compléter les champs manquants d'un profil existant (Profile:Reconcile de ProfileStore).
 local TEMPLATE: Data = {
 	Version = CURRENT_VERSION,
 	Cash = 0,
@@ -122,7 +135,9 @@ local TEMPLATE: Data = {
 	Boxes = {},
 	Tutorial = { Step = 0, Done = false },
 	Lifetime = { Heists = 0, Steals = 0, Defenses = 0, PlaySeconds = 0 },
-	Purchases = {},
+	Purchases = {}, -- [PurchaseId] = os.time() du don (MonetizationService)
+	Monetization = { Passes = {}, StarterPack = false, OpenNowCredit = 0 }, -- v3
+	Boosts = { Cash = 0 }, -- v3
 }
 
 -- Journal d'une migration : chaque ligne part dans la sortie, préfixée du joueur et de sa clé.
@@ -217,6 +232,33 @@ local function migrateToV2(data: any, log: MigrationLog)
 	end
 end
 
+-- v2 → v3 (boutique Robux, 2026-11-08, DEV-100). Monetization et Boosts sont seulement nouveaux
+-- (complétés depuis TEMPLATE). Purchases : la valeur devient la date du don (os.time()), pour que
+-- MonetizationService borne l'historique en retirant les plus anciens ; un ancien true (jamais écrit
+-- avant la v3) devient 0, le plus ancien. Un Purchases qui n'est pas une table (profil abîmé) repart
+-- vide, avec un avertissement.
+local function migrateToV3(data: any, log: MigrationLog)
+	local purchases = data.Purchases
+	if purchases == nil then
+		return -- complété depuis TEMPLATE
+	end
+	if type(purchases) ~= "table" then
+		log(`Purchases n'est pas une table ({tostring(purchases)}) : repart vide`, true)
+		data.Purchases = {}
+		return
+	end
+	local converted = 0
+	for purchaseId, value in purchases do
+		if type(value) ~= "number" then
+			purchases[purchaseId] = 0
+			converted += 1
+		end
+	end
+	if converted > 0 then
+		log(`Purchases : {converted} achat(s) au format v3 (date du don inconnue : 0)`)
+	end
+end
+
 -- MIGRATIONS[n] fait passer un profil de la version n - 1 à la version n, en place, et écrit ce
 -- qu'elle change avec `log`. Un profil sans Version est traité comme une version 0. La v1 est la
 -- première : rien à transformer, Reconcile complète tout depuis TEMPLATE. Les champs seulement
@@ -224,6 +266,7 @@ end
 local MIGRATIONS: { [number]: (data: any, log: MigrationLog) -> () } = {
 	[1] = function(_data: any, _log: MigrationLog) end,
 	[2] = migrateToV2,
+	[3] = migrateToV3,
 }
 
 -- Messages d'expulsion, lus par le joueur : en anglais (L-036).
@@ -491,6 +534,39 @@ function DataService.Save(player: Player): boolean
 		return false
 	end
 	return true
+end
+
+function DataService.SaveAsync(player: Player, isSaved: (saved: any) -> boolean): boolean
+	local profile = profiles[player]
+	if profile == nil or not profile:IsActive() then
+		return false
+	end
+	local confirmed = false
+	local function check(saved: any)
+		if confirmed or type(saved) ~= "table" then
+			return
+		end
+		local ok, result = pcall(isSaved, saved)
+		confirmed = ok and result == true
+	end
+	check(profile.LastSavedData)
+	if confirmed then
+		return true
+	end
+	local connection = profile.OnAfterSave:Connect(check)
+	local ok, err = pcall(function()
+		profile:Save()
+	end)
+	if not ok then
+		warn(`[DataService] {player.Name} : sauvegarde demandée impossible ({err}) : attente de la suivante`)
+	end
+	-- Profil fermé avant la confirmation (départ) : false, mais la sauvegarde de fin de session de
+	-- ProfileStore contient quand même ce qui a été écrit dans Data.
+	while not confirmed and profile:IsActive() do
+		task.wait()
+	end
+	connection:Disconnect()
+	return confirmed
 end
 
 function DataService.Init()
