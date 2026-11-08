@@ -259,18 +259,18 @@ La map est une seule rue droite : la zone safe (6 parcelles) au départ, puis 6 
 
 | Zone | Magasins PNJ | PV vitre | Dégâts/coup conseillés | Vitesse conseillée (WalkSpeed) | Vitesse du vigile | Distance de retour (studs) | Revenu de base ($/s, Commun) | Jalon |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Supérette, Kiosque | 35 | 1 | 16 | 13,4 | 60 | 1 | MVP |
-| 2 | Magasin de jouets, Confiserie | 350 | 10 | 22 | 18,8 | 140 | 8 | MVP |
-| 3 | Électronique, Jeux vidéo | 2 800 | 80 | 28 | 24,2 | 240 | 60 | MVP |
-| 4 | Bijouterie, Horlogerie | 21 000 | 600 | 34 | 29,6 | 360 | 450 | MVP |
-| 5 | Galerie d'art, Antiquaire | 175 000 | 5 000 | 40 | 35 | 500 | 3 500 | MVP |
-| 6 | Banque, Salle des coffres | 1 400 000 | 40 000 | 48 | 42,2 | 660 | 25 000 | MVP |
+| 1 | Supérette, Kiosque | 35 | 1 | 16 | 13,4 | 75 | 1 | MVP |
+| 2 | Magasin de jouets, Confiserie | 350 | 10 | 22 | 18,8 | 175 | 8 | MVP |
+| 3 | Électronique, Jeux vidéo | 2 800 | 80 | 28 | 24,2 | 300 | 60 | MVP |
+| 4 | Bijouterie, Horlogerie | 21 000 | 600 | 34 | 29,6 | 450 | 450 | MVP |
+| 5 | Galerie d'art, Antiquaire | 175 000 | 5 000 | 40 | 35 | 625 | 3 500 | MVP |
+| 6 | Banque, Salle des coffres | 1 400 000 | 40 000 | 48 | 42,2 | 825 | 25 000 | MVP |
 
 **D'où viennent ces chiffres** (valeurs V0, toutes dans `Config/Zones`) :
 
 - **PV vitre = 35 × dégâts conseillés** : à 7 coups/s et avec la régénération de 3 % des PV/s, la vitre casse en 6 s environ.
 - **Vitesse du vigile = 0,9 × vitesse conseillée − 1** : à la vitesse conseillée, on le distance même avec le malus de portage (−10 %). Un peu en dessous, on s'en sort parfois : c'est voulu.
-- **Retour à vitesse conseillée** : 4 s en zone 1, 15 s en zone 6.
+- **Retour à vitesse conseillée** : 5 s en zone 1, 19 s en zone 6, colis en main (zones rallongées de ×1,25 par Clément le 2026-11-08, liaison L-071).
 
 ## 5. Systèmes de jeu détaillés
 
