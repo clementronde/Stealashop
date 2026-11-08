@@ -1,12 +1,14 @@
 --!strict
--- Réglages de la casse de vitrine (DEV-016 ; Partie 1, sections 5.2, 5.3 et 5.4 ; liaison L-028).
--- Lus par ShatterController (fissures, casse, éclats, effets, sons), WindowController (barre
--- BB_WindowHP) et WindowService (diffusion de chaque coup). C'est le fichier à ouvrir pendant la
--- bêta : tout se règle ici, sans toucher au code.
+-- Réglages de la casse de vitrine (DEV-016 ; Partie 1, sections 5.2, 5.3 et 5.4 ; liaison L-028
+-- et L-081). Lus par ShatterController (creux des coups, casse, éclats, effets, sons),
+-- WindowController (barre BB_WindowHP) et WindowService (diffusion de chaque coup). C'est le
+-- fichier à ouvrir pendant la bêta : tout se règle ici, sans toucher au code.
 --
 -- Origine de chaque valeur, notée en commentaire :
 --   doc        valeur de la Partie 1, reprise de Balance (une seule source : la changer là-bas) ;
 --   prototype  valeur de départ du prototype de casse de Clément (L-028), à régler à deux ;
+--   creux      valeur du prototype « vitre qui se creuse » validé par Clément en Play
+--              (L-081, tools/clement/vitre_creuse_prototype.luau) ;
 --   V0         V0 proposé, absent du doc, à régler à l'œil.
 -- Unités : studs, secondes, studs/s, degrés ; fractions entre 0 et 1 (0.25 = 25 %).
 
@@ -17,7 +19,6 @@ local Shatter = {
 	-- Assets de Clément, cherchés par leur nom depuis ReplicatedStorage (jamais d'ID d'asset ici).
 	Assets = {
 		FxFolder = { "Assets", "FX" }, -- objets Decal dont on lit la Texture (MOD-011)
-		CrackDecals = { "WIN_Crack_75", "WIN_Crack_50", "WIN_Crack_25" }, -- étoile des niveaux 1, 2 et 3
 		SparkleDecal = "FX_GlassSparkle", -- paillettes
 		DustDecal = "FX_Dust", -- V0 : nom proposé ; tant qu'il manque, DustTexture ci-dessous
 		WindowsFolder = { "Assets", "Windows" }, -- vitres fracturées (MOD-010)
@@ -45,29 +46,72 @@ local Shatter = {
 
 	-- WindowService : WindowHit part au frappeur et aux joueurs à moins de ce rayon du point de
 	-- frappe (6 joueurs au plus par serveur), pour chaque coup validé sur une vitrine, une porte de
-	-- boutique ou le camion (fissures, chiffre de dégâts, son du coup ; DEV-016, DEV-053).
+	-- boutique ou le camion (creux, chiffre de dégâts, son du coup ; DEV-016, DEV-053, L-081).
 	HitBroadcastRadius = 100, -- V0
 
-	-- Fissures : une étoile au point de chaque coup (5.3, L-028).
-	Cracks = {
-		Thresholds = Balance.Window.CrackThresholds, -- doc : fissures à 75, 50 et 25 % des PV
-		ReuseDistance = 1.5, -- prototype : un coup plus près d'une étoile la réutilise
-		MaxStars = 6, -- prototype : au-delà, l'étoile touchée il y a le plus longtemps disparaît
-		-- V0 : diamètre d'une étoile (studs) sur une vitre M (7 de haut) aux niveaux 0, 1, 2 et 3,
-		-- dans cet ordre. Niveau 0 = PV au-dessus de 75 % (image WIN_Crack_75, plus petite). Vitres
-		-- S et L : proportionnel à leur hauteur.
-		Sizes = { 1.4, 2.4, 3.4, 4.6 },
-		ReferenceHeight = 7, -- hauteur d'une vitre M (doc 10.1)
-		Level0Transparency = 0.35, -- V0 : étoile du niveau 0 plus discrète
-		-- V0 : PV qui remontent (régénération) : une étoile rapetisse d'un niveau quand les PV
-		-- repassent 5 % au-dessus de son seuil, et toutes s'effacent quand la vitre est à nouveau
-		-- pleine.
-		HealHysteresis = 0.05,
-		PopTime = 0.12, -- V0 : apparition et croissance d'une étoile
-		ClearFade = 0.4, -- V0 : effacement quand la vitre est revenue à ses PV max
-		SurfaceOffset = 0.03, -- V0 : décalage des étoiles devant chaque face du verre
-		PixelsPerStud = 50, -- V0 : finesse de l'image sur la vitre
-		MaxDistance = 150, -- V0 : distance d'affichage des étoiles
+	-- La vitre se creuse à chaque coup (L-081, remplace les étoiles de fissure) : des éclats sont
+	-- arrachés de la face frappée (GeometryService:FragmentAsync sur une copie locale de la vitre),
+	-- le creux s'élargit et s'enfonce avec les PV perdus, sans jamais percer la vitre.
+	Carve = {
+		-- Rayon du creux (studs) : R0 + RGrow × (PV perdus)^0,8, au moins PerHit de plus qu'au coup
+		-- d'avant, RMax au plus.
+		R0 = 0.6, -- creux
+		RGrow = 1.6, -- creux
+		RadiusCurve = 0.8, -- creux
+		PerHit = 0.1, -- creux
+		RMax = 2.6, -- creux
+		-- Profondeur, en part de l'épaisseur : DepthMin + DepthGrow × (PV perdus)^0,9, au moins
+		-- DepthPerHit de plus qu'au coup d'avant, DepthMax au plus (le fond reste dans le verre).
+		DepthMin = 0.22, -- creux
+		DepthGrow = 0.68, -- creux
+		DepthCurve = 0.9, -- creux
+		DepthPerHit = 0.04, -- creux
+		DepthMax = 0.88, -- creux
+		-- creux : garde-fou, aucun éclat ne descend plus bas que 93 % de l'épaisseur (le hasard de
+		-- la cuvette peut dépasser DepthMax de 10 %).
+		DepthCap = 0.93,
+		Bowl = 0.65, -- creux : cuvette, le bord est à 35 % de la profondeur du centre
+		-- Points de découpe : un par éclat arraché (SitesPerArea par stud² du creux, entre MinSites
+		-- et MaxSites), plus un anneau de RingMin à RingMax points qui borde le creux.
+		SitesPerArea = 5, -- creux
+		MinSites = 8, -- creux
+		MaxSites = 26, -- creux
+		RingMin = 10, -- creux
+		RingMax = 24, -- creux
+		EdgeMargin = 0.3, -- creux : le centre du creux reste à 0,3 stud du bord de la vitre
+		-- Éclats arrachés : OutShare d'entre eux partent vers celui qui frappe ; les autres tombent
+		-- au pied de la vitre (V0 : dans le prototype, ils partaient vers l'intérieur, mais les éclats
+		-- du jeu ne traversent pas le verre qui n'est pas percé).
+		OutShare = 0.85, -- creux
+		SpeedMin = 6, -- creux : studs/s, vers celui qui frappe
+		SpeedMax = 13, -- creux
+		UpMin = 3, -- creux : petit saut vers le haut
+		UpMax = 7, -- creux
+		SideMin = 1, -- creux : écartement depuis le centre du creux
+		SideMax = 4, -- creux
+		SpinMin = 8, -- creux : rotation, radians par seconde
+		SpinMax = 22, -- creux
+		SoftFactor = 0.25, -- creux : vitesse des éclats qui tombent (et des morceaux détachés du cadre)
+		Life = 1.4, -- creux : un éclat vit 1,4 s…
+		Fade = 0.5, -- creux : … puis s'efface en 0,5 s
+		MaxDebris = 150, -- creux : éclats au sol ou en vol au plus ; au-delà, les plus anciens partent
+		MaxQueued = 4, -- V0 : coups en attente du calcul en cours, par vitre ; au-delà, fusionnés
+		-- creux : celui qui frappe creuse au marqueur Impact ; l'écho WindowHit de ce coup, arrivé
+		-- moins de EchoWindow secondes après, est ignoré.
+		EchoWindow = 1.5,
+		-- creux : la vitre redevient pleine quand ses PV sont au maximum et qu'on ne l'a plus frappée
+		-- depuis FullHealDelay ; HealFade = fondu du verre creusé vers la vitre intacte (V0).
+		FullHealDelay = 2,
+		HealFade = 0.4, -- V0
+		-- Version mobile (V0) : appareil faible (LowEnd plus bas), ou appareil tactile sans clavier.
+		LightOnTouch = true, -- V0
+		Light = {
+			MinSites = 5, -- V0
+			MaxSites = 12, -- V0
+			RingMin = 8, -- V0
+			RingMax = 12, -- V0
+			MaxDebris = 40, -- V0
+		},
 	},
 
 	-- Casse (5.4).
@@ -148,8 +192,14 @@ local Shatter = {
 	Hit = {
 		Cubes = 5, -- V0 : mini-éclats au point d'impact
 		CubesLowEnd = 2, -- V0
-		Sparkles = 4, -- V0
-		SparklesLowEnd = 2, -- V0
+		Sparkles = 24, -- creux (4 en V0 avant L-081)
+		SparklesLowEnd = 8, -- V0
+		Puff = 5, -- creux : petit nuage de verre pilé
+		PuffLowEnd = 2, -- V0
+		FlashBrightness = 4, -- creux : éclair au point de frappe
+		FlashRange = 10, -- creux
+		FlashTime = 0.18, -- creux
+		FlashColor = Color3.fromRGB(220, 240, 255), -- creux
 		CubeSpeed = 11, -- V0
 		CubeLifetime = 0.6, -- V0
 		ShakeDuration = 0.1, -- V0 : léger tremblement, pour celui qui frappe seulement
@@ -191,6 +241,19 @@ local Shatter = {
 			Color = Color3.fromRGB(200, 200, 200), -- V0
 			Transparency = 0.55, -- V0
 			Drag = 3, -- V0
+		},
+		-- Nuage de chaque coup (texture DustTexture, ou FX_Dust s'il est livré).
+		Puff = {
+			SizeMin = 1, -- creux : studs au départ…
+			SizeMax = 3.2, -- creux : … et à la fin
+			LifetimeMin = 0.3, -- creux
+			LifetimeMax = 0.5, -- creux
+			SpeedMin = 2, -- creux
+			SpeedMax = 6, -- creux
+			Spread = 50, -- creux
+			Color = Color3.fromRGB(235, 248, 255), -- creux
+			Transparency = 0.45, -- creux
+			LightEmission = 0.4, -- creux
 		},
 	},
 

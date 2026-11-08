@@ -1,23 +1,36 @@
 --!strict
--- ShatterController (DEV-016, client) : fissures, casse, éclats, effets et sons des vitrines
--- (Partie 1, sections 5.2, 5.3, 5.4 et 9.7 ; liaison L-028). Tout est joué en local : rien ne
--- repart au serveur. Réglages : Shared/Config/Shatter.
+-- ShatterController (DEV-016, client) : creux des coups, casse, éclats, effets et sons des
+-- vitrines (Partie 1, sections 5.2, 5.3, 5.4 et 9.7 ; liaison L-028 et L-081). Tout est joué en
+-- local : rien ne repart au serveur. Réglages : Shared/Config/Shatter.
 --
 -- Pendant les coups (WindowHit, envoyé par WindowService au frappeur et aux joueurs proches) :
---   - une étoile de fissure au point de frappe calculé par le serveur, sur les deux faces de la
---     vitre (SurfaceGui découpé au bord du verre). Pas d'empilement : un coup à moins de
---     Cracks.ReuseDistance d'une étoile la réutilise ; Cracks.MaxStars au plus (celle touchée il y
---     a le plus longtemps disparaît). Toutes les étoiles d'une vitre suivent ses PV : petites
---     au-dessus de 75 %, puis WIN_Crack_75, WIN_Crack_50 et WIN_Crack_25 quand les PV passent 75,
---     50 et 25 % (Balance.Window.CrackThresholds) ;
---   - régénération (proposition) : les étoiles rapetissent d'un niveau quand les PV repassent
---     Cracks.HealHysteresis au-dessus du seuil, et s'effacent quand la vitre est à nouveau pleine ;
---   - mini-éclats (petits cubes de verre), quelques paillettes et un son de verre dont la hauteur
---     monte quand les PV baissent (Hit.PitchMin à PV pleins, Hit.PitchMax à 0 PV, 5.4 ; DEV-053).
---     Celui qui frappe les joue lui-même, tout de suite (LocalHit, appelé par HitController), au
---     marqueur Impact de son animation, avec un léger tremblement.
+--   - la vitre se creuse (L-081, prototype de Clément validé en Play) : à son premier coup, la
+--     vraie vitre est cachée en local (LocalTransparencyModifier, rendu tel quel ensuite) et une
+--     simple Part du même verre prend sa place. À chaque coup, GeometryService:FragmentAsync y
+--     arrache des éclats dans la face frappée : un creux en cuvette au point de frappe, plus large
+--     et plus profond quand les PV baissent (Carve.R0…RMax, DepthMin…DepthMax), qui ne perce
+--     jamais la vitre. Un seul calcul à la fois par vitre : les coups suivants attendent
+--     (Carve.MaxQueued au plus, les autres sont fusionnés). Les éclats arrachés partent surtout
+--     vers celui qui frappe, rebondissent au sol et s'effacent (Carve.Life, Carve.Fade) ;
+--     Carve.MaxDebris au plus en même temps. Version mobile (appareil faible, ou tactile sans
+--     clavier) : moins d'éclats par coup et un plafond plus bas (Carve.Light) ;
+--   - même creux pour tous ? Même endroit (le point de frappe du serveur) et même taille (les PV
+--     du serveur), mais la forme exacte est tirée au hasard sur chaque client : WindowHit n'est pas
+--     fiable, celui qui frappe creuse avant la réponse du serveur, et un joueur qui arrive voit la
+--     vitre neuve. Une forme identique demanderait au serveur de tenir et renvoyer l'historique
+--     des coups, pour une différence que personne ne peut comparer ;
+--   - régénération (V0) : le creux ne rétrécit pas quand les PV remontent ; les coups suivants
+--     repartent de sa taille. Quand la vitre est revenue à ses PV max et qu'on ne l'a plus frappée
+--     depuis Carve.FullHealDelay, le verre creusé s'efface (Carve.HealFade) sur la vraie vitre ;
+--   - mini-éclats (petits cubes de verre), paillettes, petit nuage, éclair et un son de verre
+--     dont la hauteur monte quand les PV baissent (Hit.PitchMin à PV pleins, Hit.PitchMax à 0 PV,
+--     5.4 ; DEV-053).
+--   Celui qui frappe joue tout cela lui-même, creux compris (LocalHit, appelé par HitController),
+--   au marqueur Impact de son animation, au point qu'il vise (le point de la vitre le plus proche
+--   de lui, comme le serveur), avec un léger tremblement ; l'écho WindowHit de son coup est
+--   ignoré. Les coups des autres suivent l'écho.
 --   Le coup qui casse arrive lui aussi par WindowHit (DEV-053 : son chiffre de dégâts, affiché par
---   DamageNumberController), en général juste avant WindowBroken : son étoile part avec la casse ;
+--   DamageNumberController), en général juste avant WindowBroken : son creux part avec la casse ;
 --   arrivé après, il est ignoré comme tout coup sur une vitre cassée.
 -- À la casse (WindowBroken), séquence 5.4 :
 --   - la vitre fracturée apparaît à la place de la vitre intacte (cachée par le serveur) : parmi
@@ -38,30 +51,39 @@
 --   Les éclats sont ancrés et déplacés par ce contrôleur, comme dans le prototype de Clément : ni
 --   CanCollide, ni CanQuery, ni CanTouch, donc ils ignorent les joueurs sans groupe de collision.
 --   Ils rebondissent sur ce qui bloque les joueurs (rayons qui respectent CanCollide, personnages
---   exclus). Rien ne reste à la reconstruction : étoiles et éclats de la vitre sont retirés.
+--   exclus). Les éclats arrachés par les coups suivent la même simulation. Le verre creusé
+--   disparaît à WindowBroken, juste avant la casse ; rien ne reste à la reconstruction ni quand la
+--   vitre sort du streaming : verre creusé et éclats sont retirés, la vraie vitre est remontrée.
 --   Qui « participe » (a frappé la vitre il y a moins de Break.ParticipantWindow) reçoit tout ;
 --   les autres, flash et tremblement atténués par la distance, sans texte.
 --
--- Assets de Clément lus par leur nom (Config.Shatter.Assets), jamais par un ID : Decal WIN_Crack_*
--- et FX_GlassSparkle dans Assets/FX (on prend leur Texture), variantes dans Assets/Windows, sons
--- dans Assets/Sounds (Config.Shatter.Sounds). Un asset absent saute son effet, sans erreur ; en
--- Studio, une ligne au démarrage liste ce qui manque.
+-- Assets de Clément lus par leur nom (Config.Shatter.Assets), jamais par un ID : FX_GlassSparkle
+-- dans Assets/FX (on prend sa Texture), variantes dans Assets/Windows, sons dans Assets/Sounds
+-- (Config.Shatter.Sounds : Glass_Hit, Glass_BreakThud, Glass_BreakShatter, Glass_BreakDebris). Un
+-- asset absent saute son effet, sans erreur ; en Studio, une ligne au démarrage liste ce qui
+-- manque. Les images de fissure WIN_Crack_* ne servent plus (L-081).
+--
+-- En Studio, le dossier local Workspace/_ShatterFX porte la mesure des calculs de creux (attributs
+-- CarveCount, CarveLastMs, CarveMaxMs : durée de FragmentAsync, en millisecondes), et chaque
+-- morceau de verre creusé (CarvedGlass_<Id>) la taille du creux (CarveRadius en studs, CarveDepth
+-- en part de l'épaisseur, CarveHits).
 --
 -- API (client) :
 --   ShatterController.LocalHit(windowId, point, track?)
 --       Retour immédiat du coup pour celui qui frappe (HitController, juste après HitWindow) :
---       mini-éclats, paillettes, son et léger tremblement, au marqueur Impact de `track`, au plus
---       tard après Hit.ImpactMaxWait, ou tout de suite sans piste. Son étoile de fissure attend
---       l'écho WindowHit du serveur (même point pour tous).
+--       creux au point visé, mini-éclats, paillettes, son et léger tremblement, au marqueur Impact
+--       de `track`, au plus tard après Hit.ImpactMaxWait, ou tout de suite sans piste.
 --   ShatterController.IsLowEnd() -> boolean
 --       Appareil faible : moins de LowEnd.Fps images/s, ou qualité graphique réglée bas.
 
 local Debris = game:GetService("Debris")
+local GeometryService = game:GetService("GeometryService")
 local GuiService = game:GetService("GuiService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
@@ -70,7 +92,7 @@ local MarkerSounds = require(Shared:WaitForChild("Anim"):WaitForChild("MarkerSou
 
 local Assets = Config.Assets
 local Sounds = Config.Sounds
-local Cracks = Config.Cracks
+local Carve = Config.Carve
 local Break = Config.Break
 local Shards = Config.Shards
 local Cubes = Config.Cubes
@@ -95,21 +117,25 @@ type Glass = { CFrame: CFrame, Width: number, Height: number, Thickness: number 
 -- Vitre fracturée de Clément rangée dans Assets/Windows.
 type Variant = { Name: string, Shards: { BasePart }, Glass: Glass, Impact: Vector3 }
 
-type Star = {
-	X: number, -- position dans le plan de la vitre, depuis son centre (studs) : largeur…
-	Y: number, -- … et hauteur
-	LastHit: number,
-	Labels: { ImageLabel }, -- face avant (rue), face arrière
-	Scales: { UIScale },
-}
+-- Pièce de la vraie vitre cachée en local pendant qu'elle est creusée, et son réglage d'avant.
+type Hidden = { Part: BasePart, Modifier: number }
 
-type CrackState = {
+-- Coup qui attend son calcul de creux ; Extra = coups fusionnés dans celui-ci (file pleine).
+type CarveJob = { Point: Vector3, Extra: number }
+
+-- Vitre creusée (L-081) : copies locales du verre à la place de la vraie vitre, cachée.
+type CarveState = {
 	Window: Instance,
 	Glass: Glass,
-	Canvas: Part, -- pièce invisible locale qui porte les deux SurfaceGui
-	Clips: { Frame },
-	Stars: { Star },
-	Level: number, -- 0 au-dessus du premier seuil, puis 1, 2, 3
+	Look: BasePart, -- pièce de la vitre dont on reprend le verre (matériau, couleur…)
+	Hidden: { Hidden },
+	Pieces: { BasePart }, -- verre creusé, accroché au cadre
+	Radius: number, -- taille du creux après le dernier calcul (studs)
+	Depth: number,
+	Carves: number, -- calculs réussis
+	Busy: boolean, -- un calcul est en cours (FragmentAsync attend)
+	Queue: { CarveJob },
+	LastHit: number,
 }
 
 type Piece = {
@@ -139,18 +165,25 @@ type Group = {
 	EndAt: number,
 	Params: RaycastParams?, -- éclats : rayons contre la map ; nil = petits cubes (sol plat)
 	IsBreak: boolean, -- éclats d'une casse : comptent dans les casses simultanées
+	IsChips: boolean, -- éclats arrachés par un coup : comptent dans Carve.MaxDebris
 	LandedCount: number, -- pièces qui ont touché le sol
 	LandTarget: number, -- OnLand part quand LandedCount l'atteint
 	Landed: boolean, -- OnLand déjà parti (ou remplacé par son délai de secours)
 	OnLand: ((point: Vector3) -> ())?,
 }
 
--- Coup local en attente de son marqueur Impact.
-type Pending = { Point: Vector3, Played: boolean, After: { () -> () }, Connection: RBXScriptConnection? }
+-- Coup local en attente de son marqueur Impact. Echoed : l'écho du serveur est arrivé avant.
+type Pending = {
+	Point: Vector3,
+	Played: boolean,
+	Echoed: boolean,
+	After: { () -> () },
+	Connection: RBXScriptConnection?,
+}
 
 type Shake = { Start: number, Duration: number, Amplitude: number, Angle: number, Seed: number }
 
-type ParticleKind = "Sparkle" | "Dust"
+type ParticleKind = "Sparkle" | "Dust" | "Puff"
 
 local FX_FOLDER_NAME = "_ShatterFX" -- dossier local du Workspace (le serveur ne le voit pas)
 local FRACTURED_NAME = "WindowFractured" -- enfant obligatoire (10.4)
@@ -159,7 +192,11 @@ local IMPACT_SHARD = "Shard_01" -- l'éclat le plus proche de l'impact (MOD-010)
 local SHARD_PATTERN = "^Shard_%d+$"
 local IMPACT_MARKER = "Impact" -- marqueur de HitWindow et HitWindowHeavy (2.4)
 local SHAKE_STEP = "ShatterCameraShake"
-local FACES = { Enum.NormalId.Front, Enum.NormalId.Back } -- face avant = côté rue (−Z de la vitre)
+local CARVED_PREFIX = "CarvedGlass_" -- verre creusé (copie locale), suivi de l'Id de la vitre
+local CHIP_NAME = "GlassChip" -- éclat arraché par un coup
+local FULL_FRACTION = 0.999 -- creux : PV « pleins » (prototype)
+local FRAME_MARGIN = 0.08 -- creux : un morceau à moins de ça du bord de la vitre tient au cadre
+local NEAR_FACTOR = 1.7 -- creux : un morceau plus loin que 1,7 rayon du creux n'est pas recalculé
 local MIRROR = CFrame.Angles(0, math.pi, 0)
 local MIRROR_CHOICES = if Config.Shards.AllowMirrored then { false, true } else { false }
 -- Constantes de la simulation, V0 proposés, absents du doc.
@@ -183,7 +220,9 @@ local fxFolder: Folder? = nil
 local warned: { [string]: boolean } = {}
 local textures: { [string]: string } = {}
 local variantCache: { Variant }? = nil
-local cracks: { [string]: CrackState } = {}
+local carves: { [string]: CarveState } = {}
+local localCarves: { [string]: { number } } = {} -- creux joués à l'impact, en attente de leur écho
+local carveStats = { Count = 0, MaxMs = 0 }
 local brokenWindows: { [string]: boolean } = {}
 local lastLocalHit: { [string]: number } = {}
 local pendings: { [string]: Pending } = {}
@@ -350,7 +389,7 @@ local function toGlass(cf: CFrame, size: Vector3): Glass
 	}
 end
 
--- Repère de la vitre intacte (fissures, mini-éclats).
+-- Repère de la vitre intacte (creux, mini-éclats).
 local function windowGlass(window: Instance): Glass?
 	if window:IsA("BasePart") then
 		local part = window :: BasePart
@@ -545,6 +584,7 @@ local function newGroup(
 		EndAt = fadeAt + fadeTime,
 		Params = params,
 		IsBreak = isBreak,
+		IsChips = false,
 		LandedCount = 0,
 		LandTarget = 1,
 		Landed = false,
@@ -924,7 +964,7 @@ local function emitParticles(kind: ParticleKind, position: Vector3, direction: V
 	end
 	local texture = if kind == "Sparkle"
 		then fxTexture(Assets.SparkleDecal)
-		else (fxTexture(Assets.DustDecal) or Config.DustTexture)
+		else (fxTexture(Assets.DustDecal) or Config.DustTexture) -- poussière de la casse, nuage des coups
 	if texture == nil or texture == "" then
 		return
 	end
@@ -953,6 +993,16 @@ local function emitParticles(kind: ParticleKind, position: Vector3, direction: V
 			NumberSequenceKeypoint.new(0.6, 0),
 			NumberSequenceKeypoint.new(1, 1),
 		})
+		lifetime = p.LifetimeMax
+	elseif kind == "Puff" then
+		local p = Particles.Puff
+		emitter.Size = NumberSequence.new(p.SizeMin, p.SizeMax)
+		emitter.Lifetime = NumberRange.new(p.LifetimeMin, p.LifetimeMax)
+		emitter.Speed = NumberRange.new(p.SpeedMin, p.SpeedMax)
+		emitter.SpreadAngle = Vector2.new(p.Spread, p.Spread)
+		emitter.Color = ColorSequence.new(p.Color)
+		emitter.LightEmission = p.LightEmission
+		emitter.Transparency = NumberSequence.new(p.Transparency, 1)
 		lifetime = p.LifetimeMax
 	else
 		local p = Particles.Dust
@@ -1072,6 +1122,22 @@ local function worldFlash(point: Vector3)
 	Debris:AddItem(holder, Break.FlashDuration + 0.2)
 end
 
+-- Petit éclair au point de chaque coup (prototype du creux, L-081).
+local function hitFlash(point: Vector3)
+	local holder = Instance.new("Attachment")
+	holder.Name = "HitLight"
+	holder.Position = point
+	local light = Instance.new("PointLight")
+	light.Color = Hit.FlashColor
+	light.Brightness = Hit.FlashBrightness
+	light.Range = Hit.FlashRange
+	light.Shadows = false
+	light.Parent = holder
+	holder.Parent = Workspace.Terrain
+	TweenService:Create(light, TweenInfo.new(Hit.FlashTime), { Brightness = 0 }):Play()
+	Debris:AddItem(holder, Hit.FlashTime + 0.2)
+end
+
 -- Arrêt sur image du personnage local : ses animations en cours s'arrêtent `duration` secondes.
 local function hitstop(duration: number)
 	local character = player.Character
@@ -1189,265 +1255,510 @@ local function showBrokenText()
 end
 
 ------------------------------------------------------------------------------
--- Fissures : étoiles au point de frappe
+-- Creux : la vitre se creuse à chaque coup (L-081)
 ------------------------------------------------------------------------------
 
--- Niveau de fissure pour une fraction de PV : 0 au-dessus du premier seuil, puis 1, 2, 3. Monte
--- dès qu'un seuil est passé ; ne redescend que Cracks.HealHysteresis au-dessus du seuil.
-local function crackLevel(fraction: number, current: number): number
-	local thresholds = Cracks.Thresholds
-	local level = 0
-	for index, threshold in thresholds do
-		if fraction <= threshold then
-			level = index
-		end
+-- Version mobile (V0) : appareil faible, ou appareil tactile sans clavier.
+local function carveLight(): boolean
+	if ShatterController.IsLowEnd() then
+		return true
 	end
-	if level >= current then
-		return level
-	end
-	local healed = 0
-	for index, threshold in thresholds do
-		if fraction <= threshold + Cracks.HealHysteresis then
-			healed = index
-		end
-	end
-	return math.min(current, healed)
+	return Carve.LightOnTouch and UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
 end
 
--- Image d'un niveau ; si elle manque, celle du niveau d'en dessous.
-local function crackTexture(level: number): string?
-	for index = math.clamp(level, 1, #Assets.CrackDecals), 1, -1 do
-		local texture = fxTexture(Assets.CrackDecals[index])
-		if texture then
-			return texture
-		end
-	end
-	return nil
-end
-
-local function pop(scale: UIScale, from: number)
-	scale.Scale = from
-	TweenService:Create(
-		scale,
-		TweenInfo.new(Cracks.PopTime, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
-		{ Scale = 1 }
-	):Play()
-end
-
--- Image, taille et transparence d'une étoile pour le niveau de sa vitre.
-local function styleStar(state: CrackState, star: Star, animate: boolean)
-	local level = state.Level
-	local glass = state.Glass
-	local sizes = Cracks.Sizes
-	local diameter = sizes[math.clamp(level + 1, 1, #sizes)] * glass.Height / Cracks.ReferenceHeight
-	local size = UDim2.fromScale(diameter / glass.Width, diameter / glass.Height)
-	local texture = crackTexture(level) or ""
-	local transparency = if level == 0 then Cracks.Level0Transparency else 0
-	for _, label in star.Labels do
-		label.Image = texture
-		label.ImageTransparency = transparency
-		if animate then
-			TweenService:Create(
-				label,
-				TweenInfo.new(Cracks.PopTime, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-				{ Size = size }
-			):Play()
-		else
-			label.Size = size
-		end
+-- Mesure des calculs de creux, lisible en Studio sur le dossier local des effets.
+local function recordCarve(ms: number)
+	carveStats.Count += 1
+	carveStats.MaxMs = math.max(carveStats.MaxMs, ms)
+	if IS_STUDIO then
+		local folder = getFxFolder()
+		folder:SetAttribute("CarveCount", carveStats.Count)
+		folder:SetAttribute("CarveLastMs", math.round(ms * 10) / 10)
+		folder:SetAttribute("CarveMaxMs", math.round(carveStats.MaxMs * 10) / 10)
 	end
 end
 
-local function clearCracks(windowId: string)
-	local state = cracks[windowId]
+-- Une copie locale prend le verre de la vitre (`look`) : ancrée, sans collision ni requête.
+local function setGlass(part: BasePart, look: BasePart, name: string)
+	part.Name = name
+	part.Anchored = true
+	part.CanCollide = false
+	part.CanQuery = false
+	part.CanTouch = false
+	part.CastShadow = false
+	part.Material = look.Material
+	part.Color = look.Color
+	part.Transparency = look.Transparency
+	part.Reflectance = look.Reflectance
+end
+
+-- La vraie vitre revient telle qu'elle était (pièces encore là).
+local function showWindow(state: CarveState)
+	for _, hidden in state.Hidden do
+		hidden.Part.LocalTransparencyModifier = hidden.Modifier -- même sortie du streaming : elle peut revenir
+	end
+	table.clear(state.Hidden)
+end
+
+-- Vitre remise à neuf (casse, reconstruction, sortie du streaming) : le verre creusé disparaît tout
+-- de suite et la vraie vitre revient. Les éclats déjà en vol finissent leur course.
+local function resetCarve(windowId: string)
+	localCarves[windowId] = nil
+	local state = carves[windowId]
 	if state == nil then
 		return
 	end
-	cracks[windowId] = nil
-	state.Canvas:Destroy()
+	carves[windowId] = nil
+	for _, piece in state.Pieces do
+		piece:Destroy()
+	end
+	table.clear(state.Pieces)
+	table.clear(state.Queue)
+	showWindow(state)
 end
 
--- Vitre revenue à ses PV max : les étoiles s'effacent doucement.
-local function fadeCracks(windowId: string)
-	local state = cracks[windowId]
+-- Vitre revenue à ses PV max (régénération) : le verre creusé s'efface sur la vraie vitre.
+local function healCarve(windowId: string)
+	local state = carves[windowId]
 	if state == nil then
 		return
 	end
-	cracks[windowId] = nil
-	local info = TweenInfo.new(Cracks.ClearFade)
-	for _, star in state.Stars do
-		for _, label in star.Labels do
-			TweenService:Create(label, info, { ImageTransparency = 1 }):Play()
-		end
+	carves[windowId] = nil
+	localCarves[windowId] = nil
+	showWindow(state)
+	local info = TweenInfo.new(Carve.HealFade)
+	for _, piece in state.Pieces do
+		TweenService:Create(piece, info, { Transparency = 1 }):Play()
+		Debris:AddItem(piece, Carve.HealFade + 0.1)
 	end
-	Debris:AddItem(state.Canvas, Cracks.ClearFade + 0.1)
+	table.clear(state.Pieces)
 end
 
--- Les étoiles d'une vitre : une pièce invisible locale à la place du verre, épaisse de
--- 2 × SurfaceOffset de plus, avec un SurfaceGui par face (découpé au bord du verre).
-local function crackState(windowId: string): CrackState?
-	local existing = cracks[windowId]
-	if existing and existing.Window.Parent ~= nil and existing.Canvas.Parent ~= nil then
-		return existing
+-- PV pleins, aucun calcul en cours et plus de coup depuis Carve.FullHealDelay : la vitre redevient
+-- pleine.
+local function healIfFull(windowId: string, state: CarveState)
+	local api = windowApi
+	if api == nil or carves[windowId] ~= state or state.Busy or #state.Queue > 0 then
+		return
 	end
+	if os.clock() - state.LastHit < Carve.FullHealDelay or api.GetFraction(windowId) < FULL_FRACTION then
+		return
+	end
+	healCarve(windowId)
+end
+
+-- Revoir la vitre après FullHealDelay : PV pleins sans nouvelle de WindowHP (coup refusé par le
+-- serveur, par exemple), elle redevient pleine aussi.
+local function scheduleHealCheck(windowId: string, state: CarveState)
+	task.delay(Carve.FullHealDelay + 0.05, safe, healIfFull, windowId, state)
+end
+
+-- La vitre creusée de `windowId`, créée au premier coup : la vraie vitre est cachée en local
+-- (LocalTransparencyModifier) et une simple Part du même verre prend sa place. FragmentAsync coûte
+-- 350 ms au premier coup sur le MeshPart de Clément, 15 à 45 ms sur une Part (prototype). nil si
+-- la vitre n'est pas là (streaming).
+local function carveState(windowId: string): CarveState?
+	local existing = carves[windowId]
 	if existing then
-		clearCracks(windowId)
+		if existing.Window.Parent ~= nil then
+			return existing
+		end
+		resetCarve(windowId)
 	end
 	local api = windowApi
-	if api == nil then
-		return nil
-	end
-	local window = api.GetWindow(windowId)
+	local window = if api then api.GetWindow(windowId) else nil
 	if window == nil then
 		return nil
 	end
 	local glass = windowGlass(window)
-	if glass == nil or glass.Width <= 0 or glass.Height <= 0 then
+	if glass == nil or glass.Width <= 0 or glass.Height <= 0 or glass.Thickness <= 0 then
 		return nil
 	end
-	local canvas = Instance.new("Part")
-	canvas.Name = `Cracks_{windowId}`
-	canvas.Anchored = true
-	canvas.CanCollide = false
-	canvas.CanQuery = false
-	canvas.CanTouch = false
-	canvas.CastShadow = false
-	canvas.Transparency = 1
-	canvas.Size = Vector3.new(glass.Width, glass.Height, glass.Thickness + 2 * Cracks.SurfaceOffset)
-	canvas.CFrame = glass.CFrame
-	local clips: { Frame } = {}
-	for _, face in FACES do
-		local surface = Instance.new("SurfaceGui")
-		surface.Name = face.Name
-		surface.Face = face
-		surface.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
-		surface.PixelsPerStud = Cracks.PixelsPerStud
-		surface.LightInfluence = 1
-		surface.MaxDistance = Cracks.MaxDistance
-		surface.Parent = canvas
-		local clip = Instance.new("Frame")
-		clip.Name = "Clip"
-		clip.BackgroundTransparency = 1
-		clip.Size = UDim2.fromScale(1, 1)
-		clip.ClipsDescendants = true
-		clip.Parent = surface
-		table.insert(clips, clip)
+	local parts: { BasePart } = {}
+	if window:IsA("BasePart") then
+		table.insert(parts, window :: BasePart)
+	else
+		for _, descendant in window:GetDescendants() do
+			if descendant:IsA("BasePart") then
+				table.insert(parts, descendant :: BasePart)
+			end
+		end
 	end
-	canvas.Parent = getFxFolder()
-	local state: CrackState = {
+	if #parts == 0 then
+		return nil
+	end
+	local look = parts[1]
+	local proxy = Instance.new("Part")
+	setGlass(proxy, look, CARVED_PREFIX .. windowId)
+	proxy.Size = Vector3.new(glass.Width, glass.Height, glass.Thickness)
+	proxy.CFrame = glass.CFrame
+	proxy.Parent = getFxFolder()
+	local hidden: { Hidden } = {}
+	for _, part in parts do
+		table.insert(hidden, { Part = part, Modifier = part.LocalTransparencyModifier })
+		part.LocalTransparencyModifier = 1
+	end
+	local state: CarveState = {
 		Window = window,
 		Glass = glass,
-		Canvas = canvas,
-		Clips = clips,
-		Stars = {},
-		Level = crackLevel(api.GetFraction(windowId), 0),
+		Look = look,
+		Hidden = hidden,
+		Pieces = { proxy },
+		Radius = 0,
+		Depth = 0,
+		Carves = 0,
+		Busy = false,
+		Queue = {},
+		LastHit = os.clock(),
 	}
-	cracks[windowId] = state
+	carves[windowId] = state
 	return state
 end
 
--- Étoile au point de frappe `point` (calculé par le serveur) : réutilise une étoile proche, sinon
--- en pose une nouvelle (et retire celle touchée il y a le plus longtemps s'il y en a trop).
-local function placeStar(windowId: string, point: Vector3)
-	if brokenWindows[windowId] or crackTexture(0) == nil then
-		return -- vitre cassée, ou images pas encore livrées
+-- Points de découpe d'un creux en cuvette dans la face `side` (+1 ou −1 sur la normale de la
+-- vitre), centré en (x, y) dans son plan. Chaque éclat a un point à mi-profondeur et un
+-- « plancher » plus bas dans le groupe 1 (le verre qui reste) : la limite entre les deux passe à la
+-- profondeur voulue, jamais jusqu'à l'autre face. Un anneau borde le creux ; les 4 coins lointains
+-- gardent le reste de la vitre dans le groupe 1.
+local function carveSites(
+	glass: Glass,
+	x: number,
+	y: number,
+	radius: number,
+	depth: number,
+	side: number,
+	light: boolean
+): { any }
+	local cf, thickness = glass.CFrame, glass.Thickness
+	local face = side * thickness / 2
+	local outer: { Vector3 } = {}
+	local sites: { any } = { outer }
+	local minSites = if light then Carve.Light.MinSites else Carve.MinSites
+	local maxSites = if light then Carve.Light.MaxSites else Carve.MaxSites
+	local ringMin = if light then Carve.Light.RingMin else Carve.RingMin
+	local ringMax = if light then Carve.Light.RingMax else Carve.RingMax
+	local count = math.clamp(math.floor(radius * radius * Carve.SitesPerArea + 0.5), minSites, maxSites)
+	for _ = 1, count do
+		local angle = rng:NextNumber(0, math.pi * 2)
+		local distance = radius * math.sqrt(rng:NextNumber())
+		local d = depth * (1 - Carve.Bowl * (distance / radius) ^ 2) * rng:NextNumber(0.85, 1.1)
+		d = math.min(d, thickness * Carve.DepthCap)
+		local px, py = x + distance * math.cos(angle), y + distance * math.sin(angle)
+		table.insert(sites, cf * Vector3.new(px, py, face - side * d * 0.45))
+		table.insert(
+			outer,
+			cf * Vector3.new(px + rng:NextNumber(-0.04, 0.04), py + rng:NextNumber(-0.04, 0.04), face - side * d * 1.55)
+		)
 	end
-	local state = crackState(windowId)
+	local ring = math.clamp(math.floor(radius * 8 + 0.5), ringMin, ringMax)
+	local turn = rng:NextNumber(0, math.pi * 2)
+	local ringZ = face - side * depth * (1 - Carve.Bowl) * 0.45
+	for index = 1, ring do
+		local angle = turn + (index + rng:NextNumber(-0.35, 0.35)) / ring * math.pi * 2
+		local distance = radius * rng:NextNumber(1.3, 1.6)
+		table.insert(outer, cf * Vector3.new(x + distance * math.cos(angle), y + distance * math.sin(angle), ringZ))
+	end
+	for _, corner in { { -1, -1 }, { 1, -1 }, { -1, 1 }, { 1, 1 } } do
+		table.insert(outer, cf * Vector3.new(corner[1] * glass.Width, corner[2] * glass.Height, 0))
+	end
+	return sites
+end
+
+-- Un morceau de verre qui reste tient au cadre s'il touche (presque) un bord de la vitre ; sinon il
+-- s'en détache et tombe.
+local function touchesFrame(glass: Glass, piece: BasePart): boolean
+	local hx, hy = glass.Width / 2 - FRAME_MARGIN, glass.Height / 2 - FRAME_MARGIN
+	local half = piece.Size / 2
+	for corner = 0, 7 do
+		local offset = Vector3.new(
+			if corner % 2 == 0 then -half.X else half.X,
+			if (corner // 2) % 2 == 0 then -half.Y else half.Y,
+			if corner // 4 == 0 then -half.Z else half.Z
+		)
+		local p = glass.CFrame:PointToObjectSpace(piece.CFrame * offset)
+		if math.abs(p.X) >= hx or math.abs(p.Y) >= hy then
+			return true
+		end
+	end
+	return false
+end
+
+-- Éclat arraché (ou morceau détaché du cadre) lancé depuis le creux, vers celui qui frappe
+-- (`outward`), en s'écartant du centre, avec un petit saut ; `soft` : il tombe au pied de la vitre.
+local function chipPiece(part: BasePart, look: BasePart, center: Vector3, outward: Vector3, soft: boolean): Piece
+	setGlass(part, look, CHIP_NAME)
+	part.Parent = getFxFolder()
+	local k = if soft then Carve.SoftFactor else 1
+	local radial = part.Position - center
+	radial -= outward * radial:Dot(outward)
+	radial = if radial.Magnitude > 1e-3 then radial.Unit else Vector3.zero
+	local velocity = outward * (rng:NextNumber(Carve.SpeedMin, Carve.SpeedMax) * k)
+		+ radial * (rng:NextNumber(Carve.SideMin, Carve.SideMax) * k)
+		+ Vector3.new(0, rng:NextNumber(Carve.UpMin, Carve.UpMax) * k, 0)
+	local size = part.Size
+	local thin, half = Vector3.zAxis, size.Z / 2
+	if size.X <= size.Y and size.X <= size.Z then
+		thin, half = Vector3.xAxis, size.X / 2
+	elseif size.Y <= size.Z then
+		thin, half = Vector3.yAxis, size.Y / 2
+	end
+	local extent = math.max(size.X, size.Y, size.Z) / 2
+	return {
+		Part = part,
+		Position = part.Position,
+		Rotation = part.CFrame.Rotation,
+		Velocity = velocity,
+		Spin = rng:NextUnitVector() * rng:NextNumber(Carve.SpinMin, Carve.SpinMax),
+		Thin = thin,
+		Half = half,
+		Reach = half + extent * 0.25,
+		GroundY = nil,
+		Base = part.Transparency,
+		SettleFrom = nil,
+		SettleTo = nil,
+		SettleTime = 0,
+		Resting = false,
+		Landed = false,
+	}
+end
+
+-- Au plus `limit` éclats de coups en même temps : les plus anciens partent.
+local function trimDebris(limit: number)
+	local total = 0
+	for _, group in groups do
+		if group.IsChips then
+			total += #group.Pieces
+		end
+	end
+	for _, group in groups do -- du plus ancien au plus récent
+		if total <= limit then
+			break
+		end
+		if group.IsChips then
+			while total > limit and #group.Pieces > 0 do
+				local piece = table.remove(group.Pieces, 1)
+				if piece then
+					piece.Part:Destroy()
+				end
+				total -= 1
+			end
+		end
+	end
+end
+
+-- Les éclats arrachés (et les morceaux détachés du cadre) partent : même simulation que les éclats de
+-- la casse, rebond au sol, effacement après Carve.Life.
+local function launchChips(
+	state: CarveState,
+	chips: { BasePart },
+	islands: { BasePart },
+	center: Vector3,
+	outward: Vector3,
+	light: boolean
+)
+	if #chips == 0 and #islands == 0 then
+		return
+	end
+	local now = os.clock()
+	local group = newGroup(nil, now, now + Carve.Life, Carve.Fade, rayParams({ state.Window }), false)
+	group.IsChips = true
+	for _, part in chips do
+		table.insert(group.Pieces, chipPiece(part, state.Look, center, outward, rng:NextNumber() >= Carve.OutShare))
+	end
+	for _, part in islands do
+		table.insert(group.Pieces, chipPiece(part, state.Look, center, outward, true))
+	end
+	addGroup(group)
+	trimDebris(if light then Carve.Light.MaxDebris else Carve.MaxDebris)
+end
+
+-- Ce qu'un calcul a produit, quand la vitre a été remise à neuf pendant qu'il attendait.
+local function discard(made: { BasePart }, chips: { BasePart }, result: any)
+	for _, part in made do
+		part:Destroy()
+	end
+	for _, part in chips do
+		part:Destroy()
+	end
+	if type(result) == "table" then
+		for _, item in result do
+			local inst = if type(item) == "table" then item.Instance else nil
+			if typeof(inst) == "Instance" then
+				inst:Destroy()
+			end
+		end
+	end
+end
+
+-- Un calcul de creux pour le coup `job`. FragmentAsync attend sans bloquer l'image : la vitre peut
+-- être remise à neuf entre-temps, et rien de ce calcul ne reste alors.
+local function carveOnce(windowId: string, state: CarveState, job: CarveJob)
+	local api = windowApi
+	local glass = state.Glass
+	local thickness = glass.Thickness
+	local p = glass.CFrame:PointToObjectSpace(job.Point)
+	local side = if p.Z >= 0 then 1 else -1
+	local hx, hy = glass.Width / 2, glass.Height / 2
+	local mx, my = math.min(Carve.EdgeMargin, hx), math.min(Carve.EdgeMargin, hy)
+	local x = math.clamp(p.X, -hx + mx, hx - mx)
+	local y = math.clamp(p.Y, -hy + my, hy - my)
+	-- Le creux suit les PV perdus, et grandit d'au moins PerHit à chaque coup (régénération comprise).
+	local lost = math.clamp(1 - (if api then api.GetFraction(windowId) else 1), 0, 1)
+	local steps = 1 + job.Extra
+	local radius = Carve.R0 + Carve.RGrow * lost ^ Carve.RadiusCurve
+	radius = math.min(math.max(radius, state.Radius + Carve.PerHit * steps), Carve.RMax)
+	local depth = math.clamp(Carve.DepthMin + Carve.DepthGrow * lost ^ Carve.DepthCurve, Carve.DepthMin, Carve.DepthMax)
+	depth = math.min(math.max(depth * thickness, state.Depth + Carve.DepthPerHit * steps * thickness), Carve.DepthMax * thickness)
+	state.Radius, state.Depth = radius, depth
+	local outward = glass.CFrame.ZVector * side
+	local center = glass.CFrame * Vector3.new(x, y, side * thickness / 2)
+	local light = carveLight()
+	local sites = carveSites(glass, x, y, radius, depth, side, light)
+	local kept: { BasePart } = {}
+	local made: { BasePart } = {} -- morceaux créés par ce calcul
+	local chips: { BasePart } = {}
+	local started = os.clock()
+	local computed = false
+	for _, piece in table.clone(state.Pieces) do
+		local rel = piece.CFrame:PointToObjectSpace(center)
+		local reach = piece.Size / 2 + Vector3.one * (NEAR_FACTOR * radius)
+		if math.abs(rel.X) > reach.X or math.abs(rel.Y) > reach.Y or math.abs(rel.Z) > reach.Z then
+			table.insert(kept, piece) -- loin du creux : inchangé
+			continue
+		end
+		local ok, result = pcall(function(): any
+			return GeometryService:FragmentAsync(piece, sites, { CollisionFidelity = Enum.CollisionFidelity.Box })
+		end)
+		if carves[windowId] ~= state then
+			discard(made, chips, if ok then result else nil)
+			return
+		end
+		if not ok or type(result) ~= "table" then
+			warnOnce(`FragmentAsync : {result}`)
+			table.insert(kept, piece)
+			continue
+		end
+		computed = true
+		for _, item in result do
+			local inst = if type(item) == "table" then item.Instance else nil
+			if typeof(inst) ~= "Instance" or not inst:IsA("BasePart") then
+				continue
+			end
+			local part = inst :: BasePart
+			if item.Index == 1 then
+				setGlass(part, state.Look, CARVED_PREFIX .. windowId)
+				part.Parent = getFxFolder()
+				table.insert(kept, part)
+				table.insert(made, part)
+			else
+				table.insert(chips, part)
+			end
+		end
+		piece:Destroy()
+	end
+	if not computed then
+		if state.Carves == 0 then
+			resetCarve(windowId) -- rien n'a pu être creusé : la vraie vitre revient
+		end
+		return
+	end
+	recordCarve((os.clock() - started) * 1000)
+	state.Carves += 1
+	local attached: { BasePart } = {}
+	local islands: { BasePart } = {}
+	for _, part in kept do
+		table.insert(if touchesFrame(glass, part) then attached else islands, part)
+	end
+	if #attached == 0 then
+		attached, islands = islands, {} -- garde-fou : la vitre ne disparaît jamais
+	end
+	state.Pieces = attached
+	if IS_STUDIO then
+		-- lisible dans l'Explorer pendant un Play : taille du creux, part de l'épaisseur, coups creusés
+		for _, part in attached do
+			part:SetAttribute("CarveRadius", math.round(radius * 1000) / 1000)
+			part:SetAttribute("CarveDepth", math.round(depth / thickness * 1000) / 1000)
+			part:SetAttribute("CarveHits", state.Carves)
+		end
+	end
+	launchChips(state, chips, islands, center, outward, light)
+end
+
+-- Les coups d'une vitre, un calcul à la fois, dans l'ordre.
+local function runCarves(windowId: string, state: CarveState)
+	state.Busy = true
+	while #state.Queue > 0 and carves[windowId] == state do
+		local job = table.remove(state.Queue, 1)
+		if job then
+			safe(carveOnce, windowId, state, job)
+		end
+	end
+	state.Busy = false
+	if carves[windowId] == state then
+		scheduleHealCheck(windowId, state)
+	end
+end
+
+-- Coup sur `windowId` au point `point` : la vitre se creuse. Le calcul part en tâche de fond ; s'il
+-- y en a déjà un, le coup attend son tour (Carve.MaxQueued au plus : au-delà, le plus ancien coup
+-- en attente est fusionné dans celui-ci, et le creux grandit quand même de ses PerHit).
+local function carveHit(windowId: string, point: Vector3)
+	if brokenWindows[windowId] then
+		return
+	end
+	local state = carveState(windowId)
 	if state == nil then
 		return
 	end
-	local glass = state.Glass
-	local p = glass.CFrame:PointToObjectSpace(point)
-	local x = math.clamp(p.X, -glass.Width / 2, glass.Width / 2)
-	local y = math.clamp(p.Y, -glass.Height / 2, glass.Height / 2)
+	state.LastHit = os.clock()
+	local queue = state.Queue
+	local extra = 0
+	while #queue >= math.max(Carve.MaxQueued, 1) do
+		local merged = table.remove(queue, 1)
+		extra += 1 + (if merged then merged.Extra else 0)
+	end
+	table.insert(queue, { Point = point, Extra = extra })
+	if not state.Busy then
+		task.spawn(runCarves, windowId, state)
+	end
+	scheduleHealCheck(windowId, state)
+end
+
+-- Creux joué à l'impact par celui qui frappe : l'écho de ce coup sera ignoré.
+local function noteLocalCarve(windowId: string)
+	local list = localCarves[windowId] or {}
+	localCarves[windowId] = list
+	table.insert(list, os.clock())
+end
+
+-- L'écho WindowHit de son propre coup : true s'il a déjà été creusé à l'impact (moins de
+-- Carve.EchoWindow avant), et il est alors ignoré.
+local function consumeLocalCarve(windowId: string): boolean
+	local list = localCarves[windowId]
+	if list == nil then
+		return false
+	end
 	local now = os.clock()
-	local nearest: Star? = nil
-	local best = Cracks.ReuseDistance
-	for _, star in state.Stars do
-		local distance = math.sqrt((star.X - x) ^ 2 + (star.Y - y) ^ 2)
-		if distance <= best then
-			nearest, best = star, distance
-		end
+	while #list > 0 and now - list[1] > Carve.EchoWindow do
+		table.remove(list, 1)
 	end
-	if nearest then
-		nearest.LastHit = now
-		for _, scale in nearest.Scales do
-			pop(scale, 1.12)
-		end
-		return
+	if #list == 0 then
+		localCarves[windowId] = nil
+		return false
 	end
-	if #state.Stars >= Cracks.MaxStars then
-		local oldest = 1
-		for index, star in state.Stars do
-			if star.LastHit < state.Stars[oldest].LastHit then
-				oldest = index
-			end
-		end
-		local removed = table.remove(state.Stars, oldest)
-		if removed then
-			for _, label in removed.Labels do
-				label:Destroy()
-			end
-		end
-	end
-	local rotation = rng:NextNumber(0, 360)
-	local star: Star = { X = x, Y = y, LastHit = now, Labels = {}, Scales = {} }
-	for index, clip in state.Clips do
-		local label = Instance.new("ImageLabel")
-		label.Name = "Star"
-		label.BackgroundTransparency = 1
-		label.AnchorPoint = Vector2.new(0.5, 0.5)
-		-- Vue de la rue (face avant), la largeur de la vitre (+X) va vers la gauche du canevas ;
-		-- vue de l'intérieur (face arrière), vers la droite. Le haut reste en haut.
-		local u = if index == 1 then 0.5 - x / glass.Width else 0.5 + x / glass.Width
-		label.Position = UDim2.fromScale(u, 0.5 - y / glass.Height)
-		label.Rotation = if index == 1 then rotation else -rotation
-		label.ScaleType = Enum.ScaleType.Fit
-		local scale = Instance.new("UIScale")
-		scale.Parent = label
-		label.Parent = clip
-		table.insert(star.Labels, label)
-		table.insert(star.Scales, scale)
-	end
-	styleStar(state, star, false)
-	for _, scale in star.Scales do
-		pop(scale, 0.6)
-	end
-	table.insert(state.Stars, star)
+	table.remove(list, 1)
+	return true
 end
 
 local function onHP(windowId: string, hp: number, maxHp: number)
-	local state = cracks[windowId]
-	if state == nil or brokenWindows[windowId] then
-		return
-	end
-	if maxHp <= 0 then
-		clearCracks(windowId)
-		return
-	end
-	local fraction = hp / maxHp
-	if fraction >= 1 - 1e-6 then
-		fadeCracks(windowId)
-		return
-	end
-	local level = crackLevel(fraction, state.Level)
-	if level == state.Level then
-		return
-	end
-	local grow = level > state.Level
-	state.Level = level
-	for _, star in state.Stars do
-		styleStar(state, star, true)
-		if grow then
-			for _, scale in star.Scales do
-				pop(scale, 1.12)
-			end
-		end
+	local state = carves[windowId]
+	if state and maxHp > 0 and hp / maxHp >= FULL_FRACTION then
+		healIfFull(windowId, state)
 	end
 end
 
 ------------------------------------------------------------------------------
--- Coups : mini-éclats, paillettes, son
+-- Coups : creux, mini-éclats, paillettes, nuage, éclair, son
 ------------------------------------------------------------------------------
 
 local function hitPitch(windowId: string): number
@@ -1482,10 +1793,13 @@ local function playHitFx(windowId: string, point: Vector3)
 	end
 	addGroup(group)
 	emitParticles("Sparkle", origin, outward, if low then Hit.SparklesLowEnd else Hit.Sparkles)
+	emitParticles("Puff", origin, outward, if low then Hit.PuffLowEnd else Hit.Puff)
+	hitFlash(origin)
 	playSound(Sounds.Hit, point, hitPitch(windowId))
 end
 
--- Retour local d'un coup, joué une seule fois, puis ce qui l'attendait (étoile, casse).
+-- Retour local d'un coup, joué une seule fois : creux au point visé, effets, puis ce qui
+-- l'attendait (la casse, si WindowBroken est arrivé avant l'impact).
 local function playPending(windowId: string, pending: Pending)
 	if pending.Played then
 		return
@@ -1498,6 +1812,12 @@ local function playPending(windowId: string, pending: Pending)
 	end
 	if pendings[windowId] == pending then
 		pendings[windowId] = nil
+	end
+	if not brokenWindows[windowId] then
+		safe(carveHit, windowId, pending.Point)
+		if not pending.Echoed then
+			noteLocalCarve(windowId) -- son écho, encore à venir, sera ignoré
+		end
 	end
 	safe(playHitFx, windowId, pending.Point)
 	addShake(Hit.ShakeDuration, Hit.ShakeAmplitude, Hit.ShakeAngle, 1)
@@ -1512,7 +1832,7 @@ function ShatterController.LocalHit(windowId: string, point: Vector3, track: Ani
 	if previous then
 		playPending(windowId, previous) -- le coup suivant interrompt l'animation du précédent
 	end
-	local pending: Pending = { Point = point, Played = false, After = {}, Connection = nil }
+	local pending: Pending = { Point = point, Played = false, Echoed = false, After = {}, Connection = nil }
 	pendings[windowId] = pending
 	if track == nil then
 		playPending(windowId, pending)
@@ -1625,7 +1945,6 @@ local function prepareBreak(windowId: string, impact: Vector3): () -> ()
 		if not brokenWindows[windowId] then
 			return -- reconstruite entre-temps
 		end
-		clearCracks(windowId)
 		local participant = isParticipant(windowId)
 		local nearby = if participant then 1 else math.clamp(1 - distance / Break.EffectRadius, 0, 1)
 		-- Moment de la casse : arrêt sur image, flash, tremblement, texte, deux premières couches du son.
@@ -1681,18 +2000,16 @@ local function onHit(windowId: string, point: Vector3, hitter: Player?)
 		return
 	end
 	if hitter == player then
-		-- son propre coup : l'étoile apparaît avec le retour local, pas avant
+		-- son propre coup : creusé à l'impact (retour local), son écho est ignoré
 		local pending = pendings[windowId]
 		if pending and not pending.Played then
-			table.insert(pending.After, function()
-				placeStar(windowId, point)
-			end)
-		else
-			placeStar(windowId, point)
+			pending.Echoed = true -- écho arrivé avant l'impact : le creux viendra avec le retour local
+		elseif not consumeLocalCarve(windowId) then
+			carveHit(windowId, point) -- pas de retour local pour ce coup : le creux suit l'écho
 		end
 		return
 	end
-	placeStar(windowId, point)
+	carveHit(windowId, point)
 	local camera = Workspace.CurrentCamera
 	if camera == nil or (camera.CFrame.Position - point).Magnitude <= Hit.FxRadius then
 		playHitFx(windowId, point)
@@ -1701,6 +2018,7 @@ end
 
 local function onBroken(windowId: string, impact: Vector3)
 	brokenWindows[windowId] = true
+	resetCarve(windowId) -- le verre creusé disparaît : la vitre fracturée prend sa place
 	local explode = prepareBreak(windowId, impact)
 	local pending = pendings[windowId]
 	if pending and not pending.Played then
@@ -1712,7 +2030,7 @@ end
 
 local function onRebuilt(windowId: string)
 	brokenWindows[windowId] = nil
-	clearCracks(windowId)
+	resetCarve(windowId)
 	stopWindowGroups(windowId)
 end
 
@@ -1722,11 +2040,6 @@ local function reportAssets()
 		game.Loaded:Wait()
 	end
 	local missing: { string } = {}
-	for _, name in Assets.CrackDecals do
-		if fxTexture(name) == nil then
-			table.insert(missing, name)
-		end
-	end
 	if fxTexture(Assets.SparkleDecal) == nil then
 		table.insert(missing, Assets.SparkleDecal)
 	end
@@ -1761,7 +2074,7 @@ function ShatterController.Start()
 	end
 	local api = windowApi
 	if api == nil then
-		warn("[Shatter] WindowController introuvable : ni fissures ni casse")
+		warn("[Shatter] WindowController introuvable : ni creux ni casse")
 		return
 	end
 	api.OnHit(function(windowId: string, point: Vector3, hitter: Player?)
@@ -1777,7 +2090,7 @@ function ShatterController.Start()
 		safe(onRebuilt, windowId)
 	end)
 	api.OnRemoved(function(windowId: string)
-		safe(clearCracks, windowId)
+		safe(resetCarve, windowId) -- vitre sortie du streaming
 	end)
 	RunService.Heartbeat:Connect(function(dt: number)
 		frameTime += (dt - frameTime) * 0.05
