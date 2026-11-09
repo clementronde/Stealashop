@@ -81,7 +81,6 @@
 --      nouveau est complété depuis TEMPLATE, inutile de le recopier) ;
 --   3. passer CURRENT_VERSION à 8.
 
-local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -427,6 +426,8 @@ local function migrateToV7(data: any, log: MigrationLog)
 	local boxes: { [string]: any } = {}
 	local count = 0
 	local function add(box: any, what: string)
+		-- HttpService lu ici seulement (un profil sans colis n'en a pas besoin).
+		local HttpService = game:GetService("HttpService")
 		local uid = HttpService:GenerateGUID(false)
 		while boxes[uid] ~= nil do
 			uid = HttpService:GenerateGUID(false)

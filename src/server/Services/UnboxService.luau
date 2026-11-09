@@ -205,7 +205,14 @@ type InventoryApi = {
 
 local CarryService: CarryApi = require(script.Parent.CarryService) :: any
 local DisplayService: DisplayApi = require(script.Parent.DisplayService) :: any
-local InventoryService: InventoryApi = require(script.Parent.InventoryService) :: any
+-- Barre d'inventaire (InventoryService, a51), chargée si elle est là : sans elle (banc d'essai), rien ne
+-- va dans la barre, le profil reste juste.
+local inventoryModule = script.Parent:FindFirstChild("InventoryService")
+local inventoryLoaded: boolean, inventoryResult: any = false, nil
+if inventoryModule and inventoryModule:IsA("ModuleScript") then
+	inventoryLoaded, inventoryResult = pcall(require, inventoryModule)
+end
+local InventoryService: InventoryApi? = if inventoryLoaded and type(inventoryResult) == "table" then inventoryResult :: any else nil
 
 export type BoxListener = (player: Player, boxUid: string, box: Box) -> ()
 export type OpenedListener = (player: Player, boxUid: string, itemUid: string, itemId: string, revealDelay: number) -> ()
@@ -358,7 +365,11 @@ local function emit(list: { BoxListener }, player: Player, boxUid: string, box: 
 end
 
 local function refreshInventory(player: Player)
-	local ok, err = pcall(InventoryService.Refresh :: any, player) -- :: any : sinon l'ancien solveur croit que pcall ne renvoie qu'une valeur
+	local api = InventoryService
+	if api == nil then
+		return
+	end
+	local ok, err = pcall(api.Refresh :: any, player) -- :: any : sinon l'ancien solveur croit que pcall ne renvoie qu'une valeur
 	if not ok then
 		warn(`[UnboxService] InventoryService.Refresh ({player.Name}) : {err}`)
 	end
@@ -1281,9 +1292,12 @@ local function onOpenBox(player: Player, boxUid: string)
 	data.Boxes[boxUid] = nil
 	clearShown(session, boxUid)
 	-- Le Tool de l'objet n'arrive dans la barre qu'à la révélation (5.7 : son nom en dirait trop).
-	local held, err = pcall(InventoryService.HoldBack :: any, player, uid, revealAt) -- :: any : idem
-	if not held then
-		warn(`[UnboxService] InventoryService.HoldBack ({player.Name}) : {err}`)
+	local inventory = InventoryService
+	if inventory then
+		local held, err = pcall(inventory.HoldBack :: any, player, uid, revealAt) -- :: any : idem
+		if not held then
+			warn(`[UnboxService] InventoryService.HoldBack ({player.Name}) : {err}`)
+		end
 	end
 
 	-- 5.7 : l'identité de l'objet ne part vers le client qu'ici, avec ce qu'il faut pour jouer les
