@@ -84,6 +84,8 @@ Pour renaître, il faut un montant d'argent ET un objet précis, que l'on remet 
 - **Inviter un ami** : le bouton ouvre l'invitation de Roblox. Le bonus est celui de la section 5 : +10 % de revenus par ami Roblox présent dans le serveur (30 % au plus), et +10 % pour les membres du groupe Roblox du studio. L'envoi d'une invitation ne donne rien à lui seul.
 - **Mesure** : chaque gain part avec `LogEconomyEvent` (Partie 1, 14.2).
 
+**Codé (DEV-101, 2026-11-09, vague 19), à valider par Clément** : RewardService et UI_Rewards branchés avec ces valeurs (Config/Rewards). Choix V0 en plus : un jour de recul par jour manqué, jamais avant J1, et nouveau cycle à J1 après J7 ; temps de jeu compté par le serveur, AFK compris ; colis offerts dans l'inventaire (barre) depuis L-089, plus sur un établi ; mutation tirée sur les colis offerts ; le boost ×2 marche même quand la boutique Robux est coupée ; événement custom RewardClaimed en plus de LogEconomyEvent (qui ne compte que l'argent). Remotes ClaimDaily() et ClaimPlaytime(minutes) ; profil v8.
+
 ### 3.4 Index d'objets (MAJ 2)
 
 - **Grille** par zone (6 onglets + Secrets). Objet découvert en couleur ; non découvert = silhouette noire avec la couleur de sa rareté.
