@@ -39,6 +39,11 @@ local Tags = require(ContractFolder:WaitForChild("Tags"))
 local UI = require(ContractFolder:WaitForChild("UI"))
 -- Catalogue d'objets : icônes attendues, une par objet, dans l'ordre du catalogue (L-055).
 local Items = require(Shared:WaitForChild("Config"):WaitForChild("Items"))
+-- Autres icônes lues par le code, même règle (Contract/Icons) : outils de casse (WeaponShopController,
+-- L-090, `ICON_TOOL_<Id>`), batte (`ICON_TOOL_Bat`, livrée par Clément, pas encore affichée) et colis
+-- de l'inventaire (InventoryService, L-089, `ICON_BOX_<Tier>`, nom proposé à Clément).
+local Tools = require(Shared:WaitForChild("Config"):WaitForChild("Tools"))
+local OTHER_ICON_IDS: { string } = { "TOOL_Bat", "BOX_Standard", "BOX_Premium", "BOX_Luxe" }
 
 type Anim = typeof(Animations.Player[1])
 type Part = typeof(Models.Store.Parts[1])
@@ -893,6 +898,13 @@ local function checkIcons(scanned: { Instance })
 		if Icons.find(item.Id) == nil then
 			table.insert(missing, name)
 		end
+	end
+	-- Icônes d'outils et de colis : reconnues, mais facultatives (jamais « pas encore livrées »).
+	for _, tool in Tools.List do
+		names[Icons.name("TOOL_" .. tool.Id)] = true
+	end
+	for _, id in OTHER_ICON_IDS do
+		names[Icons.name(id)] = true
 	end
 	for _, inst in scanned do
 		local name = inst.Name
