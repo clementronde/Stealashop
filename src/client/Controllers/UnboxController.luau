@@ -144,6 +144,8 @@ local watchedPlots: { [Instance]: RBXScriptConnection } = {}
 local views: { [string]: BoxView } = {}
 local ready: { [string]: boolean } = {} -- BoxReady reçu, pas encore ouvert
 local pendingBoxes: { [string]: Pending } = {}
+-- Dernier point connu de chaque colis posé : le serveur retire le modèle juste avant UnboxReveal.
+local lastBase: { [string]: Vector3 } = {}
 local revealQueue: { Queued } = {} -- révélations en attente d'affichage
 local running: Running? = nil -- révélation à l'écran
 local screenMissingWarned = false
@@ -359,6 +361,7 @@ local function removeView(boxUid: string)
 		return
 	end
 	views[boxUid] = nil
+	lastBase[boxUid] = basePosition(view)
 	for _, connection in view.connections do
 		connection:Disconnect()
 	end
@@ -432,6 +435,7 @@ local function setPlot(newPlot: Model?)
 	for boxUid in views do
 		removeView(boxUid)
 	end
+	table.clear(lastBase)
 	for _, connection in plotConnections do
 		connection:Disconnect()
 	end
@@ -796,7 +800,8 @@ local function onReveal(
 	ready[boxUid] = nil
 	-- Point du colis, pris avant que son modèle quitte le jeu (le serveur l'a déjà détruit chez lui).
 	local view = views[boxUid]
-	local anchor = if view then basePosition(view) else nil
+	local anchor: Vector3? = if view then basePosition(view) else lastBase[boxUid]
+	lastBase[boxUid] = nil
 	refresh(boxUid)
 	local item = Items.ById[itemId]
 	-- DEV-131 : mutation de l'objet (Id inconnus ignorés), pour son nom et son revenu à l'écran.
