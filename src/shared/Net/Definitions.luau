@@ -188,6 +188,26 @@ local List: { RemoteDef } = {
 		Args = {},
 		RatePerSecond = 1, -- V0 proposé, absent du doc
 	},
+	{
+		-- Ajout de la vague 19 (DEV-101, 2026-11-09), absent du tableau 9.4 : bouton DailyClaimButton de
+		-- UI_Rewards. Aucun argument : RewardService décide du jour (heure du serveur, minuit UTC) et de la
+		-- récompense (Config/Rewards) ; une seule réclamation par jour UTC.
+		Name = "ClaimDaily",
+		Direction = "ClientToServer",
+		Reliable = true,
+		Args = {},
+		RatePerSecond = 2, -- V0 proposé, absent du doc
+	},
+	{
+		-- Ajout de la vague 19 (DEV-101) : ClaimButton d'un palier de temps de jeu de UI_Rewards. minutes =
+		-- le palier (Config/Rewards.Playtime : 5, 15, 30, 60) ; RewardService vérifie qu'il existe, que le
+		-- temps de jeu du jour (compté par le serveur) l'atteint et qu'il n'est pas déjà réclamé.
+		Name = "ClaimPlaytime",
+		Direction = "ClientToServer",
+		Reliable = true,
+		Args = { { Name = "minutes", Kind = "int", Min = 1, Max = 1440 } },
+		RatePerSecond = 4, -- V0 proposé, absent du doc
+	},
 
 	-- Serveur vers client (9.4). Le doc ne donne que les noms (et « id, point
 	-- d'impact » pour WindowBroken) : les arguments ci-dessous sont des V0

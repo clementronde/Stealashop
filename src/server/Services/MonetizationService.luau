@@ -85,13 +85,19 @@
 --   MonetizationService.IsEnabled() -> boolean           Features.RobuxShop
 --   MonetizationService.HasPass(player, key) -> boolean  gamepass possédé (clé de Config/Monetization)
 --   MonetizationService.GetIncomeMultiplier(player) -> number
---       Part de la boutique Robux dans le M global (Premium, ×2 Argent, boost) ; 1 si elle est coupée.
+--       Part de la boutique Robux dans le M global (Premium, ×2 Argent, boost) ; boutique coupée : le
+--       boost seul.
 --   MonetizationService.GetTemporaryIncomeMultiplier(player) -> number
---       Part temporaire de ce M global : le boost ×2 argent s'il est en cours, sinon 1 (1 si la boutique
---       est coupée). Pour les gains hors ligne (DEV-102, OfflineService), qui ne comptent pas les boosts.
+--       Part temporaire de ce M global : le boost ×2 argent s'il est en cours, sinon 1. Pour les gains
+--       hors ligne (DEV-102, OfflineService), qui ne comptent pas les boosts.
 --   MonetizationService.AddCashBoost(player, seconds) -> boolean
 --       Boost ×2 argent : prolonge celui en cours de `seconds` (pour les récompenses, DEV-101) ; false
---       si la boutique est coupée, le profil pas chargé ou la durée invalide. Sans yield.
+--       si le profil n'est pas chargé ou la durée invalide. Sans yield.
+--
+-- Boutique coupée (Features.RobuxShop = false) : ni reçu, ni gamepass, ni bonus Premium, ni pack de
+-- départ, ni Ouvrir maintenant, ni crochet de test. Seul le boost ×2 argent reste branché (DEV-101, les
+-- récompenses quotidiennes et de temps de jeu le donnent, Partie 2, 3.3) : temps restant gardé dans
+-- Boosts.Cash, compté seulement en jeu, attribut CashBoostEndsAt, ×2 dans DisplayService.GetIncomeMultiplier.
 --
 -- Crochet de test, STUDIO SEULEMENT (Ids encore à 0 : aucun achat réel possible) :
 -- workspace:SetAttribute("MonetizationTest", "<joueur> <Clé>") (barre de commande serveur ; joueur =
@@ -347,10 +353,8 @@ local function incomeBonus(player: Player): number
 end
 
 -- Multiplicateurs de la boutique Robux : ×2 Argent, boost ×2 argent (DisplayService.GetIncomeMultiplier).
+-- Boutique coupée : hasPass répond toujours non, seul le boost compte (DEV-101).
 local function incomeMultiplier(player: Player): number
-	if not enabled then
-		return 1
-	end
 	local multiplier = 1
 	if hasPass(player, "DoubleCash") then
 		multiplier *= passValue("DoubleCash", "Multiplier", 1)
@@ -429,6 +433,9 @@ local function tickPlayer(player: Player, state: State)
 			setAttribute(player, BOOST_ATTRIBUTE, nil)
 			log(`{player.Name} : boost ×2 argent fini`)
 		end
+	end
+	if not enabled then
+		return -- boutique coupée : le boost seul (voir l'en-tête)
 	end
 	local endsAt = state.starterEndsAt
 	if endsAt and (serverNow() >= endsAt or starterLeft(data, state) <= 0) then
@@ -694,7 +701,9 @@ local function onPlayerAdded(player: Player)
 		return
 	end
 	states[player] = { known = {}, owned = {}, bought = {}, sessionStart = nil, boostUntil = nil, boostEndsAt = nil, starterEndsAt = nil }
-	task.spawn(checkPasses, player)
+	if enabled then
+		task.spawn(checkPasses, player)
+	end
 end
 
 local function onProfileLoaded(player: Player)
@@ -711,8 +720,10 @@ local function onProfileLoaded(player: Player)
 	for key in state.known do
 		writeCache(player, key, state.owned[key] == true)
 	end
-	for _, pass in Monetization.Passes do
-		publishPass(player, pass.Key)
+	if enabled then
+		for _, pass in Monetization.Passes do
+			publishPass(player, pass.Key)
+		end
 	end
 	local boosts = boostsOf(data)
 	local saved = if boosts then finite(boosts.Cash) else 0
@@ -721,7 +732,7 @@ local function onProfileLoaded(player: Player)
 		state.boostEndsAt = serverNow() + saved
 		setAttribute(player, BOOST_ATTRIBUTE, state.boostEndsAt)
 	end
-	local left = starterLeft(data, state)
+	local left = if enabled then starterLeft(data, state) else 0
 	if left > 0 then
 		state.starterEndsAt = serverNow() + left
 		setAttribute(player, STARTER_ATTRIBUTE, state.starterEndsAt)
@@ -839,14 +850,14 @@ function MonetizationService.GetIncomeMultiplier(player: Player): number
 end
 
 function MonetizationService.GetTemporaryIncomeMultiplier(player: Player): number
-	if enabled and boostActive(player) then
+	if boostActive(player) then
 		return Monetization.CashBoost.Multiplier
 	end
 	return 1
 end
 
 function MonetizationService.AddCashBoost(player: Player, seconds: number): boolean
-	return enabled and addBoost(player, seconds)
+	return addBoost(player, seconds) -- boutique coupée comprise (DEV-101, voir l'en-tête)
 end
 
 ------------------------------------------------------------------------------
@@ -923,14 +934,15 @@ end
 
 function MonetizationService.Init()
 	enabled = Features.RobuxShop == true
-	if not enabled then
-		print("[MonetizationService] Features.RobuxShop = false : boutique Robux coupée (ni reçu, ni gamepass, ni bonus de revenus)")
-		return
+	if enabled then
+		installHooks()
+	else
+		-- Boutique coupée : seul le boost ×2 argent des récompenses reste (DEV-101, voir l'en-tête).
+		local baseIncome = DisplayService.GetIncomeMultiplier
+		DisplayService.GetIncomeMultiplier = function(player: Player): number
+			return baseIncome(player) * incomeMultiplier(player)
+		end
 	end
-	local passes, products = buildSales()
-	installHooks()
-	MarketplaceService.ProcessReceipt = processReceipt
-	MarketplaceService.PromptGamePassPurchaseFinished:Connect(onGamePassPurchaseFinished)
 	Players.PlayerAdded:Connect(onPlayerAdded)
 	Players.PlayerRemoving:Connect(function(player: Player)
 		-- Après DataService (OnProfileReleasing a déjà écrit le boost) : l'état part au tour suivant.
@@ -943,7 +955,9 @@ function MonetizationService.Init()
 	end
 	DataService.OnProfileLoaded(onProfileLoaded)
 	DataService.OnProfileReleasing(onProfileReleasing)
-	UnboxService.OnBoxPlaced(onBoxPlaced)
+	if enabled then
+		UnboxService.OnBoxPlaced(onBoxPlaced)
+	end
 
 	local elapsed = 0
 	RunService.Heartbeat:Connect(function(dt: number)
@@ -960,6 +974,13 @@ function MonetizationService.Init()
 		end
 	end)
 
+	if not enabled then
+		print("[MonetizationService] Features.RobuxShop = false : boutique Robux coupée (ni reçu, ni gamepass, ni bonus de revenus) ; seul le boost ×2 argent des récompenses reste")
+		return
+	end
+	local passes, products = buildSales()
+	MarketplaceService.ProcessReceipt = processReceipt
+	MarketplaceService.PromptGamePassPurchaseFinished:Connect(onGamePassPurchaseFinished)
 	if IS_STUDIO then
 		Workspace:GetAttributeChangedSignal(TEST_ATTRIBUTE):Connect(onTestAttribute)
 	end

@@ -43,9 +43,11 @@ UI.Screens = {
 			{ Path = "IndexButton", Class = BUTTON }, -- caché jusqu'à la MAJ 2 (L-026)
 			{ Path = "RebirthButton", Class = BUTTON }, -- caché jusqu'à la MAJ 3 (L-026)
 			-- Bouton « inviter un ami » de Clément, dans le cadre SocialRow (L-057, livré le
-			-- 2026-11-07) : ouvre l'invitation de Roblox (InviteController). RewardsButton, à côté,
-			-- n'est pas encore lu par le code.
+			-- 2026-11-07) : ouvre l'invitation de Roblox (InviteController). RewardsButton, à côté, ouvre
+			-- UI_Rewards ; RewardsAlert = sa pastille rouge (RewardsController, DEV-101).
 			{ Path = "InviteButton", Class = BUTTON },
+			{ Path = "RewardsButton", Class = BUTTON },
+			{ Path = "RewardsButton.RewardsAlert" },
 		},
 	},
 	{
@@ -297,6 +299,38 @@ table.insert(UI.Screens, {
 		{ Path = "List.Template.Glow" },
 		{ Path = "List.Template.RarityBar.Rarity" }, -- nom de la rareté, écrit par le code (vu en Play le 2026-11-08)
 	},
+})
+
+-- Récompenses quotidiennes et de temps de jeu (DEV-101 ; Partie 2, 3.3 ; L-057) : écran UI_Rewards de
+-- Clément (relevé de Studio du 2026-11-09), branché par RewardsController. Les lignes d'exemple Preview_*
+-- (à côté du Template) sont retirées par le code. DayLabel et RewardName des jours restent de Clément.
+local rewardsElements = {
+	{ Path = "CloseButton", Class = BUTTON },
+	{ Path = "Tabs.DailyTab" },
+	{ Path = "Tabs.DailyTab.Selected" },
+	{ Path = "Tabs.PlaytimeTab" },
+	{ Path = "Tabs.PlaytimeTab.Selected" },
+	{ Path = "DailyPage" },
+	{ Path = "DailyPage.DailyClaimButton", Class = BUTTON },
+	{ Path = "DailyPage.DailyClaimButton.ClaimLabel" },
+	{ Path = "PlaytimePage" },
+	{ Path = "PlaytimePage.List", Class = "ScrollingFrame" },
+	{ Path = "PlaytimePage.List.Template", Template = true },
+	{ Path = "PlaytimePage.List.Template.Icon" },
+	{ Path = "PlaytimePage.List.Template.RewardName" },
+	{ Path = "PlaytimePage.List.Template.Timer" },
+	{ Path = "PlaytimePage.List.Template.ClaimButton" }, -- classe pas relevée : bouton ou cadre, le code accepte les deux
+	{ Path = "PlaytimePage.List.Template.Claimed" },
+} :: { Element }
+for day = 1, 7 do
+	table.insert(rewardsElements, { Path = `DailyPage.Streak.Day{day}` })
+	table.insert(rewardsElements, { Path = `DailyPage.Streak.Day{day}.Today` })
+	table.insert(rewardsElements, { Path = `DailyPage.Streak.Day{day}.Claimed` })
+end
+table.insert(UI.Screens, {
+	Name = "UI_Rewards",
+	Class = "ScreenGui",
+	Elements = rewardsElements,
 })
 
 return UI

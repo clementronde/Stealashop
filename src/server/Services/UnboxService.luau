@@ -137,6 +137,17 @@
 --       télémétrie, index des objets) ; itemId = l'objet final, après l'amélioration ; revealDelay =
 --       secondes jusqu'à l'objet révélé chez celui qui ouvre (le délai de l'annonce et du Tool de
 --       l'objet), pour un message qui ne doit pas arriver avant la révélation (DEV-111).
+--   UnboxService.GiveBox(player, tier, zone, minRarity?) -> (string?, string?)
+--       Colis offert (récompenses, DEV-101, RewardService) : écrit dans l'inventaire du profil comme un
+--       colis rangé (Boxes[uid] sans Spot, At = maintenant, Tool de la barre), avec les mêmes règles :
+--       au plus Unbox.BoxInventoryMax colis dans l'inventaire. Contenu tiré par le serveur avec les
+--       probabilités de ce type de colis dans cette zone (ShelfBoxes.OddsFor), seulement parmi minRarity et
+--       au-dessus si minRarity est donné (les autres poids gardent leurs proportions) et parmi les
+--       raretés qui ont un objet dans la zone ; mutation tirée comme à la mise en rayon. Ni braquage
+--       compté, ni OnBoxStowed (ce n'est pas un colis rapporté du couloir). Renvoie l'uid du colis, ou
+--       nil et la raison : "NoProfile", "InventoryFull" (rien n'est écrit : la récompense reste à
+--       réclamer), "Invalid" (type, zone ou rareté inconnus), "NoContent" (aucune rareté possible). Sans
+--       yield.
 --   UnboxService.GetBoxPosition(player, boxUid) -> Vector3?
 --       Point du monde (pied du colis) d'un colis posé au sol et affiché ; nil sinon (tutoriel).
 --   Boutique Robux (DEV-100, MonetizationService : « Ouvrir maintenant », « Ouverture rapide ») :
@@ -1371,6 +1382,75 @@ function UnboxService.GetBoxPosition(player: Player, boxUid: string): Vector3?
 	local session = sessions[player]
 	local shown = if session then session.shown[boxUid] else nil
 	return if shown then shown.base.Position else nil
+end
+
+-- Rareté d'un colis offert (GiveBox) : tirée avec les poids de OddsFor(zone, tier), seulement parmi les
+-- raretés d'ordre ≥ minOrder qui ont un objet (Items.Pick : les Secrets, toutes zones). nil si aucune.
+local function drawGiftRarity(zone: number, tier: string, minOrder: number): string?
+	local total = 0
+	local weights: { [string]: number } = {}
+	for _, rarity in Rarities.List do
+		local weight = oddsOf(zone, tier, rarity.Id)
+		local possible = if rarity.Id == "Secret" then #Items.Secrets > 0 else hasItem(zone, rarity.Id)
+		if rarity.Order >= minOrder and weight > 0 and possible then
+			weights[rarity.Id] = weight
+			total += weight
+		end
+	end
+	if total <= 0 then
+		return nil
+	end
+	local roll = random:NextNumber() * total
+	local last: string? = nil
+	for _, rarity in Rarities.List do
+		local weight = weights[rarity.Id]
+		if weight then
+			last = rarity.Id
+			if roll < weight then
+				return rarity.Id
+			end
+			roll -= weight
+		end
+	end
+	return last -- arrondi des nombres à virgule : la dernière rareté possible
+end
+
+function UnboxService.GiveBox(player: Player, tier: string, zone: number, minRarity: string?): (string?, string?)
+	local data = DataService.Get(player)
+	if data == nil or type(data.Boxes) ~= "table" then
+		return nil, "NoProfile"
+	end
+	local minimum = if minRarity ~= nil then Rarities.ById[minRarity] else nil
+	if Balance.Heist.BoxTiers[tier] == nil or Zones[zone] == nil or (minRarity ~= nil and minimum == nil) then
+		warn(`[UnboxService] GiveBox ({player.Name}) : colis {tostring(tier)} zone {tostring(zone)} rareté {tostring(minRarity)} inconnu`)
+		return nil, "Invalid"
+	end
+	local stored = countBoxes(data)
+	if stored >= Unbox.BoxInventoryMax then
+		log(`{player.Name} : {stored} colis dans l'inventaire, colis offert {tier} pas donné`)
+		return nil, "InventoryFull"
+	end
+	local rarityId = drawGiftRarity(zone, tier, if minimum then minimum.Order else 0)
+	local item = if rarityId then Items.Pick(zone, rarityId :: Rarities.RarityId, random) else nil
+	if rarityId == nil or item == nil then
+		warnOnce(`gift.{tier}.{zone}.{tostring(minRarity)}`, `colis offert {tier} zone {zone} (au moins {tostring(minRarity)}) : aucune rareté possible (Config)`)
+		return nil, "NoContent"
+	end
+	local box: Box = {
+		Tier = tier :: any,
+		Zone = zone,
+		ItemId = item.Id,
+		Rarity = rarityId,
+		ReadyAt = nil,
+		Mutation = if item.TutorialOnly then nil else Mutations.Roll(random), -- comme la mise en rayon (DEV-131)
+		Spot = nil,
+		At = os.time(),
+	}
+	local boxUid = newUid(data.Boxes)
+	data.Boxes[boxUid] = box
+	log(`{player.Name} : colis offert {tier} {rarityId} (zone {zone}) mis dans l'inventaire ({boxUid})`)
+	refreshInventory(player)
+	return boxUid, nil
 end
 
 function UnboxService.GetWaiting(player: Player): { [string]: number }

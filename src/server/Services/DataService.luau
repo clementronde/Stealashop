@@ -74,12 +74,13 @@
 -- BoxQueue des colis sans présentoir (voir MIGRATIONS[5]) ; v6 (2026-11-08, DEV-102) = gains hors ligne :
 -- Offline = heure et revenu de la dernière présence (OfflineService ; voir MIGRATIONS[6]) ; v7 (2026-11-09,
 -- L-089) = colis dans l'inventaire, ouverts au sol de la boutique : Boxes rangé par uid de colis, plus de
--- BoxQueue (voir MIGRATIONS[7]).
--- Nouvelle version du schéma (ex. v8 de la Partie 2) :
+-- BoxQueue (voir MIGRATIONS[7]) ; v8 (2026-11-09, DEV-101) = récompenses quotidiennes et de temps de jeu :
+-- Rewards (RewardService ; voir MIGRATIONS[8]).
+-- Nouvelle version du schéma (ex. v9 de la Partie 2) :
 --   1. ajouter les champs dans Types/Profile et dans TEMPLATE ci-dessous ;
---   2. ajouter MIGRATIONS[8] (transforme un profil v7 en v8 ; ce qui est seulement
+--   2. ajouter MIGRATIONS[9] (transforme un profil v8 en v9 ; ce qui est seulement
 --      nouveau est complété depuis TEMPLATE, inutile de le recopier) ;
---   3. passer CURRENT_VERSION à 8.
+--   3. passer CURRENT_VERSION à 9.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -122,14 +123,14 @@ local DEFAULT_WAIT_TIMEOUT = 60
 
 -- Version courante du schéma de sauvegarde (section 9.5 ; v2 : catalogue d'objets v2 ; v3 : boutique
 -- Robux ; v4 : index des objets ; v5 : colis sur les présentoirs ; v6 : gains hors ligne ; v7 : colis
--- dans l'inventaire).
-local CURRENT_VERSION = 7
+-- dans l'inventaire ; v8 : récompenses).
+local CURRENT_VERSION = 8
 
 -- Attribut du Player lu par le HUD (même nom dans HudController).
 local CASH_ATTRIBUTE = "Cash"
 
--- Modèle d'un nouveau profil, schéma v7 (forme de la section 9.5, plus la boutique Robux, l'index, les
--- gains hors ligne et les colis rangés par uid).
+-- Modèle d'un nouveau profil, schéma v8 (forme de la section 9.5, plus la boutique Robux, l'index, les
+-- gains hors ligne, les colis rangés par uid et les récompenses).
 -- Il sert aussi à compléter les champs manquants d'un profil existant (Profile:Reconcile de
 -- ProfileStore).
 local TEMPLATE: Data = {
@@ -150,6 +151,8 @@ local TEMPLATE: Data = {
 	Boosts = { Cash = 0 }, -- v3
 	Index = {}, -- v4 : [ItemId] = os.time() de la découverte (IndexService)
 	Offline = { LastSeenAt = 0, Income = 0 }, -- v6 : 0 = heure inconnue, aucun gain hors ligne (OfflineService)
+	-- v8 : calendrier (aucun jour réclamé) et temps de jeu du jour (aucun jour compté) (RewardService)
+	Rewards = { Daily = { Streak = 0, LastDay = 0 }, Playtime = { Day = 0, Seconds = 0, Claimed = {} } },
 }
 
 -- Journal d'une migration : chaque ligne part dans la sortie, préfixée du joueur et de sa clé.
@@ -478,6 +481,56 @@ local function migrateToV7(data: any, log: MigrationLog)
 	end
 end
 
+-- v7 → v8 (récompenses quotidiennes et de temps de jeu, 2026-11-09, DEV-101 ; RewardService). Rewards est
+-- nouveau : complété depuis TEMPLATE (aucun jour réclamé : le joueur commence à J1 ; aucun temps de jeu
+-- compté). Rien d'autre ne change. Un Rewards déjà là (jamais écrit avant la v8) garde ses valeurs
+-- lisibles : nombres entiers finis ≥ 0 (Streak au plus 7), Claimed en table ; une valeur illisible repart
+-- du modèle, un Rewards (ou Daily, Playtime) qui n'est pas une table aussi, avec un avertissement.
+local function migrateToV8(data: any, log: MigrationLog)
+	local rewards = data.Rewards
+	if rewards == nil then
+		return -- complété depuis TEMPLATE
+	end
+	if type(rewards) ~= "table" then
+		log(`Rewards n'est pas une table ({tostring(rewards)}) : repart du modèle (calendrier à J1)`, true)
+		data.Rewards = nil -- complété depuis TEMPLATE
+		return
+	end
+	local function readable(value: any, max: number?): boolean
+		return type(value) == "number" and value == value and value >= 0 and value % 1 == 0 and value <= (max or math.huge) and value < math.huge
+	end
+	for _, part in { "Daily", "Playtime" } do
+		local value = rewards[part]
+		if value ~= nil and type(value) ~= "table" then
+			log(`Rewards.{part} n'est pas une table ({tostring(value)}) : repart du modèle`, true)
+			rewards[part] = nil
+		end
+	end
+	local daily = rewards.Daily
+	if type(daily) == "table" then
+		for field, max in { Streak = 7, LastDay = math.huge } :: { [string]: number } do
+			if daily[field] ~= nil and not readable(daily[field], max) then
+				log(`Rewards.Daily.{field} illisible ({tostring(daily[field])}) : remis à 0`, true)
+				daily[field] = 0
+			end
+		end
+	end
+	local playtime = rewards.Playtime
+	if type(playtime) == "table" then
+		for _, field in { "Day", "Seconds" } do
+			local value = playtime[field]
+			if value ~= nil and not (type(value) == "number" and value == value and value >= 0 and value < math.huge) then
+				log(`Rewards.Playtime.{field} illisible ({tostring(value)}) : remis à 0`, true)
+				playtime[field] = 0
+			end
+		end
+		if playtime.Claimed ~= nil and type(playtime.Claimed) ~= "table" then
+			log(`Rewards.Playtime.Claimed n'est pas une table ({tostring(playtime.Claimed)}) : repart vide`, true)
+			playtime.Claimed = {}
+		end
+	end
+end
+
 -- MIGRATIONS[n] fait passer un profil de la version n - 1 à la version n, en place, et écrit ce
 -- qu'elle change avec `log`. Un profil sans Version est traité comme une version 0. La v1 est la
 -- première : rien à transformer, Reconcile complète tout depuis TEMPLATE. Les champs seulement
@@ -490,6 +543,7 @@ local MIGRATIONS: { [number]: (data: any, log: MigrationLog) -> () } = {
 	[5] = migrateToV5,
 	[6] = migrateToV6,
 	[7] = migrateToV7,
+	[8] = migrateToV8,
 }
 
 -- Messages d'expulsion, lus par le joueur : en anglais (L-036).

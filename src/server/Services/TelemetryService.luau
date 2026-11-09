@@ -24,10 +24,11 @@
 --   Robux (argent acheté en Robux, MAJ 1) : appelé par MonetizationService (DEV-100, LogEconomy plus
 --   bas ; packs d'argent et pack de départ, SKU = clé du produit), seulement quand Features.RobuxShop
 --   est vrai.
+--   DailyReward et PlaytimeReward (récompenses, DEV-101) : appelés par RewardService pour les gains en
+--   argent (« X min de revenus »), SKU Day1 à Day7, Playtime5 à Playtime60.
 --   Pas encore codés, genres déjà dans la config (points d'accroche : LogEconomy, plus bas) : Fence
---   (receleur, DEV-034), DailyReward et PlaytimeReward (récompenses, MAJ 1, L-057), Code (codes
---   cadeaux), Defense (défenses, MAJ 2). Une défense achetée par ShopService (OnPurchase avec kind
---   « Defense ») partirait aussi en DefenseBought.
+--   (receleur, DEV-034), Code (codes cadeaux), Defense (défenses, MAJ 2). Une défense achetée par
+--   ShopService (OnPurchase avec kind « Defense ») partirait aussi en DefenseBought.
 --
 -- Regroupement des revenus (limite de Roblox : 120 + 20 × joueurs requêtes par minute et par
 -- serveur, 240 à 6 joueurs) : un joueur qui fait des allers-retours sur son tapis de caisse
@@ -55,6 +56,8 @@
 --       Zone du colis, Phase (Day, Warning ou Night : NightCycleService.GetPhase), Rarity. Un joueur
 --       attrapé la nuit sans rien porter ne passe pas par CarryService : il est compté par
 --       GuardService.OnCatch, avec la Zone du vigile, Phase Night et Rarity None.
+--   RewardClaim (RewardClaimed)  chaque récompense réclamée (RewardService, DEV-101), argent, colis ou
+--       boost ; champs : Source (Daily, Playtime), Sku (Day1 à Day7, Playtime5…), Gift (Cash, Box, Boost).
 --   DefenseBought  pas encore codé (défenses, MAJ 2) : point d'accroche LogEvent.
 --
 -- Noms et champs : texte sans virgule, guillemet ni apostrophe, droits ou typographiques (Roblox refuse

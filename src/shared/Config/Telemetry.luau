@@ -43,8 +43,8 @@ local Economy: { [string]: EconomyKind } = {
 	Trail = { Flow = "Sink", Transaction = "Shop" }, -- Config/Cosmetics (« Dust »)
 	-- Points d'accroche des gains et dépenses pas encore codés (TelemetryService.LogEconomy) :
 	Fence = { Flow = "Source", Transaction = "Shop" }, -- receleur (DEV-034) ; SKU proposé : rareté de l'objet vendu
-	DailyReward = { Flow = "Source", Transaction = "TimedReward" }, -- quotidien (MAJ 1) ; SKU : Day1 à Day7
-	PlaytimeReward = { Flow = "Source", Transaction = "TimedReward" }, -- temps de jeu (L-057) ; SKU : Playtime5…
+	DailyReward = { Flow = "Source", Transaction = "TimedReward" }, -- quotidien (DEV-101, RewardService) ; SKU : Day1 à Day7
+	PlaytimeReward = { Flow = "Source", Transaction = "TimedReward" }, -- temps de jeu (DEV-101, RewardService) ; SKU : Playtime5 à Playtime60
 	Code = { Flow = "Source", Transaction = "Code" }, -- code cadeau ; SKU : le code
 	Robux = { Flow = "Source", Transaction = "IAP" }, -- argent acheté en Robux (MAJ 1, MonetizationService) ; SKU : clé du produit (Cash10…)
 	Defense = { Flow = "Sink", Transaction = "Shop" }, -- défense de boutique (MAJ 2, DEV-110) ; SKU : Id
@@ -56,6 +56,7 @@ local Events: { [string]: string } = {
 	TheftFail = "PvPTheftFail", -- vol entre joueurs raté (l'objet revient à son présentoir)
 	BatBoxKnock = "BatBoxKnockdown", -- colis PNJ que la batte fait tomber hors zone safe
 	GuardCatch = "GuardCatch", -- porteur d'un colis PNJ rattrapé par un vigile, ou joueur attrapé la nuit sans colis
+	RewardClaim = "RewardClaimed", -- récompense réclamée (DEV-101) : argent, colis ou boost ; champs Source, Sku, Gift
 	DefenseBought = "DefenseBought", -- achat d'une défense (MAJ 2) : point d'accroche
 }
 
