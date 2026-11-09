@@ -317,6 +317,7 @@ local function bind(gui: ScreenGui)
 	end
 	openAt = nil
 	gui.Enabled = false -- fermé jusqu'à l'invite
+	Motion.SetCloser(gui, closeShop) -- un autre écran du groupe ScreenGroup s'ouvre (L-089)
 
 	local template = guiObject(gui, "List.Template")
 	if template == nil then

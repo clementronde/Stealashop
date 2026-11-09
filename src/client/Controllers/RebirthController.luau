@@ -220,6 +220,7 @@ local function bind(gui: ScreenGui)
 	end
 	isOpen = false
 	gui.Enabled = false -- fermé jusqu'au bouton du HUD
+	Motion.SetCloser(gui, close) -- un autre écran du groupe ScreenGroup s'ouvre (L-089)
 
 	local fill = guiObject(gui, "CashRequirement.CashBar.Fill")
 	local current: Screen = { gui = gui, fill = fill, fillSize = if fill then fill.Size else UDim2.new(), connections = {} }
