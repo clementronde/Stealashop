@@ -6,15 +6,14 @@
 -- temporaires (boost ×2 argent, compté seulement en jeu : Partie 2, section 4). L'argent va dans la caisse
 -- de sa boutique (attribut CashRegister), il l'encaisse sur son CashPad comme le reste.
 --
--- À valider avec Clément : le doc (Partie 2) dit « 10 % des revenus pendant 4 h max » ; Clément a décidé
--- le 2026-11-08 (L-084, journal 15) « tout l'argent qu'il aurait gagné pendant son absence », plafond à
--- proposer. Ironix a repris la décision de Clément (Rate = 1) et le plafond du doc (4 h).
+-- Le doc (Partie 2) disait « 10 % des revenus pendant 4 h max » ; Clément a décidé le 2026-11-08 (L-084,
+-- journal 15) « tout l'argent qu'il aurait gagné pendant son absence », validé par Ironix le 2026-11-09
+-- (Rate = 1, 100 %). Plafond : celui du doc (4 h), à valider avec Clément.
 
 local DeepFreeze = require(script.Parent.DeepFreeze)
 
 local Offline = {
-	-- Part des revenus gagnée hors ligne : 1 = 100 % (décision de Clément, L-084) ; le doc dit 0,1.
-	-- À valider avec Clément.
+	-- Part des revenus gagnée hors ligne : 1 = 100 % (Clément, L-084 ; validé par Ironix le 2026-11-09).
 	Rate = 1,
 	-- Plafond de l'absence comptée, en heures (doc, Partie 2). À valider avec Clément.
 	MaxHours = 4,

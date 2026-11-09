@@ -136,7 +136,7 @@ Les trois idées les plus rentables pour l'effort : le « Casse du siècle » (r
 | Idée | Pourquoi ça retient | Effort | Priorité |
 | --- | --- | --- | --- |
 | **Casse du siècle** : toutes les 30 min, un fourgon blindé géant traverse le boulevard. Les 6 joueurs le frappent ensemble ; chacun reçoit un colis selon ses dégâts (Luxe pour le top 3) | Rendez-vous régulier, coopération entre joueurs qui se volent par ailleurs, garde les joueurs en jeu jusqu'au prochain passage | Moyen | Haute (MAJ 4) |
-| **Gains hors ligne** : 10 % des revenus pendant 4 h max, réclamés au retour (« Ta boutique a gagné 1,2 M $ pendant ton absence ») | Raison concrète de revenir chaque jour | Faible | Haute (MAJ 1) |
+| **Gains hors ligne** : 100 % des revenus pendant 4 h max (décision du 2026-11-09, L-084), réclamés au retour (« Ta boutique a gagné 1,2 M $ pendant ton absence ») | Raison concrète de revenir chaque jour | Faible | Haute (MAJ 1) |
 | **Quêtes quotidiennes** : 3 par jour (« Casse 10 vitrines en zone 3 », « Défends ta boutique 1 fois ») | Donne un objectif clair à chaque session | Faible | Haute (MAJ 4) |
 | **Récompenses de temps de jeu** : à 5, 15, 30, 60 min de session | Allonge les sessions | Faible | Haute (MAJ 1) |
 | **Bonus d'amis et de groupe** : +10 % par ami dans le serveur (30 % max), +10 % pour les membres du groupe Roblox | Acquisition par invitation, sessions plus longues | Faible | Haute (MAJ 1) |
