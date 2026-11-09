@@ -109,9 +109,22 @@ local Unbox = {
 	AutoClose = 6, -- V0 : l'écran se ferme tout seul 6 s après l'apparition des boutons
 
 	-- Portée (V0, absents du doc ; déplacés d'UnboxService et d'UnboxController, mêmes valeurs) --
-	PromptDistance = 8, -- V0 : portée (studs) des invites des établis
+	PromptDistance = 8, -- V0 : portée (studs) des invites (colis posé au sol, présentoir libre)
 	ReachTolerance = 4, -- V0 : marge du serveur ; PlaceBox et OpenBox acceptés à 8 + 4 = 12 studs
-	OpenNextMargin = 0.5, -- V0 : OpenNextButton n'apparaît qu'à 12 − 0,5 studs de l'autre établi au plus
+	OpenNextMargin = 0.5, -- V0 : OpenNextButton n'apparaît qu'à 12 − 0,5 studs de l'autre colis au plus
+
+	-- Colis dans l'inventaire et posés au sol de sa boutique (L-089 ; V0 proposés, absents du doc) --
+	-- PlaceBox(boxUid, point) : le serveur cherche le sol sous le point visé, dans le volume Bounds de
+	-- SA boutique, à PromptDistance + ReachTolerance studs au plus du personnage.
+	FloorRayUp = 3, -- V0 : le rayon vers le sol part de cette hauteur (studs) au-dessus du bas de Bounds
+	FloorTolerance = 0.5, -- V0 : écart (studs) permis entre le sol trouvé et le bas de Bounds (au-delà : pas le sol)
+	FloorMinNormalY = 0.7, -- V0 : sol assez plat (composante verticale de la normale)
+	BoxFootprint = Vector3.new(2, 2, 2), -- V0 : volume (studs) d'un colis posé, sans autre pièce solide dedans
+	BoxSpacing = 3, -- V0 : écart (studs) au moins entre deux colis posés
+	StandClearance = 2.5, -- V0 : écart (studs, à plat) au moins entre un colis posé et un présentoir
+	EdgeMargin = 1, -- V0 : marge (studs) entre le colis et le bord de Bounds
+	MaxPlacedBoxes = 8, -- V0 : colis posés au sol en même temps, au plus
+	BoxInventoryMax = 50, -- V0 : colis dans l'inventaire, au plus (au-delà, le colis porté revole vers son rayon)
 
 	-- Annonce à tout le serveur (5.7, étape 6 : Légendaire et plus, Rarities.Announce) -----------
 	AnnounceKind = "Announce", -- V0 : catégorie du Notify envoyé aux autres joueurs

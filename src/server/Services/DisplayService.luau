@@ -82,19 +82,31 @@
 --   DisplayService.GetExposed(player) -> { [présentoir]: { Uid, ItemId, Income } }
 --       Objets exposés et affichés en ce moment (tenus exclus), avec leur revenu ($/s).
 --   DisplayService.HasRoom(player) -> boolean
---       Un présentoir débloqué libre (ni objet ni colis), ou moins de Balance.Display.InventoryMax
---       objets dans l'inventaire : un objet de plus a sa place.
---   Colis posés sur les présentoirs (L-086, UnboxService) : un présentoir dont le numéro est une clé
---   de Boxes du profil porte un colis en attente. Il compte comme occupé : PlaceItem le refuse
---   (« Boxed »), PlaceAuto le saute, et une entrée de Display sur ce présentoir est retirée (l'objet
---   reste dans l'inventaire). Rien n'y est exposé, donc rien n'y est volable. Sans yield :
+--       Un présentoir débloqué libre, ou moins de Balance.Display.InventoryMax objets dans
+--       l'inventaire : un objet de plus a sa place.
+--   DisplayService.HasInventoryRoom(player) -> boolean
+--       Moins de Balance.Display.InventoryMax objets dans l'inventaire (5.8 : 30 objets non exposés) :
+--       l'objet d'un colis ouvert y va (L-089, UnboxService). Sans yield.
+--   Plus de colis sur les présentoirs depuis L-089 (2026-11-09) : les colis se posent au sol de la
+--   boutique (UnboxService). Sans yield :
 --   DisplayService.GetSlots(player) -> { [number]: Attachment }
 --       Présentoirs DisplaySlot_xx de la parcelle du joueur (bonus posés compris), cherchés une fois
 --       par parcelle comme pour les objets ; vide sans parcelle.
 --   DisplayService.GetSlotStates(player) -> { [number]: SlotState }
 --       État de chacun de ces présentoirs : "Locked" (pas débloqué), "Taken" (un objet exposé, ou tenu
---       par un voleur), "Boxed" (un colis en attente), "Free" (débloqué, ni objet ni colis). Vide sans
---       profil ou sans parcelle.
+--       par un voleur), "Free" (débloqué, sans objet). Vide sans profil ou sans parcelle.
+--   DisplayService.EquipBest(player) -> number
+--       Equip Best (L-079, L-089 ; remote EquipBest, bouton de l'écran d'inventaire de Clément à venir) :
+--       les objets qui rapportent le plus vont sur les présentoirs. Règle V0 (proposée, absente du
+--       doc) : parmi les objets du joueur (exposés et inventaire ; ni au coffre-fort ni tenus par un
+--       voleur), les N qui rapportent le plus (revenu de l'objet, mutation comprise, comme plus haut),
+--       N = présentoirs débloqués et posés dans la parcelle, sans ceux d'un objet tenu. À revenu égal,
+--       un objet déjà exposé passe d'abord (il ne bouge pas pour rien), puis le plus petit uid. Un
+--       objet exposé qui en fait partie reste sur son présentoir ; un objet exposé qui n'en fait pas
+--       partie retourne dans l'inventaire ; les autres vont sur les présentoirs libres, du plus petit
+--       numéro au plus grand. L'inventaire ne grossit jamais (un objet n'en sort que remplacé). Où que
+--       soit le joueur, sans yield. Renvoie le nombre d'objets posés sur un présentoir (0 : rien à
+--       changer, ou pas de parcelle).
 --   DisplayService.GetIncome(player) -> number      $/s total exposé, sans bonus (0 sans parcelle)
 --   DisplayService.GetRegister(player) -> number    argent en caisse, en dollars entiers
 --   DisplayService.CashOut(player) -> number
@@ -139,6 +151,11 @@
 -- Studio) si le joueur n'a pas de parcelle, n'est pas dans le volume Bounds de sa parcelle, ne
 -- possède pas l'objet, l'a rangé au coffre-fort, si un voleur l'emporte (tenu), ou si le présentoir
 -- est verrouillé, absent ou déjà occupé. Un objet déjà exposé sur un autre présentoir y est déplacé.
+-- Depuis L-089, c'est ainsi qu'un objet de l'inventaire se pose : le joueur tient son Tool
+-- (InventoryService) et active un présentoir libre (InventoryController).
+-- Remote EquipBest() : DisplayService.EquipBest (plus haut), puis un Notify « Info » (MESSAGES).
+-- Après chaque changement de Display fait ici, la barre d'inventaire est remise à jour tout de suite
+-- (InventoryService.Refresh, s'il est là).
 --
 -- Choix V0 (marqués « V0 proposé, absent du doc » plus bas) :
 --   - encaissement à chaque arrivée sur le CashPad : Touched par le personnage du propriétaire,
@@ -180,12 +197,24 @@ type Rarity = Rarities.Rarity
 
 export type CashOutSource = "Pad" | "Leave" | "Api" | "Auto"
 export type CashOutListener = (player: Player, amount: number, source: CashOutSource) -> ()
-export type PlaceError = "NoProfile" | "NoPlot" | "UnknownItem" | "InVault" | "Held" | "NoSlot" | "Locked" | "Taken" | "NotOnPlot" | "Boxed"
--- État d'un présentoir pour UnboxService (L-086, GetSlotStates).
-export type SlotState = "Free" | "Locked" | "Taken" | "Boxed"
+export type PlaceError = "NoProfile" | "NoPlot" | "UnknownItem" | "InVault" | "Held" | "NoSlot" | "Locked" | "Taken" | "NotOnPlot"
+-- État d'un présentoir pour UnboxService (GetSlotStates ; attribut UnboxState, L-089).
+export type SlotState = "Free" | "Locked" | "Taken"
+
+-- Barre d'inventaire (InventoryService, L-089), chargée si elle est là : sans elle (banc d'essai), la
+-- barre suit quand même le profil, au plus 0,5 s plus tard.
+type InventoryApi = { Refresh: (player: Player) -> () }
+local inventoryModule = script.Parent:FindFirstChild("InventoryService")
+local inventoryLoaded: boolean, inventoryResult: any = false, nil
+if inventoryModule and inventoryModule:IsA("ModuleScript") then
+	inventoryLoaded, inventoryResult = pcall(require, inventoryModule)
+end
+local InventoryService: InventoryApi? = if inventoryLoaded and type(inventoryResult) == "table" then inventoryResult :: any else nil
 
 -- Objet exposé en ce moment (GetExposed).
 export type ExposedItem = { Uid: string, ItemId: string, Income: number }
+-- Objet candidat d'Equip Best (L-089).
+type Candidate = { uid: string, income: number, shown: boolean }
 
 local IS_STUDIO = RunService:IsStudio()
 
@@ -291,7 +320,9 @@ local MESSAGES: { [string]: string } = {
 	NoSlot = "This stand doesn't exist.",
 	Locked = "This stand is locked: upgrade your Display Stands.",
 	Taken = "This stand is already taken.",
-	Boxed = "A box is waiting on this stand.", -- L-086 : colis posé sur ce présentoir
+	-- Equip Best (L-089), catégorie « Info » : V0 proposés, absents du doc.
+	EquipBest = "Your best items are now on display!",
+	EquipBestSame = "Your best items are already on display.",
 }
 
 local SOURCE_LABELS: { [string]: string } = {
@@ -479,10 +510,15 @@ local function isInVault(data: Data, uid: string): boolean
 	return false
 end
 
--- Un colis attend-il sur le présentoir `index` (Boxes du profil, L-086) ?
-local function isBoxed(data: Data, index: number): boolean
-	local boxes = (data :: any).Boxes
-	return type(boxes) == "table" and boxes[tostring(index)] ~= nil
+-- Barre d'inventaire remise à jour tout de suite (en-tête) ; sans InventoryService, sa boucle suit.
+local function refreshInventory(player: Player)
+	local api = InventoryService
+	if api then
+		local ok, err = pcall(api.Refresh :: any, player) -- :: any : sinon l'ancien solveur croit que pcall ne renvoie qu'une valeur
+		if not ok then
+			reportOnce("inventory", `[DisplayService] InventoryService.Refresh : {err}`, "warn")
+		end
+	end
 end
 
 -- L'objet est-il tenu par un voleur (vol en cours, voir l'en-tête) ?
@@ -1095,8 +1131,6 @@ local function sanitize(player: Player, data: Data, refs: PlotRefs): { [number]:
 			why = `présentoir {index} verrouillé ({unlockedCount(player, data, refs)} débloqué(s))`
 		elseif refs.slots[index] == nil then
 			why = `présentoir {index} absent de la parcelle`
-		elseif isBoxed(data, index) then
-			why = `un colis attend sur le présentoir {index}`
 		elseif type(uid) ~= "string" then
 			why = "uid invalide"
 		else
@@ -1394,9 +1428,6 @@ local function place(player: Player, itemUid: string, slot: number, fromClient: 
 	if refs.slots[slot] == nil then
 		return false, "NoSlot"
 	end
-	if isBoxed(data, slot) then
-		return false, "Boxed"
-	end
 	local key = tostring(slot)
 	local occupant = data.Display[key]
 	if occupant == itemUid then
@@ -1415,6 +1446,7 @@ local function place(player: Player, itemUid: string, slot: number, fromClient: 
 	end
 	data.Display[key] = itemUid
 	reconcile(player, account, data, plot)
+	refreshInventory(player)
 	if IS_STUDIO then
 		local moved = if previous then ` (déplacé du présentoir {previous})` else ""
 		print(`[DisplayService] {player.Name} : {describe(data, itemUid, slot)}{moved}, revenu {Format.money(account.income)}/s`)
@@ -1515,7 +1547,7 @@ function DisplayService.PlaceAuto(player: Player, itemUid: string, near: Vector3
 	local bestScore = math.huge
 	for _, index in unlockedList(player, data, refs) do
 		local attachment = refs.slots[index]
-		if attachment and data.Display[tostring(index)] == nil and not isBoxed(data, index) then
+		if attachment and data.Display[tostring(index)] == nil then
 			-- Sans position, le score est le numéro : premier présentoir libre.
 			local score = if origin then (attachment.WorldPosition - origin).Magnitude else index
 			if score < bestScore then
@@ -1529,6 +1561,7 @@ function DisplayService.PlaceAuto(player: Player, itemUid: string, near: Vector3
 	local slot = best :: number
 	data.Display[tostring(slot)] = itemUid
 	reconcile(player, account, data, plot)
+	refreshInventory(player)
 	if data.Display[tostring(slot)] ~= itemUid then
 		return nil
 	end
@@ -1556,6 +1589,7 @@ function DisplayService.Unplace(player: Player, itemUid: string): number?
 	if account and plot then
 		reconcile(player, account, data, plot)
 	end
+	refreshInventory(player)
 	return slot
 end
 
@@ -1650,11 +1684,8 @@ function DisplayService.GetExposed(player: Player): { [number]: ExposedItem }
 	return exposed
 end
 
-function DisplayService.HasRoom(player: Player): boolean
-	local data = DataService.Get(player)
-	if data == nil then
-		return false
-	end
+-- Objets exposés (présentoirs distincts) et objets de l'inventaire (ni exposés ni au coffre-fort).
+local function counts(data: Data): (number, number)
 	local placed: { [string]: boolean } = {}
 	local displayed = 0
 	for _, uid in data.Display do
@@ -1672,18 +1703,27 @@ function DisplayService.HasRoom(player: Player): boolean
 			stored += 1
 		end
 	end
-	-- Un colis en attente occupe son présentoir (L-086).
-	local boxes = (data :: any).Boxes
-	if type(boxes) == "table" then
-		for key in boxes do
-			if data.Display[key] == nil then
-				displayed += 1
-			end
-		end
+	return displayed, stored
+end
+
+function DisplayService.HasRoom(player: Player): boolean
+	local data = DataService.Get(player)
+	if data == nil then
+		return false
 	end
+	local displayed, stored = counts(data)
 	local account = accounts[player]
 	local plot = if account then account.plot else nil
 	return displayed < unlockedCount(player, data, if plot then refsFor(plot) else nil) or stored < Balance.Display.InventoryMax
+end
+
+function DisplayService.HasInventoryRoom(player: Player): boolean
+	local data = DataService.Get(player)
+	if data == nil then
+		return false
+	end
+	local _, stored = counts(data)
+	return stored < Balance.Display.InventoryMax
 end
 
 -- Présentoirs de la parcelle du joueur et leur état (L-086, UnboxService ; voir l'en-tête).
@@ -1719,8 +1759,6 @@ function DisplayService.GetSlotStates(player: Player): { [number]: SlotState }
 				state = "Locked"
 			elseif data.Display[tostring(index)] ~= nil then
 				state = "Taken"
-			elseif isBoxed(data, index) then
-				state = "Boxed"
 			else
 				state = "Free"
 			end
@@ -1728,6 +1766,95 @@ function DisplayService.GetSlotStates(player: Player): { [number]: SlotState }
 		end
 	end
 	return states
+end
+
+-- Equip Best (règle V0 dans l'en-tête). Sans yield.
+function DisplayService.EquipBest(player: Player): number
+	local data, account, plot = context(player)
+	if data == nil or account == nil or plot == nil then
+		return 0
+	end
+	reconcile(player, account, data, plot)
+	local refs = refsFor(plot)
+	local heldBy = held[player] or {}
+	-- Présentoirs utilisables : débloqués, posés, sans objet tenu par un voleur.
+	local slots: { number } = {}
+	for _, index in unlockedList(player, data, refs) do
+		local occupant = data.Display[tostring(index)]
+		if refs.slots[index] ~= nil and not (occupant ~= nil and heldBy[occupant]) then
+			table.insert(slots, index)
+		end
+	end
+	table.sort(slots)
+	local displayedAt: { [string]: number } = {}
+	for _, index in slots do
+		local uid = data.Display[tostring(index)]
+		if uid ~= nil and displayedAt[uid] == nil then
+			displayedAt[uid] = index
+		end
+	end
+	local candidates: { Candidate } = {}
+	for uid, entry in data.Items do
+		local _, def = lookup(data, uid)
+		if def and not isInVault(data, uid) and not heldBy[uid] then
+			table.insert(candidates, { uid = uid, income = itemIncome(def, entry, uid), shown = displayedAt[uid] ~= nil })
+		end
+	end
+	table.sort(candidates, function(a: Candidate, b: Candidate): boolean
+		if a.income ~= b.income then
+			return a.income > b.income
+		end
+		if a.shown ~= b.shown then
+			return a.shown
+		end
+		return a.uid < b.uid
+	end)
+	local best: { [string]: boolean } = {}
+	for position = 1, math.min(#slots, #candidates) do
+		best[candidates[position].uid] = true
+	end
+	-- Les exposés qui ne font plus partie des meilleurs retournent dans l'inventaire…
+	for _, index in slots do
+		local key = tostring(index)
+		local uid = data.Display[key]
+		if uid ~= nil and not best[uid] then
+			data.Display[key] = nil
+		end
+	end
+	-- … et les meilleurs pas encore exposés prennent les présentoirs libres, dans l'ordre.
+	local moved = 0
+	local position = 1
+	for _, candidate in candidates do
+		if best[candidate.uid] and displayedAt[candidate.uid] == nil then
+			while position <= #slots and data.Display[tostring(slots[position])] ~= nil do
+				position += 1
+			end
+			if position > #slots then
+				break
+			end
+			data.Display[tostring(slots[position])] = candidate.uid
+			moved += 1
+		end
+	end
+	reconcile(player, account, data, plot)
+	refreshInventory(player)
+	if IS_STUDIO then
+		print(`[DisplayService] {player.Name} : Equip Best, {moved} objet(s) posé(s), revenu {Format.money(account.income)}/s`)
+	end
+	return moved
+end
+
+local function onEquipBest(player: Player)
+	local data, _, plot = context(player)
+	if data == nil then
+		return
+	end
+	if plot == nil then
+		notify(player, MESSAGES.NoPlot, "Warning")
+		return
+	end
+	local moved = DisplayService.EquipBest(player)
+	notify(player, if moved > 0 then MESSAGES.EquipBest else MESSAGES.EquipBestSame, "Info")
 end
 
 function DisplayService.GetIncome(player: Player): number
@@ -1802,6 +1929,7 @@ function DisplayService.Init()
 	DataService.OnProfileReleasing(onProfileReleasing)
 	Players.PlayerRemoving:Connect(onPlayerRemoving)
 	Net.Server.PlaceItem:Connect(onPlaceItem)
+	Net.Server.EquipBest:Connect(onEquipBest)
 	RunService.Heartbeat:Connect(onHeartbeat)
 end
 
