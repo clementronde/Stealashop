@@ -1,7 +1,7 @@
 --!strict
 -- InviteController (L-057, client) : le bouton InviteButton de l'écran UI_HUD de Clément (dans son
 -- cadre SocialRow, en bas à droite) ouvre l'invitation d'amis de Roblox. Aucun bonus : ses valeurs
--- ne sont pas fixées (L-057). RewardsButton n'est pas branché.
+-- ne sont pas fixées (L-057). RewardsButton, à côté, est branché par RewardsController (DEV-101).
 --
 -- Un clic : SocialService:CanSendGameInviteAsync(joueur), puis, si Roblox le permet,
 -- SocialService:PromptGameInvite(joueur). Les deux dans des pcall, dans une tâche à part : l'écran

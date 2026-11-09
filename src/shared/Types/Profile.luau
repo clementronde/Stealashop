@@ -1,13 +1,14 @@
 --!strict
 -- Type du profil sauvegardé d'un joueur (ReplicatedStorage/Shared/Types/Profile).
--- Schéma v7 : la forme de la v1 (section 9.5 de la Partie 1), avec les ItemId du catalogue
+-- Schéma v8 : la forme de la v1 (section 9.5 de la Partie 1), avec les ItemId du catalogue
 -- d'objets v2 (Config/Items, liaison L-045 ; DataService, MIGRATIONS[2], renomme ou remplace ceux
 -- de la v1), et, en v3 (DEV-100, boutique Robux de la Partie 2), Monetization et Boosts, et la date
 -- du don dans Purchases (MIGRATIONS[3]) ; en v4 (DEV-111, index des objets de la Partie 2), Index
 -- (MIGRATIONS[4]) ; en v5 (L-086, colis posés sur les présentoirs), Boxes rangé par numéro de
 -- présentoir et une file de colis (MIGRATIONS[5]) ; en v6 (DEV-102, gains hors ligne), Offline
 -- (MIGRATIONS[6]) ; en v7 (L-089, colis dans l'inventaire, ouverts au sol de la boutique), Boxes rangé
--- par uid de colis, avec Spot et At, et plus de file (MIGRATIONS[7]).
+-- par uid de colis, avec Spot et At, et plus de file (MIGRATIONS[7]) ; en v8 (DEV-101, récompenses
+-- quotidiennes et de temps de jeu), Rewards (MIGRATIONS[8]).
 -- Valeurs de départ dans DataService.
 -- Ce module ne contient que des types : on l'utilise avec
 --   local ProfileTypes = require(ReplicatedStorage.Shared.Types.Profile)
@@ -129,6 +130,25 @@ export type Offline = {
 	-- boosts temporaires (au retour : absence × Income × Offline.Rate)
 }
 
+-- Calendrier de 7 jours (v8, DEV-101 ; RewardService, Config/Rewards). Jour UTC = os.time() // 86400.
+export type DailyRewards = {
+	Streak: number, -- dernier jour du calendrier réclamé (0 = aucun, 1 à 7) ; 7 = cycle fini, le suivant repart à J1
+	LastDay: number, -- jour UTC de cette réclamation (0 = jamais)
+}
+
+-- Temps de jeu de la journée UTC (v8, DEV-101), compté par le serveur.
+export type PlaytimeRewards = {
+	Day: number, -- jour UTC compté (0 = aucun) : un autre jour remet Seconds et Claimed à zéro
+	Seconds: number, -- secondes de jeu ce jour-là
+	Claimed: { [string]: number }, -- [minutes du palier en texte, « 15 »] = os.time() de la réclamation
+}
+
+-- Récompenses (v8, DEV-101 ; Partie 2, 3.3). Écrit par RewardService seulement.
+export type Rewards = {
+	Daily: DailyRewards,
+	Playtime: PlaytimeRewards,
+}
+
 -- Profil complet, clé ProfileStore « Player_<UserId> ».
 export type Data = {
 	Version: number,
@@ -153,10 +173,11 @@ export type Data = {
 	-- joueur l'a possédé (IndexService ; Config/Index). Jamais retiré : un objet volé, remis ou perdu
 	-- reste découvert. La migration v3 → v4 y met les objets déjà possédés (DataService, MIGRATIONS[4])
 	Offline: Offline, -- v6 : heure et revenu de la dernière présence, pour les gains hors ligne (DEV-102)
-	-- Partie 2 : Defenses, Rebirths, Rewards, ajoutés par migration (Version = 8 et suivantes : la v2
-	-- est prise par le catalogue d'objets v2, la v3 par la boutique Robux, la v4 par l'index, la v5 par
-	-- les colis sur les présentoirs, la v6 par les gains hors ligne, la v7 par les colis dans
-	-- l'inventaire).
+	Rewards: Rewards, -- v8 : calendrier de 7 jours et temps de jeu du jour (DEV-101, RewardService)
+	-- Partie 2 : Defenses, Rebirths, ajoutés par migration (Version = 9 et suivantes : la v2 est prise
+	-- par le catalogue d'objets v2, la v3 par la boutique Robux, la v4 par l'index, la v5 par les colis
+	-- sur les présentoirs, la v6 par les gains hors ligne, la v7 par les colis dans l'inventaire, la v8
+	-- par les récompenses).
 }
 
 return {}
