@@ -399,12 +399,12 @@ local function clearStarterOffer(player: Player, state: State)
 	setAttribute(player, STARTER_ATTRIBUTE, nil)
 end
 
--- Colis qui attend le plus : présentoir (L-086) et heure serveur où il sera prêt.
-local function longestWait(player: Player): (number?, number?)
-	local bench: number?, latest: number? = nil, nil
-	for index, readyAt in UnboxService.GetWaiting(player) do
-		if latest == nil or readyAt > latest or (readyAt == latest and index < (bench :: number)) then
-			bench, latest = index, readyAt
+-- Colis qui attend le plus : uid du colis posé au sol (L-089) et heure serveur où il sera prêt.
+local function longestWait(player: Player): (string?, number?)
+	local bench: string?, latest: number? = nil, nil
+	for boxUid, readyAt in UnboxService.GetWaiting(player) do
+		if latest == nil or readyAt > latest or (readyAt == latest and boxUid < (bench :: string)) then
+			bench, latest = boxUid, readyAt
 		end
 	end
 	return bench, latest
@@ -505,7 +505,7 @@ local function grantOpenNow(player: Player, data: Data, tier: Tier): string
 			else
 				notify(player, string.format(MESSAGES.OpenNowShorter, duration(tier.Skip)))
 			end
-			return `colis du présentoir {bench} : {if left <= 0 then "prêt" else `reste {duration(left)}`}`
+			return `colis {bench} : {if left <= 0 then "prêt" else `reste {duration(left)}`}`
 		end
 	end
 	local monetization = monetizationOf(data) :: MonetizationData
@@ -742,20 +742,20 @@ local function onProfileReleasing(player: Player)
 end
 
 -- Un colis vient d'être posé : le crédit d'« Ouvrir maintenant » raccourcit son attente.
-local function onBoxPlaced(player: Player, slotIndex: number, _box: any)
+local function onBoxPlaced(player: Player, boxUid: string, _box: any)
 	local monetization = monetizationOf(DataService.Get(player))
 	local credit = if monetization then finite(monetization.OpenNowCredit) else 0
 	if monetization == nil or credit <= 0 then
 		return
 	end
-	local readyAt = UnboxService.GetWaiting(player)[slotIndex]
+	local readyAt = UnboxService.GetWaiting(player)[boxUid]
 	local skip = if readyAt then math.min(credit, readyAt - serverNow()) else 0
-	if skip <= 0 or UnboxService.SkipWait(player, slotIndex, skip) == nil then
+	if skip <= 0 or UnboxService.SkipWait(player, boxUid, skip) == nil then
 		return
 	end
 	monetization.OpenNowCredit = credit - skip
 	notify(player, string.format(MESSAGES.OpenNowCreditUsed, duration(skip)))
-	log(`{player.Name} : crédit d'Ouvrir maintenant : {duration(skip)} retirées au colis du présentoir {slotIndex}, reste {monetization.OpenNowCredit} s`)
+	log(`{player.Name} : crédit d'Ouvrir maintenant : {duration(skip)} retirées au colis {boxUid}, reste {monetization.OpenNowCredit} s`)
 end
 
 ------------------------------------------------------------------------------

@@ -360,7 +360,7 @@ local function buyUpgrade(player: Player, data: Data, upgrade: UpgradeDef)
 	local newLevel = level + 1
 	;(data.Upgrades :: any)[upgrade.Id] = newLevel
 	if upgrade.Id == "DisplaySlots" then
-		-- L-086 : le présentoir acheté peut tout de suite recevoir un colis (attribut UnboxState).
+		-- L-089 : le présentoir acheté peut tout de suite recevoir un objet de l'inventaire (attribut UnboxState).
 		guarded("UnboxService.Refresh", UnboxService.Refresh, player)
 	end
 	publish(player)

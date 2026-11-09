@@ -179,7 +179,7 @@ local function onProfileLoaded(player: Player)
 	log(`{player.Name} : {Index.CountAll(index)} / {Index.Total} objet(s) découvert(s){extra} ; zone(s) complète(s) : {zonesText(index)}`)
 end
 
-local function onBoxOpened(player: Player, _slotIndex: number, _itemUid: string, itemId: string, revealDelay: number?)
+local function onBoxOpened(player: Player, _boxUid: string, _itemUid: string, itemId: string, revealDelay: number?)
 	discover(player, itemId, revealDelay)
 end
 

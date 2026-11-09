@@ -10,7 +10,8 @@
 -- ou un coup de batte qui fait tomber le colis (Drop, BatService). Ce service ne remet jamais
 -- rien en place lui-même : le service d'origine réagit à OnCarryEnded (le braquage remet le colis
 -- sur son rayon, le vol PvP rend l'objet à son présentoir). Aucun remote ici : la prise arrive par
--- GrabItem (StoreHeistService) ou StealItem (PvPService), la pose par PlaceBox (UnboxService), le
+-- GrabItem (StoreHeistService) ou StealItem (PvPService), le rangement dans l'inventaire à l'entrée de
+-- la zone safe (UnboxService, L-089), le
 -- dépôt d'un objet volé par PvPService (Consume, raison « Deposited »).
 --
 -- Payload (Shared/Types/Carry) : { Kind = "NPCBox", Tier, Zone, Rarity, ItemId, StoreId, SlotId, Mutation? }
@@ -27,12 +28,13 @@
 --   CarryService.IsCarrying(player) -> boolean
 --   CarryService.GetPayload(player) -> Payload?
 --   CarryService.Consume(player, reason?) -> Payload?
---       Fin réussie (colis posé sur un établi, objet déposé) : visuels et malus retirés, puis
+--       Fin réussie (colis rangé dans l'inventaire, objet déposé) : visuels et malus retirés, puis
 --       OnCarryEnded(…, "Consumed", reason ou "Consumed"). Renvoie le payload, nil si le joueur ne
 --       portait rien. Ne regarde pas le type : l'appelant vérifie GetPayload(player).Kind avant.
 --   CarryService.Fail(player, reason) -> boolean
 --       Échec : le colis est perdu pour le porteur, OnCarryEnded(…, "Failed", reason). false si le
---       joueur ne portait rien. Raisons posées ici : "Died" (mort) ; "Left" (départ) ;
+--       joueur ne portait rien (UnboxService passe "InventoryFull" et "Invalid", L-089). Raisons
+--       posées ici : "Died" (mort) ; "Left" (départ) ;
 --       "CharacterRemoved" (personnage retiré sans mourir ; à une déconnexion, selon l'ordre des
 --       événements de Roblox, la raison est "Left" ou "CharacterRemoved") ; "Anomaly"
 --       (ReportAnomaly) ; "Bat" (Drop d'un objet volé). Les autres services passent la leur

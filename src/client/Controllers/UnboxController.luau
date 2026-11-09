@@ -1,22 +1,18 @@
 --!strict
--- UnboxController (DEV-019, DEV-050, DEV-052, L-086 ; client) : les colis posés sur les présentoirs
--- de sa propre parcelle et l'ouverture des colis v2 (Partie 1, sections 5.6, 5.7 et 9.4 ; spec
--- ouverture-colis validée par Clément le 2026-11-07, liaison L-046). Plus d'établis depuis L-086
--- (2026-11-08) : on pose et on ouvre le colis sur un présentoir, l'objet y reste exposé.
+-- UnboxController (DEV-019, DEV-050, DEV-052, L-089 ; client) : les colis posés au sol de sa propre
+-- boutique et l'ouverture des colis v2 (Partie 1, sections 5.6, 5.7 et 9.4 ; spec ouverture-colis
+-- validée par Clément le 2026-11-07, liaison L-046). Depuis L-089 (2026-11-09) : le colis rentre dans
+-- l'inventaire à l'entrée de la zone safe, le joueur le pose où il veut au sol de sa boutique
+-- (InventoryController), il s'ouvre là, et l'objet va dans l'inventaire.
 --
 -- Rôle :
---   - sur chaque DisplaySlot_xx de la parcelle du joueur (attribut OwnerUserId = son UserId, posé
---     par PlotService), une invite créée ici, côté client seulement (ProximityPrompt
---     « UnboxPrompt ») :
---       « Place Box » quand le joueur porte un colis (attribut Carrying du Player, posé par
---       CarryService) et que le présentoir est débloqué et libre (attribut UnboxState = "Free" du
---       présentoir, posé par UnboxService) : envoie PlaceBox(slotIndex) et joue Place (contrat 2.4) ;
---       « Open » quand BoxReady(slotIndex) est arrivé (ou UnboxState = "Ready") : garde une copie
---       locale du colis du présentoir (StandBox_<nn>, sans son minuteur : le serveur détruit le sien
---       à l'ouverture), puis envoie OpenBox(slotIndex) ;
---     sinon l'invite est cachée (présentoir verrouillé, objet exposé, colis qui attend). Le serveur
---     revérifie tout (parcelle, portée, présentoir débloqué et libre, colis porté, attente écoulée) ;
---   - UnboxReveal(slotIndex, itemUid, itemId, zone, tier, startRarity, upgrades, mutationSize?,
+--   - sur chaque colis posé de sa boutique (Model FloorBox d'UnboxService, attributs BoxUid et
+--     OwnerUserId = son UserId), une invite créée ici, côté client seulement (ProximityPrompt
+--     « UnboxPrompt ») : « Open » quand BoxReady(boxUid) est arrivé (ou attribut UnboxState = "Ready"
+--     du colis) : garde une copie locale du colis (sans son minuteur : le serveur détruit le sien à
+--     l'ouverture), puis envoie OpenBox(boxUid). Cachée pendant l'attente. Le serveur revérifie tout
+--     (parcelle, portée, attente écoulée, place pour l'objet) ;
+--   - UnboxReveal(boxUid, itemUid, itemId, zone, tier, startRarity, upgrades, mutationSize?,
 --     mutationEffect?) (mutation de l'objet, DEV-131 : nom et revenu à l'écran) : joue la
 --     séquence de la spec dans l'écran UI_Unbox v2 de Clément (contrat 2.2, Enabled = false au
 --     départ) : crans d'amélioration tirés par le serveur, animation Unbox (marqueur Open, secours
@@ -25,27 +21,27 @@
 --     Commun et Peu commun ; toutes les durées dans Config.Unbox. Modules d'aide (dossier Unbox) :
 --     Sequence (le déroulé), Screen (l'affichage, remis dans l'état de Studio à la fermeture),
 --     Reel (le rouleau) ;
---   - objet exposé caché (L-086) : le serveur pose l'objet sur le présentoir du colis dès
---     l'ouverture (DisplayItem_<nn> de DisplayService, attribut ItemUid), donc juste sous le rouleau.
---     Pour ne pas gâcher la surprise, ce modèle est sorti du jeu sur ce client seulement, jusqu'à la
---     révélation de la séquence (événement Reveal) ou la fermeture de l'écran, au plus
---     HIDE_MAX s ; les autres joueurs le voient tout de suite, comme avant ;
+--   - objet exposé caché : l'objet va dans l'inventaire (son Tool n'arrive qu'à la révélation,
+--     InventoryService). Seul cas où il est exposé tout de suite (inventaire plein, présentoir libre :
+--     DisplayItem_<nn> de DisplayService, attribut ItemUid) : ce modèle est sorti du jeu sur ce client
+--     seulement, jusqu'à la révélation de la séquence (événement Reveal) ou la fermeture de l'écran, au
+--     plus HIDE_MAX s ; les autres joueurs le voient tout de suite ;
 --   - SkipButton (« TAP TO SKIP ») : pendant le rouleau, le gagnant arrive au centre en 0,4 s ;
 --     ensuite, tout s'affiche d'un coup ;
 --   - ContinueButton ferme l'écran, sinon il se ferme tout seul Config.Unbox.AutoClose s après
 --     les boutons ; des ouvertures d'affilée passent l'une après l'autre ;
---   - OpenNextButton (« OPEN NEXT ») : seulement si un autre présentoir de la parcelle a un colis
---     prêt à portée selon la règle d'OpenBox (Config.Unbox : 8 + 4 studs entre le HumanoidRootPart
---     et le présentoir, moins une marge) ; il envoie OpenBox de ce présentoir, à distance, et la
---     séquence suivante part à son UnboxReveal ;
---   - revenu du HUD (vague 8) : le serveur expose l'objet, donc l'attribut Income du Player monte,
---     dès l'ouverture. Pour ne pas gâcher la surprise, chaque UnboxReveal retient le revenu du HUD
+--   - OpenNextButton (« OPEN NEXT ») : seulement si un autre colis posé de sa boutique est prêt à
+--     portée selon la règle d'OpenBox (Config.Unbox : 8 + 4 studs entre le HumanoidRootPart et le
+--     colis, moins une marge) ; il envoie OpenBox de ce colis, à distance, et la séquence suivante
+--     part à son UnboxReveal ;
+--   - revenu du HUD (vague 8) : chaque UnboxReveal retient le revenu du HUD
 --     (HudController.HoldIncome) jusqu'à ce que l'écran ait fini de compter le revenu de l'objet
---     (événement CountEnd de la séquence, avec le son Unbox_Cash). Sans HudController, rien n'est
---     retenu. La retenue est relâchée tout de suite si l'écran manque, si l'objet est inconnu, et
---     dès que l'écran se ferme (réapparition, erreur) avant ce moment.
+--     (événement CountEnd de la séquence, avec le son Unbox_Cash) : utile quand l'objet est exposé
+--     tout de suite (inventaire plein). Sans HudController, rien n'est retenu. La retenue est relâchée
+--     tout de suite si l'écran manque, si l'objet est inconnu, et dès que l'écran se ferme
+--     (réapparition, erreur) avant ce moment.
 -- En Studio, l'objet révélé est aussi écrit dans la sortie. Sans UI_Unbox, la sortie seulement.
--- Les invites suivent le streaming : un présentoir qui sort de la zone chargée perd son invite, elle
+-- Les invites suivent le streaming : un colis qui sort de la zone chargée perd son invite, elle
 -- revient avec lui. Aucune règle de jeu : le serveur décide (amélioration et objet compris).
 
 local CollectionService = game:GetService("CollectionService")
@@ -57,7 +53,6 @@ local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = Shared:WaitForChild("Config")
-local Balance = require(Config:WaitForChild("Balance"))
 local Formulas = require(Config:WaitForChild("Formulas"))
 local Items = require(Config:WaitForChild("Items"))
 local Mutations = require(Config:WaitForChild("Mutations"))
@@ -69,17 +64,15 @@ local UnboxFolder = script.Parent:WaitForChild("Unbox")
 local Screen = require(UnboxFolder:WaitForChild("Screen"))
 local Sequence = require(UnboxFolder:WaitForChild("Sequence"))
 
-type Mode = "Place" | "Open"
-
 type AnimationApi = {
 	PlayPlayer: (name: string) -> AnimationTrack?,
 	OnMarker: ((animName: string, markerName: string, callback: () -> ()) -> () -> ())?,
 }
 
-type StandView = {
-	attachment: Attachment,
+-- Un colis posé de sa boutique et son invite.
+type BoxView = {
+	model: Model,
 	prompt: ProximityPrompt,
-	mode: Mode?,
 	connections: { RBXScriptConnection },
 }
 
@@ -88,12 +81,13 @@ type HudApi = {
 	HoldIncome: () -> () -> (),
 }
 
--- Copie locale d'un colis de présentoir, prise à l'appui sur « Open ».
+-- Copie locale d'un colis posé, prise à l'appui sur « Open ».
 type Pending = { model: Model, at: number }
 
--- Révélation reçue, en attente d'affichage, avec la copie locale de son colis, la retenue du
--- revenu du HUD (nil : rien de retenu) et le retour de l'objet exposé caché (nil : rien de caché).
-type Queued = { reveal: Sequence.Reveal, box: Model?, release: (() -> ())?, unhide: (() -> ())? }
+-- Révélation reçue, en attente d'affichage, avec la copie locale de son colis, le point où il était
+-- posé, la retenue du revenu du HUD (nil : rien de retenu) et le retour de l'objet exposé caché (nil :
+-- rien de caché).
+type Queued = { reveal: Sequence.Reveal, box: Model?, anchor: Vector3?, release: (() -> ())?, unhide: (() -> ())? }
 
 type Running = {
 	reveal: Sequence.Reveal,
@@ -108,23 +102,21 @@ type Running = {
 
 -- Contrat et attributs posés par les services serveur (lus sans require).
 local PLOT_TAG = "PlayerPlot"
-local OWNER_ATTRIBUTE = "OwnerUserId" -- PlotService
-local CARRYING_ATTRIBUTE = "Carrying" -- CarryService : Id de rareté du colis porté
-local STATE_ATTRIBUTE = "UnboxState" -- UnboxService : "Locked", "Free", "Taken", "Waiting", "Ready"
-local SLOT_PATTERN = "^DisplaySlot_(%d+)$" -- présentoirs, contrat 10.4
-local BOX_MODEL_FORMAT = "StandBox_%02d" -- UnboxService : colis posé sur le présentoir, dans la parcelle
+local OWNER_ATTRIBUTE = "OwnerUserId" -- PlotService (parcelle), UnboxService (colis posé)
+local STATE_ATTRIBUTE = "UnboxState" -- UnboxService, sur le colis posé : "Waiting", "Ready"
+local BOX_UID_ATTRIBUTE = "BoxUid" -- UnboxService : uid du colis posé
+local BOX_MODEL_NAME = "FloorBox" -- UnboxService : colis posé au sol, dans la parcelle
 local ITEM_UID_ATTRIBUTE = "ItemUid" -- DisplayService : sur chaque objet exposé (DisplayItem_<nn>)
 local PROMPT_NAME = "UnboxPrompt"
 local LOCAL_BOX_NAME = "UnboxLocalBox"
 
 -- V0 proposé, absent du doc : textes (en anglais, L-036) et portée de l'invite (Config.Unbox). Le
 -- serveur accepte la portée + 4 studs (UnboxService).
-local PLACE_TEXT = "Place Box"
 local OPEN_TEXT = "Open"
-local OBJECT_TEXT = "Stand"
+local OBJECT_TEXT = "Box"
 local PROMPT_DISTANCE = Unbox.PromptDistance
 -- OpenNextButton : la portée d'OpenBox (8 + 4 studs), moins une marge pour ne jamais proposer un
--- présentoir que le serveur refuserait.
+-- colis que le serveur refuserait.
 local OPEN_NEXT_REACH = Unbox.PromptDistance + Unbox.ReachTolerance - Unbox.OpenNextMargin
 
 -- Écran de révélation (contrat 2.2).
@@ -139,9 +131,6 @@ local OPEN_NEXT_CHECK = 0.25
 local HIDE_MAX = 12
 
 local IS_STUDIO = RunService:IsStudio()
--- Présentoirs de base (Balance.Display.MaxSlots) et présentoirs bonus de la boutique Robux, comme
--- DisplayService (V0 : 10 bonus au plus).
-local MAX_SLOTS = Balance.Display.MaxSlots + 10
 
 local UnboxController = {}
 
@@ -152,9 +141,11 @@ local hudApi: HudApi? = nil
 local plot: Model? = nil
 local plotConnections: { RBXScriptConnection } = {}
 local watchedPlots: { [Instance]: RBXScriptConnection } = {}
-local views: { [number]: StandView } = {}
-local ready: { [number]: boolean } = {} -- BoxReady reçu, pas encore ouvert
-local pendingBoxes: { [number]: Pending } = {}
+local views: { [string]: BoxView } = {}
+local ready: { [string]: boolean } = {} -- BoxReady reçu, pas encore ouvert
+local pendingBoxes: { [string]: Pending } = {}
+-- Dernier point connu de chaque colis posé : le serveur retire le modèle juste avant UnboxReveal.
+local lastBase: { [string]: Vector3 } = {}
 local revealQueue: { Queued } = {} -- révélations en attente d'affichage
 local running: Running? = nil -- révélation à l'écran
 local screenMissingWarned = false
@@ -206,7 +197,7 @@ local function releaseIncome(release: (() -> ())?)
 	end
 end
 
--- Objet exposé caché pendant l'ouverture (en-tête, L-086) : le modèle de sa parcelle qui porte
+-- Objet exposé caché pendant l'ouverture (en-tête) : le modèle de sa parcelle qui porte
 -- ItemUid = `itemUid` est sorti du jeu sur ce client (Parent = nil, sans effet sur le serveur), qu'il
 -- soit déjà là ou qu'il arrive ensuite. Renvoie la fonction qui le rend (à appeler une fois ; elle
 -- est aussi appelée toute seule après HIDE_MAX s).
@@ -279,42 +270,27 @@ local function playAnimation(name: string): boolean
 	return ok and track ~= nil
 end
 
-local function isCarrying(): boolean
-	local carrying = localPlayer:GetAttribute(CARRYING_ATTRIBUTE)
-	return type(carrying) == "string" and carrying ~= ""
+local function isReady(boxUid: string): boolean
+	local view = views[boxUid]
+	return ready[boxUid] == true or (view ~= nil and view.model:GetAttribute(STATE_ATTRIBUTE) == "Ready")
 end
 
--- Montre, cache ou change l'invite du présentoir `index` selon son état.
-local function refresh(index: number)
-	local view = views[index]
-	if view == nil then
-		return
-	end
-	local state = view.attachment:GetAttribute(STATE_ATTRIBUTE)
-	local mode: Mode? = nil
-	if ready[index] or state == "Ready" then
-		mode = "Open"
-	elseif state == "Free" and isCarrying() then
-		mode = "Place"
-	end
-	view.mode = mode
-	if mode == "Open" then
-		view.prompt.ActionText = OPEN_TEXT
-	elseif mode == "Place" then
-		view.prompt.ActionText = PLACE_TEXT
-	end
-	view.prompt.Enabled = mode ~= nil
-end
-
-local function refreshAll()
-	for index in views do
-		refresh(index)
+-- Montre ou cache l'invite du colis `boxUid` selon son état.
+local function refresh(boxUid: string)
+	local view = views[boxUid]
+	if view then
+		view.prompt.Enabled = isReady(boxUid)
 	end
 end
 
--- Copie locale du colis du présentoir `index` (StandBox_<nn> d'UnboxService), sans scripts ni
--- billboard (le minuteur « Ready! »), gardée hors du jeu jusqu'à son UnboxReveal.
-local function captureBox(index: number)
+-- Pied d'un colis posé (pivot de son modèle, en bas au centre).
+local function basePosition(view: BoxView): Vector3
+	return view.model:GetPivot().Position
+end
+
+-- Copie locale du colis posé `boxUid` (FloorBox d'UnboxService), sans scripts ni billboard (le
+-- minuteur « Ready! ») ni invite, gardée hors du jeu jusqu'à son UnboxReveal.
+local function captureBox(boxUid: string)
 	local now = os.clock()
 	for key, pending in pendingBoxes do
 		if now - pending.at > PENDING_MAX then
@@ -322,35 +298,34 @@ local function captureBox(index: number)
 			pending.model:Destroy()
 		end
 	end
-	local current = plot
-	local original = if current then current:FindFirstChild(string.format(BOX_MODEL_FORMAT, index)) else nil
-	if original == nil or not original:IsA("Model") then
+	local view = views[boxUid]
+	if view == nil then
 		return
 	end
 	local ok, copy = pcall(function(): Instance?
-		return original:Clone()
+		return view.model:Clone()
 	end)
 	if not ok or copy == nil or not copy:IsA("Model") then
 		return
 	end
 	local model = copy :: Model
 	for _, descendant in model:GetDescendants() do
-		if descendant:IsA("LuaSourceContainer") or descendant:IsA("BillboardGui") then
+		if descendant:IsA("LuaSourceContainer") or descendant:IsA("BillboardGui") or descendant:IsA("ProximityPrompt") then
 			descendant:Destroy()
 		end
 	end
 	model.Name = LOCAL_BOX_NAME
-	local old = pendingBoxes[index]
+	local old = pendingBoxes[boxUid]
 	if old then
 		old.model:Destroy()
 	end
-	pendingBoxes[index] = { model = model, at = now }
+	pendingBoxes[boxUid] = { model = model, at = now }
 end
 
--- La copie locale du colis du présentoir `index`, posée dans le jeu à la place de celui du serveur.
-local function takeBox(index: number): Model?
-	local pending = pendingBoxes[index]
-	pendingBoxes[index] = nil
+-- La copie locale du colis `boxUid`, posée dans le jeu à la place de celle du serveur.
+local function takeBox(boxUid: string): Model?
+	local pending = pendingBoxes[boxUid]
+	pendingBoxes[boxUid] = nil
 	if pending == nil then
 		return nil
 	end
@@ -362,40 +337,31 @@ local function takeBox(index: number): Model?
 	return pending.model
 end
 
-local function onTriggered(index: number)
-	local view = views[index]
-	if view == nil then
-		return
-	end
-	if view.mode == "Place" then
-		net.Client.PlaceBox:Fire(index)
-		playAnimation("Place")
-	elseif view.mode == "Open" then
-		-- L'animation Unbox est jouée par la séquence, après les crans d'amélioration.
-		captureBox(index)
-		net.Client.OpenBox:Fire(index)
-	end
+local function openBox(boxUid: string)
+	-- L'animation Unbox est jouée par la séquence, après les crans d'amélioration.
+	captureBox(boxUid)
+	net.Client.OpenBox:Fire(boxUid)
 end
 
--- Numéro du présentoir si `inst` est un DisplaySlot_xx, sinon nil.
-local function slotIndexOf(inst: Instance): number?
-	if not inst:IsA("Attachment") then
+-- Uid du colis si `inst` est un colis posé de ce joueur (FloorBox, BoxUid, OwnerUserId), sinon nil.
+local function boxUidOf(inst: Instance): string?
+	if not inst:IsA("Model") or inst.Name ~= BOX_MODEL_NAME then
 		return nil
 	end
-	local digits = string.match(inst.Name, SLOT_PATTERN)
-	local index = if digits then tonumber(digits) else nil
-	if index and index >= 1 and index <= MAX_SLOTS then
-		return index
+	local uid = inst:GetAttribute(BOX_UID_ATTRIBUTE)
+	if type(uid) ~= "string" or inst:GetAttribute(OWNER_ATTRIBUTE) ~= localPlayer.UserId then
+		return nil
 	end
-	return nil
+	return uid
 end
 
-local function removeView(index: number)
-	local view = views[index]
+local function removeView(boxUid: string)
+	local view = views[boxUid]
 	if view == nil then
 		return
 	end
-	views[index] = nil
+	views[boxUid] = nil
+	lastBase[boxUid] = basePosition(view)
 	for _, connection in view.connections do
 		connection:Disconnect()
 	end
@@ -403,47 +369,62 @@ local function removeView(index: number)
 end
 
 local function addView(inst: Instance)
-	local index = slotIndexOf(inst)
-	if index == nil then
+	local boxUid = boxUidOf(inst)
+	if boxUid == nil then
 		return
 	end
-	local attachment = inst :: Attachment
-	local existing = views[index]
+	local model = inst :: Model
+	local existing = views[boxUid]
 	if existing then
-		if existing.attachment == attachment or existing.attachment.Parent ~= nil then
-			return -- déjà là (un nom en double est signalé par le ContractChecker)
+		if existing.model == model or existing.model.Parent ~= nil then
+			return
 		end
-		removeView(index)
+		removeView(boxUid)
+	end
+	local holder = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart", true)
+	if holder == nil then
+		return -- pas encore arrivé en entier (streaming) : DescendantAdded le rappellera
 	end
 
 	local prompt = Instance.new("ProximityPrompt")
 	prompt.Name = PROMPT_NAME
 	prompt.ObjectText = OBJECT_TEXT
-	prompt.ActionText = PLACE_TEXT
+	prompt.ActionText = OPEN_TEXT
 	prompt.MaxActivationDistance = PROMPT_DISTANCE
 	prompt.RequiresLineOfSight = false
 	prompt.HoldDuration = 0
 	prompt.Enabled = false
 
-	local view: StandView = { attachment = attachment, prompt = prompt, mode = nil, connections = {} }
+	local view: BoxView = { model = model, prompt = prompt, connections = {} }
 	table.insert(
 		view.connections,
 		prompt.Triggered:Connect(function()
-			onTriggered(index)
+			if isReady(boxUid) then
+				openBox(boxUid)
+			end
 		end)
 	)
 	table.insert(
 		view.connections,
-		attachment:GetAttributeChangedSignal(STATE_ATTRIBUTE):Connect(function()
-			if attachment:GetAttribute(STATE_ATTRIBUTE) ~= "Ready" then
-				ready[index] = nil -- colis ouvert, présentoir libéré ou de nouveau en attente
-			end
-			refresh(index)
+		model:GetAttributeChangedSignal(STATE_ATTRIBUTE):Connect(function()
+			refresh(boxUid)
 		end)
 	)
-	views[index] = view
-	prompt.Parent = attachment
-	refresh(index)
+	views[boxUid] = view
+	prompt.Parent = holder
+	refresh(boxUid)
+end
+
+local function onDescendantAdded(inst: Instance)
+	if inst:IsA("BasePart") then
+		-- Une pièce d'un colis posé arrive après son modèle (streaming) : on réessaie le modèle.
+		local model = inst:FindFirstAncestorWhichIsA("Model")
+		if model then
+			addView(model)
+		end
+		return
+	end
+	addView(inst)
 end
 
 local function setPlot(newPlot: Model?)
@@ -451,9 +432,10 @@ local function setPlot(newPlot: Model?)
 		return
 	end
 	local hadPlot = plot ~= nil
-	for index in views do
-		removeView(index)
+	for boxUid in views do
+		removeView(boxUid)
 	end
+	table.clear(lastBase)
 	for _, connection in plotConnections do
 		connection:Disconnect()
 	end
@@ -467,14 +449,14 @@ local function setPlot(newPlot: Model?)
 	if newPlot == nil then
 		return
 	end
-	table.insert(plotConnections, newPlot.DescendantAdded:Connect(addView))
+	table.insert(plotConnections, newPlot.DescendantAdded:Connect(onDescendantAdded))
 	table.insert(
 		plotConnections,
 		newPlot.DescendantRemoving:Connect(function(inst: Instance)
-			local index = slotIndexOf(inst)
-			local view = if index then views[index] else nil
-			if index and view and view.attachment == inst then
-				removeView(index)
+			local boxUid = boxUidOf(inst)
+			local view = if boxUid then views[boxUid] else nil
+			if boxUid and view and view.model == inst then
+				removeView(boxUid)
 			end
 		end)
 	)
@@ -514,11 +496,14 @@ local function unwatchPlot(inst: Instance)
 	updatePlot()
 end
 
-local function onBoxReady(index: number)
-	ready[index] = true
-	refresh(index)
+local function onBoxReady(boxUid: any)
+	if type(boxUid) ~= "string" then
+		return
+	end
+	ready[boxUid] = true
+	refresh(boxUid)
 	if IS_STUDIO then
-		print(`[Unbox] le colis du présentoir {index} est prêt`)
+		print(`[Unbox] le colis {boxUid} est prêt`)
 	end
 end
 
@@ -534,21 +519,21 @@ local function revealScreen(): ScreenGui?
 	return nil
 end
 
--- Autre présentoir de sa parcelle avec un colis prêt, à portée d'OpenBox (le plus proche), sauf `exclude`.
-local function nextStand(exclude: number): number?
+-- Autre colis posé de sa boutique, prêt, à portée d'OpenBox (le plus proche), sauf `exclude`.
+local function nextBox(exclude: string): string?
 	local character = localPlayer.Character
 	local root = if character then character:FindFirstChild("HumanoidRootPart") else nil
 	if root == nil or not root:IsA("BasePart") then
 		return nil
 	end
 	local position = (root :: BasePart).Position
-	local best: number? = nil
+	local best: string? = nil
 	local bestDistance = math.huge
-	for index, view in views do
-		if index ~= exclude and (ready[index] or view.attachment:GetAttribute(STATE_ATTRIBUTE) == "Ready") then
-			local distance = (view.attachment.WorldPosition - position).Magnitude
+	for boxUid, view in views do
+		if boxUid ~= exclude and isReady(boxUid) then
+			local distance = (basePosition(view) - position).Magnitude
 			if distance <= OPEN_NEXT_REACH and distance < bestDistance then
-				best, bestDistance = index, distance
+				best, bestDistance = boxUid, distance
 			end
 		end
 	end
@@ -581,7 +566,7 @@ local function closeReveal()
 end
 
 -- L'écran a fini de compter le revenu de l'objet (CountEnd) : le HUD peut le montrer. L'objet est
--- révélé (Reveal) : son modèle exposé peut revenir sur le présentoir (L-086).
+-- révélé (Reveal) : son modèle exposé peut revenir sur le présentoir.
 local function checkIncome(current: Running)
 	local release = current.release
 	if release and current.runner:IsFired("CountEnd") then
@@ -626,7 +611,7 @@ local function stepReveal(dt: number)
 	current.nextCheck -= dt
 	if current.nextCheck <= 0 then
 		current.nextCheck = OPEN_NEXT_CHECK
-		pcall(current.view.SetOpenNext, current.view, nextStand(current.reveal.SlotIndex) ~= nil, nil)
+		pcall(current.view.SetOpenNext, current.view, nextBox(current.reveal.BoxUid) ~= nil, nil)
 	end
 end
 
@@ -636,12 +621,11 @@ local function openNext()
 	if current == nil or current.runner:SinceButtons() == nil then
 		return
 	end
-	local index = nextStand(current.reveal.SlotIndex)
-	if index == nil then
+	local boxUid = nextBox(current.reveal.BoxUid)
+	if boxUid == nil then
 		return
 	end
-	captureBox(index)
-	net.Client.OpenBox:Fire(index)
+	openBox(boxUid)
 	closeReveal()
 end
 
@@ -708,15 +692,13 @@ local hooks: Screen.Hooks = {
 	PlayPlayer = playAnimation,
 	CanOpenNext = function(): boolean
 		local current = running
-		return current ~= nil and nextStand(current.reveal.SlotIndex) ~= nil
+		return current ~= nil and nextBox(current.reveal.BoxUid) ~= nil
 	end,
 }
 
 local function startReveal(entry: Queued, screen: ScreenGui, plan: Sequence.Plan)
-	-- Point du présentoir : Upgrade et le rouleau s'y placent s'il n'y a pas de copie du colis (L-080).
-	local stand = views[entry.reveal.SlotIndex]
-	local anchor = if stand then stand.attachment.WorldPosition else nil
-	local view = Screen.new(screen, plan, entry.box, hooks, anchor)
+	-- Point du colis posé : Upgrade et le rouleau s'y placent s'il n'y a pas de copie du colis (L-080).
+	local view = Screen.new(screen, plan, entry.box, hooks, entry.anchor)
 	local runner = Sequence.new(plan, view :: any)
 	local current: Running = {
 		reveal = entry.reveal,
@@ -755,7 +737,7 @@ showNextReveal = function()
 		local plan, why = Sequence.plan(entry.reveal, rng)
 		if plan == nil then
 			if IS_STUDIO then
-				warn(`[Unbox] présentoir {entry.reveal.SlotIndex} : {why}`)
+				warn(`[Unbox] colis {entry.reveal.BoxUid} : {why}`)
 			end
 			if entry.box then
 				entry.box:Destroy()
@@ -765,7 +747,7 @@ showNextReveal = function()
 			continue
 		end
 		if IS_STUDIO and plan.Mismatch then
-			warn(`[Unbox] présentoir {entry.reveal.SlotIndex} : {entry.reveal.StartRarity} + {entry.reveal.Upgrades} cran(s) ≠ {plan.Rarity.Id} ({entry.reveal.ItemId}) : catalogues client et serveur différents ?`)
+			warn(`[Unbox] colis {entry.reveal.BoxUid} : {entry.reveal.StartRarity} + {entry.reveal.Upgrades} cran(s) ≠ {plan.Rarity.Id} ({entry.reveal.ItemId}) : catalogues client et serveur différents ?`)
 		end
 		local screen = revealScreen()
 		if screen == nil then
@@ -788,7 +770,7 @@ showNextReveal = function()
 		if ok then
 			return
 		end
-		warn(`[Unbox] présentoir {entry.reveal.SlotIndex} : écran {REVEAL_SCREEN} impossible à lancer ({err})`)
+		warn(`[Unbox] colis {entry.reveal.BoxUid} : écran {REVEAL_SCREEN} impossible à lancer ({err})`)
 		if running then
 			closeReveal() -- relâche le revenu et passe à la révélation suivante
 			return
@@ -802,7 +784,7 @@ showNextReveal = function()
 end
 
 local function onReveal(
-	index: any,
+	boxUid: any,
 	itemUid: any,
 	itemId: any,
 	zone: any,
@@ -812,17 +794,21 @@ local function onReveal(
 	mutationSize: any,
 	mutationEffect: any
 )
-	if type(index) ~= "number" or type(itemUid) ~= "string" or type(itemId) ~= "string" then
+	if type(boxUid) ~= "string" or type(itemUid) ~= "string" or type(itemId) ~= "string" then
 		return
 	end
-	ready[index] = nil
-	refresh(index)
+	ready[boxUid] = nil
+	-- Point du colis, pris avant que son modèle quitte le jeu (le serveur l'a déjà détruit chez lui).
+	local view = views[boxUid]
+	local anchor: Vector3? = if view then basePosition(view) else lastBase[boxUid]
+	lastBase[boxUid] = nil
+	refresh(boxUid)
 	local item = Items.ById[itemId]
 	-- DEV-131 : mutation de l'objet (Id inconnus ignorés), pour son nom et son revenu à l'écran.
 	local mutation = Mutations.Sanitize({ Size = mutationSize, Effect = mutationEffect })
 	-- Défauts si le serveur n'envoie pas encore la forme v2 (zone, type, rareté de départ, crans).
 	local reveal: Sequence.Reveal = {
-		SlotIndex = index,
+		BoxUid = boxUid,
 		ItemUid = itemUid,
 		ItemId = itemId,
 		Zone = if type(zone) == "number" then zone elseif item and item.Zone then item.Zone else 1,
@@ -831,15 +817,19 @@ local function onReveal(
 		Upgrades = if type(upgrades) == "number" then upgrades else 0,
 		Mutation = mutation,
 	}
-	-- Retenue prise ici, avant que le HUD traite la hausse d'Income qui suit UnboxReveal.
-	-- L-086 : l'objet exposé sur ce présentoir reste caché jusqu'à la révélation (en-tête).
-	table.insert(revealQueue, { reveal = reveal, box = takeBox(index), release = holdIncome(), unhide = hideExposed(itemUid) })
+	local box = takeBox(boxUid)
+	if anchor == nil and box then
+		anchor = box:GetPivot().Position
+	end
+	-- Retenue prise ici, avant que le HUD traite une hausse d'Income qui suivrait UnboxReveal
+	-- (inventaire plein : objet exposé tout de suite, caché jusqu'à la révélation).
+	table.insert(revealQueue, { reveal = reveal, box = box, anchor = anchor, release = holdIncome(), unhide = hideExposed(itemUid) })
 	showNextReveal()
 	if not IS_STUDIO then
 		return
 	end
 	if item == nil then
-		print(`[Unbox] présentoir {index} : objet inconnu {itemId} (uid {itemUid})`)
+		print(`[Unbox] colis {boxUid} : objet inconnu {itemId} (uid {itemUid})`)
 		return
 	end
 	local rarity = Rarities.ById[item.Rarity]
@@ -852,7 +842,7 @@ local function onReveal(
 	local upgraded = if reveal.Upgrades > 0 then `, {reveal.Upgrades} cran(s) depuis {reveal.StartRarity}` else ""
 	local mutated = Mutations.Label(mutation)
 	print(
-		`[Unbox] présentoir {index} : {rarity.DisplayNameUpper} · {Mutations.ItemName(item.DisplayName, mutation)}{income} ({itemId}, uid {itemUid}) ; colis {reveal.Tier} de la zone {reveal.Zone}{upgraded}{if mutated then ", mutation " .. mutated else ""}`
+		`[Unbox] colis {boxUid} : {rarity.DisplayNameUpper} · {Mutations.ItemName(item.DisplayName, mutation)}{income} ({itemId}, uid {itemUid}) ; colis {reveal.Tier} de la zone {reveal.Zone}{upgraded}{if mutated then ", mutation " .. mutated else ""}`
 	)
 end
 
@@ -864,7 +854,6 @@ function UnboxController.Start()
 
 	net.Client.BoxReady:Connect(onBoxReady)
 	net.Client.UnboxReveal:Connect(onReveal)
-	localPlayer:GetAttributeChangedSignal(CARRYING_ATTRIBUTE):Connect(refreshAll)
 
 	-- Marqueur Open de l'animation Unbox (contrat 2.4) : le couvercle saute à ce moment-là.
 	local anim = animation
