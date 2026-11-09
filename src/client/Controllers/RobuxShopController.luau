@@ -574,6 +574,7 @@ local function bind(gui: ScreenGui)
 	end
 	isOpen = false
 	gui.Enabled = false -- fermé jusqu'au bouton du HUD ou à l'invite
+	Motion.SetCloser(gui, closeShop) -- un autre écran du groupe ScreenGroup s'ouvre (L-089)
 
 	local template = guiObject(gui, "List.Template")
 	local icons: { [string]: string } = {}

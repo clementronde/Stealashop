@@ -13,7 +13,10 @@
 --     comme par LayoutOrder). Dans chaque ligne : ItemName (nom de l'outil), Power
 --     (« Power: 20 »), Price (Format.money, « Free » pour les poings), BuyButton (caché si l'outil
 --     est possédé), EquipButton (visible si possédé ; « Equipped » sur l'outil équipé quand c'est un
---     TextButton qui porte son propre texte). Icon n'est pas touché ;
+--     TextButton qui porte son propre texte), Icon (L-090 : l'icône de l'outil, Decal ICON_TOOL_<Id> lu
+--     par son nom dans ReplicatedStorage/Assets/Icons par Contract/Icons, comme les icônes d'objets
+--     de L-055 ; icône pas encore livrée : l'image du Template reste, une seule ligne dans la sortie
+--     en Studio par icône manquante) ;
 --   - BuyButton envoie BuyItem(toolId), EquipButton envoie EquipTool(toolId) ; le serveur
 --     (ShopService) vérifie tout et prévient le joueur (Notify). La liste suit les attributs
 --     OwnedTools et EquippedTool du Player (ShopService) : elle se met à jour après chaque achat
@@ -21,7 +24,8 @@
 --   - CloseButton ferme l'écran ; il se ferme aussi quand le joueur s'éloigne du comptoir, meurt
 --     ou réapparaît. Ouverture et fermeture animées (DEV-052) par UI/Motion : Motion.Open et
 --     Motion.Close allument et éteignent l'écran ; une invite déclenchée pendant la fermeture la
---     rattrape ;
+--     rattrape ; un autre écran du groupe ScreenGroup qui s'ouvre (L-089) la ferme par le même
+--     chemin (Motion.SetCloser) ;
 --   - l'écran s'ouvre aussi quand le joueur marche sur la plaque ShopPad du comptoir
 --     (ShopPadController, L-071, par Open plus bas) ; la distance de fermeture se compte alors depuis
 --     la plaque.
@@ -47,6 +51,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = Shared:WaitForChild("Config")
 local Tools = require(Config:WaitForChild("Tools"))
 local Find = require(Shared:WaitForChild("Contract"):WaitForChild("Find"))
+local Icons = require(Shared:WaitForChild("Contract"):WaitForChild("Icons"))
 local Format = require(Shared:WaitForChild("Format"))
 local Motion = require(script.Parent:WaitForChild("UI"):WaitForChild("Motion"))
 
@@ -79,6 +84,7 @@ local INBOX_NAME = "_INBOX_CLEMENT" -- livraisons pas encore posées : pas d'inv
 local OWNED_ATTRIBUTE = "OwnedTools"
 local EQUIPPED_ATTRIBUTE = "EquippedTool"
 local PROMPT_NAME = "WeaponShopPrompt"
+local ICON_PREFIX = "TOOL_" -- Icons.name("TOOL_Fists") = « ICON_TOOL_Fists » (L-090)
 
 -- V0 proposés, absents du doc : textes (en anglais, L-036), portée de l'invite (le serveur accepte
 -- 20 studs, ShopService), distance de fermeture de l'écran, délai avant de signaler l'écran
@@ -105,6 +111,7 @@ local screen: Screen? = nil
 local openAnchor: Instance? = nil -- pièce ou Attachment de l'invite qui a ouvert l'écran
 local pendingUntil: { [string]: number } = {}
 local templateWarned = false
+local iconsWarned: { [string]: boolean } = {} -- icônes manquantes déjà signalées (une fois chacune)
 
 ------------------------------------------------------------------------------
 -- Comptoirs et invites
@@ -247,6 +254,17 @@ local function buildRow(template: GuiObject, tool: ToolDef, connections: { RBXSc
 	setText(frame, "ItemName", tool.DisplayName)
 	setText(frame, "Power", string.format(POWER_FORMAT, Format.short(tool.Power)))
 	setText(frame, "Price", if tool.Price <= 0 then FREE_TEXT else Format.money(tool.Price))
+	-- Enfant direct d'abord (une autre « Icon » plus bas, dans un bouton, n'est pas celle-ci).
+	local icon = frame:FindFirstChild("Icon") or Find.path(frame, "Icon")
+	if icon and (icon:IsA("ImageLabel") or icon:IsA("ImageButton")) then
+		local image = Icons.get(ICON_PREFIX .. tool.Id)
+		if image then
+			(icon :: ImageLabel).Image = image
+		elseif IS_STUDIO and not iconsWarned[tool.Id] then
+			iconsWarned[tool.Id] = true
+			print(`[WeaponShop] {Icons.name(ICON_PREFIX .. tool.Id)} pas encore dans ReplicatedStorage/Assets/Icons : la carte {tool.Id} garde l'image du Template`)
+		end
+	end
 	local buy = buttonIn(frame, "BuyButton")
 	local equip = buttonIn(frame, "EquipButton")
 	local equipText: string? = nil
@@ -311,6 +329,7 @@ local function bind(gui: ScreenGui)
 	local template = found :: GuiObject
 	template.Visible = false
 	gui.Enabled = false
+	Motion.SetCloser(gui, close) -- un autre écran du groupe ScreenGroup s'ouvre (L-089)
 	-- Lignes d'exemple de la maquette de Clément (Preview_*, à côté du Template) : retirées de la
 	-- copie du joueur, seules les lignes du code restent (liaison L-041).
 	for _, sibling in (template.Parent :: Instance):GetChildren() do
