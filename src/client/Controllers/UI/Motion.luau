@@ -25,6 +25,17 @@
 --   Motion.StopRoll(label)      arrête un défilement ; le texte reste tel quel.
 --   Motion.GetState(inst)       "Opening", "Open", "Closing", "Closed", ou nil (jamais animé) :
 --                               pour un test (banc, barre de commande en Studio).
+--   Motion.SetCloser(gui, close?)
+--                               la fonction de fermeture du contrôleur de cet écran (son propre
+--                               chemin : état « ouvert », lignes à retirer…), appelée quand un
+--                               autre écran du même groupe s'ouvre ; nil la retire.
+--
+-- Un seul écran à la fois (liaison L-089 point 4) : les ScreenGui qui portent l'attribut
+-- ScreenGroup (posé par Clément, ex. « Menu ») forment un groupe. Motion.Open d'un tel écran ferme
+-- d'abord les autres écrans allumés du même groupe, rangés à côté de lui (PlayerGui) : par la
+-- fonction donnée à SetCloser, sinon par Motion.Close (écran sans contrôleur). Le groupe se lit sur
+-- l'attribut, jamais sur une liste de noms ; un écran sans l'attribut ne ferme rien et n'est
+-- jamais fermé ainsi.
 --
 -- Ce qui est touché, et rien d'autre : Enabled de l'écran, Visible de l'élément, Text du label, et
 -- un UIScale nommé UiMotion.ScaleName créé ici sur chaque cadre animé, détruit à la fin de chaque
@@ -95,7 +106,11 @@ local entries: { [Instance]: Entry } = setmetatable({}, { __mode = "k" }) :: any
 local owners: { [UIScale]: Entry } = setmetatable({}, { __mode = "k" }) :: any -- UIScale créés ici
 local rolls: { [TextLabel]: Rolling } = setmetatable({}, { __mode = "k" }) :: any
 local noticed: { [Instance]: boolean } = setmetatable({}, { __mode = "k" }) :: any
+local closers: { [Instance]: () -> () } = setmetatable({}, { __mode = "k" }) :: any -- SetCloser
 local rollTokens = 0
+
+-- Contrat (L-089 point 4) : attribut des ScreenGui de Clément, sa valeur nomme le groupe.
+local GROUP_ATTRIBUTE = "ScreenGroup"
 
 ------------------------------------------------------------------------------
 -- Outils
@@ -345,8 +360,41 @@ local function leave(inst: Instance, transition: Transition, after: (() -> ())?)
 	end)
 end
 
+-- Ferme les autres écrans allumés du groupe de `gui` (même attribut ScreenGroup, même parent),
+-- sauf ceux déjà en train de se fermer.
+local function closeGroup(gui: ScreenGui)
+	local group = gui:GetAttribute(GROUP_ATTRIBUTE)
+	local parent = gui.Parent
+	if type(group) ~= "string" or group == "" or parent == nil then
+		return
+	end
+	for _, other in parent:GetChildren() do
+		if other ~= gui and other:IsA("ScreenGui") and (other :: ScreenGui).Enabled
+			and other:GetAttribute(GROUP_ATTRIBUTE) == group then
+			local entry = entries[other]
+			if entry == nil or entry.phase ~= "Closing" then
+				local closer = closers[other]
+				if closer then
+					closer()
+				else
+					Motion.Close(other :: ScreenGui)
+				end
+			end
+		end
+	end
+end
+
 function Motion.Open(gui: ScreenGui)
+	closeGroup(gui)
 	enter(gui, OPEN)
+end
+
+function Motion.SetCloser(gui: ScreenGui, close: (() -> ())?)
+	if close then
+		closers[gui] = close
+	else
+		closers[gui] = nil
+	end
 end
 
 function Motion.Close(gui: ScreenGui, after: (() -> ())?)
