@@ -26,6 +26,9 @@
 -- Ce que le code fait lui-même n'est jamais pris pour de la triche :
 --   - chaque service qui déplace un joueur appelle Allow juste avant (liste plus bas) ;
 --   - apparition d'un personnage (réapparition comprise) : AntiCheat.SpawnGrace s sans contrôle ;
+--   - arrivée en retard d'un déplacement du code (AntiCheat.LateArrival s après la fin de l'Allow) :
+--     un saut vers un point qu'on peut atteindre en marchant depuis sa destination est accepté, un
+--     retour près de son point de départ (position d'avant encore en route) est ignoré ;
 --   - personnage mort : plus contrôlé jusqu'au suivant ;
 --   - retour en arrière fait par ce service : pendant AntiCheat.RollbackGrace s (+ ping), seule une
 --     position qu'on peut atteindre depuis le point du retour est prise (sans contrôle), les autres
@@ -149,6 +152,9 @@ local tracks: { [Player]: Track } = {}
 local allowUntil: { [Player]: number } = {} -- os.clock() de la fin de l'autorisation
 local allowReason: { [Player]: string } = {}
 local lastAllowAt: { [Player]: number } = {} -- os.clock() du dernier Allow (trajet de Verify)
+-- Dernier déplacement du code (Allow) : départ et destination vus par le serveur (AntiCheat.LateArrival).
+type CodeMove = { At: number, Origin: Vector3?, Destination: Vector3? }
+local codeMoves: { [Player]: CodeMove } = {}
 local strikes: { [number]: number } = {} -- UserId → détections (récidives, gardées après un départ)
 local journal: { Detection } = {}
 local listeners: { DetectionListener } = {}
@@ -283,6 +289,28 @@ local function teleportReach(speed: number, seconds: number, stale: number): num
 	return math.max(AntiCheat.TeleportDistance, rate(speed) * (seconds + AntiCheat.TeleportLag + stale) + AntiCheat.SlackStuds)
 end
 
+-- Arrivée en retard d'un déplacement du code (AntiCheat.LateArrival) : true si le dernier Allow était un
+-- vrai saut (plus long que `threshold`, le seuil du téléport de ce contrôle), que le serveur voyait
+-- encore le joueur autour de son point de départ (`last`, positions d'avant) et que `position` tombe à
+-- `threshold` au plus de sa destination. Ne sert qu'une fois par Allow.
+local function lateArrival(player: Player, last: Vector3, position: Vector3, speed: number, threshold: number, now: number): boolean
+	local move = codeMoves[player]
+	local allowedTo = allowUntil[player]
+	if move == nil or allowedTo == nil or now > allowedTo + AntiCheat.LateArrival then
+		return false
+	end
+	local origin, destination = move.Origin, move.Destination
+	if origin == nil or destination == nil or flat(destination - origin).Magnitude <= threshold then
+		return false
+	end
+	local aroundOrigin = flat(last - origin).Magnitude <= teleportReach(speed, math.max(now - move.At, 0), 0)
+	if not aroundOrigin or flat(position - destination).Magnitude > threshold then
+		return false
+	end
+	codeMoves[player] = nil
+	return true
+end
+
 -- Nombre pour la sortie, avec `decimals` chiffres après la virgule.
 local function fmt(n: number, decimals: number): string
 	return string.format(`%.{decimals}f`, n)
@@ -320,6 +348,15 @@ local function evaluate(player: Player, track: Track, position: Vector3, speed: 
 	local cap = r * (AntiCheat.BurstSeconds + stale) + AntiCheat.SlackStuds
 	local available = math.min(track.Credit, cap) + r * dt
 	local threshold = teleportReach(speed, dt, stale)
+
+	-- Un déplacement du code arrivé en retard chez le client n'est ni un téléport ni une anomalie.
+	if moved > available and lateArrival(player, last, position, speed, threshold, now) then
+		if IS_STUDIO then
+			print(`[AntiCheatService] {player.Name} : arrivée en retard d'un déplacement du code ({fmt(moved, 0)} studs, {allowReason[player]}), acceptée`)
+		end
+		rebase(track, position, now, fullCredit(speed))
+		return nil, ""
+	end
 
 	local velocity = flat(track.Root.AssemblyLinearVelocity).Magnitude
 	if moved < STILL and isFinite(velocity) and velocity >= AntiCheat.StaleSpeed then
@@ -560,6 +597,7 @@ local function onPlayerRemoving(player: Player)
 	allowUntil[player] = nil
 	allowReason[player] = nil
 	lastAllowAt[player] = nil
+	codeMoves[player] = nil
 	-- strikes[UserId] reste : un tricheur qui revient sur ce serveur garde ses récidives.
 end
 
@@ -581,6 +619,20 @@ function AntiCheatService.Allow(player: Player, seconds: number, reason: string)
 	local now = os.clock()
 	lastAllowAt[player] = now
 	extend(player, now + settleOf(player, seconds + AntiCheat.AllowSettle), text)
+	-- Départ maintenant ; destination lue juste après le déplacement (PivotTo du même fil, juste après).
+	-- Lu sur le personnage (son suivi peut ne pas exister encore, juste après l'apparition).
+	local character = player.Character
+	local found = character and character:FindFirstChild("HumanoidRootPart")
+	local root: BasePart? = if found and found:IsA("BasePart") then found else nil
+	local move: CodeMove = { At = now, Origin = if root then root.Position else nil, Destination = nil }
+	codeMoves[player] = move
+	if root then
+		task.defer(function()
+			if codeMoves[player] == move and root.Parent ~= nil then
+				move.Destination = root.Position
+			end
+		end)
+	end
 end
 
 function AntiCheatService.Verify(player: Player, from: Vector3?, since: number?): boolean

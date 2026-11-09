@@ -53,6 +53,13 @@ local AntiCheat = {
 	AllowSettle = 1.5,
 	AllowPingFactor = 2,
 	AllowPingMax = 1,
+	-- V0 : arrivée en retard d'un déplacement du code. Pendant LateArrival s après la fin d'un Allow,
+	-- un saut qui dépasserait la réserve est accepté s'il mène à un point qu'on peut atteindre en
+	-- marchant depuis la destination du code (le client vient enfin de recevoir le déplacement : à
+	-- l'arrivée en jeu, la réplication de la carte le retarde de plusieurs secondes), et ignoré s'il
+	-- ramène près du point de départ (positions d'avant encore en route). Vu le 2026-11-09 : 201 studs
+	-- pris pour un téléport, 0,4 s après la fin de l'Allow du placement sur la parcelle.
+	LateArrival = 10,
 	SpawnGrace = 3, -- V0 : après chaque apparition d'un personnage (point d'apparition, puis parcelle)
 	-- V0 : après un retour en arrière (fait par ce service), pendant RollbackGrace s (+ ping) seules
 	-- les positions qu'on peut atteindre depuis le point du retour sont prises, sans contrôle ; les
