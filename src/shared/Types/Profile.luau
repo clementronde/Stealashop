@@ -1,11 +1,13 @@
 --!strict
 -- Type du profil sauvegardé d'un joueur (ReplicatedStorage/Shared/Types/Profile).
--- Schéma v6 : la forme de la v1 (section 9.5 de la Partie 1), avec les ItemId du catalogue
+-- Schéma v7 : la forme de la v1 (section 9.5 de la Partie 1), avec les ItemId du catalogue
 -- d'objets v2 (Config/Items, liaison L-045 ; DataService, MIGRATIONS[2], renomme ou remplace ceux
 -- de la v1), et, en v3 (DEV-100, boutique Robux de la Partie 2), Monetization et Boosts, et la date
 -- du don dans Purchases (MIGRATIONS[3]) ; en v4 (DEV-111, index des objets de la Partie 2), Index
 -- (MIGRATIONS[4]) ; en v5 (L-086, colis posés sur les présentoirs), Boxes rangé par numéro de
--- présentoir et BoxQueue (MIGRATIONS[5]) ; en v6 (DEV-102, gains hors ligne), Offline (MIGRATIONS[6]).
+-- présentoir et une file de colis (MIGRATIONS[5]) ; en v6 (DEV-102, gains hors ligne), Offline
+-- (MIGRATIONS[6]) ; en v7 (L-089, colis dans l'inventaire, ouverts au sol de la boutique), Boxes rangé
+-- par uid de colis, avec Spot et At, et plus de file (MIGRATIONS[7]).
 -- Valeurs de départ dans DataService.
 -- Ce module ne contient que des types : on l'utilise avec
 --   local ProfileTypes = require(ReplicatedStorage.Shared.Types.Profile)
@@ -13,8 +15,8 @@
 --
 -- Règles de stockage (ProfileStore et DataStore) :
 --   - jamais de tableau numérique à trous : un emplacement (présentoir, coffre-fort) est donc
---     indexé par son numéro écrit en texte : Display["3"] = uid ; une liste (BoxQueue) reste sans
---     trou (table.insert, table.remove) ;
+--     indexé par son numéro écrit en texte : Display["3"] = uid ; une liste reste sans trou
+--     (table.insert, table.remove) ;
 --   - aucune Instance, aucun Vector3/CFrame/Color3, aucune fonction ;
 --   - un champ ajouté passe par une nouvelle version et une migration (DataService).
 
@@ -67,15 +69,29 @@ export type Mutation = {
 	Effect: string?,
 }
 
--- Un colis posé sur un présentoir (v5, L-086 ; sur un établi avant), en attente d'ouverture
--- (horodatée serveur), ou dans la file des colis à poser.
+-- Point du sol de la boutique où un colis est posé (v7, L-089), dans le repère du pivot de la
+-- parcelle (PlayerPlot:GetPivot(), en studs) : la même place dans n'importe quelle parcelle, toutes
+-- copiées du même gabarit PLOT_Shop (le joueur n'a pas toujours la même d'une session à l'autre).
+export type Spot = {
+	X: number,
+	Y: number,
+	Z: number,
+}
+
+-- Un colis possédé (v7, L-089) : dans l'inventaire (Spot = nil : un Tool de la barre d'inventaire,
+-- InventoryService), ou posé au sol de sa boutique, en attente d'ouverture (horodatée serveur).
+-- Jusqu'à la v6 : posé sur un présentoir (v5, L-086), sur un établi avant, ou dans la file BoxQueue.
 export type Box = {
 	Tier: BoxTier,
 	Zone: number, -- 1 à 6
-	ItemId: string, -- objet tiré par le serveur à la mise en rayon (Config/Items)
+	ItemId: string, -- objet tiré par le serveur à la mise en rayon (Config/Items), secret jusqu'à l'ouverture
 	Rarity: string, -- rareté tirée, ex. « Epic » : toujours celle de l'objet au catalogue
-	ReadyAt: number, -- os.time() à partir duquel OpenBox est accepté
+	ReadyAt: number?, -- heure serveur (Workspace:GetServerTimeNow) à partir de laquelle OpenBox est
+	-- accepté. Posé au sol : toujours là. Dans l'inventaire : nil, sauf pour un colis repris d'un
+	-- présentoir ou de la file à la migration v7 (l'heure déjà promise, gardée à la pose si plus tôt)
 	Mutation: Mutation?, -- DEV-131 : mutation tirée à la mise en rayon, donnée à l'objet à l'ouverture (facultatif)
+	Spot: Spot?, -- v7 : posé au sol de sa boutique, à ce point ; nil = dans l'inventaire
+	At: number?, -- v7 : os.time() de l'arrivée dans l'inventaire (ordre de la barre ; nil = le plus ancien)
 }
 
 export type Tutorial = {
@@ -124,10 +140,9 @@ export type Data = {
 	Items: { [string]: Item }, -- [uid] = objet
 	Display: { [string]: string }, -- [numéro de présentoir en texte] = uid
 	Vault: { [string]: string }, -- [numéro de coffre-fort en texte] = uid (1 offert)
-	Boxes: { [string]: Box }, -- v5 : [numéro de présentoir en texte] = colis en attente (ce présentoir
-	-- compte comme occupé : DisplayService n'y pose aucun objet) ; jusqu'à la v4 : [numéro d'établi]
-	BoxQueue: { Box }, -- v5 : colis sans présentoir (migration sans place libre, présentoir absent de la
-	-- parcelle), du plus ancien au plus récent ; UnboxService les pose dès qu'un présentoir se libère
+	Boxes: { [string]: Box }, -- v7 : [uid du colis] = colis possédé, dans l'inventaire ou posé au sol de
+	-- sa boutique (UnboxService) ; v5 et v6 : [numéro de présentoir en texte], plus la file BoxQueue
+	-- (retirée en v7) ; jusqu'à la v4 : [numéro d'établi]
 	Tutorial: Tutorial,
 	Lifetime: Lifetime,
 	Purchases: { [string]: number }, -- [PurchaseId] = os.time() du don (achats Robux idempotents, 9.6 ;
@@ -138,9 +153,10 @@ export type Data = {
 	-- joueur l'a possédé (IndexService ; Config/Index). Jamais retiré : un objet volé, remis ou perdu
 	-- reste découvert. La migration v3 → v4 y met les objets déjà possédés (DataService, MIGRATIONS[4])
 	Offline: Offline, -- v6 : heure et revenu de la dernière présence, pour les gains hors ligne (DEV-102)
-	-- Partie 2 : Defenses, Rebirths, Rewards, ajoutés par migration (Version = 7 et suivantes : la v2
+	-- Partie 2 : Defenses, Rebirths, Rewards, ajoutés par migration (Version = 8 et suivantes : la v2
 	-- est prise par le catalogue d'objets v2, la v3 par la boutique Robux, la v4 par l'index, la v5 par
-	-- les colis sur les présentoirs, la v6 par les gains hors ligne).
+	-- les colis sur les présentoirs, la v6 par les gains hors ligne, la v7 par les colis dans
+	-- l'inventaire).
 }
 
 return {}

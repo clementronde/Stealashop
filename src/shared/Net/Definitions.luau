@@ -94,26 +94,41 @@ local List: { RemoteDef } = {
 		RatePerSecond = 5, -- V0 proposé, absent du doc ; maintien vérifié par le service
 	},
 	{
-		-- L-086 : slotIndex = numéro du présentoir (DisplaySlot_xx) où poser ou ouvrir le colis (plus d'établi).
+		-- L-089 (2026-11-09) : boxUid = uid du colis de l'inventaire (attribut BoxUid de son Tool, Boxes
+		-- du profil) ; point = point du monde visé sur le sol de sa boutique. Le serveur cherche lui-même
+		-- le sol sous ce point (Bounds de SA boutique, à portée, ni sur un colis, ni sur un présentoir, ni
+		-- dans le décor). Avant : slotIndex d'un présentoir (L-086), d'un établi avant.
 		Name = "PlaceBox",
 		Direction = "ClientToServer",
 		Reliable = true,
-		Args = { index("slotIndex") },
+		Args = { id("boxUid"), { Name = "point", Kind = "Vector3" } },
 		RatePerSecond = 4, -- V0 proposé, absent du doc
 	},
 	{
+		-- L-089 : boxUid = uid d'un colis posé au sol de sa boutique (attribut BoxUid de son modèle).
 		Name = "OpenBox",
 		Direction = "ClientToServer",
 		Reliable = true,
-		Args = { index("slotIndex") },
+		Args = { id("boxUid") },
 		RatePerSecond = 4, -- V0 proposé, absent du doc
 	},
 	{
+		-- L-089 : itemUid = un objet de l'inventaire (Tool tenu, attribut ItemUid), posé sur un présentoir libre.
 		Name = "PlaceItem",
 		Direction = "ClientToServer",
 		Reliable = true,
 		Args = { id("itemUid"), index("slotIndex") },
 		RatePerSecond = 5, -- V0 proposé, absent du doc
+	},
+	{
+		-- Ajout de la vague 18 (L-089, L-079 : bouton Equip Best de l'écran d'inventaire de Clément, à
+		-- venir), absent du tableau 9.4 : les objets qui rapportent le plus vont sur les présentoirs
+		-- débloqués (DisplayService, règle V0 dans son en-tête). Aucun argument : le serveur décide tout.
+		Name = "EquipBest",
+		Direction = "ClientToServer",
+		Reliable = true,
+		Args = {},
+		RatePerSecond = 1, -- V0 proposé, absent du doc
 	},
 	{
 		Name = "SwingBat",
@@ -250,10 +265,11 @@ local List: { RemoteDef } = {
 		},
 	},
 	{
+		-- L-089 : boxUid = uid du colis posé au sol dont l'attente est finie (avant : slotIndex).
 		Name = "BoxReady",
 		Direction = "ServerToClient",
 		Reliable = true,
-		Args = { index("slotIndex") },
+		Args = { id("boxUid") },
 	},
 	{
 		-- Seulement après OpenBox : l'identité de l'objet n'est jamais envoyée avant (5.7).
@@ -263,11 +279,13 @@ local List: { RemoteDef } = {
 		-- réussis, chacun monte d'une rareté (le client en déduit les raretés des crans).
 		-- Mutations (DEV-131, L-084) : mutationSize et mutationEffect = Id de Config/Mutations de
 		-- l'objet ouvert (nom et revenu de l'écran d'ouverture), nil sans mutation dans la famille.
+		-- L-089 : boxUid = uid du colis ouvert, posé au sol (avant : slotIndex d'un présentoir) ; l'objet
+		-- va dans l'inventaire.
 		Name = "UnboxReveal",
 		Direction = "ServerToClient",
 		Reliable = true,
 		Args = {
-			index("slotIndex"),
+			id("boxUid"),
 			id("itemUid"),
 			id("itemId"),
 			{ Name = "zone", Kind = "int", Min = 1, Max = MAX_INDEX },

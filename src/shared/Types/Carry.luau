@@ -57,7 +57,8 @@ export type PlayerItemPayload = {
 export type Payload = NPCBoxPayload | PlayerItemPayload
 
 -- Fin d'un portage, passée à CarryService.OnCarryEnded :
---   "Consumed"  réussite : le colis est posé sur un établi (ou l'objet déposé chez le voleur,
+--   "Consumed"  réussite : le colis est rangé dans l'inventaire à l'entrée de la zone safe (L-089,
+--               UnboxService) (ou l'objet déposé chez le voleur,
 --               raison « Deposited », après le transfert entre les deux profils) ;
 --   "Failed"    échec : le colis ou l'objet retourne d'où il vient, remis par le service
 --               d'origine (StoreHeistService remet le colis sur son rayon) ;

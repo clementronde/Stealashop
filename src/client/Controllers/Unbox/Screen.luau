@@ -1,13 +1,13 @@
 --!strict
 -- Vue de l'ouverture des colis v2 (DEV-050, DEV-052 ; spec ouverture-colis), module d'aide
 -- d'UnboxController (client) : ce que le déroulé (Unbox/Sequence) montre, dans l'écran UI_Unbox v2
--- de Clément (contrat 2.2) et sur la copie locale du colis du présentoir.
+-- de Clément (contrat 2.2) et sur la copie locale du colis posé au sol (L-089).
 --
 --   Screen.new(screen, plan, box, hooks, anchor?) -> view
---       screen : la copie de UI_Unbox dans PlayerGui ; box : copie locale du colis (StandBox_<nn>,
---       prise par UnboxController à l'appui sur « Open »), ou nil ; la vue la détruit à la fin.
---       anchor : point du monde du présentoir (DisplaySlot_<nn>, L-086), où se placent Upgrade et Reel
---       quand il n'y a pas de copie du colis.
+--       screen : la copie de UI_Unbox dans PlayerGui ; box : copie locale du colis (FloorBox posé au
+--       sol, L-089, prise par UnboxController à l'appui sur « Open »), ou nil ; la vue la détruit à la
+--       fin. anchor : point du monde où le colis était posé, où se placent Upgrade et Reel quand il
+--       n'y a pas de copie du colis.
 --   view:SetOpenNext(available)   montre ou cache OpenNextButton, une fois les boutons affichés
 --   view:Close()                  remet l'écran dans l'état de Studio (DEV-052)
 -- Les autres méthodes sont les événements du déroulé (voir Unbox/Sequence).
@@ -30,7 +30,7 @@
 -- refait ce placement quand la caméra a bougé dans l'image. Colis hors du champ : la fenêtre est
 -- bornée à l'écran (marge ReelEdge), au bord le plus proche du colis ; derrière la caméra, sa
 -- projection est retournée, donc la fenêtre va au bord du côté où il se trouve. Sans copie du colis,
--- elle se place au-dessus du présentoir (anchor) ; sans l'un ni l'autre (cas d'école : présentoir sorti
+-- elle se place au-dessus du point du colis (anchor) ; sans l'un ni l'autre (cas d'école : colis sorti
 -- du streaming), elle reste à sa place de Studio. Seule sa Position change (remise à la fermeture).
 --
 -- Cadres de la révélation : les cadres de premier niveau de l'écran qui contiennent Rarity, ItemName,
@@ -121,7 +121,7 @@ type Fields = {
 	raysRotation: number,
 	silhouette: Color3,
 	-- colis local
-	anchor: Vector3?, -- point du présentoir (sans copie du colis)
+	anchor: Vector3?, -- point du sol où le colis était posé (sans copie du colis)
 	openTop: Vector3?, -- haut du colis à l'ouverture (sous la fenêtre du rouleau)
 	followStep: string?, -- nom de la liaison BindToRenderStep du placement
 	boxBase: CFrame?,
@@ -423,7 +423,7 @@ local function towardScreen(self: View, world: Vector3): Vector2?
 	return center + away * ((area.X + area.Y) / length)
 end
 
--- Upgrade : centré au-dessus du colis (ou du présentoir).
+-- Upgrade : centré au-dessus du colis (ou de son point au sol).
 local function placeUpgrade(self: View)
 	local upgrade = self.upgrade
 	if upgrade == nil or not upgrade.Visible or self.lastPop == nil then

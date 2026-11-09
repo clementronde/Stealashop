@@ -72,13 +72,16 @@
 -- découverte (IndexService), les objets déjà possédés comptés comme découverts (voir MIGRATIONS[4]) ;
 -- v5 (2026-11-08, L-086) = colis posés sur les présentoirs : Boxes rangé par numéro de présentoir, file
 -- BoxQueue des colis sans présentoir (voir MIGRATIONS[5]) ; v6 (2026-11-08, DEV-102) = gains hors ligne :
--- Offline = heure et revenu de la dernière présence (OfflineService ; voir MIGRATIONS[6]).
--- Nouvelle version du schéma (ex. v7 de la Partie 2) :
+-- Offline = heure et revenu de la dernière présence (OfflineService ; voir MIGRATIONS[6]) ; v7 (2026-11-09,
+-- L-089) = colis dans l'inventaire, ouverts au sol de la boutique : Boxes rangé par uid de colis, plus de
+-- BoxQueue (voir MIGRATIONS[7]).
+-- Nouvelle version du schéma (ex. v8 de la Partie 2) :
 --   1. ajouter les champs dans Types/Profile et dans TEMPLATE ci-dessous ;
---   2. ajouter MIGRATIONS[7] (transforme un profil v6 en v7 ; ce qui est seulement
+--   2. ajouter MIGRATIONS[8] (transforme un profil v7 en v8 ; ce qui est seulement
 --      nouveau est complété depuis TEMPLATE, inutile de le recopier) ;
---   3. passer CURRENT_VERSION à 7.
+--   3. passer CURRENT_VERSION à 8.
 
+local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -119,14 +122,15 @@ local STORE_NAME = "PlayerData"
 local DEFAULT_WAIT_TIMEOUT = 60
 
 -- Version courante du schéma de sauvegarde (section 9.5 ; v2 : catalogue d'objets v2 ; v3 : boutique
--- Robux ; v4 : index des objets ; v5 : colis sur les présentoirs ; v6 : gains hors ligne).
-local CURRENT_VERSION = 6
+-- Robux ; v4 : index des objets ; v5 : colis sur les présentoirs ; v6 : gains hors ligne ; v7 : colis
+-- dans l'inventaire).
+local CURRENT_VERSION = 7
 
 -- Attribut du Player lu par le HUD (même nom dans HudController).
 local CASH_ATTRIBUTE = "Cash"
 
--- Modèle d'un nouveau profil, schéma v6 (forme de la section 9.5, plus la boutique Robux, l'index, la
--- file des colis à poser et les gains hors ligne).
+-- Modèle d'un nouveau profil, schéma v7 (forme de la section 9.5, plus la boutique Robux, l'index, les
+-- gains hors ligne et les colis rangés par uid).
 -- Il sert aussi à compléter les champs manquants d'un profil existant (Profile:Reconcile de
 -- ProfileStore).
 local TEMPLATE: Data = {
@@ -139,8 +143,7 @@ local TEMPLATE: Data = {
 	Items = {},
 	Display = {},
 	Vault = {},
-	Boxes = {}, -- v5 : [numéro de présentoir en texte] = colis en attente (UnboxService)
-	BoxQueue = {}, -- v5 : colis sans présentoir, posés dès qu'un présentoir se libère (UnboxService)
+	Boxes = {}, -- v7 : [uid du colis] = colis dans l'inventaire ou posé au sol de la boutique (UnboxService)
 	Tutorial = { Step = 0, Done = false },
 	Lifetime = { Heists = 0, Steals = 0, Defenses = 0, PlaySeconds = 0 },
 	Purchases = {}, -- [PurchaseId] = os.time() du don (MonetizationService)
@@ -408,6 +411,72 @@ local function migrateToV6(data: any, log: MigrationLog)
 	end
 end
 
+-- v6 → v7 (colis dans l'inventaire, 2026-11-09, L-089 ; UnboxService, InventoryService). Plus de colis sur
+-- les présentoirs ni de file : chaque colis possédé est rangé sous un uid neuf (HttpService:GenerateGUID,
+-- jamais deux fois le même dans le profil) et va dans l'inventaire (Spot absent), d'abord ceux des
+-- présentoirs dans l'ordre de leur numéro, puis ceux de la file dans son ordre. Choix le plus sûr : un
+-- point du sol de la boutique ne peut pas se vérifier ici (pas de parcelle), alors qu'un colis de
+-- l'inventaire se repose où le joueur veut. Aucun colis n'est perdu : Tier, Zone, ItemId, Rarity,
+-- Mutation et ReadyAt ne changent pas (ReadyAt reste l'heure promise : à la pose, le colis s'ouvre au
+-- plus tard à cette heure-là, UnboxService). At = maintenant (ordre de la barre). Un colis illisible
+-- (pas une table) est gardé tel quel sous son uid, avec un avertissement : UnboxService et
+-- InventoryService l'ignorent sans le retirer. Un Boxes ou un BoxQueue qui n'est pas une table est
+-- gardé de la même façon (un colis illisible de plus). BoxQueue est retiré du profil.
+local function migrateToV7(data: any, log: MigrationLog)
+	local now = os.time()
+	local boxes: { [string]: any } = {}
+	local count = 0
+	local function add(box: any, what: string)
+		local uid = HttpService:GenerateGUID(false)
+		while boxes[uid] ~= nil do
+			uid = HttpService:GenerateGUID(false)
+		end
+		if type(box) == "table" then
+			box.Spot = nil
+			box.At = now
+		else
+			log(`{what} illisible ({tostring(box)}) : gardé tel quel dans l'inventaire, sous l'uid {uid}`, true)
+		end
+		boxes[uid] = box
+		count += 1
+	end
+	local old = data.Boxes
+	if type(old) == "table" then
+		-- Présentoirs dans l'ordre de leur numéro (les clés qui ne sont pas des numéros à la fin).
+		local keys: { any } = {}
+		for key in old do
+			table.insert(keys, key)
+		end
+		table.sort(keys, function(a: any, b: any): boolean
+			local na, nb = tonumber(a), tonumber(b)
+			if na ~= nil and nb ~= nil then
+				return na < nb
+			elseif na ~= nil or nb ~= nil then
+				return na ~= nil
+			end
+			return tostring(a) < tostring(b)
+		end)
+		for _, key in keys do
+			add(old[key], `colis du présentoir {tostring(key)}`)
+		end
+	elseif old ~= nil then
+		add(old, "Boxes")
+	end
+	local queue = data.BoxQueue
+	if type(queue) == "table" then
+		for position, box in queue do
+			add(box, `colis n° {tostring(position)} de la file`)
+		end
+	elseif queue ~= nil then
+		add(queue, "BoxQueue")
+	end
+	data.Boxes = boxes
+	data.BoxQueue = nil
+	if count > 0 then
+		log(`{count} colis rangé(s) dans l'inventaire (présentoirs et file des colis à poser)`)
+	end
+end
+
 -- MIGRATIONS[n] fait passer un profil de la version n - 1 à la version n, en place, et écrit ce
 -- qu'elle change avec `log`. Un profil sans Version est traité comme une version 0. La v1 est la
 -- première : rien à transformer, Reconcile complète tout depuis TEMPLATE. Les champs seulement
@@ -419,6 +488,7 @@ local MIGRATIONS: { [number]: (data: any, log: MigrationLog) -> () } = {
 	[4] = migrateToV4,
 	[5] = migrateToV5,
 	[6] = migrateToV6,
+	[7] = migrateToV7,
 }
 
 -- Messages d'expulsion, lus par le joueur : en anglais (L-036).
