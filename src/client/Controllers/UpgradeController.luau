@@ -1,39 +1,58 @@
 --!strict
--- UpgradeController (DEV-033, client) : invites d'achat des améliorations de base, sur sa propre
--- parcelle (Partie 1, sections 5.1, 5.8, 7.5 et 9.4).
+-- UpgradeController (DEV-033, client ; liaison L-082 point 1) : achat des améliorations de base sur
+-- sa propre parcelle (Partie 1, sections 5.1, 5.8, 7.5 et 9.4).
 --
--- Rôle : sur la parcelle dont le joueur est propriétaire (attribut OwnerUserId = son UserId, posé
--- par PlotService), trois invites créées ici, côté client seulement (ProximityPrompt
--- « UpgradePrompt », touche F ou bouton Y, maintien de HOLD_DURATION s) :
---   - « Upgrade ($380) » sur le tapis (tag Treadmill) et sur le banc (tag Bench), avec le nom et le
---     niveau (« Treadmill Lv 1/20 »). Posée sur l'Attachment UpgradePoint du modèle s'il existe
---     (proposition de contrat, hors 10.4 pour l'instant), sinon sur un point créé ici au-dessus du
---     modèle. Jamais sur le UsePoint, qui porte l'invite « Run » / « Lift » de TrainingService :
---     les deux invites n'ont pas la même touche, elles s'affichent ensemble ;
---   - « Unlock stand ($500) » sur le prochain DisplaySlot_xx verrouillé (« Stands 4/20 »).
--- Plus d'invite « Unlock workbench » depuis L-086 (2026-11-08) : les établis ne sont plus là, les
--- colis se posent et s'ouvrent sur les présentoirs ; l'amélioration UnboxBenches n'est plus vendue.
--- Chacune envoie BuyItem(Id de l'amélioration) ; le serveur (ShopService) revérifie tout et prévient
--- le joueur (Notify). Le prix affiché est Formulas.UpgradeCost(Id, niveau), avec le niveau lu dans
--- les attributs TreadmillLevel, BenchLevel et DisplaySlotsLevel du Player
--- (ShopService) : pour l'affichage seulement. Le prochain présentoir verrouillé est le n° départ +
--- niveau + 1 (Balance.Display), comme côté serveur. Au niveau max, l'invite
--- disparaît. Après un achat, l'invite est coupée jusqu'au nouveau niveau, ou PENDING_TIMEOUT s si
--- le serveur refuse : un 2e maintien ne paie jamais un prix qui n'était pas affiché.
--- Les invites suivent le streaming et les changements de parcelle. Aucune UI créée ici.
+-- Améliorations vendues (Config/Upgrades) : tapis (Treadmill), banc (Bench), présentoirs
+-- (DisplaySlots). Chacune s'achète par BuyItem(Id) ; le serveur (ShopService) revérifie tout (argent,
+-- niveau, prix) et prévient le joueur (Notify). Le niveau est lu dans les attributs TreadmillLevel,
+-- BenchLevel et DisplaySlotsLevel du Player (ShopService), le prix est Formulas.UpgradeCost(Id,
+-- niveau) : pour l'affichage seulement.
+--
+-- Panneaux plantés (L-082, modèle UpgradeSign de Clément dans ReplicatedStorage/Assets/UI) :
+--   - posés ici, côté client, sur chaque parcelle qui a un propriétaire présent : tous les joueurs
+--     voient les panneaux d'une boutique (niveau et prix de son propriétaire), seul le propriétaire
+--     peut acheter. Copie rangée dans un dossier local du Workspace (SIGN_FOLDER), hors des
+--     parcelles : le streaming d'une parcelle ne la détruit pas, elle suit son point ;
+--   - points de pose (Attachment) : UpgradePoint du tapis (tag Treadmill) et du banc (tag Bench), à
+--     défaut un point créé ici au-dessus de la machine ; DisplayUpgradePoint de la parcelle pour les
+--     présentoirs (le plus proche du prochain présentoir verrouillé s'il y en a plusieurs), à défaut
+--     le prochain DisplaySlot_xx verrouillé (n° départ + niveau + 1, Balance.Display, comme côté
+--     serveur). StageUpgradePoint : rien n'y est posé, aucune amélioration « Stage » n'existe ;
+--   - pose : le bas de la boîte du panneau au point, la face de Board (SurfaceGui Face = Front, donc
+--     son LookVector) tournée comme le LookVector de l'Attachment, mis à l'horizontale. Pour tourner
+--     un panneau, Clément tourne son point. Aucune taille ni couleur changée ; pièces ancrées ;
+--   - textes : Title = nom de l'amélioration (Config/Upgrades), Level = « Level 5 > Level 6 » (niveaux
+--     achetés, comme MaxLevel), BuyButton.Price = prix (Shared/Format). Au niveau max : « Max level »,
+--     BuyButton caché. RobuxButton toujours caché : aucun produit Robux pour ces améliorations ;
+--   - chez le propriétaire, le SignGui de la copie est rangé dans son PlayerGui avec Adornee = Board
+--     (sinon Roblox n'y envoie ni clic ni appui) et ResetOnSpawn = false ; chez les autres, il reste
+--     sur Board (visible, pas cliquable). Un clic ou un appui sur BuyButton (Activated) envoie
+--     BuyItem(Id). Garde anti double achat : un clic n'achète que le niveau dont le prix est affiché,
+--     puis le bouton est muet jusqu'au nouveau niveau, ou PENDING_TIMEOUT s si le serveur refuse.
+--   - les panneaux suivent : niveaux, présentoir suivant, streaming (point retiré : panneau retiré,
+--     reposé à son retour), changement ou libération de parcelle, départ d'un joueur, réapparition.
+--
+-- Repli (UpgradeSign absent des Assets, ou sans Board, SignGui ou BuyButton) : une ligne dans la
+-- sortie, et les invites d'avant, chez le propriétaire seulement (ProximityPrompt « UpgradePrompt »,
+-- touche F ou bouton Y, maintien de HOLD_DURATION s) : « Upgrade ($380) » sur le tapis et le banc
+-- (« Treadmill Lv 1/20 »), « Unlock stand ($500) » sur le prochain DisplaySlot_xx verrouillé
+-- (« Stands 4/20 ») ; cachées au niveau max. Jamais sur le UsePoint (invites « Run » / « Lift »).
 --
 -- API (client) : aucune.
 
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = Shared:WaitForChild("Config")
 local Balance = require(Config:WaitForChild("Balance"))
 local Formulas = require(Config:WaitForChild("Formulas"))
 local Upgrades = require(Config:WaitForChild("Upgrades"))
-local Find = require(Shared:WaitForChild("Contract"):WaitForChild("Find"))
+local Contract = Shared:WaitForChild("Contract")
+local Find = require(Contract:WaitForChild("Find"))
+local UI = require(Contract:WaitForChild("UI"))
 local Format = require(Shared:WaitForChild("Format"))
 
 type Kind = "Machine" | "Stand"
@@ -42,28 +61,49 @@ type Offer = {
 	id: string, -- Id de Config/Upgrades
 	kind: Kind,
 	tag: string?, -- tag de la machine (Machine seulement)
-	prompt: ProximityPrompt?,
-	pendingLevel: number?, -- niveau au moment du dernier achat demandé
+	pendingLevel: number?, -- niveau au moment du dernier achat demandé (joueur local)
 	pendingUntil: number,
 }
 
--- Contrat (2.1 et 10.4) et attributs posés par les services serveur (lus sans require).
+-- Ce qui est montré pour une amélioration sur une parcelle.
+type Entry = {
+	owner: Player?,
+	target: Attachment?, -- point du panneau ou de l'invite
+	prompt: ProximityPrompt?, -- repli
+	sign: Model?,
+	gui: SurfaceGui?,
+	shownLevel: number?, -- niveau dont le prix est affiché sur le panneau
+	click: RBXScriptConnection?,
+}
+
+-- Contrat (2.1, 2.2 et 10.4) et attributs posés par les services serveur (lus sans require).
 local PLOT_TAG = "PlayerPlot"
 local OWNER_ATTRIBUTE = "OwnerUserId" -- PlotService
 local LEVEL_FORMAT = "%sLevel" -- ShopService : TreadmillLevel, BenchLevel…
 local SLOT_FORMAT = "DisplaySlot_%02d"
-local POINT_NAME = "UpgradePoint" -- proposé à Clément : lu s'il existe dans le tapis ou le banc
+local POINT_NAME = "UpgradePoint" -- dans le tapis et le banc (L-082)
+local DISPLAY_POINT_NAME = "DisplayUpgradePoint" -- dans la parcelle (L-082)
 local MADE_POINT_NAME = "UpgradePointV0" -- point créé ici à défaut, côté client seulement
 local PROMPT_NAME = "UpgradePrompt"
+local SIGN_NAME = "UpgradeSign" -- modèle de Clément (ReplicatedStorage/Assets/UI)
+local BOARD_NAME = "Board"
+local GUI_NAME = "SignGui"
+local TITLE_NAME = "Title"
+local LEVEL_NAME = "Level"
+local BUY_NAME = "BuyButton"
+local ROBUX_NAME = "RobuxButton"
+local PRICE_NAME = "Price"
 
--- V0 proposés, absents du doc : textes (en anglais, L-036), portée et maintien de l'invite, touches
--- (pas E, celle des invites Run / Lift / Place Box : elles restent visibles à côté), hauteur du point
--- créé au-dessus d'une machine, délai d'attente de la réponse du serveur après un achat.
+-- V0 proposés, absents du doc : textes (en anglais, L-036), portée et maintien de l'invite de repli,
+-- touches (pas E, celle des invites Run / Lift / Place Box), hauteur du point créé au-dessus d'une
+-- machine, délai d'attente de la réponse du serveur après un achat, nom du dossier local des panneaux.
 local TEXT = {
 	Upgrade = "Upgrade (%s)",
 	UnlockStand = "Unlock stand (%s)",
 	MachineLevel = "%s Lv %d/%d",
 	Stands = "Stands %d/%d",
+	SignLevel = "Level %d > Level %d",
+	SignMax = "Max level",
 }
 local PROMPT_DISTANCE = 8
 local HOLD_DURATION = 0.5
@@ -71,16 +111,19 @@ local KEYBOARD_KEY = Enum.KeyCode.F
 local GAMEPAD_KEY = Enum.KeyCode.ButtonY
 local POINT_HEIGHT = 0.5 -- studs au-dessus du sommet du modèle
 local PENDING_TIMEOUT = 1.5
+local SIGN_FOLDER = "UpgradeSigns"
 
 local UpgradeController = {}
 
 local localPlayer = Players.LocalPlayer
 local net: any = nil
-local plot: Model? = nil
-local plotConnections: { RBXScriptConnection } = {}
-local watchedPlots: { [Instance]: RBXScriptConnection } = {}
+local watchedPlots: { [Instance]: { RBXScriptConnection } } = {}
+local entries: { [Instance]: { [string]: Entry } } = {} -- parcelle → Id → ce qui est montré
+local plotOwners: { [Instance]: Player? } = {} -- propriétaire pris en compte au dernier passage
 local madePoints: { [Instance]: Attachment } = {} -- machine → point créé ici
+local signFolder: Folder? = nil
 local refreshQueued = false
+local fallbackSaid = false
 
 local offers: { Offer } = {
 	{ id = "Treadmill", kind = "Machine", tag = "Treadmill", pendingUntil = 0 },
@@ -88,12 +131,37 @@ local offers: { Offer } = {
 	{ id = "DisplaySlots", kind = "Stand", pendingUntil = 0 },
 }
 
-local function levelOf(id: string): number?
-	local value = localPlayer:GetAttribute(string.format(LEVEL_FORMAT, id))
+local function levelOf(player: Player, id: string): number?
+	local value = player:GetAttribute(string.format(LEVEL_FORMAT, id))
 	return if type(value) == "number" then value else nil
 end
 
--- Point de l'invite d'une machine : son UpgradePoint, sinon un point créé ici au-dessus d'elle.
+local function isPending(offer: Offer, level: number): boolean
+	return offer.pendingLevel == level and os.clock() < offer.pendingUntil
+end
+
+-- Modèle UpgradeSign de Clément, ou nil (repli sur les invites) avec la raison.
+local function signTemplate(): (Model?, string?)
+	local current: Instance? = ReplicatedStorage
+	for _, segment in UI.BillboardFolder do
+		current = if current then current:FindFirstChild(segment) else nil
+	end
+	local found = if current then current:FindFirstChild(SIGN_NAME, true) else nil
+	if found == nil or not found:IsA("Model") then
+		return nil, `{SIGN_NAME} absent de ReplicatedStorage.{table.concat(UI.BillboardFolder, ".")}`
+	end
+	local board = Find.path(found, BOARD_NAME)
+	local gui = Find.path(found, GUI_NAME)
+	local buy = if gui then Find.path(gui, BUY_NAME) else nil
+	if board == nil or not board:IsA("BasePart") or gui == nil or not gui:IsA("SurfaceGui") or buy == nil or not buy:IsA("GuiButton") then
+		return nil, `{SIGN_NAME} sans {BOARD_NAME} (BasePart), {GUI_NAME} (SurfaceGui) ou {BUY_NAME} (bouton)`
+	end
+	return found :: Model, nil
+end
+
+-- Points -----------------------------------------------------------------------------------------
+
+-- Point d'une machine : son UpgradePoint, sinon un point créé ici au-dessus d'elle.
 local function machinePoint(machine: Instance): Attachment?
 	local given = Find.path(machine, POINT_NAME)
 	if given and given:IsA("Attachment") then
@@ -141,101 +209,305 @@ local function attachmentIn(root: Instance, name: string): Attachment?
 	return nil
 end
 
--- Où poser l'invite de `offer` au niveau `level`, ou nil (rien à acheter ici pour l'instant).
-local function targetFor(offer: Offer, plotModel: Model, level: number): Attachment?
-	if offer.kind == "Machine" then
-		for _, machine in CollectionService:GetTagged(offer.tag or "") do
-			if machine:IsDescendantOf(plotModel) then
-				return machinePoint(machine)
-			end
+local function machineOf(offer: Offer, plotModel: Instance): Instance?
+	for _, machine in CollectionService:GetTagged(offer.tag or "") do
+		if machine:IsDescendantOf(plotModel) then
+			return machine
 		end
-		return nil
 	end
+	return nil
+end
+
+-- Prochain présentoir verrouillé, ou nil (tous débloqués, ou pas encore chargé).
+local function nextSlot(plotModel: Instance, level: number): Attachment?
 	local index = Balance.Display.StartSlots + level + 1
 	return if index <= Balance.Display.MaxSlots then attachmentIn(plotModel, string.format(SLOT_FORMAT, index)) else nil
 end
 
--- Textes de l'invite : action (avec le prix) et objet (avec le niveau ou le compte).
-local function textsFor(offer: Offer, level: number, cost: number): (string, string)
-	local price = Format.money(cost)
+-- Point de l'invite de repli (comme avant L-082).
+local function promptTarget(offer: Offer, plotModel: Instance, level: number): Attachment?
 	if offer.kind == "Machine" then
-		local upgrade = Upgrades.ById[offer.id]
-		return string.format(TEXT.Upgrade, price), string.format(TEXT.MachineLevel, upgrade.DisplayName, level, upgrade.MaxLevel)
+		local machine = machineOf(offer, plotModel)
+		return if machine then machinePoint(machine) else nil
 	end
-	local display = Balance.Display
-	local unlocked = math.min(display.StartSlots + level, display.MaxSlots)
-	return string.format(TEXT.UnlockStand, price), string.format(TEXT.Stands, unlocked, display.MaxSlots)
+	return nextSlot(plotModel, level)
 end
 
-local scheduleRefresh: () -> ()
-
-local function onTriggered(offer: Offer, prompt: ProximityPrompt)
-	local level = levelOf(offer.id)
-	if level == nil or offer.prompt ~= prompt or not prompt.Enabled then
-		return
+-- Point du panneau : celui de l'invite pour une machine ; pour les présentoirs, le DisplayUpgradePoint
+-- (le plus proche du prochain présentoir verrouillé s'il y en a plusieurs), sinon ce présentoir.
+local function signTarget(offer: Offer, plotModel: Instance, level: number): Attachment?
+	if offer.kind == "Machine" then
+		return promptTarget(offer, plotModel, level)
 	end
-	offer.pendingLevel = level
-	offer.pendingUntil = os.clock() + PENDING_TIMEOUT
-	prompt.Enabled = false
-	net.Client.BuyItem:Fire(offer.id)
-	task.delay(PENDING_TIMEOUT, scheduleRefresh)
+	local slot = nextSlot(plotModel, level)
+	local best: Attachment? = nil
+	local bestDistance = math.huge
+	for _, found in Find.all(plotModel, DISPLAY_POINT_NAME) do
+		if found:IsA("Attachment") then
+			local point = found :: Attachment
+			local distance = if slot then (point.WorldCFrame.Position - slot.WorldCFrame.Position).Magnitude else 0
+			if best == nil or distance < bestDistance then
+				best, bestDistance = point, distance
+			end
+		end
+	end
+	return best or slot
 end
 
-local function newPrompt(offer: Offer): ProximityPrompt
-	local prompt = Instance.new("ProximityPrompt")
-	prompt.Name = PROMPT_NAME
-	prompt.MaxActivationDistance = PROMPT_DISTANCE
-	prompt.HoldDuration = HOLD_DURATION
-	prompt.KeyboardKeyCode = KEYBOARD_KEY
-	prompt.GamepadKeyCode = GAMEPAD_KEY
-	prompt.RequiresLineOfSight = false
-	prompt.Triggered:Connect(function()
-		onTriggered(offer, prompt)
-	end)
-	return prompt
+-- Panneau --------------------------------------------------------------------------------------------
+
+local function flat(vector: Vector3): Vector3?
+	local horizontal = Vector3.new(vector.X, 0, vector.Z)
+	return if horizontal.Magnitude > 1e-3 then horizontal.Unit else nil
 end
 
-local function hide(offer: Offer)
-	local prompt = offer.prompt
+local function folder(): Folder
+	local current = signFolder
+	if current and current.Parent == Workspace then
+		return current
+	end
+	local created = Instance.new("Folder")
+	created.Name = SIGN_FOLDER
+	created.Parent = Workspace
+	signFolder = created
+	return created
+end
+
+-- Copie du modèle, debout au point, face de Board tournée comme le LookVector du point.
+local function placeSign(template: Model, target: Attachment, plotModel: Instance): Model
+	local sign = template:Clone()
+	local board = Find.path(sign, BOARD_NAME) :: BasePart
+	local pivot = sign:GetPivot()
+	local boxCFrame, boxSize = sign:GetBoundingBox()
+	local bottom = boxCFrame.Position - Vector3.new(0, boxSize.Y / 2, 0)
+	local front = flat(board.CFrame.LookVector) or flat(pivot.LookVector) or Vector3.new(0, 0, -1)
+	local from = CFrame.lookAt(bottom, bottom + front)
+	local world = target.WorldCFrame
+	local plotLook = if plotModel:IsA("PVInstance") then flat((plotModel :: PVInstance):GetPivot().LookVector) else nil
+	local out = flat(world.LookVector) or plotLook or Vector3.new(0, 0, -1)
+	local to = CFrame.lookAt(world.Position, world.Position + out)
+	sign:PivotTo(to * from:Inverse() * pivot)
+	for _, descendant in sign:GetDescendants() do
+		if descendant:IsA("BasePart") then
+			descendant.Anchored = true
+		end
+	end
+	sign.Parent = folder()
+	return sign
+end
+
+local function clearSign(entry: Entry)
+	local click = entry.click
+	if click then
+		click:Disconnect()
+		entry.click = nil
+	end
+	local gui = entry.gui
+	if gui then
+		entry.gui = nil
+		gui:Destroy()
+	end
+	local sign = entry.sign
+	if sign then
+		entry.sign = nil
+		sign:Destroy()
+	end
+	entry.shownLevel = nil
+end
+
+local function clearPrompt(entry: Entry)
+	local prompt = entry.prompt
 	if prompt then
-		offer.prompt = nil
+		entry.prompt = nil
 		prompt:Destroy()
 	end
 end
 
-local function refreshOffer(offer: Offer)
-	local plotModel = plot
-	local level = levelOf(offer.id)
-	if plotModel == nil or level == nil then
-		hide(offer)
+local function clearEntry(entry: Entry)
+	clearSign(entry)
+	clearPrompt(entry)
+	entry.target = nil
+end
+
+local function setText(root: Instance, name: string, text: string)
+	local label = Find.path(root, name)
+	if label and (label:IsA("TextLabel") or label:IsA("TextButton")) then
+		(label :: any).Text = text
+	end
+end
+
+local scheduleRefresh: () -> ()
+
+-- Clic ou appui sur BuyButton, chez le propriétaire.
+local function onBuy(offer: Offer, entry: Entry)
+	if entry.owner ~= localPlayer or entry.sign == nil then
 		return
 	end
-	local cost = Formulas.UpgradeCost(offer.id, level)
-	local target = if cost then targetFor(offer, plotModel, level) else nil
+	local level = levelOf(localPlayer, offer.id)
+	if level == nil or level ~= entry.shownLevel or isPending(offer, level) then
+		return -- prix affiché périmé, ou achat déjà demandé à ce niveau
+	end
+	if Formulas.UpgradeCost(offer.id, level) == nil then
+		return
+	end
+	offer.pendingLevel = level
+	offer.pendingUntil = os.clock() + PENDING_TIMEOUT
+	net.Client.BuyItem:Fire(offer.id)
+	task.delay(PENDING_TIMEOUT, scheduleRefresh)
+end
+
+local function showSign(offer: Offer, entry: Entry, template: Model, plotModel: Instance, owner: Player, level: number, cost: number?)
+	local target = signTarget(offer, plotModel, level)
+	if target == nil then
+		clearSign(entry)
+		entry.target = nil
+		return
+	end
+	local sign = entry.sign
+	local gui = entry.gui
+	if sign == nil or sign.Parent == nil or gui == nil or gui.Parent == nil or entry.target ~= target then
+		-- Neuf, déplacé (présentoir suivant), ou perdu : un panneau neuf.
+		clearSign(entry)
+		local fresh = placeSign(template, target, plotModel)
+		local freshGui = Find.path(fresh, GUI_NAME) :: SurfaceGui
+		entry.sign, entry.gui, entry.target = fresh, freshGui, target
+		local buy = Find.path(freshGui, BUY_NAME) :: GuiButton
+		entry.click = buy.Activated:Connect(function()
+			onBuy(offer, entry)
+		end)
+		sign, gui = fresh, freshGui
+	end
+	local currentSign = sign :: Model
+	local currentGui = gui :: SurfaceGui
+	-- SurfaceGui : dans le PlayerGui du propriétaire (cliquable), sinon sur Board.
+	local board = Find.path(currentSign, BOARD_NAME) :: BasePart
+	local playerGui = if owner == localPlayer then localPlayer:FindFirstChildOfClass("PlayerGui") else nil
+	if playerGui then
+		currentGui.ResetOnSpawn = false
+		currentGui.Adornee = board
+		currentGui.Parent = playerGui
+	elseif currentGui.Parent ~= board then
+		currentGui.Parent = board -- Adornee = Board laissé : même surface
+	end
+
+	local upgrade = Upgrades.ById[offer.id]
+	setText(currentGui, TITLE_NAME, upgrade.DisplayName)
+	setText(currentGui, LEVEL_NAME, if cost then string.format(TEXT.SignLevel, level, level + 1) else TEXT.SignMax)
+	local buy = Find.path(currentGui, BUY_NAME) :: GuiButton
+	buy.Visible = cost ~= nil
+	if cost then
+		setText(buy, PRICE_NAME, Format.money(cost))
+	end
+	local robux = Find.path(currentGui, ROBUX_NAME)
+	if robux and robux:IsA("GuiObject") then
+		robux.Visible = false -- aucun produit Robux pour ces améliorations (V0)
+	end
+	entry.shownLevel = level
+end
+
+-- Invite de repli, chez le propriétaire (comportement d'avant L-082).
+local function showPrompt(offer: Offer, entry: Entry, plotModel: Instance, level: number, cost: number?)
+	local target = if cost then promptTarget(offer, plotModel, level) else nil
 	if cost == nil or target == nil then
-		hide(offer) -- niveau max, ou point pas encore chargé
+		clearPrompt(entry) -- niveau max, ou point pas encore chargé
+		entry.target = nil
 		return
 	end
-	local prompt = offer.prompt
+	local prompt = entry.prompt
 	if prompt == nil or prompt.Parent ~= target then
 		-- Déplacée (achat), ou détruite avec son point (streaming) : une invite neuve.
-		hide(offer)
-		local fresh = newPrompt(offer)
+		clearPrompt(entry)
+		local fresh = Instance.new("ProximityPrompt")
+		fresh.Name = PROMPT_NAME
+		fresh.MaxActivationDistance = PROMPT_DISTANCE
+		fresh.HoldDuration = HOLD_DURATION
+		fresh.KeyboardKeyCode = KEYBOARD_KEY
+		fresh.GamepadKeyCode = GAMEPAD_KEY
+		fresh.RequiresLineOfSight = false
+		fresh.Triggered:Connect(function()
+			local now = levelOf(localPlayer, offer.id)
+			if now == nil or entry.prompt ~= fresh or not fresh.Enabled then
+				return
+			end
+			offer.pendingLevel = now
+			offer.pendingUntil = os.clock() + PENDING_TIMEOUT
+			fresh.Enabled = false
+			net.Client.BuyItem:Fire(offer.id)
+			task.delay(PENDING_TIMEOUT, scheduleRefresh)
+		end)
 		fresh.Parent = target
-		offer.prompt = fresh
+		entry.prompt = fresh
+		entry.target = target
 		prompt = fresh
 	end
 	local current = prompt :: ProximityPrompt
-	local action, object = textsFor(offer, level, cost)
-	current.ActionText = action
-	current.ObjectText = object
-	current.Enabled = not (offer.pendingLevel == level and os.clock() < offer.pendingUntil)
+	local price = Format.money(cost :: number)
+	if offer.kind == "Machine" then
+		local upgrade = Upgrades.ById[offer.id]
+		current.ActionText = string.format(TEXT.Upgrade, price)
+		current.ObjectText = string.format(TEXT.MachineLevel, upgrade.DisplayName, level, upgrade.MaxLevel)
+	else
+		local display = Balance.Display
+		current.ActionText = string.format(TEXT.UnlockStand, price)
+		current.ObjectText = string.format(TEXT.Stands, math.min(display.StartSlots + level, display.MaxSlots), display.MaxSlots)
+	end
+	current.Enabled = not isPending(offer, level)
+end
+
+-- Mise à jour ----------------------------------------------------------------------------------------
+
+local function ownerOf(plotModel: Instance): Player?
+	local id = plotModel:GetAttribute(OWNER_ATTRIBUTE)
+	if type(id) ~= "number" or id <= 0 then
+		return nil
+	end
+	return Players:GetPlayerByUserId(id)
+end
+
+-- Points créés ici sur les machines d'une parcelle (libérée, changée de propriétaire ou retirée).
+local function dropMadePoints(plotModel: Instance)
+	for machine, point in madePoints do
+		if machine == plotModel or machine:IsDescendantOf(plotModel) then
+			point:Destroy()
+			madePoints[machine] = nil
+		end
+	end
 end
 
 local function refreshAll()
 	refreshQueued = false
-	for _, offer in offers do
-		refreshOffer(offer)
+	local template, reason = signTemplate()
+	if template == nil and not fallbackSaid then
+		fallbackSaid = true
+		print(`[UpgradeController] {reason} : invites d'achat à la place des panneaux (L-082)`)
+	end
+	for plotModel, byId in entries do
+		local owner = ownerOf(plotModel)
+		if plotOwners[plotModel] ~= owner then
+			plotOwners[plotModel] = owner
+			for _, entry in byId do
+				clearEntry(entry) -- parcelle libérée ou changée de propriétaire
+				entry.owner = owner
+			end
+			dropMadePoints(plotModel)
+		end
+		for _, offer in offers do
+			local entry = byId[offer.id]
+			local level = if owner then levelOf(owner, offer.id) else nil
+			if owner == nil or level == nil then
+				clearEntry(entry) -- profil pas encore chargé
+			elseif template then
+				clearPrompt(entry)
+				showSign(offer, entry, template, plotModel, owner, level, Formulas.UpgradeCost(offer.id, level))
+			else
+				clearSign(entry)
+				if owner == localPlayer then
+					showPrompt(offer, entry, plotModel, level, Formulas.UpgradeCost(offer.id, level))
+				else
+					clearPrompt(entry)
+				end
+			end
+		end
 	end
 end
 
@@ -247,70 +519,68 @@ scheduleRefresh = function()
 	end
 end
 
-local function setPlot(newPlot: Model?)
-	if newPlot == plot then
-		return
-	end
-	for _, offer in offers do
-		hide(offer)
-	end
-	for _, point in madePoints do
-		point:Destroy()
-	end
-	table.clear(madePoints)
-	for _, connection in plotConnections do
-		connection:Disconnect()
-	end
-	table.clear(plotConnections)
-	plot = newPlot
-	if newPlot then
-		local function onDescendant(_inst: Instance)
-			scheduleRefresh()
-		end
-		table.insert(plotConnections, newPlot.DescendantAdded:Connect(onDescendant))
-		table.insert(plotConnections, newPlot.DescendantRemoving:Connect(onDescendant))
-	end
-	scheduleRefresh()
-end
-
--- Parcelle dont le joueur est propriétaire, ou nil.
-local function findPlot(): Model?
-	for _, inst in CollectionService:GetTagged(PLOT_TAG) do
-		if inst:IsA("Model") and inst:GetAttribute(OWNER_ATTRIBUTE) == localPlayer.UserId then
-			return inst :: Model
-		end
-	end
-	return nil
-end
-
-local function updatePlot()
-	setPlot(findPlot())
-end
-
 local function watchPlot(inst: Instance)
 	if watchedPlots[inst] then
 		return
 	end
-	watchedPlots[inst] = inst:GetAttributeChangedSignal(OWNER_ATTRIBUTE):Connect(updatePlot)
-	updatePlot()
+	local function onChange(_inst: Instance?)
+		scheduleRefresh()
+	end
+	watchedPlots[inst] = {
+		inst:GetAttributeChangedSignal(OWNER_ATTRIBUTE):Connect(onChange),
+		inst.DescendantAdded:Connect(onChange),
+		inst.DescendantRemoving:Connect(onChange),
+	}
+	local byId: { [string]: Entry } = {}
+	for _, offer in offers do
+		byId[offer.id] = {}
+	end
+	entries[inst] = byId
+	scheduleRefresh()
 end
 
 local function unwatchPlot(inst: Instance)
-	local connection = watchedPlots[inst]
-	if connection then
-		connection:Disconnect()
+	local connections = watchedPlots[inst]
+	if connections then
+		for _, connection in connections do
+			connection:Disconnect()
+		end
 		watchedPlots[inst] = nil
 	end
-	updatePlot()
+	local byId = entries[inst]
+	if byId then
+		for _, entry in byId do
+			clearEntry(entry)
+		end
+		entries[inst] = nil
+	end
+	plotOwners[inst] = nil
+	dropMadePoints(inst)
+	scheduleRefresh()
+end
+
+local function watchPlayer(player: Player)
+	for _, offer in offers do
+		player:GetAttributeChangedSignal(string.format(LEVEL_FORMAT, offer.id)):Connect(scheduleRefresh)
+	end
+	scheduleRefresh()
 end
 
 function UpgradeController.Start()
 	-- Peut attendre que le serveur ait créé les remotes.
 	net = require(Shared:WaitForChild("Net"):WaitForChild("Net") :: ModuleScript) :: any
 
-	for _, offer in offers do
-		localPlayer:GetAttributeChangedSignal(string.format(LEVEL_FORMAT, offer.id)):Connect(scheduleRefresh)
+	Players.PlayerAdded:Connect(watchPlayer)
+	Players.PlayerRemoving:Connect(function()
+		scheduleRefresh()
+	end)
+	for _, player in Players:GetPlayers() do
+		watchPlayer(player)
 	end
+	-- Réapparition : SignGui a ResetOnSpawn = false ; une vérification de plus ne coûte rien.
+	localPlayer.CharacterAdded:Connect(function()
+		scheduleRefresh()
+	end)
 	CollectionService:GetInstanceAddedSignal(PLOT_TAG):Connect(watchPlot)
 	CollectionService:GetInstanceRemovedSignal(PLOT_TAG):Connect(unwatchPlot)
 	for _, inst in CollectionService:GetTagged(PLOT_TAG) do
