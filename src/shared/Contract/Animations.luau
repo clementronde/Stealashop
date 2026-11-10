@@ -41,6 +41,11 @@ Animations.Player = {
 	{ Name = "SwingBat", Loop = false, Priority = "Action", Marker = "Impact" },
 	{ Name = "Stunned", Loop = true, Priority = "Action" },
 	{ Name = "Knockback", Loop = false, Priority = "Action", Marker = "Land" },
+	-- Chute et arrestation (Clément, liaison L-076, livrées le 2026-11-10 ; réglages relevés dans Studio) :
+	-- pas encore jouées par le code.
+	{ Name = "Knockdown", Loop = false, Priority = "Action", Marker = "Land" },
+	{ Name = "GetUp", Loop = false, Priority = "Action" },
+	{ Name = "Arrested", Loop = false, Priority = "Action", Marker = "Grab" },
 } :: { Anim }
 
 -- 5 animations dans chaque modèle de vigile, de jour comme de nuit (mêmes noms).
@@ -52,6 +57,11 @@ Animations.Guard = {
 	{ Name = "Tired", Loop = false, Priority = "Action" },
 } :: { Anim }
 
+-- Vigile de nuit (modèle NightGuard) : celles des vigiles, plus Arrest (L-076, livrée le 2026-11-10 ;
+-- pas encore jouée par le code).
+Animations.NightGuard = table.clone(Animations.Guard)
+table.insert(Animations.NightGuard, { Name = "Arrest", Loop = false, Priority = "Action", Marker = "Grab" })
+
 -- 2 animations dans chaque vendeur.
 Animations.Vendor = {
 	{ Name = "Idle", Loop = true, Priority = "Idle" },
@@ -59,10 +69,15 @@ Animations.Vendor = {
 } :: { Anim }
 
 -- Conducteurs du camion de l'événement (liaison L-071, point 7 ; a42) : des modèles avec un Humanoid,
--- rangés par Clément dans ENV_Event_Truck. Une seule animation, facultative : Idle, jouée en boucle
--- par TruckEventService tant que le camion est là ; sans elle, le conducteur reste immobile.
+-- rangés par Clément dans ENV_Event_Truck. Idle, jouée en boucle par TruckEventService tant que le
+-- camion est là ; sans elle, le conducteur reste immobile. Walk, Run et Catch (livrées par Clément le
+-- 2026-11-10, liaison L-083 point 3) : pour la poursuite des conducteurs à la fin du chrono du camion,
+-- pas encore codée ; mêmes réglages que les vigiles.
 Animations.Driver = {
 	{ Name = "Idle", Loop = true, Priority = "Idle" },
+	{ Name = "Walk", Loop = true, Priority = "Movement" },
+	{ Name = "Run", Loop = true, Priority = "Movement" },
+	{ Name = "Catch", Loop = false, Priority = "Action", Marker = "Impact" },
 } :: { Anim }
 
 return Animations

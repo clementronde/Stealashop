@@ -256,6 +256,7 @@ type Store = {
 	EndsAt: number, -- heure serveur de fin du chrono
 	Viewers: { [Player]: boolean }, -- joueurs qui voient le chrono
 	RefillPending: boolean, -- RefillAll pendant le chrono : nouveau tirage à la fermeture
+	Banned: { [Player]: boolean }, -- attrapés par le vigile de ce magasin : plus de prise jusqu'à sa réouverture
 }
 
 type Hold = { Slot: Slot, Box: ShelfBox, StartedAt: number }
@@ -307,13 +308,13 @@ local TIMER_RADIUS = 60
 local GRAB_TIME_TOLERANCE = 0.1
 -- V0 proposé, absent du doc : un maintien non conclu expire 1 s après sa durée.
 local HOLD_EXPIRY = 1
--- V0 proposé, absent du doc : rideau. Il tombe en 0,4 s, remonte en 0,8 s, et reste
--- franchissable 3 s après sa chute : il ne tombe qu'une fois le porteur et son vigile sortis
--- (voir l'en-tête), juste derrière eux, et ne les pousse pas. Un joueur sans colis qui entre
--- pendant ce temps est sorti comme les autres.
+-- V0 proposé, absent du doc : rideau. Il tombe en 0,4 s, remonte en 0,8 s, et devient solide dès
+-- qu'il est en bas. Il ne tombe qu'une fois le magasin vide de porteurs et de vigiles (L-064) : plus
+-- besoin des 3 s où il restait franchissable (Cantin, 2026-11-10 : on passait à travers puis on était
+-- téléporté dehors). Un joueur sans colis resté dedans est sorti comme avant.
 local SHUTTER_FALL_TIME = 0.4
 local SHUTTER_RISE_TIME = 0.8
-local SHUTTER_EXIT_GRACE = 3
+local SHUTTER_EXIT_GRACE = SHUTTER_FALL_TIME
 -- V0 proposé, absent du doc : on sort les joueurs à 6 studs devant la vitrine (comme
 -- l'apparition de PlotService), sol cherché de 4 studs au-dessus jusqu'à 8 en dessous.
 local EJECT_DISTANCE = 6
@@ -359,6 +360,9 @@ local V0_LOOKS: { [string]: BoxLook } = {
 -- Messages lus par le joueur (Notify), en anglais (L-036).
 local MESSAGES = {
 	Closed = "Too late: the shutter came down!",
+	-- V0 proposé, absent du doc (Cantin, 2026-11-10) : attrapé par le vigile, plus de prise dans ce
+	-- magasin jusqu'à sa réouverture (vitrine reconstruite).
+	Banned = "The guard knows you now: come back when the store reopens!",
 }
 
 local IS_STUDIO = RunService:IsStudio()
@@ -855,7 +859,7 @@ local function restoreShutterCollide(store: Store)
 	end
 end
 
--- Baisse le rideau : il tombe de sa hauteur, franchissable pendant SHUTTER_EXIT_GRACE s.
+-- Baisse le rideau : il tombe de sa hauteur, et devient solide une fois en bas (SHUTTER_EXIT_GRACE s).
 local function lowerShutter(store: Store)
 	local shutter = store.Shutter
 	if shutter == nil or store.ShutterDown then
@@ -1156,6 +1160,10 @@ local function grabRefusal(player: Player, slot: Slot): string?
 	if player ~= store.Breaker and os.clock() < store.ExclusiveUntil then
 		return "avance du casseur"
 	end
+	if store.Banned[player] then
+		Net.Server.Notify:Fire(player, MESSAGES.Banned, "Warning")
+		return "attrapé par le vigile de ce magasin : plus de prise jusqu'à sa réouverture"
+	end
 	if isCarrying(player) then
 		return "mains pleines"
 	end
@@ -1377,6 +1385,17 @@ local function onCarryEnded(player: Player, payload: any, result: string, reason
 	if result ~= "Failed" then
 		return -- « Dropped » (DEV-048) : au sol, il revient par onDropExpired s'il n'est pas ramassé
 	end
+	local store = storesById[payload.StoreId]
+	if reason == "Caught" and store then
+		-- Règle par joueur (Cantin, 2026-11-10) : l'attrapé sort du magasin et n'y reprend plus de colis
+		-- jusqu'à sa réouverture ; les autres voleurs continuent avec leur propre vigile.
+		store.Banned[player] = true
+		local root, humanoid = rootOf(player)
+		local bounds = store.Bounds
+		if root and humanoid and bounds and inside(bounds, root.Position) then
+			moveOut(store, player, root, humanoid)
+		end
+	end
 	if returnBox(payload, carrierPosition(player)) then
 		log(`colis {payload.Tier} de {player.Name} ({reason}) : revient sur {payload.SlotId}`)
 	else
@@ -1483,6 +1502,7 @@ local function register(instance: Instance)
 		EndsAt = 0,
 		Viewers = {},
 		RefillPending = false,
+		Banned = {},
 	}
 	if store.Bounds == nil then
 		warn(`[StoreHeistService] {model:GetFullName()} : pas de volume « {BOUNDS_NAME} » (Part), aucune prise possible`)
@@ -1602,6 +1622,7 @@ local function onRebuilt(_windowId: string, model: Model)
 		return
 	end
 	closeStore(store) -- vitrine reconstruite avant la fin du chrono (WindowService.Rebuild)
+	table.clear(store.Banned) -- réouverture : les joueurs attrapés peuvent revenir
 	store.ShutterPending = false
 	raiseShutter(store, false)
 	for _, player in ejectInside(store, true) do
