@@ -139,10 +139,9 @@ local COUNTER_TEXT = "%d / %d discovered"
 local ZONE_COUNT_TEXT = "%d / %d"
 local UNKNOWN_NAME = "???"
 local SECRETS_NAME = "Secrets" -- ZoneName des Secrets sans texte de Clément
--- Récompense d'une zone complète affichée dans RewardLabel (V0 : les +5 % de revenus de Config/Index,
--- doc 3.4). À changer ici seulement quand la récompense change (L-083 point 7).
-local REWARD_TEXT = "+%d%% INCOME"
-local REWARD_EARNED_TEXT = "+%d%% INCOME EARNED"
+-- Récompense d'une zone complète affichée dans RewardLabel : Index.ZoneRewardText (argent, vitesse et
+-- revenus, L-083 point 7), suivi de ce mot une fois la zone complète. V0, en anglais.
+local REWARD_EARNED_SUFFIX = " EARNED"
 -- Teintes de l'icône des cartes d'exemple de Clément (relevé de Studio du 2026-11-08), quand aucune
 -- carte Preview_* ne les donne.
 local FOUND_COLOR = Color3.new(1, 1, 1)
@@ -285,9 +284,8 @@ end
 
 -- Texte de RewardLabel pour une zone (complete : tous ses objets découverts, bonus déjà compté par le
 -- serveur).
-local function rewardText(_zone: number, complete: boolean): string
-	local percent = math.round(Index.ZoneBonus * 100)
-	return string.format(if complete then REWARD_EARNED_TEXT else REWARD_TEXT, percent)
+local function rewardText(zone: number, complete: boolean): string
+	return Index.ZoneRewardText(zone) .. (if complete then REWARD_EARNED_SUFFIX else "")
 end
 
 local function readDiscovered()
