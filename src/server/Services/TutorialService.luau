@@ -1019,7 +1019,10 @@ end
 
 local function installHooks()
 	StoreHeistService.SetContentOverride(function(player: Player, drawn: StoreHeistService.OverrideInfo): StoreHeistService.OverrideResult?
-		if not inTutorialHeist(player) or drawn.Zone ~= Tutorial.TutorialZone then
+		-- Avant la 1re prise seulement : à l'étape PlaceBox, le colis du tuto est déjà porté ou rangé, et
+		-- sinon chaque colis de zone 1 volé ensuite donnait l'objet garanti (audit du 2026-11-10).
+		local session = sessions[player]
+		if session == nil or session.step >= STEP_PLACE or drawn.Zone ~= Tutorial.TutorialZone then
 			return nil
 		end
 		local result: StoreHeistService.OverrideResult = {

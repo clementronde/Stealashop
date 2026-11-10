@@ -654,9 +654,10 @@ function AntiCheatService.Verify(player: Player, from: Vector3?, since: number?)
 		return true
 	end
 	local start = since :: number
+	-- Seul un déplacement du code fait APRÈS la prise excuse le trajet : une fenêtre Allow ouverte avant
+	-- (tapis, réapparition) laissait sinon téléporter au magasin puis en zone safe (audit du 2026-11-10).
 	local movedAt = lastAllowAt[player]
-	local allowedTo = allowUntil[player]
-	if (movedAt ~= nil and movedAt >= start) or (allowedTo ~= nil and now < allowedTo) then
+	if movedAt ~= nil and movedAt >= start then
 		return true
 	end
 	local position = track.Root.Position
