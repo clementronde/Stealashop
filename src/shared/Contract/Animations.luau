@@ -71,8 +71,9 @@ Animations.Vendor = {
 -- Conducteurs du camion de l'événement (liaison L-071, point 7 ; a42) : des modèles avec un Humanoid,
 -- rangés par Clément dans ENV_Event_Truck. Idle, jouée en boucle par TruckEventService tant que le
 -- camion est là ; sans elle, le conducteur reste immobile. Walk, Run et Catch (livrées par Clément le
--- 2026-11-10, liaison L-083 point 3) : pour la poursuite des conducteurs à la fin du chrono du camion,
--- pas encore codée ; mêmes réglages que les vigiles.
+-- 2026-11-10, liaison L-083 point 3) : pour la poursuite des conducteurs à la fin du chrono du camion
+-- (GuardService.StartDriverChase : Run en poursuite, Catch et son marqueur Impact à la capture ; Walk
+-- n'est pas jouée en V0) ; mêmes réglages que les vigiles.
 Animations.Driver = {
 	{ Name = "Idle", Loop = true, Priority = "Idle" },
 	{ Name = "Walk", Loop = true, Priority = "Movement" },

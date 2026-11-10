@@ -153,6 +153,27 @@
 --       SendHome(player) -> boolean (peut attendre). Déjà lancés : les anciens partent d'abord.
 --   GuardService.StopNightPatrol() -> number    retire les vigiles de nuit, renvoie leur nombre
 --   GuardService.IsNightChased(player) -> boolean   poursuivi par un vigile de nuit
+--   GuardService.StartDriverChase(chase) -> Model?
+--       Conducteur du camion (liaison L-083 point 3, TruckEventService) : lance tout de suite une
+--       poursuite avec une copie de chase.Template (jamais le modèle de Clément), pieds sur
+--       chase.Spawn, sur chase.Target. Renvoie la copie, ou nil (cible déjà poursuivie par un
+--       conducteur, sans personnage, modèle sans Humanoid ou HumanoidRootPart). Voir plus bas.
+--
+-- Conducteurs du camion (kind « Driver », L-083 point 3) : même poursuite, même capture et même coup
+-- que le vigile de jour (chemin, ligne de vue, Balance.Guard.CatchDistance, poussée au marqueur Impact
+-- de Catch, étourdi Balance.Guard.CatchStunDuration s, CarryService.Fail(…, "Caught") : le colis du
+-- camion est perdu, il n'a pas de rayon où revenir). Ce qui change :
+--   - vitesse : la WalkSpeed actuelle de sa cible × chase.SpeedMultiplier, au moins chase.MinSpeed,
+--     relue à chaque pas de pilotage : il court toujours un peu plus vite qu'elle ;
+--   - abandon : la cible ne vaut plus la poursuite (chase.Keeps(player) faux : elle ne porte plus le
+--     colis du camion, par exemple rangé dans l'inventaire à l'entrée de la zone safe), la zone safe,
+--     plus de personnage, ou chase.GiveUpAfter s de poursuite. Jamais pour l'avance prise (il est
+--     plus rapide) ;
+--   - après la capture ou l'abandon, il ne rentre nulle part : il s'efface en fondu là où il est
+--     (Balance.Guard.ReturnFadeTime), sans Tired (pas à son contrat) ;
+--   - animations Animations.Driver (Idle, Walk, Run, Catch) ; hors des plafonds des vigiles de jour (9.7) ;
+--   - le joueur reçoit ChaseState comme pour un vigile (UI_Chase, MUS_Chase), et chase.CaughtMessage
+--     à la capture.
 
 local CollectionService = game:GetService("CollectionService")
 local Debris = game:GetService("Debris")
@@ -201,8 +222,23 @@ type GuardState = "Wait" | "Chase" | "Catch" | "Tired" | "Return" | "Patrol" | "
 -- But du retour d'un vigile de jour (L-077) : son GuardSpawn, ou devant la porte du magasin.
 type ReturnTarget = "Reserve" | "Door"
 
--- Day : vigile de jour d'un magasin (5.5) ; Night : vigile de nuit (5.12).
-type GuardKind = "Day" | "Night"
+-- Day : vigile de jour d'un magasin (5.5) ; Night : vigile de nuit (5.12) ; Driver : conducteur du
+-- camion (L-083 point 3).
+type GuardKind = "Day" | "Night" | "Driver"
+
+-- Poursuite d'un conducteur du camion, donnée par TruckEventService à StartDriverChase.
+export type DriverChase = {
+	Template: Model, -- le conducteur de Clément (copié ici, jamais modifié)
+	Name: string, -- nom de la copie en jeu
+	Target: Player,
+	Spawn: CFrame, -- ses pieds à l'apparition, tourné comme ce repère
+	Zone: number, -- zone du camion (OnCatch)
+	SpeedMultiplier: number, -- × la WalkSpeed actuelle de la cible
+	MinSpeed: number,
+	GiveUpAfter: number, -- s de poursuite au plus
+	Keeps: (player: Player) -> boolean, -- la cible vaut encore la poursuite
+	CaughtMessage: string?, -- Notify au joueur attrapé
+}
 
 -- Règles de la nuit, données par NightCycleService à StartNightPatrol.
 export type NightHooks = {
@@ -261,6 +297,7 @@ type Guard = {
 	fadeDecals: { [Decal]: number },
 	connections: { RBXScriptConnection },
 	alive: boolean,
+	driver: DriverChase?, -- conducteur du camion : sa poursuite ; nil pour un vigile
 }
 
 -- Noms du contrat (2.1, 10.4) lus ici.
@@ -375,6 +412,7 @@ local GAIT_SPEED_MAX = 1.6
 -- Nom des vigiles dans les avertissements d'AnimPlayer, le même de jour et de nuit (mêmes modèles,
 -- mêmes noms d'animations) : une animation pas encore livrée n'est signalée qu'une fois.
 local ANIM_LABEL = "Vigile"
+local DRIVER_ANIM_LABEL = "Conducteur"
 
 -- États du Humanoid jamais utiles à un vigile (9.7 : nage, escalade ; le reste en V0).
 local DISABLED_STATES = {
@@ -398,6 +436,8 @@ local lastGoneAt: { [Model]: number } = {}
 local chasedBy: { [Player]: Guard } = {} -- par un vigile de jour
 local nightGuards: { Guard } = {}
 local nightChasedBy: { [Player]: Guard } = {}
+local driverGuards: { Guard } = {} -- conducteurs du camion (L-083 point 3)
+local driverChasedBy: { [Player]: Guard } = {}
 local nightHooks: NightHooks? = nil -- règles de la nuit en cours ; nil le jour
 local nightToken = 0 -- change à chaque StartNightPatrol et StopNightPatrol : périme les lancements en cours
 local chaseSent: { [Player]: Model } = {} -- vigile annoncé au joueur par ChaseState(true, …)
@@ -908,7 +948,7 @@ local function refreshChaseState(player: Player)
 		chaseSent[player] = nil
 		return
 	end
-	local guard = chasedBy[player] or nightChasedBy[player]
+	local guard = chasedBy[player] or driverChasedBy[player] or nightChasedBy[player]
 	local model = if guard then guard.model else nil
 	if model == chaseSent[player] then
 		return
@@ -934,6 +974,9 @@ local function endChase(guard: Guard)
 	end
 	if nightChasedBy[player] == guard then
 		nightChasedBy[player] = nil
+	end
+	if driverChasedBy[player] == guard then
+		driverChasedBy[player] = nil
 	end
 	guard.model:SetAttribute(TARGET_ATTRIBUTE, 0)
 	pcall(function()
@@ -961,7 +1004,7 @@ local function despawn(guard: Guard, reason: string)
 	guard.alive = false
 	endChase(guard)
 	releaseFollow(guard)
-	local list = if guard.kind == "Night" then nightGuards else guards
+	local list = if guard.kind == "Night" then nightGuards elseif guard.kind == "Driver" then driverGuards else guards
 	local index = table.find(list, guard)
 	if index then
 		table.remove(list, index)
@@ -972,7 +1015,7 @@ local function despawn(guard: Guard, reason: string)
 	guard.pathToken += 1
 	guard.anims:Destroy()
 	guard.model:Destroy()
-	if guard.kind ~= "Night" and guard.store then
+	if guard.kind == "Day" and guard.store then
 		lastGoneAt[guard.store] = os.clock() -- rouverture du magasin : voir StoreReadyToReopen
 	end
 	log(`{guard.label} parti ({reason})`)
@@ -1196,6 +1239,10 @@ local function beginDayReturn(guard: Guard, now: number)
 end
 
 local function startReturn(guard: Guard, now: number)
+	if guard.kind == "Driver" then
+		startFade(guard, now, "fin de sa poursuite", nil) -- il ne rentre nulle part (L-083 point 3)
+		return
+	end
 	setState(guard, "Return")
 	if guard.kind == "Night" and #guard.patrol > 0 then
 		-- La nuit, il rentre au point de ronde le plus proche, à l'allure de la ronde.
@@ -1244,7 +1291,8 @@ local function giveUp(guard: Guard, reason: string)
 	end
 	local now = os.clock()
 	stop(guard)
-	if state == "Wait" then
+	if state == "Wait" or guard.kind == "Driver" then
+		-- Pas encore élancé, ou conducteur du camion (sans Tired au contrat) : pas d'essoufflement.
 		startReturn(guard, now) -- il ne s'est pas encore élancé : pas d'essoufflement
 		return
 	end
@@ -1365,6 +1413,10 @@ local function catch(guard: Guard, player: Player)
 	-- Colis, étourdissement, message : décidés ici, au moment de la capture, dans leur propre tâche
 	-- pour qu'un appel qui attend ne bloque pas les autres vigiles.
 	local zone = guard.zone
+	local driver = guard.driver
+	local message = if driver
+		then driver.CaughtMessage
+		else `Caught! Recommended speed: {Format.short(Zones[zone].AdvisedSpeed)}`
 	emitCatch(player, zone, false)
 	task.spawn(function()
 		local ok, err = pcall(CarryService.Fail :: any, player, "Caught")
@@ -1372,12 +1424,8 @@ local function catch(guard: Guard, player: Player)
 			warn(`[GuardService] CarryService.Fail({player.Name}, "Caught") : {err}`)
 		end
 		stun(player, Balance.Guard.CatchStunDuration)
-		if player.Parent == Players then
-			Net.Server.Notify:Fire(
-				player,
-				`Caught! Recommended speed: {Format.short(Zones[zone].AdvisedSpeed)}`,
-				"Warning"
-			)
+		if message and player.Parent == Players then
+			Net.Server.Notify:Fire(player, message, "Warning")
 		end
 	end)
 end
@@ -1488,6 +1536,22 @@ local function nightRefusal(player: Player, position: Vector3): string?
 	return nil
 end
 
+-- Conducteur du camion : la cible vaut-elle encore la poursuite ? Une erreur du crochet compte pour non.
+local function driverKeeps(driver: DriverChase, player: Player): boolean
+	local ok, result = pcall(driver.Keeps, player)
+	if not ok then
+		warnOnce("hook:Keeps", `conducteur : Keeps({player.Name}) : {result}`)
+		return false
+	end
+	return result == true
+end
+
+-- Vitesse du conducteur : la WalkSpeed actuelle de sa cible × SpeedMultiplier, au moins MinSpeed.
+local function driverSpeed(driver: DriverChase, targetHumanoid: Humanoid): number
+	local speed = targetHumanoid.WalkSpeed * driver.SpeedMultiplier
+	return math.max(if isPositiveNumber(speed) then speed else 0, driver.MinSpeed)
+end
+
 -- Boucle ----------------------------------------------------------------------------------
 
 local function chaseStep(guard: Guard, now: number)
@@ -1502,10 +1566,16 @@ local function chaseStep(guard: Guard, now: number)
 		return
 	end
 	local night = guard.kind == "Night"
+	local driver = guard.driver
 	if night then
 		local reason = nightRefusal(player, targetRoot.Position)
 		if reason then
 			giveUp(guard, reason)
+			return
+		end
+	elseif driver then
+		if not driverKeeps(driver, player) then
+			giveUp(guard, "ne porte plus le colis du camion")
 			return
 		end
 	elseif not CarryService.IsCarrying(player) then
@@ -1530,13 +1600,17 @@ local function chaseStep(guard: Guard, now: number)
 		end
 		return
 	end
-	local giveUpAfter = if night then Night.GiveUpChaseDuration else Balance.Guard.GiveUpChaseDuration
+	local giveUpAfter = if driver
+		then driver.GiveUpAfter
+		elseif night then Night.GiveUpChaseDuration
+		else Balance.Guard.GiveUpChaseDuration
 	if now - guard.chaseStartedAt >= giveUpAfter then
 		giveUp(guard, `{giveUpAfter} s de poursuite`)
 		return
 	end
+	-- Le conducteur, plus rapide que sa cible, n'abandonne jamais pour l'avance prise.
 	local giveUpLead = if night then Night.GiveUpLead else Balance.Guard.GiveUpLead
-	if distance >= giveUpLead then
+	if driver == nil and distance >= giveUpLead then
 		giveUp(guard, `{giveUpLead} studs d'avance`)
 		return
 	end
@@ -1544,6 +1618,14 @@ local function chaseStep(guard: Guard, now: number)
 		return
 	end
 	guard.nextSteerAt = now + STEER_INTERVAL
+	if driver then
+		-- Toujours un peu plus vite que sa cible, même si elle accélère en route.
+		local speed = driverSpeed(driver, targetHumanoid)
+		if math.abs(speed - guard.speed) > 0.05 then
+			guard.speed = speed
+			setWalkSpeed(guard, speed)
+		end
+	end
 	if canSee(guard, targetRoot, targetHumanoid) then
 		guard.waypoints = nil
 		moveTo(guard, targetRoot.Position)
@@ -1892,6 +1974,13 @@ local function update(guard: Guard, now: number)
 			elseif now >= guard.stateEndsAt then
 				startChase(guard, now)
 			end
+		elseif guard.driver then
+			local driver = guard.driver :: DriverChase
+			if player == nil or root == nil or not driverKeeps(driver, player) then
+				giveUp(guard, "plus de colis du camion avant le départ")
+			elseif now >= guard.stateEndsAt then
+				startChase(guard, now)
+			end
 		elseif player == nil or root == nil or not CarryService.IsCarrying(player) then
 			giveUp(guard, "portage fini avant le départ")
 		elseif now >= guard.stateEndsAt then
@@ -1919,12 +2008,12 @@ local function update(guard: Guard, now: number)
 end
 
 local function step()
-	if #guards == 0 and #nightGuards == 0 then
+	if #guards == 0 and #nightGuards == 0 and #driverGuards == 0 then
 		return
 	end
 	refreshRayFilter()
 	local now = os.clock()
-	for _, list in { guards, nightGuards } do
+	for _, list in { guards, nightGuards, driverGuards } do
 		for _, guard in table.clone(list) do
 			if guard.alive then
 				local ok, err = pcall(update :: any, guard, now)
@@ -2355,6 +2444,142 @@ local function spawnNightGuard(zone: number, number: number, points: { Vector3 }
 	log(`{guard.label} ({label}) en ronde, zone {zone}, {#points} point(s), poursuite à {Format.short(guard.speed)}, {sizeText(scale, agent)}`)
 end
 
+-- Conducteurs du camion (L-083 point 3) -----------------------------------------------------------
+
+-- Pose un conducteur sur chase.Spawn et le lance sur chase.Target (Wait : REACTION_DELAY s, puis
+-- Chase). N'attend pas. Renvoie sa copie, ou nil.
+local function spawnDriver(chase: DriverChase): Model?
+	local player = chase.Target
+	if driverChasedBy[player] ~= nil then
+		return nil -- un conducteur par porteur
+	end
+	local targetRoot, targetHumanoid = bodyOf(player)
+	if targetRoot == nil or targetHumanoid == nil then
+		return nil
+	end
+	local label = chase.Template:GetFullName()
+	if not isUsable(chase.Template) then
+		warnOnce(`bad:{label}`, `{label} : Humanoid ou HumanoidRootPart manquant (10.4), conducteur non créé`)
+		return nil
+	end
+	local model = chase.Template:Clone() :: Model? -- nil si le modèle n'est pas Archivable
+	if model == nil then
+		warnOnce(`archivable:{label}`, `{label} n'est pas Archivable : conducteur non créé`)
+		return nil
+	end
+	model.Name = chase.Name
+	local humanoid, root = prepare(model, label)
+	if humanoid == nil or root == nil then
+		model:Destroy()
+		return nil
+	end
+	local scale = scaleOf(model)
+	local agent = agentFor(model)
+
+	-- Pieds sur le point d'apparition, tourné vers sa cible.
+	local base = chase.Spawn.Position
+	local look = flat(targetRoot.Position - base)
+	local frame = if look.Magnitude > 1e-3 then CFrame.lookAt(base, base + look.Unit) else chase.Spawn
+	local rootHeight = humanoid.HipHeight + root.Size.Y / 2
+	local offset = model:GetPivot():ToObjectSpace(root.CFrame)
+	model:PivotTo(frame * CFrame.new(0, rootHeight, 0) * offset:Inverse())
+
+	model:SetAttribute(TARGET_ATTRIBUTE, player.UserId)
+	pcall(function()
+		model.ModelStreamingMode = Enum.ModelStreamingMode.PersistentPerPlayer
+		model:AddPersistentPlayer(player)
+	end)
+	humanoid.BreakJointsOnDeath = false
+	humanoid.WalkSpeed = 0
+	model.Parent = getActiveFolder()
+	pcall(function()
+		root:SetNetworkOwner(nil)
+	end)
+	for _, state in DISABLED_STATES do
+		humanoid:SetStateEnabled(state, false)
+	end
+
+	local animator = humanoid:FindFirstChildOfClass("Animator")
+	if animator == nil then
+		local created = Instance.new("Animator")
+		created.Parent = humanoid
+		animator = created
+	end
+	local now = os.clock()
+	local guard: Guard = {
+		model = model,
+		humanoid = humanoid,
+		root = root,
+		rootHeight = rootHeight,
+		scale = scale,
+		anims = AnimPlayer.new(animator :: Animator, AnimPlayer.modelFolder(model), Animations.Driver, DRIVER_ANIM_LABEL),
+		kind = "Driver",
+		label = `conducteur {model.Name}`,
+		store = nil,
+		home = frame.Position,
+		zone = chase.Zone,
+		speed = driverSpeed(chase, targetHumanoid),
+		target = player,
+		state = "Wait",
+		spawnedAt = now,
+		chaseStartedAt = now,
+		patrol = {},
+		patrolIndex = 1,
+		patrolStep = 1,
+		pauseUntil = 0,
+		onKnock = nil,
+		nextScanAt = 0,
+		stateEndsAt = now + REACTION_DELAY,
+		returnedAt = now,
+		nextSteerAt = now,
+		nextPathAt = now,
+		path = PathfindingService:CreatePath(agent),
+		pathToken = 0,
+		computing = false,
+		waypoints = nil,
+		waypointIndex = 2,
+		progressPos = root.Position,
+		progressAt = now,
+		knockTarget = nil,
+		followPayload = nil,
+		followPosition = Vector3.zero,
+		agentRadius = agent.AgentRadius,
+		pathFailures = 0,
+		returnTo = "Reserve",
+		returnGoal = frame.Position,
+		doorSpot = nil,
+		doorStep = nil,
+		noPathSince = 0,
+		fadeStartedAt = 0,
+		fadeReason = "",
+		fadeParts = {},
+		fadeDecals = {},
+		connections = {},
+		alive = true,
+		driver = chase,
+	}
+	table.insert(guard.connections, humanoid.Died:Connect(function()
+		despawn(guard, "mort")
+	end))
+	for _, entry in MarkerSounds.Guard do
+		guard.anims:OnMarker(entry.Anim, entry.Marker, function()
+			MarkerSounds.play(entry.Sound, guard.root)
+		end)
+	end
+	guard.anims:OnMarker("Catch", CATCH_MARKER, function()
+		releaseKnockback(guard)
+	end)
+	guard.anims:Play("Idle")
+
+	table.insert(driverGuards, guard)
+	driverChasedBy[player] = guard
+	refreshChaseState(player)
+	log(
+		`{guard.label} lancé sur {player.Name}, zone {chase.Zone}, vitesse {Format.short(guard.speed)} (× {Format.short(chase.SpeedMultiplier)} la sienne), {sizeText(scale, agent)}`
+	)
+	return model
+end
+
 -- Colis tombé au sol (6.2) ----------------------------------------------------------------------
 
 -- Le colis de la cible du vigile vient de tomber à `position` (coup de batte) : il le suit.
@@ -2534,6 +2759,15 @@ function GuardService.IsNightChased(player: Player): boolean
 	return nightChasedBy[player] ~= nil
 end
 
+function GuardService.StartDriverChase(chase: DriverChase): Model?
+	local ok, result = pcall(spawnDriver, chase)
+	if not ok then
+		warn(`[GuardService] conducteur non créé : {result}`)
+		return nil
+	end
+	return result
+end
+
 function GuardService.StopNightPatrol(): number
 	nightToken += 1
 	nightHooks = nil
@@ -2614,6 +2848,10 @@ function GuardService.Start()
 		local nightGuard = nightChasedBy[player]
 		if nightGuard then
 			giveUp(nightGuard, "départ du joueur")
+		end
+		local driverGuard = driverChasedBy[player]
+		if driverGuard then
+			giveUp(driverGuard, "départ du joueur")
 		end
 		stunTokens[player] = nil
 		chaseSent[player] = nil

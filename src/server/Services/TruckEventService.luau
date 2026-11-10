@@ -33,6 +33,20 @@
 --      joueur, portée, débit, coup au marqueur Impact). Ses PV : attribut HP du camion.
 --   3. Départ sans rien lâcher, avec un Notify : pas cassé au bout de Lifetime s, ou dès que l'alerte
 --      de la nuit commence (ou la nuit, si on y saute).
+--   3'. Fin du chrono du camion (demande de Clément du 2026-11-10, liaison L-083 point 3) : Lifetime s
+--      après l'apparition, ou plus tôt à l'alerte de la nuit (ou la nuit), que le camion ait explosé ou
+--      non (pas cassé : il part, point 3). Les conducteurs réapparaissent d'un coup au point du camion
+--      et poursuivent les joueurs qui portent un colis de CE camion (StoreId « Truck_<n> »), vivants et
+--      hors zone safe : un conducteur par porteur, DriverChaseMax au plus et pas plus que de
+--      conducteurs dans le modèle de Clément (ENV_Event_Truck, par ordre de nom), les porteurs les
+--      plus proches du camion d'abord. Chacun apparaît à DriverSpawnSpacing studs de l'autre, de part
+--      et d'autre du pivot du camion, au sol. La poursuite elle-même est celle de GuardService
+--      (StartDriverChase : chemin, capture à Balance.Guard.CatchDistance, coup au marqueur Impact de
+--      Catch, chute du joueur, étourdi CatchStunDuration s), à DriverSpeedMultiplier × la WalkSpeed du
+--      porteur (au moins DriverMinSpeed), abandon à la zone safe (le colis y est rangé), quand il ne
+--      porte plus ce colis ou après DriverGiveUpAfter s. Attrapé : CarryService.Fail(…, "Caught"), le
+--      colis est perdu. Notify DriversChase au porteur poursuivi. Aucun porteur : aucun conducteur.
+--      GuardService est chargé à ce moment-là, protégé : sans lui (bancs), pas de poursuite.
 --   4. À 0 PV (WindowService.OnBroken, Kind « Event ») : explosion.
 --      - Le serveur coupe collisions, contacts et requêtes de toutes les pièces du camion, éteint son
 --        contour et pose ExplodedAt (heure serveur) : TruckController fait voler les pièces
@@ -65,7 +79,11 @@
 -- Crochet de test, STUDIO SEULEMENT (comme NightSkipTo) : en Play, dans la barre de commande serveur :
 --       workspace:SetAttribute("TruckSpawnNow", 3)          -- un camion tout de suite en zone 3 (1 à 6)
 --       workspace:SetAttribute("TruckSpawnNow", "Explode")  -- le camion présent explose tout de suite
---       workspace:SetAttribute("TruckSpawnNow", "Leave")    -- le camion présent part tout de suite
+--       workspace:SetAttribute("TruckSpawnNow", "Leave")    -- le camion présent, pas cassé, part tout de suite :
+--                                                           -- fin de son chrono (point 3')
+--       workspace:SetAttribute("TruckSpawnNow", "Chase")    -- fin du chrono tout de suite, même après
+--                                                           -- l'explosion : les conducteurs poursuivent les
+--                                                           -- porteurs de ses colis (point 3')
 --   Le service lit l'attribut, l'efface et agit, même de nuit ; un camion présent est remplacé sans
 --   message. Hors de Studio, l'attribut n'est pas écouté.
 --
@@ -109,6 +127,17 @@ type Truck = {
 	SpawnedAt: number, -- os.clock()
 	State: TruckState,
 }
+
+-- Chrono d'un camion (point 3') : survit à l'explosion et au retrait de la copie.
+type Chrono = {
+	Number: number,
+	Zone: number,
+	Frame: CFrame, -- pivot du camion (en bas au centre) : où réapparaissent les conducteurs
+	EndsAt: number, -- os.clock()
+}
+
+-- Ce que ce service utilise de GuardService (chargé à la fin du chrono, voir loadGuardService).
+type GuardApi = { StartDriverChase: (chase: any) -> Model? }
 
 -- Colis du camion au sol (ou en vol vers le sol).
 type TruckBox = {
@@ -179,6 +208,7 @@ local TruckEventService = {}
 TruckEventService.Priority = PRIORITY
 
 local current: Truck? = nil
+local chrono: Chrono? = nil
 local truckCount = 0
 local nextSpawnAt = math.huge -- os.clock() ; posé au Start
 local dayStartedAt = -math.huge -- os.clock() de la dernière aube
@@ -803,6 +833,7 @@ local function spawnTruck(zone: number): boolean
 		SpawnedAt = os.clock(),
 		State = "Active",
 	}
+	chrono = { Number = truckCount, Zone = zone, Frame = frame, EndsAt = os.clock() + TruckEvent.Lifetime }
 	notifyAll(string.format(TruckEvent.Messages.Spawned, zone), "Info")
 	local p = frame.Position
 	log(
@@ -909,6 +940,121 @@ local function explode(truck: Truck, impactPoint: Vector3?, breaker: Player?)
 			model:Destroy()
 		end
 	end)
+end
+
+-- Poursuite des conducteurs (point 3') ------------------------------------------------------------------
+
+-- GuardService, chargé au premier besoin et protégé : il n'est pas dans tous les arbres de test.
+local guardApi: GuardApi? = nil
+local function loadGuardService(): GuardApi?
+	if guardApi then
+		return guardApi
+	end
+	local ok, result = pcall(function(): any
+		return require(script.Parent.GuardService) :: any
+	end)
+	if ok and type(result) == "table" and type(result.StartDriverChase) == "function" then
+		guardApi = result :: GuardApi
+		return guardApi
+	end
+	warnOnce("guardservice", `GuardService indisponible ({if ok then "sans StartDriverChase" else result}) : pas de poursuite des conducteurs`)
+	return nil
+end
+
+-- `player` porte-t-il un colis du camion `storeId` (« Truck_<n> ») ?
+local function carriesBoxOf(player: Player, storeId: string): boolean
+	local payload = CarryService.GetPayload(player)
+	if payload == nil or payload.Kind ~= "NPCBox" then
+		return false
+	end
+	return (payload :: CarryTypes.NPCBoxPayload).StoreId == storeId
+end
+
+-- Les conducteurs du modèle de Clément, par ordre de nom (TruckDriver_01, _02…).
+local function driverTemplates(): { Model }
+	local template = findTemplate()
+	local list: { Model } = {}
+	if template then
+		for _, driver in driversOf(template) do
+			table.insert(list, driver.Rig)
+		end
+	end
+	table.sort(list, function(a: Model, b: Model): boolean
+		return a.Name < b.Name
+	end)
+	return list
+end
+
+-- Fin du chrono `c` : les conducteurs poursuivent les porteurs d'un colis de ce camion.
+local function launchDrivers(c: Chrono, why: string)
+	local storeId = `Truck_{c.Number}`
+	type Candidate = { Player: Player, Distance: number }
+	local candidates: { Candidate } = {}
+	for _, player in Players:GetPlayers() do
+		local root = rootOf(player)
+		if root and carriesBoxOf(player, storeId) and not inSafeZone(root.Position) then
+			table.insert(candidates, { Player = player, Distance = flat(root.Position - c.Frame.Position).Magnitude })
+		end
+	end
+	if #candidates == 0 then
+		log(`camion n° {c.Number} : fin du chrono ({why}), aucun porteur de ses colis hors zone safe, pas de conducteur`)
+		return
+	end
+	table.sort(candidates, function(a: Candidate, b: Candidate): boolean
+		return a.Distance < b.Distance
+	end)
+	local templates = driverTemplates()
+	local count = math.min(#candidates, #templates, math.max(math.floor(TruckEvent.DriverChaseMax), 0))
+	if count == 0 then
+		warnOnce("nodriver", `aucun conducteur (Model avec un Humanoid) dans {TRUCK_ASSET} : pas de poursuite à la fin du chrono`)
+		return
+	end
+	local guards = loadGuardService()
+	if guards == nil then
+		return
+	end
+	local frame = c.Frame
+	local launched = 0
+	for index = 1, count do
+		local player = candidates[index].Player
+		local side = (index - (count + 1) / 2) * TruckEvent.DriverSpawnSpacing
+		local point = frame.Position + frame.RightVector * side
+		-- Tourné vers sa cible par GuardService.
+		local spawnAt = CFrame.new(point.X, groundY(point, frame.Position.Y), point.Z)
+		local model = guards.StartDriverChase({
+			Template = templates[index],
+			Name = `{templates[index].Name}_T{c.Number}`,
+			Target = player,
+			Spawn = spawnAt,
+			Zone = c.Zone,
+			SpeedMultiplier = TruckEvent.DriverSpeedMultiplier,
+			MinSpeed = TruckEvent.DriverMinSpeed,
+			GiveUpAfter = TruckEvent.DriverGiveUpAfter,
+			Keeps = function(target: Player): boolean
+				return carriesBoxOf(target, storeId)
+			end,
+			CaughtMessage = TruckEvent.Messages.DriverCaught,
+		})
+		if model then
+			launched += 1
+			Net.Server.Notify:Fire(player, TruckEvent.Messages.DriversChase, "Warning")
+		end
+	end
+	log(`camion n° {c.Number} : fin du chrono ({why}), {launched} conducteur(s) lancé(s) sur {#candidates} porteur(s)`)
+end
+
+-- Fin du chrono `c` (point 3') : le camion part s'il n'a pas explosé, puis les conducteurs.
+local function endChrono(c: Chrono, why: string, leftMessage: string)
+	if chrono ~= c then
+		return
+	end
+	chrono = nil
+	local truck = current
+	if truck and truck.Number == c.Number and truck.State == "Active" then
+		log(`camion n° {truck.Number} pas cassé ({why}) : il part`)
+		removeTruck(truck, leftMessage)
+	end
+	launchDrivers(c, why)
 end
 
 -- Colis du camion au sol ------------------------------------------------------------------------------
@@ -1033,13 +1179,14 @@ local function step()
 			holds[player] = nil
 		end
 	end
+	local running = chrono
+	if running and now >= running.EndsAt then
+		endChrono(running, `{TruckEvent.Lifetime} s`, TruckEvent.Messages.Left)
+	end
 	local truck = current
 	if truck then
 		if truck.Model.Parent == nil then
 			current = nil -- retiré par quelqu'un d'autre
-		elseif truck.State == "Active" and now - truck.SpawnedAt >= TruckEvent.Lifetime then
-			log(`camion n° {truck.Number} pas cassé en {TruckEvent.Lifetime} s : il part`)
-			removeTruck(truck, TruckEvent.Messages.Left)
 		end
 		return
 	end
@@ -1058,10 +1205,11 @@ local function onPhaseChanged(phase: string, previous: string)
 		dayStartedAt = os.clock()
 		return
 	end
-	local truck = current
-	if (phase == "Warning" or phase == "Night") and truck and truck.State == "Active" then
-		log(`camion n° {truck.Number} : {phase}, il part`)
-		removeTruck(truck, TruckEvent.Messages.LeftNight)
+	-- L'alerte (ou la nuit) arrête le chrono : le camion part s'il n'a pas explosé, les conducteurs
+	-- poursuivent les porteurs de ses colis.
+	local running = chrono
+	if (phase == "Warning" or phase == "Night") and running then
+		endChrono(running, phase, TruckEvent.Messages.LeftNight)
 	end
 end
 
@@ -1083,25 +1231,36 @@ local function onSkip()
 	Workspace:SetAttribute(SKIP_ATTRIBUTE, nil)
 	local word = if type(value) == "string" then string.lower((string.gsub(value, "%s", ""))) else nil
 	local truck = current
-	if word == "explode" or word == "leave" then
+	if word == "explode" then
 		if truck == nil or truck.State ~= "Active" then
 			warn(`[TruckEventService] {SKIP_ATTRIBUTE} = {value} : aucun camion en jeu`)
-		elseif word == "explode" then
+		else
 			WindowService.RemoveTarget(truck.WindowId) -- plus aucun coup pendant l'explosion
 			explode(truck, nil, nil)
+		end
+		return
+	end
+	if word == "leave" or word == "chase" then
+		-- Leave : seulement un camion pas encore cassé (comme avant) ; Chase : même après l'explosion.
+		local running = chrono
+		if word == "leave" and (truck == nil or truck.State ~= "Active") then
+			warn(`[TruckEventService] {SKIP_ATTRIBUTE} = {value} : aucun camion en jeu (après l'explosion : "Chase")`)
+		elseif running == nil then
+			warn(`[TruckEventService] {SKIP_ATTRIBUTE} = {value} : aucun chrono de camion en cours`)
 		else
-			removeTruck(truck, TruckEvent.Messages.Left)
+			endChrono(running, `{SKIP_ATTRIBUTE} = {value}`, TruckEvent.Messages.Left)
 		end
 		return
 	end
 	local zone = if type(value) == "number" then value elseif word then tonumber(word) else nil
 	if zone == nil or zone ~= math.floor(zone) or Zones[zone] == nil then
-		warn(`[TruckEventService] {SKIP_ATTRIBUTE} = {value} : attendu une zone de 1 à {#Zones}, "Explode" ou "Leave"`)
+		warn(`[TruckEventService] {SKIP_ATTRIBUTE} = {value} : attendu une zone de 1 à {#Zones}, "Explode", "Leave" ou "Chase"`)
 		return
 	end
 	if truck then
 		removeTruck(truck, nil)
 	end
+	chrono = nil -- remplacé sans message : pas de poursuite pour l'ancien camion
 	spawnTruck(zone)
 end
 

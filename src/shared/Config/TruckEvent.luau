@@ -78,6 +78,19 @@ local TruckEvent = {
 	-- Conducteurs (L-071, point 7) : les modèles avec un Humanoid que Clément range dans ENV_Event_Truck.
 	-- Avec une animation Idle dans leur dossier Animations (Contract/Animations.Driver), le serveur la
 	-- joue en boucle tant que le camion est là ; sans elle, ils restent immobiles.
+	-- Poursuite (demande de Clément du 2026-11-10, liaison L-083 point 3) : à la fin du chrono du camion
+	-- (Lifetime s après son apparition, ou plus tôt à l'alerte de la nuit), cassé ou non, les conducteurs
+	-- réapparaissent d'un coup au point du camion et poursuivent les joueurs qui portent un colis de ce
+	-- camion (GuardService.StartDriverChase : chemin, capture et coup du vigile de jour). Attrapé : le
+	-- colis est perdu (il n'a pas de rayon où revenir), le joueur tombe comme avec un vigile.
+	DriverChaseMax = 2, -- V0 proposé, absent du doc : un conducteur par porteur, 2 au plus (les 2 modèles de Clément), les porteurs les plus proches du camion d'abord
+	-- Vitesse : la WalkSpeed actuelle du porteur poursuivi × ce multiplicateur, relue en continu. Un
+	-- multiplicateur plutôt qu'une marge fixe : il rattrape au même rythme à 16 qu'à 70 studs/s (+3
+	-- studs/s ferait +19 % à 16 mais +4 % à 70), et chaque conducteur suit son porteur, pas le plus rapide.
+	DriverSpeedMultiplier = 1.2, -- V0 proposé, absent du doc : 20 % plus vite que son porteur
+	DriverMinSpeed = 20, -- V0 proposé, absent du doc : jamais moins vite (porteur ralenti ou immobilisé)
+	DriverGiveUpAfter = 30, -- V0 proposé, absent du doc : abandonne (fondu sur place) après 30 s de poursuite
+	DriverSpawnSpacing = 4, -- V0 proposé, absent du doc : écart entre les deux conducteurs à l'apparition (studs), de part et d'autre du pivot du camion
 
 	-- Barre de vie au point HealthBarPoint (côté client) : BB_TruckHP de Clément (L-052), telle qu'il
 	-- l'a faite. Ces deux valeurs ne servent qu'au repli, une copie de BB_WindowHP, tant qu'elle manque.
@@ -90,6 +103,8 @@ local TruckEvent = {
 		Exploded = "The truck exploded: grab the boxes!", -- V0
 		Left = "The truck drove away.", -- V0 : pas cassé à temps
 		LeftNight = "Night is coming: the truck drove away.", -- V0 : parti à l'alerte de la nuit
+		DriversChase = "The truck drivers are after your box! Run to the safe zone!", -- V0 proposé, absent du doc : au porteur poursuivi
+		DriverCaught = "Caught by a truck driver! The box is lost.", -- V0 proposé, absent du doc : au porteur attrapé
 	},
 	GrabActionText = "Grab", -- V0 : invite d'un colis du camion au sol, au-dessus de « Premium Box »
 }
