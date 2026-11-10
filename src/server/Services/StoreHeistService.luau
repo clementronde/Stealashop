@@ -1296,6 +1296,10 @@ local function onGrabItem(player: Player, slotId: string)
 		refuse(player, slotId, "emplacement inconnu")
 		return
 	end
+	if not AntiCheatService.Verify(player) then
+		refuse(player, slotId, "déplacement sanctionné par l'anti-triche (audit 9.8)")
+		return
+	end
 	local hold = holds[player]
 	local reason = grabRefusal(player, slot)
 	if reason then

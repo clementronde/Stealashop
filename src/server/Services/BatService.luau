@@ -427,6 +427,10 @@ local function onSwingBat(player: Player)
 	if root == nil or humanoid == nil then
 		return
 	end
+	if not AntiCheatService.Verify(player) then
+		refuse(player, "SwingBat refusé : déplacement sanctionné par l'anti-triche (audit 9.8)")
+		return -- téléporté juste avant le coup : vu avant d'agir, pas 0,25 s après
+	end
 	if not ToolService.IsHoldingBat(player) then
 		refuse(player, "SwingBat refusé : batte pas en main")
 		return
@@ -525,6 +529,10 @@ end
 local function onGrabDropped(player: Player, dropId: string)
 	if not batDrops[dropId] then
 		return -- pas un colis tombé d'un coup de batte : laissé au service qui l'a posé (camion)
+	end
+	if not AntiCheatService.Verify(player) then
+		refuse(player, `GrabDropped sur « {dropId} » refusé : déplacement sanctionné par l'anti-triche (audit 9.8)`)
+		return
 	end
 	local hold = holds[player]
 	local reason = grabRefusal(player, dropId)

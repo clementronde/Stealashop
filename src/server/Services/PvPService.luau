@@ -851,6 +851,10 @@ local function onStealItem(player: Player, plotIndex: number, slotIndex: number)
 		refuse(player, what, "boutique inconnue")
 		return
 	end
+	if not AntiCheatService.Verify(player) then
+		refuse(player, what, "déplacement sanctionné par l'anti-triche (audit 9.8)")
+		return
+	end
 	local hold = holds[player]
 	local reason, key, message = stealRefusal(player, plot, slotIndex)
 	if reason then
