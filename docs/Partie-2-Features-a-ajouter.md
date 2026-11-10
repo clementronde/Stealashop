@@ -90,7 +90,7 @@ Pour renaître, il faut un montant d'argent ET un objet précis, que l'on remet 
 
 - **Grille** par zone (6 onglets + Secrets). Objet découvert en couleur ; non découvert = silhouette noire avec la couleur de sa rareté.
 - **Compteur** : « 23 / 38 découverts ».
-- **Récompenses** : zone complète = +5 % de revenus permanents ; index complet = aura exclusive « Collectionneur ».
+- **Récompenses** (2026-11-10, Clément et vague 20) : zone complète = +5 % de revenus permanents, une prime unique de 10 minutes du revenu de la collection complète de la zone et +3 % de vitesse permanente (V0, `Config/Index`) ; l'aura « Collectionneur » de l'index complet est abandonnée.
 - **Relance** : quand les mutations arrivent (MAJ 4), une colonne Or, Diamant, Néon par objet relance la collection.
 
 **Codé (DEV-111, 2026-11-08), avancé avant la MAJ 2** (Clément veut le bouton Index visible dès le MVP, liaison L-071) : découverte sauvegardée (profil v4, la migration compte les objets déjà possédés), écran `UI_Index` (onglets par zone et Secrets, silhouettes, compteur « X / 83 discovered »), +5 % de revenus permanents par zone complète, additionnés aux autres bonus en pour cent. Pas encore : l'aura « Collectionneur » de l'index complet, à créer par Clément (liaison L-083).
