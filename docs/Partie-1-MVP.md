@@ -327,7 +327,7 @@ C'est la séquence des miniatures et des vidéos : priorité absolue en qualité
 - **Apparition** : à la porte de la réserve, au moment où un colis est soulevé. Un vigile par voleur, 3 max par magasin.
 - **Vitesse** : table de la section 4.
 - **IA** : course directe si ligne de vue, sinon PathfindingService recalculé toutes les 0,3 s. Le serveur possède la physique du vigile.
-- **Capture** : distance ≤ 4 studs, vérifiée côté serveur. Le colis revole vers son rayon, le joueur est projeté au marqueur `Impact` de l'animation `Catch` du vigile et étourdi 1,5 s à partir de ce coup (liaison L-071), message « Rattrapé ! Vitesse conseillée : 28 ».
+- **Capture** : distance ≤ 4 studs, vérifiée côté serveur. Le colis revole vers son rayon, le joueur est projeté au marqueur `Impact` de l'animation `Catch` du vigile et étourdi 1,5 s à partir de ce coup (liaison L-071), message « Rattrapé ! Vitesse conseillée : 28 ». S'il est dans le magasin, il en est sorti ; il ne peut plus y prendre de colis jusqu'à sa réouverture (vitrine reconstruite), message « The guard knows you now… » ; les autres voleurs continuent (règle par joueur, Cantin, 2026-11-10).
 - **Abandon** : le joueur passe l'arche safe, ou 20 s de poursuite, ou 120 studs d'avance. Le vigile rentre en marchant, essoufflé, par un chemin, jusqu'à la réserve (ou devant la porte si le rideau est baissé), puis s'efface en fondu (liaison L-077).
 - **Tension** : jauge de distance vigile/joueur au bord de l'écran, battements de cœur sous 10 studs.
 - **Visuel** : un look par zone (gilet de supérette jusqu'à agent de banque), mêmes scripts.
