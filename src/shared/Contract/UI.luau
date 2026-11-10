@@ -49,6 +49,9 @@ UI.Screens = {
 			{ Path = "InviteButton", Class = BUTTON },
 			{ Path = "RewardsButton", Class = BUTTON },
 			{ Path = "RewardsButton.RewardsAlert" },
+			-- Bouton sac à dos de la colonne gauche (L-079, relevé de Studio du 2026-11-10) : ouvre et ferme
+			-- UI_Inventory (InventoryController).
+			{ Path = "InventoryButton", Class = BUTTON },
 		},
 	},
 	{
@@ -376,6 +379,80 @@ table.insert(UI.Screens, {
 	Name = "UI_Rewards",
 	Class = "ScreenGui",
 	Elements = rewardsElements,
+})
+
+-- Inventaire (L-079, L-089, L-091 point 6 ; relevé de Studio du 2026-11-10, agents/wave21-studio.md) :
+-- écran UI_Inventory de Clément, qui remplace toute la barre d'outils de Roblox, branché par
+-- InventoryController. Quatre onglets (Tabs.<Nom>Tab, image Selected sur l'onglet choisi), une section
+-- par onglet dans List (une seule visible). Les cartes clonées du Template de chaque section vont dans
+-- son Cards (UIGridLayout). PotionsSection n'a pas de Template (pas de potions dans le jeu). Counter est
+-- dans CounterPill, Displays dans DisplayPill ; Rays et Glow (dans le cadre Clip d'une carte) prennent
+-- la couleur de la rareté ; HoverOutline = contour montré au survol d'une carte.
+local inventoryElements = {
+	{ Path = "CloseButton", Class = BUTTON },
+	{ Path = "List", Class = "ScrollingFrame" },
+	{ Path = "ScrollTrack" },
+	{ Path = "Counter" },
+	{ Path = "Displays" },
+	{ Path = "EquipBestButton", Class = BUTTON },
+	{ Path = "PotionsSection" },
+} :: { Element }
+for _, tab in { "Items", "Boxes", "Tools", "Potions" } do
+	table.insert(inventoryElements, { Path = `Tabs.{tab}Tab`, Class = BUTTON })
+	table.insert(inventoryElements, { Path = `Tabs.{tab}Tab.Selected` })
+end
+local inventoryCards: { [string]: { Element } } = {
+	ItemsSection = {
+		{ Path = "Icon" },
+		{ Path = "ItemName" },
+		{ Path = "RarityBar.Rarity" },
+		{ Path = "Rays" },
+		{ Path = "Glow" },
+		{ Path = "MutationTag" },
+		{ Path = "MutationTag.MutationLabel" },
+		{ Path = "Income" },
+		{ Path = "DisplayedBadge" },
+		{ Path = "PlaceButton", Class = BUTTON },
+		{ Path = "UnequipButton", Class = BUTTON },
+		{ Path = "HoverOutline" },
+	},
+	BoxesSection = {
+		{ Path = "Icon" },
+		{ Path = "BoxName" },
+		{ Path = "RarityBar.Rarity" },
+		{ Path = "Rays" },
+		{ Path = "Glow" },
+		{ Path = "PlaceButton", Class = BUTTON },
+		{ Path = "PlacedPill" },
+		{ Path = "ReadyPill" },
+		{ Path = "TimerPill" },
+		{ Path = "TimerPill.TimerLabel" },
+		{ Path = "HoverOutline" },
+	},
+	ToolsSection = {
+		{ Path = "Icon" },
+		{ Path = "ToolName" },
+		{ Path = "ToolStat" },
+		{ Path = "Rays" },
+		{ Path = "Glow" },
+		{ Path = "EquipButton", Class = BUTTON },
+		{ Path = "EquippedPill" },
+		{ Path = "HoverOutline" },
+	},
+}
+for _, section in { "ItemsSection", "BoxesSection", "ToolsSection" } do
+	table.insert(inventoryElements, { Path = section })
+	table.insert(inventoryElements, { Path = `{section}.SectionCount.CountLabel` })
+	table.insert(inventoryElements, { Path = `{section}.Cards` })
+	table.insert(inventoryElements, { Path = `{section}.Cards.Template`, Class = BUTTON, Template = true })
+	for _, element in inventoryCards[section] do
+		table.insert(inventoryElements, { Path = `{section}.Cards.Template.{element.Path}`, Class = element.Class })
+	end
+end
+table.insert(UI.Screens, {
+	Name = "UI_Inventory",
+	Class = "ScreenGui",
+	Elements = inventoryElements,
 })
 
 return UI

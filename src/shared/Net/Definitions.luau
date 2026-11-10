@@ -94,9 +94,9 @@ local List: { RemoteDef } = {
 		RatePerSecond = 5, -- V0 proposé, absent du doc ; maintien vérifié par le service
 	},
 	{
-		-- L-089 (2026-11-09) : boxUid = uid du colis de l'inventaire (attribut BoxUid de son Tool, Boxes
-		-- du profil) ; point = point du monde visé sur le sol de sa boutique. Le serveur cherche lui-même
-		-- le sol sous ce point (Bounds de SA boutique, à portée, ni sur un colis, ni sur un présentoir, ni
+		-- L-089 (2026-11-09) : boxUid = uid du colis de l'inventaire (Boxes du profil, montré par l'attribut
+		-- InventoryState du Player depuis la vague 21) ; point = point du monde visé sur le sol de sa
+		-- boutique. Le serveur cherche lui-même le sol sous ce point (Bounds de SA boutique, à portée, ni sur un colis, ni sur un présentoir, ni
 		-- dans le décor). Avant : slotIndex d'un présentoir (L-086), d'un établi avant.
 		Name = "PlaceBox",
 		Direction = "ClientToServer",
@@ -113,7 +113,8 @@ local List: { RemoteDef } = {
 		RatePerSecond = 4, -- V0 proposé, absent du doc
 	},
 	{
-		-- L-089 : itemUid = un objet de l'inventaire (Tool tenu, attribut ItemUid), posé sur un présentoir libre.
+		-- L-089 : itemUid = un objet de l'inventaire, posé sur ce présentoir libre (depuis la vague 21, plus
+		-- envoyé par le client : l'écran d'inventaire envoie PlaceItemAuto ; gardé pour un choix du présentoir).
 		Name = "PlaceItem",
 		Direction = "ClientToServer",
 		Reliable = true,
@@ -129,6 +130,27 @@ local List: { RemoteDef } = {
 		Reliable = true,
 		Args = {},
 		RatePerSecond = 1, -- V0 proposé, absent du doc
+	},
+	{
+		-- Ajout de la vague 21 (L-079, L-091 point 6 : écran UI_Inventory, bouton PlaceButton d'un objet),
+		-- absent du tableau 9.4 : itemUid = un objet de l'inventaire (attribut InventoryState du Player),
+		-- posé sur le présentoir libre et débloqué le plus proche, sinon le premier libre. InventoryService
+		-- vérifie tout (objet à lui, ni exposé, ni au coffre-fort, ni volé ; un présentoir libre).
+		Name = "PlaceItemAuto",
+		Direction = "ClientToServer",
+		Reliable = true,
+		Args = { id("itemUid") },
+		RatePerSecond = 4, -- V0 proposé, absent du doc
+	},
+	{
+		-- Ajout de la vague 21 (bouton UnequipButton d'un objet exposé de UI_Inventory), absent du tableau
+		-- 9.4 : itemUid = un objet exposé, qui retourne dans l'inventaire. InventoryService vérifie tout
+		-- (objet à lui et exposé, pas tenu par un voleur, de la place dans l'inventaire).
+		Name = "UnplaceItem",
+		Direction = "ClientToServer",
+		Reliable = true,
+		Args = { id("itemUid") },
+		RatePerSecond = 4, -- V0 proposé, absent du doc
 	},
 	{
 		Name = "SwingBat",

@@ -82,12 +82,13 @@ local Tutorial = {
 	Hints = {
 		EquipFists = "Equip your Fists, then hit!", -- étapes 1 et 2, près de la vitrine sans outil en main (client)
 		WindowRebuilding = "Wait, the window is coming back!", -- étape 2 : vitrine cassée, rideau baissé
-		-- étapes 4 et 5 (L-089) : colis dans l'inventaire, à poser au sol de sa boutique
-		PlaceBox = "Equip the box, then tap your floor!",
+		-- étapes 4 et 5 (L-089) : colis dans l'inventaire, à poser au sol de sa boutique depuis l'écran
+		-- UI_Inventory (vague 21, L-079 : plus de barre Roblox ni de colis tenu en main)
+		PlaceBox = "Open your inventory, then place your box!",
 		WaitBox = "Wait for your box to open!", -- étape 5 : colis posé au sol, attente pas finie
 		OpenBox = "Open your box!", -- étape 5 : colis prêt à ouvrir
 		-- étape 5 (L-089) : objet dans l'inventaire, rien d'exposé
-		PlaceItem = "Equip your item, then pick a stand!",
+		PlaceItem = "Open your inventory, then place your item!",
 		CollectCash = "Step on the green pad to collect!", -- étape 5 (objet exposé), 7 et 8 (pas assez d'argent) ; V0 proposé (L-091 : plaques CollectPad_xx)
 		-- étape 6, flèche vers le tapis : il n'a plus d'invite, on s'entraîne en s'arrêtant dessus (L-071)
 		StandOnTreadmill = "Stand on the treadmill to train!",

@@ -5,7 +5,7 @@
 --
 -- Décisions de Clément du 2026-11-09 (liaison L-089, points 1 à 3 ; L-079) : plus d'établi ni de
 -- présentoir imposé (L-086 remplacé). Le colis porté entre dans l'inventaire dès que le joueur entre
--- dans la zone safe ; le joueur le prend dans sa barre d'inventaire (un Tool, InventoryService) et le
+-- dans la zone safe ; le joueur le prend dans son inventaire (écran UI_Inventory, InventoryService) et le
 -- pose où il veut sur le sol de SA boutique ; il s'ouvre là ; l'objet gagné va dans l'inventaire.
 --
 -- Rôle :
@@ -18,7 +18,7 @@
 --     revoler vers son rayon et rien n'est rangé. Puis CarryService.Consume le lui retire et le colis
 --     est écrit dans le profil, dans la même exécution, sans yield : Boxes[uid] = { Tier, Zone,
 --     ItemId, Rarity, Mutation?, At } (9.5, profil v7 : uid neuf, HttpService:GenerateGUID ; Spot
---     absent = dans l'inventaire ; Types/Profile). InventoryService en fait un Tool de la barre.
+--     absent = dans l'inventaire ; Types/Profile). InventoryService le montre dans l'écran d'inventaire.
 --     Plus de Unbox.BoxInventoryMax colis dans l'inventaire (V0 : 50) : le colis n'entre pas, le
 --     portage échoue (CarryService.Fail, raison « InventoryFull ») et le colis revole vers son rayon,
 --     avec un Notify (MESSAGES.BoxesFull).
@@ -48,8 +48,8 @@
 --     Source = "NPC", At = os.time(), Zone, Mutation? : celle du colis, DEV-131 }), le colis quitte
 --     Boxes, UnboxReveal(boxUid, itemUid, itemId, zone, tier, startRarity, upgrades, mutationSize?,
 --     mutationEffect?) au joueur. L'objet va dans l'inventaire (L-089 point 3 : il n'est plus exposé
---     tout seul) ; InventoryService ne montre son Tool qu'au moment où l'objet se révèle chez celui qui
---     ouvre (HoldBack : son nom ne doit pas arriver avant la révélation, 5.7). Inventaire plein
+--     tout seul) ; InventoryService ne le montre qu'au moment où il se révèle chez celui qui ouvre
+--     (HoldBack : son nom ne doit pas arriver avant la révélation, 5.7). Inventaire plein
 --     (Balance.Display.InventoryMax objets non exposés, 5.8) mais un présentoir libre : l'objet y est
 --     exposé (DisplayService.PlaceAuto, le plus proche du colis) et le joueur reçoit un Notify
 --     (MESSAGES.ToStand) à la révélation. Ni l'un ni l'autre : ouverture refusée (MESSAGES.InventoryFull).
@@ -58,7 +58,7 @@
 --     volume Bounds de la parcelle (modèle de boutique changé) revient dans l'inventaire, ReadyAt gardé
 --     (MESSAGES.BackToInventory) : jamais perdu.
 --   - L'objet exact reste caché jusqu'à l'ouverture (5.7) : l'ItemId ne quitte le serveur que dans
---     UnboxReveal. Aucun attribut, nom ni modèle (colis posé, Tool du colis) ne le montre avant.
+--     UnboxReveal. Aucun attribut, nom ni modèle (colis posé, état de l'inventaire) ne le montre avant.
 --
 -- Amélioration du colis (DEV-050, étape 0 de la spec ouverture-colis, règle nouvelle de Clément du
 -- 2026-11-07, valeurs dans Config.Unbox) : à OpenBox, avant tout envoi, jusqu'à UpgradeMax (2)
@@ -135,11 +135,11 @@
 --   UnboxService.OnBoxOpened(listener) -> déconnexion
 --       listener(player, boxUid, itemUid, itemId, revealDelay) après chaque ouverture (tutoriel,
 --       télémétrie, index des objets) ; itemId = l'objet final, après l'amélioration ; revealDelay =
---       secondes jusqu'à l'objet révélé chez celui qui ouvre (le délai de l'annonce et du Tool de
---       l'objet), pour un message qui ne doit pas arriver avant la révélation (DEV-111).
+--       secondes jusqu'à l'objet révélé chez celui qui ouvre (le délai de l'annonce et de
+--       l'objet dans l'inventaire), pour un message qui ne doit pas arriver avant la révélation (DEV-111).
 --   UnboxService.GiveBox(player, tier, zone, minRarity?) -> (string?, string?)
 --       Colis offert (récompenses, DEV-101, RewardService) : écrit dans l'inventaire du profil comme un
---       colis rangé (Boxes[uid] sans Spot, At = maintenant, Tool de la barre), avec les mêmes règles :
+--       colis rangé (Boxes[uid] sans Spot, At = maintenant, montré dans l'inventaire), avec les mêmes règles :
 --       au plus Unbox.BoxInventoryMax colis dans l'inventaire. Contenu tiré par le serveur avec les
 --       probabilités de ce type de colis dans cette zone (ShelfBoxes.OddsFor), seulement parmi minRarity et
 --       au-dessus si minRarity est donné (les autres poids gardent leurs proportions) et parmi les
@@ -1302,7 +1302,7 @@ local function onOpenBox(player: Player, boxUid: string)
 	data.Items[uid] = { Id = itemId, Source = "NPC", At = os.time(), Zone = box.Zone, Mutation = mutation }
 	data.Boxes[boxUid] = nil
 	clearShown(session, boxUid)
-	-- Le Tool de l'objet n'arrive dans la barre qu'à la révélation (5.7 : son nom en dirait trop).
+	-- L'objet n'arrive dans l'inventaire qu'à la révélation (5.7 : son nom en dirait trop).
 	local inventory = InventoryService
 	if inventory then
 		local held, err = pcall(inventory.HoldBack :: any, player, uid, revealAt) -- :: any : idem
@@ -1325,7 +1325,7 @@ local function onOpenBox(player: Player, boxUid: string)
 	announce(player, itemId, finalRarity, #steps)
 
 	if toInventory then
-		log(`{player.Name} : {itemId} dans l'inventaire (Tool dans {string.format("%.1f", revealAt)} s)`)
+		log(`{player.Name} : {itemId} dans l'inventaire (montré dans {string.format("%.1f", revealAt)} s)`)
 	else
 		local ok, result = pcall(DisplayService.PlaceAuto, player, uid, where)
 		if not ok then
