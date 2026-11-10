@@ -26,6 +26,8 @@
 --   est vrai.
 --   DailyReward et PlaytimeReward (récompenses, DEV-101) : appelés par RewardService pour les gains en
 --   argent (« X min de revenus »), SKU Day1 à Day7, Playtime5 à Playtime60.
+--   IndexReward (prime d'une zone complète de l'Index, L-083 point 7) : appelé par IndexService, SKU
+--   IndexZone1 à IndexZone6.
 --   Pas encore codés, genres déjà dans la config (points d'accroche : LogEconomy, plus bas) : Fence
 --   (receleur, DEV-034), Code (codes cadeaux), Defense (défenses, MAJ 2). Une défense achetée par
 --   ShopService (OnPurchase avec kind « Defense ») partirait aussi en DefenseBought.

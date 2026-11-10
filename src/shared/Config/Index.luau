@@ -7,7 +7,19 @@
 --   Index.ZoneBonus     0,05 : une zone complète donne +5 % de revenus permanents (doc 3.4). Bonus en
 --                       pour cent : il s'additionne aux autres (Partie 2, section 4 ;
 --                       DisplayService.GetIncomeBonus)
---   Index.Attribute     « IndexDiscovered » : attribut du Player posé par IndexService, lu par
+--   Récompense d'une zone complète, en plus des +5 % (Clément, 2026-11-10, liaison L-083 point 7 : à la
+--   place de l'aura « Collectionneur », chaque zone complète donne de l'argent et de la vitesse) :
+--   Index.ZoneCashMinutes   10 : prime unique = 10 min de revenu de la collection complète de la zone
+--                           exposée (Index.ZoneCash), versée une fois par zone et par joueur (IndexService)
+--   Index.ZoneSpeedBonus    0,03 : +3 % de WalkSpeed permanent par zone complète (StatsService,
+--                           modificateur « Index ») : × 1,18 avec les 6 zones
+--   Index.ZoneCash(zone) -> number              prime de la zone, en $ (entier), 0 pour une zone inconnue
+--   Index.SpeedMultiplier(discovered) -> number 1 + ZoneSpeedBonus × zones complètes
+--   Index.ZoneReward(zone) -> ZoneReward        { Cash, Speed, Income } : prime ($), vitesse et revenus
+--                                               (fractions : 0,03 = +3 %) d'une zone, pour l'écran
+--   Index.ZoneRewardText(zone) -> string        la même, écrite pour le joueur (anglais, L-036) :
+--                                               « +$10.2K +3% SPEED +5% INCOME » (RewardLabel)
+--   Index.Attribute    « IndexDiscovered » : attribut du Player posé par IndexService, lu par
 --                       IndexController (texte d'Index.Encode)
 --   Index.ZoneCount     6 : les zones du couloir (Config/Zones), onglets Zone1Tab à Zone6Tab
 --   Index.Total         objets du catalogue, Secrets compris (83) : le compteur « 23 / 83 discovered »
@@ -25,14 +37,23 @@
 --                                                        séparés par des virgules
 --   Index.Decode(text) -> { [ItemId]: true }             l'inverse ; ItemId inconnus du catalogue ignorés
 -- discovered : table [ItemId] = valeur vraie (dans le profil : os.time() de la découverte).
--- Index complet (les 83) = aura exclusive « Collectionneur » (doc 3.4) : pas encore créée, rien ici.
+-- Index complet (les 83) : l'aura « Collectionneur » du doc 3.4 est abandonnée (Clément, 2026-11-10,
+-- L-083 point 7) ; ce sont les zones complètes qui récompensent (argent et vitesse en plus des +5 %).
 
 local DeepFreeze = require(script.Parent.DeepFreeze)
+local Format = require(script.Parent.Parent.Format)
+local Formulas = require(script.Parent.Formulas)
 local Items = require(script.Parent.Items)
 local Zones = require(script.Parent.Zones)
 
 type Item = Items.Item
 export type Discovered = { [string]: any }
+-- Récompense d'une zone complète : Cash en $, Speed et Income en fractions (0,03 = +3 %).
+export type ZoneReward = {
+	Cash: number,
+	Speed: number,
+	Income: number,
+}
 
 local ZONE_COUNT = #Zones
 
@@ -85,8 +106,30 @@ local function completedZones(discovered: Discovered): { number }
 	return zones
 end
 
+-- V0 proposé, absent du doc : la prime vaut ZONE_CASH_MINUTES min de revenu de la collection complète
+-- de la zone exposée (somme des revenus 7.1 de ses objets, sans bonus). Même unité que les récompenses
+-- en argent de Config/Rewards (« X min de revenus ») ; 10 min, deux fois J1 du calendrier, pour une
+-- collection qui demande un Mythique (zones 2 à 6). Zone 1 : 17 $/s × 600 = 10,2 K$, le prix de la 1re
+-- renaissance (Config/Rebirths, 10 K$).
+local ZONE_CASH_MINUTES = 10
+
+-- Revenu ($/s) de tous les objets de chaque zone, exposés une fois chacun (Formulas.ItemIncome).
+local setIncome: { [number]: number } = {}
+for zone = 1, ZONE_COUNT do
+	local total = 0
+	for _, item in byZone[zone] do
+		total += Formulas.ItemIncome(zone, item.Rarity)
+	end
+	setIncome[zone] = total
+end
+
 local Index = {
 	ZoneBonus = 0.05, -- doc 3.4 : zone complète = +5 % de revenus permanents
+	ZoneCashMinutes = ZONE_CASH_MINUTES, -- V0 proposé, absent du doc (voir plus haut)
+	-- V0 proposé, absent du doc : +3 % de WalkSpeed par zone complète, × 1,18 au plus (6 zones). Sous
+	-- l'écart entre deux zones voisines (vitesse conseillée +17 % à +38 %, Config/Zones) : on ne saute pas
+	-- l'entraînement d'une zone, mais le vigile (0,9 × conseillée − 1) se sème plus facilement.
+	ZoneSpeedBonus = 0.03,
 	Attribute = "IndexDiscovered", -- V0 proposé, absent du doc : nom de l'attribut du Player
 	ZoneCount = ZONE_COUNT,
 	Total = #Items.List,
@@ -116,6 +159,28 @@ end
 
 function Index.IncomeBonus(discovered: Discovered): number
 	return Index.ZoneBonus * #completedZones(discovered)
+end
+
+function Index.ZoneCash(zone: number): number
+	local income = setIncome[zone]
+	if income == nil then
+		return 0
+	end
+	return math.floor(income * ZONE_CASH_MINUTES * 60)
+end
+
+function Index.SpeedMultiplier(discovered: Discovered): number
+	return 1 + Index.ZoneSpeedBonus * #completedZones(discovered)
+end
+
+function Index.ZoneReward(zone: number): ZoneReward
+	return { Cash = Index.ZoneCash(zone), Speed = Index.ZoneSpeedBonus, Income = Index.ZoneBonus }
+end
+
+-- V0 proposé, absent du doc : texte du RewardLabel (maquette de Clément : « +5% INCOME »).
+function Index.ZoneRewardText(zone: number): string
+	local reward = Index.ZoneReward(zone)
+	return `+{Format.money(reward.Cash)} +{math.round(reward.Speed * 100)}% SPEED +{math.round(reward.Income * 100)}% INCOME`
 end
 
 function Index.Encode(discovered: Discovered): string

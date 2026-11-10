@@ -174,6 +174,10 @@ export type Data = {
 	-- reste découvert. La migration v3 → v4 y met les objets déjà possédés (DataService, MIGRATIONS[4])
 	Offline: Offline, -- v6 : heure et revenu de la dernière présence, pour les gains hors ligne (DEV-102)
 	Rewards: Rewards, -- v8 : calendrier de 7 jours et temps de jeu du jour (DEV-101, RewardService)
+	IndexRewards: { [string]: number }?, -- [numéro de zone en texte, « 3 »] = os.time() du versement de
+	-- la prime de zone complète de l'Index (IndexService, Config/Index ; L-083 point 7). Champ facultatif,
+	-- sans changement de version (comme Item.Mutation) : absent = aucune prime versée ; créé par
+	-- IndexService au premier versement. Une zone complète sans entrée est payée au chargement suivant.
 	-- Partie 2 : Defenses, Rebirths, ajoutés par migration (Version = 9 et suivantes : la v2 est prise
 	-- par le catalogue d'objets v2, la v3 par la boutique Robux, la v4 par l'index, la v5 par les colis
 	-- sur les présentoirs, la v6 par les gains hors ligne, la v7 par les colis dans l'inventaire, la v8

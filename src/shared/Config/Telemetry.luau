@@ -45,6 +45,9 @@ local Economy: { [string]: EconomyKind } = {
 	Fence = { Flow = "Source", Transaction = "Shop" }, -- receleur (DEV-034) ; SKU proposé : rareté de l'objet vendu
 	DailyReward = { Flow = "Source", Transaction = "TimedReward" }, -- quotidien (DEV-101, RewardService) ; SKU : Day1 à Day7
 	PlaytimeReward = { Flow = "Source", Transaction = "TimedReward" }, -- temps de jeu (DEV-101, RewardService) ; SKU : Playtime5 à Playtime60
+	-- Gain codé : prime d'une zone complète de l'Index (IndexService, L-083 point 7), SKU IndexZone1 à
+	-- IndexZone6. Type V0 proposé : Gameplay (gagnée en jouant, pas au temps).
+	IndexReward = { Flow = "Source", Transaction = "Gameplay" },
 	Code = { Flow = "Source", Transaction = "Code" }, -- code cadeau ; SKU : le code
 	Robux = { Flow = "Source", Transaction = "IAP" }, -- argent acheté en Robux (MAJ 1, MonetizationService) ; SKU : clé du produit (Cash10…)
 	Defense = { Flow = "Sink", Transaction = "Shop" }, -- défense de boutique (MAJ 2, DEV-110) ; SKU : Id
