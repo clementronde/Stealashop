@@ -44,6 +44,9 @@ MarkerSounds.Player = {
 	{ Anim = "Unbox", Marker = "Open", Sound = "Unbox_Open" },
 	{ Anim = "SwingBat", Marker = "Impact", Sound = "SwingBat_Impact" },
 	{ Anim = "Knockback", Marker = "Land", Sound = "Knockback_Land" },
+	-- Chute et arrestation (L-076, 2026-11-10) : sons à choisir avec le reste de DEV-051.
+	{ Anim = "Knockdown", Marker = "Land", Sound = "Knockdown_Land" },
+	{ Anim = "Arrested", Marker = "Grab", Sound = "Arrested_Grab" },
 } :: { Entry }
 
 -- Vigiles, de jour comme de nuit (mêmes noms d'animations) : pour GuardService.

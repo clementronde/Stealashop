@@ -44,6 +44,9 @@ local Items = require(Shared:WaitForChild("Config"):WaitForChild("Items"))
 -- de l'inventaire (InventoryService, L-089, `ICON_BOX_<Tier>`, nom proposé à Clément).
 local Tools = require(Shared:WaitForChild("Config"):WaitForChild("Tools"))
 local OTHER_ICON_IDS: { string } = { "TOOL_Bat", "BOX_Standard", "BOX_Premium", "BOX_Luxe" }
+-- Modèle du vigile de nuit (Assets/Guards/NightGuard, nom lu aussi par GuardService) : sa liste
+-- d'animations a Arrest en plus (Animations.NightGuard, L-076).
+local NIGHT_GUARD_NAME = "NightGuard"
 
 type Anim = typeof(Animations.Player[1])
 type Part = typeof(Models.Store.Parts[1])
@@ -1179,7 +1182,11 @@ local function checkAnimatedModels(scanned: { Instance }, jobs: { Job })
 			problem("Animations", `{label}.Humanoid : rig {humanoid.RigType.Name}, attendu R15 (2.4)`)
 		end
 		if folder == nil then
-			local specs = if driver then Animations.Driver elseif vendor then Animations.Vendor else Animations.Guard
+			local specs = if driver
+				then Animations.Driver
+				elseif vendor then Animations.Vendor
+				elseif inst.Name == NIGHT_GUARD_NAME then Animations.NightGuard
+				else Animations.Guard
 			local names: { string } = {}
 			for _, spec in specs do
 				table.insert(names, spec.Name)
@@ -1192,7 +1199,7 @@ local function checkAnimatedModels(scanned: { Instance }, jobs: { Job })
 		else
 			checkAnimFolder(
 				folder,
-				if driver then Animations.Driver elseif vendor then Animations.Vendor else Animations.Guard,
+				if driver then Animations.Driver elseif vendor then Animations.Vendor elseif inst.Name == NIGHT_GUARD_NAME then Animations.NightGuard else Animations.Guard,
 				jobs
 			)
 		end
