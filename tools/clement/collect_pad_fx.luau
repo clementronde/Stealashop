@@ -2,9 +2,11 @@
 	collect_pad_fx.luau (Clément, MOD-015 / L-082) : case de ramassage « satisfaisante ».
 	À envoyer d'un bloc à execute_luau en Edit. Relançable : une case déjà faite est sautée.
 
-	1. Chaque CollectPad_xx (gabarit PLOT_Shop et parcelles PlayerPlot du Workspace) passe en deux
-	   parties : la pièce CollectPad_xx (fixe, cadre doré, celle que le code détecte) et sa plaque
-	   Plate (néon vert avec « $ »), que le code enfonce. Dans Plate : l'Attachment BurstPoint avec
+	1. Chaque CollectPad_xx (gabarit PLOT_Shop, PLOT_Shop_Rayons et parcelles PlayerPlot du Workspace)
+	   devient un seul rectangle au sol : la pièce CollectPad_xx, invisible, est le volume que le code
+	   détecte ; sa plaque Plate (néon vert, même taille), que le code peut enfoncer de SinkDepth, est
+	   le seul rectangle visible. Sur Plate : SurfaceGui AmountGui (dessus) > TextLabel
+	   Amount (« $0 »), où le code écrit le montant de l'objet. Dans Plate : l'Attachment BurstPoint avec
 	   3 ParticleEmitter éteints (Sparkles, Ring, Coins, attribut EmitCount) et une PointLight Glow
 	   éteinte. Aucun script.
 	2. Modèles volants dans ReplicatedStorage/Assets/FX : FX_Collect_Bill (billet) et
@@ -23,8 +25,6 @@ local TEX_SQUARE = "rbxasset://textures/particles/SquareParticle.png"
 
 local GREEN = rgb(53, 201, 59)
 local GOLD = rgb(255, 196, 40)
-local PLATE_INSET = 0.2 -- bord doré visible autour de la plaque (studs, de chaque côté)
-local PLATE_PROUD = 0.14 -- la plaque dépasse du cadre de cette hauteur au repos
 local PLATE_THICK = 0.12
 
 local function ns(...) return NumberSequence.new(...) end
@@ -41,18 +41,20 @@ local function quiet(p: BasePart)
 	p.BottomSurface = Enum.SurfaceType.Smooth
 end
 
+-- montant de l'objet sur le dessus de la plaque (Clément, 2026-11-10) : SurfaceGui AmountGui >
+-- TextLabel Amount, que le code remplit (« $1.2K »)
 local function dollarGui(parent: Instance, face: Enum.NormalId, ppS: number, color: Color3, stroke: Color3)
 	local g = Instance.new("SurfaceGui")
-	g.Name = "LabelGui_" .. face.Name
+	g.Name = "AmountGui"
 	g.Face = face
 	g.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
 	g.PixelsPerStud = ppS
 	g.LightInfluence = 0
 	local t = Instance.new("TextLabel")
-	t.Name = "Label"
+	t.Name = "Amount"
 	t.BackgroundTransparency = 1
 	t.Size = UDim2.fromScale(1, 1)
-	t.Text = "$"
+	t.Text = "$0"
 	t.TextScaled = true
 	t.TextWrapped = true
 	t.TextColor3 = color
@@ -63,7 +65,8 @@ local function dollarGui(parent: Instance, face: Enum.NormalId, ppS: number, col
 	s.LineJoinMode = Enum.LineJoinMode.Round
 	s.Parent = t
 	local pad = Instance.new("UIPadding")
-	pad.PaddingTop = UDim.new(0.1, 0); pad.PaddingBottom = UDim.new(0.1, 0)
+	pad.PaddingTop = UDim.new(0.08, 0); pad.PaddingBottom = UDim.new(0.08, 0)
+	pad.PaddingLeft = UDim.new(0.05, 0); pad.PaddingRight = UDim.new(0.05, 0)
 	pad.Parent = t
 	t.Parent = g
 	g.Parent = parent
@@ -83,30 +86,44 @@ local function emitter(parent: Instance, name: string, props: { [string]: any },
 	return e
 end
 
--- 1. Case en deux parties ------------------------------------------------------------------------
+-- 1. Case : une seule plaque au sol -----------------------------------------------------------------
+-- (Clément, 2026-11-10 : un seul rectangle par objet, plus de cadre doré.) CollectPad_xx devient le
+-- volume invisible que le code détecte ; Plate, de la même taille, est le seul rectangle visible.
+
+local PLATE_SINK = 0.1 -- de combien le code peut enfoncer la plaque (studs)
+
+local function shapePlate(pad: BasePart, plate: BasePart)
+	pad.Transparency = 1
+	pad.CastShadow = false
+	pad.CanTouch = true
+	plate.Size = Vector3.new(pad.Size.X, PLATE_THICK, pad.Size.Z)
+	plate.CFrame = pad.CFrame * CFrame.new(0, pad.Size.Y / 2 - PLATE_THICK / 2, 0)
+	plate:SetAttribute("SinkDepth", PLATE_SINK)
+	for _, g in plate:GetChildren() do
+		if g:IsA("SurfaceGui") then g:Destroy() end
+	end
+	dollarGui(plate, Enum.NormalId.Top, 40, Color3.new(1, 1, 1), rgb(20, 90, 30))
+	local burst = plate:FindFirstChild("BurstPoint")
+	if burst then burst.Position = Vector3.new(0, PLATE_THICK / 2, 0) end
+end
 
 local function upgradePad(pad: BasePart): boolean
-	if pad:FindFirstChild("Plate") then
-		return false
-	end
-	-- l'ancien « $ » du dessus passe sur la plaque
 	for _, g in pad:GetChildren() do
 		if g:IsA("SurfaceGui") then g:Destroy() end
 	end
-	pad.Material = Enum.Material.SmoothPlastic
-	pad.Color = GOLD
-	pad.CanTouch = true
+	local done = pad:FindFirstChild("Plate")
+	if done then
+		-- case déjà faite (ancien cadre doré + plaque) : passe à la plaque unique
+		shapePlate(pad, done :: BasePart)
+		return true
+	end
 
 	local plate = Instance.new("Part")
 	plate.Name = "Plate"
 	quiet(plate)
 	plate.Material = Enum.Material.Neon
 	plate.Color = GREEN
-	plate.Size = Vector3.new(pad.Size.X - 2 * PLATE_INSET, PLATE_THICK, pad.Size.Z - 2 * PLATE_INSET)
-	local topY = pad.Size.Y / 2 + PLATE_PROUD
-	plate.CFrame = pad.CFrame * CFrame.new(0, topY - PLATE_THICK / 2, 0)
-	plate:SetAttribute("SinkDepth", PLATE_PROUD - 0.02) -- de combien le code l'enfonce (studs)
-	dollarGui(plate, Enum.NormalId.Top, 40, Color3.new(1, 1, 1), rgb(20, 90, 30))
+	shapePlate(pad, plate)
 
 	local burst = Instance.new("Attachment")
 	burst.Name = "BurstPoint"
@@ -165,8 +182,8 @@ local function upgradePad(pad: BasePart): boolean
 	glow.Name = "Glow"
 	glow.Enabled = false -- le code l'allume un instant à l'encaissement
 	glow.Color = rgb(120, 255, 120)
-	glow.Brightness = 3
-	glow.Range = 9
+	glow.Brightness = 0.8 -- L-087 : la zone safe était trop lumineuse de jour
+	glow.Range = 6
 	glow.Shadows = false
 	glow.Parent = plate
 

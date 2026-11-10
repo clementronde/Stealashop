@@ -38,16 +38,18 @@
 	  pour le propriétaire.
 	- PlotBarrier : Model de murs invisibles (côtés, fond, avant hors porte, couvercle) ; le code
 	  les rend franchissables pour le propriétaire seul. Les autres entrent en cassant Window.
-	- StageUpgradePoint : Attachment au sol (y 0,3, face à -Z) où le code plante le panneau d'achat du niveau suivant, en (15,1, -36,5).
+	- StageUpgradePoint : Attachment au sol sur PlotFloor (y 0,3, face à -Z, vers la porte) où le code plante le panneau d'achat du niveau suivant, en (0, -18,6) au niveau 1. StageUpgradePoint_2 : même chose au fond de la boutique, en (0, 37,6), pour les niveaux 2 à 5.
 	- Rayon_01 à Rayon_05 : Models, 4 présentoirs chacun (DisplaySlot_01 à _04 dans Rayon_01, etc.).
 	  Seul Rayon_01 a ses visuels. Rayon_02 à _05 n'ont qu'une pièce invisible RayonAnchor qui porte
 	  leurs DisplaySlot ; leurs visuels (présentoirs, CollectPad, produits) sont rangés dans
 	  ReplicatedStorage/Assets/Plots/PLOT_Shop_Rayons/Rayon_0n, même repère que la boutique : le code
 	  les copie dans Rayon_0n au pivot de la boutique (showRayon) quand la rangée est débloquée.
 	  RayonSpot_02 à _05 (FromStage 2) : contour au sol de l'emplacement, retiré quand la rangée vient.
-	- CollectPad_01 à _20 : case verte au pied de chaque présentoir, dans le même rayon ; le
-	  propriétaire y marche pour ramasser l'argent de cet objet (remplace CashPad si Ironix valide).
-	- DisplayUpgradePoint : Attachment au sol où se plante le panneau d'achat du présentoir suivant, en (-15,1, -36,5).
+	- CollectPad_01 à _20 : rectangle au sol (4,4 x 2,6) au pied de chaque présentoir, dans le même
+	  rayon ; le propriétaire y marche pour ramasser l'argent de cet objet. Sur le dessus, SurfaceGui
+	  AmountGui > TextLabel Amount (« $0 ») où le code écrit le montant de l'objet. Plus de caisse ni de
+	  caisse globale (2026-11-10) : CashPad n'est plus qu'une pièce invisible enfouie, pour le contrat.
+	- DisplayUpgradePoint : Attachment sur PlotFloor (les bornes noires près de la porte sont retirées).
 	- Terrace : terrasse z -52..-40 devant la façade, hors des murs ; le tapis et le banc y sont.
 	  Emprise totale : 64 x 92 studs (z -52..40), pivot au centre du bâtiment (z 0).
 	- RarestPedestal : Model du socle de l'objet le plus rare, sur la terrasse entre la porte et le
@@ -364,6 +366,9 @@ local function buildCore(M)
 
 	-- points au sol : apparition (vers la rue), pièges derrière la porte (Partie 2)
 	att("SpawnPoint", floor, 0, 0.3, -27)
+	att("StageUpgradePoint", floor, 0, 0.3, -18.6) -- panneau au sol, face à la porte (Clément, 2026-11-08)
+	-- fond de la boutique aux niveaux 2 à 5 : le panneau suit le fond quand la boutique monte de niveau
+	att("StageUpgradePoint_2", floor, 0, 0.3, 37.6)
 	for i, p in { { -3, -35.5 }, { 3, -35.5 }, { -3, -31.5 }, { 3, -31.5 } } do
 		att(string.format("TrapSlot_%02d", i), floor, p[1], 0.3, p[2])
 	end
@@ -395,15 +400,7 @@ local function buildInterior(M, store)
 			B(R, "Top_" .. h, x0, 3.0, zr - 1.7, x1, 3.25, zr + 1.7, C.white, { studs = false })
 			B(R, "Band_F" .. h, x0, 2.75, zr - 1.72, x1, 3.25, zr - 1.68, C.accent, { studs = false, decor = true, accent = true })
 			B(R, "Band_B" .. h, x0, 2.75, zr + 1.68, x1, 3.25, zr + 1.72, C.accent, { studs = false, decor = true, accent = true })
-			B(R, "Board_" .. h, x0 + 0.2, 1.7, zr - 1.7, x1 - 0.2, 1.85, zr - 0.9, C.shelf, { studs = false })
-			B(R, "PriceStrip_" .. h, x0 + 0.2, 1.7, zr - 1.76, x1 - 0.2, 1.85, zr - 1.7, C.price, { studs = false, decor = true })
-			productsX(R, "Prod_" .. h, x0 + 0.2, x1 - 0.2, zr - 1.7, -1, 1.85, 1.1)
-			local x, k = x0 + 0.4, 0
-			while x < x1 - 1.9 do
-				k += 1
-				B(R, "Bulk_" .. h .. "_" .. k, x, 0.6, zr + 0.95, x + 1.5, 1.55, zr + 1.65, PRODUCT_COLORS[(r * 3 + k) % #PRODUCT_COLORS + 1][1], { studs = false, decor = true, noShadow = true })
-				x += 1.65
-			end
+			-- plus de produits factices, de planche ni d'étiquettes de prix (Clément, 2026-11-10 : le plus simple possible)
 			local ex = (sx < 0) and x0 or x1
 			local hdr = B(R, "Header_" .. h, math.min(ex, ex + sx * 0.25), 0.9, zr - 1.5, math.max(ex, ex + sx * 0.25), 2.75, zr + 1.5, HEADER_COLORS[r], { studs = false, decor = true })
 			label(hdr, (sx < 0) and Enum.NormalId.Left or Enum.NormalId.Right, HEADERS[r], C.white, 40)
@@ -421,14 +418,16 @@ local function buildInterior(M, store)
 				-- L-086 : on pose et on ouvre le colis sur le présentoir, plus d'établi
 				att(string.format("UnboxBench_%02d", i), stand, sxp, 3.75, zr)
 			end
-			B(R, string.format("PriceTag_%02d", n), sxp - 0.7, 3.3, zr - 1.42, sxp + 0.7, 3.7, zr - 1.3, C.price, { studs = false, decor = true })
-			local cp = B(R, string.format("CollectPad_%02d", n), sxp - 1.3, 0.3, zr - 4.5, sxp + 1.3, 0.42, zr - 1.9, C.green, { studs = false, mat = Enum.Material.Neon })
+			-- un seul rectangle au sol par présentoir, avec le montant de l'objet (Clément, 2026-11-10) :
+			-- SurfaceGui AmountGui (dessus) > TextLabel Amount, que le code remplit (« $1.2K »)
+			local cp = B(R, string.format("CollectPad_%02d", n), sxp - 2.2, 0.3, zr - 4.5, sxp + 2.2, 0.42, zr - 1.9, C.green, { studs = false, mat = Enum.Material.Neon })
 			cp.CanCollide = false; cp.CanTouch = true; cp.CanQuery = false
-			label(cp, Enum.NormalId.Top, "$", C.white, 40)
+			label(cp, Enum.NormalId.Top, "$0", C.white, 40, nil, "Amount")
+			cp.LabelGui_Top.Name = "AmountGui"
 		end
 	end
-	att("DisplayUpgradePoint", B(M, "DisplayKiosk", -11, 0.3, -37, -9, 4.2, -35, C.frame), -15.1, 0.3, -36.5) -- panneau au sol (session UI, 2026-11-08)
-	B(M, "DisplayKioskScreen", -10.8, 2.8, -37.05, -9.2, 3.9, -37.0, C.green, { studs = false, decor = true, mat = Enum.Material.Neon })
+	-- plus de bornes noires à côté de la porte (Clément, 2026-11-10) : le point reste, posé sur le sol
+	att("DisplayUpgradePoint", M.PlotFloor, -15.1, 0.3, -36.5) -- panneau au sol (session UI, 2026-11-08)
 
 	-- coffre (Partie 2) : plus de coffre visible (L-086). VaultSlot_01 à _03 restent pour le contrat, en
 	-- Attachments sur une pièce d'ancrage invisible et sans collision, au fond au centre.
@@ -437,25 +436,11 @@ local function buildInterior(M, store)
 		att(string.format("VaultSlot_%02d", i), va, x, 2.85, 33.5)
 	end
 
-	-- caisse (devant à gauche) et CashPad
-	local K = group(M, "Checkout")
-	B(K, "Counter", -27, 0.3, -35.5, -17, 2.9, -33.5, C.accent, { accent = true })
-	B(K, "CounterTop", -27.1, 2.9, -35.6, -16.9, 3.1, -33.4, C.white, { studs = false })
-	B(K, "CounterBelt", -26.6, 3.1, -35.1, -21.5, 3.15, -33.9, C.rubber, { studs = false, decor = true })
-	B(K, "Register", -20.2, 3.1, -35.1, -18.2, 3.7, -33.9, C.frame, { studs = false, decor = true })
-	B(K, "RegisterScreen", -20.0, 3.7, -34.2, -18.4, 4.6, -34.0, C.dark, { studs = false, decor = true })
-	-- CashPad : gardé tant que le contrat l'exige (les CollectPad_xx le remplacent si Ironix valide)
-	local pad = B(M, "CashPad", -25, 0.3, -32.5, -19, 0.45, -27.5, C.green, { studs = false })
-	pad.CanCollide = false; pad.CanTouch = true
-	label(pad, Enum.NormalId.Top, "$ CASH", C.white, 40)
-	B(K, "CashSignPost", -26.35, 0.3, -30.15, -26.05, 7.5, -29.85, C.frame, { studs = false })
-	local cs = B(K, "CashSign", -28.2, 7.5, -30.15, -24.2, 9.3, -29.85, C.green, { studs = false, decor = true })
-	label(cs, Enum.NormalId.Front, "CASH", C.white, 40)
-
-	-- point d'achat du niveau suivant : borne à droite de la porte
-	local kiosk = B(M, "UpgradeKiosk", 9, 0.3, -37, 11, 4.2, -35, C.frame)
-	B(M, "UpgradeKioskScreen", 9.2, 2.8, -37.05, 10.8, 3.9, -37.0, C.accent, { studs = false, decor = true, mat = Enum.Material.Neon, accent = true })
-	att("StageUpgradePoint", kiosk, 15.1, 0.3, -36.5) -- panneau au sol (session UI, 2026-11-08)
+	-- plus de caisse ni de caisse globale (Clément, 2026-11-10) : on encaisse sur la case de chaque objet.
+	-- CashPad reste en pièce d'ancrage invisible, intouchable et enfouie dans le sol, tant que le contrat
+	-- (Models.luau, Tags.luau) l'exige ; Ironix le retire du contrat, puis on le supprime.
+	local pad = B(M, "CashPad", -25, -0.5, -32.5, -19, -0.4, -27.5, C.green, { studs = false, decor = true, T = 1, noShadow = true })
+	pad.CanCollide = false; pad.CanTouch = false; pad.CanQuery = false
 end
 
 P.buildCore, P.buildInterior = buildCore, buildInterior
@@ -512,7 +497,7 @@ local function buildBench(M, ox, oz)
 		CYL(bar, "Plate_" .. tag .. "2", ox + s * 2.78, by, bz, 0.3, 1.25, C.accent, { accent = true })
 	end
 	att("UsePoint", mat, ox, y + 0.06, oz - 3.0) -- 0,7 stud devant le coussin : le corps ne le touche pas
-	att("UpgradePoint", top, ox - 6.75, y, oz + 2) -- panneau au sol, côté porte (session UI, 2026-11-08)
+	att("UpgradePoint", top, ox - 8.4, y, oz - 4, Vector3.new(0, 0, 1)) -- panneau au sol en (15,6, -50), tourné vers la boutique (Clément, 2026-11-08)
 	K.WorldPivot = CFrame.new(ox, y, oz)
 	CS:AddTag(K, "Bench")
 	return K

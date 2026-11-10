@@ -17,6 +17,31 @@ Valeurs du prototype jouable `tools/clement/skilltree_proto.luau` (tableau `M`),
 | « +$350K » ou « −$250K » flottant | monte de 6 % de l'écran et s'efface en 0,9 | Quad Out | nouveau `FloatText` |
 | Refus (pas assez d'argent) | secousse de ±6 px, 4 allers-retours en 0,30 | Quad | nouveau `Shake` |
 
+## Étendues à tout le jeu (2026-11-10, validées par Clément sur l'inventaire et en Play)
+
+Elles remplacent, pour les fenêtres et les boutons, les lignes « Écran qui s'ouvre », « Écran qui se ferme » et « Bouton » du tableau du dessus. Prototypes : `tools/clement/inventory_proto.luau`, `ui_feel_proto.luau`, `feel2_proto.luau` (Play) et `gain_proto.luau` (Edit).
+
+| Moment | Valeur | Courbe | Nom proposé dans `UiMotion` |
+| --- | --- | --- | --- |
+| Fenêtre qui s'ouvre (tous les menus) | `Root` 0,55 → 1 en 0,14 | Back Out | `Open` |
+| Contenu qui arrive après la fenêtre | chaque carte ou rangée 0 → 1 en 0,14 ; départ à 0,08 ; 0,035 entre deux, 14 au plus | Back Out | `OpenStagger` |
+| Fenêtre qui se ferme | 1 → 0 en 0,09 | Quad In | `Close` |
+| Changement d'onglet | sortie : cartes à 0 en 0,1, 0,03 entre deux ; entrée comme `OpenStagger` | Quad In, puis Back Out | `Swap` |
+| Bouton survolé | × 1,06 en 0,08 ; calque `Shade` de transparence 1 → 0,78 ; son `UI_Hover` | Quad Out | `Hover` |
+| Bouton appuyé | × 0,95 en 0,05 ; `Shade` 0,62 | Quad Out | `Press` |
+| Bouton relâché | retour en 0,2 | Back Out | `Release` |
+| Achat ou validation réussis | bouton × 1,22 → 1 en 0,28 ; `UI_Success` 0,12 s après le clic | Back Out | `Success` |
+| Carte survolée | `Icon` × 1,12, −6°, décalée de (0,02 ; −0,03) en 0,1 ; `HoverOutline` visible ; retour en 0,12 | Back Out, puis Quad Out | `HoverCard` |
+| Message en bas (`UI_Toast`) | 0,6 → 1 en 0,2 ; 2,4 s à l'écran ; s'efface en 0,25 ; 3 messages au plus | Back Out | `Toast` |
+| **Gain au-dessus du joueur** (`BB_Gain`) | `Row` 0,4 → 1 en 0,16 ; monte de 2,2 studs en 1 ; s'efface à partir de 55 % ; décalage au hasard de ± 1 stud | Back Out, puis Quad Out | `FloatGain` |
+| **Case qui vole vers l'argent** (`UI_HUD.CashFly.Template`) | surgit 0 → 1,1 en 0,22 ; attend 0,23 ; vole jusqu'au compteur en 0,4 en rapetissant à 0,3 | Back Out, puis Quad In | `CashFly` |
+| Arrivée au compteur | `CashRow` 1,15 → 1 en 0,3 (`CashBump`) ; l'argent défile (`Roll`) ; `CashFly.CounterPop` « +$X » 0,4 → 1 en 0,22, 1,6 s, puis monte de 24 px et s'efface en 0,4 ; son `Cash_Collect` | Back Out | `CashBump`, `CounterPop` |
+| Chrono du vol (`HeistTimer.Box`) | à chaque seconde : 1,12 → 1 en 0,25 et tic `UI_Click_Tick` ; rouge sous 3 s | Back Out | `TimerTick` |
+| RUN! (`UI_Chase.RunBanner`) | 0 → 1,18 en 0,18, puis 1 en 0,12 ; ensuite il bat (+5 %) avec les bords et penche de ± 1,5° | Back Out | `RunBanner` |
+| Bords rouges de poursuite (`ScreenEdges`, `Vignette.Edge`) | transparence de 0,1 à 0,6, 1,6 battement par seconde | sinus | `ChasePulse` |
+| Caméra pendant la poursuite | champ de vision + 6 en 0,3, retour en 0,4 | Quad Out | `ChaseFov` |
+| Arrivée en zone safe | `UI_Escape.Flash` transparence 0,05 → 1 en 0,5 ; champ de vision + 12 en 0,08 puis retour en 0,45 ; bannière 0 → 1 en 0,35 | Quad Out, Back Out | `SafeFlash` |
+
 ## Propres à l'arbre de compétences
 
 | Moment | Valeur | Courbe |
