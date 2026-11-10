@@ -15,8 +15,19 @@
 --                               annule la fermeture.
 --   Motion.Show(object)         la même chose pour un élément (Visible au lieu d'Enabled), mis
 --   Motion.Hide(object, after?)   à l'échelle lui-même (Show.From, Hide.To) : HeistTimer, GuardMeter.
---   Motion.Hover(button)        le bouton grossit (Hover.To) quand la souris entre, revient à 1 quand
---                               elle sort (UIScale Hover.ScaleName, retiré ensuite) : boutons fixes du HUD.
+--   Motion.Button(button)       survol (Hover.To, calque Shade à Hover.ShadeTransparency, son
+--   Motion.Hover(button)          Hover.Sound), appui (Press), relâché (Release : retour à 1 ou au
+--                               survol) ; UIScale Hover.ScaleName, retiré dès que le bouton est revenu
+--                               à 1 ; Shade remis à sa transparence d'origine. Hover = ancien nom.
+--   Motion.Success(button)      le bouton saute à Success.From et revient ; son Success.Sound.
+--   Motion.HoverCard(card)      carte survolée : HoverOutline visible, Icon grossi, penché, décalé ;
+--                               tout revient à la sortie (L-091 point 7).
+--   Motion.Pop(object, from, info)
+--                               sursaut passager from → 1 (UIScale PopScaleName détruit à la fin) :
+--                               CashBump, TimerTick. Rien sur un objet qui a déjà un autre UIScale.
+--   Motion.SetSoundPlayer(play?) / Motion.PlaySound(name)
+--                               sons d'UI (UI_Hover, UI_Success…) : joués par la fonction donnée
+--                               (UiFeelController), rien sans elle.
 --   Motion.Roll(label, from, to, format)
 --                               le nombre défile de `from` à `to`, écrit par `format` à chaque image
 --                               (Shared/Format) ; à la fin, exactement format(to). from = nil
@@ -42,7 +53,10 @@
 -- Ce qui est touché, et rien d'autre : Enabled de l'écran, Visible de l'élément, Text du label, et
 -- un UIScale nommé UiMotion.ScaleName créé ici sur chaque cadre animé, détruit à la fin de chaque
 -- animation (à 1 une fois ouvert, ou écran éteint). Aucune couleur, taille, position, image,
--- police ni transparence de Clément ne change, même un instant. Pas d'effet d'échelle :
+-- police ni transparence de Clément ne change durablement : seuls les effets demandés par Clément
+-- (L-091 point 7) touchent, le temps du survol, la transparence du calque Shade d'un bouton, et
+-- Visible de HoverOutline, Position et Rotation de l'Icon d'une carte, tous remis à leur valeur
+-- d'origine ensuite. Pas d'effet d'échelle :
 --   - sur un cadre qui a déjà son propre UIScale (posé par Clément) : son UIScale n'est jamais
 --     touché, le cadre apparaît et disparaît d'un coup (une ligne dans la sortie, en Studio) ;
 --   - sur un cadre racine taillé à tout l'écran (voile, fond : Size en Scale ≥ 1 sur les deux
@@ -412,45 +426,371 @@ function Motion.Hide(object: GuiObject, after: (() -> ())?)
 	leave(object, HIDE, after)
 end
 
-local hovered: { [GuiButton]: boolean } = {}
+------------------------------------------------------------------------------
+-- Sons (L-091 point 7) : joués par le contrôleur qui en donne le moyen (UiFeelController)
+------------------------------------------------------------------------------
 
-function Motion.Hover(button: GuiButton)
-	if hovered[button] then
-		return -- déjà branché
-	end
-	hovered[button] = true
-	-- Comme les autres animations : le UIScale n'existe que pendant le survol, rien n'est laissé ensuite.
-	local scale: UIScale? = nil
-	button.MouseEnter:Connect(function()
-		local existing = scale
-		local current: UIScale
-		if existing ~= nil and existing.Parent == button then
-			current = existing
-		else
-			current = Instance.new("UIScale")
-			current.Name = UiMotion.Hover.ScaleName
-			current.Parent = button
-			scale = current
+local soundPlayer: ((name: string) -> ())? = nil
+
+function Motion.SetSoundPlayer(play: ((name: string) -> ())?)
+	soundPlayer = play
+end
+
+function Motion.PlaySound(name: string)
+	local play = soundPlayer
+	if play then
+		local ok = pcall(play, name)
+		if not ok and IS_STUDIO then
+			warn(`[Motion] son « {name} » : erreur dans le lecteur de sons`)
 		end
-		TweenService:Create(current, HOVER_INFO, { Scale = UiMotion.Hover.To }):Play()
-	end)
-	button.MouseLeave:Connect(function()
-		local existing = scale
-		if existing == nil then
+	end
+end
+
+------------------------------------------------------------------------------
+-- Boutons : survol, appui, relâché, réussite (L-091 point 7)
+------------------------------------------------------------------------------
+
+-- Un bouton branché par Motion.Button. L'échelle passe par un UIScale Hover.ScaleName, créé au
+-- premier effet et détruit dès que le bouton est revenu à 1 (souris sortie, bouton relâché).
+type ButtonState = {
+	scale: UIScale?,
+	tween: Tween?,
+	token: number,
+	over: boolean,
+	down: boolean,
+	wired: boolean,
+	shade: GuiObject?, -- calque Shade de Clément (enfant direct), s'il existe
+	shadeBase: number, -- sa transparence posée par Clément, remise à la sortie
+	shadeTween: Tween?,
+}
+
+local PRESS_INFO = TweenInfo.new(UiMotion.Press.Time, UiMotion.Press.Style, UiMotion.Press.Direction)
+local RELEASE_INFO = TweenInfo.new(UiMotion.Release.Time, UiMotion.Release.Style, UiMotion.Release.Direction)
+local SUCCESS_INFO = TweenInfo.new(UiMotion.Success.Time, UiMotion.Success.Style, UiMotion.Success.Direction)
+local SHADE_NAME = "Shade" -- calque d'assombrissement des boutons de Clément (prototypes du 2026-11-10)
+
+local buttons: { [GuiButton]: ButtonState } = setmetatable({}, { __mode = "k" }) :: any
+
+local function buttonState(button: GuiButton): ButtonState
+	local state = buttons[button]
+	if state then
+		return state
+	end
+	local shade = button:FindFirstChild(SHADE_NAME)
+	local shadeObject: GuiObject? = if shade and shade:IsA("GuiObject") then shade :: GuiObject else nil
+	local created: ButtonState = {
+		scale = nil,
+		tween = nil,
+		token = 0,
+		over = false,
+		down = false,
+		wired = false,
+		shade = shadeObject,
+		shadeBase = if shadeObject then shadeObject.BackgroundTransparency else 1,
+		shadeTween = nil,
+	}
+	buttons[button] = created
+	return created
+end
+
+-- Le UIScale du bouton (créé à 1 s'il manque), ou nil si le bouton a déjà un UIScale qui n'est pas
+-- le sien (celui de Clément, ou celui d'une ouverture d'écran) : jamais touché.
+local function buttonScale(button: GuiButton, state: ButtonState): UIScale?
+	local own = state.scale
+	if own and own.Parent == button then
+		return own
+	end
+	state.scale = nil
+	if button:FindFirstChildOfClass("UIScale") ~= nil then
+		return nil
+	end
+	local scale = Instance.new("UIScale")
+	scale.Name = UiMotion.Hover.ScaleName
+	scale.Parent = button
+	state.scale = scale
+	return scale
+end
+
+local function scaleButton(button: GuiButton, state: ButtonState, goal: number, info: TweenInfo, from: number?)
+	if goal == 1 and from == nil and state.scale == nil then
+		return -- déjà à 1, sans UIScale : rien à faire
+	end
+	local scale = buttonScale(button, state)
+	if scale == nil then
+		return
+	end
+	local current: UIScale = scale
+	local previous = state.tween
+	if previous then
+		previous:Cancel()
+	end
+	if from ~= nil then
+		current.Scale = from
+	end
+	state.token += 1
+	local token = state.token
+	local tween = TweenService:Create(current, info, { Scale = goal })
+	state.tween = tween
+	tween.Completed:Connect(function(playback: Enum.PlaybackState)
+		if playback ~= Enum.PlaybackState.Completed or state.token ~= token then
 			return
 		end
-		local current: UIScale = existing
-		local tween = TweenService:Create(current, HOVER_INFO, { Scale = 1 })
-		tween.Completed:Connect(function(state: Enum.PlaybackState)
-			if state == Enum.PlaybackState.Completed and scale == current then
-				scale = nil
-				current:Destroy()
+		state.tween = nil
+		if goal == 1 and not state.over and not state.down then
+			if state.scale == current then
+				state.scale = nil
+			end
+			current:Destroy() -- revenu à 1 : rien n'est laissé
+		end
+	end)
+	tween:Play()
+end
+
+local function shadeTo(state: ButtonState, transparency: number, info: TweenInfo)
+	local shade = state.shade
+	if shade == nil or shade.Parent == nil then
+		return
+	end
+	local previous = state.shadeTween
+	if previous then
+		previous:Cancel()
+	end
+	local tween = TweenService:Create(shade, info, { BackgroundTransparency = transparency })
+	state.shadeTween = tween
+	tween:Play()
+end
+
+-- Survol (Hover), appui (Press) et relâché (Release) d'un bouton ; calque Shade s'il existe ; son
+-- Hover.Sound au survol. Sans effet la deuxième fois.
+function Motion.Button(button: GuiButton)
+	local state = buttonState(button)
+	if state.wired then
+		return
+	end
+	state.wired = true
+	button.MouseEnter:Connect(function()
+		state.over = true
+		if not state.down then
+			scaleButton(button, state, UiMotion.Hover.To, HOVER_INFO)
+			shadeTo(state, UiMotion.Hover.ShadeTransparency, HOVER_INFO)
+		end
+		Motion.PlaySound(UiMotion.Hover.Sound)
+	end)
+	button.MouseLeave:Connect(function()
+		state.over = false
+		state.down = false
+		scaleButton(button, state, 1, HOVER_INFO)
+		shadeTo(state, state.shadeBase, HOVER_INFO)
+	end)
+	button.MouseButton1Down:Connect(function()
+		state.down = true
+		scaleButton(button, state, UiMotion.Press.To, PRESS_INFO)
+		shadeTo(state, UiMotion.Press.ShadeTransparency, PRESS_INFO)
+	end)
+	button.MouseButton1Up:Connect(function()
+		if not state.down then
+			return
+		end
+		state.down = false
+		scaleButton(button, state, if state.over then UiMotion.Hover.To else 1, RELEASE_INFO)
+		shadeTo(state, if state.over then UiMotion.Hover.ShadeTransparency else state.shadeBase, RELEASE_INFO)
+	end)
+end
+
+-- Ancien nom (vague 19, boutons du HUD) : le bouton complet, survol compris.
+function Motion.Hover(button: GuiButton)
+	Motion.Button(button)
+end
+
+-- Achat ou validation réussis : le bouton saute à Success.From puis revient (au survol si la souris
+-- est dessus), et Success.Sound part Success.SoundDelay s plus tard.
+function Motion.Success(button: GuiButton)
+	local state = buttonState(button)
+	state.down = false
+	scaleButton(button, state, if state.over then UiMotion.Hover.To else 1, SUCCESS_INFO, UiMotion.Success.From)
+	task.delay(UiMotion.Success.SoundDelay, function()
+		Motion.PlaySound(UiMotion.Success.Sound)
+	end)
+end
+
+------------------------------------------------------------------------------
+-- Sursaut passager (CashBump, TimerTick…)
+------------------------------------------------------------------------------
+
+type PopState = { scale: UIScale, token: number, tween: Tween? }
+local pops: { [GuiObject]: PopState } = setmetatable({}, { __mode = "k" }) :: any
+
+-- L'objet passe à l'échelle `from`, puis revient à 1 (`info`), par un UIScale PopScaleName détruit à
+-- la fin. Un nouveau sursaut pendant le premier repart de `from`. Sans effet sur un objet qui a déjà
+-- un autre UIScale (celui de Clément, ou une autre animation en cours).
+function Motion.Pop(object: GuiObject, from: number, info: TweenInfo)
+	local state = pops[object]
+	if state == nil or state.scale.Parent ~= object then
+		if object:FindFirstChildOfClass("UIScale") ~= nil then
+			return
+		end
+		local scale = Instance.new("UIScale")
+		scale.Name = UiMotion.PopScaleName
+		scale.Parent = object
+		local created: PopState = { scale = scale, token = 0, tween = nil }
+		state = created
+		pops[object] = created
+	end
+	local current: PopState = state :: PopState
+	local previous = current.tween
+	if previous then
+		previous:Cancel()
+	end
+	current.token += 1
+	local token = current.token
+	current.scale.Scale = from
+	local tween = TweenService:Create(current.scale, info, { Scale = 1 })
+	current.tween = tween
+	tween.Completed:Connect(function(playback: Enum.PlaybackState)
+		if playback ~= Enum.PlaybackState.Completed or current.token ~= token then
+			return
+		end
+		if pops[object] == current then
+			pops[object] = nil
+		end
+		current.scale:Destroy()
+	end)
+	tween:Play()
+end
+
+------------------------------------------------------------------------------
+-- Cartes survolées (HoverCard, L-091 point 7)
+------------------------------------------------------------------------------
+
+type CardState = {
+	token: number,
+	tweens: { Tween },
+	scale: UIScale?,
+	icon: GuiObject?,
+	basePosition: UDim2?, -- Position et Rotation de l'Icon posées par Clément, remises au retour
+	baseRotation: number,
+	outlineBase: boolean?, -- Visible de HoverOutline avant le survol
+}
+
+local CARD_INFO = TweenInfo.new(UiMotion.HoverCard.Time, UiMotion.HoverCard.Style, UiMotion.HoverCard.Direction)
+local CARD_BACK_INFO = TweenInfo.new(UiMotion.HoverCard.BackTime, UiMotion.HoverCard.BackStyle, Enum.EasingDirection.Out)
+local cards: { [GuiObject]: CardState } = setmetatable({}, { __mode = "k" }) :: any
+
+local function cardTweens(state: CardState, list: { Tween }, finish: (() -> ())?)
+	for _, tween in state.tweens do
+		tween:Cancel()
+	end
+	state.token += 1
+	local token = state.token
+	state.tweens = list
+	local remaining = #list
+	if remaining == 0 then
+		if finish then
+			finish()
+		end
+		return
+	end
+	for _, tween in list do
+		tween.Completed:Connect(function(playback: Enum.PlaybackState)
+			if playback ~= Enum.PlaybackState.Completed or state.token ~= token then
+				return
+			end
+			remaining -= 1
+			if remaining == 0 and finish then
+				finish()
 			end
 		end)
+	end
+	for _, tween in list do
 		tween:Play()
+	end
+end
+
+-- Carte de Clément (un cadre avec un enfant HoverOutline) : au survol, HoverOutline visible et son
+-- enfant Icon grossit (UIScale passager), penche et se décale ; à la sortie, tout revient exactement
+-- (Position, Rotation, Visible d'origine) et le UIScale est détruit. Sans effet la deuxième fois.
+function Motion.HoverCard(card: GuiObject)
+	if cards[card] then
+		return
+	end
+	local spec = UiMotion.HoverCard
+	local state: CardState = {
+		token = 0,
+		tweens = {},
+		scale = nil,
+		icon = nil,
+		basePosition = nil,
+		baseRotation = 0,
+		outlineBase = nil,
+	}
+	cards[card] = state
+	card.MouseEnter:Connect(function()
+		local outline = card:FindFirstChild(spec.Outline)
+		if outline and outline:IsA("GuiObject") then
+			if state.outlineBase == nil then
+				state.outlineBase = outline.Visible
+			end
+			outline.Visible = true
+		end
+		local found = card:FindFirstChild(spec.Icon)
+		local icon: GuiObject? = if found and found:IsA("GuiObject") then found :: GuiObject else nil
+		local list: { Tween } = {}
+		if icon then
+			if state.basePosition == nil or state.icon ~= icon then
+				state.icon = icon
+				state.basePosition = icon.Position
+				state.baseRotation = icon.Rotation
+			end
+			local basePosition = state.basePosition :: UDim2
+			local scale = state.scale
+			if scale == nil or scale.Parent ~= icon then
+				scale = nil
+				if icon:FindFirstChildOfClass("UIScale") == nil then
+					local created = Instance.new("UIScale")
+					created.Name = UiMotion.Hover.ScaleName
+					created.Parent = icon
+					scale = created
+				end
+				state.scale = scale
+			end
+			if scale then
+				table.insert(list, TweenService:Create(scale, CARD_INFO, { Scale = spec.IconScale }))
+			end
+			table.insert(list, TweenService:Create(icon, CARD_INFO, {
+				Rotation = state.baseRotation + spec.Tilt,
+				Position = basePosition + UDim2.fromScale(spec.ShiftX, spec.ShiftY),
+			}))
+		end
+		cardTweens(state, list, nil)
+		Motion.PlaySound(UiMotion.Hover.Sound)
 	end)
-	button.Destroying:Connect(function()
-		hovered[button] = nil
+	card.MouseLeave:Connect(function()
+		local outline = card:FindFirstChild(spec.Outline)
+		if outline and outline:IsA("GuiObject") and state.outlineBase ~= nil then
+			outline.Visible = state.outlineBase :: boolean
+			state.outlineBase = nil
+		end
+		local icon = state.icon
+		local basePosition = state.basePosition
+		if icon == nil or basePosition == nil then
+			return
+		end
+		local list: { Tween } = {}
+		local scale = state.scale
+		if scale and scale.Parent == icon then
+			table.insert(list, TweenService:Create(scale, CARD_BACK_INFO, { Scale = 1 }))
+		end
+		table.insert(list, TweenService:Create(icon, CARD_BACK_INFO, { Rotation = state.baseRotation, Position = basePosition }))
+		cardTweens(state, list, function()
+			icon.Position = basePosition
+			icon.Rotation = state.baseRotation
+			state.basePosition = nil
+			local own = state.scale
+			state.scale = nil
+			if own then
+				own:Destroy()
+			end
+		end)
 	end)
 end
 

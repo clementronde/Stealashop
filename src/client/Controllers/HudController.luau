@@ -48,6 +48,9 @@
 --     remplissage, la valeur s'écrit d'un coup. Le revenu retenu ne défile qu'à son relâchement,
 --     donc à la révélation de l'objet (DEV-050). HeistTimer et GuardMeter apparaissent et
 --     disparaissent par Motion.Show et Motion.Hide (un UIScale passager, créé et retiré par Motion).
+--     HeistTimer (ou son enfant Box) sursaute à chaque seconde, avec un tic (TimerTick, L-091).
+--   - Argent retenu (L-091 point 3) : GainController retient Cash (HoldCash) pendant qu'un gain vole
+--     vers le compteur ; l'argent défile à l'arrivée de la case.
 -- Les éléments sont cherchés par leur nom parmi les descendants de l'écran (Contract/Find) : les
 -- cadres autour (LeftRail, StatsPanel…) sont décoratifs et peuvent changer. Seuls les textes, la
 -- visibilité et la largeur de Fill sont touchés (2.2, « Libre pour Ironix »), jamais un style ;
@@ -62,6 +65,8 @@
 --       montre la valeur gardée par la plus ancienne encore active, puis, quand toutes sont
 --       relâchées, la valeur réelle. Une retenue oubliée se relâche toute seule au bout de
 --       MAX_INCOME_HOLD secondes.
+--   HudController.HoldCash(base) -> relâcher
+--       Cash montre `base` jusqu'à l'appel de `relâcher` (voir plus bas, L-091 point 3).
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -78,6 +83,7 @@ local Find = require(Shared:WaitForChild("Contract"):WaitForChild("Find"))
 local Format = require(Shared:WaitForChild("Format"))
 local MarkerSounds = require(Shared:WaitForChild("Anim"):WaitForChild("MarkerSounds"))
 local Motion = require(script.Parent:WaitForChild("UI"):WaitForChild("Motion"))
+local UiMotion = require(Config:WaitForChild("UiMotion"))
 
 -- Ce que ce contrôleur utilise de HeistController (a10) et de ChaseController (a12).
 type HeistApi = {
@@ -124,9 +130,12 @@ local STATS: { Stat } = {
 
 local INCOME_ATTRIBUTE = "Income" -- posé par DisplayService ; retenu par HoldIncome
 local INCOME_STAT: Stat = STATS[2]
+local CASH_STAT: Stat = STATS[1] -- retenu par HoldCash (GainController, L-091 point 3)
 for _, stat in STATS do
 	if stat.Attribute == INCOME_ATTRIBUTE then
 		INCOME_STAT = stat
+	elseif stat.Attribute == "Cash" then
+		CASH_STAT = stat
 	end
 end
 
@@ -134,6 +143,13 @@ end
 -- n'était jamais relâchée. Une ouverture montre son revenu en moins de 10 s ; une file de trois ou
 -- quatre ouvertures d'affilée tient dans ce délai.
 local MAX_INCOME_HOLD = 60
+-- V0 proposé, absent du doc : durée max (s) d'une retenue de l'argent (une case vole en moins d'une
+-- seconde, Config/UiMotion.CashFly) : filet de sécurité si elle n'était jamais relâchée.
+local MAX_CASH_HOLD = 10
+-- Chrono du vol : enfant facultatif de HeistTimer qui sursaute à chaque seconde (tableau de Clément,
+-- « HeistTimer.Box », L-091 point 7) ; sans lui, HeistTimer lui-même.
+local TIMER_BOX = "Box"
+local TICK_INFO = TweenInfo.new(UiMotion.TimerTick.Time, UiMotion.TimerTick.Style, UiMotion.TimerTick.Direction)
 
 -- Éléments cachés tant que leur fonction n'existe pas (Config/Features, liaison L-026). Les boutons
 -- Shop et Rebirth restent visibles pendant leur aperçu (L-071).
@@ -198,6 +214,8 @@ type IncomeHold = { base: any, expiresAt: number }
 local incomeHolds: { IncomeHold } = {}
 local incomeSeen: any = nil -- dernière valeur d'Income traitée par ce contrôleur
 local incomeTracked = false -- incomeSeen suit l'attribut (Start est passé)
+-- Retenues de l'argent (HoldCash) : chacune garde l'argent d'avant un gain qui vole vers le compteur.
+local cashHolds: { IncomeHold } = {}
 
 local function warnOnce(key: string, message: string)
 	if IS_STUDIO and not warned[key] then
@@ -255,7 +273,10 @@ local function writeStat(stat: Stat)
 	if current == nil or label == nil then
 		return
 	end
-	local value = if stat == INCOME_STAT then shownIncome() else localPlayer:GetAttribute(stat.Attribute)
+	local value = if stat == INCOME_STAT
+		then shownIncome()
+		elseif stat == CASH_STAT and cashHolds[1] ~= nil then cashHolds[1].base
+		else localPlayer:GetAttribute(stat.Attribute)
 	if type(value) ~= "number" then
 		Motion.StopRoll(label)
 		current.written[stat] = nil
@@ -279,6 +300,20 @@ end
 
 -- Filet de sécurité : relâche les retenues trop vieilles.
 local function expireHolds()
+	if #cashHolds > 0 then
+		local now = os.clock()
+		local expired = false
+		for index = #cashHolds, 1, -1 do
+			if cashHolds[index].expiresAt <= now then
+				table.remove(cashHolds, index)
+				expired = true
+			end
+		end
+		if expired then
+			warnOnce("cashHold", `[HUD] argent retenu plus de {MAX_CASH_HOLD} s : relâché (GainController ne l'a pas fait)`)
+			writeStat(CASH_STAT)
+		end
+	end
 	if #incomeHolds == 0 then
 		return
 	end
@@ -301,6 +336,23 @@ function HudController.HoldIncome(): () -> ()
 	table.insert(incomeHolds, hold)
 	return function()
 		releaseHold(hold)
+	end
+end
+
+-- L-091 point 3 : Cash garde `base` (l'argent d'avant un gain) jusqu'à l'appel de `relâcher`, quand
+-- la case qui vole arrive au compteur ; puis il défile jusqu'à l'argent réel. Plusieurs retenues :
+-- Cash montre la base de la plus ancienne encore active. Une retenue oubliée se relâche toute seule
+-- au bout de MAX_CASH_HOLD s. `relâcher` est sans effet la deuxième fois.
+function HudController.HoldCash(base: number): () -> ()
+	local hold: IncomeHold = { base = base, expiresAt = os.clock() + MAX_CASH_HOLD }
+	table.insert(cashHolds, hold)
+	writeStat(CASH_STAT)
+	return function()
+		local index = table.find(cashHolds, hold)
+		if index then
+			table.remove(cashHolds, index)
+			writeStat(CASH_STAT)
+		end
 	end
 end
 
@@ -332,10 +384,18 @@ local function updateHeistTimer(current: Hud)
 	if seconds == shownSeconds then
 		return
 	end
+	local ticking = seconds ~= nil and shownSeconds ~= nil -- déjà affiché : une seconde de moins
 	shownSeconds = seconds
 	if seconds then
 		label.Text = timerText(seconds)
 		Motion.Show(label)
+		if ticking then
+			-- TimerTick (L-091 point 7) : sursaut et tic à chaque seconde.
+			local box = label:FindFirstChild(TIMER_BOX, true)
+			local target: GuiObject = if box and box:IsA("GuiObject") then box :: GuiObject else label
+			Motion.Pop(target, UiMotion.TimerTick.From, TICK_INFO)
+			Motion.PlaySound(UiMotion.TimerTick.Sound)
+		end
 	else
 		Motion.Hide(label)
 	end
