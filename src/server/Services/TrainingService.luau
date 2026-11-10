@@ -33,9 +33,20 @@
 --     si un TrainTap a été accepté dans la TapBonusWindow (1 s) qui précède son crédit.
 --     Il suffit donc de taper au moins une fois par seconde ; taper plus vite ne donne rien
 --     de plus, et au-delà de 6 taps/s Net refuse l'appel (Definitions, TrainTap).
---   Banc : chaque TrainTap est une répétition, au plus MaxRepsPerSecond (3) sur toute seconde
---     glissante (les autres sont ignorées). Une répétition rapporte GainPerRep × M banc en
---     Force (niveau Upgrades.Bench) et incrémente l'attribut BenchReps du Player.
+--   Banc (automatique depuis L-091, point 2 : plus de clic) : le client rejoue BenchLift en boucle et
+--     envoie un TrainTap à chaque marqueur Top ; chaque TrainTap est une répétition. Sans TrainTap
+--     (animation ou marqueur manquant), le serveur compte lui-même une répétition toutes les
+--     BENCH_AUTO_INTERVAL s ; dès qu'un TrainTap est arrivé pendant la séance, il n'en compte plus
+--     qu'après BENCH_CLIENT_SILENCE s sans répétition (animation bloquée). Dans tous les cas, au plus
+--     MaxRepsPerSecond (3) sur toute seconde glissante (les autres sont ignorées). Une répétition
+--     rapporte GainPerRep × M banc en Force (niveau Upgrades.Bench, formule inchangée) et incrémente
+--     l'attribut BenchReps du Player. Le bonus de +50 % au tap ne concerne que le tapis.
+--   Barre du banc (L-091, point 2) : SETTLE_TIME s après la mise en place (pose BenchIdle prise), la
+--     pièce ou le modèle Bar du banc est soudé à la main droite du joueur (WeldConstraint, côté
+--     serveur : la barre rejoint l'assemblage du personnage, tous les joueurs la voient suivre les
+--     mains), à sa position relative du moment ; décrochée, collisions coupées et sans masse pendant
+--     l'usage. À la fin de la séance (départ, mort, perso retiré, banc retiré…), elle reprend sa place
+--     exacte et ses réglages. Sans Bar : rien (une ligne dans la sortie en Studio).
 --
 -- Attributs du Player :
 --   TrainingMachine  "Treadmill", "Bench" ou nil (pas sur une machine) : AnimationController
@@ -79,8 +90,14 @@ type Machine = {
 	usePoint: Attachment,
 	belt: Instance?, -- tapis : sa bande (pièce ou modèle Belt) ; nil : zone posée sur le UsePoint
 	prompt: ProximityPrompt?, -- banc seulement : le tapis n'a plus d'invite (L-071)
+	bar: Instance?, -- banc : sa barre (pièce ou modèle Bar), nil si absente
 	occupant: Player?,
 }
+
+-- Une pièce de la barre tenue en main, et ses réglages d'avant.
+type BarPart = { part: BasePart, cframe: CFrame, anchored: boolean, canCollide: boolean, massless: boolean }
+-- Barre soudée à la main : ses pièces, les soudures ajoutées, les liaisons au banc coupées.
+type BarHold = { parts: { BarPart }, welds: { WeldConstraint }, disabled: { Instance } }
 
 type Session = {
 	machine: Machine,
@@ -90,6 +107,10 @@ type Session = {
 	startedAt: number,
 	nextTick: number, -- prochain crédit du tapis
 	lastTap: number, -- dernier TrainTap accepté
+	lastRep: number, -- banc : dernière répétition comptée (ou début de la séance)
+	clientReps: boolean, -- banc : un TrainTap (marqueur Top) est arrivé pendant la séance
+	barTried: boolean, -- banc : la barre a déjà été soudée (ou manque)
+	bar: BarHold?, -- banc : barre tenue en main
 	gained: number, -- gagné pendant cette séance (pour la sortie de Studio)
 	autoRotate: boolean, -- Humanoid.AutoRotate avant la séance (remis à la fin, au banc)
 	connections: { RBXScriptConnection },
@@ -129,6 +150,18 @@ local SETTLE_TIME = 0.5
 -- V0 proposé, absent du doc : marge (studs) ajoutée à la portée de l'invite du banc pour accepter
 -- le démarrage. Empêche de déclencher l'invite de loin pour se téléporter chez soi.
 local START_TOLERANCE = 4
+-- Banc automatique (L-091, point 2). V0 proposés, absents du doc :
+-- rythme (s) des répétitions comptées par le serveur quand le client n'en envoie pas (BenchLift
+-- ou son marqueur Top manquant) ;
+local BENCH_AUTO_INTERVAL = 1.5
+-- après un premier TrainTap de la séance : silence (s) au-delà duquel le serveur reprend le rythme
+-- (BenchLift plus longue que ce délai : le serveur ajouterait des répétitions, à monter).
+local BENCH_CLIENT_SILENCE = 4
+-- Barre du banc (contrat 10.4) et main qui la tient (R15 ; R6 : le bras droit).
+local BAR = "Bar"
+local HAND = "RightHand"
+local HAND_R6 = "Right Arm"
+local BAR_WELD_NAME = "TrainingBarWeld"
 -- V0 proposé, absent du doc : message au joueur qui essaie la machine d'un autre.
 local NOT_OWNER_MESSAGE = "You can only train in your own shop."
 
@@ -279,6 +312,120 @@ local function bodyOf(player: Player): (BasePart?, Humanoid?)
 	return root, humanoid
 end
 
+-- Barre du banc -------------------------------------------------------------------
+
+-- Pièces reliées par une liaison (soudure, joint ou contrainte à deux attachements).
+local function jointParts(joint: Instance): (Instance?, Instance?)
+	if joint:IsA("JointInstance") or joint:IsA("WeldConstraint") or joint:IsA("NoCollisionConstraint") then
+		local j = joint :: any
+		return j.Part0, j.Part1
+	elseif joint:IsA("Constraint") then
+		local a0, a1 = joint.Attachment0, joint.Attachment1
+		return if a0 then a0.Parent else nil, if a1 then a1.Parent else nil
+	end
+	return nil, nil
+end
+
+local function setJointEnabled(joint: Instance, enabled: boolean)
+	if joint:IsA("JointInstance") then
+		joint.Enabled = enabled
+	elseif joint:IsA("WeldConstraint") then
+		joint.Enabled = enabled
+	elseif joint:IsA("Constraint") then
+		joint.Enabled = enabled
+	end
+end
+
+-- Soude la barre du banc à la main droite du personnage, à sa position relative du moment.
+-- Renvoie nil (rien ne change) sans barre ou sans main.
+local function holdBar(machine: Machine, character: Model): BarHold?
+	local bar = machine.bar
+	if bar == nil or bar.Parent == nil then
+		return nil
+	end
+	local hand = character:FindFirstChild(HAND) or character:FindFirstChild(HAND_R6)
+	if hand == nil or not hand:IsA("BasePart") then
+		log(`{character.Name} : pas de {HAND}, la barre de {machine.plot:GetFullName()} reste sur le banc`)
+		return nil
+	end
+	local list: { BasePart } = {}
+	if bar:IsA("BasePart") then
+		table.insert(list, bar)
+	end
+	for _, descendant in bar:GetDescendants() do
+		if descendant:IsA("BasePart") then
+			table.insert(list, descendant)
+		end
+	end
+	if #list == 0 then
+		return nil
+	end
+	local inBar: { [Instance]: boolean } = {}
+	for _, part in list do
+		inBar[part] = true
+	end
+	local hold: BarHold = { parts = {}, welds = {}, disabled = {} }
+	-- Liaisons vers le reste du banc : coupées pendant l'usage (sinon le banc suivrait la main).
+	local seen: { [Instance]: boolean } = {}
+	for _, part in list do
+		for _, joint in part:GetJoints() do
+			if seen[joint] then
+				continue
+			end
+			seen[joint] = true
+			local p0, p1 = jointParts(joint)
+			local inside = (p0 == nil or inBar[p0] == true) and (p1 == nil or inBar[p1] == true)
+			if not inside and (joint :: any).Enabled == true then
+				setJointEnabled(joint, false)
+				table.insert(hold.disabled, joint)
+			end
+		end
+	end
+	for _, part in list do
+		table.insert(hold.parts, {
+			part = part,
+			cframe = part.CFrame,
+			anchored = part.Anchored,
+			canCollide = part.CanCollide,
+			massless = part.Massless,
+		})
+		part.Anchored = false
+		part.CanCollide = false
+		part.Massless = true
+		local weld = Instance.new("WeldConstraint")
+		weld.Name = BAR_WELD_NAME
+		weld.Part0 = hand
+		weld.Part1 = part
+		weld.Parent = part
+		table.insert(hold.welds, weld)
+	end
+	return hold
+end
+
+-- Rend la barre au banc : place exacte et réglages d'avant, liaisons au banc rétablies.
+local function releaseBar(hold: BarHold)
+	for _, weld in hold.welds do
+		weld:Destroy()
+	end
+	for _, saved in hold.parts do
+		local part = saved.part
+		if part.Parent == nil then
+			continue -- barre retirée entre-temps
+		end
+		part.Anchored = saved.anchored
+		part.AssemblyLinearVelocity = Vector3.zero
+		part.AssemblyAngularVelocity = Vector3.zero
+		part.CFrame = saved.cframe
+		part.CanCollide = saved.canCollide
+		part.Massless = saved.massless
+	end
+	for _, joint in hold.disabled do
+		if joint.Parent ~= nil then
+			setJointEnabled(joint, true)
+		end
+	end
+end
+
 local function stop(player: Player, reason: string)
 	local session = sessions[player]
 	if session == nil then
@@ -289,6 +436,11 @@ local function stop(player: Player, reason: string)
 		connection:Disconnect()
 	end
 	local machine = session.machine
+	local bar = session.bar
+	if bar then
+		session.bar = nil
+		releaseBar(bar)
+	end
 	if machine.occupant == player then
 		machine.occupant = nil
 		local prompt = machine.prompt
@@ -343,6 +495,10 @@ local function start(player: Player, machine: Machine): boolean
 		startedAt = now,
 		nextTick = now + TREADMILL_TICK,
 		lastTap = -math.huge,
+		lastRep = now,
+		clientReps = false,
+		barTried = false,
+		bar = nil,
 		gained = 0,
 		autoRotate = humanoid.AutoRotate,
 		connections = {},
@@ -520,6 +676,41 @@ local function leaveReason(player: Player, session: Session, now: number): strin
 	return nil
 end
 
+-- Banc : une répétition, au plus MaxRepsPerSecond sur toute seconde glissante. true si comptée.
+local function benchRep(player: Player, session: Session, now: number): boolean
+	local window = benchWindows[player] or RateLimiter.new(Training.Bench.MaxRepsPerSecond)
+	benchWindows[player] = window
+	if not RateLimiter.allow(window, now) then
+		return false
+	end
+	session.lastRep = now
+	local gain = Training.Bench.GainPerRep * machineMultiplier(player, "Bench")
+	if StatsService.AddStrength(player, gain) == nil then
+		return false
+	end
+	session.gained += gain
+	local reps = player:GetAttribute("BenchReps")
+	player:SetAttribute("BenchReps", (if type(reps) == "number" then reps else 0) + 1)
+	return true
+end
+
+-- Banc : barre soudée une fois la pose prise, et répétitions au rythme du serveur si le client n'en
+-- envoie pas (voir l'en-tête).
+local function updateBench(player: Player, session: Session, now: number)
+	if not session.barTried and now - session.startedAt >= SETTLE_TIME then
+		session.barTried = true
+		local character = session.humanoid.Parent
+		if character and character:IsA("Model") then
+			session.bar = holdBar(session.machine, character)
+		end
+	end
+	local interval = if session.clientReps then BENCH_CLIENT_SILENCE else BENCH_AUTO_INTERVAL
+	if now - session.lastRep >= interval then
+		session.lastRep = now -- même refusée (limite, profil), on attend l'intervalle suivant
+		benchRep(player, session, now)
+	end
+end
+
 local function update(dt: number)
 	local now = os.clock()
 	for player, session in sessions do
@@ -528,6 +719,8 @@ local function update(dt: number)
 			stop(player, reason)
 		elseif session.machine.kind == "Treadmill" then
 			creditTreadmill(player, session, now)
+		else
+			updateBench(player, session, now)
 		end
 	end
 	treadmillClock += dt
@@ -549,19 +742,10 @@ local function onTap(player: Player)
 		return
 	end
 
-	-- Banc : 1 tap = 1 répétition, au plus MaxRepsPerSecond sur toute seconde glissante.
-	local window = benchWindows[player] or RateLimiter.new(Training.Bench.MaxRepsPerSecond)
-	benchWindows[player] = window
-	if not RateLimiter.allow(window, now) then
-		return
-	end
-	local gain = Training.Bench.GainPerRep * machineMultiplier(player, "Bench")
-	if StatsService.AddStrength(player, gain) == nil then
-		return
-	end
-	session.gained += gain
-	local reps = player:GetAttribute("BenchReps")
-	player:SetAttribute("BenchReps", (if type(reps) == "number" then reps else 0) + 1)
+	-- Banc : 1 TrainTap (marqueur Top de BenchLift) = 1 répétition ; le rythme du serveur se met
+	-- en retrait (BENCH_CLIENT_SILENCE).
+	session.clientReps = true
+	benchRep(player, session, now)
 end
 
 -- Première parcelle (tag PlayerPlot) parmi les ancêtres de la machine, dans Workspace.
@@ -596,6 +780,7 @@ local function register(model: Instance, kind: MachineKind)
 		usePoint = usePoint,
 		belt = nil,
 		prompt = nil,
+		bar = nil,
 		occupant = nil,
 	}
 	if kind == "Treadmill" then
@@ -621,6 +806,13 @@ local function register(model: Instance, kind: MachineKind)
 		end)
 		prompt.Parent = usePoint
 		machine.prompt = prompt
+		-- Barre qui suit les mains (L-091, point 2) : pièce ou modèle Bar.
+		local bar = model:FindFirstChild(BAR, true)
+		if bar and (bar:IsA("BasePart") or bar:IsA("Model")) then
+			machine.bar = bar
+		else
+			log(`{model:GetFullName()} : pas de pièce ni de modèle {BAR}, la barre ne suivra pas les mains`)
+		end
 	end
 	machines[model] = machine
 end
