@@ -92,7 +92,7 @@ local Balance = {
 		PerThief = 1,
 		MaxPerStore = 3,
 		MaxActivePerServer = 6, -- 9.7
-		PathRecomputeInterval = 0.3, -- PathfindingService sans ligne de vue
+		PathRecomputeInterval = 0.3, -- PathfindingService sans ligne de vue : au plus un calcul toutes les 0,3 s (L-091)
 		CatchDistance = 4, -- vérifiée côté serveur
 		-- 2,4 s (Cantin, 2026-11-10 ; le doc disait 1,5) : le temps des animations de Clément, Knockdown
 		-- (1,2 s) puis GetUp (1,2 s), pour que le joueur ne reparte pas en glissant pendant qu'il se relève.

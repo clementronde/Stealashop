@@ -11,8 +11,12 @@
 --      qui rentre, pas de vigile. Un vigile en fondu ne compte plus dans ces plafonds. Le serveur
 --      possède sa physique ; nage, escalade et autres états inutiles sont coupés (9.7).
 --   2. Poursuite, après REACTION_DELAY s : WalkSpeed = Zones[zone].GuardSpeed (section 4).
---      Course directe s'il voit le joueur, sinon PathfindingService recalculé toutes les
---      Balance.Guard.PathRecomputeInterval s.
+--      Ligne de vue testée toutes les CHASE_STEER_INTERVAL s (L-091 point 1). S'il voit le joueur :
+--      MoveTo droit sur lui, avec une petite anticipation selon sa vitesse (aimPoint), et tout chemin
+--      en cours est jeté. Derrière un obstacle seulement : PathfindingService, recalculé dès que le
+--      joueur s'éloigne du but du chemin (PATH_GOAL_DRIFT), au plus toutes les
+--      Balance.Guard.PathRecomputeInterval s ; un chemin qui arrive reprend au point le plus proche
+--      du vigile, jamais derrière lui. Même poursuite de jour, de nuit et pour les conducteurs.
 --   3. Capture : distance ≤ Balance.Guard.CatchDistance entre les deux HumanoidRootPart, sans
 --      mur entre eux, mesurée ici, côté serveur. Alors, tout de suite : CarryService.Fail(player,
 --      "Caught") (le colis revole vers son rayon), joueur immobilisé (StatsService, modificateur
@@ -279,6 +283,8 @@ type Guard = {
 	computing: boolean,
 	waypoints: { PathWaypoint }?,
 	waypointIndex: number,
+	pathGoal: Vector3?, -- but du dernier calcul de chemin lancé (L-091 point 1)
+	lastSeen: Vector3?, -- poursuite : où il a vu sa cible pour la dernière fois (L-091 point 1)
 	progressPos: Vector3,
 	progressAt: number,
 	knockTarget: Player?, -- joueur à projeter au marqueur Impact de Catch
@@ -361,6 +367,12 @@ local KNOCKBACK_MAX_WAIT = 0.6
 -- V0 proposé, absent du doc : comportement du vigile.
 local REACTION_DELAY = 0.5 -- il apparaît, puis s'élance après ce délai, sans capture avant (s)
 local STEER_INTERVAL = 0.1 -- cadence du pilotage : ligne de vue, MoveTo (s)
+-- V0 proposé, absent du doc : une poursuite qui réagit tout de suite (L-091 point 1).
+local CHASE_STEER_INTERVAL = 0.05 -- poursuite : ligne de vue et MoveTo à ce rythme (s)
+local LEAD_MAX_TIME = 0.5 -- anticipation : il vise où sera le joueur dans (distance / sa vitesse) s, au plus ceci (s)
+local LEAD_MAX_DISTANCE = 8 -- anticipation : au plus ceci devant le joueur (studs)
+local LEAD_MIN_SPEED = 2 -- en dessous de cette vitesse au sol, le joueur est visé là où il est (studs/s)
+local PATH_GOAL_DRIFT = 4 -- derrière un obstacle : chemin recalculé dès que le joueur s'éloigne de ceci de son but (studs)
 local WAYPOINT_REACHED = 2 -- distance horizontale à laquelle un point du chemin est atteint (studs)
 local KNEE_HEIGHT = 1.5 -- second rayon de la ligne de vue, au-dessus des pieds : voit les obstacles bas (studs)
 local SPAWN_SPACING = 3 -- écart entre vigiles apparus au même GuardSpawn, vers la vitrine (studs)
@@ -858,9 +870,36 @@ local function moveTo(guard: Guard, position: Vector3)
 	end
 end
 
+-- Premier point à suivre d'un chemin qui vient d'arriver (L-091 point 1). Le vigile a avancé pendant
+-- le calcul : il reprend au point du début du chemin le plus proche de lui, ou au suivant s'il l'a déjà
+-- dépassé ; jamais un point resté derrière lui (avant : toujours le 2ᵉ, d'où des demi-tours).
+local function firstWaypoint(waypoints: { PathWaypoint }, position: Vector3): number
+	local count = #waypoints
+	if count < 2 then
+		return 2 -- au bout tout de suite : droit vers le but
+	end
+	-- Depuis le départ, tant que le point suivant est plus près de lui : le plus proche près du départ,
+	-- jamais un point plus loin sur un chemin qui revient vers lui de l'autre côté d'un mur.
+	local function distanceTo(i: number): number
+		return flat(waypoints[i].Position - position).Magnitude
+	end
+	local best = 1
+	while best < count and distanceTo(best + 1) <= distanceTo(best) do
+		best += 1
+	end
+	if best < count then
+		local here = waypoints[best].Position
+		if flat(waypoints[best + 1].Position - here):Dot(flat(position - here)) > 0 then
+			best += 1 -- déjà passé : le suivant
+		end
+	end
+	return math.max(best, 2) -- le premier point est le départ
+end
+
 -- Lance le calcul d'un chemin vers `goal`, dans sa propre tâche (ComputeAsync attend).
 local function computePath(guard: Guard, goal: Vector3)
 	guard.computing = true
+	guard.pathGoal = goal
 	local token = guard.pathToken
 	local start = guard.root.Position
 	task.spawn(function()
@@ -872,8 +911,9 @@ local function computePath(guard: Guard, goal: Vector3)
 			return
 		end
 		if ok and guard.path.Status == Enum.PathStatus.Success then
-			guard.waypoints = guard.path:GetWaypoints()
-			guard.waypointIndex = 2 -- le premier point est le départ
+			local waypoints = guard.path:GetWaypoints()
+			guard.waypoints = waypoints
+			guard.waypointIndex = firstWaypoint(waypoints, guard.root.Position)
 			guard.pathFailures = 0
 		else
 			guard.waypoints = nil
@@ -938,6 +978,8 @@ local function setState(guard: Guard, state: GuardState)
 	guard.state = state
 	guard.pathToken += 1
 	guard.waypoints = nil
+	guard.pathGoal = nil
+	guard.lastSeen = nil
 	guard.pathFailures = 0
 end
 
@@ -1554,6 +1596,57 @@ end
 
 -- Boucle ----------------------------------------------------------------------------------
 
+-- Le point visé quand il voit sa cible (L-091 point 1) : là où elle sera dans le temps qu'il lui faut
+-- pour la rejoindre (distance / sa vitesse, au plus LEAD_MAX_TIME s, LEAD_MAX_DISTANCE studs), d'après
+-- sa vitesse au sol. Il coupe le virage au lieu de courir après l'endroit où elle était : un joueur
+-- qui tourne à angle droit fait tourner le vigile tout de suite. Le point anticipé doit être en vue
+-- du vigile et de la cible (jamais derrière un mur) et hors zone safe, sinon il vise la cible.
+local function aimPoint(guard: Guard, targetRoot: BasePart, distance: number): Vector3
+	local position = targetRoot.Position
+	local velocity = flat(targetRoot.AssemblyLinearVelocity)
+	local speed = velocity.Magnitude
+	if not isPositiveNumber(speed) or speed < LEAD_MIN_SPEED then
+		return position
+	end
+	local lead = math.min(distance / math.max(guard.humanoid.WalkSpeed, 1), LEAD_MAX_TIME)
+	local offset = velocity * lead
+	if offset.Magnitude > LEAD_MAX_DISTANCE then
+		offset = offset.Unit * LEAD_MAX_DISTANCE
+	end
+	local aim = position + offset
+	if isInSafeZone(aim) or not clearLine(position, aim) or not clearLine(guard.root.Position, aim) then
+		return position
+	end
+	return aim
+end
+
+-- Derrière un obstacle (L-091 point 1) : un chemin vers la cible, calculé seulement s'il n'en a pas,
+-- s'il est au bout, ou si la cible s'est éloignée de PATH_GOAL_DRIFT studs de son but ; au plus un
+-- calcul toutes les Balance.Guard.PathRecomputeInterval s. En attendant le premier, il court au
+-- dernier endroit où il l'a vue (il le voyait : en ligne droite), jamais droit dans le mur.
+local function chaseBehindObstacle(guard: Guard, goal: Vector3, now: number)
+	local waypoints = guard.waypoints
+	local pathGoal = guard.pathGoal
+	local stale = waypoints == nil
+		or pathGoal == nil
+		or guard.waypointIndex > #waypoints
+		or flat(goal - pathGoal).Magnitude > PATH_GOAL_DRIFT
+	if stale and now >= guard.nextPathAt and not guard.computing then
+		guard.nextPathAt = now + Balance.Guard.PathRecomputeInterval
+		computePath(guard, goal)
+	end
+	local lastSeen = guard.lastSeen
+	if guard.waypoints == nil and lastSeen then
+		local from = guard.root.Position
+		if flat(lastSeen - from).Magnitude > WAYPOINT_REACHED and clearLine(from, lastSeen) then
+			moveTo(guard, lastSeen)
+			return
+		end
+		guard.lastSeen = nil -- atteint ou caché : le chemin prend le relais
+	end
+	followPath(guard, goal)
+end
+
 local function chaseStep(guard: Guard, now: number)
 	local player = guard.target
 	if player == nil then
@@ -1617,7 +1710,7 @@ local function chaseStep(guard: Guard, now: number)
 	if now < guard.nextSteerAt then
 		return
 	end
-	guard.nextSteerAt = now + STEER_INTERVAL
+	guard.nextSteerAt = now + CHASE_STEER_INTERVAL
 	if driver then
 		-- Toujours un peu plus vite que sa cible, même si elle accélère en route.
 		local speed = driverSpeed(driver, targetHumanoid)
@@ -1626,16 +1719,15 @@ local function chaseStep(guard: Guard, now: number)
 			setWalkSpeed(guard, speed)
 		end
 	end
+	-- Ligne de vue à chaque pas : s'il voit sa cible, droit sur elle (anticipée), et le chemin en cours
+	-- est jeté : jamais un point de chemin périmé quand il la voit.
 	if canSee(guard, targetRoot, targetHumanoid) then
 		guard.waypoints = nil
-		moveTo(guard, targetRoot.Position)
+		guard.lastSeen = targetRoot.Position
+		moveTo(guard, aimPoint(guard, targetRoot, distance))
 		return
 	end
-	if now >= guard.nextPathAt and not guard.computing then
-		guard.nextPathAt = now + Balance.Guard.PathRecomputeInterval
-		computePath(guard, targetRoot.Position)
-	end
-	followPath(guard, targetRoot.Position)
+	chaseBehindObstacle(guard, targetRoot.Position, now)
 end
 
 -- Colis tombé au sol (6.2) : le vigile court vers l'endroit du coup et attend à côté qu'on le
