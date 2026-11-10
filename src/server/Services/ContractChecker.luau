@@ -1004,7 +1004,9 @@ local function checkGuiSet(
 	for _, screen in screens do
 		known[normalize(screen.Name)] = screen.Name
 		local gui = if container then container:FindFirstChild(screen.Name, deep) else nil
-		if gui == nil then
+		if gui == nil and screen.Optional then
+			continue -- écran de repli retiré : rien à dire
+		elseif gui == nil then
 			local elsewhere = findElsewhere(screen.Name)
 			local parent = if elsewhere then elsewhere.Parent else nil
 			if parent then

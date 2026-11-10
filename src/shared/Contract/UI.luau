@@ -17,6 +17,7 @@ export type Screen = {
 	Name: string,
 	Class: string, -- "ScreenGui" ou "BillboardGui"
 	Elements: { Element },
+	Optional: boolean?, -- écran de repli : absent, rien à dire ; présent, vérifié comme les autres
 }
 
 local BUTTON = "GuiButton" -- TextButton ou ImageButton
@@ -270,9 +271,12 @@ UI.ReservedNames = { "Name", "Text", "Size", "Position", "Visible", "Parent" }
 -- de la maquette de Clément (UI-111, relevé de Studio du 2026-11-08), branchés par IndexController.
 -- Counter est dans CounterPill ; Rays et Glow (dans le cadre Clip de la carte) prennent la couleur de
 -- la rareté ; Lock = cadenas d'un objet pas encore découvert.
+-- Depuis UI_Index_v2 (L-083, 2026-11-10), l'ancien écran n'est plus qu'un repli d'IndexController :
+-- facultatif (Optional), vérifié seulement s'il est encore dans StarterGui.
 table.insert(UI.Screens, {
 	Name = "UI_Index",
 	Class = "ScreenGui",
+	Optional = true,
 	Elements = {
 		{ Path = "CloseButton", Class = BUTTON },
 		{ Path = "Counter" },
@@ -299,6 +303,47 @@ table.insert(UI.Screens, {
 		{ Path = "List.Template.Glow" },
 		{ Path = "List.Template.RarityBar.Rarity" }, -- nom de la rareté, écrit par le code (vu en Play le 2026-11-08)
 	},
+})
+
+-- Index v2 (L-083, points 5 et 6 ; relevé de Studio du 2026-11-10, agents/wave20-studio.md) : une seule
+-- liste qui défile, une section par zone (Zone1Section à Zone6Section, SecretsSection), plus d'onglets.
+-- Les cartes clonées de List.Template vont dans le Cards (UIGridLayout) de leur section. ScrollTrack est
+-- le curseur de défilement, déplacé et dimensionné par le code dans la piste que Clément a posée.
+-- Reward n'est demandé que dans les sections de zone (caché dans SecretsSection, pas lu).
+local indexV2Elements = {
+	{ Path = "CloseButton", Class = BUTTON },
+	{ Path = "Counter" },
+	{ Path = "List", Class = "ScrollingFrame" },
+	{ Path = "List.Template", Template = true },
+	{ Path = "List.Template.Icon" },
+	{ Path = "List.Template.Lock" },
+	{ Path = "List.Template.ItemName" },
+	{ Path = "List.Template.Rays" },
+	{ Path = "List.Template.Glow" },
+	{ Path = "List.Template.RarityBar.Rarity" },
+	{ Path = "ScrollTrack" },
+} :: { Element }
+local indexSections = {}
+for zone = 1, 6 do
+	table.insert(indexSections, `Zone{zone}Section`)
+end
+table.insert(indexSections, "SecretsSection")
+for _, section in indexSections do
+	table.insert(indexV2Elements, { Path = section })
+	table.insert(indexV2Elements, { Path = `{section}.ZoneName` })
+	table.insert(indexV2Elements, { Path = `{section}.ZoneBar` })
+	table.insert(indexV2Elements, { Path = `{section}.ZoneBar.Fill` })
+	table.insert(indexV2Elements, { Path = `{section}.ZoneCount` })
+	if section ~= "SecretsSection" then
+		table.insert(indexV2Elements, { Path = `{section}.Reward` })
+		table.insert(indexV2Elements, { Path = `{section}.Reward.RewardLabel` })
+	end
+	table.insert(indexV2Elements, { Path = `{section}.Cards` })
+end
+table.insert(UI.Screens, {
+	Name = "UI_Index_v2",
+	Class = "ScreenGui",
+	Elements = indexV2Elements,
 })
 
 -- Récompenses quotidiennes et de temps de jeu (DEV-101 ; Partie 2, 3.3 ; L-057) : écran UI_Rewards de

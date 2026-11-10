@@ -1,38 +1,50 @@
 --!strict
--- IndexController (DEV-111, client) : l'index des objets, écran UI_Index de Clément (maquette UI-111,
--- noms de ses calques ; Partie 2, section 3.4 ; règles : Config/Index ; découvertes : IndexService).
+-- IndexController (DEV-111, client) : l'index des objets, écran UI_Index_v2 de Clément (L-083, points 5
+-- et 6 : une seule liste qui défile, une section par zone, plus d'onglets), avec repli sur l'ancien
+-- UI_Index (onglets, maquette UI-111) tant que la v2 n'est pas dans PlayerGui. Partie 2, section 3.4 ;
+-- règles : Config/Index ; découvertes : IndexService.
 -- Seulement si Features.Index : à false, rien n'est branché et l'écran reste fermé.
 --
 -- Rôle :
 --   - UI_HUD.IndexButton ouvre l'écran (un 2e appui le ferme) ; CloseButton le ferme. Ouverture et
---     fermeture animées par UI/Motion, comme les boutiques : les cartes sont retirées une fois l'écran
---     éteint, et une réouverture pendant la fermeture la rattrape ;
---   - 7 onglets : Tabs.Zone1Tab à Zone6Tab (les objets de la zone) et Tabs.SecretsTab (les Secrets).
---     À la première ouverture, la zone 1 ; ensuite, le dernier onglet choisi ;
---   - une carte par objet de l'onglet (Config/Index : ordre du catalogue, objet du tuto compris),
---     clonée depuis List.Template et nommée Item_<nn>_<ItemId> (LayoutOrder = rang) :
+--     fermeture animées par UI/Motion (groupe ScreenGroup de l'écran, Motion.SetCloser), comme les
+--     boutiques : les cartes sont retirées une fois l'écran éteint, et une réouverture pendant la
+--     fermeture la rattrape. Quand UI_Index_v2 est branché, l'ancien UI_Index est éteint (Enabled) ;
+--   - UI_Index_v2 : 7 sections dans List, Zone1Section à Zone6Section (les objets de la zone) et
+--     SecretsSection (les Secrets). Dans chacune, les cartes vont dans son cadre Cards (UIGridLayout de
+--     Clément) ; en-tête : ZoneName (texte de Clément gardé ; écrit seulement s'il est vide), ZoneBar.Fill
+--     et ZoneCount, Reward.RewardLabel (Reward caché dans SecretsSection par Clément, laissé tel quel) ;
+--   - UI_Index (repli) : 7 onglets, Tabs.Zone1Tab à Zone6Tab et Tabs.SecretsTab, et un seul en-tête
+--     ZoneReward pour l'onglet ouvert (ZoneName = le texte de l'onglet en capitales). À la première
+--     ouverture, la zone 1 ; ensuite, le dernier onglet choisi ;
+--   - une carte par objet (Config/Index : ordre du catalogue, objet du tuto compris), clonée depuis
+--     List.Template et nommée Item_<nn>_<ItemId> (LayoutOrder = rang dans sa zone) :
 --       découvert      Icon.Image = l'icône ICON_<ItemId> (Contract/Icons), Icon.ImageColor3 blanc,
 --                      Lock caché, ItemName = le nom anglais en capitales (« SODA CAN ») ;
 --       pas découvert  la même icône en silhouette (Icon.ImageColor3 sombre), Lock visible,
 --                      ItemName « ??? ».
 --     Les deux teintes de l'icône sont lues sur les cartes d'exemple de Clément (Preview_* : Lock caché
 --     = découvert, Lock visible = silhouette), sinon celles de sa maquette. Icône pas livrée : image
---     vide. Couleur de la rareté (doc : « silhouette noire avec la couleur de sa rareté ») : Rays et
---     Glow de la carte (ImageColor3) prennent celle de Config/Rarities, découvert ou pas ; RarityBar
---     n'est pas touchée (sombre sur toutes les cartes d'exemple) ;
+--     vide. Couleur de la rareté : Rays et Glow de la carte (ImageColor3) prennent celle de
+--     Config/Rarities, découvert ou pas ; RarityBar.Rarity dit la rareté ; RarityBar n'est pas teinte ;
 --   - Counter (dans CounterPill) : « 23 / 83 discovered », tout le catalogue, Secrets compris ;
---   - ZoneReward, pour l'onglet ouvert : ZoneName = le texte de l'onglet (TabLabel) en capitales
---     (« MINI MART »), ZoneBar.Fill = la part découverte (seule la largeur en Scale change), ZoneCount
---     « 9 / 13 », Reward.RewardLabel « +5% INCOME », puis « +5% INCOME EARNED » une fois la zone
---     complète (le bonus est compté par le serveur). Onglet Secrets : les Secrets découverts, et Reward
---     caché (l'index complet donnera l'aura « Collectionneur », qui n'existe pas encore) ;
+--   - ZoneCount « 9 / 13 », ZoneBar.Fill = la part découverte (seule la largeur en Scale change),
+--     RewardLabel = rewardText (à changer là quand la récompense d'une zone complète change) ;
+--   - ScrollTrack (UI_Index_v2, L-083 point 5) : c'est le curseur de la barre de défilement. Sa place et
+--     sa hauteur posées par Clément délimitent la piste ; le curseur y prend une hauteur proportionnelle
+--     à la part visible de la liste (au moins TRACK_MIN_SHARE de la piste) et descend avec la liste
+--     (List.CanvasPosition rapporté à AbsoluteCanvasSize − AbsoluteWindowSize). Rien à défiler : il
+--     remplit la piste. Mis à jour sur les changements de CanvasPosition, AbsoluteCanvasSize et
+--     AbsoluteWindowSize, pas à chaque image. Il ne se tire pas (la molette, le doigt et la barre de
+--     Roblox font défiler la liste) ;
 --   - l'écran suit l'attribut IndexDiscovered du Player (IndexService) : une découverte le met à jour
 --     s'il est ouvert. Rien n'est envoyé au serveur.
--- Les cartes d'exemple de la maquette (Preview_*, à côté du Template) sont retirées de la copie du
--- joueur. Seuls sont touchés (2.2, « Libre pour Ironix ») : Enabled de l'écran, les textes, la
--- visibilité, les cartes clonées (nom, ordre), l'image et la teinte (ImageColor3) de leur icône et de
--- leurs rayons, la largeur de ZoneBar.Fill et le défilement de la liste ; jamais un style de Clément
--- (l'effet d'échelle de Motion est passager). Écran recréé (ResetOnSpawn) : rebranché, fermé.
+-- Les cartes d'exemple de la maquette (Preview_*, à côté du Template ou dans un Cards) sont retirées de
+-- la copie du joueur. Seuls sont touchés (2.2, « Libre pour Ironix ») : Enabled des écrans, les textes,
+-- la visibilité, les cartes clonées (nom, ordre), l'image et la teinte (ImageColor3) de leur icône et de
+-- leurs rayons, la largeur de ZoneBar.Fill, le défilement de la liste, la position et la hauteur de
+-- ScrollTrack ; jamais un style de Clément (l'effet d'échelle de Motion est passager). Écran recréé
+-- (ResetOnSpawn) : rebranché, fermé.
 --
 -- API (client) : aucune.
 
@@ -54,7 +66,8 @@ local Motion = require(script.Parent:WaitForChild("UI"):WaitForChild("Motion"))
 
 type Item = Items.Item
 
--- Un onglet : sa zone (nil = les Secrets) et son chemin dans l'écran (contrat 2.2).
+-- Une zone de l'index (nil = les Secrets) et son chemin dans l'écran (contrat 2.2) : onglet de UI_Index
+-- ou section de UI_Index_v2.
 type TabDef = { zone: number?, path: string }
 
 -- Une carte clonée.
@@ -67,27 +80,41 @@ type Card = {
 	found: boolean?, -- état peint (nil : pas encore peint)
 }
 
--- Écran branché.
-type Screen = {
-	gui: ScreenGui,
-	template: GuiObject?,
-	list: Instance?, -- la ScrollingFrame List
-	counter: Instance?,
+-- Un en-tête et ses cartes : une section de UI_Index_v2, ou l'unique ZoneReward de UI_Index (sa zone
+-- suit l'onglet ouvert).
+type Section = {
+	def: TabDef,
+	cardParent: Instance?, -- Cards de la section (v2), List (repli)
 	zoneName: Instance?,
+	keepName: boolean, -- v2 : le texte de Clément est gardé (écrit seulement s'il est vide)
 	zoneCount: Instance?,
 	fill: GuiObject?,
 	fillSize: UDim2, -- taille de Fill posée par Clément : seule la largeur en Scale change
 	reward: GuiObject?,
-	rewardShown: boolean, -- visibilité de Reward posée par Clément (rendue sur les onglets de zone)
+	rewardShown: boolean, -- visibilité de Reward posée par Clément
 	rewardLabel: Instance?,
-	tabNames: { [number]: string }, -- [rang de l'onglet] = ZoneName
+}
+
+-- Écran branché.
+type Screen = {
+	gui: ScreenGui,
+	v2: boolean,
+	template: GuiObject?,
+	list: Instance?, -- la ScrollingFrame List
+	counter: Instance?,
+	sections: { Section },
+	tabNames: { [number]: string }, -- repli : [rang de l'onglet] = ZoneName
 	foundColor: Color3,
 	silhouetteColor: Color3,
+	track: GuiObject?, -- ScrollTrack (v2)
+	trackPosition: UDim2, -- place et taille posées par Clément : la piste du curseur
+	trackSize: UDim2,
 	connections: { RBXScriptConnection },
 	cards: { Card },
 }
 
-local SCREEN = "UI_Index"
+local SCREEN = "UI_Index_v2"
+local LEGACY_SCREEN = "UI_Index" -- repli, tant que la v2 n'est pas livrée (question posée à Clément)
 local HUD = "UI_HUD"
 local HUD_BUTTON = "IndexButton"
 local CARD_FORMAT = "Item_%02d_%s" -- nom des cartes clonées (jamais « Template »)
@@ -96,25 +123,32 @@ local TAB_LABEL = "TabLabel"
 -- Éléments d'une carte teints à la couleur de la rareté (dans son cadre Clip).
 local TINTED = { "Rays", "Glow" }
 
--- Onglets, dans l'ordre de l'écran : Zone1Tab à Zone6Tab, puis SecretsTab.
-local TABS: { TabDef } = {}
+-- Zones de l'index, dans l'ordre de l'écran : zones 1 à 6, puis les Secrets.
+local TABS: { TabDef } = {} -- onglets de UI_Index
+local SECTIONS: { TabDef } = {} -- sections de UI_Index_v2
 for zone = 1, Index.ZoneCount do
 	table.insert(TABS, { zone = zone, path = `Tabs.Zone{zone}Tab` })
+	table.insert(SECTIONS, { zone = zone, path = `Zone{zone}Section` })
 end
 table.insert(TABS, { zone = nil, path = "Tabs.SecretsTab" })
+table.insert(SECTIONS, { zone = nil, path = "SecretsSection" })
 
 -- Textes, en anglais (L-036). V0 proposé, absent du doc, sauf le format du compteur et de la
 -- récompense, repris de la maquette de Clément (« 23 / 74 discovered », « 9 / 13 », « +5% INCOME »).
 local COUNTER_TEXT = "%d / %d discovered"
 local ZONE_COUNT_TEXT = "%d / %d"
+local UNKNOWN_NAME = "???"
+local SECRETS_NAME = "Secrets" -- ZoneName des Secrets sans texte de Clément
+-- Récompense d'une zone complète affichée dans RewardLabel (V0 : les +5 % de revenus de Config/Index,
+-- doc 3.4). À changer ici seulement quand la récompense change (L-083 point 7).
 local REWARD_TEXT = "+%d%% INCOME"
 local REWARD_EARNED_TEXT = "+%d%% INCOME EARNED"
-local UNKNOWN_NAME = "???"
-local SECRETS_NAME = "Secrets" -- ZoneName de l'onglet Secrets s'il n'a pas de TabLabel
 -- Teintes de l'icône des cartes d'exemple de Clément (relevé de Studio du 2026-11-08), quand aucune
 -- carte Preview_* ne les donne.
 local FOUND_COLOR = Color3.new(1, 1, 1)
 local SILHOUETTE_COLOR = Color3.fromRGB(17, 19, 24) -- (0,067 ; 0,075 ; 0,094)
+-- Hauteur minimale du curseur ScrollTrack, en part de sa piste. V0 proposé, absent du doc.
+local TRACK_MIN_SHARE = 0.1
 
 local IS_STUDIO = RunService:IsStudio()
 
@@ -123,7 +157,7 @@ local IndexController = {}
 local localPlayer = Players.LocalPlayer
 local screen: Screen? = nil
 local isOpen = false
-local tab = 1 -- rang de l'onglet ouvert dans TABS
+local tab = 1 -- repli : rang de l'onglet ouvert dans TABS
 local discovered: { [string]: boolean } = {}
 local textures: { [string]: string } = {} -- [ItemId] = image de l'icône livrée
 local missingIcons: { [string]: boolean } = {}
@@ -239,12 +273,29 @@ local function itemsOf(def: TabDef): { Item }
 	return Index.Secrets
 end
 
+-- Nom d'une zone quand l'écran n'en donne pas : le Theme de Config/Zones (« Mini Mart »).
+local function fallbackName(def: TabDef): string
+	local zone = def.zone
+	if zone == nil then
+		return SECRETS_NAME
+	end
+	local info = Zones[zone]
+	return if info then info.Theme else `Zone {zone}`
+end
+
+-- Texte de RewardLabel pour une zone (complete : tous ses objets découverts, bonus déjà compté par le
+-- serveur).
+local function rewardText(_zone: number, complete: boolean): string
+	local percent = math.round(Index.ZoneBonus * 100)
+	return string.format(if complete then REWARD_EARNED_TEXT else REWARD_TEXT, percent)
+end
+
 local function readDiscovered()
 	discovered = Index.Decode(localPlayer:GetAttribute(Index.Attribute))
 end
 
 ------------------------------------------------------------------------------
--- Cartes et en-tête
+-- Cartes et en-têtes
 ------------------------------------------------------------------------------
 
 local function paint(current: Screen, card: Card)
@@ -273,53 +324,58 @@ local function clearCards(current: Screen)
 	table.clear(current.cards)
 end
 
--- Cartes de l'onglet ouvert, clonées depuis List.Template.
+-- Cartes de chaque section (v2 : toutes les zones ; repli : l'onglet ouvert), clonées depuis
+-- List.Template.
 local function buildCards(current: Screen)
 	clearCards(current)
 	local template = current.template
 	if template == nil then
 		return
 	end
-	local parent = template.Parent
 	local wanted: { string } = {}
-	for rank, item in itemsOf(TABS[tab]) do
-		local clone: Instance? = template:Clone()
-		if clone == nil then
-			return -- Archivable = false : rien à cloner
+	for _, section in current.sections do
+		local parent = section.cardParent
+		if parent == nil then
+			continue
 		end
-		local frame = clone :: GuiObject
-		frame.Name = string.format(CARD_FORMAT, rank, item.Id)
-		frame.LayoutOrder = rank
-		local color = rarityColor(item)
-		for _, name in TINTED do
-			local tinted = Find.path(frame, name)
-			if tinted and isImage(tinted) then
-				(tinted :: any).ImageColor3 = color
+		for rank, item in itemsOf(section.def) do
+			local clone: Instance? = template:Clone()
+			if clone == nil then
+				return -- Archivable = false : rien à cloner
 			end
-		end
-		-- Nom de la rareté dans la bande du bas (RarityBar.Rarity, « COMMON » sur le modèle de Clément),
-		-- découvert ou pas : la silhouette garde sa rareté (doc 3.4). Vu en Play le 2026-11-08 : toutes
-		-- les cartes disaient « COMMON », le Pot de nouilles (Rare) compris.
-		local rarity = Rarities.ById[item.Rarity]
-		if rarity then
-			setText(Find.path(frame, "RarityBar.Rarity"), rarity.DisplayNameUpper)
-		end
-		local icon = Find.path(frame, "Icon")
-		local card: Card = {
-			item = item,
-			frame = frame,
-			icon = if icon and isImage(icon) then icon :: GuiObject else nil,
-			lock = guiObject(frame, "Lock"),
-			name = Find.path(frame, "ItemName"),
-			found = nil,
-		}
-		paint(current, card)
-		frame.Visible = true
-		frame.Parent = parent
-		table.insert(current.cards, card)
-		local texture = textureOf(item.Id)
-		if texture then
-			table.insert(wanted, texture)
+			local frame = clone :: GuiObject
+			frame.Name = string.format(CARD_FORMAT, rank, item.Id)
+			frame.LayoutOrder = rank
+			local color = rarityColor(item)
+			for _, name in TINTED do
+				local tinted = Find.path(frame, name)
+				if tinted and isImage(tinted) then
+					(tinted :: any).ImageColor3 = color
+				end
+			end
+			-- Nom de la rareté dans la bande du bas (RarityBar.Rarity, « COMMON » sur le modèle de
+			-- Clément), découvert ou pas : la silhouette garde sa rareté (doc 3.4).
+			local rarity = Rarities.ById[item.Rarity]
+			if rarity then
+				setText(Find.path(frame, "RarityBar.Rarity"), rarity.DisplayNameUpper)
+			end
+			local icon = Find.path(frame, "Icon")
+			local card: Card = {
+				item = item,
+				frame = frame,
+				icon = if icon and isImage(icon) then icon :: GuiObject else nil,
+				lock = guiObject(frame, "Lock"),
+				name = Find.path(frame, "ItemName"),
+				found = nil,
+			}
+			paint(current, card)
+			frame.Visible = true
+			frame.Parent = parent
+			table.insert(current.cards, card)
+			local texture = textureOf(item.Id)
+			if texture then
+				table.insert(wanted, texture)
+			end
 		end
 	end
 	if #wanted > 0 then
@@ -327,10 +383,10 @@ local function buildCards(current: Screen)
 	end
 end
 
-local function setFill(current: Screen, fraction: number)
-	local fill = current.fill
+local function setFill(section: Section, fraction: number)
+	local fill = section.fill
 	if fill then
-		local size = current.fillSize
+		local size = section.fillSize
 		local wanted = UDim2.new(math.clamp(fraction, 0, 1), size.X.Offset, size.Y.Scale, size.Y.Offset)
 		if fill.Size ~= wanted then
 			fill.Size = wanted
@@ -340,21 +396,66 @@ end
 
 local function refreshHeader(current: Screen)
 	setText(current.counter, string.format(COUNTER_TEXT, Index.CountAll(discovered), Index.Total))
-	local zone = TABS[tab].zone
-	local found: number, total: number
-	if zone ~= nil then
-		found, total = Index.CountZone(discovered, zone)
-	else
-		found, total = Index.CountSecrets(discovered)
+	for _, section in current.sections do
+		local zone = section.def.zone
+		local found: number, total: number
+		if zone ~= nil then
+			found, total = Index.CountZone(discovered, zone)
+		else
+			found, total = Index.CountSecrets(discovered)
+		end
+		if not section.keepName then
+			setText(section.zoneName, current.tabNames[tab] or string.upper(fallbackName(section.def)))
+		elseif textOf(section.zoneName) == nil then
+			setText(section.zoneName, string.upper(fallbackName(section.def)))
+		end
+		setText(section.zoneCount, string.format(ZONE_COUNT_TEXT, found, total))
+		setFill(section, if total > 0 then found / total else 0)
+		setVisible(section.reward, zone ~= nil and section.rewardShown)
+		if zone ~= nil then
+			setText(section.rewardLabel, rewardText(zone, total > 0 and found >= total))
+		end
 	end
-	setText(current.zoneName, current.tabNames[tab] or "")
-	setText(current.zoneCount, string.format(ZONE_COUNT_TEXT, found, total))
-	setFill(current, if total > 0 then found / total else 0)
-	setVisible(current.reward, zone ~= nil and current.rewardShown)
-	if zone ~= nil then
-		local complete = total > 0 and found >= total
-		local percent = math.round(Index.ZoneBonus * 100)
-		setText(current.rewardLabel, string.format(if complete then REWARD_EARNED_TEXT else REWARD_TEXT, percent))
+end
+
+-- ScrollTrack suit la liste : hauteur = part visible, place = avancée du défilement.
+local function updateTrack(current: Screen)
+	local track = current.track
+	local list = current.list
+	if track == nil or list == nil or not list:IsA("ScrollingFrame") then
+		return
+	end
+	local frame = list :: ScrollingFrame
+	local window = frame.AbsoluteWindowSize.Y
+	local canvas = frame.AbsoluteCanvasSize.Y
+	local range = canvas - window
+	local share = 1
+	local progress = 0
+	if range > 0 and canvas > 0 then
+		share = math.clamp(window / canvas, TRACK_MIN_SHARE, 1)
+		progress = math.clamp(frame.CanvasPosition.Y / range, 0, 1)
+	end
+	local size = current.trackSize
+	local position = current.trackPosition
+	local anchor = track.AnchorPoint.Y
+	-- Haut de la piste (le point d'ancrage de Clément peut ne pas être en haut), puis haut du curseur.
+	local topScale = position.Y.Scale - anchor * size.Y.Scale
+	local topOffset = position.Y.Offset - anchor * size.Y.Offset
+	local free = (1 - share) * progress
+	local heightScale = size.Y.Scale * share
+	local heightOffset = math.round(size.Y.Offset * share)
+	local wantedSize = UDim2.new(size.X.Scale, size.X.Offset, heightScale, heightOffset)
+	local wantedPosition = UDim2.new(
+		position.X.Scale,
+		position.X.Offset,
+		topScale + size.Y.Scale * free + anchor * heightScale,
+		math.round(topOffset + size.Y.Offset * free + anchor * heightOffset)
+	)
+	if track.Size ~= wantedSize then
+		track.Size = wantedSize
+	end
+	if track.Position ~= wantedPosition then
+		track.Position = wantedPosition
 	end
 end
 
@@ -392,6 +493,31 @@ local function close()
 	end
 end
 
+-- En-tête d'une section, cherché sous `root`.
+local function newSection(def: TabDef, root: Instance?, cardParent: Instance?, keepName: boolean): Section
+	local zoneBar = if root then Find.path(root, "ZoneBar") else nil
+	local fill = if zoneBar then guiObject(zoneBar, "Fill") else nil
+	local reward = if root then guiObject(root, "Reward") else nil
+	return {
+		def = def,
+		cardParent = cardParent,
+		zoneName = if root then Find.path(root, "ZoneName") else nil,
+		keepName = keepName,
+		zoneCount = if root then Find.path(root, "ZoneCount") else nil,
+		fill = fill,
+		fillSize = if fill then fill.Size else UDim2.new(1, 0, 1, 0),
+		reward = reward,
+		rewardShown = if reward then reward.Visible else false,
+		rewardLabel = if reward then Find.path(reward, "RewardLabel") else nil,
+	}
+end
+
+local function legacyOf(gui: ScreenGui): ScreenGui?
+	local parent = gui.Parent
+	local legacy = if parent then parent:FindFirstChild(LEGACY_SCREEN) else nil
+	return if legacy and legacy:IsA("ScreenGui") then legacy :: ScreenGui else nil
+end
+
 local function bind(gui: ScreenGui)
 	local old = screen
 	if old then
@@ -403,17 +529,52 @@ local function bind(gui: ScreenGui)
 	isOpen = false
 	gui.Enabled = false -- fermé jusqu'au bouton du HUD
 	Motion.SetCloser(gui, close) -- un autre écran du groupe ScreenGroup s'ouvre (L-089)
+	local v2 = gui.Name == SCREEN
+	local name = gui.Name
+	if v2 then
+		local legacy = legacyOf(gui)
+		if legacy then
+			legacy.Enabled = false -- l'ancien écran reste éteint
+		end
+	end
 
 	local template = guiObject(gui, "List.Template")
-	local foundColor: Color3? = nil
-	local silhouetteColor: Color3? = nil
 	if template == nil then
-		reportOnce("template", `[Index] {SCREEN}.List.Template introuvable : l'index restera vide`)
+		reportOnce(`template:{name}`, `[Index] {name}.List.Template introuvable : l'index restera vide`)
 	else
 		template.Visible = false
-		-- Cartes d'exemple de Clément (Preview_*, à côté du Template) : leurs teintes d'icône sont
-		-- gardées, puis elles sont retirées de la copie du joueur (comme L-041).
-		for _, sibling in (template.Parent :: Instance):GetChildren() do
+	end
+
+	local sections: { Section } = {}
+	if v2 then
+		for _, def in SECTIONS do
+			local root = Find.path(gui, def.path)
+			local cards = if root then Find.path(root, "Cards") else nil
+			if cards == nil then
+				reportOnce(`section:{def.path}`, `[Index] {name}.{def.path}.Cards introuvable : section vide`)
+			end
+			table.insert(sections, newSection(def, root, cards, true))
+		end
+	else
+		table.insert(sections, newSection(TABS[tab], Find.path(gui, "ZoneReward"), if template then template.Parent else nil, false))
+	end
+
+	-- Cartes d'exemple de Clément (Preview_*, à côté du Template ou dans un Cards) : leurs teintes
+	-- d'icône sont gardées, puis elles sont retirées de la copie du joueur (comme L-041).
+	local foundColor: Color3? = nil
+	local silhouetteColor: Color3? = nil
+	local holders: { Instance } = {}
+	if template and template.Parent then
+		table.insert(holders, template.Parent :: Instance)
+	end
+	for _, section in sections do
+		local parent = section.cardParent
+		if parent and not table.find(holders, parent) then
+			table.insert(holders, parent)
+		end
+	end
+	for _, holder in holders do
+		for _, sibling in holder:GetChildren() do
 			if string.sub(sibling.Name, 1, #PREVIEW_PREFIX) == PREVIEW_PREFIX then
 				local icon = Find.path(sibling, "Icon")
 				local lock = Find.path(sibling, "Lock")
@@ -430,25 +591,21 @@ local function bind(gui: ScreenGui)
 		end
 	end
 
-	local zoneReward = Find.path(gui, "ZoneReward")
-	local zoneBar = if zoneReward then Find.path(zoneReward, "ZoneBar") else nil
-	local fill = if zoneBar then guiObject(zoneBar, "Fill") else nil
-	local reward = if zoneReward then guiObject(zoneReward, "Reward") else nil
+	local list = if template then template.Parent else Find.path(gui, "List")
+	local track = if v2 then guiObject(gui, "ScrollTrack") else nil
 	local current: Screen = {
 		gui = gui,
+		v2 = v2,
 		template = template,
-		list = if template then template.Parent else nil,
+		list = list,
 		counter = Find.path(gui, "Counter"),
-		zoneName = if zoneReward then Find.path(zoneReward, "ZoneName") else nil,
-		zoneCount = if zoneReward then Find.path(zoneReward, "ZoneCount") else nil,
-		fill = fill,
-		fillSize = if fill then fill.Size else UDim2.new(1, 0, 1, 0),
-		reward = reward,
-		rewardShown = if reward then reward.Visible else false,
-		rewardLabel = if reward then Find.path(reward, "RewardLabel") else nil,
+		sections = sections,
 		tabNames = {},
 		foundColor = foundColor or FOUND_COLOR,
 		silhouetteColor = silhouetteColor or SILHOUETTE_COLOR,
+		track = track,
+		trackPosition = if track then track.Position else UDim2.new(),
+		trackSize = if track then track.Size else UDim2.new(),
 		connections = {},
 		cards = {},
 	}
@@ -459,24 +616,38 @@ local function bind(gui: ScreenGui)
 		end
 	end
 	keep(onClick(Find.path(gui, "CloseButton"), close))
+
+	if v2 then
+		if track == nil then
+			reportOnce("track", `[Index] {name}.ScrollTrack introuvable : pas de curseur de défilement`)
+		elseif list and list:IsA("ScrollingFrame") then
+			local frame = list :: ScrollingFrame
+			for _, property in { "CanvasPosition", "AbsoluteCanvasSize", "AbsoluteWindowSize" } do
+				keep(frame:GetPropertyChangedSignal(property):Connect(function()
+					if screen == current then
+						updateTrack(current)
+					end
+				end))
+			end
+			updateTrack(current)
+		end
+		return
+	end
+
+	-- Repli : onglets de UI_Index.
 	for rank, def in TABS do
 		local button = Find.path(gui, def.path)
 		local label = if button then textOf(Find.path(button, TAB_LABEL)) else nil
-		local zone = def.zone
-		local fallback = SECRETS_NAME
-		if zone ~= nil then
-			local info = Zones[zone]
-			fallback = if info then info.Theme else `Zone {zone}`
-		end
-		current.tabNames[rank] = string.upper(label or fallback)
+		current.tabNames[rank] = string.upper(label or fallbackName(def))
 		if button == nil then
-			reportOnce(`tab:{def.path}`, `[Index] {SCREEN}.{def.path} introuvable : onglet pas branché`)
+			reportOnce(`tab:{def.path}`, `[Index] {name}.{def.path} introuvable : onglet pas branché`)
 		end
 		keep(onClick(button, function()
 			if tab == rank then
 				return
 			end
 			tab = rank
+			current.sections[1].def = def
 			if isOpen and screen == current then
 				buildCards(current)
 				refreshHeader(current)
@@ -486,16 +657,28 @@ local function bind(gui: ScreenGui)
 	end
 end
 
--- Écran branché encore présent, ou celui de PlayerGui (branché au passage), ou nil.
+-- L'écran à brancher dans PlayerGui : UI_Index_v2, sinon l'ancien UI_Index.
+local function findScreen(playerGui: Instance): ScreenGui?
+	for _, name in { SCREEN, LEGACY_SCREEN } do
+		local gui = playerGui:FindFirstChild(name)
+		if gui and gui:IsA("ScreenGui") then
+			return gui :: ScreenGui
+		end
+	end
+	return nil
+end
+
+-- Écran branché encore présent (l'ancien seulement si la v2 n'est pas arrivée), ou celui de PlayerGui
+-- (branché au passage), ou nil.
 local function currentScreen(): Screen?
+	local playerGui = localPlayer:FindFirstChildOfClass("PlayerGui")
+	local wanted = if playerGui then findScreen(playerGui) else nil
 	local current = screen
-	if current and current.gui.Parent ~= nil then
+	if current and current.gui.Parent ~= nil and current.gui == wanted then
 		return current
 	end
-	local playerGui = localPlayer:FindFirstChildOfClass("PlayerGui")
-	local gui = if playerGui then playerGui:FindFirstChild(SCREEN) else nil
-	if gui and gui:IsA("ScreenGui") then
-		bind(gui :: ScreenGui)
+	if wanted then
+		bind(wanted)
 		return screen
 	end
 	return nil
@@ -504,7 +687,7 @@ end
 local function open()
 	local current = currentScreen()
 	if current == nil then
-		reportOnce("screen", `[Index] écran {SCREEN} absent de PlayerGui : l'index ne s'ouvre pas`)
+		reportOnce("screen", `[Index] écran {SCREEN} (ou {LEGACY_SCREEN}) absent de PlayerGui : l'index ne s'ouvre pas`)
 		return
 	end
 	readDiscovered()
@@ -512,6 +695,7 @@ local function open()
 	buildCards(current)
 	refreshHeader(current)
 	scrollTop(current)
+	updateTrack(current)
 	Motion.Open(current.gui)
 end
 
@@ -554,15 +738,25 @@ function IndexController.Start()
 
 	local playerGui = localPlayer:WaitForChild("PlayerGui")
 	playerGui.ChildAdded:Connect(function(child: Instance)
-		if child.Name == SCREEN and child:IsA("ScreenGui") then
+		if not child:IsA("ScreenGui") then
+			return
+		end
+		if child.Name == SCREEN then
 			bind(child :: ScreenGui)
-		elseif child.Name == HUD and child:IsA("ScreenGui") then
+		elseif child.Name == LEGACY_SCREEN then
+			local current = screen
+			if current and current.v2 and current.gui.Parent ~= nil then
+				(child :: ScreenGui).Enabled = false -- la v2 est là : l'ancien reste éteint
+			else
+				bind(child :: ScreenGui)
+			end
+		elseif child.Name == HUD then
 			bindHud(child)
 		end
 	end)
-	local existing = playerGui:FindFirstChild(SCREEN)
-	if existing and existing:IsA("ScreenGui") then
-		bind(existing :: ScreenGui)
+	local existing = findScreen(playerGui)
+	if existing then
+		bind(existing)
 	end
 	local hud = playerGui:FindFirstChild(HUD)
 	if hud and hud:IsA("ScreenGui") then
