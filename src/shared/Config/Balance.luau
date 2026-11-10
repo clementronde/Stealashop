@@ -49,6 +49,9 @@ local Balance = {
 	-- 5.3, 5.4, 9.4, 9.7 : vitrines PNJ et joueurs (WindowService)
 	Window = {
 		RegenPerSecond = 0.03, -- fraction des PV max régénérée chaque seconde
+		-- Chrono de casse (Clément, liaison L-074, 2026-11-10 ; V0 à tester) : au premier coup sur une
+		-- vitrine de magasin PNJ, il faut la casser en BreakTimer s, sinon elle revient à ses PV max.
+		BreakTimer = 13,
 		CrackThresholds = { 0.75, 0.5, 0.25 }, -- fissures visibles à ces fractions des PV
 		RebuildDelay = 20, -- reconstruction après la fermeture du rideau
 		HPSyncHz = 10, -- WindowHP envoyé en non fiable, 10 fois par seconde au plus

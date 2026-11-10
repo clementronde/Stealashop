@@ -18,6 +18,11 @@
 --     Formulas.PlayerWindowHP), recalculés à chaque tick : outil, Force ou aura qui changent
 --     sont pris en compte, à fraction de PV égale. Parcelle libre : incassable.
 --   - Régénération continue de 3 % des PV max par seconde (5.3, Balance.Window).
+--   - Chrono de casse, magasins PNJ seulement (Clément, L-074) : le premier coup lance un chrono de
+--     Balance.Window.BreakTimer s (13, V0), montré dans HeistTimer à chaque joueur qui frappe (même
+--     remote que le chrono du braquage, même identifiant que le magasin). Cassée à temps : le chrono du
+--     braquage le remplace. Sinon la vitre revient à ses PV max, chrono masqué et message à ceux qui
+--     ont frappé. Pas de régénération plus forte en plus : le chrono suffit contre la casse lente.
 --   - HitWindow(windowId) (9.4), ignoré si : vitrine inconnue, cassée ou incassable ; vitrine
 --     du joueur lui-même ; outil de casse pas en main ; plus de 10 studs entre le joueur et
 --     le point le plus proche de la vitre (Balance.Hit.ServerMaxDistance) ; CanBeHit refuse.
@@ -129,6 +134,8 @@ type Window = {
 	Dirty: boolean, -- PV à envoyer au prochain tick
 	RebuildToken: number, -- change à chaque casse ou reconstruction : périme l'ancien délai
 	Connections: { RBXScriptConnection },
+	BreakEndsAt: number?, -- chrono de casse (L-074) : GetServerTimeNow() de la fin ; nil = pas lancé
+	Hitters: { [Player]: boolean }?, -- joueurs qui voient ce chrono (ceux qui ont frappé)
 }
 
 -- Modèles qui portent une vitrine (contrat 2.1, Contract/Tags).
@@ -154,6 +161,8 @@ local MAX_ID_LENGTH = 64
 
 local SYNC_INTERVAL = 1 / Balance.Window.HPSyncHz
 local IS_STUDIO = RunService:IsStudio()
+-- Chrono de casse (L-074) : message quand la vitre se répare faute d'être cassée à temps. V0, en anglais (L-036).
+local BREAK_TOO_SLOW = "Too slow! The glass repaired itself. Hit harder, or bring friends!"
 
 local WindowService = {}
 
@@ -320,6 +329,9 @@ local function emitBroken(window: Window, breaker: Player, impactPoint: Vector3)
 end
 
 local function breakWindow(window: Window, breaker: Player, impactPoint: Vector3)
+	-- Cassée à temps : fin du chrono de casse ; le chrono du braquage le remplace à l'écran.
+	window.BreakEndsAt = nil
+	window.Hitters = nil
 	window.Broken = true
 	window.HP = 0
 	window.Dirty = true
@@ -427,6 +439,20 @@ local function onHitWindow(player: Player, windowId: string)
 	end
 	window.HP = math.max(0, window.HP - damage)
 	window.Dirty = true
+	if window.Kind == "NPC" and window.HP > 0 then
+		-- Chrono de casse (L-074) : lancé au premier coup, montré à chaque joueur qui frappe.
+		local endsAt = window.BreakEndsAt
+		if endsAt == nil then
+			endsAt = Workspace:GetServerTimeNow() + Balance.Window.BreakTimer
+			window.BreakEndsAt = endsAt
+		end
+		local hitters = window.Hitters or {}
+		window.Hitters = hitters
+		if not hitters[player] then
+			hitters[player] = true
+			Net.Server.HeistTimer:Fire(player, window.Id, endsAt)
+		end
+	end
 	-- Avant la casse : le chiffre du coup qui casse part comme les autres (DEV-053).
 	broadcastHit(window, player, impactPoint, damage)
 	if window.Kind == "Event" then
@@ -452,6 +478,23 @@ local function step(dt: number)
 		end
 		if window.Kind == "Plot" then
 			setMaxHP(window, computeMaxHP(window))
+		end
+		local endsAt = window.BreakEndsAt
+		if endsAt and not window.Broken and Workspace:GetServerTimeNow() >= endsAt then
+			-- Pas cassée à temps (L-074) : la vitre revient à ses PV max.
+			window.HP = window.MaxHP
+			window.Dirty = true
+			local hitters = window.Hitters
+			if hitters then
+				for hitter in hitters do
+					if hitter.Parent == Players then
+						Net.Server.HeistTimer:Fire(hitter, window.Id, 0)
+						Net.Server.Notify:Fire(hitter, BREAK_TOO_SLOW, "Warning")
+					end
+				end
+			end
+			window.BreakEndsAt = nil
+			window.Hitters = nil
 		end
 		if not window.Broken and window.HP < window.MaxHP then
 			window.HP = math.min(window.MaxHP, window.HP + regen * window.MaxHP)
