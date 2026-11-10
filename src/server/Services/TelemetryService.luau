@@ -11,7 +11,7 @@
 -- est le Cash du profil lu juste après l'opération (DataService.Get), dans la même exécution. Champ 1
 -- = « Kind - <genre> » pour tous les envois ; champ 2 = « Level - <n> » pour une amélioration.
 --   Gain (Source) :
---     Income   revenus encaissés : DisplayService.OnCashOut (tapis de caisse, départ du joueur,
+--     Income   revenus encaissés : DisplayService.OnCashOut (plaques CollectPad_xx, départ du joueur,
 --              DisplayService.CashOut). Gameplay, SKU « Income ». Regroupés par joueur (plus bas).
 --     Offline  part d'un encaissement qui vient des gains hors ligne (DEV-102) : OfflineService la
 --              donne par l'accroche ClaimOfflineShare (plus bas) ; le reste part en Income. TimedReward,
@@ -33,7 +33,7 @@
 --   ShopService (OnPurchase avec kind « Defense ») partirait aussi en DefenseBought.
 --
 -- Regroupement des revenus (limite de Roblox : 120 + 20 × joueurs requêtes par minute et par
--- serveur, 240 à 6 joueurs) : un joueur qui fait des allers-retours sur son tapis de caisse
+-- serveur, 240 à 6 joueurs) : un joueur qui fait des allers-retours sur une plaque de ramassage
 -- encaisserait jusqu'à 10 fois par seconde (DisplayService le contrôle 10 fois par seconde). Les genres
 -- Aggregate (Income) s'additionnent donc par joueur et par SKU : un envoi au plus toutes les
 -- Telemetry.FlushInterval s (60), avec la somme des encaissements et le solde après le dernier. Le
@@ -141,8 +141,8 @@ local FIELD_KEYS = {
 local TRUCK_PREFIX = "Truck_"
 
 local TelemetryService = {}
--- V0 proposé, absent du doc : après les services qu'il écoute (au départ, DisplayService encaisse la
--- caisse avant que ce service vide les cumuls) et après TutorialService (200).
+-- V0 proposé, absent du doc : après les services qu'il écoute (au départ, DisplayService encaisse les
+-- plaques avant que ce service vide les cumuls) et après TutorialService (200).
 TelemetryService.Priority = 210
 
 local enabled = false -- Telemetry.Enabled, lu au démarrage
@@ -510,7 +510,7 @@ function TelemetryService.Init()
 	BatService.OnHit(onBatHit)
 	CarryService.OnCarryEnded(onCarryEnded)
 	GuardService.OnCatch(onGuardCatch)
-	-- Départ : DisplayService a déjà encaissé la caisse (il s'abonne avant ce service).
+	-- Départ : DisplayService a déjà encaissé les plaques (il s'abonne avant ce service).
 	DataService.OnProfileReleasing(flushPlayer)
 	Players.PlayerRemoving:Connect(function(player: Player)
 		task.defer(function()

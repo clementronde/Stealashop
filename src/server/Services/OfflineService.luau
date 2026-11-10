@@ -8,9 +8,9 @@
 -- Offline.Income du profil : les objets exposés (DisplayService.GetIncome) × le M global
 -- (DisplayService.GetGlobalMultiplier : Premium, ×2 Argent, index…), sans les boosts temporaires (boost
 -- ×2 argent, compté seulement en jeu : Partie 2, section 4 ; MonetizationService.GetTemporaryIncomeMultiplier).
--- Le gain va dans la caisse de sa boutique (DisplayService.AddOfflineEarnings, attribut CashRegister),
--- pas dans son argent : il l'encaisse sur son CashPad comme le reste (« il le trouve dans sa base »).
--- S'il part sans l'encaisser, la caisse passe dans son argent au départ, comme toujours (DisplayService).
+-- Le gain est versé directement dans son argent au retour (DisplayService.AddOfflineEarnings, source
+-- « Offline » des encaissements) : depuis L-091 (2026-11-10), plus de caisse unique CashPad, l'argent se
+-- ramasse sur la plaque de chaque objet, et les gains hors ligne ne viennent d'aucune plaque.
 -- Message au retour (Notify « Info », en anglais, L-036) : « Your shop earned $1.2M while you were
 -- away! » (Config/Offline.Message, Format.money), seulement si le gain atteint 1 $.
 --
@@ -43,7 +43,7 @@
 --   OfflineService.ComputeEarnings(lastSeenAt, now, income) -> (gain, seconds)
 --       Le calcul seul, sans rien toucher : seconds = absence comptée (0 à MaxHours × 3600), gain =
 --       seconds × income × Rate ; (0, 0) pour une heure inconnue, dans le futur ou illisible. À garder
---       séparé : quand la caisse unique deviendra des cases par présentoir (L-082, point 4), on
+--       séparé : si un jour les gains hors ligne vont sur les plaques de chaque présentoir, on
 --       l'appellera par présentoir, avec le revenu de chacun.
 --   OfflineService.GetIncome(player) -> number
 --       Revenu compté hors ligne en ce moment ($/s) : exposé × M global ÷ boosts temporaires.
@@ -53,7 +53,7 @@
 --
 -- Tester dans Studio : workspace:SetAttribute("OfflineTest", "<joueur> <secondes>") (barre de commande
 -- serveur ; joueur = nom ou UserId) simule une absence de ce nombre de secondes, avec le revenu actuel :
--- même calcul, même plafond, même caisse, même message et même télémétrie qu'un vrai retour. Hors de
+-- même calcul, même plafond, même versement, même message et même télémétrie qu'un vrai retour. Hors de
 -- Studio, l'attribut n'est pas écouté. Un vrai retour : jouer avec des objets exposés, quitter (profil
 -- sauvegardé : « Accès Studio aux services d'API »), attendre, relancer Play.
 
@@ -77,7 +77,7 @@ type OfflineData = ProfileTypes.Offline
 
 -- Ce que ce service garde d'un joueur présent.
 type State = {
-	pending: number, -- gains hors ligne versés dans la caisse et pas encore encaissés (télémétrie)
+	pending: number, -- gains hors ligne pas encore comptés par la télémétrie (part « Offline »)
 }
 
 local IS_STUDIO = RunService:IsStudio()
@@ -188,18 +188,24 @@ local function snapshot(player: Player, data: Data, withIncome: boolean)
 	end
 end
 
--- Verse `gain` dans la caisse, prévient le joueur. `test` : crochet de Studio.
+-- Verse `gain` dans l'argent du joueur, prévient le joueur. `test` : crochet de Studio.
 local function credit(player: Player, gain: number, seconds: number, absence: number, income: number, test: boolean)
 	local state = states[player]
-	if state == nil or not DisplayService.AddOfflineEarnings(player, gain) then
-		warn(`[OfflineService] {player.Name} : {Format.money(gain)} de gains hors ligne pas versés (profil ou caisse absents)`)
+	if state == nil then
+		warn(`[OfflineService] {player.Name} : {Format.money(gain)} de gains hors ligne pas versés (profil absent)`)
 		return
 	end
+	-- Avant le versement : la télémétrie (OnCashOut, dans le même appel) y prend la part hors ligne.
 	state.pending += gain
+	if not DisplayService.AddOfflineEarnings(player, gain) then
+		state.pending -= gain
+		warn(`[OfflineService] {player.Name} : {Format.money(gain)} de gains hors ligne pas versés (profil absent)`)
+		return
+	end
 	local capped = if seconds < absence then `, comptées {duration(seconds)} (plafond {Offline.MaxHours} h)` else ""
 	local label = if test then "test : absence simulée" else "absent"
 	print(
-		`[OfflineService] {player.Name} {label} {duration(absence)}{capped}, revenu {Format.money(income)}/s × {string.format("%g", Offline.Rate)} : {Format.money(gain)} dans la caisse`
+		`[OfflineService] {player.Name} {label} {duration(absence)}{capped}, revenu {Format.money(income)}/s × {string.format("%g", Offline.Rate)} : {Format.money(gain)} versés dans son argent`
 	)
 	if gain >= 1 then
 		local message = string.format(Offline.Message, Format.money(gain))
@@ -336,7 +342,7 @@ function OfflineService.Init()
 	if IS_STUDIO then
 		Workspace:GetAttributeChangedSignal(Offline.TestAttribute):Connect(onTestAttribute)
 	end
-	print(`[OfflineService] gains hors ligne : {string.format("%g", Offline.Rate * 100)} % des revenus, {Offline.MaxHours} h au plus, versés dans la caisse au retour`)
+	print(`[OfflineService] gains hors ligne : {string.format("%g", Offline.Rate * 100)} % des revenus, {Offline.MaxHours} h au plus, versés dans l'argent au retour`)
 end
 
 return OfflineService

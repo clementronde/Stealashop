@@ -32,8 +32,8 @@
 --           l'entrée de la zone safe, L-089) ;
 --   4 → 5   un colis posé au sol de sa boutique (UnboxService.OnBoxPlaced ; L-089 : plus d'établi ni
 --           de présentoir imposé) ;
---   5 → 6   premier encaissement au tapis de caisse (DisplayService.OnCashOut, sauf « Leave »,
---           l'encaissement automatique au départ) ;
+--   5 → 6   premier ramassage sur une plaque (DisplayService.OnCashOut, sauf « Leave »,
+--           l'encaissement automatique au départ, et « Offline », les gains hors ligne) ;
 --   6 → 7   TrainDuration (30) s sur le tapis ou le banc, cumulées (attribut TrainingMachine, posé
 --           par TrainingService : sur le tapis, quand le joueur s'arrête sur la bande, L-071 ; au
 --           banc, par son invite) ;
@@ -72,9 +72,10 @@
 -- de l'étape) ; target = point du monde visé par la flèche (nil = pas de flèche). Cibles : vitrine
 -- du magasin (étapes 1 à 3 ; la Supérette tant que le joueur n'en a pas choisi un autre), sa boutique
 -- (4 : son SpawnPoint, au sol près de l'entrée), colis posé au sol, puis présentoir libre (objet dans
--- l'inventaire), puis tapis de caisse (5), tapis puis banc (6), tapis de caisse ou
--- comptoir WeaponShop (7) et AuraShop (8) selon l'argent, arche de la zone 2 (9). Tapis, banc et
--- tapis de caisse sont trouvés par leur tag dans la parcelle. Boutique du hub (PLOT_Shop, L-050) :
+-- l'inventaire), puis plaque de ramassage (5), tapis puis banc (6), plaque de ramassage ou
+-- comptoir WeaponShop (7) et AuraShop (8) selon l'argent, arche de la zone 2 (9). Tapis et banc
+-- sont trouvés par leur tag dans la parcelle ; la plaque, par DisplayService.GetCollectTarget (celle qui
+-- porte le plus d'argent, sinon celle du premier objet exposé). Boutique du hub (PLOT_Shop, L-050) :
 -- entre l'intérieur de la boutique (volume Bounds) et l'extérieur, la flèche vise d'abord la porte
 -- (PlotDoor/Window) ; le joueur apparaît dans sa boutique, la première flèche va donc à sa porte.
 -- Indices (Hints) : WindowRebuilding (étape 2, vitrine cassée rideau baissé) ; PlaceBox (étapes 4 et 5,
@@ -157,6 +158,7 @@ type CarryApi = {
 }
 type DisplayApi = {
 	OnCashOut: (listener: (player: Player, amount: number, source: string) -> ()) -> any,
+	GetCollectTarget: (player: Player) -> Vector3?,
 }
 local CarryService: CarryApi = require(script.Parent.CarryService) :: any
 local DisplayService: DisplayApi = require(script.Parent.DisplayService) :: any
@@ -220,7 +222,6 @@ local SPAWN_POINT = "SpawnPoint"
 local USE_POINT = "UsePoint"
 local TREADMILL_TAG = "Treadmill"
 local BENCH_TAG = "Bench"
-local CASH_PAD_TAG = "CashPad"
 -- Entrée de la boutique du joueur (PLOT_Shop, nom validé par Ironix en L-050, pas encore au contrat).
 local PLOT_DOOR = "PlotDoor"
 local SLOT_FORMAT = "DisplaySlot_%02d"
@@ -323,7 +324,7 @@ local function plotPart(player: Player, path: string): Instance?
 	return Find.path(plot, path)
 end
 
--- Objet de la parcelle du joueur qui porte ce tag (Treadmill, Bench, CashPad : comme TrainingService,
+-- Objet de la parcelle du joueur qui porte ce tag (Treadmill, Bench : comme TrainingService,
 -- le tag plutôt que le nom, qu'un décor de la boutique pourrait porter aussi), sinon celui de ce nom.
 local function plotTagged(player: Player, tag: string): Instance?
 	local plot = PlotService.GetPlot(player)
@@ -336,6 +337,17 @@ local function plotTagged(player: Player, tag: string): Instance?
 		end
 	end
 	return Find.path(plot, tag)
+end
+
+-- Plaque de ramassage à montrer (L-091 point 4 : plus de tapis de caisse CashPad) : celle de
+-- DisplayService.GetCollectTarget, sans parcelle ou sans plaque aucune flèche.
+local function collectTarget(player: Player): Vector3?
+	local getter = (DisplayService :: any).GetCollectTarget
+	if type(getter) ~= "function" then
+		return nil -- faux DisplayService d'un banc sans plaques
+	end
+	local ok, result = pcall(getter, player)
+	return if ok and typeof(result) == "Vector3" then result else nil
 end
 
 -- Point d'usage d'une machine de la parcelle (tag Treadmill ou Bench) : son UsePoint, sinon elle.
@@ -862,7 +874,7 @@ local function rawGuidance(session: Session, data: Data, position: Vector3?): (s
 			return hint, UnboxService.GetBoxPosition(player, uid) or shopTarget(player)
 		end
 		if next(data.Display) ~= nil then
-			return "CollectCash", positionOf(plotTagged(player, CASH_PAD_TAG))
+			return "CollectCash", collectTarget(player)
 		end
 		if hasStoredItem(data) then
 			return "PlaceItem", freeSlotTarget(player, data)
@@ -883,12 +895,12 @@ local function rawGuidance(session: Session, data: Data, position: Vector3?): (s
 		return if treadmill then "StandOnTreadmill" else nil, treadmill
 	elseif step == STEP_TOOL then
 		if data.Cash < toolPrice() then
-			return "CollectCash", positionOf(plotTagged(player, CASH_PAD_TAG))
+			return "CollectCash", collectTarget(player)
 		end
 		return nil, positionOf(taggedInMap(WEAPON_SHOP_TAG))
 	elseif step == STEP_AURA then
 		if data.Cash < cheapestAura() then
-			return "CollectCash", positionOf(plotTagged(player, CASH_PAD_TAG))
+			return "CollectCash", collectTarget(player)
 		end
 		return nil, positionOf(taggedInMap(AURA_SHOP_TAG))
 	elseif step == STEP_ZONE then
@@ -1170,7 +1182,7 @@ local function onBoxOpened(player: Player, _boxUid: string, itemUid: string, _it
 end
 
 local function onCashOut(player: Player, amount: number, source: string)
-	if source == "Leave" or amount <= 0 then
+	if source == "Leave" or source == "Offline" or amount <= 0 then
 		return
 	end
 	logFunnel(player, FUNNEL_CASHOUT)

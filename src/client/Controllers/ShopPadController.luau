@@ -7,8 +7,8 @@
 --
 -- Règles :
 --   - une seule ouverture par montée : rester sur la plaque ne rouvre pas un écran qu'on a fermé ; il
---     faut en descendre puis y remonter (comme l'encaissement au CashPad, DisplayService) ;
---   - « sur la plaque » : le HumanoidRootPart du joueur dans le même volume que celui du CashPad
+--     faut en descendre puis y remonter (comme le ramassage sur une plaque CollectPad_xx, DisplayService) ;
+--   - « sur la plaque » : le HumanoidRootPart du joueur dans le même volume que celui des plaques CollectPad_xx
 --     (DisplayService) : l'emprise de la plaque élargie de PAD_MARGIN, de PAD_BELOW sous sa face du
 --     haut à PAD_ABOVE au-dessus. La face du haut est celle de l'axe de la plaque le plus proche de la
 --     verticale : une plaque posée à plat marche quelle que soit sa rotation (cylindre couché compris) ;
@@ -53,7 +53,7 @@ local SHOPS: { { Tag: string, Controller: string } } = {
 local INBOX_NAME = "_INBOX_CLEMENT" -- livraisons pas encore posées
 local ROOT_PART = "HumanoidRootPart"
 
--- V0 proposé, absent du doc : volume de la plaque, le même que celui du CashPad de DisplayService
+-- V0 proposé, absent du doc : volume de la plaque, le même que celui des plaques CollectPad_xx de DisplayService
 -- (le HumanoidRootPart d'un R15 debout est à environ 3 studs du sol).
 local PAD_MARGIN = 0.5
 local PAD_BELOW = 1

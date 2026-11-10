@@ -330,6 +330,20 @@ local List: { RemoteDef } = {
 		},
 	},
 	{
+		-- Ajout de la vague 21 (L-091 points 4 et 5), absent du tableau 9.4 : un joueur vient de ramasser
+		-- l'argent d'une plaque de sa boutique. Envoyé à tous les clients (DisplayService) : plotIndex =
+		-- attribut PlotIndex de la parcelle, slotIndex = numéro de la plaque (CollectPad_xx), amount = $
+		-- ramassés. DisplayController fait la gerbe de BurstPoint et prévient OnCollect chez le propriétaire.
+		Name = "CashCollect",
+		Direction = "ServerToClient",
+		Reliable = true,
+		Args = {
+			index("plotIndex"),
+			index("slotIndex"),
+			{ Name = "amount", Kind = "number", Min = 1 },
+		},
+	},
+	{
 		-- kind : catégorie libre pour le style du message (ex. "Info", "Warning").
 		Name = "Notify",
 		Direction = "ServerToClient",

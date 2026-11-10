@@ -1,5 +1,5 @@
 --!strict
--- DisplayService (DEV-020) : présentoirs, objets exposés, halos, billboards, revenus et caisse
+-- DisplayService (DEV-020) : présentoirs, objets exposés, halos, billboards, revenus et plaques de ramassage
 -- (Partie 1, sections 5.6, 5.8, 7.1, 7.3, 7.5, 9.4 et 9.5).
 --
 -- Rôle :
@@ -18,10 +18,17 @@
 --     et rareté lues dans Config.Items, × le multiplicateur de sa mutation (DEV-131, champ Mutation
 --     de Items[uid] : taille × effet, Config/Mutations). Le total des objets (la « valeur exposée », celle de
 --     l'anti-racket, 6.4) est multiplié par le M global du joueur (7.1 : (1 + GetIncomeBonus) ×
---     GetIncomeMultiplier, plus bas ; 1 au MVP). L'argent s'accumule au temps exact dans la caisse de la
---     parcelle, pas dans Cash. Quand le propriétaire marche sur son CashPad, la caisse passe dans
---     son argent (DataService.AddCash) et repart de 0 (5.8). L'argent en caisse n'est pas
---     volable : rien ne permet à un autre joueur de le prendre ;
+--     GetIncomeMultiplier, plus bas ; 1 au MVP). Ramassage par plaque (L-082 point 4, L-091 points 4
+--     et 5, à la place de la caisse unique CashPad, retirée du contrat) : l'argent de chaque objet
+--     s'accumule au temps exact sur la plaque de son présentoir, `CollectPad_xx` (même numéro que
+--     DisplaySlot_xx), pas dans Cash. Quand le propriétaire marche sur une plaque, l'argent de cette
+--     plaque passe dans son argent (DataService.AddCash) et elle repart de 0 (5.8). L'argent d'une
+--     plaque reste sur elle quand son objet s'en va (déplacé, rangé, volé) : il se ramasse quand même.
+--     Le montant s'écrit côté serveur, visible par tous, dans `CollectPad_xx/…/AmountGui/Amount`
+--     (Format.money, dollars entiers), au plus une fois par seconde ; à chaque ramassage, le remote
+--     CashCollect(plotIndex, slotIndex, amount) part vers tous les clients (DisplayController : gerbe
+--     de BurstPoint, puis OnCollect chez le propriétaire). L'argent des plaques n'est pas volable :
+--     rien ne permet à un autre joueur de le prendre ;
 --   - remote PlaceItem(itemUid, slotIndex) (9.4), validé ici.
 --
 -- Le profil fait foi : Display et Items décident de ce qui est exposé, l'affichage suit. Après
@@ -33,14 +40,15 @@
 --
 -- Attributs posés par ce service (lus par DisplayController et, plus tard, par le HUD) :
 --   sur le Player :
---     Income (number)                $/s que la caisse reçoit : total des objets exposés × M global
+--     Income (number)                $/s que les plaques reçoivent : total des objets exposés × M global
 --     ExposedIncome (number)         $/s total des objets exposés, sans bonus (valeur exposée :
 --                                    anti-racket et panneau des boutiques, PvPController)
---     CashCollected (number)         argent encaissé au CashPad depuis l'arrivée sur le serveur
---                                    (il ne fait que monter : chaque hausse = un encaissement)
+--     CashCollected (number)         argent encaissé depuis l'arrivée sur le serveur : plaques,
+--                                    encaissement automatique, gains hors ligne (il ne fait que monter :
+--                                    chaque hausse = un encaissement)
 --     DisplaySlotsUnlocked (number)  présentoirs débloqués (4 à 20, plus les présentoirs bonus)
 --   sur la parcelle :
---     CashRegister (number)          argent en caisse, en dollars entiers ; 0 si libre
+--     CashRegister (number)          total des plaques, en dollars entiers ; 0 si libre
 --   sur chaque objet exposé (Model `DisplayItem_<nn>`, tag de code `DisplayItem`, rangé dans le
 --   dossier `DisplayItems` de la parcelle, ModelStreamingMode Atomic) :
 --     ItemUid, ItemId, Rarity, Halo, Income, DisplaySlot, OwnerUserId, Placeholder (bloc V0),
@@ -108,18 +116,21 @@
 --       soit le joueur, sans yield. Renvoie le nombre d'objets posés sur un présentoir (0 : rien à
 --       changer, ou pas de parcelle).
 --   DisplayService.GetIncome(player) -> number      $/s total exposé, sans bonus (0 sans parcelle)
---   DisplayService.GetRegister(player) -> number    argent en caisse, en dollars entiers
+--   DisplayService.GetRegister(player) -> number    total des plaques, en dollars entiers
+--   DisplayService.GetCollectTarget(player) -> Vector3?
+--       Plaque à montrer au joueur (flèche du tuto) : celle qui porte le plus d'argent, sinon celle
+--       de l'objet exposé au plus petit numéro ; nil sans parcelle ou sans plaque. Sans yield.
 --   DisplayService.CashOut(player) -> number
---       Vide la caisse dans l'argent du joueur, sans passer par le CashPad ; renvoie le montant.
+--       Vide toutes les plaques dans l'argent du joueur, sans y marcher ; renvoie le montant.
 --   DisplayService.OnCashOut(listener) -> déconnexion
---       listener(player, amount, source) après chaque encaissement : source = "Pad" (CashPad),
---       "Leave" (départ du joueur), "Api" (CashOut) ou "Auto" (encaissement automatique, plus bas).
---       Pour le tutoriel et la télémétrie (« Premier encaissement », 14.2).
+--       listener(player, amount, source) après chaque encaissement : source = "Pad" (une plaque
+--       CollectPad_xx), "Leave" (départ du joueur), "Api" (CashOut), "Auto" (encaissement
+--       automatique, plus bas) ou "Offline" (gains hors ligne). Pour le tutoriel et la télémétrie
+--       (« Premier encaissement », 14.2).
 --   DisplayService.AddOfflineEarnings(player, amount) -> boolean
---       Gains hors ligne (DEV-102, OfflineService) : ajoute `amount` $ (nombre fini > 0, centimes
---       compris) à la caisse du joueur, qu'il encaisse ensuite comme le reste. Sans parcelle pour
---       l'instant, l'argent attend dans son compte (encaissé à son départ s'il n'a toujours pas de
---       parcelle). false si le profil n'est pas chargé ou le montant invalide. Sans yield.
+--       Gains hors ligne (DEV-102, OfflineService) : verse `amount` $ (nombre fini > 0 ; les centimes
+--       sont perdus) directement dans l'argent du joueur, source « Offline » (V0, plus bas). false si
+--       le profil n'est pas chargé ou le montant invalide. Sans yield.
 --
 -- Points d'accroche de la boutique Robux (DEV-100, Partie 2, 4.1 ; MonetizationService les
 -- remplace en gardant ceux d'avant) et de l'index (DEV-111, IndexService). Par défaut : le MVP, sans
@@ -140,11 +151,11 @@
 --       dans la parcelle (aucun avertissement s'ils manquent ; seuls ceux posés comptent) ; 0 par défaut.
 --       Un objet posé sur un présentoir bonus qui n'est plus débloqué retourne dans l'inventaire.
 --   DisplayService.HasAutoCollect(player) -> boolean
---       true : la caisse se vide toute seule dans l'argent du joueur à chaque mise à jour (une fois par
+--       true : les plaques se vident toutes seules dans l'argent du joueur à chaque mise à jour (une fois par
 --       seconde), où qu'il soit (source « Auto », sans ligne dans la sortie) ; false par défaut.
 -- Et, sans être une accroche :
 --   DisplayService.GetGlobalMultiplier(player) -> number
---       Le M global du joueur, lu tout de suite dans les accroches (bonus compris) : $/s de la caisse
+--       Le M global du joueur, lu tout de suite dans les accroches (bonus compris) : $/s des plaques
 --       = GetIncome × GetGlobalMultiplier (packs d'argent de la boutique Robux). Sans yield.
 --
 -- Remote PlaceItem(itemUid, slotIndex) : refusé (Notify « Warning » au joueur, avertissement en
@@ -158,14 +169,21 @@
 -- (InventoryService.Refresh, s'il est là).
 --
 -- Choix V0 (marqués « V0 proposé, absent du doc » plus bas) :
---   - encaissement à chaque arrivée sur le CashPad : Touched par le personnage du propriétaire,
---     ou HumanoidRootPart au-dessus du tapis (contrôlé 10 fois par seconde, pour un tapis sans
---     CanTouch). Rester dessus n'encaisse pas davantage : on ressort et on y remonte. La caisse
---     donne des dollars entiers, les centimes restent dans la caisse ;
---   - départ du joueur : sa caisse est encaissée automatiquement dans son argent, juste avant la
---     sauvegarde (DataService.OnProfileReleasing). Il ne perd pas ce qu'il a gagné, et aucun
---     champ n'est ajouté au schéma 9.5. Les revenus hors ligne (DEV-102) viennent d'OfflineService,
---     qui les verse dans la caisse au retour (AddOfflineEarnings) ;
+--   - ramassage à chaque arrivée sur une plaque : Touched par le personnage du propriétaire, ou
+--     HumanoidRootPart au-dessus de la plaque (contrôlé 10 fois par seconde, pour une plaque sans
+--     CanTouch). Rester dessus ne ramasse pas davantage : on ressort et on y remonte. Une plaque
+--     donne des dollars entiers, les centimes restent sur elle. Seul le propriétaire ramasse ;
+--   - plaques cherchées dans toute la parcelle (CollectPad_01 à _20 ; ceux des rayons 2 à 5 n'y sont
+--     que quand RayonService a posé le rayon) : à l'installation, quand le nombre de présentoirs
+--     débloqués change, quand une plaque connue disparaît, et toutes les PAD_RESCAN_INTERVAL s tant
+--     qu'un présentoir débloqué n'a pas la sienne. L'argent d'un présentoir sans plaque (présentoirs
+--     bonus DisplaySlot_21 et suivants) va sur la plaque au plus petit numéro ;
+--   - départ du joueur : toutes ses plaques sont encaissées automatiquement dans son argent, juste
+--     avant la sauvegarde (DataService.OnProfileReleasing). Il ne perd pas ce qu'il a gagné, et
+--     aucun champ n'est ajouté au schéma 9.5 ;
+--   - gains hors ligne (DEV-102, OfflineService) : versés directement dans son argent au retour, pas
+--     sur les plaques. Le plus simple et le plus juste : ils ne viennent d'aucune plaque (les objets
+--     ont pu changer depuis le départ), et rien n'attend sur une plaque qu'il faudrait ramasser ;
 --   - zone d'un Secret : le catalogue ne lui en donne pas, et Items[uid] ne la stocke pas (9.5).
 --     Ce service lit un champ Zone dans Items[uid] s'il existe, sinon prend la zone 1.
 --
@@ -195,7 +213,7 @@ type ItemEntry = ProfileTypes.Item
 type ItemDef = ItemsConfig.Item
 type Rarity = Rarities.Rarity
 
-export type CashOutSource = "Pad" | "Leave" | "Api" | "Auto"
+export type CashOutSource = "Pad" | "Leave" | "Api" | "Auto" | "Offline"
 export type CashOutListener = (player: Player, amount: number, source: CashOutSource) -> ()
 export type PlaceError = "NoProfile" | "NoPlot" | "UnknownItem" | "InVault" | "Held" | "NoSlot" | "Locked" | "Taken" | "NotOnPlot"
 -- État d'un présentoir pour UnboxService (GetSlotStates ; attribut UnboxState, L-089).
@@ -218,10 +236,11 @@ type Candidate = { uid: string, income: number, shown: boolean }
 
 local IS_STUDIO = RunService:IsStudio()
 
--- Contrat 10.4 (parcelle) : présentoirs, tapis de caisse et volume de la parcelle, cherchés
+-- Contrat 10.4 (parcelle) : présentoirs, plaques de ramassage et volume de la parcelle, cherchés
 -- parmi les descendants (règle Contract/Find).
 local SLOT_FORMAT = "DisplaySlot_%02d" -- Attachments DisplaySlot_01 à DisplaySlot_20
-local CASH_PAD = "CashPad"
+local COLLECT_PAD_PATTERN = "^CollectPad_(%d+)$" -- CollectPad_01 à _20, une plaque par présentoir
+local AMOUNT_PATH = "AmountGui.Amount" -- TextLabel du SurfaceGui de la plaque où s'écrit le montant
 local BOUNDS = "Bounds"
 -- Contrat 2.2 : billboard modèle d'un objet exposé et ses 3 champs.
 local ITEM_BILLBOARD = "BB_Item"
@@ -241,6 +260,8 @@ local EXPOSED_INCOME_ATTRIBUTE = "ExposedIncome"
 local COLLECTED_ATTRIBUTE = "CashCollected"
 local SLOTS_ATTRIBUTE = "DisplaySlotsUnlocked"
 local REGISTER_ATTRIBUTE = "CashRegister"
+-- Posé par PlotService sur la parcelle : son numéro, envoyé avec CashCollect.
+local PLOT_INDEX_ATTRIBUTE = "PlotIndex"
 
 -- Objets créés par ce service. Aucun n'est un nom du contrat 10.4 : ils ne gênent pas les
 -- recherches des autres services dans la parcelle.
@@ -253,13 +274,16 @@ local RAYS_CENTER = "RaysCenter"
 local RAY_FORMAT = "Ray_%02d"
 local RAINBOW_GRADIENT = "RarityRainbow"
 
--- V0 proposé, absent du doc : cadence de la mise à jour de la caisse (attribut CashRegister) et
--- de l'affichage. Les revenus, eux, comptent au temps exact, quelle que soit cette cadence.
+-- V0 proposé, absent du doc : cadence de la mise à jour des montants des plaques (texte Amount,
+-- attribut CashRegister) et de l'affichage. Les revenus, eux, comptent au temps exact.
 local REFRESH_INTERVAL = 1
--- V0 proposé, absent du doc : cadence du contrôle « debout sur le CashPad » (Touched déclenche
--- aussi l'encaissement tout de suite, pour un joueur rapide qui traverse le tapis sans s'arrêter).
+-- V0 proposé, absent du doc : cadence du contrôle « debout sur une plaque » (Touched déclenche
+-- aussi le ramassage tout de suite, pour un joueur rapide qui traverse la plaque sans s'arrêter).
 local PAD_CHECK_INTERVAL = 0.1
--- V0 proposé, absent du doc : volume où l'on encaisse : l'emprise du tapis élargie de PAD_MARGIN,
+-- V0 proposé, absent du doc : délai entre deux recherches des plaques d'une parcelle quand un
+-- présentoir débloqué n'a pas la sienne (voir l'en-tête).
+local PAD_RESCAN_INTERVAL = 5
+-- V0 proposé, absent du doc : volume où l'on ramasse : l'emprise de la plaque élargie de PAD_MARGIN,
 -- de PAD_BELOW sous son dessus à PAD_ABOVE au-dessus (le HumanoidRootPart d'un R15 debout est à
 -- environ 3 studs du sol).
 local PAD_MARGIN = 0.5
@@ -326,10 +350,11 @@ local MESSAGES: { [string]: string } = {
 }
 
 local SOURCE_LABELS: { [string]: string } = {
-	Pad = "tapis de caisse",
+	Pad = "plaque",
 	Leave = "départ du joueur",
 	Api = "CashOut",
 	Auto = "encaissement automatique",
+	Offline = "gains hors ligne",
 }
 
 type Visual = {
@@ -350,19 +375,31 @@ type View = {
 type PlotRefs = {
 	slots: { [number]: Attachment? }, -- nil : présentoir absent de la parcelle
 	extra: number, -- présentoirs bonus posés : DisplaySlot_21 à 20 + extra (DEV-100)
-	pads: { BasePart },
 	bounds: BasePart?,
 }
 
--- Argent d'un joueur : revenu courant et caisse.
+-- Plaque de ramassage CollectPad_xx d'une parcelle (voir l'en-tête).
+type Pad = {
+	part: BasePart,
+	label: TextLabel?, -- AmountGui/Amount, cherché tant qu'il manque
+	shown: string?, -- dernier texte écrit
+}
+-- Plaques connues d'une parcelle, par numéro de présentoir.
+type PadSet = {
+	bySlot: { [number]: Pad },
+	scannedAt: number, -- os.clock() de la dernière recherche
+	unlocked: number, -- présentoirs débloqués lors de la dernière recherche
+}
+
+-- Argent d'un joueur : revenu courant et plaques.
 type Account = {
 	plot: Model?,
 	income: number, -- $/s des objets exposés, sans bonus
-	multiplier: number, -- M global ((1 + GetIncomeBonus) × GetIncomeMultiplier) : la caisse reçoit income × multiplier
-	register: number, -- $ en caisse, centimes compris
-	lastAccrue: number, -- os.clock() du dernier ajout à la caisse
+	multiplier: number, -- M global ((1 + GetIncomeBonus) × GetIncomeMultiplier) : les plaques reçoivent income × multiplier
+	pending: { [number]: number }, -- $ sur chaque plaque (numéro de présentoir), centimes compris
+	lastAccrue: number, -- os.clock() du dernier ajout aux plaques
 	collected: number, -- argent encaissé depuis l'arrivée (attribut CashCollected)
-	onPad: boolean,
+	onSlot: number?, -- plaque où se tient le joueur (nil : aucune)
 	shownRegister: number?,
 	shownSlots: number?,
 }
@@ -372,6 +409,9 @@ local DisplayService = {}
 local accounts: { [Player]: Account } = {}
 local views: { [Model]: View } = {}
 local refsOf: { [Model]: PlotRefs } = {}
+local padsOf: { [Model]: PadSet } = {}
+-- Plaques dont le Touched est déjà branché (clés faibles : une plaque détruite s'en va seule).
+local touchConnected: { [BasePart]: boolean } = setmetatable({}, { __mode = "k" }) :: any
 -- Objets tenus par un voleur pendant sa fuite (voir l'en-tête) : [propriétaire][uid] = true.
 local held: { [Player]: { [string]: boolean } } = {}
 local cashOutListeners: { CashOutListener } = {}
@@ -586,7 +626,7 @@ end
 -- Parcelle
 ------------------------------------------------------------------------------
 
--- Présentoirs, tapis de caisse et volume de la parcelle. Cherchés une seule fois, avant que ce
+-- Présentoirs et volume de la parcelle. Cherchés une seule fois, avant que ce
 -- service y pose des objets (dont les pièces pourraient porter les mêmes noms).
 local function refsFor(plot: Model): PlotRefs
 	local cached = refsOf[plot]
@@ -623,26 +663,10 @@ local function refsFor(plot: Model): PlotRefs
 		extra += 1
 	end
 
-	local pads: { BasePart } = {}
-	local pad = Find.path(plot, CASH_PAD)
-	if pad ~= nil and pad:IsA("BasePart") then
-		table.insert(pads, pad :: BasePart)
-	elseif pad ~= nil then
-		for _, descendant in pad:GetDescendants() do
-			if descendant:IsA("BasePart") then
-				table.insert(pads, descendant :: BasePart)
-			end
-		end
-	end
-	if #pads == 0 then
-		warn(`[DisplayService] {plot:GetFullName()} : pas de {CASH_PAD} (contrat 10.4), son propriétaire ne pourra pas encaisser`)
-	end
-
 	local bounds = Find.path(plot, BOUNDS)
 	local refs: PlotRefs = {
 		slots = slots,
 		extra = extra,
-		pads = pads,
 		bounds = if bounds ~= nil and bounds:IsA("BasePart") then bounds :: BasePart else nil,
 	}
 	refsOf[plot] = refs
@@ -684,20 +708,104 @@ local function isOnPlot(player: Player, plot: Model, refs: PlotRefs): boolean
 	return math.abs(p.X) <= boxSize.X / 2 and math.abs(p.Z) <= boxSize.Z / 2
 end
 
-local function isOnPad(position: Vector3, pads: { BasePart }): boolean
-	for _, pad in pads do
-		local p = pad.CFrame:PointToObjectSpace(position)
-		local half = pad.Size / 2
-		if
-			math.abs(p.X) <= half.X + PAD_MARGIN
-			and math.abs(p.Z) <= half.Z + PAD_MARGIN
-			and p.Y >= half.Y - PAD_BELOW
-			and p.Y <= half.Y + PAD_ABOVE
-		then
-			return true
+local function isOnPad(position: Vector3, pad: BasePart): boolean
+	local p = pad.CFrame:PointToObjectSpace(position)
+	local half = pad.Size / 2
+	return math.abs(p.X) <= half.X + PAD_MARGIN
+		and math.abs(p.Z) <= half.Z + PAD_MARGIN
+		and p.Y >= half.Y - PAD_BELOW
+		and p.Y <= half.Y + PAD_ABOVE
+end
+
+------------------------------------------------------------------------------
+-- Plaques de ramassage CollectPad_xx (voir l'en-tête)
+------------------------------------------------------------------------------
+
+-- Numéro de présentoir d'une plaque (BasePart CollectPad_xx), nil sinon.
+local function padSlotOf(inst: Instance): number?
+	if not inst:IsA("BasePart") then
+		return nil
+	end
+	local digits = string.match(inst.Name, COLLECT_PAD_PATTERN)
+	local slot = if digits then tonumber(digits) else nil
+	if slot and slot >= 1 and slot <= MAX_SLOT_INDEX then
+		return slot
+	end
+	return nil
+end
+
+-- Ramassage au Touched d'une plaque (défini plus bas, avec l'encaissement).
+local onPadTouched: (plot: Model, slot: number, part: BasePart, hit: BasePart) -> ()
+
+-- Cherche toutes les plaques de la parcelle et branche leur Touched (une fois par plaque).
+local function scanPads(plot: Model, unlocked: number): PadSet
+	local old = padsOf[plot]
+	local bySlot: { [number]: Pad } = {}
+	for _, descendant in plot:GetDescendants() do
+		local slot = padSlotOf(descendant)
+		if slot and bySlot[slot] == nil then
+			local part = descendant :: BasePart
+			local previous = if old then old.bySlot[slot] else nil
+			-- La même plaque garde son texte déjà écrit (pas de réécriture pour rien).
+			bySlot[slot] = if previous and previous.part == part then previous else { part = part, label = nil, shown = nil }
+			if not touchConnected[part] then
+				touchConnected[part] = true
+				part.Touched:Connect(function(hit: BasePart)
+					onPadTouched(plot, slot, part, hit)
+				end)
+			end
 		end
 	end
-	return false
+	local set: PadSet = { bySlot = bySlot, scannedAt = os.clock(), unlocked = unlocked }
+	padsOf[plot] = set
+	return set
+end
+
+-- Plaques de la parcelle, cherchées de nouveau si besoin (voir l'en-tête). `unlocked` = présentoirs
+-- débloqués de son propriétaire.
+local function padsFor(plot: Model, unlocked: number): PadSet
+	local set = padsOf[plot]
+	if set == nil or set.unlocked ~= unlocked then
+		return scanPads(plot, unlocked)
+	end
+	for _, pad in set.bySlot do
+		if pad.part.Parent == nil then
+			return scanPads(plot, unlocked) -- rayon retiré, plaque détruite
+		end
+	end
+	if os.clock() - set.scannedAt >= PAD_RESCAN_INTERVAL then
+		for slot = 1, math.min(unlocked, Balance.Display.MaxSlots) do
+			if set.bySlot[slot] == nil then
+				return scanPads(plot, unlocked) -- rayon peut-être posé depuis
+			end
+		end
+	end
+	return set
+end
+
+-- Plaque qui reçoit l'argent du présentoir `slot` : la sienne, sinon celle au plus petit numéro,
+-- sinon le présentoir lui-même (aucune plaque : l'argent attend le départ du joueur).
+local function padSlotFor(set: PadSet?, slot: number): number
+	if set == nil or set.bySlot[slot] ~= nil then
+		return slot
+	end
+	local lowest: number? = nil
+	for index in set.bySlot do
+		if lowest == nil or index < lowest then
+			lowest = index
+		end
+	end
+	return lowest or slot
+end
+
+-- Plaque sous `position`, nil s'il n'y en a pas.
+local function padAt(set: PadSet, position: Vector3): number?
+	for slot, pad in set.bySlot do
+		if pad.part.Parent ~= nil and isOnPad(position, pad.part) then
+			return slot
+		end
+	end
+	return nil
 end
 
 ------------------------------------------------------------------------------
@@ -1051,54 +1159,135 @@ end
 -- Caisse
 ------------------------------------------------------------------------------
 
--- Ajoute à la caisse ce que les objets ont rapporté depuis le dernier ajout (M global compris).
+-- Ajoute aux plaques ce que les objets ont rapporté depuis le dernier ajout (M global compris) :
+-- l'argent de chaque objet exposé va sur la plaque de son présentoir (padSlotFor). À appeler avant
+-- tout changement des objets affichés ou du revenu.
 local function accrue(account: Account, now: number)
 	local elapsed = now - account.lastAccrue
-	if elapsed > 0 then
-		account.register += account.income * account.multiplier * elapsed
-	end
 	account.lastAccrue = now
+	local plot = account.plot
+	local view = if plot then views[plot] else nil
+	if elapsed <= 0 or plot == nil or view == nil then
+		return
+	end
+	local set = padsOf[plot]
+	local factor = account.multiplier * elapsed
+	for slot, visual in view.visuals do
+		if visual.income > 0 then
+			local target = padSlotFor(set, slot)
+			account.pending[target] = (account.pending[target] or 0) + visual.income * factor
+		end
+	end
 end
 
--- Met à jour les attributs CashRegister (parcelle) et DisplaySlotsUnlocked (joueur) s'ils changent.
+-- Argent de toutes les plaques, centimes compris.
+local function pendingTotal(account: Account): number
+	local total = 0
+	for _, amount in account.pending do
+		total += amount
+	end
+	return total
+end
+
+-- Écrit le montant de chaque plaque dans son AmountGui/Amount (dollars entiers, Format.money),
+-- seulement s'il a changé. `account` nil : parcelle libre, toutes les plaques à $0.
+local function showPads(set: PadSet, account: Account?)
+	for slot, pad in set.bySlot do
+		local label = pad.label
+		if label == nil or label.Parent == nil then
+			local found = Find.path(pad.part, AMOUNT_PATH)
+			label = if found ~= nil and found:IsA("TextLabel") then found :: TextLabel else nil
+			pad.label = label
+			pad.shown = nil
+		end
+		if label then
+			local amount = if account then math.floor(account.pending[slot] or 0) else 0
+			local text = Format.money(amount)
+			if text ~= pad.shown then
+				pad.shown = text
+				label.Text = text
+			end
+		end
+	end
+end
+
+-- Met à jour les montants des plaques, les attributs CashRegister (parcelle) et DisplaySlotsUnlocked
+-- (joueur) s'ils changent. Avec `data`, les plaques sont cherchées de nouveau si besoin (padsFor).
 local function publish(player: Player, account: Account, data: Data?)
 	local plot = account.plot
+	local slots = if data then unlockedCount(player, data, if plot then refsFor(plot) else nil) else nil
 	if plot then
-		local shown = math.floor(account.register)
+		local set = if slots then padsFor(plot, slots) else padsOf[plot]
+		if set then
+			showPads(set, account)
+		end
+		local shown = math.floor(pendingTotal(account))
 		if shown ~= account.shownRegister then
 			account.shownRegister = shown
 			plot:SetAttribute(REGISTER_ATTRIBUTE, shown)
 		end
 	end
-	if data then
-		local slots = unlockedCount(player, data, if plot then refsFor(plot) else nil)
-		if slots ~= account.shownSlots then
-			account.shownSlots = slots
-			player:SetAttribute(SLOTS_ATTRIBUTE, slots)
-		end
+	if slots and slots ~= account.shownSlots then
+		account.shownSlots = slots
+		player:SetAttribute(SLOTS_ATTRIBUTE, slots)
 	end
 end
 
--- Vide la caisse dans l'argent du joueur (dollars entiers, les centimes restent). Sans yield.
-local function cashOut(player: Player, account: Account, source: CashOutSource): number
-	accrue(account, os.clock())
-	local amount = math.floor(account.register)
-	if amount < 1 then
-		return 0
-	end
+-- Verse `amount` $ (entier ≥ 1) dans l'argent du joueur et prévient les écouteurs ; false si le
+-- profil est absent (rien n'est versé). Sans yield.
+local function pay(player: Player, account: Account, amount: number, source: CashOutSource): boolean
 	local cash = DataService.AddCash(player, amount)
 	if cash == nil then
-		return 0 -- profil absent : l'argent reste en caisse
+		return false
 	end
-	account.register -= amount
 	account.collected += amount
 	player:SetAttribute(COLLECTED_ATTRIBUTE, account.collected)
-	publish(player, account, nil)
 	if IS_STUDIO and source ~= "Auto" then -- l'encaissement automatique, chaque seconde, resterait muet
 		print(`[DisplayService] {player.Name} encaisse {Format.money(amount)} ({SOURCE_LABELS[source]}) : {Format.money(cash)} en tout`)
 	end
 	for _, listener in table.clone(cashOutListeners) do
 		task.spawn(listener, player, amount, source)
+	end
+	return true
+end
+
+-- Vide la plaque `slot` (nil : toutes) dans l'argent du joueur : dollars entiers, les centimes
+-- restent sur chaque plaque. Ramassage sur une plaque (source « Pad ») : remote CashCollect vers
+-- tous les clients. Renvoie le montant. Sans yield.
+local function cashOut(player: Player, account: Account, source: CashOutSource, slot: number?): number
+	accrue(account, os.clock())
+	local taken: { [number]: number } = {}
+	local amount = 0
+	for index, value in account.pending do
+		if slot == nil or index == slot then
+			local whole = math.floor(value)
+			if whole >= 1 then
+				taken[index] = whole
+				amount += whole
+			end
+		end
+	end
+	if amount < 1 or not pay(player, account, amount, source) then
+		return 0 -- rien à prendre, ou profil absent : l'argent reste sur les plaques
+	end
+	for index, whole in taken do
+		local rest = (account.pending[index] or 0) - whole
+		if rest > 0 then
+			account.pending[index] = rest
+		else
+			(account.pending :: any)[index] = nil -- plaque vide : on retire la clé
+		end
+	end
+	publish(player, account, nil)
+	local plot = account.plot
+	local plotIndex = if plot then plot:GetAttribute(PLOT_INDEX_ATTRIBUTE) else nil
+	if source == "Pad" and slot and type(plotIndex) == "number" then
+		local ok, err = pcall(function()
+			Net.Server.CashCollect:FireAll(plotIndex, slot, amount)
+		end)
+		if not ok then
+			reportOnce("cashCollect", `[DisplayService] CashCollect : {err}`, "warn")
+		end
 	end
 	return amount
 end
@@ -1178,6 +1367,8 @@ local function reconcile(player: Player, account: Account, data: Data, plot: Mod
 	if view == nil or view.owner ~= player then
 		return
 	end
+	-- Les objets affichés jusqu'ici ont rapporté jusqu'à maintenant, chacun sur sa plaque.
+	accrue(account, os.clock())
 	local refs = refsFor(plot)
 	local wanted = sanitize(player, data, refs)
 	-- Objet tenu par un voleur : présentoir vide, revenu arrêté, profil inchangé (6.1, DEV-041).
@@ -1221,8 +1412,7 @@ local function reconcile(player: Player, account: Account, data: Data, plot: Mod
 	end
 	local multiplier = incomeMultiplier(player)
 	if income ~= account.income or multiplier ~= account.multiplier then
-		accrue(account, os.clock()) -- l'ancien revenu compte jusqu'à maintenant
-		account.income = income
+		account.income = income -- l'ancien revenu a compté jusqu'à maintenant (accrue, plus haut)
 		account.multiplier = multiplier
 		player:SetAttribute(INCOME_ATTRIBUTE, income * multiplier)
 		player:SetAttribute(EXPOSED_INCOME_ATTRIBUTE, income)
@@ -1261,10 +1451,10 @@ local function newAccount(): Account
 		plot = nil,
 		income = 0,
 		multiplier = 1,
-		register = 0,
+		pending = {},
 		lastAccrue = os.clock(),
 		collected = 0,
-		onPad = false,
+		onSlot = nil,
 		shownRegister = nil,
 		shownSlots = nil,
 	}
@@ -1278,33 +1468,26 @@ local function clearView(plot: Model)
 	end
 end
 
--- Touched d'un CashPad : encaissement immédiat quand le personnage du propriétaire y arrive.
--- Une connexion par tapis, pour toute la partie (les parcelles ne changent pas).
-local padsConnected: { [Model]: boolean } = {}
-local function connectPads(plot: Model, refs: PlotRefs)
-	if padsConnected[plot] then
+-- Touched d'une plaque (branché par scanPads) : ramassage immédiat quand le personnage du
+-- propriétaire y arrive.
+onPadTouched = function(plot: Model, slot: number, part: BasePart, hit: BasePart)
+	local view = views[plot]
+	local set = padsOf[plot]
+	local pad = if set then set.bySlot[slot] else nil
+	if view == nil or pad == nil or pad.part ~= part then
+		return -- parcelle libre, ou plaque remplacée
+	end
+	local owner = view.owner
+	local account = accounts[owner]
+	local character = owner.Character
+	if account == nil or account.onSlot == slot or account.plot ~= plot or character == nil then
 		return
 	end
-	padsConnected[plot] = true
-	for _, pad in refs.pads do
-		pad.Touched:Connect(function(hit: BasePart)
-			local view = views[plot]
-			if view == nil then
-				return
-			end
-			local owner = view.owner
-			local account = accounts[owner]
-			local character = owner.Character
-			if account == nil or account.onPad or account.plot ~= plot or character == nil then
-				return
-			end
-			if not hit:IsDescendantOf(character) or rootOf(owner) == nil then
-				return
-			end
-			account.onPad = true -- checkPads le remet à false quand il en sort
-			cashOut(owner, account, "Pad")
-		end)
+	if not hit:IsDescendantOf(character) or rootOf(owner) == nil then
+		return
 	end
+	account.onSlot = slot -- checkPads le remet à nil quand il en sort
+	cashOut(owner, account, "Pad", slot)
 end
 
 -- Installe la boutique sauvegardée du joueur sur sa parcelle. Sans yield.
@@ -1318,7 +1501,16 @@ local function install(player: Player, plot: Model)
 		return -- déjà installée (attribution et chargement du profil arrivent tous les deux ici)
 	end
 	clearView(plot)
-	connectPads(plot, refsFor(plot)) -- pièces cherchées avant d'y poser le moindre objet
+	-- Pièces cherchées avant d'y poser le moindre objet.
+	local refs = refsFor(plot)
+	local set = scanPads(plot, unlockedCount(player, data, refs))
+	if next(set.bySlot) == nil then
+		reportOnce(
+			`pads:{plot:GetFullName()}`,
+			`[DisplayService] {plot:GetFullName()} : aucune plaque CollectPad_xx (contrat 10.4), son propriétaire ne pourra ramasser son argent qu'en partant`,
+			"warn"
+		)
+	end
 
 	local folder = Instance.new("Folder")
 	folder.Name = FOLDER_NAME
@@ -1329,7 +1521,7 @@ local function install(player: Player, plot: Model)
 	accounts[player] = current
 	accrue(current, os.clock())
 	current.plot = plot
-	current.onPad = false
+	current.onSlot = nil
 	current.shownRegister = nil
 
 	reconcile(player, current, data, plot)
@@ -1343,7 +1535,7 @@ local function install(player: Player, plot: Model)
 		count += 1
 	end
 	print(
-		`[DisplayService] {player.Name} : {count} objet(s) exposé(s) sur {unlockedCount(player, data, refsFor(plot))} présentoir(s) débloqué(s), revenu {Format.money(current.income)}/s`
+		`[DisplayService] {player.Name} : {count} objet(s) exposé(s) sur {unlockedCount(player, data, refs)} présentoir(s) débloqué(s), revenu {Format.money(current.income)}/s`
 	)
 end
 
@@ -1354,21 +1546,26 @@ local function onProfileLoaded(player: Player)
 	end
 end
 
--- Parcelle libérée (départ) : on retire tout ce qui y est affiché. La caisse reste dans le
--- compte du joueur jusqu'à OnProfileReleasing, qui l'encaisse (l'ordre des deux n'est pas garanti).
+-- Parcelle libérée (départ) : on retire tout ce qui y est affiché et les plaques repassent à $0.
+-- L'argent des plaques reste dans le compte du joueur jusqu'à OnProfileReleasing, qui l'encaisse
+-- (l'ordre des deux n'est pas garanti).
 local function onPlotReleased(player: Player, plot: Model)
-	clearView(plot)
-	plot:SetAttribute(REGISTER_ATTRIBUTE, 0)
 	local account = accounts[player]
 	if account and account.plot == plot then
-		accrue(account, os.clock())
+		accrue(account, os.clock()) -- avant de retirer les objets : ils ont rapporté jusqu'ici
 		account.income = 0
 		account.plot = nil
-		account.onPad = false
+		account.onSlot = nil
 	end
+	clearView(plot)
+	local set = padsOf[plot]
+	if set then
+		showPads(set, nil)
+	end
+	plot:SetAttribute(REGISTER_ATTRIBUTE, 0)
 end
 
--- Départ : dernier moment pour écrire dans le profil. La caisse est encaissée (V0, en-tête).
+-- Départ : dernier moment pour écrire dans le profil. Les plaques sont encaissées (V0, en-tête).
 local function onProfileReleasing(player: Player)
 	local account = accounts[player]
 	if account == nil then
@@ -1376,7 +1573,7 @@ local function onProfileReleasing(player: Player)
 	end
 	local amount = cashOut(player, account, "Leave")
 	if amount > 0 then
-		print(`[DisplayService] {player.Name} part : {Format.money(amount)} de sa caisse encaissés automatiquement`)
+		print(`[DisplayService] {player.Name} part : {Format.money(amount)} de ses plaques encaissés automatiquement`)
 	end
 	accounts[player] = nil
 end
@@ -1469,21 +1666,22 @@ local function onPlaceItem(player: Player, itemUid: string, slotIndex: number)
 end
 
 ------------------------------------------------------------------------------
--- Boucle : caisse, CashPad et affichage
+-- Boucle : plaques et affichage
 ------------------------------------------------------------------------------
 
 local function checkPads()
 	for player, account in accounts do
 		local plot = account.plot
-		if plot == nil then
+		local set = if plot then padsOf[plot] else nil
+		if set == nil then
 			continue
 		end
 		local root = rootOf(player)
-		local onPad = root ~= nil and isOnPad(root.Position, refsFor(plot).pads)
-		if onPad and not account.onPad then
-			cashOut(player, account, "Pad")
+		local slot = if root then padAt(set, root.Position) else nil
+		if slot and slot ~= account.onSlot then
+			cashOut(player, account, "Pad", slot)
 		end
-		account.onPad = onPad
+		account.onSlot = slot
 	end
 end
 
@@ -1496,7 +1694,7 @@ local function refreshAll()
 		end
 		accrue(account, now)
 		publish(player, account, data)
-		-- Encaissement automatique (gamepass, DEV-100) : la caisse va dans l'argent, où que soit le joueur.
+		-- Encaissement automatique (gamepass, DEV-100) : les plaques vont dans l'argent, où que soit le joueur.
 		if data and account.plot and autoCollect(player) then
 			cashOut(player, account, "Auto")
 		end
@@ -1510,11 +1708,11 @@ local function onHeartbeat(dt: number)
 	refreshClock += dt
 	if padClock >= PAD_CHECK_INTERVAL then
 		padClock = math.min(padClock - PAD_CHECK_INTERVAL, PAD_CHECK_INTERVAL)
-		guarded("checkPads", "contrôle des CashPad", checkPads)
+		guarded("checkPads", "contrôle des plaques CollectPad", checkPads)
 	end
 	if refreshClock >= REFRESH_INTERVAL then
 		refreshClock = math.min(refreshClock - REFRESH_INTERVAL, REFRESH_INTERVAL)
-		guarded("refreshAll", "mise à jour des caisses", refreshAll)
+		guarded("refreshAll", "mise à jour des plaques", refreshAll)
 	end
 end
 
@@ -1868,7 +2066,38 @@ function DisplayService.GetRegister(player: Player): number
 		return 0
 	end
 	accrue(account, os.clock())
-	return math.floor(account.register)
+	return math.floor(pendingTotal(account))
+end
+
+function DisplayService.GetCollectTarget(player: Player): Vector3?
+	local account = accounts[player]
+	local plot = if account then account.plot else nil
+	local set = if plot then padsOf[plot] else nil
+	if account == nil or set == nil then
+		return nil
+	end
+	accrue(account, os.clock())
+	local best: number? = nil
+	local bestAmount = 0
+	for slot in set.bySlot do
+		local amount = math.floor(account.pending[slot] or 0)
+		if amount >= 1 and (amount > bestAmount or (amount == bestAmount and best ~= nil and slot < best)) then
+			best, bestAmount = slot, amount
+		end
+	end
+	if best == nil then
+		local view = if plot then views[plot] else nil
+		if view then
+			for slot in view.visuals do
+				local target = padSlotFor(set, slot)
+				if set.bySlot[target] and (best == nil or target < best) then
+					best = target
+				end
+			end
+		end
+	end
+	local pad = if best then set.bySlot[best] else nil
+	return if pad then pad.part.Position else nil
 end
 
 function DisplayService.CashOut(player: Player): number
@@ -1883,21 +2112,22 @@ function DisplayService.OnCashOut(listener: CashOutListener): () -> ()
 	return subscribe(cashOutListeners, listener)
 end
 
--- Gains hors ligne (DEV-102, voir l'en-tête) : versés dans la caisse, jamais directement dans Cash.
+-- Gains hors ligne (DEV-102, voir l'en-tête) : versés directement dans l'argent (dollars entiers).
 function DisplayService.AddOfflineEarnings(player: Player, amount: number): boolean
 	if DataService.Get(player) == nil or type(amount) ~= "number" or amount ~= amount or amount <= 0 or amount >= math.huge then
 		return false
 	end
 	local account = accounts[player]
 	if account == nil then
-		-- Pas encore de parcelle : install reprendra ce compte (et sa caisse) à l'attribution.
+		-- Pas encore de parcelle : install reprendra ce compte (argent encaissé compris).
 		account = newAccount()
 		accounts[player] = account
 	end
-	accrue(account, os.clock())
-	account.register += amount
-	publish(player, account, nil)
-	return true
+	local whole = math.floor(amount)
+	if whole < 1 then
+		return true -- moins de 1 $ : rien à verser
+	end
+	return pay(player, account, whole, "Offline")
 end
 
 function DisplayService.GetGlobalMultiplier(player: Player): number
@@ -1944,4 +2174,6 @@ return DisplayService
 --      des objets à Items et appelle PlaceAuto : voir le rapport de l'agent a14.
 --   3. Barre de commande, contexte Client :
 --      game.ReplicatedStorage.Remotes.PlaceItem:FireServer("<uid>", 2)
---   4. Marcher sur le CashPad (tapis vert « CAISSE » de la greybox) : la caisse passe dans Cash.
+--   4. Le montant de chaque objet monte sur sa plaque CollectPad_xx (AmountGui/Amount, chaque seconde).
+--      Marcher sur la plaque : son argent passe dans Cash, la plaque repart à « $0 », gerbe de
+--      BurstPoint chez tous les joueurs proches (remote CashCollect). Partir encaisse toutes les plaques.

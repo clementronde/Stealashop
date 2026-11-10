@@ -7,19 +7,29 @@
 --     encaissé depuis l'arrivée, qui ne fait que monter) et DisplaySlotsUnlocked (présentoirs
 --     débloqués) sur le Player ; CashRegister (argent en caisse) sur sa parcelle. Le revenu est à
 --     l'écran : HudController écrit UI_HUD.Income depuis le même attribut Income (DEV-021) ;
---   - à chaque encaissement au CashPad, écrit le montant dans la sortie (en Studio seulement)
---     et prévient les écouteurs d'OnCashOut (plus tard : chiffre flottant, son de caisse DEV-051) ;
+--   - à chaque encaissement (plaque, encaissement automatique, gains hors ligne : chaque hausse de
+--     CashCollected), écrit le montant dans la sortie (en Studio seulement) et prévient les écouteurs
+--     d'OnCashOut (« +$X » qui vole vers le compteur, son de caisse DEV-051) ;
+--   - ramassage sur une plaque CollectPad_xx (remote CashCollect, envoyé à tous, L-091 point 5) :
+--     gerbe des ParticleEmitter de `Plate/BurstPoint` (Emit(EmitCount)), Glow allumé un instant,
+--     plaque enfoncée de son attribut SinkDepth, chez tous les joueurs qui ont la parcelle chargée ;
+--     chez le propriétaire, prévient aussi les écouteurs d'OnCollect. Le montant écrit sur la plaque
+--     (AmountGui/Amount) vient du serveur, visible par tous ;
 --   - anime en local les halos créés par le serveur : les rayons des objets Légendaire, Mythique
 --     et Secret tournent, l'arc-en-ciel du Secret défile. Rien n'est envoyé au serveur.
 -- Ce contrôleur ne crée aucune UI (9.3) : l'inventaire et le HUD sont des écrans de Clément.
 --
 -- API (client) :
 --   DisplayController.GetIncome() -> number          revenu des objets exposés ($/s)
---   DisplayController.GetRegister() -> number        argent dans la caisse de sa parcelle
+--   DisplayController.GetRegister() -> number        argent sur toutes les plaques de sa parcelle
 --   DisplayController.GetUnlockedSlots() -> number   présentoirs débloqués (0 sans parcelle)
 --   DisplayController.OnIncomeChanged(fn(income)) -> déconnexion
 --   DisplayController.OnRegisterChanged(fn(amount)) -> déconnexion
 --   DisplayController.OnCashOut(fn(amount)) -> déconnexion
+--       Chaque encaissement du joueur local (plaques, automatique, hors ligne), une fois par hausse.
+--   DisplayController.OnCollect(fn(amount, slotIndex, position)) -> déconnexion
+--       Ramassage du joueur local sur une de ses plaques : montant, numéro de la plaque, position du
+--       dessus de la plaque (BurstPoint). Arrive avec, ou juste avant, l'OnCashOut du même montant.
 --   DisplayController.PlaceItem(itemUid, slotIndex)
 --       Demande au serveur d'exposer un objet de l'inventaire sur un présentoir (pour l'écran
 --       d'inventaire de Clément). Le serveur vérifie tout et répond par Notify en cas de refus.
@@ -52,6 +62,19 @@ local RAINBOW_GRADIENT = "RarityRainbow"
 -- Posés par PlotService.
 local PLOT_INDEX_ATTRIBUTE = "PlotIndex"
 local OWNER_ATTRIBUTE = "OwnerUserId"
+-- Plaque de ramassage (contrat 10.4, L-091 point 5) et ses effets, posés par Clément.
+local PAD_FORMAT = "CollectPad_%02d"
+local PLATE = "Plate"
+local BURST_POINT = "BurstPoint"
+local GLOW = "Glow"
+local EMIT_COUNT_ATTRIBUTE = "EmitCount"
+local SINK_ATTRIBUTE = "SinkDepth"
+
+-- V0 proposé, absent du doc : gerbe d'un ParticleEmitter sans attribut EmitCount, durée du Glow et
+-- de l'enfoncement de la plaque, au ramassage.
+local DEFAULT_EMIT_COUNT = 10
+local GLOW_TIME = 0.35
+local SINK_TIME = 0.15
 
 -- V0 proposé, absent du doc : animation locale des halos.
 local RAYS_TURN_SPEED = 0.5 -- radians par seconde
@@ -88,9 +111,12 @@ local lastCollected = 0
 local incomeListeners: { Listener } = {}
 local registerListeners: { Listener } = {}
 local cashOutListeners: { Listener } = {}
+type CollectListener = (amount: number, slotIndex: number, position: Vector3) -> ()
+local collectListeners: { CollectListener } = {}
+local plateRest: { [BasePart]: CFrame } = {} -- position de repos d'une plaque enfoncée
 local animated: { [Instance]: Animated } = {}
 
-local function subscribe(list: { Listener }, listener: Listener): () -> ()
+local function subscribe<T>(list: { T }, listener: T): () -> ()
 	table.insert(list, listener)
 	return function()
 		local index = table.find(list, listener)
@@ -172,6 +198,82 @@ end
 
 local function onIncomeChanged()
 	emit(incomeListeners, numberAttribute(localPlayer, INCOME_ATTRIBUTE))
+end
+
+------------------------------------------------------------------------------
+-- Ramassage sur une plaque (visuel local)
+------------------------------------------------------------------------------
+
+local function plotByIndex(plotIndex: number): Instance?
+	for _, plot in CollectionService:GetTagged(plotTag) do
+		if plot:GetAttribute(PLOT_INDEX_ATTRIBUTE) == plotIndex then
+			return plot
+		end
+	end
+	return nil
+end
+
+-- Gerbe de BurstPoint, Glow un instant, plaque enfoncée de SinkDepth puis remise en place.
+local function burst(pad: Instance): Vector3
+	local plateFound = pad:FindFirstChild(PLATE, true)
+	local plate: BasePart? = if plateFound ~= nil and plateFound:IsA("BasePart") then plateFound :: BasePart else nil
+	local pointFound = pad:FindFirstChild(BURST_POINT, true)
+	local position = if pad:IsA("BasePart") then (pad :: BasePart).Position else Vector3.zero
+	if pointFound ~= nil and pointFound:IsA("Attachment") then
+		local point = pointFound :: Attachment
+		position = point.WorldPosition
+		for _, child in point:GetChildren() do
+			if child:IsA("ParticleEmitter") then
+				local count = child:GetAttribute(EMIT_COUNT_ATTRIBUTE)
+				local n = if type(count) == "number" and count == count and count > 0 then math.floor(count) else DEFAULT_EMIT_COUNT
+				child:Emit(n)
+			end
+		end
+	end
+	if plate == nil then
+		return position
+	end
+	local part = plate :: BasePart
+	local glow = part:FindFirstChild(GLOW)
+	if glow ~= nil and glow:IsA("Light") then
+		local light = glow :: Light
+		light.Enabled = true
+		task.delay(GLOW_TIME, function()
+			light.Enabled = false
+		end)
+	end
+	local sink = part:GetAttribute(SINK_ATTRIBUTE)
+	if type(sink) == "number" and sink == sink and sink > 0 then
+		local rest = plateRest[part] or part.CFrame
+		plateRest[part] = rest
+		part.CFrame = rest * CFrame.new(0, -sink, 0)
+		task.delay(SINK_TIME, function()
+			if plateRest[part] == rest then
+				part.CFrame = rest
+				plateRest[part] = nil
+			end
+		end)
+	end
+	return position
+end
+
+local function onCashCollect(plotIndex: number, slotIndex: number, amount: number)
+	local plot = plotByIndex(plotIndex)
+	local pad = if plot then plot:FindFirstChild(string.format(PAD_FORMAT, slotIndex), true) else nil
+	local position = Vector3.zero
+	if pad then
+		local ok, result = pcall(burst, pad)
+		if ok then
+			position = result
+		elseif IS_STUDIO then
+			warn(`[DisplayController] gerbe de {pad:GetFullName()} : {result}`)
+		end
+	end
+	if plot and plot:GetAttribute(OWNER_ATTRIBUTE) == localPlayer.UserId then
+		for _, listener in table.clone(collectListeners) do
+			task.spawn(listener, amount, slotIndex, position)
+		end
+	end
 end
 
 ------------------------------------------------------------------------------
@@ -305,6 +407,10 @@ function DisplayController.OnCashOut(listener: Listener): () -> ()
 	return subscribe(cashOutListeners, listener)
 end
 
+function DisplayController.OnCollect(listener: CollectListener): () -> ()
+	return subscribe(collectListeners, listener)
+end
+
 function DisplayController.PlaceItem(itemUid: string, slotIndex: number)
 	if net == nil then
 		warn("[DisplayController] remotes pas encore prêts : PlaceItem ignoré")
@@ -347,6 +453,10 @@ function DisplayController.Start()
 
 	-- Peut attendre que le serveur ait créé les remotes.
 	net = require(shared:WaitForChild("Net"):WaitForChild("Net") :: ModuleScript) :: any
+	local remote = net.Client.CashCollect
+	if remote then
+		remote:Connect(onCashCollect)
+	end
 end
 
 return DisplayController

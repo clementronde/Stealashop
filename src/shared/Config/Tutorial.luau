@@ -88,7 +88,7 @@ local Tutorial = {
 		OpenBox = "Open your box!", -- étape 5 : colis prêt à ouvrir
 		-- étape 5 (L-089) : objet dans l'inventaire, rien d'exposé
 		PlaceItem = "Equip your item, then pick a stand!",
-		CollectCash = "Step on the cash pad to collect!", -- étape 5 (objet exposé), 7 et 8 (pas assez d'argent)
+		CollectCash = "Step on the green pad to collect!", -- étape 5 (objet exposé), 7 et 8 (pas assez d'argent) ; V0 proposé (L-091 : plaques CollectPad_xx)
 		-- étape 6, flèche vers le tapis : il n'a plus d'invite, on s'entraîne en s'arrêtant dessus (L-071)
 		StandOnTreadmill = "Stand on the treadmill to train!",
 		NightClosed = "The street opens again at dawn!", -- nuit, étapes 1 à 3 et 9, côté zone safe

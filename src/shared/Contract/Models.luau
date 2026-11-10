@@ -124,7 +124,31 @@ local Plot: ModelSpec = {
 		{ Name = "VaultSlot_%02d", From = 1, To = 3, Silent = true },
 		{ Name = "UnboxBench_%02d", From = 1, To = 4, Silent = true },
 		{ Name = "TrapSlot_%02d", From = 1, To = 4 }, -- Partie 2
-		{ Name = "CashPad", Tag = "CashPad" },
+		-- L-082 point 4, L-091 points 4 et 5 (2026-11-10) : plus de tapis de caisse global CashPad (retiré
+		-- du contrat et du code ; la pièce invisible laissée dans les boutiques n'est plus lue). L'argent
+		-- se ramasse sur la plaque de chaque présentoir, CollectPad_xx (même numéro que DisplaySlot_xx).
+		-- CollectPad_01 à _04 obligatoires (Rayon_01, toujours dans la boutique) ; _05 à _20 sont dans
+		-- Assets/Plots/PLOT_Shop_Rayons et n'arrivent dans la parcelle qu'avec leur rayon (RayonService).
+		-- Dedans : AmountGui (SurfaceGui) et Amount (TextLabel), où le code écrit le montant ; BurstPoint
+		-- (Attachment avec les ParticleEmitter de la gerbe) facultatif, l'effet seul en dépend.
+		{
+			Name = "CollectPad_%02d",
+			From = 1,
+			To = 20,
+			Min = 4,
+			Class = "BasePart",
+			Note = "plaques de ramassage, _05 à _20 posées avec leur rayon, L-091",
+			Inside = {
+				{ Name = "AmountGui", Class = "SurfaceGui" },
+				{ Name = "Amount", Class = "TextLabel" },
+				{
+					Name = "BurstPoint",
+					Class = "Attachment",
+					Optional = true,
+					Note = "facultatif : sans lui, pas de gerbe au ramassage, L-091",
+				},
+			},
+		},
 		{ Name = "DepositZone", Class = "BasePart" },
 		{ Name = "Treadmill", Tag = "Treadmill" },
 		{ Name = "Bench", Tag = "Bench" },

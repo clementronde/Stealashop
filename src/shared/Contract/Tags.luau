@@ -23,11 +23,11 @@ Tags.List = {
 	{ Tag = "NPCStore", Count = 12, PerZone = 2, NeedsZone = true, For = "magasins PNJ STORE_*" },
 	-- 6 parcelles dans la zone safe (section 4).
 	{ Tag = "PlayerPlot", Count = 6, For = "parcelles PLOT_*" },
-	-- 1 tapis, 1 banc et 1 tapis de caisse par parcelle : déduit du 10.4 (enfants Treadmill,
-	-- Bench et CashPad de la parcelle), le doc ne donne pas le nombre de tags.
+	-- 1 tapis et 1 banc par parcelle : déduit du 10.4 (enfants Treadmill et Bench de la parcelle),
+	-- le doc ne donne pas le nombre de tags. Plus de tag CashPad (L-091 point 4, 2026-11-10) : l'argent
+	-- se ramasse sur les plaques CollectPad_xx, trouvées par leur nom (Contract/Models).
 	{ Tag = "Treadmill", Count = 6, For = "tapis de course, 1 par parcelle" },
 	{ Tag = "Bench", Count = 6, For = "bancs de musculation, 1 par parcelle" },
-	{ Tag = "CashPad", Count = 6, For = "tapis de caisse, 1 par parcelle" },
 	-- Une boutique de chaque dans la zone safe (sections 4 et 5.9).
 	{ Tag = "WeaponShop", Count = 1, For = "boutique d'armes" },
 	{ Tag = "AuraShop", Count = 1, For = "boutique d'auras" },

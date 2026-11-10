@@ -3,8 +3,8 @@
 -- Lu par OfflineService (serveur). Au retour, la boutique du joueur a gagné, pendant son absence :
 --   absence (s, au plus MaxHours h) × revenu par seconde au départ × Rate
 -- revenu au départ = objets exposés × bonus permanents (Premium, ×2 Argent, index), sans les boosts
--- temporaires (boost ×2 argent, compté seulement en jeu : Partie 2, section 4). L'argent va dans la caisse
--- de sa boutique (attribut CashRegister), il l'encaisse sur son CashPad comme le reste.
+-- temporaires (boost ×2 argent, compté seulement en jeu : Partie 2, section 4). L'argent est versé directement
+-- dans son argent au retour (DisplayService.AddOfflineEarnings ; plus de caisse CashPad depuis L-091).
 --
 -- Le doc (Partie 2) disait « 10 % des revenus pendant 4 h max » ; Clément a décidé le 2026-11-08 (L-084,
 -- journal 15) « tout l'argent qu'il aurait gagné pendant son absence », validé par Ironix le 2026-11-09

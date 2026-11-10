@@ -358,7 +358,7 @@ end
 ------------------------------------------------------------------------------
 
 -- Hauteur du sol sous `position`, cherchée autour de `referenceY` ; les personnages et
--- les pièces sans collision (Bounds, DepositZone, CashPad…) sont ignorés.
+-- les pièces sans collision (Bounds, DepositZone, CollectPad_xx…) sont ignorés.
 local function groundY(position: Vector3, referenceY: number): number
 	local characters: { Instance } = {}
 	for _, player in Players:GetPlayers() do
