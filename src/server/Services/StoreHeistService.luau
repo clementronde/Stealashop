@@ -307,13 +307,13 @@ local TIMER_RADIUS = 60
 local GRAB_TIME_TOLERANCE = 0.1
 -- V0 proposé, absent du doc : un maintien non conclu expire 1 s après sa durée.
 local HOLD_EXPIRY = 1
--- V0 proposé, absent du doc : rideau. Il tombe en 0,4 s, remonte en 0,8 s, et reste
--- franchissable 3 s après sa chute : il ne tombe qu'une fois le porteur et son vigile sortis
--- (voir l'en-tête), juste derrière eux, et ne les pousse pas. Un joueur sans colis qui entre
--- pendant ce temps est sorti comme les autres.
+-- V0 proposé, absent du doc : rideau. Il tombe en 0,4 s, remonte en 0,8 s, et devient solide dès
+-- qu'il est en bas. Il ne tombe qu'une fois le magasin vide de porteurs et de vigiles (L-064) : plus
+-- besoin des 3 s où il restait franchissable (Cantin, 2026-11-10 : on passait à travers puis on était
+-- téléporté dehors). Un joueur sans colis resté dedans est sorti comme avant.
 local SHUTTER_FALL_TIME = 0.4
 local SHUTTER_RISE_TIME = 0.8
-local SHUTTER_EXIT_GRACE = 3
+local SHUTTER_EXIT_GRACE = SHUTTER_FALL_TIME
 -- V0 proposé, absent du doc : on sort les joueurs à 6 studs devant la vitrine (comme
 -- l'apparition de PlotService), sol cherché de 4 studs au-dessus jusqu'à 8 en dessous.
 local EJECT_DISTANCE = 6
@@ -855,7 +855,7 @@ local function restoreShutterCollide(store: Store)
 	end
 end
 
--- Baisse le rideau : il tombe de sa hauteur, franchissable pendant SHUTTER_EXIT_GRACE s.
+-- Baisse le rideau : il tombe de sa hauteur, et devient solide une fois en bas (SHUTTER_EXIT_GRACE s).
 local function lowerShutter(store: Store)
 	local shutter = store.Shutter
 	if shutter == nil or store.ShutterDown then
