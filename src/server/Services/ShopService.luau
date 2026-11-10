@@ -15,7 +15,9 @@
 --     clic ; un outil plus faible acheté après coup n'est pas équipé à la place du meilleur) ;
 --   - amélioration (Config/Upgrades) : coût Formulas.UpgradeCost = C0 × g^n (n = niveau déjà
 --     possédé, 7.5) ; refusé au niveau max ou hors de sa parcelle (volume Bounds, sinon l'emprise
---     de la parcelle). Niveau + 1 dans Upgrades du profil. Effet : le tapis et le banc relisent
+--     de la parcelle), sauf à SIGN_REACH studs au plus d'un point de panneau de SA parcelle
+--     (UpgradePoint, DisplayUpgradePoint : L-082, des panneaux plantés dehors, vu en Play le
+--     2026-11-10). Niveau + 1 dans Upgrades du profil. Effet : le tapis et le banc relisent
 --     leur niveau à chaque gain (TrainingService), les présentoirs à chaque pose (DisplayService,
 --     qui republie DisplaySlotsUnlocked chaque seconde), et UnboxService.Refresh remet tout de suite
 --     à jour leur attribut UnboxState (un colis peut s'y poser, L-086). L'ancienne amélioration
@@ -116,6 +118,10 @@ local LEVEL_ATTRIBUTE_FORMAT = "%sLevel"
 -- HumanoidRootPart et la pièce principale du comptoir. L'invite du client porte à 10 studs et
 -- l'écran se ferme au-delà de 14 (WeaponShopController) : la marge couvre la gigue réseau.
 local SHOP_REACH = 20
+-- V0 proposé, absent du doc : portée (studs) autour d'un point de panneau d'amélioration de sa parcelle
+-- (UpgradeController : le panneau se lit et se clique de loin, SurfaceGui jusqu'à 100 studs).
+local SIGN_REACH = 30
+local SIGN_POINTS: { [string]: boolean } = { UpgradePoint = true, DisplayUpgradePoint = true }
 
 -- Messages lus par le joueur (Notify), en anglais (L-036). V0 proposés, absents du doc.
 local MESSAGES = {
@@ -265,6 +271,22 @@ local function isOnOwnPlot(player: Player, plot: Model): boolean
 	return math.abs(p.X) <= boxSize.X / 2 and math.abs(p.Z) <= boxSize.Z / 2
 end
 
+-- Le joueur est-il près d'un point de panneau d'amélioration de sa parcelle (voir l'en-tête) ?
+local function isNearOwnSign(player: Player, plot: Model): boolean
+	local root = rootOf(player)
+	if root == nil then
+		return false
+	end
+	for _, inst in plot:GetDescendants() do
+		if inst:IsA("Attachment") and SIGN_POINTS[inst.Name] then
+			if (inst.WorldPosition - root.Position).Magnitude <= SIGN_REACH then
+				return true
+			end
+		end
+	end
+	return false
+end
+
 ------------------------------------------------------------------------------
 -- Attributs publiés
 ------------------------------------------------------------------------------
@@ -349,7 +371,7 @@ local function buyUpgrade(player: Player, data: Data, upgrade: UpgradeDef)
 		reject(player, "BuyItem", upgrade.Id, "pas de parcelle")
 		return
 	end
-	if not isOnOwnPlot(player, plot) then
+	if not isOnOwnPlot(player, plot) and not isNearOwnSign(player, plot) then
 		notify(player, MESSAGES.NotOnPlot, "Warning")
 		return
 	end

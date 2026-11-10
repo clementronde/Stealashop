@@ -31,6 +31,15 @@
 --     puis le bouton est muet jusqu'au nouveau niveau, ou PENDING_TIMEOUT s si le serveur refuse.
 --   - les panneaux suivent : niveaux, présentoir suivant, streaming (point retiré : panneau retiré,
 --     reposé à son retour), changement ou libération de parcelle, départ d'un joueur, réapparition.
+--   - clic rattrapé (vu en Play le 2026-11-10 : le clic ne faisait rien) : Roblox n'envoie le clic au
+--     SurfaceGui que si rien n'est devant le panneau, or les murs et le toit invisibles de la parcelle
+--     (PlotBarrier, Transparency 1) le couvrent souvent. Un clic ou un appui que Roblox n'a pas pris
+--     (gameProcessedEvent faux) est relancé ici par un rayon qui traverse les pièces presque
+--     transparentes (SEE_THROUGH) ; s'il touche la face de Board d'un panneau du joueur, au droit de
+--     BuyButton, c'est un achat (même garde). Un mur opaque bloque toujours le clic.
+--   - les maquettes de Clément `Workspace/_PREVIEW_UpgradeSigns` (panneaux posés au même endroit pour
+--     voir la pose en édition) sont retirées ici, en jeu, côté client seulement : sinon elles se
+--     superposent aux vrais panneaux et prennent le clic. Rien n'est touché en édition.
 --
 -- Repli (UpgradeSign absent des Assets, ou sans Board, SignGui ou BuyButton) : une ligne dans la
 -- sortie, et les invites d'avant, chez le propriétaire seulement (ProximityPrompt « UpgradePrompt »,
@@ -43,6 +52,7 @@
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
@@ -112,6 +122,12 @@ local GAMEPAD_KEY = Enum.KeyCode.ButtonY
 local POINT_HEIGHT = 0.5 -- studs au-dessus du sommet du modèle
 local PENDING_TIMEOUT = 1.5
 local SIGN_FOLDER = "UpgradeSigns"
+-- Clic rattrapé (voir l'en-tête), V0 : une pièce au moins aussi transparente ne bloque pas le clic,
+-- portée du rayon (studs), pièces traversées au plus ; maquettes de Clément retirées en jeu.
+local SEE_THROUGH = 0.5
+local CLICK_RANGE = 250
+local CLICK_PASSES = 16
+local PREVIEW_FOLDER = "_PREVIEW_UpgradeSigns"
 
 local UpgradeController = {}
 
@@ -122,6 +138,7 @@ local entries: { [Instance]: { [string]: Entry } } = {} -- parcelle → Id → c
 local plotOwners: { [Instance]: Player? } = {} -- propriétaire pris en compte au dernier passage
 local madePoints: { [Instance]: Attachment } = {} -- machine → point créé ici
 local signFolder: Folder? = nil
+local boards: { [BasePart]: { offer: Offer, entry: Entry } } = {} -- Board d'un panneau → son achat
 local refreshQueued = false
 local fallbackSaid = false
 
@@ -302,6 +319,11 @@ local function clearSign(entry: Entry)
 		click:Disconnect()
 		entry.click = nil
 	end
+	for board, link in boards do
+		if link.entry == entry then
+			boards[board] = nil
+		end
+	end
 	local gui = entry.gui
 	if gui then
 		entry.gui = nil
@@ -375,6 +397,7 @@ local function showSign(offer: Offer, entry: Entry, template: Model, plotModel: 
 		entry.click = buy.Activated:Connect(function()
 			onBuy(offer, entry)
 		end)
+		boards[Find.path(fresh, BOARD_NAME) :: BasePart] = { offer = offer, entry = entry }
 		sign, gui = fresh, freshGui
 	end
 	local currentSign = sign :: Model
@@ -403,6 +426,80 @@ local function showSign(offer: Offer, entry: Entry, template: Model, plotModel: 
 		robux.Visible = false -- aucun produit Robux pour ces améliorations (V0)
 	end
 	entry.shownLevel = level
+end
+
+-- Clic rattrapé (voir l'en-tête) : le point de l'écran `screen` (coordonnées d'un InputObject) touche-t-il
+-- le BuyButton d'un panneau ? Le rayon traverse les pièces presque transparentes, jamais un mur opaque.
+local function boardAt(screen: Vector3): (BasePart?, Vector3?)
+	local camera = Workspace.CurrentCamera
+	if camera == nil then
+		return nil, nil
+	end
+	local ray = camera:ScreenPointToRay(screen.X, screen.Y)
+	local ignored: { Instance } = {}
+	local character = localPlayer.Character
+	if character then
+		table.insert(ignored, character)
+	end
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	for _ = 1, CLICK_PASSES do
+		params.FilterDescendantsInstances = ignored
+		local hit = Workspace:Raycast(ray.Origin, ray.Direction * CLICK_RANGE, params)
+		if hit == nil then
+			return nil, nil
+		end
+		local part = hit.Instance
+		if boards[part] then
+			return part, hit.Position
+		end
+		if part.Transparency < SEE_THROUGH then
+			return nil, nil -- mur opaque devant le panneau
+		end
+		table.insert(ignored, part)
+	end
+	return nil, nil
+end
+
+local function onWorldClick(input: InputObject, processed: boolean)
+	if processed then
+		return -- Roblox l'a déjà donné à une interface (BuyButton.Activated compris)
+	end
+	local kind = input.UserInputType
+	if kind ~= Enum.UserInputType.MouseButton1 and kind ~= Enum.UserInputType.Touch then
+		return
+	end
+	local board, point = boardAt(input.Position)
+	local link = if board then boards[board] else nil
+	if board == nil or point == nil or link == nil then
+		return
+	end
+	local gui = link.entry.gui
+	local buy = if gui then Find.path(gui, BUY_NAME) else nil
+	if gui == nil or buy == nil or not buy:IsA("GuiObject") or not (buy :: GuiObject).Visible or gui.Adornee ~= board then
+		return -- panneau d'un autre joueur (pas dans le PlayerGui), ou niveau max
+	end
+	-- Face avant (Front, LookVector) : à gauche de l'écran le +X de la pièce, en haut le +Y.
+	local localPoint = board.CFrame:PointToObjectSpace(point)
+	if localPoint.Z > -board.Size.Z / 2 + 0.05 then
+		return -- touché par le dos ou le côté
+	end
+	local u = 0.5 - localPoint.X / board.Size.X
+	local v = 0.5 - localPoint.Y / board.Size.Y
+	local canvas = gui.AbsoluteSize
+	local x, y = u * canvas.X, v * canvas.Y
+	local button = buy :: GuiObject
+	local corner, size = button.AbsolutePosition, button.AbsoluteSize
+	if x >= corner.X and x <= corner.X + size.X and y >= corner.Y and y <= corner.Y + size.Y then
+		onBuy(link.offer, link.entry)
+	end
+end
+
+-- Maquettes de Clément au même endroit que les panneaux (voir l'en-tête) : retirées en jeu, ici seulement.
+local function dropPreview(child: Instance)
+	if child.Name == PREVIEW_FOLDER then
+		child:Destroy()
+	end
 end
 
 -- Invite de repli, chez le propriétaire (comportement d'avant L-082).
@@ -569,6 +666,12 @@ end
 function UpgradeController.Start()
 	-- Peut attendre que le serveur ait créé les remotes.
 	net = require(Shared:WaitForChild("Net"):WaitForChild("Net") :: ModuleScript) :: any
+
+	for _, child in Workspace:GetChildren() do
+		dropPreview(child)
+	end
+	Workspace.ChildAdded:Connect(dropPreview)
+	UserInputService.InputBegan:Connect(onWorldClick)
 
 	Players.PlayerAdded:Connect(watchPlayer)
 	Players.PlayerRemoving:Connect(function()
