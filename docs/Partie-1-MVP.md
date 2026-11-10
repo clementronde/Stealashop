@@ -695,6 +695,20 @@ L'encaissement passe par le contact serveur avec le tapis de caisse, sans remote
 - PV des vitrines : envoyés en non fiable, 10 fois par seconde maximum.
 - Test chaque semaine sur un vrai téléphone Android d'entrée de gamme.
 
+### 9.8 Audit de sécurité
+
+Audit du 2026-11-10 (agent security-auditor, lecture seule, tout `src/`), points graves revérifiés par Ironix. Modèle de menace : un tricheur qui contrôle tout son client (appelle n'importe quel remote avec n'importe quels arguments, se téléporte). Avant le lancement, auditer seulement ce qui a changé depuis le commit `c23c50d`.
+
+| Faille | Gravité | Statut | Correction |
+| --- | --- | --- | --- |
+| Une fenêtre d'autorisation de l'anti-triche (tapis, réapparition) laissait se téléporter à un magasin, prendre un colis et rentrer sans marcher | Critique | Corrigée (2026-11-10, `c23c50d`) | Le trajet depuis la prise est toujours contrôlé, sauf si le code a déplacé le joueur après la prise (AntiCheatService.Verify) |
+| Colis du tuto rangé sans le poser : chaque colis de zone 1 volé ensuite donnait le Pot de nouilles (Rare), jusqu'à 50, sans tricher | Haute | Corrigée (2026-11-10, `c23c50d`) | Contenu garanti seulement avant la 1re prise (TutorialService) |
+| Se téléporter, agir dans la même image (coup de batte sur un porteur, coup sur une vitrine de loin, achat hors du comptoir), être ramené 0,25 s plus tard | Moyenne | À corriger | Appeler AntiCheatService.Verify au début de SwingBat, HitWindow, GrabItem, StealItem, GrabDropped et BuyItem, refuser s'il répond faux |
+| Gamepass accordé sur le seul signal du client, sans demander à Roblox | Basse (inactive tant que Features.RobuxShop = false) | À corriger avant la MAJ 1 | Confirmer par UserOwnsGamePassAsync avant d'accorder le pass (MonetizationService) |
+| L'étiquette BB_Box (catégorie, rareté, mutation) et la zone désignent souvent l'objet exact avant l'ouverture | Basse | À décider | Cacher la catégorie, ou l'accepter dans le journal 15 si c'est voulu (L-031) |
+
+Vérifié sain le 2026-11-10 : validation des remotes (types, NaN, débit), achats du jeu, récompenses, gains hors ligne, vol entre joueurs, reçus Robux idempotents, colis et objets (aucun doublon trouvé), contenu d'un colis jamais visible avant l'ouverture, crochets de test inactifs hors de Studio. Pas encore lus : la poursuite des vigiles, NightCycleService en détail, TruckEventService, IndexService.
+
 ## 10. Bible assets (Clément)
 
 Un modèle est livrable quand il respecte 5 règles : échelle en studs, pivot en bas au centre, budget de triangles, nommage, et les pièces nommées que le code attend (contrat d'intégration, 10.4).
