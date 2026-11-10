@@ -303,7 +303,7 @@ Deux stats permanentes, entraînées dans sa propre parcelle.
 ### 5.3 Braquer un magasin PNJ
 
 1. **Approche** : un panneau au-dessus de la vitrine affiche nom, PV, dégâts et vitesse conseillés. Chiffres verts si le joueur les atteint, orange entre 50 et 99 %, rouges en dessous.
-2. **Frappe** : barre de PV au-dessus de la vitre, régénération continue de 3 % des PV max par seconde ; à chaque coup, la vitre se creuse (éclats arrachés de la face frappée, creux qui s'élargit et s'enfonce avec les PV perdus, sans la percer), à la place des fissures à 75, 50 et 25 % (liaison L-081).
+2. **Frappe** : barre de PV au-dessus de la vitre, régénération continue de 3 % des PV max par seconde, chrono de casse de 13 s au premier coup (L-074, V0) : pas cassée à temps, la vitre revient à ses PV max ; à chaque coup, la vitre se creuse (éclats arrachés de la face frappée, creux qui s'élargit et s'enfonce avec les PV perdus, sans la percer), à la place des fissures à 75, 50 et 25 % (liaison L-081).
 3. **Casse** : à 0 PV, séquence de casse (5.4) et chrono de 10 s affiché en grand.
 4. **Pillage** : 10 colis par magasin. 6 Standard sur les rayons avant (prise en 0,3 s), 3 Premium au milieu (0,6 s), 1 Luxe dans la réserve du fond (1,0 s). Un seul colis porté à la fois.
 5. **Fuite** : dès qu'un colis est soulevé, le vigile sort de la réserve (5.5). Le chrono ne compte plus pour ce joueur.
