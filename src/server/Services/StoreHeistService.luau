@@ -256,6 +256,7 @@ type Store = {
 	EndsAt: number, -- heure serveur de fin du chrono
 	Viewers: { [Player]: boolean }, -- joueurs qui voient le chrono
 	RefillPending: boolean, -- RefillAll pendant le chrono : nouveau tirage à la fermeture
+	Banned: { [Player]: boolean }, -- attrapés par le vigile de ce magasin : plus de prise jusqu'à sa réouverture
 }
 
 type Hold = { Slot: Slot, Box: ShelfBox, StartedAt: number }
@@ -359,6 +360,9 @@ local V0_LOOKS: { [string]: BoxLook } = {
 -- Messages lus par le joueur (Notify), en anglais (L-036).
 local MESSAGES = {
 	Closed = "Too late: the shutter came down!",
+	-- V0 proposé, absent du doc (Cantin, 2026-11-10) : attrapé par le vigile, plus de prise dans ce
+	-- magasin jusqu'à sa réouverture (vitrine reconstruite).
+	Banned = "The guard knows you now: come back when the store reopens!",
 }
 
 local IS_STUDIO = RunService:IsStudio()
@@ -1156,6 +1160,10 @@ local function grabRefusal(player: Player, slot: Slot): string?
 	if player ~= store.Breaker and os.clock() < store.ExclusiveUntil then
 		return "avance du casseur"
 	end
+	if store.Banned[player] then
+		Net.Server.Notify:Fire(player, MESSAGES.Banned, "Warning")
+		return "attrapé par le vigile de ce magasin : plus de prise jusqu'à sa réouverture"
+	end
 	if isCarrying(player) then
 		return "mains pleines"
 	end
@@ -1377,6 +1385,17 @@ local function onCarryEnded(player: Player, payload: any, result: string, reason
 	if result ~= "Failed" then
 		return -- « Dropped » (DEV-048) : au sol, il revient par onDropExpired s'il n'est pas ramassé
 	end
+	local store = storesById[payload.StoreId]
+	if reason == "Caught" and store then
+		-- Règle par joueur (Cantin, 2026-11-10) : l'attrapé sort du magasin et n'y reprend plus de colis
+		-- jusqu'à sa réouverture ; les autres voleurs continuent avec leur propre vigile.
+		store.Banned[player] = true
+		local root, humanoid = rootOf(player)
+		local bounds = store.Bounds
+		if root and humanoid and bounds and inside(bounds, root.Position) then
+			moveOut(store, player, root, humanoid)
+		end
+	end
 	if returnBox(payload, carrierPosition(player)) then
 		log(`colis {payload.Tier} de {player.Name} ({reason}) : revient sur {payload.SlotId}`)
 	else
@@ -1483,6 +1502,7 @@ local function register(instance: Instance)
 		EndsAt = 0,
 		Viewers = {},
 		RefillPending = false,
+		Banned = {},
 	}
 	if store.Bounds == nil then
 		warn(`[StoreHeistService] {model:GetFullName()} : pas de volume « {BOUNDS_NAME} » (Part), aucune prise possible`)
@@ -1602,6 +1622,7 @@ local function onRebuilt(_windowId: string, model: Model)
 		return
 	end
 	closeStore(store) -- vitrine reconstruite avant la fin du chrono (WindowService.Rebuild)
+	table.clear(store.Banned) -- réouverture : les joueurs attrapés peuvent revenir
 	store.ShutterPending = false
 	raiseShutter(store, false)
 	for _, player in ejectInside(store, true) do
