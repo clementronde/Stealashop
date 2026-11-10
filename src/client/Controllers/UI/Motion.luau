@@ -15,6 +15,8 @@
 --                               annule la fermeture.
 --   Motion.Show(object)         la même chose pour un élément (Visible au lieu d'Enabled), mis
 --   Motion.Hide(object, after?)   à l'échelle lui-même (Show.From, Hide.To) : HeistTimer, GuardMeter.
+--   Motion.Hover(button)        le bouton grossit (Hover.To) quand la souris entre, revient à 1 quand
+--                               elle sort (UIScale Hover.ScaleName, retiré ensuite) : boutons fixes du HUD.
 --   Motion.Roll(label, from, to, format)
 --                               le nombre défile de `from` à `to`, écrit par `format` à chaque image
 --                               (Shared/Format) ; à la fin, exactement format(to). from = nil
@@ -96,6 +98,7 @@ local HIDE: Transition = {
 	info = TweenInfo.new(UiMotion.Hide.Time, UiMotion.Hide.Style, UiMotion.Hide.Direction),
 }
 local ROLL_INFO = TweenInfo.new(UiMotion.Roll.Time, UiMotion.Roll.Style, UiMotion.Roll.Direction)
+local HOVER_INFO = TweenInfo.new(UiMotion.Hover.Time, UiMotion.Hover.Style, UiMotion.Hover.Direction)
 
 local IS_STUDIO = RunService:IsStudio()
 
@@ -407,6 +410,48 @@ end
 
 function Motion.Hide(object: GuiObject, after: (() -> ())?)
 	leave(object, HIDE, after)
+end
+
+local hovered: { [GuiButton]: boolean } = {}
+
+function Motion.Hover(button: GuiButton)
+	if hovered[button] then
+		return -- déjà branché
+	end
+	hovered[button] = true
+	-- Comme les autres animations : le UIScale n'existe que pendant le survol, rien n'est laissé ensuite.
+	local scale: UIScale? = nil
+	button.MouseEnter:Connect(function()
+		local existing = scale
+		local current: UIScale
+		if existing ~= nil and existing.Parent == button then
+			current = existing
+		else
+			current = Instance.new("UIScale")
+			current.Name = UiMotion.Hover.ScaleName
+			current.Parent = button
+			scale = current
+		end
+		TweenService:Create(current, HOVER_INFO, { Scale = UiMotion.Hover.To }):Play()
+	end)
+	button.MouseLeave:Connect(function()
+		local existing = scale
+		if existing == nil then
+			return
+		end
+		local current: UIScale = existing
+		local tween = TweenService:Create(current, HOVER_INFO, { Scale = 1 })
+		tween.Completed:Connect(function(state: Enum.PlaybackState)
+			if state == Enum.PlaybackState.Completed and scale == current then
+				scale = nil
+				current:Destroy()
+			end
+		end)
+		tween:Play()
+	end)
+	button.Destroying:Connect(function()
+		hovered[button] = nil
+	end)
 end
 
 function Motion.GetState(inst: Instance): Phase?

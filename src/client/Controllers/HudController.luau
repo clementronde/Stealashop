@@ -497,6 +497,13 @@ local function bind(gui: ScreenGui)
 		end
 	end
 
+	-- Effet « pop » au survol de chaque bouton fixe du HUD (Shop, Index, Rebirth, Base, Invite, Rewards).
+	for _, inst in gui:GetDescendants() do
+		if inst:IsA("GuiButton") then
+			Motion.Hover(inst)
+		end
+	end
+
 	local nightCountdown = if Features.NightCycle then element(gui, "NightCountdown", "TextLabel") :: TextLabel? else nil
 	local returnButton = if Features.ReturnToBase then element(gui, "ReturnBaseButton", "GuiButton") :: GuiButton? else nil
 	local cooldownLabel: TextLabel? = nil

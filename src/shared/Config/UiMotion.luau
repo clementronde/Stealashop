@@ -47,6 +47,15 @@ local UiMotion = {
 		Style = Enum.EasingStyle.Cubic, -- V0 proposé, absent du doc : vite au début, freine à la fin
 		Direction = Enum.EasingDirection.Out, -- V0 proposé, absent du doc
 	},
+	-- Bouton survolé à la souris (Motion.Hover, boutons fixes du HUD : demande de Cantin, 2026-11-10) :
+	-- il grossit jusqu'à To, puis revient à 1 quand la souris sort.
+	Hover = {
+		To = 1.08, -- V0 proposé, absent du doc
+		Time = 0.12, -- V0 proposé, absent du doc
+		Style = Enum.EasingStyle.Back, -- V0 proposé, absent du doc : petit rebond, l'effet « pop »
+		Direction = Enum.EasingDirection.Out, -- V0 proposé, absent du doc
+		ScaleName = "HoverScale", -- V0 proposé, absent du doc : UIScale à part, retiré quand le bouton est revenu à 1
+	},
 	-- V0 proposé, absent du doc : nom du UIScale ajouté par le code sur un cadre animé (jamais un
 	-- nom du contrat 2.2 ; il disparaît à la fin de l'animation).
 	ScaleName = "MotionScale",

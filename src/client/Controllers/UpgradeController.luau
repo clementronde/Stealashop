@@ -128,6 +128,7 @@ local SEE_THROUGH = 0.5
 local CLICK_RANGE = 250
 local CLICK_PASSES = 16
 local PREVIEW_FOLDER = "_PREVIEW_UpgradeSigns"
+local HAND_CURSOR = "rbxasset://SystemCursors/PointingHand" -- curseur système de Roblox, celui des boutons
 
 local UpgradeController = {}
 
@@ -461,6 +462,33 @@ local function boardAt(screen: Vector3): (BasePart?, Vector3?)
 	return nil, nil
 end
 
+-- Le BuyButton actif d'un panneau du joueur sous ce point de l'écran, ou nil.
+local function buyAt(screen: Vector3): { offer: Offer, entry: Entry }?
+	local board, point = boardAt(screen)
+	local link = if board then boards[board] else nil
+	if board == nil or point == nil or link == nil then
+		return nil
+	end
+	local gui = link.entry.gui
+	local buy = if gui then Find.path(gui, BUY_NAME) else nil
+	if gui == nil or buy == nil or not buy:IsA("GuiObject") or not (buy :: GuiObject).Visible or gui.Adornee ~= board then
+		return nil -- panneau d'un autre joueur (pas dans le PlayerGui), ou niveau max
+	end
+	-- Face avant (Front, LookVector) : à gauche de l'écran le +X de la pièce, en haut le +Y.
+	local localPoint = board.CFrame:PointToObjectSpace(point)
+	if localPoint.Z > -board.Size.Z / 2 + 0.05 then
+		return nil -- touché par le dos ou le côté
+	end
+	local canvas = gui.AbsoluteSize
+	local x = (0.5 - localPoint.X / board.Size.X) * canvas.X
+	local y = (0.5 - localPoint.Y / board.Size.Y) * canvas.Y
+	local corner, size = (buy :: GuiObject).AbsolutePosition, (buy :: GuiObject).AbsoluteSize
+	if x >= corner.X and x <= corner.X + size.X and y >= corner.Y and y <= corner.Y + size.Y then
+		return link
+	end
+	return nil
+end
+
 local function onWorldClick(input: InputObject, processed: boolean)
 	if processed then
 		return -- Roblox l'a déjà donné à une interface (BuyButton.Activated compris)
@@ -469,29 +497,23 @@ local function onWorldClick(input: InputObject, processed: boolean)
 	if kind ~= Enum.UserInputType.MouseButton1 and kind ~= Enum.UserInputType.Touch then
 		return
 	end
-	local board, point = boardAt(input.Position)
-	local link = if board then boards[board] else nil
-	if board == nil or point == nil or link == nil then
+	local link = buyAt(input.Position)
+	if link then
+		onBuy(link.offer, link.entry)
+	end
+end
+
+-- Main au survol du bouton (demande de Cantin, 2026-11-10) : même quand une pièce invisible est
+-- devant et que Roblox ne la montre pas lui-même. On ne remet l'icône que si c'est nous qui l'avons posée.
+local handShown = false
+local function onMouseMove(input: InputObject, processed: boolean)
+	if input.UserInputType ~= Enum.UserInputType.MouseMovement then
 		return
 	end
-	local gui = link.entry.gui
-	local buy = if gui then Find.path(gui, BUY_NAME) else nil
-	if gui == nil or buy == nil or not buy:IsA("GuiObject") or not (buy :: GuiObject).Visible or gui.Adornee ~= board then
-		return -- panneau d'un autre joueur (pas dans le PlayerGui), ou niveau max
-	end
-	-- Face avant (Front, LookVector) : à gauche de l'écran le +X de la pièce, en haut le +Y.
-	local localPoint = board.CFrame:PointToObjectSpace(point)
-	if localPoint.Z > -board.Size.Z / 2 + 0.05 then
-		return -- touché par le dos ou le côté
-	end
-	local u = 0.5 - localPoint.X / board.Size.X
-	local v = 0.5 - localPoint.Y / board.Size.Y
-	local canvas = gui.AbsoluteSize
-	local x, y = u * canvas.X, v * canvas.Y
-	local button = buy :: GuiObject
-	local corner, size = button.AbsolutePosition, button.AbsoluteSize
-	if x >= corner.X and x <= corner.X + size.X and y >= corner.Y and y <= corner.Y + size.Y then
-		onBuy(link.offer, link.entry)
+	local over = not processed and buyAt(input.Position) ~= nil -- sur une interface : Roblox gère le curseur
+	if over ~= handShown then
+		handShown = over
+		UserInputService.MouseIcon = if over then HAND_CURSOR else ""
 	end
 end
 
@@ -672,6 +694,7 @@ function UpgradeController.Start()
 	end
 	Workspace.ChildAdded:Connect(dropPreview)
 	UserInputService.InputBegan:Connect(onWorldClick)
+	UserInputService.InputChanged:Connect(onMouseMove)
 
 	Players.PlayerAdded:Connect(watchPlayer)
 	Players.PlayerRemoving:Connect(function()
