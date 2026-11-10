@@ -4,7 +4,8 @@
 --
 -- On garde tous les outils achetés et on en équipe un (5.2). L'outil équipé est donné au
 -- joueur sous forme de Tool Roblox, rendu à chaque apparition dès que le Backpack est prêt :
--- c'est le premier outil du Backpack, donc le slot 1 de la hotbar (Balance.Hotbar.ToolSlot).
+-- c'est le premier outil du Backpack, touche 1 (Balance.Hotbar.ToolSlot). La barre Roblox est cachée
+-- depuis L-079 : on l'équipe depuis l'écran UI_Inventory ou avec les touches 1 et 2 (InventoryController).
 -- Modèle : le `TOOL_*` de Clément (Config.Tools, champ Asset), cherché par son nom dans
 -- ReplicatedStorage/Assets (Assets/Tools prévu) ; tant qu'il n'est pas livré, une poignée
 -- grise V0. Les poings n'ont pas de modèle : Tool sans poignée. Le Tool porte l'attribut

@@ -162,8 +162,8 @@
 -- Studio) si le joueur n'a pas de parcelle, n'est pas dans le volume Bounds de sa parcelle, ne
 -- possède pas l'objet, l'a rangé au coffre-fort, si un voleur l'emporte (tenu), ou si le présentoir
 -- est verrouillé, absent ou déjà occupé. Un objet déjà exposé sur un autre présentoir y est déplacé.
--- Depuis L-089, c'est ainsi qu'un objet de l'inventaire se pose : le joueur tient son Tool
--- (InventoryService) et active un présentoir libre (InventoryController).
+-- Depuis L-091 point 6, l'écran d'inventaire (UI_Inventory) pose un objet par PlaceItemAuto
+-- (premier présentoir libre) et le reprend par UnplaceItem ; PlaceItem reste pour un présentoir choisi.
 -- Remote EquipBest() : DisplayService.EquipBest (plus haut), puis un Notify « Info » (MESSAGES).
 -- Après chaque changement de Display fait ici, la barre d'inventaire est remise à jour tout de suite
 -- (InventoryService.Refresh, s'il est là).
