@@ -94,7 +94,9 @@ local Balance = {
 		MaxActivePerServer = 6, -- 9.7
 		PathRecomputeInterval = 0.3, -- PathfindingService sans ligne de vue
 		CatchDistance = 4, -- vérifiée côté serveur
-		CatchStunDuration = 1.5,
+		-- 2,4 s (Cantin, 2026-11-10 ; le doc disait 1,5) : le temps des animations de Clément, Knockdown
+		-- (1,2 s) puis GetUp (1,2 s), pour que le joueur ne reparte pas en glissant pendant qu'il se relève.
+		CatchStunDuration = 2.4,
 		GiveUpChaseDuration = 20, -- abandon après 20 s de poursuite…
 		GiveUpLead = 120, -- … ou 120 studs d'avance, ou passage de l'arche safe
 		HeartbeatDistance = 10, -- battements de cœur sous cette distance

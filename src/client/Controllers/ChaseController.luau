@@ -47,6 +47,7 @@ type MotionApi = {
 
 -- Mêmes noms que dans GuardService (serveur) : les changer dans les deux fichiers.
 local KNOCKBACK_NAME = "GuardKnockback"
+local ARREST_NAME = "GuardArrest" -- même nom dans GuardService (arrestation de nuit, L-076)
 local ACTIVE_FOLDER = "ActiveGuards"
 local TARGET_ATTRIBUTE = "TargetUserId"
 -- Écran de poursuite de Clément (contrat 2.2, L-071 point 6).
@@ -271,7 +272,8 @@ end
 
 -- Coup du vigile ----------------------------------------------------------------------------
 
--- Knockback, puis Stunned jusqu'à la fin de l'étourdissement.
+-- Chute (L-076, Clément) : Knockdown, puis GetUp ; elles remplissent l'étourdissement (2,4 s). Sans
+-- Knockdown livrée : Knockback, puis Stunned jusqu'à la fin de l'étourdissement, comme avant.
 local function onKnockback()
 	local anim = animation
 	if anim == nil then
@@ -279,6 +281,15 @@ local function onKnockback()
 	end
 	stunToken += 1
 	local token = stunToken
+	local fall = anim.PlayPlayer("Knockdown")
+	if fall then
+		fall.Stopped:Once(function()
+			if token == stunToken then
+				anim.PlayPlayer("GetUp")
+			end
+		end)
+		return
+	end
 	local endsAt = os.clock() + stunDuration
 	local function startStunned()
 		if token == stunToken and os.clock() < endsAt then
@@ -311,6 +322,13 @@ local function watchCharacter(character: Model)
 	rootConnection = root.ChildAdded:Connect(function(child: Instance)
 		if child.Name == KNOCKBACK_NAME then
 			onKnockback()
+		elseif child.Name == ARREST_NAME then
+			-- Arrestation de nuit (L-076) : le vigile joue Arrest, le joueur Arrested, puis il est renvoyé chez lui.
+			stunToken += 1
+			local anim = animation
+			if anim then
+				anim.PlayPlayer("Arrested")
+			end
 		end
 	end)
 end

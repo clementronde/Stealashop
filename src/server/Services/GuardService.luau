@@ -283,6 +283,12 @@ local GUARD_COMMON_NAME = "Guard" -- look des zones sans modèle propre
 local ACTIVE_FOLDER = "ActiveGuards"
 local TARGET_ATTRIBUTE = "TargetUserId"
 local KNOCKBACK_NAME = "GuardKnockback"
+-- Arrestation de nuit (L-076) : objet posé dans le HumanoidRootPart du joueur pour que son client joue
+-- Arrested (même nom dans ChaseController). V0 proposés : durée de vie du signal, durée de la scène si
+-- la longueur de l'animation n'est pas encore connue (Arrest de Clément : 2,4 s).
+local ARREST_NAME = "GuardArrest"
+local ARREST_SIGNAL_LIFE = 3
+local ARREST_FALLBACK_LENGTH = 2.4
 local STUN_KEY = "GuardStun" -- modificateur de vitesse de StatsService
 local FALLBACK_NAME = "Guard_Fallback"
 
@@ -1418,6 +1424,31 @@ local function nightCatch(guard: Guard, player: Player)
 		end
 	end
 
+	-- Arrestation (L-076, Clément) : si le vigile de nuit a Arrest, il la joue au lieu du coup ; le
+	-- joueur, prévenu par un objet ARREST_NAME dans son HumanoidRootPart, joue Arrested (ChaseController),
+	-- puis il est renvoyé chez lui à la fin de la scène. Sans Arrest : le coup de Catch, comme avant.
+	local arrest = guard.anims:Play("Arrest")
+	if arrest then
+		if track then
+			track:Stop(0)
+		end
+		local body = bodyOf(player)
+		if body then
+			local look = flat(body.Position - guard.root.Position)
+			if look.Magnitude > 1e-3 then
+				guard.root.CFrame = CFrame.lookAt(guard.root.Position, guard.root.Position + look)
+			end
+			local signal = Instance.new("BoolValue")
+			signal.Name = ARREST_NAME
+			signal.Parent = body
+			Debris:AddItem(signal, ARREST_SIGNAL_LIFE)
+		end
+		local length = if arrest.Length > 0 then arrest.Length else ARREST_FALLBACK_LENGTH
+		guard.stateEndsAt = now + length
+		task.delay(math.max(length - Night.SendHomeDelay, 0), sendHome, player)
+		return
+	end
+
 	-- Le coup : au marqueur Impact de Catch (délai de secours : impactMaxWait), ou tout de suite si
 	-- Catch n'est pas livrée.
 	if track then
@@ -2262,7 +2293,7 @@ local function spawnNightGuard(zone: number, number: number, points: { Vector3 }
 		root = root,
 		rootHeight = rootHeight,
 		scale = scale,
-		anims = AnimPlayer.new(animator :: Animator, AnimPlayer.modelFolder(model), Animations.Guard, ANIM_LABEL),
+		anims = AnimPlayer.new(animator :: Animator, AnimPlayer.modelFolder(model), Animations.NightGuard, ANIM_LABEL),
 		kind = "Night",
 		label = `vigile de nuit {model.Name}`,
 		store = nil,
