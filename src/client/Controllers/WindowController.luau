@@ -40,6 +40,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
+local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Contract = Shared:WaitForChild("Contract")
@@ -220,9 +221,21 @@ local function makeBillboard(entry: Entry)
 end
 
 local function refresh(entry: Entry, position: Vector3?)
+	-- Vitre en Model (parcelles de Clément, PlotDoor.Window) : avec le streaming, le Model arrive avant ses
+	-- pièces, donc pas d'Adornee au premier essai ; on recrée ou raccroche la barre dès qu'une pièce est là.
+	if entry.Billboard == nil then
+		makeBillboard(entry)
+	end
 	local gui = entry.Billboard
 	if gui == nil then
 		return
+	end
+	local adornee: Instance? = gui.Adornee
+	if adornee == nil or not adornee:IsDescendantOf(Workspace) then
+		local part = adorneeOf(entry.Window)
+		if part then
+			gui.Adornee = part
+		end
 	end
 	local maxHp = maxHpOf(entry)
 	if entry.Window:GetAttribute(BROKEN_ATTRIBUTE) == true or maxHp <= 0 then
