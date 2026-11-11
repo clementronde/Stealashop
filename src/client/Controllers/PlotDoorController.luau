@@ -1,7 +1,8 @@
 --!strict
 -- PlotDoorController (client) : la boutique du joueur (`PLOT_Shop` de Clément, liaison L-050).
 --
--- Le propriétaire traverse ses propres murs invisibles (`PlotBarrier`) et sa porte
+-- Le propriétaire traverse ses propres murs invisibles (`PlotBarrier`, et `Stage_j/Barriers` dès le
+-- niveau 2 de la boutique, L-096) et sa porte
 -- (`PlotDoor`/`Window`), côté client seulement : chez les autres joueurs, ces pièces restent
 -- solides et il faut casser la porte (WindowService). Les vantaux `Leaf_L` et `Leaf_R` coulissent
 -- quand le propriétaire approche (visuel local, comme Clément le prévoit). Rien n'est envoyé au
@@ -23,6 +24,8 @@ local RunService = game:GetService("RunService")
 local PLOT_TAG = "PlayerPlot"
 local OWNER_ATTRIBUTE = "OwnerUserId"
 local BARRIER_NAME = "PlotBarrier"
+local STAGE_PATTERN = "^Stage_%d+$" -- niveaux de la boutique (L-096)
+local STAGE_BARRIERS = "Barriers"
 local DOOR_NAME = "PlotDoor"
 local WINDOW_NAME = "Window"
 local LEAVES: { [string]: number } = { Leaf_L = -1, Leaf_R = 1 } -- sens du coulissement le long de la façade
@@ -99,6 +102,13 @@ local function scan(state: Mine)
 	local barrier = plot:FindFirstChild(BARRIER_NAME, true)
 	if barrier then
 		passContainer(state, barrier)
+	end
+	-- Grands murs invisibles des niveaux 2 et plus : `Stage_j/Barriers`, copiés par ShopStageService (L-096).
+	for _, child in plot:GetChildren() do
+		local walls = if string.match(child.Name, STAGE_PATTERN) then child:FindFirstChild(STAGE_BARRIERS) else nil
+		if walls then
+			passContainer(state, walls)
+		end
 	end
 	local door = plot:FindFirstChild(DOOR_NAME, true)
 	local window = if door then door:FindFirstChild(WINDOW_NAME, true) else nil

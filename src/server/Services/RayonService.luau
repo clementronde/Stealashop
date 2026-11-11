@@ -15,6 +15,10 @@
 -- Le premier présentoir d'un rayon est le plus petit numéro de `DisplaySlot_01` à `_20` trouvé dans
 -- ses descendants ; un rayon sans présentoir (décor seul) prend 4 × (k − 1) + 1 d'après son nom.
 --
+-- Avant les rayons, chaque mise à jour met le bâtiment au niveau du nombre de rayons montrés
+-- (ShopStageService.Apply, L-096 point 1) : la boutique grandit avec eux et redescend au niveau 1
+-- quand la parcelle est libérée.
+--
 -- Quand : à l'attribution d'une parcelle et au départ du joueur (PlotService), à chaque achat de
 -- présentoir (attribut DisplaySlotsLevel du Player, écrit par ShopService), et une fois par seconde
 -- par sécurité (un niveau changé sans passer par la boutique, renaissance en Partie 2).
@@ -47,6 +51,7 @@ local RunService = game:GetService("RunService")
 local Balance = require(ReplicatedStorage.Shared.Config.Balance)
 local DataService = require(script.Parent.DataService)
 local PlotService = require(script.Parent.PlotService)
+local ShopStageService = require(script.Parent.ShopStageService)
 
 -- Noms convenus (L-082 point 2, contrat 10.4) et attribut de ShopService.
 local RAYON_PATTERN = "^Rayon_(%d+)$"
@@ -242,6 +247,22 @@ end
 
 local function apply(plot: Model)
 	local count = unlockedFor(plot)
+	-- Bâtiment d'abord (L-096 point 1) : niveau de la boutique = nombre de rayons montrés ; Stage_2 apporte
+	-- les contours RayonSpot_0n que la boucle ci-dessous cache ou montre.
+	local level = 0
+	for _, rayon in rayonsFor(plot) do
+		if rayon.first <= count then
+			level += 1
+		end
+	end
+	ShopStageService.Apply(plot, level)
+	-- Contours retirés avec leur Stage_j (niveau redescendu) : plus rien à rendre.
+	for inst, hidden in hiddenOf do
+		if inst.Parent == nil then
+			hidden.connection:Disconnect()
+			hiddenOf[inst] = nil
+		end
+	end
 	local shown = 0
 	for _, rayon in rayonsFor(plot) do
 		local spot = spotOf(plot, rayon)

@@ -17,7 +17,10 @@
 --     défaut un point créé ici au-dessus de la machine ; DisplayUpgradePoint de la parcelle pour les
 --     présentoirs (le plus proche du prochain présentoir verrouillé s'il y en a plusieurs), à défaut
 --     le prochain DisplaySlot_xx verrouillé (n° départ + niveau + 1, Balance.Display, comme côté
---     serveur). StageUpgradePoint : rien n'y est posé, aucune amélioration « Stage » n'existe ;
+--     serveur). Panneau du niveau suivant (L-096 point 1) : la boutique grandit avec ses rayons, donc
+--     avec les présentoirs ; le panneau des présentoirs va sur `StageUpgradePoint_n`, n le plus grand sans
+--     dépasser le niveau de la boutique (attribut StageLevel de la parcelle, ShopStageService), sinon sur
+--     `StageUpgradePoint` ; sans aucun de ces points, sur DisplayUpgradePoint comme avant ;
 --   - pose : le bas de la boîte du panneau au point, la face de Board (SurfaceGui Face = Front, donc
 --     son LookVector) tournée comme le LookVector de l'Attachment, mis à l'horizontale. Pour tourner
 --     un panneau, Clément tourne son point. Aucune taille ni couleur changée ; pièces ancrées ;
@@ -94,6 +97,10 @@ local LEVEL_FORMAT = "%sLevel" -- ShopService : TreadmillLevel, BenchLevel…
 local SLOT_FORMAT = "DisplaySlot_%02d"
 local POINT_NAME = "UpgradePoint" -- dans le tapis et le banc (L-082)
 local DISPLAY_POINT_NAME = "DisplayUpgradePoint" -- dans la parcelle (L-082)
+local STAGE_POINT_NAME = "StageUpgradePoint" -- niveau 1, dans PlotFloor (L-096)
+local STAGE_POINT_FORMAT = "StageUpgradePoint_%d" -- niveau n et plus (StageUpgradePoint_2 : niveaux 2 à 5)
+local STAGE_ATTRIBUTE = "StageLevel" -- ShopStageService : niveau de la boutique (nombre de rayons)
+local STAGE_POINT_MAX = 5 -- V0 proposé, absent du doc : 5 niveaux de boutique (Stage_1 à Stage_5)
 local MADE_POINT_NAME = "UpgradePointV0" -- point créé ici à défaut, côté client seulement
 local PROMPT_NAME = "UpgradePrompt"
 local SIGN_NAME = "UpgradeSign" -- modèle de Clément (ReplicatedStorage/Assets/UI)
@@ -252,11 +259,24 @@ local function promptTarget(offer: Offer, plotModel: Instance, level: number): A
 	return nextSlot(plotModel, level)
 end
 
--- Point du panneau : celui de l'invite pour une machine ; pour les présentoirs, le DisplayUpgradePoint
+-- Point du panneau : celui de l'invite pour une machine ; pour les présentoirs, le point du niveau
+-- suivant de la boutique (StageUpgradePoint_n, puis StageUpgradePoint), sinon le DisplayUpgradePoint
 -- (le plus proche du prochain présentoir verrouillé s'il y en a plusieurs), sinon ce présentoir.
 local function signTarget(offer: Offer, plotModel: Instance, level: number): Attachment?
 	if offer.kind == "Machine" then
 		return promptTarget(offer, plotModel, level)
+	end
+	local stage = plotModel:GetAttribute(STAGE_ATTRIBUTE)
+	local top = if type(stage) == "number" and stage == stage then math.clamp(math.floor(stage), 1, STAGE_POINT_MAX) else 1
+	for n = top, 2, -1 do
+		local point = attachmentIn(plotModel, string.format(STAGE_POINT_FORMAT, n))
+		if point then
+			return point
+		end
+	end
+	local first = attachmentIn(plotModel, STAGE_POINT_NAME)
+	if first then
+		return first
 	end
 	local slot = nextSlot(plotModel, level)
 	local best: Attachment? = nil
@@ -648,6 +668,7 @@ local function watchPlot(inst: Instance)
 	end
 	watchedPlots[inst] = {
 		inst:GetAttributeChangedSignal(OWNER_ATTRIBUTE):Connect(onChange),
+		inst:GetAttributeChangedSignal(STAGE_ATTRIBUTE):Connect(onChange),
 		inst.DescendantAdded:Connect(onChange),
 		inst.DescendantRemoving:Connect(onChange),
 	}
