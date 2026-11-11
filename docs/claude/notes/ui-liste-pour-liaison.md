@@ -81,4 +81,24 @@ Noms relevés dans Studio (Edit) le 2026-11-11. « T.n » = ligne n du tableau `
     - contrat complet (58 éléments sur 58) ;
     - animations : L-094 (T.26 à T.34).
 21. `Assets/UI/UpgradeSign` : plus petit, mêmes noms. Rien à changer dans le code.
-22. `StarterGui/UI_Hotbar` : **ne pas brancher**, c'est un essai. La barre du bas sera `UI_HUD.Hotbar` : ses noms arriveront après la validation de Clément dans Figma (`ui-hotbar-et-ramassage.md`).
+## Barre du bas : `UI_Hotbar` (choisie par Clément le 2026-11-11)
+
+Clément garde la barre de test, pas la maquette Figma `UI_HUD.Hotbar`. La barre Roblox reste coupée, et `UI_Inventory` reste l'écran complet.
+
+22. `StarterGui/UI_Hotbar.Bar` : en bas au centre, `UIListLayout` horizontal centré, cases d'au moins 50 px (`UISizeConstraint`).
+    - Attributs `SlotCount` = 6 (PC) et `TouchSlotCount` = 4 (téléphone) : le nombre de cases affichées.
+    - À 844 × 390, 4 cases tiennent entre l'argent et le compteur de nuit (x 310 à 534).
+    - La barre se cache pendant la poursuite, comme dans le prototype.
+23. `Bar.Template` (TextButton caché) : cloné, une copie par case. Ordre : outil de casse, batte, puis les colis et objets tenus ou gagnés, du plus récent au plus ancien.
+    - `Icon` : `ICON_TOOL_<Id>`, `ICON_BOX_<Tier>` ou `ICON_<ItemId>` ;
+    - `Clip.BackgroundColor3` = couleur de la rareté assombrie de 45 % ; `Clip.Glow.ImageColor3` = couleur de la rareté ; les outils gardent le fond du modèle ;
+    - `KeyLabel` : « 1 » à « 6 », caché sur téléphone ;
+    - `ItemName` : le nom ;
+    - `Income` : « $X/s » au-dessus de la case, pour les objets seulement, caché sinon ;
+    - `Equipped` : contour vert, visible sur la case tenue en main ;
+    - `HoverOutline` : contour blanc au survol.
+24. Jeu : touches 1 à 6 sur PC, clic ou appui partout. Choisir une case l'équipe ; la choisir encore la range.
+    - Survol : T.34 `HoverCard` (`Icon` × 1,12, −6°, `HoverOutline`) ;
+    - appui et relâché : T.31 `Press` et T.32 `Release` ;
+    - équipement : T.33 `Success` et son `UI_Equip`.
+25. Petit téléphone (667 × 375) : il n'y a que 152 px libres entre l'argent et le compteur de nuit. Même 3 cases y touchent l'argent (de 16 px environ) : à revoir avec Clément.
