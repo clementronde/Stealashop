@@ -167,7 +167,17 @@ local function collectPulses()
 					end
 				end
 				if images == 0 then
-					addPulse(target, "BackgroundTransparency")
+					-- Un cadre transparent (ScreenEdges, plein écran) n'est qu'un conteneur : ce sont ses
+					-- bandes (Left, Right, Bottom) qui battent, sinon tout l'écran se voile de gris.
+					if (target :: GuiObject).BackgroundTransparency < 1 then
+						addPulse(target, "BackgroundTransparency")
+					else
+						for _, child in target:GetChildren() do
+							if child:IsA("GuiObject") and child.BackgroundTransparency < 1 then
+								addPulse(child, "BackgroundTransparency")
+							end
+						end
+					end
 				end
 			end
 		end
