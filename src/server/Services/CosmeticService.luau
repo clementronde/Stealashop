@@ -320,6 +320,26 @@ end
 
 type Placed = { copy: Attachment, target: BasePart }
 
+-- Effets au sol (Aura_Sol…) : Clément les place sur le mannequin R15 standard (bassin à 3 studs du sol) ;
+-- un avatar plus petit les enterrait (retour de Cantin du 2026-11-11 : le sceau de l'aura Royal sous le
+-- sol). Un Attachment du HumanoidRootPart à moins de GROUND_HEIGHT studs du sol du modèle garde sa
+-- hauteur au-dessus des pieds du personnage (sol R15 : HipHeight + moitié du HumanoidRootPart).
+local GROUND_HEIGHT = 0.5 -- V0 proposé, absent du doc
+local R15_HIP_HEIGHT = 2 -- HipHeight du mannequin R15 standard, pour un modèle sans pieds
+
+-- Distance du centre du HumanoidRootPart `source` du modèle à son sol (bas des pieds, sinon R15 standard).
+local function rootToFloor(model: Model, source: BasePart): number
+	local floor: number? = nil
+	for _, name in { "LeftFoot", "RightFoot" } do
+		local foot = model:FindFirstChild(name)
+		if foot and foot:IsA("BasePart") then
+			local bottom = foot.Position.Y - foot.Size.Y / 2
+			floor = if floor then math.min(floor, bottom) else bottom
+		end
+	end
+	return if floor then source.Position.Y - floor else source.Size.Y / 2 + R15_HIP_HEIGHT
+end
+
 -- Copie sur `character` les Attachments de chaque pièce du modèle `model` (pièce de même nom).
 -- false si aucune pièce du modèle n'existe dans le personnage (rien n'est posé).
 local function attachFx(def: Cosmetic, character: Model, model: Model): boolean
@@ -335,9 +355,24 @@ local function attachFx(def: Cosmetic, character: Model, model: Model): boolean
 			reportOnce(`part:{model.Name}:{source.Name}`, `[CosmeticService] {model.Name} : pas de pièce {source.Name} dans le personnage, ses effets sont ignorés`)
 			continue
 		end
+		-- Sol du modèle et sol du personnage, vus du HumanoidRootPart (effets au sol, plus haut).
+		local modelDrop: number? = nil
+		local characterDrop: number? = nil
+		local humanoid = character:FindFirstChildOfClass("Humanoid")
+		local hip: any = if humanoid then humanoid.HipHeight else nil
+		if source.Name == ROOT_PART and type(hip) == "number" then
+			modelDrop = rootToFloor(model, source)
+			characterDrop = hip + (target :: BasePart).Size.Y / 2
+		end
 		for _, child in source:GetChildren() do
 			if child:IsA("Attachment") then
 				local copy = child:Clone() :: Attachment
+				if modelDrop and characterDrop then
+					local height = child.Position.Y + modelDrop
+					if height <= GROUND_HEIGHT then
+						copy.Position = Vector3.new(child.Position.X, height - characterDrop, child.Position.Z)
+					end
+				end
 				copy:SetAttribute(FX_ATTRIBUTE, def.Kind)
 				copy:SetAttribute(COSMETIC_ID_ATTRIBUTE, def.Id)
 				copies[child] = copy

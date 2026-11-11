@@ -99,8 +99,15 @@ local function variantFor(level: number): string
 end
 
 -- Niveau du tapis du propriétaire de la parcelle : 0 sans propriétaire ou sans profil.
+-- Crochet de test, STUDIO SEULEMENT (comme TruckSpawnNow) : workspace:SetAttribute("TreadmillLevelTest", 8)
+-- montre sur chaque parcelle occupée le tapis de ce niveau (8 : Police), sans toucher au profil ;
+-- workspace:SetAttribute("TreadmillLevelTest", nil) rend le tapis du profil (au plus 1 s après).
 local function levelFor(plot: Model): number
 	local owner = PlotService.GetOwner(plot)
+	local test = if IS_STUDIO and owner then workspace:GetAttribute("TreadmillLevelTest") else nil
+	if type(test) == "number" then
+		return math.max(0, math.floor(test))
+	end
 	local data = if owner then DataService.Get(owner) else nil
 	local level = if data then data.Upgrades.Treadmill else 0
 	if type(level) ~= "number" or level ~= level or level < 0 then
