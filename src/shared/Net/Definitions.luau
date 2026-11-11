@@ -385,6 +385,23 @@ local List: { RemoteDef } = {
 			{ Name = "kind", Kind = "string", Max = 32, Optional = true },
 		},
 	},
+	{
+		-- Ajout de la vague 23 (L-095 point 2), absent du tableau 9.4 : le joueur enregistre ses réglages
+		-- (écran UI_Settings, SettingsController), tous à la fois, une fois qu'il a fini de les changer.
+		-- music et sfx = volumes de 0 à 1, vfx = effets visuels complets, click = Id d'un son de clic
+		-- (SettingsService vérifie qu'il est dans Config/Settings.Clicks). Rien de sensible : la sauvegarde
+		-- ne touche que le champ Settings du profil.
+		Name = "SaveSettings",
+		Direction = "ClientToServer",
+		Reliable = true,
+		Args = {
+			{ Name = "music", Kind = "number", Min = 0, Max = 1 },
+			{ Name = "sfx", Kind = "number", Min = 0, Max = 1 },
+			{ Name = "vfx", Kind = "boolean" },
+			{ Name = "click", Kind = "string", Max = 16 }, -- Config/Settings.MaxClickLength
+		},
+		RatePerSecond = 4, -- V0 proposé, absent du doc (Config/Settings.SaveRate) ; le client attend 0,5 s entre deux envois
+	},
 }
 
 return {

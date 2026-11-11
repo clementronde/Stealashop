@@ -135,6 +135,27 @@ local Index = {
 	Total = #Items.List,
 	ByZone = byZone,
 	Secrets = secrets,
+	-- Écran UI_Index_v3 (L-095 point 1 ; IndexController, client seulement). Valeurs du prototype de
+	-- Clément tools/clement/index_v3.luau, validé le 2026-11-10, et du tableau docs/claude/notes/
+	-- ui-motion-skilltree.md (T.29 Swap, T.45 DetailPop, T.46 RewardsSwap), sauf les lignes « V0 ».
+	View = {
+		ClipDarken = 0.55, -- prototype : fond Clip d'un objet pas trouvé = couleur de la rareté vers le noir à 55 %
+		SilhouetteDarken = 0.82, -- prototype : silhouette (Icon.ImageColor3) = couleur de la rareté vers le noir à 82 %
+		RarityLighten = 0.3, -- prototype : DetailRarity.TextColor3 = couleur de la rareté vers le blanc à 30 %
+		ViewMargin = 30, -- prototype : une section est « visible » quand son haut passe 30 px sous le haut de la liste
+		-- T.45 : DetailIcon 0,82 → 1 en 0,16 à chaque clic sur une carte, Back Out.
+		DetailPop = { From = 0.82, Time = 0.16, Style = Enum.EasingStyle.Back, Direction = Enum.EasingDirection.Out },
+		-- T.46 : Rewards 0,92 → 1 en 0,18 quand la zone visible change, Back Out.
+		RewardsSwap = { From = 0.92, Time = 0.18, Style = Enum.EasingStyle.Back, Direction = Enum.EasingDirection.Out },
+		-- T.29 Swap, entrée (comme OpenStagger) : chaque carte 0 → 1 en 0,14, départ à 0,08, 0,035 entre
+		-- deux, 14 au plus, Back Out. La sortie (cartes à 0 avant le changement) n'est pas faite (V0).
+		CardsIn = { Time = 0.14, Start = 0.08, Gap = 0.035, Max = 14, Style = Enum.EasingStyle.Back, Direction = Enum.EasingDirection.Out },
+		-- Prototype : les onglets de mutation entrent à 0,05 s d'écart, 0 → 1 en 0,14, Back Out.
+		TabsIn = { Time = 0.14, Gap = 0.05, Style = Enum.EasingStyle.Back, Direction = Enum.EasingDirection.Out },
+		-- Prototype : « Claim » sur une zone pas complète, son UI_Deny et le bouton tremble (décalages en
+		-- part de la largeur de son parent, un toutes les 0,04 s, puis retour à sa place).
+		Deny = { Sound = "UI_Deny", Offsets = { -0.03, 0.03, -0.02, 0.02 }, Step = 0.04 },
+	},
 }
 
 function Index.CountZone(discovered: Discovered, zone: number): (number, number)

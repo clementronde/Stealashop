@@ -153,6 +153,15 @@ export type Rewards = {
 	Playtime: PlaytimeRewards,
 }
 
+-- Réglages du joueur (L-095 point 2, écran UI_Settings ; Config/Settings). Écrit par SettingsService
+-- seulement, après contrôle de chaque valeur.
+export type Settings = {
+	Music: number, -- volume de la musique, de 0 à 1
+	Sfx: number, -- volume des effets sonores, de 0 à 1
+	Vfx: boolean, -- effets visuels complets
+	Click: string, -- Id du son de clic (Config/Settings.Clicks)
+}
+
 -- Profil complet, clé ProfileStore « Player_<UserId> ».
 export type Data = {
 	Version: number,
@@ -182,6 +191,9 @@ export type Data = {
 	-- la prime de zone complète de l'Index (IndexService, Config/Index ; L-083 point 7). Champ facultatif,
 	-- sans changement de version (comme Item.Mutation) : absent = aucune prime versée ; créé par
 	-- IndexService au premier versement. Une zone complète sans entrée est payée au chargement suivant.
+	Settings: Settings?, -- réglages du joueur (L-095 point 2 ; SettingsService, Config/Settings). Champ
+	-- facultatif, sans changement de version : absent = réglages par défaut ; un champ invalide reprend
+	-- sa valeur par défaut au chargement (Settings.Sanitize).
 	-- Partie 2 : Defenses, Rebirths, ajoutés par migration (Version = 9 et suivantes : la v2 est prise
 	-- par le catalogue d'objets v2, la v3 par la boutique Robux, la v4 par l'index, la v5 par les colis
 	-- sur les présentoirs, la v6 par les gains hors ligne, la v7 par les colis dans l'inventaire, la v8

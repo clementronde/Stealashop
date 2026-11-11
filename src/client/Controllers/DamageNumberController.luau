@@ -14,7 +14,8 @@
 --
 -- Le chiffre : Prefix (« - ») puis les dégâts au format du HUD (Shared/Format.short : 4.5, 12, 1.2K).
 -- Ses propres coups en grand ; ceux des autres à OtherScale, et seulement si la caméra est à moins
--- de OtherMaxDistance studs du point. Au plus MaxAlive chiffres à la fois (le plus ancien part).
+-- de OtherMaxDistance studs du point. Au plus MaxAlive chiffres à la fois (le plus ancien part). Effets
+-- visuels coupés dans les réglages du joueur (VfxEnabled = false, L-095) : plus ceux des autres.
 --
 -- Modèle de Clément lu par son nom (contrat 2.2) : le BillboardGui Damage.Template (« BB_Damage »,
 -- nom proposé) de ReplicatedStorage/Assets/UI ou d'un de ses sous-dossiers, avec un TextLabel
@@ -36,6 +37,7 @@ local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local HitFeedback = require(Shared:WaitForChild("Config"):WaitForChild("HitFeedback"))
+local Settings = require(Shared:WaitForChild("Config"):WaitForChild("Settings"))
 local UI = require(Shared:WaitForChild("Contract"):WaitForChild("UI"))
 local Format = require(Shared:WaitForChild("Format"))
 
@@ -167,6 +169,9 @@ local function show(point: Vector3, damage: number, mine: boolean)
 	local camera = Workspace.CurrentCamera
 	if not mine and camera and (camera.CFrame.Position - point).Magnitude > Damage.OtherMaxDistance then
 		return
+	end
+	if not mine and Settings.VfxReduced(player) then
+		return -- effets visuels coupés (réglages du joueur, L-095) : seulement ses propres chiffres
 	end
 	local gui = template():Clone()
 	local found = gui:FindFirstChild(Damage.Label, true)

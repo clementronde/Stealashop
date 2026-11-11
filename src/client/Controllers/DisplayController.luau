@@ -103,6 +103,7 @@ local DisplayController = {}
 
 local localPlayer = Players.LocalPlayer
 local net: any = nil
+local settings: any = nil -- Config/Settings (effets visuels coupés : gerbe réduite), lu au démarrage
 local plotTag = "PlayerPlot" -- relu dans Contract/Models au démarrage
 local rainbowColors: { Color3 } = {}
 local ownPlot: Instance? = nil
@@ -226,6 +227,9 @@ local function burst(pad: Instance): Vector3
 			if child:IsA("ParticleEmitter") then
 				local count = child:GetAttribute(EMIT_COUNT_ATTRIBUTE)
 				local n = if type(count) == "number" and count == count and count > 0 then math.floor(count) else DEFAULT_EMIT_COUNT
+				if settings and settings.VfxReduced(localPlayer) then
+					n = math.max(1, math.ceil(n * settings.VfxOff.BurstFactor)) -- réglages du joueur (L-095)
+				end
 				child:Emit(n)
 			end
 		end
@@ -428,6 +432,10 @@ function DisplayController.Start()
 	local rarities = require(shared:WaitForChild("Config"):WaitForChild("Rarities") :: ModuleScript) :: any
 	local secret = rarities.ById.Secret
 	rainbowColors = if secret and secret.RainbowColors then secret.RainbowColors else {}
+	local settingsModule = shared:WaitForChild("Config"):FindFirstChild("Settings")
+	if settingsModule and settingsModule:IsA("ModuleScript") then
+		settings = require(settingsModule) :: any
+	end
 
 	lastCollected = numberAttribute(localPlayer, COLLECTED_ATTRIBUTE)
 	localPlayer:GetAttributeChangedSignal(COLLECTED_ATTRIBUTE):Connect(onCollectedChanged)

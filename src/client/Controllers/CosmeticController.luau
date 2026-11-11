@@ -9,7 +9,8 @@
 -- caméra : au-delà, chaque ParticleEmitter de l'aura passe à FullRate × facteur ; en deçà, il
 -- revient à FullRate (attribut posé par le serveur sur chaque émetteur). Le changement est local :
 -- ni le serveur ni les autres joueurs ne le voient. Les auras suivent le streaming (tag ajouté,
--- tag retiré). Le trail n'est pas touché.
+-- tag retiré). Le trail n'est pas touché. Effets visuels coupés dans les réglages du joueur
+-- (VfxEnabled = false, L-095) : toutes les auras, la sienne comprise, à FullRate × Settings.VfxOff.AuraFactor.
 --
 -- API (client) : aucune.
 
@@ -20,6 +21,7 @@ local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
 local Cosmetics = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"):WaitForChild("Cosmetics"))
+local Settings = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"):WaitForChild("Settings"))
 
 -- Posés par CosmeticService (mêmes noms là-bas).
 local AURA_TAG = "CosmeticAura"
@@ -72,6 +74,7 @@ local function update()
 		return
 	end
 	local own = localPlayer.Character
+	local reduced = Settings.VfxReduced(localPlayer) -- effets visuels coupés : toutes les auras allégées
 	for aura in auras do
 		if aura.Parent == nil then
 			auras[aura] = nil
@@ -79,7 +82,7 @@ local function update()
 		end
 		local mine = own ~= nil and aura:IsDescendantOf(own)
 		local far = not mine and (aura.Position - from).Magnitude > CUT_DISTANCE
-		setRates(aura, if far then CUT_FACTOR else 1)
+		setRates(aura, if reduced then Settings.VfxOff.AuraFactor elseif far then CUT_FACTOR else 1)
 	end
 end
 

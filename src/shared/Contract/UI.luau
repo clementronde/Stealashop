@@ -52,6 +52,9 @@ UI.Screens = {
 			-- Bouton sac à dos de la colonne gauche (L-079, relevé de Studio du 2026-11-10) : ouvre et ferme
 			-- UI_Inventory (InventoryController).
 			{ Path = "InventoryButton", Class = BUTTON },
+			-- Bouton engrenage de SocialRow (L-095 point 2, relevé de Studio du 2026-11-11) : caché par
+			-- Clément, montré par SettingsController (Features.Settings) ; ouvre UI_Settings.
+			{ Path = "SettingsButton", Class = BUTTON },
 		},
 	},
 	{
@@ -346,6 +349,7 @@ end
 table.insert(UI.Screens, {
 	Name = "UI_Index_v2",
 	Class = "ScreenGui",
+	Optional = true, -- depuis UI_Index_v3 (L-095 point 1) : repli d'IndexController, vérifié s'il est encore là
 	Elements = indexV2Elements,
 })
 
@@ -467,6 +471,80 @@ table.insert(UI.Screens, {
 		{ Path = "ClaimButton", Class = BUTTON },
 		{ Path = "DoubleButton", Class = BUTTON },
 	},
+})
+
+-- Index v3 (L-095 point 1 ; noms de docs/claude/notes/ui-index-v3.md, prototype tools/clement/index_v3.luau,
+-- relevé de Studio du 2026-11-11) : remplace UI_Index_v2. Une liste, une section par zone (cartes dans
+-- Content.Cards, ZoneArt.ZoneName, Content.ZoneBar avec Fill, ZoneCount et ZoneItem), la fiche Detail de
+-- l'objet cliqué, Rewards de la zone visible, Categories (NORMAL, SECRETS, MUTATIONS) et MutationTabs
+-- (un onglet par effet de Config/Mutations). Branché par IndexController.
+local indexV3Elements = {
+	{ Path = "CloseButton", Class = BUTTON },
+	{ Path = "Counter" },
+	{ Path = "List", Class = "ScrollingFrame" },
+	{ Path = "List.Template", Class = BUTTON, Template = true },
+	{ Path = "List.Template.Clip" },
+	{ Path = "List.Template.Clip.Glow" },
+	{ Path = "List.Template.Clip.Rays" },
+	{ Path = "List.Template.Icon" },
+	{ Path = "List.Template.ItemName" },
+	{ Path = "List.Template.Lock" },
+	{ Path = "List.Template.HoverOutline" },
+	{ Path = "Detail" },
+	{ Path = "Detail.DetailIcon" },
+	{ Path = "Detail.DetailName" },
+	{ Path = "Detail.DetailRarity" },
+	{ Path = "Detail.DetailIncome" },
+	{ Path = "Rewards" },
+	{ Path = "Rewards.SpeedReward.Amount" },
+	{ Path = "Rewards.CashReward.Amount" },
+	{ Path = "Rewards.ClaimButton", Class = BUTTON },
+	{ Path = "Rewards.ClaimButton.ClaimLabel" },
+	{ Path = "MutationTabs" },
+	{ Path = "MutationCaption" },
+} :: { Element }
+for _, section in indexSections do
+	for _, path in { "", ".ZoneName", ".ZoneBar", ".ZoneBar.Fill", ".ZoneBar.ZoneCount", ".ZoneBar.ZoneItem", ".Cards" } do
+		table.insert(indexV3Elements, { Path = section .. path })
+	end
+end
+for _, button in { "NormalButton", "SecretsButton", "MutationsButton" } do
+	table.insert(indexV3Elements, { Path = `Categories.{button}`, Class = BUTTON })
+	table.insert(indexV3Elements, { Path = `Categories.{button}.Selected` })
+end
+for _, effect in { "Shiny", "Gold", "Neon", "Diamond", "Glitch", "Hacked", "Rainbow" } do -- Config/Mutations.Effects
+	table.insert(indexV3Elements, { Path = `MutationTabs.{effect}Tab`, Class = BUTTON })
+	table.insert(indexV3Elements, { Path = `MutationTabs.{effect}Tab.Selected` })
+end
+table.insert(UI.Screens, {
+	Name = "UI_Index_v3",
+	Class = "ScreenGui",
+	Elements = indexV3Elements,
+})
+
+-- Réglages (L-095 point 2 ; noms de docs/claude/notes/ui-settings.md, relevé de Studio du 2026-11-11,
+-- agents/wave23-studio.md) : écran UI_Settings, branché par SettingsController.
+local settingsElements = {
+	{ Path = "CloseButton", Class = BUTTON },
+	{ Path = "VfxRow.Toggle", Class = BUTTON },
+	{ Path = "VfxRow.Toggle.OnFill" },
+	{ Path = "VfxRow.Toggle.OffFill" },
+	{ Path = "VfxRow.Toggle.ToggleKnob" },
+	{ Path = "VfxRow.Toggle.ToggleLabel" },
+	{ Path = "ClickRow.PrevButton", Class = BUTTON },
+	{ Path = "ClickRow.NextButton", Class = BUTTON },
+	{ Path = "ClickRow.ChoiceLabel" },
+} :: { Element }
+for _, row in { "MusicRow", "SoundRow" } do
+	table.insert(settingsElements, { Path = `{row}.Slider.Track`, Class = BUTTON })
+	table.insert(settingsElements, { Path = `{row}.Slider.Track.Fill` })
+	table.insert(settingsElements, { Path = `{row}.Slider.Knob`, Class = BUTTON })
+	table.insert(settingsElements, { Path = `{row}.ValueLabel` })
+end
+table.insert(UI.Screens, {
+	Name = "UI_Settings",
+	Class = "ScreenGui",
+	Elements = settingsElements,
 })
 
 return UI

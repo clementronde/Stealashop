@@ -74,7 +74,8 @@
 --       creux au point visé, mini-éclats, paillettes, son et léger tremblement, au marqueur Impact
 --       de `track`, au plus tard après Hit.ImpactMaxWait, ou tout de suite sans piste.
 --   ShatterController.IsLowEnd() -> boolean
---       Appareil faible : moins de LowEnd.Fps images/s, ou qualité graphique réglée bas.
+--       Appareil faible : moins de LowEnd.Fps images/s, ou qualité graphique réglée bas, ou effets
+--       visuels coupés dans les réglages du joueur (VfxEnabled = false, Config/Settings).
 
 local Debris = game:GetService("Debris")
 local GeometryService = game:GetService("GeometryService")
@@ -88,6 +89,7 @@ local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"):WaitForChild("Shatter"))
+local Settings = require(Shared:WaitForChild("Config"):WaitForChild("Settings"))
 local MarkerSounds = require(Shared:WaitForChild("Anim"):WaitForChild("MarkerSounds"))
 
 local Assets = Config.Assets
@@ -306,6 +308,9 @@ local function reducedMotion(): boolean
 end
 
 function ShatterController.IsLowEnd(): boolean
+	if Settings.VfxReduced(player) then
+		return true -- réglage du joueur : effets visuels coupés (UI_Settings, L-095)
+	end
 	if frameTime > 0 and 1 / frameTime < LowEnd.Fps then
 		return true
 	end
