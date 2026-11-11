@@ -27,7 +27,7 @@ Le parcours pas à pas de Clément avec Claude est dans [docs/claude/Etapes-Clem
 
 3. **La liaison code ↔ visuel** : [docs/Liaison-Code-Visuel.md](docs/Liaison-Code-Visuel.md). Ce que Clément attend d'Ironix et inversement, le registre des animations et les contrats qui relient les deux travaux.
 
-**À chaque session, pour les deux** : `git pull`, puis lire la liaison et dire à la personne ce qui l'attend et ce qui a changé (mode d'emploi en tête du fichier). Dès que la conversation produit quelque chose que l'autre doit faire, livrer ou savoir, l'écrire dans la liaison et le pousser dans le même tour. Qui est qui : `git config user.name` = `Ironix` ou `Clement`.
+**À chaque session, pour les deux** : `git pull`, puis `bash tools/liaison-sommaire.sh` (sommaire de la liaison, une ligne par demande) et lire en entier seulement les lignes utiles, puis dire à la personne ce qui l'attend et ce qui a changé (mode d'emploi en tête du fichier ; ne pas lire tout le fichier, il fait plus de 200 Ko). Les demandes fermées sont dans [docs/Liaison-Historique.md](docs/Liaison-Historique.md). Dès que la conversation produit quelque chose que l'autre doit faire, livrer ou savoir, l'écrire dans la liaison et le pousser dans le même tour. Qui est qui : `git config user.name` = `Ironix` ou `Clement`.
 
 En cas de doute, le doc partagé gagne. Ne jamais inventer une valeur (PV, prix, vitesse, raretés, durées) : la lire dans les sections 4, 5 et 7 de la Partie 1, ou dans `Config` côté code.
 
