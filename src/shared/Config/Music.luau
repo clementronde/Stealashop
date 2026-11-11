@@ -24,6 +24,12 @@ local Music = {
 	-- est le danger du moment) : 1. la poursuite, 2. le camion, 3. la zone. Même fondu enchaîné. Une
 	-- musique d'événement pas encore livrée ne change rien : la suivante (ou celle de la zone) joue.
 	ChaseTrack = "MUS_Chase", -- tant qu'un vigile poursuit le joueur local (ChaseController)
+	-- Vague 26 (L-097 point 8, ui-feel2-horsligne-poursuite-barre.md) : tension tant que le chrono du
+	-- braquage est affiché chez le joueur (HeistTimer, après la casse d'une vitrine). Ordre de Clément :
+	-- poursuite, braquage, camion, zone. Avec elle, en boucle et au même fondu, la respiration
+	-- Heist_Breath (un son d'effet de Assets/Sounds, donc au volume SfxVolume).
+	HeistTrack = "MUS_Heist",
+	HeistBreath = "Heist_Breath",
 	TruckTrack = "MUS_Truck", -- près du camion de l'événement, ou de ses colis au sol après l'explosion
 	TruckRadius = 100, -- V0 : MUS_Truck commence à moins de 100 studs du camion ou d'un de ses colis au sol…
 	TruckExitMargin = 10, -- V0 : … et s'arrête au-delà de 110 studs (pas d'aller-retour au bord du cercle)

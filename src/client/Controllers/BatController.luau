@@ -13,7 +13,9 @@
 --       - au moment d'envoyer, la batte doit être encore en main et le personnage vivant, sinon le
 --         coup est abandonné (le serveur l'aurait refusé).
 --     Même dans le vide : c'est le serveur qui choisit la cible. Le son du coup est celui du
---     marqueur (MarkerSounds : SwingBat_Impact, joué par AnimationController).
+--     marqueur (MarkerSounds : SwingBat_Impact, un souffle, joué par AnimationController). Coup qui
+--     touche (vague 26) : Bat.HitSound (SwingBat_Hit) en 3D sur la cible, chez chaque client, quand
+--     l'attribut BatStun d'un joueur apparaît (BatService le pose à chaque coup réussi).
 --   - Étourdi par un coup (attribut BatStun du joueur local, posé par BatService) : « Knockback »
 --     → Knockback, puis Stunned tant que l'attribut reste ; « Stun » → Stunned tant qu'il reste.
 --     Fin (attribut retiré) : Stunned s'arrête. Animations pas livrées : rien ne se joue.
@@ -38,6 +40,7 @@ local Config = Shared:WaitForChild("Config")
 local Balance = require(Config:WaitForChild("Balance"))
 local Bat = require(Config:WaitForChild("Bat"))
 local PvP = require(Config:WaitForChild("PvP"))
+local MarkerSounds = require(Shared:WaitForChild("Anim"):WaitForChild("MarkerSounds"))
 
 -- Ce que ce contrôleur utilise d'AnimationController (a09).
 type AnimationApi = {
@@ -341,6 +344,20 @@ local function watchDrops(folder: Instance)
 	end
 end
 
+-- Coup qui touche (vague 26) ------------------------------------------------------------------------
+
+-- BatStun apparaît sur un joueur = un coup de batte confirmé par le serveur : SwingBat_Hit sur lui (3D).
+local function watchHits(other: Player)
+	other:GetAttributeChangedSignal(STUN_ATTRIBUTE):Connect(function()
+		if other:GetAttribute(STUN_ATTRIBUTE) == nil then
+			return
+		end
+		local character = other.Character
+		local root = if character then character:FindFirstChild("HumanoidRootPart") else nil
+		MarkerSounds.play(Bat.HitSound, if root and root:IsA("BasePart") then root else nil)
+	end)
+end
+
 -- Démarrage ----------------------------------------------------------------------------------------
 
 function BatController.Start()
@@ -364,6 +381,10 @@ function BatController.Start()
 	end)
 	player:GetAttributeChangedSignal(CARRYING_ATTRIBUTE):Connect(refreshPrompts)
 	onStunChanged()
+	for _, other in Players:GetPlayers() do
+		watchHits(other)
+	end
+	Players.PlayerAdded:Connect(watchHits)
 
 	local folder = Workspace:FindFirstChild(DROPS_FOLDER)
 	if folder then

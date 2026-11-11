@@ -771,9 +771,26 @@ local function closeGroup(gui: ScreenGui)
 	end
 end
 
+-- Vague 26 (L-097 point 8) : UI_Open et UI_Close seulement pour les fenêtres (menus) : un écran qui a un
+-- Motion.SetCloser ou un attribut ScreenGroup. Les alertes (UI_Chase, vol en cours…) restent muettes.
+-- Un écran fermé par l'ouverture d'un autre de son groupe ne joue pas UI_Close (seul UI_Open s'entend).
+local groupClosing = false
+
+local function isWindow(gui: ScreenGui): boolean
+	local group = gui:GetAttribute(GROUP_ATTRIBUTE)
+	return closers[gui] ~= nil or (type(group) == "string" and group ~= "")
+end
+
 function Motion.Open(gui: ScreenGui)
+	local entry = entries[gui]
+	local opening = isWindow(gui) and (not isShown(gui) or (entry ~= nil and entry.phase == "Closing"))
+	groupClosing = true
 	closeGroup(gui)
+	groupClosing = false
 	enter(gui, OPEN)
+	if opening then
+		Motion.PlaySound(UiMotion.Sounds.Open)
+	end
 end
 
 -- Cadre racine animé à part (RunBanner de UI_Chase, L-092 3a) : Open et Close de son écran ne le
@@ -791,7 +808,14 @@ function Motion.SetCloser(gui: ScreenGui, close: (() -> ())?)
 end
 
 function Motion.Close(gui: ScreenGui, after: (() -> ())?)
+	local entry = entries[gui]
+	-- Vague 26 : UI_Close seulement pour une fenêtre ouverte, et pas si elle part à l'ouverture d'une autre.
+	local closing = not groupClosing and isWindow(gui) and isShown(gui) and gui.Parent ~= nil and entry ~= nil
+		and (entry.phase == "Open" or entry.phase == "Opening")
 	leave(gui, CLOSE, after)
+	if closing then
+		Motion.PlaySound(UiMotion.Sounds.Close)
+	end
 end
 
 function Motion.Show(object: GuiObject)

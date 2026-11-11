@@ -55,6 +55,7 @@ type MotionApi = {
 	Show: (object: GuiObject) -> (),
 	Hide: (object: GuiObject, after: (() -> ())?) -> (),
 	Pop: ((object: GuiObject, from: number, info: TweenInfo) -> ())?,
+	PlaySound: ((name: string) -> ())?,
 }
 
 type Entry = {
@@ -525,6 +526,14 @@ function NotifyController.Show(message: string, kind: string?)
 	xpcall(display, function(err: any)
 		once(`error:{err}`, tostring(err), true)
 	end, message, kind)
+	-- Vague 26 (L-097 point 8) : un message « Warning » (action refusée, argent qui manque…) joue UI_Deny.
+	if kind == UiMotion.Sounds.DenyKind then
+		local api = motionApi()
+		local play = if api then api.PlaySound else nil
+		if play then
+			play(UiMotion.Sounds.Deny)
+		end
+	end
 	for _, listener in table.clone(listeners) do
 		task.spawn(listener, message, kind)
 	end

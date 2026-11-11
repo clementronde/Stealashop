@@ -8,7 +8,8 @@
 --     puis détruite. Source : les attributs Speed (points d'entraînement) et Strength du Player, posés
 --     par StatsService, quand ils montent pendant que l'attribut TrainingMachine vaut « Treadmill » ou
 --     « Bench » (TrainingService). Gains rapprochés : un BB_Gain au plus par FloatGain.MinGap s, les
---     gains entre deux s'additionnent dans le suivant.
+--     gains entre deux s'additionnent dans le suivant. Avec chacun, le son Train_Gain (vague 26,
+--     UiMotion.Sounds.TrainGain, par Motion.PlaySound).
 --   - Argent : quand l'attribut Cash du Player monte (DataService), Cash est retenu au HUD
 --     (HudController.HoldCash) et le gain est classé à la fin de l'image (task.defer) :
 --       * ramassage : l'attribut CashCollected du Player (DisplayService, il ne fait que monter) est
@@ -307,6 +308,11 @@ local function showGain(kind: Kind, amount: number)
 		current.lastAt = os.clock()
 		if total > 0 then
 			floatGain(kind, total)
+			if kind ~= CASH then
+				-- Vague 26 (L-097 point 8) : Train_Gain avec chaque gain d'entraînement affiché (au plus un
+				-- par FloatGain.MinGap s, comme les BB_Gain).
+				Motion.PlaySound(UiMotion.Sounds.TrainGain)
+			end
 		end
 	end
 	local wait = current.lastAt + (if kind == CASH then FLOAT.CashMinGap else FLOAT.MinGap) - os.clock()

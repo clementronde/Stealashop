@@ -35,6 +35,11 @@ local Bat = {
 	DroppedGrabMaxDistance = 8, -- GrabDropped (9.4)
 	GrabActionText = "Grab", -- V0 : invite d'un colis tombé au sol, au-dessus de « Premium Box » (comme le camion)
 
+	-- Son du coup qui touche (vague 26, ui-feel-sons-victoire-camion.md : « à jouer quand le serveur
+	-- confirme un coup ») : Sound de Clément dans Assets/Sounds, joué en 3D sur la cible par chaque
+	-- client quand l'attribut BatStun de la cible apparaît (posé par BatService à chaque coup réussi).
+	HitSound = "SwingBat_Hit",
+
 	-- Messages lus par le joueur (Notify), en anglais (L-036)
 	Messages = {
 		BoxKnockedDown = "You got hit! Your box fell to the ground.", -- V0 : au porteur frappé (usage 2)

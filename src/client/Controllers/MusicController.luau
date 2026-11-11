@@ -34,6 +34,10 @@
 -- cet ordre (V0, choix d'Ironix) :
 --   1. poursuite : Music.ChaseTrack (MUS_Chase) tant qu'un vigile poursuit le joueur local
 --      (ChaseController.IsChased, d'après le remote ChaseState de GuardService) ;
+--   1 bis. braquage (vague 26, ordre de Clément) : Music.HeistTrack (MUS_Heist) tant qu'un chrono de
+--      braquage est affiché chez le joueur (HeistController.GetTimers, remote HeistTimer, après la casse
+--      d'une vitrine), avec la respiration Music.HeistBreath (Heist_Breath, Assets/Sounds) en boucle,
+--      dont le volume suit le fondu de MUS_Heist (son d'effet : groupe SFX, réglage SfxVolume) ;
 --   2. camion : Music.TruckTrack (MUS_Truck) tant que le joueur est à moins de TruckRadius studs d'un
 --      camion de l'événement (tag EventTruck, posé par TruckEventService) ou, après l'explosion, d'un de
 --      ses colis au sol (Workspace/CarryDrops, attribut TruckBox). Une fois dedans, il en sort au-delà
@@ -51,7 +55,7 @@
 --   MusicController.GetState() -> { Zone, Track, Levels, Event }
 --       Zone du joueur (0 = zone safe, 1 à 6 ; nil avant le premier personnage), piste visée (nil :
 --       silence), part du volume plein de chaque copie (0 à 1) et événement dont la musique joue
---       ("Chase", "Truck", nil : celle de la zone), pour un test dans Studio (barre de commande côté
+--       ("Chase", "Heist", "Truck", nil : celle de la zone), pour un test dans Studio (barre de commande côté
 --       client).
 
 local CollectionService = game:GetService("CollectionService")
@@ -84,7 +88,7 @@ type Track = {
 	Written: number, -- dernier Volume écrit sur la copie
 }
 
-export type EventKind = string -- "Chase" ou "Truck"
+export type EventKind = string -- "Chase", "Heist" ou "Truck"
 
 export type State = {
 	Zone: number?,
@@ -96,6 +100,11 @@ export type State = {
 -- Ce que ce contrôleur utilise de ChaseController.
 type ChaseApi = {
 	IsChased: () -> boolean,
+}
+
+-- Ce que ce contrôleur utilise de HeistController (chronos affichés : storeId → endsAt, heure serveur).
+type HeistApi = {
+	GetTimers: () -> { [string]: number },
 }
 
 -- Noms du contrat (2.1 et 10.4).
@@ -127,6 +136,9 @@ local volumeScale = 1
 local sinceCheck = math.huge -- première vérification à la première image
 local said: { [string]: boolean } = {}
 local chase: ChaseApi? = nil
+local heist: HeistApi? = nil
+local breath: Sound? = nil -- copie en boucle de Heist_Breath, avec MUS_Heist
+local breathFull = 0 -- Volume du Sound de Clément
 local event: EventKind? = nil -- événement dont la musique joue
 local nearTruck = false -- dans le cercle du camion (avec la marge de sortie)
 local chasedFor = 0 -- secondes depuis le départ de la poursuite (0 hors poursuite)
@@ -326,6 +338,64 @@ local CHASE: EventKind = "Chase"
 local TRUCK: EventKind = "Truck"
 local CHASE_EFFECT = "la musique de la zone continue pendant les poursuites (L-071)"
 local TRUCK_EFFECT = "la musique de la zone continue près du camion (L-071)"
+local HEIST: EventKind = "Heist"
+local HEIST_EFFECT = "pas de musique de tension pendant le braquage (L-097)"
+
+-- Un chrono de braquage est-il affiché chez le joueur (et pas encore fini) ?
+local function heistRunning(): boolean
+	local api = heist
+	if api == nil then
+		return false
+	end
+	local now = Workspace:GetServerTimeNow()
+	for _, endsAt in api.GetTimers() do
+		if endsAt > now then
+			return true
+		end
+	end
+	return false
+end
+
+-- Le Sound Heist_Breath de Clément (Assets/Sounds, sous-dossiers compris, comme MarkerSounds), ou nil.
+local function findBreath(): Sound?
+	local assets = ReplicatedStorage:FindFirstChild("Assets")
+	local sounds = if assets then assets:FindFirstChild("Sounds") else nil
+	local found = if sounds then sounds:FindFirstChild(Music.HeistBreath, true) else nil
+	return if found and found:IsA("Sound") then found :: Sound else nil
+end
+
+-- Respiration avec la tension : copie en boucle (SoundService ; nom sans MUS_, donc rangée dans le
+-- groupe SFX par SettingsController), volume = son Volume × la part de MUS_Heist. Absente : rien.
+local function updateBreath(heistLevel: number)
+	if heistLevel <= 0 then
+		local copy = breath
+		if copy and copy.Playing then
+			copy.Playing = false
+		end
+		return
+	end
+	local copy = breath
+	if copy == nil then
+		local template = findBreath()
+		if template == nil then
+			sayOnce("breath", `{Music.HeistBreath} absent de ReplicatedStorage.Assets.Sounds : pas de respiration pendant le braquage (L-097)`)
+			return
+		end
+		local made = template:Clone()
+		made.Looped = true
+		made.Volume = 0
+		made.Parent = SoundService
+		breathFull = template.Volume
+		breath = made
+		copy = made
+	end
+	local sound = copy :: Sound
+	sound.Volume = breathFull * heistLevel
+	if not sound.Playing then
+		sound.TimePosition = 0
+		sound.Playing = true
+	end
+end
 
 local function within(instance: Instance, position: Vector3, radius: number): boolean
 	return instance:IsA("PVInstance") and ((instance :: PVInstance):GetPivot().Position - position).Magnitude <= radius
@@ -358,6 +428,9 @@ local function eventTrack(position: Vector3?): (string?, EventKind?)
 	local audible = chaseTrack ~= nil and chaseTrack.Level > 0
 	if api and api.IsChased() and (chasedFor >= CHASE_DELAY or audible) and ensureTrack(Music.ChaseTrack, CHASE_EFFECT) then
 		return Music.ChaseTrack, CHASE
+	end
+	if heistRunning() and ensureTrack(Music.HeistTrack, HEIST_EFFECT) then
+		return Music.HeistTrack, HEIST
 	end
 	if position then
 		nearTruck = truckNear(position)
@@ -419,6 +492,8 @@ local function fade(dt: number)
 			copy.Playing = playing -- false : en pause, la piste reprendra où elle en était
 		end
 	end
+	local heistTrack = tracks[Music.HeistTrack]
+	updateBreath(if heistTrack then heistTrack.Level else 0)
 end
 
 local function step(dt: number)
@@ -461,8 +536,23 @@ local function loadChase(): ChaseApi?
 	return nil
 end
 
+-- HeistController, s'il est là (chrono du braquage) ; sans lui, pas de musique de tension.
+local function loadHeist(): HeistApi?
+	local module = script.Parent:FindFirstChild("HeistController")
+	if module == nil or not module:IsA("ModuleScript") then
+		return nil
+	end
+	local ok, result = pcall(require, module)
+	if ok and type(result) == "table" and type((result :: any).GetTimers) == "function" then
+		return result :: any
+	end
+	sayOnce("heist", `HeistController : require impossible ({result}) : pas de musique de tension`, true)
+	return nil
+end
+
 function MusicController.Start()
 	chase = loadChase()
+	heist = loadHeist()
 	readVolumeScale()
 	localPlayer:GetAttributeChangedSignal(Music.VolumeAttribute):Connect(readVolumeScale)
 	RunService.Heartbeat:Connect(function(dt: number)

@@ -172,6 +172,7 @@ local DROPS_FOLDER = "CarryDrops" -- dossier des colis au sol de CarryService
 local TRUCK_NAME = "EventTruck" -- jamais « ENV_… » dans la map : c'est le nom de l'asset (ContractChecker)
 local TRUCK_TAG = "EventTruck" -- tag posé par le code, hors du contrat de la section 2.1
 local NUMBER_ATTRIBUTE = "TruckNumber"
+local SPAWNED_AT_ATTRIBUTE = "SpawnedAt" -- heure serveur de l'apparition (sons d'arrivée, vague 26)
 local EXPLODED_AT_ATTRIBUTE = "ExplodedAt"
 local TRUCK_BOX_ATTRIBUTE = "TruckBox"
 local TIER_ATTRIBUTE = "Tier"
@@ -815,6 +816,9 @@ local function spawnTruck(zone: number): boolean
 	model.Name = TRUCK_NAME
 	model:SetAttribute(ZONE_ATTRIBUTE, zone)
 	model:SetAttribute(NUMBER_ATTRIBUTE, truckCount)
+	-- Vague 26 (a81) : heure serveur de l'apparition, pour les sons d'arrivée de TruckController (seuls
+	-- ceux qui voient le camion arriver les entendent, pas un joueur qui le reçoit plus tard par le streaming).
+	model:SetAttribute(SPAWNED_AT_ATTRIBUTE, Workspace:GetServerTimeNow())
 	model.ModelStreamingMode = Enum.ModelStreamingMode.Atomic -- le camion et ses points arrivent ensemble
 	model:PivotTo(frame)
 	model.Parent = Workspace

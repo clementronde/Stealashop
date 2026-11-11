@@ -288,6 +288,15 @@ local UiMotion = {
 	-- V0 proposé, absent du doc : nom du UIScale ajouté par le code sur un cadre animé (jamais un
 	-- nom du contrat 2.2 ; il disparaît à la fin de l'animation).
 	ScaleName = "MotionScale",
+	-- Vague 26 (L-097 point 8 ; ui-feel-sons-victoire-camion.md : « UI_Open et UI_Close sur les fenêtres,
+	-- UI_Deny quand l'argent manque ») : sons de Clément (Assets/Sounds/UI), joués par Motion.PlaySound.
+	Sounds = {
+		Open = "UI_Open", -- Motion.Open d'un écran fermé (ou en train de se fermer)
+		Close = "UI_Close", -- Motion.Close d'un écran ouvert ; pas pour ceux fermés par l'ouverture d'un autre du groupe
+		Deny = "UI_Deny", -- message Notify du genre DenyKind (refus)
+		DenyKind = "Warning", -- V0 proposé, absent du doc : les messages « Warning » sont presque tous des refus
+		TrainGain = "Train_Gain", -- GainController : avec chaque « +X Speed/s » ou « +X Power » affiché
+	},
 }
 
 export type UiMotion = typeof(UiMotion)

@@ -74,6 +74,14 @@ local TruckEvent = {
 	ExplosionSound = "SFX_TruckExplosion", -- à l'explosion, au point BlastPoint
 	AlarmSound = "SFX_TruckAlarm", -- V0, choix d'Ironix : l'alarme se déclenche quand le camion est frappé…
 	AlarmHold = 4, -- V0 : … et se tait 4 s après le dernier coup, ou à l'explosion (une boucle si Looped)
+	-- Arrivée (vague 26, L-097 point 8 ; ui-feel-sons-victoire-camion.md : « SFX_TruckArrive au départ,
+	-- SFX_TruckBrake à 78 % du trajet », trajet de 3 s dans le prototype de Clément) : sons 3D sur le camion,
+	-- joués à son apparition (attribut SpawnedAt) chez ceux qui le voient arriver. Le trajet lui-même
+	-- (le camion qui roule, FX_TruckDust) n'est pas encore codé : les deux sons gardent ses temps.
+	ArriveSound = "SFX_TruckArrive", -- klaxon, à l'apparition
+	BrakeSound = "SFX_TruckBrake", -- freins à air…
+	BrakeDelay = 2.34, -- … 0,78 × 3 s après (valeurs du prototype de Clément, TruckBrakeAt × TruckTime)
+	ArriveMaxAge = 1, -- V0 proposé, absent du doc : camion reçu plus de 1 s après son apparition : pas de son d'arrivée
 
 	-- Conducteurs (L-071, point 7) : les modèles avec un Humanoid que Clément range dans ENV_Event_Truck.
 	-- Avec une animation Idle dans leur dossier Animations (Contract/Animations.Driver), le serveur la

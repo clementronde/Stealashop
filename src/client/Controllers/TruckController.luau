@@ -53,6 +53,9 @@
 --     pièce Root du camion (son 3D), et se tait AlarmHold s après le dernier coup, à l'explosion ou au
 --     départ du camion ; si Clément ne l'a pas mise en boucle, un coup après sa fin la relance. Absents :
 --     muets (une ligne en Studio, une fois). La musique MUS_Truck est à MusicController.
+--     Vague 26 : TruckEvent.ArriveSound (SFX_TruckArrive) à l'apparition du camion et
+--     TruckEvent.BrakeSound (SFX_TruckBrake) BrakeDelay s après, sur Root, seulement si le camion est
+--     reçu moins de ArriveMaxAge s après son apparition (attribut SpawnedAt du serveur).
 --   - Conducteurs (L-071, point 7) : à l'explosion, chaque modèle avec un Humanoid rangé dans le camion
 --     hors de Pieces (Clément les met dans la cabine) part avec les pièces, comme une pièce de plus,
 --     puis s'efface avec elles. Leur Idle est jouée par le serveur (TruckEventService).
@@ -159,6 +162,7 @@ local TRUCK_TAG = "EventTruck"
 local HP_ATTRIBUTE = "HP"
 local MAX_HP_ATTRIBUTE = "MaxHP"
 local EXPLODED_AT_ATTRIBUTE = "ExplodedAt"
+local SPAWNED_AT_ATTRIBUTE = "SpawnedAt" -- heure serveur de l'apparition (sons d'arrivée, vague 26)
 local DROPS_FOLDER = "CarryDrops"
 local DROP_ID_ATTRIBUTE = "DropId"
 local TRUCK_BOX_ATTRIBUTE = "TruckBox"
@@ -592,6 +596,47 @@ local function triggerAlarm(watch: TruckWatch)
 	sound:Play()
 end
 
+-- Arrivée (vague 26) : klaxon à l'apparition, freins BrakeDelay s après (sons 3D sur Root), seulement si
+-- le camion vient d'apparaître (attribut SpawnedAt, heure serveur, à moins de ArriveMaxAge s).
+local function playArrival(watch: TruckWatch)
+	local spawnedAt = watch.Model:GetAttribute(SPAWNED_AT_ATTRIBUTE)
+	if type(spawnedAt) ~= "number" or watch.Exploded then
+		return
+	end
+	local age = Workspace:GetServerTimeNow() - spawnedAt
+	if age > TruckEvent.ArriveMaxAge then
+		return
+	end
+	local part = alarmPart(watch.Model)
+	if part == nil then
+		return
+	end
+	local function playOn(template: Sound)
+		local sound = template:Clone()
+		sound.Parent = part
+		sound.Ended:Once(function()
+			sound:Destroy()
+		end)
+		task.delay(SOUND_MAX_LIFETIME, function()
+			sound:Destroy()
+		end)
+		sound:Play()
+	end
+	local arrive = soundOrSay(TruckEvent.ArriveSound, "camion qui arrive sans klaxon (L-097)")
+	if arrive then
+		playOn(arrive)
+	end
+	task.delay(math.max(TruckEvent.BrakeDelay - math.max(age, 0), 0), function()
+		if trucks[watch.Model] ~= watch or watch.Exploded or part.Parent == nil then
+			return
+		end
+		local brake = soundOrSay(TruckEvent.BrakeSound, "camion qui arrive sans freins (L-097)")
+		if brake then
+			playOn(brake)
+		end
+	end)
+end
+
 -- Une baisse de l'attribut HP (WindowService) = un coup reçu.
 local function onHpChanged(watch: TruckWatch)
 	local value = watch.Model:GetAttribute(HP_ATTRIBUTE)
@@ -696,6 +741,7 @@ local function trackTruck(instance: Instance)
 	)
 	makeBillboard(watch)
 	maybeExplode(watch)
+	playArrival(watch)
 end
 
 -- Son du coup (DEV-053) -------------------------------------------------------------------------
