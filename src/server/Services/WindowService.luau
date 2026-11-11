@@ -66,6 +66,12 @@
 --       Point d'accroche des protections du jalon M3 (bouclier débutant, immunité après un
 --       vol, 6.4) : renvoie true. PvPService le remplace (WindowService.CanBeHit = function…).
 --       false ou une erreur = coup ignoré.
+--   WindowService.AddHitGate(gate)
+--       gate(player, windowId, kind, model) -> boolean, appelé pour chaque coup qui passerait (après
+--       CanBeHit, juste avant les dégâts) : false = coup ignoré, sans dégâts, ni WindowHit, ni chrono
+--       de casse ; c'est au point d'accroche de prévenir le joueur s'il le faut. Une erreur laisse
+--       passer le coup (un avertissement). StoreHeistService s'en sert : un seul braquage à la fois
+--       (Cantin, 2026-11-11, L-099 point 3).
 --   WindowService.OnBroken(listener) -> déconnexion
 --       listener(info) à chaque casse ; info = { WindowId, Kind ("NPC" ou "Plot"), Model
 --       (le magasin ou la parcelle), Breaker (joueur du dernier coup), ImpactPoint }.
@@ -172,6 +178,10 @@ local brokenListeners: { BrokenListener } = {}
 local rebuiltListeners: { RebuiltListener } = {}
 local lastRefusal: { [Player]: number } = {}
 local canBeHitWarned = false
+-- Points d'accroche de chaque coup (voir AddHitGate).
+type HitGate = (player: Player, windowId: string, kind: WindowKind, model: Model) -> boolean
+local hitGates: { HitGate } = {}
+local hitGateWarned = false
 
 function WindowService.CanBeHit(_player: Player, _windowId: string): boolean
 	return true
@@ -397,6 +407,22 @@ local function canBeHit(player: Player, windowId: string): boolean
 	return false
 end
 
+-- Points d'accroche (AddHitGate) : false si l'un refuse le coup ; une erreur le laisse passer.
+local function gatesAllow(player: Player, window: Window): boolean
+	for _, gate in hitGates do
+		local ok, allowed = pcall(gate, player, window.Id, window.Kind, window.Model)
+		if not ok then
+			if not hitGateWarned then
+				hitGateWarned = true
+				warn(`[WindowService] AddHitGate : erreur ({allowed}), coup laissé passer`)
+			end
+		elseif allowed == false then
+			return false
+		end
+	end
+	return true
+end
+
 local function onHitWindow(player: Player, windowId: string)
 	local window = windows[windowId]
 	if window == nil then
@@ -431,6 +457,9 @@ local function onHitWindow(player: Player, windowId: string)
 		return
 	end
 	if not canBeHit(player, windowId) then
+		return
+	end
+	if not gatesAllow(player, window) then
 		return
 	end
 	local damage = ToolService.GetHitDamage(player)
@@ -644,6 +673,10 @@ end
 -- tests), ne l'attend pas. Utilisé par GuardService : pas de rouverture tant qu'un vigile rentre.
 function WindowService.AddRebuildGate(gate: RebuildGate)
 	table.insert(rebuildGates, gate)
+end
+
+function WindowService.AddHitGate(gate: HitGate)
+	table.insert(hitGates, gate)
 end
 
 function WindowService.Rebuild(windowId: string): boolean

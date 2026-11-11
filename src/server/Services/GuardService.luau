@@ -149,6 +149,9 @@
 -- API (serveur) :
 --   GuardService.IsChased(player) -> boolean
 --   GuardService.GetGuard(player) -> Model?    le vigile qui poursuit ce joueur
+--   GuardService.GetReturningGuards(store) -> { BasePart }
+--       HumanoidRootPart des vigiles de jour de ce magasin (Model) qui rentrent vers sa réserve, à
+--       travers le magasin (Return, but « Reserve »). Pour le rideau local de StoreHeistService.
 --   GuardService.OnCatch(listener) -> déconnexion
 --       listener(player, zone, night, carrying) à chaque capture, de jour ou de nuit, juste avant
 --       que le portage soit perdu : carrying = il portait quelque chose. TelemetryService s'en sert
@@ -2934,6 +2937,19 @@ end
 function GuardService.GetGuard(player: Player): Model?
 	local guard = chasedBy[player]
 	return if guard then guard.model else nil
+end
+
+-- a70 (vague 24) : les vigiles de jour de `store` qui rentrent vers sa réserve (GuardSpawn), donc à
+-- travers le magasin : leur HumanoidRootPart. StoreHeistService lève le rideau local du voleur avant
+-- leur arrivée (on ne doit jamais voir un vigile traverser ce rideau, Cantin 2026-11-11).
+function GuardService.GetReturningGuards(store: Model): { BasePart }
+	local roots: { BasePart } = {}
+	for _, guard in guards do
+		if guard.alive and guard.store == store and guard.state == "Return" and guard.returnTo == "Reserve" then
+			table.insert(roots, guard.root)
+		end
+	end
+	return roots
 end
 
 function GuardService.OnCatch(listener: CatchListener): () -> ()

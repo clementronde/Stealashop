@@ -72,6 +72,12 @@ local Balance = {
 		ShelfSlots = 10, -- ShelfSlot_01 à ShelfSlot_10 (10.4)
 		TierOrder = TIER_ORDER,
 		BoxTiers = BOX_TIERS,
+		-- Un seul braquage à la fois (Cantin, 2026-11-11, L-099 point 3) : un joueur dont le braquage n'est
+		-- pas fini ne fait aucun dégât à la vitrine d'un autre magasin PNJ. V0 proposés, absents du doc :
+		-- le message (anglais, L-036 ; Clément choisira le texte final) et son délai minimal entre deux
+		-- envois au même joueur (s).
+		OneAtATimeMessage = "Easy there, greedy! Finish your heist first.",
+		OneAtATimeCooldown = 3,
 	},
 
 	-- 5.4 : séquence de casse, simulée côté client

@@ -72,6 +72,28 @@
 --     L'attribut CLOSED_ATTRIBUTE du Player liste les StoreId fermés (Closed) pour lui : son client
 --     (StoreLockController) y montre le rideau baissé et solide, chez lui seul. Les autres joueurs voient
 --     le magasin normal et peuvent continuer à le braquer, chacun fermé pour lui-même s'il vole.
+--   - Rideau local qui attend les vigiles (a70, Cantin 2026-11-11 : on ne doit jamais voir un vigile
+--     traverser ce rideau) : un magasin n'est écrit dans CLOSED_ATTRIBUTE (rideau local baissé) que si
+--     aucun vigile n'y est. Il est retenu (CurtainHeld) tant qu'un vigile (n'importe lequel, de
+--     Workspace/ActiveGuards : celui du voleur, celui d'un autre voleur qui vient d'apparaître…) est
+--     dans le volume Bounds ou à CURTAIN_GUARD_MARGIN studs de lui, ou qu'un vigile de ce magasin qui
+--     rentre vers sa réserve (GuardService.GetReturningGuards) est à CURTAIN_RETURN_MARGIN studs ou
+--     moins : le rideau local remonte alors avant qu'il l'atteigne, et retombe quand il est reparti.
+--     Rien de tout ça quand le vrai rideau est baissé (personne ne passe, les deux rideaux sont au même
+--     endroit). Seul le visuel attend : la règle du serveur (pas d'entrée, pas de prise) reste la même.
+--     Choix d'a70 : lever le rideau plutôt qu'effacer le vigile chez le voleur ; une seule règle sert à
+--     la sortie, au retour et au vigile d'un autre voleur, tout côté serveur, sans rien de nouveau au
+--     client.
+--   - Un seul braquage à la fois (a70, Cantin 2026-11-11, L-099 point 3 ; WindowService.AddHitGate) :
+--     un joueur dont le braquage n'est pas fini ne fait aucun dégât à la vitrine d'un AUTRE magasin
+--     PNJ, et reçoit Balance.Heist.OneAtATimeMessage, au plus une fois toutes les
+--     Balance.Heist.OneAtATimeCooldown s. Braquage en cours (V0) : le chrono de 10 s d'un magasin dont
+--     il a cassé la vitrine (Breaker) tourne encore, ou il porte un colis PNJ (de n'importe quel
+--     magasin). La poursuite du vigile de jour ne finit qu'avec le portage (capture, zone safe, colis
+--     posé, tombé ou perdu) : « porte un colis » la couvre. Braquage fini = chrono fini et mains vides
+--     de colis PNJ ; la fermeture du magasin pour lui (rideau local) ne compte pas. Taper la vitrine
+--     d'un magasin de son braquage reste permis. Parcelles des joueurs et camion de l'événement : la
+--     règle ne s'applique pas (ni comme cible, ni comme braquage en cours).
 --   - Fermeture, à la fin du chrono : plus aucune prise ; les joueurs dedans sans colis sont
 --     sortis devant la vitrine, avec un Notify. Tant que le magasin est fermé, un joueur sans
 --     colis qui se retrouve dans le volume Bounds en est sorti de la même façon (pas de camping
@@ -211,6 +233,7 @@ export type ContentOverride = (player: Player, drawn: OverrideInfo) -> OverrideR
 type CarryApi = {
 	StartCarry: (player: Player, payload: NPCBoxPayload) -> boolean,
 	IsCarrying: (player: Player) -> boolean,
+	GetPayload: (player: Player) -> any,
 	OnCarryEnded: (listener: (player: Player, payload: any, result: string, reason: string) -> ()) -> any,
 	OnDropExpired: (listener: (dropId: string, payload: any, position: Vector3) -> ()) -> any,
 	AttachBoxLabel: (model: Model, rarityId: string, itemId: string, mutation: Mutations.Mutation?) -> BillboardGui?,
@@ -271,6 +294,7 @@ type Store = {
 	Viewers: { [Player]: boolean }, -- joueurs qui voient le chrono
 	RefillPending: boolean, -- RefillAll pendant le chrono : nouveau tirage à la fermeture
 	Locked: { [Player]: LockState }, -- fermé pour ces voleurs seulement (voir l'en-tête)
+	CurtainHeld: boolean, -- un vigile y est (ou va y entrer) : rideaux locaux levés (voir l'en-tête)
 }
 
 -- Leaving : vient de prendre un colis, encore dans Bounds avec lui ; Closed : fermé pour lui, rideau
@@ -337,6 +361,12 @@ local HOLD_EXPIRY = 1
 local SHUTTER_FALL_TIME = 0.4
 local SHUTTER_RISE_TIME = 0.8
 local SHUTTER_EXIT_GRACE = SHUTTER_FALL_TIME
+-- V0 proposé, absent du doc (a70) : rideau local du voleur. Un vigile à 1,5 stud ou moins du volume
+-- Bounds le retient (son corps dépasse de son centre). Un vigile qui rentre vers la réserve le fait
+-- remonter à 16 studs : à 10 studs/s (RETURN_WALK_SPEED de GuardService), il lui faut 1,6 s pour
+-- arriver, le temps du tick (0,1 s), du réseau et de la remontée (0,8 s, StoreLockController).
+local CURTAIN_GUARD_MARGIN = 1.5
+local CURTAIN_RETURN_MARGIN = 16
 -- V0 proposé, absent du doc : on sort les joueurs à 6 studs devant la vitrine (comme
 -- l'apparition de PlotService), sol cherché de 4 studs au-dessus jusqu'à 8 en dessous.
 local EJECT_DISTANCE = 6
@@ -398,6 +428,9 @@ local outBoxes: { [any]: OutBox } = {}
 local grabbedListeners: { GrabbedListener } = {}
 local contentOverride: ContentOverride? = nil
 local lastRefusal: { [Player]: number } = {}
+local lastGreedy: { [Player]: number } = {} -- dernier message « un seul braquage à la fois »
+-- GuardService.GetReturningGuards, s'il existe (require protégé dans Init, comme OnGuardGone).
+local returningGuards: ((store: Model) -> { BasePart })? = nil
 local templates: { [string]: Instance } = {} -- BOX_<Tier> trouvé
 local templateSearched: { [string]: boolean } = {} -- cherché une fois par type, trouvé ou non
 local noticed: { [string]: boolean } = {}
@@ -466,6 +499,17 @@ local function inside(part: BasePart, point: Vector3): boolean
 	local p = part.CFrame:PointToObjectSpace(point)
 	local h = part.Size / 2
 	return math.abs(p.X) <= h.X and math.abs(p.Y) <= h.Y and math.abs(p.Z) <= h.Z
+end
+
+-- Distance de `point` au volume `part` (0 dedans).
+local function distanceTo(part: BasePart, point: Vector3): number
+	local p = part.CFrame:PointToObjectSpace(point)
+	local h = part.Size / 2
+	return Vector3.new(
+		math.max(math.abs(p.X) - h.X, 0),
+		math.max(math.abs(p.Y) - h.Y, 0),
+		math.max(math.abs(p.Z) - h.Z, 0)
+	).Magnitude
 end
 
 local function inMap(instance: Instance): boolean
@@ -1059,7 +1103,7 @@ local function publishClosed(player: Player)
 	end
 	local ids: { string } = {}
 	for _, store in stores do
-		if store.Locked[player] == "Closed" then
+		if store.Locked[player] == "Closed" and not store.CurtainHeld then
 			table.insert(ids, store.Id)
 		end
 	end
@@ -1093,9 +1137,62 @@ local function unlockAll(store: Store, why: string)
 	end
 end
 
--- Tick : un voleur en sortie passe à Closed dès qu'il quitte le volume Bounds ou ne porte plus le
--- colis ; un voleur Closed qui est dans Bounds en est sorti devant la vitrine (colis gardé).
+-- Ce qui retient les rideaux locaux de ce magasin (voir l'en-tête), décrit pour la sortie ; nil si
+-- aucun vigile n'y est ni n'est sur le point d'y entrer.
+local function curtainBlocker(store: Store): string?
+	local bounds = store.Bounds
+	if bounds == nil or store.ShutterDown then
+		return nil
+	end
+	local guards = Workspace:FindFirstChild(GUARDS_FOLDER)
+	if guards then
+		for _, guard in guards:GetChildren() do
+			local root = if guard:IsA("Model") then guard:FindFirstChild("HumanoidRootPart") else nil
+			if root and root:IsA("BasePart") and distanceTo(bounds, root.Position) <= CURTAIN_GUARD_MARGIN then
+				return `vigile {guard.Name} dans le magasin`
+			end
+		end
+	end
+	local getReturning = returningGuards
+	if getReturning then
+		local ok, roots = pcall(getReturning, store.Model)
+		if ok and type(roots) == "table" then
+			for _, root in roots do
+				if typeof(root) == "Instance" and root:IsA("BasePart") and distanceTo(bounds, root.Position) <= CURTAIN_RETURN_MARGIN then
+					local name = if root.Parent then root.Parent.Name else "?"
+					return `vigile {name} qui rentre vers la réserve`
+				end
+			end
+		end
+	end
+	return nil
+end
+
+-- Tick : rideaux locaux retenus ou non par un vigile ; un voleur en sortie passe à Closed dès qu'il
+-- quitte le volume Bounds ou ne porte plus le colis ; un voleur Closed qui est dans Bounds en est
+-- sorti devant la vitrine (colis gardé).
 local function stepLocks(store: Store)
+	if next(store.Locked) == nil then
+		store.CurtainHeld = false
+		return
+	end
+	local blocker = curtainBlocker(store)
+	local held = blocker ~= nil
+	if held ~= store.CurtainHeld then
+		store.CurtainHeld = held
+		local any = false
+		for player, state in store.Locked do
+			if state == "Closed" then
+				any = true
+				publishClosed(player)
+			end
+		end
+		if any then
+			log(if blocker
+				then `{store.Id} : rideau local levé chez ses voleurs ({blocker})`
+				else `{store.Id} : rideau local baissé chez ses voleurs, plus de vigile dans le magasin`)
+		end
+	end
 	local bounds = store.Bounds
 	for player, state in table.clone(store.Locked) do
 		if player.Parent ~= Players then
@@ -1583,6 +1680,7 @@ local function register(instance: Instance)
 		Viewers = {},
 		RefillPending = false,
 		Locked = {},
+		CurtainHeld = false,
 	}
 	if store.Bounds == nil then
 		warn(`[StoreHeistService] {model:GetFullName()} : pas de volume « {BOUNDS_NAME} » (Part), aucune prise possible`)
@@ -1702,6 +1800,45 @@ local function onBroken(info: WindowService.BreakInfo)
 	openStore(store, info.Breaker)
 end
 
+-- Un seul braquage à la fois (voir l'en-tête) : le magasin du braquage en cours de `player` qui
+-- n'est pas `target`, ou nil (pas de braquage en cours, ou seulement dans `target`).
+local function otherHeist(player: Player, target: Store): string?
+	for _, store in stores do
+		if store ~= target and store.Open and store.Breaker == player then
+			return store.Id
+		end
+	end
+	local payload = CarryService.GetPayload(player)
+	if type(payload) == "table" and payload.Kind == "NPCBox" and payload.StoreId ~= target.Id then
+		return if type(payload.StoreId) == "string" then payload.StoreId else "?"
+	end
+	return nil
+end
+
+-- WindowService.AddHitGate : false = coup sur la vitrine d'un autre magasin PNJ, ignoré, avec un
+-- message drôle au plus toutes les OneAtATimeCooldown s.
+local function hitGate(player: Player, _windowId: string, kind: WindowService.WindowKind, model: Model): boolean
+	if kind ~= "NPC" then
+		return true -- parcelles et camion : la règle ne s'applique pas
+	end
+	local target = stores[model]
+	if target == nil then
+		return true
+	end
+	local busy = otherHeist(player, target)
+	if busy == nil then
+		return true
+	end
+	local now = os.clock()
+	local last = lastGreedy[player]
+	if last == nil or now - last >= Balance.Heist.OneAtATimeCooldown then
+		lastGreedy[player] = now
+		Net.Server.Notify:Fire(player, Balance.Heist.OneAtATimeMessage, "Warning")
+		log(`{player.Name} frappe {target.Id} pendant son braquage de {busy} : aucun dégât`)
+	end
+	return false
+end
+
 local function onRebuilt(_windowId: string, model: Model)
 	local store = stores[model]
 	if store == nil then
@@ -1771,12 +1908,20 @@ function StoreHeistService.Init()
 	CollectionService:GetInstanceRemovedSignal(STORE_TAG):Connect(unregister)
 	WindowService.OnBroken(onBroken)
 	WindowService.OnRebuilt(onRebuilt)
+	-- Accès protégé : les faux WindowService des bancs n'ont pas tous AddHitGate.
+	local addHitGate: ((gate: typeof(hitGate)) -> ())? = (WindowService :: any).AddHitGate
+	if addHitGate then
+		addHitGate(hitGate)
+	else
+		log("WindowService.AddHitGate indisponible : pas de règle « un seul braquage à la fois »")
+	end
 	CarryService.OnCarryEnded(onCarryEnded)
 	CarryService.OnDropExpired(onDropExpired)
 	Net.Server.GrabItem:Connect(onGrabItem)
 	Players.PlayerRemoving:Connect(function(player: Player)
 		holds[player] = nil
 		lastRefusal[player] = nil
+		lastGreedy[player] = nil
 		for _, store in stores do
 			store.Viewers[player] = nil
 			store.Locked[player] = nil
@@ -1796,6 +1941,13 @@ function StoreHeistService.Init()
 	end)
 	if not subscribed then
 		log("GuardService.OnGuardGone indisponible : un magasin reste fermé pour son voleur jusqu'à sa réouverture")
+	end
+	-- a70 : vigiles qui rentrent vers la réserve, pour lever le rideau local avant leur arrivée.
+	local getReturning: any = if okGuard and type(guardApi) == "table" then guardApi.GetReturningGuards else nil
+	if type(getReturning) == "function" then
+		returningGuards = getReturning
+	else
+		log("GuardService.GetReturningGuards indisponible : le rideau local n'attend que les vigiles dans le magasin")
 	end
 
 	local storeCount, boxCount = 0, 0

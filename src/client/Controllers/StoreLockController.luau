@@ -6,6 +6,9 @@
 -- magasin). Le serveur décide de tout : plus de prise pour lui, et il est sorti devant la vitrine s'il
 -- entre. Ici, on le montre, chez lui seul : le rideau `Shutter` du magasin (contrat 10.4) apparaît
 -- baissé et solide, puis remonte à la fin. Les autres joueurs voient le magasin normal.
+-- Vague 24 (a70) : le serveur ne met le magasin dans ClosedStores que si aucun vigile n'y est ni n'est
+-- sur le point d'y entrer (il l'en retire le temps qu'un vigile passe) : le rideau tombe après la
+-- sortie du vigile et remonte avant son retour, jamais à travers lui. Rien ne change ici.
 --
 -- Lu ici, posé par StoreHeistService (mêmes noms là-bas) :
 --   - l'attribut ClosedStores du joueur local : les StoreId fermés pour lui, séparés par des virgules ;
