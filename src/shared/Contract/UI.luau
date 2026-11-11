@@ -564,4 +564,41 @@ table.insert(UI.Screens, {
 	Elements = hotbarElements,
 })
 
+-- Messages du bas (L-095 point 3 ; note ui-feel2-horsligne-poursuite-barre.md, relevé de Studio du
+-- 2026-11-11, agents/wave24-studio.md) : NotifyController clone Stack.Template ; sans cet écran, UI_Notify.
+table.insert(UI.Screens, {
+	Name = "UI_Toast",
+	Class = "ScreenGui",
+	Optional = true,
+	Elements = {
+		{ Path = "Stack" },
+		{ Path = "Stack.Template", Class = "TextLabel", Template = true },
+	} :: { Element },
+})
+
+-- Arrivée en zone safe avec un colis (L-095 point 4 ; contrat dans ui-L092-retours.md, section 2) :
+-- UiFeelController.Escape.
+table.insert(UI.Screens, {
+	Name = "UI_Escape",
+	Class = "ScreenGui",
+	Optional = true,
+	Elements = {
+		{ Path = "Flash" },
+		{ Path = "Banner" },
+		{ Path = "Banner.Title", Class = "TextLabel" },
+		{ Path = "Banner.Subtitle", Class = "TextLabel" },
+		{ Path = "Banner.BoxIcon", Class = "ImageLabel" },
+	} :: { Element },
+})
+
+-- Doublons voulus (L-099 point 1 ; décision de Clément du 2026-11-11, version B) : la colonne de gauche
+-- existe deux fois dans UI_HUD, LeftRail (PC) et LeftRailTouch (téléphone), avec les mêmes boutons.
+-- Le code branche chaque exemplaire ; le ContractChecker accepte un exemplaire par cadre de Containers.
+UI.Twins = {
+	UI_HUD = {
+		Containers = { "LeftRail", "LeftRailTouch" },
+		Names = { "RobuxShopButton", "IndexButton", "RebirthButton", "InventoryButton" },
+	},
+} :: { [string]: { Containers: { string }, Names: { string } } }
+
 return UI

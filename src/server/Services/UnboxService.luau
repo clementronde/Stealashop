@@ -310,8 +310,10 @@ local MESSAGES = {
 	ToStand = "Your inventory is full: %s went on a display stand.",
 	BackToInventory = "A box of yours didn't fit in this shop: it's back in your inventory.",
 }
--- Catégorie des Notify d'information (colis rangé, objet gardé) ; les refus partent en « Warning ».
+-- Catégorie des Notify d'information (objet gardé…) ; les refus partent en « Warning ».
 local INFO_KIND = "Info"
+-- Catégorie des réussites : texte vert dans UI_Toast (Config/UiMotion.Toast.Colors, L-095 point 3).
+local SUCCESS_KIND = "Success"
 
 local IS_STUDIO = RunService:IsStudio()
 local REACH = PROMPT_DISTANCE + REACH_TOLERANCE
@@ -1073,7 +1075,14 @@ local function stow(player: Player)
 	data.Boxes[boxUid] = box
 	local heists = countHeist(player, data) -- d'un seul tenant avec le colis : sauvegardés ensemble
 	log(`{player.Name} : colis {box.Tier} {box.Rarity} rangé dans l'inventaire ({boxUid} ; braquages réussis : {heists or "?"})`)
-	notify(player, MESSAGES.Stowed, INFO_KIND)
+	-- Réussite (L-095 point 3) : message en vert dans UI_Toast ; arrivée en zone safe côté client (point 4).
+	notify(player, MESSAGES.Stowed, SUCCESS_KIND)
+	local secured, securedErr = pcall(function()
+		Net.Server.BoxSecured:Fire(player, box.Tier)
+	end)
+	if not secured then
+		warn(`[UnboxService] BoxSecured vers {player.Name} : {securedErr}`)
+	end
 	refreshInventory(player)
 	emit(stowedListeners, player, boxUid, box)
 end

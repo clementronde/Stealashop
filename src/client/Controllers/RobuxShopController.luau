@@ -656,13 +656,20 @@ local function bindHud(gui: Instance)
 	if hudBound[gui] then
 		return
 	end
-	local found = Find.path(gui, HUD_BUTTON)
-	if found == nil or not found:IsA("GuiButton") then
+	-- Chaque exemplaire du bouton (L-099 point 1 : UI_HUD.LeftRail sur PC et UI_HUD.LeftRailTouch sur
+	-- téléphone ont les mêmes boutons) ouvre et ferme la boutique.
+	local bound = 0
+	for _, found in Find.all(gui, HUD_BUTTON) do
+		if found:IsA("GuiButton") then
+			(found :: GuiButton).Activated:Connect(toggleShop)
+			bound += 1
+		end
+	end
+	if bound == 0 then
 		reportOnce("hud", `[RobuxShop] {HUD}.{HUD_BUTTON} introuvable ou pas un bouton : la boutique ne s'ouvre que par le comptoir`)
 		return
 	end
 	hudBound[gui] = true
-	(found :: GuiButton).Activated:Connect(toggleShop)
 end
 
 -- Comptoir -------------------------------------------------------------------------------------

@@ -5,9 +5,16 @@
 --
 -- API (client) :
 --   Motion.Open(gui)            Enabled = true, puis entrée des cadres racine de l'écran (échelle
---                               Open.From → 1, léger rebond). Déjà allumé : pas d'entrée (il compte
---                               comme ouvert). En train de se fermer : la fermeture est annulée et
---                               l'écran revient à 1.
+--                               Open.From → 1, léger rebond), puis ses cartes une à une (OpenStagger :
+--                               cadres avec HoverOutline, sinon enfants de Rows, Tree, Body,
+--                               DailyPage ; UIScale passager OpenStagger.ScaleName). Déjà allumé : pas
+--                               d'entrée (il compte comme ouvert). En train de se fermer : la fermeture
+--                               est annulée et l'écran revient à 1.
+--   Motion.Swap(gui, change)    changement d'onglet (L-094) : les cartes visibles sortent (Swap), puis
+--                               change() (le contrôleur change de page), puis les nouvelles cartes
+--                               entrent comme OpenStagger. Écran éteint ou sans carte : change() tout
+--                               de suite. change() est toujours fait, une seule fois.
+--   Motion.GetStaggerCount(gui) cartes encore en train d'entrer ou de sortir (banc).
 --   Motion.Close(gui, after?)   sortie courte (1 → Close.To), puis Enabled = false, puis after().
 --                               Fermé tout de suite, sans animation : un écran déjà fermé, un écran
 --                               allumé que Motion n'a jamais vu (copie de StarterGui arrivée
@@ -114,6 +121,9 @@ local HIDE: Transition = {
 	scale = UiMotion.Hide.To,
 	info = TweenInfo.new(UiMotion.Hide.Time, UiMotion.Hide.Style, UiMotion.Hide.Direction),
 }
+local STAGGER = UiMotion.OpenStagger
+local STAGGER_INFO = TweenInfo.new(STAGGER.Time, STAGGER.Style, STAGGER.Direction)
+local SWAP_OUT_INFO = TweenInfo.new(UiMotion.Swap.OutTime, UiMotion.Swap.Style, UiMotion.Swap.Direction)
 local ROLL_INFO = TweenInfo.new(UiMotion.Roll.Time, UiMotion.Roll.Style, UiMotion.Roll.Direction)
 local HOVER_INFO = TweenInfo.new(UiMotion.Hover.Time, UiMotion.Hover.Style, UiMotion.Hover.Direction)
 
@@ -301,6 +311,267 @@ local function run(entry: Entry, targets: { GuiObject }, start: number?, fresh: 
 end
 
 ------------------------------------------------------------------------------
+-- Contenu qui arrive après la fenêtre (OpenStagger) et changement d'onglet (Swap), L-094
+------------------------------------------------------------------------------
+
+-- Cartes d'un écran animées une à une : leurs UIScale passagers (OpenStagger.ScaleName), les tweens,
+-- un jeton (change à chaque nouvelle animation), et le changement de page d'un Swap pas encore fait.
+type Stagger = { token: number, scales: { [GuiObject]: UIScale }, tweens: { Tween }, change: (() -> ())? }
+local staggers: { [Instance]: Stagger } = setmetatable({}, { __mode = "k" }) :: any
+local staggerTokens = 0
+
+local ROWS: { [string]: boolean } = {}
+for _, name in STAGGER.Rows do
+	ROWS[name] = true
+end
+
+-- `object` et ses parents, jusqu'à l'écran, sont visibles.
+local function shownIn(object: GuiObject, gui: Instance): boolean
+	local current: Instance? = object
+	while current ~= nil and current ~= gui do
+		if current:IsA("GuiObject") and not (current :: GuiObject).Visible then
+			return false
+		end
+		current = current.Parent
+	end
+	return current == gui
+end
+
+-- Cartes visibles de l'écran (un cadre avec un enfant HoverOutline, hors Template) ; sans carte, les
+-- enfants visibles des cadres OpenStagger.Rows (prototype ui_feel_proto.luau, staggerItems).
+local function staggerItems(gui: Instance): { GuiObject }
+	local items: { GuiObject } = {}
+	local outline = UiMotion.HoverCard.Outline
+	for _, descendant in gui:GetDescendants() do
+		if descendant:IsA("GuiObject") and descendant.Name ~= "Template" and descendant:FindFirstChild(outline) ~= nil
+			and shownIn(descendant :: GuiObject, gui) then
+			table.insert(items, descendant :: GuiObject)
+		end
+	end
+	if #items > 0 then
+		return items
+	end
+	for _, descendant in gui:GetDescendants() do
+		if ROWS[descendant.Name] and descendant:IsA("GuiObject") and shownIn(descendant :: GuiObject, gui) then
+			for _, child in descendant:GetChildren() do
+				if child:IsA("GuiObject") and (child :: GuiObject).Visible and child.Name ~= "Template" then
+					table.insert(items, child :: GuiObject)
+				end
+			end
+		end
+	end
+	return items
+end
+
+-- Ordre de lecture : rangée par rangée (à RowTolerance px près), de gauche à droite. Rangée arrondie
+-- (et non un écart comparé deux à deux) pour que l'ordre reste cohérent pour table.sort.
+local function rowOf(object: GuiObject): number
+	return math.floor(object.AbsolutePosition.Y / STAGGER.RowTolerance + 0.5)
+end
+
+local function before(a: GuiObject, b: GuiObject): boolean
+	local rowA, rowB = rowOf(a), rowOf(b)
+	local xA, xB = a.AbsolutePosition.X, b.AbsolutePosition.X
+	if rowA ~= rowB then
+		return rowA < rowB
+	end
+	return xA < xB
+end
+
+local function runChange(change: () -> ())
+	local ok, err = pcall(function()
+		change()
+	end)
+	if not ok and IS_STUDIO then
+		warn(`[Motion] changement de page (Swap) en erreur : {err}`)
+	end
+end
+
+-- Arrête les cartes de l'écran : tweens annulés, UIScale passagers détruits (chaque carte retrouve sa
+-- taille), changement de page en attente fait tout de suite.
+local function stopStagger(gui: Instance)
+	local state = staggers[gui]
+	if state == nil then
+		return
+	end
+	staggers[gui] = nil
+	state.token = -1
+	for _, tween in state.tweens do
+		tween:Cancel()
+	end
+	table.clear(state.tweens)
+	for _, scale in state.scales do
+		scale:Destroy()
+	end
+	table.clear(state.scales)
+	local change = state.change
+	state.change = nil
+	if change then
+		runChange(change)
+	end
+end
+
+local function newStagger(gui: Instance): Stagger
+	stopStagger(gui)
+	staggerTokens += 1
+	local state: Stagger = { token = staggerTokens, scales = {}, tweens = {}, change = nil }
+	staggers[gui] = state
+	return state
+end
+
+-- UIScale passager à `value` sur la carte, sauf si elle en a déjà un (celui de Clément, ou d'un effet
+-- en cours) : elle n'est alors pas animée.
+local function addStaggerScale(state: Stagger, item: GuiObject, value: number): UIScale?
+	if item:FindFirstChildOfClass("UIScale") ~= nil then
+		return nil
+	end
+	local scale = Instance.new("UIScale")
+	scale.Name = STAGGER.ScaleName
+	scale.Scale = value
+	scale.Parent = item
+	state.scales[item] = scale
+	return scale
+end
+
+-- La carte a fini (ou a disparu) : son UIScale part ; plus aucune carte : l'écran est oublié.
+local function dropStaggerItem(gui: Instance, state: Stagger, item: GuiObject)
+	local scale = state.scales[item]
+	state.scales[item] = nil
+	if scale then
+		scale:Destroy()
+	end
+	if next(state.scales) == nil and state.change == nil and staggers[gui] == state then
+		staggers[gui] = nil
+	end
+end
+
+-- Entrée des cartes (OpenStagger) : toutes à From tout de suite, puis chacune à 1 en Time, la k-ième
+-- Start + (k − 1) × Gap s après (k au plus Max), dans l'ordre de lecture (calculé à la fin de l'image,
+-- une fois les positions à jour).
+local function staggerIn(gui: Instance, items: { GuiObject })
+	local state = newStagger(gui)
+	for _, item in items do
+		addStaggerScale(state, item, STAGGER.From)
+	end
+	if next(state.scales) == nil then
+		staggers[gui] = nil
+		return
+	end
+	local token = state.token
+	task.defer(function()
+		if state.token ~= token then
+			return
+		end
+		local list: { GuiObject } = {}
+		for item in state.scales do
+			table.insert(list, item)
+		end
+		table.sort(list, before)
+		for index, item in list do
+			local rank = math.min(index, STAGGER.Max) - 1
+			task.delay(STAGGER.Start + rank * STAGGER.Gap, function()
+				if state.token ~= token then
+					return
+				end
+				local scale: UIScale? = state.scales[item]
+				if not scale then
+					return
+				end
+				if scale.Parent ~= item then
+					dropStaggerItem(gui, state, item)
+					return
+				end
+				local tween = TweenService:Create(scale, STAGGER_INFO, { Scale = 1 })
+				table.insert(state.tweens, tween)
+				tween.Completed:Connect(function(playback: Enum.PlaybackState)
+					if playback == Enum.PlaybackState.Completed and state.token == token then
+						dropStaggerItem(gui, state, item)
+					end
+				end)
+				tween:Play()
+			end)
+		end
+	end)
+end
+
+-- Écran allumé dont le contenu peut changer de page en douceur : ni éteint, ni en train de se fermer.
+local function swappable(gui: ScreenGui): boolean
+	local entry = entries[gui]
+	return gui.Enabled and gui.Parent ~= nil and (entry == nil or entry.phase ~= "Closing")
+end
+
+-- Changement d'onglet (Swap) : sortie des cartes visibles, de la dernière à la première, puis
+-- `change()` (le contrôleur change de page), puis entrée des nouvelles cartes comme OpenStagger.
+-- Écran éteint, en train de se fermer ou sans carte : `change()` tout de suite. Un autre Swap ou une
+-- fermeture pendant la sortie : `change()` est fait tout de suite, sans entrée animée.
+function Motion.Swap(gui: ScreenGui, change: () -> ())
+	stopStagger(gui)
+	if not swappable(gui) then
+		runChange(change)
+		return
+	end
+	local state = newStagger(gui)
+	local outs: { GuiObject } = {}
+	for _, item in staggerItems(gui) do
+		if addStaggerScale(state, item, 1) then
+			table.insert(outs, item)
+		end
+	end
+	if #outs == 0 then
+		staggers[gui] = nil
+		runChange(change)
+		staggerIn(gui, staggerItems(gui))
+		return
+	end
+	state.change = change
+	table.sort(outs, function(a: GuiObject, b: GuiObject): boolean
+		return before(b, a)
+	end)
+	local token = state.token
+	local gap = UiMotion.Swap.OutGap
+	for index, item in outs do
+		local rank = math.min(index, STAGGER.Max) - 1
+		task.delay(rank * gap, function()
+			local scale: UIScale? = state.scales[item]
+			if state.token ~= token or not scale or scale.Parent ~= item then
+				return
+			end
+			local tween = TweenService:Create(scale, SWAP_OUT_INFO, { Scale = 0 })
+			table.insert(state.tweens, tween)
+			tween:Play()
+		end)
+	end
+	local total = (math.min(#outs, STAGGER.Max) - 1) * gap + UiMotion.Swap.OutTime
+	task.delay(total, function()
+		if state.token ~= token then
+			return -- déjà fait par stopStagger (autre Swap, fermeture)
+		end
+		local pending = state.change
+		state.change = nil
+		stopStagger(gui)
+		if pending then
+			runChange(pending)
+		end
+		if swappable(gui) then
+			staggerIn(gui, staggerItems(gui))
+		end
+	end)
+end
+
+-- Cartes encore en train d'entrer ou de sortir sur cet écran (banc, barre de commande en Studio).
+function Motion.GetStaggerCount(gui: Instance): number
+	local state = staggers[gui]
+	if state == nil then
+		return 0
+	end
+	local count = 0
+	for _ in state.scales do
+		count += 1
+	end
+	return count
+end
+
+------------------------------------------------------------------------------
 -- Entrée et sortie
 ------------------------------------------------------------------------------
 
@@ -339,9 +610,13 @@ local function enter(inst: Instance, transition: Transition)
 		current.phase = "Open"
 		release(current)
 	end)
+	if inst:IsA("ScreenGui") then
+		staggerIn(inst, staggerItems(inst)) -- L-094 : les cartes arrivent une à une après la fenêtre
+	end
 end
 
 local function leave(inst: Instance, transition: Transition, after: (() -> ())?)
+	stopStagger(inst) -- cartes remises à leur taille (la fenêtre rapetisse avec elles), page changée
 	local entry = entries[inst]
 	if entry ~= nil and entry.phase == "Closing" and isShown(inst) then
 		if after then

@@ -565,9 +565,12 @@ local function bind(gui: ScreenGui)
 	local fill = if meter then element(meter, "Fill", "GuiObject") :: GuiObject? else nil
 
 	for _, gate in GATED do
-		local target = if gate.Enabled then nil else Find.path(gui, gate.Element)
-		if target and target:IsA("GuiObject") then
-			target.Visible = false
+		-- Tous les exemplaires (L-099 point 1 : boutons de LeftRail et de LeftRailTouch).
+		local targets: { Instance } = if gate.Enabled then {} else Find.all(gui, gate.Element)
+		for _, target in targets do
+			if target:IsA("GuiObject") then
+				target.Visible = false
+			end
 		end
 	end
 

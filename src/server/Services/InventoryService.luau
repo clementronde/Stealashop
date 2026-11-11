@@ -395,7 +395,7 @@ local function onPlaceItemAuto(player: Player, itemUid: string)
 	end
 	guardedSync(player)
 	log(`{player.Name} : {itemUid} posé depuis l'inventaire sur le présentoir {slot}`)
-	notify(player, string.format(MESSAGES.Placed, name), INFO_KIND)
+	notify(player, string.format(MESSAGES.Placed, name), "Success") -- réussite : vert dans UI_Toast (L-095 point 3)
 end
 
 local function onUnplaceItem(player: Player, itemUid: string)

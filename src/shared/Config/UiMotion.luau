@@ -6,26 +6,57 @@
 -- L'échelle passe par un UIScale créé par le code et détruit à la fin de chaque animation : aucun
 -- visuel de Clément ne change (couleur, taille, position, image, police, transparence).
 --
--- Open, Close, Show, Hide, Roll et ScaleName sont des V0 proposés, absents du doc, à régler à l'œil
--- en jeu ; les autres viennent du tableau de Clément (voir plus bas).
+-- Show, Hide, Roll et ScaleName sont des V0 proposés, absents du doc, à régler à l'œil en jeu ; les
+-- autres viennent du tableau de Clément (Open, OpenStagger, Close et Swap : L-094, vague 24).
 -- Unités : secondes ; échelles en part de la taille posée par Clément (1 = sa taille).
 
 local DeepFreeze = require(script.Parent.DeepFreeze)
 
 local UiMotion = {
-	-- Écran qui s'ouvre (Motion.Open) : ses cadres racine passent de From à 1.
+	-- Écran qui s'ouvre (Motion.Open) : ses cadres racine (Root) passent de From à 1. Valeurs validées par
+	-- Clément sur les prototypes (L-094 ; tableau « Étendues à tout le jeu » de
+	-- docs/claude/notes/ui-motion-skilltree.md, ligne « Fenêtre qui s'ouvre », qui remplace l'ancien V0
+	-- 0,9 → 1 en 0,25 ; tools/clement/inventory_proto.luau, OpenFrom et OpenTime).
 	Open = {
-		From = 0.9, -- V0 proposé, absent du doc
-		Time = 0.25, -- V0 proposé, absent du doc
-		Style = Enum.EasingStyle.Back, -- V0 proposé, absent du doc : léger rebond au-dessus de 1, puis 1
-		Direction = Enum.EasingDirection.Out, -- V0 proposé, absent du doc
+		From = 0.55, -- tableau : « Root 0,55 → 1 en 0,14 », Back Out
+		Time = 0.14,
+		Style = Enum.EasingStyle.Back, -- le Back Out dépasse un peu 1 (environ 1,04), puis revient à 1
+		Direction = Enum.EasingDirection.Out,
 	},
-	-- Écran qui se ferme (Motion.Close) : sortie courte de 1 à To, puis l'écran s'éteint.
+	-- Contenu qui arrive après la fenêtre (Motion.Open, puis chaque carte ou rangée) : de From à 1 en
+	-- Time, la première Start s après l'ouverture, puis Gap s entre deux, Max cartes au plus (les
+	-- suivantes partent avec la Max-ième). Tableau : ligne « Contenu qui arrive après la fenêtre ».
+	OpenStagger = {
+		From = 0, -- tableau : « chaque carte ou rangée 0 → 1 en 0,14 ; départ à 0,08 ; 0,035 entre deux, 14 au plus »
+		Time = 0.14,
+		Start = 0.08,
+		Gap = 0.035,
+		Max = 14,
+		Style = Enum.EasingStyle.Back,
+		Direction = Enum.EasingDirection.Out,
+		-- Cartes = cadres qui ont un enfant HoverOutline (HoverCard.Outline). Sans carte visible : les
+		-- enfants visibles de ces cadres (prototype tools/clement/ui_feel_proto.luau, staggerItems).
+		Rows = { "Rows", "Tree", "Body", "DailyPage" },
+		RowTolerance = 4, -- px : même rangée à 4 px près, triée de gauche à droite (prototype ui_feel_proto)
+		ScaleName = "StaggerScale", -- V0 proposé, absent du doc : UIScale passager de chaque carte
+	},
+	-- Écran qui se ferme (Motion.Close) : sortie courte de 1 à To, puis l'écran s'éteint. Tableau :
+	-- « Fenêtre qui se ferme : 1 → 0 en 0,09 », Quad In (L-094).
 	Close = {
-		To = 0.9, -- V0 proposé, absent du doc
-		Time = 0.12, -- V0 proposé, absent du doc
-		Style = Enum.EasingStyle.Quad, -- V0 proposé, absent du doc
-		Direction = Enum.EasingDirection.In, -- V0 proposé, absent du doc
+		To = 0,
+		Time = 0.09,
+		Style = Enum.EasingStyle.Quad,
+		Direction = Enum.EasingDirection.In,
+	},
+	-- Changement d'onglet (Motion.Swap) : les cartes visibles sortent (1 → 0 en OutTime, OutGap s entre
+	-- deux, de la dernière à la première, OpenStagger.Max au plus), puis la page change et les nouvelles
+	-- cartes entrent comme OpenStagger. Tableau : ligne « Changement d'onglet » ; prototype
+	-- ui_feel_proto.luau (SwapOutGap, SwapOutTime).
+	Swap = {
+		OutTime = 0.1, -- tableau : « sortie : cartes à 0 en 0,1, 0,03 entre deux ; entrée comme OpenStagger »
+		OutGap = 0.03,
+		Style = Enum.EasingStyle.Quad, -- tableau : Quad In, puis Back Out
+		Direction = Enum.EasingDirection.In,
 	},
 	-- Élément qui apparaît (Motion.Show : HeistTimer, GuardMeter) : de From à 1, rebond plus marqué
 	-- qu'un écran, l'élément est petit.
@@ -107,16 +138,24 @@ local UiMotion = {
 		Outline = "HoverOutline",
 		Icon = "Icon",
 	},
-	-- Message en bas (tableau : `UI_Toast`). NotifyController (UI_Notify) entre par Motion.Show, de 0,6
-	-- à 1 en 0,2 Back Out (les mêmes valeurs), et lit Hold : 2,4 s à l'écran (L-092 3d, Clément).
+	-- Message en bas (tableau : `UI_Toast` ; L-095 point 3, note ui-feel2-horsligne-poursuite-barre.md).
+	-- NotifyController : chaque message est une copie de UI_Toast.Stack.Template qui entre de From à 1
+	-- (Back Out), reste Hold s, puis s'efface en FadeTime (texte et contour) ; MaxShown à la fois. Repli
+	-- sur UI_Notify (Motion.Show) si UI_Toast manque.
 	Toast = {
-		From = 0.6,
+		From = 0.6, -- tableau : « 0,6 → 1 en 0,2 ; 2,4 s à l'écran ; s'efface en 0,25 ; 3 messages au plus »
 		Time = 0.2,
 		Style = Enum.EasingStyle.Back,
 		Direction = Enum.EasingDirection.Out,
 		Hold = 2.4,
 		FadeTime = 0.25,
 		MaxShown = 3,
+		-- Couleur du texte selon le kind du message (note : « les Notify de réussite (objet équipé, achat,
+		-- colis en sécurité) en vert (5dff3a), les informations en blanc ») ; un autre kind : Other.
+		Colors = {
+			Success = Color3.fromHex("5DFF3A"),
+		} :: { [string]: Color3 },
+		Other = Color3.new(1, 1, 1),
 	},
 	-- Gain au-dessus du joueur (BB_Gain, GainController).
 	FloatGain = {
@@ -217,14 +256,32 @@ local UiMotion = {
 		Style = Enum.EasingStyle.Quad,
 		Direction = Enum.EasingDirection.Out,
 	},
-	-- Arrivée en zone safe (UI_Escape). Pas encore lu (voir le rapport de la vague 21, L-091).
+	-- Arrivée en zone safe avec un colis (UI_Escape ; UiFeelController.Escape, au remote BoxSecured) :
+	-- note ui-L092-retours.md, section 2, et prototype tools/clement/feel2_proto.luau (escape).
 	SafeFlash = {
+		Screen = "UI_Escape",
 		FlashFrom = 0.05, -- tableau : « UI_Escape.Flash transparence 0,05 → 1 en 0,5 ; champ de vision + 12 en 0,08 puis retour en 0,45 ; bannière 0 → 1 en 0,35 »
 		FlashTime = 0.5,
+		FlashStyle = Enum.EasingStyle.Quad, -- tableau : Quad Out
 		FovAdd = 12,
 		FovInTime = 0.08,
 		FovOutTime = 0.45,
+		FovStyle = Enum.EasingStyle.Quad,
+		BannerDelay = 0.1, -- prototype feel2_proto.luau : la bannière part 0,1 s après le flash
 		BannerTime = 0.35,
+		BannerStyle = Enum.EasingStyle.Back, -- tableau : Back Out
+		TitleFrom = -14, -- note : « Title de −14° à −3° » (−3° = sa Rotation dans Studio, remise à la fin)
+		TitleTime = 0.45, -- prototype feel2_proto.luau
+		Parts = { "BoxIcon", "Subtitle" }, -- note : « puis BoxIcon et Subtitle arrivent 0,07 s l'un après l'autre »
+		PartsDelay = 0.16, -- prototype feel2_proto.luau : 0,16 + rang × 0,07
+		PartsGap = 0.07,
+		PartsTime = 0.25, -- prototype feel2_proto.luau
+		Hold = 2.3, -- note : « au bout de 2,3 s, Banner rapetisse à 0 en 0,15 s, puis l'écran s'éteint »
+		OutTime = 0.15,
+		Sounds = { "Heist_SafeFlash", "Heist_Escape" }, -- note : « Heist_SafeFlash, puis Heist_Escape 0,12 s après »
+		SoundGap = 0.12,
+		BoxIconPrefix = "BOX_", -- Icons.get("BOX_<Tier>") = ICON_BOX_<Tier>, comme l'inventaire (L-089)
+		ScaleName = "EscapeScale", -- V0 proposé, absent du doc : UIScale passager de Banner, BoxIcon, Subtitle
 	},
 	-- V0 proposé, absent du doc : UIScale passager de Motion.Pop (sursauts : CashBump, TimerTick…).
 	PopScaleName = "PopScale",

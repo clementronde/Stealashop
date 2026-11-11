@@ -931,6 +931,31 @@ end
 
 -- UI (2.2) ---------------------------------------------------------------------
 
+-- Doublons voulus (UI.Twins, L-099 point 1) : `name` de cet écran apparaît au plus une fois dans
+-- chaque cadre de Containers (LeftRail, LeftRailTouch), et chaque exemplaire est dans l'un d'eux.
+local function wantedTwins(screenName: string, name: string, matches: { Instance }): boolean
+	local twins = (UI :: any).Twins
+	local spec = if type(twins) == "table" then twins[screenName] else nil
+	if spec == nil or table.find(spec.Names, name) == nil then
+		return false
+	end
+	local used: { [string]: boolean } = {}
+	for _, match in matches do
+		local container: string? = nil
+		for _, candidate in spec.Containers do
+			if match:FindFirstAncestor(candidate) ~= nil then
+				container = candidate
+				break
+			end
+		end
+		if container == nil or used[container] then
+			return false
+		end
+		used[container] = true
+	end
+	return true
+end
+
 local function checkScreen(category: string, gui: Instance, screen: Screen)
 	local reported: { [string]: boolean } = {}
 	local missing: { Missing } = {}
@@ -951,7 +976,7 @@ local function checkScreen(category: string, gui: Instance, screen: Screen)
 				found = false
 				break
 			end
-			if #matches > 1 and not reported[walked .. "*"] then
+			if #matches > 1 and not reported[walked .. "*"] and not wantedTwins(screen.Name, segment, matches) then
 				reported[walked .. "*"] = true
 				problem(category, `{screen.Name}.{walked} : {#matches} éléments portent ce nom, le code n'en prendra qu'un`)
 			end

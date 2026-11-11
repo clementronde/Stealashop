@@ -2,7 +2,16 @@
 -- NotifyController (client) : affiche les messages `Notify` du serveur (Net/Definitions :
 -- Notify(message, kind?), kind = "Info", "Warning" ou une autre catégorie libre).
 --
--- Écran (contrat UI 2.2 : `UI_Notify`, un `Template` caché avec `Icon` et `Label`) :
+-- Écran, dans cet ordre :
+--   - `UI_Toast` de Clément (L-095 point 3 ; note docs/claude/notes/ui-feel2-horsligne-poursuite-barre.md) :
+--     une copie de `Stack.Template` (TextLabel caché) par message, rangée à côté de lui (LayoutOrder =
+--     ordre d'arrivée) : Text = le message, TextColor3 = UiMotion.Toast.Colors[kind] (« Success » en
+--     vert 5DFF3A), sinon Toast.Other (blanc). Elle entre de Toast.From à 1 (Motion.Pop, Back Out),
+--     reste Toast.Hold s, puis son texte et ses UIStroke s'effacent en Toast.FadeTime et elle est
+--     détruite ; poussée dehors par un 4e message : détruite tout de suite (prototype feel2_proto.luau).
+--     Seuls Enabled de l'écran, et Name, LayoutOrder, Text, TextColor3, Visible et la transparence
+--     (avant destruction) des copies sont touchés ;
+--   - sinon (repli) `UI_Notify` (contrat UI 2.2 : un `Template` caché avec `Icon` et `Label`) :
 --   - écran de Clément livré (PlayerGui/UI_Notify, copié depuis StarterGui) : une copie de son Template
 --     par message, rangée à côté de lui, Label = le message, montrée par Controllers/UI/Motion (Show),
 --     retirée au bout de DURATION s (Hide, puis détruite). L'écran est allumé au premier message.
@@ -26,13 +35,14 @@
 --   NotifyController.OnNotify(fn(message, kind?)) -> déconnexion
 --   NotifyController.Show(message, kind?)
 --       Un message du client lui-même, montré comme un Notify du serveur (OfflineController : « Soon »).
---   NotifyController.GetShown() -> { { Message, Kind, Count, Text, Fallback } }
+--   NotifyController.GetShown() -> { { Message, Kind, Count, Text, Fallback, Toast, Color } }
 --       Messages affichés, du plus ancien au plus récent, pour un test dans Studio (barre de commande
 --       côté client).
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Find = require(Shared:WaitForChild("Contract"):WaitForChild("Find"))
@@ -44,6 +54,7 @@ type Listener = (message: string, kind: string?) -> ()
 type MotionApi = {
 	Show: (object: GuiObject) -> (),
 	Hide: (object: GuiObject, after: (() -> ())?) -> (),
+	Pop: ((object: GuiObject, from: number, info: TweenInfo) -> ())?,
 }
 
 type Entry = {
@@ -54,6 +65,7 @@ type Entry = {
 	Label: TextLabel?,
 	ExpiresAt: number, -- os.clock()
 	Fallback: boolean,
+	Toast: boolean, -- copie de UI_Toast.Stack.Template
 }
 
 export type ShownInfo = {
@@ -62,7 +74,16 @@ export type ShownInfo = {
 	Count: number,
 	Text: string?,
 	Fallback: boolean,
+	Toast: boolean,
+	Color: Color3?, -- TextColor3 d'un message de UI_Toast
 }
+
+-- Messages du bas de Clément (L-095 point 3) : `UI_Toast`, et dedans `Stack.Template` (TextLabel).
+local TOAST_SCREEN = "UI_Toast"
+local TOAST_TEMPLATE = "Stack.Template"
+local TOAST = UiMotion.Toast
+local TOAST_INFO = TweenInfo.new(TOAST.Time, TOAST.Style, TOAST.Direction)
+local FADE_INFO = TweenInfo.new(TOAST.FadeTime, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 
 -- Écran de Clément et ses éléments (contrat 2.2).
 local SCREEN_NAME = "UI_Notify"
@@ -73,8 +94,8 @@ local LABEL = "Label"
 -- s : durée d'affichage d'un message (relancée par une répétition) ; Toast.Hold du tableau de
 -- Clément, 2,4 s (L-092 3d).
 local DURATION: number = UiMotion.Toast.Hold
+local MAX_SHOWN: number = TOAST.MaxShown -- tableau de Clément : 3 messages au plus
 -- V0 proposés, absents du doc :
-local MAX_SHOWN = 3 -- messages à l'écran à la fois au plus
 local COUNT_TEXT = "%s ×%d" -- même message répété : « … ×2 »
 local FALLBACK_NAME = "NotifyV0"
 local DISPLAY_ORDER = 15 -- au-dessus du HUD, sous l'alerte de vol (20)
@@ -301,13 +322,56 @@ local function clementTemplate(playerGui: Instance): (ScreenGui?, GuiObject?)
 	return nil, nil
 end
 
-local function removeEntry(entry: Entry)
+-- UI_Toast de Clément et son Stack.Template, ou nil (pas livré, ou sans Template TextLabel : repli).
+local function toastTemplate(playerGui: Instance): (ScreenGui?, TextLabel?)
+	local screen = playerGui:FindFirstChild(TOAST_SCREEN)
+	if screen == nil or not screen:IsA("ScreenGui") then
+		return nil, nil
+	end
+	local template = Find.path(screen, TOAST_TEMPLATE)
+	if template and template:IsA("TextLabel") then
+		return screen :: ScreenGui, template :: TextLabel
+	end
+	once("toastTemplate", `{TOAST_SCREEN} sans {TOAST_TEMPLATE} (TextLabel, L-095) : messages dans {SCREEN_NAME}`, true)
+	return nil, nil
+end
+
+local function toastColor(kind: string?): Color3
+	local color = if kind then TOAST.Colors[kind] else nil
+	return color or TOAST.Other
+end
+
+-- Message de UI_Toast qui s'en va : le texte et ses contours s'effacent, puis la copie est détruite ;
+-- `now` (poussé dehors par un message de plus) : détruite tout de suite.
+local function fadeToast(object: GuiObject, now: boolean)
+	if now or TOAST.FadeTime <= 0 then
+		object:Destroy()
+		return
+	end
+	if object:IsA("TextLabel") then
+		TweenService:Create(object, FADE_INFO, { TextTransparency = 1 }):Play()
+	end
+	for _, descendant in object:GetDescendants() do
+		if descendant:IsA("UIStroke") then
+			TweenService:Create(descendant, FADE_INFO, { Transparency = 1 }):Play()
+		end
+	end
+	task.delay(TOAST.FadeTime, function()
+		object:Destroy()
+	end)
+end
+
+local function removeEntry(entry: Entry, now: boolean?)
 	local index = table.find(entries, entry)
 	if index then
 		table.remove(entries, index)
 	end
 	local object = entry.Object
 	if object.Parent == nil then
+		return
+	end
+	if entry.Toast then
+		fadeToast(object, now == true)
 		return
 	end
 	local api = motionApi()
@@ -344,9 +408,41 @@ local function display(message: string, kind: string?)
 		end
 	end
 	while #entries >= MAX_SHOWN do
-		removeEntry(entries[1])
+		removeEntry(entries[1], true)
 	end
 	order += 1
+	local toastScreen, toastLabel = toastTemplate(playerGui)
+	if toastScreen and toastLabel then
+		destroyFallback()
+		local copy = toastLabel:Clone()
+		copy.Name = `Toast_{order}`
+		copy.LayoutOrder = order
+		copy.TextColor3 = toastColor(kind)
+		copy.Visible = true
+		local entry: Entry = {
+			Message = message,
+			Kind = kind,
+			Count = 1,
+			Object = copy,
+			Label = copy,
+			ExpiresAt = os.clock() + DURATION,
+			Fallback = false,
+			Toast = true,
+		}
+		refreshText(entry)
+		copy.Parent = toastLabel.Parent
+		if not toastScreen.Enabled then
+			toastScreen.Enabled = true
+		end
+		table.insert(entries, entry)
+		local api = motionApi()
+		local pop = if api then api.Pop else nil
+		if pop then
+			pop(copy, TOAST.From, TOAST_INFO) -- 0,6 → 1, Back Out (UIScale passager de Motion)
+		end
+		once("toast", `messages dans l'écran {TOAST_SCREEN} de Clément`)
+		return
+	end
 	local screen, template = clementTemplate(playerGui)
 	local object: GuiObject
 	local label: TextLabel?
@@ -382,6 +478,7 @@ local function display(message: string, kind: string?)
 		Label = label,
 		ExpiresAt = os.clock() + DURATION,
 		Fallback = isFallback,
+		Toast = false,
 	}
 	refreshText(entry)
 	table.insert(entries, entry)
@@ -401,7 +498,7 @@ local function step()
 	-- L'écran de Clément arrive : le repli part.
 	if fallback then
 		local playerGui = localPlayer:FindFirstChildOfClass("PlayerGui")
-		if playerGui and clementTemplate(playerGui) then
+		if playerGui and (toastTemplate(playerGui) or clementTemplate(playerGui)) then
 			destroyFallback()
 		end
 	end
@@ -443,6 +540,8 @@ function NotifyController.GetShown(): { ShownInfo }
 			Count = entry.Count,
 			Text = if label then label.Text else nil,
 			Fallback = entry.Fallback,
+			Toast = entry.Toast,
+			Color = if entry.Toast and label then label.TextColor3 else nil,
 		})
 	end
 	return list
