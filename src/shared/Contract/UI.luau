@@ -547,4 +547,21 @@ table.insert(UI.Screens, {
 	Elements = settingsElements,
 })
 
+-- Barre du bas (L-095 point 6 ; noms de docs/claude/notes/ui-liste-pour-liaison.md, lignes 22 et 23,
+-- relevé de Studio du 2026-11-11, agents/wave24-studio.md) : écran UI_Hotbar, branché par
+-- HotbarController. Bar porte les attributs SlotCount et TouchSlotCount ; une case = une copie de
+-- Bar.Template.
+local hotbarElements = {
+	{ Path = "Bar" },
+	{ Path = "Bar.Template", Class = BUTTON, Template = true },
+} :: { Element }
+for _, path in { "Clip", "Clip.Glow", "Icon", "KeyLabel", "ItemName", "Income", "Equipped", "HoverOutline" } do
+	table.insert(hotbarElements, { Path = `Bar.Template.{path}` })
+end
+table.insert(UI.Screens, {
+	Name = "UI_Hotbar",
+	Class = "ScreenGui",
+	Elements = hotbarElements,
+})
+
 return UI

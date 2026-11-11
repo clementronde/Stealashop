@@ -7,8 +7,13 @@
 --   - barre Roblox coupée (StarterGui:SetCoreGuiEnabled(Backpack, false)) : plus aucun Tool montré en
 --     bas de l'écran. L'outil de casse et la batte de ToolService restent des Tools, dans le Backpack ou
 --     en main. Touches (comme les slots de l'ancienne barre, Balance.Hotbar) : 1 met l'outil de casse en
---     main ou le range, 2 la batte. Rien pendant un portage (attribut Carrying, CarryService) ;
---   - UI_HUD.InventoryButton ouvre l'écran (un 2e appui le ferme), CloseButton le ferme. Ouverture et
+--     main ou le range, 2 la batte. Rien pendant un portage (attribut Carrying, CarryService). Une seule
+--     écoute des touches 1 à 9, ici : quand la barre du bas UI_Hotbar est branchée (HotbarController,
+--     L-095 point 6), elle reçoit chaque touche par SetSlotKeys et fait l'action de sa case ; sinon,
+--     1 et 2 comme ci-dessus ;
+--   - UI_HUD.InventoryButton ouvre l'écran (un 2e appui le ferme), CloseButton le ferme ; chaque
+--     InventoryButton de UI_HUD est branché (colonne LeftRail sur PC, LeftRailTouch sur téléphone,
+--     L-095). Ouverture et
 --     fermeture animées par UI/Motion (groupe ScreenGroup de l'écran, Motion.SetCloser) ; les cartes sont
 --     retirées une fois l'écran éteint ;
 --   - onglets Tabs.ItemsTab, BoxesTab, ToolsTab, PotionsTab : l'image Selected sur l'onglet choisi, sa
@@ -71,6 +76,16 @@
 --   InventoryController.StartPlacing(boxUid)   mode pose de ce colis (barre de commande, bancs)
 --   InventoryController.EquipBest()            demande au serveur de poser ses meilleurs objets
 --   InventoryController.GetState() -> { Open, Tab, Placing, Aim, AimValid, Items, Boxes, Tools }
+-- Pour la barre du bas (HotbarController, L-095 point 6) : la même source et les mêmes actions.
+--   InventoryController.GetInventory() -> InventoryState.State   état lu dans l'attribut (à ne pas modifier)
+--   InventoryController.GetTools() -> { Breaking: Tool?, Bat: Tool?, Held: Tool? }
+--   InventoryController.ToggleBreakingTool() / ToggleBat()       comme les touches 1 et 2 : en main ou rangé
+--   InventoryController.PlaceItem(itemUid)     PlaceItemAuto, comme le PlaceButton d'une carte d'objet
+--   InventoryController.StopPlacing()          fin du mode pose
+--   InventoryController.OnChanged(fn) -> déconnexion
+--       fn() après chaque changement de l'état, du mode pose, de l'outil en main ou du Backpack
+--   InventoryController.SetSlotKeys(handler?)  handler(index) -> boolean : la touche 1 à 9 (index) a-t-elle
+--       été traitée ? nil (défaut) : touches 1 et 2 d'origine
 
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
@@ -263,7 +278,9 @@ local missingIcons: { [string]: boolean } = {}
 local preloaded: { [string]: boolean } = {} -- textures déjà téléchargées (Icons.preload)
 local reported: { [string]: boolean } = {}
 local characterConnections: { RBXScriptConnection } = {}
-local backpackConnection: RBXScriptConnection? = nil
+local backpackConnections: { RBXScriptConnection } = {}
+local listeners: { () -> () } = {} -- OnChanged (barre du bas)
+local slotKeys: ((index: number) -> boolean)? = nil -- SetSlotKeys (barre du bas)
 local nearWindow = false -- dans la zone d'une vitrine cassable (L-092 2c)
 local autoEquipDone = false -- déjà servi pendant cette approche : rien de plus tant qu'il n'est pas reparti
 
@@ -272,6 +289,16 @@ local function reportOnce(key: string, message: string)
 	if IS_STUDIO and not reported[key] then
 		reported[key] = true
 		print(message)
+	end
+end
+
+-- Prévient les abonnés d'OnChanged (barre du bas) ; une erreur chez l'un n'arrête pas les autres.
+local function changed()
+	for _, listener in table.clone(listeners) do
+		local ok, message: any = pcall(listener)
+		if not ok then
+			reportOnce("listener", `[Inventory] abonné d'OnChanged en erreur : {message}`)
+		end
 	end
 end
 
@@ -522,14 +549,27 @@ local function onBackpackChild(child: Instance)
 end
 
 local function watchBackpack()
-	if backpackConnection then
-		backpackConnection:Disconnect()
-		backpackConnection = nil
+	for _, connection in backpackConnections do
+		connection:Disconnect()
 	end
+	table.clear(backpackConnections)
 	local backpack = localPlayer:FindFirstChildOfClass("Backpack")
 	if backpack then
-		backpackConnection = backpack.ChildAdded:Connect(onBackpackChild)
+		table.insert(
+			backpackConnections,
+			backpack.ChildAdded:Connect(function(child: Instance)
+				onBackpackChild(child)
+				changed()
+			end)
+		)
+		table.insert(
+			backpackConnections,
+			backpack.ChildRemoved:Connect(function()
+				changed()
+			end)
+		)
 	end
+	changed()
 end
 
 ------------------------------------------------------------------------------
@@ -715,6 +755,7 @@ stopPlacing = function()
 	end
 	lastAim, lastAimValid = nil, false
 	hideGhost()
+	changed()
 end
 
 local function placeAt(current: Placing, x: number?, y: number?)
@@ -761,6 +802,7 @@ local function startPlacing(uid: string)
 		end)
 	)
 	updateAim()
+	changed()
 end
 
 ------------------------------------------------------------------------------
@@ -773,6 +815,7 @@ local function readState()
 	if current and not isStoredBox(current.uid) then
 		stopPlacing() -- posé (ou disparu) : fin du mode pose
 	end
+	changed()
 end
 
 local function ownedSet(): { [string]: boolean }
@@ -896,6 +939,14 @@ local function newView(section: Section, key: string): CardView?
 	return view
 end
 
+-- Objet de l'inventaire posé sur un présentoir libre (PlaceItemAuto) : PlaceButton, clic sur la carte,
+-- case de la barre du bas. Le serveur choisit le présentoir et revérifie tout.
+local function placeItem(uid: string)
+	if net and canSend("PlaceItemAuto:" .. uid) then
+		net.Client.PlaceItemAuto:Fire(uid)
+	end
+end
+
 local function paintItem(view: CardView, entry: InventoryState.ItemEntry)
 	local def = Items.ById[entry.ItemId]
 	if def == nil then
@@ -922,9 +973,7 @@ local function paintItem(view: CardView, entry: InventoryState.ItemEntry)
 	setVisible(refs.UnequipButton, displayed)
 	local uid = entry.Uid
 	local function place()
-		if net and canSend("PlaceItemAuto:" .. uid) then
-			net.Client.PlaceItemAuto:Fire(uid)
-		end
+		placeItem(uid)
 	end
 	local function unplace()
 		if net and canSend("UnplaceItem:" .. uid) then
@@ -1322,18 +1371,31 @@ end
 ------------------------------------------------------------------------------
 
 local hudBound: { [Instance]: boolean } = setmetatable({}, { __mode = "k" }) :: any
+local hudButtons: { [Instance]: boolean } = setmetatable({}, { __mode = "k" }) :: any
 
+local function bindHudButton(inst: Instance)
+	if hudButtons[inst] or inst.Name ~= HUD_BUTTON or not inst:IsA("GuiButton") then
+		return
+	end
+	hudButtons[inst] = true
+	(inst :: GuiButton).Activated:Connect(toggle)
+end
+
+-- Chaque InventoryButton de UI_HUD : LeftRail (PC) et LeftRailTouch (téléphone) ont chacun le leur
+-- (relevé de Studio du 2026-11-11, L-095), et ceux qui arrivent ensuite.
 local function bindHud(gui: Instance)
 	if hudBound[gui] then
 		return
 	end
-	local found = Find.path(gui, HUD_BUTTON)
-	if found == nil or not found:IsA("GuiButton") then
-		reportOnce("hud", `[Inventory] {HUD}.{HUD_BUTTON} introuvable ou pas un bouton : l'inventaire ne s'ouvre pas`)
-		return
-	end
 	hudBound[gui] = true
-	(found :: GuiButton).Activated:Connect(toggle)
+	local found = Find.all(gui, HUD_BUTTON)
+	for _, inst in found do
+		bindHudButton(inst)
+	end
+	if #found == 0 then
+		reportOnce("hud", `[Inventory] {HUD}.{HUD_BUTTON} introuvable : l'inventaire ne s'ouvre pas par le HUD`)
+	end
+	gui.DescendantAdded:Connect(bindHudButton)
 end
 
 local function onInput(input: InputObject, processed: boolean)
@@ -1341,6 +1403,19 @@ local function onInput(input: InputObject, processed: boolean)
 		return
 	end
 	local key = input.KeyCode
+	local handler = slotKeys
+	if handler then
+		-- Barre du bas branchée : elle seule décide (une seule écoute, pas de double déclenchement).
+		local index = table.find(SLOT_KEYS, key)
+		if index then
+			local ok, handled: any = pcall(handler, index)
+			if not ok then
+				reportOnce("slotkeys", `[Inventory] touche {index} : erreur de la barre du bas : {handled}`)
+			elseif handled == true then
+				return
+			end
+		end
+	end
 	if key == TOOL_KEY then
 		toggleTool(isBreakingTool)
 	elseif key == BAT_KEY_CODE then
@@ -1374,6 +1449,7 @@ local function watchCharacter(character: Model?)
 			if current and isOpen then
 				refreshTools(current)
 			end
+			changed()
 		end
 	end
 	table.insert(characterConnections, character.ChildAdded:Connect(onTools))
@@ -1512,6 +1588,44 @@ function InventoryController.StartPlacing(boxUid: string)
 		close()
 	end
 	startPlacing(boxUid)
+end
+
+function InventoryController.StopPlacing()
+	stopPlacing()
+end
+
+function InventoryController.GetInventory(): InventoryState.State
+	return state
+end
+
+function InventoryController.GetTools(): { Breaking: Tool?, Bat: Tool?, Held: Tool? }
+	return { Breaking = findTool(isBreakingTool), Bat = findTool(isBatTool), Held = heldTool() }
+end
+
+function InventoryController.ToggleBreakingTool()
+	toggleTool(isBreakingTool)
+end
+
+function InventoryController.ToggleBat()
+	toggleTool(isBatTool)
+end
+
+function InventoryController.PlaceItem(itemUid: string)
+	placeItem(itemUid)
+end
+
+function InventoryController.OnChanged(listener: () -> ()): () -> ()
+	table.insert(listeners, listener)
+	return function()
+		local index = table.find(listeners, listener)
+		if index then
+			table.remove(listeners, index)
+		end
+	end
+end
+
+function InventoryController.SetSlotKeys(handler: ((index: number) -> boolean)?)
+	slotKeys = handler
 end
 
 function InventoryController.EquipBest()
