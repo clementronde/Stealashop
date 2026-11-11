@@ -105,3 +105,17 @@
   - objets concernés : Peluche géante (Bob), Figurine holographique (`Spin_Figure`, `Spin_Ring`), PC gamer et Carte graphique en or (`Spin_Fan1` à `Spin_Fan3`), Couronne et Œuf en diamant (Spin), Masque ancien (Bob), Météorite (SpinBob), Coffre de diamants (Bob), Clé du coffre ultime (SpinBob), Chat porte-bonheur doré (`Wave_Paw`, `Wave_PawPads`).
 - **Effets natifs déjà actifs sans code** : étincelles (ParticleEmitter), lumières (PointLight), vapeur du Pot de nouilles.
 - **Rangement** : les modèles restés dans `_INBOX_CLEMENT` vont dans `ReplicatedStorage/Assets/Items` quand `Config/Items` passe au catalogue v2 (83 objets, `ExpectedCount` à 83).
+
+## Icônes des 83 objets (MOD-040, 2026-11-07)
+
+- **Fichiers** : `StealAShop-Art/Items/Icons/ICON_<ItemId>.png`, 512 × 512, fond transparent, même angle, même lumière, même cadrage, contour bleu nuit `#040435` des icônes de l'UI. Importés par Clément au nom de RoundStone Studio : les 83 sont approuvés.
+- **Branchement** : 83 `Decal` `ICON_<ItemId>` dans `ReplicatedStorage/Assets/Icons` (`Texture = rbxassetid://…`), les 83 se chargent en Edit. `UI_Index` et `UI_Unbox` non touchés.
+- **Pour Ironix** (à faire valider au contrat 10.3) : un Decal `ICON_<ItemId>` par objet ; le code pose `Icon.Image = Assets.Icons["ICON_" .. itemId].Texture`. La silhouette noire de l'Index (`ImageColor3` noir) marche avec ces PNG.
+- **Futurs objets** : `Items/Z1/_scripts/icon_render.py` (Blender) puis `icon_post.py` (contour), mêmes réglages.
+
+## Colis par rareté et potions (2026-11-08, validés par Clément)
+
+- **Colis** : 8 `BOX_<Rarity>` dans `_INBOX_CLEMENT` (`BOX_Common`, `BOX_Uncommon`, `BOX_Rare`, `BOX_Epic`, `BOX_Legendary`, `BOX_Mythic`, `BOX_Secret`, `BOX_Divine`), même contrat que `BOX_Standard` : `Body` (PrimaryPart, `CarryAttachment`, `LabelPoint`), Model `Lid`, `Tint` déjà à la couleur de la rareté, `OutlineHighlight`, `Outline`. Tout ancré, sans collision, aucun script ; 168 à 284 triangles. Légendaire et plus : étincelles et lumière dans `Body`.
+- **Pour Ironix** : charger `"BOX_" .. rarity` au lieu de `"BOX_" .. Tier` ; couleur Divin proposée `#FFE9A8` (à mettre dans `Config/Rarities`).
+- **Potions** : 4 `POT_<Effet>` dans `_INBOX_CLEMENT` (`POT_Speed`, `POT_Invisibility`, `POT_Money`, `POT_Strength`) : `Root` (PrimaryPart, pivot en bas), `Glass`, `Liquid` (Neon, porte `Glow` et `Bubbles`), `Cork`, `Emblem`, attribut `Idle = "SpinBob"`. Préfixe `POT_` à faire valider.
+- **Rangés à la demande de Clément (2026-11-08)** : les 8 `BOX_<Rarity>` sont dans `ReplicatedStorage/Assets/Boxes` (à côté de `BOX_Standard`, `BOX_Premium`, `BOX_Luxe`, inchangés), les 4 `POT_` dans le nouveau dossier `ReplicatedStorage/Assets/Potions`. Plus rien dans `_INBOX_CLEMENT`.
