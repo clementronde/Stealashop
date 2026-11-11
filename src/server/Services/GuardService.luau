@@ -11,14 +11,20 @@
 --      qui rentre, pas de vigile. Un vigile en fondu ne compte plus dans ces plafonds. Le serveur
 --      possède sa physique ; nage, escalade et autres états inutiles sont coupés (9.7).
 --   2. Poursuite, après REACTION_DELAY s : WalkSpeed = Zones[zone].GuardSpeed (section 4).
---      Le trajet le plus court vers la position du joueur, sans anticipation (Cantin, 2026-11-11 : il
---      ne doit pas recopier nos zigzags). Ligne de vue testée toutes les CHASE_STEER_INTERVAL s
---      (L-091 point 1). S'il voit le joueur : MoveTo droit sur l'endroit où il est, repris au plus
---      toutes les CHASE_REAIM_INTERVAL s (ou dès qu'il l'atteint, ou quand la vue revient), et tout
---      chemin en cours est jeté. Derrière un obstacle seulement : PathfindingService, recalculé dès
---      que le joueur s'éloigne du but du chemin (PATH_GOAL_DRIFT), au plus toutes les
---      Balance.Guard.PathRecomputeInterval s ; un chemin qui arrive reprend au point le plus proche
---      du vigile, jamais derrière lui. Même poursuite de jour, de nuit et pour les conducteurs.
+--      Il coupe la route du joueur (Cantin, 2026-11-11, vague 24) : il vise le point d'interception,
+--      là où, en ligne droite à sa WalkSpeed, il retrouve le joueur qui garde sa vitesse au sol lissée
+--      (VELOCITY_SMOOTHING : un zigzag ne le fait presque pas zigzaguer), au plus INTERCEPT_MAX_TIME s
+--      devant lui ; jamais derrière un mur ni en zone safe ; sans solution, le joueur lui-même. Ligne
+--      de vue testée toutes les CHASE_STEER_INTERVAL s (L-091 point 1). S'il voit le joueur : MoveTo
+--      droit sur ce point, recalculé toutes les CHASE_REAIM_INTERVAL s (0,1), redonné seulement s'il
+--      bouge d'AIM_MIN_CHANGE studs, et tout chemin en cours est jeté. Derrière un obstacle seulement :
+--      PathfindingService vers ce point, recalculé dès qu'il s'éloigne du but du chemin
+--      (PATH_GOAL_DRIFT), au plus toutes les Balance.Guard.PathRecomputeInterval s ; un chemin qui
+--      arrive reprend au point le plus proche du vigile, jamais derrière lui. Même poursuite de jour,
+--      de nuit et pour les conducteurs. Les 1 à 2 s de retard vus en Play (Cantin, 2026-11-11) : le
+--      point visé était la position du joueur, gardée jusqu'à 0,25 s ; près du vigile, un joueur qui
+--      passe derrière lui avait déjà bougé de 4 à 6 studs, le vigile courait à un point vide puis le
+--      suivait de dos (plus lent que lui, il ne rattrapait jamais son retard).
 --   3. Capture : distance ≤ Balance.Guard.CatchDistance entre les deux HumanoidRootPart, sans
 --      mur entre eux, mesurée ici, côté serveur. Alors, tout de suite : CarryService.Fail(player,
 --      "Caught") (le colis revole vers son rayon), joueur immobilisé (StatsService, modificateur
@@ -289,8 +295,11 @@ type Guard = {
 	waypointIndex: number,
 	pathGoal: Vector3?, -- but du dernier calcul de chemin lancé (L-091 point 1)
 	lastSeen: Vector3?, -- poursuite : où il a vu sa cible pour la dernière fois (L-091 point 1)
-	chaseAim: Vector3?, -- poursuite en vue : le point visé (position du joueur), nil hors de vue
-	nextAimAt: number, -- poursuite en vue : prochaine reprise de la position du joueur
+	chaseAim: Vector3?, -- poursuite en vue : le dernier point donné à MoveTo (interception), nil hors de vue
+	chaseAimAt: number?, -- poursuite en vue : quand ce MoveTo a été donné
+	nextAimAt: number, -- poursuite en vue : prochain calcul du point d'interception
+	chaseVelocity: Vector3?, -- poursuite : vitesse au sol de la cible, lissée (sampleVelocity)
+	chaseVelocityAt: number?, -- poursuite : instant de la dernière mesure de cette vitesse
 	progressPos: Vector3,
 	progressAt: number,
 	knockTarget: Player?, -- joueur à projeter au marqueur Impact de Catch
@@ -375,9 +384,13 @@ local REACTION_DELAY = 0.5 -- il apparaît, puis s'élance après ce délai, san
 local STEER_INTERVAL = 0.1 -- cadence du pilotage : ligne de vue, MoveTo (s)
 -- V0 proposé, absent du doc : une poursuite qui réagit tout de suite (L-091 point 1).
 local CHASE_STEER_INTERVAL = 0.05 -- poursuite : ligne de vue à ce rythme (s)
--- V0 proposé, absent du doc (Cantin, 2026-11-11 : il ne copie pas nos zigzags) : en vue, il reprend la
--- position du joueur au plus à ce rythme, plus tôt s'il atteint le point visé ou si la vue revient (s).
-local CHASE_REAIM_INTERVAL = 0.25
+-- V0 proposé, absent du doc (Cantin, 2026-11-11 : il doit nous COUPER la route, tout de suite et sans
+-- à-coups, sans recopier nos zigzags) : interception en ligne de vue (chaseInSight).
+local CHASE_REAIM_INTERVAL = 0.1 -- en vue : point d'interception recalculé à ce rythme (s)
+local INTERCEPT_MAX_TIME = 1.5 -- interception : au plus ce temps d'avance sur la course du joueur (s)
+local VELOCITY_SMOOTHING = 0.3 -- vitesse du joueur lissée sur environ ce temps (moyenne exponentielle, s)
+local AIM_MIN_CHANGE = 1 -- nouveau MoveTo seulement si le point visé bouge d'au moins ceci (studs)
+local AIM_REFRESH = 2 -- MoveTo redonné au moins à ce rythme, même point (Humanoid.MoveTo lâche au bout de 8 s) (s)
 local PATH_GOAL_DRIFT = 4 -- derrière un obstacle : chemin recalculé dès que le joueur s'éloigne de ceci de son but (studs)
 local WAYPOINT_REACHED = 2 -- distance horizontale à laquelle un point du chemin est atteint (studs)
 local KNEE_HEIGHT = 1.5 -- second rayon de la ligne de vue, au-dessus des pieds : voit les obstacles bas (studs)
@@ -989,6 +1002,9 @@ local function setState(guard: Guard, state: GuardState)
 	guard.pathGoal = nil
 	guard.lastSeen = nil
 	guard.chaseAim = nil
+	guard.chaseAimAt = nil
+	guard.chaseVelocity = nil
+	guard.chaseVelocityAt = nil
 	guard.pathFailures = 0
 end
 
@@ -1613,26 +1629,114 @@ end
 
 -- Boucle ----------------------------------------------------------------------------------
 
--- En vue (Cantin, 2026-11-11) : le trajet le plus court, droit sur l'endroit où est la cible, sans
--- anticipation. Ce point n'est repris qu'au plus toutes les CHASE_REAIM_INTERVAL s : un petit zigzag
--- du joueur ne fait pas zigzaguer le vigile. Repris tout de suite quand la vue revient (pas de point
--- visé) ou quand il atteint le point visé (il ne s'arrête pas en attendant la reprise).
-local function chaseInSight(guard: Guard, targetRoot: BasePart, now: number)
+-- Vitesse au sol de la cible (AssemblyLinearVelocity, à plat), lissée par une moyenne exponentielle sur
+-- environ VELOCITY_SMOOTHING s : un écart d'un instant (zigzag, petit pas de côté) ne déplace presque
+-- pas le point d'interception, une vraie course dans une direction, si. Mesurée à chaque pas de poursuite,
+-- en vue ou non. Bornée à la WalkSpeed de la cible (une poussée, un téléport ne comptent pas) : 0 si
+-- elle est immobilisée.
+local function sampleVelocity(guard: Guard, targetRoot: BasePart, targetHumanoid: Humanoid, now: number): Vector3
+	local raw = flat(targetRoot.AssemblyLinearVelocity)
+	local cap = targetHumanoid.WalkSpeed
+	local magnitude = raw.Magnitude
+	if not isPositiveNumber(cap) or not isPositiveNumber(magnitude) then
+		raw = Vector3.zero
+	elseif magnitude > cap then
+		raw = raw * (cap / magnitude)
+	end
+	local previous = guard.chaseVelocity
+	local at = guard.chaseVelocityAt
+	local smoothed = raw
+	if previous ~= nil and at ~= nil then
+		local alpha = 1 - math.exp(-math.max(now - at, 0) / VELOCITY_SMOOTHING)
+		smoothed = previous + (raw - previous) * alpha
+	end
+	guard.chaseVelocity = smoothed
+	guard.chaseVelocityAt = now
+	return smoothed
+end
+
+-- Rattrapage en ligne droite : le plus petit t > 0 tel que |offset + velocity·t| = speed·t, où offset va
+-- du vigile à la cible (à plat), velocity est celle de la cible et speed celle du vigile. Le vigile qui
+-- court droit vers offset + velocity·t y arrive en même temps qu'elle. nil sans solution (cible plus
+-- rapide qui s'éloigne).
+local function interceptTime(offset: Vector3, velocity: Vector3, speed: number): number?
+	local a = velocity:Dot(velocity) - speed * speed
+	local b = 2 * offset:Dot(velocity)
+	local c = offset:Dot(offset)
+	if math.abs(a) < 1e-6 then
+		return if b < 0 then -c / b else nil
+	end
+	local discriminant = b * b - 4 * a * c
+	if discriminant < 0 then
+		return nil
+	end
+	local root = math.sqrt(discriminant)
+	local t1 = (-b - root) / (2 * a)
+	local t2 = (-b + root) / (2 * a)
+	local low, high = math.min(t1, t2), math.max(t1, t2)
+	if low > 0 then
+		return low
+	elseif high > 0 then
+		return high
+	end
+	return nil
+end
+
+-- Le point d'interception (Cantin, 2026-11-11 : il nous coupe la route) : là où le vigile, en ligne droite
+-- à sa WalkSpeed, retrouve la cible qui garde sa vitesse lissée ; au plus INTERCEPT_MAX_TIME s devant
+-- elle. Jamais en zone safe, jamais derrière un mur vu de la cible et, si `kneeDrop` est donné (en vue),
+-- toujours en vue du vigile (les deux rayons de canSee) : sinon il essaie la moitié du chemin, puis vise
+-- la cible elle-même. Sans solution (cible plus rapide qui s'éloigne) : la cible.
+local function interceptPoint(guard: Guard, targetRoot: BasePart, velocity: Vector3, kneeDrop: number?): Vector3
+	local position = targetRoot.Position
+	local from = guard.root.Position
+	local found = interceptTime(flat(position - from), velocity, guard.humanoid.WalkSpeed)
+	if found == nil then
+		return position
+	end
+	local t = math.min(found, INTERCEPT_MAX_TIME)
+	for _ = 1, 2 do
+		local aim = position + velocity * t
+		if not isInSafeZone(aim) and clearLine(position, aim) then
+			if kneeDrop == nil then
+				return aim
+			end
+			local fromKnee = from - Vector3.new(0, guard.rootHeight - KNEE_HEIGHT, 0)
+			if clearLine(from, aim) and clearLine(fromKnee, aim - Vector3.new(0, kneeDrop, 0)) then
+				return aim
+			end
+		end
+		t /= 2
+	end
+	return position
+end
+
+-- En vue (Cantin, 2026-11-11) : droit sur le point d'interception, recalculé toutes les
+-- CHASE_REAIM_INTERVAL s, tout de suite quand la vue revient (pas de point visé) ou quand il atteint le
+-- point visé. Un nouveau MoveTo seulement si le point a bougé d'au moins AIM_MIN_CHANGE studs (pas
+-- d'à-coups), ou au bout d'AIM_REFRESH s. Un joueur qui passe derrière lui : le point bascule de son
+-- côté au calcul suivant (≤ 0,1 s), et le vigile coupe vers où il va au lieu de refaire son trajet.
+local function chaseInSight(guard: Guard, targetRoot: BasePart, targetHumanoid: Humanoid, velocity: Vector3, now: number)
 	guard.waypoints = nil -- jamais un point de chemin périmé quand il voit sa cible
 	guard.lastSeen = targetRoot.Position
 	local aim = guard.chaseAim
-	if aim == nil or now >= guard.nextAimAt or flat(aim - guard.root.Position).Magnitude <= WAYPOINT_REACHED then
-		local fresh = targetRoot.Position
-		guard.chaseAim = fresh
-		guard.nextAimAt = now + CHASE_REAIM_INTERVAL
-		moveTo(guard, fresh)
-		return
+	local reached = aim ~= nil and flat(aim - guard.root.Position).Magnitude <= WAYPOINT_REACHED
+	if aim ~= nil and now < guard.nextAimAt and not reached then
+		return -- le MoveTo en cours suit son cours
 	end
-	moveTo(guard, aim)
+	guard.nextAimAt = now + CHASE_REAIM_INTERVAL
+	local kneeDrop = targetHumanoid.HipHeight + targetRoot.Size.Y / 2 - KNEE_HEIGHT
+	local fresh = interceptPoint(guard, targetRoot, velocity, kneeDrop)
+	if aim == nil or reached or flat(fresh - aim).Magnitude >= AIM_MIN_CHANGE or now >= (guard.chaseAimAt or 0) + AIM_REFRESH then
+		guard.chaseAim = fresh
+		guard.chaseAimAt = now
+		moveTo(guard, fresh)
+	end
 end
 
--- Derrière un obstacle (L-091 point 1) : un chemin vers la cible, calculé seulement s'il n'en a pas,
--- s'il est au bout, ou si la cible s'est éloignée de PATH_GOAL_DRIFT studs de son but ; au plus un
+-- Derrière un obstacle (L-091 point 1) : un chemin vers `goal` (le point d'interception vu de la cible,
+-- sinon la cible), calculé seulement s'il n'en a pas, s'il est au bout, ou si `goal` s'est éloigné de
+-- PATH_GOAL_DRIFT studs du but du chemin ; au plus un
 -- calcul toutes les Balance.Guard.PathRecomputeInterval s. En attendant le premier, il court au
 -- dernier endroit où il l'a vue (il le voyait : en ligne droite), jamais droit dans le mur.
 local function chaseBehindObstacle(guard: Guard, goal: Vector3, now: number)
@@ -1717,13 +1821,15 @@ local function chaseStep(guard: Guard, now: number)
 			setWalkSpeed(guard, speed)
 		end
 	end
-	-- Ligne de vue à chaque pas : en vue, droit sur sa position (chaseInSight) ; sinon un chemin.
+	-- Ligne de vue à chaque pas : en vue, droit sur le point d'interception (chaseInSight) ; sinon un
+	-- chemin vers ce point (vu de la cible : jamais derrière un mur ni en zone safe).
+	local velocity = sampleVelocity(guard, targetRoot, targetHumanoid, now)
 	if canSee(guard, targetRoot, targetHumanoid) then
-		chaseInSight(guard, targetRoot, now)
+		chaseInSight(guard, targetRoot, targetHumanoid, velocity, now)
 		return
 	end
 	guard.chaseAim = nil
-	chaseBehindObstacle(guard, targetRoot.Position, now)
+	chaseBehindObstacle(guard, interceptPoint(guard, targetRoot, velocity, nil), now)
 end
 
 -- Colis tombé au sol (6.2) : le vigile court vers l'endroit du coup et attend à côté qu'on le
