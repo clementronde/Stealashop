@@ -14,8 +14,8 @@
 --   - joue TreadmillRun en boucle sur le tapis, par AnimationController s'il est là (rien sinon,
 --     sans erreur ; AnimationController joue aussi TreadmillRun et BenchIdle d'après l'attribut, et
 --     ne relance pas un BenchLift déjà parti quand le serveur confirme la répétition).
--- Aucune UI et aucun gain ici, le serveur décide : le tapis n'a pas d'invite (on monte dessus et on
--- s'y arrête, L-071), l'invite du banc est créée par TrainingService.
+-- Aucune UI et aucun gain ici, le serveur décide : ni le tapis ni le banc n'ont d'invite, on y monte en
+-- entrant dans leur zone (L-071, L-093 ; TrainingService).
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")

@@ -888,7 +888,7 @@ local function rawGuidance(session: Session, data: Data, position: Vector3?): (s
 			return nil, nil
 		end
 		if session.used.Treadmill then
-			return nil, machinePoint(player, BENCH_TAG) -- le banc garde son invite « Lift »
+			return nil, machinePoint(player, BENCH_TAG) -- on monte sur le banc en entrant dans sa zone (L-093)
 		end
 		-- Le tapis n'a plus d'invite (L-071) : l'indice dit de s'arrêter dessus.
 		local treadmill = machinePoint(player, TREADMILL_TAG)

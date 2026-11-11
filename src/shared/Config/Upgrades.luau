@@ -34,9 +34,35 @@ for _, upgrade in List do
 	ById[upgrade.Id] = upgrade
 end
 
+-- Modèle du tapis de la parcelle selon le niveau de l'amélioration Treadmill (liaison L-082, L-093 point 3
+-- et L-097 point 2 ; MachineVariantService). « Base » = le tapis posé par Clément dans la parcelle ; les
+-- autres sont des copies de ReplicatedStorage/Assets/Plots/PLOT_Treadmill_<Variante>.
+-- Ordre validé par Clément (L-097, 2026-11-11). Pour un nouveau tapis (Jungle, Pirate, Samurai…),
+-- l'ajouter à la fin : il arrive TreadmillTierEvery niveaux après le précédent (au-delà de MaxLevel 20,
+-- il faut monter MaxLevel ou baisser le pas).
+-- Palier du niveau n = TreadmillVariants[floor(n / TreadmillTierEvery) + 1], le dernier au-delà.
+-- V0 proposé, absent du doc : un palier toutes les 2 améliorations (Base aux niveaux 0 et 1, Silver au
+-- niveau 2… Void au niveau 20, MaxLevel du tapis).
+local TreadmillTierEvery = 2
+local TreadmillVariants: { string } = {
+	"Base",
+	"Silver",
+	"Gold",
+	"CashRegister",
+	"Police",
+	"LaserVault",
+	"Ice",
+	"Toxic",
+	"Candy",
+	"Fire",
+	"Void",
+}
+
 local Upgrades = {
 	List = List,
 	ById = ById,
+	TreadmillTierEvery = TreadmillTierEvery,
+	TreadmillVariants = TreadmillVariants,
 }
 
 export type Upgrades = typeof(Upgrades)

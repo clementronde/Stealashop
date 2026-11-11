@@ -45,7 +45,8 @@
 -- sortie, et les invites d'avant, chez le propriétaire seulement (ProximityPrompt « UpgradePrompt »,
 -- touche F ou bouton Y, maintien de HOLD_DURATION s) : « Upgrade ($380) » sur le tapis et le banc
 -- (« Treadmill Lv 1/20 »), « Unlock stand ($500) » sur le prochain DisplaySlot_xx verrouillé
--- (« Stands 4/20 ») ; cachées au niveau max. Jamais sur le UsePoint (invites « Run » / « Lift »).
+-- (« Stands 4/20 ») ; cachées au niveau max. Le tapis peut changer de modèle (variante posée par
+-- MachineVariantService, L-093) : le panneau suit, la parcelle étant suivie (DescendantAdded / Removing).
 --
 -- API (client) : aucune.
 

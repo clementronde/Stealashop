@@ -1,28 +1,37 @@
 --!strict
 -- TrainingService (DEV-012) : tapis de course (Vitesse) et banc de musculation (Force)
--- (Partie 1, sections 5.1, 7.5 et 9.4 ; tapis sans invite : liaison L-071, point 3).
+-- (Partie 1, sections 5.1, 7.5 et 9.4 ; tapis sans invite : liaison L-071, point 3 ; tapis et banc
+-- par zone : L-093, point 1).
 --
 -- Rôle :
---   - tapis (tag Treadmill d'une parcelle PlayerPlot de Workspace) : marcher dessus fait
---     s'entraîner, sans invite (L-071). Le serveur seul décide : TREADMILL_CHECK_INTERVAL s (comme
---     le tapis de caisse de DisplayService), il regarde où est le HumanoidRootPart de chaque joueur.
---     Debout sur la bande (pièce ou modèle Belt du tapis, contrat 10.4 ; sans elle, une zone de
---     FALLBACK_BELT_SIZE posée sur le UsePoint), presque immobile (vitesse ≤ STILL_SPEED) pendant
---     START_DWELL s, il commence la séance : placé sur le UsePoint (debout, tourné vers son axe −Z),
---     sans être immobilisé (ni vitesse 0, ni rotation coupée) : il descend en marchant. Traverser
---     la bande sans s'y arrêter ne déclenche rien. Fin de la séance : HumanoidRootPart hors de la
---     bande (son emprise élargie de LEAVE_MARGIN, jusqu'à STAY_ABOVE au-dessus : un saut sur place
---     ne coupe rien, un saut hors du tapis si), mort, état Seated, Swimming, Ragdoll…, parcelle
---     perdue, départ, ou TrainingService.Stop. Une séance coupée alors qu'il est encore sur la bande
---     (Stop, état…) ne reprend qu'après être descendu puis remonté ;
---   - banc (tag Bench) : invite (ProximityPrompt) « Lift » (Config.Training) sur son UsePoint,
---     « Stop » pendant l'entraînement (textes en anglais, L-036), comme avant L-071. Le joueur est
---     placé sur le UsePoint et y est gardé : vitesse 0 par le modificateur « Training » de
---     StatsService, sans rotation. Libéré s'il saute (ou tombe, s'assoit…), s'il s'éloigne de plus de
---     LEAVE_DISTANCE, s'il réutilise l'invite, meurt, perd sa parcelle ou part ;
+--   - entrée par zone, sans invite ni clic, pour les deux machines (L-093, point 1). Zone d'une
+--     machine : la pièce UseZone de son modèle si Clément en pose une (BasePart facultative, à garder
+--     invisible et sans collision), sinon la boîte englobante du modèle (GetBoundingBox, qui contient
+--     le UsePoint) élargie de ZONE_MARGIN de chaque côté ; en hauteur, de ZONE_BELOW sous son bas à
+--     ZONE_ABOVE au-dessus de son haut. Le serveur seul décide : toutes les CHECK_INTERVAL s, il
+--     regarde où est le HumanoidRootPart de chaque joueur. Resté START_DWELL s dans la zone (même en
+--     marchant), le joueur monte sur la machine : placé sur le UsePoint (debout, tourné vers son axe
+--     −Z). Zones qui se recouvrent : la machine au UsePoint le plus proche ;
+--   - tapis (tag Treadmill d'une parcelle PlayerPlot de Workspace) : pas immobilisé (ni vitesse 0, ni
+--     rotation coupée) : il descend en marchant. Fin de la séance : HumanoidRootPart hors de la bande
+--     (pièce ou modèle Belt du tapis, contrat 10.4 ; sans elle, FALLBACK_BELT_SIZE posée sur le
+--     UsePoint) élargie de LEAVE_MARGIN, jusqu'à STAY_ABOVE au-dessus (un saut sur place ne coupe
+--     rien, un saut hors du tapis si), mort, état Seated, Swimming, Ragdoll…, parcelle perdue, départ,
+--     machine retirée (variante posée par MachineVariantService : il est remis sur la nouvelle), ou
+--     TrainingService.Stop ;
+--   - banc (tag Bench) : plus d'invite (L-093) ; une ProximityPrompt trouvée dans le modèle (l'invite
+--     « Lift » de Clément sur GymMat) est désactivée par le code. Le joueur est placé sur le UsePoint
+--     et y est gardé : vitesse 0 par le modificateur « Training » de StatsService, sans rotation.
+--     Libéré s'il saute (ou tombe, s'assoit…), s'il s'éloigne de plus de LEAVE_DISTANCE, meurt, perd
+--     sa parcelle, part, ou si le banc est retiré ;
+--   - pas de remontée en boucle, même logique pour les deux machines : une séance finie (descendu,
+--     saut, Stop, état…) ou un refus bloque cette machine pour ce joueur tant que son HumanoidRootPart
+--     reste au-dessus de l'emprise au sol de la zone, à n'importe quelle hauteur (sauter sur place ne
+--     débloque rien). Il faut sortir de la zone, puis y revenir ;
 --   - les deux : seul le propriétaire de la parcelle qui contient la machine s'y entraîne (attribut
---     OwnerUserId de la parcelle, posé par PlotService) ; un autre joueur reçoit NOT_OWNER_MESSAGE
---     (au tapis : une fois par arrêt sur la bande) ;
+--     OwnerUserId de la parcelle, posé par PlotService) ; un autre joueur est refusé et reçoit
+--     NOT_OWNER_MESSAGE, au plus une fois toutes les NOT_OWNER_COOLDOWN s (on passe souvent à côté
+--     des machines des autres). Porter un colis n'empêche pas de s'entraîner (règle inchangée) ;
 --   - crédite les gains par StatsService, qui les écrit dans le profil (sauvegardé).
 --
 -- Gains :
@@ -59,8 +68,8 @@
 -- API (côté serveur) :
 --   TrainingService.Stop(player)
 --       Fait descendre le joueur de sa machine (sans effet s'il n'y est pas), pour un service
---       qui a besoin de lui libre (alerte de vol et batte automatique, 6.2 ; tutoriel…). Au tapis,
---       la séance ne reprend qu'une fois descendu puis remonté.
+--       qui a besoin de lui libre (alerte de vol et batte automatique, 6.2 ; tutoriel…). Même pas
+--       encore monté (dans la zone, avant START_DWELL) : il doit sortir de la zone puis y revenir.
 --   TrainingService.GetGainMultiplier(player, kind) -> number
 --       Point d'accroche (DEV-100) : multiplie chaque gain du tapis (kind = "Treadmill") et du banc
 --       ("Bench"), en plus de M tapis et M banc ; 1 par défaut. MonetizationService le remplace en
@@ -74,7 +83,6 @@ local RunService = game:GetService("RunService")
 
 local Formulas = require(ReplicatedStorage.Shared.Config.Formulas)
 local Training = require(ReplicatedStorage.Shared.Config.Training)
-local Upgrades = require(ReplicatedStorage.Shared.Config.Upgrades)
 local Net = require(ReplicatedStorage.Shared.Net.Net)
 local RateLimiter = require(ReplicatedStorage.Shared.Net.RateLimiter)
 local AntiCheatService = require(script.Parent.AntiCheatService)
@@ -86,10 +94,13 @@ type Window = RateLimiter.Window
 
 type Machine = {
 	kind: MachineKind,
+	model: Instance, -- modèle taggé (clé de `machines`)
 	plot: Instance, -- parcelle PlayerPlot qui contient la machine
 	usePoint: Attachment,
 	belt: Instance?, -- tapis : sa bande (pièce ou modèle Belt) ; nil : zone posée sur le UsePoint
-	prompt: ProximityPrompt?, -- banc seulement : le tapis n'a plus d'invite (L-071)
+	useZone: BasePart?, -- pièce UseZone de Clément (facultative), lue telle quelle
+	zoneCFrame: CFrame, -- zone calculée à l'enregistrement (sans UseZone) : centre…
+	zoneSize: Vector3, -- … et taille, ZONE_MARGIN comprise
 	bar: Instance?, -- banc : sa barre (pièce ou modèle Bar), nil si absente
 	occupant: Player?,
 }
@@ -116,7 +127,7 @@ type Session = {
 	connections: { RBXScriptConnection },
 }
 
--- Joueur arrêté sur la bande d'un tapis, pas encore en séance (START_DWELL).
+-- Joueur dans la zone d'une machine, pas encore en séance (START_DWELL).
 type Standing = { machine: Machine, since: number }
 
 local IS_STUDIO = RunService:IsStudio()
@@ -127,6 +138,8 @@ local BENCH_TAG = "Bench"
 local PLOT_TAG = "PlayerPlot"
 local USE_POINT = "UsePoint"
 local BELT = "Belt"
+-- Zone d'entrée posée par Clément, facultative (L-093 : nom proposé ici, à valider dans la liaison).
+local USE_ZONE = "UseZone"
 -- Attribut de la parcelle posé par PlotService : UserId du propriétaire, 0 = libre.
 local OWNER_ATTRIBUTE = "OwnerUserId"
 -- Clé du modificateur de StatsService qui immobilise le joueur au banc.
@@ -134,11 +147,6 @@ local SPEED_MODIFIER = "Training"
 -- 5.1 : « +1 par seconde » : le tapis crédite seconde par seconde.
 local TREADMILL_TICK = 1
 
--- V0 proposé, absent du doc : texte de l'invite du banc pendant l'entraînement.
-local STOP_TEXT = "Stop"
--- V0 proposé, absent du doc : maintien (s) pour arrêter, pour qu'un tap d'entraînement qui
--- tombe sur l'invite ne fasse pas descendre de la machine.
-local STOP_HOLD_DURATION = 0.5
 -- V0 proposé, absent du doc : distance (studs) entre le HumanoidRootPart et sa place sur le banc
 -- au-delà de laquelle le joueur est libéré (poussé, téléporté, ou saut que l'état du Humanoid n'a
 -- pas signalé : un saut monte d'environ 7 studs).
@@ -147,9 +155,6 @@ local LEAVE_DISTANCE = 3
 -- Humanoid ni la position ne libèrent le joueur (la téléportation met un instant à arriver
 -- chez le client, qui possède la physique de son perso).
 local SETTLE_TIME = 0.5
--- V0 proposé, absent du doc : marge (studs) ajoutée à la portée de l'invite du banc pour accepter
--- le démarrage. Empêche de déclencher l'invite de loin pour se téléporter chez soi.
-local START_TOLERANCE = 4
 -- Banc automatique (L-091, point 2). V0 proposés, absents du doc :
 -- rythme (s) des répétitions comptées par le serveur quand le client n'en envoie pas (BenchLift
 -- ou son marqueur Top manquant) ;
@@ -164,23 +169,26 @@ local HAND_R6 = "Right Arm"
 local BAR_WELD_NAME = "TrainingBarWeld"
 -- V0 proposé, absent du doc : message au joueur qui essaie la machine d'un autre.
 local NOT_OWNER_MESSAGE = "You can only train in your own shop."
+-- V0 proposé, absent du doc : au plus un message de refus (s) par joueur, qui passe souvent à côté
+-- des machines des autres.
+local NOT_OWNER_COOLDOWN = 10
 
--- Tapis sans invite (L-071, point 3). V0 proposés, absents du doc :
--- cadence du contrôle « debout sur la bande » (s), comme le tapis de caisse de DisplayService ;
-local TREADMILL_CHECK_INTERVAL = 0.1
--- temps (s) debout et presque immobile sur la bande avant le début de la séance : traverser la
--- bande en courant ne déclenche rien ;
+-- Entrée par zone (L-071 point 3, L-093 point 1). V0 proposés, absents du doc :
+-- cadence du contrôle des zones (s), comme les plaques CollectPad de DisplayService ;
+local CHECK_INTERVAL = 0.1
+-- temps (s) dans la zone avant de monter (même en marchant) : effleurer un coin ne fait pas monter ;
 local START_DWELL = 0.25
--- vitesse (studs/s, HumanoidRootPart) au-dessous de laquelle le joueur est « arrêté » sur la bande ;
-local STILL_SPEED = 2
--- marges (studs) autour de l'emprise de la bande : pour commencer (le HumanoidRootPart au-dessus
--- de la bande), et pour rester (plus large : un pas de côté ne coupe pas la séance) ;
-local START_MARGIN = 0.25
+-- zone calculée : marge (studs) autour de la boîte du modèle, sur les côtés ; hauteur sous son bas
+-- et au-dessus de son haut (le HumanoidRootPart d'un R15 debout est à environ 3 studs du sol) ;
+local ZONE_MARGIN = 1
+local ZONE_BELOW = 1
+local ZONE_ABOVE = 4
+-- zone d'un modèle sans boîte (ni Model ni BasePart) : posée sur le UsePoint ;
+local FALLBACK_ZONE_SIZE = Vector3.new(6, 4, 6)
+-- tapis : marge (studs) autour de l'emprise de la bande pour rester en séance (un pas de côté ne
+-- coupe pas la séance), hauteur du HumanoidRootPart au-dessus du dessus de la bande (un saut monte
+-- d'environ 7 studs : sauter sur place ne coupe pas la séance), et tolérance sous le dessus ;
 local LEAVE_MARGIN = 1
--- hauteur (studs) du HumanoidRootPart au-dessus du dessus de la bande : debout pour commencer
--- (celui d'un R15 debout est à environ 3 studs du sol), et pour rester (un saut monte d'environ
--- 7 studs : sauter sur place ne coupe pas la séance) ; et tolérance sous le dessus ;
-local STAND_ABOVE = 6
 local STAY_ABOVE = 12
 local BELT_BELOW = 1
 -- zone posée sur le UsePoint (centre du dessus) pour un tapis sans Belt (avertissement au démarrage).
@@ -212,11 +220,12 @@ local TrainingService = {}
 local machines: { [Instance]: Machine } = {}
 local sessions: { [Player]: Session } = {}
 local benchWindows: { [Player]: Window } = {}
--- Tapis : joueurs arrêtés sur une bande (avant START_DWELL), et le tapis dont chaque joueur doit
--- descendre avant une nouvelle séance (séance coupée sur sa bande, refus).
+-- Joueurs dans la zone d'une machine (avant START_DWELL), et la machine dont chaque joueur doit
+-- sortir de la zone avant de remonter (séance finie, refus) ; dernier message de refus.
 local standing: { [Player]: Standing } = {}
 local blocked: { [Player]: Machine } = {}
-local treadmillClock = 0
+local refusedAt: { [Player]: number } = {}
+local checkClock = 0
 local gainHookWarned = false
 
 local function log(message: string)
@@ -296,6 +305,49 @@ local function overBelt(machine: Machine, position: Vector3, margin: number, abo
 		and math.abs(p.Z) <= half.Z + margin
 		and p.Y >= half.Y - BELT_BELOW
 		and p.Y <= half.Y + above
+end
+
+-- Boîte de la zone d'entrée (CFrame du centre, taille) : la pièce UseZone, sinon la zone calculée.
+local function zoneBox(machine: Machine): (CFrame, Vector3)
+	local given = machine.useZone
+	if given and given.Parent ~= nil then
+		return given.CFrame, given.Size
+	end
+	return machine.zoneCFrame, machine.zoneSize
+end
+
+-- `position` (celle d'un HumanoidRootPart) est-elle dans la zone d'entrée de la machine ?
+local function inZone(machine: Machine, position: Vector3): boolean
+	local cframe, size = zoneBox(machine)
+	local p = cframe:PointToObjectSpace(position)
+	local half = size / 2
+	return math.abs(p.X) <= half.X
+		and math.abs(p.Z) <= half.Z
+		and p.Y >= -half.Y - ZONE_BELOW
+		and p.Y <= half.Y + ZONE_ABOVE
+end
+
+-- `position` est-elle au-dessus de l'emprise au sol de la zone, à n'importe quelle hauteur ? (Pour
+-- débloquer : un saut sur place ne fait pas sortir de la zone.)
+local function overZone(machine: Machine, position: Vector3): boolean
+	local cframe, size = zoneBox(machine)
+	local p = cframe:PointToObjectSpace(position)
+	return math.abs(p.X) <= size.X / 2 and math.abs(p.Z) <= size.Z / 2
+end
+
+-- Machine dont la zone contient `position` (celle au UsePoint le plus proche), ou nil.
+local function machineAt(position: Vector3): Machine?
+	local best: Machine? = nil
+	local bestDistance = math.huge
+	for _, machine in machines do
+		if inZone(machine, position) then
+			local distance = (machine.usePoint.WorldPosition - position).Magnitude
+			if distance < bestDistance then
+				best, bestDistance = machine, distance
+			end
+		end
+	end
+	return best
 end
 
 -- HumanoidRootPart et Humanoid vivant du joueur, sinon nil.
@@ -443,19 +495,13 @@ local function stop(player: Player, reason: string)
 	end
 	if machine.occupant == player then
 		machine.occupant = nil
-		local prompt = machine.prompt
-		if prompt then
-			prompt.ActionText = Training.Bench.Prompt
-			prompt.HoldDuration = 0
-		end
 	end
-	if machine.kind == "Treadmill" then
-		-- Encore sur la bande (Stop, état…) : il en descend avant une nouvelle séance. Déjà descendu :
-		-- levé au contrôle suivant.
-		if player.Parent == Players then
-			blocked[player] = machine
-		end
-	else
+	-- Pas de remontée en boucle : il sort de la zone avant une nouvelle séance (déjà sorti, ou
+	-- machine retirée : levé au contrôle suivant).
+	if player.Parent == Players then
+		blocked[player] = machine
+	end
+	if machine.kind == "Bench" then
 		StatsService.SetSpeedModifier(player, SPEED_MODIFIER, nil)
 		if session.humanoid.Parent ~= nil then
 			session.humanoid.AutoRotate = session.autoRotate
@@ -477,14 +523,7 @@ local function start(player: Player, machine: Machine): boolean
 		return false
 	end
 	local character = player.Character :: Model
-	local prompt = machine.prompt
-	if prompt then
-		-- Banc : l'invite a été déclenchée près de la machine (le tapis, lui, vient de vérifier la bande).
-		local reach = prompt.MaxActivationDistance + START_TOLERANCE
-		if (root.Position - machine.usePoint.WorldPosition).Magnitude > reach then
-			return false
-		end
-	end
+	-- Le contrôle des zones vient de vérifier qu'il est dans la zone de la machine (serveur seul).
 
 	local now = os.clock()
 	local session: Session = {
@@ -509,13 +548,11 @@ local function start(player: Player, machine: Machine): boolean
 
 	AntiCheatService.Allow(player, 0, "TrainingService (placement sur la machine)") -- déplacement du code (DEV-060)
 	character:PivotTo(session.target)
-	if prompt then
-		-- Banc : gardé en place, sans rotation ; l'invite sert à descendre. Au tapis, rien de tout
-		-- cela : il reste tourné comme on l'a posé tant qu'il ne bouge pas, et se tourne en descendant.
+	if machine.kind == "Bench" then
+		-- Banc : gardé en place, sans rotation ; il descend en sautant. Au tapis, rien de tout cela :
+		-- il reste tourné comme on l'a posé tant qu'il ne bouge pas, et se tourne en descendant.
 		StatsService.SetSpeedModifier(player, SPEED_MODIFIER, 0)
 		humanoid.AutoRotate = false
-		prompt.ActionText = STOP_TEXT
-		prompt.HoldDuration = STOP_HOLD_DURATION
 	end
 	player:SetAttribute("TrainingMachine", machine.kind)
 
@@ -552,42 +589,20 @@ local function start(player: Player, machine: Machine): boolean
 	return true
 end
 
--- Invite du banc.
-local function onTriggered(player: Player, machine: Machine)
-	local current = sessions[player]
-	if current and current.machine == machine then
-		stop(player, "invite")
-		return
-	end
-	if not isOwner(player, machine) then
-		log(
-			`{player.Name} ne peut pas s'entraîner sur {machine.plot:GetFullName()} : OwnerUserId = {machine.plot:GetAttribute(OWNER_ATTRIBUTE)}, son UserId = {player.UserId}`
-		)
-		Net.Server.Notify:Fire(player, NOT_OWNER_MESSAGE, "Warning")
-		return
-	end
-	if not DataService.IsLoaded(player) then
-		return
-	end
-	if machine.occupant ~= nil and machine.occupant ~= player then
-		return -- ne devrait pas arriver : seul le propriétaire s'entraîne sur sa parcelle
-	end
-	if current then
-		stop(player, "autre machine")
-	end
-	start(player, machine)
-end
-
--- Tapis : un joueur vient de rester START_DWELL s arrêté sur la bande de `machine`. Une seule
--- tentative par arrêt : refusé (pas propriétaire, machine prise…) ou parti en séance, il doit
--- descendre de ce tapis avant la suivante. Profil pas encore chargé : on réessaie au contrôle suivant.
-local function tryTreadmill(player: Player, machine: Machine)
+-- Un joueur vient de rester START_DWELL s dans la zone de `machine`. Une seule tentative par entrée :
+-- refusé (pas propriétaire, machine prise…) ou parti en séance, il doit sortir de la zone avant la
+-- suivante. Profil pas encore chargé : on réessaie au contrôle suivant.
+local function tryStart(player: Player, machine: Machine, now: number)
 	if not isOwner(player, machine) then
 		blocked[player] = machine
 		log(
 			`{player.Name} ne peut pas s'entraîner sur {machine.plot:GetFullName()} : OwnerUserId = {machine.plot:GetAttribute(OWNER_ATTRIBUTE)}, son UserId = {player.UserId}`
 		)
-		Net.Server.Notify:Fire(player, NOT_OWNER_MESSAGE, "Warning")
+		local last = refusedAt[player]
+		if last == nil or now - last >= NOT_OWNER_COOLDOWN then
+			refusedAt[player] = now
+			Net.Server.Notify:Fire(player, NOT_OWNER_MESSAGE, "Warning")
+		end
 		return
 	end
 	if not DataService.IsLoaded(player) then
@@ -598,34 +613,23 @@ local function tryTreadmill(player: Player, machine: Machine)
 	end
 end
 
--- Le tapis dont la bande porte `position` (celle d'un HumanoidRootPart debout : START_MARGIN,
--- STAND_ABOVE), ou nil.
-local function treadmillUnder(position: Vector3): Machine?
-	for _, machine in machines do
-		if machine.kind == "Treadmill" and overBelt(machine, position, START_MARGIN, STAND_ABOVE) then
-			return machine
-		end
-	end
-	return nil
-end
-
--- Contrôle des tapis (TREADMILL_CHECK_INTERVAL) : qui s'arrête sur une bande commence sa séance.
-local function checkTreadmills(now: number)
+-- Contrôle des zones (CHECK_INTERVAL) : qui reste START_DWELL s dans la zone d'une machine y monte.
+local function checkZones(now: number)
 	for _, player in Players:GetPlayers() do
 		if sessions[player] then
 			standing[player] = nil
-			continue -- déjà en séance (tapis : leaveReason la surveille ; banc : il y reste)
+			continue -- déjà en séance (leaveReason la surveille)
 		end
 		local root, humanoid = bodyOf(player)
-		local machine = if root then treadmillUnder(root.Position) else nil
-		if blocked[player] ~= machine then
-			blocked[player] = nil -- descendu de ce tapis (ou plus de personnage) : la prochaine montée compte
+		local position = if root then root.Position else nil
+		local block: Machine? = blocked[player] -- typé : l'ancien solveur refuse block = nil sinon
+		if block and (position == nil or machines[block.model] ~= block or not overZone(block, position)) then
+			-- Sorti de la zone (ou plus de personnage, ou machine retirée) : la prochaine entrée compte.
+			blocked[player] = nil
+			block = nil
 		end
-		if root == nil or humanoid == nil or machine == nil then
-			standing[player] = nil
-			continue
-		end
-		if blocked[player] or humanoid.SeatPart ~= nil or root.AssemblyLinearVelocity.Magnitude > STILL_SPEED then
+		local machine = if position then machineAt(position) else nil
+		if root == nil or humanoid == nil or machine == nil or machine == block or humanoid.SeatPart ~= nil then
 			standing[player] = nil
 			continue
 		end
@@ -634,7 +638,7 @@ local function checkTreadmills(now: number)
 			standing[player] = { machine = machine, since = now }
 		elseif now - stand.since >= START_DWELL then
 			standing[player] = nil
-			tryTreadmill(player, machine)
+			tryStart(player, machine, now)
 		end
 	end
 end
@@ -723,11 +727,11 @@ local function update(dt: number)
 			updateBench(player, session, now)
 		end
 	end
-	treadmillClock += dt
-	if treadmillClock >= TREADMILL_CHECK_INTERVAL then
+	checkClock += dt
+	if checkClock >= CHECK_INTERVAL then
 		-- Le reste est gardé (cadence juste en moyenne), sans rafale après un ralentissement.
-		treadmillClock = math.min(treadmillClock - TREADMILL_CHECK_INTERVAL, TREADMILL_CHECK_INTERVAL)
-		checkTreadmills(now)
+		checkClock = math.min(checkClock - CHECK_INTERVAL, CHECK_INTERVAL)
+		checkZones(now)
 	end
 end
 
@@ -774,17 +778,41 @@ local function register(model: Instance, kind: MachineKind)
 		return
 	end
 
+	-- Zone d'entrée (L-093) : la pièce UseZone de Clément, sinon la boîte du modèle, calculée une fois
+	-- (la barre du banc bouge pendant l'usage : la boîte ne doit pas la suivre).
+	local found = model:FindFirstChild(USE_ZONE, true)
+	local useZone: BasePart? = if found and found:IsA("BasePart") then found :: BasePart else nil
+	local zoneCFrame: CFrame, zoneSize: Vector3
+	if model:IsA("Model") then
+		zoneCFrame, zoneSize = model:GetBoundingBox()
+		zoneSize += Vector3.new(2 * ZONE_MARGIN, 0, 2 * ZONE_MARGIN)
+	elseif model:IsA("BasePart") then
+		zoneCFrame, zoneSize = model.CFrame, model.Size + Vector3.new(2 * ZONE_MARGIN, 0, 2 * ZONE_MARGIN)
+	else
+		zoneCFrame, zoneSize = usePoint.WorldCFrame, FALLBACK_ZONE_SIZE
+	end
+
 	local machine: Machine = {
 		kind = kind,
+		model = model,
 		plot = plot,
 		usePoint = usePoint,
 		belt = nil,
-		prompt = nil,
+		useZone = useZone,
+		zoneCFrame = zoneCFrame,
+		zoneSize = zoneSize,
 		bar = nil,
 		occupant = nil,
 	}
+	-- Plus d'invite sur les machines (L-071, L-093) : celle que le modèle porterait est désactivée.
+	for _, descendant in model:GetDescendants() do
+		if descendant:IsA("ProximityPrompt") and descendant.Enabled then
+			descendant.Enabled = false
+			log(`{descendant:GetFullName()} : invite désactivée, on monte en entrant dans la zone (L-093)`)
+		end
+	end
 	if kind == "Treadmill" then
-		-- Pas d'invite (L-071) : la bande suffit.
+		-- La bande sert à rester en séance (la zone sert à monter).
 		local belt = model:FindFirstChild(BELT, true)
 		if belt and (belt:IsA("BasePart") or belt:IsA("Model")) then
 			machine.belt = belt
@@ -794,18 +822,6 @@ local function register(model: Instance, kind: MachineKind)
 			)
 		end
 	else
-		local prompt = Instance.new("ProximityPrompt")
-		prompt.Name = "TrainingPrompt"
-		prompt.ActionText = Training.Bench.Prompt
-		prompt.ObjectText = Upgrades.ById[kind].DisplayName
-		prompt.HoldDuration = 0
-		prompt.RequiresLineOfSight = false
-		-- Connexion coupée par prompt:Destroy().
-		prompt.Triggered:Connect(function(player: Player)
-			onTriggered(player, machine)
-		end)
-		prompt.Parent = usePoint
-		machine.prompt = prompt
 		-- Barre qui suit les mains (L-091, point 2) : pièce ou modèle Bar.
 		local bar = model:FindFirstChild(BAR, true)
 		if bar and (bar:IsA("BasePart") or bar:IsA("Model")) then
@@ -832,10 +848,6 @@ local function unregister(model: Instance)
 			standing[player] = nil
 		end
 	end
-	local prompt = machine.prompt
-	if prompt then
-		prompt:Destroy()
-	end
 end
 
 local function watchTag(tag: string, kind: MachineKind)
@@ -849,9 +861,9 @@ local function watchTag(tag: string, kind: MachineKind)
 end
 
 function TrainingService.Stop(player: Player)
-	-- Au tapis, même pas encore en séance (arrêté sur la bande) : il en descend avant la prochaine.
+	-- Même pas encore monté (dans une zone, avant START_DWELL) : il en sort avant la prochaine fois.
 	local root = bodyOf(player)
-	local under = if root and player.Parent == Players then treadmillUnder(root.Position) else nil
+	local under = if root and player.Parent == Players then machineAt(root.Position) else nil
 	if under then
 		blocked[player] = under
 	end
@@ -884,6 +896,7 @@ function TrainingService.Init()
 		benchWindows[player] = nil
 		standing[player] = nil
 		blocked[player] = nil
+		refusedAt[player] = nil
 	end)
 end
 

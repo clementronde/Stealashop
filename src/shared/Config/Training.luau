@@ -10,7 +10,7 @@ local Training = {
 	-- départ : 1, déduit de 5.1 (+1 par seconde ou par répétition au niveau 0).
 	BaseMultiplier = 1,
 
-	-- Tapis sans invite depuis L-071 (2026-11-08) : marcher dessus fait s'entraîner (TrainingService).
+	-- Tapis sans invite depuis L-071 (2026-11-08), par sa zone depuis L-093 (TrainingService).
 	Treadmill = {
 		GainPerSecond = 1, -- +1 Vitesse par seconde × multiplicateur du tapis
 		AfkAllowed = true,
@@ -19,8 +19,8 @@ local Training = {
 		MaxTapsPerSecond = 6, -- TrainTap au tapis (9.4)
 	},
 
+	-- Banc sans invite depuis L-093 (2026-11-11) : on y monte en entrant dans sa zone (TrainingService).
 	Bench = {
-		Prompt = "Lift",
 		GainPerRep = 1, -- +1 Force par répétition × multiplicateur du banc
 		MaxRepsPerSecond = 3, -- 1 tap = 1 répétition, 3 par seconde au plus (5.1, 9.4)
 	},
