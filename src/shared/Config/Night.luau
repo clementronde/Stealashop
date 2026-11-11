@@ -43,8 +43,6 @@ local Night = {
 	PatrolPause = 2, -- V0 proposé, absent du doc : pause à chaque point de ronde (s)
 	ChaseSpeedBonus = 4, -- poursuite à la vitesse conseillée de la zone + 4
 	CatchDistance = 4, -- V0 proposé, absent du doc : même valeur que le vigile de jour (5.5)
-	GiveUpChaseDuration = 20, -- V0 proposé, absent du doc : même valeur que le vigile de jour (5.5)
-	GiveUpLead = 120, -- V0 proposé, absent du doc : même valeur que le vigile de jour (5.5)
 
 	-- Attrapé la nuit : colis rendu au magasin, retour à sa base, étourdi 2 s, aucune autre perte
 	CaughtStunDuration = 2,

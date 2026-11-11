@@ -11,10 +11,12 @@
 --      qui rentre, pas de vigile. Un vigile en fondu ne compte plus dans ces plafonds. Le serveur
 --      possède sa physique ; nage, escalade et autres états inutiles sont coupés (9.7).
 --   2. Poursuite, après REACTION_DELAY s : WalkSpeed = Zones[zone].GuardSpeed (section 4).
---      Ligne de vue testée toutes les CHASE_STEER_INTERVAL s (L-091 point 1). S'il voit le joueur :
---      MoveTo droit sur lui, avec une petite anticipation selon sa vitesse (aimPoint), et tout chemin
---      en cours est jeté. Derrière un obstacle seulement : PathfindingService, recalculé dès que le
---      joueur s'éloigne du but du chemin (PATH_GOAL_DRIFT), au plus toutes les
+--      Le trajet le plus court vers la position du joueur, sans anticipation (Cantin, 2026-11-11 : il
+--      ne doit pas recopier nos zigzags). Ligne de vue testée toutes les CHASE_STEER_INTERVAL s
+--      (L-091 point 1). S'il voit le joueur : MoveTo droit sur l'endroit où il est, repris au plus
+--      toutes les CHASE_REAIM_INTERVAL s (ou dès qu'il l'atteint, ou quand la vue revient), et tout
+--      chemin en cours est jeté. Derrière un obstacle seulement : PathfindingService, recalculé dès
+--      que le joueur s'éloigne du but du chemin (PATH_GOAL_DRIFT), au plus toutes les
 --      Balance.Guard.PathRecomputeInterval s ; un chemin qui arrive reprend au point le plus proche
 --      du vigile, jamais derrière lui. Même poursuite de jour, de nuit et pour les conducteurs.
 --   3. Capture : distance ≤ Balance.Guard.CatchDistance entre les deux HumanoidRootPart, sans
@@ -33,9 +35,10 @@
 --      .Allow juste avant la poussée) et que tous les joueurs doivent voir le même coup. Le client
 --      du joueur reçoit la Catch du vigile et la poussée avec le même délai réseau : elles restent
 --      ensemble à l'écran.
---   4. Abandon : le joueur entre en zone safe (tag SafeZone), GiveUpChaseDuration s de
---      poursuite, GiveUpLead studs d'avance, ou le portage finit autrement (OnCarryEnded :
---      colis posé, mort, départ…). Le vigile s'arrête essoufflé (Tired, 5.5), puis rentre en
+--   4. Abandon : seulement quand le joueur entre en zone safe (tag SafeZone), ou quand le portage
+--      finit autrement (OnCarryEnded : colis posé, mort, départ…). Poursuite sans fin (Cantin,
+--      2026-11-11) : plus d'abandon au bout d'un temps de poursuite ni pour l'avance prise, de jour,
+--      de nuit et pour les conducteurs du camion. Le vigile s'arrête essoufflé (Tired, 5.5), puis rentre en
 --      marchant (Walk, RETURN_WALK_SPEED) ; après une capture, il rentre dès la fin de Catch. Il
 --      ne vise jamais un point de la zone safe : il ne la franchit pas.
 --   5. Retour (liaison L-077, point 1). Comme la poursuite : tout droit s'il voit son but (les deux
@@ -72,9 +75,8 @@
 -- FOLLOW_STOP_DISTANCE studs, sans jamais entrer en zone safe. Il ne capture personne en Follow.
 --   - Quelqu'un ramasse le colis (OnCarryStarted, même payload) : le vigile change de cible et
 --     poursuit le nouveau porteur, comme un vigile qui vient d'apparaître : REACTION_DELAY s
---     d'attente sans capture, puis poursuite neuve (vitesse de la zone pour ce joueur, 20 s
---     comptées de là) avec les mêmes règles d'abandon (5.5 : zone safe, GiveUpChaseDuration,
---     GiveUpLead) et la même capture. Ramassé par un joueur déjà poursuivi par un autre vigile :
+--     d'attente sans capture, puis poursuite neuve (vitesse de la zone pour ce joueur) avec les
+--     mêmes règles d'abandon (point 4) et la même capture. Ramassé par un joueur déjà poursuivi par un autre vigile :
 --     cet autre vigile abandonne.
 --   - Personne ne le ramasse (OnDropExpired, 6.2 : 15 s, le colis revole vers son rayon), ou rien
 --     au bout de Bat.DroppedLifetime + FOLLOW_MARGIN s : le vigile abandonne (Tired, puis retour).
@@ -96,9 +98,8 @@
 --     torche (Night.DetectionConeAngle autour de l'avant du vigile, à l'horizontale) et sans mur
 --     entre eux (même ligne de vue que la poursuite). Le plus proche. Puis délai de réaction et
 --     poursuite à Zones[zone].AdvisedSpeed + Night.ChaseSpeedBonus, avec ou sans colis.
---   - Abandon : comme le jour (zone safe, Night.GiveUpChaseDuration s depuis le repérage,
---     Night.GiveUpLead studs), et aussi quand la cible quitte le couloir (passée à travers le mur
---     de nuit), devient ignorée ou n'a plus de personnage. Puis essoufflé, il retourne au point de
+--   - Abandon : comme le jour (zone safe ; ni temps ni avance), et aussi quand la cible quitte le
+--     couloir (passée à travers le mur de nuit), devient ignorée ou n'a plus de personnage. Puis essoufflé, il retourne au point de
 --     ronde le plus proche et reprend sa ronde. Il ne disparaît qu'à l'aube.
 --   - Attrapé la nuit (5.12) : joueur immobilisé tout de suite ; CarryService.Fail(player,
 --     "Caught") s'il porte (le colis revole vers son rayon, s'il n'a pas été rempli depuis) ; au
@@ -146,6 +147,11 @@
 --       listener(player, zone, night, carrying) à chaque capture, de jour ou de nuit, juste avant
 --       que le portage soit perdu : carrying = il portait quelque chose. TelemetryService s'en sert
 --       pour les captures de nuit sans colis (celles avec colis passent par OnCarryEnded).
+--   GuardService.OnGuardGone(listener) -> déconnexion
+--       listener(thief, store) quand le vigile de jour apparu pour le vol de `thief` dans `store`
+--       (le Model du magasin) a quitté le jeu : rentré et effacé, ou retiré (mort, erreur). Même s'il
+--       poursuivait quelqu'un d'autre entre-temps (colis tombé, ramassé). StoreHeistService s'en sert
+--       pour rouvrir le magasin au voleur (fermeture locale, Cantin 2026-11-11).
 --   GuardService.GetSpeedOverride(player, zone) -> number?
 --       Point d'accroche du tutoriel (5.11, vigile lent : Config.Tutorial.GuardSpeed). Renvoie
 --       nil ici : la vitesse de la zone s'applique. TutorialService le remplace
@@ -171,8 +177,7 @@
 --     relue à chaque pas de pilotage : il court toujours un peu plus vite qu'elle ;
 --   - abandon : la cible ne vaut plus la poursuite (chase.Keeps(player) faux : elle ne porte plus le
 --     colis du camion, par exemple rangé dans l'inventaire à l'entrée de la zone safe), la zone safe,
---     plus de personnage, ou chase.GiveUpAfter s de poursuite. Jamais pour l'avance prise (il est
---     plus rapide) ;
+--     ou plus de personnage. Ni au bout d'un temps, ni pour l'avance prise (point 4) ;
 --   - après la capture ou l'abandon, il ne rentre nulle part : il s'efface en fondu là où il est
 --     (Balance.Guard.ReturnFadeTime), sans Tired (pas à son contrat) ;
 --   - animations Animations.Driver (Idle, Walk, Run, Catch) ; hors des plafonds des vigiles de jour (9.7) ;
@@ -239,7 +244,6 @@ export type DriverChase = {
 	Zone: number, -- zone du camion (OnCatch)
 	SpeedMultiplier: number, -- × la WalkSpeed actuelle de la cible
 	MinSpeed: number,
-	GiveUpAfter: number, -- s de poursuite au plus
 	Keeps: (player: Player) -> boolean, -- la cible vaut encore la poursuite
 	CaughtMessage: string?, -- Notify au joueur attrapé
 }
@@ -267,7 +271,7 @@ type Guard = {
 	target: Player?, -- joueur poursuivi, nil hors poursuite
 	state: GuardState,
 	spawnedAt: number,
-	chaseStartedAt: number, -- début de la poursuite (le jour : l'apparition)
+	owner: Player?, -- vigile de jour : le voleur pour qui il est apparu (OnGuardGone) ; nil sinon
 	patrol: { Vector3 }, -- points de ronde de sa zone, dans l'ordre (vide le jour)
 	patrolIndex: number, -- point visé
 	patrolStep: number, -- +1 ou −1 : sens de l'aller-retour
@@ -285,6 +289,8 @@ type Guard = {
 	waypointIndex: number,
 	pathGoal: Vector3?, -- but du dernier calcul de chemin lancé (L-091 point 1)
 	lastSeen: Vector3?, -- poursuite : où il a vu sa cible pour la dernière fois (L-091 point 1)
+	chaseAim: Vector3?, -- poursuite en vue : le point visé (position du joueur), nil hors de vue
+	nextAimAt: number, -- poursuite en vue : prochaine reprise de la position du joueur
 	progressPos: Vector3,
 	progressAt: number,
 	knockTarget: Player?, -- joueur à projeter au marqueur Impact de Catch
@@ -368,10 +374,10 @@ local KNOCKBACK_MAX_WAIT = 0.6
 local REACTION_DELAY = 0.5 -- il apparaît, puis s'élance après ce délai, sans capture avant (s)
 local STEER_INTERVAL = 0.1 -- cadence du pilotage : ligne de vue, MoveTo (s)
 -- V0 proposé, absent du doc : une poursuite qui réagit tout de suite (L-091 point 1).
-local CHASE_STEER_INTERVAL = 0.05 -- poursuite : ligne de vue et MoveTo à ce rythme (s)
-local LEAD_MAX_TIME = 0.5 -- anticipation : il vise où sera le joueur dans (distance / sa vitesse) s, au plus ceci (s)
-local LEAD_MAX_DISTANCE = 8 -- anticipation : au plus ceci devant le joueur (studs)
-local LEAD_MIN_SPEED = 2 -- en dessous de cette vitesse au sol, le joueur est visé là où il est (studs/s)
+local CHASE_STEER_INTERVAL = 0.05 -- poursuite : ligne de vue à ce rythme (s)
+-- V0 proposé, absent du doc (Cantin, 2026-11-11 : il ne copie pas nos zigzags) : en vue, il reprend la
+-- position du joueur au plus à ce rythme, plus tôt s'il atteint le point visé ou si la vue revient (s).
+local CHASE_REAIM_INTERVAL = 0.25
 local PATH_GOAL_DRIFT = 4 -- derrière un obstacle : chemin recalculé dès que le joueur s'éloigne de ceci de son but (studs)
 local WAYPOINT_REACHED = 2 -- distance horizontale à laquelle un point du chemin est atteint (studs)
 local KNEE_HEIGHT = 1.5 -- second rayon de la ligne de vue, au-dessus des pieds : voit les obstacles bas (studs)
@@ -457,6 +463,8 @@ local caughtAtNight: { [Player]: boolean } = {} -- attrapé la nuit, pas encore 
 local stunTokens: { [Player]: number } = {}
 export type CatchListener = (player: Player, zone: number, night: boolean, carrying: boolean) -> ()
 local catchListeners: { CatchListener } = {}
+export type GoneListener = (thief: Player, store: Model) -> ()
+local goneListeners: { GoneListener } = {}
 -- Colis tombés au sol après un coup de batte (6.2), par payload (la table que CarryService garde) :
 -- le vigile qui le suit, et tous les colis au sol (suivis ou non) jusqu'à leur prise ou leur fin.
 local following: { [any]: Guard } = {}
@@ -980,6 +988,7 @@ local function setState(guard: Guard, state: GuardState)
 	guard.waypoints = nil
 	guard.pathGoal = nil
 	guard.lastSeen = nil
+	guard.chaseAim = nil
 	guard.pathFailures = 0
 end
 
@@ -1057,10 +1066,18 @@ local function despawn(guard: Guard, reason: string)
 	guard.pathToken += 1
 	guard.anims:Destroy()
 	guard.model:Destroy()
-	if guard.kind == "Day" and guard.store then
-		lastGoneAt[guard.store] = os.clock() -- rouverture du magasin : voir StoreReadyToReopen
+	local store = guard.store
+	if guard.kind == "Day" and store then
+		lastGoneAt[store] = os.clock() -- rouverture du magasin : voir StoreReadyToReopen
 	end
 	log(`{guard.label} parti ({reason})`)
+	-- Le magasin se rouvre pour son voleur (OnGuardGone).
+	local owner = guard.owner
+	if guard.kind == "Day" and store and owner then
+		for _, listener in table.clone(goneListeners) do
+			task.spawn(listener, owner, store)
+		end
+	end
 end
 
 -- Durée du fondu (Balance.Guard.ReturnFadeTime) ; 0 si elle n'est pas un nombre fini ≥ 0.
@@ -1596,28 +1613,22 @@ end
 
 -- Boucle ----------------------------------------------------------------------------------
 
--- Le point visé quand il voit sa cible (L-091 point 1) : là où elle sera dans le temps qu'il lui faut
--- pour la rejoindre (distance / sa vitesse, au plus LEAD_MAX_TIME s, LEAD_MAX_DISTANCE studs), d'après
--- sa vitesse au sol. Il coupe le virage au lieu de courir après l'endroit où elle était : un joueur
--- qui tourne à angle droit fait tourner le vigile tout de suite. Le point anticipé doit être en vue
--- du vigile et de la cible (jamais derrière un mur) et hors zone safe, sinon il vise la cible.
-local function aimPoint(guard: Guard, targetRoot: BasePart, distance: number): Vector3
-	local position = targetRoot.Position
-	local velocity = flat(targetRoot.AssemblyLinearVelocity)
-	local speed = velocity.Magnitude
-	if not isPositiveNumber(speed) or speed < LEAD_MIN_SPEED then
-		return position
+-- En vue (Cantin, 2026-11-11) : le trajet le plus court, droit sur l'endroit où est la cible, sans
+-- anticipation. Ce point n'est repris qu'au plus toutes les CHASE_REAIM_INTERVAL s : un petit zigzag
+-- du joueur ne fait pas zigzaguer le vigile. Repris tout de suite quand la vue revient (pas de point
+-- visé) ou quand il atteint le point visé (il ne s'arrête pas en attendant la reprise).
+local function chaseInSight(guard: Guard, targetRoot: BasePart, now: number)
+	guard.waypoints = nil -- jamais un point de chemin périmé quand il voit sa cible
+	guard.lastSeen = targetRoot.Position
+	local aim = guard.chaseAim
+	if aim == nil or now >= guard.nextAimAt or flat(aim - guard.root.Position).Magnitude <= WAYPOINT_REACHED then
+		local fresh = targetRoot.Position
+		guard.chaseAim = fresh
+		guard.nextAimAt = now + CHASE_REAIM_INTERVAL
+		moveTo(guard, fresh)
+		return
 	end
-	local lead = math.min(distance / math.max(guard.humanoid.WalkSpeed, 1), LEAD_MAX_TIME)
-	local offset = velocity * lead
-	if offset.Magnitude > LEAD_MAX_DISTANCE then
-		offset = offset.Unit * LEAD_MAX_DISTANCE
-	end
-	local aim = position + offset
-	if isInSafeZone(aim) or not clearLine(position, aim) or not clearLine(guard.root.Position, aim) then
-		return position
-	end
-	return aim
+	moveTo(guard, aim)
 end
 
 -- Derrière un obstacle (L-091 point 1) : un chemin vers la cible, calculé seulement s'il n'en a pas,
@@ -1693,20 +1704,7 @@ local function chaseStep(guard: Guard, now: number)
 		end
 		return
 	end
-	local giveUpAfter = if driver
-		then driver.GiveUpAfter
-		elseif night then Night.GiveUpChaseDuration
-		else Balance.Guard.GiveUpChaseDuration
-	if now - guard.chaseStartedAt >= giveUpAfter then
-		giveUp(guard, `{giveUpAfter} s de poursuite`)
-		return
-	end
-	-- Le conducteur, plus rapide que sa cible, n'abandonne jamais pour l'avance prise.
-	local giveUpLead = if night then Night.GiveUpLead else Balance.Guard.GiveUpLead
-	if driver == nil and distance >= giveUpLead then
-		giveUp(guard, `{giveUpLead} studs d'avance`)
-		return
-	end
+	-- Poursuite sans fin (Cantin, 2026-11-11) : ni temps de poursuite ni avance ne la font abandonner.
 	if now < guard.nextSteerAt then
 		return
 	end
@@ -1719,14 +1717,12 @@ local function chaseStep(guard: Guard, now: number)
 			setWalkSpeed(guard, speed)
 		end
 	end
-	-- Ligne de vue à chaque pas : s'il voit sa cible, droit sur elle (anticipée), et le chemin en cours
-	-- est jeté : jamais un point de chemin périmé quand il la voit.
+	-- Ligne de vue à chaque pas : en vue, droit sur sa position (chaseInSight) ; sinon un chemin.
 	if canSee(guard, targetRoot, targetHumanoid) then
-		guard.waypoints = nil
-		guard.lastSeen = targetRoot.Position
-		moveTo(guard, aimPoint(guard, targetRoot, distance))
+		chaseInSight(guard, targetRoot, now)
 		return
 	end
+	guard.chaseAim = nil
 	chaseBehindObstacle(guard, targetRoot.Position, now)
 end
 
@@ -1897,7 +1893,6 @@ local function spot(guard: Guard, player: Player, now: number)
 	guard.anims:Stop("Walk")
 	guard.pauseUntil = 0
 	guard.target = player
-	guard.chaseStartedAt = now
 	guard.stateEndsAt = now + REACTION_DELAY
 	nightChasedBy[player] = guard
 	guard.model:SetAttribute(TARGET_ATTRIBUTE, player.UserId)
@@ -2264,7 +2259,8 @@ local function spawnGuard(player: Player, store: Model, zone: number, template: 
 		target = player,
 		state = "Wait",
 		spawnedAt = now,
-		chaseStartedAt = now,
+		owner = player,
+		nextAimAt = now,
 		patrol = {},
 		patrolIndex = 1,
 		patrolStep = 1,
@@ -2484,7 +2480,8 @@ local function spawnNightGuard(zone: number, number: number, points: { Vector3 }
 		target = nil,
 		state = "Patrol",
 		spawnedAt = now,
-		chaseStartedAt = now,
+		owner = nil,
+		nextAimAt = now,
 		patrol = points,
 		patrolIndex = startIndex,
 		patrolStep = direction,
@@ -2614,7 +2611,8 @@ local function spawnDriver(chase: DriverChase): Model?
 		target = player,
 		state = "Wait",
 		spawnedAt = now,
-		chaseStartedAt = now,
+		owner = nil,
+		nextAimAt = now,
 		patrol = {},
 		patrolIndex = 1,
 		patrolStep = 1,
@@ -2710,7 +2708,6 @@ local function retarget(guard: Guard, player: Player)
 	stop(guard)
 	guard.anims:Stop("Run")
 	guard.speed = chaseSpeed(player, guard.zone)
-	guard.chaseStartedAt = now
 	guard.stateEndsAt = now + REACTION_DELAY
 	refreshChaseState(player)
 	log(`{guard.label} : change de cible, poursuit {player.Name} qui a ramassé le colis (vitesse {Format.short(guard.speed)})`)
@@ -2839,6 +2836,16 @@ function GuardService.OnCatch(listener: CatchListener): () -> ()
 		local index = table.find(catchListeners, listener)
 		if index then
 			table.remove(catchListeners, index)
+		end
+	end
+end
+
+function GuardService.OnGuardGone(listener: GoneListener): () -> ()
+	table.insert(goneListeners, listener)
+	return function()
+		local index = table.find(goneListeners, listener)
+		if index then
+			table.remove(goneListeners, index)
 		end
 	end
 end

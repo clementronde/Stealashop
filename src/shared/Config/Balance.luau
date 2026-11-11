@@ -97,8 +97,10 @@ local Balance = {
 		-- 2,4 s (Cantin, 2026-11-10 ; le doc disait 1,5) : le temps des animations de Clément, Knockdown
 		-- (1,2 s) puis GetUp (1,2 s), pour que le joueur ne reparte pas en glissant pendant qu'il se relève.
 		CatchStunDuration = 2.4,
-		GiveUpChaseDuration = 20, -- abandon après 20 s de poursuite…
-		GiveUpLead = 120, -- … ou 120 studs d'avance, ou passage de l'arche safe
+		-- Poursuite sans fin (Cantin, 2026-11-11) : le vigile n'abandonne plus au bout de 20 s ni à 120 studs
+		-- d'avance, seulement à la zone safe (ou à la fin du portage). Cette distance ne sert plus qu'à
+		-- l'échelle de la jauge GuardMeter du HUD (HudController) : vide à cette distance, pleine à CatchDistance.
+		GiveUpLead = 120,
 		HeartbeatDistance = 10, -- battements de cœur sous cette distance
 		-- V0 proposé, absent du doc (liaison L-077, question posée à Clément) : où s'arrête le retour
 		-- du vigile de jour, qui s'y efface en fondu. "Reserve" (b) : il traverse le magasin jusqu'à

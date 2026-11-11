@@ -47,7 +47,7 @@
 --     casseur et aux joueurs à TIMER_RADIUS studs ou moins du magasin, puis à ceux qui
 --     s'approchent pendant le chrono ; HeistTimer(storeId, 0) le masque.
 --   - Prise : GrabItem(slotId), en deux appels (voir « Maintien » plus bas). Le serveur vérifie :
---     magasin ouvert, colis posé sur le rayon, avance du casseur, mains vides
+--     magasin ouvert (et pas fermé pour lui), colis posé sur le rayon, avance du casseur, mains vides
 --     (CarryService.IsCarrying), joueur vivant dans le volume Bounds et à GrabMaxDistance
 --     (8 studs) au plus de l'emplacement, maintien du type du colis (Balance.Heist.BoxTiers). Le
 --     rayon se vide, CarryService.StartCarry reçoit le payload avec le contenu tiré à la mise en
@@ -60,6 +60,18 @@
 --     le BB_Box du colis porté, construit par CarryService d'après le payload, montre alors le
 --     contenu remplacé. Le colis du rayon, lui, garde le sien : s'il revient (porteur rattrapé),
 --     c'est avec son contenu d'origine. TutorialService (pas encore écrit) posera cette accroche.
+--   - Fermé pour le voleur seulement (Cantin, 2026-11-11 ; remplace l'interdiction de reprise après une
+--     capture et son message) : dès qu'un joueur prend un colis sur un rayon, ce magasin
+--     est fermé pour lui seul, jusqu'au départ du vigile apparu pour ce vol (GuardService.OnGuardGone :
+--     rentré et effacé) ou, au plus tard, jusqu'à la réouverture du magasin (vitrine reconstruite). Sans
+--     vigile (plafonds de 9.7, GuardService absent) : jusqu'à la réouverture (V0 proposé, absent du
+--     doc). Pendant ce temps, côté serveur : plus aucune prise pour lui dans ce magasin, et plus de
+--     chrono. D'abord « en sortie » (Leaving) tant qu'il est dans le volume Bounds avec le colis ; puis
+--     « fermé » (Closed) dès qu'il en sort ou qu'il ne porte plus le colis (attrapé dedans, colis tombé) :
+--     alors, s'il est (ou revient) dans Bounds, il est sorti devant la vitrine (moveOut, colis gardé).
+--     L'attribut CLOSED_ATTRIBUTE du Player liste les StoreId fermés (Closed) pour lui : son client
+--     (StoreLockController) y montre le rideau baissé et solide, chez lui seul. Les autres joueurs voient
+--     le magasin normal et peuvent continuer à le braquer, chacun fermé pour lui-même s'il vole.
 --   - Fermeture, à la fin du chrono : plus aucune prise ; les joueurs dedans sans colis sont
 --     sortis devant la vitrine, avec un Notify. Tant que le magasin est fermé, un joueur sans
 --     colis qui se retrouve dans le volume Bounds en est sorti de la même façon (pas de camping
@@ -103,10 +115,12 @@
 -- le même rayon dans la seconde qui suit, sans s'être éloigné, conclut tout de suite (le joueur
 -- est bien resté à portée tout ce temps).
 --
--- Posé par le serveur, lu par HeistController et ShelfBoxController :
---   sur le magasin : StoreId (texte), HeistOpen (booléen) ; pendant le chrono seulement,
+-- Posé par le serveur, lu par HeistController, ShelfBoxController et StoreLockController :
+--   sur le magasin : StoreId (texte), HeistOpen (booléen), ShutterClosedPivot (CFrame : pivot du
+--     rideau baissé, s'il a un rideau) ; pendant le chrono seulement,
 --     HeistEndsAt et HeistExclusiveUntil (heures serveur, workspace:GetServerTimeNow()) et
 --     HeistBreakerId (UserId du casseur) ;
+--   sur le Player : ClosedStores (texte, StoreId séparés par des virgules, triés ; absent = aucun) ;
 --   sur chaque colis du rayon : tag ShelfBox ; SlotId (à renvoyer dans GrabItem, « <StoreId>/03 »),
 --     Slot (nom de l'Attachment, « ShelfSlot_03 »), Tier (type du colis), Landed (false tant
 --     qu'un colis rendu vole) ; son étiquette BB_Box.
@@ -256,8 +270,12 @@ type Store = {
 	EndsAt: number, -- heure serveur de fin du chrono
 	Viewers: { [Player]: boolean }, -- joueurs qui voient le chrono
 	RefillPending: boolean, -- RefillAll pendant le chrono : nouveau tirage à la fermeture
-	Banned: { [Player]: boolean }, -- attrapés par le vigile de ce magasin : plus de prise jusqu'à sa réouverture
+	Locked: { [Player]: LockState }, -- fermé pour ces voleurs seulement (voir l'en-tête)
 }
+
+-- Leaving : vient de prendre un colis, encore dans Bounds avec lui ; Closed : fermé pour lui, rideau
+-- baissé chez lui et sorti s'il entre.
+type LockState = "Leaving" | "Closed"
 
 type Hold = { Slot: Slot, Box: ShelfBox, StartedAt: number }
 
@@ -294,6 +312,10 @@ local SLOT_ID_ATTRIBUTE = "SlotId"
 local SLOT_ATTRIBUTE = "Slot"
 local TIER_ATTRIBUTE = "Tier"
 local LANDED_ATTRIBUTE = "Landed"
+-- Fermeture pour le voleur seulement (même noms dans StoreLockController).
+local CLOSED_ATTRIBUTE = "ClosedStores" -- sur le Player
+local CLOSED_SEPARATOR = ","
+local SHUTTER_PIVOT_ATTRIBUTE = "ShutterClosedPivot" -- sur le magasin
 
 local MAX_ID_LENGTH = 64 -- longueur max d'un slotId accepté par Net (Definitions)
 
@@ -360,9 +382,6 @@ local V0_LOOKS: { [string]: BoxLook } = {
 -- Messages lus par le joueur (Notify), en anglais (L-036).
 local MESSAGES = {
 	Closed = "Too late: the shutter came down!",
-	-- V0 proposé, absent du doc (Cantin, 2026-11-10) : attrapé par le vigile, plus de prise dans ce
-	-- magasin jusqu'à sa réouverture (vitrine reconstruite).
-	Banned = "The guard knows you now: come back when the store reopens!",
 }
 
 local IS_STUDIO = RunService:IsStudio()
@@ -1030,6 +1049,76 @@ local function lowerWhenClear(store: Store): (boolean, string?)
 	return true, nil
 end
 
+-- Fermé pour le voleur seulement (voir l'en-tête) ------------------------------------------------------
+
+-- Écrit dans l'attribut CLOSED_ATTRIBUTE du joueur les magasins fermés (Closed) pour lui, triés ;
+-- l'attribut est retiré quand il n'y en a plus.
+local function publishClosed(player: Player)
+	if player.Parent ~= Players then
+		return
+	end
+	local ids: { string } = {}
+	for _, store in stores do
+		if store.Locked[player] == "Closed" then
+			table.insert(ids, store.Id)
+		end
+	end
+	table.sort(ids)
+	local value: string? = if #ids > 0 then table.concat(ids, CLOSED_SEPARATOR) else nil
+	if player:GetAttribute(CLOSED_ATTRIBUTE) ~= value then
+		player:SetAttribute(CLOSED_ATTRIBUTE, value)
+	end
+end
+
+-- Il vient de prendre un colis sur un rayon de ce magasin : fermé pour lui (d'abord en sortie).
+local function lockFor(store: Store, player: Player)
+	store.Locked[player] = "Leaving"
+end
+
+local function unlock(store: Store, player: Player, why: string)
+	local state = store.Locked[player]
+	if state == nil then
+		return
+	end
+	store.Locked[player] = nil
+	if state == "Closed" then
+		publishClosed(player)
+	end
+	log(`{store.Id} rouvert pour {player.Name} ({why})`)
+end
+
+local function unlockAll(store: Store, why: string)
+	for player in table.clone(store.Locked) do
+		unlock(store, player, why)
+	end
+end
+
+-- Tick : un voleur en sortie passe à Closed dès qu'il quitte le volume Bounds ou ne porte plus le
+-- colis ; un voleur Closed qui est dans Bounds en est sorti devant la vitrine (colis gardé).
+local function stepLocks(store: Store)
+	local bounds = store.Bounds
+	for player, state in table.clone(store.Locked) do
+		if player.Parent ~= Players then
+			store.Locked[player] = nil
+			continue
+		end
+		local root, humanoid = rootOf(player)
+		local isInside = root ~= nil and bounds ~= nil and inside(bounds, root.Position)
+		if state == "Leaving" then
+			if isInside and isCarrying(player) then
+				continue -- il sort avec son colis, rideau encore levé pour lui
+			end
+			store.Locked[player] = "Closed"
+			publishClosed(player)
+			log(`{store.Id} fermé pour {player.Name} jusqu'au retour de son vigile`)
+		end
+		if isInside and root and humanoid then
+			moveOut(store, player, root, humanoid)
+			log(`{player.Name} sorti de {store.Id} (fermé pour lui)`)
+		end
+	end
+end
+
 -- Chrono -----------------------------------------------------------------------------------------
 
 local function hideTimer(store: Store, player: Player)
@@ -1048,11 +1137,12 @@ local function showTimer(store: Store, player: Player)
 	end
 end
 
--- Chrono montré aux joueurs proches sans colis, masqué pour ceux qui en portent un.
+-- Chrono montré aux joueurs proches sans colis, masqué pour ceux qui en portent un et pour ceux
+-- pour qui le magasin est fermé.
 local function updateViewers(store: Store)
 	local center = if store.Bounds then store.Bounds.Position else store.Model:GetPivot().Position
 	for _, player in Players:GetPlayers() do
-		if isCarrying(player) then
+		if isCarrying(player) or store.Locked[player] ~= nil then
 			hideTimer(store, player)
 		elseif not store.Viewers[player] then
 			local root = rootOf(player)
@@ -1160,9 +1250,8 @@ local function grabRefusal(player: Player, slot: Slot): string?
 	if player ~= store.Breaker and os.clock() < store.ExclusiveUntil then
 		return "avance du casseur"
 	end
-	if store.Banned[player] then
-		Net.Server.Notify:Fire(player, MESSAGES.Banned, "Warning")
-		return "attrapé par le vigile de ce magasin : plus de prise jusqu'à sa réouverture"
+	if store.Locked[player] then
+		return "magasin fermé pour lui : son vigile n'est pas encore rentré"
 	end
 	if isCarrying(player) then
 		return "mains pleines"
@@ -1290,6 +1379,7 @@ local function grant(player: Player, slot: Slot)
 	end
 	discard(box)
 	hideTimer(store, player)
+	lockFor(store, player)
 	local mutation = Mutations.Label(content.Mutation)
 	log(`{player.Name} prend le colis {box.Tier} {slot.Name} de {store.Id} : {content.Rarity} ({content.ItemId}){if mutation then ", " .. mutation else ""}`)
 	for _, listener in table.clone(grabbedListeners) do
@@ -1385,17 +1475,7 @@ local function onCarryEnded(player: Player, payload: any, result: string, reason
 	if result ~= "Failed" then
 		return -- « Dropped » (DEV-048) : au sol, il revient par onDropExpired s'il n'est pas ramassé
 	end
-	local store = storesById[payload.StoreId]
-	if reason == "Caught" and store then
-		-- Règle par joueur (Cantin, 2026-11-10) : l'attrapé sort du magasin et n'y reprend plus de colis
-		-- jusqu'à sa réouverture ; les autres voleurs continuent avec leur propre vigile.
-		store.Banned[player] = true
-		local root, humanoid = rootOf(player)
-		local bounds = store.Bounds
-		if root and humanoid and bounds and inside(bounds, root.Position) then
-			moveOut(store, player, root, humanoid)
-		end
-	end
+	-- Attrapé dans le magasin : il en est sorti par la fermeture pour le voleur (stepLocks).
 	if returnBox(payload, carrierPosition(player)) then
 		log(`colis {payload.Tier} de {player.Name} ({reason}) : revient sur {payload.SlotId}`)
 	else
@@ -1502,12 +1582,16 @@ local function register(instance: Instance)
 		EndsAt = 0,
 		Viewers = {},
 		RefillPending = false,
-		Banned = {},
+		Locked = {},
 	}
 	if store.Bounds == nil then
 		warn(`[StoreHeistService] {model:GetFullName()} : pas de volume « {BOUNDS_NAME} » (Part), aucune prise possible`)
 	end
 	findShutter(store, model)
+	if store.Shutter then
+		-- Le rideau baissé que le client du voleur montre chez lui seul (StoreLockController).
+		model:SetAttribute(SHUTTER_PIVOT_ATTRIBUTE, store.ShutterClosed)
+	end
 
 	-- Le type des colis ne vient plus de l'emplacement (L-033) : l'attribut Tier des ShelfSlot
 	-- n'est pas lu.
@@ -1558,6 +1642,7 @@ local function unregister(instance: Instance)
 	end
 	stores[instance] = nil
 	storesById[store.Id] = nil
+	unlockAll(store, "magasin retiré de la map")
 	store.Open = false
 	store.Token += 1
 	store.ShutterToken += 1
@@ -1592,6 +1677,7 @@ local function step()
 		end
 	end
 	for _, store in stores do
+		stepLocks(store)
 		if store.Open then
 			updateViewers(store)
 		else
@@ -1622,7 +1708,7 @@ local function onRebuilt(_windowId: string, model: Model)
 		return
 	end
 	closeStore(store) -- vitrine reconstruite avant la fin du chrono (WindowService.Rebuild)
-	table.clear(store.Banned) -- réouverture : les joueurs attrapés peuvent revenir
+	unlockAll(store, "réouverture du magasin") -- au plus tard ici (sans vigile, ou vigile pas signalé)
 	store.ShutterPending = false
 	raiseShutter(store, false)
 	for _, player in ejectInside(store, true) do
@@ -1693,8 +1779,24 @@ function StoreHeistService.Init()
 		lastRefusal[player] = nil
 		for _, store in stores do
 			store.Viewers[player] = nil
+			store.Locked[player] = nil
 		end
 	end)
+	-- Le vigile apparu pour un vol est parti : le magasin se rouvre pour ce voleur. require protégé :
+	-- sans GuardService (bancs), la fermeture pour le voleur dure jusqu'à la réouverture du magasin.
+	local okGuard, guardApi = pcall(function(): any
+		return require(script.Parent.GuardService) :: any
+	end)
+	local onGone: any = if okGuard and type(guardApi) == "table" then guardApi.OnGuardGone else nil
+	local subscribed = onGone ~= nil and pcall(onGone, function(thief: Player, model: Model)
+		local store = stores[model]
+		if store then
+			unlock(store, thief, "son vigile est rentré")
+		end
+	end)
+	if not subscribed then
+		log("GuardService.OnGuardGone indisponible : un magasin reste fermé pour son voleur jusqu'à sa réouverture")
+	end
 
 	local storeCount, boxCount = 0, 0
 	for _, store in stores do

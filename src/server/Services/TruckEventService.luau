@@ -43,8 +43,8 @@
 --      et d'autre du pivot du camion, au sol. La poursuite elle-même est celle de GuardService
 --      (StartDriverChase : chemin, capture à Balance.Guard.CatchDistance, coup au marqueur Impact de
 --      Catch, chute du joueur, étourdi CatchStunDuration s), à DriverSpeedMultiplier × la WalkSpeed du
---      porteur (au moins DriverMinSpeed), abandon à la zone safe (le colis y est rangé), quand il ne
---      porte plus ce colis ou après DriverGiveUpAfter s. Attrapé : CarryService.Fail(…, "Caught"), le
+--      porteur (au moins DriverMinSpeed), abandon à la zone safe (le colis y est rangé) ou quand il ne
+--      porte plus ce colis, jamais au bout d'un temps (poursuite sans fin, Cantin 2026-11-11). Attrapé : CarryService.Fail(…, "Caught"), le
 --      colis est perdu. Notify DriversChase au porteur poursuivi. Aucun porteur : aucun conducteur.
 --      GuardService est chargé à ce moment-là, protégé : sans lui (bancs), pas de poursuite.
 --   4. À 0 PV (WindowService.OnBroken, Kind « Event ») : explosion.
@@ -1029,7 +1029,6 @@ local function launchDrivers(c: Chrono, why: string)
 			Zone = c.Zone,
 			SpeedMultiplier = TruckEvent.DriverSpeedMultiplier,
 			MinSpeed = TruckEvent.DriverMinSpeed,
-			GiveUpAfter = TruckEvent.DriverGiveUpAfter,
 			Keeps = function(target: Player): boolean
 				return carriesBoxOf(target, storeId)
 			end,

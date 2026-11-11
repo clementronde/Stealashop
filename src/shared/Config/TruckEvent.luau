@@ -89,7 +89,6 @@ local TruckEvent = {
 	-- studs/s ferait +19 % à 16 mais +4 % à 70), et chaque conducteur suit son porteur, pas le plus rapide.
 	DriverSpeedMultiplier = 1.2, -- V0 proposé, absent du doc : 20 % plus vite que son porteur
 	DriverMinSpeed = 20, -- V0 proposé, absent du doc : jamais moins vite (porteur ralenti ou immobilisé)
-	DriverGiveUpAfter = 30, -- V0 proposé, absent du doc : abandonne (fondu sur place) après 30 s de poursuite
 	DriverSpawnSpacing = 4, -- V0 proposé, absent du doc : écart entre les deux conducteurs à l'apparition (studs), de part et d'autre du pivot du camion
 
 	-- Barre de vie au point HealthBarPoint (côté client) : BB_TruckHP de Clément (L-052), telle qu'il
