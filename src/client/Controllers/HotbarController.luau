@@ -1099,13 +1099,32 @@ local function isChased(): boolean
 	return ok and result == true
 end
 
--- Enabled = branché et pas en poursuite (jamais rallumé pendant une poursuite : ChaseFeelController).
+-- Écrans plein écran de Clément devant lesquels la barre se cache (vague 27, vu en Play le 2026-11-11 : même
+-- DisplayOrder que UI_SkillTree, ses cases prenaient le clic du bouton Close de l'arbre).
+local FULL_SCREENS = { "UI_SkillTree" }
+
+local function fullScreenOpen(): boolean
+	local playerGui = localPlayer:FindFirstChild("PlayerGui")
+	if playerGui == nil then
+		return false
+	end
+	for _, name in FULL_SCREENS do
+		local gui = playerGui:FindFirstChild(name)
+		if gui and gui:IsA("ScreenGui") and (gui :: ScreenGui).Enabled then
+			return true
+		end
+	end
+	return false
+end
+
+-- Enabled = branché, pas en poursuite (jamais rallumé pendant une poursuite : ChaseFeelController) et pas
+-- sous un écran plein (FULL_SCREENS).
 local function updateEnabled()
 	local current = screen
 	if current == nil or current.gui.Parent == nil then
 		return
 	end
-	local wanted = not isChased()
+	local wanted = not isChased() and not fullScreenOpen()
 	if current.gui.Enabled ~= wanted then
 		current.gui.Enabled = wanted
 	end
