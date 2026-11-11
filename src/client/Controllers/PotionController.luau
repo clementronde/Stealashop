@@ -22,8 +22,9 @@
 --      à la fin. Écran de Clément s'il existe : UI_HUD.PotionBar et son Template caché (Icon, Timer), une copie
 --      par effet (Potion_<Id>) ; image d'Icon = attribut <Id>Icon de PotionBar (« rbxassetid://… »), sinon le
 --      nom va dans Timer (« Speed 1:42 »). Sinon, affichage V0 fait par le code : ScreenGui PotionStatus, petites
---      lignes « Speed 1:42 » collées sous l'argent (UI_HUD.Cash ; au-dessus s'il est dans la moitié basse de
---      l'écran), à gauche au milieu de l'écran sans Cash. Rien en haut de l'écran.
+--      lignes « Speed 1:42 » collées au bloc des stats du HUD (UI_HUD.StatsPanel, sinon UI_HUD.Cash ; au-dessus
+--      s'il est dans la moitié basse de l'écran, dessous sinon), à gauche au milieu de l'écran sans l'un ni
+--      l'autre. Rien en haut de l'écran. (Collées à Cash, elles cachaient la vitesse : vu en Play, 2026-11-11.)
 --   4. Invisibilité (Potion_Invisibility) : chez ce client, chaque AUTRE joueur qui l'a devient presque
 --      transparent (LocalTransparencyModifier INVISIBLE_OTHERS sur pièces et décalques, accessoires et outils
 --      compris), nom caché (Humanoid.DisplayDistanceType = None, billboards, particules, traînées, rayons et
@@ -71,6 +72,7 @@ local STATUS_SCREEN = "PotionStatus" -- ScreenGui de l'affichage V0
 local VEIL_SCREEN = "PotionVeil"
 local HUD_SCREEN = "UI_HUD"
 local CASH_LABEL = "Cash" -- UI_HUD.Cash (contrat 2.2)
+local STATS_PANEL = "StatsPanel" -- UI_HUD.StatsPanel : force, vitesse et argent ; les lignes V0 vont au-dessus
 local BAR_NAME = "PotionBar" -- proposé à Clément : UI_HUD.PotionBar, Template (Icon, Timer)
 local IDLE_ATTRIBUTE = "Idle" -- Contract/Attributes.Idle
 local INVISIBILITY_ID = "Invisibility"
@@ -389,7 +391,7 @@ local function ensureStatus(gui: Instance, hud: Instance?): Frame
 	end
 	local finalScreen = screen :: ScreenGui
 	local finalList = list :: Frame
-	local cash = if hud then hud:FindFirstChild(CASH_LABEL, true) else nil
+	local cash = if hud then (hud:FindFirstChild(STATS_PANEL, true) or hud:FindFirstChild(CASH_LABEL, true)) else nil
 	if hud and cash and cash:IsA("GuiObject") then
 		local label = cash :: GuiObject
 		finalScreen.IgnoreGuiInset = (hud :: ScreenGui).IgnoreGuiInset -- mêmes coordonnées que le HUD
