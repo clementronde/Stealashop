@@ -51,7 +51,7 @@ En cas de doute, le doc partagé gagne. Ne jamais inventer une valeur (PV, prix,
 
 Le code retrouve tout par **tags** et par **noms convenus**, jamais par chemin.
 
-- **Tags** : `NPCStore`, `PlayerPlot`, `Treadmill`, `Bench`, `WeaponShop`, `AuraShop`, `RobuxShop`, `SafeZone`, `ZoneGate`, `CashPad`, `NightWall`, `NightPatrol`.
+- **Tags** : `NPCStore`, `PlayerPlot`, `Treadmill`, `Bench`, `WeaponShop`, `AuraShop`, `RobuxShop`, `SafeZone`, `ZoneGate`, `NightWall`, `NightPatrol`.
 - **Attributs** : `Zone` (1 à 6), `Tier` (`Standard`, `Premium`, `Luxe`), `ItemId`.
 - **Nommage des assets** (section 10.3) : `PREFIXE_Zone-ou-Categorie_Nom_Variante`, PascalCase, sans accents ni espaces. Préfixes : `ITM`, `BOX`, `TOOL`, `STORE`, `PLOT`, `WIN`, `ACC`, `ENV`, `FX`.
 - **Enfants obligatoires des modèles** : section 10.4 (ex. un magasin PNJ a `Window`, `WindowFractured` avec `Shard_01` à `Shard_40`, `Shutter`, `Door`, `Bounds`, `ShelfSlot_01` à `_10`, `GuardSpawn`, `SignPart`).
