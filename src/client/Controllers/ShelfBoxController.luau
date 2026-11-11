@@ -29,6 +29,10 @@
 -- API (client) :
 --   ShelfBoxController.GetStats() -> { Outlines, ActiveOutlines, Labels, NearLabels, VisibleLabels }
 --       Compteurs, pour un test dans Studio (barre de commande côté client).
+--   ShelfBoxController.Reserve(key, count)
+--       Garde `count` places de Highlight pour un autre contrôleur (vague 26 : contour rouge du vigile en
+--       poursuite, VfxController) : MaxOutlines moins la somme des réservations restent aux colis. 0 rend
+--       la place. Le tri suivant est fait à l'image suivante.
 
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
@@ -69,6 +73,7 @@ local localPlayer = Players.LocalPlayer
 local ShelfBoxController = {}
 
 local outlines: { [Highlight]: boolean } = {}
+local reserved: { [string]: number } = {} -- places de Highlight gardées pour d'autres (Reserve)
 local labels: { [Instance]: LabelEntry } = {}
 local near: { LabelEntry } = {} -- étiquettes à portée, revues par rayon chacune à son tour
 local cursor = 1
@@ -121,8 +126,12 @@ local function refreshOutlines(cameraPosition: Vector3)
 	table.sort(list, function(a: OutlineEntry, b: OutlineEntry): boolean
 		return a.Distance < b.Distance
 	end)
+	local limit = ShelfBoxes.MaxOutlines
+	for _, count in reserved do
+		limit -= count
+	end
 	for index, entry in list do
-		local enabled = index <= ShelfBoxes.MaxOutlines
+		local enabled = index <= limit
 		if entry.Highlight.Enabled ~= enabled then
 			entry.Highlight.Enabled = enabled
 		end
@@ -301,6 +310,18 @@ function ShelfBoxController.GetStats(): Stats
 		end
 	end
 	return stats
+end
+
+function ShelfBoxController.Reserve(key: string, count: number)
+	local value = if type(count) == "number" and count > 0 then math.floor(count) else 0
+	if (reserved[key] or 0) ~= value then
+		if value > 0 then
+			reserved[key] = value
+		else
+			reserved[key] = nil
+		end
+		sinceRefresh = math.huge -- nouveau tri à l'image suivante
+	end
 end
 
 function ShelfBoxController.Start()

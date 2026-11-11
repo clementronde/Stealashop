@@ -26,7 +26,8 @@
 --     Heist_SafeFlash puis Heist_Escape ; champ de vision rendu d'un coup par la poursuite, + FovAdd puis
 --     retour ; UI_Escape allumé : Flash de FlashFrom à 1, Banner de 0 à 1 (Back Out), Title de TitleFrom
 --     à sa Rotation, BoxIcon (Image = ICON_BOX_<Tier>) et Subtitle l'un après l'autre ; au bout de Hold
---     s, Banner rapetisse, puis l'écran s'éteint et tout reprend la valeur de Clément.
+--     s, Banner rapetisse, puis l'écran s'éteint et tout reprend la valeur de Clément. L'effet FX_Escape
+--     aux pieds du joueur est à VfxController.Escape (vague 26), appelé d'ici.
 -- Ce qui est touché, et rien d'autre : ce que fait Motion (UIScale passagers, Shade, HoverOutline, Icon
 -- des cartes, tous remis ensuite), la transparence des bords de UI_Chase et RunBanner pendant la poursuite,
 -- Camera.FieldOfView, et dans UI_Escape : Enabled, Flash.BackgroundTransparency et Title.Rotation (remis),
@@ -553,6 +554,11 @@ function UiFeelController.Escape(tier: string?)
 	end
 	escapeFov()
 	escapeScreen(tier)
+	-- Confettis, étoiles et anneau de FX_Escape aux pieds du joueur (vague 26, VfxController).
+	local vfx = sibling("VfxController")
+	if vfx and type(vfx.Escape) == "function" then
+		task.spawn(vfx.Escape)
+	end
 end
 
 -- Arrivées en zone safe jouées depuis le démarrage, et l'écran en cours (banc, barre de commande).

@@ -174,6 +174,10 @@ local TRUCK_TAG = "EventTruck" -- tag posé par le code, hors du contrat de la s
 local NUMBER_ATTRIBUTE = "TruckNumber"
 local SPAWNED_AT_ATTRIBUTE = "SpawnedAt" -- heure serveur de l'apparition (sons d'arrivée, vague 26)
 local EXPLODED_AT_ATTRIBUTE = "ExplodedAt"
+-- Vague 26 (Config/Vfx.TruckDust, VfxController) : heure serveur de l'apparition et du retrait du camion
+-- (poussière à l'arrivée et au départ ; un retrait après l'explosion porte aussi ExplodedAt : pas de poussière).
+-- SpawnedAt est déclaré plus haut (même attribut, posé une seule fois).
+local LEFT_AT_ATTRIBUTE = "LeftAt"
 local TRUCK_BOX_ATTRIBUTE = "TruckBox"
 local TIER_ATTRIBUTE = "Tier"
 local FLIGHT_FROM_ATTRIBUTE = "FlightFrom"
@@ -771,6 +775,7 @@ local function removeTruck(truck: Truck, message: string?)
 	end
 	current = nil
 	WindowService.RemoveTarget(truck.WindowId)
+	truck.Model:SetAttribute(LEFT_AT_ATTRIBUTE, Workspace:GetServerTimeNow()) -- répliqué avant le retrait
 	truck.Model:Destroy()
 	if message then
 		notifyAll(message, "Info")
