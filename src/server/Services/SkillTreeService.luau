@@ -34,6 +34,8 @@
 --                   Niveau 2 et plus : à la même alerte, CameraSpotted(attaquant, fin) au seul propriétaire,
 --                   fin = heure serveur + Effects[niveau] s (30) : CameraAlertController (client) le surligne
 --                   à travers les murs. Le niveau 3 (flèche, distance, son) n'est pas codé (Coded = 2).
+--   PotionLuck et PotionTime (vague 28) : lus par PotionService avec GetEffect (délai entre deux potions
+--                   × Effects[niveau], durée d'un effet × Effects[niveau]) ; rien à brancher ici.
 -- Les compétences « Soon » (Coded = 0) n'ont aucun effet.
 --
 -- API (serveur) :

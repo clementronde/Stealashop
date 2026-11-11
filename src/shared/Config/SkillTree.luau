@@ -114,16 +114,17 @@ local List: { Skill } = {
 		Icon = "rbxassetid://133701105676131",
 	},
 	{
-		-- Potions (L-085) pas encore codées : ni prix ni effet décidés.
+		-- Potions (L-085, vague 28, PotionService). Effects[n] = facteur du délai entre deux apparitions de potions
+		-- (Config/Potions.SpawnEvery × Effects[n]). Prix et effets : V0 proposés, absents du doc.
 		Id = "PotionLuck",
 		Tile = "Tile_PotionLuck",
 		DisplayName = "Potion Luck",
 		Stat = "Potion luck",
 		MaxLevel = 3,
-		Prices = {},
-		Effects = {},
+		Prices = { 20_000, 400_000, 8_000_000 },
+		Effects = { 0.8, 0.65, 0.5 },
 		Labels = { "I", "II", "III" },
-		Coded = 0,
+		Coded = 3,
 		Icon = "rbxassetid://82423065290603",
 	},
 	{
@@ -154,15 +155,17 @@ local List: { Skill } = {
 		Icon = "rbxassetid://133701105676131",
 	},
 	{
+		-- Potions (vague 28, PotionService). Effects[n] = facteur de la durée d'un effet de potion
+		-- (Config/Potions, Duration × Effects[n]). Prix et effets : V0 proposés, absents du doc.
 		Id = "PotionTime",
 		Tile = "Tile_PotionTime",
 		DisplayName = "Potion Time",
 		Stat = "Potion time",
 		MaxLevel = 2,
-		Prices = {},
-		Effects = {},
-		Labels = { "I", "II" },
-		Coded = 0,
+		Prices = { 100_000, 2_000_000 },
+		Effects = { 1.25, 1.5 },
+		Labels = { "×1.25", "×1.5" },
+		Coded = 2,
 		OpensWhen = { Id = "PotionLuck", Level = 1 },
 		Icon = "rbxassetid://102799696275335",
 	},

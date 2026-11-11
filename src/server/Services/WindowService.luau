@@ -82,6 +82,11 @@
 --   WindowService.GetPlotRegen(owner) -> number
 --       Points d'accroche des défenses de la boutique de `owner` (voir les règles) : 1 et
 --       Balance.Window.RegenPerSecond par défaut. SkillTreeService les remplace (WindowService.X = function…).
+--   WindowService.GetHitDamageMultiplier(player) -> number
+--       Point d'accroche des potions (vague 28, L-085 : Strength) : multiplicateur des dégâts d'un coup de
+--       `player` (vitrines, parcelles et cibles d'événement), 1 par défaut. PotionService le remplace en gardant
+--       celui d'avant. Ne touche ni ToolService.GetHitDamage, ni l'attribut Damage, ni les PV de la vitrine de
+--       sa boutique. Une erreur ou une valeur qui n'est pas un nombre fini > 0 compte pour 1.
 --   WindowService.OnHit(listener) -> déconnexion
 --       listener(player, windowId, kind, model, damage) après chaque coup validé et compté (celui qui
 --       casse compris, cibles d'événement comprises), juste après WindowHit. Pour les caméras de la
@@ -211,6 +216,10 @@ end
 
 function WindowService.GetPlotRegen(_owner: Player): number
 	return Balance.Window.RegenPerSecond
+end
+
+function WindowService.GetHitDamageMultiplier(_player: Player): number
+	return 1
 end
 
 -- Valeur d'un point d'accroche : un nombre fini ≥ 0 (> 0 si `strict`), sinon `base` (une erreur :
@@ -522,6 +531,7 @@ local function onHitWindow(player: Player, windowId: string)
 		return
 	end
 	local damage = ToolService.GetHitDamage(player)
+		* modifier("GetHitDamageMultiplier", WindowService.GetHitDamageMultiplier, player, 1, true)
 	if damage <= 0 then
 		return
 	end

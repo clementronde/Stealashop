@@ -166,6 +166,10 @@
 --       nil ici : la vitesse de la zone s'applique. TutorialService le remplace
 --       (GuardService.GetSpeedOverride = function(player, zone) ... end). Une valeur qui n'est
 --       pas un nombre fini > 0, ou une erreur, compte pour nil.
+--   GuardService.IsHiddenFromNight(player) -> boolean
+--       Point d'accroche des potions (vague 28, L-085 : Invisibility) : renvoie false ici. PotionService le
+--       remplace en gardant celui d'avant. true = les vigiles de nuit ne repèrent pas ce joueur (scan) ; un
+--       vigile de nuit qui le poursuit déjà continue. Une erreur compte pour false.
 --   GuardService.StartNightPatrol(hooks) -> number
 --       Lance les vigiles de nuit (voir plus haut), sans attendre ; renvoie le nombre prévu. hooks
 --       (NightCycleService) : InCorridor(position) -> boolean, Ignores(player) -> boolean,
@@ -2006,6 +2010,16 @@ local function inCone(guard: Guard, offset: Vector3): boolean
 	return look.Unit:Dot(direction.Unit) >= COS_CONE
 end
 
+-- Potion d'invisibilité (GuardService.IsHiddenFromNight, voir l'en-tête) : une erreur compte pour false.
+local function hiddenFromNight(player: Player): boolean
+	local ok, hidden = pcall(GuardService.IsHiddenFromNight, player)
+	if not ok then
+		warnOnce("hook:IsHiddenFromNight", `IsHiddenFromNight : {hidden} (joueur visible)`)
+		return false
+	end
+	return hidden == true
+end
+
 -- Le joueur le plus proche que ce vigile de nuit repère (voir l'en-tête), ou nil.
 local function scan(guard: Guard): Player?
 	local best: Player? = nil
@@ -2021,6 +2035,7 @@ local function scan(guard: Guard): Player?
 					and distance < bestDistance
 					and inCone(guard, offset)
 					and nightRefusal(player, root.Position) == nil
+					and not hiddenFromNight(player)
 					and canSee(guard, root, humanoid)
 				then
 					best, bestDistance = player, distance
@@ -3013,6 +3028,10 @@ end
 
 function GuardService.GetSpeedOverride(_player: Player, _zone: number): number?
 	return nil
+end
+
+function GuardService.IsHiddenFromNight(_player: Player): boolean
+	return false
 end
 
 function GuardService.IsNightChased(player: Player): boolean
