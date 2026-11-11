@@ -27,6 +27,17 @@
 --     du palier (Config/Cosmetics, Color) teinte particules, lumière et trail.
 --     Objets natifs seulement (Part, WeldConstraint, Attachment, ParticleEmitter, PointLight,
 --     Trail), aucun script dans le personnage.
+--   - effets complets de Clément (vague 26, L-097 point 1), prioritaires sur ceux ci-dessus : le
+--     modèle FX_Aura_<Nom> ou FX_Trail_<Nom> (même nom que le champ Texture de Config/Cosmetics,
+--     cherché dans ReplicatedStorage/Assets, sous-dossiers compris : Assets/FX/Auras, Assets/FX/Trails)
+--     reprend les pièces R15 (UpperTorso, Head, mains, pieds, HumanoidRootPart). Chaque Attachment
+--     d'une pièce du modèle est copié, avec ses émetteurs, lumières, Beams et Trails, sur la pièce de
+--     même nom du personnage (même CFrame relatif). Un Beam ou un Trail qui relie deux Attachments du
+--     modèle est relié aux copies ; s'il vise une pièce que le personnage n'a pas, il est retiré.
+--     Chaque copie porte l'attribut CosmeticFx (« Aura » ou « Trail ») et CosmeticId ; une copie
+--     d'aura porte aussi le tag CosmeticAura, et ses ParticleEmitter l'attribut FullRate (comme la
+--     pièce V0). Retirées au changement et à la mort ; le personnage part avec le joueur. Sans modèle
+--     (ou sans aucune pièce commune avec le personnage) : l'effet V0 ci-dessus.
 -- Le serveur décide tout. Un refus qu'un joueur honnête peut rencontrer (objet pas possédé,
 -- sauvegarde pas encore chargée) reçoit un Notify en anglais (L-036) ; un Id inconnu, impossible
 -- depuis l'UI, n'est écrit que dans la sortie, en Studio.
@@ -53,7 +64,8 @@
 --   OwnedCosmetics   Id possédés connus de Config/Cosmetics, séparés par des virgules (« Spark,Dust »)
 --   EquippedAura     Id de l'aura équipée ; absent sans aura
 --   EquippedTrail    Id du trail équipé ; absent sans trail
--- Lu par CosmeticController (client) : la pièce CosmeticAura porte le tag de code « CosmeticAura »
+-- Lu par CosmeticController (client) : les copies des modèles FX_ portent l'attribut CosmeticFx ;
+-- la pièce CosmeticAura et chaque Attachment copié d'une aura portent le tag de code « CosmeticAura »
 -- (pas un tag de la map) et chacun de ses ParticleEmitter l'attribut FullRate (débit plein).
 
 local CollectionService = game:GetService("CollectionService")
@@ -83,6 +95,8 @@ local TRAIL_NAME = "CosmeticTrail"
 local TRAIL_TOP = "CosmeticTrailTop"
 local TRAIL_BOTTOM = "CosmeticTrailBottom"
 local COSMETIC_ID_ATTRIBUTE = "CosmeticId" -- Id de Config/Cosmetics, sur la pièce d'aura et le Trail
+-- Sur chaque Attachment copié d'un modèle FX_ de Clément : "Aura" ou "Trail". Même nom dans CosmeticController.
+local FX_ATTRIBUTE = "CosmeticFx"
 local ROOT_PART = "HumanoidRootPart"
 -- Dossier des assets de Clément (9.2), où l'on cherche ses textures.
 local ASSETS_FOLDER = "Assets"
@@ -253,21 +267,130 @@ local function isAlive(character: Model): boolean
 	return humanoid == nil or humanoid.Health > 0
 end
 
+-- Copies des modèles FX_ de Clément de ce type, sur toutes les pièces du personnage.
+local function clearFx(character: Model, kind: Kind)
+	for _, inst in character:GetDescendants() do
+		if inst:IsA("Attachment") and inst:GetAttribute(FX_ATTRIBUTE) == kind then
+			inst:Destroy()
+		end
+	end
+end
+
 local function clearAura(character: Model)
 	for _, child in character:GetChildren() do
 		if child.Name == AURA_PART and child:IsA("BasePart") then
 			child:Destroy()
 		end
 	end
+	clearFx(character, "Aura")
 end
 
-local function clearTrail(root: BasePart)
-	for _, child in root:GetChildren() do
-		local name = child.Name
-		if name == TRAIL_NAME or name == TRAIL_TOP or name == TRAIL_BOTTOM then
-			child:Destroy()
+local function clearTrail(character: Model)
+	local root = rootOf(character)
+	if root then
+		for _, child in root:GetChildren() do
+			local name = child.Name
+			if name == TRAIL_NAME or name == TRAIL_TOP or name == TRAIL_BOTTOM then
+				child:Destroy()
+			end
 		end
 	end
+	clearFx(character, "Trail")
+end
+
+-- Modèle d'effet complet de Clément (FX_Aura_<Nom> / FX_Trail_<Nom>, même nom que le champ
+-- Texture), ou nil s'il n'est pas livré. Le Decal homonyme est ignoré.
+local fxModels: { [string]: Model } = {} -- modèles déjà trouvés (Assets est grand : une recherche par nom)
+local function clementFxModel(name: string): Model?
+	local cached = fxModels[name]
+	if cached and cached.Parent ~= nil then
+		return cached
+	end
+	local assets = ReplicatedStorage:FindFirstChild(ASSETS_FOLDER)
+	local candidates: { Instance } = if assets then Find.all(assets, name) else {}
+	for _, found in candidates do
+		if found:IsA("Model") then
+			fxModels[name] = found :: Model
+			return found :: Model
+		end
+	end
+	reportOnce(`model:{name}`, `[CosmeticService] modèle {name} pas livré dans ReplicatedStorage/Assets (L-097) : effet par texture`)
+	return nil
+end
+
+type Placed = { copy: Attachment, target: BasePart }
+
+-- Copie sur `character` les Attachments de chaque pièce du modèle `model` (pièce de même nom).
+-- false si aucune pièce du modèle n'existe dans le personnage (rien n'est posé).
+local function attachFx(def: Cosmetic, character: Model, model: Model): boolean
+	local copies: { [Instance]: Attachment } = {} -- [Attachment du modèle] = copie
+	local isCopy: { [Instance]: boolean } = {}
+	local placed: { Placed } = {}
+	for _, source in model:GetChildren() do
+		if not source:IsA("BasePart") then
+			continue
+		end
+		local target = character:FindFirstChild(source.Name)
+		if target == nil or not target:IsA("BasePart") then
+			reportOnce(`part:{model.Name}:{source.Name}`, `[CosmeticService] {model.Name} : pas de pièce {source.Name} dans le personnage, ses effets sont ignorés`)
+			continue
+		end
+		for _, child in source:GetChildren() do
+			if child:IsA("Attachment") then
+				local copy = child:Clone() :: Attachment
+				copy:SetAttribute(FX_ATTRIBUTE, def.Kind)
+				copy:SetAttribute(COSMETIC_ID_ATTRIBUTE, def.Id)
+				copies[child] = copy
+				isCopy[copy] = true
+				table.insert(placed, { copy = copy, target = target :: BasePart })
+			end
+		end
+	end
+	if #placed == 0 then
+		return false
+	end
+	-- Beams et Trails reliés aux copies (un lien interne à une copie l'est déjà par Clone). Un lien
+	-- vers un Attachment qui n'est ni copié ni une copie (pièce absente du personnage) : effet retiré.
+	local function relink(attachment: Attachment?): (Attachment?, boolean)
+		if attachment == nil then
+			return nil, true
+		end
+		local copy = copies[attachment]
+		if copy then
+			return copy, true
+		end
+		return attachment, isCopy[attachment] == true
+	end
+	for _, entry in placed do
+		for _, inst in entry.copy:GetDescendants() do
+			if inst:IsA("Beam") or inst:IsA("Trail") then
+				local effect = inst :: any
+				local a0, ok0 = relink(effect.Attachment0)
+				local a1, ok1 = relink(effect.Attachment1)
+				if ok0 and ok1 then
+					effect.Attachment0 = a0
+					effect.Attachment1 = a1
+				else
+					inst:Destroy()
+				end
+			elseif def.Kind == "Aura" and inst:IsA("ParticleEmitter") then
+				inst:SetAttribute(FULL_RATE_ATTRIBUTE, (inst :: ParticleEmitter).Rate)
+			end
+		end
+		if def.Kind == "Aura" then
+			CollectionService:AddTag(entry.copy, AURA_TAG)
+		end
+	end
+	for _, entry in placed do
+		entry.copy.Parent = entry.target
+	end
+	return true
+end
+
+-- Pose l'effet complet de Clément si son modèle est livré ; false sinon (l'appelant pose l'effet V0).
+local function tryClementFx(def: Cosmetic, character: Model): boolean
+	local model = clementFxModel(def.Texture)
+	return model ~= nil and attachFx(def, character, model)
 end
 
 local function newEmitter(name: string, texture: string, rate: number): ParticleEmitter
@@ -389,14 +512,14 @@ local function applyEffects(player: Player, kind: Kind?)
 	if kind ~= "Trail" then
 		clearAura(character)
 		local def = equippedDef(data, "Aura")
-		if def then
+		if def and not tryClementFx(def, character) then
 			buildAura(def, root).Parent = character
 		end
 	end
 	if kind ~= "Aura" then
-		clearTrail(root)
+		clearTrail(character)
 		local def = equippedDef(data, "Trail")
-		if def then
+		if def and not tryClementFx(def, character) then
 			buildTrail(def, root)
 		end
 	end
@@ -404,10 +527,7 @@ end
 
 local function clearEffects(character: Model)
 	clearAura(character)
-	local root = rootOf(character)
-	if root then
-		clearTrail(root)
-	end
+	clearTrail(character)
 end
 
 local function onCharacter(player: Player, character: Model)

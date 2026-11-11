@@ -12,6 +12,10 @@
 -- tag retiré). Effets visuels coupés dans les réglages du joueur (VfxEnabled = false, L-095) : toutes
 -- les auras, la sienne comprise, à FullRate × Settings.VfxOff.AuraFactor (0 : coupées) ; et, depuis la
 -- vague 24, trails, lumière des auras et halos de rareté éteints (voir applyVfx).
+-- Vague 26 (L-097 point 1) : les effets complets de Clément (modèles FX_Aura_<Nom> et FX_Trail_<Nom>)
+-- sont copiés par CosmeticService en Attachments sur les pièces du personnage : chaque Attachment
+-- d'aura porte le tag CosmeticAura (sa distance = WorldPosition), et tout émetteur, lumière, Beam ou
+-- Trail sous un Attachment marqué CosmeticFx (aura ou trail) est éteint à VISUAL EFFECTS OFF.
 --
 -- API (client) : CosmeticController.CutCount() -> number (effets natifs éteints, pour un banc).
 
@@ -28,6 +32,7 @@ local Settings = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("
 local AURA_TAG = "CosmeticAura"
 local FULL_RATE_ATTRIBUTE = "FullRate"
 local ROOT_PART = "HumanoidRootPart"
+local FX_ATTRIBUTE = "CosmeticFx" -- sur chaque Attachment copié d'un modèle FX_ de Clément
 
 local CUT_DISTANCE: number = Cosmetics.RemoteParticleCutDistance
 local CUT_FACTOR: number = Cosmetics.RemoteParticleCutFactor
@@ -38,7 +43,7 @@ local TOLERANCE = 1e-3
 local CosmeticController = {}
 
 local localPlayer = Players.LocalPlayer
-local auras: { [BasePart]: boolean } = {}
+local auras: { [Instance]: boolean } = {} -- pièce d'aura V0 (BasePart) ou Attachment copié d'un modèle FX_
 local elapsed = 0
 
 -- D'où l'on regarde : la caméra, sinon le perso du joueur local.
@@ -55,7 +60,14 @@ local function viewPoint(): Vector3?
 	return nil
 end
 
-local function setRates(aura: BasePart, factor: number)
+local function positionOf(aura: Instance): Vector3
+	if aura:IsA("Attachment") then
+		return (aura :: Attachment).WorldPosition
+	end
+	return (aura :: BasePart).Position
+end
+
+local function setRates(aura: Instance, factor: number)
 	for _, child in aura:GetChildren() do
 		if child:IsA("ParticleEmitter") then
 			local full = child:GetAttribute(FULL_RATE_ATTRIBUTE)
@@ -82,7 +94,7 @@ local function update()
 			continue
 		end
 		local mine = own ~= nil and aura:IsDescendantOf(own)
-		local far = not mine and (aura.Position - from).Magnitude > CUT_DISTANCE
+		local far = not mine and (positionOf(aura) - from).Magnitude > CUT_DISTANCE
 		setRates(aura, if reduced then Settings.VfxOff.AuraFactor elseif far then CUT_FACTOR else 1)
 	end
 end
@@ -111,10 +123,14 @@ local function isCuttable(inst: Instance): boolean
 	if not native then
 		return false
 	end
+	local parent = inst.Parent
+	-- Effet complet de Clément (aura ou trail), copié par CosmeticService (vague 26).
+	if parent ~= nil and parent:IsA("Attachment") and parent:GetAttribute(FX_ATTRIBUTE) ~= nil then
+		return true
+	end
 	if inst:IsA("Trail") then
 		return inst.Name == TRAIL_NAME
 	end
-	local parent = inst.Parent
 	if parent == nil then
 		return false
 	end
@@ -122,7 +138,7 @@ local function isCuttable(inst: Instance): boolean
 		return true
 	end
 	-- Lumière de l'aura (ses émetteurs passent par setRates).
-	return inst:IsA("Light") and parent:IsA("BasePart") and auras[parent :: BasePart] == true
+	return inst:IsA("Light") and parent:IsA("BasePart") and auras[parent] == true
 end
 
 local function cutOne(inst: Instance)
@@ -164,17 +180,15 @@ function CosmeticController.CutCount(): number
 end
 
 local function track(inst: Instance)
-	if inst:IsA("BasePart") then
-		auras[inst :: BasePart] = true
+	if inst:IsA("BasePart") or inst:IsA("Attachment") then
+		auras[inst] = true
 	end
 end
 
 function CosmeticController.Start()
 	CollectionService:GetInstanceAddedSignal(AURA_TAG):Connect(track)
 	CollectionService:GetInstanceRemovedSignal(AURA_TAG):Connect(function(inst: Instance)
-		if inst:IsA("BasePart") then
-			auras[inst :: BasePart] = nil
-		end
+		auras[inst] = nil
 	end)
 	for _, inst in CollectionService:GetTagged(AURA_TAG) do
 		track(inst)

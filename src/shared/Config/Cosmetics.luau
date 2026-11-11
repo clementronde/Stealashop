@@ -17,6 +17,11 @@
 -- format `FX_Aura_<Nom>` / `FX_Trail_<Nom>` de 10.4. Le <Nom> est le nom français d'origine sans
 -- accents : c'est un nom technique, que L-036 ne traduit pas. Les 11 Decals sont livrés dans
 -- ReplicatedStorage/Assets/FX (Clément, 2026-11-07, L-042).
+-- Le même nom désigne aussi l'effet complet de Clément (vague 26, L-097 point 1) : le modèle
+-- Assets/FX/Auras/FX_Aura_<Nom> ou Assets/FX/Trails/FX_Trail_<Nom>, dont CosmeticService copie les
+-- Attachments sur le personnage ; sans ce modèle, l'effet est refait à partir du Decal. Lien Id ↔
+-- modèle : Spark = Etincelle, Flame = Flamme, Lightning = Foudre, Plasma, Galaxy = Galaxie,
+-- Royal = Royale ; Dust = Poussiere, Wind = Vent, Turbo, Comet = Comete, Hyperspace = Hyperespace.
 -- `Color` est la couleur principale du palier (10.4) : elle teinte les particules, la lumière et
 -- le trail (texture de Clément en gris ou en blanc, comme ENV_Texture_Stud, L-030). Couleurs de
 -- Clément (MOD-045, L-042).
