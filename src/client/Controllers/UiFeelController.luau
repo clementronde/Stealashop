@@ -50,6 +50,14 @@ local SUCCESS: { [string]: boolean } = {}
 for _, name in UiMotion.Success.Buttons do
 	SUCCESS[name] = true
 end
+local function successSkipped(button: Instance): boolean
+	for _, screen in UiMotion.Success.SkipScreens do
+		if button:FindFirstAncestor(screen) ~= nil then
+			return true
+		end
+	end
+	return false
+end
 
 local PULSE = UiMotion.ChasePulse
 local FOV = UiMotion.ChaseFov
@@ -123,7 +131,7 @@ local function wire(inst: Instance)
 	end
 	local button = object :: GuiButton
 	Motion.Button(button)
-	if SUCCESS[button.Name] and not successWired[button] then
+	if SUCCESS[button.Name] and not successWired[button] and not successSkipped(button) then
 		successWired[button] = true
 		button.Activated:Connect(function()
 			Motion.Success(button)

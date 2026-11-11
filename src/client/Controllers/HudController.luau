@@ -17,8 +17,8 @@
 --     (deux magasins proches) : celui qui finit le plus tard, donc le plus récent.
 --   - GuardMeter et son enfant Fill : visibles pendant une poursuite (ChaseController, remote
 --     ChaseState). Largeur de Fill = proximité du vigile : pleine à la distance de capture
---     (Balance.Guard.CatchDistance), vide à l'avance qui fait abandonner le vigile
---     (Balance.Guard.GiveUpLead), linéaire entre les deux. Seule la largeur en Scale change.
+--     (Balance.Guard.CatchDistance), vide à GiveUpLead studs d'avance (échelle de la jauge seulement :
+--     le vigile n'abandonne plus, vague 23), linéaire entre les deux. Seule la largeur en Scale change.
 --   - Battements de cœur sous Balance.Guard.HeartbeatDistance (ChaseController.IsClose) : le son
 --     HEARTBEAT_SOUND de ReplicatedStorage/Assets/Sounds, en boucle ; silence s'il manque.
 --   - NightCountdown (DEV-047) : depuis les attributs du Workspace posés par NightCycleService
@@ -417,7 +417,7 @@ end
 
 -- Poursuite -----------------------------------------------------------------------------------
 
--- 1 = le vigile vous attrape, 0 = il abandonne.
+-- 1 = le vigile vous attrape, 0 = il est à GiveUpLead studs ou plus.
 local function proximity(distance: number): number
 	return math.clamp((GIVE_UP_LEAD - distance) / (GIVE_UP_LEAD - CATCH_DISTANCE), 0, 1)
 end

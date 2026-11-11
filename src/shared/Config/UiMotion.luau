@@ -88,6 +88,9 @@ local UiMotion = {
 		Sound = "UI_Success",
 		-- Boutons qui la jouent à chaque clic (prototype tools/clement/ui_feel_proto.luau, table SUCCESS).
 		Buttons = { "BuyButton", "EquipButton", "ClaimButton", "DailyClaimButton", "ConfirmButton", "PlaceButton", "EquipBestButton" },
+		-- Écrans dont le contrôleur joue lui-même la réussite ou le refus : l'Index (ClaimButton de Rewards :
+		-- « Claimed! » ou refus UI_Deny, jamais un achat).
+		SkipScreens = { "UI_Index_v3", "UI_Index_v2", "UI_Index" },
 	},
 	-- Carte survolée (Motion.HoverCard : un cadre avec un enfant HoverOutline) : son Icon grossit,
 	-- penche et se décale ; HoverOutline visible ; retour en BackTime.
