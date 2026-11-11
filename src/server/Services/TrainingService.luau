@@ -170,6 +170,7 @@ local BENCH_CLIENT_SILENCE = 4
 -- Barre du banc (contrat 10.4) et attribut du banc lu par BenchBarController (UserId de celui qui
 -- la tient, absent sinon).
 local BAR = "Bar"
+local BARBELL = "Barbell" -- modèle de l'haltère entière autour de Bar (vague 25)
 local BENCH_USER_ATTRIBUTE = "BenchUserId"
 -- V0 proposé, absent du doc : message au joueur qui essaie la machine d'un autre.
 local NOT_OWNER_MESSAGE = "You can only train in your own shop."
@@ -399,11 +400,18 @@ local function holdBar(machine: Machine, player: Player): BarHold?
 	if bar == nil or bar.Parent == nil then
 		return nil
 	end
-	local list: { BasePart } = {}
-	if bar:IsA("BasePart") then
-		table.insert(list, bar)
+	-- Vague 25 : Bar rangée dans un modèle Barbell = toute l'haltère (disques, colliers) est
+	-- ancrée et sans collision, réglages rendus à la fin ; sinon Bar seule, comme avant.
+	local holder: Instance = bar
+	local parent = bar.Parent
+	if parent and parent.Name == BARBELL and parent:IsA("Model") then
+		holder = parent
 	end
-	for _, descendant in bar:GetDescendants() do
+	local list: { BasePart } = {}
+	if holder:IsA("BasePart") then
+		table.insert(list, holder)
+	end
+	for _, descendant in holder:GetDescendants() do
 		if descendant:IsA("BasePart") then
 			table.insert(list, descendant)
 		end

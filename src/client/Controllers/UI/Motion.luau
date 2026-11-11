@@ -147,6 +147,97 @@ local GROUP_ATTRIBUTE = "ScreenGroup"
 -- Outils
 ------------------------------------------------------------------------------
 
+-- Survol réservé à l'élément du dessus (vague 25, retour de Cantin du 2026-11-11) : Roblox envoie
+-- MouseEnter à tous les éléments sous la souris, même recouverts (un onglet de mutation de l'Index
+-- au-dessus d'un bouton de LeftRail faisait grossir ce bouton). Un élément n'accepte le survol que
+-- s'il est le premier élément actif sous la souris (PlayerGui:GetGuiObjectsAtPosition, du plus haut
+-- au plus bas) : avant lui, ni GuiButton, ni GuiObject Active, ni élément visible d'un autre écran
+-- de groupe (ScreenGroup, ex. « Menu ») allumé. Coordonnées : la souris moins le décalage du haut
+-- de l'écran (GetGuiInset), sinon telle quelle ; élément absent des deux listes (coordonnées
+-- inconnues, tests) : survol accepté, comme avant.
+local function ancestorOf(object: Instance, class: string): Instance?
+	local parent = object.Parent
+	while parent do
+		if parent:IsA(class) then
+			return parent
+		end
+		parent = parent.Parent
+	end
+	return nil
+end
+
+local function screenOf(object: Instance): ScreenGui?
+	local found = ancestorOf(object, "ScreenGui")
+	return if found then found :: ScreenGui else nil
+end
+
+local function within(hit: GuiObject, object: GuiObject): boolean
+	return hit == object or hit:IsDescendantOf(object)
+end
+
+-- Un élément d'un écran de groupe qui se voit (fond ou image), pas un simple cadre transparent.
+local function seen(hit: GuiObject): boolean
+	if hit.BackgroundTransparency < 1 then
+		return true
+	end
+	if hit:IsA("ImageLabel") or hit:IsA("ImageButton") then
+		local image = hit :: any
+		return image.Image ~= "" and image.ImageTransparency < 1
+	end
+	return false
+end
+
+local function firstIs(object: GuiObject, hits: { GuiObject }): boolean
+	local own = screenOf(object)
+	for _, hit in hits do
+		if within(hit, object) then
+			return true
+		end
+		if hit:IsA("GuiButton") or hit.Active then
+			return false
+		end
+		local screen = screenOf(hit)
+		if screen and screen ~= own and screen.Enabled and type(screen:GetAttribute(GROUP_ATTRIBUTE)) == "string"
+			and seen(hit) then
+			return false
+		end
+	end
+	return true
+end
+
+local function onTop(object: GuiObject): boolean
+	local playerGui = ancestorOf(object, "PlayerGui")
+	if playerGui == nil then
+		return true
+	end
+	local ok, mouse, inset = pcall(function(): (Vector2, Vector2)
+		local inputs = game:GetService("UserInputService")
+		local guis = game:GetService("GuiService")
+		local topLeft = guis:GetGuiInset()
+		return inputs:GetMouseLocation(), topLeft
+	end)
+	if not ok then
+		return true
+	end
+	for _, point in { mouse - inset, mouse } do
+		local found, hits = pcall(function(): { GuiObject }
+			return (playerGui :: any):GetGuiObjectsAtPosition(point.X, point.Y)
+		end)
+		if found and type(hits) == "table" then
+			for _, hit in hits do
+				if within(hit, object) then
+					return firstIs(object, hits)
+				end
+			end
+		end
+	end
+	return true
+end
+
+function Motion.IsOnTop(object: GuiObject): boolean
+	return onTop(object)
+end
+
 local function isShown(inst: Instance): boolean
 	if inst:IsA("ScreenGui") then
 		return (inst :: ScreenGui).Enabled
@@ -853,20 +944,27 @@ function Motion.Button(button: GuiButton)
 		return
 	end
 	state.wired = true
-	button.MouseEnter:Connect(function()
+	local function hoverIn()
 		state.over = true
 		if not state.down then
 			scaleButton(button, state, UiMotion.Hover.To, HOVER_INFO)
 			shadeTo(state, UiMotion.Hover.ShadeTransparency, HOVER_INFO)
 		end
 		Motion.PlaySound(UiMotion.Hover.Sound)
-	end)
-	button.MouseLeave:Connect(function()
+	end
+	local function hoverOut()
 		state.over = false
 		state.down = false
 		scaleButton(button, state, 1, HOVER_INFO)
 		shadeTo(state, state.shadeBase, HOVER_INFO)
+	end
+	-- Vague 25 : survol seulement si le bouton est l'élément du dessus (voir onTop).
+	button.MouseEnter:Connect(function()
+		if onTop(button) then
+			hoverIn()
+		end
 	end)
+	button.MouseLeave:Connect(hoverOut)
 	button.MouseButton1Down:Connect(function()
 		state.down = true
 		scaleButton(button, state, UiMotion.Press.To, PRESS_INFO)
@@ -1037,7 +1135,7 @@ function Motion.HoverCard(card: GuiObject)
 		outlineBase = nil,
 	}
 	cards[card] = state
-	card.MouseEnter:Connect(function()
+	local function cardIn()
 		local outline = card:FindFirstChild(spec.Outline)
 		if outline and outline:IsA("GuiObject") then
 			if state.outlineBase == nil then
@@ -1076,8 +1174,8 @@ function Motion.HoverCard(card: GuiObject)
 		end
 		cardTweens(state, list, nil)
 		Motion.PlaySound(UiMotion.Hover.Sound)
-	end)
-	card.MouseLeave:Connect(function()
+	end
+	local function cardOut()
 		local outline = card:FindFirstChild(spec.Outline)
 		if outline and outline:IsA("GuiObject") and state.outlineBase ~= nil then
 			outline.Visible = state.outlineBase :: boolean
@@ -1104,7 +1202,14 @@ function Motion.HoverCard(card: GuiObject)
 				own:Destroy()
 			end
 		end)
+	end
+	-- Vague 25 : survol seulement pour la carte du dessus (voir onTop), comme Motion.Button.
+	card.MouseEnter:Connect(function()
+		if onTop(card) then
+			cardIn()
+		end
 	end)
+	card.MouseLeave:Connect(cardOut)
 end
 
 function Motion.GetState(inst: Instance): Phase?
