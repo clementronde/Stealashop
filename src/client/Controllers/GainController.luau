@@ -296,7 +296,7 @@ local function showGain(kind: Kind, amount: number)
 			floatGain(kind, total)
 		end
 	end
-	local wait = current.lastAt + FLOAT.MinGap - os.clock()
+	local wait = current.lastAt + (if kind == CASH then FLOAT.CashMinGap else FLOAT.MinGap) - os.clock()
 	if wait <= 0 then
 		flush()
 	else
@@ -518,6 +518,16 @@ local function classify()
 		if rise.release then
 			table.insert(releases, rise.release)
 		end
+	end
+	if not FLY.Enabled then
+		-- Sans case qui vole (L-091, retour de Clément) : l'argent défile tout de suite, le compteur sursaute,
+		-- et un ramassage, des gains hors ligne réclamés ou une récompense montrent « +$X » au-dessus du joueur.
+		releaseAll(releases)
+		bump(hudRefs())
+		if fromPad or screenOpen(offline) or screenOpen(rewards) then
+			showGain(CASH, total)
+		end
+		return
 	end
 	if screenOpen(offline) then
 		fly(total, releases, false) -- gains hors ligne réclamés : du centre de l'écran

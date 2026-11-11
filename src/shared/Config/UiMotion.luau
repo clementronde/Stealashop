@@ -131,6 +131,9 @@ local UiMotion = {
 		SpreadX = 1, -- tableau : « décalage au hasard de ± 1 stud »
 		Height = 3.2, -- prototype gain_proto.luau (StudsOffset 3,2), si BB_Gain n'a pas son propre StudsOffset
 		MinGap = 0.25, -- prototype gain_proto.luau (GainBurstGap) : un BB_Gain au plus par 0,25 s, les gains entre deux s'additionnent
+		-- Retour de Clément en Play (L-091, 2026-11-11) : environ 1 s entre deux « +$X » de ramassage (deux
+		-- textes se superposaient) ; les ramassages entre deux s'additionnent.
+		CashMinGap = 1,
 		-- Couleur de Row.Amount selon l'attribut GainKind posé sur la copie (L-092 3e : un seul BB_Gain) ;
 		-- prototype de Clément tools/clement/gain_proto.luau, lignes 151 à 153.
 		KindAttribute = "GainKind",
@@ -153,6 +156,9 @@ local UiMotion = {
 		From = { X = 0.5, Y = 0.55 }, -- prototype gain_proto.luau : départ au centre (gains hors ligne, récompenses)
 		TargetOffsetX = 20, -- prototype gain_proto.luau : arrivée 20 px après le bord gauche du nombre
 		Sound = "Cash_Collect", -- tableau : « son Cash_Collect » à l'arrivée
+		-- Retour de Clément en Play (liaison L-091, 2026-11-11) : plus de case carrée qui vole ; on garde le
+		-- « +$X » de BB_Gain au-dessus du joueur, et le compteur sursaute. true remet la case.
+		Enabled = false,
 	},
 	-- Arrivée au compteur : CashRow sursaute.
 	CashBump = {
