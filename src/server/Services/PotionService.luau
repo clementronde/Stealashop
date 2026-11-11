@@ -264,6 +264,20 @@ local function installHooks()
 	GuardService.IsHiddenFromNight = function(player: Player): boolean
 		return baseHidden(player) or PotionService.IsActive(player, "Invisibility")
 	end
+	-- Gains hors ligne : la potion Money est un boost temporaire, exclu comme le boost ×2 argent (OfflineService
+	-- divise le revenu relevé par GetTemporaryIncomeMultiplier). Vu en Play le 2026-11-11 : parti avec la potion
+	-- active, le revenu hors ligne gardait son ×2. require protégé : sans MonetizationService (bancs), rien.
+	local okMonetization, loaded = pcall(function(): any
+		return require(script.Parent.MonetizationService) :: any
+	end)
+	local monetization: any = if okMonetization then loaded else nil
+	local current: any = if type(monetization) == "table" then monetization.GetTemporaryIncomeMultiplier else nil
+	if type(current) == "function" then
+		local baseTemporary: (Player) -> number = current
+		monetization.GetTemporaryIncomeMultiplier = function(player: Player): number
+			return baseTemporary(player) * multiplierOf(player, "Money")
+		end
+	end
 end
 
 ------------------------------------------------------------------------------

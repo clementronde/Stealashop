@@ -190,8 +190,8 @@ function OfflineService.ComputeEarnings(lastSeenAt: number, now: number, income:
 	return gain, seconds
 end
 
--- Boosts temporaires du M global (exclus des gains hors ligne). Seul le boost ×2 argent existe ; une
--- potion Money ×2 (L-085) devra s'ajouter ici. Erreur ou valeur invalide : 1.
+-- Boosts temporaires du M global (exclus des gains hors ligne) : le boost ×2 argent, et la potion Money
+-- (PotionService enveloppe GetTemporaryIncomeMultiplier, vague 28). Erreur ou valeur invalide : 1.
 local function temporaryMultiplier(player: Player): number
 	local ok, value = pcall(MonetizationService.GetTemporaryIncomeMultiplier, player)
 	if ok and isFinite(value) and value > 0 then
