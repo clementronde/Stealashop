@@ -1,0 +1,411 @@
+--!strict
+-- ChaseFeelController (client) : l'ambiance de la poursuite voulue par Clément (liaison L-095 ;
+-- docs/claude/notes/ui-feel2-horsligne-poursuite-barre.md, « Pour Ironix », point « Poursuite » ;
+-- valeurs : Config/ChaseFeel, reprises de la note et du prototype tools/clement/feel2_proto.luau).
+--
+-- Suit ChaseController (IsChased, GetGuard, d'après le remote ChaseState de GuardService) à chaque image :
+--   1. au départ : Heist_Grab, puis Chase_Whistle WhistleDelay s après, et Chase_Siren en boucle
+--      (copie en 2D dans SoundService, chez ce joueur seulement). MUS_Chase et la musique de zone
+--      baissée : MusicController (fondu enchaîné), qui fait partir MUS_Chase à ChaseFeel.MusicStartAt ;
+--   2. bulle du vigile : une copie de ReplicatedStorage/Assets/UI/BB_GuardShout posée sur la tête du
+--      vigile qui poursuit le joueur local (Adornee, rangée dans le PlayerGui : personne d'autre ne la
+--      voit). Bang grossit 0 → 1,35 → 1 et tremble ; puis une phrase (Lines) toutes les ShoutEvery s :
+--      Bubble grossit de 0 à 1 (Back), reste ShoutHold s, rapetisse ; Guard_Radio une phrase sur
+--      RadioEvery. Vigile pas encore là (streaming) : la bulle arrive avec lui ; vigile disparu : la
+--      bulle s'en va et revient avec lui ;
+--   3. UI_HUD.LeftRail (Visible) et la barre du bas UI_Hotbar (Enabled) cachées pendant la poursuite,
+--      revues toutes les BarsRefresh s (copie neuve d'un écran), puis remises dans l'état où elles
+--      étaient au départ.
+-- À la fin de la poursuite : la sirène descend en SirenFadeOut s puis est détruite, la bulle est
+-- détruite, les barres reviennent. Un son ou BB_GuardShout absent : rien (une ligne en Studio, une fois).
+-- Rien n'est envoyé au serveur. Ne touche ni aux écrans de StarterGui ni aux modèles de Clément.
+--
+-- API (client, pour un test dans Studio) :
+--   ChaseFeelController.GetState() -> { Active, Siren, Bubble, Shouts }
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local SoundService = game:GetService("SoundService")
+local TweenService = game:GetService("TweenService")
+local Workspace = game:GetService("Workspace")
+
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local ChaseFeel = require(Shared:WaitForChild("Config"):WaitForChild("ChaseFeel"))
+local MarkerSounds = require(Shared:WaitForChild("Anim"):WaitForChild("MarkerSounds"))
+
+-- Ce que ce contrôleur utilise de ChaseController.
+type ChaseApi = {
+	IsChased: () -> boolean,
+	GetGuard: () -> Model?,
+}
+
+export type State = {
+	Active: boolean,
+	Siren: Sound?,
+	Bubble: BillboardGui?,
+	Shouts: number, -- phrases dites par la bulle actuelle
+}
+
+local IS_STUDIO = RunService:IsStudio()
+
+local ChaseFeelController = {}
+
+local localPlayer = Players.LocalPlayer
+local chase: ChaseApi? = nil
+local active = false
+local chaseToken = 0
+local siren: Sound? = nil
+local bubble: BillboardGui? = nil
+local bubbleToken = 0
+local shouts = 0
+local lastLine = 0
+local sinceBars = 0
+local railStates: { [GuiObject]: boolean } = {} -- Visible d'origine de chaque LeftRail caché
+local hotbarStates: { [ScreenGui]: boolean } = {} -- Enabled d'origine de chaque UI_Hotbar caché
+local said: { [string]: boolean } = {}
+local rng = Random.new()
+
+local function sayOnce(key: string, message: string)
+	if IS_STUDIO and not said[key] then
+		said[key] = true
+		print(`[ChaseFeel] {message}`)
+	end
+end
+
+local function tween(instance: Instance, time: number, goal: { [string]: any }, style: Enum.EasingStyle?)
+	local info = TweenInfo.new(time, style or Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	TweenService:Create(instance, info, goal):Play()
+end
+
+-- Sons ------------------------------------------------------------------------------------------------
+
+local function soundTemplate(name: string): Sound?
+	local template = MarkerSounds.find(name)
+	if template == nil then
+		sayOnce(`sound:{name}`, `son « {name} » absent de ReplicatedStorage.Assets.Sounds : pas joué (L-095)`)
+	end
+	return template
+end
+
+-- Son joué une fois, en 2D.
+local function playOnce(name: string)
+	local template = soundTemplate(name)
+	if template then
+		MarkerSounds.playSound(template, nil)
+	end
+end
+
+local function startSiren()
+	local template = soundTemplate(ChaseFeel.Sounds.Siren)
+	if template == nil then
+		return
+	end
+	local copy = template:Clone()
+	copy.Looped = true
+	copy.Parent = SoundService
+	copy:Play()
+	siren = copy
+end
+
+local function stopSiren()
+	local copy = siren
+	siren = nil
+	if copy == nil then
+		return
+	end
+	if ChaseFeel.SirenFadeOut > 0 then
+		tween(copy, ChaseFeel.SirenFadeOut, { Volume = 0 })
+		task.delay(ChaseFeel.SirenFadeOut, function()
+			copy:Destroy()
+		end)
+	else
+		copy:Destroy()
+	end
+end
+
+-- Bulle du vigile ----------------------------------------------------------------------------------------
+
+local function scaleOf(object: GuiObject): UIScale
+	local found = object:FindFirstChildOfClass("UIScale")
+	if found then
+		return found
+	end
+	local scale = Instance.new("UIScale")
+	scale.Parent = object
+	return scale
+end
+
+local function guiChild(parent: Instance, name: string): GuiObject?
+	local found = parent:FindFirstChild(name, true)
+	return if found and found:IsA("GuiObject") then found :: GuiObject else nil
+end
+
+local function shoutTemplate(): BillboardGui?
+	local current: Instance? = ReplicatedStorage
+	for _, segment in ChaseFeel.ShoutFolder do
+		current = if current then current:FindFirstChild(segment) else nil
+	end
+	local found = if current then current:FindFirstChild(ChaseFeel.ShoutTemplate) else nil
+	if found and found:IsA("BillboardGui") then
+		return found :: BillboardGui
+	end
+	sayOnce("bubble", `{ChaseFeel.ShoutTemplate} absent de ReplicatedStorage.Assets.UI : pas de bulle sur le vigile (L-095)`)
+	return nil
+end
+
+-- Où poser la bulle : la tête du vigile, sinon sa pièce principale.
+local function headOf(guard: Model): BasePart?
+	local head = guard:FindFirstChild("Head")
+	if head and head:IsA("BasePart") then
+		return head :: BasePart
+	end
+	local root = guard:FindFirstChild("HumanoidRootPart")
+	if root and root:IsA("BasePart") then
+		return root :: BasePart
+	end
+	return guard.PrimaryPart
+end
+
+local function nextLine(): string
+	local lines = ChaseFeel.Lines
+	local index = rng:NextInteger(1, #lines)
+	if index == lastLine and #lines > 1 then
+		index = index % #lines + 1
+	end
+	lastLine = index
+	return lines[index]
+end
+
+local function destroyBubble()
+	bubbleToken += 1
+	local gui = bubble
+	bubble = nil
+	if gui then
+		gui:Destroy()
+	end
+end
+
+-- Une phrase : la bulle grossit, reste, puis rapetisse (la queue suit).
+local function shout(gui: BillboardGui, token: number)
+	local frame = guiChild(gui, "Bubble")
+	if frame == nil then
+		return
+	end
+	shouts += 1
+	local label = frame:FindFirstChild("ShoutLabel", true)
+	if label and (label:IsA("TextLabel") or label:IsA("TextButton")) then
+		(label :: TextLabel).Text = nextLine()
+	end
+	local tail = guiChild(gui, "Tail")
+	if tail then
+		tail.Visible = true
+	end
+	local scale = scaleOf(frame)
+	scale.Scale = 0
+	tween(scale, ChaseFeel.ShoutInTime, { Scale = 1 }, Enum.EasingStyle.Back)
+	if (shouts - 1) % ChaseFeel.RadioEvery == 0 then
+		playOnce(ChaseFeel.Sounds.Radio)
+	end
+	task.delay(ChaseFeel.ShoutHold, function()
+		if token ~= bubbleToken then
+			return
+		end
+		tween(scale, ChaseFeel.ShoutOutTime, { Scale = 0 })
+		task.delay(ChaseFeel.ShoutOutTime, function()
+			if token == bubbleToken and tail then
+				tail.Visible = false
+			end
+		end)
+	end)
+end
+
+local function createBubble(guard: Model)
+	local template = shoutTemplate()
+	local head = headOf(guard)
+	local playerGui = localPlayer:FindFirstChildOfClass("PlayerGui")
+	if template == nil or head == nil or playerGui == nil then
+		return
+	end
+	destroyBubble()
+	local token = bubbleToken
+	local gui = template:Clone()
+	gui.Adornee = head
+	gui.Parent = playerGui
+	bubble = gui
+	shouts = 0
+	local frame = guiChild(gui, "Bubble")
+	if frame then
+		scaleOf(frame).Scale = 0
+	end
+	local tail = guiChild(gui, "Tail")
+	if tail then
+		tail.Visible = false
+	end
+	-- « ! » : 0 → PopScale (Back), puis 1, et il tremble.
+	local bang = guiChild(gui, "Bang")
+	if bang then
+		local bangLabel: GuiObject = bang
+		local bangScale = scaleOf(bangLabel)
+		local spec = ChaseFeel.Bang
+		bangScale.Scale = 0
+		tween(bangScale, spec.PopTime, { Scale = spec.PopScale }, Enum.EasingStyle.Back)
+		task.delay(spec.PopTime, function()
+			if token == bubbleToken then
+				tween(bangScale, spec.SettleTime, { Scale = 1 })
+			end
+		end)
+		for i, angle in spec.ShakeAngles do
+			task.delay(spec.ShakeStart + i * spec.ShakeStep, function()
+				if token == bubbleToken then
+					bangLabel.Rotation = angle
+				end
+			end)
+		end
+	end
+	-- Les phrases, tant que cette bulle vit.
+	task.delay(ChaseFeel.FirstShoutDelay, function()
+		while token == bubbleToken do
+			shout(gui, token)
+			task.wait(ChaseFeel.ShoutEvery)
+		end
+	end)
+end
+
+-- Bulle sur le vigile qui poursuit le joueur local, s'il est là ; partie avec lui sinon.
+local function updateBubble(api: ChaseApi)
+	local current = bubble
+	if current then
+		local adornee = current.Adornee
+		if current.Parent and adornee and adornee:IsDescendantOf(Workspace) then
+			return
+		end
+		destroyBubble()
+	end
+	local guard = api.GetGuard()
+	if guard and guard:IsDescendantOf(Workspace) then
+		createBubble(guard)
+	end
+end
+
+-- Barres cachées -------------------------------------------------------------------------------------------
+
+local function hideBars()
+	local playerGui = localPlayer:FindFirstChildOfClass("PlayerGui")
+	if playerGui == nil then
+		return
+	end
+	local hud = playerGui:FindFirstChild(ChaseFeel.HudScreen)
+	local rail = if hud then hud:FindFirstChild(ChaseFeel.LeftRail, true) else nil
+	if rail and rail:IsA("GuiObject") then
+		local railObject = rail :: GuiObject
+		if railStates[railObject] == nil then
+			railStates[railObject] = railObject.Visible
+		end
+		railObject.Visible = false
+	end
+	local hotbar = playerGui:FindFirstChild(ChaseFeel.Hotbar)
+	if hotbar and hotbar:IsA("ScreenGui") then
+		local screen = hotbar :: ScreenGui
+		if hotbarStates[screen] == nil then
+			hotbarStates[screen] = screen.Enabled
+		end
+		screen.Enabled = false
+	end
+end
+
+local function restoreBars()
+	for rail, visible in railStates do
+		if rail.Parent then
+			rail.Visible = visible
+		end
+	end
+	for screen, enabled in hotbarStates do
+		if screen.Parent then
+			screen.Enabled = enabled
+		end
+	end
+	table.clear(railStates)
+	table.clear(hotbarStates)
+end
+
+-- Départ et fin ----------------------------------------------------------------------------------------------
+
+local function begin()
+	active = true
+	chaseToken += 1
+	local token = chaseToken
+	playOnce(ChaseFeel.Sounds.Grab)
+	task.delay(ChaseFeel.WhistleDelay, function()
+		if token == chaseToken and active then
+			playOnce(ChaseFeel.Sounds.Whistle)
+		end
+	end)
+	stopSiren()
+	startSiren()
+	sinceBars = 0
+	hideBars()
+end
+
+local function finish()
+	active = false
+	chaseToken += 1
+	stopSiren()
+	destroyBubble()
+	restoreBars()
+end
+
+local function step(dt: number)
+	local api = chase
+	if api == nil then
+		return
+	end
+	local chased = api.IsChased()
+	if chased and not active then
+		begin()
+	elseif not chased and active then
+		finish()
+	end
+	if not active then
+		return
+	end
+	updateBubble(api)
+	sinceBars += dt
+	if sinceBars >= ChaseFeel.BarsRefresh then
+		sinceBars = 0
+		hideBars()
+	end
+end
+
+-- API -------------------------------------------------------------------------------------------------
+
+function ChaseFeelController.GetState(): State
+	return { Active = active, Siren = siren, Bubble = bubble, Shouts = shouts }
+end
+
+local function loadChase(): ChaseApi?
+	local module = script.Parent:FindFirstChild("ChaseController")
+	if module == nil or not module:IsA("ModuleScript") then
+		return nil
+	end
+	local ok, result = pcall(require, module)
+	if ok and type(result) == "table" and type((result :: any).IsChased) == "function" then
+		return result :: any
+	end
+	return nil
+end
+
+function ChaseFeelController.Start()
+	chase = loadChase()
+	if chase == nil then
+		sayOnce("chase", "ChaseController introuvable : pas d'ambiance de poursuite")
+		return
+	end
+	RunService.Heartbeat:Connect(function(dt: number)
+		xpcall(step, function(err: any)
+			sayOnce(`error:{err}`, tostring(err))
+		end, dt)
+	end)
+end
+
+return ChaseFeelController

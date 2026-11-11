@@ -41,7 +41,8 @@
 --   3. sinon la musique de la zone (plus haut).
 -- Même fondu enchaîné que d'une zone à l'autre. Une musique d'événement absente (ou qui n'est pas un
 -- Sound) ne change rien : la suivante, ou celle de la zone, continue (une ligne en Studio, une fois).
--- Redescendue au silence, elle repart du début au prochain événement (RestartEventTracks) ; reprise
+-- Redescendue au silence, elle repart du début au prochain événement (RestartEventTracks ; MUS_Chase
+-- part de Config/ChaseFeel.MusicStartAt, L-095, la première fois comme les suivantes) ; reprise
 -- pendant son fondu de sortie, elle continue sans saut.
 --
 -- Rien n'est envoyé au serveur. API (client) :
@@ -61,6 +62,11 @@ local Workspace = game:GetService("Workspace")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Music = require(Shared:WaitForChild("Config"):WaitForChild("Music"))
 local Attributes = require(Shared:WaitForChild("Contract"):WaitForChild("Attributes"))
+-- Départ de MUS_Chase (L-095, Clément : « à partir de 1,5 s ») : Config/ChaseFeel.MusicStartAt, 0 sans lui.
+local chaseFeelModule = Shared:WaitForChild("Config"):FindFirstChild("ChaseFeel")
+local CHASE_START_AT: number = if chaseFeelModule and chaseFeelModule:IsA("ModuleScript")
+	then (require(chaseFeelModule) :: any).MusicStartAt or 0
+	else 0
 
 type Volume = { CFrame: CFrame, Size: Vector3 }
 
@@ -370,11 +376,11 @@ local function check()
 		local zoneTrack = trackName(current)
 		name = if ensureTrack(zoneTrack) then zoneTrack else nil
 	end
-	-- Musique d'événement qui revient du silence : elle repart du début.
+	-- Musique d'événement qui revient du silence : elle repart du début (MUS_Chase : de CHASE_START_AT).
 	if name and name ~= target and kind ~= nil and Music.RestartEventTracks then
 		local track = tracks[name]
 		if track and track.Level <= 0 then
-			track.Copy.TimePosition = 0
+			track.Copy.TimePosition = if kind == CHASE then CHASE_START_AT else 0
 		end
 	end
 	event = kind
