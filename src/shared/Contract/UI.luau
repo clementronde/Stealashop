@@ -55,6 +55,10 @@ UI.Screens = {
 			-- Bouton engrenage de SocialRow (L-095 point 2, relevé de Studio du 2026-11-11) : caché par
 			-- Clément, montré par SettingsController (Features.Settings) ; ouvre UI_Settings.
 			{ Path = "SettingsButton", Class = BUTTON },
+			-- Bouton « Upgrades » de la colonne gauche (vague 27, L-096 point 2) : caché par Clément, montré
+			-- par SkillTreeController ; ouvre UI_SkillTree. Un exemplaire dans LeftRail et un dans
+			-- LeftRailTouch (UI.Twins).
+			{ Path = "SkillTreeButton", Class = BUTTON },
 		},
 	},
 	{
@@ -591,13 +595,47 @@ table.insert(UI.Screens, {
 	} :: { Element },
 })
 
+-- Arbre de compétences (vague 27, L-096 point 2 ; note docs/claude/notes/ui-skilltree-pour-ironix.md, relevé de
+-- Studio du 2026-11-11, agents/wave27-studio.md) : écran UI_SkillTree, branché par SkillTreeController. Les
+-- tuiles sont posées à la main dans Tree (pas de Template) : une par compétence de Config/SkillTree (champ
+-- Tile), plus RootTile (rien à acheter) et Tile_Next2 (jamais ouverte). Chaque tuile de compétence a ses
+-- calques d'état Bought, Available et Locked, et Info (Level, TileName, PriceRow.Price, PriceRow.PriceNeed).
+local skillTreeElements = {
+	{ Path = "Tree" },
+	{ Path = "Tree.SelectionGlow" },
+	{ Path = "Tree.RootTile", Class = BUTTON },
+	{ Path = "Tree.Tile_Next2", Class = BUTTON },
+	{ Path = "CashPill.Cash", Class = "TextLabel" },
+	{ Path = "InfoPanel.Header.NodeName" },
+	{ Path = "InfoPanel.NodeIcon" },
+	{ Path = "InfoPanel.NodeLevel" },
+	{ Path = "InfoPanel.StatBox.NodeStat" },
+	{ Path = "InfoPanel.StatBox.NodeEffect" },
+	{ Path = "InfoPanel.PriceRow.NodePrice" },
+	{ Path = "InfoPanel.BuyButton", Class = BUTTON },
+	{ Path = "InfoPanel.NeedButton", Class = BUTTON },
+	{ Path = "InfoPanel.NeedButton.NeedLabel" },
+	{ Path = "CloseButton", Class = BUTTON },
+} :: { Element }
+for _, tile in { "Tile_ShopLevel", "Tile_Glass", "Tile_GlassRegen", "Tile_Cameras", "Tile_Guards", "Tile_PotionLuck", "Tile_Curtain", "Tile_DoorGuard", "Tile_PotionTime", "Tile_Next1", "Tile_Next4" } do
+	table.insert(skillTreeElements, { Path = `Tree.{tile}`, Class = BUTTON })
+	for _, part in { "Bought", "Available", "Locked", "Info", "Info.Level", "Info.TileName", "Info.PriceRow.Price", "Info.PriceRow.PriceNeed" } do
+		table.insert(skillTreeElements, { Path = `Tree.{tile}.{part}` })
+	end
+end
+table.insert(UI.Screens, {
+	Name = "UI_SkillTree",
+	Class = "ScreenGui",
+	Elements = skillTreeElements,
+})
+
 -- Doublons voulus (L-099 point 1 ; décision de Clément du 2026-11-11, version B) : la colonne de gauche
 -- existe deux fois dans UI_HUD, LeftRail (PC) et LeftRailTouch (téléphone), avec les mêmes boutons.
 -- Le code branche chaque exemplaire ; le ContractChecker accepte un exemplaire par cadre de Containers.
 UI.Twins = {
 	UI_HUD = {
 		Containers = { "LeftRail", "LeftRailTouch" },
-		Names = { "RobuxShopButton", "IndexButton", "RebirthButton", "InventoryButton" },
+		Names = { "RobuxShopButton", "IndexButton", "RebirthButton", "InventoryButton", "SkillTreeButton" },
 	},
 } :: { [string]: { Containers: { string }, Names: { string } } }
 

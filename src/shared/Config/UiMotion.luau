@@ -120,8 +120,9 @@ local UiMotion = {
 		-- Boutons qui la jouent à chaque clic (prototype tools/clement/ui_feel_proto.luau, table SUCCESS).
 		Buttons = { "BuyButton", "EquipButton", "ClaimButton", "DailyClaimButton", "ConfirmButton", "PlaceButton", "EquipBestButton" },
 		-- Écrans dont le contrôleur joue lui-même la réussite ou le refus : l'Index (ClaimButton de Rewards :
-		-- « Claimed! » ou refus UI_Deny, jamais un achat).
-		SkipScreens = { "UI_Index_v3", "UI_Index_v2", "UI_Index" },
+		-- « Claimed! » ou refus UI_Deny, jamais un achat) ; l'arbre de compétences (vague 27 : BuyButton saute
+		-- quand le niveau monte vraiment, pas à chaque clic).
+		SkipScreens = { "UI_Index_v3", "UI_Index_v2", "UI_Index", "UI_SkillTree" },
 	},
 	-- Carte survolée (Motion.HoverCard : un cadre avec un enfant HoverOutline) : son Icon grossit,
 	-- penche et se décale ; HoverOutline visible ; retour en BackTime.
@@ -296,6 +297,81 @@ local UiMotion = {
 		Deny = "UI_Deny", -- message Notify du genre DenyKind (refus)
 		DenyKind = "Warning", -- V0 proposé, absent du doc : les messages « Warning » sont presque tous des refus
 		TrainGain = "Train_Gain", -- GainController : avec chaque « +X Speed/s » ou « +X Power » affiché
+	},
+	-- Vague 27 (L-096 point 2) : refus quand l'argent manque (T.18 de docs/claude/notes/ui-motion-skilltree.md ;
+	-- prototype tools/clement/skilltree_proto.luau, ShakeTime et ShakeAmp). L'élément part de ±Amplitude px
+	-- Count fois (aller-retour) en Time s, puis revient exactement à sa Position.
+	Shake = {
+		Amplitude = 6, -- tableau : « secousse de ±6 px, 4 allers-retours en 0,30 », Quad
+		Count = 4,
+		Time = 0.3,
+		Style = Enum.EasingStyle.Quad,
+		Direction = Enum.EasingDirection.Out,
+	},
+	-- Arbre de compétences (UI_SkillTree, SkillTreeController ; vague 27, L-096 point 2) : tableaux « Propres à
+	-- l'arbre de compétences » et « Navigation dans l'arbre » de docs/claude/notes/ui-motion-skilltree.md
+	-- (T.54 à T.72), valeurs du prototype de Clément (tools/clement/skilltree_proto.luau, tableau M).
+	SkillTree = {
+		-- V0 proposés, absents du doc : UIScale de chaque tuile et de SelectionGlow (posé à l'ouverture, détruit à
+		-- la fermeture), UIScale du zoom de Tree (gardé tant que l'écran est branché).
+		ScaleName = "SkillTreeScale",
+		ZoomScaleName = "SkillTreeZoom",
+		-- T.54 : « chaque tuile 0 → 1 en 0,38 ; 0,055 entre deux tuiles, de la tuile centrale vers les
+		-- anneaux ; départ à 0,12 », Back Out. SelectionGlow arrive après la dernière tuile (prototype).
+		PopTime = 0.38,
+		PopGap = 0.055,
+		PopStart = 0.12,
+		PopStyle = Enum.EasingStyle.Back,
+		-- Tuile survolée, appuyée, relâchée (T.30 à T.32 ; prototype : tuile × 1,07, « s'enfonce » × 0,88).
+		TileHover = 1.07,
+		TilePress = 0.88,
+		-- T.55 : contour qui s'efface en 0,08, se pose sous la tuile choisie, puis apparaît (transparence
+		-- d'origine, échelle 0,92 → 1) en 0,20, Quad Out.
+		SelectOut = 0.08,
+		SelectIn = 0.2,
+		SelectFrom = 0.92,
+		-- T.56 : panneau de gauche qui change de tuile, 0,9 → 1 en 0,25, Back Out.
+		PanelFrom = 0.9,
+		PanelTime = 0.25,
+		-- T.57 et T.58 : la tuile gonfle (1 → 1,3 en 0,09, Quad Out), puis revient (1,3 → 1 en 0,60, Elastic Out).
+		PunchTo = 1.3,
+		PunchTime = 0.09,
+		SettleTime = 0.6,
+		SettleStyle = Enum.EasingStyle.Elastic,
+		-- T.59 : copie blanche du corps de la tuile, qui s'efface en 0,35 (Quad Out).
+		FlashTime = 0.35,
+		-- T.60 : 12 losanges or et blancs, à 0,9 largeur de tuile (± 25 %), en 0,55 (Quad Out). Couleurs,
+		-- contour et taille (12 % de la tuile) : prototype.
+		SparkCount = 12,
+		SparkDistance = 0.9,
+		SparkSpread = 0.25,
+		SparkTime = 0.55,
+		SparkSize = 0.12,
+		SparkGold = Color3.fromHex("FFD23F"),
+		SparkWhite = Color3.fromHex("FFFFFF"),
+		SparkStroke = Color3.fromHex("040435"),
+		-- T.61 : après 0,30, la voisine se retourne (1 → 0 en 0,10, Quad In), puis pop 0 → 1 en 0,45 (Back
+		-- Out), étincelles et badge NEW! (1,6 s ; entrée en 0,3 et sortie en 0,15 : prototype).
+		RevealDelay = 0.3,
+		RevealShrink = 0.1,
+		RevealPop = 0.45,
+		BadgeText = "NEW!",
+		BadgeHold = 1.6,
+		BadgeIn = 0.3,
+		BadgeOut = 0.15,
+		-- T.67 à T.72 : navigation.
+		DragThreshold = 6, -- px avant qu'un appui devienne un glisser (sinon c'est un clic sur la tuile)
+		PanLimit = 0.55, -- décalage au plus : 55 % de la taille de l'arbre (zoomée)
+		Rubber = 0.35, -- au-delà, l'arbre suit à 35 % (élastique)
+		SnapTime = 0.35, -- au relâché hors limite, retour à la limite (Back Out)
+		ZoomStep = 0.12, -- molette : ±12 % par cran
+		ZoomTime = 0.14, -- lissage du zoom (Quad Out), molette et pincement
+		ZoomMin = 0.75,
+		ZoomMax = 1.8,
+		StartTilePx = 100, -- zoom à l'ouverture : 1, ou plus pour que les tuiles fassent au moins 100 px
+		-- Couche NavLayer posée par le code (T.74) : au-dessus de l'arbre, sous le panneau, l'argent et Close
+		-- (ZIndex du prototype).
+		NavLayerZIndex = 15,
 	},
 }
 
