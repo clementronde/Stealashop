@@ -17,8 +17,12 @@
 --          camion fait 12,6 studs de large : il laisse 24 studs devant chaque vitrine de la carte
 --          actuelle. Un seul magasin dans la zone : à sa hauteur, sur la ligne des arches ; aucun :
 --          au milieu de la zone, sur la ligne des arches. Sol trouvé par un rayon.
---      Le camion = une copie de ENV_Event_Truck (Clément, ReplicatedStorage/Assets, sinon
---      ServerStorage/Assets), vidée de tout script, toutes pièces ancrées, nommée EventTruck, tag
+--      Chargement tiré dès l'apparition (a79, L-097 point 3 ; avant : à l'explosion, mêmes chances) :
+--      types et contenus des colis du point 4. Le camion = une copie de ENV_Event_Truck_<Rareté>, la
+--      rareté la plus haute de ce chargement (Clément, ReplicatedStorage/Assets, sinon ServerStorage/Assets),
+--      si elle est rangée et a Root, Pieces, BlastPoint et HealthBarPoint ; sinon ENV_Event_Truck (ligne
+--      dans la sortie). Un camion par rareté sans conducteur reçoit une copie de ceux d'ENV_Event_Truck,
+--      à la même place par rapport à Root. La copie est vidée de tout script, toutes pièces ancrées, nommée EventTruck, tag
 --      EventTruck (posé par le code), attributs Zone et TruckNumber. Son contour OutlineHighlight
 --      vient du modèle ; sa barre de vie (copie de BB_WindowHP à HealthBarPoint) est posée par
 --      TruckController, côté client. Notify à tous.
@@ -53,13 +57,13 @@
 --        Pieces/Piece_xx depuis BlastPoint puis les efface (effet seulement, côté client : rien de ce
 --        qui compte n'en dépend). La copie est retirée RemoveDelay s plus tard.
 --      - Colis : Boxes (12 : 6 Standard, 4 Premium, 2 Luxe), types répartis au hasard sur
---        BoxSpawn_01 à _12 (BlastPoint pour un point qui manque). Contenu tiré comme sur un rayon de
+--        BoxSpawn_01 à _12 (BlastPoint pour un point qui manque), tirés à l'apparition. Contenu tiré comme sur un rayon de
 --        la zone du camion : rareté selon ShelfBoxes.OddsFor (zone 1 : Communs seulement, L-033),
 --        objet par Items.Pick, repli sur la rareté tirable la plus proche en dessous (comme
 --        StoreHeistService), mutation par Mutations.Roll (DEV-131, comme sur un rayon). Chaque colis est posé tout de suite à son point d'arrivée
 --        (CarryService.PlaceDrop), au sol, de ScatterMinRadius à ScatterRadius studs du centre du
 --        camion, du côté de son point de sortie (ScatterSpread), et jamais sur un autre : au moins
---        BoxGap studs bord à bord entre deux colis, d'après la largeur des modèles BOX_<Tier> (cône
+--        BoxGap studs bord à bord entre deux colis, d'après la largeur des modèles BOX_<Rareté>, sinon BOX_<Tier> (cône
 --        élargi, puis cercles plus grands si la place manque : voir landingPoint). Le client le fait voler depuis son
 --        BoxSpawn avec la traînée FX_BoxTrail (attributs TruckBox, Tier, FlightFrom, FlightStartsAt,
 --        FlightDuration) ; les départs sont espacés de LaunchStagger s. Ramassable une fois atterri.
@@ -119,6 +123,10 @@ local WindowService = require(script.Parent.WindowService)
 
 type TruckState = "Active" | "Exploding"
 
+-- Un colis du chargement, tiré à l'apparition du camion (a79, L-097 point 3). Rarity et ItemId nil :
+-- aucun objet ne peut sortir de ce colis dans la zone (Config incohérente), colis sauté à l'explosion.
+type Load = { Tier: string, Rarity: string?, ItemId: string?, Mutation: Mutations.Mutation? }
+
 type Truck = {
 	Number: number, -- 1, 2, 3… depuis le démarrage du serveur
 	Zone: number,
@@ -126,6 +134,7 @@ type Truck = {
 	WindowId: string,
 	SpawnedAt: number, -- os.clock()
 	State: TruckState,
+	Load: { Load }, -- le n-ième sort de BoxSpawn_n
 }
 
 -- Chrono d'un camion (point 3') : survit à l'explosion et au retrait de la copie.
@@ -134,6 +143,7 @@ type Chrono = {
 	Zone: number,
 	Frame: CFrame, -- pivot du camion (en bas au centre) : où réapparaissent les conducteurs
 	EndsAt: number, -- os.clock()
+	Asset: string, -- modèle de Clément copié (ENV_Event_Truck_<Rareté> ou ENV_Event_Truck) : ses conducteurs
 }
 
 -- Ce que ce service utilise de GuardService (chargé à la fin du chrono, voir loadGuardService).
@@ -153,6 +163,11 @@ type Landing = { Position: Vector3, Width: number }
 
 -- Noms du contrat lus ici (L-049, Contract/Models ; tags et attribut : 2.1).
 local TRUCK_ASSET = "ENV_Event_Truck"
+-- Camion à la rareté la plus haute de son chargement (a79, L-097 point 3), sinon TRUCK_ASSET.
+local TRUCK_RARITY_FORMAT = "ENV_Event_Truck_%s"
+local ROOT_NAME = "Root"
+local PIECES_NAME = "Pieces"
+local HEALTH_BAR_POINT = "HealthBarPoint"
 local BLAST_POINT = "BlastPoint"
 local BOX_SPAWN_FORMAT = "BoxSpawn_%02d"
 local OUTLINE_NAME = "OutlineHighlight"
@@ -465,16 +480,84 @@ local function spawnFrame(zone: number): CFrame?
 	return computedFrame(zone)
 end
 
--- Modèle ENV_Event_Truck de Clément, ou nil s'il n'est pas rangé dans Assets.
-local function findTemplate(): Model?
+-- Modèle `name` de Clément (défaut : ENV_Event_Truck), ou nil s'il n'est pas rangé dans Assets.
+local function findTemplate(name: string?): Model?
+	local wanted = name or TRUCK_ASSET
 	for _, service in { ReplicatedStorage, ServerStorage } :: { Instance } do
 		local assets = service:FindFirstChild(ASSETS_NAME)
-		local found = if assets then assets:FindFirstChild(TRUCK_ASSET, true) else nil
+		local found = if assets then assets:FindFirstChild(wanted, true) else nil
 		if found and found:IsA("Model") then
 			return found :: Model
 		end
 	end
 	return nil
+end
+
+-- Pièce Root d'un camion (PrimaryPart chez Clément), ou nil.
+local function truckRoot(model: Model): BasePart?
+	local primary = model.PrimaryPart
+	if primary then
+		return primary
+	end
+	local root = model:FindFirstChild(ROOT_NAME, true)
+	return if root and root:IsA("BasePart") then root :: BasePart else nil
+end
+
+-- Ce qui manque à un camion par rareté pour TruckEventService et TruckController (Contract/Models.Truck :
+-- Root, Pieces, BlastPoint, HealthBarPoint), ou nil s'il est complet. Les BoxSpawn_xx et le contour ont
+-- déjà leur repli (BlastPoint, pas de contour), comme pour ENV_Event_Truck.
+local function truckProblem(model: Model): string?
+	local missing: { string } = {}
+	if truckRoot(model) == nil then
+		table.insert(missing, ROOT_NAME)
+	end
+	local pieces = model:FindFirstChild(PIECES_NAME, true)
+	if pieces == nil or not pieces:IsA("Model") then
+		table.insert(missing, PIECES_NAME)
+	end
+	for _, name in { BLAST_POINT, HEALTH_BAR_POINT } do
+		local point = model:FindFirstChild(name, true)
+		if point == nil or not point:IsA("Attachment") then
+			table.insert(missing, name)
+		end
+	end
+	return if #missing > 0 then table.concat(missing, ", ") else nil
+end
+
+-- Rareté la plus haute du chargement (Rarities.Order), ou nil.
+local function topRarity(load: { Load }): string?
+	local best: Rarities.Rarity? = nil
+	for _, entry in load do
+		local rarity = if entry.Rarity then Rarities.ById[entry.Rarity] else nil
+		if rarity and (best == nil or rarity.Order > best.Order) then
+			best = rarity
+		end
+	end
+	return if best then best.Id else nil
+end
+
+-- Modèle du camion pour ce chargement : ENV_Event_Truck_<rareté la plus haute> s'il est rangé et complet,
+-- sinon ENV_Event_Truck (ligne dans la sortie). Renvoie aussi son nom.
+local function pickTemplate(load: { Load }): (Model?, string)
+	local rarity = topRarity(load)
+	if rarity then
+		local name = string.format(TRUCK_RARITY_FORMAT, rarity)
+		local found = findTemplate(name)
+		if found == nil then
+			-- Facultatif (repli prévu) : une ligne en Studio, pas un avertissement.
+			if not warned[`truck.{name}`] then
+				warned[`truck.{name}`] = true
+				log(`{name} pas rangé dans Assets : camion {TRUCK_ASSET} à la place`)
+			end
+		else
+			local problem = truckProblem(found)
+			if problem == nil then
+				return found, name
+			end
+			warnOnce(`truck.{name}.parts`, `{name} : il manque {problem} (Contract/Models) : camion {TRUCK_ASSET} à la place`)
+		end
+	end
+	return findTemplate(), TRUCK_ASSET
 end
 
 -- Conducteurs (L-071, point 7) ----------------------------------------------------------------------
@@ -524,6 +607,31 @@ local function driversOf(model: Model): { Driver }
 		end
 	end
 	return list
+end
+
+-- Les camions par rareté de Clément n'ont pas de conducteur (relevé du 2026-11-11) : la copie `model` d'un
+-- ENV_Event_Truck_<Rareté> reçoit une copie de ceux d'ENV_Event_Truck, à la même place par rapport à Root
+-- (les 9 camions ont leur cabine au même endroit). Renvoie le nombre de conducteurs copiés.
+local function borrowDrivers(model: Model): number
+	if #driversOf(model) > 0 then
+		return 0
+	end
+	local base = findTemplate()
+	local root = truckRoot(model)
+	local baseRoot = if base then truckRoot(base) else nil
+	if base == nil or root == nil or baseRoot == nil then
+		return 0
+	end
+	local count = 0
+	for _, driver in driversOf(base) do
+		local copy = driver.Rig:Clone() :: Model?
+		if copy then
+			copy:PivotTo(root.CFrame * baseRoot.CFrame:ToObjectSpace(driver.Rig:GetPivot()))
+			copy.Parent = model
+			count += 1
+		end
+	end
+	return count
 end
 
 -- Les deux pièces d'une articulation ou d'une soudure (Motor6D, Weld, WeldConstraint…), sinon nil.
@@ -672,19 +780,40 @@ local function boxTiers(): { string }
 	return list
 end
 
--- Largeur au sol d'un colis de type `tier` : la plus grande dimension horizontale du modèle BOX_<Tier>
--- de Clément (Assets), sinon TruckEvent.BoxFallbackWidth (le bloc gris de CarryService).
-local function boxWidth(tier: string): number
-	local name = BOX_PREFIX .. tier
-	for _, service in { ReplicatedStorage, ServerStorage } :: { Instance } do
-		local assets = service:FindFirstChild(ASSETS_NAME)
-		local found = if assets then assets:FindFirstChild(name, true) else nil
-		if found and found:IsA("Model") then
-			local size = (found :: Model):GetExtentsSize()
-			return math.max(size.X, size.Z)
-		elseif found and found:IsA("BasePart") then
-			local size = (found :: BasePart).Size
-			return math.max(size.X, size.Z)
+-- Chargement d'un camion de la zone `zone` : types mélangés (boxTiers), contenu tiré comme sur un rayon
+-- (drawContent), mutation par Mutations.Roll (DEV-131, jamais pour un objet TutorialOnly). Tiré à
+-- l'apparition (a79) au lieu de l'explosion : mêmes chances, mais le modèle du camion en dépend.
+local function drawLoad(zone: number): { Load }
+	local load: { Load } = {}
+	for _, tier in boxTiers() do
+		local rarity, itemId = drawContent(tier, zone)
+		local mutation: Mutations.Mutation? = nil
+		if itemId and not Items.ById[itemId].TutorialOnly then
+			mutation = Mutations.Roll(random)
+		end
+		table.insert(load, { Tier = tier, Rarity = rarity, ItemId = itemId, Mutation = mutation })
+	end
+	return load
+end
+
+-- Largeur au sol d'un colis : la plus grande dimension horizontale du modèle de Clément BOX_<Rareté>
+-- (L-097 point 3), sinon BOX_<Tier> (Assets), sinon TruckEvent.BoxFallbackWidth (le bloc gris de CarryService).
+local function boxWidth(rarity: string?, tier: string): number
+	local names = { BOX_PREFIX .. tier }
+	if rarity then
+		table.insert(names, 1, BOX_PREFIX .. rarity)
+	end
+	for _, name in names do
+		for _, service in { ReplicatedStorage, ServerStorage } :: { Instance } do
+			local assets = service:FindFirstChild(ASSETS_NAME)
+			local found = if assets then assets:FindFirstChild(name, true) else nil
+			if found and found:IsA("Model") then
+				local size = (found :: Model):GetExtentsSize()
+				return math.max(size.X, size.Z)
+			elseif found and found:IsA("BasePart") then
+				local size = (found :: BasePart).Size
+				return math.max(size.X, size.Z)
+			end
 		end
 	end
 	return TruckEvent.BoxFallbackWidth
@@ -783,8 +912,7 @@ local function removeTruck(truck: Truck, message: string?)
 end
 
 local function spawnTruck(zone: number): boolean
-	local template = findTemplate()
-	if template == nil then
+	if findTemplate() == nil then
 		warnOnce(
 			"template",
 			`{TRUCK_ASSET} introuvable dans ReplicatedStorage/{ASSETS_NAME} (ni ServerStorage/{ASSETS_NAME}) : pas de camion`
@@ -796,11 +924,19 @@ local function spawnTruck(zone: number): boolean
 		warnOnce(`frame.{zone}`, `zone {zone} : ni point {TRUCK_SPAWN_TAG}, ni magasin, ni arche dans la map : pas de camion`)
 		return false
 	end
+	-- Chargement tiré dès l'apparition (a79, L-097 point 3) : le camion prend le modèle de sa rareté la plus haute.
+	local load = drawLoad(zone)
+	local found, asset = pickTemplate(load)
+	if found == nil then
+		return false
+	end
+	local template: Model = found
 	local model = template:Clone() :: Model? -- nil si le modèle n'est pas Archivable
 	if model == nil then
 		warnOnce("archivable", `{template:GetFullName()} n'est pas Archivable : pas de camion`)
 		return false
 	end
+	local borrowed = if asset ~= TRUCK_ASSET then borrowDrivers(model) else 0
 	local drivers = driversOf(model)
 	local free: { [BasePart]: boolean } = {}
 	for _, driver in drivers do
@@ -841,12 +977,14 @@ local function spawnTruck(zone: number): boolean
 		WindowId = windowId,
 		SpawnedAt = os.clock(),
 		State = "Active",
+		Load = load,
 	}
-	chrono = { Number = truckCount, Zone = zone, Frame = frame, EndsAt = os.clock() + TruckEvent.Lifetime }
+	chrono = { Number = truckCount, Zone = zone, Frame = frame, EndsAt = os.clock() + TruckEvent.Lifetime, Asset = asset }
 	notifyAll(string.format(TruckEvent.Messages.Spawned, zone), "Info")
 	local p = frame.Position
+	local drivenBy = if borrowed > 0 then `, {borrowed} conducteur(s) repris de {TRUCK_ASSET}` else ""
 	log(
-		`camion n° {truckCount} en zone {zone} ({math.round(p.X)}, {math.round(p.Y)}, {math.round(p.Z)}), {TruckEvent.MaxHP} PV, part dans {TruckEvent.Lifetime} s`
+		`camion n° {truckCount} en zone {zone} ({math.round(p.X)}, {math.round(p.Y)}, {math.round(p.Z)}), modèle {asset}{drivenBy}, {TruckEvent.MaxHP} PV, part dans {TruckEvent.Lifetime} s`
 	)
 	return true
 end
@@ -892,12 +1030,13 @@ local function explode(truck: Truck, impactPoint: Vector3?, breaker: Player?)
 			end
 		end
 	end
-	for index, tier in boxTiers() do
+	for index, entry in truck.Load do
+		local tier = entry.Tier
 		local spawnPoint = Find.path(model, string.format(BOX_SPAWN_FORMAT, index))
 		local from: Vector3 = if spawnPoint and spawnPoint:IsA("Attachment")
 			then (spawnPoint :: Attachment).WorldPosition
 			else blastPosition
-		local rarity, itemId = drawContent(tier, truck.Zone)
+		local rarity, itemId = entry.Rarity, entry.ItemId
 		if rarity == nil or itemId == nil then
 			warnOnce(`draw.{tier}.{truck.Zone}`, `aucun objet ne peut sortir d'un colis {tier} en zone {truck.Zone} : colis du camion sauté`)
 			continue
@@ -910,8 +1049,8 @@ local function explode(truck: Truck, impactPoint: Vector3?, breaker: Player?)
 			ItemId = itemId,
 			StoreId = storeId,
 			SlotId = `{storeId}/{string.format("%02d", index)}`,
-			-- DEV-131 (L-084) : mêmes règles que la mise en rayon, jamais pour un objet TutorialOnly.
-			Mutation = if Items.ById[itemId].TutorialOnly then nil else Mutations.Roll(random),
+			-- DEV-131 (L-084) : mêmes règles que la mise en rayon, jamais pour un objet TutorialOnly (drawLoad).
+			Mutation = entry.Mutation,
 		}
 		local launch = (index - 1) * TruckEvent.LaunchStagger
 		local landsIn = launch + TruckEvent.FlightTime
@@ -922,8 +1061,9 @@ local function explode(truck: Truck, impactPoint: Vector3?, breaker: Player?)
 			[FLIGHT_STARTS_AT_ATTRIBUTE] = serverNow + launch,
 			[FLIGHT_DURATION_ATTRIBUTE] = TruckEvent.FlightTime,
 		}
-		local width = widths[tier] or boxWidth(tier)
-		widths[tier] = width
+		local look = `{rarity}.{tier}`
+		local width = widths[look] or boxWidth(rarity, tier)
+		widths[look] = width
 		local landing = landingPoint(from, center, width, taken)
 		local dropId = CarryService.PlaceDrop(payload, landing, landsIn + TruckEvent.BoxLifetime, attributes)
 		if dropId then
@@ -979,13 +1119,19 @@ local function carriesBoxOf(player: Player, storeId: string): boolean
 	return (payload :: CarryTypes.NPCBoxPayload).StoreId == storeId
 end
 
--- Les conducteurs du modèle de Clément, par ordre de nom (TruckDriver_01, _02…).
-local function driverTemplates(): { Model }
-	local template = findTemplate()
+-- Les conducteurs du modèle de Clément `asset` (celui du camion), par ordre de nom (TruckDriver_01,
+-- _02…) ; un camion par rareté sans conducteur prend ceux d'ENV_Event_Truck (comme borrowDrivers).
+local function driverTemplates(asset: string): { Model }
 	local list: { Model } = {}
-	if template then
-		for _, driver in driversOf(template) do
-			table.insert(list, driver.Rig)
+	for _, name in { asset, TRUCK_ASSET } do
+		local template = findTemplate(name)
+		if template then
+			for _, driver in driversOf(template) do
+				table.insert(list, driver.Rig)
+			end
+		end
+		if #list > 0 then
+			break
 		end
 	end
 	table.sort(list, function(a: Model, b: Model): boolean
@@ -1012,7 +1158,7 @@ local function launchDrivers(c: Chrono, why: string)
 	table.sort(candidates, function(a: Candidate, b: Candidate): boolean
 		return a.Distance < b.Distance
 	end)
-	local templates = driverTemplates()
+	local templates = driverTemplates(c.Asset)
 	local count = math.min(#candidates, #templates, math.max(math.floor(TruckEvent.DriverChaseMax), 0))
 	if count == 0 then
 		warnOnce("nodriver", `aucun conducteur (Model avec un Humanoid) dans {TRUCK_ASSET} : pas de poursuite à la fin du chrono`)
@@ -1298,6 +1444,17 @@ function TruckEventService.Start()
 		Workspace:GetAttributeChangedSignal(SKIP_ATTRIBUTE):Connect(onSkip)
 	end
 	local delivered = if findTemplate() then TRUCK_ASSET else `{TRUCK_ASSET} pas encore rangé dans Assets, aucun camion`
+	local byRarity: { string } = {}
+	for _, rarity in Rarities.List do
+		local name = string.format(TRUCK_RARITY_FORMAT, rarity.Id)
+		local found = findTemplate(name)
+		if found and truckProblem(found) == nil then
+			table.insert(byRarity, rarity.Id)
+		end
+	end
+	if #byRarity > 0 then
+		delivered ..= ` ; camions par rareté (le plus rare du chargement) : {table.concat(byRarity, ", ")}`
+	end
 	print(
 		`[TruckEventService] événement camion : un camion toutes les {TruckEvent.SpawnIntervalMin} à {TruckEvent.SpawnIntervalMax} s, de jour ; {delivered}`
 	)

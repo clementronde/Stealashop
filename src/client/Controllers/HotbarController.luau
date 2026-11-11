@@ -438,7 +438,8 @@ local function readStock(api: InventoryApi): ({ [string]: Slot }, { Slot }, bool
 				kind = "Box",
 				uid = box.Uid,
 				name = string.format(BOX_NAME, box.Tier),
-				icon = BOX_ICON_PREFIX .. box.Tier,
+				-- ICON_BOX_<Rareté> (a79, L-097 point 3), sinon ICON_BOX_<Tier>
+				icon = if textureOf(BOX_ICON_PREFIX .. box.Rarity) then BOX_ICON_PREFIX .. box.Rarity else BOX_ICON_PREFIX .. box.Tier,
 				rarity = box.Rarity,
 				income = nil,
 				equipped = placingUid == box.Uid,

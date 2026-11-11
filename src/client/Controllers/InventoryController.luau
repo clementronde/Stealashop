@@ -1047,7 +1047,8 @@ local close: () -> ()
 local function paintBox(view: CardView, entry: InventoryState.BoxEntry, now: number)
 	local refs = view.refs
 	local rarity = Rarities.ById[entry.Rarity]
-	local texture = textureOf(BOX_ICON_PREFIX .. entry.Tier)
+	-- ICON_BOX_<Rareté> (a79, L-097 point 3), sinon ICON_BOX_<Tier>
+	local texture = textureOf(BOX_ICON_PREFIX .. entry.Rarity) or textureOf(BOX_ICON_PREFIX .. entry.Tier)
 	if texture then
 		setImage(refs.Icon, texture) -- pas livrée : l'image du Template reste
 	end

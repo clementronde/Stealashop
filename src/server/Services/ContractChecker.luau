@@ -44,6 +44,11 @@ local Items = require(Shared:WaitForChild("Config"):WaitForChild("Items"))
 -- de l'inventaire (InventoryService, L-089, `ICON_BOX_<Tier>`, nom proposé à Clément).
 local Tools = require(Shared:WaitForChild("Config"):WaitForChild("Tools"))
 local OTHER_ICON_IDS: { string } = { "TOOL_Bat", "BOX_Standard", "BOX_Premium", "BOX_Luxe" }
+-- Icônes de colis par rareté (a79, L-097 point 3 : ICON_BOX_<Rareté>, sinon ICON_BOX_<Tier>) ; ICON_BOX_Divine
+-- reconnue aussi (BOX_Divine livré, rareté pas encore au jeu).
+for _, rarity in { "Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic", "Secret", "Divine" } do
+	table.insert(OTHER_ICON_IDS, "BOX_" .. rarity)
+end
 -- Modèle du vigile de nuit (Assets/Guards/NightGuard, nom lu aussi par GuardService) : sa liste
 -- d'animations a Arrest en plus (Animations.NightGuard, L-076).
 local NIGHT_GUARD_NAME = "NightGuard"
@@ -1175,7 +1180,8 @@ local DRIVER_HOLDERS = { "ENV_Event_Truck", "EventTruck" }
 local function isDriver(model: Instance): boolean
 	local parent = model.Parent
 	while parent and parent ~= game do
-		if table.find(DRIVER_HOLDERS, parent.Name) then
+		-- a79 : aussi les camions par rareté (ENV_Event_Truck_<Rareté>)
+		if table.find(DRIVER_HOLDERS, parent.Name) or string.sub(parent.Name, 1, 16) == "ENV_Event_Truck_" then
 			return true
 		end
 		parent = parent.Parent

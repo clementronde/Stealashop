@@ -241,7 +241,9 @@ local Box: ModelSpec = {
 		-- garde que 25 actifs à la fois (Roblox en affiche 31 au plus).
 		{ Name = "OutlineHighlight", Class = "Highlight" },
 	},
-	-- Un colis par type (MOD-013), nommés comme l'exemple BOX_Luxe du 10.3.
+	-- Un colis par type (MOD-013), nommés comme l'exemple BOX_Luxe du 10.3. Les colis par rareté
+	-- (BOX_<Rareté>, L-049, L-097 point 3, a79) sont pris en premier par le code, avec repli sur BOX_<Tier> :
+	-- facultatifs, contrôlés par le préfixe quand ils sont là (BOX_Divine aussi, rareté pas encore au jeu).
 	Expected = { "BOX_Standard", "BOX_Premium", "BOX_Luxe" },
 }
 
@@ -272,11 +274,24 @@ local Accessory: ModelSpec = {
 -- ReplicatedStorage/Assets (Events). TruckEventService en pose une copie dans le couloir, qu'il
 -- renomme EventTruck. Le camion intact, ce sont les pièces de Pieces assemblées : à l'explosion, ce
 -- sont elles qui partent depuis BlastPoint ; Root (invisible) reste sur place.
+-- Camion de base et un par rareté (a79, L-097 point 3) : TruckEventService prend celui de la rareté la
+-- plus haute du chargement, sinon ENV_Event_Truck. Contrôlés quand ils sont là, pas attendus.
+-- ENV_Event_Truck_Divine est livré, pas lu (pas de Divin).
+local TRUCK_NAMES = {
+	"ENV_Event_Truck",
+	"ENV_Event_Truck_Common",
+	"ENV_Event_Truck_Uncommon",
+	"ENV_Event_Truck_Rare",
+	"ENV_Event_Truck_Epic",
+	"ENV_Event_Truck_Legendary",
+	"ENV_Event_Truck_Mythic",
+	"ENV_Event_Truck_Secret",
+}
 local Truck: ModelSpec = {
 	Key = "Truck",
 	Label = "modèles du camion de l'événement",
 	Category = "Événements",
-	Names = { "ENV_Event_Truck" },
+	Names = TRUCK_NAMES,
 	Class = "Model",
 	PrimaryPart = "Root", -- pivot en bas au centre (10.1), long dans l'axe Z
 	Parts = {
@@ -293,7 +308,7 @@ local Truck: ModelSpec = {
 		{ Name = "HealthBarPoint", Class = "Attachment" },
 		{ Name = "OutlineHighlight", Class = "Highlight" },
 	},
-	Expected = { "ENV_Event_Truck" },
+	Expected = { "ENV_Event_Truck" }, -- les camions par rareté sont facultatifs (repli sur celui-ci)
 }
 
 -- Traînée des colis du camion qui volent (L-049) : TruckController copie le Trail et ses deux

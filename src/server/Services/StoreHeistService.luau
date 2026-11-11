@@ -19,9 +19,10 @@
 --     incomplet) : le Luxe est posé d'abord, puis les Premium, les Standard en trop manquent.
 --     Les colis sont créés par le code dans un dossier `ShelfBoxes` du magasin (`ShelfBox_01`…,
 --     numéro de l'emplacement, tag ShelfBox) : le modèle du magasin n'en contient pas. Aspect :
---     modèle `BOX_<Tier>` de Clément s'il existe dans ReplicatedStorage/Assets (ou
---     ServerStorage/Assets), sinon un bloc V0 (carton brun, carton bleu scellé, caisse en bois
---     cerclée d'or, 7.3). Sur le rayon, le colis garde l'aspect de son type (pas teint).
+--     modèle `BOX_<Rareté>` de Clément (rareté du contenu, tiré à la mise en rayon ; L-097 point 3)
+--     s'il existe dans ReplicatedStorage/Assets (ou ServerStorage/Assets), sinon `BOX_<Tier>`, sinon
+--     un bloc V0 (carton brun, carton bleu scellé, caisse en bois cerclée d'or, 7.3). Sur le rayon,
+--     le colis n'est pas teint (BOX_<Rareté> est déjà à la couleur de sa rareté).
 --   - Contenu tiré à la mise en rayon (L-031), plus à la prise : la rareté selon
 --     ShelfBoxes.ZoneOdds[zone][Tier] s'il existe (zone 1 = zone tuto : Communs seulement, L-033),
 --     sinon Rarities.BoxOdds[Tier] (7.3) ; puis un objet au hasard parmi ceux de la zone et de
@@ -321,7 +322,7 @@ local SHUTTER_NAME = "Shutter"
 local GUARDS_FOLDER = "ActiveGuards" -- vigiles en jeu, posés par GuardService dans le Workspace
 local WINDOW_NAME = "Window"
 local ASSETS_NAME = "Assets" -- ReplicatedStorage/Assets et ServerStorage/Assets (Clément, 9.2)
-local BOX_PREFIX = "BOX_" -- BOX_Standard, BOX_Premium, BOX_Luxe (10.3, Contract/Models)
+local BOX_PREFIX = "BOX_" -- BOX_<Rareté> (L-097 point 3), sinon BOX_<Tier> (10.3, Contract/Models)
 
 -- Noms posés par ce service, lus par HeistController et ShelfBoxController (mêmes noms là-bas).
 local BOXES_FOLDER = "ShelfBoxes"
@@ -431,8 +432,8 @@ local lastRefusal: { [Player]: number } = {}
 local lastGreedy: { [Player]: number } = {} -- dernier message « un seul braquage à la fois »
 -- GuardService.GetReturningGuards, s'il existe (require protégé dans Init, comme OnGuardGone).
 local returningGuards: ((store: Model) -> { BasePart })? = nil
-local templates: { [string]: Instance } = {} -- BOX_<Tier> trouvé
-local templateSearched: { [string]: boolean } = {} -- cherché une fois par type, trouvé ou non
+local templates: { [string]: Instance } = {} -- BOX_<Rareté> ou BOX_<Tier> trouvé, par nom
+local templateSearched: { [string]: boolean } = {} -- cherché une fois par nom, trouvé ou non
 local noticed: { [string]: boolean } = {}
 local random = Random.new()
 
@@ -685,13 +686,12 @@ end
 
 -- Colis des rayons -----------------------------------------------------------------------------
 
--- Modèle BOX_<Tier> de Clément, cherché une fois par type, ou nil.
-local function boxTemplate(tier: string): Instance?
-	if templateSearched[tier] then
-		return templates[tier]
+-- Modèle `name` de Clément (BOX_<Rareté> ou BOX_<Tier>), cherché une fois par nom, ou nil.
+local function boxTemplate(name: string): Instance?
+	if templateSearched[name] then
+		return templates[name]
 	end
-	templateSearched[tier] = true
-	local name = BOX_PREFIX .. tier
+	templateSearched[name] = true
 	local found: Instance? = nil
 	for _, service in { ReplicatedStorage, ServerStorage } :: { Instance } do
 		local assets = service:FindFirstChild(ASSETS_NAME)
@@ -702,7 +702,7 @@ local function boxTemplate(tier: string): Instance?
 		end
 	end
 	if found then
-		templates[tier] = found
+		templates[name] = found
 	end
 	return found
 end
@@ -752,10 +752,12 @@ local function makeV0Box(tier: string): Model
 	return model
 end
 
--- Modèle d'un colis de type `tier` pour l'emplacement `slot`, avec son étiquette BB_Box.
+-- Modèle d'un colis de type `tier` pour l'emplacement `slot`, avec son étiquette BB_Box : celui de la
+-- rareté de son contenu, tiré à la mise en rayon (BOX_<Rareté>, L-097 point 3), sinon BOX_<Tier>, sinon
+-- le bloc V0. Seul le modèle change : le type reste la règle de jeu (prise, chances, ShelfSlot).
 local function makeBoxModel(slot: Slot, tier: string, content: Content): Model
 	local model: Model? = nil
-	local template = boxTemplate(tier)
+	local template = boxTemplate(BOX_PREFIX .. content.Rarity) or boxTemplate(BOX_PREFIX .. tier)
 	if template then
 		local clone = template:Clone() -- nil si le modèle n'est pas Archivable
 		if clone then
@@ -1960,8 +1962,13 @@ function StoreHeistService.Init()
 		end
 	end
 	local delivered: { string } = {}
+	for _, rarity in Rarities.List do
+		if boxTemplate(BOX_PREFIX .. rarity.Id) then
+			table.insert(delivered, BOX_PREFIX .. rarity.Id)
+		end
+	end
 	for _, tier in Balance.Heist.TierOrder do
-		if boxTemplate(tier) then
+		if boxTemplate(BOX_PREFIX .. tier) then
 			table.insert(delivered, BOX_PREFIX .. tier)
 		end
 	end

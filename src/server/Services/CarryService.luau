@@ -90,19 +90,22 @@
 -- Ce que voient les autres :
 --   - attribut Carrying du Player = Id de la rareté portée (« Legendary »), nil sinon. Le client le
 --     suit (CarryController : animations CarryIdle et CarryRun) ;
---   - Model « CarryVisual » dans le personnage : BOX_<Tier> de Clément (ITM_<ItemId> pour un objet
---     volé), cherché dans ReplicatedStorage/Assets, soudé à la tête par son CarryAttachment (10.4 :
+--   - Model « CarryVisual » dans le personnage : BOX_<Rareté> de Clément (L-097 point 3), sinon
+--     BOX_<Tier> (ITM_<ItemId> pour un objet volé), cherché dans ReplicatedStorage/Assets, soudé à la tête par son CarryAttachment (10.4 :
 --     dessous, au centre ; à défaut, par le pivot du modèle, en bas au centre), Balance.Carry.HeadGap
 --     studs au-dessus du haut de la tête (V0, à régler sur les bras levés de CarryIdle, L-071). Tout
 --     ce qui se porte passe par StartCarry, donc par cette soudure : colis du rayon (StoreHeistService),
 --     objet volé (PvPService), colis au sol après un coup de batte et colis du camion (PickUpDrop).
---     Pièces nommées Tint teintes à la couleur de la rareté (colis seulement). Modèle pas encore
+--     Pièces nommées Tint teintes à la couleur de la rareté (BOX_<Tier> et bloc V0 seulement :
+--     BOX_<Rareté> est déjà à sa couleur). Modèle pas encore
 --     livré : bloc V0. Pour le porteur seulement, CarryController le cache jusqu'à ce que Grab le pose
 --     sur la tête (marqueur Grab) ;
 --   - halo de rareté (5.6) en objets natifs (lumière, particules, rayons), V0 en attendant les
 --     textures de Clément (MOD-041) : Commun aucun, Peu commun léger, Rare et Épique net,
 --     Légendaire et Mythique rayons, Secret arc-en-ciel (couleurs animées par CarryController,
---     tag CarryRainbow posé par le code, hors du contrat de la section 2.1) ;
+--     tag CarryRainbow posé par le code, hors du contrat de la section 2.1). Sur un colis dont le
+--     modèle a déjà ses effets (BOX_Epic : lumière ; BOX_Legendary et plus : étincelles et lumière),
+--     le halo ne pose pas sa lumière ni ses étincelles : seulement ce qui manque (rayons) ;
 --   - étiquette, accrochée à l'Attachment LabelPoint du modèle de Clément (BOX_*, liaison L-023 et
 --     L-031 ; il règle la hauteur avec le StudsOffset de l'étiquette), sinon à un LabelPoint créé
 --     au sommet du visuel (objet volé, bloc V0) :
@@ -354,9 +357,13 @@ end
 
 -- Copie du modèle de Clément nommé `name`, cherché dans ReplicatedStorage/Assets (comme
 -- ToolService), ou nil s'il n'est pas livré.
-local function cloneAsset(name: string): Model?
+local function findAsset(name: string): Instance?
 	local assets = ReplicatedStorage:FindFirstChild(ASSETS_FOLDER)
-	local asset = if assets then assets:FindFirstChild(name, true) else nil
+	return if assets then assets:FindFirstChild(name, true) else nil
+end
+
+local function cloneAsset(name: string): Model?
+	local asset = findAsset(name)
 	if asset == nil then
 		once(name, `[CarryService] {name} pas encore livré dans ReplicatedStorage/{ASSETS_FOLDER} : bloc V0 à la place`, false)
 		return nil
@@ -468,11 +475,36 @@ local function colorSequence(rarity: Rarity): ColorSequence
 	return ColorSequence.new(rarity.Color)
 end
 
--- Halo de rareté (5.6) autour de `center` (CFrame dans l'espace de anchor).
-local function addHalo(anchor: BasePart, center: CFrame, rarity: Rarity)
+-- Effets déjà posés par Clément dans un modèle BOX_<Rareté> (L-097 point 3 : Épique, une lumière Glow ;
+-- Légendaire et plus, des étincelles Sparkles et Glow dans Body) : le halo du code ne les double pas.
+type OwnEffects = { Light: boolean, Particles: boolean, Beams: boolean }
+local NO_EFFECTS: OwnEffects = { Light = false, Particles = false, Beams = false }
+
+local function ownEffects(model: Model): OwnEffects
+	local found: OwnEffects = { Light = false, Particles = false, Beams = false }
+	for _, descendant in model:GetDescendants() do
+		if descendant:IsA("Light") then
+			found.Light = true
+		elseif descendant:IsA("ParticleEmitter") or descendant:IsA("Sparkles") then
+			found.Particles = true
+		elseif descendant:IsA("Beam") then
+			found.Beams = true
+		end
+	end
+	return found
+end
+
+-- Halo de rareté (5.6) autour de `center` (CFrame dans l'espace de anchor). `own` : effets que le modèle
+-- a déjà (choix d'a79, L-097 point 3) : sa lumière remplace celle du halo, ses particules les
+-- étincelles du halo, ses Beams les rayons ; le reste du halo est posé comme avant.
+local function addHalo(anchor: BasePart, center: CFrame, rarity: Rarity, own: OwnEffects)
 	local spec = HALOS[rarity.Halo]
 	if spec == nil then
 		return -- Commun : aucun halo
+	end
+	local wantsRays = spec.Rays and not own.Beams
+	if own.Light and own.Particles and not wantsRays then
+		return -- le modèle a déjà tout le halo
 	end
 	local colors = colorSequence(rarity)
 	local point = Instance.new("Attachment")
@@ -480,29 +512,33 @@ local function addHalo(anchor: BasePart, center: CFrame, rarity: Rarity)
 	point.CFrame = center
 	point.Parent = anchor
 
-	local light = Instance.new("PointLight")
-	light.Color = rarity.Color
-	light.Range = spec.LightRange
-	light.Brightness = spec.LightBrightness
-	light.Shadows = false
-	light.Parent = point
+	if not own.Light then
+		local light = Instance.new("PointLight")
+		light.Color = rarity.Color
+		light.Range = spec.LightRange
+		light.Brightness = spec.LightBrightness
+		light.Shadows = false
+		light.Parent = point
+	end
 
-	local sparkles = Instance.new("ParticleEmitter")
-	sparkles.Name = "HaloSparkles"
-	sparkles.Texture = SPARKLE_TEXTURE
-	sparkles.Color = colors
-	sparkles.LightEmission = 1
-	sparkles.LightInfluence = 0
-	sparkles.Rate = spec.ParticleRate
-	sparkles.Lifetime = NumberRange.new(0.8, 1.4)
-	sparkles.Speed = NumberRange.new(1.5, 2.5)
-	sparkles.SpreadAngle = Vector2.new(180, 180)
-	sparkles.Size = NumberSequence.new(spec.ParticleSize, 0)
-	sparkles.Transparency = NumberSequence.new(0.1, 1)
-	sparkles.LockedToPart = true -- un halo qui suit le colis, pas une traînée
-	sparkles.Parent = point
+	if not own.Particles then
+		local sparkles = Instance.new("ParticleEmitter")
+		sparkles.Name = "HaloSparkles"
+		sparkles.Texture = SPARKLE_TEXTURE
+		sparkles.Color = colors
+		sparkles.LightEmission = 1
+		sparkles.LightInfluence = 0
+		sparkles.Rate = spec.ParticleRate
+		sparkles.Lifetime = NumberRange.new(0.8, 1.4)
+		sparkles.Speed = NumberRange.new(1.5, 2.5)
+		sparkles.SpreadAngle = Vector2.new(180, 180)
+		sparkles.Size = NumberSequence.new(spec.ParticleSize, 0)
+		sparkles.Transparency = NumberSequence.new(0.1, 1)
+		sparkles.LockedToPart = true -- un halo qui suit le colis, pas une traînée
+		sparkles.Parent = point
+	end
 
-	if not spec.Rays then
+	if not wantsRays then
 		return
 	end
 	for index, direction in RAY_DIRECTIONS do
@@ -666,17 +702,29 @@ end
 -- Visuel complet d'un payload (modèle, teinte, halo, étiquette), pas encore placé ni parenté.
 local function buildVisual(payload: Payload): Visual
 	local rarity = Rarities.ById[payload.Rarity]
-	local assetName = if payload.Kind == "NPCBox" then BOX_PREFIX .. payload.Tier else Items.ById[payload.ItemId].Asset
+	local assetName: string
+	-- Colis PNJ : BOX_<Rareté> de Clément (L-097 point 3), déjà à la couleur de sa rareté, sinon BOX_<Tier>.
+	local byRarity = false
+	if payload.Kind == "NPCBox" then
+		local rarityName = BOX_PREFIX .. payload.Rarity
+		byRarity = findAsset(rarityName) ~= nil
+		assetName = if byRarity then rarityName else BOX_PREFIX .. payload.Tier
+	else
+		assetName = Items.ById[payload.ItemId].Asset
+	end
 	local model, anchor, offset, isPlaceholder = sourceModel(payload, assetName)
 	model.Name = VISUAL_NAME
 	model.ModelStreamingMode = Enum.ModelStreamingMode.Atomic -- arrive en entier chez les clients
 	prepare(model, anchor)
-	-- Un objet volé garde ses couleurs ; seuls le colis et le bloc V0 prennent celle de la rareté.
-	if (payload.Kind == "NPCBox" or isPlaceholder) and tint(model, rarity.Color) == 0 then
+	-- Un objet volé garde ses couleurs, BOX_<Rareté> aussi (Tint déjà à la couleur, choix de Clément) ;
+	-- BOX_<Tier> et le bloc V0 prennent celle de la rareté.
+	local paint = isPlaceholder or (payload.Kind == "NPCBox" and not byRarity)
+	if paint and tint(model, rarity.Color) == 0 then
 		once(`{assetName}.{TINT}`, `[CarryService] {assetName} : aucune pièce {TINT} (10.4), colis pas teint à la couleur de sa rareté`, true)
 	end
 	local height = model:GetExtentsSize().Y
-	addHalo(anchor, offset * CFrame.new(0, height / 2, 0), rarity)
+	local own = if payload.Kind == "NPCBox" and not isPlaceholder then ownEffects(model) else NO_EFFECTS
+	addHalo(anchor, offset * CFrame.new(0, height / 2, 0), rarity, own)
 	addLabel(model, anchor, offset * CFrame.new(0, height, 0), payload, rarity)
 	if payload.Kind == "PlayerItem" then
 		addOutline(model)

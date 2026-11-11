@@ -25,7 +25,7 @@
 --   - Arrivée en zone safe avec un colis (L-095 point 4, SafeFlash ; remote BoxSecured d'UnboxService) :
 --     Heist_SafeFlash puis Heist_Escape ; champ de vision rendu d'un coup par la poursuite, + FovAdd puis
 --     retour ; UI_Escape allumé : Flash de FlashFrom à 1, Banner de 0 à 1 (Back Out), Title de TitleFrom
---     à sa Rotation, BoxIcon (Image = ICON_BOX_<Tier>) et Subtitle l'un après l'autre ; au bout de Hold
+--     à sa Rotation, BoxIcon (Image = ICON_BOX_<Rareté>, sinon ICON_BOX_<Tier>) et Subtitle l'un après l'autre ; au bout de Hold
 --     s, Banner rapetisse, puis l'écran s'éteint et tout reprend la valeur de Clément. L'effet FX_Escape
 --     aux pieds du joueur est à VfxController.Escape (vague 26), appelé d'ici.
 -- Ce qui est touché, et rien d'autre : ce que fait Motion (UIScale passagers, Shade, HoverOutline, Icon
@@ -448,18 +448,20 @@ local function escapeScale(state: Escape, object: GuiObject, value: number): UIS
 	return scale
 end
 
-local function boxIcon(tier: string?): string?
+local function boxIcon(tier: string?, rarity: string?): string?
 	if tier == nil or tier == "" then
 		return nil
 	end
 	local ok, texture = pcall(function()
 		local Icons = require(Shared:WaitForChild("Contract"):WaitForChild("Icons")) :: any
-		return Icons.get(SAFE.BoxIconPrefix .. tier)
+		-- ICON_BOX_<Rareté> (L-097 point 3), sinon ICON_BOX_<Tier>.
+		local byRarity = if type(rarity) == "string" and rarity ~= "" then Icons.get(SAFE.BoxIconPrefix .. rarity) else nil
+		return byRarity or Icons.get(SAFE.BoxIconPrefix .. tier)
 	end)
 	return if ok and type(texture) == "string" then texture else nil
 end
 
-local function escapeScreen(tier: string?)
+local function escapeScreen(tier: string?, rarity: string?)
 	local gui = localPlayer:FindFirstChildOfClass("PlayerGui")
 	local found = if gui then gui:FindFirstChild(SAFE.Screen) else nil
 	if found == nil or not found:IsA("ScreenGui") then
@@ -502,7 +504,7 @@ local function escapeScreen(tier: string?)
 			escapePlay(state, TweenService:Create(title, SAFE_TITLE_INFO, { Rotation = goal }))
 		end
 		local icon = Find.path(banner, "BoxIcon")
-		local texture = boxIcon(tier)
+		local texture = boxIcon(tier, rarity)
 		if texture and icon and (icon:IsA("ImageLabel") or icon:IsA("ImageButton")) then
 			(icon :: any).Image = texture
 		end
@@ -541,7 +543,7 @@ end
 
 -- L'arrivée en zone safe : sons (Heist_SafeFlash, puis Heist_Escape SoundGap s après), champ de
 -- vision, écran UI_Escape (Flash, puis Banner, Title, BoxIcon = ICON_BOX_<tier>, Subtitle).
-function UiFeelController.Escape(tier: string?)
+function UiFeelController.Escape(tier: string?, rarity: string?)
 	escapes += 1
 	for rank, name in SAFE.Sounds do
 		if rank == 1 then
@@ -553,7 +555,7 @@ function UiFeelController.Escape(tier: string?)
 		end
 	end
 	escapeFov()
-	escapeScreen(tier)
+	escapeScreen(tier, rarity)
 	-- Confettis, étoiles et anneau de FX_Escape aux pieds du joueur (vague 26, VfxController).
 	local vfx = sibling("VfxController")
 	if vfx and type(vfx.Escape) == "function" then
@@ -611,8 +613,8 @@ function UiFeelController.Start()
 	task.spawn(function()
 		local wired = pcall(function()
 			local Net = require(Shared:WaitForChild("Net"):WaitForChild("Net")) :: any
-			Net.Client.BoxSecured:Connect(function(tier: string)
-				UiFeelController.Escape(tier)
+			Net.Client.BoxSecured:Connect(function(tier: string, rarity: string?)
+				UiFeelController.Escape(tier, rarity)
 			end)
 		end)
 		if not wired and IS_STUDIO then

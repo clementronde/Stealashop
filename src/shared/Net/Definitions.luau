@@ -406,12 +406,14 @@ local List: { RemoteDef } = {
 		-- Ajout de la vague 24 (L-095 point 4), absent du tableau 9.4 : le colis volé du joueur vient d'être
 		-- mis à l'abri en zone safe (UnboxService, rangé dans l'inventaire). tier = Tier du colis (Standard,
 		-- Premium, Luxe). UiFeelController joue l'arrivée en zone safe (UI_Escape, SafeFlash) avec
-		-- l'icône ICON_BOX_<tier>. Rien de sensible : effet visuel du seul joueur concerné.
+		-- l'icône ICON_BOX_<rarity>, sinon ICON_BOX_<tier> (rarity ajouté par a79, L-097 point 3 : rareté du
+		-- colis, déjà visible de tous sur son étiquette). Rien de sensible : effet visuel du seul joueur concerné.
 		Name = "BoxSecured",
 		Direction = "ServerToClient",
 		Reliable = true,
 		Args = {
 			{ Name = "tier", Kind = "string", Max = 16 },
+			{ Name = "rarity", Kind = "string", Max = 16, Optional = true },
 		},
 	},
 	{

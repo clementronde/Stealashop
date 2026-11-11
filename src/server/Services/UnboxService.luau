@@ -88,9 +88,10 @@
 --
 -- Dans le monde (visible par tous, rien de secret : la rareté se voit dès qu'on soulève le colis,
 -- 5.6) :
---   - au sol, une copie du modèle BOX_<Tier> de Clément (cherché dans ReplicatedStorage/Assets, puis
---     ServerStorage/Assets), sa pièce Tint teinte à la couleur de la rareté ; sans lui, un bloc V0 de
---     cette couleur. La copie s'appelle FloorBox (sans le préfixe BOX_, pour que le ContractChecker ne
+--   - au sol, une copie du modèle BOX_<Rareté> de Clément (L-097 point 3, déjà à sa couleur ; cherché
+--     dans ReplicatedStorage/Assets, puis ServerStorage/Assets), sinon BOX_<Tier>, sa pièce Tint teinte à
+--     la couleur de la rareté ; sans lui, un bloc V0 de cette couleur. L'écran d'ouverture
+--     (UnboxController) en fait une copie locale : il montre donc le même modèle. La copie s'appelle FloorBox (sans le préfixe BOX_, pour que le ContractChecker ne
 --     la prenne pas pour un modèle livré), est rangée dans la parcelle, son pivot (en bas au centre,
 --     10.1) posé sur le point du sol, tournée comme la parcelle (face avant vers la rue), et porte les
 --     attributs BoxUid, OwnerUserId, Rarity, ReadyAt et UnboxState ("Waiting" puis "Ready"), lus par
@@ -715,10 +716,10 @@ local function prepare(part: BasePart)
 	part.CanQuery = false
 end
 
--- Copie du modèle BOX_<tier> de Clément et la pièce qui portera le minuteur ; nil s'il n'est pas
+-- Copie du modèle de Clément `name` et la pièce qui portera le minuteur ; nil s'il n'est pas
 -- encore livré.
-local function cloneBoxTemplate(tier: string): (Model?, BasePart?)
-	local template = findAsset(BOX_PREFIX .. tier)
+local function cloneBoxTemplate(name: string): (Model?, BasePart?)
+	local template = findAsset(name)
 	if template == nil or not template:IsA("Model") then
 		return nil, nil
 	end
@@ -743,13 +744,18 @@ end
 -- porte le minuteur.
 local function buildBoxModel(player: Player, boxUid: string, box: Box, base: CFrame): (Model, BasePart)
 	local color = Rarities.ById[box.Rarity].Color
-	local cloned, clonedAnchor = cloneBoxTemplate(box.Tier)
+	-- BOX_<Rareté> (L-097 point 3), déjà à la couleur de sa rareté ; sinon BOX_<Tier>, teint.
+	local cloned, clonedAnchor = cloneBoxTemplate(BOX_PREFIX .. box.Rarity)
+	local byRarity = cloned ~= nil
+	if cloned == nil then
+		cloned, clonedAnchor = cloneBoxTemplate(BOX_PREFIX .. box.Tier)
+	end
 	local model: Model
 	local anchor: BasePart
 	if cloned and clonedAnchor then
 		model, anchor = cloned, clonedAnchor
 		local tint = Find.path(model, TINT)
-		if tint ~= nil and tint:IsA("BasePart") then
+		if not byRarity and tint ~= nil and tint:IsA("BasePart") then
 			(tint :: BasePart).Color = color
 		end
 		model:PivotTo(base) -- pivot en bas au centre (10.1), posé sur le sol
@@ -1078,7 +1084,7 @@ local function stow(player: Player)
 	-- Réussite (L-095 point 3) : message en vert dans UI_Toast ; arrivée en zone safe côté client (point 4).
 	notify(player, MESSAGES.Stowed, SUCCESS_KIND)
 	local secured, securedErr = pcall(function()
-		Net.Server.BoxSecured:Fire(player, box.Tier)
+		Net.Server.BoxSecured:Fire(player, box.Tier, box.Rarity) -- rareté : icône ICON_BOX_<Rareté> (L-097 point 3)
 	end)
 	if not secured then
 		warn(`[UnboxService] BoxSecured vers {player.Name} : {securedErr}`)

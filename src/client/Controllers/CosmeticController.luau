@@ -105,7 +105,9 @@ end
 --   - trail du joueur (Trail CosmeticTrail, CosmeticService), de tous les joueurs ;
 --   - lumière de l'aura (les lumières dans une pièce taggée CosmeticAura) ;
 --   - halo de rareté du colis porté ou au sol (tout émetteur, lumière ou rayon sous l'Attachment
---     HaloPoint, CarryService) et des objets exposés (sous la pièce RarityHalo, DisplayService).
+--     HaloPoint, CarryService) et des objets exposés (sous la pièce RarityHalo, DisplayService) ;
+--   - effets de Clément dans un colis BOX_<Rareté> (émetteur ou lumière dans une pièce voisine de Tint,
+--     a79) : sur le rayon, porté, au sol.
 local CUT_CLASSES = { "ParticleEmitter", "Light", "Beam", "Trail" }
 local TRAIL_NAME = "CosmeticTrail" -- CosmeticService
 local HALO_HOLDERS = { HaloPoint = true, RarityHalo = true } -- CarryService, DisplayService
@@ -136,6 +138,15 @@ local function isCuttable(inst: Instance): boolean
 	end
 	if HALO_HOLDERS[parent.Name] then
 		return true
+	end
+	-- a79 (L-097 point 3) : étincelles et lumière posées par Clément dans un colis BOX_<Rareté> (dans Body,
+	-- une pièce voisine d'une pièce Tint) : elles remplacent le halo du code, elles s'éteignent comme lui.
+	local box = parent.Parent
+	if parent:IsA("BasePart") and box and box:IsA("Model") and not inst:IsA("Beam") then
+		local tint = box:FindFirstChild("Tint")
+		if tint and tint:IsA("BasePart") then
+			return true
+		end
 	end
 	-- Lumière de l'aura (ses émetteurs passent par setRates).
 	return inst:IsA("Light") and parent:IsA("BasePart") and auras[parent] == true
