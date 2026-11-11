@@ -42,6 +42,10 @@ Elles remplacent, pour les fenêtres et les boutons, les lignes « Écran qui s'
 | Vigile qui poursuit | `Assets/FX/FX_ChaseHighlight` (Highlight rouge, `AlwaysOnTop`) posé sur le vigile pendant la poursuite, retiré à la fin | — | — |
 | Caméra pendant la poursuite | champ de vision + 6 en 0,3, retour en 0,4 | Quad Out | `ChaseFov` |
 | Arrivée en zone safe | `UI_Escape.Flash` transparence 0,05 → 1 en 0,5 ; champ de vision + 12 en 0,08 puis retour en 0,45 ; bannière 0 → 1 en 0,35 | Quad Out, Back Out | `SafeFlash` |
+| Index : fiche de l'objet cliqué (`UI_Index_v3.Root.Window.Detail`) | `DetailIcon` 0,82 → 1 en 0,16 à chaque clic sur une carte (pas au survol) ; prototype `index_v3.luau` | Back Out | `DetailPop` |
+| Index : récompenses de la zone visible (`Rewards`) | 0,92 → 1 en 0,18 quand la zone visible dans la liste change | Back Out | `RewardsSwap` |
+| Réglages : curseur (`Slider.Knob`) | × 1,18 en 0,08 pendant le glisser, retour à 1 au relâché ; prototype `settings_proto.luau` | Back Out | `KnobGrab` |
+| Réglages : interrupteur (`Toggle.ToggleKnob`) | glisse d'un bout à l'autre en 0,16 ; `OnFill` ou `OffFill` visible | Back Out | `ToggleSlide` |
 
 ## Propres à l'arbre de compétences
 
