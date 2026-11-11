@@ -18,6 +18,12 @@
 --     Formulas.PlayerWindowHP), recalculés à chaque tick : outil, Force ou aura qui changent
 --     sont pris en compte, à fraction de PV égale. Parcelle libre : incassable.
 --   - Régénération continue de 3 % des PV max par seconde (5.3, Balance.Window).
+--   - Défenses de la boutique (arbre de compétences, vague 27 ; SkillTreeService remplace les points
+--     d'accroche GetPlotHPMultiplier et GetPlotRegen, plus bas) : PV max d'une parcelle occupée ×
+--     GetPlotHPMultiplier(propriétaire) (Glass), réparation de GetPlotRegen(propriétaire) des PV max par
+--     seconde au lieu de Balance.Window.RegenPerSecond (Glass Regen). Lus à chaque tick : un achat compte
+--     au tick suivant (0,1 s), à fraction de PV égale. Une erreur ou une valeur invalide (pas un nombre
+--     fini > 0 pour les PV, ≥ 0 pour la réparation) reprend la valeur de base.
 --   - Chrono de casse, magasins PNJ seulement (Clément, L-074) : le premier coup lance un chrono de
 --     Balance.Window.BreakTimer s (13, V0), montré dans HeistTimer à chaque joueur qui frappe (même
 --     remote que le chrono du braquage, même identifiant que le magasin). Cassée à temps : le chrono du
@@ -72,6 +78,14 @@
 --       de casse ; c'est au point d'accroche de prévenir le joueur s'il le faut. Une erreur laisse
 --       passer le coup (un avertissement). StoreHeistService s'en sert : un seul braquage à la fois
 --       (Cantin, 2026-11-11, L-099 point 3).
+--   WindowService.GetPlotHPMultiplier(owner) -> number
+--   WindowService.GetPlotRegen(owner) -> number
+--       Points d'accroche des défenses de la boutique de `owner` (voir les règles) : 1 et
+--       Balance.Window.RegenPerSecond par défaut. SkillTreeService les remplace (WindowService.X = function…).
+--   WindowService.OnHit(listener) -> déconnexion
+--       listener(player, windowId, kind, model, damage) après chaque coup validé et compté (celui qui
+--       casse compris, cibles d'événement comprises), juste après WindowHit. Pour les caméras de la
+--       boutique (SkillTreeService, vague 27).
 --   WindowService.OnBroken(listener) -> déconnexion
 --       listener(info) à chaque casse ; info = { WindowId, Kind ("NPC" ou "Plot"), Model
 --       (le magasin ou la parcelle), Breaker (joueur du dernier coup), ImpactPoint }.
@@ -120,6 +134,7 @@ export type BreakInfo = {
 }
 
 type BrokenListener = (info: BreakInfo) -> ()
+type HitListener = (player: Player, windowId: string, kind: WindowKind, model: Model, damage: number) -> ()
 type RebuiltListener = (windowId: string, model: Model) -> ()
 
 type SavedPart = { CanCollide: boolean, CanQuery: boolean, Transparency: number }
@@ -175,6 +190,8 @@ local WindowService = {}
 local windows: { [string]: Window } = {}
 local byModel: { [Instance]: Window } = {}
 local brokenListeners: { BrokenListener } = {}
+local hitListeners: { HitListener } = {}
+local modifierWarned: { [string]: boolean } = {}
 local rebuiltListeners: { RebuiltListener } = {}
 local lastRefusal: { [Player]: number } = {}
 local canBeHitWarned = false
@@ -185,6 +202,32 @@ local hitGateWarned = false
 
 function WindowService.CanBeHit(_player: Player, _windowId: string): boolean
 	return true
+end
+
+-- Points d'accroche des défenses de la boutique (voir l'en-tête) : valeurs de base.
+function WindowService.GetPlotHPMultiplier(_owner: Player): number
+	return 1
+end
+
+function WindowService.GetPlotRegen(_owner: Player): number
+	return Balance.Window.RegenPerSecond
+end
+
+-- Valeur d'un point d'accroche : un nombre fini ≥ 0 (> 0 si `strict`), sinon `base` (une erreur :
+-- un avertissement, une fois par point d'accroche).
+local function modifier(label: string, fn: (Player) -> number, owner: Player, base: number, strict: boolean): number
+	local ok, value = pcall(fn, owner)
+	if not ok then
+		if not modifierWarned[label] then
+			modifierWarned[label] = true
+			warn(`[WindowService] {label} : erreur ({value}), valeur de base gardée`)
+		end
+		return base
+	end
+	if type(value) ~= "number" or value ~= value or value == math.huge or value < 0 or (strict and value == 0) then
+		return base
+	end
+	return value
 end
 
 -- Renvoie une fonction qui retire `listener` de `list`.
@@ -244,7 +287,23 @@ local function computeMaxHP(window: Window): number
 		return 0
 	end
 	local damage = ToolService.GetHitDamage(owner)
-	return if damage > 0 then Formulas.PlayerWindowHP(damage) else 0 -- 0 : profil pas encore chargé
+	if damage <= 0 then
+		return 0 -- profil pas encore chargé
+	end
+	return Formulas.PlayerWindowHP(damage) * modifier("GetPlotHPMultiplier", WindowService.GetPlotHPMultiplier, owner, 1, true)
+end
+
+-- Part des PV max réparée par seconde (5.3) ; parcelle occupée : celle de son propriétaire (Glass Regen).
+local function regenRate(window: Window): number
+	local base = Balance.Window.RegenPerSecond
+	if window.Kind ~= "Plot" or window.OwnerUserId == 0 then
+		return base
+	end
+	local owner = Players:GetPlayerByUserId(window.OwnerUserId)
+	if owner == nil then
+		return base
+	end
+	return modifier("GetPlotRegen", WindowService.GetPlotRegen, owner, base, false)
 end
 
 -- Nouveaux PV max, même fraction de PV (une vitrine pleine reste pleine).
@@ -484,6 +543,9 @@ local function onHitWindow(player: Player, windowId: string)
 	end
 	-- Avant la casse : le chiffre du coup qui casse part comme les autres (DEV-053).
 	broadcastHit(window, player, impactPoint, damage)
+	for _, listener in table.clone(hitListeners) do
+		task.spawn(listener, player, window.Id, window.Kind, window.Model, damage)
+	end
 	if window.Kind == "Event" then
 		if window.HP <= 0 then
 			breakTarget(window, player, impactPoint)
@@ -495,7 +557,6 @@ end
 
 -- Un tick (10 par seconde) : PV max des parcelles, régénération, envoi des PV changés.
 local function step(dt: number)
-	local regen = Balance.Window.RegenPerSecond * dt
 	for _, window in windows do
 		if window.Kind == "Event" then
 			-- Cible d'événement : ni régénération ni WindowHP, ses PV sont l'attribut HP (en-tête).
@@ -526,7 +587,7 @@ local function step(dt: number)
 			window.Hitters = nil
 		end
 		if not window.Broken and window.HP < window.MaxHP then
-			window.HP = math.min(window.MaxHP, window.HP + regen * window.MaxHP)
+			window.HP = math.min(window.MaxHP, window.HP + regenRate(window) * dt * window.MaxHP)
 			window.Dirty = true
 		end
 		if window.Dirty then
@@ -648,6 +709,10 @@ local function unregister(instance: Instance)
 	for _, connection in window.Connections do
 		connection:Disconnect()
 	end
+end
+
+function WindowService.OnHit(listener: HitListener): () -> ()
+	return subscribe(hitListeners, listener)
 end
 
 function WindowService.OnBroken(listener: BrokenListener): () -> ()

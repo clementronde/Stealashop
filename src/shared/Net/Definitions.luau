@@ -449,6 +449,19 @@ local List: { RemoteDef } = {
 		},
 		RatePerSecond = 4, -- V0 proposé, absent du doc
 	},
+	{
+		-- Ajout de la vague 27 (arbre de compétences, Cameras niveau 2), absent du tableau 9.4 : envoyé par
+		-- SkillTreeService au seul propriétaire d'une boutique dont la vitrine est frappée par `attacker`.
+		-- CameraAlertController surligne l'attaquant à travers les murs jusqu'à endsAt (heure serveur,
+		-- Workspace:GetServerTimeNow). Rien de sensible : effet visuel du seul propriétaire.
+		Name = "CameraSpotted",
+		Direction = "ServerToClient",
+		Reliable = true,
+		Args = {
+			{ Name = "attacker", Kind = "Player" },
+			{ Name = "endsAt", Kind = "number", Min = 0 },
+		},
+	},
 }
 
 return {

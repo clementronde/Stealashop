@@ -98,6 +98,10 @@
 --       true si `player` porte un objet volé à `owner` (SwingBat, usage 1 de 6.2, DEV-043).
 --   PvPService.GetProtection(player) -> (string?, number?)
 --       "Shield" ou "Immune" (et secondes restantes d'immunité) si sa boutique est protégée.
+--   PvPService.GetVaultSlots(owner) -> number
+--       Point d'accroche : nombre d'objets exposés à l'abri chez `owner` (coffre-fort V0) ; PvP.VaultSlots
+--       (1) par défaut, remplacé par SkillTreeService (compétence Safe, vague 27 : 1 + Effects[niveau]).
+--       Jamais moins que PvP.VaultSlots ; une erreur ou une valeur invalide reprend PvP.VaultSlots.
 --   PvPService.OnTheftStarted(listener) -> déconnexion     listener(thief, victim, itemId)
 --   PvPService.OnTheftEnded(listener) -> déconnexion
 --       listener(thief, victim, itemId, result, reason) ; result = "Stolen" (dépôt) ou "Returned"
@@ -423,8 +427,26 @@ local function protectionMessage(refusal: string, left: number?): string
 	return MESSAGES.Racket
 end
 
--- Coffre-fort V0 : présentoirs à l'abri parmi les objets exposés (voir l'en-tête).
-local function safeSlotsOf(exposed: { [number]: DisplayService.ExposedItem }): { [number]: boolean }
+-- Nombre de présentoirs à l'abri chez `owner` : PvPService.GetVaultSlots (arbre de compétences, Safe),
+-- un entier ≥ PvP.VaultSlots ; une erreur ou une valeur invalide reprend PvP.VaultSlots.
+local vaultWarned = false
+local function vaultSlotsOf(owner: Player): number
+	local ok, value = pcall(PvPService.GetVaultSlots, owner)
+	if not ok then
+		if not vaultWarned then
+			vaultWarned = true
+			warn(`[PvPService] GetVaultSlots : erreur ({value}), {PvP.VaultSlots} présentoir(s) à l'abri`)
+		end
+		return PvP.VaultSlots
+	end
+	if type(value) ~= "number" or value ~= value or value == math.huge then
+		return PvP.VaultSlots
+	end
+	return math.max(PvP.VaultSlots, math.floor(value))
+end
+
+-- Coffre-fort V0 : présentoirs à l'abri parmi les objets exposés de `owner` (voir l'en-tête).
+local function safeSlotsOf(owner: Player, exposed: { [number]: DisplayService.ExposedItem }): { [number]: boolean }
 	local list: { number } = {}
 	for slot in exposed do
 		table.insert(list, slot)
@@ -437,7 +459,7 @@ local function safeSlotsOf(exposed: { [number]: DisplayService.ExposedItem }): {
 		return a < b
 	end)
 	local safe: { [number]: boolean } = {}
-	for index = 1, math.min(PvP.VaultSlots, #list) do
+	for index = 1, math.min(vaultSlotsOf(owner), #list) do
 		safe[list[index]] = true
 	end
 	return safe
@@ -772,7 +794,7 @@ local function stealRefusal(player: Player, plot: Model, slot: number): (string?
 	if item == nil or victimData.Display[tostring(slot)] ~= item.Uid or victimData.Items[item.Uid] == nil then
 		return "présentoir vide", nil, nil
 	end
-	if safeSlotsOf(exposed)[slot] then
+	if safeSlotsOf(victim, exposed)[slot] then
 		return "objet à l'abri (coffre-fort)", "Safe", MESSAGES.Safe
 	end
 	if not DisplayService.HasRoom(player) then
@@ -904,7 +926,7 @@ local function publish(plot: Model)
 			protectedUntil = math.ceil(Workspace:GetServerTimeNow() + left)
 		end
 		local slots: { number } = {}
-		for slot in safeSlotsOf(DisplayService.GetExposed(owner)) do
+		for slot in safeSlotsOf(owner, DisplayService.GetExposed(owner)) do
 			table.insert(slots, slot)
 		end
 		table.sort(slots)
@@ -1034,6 +1056,12 @@ end
 
 function PvPService.GetProtection(player: Player): (string?, number?)
 	return protectionOf(nil, player)
+end
+
+-- Point d'accroche du coffre-fort (voir l'en-tête) : PvP.VaultSlots par défaut ; SkillTreeService le
+-- remplace (compétence Safe).
+function PvPService.GetVaultSlots(_owner: Player): number
+	return PvP.VaultSlots
 end
 
 function PvPService.OnTheftStarted(listener: StartedListener): () -> ()

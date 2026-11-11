@@ -198,6 +198,10 @@ export type Data = {
 	-- (HotbarService, Shared/HotbarLayout) : 6 identifiants dans l'ordre des cases, "Tool", "Bat", uid
 	-- d'un colis ou d'un objet, "" pour une case vide (jamais de trou). Champ facultatif, sans changement de
 	-- version : absent = disposition de départ ; un uid qui n'est plus au joueur devient vide au chargement.
+	SkillTree: { [string]: number }?, -- vague 27 : niveau acheté de chaque compétence de l'arbre
+	-- (SkillTreeService, Config/SkillTree), [Id] = niveau ≥ 1 (une compétence pas achetée n'a pas d'entrée).
+	-- Champ facultatif, sans changement de version : absent = rien d'acheté. Nettoyé au chargement : Id
+	-- inconnu retiré, niveau entier borné à MaxLevel, niveau ≤ 0 retiré.
 	-- Partie 2 : Defenses, Rebirths, ajoutés par migration (Version = 9 et suivantes : la v2 est prise
 	-- par le catalogue d'objets v2, la v3 par la boutique Robux, la v4 par l'index, la v5 par les colis
 	-- sur les présentoirs, la v6 par les gains hors ligne, la v7 par les colis dans l'inventaire, la v8
