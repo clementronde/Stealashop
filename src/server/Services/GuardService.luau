@@ -460,6 +460,9 @@ local DISABLED_STATES = {
 }
 
 local IS_STUDIO = RunService:IsStudio()
+-- Diagnostic Studio du retard en poursuite (workspace:SetAttribute("ChaseDebug", true)) : compteurs par vigile.
+type ChaseTrace = { sight: number, path: number, last: number, hits: { [string]: number } }
+local guardDebug: { [any]: ChaseTrace } = setmetatable({}, { __mode = "k" }) :: any
 
 local GuardService = {}
 
@@ -1827,7 +1830,40 @@ local function chaseStep(guard: Guard, now: number)
 	-- Ligne de vue à chaque pas : en vue, droit sur le point d'interception (chaseInSight) ; sinon un
 	-- chemin vers ce point (vu de la cible : jamais derrière un mur ni en zone safe).
 	local velocity = sampleVelocity(guard, targetRoot, targetHumanoid, now)
-	if canSee(guard, targetRoot, targetHumanoid) then
+	local sees = canSee(guard, targetRoot, targetHumanoid)
+	if IS_STUDIO and workspace:GetAttribute("ChaseDebug") == true then
+		-- Diagnostic Studio (retard du vigile, 2026-11-11) : une ligne par seconde et par vigile.
+		local found: ChaseTrace? = guardDebug[guard]
+		if found == nil then
+			local fresh: ChaseTrace = { sight = 0, path = 0, last = now, hits = {} }
+			guardDebug[guard] = fresh
+			found = fresh
+		end
+		local trace = found :: ChaseTrace
+		if sees then
+			trace.sight += 1
+		else
+			trace.path += 1
+			local hit = Workspace:Raycast(guard.root.Position, targetRoot.Position - guard.root.Position, rayParams)
+			if hit then
+				local name = hit.Instance:GetFullName()
+				trace.hits[name] = (trace.hits[name] or 0) + 1
+			end
+		end
+		if now - trace.last >= 1 then
+			trace.last = now
+			local hits = {}
+			for name, count in trace.hits do
+				table.insert(hits, `{name} ×{count}`)
+			end
+			print(string.format("[ChaseDebug] %s : distance %.1f, joueur %.1f studs/s (WalkSpeed %.0f), vigile WalkSpeed %.0f, en vue %d, au chemin %d%s",
+				guard.model.Name, (targetRoot.Position - guard.root.Position).Magnitude, flat(targetRoot.AssemblyLinearVelocity).Magnitude,
+				targetHumanoid.WalkSpeed, guard.humanoid.WalkSpeed, trace.sight, trace.path,
+				if #hits > 0 then " ; vue bloquée par " .. table.concat(hits, ", ") else ""))
+			trace.sight, trace.path, trace.hits = 0, 0, {}
+		end
+	end
+	if sees then
 		chaseInSight(guard, targetRoot, targetHumanoid, velocity, now)
 		return
 	end

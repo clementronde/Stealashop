@@ -722,14 +722,31 @@ local function isOnPlot(player: Player, plot: Model, refs: PlotRefs): boolean
 end
 
 -- `position` dans le volume de la plaque élargi de `margin` sur les côtés, jusqu'à `above` au-dessus.
+-- La hauteur se lit sur l'axe de la plaque le plus tourné vers le ciel : Clément pose ses plaques à plat avec
+-- l'épaisseur sur Y ou sur Z (plaques carrées tournées vers la porte, L-091), dans un sens ou dans l'autre.
 local function isOnPad(position: Vector3, pad: BasePart, margin: number?, above: number?): boolean
 	local side = margin or PAD_MARGIN
-	local p = pad.CFrame:PointToObjectSpace(position)
+	local cf = pad.CFrame
+	local p = cf:PointToObjectSpace(position)
 	local half = pad.Size / 2
-	return math.abs(p.X) <= half.X + side
-		and math.abs(p.Z) <= half.Z + side
-		and p.Y >= half.Y - PAD_BELOW
-		and p.Y <= half.Y + (above or PAD_ABOVE)
+	-- Le haut du monde vu dans le repère de la plaque : composante verticale de ses axes X, Y et Z.
+	local up = cf:PointToObjectSpace(cf.Position + Vector3.new(0, 1, 0))
+	local ups = { up.X, up.Y, up.Z }
+	local coords = { p.X, p.Y, p.Z }
+	local halves = { half.X, half.Y, half.Z }
+	local axis = 1
+	for i = 2, 3 do
+		if math.abs(ups[i]) > math.abs(ups[axis]) then
+			axis = i
+		end
+	end
+	for i = 1, 3 do
+		if i ~= axis and math.abs(coords[i]) > halves[i] + side then
+			return false
+		end
+	end
+	local height = if ups[axis] >= 0 then coords[axis] else -coords[axis]
+	return height >= halves[axis] - PAD_BELOW and height <= halves[axis] + (above or PAD_ABOVE)
 end
 
 -- `position` encore dans la zone de sortie de la plaque (voir l'en-tête).
