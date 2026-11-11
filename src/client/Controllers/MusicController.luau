@@ -43,7 +43,9 @@
 -- Sound) ne change rien : la suivante, ou celle de la zone, continue (une ligne en Studio, une fois).
 -- Redescendue au silence, elle repart du début au prochain événement (RestartEventTracks ; MUS_Chase
 -- part de Config/ChaseFeel.MusicStartAt, L-095, la première fois comme les suivantes) ; reprise
--- pendant son fondu de sortie, elle continue sans saut.
+-- pendant son fondu de sortie, elle continue sans saut. Vague 24 : MUS_Chase n'est visée que
+-- Config/ChaseFeel.MusicDelay s après le départ de la poursuite (sons du départ espacés), sauf
+-- pendant ce fondu de sortie (elle reprend tout de suite).
 --
 -- Rien n'est envoyé au serveur. API (client) :
 --   MusicController.GetState() -> { Zone, Track, Levels, Event }
@@ -66,6 +68,11 @@ local Attributes = require(Shared:WaitForChild("Contract"):WaitForChild("Attribu
 local chaseFeelModule = Shared:WaitForChild("Config"):FindFirstChild("ChaseFeel")
 local CHASE_START_AT: number = if chaseFeelModule and chaseFeelModule:IsA("ModuleScript")
 	then (require(chaseFeelModule) :: any).MusicStartAt or 0
+	else 0
+-- Vague 24 (sons du départ espacés) : MUS_Chase ne monte que Config/ChaseFeel.MusicDelay s après le
+-- départ de la poursuite (0 sans lui), sauf si elle est encore audible (fondu de sortie).
+local CHASE_DELAY: number = if chaseFeelModule and chaseFeelModule:IsA("ModuleScript")
+	then (require(chaseFeelModule) :: any).MusicDelay or 0
 	else 0
 
 type Volume = { CFrame: CFrame, Size: Vector3 }
@@ -122,6 +129,7 @@ local said: { [string]: boolean } = {}
 local chase: ChaseApi? = nil
 local event: EventKind? = nil -- événement dont la musique joue
 local nearTruck = false -- dans le cercle du camion (avec la marge de sortie)
+local chasedFor = 0 -- secondes depuis le départ de la poursuite (0 hors poursuite)
 
 local function sayOnce(key: string, message: string, isProblem: boolean?)
 	if not IS_STUDIO or said[key] then
@@ -346,7 +354,9 @@ end
 -- Musique d'événement à jouer, dans l'ordre de priorité, et son événement ; nil : celle de la zone.
 local function eventTrack(position: Vector3?): (string?, EventKind?)
 	local api = chase
-	if api and api.IsChased() and ensureTrack(Music.ChaseTrack, CHASE_EFFECT) then
+	local chaseTrack = tracks[Music.ChaseTrack]
+	local audible = chaseTrack ~= nil and chaseTrack.Level > 0
+	if api and api.IsChased() and (chasedFor >= CHASE_DELAY or audible) and ensureTrack(Music.ChaseTrack, CHASE_EFFECT) then
 		return Music.ChaseTrack, CHASE
 	end
 	if position then
@@ -412,6 +422,8 @@ local function fade(dt: number)
 end
 
 local function step(dt: number)
+	local api = chase
+	chasedFor = if api and api.IsChased() then chasedFor + dt else 0
 	sinceCheck += dt
 	if sinceCheck >= Music.CheckInterval then
 		sinceCheck = 0

@@ -4,18 +4,20 @@
 -- valeurs : Config/ChaseFeel, reprises de la note et du prototype tools/clement/feel2_proto.luau).
 --
 -- Suit ChaseController (IsChased, GetGuard, d'après le remote ChaseState de GuardService) à chaque image :
---   1. au départ : Heist_Grab, puis Chase_Whistle WhistleDelay s après, et Chase_Siren en boucle
---      (copie en 2D dans SoundService, chez ce joueur seulement). MUS_Chase et la musique de zone
---      baissée : MusicController (fondu enchaîné), qui fait partir MUS_Chase à ChaseFeel.MusicStartAt ;
+--   1. au départ, espacés (vague 24) : Heist_Grab, Chase_Whistle WhistleDelay s après, Chase_Siren en
+--      boucle SirenDelay s après (copies en 2D dans SoundService, chez ce joueur seulement). MUS_Chase et
+--      la musique de zone baissée : MusicController (fondu enchaîné), qui fait monter MUS_Chase
+--      ChaseFeel.MusicDelay s après le départ, de ChaseFeel.MusicStartAt ;
 --   2. bulle du vigile : une copie de ReplicatedStorage/Assets/UI/BB_GuardShout posée sur la tête du
 --      vigile qui poursuit le joueur local (Adornee, rangée dans le PlayerGui : personne d'autre ne la
---      voit). Bang grossit 0 → 1,35 → 1 et tremble ; puis une phrase (Lines) toutes les ShoutEvery s :
---      Bubble grossit de 0 à 1 (Back), reste ShoutHold s, rapetisse ; Guard_Radio une phrase sur
---      RadioEvery. Vigile pas encore là (streaming) : la bulle arrive avec lui ; vigile disparu : la
---      bulle s'en va et revient avec lui ;
---   3. UI_HUD.LeftRail (Visible) et la barre du bas UI_Hotbar (Enabled) cachées pendant la poursuite,
---      revues toutes les BarsRefresh s (copie neuve d'un écran), puis remises dans l'état où elles
---      étaient au départ.
+--      voit). Une phrase (Lines) toutes les ShoutEvery s : Bubble, Tail et Bang (vague 24 : ensemble,
+--      chacun par son UIScale) grossissent de 0 à 1 (Back ; Bang 0 → 1,35 → 1 et tremble), restent
+--      ShoutHold s, rapetissent, puis sont cachés (Visible = false) jusqu'à la phrase suivante ;
+--      Guard_Radio une phrase sur RadioEvery. Vigile pas encore là (streaming) : la bulle arrive avec
+--      lui ; vigile disparu : la bulle s'en va et revient avec lui ;
+--   3. UI_HUD.LeftRail et UI_HUD.LeftRailTouch (Visible ; ChaseFeel.Rails) et la barre du bas UI_Hotbar
+--      (Enabled) cachées pendant la poursuite, revues toutes les BarsRefresh s (copie neuve d'un
+--      écran), puis remises dans l'état où elles étaient au départ.
 -- À la fin de la poursuite : la sirène descend en SirenFadeOut s puis est détruite, la bulle est
 -- détruite, les barres reviennent. Un son ou BB_GuardShout absent : rien (une ligne en Studio, une fois).
 -- Rien n'est envoyé au serveur. Ne touche ni aux écrans de StarterGui ni aux modèles de Clément.
@@ -186,35 +188,83 @@ local function destroyBubble()
 	end
 end
 
--- Une phrase : la bulle grossit, reste, puis rapetisse (la queue suit).
+-- Morceaux de la bulle qui apparaissent et disparaissent ensemble (vague 24 : avant, Tail ou Bang
+-- restaient affichés quand Bubble s'en allait).
+local PARTS = { "Bubble", "Tail", "Bang" }
+
+local function partsOf(gui: BillboardGui): { GuiObject }
+	local out: { GuiObject } = {}
+	for _, name in PARTS do
+		local part = guiChild(gui, name)
+		if part then
+			table.insert(out, part)
+		end
+	end
+	return out
+end
+
+-- Bulle fermée : chaque morceau à l'échelle 0 et caché.
+local function closeParts(parts: { GuiObject })
+	for _, part in parts do
+		scaleOf(part).Scale = 0
+		part.Visible = false
+	end
+end
+
+-- « ! » : 0 → PopScale (Back), puis 1, et il tremble.
+local function popBang(bang: GuiObject, token: number)
+	local spec = ChaseFeel.Bang
+	local bangScale = scaleOf(bang)
+	bang.Rotation = 0
+	tween(bangScale, spec.PopTime, { Scale = spec.PopScale }, Enum.EasingStyle.Back)
+	task.delay(spec.PopTime, function()
+		if token == bubbleToken then
+			tween(bangScale, spec.SettleTime, { Scale = 1 })
+		end
+	end)
+	for i, angle in spec.ShakeAngles do
+		task.delay(spec.ShakeStart + i * spec.ShakeStep, function()
+			if token == bubbleToken then
+				bang.Rotation = angle
+			end
+		end)
+	end
+end
+
+-- Une phrase : Bubble, Tail et Bang grossissent, restent, puis rapetissent et sont cachés, ensemble.
 local function shout(gui: BillboardGui, token: number)
-	local frame = guiChild(gui, "Bubble")
-	if frame == nil then
+	local parts = partsOf(gui)
+	if #parts == 0 then
 		return
 	end
 	shouts += 1
-	local label = frame:FindFirstChild("ShoutLabel", true)
+	local label = gui:FindFirstChild("ShoutLabel", true)
 	if label and (label:IsA("TextLabel") or label:IsA("TextButton")) then
 		(label :: TextLabel).Text = nextLine()
 	end
-	local tail = guiChild(gui, "Tail")
-	if tail then
-		tail.Visible = true
+	for _, part in parts do
+		part.Visible = true
+		scaleOf(part).Scale = 0
+		if part.Name == "Bang" then
+			popBang(part, token)
+		else
+			tween(scaleOf(part), ChaseFeel.ShoutInTime, { Scale = 1 }, Enum.EasingStyle.Back)
+		end
 	end
-	local scale = scaleOf(frame)
-	scale.Scale = 0
-	tween(scale, ChaseFeel.ShoutInTime, { Scale = 1 }, Enum.EasingStyle.Back)
 	if (shouts - 1) % ChaseFeel.RadioEvery == 0 then
 		playOnce(ChaseFeel.Sounds.Radio)
 	end
+	local shoutNumber = shouts
 	task.delay(ChaseFeel.ShoutHold, function()
-		if token ~= bubbleToken then
+		if token ~= bubbleToken or shoutNumber ~= shouts then
 			return
 		end
-		tween(scale, ChaseFeel.ShoutOutTime, { Scale = 0 })
+		for _, part in parts do
+			tween(scaleOf(part), ChaseFeel.ShoutOutTime, { Scale = 0 })
+		end
 		task.delay(ChaseFeel.ShoutOutTime, function()
-			if token == bubbleToken and tail then
-				tail.Visible = false
+			if token == bubbleToken and shoutNumber == shouts then
+				closeParts(parts)
 			end
 		end)
 	end)
@@ -234,35 +284,8 @@ local function createBubble(guard: Model)
 	gui.Parent = playerGui
 	bubble = gui
 	shouts = 0
-	local frame = guiChild(gui, "Bubble")
-	if frame then
-		scaleOf(frame).Scale = 0
-	end
-	local tail = guiChild(gui, "Tail")
-	if tail then
-		tail.Visible = false
-	end
-	-- « ! » : 0 → PopScale (Back), puis 1, et il tremble.
-	local bang = guiChild(gui, "Bang")
-	if bang then
-		local bangLabel: GuiObject = bang
-		local bangScale = scaleOf(bangLabel)
-		local spec = ChaseFeel.Bang
-		bangScale.Scale = 0
-		tween(bangScale, spec.PopTime, { Scale = spec.PopScale }, Enum.EasingStyle.Back)
-		task.delay(spec.PopTime, function()
-			if token == bubbleToken then
-				tween(bangScale, spec.SettleTime, { Scale = 1 })
-			end
-		end)
-		for i, angle in spec.ShakeAngles do
-			task.delay(spec.ShakeStart + i * spec.ShakeStep, function()
-				if token == bubbleToken then
-					bangLabel.Rotation = angle
-				end
-			end)
-		end
-	end
+	-- Fermée jusqu'à la première phrase : rien n'est visible.
+	closeParts(partsOf(gui))
 	-- Les phrases, tant que cette bulle vit.
 	task.delay(ChaseFeel.FirstShoutDelay, function()
 		while token == bubbleToken do
@@ -296,13 +319,15 @@ local function hideBars()
 		return
 	end
 	local hud = playerGui:FindFirstChild(ChaseFeel.HudScreen)
-	local rail = if hud then hud:FindFirstChild(ChaseFeel.LeftRail, true) else nil
-	if rail and rail:IsA("GuiObject") then
-		local railObject = rail :: GuiObject
-		if railStates[railObject] == nil then
-			railStates[railObject] = railObject.Visible
+	for _, railName in ChaseFeel.Rails do
+		local rail = if hud then hud:FindFirstChild(railName, true) else nil
+		if rail and rail:IsA("GuiObject") then
+			local railObject = rail :: GuiObject
+			if railStates[railObject] == nil then
+				railStates[railObject] = railObject.Visible
+			end
+			railObject.Visible = false
 		end
-		railObject.Visible = false
 	end
 	local hotbar = playerGui:FindFirstChild(ChaseFeel.Hotbar)
 	if hotbar and hotbar:IsA("ScreenGui") then
@@ -342,7 +367,12 @@ local function begin()
 		end
 	end)
 	stopSiren()
-	startSiren()
+	task.delay(ChaseFeel.SirenDelay, function()
+		if token == chaseToken and active then
+			stopSiren()
+			startSiren()
+		end
+	end)
 	sinceBars = 0
 	hideBars()
 end

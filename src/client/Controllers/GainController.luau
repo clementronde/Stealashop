@@ -30,8 +30,11 @@
 -- Rien n'est laissé : chaque BB_Gain, case et « +$X » est une copie détruite à la fin de son
 -- animation, et les modèles de Clément (BB_Gain, Template, CounterPop) ne sont jamais modifiés. Seuls
 -- leur Text, Visible, Position, Adornee, StudsOffset et transparences changent, sur les copies.
--- L'image de Row.Icon reprend celle de l'icône de la ligne du HUD du même chiffre (SpeedRow,
--- StrengthRow, CashRow : la première ImageLabel de la ligne), sinon celle du modèle BB_Gain.
+-- Couleur de Row.Amount et image de Row.Icon (vague 24) : d'abord les attributs de Clément sur le
+-- modèle BB_Gain (SpeedColor, PowerColor, CashColor en Color3 ; SpeedIcon, PowerIcon, CashIcon en
+-- rbxassetid). S'ils manquent : la couleur de Config/UiMotion.FloatGain.Colors, et l'image de l'icône
+-- de la ligne du HUD du même chiffre (SpeedRow, StrengthRow, CashRow : la première ImageLabel de la
+-- ligne), sinon celle du modèle BB_Gain.
 --
 -- API (client) : aucune. Pour un test dans Studio (barre de commande côté client) :
 --   GainController.GetActive() -> { Gains: number, Flyers: number, Pops: number }
@@ -216,12 +219,22 @@ local function floatGain(kind: Kind, amount: number)
 	billboard:SetAttribute(FLOAT.KindAttribute, kind.Name)
 	if amountLabel then
 		amountLabel.Text = kind.Text(amount)
-		local color: Color3? = (FLOAT.Colors :: { [string]: Color3 })[kind.Name]
+		-- Vague 24 : la couleur posée par Clément sur BB_Gain (attribut <Sorte>Color, Color3) passe
+		-- avant celle de Config/UiMotion.FloatGain.Colors.
+		local attributeColor = template:GetAttribute(`{kind.Name}Color`)
+		local color: Color3? = if typeof(attributeColor) == "Color3"
+			then attributeColor
+			else (FLOAT.Colors :: { [string]: Color3 })[kind.Name]
 		if color then
 			amountLabel.TextColor3 = color
 		end
 	end
-	local image = hudIcon(kind.HudLabel)
+	-- Vague 24 : l'icône posée par Clément sur BB_Gain (attribut <Sorte>Icon, rbxassetid) passe avant
+	-- celle de la ligne du HUD.
+	local attributeIcon = template:GetAttribute(`{kind.Name}Icon`)
+	local image: string? = if type(attributeIcon) == "string" and attributeIcon ~= ""
+		then attributeIcon
+		else hudIcon(kind.HudLabel)
 	if icon and image then
 		icon.Image = image
 	end
