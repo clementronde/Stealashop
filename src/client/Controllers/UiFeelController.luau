@@ -36,6 +36,7 @@ local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local UiMotion = require(Shared:WaitForChild("Config"):WaitForChild("UiMotion"))
+local Settings = require(Shared:WaitForChild("Config"):WaitForChild("Settings"))
 local Find = require(Shared:WaitForChild("Contract"):WaitForChild("Find"))
 local Motion = require(script.Parent:WaitForChild("UI"):WaitForChild("Motion"))
 
@@ -320,7 +321,8 @@ local function startChase()
 	collectPulses()
 	startBanner()
 	local camera = Workspace.CurrentCamera
-	if camera then
+	-- VISUAL EFFECTS sur OFF (L-095, vague 24) : pas de ChaseFov, la caméra garde son champ de vision.
+	if camera and not Settings.VfxReduced(localPlayer) then
 		if fovBase == nil then
 			fovBase = camera.FieldOfView
 		end

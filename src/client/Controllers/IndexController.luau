@@ -6,7 +6,8 @@
 -- Seulement si Features.Index : à false, rien n'est branché et l'écran reste fermé.
 --
 -- Rôle commun :
---   - UI_HUD.IndexButton ouvre l'écran (un 2e appui le ferme) ; CloseButton le ferme. Ouverture et
+--   - UI_HUD.IndexButton (tous les exemplaires : LeftRail et LeftRailTouch) ouvre l'écran (un 2e appui
+--     le ferme) ; CloseButton le ferme. Ouverture et
 --     fermeture animées par UI/Motion (groupe ScreenGroup de l'écran, Motion.SetCloser), comme les
 --     boutiques : les cartes sont retirées une fois l'écran éteint, et une réouverture pendant la
 --     fermeture la rattrape. L'écran branché éteint les plus anciens (Enabled) ;
@@ -18,7 +19,8 @@
 --
 -- UI_Index_v3 (ui-index-v3.md, « Mise en page » et « Pour Ironix ») :
 --   - List : Zone1Section à Zone6Section et SecretsSection ; dans chacune, les cartes vont dans son
---     Content.Cards ; ZoneArt.ZoneName (texte de Clément gardé ; écrit seulement s'il est vide) ;
+--     Content.Cards ; ZoneArt.ZoneName = les magasins PNJ de la zone (Config/Zones.Stores, « MINI MART / KIOSK » sur 2 lignes,
+--     vague 24 ; SecretsSection : texte de Clément gardé, écrit seulement s'il est vide) ;
 --     Content.ZoneBar : Fill (part trouvée), ZoneCount « 4/13 », ZoneItem = l'objet le plus rare de la
 --     section (rareté la plus haute, le dernier du catalogue à égalité), en silhouette tant qu'il n'est
 --     pas trouvé ;
@@ -37,7 +39,8 @@
 --     « ??? » s'il n'est pas trouvé). À l'ouverture : le dernier objet cliqué, sinon le 1er de la zone 1.
 --     Animation T.45 DetailPop (Motion.Pop sur DetailIcon) à chaque clic ;
 --   - Rewards, la récompense de la zone visible dans la liste (la dernière section visible dont le haut
---     est passé à moins de View.ViewMargin px sous le haut de la liste) : SpeedReward.Amount « +3% »
+--     est passé à moins de View.ViewMargin px sous le haut de la liste) : SpeedReward.Amount « +3% » (Icon vide :
+--     l'icône de vitesse du HUD, SpeedRow.SpeedIcon.IconImage)
 --     (Index.ZoneSpeedBonus), CashReward.Amount « +$10.2K » (Index.ZoneCash). La prime d'une zone complète
 --     est versée par le serveur dès que la zone se complète (IndexService) : ClaimLabel dit alors
 --     CLAIMED_TEXT ; zone pas complète, le texte de Clément, et ClaimButton fait View.Deny (son UI_Deny,
@@ -145,6 +148,7 @@ type Screen = {
 	rewards: GuiObject?,
 	rewardsShown: boolean, -- visibilité de Rewards posée par Clément
 	speedAmount: Instance?,
+	speedIcon: Instance?, -- Rewards.SpeedReward.Icon, remplie avec l'icône de vitesse du HUD si vide
 	cashAmount: Instance?,
 	claimButton: GuiObject?,
 	claimLabel: Instance?,
@@ -197,6 +201,11 @@ local UNKNOWN_NAME = "???"
 local UNKNOWN_INCOME = "???"
 local CLAIMED_TEXT = "Claimed!" -- V0 : zone complète, prime déjà versée par le serveur
 local SECRETS_NAME = "Secrets" -- ZoneName des Secrets sans texte de Clément
+local STORE_SEPARATOR = "\n" -- V0 : entre les 2 noms de magasins dans ZoneName (v3)
+-- Icône de vitesse du HUD (UI_HUD.StatsPanel.SpeedRow.SpeedIcon.IconImage), reprise dans
+-- Rewards.SpeedReward.Icon quand Clément l'a laissée vide (comme GainController pour BB_Gain).
+local HUD_SPEED_LABEL = "Speed"
+local HUD_SPEED_ICON = "IconImage"
 -- Récompense d'une zone complète affichée dans RewardLabel (v2) : Index.ZoneRewardText (argent, vitesse
 -- et revenus, L-083 point 7), suivi de ce mot une fois la zone complète. V0, en anglais.
 local REWARD_EARNED_SUFFIX = " EARNED"
@@ -402,6 +411,17 @@ local function fallbackName(def: TabDef): string
 	return if info then info.Theme else `Zone {zone}`
 end
 
+-- ZoneName de la v3 : les noms des magasins PNJ de la zone (Config/Zones.Stores, ceux des enseignes et
+-- du panneau BB_StoreInfo), en majuscules, un par ligne (« MINI MART\nKIOSK »), ou nil (Secrets).
+local function storeNames(def: TabDef): string?
+	local zone = def.zone
+	local info = if zone then Zones[zone] else nil
+	if info == nil or #info.Stores == 0 then
+		return nil
+	end
+	return string.upper(table.concat(info.Stores, STORE_SEPARATOR))
+end
+
 -- Texte de RewardLabel pour une zone (complete : tous ses objets découverts, bonus déjà compté par le
 -- serveur).
 local function rewardText(zone: number, complete: boolean): string
@@ -595,12 +615,44 @@ local function countSection(current: Screen, section: Section): (number, number)
 	return found, #items
 end
 
+-- Rewards.SpeedReward.Icon vide (aucune icône de chaussure livrée) : l'image de l'icône de vitesse du
+-- HUD (SpeedRow.SpeedIcon.IconImage, sinon la 1re image non vide de la ligne du nombre Speed). Seule
+-- l'image est posée, et seulement si Clément l'a laissée vide.
+local function fillSpeedIcon(icon: Instance?)
+	if icon == nil or not isImage(icon) or (icon :: any).Image ~= "" then
+		return
+	end
+	local playerGui = localPlayer:FindFirstChildOfClass("PlayerGui")
+	local hud = if playerGui then playerGui:FindFirstChild(HUD) else nil
+	local label = if hud then Find.path(hud, HUD_SPEED_LABEL) else nil
+	local row = if label and label:IsA("TextLabel") then label.Parent else nil
+	if row == nil or row:IsA("ScreenGui") then
+		return
+	end
+	local image: string? = nil
+	local preferred = Find.path(row, HUD_SPEED_ICON)
+	if preferred and isImage(preferred) and (preferred :: any).Image ~= "" then
+		image = (preferred :: any).Image
+	else
+		for _, child in row:GetDescendants() do
+			if child:IsA("ImageLabel") and (child :: ImageLabel).Image ~= "" then
+				image = (child :: ImageLabel).Image
+				break
+			end
+		end
+	end
+	if image then
+		(icon :: any).Image = image
+	end
+end
+
 -- Rewards (v3) : la zone de la section visible dans la liste.
 local function refreshRewards(current: Screen)
 	local rewards = current.rewards
 	if rewards == nil then
 		return
 	end
+	fillSpeedIcon(current.speedIcon)
 	local rank = current.viewSection
 	local section = if rank then current.sections[rank] else nil
 	local zone = if section then section.def.zone else nil
@@ -628,7 +680,10 @@ local function refreshHeader(current: Screen)
 		else
 			found, total = Index.CountSecrets(discovered)
 		end
-		if not section.keepName then
+		local stores = if current.v3 then storeNames(section.def) else nil
+		if stores then
+			setText(section.zoneName, stores) -- v3 : les magasins PNJ de la zone (retour de Cantin, vague 24)
+		elseif not section.keepName then
 			setText(section.zoneName, current.tabNames[tab] or string.upper(fallbackName(section.def)))
 		elseif textOf(section.zoneName) == nil then
 			setText(section.zoneName, string.upper(fallbackName(section.def)))
@@ -1045,6 +1100,7 @@ local function bind(gui: ScreenGui)
 		rewards = rewards,
 		rewardsShown = if rewards then rewards.Visible else false,
 		speedAmount = if rewards then Find.path(rewards, "SpeedReward.Amount") else nil,
+		speedIcon = if rewards then Find.path(rewards, "SpeedReward.Icon") else nil,
 		cashAmount = if rewards then Find.path(rewards, "CashReward.Amount") else nil,
 		claimButton = claimButton,
 		claimLabel = claimLabel,
@@ -1232,13 +1288,21 @@ local function bindHud(gui: Instance)
 	if hudBound[gui] then
 		return
 	end
-	local found = Find.path(gui, HUD_BUTTON)
-	if found == nil or not found:IsA("GuiButton") then
+	-- Tous les exemplaires : LeftRail.IndexButton (PC) et LeftRailTouch.IndexButton (téléphone).
+	local buttons: { GuiButton } = {}
+	for _, found in Find.all(gui, HUD_BUTTON) do
+		if found:IsA("GuiButton") then
+			table.insert(buttons, found :: GuiButton)
+		end
+	end
+	if #buttons == 0 then
 		reportOnce("hud", `[Index] {HUD}.{HUD_BUTTON} introuvable ou pas un bouton : l'index ne s'ouvre pas`)
 		return
 	end
 	hudBound[gui] = true
-	(found :: GuiButton).Activated:Connect(toggle)
+	for _, button in buttons do
+		button.Activated:Connect(toggle)
+	end
 end
 
 function IndexController.Start()

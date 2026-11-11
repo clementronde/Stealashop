@@ -12,9 +12,11 @@
 --         marqueurs, de la casse, du camion, de l'alerte, des pas…) y est rangé à l'exécution, sauf la
 --         musique (nom en MUS_) et un son déjà rangé dans un autre groupe par Clément. Les objets Sound
 --         de Clément dans Studio ne changent pas : seules leurs copies du jeu sont rangées ;
---       * VfxEnabled : lu par ShatterController (casse en version allégée), CosmeticController (auras à
---         moitié), DamageNumberController (seulement ses propres chiffres) et DisplayController (gerbe
---         d'argent réduite), par Settings.VfxReduced ;
+--       * VfxEnabled : lu par Settings.VfxReduced. À OFF (vague 24) : ShatterController (casse allégée,
+--         ni paillettes ni poussière, ni éclairs, ni tremblement de caméra), CosmeticController (auras
+--         et leur lumière, trails, halos de rareté des colis et des objets exposés éteints),
+--         UiFeelController (pas de ChaseFov), DamageNumberController (seulement ses propres chiffres) et
+--         DisplayController (pas de gerbe d'argent) ;
 --       * ClickSound : le son joué à chaque clic d'un bouton des écrans UI_* (Activated), objet Sound
 --         Assets/Sounds/UI/Clicks/UI_Click_<Id> de Clément, joué en 2D par MarkerSounds (donc dans le
 --         groupe SFX). Laissés de côté : le Template caché d'une liste (ses copies, elles, sont

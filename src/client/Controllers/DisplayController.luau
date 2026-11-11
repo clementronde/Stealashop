@@ -228,9 +228,11 @@ local function burst(pad: Instance): Vector3
 				local count = child:GetAttribute(EMIT_COUNT_ATTRIBUTE)
 				local n = if type(count) == "number" and count == count and count > 0 then math.floor(count) else DEFAULT_EMIT_COUNT
 				if settings and settings.VfxReduced(localPlayer) then
-					n = math.max(1, math.ceil(n * settings.VfxOff.BurstFactor)) -- réglages du joueur (L-095)
+					n = math.ceil(n * settings.VfxOff.BurstFactor) -- réglages du joueur (L-095 ; à 0 : pas de gerbe)
 				end
-				child:Emit(n)
+				if n > 0 then
+					child:Emit(n)
+				end
 			end
 		end
 	end

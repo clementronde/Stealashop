@@ -964,7 +964,7 @@ local function upFrame(position: Vector3, up: Vector3): CFrame
 end
 
 local function emitParticles(kind: ParticleKind, position: Vector3, direction: Vector3, count: number)
-	if count <= 0 then
+	if count <= 0 or Settings.VfxReduced(player) then -- VISUAL EFFECTS sur OFF : ni paillettes ni poussière
 		return
 	end
 	local texture = if kind == "Sparkle"
@@ -1027,7 +1027,7 @@ local function emitParticles(kind: ParticleKind, position: Vector3, direction: V
 end
 
 local function addShake(duration: number, amplitude: number, angle: number, scale: number)
-	if scale <= 0.02 or duration <= 0 or reducedMotion() then
+	if scale <= 0.02 or duration <= 0 or reducedMotion() or Settings.VfxReduced(player) then -- OFF : caméra fixe
 		return
 	end
 	table.insert(shakes, {
@@ -1074,7 +1074,7 @@ end
 
 -- Flash blanc : ColorCorrection locale sur la caméra (la scène s'éclaire, pas l'interface).
 local function playFlash(intensity: number)
-	if intensity <= 0.02 then
+	if intensity <= 0.02 or Settings.VfxReduced(player) then -- VISUAL EFFECTS sur OFF : pas d'éclair d'écran
 		return
 	end
 	local camera = Workspace.CurrentCamera
@@ -1114,6 +1114,9 @@ end
 
 -- Éclair au point d'impact, vu de tous les joueurs proches.
 local function worldFlash(point: Vector3)
+	if Settings.VfxReduced(player) then
+		return -- VISUAL EFFECTS sur OFF : pas de lumière d'éclair
+	end
 	local holder = Instance.new("Attachment")
 	holder.Name = "ShatterLight"
 	holder.Position = point
@@ -1129,6 +1132,9 @@ end
 
 -- Petit éclair au point de chaque coup (prototype du creux, L-081).
 local function hitFlash(point: Vector3)
+	if Settings.VfxReduced(player) then
+		return -- VISUAL EFFECTS sur OFF : pas d'éclair au coup
+	end
 	local holder = Instance.new("Attachment")
 	holder.Name = "HitLight"
 	holder.Position = point

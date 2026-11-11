@@ -73,8 +73,8 @@ local Settings = {
 
 	-- Effets visuels coupés (VfxEnabled = false) : ce que les contrôleurs allègent.
 	VfxOff = {
-		AuraFactor = 0.5, -- V0 : toutes les auras à ce débit de particules (même valeur que l'aura lointaine, Config/Cosmetics)
-		BurstFactor = 0.25, -- V0 : part des particules de la gerbe d'une plaque d'argent (DisplayController)
+		AuraFactor = 0, -- V0 (vague 24, retour de Cantin : 0,5 changeait trop peu) : auras coupées (débit de particules × 0)
+		BurstFactor = 0, -- V0 (vague 24) : part des particules de la gerbe d'une plaque d'argent (DisplayController) ; 0 = pas de gerbe
 	},
 
 	-- Animations de l'écran (tableau, lignes T.47 et T.48 ; prototype settings_proto.luau).
