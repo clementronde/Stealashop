@@ -462,6 +462,30 @@ local List: { RemoteDef } = {
 			{ Name = "endsAt", Kind = "number", Min = 0 },
 		},
 	},
+	{
+		-- Vague 28 (potions, L-085), absent du tableau 9.4 : une potion personnelle apparaît pour ce joueur seul
+		-- (Config/Potions) : uid de la potion, Id du type (« Speed »…), position au sol.
+		Name = "PotionSpawned",
+		Direction = "ServerToClient",
+		Reliable = true,
+		Args = { id("uid"), id("potionId"), { Name = "position", Kind = "Vector3" } },
+	},
+	{
+		-- Vague 28 : la potion `uid` de ce joueur disparaît (ramassée, expirée, retirée).
+		Name = "PotionRemoved",
+		Direction = "ServerToClient",
+		Reliable = true,
+		Args = { id("uid") },
+	},
+	{
+		-- Vague 28 : le joueur ramasse sa potion `uid`. PotionService vérifie qu'elle est à lui, encore là, et
+		-- à Config/Potions.PickupMaxDistance studs au plus ; refusé, rien ne change.
+		Name = "PickPotion",
+		Direction = "ClientToServer",
+		Reliable = true,
+		Args = { id("uid") },
+		RatePerSecond = 4, -- V0 proposé, absent du doc
+	},
 }
 
 return {
