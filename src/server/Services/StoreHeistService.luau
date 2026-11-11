@@ -68,8 +68,12 @@
 --     vigile (plafonds de 9.7, GuardService absent) : jusqu'à la réouverture (V0 proposé, absent du
 --     doc). Pendant ce temps, côté serveur : plus aucune prise pour lui dans ce magasin, et plus de
 --     chrono. D'abord « en sortie » (Leaving) tant qu'il est dans le volume Bounds avec le colis ; puis
---     « fermé » (Closed) dès qu'il en sort ou qu'il ne porte plus le colis (attrapé dedans, colis tombé) :
---     alors, s'il est (ou revient) dans Bounds, il est sorti devant la vitrine (moveOut, colis gardé).
+--     « fermé » (Closed) dès qu'il en sort ou qu'il ne porte plus le colis ; ou « attrapé » (Caught) si son
+--     portage échoue avant qu'il soit sorti (CarryService « Failed » : attrapé dedans, mort) : fermé alors
+--     jusqu'à la réouverture du magasin, le retour de son vigile ne le rouvre pas (Cantin, 2026-11-11).
+--     S'il est (ou revient) dans Bounds, il est sorti
+--     devant la vitrine (moveOut, colis gardé). Un vigile qui rentre vers la réserve et qui est déjà dans
+--     Bounds ne retient plus le rideau local (il est passé derrière).
 --     L'attribut CLOSED_ATTRIBUTE du Player liste les StoreId fermés (Closed) pour lui : son client
 --     (StoreLockController) y montre le rideau baissé et solide, chez lui seul. Les autres joueurs voient
 --     le magasin normal et peuvent continuer à le braquer, chacun fermé pour lui-même s'il vole.
@@ -300,7 +304,10 @@ type Store = {
 
 -- Leaving : vient de prendre un colis, encore dans Bounds avec lui ; Closed : fermé pour lui, rideau
 -- baissé chez lui et sorti s'il entre.
-type LockState = "Leaving" | "Closed"
+-- Caught (Cantin, 2026-11-11, vu en Play) : il ne portait plus son colis encore dans le magasin (attrapé
+-- dedans, colis tombé) : fermé pour lui jusqu'à la réouverture du magasin, pas seulement jusqu'au retour de
+-- son vigile (déjà là, il rentre aussitôt et rouvrait le magasin pour lui en quelques secondes).
+type LockState = "Leaving" | "Closed" | "Caught"
 
 type Hold = { Slot: Slot, Box: ShelfBox, StartedAt: number }
 
@@ -1105,7 +1112,8 @@ local function publishClosed(player: Player)
 	end
 	local ids: { string } = {}
 	for _, store in stores do
-		if store.Locked[player] == "Closed" and not store.CurtainHeld then
+		local state = store.Locked[player]
+		if (state == "Closed" or state == "Caught") and not store.CurtainHeld then
 			table.insert(ids, store.Id)
 		end
 	end
@@ -1127,7 +1135,7 @@ local function unlock(store: Store, player: Player, why: string)
 		return
 	end
 	store.Locked[player] = nil
-	if state == "Closed" then
+	if state == "Closed" or state == "Caught" then
 		publishClosed(player)
 	end
 	log(`{store.Id} rouvert pour {player.Name} ({why})`)
@@ -1146,25 +1154,33 @@ local function curtainBlocker(store: Store): string?
 	if bounds == nil or store.ShutterDown then
 		return nil
 	end
-	local guards = Workspace:FindFirstChild(GUARDS_FOLDER)
-	if guards then
-		for _, guard in guards:GetChildren() do
-			local root = if guard:IsA("Model") then guard:FindFirstChild("HumanoidRootPart") else nil
-			if root and root:IsA("BasePart") and distanceTo(bounds, root.Position) <= CURTAIN_GUARD_MARGIN then
-				return `vigile {guard.Name} dans le magasin`
-			end
-		end
-	end
+	-- Vigiles qui rentrent vers la réserve de ce magasin (a70).
+	local returning: { any } = {}
 	local getReturning = returningGuards
 	if getReturning then
 		local ok, roots = pcall(getReturning, store.Model)
 		if ok and type(roots) == "table" then
-			for _, root in roots do
-				if typeof(root) == "Instance" and root:IsA("BasePart") and distanceTo(bounds, root.Position) <= CURTAIN_RETURN_MARGIN then
-					local name = if root.Parent then root.Parent.Name else "?"
-					return `vigile {name} qui rentre vers la réserve`
-				end
+			returning = roots
+		end
+	end
+	local guards = Workspace:FindFirstChild(GUARDS_FOLDER)
+	if guards then
+		for _, guard in guards:GetChildren() do
+			local root = if guard:IsA("Model") then guard:FindFirstChild("HumanoidRootPart") else nil
+			-- Un vigile qui rentre et qui est déjà dans le volume Bounds est passé derrière le rideau : il
+			-- ne le traversera plus (celui qui vient d'attraper un voleur dans le magasin, 2026-11-11).
+			if root and root:IsA("BasePart") and distanceTo(bounds, root.Position) <= CURTAIN_GUARD_MARGIN
+				and not (table.find(returning, root) ~= nil and inside(bounds, root.Position)) then
+				return `vigile {guard.Name} dans le magasin`
 			end
+		end
+	end
+	-- Vigile qui rentre et qui va passer le rideau (encore dehors, tout près).
+	for _, root in returning do
+		if typeof(root) == "Instance" and root:IsA("BasePart") and not inside(bounds, root.Position)
+			and distanceTo(bounds, root.Position) <= CURTAIN_RETURN_MARGIN then
+			local name = if root.Parent then root.Parent.Name else "?"
+			return `vigile {name} qui rentre vers la réserve`
 		end
 	end
 	return nil
@@ -1184,7 +1200,7 @@ local function stepLocks(store: Store)
 		store.CurtainHeld = held
 		local any = false
 		for player, state in store.Locked do
-			if state == "Closed" then
+			if state == "Closed" or state == "Caught" then
 				any = true
 				publishClosed(player)
 			end
@@ -1574,6 +1590,14 @@ local function onCarryEnded(player: Player, payload: any, result: string, reason
 	if result ~= "Failed" then
 		return -- « Dropped » (DEV-048) : au sol, il revient par onDropExpired s'il n'est pas ramassé
 	end
+	-- Attrapé (ou mort) encore dans le magasin, avant d'en être sorti : fermé pour lui jusqu'à la
+	-- réouverture (Caught, Cantin 2026-11-11), pas seulement jusqu'au retour de son vigile, déjà là.
+	local lockedStore = storesById[payload.StoreId]
+	if lockedStore and lockedStore.Locked[player] == "Leaving" then
+		lockedStore.Locked[player] = "Caught"
+		publishClosed(player)
+		log(`{lockedStore.Id} fermé pour {player.Name} jusqu'à sa réouverture (colis perdu dans le magasin : {reason})`)
+	end
 	-- Attrapé dans le magasin : il en est sorti par la fermeture pour le voleur (stepLocks).
 	if returnBox(payload, carrierPosition(player)) then
 		log(`colis {payload.Tier} de {player.Name} ({reason}) : revient sur {payload.SlotId}`)
@@ -1937,7 +1961,7 @@ function StoreHeistService.Init()
 	local onGone: any = if okGuard and type(guardApi) == "table" then guardApi.OnGuardGone else nil
 	local subscribed = onGone ~= nil and pcall(onGone, function(thief: Player, model: Model)
 		local store = stores[model]
-		if store then
+		if store and store.Locked[thief] ~= "Caught" then -- Caught : jusqu'à la réouverture
 			unlock(store, thief, "son vigile est rentré")
 		end
 	end)

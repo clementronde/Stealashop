@@ -2977,11 +2977,14 @@ end
 
 -- a70 (vague 24) : les vigiles de jour de `store` qui rentrent vers sa réserve (GuardSpawn), donc à
 -- travers le magasin : leur HumanoidRootPart. StoreHeistService lève le rideau local du voleur avant
--- leur arrivée (on ne doit jamais voir un vigile traverser ce rideau, Cantin 2026-11-11).
+-- leur arrivée (on ne doit jamais voir un vigile traverser ce rideau, Cantin 2026-11-11). Compte aussi
+-- celui qui s'efface à la réserve (Fade) : arrivé, il ne traverse plus le rideau (sinon le rideau local
+-- remontait 0,6 s pendant son effacement).
 function GuardService.GetReturningGuards(store: Model): { BasePart }
 	local roots: { BasePart } = {}
 	for _, guard in guards do
-		if guard.alive and guard.store == store and guard.state == "Return" and guard.returnTo == "Reserve" then
+		if guard.alive and guard.store == store and (guard.state == "Return" or guard.state == "Fade")
+			and guard.returnTo == "Reserve" then
 			table.insert(roots, guard.root)
 		end
 	end
