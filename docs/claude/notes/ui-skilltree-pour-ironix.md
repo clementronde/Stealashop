@@ -7,7 +7,14 @@ Noms relevés dans Studio le 2026-11-11. L'écran est construit, mais rien ne l'
 1. `StarterGui/UI_SkillTree` (`ScreenGroup=Menu`, `IgnoreGuiInset`, `DisplayOrder` 5) : écran plein, maquette v3 validée par Clément (Figma `48:748` et `49:900`).
    - Ouverture : T.54 (« bop bop bop », de la tuile centrale vers les anneaux). Fermeture : T.28.
    - `StarterGui/UI_SkillTree_v2_old` est l'ancienne version : à supprimer, ne pas la brancher.
-2. **Bouton qui l'ouvre : —.** Le HUD n'a aucun bouton d'arbre. Les bornes de la boutique (`UpgradeKiosk`) ont été retirées le 2026-11-10. C'est à Clément de décider : un bouton dans `LeftRail`, ou un point dans la boutique.
+2. **Bouton qui l'ouvre** : `UI_HUD.LeftRail.SkillTreeButton` (`LayoutOrder` 5, avec `Icon.IconImage`, `Label` « Upgrades » et `Shade`).
+   - Il est caché : le code le montre, comme `SettingsButton`.
+   - Son icône est à importer par Clément : `StealAShop-Art/UI/_A_importer_skilltree/UI_Icon_SkillTree.png` (attribut `IconAsset`).
+2b. **Sur téléphone : `UI_HUD.LeftRailTouch`** (caché ; décision de Clément du 2026-11-11, version B).
+   - Les mêmes 5 boutons, avec les mêmes noms (`RobuxShopButton`, `IndexButton`, `RebirthButton`, `InventoryButton`, `SkillTreeButton`).
+   - En 2 colonnes, avec seulement l'icône (`Icon.IconImage`) et le petit texte dessous (`Label`), sans fond.
+   - **Pour Ironix** : sur téléphone, montrer `LeftRailTouch` et cacher `LeftRail`. Les boutons des deux cadres sont à brancher pareil.
+   - Mesures : cases d'au moins 49 px de haut, texte de 13 px, rien ne chevauche l'argent (de 844 × 390 à 667 × 335, barre Roblox de 36 ou 58 px).
 3. Hors de l'arbre :
    - `Backdrop` (`Light`, `Studs`) bloque les clics vers le jeu ;
    - `CashPill.Cash` affiche l'argent : il défile (T.15 `Roll`) et sursaute (T.16) ;
@@ -33,9 +40,10 @@ Noms relevés dans Studio le 2026-11-11. L'écran est construit, mais rien ne l'
    - `BuyButton` (`BuyLabel`, `Shade`), et `NeedButton` (`NeedLabel` « Need $X », caché) à la place de BUY quand l'argent manque ;
    - changement de tuile : T.56. Refus : T.18 (`Shake`).
 9. **Achat** : la tuile gonfle (T.57), revient (T.58), avec un éclat (T.59) et des étincelles (T.60). La voisine qui s'ouvre se découvre avec un badge NEW! (T.61). L'argent défile et sursaute (T.15, T.16) ; `Success` (T.33).
-10. **À importer par Clément, sinon les tuiles n'ont pas de fond en jeu** : `StealAShop-Art/UI/_A_importer_hex/UI_Hex_Fill.png` et `UI_Hex_Gloss.png`.
-    - Aujourd'hui, `Rim`, `Body` et `Gloss` ont une `Image` vide (attribut `IconAsset`), et seul le prototype dessine les hexagones.
-    - Les icônes de Traps et de Safe (`Tile_Next1`, `Tile_Next4`) sont vides elles aussi.
+10. **Images d'hexagone importées et branchées (2026-11-11)** :
+    - `UI_Hex_Fill` (74256328267451) est sur 88 images (`Rim`, `Body`, `Shadow`) ; `UI_Hex_Gloss` (82034048970703) est sur 37 `Gloss` ;
+    - elles appartiennent au groupe RoundStone Studio, et les deux se chargent ;
+    - les icônes de Traps et de Safe (`Tile_Next1`, `Tile_Next4`) restent vides.
 
 ## 2. Le contenu (maquette validée, L-085)
 
