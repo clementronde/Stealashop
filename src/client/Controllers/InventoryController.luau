@@ -52,7 +52,9 @@
 --     le doigt : vert si la pose a des chances de passer (dans le volume Bounds de SA boutique, sol assez
 --     plat au niveau du bas de Bounds, à portée), rouge sinon. Un clic ou un appui sur le monde envoie
 --     PlaceBox(boxUid, point visé) et joue Place (contrat 2.4) ; le serveur revérifie tout et répond par
---     un Notify en cas de refus (le mode reste, pour réessayer). Fin du mode : colis posé (il quitte
+--     un Notify en cas de refus (le mode reste, pour réessayer). Clics répétés (vague 25) : un clic à moins
+--     de PLACE_MOVE studs du point déjà envoyé, moins de PLACE_GUARD s après, est ignoré (une seule
+--     demande PlaceBox par double clic ; visée ailleurs, le nouvel essai part). Fin du mode : colis posé (il quitte
 --     l'inventaire), touche Q (V0), écran rouvert, outil pris (1, 2, écran), portage, mort ;
 --   - outil de casse mis en main tout seul près d'une vitrine (L-092 point 2c, réponse de Clément du
 --     2026-11-11 : sur téléphone, sans barre Roblox, on ne le sortait que par l'écran). Toutes les TICK s,
@@ -75,7 +77,8 @@
 --   InventoryController.SelectTab(name)        "Items", "Boxes", "Tools" ou "Potions"
 --   InventoryController.StartPlacing(boxUid)   mode pose de ce colis (barre de commande, bancs)
 --   InventoryController.EquipBest()            demande au serveur de poser ses meilleurs objets
---   InventoryController.GetState() -> { Open, Tab, Placing, Aim, AimValid, Items, Boxes, Tools }
+--   InventoryController.GetState() -> { Open, Tab, Placing, Aim, AimValid, Items, Boxes, Tools, Loaded }
+--       Loaded : l'état de l'inventaire lu vient du profil chargé (attribut InventoryState posé)
 -- Pour la barre du bas (HotbarController, L-095 point 6) : la même source et les mêmes actions.
 --   InventoryController.GetInventory() -> InventoryState.State   état lu dans l'attribut (à ne pas modifier)
 --   InventoryController.GetTools() -> { Breaking: Tool?, Bat: Tool?, Held: Tool? }
@@ -86,6 +89,11 @@
 --       fn() après chaque changement de l'état, du mode pose, de l'outil en main ou du Backpack
 --   InventoryController.SetSlotKeys(handler?)  handler(index) -> boolean : la touche 1 à 9 (index) a-t-elle
 --       été traitée ? nil (défaut) : touches 1 et 2 d'origine
+--   InventoryController.SetCardDrag(hooks?)    vague 25 (glisser une carte vers la barre du bas) :
+--       hooks.Press(key, frame, input, list) à chaque appui (clic gauche ou doigt) sur une carte (key = son
+--       nom, Item_<uid>, Box_<uid>, Tool_<Id>, Tool_Bat ; list = le ScrollingFrame List) ;
+--       hooks.Suppress() -> boolean : vrai juste après un glisser, le clic de la carte (ou de son bouton)
+--       est alors ignoré. nil (défaut) : rien
 
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
@@ -169,6 +177,12 @@ type ToolCard = {
 	icon: string, -- nom passé à Icons.get (« TOOL_Hammer »)
 }
 
+-- Glisser une carte vers la barre du bas (HotbarController, vague 25).
+type CardDrag = {
+	Press: (key: string, frame: GuiObject, input: InputObject, list: Instance?) -> (),
+	Suppress: () -> boolean,
+}
+
 -- Mode pose d'un colis.
 type Placing = {
 	uid: string,
@@ -240,6 +254,11 @@ local CANCEL_KEY = Enum.KeyCode.Q
 local PENDING_TOOL_TIME = 3
 local TICK = 0.25
 local SEND_GUARD = 0.5
+-- V0 proposés, absents du doc (vague 25) : un clic de pose à moins de PLACE_MOVE studs du point déjà
+-- envoyé pour ce colis, moins de PLACE_GUARD s après, est un clic répété (ignoré) ; visée ailleurs (après
+-- un refus), il part.
+local PLACE_GUARD = 1
+local PLACE_MOVE = 2
 local TRACK_MIN_SHARE = 0.1
 -- Aperçu du colis (couleurs de la planche 10.6 ; portée acceptée par le serveur, PlaceBox).
 local REACH = Unbox.PromptDistance + Unbox.ReachTolerance
@@ -263,6 +282,7 @@ local screen: Screen? = nil
 local isOpen = false
 local tab: TabName = "Items"
 local state: InventoryState.State = { Items = {}, Boxes = {} }
+local loaded = false -- état lu dans un attribut InventoryState posé (profil chargé)
 local plot: Model? = nil
 local watchedPlots: { [Instance]: RBXScriptConnection } = {}
 local placing: Placing? = nil
@@ -281,6 +301,8 @@ local characterConnections: { RBXScriptConnection } = {}
 local backpackConnections: { RBXScriptConnection } = {}
 local listeners: { () -> () } = {} -- OnChanged (barre du bas)
 local slotKeys: ((index: number) -> boolean)? = nil -- SetSlotKeys (barre du bas)
+local cardDrag: CardDrag? = nil -- SetCardDrag (barre du bas, vague 25)
+local placeSentAt: { [string]: { at: number, point: Vector3 } } = {} -- uid du colis → dernier PlaceBox
 local nearWindow = false -- dans la zone d'une vitrine cassable (L-092 2c)
 local autoEquipDone = false -- déjà servi pendant cette approche : rien de plus tant qu'il n'est pas reparti
 
@@ -381,6 +403,16 @@ local function tint(element: Instance?, color: Color3)
 	end
 end
 
+-- Vrai juste après un glisser vers la barre du bas (SetCardDrag) : le clic qui le termine ne compte pas.
+local function dragJustEnded(): boolean
+	local hooks = cardDrag
+	if hooks == nil then
+		return false
+	end
+	local ok, result = pcall(hooks.Suppress)
+	return ok and result == true
+end
+
 -- Clic sur un élément : Activated pour un bouton, sinon toucher ou clic gauche sur le cadre.
 local function onClick(element: Instance?, handler: () -> ()): RBXScriptConnection?
 	if element == nil then
@@ -388,14 +420,18 @@ local function onClick(element: Instance?, handler: () -> ()): RBXScriptConnecti
 	end
 	if element:IsA("GuiButton") then
 		return (element :: GuiButton).Activated:Connect(function()
-			handler()
+			if not dragJustEnded() then
+				handler()
+			end
 		end)
 	end
 	if element:IsA("GuiObject") then
 		return (element :: GuiObject).InputBegan:Connect(function(input: InputObject)
 			local inputType = input.UserInputType
 			if inputType == Enum.UserInputType.MouseButton1 or inputType == Enum.UserInputType.Touch then
-				handler()
+				if not dragJustEnded() then
+					handler()
+				end
 			end
 		end)
 	end
@@ -766,7 +802,14 @@ local function placeAt(current: Placing, x: number?, y: number?)
 	if point == nil then
 		return
 	end
-	net.Client.PlaceBox:Fire(current.uid, point)
+	local now = os.clock()
+	local uid = current.uid
+	local last = placeSentAt[uid]
+	if last and last.at + PLACE_GUARD > now and (last.point - point).Magnitude < PLACE_MOVE then
+		return -- clic répété au même endroit : la première demande est en route
+	end
+	placeSentAt[uid] = { at = now, point = point }
+	net.Client.PlaceBox:Fire(uid, point)
 	playAnimation("Place")
 end
 
@@ -810,7 +853,9 @@ end
 ------------------------------------------------------------------------------
 
 local function readState()
-	state = InventoryState.Decode(localPlayer:GetAttribute(InventoryState.Attribute))
+	local text = localPlayer:GetAttribute(InventoryState.Attribute)
+	state = InventoryState.Decode(text)
+	loaded = text ~= nil -- profil chargé : l'état lu est complet (barre du bas, vague 25)
 	local current = placing
 	if current and not isStoredBox(current.uid) then
 		stopPlacing() -- posé (ou disparu) : fin du mode pose
@@ -910,6 +955,18 @@ local function newView(section: Section, key: string): CardView?
 		local handler = view.handlers.Card
 		if handler then
 			handler()
+		end
+	end))
+	-- Appui sur la carte : peut-être le début d'un glisser vers la barre du bas (vague 25).
+	keep(frame.InputBegan:Connect(function(input: InputObject)
+		local hooks = cardDrag
+		local inputType = input.UserInputType
+		if hooks and (inputType == Enum.UserInputType.MouseButton1 or inputType == Enum.UserInputType.Touch) then
+			local current = screen
+			local ok, message: any = pcall(hooks.Press, key, frame, input, if current then current.list else nil)
+			if not ok then
+				reportOnce("cardDrag", `[Inventory] glisser d'une carte : {message}`)
+			end
 		end
 	end))
 	for _, name in CARD_BUTTONS do
@@ -1628,6 +1685,10 @@ function InventoryController.SetSlotKeys(handler: ((index: number) -> boolean)?)
 	slotKeys = handler
 end
 
+function InventoryController.SetCardDrag(hooks: CardDrag?)
+	cardDrag = hooks
+end
+
 function InventoryController.EquipBest()
 	if net == nil then
 		warn("[InventoryController] remotes pas encore prêts : EquipBest ignoré")
@@ -1642,6 +1703,7 @@ function InventoryController.GetState(): { [string]: any }
 	local current = placing
 	return {
 		Open = isOpen,
+		Loaded = loaded,
 		Tab = tab,
 		Placing = if current then current.uid else nil,
 		Aim = lastAim,

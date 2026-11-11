@@ -194,6 +194,10 @@ export type Data = {
 	Settings: Settings?, -- réglages du joueur (L-095 point 2 ; SettingsService, Config/Settings). Champ
 	-- facultatif, sans changement de version : absent = réglages par défaut ; un champ invalide reprend
 	-- sa valeur par défaut au chargement (Settings.Sanitize).
+	Hotbar: { string }?, -- vague 25 : disposition de la barre du bas UI_Hotbar choisie par le joueur
+	-- (HotbarService, Shared/HotbarLayout) : 6 identifiants dans l'ordre des cases, "Tool", "Bat", uid
+	-- d'un colis ou d'un objet, "" pour une case vide (jamais de trou). Champ facultatif, sans changement de
+	-- version : absent = disposition de départ ; un uid qui n'est plus au joueur devient vide au chargement.
 	-- Partie 2 : Defenses, Rebirths, ajoutés par migration (Version = 9 et suivantes : la v2 est prise
 	-- par le catalogue d'objets v2, la v3 par la boutique Robux, la v4 par l'index, la v5 par les colis
 	-- sur les présentoirs, la v6 par les gains hors ligne, la v7 par les colis dans l'inventaire, la v8

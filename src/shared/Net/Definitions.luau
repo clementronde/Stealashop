@@ -414,6 +414,26 @@ local List: { RemoteDef } = {
 			{ Name = "tier", Kind = "string", Max = 16 },
 		},
 	},
+	{
+		-- Ajout de la vague 25 (retour du Play de Cantin du 2026-11-11), absent du tableau 9.4 : le joueur a
+		-- rangé sa barre du bas UI_Hotbar (HotbarController, glisser-déposer). slot1 à slot6 = identifiant de
+		-- chaque case, dans l'ordre (Shared/HotbarLayout) : "Tool", "Bat", uid d'un colis ou d'un objet, ou ""
+		-- pour une case vide ; 6 au plus (un 7e argument est refusé par Net), absent = vide. HotbarService
+		-- vérifie que chaque uid est à ce joueur et qu'aucun n'est en double ; refusé, rien ne change. Rien
+		-- de sensible : la sauvegarde ne touche que le champ Hotbar du profil.
+		Name = "SetHotbar",
+		Direction = "ClientToServer",
+		Reliable = true,
+		Args = {
+			{ Name = "slot1", Kind = "string", Min = 0, Max = MAX_ID_LENGTH, Optional = true },
+			{ Name = "slot2", Kind = "string", Min = 0, Max = MAX_ID_LENGTH, Optional = true },
+			{ Name = "slot3", Kind = "string", Min = 0, Max = MAX_ID_LENGTH, Optional = true },
+			{ Name = "slot4", Kind = "string", Min = 0, Max = MAX_ID_LENGTH, Optional = true },
+			{ Name = "slot5", Kind = "string", Min = 0, Max = MAX_ID_LENGTH, Optional = true },
+			{ Name = "slot6", Kind = "string", Min = 0, Max = MAX_ID_LENGTH, Optional = true },
+		},
+		RatePerSecond = 4, -- V0 proposé, absent du doc ; le client regroupe ses envois (0,5 s)
+	},
 }
 
 return {
