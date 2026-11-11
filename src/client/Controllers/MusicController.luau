@@ -3,22 +3,26 @@
 -- d'événement (liaison L-056, demande de Clément du 2026-11-07 ; valeurs : Config/Music).
 --
 -- Fond (demande de Cantin du 2026-11-11 : plus de musique par zone) : partout, zone safe, couloir,
--- toutes les zones, de jour comme de nuit, une seule piste continue, Music.AmbientTrack (MUS_Ambient,
--- Morning Mood de Grieg). Elle ne redémarre pas d'une zone à l'autre (la position du joueur ne compte
--- plus pour le fond). Sans elle dans Studio : Music.FallbackTrack (MUS_Hub) partout, avec une ligne en
--- Studio, une fois ; sans les deux : silence (hors événements). MUS_Z1 à MUS_Z6 ne sont plus jouées.
+-- toutes les zones, de jour comme de nuit, la playlist Music.AmbientTracks (6 morceaux, Morning Mood
+-- en premier) : chaque morceau joue une fois (copie sans boucle) ; à sa fin (signal Ended), le suivant
+-- monte en fondu (FadeTime), et après le dernier on repart du premier. Elle ne redémarre pas d'une
+-- zone à l'autre (la position du joueur ne compte pas pour le fond). Un morceau absent de Studio est
+-- sauté (une ligne en Studio, une fois) ; aucun morceau : Music.FallbackTrack (MUS_Hub) en boucle
+-- partout (une ligne) ; sans lui non plus : silence (hors événements). MUS_Z1 à MUS_Z6 ne sont plus
+-- jouées.
 --
 -- Pistes : les Sound de Clément dans ReplicatedStorage/Assets/Music (sous-dossiers compris). Ils ne
 -- sont jamais modifiés : chaque piste jouée est une copie, faite la première fois qu'elle sert, rangée
--- dans SoundService (son 2D, chez ce joueur seulement) et jouée en boucle (Looped forcé sur la copie).
+-- dans SoundService (son 2D, chez ce joueur seulement), en boucle (Looped forcé sur la copie), sauf
+-- les morceaux de la playlist (Looped = false forcé).
 -- Volume plein d'une piste = le Volume du Sound de Clément × le réglage du joueur (attribut
 -- Music.VolumeAttribute du Player local, de 0 à 1, absent : 1 ; posé par UI_Settings), suivi en direct.
 --
 -- Fondu : une seule piste visée à la fois. Elle monte vers son volume plein pendant que toutes les
 -- autres descendent, à la même vitesse (de 0 au plein en FadeTime s) : deux pistes ne sont jamais à
 -- fond ensemble, et leurs parts additionnées ne dépassent jamais une piste pleine. Une piste
--- descendue à 0 est mise en pause (Playing = false) : le fond reprend où il en était après un
--- événement.
+-- descendue à 0 est mise en pause (Playing = false) : le morceau de fond reprend où il en était après
+-- un événement.
 --
 -- Musiques d'événement (liaison L-071, points 6 et 7 ; Config/Music), avant le fond, dans cet ordre :
 --   1. poursuite : Music.ChaseTrack (MUS_Chase) tant qu'un vigile poursuit le joueur local
@@ -115,6 +119,7 @@ local breathFull = 0 -- Volume du Sound de Clément
 local event: EventKind? = nil -- événement dont la musique joue
 local nearTruck = false -- dans le cercle du camion (avec la marge de sortie)
 local chasedFor = 0 -- secondes depuis le départ de la poursuite (0 hors poursuite)
+local ambientIndex = 1 -- morceau de la playlist en cours (Music.AmbientTracks)
 
 local function sayOnce(key: string, message: string, isProblem: boolean?)
 	if not IS_STUDIO or said[key] then
@@ -130,8 +135,8 @@ end
 
 -- Pistes ----------------------------------------------------------------------------------------------
 
--- `effect` : ce que le manque de la piste change, pour la ligne de Studio.
-local function findTemplate(name: string, effect: string): Sound?
+-- `effect` : ce que le manque de la piste change, pour la ligne de Studio (nil : pas de ligne).
+local function findTemplate(name: string, effect: string?): Sound?
 	local current: Instance? = ReplicatedStorage
 	for _, segment in Music.Folder do
 		current = if current then current:FindFirstChild(segment) else nil
@@ -144,12 +149,32 @@ local function findTemplate(name: string, effect: string): Sound?
 	if found and found:IsA("Sound") then
 		return found :: Sound
 	end
-	sayOnce(`track:{name}`, `{name} absent de {FOLDER_PATH} (ou pas un Sound) : {effect}`)
+	if effect then
+		sayOnce(`track:{name}`, `{name} absent de {FOLDER_PATH} (ou pas un Sound) : {effect}`)
+	end
 	return nil
 end
 
--- La copie de la piste `name`, faite au besoin ; false si la piste manque.
-local function ensureTrack(name: string, effect: string): boolean
+local SKIP_EFFECT = "morceau sauté dans la playlist de fond (demande du 2026-11-11)"
+
+-- Fin d'un morceau de la playlist (signal Ended) : il est remis au début et à 0, et si c'était le
+-- morceau en cours, on passe au suivant (après le dernier : le premier), revu à l'image suivante.
+local function onAmbientEnded(name: string)
+	local track = tracks[name]
+	if track then
+		track.Level = 0
+		track.Copy.TimePosition = 0
+	end
+	local list = Music.AmbientTracks
+	if list[ambientIndex] == name then
+		ambientIndex = ambientIndex % #list + 1
+	end
+	sinceCheck = math.huge
+end
+
+-- La copie de la piste `name`, faite au besoin ; false si la piste manque. `ambient` : morceau de la
+-- playlist (sans boucle, suivi de sa fin) ; sinon la copie joue en boucle.
+local function ensureTrack(name: string, effect: string?, ambient: boolean?): boolean
 	if tracks[name] then
 		return true
 	end
@@ -159,25 +184,42 @@ local function ensureTrack(name: string, effect: string): boolean
 	end
 	local copy = template:Clone() :: Sound?
 	if copy == nil then
-		sayOnce(`archivable:{name}`, `{name} ne se copie pas (Archivable = false) : {effect}`, true)
+		sayOnce(`archivable:{name}`, `{name} ne se copie pas (Archivable = false) : {effect or SKIP_EFFECT}`, true)
 		return false
 	end
-	copy.Looped = true
+	copy.Looped = not ambient
 	copy.Playing = false
 	copy.Volume = 0
 	copy.Parent = SoundService
+	if ambient then
+		copy.Ended:Connect(function()
+			onAmbientEnded(name)
+		end)
+	end
 	tracks[name] = { Copy = copy, FullVolume = template.Volume, Level = 0, Written = 0 }
 	return true
 end
 
-local AMBIENT_EFFECT = `repli sur {Music.FallbackTrack} partout (demande du 2026-11-11)`
 local FALLBACK_EFFECT = "pas de musique de fond"
 
--- Piste de fond : MUS_Ambient, sinon MUS_Hub, sinon nil (silence).
+-- Piste de fond : le morceau en cours de la playlist, ou le suivant présent (les absents sautés, une
+-- ligne en Studio chacun) ; aucun : MUS_Hub ; sinon nil (silence).
 local function backgroundTrack(): string?
-	if ensureTrack(Music.AmbientTrack, AMBIENT_EFFECT) then
-		return Music.AmbientTrack
+	local list = Music.AmbientTracks
+	local skipped: { string } = {}
+	for offset = 0, #list - 1 do
+		local index = (ambientIndex - 1 + offset) % #list + 1
+		local name = list[index]
+		if ensureTrack(name, nil, true) then
+			ambientIndex = index
+			for _, missing in skipped do
+				sayOnce(`track:{missing}`, `{missing} absent de {FOLDER_PATH} (ou pas un Sound) : {SKIP_EFFECT}`)
+			end
+			return name
+		end
+		table.insert(skipped, name)
 	end
+	sayOnce("playlist", `aucun morceau de la playlist de fond dans {FOLDER_PATH} : repli sur {Music.FallbackTrack} partout (demande du 2026-11-11)`)
 	if ensureTrack(Music.FallbackTrack, FALLBACK_EFFECT) then
 		return Music.FallbackTrack
 	end

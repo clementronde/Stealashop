@@ -8,13 +8,21 @@
 local DeepFreeze = require(script.Parent.DeepFreeze)
 
 local Music = {
-	-- Pistes de Clément : des Sound en boucle, chacun avec son volume de départ (L-056).
+	-- Pistes de Clément : des Sound, chacun avec son volume de départ (L-056).
 	Folder = { "Assets", "Music" }, -- depuis ReplicatedStorage ; sous-dossiers permis
 	-- Demande de Cantin du 2026-11-11 : plus de musique par zone. Partout (zone safe, couloir, toutes
-	-- les zones, de jour comme de nuit), une seule piste de fond continue, Morning Mood de Grieg
-	-- (MUS_Ambient), qui ne redémarre pas d'une zone à l'autre. MUS_Z1 à MUS_Z6 ne sont plus jouées.
-	AmbientTrack = "MUS_Ambient",
-	FallbackTrack = "MUS_Hub", -- fond partout tant que MUS_Ambient n'est pas dans Studio
+	-- les zones, de jour comme de nuit), une playlist de fond qui ne redémarre pas d'une zone à
+	-- l'autre : ces morceaux dans cet ordre, chacun joué une fois, puis retour au premier après le
+	-- dernier. Un morceau absent de Studio est sauté. MUS_Z1 à MUS_Z6 ne sont plus jouées.
+	AmbientTracks = {
+		"MUS_Ambient_MorningMood", -- Grieg, Morning Mood (l'ancien MUS_Ambient)
+		"MUS_Ambient_Spring", -- Vivaldi, Le Printemps
+		"MUS_Ambient_TurkishMarch", -- Mozart, Marche turque
+		"MUS_Ambient_Gymnopedie", -- Satie, Gymnopédie n° 1
+		"MUS_Ambient_ClairDeLune", -- Debussy, Clair de lune
+		"MUS_Ambient_ClassicEaster", -- APM, Classic Easter
+	},
+	FallbackTrack = "MUS_Hub", -- fond partout, en boucle, tant qu'aucun morceau de la playlist n'est dans Studio
 
 	FadeTime = 2, -- V0 : durée d'un fondu enchaîné : l'ancienne piste descend pendant que la nouvelle monte
 	CheckInterval = 0.25, -- V0 : musiques d'événement revues 4 fois par seconde
