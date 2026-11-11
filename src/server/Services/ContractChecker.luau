@@ -40,7 +40,7 @@ local UI = require(ContractFolder:WaitForChild("UI"))
 -- Catalogue d'objets : icônes attendues, une par objet, dans l'ordre du catalogue (L-055).
 local Items = require(Shared:WaitForChild("Config"):WaitForChild("Items"))
 -- Autres icônes lues par le code, même règle (Contract/Icons) : outils de casse (WeaponShopController,
--- L-090, `ICON_TOOL_<Id>`), batte (`ICON_TOOL_Bat`, livrée par Clément, pas encore affichée) et colis
+-- L-090, `ICON_TOOL_<Id>`), batte (`ICON_TOOL_Bat`, livrée par Clément, carte Tool_Bat de l'inventaire, L-092 2a) et colis
 -- de l'inventaire (InventoryService, L-089, `ICON_BOX_<Tier>`, nom proposé à Clément).
 local Tools = require(Shared:WaitForChild("Config"):WaitForChild("Tools"))
 local OTHER_ICON_IDS: { string } = { "TOOL_Bat", "BOX_Standard", "BOX_Premium", "BOX_Luxe" }

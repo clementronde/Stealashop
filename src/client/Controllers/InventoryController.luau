@@ -48,7 +48,17 @@
 --     plat au niveau du bas de Bounds, à portée), rouge sinon. Un clic ou un appui sur le monde envoie
 --     PlaceBox(boxUid, point visé) et joue Place (contrat 2.4) ; le serveur revérifie tout et répond par
 --     un Notify en cas de refus (le mode reste, pour réessayer). Fin du mode : colis posé (il quitte
---     l'inventaire), touche Q (V0), écran rouvert, outil pris (1, 2, écran), portage, mort.
+--     l'inventaire), touche Q (V0), écran rouvert, outil pris (1, 2, écran), portage, mort ;
+--   - outil de casse mis en main tout seul près d'une vitrine (L-092 point 2c, réponse de Clément du
+--     2026-11-11 : sur téléphone, sans barre Roblox, on ne le sortait que par l'écran). Toutes les TICK s,
+--     si le HumanoidRootPart arrive à Balance.Hit.Range (portée d'un coup) ou moins de la boîte d'une
+--     vitrine cassable (`Window` d'un modèle taggé NPCStore, ou d'une parcelle PlayerPlot d'un autre
+--     joueur ; WindowId, MaxHP > 0, pas Broken, attributs de WindowService), sans rien en main (ni outil,
+--     ni batte), sans portage (Carrying) ni mode pose : l'outil de casse du Backpack passe en main
+--     (Humanoid:EquipTool, permis côté client, aucun remote). Une seule fois par approche : rangé exprès
+--     (ou autre chose en main à l'arrivée), il n'est pas remis tant que le joueur n'est pas reparti à
+--     plus de Balance.Hit.ServerMaxDistance de toute vitrine cassable, puis revenu. Jamais rien n'est
+--     retiré de la main.
 -- Rien de ce qui compte ne se décide ici : chaque bouton envoie un uid ou un Id que le serveur revérifie.
 -- Seuls sont touchés (2.2, « Libre pour Ironix ») : Enabled de l'écran, les textes, la visibilité, les
 -- cartes clonées (nom, ordre), l'image de leur icône et la teinte (ImageColor3) de leurs rayons, le
@@ -165,7 +175,7 @@ local CARD_BUTTONS = { "PlaceButton", "UnequipButton", "EquipButton" }
 local PREVIEW_PREFIX = "Preview_"
 local BOX_ICON_PREFIX = "BOX_" -- Icons.name("BOX_Premium") = « ICON_BOX_Premium » (L-089)
 local TOOL_ICON_PREFIX = "TOOL_" -- « ICON_TOOL_Hammer » (L-090)
-local BAT_KEY = "Bat" -- carte Tool_Bat, icône ICON_TOOL_Bat (nom proposé à Clément)
+local BAT_KEY = "Bat" -- carte Tool_Bat, icône ICON_TOOL_Bat (nom confirmé par Clément, L-092 2a)
 
 -- Attributs posés par les services serveur (lus sans require).
 local PLOT_TAG = "PlayerPlot"
@@ -176,6 +186,11 @@ local CARRYING_ATTRIBUTE = "Carrying" -- CarryService
 local TOOL_ID_ATTRIBUTE = "ToolId" -- ToolService : l'outil de casse
 local BAT_ATTRIBUTE = "BatTool" -- ToolService : la batte
 local BOUNDS = "Bounds"
+local NPC_STORE_TAG = "NPCStore" -- contrat 2.1 (vitrines à casser, avec les parcelles PlayerPlot)
+local WINDOW_NAME = "Window" -- enfant obligatoire (10.4)
+local WINDOW_ID_ATTRIBUTE = "WindowId" -- WindowService
+local MAX_HP_ATTRIBUTE = "MaxHP" -- WindowService
+local BROKEN_ATTRIBUTE = "Broken" -- WindowService
 local GHOST_NAME = "BoxGhost"
 
 -- Textes, en anglais (L-036). V0 proposés, absents du doc, sur les exemples de la maquette de Clément
@@ -217,6 +232,10 @@ local AIM_DISTANCE = 200 -- studs : longueur du rayon de visée (V0)
 local GHOST_TRANSPARENCY = 0.6 -- V0
 local GHOST_OK = Color3.fromHex("#35C93B") -- vert « acheter / OK », planche 10.6
 local GHOST_BAD = Color3.fromHex("#E8413C") -- rouge « fermer », planche 10.6
+-- Outil mis en main près d'une vitrine (L-092 2c) : arrivée à la portée d'un coup, départ au-delà de la
+-- distance acceptée par le serveur pour HitWindow (l'écart évite un va-et-vient à la limite).
+local AUTO_EQUIP_NEAR = Balance.Hit.Range
+local AUTO_EQUIP_FAR = Balance.Hit.ServerMaxDistance
 
 local IS_STUDIO = RunService:IsStudio()
 
@@ -245,6 +264,8 @@ local preloaded: { [string]: boolean } = {} -- textures déjà téléchargées (
 local reported: { [string]: boolean } = {}
 local characterConnections: { RBXScriptConnection } = {}
 local backpackConnection: RBXScriptConnection? = nil
+local nearWindow = false -- dans la zone d'une vitrine cassable (L-092 2c)
+local autoEquipDone = false -- déjà servi pendant cette approche : rien de plus tant qu'il n'est pas reparti
 
 -- Une ligne de sortie par sujet, en Studio seulement.
 local function reportOnce(key: string, message: string)
@@ -1334,6 +1355,8 @@ local function watchCharacter(character: Model?)
 	table.clear(characterConnections)
 	stopPlacing()
 	pendingTool = nil
+	nearWindow = false
+	autoEquipDone = false
 	hideHotbar()
 	task.defer(watchBackpack) -- le Backpack est refait à chaque apparition
 	if character == nil then
@@ -1355,6 +1378,107 @@ local function watchCharacter(character: Model?)
 	end
 	table.insert(characterConnections, character.ChildAdded:Connect(onTools))
 	table.insert(characterConnections, character.ChildRemoved:Connect(onTools))
+end
+
+------------------------------------------------------------------------------
+-- Outil mis en main près d'une vitrine (L-092 point 2c)
+------------------------------------------------------------------------------
+
+-- Boîte d'une vitrine (pièce, ou modèle : sa boîte englobante), comme HitController.
+local function windowBox(object: Instance): (CFrame?, Vector3?)
+	if object:IsA("BasePart") then
+		return object.CFrame, object.Size
+	elseif object:IsA("Model") then
+		return object:GetBoundingBox()
+	end
+	return nil, nil
+end
+
+-- Distance du point `origin` à la vitrine cassable la plus proche (sa boîte), math.huge sans vitrine.
+local function nearestWindowDistance(origin: Vector3): number
+	local best = math.huge
+	local function consider(model: Instance)
+		local object = model:FindFirstChild(WINDOW_NAME) or model:FindFirstChild(WINDOW_NAME, true)
+		if object == nil then
+			return
+		end
+		local maxHP = object:GetAttribute(MAX_HP_ATTRIBUTE)
+		if
+			type(object:GetAttribute(WINDOW_ID_ATTRIBUTE)) ~= "string"
+			or type(maxHP) ~= "number"
+			or maxHP <= 0
+			or object:GetAttribute(BROKEN_ATTRIBUTE) == true
+		then
+			return -- pas prête, incassable ou cassée
+		end
+		local cf, size = windowBox(object)
+		if cf == nil or size == nil then
+			return
+		end
+		local p = (cf :: CFrame):PointToObjectSpace(origin)
+		local h = (size :: Vector3) / 2
+		local inside = Vector3.new(math.clamp(p.X, -h.X, h.X), math.clamp(p.Y, -h.Y, h.Y), math.clamp(p.Z, -h.Z, h.Z))
+		best = math.min(best, (p - inside).Magnitude)
+	end
+	for _, model in CollectionService:GetTagged(NPC_STORE_TAG) do
+		consider(model)
+	end
+	for _, model in CollectionService:GetTagged(PLOT_TAG) do
+		local owner = model:GetAttribute(OWNER_ATTRIBUTE)
+		if type(owner) == "number" and owner ~= 0 and owner ~= localPlayer.UserId then
+			consider(model) -- parcelle d'un autre joueur seulement
+		end
+	end
+	return best
+end
+
+-- Un passage : met l'outil de casse en main à l'arrivée près d'une vitrine, une fois par approche.
+local function autoEquipStep()
+	local humanoid = humanoidOf()
+	local character = localPlayer.Character
+	local root = if character then character:FindFirstChild("HumanoidRootPart") else nil
+	if humanoid == nil or character == nil or root == nil or not root:IsA("BasePart") then
+		return
+	end
+	local distance = nearestWindowDistance((root :: BasePart).Position)
+	nearWindow = distance <= (if nearWindow then AUTO_EQUIP_FAR else AUTO_EQUIP_NEAR)
+	if not nearWindow then
+		autoEquipDone = false -- reparti : la prochaine approche le remettra en main
+		return
+	end
+	if autoEquipDone then
+		return
+	end
+	if character:FindFirstChildWhichIsA("Tool") then
+		autoEquipDone = true -- déjà quelque chose en main (outil, batte) : on n'y touche pas
+		return
+	end
+	if isCarrying() or placing ~= nil then
+		return -- un colis ou un objet porté, ou un colis en cours de pose : on attend
+	end
+	local backpack = localPlayer:FindFirstChildOfClass("Backpack")
+	if backpack == nil then
+		return
+	end
+	for _, child in backpack:GetChildren() do
+		if isBreakingTool(child) and not isBatTool(child) then
+			autoEquipDone = true
+			humanoid:EquipTool(child :: Tool)
+			return
+		end
+	end
+end
+
+local function startAutoEquip()
+	task.spawn(function()
+		while true do
+			task.wait(TICK)
+			local ok: boolean, message: any = pcall(autoEquipStep)
+			if not ok then
+				reportOnce("autoequip", `[Inventory] outil près d'une vitrine : {message}`)
+			end
+		end
+	end)
 end
 
 ------------------------------------------------------------------------------
@@ -1441,6 +1565,7 @@ function InventoryController.Start()
 	localPlayer.CharacterAdded:Connect(watchCharacter)
 	watchCharacter(localPlayer.Character)
 	UserInputService.InputBegan:Connect(onInput)
+	startAutoEquip()
 
 	CollectionService:GetInstanceAddedSignal(PLOT_TAG):Connect(watchPlot)
 	CollectionService:GetInstanceRemovedSignal(PLOT_TAG):Connect(unwatchPlot)
