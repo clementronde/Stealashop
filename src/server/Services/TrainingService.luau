@@ -50,12 +50,16 @@
 --     MaxRepsPerSecond (3) sur toute seconde glissante (les autres sont ignorées). Une répétition
 --     rapporte GainPerRep × M banc en Force (niveau Upgrades.Bench, formule inchangée) et incrémente
 --     l'attribut BenchReps du Player. Le bonus de +50 % au tap ne concerne que le tapis.
---   Barre du banc (L-091, point 2) : SETTLE_TIME s après la mise en place (pose BenchIdle prise), la
---     pièce ou le modèle Bar du banc est soudé à la main droite du joueur (WeldConstraint, côté
---     serveur : la barre rejoint l'assemblage du personnage, tous les joueurs la voient suivre les
---     mains), à sa position relative du moment ; décrochée, collisions coupées et sans masse pendant
---     l'usage. À la fin de la séance (départ, mort, perso retiré, banc retiré…), elle reprend sa place
---     exacte et ses réglages. Sans Bar : rien (une ligne dans la sortie en Studio).
+--   Barre du banc (L-091, point 2 ; vague 24 : elle suit les deux mains) : SETTLE_TIME s après la
+--     mise en place (pose BenchIdle prise), le serveur prépare la pièce ou le modèle Bar du banc :
+--     ancrée, collisions coupées, liaisons au reste du banc coupées, et pose l'attribut BenchUserId
+--     (UserId du joueur) sur le modèle taggé Bench. Il ne la soude plus à RightHand : c'est
+--     BenchBarController, chez chaque client, qui la place à chaque image au milieu de LeftHand et
+--     RightHand, dans l'axe d'une main à l'autre, pour tous les joueurs visibles (l'animation est
+--     calculée chez chaque client, ses mains y sont exactes ; la barre est du décor, sans effet de
+--     jeu : rien à protéger côté serveur). À la fin de la séance (départ, mort, perso retiré, banc
+--     retiré…), l'attribut est retiré, chaque client remet la barre à sa place exacte et le serveur
+--     rend ses réglages d'avant. Sans Bar : rien (une ligne dans la sortie en Studio).
 --
 -- Attributs du Player :
 --   TrainingMachine  "Treadmill", "Bench" ou nil (pas sur une machine) : AnimationController
@@ -106,9 +110,10 @@ type Machine = {
 }
 
 -- Une pièce de la barre tenue en main, et ses réglages d'avant.
-type BarPart = { part: BasePart, cframe: CFrame, anchored: boolean, canCollide: boolean, massless: boolean }
--- Barre soudée à la main : ses pièces, les soudures ajoutées, les liaisons au banc coupées.
-type BarHold = { parts: { BarPart }, welds: { WeldConstraint }, disabled: { Instance } }
+type BarPart = { part: BasePart, cframe: CFrame, anchored: boolean, canCollide: boolean }
+-- Barre prise en main (placée par les clients) : banc qui porte l'attribut, pièces, liaisons au
+-- banc coupées.
+type BarHold = { model: Instance, parts: { BarPart }, disabled: { Instance } }
 
 type Session = {
 	machine: Machine,
@@ -120,7 +125,7 @@ type Session = {
 	lastTap: number, -- dernier TrainTap accepté
 	lastRep: number, -- banc : dernière répétition comptée (ou début de la séance)
 	clientReps: boolean, -- banc : un TrainTap (marqueur Top) est arrivé pendant la séance
-	barTried: boolean, -- banc : la barre a déjà été soudée (ou manque)
+	barTried: boolean, -- banc : la barre a déjà été prise en main (ou manque)
 	bar: BarHold?, -- banc : barre tenue en main
 	gained: number, -- gagné pendant cette séance (pour la sortie de Studio)
 	autoRotate: boolean, -- Humanoid.AutoRotate avant la séance (remis à la fin, au banc)
@@ -162,11 +167,10 @@ local BENCH_AUTO_INTERVAL = 1.5
 -- après un premier TrainTap de la séance : silence (s) au-delà duquel le serveur reprend le rythme
 -- (BenchLift plus longue que ce délai : le serveur ajouterait des répétitions, à monter).
 local BENCH_CLIENT_SILENCE = 4
--- Barre du banc (contrat 10.4) et main qui la tient (R15 ; R6 : le bras droit).
+-- Barre du banc (contrat 10.4) et attribut du banc lu par BenchBarController (UserId de celui qui
+-- la tient, absent sinon).
 local BAR = "Bar"
-local HAND = "RightHand"
-local HAND_R6 = "Right Arm"
-local BAR_WELD_NAME = "TrainingBarWeld"
+local BENCH_USER_ATTRIBUTE = "BenchUserId"
 -- V0 proposé, absent du doc : message au joueur qui essaie la machine d'un autre.
 local NOT_OWNER_MESSAGE = "You can only train in your own shop."
 -- V0 proposé, absent du doc : au plus un message de refus (s) par joueur, qui passe souvent à côté
@@ -388,16 +392,11 @@ local function setJointEnabled(joint: Instance, enabled: boolean)
 	end
 end
 
--- Soude la barre du banc à la main droite du personnage, à sa position relative du moment.
--- Renvoie nil (rien ne change) sans barre ou sans main.
-local function holdBar(machine: Machine, character: Model): BarHold?
+-- Prépare la barre du banc pour les clients (voir l'en-tête) : ancrée, sans collision, détachée du
+-- reste du banc, attribut BenchUserId posé. Renvoie nil (rien ne change) sans barre.
+local function holdBar(machine: Machine, player: Player): BarHold?
 	local bar = machine.bar
 	if bar == nil or bar.Parent == nil then
-		return nil
-	end
-	local hand = character:FindFirstChild(HAND) or character:FindFirstChild(HAND_R6)
-	if hand == nil or not hand:IsA("BasePart") then
-		log(`{character.Name} : pas de {HAND}, la barre de {machine.plot:GetFullName()} reste sur le banc`)
 		return nil
 	end
 	local list: { BasePart } = {}
@@ -416,8 +415,8 @@ local function holdBar(machine: Machine, character: Model): BarHold?
 	for _, part in list do
 		inBar[part] = true
 	end
-	local hold: BarHold = { parts = {}, welds = {}, disabled = {} }
-	-- Liaisons vers le reste du banc : coupées pendant l'usage (sinon le banc suivrait la main).
+	local hold: BarHold = { model = machine.model, parts = {}, disabled = {} }
+	-- Liaisons vers le reste du banc : coupées pendant l'usage (la barre bouge seule chez les clients).
 	local seen: { [Instance]: boolean } = {}
 	for _, part in list do
 		for _, joint in part:GetJoints() do
@@ -439,37 +438,29 @@ local function holdBar(machine: Machine, character: Model): BarHold?
 			cframe = part.CFrame,
 			anchored = part.Anchored,
 			canCollide = part.CanCollide,
-			massless = part.Massless,
 		})
-		part.Anchored = false
+		-- Ancrée : aucune physique ne la déplace, les clients la placent eux-mêmes.
+		part.Anchored = true
 		part.CanCollide = false
-		part.Massless = true
-		local weld = Instance.new("WeldConstraint")
-		weld.Name = BAR_WELD_NAME
-		weld.Part0 = hand
-		weld.Part1 = part
-		weld.Parent = part
-		table.insert(hold.welds, weld)
 	end
+	machine.model:SetAttribute(BENCH_USER_ATTRIBUTE, player.UserId)
 	return hold
 end
 
--- Rend la barre au banc : place exacte et réglages d'avant, liaisons au banc rétablies.
+-- Rend la barre au banc : attribut retiré (chaque client la remet en place), place exacte et
+-- réglages d'avant, liaisons au banc rétablies.
 local function releaseBar(hold: BarHold)
-	for _, weld in hold.welds do
-		weld:Destroy()
-	end
+	hold.model:SetAttribute(BENCH_USER_ATTRIBUTE, nil)
 	for _, saved in hold.parts do
 		local part = saved.part
 		if part.Parent == nil then
 			continue -- barre retirée entre-temps
 		end
+		part.CFrame = saved.cframe
 		part.Anchored = saved.anchored
 		part.AssemblyLinearVelocity = Vector3.zero
 		part.AssemblyAngularVelocity = Vector3.zero
-		part.CFrame = saved.cframe
 		part.CanCollide = saved.canCollide
-		part.Massless = saved.massless
 	end
 	for _, joint in hold.disabled do
 		if joint.Parent ~= nil then
@@ -698,15 +689,12 @@ local function benchRep(player: Player, session: Session, now: number): boolean
 	return true
 end
 
--- Banc : barre soudée une fois la pose prise, et répétitions au rythme du serveur si le client n'en
--- envoie pas (voir l'en-tête).
+-- Banc : barre prise en main une fois la pose prise, et répétitions au rythme du serveur si le
+-- client n'en envoie pas (voir l'en-tête).
 local function updateBench(player: Player, session: Session, now: number)
 	if not session.barTried and now - session.startedAt >= SETTLE_TIME then
 		session.barTried = true
-		local character = session.humanoid.Parent
-		if character and character:IsA("Model") then
-			session.bar = holdBar(session.machine, character)
-		end
+		session.bar = holdBar(session.machine, player)
 	end
 	local interval = if session.clientReps then BENCH_CLIENT_SILENCE else BENCH_AUTO_INTERVAL
 	if now - session.lastRep >= interval then

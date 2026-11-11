@@ -172,8 +172,13 @@
 -- Choix V0 (marqués « V0 proposé, absent du doc » plus bas) :
 --   - ramassage à chaque arrivée sur une plaque : Touched par le personnage du propriétaire, ou
 --     HumanoidRootPart au-dessus de la plaque (contrôlé 10 fois par seconde, pour une plaque sans
---     CanTouch). Rester dessus ne ramasse pas davantage : on ressort et on y remonte. Une plaque
---     donne des dollars entiers, les centimes restent sur elle. Seul le propriétaire ramasse ;
+--     CanTouch). Une arrivée = un seul ramassage de tout ce que la plaque contient (vague 24, retour
+--     de Cantin du 2026-11-11 : ça ramassait plusieurs fois). Rester dessus ne ramasse pas davantage :
+--     les Touched répétés des pieds ne comptent pas, et le joueur ne quitte la plaque qu'une fois son
+--     HumanoidRootPart hors d'une zone de sortie plus large (PAD_EXIT_MARGIN, PAD_EXIT_ABOVE) pendant
+--     PAD_EXIT_DELAY s : marcher ou sauter sur la plaque ne la fait pas « quitter ». Passer sur une
+--     autre plaque la ramasse tout de suite (plaques indépendantes). Une plaque donne des dollars
+--     entiers, les centimes restent sur elle. Seul le propriétaire ramasse ;
 --   - plaques cherchées dans toute la parcelle (CollectPad_01 à _20 ; ceux des rayons 2 à 5 n'y sont
 --     que quand RayonService a posé le rayon) : à l'installation, quand le nombre de présentoirs
 --     débloqués change, quand une plaque connue disparaît, et toutes les PAD_RESCAN_INTERVAL s tant
@@ -290,6 +295,12 @@ local PAD_RESCAN_INTERVAL = 5
 local PAD_MARGIN = 0.5
 local PAD_BELOW = 1
 local PAD_ABOVE = 6
+-- V0 proposés, absents du doc (vague 24) : zone de sortie, plus large que la zone d'arrivée, et
+-- temps passé hors d'elle avant de pouvoir ramasser de nouveau la même plaque (un saut monte
+-- d'environ 7 studs, le HumanoidRootPart d'un R15 qui marche oscille).
+local PAD_EXIT_MARGIN = 2
+local PAD_EXIT_ABOVE = 12
+local PAD_EXIT_DELAY = 0.3
 -- V0 proposé, absent du doc : zone de revenu d'un Secret sans zone enregistrée (voir l'en-tête).
 local SECRET_FALLBACK_ZONE = 1
 -- V0 proposé, absent du doc : borne de la recherche des présentoirs bonus (DisplaySlot_21 et
@@ -400,7 +411,8 @@ type Account = {
 	pending: { [number]: number }, -- $ sur chaque plaque (numéro de présentoir), centimes compris
 	lastAccrue: number, -- os.clock() du dernier ajout aux plaques
 	collected: number, -- argent encaissé depuis l'arrivée (attribut CashCollected)
-	onSlot: number?, -- plaque où se tient le joueur (nil : aucune)
+	onSlot: number?, -- plaque où se tient le joueur (nil : aucune), déjà ramassée à son arrivée
+	padSeenAt: number, -- os.clock() du dernier signe de présence sur onSlot (zone de sortie, Touched)
 	shownRegister: number?,
 	shownSlots: number?,
 }
@@ -709,13 +721,20 @@ local function isOnPlot(player: Player, plot: Model, refs: PlotRefs): boolean
 	return math.abs(p.X) <= boxSize.X / 2 and math.abs(p.Z) <= boxSize.Z / 2
 end
 
-local function isOnPad(position: Vector3, pad: BasePart): boolean
+-- `position` dans le volume de la plaque élargi de `margin` sur les côtés, jusqu'à `above` au-dessus.
+local function isOnPad(position: Vector3, pad: BasePart, margin: number?, above: number?): boolean
+	local side = margin or PAD_MARGIN
 	local p = pad.CFrame:PointToObjectSpace(position)
 	local half = pad.Size / 2
-	return math.abs(p.X) <= half.X + PAD_MARGIN
-		and math.abs(p.Z) <= half.Z + PAD_MARGIN
+	return math.abs(p.X) <= half.X + side
+		and math.abs(p.Z) <= half.Z + side
 		and p.Y >= half.Y - PAD_BELOW
-		and p.Y <= half.Y + PAD_ABOVE
+		and p.Y <= half.Y + (above or PAD_ABOVE)
+end
+
+-- `position` encore dans la zone de sortie de la plaque (voir l'en-tête).
+local function isNearPad(position: Vector3, pad: BasePart): boolean
+	return isOnPad(position, pad, PAD_EXIT_MARGIN, PAD_EXIT_ABOVE)
 end
 
 ------------------------------------------------------------------------------
@@ -1456,6 +1475,7 @@ local function newAccount(): Account
 		lastAccrue = os.clock(),
 		collected = 0,
 		onSlot = nil,
+		padSeenAt = 0,
 		shownRegister = nil,
 		shownSlots = nil,
 	}
@@ -1481,13 +1501,30 @@ onPadTouched = function(plot: Model, slot: number, part: BasePart, hit: BasePart
 	local owner = view.owner
 	local account = accounts[owner]
 	local character = owner.Character
-	if account == nil or account.onSlot == slot or account.plot ~= plot or character == nil then
+	if account == nil or account.plot ~= plot or character == nil or not hit:IsDescendantOf(character) then
 		return
 	end
-	if not hit:IsDescendantOf(character) or rootOf(owner) == nil then
+	local root = rootOf(owner)
+	if root == nil then
 		return
 	end
-	account.onSlot = slot -- checkPads le remet à nil quand il en sort
+	local now = os.clock()
+	if account.onSlot == slot then
+		account.padSeenAt = now -- toujours dessus : pas de nouveau ramassage
+		return
+	end
+	-- Un pied ou une main qui touche la plaque loin du corps ne compte pas, ni le bord d'une plaque
+	-- voisine tant que le joueur se tient encore sur la sienne.
+	if not isNearPad(root.Position, part) then
+		return
+	end
+	local onSlot = account.onSlot
+	local current = if set and onSlot then set.bySlot[onSlot] else nil
+	if current and current.part.Parent ~= nil and isOnPad(root.Position, current.part) then
+		return
+	end
+	account.onSlot = slot -- checkPads le remet à nil quand il en est vraiment sorti
+	account.padSeenAt = now
 	cashOut(owner, account, "Pad", slot)
 end
 
@@ -1678,11 +1715,26 @@ local function checkPads()
 			continue
 		end
 		local root = rootOf(player)
-		local slot = if root then padAt(set, root.Position) else nil
-		if slot and slot ~= account.onSlot then
-			cashOut(player, account, "Pad", slot)
+		local now = os.clock()
+		local onSlot = account.onSlot
+		local current = if onSlot then set.bySlot[onSlot] else nil
+		if root and current and current.part.Parent ~= nil and isOnPad(root.Position, current.part) then
+			account.padSeenAt = now -- encore sur sa plaque : elle garde la priorité sur une voisine
+			continue
 		end
-		account.onSlot = slot
+		local slot = if root then padAt(set, root.Position) else nil
+		if slot and slot ~= onSlot then
+			-- Arrivée sur une plaque (ou passage direct sur une autre) : un seul ramassage.
+			account.onSlot = slot
+			account.padSeenAt = now
+			cashOut(player, account, "Pad", slot)
+		elseif onSlot then
+			if root and current and current.part.Parent ~= nil and isNearPad(root.Position, current.part) then
+				account.padSeenAt = now
+			elseif now - account.padSeenAt >= PAD_EXIT_DELAY then
+				account.onSlot = nil -- vraiment sorti : la prochaine arrivée ramasse de nouveau
+			end
+		end
 	end
 end
 
