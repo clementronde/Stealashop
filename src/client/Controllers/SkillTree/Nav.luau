@@ -7,8 +7,8 @@
 -- Une couche NavLayer (TextButton plein écran, transparent, posé ici) est au-dessus de l'arbre et sous le
 -- panneau, l'argent et Close (ZIndex UiMotion.SkillTree.NavLayerZIndex). Elle reçoit l'appui (souris ou doigt),
 -- le survol et la molette ; les mouvements et les relâchés suivent UserInputService, pour qu'un glisser qui
--- passe sur le panneau ne se perde pas. L'écran a IgnoreGuiInset : GuiService:GetGuiInset() est ajouté à
--- input.Position avant de le comparer aux AbsolutePosition.
+-- passe sur le panneau ne se perde pas. L'écran a IgnoreGuiInset, mais input.Position se compare tel quel aux
+-- AbsolutePosition (même repère, sous la barre du haut).
 --   - Appui puis relâché à moins de DragThreshold px : clic sur la tuile sous le pointeur (test « point dans
 --     l'hexagone », la plus proche si deux se touchent).
 --   - Au-delà : l'arbre suit le pointeur 1 pour 1 (Tree.Position, en Offset) ; au plus PanLimit de sa taille
@@ -22,7 +22,6 @@
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
-local GuiService = game:GetService("GuiService")
 
 local UiMotion = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"):WaitForChild("UiMotion"))
 local Fx = require(script.Parent:WaitForChild("Fx"))
@@ -119,13 +118,11 @@ function Nav.new(gui: ScreenGui, tree: GuiObject, handlers: Handlers): Nav
 	local pinch: { distance: number, zoom: number }? = nil
 	local connections: { RBXScriptConnection } = {}
 
+	-- input.Position et AbsolutePosition sont dans le même repère (sous la barre du haut), même avec
+	-- IgnoreGuiInset (l'écran y commence à -GetGuiInset) : rien à ajouter. Ajouter l'inset décalait le point
+	-- visé de 58 px vers le bas (vu en Play le 2026-11-11 : un clic dans le bas d'une tuile ne la prenait pas).
 	local function pointOf(input: InputObject): Vector2
-		local point = Vector2.new(input.Position.X, input.Position.Y)
-		if gui.IgnoreGuiInset then
-			local inset = GuiService:GetGuiInset()
-			point += inset
-		end
-		return point
+		return Vector2.new(input.Position.X, input.Position.Y)
 	end
 
 	local function tileAt(point: Vector2): GuiObject?
