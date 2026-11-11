@@ -33,7 +33,7 @@ export type EconomyKind = {
 local Economy: { [string]: EconomyKind } = {
 	-- Gain codé : revenus des objets exposés, encaissés au tapis de caisse (DisplayService).
 	Income = { Flow = "Source", Transaction = "Gameplay", Sku = "Income", Aggregate = true },
-	-- Gain codé : gains hors ligne (DEV-102, OfflineService), versés dans la caisse au retour : la part
+	-- Gain codé : gains hors ligne (DEV-102, OfflineService), versés dans l'argent au Claim (UI_Offline) : la part
 	-- d'un encaissement qui en vient part ici, le reste en Income. Type V0 proposé : TimedReward.
 	Offline = { Flow = "Source", Transaction = "TimedReward", Sku = "Offline", Aggregate = true },
 	-- Dépenses codées : achats de ShopService (BuyItem), SKU = Id du catalogue.

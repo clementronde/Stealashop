@@ -24,8 +24,9 @@
 --     (UiMotion.CounterPop), et le son CashFly.Sound part. Gains rapprochés : tant que la case attend
 --     encore au départ, un nouveau gain s'y ajoute (montant cumulé) ; une seule copie de CounterPop à
 --     la fois.
--- Les gains hors ligne vont dans la caisse de la boutique (OfflineService) : ils volent au ramassage,
--- comme le reste (il n'y a pas de bouton Claim des gains hors ligne dans le jeu pour l'instant).
+-- Gains hors ligne (vague 22, L-092 3f) : au Claim de l'écran UI_Offline (OfflineController.GetState().Open,
+-- vrai jusqu'au versement), la case part du centre de l'écran, comme pour une récompense, avant même le
+-- cas du ramassage (CashCollected monte aussi : le versement passe par DisplayService.AddOfflineEarnings).
 -- Rien n'est laissé : chaque BB_Gain, case et « +$X » est une copie détruite à la fin de son
 -- animation, et les modèles de Clément (BB_Gain, Template, CounterPop) ne sont jamais modifiés. Seuls
 -- leur Text, Visible, Position, Adornee, StudsOffset et transparences changent, sur les copies.
@@ -123,6 +124,7 @@ local localPlayer = Players.LocalPlayer
 local random = Random.new()
 local hud: HudApi? = nil
 local rewards: RewardsApi? = nil
+local offline: RewardsApi? = nil -- OfflineController : même GetState().Open
 local bursts: { [Kind]: Burst } = {}
 local lastValues: { [string]: number } = {}
 local rises: { Rise } = {}
@@ -490,8 +492,8 @@ end
 -- Sources des gains
 ------------------------------------------------------------------------------
 
-local function rewardsOpen(): boolean
-	local api = rewards
+-- L'écran de `api` (RewardsController, OfflineController) est ouvert.
+local function screenOpen(api: RewardsApi?): boolean
 	if api == nil then
 		return false
 	end
@@ -517,10 +519,12 @@ local function classify()
 			table.insert(releases, rise.release)
 		end
 	end
-	if fromPad then
+	if screenOpen(offline) then
+		fly(total, releases, false) -- gains hors ligne réclamés : du centre de l'écran
+	elseif fromPad then
 		showGain(CASH, total)
 		fly(total, releases, true)
-	elseif rewardsOpen() then
+	elseif screenOpen(rewards) then
 		fly(total, releases, false)
 	else
 		releaseAll(releases)
@@ -590,6 +594,7 @@ end
 function GainController.Start()
 	hud = sibling("HudController")
 	rewards = sibling("RewardsController")
+	offline = sibling("OfflineController")
 	for _, kind in { SPEED, POWER } do
 		riseOf(kind.Attribute)
 		localPlayer:GetAttributeChangedSignal(kind.Attribute):Connect(function()

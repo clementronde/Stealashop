@@ -24,6 +24,8 @@
 --
 -- API (client) :
 --   NotifyController.OnNotify(fn(message, kind?)) -> déconnexion
+--   NotifyController.Show(message, kind?)
+--       Un message du client lui-même, montré comme un Notify du serveur (OfflineController : « Soon »).
 --   NotifyController.GetShown() -> { { Message, Kind, Count, Text, Fallback } }
 --       Messages affichés, du plus ancien au plus récent, pour un test dans Studio (barre de commande
 --       côté client).
@@ -419,6 +421,18 @@ function NotifyController.OnNotify(listener: Listener): () -> ()
 	end
 end
 
+function NotifyController.Show(message: string, kind: string?)
+	if IS_STUDIO then
+		print(`[Notify{if kind then " " .. kind else ""}] {message}`)
+	end
+	xpcall(display, function(err: any)
+		once(`error:{err}`, tostring(err), true)
+	end, message, kind)
+	for _, listener in table.clone(listeners) do
+		task.spawn(listener, message, kind)
+	end
+end
+
 function NotifyController.GetShown(): { ShownInfo }
 	local list: { ShownInfo } = {}
 	for _, entry in entries do
@@ -442,17 +456,7 @@ function NotifyController.Start()
 			once(`error:{err}`, tostring(err), true)
 		end)
 	end)
-	Net.Client.Notify:Connect(function(message: string, kind: string?)
-		if IS_STUDIO then
-			print(`[Notify{if kind then " " .. kind else ""}] {message}`)
-		end
-		xpcall(display, function(err: any)
-			once(`error:{err}`, tostring(err), true)
-		end, message, kind)
-		for _, listener in table.clone(listeners) do
-			task.spawn(listener, message, kind)
-		end
-	end)
+	Net.Client.Notify:Connect(NotifyController.Show)
 end
 
 return NotifyController

@@ -230,6 +230,16 @@ local List: { RemoteDef } = {
 		Args = { { Name = "minutes", Kind = "int", Min = 1, Max = 1440 } },
 		RatePerSecond = 4, -- V0 proposé, absent du doc
 	},
+	{
+		-- Ajout de la vague 22 (L-092 3f, DEV-102), absent du tableau 9.4 : bouton ClaimButton de l'écran
+		-- UI_Offline. Aucun argument : OfflineService verse ce qui attend dans le profil (Offline.Pending),
+		-- puis le remet à 0 ; rien en attente : rien versé (jamais deux fois).
+		Name = "ClaimOffline",
+		Direction = "ClientToServer",
+		Reliable = true,
+		Args = {},
+		RatePerSecond = 2, -- V0 proposé, absent du doc
+	},
 
 	-- Serveur vers client (9.4). Le doc ne donne que les noms (et « id, point
 	-- d'impact » pour WindowBroken) : les arguments ci-dessous sont des V0

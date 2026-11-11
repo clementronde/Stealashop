@@ -128,6 +128,10 @@ export type Offline = {
 	-- profil neuf) : aucun gain hors ligne au retour
 	Income: number, -- $/s de la boutique à ce moment : objets exposés × bonus permanents, sans les
 	-- boosts temporaires (au retour : absence × Income × Offline.Rate)
+	Pending: number?, -- vague 22 (L-092 3f) : dollars entiers gagnés hors ligne, en attente du Claim de
+	-- l'écran UI_Offline (remote ClaimOffline). Champ facultatif, sans changement de version (comme
+	-- IndexRewards) : absent = 0. Remis à 0 au Claim, dans la même exécution que le versement ; pas réclamé,
+	-- il reste là et le gain du retour suivant s'y ajoute
 }
 
 -- Calendrier de 7 jours (v8, DEV-101 ; RewardService, Config/Rewards). Jour UTC = os.time() // 86400.

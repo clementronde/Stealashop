@@ -129,7 +129,8 @@
 --       (« Premier encaissement », 14.2).
 --   DisplayService.AddOfflineEarnings(player, amount) -> boolean
 --       Gains hors ligne (DEV-102, OfflineService) : verse `amount` $ (nombre fini > 0 ; les centimes
---       sont perdus) directement dans l'argent du joueur, source « Offline » (V0, plus bas). false si
+--       sont perdus) directement dans l'argent du joueur, au Claim de l'écran UI_Offline (vague 22),
+--       source « Offline » (V0, plus bas). false si
 --       le profil n'est pas chargé ou le montant invalide. Sans yield.
 --
 -- Points d'accroche de la boutique Robux (DEV-100, Partie 2, 4.1 ; MonetizationService les
@@ -181,7 +182,7 @@
 --   - départ du joueur : toutes ses plaques sont encaissées automatiquement dans son argent, juste
 --     avant la sauvegarde (DataService.OnProfileReleasing). Il ne perd pas ce qu'il a gagné, et
 --     aucun champ n'est ajouté au schéma 9.5 ;
---   - gains hors ligne (DEV-102, OfflineService) : versés directement dans son argent au retour, pas
+--   - gains hors ligne (DEV-102, OfflineService) : versés directement dans son argent au Claim, pas
 --     sur les plaques. Le plus simple et le plus juste : ils ne viennent d'aucune plaque (les objets
 --     ont pu changer depuis le départ), et rien n'attend sur une plaque qu'il faudrait ramasser ;
 --   - zone d'un Secret : le catalogue ne lui en donne pas, et Items[uid] ne la stocke pas (9.5).
@@ -2112,7 +2113,7 @@ function DisplayService.OnCashOut(listener: CashOutListener): () -> ()
 	return subscribe(cashOutListeners, listener)
 end
 
--- Gains hors ligne (DEV-102, voir l'en-tête) : versés directement dans l'argent (dollars entiers).
+-- Gains hors ligne (DEV-102, voir l'en-tête) : versés directement dans l'argent au Claim (dollars entiers).
 function DisplayService.AddOfflineEarnings(player: Player, amount: number): boolean
 	if DataService.Get(player) == nil or type(amount) ~= "number" or amount ~= amount or amount <= 0 or amount >= math.huge then
 		return false

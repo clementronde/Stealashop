@@ -455,4 +455,18 @@ table.insert(UI.Screens, {
 	Elements = inventoryElements,
 })
 
+-- Gains hors ligne (DEV-102, L-092 3f ; relevé de Studio du 2026-11-11, agents/wave22-studio.md) : écran
+-- UI_Offline de Clément (groupe « Menu », sans CloseButton), branché par OfflineController. Amount = la
+-- somme en attente ; ClaimButton la réclame ; DoubleButton (×2 contre des Robux) dit « Soon » tant que la
+-- boutique Robux est coupée. EarnedLabel, PriceLabel, TwoXTag et Flyer restent de Clément.
+table.insert(UI.Screens, {
+	Name = "UI_Offline",
+	Class = "ScreenGui",
+	Elements = {
+		{ Path = "Amount", Class = "TextLabel" },
+		{ Path = "ClaimButton", Class = BUTTON },
+		{ Path = "DoubleButton", Class = BUTTON },
+	},
+})
+
 return UI
