@@ -436,6 +436,19 @@ local List: { RemoteDef } = {
 		},
 		RatePerSecond = 4, -- V0 proposé, absent du doc ; le client regroupe ses envois (0,5 s)
 	},
+	{
+		-- Ajout de la vague 27 (arbre de compétences, L-096 point 2), absent du tableau 9.4 : achète le niveau
+		-- suivant de la compétence `id` (Config/SkillTree). SkillTreeService vérifie que l'Id existe, que la tuile
+		-- est ouverte, que le niveau est codé (Coded) et pas au maximum, et l'argent (prix du serveur) ; refusé,
+		-- rien ne change. Le niveau revient au client par l'attribut Skill_<Id> du joueur.
+		Name = "BuySkill",
+		Direction = "ClientToServer",
+		Reliable = true,
+		Args = {
+			{ Name = "id", Kind = "string", Min = 1, Max = 32 },
+		},
+		RatePerSecond = 4, -- V0 proposé, absent du doc
+	},
 }
 
 return {
