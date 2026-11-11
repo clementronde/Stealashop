@@ -150,6 +150,8 @@ local MAX_CASH_HOLD = 10
 -- « HeistTimer.Box », L-091 point 7) ; sans lui, HeistTimer lui-même.
 local TIMER_BOX = "Box"
 local TICK_INFO = TweenInfo.new(UiMotion.TimerTick.Time, UiMotion.TimerTick.Style, UiMotion.TimerTick.Direction)
+-- Chrono rouge à TimerTick.RedBelow s ou moins (L-092 3c ; seuil « n <= 3 » du prototype feel2_proto.luau).
+local TIMER_RED: Color3 = UiMotion.TimerTick.RedColor
 
 -- Éléments cachés tant que leur fonction n'existe pas (Config/Features, liaison L-026). Les boutons
 -- Shop et Rebirth restent visibles pendant leur aperçu (L-071).
@@ -204,6 +206,8 @@ local shownCountdown: string? = nil -- texte affiché par NightCountdown
 local shownCooldown: string? = nil -- recharge affichée sur ReturnBaseButton ; nil = prêt
 local timers: { [string]: number } = {} -- storeId → endsAt (heure serveur)
 local shownSeconds: number? = nil -- secondes affichées par HeistTimer ; nil = masqué
+-- Couleur d'origine du texte de HeistTimer, gardée pendant qu'il est rouge (clés faibles : écran remplacé).
+local timerColors: { [TextLabel]: Color3 } = setmetatable({}, { __mode = "k" }) :: any
 local chased = false -- GuardMeter affiché
 local heartbeatOn = false
 local heartbeatSound: Sound? = nil
@@ -386,6 +390,16 @@ local function updateHeistTimer(current: Hud)
 	end
 	local ticking = seconds ~= nil and shownSeconds ~= nil -- déjà affiché : une seconde de moins
 	shownSeconds = seconds
+	-- L-092 3c : rouge sous le seuil, couleur d'origine sinon (fin du vol, chrono remonté).
+	local red = seconds ~= nil and seconds <= UiMotion.TimerTick.RedBelow
+	local original: Color3? = timerColors[label]
+	if red and not original then
+		timerColors[label] = label.TextColor3
+		label.TextColor3 = TIMER_RED
+	elseif not red and original then
+		timerColors[label] = nil
+		label.TextColor3 = original
+	end
 	if seconds then
 		label.Text = timerText(seconds)
 		Motion.Show(label)

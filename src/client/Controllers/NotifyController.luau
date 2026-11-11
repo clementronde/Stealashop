@@ -34,6 +34,7 @@ local RunService = game:GetService("RunService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Find = require(Shared:WaitForChild("Contract"):WaitForChild("Find"))
+local UiMotion = require(Shared:WaitForChild("Config"):WaitForChild("UiMotion"))
 
 type Listener = (message: string, kind: string?) -> ()
 
@@ -67,8 +68,10 @@ local TEMPLATE = "Template"
 local PREVIEW_PREFIX = "Preview_" -- cartes d'exemple de Clément, à côté du Template
 local LABEL = "Label"
 
+-- s : durée d'affichage d'un message (relancée par une répétition) ; Toast.Hold du tableau de
+-- Clément, 2,4 s (L-092 3d).
+local DURATION: number = UiMotion.Toast.Hold
 -- V0 proposés, absents du doc :
-local DURATION = 4 -- s : durée d'affichage d'un message (relancée par une répétition)
 local MAX_SHOWN = 3 -- messages à l'écran à la fois au plus
 local COUNT_TEXT = "%s ×%d" -- même message répété : « … ×2 »
 local FALLBACK_NAME = "NotifyV0"

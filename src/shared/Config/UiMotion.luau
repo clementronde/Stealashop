@@ -104,9 +104,8 @@ local UiMotion = {
 		Outline = "HoverOutline",
 		Icon = "Icon",
 	},
-	-- Message en bas (tableau : `UI_Toast`). Pas encore lu : NotifyController (UI_Notify) entre déjà
-	-- par Motion.Show, de 0,6 à 1 en 0,2 Back Out (les mêmes valeurs) ; il garde 4 s à l'écran au lieu
-	-- de Hold, à décider avec Clément (liaison L-091).
+	-- Message en bas (tableau : `UI_Toast`). NotifyController (UI_Notify) entre par Motion.Show, de 0,6
+	-- à 1 en 0,2 Back Out (les mêmes valeurs), et lit Hold : 2,4 s à l'écran (L-092 3d, Clément).
 	Toast = {
 		From = 0.6,
 		Time = 0.2,
@@ -129,6 +128,14 @@ local UiMotion = {
 		SpreadX = 1, -- tableau : « décalage au hasard de ± 1 stud »
 		Height = 3.2, -- prototype gain_proto.luau (StudsOffset 3,2), si BB_Gain n'a pas son propre StudsOffset
 		MinGap = 0.25, -- prototype gain_proto.luau (GainBurstGap) : un BB_Gain au plus par 0,25 s, les gains entre deux s'additionnent
+		-- Couleur de Row.Amount selon l'attribut GainKind posé sur la copie (L-092 3e : un seul BB_Gain) ;
+		-- prototype de Clément tools/clement/gain_proto.luau, lignes 151 à 153.
+		KindAttribute = "GainKind",
+		Colors = {
+			Speed = Color3.fromHex("4FD2FF"),
+			Power = Color3.fromHex("FF7A3A"),
+			Cash = Color3.fromHex("5CFF4A"),
+		},
 	},
 	-- Case qui vole vers l'argent (UI_HUD.CashFly.Template, GainController).
 	CashFly = {
@@ -164,16 +171,20 @@ local UiMotion = {
 	},
 	-- Chrono du vol (HeistTimer, ou son enfant Box s'il existe) : à chaque seconde.
 	TimerTick = {
-		From = 1.12, -- tableau : « 1,12 → 1 en 0,25 et tic UI_Click_Tick ; rouge sous 3 s » (rouge : pas branché)
+		From = 1.12, -- tableau : « 1,12 → 1 en 0,25 et tic UI_Click_Tick ; rouge sous 3 s »
 		Time = 0.25,
 		Style = Enum.EasingStyle.Back,
 		Direction = Enum.EasingDirection.Out,
 		Sound = "UI_Click_Tick",
-		RedBelow = 3,
+		RedBelow = 3, -- à 3 s ou moins (prototype feel2_proto.luau : « n <= 3 »)
+		RedColor = Color3.fromHex("E8413C"), -- L-092 3c (Clément) : le texte de HeistTimer
 	},
-	-- RUN! (UI_Chase.RunBanner). Pas encore lu (voir le rapport de la vague 21, L-091) : Motion.Open
-	-- met déjà UI_Chase à l'échelle ; deux UIScale sur RunBanner se gêneraient.
+	-- RUN! (UI_Chase.RunBanner, UiFeelController ; L-092 3a, accord de Clément) : il s'anime à part,
+	-- avec son propre UIScale passager (Motion.Open et Close ne le mettent pas à l'échelle). Le
+	-- battement et l'inclinaison suivent le rythme des bords (ChasePulse.Rate).
 	RunBanner = {
+		Name = "RunBanner",
+		ScaleName = "RunBannerScale", -- V0 proposé, absent du doc : UIScale passager, détruit à la fin de la poursuite
 		Peak = 1.18, -- tableau : « 0 → 1,18 en 0,18, puis 1 en 0,12 ; il bat (+5 %) avec les bords et penche de ± 1,5° »
 		InTime = 0.18,
 		SettleTime = 0.12,

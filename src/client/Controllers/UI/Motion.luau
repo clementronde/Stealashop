@@ -13,12 +13,15 @@
 --                               allumé que Motion n'a jamais vu (copie de StarterGui arrivée
 --                               allumée) ou retiré du jeu. after n'est pas appelé si une réouverture
 --                               annule la fermeture.
---   Motion.Show(object)         la même chose pour un élément (Visible au lieu d'Enabled), mis
+--   Motion.KeepScale(object)    ce cadre racine s'anime à part (RunBanner) : Open et Close de son
+--                               écran ne le mettent pas à l'échelle (L-092 3a).
+--   Motion.Show(object)       la même chose pour un élément (Visible au lieu d'Enabled), mis
 --   Motion.Hide(object, after?)   à l'échelle lui-même (Show.From, Hide.To) : HeistTimer, GuardMeter.
 --   Motion.Button(button)       survol (Hover.To, calque Shade à Hover.ShadeTransparency, son
 --   Motion.Hover(button)          Hover.Sound), appui (Press), relâché (Release : retour à 1 ou au
 --                               survol) ; UIScale Hover.ScaleName, retiré dès que le bouton est revenu
---                               à 1 ; Shade remis à sa transparence d'origine. Hover = ancien nom.
+--                               à 1 ; Shade remis à sa transparence d'origine. Toucher fini (tactile,
+--                               sans MouseLeave) : retour à 1 (L-092 3g). Hover = ancien nom.
 --   Motion.Success(button)      le bouton saute à Success.From et revient ; son Success.Sound.
 --   Motion.HoverCard(card)      carte survolée : HoverOutline visible, Icon grossi, penché, décalé ;
 --                               tout revient à la sortie (L-091 point 7).
@@ -124,6 +127,7 @@ local owners: { [UIScale]: Entry } = setmetatable({}, { __mode = "k" }) :: any -
 local rolls: { [TextLabel]: Rolling } = setmetatable({}, { __mode = "k" }) :: any
 local noticed: { [Instance]: boolean } = setmetatable({}, { __mode = "k" }) :: any
 local closers: { [Instance]: () -> () } = setmetatable({}, { __mode = "k" }) :: any -- SetCloser
+local apart: { [Instance]: boolean } = setmetatable({}, { __mode = "k" }) :: any -- KeepScale : animés à part
 local rollTokens = 0
 
 -- Contrat (L-089 point 4) : attribut des ScreenGui de Clément, sa valeur nomme le groupe.
@@ -181,14 +185,14 @@ local function fillsScreen(object: GuiObject): boolean
 end
 
 -- Cadres à mettre à l'échelle : un élément = lui-même ; un écran = ses cadres racine, sauf ceux
--- qui couvrent tout l'écran.
+-- qui couvrent tout l'écran et ceux qui s'animent à part (Motion.KeepScale).
 local function targetsOf(inst: Instance): { GuiObject }
 	if inst:IsA("GuiObject") then
 		return { inst :: GuiObject }
 	end
 	local list: { GuiObject } = {}
 	for _, child in inst:GetChildren() do
-		if child:IsA("GuiObject") and not fillsScreen(child :: GuiObject) then
+		if child:IsA("GuiObject") and not fillsScreen(child :: GuiObject) and not apart[child] then
 			table.insert(list, child :: GuiObject)
 		end
 	end
@@ -406,6 +410,12 @@ function Motion.Open(gui: ScreenGui)
 	enter(gui, OPEN)
 end
 
+-- Cadre racine animé à part (RunBanner de UI_Chase, L-092 3a) : Open et Close de son écran ne le
+-- mettent pas à l'échelle, pour que deux UIScale ne se gênent pas.
+function Motion.KeepScale(object: GuiObject)
+	apart[object] = true
+end
+
 function Motion.SetCloser(gui: ScreenGui, close: (() -> ())?)
 	if close then
 		closers[gui] = close
@@ -594,6 +604,34 @@ function Motion.Button(button: GuiButton)
 		state.down = false
 		scaleButton(button, state, if state.over then UiMotion.Hover.To else 1, RELEASE_INFO)
 		shadeTo(state, if state.over then UiMotion.Hover.ShadeTransparency else state.shadeBase, RELEASE_INFO)
+	end)
+	-- L-092 3g : sur un écran tactile, pas de MouseLeave ; à la fin du toucher (doigt levé, ou
+	-- glissé hors du bouton), le bouton revient à 1 et Shade à sa transparence d'origine.
+	local function touchEnded()
+		state.over = false
+		state.down = false
+		scaleButton(button, state, 1, RELEASE_INFO)
+		shadeTo(state, state.shadeBase, RELEASE_INFO)
+	end
+	button.InputBegan:Connect(function(input: InputObject)
+		if input.UserInputType ~= Enum.UserInputType.Touch then
+			return
+		end
+		local watch: RBXScriptConnection? = nil
+		watch = input:GetPropertyChangedSignal("UserInputState"):Connect(function()
+			local inputState = input.UserInputState
+			if inputState == Enum.UserInputState.End or inputState == Enum.UserInputState.Cancel then
+				if watch then
+					watch:Disconnect()
+				end
+				touchEnded()
+			end
+		end)
+	end)
+	button.InputEnded:Connect(function(input: InputObject)
+		if input.UserInputType == Enum.UserInputType.Touch then
+			touchEnded()
+		end
 	end)
 end
 

@@ -210,8 +210,14 @@ local function floatGain(kind: Kind, amount: number)
 	local row = typed(billboard, "Row", "GuiObject") :: GuiObject?
 	local amountLabel = typed(billboard, "Amount", "TextLabel") :: TextLabel?
 	local icon = typed(billboard, "Icon", "ImageLabel") :: ImageLabel?
+	-- L-092 3e : un seul BB_Gain ; la copie dit sa sorte (GainKind) et Amount prend sa couleur.
+	billboard:SetAttribute(FLOAT.KindAttribute, kind.Name)
 	if amountLabel then
 		amountLabel.Text = kind.Text(amount)
+		local color: Color3? = (FLOAT.Colors :: { [string]: Color3 })[kind.Name]
+		if color then
+			amountLabel.TextColor3 = color
+		end
 	end
 	local image = hudIcon(kind.HudLabel)
 	if icon and image then

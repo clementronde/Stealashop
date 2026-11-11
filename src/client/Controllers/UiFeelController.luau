@@ -19,8 +19,11 @@
 --   - Poursuite (ChaseController.IsChased) : ChasePulse (la transparence des bords rouges de UI_Chase,
 --     ScreenEdges et Vignette.Edge, bat en sinus) et ChaseFov (champ de vision de la caméra + Add). À
 --     la fin, chaque transparence reprend sa valeur d'origine et la caméra son champ de vision.
+--     RunBanner (L-092 3a) : entrée 0 → 1,18 → 1 par un UIScale passager (RunBanner.ScaleName),
+--     puis il bat (+5 %) et penche (± 1,5°) au rythme des bords ; à la fin, UIScale détruit et
+--     Rotation d'origine remise. Motion.KeepScale l'écarte de l'échelle de Motion.Open.
 -- Ce qui est touché, et rien d'autre : ce que fait Motion (UIScale passagers, Shade, HoverOutline, Icon
--- des cartes, tous remis ensuite), la transparence des bords de UI_Chase pendant la poursuite et
+-- des cartes, tous remis ensuite), la transparence des bords de UI_Chase et RunBanner pendant la poursuite et
 -- Camera.FieldOfView. Aucun objet n'est laissé une fois l'animation finie.
 --
 -- API (client) : aucune.
@@ -52,6 +55,9 @@ local PULSE = UiMotion.ChasePulse
 local FOV = UiMotion.ChaseFov
 local FOV_IN_INFO = TweenInfo.new(FOV.InTime, FOV.Style, FOV.Direction)
 local FOV_OUT_INFO = TweenInfo.new(FOV.OutTime, FOV.Style, FOV.Direction)
+local BANNER = UiMotion.RunBanner
+local BANNER_IN_INFO = TweenInfo.new(BANNER.InTime, BANNER.Style, BANNER.Direction)
+local BANNER_SETTLE_INFO = TweenInfo.new(BANNER.SettleTime, BANNER.Style, BANNER.Direction)
 
 local UiFeelController = {}
 
@@ -64,6 +70,10 @@ local chaseStartedAt = 0
 local pulses: { Pulse } = {}
 local fovBase: number? = nil -- champ de vision d'avant la poursuite, remis à la fin
 local fovTween: Tween? = nil
+-- RunBanner pendant la poursuite (L-092 3a) : son UIScale passager, sa Rotation d'origine, et
+-- `beating` une fois l'entrée finie.
+type Banner = { object: GuiObject, scale: UIScale?, rotation: number, tween: Tween?, beating: boolean }
+local banner: Banner? = nil
 
 local function sibling(name: string): any
 	local module = script.Parent:FindFirstChild(name)
@@ -129,6 +139,13 @@ local function watchScreen(screen: Instance)
 		return
 	end
 	watched[screen] = true
+	if screen.Name == CHASE_SCREEN then
+		-- RunBanner s'anime à part (L-092 3a) : Motion.Open ne le met pas à l'échelle.
+		local runBanner = screen:FindFirstChild(BANNER.Name, true)
+		if runBanner and runBanner:IsA("GuiObject") then
+			Motion.KeepScale(runBanner)
+		end
+	end
 	screen.DescendantAdded:Connect(function(descendant: Instance)
 		task.defer(wire, descendant)
 	end)
@@ -215,9 +232,85 @@ local function tweenFov(goal: number, info: TweenInfo, finish: (() -> ())?)
 	tween:Play()
 end
 
+-- RunBanner (L-092 3a) : entrée 0 → Peak → 1 par son UIScale passager, puis battement et
+-- inclinaison au rythme des bords (step). Un UIScale qui n'est pas le sien (Clément) : pas d'échelle.
+local function startBanner()
+	local gui = localPlayer:FindFirstChildOfClass("PlayerGui")
+	local screen = if gui then gui:FindFirstChild(CHASE_SCREEN) else nil
+	local found = if screen then screen:FindFirstChild(BANNER.Name, true) else nil
+	if found == nil or not found:IsA("GuiObject") then
+		return
+	end
+	local object = found :: GuiObject
+	Motion.KeepScale(object)
+	local state: Banner = { object = object, scale = nil, rotation = object.Rotation, tween = nil, beating = false }
+	banner = state
+	if object:FindFirstChildOfClass("UIScale") ~= nil then
+		state.beating = true
+		return
+	end
+	local scale = Instance.new("UIScale")
+	scale.Name = BANNER.ScaleName
+	scale.Scale = 0
+	scale.Parent = object
+	state.scale = scale
+	local enter = TweenService:Create(scale, BANNER_IN_INFO, { Scale = BANNER.Peak })
+	state.tween = enter
+	enter.Completed:Connect(function(playback: Enum.PlaybackState)
+		if playback ~= Enum.PlaybackState.Completed or banner ~= state then
+			return
+		end
+		local settle = TweenService:Create(scale, BANNER_SETTLE_INFO, { Scale = 1 })
+		state.tween = settle
+		settle.Completed:Connect(function(settled: Enum.PlaybackState)
+			if settled == Enum.PlaybackState.Completed and banner == state then
+				state.tween = nil
+				state.beating = true
+			end
+		end)
+		settle:Play()
+	end)
+	enter:Play()
+end
+
+-- Fin de la poursuite : UIScale détruit, Rotation d'origine remise.
+local function stopBanner()
+	local state = banner
+	if state == nil then
+		return
+	end
+	banner = nil
+	local tween = state.tween
+	if tween then
+		tween:Cancel()
+	end
+	local scale = state.scale
+	if scale then
+		scale:Destroy()
+	end
+	if state.object.Parent ~= nil then
+		state.object.Rotation = state.rotation
+	end
+end
+
+-- Battement (+Beat quand les bords sont le plus visibles) et inclinaison (± Tilt degrés).
+local function beatBanner(elapsed: number)
+	local state = banner
+	if state == nil or not state.beating or state.object.Parent == nil then
+		return
+	end
+	local phase = 2 * math.pi * PULSE.Rate * elapsed
+	local scale = state.scale
+	if scale then
+		scale.Scale = 1 + BANNER.Beat * (0.5 - 0.5 * math.sin(phase))
+	end
+	state.object.Rotation = state.rotation + BANNER.Tilt * math.sin(phase)
+end
+
 local function startChase()
 	chaseStartedAt = os.clock()
 	collectPulses()
+	startBanner()
 	local camera = Workspace.CurrentCamera
 	if camera then
 		if fovBase == nil then
@@ -229,6 +322,7 @@ end
 
 local function stopChase()
 	restorePulses()
+	stopBanner()
 	local base = fovBase
 	if base then
 		tweenFov(base, FOV_OUT_INFO, function()
@@ -248,7 +342,11 @@ local function step()
 			stopChase()
 		end
 	end
-	if not chasing or #pulses == 0 then
+	if not chasing then
+		return
+	end
+	beatBanner(os.clock() - chaseStartedAt)
+	if #pulses == 0 then
 		return
 	end
 	local wave = 0.5 + 0.5 * math.sin(2 * math.pi * PULSE.Rate * (os.clock() - chaseStartedAt))
