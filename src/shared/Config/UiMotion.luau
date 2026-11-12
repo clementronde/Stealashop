@@ -284,6 +284,14 @@ local UiMotion = {
 		BoxIconPrefix = "BOX_", -- Icons.get("BOX_<Tier>") = ICON_BOX_<Tier>, comme l'inventaire (L-089)
 		ScaleName = "EscapeScale", -- V0 proposé, absent du doc : UIScale passager de Banner, BoxIcon, Subtitle
 	},
+	-- Bandeau d'entrée de zone (UI_ZoneBanner, liaison L-110 ; ZoneBannerController, au passage d'une arche).
+	-- V0 proposés, absents du doc (L-110 dit seulement « quelques secondes, avec un fondu ») : à valider par Clément.
+	ZoneBanner = {
+		Screen = "UI_ZoneBanner",
+		FadeIn = 0.35, -- s : de transparent à l'allure de Clément
+		Hold = 3, -- s : bandeau plein
+		FadeOut = 0.6, -- s : retour à transparent, puis l'écran s'éteint
+	},
 	-- V0 proposé, absent du doc : UIScale passager de Motion.Pop (sursauts : CashBump, TimerTick…).
 	PopScaleName = "PopScale",
 	-- V0 proposé, absent du doc : nom du UIScale ajouté par le code sur un cadre animé (jamais un

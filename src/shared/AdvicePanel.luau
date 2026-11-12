@@ -1,7 +1,7 @@
 --!strict
 -- AdvicePanel (DEV-030 ; liaison L-044 et L-071, point 9) : ce qui est commun aux deux panneaux de
 -- conseils, côté client : BB_StoreInfo au-dessus de chaque vitrine (StoreInfoController) et
--- BB_ZoneGate sur chaque arche de zone (ZoneGateController). Mêmes textes, mêmes nombres (Shared/Format)
+-- UI_ZoneBanner au passage d'une arche (ZoneBannerController, L-110 ; avant : BB_ZoneGate). Mêmes textes, mêmes nombres (Shared/Format)
 -- et mêmes couleurs, pour les mêmes valeurs de Config/Zones (section 4).
 --
 -- Couleur du texte des dégâts et de la vitesse conseillés, chez le joueur local (5.3 : « verts si le
@@ -49,7 +49,7 @@ AdvicePanel.WalkSpeedAttribute = "WalkSpeed"
 local DAMAGE_TEXT = "Damage %s"
 local SPEED_TEXT = "Speed %s"
 -- L-108 point 5 (Clément, 2026-11-12) : sur BB_StoreInfo et StoreReqSign, la même valeur se lit
--- « Strength 1 » (la force requise). BB_ZoneGate garde « Damage ».
+-- « Strength 1 » (la force requise), et sur UI_ZoneBanner aussi (L-110). damageText ne sert plus qu'aux bancs.
 local STRENGTH_TEXT = "Strength %s"
 
 -- V0 proposé, absent du doc : couleurs prises dans la planche de style (10.6), à valider par Clément.

@@ -12,6 +12,9 @@ local DeepFreeze = require(script.Parent.DeepFreeze)
 export type Zone = {
 	Index: number,
 	Theme: string, -- nom affiché de la zone, en anglais (catalogue 10.5, liaison L-036)
+	-- Ville de la zone, écrite sur le bandeau d'entrée UI_ZoneBanner (liaison L-110, noms de Clément du
+	-- 2026-11-12). nil : pas encore de ville (zone 1) ; le bandeau écrit alors Theme en capitales.
+	City: string?,
 	Stores: { string }, -- noms affichés des 2 magasins PNJ, en anglais comme leurs enseignes (L-036)
 	-- Les mêmes magasins, dans le même ordre, sous leur nom d'asset (10.3) : le modèle de Clément
 	-- s'appelle STORE_Z<n>_<Id> (« STORE_Z1_Superette »). Ce sont les noms de la colonne « Magasins
@@ -42,6 +45,7 @@ local Zones: { Zone } = {
 	{
 		Index = 2,
 		Theme = "Toys",
+		City = "LONDON",
 		Stores = { "Toy Shop", "Sweet Shop" },
 		StoreIds = { "MagasinDeJouets", "Confiserie" },
 		WindowHP = 350,
@@ -54,6 +58,7 @@ local Zones: { Zone } = {
 	{
 		Index = 3,
 		Theme = "Electronics",
+		City = "TOKYO",
 		Stores = { "Electronics", "Video Games" },
 		StoreIds = { "Electronique", "JeuxVideo" },
 		WindowHP = 2_800,
@@ -66,6 +71,7 @@ local Zones: { Zone } = {
 	{
 		Index = 4,
 		Theme = "Jewelry",
+		City = "LOS ANGELES",
 		Stores = { "Jewelry", "Watches & Clocks" },
 		StoreIds = { "Bijouterie", "Horlogerie" },
 		WindowHP = 21_000,
@@ -78,6 +84,7 @@ local Zones: { Zone } = {
 	{
 		Index = 5,
 		Theme = "Gallery",
+		City = "PARIS",
 		Stores = { "Art Gallery", "Antiques" },
 		StoreIds = { "GalerieDArt", "Antiquaire" },
 		WindowHP = 175_000,
@@ -90,6 +97,7 @@ local Zones: { Zone } = {
 	{
 		Index = 6,
 		Theme = "Bank",
+		City = "NEW YORK",
 		Stores = { "Bank", "Vault" },
 		StoreIds = { "Banque", "SalleDesCoffres" },
 		WindowHP = 1_400_000,

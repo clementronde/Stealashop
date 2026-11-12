@@ -256,18 +256,8 @@ UI.Billboards = {
 			{ Path = "Speed", Class = "TextLabel" },
 		},
 	},
-	-- Panneau de chaque arche de zone (liaison L-071, point 9 ; a42, noms de Clément, à remplir par le
-	-- code) : nom de la zone, dégâts et vitesse conseillés. ZoneGateController écrit les 3 textes et
-	-- colore Damage et Speed pour le joueur local, comme sur BB_StoreInfo.
-	{
-		Name = "BB_ZoneGate",
-		Class = "BillboardGui",
-		Elements = {
-			{ Path = "ZoneName", Class = "TextLabel" },
-			{ Path = "Speed", Class = "TextLabel" },
-			{ Path = "Damage", Class = "TextLabel" },
-		},
-	},
+	-- BB_ZoneGate (panneau des arches, L-071 point 9) : retiré par Clément le 2026-11-12 (L-110), remplacé
+	-- par l'écran UI_ZoneBanner (en fin de fichier).
 } :: { Screen }
 
 -- Dossier des billboards, depuis ReplicatedStorage.
@@ -712,6 +702,20 @@ table.insert(UI.Screens, {
 	Elements = {
 		{ Path = "AdminButton", Class = BUTTON },
 		{ Path = "AdminButton.AdminLabel" },
+	} :: { Element },
+})
+-- Bandeau d'entrée de zone (vague 30, L-110 ; relevé de Studio du 2026-11-12, agents/wave30-studio.md) : écran
+-- UI_ZoneBanner, éteint au repos, allumé quelques secondes par ZoneBannerController quand le joueur passe une arche.
+-- ZoneName = ville de la zone ; Advice.Speed et Advice.Damage = textes et couleurs des panneaux des magasins ;
+-- Difficulty = « Easy », « Medium » ou « Hard ». Advice.RecommendedLabel est un texte fixe de Clément (pas lu).
+table.insert(UI.Screens, {
+	Name = "UI_ZoneBanner",
+	Class = "ScreenGui",
+	Elements = {
+		{ Path = "Banner.ZoneName", Class = "TextLabel" },
+		{ Path = "Advice.Speed", Class = "TextLabel" },
+		{ Path = "Advice.Damage", Class = "TextLabel" },
+		{ Path = "Difficulty", Class = "TextLabel" },
 	} :: { Element },
 })
 

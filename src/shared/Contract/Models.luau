@@ -354,6 +354,7 @@ local BoxTrail: ModelSpec = {
 -- Arches de zone (tag ZoneGate, attribut Zone ; liaison L-071, point 9, a42) : point d'accroche
 -- facultatif du panneau BB_ZoneGate, comme celui des magasins. Sans lui, ZoneGateController pose le
 -- panneau au-dessus de SignPart (le bandeau des arches du greybox).
+-- Depuis L-110 (2026-11-12) : BB_ZoneGate est retiré, plus rien ne s'accroche à InfoPoint ; il reste facultatif.
 local ZoneGate: ModelSpec = {
 	Key = "ZoneGate",
 	Label = "arches de zone",
