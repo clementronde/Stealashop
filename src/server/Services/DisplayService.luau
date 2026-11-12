@@ -25,7 +25,12 @@
 --     plaque passe dans son argent (DataService.AddCash) et elle repart de 0 (5.8). L'argent d'une
 --     plaque reste sur elle quand son objet s'en va (déplacé, rangé, volé) : il se ramasse quand même.
 --     Le montant s'écrit côté serveur, visible par tous, dans `CollectPad_xx/…/AmountGui/Amount`
---     (Format.money, dollars entiers), au plus une fois par seconde ; à chaque ramassage, le remote
+--     (Format.money, dollars entiers), au plus une fois par seconde. AmountGui (BillboardGui depuis
+--     L-107 point 1, SurfaceGui avant : les deux sont lus) est caché (Enabled = false) quand la plaque
+--     porte moins de $1 (présentoir vide, ou plaque qui vient d'être ramassée), proposition de Clément.
+--     Ses textes CollectLabel (fixe) et OfflineLabel (caché) ne sont pas touchés : les gains hors
+--     ligne ne passent pas par les plaques (versés au Claim d'UI_Offline, plus bas), aucune partie du
+--     montant d'une plaque n'en vient ; à chaque ramassage, le remote
 --     CashCollect(plotIndex, slotIndex, amount) part vers tous les clients (DisplayController : gerbe
 --     de BurstPoint, puis OnCollect chez le propriétaire). L'argent des plaques n'est pas volable :
 --     rien ne permet à un autre joueur de le prendre ;
@@ -182,8 +187,11 @@
 --     les Touched répétés des pieds ne comptent pas, et le joueur ne quitte la plaque qu'une fois son
 --     HumanoidRootPart hors d'une zone de sortie plus large (PAD_EXIT_MARGIN, PAD_EXIT_ABOVE) pendant
 --     PAD_EXIT_DELAY s : marcher ou sauter sur la plaque ne la fait pas « quitter ». Passer sur une
---     autre plaque la ramasse tout de suite (plaques indépendantes). Une plaque donne des dollars
---     entiers, les centimes restent sur elle. Seul le propriétaire ramasse ;
+--     autre plaque la ramasse tout de suite (plaques indépendantes). Délai par plaque (L-106 point 12,
+--     remplace L-091 : deux textes de gain se superposaient) : une même plaque attend PAD_COOLDOWN s
+--     après son dernier ramassage avant d'être ramassée de nouveau ; un joueur qui y revient plus tôt
+--     la ramasse dès la fin du délai s'il y est encore. Une autre plaque n'attend pas. Une plaque donne
+--     des dollars entiers, les centimes restent sur elle. Seul le propriétaire ramasse ;
 --   - plaques cherchées dans toute la parcelle (CollectPad_01 à _20 ; ceux des rayons 2 à 5 n'y sont
 --     que quand RayonService a posé le rayon) : à l'installation, quand le nombre de présentoirs
 --     débloqués change, quand une plaque connue disparaît, et toutes les PAD_RESCAN_INTERVAL s tant
@@ -251,7 +259,8 @@ local IS_STUDIO = RunService:IsStudio()
 -- parmi les descendants (règle Contract/Find).
 local SLOT_FORMAT = "DisplaySlot_%02d" -- Attachments DisplaySlot_01 à DisplaySlot_20
 local COLLECT_PAD_PATTERN = "^CollectPad_(%d+)$" -- CollectPad_01 à _20, une plaque par présentoir
-local AMOUNT_PATH = "AmountGui.Amount" -- TextLabel du SurfaceGui de la plaque où s'écrit le montant
+local AMOUNT_GUI = "AmountGui" -- BillboardGui (L-107) ou SurfaceGui (avant) de la plaque, caché à $0
+local AMOUNT_PATH = "AmountGui.Amount" -- TextLabel de AmountGui où s'écrit le montant
 local BOUNDS = "Bounds"
 -- Contrat 2.2 : billboard modèle d'un objet exposé et ses 3 champs.
 local ITEM_BILLBOARD = "BB_Item"
@@ -306,6 +315,8 @@ local PAD_ABOVE = 6
 local PAD_EXIT_MARGIN = 2
 local PAD_EXIT_ABOVE = 12
 local PAD_EXIT_DELAY = 0.3
+-- L-106 point 12 (Clément, 2026-11-12) : délai d'1 s par plaque entre deux ramassages de la même plaque.
+local PAD_COOLDOWN = 1
 -- V0 proposé, absent du doc : zone de revenu d'un Secret sans zone enregistrée (voir l'en-tête).
 local SECRET_FALLBACK_ZONE = 1
 -- V0 proposé, absent du doc : borne de la recherche des présentoirs bonus (DisplaySlot_21 et
@@ -401,6 +412,8 @@ type Pad = {
 	part: BasePart,
 	label: TextLabel?, -- AmountGui/Amount, cherché tant qu'il manque
 	shown: string?, -- dernier texte écrit
+	gui: LayerCollector?, -- AmountGui (BillboardGui ou SurfaceGui), cherché tant qu'il manque
+	enabled: boolean?, -- dernier Enabled écrit sur gui
 }
 -- Plaques connues d'une parcelle, par numéro de présentoir.
 type PadSet = {
@@ -419,6 +432,8 @@ type Account = {
 	collected: number, -- argent encaissé depuis l'arrivée (attribut CashCollected)
 	onSlot: number?, -- plaque où se tient le joueur (nil : aucune), déjà ramassée à son arrivée
 	padSeenAt: number, -- os.clock() du dernier signe de présence sur onSlot (zone de sortie, Touched)
+	padCollectedAt: { [number]: number }, -- os.clock() du dernier ramassage de chaque plaque (PAD_COOLDOWN)
+	padWaiting: boolean, -- arrivé sur onSlot pendant son délai : ramassée dès la fin du délai
 	shownRegister: number?,
 	shownSlots: number?,
 }
@@ -790,7 +805,7 @@ local function scanPads(plot: Model, unlocked: number): PadSet
 			local part = descendant :: BasePart
 			local previous = if old then old.bySlot[slot] else nil
 			-- La même plaque garde son texte déjà écrit (pas de réécriture pour rien).
-			bySlot[slot] = if previous and previous.part == part then previous else { part = part, label = nil, shown = nil }
+			bySlot[slot] = if previous and previous.part == part then previous else { part = part, label = nil, shown = nil, gui = nil, enabled = nil }
 			if not touchConnected[part] then
 				touchConnected[part] = true
 				part.Touched:Connect(function(hit: BasePart)
@@ -1243,12 +1258,27 @@ local function showPads(set: PadSet, account: Account?)
 			pad.label = label
 			pad.shown = nil
 		end
+		local amount = if account then math.floor(account.pending[slot] or 0) else 0
 		if label then
-			local amount = if account then math.floor(account.pending[slot] or 0) else 0
 			local text = Format.money(amount)
 			if text ~= pad.shown then
 				pad.shown = text
 				label.Text = text
+			end
+		end
+		-- L-107 point 1 : AmountGui caché quand la plaque porte moins de $1 (voir l'en-tête).
+		local gui = pad.gui
+		if gui == nil or gui.Parent == nil then
+			local found = Find.path(pad.part, AMOUNT_GUI)
+			gui = if found ~= nil and found:IsA("LayerCollector") then found :: LayerCollector else nil
+			pad.gui = gui
+			pad.enabled = nil
+		end
+		if gui then
+			local enabled = amount >= 1
+			if enabled ~= pad.enabled then
+				pad.enabled = enabled
+				gui.Enabled = enabled
 			end
 		end
 	end
@@ -1499,6 +1529,8 @@ local function newAccount(): Account
 		collected = 0,
 		onSlot = nil,
 		padSeenAt = 0,
+		padCollectedAt = {},
+		padWaiting = false,
 		shownRegister = nil,
 		shownSlots = nil,
 	}
@@ -1509,6 +1541,20 @@ local function clearView(plot: Model)
 	if view then
 		views[plot] = nil
 		view.folder:Destroy()
+	end
+end
+
+-- Ramassage de la plaque `slot` où se tient le joueur (L-106 point 12) : tout de suite si son dernier
+-- ramassage date d'au moins PAD_COOLDOWN s, sinon dès la fin du délai (padWaiting, checkPads).
+local function collectPad(player: Player, account: Account, slot: number, now: number)
+	local last = account.padCollectedAt[slot]
+	if last and now - last < PAD_COOLDOWN then
+		account.padWaiting = true
+		return
+	end
+	account.padWaiting = false
+	if cashOut(player, account, "Pad", slot) > 0 then
+		account.padCollectedAt[slot] = now
 	end
 end
 
@@ -1548,7 +1594,7 @@ onPadTouched = function(plot: Model, slot: number, part: BasePart, hit: BasePart
 	end
 	account.onSlot = slot -- checkPads le remet à nil quand il en est vraiment sorti
 	account.padSeenAt = now
-	cashOut(owner, account, "Pad", slot)
+	collectPad(owner, account, slot, now)
 end
 
 -- Installe la boutique sauvegardée du joueur sur sa parcelle. Sans yield.
@@ -1741,8 +1787,11 @@ local function checkPads()
 		local now = os.clock()
 		local onSlot = account.onSlot
 		local current = if onSlot then set.bySlot[onSlot] else nil
-		if root and current and current.part.Parent ~= nil and isOnPad(root.Position, current.part) then
+		if root and onSlot and current and current.part.Parent ~= nil and isOnPad(root.Position, current.part) then
 			account.padSeenAt = now -- encore sur sa plaque : elle garde la priorité sur une voisine
+			if account.padWaiting then
+				collectPad(player, account, onSlot, now) -- arrivé pendant le délai : ramassée à sa fin
+			end
 			continue
 		end
 		local slot = if root then padAt(set, root.Position) else nil
@@ -1750,12 +1799,13 @@ local function checkPads()
 			-- Arrivée sur une plaque (ou passage direct sur une autre) : un seul ramassage.
 			account.onSlot = slot
 			account.padSeenAt = now
-			cashOut(player, account, "Pad", slot)
+			collectPad(player, account, slot, now)
 		elseif onSlot then
 			if root and current and current.part.Parent ~= nil and isNearPad(root.Position, current.part) then
 				account.padSeenAt = now
 			elseif now - account.padSeenAt >= PAD_EXIT_DELAY then
 				account.onSlot = nil -- vraiment sorti : la prochaine arrivée ramasse de nouveau
+				account.padWaiting = false
 			end
 		end
 	end

@@ -106,6 +106,25 @@ local Store: ModelSpec = {
 
 -- Le tag désigne la parcelle. Le préfixe PLOT_ n'est pas utilisé pour la trouver :
 -- il sert aussi aux morceaux de boutique par niveau (PLOT_Shop_L2, 10.3).
+-- Enfants d'une plaque CollectPad_xx (voir plus bas, L-091 et L-107). Liste typée à part : ses
+-- éléments n'ont pas tous les mêmes champs.
+local COLLECT_PAD_INSIDE: { Part } = {
+	{
+		Name = "AmountGui",
+		Class = "LayerCollector",
+		Note = "BillboardGui depuis L-107 (SurfaceGui encore accepté)",
+	},
+	{ Name = "Amount", Class = "TextLabel" },
+	{ Name = "CollectLabel", Class = "TextLabel", Silent = true },
+	{ Name = "OfflineLabel", Class = "TextLabel", Silent = true },
+	{
+		Name = "BurstPoint",
+		Class = "Attachment",
+		Optional = true,
+		Note = "facultatif : sans lui, pas de gerbe au ramassage, L-091",
+	},
+}
+
 local Plot: ModelSpec = {
 	Key = "Plot",
 	Label = "parcelles",
@@ -129,8 +148,13 @@ local Plot: ModelSpec = {
 		-- se ramasse sur la plaque de chaque présentoir, CollectPad_xx (même numéro que DisplaySlot_xx).
 		-- CollectPad_01 à _04 obligatoires (Rayon_01, toujours dans la boutique) ; _05 à _20 sont dans
 		-- Assets/Plots/PLOT_Shop_Rayons et n'arrivent dans la parcelle qu'avec leur rayon (RayonService).
-		-- Dedans : AmountGui (SurfaceGui) et Amount (TextLabel), où le code écrit le montant ; BurstPoint
+		-- Dedans : AmountGui et Amount (TextLabel), où le code écrit le montant ; BurstPoint
 		-- (Attachment avec les ParticleEmitter de la gerbe) facultatif, l'effet seul en dépend.
+		-- L-107 point 1 (2026-11-12) : AmountGui passe de SurfaceGui à BillboardGui (texte qui flotte
+		-- au-dessus de la plaque). Pendant la pose de Clément, les deux sont acceptés (LayerCollector :
+		-- le code ne lit que Enabled et Amount). Dans AmountGui, CollectLabel (« Collect », fixe) et
+		-- OfflineLabel (caché, le code n'y écrit rien : les gains hors ligne ne passent pas par les
+		-- plaques) : absents, rien n'est écrit (Silent) ; présents, leur classe est contrôlée.
 		{
 			Name = "CollectPad_%02d",
 			From = 1,
@@ -138,16 +162,7 @@ local Plot: ModelSpec = {
 			Min = 4,
 			Class = "BasePart",
 			Note = "plaques de ramassage, _05 à _20 posées avec leur rayon, L-091",
-			Inside = {
-				{ Name = "AmountGui", Class = "SurfaceGui" },
-				{ Name = "Amount", Class = "TextLabel" },
-				{
-					Name = "BurstPoint",
-					Class = "Attachment",
-					Optional = true,
-					Note = "facultatif : sans lui, pas de gerbe au ramassage, L-091",
-				},
-			},
+			Inside = COLLECT_PAD_INSIDE,
 		},
 		{ Name = "DepositZone", Class = "BasePart" },
 		{ Name = "Treadmill", Tag = "Treadmill" },
