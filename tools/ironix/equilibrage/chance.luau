@@ -52,6 +52,16 @@ Chance.Tables = {
 	},
 }
 
+-- Crans sans limite (décision de Cantin du 2026-11-12 au soir), formule d'a103 :
+--   chance du cran n = min(UpgradeChance × chance, UpgradeChanceCap) × UpgradeDecay^(n − 1),
+--   arrêt au premier échec ou à UpgradeTop. PROPOSÉ (a106), à coller dans Config/ShelfOpen.
+Chance.Crans_Proposes = {
+	UpgradeChance = 0.08, -- tirage ×1 : 8 % au premier cran ; ×10 : 80 % (économie proche des 2 crans)
+	UpgradeChanceCap = 0.9, -- jamais un cran sûr ; aucun palier de la table ne l'atteint (×10 : 80 %)
+	UpgradeDecay = 0.7, -- la chance de chaque cran est celle du précédent × 0,7
+	UpgradeTop = "Secret", -- Divine exclue
+}
+
 ---------------------------------------------------------------------------------------------- montée
 
 -- Même calcul que Shared/ShelfOpenState.ticksTo et revealDelay.
@@ -121,12 +131,17 @@ local function hasItem(zone, rarityId)
 	return list ~= nil and #list > 0
 end
 
--- Rareté au-dessus de `rarityId` qu'un cran peut viser, ou nil. `regle` : "Jeu" (la règle du code) ou
--- "Libre" (variante : seule la présence d'un objet compte, Secret compris, même en zone 1).
-local function nextFor(zone, tier, rarityId, regle)
+-- Rareté au-dessus de `rarityId` qu'un cran peut viser, ou nil. `regle` : "Jeu" (la règle du code de la
+-- vague 30 : 2 crans, jamais Secret, seulement ce que le colis donne dans sa zone), "Libre" (seule la
+-- présence d'un objet compte) ou "Infini" (décision de Cantin du 2026-11-12 au soir : aucune limite de
+-- zone ni d'objet, jusqu'à `top`, l'Id de la rareté la plus haute qu'un cran peut atteindre).
+local function nextFor(zone, tier, rarityId, regle, top)
 	local nextRarity = Rarities.List[Rarities.ById[rarityId].Order + 1]
 	if nextRarity == nil then
 		return nil
+	end
+	if regle == "Infini" then
+		return if nextRarity.Order <= Rarities.ById[top or "Secret"].Order then nextRarity.Id else nil
 	end
 	if regle == "Libre" then
 		return if hasItem(zone, nextRarity.Id) then nextRarity.Id else nil
@@ -137,19 +152,27 @@ local function nextFor(zone, tier, rarityId, regle)
 	return nextRarity.Id
 end
 
--- Probabilité de chaque rareté finale, partant de `rarityId`, chaque cran réussi avec `p`.
-function Chance.Crans(zone, tier, rarityId, p, upgradeMax, regle)
+-- Probabilité de chaque rareté finale, partant de `rarityId`, le cran n réussi avec `pOf(n)` (un nombre
+-- est accepté : même chance à chaque cran).
+function Chance.Crans(zone, tier, rarityId, pOf, upgradeMax, regle, top)
+	if type(pOf) == "number" then
+		local p = pOf
+		pOf = function()
+			return p
+		end
+	end
 	local out = {}
 	if regle ~= "Libre" and oddsOf(zone, tier, rarityId) <= 0 then
 		out[rarityId] = 1 -- contenu imposé : jamais amélioré
 		return out
 	end
 	local current, reach = rarityId, 1
-	for _ = 1, upgradeMax do
-		local nextId = nextFor(zone, tier, current, regle)
+	for n = 1, upgradeMax do
+		local nextId = nextFor(zone, tier, current, regle, top)
 		if nextId == nil then
 			break
 		end
+		local p = pOf(n)
 		out[current] = (out[current] or 0) + reach * (1 - p)
 		reach *= p
 		current = nextId
@@ -159,12 +182,25 @@ function Chance.Crans(zone, tier, rarityId, p, upgradeMax, regle)
 end
 
 -- Un « mode » d'ouverture : { Nom, Table (nil = chance fixe 1), UpgradeChance, UpgradeMax, Boost (×,
--- défaut 1), BoostSur ("Crans" : la chance de cran seule ; "Compteur" : la chance tirée), Regle }.
-local function cranChance(mode, luck)
+-- défaut 1), BoostSur ("Crans" : la chance de cran seule ; "Compteur" : la chance tirée), Regle, et pour la
+-- règle "Infini" : Cap (UpgradeChanceCap), Decay (UpgradeDecay), Top (UpgradeTop) }.
+-- Chance du cran n (formule d'a103) : min(UpgradeChance × chance, Cap) × Decay^(n − 1) ; sans Cap :
+-- UpgradeChance × chance bornée à 1, la même à chaque cran (règle de la vague 30).
+local function cranChance(mode, luck, n)
 	local boost = mode.Boost or 1
 	local effective = if mode.BoostSur == "Compteur" then luck else luck * boost
+	if mode.Cap ~= nil then
+		return math.min(mode.UpgradeChance * effective, mode.Cap) * (mode.Decay or 1) ^ ((n or 1) - 1)
+	end
 	return math.clamp(mode.UpgradeChance * effective, 0, 1)
 end
+Chance.CranChance = cranChance
+local function pFor(mode, luck)
+	return function(n)
+		return cranChance(mode, luck, n)
+	end
+end
+Chance.PFor = pFor
 local function drawnLuck(mode, luck)
 	return if mode.BoostSur == "Compteur" then luck * (mode.Boost or 1) else luck
 end
@@ -189,10 +225,10 @@ function Chance.Repartition(zone, tier, mode)
 	local result = {}
 	local odds = ShelfBoxes.OddsFor(zone, tier)
 	for _, line in Chance.Lignes(mode) do
-		local p = cranChance(mode, line.Atteinte)
+		local p = pFor(mode, line.Atteinte)
 		for rarityId, share in odds do
 			if share > 0 then
-				for finalId, q in Chance.Crans(zone, tier, rarityId, p, mode.UpgradeMax, mode.Regle) do
+				for finalId, q in Chance.Crans(zone, tier, rarityId, p, mode.UpgradeMax, mode.Regle, mode.Top) do
 					result[finalId] = (result[finalId] or 0) + line.Proba * share / 100 * q
 				end
 			end
@@ -240,6 +276,10 @@ function Chance.Modes()
 		Aujourdhui = { Nom = "Aujourd'hui (ouvert en base, chance ×1)", Table = nil, UpgradeChance = Config.Unbox.UpgradeChance, UpgradeMax = Config.Unbox.UpgradeMax, Base = true },
 		V0 = { Nom = "L-112, table V0 du jeu", Table = Chance.Tables.V0, UpgradeChance = ShelfOpen.UpgradeChance, UpgradeMax = ShelfOpen.UpgradeMax },
 		Proposee = { Nom = "L-112, table proposée", Table = Chance.Tables.Proposee, UpgradeChance = ShelfOpen.UpgradeChance, UpgradeMax = ShelfOpen.UpgradeMax },
+		-- Décision de Cantin (2026-11-12, soir) : crans sans limite, formule d'a103, V0 d'a103.
+		InfiniV0 = { Nom = "Crans sans limite, V0 d'a103", Table = Chance.Tables.Proposee, Regle = "Infini", UpgradeMax = math.huge, UpgradeChance = 0.10, Cap = 0.9, Decay = 1, Top = "Secret" },
+		-- PROPOSÉ (a106) : la même formule, la chance de chaque cran ×0,6 par rapport au précédent.
+		Infini = { Nom = "Crans sans limite, proposé", Table = Chance.Tables.Proposee, Regle = "Infini", UpgradeMax = math.huge, UpgradeChance = Chance.Crans_Proposes.UpgradeChance, Cap = Chance.Crans_Proposes.UpgradeChanceCap, Decay = Chance.Crans_Proposes.UpgradeDecay, Top = Chance.Crans_Proposes.UpgradeTop },
 	}
 end
 
@@ -257,12 +297,11 @@ function Chance.Accroche(mode)
 		end
 		local final = rarityId
 		if not imposed then
-			local p = cranChance(mode, issue.Atteinte)
 			local current = rarityId
 			if oddsOf(zone, tier, current) > 0 or mode.Regle == "Libre" then
-				for _ = 1, mode.UpgradeMax do
-					local nextId = nextFor(zone, tier, current, mode.Regle)
-					if nextId == nil or random() >= p then
+				for n = 1, mode.UpgradeMax do
+					local nextId = nextFor(zone, tier, current, mode.Regle, mode.Top)
+					if nextId == nil or random() >= cranChance(mode, issue.Atteinte, n) then
 						break
 					end
 					current = nextId

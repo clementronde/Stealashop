@@ -588,6 +588,10 @@ function Modele.Jouer(eco, profil, seed, maxSeconds)
 				advance(inStore, "Braquage")
 			end
 			out.Ouvertures = (out.Ouvertures or 0) + 1
+			out.ParZone = out.ParZone or {}
+			out.ParZone[zone] = (out.ParZone[zone] or 0) + 1
+			out.ParType = out.ParType or {}
+			out.ParType[tier] = (out.ParType[tier] or 0) + 1
 			out.Crans = (out.Crans or 0) + (Rarities.ById[final].Order - Rarities.ById[start].Order)
 			out.Raretes = out.Raretes or {}
 			out.Raretes[final] = (out.Raretes[final] or 0) + 1
