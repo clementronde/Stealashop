@@ -16,7 +16,8 @@
 --     Available si la tuile est ouverte, Locked sinon (Info caché). Tile_Next2 toujours Locked ; RootTile
 --     (« UPGRADES ») : rien à acheter, jamais choisie. Info.Level « Lv 2/5 » ; Info.TileName = DisplayName et
 --     Labels[niveau] (« Glass ×2 », « Cameras II ») ; un Label qui est un mot (« Stand », « Store ») s'écrit
---     seul (V0 proposé, comme le prototype de Clément : la tuile Shop Level montre « Store ») ; Price (blanc)
+--     seul (V0 proposé, comme le prototype de Clément) ; une tuile renommée est aussi cherchée sous ses
+--     anciens noms (OldTiles : Tile_Walls, sinon Tile_ShopLevel) ; Price (blanc)
 --     avec le prix suivant, ou PriceNeed (rouge) quand l'argent manque ; « MAX » au dernier niveau ; « SOON »
 --     quand le niveau suivant n'est pas codé (Coded) ou n'a pas de prix.
 --   - InfoPanel, tuile choisie (clic sur une tuile ouverte) : NodeName (DisplayName en capitales), NodeIcon
@@ -681,15 +682,26 @@ local function bind(gui: ScreenGui)
 			wanted[skill.Tile] = skill
 		end
 		for name, value in wanted do
+			local skill: Skill? = if type(value) == "table" then value :: Skill else nil
 			local object = guiObject(treeFrame, name)
+			-- Renommage annoncé (OldTiles, ex. Tile_ShopLevel → Tile_Walls, vague 29) : l'ancien nom sert tant que
+			-- le nouveau n'est pas dans l'écran.
+			local oldTiles = if skill then skill.OldTiles else nil
+			if object == nil and oldTiles then
+				for _, oldName in oldTiles do
+					object = guiObject(treeFrame, oldName)
+					if object then
+						break
+					end
+				end
+			end
 			if object == nil then
 				reportOnce(`tile:{name}`, `[SkillTree] {SCREEN}.Tree.{name} introuvable`)
 				continue
 			end
-			local skill: Skill? = if type(value) == "table" then value :: Skill else nil
 			local tile = newTile(object, skill)
 			table.insert(current.tiles, tile)
-			current.byName[name] = tile
+			current.byName[object.Name] = tile
 			if skill then
 				current.bySkill[skill.Id] = tile
 			end

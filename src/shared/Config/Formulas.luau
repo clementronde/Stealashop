@@ -55,9 +55,12 @@ function Formulas.MachineMultiplier(upgradeId: "Treadmill" | "Bench", level: num
 	return Training.BaseMultiplier + Upgrades.ById[upgradeId].EffectPerLevel * level
 end
 
--- PV de la vitrine d'un joueur = 50 × les dégâts par coup de son propriétaire (6).
-function Formulas.PlayerWindowHP(ownerDamage: number): number
-	return PvP.PlayerWindowHPPerDamage * ownerDamage
+-- PV de base de la vitrine (porte) d'un joueur, selon le niveau de sa boutique (StageLevel, 1 à 6 ; borné,
+-- un niveau illisible compte pour 1) : 50 × les dégâts conseillés de la zone du même rang (vague 29, V0
+-- proposé, absent du doc ; voir Config/PvP). L'arbre (Glass, Walls) multiplie ce nombre (WindowService).
+function Formulas.PlayerWindowHP(stageLevel: number): number
+	local level = if stageLevel == stageLevel then math.clamp(math.floor(stageLevel), 1, #Zones) else 1
+	return PvP.PlayerWindowHPPerDamage * Zones[level].AdvisedDamage
 end
 
 -- Prix de rachat d'un objet par le receleur = 120 × son $/s (5.8).

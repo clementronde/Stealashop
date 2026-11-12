@@ -4,7 +4,8 @@
 -- écran UI_SkillTree) : en-tête de Config/SkillTree. Valeurs : Partie 2, section 2 (V0 du doc).
 --
 -- Sauvegarde : champ facultatif SkillTree du profil, [Id] = niveau acheté (Types/Profile, sans changement
--- de version). Au chargement, nettoyé : Id inconnu retiré, niveau entier borné à MaxLevel, niveau ≤ 0
+-- de version). Au chargement, nettoyé : ancien Id de SkillTree.Renamed relu sous son nouvel Id (ShopLevel →
+-- Walls, vague 29 ; le plus haut niveau gagne), Id inconnu retiré, niveau entier borné à MaxLevel, niveau ≤ 0
 -- retiré (table vide : champ retiré). Puis l'attribut `Skill_<Id>` (SkillTree.AttributePrefix) = niveau,
 -- 0 compris, est posé sur le Player pour chaque Id de Config/SkillTree ; republié à chaque achat.
 --
@@ -22,8 +23,11 @@
 -- Effets codés (Coded > 0), sur la boutique du joueur, par les points d'accroche de WindowService et de
 -- PvPService (remplacés à l'Init, comme PvPService remplace WindowService.CanBeHit) :
 --   GlassThickness  PV max de la vitrine de sa boutique × Effects[niveau] (WindowService.GetPlotHPMultiplier ;
---                   base : PvP.PlayerWindowHPPerDamage × dégâts du propriétaire). Relu à chaque tick de
---                   WindowService : l'achat compte dans les 0,1 s, à fraction de PV égale.
+--                   base : Formulas.PlayerWindowHP selon le niveau de la boutique, attribut StageLevel). Relu à
+--                   chaque tick de WindowService : l'achat compte dans les 0,1 s, à fraction de PV égale.
+--   Walls           (vague 29, L-105 point 3) la porte de la boutique EST cette vitrine (PlotDoor/Window, une
+--                   seule barre de PV) : ses PV max × Effects[niveau] aussi, multiplié avec Glass. Le mur
+--                   visible par niveau : ShopWallsService (attribut WallsLevel de la parcelle).
 --   GlassRegen      réparation de Effects[niveau] des PV max par seconde au lieu de Balance.Window.RegenPerSecond
 --                   (WindowService.GetPlotRegen).
 --   Safe            présentoirs non volables = PvP.VaultSlots (1 offert) + Effects[niveau] (PvPService.GetVaultSlots).
@@ -171,7 +175,10 @@ local function sanitize(data: Data): number
 	local fixed = 0
 	local count = 0
 	for key, value in raw do
-		local skill = if type(key) == "string" then SkillTree.ById[key] else nil
+		-- Ancien Id (SkillTree.Renamed, ex. ShopLevel → Walls) : relu sous le nouveau, sans perte ni avertissement ;
+		-- si les deux sont là, le plus haut niveau gagne.
+		local renamed = if type(key) == "string" then SkillTree.Renamed[key] else nil
+		local skill = if renamed then SkillTree.ById[renamed] elseif type(key) == "string" then SkillTree.ById[key] else nil
 		if skill == nil or type(value) ~= "number" or value ~= value then
 			fixed += 1
 			continue
@@ -180,9 +187,14 @@ local function sanitize(data: Data): number
 		if level ~= value then
 			fixed += 1
 		end
-		if level > 0 then
+		if renamed then
+			log(`profil : {key} niveau {level} relu comme {skill.Id}`)
+		end
+		if level > 0 and level > (clean[skill.Id] or 0) then
+			if clean[skill.Id] == nil then
+				count += 1
+			end
 			clean[skill.Id] = level
-			count += 1
 		end
 	end
 	data.SkillTree = if count > 0 then clean else nil
@@ -310,7 +322,7 @@ end
 
 local function installEffects()
 	WindowService.GetPlotHPMultiplier = function(owner: Player): number
-		return SkillTreeService.GetEffect(owner, "GlassThickness") or 1
+		return (SkillTreeService.GetEffect(owner, "GlassThickness") or 1) * (SkillTreeService.GetEffect(owner, "Walls") or 1)
 	end
 	WindowService.GetPlotRegen = function(owner: Player): number
 		return SkillTreeService.GetEffect(owner, "GlassRegen") or Balance.Window.RegenPerSecond

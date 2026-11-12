@@ -17,7 +17,7 @@
 local DeepFreeze = require(script.Parent.DeepFreeze)
 
 export type SkillId =
-	"ShopLevel"
+	"Walls"
 	| "GlassThickness"
 	| "GlassRegen"
 	| "Cameras"
@@ -34,6 +34,7 @@ export type Opens = { Id: SkillId, Level: number }
 export type Skill = {
 	Id: SkillId,
 	Tile: string, -- tuile de UI_SkillTree.Tree
+	OldTiles: { string }?, -- anciens noms de la même tuile, acceptés pendant un renommage annoncé (contrat 2.2)
 	DisplayName: string, -- début de Info.TileName et de InfoPanel.Header.NodeName (en majuscules)
 	Stat: string, -- InfoPanel.StatBox.NodeStat (V0 proposé, absent du doc)
 	MaxLevel: number,
@@ -47,17 +48,23 @@ export type Skill = {
 
 local List: { Skill } = {
 	{
-		-- Partie 2 : Stand, Boutique, Magasin, Concept store, Flagship. Pas codé : la boutique grandit déjà avec le
-		-- nombre de rayons (L-096, règle vérifiée par Clément le 2026-11-11) ; rôle de cette tuile à décider.
-		Id = "ShopLevel",
-		Tile = "Tile_ShopLevel",
-		DisplayName = "Shop",
-		Stat = "Shop size",
+		-- Murs de la boutique (décision de Clément du 2026-11-12, L-105 point 3 et L-106 point 2) : l'ancienne tuile
+		-- ShopLevel (Partie 2 : Stand, Boutique…) devient Walls ; la boutique grandit toujours avec ses présentoirs
+		-- (ShopStageService). Effects[n] = multiplicateur des PV de la porte de la boutique : c'est la vitre
+		-- PlotDoor/Window, la même barre que Glass (les deux se multiplient). Effets : V0 proposés, absents du doc ;
+		-- prix : ceux de l'ancienne tuile Shop Level (Partie 2). Mur visible par niveau : ShopWallsService
+		-- (attributs ShowFromWalls / HideFromWalls). Tuile d'UI : Tile_Walls, ou Tile_ShopLevel tant que Clément
+		-- ne l'a pas renommée (OldTiles).
+		Id = "Walls",
+		Tile = "Tile_Walls",
+		OldTiles = { "Tile_ShopLevel" },
+		DisplayName = "Walls",
+		Stat = "Door HP",
 		MaxLevel = 4,
 		Prices = { 10_000, 250_000, 6_250_000, 156_000_000 },
-		Effects = {},
-		Labels = { [0] = "Stand", "Shop", "Store", "Concept Store", "Flagship" },
-		Coded = 0,
+		Effects = { 1.25, 1.5, 2, 3 },
+		Labels = { [0] = "×1", "×1.25", "×1.5", "×2", "×3" },
+		Coded = 4,
 		Icon = "rbxassetid://89598496809365",
 	},
 	{
@@ -170,7 +177,7 @@ local List: { Skill } = {
 		Icon = "rbxassetid://102799696275335",
 	},
 	{
-		-- Partie 2 (MAJ 4) : pièges derrière la vitrine. Ouvre à Shop Level 2 (prototype de Clément).
+		-- Partie 2 (MAJ 4) : pièges derrière la vitrine. Ouvre à Walls 2 (Shop Level 2 du prototype de Clément).
 		Id = "Traps",
 		Tile = "Tile_Next1",
 		DisplayName = "Traps",
@@ -180,7 +187,7 @@ local List: { Skill } = {
 		Effects = {},
 		Labels = {},
 		Coded = 0,
-		OpensWhen = { Id = "ShopLevel", Level = 2 },
+		OpensWhen = { Id = "Walls", Level = 2 },
 	},
 	{
 		-- Partie 2 : coffre-fort, présentoirs non volables (1 offert dès le MVP), +1 à 250 K $, +1 à 25 M $.
@@ -203,10 +210,21 @@ for _, skill in List do
 	ById[skill.Id] = skill
 end
 
+-- Anciens Id sauvegardés dans des profils, relus sous le nouvel Id au chargement (SkillTreeService ; migration
+-- douce, sans changer la version du profil).
+local Renamed: { [string]: SkillId } = {
+	ShopLevel = "Walls", -- L-105 point 3 (2026-11-12)
+}
+
 -- Base sans achat : réparation Balance (RegenPerSecond, 3 %) et coffre-fort offert Config/PvP.VaultSlots (1).
 local SkillTree = {
 	List = List,
 	ById = ById,
+	Renamed = Renamed,
+	-- Mur visible de la boutique (ShopWallsService) : attribut de la parcelle et attributs des pièces de Clément.
+	WallsLevelAttribute = "WallsLevel",
+	ShowFromWalls = "ShowFromWalls",
+	HideFromWalls = "HideFromWalls",
 	AttributePrefix = "Skill_", -- attribut Skill_<Id> du joueur, posé par le serveur
 	RootTile = "RootTile", -- tuile centrale « UPGRADES » : rien ne s'y achète
 	NeverTile = "Tile_Next2", -- « ??? » qui ne s'ouvre jamais (maquette de Clément)

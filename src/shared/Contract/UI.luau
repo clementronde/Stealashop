@@ -617,6 +617,8 @@ local skillTreeElements = {
 	{ Path = "InfoPanel.NeedButton.NeedLabel" },
 	{ Path = "CloseButton", Class = BUTTON },
 } :: { Element }
+-- Tile_ShopLevel : la tuile Walls (vague 29, L-105 point 3). Renommage en Tile_Walls proposé, pas encore annoncé :
+-- le contrat garde l'ancien nom ; SkillTreeController accepte les deux (Config/SkillTree, OldTiles).
 for _, tile in { "Tile_ShopLevel", "Tile_Glass", "Tile_GlassRegen", "Tile_Cameras", "Tile_Guards", "Tile_PotionLuck", "Tile_Curtain", "Tile_DoorGuard", "Tile_PotionTime", "Tile_Next1", "Tile_Next4" } do
 	table.insert(skillTreeElements, { Path = `Tree.{tile}`, Class = BUTTON })
 	for _, part in { "Bought", "Available", "Locked", "Info", "Info.Level", "Info.TileName", "Info.PriceRow.Price", "Info.PriceRow.PriceNeed" } do

@@ -7,8 +7,12 @@
 local DeepFreeze = require(script.Parent.DeepFreeze)
 
 local PvP = {
-	-- 6 : PV de la vitrine d'un joueur = 50 × les dégâts par coup de son propriétaire
-	-- (Formulas.PlayerWindowHP). Même niveau : environ 9 s pour la casser.
+	-- 6 : PV de la vitrine (porte) d'un joueur. Vague 29 (Clément, L-106 point 3 et L-098) : ils ne
+	-- viennent plus des dégâts du propriétaire mais d'une base fixe par niveau de boutique (attribut
+	-- StageLevel, ShopStageService), que l'arbre multiplie (Glass, Walls). V0 proposé, absent du doc :
+	-- base = 50 × les dégâts conseillés de la zone du même rang (Zones[niveau].AdvisedDamage), soit
+	-- 50, 500, 4 000, 30 000, 250 000 (Formulas.PlayerWindowHP) : sans arbre, un joueur du même rang
+	-- la casse en 9 s environ, comme l'ancienne règle « 50 × ».
 	PlayerWindowHPPerDamage = 50,
 
 	-- 6.1 : voler un joueur

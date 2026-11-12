@@ -14,13 +14,15 @@
 --
 -- Règles :
 --   - PV max : magasin PNJ = Zones[Zone].WindowHP (4). Parcelle occupée (attribut
---     OwnerUserId ≠ 0, posé par PlotService) = 50 × les dégâts par coup du propriétaire (6,
---     Formulas.PlayerWindowHP), recalculés à chaque tick : outil, Force ou aura qui changent
---     sont pris en compte, à fraction de PV égale. Parcelle libre : incassable.
+--     OwnerUserId ≠ 0, posé par PlotService, propriétaire présent) = base fixe selon le niveau de la
+--     boutique (attribut StageLevel de la parcelle, 1 s'il manque ; Formulas.PlayerWindowHP, vague 29,
+--     L-106 point 3 : plus les dégâts du propriétaire), recalculés à chaque tick : un niveau de
+--     boutique qui change compte à fraction de PV égale. Parcelle libre : incassable. Sur une parcelle,
+--     cette vitrine est la vitre de la porte (PlotDoor/Window) : la porte n'a pas d'autres PV.
 --   - Régénération continue de 3 % des PV max par seconde (5.3, Balance.Window).
 --   - Défenses de la boutique (arbre de compétences, vague 27 ; SkillTreeService remplace les points
 --     d'accroche GetPlotHPMultiplier et GetPlotRegen, plus bas) : PV max d'une parcelle occupée ×
---     GetPlotHPMultiplier(propriétaire) (Glass), réparation de GetPlotRegen(propriétaire) des PV max par
+--     GetPlotHPMultiplier(propriétaire) (Glass × Walls), réparation de GetPlotRegen(propriétaire) des PV max par
 --     seconde au lieu de Balance.Window.RegenPerSecond (Glass Regen). Lus à chaque tick : un achat compte
 --     au tick suivant (0,1 s), à fraction de PV égale. Une erreur ou une valeur invalide (pas un nombre
 --     fini > 0 pour les PV, ≥ 0 pour la réparation) reprend la valeur de base.
@@ -175,6 +177,7 @@ local WINDOW_NAME = "Window" -- enfant obligatoire (10.4)
 local INBOX_NAME = "_INBOX_CLEMENT"
 local OWNER_ATTRIBUTE = "OwnerUserId" -- posé par PlotService sur la parcelle
 local PLOT_INDEX_ATTRIBUTE = "PlotIndex" -- posé sur la parcelle (greybox, L-015)
+local STAGE_LEVEL_ATTRIBUTE = "StageLevel" -- posé sur la parcelle par ShopStageService (niveau de la boutique)
 -- Posés ici sur l'objet Window, lus par les clients (mêmes noms dans HitController).
 local WINDOW_ID_ATTRIBUTE = "WindowId"
 local MAX_HP_ATTRIBUTE = "MaxHP"
@@ -295,11 +298,9 @@ local function computeMaxHP(window: Window): number
 	if owner == nil then
 		return 0
 	end
-	local damage = ToolService.GetHitDamage(owner)
-	if damage <= 0 then
-		return 0 -- profil pas encore chargé
-	end
-	return Formulas.PlayerWindowHP(damage) * modifier("GetPlotHPMultiplier", WindowService.GetPlotHPMultiplier, owner, 1, true)
+	local stage = window.Model:GetAttribute(STAGE_LEVEL_ATTRIBUTE)
+	local base = Formulas.PlayerWindowHP(if type(stage) == "number" then stage else 1)
+	return base * modifier("GetPlotHPMultiplier", WindowService.GetPlotHPMultiplier, owner, 1, true)
 end
 
 -- Part des PV max réparée par seconde (5.3) ; parcelle occupée : celle de son propriétaire (Glass Regen).
