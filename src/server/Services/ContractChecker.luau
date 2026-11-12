@@ -573,6 +573,19 @@ checkParts = function(category: string, root: Instance, label: string, parts: { 
 					table.insert(missing, { name = part.Name, detail = `{hint(near, part.Name)}{noteText}`, plural = false })
 				end
 			else
+				-- Homonymes d'une autre classe ignorés (ex. le WrapTarget « Head » rangé dans la Head d'un avatar).
+				local class = part.Class
+				if class and #found > 1 then
+					local same: { Instance } = {}
+					for _, inst in found do
+						if inst:IsA(class) then
+							table.insert(same, inst)
+						end
+					end
+					if #same > 0 then
+						found = same
+					end
+				end
 				if #found > 1 then
 					problem(category, `{label} : {#found} éléments nommés {part.Name}, un seul attendu`)
 				end

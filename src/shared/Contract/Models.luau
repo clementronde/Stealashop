@@ -107,6 +107,7 @@ local Store: ModelSpec = {
 			Name = "ReqSignPoint",
 			Class = "Attachment",
 			Optional = true,
+			Silent = true, -- rien d'écrit s'il manque : les copies de sauvegarde de Clément (ServerStorage) n'en ont pas
 			Note = "facultatif : sans lui, pas de panneau StoreReqSign devant ce magasin, L-108",
 		},
 	},
