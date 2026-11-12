@@ -11,7 +11,8 @@
 #   chargeur.luau     faux `script` et `require`, Color3 : charge les modules de Config tels quels
 #   proposition.luau  la nouvelle échelle proposée (les valeurs à discuter sont toutes là)
 #   modele.luau       les deux économies (actuelle = vraies formules, proposée), le joueur simulé
-#   rapport.luau      tableaux avant / après et parties simulées
+#   chance.luau       chance de l'ouverture dans le magasin (L-112) : table proposée, crans, témoins
+#   rapport.luau      tableaux avant / après et parties simulées (section 12 : la chance)
 set -eu
 H="$(cd "$(dirname "$0")" && pwd)"
 ROOT="${1:-$(cd "$H/../../.." && pwd)}"
@@ -34,7 +35,7 @@ emit() { # emit <clé> <fichier> : SOURCES[clé] = contenu du fichier
     emit "Config/$(basename "$f" .luau)" "$f"
   done
   emit "Format" "$ROOT/src/shared/Format.luau"
-  for m in proposition modele rapport; do
+  for m in proposition modele chance rapport; do
     emit "Outil/$m" "$H/$m.luau"
   done
   tr -d '\r' < "$H/chargeur.luau"
