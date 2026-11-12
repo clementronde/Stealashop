@@ -47,6 +47,9 @@ Elles remplacent, pour les fenêtres et les boutons, les lignes « Écran qui s'
 | Réglages : curseur (`Slider.Knob`) | × 1,18 en 0,08 pendant le glisser, retour à 1 au relâché ; prototype `settings_proto.luau` | Back Out | `KnobGrab` |
 | Réglages : interrupteur (`Toggle.ToggleKnob`) | glisse d'un bout à l'autre en 0,16 ; `OnFill` ou `OffFill` visible | Back Out | `ToggleSlide` |
 | Choix d'un dialogue en texte sans fond (`UI_PawnShop.Dialog.Choices`) | survol : × 1,06 en 0,08, `KeyLabel` et `ChoiceLabel` en jaune `fff36b` ; appui × 0,95 en 0,05 ; relâché en 0,2 ; choix grisé en `9aa3b5` ; prototype `pawnshop_preview.luau` | Quad Out, puis Back Out | `DialogChoice` |
+| Témoin : « ? » qui se remplit (`BB_Witness.Mark.Fill`) | `Fill.Size` Y de 0 à 1 du bas vers le haut, au rythme du temps de casse ; `Fill.FillMark.TextColor3` jaune `ffd84a` jusqu'à 50 %, orange `ff8c1a` jusqu'à 80 %, puis rouge `e8413c` ; à chaque changement de couleur, `Mark` 1,1 → 1 en 0,15 ; prototype en Edit (`_G.WitnessProto`) | linéaire, Back Out pour le saut | `WitnessFill` |
+| Témoin : passage au « ! » (`BB_Witness.Alert`) | `Mark` caché, `Alert` visible : 0 → 1,3 en 0,12, puis 1 en 0,1 ; tremblement de ± 8° (`Rotation`), 4 allers-retours en 0,3 | Back Out, puis Quad Out | `WitnessAlert` |
+| Témoin : pendant l'appel | `Alert` bat de 1 à 1,12, 2 fois par seconde ; `Alert.PhoneIcon` sonne : ± 12° autour de −12°, 6 fois par seconde ; jusqu'à la fin de l'appel | sinus | `WitnessCall` |
 
 ## Propres à l'arbre de compétences
 
