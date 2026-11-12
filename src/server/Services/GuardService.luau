@@ -183,6 +183,8 @@
 --       poursuite avec une copie de chase.Template (jamais le modèle de Clément), pieds sur
 --       chase.Spawn, sur chase.Target. Renvoie la copie, ou nil (cible déjà poursuivie par un
 --       conducteur, sans personnage, modèle sans Humanoid ou HumanoidRootPart). Voir plus bas.
+--   GuardService.IsInSafeZone(position) -> boolean        dans une zone safe (tag SafeZone)
+--   GuardService.FindGuardModel(name) -> Model?           un modèle du dossier Guards de Clément
 --
 -- Conducteurs du camion (kind « Driver », L-083 point 3) : même poursuite, même capture et même coup
 -- que le vigile de jour (chemin, ligne de vue, Balance.Guard.CatchDistance, poussée au marqueur Impact
@@ -198,6 +200,11 @@
 --   - animations Animations.Driver (Idle, Walk, Run, Catch) ; hors des plafonds des vigiles de jour (9.7) ;
 --   - le joueur reçoit ChaseState comme pour un vigile (UI_Chase, MUS_Chase), et chase.CaughtMessage
 --     à la capture.
+--
+-- Policier appelé par un témoin (L-111, WitnessService) : la même poursuite que les conducteurs, lancée
+-- par StartDriverChase avec les champs facultatifs de DriverChase : Label (« policier », pour la sortie),
+-- Tired (true : il s'essouffle comme un vigile, animations du contrat des vigiles, avant de s'effacer) et
+-- GiveUpReason (pour la sortie). Un seul poursuivant de cette famille par joueur (conducteur ou policier).
 
 local CollectionService = game:GetService("CollectionService")
 local Debris = game:GetService("Debris")
@@ -261,6 +268,10 @@ export type DriverChase = {
 	MinSpeed: number,
 	Keeps: (player: Player) -> boolean, -- la cible vaut encore la poursuite
 	CaughtMessage: string?, -- Notify au joueur attrapé
+	-- Policier appelé par un témoin (L-111, WitnessService), facultatifs : sans eux, un conducteur du camion.
+	Label: string?, -- nom dans la sortie et les avertissements d'animation (« policier ») ; défaut « conducteur »
+	Tired: boolean?, -- true : essoufflé (Tired, contrat des vigiles) avant de s'effacer quand il abandonne
+	GiveUpReason: string?, -- pour la sortie, quand Keeps devient faux
 }
 
 -- Règles de la nuit, données par NightCycleService à StartNightPatrol.
@@ -634,19 +645,23 @@ local function spawnFrame(store: Model): CFrame
 	return CFrame.lookAt(frame.Position, frame.Position + look.Unit)
 end
 
--- Le modèle de Clément pour cette zone, s'il est livré.
-local function findTemplate(zone: number): Model?
-	for _, name in { string.format(GUARD_ZONE_NAME, zone), GUARD_COMMON_NAME } do
-		for _, service in { ReplicatedStorage, ServerStorage } :: { Instance } do
-			local assets = service:FindFirstChild("Assets")
-			local folder = if assets then assets:FindFirstChild(GUARD_FOLDER) else nil
-			local model = if folder then folder:FindFirstChild(name) else nil
-			if model and model:IsA("Model") and model:FindFirstChildOfClass("Humanoid") then
-				return model :: Model
-			end
+-- Le modèle `name` du dossier Guards de Clément (ReplicatedStorage/Assets, puis ServerStorage/Assets),
+-- avec un Humanoid ; nil s'il n'est pas livré.
+local function findGuardModel(name: string): Model?
+	for _, service in { ReplicatedStorage, ServerStorage } :: { Instance } do
+		local assets = service:FindFirstChild("Assets")
+		local folder = if assets then assets:FindFirstChild(GUARD_FOLDER) else nil
+		local model = if folder then folder:FindFirstChild(name) else nil
+		if model and model:IsA("Model") and model:FindFirstChildOfClass("Humanoid") then
+			return model :: Model
 		end
 	end
 	return nil
+end
+
+-- Le modèle de Clément pour cette zone, s'il est livré.
+local function findTemplate(zone: number): Model?
+	return findGuardModel(string.format(GUARD_ZONE_NAME, zone)) or findGuardModel(GUARD_COMMON_NAME)
 end
 
 -- Dernier recours si Roblox ne crée pas de rig : des blocs soudés et un Humanoid R15 sans jambes,
@@ -1386,8 +1401,10 @@ local function giveUp(guard: Guard, reason: string)
 	end
 	local now = os.clock()
 	stop(guard)
-	if state == "Wait" or guard.kind == "Driver" then
+	local driver = guard.driver
+	if state == "Wait" or (driver ~= nil and driver.Tired ~= true) then
 		-- Pas encore élancé, ou conducteur du camion (sans Tired au contrat) : pas d'essoufflement.
+		-- Le policier (driver.Tired, L-111) s'essouffle comme un vigile, puis s'efface (startReturn).
 		startReturn(guard, now) -- il ne s'est pas encore élancé : pas d'essoufflement
 		return
 	end
@@ -1803,7 +1820,7 @@ local function chaseStep(guard: Guard, now: number)
 		end
 	elseif driver then
 		if not driverKeeps(driver, player) then
-			giveUp(guard, "ne porte plus le colis du camion")
+			giveUp(guard, driver.GiveUpReason or "ne porte plus le colis du camion")
 			return
 		end
 	elseif not CarryService.IsCarrying(player) then
@@ -2234,7 +2251,7 @@ local function update(guard: Guard, now: number)
 		elseif guard.driver then
 			local driver = guard.driver :: DriverChase
 			if player == nil or root == nil or not driverKeeps(driver, player) then
-				giveUp(guard, "plus de colis du camion avant le départ")
+				giveUp(guard, if driver.GiveUpReason then `{driver.GiveUpReason}, avant le départ` else "plus de colis du camion avant le départ")
 			elseif now >= guard.stateEndsAt then
 				startChase(guard, now)
 			end
@@ -2771,9 +2788,14 @@ local function spawnDriver(chase: DriverChase): Model?
 		root = root,
 		rootHeight = rootHeight,
 		scale = scale,
-		anims = AnimPlayer.new(animator :: Animator, AnimPlayer.modelFolder(model), Animations.Driver, DRIVER_ANIM_LABEL),
+		anims = AnimPlayer.new(
+			animator :: Animator,
+			AnimPlayer.modelFolder(model),
+			if chase.Tired then Animations.Guard else Animations.Driver,
+			if chase.Label then chase.Label else DRIVER_ANIM_LABEL
+		),
 		kind = "Driver",
-		label = `conducteur {model.Name}`,
+		label = `{chase.Label or "conducteur"} {model.Name}`,
 		store = nil,
 		home = frame.Position,
 		zone = chase.Zone,
@@ -3055,6 +3077,17 @@ function GuardService.StartDriverChase(chase: DriverChase): Model?
 		return nil
 	end
 	return result
+end
+
+-- `position` est-elle dans une zone safe (tag SafeZone) ? Pour WitnessService (L-111 : pas de policier
+-- lancé sur un joueur déjà à l'abri).
+function GuardService.IsInSafeZone(position: Vector3): boolean
+	return isInSafeZone(position)
+end
+
+-- Le modèle `name` du dossier Guards de Clément (NPC_Police, L-111), ou nil s'il n'est pas livré.
+function GuardService.FindGuardModel(name: string): Model?
+	return findGuardModel(name)
 end
 
 function GuardService.StopNightPatrol(): number

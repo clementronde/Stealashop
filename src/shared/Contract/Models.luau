@@ -474,4 +474,66 @@ Models.StoreReqSign = StoreReqSign
 -- Avant les comptoirs du hub, qui restent à la fin du rapport.
 table.insert(Models.List, table.find(Models.List, WeaponShopCounter) or #Models.List + 1, StoreReqSign)
 
+-- Témoins et police (vague 30, liaison L-111 ; relevé de Studio du 2026-11-12, agents/wave30-studio.md).
+-- Témoins NPC_Witness_Z<n>_0<k>, posés dans la map (Map/Zone_<n>/Witnesses) : WitnessService les anime sur
+-- place (balade, Look, CallPolice). Leurs animations sont contrôlées à part (Contract/Animations.Witness).
+-- L'attribut WatchedStore (nom du magasin regardé) n'est pas exigé ici : s'il manque ou s'il est faux,
+-- WitnessService l'écrit en orange au démarrage et le témoin se balade seulement.
+local WitnessNpc: ModelSpec = {
+	Key = "Witness",
+	Label = "témoins",
+	Category = "Magasins PNJ",
+	Prefix = "NPC_Witness",
+	Class = "Model",
+	Parts = {
+		{ Name = "HumanoidRootPart", Class = "BasePart", Note = "non ancré : le code le fait marcher" },
+		{
+			Name = "WitnessHead",
+			Class = "Attachment",
+			Optional = true,
+			Note = "facultatif : sans lui, la bulle BB_Witness se pose au-dessus de la Head, L-111",
+		},
+	},
+}
+-- Policier appelé par les témoins : ReplicatedStorage/Assets/Guards/NPC_Police, copié en jeu par
+-- GuardService (StartDriverChase). Mêmes animations que les vigiles (Contract/Animations.Guard).
+local Police: ModelSpec = {
+	Key = "Police",
+	Label = "policiers",
+	Category = "Magasins PNJ",
+	Names = { "NPC_Police" },
+	Class = "Model",
+	Parts = {
+		{ Name = "HumanoidRootPart", Class = "BasePart" },
+	},
+	Expected = { "NPC_Police" },
+}
+-- Circuit de balade des témoins d'une zone (Map/Zone_<n>/WitnessPaths) : des Attachments au sol,
+-- WitnessPath_01, _02… (28 en zone 1), suivis dans l'ordre des numéros, en boucle. Deux au moins ; sans
+-- circuit, les témoins restent sur place.
+local WitnessPaths: ModelSpec = {
+	Key = "WitnessPaths",
+	Label = "circuits de balade des témoins",
+	Category = "Magasins PNJ",
+	Names = { "WitnessPaths" },
+	Parts = {
+		{
+			Name = "WitnessPath_%02d",
+			From = 1,
+			To = 60,
+			Min = 2,
+			Class = "Attachment",
+			Note = "points du circuit, au sol, dans l'ordre de la balade, L-111",
+		},
+	},
+	Expected = { "WitnessPaths" },
+}
+Models.Witness = WitnessNpc
+Models.Police = Police
+Models.WitnessPaths = WitnessPaths
+for _, spec in { WitnessNpc, Police, WitnessPaths } do
+	-- Avant les comptoirs du hub, qui restent à la fin du rapport.
+	table.insert(Models.List, table.find(Models.List, WeaponShopCounter) or #Models.List + 1, spec)
+end
+
 return Models

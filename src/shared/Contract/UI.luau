@@ -718,5 +718,20 @@ table.insert(UI.Screens, {
 		{ Path = "Difficulty", Class = "TextLabel" },
 	} :: { Element },
 })
+-- Bulle des témoins (vague 30, liaison L-111 ; relevé de Studio du 2026-11-12, agents/wave30-studio.md) :
+-- BB_Witness, copiée sur chaque témoin par WitnessController. Mark = le « ? » (Fill : cadre qui coupe, dont le
+-- code règle la hauteur ; FillMark : le « ? » coloré) ; Alert = le « ! » de l'appel, caché par Clément, avec
+-- PhoneIcon qui sonne. Back et Bang ne sont pas lus par le code.
+table.insert(UI.Billboards, {
+	Name = "BB_Witness",
+	Class = "BillboardGui",
+	Elements = {
+		{ Path = "Mark" },
+		{ Path = "Mark.Fill" },
+		{ Path = "Mark.Fill.FillMark", Class = "TextLabel" },
+		{ Path = "Alert" },
+		{ Path = "Alert.PhoneIcon" },
+	} :: { Element },
+})
 
 return UI
