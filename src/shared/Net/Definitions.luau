@@ -544,6 +544,34 @@ local List: { RemoteDef } = {
 			{ Name = "count", Kind = "int", Min = 0 },
 		},
 	},
+	{
+		-- Vague 29 (panel admin, L-108 point 4), absent du tableau 9.4 : une commande de Config/Admin.Commands.
+		-- target = joueur visé (absent = soi) ; value, text et text2 = arguments de la commande (Config/Admin).
+		-- AdminService refuse tout appelant qui n'est pas admin, toute commande inconnue, et revalide chaque
+		-- argument (bornes, Id de Config, cible présente sur le serveur).
+		Name = "AdminCommand",
+		Direction = "ClientToServer",
+		Reliable = true,
+		Args = {
+			{ Name = "commandId", Kind = "string", Max = 32 },
+			{ Name = "target", Kind = "Player", Optional = true },
+			{ Name = "value", Kind = "number", Min = 0, Max = 1e15, Optional = true },
+			{ Name = "text", Kind = "string", Min = 0, Max = MAX_ID_LENGTH, Optional = true },
+			{ Name = "text2", Kind = "string", Min = 0, Max = MAX_ID_LENGTH, Optional = true },
+		},
+		RatePerSecond = 5, -- V0 proposé, absent du doc
+	},
+	{
+		-- Vague 29 : réponse d'AdminService au seul admin qui a envoyé la commande (UI_Admin.Root.StatusLabel).
+		Name = "AdminResult",
+		Direction = "ServerToClient",
+		Reliable = true,
+		Args = {
+			{ Name = "commandId", Kind = "string", Max = 32 },
+			{ Name = "ok", Kind = "boolean" },
+			{ Name = "message", Kind = "string", Max = MAX_MESSAGE_LENGTH },
+		},
+	},
 }
 
 return {

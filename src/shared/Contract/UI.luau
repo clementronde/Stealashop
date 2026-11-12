@@ -668,5 +668,51 @@ table.insert(UI.Billboards, {
 	Class = "BillboardGui",
 	Elements = { { Path = "Line", Class = "TextLabel" } },
 })
+-- Panel admin (vague 29, L-108 point 4 ; note docs/claude/notes/ui-admin.md, relevé de Studio du 2026-11-12,
+-- agents/wave29-studio.md) : écran UI_Admin, branché par AdminController. Facultatif : vérifié seulement s'il est
+-- dans StarterGui. Chaque liste = un Template caché (EntryName, Selected) dans son ScrollingFrame.
+local adminElements = {
+	{ Path = "Root.StatusLabel", Class = "TextLabel" },
+	{ Path = "Root.Header.CloseButton", Class = BUTTON },
+	{ Path = "TargetSection.TargetLabel", Class = "TextLabel" },
+	{ Path = "GiveSection.SearchRow.SearchBox", Class = "TextBox" },
+	{ Path = "GiveSection.MutationTitle" },
+	{ Path = "GiveSection.GiveRow.GiveButton", Class = BUTTON },
+	{ Path = "DangerSection.ResetRow.ResetProfileButton", Class = BUTTON },
+} :: { Element }
+for _, list in { "TargetSection.PlayerList", "GiveSection.ChoiceList", "GiveSection.MutationList", "EventsSection.EventList", "TeleportSection.ZoneList" } do
+	table.insert(adminElements, { Path = `{list}.Template`, Class = BUTTON, Template = true })
+	table.insert(adminElements, { Path = `{list}.Template.EntryName` })
+	table.insert(adminElements, { Path = `{list}.Template.Selected` })
+end
+for _, row in { "Cash", "Speed", "Strength" } do
+	table.insert(adminElements, { Path = `StatsSection.{row}Row.{row}Box`, Class = "TextBox" })
+	table.insert(adminElements, { Path = `StatsSection.{row}Row.Give{row}Button`, Class = BUTTON })
+end
+for _, row in { "Treadmill", "Bench", "ShopLevel", "Rayons" } do
+	table.insert(adminElements, { Path = `BaseSection.{row}Row.{row}Box`, Class = "TextBox" })
+	table.insert(adminElements, { Path = `BaseSection.{row}Row.Set{row}Button`, Class = BUTTON })
+end
+for _, kind in { "Item", "Box", "Aura", "Trail", "Potion", "Gamepass" } do
+	table.insert(adminElements, { Path = `GiveSection.KindRow.{kind}KindButton`, Class = BUTTON })
+	table.insert(adminElements, { Path = `GiveSection.KindRow.{kind}KindButton.Selected` })
+end
+table.insert(UI.Screens, {
+	Name = "UI_Admin",
+	Class = "ScreenGui",
+	Optional = true,
+	Elements = adminElements,
+})
+-- Bouton du HUD qui ouvre UI_Admin (caché par Clément, montré par AdminController aux seuls admins). Entrée à part,
+-- facultative, pour ne pas changer la liste d'UI_HUD : vérifiée quand UI_HUD est là.
+table.insert(UI.Screens, {
+	Name = "UI_HUD",
+	Class = "ScreenGui",
+	Optional = true,
+	Elements = {
+		{ Path = "AdminButton", Class = BUTTON },
+		{ Path = "AdminButton.AdminLabel" },
+	} :: { Element },
+})
 
 return UI

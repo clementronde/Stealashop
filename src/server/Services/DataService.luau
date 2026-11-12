@@ -45,6 +45,8 @@
 --       par la sauvegarde automatique ou celle du départ : l'attente continue jusque-là. Pour les
 --       achats Robux (9.6, MonetizationService) : PurchaseGranted seulement quand le PurchaseId est
 --       sauvegardé, comme le recommande ProfileStore.
+--   DataService.NewData() -> Data
+--       Copie neuve du modèle d'un nouveau profil (remise à zéro du panel admin, AdminService).
 --
 -- Attribut du Player (écrit seulement ici) : Cash, l'argent du profil, posé au chargement puis à
 -- chaque AddCash ou SpendCash. Le HUD l'affiche (HudController, DEV-021) ; il ne sert qu'à
@@ -844,6 +846,12 @@ function DataService.SaveAsync(player: Player, isSaved: (saved: any) -> boolean)
 	end
 	connection:Disconnect()
 	return confirmed
+end
+
+-- Vague 29 (panel admin, L-108 point 4) : copie neuve du modèle d'un nouveau profil (schéma courant), pour la
+-- remise à zéro d'AdminService. Sans yield.
+function DataService.NewData(): Data
+	return deepCopy(TEMPLATE)
 end
 
 function DataService.Init()

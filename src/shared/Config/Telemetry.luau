@@ -62,6 +62,7 @@ local Events: { [string]: string } = {
 	RewardClaim = "RewardClaimed", -- récompense réclamée (DEV-101) : argent, colis ou boost ; champs Source, Sku, Gift
 	DefenseBought = "DefenseBought", -- achat d'une défense (MAJ 2) : point d'accroche
 	PotionPicked = "PotionPicked", -- potion ramassée (vague 28, PotionService) ; champ Potion (Speed, Money…)
+	AdminCommand = "AdminCommand", -- commande du panel admin acceptée (vague 29, AdminService) ; champ Command
 }
 
 local Telemetry = {
