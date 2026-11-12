@@ -46,6 +46,7 @@ Elles remplacent, pour les fenêtres et les boutons, les lignes « Écran qui s'
 | Index : récompenses de la zone visible (`Rewards`) | 0,92 → 1 en 0,18 quand la zone visible dans la liste change | Back Out | `RewardsSwap` |
 | Réglages : curseur (`Slider.Knob`) | × 1,18 en 0,08 pendant le glisser, retour à 1 au relâché ; prototype `settings_proto.luau` | Back Out | `KnobGrab` |
 | Réglages : interrupteur (`Toggle.ToggleKnob`) | glisse d'un bout à l'autre en 0,16 ; `OnFill` ou `OffFill` visible | Back Out | `ToggleSlide` |
+| Choix d'un dialogue en texte sans fond (`UI_PawnShop.Dialog.Choices`) | survol : × 1,06 en 0,08, `KeyLabel` et `ChoiceLabel` en jaune `fff36b` ; appui × 0,95 en 0,05 ; relâché en 0,2 ; choix grisé en `9aa3b5` ; prototype `pawnshop_preview.luau` | Quad Out, puis Back Out | `DialogChoice` |
 
 ## Propres à l'arbre de compétences
 
