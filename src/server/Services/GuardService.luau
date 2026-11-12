@@ -2906,8 +2906,11 @@ local function retarget(guard: Guard, player: Player)
 end
 
 local function onCarryStarted(player: Player, payload: any)
-	if type(payload) ~= "table" or payload.Kind ~= "NPCBox" then
-		return -- seuls les colis PNJ ont un vigile (5.5)
+	-- L-112 : un objet sorti d'un colis ouvert sur le rayon (NPCItem) fait partir le vigile du magasin à
+	-- sa prise, comme un colis ; tombé au sol (coup de batte, ou porteur attrapé : CarryService.Fail
+	-- « Caught » le lâche, résultat « Dropped »), il suit les mêmes règles qu'un colis tombé.
+	if type(payload) ~= "table" or (payload.Kind ~= "NPCBox" and payload.Kind ~= "NPCItem") then
+		return -- seuls les colis PNJ et les objets sortis de ces colis ont un vigile (5.5)
 	end
 	if droppedPayloads[payload] then
 		-- Ramassé au sol (6.2) : le vigile qui suivait ce colis change de cible ; sans lui, aucun
