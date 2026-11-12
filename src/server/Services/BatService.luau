@@ -404,7 +404,7 @@ local function applyHit(hitter: Player, hitterRoot: BasePart, target: Candidate,
 		AntiCheatService.Allow(player, Bat.KnockbackDuration, "BatService (knockback)") -- poussée du code (DEV-060)
 		knockback(target.root, direction)
 		stun(player, "Knockback")
-		Net.Server.Notify:Fire(player, Bat.Messages.BoxKnockedDown, "Warning")
+		Net.Server.Notify:Fire(player, Bat.Messages.BoxKnockedDown, "Alert") -- avertissement, pas un refus : sans UI_Deny (L-106 point 6)
 		log(`{hitter.Name} frappe {player.Name} : colis {target.payload.Rarity} au sol ({dropId or "?"})`)
 	else
 		-- Objet volé : il ne tombe pas, PvPService le rend à son présentoir (OnCarryEnded « Bat »).

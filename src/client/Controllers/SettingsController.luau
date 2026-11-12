@@ -628,15 +628,22 @@ local function bindHud(gui: Instance)
 	if hudBound[gui] then
 		return
 	end
-	local found = Find.path(gui, HUD_BUTTON)
-	if found == nil or not found:IsA("GuiButton") then
+	-- Tous ses exemplaires, comme SkillTreeButton (L-108 point 7) : caché par Clément dans Studio
+	-- (SocialRow), montré en Play par le code quand Features.Settings est vrai.
+	local bound = 0
+	for _, found in Find.all(gui, HUD_BUTTON) do
+		if found:IsA("GuiButton") then
+			local button = found :: GuiButton
+			button.Visible = true
+			button.Activated:Connect(toggleScreen)
+			bound += 1
+		end
+	end
+	if bound == 0 then
 		reportOnce("hud", `[Settings] {HUD}.{HUD_BUTTON} introuvable ou pas un bouton : les réglages ne s'ouvrent pas`)
 		return
 	end
 	hudBound[gui] = true
-	local button = found :: GuiButton
-	button.Visible = true -- caché par Clément tant que le code ne le montre pas (Features.Settings)
-	button.Activated:Connect(toggleScreen)
 end
 
 ------------------------------------------------------------------------------

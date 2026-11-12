@@ -589,7 +589,7 @@ local function step(dt: number)
 				for hitter in hitters do
 					if hitter.Parent == Players then
 						Net.Server.HeistTimer:Fire(hitter, window.Id, 0)
-						Net.Server.Notify:Fire(hitter, BREAK_TOO_SLOW, "Warning")
+						Net.Server.Notify:Fire(hitter, BREAK_TOO_SLOW, "Alert")
 					end
 				end
 			end

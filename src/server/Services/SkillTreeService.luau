@@ -295,7 +295,7 @@ local function onWindowHit(attacker: Player, _windowId: string, kind: string, mo
 	if not isNew then
 		return
 	end
-	notify(owner, string.format(MESSAGES.CameraAlert, attacker.DisplayName), "Warning")
+	notify(owner, string.format(MESSAGES.CameraAlert, attacker.DisplayName), "Alert")
 	local duration = SkillTreeService.GetEffect(owner, "Cameras")
 	if level >= 2 and duration and duration > 0 then
 		local ok, err = pcall(function()

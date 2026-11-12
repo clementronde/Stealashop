@@ -295,7 +295,11 @@ local UiMotion = {
 		Open = "UI_Open", -- Motion.Open d'un écran fermé (ou en train de se fermer)
 		Close = "UI_Close", -- Motion.Close d'un écran ouvert ; pas pour ceux fermés par l'ouverture d'un autre du groupe
 		Deny = "UI_Deny", -- message Notify du genre DenyKind (refus)
-		DenyKind = "Warning", -- V0 proposé, absent du doc : les messages « Warning » sont presque tous des refus
+		-- L-106 point 6 : UI_Deny ne sonne que sur un vrai refus (pas assez d'argent, action interdite) :
+		-- les messages « Warning ». Les simples avertissements (attrapé, volé, nuit, alarme…) partent en
+		-- « Alert » (AlertKind) : même allure que « Warning », sans son.
+		DenyKind = "Warning",
+		AlertKind = "Alert",
 		TrainGain = "Train_Gain", -- GainController : avec chaque « +X Speed/s » ou « +X Power » affiché
 	},
 	-- Vague 27 (L-096 point 2) : refus quand l'argent manque (T.18 de docs/claude/notes/ui-motion-skilltree.md ;

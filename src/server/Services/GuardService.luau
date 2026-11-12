@@ -1510,7 +1510,7 @@ local function catch(guard: Guard, player: Player)
 		end
 		stun(player, Balance.Guard.CatchStunDuration)
 		if message and player.Parent == Players then
-			Net.Server.Notify:Fire(player, message, "Warning")
+			Net.Server.Notify:Fire(player, message, "Alert")
 		end
 	end)
 end
@@ -1553,7 +1553,7 @@ local function nightCatch(guard: Guard, player: Player)
 		caughtAtNight[caught] = nil
 		stun(caught, Night.CaughtStunDuration)
 		if caught.Parent == Players then
-			Net.Server.Notify:Fire(caught, MESSAGES.NightCaught, "Warning")
+			Net.Server.Notify:Fire(caught, MESSAGES.NightCaught, "Alert")
 		end
 	end
 

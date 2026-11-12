@@ -1,6 +1,7 @@
 --!strict
 -- NotifyController (client) : affiche les messages `Notify` du serveur (Net/Definitions :
--- Notify(message, kind?), kind = "Info", "Warning" ou une autre catégorie libre).
+-- Notify(message, kind?), kind = "Info", "Warning" (refus : son UI_Deny), "Alert" (avertissement sans
+-- son, même allure que Warning) ou une autre catégorie libre).
 --
 -- Écran, dans cet ordre :
 --   - `UI_Toast` de Clément (L-095 point 3 ; note docs/claude/notes/ui-feel2-horsligne-poursuite-barre.md) :
@@ -118,8 +119,9 @@ local ICON_COLORS: { [string]: Color3 } = {
 	Warning = Color3.fromHex("#FF8C1A"), -- orange « améliorations » (10.6)
 	Info = Color3.fromHex("#2F9BFF"), -- bleu du Rare (10.6)
 	Announce = Color3.fromHex("#FFC21A"), -- or du Légendaire (10.6) : annonce d'une ouverture rare (Config/Unbox)
+	Alert = Color3.fromHex("#FF8C1A"), -- avertissement sans refus (L-106 point 6) : comme Warning
 }
-local ICON_GLYPHS: { [string]: string } = { Warning = "!", Info = "i", Announce = "!" }
+local ICON_GLYPHS: { [string]: string } = { Warning = "!", Info = "i", Announce = "!", Alert = "!" }
 
 local IS_STUDIO = RunService:IsStudio()
 
@@ -527,6 +529,7 @@ function NotifyController.Show(message: string, kind: string?)
 		once(`error:{err}`, tostring(err), true)
 	end, message, kind)
 	-- Vague 26 (L-097 point 8) : un message « Warning » (action refusée, argent qui manque…) joue UI_Deny.
+	-- L-106 point 6 : seulement les refus ; les avertissements (« Alert ») s'affichent sans son.
 	if kind == UiMotion.Sounds.DenyKind then
 		local api = motionApi()
 		local play = if api then api.PlaySound else nil

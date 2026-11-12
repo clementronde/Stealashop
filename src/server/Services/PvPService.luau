@@ -658,7 +658,7 @@ local function returnItem(theft: Theft, reason: string)
 		notify(theft.Victim, string.format(MESSAGES.Returned, name), "Info")
 	end
 	if reason ~= "Left" and reason ~= "NoRoom" then
-		notify(theft.Thief, string.format(MESSAGES.Lost, name), "Warning")
+		notify(theft.Thief, string.format(MESSAGES.Lost, name), "Alert")
 	end
 	log(`vol de {theft.Thief.Name} chez {theft.Victim.Name} raté ({reason}) : {theft.ItemId} revient sur le présentoir {theft.Slot}`)
 	emitEnded(theft, "Returned", reason)
@@ -754,7 +754,7 @@ local function deposit(theft: Theft, root: BasePart)
 	else
 		notify(thief, string.format(MESSAGES.StolenToInventory, name), "Info")
 	end
-	notify(victim, string.format(MESSAGES.Robbed, thief.DisplayName, name, PvP.TheftImmunityDuration), "Warning")
+	notify(victim, string.format(MESSAGES.Robbed, thief.DisplayName, name, PvP.TheftImmunityDuration), "Alert")
 	-- Les deux sauvegardes tout de suite (la victime d'abord), plutôt qu'à la sauvegarde automatique :
 	-- seul un arrêt brutal du serveur pendant ces deux écritures pourrait encore créer un écart.
 	DataService.Save(victim)
@@ -886,7 +886,7 @@ local function grant(thief: Player, victim: Player, plot: Model, slot: number, u
 	end
 	local name = itemName(def.Id)
 	Net.Server.TheftAlert:Fire(victim, true, thief, def.Id)
-	notify(victim, string.format(MESSAGES.Stealing, thief.DisplayName, name), "Warning")
+	notify(victim, string.format(MESSAGES.Stealing, thief.DisplayName, name), "Alert")
 	notify(thief, string.format(MESSAGES.Grabbed, name), "Info")
 	log(`{thief.Name} prend {def.Id} ({uid}) sur le présentoir {slot} de {victim.Name}`)
 	for _, listener in table.clone(startedListeners) do
@@ -1030,7 +1030,7 @@ local function onBroken(info: WindowService.BreakInfo)
 	end
 	openShop(plot, victim, info.WindowId, info.Breaker)
 	-- L'alarme de base (6.1, point 2).
-	notify(victim, string.format(MESSAGES.DoorSmashed, info.Breaker.DisplayName), "Warning")
+	notify(victim, string.format(MESSAGES.DoorSmashed, info.Breaker.DisplayName), "Alert")
 end
 
 local function onRebuilt(_windowId: string, model: Model)
@@ -1042,7 +1042,7 @@ local function onRebuilt(_windowId: string, model: Model)
 		closeShop(shop, "porte reconstruite")
 	end
 	for _, player in ejectFrom(model, PlotService.GetOwner(model)) do
-		notify(player, MESSAGES.DoorBack, "Warning")
+		notify(player, MESSAGES.DoorBack, "Alert")
 		log(`{player.Name} sorti de {model.Name} : la porte est reconstruite`)
 	end
 end

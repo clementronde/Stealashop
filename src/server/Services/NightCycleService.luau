@@ -699,7 +699,7 @@ end
 
 local function onWarning()
 	for _, player in Players:GetPlayers() do
-		notify(player, Night.WarningText, "Warning")
+		notify(player, Night.WarningText, "Alert")
 	end
 end
 
@@ -728,7 +728,7 @@ local function nightfall()
 		warn(`[NightCycleService] StartNightPatrol : {guards}`)
 	end
 	for _, player in Players:GetPlayers() do
-		notify(player, if allowed[player] then MESSAGES.NightfallCorridor else MESSAGES.NightfallSafe, "Warning")
+		notify(player, if allowed[player] then MESSAGES.NightfallCorridor else MESSAGES.NightfallSafe, "Alert")
 	end
 	log(
 		`la nuit tombe : mur levé, {inCorridor} joueur(s) dans le couloir avec le passage, {if ok then boxes else "?"} colis en rayon, {if guardsOk then guards else "?"} vigile(s) de nuit`

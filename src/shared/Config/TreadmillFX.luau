@@ -9,9 +9,11 @@ local DeepFreeze = require(script.Parent.DeepFreeze)
 
 local TreadmillFX = {
 	-- Défilement de Belt.BeltTexture.OffsetStudsV pendant la course (note Ice, reprise pour tous :
-	-- « 3 studs/s à vide, 9 avec un joueur dessus »). Sans coureur, la bande est immobile (brief de la
-	-- vague 26 : rien d'animé sans coureur), donc la valeur « à vide » n'est pas utilisée.
+	-- « 3 studs/s à vide, 9 avec un joueur dessus »).
 	BeltSpeed = 9,
+	-- Tapis au repos (L-106 point 7, accord de Clément) : la bande défile lentement, à 3 studs/s, sur les
+	-- tapis sans coureur à moins de ActiveDistance de la caméra. 0 = bande immobile au repos.
+	IdleBeltSpeed = 3,
 	-- V0 : seuls les tapis à moins de cette distance de la caméra sont animés (performance).
 	ActiveDistance = 150,
 	-- V0 : période (s) du contrôle « qui court, sur quel tapis, assez près ? ».

@@ -1191,7 +1191,7 @@ local function launchDrivers(c: Chrono, why: string)
 		})
 		if model then
 			launched += 1
-			Net.Server.Notify:Fire(player, TruckEvent.Messages.DriversChase, "Warning")
+			Net.Server.Notify:Fire(player, TruckEvent.Messages.DriversChase, "Alert")
 		end
 	end
 	log(`camion n° {c.Number} : fin du chrono ({why}), {launched} conducteur(s) lancé(s) sur {#candidates} porteur(s)`)

@@ -24,7 +24,10 @@
 --   - Candy : Peppermint et PeppermintSwirl tournent, CandyGlow, SprinkleArch.Light, BeltArrows pulsent,
 --     un Popper au hasard éclate, RunPops et RunPuff allumés, RunTrail copié ;
 --   - Fire : RunBurst, braseros qui vacillent, EmberGlow ;
---   - Base, Silver, Void (et toute variante inconnue) : la bande seule.
+--   - Void : RunBurst allumé (sous Belt/RunBurstPoint, VoidFX ou ailleurs ; VoidFX tourne seul) ;
+--   - Base, Silver (et toute variante inconnue) : la bande seule.
+-- Au repos (L-106 point 7) : la bande des tapis sans coureur, à moins de ActiveDistance, défile à
+-- IdleBeltSpeed (3 studs/s) ; rien d'autre ne bouge. IsIdling(model) pour les bancs.
 -- La variante se reconnaît à son dossier d'effets (GoldFX, PoliceFX…) : le modèle posé s'appelle
 -- toujours « Treadmill ». Une pièce absente est sautée, sans erreur.
 --
@@ -78,6 +81,7 @@ local TreadmillFxController = {}
 
 local localPlayer = Players.LocalPlayer
 local anims: { [Instance]: Anim } = {}
+local idles: { [Instance]: { texture: Texture, direction: number } } = {} -- tapis au repos (L-106 point 7)
 local activeCount = 0
 local random = Random.new()
 local refreshQueued = false
@@ -491,6 +495,33 @@ local function fire(anim: Anim, model: Instance, fx: Instance)
 	end
 end
 
+-- Allume pendant la course `inst` et ce qu'il contient, s'il est éteint : émetteurs, lumières, Beam,
+-- Trail (RunBurst de Void : émetteur seul ou dossier d'effets, selon ce que Clément a posé).
+local function switchOn(anim: Anim, inst: Instance?)
+	if inst == nil then
+		return
+	end
+	local list = inst:GetDescendants()
+	table.insert(list, 1, inst)
+	for _, item in list do
+		if item:IsA("ParticleEmitter") or item:IsA("Light") or item:IsA("Beam") or item:IsA("Trail") then
+			if (item :: any).Enabled == false then
+				set(anim, item, "Enabled", true)
+			end
+		end
+	end
+end
+
+-- Void (L-106 point 11) : VoidFX (portail, anneau de runes, lumière) tourne seul ; RunBurst, éteint
+-- par Clément, s'allume pendant la course. Il est cherché sous Belt/RunBurstPoint (comme les autres
+-- variantes), puis sous VoidFX, puis n'importe où dans le tapis ; absent : rien, sans erreur.
+local function void(anim: Anim, model: Instance, fx: Instance)
+	local burst = find(model, "Belt/RunBurstPoint/RunBurst")
+		or fx:FindFirstChild("RunBurst", true)
+		or model:FindFirstChild("RunBurst", true)
+	switchOn(anim, burst)
+end
+
 -- Dossier d'effets → animation de la variante. Sans dossier connu : la bande seule.
 local VARIANTS: { { folder: string, build: (Anim, Instance, Instance) -> () } } = {
 	{ folder = "GoldFX", build = gold },
@@ -501,6 +532,7 @@ local VARIANTS: { { folder: string, build: (Anim, Instance, Instance) -> () } } 
 	{ folder = "ToxicFX", build = toxic },
 	{ folder = "CandyFX", build = candy },
 	{ folder = "FireFX", build = fire },
+	{ folder = "VoidFX", build = void },
 }
 
 -- Marche et arrêt ------------------------------------------------------------------------------------
@@ -595,6 +627,43 @@ local function isNear(model: Instance): boolean
 	return (pivot.Position - camera.CFrame.Position).Magnitude <= FX.ActiveDistance
 end
 
+-- Tapis au repos (L-106 point 7) : la bande des tapis sans coureur, près de la caméra, défile à
+-- IdleBeltSpeed. Seul OffsetStudsV est écrit ; la course reprend la bande là où elle en est.
+local function refreshIdle(wanted: { [Instance]: Player })
+	local speed = FX.IdleBeltSpeed or 0
+	local keep: { [Instance]: boolean } = {}
+	if speed > 0 then
+		for _, model in CollectionService:GetTagged(TREADMILL_TAG) do
+			local runner: Player? = wanted[model]
+			if model:IsA("Model") and runner == nil and model:IsDescendantOf(Workspace) and isNear(model) then
+				local texture = find(model, "Belt/BeltTexture")
+				if texture ~= nil and texture:IsA("Texture") then
+					keep[model] = true
+					local entry = idles[model]
+					if entry == nil or entry.texture ~= texture then
+						local reversed = model:FindFirstChild("CandyFX") ~= nil -- Candy : comme en course
+						idles[model] = { texture = texture :: Texture, direction = if reversed then -1 else 1 }
+					end
+				end
+			end
+		end
+	end
+	for model in idles do
+		if not keep[model] then
+			idles[model] = nil
+		end
+	end
+end
+
+local function stepIdle(dt: number)
+	local speed = FX.IdleBeltSpeed or 0
+	for _, entry in idles do
+		local tex = entry.texture
+		local tile = if tex.StudsPerTileV > 0 then tex.StudsPerTileV else 1
+		tex.OffsetStudsV = (tex.OffsetStudsV + entry.direction * speed * dt) % tile
+	end
+end
+
 local function refresh()
 	local wanted: { [Instance]: Player } = {}
 	for _, player in Players:GetPlayers() do
@@ -615,6 +684,7 @@ local function refresh()
 			start(model, runner)
 		end
 	end
+	refreshIdle(wanted)
 end
 
 local function requestRefresh()
@@ -642,6 +712,11 @@ function TreadmillFxController.ActiveCount(): number
 	return activeCount
 end
 
+-- Tapis au repos dont la bande défile lentement (L-106 point 7).
+function TreadmillFxController.IsIdling(model: Instance): boolean
+	return idles[model] ~= nil
+end
+
 function TreadmillFxController.Start()
 	local function watchPlayer(player: Player)
 		player:GetAttributeChangedSignal(MACHINE_ATTRIBUTE):Connect(requestRefresh)
@@ -666,6 +741,7 @@ function TreadmillFxController.Start()
 			sinceCheck = 0
 			refresh()
 		end
+		stepIdle(dt)
 		if activeCount == 0 then
 			return
 		end

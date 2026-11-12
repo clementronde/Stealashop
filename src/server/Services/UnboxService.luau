@@ -297,7 +297,7 @@ local V0_TIMER_MAX_DISTANCE = 60
 
 -- Messages lus par le joueur (Notify), en anglais (L-036). V0 proposé, absent du doc.
 local MESSAGES = {
-	Stowed = "Box saved to your inventory: put it down in your shop to open it.",
+	Stowed = "Box secured! Open it in your shop.", -- texte de Clément (L-106 point 5), envoyé avec le remote BoxSecured
 	BoxesFull = "Too many boxes in your inventory: open some first.",
 	NoShop = "You don't have a shop yet: wait for one to free up.",
 	OutsideShop = "Put your box down inside your own shop.",
