@@ -54,6 +54,23 @@ export type PlayerItemPayload = {
 	Mutation: Mutation?, -- DEV-131 : celle de l'objet de la victime (nom de BB_Carry) ; nil = aucune
 }
 
+-- Objet sorti d'un colis ouvert sur le rayon d'un magasin PNJ (L-112, Features.ShelfOpen), fabriqué par
+-- StoreHeistService quand le joueur prend l'objet sur le rayon. C'est l'objet lui-même qui flotte (comme
+-- PlayerItemPayload), avec son halo de rareté et BB_Carry. Rareté finale (crans de chance compris) et
+-- mutation sont tirées par le serveur ; rien ne vient du client. À l'entrée de la zone safe, UnboxService
+-- le range comme objet sous antivol (Config/ShelfOpen.AntiTheft). Contrat de la vague 31 : StoreHeistService
+-- et CarryService (a103) l'ajoutent à l'union Payload plus bas ; UnboxService (a105) le reçoit.
+export type NPCItemPayload = {
+	Kind: "NPCItem",
+	ItemId: string, -- Id de Config.Items
+	Rarity: string, -- Id de Config.Rarities, rareté finale (après les crans de chance)
+	Mutation: Mutation?, -- tirée avec le contenu (DEV-131) ; nil = aucune
+	Zone: number, -- 1 à 6, zone du magasin d'origine
+	StoreId: string, -- magasin d'origine (même format que NPCBoxPayload.StoreId)
+	SlotId: string, -- emplacement de rayon d'origine (même format que NPCBoxPayload.SlotId)
+	Luck: number, -- chance tirée à l'ouverture (≥ 1), pour l'annonce et les statistiques
+}
+
 export type Payload = NPCBoxPayload | PlayerItemPayload
 
 -- Fin d'un portage, passée à CarryService.OnCarryEnded :
