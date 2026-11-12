@@ -73,7 +73,7 @@ local Passes: { Pass } = {
 	{ Key = "DoubleTraining", Id = 0, Order = 2, Price = 299, Ready = true, Multiplier = 2, DisplayName = "×2 Training", Effect = "×2 treadmill and bench gains", Icon = "UI_Icon_GP_x2Training" },
 	{ Key = "VIP", Id = 0, Order = 3, Price = 249, Ready = false, DisplayName = "VIP", Effect = "+10% income, aura, chat tag", Icon = "UI_Icon_GP_VIP" },
 	{ Key = "AutoCollect", Id = 0, Order = 4, Price = 199, Ready = true, DisplayName = "Auto Collect", Effect = "Cash collects itself, anywhere", Icon = "UI_Icon_GP_AutoCollect" },
-	{ Key = "FastOpen", Id = 0, Order = 5, Price = 299, Ready = true, DelayFactor = 0.5, DisplayName = "Fast Open", Effect = "Boxes open 2× faster", Icon = "UI_Icon_GP_FastOpen" },
+	{ Key = "FastOpen", Id = 0, Order = 5, Price = 299, Ready = true, DelayFactor = 0.5, DisplayName = "Fast Open", Effect = "Anti-theft 2× shorter", Icon = "UI_Icon_GP_FastOpen" },
 	{ Key = "ExtraStands", Id = 0, Order = 6, Price = 349, Ready = true, Stands = 4, DisplayName = "+4 Displays", Effect = "4 extra display stands", Icon = "UI_Icon_GP_Displays" },
 	-- Texte V0 proposé, absent de la maquette.
 	{ Key = "HydraulicGloves", Id = 0, Order = 7, Price = 499, Ready = false, DisplayName = "Hydraulic Gloves", Effect = "Exclusive tool: 2.5× your best tool", Icon = "UI_Icon_GP_HydraulicGloves" },
@@ -93,7 +93,7 @@ local Products: { Product } = {
 		Price = 19,
 		Ready = true,
 		DisplayName = "Open Now",
-		Effect = "Opens your box right now",
+		Effect = "Unlock now",
 		Icon = "UI_Icon_DP_OpenNow",
 		-- V0 proposé, absent du doc : 4 paliers, de l'attente d'un Rare (45 s) à celle d'un Secret
 		-- (15 min, table 7.3), au prix du doc (19 à 99).

@@ -166,7 +166,7 @@ local TICK = 1
 -- Messages lus par le joueur (Notify « Info »), en anglais (L-036). V0 proposés, absents du doc.
 local MESSAGES = {
 	PassUnlocked = "%s unlocked!",
-	FastOpen = "Fast Open: your boxes open 2× faster!",
+	FastOpen = "Fast Open: anti-theft 2× shorter!",
 	CashPack = "+%s added to your cash!",
 	OpenNowReady = "Your box is ready to open!",
 	OpenNowShorter = "Your box wait is %s shorter!",
