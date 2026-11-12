@@ -1711,6 +1711,13 @@ local function onSkip()
 	spawnTruck(zone)
 end
 
+-- Fusion de la vague 29 (Ironix) : pas de coup sur le camion pendant son arrivée, quand les clients voient
+-- encore la copie qui roule ailleurs (le vrai camion est déjà posé à sa place finale).
+local function hitGate(_player: Player, windowId: string, _kind: string, _model: Model): boolean
+	local truck = current
+	return not (truck ~= nil and truck.WindowId == windowId and truck.Arriving ~= nil)
+end
+
 -- Démarrage -----------------------------------------------------------------------------------------
 
 function TruckEventService.Init()
@@ -1718,6 +1725,11 @@ function TruckEventService.Init()
 		return
 	end
 	WindowService.OnBroken(onBroken)
+	-- Accès protégé : les faux WindowService des bancs n'ont pas tous AddHitGate.
+	local addHitGate: ((gate: typeof(hitGate)) -> ())? = (WindowService :: any).AddHitGate
+	if addHitGate then
+		addHitGate(hitGate)
+	end
 	NightCycleService.OnPhaseChanged(onPhaseChanged)
 	CarryService.OnDropExpired(onDropExpired)
 	Net.Server.GrabDropped:Connect(onGrabDropped)
