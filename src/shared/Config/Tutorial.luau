@@ -31,12 +31,13 @@ local Steps: { Step } = {
 	{ Index = 8, Id = "BuyAura", At = 4 * 60, Goal = "Flèche vers la boutique d'auras, première aura (500 $)", Bubble = "An aura multiplies your damage!" },
 	{ Index = 9, Id = "GoToZone2", At = 5 * 60, Goal = "Objectif affiché : la zone 2 (vitesse 22, dégâts 10)", Bubble = "Next goal: Zone 2!" },
 	-- Étape 10 : message de fin du bouclier débutant (texte du doc, voir ShieldEndMessage)
-	{ Index = 10, Id = "ShieldEnd", At = 10 * 60, Goal = "Fin du bouclier débutant, la boutique devient braquable", Bubble = nil },
+	{ Index = 10, Id = "ShieldEnd", At = 10 * 60, Goal = "Fin du bouclier débutant : son colis volé peut tomber à la batte", Bubble = nil },
 }
 
 -- Textes écrits dans le doc, traduits en anglais (L-036). ShieldEndMessage dépasse les 8 mots
--- d'une bulle : c'est le message du doc (section 3, étape 10), gardé tel quel.
-local SHIELD_END_MESSAGE = "Your shop can now be robbed: keep your bat close!"
+-- d'une bulle. Depuis le 2026-11-12 (Cantin, doc 6.4), la boutique est braquable dès le départ : le
+-- bouclier ne protège plus que le colis porté. Texte V0 d'Ironix, à valider par Clément (L-114).
+local SHIELD_END_MESSAGE = "Beginner protection is over: keep your bat close!"
 local NIGHT_BUBBLE = "Night is falling: hurry home!" -- 5.12, pour les nouveaux joueurs
 
 local Tutorial = {
