@@ -498,3 +498,319 @@ do
 end
 print("")
 print(`Cycle jour / nuit : {Night.DayDuration} s de jour, {Night.NightDuration} s de nuit (pas de braquage la nuit). Hypothèses : voir Modele.Hypotheses.`)
+
+---------------------------------------------------------------------------------------------- 12. chance (L-112)
+
+-- Ouverture des colis dans le magasin (liaison L-112, agent a106) : la chance tirée au hasard, sa montée,
+-- le « ? » des témoins, les crans, et l'effet sur les parties simulées. Valeurs : Outil/chance.
+local Chance = charge("Outil/chance")
+local Rarities = Config.Rarities
+local ShelfOpen = Config.ShelfOpen
+local Witness = Config.Witness
+local modes = Chance.Modes()
+local function pct(value, digits)
+	return string.format(`%.{digits or 1}f %%`, 100 * value)
+end
+local function x(value)
+	local text = string.format("%.2f", value)
+	text = string.gsub(text, "0+$", "")
+	text = string.gsub(text, "%.$", "")
+	return "×" .. text
+end
+
+titre("12. Chance de l'ouverture dans le magasin (L-112)")
+print(`Montée : rabats {ShelfOpen.FlapsTime} s, puis × {ShelfOpen.LuckStep} toutes les {ShelfOpen.LuckTick} s. « ? » : plein en {Witness.FillTime} s depuis le lancement, police {Chance.Hypotheses.MarqueurAppel} s plus tard (marqueur Call). Crans : {ShelfOpen.UpgradeMax} au plus, chacun à {pct(ShelfOpen.UpgradeChance, 0)} × la chance. Chrono du magasin : {Balance.Heist.Duration} s, ouverture lancée {Chance.Hypotheses.Atteinte} s après la casse.`)
+print("")
+for _, key in { "V0", "Proposee" } do
+	local mode = modes[key]
+	print(`**{mode.Nom}**`)
+	print("")
+	entete({ "Chance tirée", "Probabilité", "Objet sorti à", "« ? » à la sortie", "Police", "Chance atteinte", "Chance d'un cran", "0 / 1 / 2 crans", "Tient dans le chrono (Standard / Luxe)" })
+	for _, line in Chance.Lignes(mode) do
+		local issue = Chance.Issue(line.Luck)
+		local p = math.clamp(mode.UpgradeChance * issue.Atteinte, 0, 1)
+		ligne({
+			x(line.Luck),
+			pct(line.Proba),
+			duree(issue.Delai),
+			pct(issue.Remplissage, 0),
+			if issue.Police then "oui" else "non",
+			x(issue.Atteinte),
+			pct(p, 0),
+			`{pct(1 - p, 0)} / {pct(p * (1 - p), 0)} / {pct(p * p, 0)}`,
+			`{if Chance.TientDansChrono(line.Luck, "Standard") then "oui" else "non"} / {if Chance.TientDansChrono(line.Luck, "Luxe") then "oui" else "non"}`,
+		})
+	end
+	print("")
+end
+
+print("**En moyenne, par ouverture**")
+print("")
+entete({ "Mode", "Chance moyenne", "Durée moyenne de l'ouverture", "Ouvertures avec police", "Au moins 1 cran (s'il est possible)", "2 crans" })
+for _, key in { "Aujourdhui", "V0", "Proposee" } do
+	local mode = modes[key]
+	local stats = Chance.Stats(mode)
+	local one, two = 0, 0
+	for _, line in Chance.Lignes(mode) do
+		local p = math.clamp(mode.UpgradeChance * line.Atteinte, 0, 1)
+		one += line.Proba * p
+		two += line.Proba * p * p
+	end
+	ligne({ mode.Nom, x(stats.Chance), duree(stats.Delai), pct(stats.Police), pct(one), pct(two, 2) })
+end
+
+-- Répartition par type et par zone.
+local function sameRow(a, b)
+	for _, field in { "Moyenne", "Epique", "Legendaire", "Mythique" } do
+		if math.abs(a[field] - b[field]) > 1e-9 then
+			return false
+		end
+	end
+	return true
+end
+titre("12.1 Rareté obtenue par type de colis et par zone")
+print("Multiplicateur de revenu moyen de la rareté (Commun ×1 … Secret ×1000) et part des objets d'Épique et plus, de Légendaire et plus, de Mythique et plus. « Brut » : les cotes de Config sans aucun cran.")
+print("")
+entete({ "Zones", "Colis", "Mode", "M rareté moyen", "≥ Épique", "≥ Légendaire", "≥ Mythique", "Secret" })
+local brut = { Nom = "Brut (sans cran)", Table = nil, UpgradeChance = 0, UpgradeMax = 0 }
+local groups = {}
+do
+	local zoneCount = #Config.Zones
+	local start = 1
+	for zone = 2, zoneCount + 1 do
+		local differs = zone > zoneCount
+		if not differs then
+			for _, tier in Balance.Heist.TierOrder do
+				for _, mode in { brut, modes.Aujourdhui, modes.Proposee, modes.Infini } do
+					if not sameRow(Chance.Resume(Chance.Repartition(zone, tier, mode)), Chance.Resume(Chance.Repartition(start, tier, mode))) then
+						differs = true
+					end
+				end
+			end
+		end
+		if differs then
+			table.insert(groups, { start, zone - 1 })
+			start = zone
+		end
+	end
+end
+for _, group in groups do
+	local label = if group[1] == group[2] then tostring(group[1]) else `{group[1]} à {group[2]}`
+	for _, tier in Balance.Heist.TierOrder do
+		for _, mode in { brut, modes.Aujourdhui, modes.V0, modes.Proposee, modes.InfiniV0, modes.Infini } do
+			local r = Chance.Resume(Chance.Repartition(group[1], tier, mode))
+			ligne({ label, tier, mode.Nom, string.format("%.2f", r.Moyenne), pct(r.Epique, 2), pct(r.Legendaire, 2), pct(r.Mythique, 3), pct(Chance.Repartition(group[1], tier, mode).Secret or 0, 4) })
+		end
+	end
+end
+
+titre("12.2 Variantes : crans libres, 3 crans, Chance ×3")
+print("« Libre » : un cran peut viser toute rareté qui a un objet dans la zone (Secret compris, même en zone 1). « Chance ×3 sur les crans » : le boost Robux multiplie la chance d'un cran seulement ; « sur le compteur » : il multiplie la chance tirée (montée plus longue, témoins).")
+print("")
+entete({ "Zone", "Colis", "Variante", "M rareté moyen", "≥ Épique", "≥ Légendaire", "Secret", "Ouvertures avec police" })
+local function variant(name, change)
+	local mode = table.clone(modes.Proposee)
+	mode.Nom = name
+	change(mode)
+	return mode
+end
+local variants = {
+	modes.Proposee,
+	variant("Libre, 2 crans", function(m)
+		m.Regle = "Libre"
+	end),
+	variant("Libre, 3 crans", function(m)
+		m.Regle = "Libre"
+		m.UpgradeMax = 3
+	end),
+	variant("Chance ×3 sur les crans", function(m)
+		m.Boost = 3
+	end),
+	variant("Chance ×3 sur le compteur", function(m)
+		m.Boost = 3
+		m.BoostSur = "Compteur"
+	end),
+	-- Crans sans limite (décision du 2026-11-12, soir), réglage proposé d'Outil/chance.
+	modes.Infini,
+	(function()
+		local m = table.clone(modes.Infini)
+		m.Nom, m.Boost = "Sans limite, Chance ×3 sur les crans", 3
+		return m
+	end)(),
+	(function()
+		local m = table.clone(modes.Infini)
+		m.Nom, m.Boost = "Sans limite, Chance ×2 sur les crans", 2
+		return m
+	end)(),
+}
+for _, case in { { 1, "Luxe" }, { 2, "Premium" }, { 2, "Luxe" } } do
+	for _, mode in variants do
+		local rep = Chance.Repartition(case[1], case[2], mode)
+		local r = Chance.Resume(rep)
+		ligne({ tostring(case[1]), case[2], mode.Nom, string.format("%.2f", r.Moyenne), pct(r.Epique, 2), pct(r.Legendaire, 2), pct(rep.Secret or 0, 3), pct(Chance.Stats(mode).Police) })
+	end
+end
+
+titre("12.3 Parties simulées avec l'ouverture dans le magasin")
+print("« Brut » = sections 6 à 8 (aucun cran, attente OpenDelay). « Aujourd'hui » : crans à chance ×1, attente OpenDelay. « L-112 » : chance tirée, montée passée dans le magasin, police = seconde poursuite, antivol ShelfOpen.AntiTheft au lieu d'OpenDelay ; le rideau est supposé attendre la fin de l'ouverture (voir la note).")
+print("")
+entete({ "Économie", "Profil", "Mode", "Entrée en zone 4", "Entrée en zone 6", "Colis ouverts", "Crans par colis", "≥ Épique", "Police (par colis)" })
+local sessionRuns = nil -- joueur moyen, économie actuelle, crans proposés : pour 12.4
+local function simulate(eco, profil, mode)
+	Modele.Ouverture = if mode then Chance.Accroche(mode) else nil
+	local runs = jouer(eco, profil, seeds)
+	Modele.Ouverture = nil
+	return runs
+end
+for _, eco in ecos do
+	for _, profil in Modele.Profils do
+		if eco == actuelle or profil.Id == "Moyen" then
+			local list = { false, modes.Aujourdhui, modes.V0, modes.Proposee, modes.InfiniV0, modes.Infini }
+			if profil.Id == "Moyen" then
+				-- Pour séparer les deux effets : la table proposée, mais l'attente d'aujourd'hui (OpenDelay).
+				table.insert(list, variant("L-112, table proposée, attente OpenDelay", function(m)
+					m.AttenteOpenDelay = true
+				end))
+			end
+			for _, mode in list do
+				local runs = simulate(eco, profil, mode or nil)
+				if eco == actuelle and profil.Id == "Moyen" and mode == modes.Infini then
+					sessionRuns = runs
+				end
+				local opened, crans, epic, police = {}, {}, {}, {}
+				for _, run in runs do
+					local count = run.Ouvertures or 0
+					table.insert(opened, count)
+					if count > 0 then
+						table.insert(crans, run.Crans / count)
+						table.insert(police, (run.Police or 0) / count)
+						local high = 0
+						for rarityId, n in run.Raretes do
+							if Rarities.ById[rarityId].Order >= Rarities.ById.Epic.Order then
+								high += n
+							end
+						end
+						table.insert(epic, high / count)
+					end
+				end
+				ligne({
+					eco.Nom,
+					profil.Id,
+					if mode then mode.Nom else "Brut",
+					duree(mediane(champ(runs, 4, "T"))),
+					duree(mediane(champ(runs, #eco.Zones, "T"))),
+					if mode then tostring(mediane(opened)) else "—",
+					if #crans > 0 then string.format("%.3f", mediane(crans)) else "—",
+					if #epic > 0 then pct(mediane(epic)) else "—",
+					if #police > 0 then pct(mediane(police), 2) else "—",
+				})
+			end
+		end
+	end
+end
+
+titre("12.4 Crans sans limite : réglage de UpgradeChance, UpgradeChanceCap et UpgradeDecay")
+print("Décision de Cantin (2026-11-12, soir) : les crans continuent tant qu'ils réussissent, jusqu'à UpgradeTop (Secret). Chance du cran n = min(UpgradeChance × chance, Cap) × Decay^(n − 1). Table de chance proposée. « Zone 1 » : un Commun (seule rareté de la zone 1). « ×10 » : un Commun ouvert à ×10. « Secret par heure » : joueur moyen en zones 2 à 6, au rythme et au mélange de colis des parties de 12.3.")
+print("")
+
+-- Rythme d'ouverture du joueur moyen (économie actuelle, crans proposés, parties de 12.3).
+local session = { Zone1 = 0, PerHour = 0, Mix = {} }
+if sessionRuns ~= nil then
+	local zone1, perHour, mix = {}, {}, { Standard = {}, Premium = {}, Luxe = {} }
+	for _, run in sessionRuns do
+		local total = run.Ouvertures or 0
+		if total > 0 then
+			table.insert(zone1, (run.ParZone and run.ParZone[1]) or 0)
+			table.insert(perHour, total / run.Fin * 3600)
+			for tier, list in mix do
+				table.insert(list, ((run.ParType and run.ParType[tier]) or 0) / total)
+			end
+		end
+	end
+	session.Zone1, session.PerHour = mediane(zone1), mediane(perHour)
+	for tier, list in mix do
+		session.Mix[tier] = mediane(list)
+	end
+end
+local function secretPerHour(mode)
+	local logNone = 0
+	for tier, share in session.Mix do
+		logNone += session.PerHour * share * math.log(1 - (Chance.Repartition(2, tier, mode).Secret or 0))
+	end
+	return 1 - math.exp(logNone)
+end
+local function secretFromCommon(mode)
+	return Chance.Repartition(1, "Standard", mode).Secret or 0
+end
+local function x10(mode)
+	local rep = Chance.Crans(1, "Standard", "Common", Chance.PFor(mode, 10), math.huge, mode.Regle, mode.Top)
+	local zero, mean, three = 0, 0, 0
+	for rarityId, q in rep do
+		local steps = Rarities.ById[rarityId].Order - 1
+		mean += q * steps
+		if steps == 0 then
+			zero += q
+		end
+		if steps >= 3 then
+			three += q
+		end
+	end
+	return zero, mean, three
+end
+local function oneIn(p, unit)
+	return if p > 0 then `1 sur {nombre(1 / p)}{unit or ""}` else "jamais"
+end
+local function m(tier, mode)
+	return string.format("%.2f", Chance.Resume(Chance.Repartition(2, tier, mode)).Moyenne)
+end
+entete({ "UpgradeChance", "Cap", "Decay", "M moyen Standard / Premium / Luxe", "Secret depuis un Commun (zone 1)", "Secret d'un Luxe", "Secret par heure", "×10 : aucun cran", "×10 : crans en moyenne", "×10 : ≥ Épique" })
+do
+	local p = modes.Proposee
+	ligne({ "0.1", "(2 crans)", "—", `{m("Standard", p)} / {m("Premium", p)} / {m("Luxe", p)}`, "jamais", pct(Chance.Repartition(2, "Luxe", p).Secret or 0, 3), oneIn(secretPerHour(p), " h"), "0 %", "2", "0 %" })
+	local grid = {
+		{ 0.10, 0.9, 1 },
+		{ 0.10, 0.9, 0.75 },
+		{ 0.10, 0.9, 0.65 },
+		{ 0.10, 0.9, 0.6 },
+		{ 0.10, 0.9, 0.5 },
+		{ 0.10, 0.8, 0.6 },
+		{ 0.10, 0.8, 0.5 },
+		{ 0.08, 0.9, 0.6 },
+		{ 0.08, 0.9, 0.7 },
+		{ 0.07, 0.9, 0.7 },
+		{ 0.07, 0.9, 0.75 },
+		{ 0.06, 0.9, 0.75 },
+	}
+	for _, row in grid do
+		local mode = table.clone(modes.Infini)
+		mode.UpgradeChance, mode.Cap, mode.Decay = row[1], row[2], row[3]
+		local zero, mean, three = x10(mode)
+		ligne({
+			tostring(row[1]),
+			tostring(row[2]),
+			tostring(row[3]),
+			`{m("Standard", mode)} / {m("Premium", mode)} / {m("Luxe", mode)}`,
+			oneIn(secretFromCommon(mode)),
+			pct(Chance.Repartition(2, "Luxe", mode).Secret or 0, 3),
+			oneIn(secretPerHour(mode), " h"),
+			pct(zero, 0),
+			string.format("%.2f", mean),
+			pct(three, 1),
+		})
+	end
+end
+
+if sessionRuns ~= nil then
+	print("")
+	local mode = modes.Infini
+	local p1 = secretFromCommon(mode)
+	local zonePhase = 1 - (1 - p1) ^ session.Zone1
+	print(`**Une session avec les crans proposés (UpgradeChance {mode.UpgradeChance}, Cap {mode.Cap}, Decay {mode.Decay})** : le joueur moyen ouvre {session.Zone1} colis en zone 1, puis {string.format("%.0f", session.PerHour)} colis par heure (Standard {pct(session.Mix.Standard or 0, 0)}, Premium {pct(session.Mix.Premium or 0, 0)}, Luxe {pct(session.Mix.Luxe or 0, 0)}).`)
+	print("")
+	entete({ "", "Probabilité d'au moins un Secret", "Soit" })
+	ligne({ "Une ouverture en zone 1", pct(p1, 5), oneIn(p1, " ouvertures") })
+	ligne({ "Toute la phase de la zone 1", pct(zonePhase, 4), oneIn(zonePhase, " joueurs") })
+	ligne({ "Une heure de jeu en zones 2 à 6", pct(secretPerHour(mode), 2), oneIn(secretPerHour(mode), " heures") })
+	ligne({ "Une heure, V0 d'a103 (Decay 1)", pct(secretPerHour(modes.InfiniV0), 1), oneIn(secretPerHour(modes.InfiniV0), " heures") })
+	ligne({ "Une heure, 2 crans (section 12)", pct(secretPerHour(modes.Proposee), 2), oneIn(secretPerHour(modes.Proposee), " heures") })
+end

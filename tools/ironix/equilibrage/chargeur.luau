@@ -16,6 +16,13 @@ Color3 = {
 	end,
 }
 
+-- Config/Unbox (lu par Outil/chance) a un Vector3 : sans effet sur l'équilibrage.
+Vector3 = {
+	new = function(x, y, z)
+		return { X = x, Y = y, Z = z }
+	end,
+}
+
 local RefMT = {}
 local function ref(path)
 	return setmetatable({ __path = path }, RefMT)

@@ -577,6 +577,34 @@ function Modele.Jouer(eco, profil, seed, maxSeconds)
 			rarityId = rarityId or "Common"
 			openDelay = Rarities.ById[rarityId].OpenDelay
 		end
+		-- Accroche facultative (Outil/chance, section 12) : ouverture avec chance et crans. Absente : rien
+		-- ne change (même tirage, mêmes résultats que les sections 6 à 11).
+		if Modele.Ouverture ~= nil then
+			local start = rarityId
+			local final, wait, inStore, police = Modele.Ouverture(random, zone, tier, rarityId, out.Colis == 1)
+			rarityId = final
+			openDelay = if out.Colis == 1 then openDelay else wait
+			if inStore > 0 then
+				advance(inStore, "Braquage")
+			end
+			out.Ouvertures = (out.Ouvertures or 0) + 1
+			out.ParZone = out.ParZone or {}
+			out.ParZone[zone] = (out.ParZone[zone] or 0) + 1
+			out.ParType = out.ParType or {}
+			out.ParType[tier] = (out.ParType[tier] or 0) + 1
+			out.Crans = (out.Crans or 0) + (Rarities.ById[final].Order - Rarities.ById[start].Order)
+			out.Raretes = out.Raretes or {}
+			out.Raretes[final] = (out.Raretes[final] or 0) + 1
+			if police then
+				out.Police = (out.Police or 0) + 1
+				-- La police part au bout de la rue : traitée comme une seconde poursuite de vigile.
+				if random() >= chance then
+					out.Rattrape += 1
+					advance(H.CaughtLoss, "Braquage")
+					return
+				end
+			end
+		end
 		table.insert(s.pending, { Ready = s.t + openDelay, Income = eco.ItemIncome(zone, rarityId) * mutationOf() })
 		if out.Entrees[zone] == nil then
 			out.Entrees[zone] = {
