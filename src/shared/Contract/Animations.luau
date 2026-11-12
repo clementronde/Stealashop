@@ -68,6 +68,15 @@ Animations.Vendor = {
 	{ Name = "Wave", Loop = false, Priority = "Action" },
 } :: { Anim }
 
+-- Témoins NPC_Witness_Z<n>_0<k> (Clément, liaison L-111, publiées le 2026-11-12 ; réglages relevés dans Studio) :
+-- pas encore jouées par le code. CallPolice revient en boucle, le code ne réagira qu'au premier marqueur Call.
+Animations.Witness = {
+	{ Name = "Idle", Loop = true, Priority = "Idle" },
+	{ Name = "Walk", Loop = true, Priority = "Movement" },
+	{ Name = "Look", Loop = true, Priority = "Action" },
+	{ Name = "CallPolice", Loop = true, Priority = "Action", Marker = "Call" },
+} :: { Anim }
+
 -- Conducteurs du camion de l'événement (liaison L-071, point 7 ; a42) : des modèles avec un Humanoid,
 -- rangés par Clément dans ENV_Event_Truck. Idle, jouée en boucle par TruckEventService tant que le
 -- camion est là ; sans elle, le conducteur reste immobile. Walk, Run et Catch (livrées par Clément le

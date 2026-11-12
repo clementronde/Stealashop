@@ -53,6 +53,8 @@ end
 -- Modèle du vigile de nuit (Assets/Guards/NightGuard, nom lu aussi par GuardService) : sa liste
 -- d'animations a Arrest en plus (Animations.NightGuard, L-076).
 local NIGHT_GUARD_NAME = "NightGuard"
+-- Témoins de Clément (Map/Zone_<n>/Witnesses/NPC_Witness_Z<n>_0<k>, L-111) : leur liste est Animations.Witness.
+local WITNESS_PREFIX = "NPC_Witness"
 
 type Anim = typeof(Animations.Player[1])
 type Part = typeof(Models.Store.Parts[1])
@@ -1222,6 +1224,7 @@ local function checkAnimatedModels(scanned: { Instance }, jobs: { Job })
 		local label = inst:GetFullName()
 		local vendor = isVendor(inst, folder)
 		local driver = isDriver(inst) -- a42 : conducteur du camion, Idle seulement
+		local witness = string.sub(inst.Name, 1, #WITNESS_PREFIX) == WITNESS_PREFIX -- L-111
 		if humanoid:FindFirstChildOfClass("Animator") == nil then
 			problem("Animations", `{label}.Humanoid : Animator manquant (10.4)`)
 		end
@@ -1231,6 +1234,7 @@ local function checkAnimatedModels(scanned: { Instance }, jobs: { Job })
 		if folder == nil then
 			local specs = if driver
 				then Animations.Driver
+				elseif witness then Animations.Witness
 				elseif vendor then Animations.Vendor
 				elseif inst.Name == NIGHT_GUARD_NAME then Animations.NightGuard
 				else Animations.Guard
@@ -1238,7 +1242,7 @@ local function checkAnimatedModels(scanned: { Instance }, jobs: { Job })
 			for _, spec in specs do
 				table.insert(names, spec.Name)
 			end
-			local kind = if driver then "conducteur" elseif vendor then "vendeur" else "vigile"
+			local kind = if driver then "conducteur" elseif witness then "témoin" elseif vendor then "vendeur" else "vigile"
 			pending(
 				"Animations",
 				`{label}.{Animations.FolderName} absent : animations de {kind} pas encore livrées ({table.concat(names, ", ")})`
@@ -1246,7 +1250,12 @@ local function checkAnimatedModels(scanned: { Instance }, jobs: { Job })
 		else
 			checkAnimFolder(
 				folder,
-				if driver then Animations.Driver elseif vendor then Animations.Vendor elseif inst.Name == NIGHT_GUARD_NAME then Animations.NightGuard else Animations.Guard,
+				if driver
+					then Animations.Driver
+					elseif witness then Animations.Witness
+					elseif vendor then Animations.Vendor
+					elseif inst.Name == NIGHT_GUARD_NAME then Animations.NightGuard
+					else Animations.Guard,
 				jobs
 			)
 		end
