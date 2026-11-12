@@ -111,6 +111,17 @@
 --
 -- Remote StealItem(plotIndex, slotIndex) (Net/Definitions, ajout de la vague 10 au tableau 9.4).
 --
+-- Objet sous antivol au sol (vague 31, L-112, Features.ShelfOpen ; UnboxService) : pendant son antivol, un
+-- objet posé au sol d'une boutique est volable. Remote StealFloorItem(plotIndex, itemUid), deux appels comme
+-- StealItem, mêmes règles (boutique ouverte au vol, mains vides, interdiction, dans Bounds, à
+-- PvP.StealMaxDistance de l'objet, maintien PvP.StealGrabTime), plus : un vrai joueur (le bot n'en a pas),
+-- antivol encore en cours (UnboxService.IsStealable), place dans l'inventaire du voleur ; pas de coffre-fort.
+-- Fuite : UnboxService.HoldFloorItem sort le modèle du monde, même portage PlayerItem (SlotIndex = 0). Échec :
+-- UnboxService.ReleaseFloorItem, l'objet revient à sa place (son antivol a continué de courir). Dépôt (même
+-- transfert sûr) : UnboxService.TakeFloorItem, l'objet quitte le profil de la victime et arrive chez le voleur
+-- dans son inventaire, de nouveau sous antivol (AntiTheft, sans UnlockAt : l'attente complète repart à sa pose
+-- au sol chez lui), jamais sur un présentoir.
+--
 -- API (serveur) :
 --   PvPService.GetTheft(thief) -> TheftInfo?
 --       { Victim, ItemUid, ItemId, SlotIndex } du vol en cours (objet porté), nil sinon.
@@ -152,6 +163,7 @@ local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage.Shared
 local Balance = require(Shared.Config.Balance)
+local Features = require(Shared.Config.Features)
 local Items = require(Shared.Config.Items)
 local Mutations = require(Shared.Config.Mutations)
 local PvP = require(Shared.Config.PvP)
@@ -193,9 +205,10 @@ type Shop = {
 type Hold = {
 	Plot: Model,
 	Victim: Player?, -- nil : le bot joueur
-	Slot: number,
+	Slot: number, -- 0 : objet sous antivol au sol (Floor)
 	Uid: string,
 	StartedAt: number, -- os.clock()
+	Floor: boolean, -- vague 31 : objet sous antivol posé au sol (StealFloorItem), pas un présentoir
 }
 
 type Theft = {
@@ -204,7 +217,8 @@ type Theft = {
 	Plot: Model, -- boutique de la victime
 	Uid: string,
 	ItemId: string,
-	Slot: number,
+	Slot: number, -- 0 : objet sous antivol pris au sol (Floor)
+	Floor: boolean, -- vague 31 (L-112) : objet sous antivol pris au sol de la victime (UnboxService)
 	Payload: PlayerItemPayload, -- la table donnée à StartCarry (CarryService la garde telle quelle)
 	StartedAt: number, -- os.clock() de la prise
 	From: Vector3, -- position du voleur à la prise (contrôle du dépôt)
@@ -317,6 +331,33 @@ local BatHooks: BatApi? = if batLoaded and type(batResult) == "table" and type(b
 	then batResult :: any
 	else nil
 
+-- Vague 31 (L-112) : objets sous antivol posés au sol (UnboxService ; voir l'en-tête). require protégé : sans
+-- UnboxService (anciens bancs), aucun objet au sol à voler. UnboxService ne requiert pas ce service.
+type FloorItem = {
+	Uid: string,
+	ItemId: string,
+	Rarity: string,
+	Income: number,
+	Position: Vector3,
+	UnlockAt: number,
+}
+type FloorApi = {
+	GetFloorItem: (owner: Player, itemUid: string) -> FloorItem?,
+	IsStealable: (owner: Player, itemUid: string) -> boolean,
+	HoldFloorItem: (owner: Player, itemUid: string) -> boolean,
+	ReleaseFloorItem: (owner: Player, itemUid: string) -> boolean,
+	TakeFloorItem: (owner: Player, itemUid: string) -> boolean,
+	IsFloorHeld: (owner: Player, itemUid: string) -> boolean,
+}
+local floorModule = script.Parent:FindFirstChild("UnboxService")
+local floorLoaded: boolean, floorResult: any = false, nil
+if Features.ShelfOpen and floorModule and floorModule:IsA("ModuleScript") then
+	floorLoaded, floorResult = pcall(require, floorModule)
+end
+local Floor: FloorApi? = if floorLoaded and type(floorResult) == "table" and type(floorResult.HoldFloorItem) == "function"
+	then floorResult :: any
+	else nil
+
 -- Messages lus par les joueurs (Notify), en anglais (L-036) ; nombres par Shared/Format.
 local MESSAGES: { [string]: string } = {
 	DoorSmashed = "%s smashed your shop door! Defend your shop!",
@@ -337,6 +378,10 @@ local MESSAGES: { [string]: string } = {
 	NoShop = "You need a shop to steal.",
 	DoorBack = "The door is fixed: you were moved outside.",
 	NotYourShop = "Only the owner can be inside this shop.",
+	-- Vague 31 (L-112), objet sous antivol volé au sol, V0 proposés, absents du doc :
+	StolenLocked = "You stole the %s! Put it down in your shop: its anti-theft starts there.",
+	FloorReturned = "Your %s is back in your shop!",
+	FullInventory = "Your inventory is full: make room before stealing.",
 }
 
 local IS_STUDIO = RunService:IsStudio()
@@ -802,16 +847,25 @@ local function returnItem(theft: Theft, reason: string)
 	end
 	thefts[theft.Thief] = nil
 	local victim = theft.Victim
-	releaseItem(theft.Plot, victim, theft.Uid, theft.Thief)
+	local floorApi = Floor
+	if theft.Floor then
+		-- Vague 31 : l'objet sous antivol revient à sa place au sol (son antivol a continué de courir).
+		if victim and floorApi then
+			floorApi.ReleaseFloorItem(victim, theft.Uid)
+		end
+	else
+		releaseItem(theft.Plot, victim, theft.Uid, theft.Thief)
+	end
 	local name = itemName(theft.ItemId)
 	if victim and present(victim) then
 		Net.Server.TheftAlert:Fire(victim, false)
-		notify(victim, string.format(MESSAGES.Returned, name), "Info")
+		notify(victim, string.format(if theft.Floor then MESSAGES.FloorReturned else MESSAGES.Returned, name), "Info")
 	end
 	if reason ~= "Left" and reason ~= "NoRoom" then
 		notify(theft.Thief, string.format(MESSAGES.Lost, name), "Alert")
 	end
-	log(`vol de {theft.Thief.Name} chez {if victim then victim.Name else "le bot"} raté ({reason}) : {theft.ItemId} revient sur le présentoir {theft.Slot}`)
+	local back = if theft.Floor then "revient au sol" else `revient sur le présentoir {theft.Slot}`
+	log(`vol de {theft.Thief.Name} chez {if victim then victim.Name else "le bot"} raté ({reason}) : {theft.ItemId} {back}`)
 	emitEnded(theft, "Returned", reason)
 end
 
@@ -873,23 +927,35 @@ local function deposit(theft: Theft, root: BasePart)
 	-- L'objet est toujours le même : dans le profil de la victime et tenu chez elle, ou tenu chez le bot.
 	local entry = if victimData then victimData.Items[theft.Uid] else nil
 	local bot = Bot
-	local same = if victim and victimData
-		then entry ~= nil and entry.Id == theft.ItemId and DisplayService.IsHeld(victim, theft.Uid)
-		else bot ~= nil and bot.IsHeld(theft.Plot, theft.Uid)
+	local floorApi = Floor
+	local same: boolean
+	if theft.Floor then
+		-- Vague 31 : l'objet sous antivol est toujours dans le profil de la victime et porté depuis son sol.
+		same = victim ~= nil and entry ~= nil and entry.Id == theft.ItemId and floorApi ~= nil and floorApi.IsFloorHeld(victim, theft.Uid)
+	elseif victim and victimData then
+		same = entry ~= nil and entry.Id == theft.ItemId and DisplayService.IsHeld(victim, theft.Uid)
+	else
+		same = bot ~= nil and bot.IsHeld(theft.Plot, theft.Uid)
+	end
 	if not same or thiefData.Items[theft.Uid] ~= nil then
 		warn(`[PvPService] {thief.Name} : l'objet {theft.Uid} n'est plus le même chez {if victim then victim.Name else "le bot"}, vol annulé`)
 		abandon(theft, "Anomaly")
 		return
 	end
-	if not DisplayService.HasRoom(thief) then
-		notify(thief, MESSAGES.Full, "Warning")
+	-- Objet sous antivol : il arrive dans l'inventaire (jamais sur un présentoir) ; sinon, présentoir ou inventaire.
+	local room = if theft.Floor then DisplayService.HasInventoryRoom(thief) else DisplayService.HasRoom(thief)
+	if not room then
+		notify(thief, if theft.Floor then MESSAGES.FullInventory else MESSAGES.Full, "Warning")
 		abandon(theft, "NoRoom")
 		return
 	end
 
 	-- Transfert, d'un seul tenant.
 	thefts[thief] = nil
-	if victim and victimData then
+	if theft.Floor and victim and victimData and floorApi then
+		floorApi.TakeFloorItem(victim, theft.Uid)
+		victimData.Items[theft.Uid] = nil
+	elseif victim and victimData then
 		DisplayService.TakeHeld(victim, theft.Uid)
 		victimData.Items[theft.Uid] = nil
 	elseif bot then
@@ -899,8 +965,17 @@ local function deposit(theft: Theft, root: BasePart)
 	local def = Items.ById[theft.ItemId]
 	local zone = if entry then entry.Zone elseif def then def.Zone else nil
 	local mutation = Mutations.Sanitize(if entry then entry.Mutation else nil)
-	thiefData.Items[theft.Uid] = { Id = theft.ItemId, Source = "PvP", At = os.time(), Zone = zone, Mutation = mutation }
-	local slot = DisplayService.PlaceAuto(thief, theft.Uid, root.Position)
+	-- Vague 31 (L-112, décision a105) : un objet volé pendant son antivol redevient un objet sous antivol chez le
+	-- voleur, dans son inventaire ; l'attente repart de zéro à sa pose au sol (UnlockAt et Spot non recopiés).
+	thiefData.Items[theft.Uid] = {
+		Id = theft.ItemId,
+		Source = "PvP",
+		At = os.time(),
+		Zone = zone,
+		Mutation = mutation,
+		AntiTheft = if theft.Floor then true else nil,
+	}
+	local slot = if theft.Floor then nil else DisplayService.PlaceAuto(thief, theft.Uid, root.Position)
 	CarryService.Consume(thief, "Deposited")
 
 	-- Un vol au bot ne compte pas pour les classements (en-tête).
@@ -914,7 +989,9 @@ local function deposit(theft: Theft, root: BasePart)
 		Net.Server.TheftAlert:Fire(victim, false)
 	end
 	local name = itemName(theft.ItemId)
-	if slot then
+	if theft.Floor then
+		notify(thief, string.format(MESSAGES.StolenLocked, name), "Info")
+	elseif slot then
 		notify(thief, string.format(MESSAGES.Stolen, name, Format.income(theft.Payload.Income)), "Info")
 	else
 		notify(thief, string.format(MESSAGES.StolenToInventory, name), "Info")
@@ -937,9 +1014,9 @@ end
 
 -- Prise ------------------------------------------------------------------------------------------------------
 
--- Raison du refus d'une prise sur le présentoir `slot` de `plot` (texte pour la sortie de Studio) et,
--- pour un joueur honnête, la clé et le texte du message à lui envoyer ; nil si la prise est permise.
-local function stealRefusal(player: Player, plot: Model, slot: number): (string?, string?, string?)
+-- Partie commune aux prises sur un présentoir et au sol (vague 31) : la boutique, les deux joueurs, le
+-- voleur (mains vides, interdiction, boutique, vivant, dans Bounds). nil si tout va.
+local function shopRefusal(player: Player, plot: Model): (string?, string?, string?)
 	local victim = PlotService.GetOwner(plot) -- nil : boutique libre, ou celle du bot
 	if victim == nil and not isBotPlot(plot) then
 		return "boutique libre", nil, nil
@@ -982,6 +1059,20 @@ local function stealRefusal(player: Player, plot: Model, slot: number): (string?
 	if not inside(bounds, root.Position) then
 		return "hors du volume Bounds", nil, nil
 	end
+	return nil, nil, nil
+end
+
+-- Raison du refus d'une prise sur le présentoir `slot` de `plot` (texte pour la sortie de Studio) et,
+-- pour un joueur honnête, la clé et le texte du message à lui envoyer ; nil si la prise est permise.
+local function stealRefusal(player: Player, plot: Model, slot: number): (string?, string?, string?)
+	local reason, key, message = shopRefusal(player, plot)
+	if reason then
+		return reason, key, message
+	end
+	local victim = PlotService.GetOwner(plot)
+	local victimData = if victim then DataService.Get(victim) else nil
+	local root = rootOf(player) :: BasePart
+	local refs = refsFor(plot)
 	local attachment = refs.Slots[slot]
 	if attachment == nil then
 		return `présentoir {slot} absent de la boutique`, nil, nil
@@ -1004,6 +1095,51 @@ local function stealRefusal(player: Player, plot: Model, slot: number): (string?
 	return nil, nil, nil
 end
 
+-- Vague 31 (L-112) : refus d'une prise de l'objet sous antivol `uid` posé au sol de `plot`. Mêmes règles que
+-- le présentoir (shopRefusal, PvP.StealMaxDistance de l'objet), plus : un vrai joueur (le bot n'a rien au
+-- sol), l'antivol court encore (UnboxService.IsStealable), et de la place dans l'inventaire du voleur
+-- (l'objet y arrive sous antivol). Pas de coffre-fort : l'objet au sol est volable par décision de Cantin.
+local function floorRefusal(player: Player, plot: Model, uid: string): (string?, string?, string?)
+	local api = Floor
+	if api == nil then
+		return "objets au sol coupés (Features.ShelfOpen ou UnboxService absent)", nil, nil
+	end
+	local reason, key, message = shopRefusal(player, plot)
+	if reason then
+		return reason, key, message
+	end
+	local victim = PlotService.GetOwner(plot)
+	if victim == nil then
+		return "boutique du bot : aucun objet au sol", nil, nil
+	end
+	local item = api.GetFloorItem(victim, uid)
+	if item == nil or not api.IsStealable(victim, uid) then
+		return "aucun objet sous antivol de ce nom au sol (absent, porté ou débloqué)", nil, nil
+	end
+	local root = rootOf(player) :: BasePart
+	local distance = (root.Position - item.Position).Magnitude
+	if distance > PvP.StealMaxDistance then
+		return `trop loin ({math.round(distance * 10) / 10} studs)`, nil, nil
+	end
+	if not DisplayService.HasInventoryRoom(player) then
+		return "plus de place dans l'inventaire du voleur", "FullInventory", MESSAGES.FullInventory
+	end
+	return nil, nil, nil
+end
+
+local beginTheft: (
+	thief: Player,
+	victim: Player?,
+	plot: Model,
+	slot: number,
+	uid: string,
+	def: Items.Item,
+	income: number,
+	mutation: Mutations.Mutation?,
+	floor: boolean,
+	root: BasePart
+) -> ()
+
 local function grant(thief: Player, victim: Player?, plot: Model, slot: number, uid: string)
 	local item = exposedOf(plot, victim)[slot]
 	local def = if item then Items.ById[item.ItemId] else nil
@@ -1022,14 +1158,50 @@ local function grant(thief: Player, victim: Player?, plot: Model, slot: number, 
 	local victimData = if victim then DataService.Get(victim) else nil
 	local victimEntry = if victimData then victimData.Items[uid] else nil
 	local mutation = if victimEntry then Mutations.Sanitize(victimEntry.Mutation) else nil
+	beginTheft(thief, victim, plot, slot, uid, def, item.Income, mutation, false, root)
+end
+
+-- Vague 31 (L-112) : prise de l'objet sous antivol `uid` au sol de `victim` (floorRefusal déjà passé).
+local function grantFloor(thief: Player, victim: Player, plot: Model, uid: string)
+	local api = Floor
+	local item = if api then api.GetFloorItem(victim, uid) else nil
+	local def = if item then Items.ById[item.ItemId] else nil
+	local root = rootOf(thief)
+	if api == nil or item == nil or def == nil or root == nil then
+		refuse(thief, "StealFloorItem", "objet changé pendant le maintien")
+		return
+	end
+	if not api.HoldFloorItem(victim, uid) then
+		refuse(thief, "StealFloorItem", "UnboxService.HoldFloorItem a refusé")
+		return
+	end
+	local victimData = DataService.Get(victim)
+	local victimEntry = if victimData then victimData.Items[uid] else nil
+	local mutation = if victimEntry then Mutations.Sanitize(victimEntry.Mutation) else nil
+	beginTheft(thief, victim, plot, 0, uid, def, item.Income, mutation, true, root)
+end
+
+-- L'objet tenu (présentoir ou sol) part sur la tête du voleur : portage, alertes, écouteurs.
+beginTheft = function(
+	thief: Player,
+	victim: Player?,
+	plot: Model,
+	slot: number,
+	uid: string,
+	def: Items.Item,
+	income: number,
+	mutation: Mutations.Mutation?,
+	floor: boolean,
+	root: BasePart
+)
 	local payload: PlayerItemPayload = {
 		Kind = "PlayerItem",
 		ItemUid = uid,
 		ItemId = def.Id,
 		Rarity = def.Rarity,
-		Income = item.Income,
+		Income = income,
 		VictimUserId = if victim then victim.UserId else 0, -- 0 : le bot (personne ne le défend à la batte)
-		SlotIndex = slot,
+		SlotIndex = slot, -- 0 : objet pris au sol (vague 31)
 		Mutation = mutation,
 	}
 	local theft: Theft = {
@@ -1039,6 +1211,7 @@ local function grant(thief: Player, victim: Player?, plot: Model, slot: number, 
 		Uid = uid,
 		ItemId = def.Id,
 		Slot = slot,
+		Floor = floor,
 		Payload = payload,
 		StartedAt = os.clock(),
 		From = root.Position,
@@ -1048,11 +1221,16 @@ local function grant(thief: Player, victim: Player?, plot: Model, slot: number, 
 	local ok, started = pcall(CarryService.StartCarry, thief, payload)
 	if not ok or started ~= true then
 		thefts[thief] = nil
-		releaseItem(plot, victim, uid, thief)
+		local api = Floor
+		if floor and victim and api then
+			api.ReleaseFloorItem(victim, uid)
+		else
+			releaseItem(plot, victim, uid, thief)
+		end
 		if not ok then
 			warn(`[PvPService] CarryService.StartCarry : {started}`)
 		end
-		refuse(thief, "StealItem", "CarryService a refusé le portage")
+		refuse(thief, if floor then "StealFloorItem" else "StealItem", "CarryService a refusé le portage")
 		return
 	end
 	local shop = shops[plot]
@@ -1066,7 +1244,8 @@ local function grant(thief: Player, victim: Player?, plot: Model, slot: number, 
 	end
 	notify(thief, string.format(MESSAGES.Grabbed, name), "Info")
 	local whose = if victim then `de {victim.Name}` else "du bot"
-	log(`{thief.Name} prend {def.Id} ({uid}) sur le présentoir {slot} {whose}`)
+	local where = if floor then "au sol (sous antivol)" else `sur le présentoir {slot}`
+	log(`{thief.Name} prend {def.Id} ({uid}) {where} {whose}`)
 	if victim then
 		for _, listener in table.clone(startedListeners) do
 			task.spawn(listener, thief, victim, def.Id)
@@ -1111,7 +1290,46 @@ local function onStealItem(player: Player, plotIndex: number, slotIndex: number)
 		end
 		return
 	end
-	holds[player] = { Plot = plot, Victim = victim, Slot = slotIndex, Uid = uid, StartedAt = now }
+	holds[player] = { Plot = plot, Victim = victim, Slot = slotIndex, Uid = uid, StartedAt = now, Floor = false }
+end
+
+-- Vague 31 (L-112) : StealFloorItem(plotIndex, itemUid), objet sous antivol au sol ; deux appels comme StealItem.
+local function onStealFloorItem(player: Player, plotIndex: number, itemUid: string)
+	local what = `StealFloorItem({plotIndex}, {itemUid})`
+	local plot = PlotService.GetPlotByIndex(plotIndex)
+	if plot == nil then
+		refuse(player, what, "boutique inconnue")
+		return
+	end
+	if not AntiCheatService.Verify(player) then
+		refuse(player, what, "déplacement sanctionné par l'anti-triche (audit 9.8)")
+		return
+	end
+	local hold = holds[player]
+	local reason, key, message = floorRefusal(player, plot, itemUid)
+	if reason then
+		if hold and hold.Plot == plot and hold.Floor and hold.Uid == itemUid then
+			holds[player] = nil
+		end
+		refuse(player, what, reason)
+		if key and message then
+			notice(player, key, message)
+		end
+		return
+	end
+	local victim = PlotService.GetOwner(plot) :: Player -- floorRefusal : un vrai joueur
+	local now = os.clock()
+	if hold and hold.Plot == plot and hold.Floor and hold.Uid == itemUid then
+		local elapsed = now - hold.StartedAt
+		if elapsed + GRAB_TIME_TOLERANCE >= PvP.StealGrabTime then
+			holds[player] = nil
+			grantFloor(player, victim, plot, itemUid)
+		else
+			refuse(player, what, `maintien trop court ({math.round(elapsed * 100) / 100} s sur {PvP.StealGrabTime} s)`)
+		end
+		return
+	end
+	holds[player] = { Plot = plot, Victim = victim, Slot = 0, Uid = itemUid, StartedAt = now, Floor = true }
 end
 
 -- Attributs de la parcelle -----------------------------------------------------------------------------------
@@ -1250,6 +1468,12 @@ end
 local function step()
 	local now = os.clock()
 	for player, hold in table.clone(holds) do
+		if hold.Floor then
+			if now - hold.StartedAt > PvP.StealGrabTime + HOLD_EXPIRY or floorRefusal(player, hold.Plot, hold.Uid) ~= nil then
+				holds[player] = nil
+			end
+			continue
+		end
 		local exposed = exposedOf(hold.Plot, hold.Victim)[hold.Slot]
 		if
 			exposed == nil
@@ -1410,6 +1634,15 @@ function PvPService.Init()
 		bat.OnHit(onBatHit)
 	end
 	Net.Server.StealItem:Connect(onStealItem)
+	if Floor then
+		-- Vague 31 (L-112) : remote absent d'un ancien Net/Definitions (bancs) : rien à voler au sol.
+		local wired, err = pcall(function()
+			Net.Server.StealFloorItem:Connect(onStealFloorItem)
+		end)
+		if not wired then
+			log(`StealFloorItem pas branché : {err}`)
+		end
+	end
 	Players.PlayerAdded:Connect(watchPlayer)
 	for _, player in Players:GetPlayers() do
 		watchPlayer(player)

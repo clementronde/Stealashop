@@ -168,6 +168,13 @@
 --       `plot`, construit comme un objet de joueur (modèle ITM_ ou bloc V0, halo, BB_Item, tag DisplayItem et
 --       attributs, OwnerUserId = 0 ; revenu de sa zone au catalogue). Ni profil, ni plaque, ni revenu : à
 --       l'appelant de le ranger et de le détruire. nil si le présentoir manque ou si l'objet est inconnu.
+--   DisplayService.BuildFloorItem(ownerUserId, pivot, itemUid, entry) -> Model?
+--       Vague 31 (L-112, UnboxService) : l'objet `entry` (Items[uid]) sous antivol, posé au sol en `pivot`,
+--       construit comme un objet exposé (modèle ITM_ ou bloc V0, mutation de taille, halo, attributs), sans
+--       BB_Item (BB_AntiTheft le remplace, côté client), sans tag DisplayItem ni DisplaySlot (ni invite de vol
+--       de présentoir, ni revenu). Nommé FloorItem. À l'appelant de le ranger et de le détruire.
+-- Objet sous antivol (vague 31, L-112, Features.ShelfOpen ; Items[uid].AntiTheft) : PlaceItem (« AntiTheft »,
+-- Notify), PlaceAuto (nil) et Equip Best le refusent ; une entrée de Display qui le montre est retirée.
 --
 -- Remote PlaceItem(itemUid, slotIndex) : refusé (Notify « Warning » au joueur, avertissement en
 -- Studio) si le joueur n'a pas de parcelle, n'est pas dans le volume Bounds de sa parcelle, ne
@@ -214,6 +221,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
 local Balance = require(ReplicatedStorage.Shared.Config.Balance)
+local Features = require(ReplicatedStorage.Shared.Config.Features)
 local Formulas = require(ReplicatedStorage.Shared.Config.Formulas)
 local ItemsConfig = require(ReplicatedStorage.Shared.Config.Items)
 local Mutations = require(ReplicatedStorage.Shared.Config.Mutations)
@@ -234,7 +242,7 @@ type Rarity = Rarities.Rarity
 
 export type CashOutSource = "Pad" | "Leave" | "Api" | "Auto" | "Offline"
 export type CashOutListener = (player: Player, amount: number, source: CashOutSource) -> ()
-export type PlaceError = "NoProfile" | "NoPlot" | "UnknownItem" | "InVault" | "Held" | "NoSlot" | "Locked" | "Taken" | "NotOnPlot"
+export type PlaceError = "NoProfile" | "NoPlot" | "UnknownItem" | "InVault" | "Held" | "NoSlot" | "Locked" | "Taken" | "NotOnPlot" | "AntiTheft"
 -- État d'un présentoir pour UnboxService (GetSlotStates ; attribut UnboxState, L-089).
 export type SlotState = "Free" | "Locked" | "Taken"
 
@@ -288,6 +296,7 @@ local PLOT_INDEX_ATTRIBUTE = "PlotIndex"
 local FOLDER_NAME = "DisplayItems"
 local MODEL_FORMAT = "DisplayItem_%02d"
 local DISPLAY_TAG = "DisplayItem" -- tag de code, pas un tag de la map : lu par DisplayController
+local FLOOR_ITEM_NAME = "FloorItem" -- vague 31 (L-112) : objet sous antivol posé au sol (BuildFloorItem, UnboxService)
 local HALO_PART = "RarityHalo"
 local BILLBOARD_POINT = "BillboardPoint"
 local RAYS_CENTER = "RaysCenter"
@@ -373,6 +382,8 @@ local MESSAGES: { [string]: string } = {
 	NoSlot = "This stand doesn't exist.",
 	Locked = "This stand is locked: upgrade your Display Stands.",
 	Taken = "This stand is already taken.",
+	-- Vague 31 (L-112), V0 proposé, absent du doc : objet sous antivol (au sol de la boutique, ou à y poser).
+	AntiTheft = "This item is still under anti-theft: wait until it's UNLOCKED!",
 	-- Equip Best (L-089), catégorie « Info » : V0 proposés, absents du doc.
 	EquipBest = "Your best items are now on display!",
 	EquipBestSame = "Your best items are already on display.",
@@ -593,6 +604,12 @@ local function refreshInventory(player: Player)
 			reportOnce("inventory", `[DisplayService] InventoryService.Refresh : {err}`, "warn")
 		end
 	end
+end
+
+-- Vague 31 (L-112, Features.ShelfOpen) : objet sous antivol (Items[uid].AntiTheft, UnboxService) : jamais
+-- sur un présentoir avant « UNLOCKED! » (voir l'en-tête). Interrupteur coupé : champ ignoré.
+local function isAntiTheft(entry: any): boolean
+	return Features.ShelfOpen == true and type(entry) == "table" and entry.AntiTheft == true
 end
 
 -- L'objet est-il tenu par un voleur (vol en cours, voir l'en-tête) ?
@@ -1170,13 +1187,16 @@ local function addBillboard(
 end
 
 -- Construit l'objet exposé sur le présentoir `slot`, prêt à être rangé dans la parcelle.
-local function buildVisual(ownerUserId: number, refs: PlotRefs, slot: number, uid: string, entry: ItemEntry, def: ItemDef): Visual
+-- Modèle de l'objet (copie d'ITM_ ou bloc V0, mutation de taille, halo, BB_Item si `billboard`), pivot posé
+-- en `pivot`, avec les attributs communs (ItemUid, ItemId, Rarity, Halo, Income, OwnerUserId, Placeholder,
+-- mutation). Sans tag ni DisplaySlot : à l'appelant. Renvoie le modèle et son revenu.
+local function buildItemModel(ownerUserId: number, pivot: CFrame, name: string, uid: string, entry: ItemEntry, def: ItemDef, billboard: boolean): (Model, number)
 	local rarity = Rarities.ById[def.Rarity]
 	local income = itemIncome(def, entry, uid)
 	local model = copyOfTemplate(def)
 	local placeholder = model == nil
 	local display = model or placeholderModel(rarity)
-	display.Name = string.format(MODEL_FORMAT, slot)
+	display.Name = name
 	-- Arrive en entier chez les clients (StreamingEnabled) : ItemIdleController y lit la position de
 	-- repos de toutes les pièces avant de les animer (L-045).
 	display.ModelStreamingMode = Enum.ModelStreamingMode.Atomic
@@ -1191,24 +1211,33 @@ local function buildVisual(ownerUserId: number, refs: PlotRefs, slot: number, ui
 			reportOnce(`scale:{uid}`, `[DisplayService] {def.Id} ({uid}) : Model:ScaleTo({scale}) a échoué ({problem}), taille normale`, "warn")
 		end
 	end
-	display:PivotTo((refs.slots[slot] :: Attachment).WorldCFrame) -- présentoir vérifié par sanitize
+	display:PivotTo(pivot)
 
 	local boxCFrame, boxSize = display:GetBoundingBox()
 	addHalo(display, rarity, boxCFrame, boxSize)
-	addBillboard(display, def, rarity, income, boxCFrame, boxSize, mutation)
+	if billboard then
+		addBillboard(display, def, rarity, income, boxCFrame, boxSize, mutation)
+	end
 
 	display:SetAttribute("ItemUid", uid)
 	display:SetAttribute("ItemId", def.Id)
 	display:SetAttribute("Rarity", def.Rarity)
 	display:SetAttribute("Halo", rarity.Halo)
 	display:SetAttribute("Income", income)
-	display:SetAttribute("DisplaySlot", slot)
 	display:SetAttribute("OwnerUserId", ownerUserId)
 	display:SetAttribute("Placeholder", placeholder)
 	-- Mutation (DEV-131) : Id de Config/Mutations, absents sans mutation dans la famille. Les effets
 	-- visuels sont à Clément (MOD-131) : le code n'en pose aucun.
 	display:SetAttribute(MUTATION_SIZE_ATTRIBUTE, if mutation then mutation.Size else nil)
 	display:SetAttribute(MUTATION_EFFECT_ATTRIBUTE, if mutation then mutation.Effect else nil)
+	return display, income
+end
+
+local function buildVisual(ownerUserId: number, refs: PlotRefs, slot: number, uid: string, entry: ItemEntry, def: ItemDef): Visual
+	-- présentoir vérifié par sanitize
+	local pivot = (refs.slots[slot] :: Attachment).WorldCFrame
+	local display, income = buildItemModel(ownerUserId, pivot, string.format(MODEL_FORMAT, slot), uid, entry, def, true)
+	display:SetAttribute("DisplaySlot", slot)
 	CollectionService:AddTag(display, DISPLAY_TAG)
 	return { model = display, uid = uid, itemId = def.Id, income = income }
 end
@@ -1403,6 +1432,8 @@ local function sanitize(player: Player, data: Data, refs: PlotRefs): { [number]:
 				why = `objet {uid} : ItemId « {tostring(entry.Id)} » inconnu du catalogue`
 			elseif isInVault(data, uid) then
 				why = `objet {uid} rangé au coffre-fort`
+			elseif isAntiTheft(entry) then
+				why = `objet {uid} sous antivol (L-112)`
 			end
 		end
 		if why then
@@ -1719,6 +1750,9 @@ local function place(player: Player, itemUid: string, slot: number, fromClient: 
 	if isHeld(player, itemUid) then
 		return false, "Held"
 	end
+	if isAntiTheft(entry) then
+		return false, "AntiTheft"
+	end
 	if slot % 1 ~= 0 or slot < 1 or slot > MAX_SLOT_INDEX then
 		return false, "NoSlot"
 	end
@@ -1853,7 +1887,7 @@ function DisplayService.PlaceAuto(player: Player, itemUid: string, near: Vector3
 	end
 	reconcile(player, account, data, plot)
 	local entry, def = lookup(data, itemUid)
-	if entry == nil or def == nil or isInVault(data, itemUid) or isHeld(player, itemUid) then
+	if entry == nil or def == nil or isInVault(data, itemUid) or isHeld(player, itemUid) or isAntiTheft(entry) then
 		return nil
 	end
 	local current = slotOf(data, itemUid)
@@ -2120,7 +2154,7 @@ function DisplayService.EquipBest(player: Player): number
 	local candidates: { Candidate } = {}
 	for uid, entry in data.Items do
 		local _, def = lookup(data, uid)
-		if def and not isInVault(data, uid) and not heldBy[uid] then
+		if def and not isInVault(data, uid) and not heldBy[uid] and not isAntiTheft(entry) then
 			table.insert(candidates, { uid = uid, income = itemIncome(def, entry, uid), shown = displayedAt[uid] ~= nil })
 		end
 	end
@@ -2273,6 +2307,19 @@ function DisplayService.BuildBotItem(plot: Model, slotIndex: number, itemUid: st
 		return nil
 	end
 	return (result :: Visual).model
+end
+
+function DisplayService.BuildFloorItem(ownerUserId: number, pivot: CFrame, itemUid: string, entry: ItemEntry): Model?
+	local def = if type(entry) == "table" then ItemsConfig.ById[entry.Id] else nil
+	if def == nil or Rarities.ById[def.Rarity] == nil then
+		return nil
+	end
+	local ok, model = pcall(buildItemModel :: any, ownerUserId, pivot, FLOOR_ITEM_NAME, itemUid, entry, def, false) -- :: any : idem
+	if not ok then
+		reportOnce(`floor:{def.Id}`, `[DisplayService] objet au sol {def.Id} non construit : {model}`, "warn")
+		return nil
+	end
+	return model :: Model
 end
 
 -- Points d'accroche (DEV-100 et DEV-111, voir l'en-tête) : valeurs du MVP, sans bonus.

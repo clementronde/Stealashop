@@ -10,7 +10,9 @@
 --   1;I,<uid>,<ItemId>,<revenu>,<présentoir>,<taille>,<effet>;B,<uid>,<type>,<rareté>,<prêt à>,<posé>
 --   I  un objet du joueur, exposé (présentoir = son numéro) ou dans l'inventaire (présentoir = 0) ;
 --      revenu = $/s de l'objet, mutation comprise, sans les bonus du joueur ; taille et effet = Id de
---      Config/Mutations, vides sans mutation dans la famille ;
+--      Config/Mutations, vides sans mutation dans la famille ; vague 31 (L-112) : un 8e champ « A » pour
+--      un objet sous antivol (à poser au sol de sa boutique avant un présentoir), absent sinon (le texte
+--      d'un objet libre ne change pas) ;
 --   B  un colis : type (Standard, Premium, Luxe), rareté (Config/Rarities), heure serveur à partir de
 --      laquelle il s'ouvre (vide si inconnue), posé = 1 s'il est au sol de la boutique, 0 dans
 --      l'inventaire.
@@ -32,6 +34,7 @@ export type ItemEntry = {
 	Slot: number?, -- présentoir s'il est exposé, nil dans l'inventaire
 	Size: string?, -- Config/Mutations
 	Effect: string?,
+	AntiTheft: boolean?, -- vague 31 (L-112) : sous antivol, se pose au sol de sa boutique (PlaceBox), pas sur un présentoir
 }
 
 export type BoxEntry = {
@@ -51,6 +54,7 @@ local VERSION = "1"
 local RECORD = ";"
 local FIELD = ","
 local SAFE_ID = "^[%w_%-%.{}]+$"
+local ANTI_THEFT_FLAG = "A" -- 8e champ d'un objet sous antivol (vague 31)
 
 local InventoryState = {}
 
@@ -74,18 +78,19 @@ function InventoryState.Encode(state: State): string
 		if InventoryState.IsSafeId(item.Uid) and InventoryState.IsSafeId(item.ItemId) then
 			local income = if finite(item.Income) then item.Income else 0
 			local slot = if finite(item.Slot) then math.floor(item.Slot :: number) else 0
-			table.insert(
-				records,
-				table.concat({
-					"I",
-					item.Uid,
-					item.ItemId,
-					string.format("%.6g", income),
-					tostring(slot),
-					optionalId(item.Size),
-					optionalId(item.Effect),
-				}, FIELD)
-			)
+			local fields = {
+				"I",
+				item.Uid,
+				item.ItemId,
+				string.format("%.6g", income),
+				tostring(slot),
+				optionalId(item.Size),
+				optionalId(item.Effect),
+			}
+			if item.AntiTheft == true then
+				table.insert(fields, ANTI_THEFT_FLAG)
+			end
+			table.insert(records, table.concat(fields, FIELD))
 		end
 	end
 	for _, box in state.Boxes do
@@ -126,7 +131,7 @@ function InventoryState.Decode(text: any): State
 		end
 		local fields = fieldsOf(record)
 		local kind = fields[1]
-		if kind == "I" and #fields == 7 then
+		if kind == "I" and (#fields == 7 or #fields == 8) then
 			local income = tonumber(fields[4])
 			local slot = tonumber(fields[5])
 			if InventoryState.IsSafeId(fields[2]) and InventoryState.IsSafeId(fields[3]) and finite(income) and finite(slot) then
@@ -137,6 +142,7 @@ function InventoryState.Decode(text: any): State
 					Slot = if (slot :: number) > 0 then slot else nil,
 					Size = emptyToNil(fields[6]),
 					Effect = emptyToNil(fields[7]),
+					AntiTheft = if fields[8] == ANTI_THEFT_FLAG then true else nil,
 				})
 			end
 		elseif kind == "B" and #fields == 6 then

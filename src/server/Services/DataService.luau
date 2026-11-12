@@ -78,6 +78,8 @@
 -- L-089) = colis dans l'inventaire, ouverts au sol de la boutique : Boxes rangé par uid de colis, plus de
 -- BoxQueue (voir MIGRATIONS[7]) ; v8 (2026-11-09, DEV-101) = récompenses quotidiennes et de temps de jeu :
 -- Rewards (RewardService ; voir MIGRATIONS[8]).
+-- Vague 31 (L-112, Features.ShelfOpen) : au chargement, après la migration, les colis du profil deviennent des
+-- objets de l'inventaire (convertBoxes, plus bas), sans changement de version ; idempotent.
 -- Nouvelle version du schéma (ex. v9 de la Partie 2) :
 --   1. ajouter les champs dans Types/Profile et dans TEMPLATE ci-dessous ;
 --   2. ajouter MIGRATIONS[9] (transforme un profil v8 en v9 ; ce qui est seulement
@@ -90,6 +92,7 @@ local RunService = game:GetService("RunService")
 
 local Balance = require(ReplicatedStorage.Shared.Config.Balance)
 local Catalog = require(ReplicatedStorage.Shared.Config.Items)
+local Features = require(ReplicatedStorage.Shared.Config.Features)
 local ProfileTypes = require(ReplicatedStorage.Shared.Types.Profile)
 
 local Server = (script.Parent :: Instance).Parent :: Instance
@@ -548,6 +551,55 @@ local MIGRATIONS: { [number]: (data: any, log: MigrationLog) -> () } = {
 	[8] = migrateToV8,
 }
 
+-- Vague 31 (L-112, Features.ShelfOpen ; agent a105) : les colis s'ouvrent désormais sur le rayon du magasin.
+-- Au chargement, chaque colis déjà rangé dans le profil (Boxes, dans l'inventaire ou posé au sol : son contenu
+-- ItemId, Rarity et Mutation est déjà tiré) devient un objet de l'inventaire, sans antivol (il a déjà été
+-- rapporté) : Items[uid] = { Id = ItemId, Source = "NPC", At, Zone, Mutation }, sous l'uid du colis (une case
+-- de la barre du bas qui le montrait montre l'objet), sinon sous un uid neuf. Sans changement de version
+-- (aucun champ nouveau dans Boxes ni dans Items). Idempotent : le colis quitte Boxes dans la même exécution,
+-- et un objet déjà présent sous cet uid avec le même ItemId (conversion déjà faite) n'est pas recréé. Un colis
+-- illisible (pas une table, ItemId inconnu du catalogue) reste dans Boxes, tel quel. Mutation : celle du colis,
+-- jamais sur un objet TutorialOnly. Les colis donnés pendant la partie (récompense, camion, tuto) restent
+-- des colis jusqu'au chargement suivant (UnboxService garde l'ancien déroulé pour eux).
+local function convertBoxes(data: any, log: MigrationLog)
+	local boxes, items = data.Boxes, data.Items
+	if type(boxes) ~= "table" or type(items) ~= "table" or next(boxes) == nil then
+		return
+	end
+	-- Lu ici seulement (un profil sans colis n'en a pas besoin, comme HttpService).
+	local Mutations = require(ReplicatedStorage.Shared.Config.Mutations)
+	local converted, kept = 0, 0
+	for boxUid: any, box: any in table.clone(boxes) :: any do
+		local def = if type(box) == "table" and type(box.ItemId) == "string" then Catalog.ById[box.ItemId] else nil
+		if def == nil then
+			kept += 1
+			continue
+		end
+		local existing = items[boxUid]
+		if type(existing) == "table" and existing.Id == def.Id then
+			boxes[boxUid] = nil -- déjà converti (garde-fou) : jamais deux exemplaires
+			continue
+		end
+		local uid = boxUid
+		if existing ~= nil or type(uid) ~= "string" then
+			local HttpService = game:GetService("HttpService") -- lu ici seulement, comme MIGRATIONS[7]
+			uid = HttpService:GenerateGUID(false)
+			while items[uid] ~= nil do
+				uid = HttpService:GenerateGUID(false)
+			end
+		end
+		local zone = if type(box.Zone) == "number" and box.Zone == box.Zone then box.Zone else def.Zone
+		local at = if type(box.At) == "number" and box.At == box.At then box.At else os.time()
+		local mutation = if def.TutorialOnly then nil else Mutations.Sanitize(box.Mutation)
+		items[uid] = { Id = def.Id, Source = "NPC", At = at, Zone = zone, Mutation = mutation }
+		boxes[boxUid] = nil
+		converted += 1
+	end
+	if converted > 0 or kept > 0 then
+		log(`ouverture sur le rayon (L-112) : {converted} colis devenu(s) objet(s) de l'inventaire, {kept} colis illisible(s) gardé(s)`, kept > 0)
+	end
+end
+
 -- Messages d'expulsion, lus par le joueur : en anglais (L-036).
 local MESSAGES = {
 	LoadFailed = "Your save couldn't be loaded. Please come back in a moment.",
@@ -681,6 +733,13 @@ local function loadProfile(player: Player)
 	end
 	profile.Data = migrated
 	profile:Reconcile()
+	-- Vague 31 (L-112) : colis déjà rangés → objets de l'inventaire (convertBoxes), avant tout écouteur.
+	if Features.ShelfOpen then
+		local converted, problem = pcall(convertBoxes :: any, profile.Data, migrationLog) -- :: any : sinon l'ancien solveur croit que pcall ne renvoie qu'une valeur
+		if not converted then
+			warn(`[DataService] {player.Name} ({key}) : conversion des colis impossible ({problem}), colis gardés`)
+		end
+	end
 	profile:AddUserId(player.UserId)
 
 	-- Fin de session sans départ du joueur : profil repris par un autre serveur.

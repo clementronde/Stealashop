@@ -51,6 +51,10 @@
 --                      selon l'attente du colis qui attend le plus) ; le reçu retire jusqu'à Skip s à
 --                      ce colis. Aucun colis en attente : les secondes payées vont dans
 --                      Monetization.OpenNowCredit du profil, retirées des prochains colis posés
+--   Vague 31 (L-112, Features.ShelfOpen ; décision de Cantin du 2026-11-12) : les deux mêmes achats valent pour
+--                      l'antivol d'un objet posé au sol, par le même chemin : UnboxService.GetWaiting et
+--                      SkipWait le comptent comme un colis en attente (Ouvrir maintenant, crédit, Fast Open à
+--                      l'achat) ; Fast Open multiplie aussi UnboxService.GetAntiTheftDelay par DelayFactor
 --   Pack de départ     offre unique de la 1re heure de jeu (Lifetime.PlaySeconds + la session) : boost
 --                      ×2 argent 1 h (Boosts.Cash, compté seulement en jeu ; un 2e boost prolonge),
 --                      Marteau (équipé s'il est plus fort que l'outil équipé), 50 000 $ ;
@@ -168,6 +172,10 @@ local MESSAGES = {
 	OpenNowShorter = "Your box wait is %s shorter!",
 	OpenNowCredit = "No box is waiting: Open Now will speed up your next boxes.",
 	OpenNowCreditUsed = "Open Now: your new box wait is %s shorter!",
+	-- Vague 31 (L-112, Cantin 2026-11-12) : les mêmes achats sur l'antivol d'un objet posé au sol.
+	OpenNowUnlocked = "Anti-theft removed: your item is UNLOCKED!",
+	OpenNowShorterItem = "Your item's anti-theft is %s shorter!",
+	OpenNowCreditUsedItem = "Open Now: your new item's anti-theft is %s shorter!",
 	StarterPack = "Starter Pack: +%s, a Hammer and ×2 Cash for 1 hour!",
 }
 
@@ -502,17 +510,25 @@ local function grantCashPack(player: Player, product: Product): string
 	return `{Format.money(amount)} ({minutes} min à {Format.money(income)}/s)`
 end
 
+-- Vague 31 (L-112) : `uid` est-il un objet sous antivol posé au sol (UnboxService.GetFloorItem) ?
+local function isFloorItem(player: Player, uid: string): boolean
+	-- pcall : GetFloorItem absent d'un UnboxService de banc → false.
+	local ok, item = pcall((UnboxService :: any).GetFloorItem, player, uid)
+	return ok and item ~= nil
+end
+
 local function grantOpenNow(player: Player, data: Data, tier: Tier): string
 	local bench = longestWait(player)
 	if bench then
+		local isItem = isFloorItem(player, bench) -- vague 31 : l'antivol d'un objet au sol, même chemin
 		local left = UnboxService.SkipWait(player, bench, tier.Skip)
 		if left then
 			if left <= 0 then
-				notify(player, MESSAGES.OpenNowReady)
+				notify(player, if isItem then MESSAGES.OpenNowUnlocked else MESSAGES.OpenNowReady)
 			else
-				notify(player, string.format(MESSAGES.OpenNowShorter, duration(tier.Skip)))
+				notify(player, string.format(if isItem then MESSAGES.OpenNowShorterItem else MESSAGES.OpenNowShorter, duration(tier.Skip)))
 			end
-			return `colis {bench} : {if left <= 0 then "prêt" else `reste {duration(left)}`}`
+			return `{if isItem then "objet" else "colis"} {bench} : {if left <= 0 then "prêt" else `reste {duration(left)}`}`
 		end
 	end
 	local monetization = monetizationOf(data) :: MonetizationData
@@ -765,7 +781,8 @@ local function onBoxPlaced(player: Player, boxUid: string, _box: any)
 		return
 	end
 	monetization.OpenNowCredit = credit - skip
-	notify(player, string.format(MESSAGES.OpenNowCreditUsed, duration(skip)))
+	local message = if isFloorItem(player, boxUid) then MESSAGES.OpenNowCreditUsedItem else MESSAGES.OpenNowCreditUsed
+	notify(player, string.format(message, duration(skip)))
 	log(`{player.Name} : crédit d'Ouvrir maintenant : {duration(skip)} retirées au colis {boxUid}, reste {monetization.OpenNowCredit} s`)
 end
 
@@ -930,6 +947,14 @@ local function installHooks()
 		local factor = if hasPass(player, "FastOpen") then passValue("FastOpen", "DelayFactor", 1) else 1
 		return baseDelay(player, box) * factor
 	end
+	-- Vague 31 (L-112, Cantin 2026-11-12) : Fast Open raccourcit aussi l'antivol d'un objet posé au sol.
+	local baseAntiTheft = UnboxService.GetAntiTheftDelay
+	if (baseAntiTheft :: any) ~= nil then -- absent d'un UnboxService de banc
+		UnboxService.GetAntiTheftDelay = function(player: Player, itemId: string): number
+			local factor = if hasPass(player, "FastOpen") then passValue("FastOpen", "DelayFactor", 1) else 1
+			return baseAntiTheft(player, itemId) * factor
+		end
+	end
 end
 
 function MonetizationService.Init()
@@ -957,6 +982,11 @@ function MonetizationService.Init()
 	DataService.OnProfileReleasing(onProfileReleasing)
 	if enabled then
 		UnboxService.OnBoxPlaced(onBoxPlaced)
+		-- Vague 31 : le crédit d'« Ouvrir maintenant » raccourcit aussi l'antivol d'un objet posé au sol.
+		-- pcall : OnItemPlaced absent d'un UnboxService de banc → rien.
+		pcall((UnboxService :: any).OnItemPlaced, function(player: Player, itemUid: string, _itemId: string)
+			onBoxPlaced(player, itemUid, nil)
+		end)
 	end
 
 	local elapsed = 0

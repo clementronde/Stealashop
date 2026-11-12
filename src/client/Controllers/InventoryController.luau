@@ -66,6 +66,10 @@
 --     (ou autre chose en main à l'arrivée), il n'est pas remis tant que le joueur n'est pas reparti à
 --     plus de Balance.Hit.ServerMaxDistance de toute vitrine cassable, puis revenu. Jamais rien n'est
 --     retiré de la main.
+--   - vague 31 (L-112) : un objet sous antivol de l'inventaire (champ AntiTheft de l'état, InventoryService) se
+--     pose au sol de sa boutique par le même mode pose qu'un colis (PlaceBox avec son uid ; son PlaceButton, un
+--     clic sur sa carte, PlaceItem et la barre du bas lancent ce mode au lieu de PlaceItemAuto). Au sol, il
+--     n'est plus dans l'état ; UnboxController montre son antivol et son invite de reprise.
 -- Rien de ce qui compte ne se décide ici : chaque bouton envoie un uid ou un Id que le serveur revérifie.
 -- Seuls sont touchés (2.2, « Libre pour Ironix ») : Enabled de l'écran, les textes, la visibilité, les
 -- cartes clonées (nom, ordre), l'image de leur icône et la teinte (ImageColor3) de leurs rayons, le
@@ -770,14 +774,25 @@ end
 -- Mode pose d'un colis
 ------------------------------------------------------------------------------
 
--- Le colis est-il encore dans l'inventaire (pas posé) d'après l'état du serveur ?
+-- Vague 31 (L-112) : objet sous antivol de l'inventaire (à poser au sol de sa boutique, comme un colis).
+local function isAntiTheftItem(uid: string): boolean
+	for _, item in state.Items do
+		if item.Uid == uid then
+			return item.AntiTheft == true and item.Slot == nil
+		end
+	end
+	return false
+end
+
+-- Le colis est-il encore dans l'inventaire (pas posé) d'après l'état du serveur ? Vague 31 : un objet sous
+-- antivol de l'inventaire se pose de la même façon (PlaceBox avec son uid).
 local function isStoredBox(uid: string): boolean
 	for _, box in state.Boxes do
 		if box.Uid == uid then
 			return not box.Placed
 		end
 	end
-	return false
+	return isAntiTheftItem(uid)
 end
 
 stopPlacing = function()
@@ -996,6 +1011,8 @@ local function newView(section: Section, key: string): CardView?
 	return view
 end
 
+local close: () -> ()
+
 -- Objet de l'inventaire posé sur un présentoir libre (PlaceItemAuto) : PlaceButton, clic sur la carte,
 -- case de la barre du bas. Le serveur choisit le présentoir et revérifie tout.
 local function placeItem(uid: string)
@@ -1029,7 +1046,14 @@ local function paintItem(view: CardView, entry: InventoryState.ItemEntry)
 	setVisible(refs.PlaceButton, not displayed)
 	setVisible(refs.UnequipButton, displayed)
 	local uid = entry.Uid
+	local antiTheft = entry.AntiTheft == true and not displayed
 	local function place()
+		if antiTheft then
+			-- Vague 31 (L-112) : sous antivol, il se pose au sol de sa boutique (mode pose, comme un colis).
+			close()
+			startPlacing(uid)
+			return
+		end
 		placeItem(uid)
 	end
 	local function unplace()
@@ -1041,8 +1065,6 @@ local function paintItem(view: CardView, entry: InventoryState.ItemEntry)
 	view.handlers.UnequipButton = if displayed then unplace else nil
 	view.handlers.Card = if displayed then unplace else place
 end
-
-local close: () -> ()
 
 local function paintBox(view: CardView, entry: InventoryState.BoxEntry, now: number)
 	local refs = view.refs
@@ -1669,6 +1691,10 @@ function InventoryController.ToggleBat()
 end
 
 function InventoryController.PlaceItem(itemUid: string)
+	if isAntiTheftItem(itemUid) then
+		InventoryController.StartPlacing(itemUid) -- vague 31 : sous antivol, il se pose au sol
+		return
+	end
 	placeItem(itemUid)
 end
 
