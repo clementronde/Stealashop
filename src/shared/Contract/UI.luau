@@ -641,4 +641,29 @@ UI.Twins = {
 	},
 } :: { [string]: { Containers: { string }, Names: { string } } }
 
+-- Receleur (vague 29, DEV-034 ; L-106 point 4, L-107 point 2 ; note docs/claude/notes/ui-pawnshop.md, relevé de
+-- Studio du 2026-11-12, agents/wave29-studio.md) : dialogue UI_PawnShop (ScreenGroup Menu) et bulle BB_PawnTalk du
+-- vendeur, branchés par PawnShopController. DealButton et NoDealButton sont cachés par Clément, montrés par le code.
+local pawnElements = { { Path = "Dialog" }, { Path = "Dialog.Choices" } } :: { Element }
+local PAWN_PRICED: { [string]: boolean } = { SellHeldButton = true, SellAllButton = true, DealButton = true }
+for _, button in { "SellHeldButton", "SellAllButton", "LeaveButton", "DealButton", "NoDealButton" } do
+	local path = `Dialog.Choices.{button}`
+	table.insert(pawnElements, { Path = path, Class = BUTTON })
+	table.insert(pawnElements, { Path = `{path}.KeyLabel`, Class = "TextLabel" })
+	table.insert(pawnElements, { Path = `{path}.ChoiceLabel`, Class = "TextLabel" })
+	if PAWN_PRICED[button] then
+		table.insert(pawnElements, { Path = `{path}.Price`, Class = "TextLabel" })
+	end
+end
+table.insert(UI.Screens, {
+	Name = "UI_PawnShop",
+	Class = "ScreenGui",
+	Elements = pawnElements,
+})
+table.insert(UI.Billboards, {
+	Name = "BB_PawnTalk",
+	Class = "BillboardGui",
+	Elements = { { Path = "Line", Class = "TextLabel" } },
+})
+
 return UI

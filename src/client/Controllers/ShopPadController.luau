@@ -3,7 +3,9 @@
 -- ShopPad dans un comptoir taggé WeaponShop, AuraShop ou RobuxShop (nom proposé par Clément le
 -- 2026-11-08 ; enfant facultatif de ces comptoirs au contrat 10.4, Contract/Models) : quand le joueur
 -- local monte dessus, l'écran du comptoir s'ouvre (UI_WeaponShop, UI_AuraShop, ou UI_RobuxShop, en
--- vitrine tant que la boutique Robux est coupée), par l'API Open du contrôleur de la boutique.
+-- vitrine tant que la boutique Robux est coupée), par l'API Open du contrôleur de la boutique. Vague 29
+-- (receleur, DEV-034) : le stand taggé PawnShop ouvre UI_PawnShop (PawnShopController) ; un contrôleur qui a
+-- aussi une API Leave est appelé quand le joueur descend de la plaque (le receleur se ferme alors).
 --
 -- Règles :
 --   - une seule ouverture par montée : rester sur la plaque ne rouvre pas un écran qu'on a fermé ; il
@@ -32,6 +34,7 @@ local Find = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Cont
 -- RobuxShopController).
 type ShopApi = {
 	Open: (anchor: BasePart) -> (),
+	Leave: ((anchor: BasePart) -> ())?, -- facultatif : le joueur descend de la plaque (receleur)
 }
 
 -- Un comptoir suivi.
@@ -49,8 +52,10 @@ local SHOPS: { { Tag: string, Controller: string } } = {
 	{ Tag = "WeaponShop", Controller = "WeaponShopController" },
 	{ Tag = "AuraShop", Controller = "AuraShopController" },
 	{ Tag = "RobuxShop", Controller = "RobuxShopController" },
+	{ Tag = "PawnShop", Controller = "PawnShopController" }, -- vague 29, DEV-034
 }
 local INBOX_NAME = "_INBOX_CLEMENT" -- livraisons pas encore posées
+local SHOWROOM_NAME = "_SHOWROOM_CLEMENT" -- vague 29 : copies de présentation de Clément, pas en jeu
 local ROOT_PART = "HumanoidRootPart"
 
 -- V0 proposé, absent du doc : volume de la plaque, le même que celui des plaques CollectPad_xx de DisplayService
@@ -95,7 +100,8 @@ local function inMap(inst: Instance): boolean
 		return false
 	end
 	local inbox = Workspace:FindFirstChild(INBOX_NAME)
-	return inbox == nil or not inst:IsDescendantOf(inbox)
+	local showroom = Workspace:FindFirstChild(SHOWROOM_NAME)
+	return (inbox == nil or not inst:IsDescendantOf(inbox)) and (showroom == nil or not inst:IsDescendantOf(showroom))
 end
 
 -- La plaque du comptoir (le premier descendant nommé ShopPad, s'il est une pièce), ou nil.
@@ -190,6 +196,11 @@ local function onHeartbeat()
 		if on and not was then
 			-- Dans sa propre tâche : une erreur de la boutique n'arrête pas les autres plaques.
 			task.spawn(counter.shop.Open, pad :: BasePart)
+		elseif was and not on then
+			local leave = counter.shop.Leave
+			if leave and pad then
+				task.spawn(leave, pad)
+			end
 		end
 	end
 end

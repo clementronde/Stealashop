@@ -418,4 +418,28 @@ for _, spec in { WeaponShopCounter, AuraShopCounter, RobuxShopCounter } do
 	table.insert(Models.List, spec) -- à la fin du rapport
 end
 
+-- Stand du receleur (vague 29, DEV-034 ; L-106 point 4, L-107 point 2 ; relevé de Studio du 2026-11-12) :
+-- ENV_Hub_PawnStall, taggé PawnShop. Sa plaque ShopPad ouvre UI_PawnShop (ShopPadController, PawnShopController ;
+-- le serveur mesure la distance du joueur à cette plaque, PawnShopService) ; la bulle BB_PawnTalk se pose sur la
+-- Head du vendeur Vendor_Pawn. Pas d'invite de repli ici : la plaque est obligatoire.
+local PawnShopStall: ModelSpec = {
+	Key = "PawnShopStall",
+	Label = "stands du receleur",
+	Category = "Boutiques d'achat",
+	Tag = "PawnShop",
+	Parts = {
+		{
+			Name = "ShopPad",
+			Class = "BasePart",
+			Note = "marcher dessus ouvre le dialogue du receleur (UI_PawnShop)",
+		},
+		{
+			Name = "Vendor_Pawn",
+			Inside = { { Name = "Head", Class = "BasePart", Note = "la bulle BB_PawnTalk s'y pose" } },
+		},
+	},
+}
+Models.PawnShopStall = PawnShopStall
+table.insert(Models.List, PawnShopStall) -- à la fin du rapport
+
 return Models

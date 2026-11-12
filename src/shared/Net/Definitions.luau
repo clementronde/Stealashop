@@ -486,6 +486,64 @@ local List: { RemoteDef } = {
 		Args = { id("uid") },
 		RatePerSecond = 4, -- V0 proposé, absent du doc
 	},
+	{
+		-- Vague 29 (receleur, DEV-034 ; L-106 point 4, L-107 point 2), absent du tableau 9.4 : le joueur est monté
+		-- sur la plaque ShopPad du stand taggé PawnShop et demande ce que le receleur lui offre. PawnShopService
+		-- vérifie le profil et la distance au stand (Config/Pawn.Reach), puis répond par PawnOffer.
+		Name = "PawnAsk",
+		Direction = "ClientToServer",
+		Reliable = true,
+		Args = {},
+		RatePerSecond = 4, -- V0 proposé, absent du doc ; le client regroupe ses demandes
+	},
+	{
+		-- Vague 29 : l'offre du receleur, calculée par le serveur. heldUid et heldItemId = l'objet « tenu en
+		-- main » (V0 : le dernier objet obtenu de l'inventaire, ni exposé ni au coffre-fort), "" s'il n'y en a pas
+		-- (ou pendant un portage) ; heldPrice = son prix ; allCount et allPrice = les objets de l'inventaire hors
+		-- objets exposés, et leur prix total. Prix = Config/Pawn.PriceFactor × $/s de l'objet (DEV-034).
+		Name = "PawnOffer",
+		Direction = "ServerToClient",
+		Reliable = true,
+		Args = {
+			{ Name = "heldUid", Kind = "string", Min = 0, Max = MAX_ID_LENGTH },
+			{ Name = "heldItemId", Kind = "string", Min = 0, Max = MAX_ID_LENGTH },
+			{ Name = "heldPrice", Kind = "number", Min = 0 },
+			{ Name = "allCount", Kind = "int", Min = 0 },
+			{ Name = "allPrice", Kind = "number", Min = 0 },
+		},
+	},
+	{
+		-- Vague 29 : vendre l'objet tenu. itemUid = celui de la dernière PawnOffer (ce que le joueur a vu et
+		-- confirmé). PawnShopService vérifie la distance, l'absence de portage, que l'objet est à lui et qu'il est
+		-- encore l'objet tenu (sinon refus : rien ne change), recalcule le prix, puis répond par PawnSold.
+		Name = "PawnSellHeld",
+		Direction = "ClientToServer",
+		Reliable = true,
+		Args = { id("itemUid") },
+		RatePerSecond = 2, -- V0 proposé, absent du doc
+	},
+	{
+		-- Vague 29 : vendre tout l'inventaire (hors objets exposés). count = le nombre d'objets confirmé par le
+		-- joueur (« 9 items for $2.1M. Deal? ») : si l'inventaire n'a plus ce nombre d'objets, refus (rien ne
+		-- change). Le serveur recalcule chaque prix, puis répond par PawnSold.
+		Name = "PawnSellAll",
+		Direction = "ClientToServer",
+		Reliable = true,
+		Args = { { Name = "count", Kind = "int", Min = 1, Max = 200 } }, -- Config/Pawn.MaxSellAll
+		RatePerSecond = 2, -- V0 proposé, absent du doc
+	},
+	{
+		-- Vague 29 : résultat d'une vente au receleur. count = objets vendus, amount = argent versé (déjà crédité) ;
+		-- count = 0 : vente refusée (inventaire changé entre l'offre et la vente, portage), rien n'a changé. Suivi
+		-- d'une nouvelle PawnOffer.
+		Name = "PawnSold",
+		Direction = "ServerToClient",
+		Reliable = true,
+		Args = {
+			{ Name = "amount", Kind = "number", Min = 0 },
+			{ Name = "count", Kind = "int", Min = 0 },
+		},
+	},
 }
 
 return {
