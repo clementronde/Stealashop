@@ -276,7 +276,7 @@ local Accessory: ModelSpec = {
 -- sont elles qui partent depuis BlastPoint ; Root (invisible) reste sur place.
 -- Camion de base et un par rareté (a79, L-097 point 3) : TruckEventService prend celui de la rareté la
 -- plus haute du chargement, sinon ENV_Event_Truck. Contrôlés quand ils sont là, pas attendus.
--- ENV_Event_Truck_Divine est livré, pas lu (pas de Divin).
+-- ENV_Event_Truck_Divine : lu depuis l'ajout de la rareté Divine (L-106 point 1).
 local TRUCK_NAMES = {
 	"ENV_Event_Truck",
 	"ENV_Event_Truck_Common",
@@ -286,6 +286,7 @@ local TRUCK_NAMES = {
 	"ENV_Event_Truck_Legendary",
 	"ENV_Event_Truck_Mythic",
 	"ENV_Event_Truck_Secret",
+	"ENV_Event_Truck_Divine",
 }
 local Truck: ModelSpec = {
 	Key = "Truck",

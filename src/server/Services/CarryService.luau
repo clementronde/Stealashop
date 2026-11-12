@@ -102,7 +102,7 @@
 --     sur la tête (marqueur Grab) ;
 --   - halo de rareté (5.6) en objets natifs (lumière, particules, rayons), V0 en attendant les
 --     textures de Clément (MOD-041) : Commun aucun, Peu commun léger, Rare et Épique net,
---     Légendaire et Mythique rayons, Secret arc-en-ciel (couleurs animées par CarryController,
+--     Légendaire et Mythique rayons, Divine rayons plus forts (L-106), Secret arc-en-ciel (couleurs animées par CarryController,
 --     tag CarryRainbow posé par le code, hors du contrat de la section 2.1). Sur un colis dont le
 --     modèle a déjà ses effets (BOX_Epic : lumière ; BOX_Legendary et plus : étincelles et lumière),
 --     le halo ne pose pas sa lumière ni ses étincelles : seulement ce qui manque (rayons) ;
@@ -194,6 +194,7 @@ local HALOS: { [string]: HaloSpec } = {
 	Clear = { LightRange = 10, LightBrightness = 2, ParticleRate = 10, ParticleSize = 0.35, Rays = false },
 	Rays = { LightRange = 14, LightBrightness = 3, ParticleRate = 14, ParticleSize = 0.4, Rays = true },
 	Rainbow = { LightRange = 16, LightBrightness = 3, ParticleRate = 20, ParticleSize = 0.45, Rays = true },
+	Divine = { LightRange = 18, LightBrightness = 3.5, ParticleRate = 24, ParticleSize = 0.5, Rays = true }, -- L-106
 }
 -- V0 proposé, absent du doc : 8 rayons vers les coins d'un cube ; longueur et largeur en studs.
 local RAY_LENGTH = 2.6

@@ -30,9 +30,14 @@
 --       vide s'il n'y a aucun objet (zone 1 : seul Common est rempli).
 --   Items.Secrets: { Item }
 --       Tirés quand la rareté est Secret, quelle que soit la zone.
+--   Items.Divines: { Item }
+--       Tirés quand la rareté est Divine, quelle que soit la zone (L-106 ; aucun objet encore).
+--   Items.AllZones[rarity]: { Item }?
+--       Secrets ou Divines pour ces deux raretés, nil pour une rareté rangée par zone.
 --   Items.Pick(zone, rarity, rng?) -> Item?
---       Un objet au hasard parmi ByZone[zone][rarity], ou parmi les Secrets pour "Secret" (toutes
---       zones) ; nil si la liste est vide ou la zone inconnue. Jamais un objet TutorialOnly.
+--       Un objet au hasard parmi ByZone[zone][rarity], ou parmi AllZones[rarity] pour "Secret" et
+--       "Divine" (toutes zones) ; nil si la liste est vide ou la zone inconnue. Jamais un objet
+--       TutorialOnly.
 --       rng : le Random de l'appelant, sinon celui de ce module.
 --   Items.RenamedV1, Items.RetiredV1: { [ancien ItemId]: ItemId v2 }
 --       ItemId du catalogue v1 absents de la v2 (voir plus bas) : migration des profils
@@ -314,6 +319,14 @@ local SECRETS: { Entry } = {
 local SECRET_CATEGORY = "???" -- catégorie affichée d'un Secret (catalogue v2)
 local SECRET_CATEGORY_ID = "Secret" -- V0 proposé, absent du JSON (qui ne donne pas d'id au Secret)
 
+-- Divines, toutes zones comme les Secrets (rareté créée par Clément le 2026-11-12, L-106 point 1).
+-- Aucun objet au catalogue pour l'instant : sa chance de tirage reste à 0 (Rarities.BoxOdds) et
+-- Items.Pick(zone, "Divine") rend nil. Un objet ajouté ici : { Id = "Divine_<Nom>", Name = "...",
+-- Rarity = "Divine" }, modèle ITM_Divine_<Nom>, icône ICON_Divine_<Nom>.
+local DIVINES: { Entry } = {}
+local DIVINE_CATEGORY = "???" -- V0 proposé, absent du doc : comme le Secret
+local DIVINE_CATEGORY_ID = "Divine" -- V0 proposé, absent du doc
+
 -- Anciens ItemId du catalogue v1 (doc 10.5), absents de la v2. Lus par la migration v1 → v2 des
 -- profils (DataService, MIGRATIONS[2]) et par le ContractChecker (Contract/Models : un modèle
 -- ITM_ qui porte encore un de ces noms est signalé).
@@ -340,6 +353,7 @@ local List: { Item } = {}
 local ById: { [string]: Item } = {}
 local ByZone: { [number]: { [string]: { Item } } } = {} -- [zone][RarityId] = objets tirables
 local Secrets: { Item } = {}
+local Divines: { Item } = {}
 
 local function add(item: Item)
 	assert(ById[item.Id] == nil, `Config.Items : ItemId en double {item.Id}`)
@@ -377,20 +391,32 @@ for zone, categories in CATALOG do
 	end
 end
 
-for _, entry in SECRETS do
-	local item: Item = {
-		Id = entry.Id,
-		DisplayName = entry.Name,
-		Zone = nil,
-		Rarity = entry.Rarity,
-		Asset = `ITM_{entry.Id}`,
-		Category = SECRET_CATEGORY,
-		CategoryId = SECRET_CATEGORY_ID,
-		TutorialOnly = false,
-	}
-	add(item)
-	table.insert(Secrets, item)
+-- Objets sans zone (Secret, Divine) : `rarity` est la seule rareté admise dans `entries`.
+local function addAllZones(entries: { Entry }, into: { Item }, rarity: Rarities.RarityId, category: string, categoryId: string)
+	for _, entry in entries do
+		assert(entry.Rarity == rarity, `Config.Items : {entry.Id} ({entry.Rarity}) rangé avec les {rarity}`)
+		local item: Item = {
+			Id = entry.Id,
+			DisplayName = entry.Name,
+			Zone = nil,
+			Rarity = entry.Rarity,
+			Asset = `ITM_{entry.Id}`,
+			Category = category,
+			CategoryId = categoryId,
+			TutorialOnly = false,
+		}
+		add(item)
+		table.insert(into, item)
+	end
 end
+addAllZones(SECRETS, Secrets, "Secret", SECRET_CATEGORY, SECRET_CATEGORY_ID)
+addAllZones(DIVINES, Divines, "Divine", DIVINE_CATEGORY, DIVINE_CATEGORY_ID)
+
+-- [RarityId] = objets tirés quelle que soit la zone (Secret, Divine) ; les autres raretés : ByZone.
+local AllZones: { [string]: { Item } } = {
+	Secret = Secrets,
+	Divine = Divines,
+}
 
 for old, new in RENAMED_V1 do
 	assert(ById[old] == nil and ById[new] ~= nil, `Config.Items : renommage v1 {old} → {new} incohérent`)
@@ -403,10 +429,8 @@ end
 local defaultRandom: Random? = nil
 
 local function pick(zone: number, rarity: Rarities.RarityId, rng: Random?): Item?
-	local list: { Item }? = nil
-	if rarity == "Secret" then
-		list = Secrets
-	else
+	local list: { Item }? = AllZones[rarity]
+	if list == nil then
 		local byRarity = ByZone[zone]
 		list = if byRarity then byRarity[rarity] else nil
 	end
@@ -427,6 +451,8 @@ local Items = {
 	ById = ById,
 	ByZone = ByZone, -- Items.ByZone[3].Rare = { Smartphone, Casque VR, Console à double écran }
 	Secrets = Secrets, -- tirés quand la rareté est Secret, quelle que soit la zone
+	Divines = Divines, -- tirés quand la rareté est Divine, quelle que soit la zone (vide pour l'instant)
+	AllZones = AllZones, -- [RarityId] = Secrets ou Divines ; nil pour une rareté rangée par zone
 	Pick = pick,
 	RenamedV1 = RENAMED_V1,
 	RetiredV1 = RETIRED_V1,

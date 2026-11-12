@@ -301,7 +301,7 @@ end
 
 local function track(model: Instance)
 	local kind = model:GetAttribute(HALO_ATTRIBUTE)
-	if kind ~= "Rays" and kind ~= "Rainbow" then
+	if kind ~= "Rays" and kind ~= "Rainbow" and kind ~= "Divine" then -- rayons qui tournent (Divine : L-106)
 		return
 	end
 	task.spawn(function()

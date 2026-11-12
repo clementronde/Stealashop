@@ -82,11 +82,12 @@ function Reel.rollPos(t: number, T: number, Ta: number, p: number, L: number): n
 	return 0.5 * D * p * Ta / Td + D * (1 - (1 - (t - Ta) / Td) ^ p)
 end
 
--- Objets tirables de (zone, rareté) : Items.Secrets pour un Secret, sinon Items.ByZone (catalogue v2,
--- une liste par case).
+-- Objets tirables de (zone, rareté) : Items.AllZones pour un Secret ou un Divin (toutes zones), sinon
+-- Items.ByZone (catalogue v2, une liste par case).
 local function itemsOf(zone: number, rarityId: string): { Item }
-	if rarityId == "Secret" then
-		return Items.Secrets
+	local allZones = Items.AllZones[rarityId]
+	if allZones ~= nil then
+		return allZones
 	end
 	local byZone = Items.ByZone[zone]
 	local list = if byZone then byZone[rarityId] else nil

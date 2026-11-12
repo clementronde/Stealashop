@@ -65,7 +65,7 @@
 -- crans ; chaque cran réussit avec UpgradeChance (10 %) × la chance du joueur (GetLuck, 1 par
 -- défaut ; probabilité bornée à 1) et fait monter le colis d'une rareté, dans l'ordre de
 -- Rarities.List (Commun → Peu commun → Rare). Un cran n'est tenté que si la rareté visée :
---   - n'est pas Secret ;
+--   - n'est ni Secret ni au-dessus (Divine, L-106) ;
 --   - peut sortir de ce colis dans sa zone (ShelfBoxes.OddsFor(zone, tier) > 0) : jamais en zone 1,
 --     qui ne tire que des Communs (L-033) ;
 --   - a au moins un objet tirable dans la zone (Items.ByZone[zone][rareté]).
@@ -592,8 +592,9 @@ local function luckOf(player: Player, box: Box): number
 	return 1
 end
 
--- Raretés atteintes cran par cran (règle de l'en-tête). Rarities.List est rangée par Order (1 à 7) :
--- la rareté au-dessus de `r` est Rarities.List[r.Order + 1].
+-- Raretés atteintes cran par cran (règle de l'en-tête). Rarities.List est rangée par Order (1 à 8) :
+-- la rareté au-dessus de `r` est Rarities.List[r.Order + 1]. Jamais Secret ni Divine (SECRET_ORDER).
+local SECRET_ORDER = Rarities.ById.Secret.Order
 local function rollUpgrades(box: Box, luck: number, rng: Random): { string }
 	local steps: { string } = {}
 	local chance = Unbox.UpgradeChance * luck
@@ -607,7 +608,7 @@ local function rollUpgrades(box: Box, luck: number, rng: Random): { string }
 	end
 	for _ = 1, Unbox.UpgradeMax do
 		local nextRarity = Rarities.List[current.Order + 1]
-		if nextRarity == nil or nextRarity.Id == "Secret" then
+		if nextRarity == nil or nextRarity.Order >= SECRET_ORDER then
 			break
 		end
 		if oddsOf(box.Zone, box.Tier, nextRarity.Id) <= 0 or not hasItem(box.Zone, nextRarity.Id) then
@@ -1400,13 +1401,14 @@ function UnboxService.GetBoxPosition(player: Player, boxUid: string): Vector3?
 end
 
 -- Rareté d'un colis offert (GiveBox) : tirée avec les poids de OddsFor(zone, tier), seulement parmi les
--- raretés d'ordre ≥ minOrder qui ont un objet (Items.Pick : les Secrets, toutes zones). nil si aucune.
+-- raretés d'ordre ≥ minOrder qui ont un objet (Items.Pick : Secrets et Divins, toutes zones). nil si aucune.
 local function drawGiftRarity(zone: number, tier: string, minOrder: number): string?
 	local total = 0
 	local weights: { [string]: number } = {}
 	for _, rarity in Rarities.List do
 		local weight = oddsOf(zone, tier, rarity.Id)
-		local possible = if rarity.Id == "Secret" then #Items.Secrets > 0 else hasItem(zone, rarity.Id)
+		local allZones = Items.AllZones[rarity.Id]
+		local possible = if allZones ~= nil then #allZones > 0 else hasItem(zone, rarity.Id)
 		if rarity.Order >= minOrder and weight > 0 and possible then
 			weights[rarity.Id] = weight
 			total += weight

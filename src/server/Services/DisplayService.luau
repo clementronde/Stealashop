@@ -336,6 +336,7 @@ local HALOS: { [string]: HaloSpec } = {
 	Clear = { Brightness = 1.5, Range = 8, Rate = 8, Size = 0.3, Rays = 0 }, -- Rare, Épique
 	Rays = { Brightness = 2.5, Range = 12, Rate = 14, Size = 0.35, Rays = 8 }, -- Légendaire, Mythique
 	Rainbow = { Brightness = 3, Range = 14, Rate = 20, Size = 0.4, Rays = 10 }, -- Secret
+	Divine = { Brightness = 3.5, Range = 16, Rate = 24, Size = 0.45, Rays = 12 }, -- Divine (L-106)
 }
 local HALO_MARGIN = 0.3 -- écart entre l'objet et le volume d'où partent les particules
 local PARTICLE_LIFETIME = NumberRange.new(0.9, 1.5)

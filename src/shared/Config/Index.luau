@@ -61,6 +61,8 @@ local byZone: { [number]: { Item } } = {}
 for zone = 1, ZONE_COUNT do
 	byZone[zone] = {}
 end
+-- Objets sans zone : les Secrets, et aussi les Divins quand le catalogue en aura (L-106 ; même
+-- section SecretsSection tant que Clément n'en ajoute pas une à UI_Index_v3).
 local secrets: { Item } = {}
 for _, item in Items.List do
 	local zone = item.Zone

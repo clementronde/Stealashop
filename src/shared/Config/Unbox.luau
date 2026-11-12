@@ -82,7 +82,7 @@ local Unbox = {
 	RaysGrow = 0.35, -- V0 : les rayons grandissent (Back Out), puis tournent
 	RaysSpin = 0.06, -- spec : rotation des rayons (tours/s)
 	RainbowSpin = 0.25, -- V0 : rotation (tours/s) des dégradés Rainbow du Secret
-	ConfettiBurst = { Uncommon = 16, Rare = 30, Epic = 46, Legendary = 70, Mythic = 90, Secret = 120 }, -- spec
+	ConfettiBurst = { Uncommon = 16, Rare = 30, Epic = 46, Legendary = 70, Mythic = 90, Secret = 120, Divine = 150 }, -- spec ; Divine : V0 proposé, absent du doc
 	ConfettiLife = 1.4, -- V0 : durée de vie (s) d'un confetti d'éclat
 	ConfettiSpeed = 0.9, -- V0 : vitesse de départ d'un confetti (hauteurs d'écran par seconde)
 	ConfettiGravity = 1.6, -- V0 : gravité (hauteurs d'écran par seconde²)

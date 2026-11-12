@@ -44,10 +44,11 @@ local Items = require(Shared:WaitForChild("Config"):WaitForChild("Items"))
 -- de l'inventaire (InventoryService, L-089, `ICON_BOX_<Tier>`, nom proposé à Clément).
 local Tools = require(Shared:WaitForChild("Config"):WaitForChild("Tools"))
 local OTHER_ICON_IDS: { string } = { "TOOL_Bat", "BOX_Standard", "BOX_Premium", "BOX_Luxe" }
--- Icônes de colis par rareté (a79, L-097 point 3 : ICON_BOX_<Rareté>, sinon ICON_BOX_<Tier>) ; ICON_BOX_Divine
--- reconnue aussi (BOX_Divine livré, rareté pas encore au jeu).
-for _, rarity in { "Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic", "Secret", "Divine" } do
-	table.insert(OTHER_ICON_IDS, "BOX_" .. rarity)
+-- Icônes de colis par rareté (a79, L-097 point 3 : ICON_BOX_<Rareté>, sinon ICON_BOX_<Tier>), de Common à
+-- Divine (Config/Rarities, L-106).
+local Rarities = require(Shared:WaitForChild("Config"):WaitForChild("Rarities"))
+for _, rarity in Rarities.List do
+	table.insert(OTHER_ICON_IDS, "BOX_" .. rarity.Id)
 end
 -- Modèle du vigile de nuit (Assets/Guards/NightGuard, nom lu aussi par GuardService) : sa liste
 -- d'animations a Arrest en plus (Animations.NightGuard, L-076).
