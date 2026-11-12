@@ -86,11 +86,13 @@ local C = {
 	steel = rgb(120, 128, 140), hazard = rgb(255, 200, 0), leaf = rgb(63, 191, 58), pot = rgb(200, 100, 60),
 }
 
--- Une couleur d'accent par boutique (PlotIndex 1 à 6), pour reconnaître la sienne de loin.
+-- Une couleur d'accent par boutique (PlotIndex 1 à 8), pour reconnaître la sienne de loin.
 -- La 2 passe du vert au rouge le 2026-11-08 : le hub est en pelouse, une boutique verte ne s'y voyait pas.
+-- 7 (jaune) et 8 (bleu nuit) ajoutées le 2026-11-12 : serveurs de 8 joueurs (L-113), 8 boutiques dans le hub.
 local ACCENTS = {
 	rgb(46, 166, 242), rgb(232, 65, 60), rgb(155, 92, 246),
 	rgb(255, 140, 40), rgb(255, 90, 170), rgb(0, 190, 200),
+	rgb(255, 196, 40), rgb(52, 72, 190),
 }
 
 local FONT = Font.new("rbxasset://fonts/families/Montserrat.json", Enum.FontWeight.Heavy)
@@ -1017,7 +1019,7 @@ end
 local function install(opts)
 	opts = opts or {}
 	local index = opts.index
-	assert(type(index) == "number" and index >= 1 and index <= 6 and index % 1 == 0, "index = PlotIndex de 1 à 6")
+	assert(type(index) == "number" and index >= 1 and index <= #ACCENTS and index % 1 == 0, "index = PlotIndex de 1 à " .. #ACCENTS)
 	local tpl = plotsFolder():FindFirstChild("PLOT_Shop") or build()
 	local m = tpl:Clone()
 	m.Name = opts.name or string.format("PLOT_Shop_%02d", index)

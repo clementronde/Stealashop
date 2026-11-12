@@ -14,7 +14,7 @@
 --     le modèle de boutique ; une parcelle dont l'emplacement touche une zone réservée reste où elle est ;
 --  3) construit Map/Hub en sautant toute pièce qui toucherait une zone réservée (_SHOWROOM_CLEMENT, _INBOX_CLEMENT,
 --     parcelle grise pas déplacée) : relancer après leur départ complète le hub ;
---  4) pose les 6 boutiques (PLOT_Shop, 5 niveaux, MOD-015) sur les emplacements, au niveau 1, dans Map/Hub/Shops, avec
+--  4) pose les SHOP_COUNT boutiques (8 en ligne ; PLOT_Shop, 5 niveaux, MOD-015) sur les emplacements, au niveau 1, dans Map/Hub/Shops, avec
 --     le constructeur tools/clement/hub/plot_shop_builder.luau : l'envoyer à execute_luau AVANT ce script
 --     (_G.ClaudePlotShop) ; sans lui, les boutiques déjà posées restent telles quelles ;
 --  5) range dans ServerStorage/_GREYBOX_REMPLACE ce que le hub remplace : Greybox/Safe/{Ground, Shops, SafeZone, Spawn},
@@ -92,16 +92,19 @@ if ROWS then
 	local back = ROW_Z + SHOP_D -- fond des boutiques (|z| = 140)
 	HUB = { x0 = math.round(west - 11.4), x1 = 30, z0 = -(back + 16), z1 = back + 16 } -- x -308..30, |z| <= 156
 end
--- Clément, 2026-11-08 (capture d'un jeu « Steal a … ») : LINE = les 6 boutiques côte à côte sur une rangée, façades vers
+-- Clément, 2026-11-08 (capture d'un jeu « Steal a … ») : LINE = les boutiques côte à côte sur une rangée, façades vers
 -- l'entrée de la zone 1 (on comprend tout de suite qu'il faut aller en face), 10 entre deux boutiques, 120 de place
 -- entre les façades et la ligne de la zone sûre (x 22) ; un grand mur en damier (48 de haut) fait le tour du hub et
 -- cache le décor du dehors ; les stands sont de part et d'autre de l'entrée, comptoir vers les boutiques.
 local LINE_FX, LINE_GAP, BIG_H = -98, 10, 48 -- x des façades, écart entre deux boutiques, hauteur du grand mur
+-- 2026-11-12 : serveurs de 8 joueurs (L-113, décision de Clément) : 8 boutiques en ligne (PlotIndex 1 à 8, 1 au nord).
+-- Le demi-cercle et les rangées 3 face à 3 gardent 6 emplacements.
+local SHOP_COUNT = LINE and 8 or 6
+local LINE_HALF = (SHOP_COUNT / 2) * SHOP_W + ((SHOP_COUNT - 1) / 2) * LINE_GAP -- demi-longueur de la rangée (291 pour 8)
 if LINE then
 	MALL = false
-	local half = 3 * SHOP_W + 2.5 * LINE_GAP -- 217 : demi-longueur de la rangée
 	-- mur ouest collé au dos des boutiques (pas de couloir derrière la rangée)
-	HUB = { x0 = LINE_FX - SHOP_D - 3, x1 = 30, z0 = -(half + 8), z1 = half + 8 } -- x -181..30, |z| <= 225
+	HUB = { x0 = LINE_FX - SHOP_D - 3, x1 = 30, z0 = -(LINE_HALF + 8), z1 = LINE_HALF + 8 } -- x -181..30, |z| <= 299
 end
 
 local function rr(deg) local a = math.rad(deg + ROT); return Vector3.new(-math.cos(a), 0, math.sin(a)) end
@@ -131,10 +134,10 @@ if ROWS then
 	end
 	FC = Vector3.new(ROW_X0 - SHOP_W / 2 - (SHOP_W + ROW_GAP), 0, 0) -- devant la paire du milieu
 end
-if LINE then -- 1 au nord ... 6 au sud, avant vers l'entrée (+X)
-	for k = 1, 6 do
+if LINE then -- 1 au nord ... 8 au sud, avant vers l'entrée (+X)
+	for k = 1, SHOP_COUNT do
 		local n = Vector3.new(1, 0, 0)
-		local front = Vector3.new(LINE_FX, 0, (3.5 - k) * (SHOP_W + LINE_GAP))
+		local front = Vector3.new(LINE_FX, 0, ((SHOP_COUNT + 1) / 2 - k) * (SHOP_W + LINE_GAP))
 		local center = front - n * (SHOP_D / 2)
 		SITES[k] = { k = k, angle = 0, side = 1, front = front, center = center, n = n, cf = frameAt(center, n) }
 	end
@@ -608,7 +611,7 @@ do
 		end
 		local pm = Instance.new("Model"); pm.Name = "GrassPatches"
 		local used, n = {}, 0
-		for _ = 1, 60 do -- 60 taches de 3 à 9 cases : environ 11 % de la place
+		for _ = 1, math.round(60 * LINE_HALF / 217) do -- 60 taches pour 6 boutiques (80 pour 8), de 3 à 9 cases : environ 11 % de la place
 			local gx = math.floor(rng:NextNumber(LINE_FX + 34, 25) / 4)
 			local gz = math.floor(rng:NextNumber(-(HUB.z1 - 6), HUB.z1 - 6) / 4)
 			local color = PATCH[rng:NextInteger(1, 2)]
@@ -658,7 +661,7 @@ do
 	if LINE then
 		-- promenade devant les terrasses (16 de large, sur toute la rangée), avenue de la promenade à l'entrée (z = 0, 20 de
 		-- large, coupée par la place de la fontaine), allée des stands le long de l'entrée (x -12..0), un lampadaire par boutique
-		local half = 3 * SHOP_W + 2.5 * LINE_GAP
+		local half = LINE_HALF
 		local px0, px1 = LINE_FX + 11, LINE_FX + 27 -- de sous le bord des terrasses (x -86) à x -71
 		Bx(m, W, "Walkway_Front", px0, -0.05, -half, px1, 0.12, half, PAVE, F)
 		Bx(m, W, "WalkwayEdge_Front", px1, -0.05, -half, px1 + 1.2, 0.08, half, BRICK, F)
@@ -1306,13 +1309,13 @@ do
 			builder.install({ index = k, cframe = site.cf, parent = shops, stage = 1 })
 			task.wait()
 		end
-		add("Boutiques posées par plot_shop_builder (niveau 1) : 6, dans Map/Hub/Shops")
+		add("Boutiques posées par plot_shop_builder (niveau 1) : " .. SHOP_COUNT .. ", dans Map/Hub/Shops")
 	else
 		add("Boutiques : constructeur pas chargé (tools/clement/hub/plot_shop_builder.luau) ; celles déjà posées restent")
 	end
 	local n = 0
 	for _, m in shops:GetChildren() do if m:IsA("Model") and CS:HasTag(m, "PlayerPlot") then n += 1 end end
-	shopsReady = (n == 6)
+	shopsReady = (n == SHOP_COUNT)
 end
 
 -- SafeZone (un seul volume, tout le hub, jusqu'au mur de nuit) et SpawnLocation de secours. PlotService pose chaque
@@ -1404,7 +1407,7 @@ do -- rien de solide du hub dans les emplacements des boutiques (seulement ce qu
 	end
 	add("Pièces solides du hub dans un emplacement : " .. (#hits > 0 and table.concat(hits, ", ", 1, math.min(#hits, 8)) or "aucune"))
 end
-do -- contrat 10.4 des boutiques (vérification du constructeur), PlotIndex de 1 à 6
+do -- contrat 10.4 des boutiques (vérification du constructeur), PlotIndex de 1 à SHOP_COUNT
 	local shops, ok, problems, idx = hub:FindFirstChild("Shops"), 0, {}, {}
 	local builder = _G.ClaudePlotShop
 	for _, m in (shops and shops:GetChildren() or {}) do
