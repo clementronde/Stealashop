@@ -40,6 +40,16 @@
 --     tout de suite (inventaire plein). Sans HudController, rien n'est retenu. La retenue est relâchée
 --     tout de suite si l'écran manque, si l'objet est inconnu, et dès que l'écran se ferme
 --     (réapparition, erreur) avant ce moment.
+--   - vague 31 (L-112, Features.ShelfOpen) : sur chaque objet sous antivol posé au sol (Model FloorItem
+--     d'UnboxService, tag de code FloorItem, toutes les boutiques), une copie de BB_AntiTheft de Clément
+--     (sinon un billboard V0 aux mêmes noms) accrochée au-dessus de l'objet : ItemName = son nom (mutation
+--     devant) à la couleur de sa rareté, TimeLabel = le temps restant (m:ss, attribut UnlockAt, heure
+--     serveur), puis « UNLOCKED! » en vert (5cff4a), avec UI_Success chez le propriétaire (son V0). Invites
+--     créées ici : chez le propriétaire, « Display » une fois débloqué → OpenBox(itemUid) (le serveur le
+--     reprend et l'expose) ; chez les autres, « Steal » (maintien PvP.StealGrabTime) pendant l'antivol,
+--     boutique ouverte au vol (StealOpen de la parcelle) et mains vides → StealFloorItem(plotIndex, itemUid)
+--     au début et à la fin du maintien, animation Grab. Le serveur revérifie tout.
+--     UnboxController.GetFloorView(model) -> { TimeText, ItemText, OwnerPrompt, StealPrompt }? (bancs).
 -- En Studio, l'objet révélé est aussi écrit dans la sortie. Sans UI_Unbox, la sortie seulement.
 -- Les invites suivent le streaming : un colis qui sort de la zone chargée perd son invite, elle
 -- revient avec lui. Aucune règle de jeu : le serveur décide (amélioration et objet compris).
@@ -53,13 +63,16 @@ local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = Shared:WaitForChild("Config")
+local Features = require(Config:WaitForChild("Features"))
 local Formulas = require(Config:WaitForChild("Formulas"))
+local PvP = require(Config:WaitForChild("PvP"))
 local Items = require(Config:WaitForChild("Items"))
 local Mutations = require(Config:WaitForChild("Mutations"))
 local Rarities = require(Config:WaitForChild("Rarities"))
 local Unbox = require(Config:WaitForChild("Unbox"))
 local Zones = require(Config:WaitForChild("Zones"))
 local Find = require(Shared:WaitForChild("Contract"):WaitForChild("Find"))
+local UI = require(Shared:WaitForChild("Contract"):WaitForChild("UI"))
 local UnboxFolder = script.Parent:WaitForChild("Unbox")
 local Screen = require(UnboxFolder:WaitForChild("Screen"))
 local Sequence = require(UnboxFolder:WaitForChild("Sequence"))
@@ -73,6 +86,21 @@ type AnimationApi = {
 type BoxView = {
 	model: Model,
 	prompt: ProximityPrompt,
+	connections: { RBXScriptConnection },
+}
+
+-- Vague 31 (L-112) : un objet sous antivol posé au sol, son BB_AntiTheft et son invite.
+type FloorView = {
+	model: Model,
+	uid: string,
+	mine: boolean, -- objet du joueur local : invite « Display » ; sinon « Steal »
+	gui: BillboardGui,
+	point: Attachment,
+	timeLabel: TextLabel?,
+	ownerPrompt: ProximityPrompt?,
+	stealPrompt: ProximityPrompt?,
+	unlocked: boolean,
+	seenLocked: boolean, -- vu sous antivol ici (le son de « UNLOCKED! » ne part qu'à la fin vue)
 	connections: { RBXScriptConnection },
 }
 
@@ -119,6 +147,29 @@ local PROMPT_DISTANCE = Unbox.PromptDistance
 -- colis que le serveur refuserait.
 local OPEN_NEXT_REACH = Unbox.PromptDistance + Unbox.ReachTolerance - Unbox.OpenNextMargin
 
+-- Vague 31 (L-112) : objets sous antivol posés au sol (UnboxService : Model FloorItem, tag de code FloorItem,
+-- attributs ItemUid, ItemId, OwnerUserId, MutationSize, MutationEffect, UnlockAt ; parcelle : PlotIndex,
+-- StealOpen de PvPService ; joueur : Carrying de CarryService).
+local FLOOR_ITEM_NAME = "FloorItem"
+local FLOOR_ITEM_TAG = "FloorItem"
+local UNLOCK_AT_ATTRIBUTE = "UnlockAt"
+local PLOT_INDEX_ATTRIBUTE = "PlotIndex"
+local STEAL_OPEN_ATTRIBUTE = "StealOpen"
+local CARRYING_ATTRIBUTE = "Carrying"
+local ANTI_THEFT_BILLBOARD = "BB_AntiTheft" -- L-112 : ItemName, TimeLabel (MaxDistance 10, de Clément)
+local ANTI_THEFT_POINT = "AntiTheftPoint"
+local STEAL_PROMPT_NAME = "StealFloorPrompt"
+-- L-112 : « UNLOCKED! » en vert (5cff4a, la couleur de BB_ShelfOpen) ; son V0 en attendant celui de Clément.
+local UNLOCKED_TEXT = "UNLOCKED!"
+local UNLOCKED_COLOR = Color3.fromHex("5cff4a")
+local UNLOCK_SOUND = "UI_Success"
+-- V0 proposé, absent du doc : textes des invites (anglais, L-036), marge de portée de l'invite de vol (comme
+-- PvPController) et cadence (s) du minuteur.
+local DISPLAY_TEXT = "Display"
+local STEAL_TEXT = "Steal"
+local STEAL_DISTANCE_MARGIN = 0.5
+local FLOOR_TICK = 0.1
+
 -- Écran de révélation (contrat 2.2).
 local REVEAL_SCREEN = "UI_Unbox"
 -- V0 proposé, absent du doc : une copie de colis gardée plus longtemps (s) sans UnboxReveal est jetée
@@ -151,6 +202,10 @@ local running: Running? = nil -- révélation à l'écran
 local screenMissingWarned = false
 local errorWarned = false
 local rng = Random.new()
+-- Vague 31 : objets sous antivol affichés au sol, par modèle (toutes les boutiques).
+local floorViews: { [Instance]: FloorView } = {}
+local floorElapsed = 0
+local antiTheftMissingWarned = false
 
 local function loadAnimationController(): AnimationApi?
 	local folder = script.Parent
@@ -846,11 +901,279 @@ local function onReveal(
 	)
 end
 
+------------------------------------------------------------------------------
+-- Objets sous antivol posés au sol (vague 31, L-112)
+------------------------------------------------------------------------------
+
+-- Son d'interface de Clément (UI/Motion.PlaySound), s'il est là ; sinon rien.
+local function playUiSound(name: string)
+	local ui = script.Parent:FindFirstChild("UI")
+	local module = if ui then ui:FindFirstChild("Motion") else nil
+	if module == nil or not module:IsA("ModuleScript") then
+		return
+	end
+	local ok, motion = pcall(require, module)
+	local play: any = if ok and type(motion) == "table" then (motion :: any).PlaySound else nil
+	if type(play) == "function" then
+		pcall(play, name)
+	end
+end
+
+-- Billboard BB_AntiTheft de Clément (ReplicatedStorage/Assets/UI), sinon un billboard V0 aux mêmes noms.
+local function antiTheftBillboard(): BillboardGui
+	local folder: Instance? = ReplicatedStorage
+	for _, name in UI.BillboardFolder do
+		folder = if folder then folder:FindFirstChild(name) else nil
+	end
+	local template = if folder then folder:FindFirstChild(ANTI_THEFT_BILLBOARD) else nil
+	if template and template:IsA("BillboardGui") then
+		return template:Clone() :: BillboardGui
+	end
+	if not antiTheftMissingWarned then
+		antiTheftMissingWarned = true
+		print(`[UnboxController] {ANTI_THEFT_BILLBOARD} pas encore livré : billboard V0 au-dessus des objets sous antivol`)
+	end
+	local gui = Instance.new("BillboardGui")
+	gui.Size = UDim2.new(4, 40, 1.9, 24)
+	gui.StudsOffset = Vector3.new(0, 2.6, 0)
+	gui.MaxDistance = 10
+	gui.LightInfluence = 0
+	for index, name in { "ItemName", "TimeLabel" } do
+		local label = Instance.new("TextLabel")
+		label.Name = name
+		label.Size = UDim2.fromScale(1, 0.5)
+		label.Position = UDim2.fromScale(0, (index - 1) * 0.5)
+		label.BackgroundTransparency = 1
+		label.TextScaled = true
+		label.FontFace = Font.fromEnum(Enum.Font.FredokaOne)
+		label.TextColor3 = Color3.new(1, 1, 1)
+		label.TextStrokeTransparency = 0
+		label.Text = ""
+		label.Parent = gui
+	end
+	return gui
+end
+
+local function floorLabel(gui: Instance, name: string): TextLabel?
+	local found = Find.path(gui, name)
+	return if found and found:IsA("TextLabel") then found :: TextLabel else nil
+end
+
+local function floorTimeText(remaining: number): string
+	local seconds = math.max(0, math.ceil(remaining))
+	return string.format("%d:%02d", math.floor(seconds / 60), seconds % 60)
+end
+
+local function removeFloorView(model: Instance)
+	local view = floorViews[model]
+	if view == nil then
+		return
+	end
+	floorViews[model] = nil
+	for _, connection in view.connections do
+		connection:Disconnect()
+	end
+	for _, inst in { view.gui, view.point, view.ownerPrompt, view.stealPrompt } :: { Instance? } do
+		if inst then
+			inst:Destroy()
+		end
+	end
+end
+
+-- Remet à jour le minuteur et les invites d'un objet sous antivol (heure serveur, attributs du serveur).
+local function refreshFloorView(view: FloorView, now: number)
+	local unlockAt = view.model:GetAttribute(UNLOCK_AT_ATTRIBUTE)
+	local remaining = if type(unlockAt) == "number" then unlockAt - now else 0
+	local unlocked = remaining <= 0
+	local label = view.timeLabel
+	if label then
+		local text = if unlocked then UNLOCKED_TEXT else floorTimeText(remaining)
+		if label.Text ~= text then
+			label.Text = text
+		end
+		if unlocked and not view.unlocked then
+			label.TextColor3 = UNLOCKED_COLOR
+		end
+	end
+	if unlocked and not view.unlocked then
+		view.unlocked = true
+		if view.mine and view.seenLocked then
+			playUiSound(UNLOCK_SOUND) -- « UNLOCKED! » chez le propriétaire (V0 : UI_Success)
+		end
+	elseif not unlocked then
+		view.seenLocked = true
+	end
+	local ownerPrompt = view.ownerPrompt
+	if ownerPrompt then
+		ownerPrompt.Enabled = unlocked
+	end
+	local stealPrompt = view.stealPrompt
+	if stealPrompt then
+		local parent = view.model.Parent
+		local open = parent ~= nil and parent:GetAttribute(STEAL_OPEN_ATTRIBUTE) == true
+		stealPrompt.Enabled = not unlocked and open and localPlayer:GetAttribute(CARRYING_ATTRIBUTE) == nil
+	end
+end
+
+local function addFloorView(inst: Instance)
+	if floorViews[inst] or not inst:IsA("Model") or inst.Name ~= FLOOR_ITEM_NAME then
+		return
+	end
+	local model = inst :: Model
+	local holder = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart", true)
+	local itemUid = model:GetAttribute(ITEM_UID_ATTRIBUTE)
+	local itemId = model:GetAttribute("ItemId")
+	if holder == nil or type(itemUid) ~= "string" or type(itemId) ~= "string" then
+		-- Pas encore arrivé en entier (streaming) : réessai à l'arrivée d'une pièce.
+		local retry: RBXScriptConnection? = nil
+		retry = model.DescendantAdded:Connect(function()
+			if retry then
+				retry:Disconnect()
+			end
+			addFloorView(model)
+		end)
+		return
+	end
+	local part = holder :: BasePart
+	local def = Items.ById[itemId]
+	local rarity = if def then Rarities.ById[def.Rarity] else nil
+	local mutation = Mutations.Sanitize({ Size = model:GetAttribute("MutationSize"), Effect = model:GetAttribute("MutationEffect") })
+	local name = if def then Mutations.ItemName(def.DisplayName, mutation) else itemId
+	local mine = model:GetAttribute(OWNER_ATTRIBUTE) == localPlayer.UserId
+
+	-- Billboard posé au-dessus de l'objet (sommet de sa boîte) : son StudsOffset part de là.
+	local boxCFrame, boxSize = model:GetBoundingBox()
+	local point = Instance.new("Attachment")
+	point.Name = ANTI_THEFT_POINT
+	point.Parent = part
+	point.WorldPosition = boxCFrame.Position + Vector3.new(0, boxSize.Y / 2, 0)
+	local gui = antiTheftBillboard()
+	gui.Name = ANTI_THEFT_BILLBOARD
+	gui.Adornee = point
+	local itemLabel = floorLabel(gui, "ItemName")
+	if itemLabel then
+		itemLabel.Text = name
+		if rarity then
+			itemLabel.TextColor3 = rarity.Color
+		end
+	end
+	gui.Parent = part
+
+	local view: FloorView = {
+		model = model,
+		uid = itemUid,
+		mine = mine,
+		gui = gui,
+		point = point,
+		timeLabel = floorLabel(gui, "TimeLabel"),
+		ownerPrompt = nil,
+		stealPrompt = nil,
+		unlocked = false,
+		seenLocked = false,
+		connections = {},
+	}
+	if mine then
+		-- Propriétaire : « Display » une fois l'antivol fini (OpenBox : le serveur le reprend et l'expose).
+		local prompt = Instance.new("ProximityPrompt")
+		prompt.Name = PROMPT_NAME
+		prompt.ActionText = DISPLAY_TEXT
+		prompt.ObjectText = name
+		prompt.MaxActivationDistance = PROMPT_DISTANCE
+		prompt.RequiresLineOfSight = false
+		prompt.HoldDuration = 0
+		prompt.Enabled = false
+		table.insert(
+			view.connections,
+			prompt.Triggered:Connect(function()
+				if net then
+					net.Client.OpenBox:Fire(itemUid)
+				end
+			end)
+		)
+		prompt.Parent = part
+		view.ownerPrompt = prompt
+	else
+		-- Autre joueur : « Steal » pendant l'antivol, boutique ouverte au vol (StealFloorItem en deux appels).
+		local prompt = Instance.new("ProximityPrompt")
+		prompt.Name = STEAL_PROMPT_NAME
+		prompt.ActionText = STEAL_TEXT
+		prompt.ObjectText = name
+		prompt.HoldDuration = PvP.StealGrabTime
+		prompt.MaxActivationDistance = math.max(PvP.StealMaxDistance - STEAL_DISTANCE_MARGIN, 1)
+		prompt.RequiresLineOfSight = false
+		prompt.Enabled = false
+		local function fire()
+			local plotModel = model.Parent
+			local plotIndex = if plotModel then plotModel:GetAttribute(PLOT_INDEX_ATTRIBUTE) else nil
+			if net and type(plotIndex) == "number" then
+				net.Client.StealFloorItem:Fire(plotIndex, itemUid)
+			end
+		end
+		table.insert(view.connections, prompt.PromptButtonHoldBegan:Connect(fire)) -- début du maintien
+		table.insert(
+			view.connections,
+			prompt.Triggered:Connect(function()
+				fire() -- fin du maintien
+				playAnimation("Grab")
+			end)
+		)
+		prompt.Parent = part
+		view.stealPrompt = prompt
+	end
+	table.insert(
+		view.connections,
+		model.AncestryChanged:Connect(function()
+			if model.Parent == nil then
+				removeFloorView(model) -- volé (porté) ou repris : le serveur le sort du monde
+			end
+		end)
+	)
+	floorViews[model] = view
+	refreshFloorView(view, Workspace:GetServerTimeNow())
+end
+
+local function stepFloorViews(dt: number)
+	floorElapsed += dt
+	if floorElapsed < FLOOR_TICK then
+		return
+	end
+	floorElapsed = 0
+	local now = Workspace:GetServerTimeNow()
+	for _, view in floorViews do
+		refreshFloorView(view, now)
+	end
+end
+
+function UnboxController.GetFloorView(model: Instance): { TimeText: string?, ItemText: string?, OwnerPrompt: boolean?, StealPrompt: boolean? }?
+	local view = floorViews[model]
+	if view == nil then
+		return nil
+	end
+	local ownerPrompt, stealPrompt = view.ownerPrompt, view.stealPrompt
+	local itemLabel = floorLabel(view.gui, "ItemName")
+	return {
+		TimeText = if view.timeLabel then view.timeLabel.Text else nil,
+		ItemText = if itemLabel then itemLabel.Text else nil,
+		OwnerPrompt = if ownerPrompt then ownerPrompt.Enabled else nil,
+		StealPrompt = if stealPrompt then stealPrompt.Enabled else nil,
+	}
+end
+
 function UnboxController.Start()
 	-- Peut attendre que le serveur ait créé les remotes.
 	net = require(Shared:WaitForChild("Net"):WaitForChild("Net") :: ModuleScript) :: any
 	animation = loadAnimationController()
 	hudApi = loadHud()
+
+	-- Vague 31 (L-112) : objets sous antivol posés au sol, toutes les boutiques (tag de code FloorItem).
+	if Features.ShelfOpen then
+		CollectionService:GetInstanceAddedSignal(FLOOR_ITEM_TAG):Connect(addFloorView)
+		CollectionService:GetInstanceRemovedSignal(FLOOR_ITEM_TAG):Connect(removeFloorView)
+		for _, inst in CollectionService:GetTagged(FLOOR_ITEM_TAG) do
+			addFloorView(inst)
+		end
+		RunService.Heartbeat:Connect(stepFloorViews)
+	end
 
 	net.Client.BoxReady:Connect(onBoxReady)
 	net.Client.UnboxReveal:Connect(onReveal)

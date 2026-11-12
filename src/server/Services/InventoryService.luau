@@ -22,6 +22,9 @@
 --   - colis : Boxes[uid] lisibles (type et rareté connus), ceux de l'inventaire d'abord (les plus anciens
 --     d'abord, At), puis ceux posés au sol (les plus tôt prêts d'abord, ReadyAt). Jamais leur ItemId (5.7).
 -- Un objet tout juste sorti d'un colis n'apparaît qu'à sa révélation (HoldBack, UnboxService).
+-- Vague 31 (L-112, Features.ShelfOpen) : un objet sous antivol (Items[uid].AntiTheft) est marqué dans l'état
+-- (AntiTheft) tant qu'il est dans l'inventaire : l'écran le pose au sol (PlaceBox), PlaceItemAuto le refuse
+-- (Notify « Warning »). Posé au sol (Spot), il n'est plus dans l'état : UnboxService l'affiche au sol.
 --
 -- Remotes de l'écran (ajouts de la vague 21, absents du tableau 9.4 ; forme et débit contrôlés par Net) :
 --   PlaceItemAuto(itemUid)  bouton PlaceButton d'un objet de l'inventaire : il va sur le présentoir libre
@@ -53,6 +56,7 @@ local RunService = game:GetService("RunService")
 
 local Shared = ReplicatedStorage.Shared
 local Balance = require(Shared.Config.Balance)
+local Features = require(Shared.Config.Features)
 local Formulas = require(Shared.Config.Formulas)
 local Items = require(Shared.Config.Items)
 local Mutations = require(Shared.Config.Mutations)
@@ -103,6 +107,8 @@ local MESSAGES = {
 	InventoryFull = "Your inventory is full: display or sell an item first.",
 	NoShop = "You don't have a shop yet: wait for one to free up.",
 	Held = "This item is being stolen: hit the thief to get it back!",
+	-- Vague 31 (L-112), V0 proposé, absent du doc : objet sous antivol, à poser au sol avant un présentoir.
+	AntiTheft = "Put this item down in your shop first: it can go on a display once UNLOCKED!",
 }
 
 local IS_STUDIO = RunService:IsStudio()
@@ -200,6 +206,12 @@ local function finiteOr(value: any, default: number): number
 	return default
 end
 
+-- Vague 31 (L-112, Features.ShelfOpen) : objet sous antivol (Types/Profile : AntiTheft, UnlockAt, Spot).
+-- Interrupteur coupé : l'ancien déroulé, les champs sont ignorés.
+local function isAntiTheft(entry: any): boolean
+	return Features.ShelfOpen == true and type(entry) == "table" and entry.AntiTheft == true
+end
+
 local function inVault(data: Data, uid: string): boolean
 	for _, stored in data.Vault do
 		if stored == uid then
@@ -245,6 +257,12 @@ local function stateFrom(player: Player, data: Data): InventoryState.State
 		if def == nil or vault[uid] or waiting then
 			continue
 		end
+		-- Vague 31 (L-112) : un objet sous antivol posé au sol de sa boutique n'est plus dans l'inventaire
+		-- (UnboxService l'affiche au sol) ; dans l'inventaire, il est marqué (à poser au sol, pas exposable).
+		local antiTheft = isAntiTheft(entry)
+		if antiTheft and (entry :: any).Spot ~= nil then
+			continue
+		end
 		if not InventoryState.IsSafeId(uid) then
 			once(`uid:{uid}`, `objet « {uid} » : uid illisible pour l'écran, pas montré`)
 			continue
@@ -260,6 +278,7 @@ local function stateFrom(player: Player, data: Data): InventoryState.State
 				Slot = slots[uid],
 				Size = if mutation then mutation.Size else nil,
 				Effect = if mutation then mutation.Effect else nil,
+				AntiTheft = if antiTheft then true else nil,
 			},
 		})
 	end
@@ -381,6 +400,11 @@ local function onPlaceItemAuto(player: Player, itemUid: string)
 	end
 	if slotOf(data, itemUid) ~= nil then
 		log(`{player.Name} : PlaceItemAuto({itemUid}) ignoré : déjà exposé`)
+		return
+	end
+	if isAntiTheft(entry) then
+		log(`{player.Name} : PlaceItemAuto({itemUid}) refusé : objet sous antivol (L-112)`)
+		notify(player, MESSAGES.AntiTheft, WARNING_KIND)
 		return
 	end
 	local plotService = plots()

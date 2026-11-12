@@ -572,6 +572,17 @@ local List: { RemoteDef } = {
 			{ Name = "message", Kind = "string", Max = MAX_MESSAGE_LENGTH },
 		},
 	},
+	{
+		-- Vague 31 (L-112, agent a105), absent du tableau 9.4 : prise d'un objet sous antivol posé au sol de la
+		-- boutique d'un autre joueur (UnboxService), porte cassée. plotIndex = attribut PlotIndex de la parcelle,
+		-- itemUid = attribut ItemUid du modèle FloorItem. Deux appels, comme StealItem : début du maintien, puis
+		-- fin (PvP.StealGrabTime). PvPService vérifie tout (mêmes règles que StealItem, antivol encore en cours).
+		Name = "StealFloorItem",
+		Direction = "ClientToServer",
+		Reliable = true,
+		Args = { index("plotIndex"), id("itemUid") },
+		RatePerSecond = 5, -- V0 proposé, absent du doc ; maintien vérifié par le service
+	},
 }
 
 return {

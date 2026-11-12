@@ -60,6 +60,34 @@
 --   - L'objet exact reste caché jusqu'à l'ouverture (5.7) : l'ItemId ne quitte le serveur que dans
 --     UnboxReveal. Aucun attribut, nom ni modèle (colis posé, état de l'inventaire) ne le montre avant.
 --
+-- Vague 31 (L-112, décisions de Cantin du 2026-11-12 ; Features.ShelfOpen, Config/ShelfOpen) : le colis
+-- s'ouvre sur le rayon du magasin (StoreHeistService, a103) ; le joueur rapporte l'objet lui-même (portage
+-- Kind « NPCItem »). Ici, la base (à false : rien de tout cela, l'ancien déroulé exact) :
+--   - Arrivée : à l'entrée de la zone safe, comme le colis (même boucle, AntiCheatService.Verify, Consume,
+--     profil écrit d'un seul tenant, braquage compté, Notify, BoxSecured), l'objet entre dans Items sous un
+--     uid neuf, AntiTheft = true (Types/Profile) ; IndexService.Discover. Inventaire plein
+--     (DisplayService.HasInventoryRoom) : le portage échoue (« InventoryFull »).
+--   - Pose : PlaceBox(itemUid, point) (même remote, mêmes règles que le colis : findFloor, MaxPlacedBoxes
+--     colis et objets au sol). L'antivol démarre : UnlockAt = heure serveur + ShelfOpen.AntiTheft[rareté].
+--     Le modèle (DisplayService.BuildFloorItem : ITM_, halo) est au sol, tag FloorItem, attribut UnlockAt ;
+--     UnboxController y met BB_AntiTheft (minuteur, puis « UNLOCKED! ») et les invites. Pendant l'antivol :
+--     jamais sur un présentoir (DisplayService le refuse), volable (PvPService, StealFloorItem).
+--   - Fini : un Notify au propriétaire ; OpenBox(itemUid) le reprend (antivol retiré) et le met sur le
+--     présentoir libre le plus proche (DisplayService.PlaceAuto), sinon dans l'inventaire.
+--   - Au retour du joueur, ses objets posés reviennent à leur place (l'antivol compte aussi hors ligne, comme
+--     l'attente des colis) ; un point hors de Bounds : retour dans l'inventaire, sous antivol.
+--   - Les colis déjà dans les profils deviennent des objets au chargement (DataService, convertBoxes). Les
+--     colis donnés pendant la partie (récompenses, camion, tuto) gardent l'ancien déroulé.
+--   - Boutique Robux (Cantin, 2026-11-12 ; MonetizationService, coupée tant que Features.RobuxShop = false) :
+--     GetWaiting compte aussi les objets sous antivol au sol ([itemUid] = UnlockAt ; pas un objet porté par
+--     un voleur) et SkipWait(player, itemUid, s) avance leur UnlockAt (Ouvrir maintenant, son crédit, Fast Open
+--     à l'achat) ; UnboxService.GetAntiTheftDelay(player, itemId) -> number (ShelfOpen.AntiTheft[rareté] par
+--     défaut, remplaçable comme GetOpenDelay : Fast Open × DelayFactor).
+--   API ajoutée : OnItemStowed(listener), OnItemPlaced(listener) : listener(player, itemUid, itemId) ;
+--   pour PvPService : GetFloorItem(owner, uid) -> FloorItem?, GetFloorItems(owner), IsStealable(owner, uid),
+--   HoldFloorItem (le modèle sort du monde, plus de reprise), ReleaseFloorItem (vol raté : il revient),
+--   TakeFloorItem (dépôt : le modèle part ; PvPService retire l'objet du profil), IsFloorHeld. Sans yield.
+--
 -- Amélioration du colis (DEV-050, étape 0 de la spec ouverture-colis, règle nouvelle de Clément du
 -- 2026-11-07, valeurs dans Config.Unbox) : à OpenBox, avant tout envoi, jusqu'à UpgradeMax (2)
 -- crans ; chaque cran réussit avec UpgradeChance (10 %) × la chance du joueur (GetLuck, 1 par
@@ -170,10 +198,13 @@ local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage.Shared
 local Balance = require(Shared.Config.Balance)
+local Features = require(Shared.Config.Features)
+local Formulas = require(Shared.Config.Formulas)
 local Items = require(Shared.Config.Items)
 local Mutations = require(Shared.Config.Mutations)
 local Rarities = require(Shared.Config.Rarities)
 local ShelfBoxes = require(Shared.Config.ShelfBoxes)
+local ShelfOpen = require(Shared.Config.ShelfOpen)
 local Unbox = require(Shared.Config.Unbox)
 local Zones = require(Shared.Config.Zones)
 local Find = require(Shared.Contract.Find)
@@ -209,6 +240,8 @@ type DisplayApi = {
 	-- et leur état : "Free", "Locked", "Taken".
 	GetSlots: (player: Player) -> { [number]: Attachment },
 	GetSlotStates: (player: Player) -> { [number]: string },
+	-- Vague 31 (L-112) : modèle d'un objet sous antivol posé au sol.
+	BuildFloorItem: (ownerUserId: number, pivot: CFrame, itemUid: string, entry: any) -> Model?,
 }
 type InventoryApi = {
 	Refresh: (player: Player) -> (),
@@ -228,6 +261,27 @@ local InventoryService: InventoryApi? = if inventoryLoaded and type(inventoryRes
 
 export type BoxListener = (player: Player, boxUid: string, box: Box) -> ()
 export type OpenedListener = (player: Player, boxUid: string, itemUid: string, itemId: string, revealDelay: number) -> ()
+-- Vague 31 (L-112) : objet sous antivol rangé à l'arrivée, ou posé au sol (itemId = Id du catalogue).
+export type ItemListener = (player: Player, itemUid: string, itemId: string) -> ()
+
+-- Objet sous antivol posé au sol et volable en ce moment (PvPService, vague 31).
+export type FloorItem = {
+	Uid: string,
+	ItemId: string,
+	Rarity: string,
+	Income: number, -- $/s de l'objet, mutation comprise, sans bonus (BB_Carry du voleur)
+	Position: Vector3, -- pied de l'objet, au sol
+	UnlockAt: number, -- heure serveur de la fin de l'antivol
+}
+
+-- Objet sous antivol affiché au sol (vague 31).
+type ShownItem = {
+	model: Model?, -- sorti du monde (Parent = nil) pendant qu'un voleur le porte
+	base: CFrame, -- point du sol, tourné comme la parcelle
+	unlockAt: number,
+	unlocked: boolean,
+	held: boolean, -- porté par un voleur (PvPService) : ni repris, ni reposé, ni revolé
+}
 
 -- Colis affiché au sol.
 type Shown = {
@@ -244,6 +298,7 @@ type Session = {
 	plot: Model,
 	slots: { [number]: Attachment }, -- présentoirs de la parcelle (DisplayService.GetSlots)
 	shown: { [string]: Shown }, -- colis posés et affichés, par uid
+	items: { [string]: ShownItem }, -- vague 31 : objets sous antivol posés au sol, par uid d'objet
 	states: { [number]: StandState? }, -- dernier UnboxState écrit sur chaque présentoir
 }
 
@@ -271,6 +326,23 @@ local READY_AT_ATTRIBUTE = "ReadyAt"
 local BOX_MODEL_NAME = "FloorBox"
 local TIMER_NAME = "OpenTimer"
 local TIMER_POINT = "TimerPoint"
+-- Vague 31 (L-112) : payload.Kind d'un objet sorti d'un colis ouvert sur le rayon (Types/Carry, a103) ;
+-- objet sous antivol posé au sol : Model FloorItem (DisplayService.BuildFloorItem), tag de code FloorItem
+-- (lu par UnboxController : BB_AntiTheft, invites « Display » et « Steal »), attributs ItemUid, ItemId,
+-- Rarity, OwnerUserId, MutationSize, MutationEffect (DisplayService) et UnlockAt (heure serveur de la fin
+-- de l'antivol, posé ici).
+local NPC_ITEM_KIND = "NPCItem"
+local FLOOR_ITEM_NAME = "FloorItem"
+local FLOOR_ITEM_TAG = "FloorItem"
+local UNLOCK_AT_ATTRIBUTE = "UnlockAt"
+-- V0 proposé, absent du doc : antivol d'une rareté absente de ShelfOpen.AntiTheft (le plus long de la table).
+local MAX_ANTI_THEFT = (function(): number
+	local longest = 0
+	for _, seconds in ShelfOpen.AntiTheft do
+		longest = math.max(longest, seconds)
+	end
+	return longest
+end)()
 
 -- V0 proposé, absent du doc : portée (studs) de l'invite d'un colis, la même que celle
 -- d'UnboxController, et marge du serveur pour la gigue réseau. Le serveur accepte PlaceBox et
@@ -310,6 +382,21 @@ local MESSAGES = {
 	-- %s = nom de l'objet (Config.Items, DisplayName)
 	ToStand = "Your inventory is full: %s went on a display stand.",
 	BackToInventory = "A box of yours didn't fit in this shop: it's back in your inventory.",
+	-- Vague 31 (L-112), objets sous antivol, V0 proposés, absents du doc :
+	ItemStowed = "Item secured! Put it down in your shop to start its anti-theft.",
+	ItemsFull = "Your inventory is full: display or sell an item first.",
+	ItemOutsideShop = "Put your item down inside your own shop.",
+	ItemNotFloor = "Put your item on the floor of your shop.",
+	ItemTooFar = "Get closer to put your item down.",
+	ItemBlocked = "No room here: try another spot.",
+	ItemTooMany = "Too many things on your floor: pick one up first.",
+	ItemLocked = "Anti-theft still on: wait until it's UNLOCKED!",
+	ItemHeld = "This item is being stolen: hit the thief to get it back!",
+	-- %s = nom de l'objet (mutation devant)
+	ItemUnlocked = "%s is UNLOCKED! Put it on a display.",
+	ItemToStand = "%s placed on a display!",
+	ItemBack = "%s is back in your inventory: your displays are full.",
+	ItemBackToInventory = "An item of yours didn't fit in this shop: it's back in your inventory.",
 }
 -- Catégorie des Notify d'information (objet gardé…) ; les refus partent en « Warning ».
 local INFO_KIND = "Info"
@@ -325,6 +412,8 @@ local sessions: { [Player]: Session } = {}
 local stowedListeners: { BoxListener } = {}
 local placedListeners: { BoxListener } = {}
 local openedListeners: { OpenedListener } = {}
+local itemStowedListeners: { ItemListener } = {}
+local itemPlacedListeners: { ItemListener } = {}
 local carryStarts: { [Player]: CarryStart } = {}
 local safeBoxCache: { [Instance]: { cframe: CFrame, size: Vector3 } } = {}
 local warned: { [string]: boolean } = {}
@@ -499,6 +588,73 @@ local function countBoxes(data: Data): (number, number)
 		end
 	end
 	return stored, placed
+end
+
+-- Vague 31 (L-112, Features.ShelfOpen) : objet sous antivol (Types/Profile : AntiTheft, UnlockAt, Spot).
+-- Interrupteur coupé : champs ignorés, l'ancien déroulé exact.
+local function isAntiTheft(entry: any): boolean
+	return Features.ShelfOpen == true and type(entry) == "table" and entry.AntiTheft == true
+end
+
+-- Objets sous antivol posés au sol (comptés avec les colis posés pour Unbox.MaxPlacedBoxes).
+local function countFloorItems(data: Data): number
+	local count = 0
+	if type(data.Items) == "table" then
+		for _, entry in data.Items do
+			if isAntiTheft(entry) and (entry :: any).Spot ~= nil then
+				count += 1
+			end
+		end
+	end
+	return count
+end
+
+-- Durée de l'antivol d'un objet (L-112 : ShelfOpen.AntiTheft[rareté du catalogue]).
+local function antiTheftDuration(itemId: string): number
+	local def = Items.ById[itemId]
+	local seconds = if def then ShelfOpen.AntiTheft[def.Rarity] else nil
+	if type(seconds) == "number" and seconds >= 0 then
+		return seconds
+	end
+	warnOnce(`antitheft:{itemId}`, `antivol de {itemId} absent de Config/ShelfOpen.AntiTheft : {MAX_ANTI_THEFT} s (V0)`)
+	return MAX_ANTI_THEFT
+end
+
+-- Durée de l'antivol de l'objet `itemId` pour ce joueur : UnboxService.GetAntiTheftDelay (remplaçable :
+-- Fast Open, MonetizationService), sinon celle de sa rareté.
+local function antiTheftDelay(player: Player, itemId: string): number
+	local ok, value = pcall(UnboxService.GetAntiTheftDelay, player, itemId)
+	if ok and type(value) == "number" and value >= 0 and value < math.huge then
+		return value
+	end
+	local reason = if ok then "valeur invalide " .. tostring(value) else tostring(value)
+	warn(`[UnboxService] GetAntiTheftDelay ({player.Name}) : {reason}, durée de la rareté utilisée`)
+	return antiTheftDuration(itemId)
+end
+
+-- Nom affiché d'un objet du profil (mutation devant, « Big Gold Soda Can »).
+local function itemNameOf(entry: any): string
+	local def = if type(entry) == "table" then Items.ById[entry.Id] else nil
+	if def == nil then
+		return "item"
+	end
+	return Mutations.ItemName(def.DisplayName, Mutations.Sanitize(entry.Mutation))
+end
+
+-- Revenu d'un objet du profil ($/s, mutation comprise, sans bonus), règle de DisplayService (7.1).
+local function itemIncomeOf(entry: any): number
+	local def = if type(entry) == "table" then Items.ById[entry.Id] else nil
+	if def == nil then
+		return 0
+	end
+	local zone = def.Zone or (if type(entry.Zone) == "number" and Zones[entry.Zone] ~= nil then entry.Zone else nil) or 1
+	return Formulas.ItemIncome(zone, def.Rarity) * Mutations.IncomeMultiplier(Mutations.Sanitize(entry.Mutation))
+end
+
+local function emitItem(list: { ItemListener }, player: Player, itemUid: string, itemId: string)
+	for _, listener in table.clone(list) do
+		task.spawn(listener, player, itemUid, itemId)
+	end
 end
 
 -- Attente d'ouverture du colis `box` : UnboxService.GetOpenDelay (remplaçable), sinon celle de
@@ -917,6 +1073,100 @@ local function showBox(player: Player, session: Session, boxUid: string, box: Bo
 	end
 end
 
+------------------------------------------------------------------------------
+-- Objets sous antivol posés au sol (vague 31, L-112)
+------------------------------------------------------------------------------
+
+local function clearShownItem(session: Session, itemUid: string)
+	local shown = session.items[itemUid]
+	if shown then
+		session.items[itemUid] = nil
+		local model = shown.model
+		if model then
+			model:Destroy()
+		end
+	end
+end
+
+-- Modèle de l'objet `entry` posé en `base` : DisplayService.BuildFloorItem (ITM_ de Clément ou bloc V0 de
+-- DisplayService, halo, attributs), sinon un bloc V0 de la couleur de sa rareté. Petit décor : ancré, sans
+-- collision ni rayon (le sol de la boutique reste visable autour). Pas encore rangé dans la parcelle.
+local function buildFloorItemModel(player: Player, itemUid: string, entry: any, base: CFrame, unlockAt: number): Model
+	local ok, built = pcall(DisplayService.BuildFloorItem, player.UserId, base, itemUid, entry)
+	local model: Model
+	if ok and typeof(built) == "Instance" and (built :: Instance):IsA("Model") then
+		model = built :: Model
+	else
+		if not ok then
+			warnOnce(`floorbuild:{itemUid}`, `DisplayService.BuildFloorItem ({player.Name}, {itemUid}) : {built}, bloc V0`)
+		end
+		local def = Items.ById[entry.Id]
+		local rarity = if def then Rarities.ById[def.Rarity] else nil
+		model = Instance.new("Model")
+		local block = Instance.new("Part")
+		block.Name = "Block"
+		block.Size = V0_BOX_SIZE
+		block.Color = if rarity then rarity.Color else Color3.new(1, 1, 1)
+		block.Material = Enum.Material.SmoothPlastic
+		block.CFrame = base * CFrame.new(0, V0_BOX_SIZE.Y / 2, 0)
+		block.PivotOffset = CFrame.new(0, -V0_BOX_SIZE.Y / 2, 0)
+		block.Parent = model
+		model.PrimaryPart = block
+		model:SetAttribute("ItemUid", itemUid)
+		model:SetAttribute("ItemId", entry.Id)
+		model:SetAttribute(RARITY_ATTRIBUTE, if def then def.Rarity else nil)
+		model:SetAttribute(OWNER_ATTRIBUTE, player.UserId)
+	end
+	for _, descendant in model:GetDescendants() do
+		if descendant:IsA("BasePart") then
+			prepare(descendant)
+		end
+	end
+	model.Name = FLOOR_ITEM_NAME
+	model:SetAttribute(UNLOCK_AT_ATTRIBUTE, unlockAt)
+	CollectionService:AddTag(model, FLOOR_ITEM_TAG)
+	return model
+end
+
+-- Affiche l'objet sous antivol `entry` (Spot et UnlockAt lisibles) à sa place.
+local function showItem(player: Player, session: Session, itemUid: string, entry: any)
+	local spot = spotOf(entry)
+	local unlockAt = entry.UnlockAt
+	if spot == nil or not isFinite(unlockAt) then
+		return
+	end
+	clearShownItem(session, itemUid)
+	local base = floorFrame(session.plot, worldOf(session.plot, spot))
+	local model = buildFloorItemModel(player, itemUid, entry, base, unlockAt)
+	session.items[itemUid] = {
+		model = model,
+		base = base,
+		unlockAt = unlockAt,
+		unlocked = unlockAt <= serverNow(),
+		held = false,
+	}
+	model.Parent = session.plot
+end
+
+-- Antivol fini : le propriétaire est prévenu (une fois, s'il n'est pas en train de se faire voler l'objet) ;
+-- objet repris du profil ou retiré par un autre chemin : son modèle part.
+local function advanceItems(player: Player, session: Session, now: number)
+	local data = DataService.Get(player)
+	local items = if data and type(data.Items) == "table" then data.Items else nil
+	for itemUid, shown in session.items do
+		local entry = if items then items[itemUid] else nil
+		if not shown.held and (not isAntiTheft(entry) or (entry :: any).Spot == nil) then
+			clearShownItem(session, itemUid)
+		elseif not shown.unlocked and now >= shown.unlockAt then
+			shown.unlocked = true
+			if not shown.held then
+				notify(player, string.format(MESSAGES.ItemUnlocked, itemNameOf(entry)), SUCCESS_KIND)
+				log(`{player.Name} : objet {itemUid} débloqué (antivol fini)`)
+			end
+		end
+	end
+end
+
 -- Point du sol de SA boutique où poser un colis, sous le point visé `aim` (règle de l'en-tête) ; nil
 -- et la clé du message de refus sinon. Sans yield.
 local function findFloor(player: Player, session: Session, data: Data, aim: Vector3): (Vector3?, string?)
@@ -958,6 +1208,12 @@ local function findFloor(player: Player, session: Session, data: Data, aim: Vect
 			return nil, "Blocked"
 		end
 	end
+	-- Vague 31 : les objets sous antivol posés au sol gardent la même place qu'un colis.
+	for _, shown in session.items do
+		if (shown.base.Position - point).Magnitude < Unbox.BoxSpacing then
+			return nil, "Blocked"
+		end
+	end
 	local overlap = OverlapParams.new()
 	overlap.FilterType = Enum.RaycastFilterType.Include
 	overlap.FilterDescendantsInstances = { plot }
@@ -982,6 +1238,9 @@ local function advanceTimers()
 					setLabel(shown, timerText(remaining))
 				end
 			end
+		end
+		if next(session.items) ~= nil then
+			advanceItems(player, session, now)
 		end
 	end
 end
@@ -1017,12 +1276,121 @@ end
 -- Rangement dans l'inventaire (entrée de la zone safe)
 ------------------------------------------------------------------------------
 
+-- Anti-triche (DEV-060), juste avant la réussite d'un portage PNJ : AntiCheatService.Verify avec le point
+-- et l'heure du début de ce portage. false : sanctionné, le portage vient d'échouer (rien n'est rangé).
+local function verifyCarry(player: Player, payload: any): boolean
+	local start = carryStarts[player]
+	local from: Vector3?, since: number? = nil, nil
+	if start and start.Payload == payload then
+		from, since = start.From, start.At
+	end
+	return AntiCheatService.Verify(player, from, since)
+end
+
+-- Raison du refus si l'objet porté `payload` (Kind NPCItem) est mal formé, sinon nil.
+local function checkItemPayload(payload: any): string?
+	if type(payload.ItemId) ~= "string" or Items.ById[payload.ItemId] == nil then
+		return `ItemId inconnu ({tostring(payload.ItemId)})`
+	end
+	if type(payload.Rarity) ~= "string" or Rarities.ById[payload.Rarity] == nil then
+		return `Rarity inconnue ({tostring(payload.Rarity)})`
+	end
+	if type(payload.Zone) ~= "number" or Zones[payload.Zone] == nil then
+		return `Zone inconnue ({tostring(payload.Zone)})`
+	end
+	return nil
+end
+
+-- Index des objets (IndexService.Discover), chargé à l'appel : IndexService requiert ce service.
+local function discover(player: Player, itemId: string)
+	local module = script.Parent:FindFirstChild("IndexService")
+	if module == nil or not module:IsA("ModuleScript") then
+		return
+	end
+	local loaded, api = pcall(require, module)
+	local discoverFn: any = if loaded and type(api) == "table" then (api :: any).Discover else nil
+	if type(discoverFn) ~= "function" then
+		return
+	end
+	local ok, err = pcall(discoverFn, player, itemId)
+	if not ok then
+		warnOnce("discover", `IndexService.Discover : {err}`)
+	end
+end
+
+-- Vague 31 (L-112, Features.ShelfOpen) : l'objet sorti d'un colis ouvert sur le rayon (payload NPCItem,
+-- StoreHeistService et CarryService, a103) entre dans l'inventaire à l'entrée de la zone safe, au même
+-- endroit et avec les mêmes contrôles que le colis (anti-triche, Consume, profil écrit d'un seul tenant,
+-- braquage compté). Il y est sous antivol (AntiTheft = true, sans UnlockAt : l'attente démarre à la pose au
+-- sol). Inventaire plein (DisplayService.HasInventoryRoom) : le portage échoue (« InventoryFull »).
+local function stowItem(player: Player, data: Data, payload: any)
+	local problem = checkItemPayload(payload)
+	if problem then
+		warn(`[UnboxService] {player.Name} : objet porté mal formé ({problem}), portage rendu`)
+		CarryService.Fail(player, "Invalid")
+		return
+	end
+	if type(data.Items) ~= "table" then
+		warnOnce(`items:{player.UserId}`, `{player.Name} : Items illisible dans le profil, objet gardé sur la tête`)
+		return
+	end
+	local roomOk, room = pcall(DisplayService.HasInventoryRoom, player)
+	if not (roomOk and room == true) then
+		log(`{player.Name} : inventaire plein, l'objet porté n'est pas rangé`)
+		notify(player, MESSAGES.ItemsFull)
+		CarryService.Fail(player, "InventoryFull")
+		return
+	end
+	local def = Items.ById[payload.ItemId]
+	if def.Rarity ~= payload.Rarity then
+		warn(`[UnboxService] {player.Name} : objet {payload.ItemId} ({def.Rarity}) porté comme {payload.Rarity} : la rareté du catalogue fait foi`)
+	end
+	if not verifyCarry(player, payload) then
+		log(`{player.Name} : objet pas rangé, déplacement sanctionné par l'anti-triche (portage rendu)`)
+		return
+	end
+	if CarryService.Consume(player) == nil then
+		log(`{player.Name} : objet pas rangé, CarryService.Consume n'a rien rendu`)
+		return
+	end
+	if DataService.Get(player) ~= data then
+		warn(`[UnboxService] {player.Name} : profil perdu pendant le rangement, objet perdu`)
+		return
+	end
+	local itemUid = newUid(data.Items)
+	data.Items[itemUid] = {
+		Id = def.Id,
+		Source = "NPC",
+		At = os.time(),
+		Zone = payload.Zone,
+		Mutation = if def.TutorialOnly then nil else Mutations.Sanitize(payload.Mutation),
+		AntiTheft = true,
+	}
+	local heists = countHeist(player, data) -- d'un seul tenant avec l'objet : sauvegardés ensemble
+	log(`{player.Name} : objet {def.Id} ({def.Rarity}) rangé sous antivol ({itemUid} ; braquages réussis : {heists or "?"})`)
+	notify(player, MESSAGES.ItemStowed, SUCCESS_KIND)
+	-- Arrivée en zone safe (UI_Escape, L-095 point 4) : même remote que le colis, icône de sa rareté (V0).
+	local secured, securedErr = pcall(function()
+		Net.Server.BoxSecured:Fire(player, "Standard", def.Rarity)
+	end)
+	if not secured then
+		warn(`[UnboxService] BoxSecured vers {player.Name} : {securedErr}`)
+	end
+	discover(player, def.Id)
+	refreshInventory(player)
+	emitItem(itemStowedListeners, player, itemUid, def.Id)
+end
+
 local function stow(player: Player)
 	local data = DataService.Get(player)
 	if data == nil or not CarryService.IsCarrying(player) then
 		return
 	end
 	local payload = CarryService.GetPayload(player)
+	if type(payload) == "table" and payload.Kind == NPC_ITEM_KIND and Features.ShelfOpen then
+		stowItem(player, data, payload)
+		return
+	end
 	if type(payload) ~= "table" or payload.Kind ~= NPC_BOX_KIND then
 		return
 	end
@@ -1050,12 +1418,7 @@ local function stow(player: Player)
 	-- Anti-triche (DEV-060), juste avant la réussite : le dernier déplacement (téléport chez soi) et
 	-- le trajet depuis la prise (speed hack), sans attendre le contrôle suivant. Sanctionné : le colis
 	-- vient de revoler vers son rayon (CarryService.ReportAnomaly), rien n'est rangé.
-	local start = carryStarts[player]
-	local from: Vector3?, since: number? = nil, nil
-	if start and start.Payload == payload then
-		from, since = start.From, start.At
-	end
-	if not AntiCheatService.Verify(player, from, since) then
+	if not verifyCarry(player, payload) then
 		log(`{player.Name} : colis pas rangé, déplacement sanctionné par l'anti-triche (colis rendu)`)
 		return
 	end
@@ -1122,9 +1485,56 @@ local function teardown(player: Player)
 	for boxUid in session.shown do
 		clearShown(session, boxUid)
 	end
+	for itemUid in session.items do
+		clearShownItem(session, itemUid)
+	end
 	for index, slot in session.slots do
 		session.states[index] = nil
 		slot:SetAttribute(STATE_ATTRIBUTE, nil)
+	end
+end
+
+-- Vague 31 : remet à leur place les objets sous antivol posés au sol. Un objet dont le point n'est plus lisible
+-- ou plus dans le volume Bounds de cette boutique revient dans l'inventaire, toujours sous antivol (UnlockAt
+-- gardé : à la pose suivante, l'attente déjà commencée n'est pas perdue). Jamais perdu.
+local function restoreItems(player: Player, session: Session, data: Data)
+	if not Features.ShelfOpen or type(data.Items) ~= "table" then
+		return
+	end
+	local bounds = boundsOf(session.plot)
+	local restored, returned = 0, 0
+	for itemUid, entry in data.Items do
+		if not isAntiTheft(entry) or (entry :: any).Spot == nil then
+			continue
+		end
+		local item = entry :: any
+		local spot = spotOf(item)
+		local problem: string? = nil
+		if spot == nil then
+			problem = `Spot invalide ({tostring(item.Spot)})`
+		elseif not isFinite(item.UnlockAt) then
+			problem = `UnlockAt invalide ({tostring(item.UnlockAt)})`
+		elseif bounds and not insideFootprint(bounds, worldOf(session.plot, spot), 0) then
+			problem = "hors du volume Bounds de cette boutique"
+		end
+		if problem then
+			item.Spot = nil
+			if not isFinite(item.UnlockAt) then
+				item.UnlockAt = nil
+			end
+			returned += 1
+			warn(`[UnboxService] {player.Name} : objet posé {itemUid} ({problem}) : revient dans l'inventaire, sous antivol`)
+		else
+			showItem(player, session, itemUid, item)
+			restored += 1
+		end
+	end
+	if returned > 0 then
+		notify(player, MESSAGES.ItemBackToInventory, INFO_KIND)
+		refreshInventory(player)
+	end
+	if restored + returned > 0 then
+		log(`{player.Name} : {restored} objet(s) sous antivol remis au sol, {returned} revenu(s) dans l'inventaire`)
 	end
 end
 
@@ -1148,8 +1558,9 @@ local function setup(player: Player)
 		warn(`[UnboxService] DisplayService.GetSlots ({player.Name}) : {tostring(slots)}, aucun présentoir`)
 		slots = {}
 	end
-	local session: Session = { plot = plot, slots = slots, shown = {}, states = {} }
+	local session: Session = { plot = plot, slots = slots, shown = {}, items = {}, states = {} }
 	sessions[player] = session
+	restoreItems(player, session, data)
 
 	if type(data.Boxes) ~= "table" then
 		warn(`[UnboxService] {player.Name} : Boxes absent ou illisible ({tostring(data.Boxes)}) : aucun colis affiché`)
@@ -1193,6 +1604,98 @@ end
 -- Remotes
 ------------------------------------------------------------------------------
 
+-- Vague 31 (L-112) : PlaceBox(itemUid, point) d'un objet sous antivol de l'inventaire. Mêmes règles que
+-- la pose d'un colis (sa boutique, mains vides, findFloor, Unbox.MaxPlacedBoxes colis et objets au sol) ;
+-- refus : un Notify. Accepté : Spot, et l'antivol démarre (UnlockAt = maintenant + ShelfOpen.AntiTheft[rareté],
+-- ou l'heure déjà promise si elle est plus tôt : objet revenu dans l'inventaire après une première pose).
+local function placeFloorItem(player: Player, data: Data, session: Session, itemUid: string, entry: any, point: Vector3)
+	local what = `PlaceBox({itemUid}) (objet sous antivol)`
+	if entry.Spot ~= nil then
+		log(`{player.Name} : {what} refusé : déjà posé`)
+		return
+	end
+	if Items.ById[entry.Id] == nil then
+		warn(`[UnboxService] {player.Name} : objet {itemUid} inconnu du catalogue ({tostring(entry.Id)}), {what} refusé`)
+		return
+	end
+	if CarryService.IsCarrying(player) then
+		log(`{player.Name} : {what} refusé : porte déjà quelque chose`)
+		return
+	end
+	local _, placedBoxes = countBoxes(data)
+	local placed = placedBoxes + countFloorItems(data)
+	if placed >= Unbox.MaxPlacedBoxes then
+		log(`{player.Name} : {what} refusé : {placed} colis et objets déjà au sol`)
+		notify(player, MESSAGES.ItemTooMany)
+		return
+	end
+	local floor, why = findFloor(player, session, data, point)
+	if floor == nil then
+		local key = "Item" .. (why or "NotFloor")
+		log(`{player.Name} : {what} refusé : {why or "NotFloor"}`)
+		notify(player, (MESSAGES :: any)[key] or MESSAGES.ItemNotFloor)
+		return
+	end
+	-- D'un seul tenant, sans yield : l'objet quitte l'inventaire en se posant, l'antivol démarre.
+	local now = serverNow()
+	local unlockAt = now + antiTheftDelay(player, entry.Id)
+	local promised = entry.UnlockAt
+	if isFinite(promised) and (promised :: number) < unlockAt then
+		unlockAt = promised :: number
+	end
+	entry.UnlockAt = unlockAt
+	entry.Spot = spotFrom(session.plot, floor)
+	showItem(player, session, itemUid, entry)
+	refreshInventory(player)
+	log(`{player.Name} : objet {entry.Id} posé au sol ({itemUid}), antivol {string.format("%.1f", math.max(0, unlockAt - now))} s`)
+	emitItem(itemPlacedListeners, player, itemUid, entry.Id)
+end
+
+-- Vague 31 (L-112) : OpenBox(itemUid) sur un objet posé au sol, antivol fini (« UNLOCKED! ») : le propriétaire
+-- le reprend ; il n'est plus sous antivol et va sur le présentoir libre le plus proche (DisplayService.PlaceAuto,
+-- le chemin existant), sinon dans l'inventaire. Même portée que l'ouverture d'un colis.
+local function takeFloorItem(player: Player, session: Session, itemUid: string, entry: any)
+	local shown = session.items[itemUid]
+	local what = `OpenBox({itemUid}) (objet sous antivol)`
+	if entry.Spot == nil or shown == nil then
+		log(`{player.Name} : {what} refusé : pas posé au sol`)
+		return
+	end
+	if shown.held then
+		notify(player, MESSAGES.ItemHeld)
+		return
+	end
+	local where = shown.base.Position
+	if not inReach(player, where) then
+		log(`{player.Name} : {what} refusé : trop loin (plus de {REACH} studs)`)
+		return
+	end
+	local unlockAt = entry.UnlockAt
+	if not isFinite(unlockAt) or serverNow() < unlockAt then
+		notify(player, MESSAGES.ItemLocked)
+		return
+	end
+	-- D'un seul tenant : l'objet redevient un objet libre de l'inventaire, puis va sur un présentoir.
+	entry.AntiTheft = nil
+	entry.UnlockAt = nil
+	entry.Spot = nil
+	clearShownItem(session, itemUid)
+	local name = itemNameOf(entry)
+	local ok, slot = pcall(DisplayService.PlaceAuto, player, itemUid, where)
+	if ok and type(slot) == "number" then
+		notify(player, string.format(MESSAGES.ItemToStand, name), SUCCESS_KIND)
+		log(`{player.Name} : objet {itemUid} repris du sol, exposé sur le présentoir {slot}`)
+	else
+		if not ok then
+			warn(`[UnboxService] DisplayService.PlaceAuto ({player.Name}, {itemUid}) : {slot}`)
+		end
+		notify(player, string.format(MESSAGES.ItemBack, name), INFO_KIND)
+		log(`{player.Name} : objet {itemUid} repris du sol, dans l'inventaire (présentoirs pleins)`)
+	end
+	refreshInventory(player)
+	refreshStates(player)
+end
+
 local function onPlaceBox(player: Player, boxUid: string, point: Vector3)
 	local data = DataService.Get(player)
 	local session = sessions[player]
@@ -1206,6 +1709,11 @@ local function onPlaceBox(player: Player, boxUid: string, point: Vector3)
 	end
 	local box = if type(data.Boxes) == "table" then data.Boxes[boxUid] else nil
 	if type(box) ~= "table" then
+		local entry = if type(data.Items) == "table" then data.Items[boxUid] else nil
+		if isAntiTheft(entry) then
+			placeFloorItem(player, data, session, boxUid, entry, point)
+			return
+		end
 		log(`{player.Name} : PlaceBox({boxUid}) refusé : aucun colis de ce nom`)
 		return
 	end
@@ -1222,7 +1730,8 @@ local function onPlaceBox(player: Player, boxUid: string, point: Vector3)
 		log(`{player.Name} : PlaceBox({boxUid}) refusé : porte déjà quelque chose`)
 		return
 	end
-	local _, placed = countBoxes(data)
+	local _, placedBoxes = countBoxes(data)
+	local placed = placedBoxes + countFloorItems(data) -- vague 31 : objets sous antivol au sol compris (0 sans eux)
 	if placed >= Unbox.MaxPlacedBoxes then
 		log(`{player.Name} : PlaceBox({boxUid}) refusé : {placed} colis déjà posés`)
 		notify(player, MESSAGES.TooMany)
@@ -1258,6 +1767,13 @@ local function onOpenBox(player: Player, boxUid: string)
 	end
 	local box = if type(data.Boxes) == "table" then data.Boxes[boxUid] else nil
 	local shown = session.shown[boxUid]
+	if type(box) ~= "table" then
+		local entry = if type(data.Items) == "table" then data.Items[boxUid] else nil
+		if isAntiTheft(entry) then
+			takeFloorItem(player, session, boxUid, entry)
+			return
+		end
+	end
 	if type(box) ~= "table" or box.Spot == nil or shown == nil then
 		log(`{player.Name} : OpenBox({boxUid}) refusé : aucun colis posé de ce nom`)
 		return
@@ -1370,6 +1886,12 @@ function UnboxService.GetOpenDelay(_player: Player, box: Box): number
 	return Rarities.ById[box.Rarity].OpenDelay
 end
 
+-- Vague 31 (L-112) : durée de l'antivol d'un objet posé au sol (ShelfOpen.AntiTheft[rareté]) ; remplaçable
+-- comme GetOpenDelay (MonetizationService : Fast Open × DelayFactor). Ne doit pas yield.
+function UnboxService.GetAntiTheftDelay(_player: Player, itemId: string): number
+	return antiTheftDuration(itemId)
+end
+
 function UnboxService.GetLuck(_player: Player, _box: Box): number
 	return 1
 end
@@ -1398,6 +1920,110 @@ function UnboxService.GetBoxPosition(player: Player, boxUid: string): Vector3?
 	local session = sessions[player]
 	local shown = if session then session.shown[boxUid] else nil
 	return if shown then shown.base.Position else nil
+end
+
+-- Vague 31 (L-112) : objets sous antivol ------------------------------------------------------------------
+
+function UnboxService.OnItemStowed(listener: ItemListener): () -> ()
+	return subscribe(itemStowedListeners, listener)
+end
+
+function UnboxService.OnItemPlaced(listener: ItemListener): () -> ()
+	return subscribe(itemPlacedListeners, listener)
+end
+
+-- Objet sous antivol posé au sol de `owner`, affiché et pas porté par un voleur : sa fiche, nil sinon.
+local function floorItemOf(owner: Player, itemUid: string): FloorItem?
+	local session = sessions[owner]
+	local shown = if session then session.items[itemUid] else nil
+	local data = DataService.Get(owner)
+	local entry = if data and type(data.Items) == "table" then data.Items[itemUid] else nil
+	if shown == nil or shown.held or not isAntiTheft(entry) or (entry :: any).Spot == nil then
+		return nil
+	end
+	local def = Items.ById[(entry :: any).Id]
+	if def == nil then
+		return nil
+	end
+	return {
+		Uid = itemUid,
+		ItemId = def.Id,
+		Rarity = def.Rarity :: string,
+		Income = itemIncomeOf(entry),
+		Position = shown.base.Position,
+		UnlockAt = shown.unlockAt,
+	}
+end
+
+function UnboxService.GetFloorItem(owner: Player, itemUid: string): FloorItem?
+	return floorItemOf(owner, itemUid)
+end
+
+function UnboxService.GetFloorItems(owner: Player): { [string]: FloorItem }
+	local list: { [string]: FloorItem } = {}
+	local session = sessions[owner]
+	if session == nil then
+		return list
+	end
+	for itemUid in session.items do
+		local item = floorItemOf(owner, itemUid)
+		if item then
+			list[itemUid] = item
+		end
+	end
+	return list
+end
+
+-- L'antivol de cet objet court-il encore (volable) ? Objet absent, porté ou débloqué : false.
+function UnboxService.IsStealable(owner: Player, itemUid: string): boolean
+	local item = UnboxService.GetFloorItem(owner, itemUid)
+	return item ~= nil and serverNow() < item.UnlockAt
+end
+
+function UnboxService.HoldFloorItem(owner: Player, itemUid: string): boolean
+	if not UnboxService.IsStealable(owner, itemUid) then
+		return false
+	end
+	local session = sessions[owner] :: Session
+	local shown = session.items[itemUid]
+	shown.held = true
+	local model = shown.model
+	if model then
+		model.Parent = nil
+	end
+	log(`{owner.Name} : objet {itemUid} pris au sol par un voleur`)
+	return true
+end
+
+function UnboxService.ReleaseFloorItem(owner: Player, itemUid: string): boolean
+	local session = sessions[owner]
+	local shown = if session then session.items[itemUid] else nil
+	if session == nil or shown == nil or not shown.held then
+		return false
+	end
+	shown.held = false
+	local model = shown.model
+	if model then
+		model.Parent = session.plot
+	end
+	log(`{owner.Name} : objet {itemUid} revenu à sa place au sol`)
+	return true
+end
+
+function UnboxService.TakeFloorItem(owner: Player, itemUid: string): boolean
+	local session = sessions[owner]
+	local shown = if session then session.items[itemUid] else nil
+	if session == nil or shown == nil or not shown.held then
+		return false
+	end
+	clearShownItem(session, itemUid)
+	return true
+end
+
+function UnboxService.IsFloorHeld(owner: Player, itemUid: string): boolean
+	local session = sessions[owner]
+	local shown = if session then session.items[itemUid] else nil
+	return shown ~= nil and shown.held
 end
 
 -- Rareté d'un colis offert (GiveBox) : tirée avec les poids de OddsFor(zone, tier), seulement parmi les
@@ -1482,7 +2108,41 @@ function UnboxService.GetWaiting(player: Player): { [string]: number }
 			waiting[boxUid] = shown.readyAt
 		end
 	end
+	-- Vague 31 (Cantin, 2026-11-12) : un objet sous antivol au sol (pas porté par un voleur) attend aussi.
+	for itemUid, item in session.items do
+		if not item.held and not item.unlocked and item.unlockAt > now then
+			waiting[itemUid] = item.unlockAt
+		end
+	end
 	return waiting
+end
+
+-- Vague 31 : SkipWait sur un objet sous antivol posé au sol (même règle que pour un colis).
+local function skipAntiTheft(player: Player, data: Data, session: Session, itemUid: string, seconds: number): number?
+	local item = session.items[itemUid]
+	local entry: any = if type(data.Items) == "table" then data.Items[itemUid] else nil
+	if item == nil or item.held or item.unlocked or not isAntiTheft(entry) or not isFinite(entry.UnlockAt) then
+		return nil
+	end
+	local now = serverNow()
+	local current = entry.UnlockAt :: number
+	if current <= now then
+		return nil -- déjà fini : la boucle le marque au prochain pas
+	end
+	local unlockAt = math.max(now, current - seconds)
+	entry.UnlockAt = unlockAt
+	item.unlockAt = unlockAt
+	local model = item.model
+	if model then
+		model:SetAttribute(UNLOCK_AT_ATTRIBUTE, unlockAt)
+	end
+	local left = unlockAt - now
+	if left <= 0 then
+		left = 0
+		advanceItems(player, session, now) -- « UNLOCKED! » tout de suite (Notify au propriétaire)
+	end
+	log(`{player.Name} : antivol de l'objet {itemUid} réduit de {string.format("%.1f", seconds)} s, reste {string.format("%.1f", left)} s`)
+	return left
 end
 
 function UnboxService.SkipWait(player: Player, boxUid: string, seconds: number): number?
@@ -1490,6 +2150,9 @@ function UnboxService.SkipWait(player: Player, boxUid: string, seconds: number):
 	local session = sessions[player]
 	if data == nil or session == nil or type(seconds) ~= "number" or seconds ~= seconds or seconds < 0 then
 		return nil
+	end
+	if session.items[boxUid] ~= nil then
+		return skipAntiTheft(player, data, session, boxUid, seconds)
 	end
 	local shown = session.shown[boxUid]
 	local box = if type(data.Boxes) == "table" then data.Boxes[boxUid] else nil
@@ -1537,7 +2200,7 @@ function UnboxService.Init()
 	-- Où et quand le portage du colis a commencé (contrôle du trajet au rangement, DEV-060).
 	CarryService.OnCarryStarted(function(player: Player, payload: any)
 		local root = rootOf(player)
-		if root and type(payload) == "table" and payload.Kind == NPC_BOX_KIND then
+		if root and type(payload) == "table" and (payload.Kind == NPC_BOX_KIND or payload.Kind == NPC_ITEM_KIND) then
 			carryStarts[player] = { Payload = payload, From = root.Position, At = os.clock() }
 		else
 			carryStarts[player] = nil
