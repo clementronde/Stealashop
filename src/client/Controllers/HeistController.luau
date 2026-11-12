@@ -19,6 +19,13 @@
 --   - HeistTimer(storeId, endsAt) : chrono du braquage, endsAt en heure serveur
 --     (workspace:GetServerTimeNow()), 0 = masqué. Relayé à OnTimer : HudController l'affiche dans
 --     UI_HUD.HeistTimer (DEV-021). En Studio, une ligne dans la sortie à chaque envoi du serveur.
+--   - Ouverture sur le rayon (vague 31, L-112), seulement si Features.ShelfOpen (false : tout ce qui
+--     précède, inchangé) : sur un colis fermé, l'invite « Open » (un appui, sans maintien) demande
+--     OpenShelfBox(slotId) ; plus d'invite sur ce colis pendant son ouverture (attribut ShelfOpenState,
+--     Shared/ShelfOpenState ; l'animation est à ShelfOpenController). Sur l'objet sorti (tag ShelfItem),
+--     l'invite « Steal » demande GrabItem(slotId) au début et à la fin du maintien, comme un colis
+--     (maintien : Tier de l'objet, sinon celui du colis qui était à cet emplacement) ; cachée chez les
+--     autres joueurs tant que ShelfReservedUntil n'est pas passé (le serveur revérifie).
 --
 -- API (client) :
 --   HeistController.OnTimer(fn(storeId, endsAt)) -> déconnexion   (endsAt = 0 : chrono masqué)
@@ -32,6 +39,10 @@ local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Balance = require(Shared:WaitForChild("Config"):WaitForChild("Balance"))
+local Features = require(Shared:WaitForChild("Config"):WaitForChild("Features"))
+local Items = require(Shared:WaitForChild("Config"):WaitForChild("Items"))
+local Mutations = require(Shared:WaitForChild("Config"):WaitForChild("Mutations"))
+local ShelfOpenState = require(Shared:WaitForChild("ShelfOpenState"))
 
 -- Ce que ce contrôleur utilise d'AnimationController (a09).
 type AnimationApi = {
@@ -75,6 +86,14 @@ local PROMPT_DISTANCE_MARGIN = 0.5
 local ACTION_TEXT = "Steal"
 local BOX_SUFFIX = "Box"
 
+-- Ouverture sur le rayon (L-112). V0 proposé, absent du doc : textes en anglais (L-036) ; après un appui
+-- sur « Open », l'invite reste coupée 1 s en attendant l'état posé par le serveur (pas de double envoi).
+local SHELF_OPEN = Features.ShelfOpen
+local OPEN_ACTION_TEXT = "Open"
+local ITEM_ACTION_TEXT = "Steal"
+local ITEM_PROMPT_NAME = "ShelfItemPrompt"
+local OPEN_PENDING_TIME = 1
+
 local IS_STUDIO = RunService:IsStudio()
 
 local localPlayer = Players.LocalPlayer
@@ -86,6 +105,10 @@ local animation: AnimationApi? = nil
 local watches: { [Instance]: StoreWatch } = {}
 local timers: { [string]: number } = {}
 local timerListeners: { TimerListener } = {}
+local openPending: { [Instance]: number } = {} -- colis → os.clock() de l'appui sur « Open »
+local tierBySlot: { [string]: string } = {} -- SlotId → Tier du dernier colis vu à cet emplacement
+local itemPrompts: { [Model]: ProximityPrompt } = {} -- objets sortis (tag ShelfItem) → leur invite
+local saidItemSlot = false
 
 local function inside(part: BasePart, point: Vector3): boolean
 	local p = part.CFrame:PointToObjectSpace(point)
@@ -139,8 +162,59 @@ local function refreshStore(watch: StoreWatch)
 		return
 	end
 	local allowed = canGrabHere(watch)
+	local clock = os.clock()
 	for box, prompt in watch.Prompts do
-		prompt.Enabled = allowed and box:GetAttribute(LANDED_ATTRIBUTE) ~= false
+		local enabled = allowed and box:GetAttribute(LANDED_ATTRIBUTE) ~= false
+		if SHELF_OPEN and enabled then
+			-- Colis fermé seulement, et pas juste après un appui.
+			local pendingAt: number? = openPending[box]
+			if pendingAt and clock - pendingAt >= OPEN_PENDING_TIME then
+				openPending[box] = nil
+				pendingAt = nil
+			end
+			enabled = box:GetAttribute(ShelfOpenState.StateAttribute) == nil and pendingAt == nil
+		end
+		prompt.Enabled = enabled
+	end
+end
+
+-- Magasin d'un objet sorti : son ancêtre suivi, sinon celui dont le volume Bounds le contient.
+local function storeOfItem(item: Model): StoreWatch?
+	local current = item.Parent
+	while current ~= nil and current ~= Workspace do
+		local watch = watches[current]
+		if watch then
+			return watch
+		end
+		current = current.Parent
+	end
+	local position = item:GetPivot().Position
+	for _, watch in watches do
+		local bounds = boundsOf(watch)
+		if bounds and inside(bounds, position) then
+			return watch
+		end
+	end
+	return nil
+end
+
+-- L'invite de prise d'un objet sorti : active comme celle d'un colis, et seulement pour l'ouvreur tant que
+-- l'objet lui est réservé (ShelfReservedBy, ShelfReservedUntil).
+local function refreshItems()
+	if next(itemPrompts) == nil then
+		return
+	end
+	local now = Workspace:GetServerTimeNow()
+	for item, prompt in itemPrompts do
+		local watch = storeOfItem(item)
+		local enabled = watch ~= nil and canGrabHere(watch)
+		if enabled then
+			local reservedUntil = item:GetAttribute(ShelfOpenState.ReservedUntilAttribute)
+			if type(reservedUntil) == "number" and now < reservedUntil then
+				enabled = item:GetAttribute(ShelfOpenState.ReservedByAttribute) == localPlayer.UserId
+			end
+		end
+		prompt.Enabled = enabled
 	end
 end
 
@@ -148,6 +222,7 @@ local function refreshAll()
 	for _, watch in watches do
 		refreshStore(watch)
 	end
+	refreshItems()
 end
 
 local function playGrab()
@@ -159,15 +234,75 @@ end
 
 local function removePrompt(watch: StoreWatch, box: Instance)
 	local prompt = watch.Prompts[box]
+	openPending[box] = nil
 	if prompt then
 		watch.Prompts[box] = nil
 		prompt:Destroy()
 	end
 end
 
+-- Objets sortis (L-112) ---------------------------------------------------------------------------
+
+local function removeItemPrompt(instance: Instance)
+	if not instance:IsA("Model") then
+		return
+	end
+	local prompt = itemPrompts[instance :: Model]
+	if prompt then
+		itemPrompts[instance :: Model] = nil
+		prompt:Destroy()
+	end
+end
+
+local function addItemPrompt(instance: Instance)
+	if not instance:IsA("Model") or itemPrompts[instance :: Model] then
+		return
+	end
+	local item = instance :: Model
+	local slotId = item:GetAttribute(SLOT_ID_ATTRIBUTE)
+	local anchor = item.PrimaryPart or item:FindFirstChildWhichIsA("BasePart", true)
+	if type(slotId) ~= "string" or anchor == nil then
+		if IS_STUDIO and not saidItemSlot then
+			saidItemSlot = true
+			warn(`[HeistController] objet sorti {item.Name} sans attribut SlotId (ou sans pièce) : pas d'invite de prise (L-112)`)
+		end
+		return
+	end
+	local tierAttribute = item:GetAttribute(TIER_ATTRIBUTE)
+	local tier = if type(tierAttribute) == "string" then tierAttribute else tierBySlot[slotId]
+	local info = if tier then Balance.Heist.BoxTiers[tier] else nil
+	local itemId = item:GetAttribute("ItemId")
+	local def = if type(itemId) == "string" then Items.ById[itemId] else nil
+	local mutation = {
+		Size = item:GetAttribute("MutationSize"),
+		Effect = item:GetAttribute("MutationEffect"),
+	}
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.Name = ITEM_PROMPT_NAME
+	prompt.ActionText = ITEM_ACTION_TEXT
+	prompt.ObjectText = if def then Mutations.ItemName(def.DisplayName, mutation) else ""
+	prompt.HoldDuration = if info then info.GrabTime else 0
+	prompt.MaxActivationDistance = math.max(Balance.Heist.GrabMaxDistance - PROMPT_DISTANCE_MARGIN, 1)
+	prompt.RequiresLineOfSight = false
+	prompt.Enabled = false
+	prompt.PromptButtonHoldBegan:Connect(function()
+		Net.Client.GrabItem:Fire(slotId) -- début du maintien
+	end)
+	prompt.Triggered:Connect(function()
+		Net.Client.GrabItem:Fire(slotId) -- fin du maintien
+		playGrab()
+	end)
+	prompt.Parent = anchor
+	itemPrompts[item] = prompt
+	refreshItems()
+end
+
 local function addPrompt(watch: StoreWatch, box: Instance)
 	if watch.Prompts[box] then
 		return
+	end
+	if SHELF_OPEN and CollectionService:HasTag(box, ShelfOpenState.ItemTag) then
+		return -- objet sorti : son invite à part (addItemPrompt)
 	end
 	local slotId = box:GetAttribute(SLOT_ID_ATTRIBUTE)
 	local slotName = box:GetAttribute(SLOT_ATTRIBUTE)
@@ -175,6 +310,7 @@ local function addPrompt(watch: StoreWatch, box: Instance)
 	if type(slotId) ~= "string" or type(slotName) ~= "string" or type(tier) ~= "string" then
 		return
 	end
+	tierBySlot[slotId] = tier
 	local info = Balance.Heist.BoxTiers[tier]
 	local anchor = watch.Model:FindFirstChild(slotName, true)
 	if info == nil or anchor == nil or not anchor:IsA("Attachment") then
@@ -188,13 +324,24 @@ local function addPrompt(watch: StoreWatch, box: Instance)
 	prompt.MaxActivationDistance = math.max(Balance.Heist.GrabMaxDistance - PROMPT_DISTANCE_MARGIN, 1)
 	prompt.RequiresLineOfSight = false -- les rayons cachent parfois le colis
 	prompt.Enabled = false
-	prompt.PromptButtonHoldBegan:Connect(function()
-		Net.Client.GrabItem:Fire(slotId) -- début du maintien
-	end)
-	prompt.Triggered:Connect(function()
-		Net.Client.GrabItem:Fire(slotId) -- fin du maintien
-		playGrab()
-	end)
+	if SHELF_OPEN then
+		-- L-112 : un appui ouvre le colis sur place ; le serveur tire la chance et décide de tout.
+		prompt.ActionText = OPEN_ACTION_TEXT
+		prompt.HoldDuration = 0
+		prompt.Triggered:Connect(function()
+			openPending[box] = os.clock()
+			prompt.Enabled = false
+			Net.Client.OpenShelfBox:Fire(slotId)
+		end)
+	else
+		prompt.PromptButtonHoldBegan:Connect(function()
+			Net.Client.GrabItem:Fire(slotId) -- début du maintien
+		end)
+		prompt.Triggered:Connect(function()
+			Net.Client.GrabItem:Fire(slotId) -- fin du maintien
+			playGrab()
+		end)
+	end
 	prompt.Parent = anchor
 	watch.Prompts[box] = prompt
 	refreshStore(watch)
@@ -338,6 +485,13 @@ function HeistController.Start()
 	CollectionService:GetInstanceAddedSignal(STORE_TAG):Connect(watchStore)
 	CollectionService:GetInstanceRemovedSignal(STORE_TAG):Connect(unwatchStore)
 	localPlayer:GetAttributeChangedSignal(CARRYING_ATTRIBUTE):Connect(refreshAll)
+	if SHELF_OPEN then
+		for _, item in CollectionService:GetTagged(ShelfOpenState.ItemTag) do
+			addItemPrompt(item)
+		end
+		CollectionService:GetInstanceAddedSignal(ShelfOpenState.ItemTag):Connect(addItemPrompt)
+		CollectionService:GetInstanceRemovedSignal(ShelfOpenState.ItemTag):Connect(removeItemPrompt)
+	end
 
 	while true do
 		task.wait(REFRESH_INTERVAL)

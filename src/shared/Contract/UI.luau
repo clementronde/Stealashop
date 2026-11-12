@@ -733,5 +733,17 @@ table.insert(UI.Billboards, {
 		{ Path = "Alert.PhoneIcon" },
 	} :: { Element },
 })
+-- Compteur de chance au-dessus d'un colis qui s'ouvre sur son rayon (vague 31, L-112 ; relevé de Studio du
+-- 2026-11-12, agents/wave31-studio.md) : BB_ShelfOpen, copiée par ShelfOpenController. Row.Luck = « ×1.25 LUCK »
+-- écrit par le code ; Row.LuckIcon = le trèfle, penché à chaque tic.
+table.insert(UI.Billboards, {
+	Name = "BB_ShelfOpen",
+	Class = "BillboardGui",
+	Elements = {
+		{ Path = "Row" },
+		{ Path = "Row.Luck", Class = "TextLabel" },
+		{ Path = "Row.LuckIcon" },
+	} :: { Element },
+})
 
 return UI
