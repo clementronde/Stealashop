@@ -21,13 +21,13 @@ Tags.List = {
 	-- 12 magasins, un de chaque côté du boulevard par zone (section 4).
 	-- Zone sur le magasin : déduit de 2.1 (attribut Zone = 1 à 6), le tableau 10.4 ne le cite pas.
 	{ Tag = "NPCStore", Count = 12, PerZone = 2, NeedsZone = true, For = "magasins PNJ STORE_*" },
-	-- 6 parcelles dans la zone safe (section 4).
-	{ Tag = "PlayerPlot", Count = 6, For = "parcelles PLOT_*" },
+	-- 8 parcelles dans la zone safe (section 4 ; 6 à l'origine, hub à 8 boutiques de Clément, L-113, 2026-11-12).
+	{ Tag = "PlayerPlot", Count = 8, For = "parcelles PLOT_*" },
 	-- 1 tapis et 1 banc par parcelle : déduit du 10.4 (enfants Treadmill et Bench de la parcelle),
 	-- le doc ne donne pas le nombre de tags. Plus de tag CashPad (L-091 point 4, 2026-11-10) : l'argent
 	-- se ramasse sur les plaques CollectPad_xx, trouvées par leur nom (Contract/Models).
-	{ Tag = "Treadmill", Count = 6, For = "tapis de course, 1 par parcelle" },
-	{ Tag = "Bench", Count = 6, For = "bancs de musculation, 1 par parcelle" },
+	{ Tag = "Treadmill", Count = 8, For = "tapis de course, 1 par parcelle" },
+	{ Tag = "Bench", Count = 8, For = "bancs de musculation, 1 par parcelle" },
 	-- Une boutique de chaque dans la zone safe (sections 4 et 5.9).
 	{ Tag = "WeaponShop", Count = 1, For = "boutique d'armes" },
 	{ Tag = "AuraShop", Count = 1, For = "boutique d'auras" },

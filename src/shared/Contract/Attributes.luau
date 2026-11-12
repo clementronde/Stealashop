@@ -19,7 +19,7 @@ local Attributes = {
 	-- Numéro d'une parcelle taggée PlayerPlot : entier de 1 à 6, chaque numéro une seule
 	-- fois, égal au numéro écrit sur la parcelle (« Parcelle 2 » = 2). Ajouté le 2026-11-06
 	-- (liaison L-015 et L-017).
-	PlotIndex = { Name = "PlotIndex", Min = 1, Max = 6 },
+	PlotIndex = { Name = "PlotIndex", Min = 1, Max = 8 },
 }
 
 return Attributes
