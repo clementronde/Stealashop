@@ -105,6 +105,7 @@ local SHOP_COUNT = LINE and 8 or 6
 local SIDES = (LINE and SHOP_COUNT == 8) and 2 or 0
 local ROW_N = SHOP_COUNT - SIDES -- boutiques de la rangée du fond
 local LINE_HALF = (ROW_N / 2) * SHOP_W + ((ROW_N - 1) / 2) * LINE_GAP -- demi-longueur de la rangée (217 pour 6)
+local PATH_W = 16 -- largeur de tous les chemins de la base (dalle), plus 1 de bordure de chaque côté
 local SIDE_X = -31 -- centre des boutiques des côtés : 6,8 après la bordure de la promenade (x -69,8), place d'un lampadaire
 if LINE then
 	MALL = false
@@ -617,12 +618,14 @@ do
 	if LINE then
 		local rng = Random.new(2611)
 		local PATCH = { rgb(92, 170, 76), rgb(84, 160, 70) }
-		local function free(x, z) -- centre d'une case
+		local spz0 = (HUB.z1 - 3 - SHOP_D - 13) - PATH_W -- dalle des promenades des côtés à partir de |z| 198
+		local function free(x, z) -- centre d'une case de 4 (de -2 à +2)
 			local az = math.abs(z)
-			if x < LINE_FX + 34 or x > 25 or az > HUB.z1 - 6 then return false end
-			if az < 14 and x < 3 then return false end
-			if x > -17 and az < 104 + EXIT_W then return false end -- stands et allée des stands
-			if SIDES > 0 and az > HUB.z1 - 3 - SHOP_D - 34 and x > LINE_FX + 26 and x < SIDE_X + SHOP_W / 2 + 2 then return false end -- boutiques des côtés, promenades, lampadaires
+			if x < LINE_FX + 36 or x > 25 or az > HUB.z1 - 6 then return false end -- rangée, sa promenade, ses lampadaires, mur
+			if az < PATH_W / 2 + 3 and x < 3 then return false end -- avenue
+			if x > -20 and x < 2 then return false end -- allée des stands
+			if x >= 2 and az < 104 + EXIT_W then return false end -- stands, rue de la sortie
+			if SIDES > 0 and az > spz0 - 9 and x < SIDE_X + SHOP_W / 2 + 4 then return false end -- promenades, boutiques et lampadaires des côtés
 			return true
 		end
 		local pm = Instance.new("Model"); pm.Name = "GrassPatches"
@@ -675,41 +678,35 @@ do
 		end
 	end
 	if LINE then
-		-- promenade devant les terrasses (16 de large, sur toute la rangée), avenue de la promenade à l'entrée (z = 0, 20 de
-		-- large, coupée par la place de la fontaine), allée des stands le long de l'entrée (x -12..0), un lampadaire par boutique
+		-- Chemins de la base (Clément, 2026-11-12 : « des décalages, rien n'est beau ») : une seule largeur (PATH_W = 16) et une
+		-- bordure brique de 1 de chaque côté, posée sous la dalle (0,08 contre 0,12) : là où deux chemins se croisent, la dalle
+		-- de l'un couvre la bordure de l'autre, sans trait en travers. Promenade en U devant les boutiques, toujours à 12 de
+		-- leur façade (le coin avant de la boutique : tapis, banc, socle de l'objet le plus rare, panneaux) ; avenue tout droit
+		-- jusqu'à la rue de la zone 1 ; allée des stands qui relie l'avenue au U, à 0,5 des plaques ShopPad.
+		local function path(name, x0, z0, x1, z1)
+			local ax0, ax1, az0, az1 = math.min(x0, x1), math.max(x0, x1), math.min(z0, z1), math.max(z0, z1)
+			Bx(m, W, "WalkwayBorder_" .. name, ax0 - 1, -0.05, az0 - 1, ax1 + 1, 0.08, az1 + 1, BRICK, F)
+			Bx(m, W, "Walkway_" .. name, ax0, -0.05, az0, ax1, 0.12, az1, PAVE, F)
+		end
 		local half = LINE_HALF
-		-- de x -86 à -71 : 0,7 devant le socle de l'objet le plus rare (Plinth, à 51,3 devant le centre ; la terrasse a quitté
-		-- le gabarit, 2026-11-12)
-		local px0, px1 = LINE_FX + 12, LINE_FX + 27
-		Bx(m, W, "Walkway_Front", px0, -0.05, -half, px1, 0.12, half, PAVE, F)
-		Bx(m, W, "WalkwayEdge_Front", px1, -0.05, -half, px1 + 1.2, 0.08, half, BRICK, F)
-		-- boutiques des côtés : promenade de 16 devant elles, à 0,7 devant le socle de l'objet le plus rare, de la promenade
-		-- de la rangée jusqu'à l'allée des stands (x -69,8..-13,2), bordure côté place
-		local sz1 = HUB.z1 - 3 - SHOP_D - 12 -- bord côté boutique (|z| 130)
-		local sz0 = sz1 - 16
+		local px0, px1 = LINE_FX + 13, LINE_FX + 13 + PATH_W -- dalle de la promenade de la rangée (x -85..-69), bordure dès x -86
+		local spz1 = (HUB.z1 - 3 - SHOP_D - 12) - 1 -- dalle des promenades des côtés : |z| 198..214, bordure dès |z| 215
+		local spz0 = spz1 - PATH_W
+		local rowEnd = SIDES > 0 and spz0 or half
+		path("Front", px0, -rowEnd, px1, rowEnd)
 		for _, sd in (SIDES > 0 and { 1, -1 } or {}) do
-			local tag = sd > 0 and "N" or "S"
-			Bx(m, W, "Walkway_Side_" .. tag, px1 + 1.2, -0.05, sz0 * sd, -13.2, 0.12, sz1 * sd, PAVE, F)
-			Bx(m, W, "WalkwayEdge_Side_" .. tag, px1 + 1.2, -0.05, (sz0 - 1.2) * sd, -13.2, 0.08, sz0 * sd, BRICK, F)
+			path("Side_" .. (sd > 0 and "N" or "S"), px0, spz0 * sd, SIDE_X + SHOP_W / 2, spz1 * sd) -- jusqu'au bord est de la boutique
 		end
-		for i, r in (FOUNTAIN_IN_HUB and { { px1, FC.X - 23 }, { FC.X + 23, 0.6 } } or { { px1, 0.6 } }) do
-			strip(m, "Walkway_Main_" .. i, Vector3.new(r[1], 0, 0), Vector3.new(r[2], 0, 0), 20, 0.12, PAVE, F)
-			for _, s in { 1, -1 } do
-				strip(m, "WalkwayEdge_Main_" .. i .. (s > 0 and "N" or "S"), Vector3.new(r[1], 0, 10.6 * s), Vector3.new(r[2], 0, 10.6 * s), 1.2, 0.08, BRICK, F)
-			end
-		end
-		for _, s in { 1, -1 } do
-			local tag = s > 0 and "N" or "S"
-			local z1 = (SIDES > 0 and sz0 or (100 + EXIT_W)) * s -- jusqu'à la promenade des boutiques des côtés
-			Bx(m, W, "Walkway_Stalls_" .. tag, -12, -0.05, 10 * s, 0, 0.12, z1, PAVE, F)
-			Bx(m, W, "WalkwayEdge_Stalls_" .. tag, -13.2, -0.05, 10 * s, -12, 0.08, z1, BRICK, F)
+		path("Main", px1, -PATH_W / 2, -1, PATH_W / 2) -- avenue (z -8..8) ; sa bordure s'arrête au bord de la rue (x 0) : un seuil
+		for _, sd in { 1, -1 } do
+			path("Stalls_" .. (sd > 0 and "N" or "S"), -1 - PATH_W, (PATH_W / 2) * sd, -1, (SIDES > 0 and spz0 or (100 + EXIT_W)) * sd)
 		end
 		for k, site in SITES do
 			if site.sideShop then
-				lamp(m, "Lamp_Walk_" .. k, Vector3.new(site.front.X - 20, 0, (sz0 - 4) * site.side))
+				lamp(m, "Lamp_Walk_" .. k, Vector3.new(site.front.X - 20, 0, (spz0 - 4) * site.side))
 			else
-				-- à 20 de l'axe de la boutique, du côté du centre de la place (loin des boutiques des côtés)
-				lamp(m, "Lamp_Walk_" .. k, Vector3.new(px1 + 3, 0, site.front.Z - 20 * (site.front.Z >= 0 and 1 or -1)))
+				-- à 20 de l'axe de la boutique, du côté du centre de la place, 2 après la bordure de la promenade
+				lamp(m, "Lamp_Walk_" .. k, Vector3.new(px1 + 4, 0, site.front.Z - 20 * (site.front.Z >= 0 and 1 or -1)))
 			end
 		end
 	elseif ROWS then
@@ -1388,7 +1385,7 @@ do
 	CS:AddTag(sz, "SafeZone")
 	local sp = Instance.new("SpawnLocation")
 	sp.Name = "Spawn"; sp.Size = Vector3.new(8, 0.2, 8); sp.Anchored = true
-	local c = E + rr(0) * 37 + Vector3.new(0, 0.02, 0) -- (-7, 0, 0), dessus à 0,12
+	local c = E + rr(0) * 37 + Vector3.new(0, 0.22, 0) -- (-7, 0, 0), posé sur la dalle de l'avenue (0,12), dessus à 0,32
 	sp.CFrame = CFrame.lookAt(c, c + rr(0)) -- face à la fontaine et au centre commercial
 	sp.Transparency = 1; sp.CastShadow = false
 	sp.Color = GOLD_L; sp.Material = SMOOTH; sp.TopSurface = Enum.SurfaceType.Smooth; sp.BottomSurface = Enum.SurfaceType.Smooth
