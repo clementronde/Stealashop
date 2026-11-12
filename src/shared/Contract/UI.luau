@@ -243,6 +243,9 @@ UI.Billboards = {
 	-- Panneau d'approche au-dessus de la vitrine de chaque magasin PNJ (5.3, point 1 ; noms de L-044
 	-- acceptés par Clément le 2026-11-07) : nom du magasin, PV de la vitrine, dégâts et vitesse
 	-- conseillés. StoreInfoController écrit les 4 textes et colore Damage et Speed pour le joueur local.
+	-- Revu par Clément (L-108 point 5, 2026-11-12) : StoreName, Stats > HP (caché), SpeedLine (Speed,
+	-- SpeedIcon), DamageLine (Damage « Strength 1 », DamageIcon). Le code ne lit que ces 4 noms, cherchés
+	-- parmi les descendants : l'ancien gabarit (sans Stats ni lignes) et le nouveau passent tous deux.
 	{
 		Name = "BB_StoreInfo",
 		Class = "BillboardGui",

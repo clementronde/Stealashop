@@ -101,6 +101,14 @@ local Store: ModelSpec = {
 			Optional = true,
 			Note = "facultatif : sans lui, le panneau BB_StoreInfo se pose au-dessus de Window, L-044",
 		},
+		-- Point de pose du panneau planté StoreReqSign devant le magasin (L-108 point 5), dans Bounds
+		-- chez Clément. Facultatif : sans lui, pas de panneau (StoreReqSignController).
+		{
+			Name = "ReqSignPoint",
+			Class = "Attachment",
+			Optional = true,
+			Note = "facultatif : sans lui, pas de panneau StoreReqSign devant ce magasin, L-108",
+		},
 	},
 }
 
@@ -441,5 +449,27 @@ local PawnShopStall: ModelSpec = {
 }
 Models.PawnShopStall = PawnShopStall
 table.insert(Models.List, PawnShopStall) -- à la fin du rapport
+-- Panneau planté devant chaque magasin PNJ (L-108 point 5), modèle de Clément dans
+-- ReplicatedStorage/Assets/UI, copié sur chaque ReqSignPoint par StoreReqSignController. Facultatif :
+-- absent, une ligne « pas encore livré » ; ses textes manquants sont ignorés par le code.
+local StoreReqSign: ModelSpec = {
+	Key = "StoreReqSign",
+	Label = "panneaux des exigences des magasins (StoreReqSign)",
+	Category = "Magasins PNJ",
+	Names = { "StoreReqSign" },
+	Class = "Model",
+	PrimaryPart = "Foot", -- même pied et même pivot qu'UpgradeSign (L-108)
+	Parts = {
+		{ Name = "Foot", Class = "BasePart" },
+		{ Name = "Board", Class = "BasePart" },
+		{ Name = "SignGui", Class = "SurfaceGui" },
+		{ Name = "StoreName", Class = "TextLabel", Optional = true },
+		{ Name = "SpeedReq", Class = "TextLabel", Optional = true },
+		{ Name = "StrengthReq", Class = "TextLabel", Optional = true },
+	},
+}
+Models.StoreReqSign = StoreReqSign
+-- Avant les comptoirs du hub, qui restent à la fin du rapport.
+table.insert(Models.List, table.find(Models.List, WeaponShopCounter) or #Models.List + 1, StoreReqSign)
 
 return Models

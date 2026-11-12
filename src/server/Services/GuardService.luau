@@ -103,7 +103,8 @@
 --     autre vigile de nuit, à Night.DetectionRange (40) studs au plus, dans le cône de la lampe
 --     torche (Night.DetectionConeAngle autour de l'avant du vigile, à l'horizontale) et sans mur
 --     entre eux (même ligne de vue que la poursuite). Le plus proche. Puis délai de réaction et
---     poursuite à Zones[zone].AdvisedSpeed + Night.ChaseSpeedBonus, avec ou sans colis.
+--     poursuite à Night.ChaseSpeed (80, plus vite qu'un joueur sans potion, L-108), au moins
+--     Zones[zone].AdvisedSpeed + Night.ChaseSpeedBonus, avec ou sans colis.
 --   - Abandon : comme le jour (zone safe ; ni temps ni avance), et aussi quand la cible quitte le
 --     couloir (passée à travers le mur de nuit), devient ignorée ou n'a plus de personnage. Puis essoufflé, il retourne au point de
 --     ronde le plus proche et reprend sa ronde. Il ne disparaît qu'à l'aube.
@@ -127,7 +128,8 @@
 -- avertissement par nom, en Studio, pour tous les vigiles de jour et de nuit. Sons des marqueurs :
 -- MarkerSounds.Guard. Run et Walk suivent le pas du vigile (L-048) : Clément les a faites pour
 -- ~20 et ~10 studs/s à l'échelle 1, donc vitesse de lecture = WalkSpeed / (20 ou 10 × échelle du
--- modèle), bornée de 0,6 à 1,6, et remise à jour à chaque changement de WalkSpeed (setWalkSpeed).
+-- modèle), bornée de 0,6 à 1,6 (nuit : Night.GaitSpeedMax), et remise à jour à chaque
+-- changement de WalkSpeed (setWalkSpeed).
 --
 -- Modèle du vigile (liaison L-048) : un Model avec Humanoid R15 et HumanoidRootPart, dans un
 -- dossier Guards de ReplicatedStorage/Assets (ou de ServerStorage/Assets), nommé Guard_Z<zone>
@@ -977,14 +979,22 @@ local function followPath(guard: Guard, goal: Vector3)
 	moveTo(guard, waypoint.Position) -- jamais par la zone safe
 end
 
+-- Vitesse de poursuite d'un vigile de nuit (L-108 point 2) : Night.ChaseSpeed, au moins la vitesse
+-- conseillée de la zone + Night.ChaseSpeedBonus (règle d'avant, gardée comme plancher).
+local function nightChaseSpeed(zone: number): number
+	return math.max(Night.ChaseSpeed, Zones[zone].AdvisedSpeed + Night.ChaseSpeedBonus)
+end
+
 -- Vitesse de lecture de Run ou de Walk pour le WalkSpeed actuel du vigile (L-048) :
--- WalkSpeed / (référence × échelle), bornée. 1 pour un autre nom.
+-- WalkSpeed / (référence × échelle), bornée (vigile de nuit : jusqu'à Night.GaitSpeedMax, L-108).
+-- 1 pour un autre nom.
 local function gaitSpeed(guard: Guard, name: string): number
 	local reference = GAIT_REFERENCE[name]
 	if reference == nil then
 		return 1
 	end
-	return math.clamp(guard.humanoid.WalkSpeed / (reference * guard.scale), GAIT_SPEED_MIN, GAIT_SPEED_MAX)
+	local maximum = if guard.kind == "Night" then math.max(Night.GaitSpeedMax, GAIT_SPEED_MIN) else GAIT_SPEED_MAX
+	return math.clamp(guard.humanoid.WalkSpeed / (reference * guard.scale), GAIT_SPEED_MIN, maximum)
 end
 
 -- Joue Run ou Walk au pas du vigile ; déjà en cours, seule sa vitesse change.
@@ -993,7 +1003,7 @@ local function playGait(guard: Guard, name: string)
 end
 
 -- Toute écriture du WalkSpeed d'un vigile en jeu passe par ici : Run et Walk, s'ils jouent,
--- prennent aussitôt le nouveau pas (jour : vitesse de la zone ; nuit : vitesse conseillée + 4 ;
+-- prennent aussitôt le nouveau pas (jour : vitesse de la zone ; nuit : Night.ChaseSpeed ;
 -- retour essoufflé ou ronde : la marche).
 local function setWalkSpeed(guard: Guard, value: number)
 	guard.humanoid.WalkSpeed = value
@@ -2636,7 +2646,7 @@ local function spawnNightGuard(zone: number, number: number, points: { Vector3 }
 		store = nil,
 		home = start,
 		zone = zone,
-		speed = Zones[zone].AdvisedSpeed + Night.ChaseSpeedBonus,
+		speed = nightChaseSpeed(zone),
 		target = nil,
 		state = "Patrol",
 		spawnedAt = now,

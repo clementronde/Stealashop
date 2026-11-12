@@ -68,6 +68,7 @@ local Contract = Shared:WaitForChild("Contract")
 local Find = require(Contract:WaitForChild("Find"))
 local UI = require(Contract:WaitForChild("UI"))
 local Format = require(Shared:WaitForChild("Format"))
+local SignPose = require(Shared:WaitForChild("SignPose"))
 
 type Kind = "Machine" | "Stand"
 
@@ -295,11 +296,6 @@ end
 
 -- Panneau --------------------------------------------------------------------------------------------
 
-local function flat(vector: Vector3): Vector3?
-	local horizontal = Vector3.new(vector.X, 0, vector.Z)
-	return if horizontal.Magnitude > 1e-3 then horizontal.Unit else nil
-end
-
 local function folder(): Folder
 	local current = signFolder
 	if current and current.Parent == Workspace then
@@ -316,16 +312,9 @@ end
 local function placeSign(template: Model, target: Attachment, plotModel: Instance): Model
 	local sign = template:Clone()
 	local board = Find.path(sign, BOARD_NAME) :: BasePart
-	local pivot = sign:GetPivot()
-	local boxCFrame, boxSize = sign:GetBoundingBox()
-	local bottom = boxCFrame.Position - Vector3.new(0, boxSize.Y / 2, 0)
-	local front = flat(board.CFrame.LookVector) or flat(pivot.LookVector) or Vector3.new(0, 0, -1)
-	local from = CFrame.lookAt(bottom, bottom + front)
-	local world = target.WorldCFrame
-	local plotLook = if plotModel:IsA("PVInstance") then flat((plotModel :: PVInstance):GetPivot().LookVector) else nil
-	local out = flat(world.LookVector) or plotLook or Vector3.new(0, 0, -1)
-	local to = CFrame.lookAt(world.Position, world.Position + out)
-	sign:PivotTo(to * from:Inverse() * pivot)
+	-- Règle de pose commune avec StoreReqSign (Shared/SignPose, L-108 point 5).
+	local plotLook = if plotModel:IsA("PVInstance") then (plotModel :: PVInstance):GetPivot().LookVector else nil
+	SignPose.place(sign, board, target, plotLook)
 	for _, descendant in sign:GetDescendants() do
 		if descendant:IsA("BasePart") then
 			descendant.Anchored = true

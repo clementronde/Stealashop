@@ -12,8 +12,10 @@
 --              (StoreIds ; une variante STORE_Z<n>_<Id>_<Variante> est reconnue, 10.3). Un nom
 --              inconnu affiche le nom de la zone (Theme), avec une ligne en Studio ;
 --   HP         « HP 35 » : PV de la vitrine (WindowHP), écrits comme sur la barre de PV BB_WindowHP
---              (Format.hp : « 2800 », « 21K », « 1.4M ») ;
---   Damage     « Damage 1 » : dégâts par coup conseillés (AdvisedDamage), écrits comme sur le HUD
+--              (Format.hp : « 2800 », « 21K », « 1.4M ») ; caché par Clément depuis L-108 (BB_WindowHP
+--              montre déjà les PV), le texte est écrit quand même ;
+--   Damage     « Strength 1 » (L-108 point 5, avant « Damage 1 ») : dégâts par coup conseillés
+--              (AdvisedDamage, la force requise), écrits comme sur le HUD
 --              (Format.short : « 600 », « 5K ») ;
 --   Speed      « Speed 16 » : vitesse conseillée (AdvisedSpeed, un WalkSpeed), Format.short.
 --
@@ -40,6 +42,8 @@
 -- StudsOffset de la copie sont touchés : ni taille, ni position d'élément, ni style de Clément.
 --
 -- API (client) :
+--   StoreInfoController.StoreNameOf(store, zone) -> string
+--       Nom anglais du magasin (ou de la zone), le même pour le panneau planté StoreReqSign.
 --   StoreInfoController.GetPanels() -> { PanelInfo }
 --       Panneaux du joueur local, triés par nom de magasin, pour un test dans Studio (barre de
 --       commande côté client) : { Store, Zone, Anchor ("InfoPoint", "Window", ou nil quand le
@@ -159,6 +163,9 @@ local function storeNameOf(store: Instance, zone: Zones.Zone): string
 	return zone.Theme
 end
 
+-- Partagé avec les panneaux plantés StoreReqSign (StoreReqSignController, L-108 point 5).
+StoreInfoController.StoreNameOf = storeNameOf
+
 -- Élément texte du panneau (contrat 2.2), ou nil (une ligne en Studio ; le ContractChecker le signale).
 local function label(gui: Instance, name: string): TextLabel?
 	local found = Find.path(gui, name)
@@ -250,7 +257,7 @@ local function build(panel: Panel, template: BillboardGui): BillboardGui
 	end
 	local damage = label(gui, "Damage")
 	if damage then
-		damage.Text = AdvicePanel.damageText(zone)
+		damage.Text = AdvicePanel.strengthText(zone) -- « Strength 1 » (L-108 point 5)
 	end
 	local speed = label(gui, "Speed")
 	if speed then

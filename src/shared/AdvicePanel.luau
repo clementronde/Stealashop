@@ -22,6 +22,7 @@
 --   AdvicePanel.template(name) -> BillboardGui?     billboard modèle de Clément, dans
 --                                                   ReplicatedStorage/Assets/UI ou un sous-dossier (2.2)
 --   AdvicePanel.damageText(zone), speedText(zone)   « Damage 80 », « Speed 28 » (Format.short)
+--   AdvicePanel.strengthText(zone)                  « Strength 80 » : AdvisedDamage, BB_StoreInfo et StoreReqSign (L-108)
 --   AdvicePanel.levelOf(value, advised) -> Level    "Green", "Orange" ou "Red"
 --   AdvicePanel.levels(player, zone) -> (Level, Level)  dégâts puis vitesse de `player` face à `zone`
 --   AdvicePanel.Colors[level] -> Color3
@@ -47,6 +48,9 @@ AdvicePanel.WalkSpeedAttribute = "WalkSpeed"
 -- Textes de L-044 (exemples de Clément sur BB_StoreInfo : « Damage 1 », « Speed 16 »).
 local DAMAGE_TEXT = "Damage %s"
 local SPEED_TEXT = "Speed %s"
+-- L-108 point 5 (Clément, 2026-11-12) : sur BB_StoreInfo et StoreReqSign, la même valeur se lit
+-- « Strength 1 » (la force requise). BB_ZoneGate garde « Damage ».
+local STRENGTH_TEXT = "Strength %s"
 
 -- V0 proposé, absent du doc : couleurs prises dans la planche de style (10.6), à valider par Clément.
 -- Vert = celui de l'exemple de Clément sur BB_StoreInfo (#91F630, le vert des prix) ; orange =
@@ -75,6 +79,10 @@ end
 
 function AdvicePanel.damageText(zone: Zones.Zone): string
 	return string.format(DAMAGE_TEXT, Format.short(zone.AdvisedDamage))
+end
+
+function AdvicePanel.strengthText(zone: Zones.Zone): string
+	return string.format(STRENGTH_TEXT, Format.short(zone.AdvisedDamage))
 end
 
 function AdvicePanel.speedText(zone: Zones.Zone): string
