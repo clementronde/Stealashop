@@ -407,8 +407,8 @@ local function onTheftEnded(thief: Player, _victim: Player, itemId: string, resu
 	end
 end
 
-local function onBatHit(hitter: Player, _target: Player, usage: BatService.Usage, payload: Payload)
-	if usage ~= "Box" then
+local function onBatHit(hitter: Player, _target: Player, usage: BatService.Usage, payload: Payload?)
+	if usage ~= "Box" or payload == nil then
 		return
 	end
 	if payload.Kind == "NPCBox" then

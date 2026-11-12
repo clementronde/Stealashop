@@ -28,9 +28,7 @@ local Bot = {
 
 	-- V0 proposés, absents du doc :
 	RegenDelay = 60, -- un objet volé au bot revient (un autre Commun de la zone 1) 60 s après le dépôt
-	-- Immunité après un vol subi (6.4) : plus courte que celle d'un joueur (120 s), le bot reste disponible
-	-- pour le tuto du joueur suivant.
-	TheftImmunity = 30,
+	-- Plus d'immunité après un vol subi (Cantin, 2026-11-12 : aucune protection des boutiques).
 	ArriveDelay = 5, -- s à 4 joueurs ou moins avant qu'il (re)vienne : pas d'aller-retour à chaque reconnexion
 	CheckInterval = 1, -- présence revue chaque seconde (et tout de suite à l'arrivée d'un joueur)
 

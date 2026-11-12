@@ -10,10 +10,10 @@
 --     PvP.StealGrabTime (1 s), portée PvP.StealMaxDistance − PROMPT_DISTANCE_MARGIN. Active
 --     seulement si la boutique est ouverte au vol (attribut StealOpen de la parcelle, posé par
 --     PvPService), mains vides (attribut Carrying du joueur, CarryService), joueur dans le volume
---     Bounds de la boutique, objet pas à l'abri (SafeSlots), boutique pas protégée (Protection) et
---     pas trop petite pour lui (anti-racket : valeur exposée du propriétaire < PvP.AntiRacketRatio ×
---     la sienne ; attribut ExposedIncome de DisplayService, sans les bonus de la boutique Robux comme
---     le serveur, sinon Income).
+--     Bounds de la boutique, objet pas à l'abri (SafeSlots), et pas d'interdiction de voler cette
+--     boutique (attribut RobCooldown_<PlotIndex> du joueur local, heure serveur de fin, posé par
+--     PvPService quand le propriétaire l'a frappé ou qu'il est mort dedans). Plus aucune protection
+--     des boutiques (Cantin, 2026-11-12).
 --     Début du maintien : StealItem(plotIndex, slotIndex) ; invite déclenchée : StealItem une seconde
 --     fois (le serveur mesure le maintien entre les deux) et animation Grab.
 --   - Panneau de repérage (6.1, point 1) : à PvP.ScoutDistance studs ou moins du volume Bounds de la
@@ -24,9 +24,8 @@
 --                  Income) : « +$12.4K/s » ;
 --       HP         PV de la porte, « HP 840 » (WindowController.GetHP, sinon l'attribut MaxHP de la
 --                  porte ; 0 si elle est cassée), écrits comme la barre BB_WindowHP (Format.hp) ;
---       Status     caché, sauf : « NEW PLAYER: PROTECTED » (bouclier débutant), « PROTECTED: 1:42 »
---                  (immunité après un vol subi), « TOO SMALL TO ROB » (anti-racket, pour lui),
---                  « OPEN: 7s » (porte cassée, fenêtre de vol ouverte).
+--       Status     caché, sauf : « ROB AGAIN IN 42s » (interdiction du joueur local sur cette
+--                  boutique), sinon « OPEN: 7s » (porte cassée, fenêtre de vol ouverte).
 --     Copie du billboard BB_ShopInfo de Clément (ReplicatedStorage/Assets/UI, mêmes 4 éléments ;
 --     nom proposé, pas encore au contrat 2.2) dès qu'il existe, sinon un panneau V0 gris.
 --   - Étiquette « SAFE » V0 au pied de chaque objet à l'abri (coffre-fort V0 de PvPService), chez
@@ -111,9 +110,8 @@ local MAX_HP_ATTRIBUTE = "MaxHP"
 local BROKEN_ATTRIBUTE = "Broken"
 local OPEN_ATTRIBUTE = "StealOpen"
 local ENDS_AT_ATTRIBUTE = "StealEndsAt"
-local PROTECTION_ATTRIBUTE = "Protection"
-local PROTECTED_UNTIL_ATTRIBUTE = "ProtectedUntil"
 local SAFE_SLOTS_ATTRIBUTE = "SafeSlots"
+local ROB_COOLDOWN_FORMAT = "RobCooldown_%d" -- sur le joueur local, posé par PvPService
 local BOT_NAME_ATTRIBUTE = "BotName" -- PlotService : boutique du bot joueur (L-105)
 local BOT_INCOME_ATTRIBUTE = "BotIncome" -- BotService : sa valeur exposée
 -- Noms des objets créés ici (côté client seulement).
@@ -129,9 +127,7 @@ local SHOP_NAME = "%s's Shop"
 local HP_TEXT = "HP %s"
 local SAFE_TEXT = "SAFE"
 local STATUS = {
-	Shield = "NEW PLAYER: PROTECTED",
-	Immune = "PROTECTED: %d:%02d",
-	Racket = "TOO SMALL TO ROB",
+	Cooldown = "ROB AGAIN IN %ds", -- V0, à valider par Clément
 	Open = "OPEN: %ds",
 }
 
@@ -196,7 +192,7 @@ local function number(instance: Instance, name: string): number?
 	return if type(value) == "number" and value == value then value else nil
 end
 
--- Valeur exposée d'un joueur ($/s de ses objets, sans bonus : celle de l'anti-racket du serveur).
+-- Valeur exposée d'un joueur ($/s de ses objets, sans bonus).
 local function exposedIncome(player: Player): number
 	return number(player, EXPOSED_INCOME_ATTRIBUTE) or number(player, INCOME_ATTRIBUTE) or 0
 end
@@ -213,7 +209,7 @@ local function isMine(plot: Model): boolean
 	return number(plot, OWNER_ATTRIBUTE) == localPlayer.UserId
 end
 
--- Propriétaire de la boutique, pour le panneau et l'anti-racket : nom affiché et valeur exposée d'un autre
+-- Propriétaire de la boutique, pour le panneau : nom affiché et valeur exposée d'un autre
 -- joueur, ou du bot joueur (L-105 : attributs BotName de PlotService et BotIncome de BotService sur la
 -- parcelle, OwnerUserId = 0) ; nil pour une boutique libre.
 local function shopOwner(plot: Model): (string?, number)
@@ -279,22 +275,29 @@ local function safeSlots(plot: Model): { [number]: boolean }
 	return slots
 end
 
--- Anti-racket (6.4) vu du joueur local : une boutique de cette valeur exposée est-elle trop petite pour lui ?
-local function tooSmall(income: number): boolean
-	return income < PvP.AntiRacketRatio * exposedIncome(localPlayer)
+-- Secondes restantes de l'interdiction du joueur local sur cette boutique (0 : aucune).
+local function cooldownLeft(plot: Model): number
+	local index = number(plot, PLOT_INDEX_ATTRIBUTE)
+	if index == nil then
+		return 0
+	end
+	local endsAt = number(localPlayer, string.format(ROB_COOLDOWN_FORMAT, index))
+	if endsAt == nil then
+		return 0
+	end
+	return math.max(0, endsAt - Workspace:GetServerTimeNow())
 end
 
 -- Peut-il voler dans cette boutique, en ce moment ? (Le serveur revérifie tout.)
 local function canStealIn(watch: PlotWatch, root: BasePart?): boolean
 	local plot = watch.Plot
-	if isMine(plot) or plot:GetAttribute(OPEN_ATTRIBUTE) ~= true or plot:GetAttribute(PROTECTION_ATTRIBUTE) ~= nil then
+	if isMine(plot) or plot:GetAttribute(OPEN_ATTRIBUTE) ~= true or cooldownLeft(plot) > 0 then
 		return false
 	end
 	if localPlayer:GetAttribute(CARRYING_ATTRIBUTE) ~= nil then
 		return false
 	end
-	local name, income = shopOwner(plot)
-	if name == nil or tooSmall(income) then
+	if shopOwner(plot) == nil then
 		return false
 	end
 	local bounds = boundsOf(watch)
@@ -535,17 +538,10 @@ local function doorHP(door: Instance): number
 	return maxHp
 end
 
-local function statusOf(plot: Model, income: number): string?
-	local protection = plot:GetAttribute(PROTECTION_ATTRIBUTE)
-	if protection == "Shield" then
-		return STATUS.Shield
-	elseif protection == "Immune" then
-		local untilTime = number(plot, PROTECTED_UNTIL_ATTRIBUTE) or 0
-		local left = math.max(0, math.ceil(untilTime - Workspace:GetServerTimeNow()))
-		return string.format(STATUS.Immune, left // 60, left % 60)
-	end
-	if tooSmall(income) then
-		return STATUS.Racket
+local function statusOf(plot: Model): string?
+	local left = cooldownLeft(plot)
+	if left > 0 then
+		return string.format(STATUS.Cooldown, math.ceil(left))
 	end
 	if plot:GetAttribute(OPEN_ATTRIBUTE) == true then
 		local endsAt = number(plot, ENDS_AT_ATTRIBUTE) or 0
@@ -572,7 +568,7 @@ local function refreshPanel(watch: PlotWatch, root: BasePart?)
 		OwnerName = string.format(SHOP_NAME, name),
 		Income = Format.income(income),
 		HP = string.format(HP_TEXT, Format.hp(doorHP(door))),
-		Status = statusOf(plot, income),
+		Status = statusOf(plot),
 	}
 	watch.Text = text
 	for _, name in FIELDS do

@@ -16,11 +16,11 @@
 --     _04, construits par DisplayService.BuildBotItem (même modèle, halo, billboard, tag DisplayItem
 --     qu'un objet de joueur), rangés dans un dossier DisplayItems de la parcelle. Aucun profil, aucune
 --     plaque, aucun revenu versé à personne. Attribut BotIncome (nombre) de la parcelle = sa valeur
---     exposée (objets tenus exclus), lue par PvPController (panneau, anti-racket) ;
+--     exposée (objets tenus exclus), lue par PvPController (panneau) ;
 --   - vol (PvPService, voir son en-tête) : Hold (un voleur prend l'objet : il quitte le présentoir),
---     Release (vol raté : il revient), TakeHeld (dépôt chez le voleur : il est à lui ; immunité de
---     Bot.TheftImmunity s, puis un autre Commun de la zone 1 revient sur ce présentoir Bot.RegenDelay s
---     plus tard) ; découverte dans l'index du voleur (IndexService.Discover) ;
+--     Release (vol raté : il revient), TakeHeld (dépôt chez le voleur : il est à lui ; un autre Commun
+--     de la zone 1 revient sur ce présentoir Bot.RegenDelay s plus tard ; plus d'immunité après un vol
+--     subi depuis la décision de Cantin du 2026-11-12) ; découverte dans l'index du voleur (IndexService.Discover) ;
 --   - avatar : modèle de Clément s'il est livré (ReplicatedStorage/Assets/<Bot.AvatarFolder>/
 --     <Bot.AvatarName>, proposé, absent du contrat), sinon l'avatar R15 par défaut de Roblox
 --     (Players:CreateHumanoidModelFromDescriptionAsync, préparé une fois), debout au point d'apparition
@@ -40,7 +40,6 @@
 --   BotService.GetExposed(plot) -> { [présentoir]: { Uid, ItemId, Income } }
 --       Objets exposés du bot (tenus exclus) ; vide si `plot` n'est pas sa boutique.
 --   BotService.GetIncome(plot) -> number       sa valeur exposée ($/s), 0 sans bot
---   BotService.GetImmunity(plot) -> number     secondes d'immunité restantes après un vol subi, 0 sinon
 --   BotService.OnTheft(listener) -> déconnexion
 --       listener(thief, itemId, stage) : "Grabbed" (le voleur l'a pris), "Returned" (vol raté, l'objet est
 --       revenu) ou "Stolen" (déposé chez le voleur, il est à lui).
@@ -73,13 +72,12 @@ type BotItem = {
 	Model: Model?, -- nil pendant qu'un voleur le tient
 }
 
--- Le bot présent : sa boutique, ses objets, son immunité, son avatar.
+-- Le bot présent : sa boutique, ses objets, son avatar.
 type State = {
 	Plot: Model,
 	Folder: Folder,
 	Items: { [number]: BotItem }, -- par présentoir
 	Held: { [string]: number }, -- uid tenu par un voleur -> présentoir
-	ImmuneUntil: number, -- os.clock()
 	Avatar: Model?,
 }
 
@@ -366,7 +364,7 @@ local function arrive()
 	local folder = Instance.new("Folder")
 	folder.Name = FOLDER_NAME
 	folder.Parent = plot
-	local current: State = { Plot = plot, Folder = folder, Items = {}, Held = {}, ImmuneUntil = 0, Avatar = nil }
+	local current: State = { Plot = plot, Folder = folder, Items = {}, Held = {}, Avatar = nil }
 	state = current
 	for slot = 1, Bot.ItemCount do
 		newItem(current, slot)
@@ -455,14 +453,6 @@ function BotService.GetIncome(plot: Model): number
 	return if current then incomeOf(current) else 0
 end
 
-function BotService.GetImmunity(plot: Model): number
-	local current = stateOf(plot)
-	if current == nil then
-		return 0
-	end
-	return math.max(0, current.ImmuneUntil - os.clock())
-end
-
 function BotService.Hold(plot: Model, uid: string, thief: Player): boolean
 	local current = stateOf(plot)
 	if current == nil or current.Held[uid] ~= nil then
@@ -515,7 +505,6 @@ function BotService.TakeHeld(plot: Model, uid: string, thief: Player): boolean
 	current.Held[uid] = nil
 	local item = current.Items[slot]
 	current.Items[slot] = nil
-	current.ImmuneUntil = os.clock() + Bot.TheftImmunity
 	publish(current)
 	-- Un autre Commun revient sur ce présentoir plus tard, si le bot est toujours là.
 	task.delay(Bot.RegenDelay, function()

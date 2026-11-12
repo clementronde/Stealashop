@@ -28,10 +28,15 @@ local PvP = {
 	-- client TheftAlertController (bannière, sirène, flèche, voleur surligné).
 	AlertSirenSound = "TheftAlert_Siren", -- V0 proposé, absent du doc : Sound de Clément dans ReplicatedStorage/Assets/Sounds (DEV-051), pas encore livré
 
-	-- 6.4 : règles anti-frustration (non négociables)
-	BeginnerShieldDuration = 10 * 60, -- 10 premières minutes de jeu cumulées : boutique inviolable, colis non frappable
-	TheftImmunityDuration = 120, -- vitrine invulnérable après un vol subi
-	AntiRacketRatio = 0.1, -- impossible de voler un joueur dont la valeur exposée est < 10 % de la sienne
+	-- 6.4 : règles anti-frustration. Décision de Cantin (2026-11-12) : plus aucune protection des
+	-- boutiques, tout le monde peut voler tout le monde (ni bouclier débutant sur la boutique, ni
+	-- immunité après un vol subi, ni anti-racket). Restent : le coffre-fort, les 3 s d'immunité aux
+	-- coups de batte (Bat.HitImmunity) et le bouclier débutant sur le colis PNJ porté.
+	BeginnerShieldDuration = 10 * 60, -- 10 premières minutes de jeu cumulées : son colis PNJ ne tombe pas à la batte
+	-- Défense par le propriétaire (Cantin, 2026-11-12) : un joueur frappé à la batte par le propriétaire
+	-- dans sa boutique (ou en fuite avec un de ses objets), ou mort dans la boutique d'un autre, est sorti
+	-- et ne peut plus voler CETTE boutique pendant ce nombre de secondes (porte et objets).
+	KickRobCooldown = 60,
 	-- Coffre-fort offert : au moins 1 objet toujours à l'abri. V0 (PvPService) : les VaultSlots objets
 	-- exposés qui rapportent le plus ne sont jamais volables (« présentoirs non volables », Partie 2,
 	-- section 2) ; ils restent sur leur présentoir et rapportent. Coffre physique (VaultSlot_01, champ

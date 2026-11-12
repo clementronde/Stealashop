@@ -23,9 +23,14 @@
 --                    zone safe (tag SafeZone), et la cible pas sous bouclier débutant (6.4 :
 --                    « les autres ne peuvent pas faire tomber son colis »,
 --                    NightCycleService.IsShielded) ;
+--          intrus (Cantin, 2026-11-12) : la cible est dans le volume Bounds de la boutique du
+--                    frappeur, qu'elle porte quelque chose ou non : partout, même en zone safe (les
+--                    boutiques sont dans le hub). Décidé par BatService.IsIntruder, point d'accroche
+--                    remplacé par PvPService (false par défaut). Seul le propriétaire est concerné :
+--                    les coups d'un autre joueur gardent les règles ci-dessus ;
 --          tiers : un objet volé à quelqu'un d'autre (PlayerItem) : ni l'un ni l'autre en zone safe.
---          Le bouclier débutant ne protège pas un voleur (usage 1 et tiers) : 6.4 ne parle que de
---          « son colis », et sinon un débutant qui vole serait intouchable ;
+--          Le bouclier débutant ne protège pas un voleur ni un intrus (usage 1, intrus et tiers) : 6.4
+--          ne parle que de « son colis », et sinon un débutant qui vole serait intouchable ;
 --      - pas frappée il y a moins de Bat.HitImmunity (3) s (6.4, pas d'acharnement).
 --      Plusieurs cibles possibles : le voleur du frappeur d'abord (usage 1), sinon la plus proche.
 --      Un seul coup réussi suffit, une seule cible par coup. Personne : coup dans le vide (rien ;
@@ -45,6 +50,8 @@
 --   - objet volé (usage 1 et tiers) : CarryService.Drop, qui fait échouer le portage
 --     (Fail(…, "Bat")) : l'objet ne tombe pas, PvPService le rend à son présentoir (6.1, 6.2) en
 --     écoutant OnCarryEnded. Pas de knockback ;
+--   - intrus : rien ne tombe (ce qu'il porte d'une autre boutique reste sur sa tête), pas de knockback ;
+--     PvPService le sort de la boutique (OnHit) ;
 --   - étourdissement de Bat.StunDuration s : vitesse à 0 (StatsService, clé STUN_KEY), attribut
 --     STUN_ATTRIBUTE du Player = "Knockback" (usage 2) ou "Stun" (sinon), retiré à la fin : son
 --     client joue Knockback puis Stunned, ou Stunned seule (BatController). Étourdi, il ne frappe
@@ -70,8 +77,13 @@
 -- API (serveur) :
 --   BatService.IsStunned(player) -> boolean     étourdi par un coup de batte
 --   BatService.OnHit(listener) -> déconnexion
---       listener(hitter, target, usage, payload) après chaque coup réussi, l'effet déjà appliqué
---       (portage de la cible fini). usage = "Defend" (usage 1), "Box" (usage 2) ou "Thief" (tiers).
+--       listener(hitter, target, usage, payload?) après chaque coup réussi, l'effet déjà appliqué
+--       (portage de la cible fini). usage = "Defend" (usage 1), "Box" (usage 2), "Intruder" (intrus
+--       dans la boutique du frappeur ; payload nil s'il ne porte rien) ou "Thief" (tiers).
+--   BatService.IsIntruder(hitter, target) -> boolean
+--       Point d'accroche (comme WindowService.CanBeHit) : `target` est-il un intrus que `hitter` peut
+--       frapper chez lui ? false par défaut ; PvPService le remplace (target dans Bounds de la boutique
+--       de hitter). Appelé à chaque coup, sans yield.
 
 local CollectionService = game:GetService("CollectionService")
 local Debris = game:GetService("Debris")
@@ -93,15 +105,15 @@ local ToolService = require(script.Parent.ToolService)
 
 type Payload = CarryTypes.Payload
 
-export type Usage = "Defend" | "Box" | "Thief"
-export type HitListener = (hitter: Player, target: Player, usage: Usage, payload: Payload) -> ()
+export type Usage = "Defend" | "Box" | "Intruder" | "Thief"
+export type HitListener = (hitter: Player, target: Player, usage: Usage, payload: Payload?) -> ()
 
 -- Une cible possible d'un coup.
 type Candidate = {
 	player: Player,
 	root: BasePart,
 	humanoid: Humanoid,
-	payload: Payload,
+	payload: Payload?, -- nil : un intrus qui ne porte rien
 	usage: Usage,
 	distance: number,
 }
@@ -267,6 +279,20 @@ local function shielded(player: Player): boolean
 	return value == true
 end
 
+-- Point d'accroche (voir l'en-tête), remplacé par PvPService.
+function BatService.IsIntruder(_hitter: Player, _target: Player): boolean
+	return false
+end
+
+local function isIntruder(hitter: Player, target: Player): boolean
+	local ok, value = pcall(BatService.IsIntruder, hitter, target)
+	if not ok then
+		warn(`[BatService] IsIntruder({hitter.Name}, {target.Name}) : {value}`)
+		return false
+	end
+	return value == true
+end
+
 function BatService.IsStunned(player: Player): boolean
 	return stunTokens[player] ~= nil
 end
@@ -308,12 +334,13 @@ local function candidateFor(
 		end
 	end
 	local payload = CarryService.GetPayload(other)
-	if payload == nil then
-		return nil, "ne porte rien"
-	end
 	local usage: Usage
-	if payload.Kind == "PlayerItem" and payload.VictimUserId == hitter.UserId then
+	if payload and payload.Kind == "PlayerItem" and payload.VictimUserId == hitter.UserId then
 		usage = "Defend" -- usage 1 : même en zone safe
+	elseif isIntruder(hitter, other) then
+		usage = "Intruder" -- dans la boutique du frappeur : même en zone safe, même mains vides
+	elseif payload == nil then
+		return nil, "ne porte rien"
 	elseif hitterSafe or isInSafeZone(root.Position) then
 		return nil, "zone safe"
 	elseif payload.Kind == "NPCBox" then
@@ -395,9 +422,9 @@ local function applyHit(hitter: Player, hitterRoot: BasePart, target: Candidate,
 		direction = flat(hitterRoot.CFrame.LookVector)
 	end
 	direction = if direction.Magnitude > 1e-3 then direction.Unit else Vector3.new(0, 0, -1)
-	local ground = groundBelow(target.root, target.humanoid)
-	if target.usage == "Box" then
-		local dropId = CarryService.Drop(player, ground)
+	local payload = target.payload
+	if target.usage == "Box" and payload then
+		local dropId = CarryService.Drop(player, groundBelow(target.root, target.humanoid))
 		if dropId then
 			batDrops[dropId] = true
 		end
@@ -405,8 +432,13 @@ local function applyHit(hitter: Player, hitterRoot: BasePart, target: Candidate,
 		knockback(target.root, direction)
 		stun(player, "Knockback")
 		Net.Server.Notify:Fire(player, Bat.Messages.BoxKnockedDown, "Alert") -- avertissement, pas un refus : sans UI_Deny (L-106 point 6)
-		log(`{hitter.Name} frappe {player.Name} : colis {target.payload.Rarity} au sol ({dropId or "?"})`)
+		log(`{hitter.Name} frappe {player.Name} : colis {payload.Rarity} au sol ({dropId or "?"})`)
+	elseif target.usage == "Intruder" then
+		-- Rien ne tombe : PvPService le sort de la boutique (OnHit).
+		stun(player, "Stun")
+		log(`{hitter.Name} frappe l'intrus {player.Name} dans sa boutique`)
 	else
+		local ground = groundBelow(target.root, target.humanoid)
 		-- Objet volé : il ne tombe pas, PvPService le rend à son présentoir (OnCarryEnded « Bat »).
 		CarryService.Drop(player, ground)
 		stun(player, "Stun")

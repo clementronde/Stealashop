@@ -125,7 +125,7 @@ end
 
 -- Défense réussie (voir l'en-tête). Sans yield. Un Lifetime illisible (profil abîmé) est signalé,
 -- pas réparé ici (comme Lifetime.Heists dans UnboxService).
-local function onBatHit(hitter: Player, target: Player, usage: BatService.Usage, _payload: Payload)
+local function onBatHit(hitter: Player, target: Player, usage: BatService.Usage, _payload: Payload?)
 	if usage ~= "Defend" then
 		return
 	end

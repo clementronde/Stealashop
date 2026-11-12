@@ -11,10 +11,10 @@
 --   1. Repérage : panneau côté client (PvPController), rien ici. Ce service publie sur la parcelle
 --      ce que le panneau ne peut pas deviner (attributs plus bas).
 --   2. Frappe : WindowService.CanBeHit est remplacé ici (l'ancienne fonction sert toujours pour les
---      autres vitrines). Un coup sur la porte d'un joueur est refusé si le joueur est protégé :
---      bouclier débutant (NightCycleService.IsShielded), immunité de PvP.TheftImmunityDuration
---      (120 s) après un vol subi, anti-racket (valeur exposée de la victime < 10 % de celle du
---      frappeur). Le frappeur reçoit un Notify (au plus un par NOTICE_INTERVAL s et par raison).
+--      autres vitrines). Décision de Cantin (2026-11-12) : plus aucune protection des boutiques, tout le
+--      monde peut voler tout le monde. Un coup sur la porte d'un joueur n'est refusé que pendant
+--      l'interdiction de PvP.KickRobCooldown s du frappeur sur CETTE boutique (« Défense par le
+--      propriétaire », plus bas) ; il reçoit alors un Notify (au plus un par NOTICE_INTERVAL s).
 --      Quand la porte casse, la victime est prévenue (« l'alarme de base », Notify Warning).
 --   3. Casse (WindowService.OnBroken, Kind « Plot ») : la boutique s'ouvre PvP.StealDuration (10 s).
 --      Le chrono HeistTimer(windowId, fin) part aux non-propriétaires proches (TIMER_RADIUS), comme
@@ -22,8 +22,8 @@
 --      appels comme GrabItem : le premier ouvre un maintien (heure serveur), le second n'est accepté
 --      qu'après PvP.StealGrabTime − GRAB_TIME_TOLERANCE s ; le maintien est revérifié 10 fois par
 --      seconde et expire GrabTime + HOLD_EXPIRY s après son début. Le serveur vérifie : boutique
---      ouverte, pas la sienne, les deux profils chargés, mains vides (un objet à la fois), aucune
---      protection (voir 2), le voleur a une boutique et de la place (DisplayService.HasRoom), il est
+--      ouverte, pas la sienne, les deux profils chargés, mains vides (un objet à la fois), pas
+--      d'interdiction sur cette boutique (voir 2), le voleur a une boutique et de la place (DisplayService.HasRoom), il est
 --      vivant, dans Bounds de la boutique et à PvP.StealMaxDistance (8 studs) au plus du présentoir,
 --      l'objet est exposé sur ce présentoir (ni colis des établis, ni coffre-fort, ni objet déjà
 --      tenu) et n'est pas l'objet à l'abri (coffre-fort V0, plus bas).
@@ -36,8 +36,8 @@
 --      Transfert (voir « Transfert sûr ») : l'objet est à lui tout de suite, Source = "PvP", avec sa
 --      zone et sa mutation (DEV-131 : même revenu, même nom, même taille chez le voleur), sur un
 --      présentoir libre (DisplayService.PlaceAuto, le plus proche de lui) sinon dans son inventaire,
---      et il rapporte aussitôt. Puis Lifetime.Steals + 1 pour le voleur, immunité de 120 s pour la
---      victime, TheftAlert(false), un Notify à chacun, et une sauvegarde des deux profils.
+--      et il rapporte aussitôt. Puis Lifetime.Steals + 1 pour le voleur, TheftAlert(false), un Notify
+--      à chacun, et une sauvegarde des deux profils (plus d'immunité pour la victime).
 --   6. Échec : coup de batte (CarryService.Fail(voleur, "Bat"), DEV-043), mort, départ ou personnage
 --      retiré du voleur, départ de la victime (Fail « VictimLeft »), anomalie (ReportAnomaly), plus de
 --      place au dépôt (« NoRoom »), ou toute autre fin de portage : l'objet revient sur son présentoir
@@ -66,10 +66,26 @@
 -- sanctionné, le portage échoue et l'objet revient. Le contrôle du dépôt reste un filet : il marche
 -- aussi en Studio sans AntiCheatStrict et quand Features.AntiCheat = false.
 --
--- Protections (6.4) : bouclier débutant ; 3 s d'immunité aux coups de batte (DEV-043) ; 120 s
--- d'immunité après un vol subi (coups et prises refusés) ; anti-racket (coups et prises refusés) ;
--- coffre-fort ; l'argent n'est jamais volé (ni Cash ni la caisse ne sont lus ou écrits ici) ;
--- transfert sûr.
+-- Protections (6.4, décision de Cantin du 2026-11-12) : plus de bouclier débutant sur la boutique, plus
+-- d'immunité après un vol subi, plus d'anti-racket. Restent : 3 s d'immunité aux coups de batte
+-- (DEV-043, BatService) ; coffre-fort ; l'argent n'est jamais volé (ni Cash ni la caisse ne sont lus ou
+-- écrits ici) ; transfert sûr. Le bouclier débutant ne protège plus que le colis PNJ porté (BatService).
+--
+-- Défense par le propriétaire (Cantin, 2026-11-12) : BatService.IsIntruder est remplacé ici : le
+-- propriétaire frappe à la batte tout autre joueur qui est dans le volume Bounds de SA boutique, même
+-- mains vides et en zone safe (mêmes portée, angle, mur et immunité de 3 s que les autres coups). Sur un
+-- coup du propriétaire (BatService.OnHit, usage « Intruder », ou « Defend » : son voleur avec son objet),
+-- la cible :
+--   - est sortie devant la porte (PlotService.PutOutside) si elle est dans Bounds ; l'objet qu'elle lui
+--     volait est déjà revenu sur son présentoir (Fail « Bat ») ;
+--   - ne peut plus voler cette boutique-là pendant PvP.KickRobCooldown (60) s : coups sur sa porte et
+--     StealItem refusés (Notify au plus un par NOTICE_INTERVAL s), et ressortie 10 fois par seconde si
+--     elle revient dans Bounds, même porte cassée. Les autres boutiques et les magasins PNJ restent
+--     ouverts pour elle.
+-- Un joueur mort dans le volume Bounds d'une boutique qui n'est pas la sienne (joueur ou bot) prend la
+-- même interdiction sur cette boutique (pièges de l'arbre à venir compris). Interdictions oubliées au
+-- départ du joueur, et celles d'une boutique quand son propriétaire part (OnPlotReleased).
+-- require protégé de BatService (bancs sans lui) : sans lui, pas de défense par le propriétaire.
 -- Coffre-fort V0 (6.4 « au moins 1 objet est toujours à l'abri » ; Partie 2, section 2 : « présentoirs
 -- non volables, 1 offert dès le MVP ») : les PvP.VaultSlots (1) objets exposés qui rapportent le
 -- plus ne sont jamais volables (à revenu égal, le présentoir de plus petit numéro). Ils restent sur
@@ -81,15 +97,17 @@
 -- qu'il porte :
 --   - 10 fois par seconde : un non-propriétaire dans Bounds d'une boutique dont la porte n'est pas
 --     cassée et dont la fenêtre de vol est fermée (rien n'y entre sans casser la porte ; boutique
---     libre comprise, où il serait enfermé). Un joueur qui part (profil libéré) n'est pas déplacé ;
+--     libre comprise, où il serait enfermé), et, porte cassée ou non, un joueur interdit de voler
+--     cette boutique (voir plus haut). Un joueur qui part (profil libéré) n'est pas déplacé ;
 --   - à la reconstruction de la porte (WindowService.OnRebuilt) : tout non-propriétaire encore
 --     dedans, même un voleur chargé (sinon il resterait enfermé) ; la fenêtre de vol se ferme.
 -- Le passage du propriétaire reste côté client (PlotDoorController).
 --
 -- Posé par ce service sur la parcelle, lu par PvPController (aucun nom du contrat) :
 --   StealOpen (booléen, nil fermé), StealEndsAt (heure serveur de la fin des 10 s) ;
---   Protection ("Shield", "Immune" ou nil) et ProtectedUntil (heure serveur, immunité seulement) ;
 --   SafeSlots (texte « 3 » ou « 3,7 » : présentoirs à l'abri, nil sans objet exposé).
+-- Posé sur le Player interdit de voler une boutique (lu par PvPController, son panneau) :
+--   RobCooldown_<PlotIndex> (heure serveur de la fin de l'interdiction), retiré à la fin.
 --
 -- Remote StealItem(plotIndex, slotIndex) (Net/Definitions, ajout de la vague 10 au tableau 9.4).
 --
@@ -98,8 +116,8 @@
 --       { Victim, ItemUid, ItemId, SlotIndex } du vol en cours (objet porté), nil sinon.
 --   PvPService.IsThiefOf(player, owner) -> boolean
 --       true si `player` porte un objet volé à `owner` (SwingBat, usage 1 de 6.2, DEV-043).
---   PvPService.GetProtection(player) -> (string?, number?)
---       "Shield" ou "Immune" (et secondes restantes d'immunité) si sa boutique est protégée.
+--   PvPService.GetRobCooldown(player, plot) -> number
+--       Secondes restantes de l'interdiction de `player` sur la boutique `plot`, 0 sans interdiction.
 --   PvPService.GetVaultSlots(owner) -> number
 --       Point d'accroche : nombre d'objets exposés à l'abri chez `owner` (coffre-fort V0) ; PvP.VaultSlots
 --       (1) par défaut, remplacé par SkillTreeService (compétence Safe, vague 27 : 1 + Effects[niveau]).
@@ -115,11 +133,9 @@
 -- Bot joueur (L-085 point 4, L-105 point 1, L-108 point 3 ; BotService, Config/Bot) : sa boutique (attribut
 -- BotName de la parcelle, PlotService) se braque comme celle d'un joueur, par le même chemin (HitWindow,
 -- casse, StealItem en deux appels, fuite, dépôt chez soi, échec). Ici, une victime nil = le bot : ses objets
--- exposés, son immunité et sa valeur exposée viennent de BotService (Hold, Release, IsHeld, TakeHeld). Ce qui
--- change pour lui :
---   - protections : ni bouclier débutant ni coffre-fort de l'arbre (PvP.VaultSlots objet à l'abri, comme un
---     joueur sans compétence), immunité de Bot.TheftImmunity s après un vol subi, anti-racket inchangé
---     (valeur exposée du bot : un joueur trop riche ne vient pas le piller) ;
+-- exposés viennent de BotService (Hold, Release, IsHeld, TakeHeld). Ce qui change pour lui :
+--   - aucune protection (comme un joueur depuis le 2026-11-12) et pas de coffre-fort de l'arbre
+--     (PvP.VaultSlots objet à l'abri, comme un joueur sans compétence) ;
 --   - le voleur reçoit l'objet au dépôt (Source = "PvP", zone du catalogue, sans mutation) et sa sauvegarde
 --     part tout de suite ; le bot n'a pas de profil, BotService fait revenir un objet plus tard ;
 --   - jamais compté comme un joueur : ni Notify, ni TheftAlert, ni alarme de base vers lui, ni
@@ -148,13 +164,11 @@ local AntiCheatService = require(script.Parent.AntiCheatService)
 local CarryService = require(script.Parent.CarryService)
 local DataService = require(script.Parent.DataService)
 local DisplayService = require(script.Parent.DisplayService)
-local NightCycleService = require(script.Parent.NightCycleService)
 local PlotService = require(script.Parent.PlotService)
 local WindowService = require(script.Parent.WindowService)
 
 type PlayerItemPayload = CarryTypes.PlayerItemPayload
 
--- Une protection (6.4) s'écrit en texte : "Shield", "Immune" ou "Racket" (voir protectionOf).
 export type TheftResult = "Stolen" | "Returned"
 
 export type TheftInfo = {
@@ -211,9 +225,10 @@ local SLOT_FORMAT = "DisplaySlot_%02d"
 -- Attributs posés par ce service sur la parcelle (mêmes noms dans PvPController).
 local OPEN_ATTRIBUTE = "StealOpen"
 local ENDS_AT_ATTRIBUTE = "StealEndsAt"
-local PROTECTION_ATTRIBUTE = "Protection"
-local PROTECTED_UNTIL_ATTRIBUTE = "ProtectedUntil"
 local SAFE_SLOTS_ATTRIBUTE = "SafeSlots"
+-- Posé sur le Player interdit de voler une boutique (même nom dans PvPController).
+local ROB_COOLDOWN_FORMAT = "RobCooldown_%d"
+local PLOT_INDEX_ATTRIBUTE = "PlotIndex" -- numéro de la parcelle, posé par PlotService
 
 -- V0 proposé, absent du doc : services, joueurs et maintiens vérifiés 10 fois par seconde (comme
 -- StoreHeistService) ; attributs de la parcelle publiés toutes les PUBLISH_EVERY images.
@@ -265,8 +280,6 @@ end
 type BotApi = {
 	IsBotPlot: (plot: Model) -> boolean,
 	GetExposed: (plot: Model) -> { [number]: DisplayService.ExposedItem },
-	GetIncome: (plot: Model) -> number,
-	GetImmunity: (plot: Model) -> number,
 	Hold: (plot: Model, uid: string, thief: Player) -> boolean,
 	Release: (plot: Model, uid: string, thief: Player) -> boolean,
 	IsHeld: (plot: Model, uid: string) -> boolean,
@@ -289,6 +302,21 @@ local function isBotPlot(plot: Model): boolean
 	return api.IsBotPlot(plot)
 end
 
+-- Défense par le propriétaire (voir l'en-tête) : ce que ce service utilise de BatService. require protégé :
+-- sans BatService (anciens bancs), pas de défense par le propriétaire.
+type BatApi = {
+	IsIntruder: (hitter: Player, target: Player) -> boolean,
+	OnHit: (listener: (hitter: Player, target: Player, usage: string, payload: any) -> ()) -> () -> (),
+}
+local batModule = script.Parent:FindFirstChild("BatService")
+local batLoaded: boolean, batResult: any = false, nil
+if batModule and batModule:IsA("ModuleScript") then
+	batLoaded, batResult = pcall(require, batModule)
+end
+local BatHooks: BatApi? = if batLoaded and type(batResult) == "table" and type(batResult.OnHit) == "function"
+	then batResult :: any
+	else nil
+
 -- Messages lus par les joueurs (Notify), en anglais (L-036) ; nombres par Shared/Format.
 local MESSAGES: { [string]: string } = {
 	DoorSmashed = "%s smashed your shop door! Defend your shop!",
@@ -296,12 +324,14 @@ local MESSAGES: { [string]: string } = {
 	Grabbed = "You grabbed the %s: run back to your shop!",
 	Stolen = "You stole the %s: %s!",
 	StolenToInventory = "You stole the %s: it went to your inventory (your stands are full).",
-	Robbed = "%s stole your %s. Your shop is protected for %ds.",
+	Robbed = "%s stole your %s!",
 	Returned = "Your %s is back on its stand!",
 	Lost = "The %s went back to its owner.",
-	Shield = "This shop is protected: its owner just started playing.",
-	Immune = "This shop was just robbed: protected for %ds.",
-	Racket = "This shop is too small for you to rob.",
+	-- Défense par le propriétaire (V0, à valider par Clément) :
+	KickedOut = "Kicked out! You can rob this shop again in %ds.", -- à l'intrus frappé par le propriétaire
+	Eliminated = "Eliminated! You can rob this shop again in %ds.", -- au joueur mort dans la boutique d'un autre
+	RobCooldown = "You can rob this shop again in %ds.", -- refus pendant l'interdiction, et voleur frappé dehors
+	IntruderOut = "%s was kicked out of your shop!", -- au propriétaire
 	Safe = "This item is in the safe: nobody can steal it.",
 	Full = "Your shop is full: make room before stealing.",
 	NoShop = "You need a shop to steal.",
@@ -317,7 +347,10 @@ PvPService.Priority = PRIORITY
 local shops: { [Model]: Shop } = {}
 local holds: { [Player]: Hold } = {}
 local thefts: { [Player]: Theft } = {}
-local immuneUntil: { [Player]: number } = {} -- os.clock() de la fin de l'immunité après un vol subi
+-- Interdictions de voler une boutique (voir l'en-tête) : heure serveur de fin, par joueur et par boutique.
+local robBans: { [Player]: { [Model]: number } } = {}
+-- Dernier personnage vu mort, pour ne compter chaque mort qu'une fois. Clés faibles.
+local deathSeen: { [Player]: Model } = setmetatable({}, { __mode = "k" }) :: any
 -- Joueurs dont PlayerRemoving est passé. Clés faibles : l'entrée part avec le Player.
 local leaving: { [Player]: boolean } = setmetatable({}, { __mode = "k" }) :: any
 local lastNotice: { [Player]: { [string]: number } } = {}
@@ -468,49 +501,62 @@ local function plotOfWindow(windowId: string): Model?
 	return nil
 end
 
--- Protections (6.4) ------------------------------------------------------------------------------
+-- Interdiction de voler une boutique (défense par le propriétaire, voir l'en-tête) -----------------
 
--- Pourquoi la boutique de `victim` ne peut pas être frappée ni volée par `attacker` en ce moment :
--- "Shield" (bouclier débutant), "Immune" (vol subi il y a moins de 120 s, avec les secondes
--- restantes) ou "Racket" (valeur exposée < 10 % de celle d'`attacker` ; pas vérifié sans `attacker`).
-local function protectionOf(attacker: Player?, victim: Player): (string?, number?)
-	local ok, shielded = pcall(NightCycleService.IsShielded, victim)
-	if not ok or shielded == true then
-		return "Shield", nil -- une erreur compte comme protégé (bénéfice du doute, comme les vigiles)
+local function cooldownAttribute(plot: Model): string?
+	local index = plot:GetAttribute(PLOT_INDEX_ATTRIBUTE)
+	if type(index) ~= "number" then
+		return nil
 	end
-	local untilClock = immuneUntil[victim]
-	local now = os.clock()
-	if untilClock and untilClock > now then
-		return "Immune", untilClock - now
-	end
-	if attacker then
-		local theirs = DisplayService.GetIncome(victim)
-		local mine = DisplayService.GetIncome(attacker)
-		if theirs < PvP.AntiRacketRatio * mine then
-			return "Racket", nil
-		end
-	end
-	return nil, nil
+	return string.format(ROB_COOLDOWN_FORMAT, index)
 end
 
--- Protection de la boutique `plot` contre `attacker` : celle du joueur `victim`, ou celle du bot (victim
--- nil, voir l'en-tête) : immunité après un vol subi, puis anti-racket sur sa valeur exposée.
-local function plotProtectionOf(attacker: Player?, plot: Model, victim: Player?): (string?, number?)
-	if victim then
-		return protectionOf(attacker, victim)
+local function clearBan(player: Player, plot: Model)
+	local byPlot = robBans[player]
+	if byPlot == nil or byPlot[plot] == nil then
+		return
 	end
-	local api = Bot
-	if api == nil then
-		return nil, nil
+	byPlot[plot] = nil
+	if next(byPlot) == nil then
+		robBans[player] = nil
 	end
-	local left = api.GetImmunity(plot)
-	if left > 0 then
-		return "Immune", left
+	local name = cooldownAttribute(plot)
+	if name and player.Parent == Players then
+		player:SetAttribute(name, nil)
 	end
-	if attacker and api.GetIncome(plot) < PvP.AntiRacketRatio * DisplayService.GetIncome(attacker) then
-		return "Racket", nil
+end
+
+-- Secondes restantes de l'interdiction de `player` sur `plot` (0 : aucune ; une interdiction finie est
+-- oubliée ici).
+local function banLeft(player: Player, plot: Model): number
+	local byPlot = robBans[player]
+	local endsAt = if byPlot then byPlot[plot] else nil
+	if endsAt == nil then
+		return 0
 	end
-	return nil, nil
+	local left = endsAt - Workspace:GetServerTimeNow()
+	if left <= 0 then
+		clearBan(player, plot)
+		return 0
+	end
+	return left
+end
+
+-- `player` ne peut plus voler `plot` pendant PvP.KickRobCooldown s (une interdiction en cours repart à zéro).
+local function ban(player: Player, plot: Model, why: string)
+	local endsAt = Workspace:GetServerTimeNow() + PvP.KickRobCooldown
+	local byPlot = robBans[player] or {}
+	robBans[player] = byPlot
+	byPlot[plot] = endsAt
+	local name = cooldownAttribute(plot)
+	if name then
+		player:SetAttribute(name, endsAt)
+	end
+	log(`{player.Name} ne peut plus voler {plot.Name} pendant {PvP.KickRobCooldown} s ({why})`)
+end
+
+local function cooldownMessage(format: string, left: number): string
+	return string.format(format, math.max(1, math.ceil(left)))
 end
 
 -- Objets exposés de la boutique `plot` : ceux de `victim`, ou ceux du bot (victim nil).
@@ -532,15 +578,6 @@ local function releaseItem(plot: Model, victim: Player?, uid: string, thief: Pla
 	if api then
 		api.Release(plot, uid, thief)
 	end
-end
-
-local function protectionMessage(refusal: string, left: number?): string
-	if refusal == "Immune" then
-		return string.format(MESSAGES.Immune, math.ceil(left or PvP.TheftImmunityDuration))
-	elseif refusal == "Shield" then
-		return MESSAGES.Shield
-	end
-	return MESSAGES.Racket
 end
 
 -- Nombre de présentoirs à l'abri chez `owner` : PvPService.GetVaultSlots (arbre de compétences, Safe),
@@ -597,9 +634,9 @@ local function canBeHit(player: Player, windowId: string): boolean
 		elseif not isBotPlot(plot) then
 			return false -- boutique libre
 		end
-		local refusal, left = plotProtectionOf(player, plot, victim)
-		if refusal then
-			notice(player, refusal, protectionMessage(refusal, left))
+		local left = banLeft(player, plot)
+		if left > 0 then
+			notice(player, "RobCooldown", cooldownMessage(MESSAGES.RobCooldown, left))
 			return false
 		end
 	end
@@ -686,9 +723,25 @@ end
 
 -- Sortie devant la porte ----------------------------------------------------------------------------
 
--- Sort de la boutique `plot` les non-propriétaires qui sont dans son volume Bounds. Renvoie les
--- joueurs sortis.
-local function ejectFrom(plot: Model, owner: Player?): { Player }
+-- Sort `player` de la boutique `plot` s'il est dans son volume Bounds. true s'il a été sorti.
+local function putOut(player: Player, plot: Model, bounds: BasePart): boolean
+	local root = rootOf(player)
+	if root == nil or not inside(bounds, root.Position) or not PlotService.PutOutside(player, plot) then
+		return false
+	end
+	local theft = thefts[player]
+	local outside = rootOf(player)
+	if theft and outside then
+		-- Déplacement fait par le serveur : le contrôle du dépôt repart d'ici.
+		theft.From = outside.Position
+		theft.StartedAt = os.clock()
+	end
+	return true
+end
+
+-- Sort de la boutique `plot` les non-propriétaires qui sont dans son volume Bounds (seulement ceux
+-- qu'accepte `only`, s'il est donné). Renvoie les joueurs sortis.
+local function ejectFrom(plot: Model, owner: Player?, only: ((Player) -> boolean)?): { Player }
 	local moved: { Player } = {}
 	local bounds = refsFor(plot).Bounds
 	if bounds == nil then
@@ -696,17 +749,9 @@ local function ejectFrom(plot: Model, owner: Player?): { Player }
 	end
 	for _, player in Players:GetPlayers() do
 		-- Un joueur qui part (profil déjà libéré) reste où il est : c'est souvent l'ancien propriétaire.
-		if player ~= owner and present(player) and DataService.Get(player) ~= nil then
-			local root = rootOf(player)
-			if root and inside(bounds, root.Position) and PlotService.PutOutside(player, plot) then
+		if player ~= owner and present(player) and DataService.Get(player) ~= nil and (only == nil or only(player)) then
+			if putOut(player, plot, bounds) then
 				table.insert(moved, player)
-				local theft = thefts[player]
-				local outside = rootOf(player)
-				if theft and outside then
-					-- Déplacement fait par le serveur : le contrôle du dépôt repart d'ici.
-					theft.From = outside.Position
-					theft.StartedAt = os.clock()
-				end
 			end
 		end
 	end
@@ -717,16 +762,22 @@ local function ejectStep()
 	for _, plot in PlotService.GetPlots() do
 		-- Parcelle libre comprise : ses murs et sa porte sont solides pour tous, on y serait enfermé.
 		local owner = PlotService.GetOwner(plot)
-		if shops[plot] ~= nil then
+		local windowId = WindowService.GetWindowId(plot)
+		if shops[plot] == nil and windowId ~= nil and not WindowService.IsBroken(windowId) then
+			for _, player in ejectFrom(plot, owner) do
+				notice(player, "NotYourShop", MESSAGES.NotYourShop)
+				log(`{player.Name} sorti de {plot.Name} : porte intacte, ce n'est pas sa boutique`)
+			end
 			continue
 		end
-		local windowId = WindowService.GetWindowId(plot)
-		if windowId == nil or WindowService.IsBroken(windowId) then
-			continue -- porte cassée : on entre librement jusqu'à sa reconstruction
+		-- Porte cassée ou boutique ouverte au vol : on entre librement jusqu'à la reconstruction, sauf un
+		-- joueur interdit de voler cette boutique (défense par le propriétaire).
+		local function banned(player: Player): boolean
+			return banLeft(player, plot) > 0
 		end
-		for _, player in ejectFrom(plot, owner) do
-			notice(player, "NotYourShop", MESSAGES.NotYourShop)
-			log(`{player.Name} sorti de {plot.Name} : porte intacte, ce n'est pas sa boutique`)
+		for _, player in ejectFrom(plot, owner, banned) do
+			notice(player, "RobCooldown", cooldownMessage(MESSAGES.RobCooldown, banLeft(player, plot)))
+			log(`{player.Name} ressorti de {plot.Name} : interdit de la voler encore {math.ceil(banLeft(player, plot))} s`)
 		end
 	end
 end
@@ -852,7 +903,7 @@ local function deposit(theft: Theft, root: BasePart)
 	local slot = DisplayService.PlaceAuto(thief, theft.Uid, root.Position)
 	CarryService.Consume(thief, "Deposited")
 
-	-- Un vol au bot ne compte pas pour les classements, et son immunité est chez BotService (en-tête).
+	-- Un vol au bot ne compte pas pour les classements (en-tête).
 	if victim then
 		local lifetime = (thiefData :: any).Lifetime
 		if type(lifetime) == "table" and type(lifetime.Steals) == "number" then
@@ -860,7 +911,6 @@ local function deposit(theft: Theft, root: BasePart)
 		else
 			warn(`[PvPService] {thief.Name} : Lifetime absent du profil, vol non compté`)
 		end
-		immuneUntil[victim] = os.clock() + PvP.TheftImmunityDuration
 		Net.Server.TheftAlert:Fire(victim, false)
 	end
 	local name = itemName(theft.ItemId)
@@ -872,13 +922,13 @@ local function deposit(theft: Theft, root: BasePart)
 	-- Les deux sauvegardes tout de suite (la victime d'abord), plutôt qu'à la sauvegarde automatique :
 	-- seul un arrêt brutal du serveur pendant ces deux écritures pourrait encore créer un écart.
 	if victim then
-		notify(victim, string.format(MESSAGES.Robbed, thief.DisplayName, name, PvP.TheftImmunityDuration), "Alert")
+		notify(victim, string.format(MESSAGES.Robbed, thief.DisplayName, name), "Alert")
 		DataService.Save(victim)
 	end
 	DataService.Save(thief)
 	local where = if slot then `présentoir {slot}` else "inventaire"
 	if victim then
-		log(`{thief.Name} a volé {theft.ItemId} ({theft.Uid}) à {victim.Name} : {where}, immunité de {PvP.TheftImmunityDuration} s pour la victime`)
+		log(`{thief.Name} a volé {theft.ItemId} ({theft.Uid}) à {victim.Name} : {where}`)
 	else
 		log(`{thief.Name} a volé {theft.ItemId} ({theft.Uid}) au bot : {where}`)
 	end
@@ -911,9 +961,11 @@ local function stealRefusal(player: Player, plot: Model, slot: number): (string?
 	if thefts[player] or isCarrying(player) then
 		return "mains pleines", nil, nil
 	end
-	local refusal, left = plotProtectionOf(player, plot, victim)
-	if refusal then
-		return `boutique protégée ({refusal})`, refusal, protectionMessage(refusal, left)
+	local left = banLeft(player, plot)
+	if left > 0 then
+		return `interdit de voler cette boutique encore {math.ceil(left)} s (sorti par le propriétaire ou mort dedans)`,
+			"RobCooldown",
+			cooldownMessage(MESSAGES.RobCooldown, left)
 	end
 	if PlotService.GetPlot(player) == nil then
 		return "pas de boutique", "NoShop", MESSAGES.NoShop
@@ -1072,16 +1124,8 @@ end
 
 local function publish(plot: Model)
 	local owner = PlotService.GetOwner(plot) -- nil : boutique libre, ou celle du bot
-	local protection: string? = nil
-	local protectedUntil: number? = nil
 	local safeText: string? = nil
 	if owner or isBotPlot(plot) then
-		local refusal, left = plotProtectionOf(nil, plot, owner)
-		protection = refusal
-		if refusal == "Immune" and left then
-			-- Arrondi à la seconde : l'attribut ne change pas à chaque publication.
-			protectedUntil = math.ceil(Workspace:GetServerTimeNow() + left)
-		end
 		local slots: { number } = {}
 		for slot in safeSlotsOf(owner, exposedOf(plot, owner)) do
 			table.insert(slots, slot)
@@ -1095,9 +1139,110 @@ local function publish(plot: Model)
 			safeText = table.concat(parts, ",")
 		end
 	end
-	setIfChanged(plot, PROTECTION_ATTRIBUTE, protection)
-	setIfChanged(plot, PROTECTED_UNTIL_ATTRIBUTE, protectedUntil)
 	setIfChanged(plot, SAFE_SLOTS_ATTRIBUTE, safeText)
+end
+
+-- Défense par le propriétaire ------------------------------------------------------------------------------------
+
+-- Remplace BatService.IsIntruder : `target` est-il dans le volume Bounds de la boutique de `hitter` ?
+local function isIntruder(hitter: Player, target: Player): boolean
+	if hitter == target then
+		return false
+	end
+	local plot = PlotService.GetPlot(hitter)
+	local bounds = if plot then refsFor(plot).Bounds else nil
+	local root = rootOf(target)
+	return bounds ~= nil and root ~= nil and inside(bounds, root.Position)
+end
+
+-- Coup de batte réussi (BatService.OnHit, l'effet déjà appliqué : l'objet volé au frappeur est déjà revenu).
+-- Seuls les coups du propriétaire sur un intrus (« Intruder ») ou sur son voleur (« Defend ») comptent ici.
+local function onBatHit(hitter: Player, target: Player, usage: string, _payload: any)
+	if usage ~= "Intruder" and usage ~= "Defend" then
+		return
+	end
+	local plot = PlotService.GetPlot(hitter)
+	if plot == nil or not present(target) then
+		return
+	end
+	ban(target, plot, if usage == "Intruder" then `frappé dans la boutique par {hitter.Name}` else `frappé par {hitter.Name} avec son objet`)
+	local bounds = refsFor(plot).Bounds
+	if bounds and putOut(target, plot, bounds) then
+		notify(target, cooldownMessage(MESSAGES.KickedOut, PvP.KickRobCooldown), "Alert")
+		notify(hitter, string.format(MESSAGES.IntruderOut, target.DisplayName), "Success")
+		log(`{target.Name} sorti de {plot.Name} par son propriétaire {hitter.Name}`)
+	else
+		notify(target, cooldownMessage(MESSAGES.RobCooldown, PvP.KickRobCooldown), "Alert")
+	end
+end
+
+-- Mort dans la boutique d'un autre (joueur ou bot) : même interdiction sur cette boutique. Chaque mort n'est
+-- comptée qu'une fois (dernier personnage vu mort).
+local function onDeath(player: Player, character: Model)
+	if deathSeen[player] == character or player.Character ~= character then
+		return
+	end
+	local root = character:FindFirstChild("HumanoidRootPart")
+	if root == nil or not root:IsA("BasePart") then
+		return
+	end
+	deathSeen[player] = character
+	local position = (root :: BasePart).Position
+	local mine = PlotService.GetPlot(player)
+	for _, plot in PlotService.GetPlots() do
+		if plot == mine or (PlotService.GetOwner(plot) == nil and not isBotPlot(plot)) then
+			continue
+		end
+		local bounds = refsFor(plot).Bounds
+		if bounds and inside(bounds, position) then
+			ban(player, plot, "mort dans la boutique")
+			notify(player, cooldownMessage(MESSAGES.Eliminated, PvP.KickRobCooldown), "Alert")
+			return
+		end
+	end
+end
+
+-- Humanoid.Died de chaque personnage (le Humanoid est déjà là à CharacterAdded pour un personnage R15).
+local function watchCharacter(player: Player, character: Model)
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	if humanoid then
+		humanoid.Died:Connect(function()
+			onDeath(player, character)
+		end)
+	end
+end
+
+local function watchPlayer(player: Player)
+	player.CharacterAdded:Connect(function(character: Model)
+		watchCharacter(player, character)
+	end)
+	local character = player.Character
+	if character then
+		watchCharacter(player, character)
+	end
+end
+
+-- Filet, 10 fois par seconde : un Humanoid arrivé après CharacterAdded, un Died manqué.
+local function deathStep()
+	for _, player in Players:GetPlayers() do
+		local character = player.Character
+		if character == nil or deathSeen[player] == character then
+			continue
+		end
+		local humanoid = character:FindFirstChildOfClass("Humanoid")
+		if humanoid and humanoid.Health <= 0 then
+			onDeath(player, character)
+		end
+	end
+end
+
+-- Interdictions finies : attribut retiré.
+local function banStep()
+	for player, byPlot in table.clone(robBans) do
+		for plot in table.clone(byPlot) do
+			banLeft(player, plot)
+		end
+	end
 end
 
 -- Tick -----------------------------------------------------------------------------------------------------------
@@ -1140,6 +1285,7 @@ local function step()
 			updateViewers(shop)
 		end
 	end
+	deathStep()
 	ejectStep()
 	publishCount += 1
 	if publishCount >= PUBLISH_EVERY then
@@ -1147,6 +1293,7 @@ local function step()
 		for _, plot in PlotService.GetPlots() do
 			publish(plot)
 		end
+		banStep()
 	end
 end
 
@@ -1199,9 +1346,18 @@ local function onPlayerRemoving(player: Player)
 			closeShop(shop, "départ de la victime")
 		end
 	end
-	immuneUntil[player] = nil
+	robBans[player] = nil
 	lastNotice[player] = nil
 	lastRefusal[player] = nil
+end
+
+-- Le propriétaire part : les interdictions sur sa boutique tombent (elle servira à un autre joueur).
+local function onPlotReleased(_owner: Player, plot: Model)
+	for player, byPlot in table.clone(robBans) do
+		if byPlot[plot] ~= nil then
+			clearBan(player, plot)
+		end
+	end
 end
 
 -- API --------------------------------------------------------------------------------------------------------------
@@ -1220,8 +1376,8 @@ function PvPService.IsThiefOf(player: Player, owner: Player): boolean
 	return theft ~= nil and theft.Victim == owner
 end
 
-function PvPService.GetProtection(player: Player): (string?, number?)
-	return protectionOf(nil, player)
+function PvPService.GetRobCooldown(player: Player, plot: Model): number
+	return banLeft(player, plot)
 end
 
 -- Point d'accroche du coffre-fort (voir l'en-tête) : PvP.VaultSlots par défaut ; SkillTreeService le
@@ -1247,7 +1403,17 @@ function PvPService.Init()
 	WindowService.OnBroken(onBroken)
 	WindowService.OnRebuilt(onRebuilt)
 	CarryService.OnCarryEnded(onCarryEnded)
+	PlotService.OnPlotReleased(onPlotReleased)
+	local bat = BatHooks
+	if bat then
+		bat.IsIntruder = isIntruder
+		bat.OnHit(onBatHit)
+	end
 	Net.Server.StealItem:Connect(onStealItem)
+	Players.PlayerAdded:Connect(watchPlayer)
+	for _, player in Players:GetPlayers() do
+		watchPlayer(player)
+	end
 	Players.PlayerRemoving:Connect(onPlayerRemoving)
 	log(`{#PlotService.GetPlots()} boutique(s) suivie(s) pour le vol entre joueurs`)
 end

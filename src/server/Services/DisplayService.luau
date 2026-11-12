@@ -16,8 +16,8 @@
 --     sommet. Tout est créé par le serveur dans la parcelle : visible par tous les joueurs ;
 --   - revenus : chaque objet exposé rapporte Formulas.ItemIncome(zone, rareté) $/s (7.1), zone
 --     et rareté lues dans Config.Items, × le multiplicateur de sa mutation (DEV-131, champ Mutation
---     de Items[uid] : taille × effet, Config/Mutations). Le total des objets (la « valeur exposée », celle de
---     l'anti-racket, 6.4) est multiplié par le M global du joueur (7.1 : (1 + GetIncomeBonus) ×
+--     de Items[uid] : taille × effet, Config/Mutations). Le total des objets (la « valeur exposée », 6.4)
+--     est multiplié par le M global du joueur (7.1 : (1 + GetIncomeBonus) ×
 --     GetIncomeMultiplier, plus bas ; 1 au MVP). Ramassage par plaque (L-082 point 4, L-091 points 4
 --     et 5, à la place de la caisse unique CashPad, retirée du contrat) : l'argent de chaque objet
 --     s'accumule au temps exact sur la plaque de son présentoir, `CollectPad_xx` (même numéro que
@@ -47,7 +47,7 @@
 --   sur le Player :
 --     Income (number)                $/s que les plaques reçoivent : total des objets exposés × M global
 --     ExposedIncome (number)         $/s total des objets exposés, sans bonus (valeur exposée :
---                                    anti-racket et panneau des boutiques, PvPController)
+--                                    panneau des boutiques, PvPController)
 --     CashCollected (number)         argent encaissé depuis l'arrivée sur le serveur : plaques,
 --                                    encaissement automatique, gains hors ligne (il ne fait que monter :
 --                                    chaque hausse = un encaissement)
