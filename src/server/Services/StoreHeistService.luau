@@ -245,6 +245,10 @@
 --       magasin, ou un Secret) ; Rarity seule = un objet de cette rareté est tiré dans la zone
 --       (Items.Pick : jamais un objet TutorialOnly, sans le repli de la mise en rayon).
 --       Un remplacement invalide est ignoré, avec un avertissement. nil retire l'accroche.
+--   StoreHeistService.SetLuckOverride(fn?)  (vague 31, a107 ; Features.ShelfOpen)
+--       Accroche du tuto : fn(player, drawn) -> number?, appelée au lancement de chaque ouverture sur
+--       le rayon, sans yield ; un nombre fini ≥ 1 remplace la chance tirée ; nil ou une valeur invalide
+--       garde le tirage de LuckTable. nil retire l'accroche.
 --   StoreHeistService.GetStoreId(model) -> string? et GetStoreModel(storeId) -> Model?
 --       StoreId = l'id de vitrine de WindowService (le nom du modèle, « STORE_Z1_Superette »).
 --
@@ -320,6 +324,8 @@ export type OverrideResult = {
 }
 
 export type ContentOverride = (player: Player, drawn: OverrideInfo) -> OverrideResult?
+-- Vague 31 (a107) : chance imposée par le tuto au lancement d'une ouverture (nil = tirage normal).
+export type LuckOverride = (player: Player, drawn: OverrideInfo) -> number?
 
 -- Ce que ce service utilise de CarryService (a11, DEV-017). Typé ici pour ne pas dépendre
 -- des noms de types de son module.
@@ -585,6 +591,7 @@ local lastCallNotice: { [Player]: number } = {} -- dernier Notify « les témoin
 local witnessApi: WitnessApi? = nil -- WitnessService, s'il existe (Init)
 local grabbedListeners: { GrabbedListener } = {}
 local contentOverride: ContentOverride? = nil
+local luckOverride: LuckOverride? = nil -- accroche du tuto (a107), voir SetLuckOverride
 local lastRefusal: { [Player]: number } = {}
 local lastGreedy: { [Player]: number } = {} -- dernier message « un seul braquage à la fois »
 -- GuardService.GetReturningGuards, s'il existe (require protégé dans Init, comme OnGuardGone).
@@ -2124,6 +2131,18 @@ end
 local function startOpening(player: Player, slot: Slot, box: ShelfBox)
 	local store = slot.Store
 	local luck = drawLuck()
+	local forced = luckOverride
+	if forced then
+		-- Accroche du tuto (a107, SetLuckOverride) : une chance finie ≥ 1, sinon le tirage normal.
+		local content = box.Content
+		local drawn: OverrideInfo = { StoreId = store.Id, SlotId = slot.Id, Zone = store.Zone, Tier = box.Tier, Rarity = content.Rarity, ItemId = content.ItemId }
+		local ok, value = pcall(forced, player, drawn)
+		if ok and type(value) == "number" and value >= 1 and value < math.huge then
+			luck = value
+		elseif not ok then
+			warn(`[StoreHeistService] accroche SetLuckOverride : {value}`)
+		end
+	end
 	local delay = ShelfOpenState.revealDelay(luck)
 	local openAt = Workspace:GetServerTimeNow()
 	local opening: Opening = { ByUserId = player.UserId, Luck = luck, OpenAt = openAt }
@@ -2687,6 +2706,10 @@ end
 
 function StoreHeistService.SetContentOverride(override: ContentOverride?)
 	contentOverride = override
+end
+
+function StoreHeistService.SetLuckOverride(override: LuckOverride?)
+	luckOverride = override
 end
 
 function StoreHeistService.GetStoreId(model: Instance): string?

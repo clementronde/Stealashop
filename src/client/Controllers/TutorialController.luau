@@ -8,7 +8,8 @@
 -- n'envoie que TutorialSkip (le serveur vérifie l'étape).
 --
 -- Bulle :
---   - texte : Hints[hint] s'il est donné, sinon Steps[step].Bubble (rien à l'étape 10, sauf un
+--   - texte : Hints[hint] s'il est donné, sinon Steps[step].Bubble (ShelfBubble si Features.ShelfOpen et
+--     qu'elle existe, L-112) (rien à l'étape 10, sauf un
 --     indice). Seul choix fait ici : EquipFists aux étapes 1 et 2, quand le serveur n'envoie pas
 --     d'indice, que la cible est la vitrine d'un magasin PNJ (pas la porte de la boutique, par où la
 --     flèche passe d'abord), que le joueur en est à EQUIP_HINT_RADIUS studs et qu'il n'a pas son
@@ -43,6 +44,7 @@ local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Tutorial = require(Shared:WaitForChild("Config"):WaitForChild("Tutorial"))
+local Features = require(Shared:WaitForChild("Config"):WaitForChild("Features"))
 local Find = require(Shared:WaitForChild("Contract"):WaitForChild("Find"))
 
 -- Écran de Clément et ses éléments (contrat 2.2). SkipButton : nom proposé, pas encore au contrat.
@@ -211,6 +213,9 @@ local function currentText(): string?
 		end
 	end
 	local def = Tutorial.Steps[state.step]
+	if def and Features.ShelfOpen == true and def.ShelfBubble then
+		return def.ShelfBubble -- vague 31 (L-112) : colis ouvert sur le rayon
+	end
 	return if def then def.Bubble else nil
 end
 

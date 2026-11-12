@@ -18,13 +18,16 @@ export type Step = {
 	At: number, -- moment visé depuis l'arrivée, en secondes (section 3) : repère d'équilibrage, pas un minuteur
 	Goal: string, -- ce qui se passe à cette étape (section 3) ; note pour l'équipe, jamais affichée
 	Bubble: string?, -- texte de la bulle, en anglais (L-036), 8 mots au plus ; V0 proposé, absent du doc
+	-- Vague 31 (L-112, a107) : bulle quand Features.ShelfOpen = true (colis ouvert sur le rayon), si elle
+	-- diffère ; absente = Bubble. TutorialController la choisit.
+	ShelfBubble: string?,
 }
 
 local Steps: { Step } = {
 	{ Index = 1, Id = "ArriveAtPlot", At = 0, Goal = "Arrivée sur sa parcelle, flèche au sol vers la Supérette", Bubble = "Smash the Mini Mart window!" },
 	{ Index = 2, Id = "HitWindow", At = 15, Goal = "Premiers coups aux poings sur la vitre (35 PV)", Bubble = "Hit the glass again and again!" },
-	{ Index = 3, Id = "GrabBox", At = 25, Goal = "Casse et chrono de 10 s ; colis Premium, vigile lent", Bubble = "Grab a box and run!" },
-	{ Index = 4, Id = "PlaceBox", At = 45, Goal = "Retour en zone safe (colis dans l'inventaire), colis posé au sol de sa boutique (L-089), attente de 5 s, objet Rare", Bubble = "Bring the box back to your shop!" },
+	{ Index = 3, Id = "GrabBox", At = 25, Goal = "Casse et chrono de 10 s ; colis Premium, vigile lent", Bubble = "Grab a box and run!", ShelfBubble = "Open a box on the shelf!" },
+	{ Index = 4, Id = "PlaceBox", At = 45, Goal = "Retour en zone safe (colis dans l'inventaire), colis posé au sol de sa boutique (L-089), attente de 5 s, objet Rare", Bubble = "Bring the box back to your shop!", ShelfBubble = "Bring the item back to your shop!" },
 	{ Index = 5, Id = "DisplayItem", At = 60, Goal = "Objet sur un présentoir (5 $/s), premier encaissement", Bubble = "Display your item to earn cash!" },
 	{ Index = 6, Id = "Train", At = 2 * 60, Goal = "Le tapis et le banc s'allument, 30 s d'entraînement guidé", Bubble = "Train on the treadmill and bench" },
 	{ Index = 7, Id = "BuyTool", At = 3 * 60, Goal = "Flèche vers la boutique d'armes, clé à molette (300 $)", Bubble = "Buy the Wrench!" },
@@ -60,6 +63,15 @@ local Tutorial = {
 	-- pas. TutorialService le passe en ItemId à StoreHeistService.SetContentOverride (une Rarity
 	-- seule tirerait dans la zone, où aucun Rare n'est tirable).
 	GuaranteedItemId = "Z1_PotDeNouilles",
+	-- Vague 31 (L-112, Features.ShelfOpen ; a107). Le Pot de nouilles est l'objet SORTI du premier colis ouvert
+	-- sur le rayon (SetContentOverride, appliqué à la sortie ; contenu imposé : aucun cran de rareté).
+	-- V0 : chance imposée à l'ouverture du tuto (StoreHeistService.SetLuckOverride). ×1,5 plutôt que ×1 :
+	-- le compteur « ×N LUCK » monte 1,4 s (rabats compris : 2 s), assez pour voir la mécanique et le « ? »
+	-- des témoins bouger, jamais assez pour la police (×8 et plus) ; ×1 sortirait l'objet sans rien montrer.
+	ShelfLuck = 1.5,
+	-- V0 : antivol de l'objet du tuto posé au sol (UnboxService.GetAntiTheftDelay ; 20 s pour un Rare,
+	-- ShelfOpen.AntiTheft) : le même que l'attente raccourcie du premier colis (OpenDelay).
+	AntiTheftDelay = 5,
 
 	-- Étapes 1 à 4 (section 3) : le braquage de la Supérette, en zone 1 (zone tuto, L-033).
 	TutorialZone = 1, -- doc : tout magasin de cette zone compte (la Supérette ou le Kiosque)
@@ -96,6 +108,12 @@ local Tutorial = {
 		NightClosed = "The street opens again at dawn!", -- nuit, étapes 1 à 3 et 9, côté zone safe
 		Night = NIGHT_BUBBLE, -- 5.12 : alerte et nuit, joueur dans le couloir
 		ShieldEnd = SHIELD_END_MESSAGE, -- 6.4 : fin du bouclier débutant
+		-- Vague 31 (L-112, Features.ShelfOpen ; a107), V0 proposés, absents du doc :
+		WaitReveal = "Watch your luck go up!", -- étape 3 : son colis s'ouvre sur le rayon (flèche : le colis)
+		GrabItem = "Grab your item and run!", -- étape 3 : son objet est sorti (flèche : l'objet)
+		PlaceFloorItem = "Open your inventory, place it on the floor!", -- étapes 4 et 5 : objet sous antivol dans l'inventaire
+		WaitUnlock = "Guard it until it is UNLOCKED!", -- étape 5 : objet au sol, antivol en cours (volable)
+		DisplayUnlocked = "UNLOCKED! Now put it on display!", -- étape 5 : antivol fini, invite « Display »
 	} :: { [string]: string },
 
 	-- Flèche au sol de Clément (UI-006, pas encore livrée) : noms proposés, pas encore au contrat. Cherchés

@@ -1096,6 +1096,12 @@ function fall(player: Player, carry: Carry, position: Vector3, reason: string): 
 	local attributes: { [string]: any } = { [BAT_DROP_ATTRIBUTE] = true }
 	if payload.Kind == "NPCBox" then
 		attributes[TIER_ATTRIBUTE] = payload.Tier
+	elseif payload.Kind == "NPCItem" then
+		-- a107 : objet déjà visible, son nom va sur l'invite au sol (BatController), pas « Box ».
+		local mutation = payload.Mutation
+		attributes.ItemId = payload.ItemId
+		attributes.MutationSize = if mutation then mutation.Size else nil
+		attributes.MutationEffect = if mutation then mutation.Effect else nil
 	end
 	local dropId = createDrop(payload, position, Bat.DroppedLifetime, attributes)
 	drops[dropId].fallen = true

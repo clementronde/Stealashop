@@ -29,7 +29,7 @@
 --
 -- Lu sur les objets (rien n'est cherché par chemin) : attributs BatTool (Tool, ToolService),
 -- Carrying (Player, CarryService), BatStun (Player, BatService), DropId, Tier et BatDrop (colis au
--- sol, CarryService). API (client) : aucune.
+-- sol, CarryService) ; ItemId, MutationSize, MutationEffect (objet NPCItem au sol, L-112 : son nom sur l'invite). API (client) : aucune.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -39,6 +39,8 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = Shared:WaitForChild("Config")
 local Balance = require(Config:WaitForChild("Balance"))
 local Bat = require(Config:WaitForChild("Bat"))
+local Items = require(Config:WaitForChild("Items"))
+local Mutations = require(Config:WaitForChild("Mutations"))
 local PvP = require(Config:WaitForChild("PvP"))
 local MarkerSounds = require(Shared:WaitForChild("Anim"):WaitForChild("MarkerSounds"))
 
@@ -306,7 +308,15 @@ local function trackDrop(instance: Instance)
 	local prompt = Instance.new("ProximityPrompt")
 	prompt.Name = PROMPT_NAME
 	prompt.ActionText = Bat.GrabActionText
-	prompt.ObjectText = if info then `{info.DisplayName} {BOX_SUFFIX}` else BOX_SUFFIX
+	-- Objet sorti d'un colis (NPCItem lâché, L-112, a107) : son nom, comme un objet volé à un joueur.
+	local itemId = model:GetAttribute("ItemId")
+	local item = if type(itemId) == "string" then Items.ById[itemId] else nil
+	if item then
+		local mutation = { Size = model:GetAttribute("MutationSize"), Effect = model:GetAttribute("MutationEffect") }
+		prompt.ObjectText = Mutations.ItemName(item.DisplayName, mutation)
+	else
+		prompt.ObjectText = if info then `{info.DisplayName} {BOX_SUFFIX}` else BOX_SUFFIX
+	end
 	prompt.HoldDuration = Bat.DroppedGrabTime
 	prompt.MaxActivationDistance = math.max(Bat.DroppedGrabMaxDistance - PROMPT_DISTANCE_MARGIN, 1)
 	prompt.RequiresLineOfSight = false
