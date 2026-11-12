@@ -31,6 +31,8 @@
 --     nom proposé, pas encore au contrat 2.2) dès qu'il existe, sinon un panneau V0 gris.
 --   - Étiquette « SAFE » V0 au pied de chaque objet à l'abri (coffre-fort V0 de PvPService), chez
 --     tout le monde : le voleur comprend pourquoi l'objet n'a pas d'invite.
+--   - Bot joueur (L-105, BotService) : sa boutique (attribut BotName de la parcelle, OwnerUserId = 0) a
+--     les mêmes invites et le même panneau (« Bot's Shop », valeur exposée = attribut BotIncome).
 --   - L'objet volé porté au-dessus de la tête : rien ici, CarryService (visuel serveur, BB_Carry,
 --     contour rouge, malus) et CarryController (animations, outils rangés) suffisent.
 -- Mobile : l'état de chaque boutique (volume, porte, droit de voler, objets à l'abri) est calculé une
@@ -112,6 +114,8 @@ local ENDS_AT_ATTRIBUTE = "StealEndsAt"
 local PROTECTION_ATTRIBUTE = "Protection"
 local PROTECTED_UNTIL_ATTRIBUTE = "ProtectedUntil"
 local SAFE_SLOTS_ATTRIBUTE = "SafeSlots"
+local BOT_NAME_ATTRIBUTE = "BotName" -- PlotService : boutique du bot joueur (L-105)
+local BOT_INCOME_ATTRIBUTE = "BotIncome" -- BotService : sa valeur exposée
 -- Noms des objets créés ici (côté client seulement).
 local PROMPT_NAME = "StealPrompt"
 local PANEL_PREFIX = "ShopInfo_"
@@ -209,6 +213,21 @@ local function isMine(plot: Model): boolean
 	return number(plot, OWNER_ATTRIBUTE) == localPlayer.UserId
 end
 
+-- Propriétaire de la boutique, pour le panneau et l'anti-racket : nom affiché et valeur exposée d'un autre
+-- joueur, ou du bot joueur (L-105 : attributs BotName de PlotService et BotIncome de BotService sur la
+-- parcelle, OwnerUserId = 0) ; nil pour une boutique libre.
+local function shopOwner(plot: Model): (string?, number)
+	local owner = ownerOf(plot)
+	if owner then
+		return owner.DisplayName, exposedIncome(owner)
+	end
+	local botName = plot:GetAttribute(BOT_NAME_ATTRIBUTE)
+	if type(botName) == "string" then
+		return botName, number(plot, BOT_INCOME_ATTRIBUTE) or 0
+	end
+	return nil, 0
+end
+
 -- Parcelle (Model taggé PlayerPlot) qui contient `instance`, ou nil.
 local function plotOf(instance: Instance): Model?
 	local current = instance.Parent
@@ -260,9 +279,9 @@ local function safeSlots(plot: Model): { [number]: boolean }
 	return slots
 end
 
--- Anti-racket (6.4) vu du joueur local : la boutique est-elle trop petite pour lui ?
-local function tooSmall(owner: Player): boolean
-	return exposedIncome(owner) < PvP.AntiRacketRatio * exposedIncome(localPlayer)
+-- Anti-racket (6.4) vu du joueur local : une boutique de cette valeur exposée est-elle trop petite pour lui ?
+local function tooSmall(income: number): boolean
+	return income < PvP.AntiRacketRatio * exposedIncome(localPlayer)
 end
 
 -- Peut-il voler dans cette boutique, en ce moment ? (Le serveur revérifie tout.)
@@ -274,8 +293,8 @@ local function canStealIn(watch: PlotWatch, root: BasePart?): boolean
 	if localPlayer:GetAttribute(CARRYING_ATTRIBUTE) ~= nil then
 		return false
 	end
-	local owner = ownerOf(plot)
-	if owner == nil or tooSmall(owner) then
+	local name, income = shopOwner(plot)
+	if name == nil or tooSmall(income) then
 		return false
 	end
 	local bounds = boundsOf(watch)
@@ -516,7 +535,7 @@ local function doorHP(door: Instance): number
 	return maxHp
 end
 
-local function statusOf(plot: Model, owner: Player): string?
+local function statusOf(plot: Model, income: number): string?
 	local protection = plot:GetAttribute(PROTECTION_ATTRIBUTE)
 	if protection == "Shield" then
 		return STATUS.Shield
@@ -525,7 +544,7 @@ local function statusOf(plot: Model, owner: Player): string?
 		local left = math.max(0, math.ceil(untilTime - Workspace:GetServerTimeNow()))
 		return string.format(STATUS.Immune, left // 60, left % 60)
 	end
-	if tooSmall(owner) then
+	if tooSmall(income) then
 		return STATUS.Racket
 	end
 	if plot:GetAttribute(OPEN_ATTRIBUTE) == true then
@@ -537,9 +556,9 @@ end
 
 local function refreshPanel(watch: PlotWatch, root: BasePart?)
 	local plot = watch.Plot
-	local owner = ownerOf(plot)
+	local name, income = shopOwner(plot)
 	local bounds = boundsOf(watch)
-	if owner == nil or owner == localPlayer or root == nil or bounds == nil or distanceTo(bounds, root.Position) > PvP.ScoutDistance then
+	if name == nil or isMine(plot) or root == nil or bounds == nil or distanceTo(bounds, root.Position) > PvP.ScoutDistance then
 		hidePanel(watch)
 		return
 	end
@@ -550,10 +569,10 @@ local function refreshPanel(watch: PlotWatch, root: BasePart?)
 		return
 	end
 	local text: PanelText = {
-		OwnerName = string.format(SHOP_NAME, owner.DisplayName),
-		Income = Format.income(exposedIncome(owner)),
+		OwnerName = string.format(SHOP_NAME, name),
+		Income = Format.income(income),
 		HP = string.format(HP_TEXT, Format.hp(doorHP(door))),
-		Status = statusOf(plot, owner),
+		Status = statusOf(plot, income),
 	}
 	watch.Text = text
 	for _, name in FIELDS do

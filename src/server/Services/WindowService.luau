@@ -89,6 +89,9 @@
 --       `player` (vitrines, parcelles et cibles d'événement), 1 par défaut. PotionService le remplace en gardant
 --       celui d'avant. Ne touche ni ToolService.GetHitDamage, ni l'attribut Damage, ni les PV de la vitrine de
 --       sa boutique. Une erreur ou une valeur qui n'est pas un nombre fini > 0 compte pour 1.
+--   WindowService.GetFreePlotHP(model) -> number
+--       Point d'accroche du bot joueur (L-105) : PV max de la porte d'une parcelle libre (OwnerUserId = 0),
+--       0 (incassable) par défaut ; BotService le remplace pour la parcelle de son bot.
 --   WindowService.OnHit(listener) -> déconnexion
 --       listener(player, windowId, kind, model, damage) après chaque coup validé et compté (celui qui
 --       casse compris, cibles d'événement comprises), juste après WindowHit. Pour les caméras de la
@@ -225,6 +228,13 @@ function WindowService.GetHitDamageMultiplier(_player: Player): number
 	return 1
 end
 
+-- Point d'accroche du bot joueur (L-105) : PV max de la porte d'une parcelle sans propriétaire joueur
+-- (OwnerUserId = 0) ; 0 = incassable, par défaut. BotService le remplace pour la parcelle de son bot. Lu à
+-- chaque tick, régénération de base ; une erreur ou une valeur invalide compte pour 0.
+function WindowService.GetFreePlotHP(_model: Model): number
+	return 0
+end
+
 -- Valeur d'un point d'accroche : un nombre fini ≥ 0 (> 0 si `strict`), sinon `base` (une erreur :
 -- un avertissement, une fois par point d'accroche).
 local function modifier(label: string, fn: (Player) -> number, owner: Player, base: number, strict: boolean): number
@@ -238,6 +248,15 @@ local function modifier(label: string, fn: (Player) -> number, owner: Player, ba
 	end
 	if type(value) ~= "number" or value ~= value or value == math.huge or value < 0 or (strict and value == 0) then
 		return base
+	end
+	return value
+end
+
+-- PV max de la porte d'une parcelle libre (GetFreePlotHP) : un nombre fini ≥ 0, sinon 0.
+local function freePlotHP(model: Model): number
+	local ok, value = pcall(WindowService.GetFreePlotHP, model)
+	if not ok or type(value) ~= "number" or value ~= value or value == math.huge or value < 0 then
+		return 0
 	end
 	return value
 end
@@ -292,7 +311,7 @@ local function computeMaxHP(window: Window): number
 		return Zones[window.Zone].WindowHP
 	end
 	if window.OwnerUserId == 0 then
-		return 0
+		return freePlotHP(window.Model) -- 0 (incassable), sauf la boutique du bot joueur (L-105)
 	end
 	local owner = Players:GetPlayerByUserId(window.OwnerUserId)
 	if owner == nil then

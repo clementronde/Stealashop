@@ -158,6 +158,11 @@
 --   DisplayService.GetGlobalMultiplier(player) -> number
 --       Le M global du joueur, lu tout de suite dans les accroches (bonus compris) : $/s des plaques
 --       = GetIncome × GetGlobalMultiplier (packs d'argent de la boutique Robux). Sans yield.
+--   DisplayService.BuildBotItem(plot, slotIndex, itemUid, itemId) -> Model?
+--       Bot joueur (L-105, BotService) : l'objet `itemId` du bot, posé sur le présentoir DisplaySlot_xx de
+--       `plot`, construit comme un objet de joueur (modèle ITM_ ou bloc V0, halo, BB_Item, tag DisplayItem et
+--       attributs, OwnerUserId = 0 ; revenu de sa zone au catalogue). Ni profil, ni plaque, ni revenu : à
+--       l'appelant de le ranger et de le détruire. nil si le présentoir manque ou si l'objet est inconnu.
 --
 -- Remote PlaceItem(itemUid, slotIndex) : refusé (Notify « Warning » au joueur, avertissement en
 -- Studio) si le joueur n'a pas de parcelle, n'est pas dans le volume Bounds de sa parcelle, ne
@@ -1150,7 +1155,7 @@ local function addBillboard(
 end
 
 -- Construit l'objet exposé sur le présentoir `slot`, prêt à être rangé dans la parcelle.
-local function buildVisual(owner: Player, refs: PlotRefs, slot: number, uid: string, entry: ItemEntry, def: ItemDef): Visual
+local function buildVisual(ownerUserId: number, refs: PlotRefs, slot: number, uid: string, entry: ItemEntry, def: ItemDef): Visual
 	local rarity = Rarities.ById[def.Rarity]
 	local income = itemIncome(def, entry, uid)
 	local model = copyOfTemplate(def)
@@ -1183,7 +1188,7 @@ local function buildVisual(owner: Player, refs: PlotRefs, slot: number, uid: str
 	display:SetAttribute("Halo", rarity.Halo)
 	display:SetAttribute("Income", income)
 	display:SetAttribute("DisplaySlot", slot)
-	display:SetAttribute("OwnerUserId", owner.UserId)
+	display:SetAttribute("OwnerUserId", ownerUserId)
 	display:SetAttribute("Placeholder", placeholder)
 	-- Mutation (DEV-131) : Id de Config/Mutations, absents sans mutation dans la famille. Les effets
 	-- visuels sont à Clément (MOD-131) : le code n'en pose aucun.
@@ -1432,7 +1437,7 @@ local function reconcile(player: Player, account: Account, data: Data, plot: Mod
 		if view.visuals[slot] == nil then
 			local entry, def = lookup(data, uid)
 			if entry and def then
-				local ok, result = pcall(buildVisual, player, refs, slot, uid, entry, def)
+				local ok, result = pcall(buildVisual, player.UserId, refs, slot, uid, entry, def)
 				if ok then
 					local visual = result :: Visual
 					visual.model.Parent = view.folder
@@ -2203,6 +2208,21 @@ end
 
 function DisplayService.GetGlobalMultiplier(player: Player): number
 	return incomeMultiplier(player)
+end
+
+function DisplayService.BuildBotItem(plot: Model, slotIndex: number, itemUid: string, itemId: string): Model?
+	local def = ItemsConfig.ById[itemId]
+	local refs = refsFor(plot)
+	if def == nil or Rarities.ById[def.Rarity] == nil or refs.slots[slotIndex] == nil then
+		return nil
+	end
+	local entry: ItemEntry = { Id = def.Id, Source = "NPC", At = 0, Zone = def.Zone }
+	local ok, result = pcall(buildVisual, 0, refs, slotIndex, itemUid, entry, def)
+	if not ok then
+		reportOnce(`bot:{itemId}`, `[DisplayService] objet du bot {itemId} non affiché : {result}`, "warn")
+		return nil
+	end
+	return (result :: Visual).model
 end
 
 -- Points d'accroche (DEV-100 et DEV-111, voir l'en-tête) : valeurs du MVP, sans bonus.

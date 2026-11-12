@@ -53,6 +53,23 @@
 --       vivant. Qui sortir et quand : PvPService.
 --   Chaque déplacement de ce service (placement à l'apparition, TeleportHome, PutOutside) est déclaré
 --   juste avant à AntiCheatService.Allow (DEV-060) : jamais pris pour un téléport.
+--   PlotService.GetSpawnSpot(plot) -> (Vector3?, Vector3?)
+--       Point au sol où apparaît le propriétaire de `plot` et direction de son regard (SpawnPoint, sinon
+--       devant la vitrine) ; nil pour une parcelle inconnue. Sans yield (BotService y pose son avatar).
+--
+-- Bot joueur (L-105, BotService ; Config/Bot) : une parcelle prise par le bot reste « libre » pour les autres
+-- services et les clients (OwnerUserId = 0, GetOwner = nil : niveau de boutique le plus faible), mais n'est
+-- donnée à aucun joueur tant qu'il l'occupe. Attribut BotName (texte, nom du bot) posé sur la parcelle
+-- pendant ce temps, et panneau « <BotName>'s Shop ». Sans yield :
+--   PlotService.ReserveForBot(name) -> Model?
+--       Donne au bot la parcelle libre de plus GRAND numéro (les joueurs gardent les premiers) ; nil si
+--       aucune n'est libre ou si un joueur attend une parcelle.
+--   PlotService.ReleaseBot(plot)
+--       La parcelle redevient libre (BotName retiré, panneau vidé) et sert au premier joueur qui attend.
+--   PlotService.IsBotPlot(plot) -> boolean
+--   PlotService.OnShortage(listener) -> déconnexion
+--       listener() quand le profil d'un joueur arrive sans parcelle libre alors que le bot en occupe une :
+--       le bot doit partir tout de suite (ReleaseBot, sans yield) ; le joueur reçoit alors cette parcelle.
 --
 -- Exemple (dans un autre service) :
 --   local PlotService = require(script.Parent.PlotService)
@@ -88,6 +105,7 @@ local NAME_SIGN = "NameSign"
 -- Attributs de cette vague (voir l'en-tête).
 local OWNER_ATTRIBUTE = "OwnerUserId"
 local INDEX_ATTRIBUTE = "PlotIndex"
+local BOT_ATTRIBUTE = "BotName" -- bot joueur (L-105) : nom du bot, nil sans bot
 
 -- Absents du contrat 10.4, proposés pour y entrer (à valider par Clément) :
 --   OwnerName (TextLabel dans NameSign) : le code y écrit « <Pseudo>'s Shop » (anglais, L-036),
@@ -163,6 +181,8 @@ local createdGuis: { [Model]: SurfaceGui } = {} -- SurfaceGui créé par ce serv
 local spawnConnections: { [Player]: RBXScriptConnection } = {}
 local assignedListeners: { PlotListener } = {}
 local releasedListeners: { PlotListener } = {}
+local botNames: { [Model]: string } = {} -- parcelles prises par le bot joueur (L-105), et son nom
+local shortageListeners: { () -> () } = {}
 
 -- Renvoie une fonction qui retire `listener` de `list` (même règle que DataService).
 local function subscribe<T>(list: { T }, listener: T): () -> ()
@@ -342,7 +362,8 @@ local function signText(owner: Player?): string
 end
 
 local function updateSign(plot: Model)
-	local text = signText(ownerOf[plot])
+	local botName = botNames[plot]
+	local text = if botName then `{botName}'s Shop` else signText(ownerOf[plot])
 	local label = labels[plot]
 	if label then
 		label.Text = text
@@ -544,7 +565,7 @@ end
 
 local function firstFreePlot(): Model?
 	for _, plot in plots do
-		if ownerOf[plot] == nil then
+		if ownerOf[plot] == nil and botNames[plot] == nil then
 			return plot
 		end
 	end
@@ -580,6 +601,18 @@ local function assign(player: Player, plot: Model)
 	end
 end
 
+-- La parcelle libérée sert au premier joueur qui attend encore.
+local function serveWaiting(plot: Model)
+	while #waiting > 0 do
+		local nextPlayer = table.remove(waiting, 1) :: Player
+		if canReceive(nextPlayer) then
+			assign(nextPlayer, plot)
+			notify(nextPlayer, MESSAGES.Freed, "Info")
+			break
+		end
+	end
+end
+
 local function release(player: Player)
 	local plot = plotOf[player]
 	if plot == nil then
@@ -604,15 +637,7 @@ local function release(player: Player)
 		end
 	end
 
-	-- La parcelle sert au premier joueur qui attend encore.
-	while #waiting > 0 do
-		local nextPlayer = table.remove(waiting, 1) :: Player
-		if canReceive(nextPlayer) then
-			assign(nextPlayer, plot)
-			notify(nextPlayer, MESSAGES.Freed, "Info")
-			break
-		end
-	end
+	serveWaiting(plot)
 end
 
 local function onProfileLoaded(player: Player)
@@ -625,6 +650,18 @@ local function onProfileLoaded(player: Player)
 		return
 	end
 	table.insert(waiting, player)
+	if next(botNames) ~= nil then
+		-- Le bot joueur cède sa parcelle à un vrai joueur (L-105) : ReleaseBot la lui donne tout de suite.
+		for _, listener in table.clone(shortageListeners) do
+			local ok, err = pcall(listener :: any) -- :: any : sans lui, l'ancien solveur croit que pcall ne renvoie qu'une valeur
+			if not ok then
+				warn(`[PlotService] OnShortage : {err}`)
+			end
+		end
+		if plotOf[player] then
+			return
+		end
+	end
 	if #plots == 0 then
 		return -- déjà signalé à l'Init
 	end
@@ -710,6 +747,49 @@ function PlotService.PutOutside(player: Player, plot: Model): boolean
 	rootPart.AssemblyLinearVelocity = Vector3.zero
 	rootPart.AssemblyAngularVelocity = Vector3.zero
 	return true
+end
+
+function PlotService.GetSpawnSpot(plot: Model): (Vector3?, Vector3?)
+	if spawnRefs[plot] == nil then
+		return nil, nil
+	end
+	return spawnSpot(plot)
+end
+
+function PlotService.ReserveForBot(name: string): Model?
+	if #waiting > 0 then
+		return nil
+	end
+	for index = #plots, 1, -1 do
+		local plot = plots[index]
+		if not ownerOf[plot] and not botNames[plot] then
+			botNames[plot] = name
+			plot:SetAttribute(BOT_ATTRIBUTE, name)
+			updateSign(plot)
+			print(`[PlotService] bot joueur « {name} » : parcelle {indexOf[plot]} ({plot.Name})`)
+			return plot
+		end
+	end
+	return nil
+end
+
+function PlotService.ReleaseBot(plot: Model)
+	if botNames[plot] == nil then
+		return
+	end
+	botNames[plot] = nil
+	plot:SetAttribute(BOT_ATTRIBUTE, nil)
+	updateSign(plot)
+	print(`[PlotService] bot joueur parti : parcelle {indexOf[plot]} libérée`)
+	serveWaiting(plot)
+end
+
+function PlotService.IsBotPlot(plot: Model): boolean
+	return botNames[plot] ~= nil
+end
+
+function PlotService.OnShortage(listener: () -> ()): () -> ()
+	return subscribe(shortageListeners, listener)
 end
 
 function PlotService.Init()

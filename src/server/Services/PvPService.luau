@@ -3,7 +3,8 @@
 -- (Partie 1, sections 6, 6.1, 6.2, 6.4, 9.3, 9.4, 9.6 et 14.3 ; boutique du hub, liaison L-050).
 --
 -- Une boutique = un Model taggé PlayerPlot (PlotService), avec sa porte à casser `PlotDoor/Window`
--- (la vitrine « Plot_<PlotIndex> » de WindowService : PV = 50 × les dégâts du propriétaire,
+-- (la vitrine « Plot_<PlotIndex> » de WindowService : PV de base selon le niveau de la boutique,
+-- Formulas.PlayerWindowHP, × Glass et Walls de l'arbre ; porte du bot joueur : base du niveau 1 ;
 -- régénération 3 %/s), son volume `Bounds`, sa `DepositZone` et ses `DisplaySlot_01` à `_20`.
 --
 -- Le vol, dans l'ordre (6.1) :
@@ -110,6 +111,23 @@
 --       (UI_TheftAlert, Adrénaline, batte équipée) et la télémétrie.
 --   Branchés par TheftAlertService (DEV-042) : Adrénaline de la victime, réannonce de l'alerte quand
 --   plusieurs vols ont lieu chez elle, Lifetime.Defenses ; côté client, TheftAlertController.
+--
+-- Bot joueur (L-085 point 4, L-105 point 1, L-108 point 3 ; BotService, Config/Bot) : sa boutique (attribut
+-- BotName de la parcelle, PlotService) se braque comme celle d'un joueur, par le même chemin (HitWindow,
+-- casse, StealItem en deux appels, fuite, dépôt chez soi, échec). Ici, une victime nil = le bot : ses objets
+-- exposés, son immunité et sa valeur exposée viennent de BotService (Hold, Release, IsHeld, TakeHeld). Ce qui
+-- change pour lui :
+--   - protections : ni bouclier débutant ni coffre-fort de l'arbre (PvP.VaultSlots objet à l'abri, comme un
+--     joueur sans compétence), immunité de Bot.TheftImmunity s après un vol subi, anti-racket inchangé
+--     (valeur exposée du bot : un joueur trop riche ne vient pas le piller) ;
+--   - le voleur reçoit l'objet au dépôt (Source = "PvP", zone du catalogue, sans mutation) et sa sauvegarde
+--     part tout de suite ; le bot n'a pas de profil, BotService fait revenir un objet plus tard ;
+--   - jamais compté comme un joueur : ni Notify, ni TheftAlert, ni alarme de base vers lui, ni
+--     OnTheftStarted/OnTheftEnded (Adrénaline, défenses, télémétrie et index restent aux vrais joueurs ;
+--     GetTheft renvoie nil pour un vol au bot), ni Lifetime.Steals (classements) ;
+--   - le bot part pendant un vol (5e joueur, boutique manquante) : le vol échoue (« VictimLeft »), sa
+--     fenêtre de vol se ferme au tick suivant.
+-- require protégé : sans BotService (anciens bancs), aucune boutique de bot.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -149,10 +167,10 @@ export type TheftInfo = {
 type StartedListener = (thief: Player, victim: Player, itemId: string) -> ()
 type EndedListener = (thief: Player, victim: Player, itemId: string, result: TheftResult, reason: string) -> ()
 
--- Boutique à la porte cassée, pendant ses 10 s de vol.
+-- Boutique à la porte cassée, pendant ses 10 s de vol. Victim nil : la boutique du bot joueur.
 type Shop = {
 	Plot: Model,
-	Victim: Player,
+	Victim: Player?,
 	WindowId: string,
 	EndsAt: number, -- heure serveur (Workspace:GetServerTimeNow)
 	Viewers: { [Player]: boolean }, -- joueurs qui voient le chrono
@@ -160,7 +178,7 @@ type Shop = {
 
 type Hold = {
 	Plot: Model,
-	Victim: Player,
+	Victim: Player?, -- nil : le bot joueur
 	Slot: number,
 	Uid: string,
 	StartedAt: number, -- os.clock()
@@ -168,7 +186,7 @@ type Hold = {
 
 type Theft = {
 	Thief: Player,
-	Victim: Player,
+	Victim: Player?, -- nil : le bot joueur
 	Plot: Model, -- boutique de la victime
 	Uid: string,
 	ItemId: string,
@@ -240,6 +258,35 @@ local function speedBoost(player: Player): number
 		end
 	end
 	return 1
+end
+
+-- Bot joueur (voir l'en-tête) : ce que ce service lit et appelle chez BotService. require protégé : sans
+-- BotService (anciens bancs), aucune boutique de bot.
+type BotApi = {
+	IsBotPlot: (plot: Model) -> boolean,
+	GetExposed: (plot: Model) -> { [number]: DisplayService.ExposedItem },
+	GetIncome: (plot: Model) -> number,
+	GetImmunity: (plot: Model) -> number,
+	Hold: (plot: Model, uid: string, thief: Player) -> boolean,
+	Release: (plot: Model, uid: string, thief: Player) -> boolean,
+	IsHeld: (plot: Model, uid: string) -> boolean,
+	TakeHeld: (plot: Model, uid: string, thief: Player) -> boolean,
+}
+local botModule = script.Parent:FindFirstChild("BotService")
+local botLoaded: boolean, botResult: any = false, nil
+if botModule and botModule:IsA("ModuleScript") then
+	botLoaded, botResult = pcall(require, botModule)
+end
+local Bot: BotApi? = if botLoaded and type(botResult) == "table" and type(botResult.IsBotPlot) == "function"
+	then botResult :: any
+	else nil
+
+local function isBotPlot(plot: Model): boolean
+	local api = Bot
+	if api == nil then
+		return false
+	end
+	return api.IsBotPlot(plot)
 end
 
 -- Messages lus par les joueurs (Notify), en anglais (L-036) ; nombres par Shared/Format.
@@ -446,6 +493,47 @@ local function protectionOf(attacker: Player?, victim: Player): (string?, number
 	return nil, nil
 end
 
+-- Protection de la boutique `plot` contre `attacker` : celle du joueur `victim`, ou celle du bot (victim
+-- nil, voir l'en-tête) : immunité après un vol subi, puis anti-racket sur sa valeur exposée.
+local function plotProtectionOf(attacker: Player?, plot: Model, victim: Player?): (string?, number?)
+	if victim then
+		return protectionOf(attacker, victim)
+	end
+	local api = Bot
+	if api == nil then
+		return nil, nil
+	end
+	local left = api.GetImmunity(plot)
+	if left > 0 then
+		return "Immune", left
+	end
+	if attacker and api.GetIncome(plot) < PvP.AntiRacketRatio * DisplayService.GetIncome(attacker) then
+		return "Racket", nil
+	end
+	return nil, nil
+end
+
+-- Objets exposés de la boutique `plot` : ceux de `victim`, ou ceux du bot (victim nil).
+local function exposedOf(plot: Model, victim: Player?): { [number]: DisplayService.ExposedItem }
+	if victim then
+		return DisplayService.GetExposed(victim)
+	end
+	local api = Bot
+	return if api then api.GetExposed(plot) else {}
+end
+
+-- Échec d'un vol : l'objet tenu revient sur son présentoir, chez `victim` ou chez le bot (victim nil).
+local function releaseItem(plot: Model, victim: Player?, uid: string, thief: Player)
+	if victim then
+		DisplayService.Release(victim, uid)
+		return
+	end
+	local api = Bot
+	if api then
+		api.Release(plot, uid, thief)
+	end
+end
+
 local function protectionMessage(refusal: string, left: number?): string
 	if refusal == "Immune" then
 		return string.format(MESSAGES.Immune, math.ceil(left or PvP.TheftImmunityDuration))
@@ -473,8 +561,9 @@ local function vaultSlotsOf(owner: Player): number
 	return math.max(PvP.VaultSlots, math.floor(value))
 end
 
--- Coffre-fort V0 : présentoirs à l'abri parmi les objets exposés de `owner` (voir l'en-tête).
-local function safeSlotsOf(owner: Player, exposed: { [number]: DisplayService.ExposedItem }): { [number]: boolean }
+-- Coffre-fort V0 : présentoirs à l'abri parmi les objets exposés de `owner` (voir l'en-tête) ; le bot
+-- (owner nil) en a PvP.VaultSlots.
+local function safeSlotsOf(owner: Player?, exposed: { [number]: DisplayService.ExposedItem }): { [number]: boolean }
 	local list: { number } = {}
 	for slot in exposed do
 		table.insert(list, slot)
@@ -487,7 +576,7 @@ local function safeSlotsOf(owner: Player, exposed: { [number]: DisplayService.Ex
 		return a < b
 	end)
 	local safe: { [number]: boolean } = {}
-	for index = 1, math.min(vaultSlotsOf(owner), #list) do
+	for index = 1, math.min(if owner then vaultSlotsOf(owner) else PvP.VaultSlots, #list) do
 		safe[list[index]] = true
 	end
 	return safe
@@ -498,13 +587,17 @@ local function canBeHit(player: Player, windowId: string): boolean
 	local plot = plotOfWindow(windowId)
 	if plot then
 		local victim = PlotService.GetOwner(plot)
-		if victim == nil or victim == player or not present(player) or not present(victim) then
+		if victim == player or not present(player) or DataService.Get(player) == nil then
 			return false
 		end
-		if DataService.Get(player) == nil or DataService.Get(victim) == nil then
-			return false
+		if victim then
+			if not present(victim) or DataService.Get(victim) == nil then
+				return false
+			end
+		elseif not isBotPlot(plot) then
+			return false -- boutique libre
 		end
-		local refusal, left = protectionOf(player, victim)
+		local refusal, left = plotProtectionOf(player, plot, victim)
 		if refusal then
 			notice(player, refusal, protectionMessage(refusal, left))
 			return false
@@ -565,7 +658,7 @@ local function closeShop(shop: Shop, why: string)
 	log(`{plot.Name} : fenêtre de vol fermée ({why})`)
 end
 
-local function openShop(plot: Model, victim: Player, windowId: string, breaker: Player?)
+local function openShop(plot: Model, victim: Player?, windowId: string, breaker: Player?)
 	local existing = shops[plot]
 	if existing then
 		closeShop(existing, "nouvelle casse")
@@ -587,7 +680,8 @@ local function openShop(plot: Model, victim: Player, windowId: string, breaker: 
 			closeShop(shop, "10 s écoulées")
 		end
 	end)
-	log(`{plot.Name} de {victim.Name} : porte cassée par {if breaker then breaker.Name else "?"}, {duration} s pour voler`)
+	local whose = if victim then `de {victim.Name}` else "du bot"
+	log(`{plot.Name} {whose} : porte cassée par {if breaker then breaker.Name else "?"}, {duration} s pour voler`)
 end
 
 -- Sortie devant la porte ----------------------------------------------------------------------------
@@ -639,9 +733,14 @@ end
 
 -- Fin d'un vol ------------------------------------------------------------------------------------------
 
+-- Vols chez un vrai joueur seulement : un vol au bot ne prévient personne (voir l'en-tête).
 local function emitEnded(theft: Theft, result: TheftResult, reason: string)
+	local victim = theft.Victim
+	if victim == nil then
+		return
+	end
 	for _, listener in table.clone(endedListeners) do
-		task.spawn(listener, theft.Thief, theft.Victim, theft.ItemId, result, reason)
+		task.spawn(listener, theft.Thief, victim, theft.ItemId, result, reason)
 	end
 end
 
@@ -651,16 +750,17 @@ local function returnItem(theft: Theft, reason: string)
 		return
 	end
 	thefts[theft.Thief] = nil
-	DisplayService.Release(theft.Victim, theft.Uid)
+	local victim = theft.Victim
+	releaseItem(theft.Plot, victim, theft.Uid, theft.Thief)
 	local name = itemName(theft.ItemId)
-	if present(theft.Victim) then
-		Net.Server.TheftAlert:Fire(theft.Victim, false)
-		notify(theft.Victim, string.format(MESSAGES.Returned, name), "Info")
+	if victim and present(victim) then
+		Net.Server.TheftAlert:Fire(victim, false)
+		notify(victim, string.format(MESSAGES.Returned, name), "Info")
 	end
 	if reason ~= "Left" and reason ~= "NoRoom" then
 		notify(theft.Thief, string.format(MESSAGES.Lost, name), "Alert")
 	end
-	log(`vol de {theft.Thief.Name} chez {theft.Victim.Name} raté ({reason}) : {theft.ItemId} revient sur le présentoir {theft.Slot}`)
+	log(`vol de {theft.Thief.Name} chez {if victim then victim.Name else "le bot"} raté ({reason}) : {theft.ItemId} revient sur le présentoir {theft.Slot}`)
 	emitEnded(theft, "Returned", reason)
 end
 
@@ -688,12 +788,12 @@ end
 -- Dépôt : transfert sûr (voir l'en-tête). Sans yield.
 local function deposit(theft: Theft, root: BasePart)
 	local thief, victim = theft.Thief, theft.Victim
-	if not present(thief) or not present(victim) then
-		return -- le départ va annuler le vol
+	if not present(thief) or (victim and not present(victim)) or (victim == nil and not isBotPlot(theft.Plot)) then
+		return -- le départ (du bot compris) va annuler le vol
 	end
 	local thiefData = DataService.Get(thief)
-	local victimData = DataService.Get(victim)
-	if thiefData == nil or victimData == nil then
+	local victimData = if victim then DataService.Get(victim) else nil
+	if thiefData == nil or (victim and victimData == nil) then
 		return -- profil en cours de libération : le départ va annuler le vol
 	end
 	-- Contrôle des déplacements tout de suite (DEV-060), sans attendre le suivant, et du trajet depuis la
@@ -719,9 +819,14 @@ local function deposit(theft: Theft, root: BasePart)
 		abandon(theft, "Anomaly")
 		return
 	end
-	local entry = victimData.Items[theft.Uid]
-	if entry == nil or entry.Id ~= theft.ItemId or thiefData.Items[theft.Uid] ~= nil or not DisplayService.IsHeld(victim, theft.Uid) then
-		warn(`[PvPService] {thief.Name} : l'objet {theft.Uid} n'est plus le même chez {victim.Name}, vol annulé`)
+	-- L'objet est toujours le même : dans le profil de la victime et tenu chez elle, ou tenu chez le bot.
+	local entry = if victimData then victimData.Items[theft.Uid] else nil
+	local bot = Bot
+	local same = if victim and victimData
+		then entry ~= nil and entry.Id == theft.ItemId and DisplayService.IsHeld(victim, theft.Uid)
+		else bot ~= nil and bot.IsHeld(theft.Plot, theft.Uid)
+	if not same or thiefData.Items[theft.Uid] ~= nil then
+		warn(`[PvPService] {thief.Name} : l'objet {theft.Uid} n'est plus le même chez {if victim then victim.Name else "le bot"}, vol annulé`)
 		abandon(theft, "Anomaly")
 		return
 	end
@@ -733,34 +838,50 @@ local function deposit(theft: Theft, root: BasePart)
 
 	-- Transfert, d'un seul tenant.
 	thefts[thief] = nil
-	DisplayService.TakeHeld(victim, theft.Uid)
-	victimData.Items[theft.Uid] = nil
-	-- La mutation suit l'objet (DEV-131), comme sa zone.
-	thiefData.Items[theft.Uid] = { Id = entry.Id, Source = "PvP", At = os.time(), Zone = entry.Zone, Mutation = Mutations.Sanitize(entry.Mutation) }
+	if victim and victimData then
+		DisplayService.TakeHeld(victim, theft.Uid)
+		victimData.Items[theft.Uid] = nil
+	elseif bot then
+		bot.TakeHeld(theft.Plot, theft.Uid, thief) -- le bot n'a pas de profil : il le remplacera plus tard
+	end
+	-- La mutation suit l'objet (DEV-131), comme sa zone. Objet du bot : zone du catalogue, sans mutation.
+	local def = Items.ById[theft.ItemId]
+	local zone = if entry then entry.Zone elseif def then def.Zone else nil
+	local mutation = Mutations.Sanitize(if entry then entry.Mutation else nil)
+	thiefData.Items[theft.Uid] = { Id = theft.ItemId, Source = "PvP", At = os.time(), Zone = zone, Mutation = mutation }
 	local slot = DisplayService.PlaceAuto(thief, theft.Uid, root.Position)
 	CarryService.Consume(thief, "Deposited")
 
-	local lifetime = (thiefData :: any).Lifetime
-	if type(lifetime) == "table" and type(lifetime.Steals) == "number" then
-		lifetime.Steals += 1
-	else
-		warn(`[PvPService] {thief.Name} : Lifetime absent du profil, vol non compté`)
+	-- Un vol au bot ne compte pas pour les classements, et son immunité est chez BotService (en-tête).
+	if victim then
+		local lifetime = (thiefData :: any).Lifetime
+		if type(lifetime) == "table" and type(lifetime.Steals) == "number" then
+			lifetime.Steals += 1
+		else
+			warn(`[PvPService] {thief.Name} : Lifetime absent du profil, vol non compté`)
+		end
+		immuneUntil[victim] = os.clock() + PvP.TheftImmunityDuration
+		Net.Server.TheftAlert:Fire(victim, false)
 	end
-	immuneUntil[victim] = os.clock() + PvP.TheftImmunityDuration
-	Net.Server.TheftAlert:Fire(victim, false)
 	local name = itemName(theft.ItemId)
 	if slot then
 		notify(thief, string.format(MESSAGES.Stolen, name, Format.income(theft.Payload.Income)), "Info")
 	else
 		notify(thief, string.format(MESSAGES.StolenToInventory, name), "Info")
 	end
-	notify(victim, string.format(MESSAGES.Robbed, thief.DisplayName, name, PvP.TheftImmunityDuration), "Alert")
 	-- Les deux sauvegardes tout de suite (la victime d'abord), plutôt qu'à la sauvegarde automatique :
 	-- seul un arrêt brutal du serveur pendant ces deux écritures pourrait encore créer un écart.
-	DataService.Save(victim)
+	if victim then
+		notify(victim, string.format(MESSAGES.Robbed, thief.DisplayName, name, PvP.TheftImmunityDuration), "Alert")
+		DataService.Save(victim)
+	end
 	DataService.Save(thief)
 	local where = if slot then `présentoir {slot}` else "inventaire"
-	log(`{thief.Name} a volé {theft.ItemId} ({theft.Uid}) à {victim.Name} : {where}, immunité de {PvP.TheftImmunityDuration} s pour la victime`)
+	if victim then
+		log(`{thief.Name} a volé {theft.ItemId} ({theft.Uid}) à {victim.Name} : {where}, immunité de {PvP.TheftImmunityDuration} s pour la victime`)
+	else
+		log(`{thief.Name} a volé {theft.ItemId} ({theft.Uid}) au bot : {where}`)
+	end
 	emitEnded(theft, "Stolen", "Deposited")
 end
 
@@ -769,8 +890,8 @@ end
 -- Raison du refus d'une prise sur le présentoir `slot` de `plot` (texte pour la sortie de Studio) et,
 -- pour un joueur honnête, la clé et le texte du message à lui envoyer ; nil si la prise est permise.
 local function stealRefusal(player: Player, plot: Model, slot: number): (string?, string?, string?)
-	local victim = PlotService.GetOwner(plot)
-	if victim == nil then
+	local victim = PlotService.GetOwner(plot) -- nil : boutique libre, ou celle du bot
+	if victim == nil and not isBotPlot(plot) then
 		return "boutique libre", nil, nil
 	end
 	if victim == player then
@@ -780,17 +901,17 @@ local function stealRefusal(player: Player, plot: Model, slot: number): (string?
 	if shop == nil or shop.Victim ~= victim then
 		return "boutique fermée (porte intacte ou 10 s écoulées)", nil, nil
 	end
-	if not present(player) or not present(victim) then
+	if not present(player) or (victim and not present(victim)) then
 		return "départ en cours", nil, nil
 	end
-	local victimData = DataService.Get(victim)
-	if DataService.Get(player) == nil or victimData == nil then
+	local victimData = if victim then DataService.Get(victim) else nil
+	if DataService.Get(player) == nil or (victim and victimData == nil) then
 		return "profil pas chargé", nil, nil
 	end
 	if thefts[player] or isCarrying(player) then
 		return "mains pleines", nil, nil
 	end
-	local refusal, left = protectionOf(player, victim)
+	local refusal, left = plotProtectionOf(player, plot, victim)
 	if refusal then
 		return `boutique protégée ({refusal})`, refusal, protectionMessage(refusal, left)
 	end
@@ -817,9 +938,9 @@ local function stealRefusal(player: Player, plot: Model, slot: number): (string?
 	if distance > PvP.StealMaxDistance then
 		return `trop loin ({math.round(distance * 10) / 10} studs)`, nil, nil
 	end
-	local exposed = DisplayService.GetExposed(victim)
+	local exposed = exposedOf(plot, victim)
 	local item = exposed[slot]
-	if item == nil or victimData.Display[tostring(slot)] ~= item.Uid or victimData.Items[item.Uid] == nil then
+	if item == nil or (victimData and (victimData.Display[tostring(slot)] ~= item.Uid or victimData.Items[item.Uid] == nil)) then
 		return "présentoir vide", nil, nil
 	end
 	if safeSlotsOf(victim, exposed)[slot] then
@@ -831,20 +952,22 @@ local function stealRefusal(player: Player, plot: Model, slot: number): (string?
 	return nil, nil, nil
 end
 
-local function grant(thief: Player, victim: Player, plot: Model, slot: number, uid: string)
-	local item = DisplayService.GetExposed(victim)[slot]
+local function grant(thief: Player, victim: Player?, plot: Model, slot: number, uid: string)
+	local item = exposedOf(plot, victim)[slot]
 	local def = if item then Items.ById[item.ItemId] else nil
 	local root = rootOf(thief)
 	if item == nil or item.Uid ~= uid or def == nil or root == nil then
 		refuse(thief, "StealItem", "objet changé pendant le maintien")
 		return
 	end
-	if DisplayService.Hold(victim, uid) == nil then
-		refuse(thief, "StealItem", "DisplayService.Hold a refusé")
+	local bot = Bot
+	local held = if victim then DisplayService.Hold(victim, uid) ~= nil else bot ~= nil and bot.Hold(plot, uid, thief)
+	if not held then
+		refuse(thief, "StealItem", "DisplayService.Hold (ou BotService.Hold) a refusé")
 		return
 	end
 	-- Mutation de l'objet (DEV-131) : sur BB_Carry pendant la fuite (le revenu d'item.Income la compte déjà).
-	local victimData = DataService.Get(victim)
+	local victimData = if victim then DataService.Get(victim) else nil
 	local victimEntry = if victimData then victimData.Items[uid] else nil
 	local mutation = if victimEntry then Mutations.Sanitize(victimEntry.Mutation) else nil
 	local payload: PlayerItemPayload = {
@@ -853,7 +976,7 @@ local function grant(thief: Player, victim: Player, plot: Model, slot: number, u
 		ItemId = def.Id,
 		Rarity = def.Rarity,
 		Income = item.Income,
-		VictimUserId = victim.UserId,
+		VictimUserId = if victim then victim.UserId else 0, -- 0 : le bot (personne ne le défend à la batte)
 		SlotIndex = slot,
 		Mutation = mutation,
 	}
@@ -873,7 +996,7 @@ local function grant(thief: Player, victim: Player, plot: Model, slot: number, u
 	local ok, started = pcall(CarryService.StartCarry, thief, payload)
 	if not ok or started ~= true then
 		thefts[thief] = nil
-		DisplayService.Release(victim, uid)
+		releaseItem(plot, victim, uid, thief)
 		if not ok then
 			warn(`[PvPService] CarryService.StartCarry : {started}`)
 		end
@@ -885,12 +1008,17 @@ local function grant(thief: Player, victim: Player, plot: Model, slot: number, u
 		hideTimer(shop, thief)
 	end
 	local name = itemName(def.Id)
-	Net.Server.TheftAlert:Fire(victim, true, thief, def.Id)
-	notify(victim, string.format(MESSAGES.Stealing, thief.DisplayName, name), "Alert")
+	if victim then
+		Net.Server.TheftAlert:Fire(victim, true, thief, def.Id)
+		notify(victim, string.format(MESSAGES.Stealing, thief.DisplayName, name), "Alert")
+	end
 	notify(thief, string.format(MESSAGES.Grabbed, name), "Info")
-	log(`{thief.Name} prend {def.Id} ({uid}) sur le présentoir {slot} de {victim.Name}`)
-	for _, listener in table.clone(startedListeners) do
-		task.spawn(listener, thief, victim, def.Id)
+	local whose = if victim then `de {victim.Name}` else "du bot"
+	log(`{thief.Name} prend {def.Id} ({uid}) sur le présentoir {slot} {whose}`)
+	if victim then
+		for _, listener in table.clone(startedListeners) do
+			task.spawn(listener, thief, victim, def.Id)
+		end
 	end
 end
 
@@ -918,8 +1046,8 @@ local function onStealItem(player: Player, plotIndex: number, slotIndex: number)
 		end
 		return
 	end
-	local victim = PlotService.GetOwner(plot) :: Player
-	local uid = DisplayService.GetExposed(victim)[slotIndex].Uid
+	local victim = PlotService.GetOwner(plot) -- nil : le bot (stealRefusal l'a vérifié)
+	local uid = exposedOf(plot, victim)[slotIndex].Uid
 	local now = os.clock()
 	if hold and hold.Plot == plot and hold.Slot == slotIndex and hold.Uid == uid then
 		local elapsed = now - hold.StartedAt
@@ -943,19 +1071,19 @@ local function setIfChanged(plot: Model, name: string, value: any)
 end
 
 local function publish(plot: Model)
-	local owner = PlotService.GetOwner(plot)
+	local owner = PlotService.GetOwner(plot) -- nil : boutique libre, ou celle du bot
 	local protection: string? = nil
 	local protectedUntil: number? = nil
 	local safeText: string? = nil
-	if owner then
-		local refusal, left = protectionOf(nil, owner)
+	if owner or isBotPlot(plot) then
+		local refusal, left = plotProtectionOf(nil, plot, owner)
 		protection = refusal
 		if refusal == "Immune" and left then
 			-- Arrondi à la seconde : l'attribut ne change pas à chaque publication.
 			protectedUntil = math.ceil(Workspace:GetServerTimeNow() + left)
 		end
 		local slots: { number } = {}
-		for slot in safeSlotsOf(owner, DisplayService.GetExposed(owner)) do
+		for slot in safeSlotsOf(owner, exposedOf(plot, owner)) do
 			table.insert(slots, slot)
 		end
 		table.sort(slots)
@@ -977,7 +1105,7 @@ end
 local function step()
 	local now = os.clock()
 	for player, hold in table.clone(holds) do
-		local exposed = DisplayService.GetExposed(hold.Victim)[hold.Slot]
+		local exposed = exposedOf(hold.Plot, hold.Victim)[hold.Slot]
 		if
 			exposed == nil
 			or exposed.Uid ~= hold.Uid
@@ -991,8 +1119,9 @@ local function step()
 		if thefts[thief] ~= theft then
 			continue
 		end
-		if not present(theft.Victim) then
-			abandon(theft, "VictimLeft")
+		local victim = theft.Victim
+		if (victim and not present(victim)) or (victim == nil and not isBotPlot(theft.Plot)) then
+			abandon(theft, "VictimLeft") -- la victime, ou le bot, est partie
 			continue
 		end
 		local plot = PlotService.GetPlot(thief)
@@ -1005,7 +1134,11 @@ local function step()
 		end
 	end
 	for _, shop in table.clone(shops) do
-		updateViewers(shop)
+		if shop.Victim == nil and not isBotPlot(shop.Plot) then
+			closeShop(shop, "départ du bot")
+		else
+			updateViewers(shop)
+		end
 	end
 	ejectStep()
 	publishCount += 1
@@ -1026,6 +1159,9 @@ local function onBroken(info: WindowService.BreakInfo)
 	local plot = info.Model
 	local victim = PlotService.GetOwner(plot)
 	if victim == nil then
+		if isBotPlot(plot) then
+			openShop(plot, nil, info.WindowId, info.Breaker) -- le bot : pas d'alarme à prévenir
+		end
 		return
 	end
 	openShop(plot, victim, info.WindowId, info.Breaker)
@@ -1072,10 +1208,11 @@ end
 
 function PvPService.GetTheft(thief: Player): TheftInfo?
 	local theft = thefts[thief]
-	if theft == nil then
-		return nil
+	local victim = if theft then theft.Victim else nil
+	if theft == nil or victim == nil then
+		return nil -- aucun vol, ou un vol au bot (voir l'en-tête)
 	end
-	return { Victim = theft.Victim, ItemUid = theft.Uid, ItemId = theft.ItemId, SlotIndex = theft.Slot }
+	return { Victim = victim, ItemUid = theft.Uid, ItemId = theft.ItemId, SlotIndex = theft.Slot }
 end
 
 function PvPService.IsThiefOf(player: Player, owner: Player): boolean
