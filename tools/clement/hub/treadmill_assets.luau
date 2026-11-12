@@ -17,6 +17,7 @@
 	    l'Attachment UsePoint (place du coureur, tourné vers -Z). Pour Void et Fire, Belt est une
 	    Part plate qui reprend l'image de la bande (importée sur le maillage) en BeltTexture ;
 	  - UpgradePoint (Attachment au sol en (8,4, 0, -4) depuis le pivot, tourné vers +Z (la boutique), même point pour toutes les variantes) ;
+	  - UseZone (Part invisible, sans collision, CanTouch) : la machine + 3 studs autour (1,5 côté boutique, +Z), 8 studs de haut ; le code fait monter le joueur dès qu'il y entre ;
 	  - des boîtes invisibles Collision_* qui portent les collisions.
 	La boutique (plot_shop_builder.luau) copie PLOT_Treadmill_Base sous le nom Treadmill.
 ]]
@@ -266,6 +267,32 @@ local function attachment(name, part, pos, look)
 	return a
 end
 
+-- Zone d'entrée (Clément, 2026-11-11) : pièce invisible UseZone autour de la machine, sans collision.
+-- Le code fait monter le joueur dès qu'il y entre. Marge de 3 studs autour du tapis, 8 studs de haut.
+-- Côté boutique (+Z, l'arrière du tapis), marge réduite : la zone s'arrête avant le mur de façade.
+local USE_MARGIN, USE_REAR, USE_HEIGHT = 3, 1.5, 8
+local function useZone(m)
+	local old = m:FindFirstChild("UseZone")
+	if old then old:Destroy() end
+	local pivot = m:GetPivot()
+	local cf, size = m:GetBoundingBox()
+	local c = pivot:PointToObjectSpace(cf.Position)
+	local x0, x1 = c.X - size.X / 2 - USE_MARGIN, c.X + size.X / 2 + USE_MARGIN
+	local z0, z1 = c.Z - size.Z / 2 - USE_MARGIN, c.Z + size.Z / 2 + USE_REAR
+	local z = Instance.new("Part")
+	z.Name = "UseZone"
+	z.Size = Vector3.new(x1 - x0, USE_HEIGHT, z1 - z0)
+	z.CFrame = pivot * CFrame.new((x0 + x1) / 2, USE_HEIGHT / 2, (z0 + z1) / 2)
+	z.Anchored = true
+	z.Transparency = 1
+	z.CanCollide = false
+	z.CanTouch = true
+	z.CanQuery = false
+	z.CastShadow = false
+	z.Parent = m
+	return z
+end
+
 local function prepare(import, name)
 	local spec = VARIANTS[name]
 	-- l'Importateur range les maillages dans un sous-modèle du même nom : on les remonte
@@ -341,6 +368,7 @@ local function prepare(import, name)
 	for _, c in spec.colliders do
 		box(m, c[1], c[2], c[3])
 	end
+	useZone(m)
 	import:Destroy()
 	return m
 end
@@ -359,7 +387,9 @@ for name in VARIANTS do
 		table.insert(report, string.format("%s rangé : bande y %.3f, z %.2f..%.2f, UsePoint (%.2f, %.3f, %.2f), image %s",
 			name, b.Position.Y + b.Size.Y / 2, b.Position.Z - b.Size.Z / 2, b.Position.Z + b.Size.Z / 2, up.X, up.Y, up.Z, b.BeltTexture.Texture))
 	else
-		table.insert(report, name .. " : pas d'import dans Workspace, " .. (plots:FindFirstChild(name) and "version rangée gardée" or "ABSENT"))
+		local kept = plots:FindFirstChild(name)
+		if kept and not kept:FindFirstChild("UseZone") then useZone(kept) end
+		table.insert(report, name .. " : pas d'import dans Workspace, " .. (kept and "version rangée gardée" or "ABSENT"))
 	end
 end
 table.sort(report)

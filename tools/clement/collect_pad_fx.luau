@@ -65,8 +65,8 @@ local function dollarGui(parent: Instance, face: Enum.NormalId, ppS: number, col
 	s.LineJoinMode = Enum.LineJoinMode.Round
 	s.Parent = t
 	local pad = Instance.new("UIPadding")
-	pad.PaddingTop = UDim.new(0.08, 0); pad.PaddingBottom = UDim.new(0.08, 0)
-	pad.PaddingLeft = UDim.new(0.05, 0); pad.PaddingRight = UDim.new(0.05, 0)
+	pad.PaddingTop = UDim.new(0.2, 0); pad.PaddingBottom = UDim.new(0.2, 0)
+	pad.PaddingLeft = UDim.new(0.06, 0); pad.PaddingRight = UDim.new(0.06, 0)
 	pad.Parent = t
 	t.Parent = g
 	g.Parent = parent
@@ -90,21 +90,25 @@ end
 -- (Clément, 2026-11-10 : un seul rectangle par objet, plus de cadre doré.) CollectPad_xx devient le
 -- volume invisible que le code détecte ; Plate, de la même taille, est le seul rectangle visible.
 
-local PLATE_SINK = 0.1 -- de combien le code peut enfoncer la plaque (studs)
+local PLATE_SINK = 0.1 -- de combien le code peut enfoncer la plaque, vers le bas du monde (studs)
 
+-- Plaque carrée couchée (Clément, 2026-11-11) : face Front (-Z local) vers le ciel, haut (+Y local) vers la
+-- porte de la boutique, pour que le montant se lise à l'endroit en marchant vers la sortie. CollectPad_xx
+-- (posé ainsi par plot_shop_builder.luau) donne l'orientation ; Plate prend le même volume.
 local function shapePlate(pad: BasePart, plate: BasePart)
 	pad.Transparency = 1
 	pad.CastShadow = false
 	pad.CanTouch = true
-	plate.Size = Vector3.new(pad.Size.X, PLATE_THICK, pad.Size.Z)
-	plate.CFrame = pad.CFrame * CFrame.new(0, pad.Size.Y / 2 - PLATE_THICK / 2, 0)
+	plate.Size = pad.Size
+	plate.CFrame = pad.CFrame
 	plate:SetAttribute("SinkDepth", PLATE_SINK)
 	for _, g in plate:GetChildren() do
 		if g:IsA("SurfaceGui") then g:Destroy() end
 	end
-	dollarGui(plate, Enum.NormalId.Top, 40, Color3.new(1, 1, 1), rgb(20, 90, 30))
+	dollarGui(plate, Enum.NormalId.Front, 40, Color3.new(1, 1, 1), rgb(20, 90, 30))
 	local burst = plate:FindFirstChild("BurstPoint")
-	if burst then burst.Position = Vector3.new(0, PLATE_THICK / 2, 0) end
+	-- axes du monde : les émetteurs (EmissionDirection Top) tirent vers le ciel
+	if burst then burst.WorldCFrame = CFrame.new(pad.Position + Vector3.new(0, PLATE_THICK / 2, 0)) end
 end
 
 local function upgradePad(pad: BasePart): boolean
@@ -127,8 +131,8 @@ local function upgradePad(pad: BasePart): boolean
 
 	local burst = Instance.new("Attachment")
 	burst.Name = "BurstPoint"
-	burst.Position = Vector3.new(0, PLATE_THICK / 2, 0)
 	burst.Parent = plate
+	burst.WorldCFrame = CFrame.new(pad.Position + Vector3.new(0, PLATE_THICK / 2, 0))
 
 	emitter(burst, "Sparkles", {
 		Texture = TEX_SPARK,

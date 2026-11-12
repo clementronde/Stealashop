@@ -8,11 +8,12 @@
 	Images de Clément (StealAShop-Art/Training/Treadmill/ToImport), importées au nom du groupe
 	RoundStone Studio ; identifiants retrouvés par search_asset (scope group, Image).
 
-	PLOT_Treadmill_Void :
-	  - PortalPoint (dans le portique, face au coureur) : Portal (tourbillon qui tourne) et Ring
-	    (anneau de runes, sens inverse), deux particules fixes qui se relaient en fondu ;
-	  - FlamePoint_L et FlamePoint_R (haut des piliers arrière) : flammes violettes en flipbook 4x4 ;
-	  - AuraPoint_L et AuraPoint_R (au pied des cristaux) : halos et étincelles qui montent.
+	PLOT_Treadmill_Void : dossier VoidFX (2026-11-12) :
+	  - Portal (dans le portique, face au coureur) : Portal (tourbillon qui tourne) et Ring
+	    (anneau de runes, sens inverse), deux particules fixes qui se relaient en fondu ; PortalLight ;
+	  - Flame_L et Flame_R (haut des piliers arrière) : flammes violettes en flipbook 4x4 ;
+	  - Aura_L et Aura_R (au pied des cristaux) : halos et étincelles qui montent ;
+	  - Belt.RunBurstPoint/RunBurst : étincelles aux pieds, éteint (le code l'allume pendant la course).
 	PLOT_Treadmill_Fire (version 2, sans script de FireTreadmill.lua) : dossier FireFX (Brazier1-2, Smoke1-2,
 	  LavaWindow_*, CrackEmbers1-2, Fire_<contour> x 11 avec rideaux Beam, GroundGlow) et RunBurst éteint.
 	PLOT_Treadmill_Gold (version sans script de GoldTreadmill.lua) : dossier GoldFX (Halo1 à 4, ColSparkle1 à 4
@@ -163,20 +164,55 @@ end
 local plots = RS.Assets.Plots
 local report = {}
 
+-- Void (palier 20) : dossier VoidFX comme les autres paliers (Clément, 2026-11-12, L-102 q12), le code reconnaît
+-- la variante à ce dossier. Pièces invisibles, avant (+Z) tourné vers le coureur :
+--   VoidFX.Portal (Portal + Ring, tourbillon et anneau de runes qui tournent seuls par RotSpeed),
+--   VoidFX.Flame_L / Flame_R (flammes violettes), VoidFX.Aura_L / Aura_R (Glow + Sparkle), VoidFX.PortalLight
+--   (PointLight violette). Belt.RunBurstPoint/RunBurst : étincelles aux pieds, éteint (le code l'allume pendant
+--   la course). Pour le code : défilement de BeltTexture, RunBurst en course, pulsation de PortalLight (1,4 à 2,4)
+--   et, en course, Rate de Portal et Ring x 2.
 local void = plots:FindFirstChild("PLOT_Treadmill_Void")
 if void then
-	local host = void.VoidSteel
+	local VIOLET = Color3.fromHex("A35CFF")
+	for _, n in { "PortalPoint", "FlamePoint_L", "FlamePoint_R", "AuraPoint_L", "AuraPoint_R" } do
+		local old = void:FindFirstChild(n, true)
+		if old then old:Destroy() end -- anciens points posés sur VoidSteel (avant le dossier VoidFX)
+	end
+	local old = void:FindFirstChild("VoidFX")
+	if old then old:Destroy() end
+	local fx = Instance.new("Folder")
+	fx.Name = "VoidFX"
+	fx.Parent = void
+	local function host(name, pos)
+		local p = Instance.new("Part")
+		p.Name = name
+		p.Size = Vector3.new(0.1, 0.1, 0.1)
+		p.CFrame = CFrame.lookAt(pos, pos + Vector3.new(0, 0, 1)) -- avant vers le coureur (+Z)
+		p.Anchored, p.CanCollide, p.CanQuery, p.CanTouch, p.CastShadow = true, false, false, false, false
+		p.Transparency = 1
+		p.Parent = fx
+		return p
+	end
 	-- portique : ouverture x ±1,76, y 1,52..5,52 ; plaque du fond à z -3,46 (repère du tapis, avant vers -Z)
-	local portal = point(host, "PortalPoint", Vector3.new(0, 3.52, -3.38))
+	local portal = host("Portal", Vector3.new(0, 3.52, -3.38))
 	disc(portal, "Portal", IDS.Portal, 3.4, 35, 0.15, 0)
 	disc(portal, "Ring", IDS.Ring, 3.9, -20, 1, 0.2)
-	for _, s in { { "L", -1 }, { "R", 1 } } do
-		local f = point(host, "FlamePoint_" .. s[1], Vector3.new(s[2] * 2.08, 2.94, 3.66)) -- haut des piliers arrière
-		flames(f, IDS.FlameVoid, Color3.new(1, 1, 1))
-		local a = point(host, "AuraPoint_" .. s[1], Vector3.new(s[2] * 2.6, 0.6, 0.3)) -- pied des cristaux
-		aura(a)
+	local light = Instance.new("PointLight")
+	light.Name = "Light"; light.Color = VIOLET; light.Range = 12; light.Brightness = 1.9; light.Shadows = false
+	light.Parent = host("PortalLight", Vector3.new(0, 3.52, -3.0))
+	for _, sd in { { "L", -1 }, { "R", 1 } } do
+		flames(host("Flame_" .. sd[1], Vector3.new(sd[2] * 2.08, 2.94, 3.66)), IDS.FlameVoid, Color3.new(1, 1, 1)) -- haut des piliers arrière
+		aura(host("Aura_" .. sd[1], Vector3.new(sd[2] * 2.6, 0.6, 0.3))) -- pied des cristaux
 	end
-	table.insert(report, "PLOT_Treadmill_Void : portail, anneau, 2 flammes, 2 auras")
+	-- étincelles du vide aux pieds du coureur : éteint, le code l'allume pendant la course
+	local burstPoint = point(void.Belt, "RunBurstPoint", void.Belt.UsePoint.WorldPosition + Vector3.new(0, 0.2, 0.3))
+	emitter(burstPoint, "RunBurst", {
+		Texture = IDS.Sparkle, Color = ColorSequence.new(VIOLET, Color3.new(1, 1, 1)), LightEmission = 1, LightInfluence = 0,
+		Rate = 25, Lifetime = NumberRange.new(0.3, 0.6), Speed = NumberRange.new(4, 7),
+		EmissionDirection = Enum.NormalId.Front, SpreadAngle = Vector2.new(35, 15), Acceleration = Vector3.new(0, -12, 0),
+		Size = ns({ { 0, 0.35 }, { 1, 0 } }), Rotation = NumberRange.new(0, 360), Enabled = false,
+	})
+	table.insert(report, "PLOT_Treadmill_Void : dossier VoidFX (portail, anneau, lumière, 2 flammes, 2 auras), RunBurst éteint")
 end
 
 -- Fire (version 2) : version sans script de FireTreadmill.lua (Clément), même repère (K = 1), réglage PC

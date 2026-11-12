@@ -424,7 +424,7 @@ local function fillInventory()
 			c.Parent = toolSec.Cards
 		end
 	end
-	local tabSections = { ItemsTab = "ItemsSection", BoxesTab = "BoxesSection", ToolsTab = "ToolsSection", PotionsTab = "PotionsSection" }
+	local tabSections = { ItemsTab = "ItemsSection", BoxesTab = "BoxesSection", PotionsTab = "PotionsSection", ToolsTab = "ToolsSection" }
 	local function selectTab(name)
 		local tabs = inv.Root:FindFirstChild("Tabs")
 		if tabs then

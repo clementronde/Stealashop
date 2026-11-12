@@ -12,7 +12,7 @@
 		_G.ClaudePlotShop.check(model)               -- triangles, noms du contrat, scripts
 
 	Gabarit : ReplicatedStorage/Assets/Plots/PLOT_Shop, tags PlayerPlot (boutique), CashPad,
-	Treadmill et Bench déjà posés, pas de PlotIndex (posé par install). Bâtiment 64 x 80 studs, plus la terrasse
+	Treadmill et Bench déjà posés, pas de PlotIndex (posé par install). Bâtiment 64 x 80 studs, plus le devant
 	(x -32..32, z -40..40), pivot en bas au centre, avant vers -Z.
 
 	Contrat 10.4 (cœur, présent à tous les niveaux) : Window (porte vitrée à 2 vantaux Leaf_L et
@@ -27,8 +27,14 @@
 	  Décor ajouté à chaque niveau, cumulatif : au niveau n, Stage_1 à Stage_n sont là. Les 5 niveaux
 	  du doc (Partie 2, section 2) : Stand, Boutique, Magasin, Concept store, Flagship.
 	- Attribut HideFromStage (nombre) : la pièce ou le groupe disparaît à partir de ce niveau
-	  (remplacé par un niveau plus haut). Attribut FromStage (nombre) : la pièce n'existe qu'à partir de
-	  ce niveau (murs invisibles et contours qui suivent l'agrandissement du niveau 2).
+	  (remplacé par un niveau plus haut). Plus d'attribut FromStage (2026-11-11) : ce qui n'existe qu'à
+	  partir du niveau 2 (grands murs invisibles Barriers, contours RayonSpots) est rangé dans Stage_2.
+	- Niveau de la boutique = nombre de rayons débloqués (Clément, 2026-11-11 : la boutique grandit avec
+	  les rayons). Les boutiques du hub sont posées au niveau 1 ; quand le rayon k arrive, le code copie
+	  Stage_2 à Stage_k depuis ce gabarit (même calcul de pivot que les RayonVisuals), recolore leurs
+	  pièces Accent = true avec l'attribut AccentColor de la boutique, puis cache tout ce qui porte
+	  HideFromStage <= k. Le rayon k est dans le bâtiment du niveau k (niveau 1 : rayon 1, z -40..-16 ;
+	  dès le niveau 2 : sol, murs invisibles et volume jusqu'à z 40, les 5 rayons).
 	- Niveau 1 = petite boutique d'une seule rangée (z -40..-16) ; Stage_2 pose la suite du sol
 	  (PlotFloorExt, z -16..40) et les niveaux suivants l'habillent. Plus de coffre visible ni d'établis
 	  (L-086) : VaultSlot_01 à _03 sur VaultAnchor (invisible), UnboxBench_01 à _04 sur les présentoirs
@@ -44,15 +50,18 @@
 	  leurs DisplaySlot ; leurs visuels (présentoirs, CollectPad, produits) sont rangés dans
 	  ReplicatedStorage/Assets/Plots/PLOT_Shop_Rayons/Rayon_0n, même repère que la boutique : le code
 	  les copie dans Rayon_0n au pivot de la boutique (showRayon) quand la rangée est débloquée.
-	  RayonSpot_02 à _05 (FromStage 2) : contour au sol de l'emplacement, retiré quand la rangée vient.
-	- CollectPad_01 à _20 : rectangle au sol (4,4 x 2,6) au pied de chaque présentoir, dans le même
-	  rayon ; le propriétaire y marche pour ramasser l'argent de cet objet. Sur le dessus, SurfaceGui
-	  AmountGui > TextLabel Amount (« $0 ») où le code écrit le montant de l'objet. Plus de caisse ni de
+	  RayonSpot_02 à _05 (dans Stage_2/RayonSpots) : contour au sol de l'emplacement, retiré quand la rangée vient.
+	- CollectPad_01 à _20 : plaque carrée au sol (3,2 x 3,2) au pied de chaque présentoir, dans le même
+	  rayon ; le propriétaire y marche pour ramasser l'argent de cet objet. Plaque couchée (face Front vers
+	  le ciel, haut vers la porte) : SurfaceGui AmountGui (Face Front) > TextLabel Amount (« $0 ») où le code écrit le montant de l'objet. Plus de caisse ni de
 	  caisse globale (2026-11-10) : CashPad n'est plus qu'une pièce invisible enfouie, pour le contrat.
 	- DisplayUpgradePoint : Attachment sur PlotFloor (les bornes noires près de la porte sont retirées).
-	- Terrace : terrasse z -52..-40 devant la façade, hors des murs ; le tapis et le banc y sont.
-	  Emprise totale : 64 x 92 studs (z -52..40), pivot au centre du bâtiment (z 0).
-	- RarestPedestal : Model du socle de l'objet le plus rare, sur la terrasse entre la porte et le
+	- Plus de terrasse (2026-11-11) : devant la façade (z -52..-40), tapis, banc et socle sont posés
+	  sur le sol du hub (y 0). Emprise totale : 64 x 92 studs (z -52..40), pivot au centre du bâtiment (z 0).
+	- Treadmill et Bench : identiques dans les 6 boutiques (pas de couleur d'accent). Chacun a une
+	  UseZone : Part invisible, sans collision, CanTouch, autour de la machine (+3 studs, 8 de haut) ;
+	  le code fait monter le joueur dès qu'il y entre.
+	- RarestPedestal : Model du socle de l'objet le plus rare, devant la façade, entre la porte et le
 	  banc (x 7,5, z -48,5), à tous les niveaux. RarestSlot : Attachment sur le plateau, où le code pose
 	  l'objet (face à la rue). RarestLabelPoint : Attachment 6 studs au-dessus, pour l'étiquette.
 	Aucun élément du contrat n'est dans un Stage_n.
@@ -354,11 +363,9 @@ local function buildCore(M)
 	end
 
 	-- volumes
-	-- terrasse devant la boutique (z -52..-40), hors des murs : le tapis et le banc y sont
-	B(M, "Terrace", -32, -0.6, -52, 32, 0.3, -40, C.accent, { accent = true }) -- à la couleur de la boutique
-	B(M, "TerraceEdge", -32, 0.3, -52, 32, 0.5, -51.6, C.frame, { studs = false })
-	-- volume de la boutique, sans la terrasse : PvPService sort les non-propriétaires de Bounds tant que la
-	-- porte est intacte ; la terrasse (tapis, banc, socle, vitre à casser) doit rester libre d'accès
+	-- plus de terrasse colorée devant la boutique (Clément, 2026-11-11) : tapis, banc et socle sont posés
+	-- sur le sol vert du hub (y 0). Bounds = le bâtiment seul : PvPService en sort les non-propriétaires
+	-- tant que la porte est intacte ; le devant (tapis, banc, socle, vitre à casser) reste libre d'accès
 	local bounds = B(M, "Bounds", -32, 0.3, -40, 32, H, 40, C.white, { studs = false, decor = true, T = 1, noShadow = true })
 	bounds.CanQuery = false
 	local dep = B(M, "DepositZone", -31.5, 0.3, -39.5, 31.5, 12.3, 39.5, C.white, { studs = false, T = 1, noShadow = true })
@@ -418,12 +425,15 @@ local function buildInterior(M, store)
 				-- L-086 : on pose et on ouvre le colis sur le présentoir, plus d'établi
 				att(string.format("UnboxBench_%02d", i), stand, sxp, 3.75, zr)
 			end
-			-- un seul rectangle au sol par présentoir, avec le montant de l'objet (Clément, 2026-11-10) :
-			-- SurfaceGui AmountGui (dessus) > TextLabel Amount, que le code remplit (« $1.2K »)
-			local cp = B(R, string.format("CollectPad_%02d", n), sxp - 2.2, 0.3, zr - 4.5, sxp + 2.2, 0.42, zr - 1.9, C.green, { studs = false, mat = Enum.Material.Neon })
+			-- une seule plaque carrée au sol par présentoir (3,2 x 3,2, Clément, 2026-11-11), avec le montant de
+			-- l'objet : SurfaceGui AmountGui > TextLabel Amount, que le code remplit (« $1.2K »). La plaque est
+			-- couchée : sa face Front (-Z local) regarde le ciel et son haut (+Y local) pointe vers la porte,
+			-- donc le texte se lit à l'endroit en marchant vers la sortie.
+			local cp = B(R, string.format("CollectPad_%02d", n), -1.6, -1.6, -0.06, 1.6, 1.6, 0.06, C.green, { studs = false, mat = Enum.Material.Neon })
+			cp.CFrame = CFrame.fromMatrix(Vector3.new(sxp, 0.36, zr - 3.5), Vector3.new(-1, 0, 0), Vector3.new(0, 0, -1), Vector3.new(0, -1, 0))
 			cp.CanCollide = false; cp.CanTouch = true; cp.CanQuery = false
-			label(cp, Enum.NormalId.Top, "$0", C.white, 40, nil, "Amount")
-			cp.LabelGui_Top.Name = "AmountGui"
+			label(cp, Enum.NormalId.Front, "$0", C.white, 40, nil, "Amount")
+			cp.LabelGui_Front.Name = "AmountGui"
 		end
 	end
 	-- plus de bornes noires à côté de la porte (Clément, 2026-11-10) : le point reste, posé sur le sol
@@ -459,7 +469,7 @@ local function buildTreadmill(M, ox, oz)
 	assert(src, "PLOT_Treadmill_Base introuvable dans Assets/Plots : lancer treadmill_assets.luau")
 	local T = src:Clone()
 	T.Name = "Treadmill"
-	T:PivotTo(CFrame.new(ox, 0.3, oz))
+	T:PivotTo(CFrame.new(ox, 0, oz)) -- sur le sol du hub (plus de terrasse)
 	T.Parent = M
 	CS:AddTag(T, "Treadmill")
 	return T
@@ -469,12 +479,12 @@ end
 -- s'y assoit (BenchIdle), s'allonge, la tête sous la barre posée sur le rack (BenchLift).
 local function buildBench(M, ox, oz)
 	local K = group(M, "Bench")
-	local y = 0.3
+	local y = 0 -- sur le sol du hub (plus de terrasse)
 	local function P(name, x0, y0, z0, x1, y1, z1, color, opt)
 		return B(K, name, ox + x0, y + y0, oz + z0, ox + x1, y + y1, oz + z1, color, opt)
 	end
 	local mat = P("GymMat", -2.4, 0, -4.2, 2.4, 0.06, 3.2, C.rubber, { studs = false, decor = true, noShadow = true })
-	P("Pad", -0.9, 1.45, -2.3, 0.9, 1.85, 2.6, C.accent, { studs = false, accent = true })
+	P("Pad", -0.9, 1.45, -2.3, 0.9, 1.85, 2.6, C.accent, { studs = false }) -- même banc dans les 6 boutiques (Clément, 2026-11-11)
 	P("PadBase", -0.6, 1.15, -2.2, 0.6, 1.45, 2.5, C.frame, { studs = false })
 	P("Leg_F", -0.75, 0, -2.2, 0.75, 1.15, -1.9, C.frame, { studs = false })
 	P("Leg_B", -0.75, 0, 2.2, 0.75, 1.15, 2.5, C.frame, { studs = false })
@@ -494,10 +504,14 @@ local function buildBench(M, ox, oz)
 		local tag = s < 0 and "L" or "R"
 		CYL(bar, "Collar_" .. tag, ox + s * 2.2, by, bz, 0.15, 0.45, C.metal)
 		CYL(bar, "Plate_" .. tag .. "1", ox + s * 2.45, by, bz, 0.3, 1.8, C.dark)
-		CYL(bar, "Plate_" .. tag .. "2", ox + s * 2.78, by, bz, 0.3, 1.25, C.accent, { accent = true })
+		CYL(bar, "Plate_" .. tag .. "2", ox + s * 2.78, by, bz, 0.3, 1.25, C.accent)
 	end
 	att("UsePoint", mat, ox, y + 0.06, oz - 3.0) -- 0,7 stud devant le coussin : le corps ne le touche pas
 	att("UpgradePoint", top, ox - 8.4, y, oz - 4, Vector3.new(0, 0, 1)) -- panneau au sol en (15,6, -50), tourné vers la boutique (Clément, 2026-11-08)
+	-- zone d'entrée (Clément, 2026-11-11) : invisible, sans collision ; le code fait asseoir le joueur dès
+	-- qu'il y entre. Le banc + 3 studs autour, 8 de haut, arrêtée à 0,2 stud de la façade (z -40).
+	local zone = P("UseZone", -6.1, 0, -7.2, 6.1, 8, 5.8, C.white, { studs = false, T = 1, noShadow = true })
+	zone.CanCollide = false; zone.CanTouch = true; zone.CanQuery = false
 	K.WorldPivot = CFrame.new(ox, y, oz)
 	CS:AddTag(K, "Bench")
 	return K
@@ -613,12 +627,7 @@ local function buildStage2(M)
 	B(Pr, "PromoPole", -12.05, 2.7, -29.6, -11.95, 4.2, -29.4, C.frame, { studs = false, decor = true })
 	local ps = B(Pr, "PromoSign", -13.4, 4.2, -29.6, -10.6, 5.4, -29.4, C.yellow, { studs = false, decor = true })
 	label(ps, Enum.NormalId.Front, "SALE", C.red, 60, C.white)
-	local GY = group(S, "GymRack") -- sur la terrasse, à côté du banc
-	B(GY, "DumbbellRack", 28.6, 0.3, -50.5, 31, 2.2, -41, C.frame, { studs = false })
-	for k = 0, 5 do
-		local z = -49.7 + k * 1.5
-		B(GY, "Dumbbell_" .. k, 28.9, 2.2, z, 30.7, 2.6, z + 0.5, (k % 2 == 0) and C.dark or C.accent, { studs = false, decor = true, accent = k % 2 == 1 })
-	end
+	-- plus de support d'haltères devant la boutique (2026-11-11 : plus de terrasse, le plus simple possible)
 	return S
 end
 
@@ -734,8 +743,8 @@ local function buildStage4(M)
 	local open = B(S, "OpenSign", -21, 8.6, -38.95, -15, 10.4, -38.8, C.dark, { studs = false, decor = true })
 	label(open, Enum.NormalId.Front, "OPEN", C.red, 40, C.white)
 	local SR = group(S, "ShutterRails") -- restent au Flagship depuis le retrait du cadre de coffre (L-086)
-	B(SR, "ShutterRail_L", -9.9, 0.3, -40.8, -9.5, 11.1, -40.5, C.metal2, { studs = false })
-	B(SR, "ShutterRail_R", 9.5, 0.3, -40.8, 9.9, 11.1, -40.5, C.metal2, { studs = false })
+	B(SR, "ShutterRail_L", -9.9, 0, -40.8, -9.5, 11.1, -40.5, C.metal2, { studs = false })
+	B(SR, "ShutterRail_R", 9.5, 0, -40.8, 9.9, 11.1, -40.5, C.metal2, { studs = false })
 	B(SR, "ShutterHousing", -10.1, 11.1, -40.85, 10.1, 12.0, -40.6, C.metal, { studs = false, mat = Enum.Material.DiamondPlate })
 	local A = group(S, "Awnings")
 	local run, drop = 2.4, 1.0
@@ -888,7 +897,7 @@ local function plotsFolder()
 	return f
 end
 
--- Socle de l'objet le plus rare, sur la terrasse entre la porte et le banc, bien en vue de l'allée.
+-- Socle de l'objet le plus rare, devant la façade, entre la porte et le banc, bien en vue de l'allée.
 -- Socle sombre, tambour blanc, colonne, plateau ; anneaux néon et lumière à la couleur de la boutique.
 local function buildRarest(M)
 	local B, CYL, C, att, light = P.B, P.CYL, P.C, P.att, P.light
@@ -919,6 +928,7 @@ local function buildRarest(M)
 	att("RarestLabelPoint", top, X, 9.35, Z)
 	local l = light(top, 12, 1.6, C.accent)
 	l:SetAttribute("Accent", true) -- recoloré par install, comme les pièces
+	R:PivotTo(R:GetPivot() - Vector3.new(0, 0.3, 0)) -- posé sur le sol du hub (plus de terrasse)
 	return R
 end
 
@@ -938,7 +948,7 @@ local function build()
 	store.Name = "PLOT_Shop_Rayons"
 	local steps = {
 		buildCore, function(t) buildInterior(t, store) end,
-		function(t) buildTreadmill(t, -24, -46); buildBench(t, 24, -46) end, -- sur la terrasse, hors des murs
+		function(t) buildTreadmill(t, -24, -46); buildBench(t, 24, -46) end, -- devant la façade, hors des murs
 		buildRarest,
 		buildStage1, buildStage2, buildStage3, buildStage4, buildStage5,
 	}
@@ -949,6 +959,18 @@ local function build()
 		tmp:Destroy()
 		task.wait()
 	end
+	-- Tout ce qui n'existe qu'à partir du niveau 2 (FromStage 2) passe dans Stage_2 (2026-11-11) : le code
+	-- n'a ainsi qu'à copier Stage_2 à Stage_k depuis ce gabarit quand le rayon k arrive (voir install).
+	local s2 = M:FindFirstChild("Stage_2")
+	local barriers = Instance.new("Model")
+	barriers.Name = "Barriers"
+	barriers.Parent = s2
+	for _, d in M:GetDescendants() do
+		if d:GetAttribute("FromStage") == 2 and not d:IsDescendantOf(s2) then
+			d:SetAttribute("FromStage", nil)
+			d.Parent = d:IsA("BasePart") and barriers or s2
+		end
+	end
 	local pad = M:FindFirstChild("CashPad")
 	CS:AddTag(pad, "CashPad")
 	M.WorldPivot = CFrame.identity
@@ -958,8 +980,8 @@ local function build()
 	return M, store
 end
 
--- Garde les niveaux 1 à s d'une boutique installée (jamais du gabarit) : retire les Stage_k au-dessus,
--- les pièces dont HideFromStage <= s et celles dont FromStage > s.
+-- Garde les niveaux 1 à s d'une boutique installée (jamais du gabarit) : retire les Stage_k au-dessus
+-- et les pièces dont HideFromStage <= s (FromStage : anciennes versions du gabarit).
 local function preview(m, s)
 	assert(not m:IsDescendantOf(plotsFolder()), "preview ne touche pas au gabarit : installe d'abord une copie")
 	s = math.clamp(math.floor(s or 1), 1, 5)
@@ -1001,6 +1023,7 @@ local function install(opts)
 	m.Name = opts.name or string.format("PLOT_Shop_%02d", index)
 	m:SetAttribute("PlotIndex", index)
 	local accent = opts.accent or ACCENTS[index]
+	m:SetAttribute("AccentColor", accent) -- le code recolore les Stage_k qu'il copie (pièces Accent = true)
 	local num = m:FindFirstChild("PlotNumberLabel", true)
 	if num then num.Text = "SHOP " .. index end
 	local stage = math.clamp(math.floor(opts.stage or 1), 1, 5)
