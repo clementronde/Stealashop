@@ -17,8 +17,11 @@
 -- Payload (Shared/Types/Carry) : { Kind = "NPCBox", Tier, Zone, Rarity, ItemId, StoreId, SlotId, Mutation? }
 -- pour un colis PNJ ; { Kind = "PlayerItem", ItemUid, ItemId, Rarity, Income, VictimUserId,
 -- SlotIndex } pour un objet volé à un joueur (DEV-041, PvPService : malus −25 %, contour rouge,
--- BB_Carry). Fabriqué par le serveur, vérifié par StartCarry, puis toujours repassé tel quel (même
--- table) aux écouteurs : le lire, ne jamais le modifier.
+-- BB_Carry) ; { Kind = "NPCItem", ItemId, Rarity, Mutation?, Zone, StoreId, SlotId, Luck } pour un objet
+-- sorti d'un colis ouvert sur le rayon d'un magasin PNJ (L-112, StoreHeistService : c'est l'objet qui
+-- flotte, comme un objet volé, avec son halo et BB_Carry, sans contour rouge ; malus du colis PNJ,
+-- −10 % ; il tombe au sol comme un colis, voir Drop et Fail). Fabriqué par le serveur, vérifié par
+-- StartCarry, puis toujours repassé tel quel (même table) aux écouteurs : le lire, ne jamais le modifier.
 --
 -- API (serveur) :
 --   CarryService.StartCarry(player, payload) -> boolean
@@ -40,6 +43,12 @@
 --       (ReportAnomaly) ; "Bat" (Drop d'un objet volé). Les autres services passent la leur
 --       (GuardService : "Caught" ; PvPService : "VictimLeft", la victime part pendant la fuite, et
 --       "NoRoom", plus de place chez le voleur au dépôt ; la batte, DEV-043 : "Bat").
+--       Objet NPCItem et raison "Caught" (L-112 : attrapé par le vigile, la police ou le vigile de
+--       nuit) : l'objet ne retourne pas sur son rayon, il tombe au sol sous le porteur et peut être
+--       repris, comme un colis après un coup de batte (même colis au sol que Drop, attribut BatDrop,
+--       Bat.DroppedLifetime s) ; OnCarryEnded(…, "Dropped", "Caught"), et Fail renvoie true. Le joueur
+--       attrapé ne peut pas le reprendre avant Balance.Guard.CatchStunDuration s (V0 proposé, absent
+--       du doc : le temps de son étourdissement ; les autres joueurs, tout de suite).
 --   CarryService.ReportAnomaly(player, detail) -> boolean
 --       Point d'accroche de l'anti-triche (9.6, AntiCheatService DEV-060) : écrit `detail` dans la
 --       sortie (warn), puis Fail(player, "Anomaly"). false si le joueur ne portait rien.
@@ -57,12 +66,16 @@
 --       appelés avant le retour de Drop (le porteur est encore à l'endroit du coup). Renvoie son
 --       dropId ; nil si le joueur ne portait rien. Position invalide : avertissement, le colis tombe
 --       au pied du porteur. Un objet volé à un joueur ne tombe jamais : Fail(player, "Bat"), il
---       revole chez son propriétaire (6.2, remis par PvPService), et Drop renvoie nil.
+--       revole chez son propriétaire (6.2, remis par PvPService), et Drop renvoie nil. Un objet
+--       NPCItem (L-112) tombe comme un colis (sans attribut Tier).
 --   CarryService.PickUpDrop(player, dropId) -> boolean
 --       Ramassage d'un colis au sol (GrabDropped, 9.4) : le nouveau porteur reçoit le même payload
 --       (même table : même rareté, même objet caché, 6.2), par StartCarry ; le colis quitte le sol
 --       avant (jamais deux exemplaires) et y revient si StartCarry refuse. L'appelant vérifie avant
 --       la distance, le temps de prise, la zone safe et les protections (BatService, TruckEventService).
+--   CarryService.IsFallenDrop(dropId) -> boolean
+--       true si `dropId` est encore au sol et y est tombé des mains d'un porteur (Drop, ou Fail
+--       "Caught" d'un objet NPCItem), pas posé par PlaceDrop : BatService accepte alors GrabDropped.
 --   CarryService.GetDrop(dropId) -> (Payload?, Vector3?)
 --       Payload et position (point du sol) d'un colis encore au sol ; nil, nil sinon (ramassé,
 --       expiré, inconnu, ou dropId qui n'est pas une chaîne).
@@ -130,6 +143,7 @@ local Workspace = game:GetService("Workspace")
 local Shared = ReplicatedStorage.Shared
 local Balance = require(Shared.Config.Balance)
 local Bat = require(Shared.Config.Bat)
+local Formulas = require(Shared.Config.Formulas)
 local Items = require(Shared.Config.Items)
 local Mutations = require(Shared.Config.Mutations)
 local Rarities = require(Shared.Config.Rarities)
@@ -143,7 +157,7 @@ local CarryTypes = require(Shared.Types.Carry)
 local StatsService = require(script.Parent.StatsService)
 
 type Payload = CarryTypes.Payload
-type PlayerItemPayload = CarryTypes.PlayerItemPayload
+type NPCItemPayload = CarryTypes.NPCItemPayload
 type EndResult = CarryTypes.EndResult
 type Rarity = Rarities.Rarity
 type Item = Items.Item
@@ -167,6 +181,11 @@ local HALO_POINT = "HaloPoint"
 local LABEL_POINT = "LabelPoint"
 local DROPS_FOLDER = "CarryDrops"
 local DROP_ID_ATTRIBUTE = "DropId"
+-- Raison passée à Fail par GuardService à la capture (vigile de jour, police, vigile de nuit).
+local CAUGHT_REASON = "Caught"
+-- V0 proposé, absent du doc : sol cherché jusqu'à 50 studs sous le porteur attrapé (comme BatService).
+local GROUND_RAY_DOWN = 50
+local ACTIVE_GUARDS = "ActiveGuards" -- vigiles en jeu (GuardService), ignorés par ce rayon
 
 -- Espace (studs) entre le haut de la tête et le dessous du colis : Balance.Carry.HeadGap (V0, L-071).
 local HEAD_GAP: number = Balance.Carry.HeadGap
@@ -227,6 +246,9 @@ type Drop = {
 	position: Vector3,
 	lifetime: number, -- secondes au sol avant d'expirer
 	timer: thread,
+	fallen: boolean, -- tombé des mains d'un porteur (Drop, capture), pas posé par PlaceDrop
+	lockedFor: Player?, -- L-112 : le joueur attrapé, qui ne peut pas le reprendre avant lockedUntil
+	lockedUntil: number, -- os.clock()
 }
 
 type StartedListener = (player: Player, payload: Payload) -> ()
@@ -283,6 +305,8 @@ end
 local function describe(payload: Payload): string
 	if payload.Kind == "NPCBox" then
 		return `colis {payload.Tier} {payload.Rarity} ({payload.StoreId}, {payload.SlotId})`
+	elseif payload.Kind == "NPCItem" then
+		return `objet {payload.ItemId} ({payload.Rarity}) sorti d'un colis ({payload.StoreId}, {payload.SlotId})`
 	end
 	return `objet {payload.ItemId} ({payload.Rarity}) du joueur {payload.VictimUserId}`
 end
@@ -291,7 +315,7 @@ local function speedMultiplier(payload: Payload): number
 	if payload.Kind == "PlayerItem" then
 		return Balance.Carry.StolenItemSpeedMultiplier -- −25 % (6.1)
 	end
-	return Balance.Carry.NPCBoxSpeedMultiplier -- −10 % (5.6)
+	return Balance.Carry.NPCBoxSpeedMultiplier -- −10 % (5.6) : colis PNJ, et objet sorti d'un colis (L-112)
 end
 
 -- Vérification ---------------------------------------------------------------------
@@ -324,14 +348,20 @@ local function invalidReason(payload: any): string?
 	if not Mutations.IsValid(payload.Mutation) then
 		return "mutation invalide (Config/Mutations)"
 	end
-	if payload.Kind == "NPCBox" then
-		if Balance.Heist.BoxTiers[payload.Tier] == nil then
+	if payload.Kind == "NPCBox" or payload.Kind == "NPCItem" then
+		if payload.Kind == "NPCBox" and Balance.Heist.BoxTiers[payload.Tier] == nil then
 			return `type de colis inconnu ({payload.Tier})`
+		end
+		local luck = payload.Luck
+		if payload.Kind == "NPCItem" and (type(luck) ~= "number" or not (luck >= 1) or luck == math.huge) then
+			return `chance invalide ({luck})`
 		end
 		if not isInteger(payload.Zone) or Zones[payload.Zone] == nil then
 			return `zone inconnue ({payload.Zone})`
 		end
-		if item.Zone ~= nil and item.Zone ~= payload.Zone then
+		-- Colis : son objet est de la zone du magasin. Objet sorti (L-112) : un cran de rareté peut le
+		-- prendre dans une zone voisine (StoreHeistService), Zone reste celle du magasin.
+		if payload.Kind == "NPCBox" and item.Zone ~= nil and item.Zone ~= payload.Zone then
 			return `{item.Id} est un objet de la zone {item.Zone}, pas de la zone {payload.Zone}`
 		end
 		if not isText(payload.StoreId) or not isText(payload.SlotId) then
@@ -656,34 +686,44 @@ local function boxLabel(rarity: Rarity, item: Item, mutation: Mutations.Mutation
 	return gui
 end
 
--- Étiquette BB_Carry d'un objet volé à un joueur (6.1) : nom (précédé de sa mutation, DEV-131),
--- rareté à sa couleur, $/s. Champ Mutation facultatif, hors contrat tant que Clément ne l'a pas
--- créé : s'il existe, la mutation y va en capitales et ItemName garde le nom seul.
-local function itemLabel(payload: PlayerItemPayload, rarity: Rarity): BillboardGui
+-- $/s d'un objet sorti d'un colis (L-112), comme une fois exposé (DisplayService) : revenu de sa zone
+-- (celle du magasin pour un Secret, qui n'a pas de zone) et de sa rareté, mutation comprise.
+local function npcItemIncome(payload: NPCItemPayload): number
+	local item = Items.ById[payload.ItemId]
+	return Formulas.ItemIncome(item.Zone or payload.Zone, payload.Rarity) * Mutations.IncomeMultiplier(payload.Mutation)
+end
+
+-- Étiquette BB_Carry d'un objet porté (objet volé à un joueur, 6.1 ; objet sorti d'un colis, L-112) :
+-- nom (précédé de sa mutation, DEV-131), rareté à sa couleur, $/s. Champ Mutation facultatif, hors
+-- contrat tant que Clément ne l'a pas créé : s'il existe, la mutation y va en capitales et ItemName
+-- garde le nom seul.
+local function itemLabel(itemId: string, mutation: Mutations.Mutation?, income: number, rarity: Rarity): BillboardGui
 	local template = labelTemplate(BB_CARRY)
 	local gui = if template then template:Clone() :: BillboardGui else placeholderLabel(nil)
 	gui.Name = BB_CARRY
-	local name = Items.ById[payload.ItemId].DisplayName
+	local name = Items.ById[itemId].DisplayName
 	if Find.path(gui, MUTATION_FIELD) ~= nil then
 		fill(gui, "ItemName", name)
-		fill(gui, MUTATION_FIELD, Mutations.Label(payload.Mutation))
+		fill(gui, MUTATION_FIELD, Mutations.Label(mutation))
 	else
-		fill(gui, "ItemName", Mutations.ItemName(name, payload.Mutation))
+		fill(gui, "ItemName", Mutations.ItemName(name, mutation))
 	end
 	fill(gui, "Rarity", rarity.DisplayNameUpper, rarity.Color)
-	fill(gui, "Income", Format.income(payload.Income))
+	fill(gui, "Income", Format.income(income))
 	return gui
 end
 
 -- Étiquette au-dessus du visuel (voir labelPoint) : BB_Box pour un colis PNJ, BB_Carry pour un
--- objet volé.
+-- objet (volé à un joueur, ou sorti d'un colis).
 local function addLabel(model: Model, anchor: BasePart, top: CFrame, payload: Payload, rarity: Rarity)
 	local point = labelPoint(model, anchor, top)
 	local gui: BillboardGui
 	if payload.Kind == "NPCBox" then
 		gui = boxLabel(rarity, Items.ById[payload.ItemId], payload.Mutation)
+	elseif payload.Kind == "PlayerItem" then
+		gui = itemLabel(payload.ItemId, payload.Mutation, payload.Income, rarity)
 	else
-		gui = itemLabel(payload, rarity)
+		gui = itemLabel(payload.ItemId, payload.Mutation, npcItemIncome(payload), rarity)
 	end
 	gui.Adornee = point
 	gui.Parent = point
@@ -876,8 +916,23 @@ function CarryService.Consume(player: Player, reason: string?): Payload?
 	return finish(player, "Consumed", reason or "Consumed")
 end
 
+-- Définies plus bas, avec les colis au sol : le colis ou l'objet porté tombe au sol.
+local fall: (player: Player, carry: Carry, position: Vector3, reason: string) -> string
+local groundBelow: (player: Player, humanoid: Humanoid) -> Vector3
+
 function CarryService.Fail(player: Player, reason: string): boolean
 	local text = if type(reason) == "string" and reason ~= "" then reason else "Unknown"
+	local carry = carries[player]
+	if carry ~= nil and carry.payload.Kind == "NPCItem" and text == CAUGHT_REASON then
+		-- L-112 : attrapé avec un objet sorti d'un colis, il le lâche ; l'objet reste au sol, à reprendre.
+		local dropId = fall(player, carry, groundBelow(player, carry.humanoid), text)
+		local drop = drops[dropId]
+		if drop then
+			drop.lockedFor = player
+			drop.lockedUntil = os.clock() + Balance.Guard.CatchStunDuration
+		end
+		return true
+	end
 	return finish(player, "Failed", text) ~= nil
 end
 
@@ -994,7 +1049,60 @@ local function createDrop(payload: Payload, position: Vector3, lifetime: number,
 		position = position,
 		lifetime = lifetime,
 		timer = task.delay(lifetime, expire, dropId),
+		fallen = false,
+		lockedFor = nil,
+		lockedUntil = 0,
 	}
+	return dropId
+end
+
+-- Point du sol sous le porteur (là où tombe l'objet d'un joueur attrapé, L-112) : rayon vers le bas
+-- qui ignore les personnages, les vigiles et les colis au sol ; à défaut, ses pieds.
+function groundBelow(player: Player, humanoid: Humanoid): Vector3
+	local character = player.Character
+	local root = if character then character:FindFirstChild("HumanoidRootPart") else nil
+	if root and root:IsA("BasePart") then
+		local exclude: { Instance } = {}
+		for _, other in Players:GetPlayers() do
+			local otherCharacter = other.Character
+			if otherCharacter then
+				table.insert(exclude, otherCharacter)
+			end
+		end
+		for _, name in { ACTIVE_GUARDS, DROPS_FOLDER } do
+			local folder = Workspace:FindFirstChild(name)
+			if folder then
+				table.insert(exclude, folder)
+			end
+		end
+		local params = RaycastParams.new()
+		params.FilterType = Enum.RaycastFilterType.Exclude
+		params.FilterDescendantsInstances = exclude
+		params.RespectCanCollide = true
+		params.IgnoreWater = true
+		local result = Workspace:Raycast(root.Position, Vector3.new(0, -GROUND_RAY_DOWN, 0), params)
+		if result then
+			return result.Position
+		end
+	end
+	return feetOf(player, humanoid)
+end
+
+-- Le colis PNJ ou l'objet NPCItem porté tombe au sol à `position` (coup de batte : `reason` "Bat" ;
+-- capture, L-112 : "Caught") : colis au sol de Bat.DroppedLifetime s, que BatController montre et que
+-- GrabDropped ramasse (attribut BatDrop), puis OnCarryEnded(…, "Dropped", reason). Renvoie son dropId.
+function fall(player: Player, carry: Carry, position: Vector3, reason: string): string
+	local payload = carry.payload
+	local attributes: { [string]: any } = { [BAT_DROP_ATTRIBUTE] = true }
+	if payload.Kind == "NPCBox" then
+		attributes[TIER_ATTRIBUTE] = payload.Tier
+	end
+	local dropId = createDrop(payload, position, Bat.DroppedLifetime, attributes)
+	drops[dropId].fallen = true
+	if IS_STUDIO then
+		print(`[CarryService] {dropId} : {player.Name} lâche ({reason}), {describe(payload)} au sol pour {Bat.DroppedLifetime} s`)
+	end
+	finish(player, "Dropped", reason) -- reste tenu : il est au sol
 	return dropId
 end
 
@@ -1004,7 +1112,7 @@ function CarryService.Drop(player: Player, position: Vector3): string?
 		return nil
 	end
 	local payload = carry.payload
-	if payload.Kind ~= "NPCBox" then
+	if payload.Kind == "PlayerItem" then
 		CarryService.Fail(player, "Bat") -- 6.2 : l'objet revole vers le présentoir de son propriétaire
 		return nil
 	end
@@ -1013,13 +1121,7 @@ function CarryService.Drop(player: Player, position: Vector3): string?
 		warn(debug.traceback(`[CarryService] Drop({player.Name}) : position invalide ({position}), colis posé au pied du porteur`, 2))
 		at = feetOf(player, carry.humanoid)
 	end
-	local attributes: { [string]: any } = { [TIER_ATTRIBUTE] = payload.Tier, [BAT_DROP_ATTRIBUTE] = true }
-	local dropId = createDrop(payload, at, Bat.DroppedLifetime, attributes)
-	if IS_STUDIO then
-		print(`[CarryService] {dropId} : {player.Name} frappé, {describe(payload)} au sol pour {Bat.DroppedLifetime} s`)
-	end
-	finish(player, "Dropped", "Bat") -- le colis reste tenu : il est au sol
-	return dropId
+	return fall(player, carry, at, "Bat")
 end
 
 function CarryService.PlaceDrop(payload: Payload, position: Vector3, lifetime: number?, attributes: { [string]: any }?): string?
@@ -1050,6 +1152,9 @@ function CarryService.PickUpDrop(player: Player, dropId: string): boolean
 	if drop == nil or carries[player] ~= nil then
 		return false
 	end
+	if drop.lockedFor == player and os.clock() < drop.lockedUntil then
+		return false -- L-112 : il vient d'être attrapé, encore étourdi
+	end
 	-- Retiré du sol avant StartCarry (jamais deux exemplaires), remis si StartCarry refuse.
 	local key = keyOf(drop.payload)
 	drops[dropId] = nil
@@ -1062,6 +1167,11 @@ function CarryService.PickUpDrop(player: Player, dropId: string): boolean
 	task.cancel(drop.timer)
 	drop.visual.model:Destroy()
 	return true
+end
+
+function CarryService.IsFallenDrop(dropId: string): boolean
+	local drop = if type(dropId) == "string" then drops[dropId] else nil
+	return drop ~= nil and drop.fallen
 end
 
 function CarryService.GetDrop(dropId: string): (Payload?, Vector3?)

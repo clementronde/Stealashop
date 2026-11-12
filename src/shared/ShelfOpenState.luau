@@ -17,6 +17,9 @@
 --
 -- L'objet sorti : un Model créé par le serveur à la place du colis, tourné comme le ShelfSlot, avec le tag
 -- ItemTag et ces attributs (le contenu n'est jamais visible avant ShelfRevealAt : 5.7) :
+--   SlotId (texte)            l'id à renvoyer dans GrabItem, le même que celui du colis (« <StoreId>/03 ») ;
+--   Slot (texte), Tier (texte), Landed (booléen)  comme sur un colis du rayon : nom du ShelfSlot, type du
+--                             colis d'origine (son temps de prise), false tant qu'un objet rendu vole ;
 --   ItemId, Rarity (texte)    rareté finale, crans de chance compris ;
 --   MutationSize, MutationEffect (texte, absents sans mutation) ;
 --   Income (nombre)           $/s de l'objet, pour BB_Item ;

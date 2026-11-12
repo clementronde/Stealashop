@@ -140,6 +140,77 @@
 -- le même rayon dans la seconde qui suit, sans s'être éloigné, conclut tout de suite (le joueur
 -- est bien resté à portée tout ce temps).
 --
+-- Ouverture des colis sur le rayon (liaison L-112, décisions de Cantin du 2026-11-12 ; interrupteur
+-- Features.ShelfOpen ; valeurs : Config/ShelfOpen ; attributs : Shared/ShelfOpenState). À true, le colis
+-- ne se porte plus fermé : on l'ouvre sur son rayon, on voit l'objet, et c'est l'objet qu'on vole. À
+-- false, tout ce qui précède reste tel quel (ancien déroulé, gardé en secours) et rien de ce qui suit
+-- n'existe.
+--   - Lancement : OpenShelfBox(slotId), un seul appel, sans maintien. Vérifié ici (9.4) : magasin
+--     ouvert (chrono en cours : après lui, plus aucune ouverture ne se lance), colis posé, fermé et pas
+--     déjà en cours d'ouverture, avance du casseur, magasin pas fermé pour lui, mains vides, joueur
+--     vivant dans le volume Bounds et à GrabMaxDistance au plus, anti-triche ; puis, si un témoin du
+--     magasin appelle la police (WitnessService.IsCalling) : refus avec le Notify « Witnesses are calling
+--     the police! » (Warning, V0, au plus un par seconde et par joueur). Débit : celui du remote (5/s, V0).
+--     Rien n'empêche un joueur d'ouvrir plusieurs colis à la suite (V0, à trancher par Cantin).
+--   - Chance : tirée ici au hasard dans ShelfOpen.LuckTable (poids), jamais par le client. Le colis
+--     reçoit ShelfOpenBy, ShelfOpenAt, ShelfLuck, ShelfRevealAt (= ShelfOpenAt +
+--     ShelfOpenState.revealDelay(chance)) puis ShelfOpenState = "Opening" : chaque client calcule le
+--     compteur « ×N LUCK » sans flux réseau. Une fois lancée, l'ouverture va au bout seule : le joueur
+--     peut bouger, sortir, partir.
+--   - Témoins : WitnessService.Raise(magasin, ouvreur) au lancement ; WitnessService.Calm(magasin)
+--     seulement quand la DERNIÈRE ouverture en cours dans ce magasin est finie (Calm vide le « ? » de
+--     tous les témoins du magasin : un joueur qui finit ne vide pas la jauge d'un autre qui ouvre encore).
+--     Police appelée pour ce magasin pendant la montée (WitnessService.OnCall) : ShelfRevealAt de chaque
+--     ouverture en cours est avancé à maintenant et l'objet sort tout de suite, avec la chance atteinte à
+--     cet instant (ShelfOpenState.luckAt). Sans WitnessService (bancs) : ni témoins ni police.
+--   - Sortie, à ShelfRevealAt : la rareté du contenu monte par crans (décision de Cantin du 2026-11-12
+--     au soir, valeurs de Config/ShelfOpen) : sans limite de nombre (UpgradeMax = math.huge), tant qu'un
+--     cran réussit la rareté monte d'un rang (Rarities.List), jusqu'à UpgradeTop (Secret ; Divine
+--     exclue) ; arrêt au premier échec. Chance du cran n = min(UpgradeChance × la chance,
+--     UpgradeChanceCap) × UpgradeDecay^(n − 1). Un Secret est donc possible même depuis un Commun de
+--     zone 1. Avec au moins un cran, l'objet est retiré dans la rareté atteinte comme à la mise en rayon
+--     (zone, Items.Pick, jamais TutorialOnly ; un Secret, toutes zones) ; si cette rareté n'a aucun objet
+--     dans la zone du magasin (la zone 1 n'a que des Communs), le cran compte quand même : l'objet est
+--     pris dans la zone la plus proche qui en a un (zone + 1, puis − 1, et ainsi de suite). Un objet
+--     sorti peut donc être d'une autre zone que son magasin. La mutation est gardée. L'accroche du tuto
+--     (SetContentOverride) est appelée ici, pour l'ouvreur, avant les crans : son contenu est celui de
+--     l'objet sorti, et ce contenu imposé ne monte jamais (V0 : l'objet garanti du tuto reste garanti).
+--     Le contenu ne quitte jamais le serveur avant cet instant (5.7).
+--     Le colis disparaît (ShelfOpenState = "Revealed" juste avant) et l'objet sort à sa place : copie du
+--     modèle ITM_<ItemId> de Clément (cherché comme les BOX_*), sinon un bloc V0 à la couleur de la
+--     rareté ; à l'échelle de sa mutation de taille ; pivot posé sur le ShelfSlot et tourné comme lui ;
+--     dans le dossier ShelfBoxes, nommé ShelfItem_NN, tag ShelfItem, attributs SlotId, Slot, Tier (le
+--     type du colis d'origine : son temps de prise), Landed, ItemId, Rarity, MutationSize,
+--     MutationEffect, Income, ShelfLuck, ShelfReservedBy, ShelfReservedUntil (= sortie +
+--     ShelfOpen.ReserveTime). BB_Item, halo et effets de la révélation sont posés par le client
+--     (ShelfOpenController) d'après ces attributs. Annonce : Notify (Unbox.AnnounceKind) aux autres
+--     joueurs à partir de ShelfOpen.AnnounceMinRarity.
+--   - Prise de l'objet : GrabItem(slotId), deux appels comme avant (maintien du Tier du colis d'origine).
+--     Avant ShelfReservedUntil, seul l'ouvreur ; ensuite tout joueur dans le magasin. Mêmes contrôles
+--     que pour un colis (Bounds, distance, mains vides, magasin pas fermé pour lui). Le portage est un
+--     NPCItemPayload (CarryService : l'objet visible sur la tête, halo, BB_Carry) ; le vigile du magasin
+--     part à la prise (GuardService) et le magasin se ferme pour ce voleur, comme pour un colis.
+--   - Chrono de 10 s et rideau (V0, précision de l'équilibrage : un tirage ×5 à ×10 monte 6 à 8,4 s, il
+--     ne pourrait jamais être pris sinon ; même esprit que L-064) : la fin du chrono ferme le magasin
+--     (plus aucune ouverture ne se lance, plus de prise pour les autres), mais une ouverture lancée va
+--     au bout et son objet reste réservé ShelfOpen.ReserveTime s. Tant qu'une ouverture est en cours
+--     dans ce magasin ou que la réservation d'un objet sorti (ShelfReservedUntil) n'est pas passée : le
+--     rideau ne tombe pas, l'ouvreur n'est pas sorti du magasin, et il peut encore prendre SON objet
+--     (magasin fermé compris). Ensuite le rideau tombe comme avant (L-064 : porteurs et vigiles sortis).
+--   - Objet sorti que personne n'a pris : il reste sur son rayon, libre pour tous, visible au prochain
+--     braquage de ce magasin, jusqu'au prochain remplissage (nuit).
+--   - Nuit (RefillAll) : comme un magasin ouvert, un magasin où une ouverture est en cours ou un objet
+--     encore réservé est rempli dès que c'est fini (ouverture au bout, réservation passée). Le
+--     remplissage retire tout : colis fermés, objets sortis non pris ; un objet porté ou au sol à ce
+--     moment ne reviendra pas sur son rayon.
+--   - Fin du portage d'un objet (CarryService.OnCarryEnded) : « Consumed », rangé en base (UnboxService) ;
+--     attrapé (« Caught » : vigile, police, vigile de nuit), CarryService le lâche au sol (« Dropped »),
+--     où il se reprend comme un colis tombé d'un coup de batte (GrabDropped, BatService) ; coup de
+--     batte : pareil. Resté Bat.DroppedLifetime s au sol sans preneur, ou échec sans chute (mort,
+--     départ, personnage retiré, anomalie de l'anti-triche, refus du rangement : « Failed ») : il revole
+--     vers son rayon, objet déjà sorti, sa réservation n'est pas relancée (V0 : le plus simple, la règle
+--     des colis), sauf si son magasin a été rempli depuis ou si son rayon est occupé : il disparaît.
+--
 -- Posé par le serveur, lu par HeistController, ShelfBoxController et StoreLockController :
 --   sur le magasin : StoreId (texte), HeistOpen (booléen), ShutterClosedPivot (CFrame : pivot du
 --     rideau baissé, s'il a un rideau) ; pendant le chrono seulement,
@@ -179,6 +250,8 @@
 --
 -- Payload d'un colis PNJ, transmis à CarryService : { Kind = "NPCBox", Tier, Zone, Rarity,
 -- ItemId, StoreId, SlotId, Mutation? }. ItemId ne doit jamais partir vers un client avant OpenBox (5.7).
+-- Payload d'un objet sorti (Features.ShelfOpen) : { Kind = "NPCItem", ItemId, Rarity, Mutation?, Zone,
+-- StoreId, SlotId, Luck } (Shared/Types/Carry). OnBoxGrabbed ne prévient que pour un colis.
 
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
@@ -195,8 +268,13 @@ local Rarities = require(Shared.Config.Rarities)
 local ShelfBoxes = require(Shared.Config.ShelfBoxes)
 local Mutations = require(Shared.Config.Mutations)
 local Zones = require(Shared.Config.Zones)
+local Features = require(Shared.Config.Features)
+local Formulas = require(Shared.Config.Formulas)
+local ShelfOpen = require(Shared.Config.ShelfOpen)
+local Unbox = require(Shared.Config.Unbox)
 local Attributes = require(Shared.Contract.Attributes)
 local Net = require(Shared.Net.Net)
+local ShelfOpenState = require(Shared.ShelfOpenState)
 
 local AntiCheatService = require(script.Parent.AntiCheatService)
 local WindowService = require(script.Parent.WindowService)
@@ -210,6 +288,18 @@ export type NPCBoxPayload = {
 	StoreId: string,
 	SlotId: string,
 	Mutation: Mutations.Mutation?, -- DEV-131 : tirée à la mise en rayon ; nil = aucune
+}
+
+-- Objet sorti d'un colis ouvert sur le rayon (L-112), porté : même forme que Shared/Types/Carry.
+export type NPCItemPayload = {
+	Kind: "NPCItem",
+	ItemId: string,
+	Rarity: string, -- rareté finale, crans de chance compris
+	Mutation: Mutations.Mutation?,
+	Zone: number,
+	StoreId: string,
+	SlotId: string,
+	Luck: number, -- chance de l'ouverture (≥ 1)
 }
 
 -- Contenu du colis du rayon, passé à l'accroche du tuto.
@@ -234,7 +324,7 @@ export type ContentOverride = (player: Player, drawn: OverrideInfo) -> OverrideR
 -- Ce que ce service utilise de CarryService (a11, DEV-017). Typé ici pour ne pas dépendre
 -- des noms de types de son module.
 type CarryApi = {
-	StartCarry: (player: Player, payload: NPCBoxPayload) -> boolean,
+	StartCarry: (player: Player, payload: NPCBoxPayload | NPCItemPayload) -> boolean,
 	IsCarrying: (player: Player) -> boolean,
 	GetPayload: (player: Player) -> any,
 	OnCarryEnded: (listener: (player: Player, payload: any, result: string, reason: string) -> ()) -> any,
@@ -244,8 +334,23 @@ type CarryApi = {
 
 local CarryService: CarryApi = require(script.Parent.CarryService) :: any
 
+-- Ce que ce service utilise de WitnessService (L-111), s'il existe (require protégé dans Init).
+type WitnessApi = {
+	Raise: (store: Model, suspect: Player?, fillTime: number?) -> boolean,
+	Calm: (store: Model) -> boolean,
+	IsCalling: (store: Model) -> boolean,
+	OnCall: (listener: (store: Model, suspect: Player?, police: Model?) -> ()) -> any,
+}
+
 -- Mutation (DEV-131) : nil = aucune ; jamais pour l'accroche du tuto.
 type Content = { Rarity: string, ItemId: string, Mutation: Mutations.Mutation? }
+
+-- Ouverture en cours d'un colis sur son rayon (L-112).
+type Opening = {
+	ByUserId: number, -- l'ouvreur
+	Luck: number, -- chance tirée (≥ 1)
+	OpenAt: number, -- heure serveur du lancement
+}
 
 -- Colis posé sur un rayon, ou en vol vers lui.
 type ShelfBox = {
@@ -253,6 +358,25 @@ type ShelfBox = {
 	Content: Content, -- tiré à la mise en rayon (L-031), jamais envoyé aux clients
 	Model: Model,
 	Landed: boolean, -- false tant que le colis rendu vole vers le rayon
+	StopFlight: (() -> ())?,
+	Opening: Opening?, -- L-112 : en cours d'ouverture ; nil = fermé
+}
+
+-- Ce qui décrit un objet sorti d'un colis (L-112), sur son rayon comme une fois porté ou au sol.
+type ItemInfo = {
+	Tier: string, -- type du colis d'origine : son temps de prise
+	Content: Content, -- contenu final : accroche du tuto et crans de chance compris
+	Luck: number, -- chance de l'ouverture
+	OpenerId: number, -- UserId de l'ouvreur
+	ReservedUntil: number, -- os.clock() : avant, seul l'ouvreur peut le prendre
+	ReservedUntilServer: number, -- la même heure, à l'horloge du serveur (attribut ShelfReservedUntil)
+}
+
+-- Objet sorti, posé à la place de son colis (ou en vol de retour vers elle).
+type ShelfItem = {
+	Info: ItemInfo,
+	Model: Model,
+	Landed: boolean,
 	StopFlight: (() -> ())?,
 }
 
@@ -263,6 +387,13 @@ type Slot = {
 	Id: string, -- « <StoreId>/03 », envoyé par le client dans GrabItem
 	Attachment: Attachment,
 	Box: ShelfBox?, -- colis posé (ou en vol vers le rayon) ; nil = rayon vide
+	Item: ShelfItem?, -- L-112 : objet sorti du colis de ce rayon (jamais en même temps que Box)
+}
+
+-- Objet sorti du magasin (porté ou au sol) : ce qui revient sur le rayon s'il revient.
+type OutItem = {
+	Slot: Slot,
+	Info: ItemInfo,
 }
 
 -- Colis sorti du magasin (porté, ou au sol au jalon M3) : ce qui revient sur le rayon s'il revient.
@@ -304,7 +435,8 @@ type Store = {
 -- baissé chez lui et sorti s'il entre.
 type LockState = "Leaving" | "Closed"
 
-type Hold = { Slot: Slot, Box: ShelfBox, StartedAt: number }
+-- Target : le colis (ShelfBox) ou l'objet sorti (ShelfItem, L-112) visé par le maintien.
+type Hold = { Slot: Slot, Target: any, Tier: string, StartedAt: number }
 
 type GrabbedListener = (player: Player, payload: NPCBoxPayload) -> ()
 
@@ -339,6 +471,14 @@ local SLOT_ID_ATTRIBUTE = "SlotId"
 local SLOT_ATTRIBUTE = "Slot"
 local TIER_ATTRIBUTE = "Tier"
 local LANDED_ATTRIBUTE = "Landed"
+-- Objet sorti d'un colis (L-112) : nom du modèle et attributs lus par le client (ShelfOpenController,
+-- HeistController), en plus de ceux de Shared/ShelfOpenState.
+local ITEM_NAME_FORMAT = "ShelfItem_%02d"
+local ITEM_ID_ATTRIBUTE = "ItemId"
+local RARITY_ATTRIBUTE = "Rarity"
+local MUTATION_SIZE_ATTRIBUTE = "MutationSize"
+local MUTATION_EFFECT_ATTRIBUTE = "MutationEffect"
+local INCOME_ATTRIBUTE = "Income"
 -- Fermeture pour le voleur seulement (même noms dans StoreLockController).
 local CLOSED_ATTRIBUTE = "ClosedStores" -- sur le Player
 local CLOSED_SEPARATOR = ","
@@ -412,10 +552,21 @@ local V0_LOOKS: { [string]: BoxLook } = {
 	},
 }
 
+-- V0 proposé, absent du doc : bloc de remplacement d'un objet sorti tant que ITM_<ItemId> n'est pas
+-- livré, à la couleur de sa rareté (la taille du bloc des présentoirs, DisplayService).
+local V0_ITEM_SIZE = Vector3.new(1.2, 1.6, 1.2)
+-- V0 proposé, absent du doc : au plus un Notify « les témoins appellent la police » par seconde et par joueur.
+local CALL_NOTICE_INTERVAL = 1
+
 -- Messages lus par le joueur (Notify), en anglais (L-036).
 local MESSAGES = {
 	Closed = "Too late: the shutter came down!",
+	WitnessCalling = "Witnesses are calling the police!", -- V0 (L-112) : ouverture refusée pendant l'appel
 }
+
+-- Features.ShelfOpen (L-112) : true = les colis s'ouvrent sur le rayon et c'est l'objet qu'on vole ;
+-- false = l'ancien déroulé (colis porté fermé), inchangé.
+local SHELF_OPEN: boolean = Features.ShelfOpen == true
 
 local IS_STUDIO = RunService:IsStudio()
 
@@ -428,6 +579,10 @@ local slotsById: { [string]: Slot } = {}
 local holds: { [Player]: Hold } = {}
 -- Colis sortis, par payload (la table donnée à StartCarry, que CarryService garde telle quelle).
 local outBoxes: { [any]: OutBox } = {}
+-- Objets sortis de leur magasin (L-112), par payload NPCItem (même règle que outBoxes).
+local outItems: { [any]: OutItem } = {}
+local lastCallNotice: { [Player]: number } = {} -- dernier Notify « les témoins appellent la police »
+local witnessApi: WitnessApi? = nil -- WitnessService, s'il existe (Init)
 local grabbedListeners: { GrabbedListener } = {}
 local contentOverride: ContentOverride? = nil
 local lastRefusal: { [Player]: number } = {}
@@ -466,8 +621,9 @@ local function warnOnce(key: string, message: string)
 	warn(`[StoreHeistService] {message}`)
 end
 
--- Prise refusée : signalée en Studio seulement (aide au test), une ligne par seconde et par joueur.
-local function refuse(player: Player, slotId: string, reason: string)
+-- Prise (ou ouverture, `remote` = "OpenShelfBox") refusée : signalée en Studio seulement (aide au
+-- test), une ligne par seconde et par joueur.
+local function refuse(player: Player, slotId: string, reason: string, remote: string?)
 	if not IS_STUDIO then
 		return
 	end
@@ -476,7 +632,7 @@ local function refuse(player: Player, slotId: string, reason: string)
 		return
 	end
 	lastRefusal[player] = now
-	warn(`[StoreHeistService] GrabItem de {player.Name} sur « {slotId} » refusé : {reason}`)
+	warn(`[StoreHeistService] {remote or "GrabItem"} de {player.Name} sur « {slotId} » refusé : {reason}`)
 end
 
 local function flat(v: Vector3): Vector3
@@ -857,7 +1013,223 @@ local function removeBox(slot: Slot)
 	local box = slot.Box
 	slot.Box = nil
 	if box then
+		box.Opening = nil -- L-112 : une ouverture en cours s'arrête là (sa sortie différée ne fait plus rien)
 		discard(box)
+	end
+end
+
+-- Objets sortis des colis (L-112, Features.ShelfOpen) ------------------------------------------------
+
+-- Trajectoire du vol de retour vers un rayon (la même que celle d'un colis rendu, placeBox) : de `start`
+-- à `target` en arc, et sa durée.
+local function flightPath(start: Vector3, target: CFrame): ((alpha: number) -> CFrame, number)
+	local rotation = target.Rotation
+	local finish = target.Position
+	local distance = (finish - start).Magnitude
+	local height = math.clamp(distance * FLIGHT_ARC, FLIGHT_ARC_MIN, FLIGHT_ARC_MAX)
+	local duration = math.clamp(distance / FLIGHT_SPEED, FLIGHT_MIN_TIME, FLIGHT_MAX_TIME)
+	return function(alpha: number): CFrame
+		local position = start:Lerp(finish, alpha) + Vector3.new(0, 4 * height * alpha * (1 - alpha), 0)
+		return CFrame.new(position) * rotation
+	end,
+		duration
+end
+
+-- $/s de l'objet (attribut Income, pour BB_Item), comme une fois exposé (DisplayService) : revenu de sa
+-- zone (celle du magasin pour un Secret, qui n'en a pas) et de sa rareté, mutation comprise.
+local function itemIncome(zone: number, content: Content): number
+	local def = Items.ById[content.ItemId]
+	local itemZone: number = if def and def.Zone then def.Zone else zone
+	return Formulas.ItemIncome(itemZone, content.Rarity) * Mutations.IncomeMultiplier(content.Mutation)
+end
+
+-- Bloc V0 d'un objet : pivot en bas au centre (10.1), comme un ITM_* livré.
+local function makeV0Item(color: Color3): Model
+	local model = Instance.new("Model")
+	local root = Instance.new("Part")
+	root.Name = "Root"
+	root.Size = V0_ITEM_SIZE
+	root.CFrame = CFrame.new(0, V0_ITEM_SIZE.Y / 2, 0)
+	root.Color = color
+	root.Material = Enum.Material.SmoothPlastic
+	root.TopSurface = Enum.SurfaceType.Smooth
+	root.BottomSurface = Enum.SurfaceType.Smooth
+	root.PivotOffset = CFrame.new(0, -V0_ITEM_SIZE.Y / 2, 0)
+	root.Parent = model
+	model.PrimaryPart = root
+	return model
+end
+
+-- Modèle de l'objet sorti sur l'emplacement `slot` : copie de ITM_<ItemId> de Clément (cherchée comme
+-- les BOX_*), sinon le bloc V0 à la couleur de sa rareté ; à l'échelle de sa mutation de taille (comme
+-- sur un présentoir) ; tag et attributs du contrat (Shared/ShelfOpenState, voir l'en-tête). Ni BB_Item
+-- ni halo ici : le client les pose d'après les attributs.
+local function makeItemModel(slot: Slot, info: ItemInfo): Model
+	local content = info.Content
+	local def = Items.ById[content.ItemId]
+	local rarity = Rarities.ById[content.Rarity]
+	local model: Model? = nil
+	local template = if def then boxTemplate(def.Asset) else nil
+	if template then
+		local clone = template:Clone() -- nil si le modèle n'est pas Archivable
+		if clone then
+			for _, descendant in clone:GetDescendants() do
+				if descendant:IsA("LuaSourceContainer") then
+					descendant:Destroy() -- jamais de script dans un objet (contrat 10.4)
+				end
+			end
+			if clone:IsA("Model") then
+				model = clone
+			elseif clone:IsA("BasePart") then
+				local wrapper = Instance.new("Model")
+				clone.Parent = wrapper
+				wrapper.PrimaryPart = clone
+				model = wrapper
+			end
+		end
+	end
+	local object = model or makeV0Item(if rarity then rarity.Color else Color3.new(1, 1, 1))
+	for _, descendant in object:GetDescendants() do
+		if descendant:IsA("BasePart") then
+			-- posé sur un rayon comme un colis : ni collision, ni contact, ni requête
+			descendant.Anchored = true
+			descendant.CanCollide = false
+			descendant.CanTouch = false
+			descendant.CanQuery = false
+		end
+	end
+	local scale = Mutations.Scale(content.Mutation)
+	if scale ~= 1 then
+		local ok, problem = pcall(object.ScaleTo, object, scale)
+		if not ok then
+			warnOnce(`scale.{content.ItemId}`, `{content.ItemId} : Model:ScaleTo({scale}) a échoué ({problem}), taille normale`)
+		end
+	end
+	-- Jamais « ITM_… » dans la map : ce nom est celui de l'asset (ContractChecker).
+	object.Name = string.format(ITEM_NAME_FORMAT, slot.Number)
+	object.ModelStreamingMode = Enum.ModelStreamingMode.Atomic
+	local mutation = content.Mutation
+	object:SetAttribute(SLOT_ID_ATTRIBUTE, slot.Id)
+	object:SetAttribute(SLOT_ATTRIBUTE, slot.Name)
+	object:SetAttribute(TIER_ATTRIBUTE, info.Tier)
+	object:SetAttribute(ITEM_ID_ATTRIBUTE, content.ItemId)
+	object:SetAttribute(RARITY_ATTRIBUTE, content.Rarity)
+	object:SetAttribute(MUTATION_SIZE_ATTRIBUTE, if mutation then mutation.Size else nil)
+	object:SetAttribute(MUTATION_EFFECT_ATTRIBUTE, if mutation then mutation.Effect else nil)
+	object:SetAttribute(INCOME_ATTRIBUTE, itemIncome(slot.Store.Zone, content))
+	object:SetAttribute(ShelfOpenState.LuckAttribute, info.Luck)
+	object:SetAttribute(ShelfOpenState.ReservedByAttribute, info.OpenerId)
+	object:SetAttribute(ShelfOpenState.ReservedUntilAttribute, info.ReservedUntilServer)
+	CollectionService:AddTag(object, ShelfOpenState.ItemTag)
+	return object
+end
+
+local function setItemLanded(item: ShelfItem, landed: boolean)
+	item.Landed = landed
+	item.Model:SetAttribute(LANDED_ATTRIBUTE, landed)
+end
+
+-- Arrête le vol d'un objet et retire son modèle.
+local function discardItem(item: ShelfItem)
+	local stop = item.StopFlight
+	if stop then
+		item.StopFlight = nil
+		stop()
+	end
+	item.Model:Destroy()
+end
+
+-- Pose l'objet `info` sur le rayon vide `slot`, à la place de son colis, tourné comme le ShelfSlot ; en
+-- vol depuis `from` s'il est donné (objet qui revient).
+local function placeItem(slot: Slot, info: ItemInfo, from: Vector3?)
+	local model = makeItemModel(slot, info)
+	local item: ShelfItem = { Info = info, Model = model, Landed = false, StopFlight = nil }
+	local target = slot.Attachment.WorldCFrame
+	slot.Item = item
+	if from == nil then
+		setItemLanded(item, true)
+		model:PivotTo(target)
+		model.Parent = slot.Store.Folder
+		return
+	end
+	setItemLanded(item, false)
+	local start: Vector3 = from
+	local path, duration = flightPath(start, target)
+	model:PivotTo(path(0))
+	model.Parent = slot.Store.Folder
+	item.StopFlight = animate(model, path, duration, function()
+		item.StopFlight = nil
+		if slot.Item == item then
+			model:PivotTo(target)
+			setItemLanded(item, true)
+		end
+	end)
+end
+
+local function removeItem(slot: Slot)
+	local item = slot.Item
+	slot.Item = nil
+	if item then
+		discardItem(item)
+	end
+end
+
+-- Nombre d'ouvertures en cours dans le magasin.
+local function openingCount(store: Store): number
+	local count = 0
+	for _, slot in store.Slots do
+		local box = slot.Box
+		if box ~= nil and box.Opening ~= nil then
+			count += 1
+		end
+	end
+	return count
+end
+
+-- Une ouverture est en cours dans le magasin, ou un objet sorti y est encore réservé à son ouvreur :
+-- le rideau ne tombe pas et le remplissage attend (voir l'en-tête).
+local function storeBusy(store: Store): boolean
+	local now = os.clock()
+	for _, slot in store.Slots do
+		local box, item = slot.Box, slot.Item
+		if box ~= nil and box.Opening ~= nil then
+			return true
+		end
+		if item ~= nil and now < item.Info.ReservedUntil then
+			return true
+		end
+	end
+	return false
+end
+
+-- `player` attend ici la sortie d'un colis qu'il a ouvert, ou l'objet qu'il a sorti lui est encore
+-- réservé : magasin fermé, il n'est pas sorti du magasin et peut encore prendre son objet.
+local function hasClaim(store: Store, player: Player): boolean
+	local now = os.clock()
+	local userId = player.UserId
+	for _, slot in store.Slots do
+		local box, item = slot.Box, slot.Item
+		local opening = if box then box.Opening else nil
+		if opening ~= nil and opening.ByUserId == userId then
+			return true
+		end
+		if item ~= nil and item.Info.OpenerId == userId and now < item.Info.ReservedUntil then
+			return true
+		end
+	end
+	return false
+end
+
+-- Le « ? » des témoins du magasin se vide (WitnessService.Calm : tous les témoins du magasin, donc
+-- seulement quand plus aucune ouverture n'y est en cours).
+local function calmWitnesses(store: Store)
+	local api = witnessApi
+	if api == nil then
+		return
+	end
+	local ok, err = pcall(api.Calm, store.Model)
+	if not ok then
+		warn(`[StoreHeistService] WitnessService.Calm({store.Id}) : {err}`)
 	end
 end
 
@@ -880,8 +1252,14 @@ local function fillStore(store: Store): number
 			outBoxes[payload] = nil -- tirage précédent : il ne reviendra pas
 		end
 	end
+	for payload, out in outItems do
+		if out.Slot.Store == store then
+			outItems[payload] = nil -- objet sorti d'un colis du tirage précédent : il ne reviendra pas
+		end
+	end
 	for _, slot in store.Slots do
 		removeBox(slot)
+		removeItem(slot)
 	end
 	local tiers = layoutTiers()
 	local count = 0
@@ -1045,7 +1423,9 @@ local function ejectInside(store: Store, everyone: boolean): { Player }
 	end
 	for _, player in Players:GetPlayers() do
 		local root, humanoid = rootOf(player)
-		if root and humanoid and inside(bounds, root.Position) and (everyone or not isCarrying(player)) then
+		-- L-112 : celui qui attend la sortie de son colis, ou dont l'objet sorti est encore réservé, reste.
+		if root and humanoid and inside(bounds, root.Position)
+			and (everyone or not (isCarrying(player) or hasClaim(store, player))) then
 			moveOut(store, player, root, humanoid)
 			table.insert(moved, player)
 		end
@@ -1056,6 +1436,13 @@ end
 -- Ce qui retient le rideau (voir l'en-tête) : un joueur qui porte un colis ou un vigile dans le
 -- volume Bounds, décrit pour la sortie ; nil si plus personne ne doit sortir.
 local function shutterBlocker(store: Store): string?
+	-- L-112 (V0, précision de l'équilibrage, même esprit que L-064) : le rideau ne tombe pas tant qu'une
+	-- ouverture lancée dans ce magasin n'est pas finie et que la réservation de son objet sorti
+	-- (ShelfReservedUntil) n'est pas passée ; sinon un gros tirage (6 à 8,4 s de montée) ne pourrait
+	-- jamais être pris dans les 10 s du chrono.
+	if storeBusy(store) then
+		return "ouverture en cours ou objet sorti encore réservé"
+	end
 	local bounds = store.Bounds
 	if bounds == nil then
 		return nil
@@ -1279,9 +1666,13 @@ local function setHeistAttributes(store: Store)
 	end
 end
 
+-- Définie plus bas (Prise).
+local grabRefusal: (player: Player, slot: Slot) -> string?
+
 -- Ferme le magasin : plus de prise, chrono masqué, joueurs sans colis sortis, rideau baissé si la
 -- vitrine est cassée (tout de suite, ou dès que porteurs et vigiles sont sortis), puis nouveau
--- tirage si RefillAll est passé pendant le chrono.
+-- tirage si RefillAll est passé pendant le chrono. L-112 : une ouverture lancée va au bout, son
+-- ouvreur reste et garde le droit de prendre son objet tant qu'il lui est réservé (voir l'en-tête).
 local function closeStore(store: Store)
 	if not store.Open then
 		return
@@ -1290,7 +1681,13 @@ local function closeStore(store: Store)
 	store.Token += 1
 	store.Breaker = nil
 	setHeistAttributes(store)
-	cancelHolds(store)
+	-- Maintiens annulés, sauf celui d'un ouvreur sur son objet encore réservé (L-112) ; dans l'ancien
+	-- déroulé, tous (magasin fermé = prise refusée).
+	for player, hold in holds do
+		if hold.Slot.Store == store and grabRefusal(player, hold.Slot) ~= nil then
+			holds[player] = nil
+		end
+	end
 	for player in table.clone(store.Viewers) do
 		hideTimer(store, player)
 	end
@@ -1305,7 +1702,8 @@ local function closeStore(store: Store)
 		elseif blocker then `rideau baissé dès que plus personne n'est dedans (pour l'instant : {blocker})`
 		else "vitrine intacte, rideau levé"
 	log(`{store.Id} fermé, {shutterText} ; {#moved} joueur(s) sans colis sorti(s)`)
-	if store.RefillPending then
+	-- L-112 : remplissage reporté tant qu'une ouverture est en cours ou qu'un objet est réservé (step).
+	if store.RefillPending and not storeBusy(store) then
 		log(`{store.Id} : remplissage reporté à la fermeture, {fillStore(store)} colis répartis au hasard`)
 	end
 end
@@ -1341,24 +1739,16 @@ end
 
 -- Prise ----------------------------------------------------------------------------------------------
 
-local function grabTime(box: ShelfBox): number
-	local info = Balance.Heist.BoxTiers[box.Tier]
+-- Temps de prise d'un colis de type `tier` (ou de l'objet sorti d'un tel colis, L-112).
+local function grabTime(tier: string): number
+	local info = Balance.Heist.BoxTiers[tier]
 	return if info then info.GrabTime else 0
 end
 
--- Raison du refus d'une prise sur `slot`, ou nil si elle est permise maintenant.
-local function grabRefusal(player: Player, slot: Slot): string?
+-- Raison pour laquelle `player` ne peut ni prendre ni ouvrir sur `slot`, quoi qui s'y trouve (magasin
+-- fermé pour lui, mains pleines, pas de personnage vivant, hors du volume Bounds, trop loin), ou nil.
+local function reachRefusal(player: Player, slot: Slot): string?
 	local store = slot.Store
-	if not store.Open then
-		return "magasin fermé"
-	end
-	local box = slot.Box
-	if box == nil or not box.Landed then
-		return "rayon vide"
-	end
-	if player ~= store.Breaker and os.clock() < store.ExclusiveUntil then
-		return "avance du casseur"
-	end
 	if store.Locked[player] then
 		return "magasin fermé pour lui : son vigile n'est pas encore rentré"
 	end
@@ -1381,6 +1771,47 @@ local function grabRefusal(player: Player, slot: Slot): string?
 		return `trop loin ({math.round(distance * 10) / 10} studs)`
 	end
 	return nil
+end
+
+-- Raison du refus d'une prise sur `slot`, ou nil si elle est permise maintenant.
+function grabRefusal(player: Player, slot: Slot): string?
+	local store = slot.Store
+	if SHELF_OPEN then
+		-- L-112 : on ne prend plus un colis fermé, seulement l'objet sorti de son colis.
+		local item = slot.Item
+		if item == nil then
+			return if slot.Box then "colis fermé : il s'ouvre d'abord sur son rayon (OpenShelfBox)" else "rayon vide"
+		end
+		if not item.Landed then
+			return "objet en vol vers son rayon"
+		end
+		local reserved = os.clock() < item.Info.ReservedUntil
+		if reserved and player.UserId ~= item.Info.OpenerId then
+			return "objet encore réservé à celui qui a ouvert le colis"
+		end
+		-- L'ouvreur prend son objet réservé même après la fin du chrono (voir l'en-tête) ; sinon les
+		-- règles du magasin : ouvert, avance du casseur.
+		if not reserved then
+			if not store.Open then
+				return "magasin fermé"
+			end
+			if player ~= store.Breaker and os.clock() < store.ExclusiveUntil then
+				return "avance du casseur"
+			end
+		end
+		return reachRefusal(player, slot)
+	end
+	if not store.Open then
+		return "magasin fermé"
+	end
+	local box = slot.Box
+	if box == nil or not box.Landed then
+		return "rayon vide"
+	end
+	if player ~= store.Breaker and os.clock() < store.ExclusiveUntil then
+		return "avance du casseur"
+	end
+	return reachRefusal(player, slot)
 end
 
 -- Contenu remis au porteur : celui du colis, ou celui de l'accroche du tuto s'il est valide.
@@ -1496,6 +1927,304 @@ local function grant(player: Player, slot: Slot)
 	end
 end
 
+-- Ouverture sur le rayon (L-112, Features.ShelfOpen ; voir l'en-tête) -----------------------------------
+
+-- `player` prend l'objet sorti posé sur `slot` : portage NPCItem (CarryService), rayon vidé, magasin
+-- fermé pour lui (le vigile part à la prise, GuardService).
+local function grantItem(player: Player, slot: Slot)
+	local store = slot.Store
+	local item = slot.Item
+	if item == nil then
+		return
+	end
+	local info = item.Info
+	local content = info.Content
+	local payload: NPCItemPayload = {
+		Kind = "NPCItem",
+		ItemId = content.ItemId,
+		Rarity = content.Rarity,
+		Mutation = content.Mutation,
+		Zone = store.Zone,
+		StoreId = store.Id,
+		SlotId = slot.Id,
+		Luck = info.Luck,
+	}
+	-- Rayon réservé pendant l'appel : une autre prise ne peut pas passer si StartCarry attend.
+	slot.Item = nil
+	outItems[payload] = { Slot = slot, Info = info }
+	local ok, started = pcall(CarryService.StartCarry, player, payload)
+	if not ok or started ~= true then
+		outItems[payload] = nil
+		if not ok then
+			warn(`[StoreHeistService] CarryService.StartCarry : {started}`)
+		end
+		if slot.Item == nil and slot.Box == nil and stores[store.Model] == store then
+			slot.Item = item -- rien n'a changé : l'objet reste sur le rayon
+		else
+			discardItem(item) -- rayon rempli entre-temps : pas de doublon
+		end
+		refuse(player, slot.Id, "CarryService a refusé le portage")
+		return
+	end
+	discardItem(item)
+	hideTimer(store, player)
+	lockFor(store, player)
+	local mutation = Mutations.Label(content.Mutation)
+	log(`{player.Name} prend l'objet sorti {slot.Name} de {store.Id} : {content.Rarity} ({content.ItemId}){if mutation then ", " .. mutation else ""}, chance ×{info.Luck}`)
+end
+
+-- Chance d'une ouverture, tirée au hasard dans ShelfOpen.LuckTable (poids relatifs) ; jamais sous ×1.
+local function drawLuck(): number
+	local total = 0
+	for _, entry in ShelfOpen.LuckTable do
+		total += math.max(entry.Weight, 0)
+	end
+	if total <= 0 then
+		return 1
+	end
+	local roll = random:NextNumber() * total
+	local last = 1
+	for _, entry in ShelfOpen.LuckTable do
+		local weight = math.max(entry.Weight, 0)
+		if weight > 0 then
+			last = math.max(entry.Luck, 1)
+			if roll < weight then
+				return last
+			end
+			roll -= weight
+		end
+	end
+	return last -- arrondi des nombres à virgule : la dernière chance possible
+end
+
+-- Crans de rareté à la sortie (décision de Cantin du 2026-11-12 au soir ; valeurs de Config/ShelfOpen) :
+-- tant qu'un cran réussit, la rareté monte d'un rang, sans limite de nombre (UpgradeMax), jusqu'à
+-- UpgradeTop ; arrêt au premier échec. Chance du cran n = min(UpgradeChance × `luck`, UpgradeChanceCap) ×
+-- UpgradeDecay^(n − 1). Avec au moins un cran, l'objet est retiré dans la rareté atteinte (Items.Pick :
+-- jamais TutorialOnly ; un Secret, toutes zones) ; case vide dans la zone du magasin : le cran compte
+-- quand même, l'objet vient de la zone la plus proche qui en a un de cette rareté (drawItemNear). La
+-- mutation est gardée. Renvoie le contenu final et le nombre de crans réussis.
+
+-- Un objet de la rareté `rarityId` pour un magasin de la zone `zone` : de sa zone, sinon de la zone la
+-- plus proche qui en a un (zone + 1, puis zone − 1, zone + 2…). nil si aucune zone n'en a.
+local function drawItemNear(zone: number, rarityId: string): string?
+	local itemId = drawItem(zone, rarityId)
+	if itemId then
+		return itemId
+	end
+	for distance = 1, #Zones do
+		for _, other in { zone + distance, zone - distance } do
+			if Zones[other] ~= nil then
+				local found = drawItem(other, rarityId)
+				if found then
+					return found
+				end
+			end
+		end
+	end
+	return nil
+end
+
+local function upgradeContent(content: Content, zone: number, luck: number): (Content, number)
+	local start = Rarities.ById[content.Rarity]
+	local top = Rarities.ById[ShelfOpen.UpgradeTop]
+	local base = math.min(ShelfOpen.UpgradeChance * luck, ShelfOpen.UpgradeChanceCap)
+	if start == nil or top == nil or not (base > 0) then
+		return content, 0 -- règle coupée (chance à 0 ou illisible), ou contenu illisible
+	end
+	local order = start.Order
+	local steps = 0
+	while steps < ShelfOpen.UpgradeMax and order < top.Order and Rarities.List[order + 1] ~= nil do
+		local chance = math.clamp(base * ShelfOpen.UpgradeDecay ^ steps, 0, 1)
+		if not (random:NextNumber() < chance) then
+			break
+		end
+		steps += 1
+		order += 1
+	end
+	while order > start.Order do
+		local rarityId: string = Rarities.List[order].Id
+		local itemId = drawItemNear(zone, rarityId)
+		if itemId then
+			local upgraded: Content = { Rarity = rarityId, ItemId = itemId, Mutation = content.Mutation }
+			return upgraded, steps
+		end
+		order -= 1 -- garde-fou (Config incohérente) : aucun objet de cette rareté nulle part, la plus proche en dessous
+	end
+	return content, steps
+end
+
+-- Article anglais devant un mot en capitales : « a LEGENDARY », « an EPIC ».
+local function article(word: string): string
+	return if string.find(word, "^[AEIOU]") then "an" else "a"
+end
+
+-- Annonce aux autres joueurs du serveur, à partir de ShelfOpen.AnnounceMinRarity (le même Notify que
+-- l'ancienne ouverture en base, Unbox.AnnounceKind) : « Alice unboxed a LEGENDARY Giant Plush! ».
+local function announce(opener: Player?, content: Content)
+	local rarity = Rarities.ById[content.Rarity]
+	local item = Items.ById[content.ItemId]
+	local minimum = Rarities.ById[ShelfOpen.AnnounceMinRarity]
+	if opener == nil or rarity == nil or item == nil or minimum == nil or rarity.Order < minimum.Order then
+		return
+	end
+	local name = rarity.DisplayNameUpper
+	local message = `{opener.DisplayName} unboxed {article(name)} {name} {item.DisplayName}!`
+	for _, other in Players:GetPlayers() do
+		if other ~= opener then
+			Net.Server.Notify:Fire(other, message, Unbox.AnnounceKind)
+		end
+	end
+	log(`annonce aux autres joueurs : {message}`)
+end
+
+-- Sortie de l'objet du colis `box` de `slot`, avec la chance `luck` (celle tirée, ou celle atteinte si
+-- la police a coupé la montée) : accroche du tuto, crans de rareté, le colis disparaît, l'objet prend sa
+-- place, réservé ShelfOpen.ReserveTime s à l'ouvreur.
+local function reveal(slot: Slot, box: ShelfBox, luck: number)
+	local opening = box.Opening
+	local store = slot.Store
+	if opening == nil or slot.Box ~= box or stores[store.Model] ~= store then
+		return
+	end
+	box.Opening = nil
+	slot.Box = nil
+	local opener = Players:GetPlayerByUserId(opening.ByUserId)
+	local content = box.Content
+	if opener then
+		local _, given = contentFor(opener, slot, box)
+		content = given
+	end
+	-- Contenu imposé par l'accroche du tuto : il ne monte jamais (voir l'en-tête).
+	local final, steps = content, 0
+	if content == box.Content then
+		final, steps = upgradeContent(content, store.Zone, luck)
+	end
+	box.Model:SetAttribute(ShelfOpenState.StateAttribute, "Revealed")
+	discard(box)
+	local info: ItemInfo = {
+		Tier = box.Tier,
+		Content = final,
+		Luck = luck,
+		OpenerId = opening.ByUserId,
+		ReservedUntil = os.clock() + ShelfOpen.ReserveTime,
+		ReservedUntilServer = Workspace:GetServerTimeNow() + ShelfOpen.ReserveTime,
+	}
+	placeItem(slot, info, nil)
+	if openingCount(store) == 0 then
+		calmWitnesses(store) -- c'était la dernière ouverture en cours dans ce magasin
+	end
+	local mutation = Mutations.Label(final.Mutation)
+	log(`{slot.Id} : l'objet sort, chance ×{luck}, {steps} cran(s) : {final.Rarity} ({final.ItemId}){if mutation then ", " .. mutation else ""}, réservé {ShelfOpen.ReserveTime} s à {if opener then opener.Name else opening.ByUserId}`)
+	announce(opener, final)
+end
+
+-- Lance l'ouverture du colis `box` de `slot` par `player` : chance tirée, attributs du contrat, témoins,
+-- sortie programmée.
+local function startOpening(player: Player, slot: Slot, box: ShelfBox)
+	local store = slot.Store
+	local luck = drawLuck()
+	local delay = ShelfOpenState.revealDelay(luck)
+	local openAt = Workspace:GetServerTimeNow()
+	local opening: Opening = { ByUserId = player.UserId, Luck = luck, OpenAt = openAt }
+	box.Opening = opening
+	local model = box.Model
+	model:SetAttribute(ShelfOpenState.ByAttribute, player.UserId)
+	model:SetAttribute(ShelfOpenState.AtAttribute, openAt)
+	model:SetAttribute(ShelfOpenState.LuckAttribute, luck)
+	model:SetAttribute(ShelfOpenState.RevealAtAttribute, openAt + delay)
+	model:SetAttribute(ShelfOpenState.StateAttribute, "Opening") -- en dernier : les autres sont déjà lisibles
+	local api = witnessApi
+	if api then
+		local ok, err = pcall(api.Raise, store.Model, player, nil)
+		if not ok then
+			warn(`[StoreHeistService] WitnessService.Raise({store.Id}) : {err}`)
+		end
+	end
+	task.delay(delay, function()
+		if box.Opening == opening then
+			reveal(slot, box, luck)
+		end
+	end)
+	log(`{player.Name} ouvre le colis {box.Tier} {slot.Name} de {store.Id} : chance ×{luck}, sortie dans {math.round(delay * 10) / 10} s`)
+end
+
+-- La police est appelée pour ce magasin (WitnessService.OnCall) : chaque ouverture en cours s'arrête là,
+-- ShelfRevealAt avancé à maintenant, l'objet sort tout de suite avec la chance atteinte à cet instant.
+local function onPoliceCalled(model: Model)
+	local store = stores[model]
+	if store == nil then
+		return
+	end
+	local now = Workspace:GetServerTimeNow()
+	for _, slot in store.Slots do
+		local box = slot.Box
+		local opening = if box then box.Opening else nil
+		if box and opening then
+			local reached = ShelfOpenState.luckAt(opening.OpenAt, opening.Luck, now)
+			box.Model:SetAttribute(ShelfOpenState.RevealAtAttribute, now)
+			log(`{slot.Id} : police appelée pendant la montée, la chance s'arrête à ×{reached} (tirée : ×{opening.Luck})`)
+			reveal(slot, box, reached)
+		end
+	end
+end
+
+-- Raison du refus d'une ouverture du colis de `slot`, ou nil si elle est permise maintenant.
+local function openRefusal(player: Player, slot: Slot): string?
+	local store = slot.Store
+	if not store.Open then
+		return "magasin fermé"
+	end
+	local box = slot.Box
+	if box == nil or not box.Landed then
+		return if slot.Item then "colis déjà ouvert" else "rayon vide"
+	end
+	if box.Opening then
+		return "ouverture déjà lancée"
+	end
+	if player ~= store.Breaker and os.clock() < store.ExclusiveUntil then
+		return "avance du casseur"
+	end
+	return reachRefusal(player, slot)
+end
+
+-- OpenShelfBox(slotId) : un seul appel, pas de maintien (voir l'en-tête).
+local function onOpenShelfBox(player: Player, slotId: string)
+	if not SHELF_OPEN then
+		return -- ancien déroulé : les colis ne s'ouvrent pas sur le rayon
+	end
+	local slot = slotsById[slotId]
+	if slot == nil then
+		refuse(player, slotId, "emplacement inconnu", "OpenShelfBox")
+		return
+	end
+	if not AntiCheatService.Verify(player) then
+		refuse(player, slotId, "déplacement sanctionné par l'anti-triche (audit 9.8)", "OpenShelfBox")
+		return
+	end
+	local reason = openRefusal(player, slot)
+	if reason then
+		refuse(player, slotId, reason, "OpenShelfBox")
+		return
+	end
+	local store = slot.Store
+	local api = witnessApi
+	local okCalling, calling = false, false
+	if api then
+		okCalling, calling = pcall(api.IsCalling, store.Model)
+	end
+	if okCalling and calling == true then
+		local now = os.clock()
+		if now - (lastCallNotice[player] or -math.huge) >= CALL_NOTICE_INTERVAL then
+			lastCallNotice[player] = now
+			Net.Server.Notify:Fire(player, MESSAGES.WitnessCalling, "Warning")
+		end
+		refuse(player, slotId, "un témoin du magasin appelle la police", "OpenShelfBox")
+		return
+	end
+	startOpening(player, slot, slot.Box :: ShelfBox) -- openRefusal a vérifié qu'il est posé et fermé
+end
+
 -- GrabItem(slotId) : premier appel = début du maintien, second = fin (voir l'en-tête).
 local function onGrabItem(player: Player, slotId: string)
 	local slot = slotsById[slotId]
@@ -1516,14 +2245,23 @@ local function onGrabItem(player: Player, slotId: string)
 		refuse(player, slotId, reason)
 		return
 	end
-	local box = slot.Box :: ShelfBox -- grabRefusal a vérifié qu'il est posé
-	local required = grabTime(box)
+	-- grabRefusal a vérifié qu'il est posé : le colis, ou l'objet sorti (L-112).
+	local target: any, tier: string
+	local give = grant
+	if SHELF_OPEN then
+		local item = slot.Item :: ShelfItem
+		target, tier, give = item, item.Info.Tier, grantItem
+	else
+		local box = slot.Box :: ShelfBox
+		target, tier = box, box.Tier
+	end
+	local required = grabTime(tier)
 	local now = os.clock()
-	if hold and hold.Slot == slot and hold.Box == box then
+	if hold and hold.Slot == slot and hold.Target == target then
 		local elapsed = now - hold.StartedAt
 		if elapsed + GRAB_TIME_TOLERANCE >= required then
 			holds[player] = nil
-			grant(player, slot)
+			give(player, slot)
 		else
 			refuse(player, slotId, `maintien trop court ({math.round(elapsed * 100) / 100} s sur {required} s)`)
 		end
@@ -1531,10 +2269,10 @@ local function onGrabItem(player: Player, slotId: string)
 	end
 	if required <= 0 then
 		holds[player] = nil
-		grant(player, slot)
+		give(player, slot)
 		return
 	end
-	holds[player] = { Slot = slot, Box = box, StartedAt = now }
+	holds[player] = { Slot = slot, Target = target, Tier = tier, StartedAt = now }
 end
 
 -- Retour d'un colis ------------------------------------------------------------------------------
@@ -1549,10 +2287,27 @@ local function returnBox(payload: any, from: Vector3?): boolean
 	end
 	outBoxes[payload] = nil
 	local slot = out.Slot
-	if stores[slot.Store.Model] ~= slot.Store or slot.Box ~= nil then
+	if stores[slot.Store.Model] ~= slot.Store or slot.Box ~= nil or slot.Item ~= nil then
 		return false -- magasin retiré, ou emplacement occupé : pas de doublon
 	end
 	placeBox(slot, out.Tier, out.Content, from)
+	return true
+end
+
+-- L-112 : remet sur son emplacement l'objet sorti de ce payload NPCItem, en vol depuis `from` s'il est
+-- donné. Sa réservation n'est pas relancée. false s'il est inconnu, déjà revenu, d'avant un
+-- remplissage de son magasin, ou si son emplacement est occupé (il disparaît alors).
+local function returnItem(payload: any, from: Vector3?): boolean
+	local out = outItems[payload]
+	if out == nil then
+		return false
+	end
+	outItems[payload] = nil
+	local slot = out.Slot
+	if stores[slot.Store.Model] ~= slot.Store or slot.Box ~= nil or slot.Item ~= nil then
+		return false
+	end
+	placeItem(slot, out.Info, from)
 	return true
 end
 
@@ -1574,6 +2329,18 @@ local function carrierPosition(player: Player): Vector3?
 end
 
 local function onCarryEnded(player: Player, payload: any, result: string, reason: string)
+	if type(payload) == "table" and payload.Kind == "NPCItem" then
+		-- L-112 : objet sorti d'un colis. Rangé en base : il ne reviendra jamais. Au sol (attrapé, coup
+		-- de batte) : rien, il revient par onDropExpired s'il n'est pas ramassé. Autre échec (mort,
+		-- départ, anomalie…) : il revole vers son rayon.
+		if result == "Consumed" then
+			outItems[payload] = nil
+		elseif result == "Failed" then
+			local back = returnItem(payload, carrierPosition(player))
+			log(`objet {payload.ItemId} de {player.Name} ({reason}) : {if back then "revient" else "ne revient pas"} sur {payload.SlotId}`)
+		end
+		return
+	end
 	if type(payload) ~= "table" or payload.Kind ~= "NPCBox" then
 		return
 	end
@@ -1598,6 +2365,13 @@ end
 -- revole vers son emplacement depuis l'endroit où il était, avec son contenu d'origine. Un colis
 -- qui n'est pas d'un magasin (camion) est inconnu ici : il disparaît, rien à faire.
 local function onDropExpired(dropId: string, payload: any, position: Vector3?)
+	if type(payload) == "table" and payload.Kind == "NPCItem" then
+		-- L-112 : objet resté au sol sans preneur, il revole vers son rayon (ou disparaît, voir returnItem).
+		local start = if typeof(position) == "Vector3" then position + Vector3.new(0, DROP_RETURN_LIFT, 0) else nil
+		local back = returnItem(payload, start)
+		log(`objet {payload.ItemId} {dropId} resté au sol : {if back then "revient" else "ne revient pas"} sur {payload.SlotId}`)
+		return
+	end
 	if type(payload) ~= "table" or payload.Kind ~= "NPCBox" then
 		return
 	end
@@ -1724,6 +2498,7 @@ local function register(instance: Instance)
 			Id = slotId,
 			Attachment = attachment,
 			Box = nil,
+			Item = nil,
 		}
 		table.insert(store.Slots, slot)
 	end
@@ -1753,6 +2528,9 @@ local function unregister(instance: Instance)
 	stores[instance] = nil
 	storesById[store.Id] = nil
 	unlockAll(store, "magasin retiré de la map")
+	if openingCount(store) > 0 then
+		calmWitnesses(store) -- ouvertures interrompues
+	end
 	store.Open = false
 	store.Token += 1
 	store.ShutterToken += 1
@@ -1766,9 +2544,15 @@ local function unregister(instance: Instance)
 			outBoxes[payload] = nil
 		end
 	end
+	for payload, out in outItems do
+		if out.Slot.Store == store then
+			outItems[payload] = nil
+		end
+	end
 	for _, slot in store.Slots do
 		slotsById[slot.Id] = nil
 		removeBox(slot)
+		removeItem(slot)
 	end
 	store.Folder:Destroy()
 end
@@ -1778,9 +2562,10 @@ local function step()
 	local now = os.clock()
 	for player, hold in holds do
 		local slot = hold.Slot
+		local current: any = if SHELF_OPEN then slot.Item else slot.Box
 		if
-			slot.Box ~= hold.Box
-			or now - hold.StartedAt > grabTime(hold.Box) + HOLD_EXPIRY
+			current ~= hold.Target
+			or now - hold.StartedAt > grabTime(hold.Tier) + HOLD_EXPIRY
 			or grabRefusal(player, slot) ~= nil
 		then
 			holds[player] = nil
@@ -1796,6 +2581,10 @@ local function step()
 			end
 			if store.ShutterPending and lowerWhenClear(store) then
 				log(`{store.Id} : rideau baissé, porteurs et vigiles sortis`)
+			end
+			-- L-112 : remplissage qui attendait la fin d'une ouverture ou d'une réservation.
+			if store.RefillPending and not storeBusy(store) then
+				log(`{store.Id} : remplissage reporté à la fin des ouvertures, {fillStore(store)} colis répartis au hasard`)
 			end
 		end
 	end
@@ -1821,7 +2610,7 @@ local function otherHeist(player: Player, target: Store): string?
 		end
 	end
 	local payload = CarryService.GetPayload(player)
-	if type(payload) == "table" and payload.Kind == "NPCBox" and payload.StoreId ~= target.Id then
+	if type(payload) == "table" and (payload.Kind == "NPCBox" or payload.Kind == "NPCItem") and payload.StoreId ~= target.Id then
 		return if type(payload.StoreId) == "string" then payload.StoreId else "?"
 	end
 	return nil
@@ -1870,8 +2659,9 @@ end
 function StoreHeistService.RefillAll(): number
 	local count, deferred = 0, 0
 	for _, store in stores do
-		if store.Open then
-			store.RefillPending = true -- nouveau tirage à la fermeture (voir l'en-tête)
+		if store.Open or storeBusy(store) then
+			-- nouveau tirage à la fermeture, ou (L-112) à la fin des ouvertures et des réservations en cours
+			store.RefillPending = true
 			deferred += 1
 		else
 			count += fillStore(store)
@@ -1930,10 +2720,12 @@ function StoreHeistService.Init()
 	CarryService.OnCarryEnded(onCarryEnded)
 	CarryService.OnDropExpired(onDropExpired)
 	Net.Server.GrabItem:Connect(onGrabItem)
+	Net.Server.OpenShelfBox:Connect(onOpenShelfBox)
 	Players.PlayerRemoving:Connect(function(player: Player)
 		holds[player] = nil
 		lastRefusal[player] = nil
 		lastGreedy[player] = nil
+		lastCallNotice[player] = nil
 		for _, store in stores do
 			store.Viewers[player] = nil
 			store.Locked[player] = nil
@@ -1960,6 +2752,31 @@ function StoreHeistService.Init()
 		returningGuards = getReturning
 	else
 		log("GuardService.GetReturningGuards indisponible : le rideau local n'attend que les vigiles dans le magasin")
+	end
+
+	-- L-112 : témoins et police (WitnessService, L-111). require protégé : sans lui (bancs), les colis
+	-- s'ouvrent sans témoins.
+	if SHELF_OPEN then
+		local okWitness, witness = pcall(function(): any
+			return require(script.Parent.WitnessService) :: any
+		end)
+		local usable = okWitness
+			and type(witness) == "table"
+			and type(witness.Raise) == "function"
+			and type(witness.Calm) == "function"
+			and type(witness.IsCalling) == "function"
+			and type(witness.OnCall) == "function"
+		if usable then
+			witnessApi = witness
+			local okCall, err = pcall(witness.OnCall, onPoliceCalled)
+			if not okCall then
+				warn(`[StoreHeistService] WitnessService.OnCall : {err}`)
+			end
+		else
+			log("WitnessService indisponible : les colis s'ouvrent sur le rayon sans témoins ni police")
+		end
+	else
+		log("Features.ShelfOpen = false : ancien déroulé, les colis se portent fermés")
 	end
 
 	local storeCount, boxCount = 0, 0

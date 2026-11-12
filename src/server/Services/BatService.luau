@@ -343,7 +343,8 @@ local function candidateFor(
 		return nil, "ne porte rien"
 	elseif hitterSafe or isInSafeZone(root.Position) then
 		return nil, "zone safe"
-	elseif payload.Kind == "NPCBox" then
+	elseif payload.Kind == "NPCBox" or payload.Kind == "NPCItem" then
+		-- L-112 : l'objet sorti d'un colis ouvert sur le rayon tombe au sol comme un colis (bouclier compris).
 		if shielded(other) then
 			return nil, SHIELD_REFUSAL
 		end
@@ -559,8 +560,10 @@ end
 
 -- GrabDropped(dropId) : premier appel = début du maintien, second = fin (comme GrabItem).
 local function onGrabDropped(player: Player, dropId: string)
-	if not batDrops[dropId] then
-		return -- pas un colis tombé d'un coup de batte : laissé au service qui l'a posé (camion)
+	-- L-112 : l'objet lâché par un joueur attrapé (CarryService.Fail « Caught ») se ramasse comme un colis
+	-- tombé d'un coup de batte, par les mêmes règles.
+	if not batDrops[dropId] and not CarryService.IsFallenDrop(dropId) then
+		return -- pas un colis tombé des mains d'un porteur : laissé au service qui l'a posé (camion)
 	end
 	if not AntiCheatService.Verify(player) then
 		refuse(player, `GrabDropped sur « {dropId} » refusé : déplacement sanctionné par l'anti-triche (audit 9.8)`)

@@ -71,7 +71,7 @@ export type NPCItemPayload = {
 	Luck: number, -- chance tirée à l'ouverture (≥ 1), pour l'annonce et les statistiques
 }
 
-export type Payload = NPCBoxPayload | PlayerItemPayload
+export type Payload = NPCBoxPayload | PlayerItemPayload | NPCItemPayload
 
 -- Fin d'un portage, passée à CarryService.OnCarryEnded :
 --   "Consumed"  réussite : le colis est rangé dans l'inventaire à l'entrée de la zone safe (L-089,
@@ -79,8 +79,9 @@ export type Payload = NPCBoxPayload | PlayerItemPayload
 --               raison « Deposited », après le transfert entre les deux profils) ;
 --   "Failed"    échec : le colis ou l'objet retourne d'où il vient, remis par le service
 --               d'origine (StoreHeistService remet le colis sur son rayon) ;
---   "Dropped"   jalon M3 (DEV-048), pas encore branché : coup de batte, le colis est tombé au
---               sol. Il n'est pas perdu : CarryService le garde (voir CarryService.Drop).
+--   "Dropped"   coup de batte (DEV-048, raison « Bat »), ou porteur d'un objet NPCItem attrapé
+--               (L-112, raison « Caught ») : le colis ou l'objet est tombé au sol. Il n'est pas
+--               perdu : CarryService le garde (voir CarryService.Drop et CarryService.Fail).
 export type EndResult = "Consumed" | "Failed" | "Dropped"
 
 return {}
