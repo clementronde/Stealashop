@@ -35,9 +35,10 @@
 -- achat) ; même type déjà actif : la durée s'ajoute à ce qui reste. Mort (Humanoid.Died) ou départ : tous les
 -- effets sont retirés (les potions posées restent pour un mort). Branchés sur les points d'accroche, chacun
 -- gardé et rappelé (jamais écrasé), relus à chaque usage :
---   Speed         StatsService.SetSpeedModifier(player, "Potion", Multiplier) : × la WalkSpeed, toujours
---                 plafonnée à Balance.Stats.MaxWalkSpeed (70) par StatsService. L'anti-triche suit la
---                 Humanoid.WalkSpeed appliquée (AntiCheatService, vitesse autorisée) : rien à lui dire.
+--   Speed         StatsService.SetSpeedModifier(player, "Potion", Multiplier, true) : × la WalkSpeed APRÈS le
+--                 plafond de 70 (décision de Cantin du 2026-11-12 : la potion dépasse la limite, jusqu'à 140).
+--                 L'anti-triche suit la Humanoid.WalkSpeed appliquée (vitesse autorisée) ; PvPService tient
+--                 compte de StatsService.GetSpeedBoost au dépôt d'un objet volé.
 --   Money         DisplayService.GetIncomeMultiplier × Multiplier (revenu des présentoirs).
 --   Strength      WindowService.GetHitDamageMultiplier × Multiplier (dégâts d'un coup sur une vitrine, une
 --                 parcelle ou une cible d'événement ; ni l'attribut Damage du HUD, ni les PV de sa boutique).
@@ -224,7 +225,7 @@ local function applyEffect(player: Player, state: State, potion: Potion): number
 	state.Effects[potion.Id] = endsAt
 	player:SetAttribute(Potions.AttributePrefix .. potion.Id, endsAt)
 	if potion.Id == "Speed" then
-		StatsService.SetSpeedModifier(player, SPEED_KEY, potion.Multiplier or 1)
+		StatsService.SetSpeedModifier(player, SPEED_KEY, potion.Multiplier or 1, true) -- au-dessus du plafond
 	end
 	return endsAt - t
 end

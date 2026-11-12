@@ -12,9 +12,11 @@
 --      M trail = StatsService.GetTrailMultiplier(player) ;
 --   2. × chaque modificateur posé par SetSpeedModifier ; ils se multiplient entre eux
 --      (colis PNJ 0,9 et Adrénaline 1,25 donnent × 1,125) ;
---   3. de nouveau plafonné à 70 : le plafond de 5.1 n'est jamais dépassé.
+--   3. de nouveau plafonné à 70 ;
+--   4. × les modificateurs posés « au-dessus du plafond » (aboveCap) : seule la potion Speed (décision de
+--      Cantin du 2026-11-12 : elle dépasse les 70 ; vitesses et force seront rééquilibrées plus tard).
 --   Conséquences : au plafond, le malus de portage se sent quand même (70 → 63 avec un colis
---   PNJ) ; l'Adrénaline ne fait jamais dépasser 70.
+--   PNJ) ; l'Adrénaline ne fait jamais dépasser 70 ; la potion Speed ×2 mène jusqu'à 140.
 --
 -- Attributs du Player (écrits seulement ici, posés quand le profil est chargé) :
 --   Speed      Vitesse (stat entraînée au tapis)
@@ -30,14 +32,17 @@
 --       Ajoute n (nombre fini ≥ 0) à la Vitesse, met à jour les attributs et le Humanoid.
 --       Renvoie la nouvelle valeur, ou nil si le profil n'est pas chargé ou si n est invalide.
 --   StatsService.AddStrength(player, n) -> number?   Pareil pour la Force.
---   StatsService.SetSpeedModifier(player, key, multiplier?)
+--   StatsService.SetSpeedModifier(player, key, multiplier?, aboveCap?)
 --       Pose le multiplicateur de vitesse nommé `key` (nombre fini ≥ 0 ; 0 immobilise), ou le
---       retire avec nil, puis recalcule. Clés prévues : "Carry" (Balance.Carry : 0,9 colis PNJ,
+--       retire avec nil, puis recalcule. aboveCap = true : appliqué après le plafond (étape 4).
+--       Clés prévues : "Carry" (Balance.Carry : 0,9 colis PNJ,
 --       0,75 objet volé), "Adrenaline" (1 + PvP.AdrenalineSpeedBonus), "Training" (0, posé
 --       par TrainingService), "GuardStun" (0, joueur rattrapé par un vigile, GuardService),
 --       "BatStun" (0, étourdi Bat.StunDuration s par un coup de batte, BatService). Le service
 --       qui pose une clé la retire lui-même, à la mort comme au départ : un modificateur survit
---       à la réapparition.
+--       à la réapparition. "Potion" (potion Speed, PotionService) est la seule posée avec aboveCap.
+--   StatsService.GetSpeedBoost(player) -> number
+--       Produit des modificateurs posés au-dessus du plafond, 1 sans eux (PvPService, contrôle du dépôt).
 --   StatsService.Refresh(player)
 --       Recalcule et applique tout. À appeler quand le multiplicateur de trail change.
 --   StatsService.GetTrailMultiplier(player) -> number
@@ -71,6 +76,7 @@ StatsService.Priority = 10 -- juste après DataService, avant les services de je
 
 local tracked: { [Player]: boolean } = {}
 local modifiers: { [Player]: { [string]: number } } = {}
+local aboveCapKeys: { [Player]: { [string]: boolean } } = {} -- clés appliquées après le plafond (potion Speed)
 local applied: { [Player]: number } = {} -- dernière vitesse calculée pour le Humanoid
 local guards: { [Player]: RBXScriptConnection } = {}
 
@@ -107,6 +113,19 @@ local function applyTo(humanoid: Humanoid, value: number)
 	end
 end
 
+-- Produit des modificateurs posés au-dessus du plafond (1 sans eux).
+function StatsService.GetSpeedBoost(player: Player): number
+	local list = modifiers[player]
+	local above = aboveCapKeys[player]
+	local boost = 1
+	if list and above then
+		for key in above do
+			boost *= list[key] or 1
+		end
+	end
+	return boost
+end
+
 function StatsService.Refresh(player: Player)
 	if not tracked[player] then
 		return
@@ -114,15 +133,19 @@ function StatsService.Refresh(player: Player)
 	local data = DataService.Get(player)
 	-- Étape 1 : formule 7.1 (déjà plafonnée à 70).
 	local base = Formulas.WalkSpeed(if data then data.Stats.Speed else 0, trailMultiplier(player))
-	-- Étapes 2 et 3 : modificateurs, puis plafond.
+	-- Étapes 2 et 3 : modificateurs, puis plafond ; étape 4 : modificateurs posés au-dessus du plafond.
 	local value = base
 	local list = modifiers[player]
+	local above = aboveCapKeys[player]
 	if list then
-		for _, multiplier in list do
-			value *= multiplier
+		for key, multiplier in list do
+			if not (above and above[key]) then
+				value *= multiplier
+			end
 		end
 	end
 	value = math.min(value, Balance.Stats.MaxWalkSpeed)
+	value *= StatsService.GetSpeedBoost(player)
 	applied[player] = value
 
 	if data then
@@ -156,7 +179,7 @@ function StatsService.AddStrength(player: Player, amount: number): number?
 	return data.Stats.Strength
 end
 
-function StatsService.SetSpeedModifier(player: Player, key: string, multiplier: number?)
+function StatsService.SetSpeedModifier(player: Player, key: string, multiplier: number?, aboveCap: boolean?)
 	if type(key) ~= "string" or key == "" then
 		warn(debug.traceback(`[StatsService] SetSpeedModifier : clé invalide ({key})`, 2))
 		return
@@ -169,17 +192,30 @@ function StatsService.SetSpeedModifier(player: Player, key: string, multiplier: 
 		return -- joueur parti
 	end
 	local list = modifiers[player]
+	local above = aboveCapKeys[player]
 	if multiplier == nil then
 		if list == nil or list[key] == nil then
 			return -- rien à retirer
 		end
 		list[key] = nil
+		if above then
+			above[key] = nil
+		end
 	else
 		if list == nil then
 			list = {}
 			modifiers[player] = list
 		end
 		list[key] = multiplier
+		if aboveCap then
+			if above == nil then
+				above = {}
+				aboveCapKeys[player] = above
+			end
+			above[key] = true
+		elseif above then
+			above[key] = nil
+		end
 	end
 	StatsService.Refresh(player)
 end
@@ -228,6 +264,7 @@ end
 local function onPlayerRemoving(player: Player)
 	tracked[player] = nil
 	modifiers[player] = nil
+	aboveCapKeys[player] = nil
 	applied[player] = nil
 	local guard = guards[player]
 	if guard then
