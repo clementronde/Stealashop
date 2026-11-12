@@ -100,11 +100,19 @@ local LINE_FX, LINE_GAP, BIG_H = -98, 10, 48 -- x des façades, écart entre deu
 -- 2026-11-12 : serveurs de 8 joueurs (L-113, décision de Clément) : 8 boutiques en ligne (PlotIndex 1 à 8, 1 au nord).
 -- Le demi-cercle et les rangées 3 face à 3 gardent 6 emplacements.
 local SHOP_COUNT = LINE and 8 or 6
-local LINE_HALF = (SHOP_COUNT / 2) * SHOP_W + ((SHOP_COUNT - 1) / 2) * LINE_GAP -- demi-longueur de la rangée (291 pour 8)
+-- Clément, 2026-11-12 : 6 boutiques au fond, face au couloir (2 à 7, du nord au sud), et une seule boutique de chaque
+-- côté, à 90°, dos au mur nord ou sud, face à la place (1 au nord, 8 au sud), entre la promenade et les stands.
+local SIDES = (LINE and SHOP_COUNT == 8) and 2 or 0
+local ROW_N = SHOP_COUNT - SIDES -- boutiques de la rangée du fond
+local LINE_HALF = (ROW_N / 2) * SHOP_W + ((ROW_N - 1) / 2) * LINE_GAP -- demi-longueur de la rangée (217 pour 6)
+local SIDE_X = -31 -- centre des boutiques des côtés : 6,8 après la bordure de la promenade (x -69,8), place d'un lampadaire
 if LINE then
 	MALL = false
 	-- mur ouest collé au dos des boutiques (pas de couloir derrière la rangée)
-	HUB = { x0 = LINE_FX - SHOP_D - 3, x1 = 30, z0 = -(LINE_HALF + 8), z1 = LINE_HALF + 8 } -- x -181..30, |z| <= 299
+	-- Clément, 2026-11-12 : hub élargi pour que les boutiques des côtés viennent après les dernières du fond (façade à 10
+	-- après le bout de la rangée, dos au grand mur) : |z| <= 310 avec elles, 225 sans
+	local z1 = SIDES > 0 and (LINE_HALF + LINE_GAP + SHOP_D + 3) or (LINE_HALF + 8)
+	HUB = { x0 = LINE_FX - SHOP_D - 3, x1 = 30, z0 = -z1, z1 = z1 } -- x -181..30
 end
 
 local function rr(deg) local a = math.rad(deg + ROT); return Vector3.new(-math.cos(a), 0, math.sin(a)) end
@@ -134,12 +142,19 @@ if ROWS then
 	end
 	FC = Vector3.new(ROW_X0 - SHOP_W / 2 - (SHOP_W + ROW_GAP), 0, 0) -- devant la paire du milieu
 end
-if LINE then -- 1 au nord ... 8 au sud, avant vers l'entrée (+X)
-	for k = 1, SHOP_COUNT do
+if LINE then -- rangée du fond, avant vers l'entrée (+X) ; boutiques des côtés, avant vers la place (±Z)
+	for i = 1, ROW_N do
+		local k = i + SIDES / 2
 		local n = Vector3.new(1, 0, 0)
-		local front = Vector3.new(LINE_FX, 0, ((SHOP_COUNT + 1) / 2 - k) * (SHOP_W + LINE_GAP))
+		local front = Vector3.new(LINE_FX, 0, ((ROW_N + 1) / 2 - i) * (SHOP_W + LINE_GAP))
 		local center = front - n * (SHOP_D / 2)
 		SITES[k] = { k = k, angle = 0, side = 1, front = front, center = center, n = n, cf = frameAt(center, n) }
+	end
+	for _, sd in (SIDES > 0 and { { 1, 1 }, { SHOP_COUNT, -1 } } or {}) do
+		local k, s = sd[1], sd[2]
+		local n = Vector3.new(0, 0, -s) -- au nord, avant vers le sud ; au sud, vers le nord
+		local center = Vector3.new(SIDE_X, 0, s * (HUB.z1 - 3 - SHOP_D / 2)) -- dos collé au grand mur
+		SITES[k] = { k = k, angle = 0, side = s, sideShop = true, front = center + n * (SHOP_D / 2), center = center, n = n, cf = frameAt(center, n) }
 	end
 	FC = Vector3.new(-35, 0, 0) -- au milieu de la place, dans l'axe de l'entrée
 end
@@ -607,6 +622,7 @@ do
 			if x < LINE_FX + 34 or x > 25 or az > HUB.z1 - 6 then return false end
 			if az < 14 and x < 3 then return false end
 			if x > -17 and az < 104 + EXIT_W then return false end -- stands et allée des stands
+			if SIDES > 0 and az > HUB.z1 - 3 - SHOP_D - 34 and x > LINE_FX + 26 and x < SIDE_X + SHOP_W / 2 + 2 then return false end -- boutiques des côtés, promenades, lampadaires
 			return true
 		end
 		local pm = Instance.new("Model"); pm.Name = "GrassPatches"
@@ -662,9 +678,20 @@ do
 		-- promenade devant les terrasses (16 de large, sur toute la rangée), avenue de la promenade à l'entrée (z = 0, 20 de
 		-- large, coupée par la place de la fontaine), allée des stands le long de l'entrée (x -12..0), un lampadaire par boutique
 		local half = LINE_HALF
-		local px0, px1 = LINE_FX + 11, LINE_FX + 27 -- de sous le bord des terrasses (x -86) à x -71
+		-- de x -86 à -71 : 0,7 devant le socle de l'objet le plus rare (Plinth, à 51,3 devant le centre ; la terrasse a quitté
+		-- le gabarit, 2026-11-12)
+		local px0, px1 = LINE_FX + 12, LINE_FX + 27
 		Bx(m, W, "Walkway_Front", px0, -0.05, -half, px1, 0.12, half, PAVE, F)
 		Bx(m, W, "WalkwayEdge_Front", px1, -0.05, -half, px1 + 1.2, 0.08, half, BRICK, F)
+		-- boutiques des côtés : promenade de 16 devant elles, à 0,7 devant le socle de l'objet le plus rare, de la promenade
+		-- de la rangée jusqu'à l'allée des stands (x -69,8..-13,2), bordure côté place
+		local sz1 = HUB.z1 - 3 - SHOP_D - 12 -- bord côté boutique (|z| 130)
+		local sz0 = sz1 - 16
+		for _, sd in (SIDES > 0 and { 1, -1 } or {}) do
+			local tag = sd > 0 and "N" or "S"
+			Bx(m, W, "Walkway_Side_" .. tag, px1 + 1.2, -0.05, sz0 * sd, -13.2, 0.12, sz1 * sd, PAVE, F)
+			Bx(m, W, "WalkwayEdge_Side_" .. tag, px1 + 1.2, -0.05, (sz0 - 1.2) * sd, -13.2, 0.08, sz0 * sd, BRICK, F)
+		end
 		for i, r in (FOUNTAIN_IN_HUB and { { px1, FC.X - 23 }, { FC.X + 23, 0.6 } } or { { px1, 0.6 } }) do
 			strip(m, "Walkway_Main_" .. i, Vector3.new(r[1], 0, 0), Vector3.new(r[2], 0, 0), 20, 0.12, PAVE, F)
 			for _, s in { 1, -1 } do
@@ -673,11 +700,17 @@ do
 		end
 		for _, s in { 1, -1 } do
 			local tag = s > 0 and "N" or "S"
-			Bx(m, W, "Walkway_Stalls_" .. tag, -12, -0.05, 10 * s, 0, 0.12, (100 + EXIT_W) * s, PAVE, F)
-			Bx(m, W, "WalkwayEdge_Stalls_" .. tag, -13.2, -0.05, 10 * s, -12, 0.08, (100 + EXIT_W) * s, BRICK, F)
+			local z1 = (SIDES > 0 and sz0 or (100 + EXIT_W)) * s -- jusqu'à la promenade des boutiques des côtés
+			Bx(m, W, "Walkway_Stalls_" .. tag, -12, -0.05, 10 * s, 0, 0.12, z1, PAVE, F)
+			Bx(m, W, "WalkwayEdge_Stalls_" .. tag, -13.2, -0.05, 10 * s, -12, 0.08, z1, BRICK, F)
 		end
 		for k, site in SITES do
-			lamp(m, "Lamp_Walk_" .. k, Vector3.new(px1 + 3, 0, site.front.Z + 20))
+			if site.sideShop then
+				lamp(m, "Lamp_Walk_" .. k, Vector3.new(site.front.X - 20, 0, (sz0 - 4) * site.side))
+			else
+				-- à 20 de l'axe de la boutique, du côté du centre de la place (loin des boutiques des côtés)
+				lamp(m, "Lamp_Walk_" .. k, Vector3.new(px1 + 3, 0, site.front.Z - 20 * (site.front.Z >= 0 and 1 or -1)))
+			end
 		end
 	elseif ROWS then
 		-- allée centrale (z = 0, 20 de large) de la rue de la zone 1 jusqu'au bout ouest, coupée par la place de la fontaine ;
@@ -1172,7 +1205,7 @@ do
 	local m = section("Stalls")
 	for _, t in STALLS do stall(m, t) end
 	-- un lampadaire devant chaque paire de stands, entre les deux (armes et Robux au nord, auras et receleur au sud)
-	for _, s in { 1, -1 } do lamp(m, "Lamp_Stalls_" .. (s > 0 and "N" or "S"), ROWS and Vector3.new(-22, 0, (ROW_Z - 10) * s) or Vector3.new(0, 0, (71 + EXIT_W) * s)) end
+	for _, s in { 1, -1 } do lamp(m, "Lamp_Stalls_" .. (s > 0 and "N" or "S"), ROWS and Vector3.new(-22, 0, (ROW_Z - 10) * s) or Vector3.new(1.5, 0, (71 + EXIT_W) * s)) end -- x 1,5 : à côté de l'allée des stands (x ≤ 0)
 	-- une allée de l'allée de la boutique 1 (nord) ou 6 (sud) jusqu'à la plaque ShopPad de chaque stand (x = 0,5),
 	-- sous le niveau de l'allée (0,08 contre 0,12) là où elle la rejoint (demi-cercle seulement : en 3 face à 3, le parvis)
 	for _, t in ((ROWS or LINE) and {} or STALLS) do
@@ -1316,6 +1349,33 @@ do
 	local n = 0
 	for _, m in shops:GetChildren() do if m:IsA("Model") and CS:HasTag(m, "PlayerPlot") then n += 1 end end
 	shopsReady = (n == SHOP_COUNT)
+end
+
+-- Aperçus des panneaux d'amélioration posés en Edit (Workspace/_PREVIEW_UpgradeSigns/PLOT_Shop_0k : Preview_Treadmill,
+-- Preview_Bench, Preview_ShopUpgrade, Preview_ShopUpgrade_Niveau2a5) : recollés à leur boutique par leur attribut ShopOffset
+-- (CFrame dans le repère de la boutique, posé le 2026-11-12) ; une boutique sans aperçus reçoit une copie de ceux d'une
+-- autre (Clément, 2026-11-12 : « les panneaux d'amélioration doivent suivre les boutiques »). En jeu, UpgradeController
+-- pose les vrais panneaux sur les points de la boutique, qui la suivent déjà.
+do
+	local pv = workspace:FindFirstChild("_PREVIEW_UpgradeSigns")
+	local shops = hub:FindFirstChild("Shops")
+	if pv and shops then
+		local model
+		for _, f in pv:GetChildren() do if f:IsA("Folder") and #f:GetChildren() > 0 then model = model or f end end
+		local moved = 0
+		for k = 1, SHOP_COUNT do
+			local name = string.format("PLOT_Shop_%02d", k)
+			local shop, f = shops:FindFirstChild(name), pv:FindFirstChild(name)
+			if shop and not f and model then f = model:Clone(); f.Name = name; f.Parent = pv end
+			if shop and f then
+				for _, prev in f:GetChildren() do
+					local off = prev:IsA("Model") and prev:GetAttribute("ShopOffset")
+					if typeof(off) == "CFrame" then prev:PivotTo(shop:GetPivot() * off); moved += 1 end
+				end
+			end
+		end
+		add("Aperçus des panneaux recollés à leur boutique : " .. moved)
+	end
 end
 
 -- SafeZone (un seul volume, tout le hub, jusqu'au mur de nuit) et SpawnLocation de secours. PlotService pose chaque
