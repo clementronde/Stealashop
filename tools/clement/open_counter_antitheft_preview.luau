@@ -5,10 +5,10 @@
 	3. La chance : « ×N LUCK » en vert avec le trèfle (l'ancienne DA, sans pastille), qui monte à
 	   chaque tic (0,1 s, de plus en plus vite, rythme de la vidéo de référence). Le colis grandit
 	   avec la chance : plus elle monte, plus il grossit. Sans chance, il s'ouvre tout de suite.
-	4. La révélation : éclatement (famille de FX_Escape), l'objet sort à la place du colis, face à la
-	   rue, blanc puis à ses couleurs ; au-dessus, BB_Item (nom, rareté, mutation, $/s).
+	4. La révélation : éclatement (famille de FX_Escape), l'objet sort à la place du colis, tourné comme
+	   le rayon (face vers l'allée), blanc puis à ses couleurs ; au-dessus, BB_Item (nom, rareté, mutation, $/s).
 	5. En base : au-dessus de l'objet posé, seulement un timer dans le style de BB_OpenTimer (pastille
-	   sombre) avec un petit cadenas, visible de près seulement (MaxDistance 25, pas AlwaysOnTop).
+	   sombre) avec un petit cadenas, visible juste à côté seulement (MaxDistance 10, pas AlwaysOnTop).
 	   À la fin, le cadenas saute et « UNLOCKED! » s'affiche.
 	_G.OpenProto.Replay() rejoue, _G.OpenProto.Stop() retire tout. Copies dans CoreGui (_PROTO_*) et
 	Workspace/_PREVIEW_ShelfOpen. Aucun script laissé.
@@ -128,7 +128,7 @@ end
 -- BB_AntiTheft : timer dans le style de BB_OpenTimer (pastille sombre 3a404b), petit cadenas à gauche,
 -- visible de près seulement
 local function antiTheft(adornee, height)
-	local at = make("BillboardGui", CG, { Name = "_PROTO_AntiTheft", Adornee = adornee, Size = UDim2.new(2.6, 60, 0.8, 22), StudsOffset = Vector3.new(0, height, 0), AlwaysOnTop = false, MaxDistance = 25, LightInfluence = 0 })
+	local at = make("BillboardGui", CG, { Name = "_PROTO_AntiTheft", Adornee = adornee, Size = UDim2.new(2.6, 60, 0.8, 22), StudsOffset = Vector3.new(0, height, 0), AlwaysOnTop = false, MaxDistance = 10, LightInfluence = 0 })
 	local pillF = make("Frame", at, { Name = "Pill", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.fromHex("3a404b"), BackgroundTransparency = 0.05 })
 	corner(pillF, UDim.new(0.5, 0))
 	make("UIStroke", pillF, { Thickness = 0.08, StrokeSizingMode = Enum.StrokeSizingMode.ScaledSize, Color = BLACK, ApplyStrokeMode = Enum.ApplyStrokeMode.Border })
@@ -201,7 +201,8 @@ local function play()
 
 	local box = RS.Assets.Boxes.BOX_Rare:Clone()
 	anchorAll(box)
-	local home = CFrame.new(slot.WorldPosition)
+	local face = slot.WorldCFrame.LookVector * Vector3.new(1, 0, 1) -- le rayon regarde l'allée : le colis et l'objet aussi
+	local home = CFrame.lookAt(slot.WorldPosition, slot.WorldPosition + face.Unit)
 	box:PivotTo(home)
 	box.Parent = folder
 	local core = box.PrimaryPart or box:FindFirstChildWhichIsA("BasePart", true)
@@ -258,14 +259,19 @@ local function play()
 
 	-- 4. révélation : éclatement, l'objet sort à la place du colis, face à la rue
 	local center = core.Position + Vector3.new(0, 0.6, 0)
-	for _, d in box:GetDescendants() do if d:IsA("BasePart") then d.Transparency = 1 end end
+	for _, d in box:GetDescendants() do
+		if d:IsA("BasePart") then d.Transparency = 1 end
+		-- plus de contour noir du colis une fois l'objet sorti (OutlineHighlight, OutlineBox)
+		if d:IsA("Highlight") then d.Enabled = false end
+		if d:IsA("SelectionBox") then d.Visible = false end
+	end
 	shaft.Enabled = false; glow.Enabled = false; light.Enabled = false
 	TS:Create(scaleOf(bb), TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { Scale = 0 }):Play()
 	burst(center, EPIC)
 	status.opened = true
 	status.luck = value
 
-	local place = CFrame.lookAt(slot.WorldPosition, slot.WorldPosition + toStreet)
+	local place = home -- face avant (−Z du modèle) vers l'allée, comme le colis
 	local item, size, halo = makeItem(place)
 	local pivot = item:GetPivot()
 	item:ScaleTo(1.5 * 0.2)
@@ -293,7 +299,7 @@ local function play()
 	local hit = workspace:Raycast(floorPos + Vector3.new(0, 10, 0), Vector3.new(0, -30, 0), params)
 	if hit then floorPos = hit.Position end
 	item:PivotTo(CFrame.lookAt(floorPos, floorPos + Vector3.new(1, 0, 0)))
-	lookAt(floorPos + Vector3.new(8, 5, 0), floorPos + Vector3.new(0, 2, 0))
+	lookAt(floorPos + Vector3.new(6, 4, 0), floorPos + Vector3.new(0, 2, 0))
 	local at, lock, timeL = antiTheft(item.PrimaryPart or item:FindFirstChildWhichIsA("BasePart", true), size.Y / 2 + 1.6)
 	table.insert(made, at)
 	status.base = true

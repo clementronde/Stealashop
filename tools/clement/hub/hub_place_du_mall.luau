@@ -106,7 +106,9 @@ local SIDES = (LINE and SHOP_COUNT == 8) and 2 or 0
 local ROW_N = SHOP_COUNT - SIDES -- boutiques de la rangée du fond
 local LINE_HALF = (ROW_N / 2) * SHOP_W + ((ROW_N - 1) / 2) * LINE_GAP -- demi-longueur de la rangée (217 pour 6)
 local PATH_W = 16 -- largeur de tous les chemins de la base (dalle), plus 1 de bordure de chaque côté
-local SIDE_X = -31 -- centre des boutiques des côtés : 6,8 après la bordure de la promenade (x -69,8), place d'un lampadaire
+-- centre des boutiques des côtés : au milieu de la promenade devant elles (dalle x -85..-1), donc -43 (Clément, 2026-11-12 :
+-- « ceux sur le bord ne sont pas centrés »)
+local SIDE_X = ((LINE_FX + 13) + (-1)) / 2
 if LINE then
 	MALL = false
 	-- mur ouest collé au dos des boutiques (pas de couloir derrière la rangée)
@@ -315,7 +317,10 @@ local function txt(gui, text, color, x, y, w, h, opt)
 end
 
 -- Mobilier ----------------------------------------------------------------------------------------------------------
+-- Clément, 2026-11-12 : plus de lampadaires dans la base en rangée (allées, stands, sortie)
+local LAMPS = not LINE
 local function lamp(parent, name, pos, h)
+	if not LAMPS then return end
 	h = h or 15
 	if blockedAt(pos, 1.6) then return end
 	local m = Instance.new("Model"); m.Name = name
@@ -625,7 +630,7 @@ do
 			if az < PATH_W / 2 + 3 and x < 3 then return false end -- avenue
 			if x > -20 and x < 2 then return false end -- allée des stands
 			if x >= 2 and az < 104 + EXIT_W then return false end -- stands, rue de la sortie
-			if SIDES > 0 and az > spz0 - 9 and x < SIDE_X + SHOP_W / 2 + 4 then return false end -- promenades, boutiques et lampadaires des côtés
+			if SIDES > 0 and az > spz0 - 9 and x < math.max(SIDE_X + SHOP_W / 2, 0) + 4 then return false end -- promenades et boutiques des côtés
 			return true
 		end
 		local pm = Instance.new("Model"); pm.Name = "GrassPatches"
@@ -695,7 +700,7 @@ do
 		local rowEnd = SIDES > 0 and spz0 or half
 		path("Front", px0, -rowEnd, px1, rowEnd)
 		for _, sd in (SIDES > 0 and { 1, -1 } or {}) do
-			path("Side_" .. (sd > 0 and "N" or "S"), px0, spz0 * sd, SIDE_X + SHOP_W / 2, spz1 * sd) -- jusqu'au bord est de la boutique
+			path("Side_" .. (sd > 0 and "N" or "S"), px0, spz0 * sd, -1, spz1 * sd) -- bord est commun à l'avenue et à l'allée des stands (x -1)
 		end
 		path("Main", px1, -PATH_W / 2, -1, PATH_W / 2) -- avenue (z -8..8) ; sa bordure s'arrête au bord de la rue (x 0) : un seuil
 		for _, sd in { 1, -1 } do
