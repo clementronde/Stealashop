@@ -36,7 +36,7 @@ local Steps: { Step } = {
 
 -- Textes écrits dans le doc, traduits en anglais (L-036). ShieldEndMessage dépasse les 8 mots
 -- d'une bulle. Depuis le 2026-11-12 (Cantin, doc 6.4), la boutique est braquable dès le départ : le
--- bouclier ne protège plus que le colis porté. Texte V0 d'Ironix, à valider par Clément (L-114).
+-- bouclier ne protège plus que le colis porté. Texte V0 d'Ironix, à valider par Clément (L-115).
 local SHIELD_END_MESSAGE = "Beginner protection is over: keep your bat close!"
 local NIGHT_BUBBLE = "Night is falling: hurry home!" -- 5.12, pour les nouveaux joueurs
 
