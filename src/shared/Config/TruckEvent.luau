@@ -15,6 +15,9 @@ local DeepFreeze = require(script.Parent.DeepFreeze)
 -- celui des rayons (Balance.Heist.BoxTiers[Tier].GrabTime).
 export type BoxCount = { Tier: string, Count: number }
 
+-- Prototype de Clément (TruckBrakeAt 0,78 × TruckTime 3 s) : freins, et fin du roulage à vitesse constante.
+local DRIVE_TIME = 0.78 * 3
+
 local TruckEvent = {
 	-- Apparition ---------------------------------------------------------------------------------
 	SpawnIntervalMin = 8 * 60, -- V0 provisoire, décision d'Ironix du 2026-11-07 : un camion toutes les 8…
@@ -76,12 +79,43 @@ local TruckEvent = {
 	AlarmHold = 4, -- V0 : … et se tait 4 s après le dernier coup, ou à l'explosion (une boucle si Looped)
 	-- Arrivée (vague 26, L-097 point 8 ; ui-feel-sons-victoire-camion.md : « SFX_TruckArrive au départ,
 	-- SFX_TruckBrake à 78 % du trajet », trajet de 3 s dans le prototype de Clément) : sons 3D sur le camion,
-	-- joués à son apparition (attribut SpawnedAt) chez ceux qui le voient arriver. Le trajet lui-même
-	-- (le camion qui roule, FX_TruckDust) n'est pas encore codé : les deux sons gardent ses temps.
+	-- joués à son apparition (attribut SpawnedAt) chez ceux qui le voient arriver. Vague 29 (a97) : ils
+	-- suivent le camion qui roule (copie locale de TruckController, voir plus bas).
 	ArriveSound = "SFX_TruckArrive", -- klaxon, à l'apparition
 	BrakeSound = "SFX_TruckBrake", -- freins à air…
-	BrakeDelay = 2.34, -- … 0,78 × 3 s après (valeurs du prototype de Clément, TruckBrakeAt × TruckTime)
+	BrakeDelay = DRIVE_TIME, -- … 0,78 × 3 s après (valeurs du prototype de Clément, TruckBrakeAt × TruckTime) : début du dérapage
 	ArriveMaxAge = 1, -- V0 proposé, absent du doc : camion reçu plus de 1 s après son apparition : pas de son d'arrivée
+
+	-- Arrivée en roulant (vague 29, a97 ; L-105 point 2, vidéo docs/claude/references/camion/ENV_Event_Truck_Arrivee.mp4).
+	-- Le serveur pose le camion à sa place finale dès l'apparition (PV, coups, colis : rien ne change) ;
+	-- chaque client qui le voit arriver joue une copie locale, sans collision : le camion debout roule
+	-- vers sa place, cabine devant, freine et dérape, se couche sur le côté (les deux conducteurs sont
+	-- éjectés), retombe dans sa pose finale (FX_TruckDust), puis la copie laisse place au vrai camion.
+	-- Pendant l'arrivée, le vrai camion (caché chez les clients) ne bloque personne : collisions et contacts
+	-- coupés par le serveur, remis à la fin ; un joueur resté dedans en est sorti par le côté le plus proche.
+	-- Un joueur qui arrive après voit le camion à sa place finale. ArriveDistance = 0 : plus d'arrivée.
+	ArriveDistance = 90, -- prototype de Clément (TruckDistance) : point de départ, en studs derrière la place finale, dans l'axe du camion debout
+	ArriveDriveTime = DRIVE_TIME, -- V0 proposé, absent du doc : roule à vitesse constante jusqu'aux freins (BrakeDelay)…
+	ArriveSkidTime = 0.7, -- V0 proposé, absent du doc : … puis freine et dérape jusqu'à sa place (vitesse qui tombe à 0) ;
+	-- vitesse de roulage = ArriveDistance / (ArriveDriveTime + ArriveSkidTime / 2), soit ~33 studs/s
+	ArriveSwerveAngle = math.rad(20), -- V0 proposé, absent du doc : l'arrière chasse de 20° pendant le dérapage, puis revient
+	ArriveTipTime = 0.55, -- V0 proposé, absent du doc : il se couche sur le côté (chute qui accélère) ; poussière à l'impact
+	ArriveSettleTime = 0.3, -- V0 proposé, absent du doc : petit rebond après l'impact…
+	ArriveSettleAngle = math.rad(5), -- V0 proposé, absent du doc : … de 5°
+	-- Pose livrée par Clément : "Auto" (couché si ses conducteurs le sont, sinon si Pieces est plus large que
+	-- haut ; sinon debout), "Lying" ou "Upright". Debout : le serveur le couche à sa place (ArriveTipSide).
+	ArriveDeliveredPose = "Auto", -- V0 proposé, absent du doc
+	ArriveTipSide = 1, -- V0 proposé, absent du doc : +1 = le toit part vers +X du pivot du camion, −1 vers −X (camion sans conducteur)
+	ArrivePushMargin = 2, -- V0 proposé, absent du doc : joueur resté dans le camion à la fin : posé à 2 studs de son flanc
+	-- Conducteurs éjectés (copie locale) : vol plané, chute, puis ils s'effacent (V0). Le vrai camion ne les
+	-- montre plus (ils reviennent pour la poursuite à la fin du chrono, comme avant).
+	DriverEjectAt = 0.35, -- V0 proposé, absent du doc : part de la chute où ils sont éjectés
+	DriverEjectUp = 38, -- V0 proposé, absent du doc : vitesse vers le haut (studs/s)
+	DriverEjectOut = 16, -- V0 proposé, absent du doc : vitesse vers l'extérieur du camion (studs/s)
+	DriverEjectSpin = 6, -- V0 proposé, absent du doc : rotation en vol (rad/s)
+	DriverGravity = 90, -- V0 proposé, absent du doc : chute (studs/s²)
+	DriverLinger = 0.5, -- V0 proposé, absent du doc : au sol, puis…
+	DriverFadeTime = 0.6, -- V0 proposé, absent du doc : … ils s'effacent
 
 	-- Conducteurs (L-071, point 7) : les modèles avec un Humanoid que Clément range dans ENV_Event_Truck.
 	-- Avec une animation Idle dans leur dossier Animations (Contract/Animations.Driver), le serveur la

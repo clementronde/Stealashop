@@ -32,6 +32,15 @@
 --      seule sa racine (RootPart, HumanoidRootPart ou PrimaryPart) est ancrée, ses membres reliés à
 --      elle par ses articulations restent libres. Sans Idle, il est ancré comme le reste et immobile.
 --      À l'explosion, TruckController le fait voler avec les pièces.
+--      Arrivée en roulant (a97, vague 29, L-105 point 2) : le camion est posé tout de suite à sa place
+--      finale (PV, coups, chrono et colis ne changent pas), mais chaque client qui le voit arriver joue
+--      une copie locale qui roule depuis ArriveDistance studs, dérape, se couche sur le côté et éjecte les
+--      conducteurs (TruckController). Le serveur pose ArriveUpright (pose debout par rapport au pivot,
+--      CFrame) et ArriveEndsAt (heure serveur de l'impact au sol), coupe collisions et contacts de toutes
+--      les pièces jusqu'à la fin du rebond, puis les remet et sort par le côté le plus proche un joueur
+--      resté dans la caisse. Pose livrée : ArriveDeliveredPose ("Auto" : couché si ses conducteurs le
+--      sont, sinon si Pieces est plus large que haut) ; un camion livré debout est couché à sa place
+--      (toutes les pièces sauf Root, qui reste debout ; HealthBarPoint au-dessus de la caisse couchée).
 --   2. PV partagés : cible d'événement de WindowService (AddTarget, MaxHP, sans régénération),
 --      frappée avec les outils et les règles des vitrines (HitController, HitWindow : dégâts du
 --      joueur, portée, débit, coup au marqueur Impact). Ses PV : attribut HP du camion.
@@ -92,7 +101,7 @@
 --   message. Hors de Studio, l'attribut n'est pas écouté.
 --
 -- API (serveur) : aucune. Posé par ce service, lu par TruckController : le tag EventTruck et les
--- attributs du camion (Zone, TruckNumber, ExplodedAt ; WindowId, MaxHP, HP et Broken venant de
+-- attributs du camion (Zone, TruckNumber, SpawnedAt, ArriveUpright, ArriveEndsAt, ExplodedAt, LeftAt ; WindowId, MaxHP, HP et Broken venant de
 -- WindowService), les attributs des colis du camion (plus haut).
 
 local CollectionService = game:GetService("CollectionService")
@@ -123,6 +132,9 @@ local WindowService = require(script.Parent.WindowService)
 
 type TruckState = "Active" | "Exploding"
 
+-- Collisions d'une pièce du camion, coupées pendant l'arrivée (a97), remises à la fin.
+type SavedCollision = { CanCollide: boolean, CanTouch: boolean }
+
 -- Un colis du chargement, tiré à l'apparition du camion (a79, L-097 point 3). Rarity et ItemId nil :
 -- aucun objet ne peut sortir de ce colis dans la zone (Config incohérente), colis sauté à l'explosion.
 type Load = { Tier: string, Rarity: string?, ItemId: string?, Mutation: Mutations.Mutation? }
@@ -135,6 +147,7 @@ type Truck = {
 	SpawnedAt: number, -- os.clock()
 	State: TruckState,
 	Load: { Load }, -- le n-ième sort de BoxSpawn_n
+	Arriving: { [BasePart]: SavedCollision }?, -- pendant l'arrivée (a97) : collisions à remettre
 }
 
 -- Chrono d'un camion (point 3') : survit à l'explosion et au retrait de la copie.
@@ -199,6 +212,12 @@ local FLIGHT_FROM_ATTRIBUTE = "FlightFrom"
 local FLIGHT_STARTS_AT_ATTRIBUTE = "FlightStartsAt"
 local FLIGHT_DURATION_ATTRIBUTE = "FlightDuration"
 local SKIP_ATTRIBUTE = "TruckSpawnNow" -- Studio seulement (test), voir l'en-tête
+-- Arrivée en roulant (a97, vague 29), lus par TruckController et VfxController (mêmes noms là-bas) :
+-- pose debout du camion par rapport à son pivot final (CFrame), et heure serveur de l'impact au sol.
+local ARRIVE_UPRIGHT_ATTRIBUTE = "ArriveUpright"
+local ARRIVE_ENDS_AT_ATTRIBUTE = "ArriveEndsAt"
+-- V0 proposé, absent du doc : un joueur sorti du camion est posé à 3 studs au-dessus du sol (HumanoidRootPart d'un R15).
+local PUSH_HEIGHT = 3
 
 -- V0 proposé, absent du doc : après NightCycleService (120), dont il lit les phases.
 local PRIORITY = 130
@@ -708,6 +727,249 @@ local function playDriverIdles(drivers: { Driver })
 	end
 end
 
+-- Arrivée en roulant (a97, vague 29 ; L-105 point 2) ----------------------------------------------------
+
+-- Temps de l'arrivée depuis l'apparition : jusqu'à l'impact au sol, puis jusqu'à la fin du rebond.
+-- (0, 0) : arrivée coupée (ArriveDistance = 0), le camion est là tout de suite, comme avant.
+local function arrivalTimes(): (number, number)
+	if TruckEvent.ArriveDistance <= 0 then
+		return 0, 0
+	end
+	local landing = math.max(TruckEvent.ArriveDriveTime, 0)
+		+ math.max(TruckEvent.ArriveSkidTime, 0)
+		+ math.max(TruckEvent.ArriveTipTime, 0)
+	return landing, landing + math.max(TruckEvent.ArriveSettleTime, 0)
+end
+
+-- Coins des pièces de la caisse (Pieces, sinon tout le camion), hors `skip`, dans l'espace de `pivot`.
+local function bodyPoints(model: Model, pivot: CFrame, skip: { [Instance]: boolean }): { Vector3 }
+	local points: { Vector3 } = {}
+	local pieces = model:FindFirstChild(PIECES_NAME, true)
+	local source: Instance = if pieces then pieces else model
+	for _, descendant in source:GetDescendants() do
+		if descendant:IsA("BasePart") and not skip[descendant] then
+			local part = descendant :: BasePart
+			local half = part.Size / 2
+			for _, sx in { -1, 1 } do
+				for _, sy in { -1, 1 } do
+					for _, sz in { -1, 1 } do
+						local corner: Vector3 = part.CFrame * Vector3.new(sx * half.X, sy * half.Y, sz * half.Z)
+						local inPivot: Vector3 = pivot:PointToObjectSpace(corner)
+						table.insert(points, inPivot)
+					end
+				end
+			end
+		end
+	end
+	return points
+end
+
+-- Rotation qui amène le vecteur unitaire `from` sur `to` (perpendiculaires ici : un quart de tour).
+local function rotationTo(from: Vector3, to: Vector3): CFrame
+	local axis = from:Cross(to)
+	if axis.Magnitude < 1e-6 then
+		return CFrame.identity
+	end
+	return CFrame.fromAxisAngle(axis.Unit, math.acos(math.clamp(from:Dot(to), -1, 1)))
+end
+
+-- Bascule de `from` vers `to` autour de l'arête au sol la plus loin dans la direction horizontale `side`
+-- (le camion pivote sur ses roues ou sur son flanc, sans glisser), dans l'espace du pivot.
+local function aboutEdge(points: { Vector3 }, side: Vector3, from: Vector3, to: Vector3): CFrame
+	local far, low = -math.huge, math.huge
+	for _, point in points do
+		far = math.max(far, point:Dot(side))
+		low = math.min(low, point.Y)
+	end
+	local edge = side * far + Vector3.new(0, low, 0)
+	return CFrame.new(edge) * rotationTo(from, to) * CFrame.new(-edge)
+end
+
+-- Pièces à laisser hors de la caisse : Root (invisible, elle reste debout) et les conducteurs.
+local function bodySkip(model: Model, drivers: { Driver }): { [Instance]: boolean }
+	local skip: { [Instance]: boolean } = {}
+	local root = truckRoot(model)
+	if root then
+		skip[root] = true
+	end
+	for _, driver in drivers do
+		for _, descendant in driver.Rig:GetDescendants() do
+			skip[descendant] = true
+		end
+	end
+	return skip
+end
+
+-- Pose livrée de la copie `model` : côté du toit d'un camion couché (dans l'espace du pivot), et la
+-- bascule à appliquer d'abord s'il est livré debout (nil s'il est déjà couché). Couché : selon
+-- ArriveDeliveredPose ; "Auto" = ses conducteurs couchés (leur haut donne le côté du toit), sinon la
+-- caisse plus large que haute (toit du côté ArriveTipSide). Debout (la vidéo de Clément montre un camion
+-- debout) : il se couche du côté ArriveTipSide, sur l'arête de ses roues, puis la caisse couchée est
+-- recentrée sur son point (elle garde le milieu de la chaussée).
+local function deliveredPose(model: Model, drivers: { Driver }): (Vector3, CFrame?)
+	local pivot = model:GetPivot()
+	local up = Vector3.zero
+	for _, driver in drivers do
+		up += pivot:VectorToObjectSpace(driver.Root.CFrame.UpVector)
+	end
+	local points = bodyPoints(model, pivot, bodySkip(model, drivers))
+	local sideRoof = Vector3.new(if TruckEvent.ArriveTipSide < 0 then -1 else 1, 0, 0)
+	if #points == 0 then
+		return sideRoof, nil
+	end
+	local driverRoof: Vector3? = nil
+	if up.Magnitude > 1e-3 and math.abs(up.Unit.Y) < 0.5 then
+		driverRoof = Vector3.new(up.X, 0, up.Z).Unit
+	end
+	local mode = TruckEvent.ArriveDeliveredPose
+	local lying: boolean
+	if mode == "Lying" then
+		lying = true
+	elseif mode == "Upright" then
+		lying = false
+	elseif driverRoof then
+		lying = true
+	else
+		local lowX: number, highX: number, lowY: number, highY: number = math.huge, -math.huge, math.huge, -math.huge
+		for _, point in points do
+			lowX = math.min(lowX, point.X)
+			highX = math.max(highX, point.X)
+			lowY = math.min(lowY, point.Y)
+			highY = math.max(highY, point.Y)
+		end
+		lying = highX - lowX > highY - lowY
+	end
+	if lying then
+		return driverRoof or sideRoof, nil
+	end
+	local function middle(list: { Vector3 }): number
+		local low: number, high: number = math.huge, -math.huge
+		for _, point in list do
+			low = math.min(low, point:Dot(sideRoof))
+			high = math.max(high, point:Dot(sideRoof))
+		end
+		return (low + high) / 2
+	end
+	local fall = aboutEdge(points, sideRoof, Vector3.new(0, 1, 0), sideRoof)
+	local fallen: { Vector3 } = {}
+	for _, point in points do
+		table.insert(fallen, fall * point)
+	end
+	return sideRoof, CFrame.new(-sideRoof * (middle(fallen) - middle(points))) * fall
+end
+
+-- Pose debout (attribut ArriveUpright, dans l'espace du pivot) de la copie couchée `model`, toit vers
+-- `roof` : redressée sur l'arête au sol de ses roues (côté opposé au toit). La copie locale bascule donc
+-- autour de cette arête, sans glisser, comme un camion qui se couche.
+local function uprightPose(model: Model, drivers: { Driver }, roof: Vector3): CFrame
+	local points = bodyPoints(model, model:GetPivot(), bodySkip(model, drivers))
+	if #points == 0 then
+		return CFrame.identity
+	end
+	return aboutEdge(points, -roof, roof, Vector3.new(0, 1, 0))
+end
+
+-- Couche une copie livrée debout (`tip`, dans l'espace de son pivot) : toutes ses pièces sauf Root, qui
+-- reste debout sur son point (L-049, b), et les Attachments de Root (BoxSpawn_xx, BlastPoint). La barre
+-- de vie (HealthBarPoint) reste au-dessus du milieu de la caisse, à la même hauteur au-dessus d'elle.
+local function applyTip(model: Model, tip: CFrame)
+	local pivot = model:GetPivot()
+	local world = pivot * tip * pivot:Inverse()
+	local root = truckRoot(model)
+	local skip: { [Instance]: boolean } = {}
+	if root then
+		skip[root] = true
+	end
+	local before = bodyPoints(model, pivot, skip)
+	local healthPoint = model:FindFirstChild(HEALTH_BAR_POINT, true)
+	local clearance: number? = nil
+	if healthPoint and healthPoint:IsA("Attachment") and #before > 0 then
+		local top = -math.huge
+		for _, point in before do
+			top = math.max(top, point.Y)
+		end
+		clearance = pivot:PointToObjectSpace((healthPoint :: Attachment).WorldPosition).Y - top
+	end
+	for _, descendant in model:GetDescendants() do
+		if descendant:IsA("BasePart") and descendant ~= root then
+			local part = descendant :: BasePart
+			part.CFrame = world * part.CFrame
+		elseif descendant:IsA("Model") and (descendant :: Model).PrimaryPart == nil then
+			-- Pieces/Piece_xx, Cargo… : leur pivot suit leurs pièces (l'explosion les fait voler par lui).
+			local inner = descendant :: Model
+			inner.WorldPivot = world * inner.WorldPivot
+		elseif descendant:IsA("Attachment") and root and descendant.Parent == root and descendant ~= healthPoint then
+			local attachment = descendant :: Attachment
+			attachment.CFrame = root.CFrame:ToObjectSpace(world * attachment.WorldCFrame)
+		end
+	end
+	local holder = if healthPoint then healthPoint.Parent else nil
+	if clearance and healthPoint and holder and holder:IsA("BasePart") then
+		local after = bodyPoints(model, pivot, skip)
+		local lowX: number, highX: number, lowZ: number, highZ: number, top: number =
+			math.huge, -math.huge, math.huge, -math.huge, -math.huge
+		for _, point in after do
+			lowX = math.min(lowX, point.X)
+			highX = math.max(highX, point.X)
+			lowZ = math.min(lowZ, point.Z)
+			highZ = math.max(highZ, point.Z)
+			top = math.max(top, point.Y)
+		end
+		local lift: number = clearance
+		local position = pivot * Vector3.new((lowX + highX) / 2, top + lift, (lowZ + highZ) / 2)
+		local attachment = healthPoint :: Attachment
+		attachment.CFrame = (holder :: BasePart).CFrame:ToObjectSpace(CFrame.new(position) * attachment.WorldCFrame.Rotation)
+	end
+end
+
+-- Fin de l'arrivée : collisions et contacts remis ; un joueur resté dans la caisse est posé à
+-- ArrivePushMargin studs du flanc (ou de l'avant, de l'arrière) le plus proche, au sol.
+local function finishArrival(truck: Truck)
+	local saved = truck.Arriving
+	truck.Arriving = nil
+	if saved == nil or current ~= truck or truck.State ~= "Active" or truck.Model.Parent == nil then
+		return
+	end
+	for part, collision in saved do
+		if part.Parent ~= nil then
+			part.CanCollide = collision.CanCollide
+			part.CanTouch = collision.CanTouch
+		end
+	end
+	-- Boîte de la caisse dans l'espace du pivot (debout, à plat : on ne sort jamais par le haut ou le bas).
+	local model = truck.Model
+	local pivot = model:GetPivot()
+	local points = bodyPoints(model, pivot, bodySkip(model, driversOf(model)))
+	if #points == 0 then
+		return
+	end
+	local low = Vector3.new(math.huge, math.huge, math.huge)
+	local high = Vector3.new(-math.huge, -math.huge, -math.huge)
+	for _, point in points do
+		low = Vector3.new(math.min(low.X, point.X), math.min(low.Y, point.Y), math.min(low.Z, point.Z))
+		high = Vector3.new(math.max(high.X, point.X), math.max(high.Y, point.Y), math.max(high.Z, point.Z))
+	end
+	local middle = (low + high) / 2
+	local margin = math.max(TruckEvent.ArrivePushMargin, 0)
+	for _, player in Players:GetPlayers() do
+		local root = rootOf(player)
+		local character = player.Character
+		local p = if root then pivot:PointToObjectSpace(root.Position) else Vector3.zero
+		local inside = p.X >= low.X and p.X <= high.X and p.Y >= low.Y and p.Y <= high.Y and p.Z >= low.Z and p.Z <= high.Z
+		if root and character and inside then
+			local exitX = if p.X < middle.X then low.X - margin else high.X + margin
+			local exitZ = if p.Z < middle.Z then low.Z - margin else high.Z + margin
+			local target = if math.abs(exitX - p.X) <= math.abs(exitZ - p.Z)
+				then Vector3.new(exitX, p.Y, p.Z)
+				else Vector3.new(p.X, p.Y, exitZ)
+			local world = pivot:PointToWorldSpace(target)
+			local y = groundY(world, pivot.Position.Y) + PUSH_HEIGHT
+			character:PivotTo(CFrame.new(world.X, y, world.Z) * root.CFrame.Rotation)
+			log(`{player.Name} était dans le camion n° {truck.Number} à la fin de son arrivée : sorti par le côté`)
+		end
+	end
+end
+
 -- Tirage (comme un rayon de la zone, StoreHeistService) ------------------------------------------------
 
 local function drawRarity(tier: string, zone: number): string?
@@ -953,13 +1215,39 @@ local function spawnTruck(zone: number): boolean
 			descendant.Anchored = not free[descendant :: BasePart]
 		end
 	end
+	-- Arrivée en roulant (a97) : pose debout pour la copie locale des clients (le camion livré debout est
+	-- d'abord couché), collisions et contacts coupés jusqu'à la fin de l'arrivée (personne n'est bloqué).
+	local landing, arrivalEnd = arrivalTimes()
+	local arriving: { [BasePart]: SavedCollision }? = nil
+	if landing > 0 then
+		local roof, tip = deliveredPose(model, drivers)
+		if tip then
+			applyTip(model, tip)
+			log(`{asset} livré debout : couché à sa place (côté {TruckEvent.ArriveTipSide})`)
+		end
+		model:SetAttribute(ARRIVE_UPRIGHT_ATTRIBUTE, uprightPose(model, drivers, roof))
+		local saved: { [BasePart]: SavedCollision } = {}
+		for _, descendant in model:GetDescendants() do
+			if descendant:IsA("BasePart") then
+				local part = descendant :: BasePart
+				saved[part] = { CanCollide = part.CanCollide, CanTouch = part.CanTouch }
+				part.CanCollide = false
+				part.CanTouch = false
+			end
+		end
+		arriving = saved
+	end
 	truckCount += 1
 	model.Name = TRUCK_NAME
 	model:SetAttribute(ZONE_ATTRIBUTE, zone)
 	model:SetAttribute(NUMBER_ATTRIBUTE, truckCount)
 	-- Vague 26 (a81) : heure serveur de l'apparition, pour les sons d'arrivée de TruckController (seuls
 	-- ceux qui voient le camion arriver les entendent, pas un joueur qui le reçoit plus tard par le streaming).
-	model:SetAttribute(SPAWNED_AT_ATTRIBUTE, Workspace:GetServerTimeNow())
+	local serverNow = Workspace:GetServerTimeNow()
+	model:SetAttribute(SPAWNED_AT_ATTRIBUTE, serverNow)
+	if arriving then
+		model:SetAttribute(ARRIVE_ENDS_AT_ATTRIBUTE, serverNow + landing) -- impact au sol : FX_TruckDust (VfxController)
+	end
 	model.ModelStreamingMode = Enum.ModelStreamingMode.Atomic -- le camion et ses points arrivent ensemble
 	model:PivotTo(frame)
 	model.Parent = Workspace
@@ -970,7 +1258,7 @@ local function spawnTruck(zone: number): boolean
 		model:Destroy()
 		return false
 	end
-	current = {
+	local truck: Truck = {
 		Number = truckCount,
 		Zone = zone,
 		Model = model,
@@ -978,7 +1266,12 @@ local function spawnTruck(zone: number): boolean
 		SpawnedAt = os.clock(),
 		State = "Active",
 		Load = load,
+		Arriving = arriving,
 	}
+	current = truck
+	if arriving then
+		task.delay(arrivalEnd, finishArrival, truck)
+	end
 	chrono = { Number = truckCount, Zone = zone, Frame = frame, EndsAt = os.clock() + TruckEvent.Lifetime, Asset = asset }
 	notifyAll(string.format(TruckEvent.Messages.Spawned, zone), "Info")
 	local p = frame.Position

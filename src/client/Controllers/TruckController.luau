@@ -56,6 +56,17 @@
 --     Vague 26 : TruckEvent.ArriveSound (SFX_TruckArrive) à l'apparition du camion et
 --     TruckEvent.BrakeSound (SFX_TruckBrake) BrakeDelay s après, sur Root, seulement si le camion est
 --     reçu moins de ArriveMaxAge s après son apparition (attribut SpawnedAt du serveur).
+--   - Arrivée en roulant (a97, vague 29, L-105 point 2 ; vidéo ENV_Event_Truck_Arrivee.mp4) : un camion
+--     qui porte ArriveUpright (pose debout par rapport à son pivot, posée par le serveur) et reçu avant la
+--     fin de son arrivée (SpawnedAt + ArriveDriveTime + ArriveSkidTime + ArriveTipTime + ArriveSettleTime)
+--     est caché localement (pièces, décals, contour, barre de vie) ; une copie locale (TruckArrival, dans
+--     la caméra, ancrée, sans collision, contact, requête, tag ni script) joue l'arrivée à l'heure
+--     serveur : debout, cabine devant, elle roule depuis ArriveDistance studs dans l'axe de la route,
+--     freine et dérape (l'arrière chasse de ArriveSwerveAngle), puis se couche jusqu'à la pose finale en
+--     tournant autour de son arête au sol, et rebondit un peu. Pendant la chute (DriverEjectAt), ses
+--     conducteurs sont éjectés : vol plané, chute, puis ils s'effacent. À la fin, la copie disparaît et
+--     le vrai camion revient, sans ses conducteurs (cachés pour de bon, même pour un joueur arrivé plus
+--     tard). Klaxon et freins sonnent sur la copie qui roule ; FX_TruckDust à l'impact est à VfxController.
 --   - Conducteurs (L-071, point 7) : à l'explosion, chaque modèle avec un Humanoid rangé dans le camion
 --     hors de Pieces (Clément les met dans la cabine) part avec les pièces, comme une pièce de plus,
 --     puis s'efface avec elles. Leur Idle est jouée par le serveur (TruckEventService).
@@ -112,8 +123,45 @@ type Blast = {
 	Pieces: { Debris },
 }
 
+-- Conducteur éjecté pendant l'arrivée (a97) : copie locale qui vole, retombe, puis s'efface.
+type Ejected = {
+	Rig: Model,
+	Parts: { BasePart },
+	Offset: CFrame, -- pivot du conducteur dans l'espace de son centre
+	Position: Vector3, -- centre
+	Rotation: CFrame,
+	Velocity: Vector3,
+	Axis: Vector3,
+	Spin: number, -- rad/s
+	HalfHeight: number,
+	GroundY: number,
+	LandedAt: number?, -- os.clock() de l'atterrissage
+}
+
+-- Arrivée en roulant (a97) : copie locale du camion qui roule, dérape et se couche, pendant que le vrai
+-- camion (déjà à sa place finale chez le serveur) reste caché.
+type Arrival = {
+	Ghost: Model,
+	Final: CFrame, -- pivot final du vrai camion
+	Upright: CFrame, -- pose debout, dans l'espace du pivot final (attribut ArriveUpright)
+	SpawnedAt: number, -- heure serveur du départ
+	Heading: Vector3, -- sens de la route, à plat (avant du camion debout)
+	Speed: number, -- studs/s jusqu'aux freins
+	SkidDistance: number,
+	TipAxis: Vector3, -- bascule : axe, angle, point fixe et glissement le long de l'axe (espace du pivot final)
+	TipAngle: number,
+	TipPoint: Vector3,
+	TipAlong: number,
+	Drivers: { Model }, -- conducteurs de la copie, pas encore éjectés
+	Hidden: { Instance }, -- pièces et décals du vrai camion cachés le temps de l'arrivée
+	Outline: Highlight?,
+	OutlineWas: boolean,
+}
+
 type TruckWatch = {
 	Model: Model,
+	Arrival: Arrival?, -- arrivée en cours (a97)
+	DriversGone: boolean, -- conducteurs éjectés à l'arrivée : cachés dans le vrai camion (a97)
 	Billboard: BillboardGui?,
 	Fill: GuiObject?,
 	Label: TextLabel?,
@@ -178,6 +226,11 @@ local SOUND_HOLDER = "TruckHitSound" -- Attachment local du Terrain qui porte un
 local EXPLOSION_HOLDER = "TruckExplosionSound" -- Attachment local du Terrain qui porte le son de l'explosion
 local ALARM_NAME = "TruckAlarm" -- copie locale de l'alarme
 local ROOT_NAME = "Root" -- pièce invisible du camion (10.4), qui ne part pas à l'explosion
+local OUTLINE_NAME = "OutlineHighlight" -- contour du camion (L-049)
+-- Arrivée en roulant (a97), posés par TruckEventService (mêmes noms là-bas).
+local ARRIVE_UPRIGHT_ATTRIBUTE = "ArriveUpright"
+local GHOST_NAME = "TruckArrival" -- copie locale qui roule (jamais taggée EventTruck)
+local EJECTED_NAME = "TruckDriverEjected" -- conducteur éjecté, copie locale
 local TruckHit = HitFeedback.Truck
 
 -- V0 proposé, absent du doc : invites revues 5 fois par seconde (atterrissage).
@@ -209,6 +262,7 @@ local boxes: { [Instance]: BoxWatch } = {}
 local holding: BoxWatch? = nil -- colis dont l'invite est tenue (maintien en cours)
 local blasts: { Blast } = {}
 local flights: { Flight } = {}
+local ejected: { Ejected } = {}
 local noticed: { [string]: boolean } = {}
 local random = Random.new()
 
@@ -303,8 +357,8 @@ local function refreshBar(watch: TruckWatch)
 	local model = watch.Model
 	local maxValue = model:GetAttribute(MAX_HP_ATTRIBUTE)
 	local maxHp = if type(maxValue) == "number" then maxValue else 0
-	if watch.Exploded or maxHp <= 0 then
-		gui.Enabled = false
+	if watch.Exploded or maxHp <= 0 or watch.Arrival ~= nil then
+		gui.Enabled = false -- pendant l'arrivée (a97), le vrai camion est caché : sa barre aussi
 		return
 	end
 	local hpValue = model:GetAttribute(HP_ATTRIBUTE)
@@ -424,8 +478,9 @@ local function driversOf(model: Model, pieces: Instance?): { Model }
 	return list
 end
 
--- Ce qui vole à l'explosion : les pièces Pieces/Piece_xx, puis les conducteurs.
-local function pieceList(model: Model): { PVInstance }
+-- Ce qui vole à l'explosion : les pièces Pieces/Piece_xx, puis les conducteurs, sauf s'ils ont été
+-- éjectés à l'arrivée (a97 : `withDrivers` faux, ils restent cachés).
+local function pieceList(model: Model, withDrivers: boolean): { PVInstance }
 	local list: { PVInstance } = {}
 	local folder = Find.path(model, PIECES_NAME)
 	if folder then
@@ -435,14 +490,22 @@ local function pieceList(model: Model): { PVInstance }
 			end
 		end
 	end
-	for _, driver in driversOf(model, folder) do
-		table.insert(list, driver)
+	if withDrivers then
+		for _, driver in driversOf(model, folder) do
+			table.insert(list, driver)
+		end
 	end
 	return list
 end
 
 local function between(low: number, high: number): number
 	return low + random:NextNumber() * math.max(high - low, 0)
+end
+
+-- Demi-hauteur, dans le monde, d'une boîte `size` orientée par `frame` (une pièce couchée, a97 : sa
+-- hauteur n'est plus size.Y).
+local function verticalHalf(frame: CFrame, size: Vector3): number
+	return (math.abs(frame.XVector.Y) * size.X + math.abs(frame.YVector.Y) * size.Y + math.abs(frame.ZVector.Y) * size.Z) / 2
 end
 
 local function startBlast(watch: TruckWatch, age: number)
@@ -453,7 +516,7 @@ local function startBlast(watch: TruckWatch, age: number)
 		then (blastPoint :: Attachment).WorldPosition
 		else pivot.Position + Vector3.new(0, 5, 0)
 	local blast: Blast = { Watch = watch, StartedAt = os.clock() - age, GroundY = pivot.Position.Y, Pieces = {} }
-	for _, piece in pieceList(model) do
+	for _, piece in pieceList(model, not watch.DriversGone) do
 		local cf, size = boxOf(piece)
 		-- Vers l'extérieur à l'horizontale, plus la montée : les pièces du bas ne partent pas dans le sol.
 		local out = cf.Position - origin
@@ -471,7 +534,7 @@ local function startBlast(watch: TruckWatch, age: number)
 			Velocity = velocity,
 			Axis = random:NextUnitVector(),
 			Spin = between(-TruckEvent.DebrisSpinMax, TruckEvent.DebrisSpinMax),
-			HalfHeight = size.Y / 2,
+			HalfHeight = verticalHalf(cf, size),
 			Resting = false,
 		})
 	end
@@ -596,8 +659,343 @@ local function triggerAlarm(watch: TruckWatch)
 	sound:Play()
 end
 
--- Arrivée (vague 26) : klaxon à l'apparition, freins BrakeDelay s après (sons 3D sur Root), seulement si
--- le camion vient d'apparaître (attribut SpawnedAt, heure serveur, à moins de ArriveMaxAge s).
+-- Arrivée en roulant (a97, vague 29 ; L-105 point 2) ----------------------------------------------
+
+-- Temps de l'arrivée depuis l'apparition : impact au sol, puis fin du rebond (mêmes calculs que
+-- TruckEventService). (0, 0) : arrivée coupée.
+local function arrivalTimes(): (number, number)
+	if TruckEvent.ArriveDistance <= 0 then
+		return 0, 0
+	end
+	local landing = math.max(TruckEvent.ArriveDriveTime, 0)
+		+ math.max(TruckEvent.ArriveSkidTime, 0)
+		+ math.max(TruckEvent.ArriveTipTime, 0)
+	return landing, landing + math.max(TruckEvent.ArriveSettleTime, 0)
+end
+
+-- Axe (unitaire) et angle de la rotation de `frame` (0 : pas de rotation).
+local function axisAngle(frame: CFrame): (Vector3, number)
+	local x, y, z = frame.XVector, frame.YVector, frame.ZVector
+	local axis = Vector3.new(y.Z - z.Y, z.X - x.Z, x.Y - y.X)
+	if axis.Magnitude < 1e-6 then
+		return Vector3.new(0, 1, 0), 0
+	end
+	return axis.Unit, math.acos(math.clamp((x.X + y.Y + z.Z - 1) / 2, -1, 1))
+end
+
+-- Pièce où sonnent klaxon et freins : la Root de la copie qui roule, sinon celle du vrai camion.
+local function arrivalSoundPart(watch: TruckWatch): BasePart?
+	local arrival = watch.Arrival
+	return alarmPart(if arrival then arrival.Ghost else watch.Model)
+end
+
+-- Cache (1) ou remontre (0) localement les pièces et décals de `root` et de ses descendants ; renvoie
+-- ce qui a été caché.
+local function setHidden(root: Instance, hidden: boolean, skip: Instance?): { Instance }
+	local list: { Instance } = {}
+	for _, descendant in root:GetDescendants() do
+		if (descendant:IsA("BasePart") or descendant:IsA("Decal")) and not (skip and descendant:IsDescendantOf(skip)) then
+			local ok = pcall(function()
+				(descendant :: any).LocalTransparencyModifier = if hidden then 1 else 0
+			end)
+			if ok then
+				table.insert(list, descendant)
+			end
+		end
+	end
+	return list
+end
+
+-- Fin de l'arrivée (ou arrivée coupée : explosion, départ) : la copie disparaît, le vrai camion revient
+-- (sans ses conducteurs), avec son contour et sa barre de vie. Les sons de la copie passent sur lui.
+local function endArrival(watch: TruckWatch)
+	local arrival = watch.Arrival
+	if arrival == nil then
+		return
+	end
+	watch.Arrival = nil
+	local target = alarmPart(watch.Model)
+	for _, descendant in arrival.Ghost:GetDescendants() do
+		if descendant:IsA("Sound") and target and target.Parent ~= nil then
+			descendant.Parent = target
+		end
+	end
+	arrival.Ghost:Destroy()
+	for _, item in arrival.Hidden do
+		pcall(function()
+			(item :: any).LocalTransparencyModifier = 0
+		end)
+	end
+	local outline = arrival.Outline
+	if outline and not watch.Exploded then -- après l'explosion, le serveur l'a éteint
+		outline.Enabled = arrival.OutlineWas
+	end
+	refreshBar(watch)
+end
+
+-- Éjecte un conducteur de la copie : il quitte la copie et vole depuis sa place (vers l'extérieur du
+-- camion et vers le haut), puis retombe au sol (`groundY`) et s'efface (DriverLinger, DriverFadeTime).
+local function eject(rig: Model, center: Vector3, heading: Vector3, groundY: number)
+	local container = Workspace.CurrentCamera or Workspace
+	local frame, size = rig:GetBoundingBox()
+	local parts: { BasePart } = {}
+	for _, descendant in rig:GetDescendants() do
+		if descendant:IsA("BasePart") then
+			table.insert(parts, descendant :: BasePart)
+		end
+	end
+	local out = Vector3.new(frame.Position.X - center.X, 0, frame.Position.Z - center.Z)
+	local direction = if out.Magnitude > 1e-3 then out.Unit else heading:Cross(Vector3.new(0, 1, 0))
+	local spread = (random:NextNumber() - 0.5) * 0.6
+	direction = (CFrame.fromAxisAngle(Vector3.new(0, 1, 0), spread) * direction)
+	rig.Name = EJECTED_NAME
+	rig.Parent = container
+	table.insert(ejected, {
+		Rig = rig,
+		Parts = parts,
+		Offset = frame:ToObjectSpace(rig:GetPivot()),
+		Position = frame.Position,
+		Rotation = frame.Rotation,
+		Velocity = direction * TruckEvent.DriverEjectOut + Vector3.new(0, TruckEvent.DriverEjectUp, 0),
+		Axis = random:NextUnitVector(),
+		Spin = between(-TruckEvent.DriverEjectSpin, TruckEvent.DriverEjectSpin),
+		HalfHeight = verticalHalf(frame, size),
+		GroundY = groundY,
+		LandedAt = nil,
+	})
+end
+
+-- Une image d'un conducteur éjecté. Renvoie false quand il a disparu.
+local function stepEjected(item: Ejected, dt: number): boolean
+	if item.Rig.Parent == nil then
+		return false
+	end
+	local landed = item.LandedAt
+	if landed then
+		local after = os.clock() - landed - TruckEvent.DriverLinger
+		if after > 0 then
+			local fade = math.clamp(after / math.max(TruckEvent.DriverFadeTime, 1e-3), 0, 1)
+			setFade(item.Parts, fade)
+			if fade >= 1 then
+				item.Rig:Destroy()
+				return false
+			end
+		end
+		return true
+	end
+	item.Velocity -= Vector3.new(0, TruckEvent.DriverGravity * dt, 0)
+	local position = item.Position + item.Velocity * dt
+	local floor = item.GroundY + item.HalfHeight
+	if position.Y <= floor and item.Velocity.Y < 0 then
+		position = Vector3.new(position.X, floor, position.Z)
+		item.LandedAt = os.clock()
+	end
+	item.Position = position
+	item.Rotation = CFrame.fromAxisAngle(item.Axis, item.Spin * dt) * item.Rotation
+	item.Rig:PivotTo(CFrame.new(position) * item.Rotation * item.Offset)
+	return true
+end
+
+-- Pose de la copie (pivot) `age` s après le départ (heure serveur) ; nil quand l'arrivée est finie.
+--   roulage (ArriveDriveTime) : debout, à vitesse constante dans l'axe de la route ;
+--   dérapage (ArriveSkidTime) : la vitesse tombe à 0 sur sa place, l'arrière chasse (ArriveSwerveAngle) ;
+--   chute (ArriveTipTime) : de la pose debout à la pose finale, en tournant autour d'une arête fixe
+--     (point fixe de la bascule), de plus en plus vite ;
+--   rebond (ArriveSettleTime) : remonte de ArriveSettleAngle et retombe.
+local function arrivalPose(arrival: Arrival, age: number): CFrame?
+	local drive = math.max(TruckEvent.ArriveDriveTime, 0)
+	local skid = math.max(TruckEvent.ArriveSkidTime, 0)
+	local tipTime = math.max(TruckEvent.ArriveTipTime, 0)
+	local settle = math.max(TruckEvent.ArriveSettleTime, 0)
+	local t = math.max(age, 0)
+	local upright = arrival.Final * arrival.Upright
+	local heading = arrival.Heading
+	local function tipped(k: number): CFrame
+		local axis, point = arrival.TipAxis, arrival.TipPoint
+		local turn = CFrame.new(point + axis * (arrival.TipAlong * k))
+			* CFrame.fromAxisAngle(axis, arrival.TipAngle * k)
+			* CFrame.new(-point)
+		return arrival.Final * turn * arrival.Upright
+	end
+	if t < drive then
+		local remaining = arrival.SkidDistance + arrival.Speed * (drive - t)
+		return CFrame.new(-heading * remaining) * upright
+	end
+	t -= drive
+	if t < skid then
+		local k = t / skid
+		local remaining = arrival.SkidDistance - arrival.Speed * skid * (k - k * k / 2)
+		local yaw = TruckEvent.ArriveSwerveAngle * math.sin(math.pi * k)
+		local center = upright.Position
+		return CFrame.new(-heading * remaining)
+			* CFrame.new(center)
+			* CFrame.fromAxisAngle(Vector3.new(0, 1, 0), yaw)
+			* CFrame.new(-center)
+			* upright
+	end
+	t -= skid
+	if t < tipTime then
+		local k = t / tipTime
+		return tipped(k * k)
+	end
+	t -= tipTime
+	if t < settle and arrival.TipAngle > 1e-3 then
+		local bounce = math.min(TruckEvent.ArriveSettleAngle / arrival.TipAngle, 1)
+		return tipped(1 - bounce * math.sin(math.pi * t / settle))
+	end
+	return nil
+end
+
+-- Une image de l'arrivée de `watch`. Renvoie false quand elle est finie.
+local function stepArrival(watch: TruckWatch, serverNow: number): boolean
+	local arrival = watch.Arrival
+	if arrival == nil then
+		return false
+	end
+	local age = serverNow - arrival.SpawnedAt
+	local pose = arrivalPose(arrival, age)
+	if pose == nil then
+		return false
+	end
+	arrival.Ghost:PivotTo(pose)
+	local ejectAt = math.max(TruckEvent.ArriveDriveTime, 0)
+		+ math.max(TruckEvent.ArriveSkidTime, 0)
+		+ math.max(TruckEvent.ArriveTipTime, 0) * math.clamp(TruckEvent.DriverEjectAt, 0, 1)
+	if age >= ejectAt and #arrival.Drivers > 0 then
+		local box = arrival.Ghost:GetBoundingBox()
+		local center = box.Position
+		for _, rig in arrival.Drivers do
+			if rig.Parent ~= nil then
+				eject(rig, center, arrival.Heading, arrival.Final.Position.Y)
+			end
+		end
+		table.clear(arrival.Drivers)
+	end
+	return true
+end
+
+-- Début de l'arrivée de `watch` (attributs ArriveUpright et SpawnedAt du serveur) : conducteurs du vrai
+-- camion cachés pour de bon (éjectés, même pour un joueur arrivé plus tard) ; si l'arrivée n'est pas
+-- finie, le vrai camion est caché et une copie locale, sans collision ni tag, la joue (arrivalPose).
+local function startArrival(watch: TruckWatch)
+	local model = watch.Model
+	local upright = model:GetAttribute(ARRIVE_UPRIGHT_ATTRIBUTE)
+	local spawnedAt = model:GetAttribute(SPAWNED_AT_ATTRIBUTE)
+	if typeof(upright) ~= "CFrame" or type(spawnedAt) ~= "number" or watch.Arrival ~= nil then
+		return
+	end
+	local pieces = Find.path(model, PIECES_NAME)
+	watch.DriversGone = true
+	for _, rig in driversOf(model, pieces) do
+		setHidden(rig, true)
+	end
+	local _, finish = arrivalTimes()
+	local age = Workspace:GetServerTimeNow() - spawnedAt
+	if watch.Exploded or finish <= 0 or age >= finish then
+		return
+	end
+	local ghost = model:Clone() :: Model? -- nil si le modèle n'est pas Archivable
+	if ghost == nil then
+		return
+	end
+	local everything: { Instance } = ghost:GetDescendants()
+	table.insert(everything, ghost)
+	for _, instance in everything do
+		for _, tag in instance:GetTags() do
+			CollectionService:RemoveTag(instance, tag) -- jamais suivie comme un camion (ici, VfxController, MusicController)
+		end
+		if instance:IsA("LuaSourceContainer") or instance:IsA("BillboardGui") or instance:IsA("ProximityPrompt") or instance:IsA("Sound") then
+			instance:Destroy()
+		elseif instance:IsA("BasePart") then
+			local part = instance :: BasePart
+			part.Anchored = true
+			part.CanCollide = false
+			part.CanQuery = false
+			part.CanTouch = false
+			part.LocalTransparencyModifier = 0
+		elseif instance:IsA("Decal") then
+			(instance :: Decal).LocalTransparencyModifier = 0
+		elseif instance:IsA("Humanoid") then
+			pcall(function()
+				(instance :: Humanoid).DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+			end)
+		end
+	end
+	ghost.Name = GHOST_NAME
+	local final = model:GetPivot()
+	local uprightFrame = upright :: CFrame
+	local world = final * uprightFrame
+	local look = Vector3.new(world.LookVector.X, 0, world.LookVector.Z)
+	if look.Magnitude < 1e-3 then
+		look = Vector3.new(final.LookVector.X, 0, final.LookVector.Z)
+	end
+	local heading = if look.Magnitude > 1e-3 then look.Unit else Vector3.new(1, 0, 0)
+	local drive = math.max(TruckEvent.ArriveDriveTime, 0)
+	local skid = math.max(TruckEvent.ArriveSkidTime, 0)
+	local speed = TruckEvent.ArriveDistance / math.max(drive + skid / 2, 1e-3)
+	-- Bascule de la pose debout à la pose finale (espace du pivot final) : rotation `angle` autour de
+	-- `axis` par son point fixe, plus un glissement le long de l'axe (nul pour une vraie bascule).
+	local delta = uprightFrame:Inverse()
+	local axis, angle = axisAngle(delta)
+	local move = delta.Position
+	local along = move:Dot(axis)
+	local point = Vector3.zero
+	if angle > 1e-3 then
+		local reference = if math.abs(axis.Y) < 0.9 then Vector3.new(0, 1, 0) else Vector3.new(1, 0, 0)
+		local e1 = axis:Cross(reference).Unit
+		local e2 = axis:Cross(e1)
+		local perp = move - axis * along
+		local t1, t2 = perp:Dot(e1), perp:Dot(e2)
+		local c, s = math.cos(angle), math.sin(angle)
+		local det = 2 * (1 - c)
+		point = e1 * (((1 - c) * t1 - s * t2) / det) + e2 * ((s * t1 + (1 - c) * t2) / det)
+	else
+		along = 0 -- pas de bascule : la pose debout est déjà la pose finale (au glissement près, ignoré)
+	end
+	local outline = model:FindFirstChild(OUTLINE_NAME, true)
+	local highlight: Highlight? = if outline and outline:IsA("Highlight") then outline :: Highlight else nil
+	-- Le vrai camion est caché le temps de l'arrivée ; ses conducteurs le restent ensuite.
+	local driverParts: { [Instance]: boolean } = {}
+	for _, rig in driversOf(model, pieces) do
+		for _, descendant in rig:GetDescendants() do
+			driverParts[descendant] = true
+		end
+	end
+	local hidden: { Instance } = {}
+	for _, item in setHidden(model, true, nil) do
+		if not driverParts[item] then
+			table.insert(hidden, item)
+		end
+	end
+	local arrival: Arrival = {
+		Ghost = ghost,
+		Final = final,
+		Upright = uprightFrame,
+		SpawnedAt = spawnedAt,
+		Heading = heading,
+		Speed = speed,
+		SkidDistance = speed * skid / 2,
+		TipAxis = axis,
+		TipAngle = angle,
+		TipPoint = point,
+		TipAlong = along,
+		Drivers = driversOf(ghost, Find.path(ghost, PIECES_NAME)),
+		Hidden = hidden,
+		Outline = highlight,
+		OutlineWas = if highlight then highlight.Enabled else false,
+	}
+	if highlight then
+		highlight.Enabled = false -- celui de la copie reste allumé
+	end
+	watch.Arrival = arrival
+	stepArrival(watch, Workspace:GetServerTimeNow()) -- pas une image à la place finale
+	ghost.Parent = Workspace.CurrentCamera or Workspace
+	refreshBar(watch)
+end
+
+-- Arrivée (vague 26) : klaxon à l'apparition, freins BrakeDelay s après (sons 3D sur Root, celle de la
+-- copie qui roule pendant l'arrivée, a97), seulement si le camion vient d'apparaître (attribut SpawnedAt,
+-- heure serveur, à moins de ArriveMaxAge s).
 local function playArrival(watch: TruckWatch)
 	local spawnedAt = watch.Model:GetAttribute(SPAWNED_AT_ATTRIBUTE)
 	if type(spawnedAt) ~= "number" or watch.Exploded then
@@ -607,11 +1005,14 @@ local function playArrival(watch: TruckWatch)
 	if age > TruckEvent.ArriveMaxAge then
 		return
 	end
-	local part = alarmPart(watch.Model)
-	if part == nil then
+	if arrivalSoundPart(watch) == nil then
 		return
 	end
 	local function playOn(template: Sound)
+		local part = arrivalSoundPart(watch)
+		if part == nil then
+			return
+		end
 		local sound = template:Clone()
 		sound.Parent = part
 		sound.Ended:Once(function()
@@ -627,7 +1028,7 @@ local function playArrival(watch: TruckWatch)
 		playOn(arrive)
 	end
 	task.delay(math.max(TruckEvent.BrakeDelay - math.max(age, 0), 0), function()
-		if trucks[watch.Model] ~= watch or watch.Exploded or part.Parent == nil then
+		if trucks[watch.Model] ~= watch or watch.Exploded then
 			return
 		end
 		local brake = soundOrSay(TruckEvent.BrakeSound, "camion qui arrive sans freins (L-097)")
@@ -657,11 +1058,12 @@ local function maybeExplode(watch: TruckWatch)
 		return
 	end
 	watch.Exploded = true
+	endArrival(watch) -- cassé avant la fin de son arrivée (crochet Explode) : le vrai camion revient d'abord
 	stopAlarm(watch)
 	refreshBar(watch)
 	local age = math.max(Workspace:GetServerTimeNow() - at, 0)
 	if age >= TruckEvent.DebrisLifetime then
-		for _, piece in pieceList(watch.Model) do
+		for _, piece in pieceList(watch.Model, not watch.DriversGone) do
 			setFade(partsOf(piece), 1) -- vue trop tard : déjà retombée et effacée chez les autres
 		end
 		return
@@ -680,6 +1082,7 @@ local function untrackTruck(model: Instance)
 	for _, connection in watch.Connections do
 		connection:Disconnect()
 	end
+	endArrival(watch) -- parti (ou sorti du streaming) pendant son arrivée : la copie disparaît
 	stopAlarm(watch)
 	local gui = watch.Billboard
 	watch.Billboard = nil
@@ -700,6 +1103,8 @@ local function trackTruck(instance: Instance)
 	local model = instance :: Model
 	local watch: TruckWatch = {
 		Model = model,
+		Arrival = nil,
+		DriversGone = false,
 		Billboard = nil,
 		Fill = nil,
 		Label = nil,
@@ -741,6 +1146,13 @@ local function trackTruck(instance: Instance)
 	)
 	makeBillboard(watch)
 	maybeExplode(watch)
+	local ok, err = pcall(function()
+		startArrival(watch)
+	end) -- effet seulement : une erreur ne bloque pas le reste
+	if not ok then
+		endArrival(watch)
+		once("arrival", `arrivée du camion pas jouée ({err})`)
+	end
 	playArrival(watch)
 end
 
@@ -1101,6 +1513,19 @@ local function onFrame(dt: number)
 	for index = #blasts, 1, -1 do
 		if not stepBlast(blasts[index], dt) then
 			table.remove(blasts, index)
+		end
+	end
+	for _, watch in trucks do
+		if watch.Arrival then
+			local ok, going = pcall(stepArrival, watch, Workspace:GetServerTimeNow())
+			if not ok or not going then
+				endArrival(watch) -- finie (ou en erreur : le vrai camion revient)
+			end
+		end
+	end
+	for index = #ejected, 1, -1 do
+		if not stepEjected(ejected[index], dt) then
+			table.remove(ejected, index)
 		end
 	end
 	if #flights > 0 then

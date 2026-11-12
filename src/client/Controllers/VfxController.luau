@@ -17,8 +17,8 @@
 --      UiFeelController.Escape, remote BoxSecured) : une copie aux pieds du joueur, Emit(EmitCount) de
 --      chaque émetteur, chaque lumière allumée puis éteinte en FadeTime ; détruite après Duration.
 --   4. FX_TruckDust : à l'arrivée du camion de l'événement (tag EventTruck, attribut SpawnedAt de
---      TruckEventService récent) et à son départ sans explosion (attribut LeftAt posé avant sa
---      destruction) : une copie posée au pivot du camion, Emit de la poussière aux 4 roues ; détruite
+--      TruckEventService récent ; a97 : à l'impact au sol, attribut ArriveEndsAt, s'il arrive en
+--      roulant) et à son départ sans explosion (attribut LeftAt posé avant sa destruction) : une copie posée au pivot du camion, Emit de la poussière aux 4 roues ; détruite
 --      après Duration.
 --   5. BB_Rarest : sur l'Attachment RarestPedestal/TopPlate/RarestLabelPoint de chaque boutique (tag
 --      PlayerPlot), une copie qui montre l'objet exposé le plus rare (attributs Rarity, ItemId, Income des
@@ -240,7 +240,16 @@ local function watchTruck(instance: Instance)
 	watchedTrucks[model] = true
 	local pivot = model:GetPivot()
 	local spawnedAt = model:GetAttribute(spec.SpawnedAtAttribute)
-	if type(spawnedAt) == "number" and serverNow() - spawnedAt <= spec.ArriveWindow then
+	-- a97 : un camion qui arrive en roulant (ArriveEndsAt) soulève sa poussière à l'impact au sol.
+	local landsAt = model:GetAttribute(spec.ArriveEndsAtAttribute)
+	local dustAt = if type(landsAt) == "number" then landsAt elseif type(spawnedAt) == "number" then spawnedAt else nil
+	if dustAt and serverNow() < dustAt then
+		task.delay(dustAt - serverNow(), function()
+			if model:IsDescendantOf(Workspace) and model:GetAttribute(spec.ExplodedAtAttribute) == nil then
+				VfxController.TruckDust(model)
+			end
+		end)
+	elseif dustAt and serverNow() - dustAt <= spec.ArriveWindow then
 		VfxController.TruckDust(model)
 	end
 	local connection: RBXScriptConnection? = nil

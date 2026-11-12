@@ -74,6 +74,7 @@ local Vfx = {
 		SpawnedAtAttribute = "SpawnedAt", -- heure serveur de l'apparition (TruckEventService)
 		LeftAtAttribute = "LeftAt", -- heure serveur du départ sans explosion (TruckEventService)
 		ExplodedAtAttribute = "ExplodedAt", -- TruckEventService : pas de poussière après l'explosion
+		ArriveEndsAtAttribute = "ArriveEndsAt", -- a97 : heure serveur de l'impact au sol du camion qui arrive en roulant
 		ArriveWindow = 2, -- V0 : un camion vu plus de 2 s après son apparition (streaming) ne soulève rien
 	},
 
