@@ -519,7 +519,7 @@ local function x(value)
 end
 
 titre("12. Chance de l'ouverture dans le magasin (L-112)")
-print(`Montée : rabats {ShelfOpen.FlapsTime} s, puis × {ShelfOpen.LuckStep} par tic, en {ShelfOpen.RiseMax} s au plus. « ? » : plein en {Witness.FillTime} s depuis le lancement, police {Chance.Hypotheses.MarqueurAppel} s plus tard (marqueur Call). Crans : {ShelfOpen.UpgradeMax} au plus, chacun à {pct(ShelfOpen.UpgradeChance, 0)} × la chance. Chrono du magasin : {Balance.Heist.Duration} s, ouverture lancée {Chance.Hypotheses.Atteinte} s après la casse.`)
+print(`Montée : rabats {ShelfOpen.FlapsTime} s, puis × {ShelfOpen.LuckStep} par tic, en {ShelfOpen.RiseMax} s au plus. « ? » : plein en {Witness.FillTime} s depuis le lancement, police {Chance.Hypotheses.MarqueurAppel} s plus tard (marqueur Call). Crans (1re version) : {Chance.Crans_2.UpgradeMax} au plus, chacun à {pct(Chance.Crans_2.UpgradeChance, 0)} × la chance ; crans sans limite : voir 12.4. Chrono du magasin : {Balance.Heist.Duration} s, ouverture lancée {Chance.Hypotheses.Atteinte} s après la casse.`)
 print("")
 for _, key in { "V0", "Proposee" } do
 	local mode = modes[key]
@@ -813,4 +813,172 @@ if sessionRuns ~= nil then
 	ligne({ "Une heure de jeu en zones 2 à 6", pct(secretPerHour(mode), 2), oneIn(secretPerHour(mode), " heures") })
 	ligne({ "Une heure, V0 d'a103 (Decay 1)", pct(secretPerHour(modes.InfiniV0), 1), oneIn(secretPerHour(modes.InfiniV0), " heures") })
 	ligne({ "Une heure, 2 crans (section 12)", pct(secretPerHour(modes.Proposee), 2), oneIn(secretPerHour(modes.Proposee), " heures") })
+end
+
+---------------------------------------------------------------------------------------------- 13. caisses (L-122)
+
+-- Rareté de l'objet tirée à l'ouverture, dans la table de la caisse (vague 32, agent a108). Valeurs :
+-- Outil/caisses. « Avant » = crans sans limite de la vague 31 (mode Infini de la section 12).
+local Caisses = charge("Outil/caisses")
+local cmodes = Caisses.Modes()
+local ORDER = { "Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic", "Secret", "Divine" }
+local function fin(value)
+	if value == 0 then
+		return "0"
+	end
+	local digits = if value >= 0.1 then 1 elseif value >= 0.01 then 2 elseif value >= 0.001 then 3 else 4
+	return string.format(`%.{digits}f`, 100 * value)
+end
+local function nomDe(mode)
+	return if mode.Cotes then mode.Nom else "Avant : " .. mode.Nom
+end
+
+titre("13. Caisses : rareté de l'objet tirée à l'ouverture (L-122, proposé)")
+print("La rareté posée sur le rayon est celle de la caisse ; à l'ouverture, la rareté de l'objet est tirée dans BoxRarityOdds[caisse], après que la chance tirée (LuckTable) a multiplié des poids (LuckBoost), puis normalisation. AboveLowest : toutes les raretés sauf la plus basse de la table. AboveBox : les raretés au-dessus de la caisse (caisse Secret : le Secret lui-même tant qu'il n'y a pas de Divine).")
+print("")
+
+titre("13.1 Chances par caisse, en % : sans chance, ×3 et ×10 (AboveBox)")
+entete({ "Caisse", "Chance", "Com", "PeuC", "Rare", "Épi", "Lég", "Myth", "Sec", "Au-dessus de la caisse" })
+for _, boxId in ORDER do
+	if boxId ~= "Divine" then
+		for _, luck in { 1, 3, 10 } do
+			local rep = Caisses.Booste(Caisses.Proposees[boxId], boxId, luck, "AboveBox")
+			local cells = { if luck == 1 then boxId else "", x(luck) }
+			local above = 0
+			for i = 1, 7 do
+				table.insert(cells, fin(rep[ORDER[i]] or 0))
+				if i > Rarities.ById[boxId].Order then
+					above += rep[ORDER[i]] or 0
+				end
+			end
+			table.insert(cells, pct(above, 1))
+			ligne(cells)
+		end
+	end
+end
+
+titre("13.2 Les deux règles de la chance : part au-dessus de la caisse et M moyen de la caisse")
+print("« Toutes chances » : mêlé sur la LuckTable (×1 à 55 % … ×10 à 0,5 %). M = multiplicateur de revenu de la rareté (Commun ×1 … Secret ×1000).")
+print("")
+entete({ "Caisse", "Règle", "Au-dessus : ×1 / ×3 / ×10", "Secret : ×1 / ×3 / ×10", "M moyen ×1", "M moyen toutes chances" })
+for _, boxId in ORDER do
+	if boxId ~= "Divine" then
+		for _, regle in { "AboveLowest", "AboveBox" } do
+			local above, secret = {}, {}
+			for _, luck in { 1, 3, 10 } do
+				local rep = Caisses.Booste(Caisses.Proposees[boxId], boxId, luck, regle)
+				local a = 0
+				for id, q in rep do
+					if Rarities.ById[id].Order > Rarities.ById[boxId].Order then
+						a += q
+					end
+				end
+				table.insert(above, pct(a, 1))
+				table.insert(secret, pct(rep.Secret or 0, 3))
+			end
+			local m1 = Chance.Resume(Caisses.Booste(Caisses.Proposees[boxId], boxId, 1, regle)).Moyenne
+			local mAll = Chance.Resume(Caisses.ParCaisse(boxId, cmodes[regle])).Moyenne
+			ligne({ boxId, regle, table.concat(above, " / "), table.concat(secret, " / "), string.format("%.2f", m1), string.format("%.2f", mAll) })
+		end
+	end
+end
+
+titre("13.3 Rareté obtenue par zone et par type de colis : avant (crans de la vague 31) et après")
+print("Rang moyen : 1 = Commun … 7 = Secret. Les zones 2 à 6 ont les mêmes cotes de caisse (Rarities.BoxOdds) ; la zone 1 n'a que des caisses Communes.")
+print("")
+entete({ "Zone", "Colis", "Mode", "Rang moyen", "M moyen", "≥ Épique", "≥ Légendaire", "Secret" })
+local apres = { modes.Infini, cmodes.AboveLowest, cmodes.AboveBox }
+if cmodes.Jeu then
+	table.insert(apres, cmodes.Jeu)
+end
+local function repartitionDe(zone, tier, mode)
+	return if mode.Cotes then Caisses.Repartition(zone, tier, mode) else Chance.Repartition(zone, tier, mode)
+end
+for _, case in { { 1, "Standard", "1" }, { 2, "Standard", "2 à 6" }, { 2, "Premium", "2 à 6" }, { 2, "Luxe", "2 à 6" } } do
+	for _, mode in apres do
+		local rep = repartitionDe(case[1], case[2], mode)
+		local r = Chance.Resume(rep)
+		ligne({ case[3], if case[1] == 1 then "tous" else case[2], nomDe(mode), string.format("%.2f", Caisses.Rang(rep)), string.format("%.2f", r.Moyenne), pct(r.Epique, 2), pct(r.Legendaire, 2), pct(rep.Secret or 0, 4) })
+	end
+end
+
+titre("13.4 Parties simulées : entrée en zone 6 avant et après")
+print("Même joueur simulé que 12.3 (ouverture dans le magasin, antivol au lieu d'OpenDelay). Hypothèse : le revenu d'un objet est celui de la zone du magasin, même quand l'objet vient d'une zone voisine (repli).")
+print("")
+entete({ "Économie", "Profil", "Mode", "Entrée en zone 4", "Entrée en zone 6", "Colis ouverts", "≥ Épique" })
+local caisseRuns = nil
+for _, eco in ecos do
+	for _, profil in Modele.Profils do
+		if eco == actuelle or profil.Id == "Moyen" then
+			local list = { { modes.Infini, Chance.Accroche(modes.Infini) }, { cmodes.AboveBox, Caisses.Accroche(cmodes.AboveBox) } }
+			if profil.Id == "Moyen" then
+				table.insert(list, 2, { cmodes.AboveLowest, Caisses.Accroche(cmodes.AboveLowest) })
+			end
+			for _, pair in list do
+				Modele.Ouverture = pair[2]
+				local runs = jouer(eco, profil, seeds)
+				Modele.Ouverture = nil
+				if eco == actuelle and profil.Id == "Moyen" and pair[1] == cmodes.AboveBox then
+					caisseRuns = runs
+				end
+				local opened, epic = {}, {}
+				for _, run in runs do
+					local count = run.Ouvertures or 0
+					table.insert(opened, count)
+					if count > 0 then
+						local high = 0
+						for rarityId, n in run.Raretes do
+							if Rarities.ById[rarityId].Order >= Rarities.ById.Epic.Order then
+								high += n
+							end
+						end
+						table.insert(epic, high / count)
+					end
+				end
+				ligne({ eco.Nom, profil.Id, nomDe(pair[1]), duree(mediane(champ(runs, 4, "T"))), duree(mediane(champ(runs, #eco.Zones, "T"))), tostring(mediane(opened)), if #epic > 0 then pct(mediane(epic)) else "—" })
+			end
+		end
+	end
+end
+
+titre("13.5 Le Secret : par ouverture et par heure de jeu")
+local rythme = { Zone1 = 0, PerHour = 0, Mix = {} }
+if caisseRuns ~= nil then
+	local zone1, perHour, mix = {}, {}, { Standard = {}, Premium = {}, Luxe = {} }
+	for _, run in caisseRuns do
+		local total = run.Ouvertures or 0
+		if total > 0 then
+			table.insert(zone1, (run.ParZone and run.ParZone[1]) or 0)
+			table.insert(perHour, total / run.Fin * 3600)
+			for tier, l in mix do
+				table.insert(l, ((run.ParType and run.ParType[tier]) or 0) / total)
+			end
+		end
+	end
+	rythme.Zone1, rythme.PerHour = mediane(zone1), mediane(perHour)
+	for tier, l in mix do
+		rythme.Mix[tier] = mediane(l)
+	end
+end
+local function secretOf(zone, tier, mode)
+	return repartitionDe(zone, tier, mode).Secret or 0
+end
+local function parHeure(mode)
+	local logNone = 0
+	for tier, share in rythme.Mix do
+		logNone += rythme.PerHour * share * math.log(1 - secretOf(2, tier, mode))
+	end
+	return 1 - math.exp(logNone)
+end
+local function unSur(p, unit)
+	return if p > 0 then `1 sur {nombre(1 / p)}{unit or ""}` else "jamais"
+end
+print(`Joueur moyen, économie actuelle, caisses AboveBox : {rythme.Zone1} colis en zone 1, puis {string.format("%.0f", rythme.PerHour)} colis par heure (Standard {pct(rythme.Mix.Standard or 0, 0)}, Premium {pct(rythme.Mix.Premium or 0, 0)}, Luxe {pct(rythme.Mix.Luxe or 0, 0)}).`)
+print("")
+entete({ "Mode", "Une ouverture en zone 1", "Toute la zone 1", "Standard / Premium / Luxe (zones 2 à 6)", "Une heure en zones 2 à 6" })
+for _, mode in apres do
+	local p1 = secretOf(1, "Standard", mode)
+	local phase = 1 - (1 - p1) ^ rythme.Zone1
+	local h = parHeure(mode)
+	ligne({ nomDe(mode), unSur(p1), unSur(phase, " joueurs"), `{pct(secretOf(2, "Standard", mode), 3)} / {pct(secretOf(2, "Premium", mode), 3)} / {pct(secretOf(2, "Luxe", mode), 3)}`, `{pct(h, 1)}, soit {unSur(h, " h")}` })
 end
