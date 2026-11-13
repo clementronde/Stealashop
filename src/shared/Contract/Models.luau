@@ -536,4 +536,60 @@ for _, spec in { WitnessNpc, Police, WitnessPaths } do
 	table.insert(Models.List, table.find(Models.List, WeaponShopCounter) or #Models.List + 1, spec)
 end
 
+-- Design des mutations (vague 34, L-127 point 5, a119), joué par MutationFxController (client).
+-- Styles du texte : ReplicatedStorage/Assets/UI/MutationStyles/<Id> (Folder ; Id = un effet de Config/Mutations, ou
+-- « Size » pour une taille seule) : TagGradient (étiquette MutationTag de l'inventaire), TextGradient (ligne Mutation
+-- de BB_Item), attributs LabelColor, StrokeColor, Motion (None, Shine, Pulse, Glitch, Scan, Spin), MotionPeriod.
+local MUTATION_STYLE_IDS = { "Shiny", "Gold", "Neon", "Diamond", "Glitch", "Hacked", "Rainbow", "Size" }
+local mutationStyleParts: { Part } = {}
+for _, id in MUTATION_STYLE_IDS do
+	table.insert(mutationStyleParts, {
+		Name = id,
+		Class = "Folder",
+		Optional = true,
+		Note = "sans lui, le texte de cette mutation garde son style, L-127",
+		Inside = {
+			{ Name = "TagGradient", Class = "UIGradient" },
+			{ Name = "TextGradient", Class = "UIGradient" },
+		},
+	})
+end
+local MutationStyles: ModelSpec = {
+	Key = "MutationStyles",
+	Label = "styles du texte des mutations",
+	Category = "Objets",
+	Names = { "MutationStyles" },
+	Class = "Folder",
+	Parts = mutationStyleParts,
+	Expected = { "MutationStyles" },
+}
+-- Effets des mutations sur les objets : ReplicatedStorage/Assets/FX/Mutations/FX_Mutation_<Id> (Folder ; attributs
+-- ColorMode, TintColor, ShadeMin, Material, Reflectance, Motion, MotionPeriod, EmitterBoxScale, LightBrightness,
+-- LightRange, GlitchJump, GlitchSpread ; enfants Emitters, Ghosts, Extras facultatifs). Un FX absent : l'objet reste
+-- normal (avertissement unique du client).
+local mutationFxNames: { string } = {}
+for _, id in { "Shiny", "Gold", "Neon", "Diamond", "Glitch", "Hacked", "Rainbow" } do
+	table.insert(mutationFxNames, "FX_Mutation_" .. id)
+end
+local MutationFxSpec: ModelSpec = {
+	Key = "MutationFx",
+	Label = "effets des mutations sur les objets",
+	Category = "Objets",
+	Names = mutationFxNames,
+	Class = "Folder",
+	Parts = {
+		{ Name = "Emitters", Class = "Folder", Note = "particules (vide permis), L-127" },
+		-- Facultatifs selon l'effet : absents, rien n'est écrit (Silent) ; présents, contrôlés.
+		{ Name = "Ghosts", Class = "Folder", Silent = true, Note = "doubles Ghost_NN et coques Glow_NN, L-127" },
+		{ Name = "Extras", Class = "Folder", Silent = true, Note = "RainbowArc, L-127" },
+	},
+	Expected = mutationFxNames,
+}
+Models.MutationStyles = MutationStyles
+Models.MutationFx = MutationFxSpec
+for _, spec in { MutationStyles, MutationFxSpec } do
+	-- Avant les comptoirs du hub, qui restent à la fin du rapport.
+	table.insert(Models.List, table.find(Models.List, WeaponShopCounter) or #Models.List + 1, spec)
+end
+
 return Models

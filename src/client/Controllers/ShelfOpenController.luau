@@ -449,6 +449,25 @@ local function setLabel(root: Instance, name: string, text: string, color: Color
 	return nil
 end
 
+-- a119 (L-127 point 5) : style de la mutation sur la ligne Mutation de la copie de BB_Item (dégradé,
+-- couleurs, mouvement), joué par MutationFxController s'il est chargé ; sans lui, le texte reste tel quel.
+local mutationFx: any = false
+local function styleMutationText(label: TextLabel, item: Model)
+	if mutationFx == false then
+		mutationFx = nil
+		local module = script.Parent:FindFirstChild("MutationFxController")
+		if module and module:IsA("ModuleScript") then
+			local ok, result = pcall(require, module)
+			if ok and type(result) == "table" then
+				mutationFx = result
+			end
+		end
+	end
+	if mutationFx then
+		mutationFx.StyleText(label, { Size = item:GetAttribute("MutationSize"), Effect = item:GetAttribute("MutationEffect") })
+	end
+end
+
 local function attachItemBoard(item: Model, pop: boolean)
 	if itemBoards[item] then
 		return
@@ -477,6 +496,7 @@ local function attachItemBoard(item: Model, pop: boolean)
 		local mutation = setLabel(board, "Mutation", text or "")
 		if mutation then
 			mutation.Visible = text ~= nil
+			styleMutationText(mutation, item)
 		end
 		-- Aperçu de Clément : au-dessus du haut de l'objet, toujours devant.
 		local _, size = item:GetBoundingBox()

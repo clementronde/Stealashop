@@ -745,5 +745,16 @@ table.insert(UI.Billboards, {
 		{ Path = "Row.LuckIcon" },
 	} :: { Element },
 })
+-- Ligne Mutation de BB_Item (vague 34, L-127 point 5, a119) : « BIG GOLD », cachée sans mutation ; texte blanc sous
+-- le dégradé TextGradient du style (Assets/UI/MutationStyles/<Id>, contrat 10.4 : Contract/Models.MutationStyles),
+-- posé par MutationFxController. Entrée à part, facultative, pour ne pas changer la liste de BB_Item.
+table.insert(UI.Billboards, {
+	Name = "BB_Item",
+	Class = "BillboardGui",
+	Optional = true,
+	Elements = {
+		{ Path = "Mutation", Class = "TextLabel" },
+	} :: { Element },
+})
 
 return UI
