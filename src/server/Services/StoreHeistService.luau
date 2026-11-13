@@ -156,7 +156,11 @@
 --     celui qui n'y était pas n'entre plus (sorti devant la vitrine, MESSAGES.Closed). Plus de vigile à la
 --     prise. (c) Dès qu'un intrus sort de Bounds, avec ou sans objet, le magasin est fermé pour lui (Closed :
 --     rideau local baissé, sorti s'il revient) jusqu'à la réouverture (vitrine reconstruite), plus jusqu'au
---     départ de son vigile. Le magasin se ferme (closeStore, vrai rideau) quand le chrono est fini, que
+--     départ de son vigile. Sorti SANS objet avant la fin du chrono (Cantin, 2026-11-13) : il n'a rien
+--     volé, c'est fini pour lui ; il n'est plus intrus (retiré d'Entered : aucun vigile pour lui) et son
+--     chrono disparaît tout de suite. Sorti en portant un objet, ou encore dedans à la fin du chrono : vigile
+--     comme avant. Rideau local : la règle a70 reste (levé seulement pendant qu'un vigile, sorti pour un
+--     AUTRE intrus, passe ; entrée toujours refusée) ; seul, plus aucun vigile ne le lève. Le magasin se ferme (closeStore, vrai rideau) quand le chrono est fini, que
 --     plus personne n'est dans Bounds et qu'aucune ouverture ni réservation n'est en cours ; la vitrine est
 --     reconstruite Balance.Window.RebuildDelay s après au plus tôt (point d'attente de WindowService, qui
 --     reconstruit de toute façon au bout de son attente maximale, en sortant ceux qui y seraient encore).
@@ -1802,7 +1806,15 @@ local function stepEntries(store: Store)
 		elseif store.Entered[player] then
 			store.Locked[player] = "Closed"
 			publishClosed(player)
-			log(`{player.Name} sorti de {store.Id} : rideau baissé pour lui jusqu'à la réouverture`)
+			if not store.ChronoOver and not isCarrying(player) then
+				-- Cantin (2026-11-13) : entré puis sorti sans rien, il n'a rien volé, c'est fini pour lui : plus
+				-- intrus (aucun vigile pour lui à la fin du chrono) et plus de chrono.
+				store.Entered[player] = nil
+				hideTimer(store, player)
+				log(`{player.Name} sorti de {store.Id} sans objet : rideau baissé pour lui, plus de chrono ni de vigile`)
+			else
+				log(`{player.Name} sorti de {store.Id} : rideau baissé pour lui jusqu'à la réouverture`)
+			end
 		end
 	end
 end
