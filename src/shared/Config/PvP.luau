@@ -1,7 +1,7 @@
 --!strict
 -- Vol entre joueurs et règles anti-frustration (Partie 1, sections 6, 6.1, 6.2 et 6.4).
--- Régénération de la vitrine : Balance.Window ; malus de portage −25 % :
--- Balance.Carry.StolenItemSpeedMultiplier ; batte : Bat. Règles de jeu : PvPService (serveur) et
+-- Régénération de la vitrine : Balance.Window ; vitesse fixe du voleur qui porte l'objet :
+-- Balance.Carry.StolenItemWalkSpeed ; batte : Bat. Règles de jeu : PvPService (serveur) et
 -- PvPController (client).
 
 local DeepFreeze = require(script.Parent.DeepFreeze)

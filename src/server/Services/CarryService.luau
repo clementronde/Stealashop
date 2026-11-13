@@ -16,7 +16,7 @@
 --
 -- Payload (Shared/Types/Carry) : { Kind = "NPCBox", Tier, Zone, Rarity, ItemId, StoreId, SlotId, Mutation? }
 -- pour un colis PNJ ; { Kind = "PlayerItem", ItemUid, ItemId, Rarity, Income, VictimUserId,
--- SlotIndex } pour un objet volé à un joueur (DEV-041, PvPService : malus −25 %, contour rouge,
+-- SlotIndex } pour un objet volé à un joueur (DEV-041, PvPService : vitesse fixe, contour rouge,
 -- BB_Carry) ; { Kind = "NPCItem", ItemId, Rarity, Mutation?, Zone, StoreId, SlotId, Luck } pour un objet
 -- sorti d'un colis ouvert sur le rayon d'un magasin PNJ (L-112, StoreHeistService : c'est l'objet qui
 -- flotte, comme un objet volé, avec son halo et BB_Carry, sans contour rouge ; malus du colis PNJ,
@@ -326,11 +326,14 @@ local function describe(payload: Payload): string
 	return `objet {payload.ItemId} ({payload.Rarity}) du joueur {payload.VictimUserId}`
 end
 
-local function speedMultiplier(payload: Payload): number
+-- Objet volé à un joueur : vitesse fixe (Cantin, 2026-11-13) ; sinon −10 % (5.6) : colis PNJ, et objet
+-- sorti d'un colis (L-112).
+local function applySpeed(player: Player, payload: Payload)
 	if payload.Kind == "PlayerItem" then
-		return Balance.Carry.StolenItemSpeedMultiplier -- −25 % (6.1)
+		StatsService.SetFixedSpeed(player, Balance.Carry.StolenItemWalkSpeed)
+	else
+		StatsService.SetSpeedModifier(player, SPEED_KEY, Balance.Carry.NPCBoxSpeedMultiplier)
 	end
-	return Balance.Carry.NPCBoxSpeedMultiplier -- −10 % (5.6) : colis PNJ, et objet sorti d'un colis (L-112)
 end
 
 -- Vérification ---------------------------------------------------------------------
@@ -840,7 +843,11 @@ local function finish(player: Player, result: EndResult, reason: string): Payloa
 		held[keyOf(carry.payload)] = nil -- un colis tombé au sol reste tenu (Drop)
 	end
 	player:SetAttribute(CARRYING_ATTRIBUTE, nil)
-	StatsService.SetSpeedModifier(player, SPEED_KEY, nil)
+	if carry.payload.Kind == "PlayerItem" then
+		StatsService.SetFixedSpeed(player, nil)
+	else
+		StatsService.SetSpeedModifier(player, SPEED_KEY, nil)
+	end
 	if IS_STUDIO then
 		print(`[CarryService] {player.Name} : fin du portage, {result} ({reason})`)
 	end
@@ -893,7 +900,7 @@ function CarryService.StartCarry(player: Player, payload: Payload): boolean
 	carries[player] = carry
 	held[keyOf(payload)] = true
 	player:SetAttribute(CARRYING_ATTRIBUTE, payload.Rarity)
-	StatsService.SetSpeedModifier(player, SPEED_KEY, speedMultiplier(payload))
+	applySpeed(player, payload)
 	humanoid:UnequipTools()
 
 	local connections = carry.connections

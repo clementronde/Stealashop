@@ -48,8 +48,8 @@
 -- gardé et rappelé (jamais écrasé), relus à chaque usage :
 --   Speed         StatsService.SetSpeedModifier(player, "Potion", Multiplier, true) : × la WalkSpeed APRÈS le
 --                 plafond de 70 (décision de Cantin du 2026-11-12 : la potion dépasse la limite, jusqu'à 140).
---                 L'anti-triche suit la Humanoid.WalkSpeed appliquée (vitesse autorisée) ; PvPService tient
---                 compte de StatsService.GetSpeedBoost au dépôt d'un objet volé.
+--                 L'anti-triche suit la Humanoid.WalkSpeed appliquée (vitesse autorisée). Sans effet en portant
+--                 un objet volé à un joueur : vitesse fixe (Balance.Carry.StolenItemWalkSpeed, 2026-11-13).
 --   Money         DisplayService.GetIncomeMultiplier × Multiplier (revenu des présentoirs).
 --   Strength      WindowService.GetHitDamageMultiplier × Multiplier (dégâts d'un coup sur une vitrine, une
 --                 parcelle ou une cible d'événement ; ni l'attribut Damage du HUD, ni les PV de sa boutique).

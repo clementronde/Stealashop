@@ -17,6 +17,8 @@
 --      Cantin du 2026-11-12 : elle dépasse les 70 ; vitesses et force seront rééquilibrées plus tard).
 --   Conséquences : au plafond, le malus de portage se sent quand même (70 → 63 avec un colis
 --   PNJ) ; l'Adrénaline ne fait jamais dépasser 70 ; la potion Speed ×2 mène jusqu'à 140.
+--   Vitesse fixe (SetFixedSpeed, objet volé à un joueur, Cantin 2026-11-13) : remplace les étapes 1 à 4 ;
+--   seul un modificateur à 0 (étourdi, entraînement) compte encore et immobilise.
 --
 -- Attributs du Player (écrits seulement ici, posés quand le profil est chargé) :
 --   Speed      Vitesse (stat entraînée au tapis)
@@ -41,8 +43,11 @@
 --       "BatStun" (0, étourdi Bat.StunDuration s par un coup de batte, BatService). Le service
 --       qui pose une clé la retire lui-même, à la mort comme au départ : un modificateur survit
 --       à la réapparition. "Potion" (potion Speed, PotionService) est la seule posée avec aboveCap.
+--   StatsService.SetFixedSpeed(player, walkSpeed?)
+--       Pose une vitesse fixe (nombre fini ≥ 0) qui remplace tout le calcul, sauf un modificateur à 0, ou la
+--       retire avec nil, puis recalcule. Posée et retirée par CarryService (objet volé à un joueur).
 --   StatsService.GetSpeedBoost(player) -> number
---       Produit des modificateurs posés au-dessus du plafond, 1 sans eux (PvPService, contrôle du dépôt).
+--       Produit des modificateurs posés au-dessus du plafond, 1 sans eux.
 --   StatsService.Refresh(player)
 --       Recalcule et applique tout. À appeler quand le multiplicateur de trail change.
 --   StatsService.GetTrailMultiplier(player) -> number
@@ -77,6 +82,7 @@ StatsService.Priority = 10 -- juste après DataService, avant les services de je
 local tracked: { [Player]: boolean } = {}
 local modifiers: { [Player]: { [string]: number } } = {}
 local aboveCapKeys: { [Player]: { [string]: boolean } } = {} -- clés appliquées après le plafond (potion Speed)
+local fixedSpeeds: { [Player]: number? } = {} -- vitesse fixe (SetFixedSpeed)
 local applied: { [Player]: number } = {} -- dernière vitesse calculée pour le Humanoid
 local guards: { [Player]: RBXScriptConnection } = {}
 
@@ -146,6 +152,17 @@ function StatsService.Refresh(player: Player)
 	end
 	value = math.min(value, Balance.Stats.MaxWalkSpeed)
 	value *= StatsService.GetSpeedBoost(player)
+	local fixed = fixedSpeeds[player]
+	if fixed ~= nil then
+		value = fixed
+		if list then
+			for _, multiplier in list do
+				if multiplier == 0 then
+					value = 0 -- étourdi ou à l'entraînement : immobile quand même
+				end
+			end
+		end
+	end
 	applied[player] = value
 
 	if data then
@@ -220,6 +237,18 @@ function StatsService.SetSpeedModifier(player: Player, key: string, multiplier: 
 	StatsService.Refresh(player)
 end
 
+function StatsService.SetFixedSpeed(player: Player, walkSpeed: number?)
+	if walkSpeed ~= nil and not isFiniteNonNegative(walkSpeed) then
+		warn(debug.traceback(`[StatsService] SetFixedSpeed : vitesse invalide ({walkSpeed})`, 2))
+		return
+	end
+	if not tracked[player] or fixedSpeeds[player] == walkSpeed then
+		return -- joueur parti, ou rien ne change
+	end
+	fixedSpeeds[player] = walkSpeed
+	StatsService.Refresh(player)
+end
+
 -- À chaque apparition : applique la vitesse et annule toute écriture de Humanoid.WalkSpeed
 -- faite ailleurs côté serveur.
 local function watchCharacter(player: Player, character: Model)
@@ -265,6 +294,7 @@ local function onPlayerRemoving(player: Player)
 	tracked[player] = nil
 	modifiers[player] = nil
 	aboveCapKeys[player] = nil
+	fixedSpeeds[player] = nil
 	applied[player] = nil
 	local guard = guards[player]
 	if guard then

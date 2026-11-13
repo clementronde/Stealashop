@@ -127,7 +127,10 @@ local Balance = {
 	-- 5.6 et 6.1 : porter un colis ou un objet volé
 	Carry = {
 		NPCBoxSpeedMultiplier = 0.9, -- −10 % avec un colis PNJ
-		StolenItemSpeedMultiplier = 0.75, -- −25 % avec un objet volé à un joueur
+		-- Objet volé à un joueur (ou au bot) : vitesse FIXE, la même pour tous, quels que soient la Vitesse,
+		-- le trail, l'Adrénaline ou la potion du voleur (Cantin, 2026-11-13 : contre les voleurs trop rapides ;
+		-- remplace le −25 % du doc, 6.1). V0 proposé : 16 = la vitesse d'un joueur neuf, à régler en test.
+		StolenItemWalkSpeed = 16,
 		CanJump = true,
 		-- V0 proposé, absent du doc (L-071, point 4) : espace (studs) entre le haut de la tête et le
 		-- dessous du colis ou de l'objet porté (CarryAttachment), soudé à la tête. À régler sur la

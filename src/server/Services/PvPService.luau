@@ -33,7 +33,7 @@
 --      tenu) et n'est pas l'objet à l'abri (coffre-fort V0, plus bas).
 --   4. Fuite : DisplayService.Hold vide le présentoir (le profil de la victime ne change pas), puis
 --      CarryService.StartCarry(voleur, PlayerItemPayload) : l'objet flotte au-dessus de sa tête avec
---      son halo, BB_Carry et un contour rouge, malus de −25 % (CarryService). TheftAlert(true,
+--      son halo, BB_Carry et un contour rouge, vitesse fixe (CarryService). TheftAlert(true,
 --      voleur, itemId) et un Notify à la victime (UI_TheftAlert et Adrénaline : DEV-042).
 --   5. Réussite : le voleur entre dans la DepositZone de SA boutique (contrôlé 10 fois par seconde :
 --      emprise au sol de la DepositZone, et dans le volume Bounds de sa boutique).
@@ -61,9 +61,8 @@
 -- pourrait encore laisser un doublon ou une perte (deux clés DataStore, aucune transaction possible) ;
 -- l'uid reste le même chez le voleur : un doublon se repère.
 -- Contrôle du dépôt (9.6, V0 proposé, absent du doc) : la distance de la prise au dépôt ne peut pas
--- dépasser ce qu'un porteur au plafond de vitesse parcourt dans ce temps (Balance.Stats.MaxWalkSpeed ×
--- Balance.Carry.StolenItemSpeedMultiplier × Balance.AntiCheat.SpeedTolerance, × la potion Speed s'il l'a,
--- plus ESCAPE_MARGIN s) :
+-- dépasser ce qu'un joueur au plafond de vitesse parcourt dans ce temps (Balance.Stats.MaxWalkSpeed ×
+-- Balance.AntiCheat.SpeedTolerance, plus ESCAPE_MARGIN s ; le voleur, lui, porte à vitesse fixe, 2026-11-13) :
 -- sinon CarryService.ReportAnomaly, l'objet revient. Un joueur lent ou qui rame n'est jamais pris.
 -- Avant lui, AntiCheatService.Verify(voleur, From, StartedAt) (DEV-060) contrôle tout de suite son
 -- dernier déplacement (téléport) et le trajet depuis la prise à sa vitesse réelle (speed hack) :
@@ -242,7 +241,6 @@ type Theft = {
 	Payload: PlayerItemPayload, -- la table donnée à StartCarry (CarryService la garde telle quelle)
 	StartedAt: number, -- os.clock() de la prise
 	From: Vector3, -- position du voleur à la prise (contrôle du dépôt)
-	SpeedBoost: number, -- vitesse au-dessus du plafond à la prise (potion Speed), 1 sinon
 }
 
 -- Pièces du contrat 10.4 d'une parcelle, trouvées avant que DisplayService y pose des objets.
@@ -277,33 +275,9 @@ local HOLD_EXPIRY = 1
 local NOTICE_INTERVAL = 3
 -- V0 proposé, absent du doc : marge du contrôle du dépôt (voir l'en-tête), en secondes.
 local ESCAPE_MARGIN = 0.5
-local MAX_ESCAPE_SPEED = Balance.Stats.MaxWalkSpeed * Balance.Carry.StolenItemSpeedMultiplier * Balance.AntiCheat.SpeedTolerance
-
--- Potion Speed (Cantin, 2026-11-12) : la vitesse peut dépasser le plafond de 70. Le contrôle du dépôt
--- multiplie MAX_ESCAPE_SPEED par le plus fort multiplicateur au-dessus du plafond, à la prise ou au dépôt
--- (StatsService.GetSpeedBoost). require protégé : sans StatsService (bancs), 1.
-local getSpeedBoost: ((Player) -> number)? = nil
-do
-	local ok, loaded = pcall(function(): any
-		return require(script.Parent.StatsService) :: any
-	end)
-	local api: any = if ok then loaded else nil
-	local fn: any = if type(api) == "table" then api.GetSpeedBoost else nil
-	if type(fn) == "function" then
-		getSpeedBoost = fn
-	end
-end
-
-local function speedBoost(player: Player): number
-	local fn = getSpeedBoost
-	if fn then
-		local ok, value = pcall(fn, player)
-		if ok and type(value) == "number" and value >= 1 then
-			return value
-		end
-	end
-	return 1
-end
+-- Filet contre les téléportations : le plafond de vitesse, large exprès (le voleur porte à vitesse fixe,
+-- Balance.Carry.StolenItemWalkSpeed, et AntiCheatService.Verify suit déjà sa vitesse réelle).
+local MAX_ESCAPE_SPEED = Balance.Stats.MaxWalkSpeed * Balance.AntiCheat.SpeedTolerance
 
 -- Bot joueur (voir l'en-tête) : ce que ce service lit et appelle chez BotService. require protégé : sans
 -- BotService (anciens bancs), aucune boutique de bot.
@@ -1028,7 +1002,7 @@ local function deposit(theft: Theft, root: BasePart)
 	end
 	local elapsed = os.clock() - theft.StartedAt
 	local distance = (root.Position - theft.From).Magnitude
-	if distance > MAX_ESCAPE_SPEED * math.max(theft.SpeedBoost, speedBoost(thief)) * (elapsed + ESCAPE_MARGIN) then
+	if distance > MAX_ESCAPE_SPEED * (elapsed + ESCAPE_MARGIN) then
 		CarryService.ReportAnomaly(thief, `objet volé déposé à {math.round(distance)} studs en {math.round(elapsed * 10) / 10} s`)
 		if thefts[thief] == theft then
 			returnItem(theft, "Anomaly")
@@ -1331,7 +1305,6 @@ beginTheft = function(
 		Payload = payload,
 		StartedAt = os.clock(),
 		From = root.Position,
-		SpeedBoost = speedBoost(thief),
 	}
 	thefts[thief] = theft
 	local ok, started = pcall(CarryService.StartCarry, thief, payload)
