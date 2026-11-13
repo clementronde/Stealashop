@@ -340,7 +340,7 @@ C'est la séquence des miniatures et des vidéos : priorité absolue en qualité
 - **Objet volé à un joueur** : c'est l'objet lui-même qui flotte, avec son halo, son nom, sa rareté et son $/s.
 - **Halo de rareté** (l'aura de l'objet, à ne pas confondre avec les auras portées par le joueur) : particules et lumière de la couleur de la rareté, plus denses à chaque palier. Commun : aucun. Peu commun : léger. Rare et Épique : net. Légendaire et Mythique : rayons. Secret : arc-en-ciel animé. Le même halo entoure l'objet sur son présentoir.
 - **Tout le monde le voit** : un colis Légendaire qui traverse la rue se repère de loin, ce qui rend la fuite plus tendue et attire les autres joueurs.
-- **Malus de vitesse** : −10 % pour un colis PNJ, −25 % pour un objet volé à un joueur. Saut autorisé. Impossible d'équiper un outil ou la batte.
+- **Vitesse en portant** : −10 % pour un colis PNJ ; vitesse fixe de 16 (V0, à régler en test) pour un objet volé à un joueur, la même pour tous, quelles que soient la Vitesse, l'aura, le trail ou la potion du voleur (Cantin, 2026-11-13). Saut autorisé. Impossible d'équiper un outil ou la batte.
 - **Échec** : mort, déconnexion ou anomalie anti-triche, le colis ou l'objet retourne d'où il vient.
 - **Coup de batte d'un autre joueur** (hors zone safe) : le colis PNJ tombe au sol et devient ramassable par tous (6.2).
 - **Arrivée** : un colis PNJ se pose sur un établi d'ouverture ; un objet volé à un joueur s'expose tout de suite.
@@ -442,7 +442,7 @@ Toute boutique se braque avec la même mécanique que les magasins PNJ. La victi
 1. **Repérage** : à 15 studs d'une boutique, un panneau affiche le propriétaire, la valeur exposée (« 12,4 K$/s ») et les PV de la vitrine.
 2. **Frappe** : même système que les PNJ (PV, régénération 3 %/s). L'alarme de base prévient la victime quand sa vitrine casse.
 3. **Casse** : 10 s pour prendre un objet exposé (prise en 1,0 s). Les colis en attente d'ouverture et le coffre-fort ne sont pas volables.
-4. **Fuite** : l'objet flotte au-dessus de la tête du voleur avec son halo de rareté et son étiquette (nom, rareté, $/s), plus un contour rouge visible par tous. Malus de vitesse de −25 % (au lieu de −10 % pour un colis PNJ), car les boutiques sont proches.
+4. **Fuite** : l'objet flotte au-dessus de la tête du voleur avec son halo de rareté et son étiquette (nom, rareté, $/s), plus un contour rouge visible par tous. Vitesse fixe, la même pour tous et à tout moment du jeu (V0 : 16, à régler en test), quelles que soient la Vitesse, le trail ou la potion du voleur : un joueur très rapide ne peut pas abuser du vol entre joueurs (Cantin, 2026-11-13 ; avant, −25 %).
 5. **Réussite** : le voleur entre dans la zone de dépôt de SA boutique. L'objet est à lui tout de suite, sans attente ni déballage : il peut l'exposer immédiatement et il rapporte aussitôt.
 6. **Échec** : coup de batte de la victime, mort ou déconnexion du voleur, ou déconnexion de la victime. L'objet revient à son présentoir d'origine.
 

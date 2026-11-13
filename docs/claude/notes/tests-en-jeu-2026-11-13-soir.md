@@ -56,3 +56,11 @@ Vu par Claude en Play sur ta boutique niveau 5. Ton profil DEV a **Cameras 1** :
 2. Ouvre l'arbre (Upgrades) et achète Cameras (5 K $). → Les caméras réapparaissent tout de suite, sans relancer.
 3. À deux joueurs (Test > Clients and Servers) : le 2e joueur voit tes caméras seulement si TU as Cameras ; les siennes suivent son propre niveau.
 4. Si tu n'as pas racheté Cameras : `workspace:SetAttribute("SkillTest", "<ton pseudo> Cameras 1")`.
+
+## 10. Vitesse fixe en portant un objet volé à un joueur (ajouté le 13/11 vers 23 h 30, L-138)
+Vu par Claude en Play (portage simulé) : ton perso à 70 passe à 16 avec un objet volé, reste à 16 avec la potion Speed, revient à 70 après ; un colis PNJ donne toujours 63 (−10 %).
+1. Casse la porte du bot et prends un de ses objets. → Tu avances nettement plus lentement (16), quelle que soit ta Vitesse.
+2. Bois une potion Speed pendant que tu portes l'objet. → Aucun changement : toujours 16.
+3. Dépose l'objet chez toi (ou lâche-le avec G). → Tu retrouves ta vitesse normale tout de suite.
+4. Dis si 16 te va : trop lent, trop rapide ? La valeur est dans `Config/Balance`, `Carry.StolenItemWalkSpeed` (relancer le Play après l'avoir changée).
+5. À deux joueurs (Test > Clients and Servers) : le 2e joueur vole ta boutique. → Tu reçois l'alerte (bannière rouge, sirène, flèche) dès qu'il casse la porte, et tu le rattrapes facilement avec l'Adrénaline.
