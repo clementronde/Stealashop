@@ -76,7 +76,12 @@
 -- API (client) :
 --   HotbarController.Use(index)        l'action de la case `index` (barre de commande, bancs)
 --   HotbarController.GetState() -> { Bound, Enabled, Count, Phone, Ready, Dragging, Layout = { 6 ids },
---                                     Slots = { { Key, Kind, Id, Uid, Name, Income, Equipped } } }
+--                                     Slots = { { Key, Kind, Id, Uid, Name, Income, Equipped, AntiTheft, Alert } } }
+--
+-- Vague 34 (L-127, Clément) : point 4, Bar.Template.AntiTheft (voile caché par Clément, son LockLabel reste
+-- caché dans la barre) montré sur la case d'un objet sous antivol, qui reste cliquable (mode pose) ; point 3,
+-- Bar.Template.SlotAlert montré quand la case demande une action (même règle que les cartes de l'inventaire :
+-- InventoryController.NeedsAction), avec le battement de son UIScale Pulse (1 → 1,15 → 1 en 0,8 s).
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -115,6 +120,7 @@ type InventoryApi = {
 	StartPlacing: (boxUid: string) -> (),
 	StopPlacing: () -> (),
 	PlaceItem: (itemUid: string) -> (),
+	NeedsAction: ((uid: string) -> boolean)?, -- vague 34 : pastille SlotAlert (absente : éteinte)
 }
 type ChaseApi = { IsChased: () -> boolean }
 type NotifyApi = { Show: (message: string, kind: string?) -> () }
@@ -133,6 +139,8 @@ type Slot = {
 	rarity: string?,
 	income: number?,
 	equipped: boolean,
+	antiTheft: boolean?, -- vague 34 : objet sous antivol (voile AntiTheft)
+	alert: boolean?, -- vague 34 : la case demande une action (SlotAlert)
 }
 
 -- Une case clonée.
@@ -178,7 +186,8 @@ local SCREEN = "UI_Hotbar"
 local BAR = "Bar"
 local TEMPLATE = "Template"
 local SLOT_PREFIX = "Slot_"
-local PARTS = { "Clip", "Clip.Glow", "Icon", "KeyLabel", "ItemName", "Income", "Equipped", "HoverOutline" }
+-- Vague 34 (L-127 points 3 et 4) : AntiTheft (voile, son LockLabel reste caché ici), SlotAlert et son UIScale Pulse.
+local PARTS = { "Clip", "Clip.Glow", "Icon", "KeyLabel", "ItemName", "Income", "Equipped", "HoverOutline", "AntiTheft", "SlotAlert", "SlotAlert.Pulse" }
 local SLOT_COUNT_ATTRIBUTE = "SlotCount"
 local TOUCH_SLOT_COUNT_ATTRIBUTE = "TouchSlotCount"
 -- Valeurs de la note de Clément (ligne 22), si l'attribut manque.
@@ -312,6 +321,52 @@ local function setImage(element: Instance?, image: string)
 	end
 end
 
+-- Vague 34 (L-127 point 3) : pastille SlotAlert de Clément (cachée dans Studio), montrée quand la case demande
+-- une action (InventoryController.NeedsAction), son UIScale Pulse bat (1 → 1,15 → 1 en 0,8 s, une seule écoute
+-- Heartbeat, coupée quand plus rien ne bat) ; éteinte : Scale remis à 1.
+local PULSE_PEAK = 1.15
+local PULSE_PERIOD = 0.8
+local pulses: { [Instance]: boolean } = {}
+local pulseClock = 0
+local pulseConnection: RBXScriptConnection? = nil
+
+local function stepPulses(dt: number)
+	pulseClock = (pulseClock + dt) % PULSE_PERIOD
+	local scale = 1 + (PULSE_PEAK - 1) * (1 - math.cos(2 * math.pi * pulseClock / PULSE_PERIOD)) / 2
+	local any = false
+	for inst in pulses do
+		if inst.Parent == nil then
+			pulses[inst] = nil -- case détruite
+			continue
+		end
+		any = true;
+		(inst :: any).Scale = scale
+	end
+	local connection = pulseConnection
+	if not any and connection then
+		connection:Disconnect()
+		pulseConnection = nil
+	end
+end
+
+local function setAlert(alert: Instance?, pulse: Instance?, on: boolean)
+	setVisible(alert, on)
+	if pulse == nil or not pulse:IsA("UIScale") then
+		return
+	end
+	if on then
+		if not pulses[pulse] then
+			pulses[pulse] = true
+			if pulseConnection == nil then
+				pulseConnection = RunService.Heartbeat:Connect(stepPulses)
+			end
+		end
+	elseif pulses[pulse] then
+		pulses[pulse] = nil;
+		(pulse :: any).Scale = 1
+	end
+end
+
 -- Couleur d'une image (ImageColor3), sinon de son fond.
 local function setColor(element: Instance?, color: Color3)
 	if element == nil or not element:IsA("GuiObject") then
@@ -430,6 +485,14 @@ local function readStock(api: InventoryApi): ({ [string]: Slot }, { Slot }, bool
 	}
 	local order: { Slot } = {}
 	local current = api.GetInventory()
+	local needsAction = api.NeedsAction
+	local function alertOf(uid: string): boolean
+		if needsAction == nil then
+			return false
+		end
+		local ok, result = pcall(needsAction, uid)
+		return ok and result == true
+	end
 	for _, box in current.Boxes do
 		if not box.Placed then
 			local slot: Slot = {
@@ -443,6 +506,8 @@ local function readStock(api: InventoryApi): ({ [string]: Slot }, { Slot }, bool
 				rarity = box.Rarity,
 				income = nil,
 				equipped = placingUid == box.Uid,
+				antiTheft = false,
+				alert = alertOf(box.Uid),
 			}
 			found[box.Uid] = slot
 			table.insert(order, 1, slot) -- InventoryService : le plus ancien d'abord ; ici le plus récent d'abord
@@ -463,6 +528,8 @@ local function readStock(api: InventoryApi): ({ [string]: Slot }, { Slot }, bool
 				rarity = rarity,
 				income = income,
 				equipped = false,
+				antiTheft = item.AntiTheft == true,
+				alert = alertOf(item.Uid),
 			}
 			found[item.Uid] = slot
 			table.insert(order, slot)
@@ -955,6 +1022,10 @@ local function destroyView(view: View)
 	for _, connection in view.connections do
 		connection:Disconnect()
 	end
+	local pulse = view.refs["SlotAlert.Pulse"]
+	if pulse then
+		pulses[pulse] = nil
+	end
 	view.frame:Destroy()
 end
 
@@ -1036,6 +1107,8 @@ local function paint(current: Screen, view: View, slot: Slot, rank: number)
 		setColor(refs["Clip.Glow"], color)
 	end
 	setVisible(refs.Equipped, slot.equipped)
+	setVisible(refs.AntiTheft, slot.antiTheft == true) -- vague 34 (L-127 point 4) : la case reste cliquable
+	setAlert(refs.SlotAlert, refs["SlotAlert.Pulse"], slot.alert == true) -- vague 34 (L-127 point 3)
 end
 
 local function refresh()
@@ -1252,6 +1325,8 @@ function HotbarController.GetState(): { [string]: any }
 			Name = slot.name,
 			Income = slot.income,
 			Equipped = slot.equipped,
+			AntiTheft = slot.antiTheft == true, -- vague 34
+			Alert = slot.alert == true,
 		})
 	end
 	local held = press
