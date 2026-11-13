@@ -216,6 +216,16 @@ local Renamed: { [string]: SkillId } = {
 	ShopLevel = "Walls", -- L-105 point 3 (2026-11-12)
 }
 
+-- Visuels de la boutique liés à une compétence (règle de Cantin du 2026-11-13) : cachés tant que le propriétaire
+-- n'a pas Level dans Id, quel que soit le niveau de la boutique (ShopWallsService). Reconnus par le nom de la pièce
+-- (n'importe où dans la parcelle, copies Stage_j comprises) ; une pièce peut aussi porter l'attribut
+-- ShowFromSkill = "<Id>" ou "<Id> <niveau>" (ex. "Cameras", "Cameras 2"), qui passe avant son nom.
+--   Cameras : Stage_5/Cameras du gabarit PLOT_Shop (5 caméras de Clément, décor du niveau 5 avant l'arbre).
+export type PlotVisual = { Id: SkillId, Level: number }
+local PlotVisuals: { [string]: PlotVisual } = {
+	Cameras = { Id = "Cameras", Level = 1 },
+}
+
 -- Base sans achat : réparation Balance (RegenPerSecond, 3 %) et coffre-fort offert Config/PvP.VaultSlots (1).
 local SkillTree = {
 	List = List,
@@ -225,6 +235,8 @@ local SkillTree = {
 	WallsLevelAttribute = "WallsLevel",
 	ShowFromWalls = "ShowFromWalls",
 	HideFromWalls = "HideFromWalls",
+	ShowFromSkill = "ShowFromSkill", -- attribut d'une pièce de la parcelle (voir PlotVisuals)
+	PlotVisuals = PlotVisuals,
 	AttributePrefix = "Skill_", -- attribut Skill_<Id> du joueur, posé par le serveur
 	RootTile = "RootTile", -- tuile centrale « UPGRADES » : rien ne s'y achète
 	NeverTile = "Tile_Next2", -- « ??? » qui ne s'ouvre jamais (maquette de Clément)

@@ -1,7 +1,8 @@
 --!strict
 -- ShopWallsService (vague 29, liaison L-105 point 3 et L-106 point 2) : le mur visible de la boutique selon le
--- niveau de sa tuile Walls (arbre de compétences). Les PV de la porte, eux, sont dans WindowService
--- (GetPlotHPMultiplier, remplacé par SkillTreeService : Glass × Walls).
+-- niveau de sa tuile Walls (arbre de compétences), et depuis le 2026-11-13 tous les visuels de la boutique liés à
+-- une compétence (caméras…), cachés jusqu'à son déblocage (paragraphe « Autres compétences »). Les PV de la
+-- porte, eux, sont dans WindowService (GetPlotHPMultiplier, remplacé par SkillTreeService : Glass × Walls).
 --
 -- Niveau : chaque parcelle taggée `PlayerPlot` (dans le Workspace) reçoit l'attribut `WallsLevel` (nombre) =
 -- l'attribut `Skill_Walls` de son propriétaire (posé par SkillTreeService ; 0 s'il manque), revu quand
@@ -18,6 +19,14 @@
 -- valeurs d'origine sont rendues quand la pièce revient. Pièces revues quand le niveau change et quand une
 -- pièce arrive (copies Stage_j de ShopStageService comprises). À ne pas combiner avec `HideFromStage` sur la
 -- même pièce. Aucune pièce : rien à faire, aucun message.
+--
+-- Autres compétences (règle de Cantin du 2026-11-13 : un visuel de compétence n'apparaît qu'à son déblocage,
+-- quel que soit le niveau de la boutique) : une pièce reconnue par Config/SkillTree.PlotVisuals (son nom, ex.
+-- Stage_5/Cameras) ou par son attribut `ShowFromSkill` ("Cameras", "Cameras 2") est montrée si le niveau de la
+-- compétence ≥ le niveau demandé (1 par défaut), cachée sinon, de la même façon que les murs. Niveau : l'attribut
+-- `Skill_<Id>` du propriétaire ; sans propriétaire joueur sur le serveur (parcelle libre, bot), l'attribut
+-- `Skill_<Id>` de la parcelle (0 s'il manque). Revu quand le propriétaire change, quand un de ces attributs
+-- change et quand une pièce arrive. Id inconnu dans `ShowFromSkill` : une ligne, la pièce n'est pas touchée.
 --
 -- API (serveur) :
 --   ShopWallsService.GetLevel(plot) -> number   WallsLevel de la parcelle (0 s'il manque)
@@ -36,6 +45,8 @@ local SKILL_ATTRIBUTE = SkillTree.AttributePrefix .. SKILL_ID
 local LEVEL_ATTRIBUTE = SkillTree.WallsLevelAttribute
 local SHOW_FROM = SkillTree.ShowFromWalls
 local HIDE_FROM = SkillTree.HideFromWalls
+local SHOW_FROM_SKILL = SkillTree.ShowFromSkill
+local SKILL_PREFIX = SkillTree.AttributePrefix
 
 -- Propriétés changées pour cacher, par famille de classes (les mêmes que ShopStageService).
 local PART_HIDDEN: { [string]: any } = { Transparency = 1, CanCollide = false, CanTouch = false, CanQuery = false }
@@ -47,8 +58,9 @@ type Saved = { [Instance]: { [string]: any } }
 
 local ShopWallsService = {}
 
-local hidden: { [Instance]: Saved } = {} -- pièce de mur cachée -> valeurs d'origine (elle et ses descendants)
+local hidden: { [Instance]: Saved } = {} -- pièce cachée -> valeurs d'origine (elle et ses descendants)
 local plotConnections: { [Instance]: { RBXScriptConnection } } = {}
+local warned: { [string]: boolean } = {}
 
 local function hiddenProps(instance: Instance): { [string]: any }?
 	if instance:IsA("BasePart") then
@@ -119,16 +131,53 @@ function ShopWallsService.GetLevel(plot: Instance): number
 	return if type(value) == "number" and value == value then value else 0
 end
 
+-- Règle « compétence » d'une pièce (voir l'en-tête) : attribut ShowFromSkill, sinon son nom dans PlotVisuals.
+local function skillRuleOf(instance: Instance): SkillTree.PlotVisual?
+	local value = instance:GetAttribute(SHOW_FROM_SKILL)
+	if value == nil then
+		return SkillTree.PlotVisuals[instance.Name]
+	end
+	local id, digits = string.match(if type(value) == "string" then value else "", "^%s*(%w+)%s*(%d*)%s*$")
+	local skill = if id then SkillTree.ById[id] else nil
+	if skill == nil then
+		local key = instance:GetFullName()
+		if not warned[key] then
+			warned[key] = true
+			warn(`[ShopWallsService] {key} : {SHOW_FROM_SKILL} = « {tostring(value)} » ne nomme aucune compétence de Config/SkillTree : pièce laissée telle quelle`)
+		end
+		return nil
+	end
+	return { Id = skill.Id, Level = if digits and digits ~= "" then tonumber(digits) :: number else 1 }
+end
+
+-- Niveau de la compétence `id` pour la parcelle : Walls = WallsLevel ; les autres, l'attribut Skill_<Id> du
+-- propriétaire, ou de la parcelle sans propriétaire joueur sur le serveur (0 s'il manque).
+local function skillLevel(plot: Instance, id: string): number
+	if id == SKILL_ID then
+		return ShopWallsService.GetLevel(plot)
+	end
+	local ownerId = plot:GetAttribute(OWNER_ATTRIBUTE)
+	local owner = if type(ownerId) == "number" and ownerId ~= 0 then Players:GetPlayerByUserId(ownerId) else nil
+	local source: Instance = if owner then owner else plot
+	local value = source:GetAttribute(SKILL_PREFIX .. id)
+	return if type(value) == "number" and value == value then value else 0
+end
+
 local function applyPiece(plot: Instance, piece: Instance)
-	local level = ShopWallsService.GetLevel(plot)
-	setVisible(piece, level >= bound(piece, SHOW_FROM, -math.huge) and level < bound(piece, HIDE_FROM, math.huge))
+	if isWallPiece(piece) then
+		local level = ShopWallsService.GetLevel(plot)
+		setVisible(piece, level >= bound(piece, SHOW_FROM, -math.huge) and level < bound(piece, HIDE_FROM, math.huge))
+		return
+	end
+	local rule = skillRuleOf(piece)
+	if rule then
+		setVisible(piece, skillLevel(plot, rule.Id) >= rule.Level)
+	end
 end
 
 local function applyAll(plot: Instance)
 	for _, descendant in plot:GetDescendants() do
-		if isWallPiece(descendant) then
-			applyPiece(plot, descendant)
-		end
+		applyPiece(plot, descendant)
 	end
 end
 
@@ -166,36 +215,53 @@ local function track(plot: Instance)
 	if plotConnections[plot] or not plot:IsDescendantOf(Workspace) then
 		return
 	end
-	plotConnections[plot] = {
+	local connections = {
 		plot:GetAttributeChangedSignal(OWNER_ATTRIBUTE):Connect(function()
 			refreshLevel(plot)
+			applyAll(plot) -- les autres compétences suivent le nouveau propriétaire
 		end),
 		plot:GetAttributeChangedSignal(LEVEL_ATTRIBUTE):Connect(function()
 			applyAll(plot)
 		end),
 		plot.DescendantAdded:Connect(function(descendant: Instance)
-			if isWallPiece(descendant) then
-				applyPiece(plot, descendant)
-			end
+			applyPiece(plot, descendant)
 		end),
 	}
+	for _, skill in SkillTree.List do
+		if skill.Id ~= SKILL_ID then -- Skill_<Id> posé à la main sur la parcelle (bot, Studio)
+			table.insert(
+				connections,
+				plot:GetAttributeChangedSignal(SKILL_PREFIX .. skill.Id):Connect(function()
+					applyAll(plot)
+				end)
+			)
+		end
+	end
+	plotConnections[plot] = connections
 	refreshLevel(plot)
 	applyAll(plot)
 end
 
-local function refreshOwnedBy(player: Player)
+-- Parcelles suivies dont `player` est le propriétaire : Walls revoit WallsLevel, les autres revoient les pièces.
+local function refreshOwnedBy(player: Player, id: string)
 	for _, plot in CollectionService:GetTagged(PLOT_TAG) do
 		if plotConnections[plot] and plot:GetAttribute(OWNER_ATTRIBUTE) == player.UserId then
-			refreshLevel(plot)
+			if id == SKILL_ID then
+				refreshLevel(plot)
+			else
+				applyAll(plot)
+			end
 		end
 	end
 end
 
 local function watchPlayer(player: Player)
-	player:GetAttributeChangedSignal(SKILL_ATTRIBUTE):Connect(function()
-		refreshOwnedBy(player)
-	end)
-	refreshOwnedBy(player)
+	for _, skill in SkillTree.List do
+		player:GetAttributeChangedSignal(SKILL_PREFIX .. skill.Id):Connect(function()
+			refreshOwnedBy(player, skill.Id)
+		end)
+	end
+	refreshOwnedBy(player, SKILL_ID)
 end
 
 function ShopWallsService.Init()
