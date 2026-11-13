@@ -68,6 +68,10 @@
 --       au pied du porteur. Un objet volé à un joueur ne tombe jamais : Fail(player, "Bat"), il
 --       revole chez son propriétaire (6.2, remis par PvPService), et Drop renvoie nil. Un objet
 --       NPCItem (L-112) tombe comme un colis (sans attribut Tier).
+--       a113 (Cantin, 2026-11-13) : Drop(player, position?, reason?). `position` nil = le point du sol sous
+--       le porteur ; `reason` (défaut "Bat") est la raison passée à OnCarryEnded (et à Fail pour un objet
+--       volé). DropService passe nil et "Released" quand le joueur lâche lui-même (remote DropCarried) :
+--       même colis au sol, même délai, même vigile qui le suit qu'après un coup de batte.
 --   CarryService.PickUpDrop(player, dropId) -> boolean
 --       Ramassage d'un colis au sol (GrabDropped, 9.4) : le nouveau porteur reçoit le même payload
 --       (même table : même rareté, même objet caché, 6.2), par StartCarry ; le colis quitte le sol
@@ -1112,22 +1116,27 @@ function fall(player: Player, carry: Carry, position: Vector3, reason: string): 
 	return dropId
 end
 
-function CarryService.Drop(player: Player, position: Vector3): string?
+function CarryService.Drop(player: Player, position: Vector3?, reason: string?): string?
 	local carry = carries[player]
 	if carry == nil then
 		return nil
 	end
+	local why = if type(reason) == "string" and reason ~= "" then reason else "Bat"
 	local payload = carry.payload
 	if payload.Kind == "PlayerItem" then
-		CarryService.Fail(player, "Bat") -- 6.2 : l'objet revole vers le présentoir de son propriétaire
+		CarryService.Fail(player, why) -- 6.2 : l'objet revole vers le présentoir de son propriétaire
 		return nil
 	end
-	local at = position
-	if not isValidPosition(at) then
+	local at: Vector3
+	if position == nil then
+		at = groundBelow(player, carry.humanoid) -- a113 : lâché par le joueur, au sol sous lui
+	elseif isValidPosition(position) then
+		at = position
+	else
 		warn(debug.traceback(`[CarryService] Drop({player.Name}) : position invalide ({position}), colis posé au pied du porteur`, 2))
 		at = feetOf(player, carry.humanoid)
 	end
-	return fall(player, carry, at, "Bat")
+	return fall(player, carry, at, why)
 end
 
 function CarryService.PlaceDrop(payload: Payload, position: Vector3, lifetime: number?, attributes: { [string]: any }?): string?

@@ -593,6 +593,16 @@ local List: { RemoteDef } = {
 		Args = { index("plotIndex"), id("itemUid") },
 		RatePerSecond = 5, -- V0 proposé, absent du doc ; maintien vérifié par le service
 	},
+	{
+		-- Vague 33 (Cantin, 2026-11-13, agent a113), absent du tableau 9.4 : lâcher ce qu'on porte au-dessus de la
+		-- tête (touche G ou bouton Drop, DropController). Aucun argument : DropService vérifie tout (portage, personnage
+		-- vivant, pas étourdi) et CarryService.Drop pose l'objet au sol sous le joueur.
+		Name = "DropCarried",
+		Direction = "ClientToServer",
+		Reliable = true,
+		Args = {},
+		RatePerSecond = 2, -- V0 proposé, absent du doc
+	},
 }
 
 return {
