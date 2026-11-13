@@ -55,6 +55,10 @@ Chance.Tables = {
 -- Crans sans limite (décision de Cantin du 2026-11-12 au soir), formule d'a103 :
 --   chance du cran n = min(UpgradeChance × chance, UpgradeChanceCap) × UpgradeDecay^(n − 1),
 --   arrêt au premier échec ou à UpgradeTop. PROPOSÉ (a106), à coller dans Config/ShelfOpen.
+-- Les 2 crans de la 1re version (règle du 2026-11-07), figés ici : la vague 32 retire les crans de
+-- Config/ShelfOpen (L-122) ; la section 12 garde ainsi ses points de comparaison.
+Chance.Crans_2 = { UpgradeMax = 2, UpgradeChance = 0.10 }
+
 Chance.Crans_Proposes = {
 	UpgradeChance = 0.08, -- tirage ×1 : 8 % au premier cran ; ×10 : 80 % (économie proche des 2 crans)
 	UpgradeChanceCap = 0.9, -- jamais un cran sûr ; aucun palier de la table ne l'atteint (×10 : 80 %)
@@ -287,9 +291,9 @@ end
 
 function Chance.Modes()
 	return {
-		Aujourdhui = { Nom = "Aujourd'hui (ouvert en base, chance ×1)", Table = nil, UpgradeChance = Config.Unbox.UpgradeChance, UpgradeMax = Config.Unbox.UpgradeMax, Base = true },
-		V0 = { Nom = "L-112, table V0 du jeu", Table = Chance.Tables.V0, UpgradeChance = ShelfOpen.UpgradeChance, UpgradeMax = ShelfOpen.UpgradeMax },
-		Proposee = { Nom = "L-112, table proposée", Table = Chance.Tables.Proposee, UpgradeChance = ShelfOpen.UpgradeChance, UpgradeMax = ShelfOpen.UpgradeMax },
+		Aujourdhui = { Nom = "Aujourd'hui (ouvert en base, chance ×1)", Table = nil, UpgradeChance = Config.Unbox.UpgradeChance or 0.10, UpgradeMax = Config.Unbox.UpgradeMax or 2, Base = true },
+		V0 = { Nom = "L-112, table V0 du jeu", Table = Chance.Tables.V0, UpgradeChance = Chance.Crans_2.UpgradeChance, UpgradeMax = Chance.Crans_2.UpgradeMax },
+		Proposee = { Nom = "L-112, table proposée", Table = Chance.Tables.Proposee, UpgradeChance = Chance.Crans_2.UpgradeChance, UpgradeMax = Chance.Crans_2.UpgradeMax },
 		-- Décision de Cantin (2026-11-12, soir) : crans sans limite, formule d'a103, V0 d'a103.
 		InfiniV0 = { Nom = "Crans sans limite, V0 d'a103", Table = Chance.Tables.Proposee, Regle = "Infini", UpgradeMax = math.huge, UpgradeChance = 0.10, Cap = 0.9, Decay = 1, Top = "Secret" },
 		-- PROPOSÉ (a106) : la même formule, la chance de chaque cran ×0,6 par rapport au précédent.
