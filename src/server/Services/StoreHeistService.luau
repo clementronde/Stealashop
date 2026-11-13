@@ -451,6 +451,7 @@ type Store = {
 	Entered: { [Player]: boolean }, -- entrés dans Bounds pendant cette ouverture (les intrus)
 	ChronoOver: boolean, -- chrono du vigile fini : les vigiles sont sortis
 	ClosedAt: number, -- os.clock() de la dernière fermeture (reconstruction RebuildDelay s après au plus tôt)
+	KickAfter: { [Player]: number }, -- attrapé dans Bounds : fermé pour lui, sorti à cet os.clock() (après le coup)
 }
 
 -- Leaving : vient de prendre un colis, encore dans Bounds avec lui ; Closed : fermé pour lui, rideau
@@ -1634,6 +1635,11 @@ local function stepLocks(store: Store)
 			log(`{store.Id} fermé pour {player.Name} jusqu'au retour de son vigile`)
 		end
 		if isInside and root and humanoid then
+			local kickAfter = store.KickAfter[player]
+			if kickAfter ~= nil and os.clock() < kickAfter then
+				continue -- attrapé : le coup du vigile et l'étourdissement d'abord, sur place
+			end
+			store.KickAfter[player] = nil
 			moveOut(store, player, root, humanoid)
 			log(`{player.Name} sorti de {store.Id} (fermé pour lui)`)
 		end
@@ -2591,6 +2597,7 @@ local function register(instance: Instance)
 		CurtainHeld = false,
 		Entered = {},
 		ChronoOver = false,
+		KickAfter = {},
 		ClosedAt = 0,
 	}
 	if store.Bounds == nil then
@@ -2868,6 +2875,7 @@ function StoreHeistService.Init()
 			store.Viewers[player] = nil
 			store.Locked[player] = nil
 			store.Entered[player] = nil
+			store.KickAfter[player] = nil
 		end
 	end)
 	-- Le vigile apparu pour un vol est parti : le magasin se rouvre pour ce voleur. require protégé :
@@ -2883,6 +2891,33 @@ function StoreHeistService.Init()
 		chaseIntruder = chase
 	elseif SHELF_OPEN then
 		log("GuardService.ChaseIntruder indisponible : aucun vigile à la fin du chrono")
+	end
+	-- Attrapé DANS le magasin par un vigile de jour (Cantin, 2026-11-13 ; Features.ShelfOpen) : le magasin se
+	-- ferme pour lui tout de suite (plus d'ouverture ni de prise, reachRefusal), puis il est sorti devant la
+	-- vitrine par stepLocks une fois le coup donné (Balance.Guard.CatchStunDuration s, V0), comme un joueur
+	-- qui sort : rideau baissé pour lui jusqu'à la réouverture. La nuit renvoie déjà à la base.
+	local onCatch: any = if okGuard and type(guardApi) == "table" and SHELF_OPEN then guardApi.OnCatch else nil
+	if type(onCatch) == "function" then
+		(onCatch :: any)(function(player: Player, _zone: number, night: boolean, _carrying: boolean)
+			if night then
+				return
+			end
+			local root = rootOf(player)
+			if root == nil then
+				return
+			end
+			for _, store in stores do
+				local bounds = store.Bounds
+				if bounds ~= nil and inside(bounds, root.Position) and store.Locked[player] ~= "Closed" then
+					store.Locked[player] = "Closed"
+					store.KickAfter[player] = os.clock() + Balance.Guard.CatchStunDuration
+					publishClosed(player)
+					log(`{player.Name} attrapé dans {store.Id} : fermé pour lui, sorti après le coup`)
+				end
+			end
+		end)
+	elseif SHELF_OPEN then
+		log("GuardService.OnCatch indisponible : un joueur attrapé dans un magasin y reste")
 	end
 	if SHELF_OPEN then
 		-- La vitrine n'est reconstruite qu'une fois le magasin fermé, et RebuildDelay s après au plus tôt.
