@@ -8,9 +8,9 @@
 -- Textes, en anglais, valeurs de Config/Zones (section 4) :
 --   Banner.ZoneName  la ville de la zone (Zones[n].City : « LONDON », « TOKYO »…) ; zone sans ville
 --                    (la zone 1, en attendant le nom de Clément) : son Theme en capitales (« MINI MART ») ;
---   Advice.Speed     « 28 »  } le chiffre seul, au format du jeu (Format.short : « 40K ») : SpeedIcon et
---   Advice.Damage    « 80 »  } DamageIcon disent déjà ce que c'est (L-127 point 1) ; mêmes valeurs, même
---                              règle et mêmes couleurs que les panneaux des magasins (Shared/AdvicePanel) ;
+--   Advice.Speed     « Speed 22 »   } le mot et le chiffre, au format du jeu (Format.short : « 40K ») ;
+--   Advice.Damage    « Damage 40K » } choix de Cantin (L-132, revient sur L-127 point 1) ; mêmes valeurs,
+--                                     même règle et mêmes couleurs que les panneaux des magasins (Shared/AdvicePanel) ;
 --   Difficulty       « Easy », « Medium » ou « Hard » : la moins bonne des deux couleurs du joueur
 --                    (vert, orange, rouge), et le texte prend cette couleur.
 -- Les couleurs sont refaites si les attributs Damage ou WalkSpeed du joueur changent pendant que le
@@ -246,10 +246,10 @@ function ZoneBannerController.Show(zoneIndex: number)
 		zoneName.Text = if city then city else string.upper(zone.Theme)
 	end
 	if speed then
-		speed.Text = Format.short(zone.AdvisedSpeed)
+		speed.Text = `Speed {Format.short(zone.AdvisedSpeed)}`
 	end
 	if damage then
-		damage.Text = Format.short(zone.AdvisedDamage)
+		damage.Text = `Damage {Format.short(zone.AdvisedDamage)}`
 	end
 	recolor()
 	-- Repart pour une durée complète, depuis l'opacité en cours (0 si le bandeau était éteint).
