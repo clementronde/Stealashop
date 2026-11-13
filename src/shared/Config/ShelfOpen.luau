@@ -8,8 +8,9 @@
 -- hasard (LuckTable) ; les rabats se lèvent (FlapsTime), puis « ×N LUCK » monte de LuckStep à chaque tic,
 -- de plus en plus vite, jusqu'à la chance tirée, en RiseMax s au plus (tirée à ×1 : l'objet sort tout de
 -- suite après les rabats) ; à la
--- sortie, la rareté du contenu monte par crans (tant qu'un cran réussit, jusqu'à UpgradeTop ; chance du
--- cran n = min(UpgradeChance × la chance, UpgradeChanceCap) × UpgradeDecay^(n − 1)) ; l'objet sort à la
+-- sortie, la rareté de l'objet est tirée dans BoxRarityOdds[rareté de la caisse], la chance multipliant
+-- les raretés au-dessus d'un seuil (LuckBoost), puis l'objet, sa mutation et sa taille
+-- sont tirés (vague 32, règle de Cantin du 2026-11-13, qui remplace les crans) ; l'objet sort à la
 -- place du colis, réservé ReserveTime s à l'ouvreur ; en base, l'objet posé garde un antivol
 -- (AntiTheft[rareté] s) pendant lequel il est volable.
 --
@@ -47,21 +48,38 @@ local ShelfOpen = {
 		{ Luck = 10, Weight = 0.5 },
 	} :: { LuckEntry },
 
-	-- L-112 (Cantin, 2026-11-12 au soir) : la chance monte la rareté du colis par crans, sans limite de
-	-- nombre : tant qu'un cran réussit, la rareté continue de monter (un Secret est possible même depuis un
-	-- Commun de zone 1) ; arrêt au premier échec ou à UpgradeTop. Chance du cran n (1, 2, …) =
-	-- min(UpgradeChance × la chance tirée, UpgradeChanceCap) × UpgradeDecay^(n − 1). Rareté atteinte sans
-	-- objet dans la zone du magasin (la zone 1 n'a que des Communs) : le cran compte quand même, l'objet
-	-- est pris dans la zone la plus proche qui en a un de cette rareté (zone + 1, puis − 1, et ainsi de
-	-- suite ; un Secret se tire toutes zones), jamais un objet TutorialOnly.
-	-- Valeurs des crans : L-112, proposé par l'équilibrage et adopté par Cantin le 2026-11-12 (note
-	-- equilibrage-chance-L112.md ; avec UpgradeDecay = 1, un ×10 sur un Commun finissait en Secret une fois
-	-- sur deux).
-	UpgradeMax = math.huge, -- nombre de crans au plus : sans limite
-	UpgradeChance = 0.08, -- chance d'un cran = UpgradeChance × la chance tirée…
-	UpgradeChanceCap = 0.9, -- … bornée (sinon un gros tirage donnerait toujours la rareté la plus haute)
-	UpgradeDecay = 0.7, -- facteur appliqué à la chance de chaque cran suivant
-	UpgradeTop = "Secret", -- rareté la plus haute que les crans peuvent atteindre (Divine exclue)
+	-- Règle de Cantin du 2026-11-13 (vague 32 ; remplace les crans de rareté du 2026-11-12) : chaque caisse a
+	-- une rareté (celle tirée à la mise en rayon, ShelfBoxes.ZoneOdds ou Rarities.BoxOdds par type de colis :
+	-- son modèle BOX_<Rareté>). La rareté de l'OBJET est tirée à l'ouverture, dans la table de sa caisse :
+	-- BoxRarityOdds[rareté de la caisse][rareté de l'objet] = poids relatif (une rareté absente = 0). Rien
+	-- n'est garanti : une caisse Mythique peut donner un Commun, elle donne seulement plus souvent du rare.
+	-- La chance tirée (LuckTable) agit selon LuckBoost, puis le total est ramené à 100 % :
+	--   "AboveBox" : les poids des raretés AU-DESSUS de celle de la caisse sont multipliés par la chance
+	--   (sa rareté et celles en dessous perdent leur part) ;
+	--   "AboveLowest" : les poids de toutes les raretés au-dessus de la plus basse de la table (la plus basse
+	--   de poids > 0) sont multipliés par la chance (la plus basse perd sa part). Ex. de la règle de Cantin,
+	--   caisse Mythique Commun 35, Rare 25, Épique 20, Légendaire 12, Mythique 7, Secret 1 ; à ×3 : 15 %,
+	--   33 %, 26 %, 16 %, 9 %, 1,3 %.
+	--   Autre valeur : la chance ne change pas la rareté de l'objet (avertissement du serveur).
+	-- L'objet est ensuite choisi dans cette rareté : zone du magasin, sinon la zone la plus proche qui en a
+	-- (zone + 1, puis − 1, + 2…) ; un Secret (ou une Divine), toutes zones ; jamais un objet TutorialOnly ;
+	-- aucun objet de cette rareté dans tout le catalogue (Divine aujourd'hui) : la rareté la plus proche en
+	-- dessous qui en a. Mutation et taille (Config/Mutations) tirées au même moment.
+	-- Tables : proposé par l'équilibrage, note equilibrage-caisses-L122.md, en attente de Clément (a108,
+	-- 2026-11-13). Chaque table fait 100 ; une caisse donne surtout sa rareté, un peu au-dessus et en dessous.
+	BoxRarityOdds = {
+		Common = { Common = 88.841, Uncommon = 9, Rare = 1.8, Epic = 0.3, Legendary = 0.05, Mythic = 0.008, Secret = 0.001, Divine = 0 },
+		Uncommon = { Common = 23, Uncommon = 64.29, Rare = 10, Epic = 2.3, Legendary = 0.34, Mythic = 0.06, Secret = 0.01, Divine = 0 },
+		Rare = { Common = 8.3, Uncommon = 21, Rare = 58.94, Epic = 9.3, Legendary = 2.1, Mythic = 0.31, Secret = 0.05, Divine = 0 },
+		Epic = { Common = 3, Uncommon = 8, Rare = 20, Epic = 57.6, Legendary = 9.1, Mythic = 2, Secret = 0.3, Divine = 0 },
+		Legendary = { Common = 2, Uncommon = 3, Rare = 8, Epic = 20, Legendary = 56, Mythic = 9, Secret = 2, Divine = 0 },
+		Mythic = { Common = 1, Uncommon = 2, Rare = 3, Epic = 8, Legendary = 20, Mythic = 57, Secret = 9, Divine = 0 },
+		Secret = { Common = 0.5, Uncommon = 1, Rare = 2, Epic = 3.5, Legendary = 8.5, Mythic = 22, Secret = 62.5, Divine = 0 },
+		Divine = { Common = 0.5, Uncommon = 1, Rare = 2, Epic = 3, Legendary = 3.5, Mythic = 8, Secret = 22, Divine = 60 },
+	} :: { [string]: { [string]: number } },
+	-- Proposé par l'équilibrage (a108 : « AboveLowest » ne change presque rien au-dessus d'une caisse), en
+	-- attente de la validation de Clément. "AboveBox" ou "AboveLowest" (voir plus haut).
+	LuckBoost = "AboveBox" :: string,
 
 	ReserveTime = 5, -- L-112 (Cantin) : l'objet sorti n'est prenable que par l'ouvreur pendant 5 s, puis par tous
 	RevealTintMinRarity = "Epic", -- L-112 : voile plein écran UI_HUD.RevealTint pour Épique et plus
