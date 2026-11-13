@@ -53,6 +53,8 @@
 --   TheftAlertController.GetState() -> { Active, Thefts, Thief, ItemId, ThiefName, ItemName,
 --       Headline, Fallback, Arrow, ArrowRotation, Beam, Highlights, Siren }
 --       Ce qui est affiché, pour un test dans Studio (barre de commande côté client).
+--   TheftAlertController.IsShown() -> boolean
+--       L'alerte est à l'écran (pour ZoneBannerController, qui ne s'affiche pas par-dessus ; Cantin, 2026-11-13).
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -741,6 +743,10 @@ function TheftAlertController.GetState(): { [string]: any }
 		Highlights = count,
 		Siren = siren ~= nil,
 	}
+end
+
+function TheftAlertController.IsShown(): boolean
+	return shown
 end
 
 function TheftAlertController.Start()
