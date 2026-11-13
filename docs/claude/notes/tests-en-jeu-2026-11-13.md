@@ -1,5 +1,7 @@
 # Tests en jeu à faire (2026-11-13)
 
+**Résultat (Cantin, 2026-11-13 au soir)** : tout passe, plus les pastilles « ! », l'antivol visible (chaînes) et les mutations (une vue de près). Seul le Claim All de l'Index n'a pas pu être testé (aucune zone complète) : à tester par Claude dans Studio. Bandeau de zone : Cantin veut revenir à « Speed 22 » (L-132).
+
 Tout ce que Cantin a demandé depuis le 12/11 et qui n'a pas encore été vu en Play, pas à pas. Pour chaque test : ce qu'on fait, puis ce qu'on doit voir. Cocher au fur et à mesure et noter ce qui coince.
 
 **Avant de commencer**
