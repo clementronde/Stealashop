@@ -125,8 +125,8 @@ local function upgradePad(pad: BasePart): boolean
 	local plate = Instance.new("Part")
 	plate.Name = "Plate"
 	quiet(plate)
-	plate.Material = Enum.Material.Neon
-	plate.Color = GREEN
+	plate.Material = Enum.Material.SmoothPlastic -- 2026-11-13 : vert plein comme les références, plus de néon
+	plate.Color = Color3.fromRGB(76, 214, 72)
 	shapePlate(pad, plate)
 
 	local burst = Instance.new("Attachment")

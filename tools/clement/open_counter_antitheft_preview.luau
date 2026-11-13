@@ -175,10 +175,21 @@ local running, made = true, {}
 local status = {}
 local LUCK_MAX = 3.2 -- aperçu : chance finale de la démo (en jeu, celle du serveur)
 
--- couvercle en deux rabats (aperçu : le couvercle du modèle est caché, deux rabats le remplacent ;
--- pour le vrai modèle, Clément ajoute deux pièces FlapL et FlapR dans BOX_*/Lid)
+-- couvercle en deux rabats : les vrais FlapL et FlapR de BOX_*/Lid (Model, pivot sur la charnière,
+-- PivotTo(fermé * CFrame.Angles(0, 0, a)) avec a > 0 lève le rabat). Repli pour un ancien colis sans
+-- rabats : le couvercle est caché et deux pièces le remplacent.
+local FLAP_ANGLE = math.rad(115)
 local function makeFlaps(box)
 	local lid = box:FindFirstChild("Lid")
+	local real = {}
+	for _, n in { "FlapL", "FlapR" } do
+		local fm = lid and lid:FindFirstChild(n)
+		if fm and fm:IsA("Model") then
+			local closed = fm:GetPivot()
+			table.insert(real, { set = function(q) fm:PivotTo(closed * CFrame.Angles(0, 0, FLAP_ANGLE * q)) end })
+		end
+	end
+	if #real == 2 then return real end
 	local slab = lid and lid:FindFirstChild("Slab")
 	if not slab then return nil end
 	local w, t, d = slab.Size.X, slab.Size.Y, slab.Size.Z
@@ -187,8 +198,9 @@ local function makeFlaps(box)
 		local f = make("Part", box, { Name = i == 1 and "FlapL" or "FlapR", Anchored = true, CanCollide = false, Size = Vector3.new(w / 2, t, d), Color = slab.Color, Material = slab.Material, TopSurface = Enum.SurfaceType.Smooth })
 		-- charnière : le bord extérieur du rabat
 		local hinge = slab.CFrame * CFrame.new(side * w / 2, 0, 0)
-		f.CFrame = hinge * CFrame.new(-side * w / 4, 0, 0)
-		table.insert(flaps, { part = f, hinge = hinge, side = side, offset = CFrame.new(-side * w / 4, 0, 0) })
+		local offset = CFrame.new(-side * w / 4, 0, 0)
+		f.CFrame = hinge * offset
+		table.insert(flaps, { set = function(q) f.CFrame = hinge * CFrame.Angles(0, 0, -side * FLAP_ANGLE * q) * offset end })
 	end
 	for _, d2 in lid:GetDescendants() do if d2:IsA("BasePart") then d2.Transparency = 1 end end
 	return flaps
@@ -215,7 +227,7 @@ local function play()
 	local t0 = os.clock()
 	while running and os.clock() - t0 < 0.35 do
 		local q = TS:GetValue((os.clock() - t0) / 0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-		for _, f in flaps do f.part.CFrame = f.hinge * CFrame.Angles(0, 0, -f.side * math.rad(115) * q) * f.offset end
+		for _, f in flaps do f.set(q) end
 		task.wait()
 	end
 	if not running then return end
