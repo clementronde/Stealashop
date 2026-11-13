@@ -30,3 +30,7 @@ Ce qui a été poussé le 13/11 vers 20 h (e0e3f16). Pour chaque test : ce que t
 
 ## 5. Ouverture d'un colis (pas vérifié par Claude)
 1. Ouvre un colis sur le rayon (reste appuyé sur E) et regarde le haut du colis pendant que « ×N LUCK » monte. → Dis si « ×N LUCK » recouvre le nom du colis (« Premium Box »…). Si oui, on cachera le nom dès le début de l'ouverture.
+
+## 6. Attrapé dans le magasin (ajouté plus tard le 13/11 au soir)
+1. Prends un objet sur un rayon et reste dans le magasin jusqu'à ce que le vigile t'attrape. → L'objet ne tombe pas : il revole tout de suite sur son rayon. Le vigile rentre au fond du magasin, s'efface, et le rideau se baisse comme d'habitude.
+2. Même chose, mais fais-toi attraper dans la rue. → Rien ne change : l'objet tombe et le vigile reste à côté (partie 1).
