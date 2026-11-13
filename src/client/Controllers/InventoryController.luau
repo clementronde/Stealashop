@@ -415,6 +415,25 @@ local function setVisible(element: Instance?, visible: boolean)
 	end
 end
 
+-- a119 (L-127 point 5) : style de la mutation sur MutationTag (dégradé, couleurs, mouvement), joué par
+-- MutationFxController s'il est chargé ; sans lui, l'étiquette garde le style de Clément.
+local mutationFx: any = false
+local function styleMutationTag(tag: Instance?, label: Instance?, mutation: any)
+	if mutationFx == false then
+		mutationFx = nil
+		local module = script.Parent:FindFirstChild("MutationFxController")
+		if module and module:IsA("ModuleScript") then
+			local ok, result = pcall(require, module)
+			if ok and type(result) == "table" then
+				mutationFx = result
+			end
+		end
+	end
+	if mutationFx then
+		mutationFx.StyleTag(tag, label, mutation)
+	end
+end
+
 local function setImage(element: Instance?, image: string)
 	if isImage(element) then
 		local target = element :: any
@@ -1063,6 +1082,7 @@ local function paintItem(view: CardView, entry: InventoryState.ItemEntry)
 	if label then
 		setText(refs["MutationTag.MutationLabel"], label)
 	end
+	styleMutationTag(refs.MutationTag, refs["MutationTag.MutationLabel"], if label then { Size = entry.Size, Effect = entry.Effect } else nil)
 	setText(refs.Income, Format.income(entry.Income))
 	local displayed = entry.Slot ~= nil
 	setVisible(refs.DisplayedBadge, displayed)

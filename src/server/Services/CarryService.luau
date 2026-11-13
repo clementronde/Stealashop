@@ -186,6 +186,7 @@ local BOX_LABEL_RARITY_ONLY: boolean = Features.ShelfOpen == true
 local CARRYING_ATTRIBUTE = "Carrying"
 local SPEED_KEY = "Carry"
 local RAINBOW_TAG = "CarryRainbow"
+local CARRIED_ITEM_TAG = "CarriedItem" -- a119 : objet porté ou lâché (MutationFxController, client)
 local VISUAL_NAME = "CarryVisual"
 local WELD_NAME = "CarryWeld"
 local HALO_POINT = "HaloPoint"
@@ -786,6 +787,14 @@ local function buildVisual(payload: Payload): Visual
 	end
 	if rarity.Rainbow then
 		CollectionService:AddTag(model, RAINBOW_TAG)
+	end
+	-- a119 (L-127 point 5) : un objet porté ou lâché (pas un colis) montre sa mutation comme exposé ;
+	-- MutationFxController (client) joue l'effet de Clément sur les modèles taggés CarriedItem.
+	if payload.Kind ~= "NPCBox" then
+		local mutation = Mutations.Sanitize(payload.Mutation)
+		model:SetAttribute("MutationSize", if mutation then mutation.Size else nil)
+		model:SetAttribute("MutationEffect", if mutation then mutation.Effect else nil)
+		CollectionService:AddTag(model, CARRIED_ITEM_TAG)
 	end
 	return { model = model, anchor = anchor, offset = offset }
 end
