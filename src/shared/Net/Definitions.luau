@@ -573,8 +573,9 @@ local List: { RemoteDef } = {
 		},
 	},
 	{
-		-- Vague 31 (L-112, Features.ShelfOpen) : lancer l'ouverture d'un colis du rayon, un seul appui (pas de
-		-- maintien). slotId = même format que GrabItem (attribut SlotId du colis). StoreHeistService décide de
+		-- Vague 31 (L-112, Features.ShelfOpen) : lancer l'ouverture d'un colis du rayon. Deux appels, comme GrabItem
+		-- (Cantin, 2026-11-13) : début du maintien, puis fin (GrabTime du type du colis). slotId = même format
+		-- que GrabItem (attribut SlotId du colis). StoreHeistService décide de
 		-- tout (magasin ouvert, joueur dedans, colis fermé, témoins) et tire la chance. Même forme que GrabItem.
 		Name = "OpenShelfBox",
 		Direction = "ClientToServer",

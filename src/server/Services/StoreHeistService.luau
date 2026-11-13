@@ -174,11 +174,15 @@
 --     reconstruite Balance.Window.RebuildDelay s après au plus tôt (point d'attente de WindowService, qui
 --     reconstruit de toute façon au bout de son attente maximale, en sortant ceux qui y seraient encore).
 --     Les témoins ne montent plus pendant l'ouverture (ils fuient à la casse, L-118 point 10).
---   - Lancement : OpenShelfBox(slotId), un seul appel, sans maintien. Vérifié ici (9.4) : magasin
+--   - Lancement : OpenShelfBox(slotId), deux appels comme GrabItem (Cantin, 2026-11-13 : rester appuyé sur
+--     E) : début puis fin du maintien, maintien = GrabTime du type du colis (Balance.Heist.BoxTiers),
+--     temps écoulé vérifié ici avec la même tolérance (GRAB_TIME_TOLERANCE) ; un seul appel ne lance rien.
+--     Maintien d'ouverture à part (openHolds), revérifié 10 fois par seconde comme celui de la prise
+--     (colis changé, refus d'ouverture, expiration GrabTime + HOLD_EXPIRY). Vérifié à chaque appel (9.4) : magasin
 --     ouvert (fermé seulement quand plus personne n'y est, voir plus haut), colis posé, fermé et pas
 --     déjà en cours d'ouverture, avance du casseur, magasin pas fermé pour lui, mains vides, joueur
---     vivant dans le volume Bounds et à GrabMaxDistance au plus, anti-triche ; puis, si un témoin du
---     magasin appelle la police (WitnessService.IsCalling) : refus avec le Notify « Witnesses are calling
+--     vivant dans le volume Bounds et à GrabMaxDistance au plus, anti-triche ; puis, au lancement seulement (fin du maintien),
+--     si un témoin du magasin appelle la police (WitnessService.IsCalling) : refus avec le Notify « Witnesses are calling
 --     the police! » (Warning, V0, au plus un par seconde et par joueur). Débit : celui du remote (5/s, V0).
 --     Rien n'empêche un joueur d'ouvrir plusieurs colis à la suite (V0, à trancher par Cantin).
 --   - Chance : tirée ici au hasard dans ShelfOpen.LuckTable (poids), jamais par le client. Le colis
@@ -625,6 +629,7 @@ local stores: { [Instance]: Store } = {}
 local storesById: { [string]: Store } = {}
 local slotsById: { [string]: Slot } = {}
 local holds: { [Player]: Hold } = {}
+local openHolds: { [Player]: Hold } = {} -- maintiens d'ouverture d'un colis sur le rayon (L-112, Cantin 2026-11-13)
 -- Colis sortis, par payload (la table donnée à StartCarry, que CarryService garde telle quelle).
 local outBoxes: { [any]: OutBox } = {}
 -- Objets sortis de leur magasin (L-112), par payload NPCItem (même règle que outBoxes).
@@ -1301,6 +1306,11 @@ local function cancelHolds(store: Store)
 			holds[player] = nil
 		end
 	end
+	for player, hold in openHolds do
+		if hold.Slot.Store == store then
+			openHolds[player] = nil
+		end
+	end
 end
 
 -- Nouveau tirage du magasin (L-031, L-033, 5.12) : retire tous ses colis (posés ou en vol de
@@ -1758,6 +1768,11 @@ local function closeStore(store: Store)
 	for player, hold in holds do
 		if hold.Slot.Store == store and grabRefusal(player, hold.Slot) ~= nil then
 			holds[player] = nil
+		end
+	end
+	for player, hold in openHolds do
+		if hold.Slot.Store == store then
+			openHolds[player] = nil -- magasin fermé : ouverture refusée
 		end
 	end
 	for player in table.clone(store.Viewers) do
@@ -2443,7 +2458,7 @@ local function openRefusal(player: Player, slot: Slot): string?
 	return reachRefusal(player, slot)
 end
 
--- OpenShelfBox(slotId) : un seul appel, pas de maintien (voir l'en-tête).
+-- OpenShelfBox(slotId) : premier appel = début du maintien, second = fin (voir l'en-tête).
 local function onOpenShelfBox(player: Player, slotId: string)
 	if not SHELF_OPEN then
 		return -- ancien déroulé : les colis ne s'ouvrent pas sur le rayon
@@ -2457,19 +2472,43 @@ local function onOpenShelfBox(player: Player, slotId: string)
 		refuse(player, slotId, "déplacement sanctionné par l'anti-triche (audit 9.8)", "OpenShelfBox")
 		return
 	end
+	local hold = openHolds[player]
 	local reason = openRefusal(player, slot)
 	if reason then
+		if hold and hold.Slot == slot then
+			openHolds[player] = nil
+		end
 		refuse(player, slotId, reason, "OpenShelfBox")
 		return
 	end
-	local store = slot.Store
+	local box = slot.Box :: ShelfBox -- openRefusal a vérifié qu'il est posé et fermé
+	local required = grabTime(box.Tier)
+	local now = os.clock()
+	local finishing = hold ~= nil and hold.Slot == slot and hold.Target == box
+	if not finishing and required > 0 then
+		openHolds[player] = { Slot = slot, Target = box, Tier = box.Tier, StartedAt = now } -- début du maintien
+		return
+	end
+	if finishing then
+		local elapsed = now - (hold :: Hold).StartedAt
+		if elapsed + GRAB_TIME_TOLERANCE < required then
+			refuse(
+				player,
+				slotId,
+				`maintien trop court ({math.round(elapsed * 100) / 100} s sur {required} s)`,
+				"OpenShelfBox"
+			)
+			return
+		end
+	end
+	openHolds[player] = nil
+	-- Témoins vérifiés au lancement seulement (fin du maintien) : un seul message par appui.
 	local api = witnessApi
 	local okCalling, calling = false, false
 	if api then
-		okCalling, calling = pcall(api.IsCalling, store.Model)
+		okCalling, calling = pcall(api.IsCalling, slot.Store.Model)
 	end
 	if okCalling and calling == true then
-		local now = os.clock()
 		if now - (lastCallNotice[player] or -math.huge) >= CALL_NOTICE_INTERVAL then
 			lastCallNotice[player] = now
 			Net.Server.Notify:Fire(player, MESSAGES.WitnessCalling, "Warning")
@@ -2477,7 +2516,7 @@ local function onOpenShelfBox(player: Player, slotId: string)
 		refuse(player, slotId, "un témoin du magasin appelle la police", "OpenShelfBox")
 		return
 	end
-	startOpening(player, slot, slot.Box :: ShelfBox) -- openRefusal a vérifié qu'il est posé et fermé
+	startOpening(player, slot, box)
 end
 
 -- GrabItem(slotId) : premier appel = début du maintien, second = fin (voir l'en-tête).
@@ -2830,6 +2869,15 @@ local function step()
 			holds[player] = nil
 		end
 	end
+	for player, hold in openHolds do
+		if
+			hold.Slot.Box ~= hold.Target
+			or now - hold.StartedAt > grabTime(hold.Tier) + HOLD_EXPIRY
+			or openRefusal(player, hold.Slot) ~= nil
+		then
+			openHolds[player] = nil
+		end
+	end
 	for _, store in stores do
 		stepLocks(store)
 		if store.Open and SHELF_OPEN then
@@ -2995,6 +3043,7 @@ function StoreHeistService.Init()
 	Net.Server.OpenShelfBox:Connect(onOpenShelfBox)
 	Players.PlayerRemoving:Connect(function(player: Player)
 		holds[player] = nil
+		openHolds[player] = nil
 		lastRefusal[player] = nil
 		lastGreedy[player] = nil
 		lastCallNotice[player] = nil
