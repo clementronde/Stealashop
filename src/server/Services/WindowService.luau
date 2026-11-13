@@ -28,8 +28,9 @@
 --     fini > 0 pour les PV, ≥ 0 pour la réparation) reprend la valeur de base.
 --   - Chrono de casse, magasins PNJ seulement (Clément, L-074) : le premier coup lance un chrono de
 --     Balance.Window.BreakTimer s (13, V0), montré dans HeistTimer à chaque joueur qui frappe (même
---     remote que le chrono du braquage, même identifiant que le magasin). Cassée à temps : le chrono du
---     braquage le remplace. Sinon la vitre revient à ses PV max, chrono masqué et message à ceux qui
+--     remote que le chrono du braquage, même identifiant que le magasin). Cassée à temps : ce chrono
+--     continue, c'est celui du vigile (L-118 point 9 : BreakInfo.ChronoEndsAt, repris par StoreHeistService ;
+--     cassée d'un coup, il part à la casse). Sinon la vitre revient à ses PV max, chrono masqué et message à ceux qui
 --     ont frappé. Pas de régénération plus forte en plus : le chrono suffit contre la casse lente.
 --   - HitWindow(windowId) (9.4), ignoré si : vitrine inconnue, cassée ou incassable ; vitrine
 --     du joueur lui-même ; outil de casse pas en main ; plus de 10 studs entre le joueur et
@@ -141,6 +142,9 @@ export type BreakInfo = {
 	Model: Model,
 	Breaker: Player,
 	ImpactPoint: Vector3,
+	-- Magasin PNJ (L-118 point 9) : fin du chrono lancé au premier coup (heure serveur), qui continue après
+	-- la casse ; nil pour une parcelle ou une cible d'événement.
+	ChronoEndsAt: number?,
 }
 
 type BrokenListener = (info: BreakInfo) -> ()
@@ -412,13 +416,14 @@ local function rebuildDelay(window: Window): number
 end
 
 -- Prévient les écouteurs d'OnBroken.
-local function emitBroken(window: Window, breaker: Player, impactPoint: Vector3)
+local function emitBroken(window: Window, breaker: Player, impactPoint: Vector3, chronoEndsAt: number?)
 	local info: BreakInfo = {
 		WindowId = window.Id,
 		Kind = window.Kind,
 		Model = window.Model,
 		Breaker = breaker,
 		ImpactPoint = impactPoint,
+		ChronoEndsAt = chronoEndsAt,
 	}
 	table.freeze(info :: any) -- gelée sur place ; :: any : le nouveau solveur bute sur le type générique de table.freeze
 	for _, listener in table.clone(brokenListeners) do
@@ -427,7 +432,11 @@ local function emitBroken(window: Window, breaker: Player, impactPoint: Vector3)
 end
 
 local function breakWindow(window: Window, breaker: Player, impactPoint: Vector3)
-	-- Cassée à temps : fin du chrono de casse ; le chrono du braquage le remplace à l'écran.
+	-- Cassée à temps : le chrono lancé au premier coup continue, c'est celui du vigile (L-118 point 9) ;
+	-- cassée d'un seul coup : il part maintenant.
+	local chronoEndsAt = if window.Kind == "NPC"
+		then window.BreakEndsAt or Workspace:GetServerTimeNow() + Balance.Window.BreakTimer
+		else nil
 	window.BreakEndsAt = nil
 	window.Hitters = nil
 	window.Broken = true
@@ -450,7 +459,7 @@ local function breakWindow(window: Window, breaker: Player, impactPoint: Vector3
 			rebuild(window)
 		end
 	end)
-	emitBroken(window, breaker, impactPoint)
+	emitBroken(window, breaker, impactPoint, chronoEndsAt)
 end
 
 -- Cible d'événement à 0 PV : ni verre caché, ni remote, ni reconstruction (voir l'en-tête).

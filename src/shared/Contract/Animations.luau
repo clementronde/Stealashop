@@ -75,6 +75,8 @@ Animations.Witness = {
 	{ Name = "Walk", Loop = true, Priority = "Movement" },
 	{ Name = "Look", Loop = true, Priority = "Action" },
 	{ Name = "CallPolice", Loop = true, Priority = "Action", Marker = "Call" },
+	-- L-118 point 10 (Clément, en cours) : course paniquée à la casse. Boucle et priorité V0, comme Run des vigiles.
+	{ Name = "Flee", Loop = true, Priority = "Movement" },
 } :: { Anim }
 
 -- Conducteurs du camion de l'événement (liaison L-071, point 7 ; a42) : des modèles avec un Humanoid,

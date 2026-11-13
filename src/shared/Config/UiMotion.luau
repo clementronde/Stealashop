@@ -308,7 +308,6 @@ local UiMotion = {
 		-- « Alert » (AlertKind) : même allure que « Warning », sans son.
 		DenyKind = "Warning",
 		AlertKind = "Alert",
-		TrainGain = "Train_Gain", -- GainController : avec chaque « +X Speed/s » ou « +X Power » affiché
 	},
 	-- Vague 27 (L-096 point 2) : refus quand l'argent manque (T.18 de docs/claude/notes/ui-motion-skilltree.md ;
 	-- prototype tools/clement/skilltree_proto.luau, ShakeTime et ShakeAmp). L'élément part de ±Amplitude px

@@ -17,8 +17,10 @@
 --      soit, se tourne vers la vitrine, joue Look, et son « ? » monte de 0 à 1 en Witness.FillTime s (8).
 --      Le serveur ne fait qu'écrire la pente (Shared/WitnessGauge : attributs WitnessState, WitnessFill,
 --      WitnessRate, WitnessAt sur le témoin) ; WitnessController affiche BB_Witness chez chaque joueur.
---   3. Vitrine cassée avant (WindowService.OnBroken) : le « ? » se vide (Witness.EmptyTime), puis la
---      balade reprend.
+--   3. Vitrine cassée avant (WindowService.OnBroken ; Clément, L-118 point 10) : le « ? » disparaît, le
+--      témoin a peur et court à l'opposé de la vitrine (Flee, sinon Walk accélérée ; Witness.FleeSpeed,
+--      FleeDistance studs, FleeMaxTime s au plus, ou bloqué FleeStuckTime s), puis reprend sa balade depuis
+--      le point du circuit le plus proche. Au téléphone (Call), il finit son appel.
 --   4. « ? » plein : le témoin passe au « ! » (état Call) et joue CallPolice. Au PREMIER marqueur Call
 --      (il revient à chaque boucle ; sans marqueur : Witness.CallMarkerMaxWait s), le son Witness.CallSound
 --      part sur le témoin et la police est lancée. Witness.CallDuration s après le début de l'appel, il
@@ -31,8 +33,10 @@
 --      marqueur Impact de Catch, même étourdissement, colis perdu s'il en porte un, ChaseState donc
 --      UI_Chase et MUS_Chase). Vitesse : celle du vigile de jour de la zone (ou du tutoriel) ×
 --      Police.SpeedFactor. Fin : capture, zone safe, ou Police.ChaseDuration s de poursuite, puis Tired et
---      fondu. Un seul policier à la fois par magasin. Elle complète le vigile du magasin (qui n'apparaît
---      qu'à la prise d'un colis) et remplace la « sortie du vigile à la fin du chrono » évoquée en L-074.
+--      fondu. Un seul policier à la fois par magasin. Attrapé (L-118 point 3) : renvoyé à la base
+--      (NightCycleService.SendHome, Night.SendHomeDelay s après le coup), comme la nuit.
+--   6. Nuit (Clément, L-117 point 2) : les témoins ne sont pas là. À la tombée de la nuit, ils sont
+--      retirés du jeu (Parent = nil) ; à l'aube, remis où ils étaient, et la balade reprend.
 --   La vitre se répare comme avant (chrono de 13 s de WindowService, inchangé).
 --
 -- Un témoin sans WatchedStore, ou dont le magasin est introuvable parmi les modèles taggés NPCStore de la
@@ -119,6 +123,12 @@ type WitnessNpc = {
 	-- Appel
 	callStartedAt: number,
 	dispatched: boolean, -- la police de cet appel est partie
+	-- Fuite à la casse (L-118 point 10) : il court vers fleeGoal jusqu'à fleeUntil (os.clock), 0 = pas en fuite
+	fleeUntil: number,
+	fleeGoal: Vector3,
+	fleeAnim: string?, -- "Flee", ou "Walk" accélérée tant que Flee n'est pas livrée
+	-- Nuit (L-117 point 2) : retiré du jeu, remis ici à l'aube
+	hiddenParent: Instance?,
 }
 
 -- Noms du contrat lus ici.
@@ -164,6 +174,7 @@ local callListeners: { CallListener } = {}
 local warned: { [string]: boolean } = {}
 local rng = Random.new()
 local nextStepAt = 0
+local sendHome: ((player: Player) -> boolean)? = nil -- NightCycleService.SendHome (Start), pour la police
 
 local function log(message: string)
 	if IS_STUDIO then
@@ -311,6 +322,9 @@ local function startWatch(w: WitnessNpc)
 end
 
 local function raise(w: WitnessNpc, suspect: Player?, fillTime: number, now: number): boolean
+	if w.hiddenParent or now < w.fleeUntil then
+		return false -- caché la nuit, ou en fuite
+	end
 	if suspect and not w.dispatched then
 		w.suspects[suspect] = now -- vu aussi pendant l'appel, tant que la police n'est pas partie
 	end
@@ -454,6 +468,7 @@ local function launchPolice(w: WitnessNpc, store: Model, now: number): (Player?,
 				Label = POLICE_LABEL,
 				Tired = true,
 				GiveUpReason = "poursuite trop longue",
+				SendHome = sendHome, -- L-118 point 3 : attrapé, renvoyé à la base
 			})
 			if model then
 				policeByStore[store] = model
@@ -496,10 +511,103 @@ local function startCall(w: WitnessNpc, now: number)
 	w.anims:Play("CallPolice") -- son marqueur Call lance dispatch (branché à la création du témoin)
 end
 
+-- Fuite à la casse (L-118 point 10) ----------------------------------------------------------------
+
+-- La vitrine de son magasin vient de casser : le « ? » disparaît et il court à l'opposé de la vitrine.
+local function flee(w: WitnessNpc, now: number)
+	local store = w.store
+	if store == nil or w.state == "Call" then
+		return -- au téléphone : il finit son appel
+	end
+	toStroll(w, now)
+	local position = w.root.Position
+	local away = flat(position - windowPosition(store))
+	if away.Magnitude < 1e-3 then
+		away = -w.root.CFrame.LookVector
+	end
+	away = flat(away).Unit
+	w.fleeGoal = position + away * Witness.FleeDistance
+	w.fleeUntil = now + Witness.FleeMaxTime
+	w.root.CFrame = CFrame.lookAt(position, position + away)
+	w.humanoid.WalkSpeed = Witness.FleeSpeed
+	w.humanoid:MoveTo(w.fleeGoal)
+	w.anims:Stop("Walk")
+	if w.anims:Play("Flee") then
+		w.fleeAnim = "Flee"
+	else
+		w.fleeAnim = "Walk" -- Flee pas encore livrée : la marche, accélérée
+		w.anims:Play("Walk", nil, nil, Witness.WalkAnimMax)
+	end
+	w.walking = false
+	log(`{w.label} s'enfuit (vitrine de {store.Name} cassée)`)
+end
+
+-- Arrivé, bloqué ou à bout de temps : il reprend sa balade depuis le point du circuit le plus proche.
+local function fleeStep(w: WitnessNpc, now: number)
+	local position = w.root.Position
+	local moved = flat(position - w.progressPos).Magnitude >= 1
+	if moved then
+		w.progressPos = position
+		w.progressAt = now
+	end
+	local arrived = flat(w.fleeGoal - position).Magnitude <= Witness.PointReached
+	if not arrived and now < w.fleeUntil and now - w.progressAt < Witness.FleeStuckTime then
+		if now >= w.nextMoveAt then
+			w.nextMoveAt = now + Witness.MoveRefresh
+			w.humanoid:MoveTo(w.fleeGoal)
+		end
+		return
+	end
+	w.fleeUntil = 0
+	if w.fleeAnim then
+		w.anims:Stop(w.fleeAnim)
+		w.fleeAnim = nil
+	end
+	local nearest = math.huge
+	for index, point in w.path do
+		local distance = flat(point - position).Magnitude
+		if distance < nearest then
+			nearest = distance
+			w.pathIndex = index
+		end
+	end
+	stopWalking(w)
+	w.nextMoveAt = now
+	w.progressAt = now
+end
+
+-- Nuit (L-117 point 2) --------------------------------------------------------------------------------
+
+-- La nuit, les témoins ne sont pas là (Clément) : retirés du jeu, remis à leur place à l'aube.
+local function setNight(night: boolean)
+	local now = os.clock()
+	for _, w in witnesses do
+		if night and w.hiddenParent == nil and w.model.Parent ~= nil then
+			if w.state ~= "Call" then
+				toStroll(w, now)
+			end
+			w.fleeUntil = 0
+			stopWalking(w)
+			w.hiddenParent = w.model.Parent
+			w.model.Parent = nil
+		elseif not night and w.hiddenParent then
+			w.model.Parent = w.hiddenParent
+			w.hiddenParent = nil
+			toStroll(w, now)
+			pcall(function()
+				w.root:SetNetworkOwner(nil)
+			end)
+		end
+	end
+	log(if night then `nuit : {#witnesses} témoin(s) retirés` else `jour : {#witnesses} témoin(s) remis`)
+end
+
 -- Boucle -----------------------------------------------------------------------------------------
 
 local function update(w: WitnessNpc, now: number)
-	if w.state == "Stroll" then
+	if w.fleeUntil > 0 then
+		fleeStep(w, now)
+	elseif w.state == "Stroll" then
 		strollStep(w, now)
 	elseif w.state == "Watch" then
 		local value = valueNow(w, now)
@@ -545,6 +653,9 @@ local function step()
 	end
 	nextStepAt = now + Witness.StepInterval
 	for _, w in table.clone(witnesses) do
+		if w.hiddenParent then
+			continue -- la nuit
+		end
 		if not w.root:IsDescendantOf(Workspace) or w.humanoid.Health <= 0 then
 			remove(w, "sorti du jeu")
 			continue
@@ -683,6 +794,10 @@ local function add(model: Model)
 		suspects = {},
 		callStartedAt = 0,
 		dispatched = false,
+		fleeUntil = 0,
+		fleeGoal = root.Position,
+		fleeAnim = nil,
+		hiddenParent = nil,
 	}
 	-- Il part du point du circuit le plus proche de lui.
 	local nearest = math.huge
@@ -827,9 +942,33 @@ function WitnessService.Start()
 	end)
 	WindowService.OnBroken(function(info: WindowService.BreakInfo)
 		if info.Kind == "NPC" then
-			WitnessService.Calm(info.Model)
+			each(info.Model, function(w: WitnessNpc, now: number): boolean
+				flee(w, now)
+				return true
+			end)
 		end
 	end)
+	-- Nuit (L-117 point 2) et renvoi à la base par la police (L-118 point 3) : NightCycleService, s'il
+	-- existe (require protégé : les bancs n'en ont pas toujours).
+	local okNight, night = pcall(function(): any
+		return require(script.Parent:FindFirstChild("NightCycleService") :: any) :: any
+	end)
+	if okNight and type(night) == "table" then
+		local api: any = night
+		sendHome = api.SendHome
+		local onPhase: any = api.OnPhaseChanged
+		local isNight: any = api.IsNight
+		if onPhase ~= nil and isNight ~= nil then
+			(onPhase :: any)(function()
+				setNight((isNight :: any)() == true)
+			end)
+			if (isNight :: any)() == true then
+				setNight(true)
+			end
+		end
+	else
+		log("NightCycleService indisponible : témoins présents la nuit, la police ne renvoie pas à la base")
+	end
 	Players.PlayerRemoving:Connect(function(player: Player)
 		for _, w in witnesses do
 			w.suspects[player] = nil

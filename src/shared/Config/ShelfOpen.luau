@@ -5,8 +5,9 @@
 -- de la chance qui monte).
 --
 -- Déroulé (L-112) : le joueur lance l'ouverture d'un colis sur son rayon ; le serveur tire la chance au
--- hasard (LuckTable) ; les rabats se lèvent (FlapsTime), puis « ×N LUCK » monte de LuckStep à chaque tic
--- de LuckTick s jusqu'à la chance tirée (tirée à ×1 : l'objet sort tout de suite après les rabats) ; à la
+-- hasard (LuckTable) ; les rabats se lèvent (FlapsTime), puis « ×N LUCK » monte de LuckStep à chaque tic,
+-- de plus en plus vite, jusqu'à la chance tirée, en RiseMax s au plus (tirée à ×1 : l'objet sort tout de
+-- suite après les rabats) ; à la
 -- sortie, la rareté du contenu monte par crans (tant qu'un cran réussit, jusqu'à UpgradeTop ; chance du
 -- cran n = min(UpgradeChance × la chance, UpgradeChanceCap) × UpgradeDecay^(n − 1)) ; l'objet sort à la
 -- place du colis, réservé ReserveTime s à l'ouvreur ; en base, l'objet posé garde un antivol
@@ -27,12 +28,15 @@ export type LuckEntry = {
 
 local ShelfOpen = {
 	FlapsTime = 0.6, -- V0 : les deux rabats se lèvent et la lumière sort, avant que la chance monte (T.53)
-	LuckTick = 0.1, -- T.54 : un tic toutes les 0,1 s
-	LuckStep = 1.03, -- T.54 : chance × 1,03 à chaque tic (la montée accélère)
+	LuckStep = 1.03, -- T.54 : chance × 1,03 à chaque tic
+	-- L-118 point 4 (Clément : « 2 s au plus, avec une accélération ») : la plus forte chance de LuckTable monte
+	-- en RiseMax s, une plus petite en RiseMax × √(ses tics / ceux de la plus forte) ; les tics se serrent
+	-- (Shared/ShelfOpenState). Montée (rabats non compris) : ×1,5 en 0,85 s, ×2 en 1,1 s, ×3 en 1,4 s,
+	-- ×5 en 1,7 s, ×8 en 1,9 s, ×10 en 2 s.
+	RiseMax = 2,
 
 	-- L-112 (Cantin) : la chance est tirée au hasard au lancement, elle ne dépend pas du temps passé appuyé.
-	-- L-112, table d'équilibrage adoptée par Cantin le 2026-11-12. Montée (rabats non compris) : ×1,5 en
-	-- 1,4 s, ×2 en 2,4 s, ×3 en 3,8 s, ×5 en 5,5 s, ×8 en 7,1 s, ×10 en 7,8 s.
+	-- L-112, table d'équilibrage adoptée par Cantin le 2026-11-12.
 	LuckTable = {
 		{ Luck = 1, Weight = 55 },
 		{ Luck = 1.5, Weight = 20 },

@@ -4,7 +4,7 @@
 -- dans src/shared/Config/ShelfOpen.luau (LuckTable) après l'accord de Cantin.
 --
 -- Règles reprises du code (sans les modifier) :
---   - montée : Shared/ShelfOpenState (rabats FlapsTime, puis × LuckStep tous les LuckTick s) ;
+--   - montée : Shared/ShelfOpenState (rabats FlapsTime, puis × LuckStep par tic, en RiseMax s au plus) ;
 --   - « ? » des témoins : WitnessService.Raise, de 0 à 1 en Witness.FillTime s ; plein = appel, la
 --     police part au marqueur Call (Hypotheses.MarqueurAppel) et l'objet sort alors (chance arrêtée là) ;
 --   - crans : UnboxService.rollUpgrades (UpgradeMax crans, chacun à UpgradeChance × la chance, borné à 1 ;
@@ -71,8 +71,21 @@ function Chance.Tics(luck)
 	end
 	return math.ceil(math.log(luck) / math.log(ShelfOpen.LuckStep) - 1e-9)
 end
+-- L-118 point 4 : la plus forte chance de la table monte en RiseMax s, une plus petite en
+-- RiseMax × √(ses tics / ceux de la plus forte) ; le tic k tombe à montée × √(k / N).
+function Chance.Montee(luck)
+	local tics = Chance.Tics(luck)
+	if tics == 0 then
+		return 0
+	end
+	local most = 1
+	for _, entry in ShelfOpen.LuckTable do
+		most = math.max(most, Chance.Tics(entry.Luck))
+	end
+	return ShelfOpen.RiseMax * math.min(1, math.sqrt(tics / most))
+end
 function Chance.Delai(luck)
-	return ShelfOpen.FlapsTime + Chance.Tics(luck) * ShelfOpen.LuckTick
+	return ShelfOpen.FlapsTime + Chance.Montee(luck)
 end
 
 -- Ce qui se passe pour une chance tirée : { Delai, Remplissage (« ? » à la sortie, 0 à 1), Police (bool),
@@ -88,7 +101,8 @@ function Chance.Issue(luck)
 	if delay <= stop then
 		return { Delai = delay, Remplissage = 1, Police = true, Atteinte = luck }
 	end
-	local ticks = math.max(0, math.floor((stop - ShelfOpen.FlapsTime) / ShelfOpen.LuckTick))
+	local elapsed = math.max(0, stop - ShelfOpen.FlapsTime)
+	local ticks = math.floor(Chance.Tics(luck) * math.min(1, elapsed / Chance.Montee(luck)) ^ 2)
 	return { Delai = stop, Remplissage = 1, Police = true, Atteinte = math.min(luck, ShelfOpen.LuckStep ^ ticks) }
 end
 

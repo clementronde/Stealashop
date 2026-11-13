@@ -50,9 +50,20 @@ function ShelfOpenState.ticksTo(luck: number): number
 	return math.ceil(math.log(luck) / math.log(ShelfOpen.LuckStep) - 1e-9)
 end
 
--- Durée de la montée de la chance, rabats non compris.
+-- Tics de la plus forte chance de LuckTable : sa montée dure ShelfOpen.RiseMax s.
+local maxTicks = 1
+for _, entry in ShelfOpen.LuckTable do
+	maxTicks = math.max(maxTicks, ShelfOpenState.ticksTo(entry.Luck))
+end
+
+-- Durée de la montée de la chance, rabats non compris (L-118 point 4 : courte quelle que soit la chance) :
+-- RiseMax × √(tics / tics de la plus forte chance de la table), RiseMax au plus.
 function ShelfOpenState.riseTime(luck: number): number
-	return ShelfOpenState.ticksTo(luck) * ShelfOpen.LuckTick
+	local ticks = ShelfOpenState.ticksTo(luck)
+	if ticks == 0 then
+		return 0
+	end
+	return ShelfOpen.RiseMax * math.min(1, math.sqrt(ticks / maxTicks))
 end
 
 -- Délai entre le lancement et la sortie de l'objet : rabats, puis montée.
@@ -60,15 +71,25 @@ function ShelfOpenState.revealDelay(luck: number): number
 	return ShelfOpen.FlapsTime + ShelfOpenState.riseTime(luck)
 end
 
+-- Tics passés (nombre à virgule) `elapsed` s après le début de la montée : le tic k tombe à
+-- riseTime × √(k / N), de plus en plus serrés (la montée accélère). Entre 0 et N = ticksTo(luck).
+function ShelfOpenState.tickProgress(luck: number, elapsed: number): number
+	local total = ShelfOpenState.ticksTo(luck)
+	if total == 0 or not (elapsed > 0) then
+		return 0
+	end
+	local rise = ShelfOpenState.riseTime(luck)
+	if elapsed >= rise then
+		return total
+	end
+	return total * (elapsed / rise) ^ 2
+end
+
 -- Chance affichée à l'instant `now` (heure du serveur) pour une ouverture lancée à `openAt` avec la chance
 -- tirée `luck` : ×1 pendant les rabats, puis × LuckStep à chaque tic, sans jamais dépasser `luck`.
 function ShelfOpenState.luckAt(openAt: number, luck: number, now: number): number
-	local elapsed = now - openAt - ShelfOpen.FlapsTime
-	if not (elapsed > 0) or not (luck > 1) then
-		return 1
-	end
-	local ticks = math.floor(elapsed / ShelfOpen.LuckTick)
-	return math.min(ShelfOpen.LuckStep ^ ticks, luck)
+	local ticks = math.floor(ShelfOpenState.tickProgress(luck, now - openAt - ShelfOpen.FlapsTime) + 1e-9)
+	return math.min(ShelfOpen.LuckStep ^ ticks, math.max(luck, 1))
 end
 
 return ShelfOpenState

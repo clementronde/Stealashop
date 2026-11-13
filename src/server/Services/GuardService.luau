@@ -3,7 +3,11 @@
 -- (Partie 1, sections 4, 5.5 et 9.7 ; animations : 2.4 et liaison 3.2).
 --
 -- Déroulé d'un vigile :
---   1. Apparition. Quand CarryService commence le portage d'un colis PNJ (OnCarryStarted,
+--   1. Apparition. Règle de Clément (L-118, Features.ShelfOpen) : à la fin du chrono du magasin,
+--      StoreHeistService appelle ChaseIntruder pour chaque intrus ; le vigile sort du GuardSpawn et le
+--      poursuit, qu'il porte un objet ou non (pas d'abandon parce qu'il ne porte rien). Plus de vigile à la
+--      prise d'un objet sorti (NPCItem). Ancien déroulé (colis porté fermé) :
+--      quand CarryService commence le portage d'un colis PNJ (OnCarryStarted,
 --      payload.Kind = "NPCBox"), un vigile apparaît au GuardSpawn du magasin du colis
 --      (payload.StoreId). Un vigile par voleur ; au plus Balance.Guard.MaxPerStore en poursuite
 --      par magasin et Balance.Guard.MaxActivePerServer en jeu sur le serveur (9.7) : au
@@ -149,6 +153,10 @@
 --     jouer Knockback et Stunned.
 --
 -- API (serveur) :
+--   GuardService.ChaseIntruder(player, store) -> boolean
+--       L-118 : un vigile de jour de `store` (le Model du magasin) sort et poursuit `player`, avec ou sans
+--       portage (mêmes plafonds, même capture, même retour). false : hors jeu, en zone safe, déjà poursuivi
+--       par un vigile de jour, plafond atteint ou magasin sans Zone.
 --   GuardService.IsChased(player) -> boolean
 --   GuardService.GetGuard(player) -> Model?    le vigile qui poursuit ce joueur
 --   GuardService.GetReturningGuards(store) -> { BasePart }
@@ -272,6 +280,8 @@ export type DriverChase = {
 	Label: string?, -- nom dans la sortie et les avertissements d'animation (« policier ») ; défaut « conducteur »
 	Tired: boolean?, -- true : essoufflé (Tired, contrat des vigiles) avant de s'effacer quand il abandonne
 	GiveUpReason: string?, -- pour la sortie, quand Keeps devient faux
+	-- Policier (L-118 point 3) : renvoie le joueur attrapé à la base, Night.SendHomeDelay s après le coup.
+	SendHome: ((player: Player) -> boolean)?,
 }
 
 -- Règles de la nuit, données par NightCycleService à StartNightPatrol.
@@ -298,6 +308,7 @@ type Guard = {
 	state: GuardState,
 	spawnedAt: number,
 	owner: Player?, -- vigile de jour : le voleur pour qui il est apparu (OnGuardGone) ; nil sinon
+	intruder: boolean?, -- vigile de jour sorti à la fin du chrono (L-118, ChaseIntruder) : poursuit même sans portage
 	patrol: { Vector3 }, -- points de ronde de sa zone, dans l'ordre (vide le jour)
 	patrolIndex: number, -- point visé
 	patrolStep: number, -- +1 ou −1 : sens de l'aller-retour
@@ -1508,10 +1519,27 @@ local function catch(guard: Guard, player: Player)
 	-- Catch n'est pas livrée (pas de geste à attendre). Immobilisé dès la capture (plus bas), le
 	-- joueur reste étourdi CatchStunDuration s à partir du coup, comme son client le montre avec
 	-- Knockback puis Stunned (ChaseController), et non à partir de la capture.
+	-- Policier (L-118 point 3) : Night.SendHomeDelay s après le coup, renvoyé à la base, comme la nuit.
+	local sendHome = if guard.driver then guard.driver.SendHome else nil
+	local function sendHomeLater(caught: Player)
+		if sendHome == nil then
+			return
+		end
+		local send: (player: Player) -> boolean = sendHome
+		task.delay(Night.SendHomeDelay, function()
+			if caught.Parent == Players then
+				local ok, err = pcall(send, caught)
+				if not ok then
+					warn(`[GuardService] SendHome({caught.Name}) après la police : {err}`)
+				end
+			end
+		end)
+	end
 	if track then
 		guard.knockTarget = player
 		guard.onKnock = function(caught: Player)
 			stun(caught, Balance.Guard.CatchStunDuration)
+			sendHomeLater(caught)
 		end
 		task.delay(impactMaxWait(track), function()
 			if guard.knockTarget == player then
@@ -1520,6 +1548,7 @@ local function catch(guard: Guard, player: Player)
 		end)
 	else
 		knockback(player, guard.root.Position)
+		sendHomeLater(player)
 	end
 
 	-- Colis, étourdissement, message : décidés ici, au moment de la capture, dans leur propre tâche
@@ -1823,7 +1852,7 @@ local function chaseStep(guard: Guard, now: number)
 			giveUp(guard, driver.GiveUpReason or "ne porte plus le colis du camion")
 			return
 		end
-	elseif not CarryService.IsCarrying(player) then
+	elseif not guard.intruder and not CarryService.IsCarrying(player) then
 		giveUp(guard, "ne porte plus de colis")
 		return
 	end
@@ -2255,7 +2284,7 @@ local function update(guard: Guard, now: number)
 			elseif now >= guard.stateEndsAt then
 				startChase(guard, now)
 			end
-		elseif player == nil or root == nil or not CarryService.IsCarrying(player) then
+		elseif player == nil or root == nil or (not guard.intruder and not CarryService.IsCarrying(player)) then
 			giveUp(guard, "portage fini avant le départ")
 		elseif now >= guard.stateEndsAt then
 			startChase(guard, now)
@@ -2379,7 +2408,7 @@ local function spawnSpot(store: Model): CFrame
 end
 
 -- Crée le vigile du voleur `player` dans le magasin `store`. N'attend pas.
-local function spawnGuard(player: Player, store: Model, zone: number, template: Model, label: string)
+local function spawnGuard(player: Player, store: Model, zone: number, template: Model, label: string, intruder: boolean?)
 	if chasedBy[player] ~= nil then
 		return -- un vigile par voleur (Balance.Guard.PerThief)
 	end
@@ -2447,6 +2476,7 @@ local function spawnGuard(player: Player, store: Model, zone: number, template: 
 		state = "Wait",
 		spawnedAt = now,
 		owner = player,
+		intruder = intruder == true,
 		nextAimAt = now,
 		patrol = {},
 		patrolIndex = 1,
@@ -2927,6 +2957,9 @@ local function onCarryStarted(player: Player, payload: any)
 	if type(payload.StoreId) == "string" and string.sub(payload.StoreId, 1, 6) == "Truck_" then
 		return -- colis du camion (TruckEventService, StoreId « Truck_<n> ») : pas de magasin, pas de vigile
 	end
+	if payload.Kind == "NPCItem" then
+		return -- L-118 : plus de vigile à la prise ; il sort à la fin du chrono (ChaseIntruder, StoreHeistService)
+	end
 	-- Hors de l'appel de CarryService : le rig de remplacement peut demander d'attendre.
 	task.spawn(function()
 		local storeId = payload.StoreId
@@ -3071,6 +3104,35 @@ end
 
 function GuardService.IsNightChased(player: Player): boolean
 	return nightChasedBy[player] ~= nil
+end
+
+function GuardService.ChaseIntruder(player: Player, store: Model): boolean
+	local body = bodyOf(player)
+	if player.Parent ~= Players or body == nil or isInSafeZone(body.Position) or chasedBy[player] ~= nil then
+		return false
+	end
+	local zone = store:GetAttribute("Zone")
+	if type(zone) ~= "number" or Zones[zone] == nil then
+		warn(`[GuardService] {store:GetFullName()} : attribut Zone invalide ({zone}), pas de vigile pour {player.Name}`)
+		return false
+	end
+	local template = findTemplate(zone)
+	if template and not isUsable(template) then
+		template = nil
+	end
+	local label = if template then template:GetFullName() else FALLBACK_NAME
+	if template == nil then
+		template = getFallback() -- peut attendre
+	end
+	if template == nil or player.Parent ~= Players then
+		return false
+	end
+	local ok, err = pcall(spawnGuard :: any, player, store, zone, template, label, true)
+	if not ok then
+		warn(`[GuardService] vigile de l'intrus {player.Name} non créé : {err}`)
+		return false
+	end
+	return chasedBy[player] ~= nil
 end
 
 function GuardService.StartDriverChase(chase: DriverChase): Model?

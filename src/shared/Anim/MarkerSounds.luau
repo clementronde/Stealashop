@@ -40,7 +40,7 @@ MarkerSounds.Player = {
 	{ Anim = "HitWindowHeavy", Marker = "Impact", Sound = "HitWindowHeavy_Impact" },
 	{ Anim = "Grab", Marker = "Grab", Sound = "Grab_Grab" },
 	{ Anim = "Place", Marker = "Release", Sound = "Place_Release" },
-	{ Anim = "BenchLift", Marker = "Top", Sound = "BenchLift_Top" },
+	-- BenchLift/Top : plus de son (L-118 point 7, Clément : rien ne sonne à l'entraînement).
 	{ Anim = "Unbox", Marker = "Open", Sound = "Unbox_Open" },
 	{ Anim = "SwingBat", Marker = "Impact", Sound = "SwingBat_Impact" },
 	{ Anim = "Knockback", Marker = "Land", Sound = "Knockback_Land" },

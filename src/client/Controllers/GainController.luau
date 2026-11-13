@@ -8,8 +8,7 @@
 --     puis détruite. Source : les attributs Speed (points d'entraînement) et Strength du Player, posés
 --     par StatsService, quand ils montent pendant que l'attribut TrainingMachine vaut « Treadmill » ou
 --     « Bench » (TrainingService). Gains rapprochés : un BB_Gain au plus par FloatGain.MinGap s, les
---     gains entre deux s'additionnent dans le suivant. Avec chacun, le son Train_Gain (vague 26,
---     UiMotion.Sounds.TrainGain, par Motion.PlaySound).
+--     gains entre deux s'additionnent dans le suivant. Sans son (Train_Gain retiré, L-118 point 7).
 --   - Argent : quand l'attribut Cash du Player monte (DataService), Cash est retenu au HUD
 --     (HudController.HoldCash) et le gain est classé à la fin de l'image (task.defer) :
 --       * ramassage : l'attribut CashCollected du Player (DisplayService, il ne fait que monter) est
@@ -307,12 +306,7 @@ local function showGain(kind: Kind, amount: number)
 		current.pending = 0
 		current.lastAt = os.clock()
 		if total > 0 then
-			floatGain(kind, total)
-			if kind ~= CASH then
-				-- Vague 26 (L-097 point 8) : Train_Gain avec chaque gain d'entraînement affiché (au plus un
-				-- par FloatGain.MinGap s, comme les BB_Gain).
-				Motion.PlaySound(UiMotion.Sounds.TrainGain)
-			end
+			floatGain(kind, total) -- sans son : Train_Gain retiré (L-118 point 7)
 		end
 	end
 	local wait = current.lastAt + (if kind == CASH then FLOAT.CashMinGap else FLOAT.MinGap) - os.clock()
@@ -543,6 +537,9 @@ local function classify()
 		-- et un ramassage, des gains hors ligne réclamés ou une récompense montrent « +$X » au-dessus du joueur.
 		releaseAll(releases)
 		bump(hudRefs())
+		if fromPad then
+			Motion.PlaySound(FLY.Sound) -- L-117 point 4 : Cash_Collect à chaque ramassage, même sans case
+		end
 		if fromPad or screenOpen(offline) or screenOpen(rewards) then
 			showGain(CASH, total)
 		end

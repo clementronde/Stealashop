@@ -25,7 +25,8 @@
 --      DisplayItem posés par DisplayService ; même rareté : le plus gros revenu) : Rarity (DisplayNameUpper,
 --      couleur de la rareté), ItemName (Items.DisplayName). Odds caché : la chance du tirage n'est pas
 --      gardée avec l'objet. Title est le texte de Clément. Rays tourne, CrownIcon se balance (V0). Chaque
---      client la pose : tous les joueurs la voient. Aucun objet exposé : pas de billboard.
+--      client la pose : tous les joueurs la voient. Aucun objet exposé : pas de billboard. L-118 point 6 :
+--      l'objet lui-même aussi, une copie (RarestItem) posée sur l'Attachment RarestSlot du socle.
 -- VISUAL EFFECTS sur OFF (Settings.VfxReduced) : billets et pièces coupés, particules et lumière de la
 -- victoire et du camion × Vfx.OffEmitFactor (0 : rien). Le contour du vigile et BB_Rarest restent.
 -- Un modèle de Clément absent : rien (une ligne en Studio, une fois).
@@ -74,6 +75,8 @@ type RarestEntry = {
 	RaysBase: number,
 	Crown: GuiObject?,
 	CrownBase: number,
+	Item: Model?, -- copie de l'objet le plus rare sur RarestSlot (L-118 point 6)
+	ItemUid: string?,
 }
 
 export type State = {
@@ -461,7 +464,7 @@ local function labelPoint(plot: Instance): Attachment?
 	return nil
 end
 
-type Best = { ItemId: string, Rarity: any, Income: number, Uid: string }
+type Best = { ItemId: string, Rarity: any, Income: number, Uid: string, Source: Instance }
 
 -- L'objet exposé le plus rare de la parcelle (même rareté : le plus gros revenu), ou nil.
 local function bestOf(plot: Instance): Best?
@@ -483,6 +486,7 @@ local function bestOf(plot: Instance): Best?
 			Rarity = rarity,
 			Income = if type(income) == "number" then income else 0,
 			Uid = if type(uid) == "string" then uid else child.Name,
+			Source = child,
 		}
 		local current = best
 		if
@@ -501,7 +505,52 @@ local function removeRarest(plot: Instance)
 	if entry then
 		rarest[plot] = nil
 		entry.Gui:Destroy()
+		if entry.Item then
+			entry.Item:Destroy()
+		end
 	end
+end
+
+-- L-118 point 6 (Clément) : une copie de l'objet exposé le plus rare, pivot (bas au centre) sur l'Attachment
+-- RarestSlot du socle, tournée comme sur son présentoir. Copie locale, comme BB_Rarest : sans billboard,
+-- invite, script ni tag (les autres contrôleurs ne la prennent pas pour un objet exposé), ancrée, sans
+-- collision. Refaite quand l'objet le plus rare change ; pas de RarestSlot : rien.
+local function placeRarestItem(plot: Instance, entry: RarestEntry, best: Best)
+	if entry.Item then
+		entry.Item:Destroy()
+		entry.Item = nil
+	end
+	entry.ItemUid = best.Uid
+	local spec = Vfx.Rarest
+	local pedestal = plot:FindFirstChild(spec.Pedestal, true)
+	local slot = if pedestal then pedestal:FindFirstChild(spec.Slot, true) else nil
+	local source = best.Source
+	if pedestal == nil or slot == nil or not slot:IsA("Attachment") or not source:IsA("Model") then
+		return
+	end
+	local copy = source:Clone()
+	for _, inst in copy:GetDescendants() do
+		if inst:IsA("BillboardGui") or inst:IsA("ProximityPrompt") or inst:IsA("LuaSourceContainer") or inst:IsA("ClickDetector") then
+			inst:Destroy()
+			continue
+		end
+		for _, tag in inst:GetTags() do
+			inst:RemoveTag(tag)
+		end
+		if inst:IsA("BasePart") then
+			inst.Anchored = true
+			inst.CanCollide = false
+			inst.CanQuery = false
+			inst.CanTouch = false
+		end
+	end
+	for _, tag in copy:GetTags() do
+		copy:RemoveTag(tag)
+	end
+	copy.Name = spec.ItemName
+	copy:PivotTo(CFrame.new((slot :: Attachment).WorldPosition) * source:GetPivot().Rotation)
+	copy.Parent = pedestal
+	entry.Item = copy
 end
 
 local function textOf(gui: Instance, name: string): TextLabel?
@@ -576,6 +625,10 @@ local function refreshRarest()
 			if odds then
 				odds.Visible = false
 			end
+		end
+		local item = current.Item
+		if current.ItemUid ~= chosen.Uid or (item ~= nil and item.Parent == nil) then
+			placeRarestItem(plot, current, chosen)
 		end
 	end
 	for plot in rarest do

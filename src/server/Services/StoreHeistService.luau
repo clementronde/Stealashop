@@ -145,8 +145,24 @@
 -- ne se porte plus fermé : on l'ouvre sur son rayon, on voit l'objet, et c'est l'objet qu'on vole. À
 -- false, tout ce qui précède reste tel quel (ancien déroulé, gardé en secours) et rien de ce qui suit
 -- n'existe.
+--   - Règle du braquage (Clément, L-118 points 8 et 9, 2026-11-13 ; remplace le chrono de 10 s après la
+--     casse) : (a) pendant la casse, vitrine pas cassée avant que le « ? » des témoins soit plein : la
+--     police vient (WitnessService), et elle renvoie à la base. (b) Le chrono du vigile part au PREMIER
+--     coup sur la vitrine (Balance.Window.BreakTimer, WindowService : BreakInfo.ChronoEndsAt) et continue
+--     après la casse ; il est montré à chaque intrus (entré dans Bounds pendant cette ouverture : Entered),
+--     dedans ou dehors, objet ou non. Entre la casse et la fin du chrono, tout le monde peut entrer. À la
+--     fin du chrono (chronoEnd) : GuardService.ChaseIntruder pour chaque intrus (ceux du magasin d'abord),
+--     même sans objet ; personne n'est sorti, ceux qui sont dedans continuent d'ouvrir et de prendre ;
+--     celui qui n'y était pas n'entre plus (sorti devant la vitrine, MESSAGES.Closed). Plus de vigile à la
+--     prise. (c) Dès qu'un intrus sort de Bounds, avec ou sans objet, le magasin est fermé pour lui (Closed :
+--     rideau local baissé, sorti s'il revient) jusqu'à la réouverture (vitrine reconstruite), plus jusqu'au
+--     départ de son vigile. Le magasin se ferme (closeStore, vrai rideau) quand le chrono est fini, que
+--     plus personne n'est dans Bounds et qu'aucune ouverture ni réservation n'est en cours ; la vitrine est
+--     reconstruite Balance.Window.RebuildDelay s après au plus tôt (point d'attente de WindowService, qui
+--     reconstruit de toute façon au bout de son attente maximale, en sortant ceux qui y seraient encore).
+--     Les témoins ne montent plus pendant l'ouverture (ils fuient à la casse, L-118 point 10).
 --   - Lancement : OpenShelfBox(slotId), un seul appel, sans maintien. Vérifié ici (9.4) : magasin
---     ouvert (chrono en cours : après lui, plus aucune ouverture ne se lance), colis posé, fermé et pas
+--     ouvert (fermé seulement quand plus personne n'y est, voir plus haut), colis posé, fermé et pas
 --     déjà en cours d'ouverture, avance du casseur, magasin pas fermé pour lui, mains vides, joueur
 --     vivant dans le volume Bounds et à GrabMaxDistance au plus, anti-triche ; puis, si un témoin du
 --     magasin appelle la police (WitnessService.IsCalling) : refus avec le Notify « Witnesses are calling
@@ -157,7 +173,7 @@
 --     ShelfOpenState.revealDelay(chance)) puis ShelfOpenState = "Opening" : chaque client calcule le
 --     compteur « ×N LUCK » sans flux réseau. Une fois lancée, l'ouverture va au bout seule : le joueur
 --     peut bouger, sortir, partir.
---   - Témoins : WitnessService.Raise(magasin, ouvreur) au lancement ; WitnessService.Calm(magasin)
+--   - Témoins : plus de WitnessService.Raise au lancement (L-118) ; WitnessService.Calm(magasin)
 --     seulement quand la DERNIÈRE ouverture en cours dans ce magasin est finie (Calm vide le « ? » de
 --     tous les témoins du magasin : un joueur qui finit ne vide pas la jauge d'un autre qui ouvre encore).
 --     Police appelée pour ce magasin pendant la montée (WitnessService.OnCall) : ShelfRevealAt de chaque
@@ -188,15 +204,11 @@
 --   - Prise de l'objet : GrabItem(slotId), deux appels comme avant (maintien du Tier du colis d'origine).
 --     Avant ShelfReservedUntil, seul l'ouvreur ; ensuite tout joueur dans le magasin. Mêmes contrôles
 --     que pour un colis (Bounds, distance, mains vides, magasin pas fermé pour lui). Le portage est un
---     NPCItemPayload (CarryService : l'objet visible sur la tête, halo, BB_Carry) ; le vigile du magasin
---     part à la prise (GuardService) et le magasin se ferme pour ce voleur, comme pour un colis.
---   - Chrono de 10 s et rideau (V0, précision de l'équilibrage : un tirage ×5 à ×10 monte 6 à 8,4 s, il
---     ne pourrait jamais être pris sinon ; même esprit que L-064) : la fin du chrono ferme le magasin
---     (plus aucune ouverture ne se lance, plus de prise pour les autres), mais une ouverture lancée va
---     au bout et son objet reste réservé ShelfOpen.ReserveTime s. Tant qu'une ouverture est en cours
---     dans ce magasin ou que la réservation d'un objet sorti (ShelfReservedUntil) n'est pas passée : le
---     rideau ne tombe pas, l'ouvreur n'est pas sorti du magasin, et il peut encore prendre SON objet
---     (magasin fermé compris). Ensuite le rideau tombe comme avant (L-064 : porteurs et vigiles sortis).
+--     NPCItemPayload (CarryService : l'objet visible sur la tête, halo, BB_Carry) ; le vigile ne part
+--     plus à la prise (L-118 : il sort à la fin du chrono), le magasin se ferme pour lui quand il sort.
+--   - Rideau : tant qu'une ouverture est en cours dans ce magasin ou que la réservation d'un objet sorti
+--     (ShelfReservedUntil) n'est pas passée, le magasin ne se ferme pas ; une fois fermé, le rideau tombe
+--     comme avant (L-064 : porteurs et vigiles sortis).
 --   - Objet sorti que personne n'a pris : il reste sur son rayon, libre pour tous, visible au prochain
 --     braquage de ce magasin, jusqu'au prochain remplissage (nuit).
 --   - Nuit (RefillAll) : comme un magasin ouvert, un magasin où une ouverture est en cours ou un objet
@@ -435,6 +447,10 @@ type Store = {
 	RefillPending: boolean, -- RefillAll pendant le chrono : nouveau tirage à la fermeture
 	Locked: { [Player]: LockState }, -- fermé pour ces voleurs seulement (voir l'en-tête)
 	CurtainHeld: boolean, -- un vigile y est (ou va y entrer) : rideaux locaux levés (voir l'en-tête)
+	-- Règle du braquage de Clément (L-118 points 8 et 9, Features.ShelfOpen ; voir l'en-tête) :
+	Entered: { [Player]: boolean }, -- entrés dans Bounds pendant cette ouverture (les intrus)
+	ChronoOver: boolean, -- chrono du vigile fini : les vigiles sont sortis
+	ClosedAt: number, -- os.clock() de la dernière fermeture (reconstruction RebuildDelay s après au plus tôt)
 }
 
 -- Leaving : vient de prendre un colis, encore dans Bounds avec lui ; Closed : fermé pour lui, rideau
@@ -596,6 +612,8 @@ local lastRefusal: { [Player]: number } = {}
 local lastGreedy: { [Player]: number } = {} -- dernier message « un seul braquage à la fois »
 -- GuardService.GetReturningGuards, s'il existe (require protégé dans Init, comme OnGuardGone).
 local returningGuards: ((store: Model) -> { BasePart })? = nil
+-- GuardService.ChaseIntruder, s'il existe (Init) : le vigile sort à la fin du chrono (L-118).
+local chaseIntruder: ((player: Player, store: Model) -> boolean)? = nil
 local templates: { [string]: Instance } = {} -- BOX_<Rareté> ou BOX_<Tier> trouvé, par nom
 local templateSearched: { [string]: boolean } = {} -- cherché une fois par nom, trouvé ou non
 local noticed: { [string]: boolean } = {}
@@ -1645,7 +1663,9 @@ end
 local function updateViewers(store: Store)
 	local center = if store.Bounds then store.Bounds.Position else store.Model:GetPivot().Position
 	for _, player in Players:GetPlayers() do
-		if isCarrying(player) or store.Locked[player] ~= nil then
+		if SHELF_OPEN and store.Entered[player] then
+			showTimer(store, player) -- L-118 : le vigile viendra pour lui à la fin, dedans ou dehors, objet ou non
+		elseif isCarrying(player) or store.Locked[player] ~= nil then
 			hideTimer(store, player)
 		elseif not store.Viewers[player] then
 			local root = rootOf(player)
@@ -1687,6 +1707,7 @@ local function closeStore(store: Store)
 	store.Open = false
 	store.Token += 1
 	store.Breaker = nil
+	store.ClosedAt = os.clock()
 	setHeistAttributes(store)
 	-- Maintiens annulés, sauf celui d'un ouvreur sur son objet encore réservé (L-112) ; dans l'ancien
 	-- déroulé, tous (magasin fermé = prise refusée).
@@ -1715,17 +1736,102 @@ local function closeStore(store: Store)
 	end
 end
 
-local function openStore(store: Store, breaker: Player?)
+-- Fin du chrono du vigile (L-118 points 8 et 9) : le vigile sort et poursuit chaque intrus, même sans objet
+-- (ceux du magasin d'abord, puis les autres ; plafonds de GuardService) ; personne n'est sorti du magasin.
+local function chronoEnd(store: Store)
+	store.ChronoOver = true
+	for player in table.clone(store.Viewers) do
+		hideTimer(store, player)
+	end
+	local inStore: { Player } = {}
+	local outside: { Player } = {}
+	local bounds = store.Bounds
+	for player in store.Entered do
+		local root = rootOf(player)
+		if player.Parent == Players and root then
+			table.insert(if bounds and inside(bounds, root.Position) then inStore else outside, player)
+		end
+	end
+	local sent = 0
+	local chase = chaseIntruder
+	if chase then
+		for _, list in { inStore, outside } do
+			for _, player in list do
+				local ok, started = pcall(chase, player, store.Model)
+				if ok and started == true then
+					sent += 1
+				elseif not ok then
+					warn(`[StoreHeistService] GuardService.ChaseIntruder({player.Name}) : {started}`)
+				end
+			end
+		end
+	end
+	log(`{store.Id} : fin du chrono, {sent} vigile(s) sorti(s) pour {#inStore + #outside} intrus ({#inStore} dans le magasin)`)
+end
+
+-- Entrées et sorties (L-118 point 8 c) : entré pendant l'ouverture, un joueur reste libre dans le magasin,
+-- même après le chrono ; dès qu'il en sort, le rideau tombe pour lui (Closed) jusqu'à la réouverture.
+-- Après le chrono, celui qui n'y était pas n'entre plus : il est sorti devant la vitrine.
+local function stepEntries(store: Store)
+	local bounds = store.Bounds
+	if bounds == nil then
+		return
+	end
+	for _, player in Players:GetPlayers() do
+		if store.Locked[player] ~= nil then
+			continue -- stepLocks le sort s'il revient
+		end
+		local root, humanoid = rootOf(player)
+		if root and inside(bounds, root.Position) then
+			if store.Entered[player] then
+				continue
+			end
+			if not store.ChronoOver then
+				store.Entered[player] = true
+				log(`{player.Name} entre dans {store.Id}`)
+			elseif humanoid then
+				moveOut(store, player, root, humanoid)
+				Net.Server.Notify:Fire(player, MESSAGES.Closed, "Warning")
+			end
+		elseif store.Entered[player] then
+			store.Locked[player] = "Closed"
+			publishClosed(player)
+			log(`{player.Name} sorti de {store.Id} : rideau baissé pour lui jusqu'à la réouverture`)
+		end
+	end
+end
+
+-- Un joueur vivant est-il dans le volume Bounds du magasin ?
+local function anyoneInside(store: Store): boolean
+	local bounds = store.Bounds
+	if bounds == nil then
+		return false
+	end
+	for _, player in Players:GetPlayers() do
+		local root = rootOf(player)
+		if root and inside(bounds, root.Position) then
+			return true
+		end
+	end
+	return false
+end
+
+-- `endsAt` (L-118 point 9, Features.ShelfOpen) : fin du chrono du vigile lancé au premier coup sur la
+-- vitrine (WindowService) ; sans lui, Balance.Heist.Duration s à partir de maintenant.
+local function openStore(store: Store, breaker: Player?, endsAt: number?)
 	if store.Open then
 		return
 	end
-	local duration = Balance.Heist.Duration
+	local now = Workspace:GetServerTimeNow()
+	local duration = if SHELF_OPEN and endsAt then math.max(endsAt - now, 0) else Balance.Heist.Duration
 	store.Open = true
 	store.Token += 1
 	local token = store.Token
 	store.Breaker = if breaker and breaker.Parent == Players then breaker else nil
 	store.ExclusiveUntil = os.clock() + Balance.Heist.BreakerHeadStart
-	store.EndsAt = Workspace:GetServerTimeNow() + duration
+	store.EndsAt = now + duration
+	store.Entered = {}
+	store.ChronoOver = false
 	store.ShutterPending = false
 	raiseShutter(store, true) -- au cas où il serait resté baissé
 	setHeistAttributes(store)
@@ -1736,11 +1842,15 @@ local function openStore(store: Store, breaker: Player?)
 	updateViewers(store)
 	task.delay(duration, function()
 		if store.Token == token and stores[store.Model] == store then
-			closeStore(store)
+			if SHELF_OPEN then
+				chronoEnd(store) -- L-118 : le magasin reste ouvert pour ceux qui y sont
+			else
+				closeStore(store)
+			end
 		end
 	end)
 	log(
-		`{store.Id} ouvert pour {duration} s par {if first then first.Name else "?"} ({Balance.Heist.BreakerHeadStart} s d'avance pour lui)`
+		`{store.Id} ouvert, chrono du vigile {math.round(duration * 10) / 10} s, par {if first then first.Name else "?"} ({Balance.Heist.BreakerHeadStart} s d'avance pour lui)`
 	)
 end
 
@@ -1974,8 +2084,7 @@ local function grantItem(player: Player, slot: Slot)
 		return
 	end
 	discardItem(item)
-	hideTimer(store, player)
-	lockFor(store, player)
+	-- L-118 : il garde le chrono (le vigile sortira aussi pour lui) ; fermé pour lui quand il sort (stepEntries).
 	local mutation = Mutations.Label(content.Mutation)
 	log(`{player.Name} prend l'objet sorti {slot.Name} de {store.Id} : {content.Rarity} ({content.ItemId}){if mutation then ", " .. mutation else ""}, chance ×{info.Luck}`)
 end
@@ -2153,13 +2262,7 @@ local function startOpening(player: Player, slot: Slot, box: ShelfBox)
 	model:SetAttribute(ShelfOpenState.LuckAttribute, luck)
 	model:SetAttribute(ShelfOpenState.RevealAtAttribute, openAt + delay)
 	model:SetAttribute(ShelfOpenState.StateAttribute, "Opening") -- en dernier : les autres sont déjà lisibles
-	local api = witnessApi
-	if api then
-		local ok, err = pcall(api.Raise, store.Model, player, nil)
-		if not ok then
-			warn(`[StoreHeistService] WitnessService.Raise({store.Id}) : {err}`)
-		end
-	end
+	-- L-118 : plus de témoins pendant l'ouverture (ils ont fui à la casse) ; seul le vigile compte, à la fin du chrono.
 	task.delay(delay, function()
 		if box.Opening == opening then
 			reveal(slot, box, luck)
@@ -2486,6 +2589,9 @@ local function register(instance: Instance)
 		RefillPending = false,
 		Locked = {},
 		CurtainHeld = false,
+		Entered = {},
+		ChronoOver = false,
+		ClosedAt = 0,
 	}
 	if store.Bounds == nil then
 		warn(`[StoreHeistService] {model:GetFullName()} : pas de volume « {BOUNDS_NAME} » (Part), aucune prise possible`)
@@ -2592,7 +2698,15 @@ local function step()
 	end
 	for _, store in stores do
 		stepLocks(store)
-		if store.Open then
+		if store.Open and SHELF_OPEN then
+			-- L-118 : fermé quand le chrono est fini et que plus personne n'est dedans (ouvertures finies).
+			stepEntries(store)
+			if not store.ChronoOver then
+				updateViewers(store)
+			elseif not anyoneInside(store) and not storeBusy(store) then
+				closeStore(store)
+			end
+		elseif store.Open then
 			updateViewers(store)
 		else
 			for _, player in ejectInside(store, false) do
@@ -2617,14 +2731,15 @@ local function onBroken(info: WindowService.BreakInfo)
 	if store == nil then
 		return
 	end
-	openStore(store, info.Breaker)
+	openStore(store, info.Breaker, info.ChronoEndsAt)
 end
 
 -- Un seul braquage à la fois (voir l'en-tête) : le magasin du braquage en cours de `player` qui
 -- n'est pas `target`, ou nil (pas de braquage en cours, ou seulement dans `target`).
 local function otherHeist(player: Player, target: Store): string?
 	for _, store in stores do
-		if store ~= target and store.Open and store.Breaker == player then
+		-- L-118 : sorti du magasin (fermé pour lui), son braquage là-bas est fini, sauf l'objet qu'il porte.
+		if store ~= target and store.Open and store.Breaker == player and not (SHELF_OPEN and store.Locked[player]) then
 			return store.Id
 		end
 	end
@@ -2752,6 +2867,7 @@ function StoreHeistService.Init()
 		for _, store in stores do
 			store.Viewers[player] = nil
 			store.Locked[player] = nil
+			store.Entered[player] = nil
 		end
 	end)
 	-- Le vigile apparu pour un vol est parti : le magasin se rouvre pour ce voleur. require protégé :
@@ -2759,14 +2875,32 @@ function StoreHeistService.Init()
 	local okGuard, guardApi = pcall(function(): any
 		return require(script.Parent.GuardService) :: any
 	end)
-	local onGone: any = if okGuard and type(guardApi) == "table" then guardApi.OnGuardGone else nil
+	-- L-118 (Features.ShelfOpen) : fermé pour lui jusqu'à la réouverture seulement, et le vigile sort à la
+	-- fin du chrono (ChaseIntruder), plus à la prise.
+	local onGone: any = if okGuard and type(guardApi) == "table" and not SHELF_OPEN then guardApi.OnGuardGone else nil
+	local chase: any = if okGuard and type(guardApi) == "table" then guardApi.ChaseIntruder else nil
+	if type(chase) == "function" then
+		chaseIntruder = chase
+	elseif SHELF_OPEN then
+		log("GuardService.ChaseIntruder indisponible : aucun vigile à la fin du chrono")
+	end
+	if SHELF_OPEN then
+		-- La vitrine n'est reconstruite qu'une fois le magasin fermé, et RebuildDelay s après au plus tôt.
+		local addGate: any = (WindowService :: any).AddRebuildGate
+		if addGate ~= nil then
+			(addGate :: any)(function(_windowId: string, model: Model?): boolean
+				local store = if model then stores[model] else nil
+				return store == nil or (not store.Open and os.clock() >= store.ClosedAt + Balance.Window.RebuildDelay)
+			end)
+		end
+	end
 	local subscribed = onGone ~= nil and pcall(onGone, function(thief: Player, model: Model)
 		local store = stores[model]
 		if store then
 			unlock(store, thief, "son vigile est rentré")
 		end
 	end)
-	if not subscribed then
+	if not subscribed and not SHELF_OPEN then
 		log("GuardService.OnGuardGone indisponible : un magasin reste fermé pour son voleur jusqu'à sa réouverture")
 	end
 	-- a70 : vigiles qui rentrent vers la réserve, pour lever le rideau local avant leur arrivée.

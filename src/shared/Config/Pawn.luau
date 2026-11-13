@@ -14,7 +14,7 @@ local Pawn = {
 	PriceFactor = 120,
 	-- Note ui-pawnshop.md, point 6 : confirmation « Deal? » pour l'objet tenu de cette rareté ou plus
 	-- (Config/Rarities, Order) ; « tout vendre » se confirme toujours (proposition de la note, V0).
-	ConfirmFrom = "Common", -- Ironix (2026-11-12) : un objet n'est jamais tenu en main (le « tenu » est le dernier obtenu, choix d'a95) : toute vente se confirme tant que Clément n'a pas tranché (L-114)
+	ConfirmFrom = "Common", -- Clément (L-117 point 1) : chaque vente se confirme
 	-- V0 proposé, absent du doc : distance (studs) acceptée par le serveur entre le HumanoidRootPart et la plaque
 	-- ShopPad du stand (ShopService : 20 autour des comptoirs ; la plaque fait quelques studs, marge pour la
 	-- gigue réseau).

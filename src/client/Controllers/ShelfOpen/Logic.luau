@@ -82,8 +82,8 @@ function Logic.stopAt(openAt: number, luck: number, revealAt: number?): number
 	return revealAt or (openAt + ShelfOpenState.revealDelay(luck))
 end
 
--- Marge des calculs de tic : à ShelfRevealAt pile, (temps / LuckTick) tombe parfois juste sous l'entier
--- (2,4 / 0,1 = 23,999…) et luckAt rendrait un tic de moins que la chance tirée.
+-- Marge des calculs de tic : à ShelfRevealAt pile, le nombre de tics tombe parfois juste sous l'entier
+-- (23,999…) et luckAt rendrait un tic de moins que la chance tirée.
 local EPSILON = 1e-6
 
 -- Chance affichée à `now` : ShelfOpenState.luckAt, figée à ShelfRevealAt (police appelée : arrêtée là).
@@ -97,7 +97,7 @@ function Logic.tickIndex(openAt: number, luck: number, revealAt: number?, now: n
 	if not (t > 0) then
 		return 0
 	end
-	return math.min(math.floor(t / ShelfOpen.LuckTick), ShelfOpenState.ticksTo(luck))
+	return math.floor(ShelfOpenState.tickProgress(luck, t))
 end
 
 -- Part de la montée (k, 0 sans chance, 1 à la plus forte chance de la table), en échelle log : chaque tic

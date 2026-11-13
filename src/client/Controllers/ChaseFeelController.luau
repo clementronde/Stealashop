@@ -4,8 +4,8 @@
 -- valeurs : Config/ChaseFeel, reprises de la note et du prototype tools/clement/feel2_proto.luau).
 --
 -- Suit ChaseController (IsChased, GetGuard, d'après le remote ChaseState de GuardService) à chaque image :
---   1. au départ, espacés (vague 24) : Heist_Grab, Chase_Whistle WhistleDelay s après, Chase_Siren en
---      boucle SirenDelay s après (copies en 2D dans SoundService, chez ce joueur seulement). MUS_Chase et
+--   1. au départ, espacés (vague 24) : Heist_Grab, Chase_Whistle WhistleDelay s après (sons 2D, chez ce
+--      joueur seulement ; plus de Chase_Siren, retirée à la demande de Clément, L-117 point 5). MUS_Chase et
 --      la musique de zone baissée : MusicController (fondu enchaîné), qui fait monter MUS_Chase
 --      ChaseFeel.MusicDelay s après le départ, de ChaseFeel.MusicStartAt ;
 --   2. bulle du vigile : une copie de ReplicatedStorage/Assets/UI/BB_GuardShout posée sur la tête du
@@ -18,17 +18,15 @@
 --   3. UI_HUD.LeftRail et UI_HUD.LeftRailTouch (Visible ; ChaseFeel.Rails) et la barre du bas UI_Hotbar
 --      (Enabled) cachées pendant la poursuite, revues toutes les BarsRefresh s (copie neuve d'un
 --      écran), puis remises dans l'état où elles étaient au départ.
--- À la fin de la poursuite : la sirène descend en SirenFadeOut s puis est détruite, la bulle est
--- détruite, les barres reviennent. Un son ou BB_GuardShout absent : rien (une ligne en Studio, une fois).
+-- À la fin de la poursuite : la bulle est détruite, les barres reviennent. Un son ou BB_GuardShout absent : rien (une ligne en Studio, une fois).
 -- Rien n'est envoyé au serveur. Ne touche ni aux écrans de StarterGui ni aux modèles de Clément.
 --
 -- API (client, pour un test dans Studio) :
---   ChaseFeelController.GetState() -> { Active, Siren, Bubble, Shouts }
+--   ChaseFeelController.GetState() -> { Active, Bubble, Shouts }
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
-local SoundService = game:GetService("SoundService")
 local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
 
@@ -44,7 +42,6 @@ type ChaseApi = {
 
 export type State = {
 	Active: boolean,
-	Siren: Sound?,
 	Bubble: BillboardGui?,
 	Shouts: number, -- phrases dites par la bulle actuelle
 }
@@ -57,7 +54,6 @@ local localPlayer = Players.LocalPlayer
 local chase: ChaseApi? = nil
 local active = false
 local chaseToken = 0
-local siren: Sound? = nil
 local bubble: BillboardGui? = nil
 local bubbleToken = 0
 local shouts = 0
@@ -98,33 +94,6 @@ local function playOnce(name: string)
 	end
 end
 
-local function startSiren()
-	local template = soundTemplate(ChaseFeel.Sounds.Siren)
-	if template == nil then
-		return
-	end
-	local copy = template:Clone()
-	copy.Looped = true
-	copy.Parent = SoundService
-	copy:Play()
-	siren = copy
-end
-
-local function stopSiren()
-	local copy = siren
-	siren = nil
-	if copy == nil then
-		return
-	end
-	if ChaseFeel.SirenFadeOut > 0 then
-		tween(copy, ChaseFeel.SirenFadeOut, { Volume = 0 })
-		task.delay(ChaseFeel.SirenFadeOut, function()
-			copy:Destroy()
-		end)
-	else
-		copy:Destroy()
-	end
-end
 
 -- Bulle du vigile ----------------------------------------------------------------------------------------
 
@@ -366,13 +335,6 @@ local function begin()
 			playOnce(ChaseFeel.Sounds.Whistle)
 		end
 	end)
-	stopSiren()
-	task.delay(ChaseFeel.SirenDelay, function()
-		if token == chaseToken and active then
-			stopSiren()
-			startSiren()
-		end
-	end)
 	sinceBars = 0
 	hideBars()
 end
@@ -380,7 +342,6 @@ end
 local function finish()
 	active = false
 	chaseToken += 1
-	stopSiren()
 	destroyBubble()
 	restoreBars()
 end
@@ -410,7 +371,7 @@ end
 -- API -------------------------------------------------------------------------------------------------
 
 function ChaseFeelController.GetState(): State
-	return { Active = active, Siren = siren, Bubble = bubble, Shouts = shouts }
+	return { Active = active, Bubble = bubble, Shouts = shouts }
 end
 
 local function loadChase(): ChaseApi?

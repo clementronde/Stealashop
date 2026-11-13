@@ -37,6 +37,13 @@ local Witness = {
 	MoveRefresh = 2, -- V0 : MoveTo redonné à ce rythme (Humanoid.MoveTo lâche au bout de 8 s)
 	StepInterval = 0.1, -- V0 : cadence de la boucle serveur des témoins
 
+	-- La fuite à la casse (Clément, L-118 point 10 : il a peur, court à l'opposé de la vitrine, puis reprend
+	-- sa balade plus loin ; animation Flee, sinon Walk accélérée) -----------------------------------------
+	FleeSpeed = 16, -- V0 : WalkSpeed pendant la fuite
+	FleeDistance = 30, -- V0 : il court jusqu'à ce point, à l'opposé de la vitrine (studs)…
+	FleeMaxTime = 4, -- V0 : … au plus ce temps…
+	FleeStuckTime = 1, -- V0 : … ou jusqu'à rester ce temps sans avancer d'un stud (un mur)
+
 	-- La police -------------------------------------------------------------------------------------
 	Police = {
 		Template = "NPC_Police", -- Clément : ReplicatedStorage/Assets/Guards/NPC_Police

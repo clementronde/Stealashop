@@ -952,7 +952,7 @@ local function updateOpening(session: Session, serverNow: number, clock: number)
 		local phase: number? = nil
 		if rising and tick > 0 then
 			local t = math.min(serverNow, stop) - session.OpenAt - ShelfOpen.FlapsTime
-			phase = (t % ShelfOpen.LuckTick) / ShelfOpen.LuckTick
+			phase = ShelfOpenState.tickProgress(session.Luck, t) % 1 -- les tics se serrent (L-118 point 4)
 		end
 		factor = Logic.boxScale(k, phase)
 		setBoxScale(session, factor)

@@ -519,7 +519,7 @@ local function x(value)
 end
 
 titre("12. Chance de l'ouverture dans le magasin (L-112)")
-print(`Montée : rabats {ShelfOpen.FlapsTime} s, puis × {ShelfOpen.LuckStep} toutes les {ShelfOpen.LuckTick} s. « ? » : plein en {Witness.FillTime} s depuis le lancement, police {Chance.Hypotheses.MarqueurAppel} s plus tard (marqueur Call). Crans : {ShelfOpen.UpgradeMax} au plus, chacun à {pct(ShelfOpen.UpgradeChance, 0)} × la chance. Chrono du magasin : {Balance.Heist.Duration} s, ouverture lancée {Chance.Hypotheses.Atteinte} s après la casse.`)
+print(`Montée : rabats {ShelfOpen.FlapsTime} s, puis × {ShelfOpen.LuckStep} par tic, en {ShelfOpen.RiseMax} s au plus. « ? » : plein en {Witness.FillTime} s depuis le lancement, police {Chance.Hypotheses.MarqueurAppel} s plus tard (marqueur Call). Crans : {ShelfOpen.UpgradeMax} au plus, chacun à {pct(ShelfOpen.UpgradeChance, 0)} × la chance. Chrono du magasin : {Balance.Heist.Duration} s, ouverture lancée {Chance.Hypotheses.Atteinte} s après la casse.`)
 print("")
 for _, key in { "V0", "Proposee" } do
 	local mode = modes[key]

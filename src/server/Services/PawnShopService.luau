@@ -10,9 +10,9 @@
 -- connu du catalogue, pas au coffre-fort, déjà révélé), sans les objets exposés, revérifiés dans le profil.
 -- Jamais un colis (pas encore ouvert) ni ce qui est porté au-dessus de la tête (colis PNJ, objet volé en cours
 -- de vol : ils ne sont pas dans Items du joueur, ou sont exposés chez la victime).
---   - objet « tenu en main » (V0 proposé, absent du doc : depuis L-079, un objet ne se tient plus en main) : le
---     dernier objet obtenu (Item.At le plus grand ; à égalité, le plus petit uid). Aucun pendant un portage
---     (attribut Carrying du Player, posé par CarryService) ;
+--   - objet « tenu en main » : seulement l'objet dans la main (Clément, L-117 point 1). Depuis L-079, un objet
+--     ne se tient jamais en main (un clic sur sa case le pose) : il n'y en a donc aucun, PawnOffer l'envoie
+--     vide, le vendeur répond Lines.NothingHeld et PawnSellHeld est toujours refusé ; « tout vendre » reste ;
 --   - prix d'un objet : math.floor(Pawn.PriceFactor × $/s), $/s = Formulas.ItemIncome(zone, rareté) ×
 --     Mutations.IncomeMultiplier (même règle que l'inventaire et DisplayService ; zone : celle du catalogue,
 --     sinon celle de l'objet, sinon 1), sans les bonus du joueur.
@@ -66,7 +66,6 @@ local PAWN_TAG = "PawnShop"
 local PAD_NAME = "ShopPad"
 local IGNORED_FOLDERS = { "_INBOX_CLEMENT", "_SHOWROOM_CLEMENT" } -- livraisons, vitrine de Clément : pas en jeu
 local ROOT_PART = "HumanoidRootPart"
-local CARRYING_ATTRIBUTE = "Carrying" -- CarryService : rareté portée, nil sinon
 
 local IS_STUDIO = RunService:IsStudio()
 
@@ -178,25 +177,14 @@ end
 local function computeOffer(player: Player, data: Data): Offer
 	local uids = sellableUids(player, data)
 	local total = 0
-	local held: string? = nil
-	local heldAt = -math.huge
 	for _, uid in uids do
-		local entry = data.Items[uid]
-		total += priceOfEntry(entry) or 0
-		local at = if type(entry.At) == "number" then entry.At else 0
-		if held == nil or at > heldAt or (at == heldAt and uid < (held :: string)) then
-			held = uid
-			heldAt = at
-		end
+		total += priceOfEntry(data.Items[uid]) or 0
 	end
-	if player:GetAttribute(CARRYING_ATTRIBUTE) ~= nil then
-		held = nil -- les mains portent autre chose, qui n'est pas encore à lui
-	end
-	local heldEntry = if held then data.Items[held] else nil
+	-- Aucun objet en main dans ce jeu (L-117 point 1) : rien à vendre « tenu ».
 	return {
-		HeldUid = held,
-		HeldItemId = if heldEntry then heldEntry.Id else nil,
-		HeldPrice = if heldEntry then priceOfEntry(heldEntry) or 0 else 0,
+		HeldUid = nil,
+		HeldItemId = nil,
+		HeldPrice = 0,
 		AllUids = uids,
 		AllPrice = total,
 	}

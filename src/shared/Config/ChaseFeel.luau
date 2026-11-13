@@ -15,14 +15,12 @@ local ChaseFeel = {
 	Sounds = {
 		Grab = "Heist_Grab", -- Note : au départ de la poursuite
 		Whistle = "Chase_Whistle", -- Note : après Heist_Grab (WhistleDelay)
-		Siren = "Chase_Siren", -- Note : en boucle pendant la poursuite
 		Radio = "Guard_Radio", -- Note : une phrase du vigile sur deux, « à essayer »
 	},
 	-- Vague 24 (Play de Cantin du 2026-11-11 : « on dirait un seul bloc de son ») : les sons du départ
 	-- sont espacés pour qu'on distingue chacun. Heist_Grab à 0 s, puis :
 	WhistleDelay = 0.5, -- V0 proposé, absent du doc (la note de Clément disait 0,15 s)
-	SirenDelay = 1.2, -- V0 proposé, absent du doc : Chase_Siren en boucle 1,2 s après Heist_Grab
-	SirenFadeOut = 0.5, -- Proto (stopLoop) : la sirène descend à 0 en 0,5 s, puis est détruite
+	-- Chase_Siren retirée (Clément, L-117 point 5).
 
 	-- Musique de poursuite (MUS_Chase, jouée par MusicController) : elle part de 1,5 s de son début.
 	MusicStartAt = 1.5, -- Note (« Chase_Music (à partir de 1,5 s) »)
