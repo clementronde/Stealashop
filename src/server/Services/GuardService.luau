@@ -158,6 +158,7 @@
 --       portage (mêmes plafonds, même capture, même retour). false : hors jeu, en zone safe, déjà poursuivi
 --       par un vigile de jour, plafond atteint ou magasin sans Zone.
 --   GuardService.IsChased(player) -> boolean
+--   GuardService.IsStunned(player) -> boolean   étourdi par une capture (vigile, police, conducteur, nuit) ; a113
 --   GuardService.GetGuard(player) -> Model?    le vigile qui poursuit ce joueur
 --   GuardService.GetReturningGuards(store) -> { BasePart }
 --       HumanoidRootPart des vigiles de jour de ce magasin (Model) qui rentrent vers sa réserve, à
@@ -3051,6 +3052,11 @@ end
 
 function GuardService.IsChased(player: Player): boolean
 	return chasedBy[player] ~= nil
+end
+
+-- a113 (Cantin, 2026-11-13) : DropService refuse de lâcher le portage pendant cet étourdissement.
+function GuardService.IsStunned(player: Player): boolean
+	return stunTokens[player] ~= nil
 end
 
 function GuardService.GetGuard(player: Player): Model?
