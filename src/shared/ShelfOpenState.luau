@@ -6,6 +6,12 @@
 -- (heure du serveur : Workspace:GetServerTimeNow des deux côtés). Valeurs : Config/ShelfOpen.
 --
 -- Posé par le serveur sur le Model du colis du rayon (tag ShelfBox), jamais enregistré dans la place :
+--   BoxRarity (texte)         rareté de la CAISSE (Id de Config/Rarities), posée à la mise en rayon (vague 32,
+--                             règle de Cantin du 2026-11-13) : son modèle BOX_<Rareté> et la seule ligne
+--                             visible de son étiquette BB_Box. Ce n'est pas la rareté de l'objet : le
+--                             contenu (objet, rareté, mutation, taille) n'existe pas avant la sortie, il est
+--                             tiré à ShelfRevealAt dans Config/ShelfOpen.BoxRarityOdds[BoxRarity], avec la
+--                             chance. Aucun attribut ItemId, Rarity ni Mutation* n'est posé sur un colis.
 --   ShelfOpenState (texte)    absent = fermé ; "Opening" = rabats puis chance qui monte ; "Revealed" = l'objet
 --                             est sorti (le colis disparaît alors, l'objet prend sa place).
 --   ShelfOpenBy (nombre)      UserId de l'ouvreur.
@@ -20,8 +26,8 @@
 --   SlotId (texte)            l'id à renvoyer dans GrabItem, le même que celui du colis (« <StoreId>/03 ») ;
 --   Slot (texte), Tier (texte), Landed (booléen)  comme sur un colis du rayon : nom du ShelfSlot, type du
 --                             colis d'origine (son temps de prise), false tant qu'un objet rendu vole ;
---   ItemId, Rarity (texte)    rareté finale, crans de chance compris ;
---   MutationSize, MutationEffect (texte, absents sans mutation) ;
+--   ItemId, Rarity (texte)    l'objet et sa rareté, tirés à la sortie (table de la caisse et chance) ;
+--   MutationSize, MutationEffect (texte, absents sans mutation) : tirées à la sortie ;
 --   Income (nombre)           $/s de l'objet, pour BB_Item ;
 --   ShelfLuck (nombre)        la chance tirée, recopiée ;
 --   ShelfReservedBy (nombre)  UserId de l'ouvreur ;
@@ -32,6 +38,7 @@ local ShelfOpen = require(script.Parent:WaitForChild("Config"):WaitForChild("She
 local ShelfOpenState = {}
 
 ShelfOpenState.ItemTag = "ShelfItem"
+ShelfOpenState.BoxRarityAttribute = "BoxRarity" -- vague 32 : rareté de la caisse, sur le colis du rayon
 ShelfOpenState.StateAttribute = "ShelfOpenState"
 ShelfOpenState.ByAttribute = "ShelfOpenBy"
 ShelfOpenState.AtAttribute = "ShelfOpenAt"
