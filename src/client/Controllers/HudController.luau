@@ -15,7 +15,8 @@
 --     temps. Piloté par le remote HeistTimer(storeId, endsAt) que HeistController relaie (endsAt
 --     en heure serveur, workspace:GetServerTimeNow() ; 0 = masquer). Plusieurs chronos à la fois
 --     (deux magasins proches) : celui qui finit le plus tard, donc le plus récent.
---   - GuardMeter et son enfant Fill : visibles pendant une poursuite (ChaseController, remote
+--   - GuardMeter et son enfant Fill : CACHÉS depuis le 2026-11-13 (Cantin, SHOW_GUARD_METER). Avant :
+--     visibles pendant une poursuite (ChaseController, remote
 --     ChaseState). Largeur de Fill = proximité du vigile : pleine à la distance de capture
 --     (Balance.Guard.CatchDistance), vide à GiveUpLead studs d'avance (échelle de la jauge seulement :
 --     le vigile n'abandonne plus, vague 23), linéaire entre les deux. Seule la largeur en Scale change.
@@ -209,6 +210,7 @@ local shownSeconds: number? = nil -- secondes affichées par HeistTimer ; nil = 
 -- Couleur d'origine du texte de HeistTimer, gardée pendant qu'il est rouge (clés faibles : écran remplacé).
 local timerColors: { [TextLabel]: Color3 } = setmetatable({}, { __mode = "k" }) :: any
 local chased = false -- GuardMeter affiché
+local SHOW_GUARD_METER = false -- Cantin, 2026-11-13 : jauge de distance au vigile retirée (voir updateGuardMeter)
 local heartbeatOn = false
 local heartbeatSound: Sound? = nil
 local warned: { [string]: boolean } = {}
@@ -431,6 +433,12 @@ local function setFill(current: Hud, fraction: number)
 end
 
 local function updateGuardMeter(current: Hud)
+	-- Cantin, 2026-11-13 : la jauge de distance au vigile n'est plus montrée (elle n'a plus de sens avec la
+	-- règle du braquage de L-118). GuardMeter reste dans l'UI de Clément, caché ; le reste de la
+	-- poursuite (RUN!, battements de cœur, musique) ne change pas.
+	if not SHOW_GUARD_METER then
+		return
+	end
 	local api = chase
 	local active = api ~= nil and api.IsChased()
 	if active ~= chased then
@@ -563,6 +571,9 @@ local function bind(gui: ScreenGui)
 	local heistTimer = element(gui, "HeistTimer", "TextLabel") :: TextLabel?
 	local meter = element(gui, "GuardMeter", "GuiObject") :: GuiObject?
 	local fill = if meter then element(meter, "Fill", "GuiObject") :: GuiObject? else nil
+	if meter and not SHOW_GUARD_METER then
+		meter.Visible = false -- jauge retirée (Cantin, 2026-11-13) : cachée même si Clément la laisse visible
+	end
 
 	for _, gate in GATED do
 		-- Tous les exemplaires (L-099 point 1 : boutons de LeftRail et de LeftRailTouch).
