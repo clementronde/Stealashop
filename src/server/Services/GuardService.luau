@@ -103,11 +103,14 @@
 -- jour, à celui-là), puis au vigile de jour qui poursuit son porteur. Ce vigile s'en occupe jusqu'à ce que
 -- l'objet revole vers son rayon (OnDropExpired, ou échec sans chute) ou soit rangé en base (Consumed) :
 --   - lâché (touche G) ou tombé (batte) : Follow, comme plus haut ;
---   - porteur attrapé (l'objet tombe, CarryService.Fail « Caught ») : le vigile rentre comme toujours
---     (Catch, puis Return), mais reste lié. Repris pendant qu'il est au sol, par n'importe qui (celui qu'il
---     vient d'attraper compris, une fois son étourdissement fini) : ce vigile fait demi-tour (retarget :
+--   - porteur attrapé (l'objet tombe, CarryService.Fail « Caught ») : à la fin de Catch, le vigile garde
+--     l'objet tombé comme après un lâcher (Follow, à l'endroit de la capture ; Cantin, 2026-11-13 : « à chaque
+--     fois qu'un objet est posé au sol, le vigile doit être à côté de lui pour le garder » jusqu'à ce qu'il
+--     revole vers son rayon, puis il rentre). Repris pendant qu'il est au sol, par n'importe qui (celui qu'il
+--     vient d'attraper compris, une fois son étourdissement fini) : ce vigile repart (retarget :
 --     REACTION_DELAY s, puis vitesse de la zone pour le nouveau porteur). Repris pendant Catch : il part à
---     la fin de Catch. Ce demi-tour respecte Balance.Guard.MaxPerStore (il recompte dans les poursuites) ;
+--     la fin de Catch. Rentré ou en fondu quand on le reprend (cas d'un objet qui revole puis…) : demi-tour,
+--     dans la limite de Balance.Guard.MaxPerStore (il recompte dans les poursuites) ;
 --   - vigile déjà parti (rentré, en fondu, mort) ou occupé à poursuivre un autre joueur : un vigile du même
 --     magasin ressort du GuardSpawn pour le nouveau porteur (mêmes plafonds) ; nouveau porteur déjà
 --     poursuivi par un vigile de jour : c'est lui qui devient lié (jamais deux vigiles pour un joueur).
@@ -1185,6 +1188,8 @@ end
 
 -- Défini plus bas (retarget) : le vigile lié repart vers le porteur de son objet.
 local retargetLinked: (guard: Guard, player: Player) -> ()
+-- Défini plus bas (followDrop) : à la fin de Catch, le vigile va garder l'objet tombé à la capture.
+local followAfterCatch: (guard: Guard) -> boolean
 
 local function despawn(guard: Guard, reason: string)
 	if not guard.alive then
@@ -2383,7 +2388,9 @@ local function update(guard: Guard, now: number)
 			local carrier = if state == "Catch" then linkedCarrier(guard) else nil
 			if carrier then
 				retargetLinked(guard, carrier)
-			else
+			elseif not (state == "Catch" and followAfterCatch(guard)) then
+				-- Sinon (Cantin, 2026-11-13) : l'objet tombé à la capture est au sol, il va le garder (Follow).
+				releaseFollow(guard)
 				startReturn(guard, now)
 			end
 		end
@@ -3164,6 +3171,16 @@ local function onCarryEnded(player: Player, payload: any, result: string, reason
 	end
 	local guard = chasedBy[player]
 	if guard == nil then
+		-- Cantin, 2026-11-13 : porteur attrapé (le vigile lié joue Catch, sa poursuite est déjà finie) : il
+		-- retient l'endroit où l'objet tombe et ira le garder à la fin de Catch (followAfterCatch).
+		local linked = if dropped and link then link.guard else nil
+		if linked and linked.alive and linked.state == "Catch" then
+			releaseFollow(linked)
+			local root = bodyOf(player)
+			linked.followPayload = payload
+			linked.followPosition = if root then root.Position else linked.root.Position
+			following[payload] = linked
+		end
 		return
 	end
 	if dropped and (guard.state == "Wait" or guard.state == "Chase") then
@@ -3186,6 +3203,15 @@ local function onDropExpired(_dropId: string, payload: any, _position: Vector3)
 	if guard then
 		giveUp(guard, "colis resté au sol, reparti vers son rayon")
 	end
+end
+
+followAfterCatch = function(guard: Guard): boolean
+	local payload = guard.followPayload
+	if not guard.alive or payload == nil or not droppedPayloads[payload] or following[payload] ~= guard then
+		return false
+	end
+	followDrop(guard, payload, guard.followPosition)
+	return true
 end
 
 retargetLinked = function(guard: Guard, player: Player)

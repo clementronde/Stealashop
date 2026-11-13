@@ -14,7 +14,9 @@
 --   - HeistTimer : chrono du braquage (« HEIST: 7s »), visible pendant un vol, masqué le reste du
 --     temps. Piloté par le remote HeistTimer(storeId, endsAt) que HeistController relaie (endsAt
 --     en heure serveur, workspace:GetServerTimeNow() ; 0 = masquer). Plusieurs chronos à la fois
---     (deux magasins proches) : celui qui finit le plus tard, donc le plus récent.
+--     (deux magasins proches) : celui qui finit le plus tard, donc le plus récent. Masqué tant que le
+--     joueur est poursuivi (ChaseController.IsChased) : « RUN! » prend sa place ; un chrono vu pendant la
+--     poursuite ne revient plus pour ce vol, même quand elle finit avant lui (Cantin, 2026-11-13).
 --   - GuardMeter et son enfant Fill : CACHÉS depuis le 2026-11-13 (Cantin, SHOW_GUARD_METER). Avant :
 --     visibles pendant une poursuite (ChaseController, remote
 --     ChaseState). Largeur de Fill = proximité du vigile : pleine à la distance de capture
@@ -68,6 +70,8 @@
 --       MAX_INCOME_HOLD secondes.
 --   HudController.HoldCash(base) -> relâcher
 --       Cash montre `base` jusqu'à l'appel de `relâcher` (voir plus bas, L-091 point 3).
+--   HudController.IsHeistTimerShown() -> boolean
+--       Le chrono « HEIST » est à l'écran (pour ZoneBannerController, qui attend sa fin ; Cantin, 2026-11-13).
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -206,6 +210,9 @@ local hud: Hud? = nil
 local shownCountdown: string? = nil -- texte affiché par NightCountdown
 local shownCooldown: string? = nil -- recharge affichée sur ReturnBaseButton ; nil = prêt
 local timers: { [string]: number } = {} -- storeId → endsAt (heure serveur)
+-- Chronos vus pendant une poursuite (storeId → leur endsAt) : plus jamais montrés pour ce vol (Cantin,
+-- 2026-11-13). Un nouveau chrono du même magasin (autre endsAt, nouvelle casse) se montre de nouveau.
+local muted: { [string]: number } = {}
 local shownSeconds: number? = nil -- secondes affichées par HeistTimer ; nil = masqué
 -- Couleur d'origine du texte de HeistTimer, gardée pendant qu'il est rouge (clés faibles : écran remplacé).
 local timerColors: { [TextLabel]: Color3 } = setmetatable({}, { __mode = "k" }) :: any
@@ -349,6 +356,10 @@ end
 -- la case qui vole arrive au compteur ; puis il défile jusqu'à l'argent réel. Plusieurs retenues :
 -- Cash montre la base de la plus ancienne encore active. Une retenue oubliée se relâche toute seule
 -- au bout de MAX_CASH_HOLD s. `relâcher` est sans effet la deuxième fois.
+function HudController.IsHeistTimerShown(): boolean
+	return shownSeconds ~= nil
+end
+
 function HudController.HoldCash(base: number): () -> ()
 	local hold: IncomeHold = { base = base, expiresAt = os.clock() + MAX_CASH_HOLD }
 	table.insert(cashHolds, hold)
@@ -369,6 +380,7 @@ local function onTimer(storeId: string, endsAt: number)
 		timers[storeId] = endsAt
 	else
 		timers[storeId] = nil
+		muted[storeId] = nil
 	end
 end
 
@@ -378,15 +390,26 @@ local function updateHeistTimer(current: Hud)
 		return
 	end
 	local now = Workspace:GetServerTimeNow()
+	-- Cantin, 2026-11-13 : jamais « HEIST » pendant « RUN! » (UI_Chase.RunBanner est au même endroit, en haut
+	-- au centre), et plus jamais pour ce vol une fois RUN! apparu : un chrono vu pendant une poursuite reste
+	-- masqué jusqu'à sa fin, même après la poursuite (capture, objet lâché).
+	local api = chase
+	local hidden = api ~= nil and api.IsChased()
 	local endsAt: number? = nil
 	for storeId, at in timers do
 		if at <= now then
 			timers[storeId] = nil -- fini : le rideau est tombé
-		elseif endsAt == nil or at > endsAt then
-			endsAt = at
+			muted[storeId] = nil
+		else
+			if hidden then
+				muted[storeId] = at
+			end
+			if muted[storeId] ~= at and (endsAt == nil or at > endsAt) then
+				endsAt = at
+			end
 		end
 	end
-	local seconds = if endsAt then math.ceil(endsAt - now) else nil
+	local seconds = if endsAt and not hidden then math.ceil(endsAt - now) else nil
 	if seconds == shownSeconds then
 		return
 	end
