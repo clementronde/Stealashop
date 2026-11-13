@@ -32,6 +32,9 @@ local Offline = {
 	-- Message de secours (Notify « Info », en anglais, L-036 ; %s = la somme, Format.money : « $1.2M ») :
 	-- montré par le client seulement si l'écran UI_Offline manque (l'argent est alors réclamé tout seul).
 	Message = "Your shop earned %s while you were away!",
+	-- Son du Claim (L-097 point 8 ; note ui-feel2 : « Après Claim : Offline_Claim puis Cash_Collect ») :
+	-- Assets/Sounds/Cash/Offline_Claim, joué au clic sur ClaimButton, avant le Cash_Collect de l'arrivée.
+	ClaimSound = "Offline_Claim",
 	-- Studio seulement : workspace:SetAttribute(TestAttribute, "<joueur> <secondes>") simule une absence
 	-- de ce nombre de secondes (barre de commande serveur ; joueur = nom ou UserId). Voir OfflineService.
 	TestAttribute = "OfflineTest",

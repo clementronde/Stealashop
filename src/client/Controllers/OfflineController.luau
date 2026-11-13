@@ -11,7 +11,7 @@
 --     attente (attribut à 0) : l'écran ne s'ouvre jamais pour lui, tutoriel compris ;
 --   - Amount = la somme en attente (Format.money : « $30K »), remise à jour si elle change ;
 --   - ClaimButton : envoie le remote ClaimOffline (sans argument : le serveur verse ce qui attend dans le
---     profil), puis ferme l'écran. L'argent vole ensuite vers le total (GainController : la case part du
+--     profil), joue Offline.ClaimSound (Offline_Claim, L-097 point 8), puis ferme l'écran. L'argent vole ensuite vers le total (GainController : la case part du
 --     centre de l'écran, L-091 point 3), grâce à GetState().Open, vrai jusqu'au versement ;
 --   - DoubleButton (×2 contre des Robux) : la boutique Robux est coupée (Features.RobuxShop = false), et même
 --     ouverte, aucun produit Robux « gains hors ligne ×2 » n'existe encore (MonetizationService) : un clic
@@ -159,6 +159,7 @@ end
 
 local function onClaim()
 	if sendClaim() then
+		Motion.PlaySound(Offline.ClaimSound) -- L-097 point 8 ; Cash_Collect suit à l'arrivée (GainController)
 		close()
 	end
 end
