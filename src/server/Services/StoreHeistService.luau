@@ -3169,7 +3169,7 @@ function StoreHeistService.Init()
 	end
 	local looks = if #delivered > 0 then `modèles {table.concat(delivered, ", ")}` else "blocs V0 (aucun BOX_* livré)"
 	print(
-		`[StoreHeistService] {storeCount} magasin(s) prêt(s), {boxCount} colis répartis au hasard sur les rayons, contenu tiré à la mise en rayon ({looks})`
+		`[StoreHeistService] {storeCount} magasin(s) prêt(s), {boxCount} colis répartis au hasard sur les rayons, {if SHELF_OPEN then "rareté de la caisse tirée à la mise en rayon, objet tiré à l'ouverture" else "contenu tiré à la mise en rayon"} ({looks})`
 	)
 end
 
