@@ -41,7 +41,17 @@
 --              les autres : il met l'outil en main ; un outil possédé qui n'est pas l'outil de casse donné
 --              passe d'abord par EquipTool(id) (ShopService, qui remplace le Tool), puis va en main dès
 --              qu'il arrive. Un clic sur la carte de l'outil tenu le range ;
---       Potions  pas de potions dans le jeu : section vide, CountLabel « 0 ».
+--       Potions  vague 33 (demande de Cantin du 2026-11-13) : les potions ramassées, dans l'ordre de
+--              Config/Potions, une carte Potion_<Id> par type dont le stock (attribut PotionStock_<Id> du
+--              Player, PotionService) est ≥ 1. Template de Clément s'il existe (PotionsSection.Cards.Template :
+--              Icon = ICON_POT_<Id>, PotionName « SPEED POTION », Count « x3 », PotionStat « ×2 · 2:00 »
+--              (Multiplier et Duration de Config/Potions, sans PotionTime), ActivePill + ActivePill.TimerLabel
+--              pendant l'effet (attribut Potion_<Id>), UseButton) ; sinon (V0, rien créé dans son UI) une copie
+--              du Template de ToolsSection : ToolName « SPEED POTION x3 », ToolStat « ×2 · 2:00 » ou
+--              « Active 1:42 », EquipButton dit « USE », EquippedPill caché, Icon = ICON_POT_<Id> ou vide.
+--              UseButton (EquipButton en V0) ou un clic sur la carte → UsePotion(Id) : le serveur vérifie le
+--              stock et lance l'effet (une potion du même type déjà active ajoute sa durée). CountLabel =
+--              nombre total de potions.
 --     Un clic sur une carte fait ce que montre son bouton. HoverOutline est montré au survol ;
 --   - Counter « 9 / 30 items » (objets non exposés / Balance.Display.InventoryMax), Displays
 --     « 4 / 6 displays » (objets exposés / présentoirs débloqués), SectionCount.CountLabel de chaque
@@ -81,7 +91,9 @@
 --   InventoryController.SelectTab(name)        "Items", "Boxes", "Tools" ou "Potions"
 --   InventoryController.StartPlacing(boxUid)   mode pose de ce colis (barre de commande, bancs)
 --   InventoryController.EquipBest()            demande au serveur de poser ses meilleurs objets
---   InventoryController.GetState() -> { Open, Tab, Placing, Aim, AimValid, Items, Boxes, Tools, Loaded }
+--   InventoryController.GetState() -> { Open, Tab, Placing, Aim, AimValid, Items, Boxes, Tools, Potions, Loaded }
+--       Potions : nombre total de potions dans l'inventaire (vague 33)
+--   InventoryController.UsePotion(id)          UsePotion(id), comme le bouton d'une carte de potion
 --       Loaded : l'état de l'inventaire lu vient du profil chargé (attribut InventoryState posé)
 -- Pour la barre du bas (HotbarController, L-095 point 6) : la même source et les mêmes actions.
 --   InventoryController.GetInventory() -> InventoryState.State   état lu dans l'attribut (à ne pas modifier)
@@ -113,6 +125,7 @@ local Balance = require(Config:WaitForChild("Balance"))
 local Bat = require(Config:WaitForChild("Bat"))
 local Items = require(Config:WaitForChild("Items"))
 local Mutations = require(Config:WaitForChild("Mutations"))
+local Potions = require(Config:WaitForChild("Potions"))
 local Rarities = require(Config:WaitForChild("Rarities"))
 local Tools = require(Config:WaitForChild("Tools"))
 local Unbox = require(Config:WaitForChild("Unbox"))
@@ -137,6 +150,7 @@ type Handlers = {
 	PlaceButton: (() -> ())?,
 	UnequipButton: (() -> ())?,
 	EquipButton: (() -> ())?,
+	UseButton: (() -> ())?,
 }
 
 -- Une carte clonée.
@@ -153,6 +167,7 @@ type Section = {
 	frame: GuiObject?,
 	cards: Instance?, -- cadre Cards (UIGridLayout de Clément)
 	template: GuiObject?,
+	borrowed: boolean, -- vague 33 : Potions sans Template de Clément, cartes V0 sur celui de ToolsSection
 	count: Instance?, -- SectionCount.CountLabel
 	button: Instance?, -- Tabs.<Nom>Tab
 	selected: GuiObject?,
@@ -202,9 +217,11 @@ local CARD_PARTS: { [TabName]: { string } } = {
 	Items = { "Icon", "ItemName", "RarityBar.Rarity", "Rays", "Glow", "MutationTag", "MutationTag.MutationLabel", "Income", "DisplayedBadge", "PlaceButton", "UnequipButton", "HoverOutline" },
 	Boxes = { "Icon", "BoxName", "RarityBar.Rarity", "Rays", "Glow", "PlaceButton", "PlacedPill", "ReadyPill", "TimerPill", "TimerPill.TimerLabel", "HoverOutline" },
 	Tools = { "Icon", "ToolName", "ToolStat", "Rays", "Glow", "EquipButton", "EquippedPill", "HoverOutline" },
-	Potions = {},
+	-- Vague 33 : noms demandés à Clément (Template de PotionsSection), puis ceux du Template de ToolsSection
+	-- pris en V0 tant qu'il n'existe pas.
+	Potions = { "Icon", "PotionName", "PotionStat", "Count", "UseButton", "ActivePill", "ActivePill.TimerLabel", "Rays", "Glow", "HoverOutline", "ToolName", "ToolStat", "EquipButton", "EquipButton.EquipLabel", "EquippedPill" },
 }
-local CARD_BUTTONS = { "PlaceButton", "UnequipButton", "EquipButton" }
+local CARD_BUTTONS = { "PlaceButton", "UnequipButton", "EquipButton", "UseButton" }
 local PREVIEW_PREFIX = "Preview_"
 local BOX_ICON_PREFIX = "BOX_" -- Icons.name("BOX_Premium") = « ICON_BOX_Premium » (L-089)
 local TOOL_ICON_PREFIX = "TOOL_" -- « ICON_TOOL_Hammer » (L-090)
@@ -235,6 +252,12 @@ local BOX_NAME = "%s BOX"
 local TOOL_STAT = "Power %s"
 local BAT_STAT = "Stun %ss"
 local TIMER_TEXT = "%d:%02d"
+-- Vague 33, V0 proposés, absents du doc : textes des cartes de potion.
+local POTION_NAME = "%s POTION"
+local POTION_COUNT = "x%d"
+local POTION_ACTIVE = "Active %s"
+local USE_TEXT = "USE" -- EquipButton du Template d'outil pris en V0
+local POTION_ICON_PREFIX = "POT_" -- « ICON_POT_Speed » (Potion.Model), à demander à Clément
 
 -- Touches des anciens slots de la barre (1 à 9).
 local SLOT_KEYS: { Enum.KeyCode } = {
@@ -1125,6 +1148,83 @@ local function paintTool(view: CardView, card: ToolCard, held: Tool?)
 	view.handlers.Card = use
 end
 
+-- Vague 33 : une potion de l'inventaire (stock lu dans l'attribut PotionStock_<Id>).
+type PotionCard = {
+	potion: Potions.Potion,
+	count: number,
+}
+
+local function stockOf(id: string): number
+	local value = localPlayer:GetAttribute(Potions.StockAttributePrefix .. id)
+	return if type(value) == "number" and value > 0 then math.floor(value) else 0
+end
+
+local function potionCards(): { PotionCard }
+	local list: { PotionCard } = {}
+	for _, potion in Potions.List do
+		local count = stockOf(potion.Id)
+		if count > 0 then
+			table.insert(list, { potion = potion, count = count })
+		end
+	end
+	return list
+end
+
+local function potionTotal(cards: { PotionCard }): number
+	local total = 0
+	for _, card in cards do
+		total += card.count
+	end
+	return total
+end
+
+local function usePotion(id: string)
+	if net and Potions.ById[id] ~= nil and canSend("UsePotion:" .. id) then
+		net.Client.UsePotion:Fire(id)
+	end
+end
+
+local function paintPotion(view: CardView, card: PotionCard, borrowed: boolean, now: number)
+	local refs = view.refs
+	local potion = card.potion
+	local texture = textureOf(POTION_ICON_PREFIX .. potion.Id)
+	if texture then
+		setImage(refs.Icon, texture)
+	elseif borrowed then
+		setImage(refs.Icon, "") -- pas l'icône d'un outil sur une potion
+	end
+	local endsAt = localPlayer:GetAttribute(Potions.AttributePrefix .. potion.Id)
+	local remaining = if type(endsAt) == "number" then endsAt - now else 0
+	local active = remaining > 0
+	local clock = timerText(potion.Duration)
+	local multiplier = potion.Multiplier
+	local effect = if multiplier then `×{string.format("%g", multiplier)} · {clock}` else clock
+	local name = string.format(POTION_NAME, string.upper(potion.DisplayName))
+	local count = string.format(POTION_COUNT, card.count)
+	local function use()
+		usePotion(potion.Id)
+	end
+	if borrowed then
+		setText(refs.ToolName, `{name} {count}`)
+		setText(refs.ToolStat, if active then string.format(POTION_ACTIVE, timerText(remaining)) else effect)
+		setText(refs["EquipButton.EquipLabel"] or refs.EquipButton, USE_TEXT)
+		setVisible(refs.EquipButton, true)
+		setVisible(refs.EquippedPill, false)
+		view.handlers.EquipButton = use
+	else
+		setText(refs.PotionName, name)
+		setText(refs.Count, count)
+		setText(refs.PotionStat, effect)
+		setVisible(refs.ActivePill, active)
+		if active then
+			setText(refs["ActivePill.TimerLabel"], timerText(remaining))
+		end
+		setVisible(refs.UseButton, true)
+		view.handlers.UseButton = use
+	end
+	view.handlers.Card = use
+end
+
 -- Remet les cartes d'une section d'accord avec `keys` (dans l'ordre), peintes par `paint`.
 local function syncSection<T>(section: Section, entries: { T }, keyOf: (T) -> string, paint: (CardView, T) -> ())
 	local seen: { [string]: boolean } = {}
@@ -1170,6 +1270,18 @@ local function refreshTools(current: Screen)
 	end)
 end
 
+local function refreshPotions(current: Screen)
+	local section = current.sections["Potions"]
+	local cards = potionCards()
+	local now = serverNow()
+	syncSection(section, cards, function(card: PotionCard): string
+		return "Potion_" .. card.potion.Id
+	end, function(view: CardView, card: PotionCard)
+		paintPotion(view, card, section.borrowed, now)
+	end)
+	setText(section.count, tostring(potionTotal(cards)))
+end
+
 local function refreshCounters(current: Screen)
 	local stored, displayed = 0, 0
 	for _, entry in state.Items do
@@ -1183,7 +1295,6 @@ local function refreshCounters(current: Screen)
 	local slots = if type(unlocked) == "number" then unlocked else Balance.Display.StartSlots
 	setText(current.counter, string.format(COUNTER_TEXT, stored, Balance.Display.InventoryMax))
 	setText(current.displays, string.format(DISPLAYS_TEXT, displayed, slots))
-	setText(current.sections["Potions"].count, "0")
 end
 
 -- ScrollTrack suit la liste : hauteur = part visible, place = avancée du défilement (règle de l'Index
@@ -1246,6 +1357,7 @@ local function refresh()
 	end)
 	refreshBoxes(current)
 	refreshTools(current)
+	refreshPotions(current)
 	refreshCounters(current)
 	updateTrack(current)
 	if #wanted > 0 then
@@ -1265,6 +1377,7 @@ local function startTicker()
 				return
 			end
 			refreshBoxes(current)
+			refreshPotions(current) -- minuteurs des effets actifs (vague 33)
 		end
 	end)
 end
@@ -1321,10 +1434,18 @@ local function bind(gui: ScreenGui)
 	for _, tabName in TAB_ORDER do
 		local frame = guiObject(gui, `{tabName}Section`)
 		local cards = if frame then Find.path(frame, "Cards") else nil
-		local template = if tabName ~= "Potions" then guiObject(cards, "Template") else nil
+		local template = guiObject(cards, "Template")
+		local borrowed = false
+		local missing = template == nil -- une seule comparaison : l'ancien solveur suit mal les suivantes
 		if frame == nil then
 			reportOnce(`section:{tabName}`, `[Inventory] {name}.{tabName}Section introuvable : onglet vide`)
-		elseif tabName ~= "Potions" and template == nil then
+		elseif tabName == "Potions" and missing then
+			-- Vague 33 : pas encore de Template de potion chez Clément, cartes V0 sur celui des outils.
+			local tools = sections["Tools"]
+			template = if tools then tools.template else nil
+			borrowed = template ~= nil
+			reportOnce("template:Potions", `[Inventory] {name}.PotionsSection.Cards.Template absent : cartes de potion sur le Template de ToolsSection (V0)`)
+		elseif missing then
 			reportOnce(`template:{tabName}`, `[Inventory] {name}.{tabName}Section.Cards.Template introuvable : section vide`)
 		end
 		if template then
@@ -1347,6 +1468,7 @@ local function bind(gui: ScreenGui)
 			frame = frame,
 			cards = cards,
 			template = template,
+			borrowed = borrowed,
 			count = if frame then Find.path(frame, "SectionCount.CountLabel") else nil,
 			button = button,
 			selected = guiObject(button, "Selected"),
@@ -1738,7 +1860,12 @@ function InventoryController.GetState(): { [string]: any }
 		Items = #state.Items,
 		Boxes = #state.Boxes,
 		Tools = #toolCards(),
+		Potions = potionTotal(potionCards()),
 	}
+end
+
+function InventoryController.UsePotion(id: string)
+	usePotion(id)
 end
 
 function InventoryController.Start()
@@ -1754,6 +1881,11 @@ function InventoryController.Start()
 	end)
 	for _, attribute in { OWNED_ATTRIBUTE, SLOTS_ATTRIBUTE } do
 		localPlayer:GetAttributeChangedSignal(attribute):Connect(refresh)
+	end
+	-- Vague 33 : stock et effet de chaque potion (PotionService).
+	for _, potion in Potions.List do
+		localPlayer:GetAttributeChangedSignal(Potions.StockAttributePrefix .. potion.Id):Connect(refresh)
+		localPlayer:GetAttributeChangedSignal(Potions.AttributePrefix .. potion.Id):Connect(refresh)
 	end
 	localPlayer:GetAttributeChangedSignal(CARRYING_ATTRIBUTE):Connect(function()
 		if isCarrying() then
