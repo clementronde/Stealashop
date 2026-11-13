@@ -8,7 +8,10 @@
 --     fermeture par UI/Motion ; l'écran est du groupe « Menu » (attribut ScreenGroup de Clément) : en
 --     ouvrir un autre le ferme (Motion.SetCloser), et inversement ;
 --   - RewardsAlert (pastille rouge dans RewardsButton) visible quand une récompense attend : le jour
---     d'aujourd'hui pas encore réclamé, ou un palier de temps de jeu atteint et pas réclamé ;
+--     d'aujourd'hui pas encore réclamé, ou un palier de temps de jeu atteint et pas réclamé ; vague 34
+--     (L-127 point 3) : pastilles « ! » de UI/AlertBadge, qui fait battre leur UIScale Pulse tant qu'elles
+--     sont visibles : RewardsAlert, Tabs.DailyTab.TabAlert (le jour pas réclamé) et Tabs.PlaytimeTab.TabAlert
+--     (un palier atteint et pas réclamé). Elles s'éteignent quand la récompense est réclamée ;
 --   - onglets Tabs.DailyTab et Tabs.PlaytimeTab : la page DailyPage ou PlaytimePage visible, l'image
 --     Selected visible sur l'onglet choisi seulement. À la première ouverture, Daily ; ensuite, le dernier
 --     onglet choisi ;
@@ -46,6 +49,7 @@ local Config = Shared:WaitForChild("Config")
 local Rewards = require(Config:WaitForChild("Rewards"))
 local Find = require(Shared:WaitForChild("Contract"):WaitForChild("Find"))
 local Motion = require(script.Parent:WaitForChild("UI"):WaitForChild("Motion"))
+local AlertBadge = require(Shared:WaitForChild("AlertBadge"))
 
 type Tab = "Daily" | "Playtime"
 
@@ -76,12 +80,15 @@ type Screen = {
 	claimText: string, -- texte de ClaimLabel posé par Clément (« CLAIM »)
 	rows: { Row },
 	connections: { RBXScriptConnection },
+	dailyAlert: GuiObject?, -- Tabs.DailyTab.TabAlert (L-127)
+	playtimeAlert: GuiObject?, -- Tabs.PlaytimeTab.TabAlert (L-127)
 }
 
 local SCREEN = "UI_Rewards"
 local HUD = "UI_HUD"
 local HUD_BUTTON = "RewardsButton"
 local HUD_ALERT = "RewardsAlert"
+local TAB_ALERT = "TabAlert" -- pastille « ! » de chaque onglet (L-127)
 local ROW_FORMAT = "Tier_%d" -- nom des lignes clonées (jamais « Template »)
 local PREVIEW_PREFIX = "Preview_"
 local ATTRIBUTES = Rewards.Attributes
@@ -229,13 +236,15 @@ local function readStatus(): Status
 	}
 end
 
--- Une récompense attend : le jour pas réclamé, ou un palier atteint et pas réclamé.
-local function hasPending(status: Status): boolean
+-- Le jour d'aujourd'hui attend d'être réclamé.
+local function dailyPending(status: Status): boolean
+	return status.known and not status.dailyClaimed
+end
+
+-- Un palier de temps de jeu est atteint et pas réclamé.
+local function playtimePending(status: Status): boolean
 	if not status.known then
 		return false
-	end
-	if not status.dailyClaimed then
-		return true
 	end
 	for _, tier in Rewards.Playtime do
 		if not status.playClaimed[tier.Minutes] and status.playSeconds >= tier.Minutes * 60 then
@@ -243,6 +252,11 @@ local function hasPending(status: Status): boolean
 		end
 	end
 	return false
+end
+
+-- Une récompense attend : le jour pas réclamé, ou un palier atteint et pas réclamé.
+local function hasPending(status: Status): boolean
+	return dailyPending(status) or playtimePending(status)
 end
 
 ------------------------------------------------------------------------------
@@ -283,10 +297,15 @@ local function refresh()
 		if alert.Parent == nil then
 			table.remove(alerts, index)
 		else
-			setVisible(alert, pending)
+			AlertBadge.Set(alert, pending)
 		end
 	end
 	local current = screen
+	if current and current.gui.Parent ~= nil then
+		-- Pastilles des onglets, écran ouvert ou pas (L-127 : éteintes quand la récompense est réclamée).
+		AlertBadge.Set(current.dailyAlert, dailyPending(status))
+		AlertBadge.Set(current.playtimeAlert, playtimePending(status))
+	end
 	if current and isOpen then
 		paintDaily(current, status)
 		paintRows(current, status)
@@ -400,6 +419,8 @@ local function bind(gui: ScreenGui)
 		claimText = textOf(claimLabel or claimButton) or CLAIM_TEXT,
 		rows = {},
 		connections = {},
+		dailyAlert = guiObject(dailyTab, TAB_ALERT),
+		playtimeAlert = guiObject(playtimeTab, TAB_ALERT),
 	}
 	screen = current
 	local function keep(connection: RBXScriptConnection?)

@@ -196,7 +196,8 @@ export type Data = {
 	IndexRewards: { [string]: number }?, -- [numéro de zone en texte, « 3 »] = os.time() du versement de
 	-- la prime de zone complète de l'Index (IndexService, Config/Index ; L-083 point 7). Champ facultatif,
 	-- sans changement de version (comme Item.Mutation) : absent = aucune prime versée ; créé par
-	-- IndexService au premier versement. Une zone complète sans entrée est payée au chargement suivant.
+	-- IndexService au premier versement. Une zone complète sans entrée attend que le joueur réclame sa
+	-- prime (L-127 point 2, vague 34 : remote ClaimIndexReward ; avant, elle était versée toute seule).
 	Settings: Settings?, -- réglages du joueur (L-095 point 2 ; SettingsService, Config/Settings). Champ
 	-- facultatif, sans changement de version : absent = réglages par défaut ; un champ invalide reprend
 	-- sa valeur par défaut au chargement (Settings.Sanitize).

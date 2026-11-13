@@ -41,10 +41,21 @@
 --   - Rewards, la récompense de la zone visible dans la liste (la dernière section visible dont le haut
 --     est passé à moins de View.ViewMargin px sous le haut de la liste) : SpeedReward.Amount « +3% » (Icon vide :
 --     l'icône de vitesse du HUD, SpeedRow.SpeedIcon.IconImage)
---     (Index.ZoneSpeedBonus), CashReward.Amount « +$10.2K » (Index.ZoneCash). La prime d'une zone complète
---     est versée par le serveur dès que la zone se complète (IndexService) : ClaimLabel dit alors
---     CLAIMED_TEXT ; zone pas complète, le texte de Clément, et ClaimButton fait View.Deny (son UI_Deny,
---     le bouton tremble). T.46 RewardsSwap (Motion.Pop sur Rewards) quand la zone visible change ;
+--     (Index.ZoneSpeedBonus), CashReward.Amount « +$10.2K » (Index.ZoneCash). Vague 34 (L-127 point 2) : la
+--     prime d'une zone complète attend d'être réclamée (IndexService). ClaimButton réclame la zone visible
+--     (remote ClaimIndexReward(zone)) ; UnlockedBar.ClaimAllButton toutes les zones complètes pas encore
+--     réclamées, en une demande (ClaimIndexReward sans zone) ; le serveur revérifie tout. Rien à réclamer
+--     (zone pas complète, déjà réclamée, aucune zone) : View.Deny (son UI_Deny, le bouton tremble). Réussite :
+--     T.33 Success (Motion.Success) sur le bouton quand le serveur confirme (attribut IndexClaimed), au plus
+--     CLAIM_WAIT s après la demande ; un 2e clic avant la réponse n'envoie rien. ClaimLabel dit CLAIMED_TEXT
+--     une fois la zone réclamée, sinon le texte de Clément. T.46 RewardsSwap (Motion.Pop sur Rewards) quand
+--     la zone visible change ;
+--   - pastilles « ! » (L-127 point 3, UI/AlertBadge : visibles et battantes tant qu'il y a à réclamer,
+--     éteintes une fois réclamé, écran ouvert ou pas) : ClaimAllButton.ClaimAllAlert et
+--     Categories.NormalButton.CategoryAlert (au moins une zone à réclamer), Rewards.ClaimButton.ClaimAlert
+--     (la zone visible), Zone<N>Section.ZoneArt.ZoneAlert (cette zone) ; SecretsSection.ZoneArt.ZoneAlert,
+--     SecretsButton et MutationsButton.CategoryAlert restent éteintes (rien à y réclamer). La pastille
+--     IndexAlert du HUD est allumée par RailAlertController ;
 --   - Categories : NormalButton (les zones), SecretsButton (SecretsSection seule), MutationsButton (les
 --     zones, MutationTabs et MutationCaption montrés) ; Selected allumé sur la catégorie choisie ; Rewards
 --     caché hors de NORMAL. Un index par mutation n'existe pas côté serveur : en MUTATIONS, toutes les
@@ -62,8 +73,9 @@
 -- cartes clonées (nom, ordre), l'image et la teinte des icônes (cartes, DetailIcon, ZoneItem), la couleur
 -- des rayons, du fond Clip des cartes et du fond de Detail (et leur UIGradient pour un Secret), la
 -- couleur du texte de DetailRarity, la largeur de ZoneBar.Fill, le défilement de la liste, la position
--- et la hauteur de ScrollTrack (v2), la place de ClaimButton le temps qu'il tremble ; l'effet d'échelle
--- de Motion est passager. Écran recréé (ResetOnSpawn) : rebranché, fermé.
+-- et la hauteur de ScrollTrack (v2), la place de ClaimButton et de ClaimAllButton le temps qu'ils
+-- tremblent, la visibilité et le UIScale Pulse des pastilles « ! » ; l'effet d'échelle de Motion est
+-- passager. Écran recréé (ResetOnSpawn) : rebranché, fermé.
 --
 -- API (client) : aucune.
 
@@ -85,6 +97,7 @@ local Find = require(Contract:WaitForChild("Find"))
 local Icons = require(Contract:WaitForChild("Icons"))
 local Format = require(Shared:WaitForChild("Format"))
 local Motion = require(script.Parent:WaitForChild("UI"):WaitForChild("Motion"))
+local AlertBadge = require(Shared:WaitForChild("AlertBadge"))
 
 type Item = Items.Item
 
@@ -118,6 +131,7 @@ type Section = {
 	rewardShown: boolean, -- visibilité de Reward posée par Clément
 	rewardLabel: Instance?,
 	zoneItem: GuiObject?, -- v3 : l'objet le plus rare de la section
+	zoneAlert: GuiObject?, -- v3 : ZoneArt.ZoneAlert (L-127)
 }
 
 -- Écran branché.
@@ -158,7 +172,11 @@ type Screen = {
 	mutationTabs: GuiObject?,
 	mutationTabButtons: { [string]: GuiObject }, -- [Id de l'effet] = onglet
 	caption: Instance?,
-	shaking: boolean,
+	shaking: { [GuiObject]: boolean }, -- boutons qui tremblent (View.Deny)
+	claimAllButton: GuiObject?, -- UnlockedBar.ClaimAllButton (L-127)
+	claimAllAlert: GuiObject?,
+	claimAlert: GuiObject?, -- Rewards.ClaimButton.ClaimAlert
+	categoryAlert: GuiObject?, -- Categories.NormalButton.CategoryAlert
 }
 
 local SCREEN = "UI_Index_v3"
@@ -199,7 +217,15 @@ local V3_ZONE_COUNT_TEXT = "%d/%d"
 local CAPTION_TEXT = "Collect every item in %s!"
 local UNKNOWN_NAME = "???"
 local UNKNOWN_INCOME = "???"
-local CLAIMED_TEXT = "Claimed!" -- V0 : zone complète, prime déjà versée par le serveur
+local CLAIMED_TEXT = "Claimed!" -- V0 : prime de la zone déjà réclamée (attribut IndexClaimed)
+-- V0 proposé, absent du doc : attente (s) de la réponse du serveur à une réclamation ; un clic pendant ce
+-- temps n'envoie rien, et la confirmation arrivée après ne fait plus sauter le bouton.
+local CLAIM_WAIT = 5
+-- Pastilles « ! » de Clément (L-127 point 3).
+local ZONE_ALERT = "ZoneArt.ZoneAlert"
+local CLAIM_ALERT = "ClaimAlert"
+local CLAIM_ALL_ALERT = "ClaimAllAlert"
+local CATEGORY_ALERT = "CategoryAlert"
 local SECRETS_NAME = "Secrets" -- ZoneName des Secrets sans texte de Clément
 local STORE_SEPARATOR = "\n" -- V0 : entre les 2 noms de magasins dans ZoneName (v3)
 -- Icône de vitesse du HUD (UI_HUD.StatsPanel.SpeedRow.SpeedIcon.IconImage), reprise dans
@@ -248,6 +274,10 @@ local category = NORMAL -- v3 : catégorie choisie
 local mutation: string? = nil -- v3 : Id de l'onglet de mutation choisi
 local selected: Item? = nil -- v3 : objet montré dans Detail
 local discovered: { [string]: boolean } = {}
+local claimed: { [number]: boolean } = {} -- zones dont la prime est réclamée (attribut IndexClaimed)
+-- Réclamation envoyée, en attente de la réponse du serveur : le bouton qui sautera (T.33) et l'heure.
+local pendingClaim: { button: GuiObject, at: number }? = nil
+local net: any = nil
 local textures: { [string]: string } = {} -- [ItemId] = image de l'icône livrée
 local missingIcons: { [string]: boolean } = {}
 local reported: { [string]: boolean } = {}
@@ -430,6 +460,19 @@ end
 
 local function readDiscovered()
 	discovered = Index.Decode(localPlayer:GetAttribute(Index.Attribute))
+end
+
+local function readClaimed()
+	claimed = Index.DecodeZones(localPlayer:GetAttribute(Index.ClaimedAttribute))
+end
+
+-- La prime de `zone` attend d'être réclamée : zone complète (découvertes), pas encore réclamée.
+local function isClaimable(zone: number?): boolean
+	return zone ~= nil and not claimed[zone] and Index.IsZoneComplete(discovered, zone)
+end
+
+local function anyClaimable(): boolean
+	return #Index.ClaimableZones(discovered, claimed) > 0
 end
 
 -- Objet trouvé, tel que l'écran le montre : en MUTATIONS (v3), aucun (pas d'index par mutation).
@@ -663,9 +706,23 @@ local function refreshRewards(current: Screen)
 	local reward = Index.ZoneReward(zone)
 	setText(current.speedAmount, `+{math.round(reward.Speed * 100)}%`)
 	setText(current.cashAmount, `+{Format.money(reward.Cash)}`)
-	local found, total = countSection(current, section)
-	local complete = total > 0 and found >= total
-	setText(current.claimLabel, if complete then CLAIMED_TEXT else (current.claimText or ""))
+	setText(current.claimLabel, if claimed[zone] then CLAIMED_TEXT else (current.claimText or ""))
+end
+
+-- Pastilles « ! » de l'écran (L-127 point 3), ouvert ou pas : allumées tant qu'il y a à réclamer.
+local function refreshAlerts(current: Screen)
+	if not current.v3 then
+		return
+	end
+	local any = anyClaimable()
+	AlertBadge.Set(current.claimAllAlert, any)
+	AlertBadge.Set(current.categoryAlert, any)
+	local rank = current.viewSection
+	local section = if rank then current.sections[rank] else nil
+	AlertBadge.Set(current.claimAlert, section ~= nil and isClaimable(section.def.zone))
+	for _, each in current.sections do
+		AlertBadge.Set(each.zoneAlert, isClaimable(each.def.zone)) -- Secrets (zone nil) : toujours éteinte
+	end
 end
 
 local function refreshHeader(current: Screen)
@@ -710,6 +767,7 @@ local function refreshHeader(current: Screen)
 		setText(current.counter, string.format(COUNTER_TEXT, Index.CountAll(discovered), Index.Total))
 	end
 	refreshRewards(current)
+	refreshAlerts(current)
 end
 
 -- ScrollTrack suit la liste : hauteur = part visible, place = avancée du défilement.
@@ -782,6 +840,7 @@ local function onScroll(current: Screen)
 	end
 	current.viewSection = rank
 	refreshRewards(current)
+	refreshAlerts(current)
 	local rewards = current.rewards
 	if rewards and rewards.Visible and isOpen and previous ~= nil then
 		Motion.Pop(rewards, VIEW.RewardsSwap.From, REWARDS_SWAP_INFO)
@@ -907,14 +966,13 @@ local function setMutation(current: Screen, id: string)
 	cardsIn(current)
 end
 
--- ClaimButton sur une zone pas complète : son de refus et le bouton tremble (View.Deny).
-local function deny(current: Screen)
+-- Rien à réclamer : son de refus et le bouton tremble (View.Deny).
+local function deny(current: Screen, button: GuiObject?)
 	Motion.PlaySound(VIEW.Deny.Sound)
-	local button = current.claimButton
-	if button == nil or current.shaking then
+	if button == nil or current.shaking[button] then
 		return
 	end
-	current.shaking = true
+	current.shaking[button] = true
 	local base = button.Position
 	for index, offset in VIEW.Deny.Offsets do
 		task.delay((index - 1) * VIEW.Deny.Step, function()
@@ -925,21 +983,74 @@ local function deny(current: Screen)
 	end
 	task.delay(#VIEW.Deny.Offsets * VIEW.Deny.Step, function()
 		button.Position = base
-		current.shaking = false
+		current.shaking[button] = nil
 	end)
 end
 
+-- Envoie la réclamation (zone nil = toutes) ; le bouton sautera (T.33) à la confirmation du serveur.
+-- Une demande déjà en attente : rien n'est renvoyé.
+local function sendClaim(button: GuiObject, zone: number?)
+	local waiting = pendingClaim
+	if waiting and os.clock() - waiting.at < CLAIM_WAIT then
+		return
+	end
+	if net == nil then
+		reportOnce("net", "[Index] Net pas prêt : réclamation pas envoyée")
+		return
+	end
+	pendingClaim = { button = button, at = os.clock() }
+	net.Client.ClaimIndexReward:Fire(zone)
+end
+
+-- Rewards.ClaimButton : la prime de la zone visible.
 local function onClaim(current: Screen)
 	local rank = current.viewSection
 	local section = if rank then current.sections[rank] else nil
-	if section == nil or section.def.zone == nil then
+	local zone = if section then section.def.zone else nil
+	local button = current.claimButton
+	if zone == nil or button == nil then
 		return
 	end
-	local found, total = countSection(current, section)
-	if total > 0 and found >= total then
-		return -- prime déjà versée par le serveur (UiFeelController fait le saut et le son UI_Success)
+	if isClaimable(zone) then
+		sendClaim(button, zone)
+	else
+		deny(current, button) -- zone pas complète ou déjà réclamée
 	end
-	deny(current)
+end
+
+-- UnlockedBar.ClaimAllButton : toutes les zones complètes pas encore réclamées, en une demande.
+local function onClaimAll(current: Screen)
+	local button = current.claimAllButton
+	if button == nil then
+		return
+	end
+	if anyClaimable() then
+		sendClaim(button, nil)
+	else
+		deny(current, button)
+	end
+end
+
+-- Attribut IndexClaimed changé : une zone de plus réclamée confirme la demande en attente (T.33 Success).
+local function onClaimedChanged()
+	local before = claimed
+	readClaimed()
+	local gained = false
+	for zone in claimed do
+		if not before[zone] then
+			gained = true
+		end
+	end
+	local waiting = pendingClaim
+	if waiting and gained then
+		pendingClaim = nil
+		local button = waiting.button
+		if os.clock() - waiting.at < CLAIM_WAIT and button.Parent ~= nil and button:IsA("GuiButton") then
+			Motion.Success(button :: GuiButton)
+		end
+	elseif waiting and os.clock() - waiting.at >= CLAIM_WAIT then
+		pendingClaim = nil
+	end
 end
 
 ------------------------------------------------------------------------------
@@ -976,6 +1087,7 @@ local function newSection(def: TabDef, root: Instance?, cardParent: Instance?, k
 		rewardShown = if reward then reward.Visible else false,
 		rewardLabel = if reward then Find.path(reward, "RewardLabel") else nil,
 		zoneItem = if zoneItem and isImage(zoneItem) then zoneItem :: GuiObject else nil,
+		zoneAlert = if root then guiObject(root, ZONE_ALERT) else nil,
 	}
 end
 
@@ -1074,6 +1186,7 @@ local function bind(gui: ScreenGui)
 	local rewards = if v3 then guiObject(gui, "Rewards") else nil
 	local claimButton = if rewards then guiObject(rewards, "ClaimButton") else nil
 	local claimLabel = if claimButton then Find.path(claimButton, "ClaimLabel") else nil
+	local claimAllButton = if v3 then guiObject(gui, "UnlockedBar.ClaimAllButton") else nil
 	local current: Screen = {
 		gui = gui,
 		v2 = v2,
@@ -1110,7 +1223,11 @@ local function bind(gui: ScreenGui)
 		mutationTabs = if v3 then guiObject(gui, "MutationTabs") else nil,
 		mutationTabButtons = {},
 		caption = if v3 then Find.path(gui, "MutationCaption") else nil,
-		shaking = false,
+		shaking = {},
+		claimAllButton = claimAllButton,
+		claimAllAlert = if claimAllButton then guiObject(claimAllButton, CLAIM_ALL_ALERT) else nil,
+		claimAlert = if claimButton then guiObject(claimButton, CLAIM_ALERT) else nil,
+		categoryAlert = if v3 then guiObject(gui, `Categories.{NORMAL}.{CATEGORY_ALERT}`) else nil,
 	}
 	screen = current
 	local function keep(connection: RBXScriptConnection?)
@@ -1130,6 +1247,14 @@ local function bind(gui: ScreenGui)
 		keep(onClick(claimButton, function()
 			if screen == current and isOpen then
 				onClaim(current)
+			end
+		end))
+		if claimAllButton == nil then
+			reportOnce("claimAll", `[Index] {name}.UnlockedBar.ClaimAllButton introuvable : pas de « Claim All »`)
+		end
+		keep(onClick(claimAllButton, function()
+			if screen == current and isOpen then
+				onClaimAll(current)
 			end
 		end))
 		local categories = Find.path(gui, "Categories")
@@ -1173,6 +1298,7 @@ local function bind(gui: ScreenGui)
 				end
 			end))
 		end
+		refreshAlerts(current) -- pastilles « ! » allumées dès le branchement, écran fermé
 		return
 	end
 
@@ -1310,9 +1436,34 @@ function IndexController.Start()
 		return -- MAJ 2 : rien n'est branché, l'écran reste fermé
 	end
 	readDiscovered()
+	readClaimed()
+	-- Pastilles « ! » de l'écran branché, ouvert ou pas (L-127).
+	local function alerts()
+		local current = screen
+		if current and current.gui.Parent ~= nil then
+			refreshAlerts(current)
+		end
+	end
 	localPlayer:GetAttributeChangedSignal(Index.Attribute):Connect(function()
 		readDiscovered()
 		refresh()
+		alerts()
+	end)
+	localPlayer:GetAttributeChangedSignal(Index.ClaimedAttribute):Connect(function()
+		onClaimedChanged()
+		refresh()
+		alerts()
+	end)
+	-- Les remotes attendent le serveur : sans bloquer le reste.
+	task.spawn(function()
+		local ok, result = pcall(function(): any
+			return require(Shared:WaitForChild("Net"):WaitForChild("Net")) :: any
+		end)
+		if ok then
+			net = result
+		else
+			reportOnce("netRequire", `[Index] Net introuvable : les réclamations ne partent pas ({result})`)
+		end
 	end)
 
 	local playerGui = localPlayer:WaitForChild("PlayerGui")

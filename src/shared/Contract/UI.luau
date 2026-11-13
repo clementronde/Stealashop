@@ -745,5 +745,53 @@ table.insert(UI.Billboards, {
 		{ Path = "Row.LuckIcon" },
 	} :: { Element },
 })
+-- Claim All et pastilles « ! » (vague 34, L-127 points 2 et 3 ; script de Clément tools/clement/alerts_claimall_build.luau).
+-- Pastilles cachées par Clément, montrées par le code quand le joueur a quelque chose à faire (UI/AlertBadge) ; leur
+-- UIScale Pulse bat tant qu'elles sont visibles. Entrées à part, à la fin, pour ne pas changer les listes existantes.
+-- UI_HUD : un exemplaire dans LeftRail et un dans LeftRailTouch (UI.Twins) ; RailAlertController et RewardsController.
+local hudAlerts = {} :: { Element }
+for _, pair in { { "IndexButton", "IndexAlert" }, { "InventoryButton", "InventoryAlert" }, { "RebirthButton", "RebirthAlert" }, { "SkillTreeButton", "SkillTreeAlert" }, { "RewardsButton", "RewardsAlert" } } do
+	table.insert(hudAlerts, { Path = `{pair[1]}.{pair[2]}` })
+	table.insert(hudAlerts, { Path = `{pair[1]}.{pair[2]}.Pulse`, Class = "UIScale" })
+end
+table.insert(UI.Screens, {
+	Name = "UI_HUD",
+	Class = "ScreenGui",
+	Optional = true,
+	Elements = hudAlerts,
+})
+-- UI_Index_v3 (IndexController) : UnlockedBar.ClaimAllButton (toutes les primes de zone à réclamer, en une demande),
+-- ClaimAllAlert, ClaimButton.ClaimAlert (la zone visible), ZoneAlert de chaque section, CategoryAlert de NORMAL.
+local indexAlerts = {
+	{ Path = "UnlockedBar.ClaimAllButton", Class = BUTTON },
+	{ Path = "UnlockedBar.ClaimAllButton.ClaimAllAlert" },
+	{ Path = "UnlockedBar.ClaimAllButton.ClaimAllAlert.Pulse", Class = "UIScale" },
+	{ Path = "Rewards.ClaimButton.ClaimAlert" },
+	{ Path = "Rewards.ClaimButton.ClaimAlert.Pulse", Class = "UIScale" },
+	{ Path = "Categories.NormalButton.CategoryAlert" },
+	{ Path = "Categories.NormalButton.CategoryAlert.Pulse", Class = "UIScale" },
+} :: { Element }
+for _, section in { "Zone1Section", "Zone2Section", "Zone3Section", "Zone4Section", "Zone5Section", "Zone6Section", "SecretsSection" } do
+	table.insert(indexAlerts, { Path = `{section}.ZoneArt.ZoneAlert` })
+	table.insert(indexAlerts, { Path = `{section}.ZoneArt.ZoneAlert.Pulse`, Class = "UIScale" })
+end
+table.insert(UI.Screens, {
+	Name = "UI_Index_v3",
+	Class = "ScreenGui",
+	Optional = true,
+	Elements = indexAlerts,
+})
+-- UI_Rewards (RewardsController) : TabAlert de chaque onglet (le jour à réclamer ; un palier atteint à réclamer).
+table.insert(UI.Screens, {
+	Name = "UI_Rewards",
+	Class = "ScreenGui",
+	Optional = true,
+	Elements = {
+		{ Path = "Tabs.DailyTab.TabAlert" },
+		{ Path = "Tabs.DailyTab.TabAlert.Pulse", Class = "UIScale" },
+		{ Path = "Tabs.PlaytimeTab.TabAlert" },
+		{ Path = "Tabs.PlaytimeTab.TabAlert.Pulse", Class = "UIScale" },
+	} :: { Element },
+})
 
 return UI

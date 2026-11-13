@@ -8,9 +8,9 @@
 -- Textes, en anglais, valeurs de Config/Zones (section 4) :
 --   Banner.ZoneName  la ville de la zone (Zones[n].City : « LONDON », « TOKYO »…) ; zone sans ville
 --                    (la zone 1, en attendant le nom de Clément) : son Theme en capitales (« MINI MART ») ;
---   Advice.Speed     « Speed 28 »    } mêmes textes, même règle et mêmes couleurs que les panneaux des
---   Advice.Damage    « Strength 80 » } magasins (Shared/AdvicePanel ; la force se lit « Strength N »
---                                      depuis L-108 point 5) ;
+--   Advice.Speed     « 28 »  } le chiffre seul, au format du jeu (Format.short : « 40K ») : SpeedIcon et
+--   Advice.Damage    « 80 »  } DamageIcon disent déjà ce que c'est (L-127 point 1) ; mêmes valeurs, même
+--                              règle et mêmes couleurs que les panneaux des magasins (Shared/AdvicePanel) ;
 --   Difficulty       « Easy », « Medium » ou « Hard » : la moins bonne des deux couleurs du joueur
 --                    (vert, orange, rouge), et le texte prend cette couleur.
 -- Les couleurs sont refaites si les attributs Damage ou WalkSpeed du joueur changent pendant que le
@@ -39,6 +39,7 @@ local Zones = require(Config:WaitForChild("Zones"))
 local UiMotion = require(Config:WaitForChild("UiMotion"))
 local Find = require(Shared:WaitForChild("Contract"):WaitForChild("Find"))
 local AdvicePanel = require(Shared:WaitForChild("AdvicePanel"))
+local Format = require(Shared:WaitForChild("Format"))
 local ZoneGateController = require(script.Parent:WaitForChild("ZoneGateController"))
 
 export type Level = AdvicePanel.Level
@@ -245,10 +246,10 @@ function ZoneBannerController.Show(zoneIndex: number)
 		zoneName.Text = if city then city else string.upper(zone.Theme)
 	end
 	if speed then
-		speed.Text = AdvicePanel.speedText(zone)
+		speed.Text = Format.short(zone.AdvisedSpeed)
 	end
 	if damage then
-		damage.Text = AdvicePanel.strengthText(zone)
+		damage.Text = Format.short(zone.AdvisedDamage)
 	end
 	recolor()
 	-- Repart pour une durée complète, depuis l'opacité en cours (0 si le bandeau était éteint).

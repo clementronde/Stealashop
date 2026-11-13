@@ -36,6 +36,13 @@
 --   Index.Encode(discovered) -> string                   ItemId découverts du catalogue, dans son ordre,
 --                                                        séparés par des virgules
 --   Index.Decode(text) -> { [ItemId]: true }             l'inverse ; ItemId inconnus du catalogue ignorés
+--   Prime réclamée (L-127 point 2, vague 34) : elle n'est plus versée toute seule, le joueur la réclame
+--   (remote ClaimIndexReward, IndexService) :
+--   Index.ClaimedAttribute  « IndexClaimed » : attribut du Player, les zones dont la prime est réclamée
+--   Index.EncodeZones(zones) -> string                   « 1,3 » : zones 1 à ZoneCount présentes dans
+--                                                        `zones` (clé « 3 » du profil ou 3)
+--   Index.DecodeZones(text) -> { [number]: true }        l'inverse ; zone hors de 1..ZoneCount ignorée
+--   Index.ClaimableZones(discovered, claimed) -> { number }  zones complètes pas encore réclamées
 -- discovered : table [ItemId] = valeur vraie (dans le profil : os.time() de la découverte).
 -- Index complet (les 83) : l'aura « Collectionneur » du doc 3.4 est abandonnée (Clément, 2026-11-10,
 -- L-083 point 7) ; ce sont les zones complètes qui récompensent (argent et vitesse en plus des +5 %).
@@ -133,6 +140,7 @@ local Index = {
 	-- l'entraînement d'une zone, mais le vigile (0,9 × conseillée − 1) se sème plus facilement.
 	ZoneSpeedBonus = 0.03,
 	Attribute = "IndexDiscovered", -- V0 proposé, absent du doc : nom de l'attribut du Player
+	ClaimedAttribute = "IndexClaimed", -- V0 proposé, absent du doc : zones dont la prime est réclamée (L-127)
 	ZoneCount = ZONE_COUNT,
 	Total = #Items.List,
 	ByZone = byZone,
@@ -226,6 +234,39 @@ function Index.Decode(text: any): { [string]: boolean }
 		end
 	end
 	return set
+end
+
+function Index.EncodeZones(zones: { [any]: any }): string
+	local list: { string } = {}
+	for zone = 1, ZONE_COUNT do
+		if zones[tostring(zone)] ~= nil or zones[zone] ~= nil then
+			table.insert(list, tostring(zone))
+		end
+	end
+	return table.concat(list, ",")
+end
+
+function Index.DecodeZones(text: any): { [number]: boolean }
+	local set: { [number]: boolean } = {}
+	if type(text) == "string" then
+		for word in string.gmatch(text, "[^,]+") do
+			local zone = tonumber(word)
+			if zone ~= nil and zone == math.floor(zone) and zone >= 1 and zone <= ZONE_COUNT then
+				set[zone] = true
+			end
+		end
+	end
+	return set
+end
+
+function Index.ClaimableZones(discovered: Discovered, claimed: { [number]: boolean }): { number }
+	local zones: { number } = {}
+	for _, zone in completedZones(discovered) do
+		if not claimed[zone] then
+			table.insert(zones, zone)
+		end
+	end
+	return zones
 end
 
 export type Index = typeof(Index)
