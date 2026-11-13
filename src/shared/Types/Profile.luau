@@ -208,6 +208,10 @@ export type Data = {
 	-- (SkillTreeService, Config/SkillTree), [Id] = niveau ≥ 1 (une compétence pas achetée n'a pas d'entrée).
 	-- Champ facultatif, sans changement de version : absent = rien d'acheté. Nettoyé au chargement : Id
 	-- inconnu retiré, niveau entier borné à MaxLevel, niveau ≤ 0 retiré.
+	PotionStock: { [string]: number }?, -- vague 33 (demande de Cantin du 2026-11-13) : potions ramassées
+	-- dans l'inventaire (PotionService, Config/Potions), [Id] = nombre de 1 à MaxStock. Champ facultatif, sans
+	-- changement de version : absent = aucune potion. Nettoyé au chargement : Id inconnu retiré, nombre entier
+	-- borné à MaxStock, nombre ≤ 0 retiré.
 	-- Partie 2 : Defenses, Rebirths, ajoutés par migration (Version = 9 et suivantes : la v2 est prise
 	-- par le catalogue d'objets v2, la v3 par la boutique Robux, la v4 par l'index, la v5 par les colis
 	-- sur les présentoirs, la v6 par les gains hors ligne, la v7 par les colis dans l'inventaire, la v8

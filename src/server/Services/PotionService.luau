@@ -26,9 +26,20 @@
 --
 -- Ramassage, remote PickPotion(uid) (Net a déjà contrôlé la forme et le débit) : accepté seulement si la potion
 -- est à lui, encore là (pas expirée, pas déjà prise) et s'il est vivant, son HumanoidRootPart à
--- Potions.PickupMaxDistance studs au plus de la potion. Sinon rien (une ligne en Studio). Accepté :
--- PotionRemoved, effet appliqué, Notify « Success » au joueur (« Speed ×2 for 2:00! », durée qui reste en
--- tout), télémétrie (événement PotionPicked, champ « Potion - <Id> »).
+-- Potions.PickupMaxDistance studs au plus de la potion, son profil chargé, et s'il a moins de
+-- Potions.MaxStock potions de ce type. Sinon rien (une ligne en Studio) ; au plafond, la potion reste par terre
+-- et un Notify « Warning » (« Your Speed potions are full (5/5). ») part une seule fois par potion. Accepté
+-- (vague 33, demande de Cantin du 2026-11-13 : plus d'effet tout de suite) : PotionRemoved, +1 dans le champ
+-- facultatif PotionStock du profil, attribut PotionStock_<Id> remis, Notify « Success » (« Speed potion added
+-- to your inventory! »), télémétrie (événement PotionPicked, champ « Potion - <Id> »).
+--
+-- Inventaire des potions (vague 33) : au chargement du profil, PotionStock est nettoyé (Id inconnu retiré,
+-- nombre entier borné à Potions.MaxStock, ≤ 0 retiré, table vide → nil) et chaque attribut du Player
+-- Potions.StockAttributePrefix .. Id est posé (0 sans potion). Remote UsePotion(potionId) : accepté si l'Id est
+-- connu, le profil chargé, le stock ≥ 1 et le personnage vivant ; sinon rien (une ligne en Studio). Accepté :
+-- −1 dans le stock, attribut remis, effet appliqué comme avant (même durée, même cumul : un effet du même type
+-- déjà actif reçoit la durée en plus, décision V0 d'Ironix, comme deux ramassages avant la vague 33), Notify
+-- « Success » (« Speed ×2 for 2:00! », durée qui reste en tout).
 --
 -- Effets : attribut du Player Potions.AttributePrefix .. Id (« Potion_Speed ») = heure serveur de fin
 -- (Workspace:GetServerTimeNow()), retiré à la fin. Durée = Potion.Duration × l'effet de PotionTime (1 sans
@@ -49,12 +60,16 @@
 -- API (serveur) :
 --   PotionService.IsActive(player, id) -> boolean      effet `id` en cours
 --   PotionService.GetEndsAt(player, id) -> number?     heure serveur de fin de l'effet, nil sans effet
+--   PotionService.GetStock(player, id) -> number       potions de ce type dans l'inventaire (0 sans profil)
 --
 -- Tester dans Studio (barre de commande serveur ; hors de Studio, l'attribut n'est pas écouté) :
 --   workspace:SetAttribute("PotionTest", "<joueur> spawn Speed")   une potion de ce type à TEST_SPAWN_DISTANCE
 --                                                                   studs devant lui (hors plafond)
 --   workspace:SetAttribute("PotionTest", "<joueur> give Money")    l'effet tout de suite, sans potion
---   workspace:SetAttribute("PotionTest", "<joueur> clear")         retire ses potions et ses effets
+--   workspace:SetAttribute("PotionTest", "<joueur> stock Money")   une potion de plus dans son inventaire
+--                                                                   (plafond MaxStock compris)
+--   workspace:SetAttribute("PotionTest", "<joueur> clear")         retire ses potions posées et ses effets
+--                                                                   (pas son inventaire)
 -- (joueur = nom ou UserId).
 
 local Players = game:GetService("Players")
@@ -65,6 +80,7 @@ local Workspace = game:GetService("Workspace")
 local Shared = ReplicatedStorage.Shared
 local Potions = require(Shared.Config.Potions)
 local Net = require(Shared.Net.Net)
+local ProfileTypes = require(Shared.Types.Profile)
 
 local DataService = require(script.Parent.DataService)
 local DisplayService = require(script.Parent.DisplayService)
@@ -76,6 +92,7 @@ local TelemetryService = require(script.Parent.TelemetryService)
 local WindowService = require(script.Parent.WindowService)
 
 type Potion = Potions.Potion
+type Data = ProfileTypes.Data
 
 -- Une potion posée pour un joueur.
 type Spawned = {
@@ -91,6 +108,7 @@ type State = {
 	TimerStart: number, -- heure serveur du début de l'attente de la prochaine apparition
 	Effects: { [string]: number }, -- [Id] = heure serveur de fin
 	Died: RBXScriptConnection?,
+	FullWarned: { [string]: boolean }, -- vague 33 : uid des potions déjà signalées « plafond atteint »
 }
 
 -- V0 proposés, absents du doc.
@@ -108,6 +126,7 @@ local STREET_RESCAN = 10 -- s au moins entre deux recherches des rues
 local HUMANOID_WAIT = 10 -- s d'attente du Humanoid d'un personnage qui apparaît
 local SPEED_KEY = "Potion" -- clé du modificateur de vitesse (StatsService)
 local NOTIFY_KIND = "Success"
+local FULL_KIND = "Warning" -- vague 33 : plafond de l'inventaire atteint (refus, son UI_Deny)
 local TELEMETRY_EVENT = "PotionPicked" -- clé de Config/Telemetry.Events
 local TEST_ATTRIBUTE = "PotionTest"
 local TEST_SPAWN_DISTANCE = 6
@@ -243,13 +262,71 @@ local function effectMessage(potion: Potion, remaining: number): string
 	return `{potion.DisplayName} for {clockText(remaining)}!`
 end
 
-local function notify(player: Player, message: string)
+local function notify(player: Player, message: string, kind: string?)
 	local ok, err = pcall(function()
-		Net.Server.Notify:Fire(player, message, NOTIFY_KIND)
+		Net.Server.Notify:Fire(player, message, kind or NOTIFY_KIND)
 	end)
 	if not ok then
 		warn(`[PotionService] Notify vers {player.Name} : {err}`)
 	end
+end
+
+------------------------------------------------------------------------------
+-- Inventaire des potions (vague 33)
+------------------------------------------------------------------------------
+
+local function stockOf(data: Data, id: string): number
+	local stock = data.PotionStock
+	local count = if stock then stock[id] else nil
+	return if type(count) == "number" then count else 0
+end
+
+-- Pose l'attribut PotionStock_<Id> de chaque type (0 sans potion).
+local function publishStock(player: Player, data: Data)
+	for _, potion in Potions.List do
+		local attribute = Potions.StockAttributePrefix .. potion.Id
+		local count = stockOf(data, potion.Id)
+		if player:GetAttribute(attribute) ~= count then
+			player:SetAttribute(attribute, count)
+		end
+	end
+end
+
+-- Ajoute `delta` au stock du type `id` (borné de 0 à MaxStock) ; renvoie le nouveau nombre.
+local function changeStock(player: Player, data: Data, id: string, delta: number): number
+	local count = math.clamp(stockOf(data, id) + delta, 0, Potions.MaxStock)
+	local stock = data.PotionStock or {}
+	stock[id] = if count > 0 then count else nil
+	data.PotionStock = if next(stock) ~= nil then stock else nil
+	publishStock(player, data)
+	return count
+end
+
+function PotionService.GetStock(player: Player, id: string): number
+	local data = DataService.Get(player)
+	return if data then stockOf(data, id) else 0
+end
+
+-- Chargement du profil : champ nettoyé (voir l'en-tête), attributs posés.
+local function onProfileLoaded(player: Player)
+	local data = DataService.Get(player)
+	if data == nil or player.Parent == nil then
+		return
+	end
+	local stored: any = data.PotionStock
+	local clean: { [string]: number } = {}
+	if type(stored) == "table" then
+		for id, count in stored do
+			if type(id) == "string" and Potions.ById[id] ~= nil and type(count) == "number" and count == count then
+				local whole = math.clamp(math.floor(count), 0, Potions.MaxStock)
+				if whole > 0 then
+					clean[id] = whole
+				end
+			end
+		end
+	end
+	data.PotionStock = if next(clean) ~= nil then clean else nil
+	publishStock(player, data)
 end
 
 local function installHooks()
@@ -310,6 +387,7 @@ local function removePotion(player: Player, state: State, uid: string)
 	end
 	state.Potions[uid] = nil
 	state.Count -= 1
+	state.FullWarned[uid] = nil
 	fire("PotionRemoved", player, uid)
 end
 
@@ -546,14 +624,67 @@ local function onPickPotion(player: Player, uid: string)
 		return
 	end
 	local potion = Potions.ById[entry.Id]
-	removePotion(player, state, uid)
 	if potion == nil then
+		removePotion(player, state, uid)
 		return
 	end
+	local data = DataService.Get(player)
+	if data == nil then
+		reject(player, uid, "profil pas chargé")
+		return
+	end
+	if stockOf(data, potion.Id) >= Potions.MaxStock then
+		-- Vague 33 : plafond de l'inventaire, la potion reste par terre ; un seul message par potion (le client
+		-- redemande tant qu'il est dessus).
+		if not state.FullWarned[uid] then
+			state.FullWarned[uid] = true
+			notify(player, `Your {potion.DisplayName} potions are full ({Potions.MaxStock}/{Potions.MaxStock}).`, FULL_KIND)
+		end
+		reject(player, uid, `plafond de l'inventaire ({Potions.MaxStock} {potion.Id})`)
+		return
+	end
+	removePotion(player, state, uid)
+	state.FullWarned[uid] = nil
+	local count = changeStock(player, data, potion.Id, 1)
+	notify(player, `{potion.DisplayName} potion added to your inventory!`)
+	TelemetryService.LogEvent(player, TELEMETRY_EVENT, { `Potion - {potion.Id}` })
+	log(`{player.Name} ramasse {potion.Id} ({uid}) : {count} dans l'inventaire`)
+end
+
+------------------------------------------------------------------------------
+-- Utilisation (vague 33)
+------------------------------------------------------------------------------
+
+local function onUsePotion(player: Player, potionId: string)
+	local function refuse(reason: string)
+		if IS_STUDIO then
+			warn(`[PotionService] {player.Name} → UsePotion(« {potionId} ») refusé : {reason}`)
+		end
+	end
+	local potion = Potions.ById[potionId]
+	if potion == nil then
+		refuse("potion inconnue")
+		return
+	end
+	local state = states[player]
+	local data = DataService.Get(player)
+	if state == nil or data == nil then
+		refuse("profil pas chargé")
+		return
+	end
+	if stockOf(data, potion.Id) < 1 then
+		refuse("aucune dans l'inventaire")
+		return
+	end
+	local _, humanoid = bodyOf(player)
+	if humanoid == nil or humanoid.Health <= 0 then
+		refuse("pas de personnage vivant")
+		return
+	end
+	local count = changeStock(player, data, potion.Id, -1)
 	local remaining = applyEffect(player, state, potion)
 	notify(player, effectMessage(potion, remaining))
-	TelemetryService.LogEvent(player, TELEMETRY_EVENT, { `Potion - {potion.Id}` })
-	log(`{player.Name} ramasse {potion.Id} ({uid}) : {math.round(remaining)} s`)
+	log(`{player.Name} boit {potion.Id} : {math.round(remaining)} s, {count} restante(s)`)
 end
 
 ------------------------------------------------------------------------------
@@ -586,7 +717,7 @@ local function onPlayerAdded(player: Player)
 	if states[player] then
 		return
 	end
-	states[player] = { Potions = {}, Count = 0, TimerStart = now(), Effects = {}, Died = nil }
+	states[player] = { Potions = {}, Count = 0, TimerStart = now(), Effects = {}, Died = nil, FullWarned = {} }
 	player.CharacterAdded:Connect(function(character: Model)
 		watchCharacter(player, character)
 	end)
@@ -656,6 +787,14 @@ local function onTestAttribute()
 		local remaining = applyEffect(player, state, potion)
 		notify(player, effectMessage(potion, remaining))
 		print(`[PotionService] test : {player.Name} reçoit l'effet {potion.Id} ({math.round(remaining)} s)`)
+	elseif command == "stock" and potion then
+		local data = DataService.Get(player)
+		if data == nil then
+			warn(`[PotionService] test « {value} » : profil pas chargé`)
+			return
+		end
+		local count = changeStock(player, data, potion.Id, 1)
+		print(`[PotionService] test : {player.Name} a {count} potion(s) {potion.Id} dans son inventaire`)
 	elseif command == "clear" then
 		for uid in table.clone(state.Potions) do
 			removePotion(player, state, uid)
@@ -663,7 +802,7 @@ local function onTestAttribute()
 		clearEffects(player, state)
 		print(`[PotionService] test : potions et effets de {player.Name} retirés`)
 	else
-		warn(`[PotionService] test « {value} » : commande inconnue (spawn <Id>, give <Id>, clear)`)
+		warn(`[PotionService] test « {value} » : commande inconnue (spawn <Id>, give <Id>, stock <Id>, clear)`)
 	end
 end
 
@@ -674,6 +813,8 @@ end
 function PotionService.Init()
 	installHooks()
 	Net.Server.PickPotion:Connect(onPickPotion)
+	Net.Server.UsePotion:Connect(onUsePotion)
+	DataService.OnProfileLoaded(onProfileLoaded)
 	Players.PlayerAdded:Connect(onPlayerAdded)
 	Players.PlayerRemoving:Connect(onPlayerRemoving)
 	for _, player in Players:GetPlayers() do

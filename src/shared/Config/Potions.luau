@@ -11,6 +11,10 @@
 --     PickPotion(uid), du client vers le serveur (le serveur vérifie la distance) ;
 --   - effet actif : attribut du joueur AttributePrefix .. Id (« Potion_Speed »…) = heure serveur de fin
 --     (workspace:GetServerTimeNow()), retiré à la fin ; une potion du même type ajoute sa durée à ce qui reste.
+--   - vague 33 (demande de Cantin du 2026-11-13) : une potion ramassée va dans l'INVENTAIRE (champ facultatif
+--     PotionStock du profil, [Id] = nombre, MaxStock au plus par type) ; le joueur la boit quand il veut par le
+--     remote UsePotion(potionId), qui lance l'effet ci-dessus. Stock montré au client par l'attribut du Player
+--     StockAttributePrefix .. Id (« PotionStock_Speed » = nombre, 0 compris, posé au chargement du profil).
 -- Arbre de compétences (Config/SkillTree) : PotionLuck rapproche les apparitions, PotionTime allonge les durées.
 
 local DeepFreeze = require(script.Parent.DeepFreeze)
@@ -51,6 +55,9 @@ local Potions = {
 	Lifetime = 180, -- V0 : une potion pas ramassée disparaît au bout de ce temps
 	PickupRadius = 4, -- V0 : studs, contact détecté par le client
 	PickupMaxDistance = 10, -- V0 : studs, vérifié par le serveur (latence comprise)
+	-- Vague 33 (inventaire des potions) :
+	StockAttributePrefix = "PotionStock_", -- attribut du Player : potions de ce type dans l'inventaire
+	MaxStock = 5, -- V0 : potions d'un même type dans l'inventaire ; au plafond, la potion reste par terre
 }
 
 export type Potions = typeof(Potions)

@@ -593,6 +593,17 @@ local List: { RemoteDef } = {
 		Args = { index("plotIndex"), id("itemUid") },
 		RatePerSecond = 5, -- V0 proposé, absent du doc ; maintien vérifié par le service
 	},
+	{
+		-- Vague 33 (demande de Cantin du 2026-11-13), absent du tableau 9.4 : le joueur boit une potion de son
+		-- inventaire (champ PotionStock du profil). PotionService vérifie l'Id (Config/Potions), le profil, le
+		-- stock (≥ 1) et le personnage vivant ; effet du même type déjà actif : la durée s'ajoute (cumul).
+		-- Refusé, rien ne change.
+		Name = "UsePotion",
+		Direction = "ClientToServer",
+		Reliable = true,
+		Args = { id("potionId") },
+		RatePerSecond = 4, -- V0 proposé, absent du doc
+	},
 }
 
 return {
