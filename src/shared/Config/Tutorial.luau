@@ -35,6 +35,13 @@ local Steps: { Step } = {
 	{ Index = 9, Id = "GoToZone2", At = 5 * 60, Goal = "Objectif affiché : la zone 2 (vitesse 22, dégâts 10)", Bubble = "Next goal: Zone 2!" },
 	-- Étape 10 : message de fin du bouclier débutant (texte du doc, voir ShieldEndMessage)
 	{ Index = 10, Id = "ShieldEnd", At = 10 * 60, Goal = "Fin du bouclier débutant : son colis volé peut tomber à la batte", Bubble = nil },
+	-- Vague 36 (L-085 point 4, a121) : le vol entre joueurs, sur la boutique du bot (BotService). Ajoutées à la
+	-- fin, sans changer les numéros ni les Id d'avant (un Tutorial.Step sauvegardé garde son sens). Sautées
+	-- sans bot sur le serveur : le tuto finit alors à l'étape 10, comme avant. V0 proposés, absents du doc
+	-- (étapes, At, bulles). L'étape « le voir défendre sa base » attend la défense du bot (L-117 point 7).
+	{ Index = 11, Id = "GoToBotShop", At = 10 * 60 + 30, Goal = "Flèche vers la porte de la boutique du bot", Bubble = "Steal from another shop!" },
+	{ Index = 12, Id = "StealFromBot", At = 10 * 60 + 60, Goal = "Casser la porte du bot et lui prendre un objet exposé", Bubble = "Break in and grab an item!" },
+	{ Index = 13, Id = "BringStolenHome", At = 10 * 60 + 90, Goal = "Ramener l'objet volé dans sa boutique (dépôt PvPService), fin du tuto", Bubble = "Bring it back to your shop!" },
 }
 
 -- Textes écrits dans le doc, traduits en anglais (L-036). ShieldEndMessage dépasse les 8 mots
@@ -84,6 +91,12 @@ local Tutorial = {
 	GoalZone = 2, -- doc, étape 9 : objectif la zone 2 (vitesse conseillée 22, dégâts conseillés 10)
 	MessageDuration = 8, -- V0 : secondes d'affichage de ShieldEndMessage avant la fin du tuto
 	Tick = 0.5, -- V0 : secondes entre deux contrôles de TutorialService (seuils, zone 2, bouclier, nuit)
+	-- Vague 36 (L-085 point 4, a121), étapes 11 à 13 (vol sur la boutique du bot), V0 proposés, absents du doc :
+	BotShopRadius = 15, -- studs : à cette distance de la porte du bot (ou dans sa boutique), étape 11 → 12
+	-- Secondes au début d'une session (reprise à l'étape 11 à 13) pendant lesquelles un bot absent est attendu
+	-- avant de finir le tuto : un serveur neuf le fait venir Bot.ArriveDelay (5) s plus tard, revu chaque
+	-- Bot.CheckInterval (1) s ; marge de 2 s.
+	BotWait = 8,
 
 	-- Textes écrits dans le doc, traduits en anglais (L-036)
 	ShieldEndMessage = SHIELD_END_MESSAGE,
@@ -140,6 +153,10 @@ local Tutorial = {
 		"Premier objet exposé",
 		"Premier encaissement",
 		"Premier outil acheté",
+		-- Vague 36 (a121, V0 proposés) : étapes 11 à 13 du tuto, envoyées seulement pendant le tuto, avec un bot.
+		"Boutique du bot atteinte",
+		"Premier objet pris au bot",
+		"Objet du bot ramené chez soi",
 	},
 }
 

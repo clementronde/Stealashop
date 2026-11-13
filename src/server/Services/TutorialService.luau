@@ -13,7 +13,7 @@
 --     ou un trail (Cosmetics.Auras, Cosmetics.Trails), ou une amélioration achetée (un niveau de
 --     Upgrades > 0). L'argent, les stats et le temps de jeu seuls ne comptent pas : un joueur qui n'a
 --     fait que s'entraîner a encore besoin du tuto ;
---   - reprise : un profil à Step 1 à 10 et Done = false reprend à son étape. Step garde l'étape la
+--   - reprise : un profil à Step 1 à 13 et Done = false reprend à son étape. Step garde l'étape la
 --     plus avancée atteinte ; ce qui n'est pas sauvegardé (vitrine, magasin ouvert, colis porté) est
 --     relu sur place : un joueur parti avec un colis sur la tête (Step = 4) reprend à l'étape 2, car
 --     le colis est revenu sur son rayon (5.6) ;
@@ -42,7 +42,25 @@
 --   9 → 10  le joueur passe l'arche de la zone 2 (ZoneGate, attribut Zone = GoalZone) : au-delà du
 --           plan de l'arche, du côté opposé à l'arche de la zone 1 (sinon à la zone safe) ;
 --   10      fin du bouclier débutant (NightCycleService.IsShielded) : ShieldEndMessage pendant
---           MessageDuration s, puis le tuto est fini (Step = 10, Done = true).
+--           MessageDuration s, puis, avec un bot sur le serveur, l'étape 11 ; sans bot, le tuto est fini
+--           (Step = 10, Done = true), comme avant la vague 36 ;
+--   Vague 36 (L-085 point 4, a121, V0 proposé) : le vol entre joueurs sur la boutique du bot (BotService). Après
+--   l'étape 10 parce qu'une fois le bouclier débutant fini, le joueur entre dans le PvP : on lui montre alors à voler
+--   (et le message « keep your bat close! » annonce la suite) ; avant, il n'a souvent pas de quoi casser une porte
+--   vite ni d'objet exposé à protéger. Les numéros 1 à 10 ne changent pas (Step sauvegardé, funnel).
+--   10 → 11 message de fin du bouclier fini et un bot présent (BotService.GetBotPlot) ;
+--   11 → 12 GoToBotShop : le joueur à BotShopRadius studs de la porte du bot (PlotDoor/Window) ou dans le volume
+--           Bounds de sa boutique (ou un objet du bot déjà pris) ;
+--   12 → 13 StealFromBot : un objet du bot pris (BotService.OnTheft « Grabbed », ou un portage PlayerItem de
+--           VictimUserId 0, celui de PvPService pour le bot) ;
+--   13 → 12 BringStolenHome : l'objet perdu (vol raté : coup de batte, mort, BotService.OnTheft « Returned ») ;
+--   13      l'objet déposé chez lui (OnTheft « Stolen ») : le tuto est fini (Step = 13, Done = true).
+--   Sans bot (GetBotPlot = nil : jamais venu, ou parti pendant ces étapes, BotService.OnChanged) : le tuto finit,
+--   Step garde l'étape atteinte. Seule attente : une session qui reprend aux étapes 11 à 13 attend un bot absent
+--   pendant ses BotWait premières secondes (serveur neuf : le bot arrive Bot.ArriveDelay s plus tard).
+--   Un vol commencé avant l'étape 11 ne compte pas pour finir (remis à zéro en entrant à l'étape 11), un objet
+--   tenu à ce moment-là si. Vol d'un vrai joueur : ne compte pas (le tuto montre le bot). Le bot ne défend pas
+--   encore sa boutique (L-117 point 7) : pas d'étape « le voir défendre ».
 -- Retours en arrière, seulement pendant le braquage : étape 3 sans colis et magasin fermé → 2 ;
 -- étape 4 sans colis, ni sur la tête ni dans l'inventaire (rattrapé, mort, déconnecté) → 3 si un magasin de la zone du tuto est encore
 -- ouvert près du joueur, sinon 2. Ils ne changent que l'étape affichée, pas Tutorial.Step du profil
@@ -99,7 +117,10 @@
 -- du magasin (étapes 1 à 3 ; la Supérette tant que le joueur n'en a pas choisi un autre), sa boutique
 -- (4 : son SpawnPoint, au sol près de l'entrée), colis posé au sol, puis présentoir libre (objet dans
 -- l'inventaire), puis plaque de ramassage (5), tapis puis banc (6), plaque de ramassage ou
--- comptoir WeaponShop (7) et AuraShop (8) selon l'argent, arche de la zone 2 (9). Tapis et banc
+-- comptoir WeaponShop (7) et AuraShop (8) selon l'argent, arche de la zone 2 (9), porte du bot (11, et 12
+-- tant que sa boutique n'est pas ouverte au vol), objet du bot volable le plus proche (12, porte cassée ou
+-- joueur dedans : présentoirs SafeSlots exclus, attributs StealOpen et SafeSlots de PvPService), sa boutique
+-- (13). Tapis et banc
 -- sont trouvés par leur tag dans la parcelle ; la plaque, par DisplayService.GetCollectTarget (celle qui
 -- porte le plus d'argent, sinon celle du premier objet exposé). Boutique du hub (PLOT_Shop, L-050) :
 -- entre l'intérieur de la boutique (volume Bounds) et l'extérieur, la flèche vise d'abord la porte
@@ -127,7 +148,9 @@
 -- franchies d'après le profil au chargement (loggedFunnel). Roblox ne compte de toute façon que le
 -- premier envoi d'une étape. Étapes : 1 tuto commencé, 2 coup sur une vitrine de magasin PNJ, 3 vitrine
 -- PNJ cassée par lui, 4 colis PNJ soulevé, 5 dans la zone safe avec ce colis, 6 colis posé, 7 colis
--- ouvert, 8 un objet exposé, 9 premier encaissement, 10 un outil acheté. Interrupteur de la télémétrie
+-- ouvert, 8 un objet exposé, 9 premier encaissement, 10 un outil acheté ; vague 36, seulement pendant le tuto :
+-- 11 boutique du bot atteinte (étape 12), 12 objet du bot pris (étape 13), 13 objet du bot déposé chez lui
+-- (fin). Interrupteur de la télémétrie
 -- (Config/Telemetry.Enabled = false, DEV-054) : aucune étape n'est envoyée.
 --
 -- Crochet de test, STUDIO SEULEMENT : workspace:SetAttribute("TutorialReset", userId) (barre de
@@ -191,6 +214,23 @@ type DisplayApi = {
 local CarryService: CarryApi = require(script.Parent.CarryService) :: any
 local DisplayService: DisplayApi = require(script.Parent.DisplayService) :: any
 
+-- Vague 36 : ce que ce service lit de BotService (étapes 11 à 13). require protégé, comme PvPService : sans
+-- BotService (anciens bancs), jamais de bot, les étapes 11 à 13 sont sautées.
+type BotApi = {
+	GetBotPlot: () -> Model?,
+	GetExposed: (plot: Model) -> { [number]: { Uid: string, ItemId: string, Income: number } },
+	OnTheft: (listener: (thief: Player, itemId: string, stage: string) -> ()) -> any,
+	OnChanged: (listener: (plot: Model?) -> ()) -> any,
+}
+local botModule = script.Parent:FindFirstChild("BotService")
+local botLoaded: boolean, botResult: any = false, nil
+if botModule and botModule:IsA("ModuleScript") then
+	botLoaded, botResult = pcall(require, botModule)
+end
+local Bot: BotApi? = if botLoaded and type(botResult) == "table" and type(botResult.GetBotPlot) == "function"
+	then botResult :: any
+	else nil
+
 -- Dernier guidage envoyé au client (pour ne jamais renvoyer le même).
 type Sent = { step: number, hint: string?, target: Vector3? }
 
@@ -210,6 +250,12 @@ type Session = {
 	-- Features.ShelfOpen : l'objet garanti est déjà sorti d'un colis de ce braquage (une seule fois par
 	-- braquage ; remis à false au retour à l'étape 2).
 	guaranteed: boolean,
+	-- Vague 36 (étapes 11 à 13) : début de la session (os.clock, attente d'un bot à la reprise), un objet du bot
+	-- tenu (OnTheft « Grabbed » jusqu'à « Returned » ou « Stolen »), un objet du bot déposé chez lui depuis
+	-- l'entrée à l'étape 11.
+	startedAt: number,
+	botHeld: boolean,
+	botStolen: boolean,
 }
 
 local IS_STUDIO = RunService:IsStudio()
@@ -228,7 +274,10 @@ local STEP_TOOL = 7 -- BuyTool
 local STEP_AURA = 8 -- BuyAura
 local STEP_ZONE = 9 -- GoToZone2
 local STEP_SHIELD = 10 -- ShieldEnd
-local LAST_STEP = STEP_SHIELD
+local STEP_BOT_SHOP = 11 -- GoToBotShop (vague 36)
+local STEP_BOT_GRAB = 12 -- StealFromBot
+local STEP_BOT_HOME = 13 -- BringStolenHome
+local LAST_STEP = STEP_BOT_HOME
 
 -- Étapes du funnel (Config/Tutorial.FunnelSteps, même ordre ; 14.2).
 local FUNNEL_PLOT = 1
@@ -241,6 +290,9 @@ local FUNNEL_REVEALED = 7
 local FUNNEL_DISPLAYED = 8
 local FUNNEL_CASHOUT = 9
 local FUNNEL_TOOL = 10
+local FUNNEL_BOT_SHOP = 11 -- vague 36, seulement pendant le tuto
+local FUNNEL_BOT_GRAB = 12
+local FUNNEL_BOT_HOME = 13
 
 -- Noms du contrat (2.1 et 10.4) lus ici.
 local STORE_TAG = "NPCStore"
@@ -263,6 +315,13 @@ local LANDED_ATTRIBUTE = "Landed"
 -- Entrée de la boutique du joueur (PLOT_Shop, nom validé par Ironix en L-050, pas encore au contrat).
 local PLOT_DOOR = "PlotDoor"
 local SLOT_FORMAT = "DisplaySlot_%02d"
+-- Posés par PvPService sur une boutique (aucun nom du contrat) : ouverte au vol (porte cassée), et présentoirs
+-- à l'abri (« 3 » ou « 3,7 »).
+local STEAL_OPEN_ATTRIBUTE = "StealOpen"
+local SAFE_SLOTS_ATTRIBUTE = "SafeSlots"
+-- Portage d'un objet volé (Types/Carry.PlayerItemPayload) : VictimUserId 0 = le bot (PvPService).
+local PLAYER_ITEM_KIND = "PlayerItem"
+local BOT_VICTIM_USER_ID = 0
 -- Attribut du Player posé par TrainingService : la machine utilisée, nil sinon.
 local MACHINE_ATTRIBUTE = "TrainingMachine"
 -- Attribut du Workspace du crochet de test (Studio seulement).
@@ -715,6 +774,10 @@ local function loggedFunnel(data: Data): { [number]: boolean }
 		[FUNNEL_DISPLAYED] = next(data.Display) ~= nil or step >= STEP_TRAIN,
 		[FUNNEL_CASHOUT] = step >= STEP_TRAIN,
 		[FUNNEL_TOOL] = ownsBoughtTool(data),
+		-- Vague 36 : envoyées pendant le tuto seulement (13 : à la fin, jamais renvoyée après une reprise).
+		[FUNNEL_BOT_SHOP] = step >= STEP_BOT_GRAB,
+		[FUNNEL_BOT_GRAB] = step >= STEP_BOT_HOME,
+		[FUNNEL_BOT_HOME] = false,
 	}
 end
 
@@ -833,6 +896,100 @@ local function pastGate(position: Vector3, zone: number): boolean
 end
 
 ------------------------------------------------------------------------------
+-- Boutique du bot (vague 36, étapes 11 à 13)
+------------------------------------------------------------------------------
+
+-- Boutique du bot, nil sans bot (ou sans BotService).
+local function botPlot(): Model?
+	local api = Bot
+	if api == nil then
+		return nil
+	end
+	local ok, plot = pcall(api.GetBotPlot)
+	if ok and typeof(plot) == "Instance" and (plot :: Instance):IsA("Model") then
+		return plot :: Model
+	end
+	return nil
+end
+
+-- Porte de la boutique du bot : pivot de PlotDoor/Window (au sol au milieu de l'entrée), sinon PlotDoor, sinon
+-- son SpawnPoint, sinon son pivot.
+local function botDoor(plot: Model): Vector3?
+	local door = plot:FindFirstChild(PLOT_DOOR, true)
+	local at = if door then positionOf(door:FindFirstChild(WINDOW, true)) or positionOf(door) else nil
+	return at or positionOf(Find.path(plot, SPAWN_POINT)) or plot:GetPivot().Position
+end
+
+-- `position` dans le volume Bounds de la boutique `plot`.
+local function insidePlot(plot: Model, position: Vector3?): boolean
+	if position == nil then
+		return false
+	end
+	local bounds = plot:FindFirstChild(BOUNDS) or Find.path(plot, BOUNDS)
+	if bounds == nil or not bounds:IsA("BasePart") then
+		return false
+	end
+	local box = bounds :: BasePart
+	return insideBox(box.CFrame, box.Size, position)
+end
+
+-- Étape 11 → 12 : dans la boutique du bot, ou à BotShopRadius studs de sa porte.
+local function atBotShop(plot: Model, position: Vector3?): boolean
+	if position == nil then
+		return false
+	end
+	if insidePlot(plot, position) then
+		return true
+	end
+	local door = botDoor(plot)
+	return door ~= nil and (door - position).Magnitude <= Tutorial.BotShopRadius
+end
+
+-- Étape 12 : présentoir de l'objet exposé du bot volable le plus proche de `position` (présentoirs à l'abri,
+-- attribut SafeSlots de PvPService, exclus) ; nil sans objet volable.
+local function botItemTarget(plot: Model, position: Vector3?): Vector3?
+	local api = Bot
+	if api == nil then
+		return nil
+	end
+	local ok, exposed = pcall(api.GetExposed, plot)
+	if not ok or type(exposed) ~= "table" then
+		return nil
+	end
+	local safe: { [number]: boolean } = {}
+	local safeText = plot:GetAttribute(SAFE_SLOTS_ATTRIBUTE)
+	if type(safeText) == "string" then
+		for _, piece in string.split(safeText, ",") do
+			local slot = tonumber(piece)
+			if slot then
+				safe[slot] = true
+			end
+		end
+	end
+	local best: Vector3? = nil
+	local bestDistance = math.huge
+	for slot in exposed do
+		if type(slot) == "number" and not safe[slot] then
+			local at = positionOf(Find.path(plot, string.format(SLOT_FORMAT, slot)))
+			local distance = if at and position then (at - position).Magnitude else slot
+			if at and distance < bestDistance then
+				best, bestDistance = at, distance
+			end
+		end
+	end
+	return best
+end
+
+-- Le joueur porte un objet volé au bot (portage PlayerItem de PvPService, VictimUserId 0).
+local function carryingBotItem(player: Player): boolean
+	local ok, payload = pcall(CarryService.GetPayload, player)
+	return ok
+		and type(payload) == "table"
+		and payload.Kind == PLAYER_ITEM_KIND
+		and payload.VictimUserId == BOT_VICTIM_USER_ID
+end
+
+------------------------------------------------------------------------------
 -- Funnel (14.2)
 ------------------------------------------------------------------------------
 
@@ -896,6 +1053,15 @@ local function setStep(session: Session, data: Data, step: number, why: string)
 		table.clear(session.used)
 	elseif step == STEP_HIT then
 		session.guaranteed = false -- nouveau braquage : l'objet du tuto est de nouveau garanti (ShelfOpen)
+	elseif step == STEP_BOT_SHOP then
+		session.botStolen = false -- vague 36 : un vol au bot d'avant l'étape 11 ne compte pas
+	end
+	-- Vague 36 : funnel 11 (boutique du bot atteinte) et 12 (objet du bot pris), une seule fois (logFunnel).
+	if step >= STEP_BOT_GRAB then
+		logFunnel(session.player, FUNNEL_BOT_SHOP)
+	end
+	if step == STEP_BOT_HOME then
+		logFunnel(session.player, FUNNEL_BOT_GRAB)
 	end
 	log(`{session.player.Name} : étape {previous} → {step} ({why})`)
 end
@@ -1006,6 +1172,28 @@ local function transition(session: Session, data: Data, position: Vector3?, carr
 		if position and pastGate(position, Tutorial.GoalZone) then
 			return STEP_SHIELD, `zone {Tutorial.GoalZone} atteinte`
 		end
+	elseif step == STEP_SHIELD then
+		-- Vague 36 : message de fin du bouclier montré jusqu'au bout, et un bot présent (sinon evaluate finit le tuto).
+		if session.shielded == false and session.shieldShown and os.clock() >= session.messageUntil and botPlot() ~= nil then
+			return STEP_BOT_SHOP, "fin du bouclier débutant, bot présent"
+		end
+	elseif step >= STEP_BOT_SHOP then
+		local plot = botPlot()
+		if plot == nil then
+			return nil, nil -- sans bot : evaluate finit le tuto (après l'attente d'une reprise)
+		end
+		local held = session.botHeld or carryingBotItem(session.player)
+		if step == STEP_BOT_SHOP then
+			if held or session.botStolen or atBotShop(plot, position) then
+				return STEP_BOT_GRAB, "boutique du bot atteinte"
+			end
+		elseif step == STEP_BOT_GRAB then
+			if held or session.botStolen then
+				return STEP_BOT_HOME, "objet du bot pris"
+			end
+		elseif not held and not session.botStolen then
+			return STEP_BOT_GRAB, "objet du bot perdu"
+		end
 	end
 	return nil, nil
 end
@@ -1099,6 +1287,18 @@ local function rawGuidance(session: Session, data: Data, position: Vector3?): (s
 		return nil, positionOf(taggedInMap(AURA_SHOP_TAG))
 	elseif step == STEP_ZONE then
 		return nil, positionOf(taggedInMap(GATE_TAG, Tutorial.GoalZone))
+	elseif step == STEP_BOT_SHOP or step == STEP_BOT_GRAB then
+		-- Vague 36 : la porte du bot, puis (boutique ouverte au vol, ou joueur dedans) son objet volable le plus proche.
+		local plot = botPlot()
+		if plot == nil then
+			return nil, nil
+		end
+		if step == STEP_BOT_GRAB and (plot:GetAttribute(STEAL_OPEN_ATTRIBUTE) == true or insidePlot(plot, position)) then
+			return nil, botItemTarget(plot, position) or botDoor(plot)
+		end
+		return nil, botDoor(plot)
+	elseif step == STEP_BOT_HOME then
+		return nil, shopTarget(player) -- dépôt : la DepositZone couvre le sol de sa boutique
 	end
 	return nil, nil
 end
@@ -1128,6 +1328,13 @@ local function evaluate(session: Session)
 	local carrying = npcPayload(player) ~= nil
 	readShield(session)
 
+	-- Vague 36 : étapes 11 à 13 sans bot (jamais venu ou parti) : le tuto finit, sauf pendant les BotWait
+	-- premières secondes d'une reprise (le bot d'un serveur neuf arrive un peu plus tard).
+	if session.step >= STEP_BOT_SHOP and botPlot() == nil and os.clock() - session.startedAt >= Tutorial.BotWait then
+		finish(session, data, "pas de bot sur le serveur : étapes du vol sautées")
+		return
+	end
+
 	for _ = 1, LAST_STEP + 2 do
 		local nextStep, why = transition(session, data, position, carrying)
 		if nextStep == nil then
@@ -1141,10 +1348,18 @@ local function evaluate(session: Session)
 			showShieldMessage(session)
 		end
 		if os.clock() >= session.messageUntil then
+			-- Avec un bot, la transition est déjà passée à l'étape 11 : ici, pas de bot (fin d'avant la vague 36).
 			data.Tutorial.Step = STEP_SHIELD
 			finish(session, data, "bouclier débutant fini")
 			return
 		end
+	end
+
+	-- Vague 36 : objet du bot déposé chez lui pendant l'étape 13 : le tuto est fini (Step = 13).
+	if session.step == STEP_BOT_HOME and session.botStolen then
+		logFunnel(player, FUNNEL_BOT_HOME)
+		finish(session, data, "objet du bot ramené chez lui")
+		return
 	end
 
 	local hint, target = guidance(session, data, position)
@@ -1165,6 +1380,9 @@ local function newSession(player: Player, step: number): Session
 		messageUntil = 0,
 		sent = nil,
 		guaranteed = false,
+		startedAt = os.clock(),
+		botHeld = false,
+		botStolen = false,
 	}
 end
 
@@ -1441,6 +1659,24 @@ local function onCashOut(player: Player, amount: number, source: string)
 	end
 end
 
+-- Vague 36 : vol sur la boutique du bot (BotService.OnTheft). Noté quelle que soit l'étape ; seules les étapes
+-- 11 à 13 le lisent (botStolen remis à false en entrant à l'étape 11).
+local function onBotTheft(thief: Player, _itemId: string, stage: string)
+	local session = sessions[thief]
+	if session == nil then
+		return
+	end
+	if stage == "Grabbed" then
+		session.botHeld = true
+	elseif stage == "Returned" then
+		session.botHeld = false
+	elseif stage == "Stolen" then
+		session.botHeld = false
+		session.botStolen = true
+	end
+	evaluate(session)
+end
+
 local function onSkip(player: Player)
 	local session = sessions[player]
 	local data = DataService.Get(player)
@@ -1584,6 +1820,16 @@ function TutorialService.Init()
 		UnboxService.OnItemPlaced(onItemPlaced)
 	end
 	DisplayService.OnCashOut(onCashOut)
+	local botApi = Bot
+	if botApi then
+		botApi.OnTheft(onBotTheft)
+		-- Arrivée ou départ du bot : les étapes 10 à 13 se relisent tout de suite.
+		botApi.OnChanged(function(_plot: Model?)
+			for _, session in table.clone(sessions) do
+				evaluate(session)
+			end
+		end)
+	end
 	NightCycleService.OnPhaseChanged(function()
 		for _, session in table.clone(sessions) do
 			evaluate(session)
