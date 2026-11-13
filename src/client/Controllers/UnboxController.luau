@@ -49,7 +49,13 @@
 --     reprend et l'expose) ; chez les autres, « Steal » (maintien PvP.StealGrabTime) pendant l'antivol,
 --     boutique ouverte au vol (StealOpen de la parcelle) et mains vides → StealFloorItem(plotIndex, itemUid)
 --     au début et à la fin du maintien, animation Grab. Le serveur revérifie tout.
---     UnboxController.GetFloorView(model) -> { TimeText, ItemText, OwnerPrompt, StealPrompt }? (bancs).
+--     UnboxController.GetFloorView(model) -> { TimeText, ItemText, OwnerPrompt, StealPrompt, Chains }? (bancs).
+--   - vague 34 (L-127 point 4, Clément) : sur cet objet encore sous antivol à son arrivée, les chaînes et le
+--     cadenas du kit ReplicatedStorage/Assets/FX/FX_AntiTheft, posés une fois côté client autour de l'objet
+--     (Unbox/AntiTheftChains, reprise de wrap(item) de tools/clement/antitheft_proto.luau), dans un Model
+--     AntiTheftChains sous l'objet, ancrés, sans collision ni requête. À « UNLOCKED! » : le cadenas saute de
+--     0,3 × k en 0,12 s, tout passe en transparence 1 en 0,25 s et est détruit. Kit absent : rien (une ligne
+--     dans la sortie). BB_AntiTheft reste au-dessus de l'objet.
 -- En Studio, l'objet révélé est aussi écrit dans la sortie. Sans UI_Unbox, la sortie seulement.
 -- Les invites suivent le streaming : un colis qui sort de la zone chargée perd son invite, elle
 -- revient avec lui. Aucune règle de jeu : le serveur décide (amélioration et objet compris).
@@ -76,6 +82,10 @@ local UI = require(Shared:WaitForChild("Contract"):WaitForChild("UI"))
 local UnboxFolder = script.Parent:WaitForChild("Unbox")
 local Screen = require(UnboxFolder:WaitForChild("Screen"))
 local Sequence = require(UnboxFolder:WaitForChild("Sequence"))
+-- Vague 34 : module d'aide des chaînes ; absent (faux arbres des bancs d'avant la vague 34), pas de chaînes.
+local AntiTheftChains = if UnboxFolder:FindFirstChild("AntiTheftChains")
+	then require(UnboxFolder:WaitForChild("AntiTheftChains")) -- déjà là : pas d'attente
+	else nil
 
 type AnimationApi = {
 	PlayPlayer: (name: string) -> AnimationTrack?,
@@ -101,6 +111,7 @@ type FloorView = {
 	stealPrompt: ProximityPrompt?,
 	unlocked: boolean,
 	seenLocked: boolean, -- vu sous antivol ici (le son de « UNLOCKED! » ne part qu'à la fin vue)
+	chains: Model?, -- vague 34 (L-127 point 4) : chaînes et cadenas posés sur l'objet (AntiTheftChains)
 	connections: { RBXScriptConnection },
 }
 
@@ -206,6 +217,7 @@ local rng = Random.new()
 local floorViews: { [Instance]: FloorView } = {}
 local floorElapsed = 0
 local antiTheftMissingWarned = false
+local chainsMissingWarned = false
 
 local function loadAnimationController(): AnimationApi?
 	local folder = script.Parent
@@ -973,7 +985,7 @@ local function removeFloorView(model: Instance)
 	for _, connection in view.connections do
 		connection:Disconnect()
 	end
-	for _, inst in { view.gui, view.point, view.ownerPrompt, view.stealPrompt } :: { Instance? } do
+	for _, inst in { view.gui, view.point, view.ownerPrompt, view.stealPrompt, view.chains } :: { Instance? } do
 		if inst then
 			inst:Destroy()
 		end
@@ -997,6 +1009,10 @@ local function refreshFloorView(view: FloorView, now: number)
 	end
 	if unlocked and not view.unlocked then
 		view.unlocked = true
+		local chains = view.chains
+		if chains then
+			if AntiTheftChains then AntiTheftChains.Release(chains) end -- vague 34 : le cadenas saute, tout s'efface, puis est détruit
+		end
 		if view.mine and view.seenLocked then
 			playUiSound(UNLOCK_SOUND) -- « UNLOCKED! » chez le propriétaire (V0 : UI_Success)
 		end
@@ -1070,8 +1086,27 @@ local function addFloorView(inst: Instance)
 		stealPrompt = nil,
 		unlocked = false,
 		seenLocked = false,
+		chains = nil,
 		connections = {},
 	}
+	-- Vague 34 (L-127 point 4) : chaînes et cadenas de Clément autour de l'objet, posés une fois, seulement
+	-- s'il est encore sous antivol à son arrivée (un objet déjà débloqué n'en a pas).
+	local unlockAt = model:GetAttribute(UNLOCK_AT_ATTRIBUTE)
+	if type(unlockAt) == "number" and unlockAt > Workspace:GetServerTimeNow() then
+		local api = AntiTheftChains
+		local kit = if api then api.Kit() else nil
+		if api and kit then
+			local ok, chains = pcall(api.Wrap, model, kit)
+			if ok then
+				view.chains = chains
+			else
+				warn(`[UnboxController] chaînes de l'antivol ({itemUid}) : {chains}`)
+			end
+		elseif not chainsMissingWarned then
+			chainsMissingWarned = true
+			print("[UnboxController] FX_AntiTheft pas encore livré (ReplicatedStorage/Assets/FX) : pas de chaînes sur les objets sous antivol")
+		end
+	end
 	if mine then
 		-- Propriétaire : « Display » une fois l'antivol fini (OpenBox : le serveur le reprend et l'expose).
 		local prompt = Instance.new("ProximityPrompt")
@@ -1133,6 +1168,7 @@ local function addFloorView(inst: Instance)
 end
 
 local function stepFloorViews(dt: number)
+	if AntiTheftChains then AntiTheftChains.Step(dt) end -- fin de l'antivol : à chaque image, seulement pendant l'animation
 	floorElapsed += dt
 	if floorElapsed < FLOOR_TICK then
 		return
@@ -1144,7 +1180,15 @@ local function stepFloorViews(dt: number)
 	end
 end
 
-function UnboxController.GetFloorView(model: Instance): { TimeText: string?, ItemText: string?, OwnerPrompt: boolean?, StealPrompt: boolean? }?
+local function chainsShown(view: FloorView): boolean
+	local chains = view.chains
+	local api = AntiTheftChains
+	return api ~= nil and chains ~= nil and chains.Parent ~= nil and not api.IsReleasing(chains)
+end
+
+function UnboxController.GetFloorView(
+	model: Instance
+): { TimeText: string?, ItemText: string?, OwnerPrompt: boolean?, StealPrompt: boolean?, Chains: boolean }?
 	local view = floorViews[model]
 	if view == nil then
 		return nil
@@ -1156,6 +1200,7 @@ function UnboxController.GetFloorView(model: Instance): { TimeText: string?, Ite
 		ItemText = if itemLabel then itemLabel.Text else nil,
 		OwnerPrompt = if ownerPrompt then ownerPrompt.Enabled else nil,
 		StealPrompt = if stealPrompt then stealPrompt.Enabled else nil,
+		Chains = chainsShown(view), -- vague 34 : chaînes posées, pas encore en train de partir
 	}
 end
 

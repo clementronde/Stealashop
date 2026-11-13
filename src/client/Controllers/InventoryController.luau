@@ -80,6 +80,13 @@
 --     pose au sol de sa boutique par le même mode pose qu'un colis (PlaceBox avec son uid ; son PlaceButton, un
 --     clic sur sa carte, PlaceItem et la barre du bas lancent ce mode au lieu de PlaceItemAuto). Au sol, il
 --     n'est plus dans l'état ; UnboxController montre son antivol et son invite de reprise.
+--   - vague 34 (L-127, Clément) : point 4, sur la carte d'un objet sous antivol, le voile AntiTheft (caché par
+--     Clément) est montré et AntiTheft.LockLabel dit la durée de l'antivol, qui ne démarre qu'à la pose au sol
+--     (Config/ShelfOpen.AntiTheft[rareté], « 0:30 ») ; PlaceButton reste montré et cliquable. Point 3, la
+--     pastille CardAlert (cartes d'ItemsSection et de BoxesSection) est montrée quand la carte demande une
+--     action, avec le battement de son UIScale Pulse (1 → 1,15 → 1 en 0,8 s) : objet de l'inventaire sous
+--     antivol (à poser) ou libre avec un présentoir libre (à exposer) ; colis de l'inventaire (à poser) ou
+--     posé et prêt (à ouvrir). Éteinte (Scale remis à 1) dès que l'action est faite.
 -- Rien de ce qui compte ne se décide ici : chaque bouton envoie un uid ou un Id que le serveur revérifie.
 -- Seuls sont touchés (2.2, « Libre pour Ironix ») : Enabled de l'écran, les textes, la visibilité, les
 -- cartes clonées (nom, ordre), l'image de leur icône et la teinte (ImageColor3) de leurs rayons, le
@@ -101,6 +108,7 @@
 --   InventoryController.ToggleBreakingTool() / ToggleBat()       comme les touches 1 et 2 : en main ou rangé
 --   InventoryController.PlaceItem(itemUid)     PlaceItemAuto, comme le PlaceButton d'une carte d'objet
 --   InventoryController.StopPlacing()          fin du mode pose
+--   InventoryController.NeedsAction(uid) -> boolean   vague 34 : pastille « ! » de cette carte (voir plus bas)
 --   InventoryController.OnChanged(fn) -> déconnexion
 --       fn() après chaque changement de l'état, du mode pose, de l'outil en main ou du Backpack
 --   InventoryController.SetSlotKeys(handler?)  handler(index) -> boolean : la touche 1 à 9 (index) a-t-elle
@@ -129,6 +137,7 @@ local Potions = require(Config:WaitForChild("Potions"))
 local Rarities = require(Config:WaitForChild("Rarities"))
 local Tools = require(Config:WaitForChild("Tools"))
 local Unbox = require(Config:WaitForChild("Unbox"))
+local ShelfOpen = require(Config:WaitForChild("ShelfOpen"))
 local Format = require(Shared:WaitForChild("Format"))
 local InventoryState = require(Shared:WaitForChild("InventoryState"))
 local Contract = Shared:WaitForChild("Contract")
@@ -214,8 +223,9 @@ local HUD = "UI_HUD"
 local HUD_BUTTON = "InventoryButton"
 local TAB_ORDER: { TabName } = { "Items", "Boxes", "Tools", "Potions" }
 local CARD_PARTS: { [TabName]: { string } } = {
-	Items = { "Icon", "ItemName", "RarityBar.Rarity", "Rays", "Glow", "MutationTag", "MutationTag.MutationLabel", "Income", "DisplayedBadge", "PlaceButton", "UnequipButton", "HoverOutline" },
-	Boxes = { "Icon", "BoxName", "RarityBar.Rarity", "Rays", "Glow", "PlaceButton", "PlacedPill", "ReadyPill", "TimerPill", "TimerPill.TimerLabel", "HoverOutline" },
+	-- Vague 34 (L-127 points 3 et 4) : AntiTheft, AntiTheft.LockLabel, CardAlert et son UIScale Pulse en fin de liste.
+	Items = { "Icon", "ItemName", "RarityBar.Rarity", "Rays", "Glow", "MutationTag", "MutationTag.MutationLabel", "Income", "DisplayedBadge", "PlaceButton", "UnequipButton", "HoverOutline", "AntiTheft", "AntiTheft.LockLabel", "CardAlert", "CardAlert.Pulse" },
+	Boxes = { "Icon", "BoxName", "RarityBar.Rarity", "Rays", "Glow", "PlaceButton", "PlacedPill", "ReadyPill", "TimerPill", "TimerPill.TimerLabel", "HoverOutline", "CardAlert", "CardAlert.Pulse" },
 	Tools = { "Icon", "ToolName", "ToolStat", "Rays", "Glow", "EquipButton", "EquippedPill", "HoverOutline" },
 	-- Vague 33 : noms demandés à Clément (Template de PotionsSection), puis ceux du Template de ToolsSection
 	-- pris en V0 tant qu'il n'existe pas.
@@ -967,12 +977,97 @@ local function serverNow(): number
 end
 
 ------------------------------------------------------------------------------
+-- Pastilles « ! » des cartes (vague 34, L-127 point 3)
+------------------------------------------------------------------------------
+
+-- CardAlert de Clément (caché dans Studio) : montré quand la carte demande une action, son UIScale Pulse bat
+-- (Scale 1 → 1,15 → 1 en 0,8 s, en boucle, une seule écoute Heartbeat pour toutes les pastilles allumées,
+-- coupée quand il n'y en a plus) ; éteint quand l'action est faite (proposition de Clément), Scale remis à 1.
+local PULSE_PEAK = 1.15
+local PULSE_PERIOD = 0.8
+local pulses: { [Instance]: boolean } = {}
+local pulseClock = 0
+local pulseConnection: RBXScriptConnection? = nil
+
+local function stepPulses(dt: number)
+	pulseClock = (pulseClock + dt) % PULSE_PERIOD
+	local scale = 1 + (PULSE_PEAK - 1) * (1 - math.cos(2 * math.pi * pulseClock / PULSE_PERIOD)) / 2
+	local any = false
+	for inst in pulses do
+		if inst.Parent == nil then
+			pulses[inst] = nil -- carte détruite
+			continue
+		end
+		any = true;
+		(inst :: any).Scale = scale
+	end
+	local connection = pulseConnection
+	if not any and connection then
+		connection:Disconnect()
+		pulseConnection = nil
+	end
+end
+
+local function setAlert(alert: Instance?, pulse: Instance?, on: boolean)
+	setVisible(alert, on)
+	if pulse == nil or not pulse:IsA("UIScale") then
+		return
+	end
+	if on then
+		if not pulses[pulse] then
+			pulses[pulse] = true
+			if pulseConnection == nil then
+				pulseConnection = RunService.Heartbeat:Connect(stepPulses)
+			end
+		end
+	elseif pulses[pulse] then
+		pulses[pulse] = nil;
+		(pulse :: any).Scale = 1
+	end
+end
+
+-- Présentoirs libres (débloqués moins objets exposés).
+local function freeDisplays(): number
+	local displayed = 0
+	for _, entry in state.Items do
+		if entry.Slot ~= nil then
+			displayed += 1
+		end
+	end
+	local unlocked = localPlayer:GetAttribute(SLOTS_ATTRIBUTE)
+	local slots = if type(unlocked) == "number" then unlocked else Balance.Display.StartSlots
+	return math.max(0, slots - displayed)
+end
+
+-- V0 proposé, absent du doc (règle de L-127 : « objet à poser, ou débloqué et prêt à exposer ») : un objet de
+-- l'inventaire sous antivol (à poser au sol de sa boutique), ou libre avec au moins un présentoir libre.
+local function itemNeedsAction(entry: InventoryState.ItemEntry, free: number): boolean
+	if entry.Slot ~= nil then
+		return false
+	end
+	return entry.AntiTheft == true or free > 0
+end
+
+-- Un colis de l'inventaire (à poser), ou posé et prêt (à ouvrir).
+local function boxNeedsAction(entry: InventoryState.BoxEntry, now: number): boolean
+	if not entry.Placed then
+		return true
+	end
+	local readyAt = entry.ReadyAt
+	return readyAt ~= nil and readyAt <= now
+end
+
+------------------------------------------------------------------------------
 -- Cartes
 ------------------------------------------------------------------------------
 
 local function destroyView(view: CardView)
 	for _, connection in view.connections do
 		connection:Disconnect()
+	end
+	local pulse = view.refs["CardAlert.Pulse"]
+	if pulse then
+		pulses[pulse] = nil
 	end
 	view.frame:Destroy()
 end
@@ -1063,7 +1158,7 @@ local function placeItem(uid: string)
 	end
 end
 
-local function paintItem(view: CardView, entry: InventoryState.ItemEntry)
+local function paintItem(view: CardView, entry: InventoryState.ItemEntry, free: number)
 	local def = Items.ById[entry.ItemId]
 	if def == nil then
 		return
@@ -1090,6 +1185,16 @@ local function paintItem(view: CardView, entry: InventoryState.ItemEntry)
 	setVisible(refs.UnequipButton, displayed)
 	local uid = entry.Uid
 	local antiTheft = entry.AntiTheft == true and not displayed
+	-- Vague 34 (L-127 point 4) : voile AntiTheft de Clément sur l'icône ; LockLabel = la durée de l'antivol, qui
+	-- ne démarre qu'au sol (Config/ShelfOpen.AntiTheft[rareté], sans le raccourci de Fast Open). PlaceButton reste.
+	setVisible(refs.AntiTheft, antiTheft)
+	if antiTheft then
+		local seconds = ShelfOpen.AntiTheft[def.Rarity]
+		if seconds then
+			setText(refs["AntiTheft.LockLabel"], timerText(seconds))
+		end
+	end
+	setAlert(refs.CardAlert, refs["CardAlert.Pulse"], itemNeedsAction(entry, free))
 	local function place()
 		if antiTheft then
 			-- Vague 31 (L-112) : sous antivol, il se pose au sol de sa boutique (mode pose, comme un colis).
@@ -1134,6 +1239,7 @@ local function paintBox(view: CardView, entry: InventoryState.BoxEntry, now: num
 	if placed and not ready then
 		setText(refs["TimerPill.TimerLabel"], timerText(remaining))
 	end
+	setAlert(refs.CardAlert, refs["CardAlert.Pulse"], boxNeedsAction(entry, now)) -- vague 34
 	local uid = entry.Uid
 	local function place()
 		close()
@@ -1365,10 +1471,11 @@ local function refresh()
 		return
 	end
 	local wanted: { string } = {}
+	local free = freeDisplays()
 	syncSection(current.sections["Items"], state.Items, function(entry: InventoryState.ItemEntry): string
 		return "Item_" .. entry.Uid
 	end, function(view: CardView, entry: InventoryState.ItemEntry)
-		paintItem(view, entry)
+		paintItem(view, entry, free)
 		local texture = textures[entry.ItemId]
 		if texture and not preloaded[texture] then
 			preloaded[texture] = true
@@ -1840,6 +1947,22 @@ function InventoryController.PlaceItem(itemUid: string)
 	placeItem(itemUid)
 end
 
+-- Vague 34 (L-127 point 3) : la carte de cet objet ou de ce colis demande-t-elle une action ? (pastilles
+-- CardAlert de l'écran et SlotAlert de la barre du bas, même règle.)
+function InventoryController.NeedsAction(uid: string): boolean
+	for _, item in state.Items do
+		if item.Uid == uid then
+			return itemNeedsAction(item, freeDisplays())
+		end
+	end
+	for _, box in state.Boxes do
+		if box.Uid == uid then
+			return boxNeedsAction(box, serverNow())
+		end
+	end
+	return false
+end
+
 function InventoryController.OnChanged(listener: () -> ()): () -> ()
 	table.insert(listeners, listener)
 	return function()
@@ -1902,6 +2025,8 @@ function InventoryController.Start()
 	for _, attribute in { OWNED_ATTRIBUTE, SLOTS_ATTRIBUTE } do
 		localPlayer:GetAttributeChangedSignal(attribute):Connect(refresh)
 	end
+	-- Vague 34 : un présentoir de plus change les pastilles de la barre du bas (NeedsAction).
+	localPlayer:GetAttributeChangedSignal(SLOTS_ATTRIBUTE):Connect(changed)
 	-- Vague 33 : stock et effet de chaque potion (PotionService).
 	for _, potion in Potions.List do
 		localPlayer:GetAttributeChangedSignal(Potions.StockAttributePrefix .. potion.Id):Connect(refresh)

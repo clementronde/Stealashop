@@ -416,6 +416,11 @@ local inventoryCards: { [string]: { Element } } = {
 		{ Path = "PlaceButton", Class = BUTTON },
 		{ Path = "UnequipButton", Class = BUTTON },
 		{ Path = "HoverOutline" },
+		-- Vague 34 (L-127 points 3 et 4 de Clément) : voile de l'objet sous antivol, pastille « ! » qui bat.
+		{ Path = "AntiTheft" },
+		{ Path = "AntiTheft.LockLabel", Class = "TextLabel" },
+		{ Path = "CardAlert" },
+		{ Path = "CardAlert.Pulse", Class = "UIScale" },
 	},
 	BoxesSection = {
 		{ Path = "Icon" },
@@ -429,6 +434,8 @@ local inventoryCards: { [string]: { Element } } = {
 		{ Path = "TimerPill" },
 		{ Path = "TimerPill.TimerLabel" },
 		{ Path = "HoverOutline" },
+		{ Path = "CardAlert" }, -- vague 34 (L-127 point 3)
+		{ Path = "CardAlert.Pulse", Class = "UIScale" },
 	},
 	ToolsSection = {
 		{ Path = "Icon" },
@@ -552,7 +559,9 @@ local hotbarElements = {
 	{ Path = "Bar" },
 	{ Path = "Bar.Template", Class = BUTTON, Template = true },
 } :: { Element }
-for _, path in { "Clip", "Clip.Glow", "Icon", "KeyLabel", "ItemName", "Income", "Equipped", "HoverOutline" } do
+-- Vague 34 (L-127 points 3 et 4 de Clément) : AntiTheft (voile, LockLabel caché ici), SlotAlert (pastille « ! »)
+-- et son UIScale Pulse, en fin de liste.
+for _, path in { "Clip", "Clip.Glow", "Icon", "KeyLabel", "ItemName", "Income", "Equipped", "HoverOutline", "AntiTheft", "SlotAlert", "SlotAlert.Pulse" } do
 	table.insert(hotbarElements, { Path = `Bar.Template.{path}` })
 end
 table.insert(UI.Screens, {
