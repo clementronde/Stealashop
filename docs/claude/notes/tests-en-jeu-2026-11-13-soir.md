@@ -49,3 +49,10 @@ Vu par Claude jusqu'à l'étape 12 seulement : ton profil DEV a l'inventaire ple
 5. Recommence, mais perds l'objet en route (lâche-le avec G ou fais-toi attraper). → Retour à « Break in and grab an item! ».
 6. Sans bot dans le serveur. → Le tuto finit comme avant, juste après le bouclier, sans ces trois étapes.
 7. Quitte et reviens après avoir fini le tuto. → Il ne recommence pas.
+
+## 9. Caméras de la boutique seulement avec la compétence Cameras (ajouté le 13/11 vers 23 h, L-137)
+Vu par Claude en Play sur ta boutique niveau 5. Ton profil DEV a **Cameras 1** : remets-le à 1 à la fin (étape 4).
+1. Relance le Play. Barre de commande (serveur) : `workspace:SetAttribute("SkillTest", "<ton pseudo> Cameras 0")`. → Les 5 caméras de ta boutique (2 en haut des angles de la façade, 1 au-dessus de la porte, 2 à l'arrière) disparaissent. Le tapis rouge, la façade dorée, l'alarme rouge et le clavier près de la porte restent.
+2. Ouvre l'arbre (Upgrades) et achète Cameras (5 K $). → Les caméras réapparaissent tout de suite, sans relancer.
+3. À deux joueurs (Test > Clients and Servers) : le 2e joueur voit tes caméras seulement si TU as Cameras ; les siennes suivent son propre niveau.
+4. Si tu n'as pas racheté Cameras : `workspace:SetAttribute("SkillTest", "<ton pseudo> Cameras 1")`.
