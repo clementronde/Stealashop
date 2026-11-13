@@ -5,8 +5,10 @@
 -- Déroulé d'un vigile :
 --   1. Apparition. Règle de Clément (L-118, Features.ShelfOpen) : à la fin du chrono du magasin,
 --      StoreHeistService appelle ChaseIntruder pour chaque intrus ; le vigile sort du GuardSpawn et le
---      poursuit, qu'il porte un objet ou non (pas d'abandon parce qu'il ne porte rien). Plus de vigile à la
---      prise d'un objet sorti (NPCItem). Ancien déroulé (colis porté fermé) :
+--      poursuit, qu'il porte un objet ou non (pas d'abandon parce qu'il ne porte rien). Et (Cantin,
+--      2026-11-13, a114, revient en partie sur L-118) : la PRISE d'un objet sorti sur le rayon (NPCItem)
+--      fait sortir tout de suite un vigile pour le preneur, comme un colis (mêmes plafonds), lié à cet
+--      objet (voir « Objet lié » plus bas). Ouvrir un colis ne déclenche rien. Ancien déroulé (colis porté fermé) :
 --      quand CarryService commence le portage d'un colis PNJ (OnCarryStarted,
 --      payload.Kind = "NPCBox"), un vigile apparaît au GuardSpawn du magasin du colis
 --      (payload.StoreId). Un vigile par voleur ; au plus Balance.Guard.MaxPerStore en poursuite
@@ -92,7 +94,24 @@
 --     au bout de Bat.DroppedLifetime + FOLLOW_MARGIN s : le vigile abandonne (Tired, puis retour).
 --   - Un colis ramassé au sol alors qu'aucun vigile ne le suivait (vigile déjà reparti, ou aucun
 --     vigile à l'origine) ne fait apparaître aucun vigile : il n'apparaît qu'à la prise sur le rayon.
+--     Sauf un objet lié (a114, plus bas) : son vigile fait demi-tour, ou un autre ressort.
 --   - Les vigiles de nuit ne suivent pas les colis : ils poursuivent toute personne dans le couloir.
+--
+-- Objet lié (Cantin, 2026-11-13, a114 ; Features.ShelfOpen) : un objet sorti d'un colis d'un magasin PNJ
+-- (payload NPCItem ; jamais le camion, un objet volé à un joueur, un colis de l'ancien déroulé) est lié au
+-- vigile de jour sorti à sa prise sur le rayon (ou, si le preneur était déjà poursuivi par un vigile de
+-- jour, à celui-là), puis au vigile de jour qui poursuit son porteur. Ce vigile s'en occupe jusqu'à ce que
+-- l'objet revole vers son rayon (OnDropExpired, ou échec sans chute) ou soit rangé en base (Consumed) :
+--   - lâché (touche G) ou tombé (batte) : Follow, comme plus haut ;
+--   - porteur attrapé (l'objet tombe, CarryService.Fail « Caught ») : le vigile rentre comme toujours
+--     (Catch, puis Return), mais reste lié. Repris pendant qu'il est au sol, par n'importe qui (celui qu'il
+--     vient d'attraper compris, une fois son étourdissement fini) : ce vigile fait demi-tour (retarget :
+--     REACTION_DELAY s, puis vitesse de la zone pour le nouveau porteur). Repris pendant Catch : il part à
+--     la fin de Catch. Ce demi-tour respecte Balance.Guard.MaxPerStore (il recompte dans les poursuites) ;
+--   - vigile déjà parti (rentré, en fondu, mort) ou occupé à poursuivre un autre joueur : un vigile du même
+--     magasin ressort du GuardSpawn pour le nouveau porteur (mêmes plafonds) ; nouveau porteur déjà
+--     poursuivi par un vigile de jour : c'est lui qui devient lié (jamais deux vigiles pour un joueur).
+-- Les vigiles de nuit, les policiers et les conducteurs du camion ne se lient jamais.
 --
 -- Vigiles de nuit (DEV-047, section 5.12), lancés par NightCycleService à la tombée de la nuit
 -- (StartNightPatrol) et retirés à l'aube (StopNightPatrol). Même poursuite, même capture, mêmes
@@ -156,7 +175,9 @@
 --   GuardService.ChaseIntruder(player, store) -> boolean
 --       L-118 : un vigile de jour de `store` (le Model du magasin) sort et poursuit `player`, avec ou sans
 --       portage (mêmes plafonds, même capture, même retour). false : hors jeu, en zone safe, déjà poursuivi
---       par un vigile de jour, plafond atteint ou magasin sans Zone.
+--       par un vigile de jour (celui sorti à la prise d'un objet, par exemple : pas de second vigile),
+--       plafond atteint ou magasin sans Zone.
+--   GuardService.GetLinkedGuard(payload) -> Model?   a114 : le vigile lié à cet objet (NPCItem), s'il est en jeu
 --   GuardService.IsChased(player) -> boolean
 --   GuardService.IsStunned(player) -> boolean   étourdi par une capture (vigile, police, conducteur, nuit) ; a113
 --   GuardService.GetGuard(player) -> Model?    le vigile qui poursuit ce joueur
@@ -247,6 +268,7 @@ type CarryApi = {
 	OnCarryStarted: (listener: (player: Player, payload: any) -> ()) -> any,
 	OnCarryEnded: (listener: (player: Player, payload: any, result: string, reason: string) -> ()) -> any,
 	OnDropExpired: (listener: (dropId: string, payload: any, position: Vector3) -> ()) -> any,
+	GetPayload: (player: Player) -> any,
 }
 local CarryService: CarryApi = require(script.Parent.CarryService) :: any
 
@@ -517,6 +539,10 @@ local goneListeners: { GoneListener } = {}
 -- le vigile qui le suit, et tous les colis au sol (suivis ou non) jusqu'à leur prise ou leur fin.
 local following: { [any]: Guard } = {}
 local droppedPayloads: { [any]: boolean } = setmetatable({}, { __mode = "k" }) :: any
+-- a114 : objets liés (voir l'en-tête, « Objet lié »), par payload NPCItem : le magasin, le vigile lié (nil :
+-- aucun pour l'instant, un vigile de ce magasin ressortira à la prochaine prise) et le porteur actuel.
+type Link = { store: Model, guard: Guard?, carrier: Player? }
+local links: { [any]: Link } = {}
 local activeFolder: Folder? = nil
 local fallbackTemplate: Model? = nil
 local fallbackBuilding = false
@@ -1111,6 +1137,55 @@ local function releaseFollow(guard: Guard)
 	end
 end
 
+-- a114 (objet lié) : un objet sorti d'un colis d'un magasin PNJ, hors camion. Seulement avec
+-- Features.ShelfOpen (l'ancien déroulé ne porte que des colis NPCBox : rien ne change pour lui).
+local function linkable(payload: any): boolean
+	return type(payload) == "table"
+		and payload.Kind == "NPCItem"
+		and type(payload.StoreId) == "string"
+		and string.sub(payload.StoreId, 1, 6) ~= "Truck_"
+end
+
+-- Lie `payload` au vigile de jour `guard` (nil : à aucun pour l'instant), dans le magasin `store`. Un vigile
+-- n'est lié qu'à un objet à la fois : ses autres liens perdent leur vigile (un autre ressortira pour eux).
+local function bindLink(payload: any, store: Model, guard: Guard?)
+	if not linkable(payload) then
+		return
+	end
+	if guard and (guard.kind ~= "Day" or guard.driver ~= nil) then
+		return -- vigiles de nuit, policiers, conducteurs : jamais liés
+	end
+	local link = links[payload]
+	if link == nil then
+		local fresh: Link = { store = store, guard = guard, carrier = nil }
+		links[payload] = fresh
+		link = fresh
+	end
+	local current = link :: Link
+	current.guard = guard
+	if guard then
+		current.store = guard.store or store
+		for other, otherLink in links do
+			if other ~= payload and otherLink.guard == guard then
+				otherLink.guard = nil
+			end
+		end
+	end
+end
+
+-- Le porteur de l'objet lié à ce vigile, s'il y en a un (repris pendant que le vigile jouait Catch).
+local function linkedCarrier(guard: Guard): Player?
+	for _, link in links do
+		if link.guard == guard and link.carrier and link.carrier.Parent == Players then
+			return link.carrier
+		end
+	end
+	return nil
+end
+
+-- Défini plus bas (retarget) : le vigile lié repart vers le porteur de son objet.
+local retargetLinked: (guard: Guard, player: Player) -> ()
+
 local function despawn(guard: Guard, reason: string)
 	if not guard.alive then
 		return
@@ -1560,6 +1635,14 @@ local function catch(guard: Guard, player: Player)
 		then driver.CaughtMessage
 		else `Caught! Recommended speed: {Format.short(Zones[zone].AdvisedSpeed)}`
 	emitCatch(player, zone, false)
+	-- a114 : l'objet lié qui va tomber reste lié à ce vigile (demi-tour s'il est repris).
+	local store = guard.store
+	if guard.kind == "Day" and driver == nil and store then
+		local okPayload, carried = pcall(CarryService.GetPayload, player)
+		if okPayload and linkable(carried) then
+			bindLink(carried, store, guard)
+		end
+	end
 	task.spawn(function()
 		local ok, err = pcall(CarryService.Fail :: any, player, "Caught")
 		if not ok then
@@ -2296,7 +2379,13 @@ local function update(guard: Guard, now: number)
 		followStep(guard, now)
 	elseif state == "Catch" or state == "Tired" then
 		if now >= guard.stateEndsAt then
-			startReturn(guard, now)
+			-- a114 : son objet lié a été repris pendant Catch : il repart vers le porteur au lieu de rentrer.
+			local carrier = if state == "Catch" then linkedCarrier(guard) else nil
+			if carrier then
+				retargetLinked(guard, carrier)
+			else
+				startReturn(guard, now)
+			end
 		end
 	elseif state == "Return" then
 		if night then
@@ -2409,17 +2498,17 @@ local function spawnSpot(store: Model): CFrame
 end
 
 -- Crée le vigile du voleur `player` dans le magasin `store`. N'attend pas.
-local function spawnGuard(player: Player, store: Model, zone: number, template: Model, label: string, intruder: boolean?)
+local function spawnGuard(player: Player, store: Model, zone: number, template: Model, label: string, intruder: boolean?): Guard?
 	if chasedBy[player] ~= nil then
-		return -- un vigile par voleur (Balance.Guard.PerThief)
+		return nil -- un vigile par voleur (Balance.Guard.PerThief)
 	end
 	if countChasing(store) >= Balance.Guard.MaxPerStore then
 		log(`{store.Name} : déjà {Balance.Guard.MaxPerStore} vigiles en poursuite, pas de vigile pour {player.Name}`)
-		return
+		return nil
 	end
 	if countActive() >= Balance.Guard.MaxActivePerServer and not freeSlot() then
 		log(`déjà {Balance.Guard.MaxActivePerServer} vigiles en poursuite sur le serveur (9.7), pas de vigile pour {player.Name}`)
-		return
+		return nil
 	end
 
 	local model = template:Clone()
@@ -2427,7 +2516,7 @@ local function spawnGuard(player: Player, store: Model, zone: number, template: 
 	if humanoid == nil or root == nil then
 		warnOnce(`bad:{label}`, `{label} : Humanoid ou HumanoidRootPart manquant, vigile non créé`)
 		model:Destroy()
-		return
+		return nil
 	end
 	local scale = scaleOf(model)
 	local agent = agentFor(model)
@@ -2532,6 +2621,7 @@ local function spawnGuard(player: Player, store: Model, zone: number, template: 
 	log(
 		`vigile ({label}) lancé sur {player.Name} depuis {store.Name}, zone {zone}, vitesse {Format.short(guard.speed)}, {sizeText(scale, agent)} ({#guards} en jeu)`
 	)
+	return guard
 end
 
 -- Vigiles de nuit : apparition ---------------------------------------------------------------
@@ -2904,6 +2994,10 @@ local function followDrop(guard: Guard, payload: any, position: Vector3)
 	guard.followPayload = payload
 	guard.followPosition = position
 	following[payload] = guard
+	local store = guard.store
+	if store then
+		bindLink(payload, store, guard) -- a114 : l'objet reste lié à ce vigile (même vigile à la reprise)
+	end
 	guard.stateEndsAt = now + Bat.DroppedLifetime + FOLLOW_MARGIN
 	guard.nextSteerAt = now
 	guard.nextPathAt = now
@@ -2930,26 +3024,107 @@ local function retarget(guard: Guard, player: Player)
 	setState(guard, "Wait")
 	stop(guard)
 	guard.anims:Stop("Run")
+	guard.anims:Stop("Walk") -- a114 : demi-tour pendant son retour
+	guard.anims:Stop("Tired")
 	guard.speed = chaseSpeed(player, guard.zone)
 	guard.stateEndsAt = now + REACTION_DELAY
 	refreshChaseState(player)
 	log(`{guard.label} : change de cible, poursuit {player.Name} qui a ramassé le colis (vitesse {Format.short(guard.speed)})`)
 end
 
+-- Un vigile de jour de `store` sort du GuardSpawn pour le porteur `player` de `payload` (colis de l'ancien
+-- déroulé, ou objet NPCItem : lié à ce vigile). Peut attendre (rig de remplacement) : à appeler hors de
+-- l'appel de CarryService. Revérifie après l'attente que `player` porte toujours `payload`.
+local function spawnForCarrier(player: Player, payload: any, store: Model)
+	local zone = payload.Zone
+	if type(zone) ~= "number" or Zones[zone] == nil then
+		zone = store:GetAttribute("Zone")
+	end
+	if type(zone) ~= "number" or Zones[zone] == nil then
+		warn(`[GuardService] zone du colis de {player.Name} inconnue ({payload.Zone}) : pas de vigile`)
+		return
+	end
+	local template = findTemplate(zone)
+	if template and not isUsable(template) then
+		warnOnce(
+			`bad:{template:GetFullName()}`,
+			`{template:GetFullName()} : Humanoid ou HumanoidRootPart manquant (10.4), rig de remplacement utilisé`
+		)
+		template = nil
+	end
+	local label = if template then template:GetFullName() else FALLBACK_NAME
+	if template == nil then
+		template = getFallback()
+	end
+	-- Revérifié après une éventuelle attente.
+	if template == nil or player.Parent ~= Players or CarryService.GetPayload(player) ~= payload then
+		return
+	end
+	local ok, result = pcall(spawnGuard :: any, player, store, zone, template, label)
+	if not ok then
+		warn(`[GuardService] vigile de {player.Name} non créé : {result}`)
+		return
+	end
+	local spawned: Guard? = result
+	if spawned then
+		bindLink(payload, store, spawned)
+	end
+end
+
+-- a114 : l'objet lié `payload`, au sol, vient d'être repris par `player`. Le vigile lié fait demi-tour ;
+-- parti ou occupé, un vigile du même magasin ressort pour lui (voir l'en-tête, « Objet lié »).
+local function onLinkedPickup(player: Player, payload: any, link: Link)
+	link.carrier = player
+	local guard = link.guard
+	local other = chasedBy[player]
+	if guard and guard.alive then
+		local state = guard.state
+		if state == "Catch" then
+			log(`{guard.label} : {player.Name} reprend son objet, il part à la fin de Catch`)
+			return -- update : retargetLinked à la fin de Catch
+		elseif (state == "Wait" or state == "Chase") and guard.target == player then
+			return
+		elseif state == "Tired" or state == "Return" then
+			local store = guard.store
+			if other == nil and store and countChasing(store) >= Balance.Guard.MaxPerStore then
+				log(`{store.Name} : déjà {Balance.Guard.MaxPerStore} vigiles en poursuite, {guard.label} ne fait pas demi-tour pour {player.Name}`)
+				return
+			end
+			log(`{guard.label} : fait demi-tour, {player.Name} a repris son objet`)
+			retarget(guard, player)
+			return
+		end
+	end
+	if other then
+		bindLink(payload, link.store, other) -- déjà poursuivi : pas de second vigile, c'est lui qui est lié
+		log(`{player.Name} reprend un objet lié, déjà poursuivi par {other.label} : il devient lié`)
+		return
+	end
+	log(`{player.Name} reprend un objet lié : un vigile de {link.store.Name} ressort`)
+	task.spawn(spawnForCarrier, player, payload, link.store)
+end
+
 local function onCarryStarted(player: Player, payload: any)
 	-- L-112 : un objet sorti d'un colis ouvert sur le rayon (NPCItem) fait partir le vigile du magasin à
-	-- sa prise, comme un colis ; tombé au sol (coup de batte, ou porteur attrapé : CarryService.Fail
-	-- « Caught » le lâche, résultat « Dropped »), il suit les mêmes règles qu'un colis tombé.
+	-- sa prise, comme un colis (Cantin, 2026-11-13, a114 : rétabli, lié à l'objet) ; tombé au sol (coup de
+	-- batte, lâché, ou porteur attrapé : CarryService.Fail « Caught » le lâche, résultat « Dropped »), il
+	-- suit les mêmes règles qu'un colis tombé, plus celles de l'objet lié.
 	if type(payload) ~= "table" or (payload.Kind ~= "NPCBox" and payload.Kind ~= "NPCItem") then
 		return -- seuls les colis PNJ et les objets sortis de ces colis ont un vigile (5.5)
 	end
 	if droppedPayloads[payload] then
-		-- Ramassé au sol (6.2) : le vigile qui suivait ce colis change de cible ; sans lui, aucun
-		-- vigile (il n'apparaît qu'à la prise sur le rayon).
+		-- Ramassé au sol (6.2) : le vigile qui suivait ce colis change de cible ; sinon le vigile lié à
+		-- l'objet (a114) ; sans eux, aucun vigile (il n'apparaît qu'à la prise sur le rayon).
 		droppedPayloads[payload] = nil
 		local guard = following[payload]
+		local link = links[payload]
 		if guard and guard.alive and guard.state == "Follow" then
+			if link then
+				link.carrier = player
+			end
 			retarget(guard, player)
+		elseif link then
+			onLinkedPickup(player, payload, link)
 		else
 			log(`{player.Name} ramasse un colis tombé au sol : aucun vigile ne le suivait`)
 		end
@@ -2958,52 +3133,34 @@ local function onCarryStarted(player: Player, payload: any)
 	if type(payload.StoreId) == "string" and string.sub(payload.StoreId, 1, 6) == "Truck_" then
 		return -- colis du camion (TruckEventService, StoreId « Truck_<n> ») : pas de magasin, pas de vigile
 	end
-	if payload.Kind == "NPCItem" then
-		return -- L-118 : plus de vigile à la prise ; il sort à la fin du chrono (ChaseIntruder, StoreHeistService)
+	local storeId = payload.StoreId
+	local store = if type(storeId) == "string" then findStore(storeId) else nil
+	if store == nil then
+		warn(`[GuardService] magasin « {storeId} » du colis de {player.Name} introuvable : pas de vigile`)
+		return
+	end
+	if linkable(payload) then
+		-- a114 : objet pris sur le rayon, lié dès sa prise ; déjà poursuivi par un vigile de jour (intrus) :
+		-- lié à celui-là, pas de second vigile.
+		bindLink(payload, store, chasedBy[player])
+		links[payload].carrier = player
 	end
 	-- Hors de l'appel de CarryService : le rig de remplacement peut demander d'attendre.
-	task.spawn(function()
-		local storeId = payload.StoreId
-		local store = if type(storeId) == "string" then findStore(storeId) else nil
-		if store == nil then
-			warn(`[GuardService] magasin « {storeId} » du colis de {player.Name} introuvable : pas de vigile`)
-			return
-		end
-		local zone = payload.Zone
-		if type(zone) ~= "number" or Zones[zone] == nil then
-			zone = store:GetAttribute("Zone")
-		end
-		if type(zone) ~= "number" or Zones[zone] == nil then
-			warn(`[GuardService] zone du colis de {player.Name} inconnue ({payload.Zone}) : pas de vigile`)
-			return
-		end
-		local template = findTemplate(zone)
-		if template and not isUsable(template) then
-			warnOnce(
-				`bad:{template:GetFullName()}`,
-				`{template:GetFullName()} : Humanoid ou HumanoidRootPart manquant (10.4), rig de remplacement utilisé`
-			)
-			template = nil
-		end
-		local label = if template then template:GetFullName() else FALLBACK_NAME
-		if template == nil then
-			template = getFallback()
-		end
-		-- Revérifié après une éventuelle attente.
-		if template == nil or player.Parent ~= Players or not CarryService.IsCarrying(player) then
-			return
-		end
-		local ok, err = pcall(spawnGuard :: any, player, store, zone, template, label)
-		if not ok then
-			warn(`[GuardService] vigile de {player.Name} non créé : {err}`)
-		end
-	end)
+	task.spawn(spawnForCarrier, player, payload, store)
 end
 
 local function onCarryEnded(player: Player, payload: any, result: string, reason: string)
 	local dropped = result == "Dropped" and type(payload) == "table"
 	if dropped then
 		droppedPayloads[payload] = true -- au sol jusqu'à sa prise (onCarryStarted) ou sa fin
+	end
+	-- a114 : objet lié au sol, il le reste ; rangé en base ou reparti vers son rayon, le lien finit.
+	local link = if type(payload) == "table" then links[payload] else nil
+	if link then
+		link.carrier = nil
+		if not dropped then
+			links[payload] = nil
+		end
 	end
 	local guard = chasedBy[player]
 	if guard == nil then
@@ -3024,10 +3181,19 @@ local function onDropExpired(_dropId: string, payload: any, _position: Vector3)
 		return
 	end
 	droppedPayloads[payload] = nil
+	links[payload] = nil -- a114 : fin du lien
 	local guard = following[payload]
 	if guard then
 		giveUp(guard, "colis resté au sol, reparti vers son rayon")
 	end
+end
+
+retargetLinked = function(guard: Guard, player: Player)
+	if not guard.alive then
+		return
+	end
+	log(`{guard.label} : {player.Name} a repris son objet pendant Catch, il repart`)
+	retarget(guard, player)
 end
 
 -- API ---------------------------------------------------------------------------------------
@@ -3062,6 +3228,13 @@ end
 function GuardService.GetGuard(player: Player): Model?
 	local guard = chasedBy[player]
 	return if guard then guard.model else nil
+end
+
+-- a114 : le vigile de jour lié à cet objet (NPCItem), s'il est en jeu ; nil sinon.
+function GuardService.GetLinkedGuard(payload: any): Model?
+	local link = links[payload]
+	local guard = if link then link.guard else nil
+	return if guard and guard.alive then guard.model else nil
 end
 
 -- a70 (vague 24) : les vigiles de jour de `store` qui rentrent vers sa réserve (GuardSpawn), donc à

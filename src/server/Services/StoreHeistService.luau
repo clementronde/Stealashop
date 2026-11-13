@@ -157,10 +157,13 @@
 --     coup sur la vitrine (Balance.Window.BreakTimer, WindowService : BreakInfo.ChronoEndsAt) et continue
 --     après la casse ; il est montré à chaque intrus (entré dans Bounds pendant cette ouverture : Entered),
 --     dedans ou dehors, objet ou non. Entre la casse et la fin du chrono, tout le monde peut entrer. À la
---     fin du chrono (chronoEnd) : GuardService.ChaseIntruder pour chaque intrus (ceux du magasin d'abord),
---     même sans objet ; personne n'est sorti, ceux qui sont dedans continuent d'ouvrir et de prendre ;
---     celui qui n'y était pas n'entre plus (sorti devant la vitrine, MESSAGES.Closed). Plus de vigile à la
---     prise. (c) Dès qu'un intrus sort de Bounds, avec ou sans objet, le magasin est fermé pour lui (Closed :
+--     fin du chrono (chronoEnd) : GuardService.ChaseIntruder pour chaque intrus ENCORE DANS le magasin (a114,
+--     Cantin 2026-11-13 : ceux qui en sont sortis avec un objet ont déjà le vigile de leur prise), même sans
+--     objet, jamais un second vigile pour qui en a déjà un ; personne n'est sorti, ceux qui sont dedans
+--     continuent d'ouvrir et de prendre ; celui qui n'y était pas n'entre plus (sorti devant la vitrine,
+--     MESSAGES.Closed). Ouvrir un colis ne déclenche aucun vigile ; PRENDRE l'objet sorti, si (a114, Cantin
+--     2026-11-13, revient en partie sur L-118) : un vigile sort tout de suite du GuardSpawn pour le preneur,
+--     quel que soit le chrono, lié à cet objet (GuardService, « Objet lié »). (c) Dès qu'un intrus sort de Bounds, avec ou sans objet, le magasin est fermé pour lui (Closed :
 --     rideau local baissé, sorti s'il revient) jusqu'à la réouverture (vitrine reconstruite), plus jusqu'au
 --     départ de son vigile. Sorti SANS objet avant la fin du chrono (Cantin, 2026-11-13) : il n'a rien
 --     volé, c'est fini pour lui ; il n'est plus intrus (retiré d'Entered : aucun vigile pour lui) et son
@@ -218,8 +221,8 @@
 --   - Prise de l'objet : GrabItem(slotId), deux appels comme avant (maintien du Tier du colis d'origine).
 --     Avant ShelfReservedUntil, seul l'ouvreur ; ensuite tout joueur dans le magasin. Mêmes contrôles
 --     que pour un colis (Bounds, distance, mains vides, magasin pas fermé pour lui). Le portage est un
---     NPCItemPayload (CarryService : l'objet visible sur la tête, halo, BB_Carry) ; le vigile ne part
---     plus à la prise (L-118 : il sort à la fin du chrono), le magasin se ferme pour lui quand il sort.
+--     NPCItemPayload (CarryService : l'objet visible sur la tête, halo, BB_Carry) ; le vigile part à la
+--     prise (a114 : GuardService.OnCarryStarted, lié à l'objet), le magasin se ferme pour lui quand il sort.
 --   - Rideau : tant qu'une ouverture est en cours dans ce magasin ou que la réservation d'un objet sorti
 --     (ShelfReservedUntil) n'est pas passée, le magasin ne se ferme pas ; une fois fermé, le rideau tombe
 --     comme avant (L-064 : porteurs et vigiles sortis).
@@ -1777,37 +1780,41 @@ local function closeStore(store: Store)
 	end
 end
 
--- Fin du chrono du vigile (L-118 points 8 et 9) : le vigile sort et poursuit chaque intrus, même sans objet
--- (ceux du magasin d'abord, puis les autres ; plafonds de GuardService) ; personne n'est sorti du magasin.
+-- Fin du chrono du vigile (L-118 points 8 et 9) : le vigile sort et poursuit chaque intrus encore dans le
+-- magasin, même sans objet (plafonds de GuardService ; jamais un second vigile pour qui en a déjà un) ;
+-- personne n'est sorti du magasin. a114 (Cantin, 2026-11-13) : un intrus déjà sorti l'a fait avec un objet,
+-- et le vigile de sa prise s'en occupe (lié à l'objet, GuardService) : rien de plus pour lui ici.
 local function chronoEnd(store: Store)
 	store.ChronoOver = true
 	for player in table.clone(store.Viewers) do
 		hideTimer(store, player)
 	end
 	local inStore: { Player } = {}
-	local outside: { Player } = {}
+	local outside = 0
 	local bounds = store.Bounds
 	for player in store.Entered do
 		local root = rootOf(player)
 		if player.Parent == Players and root then
-			table.insert(if bounds and inside(bounds, root.Position) then inStore else outside, player)
+			if bounds == nil or inside(bounds, root.Position) then
+				table.insert(inStore, player)
+			else
+				outside += 1
+			end
 		end
 	end
 	local sent = 0
 	local chase = chaseIntruder
 	if chase then
-		for _, list in { inStore, outside } do
-			for _, player in list do
-				local ok, started = pcall(chase, player, store.Model)
-				if ok and started == true then
-					sent += 1
-				elseif not ok then
-					warn(`[StoreHeistService] GuardService.ChaseIntruder({player.Name}) : {started}`)
-				end
+		for _, player in inStore do
+			local ok, started = pcall(chase, player, store.Model)
+			if ok and started == true then
+				sent += 1
+			elseif not ok then
+				warn(`[StoreHeistService] GuardService.ChaseIntruder({player.Name}) : {started}`)
 			end
 		end
 	end
-	log(`{store.Id} : fin du chrono, {sent} vigile(s) sorti(s) pour {#inStore + #outside} intrus ({#inStore} dans le magasin)`)
+	log(`{store.Id} : fin du chrono, {sent} vigile(s) sorti(s) pour {#inStore} intrus dans le magasin ({outside} déjà sorti(s) avec un objet)`)
 end
 
 -- Entrées et sorties (L-118 point 8 c) : entré pendant l'ouverture, un joueur reste libre dans le magasin,
@@ -2139,7 +2146,7 @@ local function grantItem(player: Player, slot: Slot)
 		return
 	end
 	discardItem(item)
-	-- L-118 : il garde le chrono (le vigile sortira aussi pour lui) ; fermé pour lui quand il sort (stepEntries).
+	-- a114 : son vigile sort à cette prise (GuardService) ; il garde le chrono ; fermé pour lui quand il sort (stepEntries).
 	local mutation = Mutations.Label(content.Mutation)
 	log(`{player.Name} prend l'objet sorti {slot.Name} de {store.Id} : {content.Rarity} ({content.ItemId}){if mutation then ", " .. mutation else ""}, chance ×{info.Luck}`)
 end
