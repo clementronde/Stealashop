@@ -625,6 +625,18 @@ local List: { RemoteDef } = {
 		Args = {},
 		RatePerSecond = 4, -- V0 proposé, absent du doc
 	},
+	{
+		-- Vague 34 (L-127 point 2, agent a117), absent du tableau 9.4 : réclamer la prime d'une zone complète de
+		-- l'Index. zone = la zone visible (Rewards.ClaimButton de UI_Index_v3) ; absente = toutes les zones
+		-- complètes pas encore réclamées, en une demande (UnlockedBar.ClaimAllButton). IndexService revérifie
+		-- tout d'après le profil (index ouvert, zone complète, pas déjà réclamée) et note chaque prime avant de
+		-- la verser (jamais deux fois). Rien à réclamer : rien ne change.
+		Name = "ClaimIndexReward",
+		Direction = "ClientToServer",
+		Reliable = true,
+		Args = { { Name = "zone", Kind = "int", Min = 1, Max = MAX_INDEX, Optional = true } },
+		RatePerSecond = 2, -- V0 proposé, absent du doc (comme ClaimDaily)
+	},
 }
 
 return {
