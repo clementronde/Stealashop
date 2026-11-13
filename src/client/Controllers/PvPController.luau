@@ -25,7 +25,8 @@
 --       HP         PV de la porte, « HP 840 » (WindowController.GetHP, sinon l'attribut MaxHP de la
 --                  porte ; 0 si elle est cassée), écrits comme la barre BB_WindowHP (Format.hp) ;
 --       Status     caché, sauf : « ROB AGAIN IN 42s » (interdiction du joueur local sur cette
---                  boutique), sinon « OPEN: 7s » (porte cassée, fenêtre de vol ouverte).
+--                  boutique), sinon « OPEN » (porte cassée, fenêtre de vol ouverte ; vague 33 : sans
+--                  chrono, le voleur a tout son temps).
 --     Copie du billboard BB_ShopInfo de Clément (ReplicatedStorage/Assets/UI, mêmes 4 éléments ;
 --     nom proposé, pas encore au contrat 2.2) dès qu'il existe, sinon un panneau V0 gris.
 --   - Étiquette « SAFE » V0 au pied de chaque objet à l'abri (coffre-fort V0 de PvPService), chez
@@ -109,7 +110,6 @@ local WINDOW_ID_ATTRIBUTE = "WindowId"
 local MAX_HP_ATTRIBUTE = "MaxHP"
 local BROKEN_ATTRIBUTE = "Broken"
 local OPEN_ATTRIBUTE = "StealOpen"
-local ENDS_AT_ATTRIBUTE = "StealEndsAt"
 local SAFE_SLOTS_ATTRIBUTE = "SafeSlots"
 local ROB_COOLDOWN_FORMAT = "RobCooldown_%d" -- sur le joueur local, posé par PvPService
 local BOT_NAME_ATTRIBUTE = "BotName" -- PlotService : boutique du bot joueur (L-105)
@@ -128,7 +128,7 @@ local HP_TEXT = "HP %s"
 local SAFE_TEXT = "SAFE"
 local STATUS = {
 	Cooldown = "ROB AGAIN IN %ds", -- V0, à valider par Clément
-	Open = "OPEN: %ds",
+	Open = "OPEN", -- V0, vague 33 : sans chrono (avant « OPEN: %ds »)
 }
 
 -- V0 proposé, absent du doc : invites et panneaux revus 5 fois par seconde.
@@ -544,8 +544,7 @@ local function statusOf(plot: Model): string?
 		return string.format(STATUS.Cooldown, math.ceil(left))
 	end
 	if plot:GetAttribute(OPEN_ATTRIBUTE) == true then
-		local endsAt = number(plot, ENDS_AT_ATTRIBUTE) or 0
-		return string.format(STATUS.Open, math.max(0, math.ceil(endsAt - Workspace:GetServerTimeNow())))
+		return STATUS.Open -- vague 33 : plus de chrono chez un joueur
 	end
 	return nil
 end

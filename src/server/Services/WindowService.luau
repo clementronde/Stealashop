@@ -49,7 +49,10 @@
 --   - Reconstruction automatique, PV pleins : 5.3 dit « 20 s après la fermeture », et le
 --     rideau tombe à la fin du chrono de 10 s, soit 10 + 20 = 30 s après la casse
 --     (Balance.Heist.Duration + Balance.Window.RebuildDelay). Parcelle : même mécanique (6),
---     10 s pour voler (PvP.StealDuration) + 20 s.
+--     PvP.StealDuration (10) + 20 s au plus tôt ; vague 33 (Cantin, 2026-11-13) : plus de chrono chez un
+--     joueur, et sa porte attend sans limite les points d'attente (AddRebuildGate : PvPService la garde
+--     cassée tant qu'un intrus est dedans) ; les vitrines PNJ gardent GATE_MAX_WAIT. Le chrono de casse
+--     reste aux magasins PNJ.
 --   - WindowHP(windowId, hp, maxHp), non fiable : au plus 10 fois par seconde par vitrine
 --     (Balance.Window.HPSyncHz), et seulement si les PV ou les PV max ont changé.
 --
@@ -451,7 +454,13 @@ local function breakWindow(window: Window, breaker: Player, impactPoint: Vector3
 		-- Points d'attente (AddRebuildGate) : le magasin ne se rouvre pas tant que ses vigiles ne
 		-- sont pas rentrés (GuardService). Au plus GATE_MAX_WAIT s d'attente en plus, par sécurité.
 		local waited = 0
-		while window.RebuildToken == token and windows[window.Id] == window and waited < GATE_MAX_WAIT and not gatesOpen(window) do
+		-- Vague 33 : une porte de boutique attend sans limite (PvPService : tant qu'un intrus est dedans).
+		while
+			window.RebuildToken == token
+			and windows[window.Id] == window
+			and (window.Kind == "Plot" or waited < GATE_MAX_WAIT)
+			and not gatesOpen(window)
+		do
 			task.wait(GATE_POLL)
 			waited += GATE_POLL
 		end

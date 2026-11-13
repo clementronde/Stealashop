@@ -6,6 +6,10 @@
 -- voleur, itemId) quand un joueur prend un objet exposé dans la boutique du joueur local, et
 -- TheftAlert(false) à la fin du vol (dépôt ou échec) ; s'il reste d'autres vols chez lui,
 -- TheftAlertService les réannonce aussitôt (true, …). Ce contrôleur affiche et n'envoie rien.
+-- Vague 33 (Cantin, 2026-11-13) : alerte d'intrusion, TheftAlert(true, intrus, nil) dès qu'on casse la porte
+-- du joueur local ou qu'on entre chez lui (PvPService) : même alerte (bannière, sirène, flèche, surbrillance),
+-- ItemName = INTRUSION_TEXT (« SHOP »), repli V0 « BOB IS STEALING YOUR SHOP! ». La prise d'un objet par
+-- l'intrus remplace son entrée (même voleur) par celle de l'objet.
 --
 -- Pendant un vol (s'il y en a plusieurs : le dernier annoncé est affiché, les MAX_HIGHLIGHTS plus
 -- récents sont surlignés) :
@@ -108,6 +112,8 @@ local STOLEN_OUTLINE = "StolenOutline"
 local HEADLINE = "%s IS STEALING YOUR %s!"
 local ACTION_TEXT = "HIT THEM!"
 local UNKNOWN_ITEM = "item"
+-- V0 proposé, absent du doc (vague 33) : ItemName d'une alerte d'intrusion, « BOB IS STEALING YOUR SHOP! ».
+local INTRUSION_TEXT = "SHOP"
 
 -- V0 proposés, absents du doc :
 local FALLBACK_NAME = "TheftAlertV0" -- écran de repli, fait par le code tant que UI_TheftAlert manque
@@ -344,7 +350,8 @@ end
 
 local function showView(target: View, theft: Theft)
 	local thiefText = string.upper(theft.Thief.DisplayName)
-	local itemText = string.upper(itemName(theft.ItemId))
+	-- Vague 33 : alerte d'intrusion (porte cassée, intrus dans la boutique), sans objet.
+	local itemText = if theft.ItemId == "" then INTRUSION_TEXT else string.upper(itemName(theft.ItemId))
 	setText(target.thiefName, thiefText)
 	setText(target.itemName, itemText)
 	local headline = target.headline
