@@ -113,6 +113,11 @@
 --     REACTION_DELAY s, puis vitesse de la zone pour le nouveau porteur). Repris pendant Catch : il part à
 --     la fin de Catch. Rentré ou en fondu quand on le reprend (cas d'un objet qui revole puis…) : demi-tour,
 --     dans la limite de Balance.Guard.MaxPerStore (il recompte dans les poursuites) ;
+--   - porteur attrapé dans le magasin d'où vient l'objet (son HumanoidRootPart dans le volume Bounds de ce
+--     magasin ; Cantin, 2026-11-13 : sinon le vigile le garderait dedans et le magasin resterait ouvert) :
+--     l'objet ne tombe pas, il revole tout de suite vers son rayon (CarryService.FailNoDrop « Caught » :
+--     échec sans chute) ; le lien finit, le vigile rentre au GuardSpawn à la fin de Catch et le
+--     magasin se referme comme d'habitude ;
 --   - vigile déjà parti (rentré, en fondu, mort) ou occupé à poursuivre un autre joueur : un vigile du même
 --     magasin ressort du GuardSpawn pour le nouveau porteur (mêmes plafonds) ; nouveau porteur déjà
 --     poursuivi par un vigile de jour : c'est lui qui devient lié (jamais deux vigiles pour un joueur).
@@ -270,6 +275,7 @@ local StatsService = require(script.Parent.StatsService)
 type CarryApi = {
 	IsCarrying: (player: Player) -> boolean,
 	Fail: (player: Player, reason: string) -> (),
+	FailNoDrop: (player: Player, reason: string) -> boolean,
 	OnCarryStarted: (listener: (player: Player, payload: any) -> ()) -> any,
 	OnCarryEnded: (listener: (player: Player, payload: any, result: string, reason: string) -> ()) -> any,
 	OnDropExpired: (listener: (dropId: string, payload: any, position: Vector3) -> ()) -> any,
@@ -1152,6 +1158,23 @@ local function linkable(payload: any): boolean
 		and string.sub(payload.StoreId, 1, 6) ~= "Truck_"
 end
 
+-- Cantin, 2026-11-13 : `player` porte-t-il un objet lié, dans le volume Bounds du magasin d'où il vient ?
+-- Attrapé là, l'objet ne tombe pas : il revole sur son rayon (voir l'en-tête, « Objet lié »).
+local function inItsStore(player: Player): boolean
+	local ok, payload = pcall(CarryService.GetPayload, player)
+	if not ok or not linkable(payload) then
+		return false
+	end
+	local store = findStore(payload.StoreId)
+	local bounds = if store then Find.path(store, BOUNDS) else nil
+	local root = bodyOf(player)
+	if root == nil or bounds == nil or not bounds:IsA("BasePart") then
+		return false
+	end
+	local box = bounds :: BasePart
+	return insideBox(box.CFrame, box.Size, root.Position)
+end
+
 -- Lie `payload` au vigile de jour `guard` (nil : à aucun pour l'instant), dans le magasin `store`. Un vigile
 -- n'est lié qu'à un objet à la fois : ses autres liens perdent leur vigile (un autre ressortira pour eux).
 local function bindLink(payload: any, store: Model, guard: Guard?)
@@ -1643,16 +1666,22 @@ local function catch(guard: Guard, player: Player)
 		then driver.CaughtMessage
 		else `Caught! Recommended speed: {Format.short(Zones[zone].AdvisedSpeed)}`
 	emitCatch(player, zone, false)
+	-- Cantin, 2026-11-13 : attrapé dans le magasin d'où vient l'objet, il revole sur son rayon (pas de chute).
+	local backToShelf = inItsStore(player)
+	if backToShelf then
+		log(`{guard.label} : {player.Name} attrapé dans le magasin de son objet, l'objet revole sur son rayon`)
+	end
 	-- a114 : l'objet lié qui va tomber reste lié à ce vigile (demi-tour s'il est repris).
 	local store = guard.store
-	if guard.kind == "Day" and driver == nil and store then
+	if guard.kind == "Day" and driver == nil and store and not backToShelf then
 		local okPayload, carried = pcall(CarryService.GetPayload, player)
 		if okPayload and linkable(carried) then
 			bindLink(carried, store, guard)
 		end
 	end
 	task.spawn(function()
-		local ok, err = pcall(CarryService.Fail :: any, player, "Caught")
+		local fail = if backToShelf then CarryService.FailNoDrop else CarryService.Fail
+		local ok, err = pcall(fail :: any, player, "Caught")
 		if not ok then
 			warn(`[GuardService] CarryService.Fail({player.Name}, "Caught") : {err}`)
 		end

@@ -49,6 +49,9 @@
 --       Bat.DroppedLifetime s) ; OnCarryEnded(…, "Dropped", "Caught"), et Fail renvoie true. Le joueur
 --       attrapé ne peut pas le reprendre avant Balance.Guard.CatchStunDuration s (V0 proposé, absent
 --       du doc : le temps de son étourdissement ; les autres joueurs, tout de suite).
+--   CarryService.FailNoDrop(player, reason) -> boolean
+--       Comme Fail, sans jamais de chute : OnCarryEnded(…, "Failed", reason), l'objet revole vers son rayon.
+--       GuardService (Cantin, 2026-11-13) : porteur attrapé dans le magasin d'où vient l'objet ("Caught").
 --   CarryService.ReportAnomaly(player, detail) -> boolean
 --       Point d'accroche de l'anti-triche (9.6, AntiCheatService DEV-060) : écrit `detail` dans la
 --       sortie (warn), puis Fail(player, "Anomaly"). false si le joueur ne portait rien.
@@ -956,6 +959,11 @@ function CarryService.Fail(player: Player, reason: string): boolean
 		end
 		return true
 	end
+	return finish(player, "Failed", text) ~= nil
+end
+
+function CarryService.FailNoDrop(player: Player, reason: string): boolean
+	local text = if type(reason) == "string" and reason ~= "" then reason else "Unknown"
 	return finish(player, "Failed", text) ~= nil
 end
 

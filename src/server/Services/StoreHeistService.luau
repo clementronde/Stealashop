@@ -240,7 +240,8 @@
 --     attrapé (« Caught » : vigile, police, vigile de nuit), CarryService le lâche au sol (« Dropped »),
 --     où il se reprend comme un colis tombé d'un coup de batte (GrabDropped, BatService) ; coup de
 --     batte : pareil. Resté Bat.DroppedLifetime s au sol sans preneur, ou échec sans chute (mort,
---     départ, personnage retiré, anomalie de l'anti-triche, refus du rangement : « Failed ») : il revole
+--     départ, personnage retiré, anomalie de l'anti-triche, refus du rangement, attrapé par un vigile de
+--     jour dans le magasin d'où vient l'objet, Cantin 2026-11-13 : « Failed ») : il revole
 --     vers son rayon, objet déjà sorti, sa réservation n'est pas relancée (V0 : le plus simple, la règle
 --     des colis), sauf si son magasin a été rempli depuis ou si son rayon est occupé : il disparaît.
 --
