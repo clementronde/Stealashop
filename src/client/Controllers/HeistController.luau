@@ -20,8 +20,9 @@
 --     (workspace:GetServerTimeNow()), 0 = masqué. Relayé à OnTimer : HudController l'affiche dans
 --     UI_HUD.HeistTimer (DEV-021). En Studio, une ligne dans la sortie à chaque envoi du serveur.
 --   - Ouverture sur le rayon (vague 31, L-112), seulement si Features.ShelfOpen (false : tout ce qui
---     précède, inchangé) : sur un colis fermé, l'invite « Open » (un appui, sans maintien) demande
---     OpenShelfBox(slotId) ; plus d'invite sur ce colis pendant son ouverture (attribut ShelfOpenState,
+--     précède, inchangé) : sur un colis fermé, l'invite « Open » (maintien = GrabTime du type du colis,
+--     comme la prise) demande OpenShelfBox(slotId) au début et à la fin du maintien ; plus d'invite sur
+--     ce colis pendant son ouverture (attribut ShelfOpenState,
 --     Shared/ShelfOpenState ; l'animation est à ShelfOpenController). Sur l'objet sorti (tag ShelfItem),
 --     l'invite « Steal » demande GrabItem(slotId) au début et à la fin du maintien, comme un colis
 --     (maintien : Tier de l'objet, sinon celui du colis qui était à cet emplacement) ; cachée chez les
@@ -325,13 +326,16 @@ local function addPrompt(watch: StoreWatch, box: Instance)
 	prompt.RequiresLineOfSight = false -- les rayons cachent parfois le colis
 	prompt.Enabled = false
 	if SHELF_OPEN then
-		-- L-112 : un appui ouvre le colis sur place ; le serveur tire la chance et décide de tout.
+		-- L-112 : rester appuyé ouvre le colis sur place (Cantin, 2026-11-13 : même maintien que la prise,
+		-- GrabTime du type) ; le serveur vérifie la durée, tire la chance et décide de tout.
 		prompt.ActionText = OPEN_ACTION_TEXT
-		prompt.HoldDuration = 0
+		prompt.PromptButtonHoldBegan:Connect(function()
+			Net.Client.OpenShelfBox:Fire(slotId) -- début du maintien
+		end)
 		prompt.Triggered:Connect(function()
 			openPending[box] = os.clock()
 			prompt.Enabled = false
-			Net.Client.OpenShelfBox:Fire(slotId)
+			Net.Client.OpenShelfBox:Fire(slotId) -- fin du maintien
 		end)
 	else
 		prompt.PromptButtonHoldBegan:Connect(function()
