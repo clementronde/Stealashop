@@ -107,6 +107,10 @@ local Balance = {
 		-- d'avance, seulement à la zone safe (ou à la fin du portage). Cette distance ne sert plus qu'à
 		-- l'échelle de la jauge GuardMeter du HUD (HudController) : vide à cette distance, pleine à CatchDistance.
 		GiveUpLead = 120,
+		-- Seule exception à la poursuite sans fin (Cantin, 2026-11-13, « environ 10 secondes ») : le vigile sorti à
+		-- la fin du chrono pour un intrus resté sans objet (ChaseIntruder) abandonne au bout de ce temps de
+		-- poursuite (s). Si l'intrus prend un objet entre-temps, c'est une poursuite de porteur, sans fin.
+		IntruderChaseTime = 10,
 		HeartbeatDistance = 10, -- battements de cœur sous cette distance
 		-- V0 proposé, absent du doc (liaison L-077, question posée à Clément) : où s'arrête le retour
 		-- du vigile de jour, qui s'y efface en fondu. "Reserve" (b) : il traverse le magasin jusqu'à

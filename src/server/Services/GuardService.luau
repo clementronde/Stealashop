@@ -50,7 +50,9 @@
 --   4. Abandon : seulement quand le joueur entre en zone safe (tag SafeZone), ou quand le portage
 --      finit autrement (OnCarryEnded : colis posé, mort, départ…). Poursuite sans fin (Cantin,
 --      2026-11-11) : plus d'abandon au bout d'un temps de poursuite ni pour l'avance prise, de jour,
---      de nuit et pour les conducteurs du camion. Le vigile s'arrête essoufflé (Tired, 5.5), puis rentre en
+--      de nuit et pour les conducteurs du camion. Seule exception (Cantin, 2026-11-13) : l'intrus resté
+--      sans objet à la fin du chrono (ChaseIntruder) n'est poursuivi que Balance.Guard.IntruderChaseTime s
+--      (10) ; s'il prend un objet pendant ce temps, la poursuite redevient sans fin. Le vigile s'arrête essoufflé (Tired, 5.5), puis rentre en
 --      marchant (Walk, RETURN_WALK_SPEED) ; après une capture, il rentre dès la fin de Catch. Il
 --      ne vise jamais un point de la zone safe : il ne la franchit pas.
 --   5. Retour (liaison L-077, point 1). Comme la poursuite : tout droit s'il voit son but (les deux
@@ -335,6 +337,7 @@ type Guard = {
 	spawnedAt: number,
 	owner: Player?, -- vigile de jour : le voleur pour qui il est apparu (OnGuardGone) ; nil sinon
 	intruder: boolean?, -- vigile de jour sorti à la fin du chrono (L-118, ChaseIntruder) : poursuit même sans portage
+	intruderUntil: number?, -- intrus sans objet : fin de sa poursuite (Balance.Guard.IntruderChaseTime), posée au 1er pas
 	patrol: { Vector3 }, -- points de ronde de sa zone, dans l'ordre (vide le jour)
 	patrolIndex: number, -- point visé
 	patrolStep: number, -- +1 ou −1 : sens de l'aller-retour
@@ -1941,7 +1944,24 @@ local function chaseStep(guard: Guard, now: number)
 			giveUp(guard, driver.GiveUpReason or "ne porte plus le colis du camion")
 			return
 		end
-	elseif not guard.intruder and not CarryService.IsCarrying(player) then
+	elseif guard.intruder then
+		-- Cantin, 2026-11-13 : l'intrus resté sans objet à la fin du chrono n'est poursuivi que
+		-- Balance.Guard.IntruderChaseTime s ; s'il prend un objet, la course passe avant tout : poursuite de
+		-- porteur, sans fin (il n'est plus traité en intrus).
+		if CarryService.IsCarrying(player) then
+			guard.intruder = false
+			guard.intruderUntil = nil
+			log(`{guard.label} : l'intrus {player.Name} a pris un objet, poursuite sans fin`)
+		else
+			local untilAt = guard.intruderUntil
+			if untilAt == nil then
+				guard.intruderUntil = now + Balance.Guard.IntruderChaseTime
+			elseif now >= untilAt then
+				giveUp(guard, `intrus sans objet, {Balance.Guard.IntruderChaseTime} s de poursuite`)
+				return
+			end
+		end
+	elseif not CarryService.IsCarrying(player) then
 		giveUp(guard, "ne porte plus de colis")
 		return
 	end
