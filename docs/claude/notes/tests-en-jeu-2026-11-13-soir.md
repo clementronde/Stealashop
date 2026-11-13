@@ -34,3 +34,18 @@ Ce qui a été poussé le 13/11 vers 20 h (e0e3f16). Pour chaque test : ce que t
 ## 6. Attrapé dans le magasin (ajouté plus tard le 13/11 au soir)
 1. Prends un objet sur un rayon et reste dans le magasin jusqu'à ce que le vigile t'attrape. → L'objet ne tombe pas : il revole tout de suite sur son rayon. Le vigile rentre au fond du magasin, s'efface, et le rideau se baisse comme d'habitude.
 2. Même chose, mais fais-toi attraper dans la rue. → Rien ne change : l'objet tombe et le vigile reste à côté (partie 1).
+
+## 7. Son du Claim hors ligne (ajouté le 13/11 vers 22 h, L-097)
+1. Dans la barre de commande (serveur) : `workspace:SetAttribute("OfflineTest", "<ton pseudo> 3600")`, puis attends l'écran des gains hors ligne. → L'écran s'ouvre avec la somme.
+2. Clique Claim. → Tu entends `Offline_Claim` au clic, puis `Cash_Collect` quand l'argent arrive dans le total.
+3. Dis si l'enchaînement des deux sons te va (trop proches, trop forts…).
+
+## 8. Fin du tuto : voler le bot (ajouté le 13/11 vers 22 h, L-085 et L-136)
+Vu par Claude jusqu'à l'étape 12 seulement : ton profil DEV a l'inventaire plein, donc le vol était refusé. Il faut un joueur qui fait le tuto depuis le début **avec de la place dans l'inventaire** (un compte qui n'a jamais joué au jeu, ou un profil dont tu as libéré une place), et le bot doit être dans le serveur.
+1. Va jusqu'à la fin du bouclier débutant (étape 10). → Bulle « Steal from another shop! » et flèches vers la porte de la boutique du bot.
+2. Approche de la porte du bot. → Bulle « Break in and grab an item! ».
+3. Casse la porte et prends un objet du bot. → Bulle « Bring it back to your shop! ».
+4. Rapporte l'objet chez toi. → Le tuto est fini, plus aucune bulle.
+5. Recommence, mais perds l'objet en route (lâche-le avec G ou fais-toi attraper). → Retour à « Break in and grab an item! ».
+6. Sans bot dans le serveur. → Le tuto finit comme avant, juste après le bouclier, sans ces trois étapes.
+7. Quitte et reviens après avoir fini le tuto. → Il ne recommence pas.
