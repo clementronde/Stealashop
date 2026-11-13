@@ -4,8 +4,8 @@ Ce fichier est lu par Claude à chaque session ouverte dans ce dossier. Il dit c
 
 ## Le jeu en 4 lignes
 
-- **Steal a Shop** : jeu Roblox de type « Steal a … » à 6 joueurs, mélangé avec du braquage.
-- Boucle : s'entraîner (tapis = vitesse, banc = force) → casser la vitrine d'un magasin PNJ → voler un colis en 10 s → semer le vigile → ouvrir le colis en base → exposer l'objet → encaisser des $/s → améliorer → braquer plus loin, ou braquer un autre joueur.
+- **Steal a Shop** : jeu Roblox de type « Steal a … » à 8 joueurs, mélangé avec du braquage.
+- Boucle : s'entraîner (tapis = vitesse, banc = force) → casser la vitrine d'un magasin PNJ → ouvrir un colis sur le rayon et prendre l'objet → semer le vigile → exposer l'objet en base → encaisser des $/s → améliorer → braquer plus loin, ou braquer un autre joueur.
 - 6 zones de magasins PNJ dans un couloir, de plus en plus rares et dures selon la puissance et la vitesse. Cycle jour/nuit : la nuit, un mur ferme le couloir et des vigiles de nuit patrouillent.
 - Lancement du MVP visé le vendredi 18 décembre 2026, puis une mise à jour par samedi.
 
@@ -51,7 +51,7 @@ En cas de doute, le doc partagé gagne. Ne jamais inventer une valeur (PV, prix,
 
 Le code retrouve tout par **tags** et par **noms convenus**, jamais par chemin.
 
-- **Tags** : `NPCStore`, `PlayerPlot`, `Treadmill`, `Bench`, `WeaponShop`, `AuraShop`, `RobuxShop`, `SafeZone`, `ZoneGate`, `NightWall`, `NightPatrol`.
+- **Tags** : `NPCStore`, `PlayerPlot`, `Treadmill`, `Bench`, `WeaponShop`, `AuraShop`, `RobuxShop`, `PawnShop`, `SafeZone`, `ZoneGate`, `NightWall`, `NightPatrol`.
 - **Attributs** : `Zone` (1 à 6), `Tier` (`Standard`, `Premium`, `Luxe`), `ItemId`.
 - **Nommage des assets** (section 10.3) : `PREFIXE_Zone-ou-Categorie_Nom_Variante`, PascalCase, sans accents ni espaces. Préfixes : `ITM`, `BOX`, `TOOL`, `STORE`, `PLOT`, `WIN`, `ACC`, `ENV`, `FX`.
 - **Enfants obligatoires des modèles** : section 10.4 (ex. un magasin PNJ a `Window`, `WindowFractured` avec `Shard_01` à `Shard_40`, `Shutter`, `Door`, `Bounds`, `ShelfSlot_01` à `_10`, `GuardSpawn`, `SignPart`).
@@ -69,11 +69,11 @@ Le code retrouve tout par **tags** et par **noms convenus**, jamais par chemin.
 
 - Clément fait toutes les animations ; Ironix décide quand elles se jouent. Ils se retrouvent sur un nom (animation et marqueurs), jamais sur un timing en secondes. Contrat complet : section 2.4 du doc partagé et section 3.2 de la liaison (mêmes noms).
 - Rig R15 standard pour tout (joueurs, vigiles, vendeurs). Rigs de travail dans `ServerStorage/AnimRigs`.
-- **Où** : objets `Animation` dans un dossier `Animations`. Modèle animé (vigile, vigile de nuit, vendeur) : dans le modèle, `<Modèle>/Animations/<Nom>` (`Idle`, `Walk`, `Run`, `Catch`, `Tired` ; vendeur : `Idle`, `Wave`). Joueur : `ReplicatedStorage/Assets/Animations/Player/<Nom>` (`HitWindow`, `HitWindowHeavy`, `Grab`, `CarryIdle`, `CarryRun`, `Place`, `TreadmillRun`, `BenchLift`, `Unbox`, `Celebrate`, `SwingBat`, `Stunned`, `Knockback`).
+- **Où** : objets `Animation` dans un dossier `Animations`. Modèle animé (vigile, vigile de nuit, policier, témoin, conducteur du camion, vendeur) : dans le modèle, `<Modèle>/Animations/<Nom>`. Joueur : `ReplicatedStorage/Assets/Animations/Player/<Nom>`. Liste à jour des noms : `src/shared/Contract/Animations.luau` (et section 3.2 de la liaison).
 - **Aucun script dans un modèle animé** : il contient un Humanoid avec un `Animator` et son dossier `Animations` ; c'est le code d'Ironix qui joue les animations, déplacements compris.
 - **Publication** : au nom du groupe Roblox du studio, propriétaire du jeu, par Clément ou par Ironix. Une animation publiée sur un compte perso ne se joue pas dans le jeu (« Failed to load animation »).
 - **Mettre à jour** : remplacer l'`AnimationId` de l'objet existant, ne jamais le supprimer ni le renommer.
-- Clément règle dans chaque animation la priorité (Idle, Movement, Action), la boucle et les marqueurs (`Impact`, `Grab`, `Release`, `Top`, `Open`, `Land`) posés sur l'image clé concernée.
+- Clément règle dans chaque animation la priorité (Idle, Movement, Action), la boucle et les marqueurs (`Impact`, `Grab`, `Release`, `Top`, `Open`, `Land`, `Call`) posés sur l'image clé concernée.
 - Ironix charge l'animation par son nom (jamais un ID dans le code) et accroche sons et effets aux marqueurs. Il ne retouche jamais une animation.
 - `CarryIdle` et `CarryRun` n'animent que le haut du corps, en priorité Action.
 - Chaque animation publiée va dans le registre de la liaison (nom, emplacement, ID).
@@ -117,10 +117,10 @@ Le code retrouve tout par **tags** et par **noms convenus**, jamais par chemin.
 | Boutique | La parcelle-magasin d'un joueur, où il expose ses objets |
 | Magasin PNJ | Un magasin du couloir que l'on braque |
 | Couloir | La rue des 6 zones de magasins PNJ |
-| Zone safe | Le lobby avec les 6 parcelles ; pas de vigile PNJ, mais le PvP y reste possible |
-| Colis | La boîte volée à un magasin PNJ : Standard, Premium ou Luxe |
+| Zone safe | Le lobby avec les 8 parcelles ; pas de vigile PNJ, mais le PvP y reste possible |
+| Colis | La caisse sur le rayon d'un magasin PNJ (Standard, Premium ou Luxe, avec une rareté) ; on l'ouvre sur place et on vole l'objet qui en sort |
 | Rareté | Commun, Peu commun, Rare, Épique, Légendaire, Mythique, Secret |
-| Halo de rareté | L'effet lumineux autour d'un objet ou d'un colis porté, aux couleurs de sa rareté |
+| Halo de rareté | L'effet lumineux autour d'un objet porté, aux couleurs de sa rareté |
 | Aura / trail | Effets achetés par le joueur : l'aura multiplie la puissance, le trail la vitesse |
 | Boutiques d'achat | Boutique d'armes et boutique d'auras (argent du jeu), boutique Robux |
 | Nuit | Phase de 2 min où le couloir est fermé et les rayons PNJ se remplissent |
