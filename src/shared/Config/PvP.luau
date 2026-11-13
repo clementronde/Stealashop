@@ -17,7 +17,10 @@ local PvP = {
 
 	-- 6.1 : voler un joueur
 	ScoutDistance = 15, -- panneau propriétaire, valeur exposée, PV de la vitrine
-	StealDuration = 10, -- temps pour prendre un objet exposé après la casse
+	-- Vague 33 (Cantin, 2026-11-13) : plus de chrono pour voler un joueur ; ne sert plus qu'au délai de
+	-- reconstruction de sa porte (StealDuration + Balance.Window.RebuildDelay après la casse, au plus tôt,
+	-- et pas tant qu'un intrus est dedans : WindowService, PvPService).
+	StealDuration = 10,
 	StealGrabTime = 1.0,
 	StealMaxDistance = 8, -- V0 proposé, absent du doc : comme GrabItem (9.4), du voleur au présentoir
 

@@ -15,10 +15,14 @@
 --      monde peut voler tout le monde. Un coup sur la porte d'un joueur n'est refusé que pendant
 --      l'interdiction de PvP.KickRobCooldown s du frappeur sur CETTE boutique (« Défense par le
 --      propriétaire », plus bas) ; il reçoit alors un Notify (au plus un par NOTICE_INTERVAL s).
---      Quand la porte casse, la victime est prévenue (« l'alarme de base », Notify Warning).
---   3. Casse (WindowService.OnBroken, Kind « Plot ») : la boutique s'ouvre PvP.StealDuration (10 s).
---      Le chrono HeistTimer(windowId, fin) part aux non-propriétaires proches (TIMER_RADIUS), comme
---      pour un magasin PNJ (HUD « HEIST: 10s »). Prise par StealItem(plotIndex, slotIndex), en deux
+--      Quand la porte casse, la victime est prévenue (« l'alarme de base », Notify Warning), et l'alerte
+--      d'intrusion part (voir « Alerte d'intrusion », plus bas).
+--   3. Casse (WindowService.OnBroken, Kind « Plot ») : la boutique s'ouvre au vol jusqu'à la reconstruction
+--      de sa porte. Vague 33 (Cantin, 2026-11-13) : plus aucun chrono chez un joueur (ni HeistTimer, ni
+--      StealEndsAt) : le voleur a tout le temps qu'il lui faut. La porte ne se reconstruit pas tant qu'un
+--      non-propriétaire est dans le volume Bounds (point d'attente WindowService.AddRebuildGate, sans limite
+--      pour une boutique), puis comme avant (PvP.StealDuration + Balance.Window.RebuildDelay s après la casse
+--      au plus tôt). Les magasins PNJ ne changent pas. Prise par StealItem(plotIndex, slotIndex), en deux
 --      appels comme GrabItem : le premier ouvre un maintien (heure serveur), le second n'est accepté
 --      qu'après PvP.StealGrabTime − GRAB_TIME_TOLERANCE s ; le maintien est revérifié 10 fois par
 --      seconde et expire GrabTime + HOLD_EXPIRY s après son début. Le serveur vérifie : boutique
@@ -100,11 +104,24 @@
 --     libre comprise, où il serait enfermé), et, porte cassée ou non, un joueur interdit de voler
 --     cette boutique (voir plus haut). Un joueur qui part (profil libéré) n'est pas déplacé ;
 --   - à la reconstruction de la porte (WindowService.OnRebuilt) : tout non-propriétaire encore
---     dedans, même un voleur chargé (sinon il resterait enfermé) ; la fenêtre de vol se ferme.
+--     dedans (le point d'attente fait qu'il n'y a d'habitude plus personne ; une reconstruction forcée,
+--     WindowService.Rebuild ou départ du propriétaire, sort même un voleur chargé) ; la fenêtre de vol se ferme.
 -- Le passage du propriétaire reste côté client (PlotDoorController).
 --
+-- Alerte d'intrusion (vague 33, Cantin, 2026-11-13) : la victime est prévenue dès qu'on casse sa porte
+-- ou qu'on entre chez elle pour voler, plus seulement à la prise d'un objet. Intrus d'une boutique dont
+-- la porte est cassée (fenêtre de vol ouverte) : tout non-propriétaire présent, profil chargé, vivant,
+-- sans interdiction sur cette boutique, qui est dans son volume Bounds ; celui qui a cassé la porte compte
+-- aussi tant qu'il est à PvP.ScoutDistance studs ou moins de Bounds (il est à la porte). Un intrus qui porte
+-- déjà un objet volé à cette victime n'est pas compté ici (son alerte avec l'objet passe avant). Revu 10 fois
+-- par seconde : un intrus nouveau = TheftAlert(true, intrus, nil) à la victime (bannière « BOB IS STEALING
+-- YOUR SHOP! », sirène, flèche, surbrillance, batte en main ; TheftAlertController) ; un intrus parti =
+-- TheftAlert(false) puis réannonce des intrus restants, puis des vols en cours (du plus ancien au plus
+-- récent). TheftAlertService réannonce aussi les intrus (GetIntruders) après la fin d'un vol. Jamais pour
+-- la boutique du bot. L'Adrénaline reste aux vols (objet pris).
+--
 -- Posé par ce service sur la parcelle, lu par PvPController (aucun nom du contrat) :
---   StealOpen (booléen, nil fermé), StealEndsAt (heure serveur de la fin des 10 s) ;
+--   StealOpen (booléen, nil fermé ; plus de StealEndsAt depuis la vague 33) ;
 --   SafeSlots (texte « 3 » ou « 3,7 » : présentoirs à l'abri, nil sans objet exposé).
 -- Posé sur le Player interdit de voler une boutique (lu par PvPController, son panneau) :
 --   RobCooldown_<PlotIndex> (heure serveur de la fin de l'interdiction), retiré à la fin.
@@ -129,6 +146,9 @@
 --       true si `player` porte un objet volé à `owner` (SwingBat, usage 1 de 6.2, DEV-043).
 --   PvPService.GetRobCooldown(player, plot) -> number
 --       Secondes restantes de l'interdiction de `player` sur la boutique `plot`, 0 sans interdiction.
+--   PvPService.GetIntruders(victim) -> { Player }
+--       Vague 33 : intrus annoncés à `victim` (voir « Alerte d'intrusion »), dans l'ordre d'arrivée ; une
+--       copie, vide sans intrus. Pour la réannonce de TheftAlertService.
 --   PvPService.GetVaultSlots(owner) -> number
 --       Point d'accroche : nombre d'objets exposés à l'abri chez `owner` (coffre-fort V0) ; PvP.VaultSlots
 --       (1) par défaut, remplacé par SkillTreeService (compétence Safe, vague 27 : 1 + Effects[niveau]).
@@ -193,13 +213,13 @@ export type TheftInfo = {
 type StartedListener = (thief: Player, victim: Player, itemId: string) -> ()
 type EndedListener = (thief: Player, victim: Player, itemId: string, result: TheftResult, reason: string) -> ()
 
--- Boutique à la porte cassée, pendant ses 10 s de vol. Victim nil : la boutique du bot joueur.
+-- Boutique à la porte cassée, ouverte au vol jusqu'à la reconstruction (vague 33 : sans chrono). Victim
+-- nil : la boutique du bot joueur.
 type Shop = {
 	Plot: Model,
 	Victim: Player?,
 	WindowId: string,
-	EndsAt: number, -- heure serveur (Workspace:GetServerTimeNow)
-	Viewers: { [Player]: boolean }, -- joueurs qui voient le chrono
+	Breaker: Player?, -- celui qui a cassé la porte (alerte d'intrusion)
 }
 
 type Hold = {
@@ -238,7 +258,6 @@ local DEPOSIT_ZONE = "DepositZone"
 local SLOT_FORMAT = "DisplaySlot_%02d"
 -- Attributs posés par ce service sur la parcelle (mêmes noms dans PvPController).
 local OPEN_ATTRIBUTE = "StealOpen"
-local ENDS_AT_ATTRIBUTE = "StealEndsAt"
 local SAFE_SLOTS_ATTRIBUTE = "SafeSlots"
 -- Posé sur le Player interdit de voler une boutique (même nom dans PvPController).
 local ROB_COOLDOWN_FORMAT = "RobCooldown_%d"
@@ -254,9 +273,6 @@ local PRIORITY = 120
 -- maintien non conclu (comme GrabItem).
 local GRAB_TIME_TOLERANCE = 0.1
 local HOLD_EXPIRY = 1
--- V0 proposé, absent du doc : le chrono est montré aux non-propriétaires à 60 studs ou moins du
--- centre de la boutique (comme pour un magasin PNJ).
-local TIMER_RADIUS = 60
 -- V0 proposé, absent du doc : au plus un message de refus par raison toutes les 3 s.
 local NOTICE_INTERVAL = 3
 -- V0 proposé, absent du doc : marge du contrôle du dépôt (voir l'en-tête), en secondes.
@@ -392,6 +408,8 @@ PvPService.Priority = PRIORITY
 local shops: { [Model]: Shop } = {}
 local holds: { [Player]: Hold } = {}
 local thefts: { [Player]: Theft } = {}
+-- Alerte d'intrusion (vague 33) : intrus annoncés à chaque victime, dans l'ordre d'arrivée.
+local intruders: { [Player]: { Player } } = {}
 -- Interdictions de voler une boutique (voir l'en-tête) : heure serveur de fin, par joueur et par boutique.
 local robBans: { [Player]: { [Model]: number } } = {}
 -- Dernier personnage vu mort, pour ne compter chaque mort qu'une fois. Clés faibles.
@@ -689,36 +707,6 @@ local function canBeHit(player: Player, windowId: string): boolean
 	return previous == nil or previous(player, windowId)
 end
 
--- Chrono des 10 s ----------------------------------------------------------------------------------
-
-local function hideTimer(shop: Shop, player: Player)
-	if shop.Viewers[player] then
-		shop.Viewers[player] = nil
-		if player.Parent == Players then
-			Net.Server.HeistTimer:Fire(player, shop.WindowId, 0)
-		end
-	end
-end
-
-local function updateViewers(shop: Shop)
-	local bounds = refsFor(shop.Plot).Bounds
-	local center = if bounds then bounds.Position else shop.Plot:GetPivot().Position
-	for _, player in Players:GetPlayers() do
-		if player == shop.Victim then
-			continue
-		end
-		if thefts[player] or isCarrying(player) then
-			hideTimer(shop, player)
-		elseif not shop.Viewers[player] then
-			local root = rootOf(player)
-			if root and (root.Position - center).Magnitude <= TIMER_RADIUS then
-				shop.Viewers[player] = true
-				Net.Server.HeistTimer:Fire(player, shop.WindowId, shop.EndsAt)
-			end
-		end
-	end
-end
-
 -- Ouverture et fermeture --------------------------------------------------------------------------
 
 local function closeShop(shop: Shop, why: string)
@@ -728,10 +716,6 @@ local function closeShop(shop: Shop, why: string)
 	end
 	shops[plot] = nil
 	plot:SetAttribute(OPEN_ATTRIBUTE, nil)
-	plot:SetAttribute(ENDS_AT_ATTRIBUTE, nil)
-	for player in table.clone(shop.Viewers) do
-		hideTimer(shop, player)
-	end
 	for player, hold in holds do
 		if hold.Plot == plot then
 			holds[player] = nil
@@ -740,30 +724,162 @@ local function closeShop(shop: Shop, why: string)
 	log(`{plot.Name} : fenêtre de vol fermée ({why})`)
 end
 
+-- Vague 33 (Cantin, 2026-11-13) : plus de chrono chez un joueur, la boutique reste ouverte au vol jusqu'à
+-- la reconstruction de sa porte (voir l'en-tête).
 local function openShop(plot: Model, victim: Player?, windowId: string, breaker: Player?)
 	local existing = shops[plot]
 	if existing then
 		closeShop(existing, "nouvelle casse")
 	end
-	local duration = PvP.StealDuration
 	local shop: Shop = {
 		Plot = plot,
 		Victim = victim,
 		WindowId = windowId,
-		EndsAt = Workspace:GetServerTimeNow() + duration,
-		Viewers = {},
+		Breaker = breaker,
 	}
 	shops[plot] = shop
 	plot:SetAttribute(OPEN_ATTRIBUTE, true)
-	plot:SetAttribute(ENDS_AT_ATTRIBUTE, shop.EndsAt)
-	updateViewers(shop)
-	task.delay(duration, function()
-		if shops[plot] == shop then
-			closeShop(shop, "10 s écoulées")
-		end
-	end)
 	local whose = if victim then `de {victim.Name}` else "du bot"
-	log(`{plot.Name} {whose} : porte cassée par {if breaker then breaker.Name else "?"}, {duration} s pour voler`)
+	log(`{plot.Name} {whose} : porte cassée par {if breaker then breaker.Name else "?"}, ouverte au vol sans chrono`)
+end
+
+-- Point d'attente de la reconstruction (WindowService.AddRebuildGate, vague 33) : la porte d'une boutique
+-- (joueur ou bot) reste cassée tant qu'un non-propriétaire présent, profil chargé et vivant est dans son
+-- volume Bounds. true pour toute autre vitrine, et pour une boutique libre.
+local function rebuildGate(_windowId: string, model: Model?): boolean
+	if model == nil or not table.find(PlotService.GetPlots(), model) then
+		return true
+	end
+	local owner = PlotService.GetOwner(model)
+	if owner == nil and not isBotPlot(model) then
+		return true
+	end
+	local bounds = refsFor(model).Bounds
+	if bounds == nil then
+		return true
+	end
+	for _, player in Players:GetPlayers() do
+		if player ~= owner and present(player) and DataService.Get(player) ~= nil then
+			local root = rootOf(player)
+			if root and inside(bounds, root.Position) then
+				return false
+			end
+		end
+	end
+	return true
+end
+
+-- Alerte d'intrusion (voir l'en-tête) ---------------------------------------------------------------------
+
+-- Dans le volume `part` agrandi de `margin` studs de chaque côté.
+local function near(part: BasePart, point: Vector3, margin: number): boolean
+	local p = part.CFrame:PointToObjectSpace(point)
+	local h = part.Size / 2 + Vector3.new(margin, margin, margin)
+	return math.abs(p.X) <= h.X and math.abs(p.Y) <= h.Y and math.abs(p.Z) <= h.Z
+end
+
+-- Intrus de la boutique `shop` de `victim` maintenant (ordre de Players:GetPlayers).
+local function currentIntruders(shop: Shop, victim: Player): { Player }
+	local list: { Player } = {}
+	local plot = shop.Plot
+	local bounds = refsFor(plot).Bounds
+	if bounds == nil then
+		return list
+	end
+	for _, player in Players:GetPlayers() do
+		if player == victim or not present(player) or DataService.Get(player) == nil or banLeft(player, plot) > 0 then
+			continue
+		end
+		local theft = thefts[player]
+		if theft and theft.Victim == victim then
+			continue -- son alerte avec l'objet passe avant
+		end
+		local root = rootOf(player)
+		if root == nil then
+			continue
+		end
+		if inside(bounds, root.Position) or (player == shop.Breaker and near(bounds, root.Position, PvP.ScoutDistance)) then
+			table.insert(list, player)
+		end
+	end
+	return list
+end
+
+-- TheftAlert(false), puis les intrus de `list`, puis les vols en cours chez `victim` (plus ancien d'abord).
+local function reannounce(victim: Player, list: { Player })
+	Net.Server.TheftAlert:Fire(victim, false)
+	for _, player in list do
+		Net.Server.TheftAlert:Fire(victim, true, player, nil)
+	end
+	local ongoing: { Theft } = {}
+	for _, theft in thefts do
+		if theft.Victim == victim then
+			table.insert(ongoing, theft)
+		end
+	end
+	table.sort(ongoing, function(a: Theft, b: Theft): boolean
+		return a.StartedAt < b.StartedAt
+	end)
+	for _, theft in ongoing do
+		Net.Server.TheftAlert:Fire(victim, true, theft.Thief, theft.ItemId)
+	end
+end
+
+-- 10 fois par seconde : intrus nouveaux annoncés, intrus partis retirés (réannonce).
+local function intrusionStep()
+	local seen: { [Player]: boolean } = {}
+	for _, plot in PlotService.GetPlots() do
+		local victim = PlotService.GetOwner(plot)
+		if victim == nil or not present(victim) then
+			continue -- boutique libre ou du bot : pas d'alerte
+		end
+		seen[victim] = true
+		local shop = shops[plot]
+		local now: { Player } = if shop and shop.Victim == victim then currentIntruders(shop, victim) else {}
+		local stored: { Player }? = intruders[victim]
+		local previous: { Player } = if stored then stored else {}
+		local kept: { Player } = {}
+		local removed = false
+		for _, player in previous do
+			if table.find(now, player) then
+				table.insert(kept, player)
+			else
+				-- Devenu voleur chez elle : son alerte avec l'objet a déjà remplacé la sienne, rien à retirer.
+				local theft = thefts[player]
+				if theft == nil or theft.Victim ~= victim then
+					removed = true
+				end
+			end
+		end
+		local added: { Player } = {}
+		for _, player in now do
+			if not table.find(kept, player) then
+				table.insert(kept, player)
+				table.insert(added, player)
+			end
+		end
+		if #kept > 0 then
+			intruders[victim] = kept
+		else
+			intruders[victim] = nil
+		end
+		if removed then
+			reannounce(victim, kept)
+		else
+			for _, player in added do
+				Net.Server.TheftAlert:Fire(victim, true, player, nil)
+			end
+		end
+		for _, player in added do
+			log(`{victim.Name} prévenu : {player.Name} est dans sa boutique (porte cassée)`)
+		end
+	end
+	-- Victime partie, ou sans boutique : oubliée (rien à lui envoyer de plus).
+	for victim in table.clone(intruders) do
+		if not seen[victim] then
+			intruders[victim] = nil
+		end
+	end
 end
 
 -- Sortie devant la porte ----------------------------------------------------------------------------
@@ -1233,10 +1349,6 @@ beginTheft = function(
 		refuse(thief, if floor then "StealFloorItem" else "StealItem", "CarryService a refusé le portage")
 		return
 	end
-	local shop = shops[plot]
-	if shop then
-		hideTimer(shop, thief)
-	end
 	local name = itemName(def.Id)
 	if victim then
 		Net.Server.TheftAlert:Fire(victim, true, thief, def.Id)
@@ -1505,12 +1617,11 @@ local function step()
 	for _, shop in table.clone(shops) do
 		if shop.Victim == nil and not isBotPlot(shop.Plot) then
 			closeShop(shop, "départ du bot")
-		else
-			updateViewers(shop)
 		end
 	end
 	deathStep()
 	ejectStep()
+	intrusionStep()
 	publishCount += 1
 	if publishCount >= PUBLISH_EVERY then
 		publishCount = 0
@@ -1564,8 +1675,11 @@ local function onPlayerRemoving(player: Player)
 			abandon(theft, "Left")
 		end
 	end
+	intruders[player] = nil
 	for _, shop in table.clone(shops) do
-		shop.Viewers[player] = nil
+		if shop.Breaker == player then
+			shop.Breaker = nil
+		end
 		if shop.Victim == player then
 			closeShop(shop, "départ de la victime")
 		end
@@ -1604,6 +1718,11 @@ function PvPService.GetRobCooldown(player: Player, plot: Model): number
 	return banLeft(player, plot)
 end
 
+function PvPService.GetIntruders(victim: Player): { Player }
+	local list = intruders[victim]
+	return if list then table.clone(list) else {}
+end
+
 -- Point d'accroche du coffre-fort (voir l'en-tête) : PvP.VaultSlots par défaut ; SkillTreeService le
 -- remplace (compétence Safe).
 function PvPService.GetVaultSlots(_owner: Player): number
@@ -1626,6 +1745,8 @@ function PvPService.Init()
 	WindowService.CanBeHit = canBeHit
 	WindowService.OnBroken(onBroken)
 	WindowService.OnRebuilt(onRebuilt)
+	-- Vague 33 : porte cassée tant qu'un intrus est dedans.
+	WindowService.AddRebuildGate(rebuildGate)
 	CarryService.OnCarryEnded(onCarryEnded)
 	PlotService.OnPlotReleased(onPlotReleased)
 	local bat = BatHooks

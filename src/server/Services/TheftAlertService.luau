@@ -16,7 +16,9 @@
 --      le vol, le bonus part avec sa fin.
 --   2. Réannonce de l'alerte : PvPService envoie TheftAlert(false) à la fin de chaque vol, même si la
 --      victime en subit encore un autre. Juste après ce false (dans la même exécution), ce service
---      renvoie TheftAlert(true, voleur, itemId) pour chaque vol encore en cours chez elle, du plus
+--      renvoie d'abord TheftAlert(true, intrus, nil) pour chaque intrus encore dans sa boutique (vague 33,
+--      PvPService.GetIntruders : alerte d'intrusion), puis TheftAlert(true, voleur, itemId) pour chaque
+--      vol encore en cours chez elle, du plus
 --      ancien au plus récent : son écran reste ouvert sur le dernier (TheftAlertController applique
 --      les messages d'une même image ensemble ; BatController rééquipe la batte, sans effet si elle
 --      est déjà en main). Rien n'est renvoyé à une victime qui part (raison « VictimLeft »).
@@ -114,7 +116,12 @@ local function onTheftEnded(thief: Player, victim: Player, _itemId: string, _res
 	if reason == "VictimLeft" or victim.Parent ~= Players then
 		return
 	end
-	-- TheftAlert(false) vient de partir (PvPService) : les vols encore en cours sont réannoncés.
+	-- TheftAlert(false) vient de partir (PvPService) : les intrus (vague 33), puis les vols encore en
+	-- cours sont réannoncés.
+	local list: { Player } = PvPService.GetIntruders(victim)
+	for _, intruder in list do
+		Net.Server.TheftAlert:Fire(victim, true, intruder, nil)
+	end
 	for _, theft in ongoing do
 		Net.Server.TheftAlert:Fire(victim, true, theft.Thief, theft.ItemId)
 	end
