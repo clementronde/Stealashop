@@ -1106,6 +1106,7 @@ Chaque étape est envoyée une seule fois par joueur avec `AnalyticsService:LogO
 
 | Date | Décision | Par |
 | --- | --- | --- |
+| 2026-11-14 | N'importe qui peut braquer n'importe qui : la porte d'une boutique se casse en un nombre de coups fixe (10 proposés), quelle que soit la force ; l'arbre de compétences donne du temps et de l'information plafonnés (20 coups au plus, verrou, alertes, gardes, pièges), jamais l'invulnérabilité ; un coup entre joueurs fait le même effet à tous ; le tuto l'explique (liaison, L-163) | Clément |
 | 2026-11-14 | Style des auras : effets naturels en planches animées dessinées (jamais de tube ni d'image plate), lisibles de jour, sol discret ; aura Éclair validée (v16) : nuage gris toon au-dessus de la tête, pluie fine, éclair ramifié qui tombe du nuage au sol, petits arcs sur le corps, léger éclat au sol (skill `.claude/skills/aura-vfx`) | Clément |
 | 2026-11-14 | Les bâtiments du couloir reprennent leurs couleurs et matières d'origine : les « tons neutres » de la mise en avant des vitrines (12/11) sont abandonnés, et les néons de décor restent allumés le jour ; seules les grandes surfaces (fenêtres de la zone 3, anneaux de la zone 6) et les néons des magasins ne s'allument que la nuit (liaison, L-142) | Clément |
 | 2026-11-14 | Boutique du joueur façon « Steal a … » : allée centrale (tapis rouge), deux files d'objets face à face tournés vers l'allée, plaque de gain devant chaque objet, et boutique ramenée à 48 studs de large au lieu de 64 ; aucun nom du contrat ne change (liaison, L-141) | Clément |
