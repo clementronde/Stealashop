@@ -97,7 +97,7 @@ local Balance = {
 		-- Portée tolérée pendant un maintien (début et revérifications, pas la fin ; Cantin, 2026-11-14) : le serveur
 		-- voit le perso en retard d'environ vitesse × latence. Tolérance = min(WalkSpeed × (ping + ReachLatencyPad), plafond),
 		-- plafond = max(ReachToleranceMin, WalkSpeed × ReachToleranceSeconds), en plus de GrabMaxDistance et autour du volume Bounds. Aussi pour les colis au sol.
-		ReachLatencyPad = 0.3, -- s, V0 (0,1 au départ ; en Play le 14/11, le serveur voyait le perso environ 0,22 s en retard même à ping 0, refus à 11,4 studs)
+		ReachLatencyPad = 0.5, -- s, V0 (0,1 puis 0,3 ; en Play le 14/11, le serveur voyait le perso jusqu'à 0,37 s en retard à ping 0 : à 65 studs/s, 0,3 s refusait une ouverture sur 6 ; 0,5 s suit le plafond ReachToleranceSeconds)
 		-- Plafond qui suit la vitesse (Cantin, 2026-11-14, « une ouverture très clean ») : un plafond fixe de 8 studs
 		-- était trop juste en courant vite (en Play le 14/11, à 65 studs/s, le serveur voyait le perso jusqu'à 15,7 studs
 		-- pour une limite de 16). À 65 studs/s le plafond vaut 32,5 studs ; à 16 studs/s il reste 8. La fin du maintien
