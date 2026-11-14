@@ -38,6 +38,14 @@
 -- animé. Chaque objet a son propre décalage dans le temps, tiré de sa position : deux objets voisins
 -- ne bougent pas d'un même bloc.
 --
+-- Vague 39 (optimisation téléphone, audit docs/claude/notes/perf-telephone.md, correction 1) :
+--   - toutes les pièces d'un objet sont déplacées d'un seul Workspace:BulkMoveTo par image (comme
+--     ShatterController), au lieu d'une écriture de CFrame par pièce ;
+--   - un objet hors de l'écran (Config/ItemIdle.OnScreenOnly, contrôlé avec la distance toutes les
+--     DistanceCheckInterval s) n'est pas animé : il garde sa dernière pose, sans retour au repos ;
+--   - au-delà de NearDistance (jusqu'à MaxDistance), il n'est replacé que toutes les FarInterval s.
+-- De près et à l'écran, rien ne change : chaque image, même pose qu'avant.
+--
 -- Réglages : Config/ItemIdle (V0, à faire valider par Clément).
 --
 -- API (client) :
@@ -50,7 +58,7 @@
 --       Angle d'une pièce Wave_ autour de l'axe Y de son pivot à l'instant t, depuis sa pose de
 --       départ (radians, de −WaveAmplitude à +WaveAmplitude ; 0 à t = 0).
 --   ItemIdleController.GetStats() -> { Tracked: number, Animated: number }
---       Objets suivis et objets animés en ce moment (à portée de la caméra), pour les tests.
+--       Objets suivis et objets animés en ce moment (à portée de la caméra et à l'écran), pour les tests.
 
 local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -99,7 +107,7 @@ type PartEntry = {
 -- Point d'accroche du billboard de DisplayService, gardé à sa place de repos.
 type PointEntry = {
 	attachment: Attachment,
-	holder: BasePart,
+	holder: number, -- indice de sa pièce dans parts (et dans targets)
 	restLocal: CFrame,
 	restWorld: CFrame,
 }
@@ -111,9 +119,16 @@ type Entry = {
 	mode: string?, -- valeur d'Idle reconnue, ou nil
 	phase: number,
 	parts: { PartEntry },
+	partList: { BasePart }, -- les pièces de parts, dans le même ordre (BulkMoveTo)
+	restList: { CFrame }, -- leurs CFrame de repos
+	targets: { CFrame }, -- CFrame de l'image en cours (réutilisée d'une image à l'autre)
 	pieces: { Piece }, -- les pièces contenantes avant les pièces contenues
 	points: { PointEntry },
-	active: boolean, -- à portée de la caméra : animé
+	center: Vector3, -- pivot du modèle au repos (test « à l'écran »)
+	radius: number, -- rayon autour de center qui contient toutes les pièces animées
+	active: boolean, -- à portée de la caméra et à l'écran : animé
+	far: boolean, -- au-delà de NearDistance : replacé toutes les FarInterval s
+	nextApply: number, -- loin : instant (clock) de la prochaine pose
 	moved: boolean, -- des pièces sont hors de leur position de repos
 	dirty: boolean, -- pièces ajoutées ou retirées : à reconstruire
 	connections: { RBXScriptConnection },
@@ -124,6 +139,7 @@ local ItemIdleController = {}
 local entries: { [Model]: Entry } = {}
 local clock = 0
 local sinceCheck = math.huge
+local anyDirty = false -- au moins un objet à reconstruire
 
 ------------------------------------------------------------------------------
 -- Calcul (sans Roblox, sauf CFrame)
@@ -254,18 +270,22 @@ local function build(model: Model): Entry?
 	-- Sans Idle, seules les pièces mobiles (et ce qu'elles contiennent) bougent : les autres ne sont
 	-- pas réécrites.
 	local parts: { PartEntry } = {}
+	local partList: { BasePart } = {}
+	local restList: { CFrame } = {}
 	local points: { PointEntry } = {}
 	for _, descendant in descendants do
 		local piece = pieceOf(descendant, model, piecesOf)
 		if descendant:IsA("BasePart") and not inHalo(descendant, model) and (mode ~= nil or piece ~= nil) then
 			local part = descendant :: BasePart
 			table.insert(parts, { part = part, rest = part.CFrame, piece = piece })
+			table.insert(partList, part)
+			table.insert(restList, part.CFrame)
 			for _, child in part:GetChildren() do
 				if child.Name == BILLBOARD_POINT and child:IsA("Attachment") then
 					local attachment = child :: Attachment
 					table.insert(points, {
 						attachment = attachment,
-						holder = part,
+						holder = #parts,
 						restLocal = attachment.CFrame,
 						restWorld = part.CFrame * attachment.CFrame,
 					})
@@ -276,6 +296,13 @@ local function build(model: Model): Entry?
 
 	local pivot = model:GetPivot()
 	local position = pivot.Position
+	-- Rayon des pièces animées autour du pivot (une pièce Spin_ ou Wave_ tourne autour d'un pivot du
+	-- modèle : elle reste dans cette sphère, à BobHeight près).
+	local radius = ItemIdle.BobHeight
+	for _, part in partList do
+		radius = math.max(radius, (part.Position - position).Magnitude + part.Size.Magnitude / 2 + ItemIdle.BobHeight)
+	end
+	local targets: { CFrame } = table.clone(restList) -- même taille, réécrite à chaque pose
 	return {
 		model = model,
 		pivot = pivot,
@@ -283,9 +310,16 @@ local function build(model: Model): Entry?
 		mode = mode,
 		phase = (position.X * 0.37 + position.Z * 0.61) % PHASE_SPAN,
 		parts = parts,
+		partList = partList,
+		restList = restList,
+		targets = targets,
 		pieces = pieces,
 		points = points,
+		center = position,
+		radius = radius,
 		active = false,
+		far = false,
+		nextApply = 0,
 		moved = false,
 		dirty = false,
 		connections = {},
@@ -308,34 +342,66 @@ local function apply(entry: Entry, t: number)
 		local turn = if piece.wave then waveTurn else spinTurn
 		piece.current = base * piece.pivot * turn * piece.pivotInverse
 	end
-	for _, entryPart in entry.parts do
+	local targets = entry.targets
+	for index, entryPart in entry.parts do
 		local piece = entryPart.piece
 		local move = if piece then piece.current else whole
-		entryPart.part.CFrame = move * entryPart.rest
+		targets[index] = move * entryPart.rest
 	end
+	-- Vague 39 : toutes les pièces d'un coup (une écriture de CFrame par pièce coûtait le plus cher).
+	Workspace:BulkMoveTo(entry.partList, targets, Enum.BulkMoveMode.FireCFrameChanged)
 	for _, point in entry.points do
-		point.attachment.CFrame = point.holder.CFrame:ToObjectSpace(point.restWorld)
+		point.attachment.CFrame = targets[point.holder]:ToObjectSpace(point.restWorld)
 	end
 	entry.moved = true
 end
 
 local function restore(entry: Entry)
-	for _, entryPart in entry.parts do
-		entryPart.part.CFrame = entryPart.rest
-	end
+	Workspace:BulkMoveTo(entry.partList, entry.restList, Enum.BulkMoveMode.FireCFrameChanged)
 	for _, point in entry.points do
 		point.attachment.CFrame = point.restLocal
 	end
 	entry.moved = false
 end
 
-local function isNear(entry: Entry, eye: Vector3?): boolean
-	return eye ~= nil and (entry.pivot.Position - eye).Magnitude <= ItemIdle.MaxDistance
+-- Vague 39 : la sphère de l'objet (center, radius + ScreenMargin) coupe le champ de la caméra.
+-- Test des quatre côtés du champ, dans le repère de la caméra (elle regarde vers −Z).
+local function isOnScreen(entry: Entry, camera: Camera): boolean
+	if not ItemIdle.OnScreenOnly then
+		return true
+	end
+	local viewport = camera.ViewportSize
+	if viewport.X <= 0 or viewport.Y <= 0 then
+		return true -- fenêtre pas encore dimensionnée : comme avant
+	end
+	local tanV = math.tan(math.rad(camera.FieldOfView) / 2)
+	local tanH = tanV * viewport.X / viewport.Y
+	local inCamera = camera.CFrame:PointToObjectSpace(entry.center)
+	local depth = -inCamera.Z
+	local radius = entry.radius + ItemIdle.ScreenMargin
+	if depth < -radius then
+		return false -- derrière la caméra
+	end
+	-- Distance au plan d'un côté : |x| − profondeur × tan ≤ rayon × √(1 + tan²).
+	return math.abs(inCamera.X) <= depth * tanH + radius * math.sqrt(1 + tanH * tanH)
+		and math.abs(inCamera.Y) <= depth * tanV + radius * math.sqrt(1 + tanV * tanV)
 end
 
-local function eyePosition(): Vector3?
-	local camera = Workspace.CurrentCamera
-	return if camera then camera.CFrame.Position else nil
+-- Distance et écran : `active` (animé), `far` (cadence réduite) ; repos au-delà de MaxDistance.
+local function evaluate(entry: Entry, camera: Camera?)
+	local distance = if camera then (entry.center - camera.CFrame.Position).Magnitude else math.huge
+	local near = distance <= ItemIdle.MaxDistance
+	if not near and entry.moved then
+		restore(entry)
+	end
+	local far = distance > ItemIdle.NearDistance
+	if far and not entry.far then
+		-- Décalé selon l'objet : les objets lointains ne sont pas tous replacés à la même image.
+		local interval = ItemIdle.FarInterval
+		entry.nextApply = clock + (if interval > 0 then entry.phase % interval else 0)
+	end
+	entry.far = far
+	entry.active = near and camera ~= nil and isOnScreen(entry, camera)
 end
 
 local function untrack(model: Model)
@@ -371,11 +437,12 @@ local function track(inst: Instance)
 	local function markDirty(descendant: Instance)
 		if matters(descendant) then
 			entry.dirty = true
+			anyDirty = true
 		end
 	end
 	table.insert(entry.connections, model.DescendantAdded:Connect(markDirty))
 	table.insert(entry.connections, model.DescendantRemoving:Connect(markDirty))
-	entry.active = isNear(entry, eyePosition())
+	evaluate(entry, Workspace.CurrentCamera)
 	entries[model] = entry
 end
 
@@ -388,13 +455,9 @@ local function rebuild(entry: Entry)
 end
 
 local function refreshDistances()
-	local eye = eyePosition()
+	local camera = Workspace.CurrentCamera
 	for _, entry in entries do
-		local near = isNear(entry, eye)
-		if not near and entry.moved then
-			restore(entry)
-		end
-		entry.active = near
+		evaluate(entry, camera)
 	end
 end
 
@@ -405,21 +468,27 @@ local function onHeartbeat(dt: number)
 		sinceCheck = 0
 		refreshDistances()
 	end
-	local dirty: { Entry }? = nil
-	for _, entry in entries do
-		if entry.dirty then
-			local list = dirty or {}
-			table.insert(list, entry)
-			dirty = list
+	if anyDirty then
+		anyDirty = false
+		local dirty: { Entry } = {}
+		for _, entry in entries do
+			if entry.dirty then
+				table.insert(dirty, entry)
+			end
 		end
-	end
-	if dirty then
 		for _, entry in dirty do
 			rebuild(entry)
 		end
 	end
+	local farInterval = ItemIdle.FarInterval
 	for _, entry in entries do
 		if entry.active then
+			if entry.far then
+				if clock < entry.nextApply then
+					continue
+				end
+				entry.nextApply = clock + farInterval
+			end
 			apply(entry, clock)
 		end
 	end
