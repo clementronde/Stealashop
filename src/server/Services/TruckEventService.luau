@@ -79,6 +79,15 @@
 --        BoxSpawn avec la traînée FX_BoxTrail (attributs TruckBox, Tier, FlightFrom, FlightStartsAt,
 --        FlightDuration) ; les départs sont espacés de LaunchStagger s. Ramassable une fois atterri.
 --      - Notify à tous.
+--   4'. Vague 42 (a148, demande de Cantin du 2026-11-14) : avec StoreHeistService.AddEventShelf (Features.ShelfOpen),
+--      les colis ne tombent plus au sol pour être pris fermés : un rayon d'événement de StoreHeistService
+--      (StoreId « Truck_<n> », un ShelfSlot par point d'arrivée ci-dessus) reçoit les caisses, chacune en vol
+--      (serveur) de son BoxSpawn à son point ; la rareté tirée au chargement est celle de la CAISSE (le
+--      modèle du camion en dépend toujours) ; on l'ouvre sur place exactement comme sur un rayon (maintien
+--      GrabTime, chance tirée par le serveur, objet, mutation et taille tirés à la sortie), puis on prend
+--      l'objet (GrabItem, portage NPCItem). Ni témoins, ni vigile ; les conducteurs (point 3') poursuivent
+--      aussi qui porte un objet de ce camion. Pas ouverte : la caisse disparaît FlightTime + BoxLifetime s
+--      après l'explosion. Sans rayon d'événement : les colis au sol du point 5, comme avant.
 --   5. Colis du camion au sol : GrabDropped(dropId) (9.4), en deux appels comme GrabItem (début du
 --      maintien, puis invite déclenchée). Le serveur vérifie : colis atterri et encore au sol, mains
 --      vides, joueur vivant, hors zone safe (tag SafeZone), à Bat.DroppedGrabMaxDistance studs au
@@ -255,6 +264,8 @@ local truckCount = 0
 local nextSpawnAt = math.huge -- os.clock() ; posé au Start
 local dayStartedAt = -math.huge -- os.clock() de la dernière aube
 local boxes: { [string]: TruckBox } = {}
+-- Vague 42 : StoreHeistService (AddEventShelf), chargé dans Init, protégé.
+local heistApi: { AddEventShelf: (options: any) -> Model? }? = nil
 local holds: { [Player]: Hold } = {}
 local lastRefusal: { [Player]: number } = {}
 local warned: { [string]: boolean } = {}
@@ -1329,7 +1340,50 @@ local function explode(truck: Truck, impactPoint: Vector3?, breaker: Player?)
 			end
 		end
 	end
-	for index, entry in truck.Load do
+	-- Vague 42 (a148, demande de Cantin) : colis à ouvrir sur place, comme sur un rayon (rayon d'événement de
+	-- StoreHeistService : même maintien, même chance tirée par le serveur, même sortie, objet et mutation tirés
+	-- à l'ouverture, puis GrabItem) ; la rareté du chargement devient celle de la caisse. Chaque caisse vole du
+	-- BoxSpawn à son point d'arrivée (vol du serveur, placeBox). Sans rayon d'événement : les colis au sol d'avant.
+	local spots: { any } = {}
+	-- Sans rayon d'événement, rien n'est tiré ici (les places des colis au sol restent celles d'avant).
+	local shelfLoad: { Load } = if heistApi then truck.Load else {}
+	for index, entry in shelfLoad do
+		local spawnPoint = Find.path(model, string.format(BOX_SPAWN_FORMAT, index))
+		local from: Vector3 = if spawnPoint and spawnPoint:IsA("Attachment")
+			then (spawnPoint :: Attachment).WorldPosition
+			else blastPosition
+		local rarity = entry.Rarity
+		if rarity then
+			local look = `{rarity}.{entry.Tier}`
+			local width = widths[look] or boxWidth(rarity, entry.Tier)
+			widths[look] = width
+			local landing = landingPoint(from, center, width, taken)
+			table.insert(taken, { Position = landing, Width = width })
+			table.insert(spots, { CFrame = CFrame.new(landing), Tier = entry.Tier, Rarity = rarity, From = from })
+		end
+	end
+	local addShelf = if heistApi then heistApi.AddEventShelf else nil
+	local shelf = if addShelf and #spots > 0
+		then addShelf({ Id = storeId, Zone = truck.Zone, Spots = spots, Lifetime = TruckEvent.FlightTime + TruckEvent.BoxLifetime })
+		else nil
+	if shelf then
+		for _, spot in spots do
+			placed += 1
+			byTier[spot.Tier] = (byTier[spot.Tier] or 0) + 1
+		end
+	else
+		table.clear(taken) -- repli : les colis au sol d'avant, places recalculées
+		if drops then
+			for _, drop in drops:GetChildren() do
+				if drop:IsA("Model") and drop:FindFirstChildWhichIsA("BasePart", true) then
+					local frame, size = (drop :: Model):GetBoundingBox()
+					table.insert(taken, { Position = frame.Position, Width = math.max(size.X, size.Z) })
+				end
+			end
+		end
+	end
+	local groundLoad: { Load } = if shelf then {} else truck.Load
+	for index, entry in groundLoad do
 		local tier = entry.Tier
 		local spawnPoint = Find.path(model, string.format(BOX_SPAWN_FORMAT, index))
 		local from: Vector3 = if spawnPoint and spawnPoint:IsA("Attachment")
@@ -1412,10 +1466,11 @@ end
 -- `player` porte-t-il un colis du camion `storeId` (« Truck_<n> ») ?
 local function carriesBoxOf(player: Player, storeId: string): boolean
 	local payload = CarryService.GetPayload(player)
-	if payload == nil or payload.Kind ~= "NPCBox" then
+	-- Vague 42 : ou l'objet sorti d'une de ses caisses ouvertes sur place (NPCItem, même StoreId).
+	if payload == nil or (payload.Kind ~= "NPCBox" and payload.Kind ~= "NPCItem") then
 		return false
 	end
-	return (payload :: CarryTypes.NPCBoxPayload).StoreId == storeId
+	return (payload :: any).StoreId == storeId
 end
 
 -- Les conducteurs du modèle de Clément `asset` (celui du camion), par ordre de nom (TruckDriver_01,
@@ -1739,6 +1794,17 @@ end
 function TruckEventService.Init()
 	if not ENABLED then
 		return
+	end
+	-- Vague 42 : rayons d'événement de StoreHeistService (colis ouverts sur place), protégé (bancs d'avant).
+	local module = script.Parent:FindFirstChild("StoreHeistService")
+	if module and module:IsA("ModuleScript") then
+		local ok, api = pcall(require, module)
+		if ok and type(api) == "table" and type((api :: any).AddEventShelf) == "function" then
+			heistApi = api :: any
+		end
+	end
+	if heistApi == nil then
+		log("StoreHeistService.AddEventShelf indisponible : les colis du camion restent au sol, à prendre fermés")
 	end
 	WindowService.OnBroken(onBroken)
 	-- Accès protégé : les faux WindowService des bancs n'ont pas tous AddHitGate.
