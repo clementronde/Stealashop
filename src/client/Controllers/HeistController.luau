@@ -286,7 +286,15 @@ local function addItemPrompt(instance: Instance)
 	prompt.ActionText = ITEM_ACTION_TEXT
 	prompt.ObjectText = if def then Mutations.ItemName(def.DisplayName, mutation) else ""
 	prompt.HoldDuration = if info then info.GrabTime else 0
-	prompt.MaxActivationDistance = math.max(Balance.Heist.GrabMaxDistance - PROMPT_DISTANCE_MARGIN, 1)
+	local distance = math.max(Balance.Heist.GrabMaxDistance - PROMPT_DISTANCE_MARGIN, 1)
+	prompt.MaxActivationDistance = distance
+	-- Model:ScaleTo agrandit aussi les invites du modèle : l'objet sort à 0,2 de sa taille (ShelfOpenController),
+	-- une invite posée à ce moment passait à 7,5 × 5 = 37,5 studs en revenant à 1. Portée remise à chaque fois.
+	prompt:GetPropertyChangedSignal("MaxActivationDistance"):Connect(function()
+		if prompt.MaxActivationDistance ~= distance then
+			prompt.MaxActivationDistance = distance
+		end
+	end)
 	prompt.RequiresLineOfSight = false
 	prompt.Enabled = false
 	prompt.PromptButtonHoldBegan:Connect(function()
