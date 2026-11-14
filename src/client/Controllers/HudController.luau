@@ -82,6 +82,7 @@ local Config = Shared:WaitForChild("Config")
 local Balance = require(Config:WaitForChild("Balance"))
 local Features = require(Config:WaitForChild("Features"))
 local Night = require(Config:WaitForChild("Night"))
+local Potions = require(Config:WaitForChild("Potions"))
 local Find = require(Shared:WaitForChild("Contract"):WaitForChild("Find"))
 local Format = require(Shared:WaitForChild("Format"))
 local MarkerSounds = require(Shared:WaitForChild("Anim"):WaitForChild("MarkerSounds"))
@@ -126,10 +127,28 @@ local STATS: { Stat } = {
 	{ Attribute = "Income", Element = "Income", Write = Format.income, Roll = true },
 	-- Rééquilibrage v2 (note equilibrage-v2-proposition.md, section 3) : « Speed » = Vitesse × trail (attribut
 	-- ShownSpeed de StatsService), « Strength » = arme × aura (attribut Damage de ToolService ; sans la potion).
+	-- Vague 42 (L-157 point 1, Clément) : « Damage » = la vraie force d'un coup, arme × aura × potion de force
+	-- (DAMAGE_STAT, multiplié ici par potionFactor, comme WindowService × PotionService côté serveur).
 	{ Attribute = "ShownSpeed", Element = "Speed", Write = Format.short, Roll = false },
 	{ Attribute = "Damage", Element = "Strength", Write = Format.short, Roll = false },
 	{ Attribute = "Damage", Element = "Damage", Write = Format.short, Roll = false },
 }
+local DAMAGE_STAT: Stat = STATS[5]
+
+-- Vague 42 : potion de force active = attribut Potion_Strength du Player (PotionService : heure serveur de fin).
+local STRENGTH_POTION = Potions.ById.Strength
+local STRENGTH_POTION_ATTRIBUTE = Potions.AttributePrefix .. STRENGTH_POTION.Id
+local strengthPotionOn = false -- dernier état écrit dans Damage
+
+local function strengthPotionActive(): boolean
+	local endsAt = Players.LocalPlayer:GetAttribute(STRENGTH_POTION_ATTRIBUTE)
+	return type(endsAt) == "number" and endsAt > Workspace:GetServerTimeNow()
+end
+
+-- Multiplicateur de la potion de force sur un coup (1 sans elle).
+local function potionFactor(): number
+	return if strengthPotionActive() then STRENGTH_POTION.Multiplier or 1 else 1
+end
 
 local INCOME_ATTRIBUTE = "Income" -- posé par DisplayService ; retenu par HoldIncome
 local INCOME_STAT: Stat = STATS[2]
@@ -155,6 +174,8 @@ local TIMER_BOX = "Box"
 local TICK_INFO = TweenInfo.new(UiMotion.TimerTick.Time, UiMotion.TimerTick.Style, UiMotion.TimerTick.Direction)
 -- Chrono rouge à TimerTick.RedBelow s ou moins (L-092 3c ; seuil « n <= 3 » du prototype feel2_proto.luau).
 local TIMER_RED: Color3 = UiMotion.TimerTick.RedColor
+-- Vague 42 (L-153, L-157 point 4) : couleur du chrono de police « POLICE IN 8s » (V0 dans Config/UiMotion).
+local TIMER_POLICE: Color3 = UiMotion.TimerTick.PoliceColor
 
 -- Éléments cachés tant que leur fonction n'existe pas (Config/Features, liaison L-026). Les boutons
 -- Shop et Rebirth restent visibles pendant leur aperçu (L-071).
@@ -291,6 +312,11 @@ local function writeStat(stat: Stat)
 		then shownIncome()
 		elseif stat == CASH_STAT and cashHolds[1] ~= nil then cashHolds[1].base
 		else localPlayer:GetAttribute(stat.Attribute)
+	if stat == DAMAGE_STAT and type(value) == "number" then
+		local factor = potionFactor()
+		strengthPotionOn = factor ~= 1
+		value *= factor
+	end
 	if type(value) ~= "number" then
 		Motion.StopRoll(label)
 		current.written[stat] = nil
@@ -429,14 +455,16 @@ local function updateHeistTimer(current: Hud)
 	local ticking = seconds ~= nil and shownSeconds ~= nil -- déjà affiché : une seconde de moins
 	shownSeconds = seconds
 	shownPolice = police
-	-- L-092 3c : rouge sous le seuil, couleur d'origine sinon (fin du vol, chrono remonté).
-	local red = seconds ~= nil and seconds <= UiMotion.TimerTick.RedBelow
-	local original: Color3? = timerColors[label]
-	if red and not original then
-		timerColors[label] = label.TextColor3
+	-- L-092 3c : rouge sous le seuil, couleur d'origine sinon (fin du vol, chrono remonté). Vague 42 (L-153 et
+	-- L-157 point 4, Clément) : « POLICE IN 8s » en rouge (UiMotion.TimerTick.PoliceColor) tout le temps du chrono
+	-- de police ; la couleur de Clément, lue sur l'élément au branchement (bind), revient pour « HEIST ».
+	local original: Color3 = timerColors[label] or label.TextColor3
+	timerColors[label] = original
+	if seconds ~= nil and police then
+		label.TextColor3 = TIMER_POLICE
+	elseif seconds ~= nil and seconds <= UiMotion.TimerTick.RedBelow then
 		label.TextColor3 = TIMER_RED
-	elseif not red and original then
-		timerColors[label] = nil
+	else
 		label.TextColor3 = original
 	end
 	if seconds then
@@ -630,6 +658,11 @@ local function bind(gui: ScreenGui)
 	-- Chrono et jauge masqués jusqu'à la prochaine image (update les affiche s'il le faut).
 	if heistTimer then
 		heistTimer.Visible = false
+		-- Vague 42 : couleur de Clément gardée avant tout rouge (jamais écrite en dur).
+		local kept: Color3? = timerColors[heistTimer]
+		if not kept then
+			timerColors[heistTimer] = heistTimer.TextColor3
+		end
 	end
 	if meter then
 		meter.Visible = false
@@ -660,6 +693,10 @@ local function update()
 	if current == nil or current.gui.Parent == nil then
 		return
 	end
+	-- Vague 42 : fin (ou début) de la potion de force sans nouvel attribut : Damage réécrit.
+	if strengthPotionActive() ~= strengthPotionOn then
+		writeStat(DAMAGE_STAT)
+	end
 	updateHeistTimer(current)
 	updateGuardMeter(current)
 	local now = Workspace:GetServerTimeNow()
@@ -680,6 +717,9 @@ function HudController.Start()
 			writeStat(stat)
 		end)
 	end
+	localPlayer:GetAttributeChangedSignal(STRENGTH_POTION_ATTRIBUTE):Connect(function()
+		writeStat(DAMAGE_STAT)
+	end)
 
 	local heistApi = heist
 	if heistApi then

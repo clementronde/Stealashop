@@ -27,7 +27,14 @@
 --     du propriétaire (PlotService.GetSpawnSpot), HumanoidRootPart ancré, aucune collision ni requête,
 --     scripts retirés, nom Bot.DisplayName au-dessus de lui, animation Animations/Idle en boucle (celle
 --     de Clément, ou l'idle par défaut de Roblox gardée du script Animate) ;
---   - défense (vague 37, a124, L-117 point 7, Config/Bot.Defense, V0 proposés) : quand un joueur casse sa porte
+--   - défense (vague 37, a124, L-117 point 7, Config/Bot.Defense, V0 proposés). Vague 42 (Cantin, 2026-11-14 :
+--     « il est censé nous courir après une fois qu'on a volé l'objet, pas quand on est dans sa base ») : porte
+--     cassée et intrus qui n'a rien volé ne déclenchent plus rien ; la poursuite démarre à la prise d'un objet.
+--     Ensuite, celui qui lui a pris un objet (Engaged) est poursuivi et frappé sans limite de temps tant qu'il est
+--     dans sa boutique, avec ou sans objet ; dehors, le compte de Defense.GiveUpTime (10) s démarre (laisse de
+--     15 studs aussi), s'arrête s'il rentre et repart de zéro s'il ressort ; dehors sans objet, il est suivi, pas
+--     frappé. Bot rentré : un nouveau vol pour une nouvelle poursuite (V0). Les mentions du casseur de porte, de
+--     l'intrus et du temps depuis le dernier déclenchement ci-dessous datent d'avant. Quand un joueur casse sa porte
 --     (WindowService.OnBroken) ou lui prend un objet (Hold), l'avatar se désancre (SetNetworkOwner(nil) : le
 --     serveur le déplace), joue Animations/Run (celle de Clément, sinon la course par défaut de Roblox gardée du
 --     script Animate) et court vers lui (Humanoid:MoveTo, 10 fois par seconde, à Defense.RunSpeed ; chemin
@@ -44,7 +51,7 @@
 --     frappée, à plus de Defense.LeashDistance studs de son volume Bounds), il prend un autre voleur ou un intrus
 --     dans sa boutique, sinon il rentre. Il rentre aussi Defense.GiveUpTime s après le dernier déclenchement.
 --     Retour : il court à son point d'apparition, puis s'y ré-ancre (replacé d'un coup au bout de
---     Defense.ReturnTimeout s), batte rangée, Idle de nouveau. Tuto (point d'accroche IsGentle, remplacé par
+--     Defense.ReturnTimeout s), Idle de nouveau (batte toujours en main depuis la vague 42, L-146 point 2). Tuto (point d'accroche IsGentle, remplacé par
 --     TutorialService : le joueur poursuivi fait son tuto) : Defense.TutorialRunSpeed, et au plus
 --     Defense.TutorialMaxStrikes coup réussi sur lui pendant son tuto ;
 --   - départ propre : objets et avatar détruits, BotIncome retiré, porte refaite si elle est cassée
@@ -69,6 +76,9 @@
 --   BotService.IsGentle(player) -> boolean
 --       Point d'accroche (comme BatService.IsIntruder) : poursuite plus douce pour `player` ? false par défaut ;
 --       TutorialService le remplace (tuto en cours). Appelé sans yield, dans un pcall.
+--   BotService.KickCooldown(player) -> number?
+--       Vague 42 (L-146 point 3) : durée de l'interdiction après un coup du bot pendant le tuto de `player`
+--       (Defense.TutorialKickCooldown, 15 s), nil hors tuto (PvP.KickRobCooldown). Lu par PvPService.
 -- Pour PvPService seulement (sans yield) : Hold(plot, uid, thief) -> boolean, Release(plot, uid, thief) ->
 -- boolean, IsHeld(plot, uid) -> boolean, TakeHeld(plot, uid, thief) -> boolean.
 
@@ -132,6 +142,10 @@ type Chase = {
 	LastSwing: number,
 	Swinging: boolean,
 	Struck: { [Player]: boolean }, -- touchés pendant cette poursuite : plus visés (sauf nouveau déclenchement)
+	-- Vague 42 (Cantin, 2026-11-14) : joueurs qui lui ont pris un objet pendant cette poursuite (poursuivis dans sa
+	-- boutique même sans objet), et os.clock() depuis lequel la cible est hors de sa boutique (nil : dedans).
+	Engaged: { [Player]: boolean },
+	OutsideSince: number?,
 }
 
 type BotItem = {
@@ -467,6 +481,9 @@ local function playerAnimations(): Instance?
 	return current
 end
 
+-- Batte en main (définie plus bas, avec la défense).
+local equipBat: (current: State, humanoid: Humanoid) -> ()
+
 -- Pose l'avatar du bot `current` debout au point d'apparition de sa boutique. Peut attendre (avatar par
 -- défaut de Roblox) : le bot a pu partir entre-temps.
 local function spawnAvatar(current: State)
@@ -491,6 +508,8 @@ local function spawnAvatar(current: State)
 	current.Avatar = avatar
 	current.Home = avatar:GetPivot()
 	playLooped(current, IDLE)
+	-- Vague 42 (L-146 point 2, Clément : « une batte en main ») : la batte en main en permanence, dès l'arrivée.
+	equipBat(current, humanoid)
 end
 
 -- Arrivée et départ -------------------------------------------------------------------------------------
@@ -648,6 +667,12 @@ local function gentle(player: Player): boolean
 	return ok and value == true
 end
 
+-- Vague 42 (L-146 point 3) : interdiction (s) après un coup du bot, pour PvPService. Pendant le tuto de `player`
+-- (IsGentle) : Defense.TutorialKickCooldown (15) ; sinon nil (PvP.KickRobCooldown, comme avant). Sans yield.
+function BotService.KickCooldown(player: Player): number?
+	return if gentle(player) then DEFENSE.TutorialKickCooldown else nil
+end
+
 local function carrying(current: State, player: Player): boolean
 	for _, holder in current.Holders do
 		if holder == player then
@@ -675,7 +700,16 @@ local function reach(current: State, chase: Chase, player: Player): BasePart?
 	return root
 end
 
--- Une autre cible : d'abord un voleur qui porte un de ses objets, puis un intrus dans sa boutique.
+-- Vague 42 (Cantin, 2026-11-14) : `player` est-il une cible de cette poursuite ? Il porte un de ses objets, ou il
+-- lui en a pris un pendant cette poursuite (Engaged) : alors poursuivi dans sa boutique même sans objet, et dehors
+-- jusqu'à la fin du compte GiveUpTime. Un intrus qui n'a rien volé n'est jamais visé.
+local function isQuarry(current: State, chase: Chase, player: Player): boolean
+	return carrying(current, player) or chase.Engaged[player] == true
+end
+
+-- Une autre cible : d'abord un voleur qui porte un de ses objets, puis un joueur qui lui a pris un objet pendant
+-- cette poursuite et qui est dans sa boutique. Vague 42 (Cantin : « il est censé nous courir après une fois qu'on a
+-- volé l'objet, pas quand on est dans sa base ») : plus jamais un intrus qui n'a rien volé.
 local function pickTarget(current: State, chase: Chase): Player?
 	for _, holder in current.Holders do
 		if reach(current, chase, holder) then
@@ -684,7 +718,7 @@ local function pickTarget(current: State, chase: Chase): Player?
 	end
 	local bounds = boundsOf(current.Plot)
 	if bounds then
-		for _, player in Players:GetPlayers() do
+		for player in chase.Engaged do
 			local root = reach(current, chase, player)
 			if root and insideBox(bounds, root.Position) then
 				return player
@@ -709,10 +743,16 @@ local function walkTowards(current: State, humanoid: Humanoid, root: BasePart, g
 end
 
 -- Batte en main : TOOL_Batte de Clément (Tool, ou Model avec Handle), sans script ni collision ; sinon rien.
-local function equipBat(current: State, humanoid: Humanoid)
+-- Vague 42 (L-146 point 2) : tenue en permanence (posée à l'arrivée de l'avatar, gardée au retour).
+function equipBat(current: State, humanoid: Humanoid)
 	local avatar = current.Avatar
-	if current.Bat or avatar == nil then
+	local held = current.Bat
+	if avatar == nil or (held ~= nil and held.Parent == avatar) then
 		return
+	end
+	if held then
+		held:Destroy() -- sortie de l'avatar : une neuve
+		current.Bat = nil
 	end
 	local assets = ReplicatedStorage:FindFirstChild(ASSETS)
 	local asset = if assets then assets:FindFirstChild(BatConfig.Asset, true) else nil
@@ -767,7 +807,7 @@ local function goHome(chase: Chase, why: string)
 	log(`le bot rentre ({why})`)
 end
 
--- Arrivé (ou replacé) : debout au point d'apparition, ré-ancré, batte rangée, Idle.
+-- Arrivé (ou replacé) : debout au point d'apparition, ré-ancré, batte gardée en main, Idle.
 local function settle(current: State, humanoid: Humanoid, root: BasePart, why: string)
 	local avatar = current.Avatar
 	local home = current.Home
@@ -779,11 +819,8 @@ local function settle(current: State, humanoid: Humanoid, root: BasePart, why: s
 	stopTrack(current, RUN)
 	stopTrack(current, SWING)
 	playLooped(current, IDLE)
-	local bat = current.Bat
-	if bat then
-		bat:Destroy()
-		current.Bat = nil
-	end
+	-- Vague 42 (L-146 point 2) : la batte reste en main (avant : rangée ici) ; remise si elle a disparu.
+	equipBat(current, humanoid)
 	current.Chase = nil
 	log(`le bot est de nouveau à son point d'apparition ({why})`)
 end
@@ -870,6 +907,8 @@ local function alert(current: State, player: Player, why: "Door" | "Grab")
 			LastSwing = -math.huge,
 			Swinging = false,
 			Struck = {},
+			Engaged = { [player] = true },
+			OutsideSince = nil,
 		}
 		current.Chase = created
 		root.Anchored = false
@@ -887,6 +926,8 @@ local function alert(current: State, player: Player, why: "Door" | "Grab")
 		chase.Phase = "Chase"
 		chase.StartedAt = now
 		chase.Struck[player] = nil
+		chase.Engaged[player] = true
+		chase.OutsideSince = nil -- un nouveau vol relance le compte (recompté au prochain pas s'il est dehors)
 	end
 	log(`le bot poursuit {player.Name} ({if why == "Door" then "porte cassée" else "objet pris"})`)
 end
@@ -905,26 +946,44 @@ local function defenseStep()
 	end
 	local now = os.clock()
 	if chase.Phase == "Chase" then
-		if now - chase.StartedAt > DEFENSE.GiveUpTime then
-			goHome(chase, `{DEFENSE.GiveUpTime} s de poursuite`)
-		else
+		do
 			local target = chase.Target
+			-- Vague 42 (Cantin) : seul un joueur qui lui a pris un objet est poursuivi (isQuarry).
+			if target and not isQuarry(current, chase, target) then
+				target = nil
+			end
 			local targetRoot = if target then reach(current, chase, target) else nil
 			if target == nil or targetRoot == nil then
 				target = pickTarget(current, chase)
+				if target ~= chase.Target then
+					chase.OutsideSince = nil -- nouvelle cible : son compte repart
+				end
 				chase.Target = target
 				targetRoot = if target then reach(current, chase, target) else nil
 			end
+			-- Vague 42 (Cantin, 2026-11-14) : dans sa boutique, poursuite sans limite de temps ; dehors, le compte de
+			-- Defense.GiveUpTime (10) s démarre (la laisse compte aussi, dans reach) ; rentrer l'arrête, ressortir le
+			-- relance de zéro.
+			local bounds = boundsOf(current.Plot)
+			local inside = targetRoot ~= nil and bounds ~= nil and insideBox(bounds, targetRoot.Position)
+			if targetRoot ~= nil and not inside then
+				local since = chase.OutsideSince or now
+				chase.OutsideSince = since
+				if now - since > DEFENSE.GiveUpTime then
+					target, targetRoot = nil, nil
+				end
+			else
+				chase.OutsideSince = nil
+			end
 			if target == nil or targetRoot == nil then
-				goHome(chase, "plus personne à chasser")
+				goHome(chase, if chase.OutsideSince then `{DEFENSE.GiveUpTime} s hors de sa boutique` else "plus personne à chasser")
 			else
 				humanoid.WalkSpeed = if gentle(target) then DEFENSE.TutorialRunSpeed else DEFENSE.RunSpeed
 				walkTowards(current, humanoid, root, targetRoot.Position)
 				local distance = (targetRoot.Position - root.Position).Magnitude
-				-- Frappable comme par un propriétaire : il porte un objet du bot, ou il est dans sa boutique (un
-				-- casseur resté devant la porte est suivi, pas frappé).
-				local bounds = boundsOf(current.Plot)
-				local hittable = carrying(current, target) or (bounds ~= nil and insideBox(bounds, targetRoot.Position))
+				-- Frappable : il porte un objet du bot, ou il est dans sa boutique après lui avoir pris un objet (vague
+				-- 42, Cantin : un intrus qui n'a rien volé n'est jamais frappé ; dehors sans objet, suivi seulement).
+				local hittable = carrying(current, target) or inside
 				if
 					hittable
 					and not chase.Swinging
@@ -1092,13 +1151,8 @@ function BotService.Init()
 	PlotService.OnShortage(function()
 		leave("boutique manquante pour un vrai joueur")
 	end)
-	-- Vague 37 : porte du bot cassée, il poursuit celui qui l'a cassée.
-	WindowService.OnBroken(function(info: WindowService.BreakInfo)
-		local current = if info.Kind == "Plot" then stateOf(info.Model) else nil
-		if current then
-			alert(current, info.Breaker, "Door")
-		end
-	end)
+	-- Vague 37 : porte du bot cassée, il poursuivait celui qui l'a cassée. Vague 42 (Cantin, 2026-11-14) : plus rien,
+	-- le bot ne part qu'à la prise d'un objet (Hold → alert « Grab »).
 	Players.PlayerAdded:Connect(function()
 		evaluate() -- départ immédiat au 5e vrai joueur
 	end)

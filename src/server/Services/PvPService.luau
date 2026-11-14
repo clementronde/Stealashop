@@ -293,6 +293,8 @@ type BotApi = {
 	Release: (plot: Model, uid: string, thief: Player) -> boolean,
 	IsHeld: (plot: Model, uid: string) -> boolean,
 	TakeHeld: (plot: Model, uid: string, thief: Player) -> boolean,
+	-- Vague 42 (L-146 point 3) : interdiction après un coup du bot pendant le tuto (nil : KickRobCooldown).
+	KickCooldown: ((player: Player) -> number?)?,
 }
 local botModule = script.Parent:FindFirstChild("BotService")
 local botLoaded: boolean, botResult: any = false, nil
@@ -587,8 +589,10 @@ local function banLeft(player: Player, plot: Model): number
 end
 
 -- `player` ne peut plus voler `plot` pendant PvP.KickRobCooldown s (une interdiction en cours repart à zéro).
-local function ban(player: Player, plot: Model, why: string)
-	local endsAt = Workspace:GetServerTimeNow() + PvP.KickRobCooldown
+-- Vague 42 : `duration` (s) à la place, pour un coup du bot pendant le tuto (BotService.KickCooldown).
+local function ban(player: Player, plot: Model, why: string, duration: number?)
+	local seconds = duration or PvP.KickRobCooldown
+	local endsAt = Workspace:GetServerTimeNow() + seconds
 	local byPlot = robBans[player] or {}
 	robBans[player] = byPlot
 	byPlot[plot] = endsAt
@@ -596,7 +600,7 @@ local function ban(player: Player, plot: Model, why: string)
 	if name then
 		player:SetAttribute(name, endsAt)
 	end
-	log(`{player.Name} ne peut plus voler {plot.Name} pendant {PvP.KickRobCooldown} s ({why})`)
+	log(`{player.Name} ne peut plus voler {plot.Name} pendant {seconds} s ({why})`)
 end
 
 local function cooldownMessage(format: string, left: number): string
@@ -1468,14 +1472,15 @@ end
 
 -- Après un coup du défenseur de `plot` (propriétaire ou bot) : interdiction de PvP.KickRobCooldown s, sortie
 -- devant la porte s'il est dedans, et le message à la cible. true s'il a été sorti.
-local function kickOut(plot: Model, target: Player, why: string): boolean
-	ban(target, plot, why)
+local function kickOut(plot: Model, target: Player, why: string, duration: number?): boolean
+	local seconds = duration or PvP.KickRobCooldown
+	ban(target, plot, why, seconds)
 	local bounds = refsFor(plot).Bounds
 	if bounds and putOut(target, plot, bounds) then
-		notify(target, cooldownMessage(MESSAGES.KickedOut, PvP.KickRobCooldown), "Alert")
+		notify(target, cooldownMessage(MESSAGES.KickedOut, seconds), "Alert")
 		return true
 	end
-	notify(target, cooldownMessage(MESSAGES.RobCooldown, PvP.KickRobCooldown), "Alert")
+	notify(target, cooldownMessage(MESSAGES.RobCooldown, seconds), "Alert")
 	return false
 end
 
@@ -1500,7 +1505,17 @@ local function onBotBatHit(plot: Model, target: Player, usage: string, _payload:
 	if (usage ~= "Intruder" and usage ~= "Defend") or not isBotPlot(plot) or not present(target) then
 		return
 	end
-	if kickOut(plot, target, if usage == "Intruder" then "frappé dans la boutique par le bot" else "frappé par le bot avec son objet") then
+	-- Vague 42 (L-146 point 3) : pendant le tuto de la cible, BotService.KickCooldown (15 s) au lieu de 60.
+	local api = Bot
+	local hook = if api then api.KickCooldown else nil
+	local duration: number? = nil
+	if hook then
+		local ok, value = pcall(hook, target)
+		if ok and type(value) == "number" and value > 0 and value < math.huge then
+			duration = value
+		end
+	end
+	if kickOut(plot, target, if usage == "Intruder" then "frappé dans la boutique par le bot" else "frappé par le bot avec son objet", duration) then
 		log(`{target.Name} sorti de {plot.Name} par le bot`)
 	end
 end

@@ -839,5 +839,21 @@ for _, billboard in UI.Billboards do
 		})
 	end
 end
+-- Panneau d'amélioration UpgradeSign (Model de Clément dans Assets/UI, L-082 ; UpgradeController) : vague 42
+-- (L-157 point 2, accord de Clément), TextLabel facultatif Gain sous Level, « +16/s > +32/s » sur le panneau du
+-- tapis. Seul Gain est vérifié ici (le reste du panneau est contrôlé par UpgradeController au démarrage).
+table.insert(UI.Billboards, {
+	Name = "UpgradeSign",
+	Class = "Model",
+	Optional = true,
+	Elements = {
+		{
+			Path = "Gain",
+			Class = "TextLabel",
+			Optional = true,
+			Note = "le gain du tapis (« +16/s > +32/s ») n'est pas affiché",
+		},
+	} :: { Element },
+})
 
 return UI
