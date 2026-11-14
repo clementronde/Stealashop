@@ -56,7 +56,7 @@
 --   - Prise : GrabItem(slotId), en deux appels (voir « Maintien » plus bas). Le serveur vérifie :
 --     magasin ouvert (et pas fermé pour lui), colis posé sur le rayon, avance du casseur, mains vides
 --     (CarryService.IsCarrying), joueur vivant dans le volume Bounds et à GrabMaxDistance
---     (8 studs) au plus de l'emplacement, maintien du type du colis (Balance.Heist.BoxTiers). Le
+--     (8 studs) au plus de l'emplacement (tolérance au début du maintien, voir « Portée »), maintien du type du colis (Balance.Heist.BoxTiers). Le
 --     rayon se vide, CarryService.StartCarry reçoit le payload avec le contenu tiré à la mise en
 --     rayon (ou celui de l'accroche du tuto, plus bas), et le chrono est masqué pour ce joueur
 --     (« le chrono ne compte plus pour lui », 5.3 point 5).
@@ -137,7 +137,7 @@
 -- au début du maintien de l'invite, puis une seconde fois quand elle se déclenche. Le premier
 -- appel ouvre un maintien sur ce colis (heure serveur) ; le second n'est accepté que si
 -- GrabTime − GRAB_TIME_TOLERANCE s se sont écoulées. Pendant le maintien, le serveur revérifie
--- tout 10 fois par seconde : s'il sort du volume, s'éloigne au-delà de 8 studs, meurt, porte
+-- tout 10 fois par seconde : s'il sort du volume, s'éloigne au-delà de la portée (voir « Portée »), meurt, porte
 -- déjà un colis, si le colis du rayon change ou si le magasin ferme, le maintien est annulé. Un
 -- maintien non conclu expire GrabTime + HOLD_EXPIRY s après son début. Un seul maintien par
 -- joueur : un appel sur un autre rayon remplace le précédent. Le client ne peut donc pas prendre
@@ -145,6 +145,16 @@
 -- pas de remote d'annulation, relâcher l'invite ne prévient pas le serveur : un nouvel appui sur
 -- le même rayon dans la seconde qui suit, sans s'être éloigné, conclut tout de suite (le joueur
 -- est bien resté à portée tout ce temps).
+--
+-- Portée (Cantin, 2026-11-14 ; GrabItem et OpenShelfBox) : le serveur voit le perso en retard d'environ
+-- vitesse × latence (vu en Play : 12,6 studs au lieu de 7,5 en appuyant sur E en courant). Souple au début
+-- et pendant le maintien, stricte à la fin. Au premier appel (début du maintien) et aux revérifications
+-- (10 par seconde), la tolérance reachPad = min(WalkSpeed × (ping + Balance.Heist.ReachLatencyPad),
+-- Balance.Heist.ReachToleranceMax) studs (0,1 s et 8 studs, V0) s'ajoute à GrabMaxDistance, et le volume
+-- Bounds est agrandi d'autant. WalkSpeed est celle du Humanoid côté serveur (réglée par le serveur),
+-- ping = player:GetNetworkPing() : rien ne vient du client. Au second appel (fin du maintien, qui prend
+-- ou lance l'ouverture), et pour un colis à GrabTime 0 (un seul appel) : contrôle strict (dans Bounds,
+-- GrabMaxDistance au plus). Un tricheur qui envoie les deux appels de loin ne prend ni n'ouvre rien.
 --
 -- Ouverture des colis sur le rayon (liaison L-112, décisions de Cantin du 2026-11-12 ; interrupteur
 -- Features.ShelfOpen ; valeurs : Config/ShelfOpen ; attributs : Shared/ShelfOpenState). À true, le colis
@@ -181,7 +191,7 @@
 --     (colis changé, refus d'ouverture, expiration GrabTime + HOLD_EXPIRY). Vérifié à chaque appel (9.4) : magasin
 --     ouvert (fermé seulement quand plus personne n'y est, voir plus haut), colis posé, fermé et pas
 --     déjà en cours d'ouverture, avance du casseur, magasin pas fermé pour lui, mains vides, joueur
---     vivant dans le volume Bounds et à GrabMaxDistance au plus, anti-triche ; puis, au lancement seulement (fin du maintien),
+--     vivant dans le volume Bounds et à GrabMaxDistance au plus (tolérance au début du maintien, « Portée »), anti-triche ; puis, au lancement seulement (fin du maintien),
 --     si un témoin du magasin appelle la police (WitnessService.IsCalling) : refus avec le Notify « Witnesses are calling
 --     the police! » (Warning, V0, au plus un par seconde et par joueur). Débit : celui du remote (5/s, V0).
 --     Rien n'empêche un joueur d'ouvrir plusieurs colis à la suite (V0, à trancher par Cantin).
@@ -748,6 +758,21 @@ local function rootOf(player: Player): (BasePart?, Humanoid?)
 		return nil, nil
 	end
 	return root :: BasePart, humanoid
+end
+
+-- Tolérance de portée pendant un maintien (Cantin, 2026-11-14) : min(WalkSpeed × (ping + ReachLatencyPad),
+-- ReachToleranceMax) studs. WalkSpeed lue sur le serveur (il la règle), ping mesuré par Roblox : rien du client.
+local function reachPad(player: Player, humanoid: Humanoid?): number
+	-- Lectures protégées (comme pingOf d'AntiCheatService) : les faux Roblox des bancs n'ont pas toujours ces membres.
+	local okPing, ping = pcall(function(): number
+		return player:GetNetworkPing()
+	end)
+	local okSpeed, walkSpeed = pcall(function(): number
+		return if humanoid then humanoid.WalkSpeed else 0
+	end)
+	local latency = (if okPing and type(ping) == "number" and ping > 0 then ping else 0) + Balance.Heist.ReachLatencyPad
+	local speed = if okSpeed and type(walkSpeed) == "number" and walkSpeed > 0 then walkSpeed else 0
+	return math.min(speed * latency, Balance.Heist.ReachToleranceMax)
 end
 
 local function isCarrying(player: Player): boolean
@@ -1749,7 +1774,7 @@ local function setHeistAttributes(store: Store)
 end
 
 -- Définie plus bas (Prise).
-local grabRefusal: (player: Player, slot: Slot) -> string?
+local grabRefusal: (player: Player, slot: Slot, lenient: boolean) -> string?
 
 -- Ferme le magasin : plus de prise, chrono masqué, joueurs sans colis sortis, rideau baissé si la
 -- vitrine est cassée (tout de suite, ou dès que porteurs et vigiles sont sortis), puis nouveau
@@ -1767,7 +1792,7 @@ local function closeStore(store: Store)
 	-- Maintiens annulés, sauf celui d'un ouvreur sur son objet encore réservé (L-112) ; dans l'ancien
 	-- déroulé, tous (magasin fermé = prise refusée).
 	for player, hold in holds do
-		if hold.Slot.Store == store and grabRefusal(player, hold.Slot) ~= nil then
+		if hold.Slot.Store == store and grabRefusal(player, hold.Slot, true) ~= nil then
 			holds[player] = nil
 		end
 	end
@@ -1937,7 +1962,9 @@ end
 
 -- Raison pour laquelle `player` ne peut ni prendre ni ouvrir sur `slot`, quoi qui s'y trouve (magasin
 -- fermé pour lui, mains pleines, pas de personnage vivant, hors du volume Bounds, trop loin), ou nil.
-local function reachRefusal(player: Player, slot: Slot): string?
+-- `lenient` (début du maintien et revérifications, voir « Portée » dans l'en-tête) : distance et volume
+-- Bounds tolèrent reachPad(...) studs de plus ; sinon (fin du maintien, prise sans maintien) : strict.
+local function reachRefusal(player: Player, slot: Slot, lenient: boolean): string?
 	local store = slot.Store
 	if store.Locked[player] then
 		return "magasin fermé pour lui : son vigile n'est pas encore rentré"
@@ -1945,7 +1972,7 @@ local function reachRefusal(player: Player, slot: Slot): string?
 	if isCarrying(player) then
 		return "mains pleines"
 	end
-	local root = rootOf(player)
+	local root, humanoid = rootOf(player)
 	if root == nil then
 		return "pas de personnage vivant"
 	end
@@ -1953,18 +1980,19 @@ local function reachRefusal(player: Player, slot: Slot): string?
 	if bounds == nil then
 		return "magasin sans volume Bounds"
 	end
-	if not inside(bounds, root.Position) then
+	local pad = if lenient then reachPad(player, humanoid) else 0
+	if distanceTo(bounds, root.Position) > pad then
 		return "hors du volume Bounds"
 	end
 	local distance = (root.Position - slot.Attachment.WorldPosition).Magnitude
-	if distance > Balance.Heist.GrabMaxDistance then
+	if distance > Balance.Heist.GrabMaxDistance + pad then
 		return `trop loin ({math.round(distance * 10) / 10} studs)`
 	end
 	return nil
 end
 
 -- Raison du refus d'une prise sur `slot`, ou nil si elle est permise maintenant.
-function grabRefusal(player: Player, slot: Slot): string?
+function grabRefusal(player: Player, slot: Slot, lenient: boolean): string?
 	local store = slot.Store
 	if SHELF_OPEN then
 		-- L-112 : on ne prend plus un colis fermé, seulement l'objet sorti de son colis.
@@ -1989,7 +2017,7 @@ function grabRefusal(player: Player, slot: Slot): string?
 				return "avance du casseur"
 			end
 		end
-		return reachRefusal(player, slot)
+		return reachRefusal(player, slot, lenient)
 	end
 	if not store.Open then
 		return "magasin fermé"
@@ -2001,7 +2029,7 @@ function grabRefusal(player: Player, slot: Slot): string?
 	if player ~= store.Breaker and os.clock() < store.ExclusiveUntil then
 		return "avance du casseur"
 	end
-	return reachRefusal(player, slot)
+	return reachRefusal(player, slot, lenient)
 end
 
 -- Contenu remis au porteur : `base` (celui du colis, de type `baseTier`), ou celui de l'accroche du tuto
@@ -2442,7 +2470,7 @@ local function onPoliceCalled(model: Model)
 end
 
 -- Raison du refus d'une ouverture du colis de `slot`, ou nil si elle est permise maintenant.
-local function openRefusal(player: Player, slot: Slot): string?
+local function openRefusal(player: Player, slot: Slot, lenient: boolean): string?
 	local store = slot.Store
 	if not store.Open then
 		return "magasin fermé"
@@ -2457,7 +2485,7 @@ local function openRefusal(player: Player, slot: Slot): string?
 	if player ~= store.Breaker and os.clock() < store.ExclusiveUntil then
 		return "avance du casseur"
 	end
-	return reachRefusal(player, slot)
+	return reachRefusal(player, slot, lenient)
 end
 
 -- OpenShelfBox(slotId) : premier appel = début du maintien, second = fin (voir l'en-tête).
@@ -2475,7 +2503,13 @@ local function onOpenShelfBox(player: Player, slotId: string)
 		return
 	end
 	local hold = openHolds[player]
-	local reason = openRefusal(player, slot)
+	-- Début du maintien (pas de maintien en cours sur ce colis, colis à GrabTime > 0) : portée souple ;
+	-- fin du maintien ou colis sans maintien : stricte (voir « Portée » dans l'en-tête).
+	local current = slot.Box
+	local starting = current ~= nil
+		and not (hold ~= nil and hold.Slot == slot and hold.Target == current)
+		and grabTime(current.Tier) > 0
+	local reason = openRefusal(player, slot, starting)
 	if reason then
 		if hold and hold.Slot == slot then
 			openHolds[player] = nil
@@ -2533,7 +2567,24 @@ local function onGrabItem(player: Player, slotId: string)
 		return
 	end
 	local hold = holds[player]
-	local reason = grabRefusal(player, slot)
+	-- Début du maintien : portée souple ; fin du maintien ou prise sans maintien : stricte (« Portée »).
+	local current: any, currentTier: string? = nil, nil
+	if SHELF_OPEN then
+		local item = slot.Item
+		if item then
+			current, currentTier = item, item.Info.Tier
+		end
+	else
+		local box = slot.Box
+		if box then
+			current, currentTier = box, box.Tier
+		end
+	end
+	local starting = current ~= nil
+		and currentTier ~= nil
+		and not (hold ~= nil and hold.Slot == slot and hold.Target == current)
+		and grabTime(currentTier) > 0
+	local reason = grabRefusal(player, slot, starting)
 	if reason then
 		if hold and hold.Slot == slot then
 			holds[player] = nil
@@ -2866,7 +2917,7 @@ local function step()
 		if
 			current ~= hold.Target
 			or now - hold.StartedAt > grabTime(hold.Tier) + HOLD_EXPIRY
-			or grabRefusal(player, slot) ~= nil
+			or grabRefusal(player, slot, true) ~= nil
 		then
 			holds[player] = nil
 		end
@@ -2875,7 +2926,7 @@ local function step()
 		if
 			hold.Slot.Box ~= hold.Target
 			or now - hold.StartedAt > grabTime(hold.Tier) + HOLD_EXPIRY
-			or openRefusal(player, hold.Slot) ~= nil
+			or openRefusal(player, hold.Slot, true) ~= nil
 		then
 			openHolds[player] = nil
 		end

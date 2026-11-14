@@ -32,8 +32,10 @@
 --      passe derrière lui avait déjà bougé de 4 à 6 studs, le vigile courait à un point vide puis le
 --      suivait de dos (plus lent que lui, il ne rattrapait jamais son retard).
 --   3. Capture : distance ≤ Balance.Guard.CatchDistance entre les deux HumanoidRootPart, sans
---      mur entre eux, mesurée ici, côté serveur. Alors, tout de suite : CarryService.Fail(player,
---      "Caught") (le colis revole vers son rayon), joueur immobilisé (StatsService, modificateur
+--      mur entre eux, mesurée ici, côté serveur (a146, audit du 2026-11-14, shared/CatchReach : à
+--      l'horizontale, avec AntiCheat.CatchVerticalReach studs d'écart en hauteur au plus ; sans mur, ou
+--      perché sur un meuble bas, ou le HumanoidRootPart dans une pièce). Alors, tout de suite :
+--      CarryService.Fail(player, "Caught") (le colis revole vers son rayon), joueur immobilisé (StatsService, modificateur
 --      STUN_KEY = 0), Notify « Caught! Recommended speed: X » (anglais, L-036), et le vigile joue
 --      Catch. Puis le coup, en un seul geste avec Catch (L-071, point 5) : au marqueur Impact de
 --      Catch, le joueur est projeté (poussée ci-dessous ; son client joue Knockback, puis Stunned,
@@ -266,6 +268,7 @@ local Bat = require(Shared.Config.Bat)
 local Night = require(Shared.Config.Night)
 local Zones = require(Shared.Config.Zones)
 local Format = require(Shared.Format)
+local CatchReach = require(Shared.CatchReach)
 local Animations = require(Shared.Contract.Animations)
 local Find = require(Shared.Contract.Find)
 local AnimPlayer = require(Shared.Anim.AnimPlayer)
@@ -2007,9 +2010,18 @@ local function chaseStep(guard: Guard, now: number)
 		giveUp(guard, "vigile poussé en zone safe")
 		return
 	end
-	local distance = (targetRoot.Position - guard.root.Position).Magnitude
+	-- Audit du 2026-11-14 (a146) : distance à l'horizontale avec un écart en hauteur toléré, et la ligne de
+	-- vue, ou perché sur un meuble bas, ou dans un mur (shared/CatchReach) : voler ou traverser les murs
+	-- ne protège plus.
 	local catchDistance = if night then Night.CatchDistance else Balance.Guard.CatchDistance
-	if distance <= catchDistance and clearLine(guard.root.Position, targetRoot.Position) then
+	local touch, how = false, ""
+	if CatchReach.InRange(guard.root.Position, targetRoot.Position, catchDistance) then
+		touch, how = CatchReach.CanTouch(guard.root.Position, targetRoot, rayParams)
+	end
+	if touch then
+		if how ~= "vue" then
+			log(`{guard.label} : {player.Name} attrapé ({how})`)
+		end
 		if night then
 			nightCatch(guard, player)
 		else

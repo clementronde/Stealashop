@@ -11,11 +11,13 @@
 --   2. le frappeur : vivant, la batte en main (ToolService.IsHoldingBat), mains vides (pas de
 --      portage), pas étourdi par la batte ;
 --   3. la cible, choisie par le serveur parmi les autres joueurs vivants :
---      - à Bat.Range (7) studs au plus, entre les deux HumanoidRootPart ;
+--      - à Bat.Range (7) studs au plus, entre les deux HumanoidRootPart, à l'horizontale, avec au plus
+--        AntiCheat.CatchVerticalReach (10) studs d'écart en hauteur (a146, audit du 2026-11-14) ;
 --      - devant le frappeur : à Bat.FrontHalfAngle (60°) au plus de son regard, à l'horizontale,
 --        sauf plus près que Bat.PointBlankRange (3) studs (corps contre corps) ;
 --      - sans mur entre eux (rayon qui ignore personnages, vigiles, colis au sol, et tout ce qui
---        ne bloque pas : RespectCanCollide) ;
+--        ne bloque pas : RespectCanCollide) ; sauf une cible perchée sur un meuble bas ou dont le
+--        HumanoidRootPart est dans un mur (shared/CatchReach, a146) ;
 --      - qui porte quelque chose (CarryService.GetPayload) :
 --          usage 1 : un objet volé AU FRAPPEUR (PlayerItem, VictimUserId = frappeur) : partout,
 --                    même en zone safe ;
@@ -106,7 +108,9 @@ local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage.Shared
+local Balance = require(Shared.Config.Balance)
 local Bat = require(Shared.Config.Bat)
+local CatchReach = require(Shared.CatchReach)
 local Net = require(Shared.Net.Net)
 local CarryTypes = require(Shared.Types.Carry)
 
@@ -352,7 +356,8 @@ local function candidateFor(
 	end
 	local offset = root.Position - hitterRoot.Position
 	local distance = offset.Magnitude
-	if distance > Bat.Range then
+	-- Audit du 2026-11-14 (a146, shared/CatchReach) : à l'horizontale, avec un écart en hauteur toléré.
+	if not CatchReach.InRange(hitterRoot.Position, root.Position, Bat.Range) then
 		return nil, `trop loin ({math.round(distance * 10) / 10} studs)`
 	end
 	local flatOffset = flat(offset)
@@ -393,7 +398,8 @@ local function candidateFor(
 	if (immuneUntil[other] or -math.huge) > now then
 		return nil, `immunité de {Bat.HitImmunity} s`
 	end
-	if distance > 1e-3 and Workspace:Raycast(hitterRoot.Position, offset, rayParams()) ~= nil then
+	-- Mur entre eux : la cible reste touchée, perchée sur un meuble bas ou dans un mur (shared/CatchReach).
+	if distance > 1e-3 and not CatchReach.CanTouch(hitterRoot.Position, root, rayParams()) then
 		return nil, "un mur entre eux"
 	end
 	return {
@@ -580,8 +586,24 @@ end
 
 -- Colis tombé au sol ---------------------------------------------------------------------------------
 
+-- Tolérance de portée pendant un maintien (Cantin, 2026-11-14 ; même règle que StoreHeistService, « Portée ») :
+-- min(WalkSpeed × (ping + ReachLatencyPad), ReachToleranceMax) studs, WalkSpeed et ping lus sur le serveur.
+local function reachPad(player: Player, humanoid: Humanoid?): number
+	-- Lectures protégées (comme pingOf d'AntiCheatService) : les faux Roblox des bancs n'ont pas toujours ces membres.
+	local okPing, ping = pcall(function(): number
+		return player:GetNetworkPing()
+	end)
+	local okSpeed, walkSpeed = pcall(function(): number
+		return if humanoid then humanoid.WalkSpeed else 0
+	end)
+	local latency = (if okPing and type(ping) == "number" and ping > 0 then ping else 0) + Balance.Heist.ReachLatencyPad
+	local speed = if okSpeed and type(walkSpeed) == "number" and walkSpeed > 0 then walkSpeed else 0
+	return math.min(speed * latency, Balance.Heist.ReachToleranceMax)
+end
+
 -- Raison du refus d'une prise du colis `dropId` par `player`, ou nil si elle est permise maintenant.
-local function grabRefusal(player: Player, dropId: string): string?
+-- `lenient` : début du maintien ou revérification (tolérance reachPad), sinon strict (fin du maintien).
+local function grabRefusal(player: Player, dropId: string, lenient: boolean): string?
 	local payload, position = CarryService.GetDrop(dropId)
 	if payload == nil or position == nil then
 		return "colis plus au sol"
@@ -589,7 +611,7 @@ local function grabRefusal(player: Player, dropId: string): string?
 	if CarryService.IsCarrying(player) then
 		return "mains pleines"
 	end
-	local root = bodyOf(player)
+	local root, humanoid = bodyOf(player)
 	if root == nil then
 		return "pas de personnage vivant"
 	end
@@ -600,7 +622,7 @@ local function grabRefusal(player: Player, dropId: string): string?
 		return "en zone safe"
 	end
 	local distance = (root.Position - position).Magnitude
-	if distance > Bat.DroppedGrabMaxDistance then
+	if distance > Bat.DroppedGrabMaxDistance + (if lenient then reachPad(player, humanoid) else 0) then
 		return `trop loin ({math.round(distance * 10) / 10} studs)`
 	end
 	return nil
@@ -627,7 +649,9 @@ local function onGrabDropped(player: Player, dropId: string)
 		return
 	end
 	local hold = holds[player]
-	local reason = grabRefusal(player, dropId)
+	-- Portée souple au début du maintien, stricte à la fin (règle de StoreHeistService, « Portée »).
+	local starting = not (hold ~= nil and hold.DropId == dropId) and Bat.DroppedGrabTime > 0
+	local reason = grabRefusal(player, dropId, starting)
 	if reason then
 		if hold and hold.DropId == dropId then
 			holds[player] = nil
@@ -664,7 +688,7 @@ end
 local function step()
 	local now = os.clock()
 	for player, hold in holds do
-		if now - hold.StartedAt > Bat.DroppedGrabTime + HOLD_EXPIRY or grabRefusal(player, hold.DropId) ~= nil then
+		if now - hold.StartedAt > Bat.DroppedGrabTime + HOLD_EXPIRY or grabRefusal(player, hold.DropId, true) ~= nil then
 			holds[player] = nil
 		end
 	end
