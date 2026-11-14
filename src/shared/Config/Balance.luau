@@ -95,10 +95,15 @@ local Balance = {
 		MaxCarried = 1, -- un seul colis porté à la fois
 		GrabMaxDistance = 8, -- GrabItem (9.4)
 		-- Portée tolérée pendant un maintien (début et revérifications, pas la fin ; Cantin, 2026-11-14) : le serveur
-		-- voit le perso en retard d'environ vitesse × latence. Tolérance = min(WalkSpeed × (ping + ReachLatencyPad),
-		-- ReachToleranceMax), en plus de GrabMaxDistance et autour du volume Bounds. Aussi pour les colis au sol.
+		-- voit le perso en retard d'environ vitesse × latence. Tolérance = min(WalkSpeed × (ping + ReachLatencyPad), plafond),
+		-- plafond = max(ReachToleranceMin, WalkSpeed × ReachToleranceSeconds), en plus de GrabMaxDistance et autour du volume Bounds. Aussi pour les colis au sol.
 		ReachLatencyPad = 0.3, -- s, V0 (0,1 au départ ; en Play le 14/11, le serveur voyait le perso environ 0,22 s en retard même à ping 0, refus à 11,4 studs)
-		ReachToleranceMax = 8, -- studs, V0
+		-- Plafond qui suit la vitesse (Cantin, 2026-11-14, « une ouverture très clean ») : un plafond fixe de 8 studs
+		-- était trop juste en courant vite (en Play le 14/11, à 65 studs/s, le serveur voyait le perso jusqu'à 15,7 studs
+		-- pour une limite de 16). À 65 studs/s le plafond vaut 32,5 studs ; à 16 studs/s il reste 8. La fin du maintien
+		-- reste stricte. La télémétrie RemoteRefused dira en ligne combien de « trop loin » restent, pour régler 0,5 s.
+		ReachToleranceMin = 8, -- studs, V0 (plafond minimal, l'ancien ReachToleranceMax)
+		ReachToleranceSeconds = 0.5, -- s, V0 (plafond = WalkSpeed × 0,5 s quand c'est plus que ReachToleranceMin)
 		ShelfSlots = 10, -- ShelfSlot_01 à ShelfSlot_10 (10.4)
 		TierOrder = TIER_ORDER,
 		BoxTiers = BOX_TIERS,

@@ -649,7 +649,8 @@ local function grabTimeOf(tier: string): number
 end
 
 -- Tolérance de portée pendant un maintien (Cantin, 2026-11-14 ; même règle que StoreHeistService, « Portée ») :
--- min(WalkSpeed × (ping + ReachLatencyPad), ReachToleranceMax) studs, WalkSpeed et ping lus sur le serveur.
+-- min(WalkSpeed × (ping + ReachLatencyPad), plafond) studs,
+-- plafond = max(ReachToleranceMin, WalkSpeed × ReachToleranceSeconds), WalkSpeed et ping lus sur le serveur.
 local function reachPad(player: Player): number
 	local character = player.Character
 	local humanoid = if character then character:FindFirstChildOfClass("Humanoid") else nil
@@ -662,7 +663,9 @@ local function reachPad(player: Player): number
 	end)
 	local latency = (if okPing and type(ping) == "number" and ping > 0 then ping else 0) + Balance.Heist.ReachLatencyPad
 	local speed = if okSpeed and type(walkSpeed) == "number" and walkSpeed > 0 then walkSpeed else 0
-	return math.min(speed * latency, Balance.Heist.ReachToleranceMax)
+	-- Plafond qui suit la vitesse (Cantin, 2026-11-14) : max(ReachToleranceMin, WalkSpeed × ReachToleranceSeconds).
+	local cap = math.max(Balance.Heist.ReachToleranceMin, speed * Balance.Heist.ReachToleranceSeconds)
+	return math.min(speed * latency, cap)
 end
 
 -- `lenient` : début du maintien ou revérification (tolérance reachPad), sinon strict (fin du maintien).

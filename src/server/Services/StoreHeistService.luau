@@ -150,7 +150,8 @@
 -- vitesse × latence (vu en Play : 12,6 studs au lieu de 7,5 en appuyant sur E en courant). Souple au début
 -- et pendant le maintien, stricte à la fin. Au premier appel (début du maintien) et aux revérifications
 -- (10 par seconde), la tolérance reachPad = min(WalkSpeed × (ping + Balance.Heist.ReachLatencyPad),
--- Balance.Heist.ReachToleranceMax) studs (0,1 s et 8 studs, V0) s'ajoute à GrabMaxDistance, et le volume
+-- plafond) studs, plafond = max(ReachToleranceMin, WalkSpeed × ReachToleranceSeconds) (0,3 s, 8 studs et 0,5 s, V0 ; le
+-- plafond suit la vitesse : 32,5 studs à 65 studs/s, Cantin le 14/11) s'ajoute à GrabMaxDistance, et le volume
 -- Bounds est agrandi d'autant. WalkSpeed est celle du Humanoid côté serveur (réglée par le serveur),
 -- ping = player:GetNetworkPing() : rien ne vient du client. Au second appel (fin du maintien, qui prend
 -- ou lance l'ouverture), et pour un colis à GrabTime 0 (un seul appel) : contrôle strict (dans Bounds,
@@ -761,7 +762,7 @@ local function rootOf(player: Player): (BasePart?, Humanoid?)
 end
 
 -- Tolérance de portée pendant un maintien (Cantin, 2026-11-14) : min(WalkSpeed × (ping + ReachLatencyPad),
--- ReachToleranceMax) studs. WalkSpeed lue sur le serveur (il la règle), ping mesuré par Roblox : rien du client.
+-- plafond) studs, plafond = max(ReachToleranceMin, WalkSpeed × ReachToleranceSeconds). WalkSpeed lue sur le serveur (il la règle), ping mesuré par Roblox : rien du client.
 local function reachPad(player: Player, humanoid: Humanoid?): number
 	-- Lectures protégées (comme pingOf d'AntiCheatService) : les faux Roblox des bancs n'ont pas toujours ces membres.
 	local okPing, ping = pcall(function(): number
@@ -772,7 +773,9 @@ local function reachPad(player: Player, humanoid: Humanoid?): number
 	end)
 	local latency = (if okPing and type(ping) == "number" and ping > 0 then ping else 0) + Balance.Heist.ReachLatencyPad
 	local speed = if okSpeed and type(walkSpeed) == "number" and walkSpeed > 0 then walkSpeed else 0
-	return math.min(speed * latency, Balance.Heist.ReachToleranceMax)
+	-- Plafond qui suit la vitesse (Cantin, 2026-11-14) : max(ReachToleranceMin, WalkSpeed × ReachToleranceSeconds).
+	local cap = math.max(Balance.Heist.ReachToleranceMin, speed * Balance.Heist.ReachToleranceSeconds)
+	return math.min(speed * latency, cap)
 end
 
 local function isCarrying(player: Player): boolean

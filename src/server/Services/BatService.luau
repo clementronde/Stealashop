@@ -587,7 +587,8 @@ end
 -- Colis tombé au sol ---------------------------------------------------------------------------------
 
 -- Tolérance de portée pendant un maintien (Cantin, 2026-11-14 ; même règle que StoreHeistService, « Portée ») :
--- min(WalkSpeed × (ping + ReachLatencyPad), ReachToleranceMax) studs, WalkSpeed et ping lus sur le serveur.
+-- min(WalkSpeed × (ping + ReachLatencyPad), plafond) studs,
+-- plafond = max(ReachToleranceMin, WalkSpeed × ReachToleranceSeconds), WalkSpeed et ping lus sur le serveur.
 local function reachPad(player: Player, humanoid: Humanoid?): number
 	-- Lectures protégées (comme pingOf d'AntiCheatService) : les faux Roblox des bancs n'ont pas toujours ces membres.
 	local okPing, ping = pcall(function(): number
@@ -598,7 +599,9 @@ local function reachPad(player: Player, humanoid: Humanoid?): number
 	end)
 	local latency = (if okPing and type(ping) == "number" and ping > 0 then ping else 0) + Balance.Heist.ReachLatencyPad
 	local speed = if okSpeed and type(walkSpeed) == "number" and walkSpeed > 0 then walkSpeed else 0
-	return math.min(speed * latency, Balance.Heist.ReachToleranceMax)
+	-- Plafond qui suit la vitesse (Cantin, 2026-11-14) : max(ReachToleranceMin, WalkSpeed × ReachToleranceSeconds).
+	local cap = math.max(Balance.Heist.ReachToleranceMin, speed * Balance.Heist.ReachToleranceSeconds)
+	return math.min(speed * latency, cap)
 end
 
 -- Raison du refus d'une prise du colis `dropId` par `player`, ou nil si elle est permise maintenant.
