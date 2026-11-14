@@ -82,6 +82,9 @@ Une bonne aura = **2 à 4 grands motifs lisibles** + 2 ou 3 couches de finition.
 - Grilles 2×2, 4×4, 8×8 ou `Custom`. **Laisser une marge transparente autour de chaque image** (sinon bavures).
 - `OneShot` : joue une fois sur la durée de vie (le framerate ne compte pas). `Loop` : `FlipbookFramerate`, **30 images/s au plus**. `Random` : fondu d'une image à l'autre, pour un scintillement lent.
 - **Image fixe tirée au hasard** : `FlipbookStartRandom` + framerate 0.
+- **Taille réelle** : une particule en planche mesurée contre une pièce témoin faisait ≈ 1,45 × `Size` (Size 5,05 → 7,3 studs). Toujours mesurer avec une pièce témoin avant de caler un effet entre deux repères.
+- **Intensité dans le RVB, couverture dans l'alpha** : cœur à 1,0, lueur vers 0,1. Avec une `Color` saturée × `Brightness` 8 à 10, le cœur sature en blanc et la lueur garde la couleur, en un seul émetteur (c'est l'astuce de B04).
+- Planches d'éclair et d'arcs à nous : `StealAShop-Art/FX/Aura3D/_src/bolt_flipbook.py` (les textures « lightning » de B04 ne sont pas un éclair ramifié).
 - Les planches coûtent de la mémoire ; les vieux téléphones les coupent. **Réutiliser les mêmes textures** entre auras, préférer 512 à 1024.
 
 **Beams**
@@ -103,9 +106,15 @@ Une bonne aura = **2 à 4 grands motifs lisibles** + 2 ou 3 couches de finition.
 
 ## 5. Recettes par thème
 
-Ce sont des points de départ tirés des références ; **aucune n'est encore validée par Clément**. Le benchmark du thème passe avant.
+Sauf l'Éclair (validé), ce sont des points de départ tirés des références, **pas encore validés par Clément**. Le benchmark du thème passe avant.
 
-- **Éclair** : nuage toon gris au-dessus de la tête (validé : mesh Blender en boules fondues, couleurs de sommet à 3 tons, contour sombre en coque inversée) + pluie fine (validée : stries de 1,25 stud, `Lifetime` 0,06 à 0,15, vitesse 30 à 42, émises dans tout le volume sous le nuage, gris-bleu, transparence 0,2). L'éclair lui-même : **1 ou 2 particules en planche animée d'éclair dessiné**, `FacingCameraWorldUp`, du nuage au sol, 0,3 à 0,45 s, déclenchées par `Emit`. Arcs fins en planche sur le corps. Référence : pack B04 (asset 104797265894967) pour l'impact, B14 (78011019574795) pour les arcs. Refusé : cylindres, mesh extrudé, icône, contour bleu nuit, gros effets au sol.
+- **Éclair — RÉFÉRENCE VALIDÉE par Clément le 2026-11-14 (v16, « c'est parfait »)**. Modèle : `ReplicatedStorage/Assets/FX/Auras/FX_Aura_Eclair` ; prototype : `Workspace/_PROTO_AURA_ECLAIR` ; générateur des planches : `StealAShop-Art/FX/Aura3D/_src/bolt_flipbook.py` ; historique : note partagée `auras-3d-eclair.md`.
+  - **Nuage** toon gris neutre au-dessus de la tête : mesh Blender en boules fondues (5 000 triangles), couleurs de sommet à 3 tons, contour en coque inversée. Matière **`Neon`** : en `SmoothPlastic` le ciel cyan de la map le teinte en bleu. Le Neon a une réponse très raide (couleur 70 → 46 à l'écran, 90 → 113, 110 → 179, 150 → 248) : couleurs de sommet 76 / 88 / 101 pour obtenir à l'écran ≈ 60 / 102 / 150 ; contour `Color` 68,68,70. Il ne s'assombrit pas la nuit.
+  - **Pluie** fine : stries de 1,25 stud, `Lifetime` 0,06 à 0,15, vitesse 30 à 42, `Rate` 380, émises dans tout le volume d'une plaque sous le nuage, gris-bleu.
+  - **Éclair** : UNE particule par coup, planche 4×4 dessinée à nous (1024), `OneShot`, `Lifetime` 0,4, `Rate` 0 + `Emit(1)`, `FacingCameraWorldUp`, `Size` 5,05 (≈ 7,3 studs affichés, du bas du nuage au sol), couleur 255,218,105, **`Brightness` 10**, `LightEmission` 0,2. Images 1 à 4 : le tracé descend du nuage (22, 45, 70, 90 %) ; 5 : le coup, avec un éclat à la pointe sur 5 images ; puis un recoup, le trait se casse et s'éteint. Texture : RVB = intensité, alpha = couverture (cœur blanc saturé, lueur jaune pâle, un seul émetteur). 2 dessins, 2 points de chute à 2,6 studs de part et d'autre du perso, un peu derrière.
+  - **Sol** (léger) : lueur jaune pâle à plat (`VelocityPerpendicular`, 0,3 s, taille 1,2 → 2,2, `Brightness` 4) + 7 traits d'étincelles (0,22 à 0,4 s, gravité −55), émis 0,1 s après l'éclair. Ni brûlure ni anneau.
+  - **Arcs du corps** : planche 4×4 de petits arcs (512), `FacingCamera`, `LockedToPart`, `ZOffset` 0,9, `Rate` 3, `Lifetime` 0,3 à 0,5, tailles 1,45 à 2,1, `Brightness` 7, sur 5 pièces (torse, 2 avant-bras, 1 cuisse, 1 tibia). À `Brightness` 8 et +20 % de taille, ils couvraient le perso de nuit.
+  - Budget : 12 émetteurs (6 permanents, 6 ponctuels). Refusé avant : cylindres, mesh extrudé, icône, contour bleu nuit, gros effets au sol, nuage bleuté.
 - **Feu** : flammes de silhouette en planche (2×2 ou 4×4), grandes flammes derrière le perso, braises `VelocityParallel` qui montent, éclats noirs pour le contraste. Palier haut : vortex au-dessus de la tête + rubans en Beams courbes (B32, 121403739363367).
 - **Glace** : brume de givre lente, flocons en image fixe tirée au hasard, éclats de glace en planche ; motif possible : sceau en flocon derrière le dos. Peu lumineux (la glace ne brille pas comme le feu).
 - **Poison** : rien de bon trouvé dans les packs. Piste : bulles qui montent et éclatent (planche), brume verte basse, gouttes ; vert saturé + noir.
@@ -185,7 +194,7 @@ Si une réponse est mauvaise : corriger et refaire un tour avant d'envoyer.
 ## 11. Ce qui reste à apprendre
 
 - Les 5 vidéos sont analysées (`videos/liens.md`), mais les 1 à 4 sur planches de survol : relire les images en pleine taille (`videos/<n>_<nom>/img_NNNN.jpg`) avant de recopier une valeur fine.
-- `Brightness` 3 à 10 : relevée dans les packs et la vidéo 2, **pas encore essayée de jour sur notre map**.
+- `Brightness` : 10 sur l'éclair et 7 sur les arcs tiennent de jour sur notre map (aura Éclair v16) ; à réessayer pour chaque nouveau thème.
 - Aucune source vue sur la fabrication de textures ou de meshes VFX **dans Blender** (les 5 vidéos travaillent dans Studio avec des plugins de textures). Ailes en fumée (image 08) : technique non vérifiée.
 - Dessiner une planche de flammes toon à la main (image 09) : pas encore fait.
 - Thèmes money, ninja, neige, vent : pas encore benchmarkés.
