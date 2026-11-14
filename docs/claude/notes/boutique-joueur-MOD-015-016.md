@@ -215,3 +215,11 @@ Demande de Clément, après le passage aux deux files. Sauvegarde : `ServerStora
   - les `RayonSpots` ;
   - `Treadmill` (x −24) et `Bench` (x 24), avec leurs `UseZone`, ainsi que `RarestPedestal` (x 7,5) : ils restent devant, aux coins de la façade.
 - **À vérifier dans le hub** : les boutiques laissent 8 studs de pelouse de plus de chaque côté. Les allées du hub posées pour l'ancienne largeur sont à revoir, si besoin.
+
+## Banc, potion de vitesse et murets (2026-11-14, L-149, L-150, L-157)
+
+- Sauvegarde avant changement : `ServerStorage/Assets/MapBackup_Shops_2026-11-14_17h47`. Elle contient le gabarit, les rayons, les 8 boutiques et `POT_Speed`, sans tags.
+- **Banc retiré** du gabarit `PLOT_Shop` et des 8 boutiques du hub : le modèle `Bench` entier, avec sa `UseZone` et son `UpgradePoint`. Sa place, en (24, 0, -46) devant la façade, reste vide. Le builder ne le construit plus ; `buildBench` existe encore mais n'est plus appelé.
+- **`POT_Speed` supprimé** de `ReplicatedStorage/Assets/Potions`. Il reste `POT_Invisibility`, `POT_Money` et `POT_Strength`. **`ICON_POT_Speed` n'existait nulle part** dans Studio, donc il n'y avait rien à supprimer.
+- **`Stage_2/Murets_Sides`** : `HideFromStage = 3` est remplacé par `HideFromWalls = 1` dans le gabarit, et dans le builder. Les 8 boutiques du hub n'ont pas de `Stage_2` (le code le copie depuis le gabarit), donc il n'y avait rien à y changer.
+- **ContractChecker en Edit** : aucune ligne rouge, mais 9 lignes orange disent toutes « Bench introuvable » ou « tag Bench pas posé ». C'est la copie du code dans le Studio de Clément qui n'est pas à jour : sur le disque, `Contract/Tags` n'a plus `Bench`, et `Models.luau` le marque `Optional = true`. Ces lignes devraient disparaître à la prochaine synchro d'Ironix.

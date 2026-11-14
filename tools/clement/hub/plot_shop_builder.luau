@@ -12,14 +12,14 @@
 		_G.ClaudePlotShop.check(model)               -- triangles, noms du contrat, scripts
 
 	Gabarit : ReplicatedStorage/Assets/Plots/PLOT_Shop, tags PlayerPlot (boutique), CashPad,
-	Treadmill et Bench déjà posés, pas de PlotIndex (posé par install). Bâtiment 48 x 80 studs (64 avant le 2026-11-14, resserré par narrowWidth), plus le devant
+	Treadmill déjà posé (plus de banc depuis le 2026-11-14, place laissée vide), pas de PlotIndex (posé par install). Bâtiment 48 x 80 studs (64 avant le 2026-11-14, resserré par narrowWidth), plus le devant
 	(x -24..24, z -40..40), pivot en bas au centre, avant vers -Z.
 
 	Contrat 10.4 (cœur, présent à tous les niveaux) : Window (porte vitrée à 2 vantaux Leaf_L et
 	Leaf_R, 18 x 10,5 x 0,6 = WIN_M x 1,5), WindowFractured (WIN_M_Fractured x 1,5, cachée),
 	Shutter (caché dans le linteau, descend de 10,84), ShutterButton, DisplaySlot_01 à _20,
 	VaultSlot_01 à _03, UnboxBench_01 à _04, TrapSlot_01 à _04, CashPad, DepositZone,
-	Treadmill (copie de Assets/Plots/PLOT_Treadmill_Base : UsePoint, Belt, UpgradePoint), Bench (UsePoint, UpgradePoint), NameSign/OwnerName,
+	Treadmill (copie de Assets/Plots/PLOT_Treadmill_Base : UsePoint, Belt, UpgradePoint), NameSign/OwnerName,
 	SpawnPoint, Bounds.
 
 	Noms proposés (à valider par Ironix) :
@@ -58,7 +58,7 @@
 	- DisplayUpgradePoint : Attachment sur PlotFloor (les bornes noires près de la porte sont retirées).
 	- Plus de terrasse (2026-11-11) : devant la façade (z -52..-40), tapis, banc et socle sont posés
 	  sur le sol du hub (y 0). Emprise totale : 64 x 92 studs (z -52..40), pivot au centre du bâtiment (z 0).
-	- Treadmill et Bench : identiques dans les 6 boutiques (pas de couleur d'accent). Chacun a une
+	- Treadmill : identique dans les 6 boutiques (pas de couleur d'accent). Chacun a une
 	  UseZone : Part invisible, sans collision, CanTouch, autour de la machine (+3 studs, 8 de haut) ;
 	  le code fait monter le joueur dès qu'il y entre.
 	- RarestPedestal : Model du socle de l'objet le plus rare, devant la façade, entre la porte et le
@@ -604,7 +604,7 @@ local function buildStage2(M)
 	local S = stage(M, 2)
 	buildStage2Ext(S)
 	local front = group(S, "Murets_Front")
-	local sides = group(S, "Murets_Sides", { HideFromStage = 3 })
+	local sides = group(S, "Murets_Sides", { HideFromWalls = 1 }) -- caché par le code des murs (L-157, 2026-11-14)
 	for _, sg in SEGMENTS do
 		local isFront = sg[1] == "FL" or sg[1] == "FR"
 		if isFront then
@@ -948,7 +948,7 @@ local function build()
 	store.Name = "PLOT_Shop_Rayons"
 	local steps = {
 		buildCore, function(t) buildInterior(t, store) end,
-		function(t) buildTreadmill(t, -24, -46); buildBench(t, 24, -46) end, -- devant la façade, hors des murs
+		function(t) buildTreadmill(t, -24, -46) end, -- devant la façade, hors des murs ; place du banc (24, -46) laissée vide (Clément, 2026-11-14)
 		buildRarest,
 		buildStage1, buildStage2, buildStage3, buildStage4, buildStage5,
 	}
@@ -1086,7 +1086,7 @@ local function check(m)
 	end
 	checkSpec(m, Models.Plot)
 	if not CS:HasTag(m, "PlayerPlot") then table.insert(problems, "boutique sans le tag PlayerPlot") end
-	for _, key in { "Treadmill", "Bench" } do
+	for _, key in { "Treadmill" } do -- plus de banc (L-149, 2026-11-14)
 		local machine = m:FindFirstChild(key)
 		if machine then checkSpec(machine, Models[key]) end
 		if not (machine and CS:HasTag(machine, key)) then table.insert(problems, key .. " sans son tag") end
@@ -1114,7 +1114,7 @@ local function check(m)
 	end
 	if scripts > 0 then table.insert(problems, scripts .. " script(s) dans le modèle") end
 	local machineTris = {}
-	for _, key in { "Treadmill", "Bench" } do
+	for _, key in { "Treadmill" } do
 		local n = 0
 		local machine = m:FindFirstChild(key)
 		if machine then for _, d in machine:GetDescendants() do if d:IsA("BasePart") then n += partTris(d) end end end
@@ -1128,7 +1128,7 @@ local function check(m)
 		stages[k] = n
 	end
 	table.insert(out, string.format("%s : %d pièces (%d visibles), ~%d triangles visibles (+%d cachés), %d script(s)", m.Name, parts, visible, tris, hiddenTris, scripts))
-	table.insert(out, string.format("tapis ~%d, banc ~%d triangles ; Stage_1..5 : %s", machineTris.Treadmill, machineTris.Bench, table.concat(stages, ", ")))
+	table.insert(out, string.format("tapis ~%d triangles ; Stage_1..5 : %s", machineTris.Treadmill, table.concat(stages, ", ")))
 	table.insert(out, #problems == 0 and "contrat 10.4 : OK" or ("PROBLÈMES : " .. table.concat(problems, " | ")))
 	return table.concat(out, "\n"), problems
 end
