@@ -9,34 +9,35 @@
 --     serveur tire le type et la place, le client montre le modèle et détecte le contact ;
 --   - remotes PotionSpawned(uid, potionId, position) et PotionRemoved(uid), du serveur vers ce joueur seul ;
 --     PickPotion(uid), du client vers le serveur (le serveur vérifie la distance) ;
---   - effet actif : attribut du joueur AttributePrefix .. Id (« Potion_Speed »…) = heure serveur de fin
+--   - effet actif : attribut du joueur AttributePrefix .. Id (« Potion_Money »…) = heure serveur de fin
 --     (workspace:GetServerTimeNow()), retiré à la fin ; une potion du même type ajoute sa durée à ce qui reste.
 --   - vague 33 (demande de Cantin du 2026-11-13) : une potion ramassée va dans l'INVENTAIRE (champ facultatif
 --     PotionStock du profil, [Id] = nombre, MaxStock au plus par type) ; le joueur la boit quand il veut par le
 --     remote UsePotion(potionId), qui lance l'effet ci-dessus. Stock montré au client par l'attribut du Player
---     StockAttributePrefix .. Id (« PotionStock_Speed » = nombre, 0 compris, posé au chargement du profil).
+--     StockAttributePrefix .. Id (« PotionStock_Money » = nombre, 0 compris, posé au chargement du profil).
 -- Arbre de compétences (Config/SkillTree) : PotionLuck rapproche les apparitions, PotionTime allonge les durées.
 
 local DeepFreeze = require(script.Parent.DeepFreeze)
 
-export type PotionId = "Speed" | "Money" | "Strength" | "Invisibility"
+-- Rééquilibrage v2 (Cantin, 2026-11-14) : la potion de vitesse (Speed, ×2 sur la marche) est retirée du jeu.
+-- Un stock « Speed » resté dans un profil (PotionStock) est ignoré : il ne se montre pas et ne se boit pas.
+export type PotionId = "Money" | "Strength" | "Invisibility"
 
 export type Potion = {
 	Id: PotionId,
 	Model: string, -- modèle de Clément dans Assets/Potions
 	DisplayName: string, -- texte du jeu (anglais)
-	Multiplier: number?, -- vitesse de marche, revenu ou dégâts ; nil pour l'invisibilité
+	Multiplier: number?, -- revenu ou dégâts ; nil pour l'invisibilité
 	Duration: number, -- secondes (avant PotionTime)
 	Weight: number, -- poids du tirage du type
 }
 
 local List: { Potion } = {
-	-- ×2 : Clément (L-085). Durée « quelques minutes » : 120 s, V0.
-	{ Id = "Speed", Model = "POT_Speed", DisplayName = "Speed", Multiplier = 2, Duration = 120, Weight = 35 },
 	-- ×2 : Clément (L-085). Durée V0.
 	{ Id = "Money", Model = "POT_Money", DisplayName = "Money", Multiplier = 2, Duration = 120, Weight = 25 },
-	-- Modèle livré par Clément sans effet décrit : dégâts ×2 sur les vitrines, V0.
-	{ Id = "Strength", Model = "POT_Strength", DisplayName = "Strength", Multiplier = 2, Duration = 120, Weight = 25 },
+	-- Dégâts d'un coup ×1,5 (Cantin, 2026-11-14 ; avant ×2). Elle n'entre dans aucun calcul de seuil ni de PV
+	-- (Config/Zones) : avec elle, un joueur seul ne casse toujours pas une vitrine de la dernière zone.
+	{ Id = "Strength", Model = "POT_Strength", DisplayName = "Strength", Multiplier = 1.5, Duration = 120, Weight = 25 },
 	-- Effet V0 : les autres joueurs ne te voient presque plus et les vigiles de nuit ne te repèrent pas.
 	{ Id = "Invisibility", Model = "POT_Invisibility", DisplayName = "Invisibility", Duration = 60, Weight = 15 },
 }

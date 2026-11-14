@@ -81,8 +81,12 @@ Modele.Profils = {
 
 ---------------------------------------------------------------------------------------------- économie actuelle
 
+-- Vague 40 (a134, 2026-11-14) : le rééquilibrage v2 (passe 2) est dans src/shared/Config. L'économie « actuelle »
+-- est donc celle de la proposition v2, lue cette fois dans les vraies tables et formules du jeu : sans banc,
+-- plafond de coups, zone d'équipe, chrono du braquage. Le banc a134 compare les deux champ par champ.
 function Modele.EcoActuelle()
-	local eco = { Nom = "Actuelle" }
+	local eco = { Nom = "Actuelle", SansBanc = true, MaxHits = Balance.Hit.MaxHitsPerSecond, HeistDuration = Balance.Heist.Duration }
+	eco.CasseMax = Balance.WindowHP.SoloBreakTime + 1
 	eco.Zones = {}
 	for index, zone in Zones do
 		eco.Zones[index] = {
@@ -92,31 +96,31 @@ function Modele.EcoActuelle()
 			GuardSpeed = zone.GuardSpeed,
 			ReturnDistance = zone.ReturnDistance,
 			BaseIncome = zone.BaseIncome,
-			SpeedShown = zone.AdvisedSpeed, -- le panneau annonce un WalkSpeed
-			StrengthShown = zone.AdvisedDamage, -- et les dégâts conseillés (L-108 point 5)
+			SpeedShown = zone.SpeedRequired, -- le panneau annonce la Speed affichée (Vitesse × trail)
+			StrengthShown = zone.AdvisedDamage, -- et les dégâts conseillés (arme × aura)
+			-- Dernière zone : cassée à deux, chacun au plafond de coups (Balance.WindowHP.LastZoneTeamSize).
+			TeamHits = if index == #Zones then Balance.WindowHP.LastZoneTeamSize * Balance.Hit.MaxHitsPerSecond else nil,
 		}
 	end
 	eco.WalkSpeed = Formulas.WalkSpeed
-	eco.HitDamage = Formulas.HitDamage
-	function eco.MachineGain(kind, level)
-		local base = if kind == "Treadmill" then Training.Treadmill.GainPerSecond else Training.Bench.GainPerRep
-		return base * Formulas.MachineMultiplier(kind, level)
+	function eco.HitDamage(toolPower, _strength, auraMultiplier)
+		return Formulas.HitDamage(toolPower, auraMultiplier)
+	end
+	function eco.MachineGain(_kind, level)
+		return Formulas.TreadmillGain(level)
 	end
 	eco.UpgradeCost = Formulas.UpgradeCost
 	eco.ItemIncome = Formulas.ItemIncome
 	eco.Tools = Tools.List
 	eco.Auras = Cosmetics.Auras
 	eco.Trails = Cosmetics.Trails
+	eco.BestDamage = Tools.List[#Tools.List].Power * Cosmetics.Auras[#Cosmetics.Auras].Multiplier
 	eco.DoorHP = Formulas.PlayerWindowHP
 	eco.Glass = SkillTree.ById.GlassThickness.Effects
 	eco.Walls = SkillTree.ById.Walls.Effects
 	eco.Regen = SkillTree.ById.GlassRegen.Effects
-	function eco.ShownSpeed(speed, _trail)
-		return speed
-	end
-	function eco.ShownStrength(_power, strength, _aura)
-		return strength
-	end
+	eco.ShownSpeed = Formulas.ShownSpeed
+	eco.ShownStrength = eco.HitDamage
 	return eco
 end
 

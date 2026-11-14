@@ -688,11 +688,11 @@ for _, list in { "TargetSection.PlayerList", "GiveSection.ChoiceList", "GiveSect
 	table.insert(adminElements, { Path = `{list}.Template.EntryName` })
 	table.insert(adminElements, { Path = `{list}.Template.Selected` })
 end
-for _, row in { "Cash", "Speed", "Strength" } do
+for _, row in { "Cash", "Speed" } do -- StrengthRow n'est plus au contrat (plus de Force, v2)
 	table.insert(adminElements, { Path = `StatsSection.{row}Row.{row}Box`, Class = "TextBox" })
 	table.insert(adminElements, { Path = `StatsSection.{row}Row.Give{row}Button`, Class = BUTTON })
 end
-for _, row in { "Treadmill", "Bench", "ShopLevel", "Rayons" } do
+for _, row in { "Treadmill", "ShopLevel", "Rayons" } do -- BenchRow n'est plus au contrat (plus de banc, v2)
 	table.insert(adminElements, { Path = `BaseSection.{row}Row.{row}Box`, Class = "TextBox" })
 	table.insert(adminElements, { Path = `BaseSection.{row}Row.Set{row}Button`, Class = BUTTON })
 end

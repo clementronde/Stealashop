@@ -10,23 +10,22 @@
 --   valeur du joueur ≥ Balance.StorePanel.OrangeFrom (50 %) de la conseillée    orange
 --   en dessous                                                                 rouge
 -- Valeurs du joueur, attributs du Player posés par le serveur :
---   Damage     dégâts d'un coup avec l'outil équipé, la Force et l'aura (ToolService, 7.1) : la
---              grandeur de la colonne « Dégâts/coup conseillés » de la section 4 ;
---   WalkSpeed  WalkSpeed de la formule 5.1, trail compris, sans les effets passagers (StatsService).
---              La section 4 donne la vitesse conseillée en WalkSpeed (16 en zone 1 : la vitesse de
---              départ). Ce n'est ni la stat Speed (0 au départ), ni Humanoid.WalkSpeed (0 sur le tapis,
---              −10 % avec un colis : un panneau ne change pas de couleur pendant une fuite).
+--   Damage      dégâts d'un coup = arme équipée × aura (ToolService ; rééquilibrage v2, sans la potion) :
+--               la « Strength » des panneaux, comparée à Zones[n].AdvisedDamage ;
+--   ShownSpeed  Speed affichée = Vitesse × trail (StatsService ; v2), comparée à Zones[n].SpeedRequired
+--               (0 en zone 1 : toujours vert). Ce n'est plus une WalkSpeed : la marche en sort par un log
+--               (Formulas.WalkSpeed), et un panneau ne change pas de couleur pendant une fuite.
 --   Attribut absent (profil pas encore chargé) : 0, donc rouge.
 --
 -- API (client et serveur : rien n'y dépend du joueur local) :
 --   AdvicePanel.template(name) -> BillboardGui?     billboard modèle de Clément, dans
 --                                                   ReplicatedStorage/Assets/UI ou un sous-dossier (2.2)
---   AdvicePanel.damageText(zone), speedText(zone)   « Damage 80 », « Speed 28 » (Format.short)
---   AdvicePanel.strengthText(zone)                  « Strength 80 » : AdvisedDamage, BB_StoreInfo et StoreReqSign (L-108)
+--   AdvicePanel.damageText(zone), speedText(zone)   « Damage 120 », « Speed 100K » (Format.short ; SpeedRequired)
+--   AdvicePanel.strengthText(zone)                  « Strength 120 » : AdvisedDamage, BB_StoreInfo et StoreReqSign (L-108)
 --   AdvicePanel.levelOf(value, advised) -> Level    "Green", "Orange" ou "Red"
 --   AdvicePanel.levels(player, zone) -> (Level, Level)  dégâts puis vitesse de `player` face à `zone`
 --   AdvicePanel.Colors[level] -> Color3
---   AdvicePanel.DamageAttribute, WalkSpeedAttribute  les attributs du Player à suivre (recolorer)
+--   AdvicePanel.DamageAttribute, SpeedAttribute  les attributs du Player à suivre (recolorer)
 --   AdvicePanel.verticalSpan(object) -> (bas?, haut?)  Y du monde de la boîte d'une pièce ou d'un Model
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -43,7 +42,7 @@ local AdvicePanel = {}
 
 -- Attributs du Player posés par le serveur (mêmes noms dans ToolService et StatsService).
 AdvicePanel.DamageAttribute = "Damage"
-AdvicePanel.WalkSpeedAttribute = "WalkSpeed"
+AdvicePanel.SpeedAttribute = "ShownSpeed"
 
 -- Textes de L-044 (exemples de Clément sur BB_StoreInfo : « Damage 1 », « Speed 16 »).
 local DAMAGE_TEXT = "Damage %s"
@@ -86,7 +85,7 @@ function AdvicePanel.strengthText(zone: Zones.Zone): string
 end
 
 function AdvicePanel.speedText(zone: Zones.Zone): string
-	return string.format(SPEED_TEXT, Format.short(zone.AdvisedSpeed))
+	return string.format(SPEED_TEXT, Format.short(zone.SpeedRequired))
 end
 
 local function levelOf(value: number, advised: number): Level
@@ -107,7 +106,7 @@ end
 
 function AdvicePanel.levels(player: Player, zone: Zones.Zone): (Level, Level)
 	local damage: Level = levelOf(playerValue(player, AdvicePanel.DamageAttribute), zone.AdvisedDamage)
-	local speed: Level = levelOf(playerValue(player, AdvicePanel.WalkSpeedAttribute), zone.AdvisedSpeed)
+	local speed: Level = levelOf(playerValue(player, AdvicePanel.SpeedAttribute), zone.SpeedRequired)
 	return damage, speed
 end
 

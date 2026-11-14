@@ -3,8 +3,12 @@
 --
 -- Quand le joueur active son outil de casse (clic ou tap : Tool.Activated), le contrôleur
 -- vise la vitrine cassable la plus proche devant lui, à portée (Balance.Hit.Range, 8 studs),
--- et envoie HitWindow(windowId) au serveur, au plus 10 coups par seconde
--- (Balance.Hit.MaxHitsPerSecond). Il joue tout de suite l'animation du coup (5.2), même dans
+-- et envoie HitWindow(windowId) au serveur, au plus 5 coups par seconde
+-- (Balance.Hit.MaxHitsPerSecond ; 10 avant le rééquilibrage v2 du 2026-11-14). Un clic arrivé trop tôt
+-- (moins de 1 / MaxHitsPerSecond s après le coup d'avant) n'est plus perdu : il est gardé (un seul à la fois)
+-- et part dès que l'intervalle est écoulé. Sans cela, un joueur qui clique 7 fois par seconde ne donnerait
+-- que 3,5 coups par seconde (un clic sur deux), sous les 4,2 qu'il faut pour casser une vitrine à son
+-- niveau dans le chrono de police de 8 s (Config/Zones) ; avec, il donne 5 coups par seconde. Le plafond reste celui du serveur (Net). Il joue tout de suite l'animation du coup (5.2), même dans
 -- le vide : HitWindow, ou HitWindowHeavy du Marteau à la Disqueuse (2.4, champ HitAnimation
 -- de Config.Tools), via AnimationController s'il est là. Sur une vitrine, il passe aussi le
 -- coup à ShatterController.LocalHit (retour local : mini-éclats, son de verre, léger
@@ -21,7 +25,7 @@
 --     l'animation reparte du début (elle repart à chaque clic : son marqueur ne viendrait plus).
 -- Un clic donne au plus un coup : un seul coup en attente à la fois, envoyé une seule fois par le
 -- premier de ces trois moments. Les envois suivent l'ordre et le rythme des clics (à une image
--- près) : le débit vu par le serveur (10 coups/s au plus, Net) ne change pas. Au moment d'envoyer,
+-- près) : le débit vu par le serveur (5 coups/s au plus, Net) ne change pas. Au moment d'envoyer,
 -- l'outil doit être encore en main et le personnage vivant, sinon le coup est abandonné (le
 -- serveur l'aurait refusé). WindowService ne change pas : il mesure la portée à la réception,
 -- donc au moment où le coup touche.
@@ -107,7 +111,8 @@ local Net: any = nil
 local animation: AnimationApi? = nil
 local shatter: ShatterApi? = nil
 local truck: TruckApi? = nil
-local lastHitAt = -math.huge
+local lastHitAt = -math.huge -- heure « de rythme » du dernier coup (voir onActivated)
+local queuedClick = false -- un clic trop tôt attend la fin de l'intervalle (voir l'en-tête)
 local pending: PendingHit? = nil -- un seul à la fois
 local hookedTools = setmetatable({} :: { [Tool]: boolean }, { __mode = "k" })
 
@@ -271,9 +276,19 @@ local function deferHit(
 	task.delay(IMPACT_MAX_WAIT, sendHit, hit)
 end
 
-local function onActivated(tool: Tool)
+-- `due` : le clic gardé, qui part à l'heure prévue (son attente est finie : pas de nouveau contrôle).
+local function onActivated(tool: Tool, due: boolean?)
 	local now = os.clock()
-	if now - lastHitAt < MIN_INTERVAL then
+	local wait = MIN_INTERVAL - (now - lastHitAt)
+	if wait > 0 and not due then
+		-- Trop tôt : ce clic part à la fin de l'intervalle (un seul en attente ; les suivants sont ignorés).
+		if not queuedClick then
+			queuedClick = true
+			task.delay(wait, function()
+				queuedClick = false
+				onActivated(tool, true)
+			end)
+		end
 		return
 	end
 	local character = player.Character
@@ -285,7 +300,11 @@ local function onActivated(tool: Tool)
 	if humanoid == nil or humanoid.Health <= 0 or root == nil or not root:IsA("BasePart") then
 		return
 	end
-	lastHitAt = now
+	-- Rythme tenu sur la durée : un coup parti à peine en retard sur son heure prévue (une image, le délai du
+	-- clic gardé : un quart de période au plus) ne retarde pas le suivant, dû MIN_INTERVAL après cette heure
+	-- prévue. Un joueur qui clique assez vite donne ainsi 5 coups par seconde, pas 4,6 (13 images sur 60).
+	local planned = lastHitAt + MIN_INTERVAL
+	lastHitAt = if now - planned <= MIN_INTERVAL / 4 then planned else now
 	flushPending()
 	local track = playHit(tool)
 	local windowId, point, isWindow = findTarget(root :: BasePart)

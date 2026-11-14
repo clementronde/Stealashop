@@ -20,9 +20,9 @@
 --      télémétrie (événement AdminCommand, champ « Command - <Id> ») pour une commande acceptée.
 --
 -- Commandes (value = nombre, text et text2 = Id) :
---   GiveCash, GiveSpeed, GiveStrength  value = montant (1 à Admin.MaxAmount) : DataService.AddCash,
---                                      StatsService.AddSpeed / AddStrength
---   SetTreadmill, SetBench             value = niveau (0 à MaxLevel de Config/Upgrades) : Upgrades du profil,
+--   GiveCash, GiveSpeed                value = montant (1 à Admin.MaxAmount) : DataService.AddCash,
+--                                      StatsService.AddSpeed (GiveStrength et SetBench retirés : plus de banc, v2)
+--   SetTreadmill                       value = niveau (0 à MaxLevel de Config/Upgrades) : Upgrades du profil,
 --                                      puis ShopService.RefreshPlayer (attributs), MachineVariantService.Refresh
 --   SetShopLevel                       value = k (1 à 5) : présentoirs achetés = le minimum pour k rayons montrés
 --                                      (ShopStageService suit RayonService)
@@ -346,16 +346,8 @@ handlers.GiveSpeed = function(call: Call): (boolean, string)
 	return giveAmount(call, StatsService.AddSpeed, "Speed")
 end
 
-handlers.GiveStrength = function(call: Call): (boolean, string)
-	return giveAmount(call, StatsService.AddStrength, "Strength")
-end
-
 handlers.SetTreadmill = function(call: Call): (boolean, string)
 	return upgradeLevel(call, "Treadmill")
-end
-
-handlers.SetBench = function(call: Call): (boolean, string)
-	return upgradeLevel(call, "Bench")
 end
 
 handlers.SetShopLevel = function(call: Call): (boolean, string)

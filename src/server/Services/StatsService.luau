@@ -1,39 +1,40 @@
 --!strict
--- StatsService (DEV-011) : Vitesse, Force et WalkSpeed, calculés et appliqués par le serveur
+-- StatsService (DEV-011) : Vitesse et WalkSpeed, calculés et appliqués par le serveur
 -- (Partie 1, sections 5.1, 5.6, 6.2, 7.1 et 9.6).
+-- Rééquilibrage v2 (Cantin, 2026-11-14) : plus de Force (plus de banc) : Stats.Strength reste dans les
+-- profils, sans effet, et n'est plus lu ; la marche suit la Speed affichée en log (Formulas.WalkSpeed).
 --
--- Rôle : lit Stats.Speed et Stats.Strength du profil (DataService), calcule le WalkSpeed et
+-- Rôle : lit Stats.Speed du profil (DataService), calcule le WalkSpeed et
 -- l'applique au Humanoid du joueur à chaque apparition et à chaque changement. C'est le seul
 -- code qui écrit Humanoid.WalkSpeed : une écriture faite ailleurs côté serveur est aussitôt
 -- annulée (avertissement en Studio). Aucun remote : rien ne vient du client.
 --
 -- WalkSpeed appliqué au Humanoid, calculé dans cet ordre :
---   1. formule 7.1 : min(70, 16 + 0,05 × Vitesse × M trail), par Formulas.WalkSpeed, avec
+--   1. formule v2 : min(70, 16 + 4 × log10(1 + Vitesse × M trail / 100)), par Formulas.WalkSpeed, avec
 --      M trail = StatsService.GetTrailMultiplier(player) ;
 --   2. × chaque modificateur posé par SetSpeedModifier ; ils se multiplient entre eux
 --      (colis PNJ 0,9 et Adrénaline 1,25 donnent × 1,125) ;
 --   3. de nouveau plafonné à 70 ;
---   4. × les modificateurs posés « au-dessus du plafond » (aboveCap) : seule la potion Speed (décision de
---      Cantin du 2026-11-12 : elle dépasse les 70 ; vitesses et force seront rééquilibrées plus tard).
+--   4. × les modificateurs posés « au-dessus du plafond » (aboveCap) : plus aucun depuis le retrait de la
+--      potion de vitesse (Cantin, 2026-11-14) ; le mécanisme reste pour un futur bonus.
 --   Conséquences : au plafond, le malus de portage se sent quand même (70 → 63 avec un colis
---   PNJ) ; l'Adrénaline ne fait jamais dépasser 70 ; la potion Speed ×2 mène jusqu'à 140.
+--   PNJ) ; l'Adrénaline ne fait jamais dépasser 70.
 --   Vitesse fixe (SetFixedSpeed, objet volé à un joueur, Cantin 2026-11-13) : remplace les étapes 1 à 4 ;
 --   seul un modificateur à 0 (étourdi, entraînement) compte encore et immobilise.
 --
 -- Attributs du Player (écrits seulement ici, posés quand le profil est chargé) :
 --   Speed      Vitesse (stat entraînée au tapis)
---   Strength   Force (stat entraînée au banc)
+--   ShownSpeed Speed affichée = Vitesse × M trail (Formulas.ShownSpeed) : c'est elle que le HUD écrit et que
+--              les panneaux comparent à Zones[n].SpeedRequired (v2)
 --   WalkSpeed  résultat de l'étape 1, sans les modificateurs temporaires : c'est la valeur à
 --              comparer à la vitesse conseillée d'une zone (5.3). La vitesse réellement
 --              appliquée est Humanoid.WalkSpeed (répliquée à tous les clients).
 --
 -- API (côté serveur) :
 --   StatsService.GetSpeed(player) -> number      Vitesse du profil, 0 s'il n'est pas chargé
---   StatsService.GetStrength(player) -> number   Force du profil, 0 s'il n'est pas chargé
 --   StatsService.AddSpeed(player, n) -> number?
 --       Ajoute n (nombre fini ≥ 0) à la Vitesse, met à jour les attributs et le Humanoid.
 --       Renvoie la nouvelle valeur, ou nil si le profil n'est pas chargé ou si n est invalide.
---   StatsService.AddStrength(player, n) -> number?   Pareil pour la Force.
 --   StatsService.SetSpeedModifier(player, key, multiplier?, aboveCap?)
 --       Pose le multiplicateur de vitesse nommé `key` (nombre fini ≥ 0 ; 0 immobilise), ou le
 --       retire avec nil, puis recalcule. aboveCap = true : appliqué après le plafond (étape 4).
@@ -42,7 +43,7 @@
 --       par TrainingService), "GuardStun" (0, joueur rattrapé par un vigile, GuardService),
 --       "BatStun" (0, étourdi Bat.StunDuration s par un coup de batte, BatService). Le service
 --       qui pose une clé la retire lui-même, à la mort comme au départ : un modificateur survit
---       à la réapparition. "Potion" (potion Speed, PotionService) est la seule posée avec aboveCap.
+--       à la réapparition. Plus aucune clé n'est posée avec aboveCap (potion de vitesse retirée).
 --   StatsService.SetFixedSpeed(player, walkSpeed?)
 --       Pose une vitesse fixe (nombre fini ≥ 0) qui remplace tout le calcul, sauf un modificateur à 0, ou la
 --       retire avec nil, puis recalcule. Posée et retirée par CarryService (objet volé à un joueur).
@@ -81,7 +82,7 @@ StatsService.Priority = 10 -- juste après DataService, avant les services de je
 
 local tracked: { [Player]: boolean } = {}
 local modifiers: { [Player]: { [string]: number } } = {}
-local aboveCapKeys: { [Player]: { [string]: boolean } } = {} -- clés appliquées après le plafond (potion Speed)
+local aboveCapKeys: { [Player]: { [string]: boolean } } = {} -- clés appliquées après le plafond (aucune aujourd'hui)
 local fixedSpeeds: { [Player]: number? } = {} -- vitesse fixe (SetFixedSpeed)
 local applied: { [Player]: number } = {} -- dernière vitesse calculée pour le Humanoid
 local guards: { [Player]: RBXScriptConnection } = {}
@@ -108,11 +109,6 @@ function StatsService.GetSpeed(player: Player): number
 	return if data then data.Stats.Speed else 0
 end
 
-function StatsService.GetStrength(player: Player): number
-	local data = DataService.Get(player)
-	return if data then data.Stats.Strength else 0
-end
-
 local function applyTo(humanoid: Humanoid, value: number)
 	if math.abs(humanoid.WalkSpeed - value) > TOLERANCE then
 		humanoid.WalkSpeed = value
@@ -137,8 +133,9 @@ function StatsService.Refresh(player: Player)
 		return
 	end
 	local data = DataService.Get(player)
-	-- Étape 1 : formule 7.1 (déjà plafonnée à 70).
-	local base = Formulas.WalkSpeed(if data then data.Stats.Speed else 0, trailMultiplier(player))
+	-- Étape 1 : formule v2 (déjà plafonnée à 70).
+	local trail = trailMultiplier(player)
+	local base = Formulas.WalkSpeed(if data then data.Stats.Speed else 0, trail)
 	-- Étapes 2 et 3 : modificateurs, puis plafond ; étape 4 : modificateurs posés au-dessus du plafond.
 	local value = base
 	local list = modifiers[player]
@@ -167,6 +164,7 @@ function StatsService.Refresh(player: Player)
 
 	if data then
 		player:SetAttribute("Speed", data.Stats.Speed)
+		player:SetAttribute("ShownSpeed", Formulas.ShownSpeed(data.Stats.Speed, trail))
 		player:SetAttribute("WalkSpeed", base)
 	end
 	local character = player.Character
@@ -184,16 +182,6 @@ function StatsService.AddSpeed(player: Player, amount: number): number?
 	data.Stats.Speed += amount
 	StatsService.Refresh(player)
 	return data.Stats.Speed
-end
-
-function StatsService.AddStrength(player: Player, amount: number): number?
-	local data = DataService.Get(player)
-	if data == nil or not isFiniteNonNegative(amount) then
-		return nil
-	end
-	data.Stats.Strength += amount
-	player:SetAttribute("Strength", data.Stats.Strength)
-	return data.Stats.Strength
 end
 
 function StatsService.SetSpeedModifier(player: Player, key: string, multiplier: number?, aboveCap: boolean?)
@@ -315,11 +303,10 @@ function StatsService.Init()
 		if data == nil or not tracked[player] then
 			return
 		end
-		player:SetAttribute("Strength", data.Stats.Strength)
-		StatsService.Refresh(player) -- Speed, WalkSpeed et Humanoid
+		StatsService.Refresh(player) -- Speed, ShownSpeed, WalkSpeed et Humanoid
 		if IS_STUDIO then
 			print(
-				`[StatsService] {player.Name} : Vitesse {data.Stats.Speed}, Force {data.Stats.Strength}, WalkSpeed {player:GetAttribute("WalkSpeed")}`
+				`[StatsService] {player.Name} : Vitesse {data.Stats.Speed}, Speed affichée {player:GetAttribute("ShownSpeed")}, WalkSpeed {player:GetAttribute("WalkSpeed")}`
 			)
 		end
 	end)

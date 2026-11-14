@@ -29,7 +29,9 @@
 --     autres joueurs tant que ShelfReservedUntil n'est pas passé (le serveur revérifie).
 --
 -- API (client) :
---   HeistController.OnTimer(fn(storeId, endsAt)) -> déconnexion   (endsAt = 0 : chrono masqué)
+--   HeistController.OnTimer(fn(storeId, endsAt, police)) -> déconnexion   (endsAt = 0 : chrono masqué ;
+--       police = true : chrono de police lancé au premier coup sur la vitrine, vague 40)
+--   HeistController.IsPoliceTimer(storeId) -> boolean   (le chrono affiché de ce magasin est celui de la police)
 --   HeistController.GetTimers() -> { [storeId]: endsAt }   (copie des chronos affichés)
 
 local CollectionService = game:GetService("CollectionService")
@@ -50,7 +52,7 @@ type AnimationApi = {
 	PlayPlayer: (name: string) -> AnimationTrack?,
 }
 
-type TimerListener = (storeId: string, endsAt: number) -> ()
+type TimerListener = (storeId: string, endsAt: number, police: boolean) -> () -- police : vague 40
 
 type StoreWatch = {
 	Model: Model,
@@ -105,6 +107,7 @@ local Net: any = nil
 local animation: AnimationApi? = nil
 local watches: { [Instance]: StoreWatch } = {}
 local timers: { [string]: number } = {}
+local policeTimers: { [string]: boolean } = {} -- storeId → le chrono affiché est celui de la police (vague 40)
 local timerListeners: { TimerListener } = {}
 local openPending: { [Instance]: number } = {} -- colis → os.clock() de l'appui sur « Open »
 local tierBySlot: { [string]: string } = {} -- SlotId → Tier du dernier colis vu à cet emplacement
@@ -435,22 +438,30 @@ end
 
 -- Chrono ---------------------------------------------------------------------------------------
 
-local function onHeistTimer(storeId: string, endsAt: number)
+local function onHeistTimer(storeId: string, endsAt: number, police: boolean?)
+	local isPolice = police == true
 	if endsAt > 0 then
 		timers[storeId] = endsAt
+		if isPolice then
+			policeTimers[storeId] = true
+		else
+			policeTimers[storeId] = nil
+		end
 	else
 		timers[storeId] = nil
+		policeTimers[storeId] = nil
 	end
 	if IS_STUDIO then
 		-- Le compte à rebours lui-même est à l'écran (HudController, UI_HUD.HeistTimer).
 		if endsAt > 0 then
-			print(`[Heist] {storeId} : chrono de {math.ceil(endsAt - Workspace:GetServerTimeNow())} s`)
+			local kind = if isPolice then "chrono de police" else "chrono"
+			print(`[Heist] {storeId} : {kind} de {math.ceil(endsAt - Workspace:GetServerTimeNow())} s`)
 		else
 			print(`[Heist] {storeId} : chrono masqué`)
 		end
 	end
 	for _, listener in table.clone(timerListeners) do
-		task.spawn(listener, storeId, endsAt)
+		task.spawn(listener, storeId, endsAt, isPolice)
 	end
 end
 
@@ -468,6 +479,10 @@ end
 
 function HeistController.GetTimers(): { [string]: number }
 	return table.clone(timers)
+end
+
+function HeistController.IsPoliceTimer(storeId: string): boolean
+	return policeTimers[storeId] == true
 end
 
 function HeistController.Start()

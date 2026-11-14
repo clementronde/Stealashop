@@ -9,6 +9,9 @@
 --   Args          types attendus des arguments, dans l'ordre (voir ArgSpec)
 --   RatePerSecond client → serveur seulement : appels acceptés par joueur sur
 --                 toute seconde glissante ; au-delà, l'appel est ignoré
+--   Jitter        facultatif (vague 40) : débit régulier. Le remote passe RatePerSecond appels par seconde sur
+--                 la durée, et un appel peut arriver jusqu'à Jitter / RatePerSecond s en avance sur ce rythme
+--                 sans être perdu (seau à jetons de RateLimiter, au lieu de la fenêtre glissante)
 --
 -- Net ne contrôle que la forme des appels (nombre, types, bornes, débit). Les
 -- règles de jeu de la colonne « Le serveur vérifie » (distance, outil équipé,
@@ -39,6 +42,7 @@ export type RemoteDef = {
 	Reliable: boolean,
 	Args: { ArgSpec },
 	RatePerSecond: number?,
+	Jitter: number?,
 }
 
 -- V0 proposé, absent du doc : longueur maximale d'un identifiant envoyé par le
@@ -72,7 +76,14 @@ local List: { RemoteDef } = {
 		Direction = "ClientToServer",
 		Reliable = true,
 		Args = { id("windowId") },
-		RatePerSecond = 10, -- doc 9.4 et 5.2 : ≤ 10 coups/s
+		-- 5 coups par seconde au plus, pour tout le monde et toutes les cibles (Cantin, 2026-11-14 ; avant : 10).
+		-- Garder égal à Config/Balance.Hit.MaxHitsPerSecond (un banc le vérifie).
+		RatePerSecond = 5,
+		-- V0 proposé, absent du doc : débit régulier. Le client envoie un coup toutes les 0,2 s exactement ;
+		-- un coup arrivé jusqu'à 0,1 s en avance (écarts du réseau) passe quand même, sans dépasser 5 coups par
+		-- seconde sur la durée. Sans cela, des coups se perdent et un joueur au plafond tombe sous les 4,42
+		-- coups par seconde qu'il faut pour casser une vitrine à son niveau (Config/Zones).
+		Jitter = 0.5,
 	},
 	{
 		Name = "GrabItem",
@@ -286,10 +297,17 @@ local List: { RemoteDef } = {
 	},
 	{
 		-- endsAt = workspace:GetServerTimeNow() de fin du chrono ; 0 = masquer le chrono.
+		-- Ajout de la vague 40 (Cantin, 2026-11-14) : police = true pour le chrono de police (lancé au premier
+		-- coup sur une vitrine de magasin PNJ, WindowService, « POLICE IN 8s ») ; absent = chrono « HEIST »
+		-- d'après la casse (StoreHeistService). Même identifiant de magasin : le dernier reçu remplace l'autre.
 		Name = "HeistTimer",
 		Direction = "ServerToClient",
 		Reliable = true,
-		Args = { id("storeId"), { Name = "endsAt", Kind = "number", Min = 0 } },
+		Args = {
+			id("storeId"),
+			{ Name = "endsAt", Kind = "number", Min = 0 },
+			{ Name = "police", Kind = "boolean", Optional = true },
+		},
 	},
 	{
 		-- active = poursuite en cours ; guard = modèle du vigile (nil à la fin).

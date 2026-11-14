@@ -25,12 +25,15 @@ local BOX_TIERS: { [string]: BoxTierInfo } = {
 }
 
 local Balance = {
-	-- 5.1 et 7.1 : WalkSpeed = min(70, 16 + Vitesse × 0,05 × trail) ; dégâts × (1 + Force / 100)
+	-- Rééquilibrage v2 (Cantin, 2026-11-14 ; docs/claude/notes/equilibrage-v2-proposition.md, section 3) :
+	--   Speed affichée = Vitesse entraînée × M trail
+	--   WalkSpeed      = min(70, 16 + 4 × log10(1 + Speed affichée / 100)) : « un zéro de plus = +4 de marche »
+	--   Plus de banc ni de Force : dégâts d'un coup = P arme × M aura (× potion de force). Formulas.
 	Stats = {
 		BaseWalkSpeed = 16,
-		SpeedToWalkSpeed = 0.05,
-		MaxWalkSpeed = 70, -- au-delà, collisions et caméra instables
-		StrengthDivisor = 100,
+		MaxWalkSpeed = 70, -- au-delà, collisions et caméra instables (une sécurité : Speed 3,2Qa)
+		WalkPerDecade = 4, -- V0 proposé (note v2) : WalkSpeed gagné chaque fois que la Speed affichée est multipliée par 10
+		SpeedScale = 100, -- V0 proposé (note v2) : Speed affichée à partir de laquelle la marche commence à monter
 	},
 
 	-- 5.2 : slot 1 = outil de casse équipé, slot 2 = batte
@@ -43,7 +46,10 @@ local Balance = {
 	Hit = {
 		Range = 8, -- portée d'un coup (5.2)
 		ServerMaxDistance = 10, -- distance acceptée par le serveur pour HitWindow (9.4)
-		MaxHitsPerSecond = 10, -- plafond serveur, autoclickers tolérés sans avantage
+		-- Plafond du serveur, pour tout le monde et pour toutes les cibles (vitrines, portes, camion, tour) :
+		-- 5 coups par seconde (Cantin, 2026-11-14 ; avant : 10). C'est aussi le débit du remote HitWindow
+		-- (Net/Definitions) et la cadence du client (HitController). Les PV des vitrines en dépendent (Zones).
+		MaxHitsPerSecond = 5,
 	},
 
 	-- 5.3, 5.4, 9.4, 9.7 : vitrines PNJ et joueurs (WindowService)
@@ -51,10 +57,27 @@ local Balance = {
 		RegenPerSecond = 0.03, -- fraction des PV max régénérée chaque seconde
 		-- Chrono de casse (Clément, liaison L-074, 2026-11-10 ; V0 à tester) : au premier coup sur une
 		-- vitrine de magasin PNJ, il faut la casser en BreakTimer s, sinon elle revient à ses PV max.
-		BreakTimer = 13,
+		BreakTimer = 8, -- chrono de police (Cantin, 2026-11-14, passe 3 du rééquilibrage v2 ; avant : 13)
 		CrackThresholds = { 0.75, 0.5, 0.25 }, -- fissures visibles à ces fractions des PV
 		RebuildDelay = 20, -- reconstruction après la fermeture du rideau
 		HPSyncHz = 10, -- WindowHP envoyé en non fiable, 10 fois par seconde au plus
+	},
+
+	-- PV des vitrines des magasins PNJ (rééquilibrage v2, passe 3 du 2026-11-14 : chrono de police de 8 s ;
+	-- V0 proposés, note equilibrage-v2-proposition.md, « Passe 3 du 14/11 (8 s) »). LES TROIS NOMBRES À
+	-- REMPLACER quand la règle change (chrono de police, temps de casse) : Config/Zones en déduit tous les PV,
+	-- rien d'autre à toucher.
+	--   PV = dégâts du panneau (arme × aura du kit de la zone) × joueurs × temps × Hit.MaxHitsPerSecond
+	--        / (1 + Window.RegenPerSecond × temps)
+	--   zones 1 à 5 : 1 joueur, SoloBreakTime        → 27,197 × dégâts (27, 272, 3 264, 40 795, 543 933)
+	--   dernière zone : LastZoneTeamSize joueurs, LastZoneBreakTime → 54,393 × dégâts (108 786 611)
+	--   (passe 2, chrono de 13 s : 11 s partout, soit 41,35 et 82,7 × dégâts : 41, 414, 4 962, 62 030, 827 068, 165.4M)
+	-- À garder vrai : un joueur seul au panneau ne casse pas la dernière zone dans le chrono de police
+	-- (Window.BreakTimer, 8 s en passe 3), même avec la potion de force : 16,2 s seul, 9,3 s avec la potion.
+	WindowHP = {
+		SoloBreakTime = 6.5, -- s : zones 1 à 5, un joueur seul au niveau du panneau casse en ce temps
+		LastZoneBreakTime = 6.5, -- s : dernière zone, l'équipe au niveau du panneau casse en ce temps
+		LastZoneTeamSize = 2, -- joueurs de cette équipe (jamais seul)
 	},
 
 	-- 5.3 : panneau au-dessus de la vitrine. Vert si le joueur atteint la valeur
@@ -65,7 +88,9 @@ local Balance = {
 
 	-- 5.3 et 9.4 : braquage d'un magasin PNJ
 	Heist = {
-		Duration = 10, -- chrono après la casse ; le rideau tombe à la fin
+		-- Chrono « HEIST » après la casse (Cantin, 2026-11-14, rééquilibrage v2 : 10 → 6 s). Il part à la casse
+		-- (il ne reprend plus la fin du chrono de police, Balance.Window.BreakTimer) ; le rideau tombe à la fin.
+		Duration = 6,
 		BreakerHeadStart = 1, -- avance exclusive du casseur (5.3, point 8 : proposition à valider en section 15)
 		MaxCarried = 1, -- un seul colis porté à la fois
 		GrabMaxDistance = 8, -- GrabItem (9.4)
@@ -78,6 +103,17 @@ local Balance = {
 		-- envois au même joueur (s).
 		OneAtATimeMessage = "Easy there, greedy! Finish your heist first.",
 		OneAtATimeCooldown = 3,
+	},
+
+	-- 9.5 : DataStore des profils joueurs (DataService), choisie selon le jeu Roblox (game.GameId).
+	-- Remise à zéro des profils de la place DEV (Cantin, 2026-11-14, rééquilibrage v2) : le jeu DEV lit une
+	-- autre DataStore, vide ; le jeu PROD (GameId 10774998269) et tout autre jeu gardent StoreName, à ne
+	-- jamais changer. L'ancienne DataStore « PlayerData » du jeu DEV n'est ni effacée ni modifiée : pour y
+	-- revenir, DevStoreName = "PlayerData". Pour une nouvelle remise à zéro du DEV : un nouveau nom.
+	Profiles = {
+		StoreName = "PlayerData", -- PROD : ne jamais le changer (un autre nom = profils vides)
+		DevGameId = 10774974820, -- « Steal a Shop [DEV] » (liaison, L-001)
+		DevStoreName = "PlayerData_DEV_20261114",
 	},
 
 	-- 5.4 : séquence de casse, simulée côté client

@@ -22,7 +22,7 @@ local Animations = {}
 Animations.FolderName = "Animations"
 Animations.PlayerFolder = { "Assets", "Animations", "Player" }
 
--- 14 animations du joueur.
+-- 12 animations du joueur (14 avant le retrait de BenchLift et de BenchIdle, v2).
 Animations.Player = {
 	{ Name = "HitWindow", Loop = false, Priority = "Action", Marker = "Impact" },
 	{ Name = "HitWindowHeavy", Loop = false, Priority = "Action", Marker = "Impact" },
@@ -31,11 +31,8 @@ Animations.Player = {
 	{ Name = "CarryRun", Loop = true, Priority = "Action", UpperBodyOnly = true },
 	{ Name = "Place", Loop = false, Priority = "Action", Marker = "Release" },
 	{ Name = "TreadmillRun", Loop = true, Priority = "Movement" },
-	{ Name = "BenchLift", Loop = false, Priority = "Action", Marker = "Top" },
-	-- Assis au banc entre deux répétitions (L-020, ajout validé par Clément le 2026-11-07).
-	-- Priorité Idle : BenchLift (Action) passe par-dessus pendant une répétition, sans
-	-- arrêter la boucle, et le BenchIdle bat l'attente par défaut de Roblox (Core).
-	{ Name = "BenchIdle", Loop = true, Priority = "Idle" },
+	-- Rééquilibrage v2 (Cantin, 2026-11-14) : plus de banc. BenchLift (marqueur Top) et BenchIdle sortent du
+	-- contrat : le code ne les charge plus ; les objets Animation de Clément peuvent rester dans le dossier.
 	{ Name = "Unbox", Loop = false, Priority = "Action", Marker = "Open" },
 	{ Name = "Celebrate", Loop = false, Priority = "Action" },
 	{ Name = "SwingBat", Loop = false, Priority = "Action", Marker = "Impact" },

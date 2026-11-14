@@ -87,15 +87,6 @@ local SPEED: Kind = {
 		return `+{Format.short(amount)} Speed/s` -- L-091 : « +2 Speed/s »
 	end,
 }
-local POWER: Kind = {
-	Name = "Power",
-	Attribute = "Strength",
-	Machine = "Bench",
-	HudLabel = "Strength",
-	Text = function(amount: number): string
-		return `+{Format.short(amount)} Power` -- L-091 : « +X Power »
-	end,
-}
 local CASH: Kind = {
 	Name = "Cash",
 	Attribute = "Cash",
@@ -621,7 +612,7 @@ function GainController.Start()
 	hud = sibling("HudController")
 	rewards = sibling("RewardsController")
 	offline = sibling("OfflineController")
-	for _, kind in { SPEED, POWER } do
+	for _, kind in { SPEED } do -- v2 : plus de banc, plus de « +X Power »
 		riseOf(kind.Attribute)
 		localPlayer:GetAttributeChangedSignal(kind.Attribute):Connect(function()
 			onTraining(kind)

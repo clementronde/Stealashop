@@ -34,9 +34,9 @@
 --           de présentoir imposé) ;
 --   5 → 6   premier ramassage sur une plaque (DisplayService.OnCashOut, sauf « Leave »,
 --           l'encaissement automatique au départ, et « Offline », les gains hors ligne) ;
---   6 → 7   TrainDuration (30) s sur le tapis ou le banc, cumulées (attribut TrainingMachine, posé
---           par TrainingService : sur le tapis, quand le joueur s'arrête sur la bande, L-071 ; au
---           banc, par son invite) ;
+--   6 → 7   TrainDuration (30) s sur le tapis, cumulées (attribut TrainingMachine, posé par
+--           TrainingService quand le joueur s'arrête sur la bande, L-071). Plus de banc depuis le
+--           rééquilibrage v2 (2026-11-14) : l'étape garde son numéro et son Id, le tapis seul la passe ;
 --   7 → 8   la clé à molette possédée (ToolToBuy), ou un outil plus fort ;
 --   8 → 9   une aura possédée ;
 --   9 → 10  le joueur passe l'arche de la zone 2 (ZoneGate, attribut Zone = GoalZone) : au-delà du
@@ -125,12 +125,12 @@
 -- de l'étape) ; target = point du monde visé par la flèche (nil = pas de flèche). Cibles : vitrine
 -- du magasin (étapes 1 à 3 ; la Supérette tant que le joueur n'en a pas choisi un autre), sa boutique
 -- (4 : son SpawnPoint, au sol près de l'entrée), colis posé au sol, puis présentoir libre (objet dans
--- l'inventaire), puis plaque de ramassage (5), tapis puis banc (6), plaque de ramassage ou
+-- l'inventaire), puis plaque de ramassage (5), tapis (6), plaque de ramassage ou
 -- comptoir WeaponShop (7) et AuraShop (8) selon l'argent, arche de la zone 2 (9), porte du bot (11, et 12
 -- tant que sa boutique n'est pas ouverte au vol), objet du bot volable le plus proche (12, porte cassée ou
 -- joueur dedans : présentoirs SafeSlots exclus, attributs StealOpen et SafeSlots de PvPService), sa boutique
--- (13). Tapis et banc
--- sont trouvés par leur tag dans la parcelle ; la plaque, par DisplayService.GetCollectTarget (celle qui
+-- (13). Le tapis
+-- est trouvé par son tag dans la parcelle ; la plaque, par DisplayService.GetCollectTarget (celle qui
 -- porte le plus d'argent, sinon celle du premier objet exposé). Boutique du hub (PLOT_Shop, L-050) :
 -- entre l'intérieur de la boutique (volume Bounds) et l'extérieur, la flèche vise d'abord la porte
 -- (PlotDoor/Window) ; le joueur apparaît dans sa boutique, la première flèche va donc à sa porte.
@@ -256,7 +256,7 @@ type Session = {
 	hit: boolean, -- étape 1 : le joueur a frappé une vitrine de la zone du tuto
 	cashedOut: boolean, -- étape 5 : premier encaissement fait
 	trainSeconds: number, -- étape 6 : secondes passées sur une machine
-	used: { [string]: boolean }, -- étape 6 : machines déjà utilisées ("Treadmill", "Bench")
+	used: { [string]: boolean }, -- étape 6 : machines déjà utilisées ("Treadmill")
 	shielded: boolean?, -- bouclier débutant au contrôle précédent (nil : pas encore lu)
 	shieldShown: boolean, -- ShieldEndMessage déjà montré dans cette session
 	messageUntil: number, -- os.clock() de fin d'affichage de ShieldEndMessage (0 : rien)
@@ -329,7 +329,6 @@ local BOUNDS = "Bounds"
 local SPAWN_POINT = "SpawnPoint"
 local USE_POINT = "UsePoint"
 local TREADMILL_TAG = "Treadmill"
-local BENCH_TAG = "Bench"
 -- Colis des rayons, posés par StoreHeistService (tag de code, hors contrat) ; attribut Landed (false
 -- tant qu'un colis rendu vole).
 local SHELF_BOX_TAG = "ShelfBox"
@@ -1320,9 +1319,6 @@ local function rawGuidance(session: Session, data: Data, position: Vector3?): (s
 		if player:GetAttribute(MACHINE_ATTRIBUTE) ~= nil then
 			return nil, nil
 		end
-		if session.used.Treadmill then
-			return nil, machinePoint(player, BENCH_TAG) -- on monte sur le banc en entrant dans sa zone (L-093)
-		end
 		-- Le tapis n'a plus d'invite (L-071) : l'indice dit de s'arrêter dessus.
 		local treadmill = machinePoint(player, TREADMILL_TAG)
 		return if treadmill then "StandOnTreadmill" else nil, treadmill
@@ -1755,7 +1751,7 @@ local function tick(dt: number)
 	for player, session in table.clone(sessions) do
 		if session.step == STEP_TRAIN then
 			local machine = player:GetAttribute(MACHINE_ATTRIBUTE)
-			if machine == "Treadmill" or machine == "Bench" then
+			if machine == "Treadmill" then
 				session.trainSeconds += dt
 				session.used[machine] = true
 			end
