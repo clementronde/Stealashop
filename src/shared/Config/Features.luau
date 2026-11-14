@@ -28,6 +28,7 @@ local Features = {
 	TruckEvent = true, -- L-049, événement camion (Config/TruckEvent) : TruckEventService, TruckController
 	Settings = true, -- L-095 point 2, réglages : UI_HUD.SettingsButton (montré par SettingsController) et écran UI_Settings ; à false, les réglages sauvegardés s'appliquent quand même (sons, effets)
 	ShelfOpen = true, -- L-112, ouverture des colis sur le rayon du magasin PNJ et antivol en base (Config/ShelfOpen) ; false = ancienne ouverture en base (colis rangé, posé, attente, rouleau), gardée en secours jusqu'à la validation en Play
+	FortuneTower = false, -- L-108 point 8 (vague 37, a123), événement de la Fortune Tower (Config/FortuneTower) : FortuneTowerService, FortuneTowerController ; false tant que Clément n'a pas validé (en Studio, workspace:SetAttribute("FortuneTest", true) la fait quand même apparaître)
 }
 
 export type Features = typeof(Features)

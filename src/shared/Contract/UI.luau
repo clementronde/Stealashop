@@ -813,5 +813,13 @@ table.insert(UI.Screens, {
 		{ Path = "Tabs.PlaytimeTab.TabAlert.Pulse", Class = "UIScale" },
 	} :: { Element },
 })
+-- Barre de PV de la vitrine de la Fortune Tower (L-108 point 8, vague 37, a123 ; nom proposé à Clément) :
+-- mêmes éléments que BB_TruckHP. Facultative : sans elle, FortuneTowerController prend BB_TruckHP telle quelle.
+table.insert(UI.Billboards, {
+	Name = "BB_FortuneHP",
+	Class = "BillboardGui",
+	Optional = true,
+	Elements = { { Path = "Fill" }, { Path = "Label" } } :: { Element },
+})
 
 return UI
