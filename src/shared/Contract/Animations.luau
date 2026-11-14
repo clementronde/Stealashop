@@ -90,4 +90,11 @@ Animations.Driver = {
 	{ Name = "Catch", Loop = false, Priority = "Action", Marker = "Impact" },
 } :: { Anim }
 
+-- Animations du joueur sorties du contrat : le code ne les lit plus. Laissées dans le dossier de Clément, le
+-- ContractChecker les signale en note, pas en problème ; il peut les retirer quand il veut (liaison L-157).
+Animations.Retired = {
+	BenchLift = "banc retiré du jeu (rééquilibrage v2, 2026-11-14)",
+	BenchIdle = "banc retiré du jeu (rééquilibrage v2, 2026-11-14)",
+} :: { [string]: string }
+
 return Animations

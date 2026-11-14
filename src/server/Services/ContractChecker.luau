@@ -1100,7 +1100,10 @@ local function checkAnimFolder(folder: Instance, specs: { Anim }, jobs: { Job })
 	local seen: { [string]: number } = {}
 	for _, child in folder:GetChildren() do
 		seen[child.Name] = (seen[child.Name] or 0) + 1
-		if not byName[child.Name] then
+		local retiredWhy = if specs == Animations.Player then Animations.Retired[child.Name] else nil
+		if not byName[child.Name] and retiredWhy ~= nil then
+			note("Animations", `{label}.{child.Name} : {retiredWhy}, plus lue par le code ; peut être retirée (L-157)`)
+		elseif not byName[child.Name] then
 			local near = nearName(byName, child.Name)
 			if near then
 				problem("Animations", `{label}.{child.Name} : le nom exact du contrat est {near}`)
