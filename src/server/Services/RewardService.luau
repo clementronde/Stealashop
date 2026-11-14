@@ -24,10 +24,13 @@
 --   Cash   minutes × 60 × revenu par seconde au moment de la réclamation (DisplayService.GetIncome ×
 --          GetGlobalMultiplier : bonus compris, comme le HUD et les packs d'argent), au moins
 --          MinCashPerMinute $ par minute ; DataService.AddCash ;
---   Box    UnboxService.GiveBox : un colis dans l'inventaire (Tool de la barre, à poser au sol de sa
---          boutique), zone = la plus haute parmi les objets du joueur (zone 1 sans objet), au moins
---          MinZone ; inventaire de colis plein (Unbox.BoxInventoryMax) : rien n'est donné ni noté, la
---          récompense reste à réclamer (Notify BoxesFull) ;
+--   Box    UnboxService.GiveItem (vague 43, Cantin du 2026-11-14 : un objet au lieu d'un colis à ouvrir) :
+--          l'objet tiré comme le contenu de ce colis (même tirage que GiveBox) entre tout de suite dans
+--          l'inventaire ; zone = la plus haute parmi les objets du joueur (zone 1 sans objet), au moins
+--          MinZone ; Notify « Rare Item: <nom> » ; inventaire d'objets plein (DisplayService.HasInventoryRoom) :
+--          rien n'est donné ni noté, la récompense reste à réclamer (Notify ItemsFull). Ce service ne retire
+--          ni ne convertit aucun colis déjà dans un profil (DataService, convertBoxes, le fait au chargement
+--          avec Features.ShelfOpen) ;
 --   Boost  MonetizationService.AddCashBoost (×2 argent, compté seulement en jeu, un 2e prolonge le 1er ;
 --          marche aussi boutique Robux coupée).
 -- Idempotence : la vérification, le don et la note de la réclamation (Streak et LastDay, ou
@@ -66,6 +69,8 @@ local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage.Shared
 local Items = require(Shared.Config.Items)
+local Mutations = require(Shared.Config.Mutations)
+local Rarities = require(Shared.Config.Rarities)
 local Rewards = require(Shared.Config.Rewards)
 local Zones = require(Shared.Config.Zones)
 local Format = require(Shared.Format)
@@ -292,11 +297,15 @@ local function give(player: Player, data: Data, reward: Reward): (boolean, strin
 	elseif kind == "Box" then
 		local tier = reward.Tier or "Standard"
 		local zone = math.max(bestZone(data), reward.MinZone or 1)
-		local boxUid, reason = UnboxService.GiveBox(player, tier, zone, reward.MinRarity)
-		if boxUid == nil then
-			return false, if reason == "InventoryFull" then MESSAGES.BoxesFull else MESSAGES.Unavailable, 0
+		local itemUid, reason, itemId = UnboxService.GiveItem(player, tier, zone, reward.MinRarity)
+		if itemUid == nil then
+			return false, if reason == "InventoryFull" then MESSAGES.ItemsFull else MESSAGES.Unavailable, 0
 		end
-		return true, string.format(MESSAGES.Box, tier), 0
+		local entry = (data :: any).Items[itemUid]
+		local def = if itemId then Items.ById[itemId] else nil
+		local rarity = if def then Rarities.ById[def.Rarity] else nil
+		local name = if def then Mutations.ItemName(def.DisplayName, if entry then entry.Mutation else nil) else tostring(itemId)
+		return true, string.format(MESSAGES.Item, if rarity then rarity.DisplayName else "", name), 0
 	elseif kind == "Boost" then
 		local minutes = reward.Minutes or 0
 		if not MonetizationService.AddCashBoost(player, minutes * 60) then
