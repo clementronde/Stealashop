@@ -24,8 +24,8 @@
 --
 -- API (serveur) :
 --   ToolService.GetHitDamage(player) -> number
---       Dégâts par coup (7.1) = puissance de l'outil équipé × (1 + Force / 100) × M aura,
---       avec Force = Stats.Strength du profil. 0 tant que le profil n'est pas chargé.
+--       Dégâts par coup (v2, Cantin 2026-11-14) = puissance de l'outil équipé × M aura : c'est la
+--       « Strength » du HUD et des panneaux. Plus de Force. 0 tant que le profil n'est pas chargé.
 --   ToolService.GetAuraMultiplier(player) -> number
 --       Point d'accroche : renvoie 1. CosmeticService le remplace par le multiplicateur de
 --       l'aura équipée (ToolService.GetAuraMultiplier = function(player) ... end).
@@ -44,9 +44,8 @@
 --   ToolService.IsHoldingBat(player) -> boolean
 --       true si le joueur a la batte en main (vérifié par BatService à chaque SwingBat).
 --   ToolService.RefreshDamage(player)
---       Recalcule l'attribut Damage du Player. Appelé ici au chargement du profil, à chaque Equip
---       et à chaque changement de Force (attribut Strength posé par StatsService) ; CosmeticService
---       l'appellera quand l'aura équipée change (après avoir remplacé GetAuraMultiplier).
+--       Recalcule l'attribut Damage du Player. Appelé ici au chargement du profil et à chaque Equip ;
+--       CosmeticService l'appelle quand l'aura équipée change (après avoir remplacé GetAuraMultiplier).
 --
 -- Attribut du Player (écrit seulement ici) : Damage = GetHitDamage, les dégâts d'un coup avec
 -- l'outil équipé, les poings par défaut (7.1). Le HUD l'affiche (HudController, DEV-021) ; il ne
@@ -73,7 +72,6 @@ local BAT_ATTRIBUTE = "BatTool"
 -- Attribut du Player lu par le HUD (même nom dans HudController).
 local DAMAGE_ATTRIBUTE = "Damage"
 -- Attribut du Player posé par StatsService : la Force, qui entre dans les dégâts.
-local STRENGTH_ATTRIBUTE = "Strength"
 -- Dossier des modèles de Clément (9.2).
 local ASSETS_FOLDER = "Assets"
 -- V0 proposé, absent du doc : poignée grise des outils dont le TOOL_* n'est pas encore livré.
@@ -312,9 +310,6 @@ local function watchPlayer(player: Player)
 			task.defer(ensureTool, player)
 		end
 	end)
-	player:GetAttributeChangedSignal(STRENGTH_ATTRIBUTE):Connect(function()
-		ToolService.RefreshDamage(player)
-	end)
 	task.defer(ensureTool, player)
 end
 
@@ -323,7 +318,7 @@ function ToolService.GetHitDamage(player: Player): number
 	if data == nil then
 		return 0
 	end
-	return Formulas.HitDamage(equippedDef(data).Power, data.Stats.Strength, auraMultiplier(player))
+	return Formulas.HitDamage(equippedDef(data).Power, auraMultiplier(player))
 end
 
 function ToolService.Equip(player: Player, toolId: string): boolean

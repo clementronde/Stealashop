@@ -11,6 +11,7 @@
 -- valeurs-là. Unités : secondes, studs, pour cent (0 à 100).
 
 local DeepFreeze = require(script.Parent.DeepFreeze)
+local Balance = require(script.Parent.Balance)
 local Mutations = require(script.Parent.Mutations)
 local Rarities = require(script.Parent.Rarities)
 local TruckEvent = require(script.Parent.TruckEvent)
@@ -28,11 +29,11 @@ local RARER_THAN_TRUCK = 5
 -- V0 proposé, absent du doc : elle vit autant que le camion (TruckEvent.Lifetime, 3 min)…
 local LIFETIME = TruckEvent.Lifetime
 -- … et BREAKERS joueurs au niveau conseillé de la zone 6 la cassent en la moitié de ce temps, au rythme
--- de référence de Config/Zones (WindowHP = 35 × AdvisedDamage, « 7 coups/s »).
+-- du plafond de coups (Balance.Hit.MaxHitsPerSecond : 5 coups/s depuis le rééquilibrage v2 ; avant : 7).
 local BREAKERS = 4 -- V0 proposé, absent du doc : la moitié d'un serveur de 8 joueurs
-local HITS_PER_SECOND = 7 -- rythme de référence de Config/Zones
+local HITS_PER_SECOND = Balance.Hit.MaxHitsPerSecond
 local BREAK_TIME = LIFETIME / 2 -- V0 proposé, absent du doc : 90 s
--- MaxHP = 4 × 40 000 × 7 × 90 = 100 800 000 PV, soit 72 vitrines de la zone 6 (1 400 000).
+-- MaxHP = 4 × 2 000 000 × 5 × 90 = 3 600 000 000 PV (3.6B), soit 33 vitrines de la zone 6 (108.8M).
 -- Seul au niveau conseillé : 360 s, le double de sa vie (impossible) ; à 2 : 180 s (juste) ; à 3 : 120 s.
 local MAX_HP = BREAKERS * Zones[ZONE].AdvisedDamage * HITS_PER_SECOND * BREAK_TIME
 
@@ -93,7 +94,7 @@ local FortuneTower = {
 	MinPlayers = 2,
 
 	-- Vie ---------------------------------------------------------------------------------------------
-	MaxHP = MAX_HP, -- 100 800 000 PV partagés, sans régénération (calcul plus haut)
+	MaxHP = MAX_HP, -- 3.6B PV partagés, sans régénération (calcul plus haut)
 	Lifetime = LIFETIME, -- 180 s : pas cassée à temps, elle se referme sans rien lâcher
 
 	-- Butin -------------------------------------------------------------------------------------------

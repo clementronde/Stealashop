@@ -168,7 +168,7 @@ local function getWindow(player: Player, def: RemoteDef): Window
 	local window = perPlayer[def.Name]
 	if window == nil then
 		-- Remote serveur → client : limite 0, tout appel du client est refusé.
-		window = RateLimiter.new(def.RatePerSecond or 0)
+		window = RateLimiter.new(def.RatePerSecond or 0, def.Jitter)
 		perPlayer[def.Name] = window
 	end
 	return window

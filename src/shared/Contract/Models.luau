@@ -175,7 +175,10 @@ local Plot: ModelSpec = {
 		},
 		{ Name = "DepositZone", Class = "BasePart" },
 		{ Name = "Treadmill", Tag = "Treadmill" },
-		{ Name = "Bench", Tag = "Bench" },
+		-- Rééquilibrage v2 (Cantin, 2026-11-14) : plus de banc. L'enfant Bench et son tag sont facultatifs
+		-- (le code ne les lit plus : un banc resté dans la parcelle est du décor), en attendant que Clément
+		-- le retire.
+		{ Name = "Bench", Tag = "Bench", Optional = true },
 		-- Le code écrit « <Pseudo>'s Shop » dans OwnerName (L-019, validé le 2026-11-07 ; en
 		-- anglais depuis L-036).
 		{ Name = "NameSign", Inside = { { Name = "OwnerName", Class = "TextLabel" } } },
@@ -193,16 +196,6 @@ local Treadmill: ModelSpec = {
 	Parts = {
 		{ Name = "UsePoint", Class = "Attachment" },
 		{ Name = "Belt" },
-	},
-}
-
-local Bench: ModelSpec = {
-	Key = "Bench",
-	Label = "bancs",
-	Category = "Parcelles",
-	Tag = "Bench",
-	Parts = {
-		{ Name = "UsePoint", Class = "Attachment" },
 	},
 }
 
@@ -375,7 +368,6 @@ local Models = {}
 Models.Store = Store
 Models.Plot = Plot
 Models.Treadmill = Treadmill
-Models.Bench = Bench
 Models.Item = Item
 Models.Box = Box
 Models.Tool = Tool
@@ -385,7 +377,7 @@ Models.BoxTrail = BoxTrail
 Models.ZoneGate = ZoneGate
 
 -- Ordre du rapport.
-Models.List = { Store, Plot, Treadmill, Bench, Item, Box, Tool, Accessory, Truck, BoxTrail, ZoneGate } :: { ModelSpec }
+Models.List = { Store, Plot, Treadmill, Item, Box, Tool, Accessory, Truck, BoxTrail, ZoneGate } :: { ModelSpec }
 
 -- Comptoirs des boutiques d'achat du hub (tags WeaponShop, AuraShop, RobuxShop, 2.1 et 5.9) et leur
 -- plaque ShopPad (nom proposé par Clément le 2026-11-08, L-071) : une pièce sous et devant le stand ;

@@ -32,10 +32,8 @@ local Commands: { Command } = {
 	-- StatsSection : montant ajouté (1 à MaxAmount).
 	{ Id = "GiveCash", Section = "Stats", Target = true, Args = "value = amount" },
 	{ Id = "GiveSpeed", Section = "Stats", Target = true, Args = "value = amount" },
-	{ Id = "GiveStrength", Section = "Stats", Target = true, Args = "value = amount" },
 	-- BaseSection : niveau acheté de Config/Upgrades (0 au MaxLevel) ; boutique et rayons : 1 à 5.
 	{ Id = "SetTreadmill", Section = "Base", Target = true, Args = "value = level (0 to MaxLevel)" },
-	{ Id = "SetBench", Section = "Base", Target = true, Args = "value = level (0 to MaxLevel)" },
 	-- Niveau de boutique k (ShopStageService : k rayons montrés) : le minimum de présentoirs pour l'atteindre.
 	{ Id = "SetShopLevel", Section = "Base", Target = true, Args = "value = shop level (1 to 5)" },
 	-- k rayons pleins : 4 × (k − 1) présentoirs achetés.

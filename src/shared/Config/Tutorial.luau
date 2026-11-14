@@ -29,10 +29,10 @@ local Steps: { Step } = {
 	{ Index = 3, Id = "GrabBox", At = 25, Goal = "Casse et chrono de 10 s ; colis Premium, vigile lent", Bubble = "Grab a box and run!", ShelfBubble = "Open a box on the shelf!" },
 	{ Index = 4, Id = "PlaceBox", At = 45, Goal = "Retour en zone safe (colis dans l'inventaire), colis posé au sol de sa boutique (L-089), attente de 5 s, objet Rare", Bubble = "Bring the box back to your shop!", ShelfBubble = "Bring the item back to your shop!" },
 	{ Index = 5, Id = "DisplayItem", At = 60, Goal = "Objet sur un présentoir (5 $/s), premier encaissement", Bubble = "Display your item to earn cash!" },
-	{ Index = 6, Id = "Train", At = 2 * 60, Goal = "Le tapis et le banc s'allument, 30 s d'entraînement guidé", Bubble = "Train on the treadmill and bench" },
+	{ Index = 6, Id = "Train", At = 2 * 60, Goal = "Le tapis s'allume, 30 s d'entraînement guidé (plus de banc, v2)", Bubble = "Train on the treadmill" },
 	{ Index = 7, Id = "BuyTool", At = 3 * 60, Goal = "Flèche vers la boutique d'armes, clé à molette (300 $)", Bubble = "Buy the Wrench!" },
 	{ Index = 8, Id = "BuyAura", At = 4 * 60, Goal = "Flèche vers la boutique d'auras, première aura (500 $)", Bubble = "An aura multiplies your damage!" },
-	{ Index = 9, Id = "GoToZone2", At = 5 * 60, Goal = "Objectif affiché : la zone 2 (vitesse 22, dégâts 10)", Bubble = "Next goal: Zone 2!" },
+	{ Index = 9, Id = "GoToZone2", At = 5 * 60, Goal = "Objectif affiché : la zone 2 (Speed 3K, Strength 10)", Bubble = "Next goal: Zone 2!" },
 	-- Étape 10 : message de fin du bouclier débutant (texte du doc, voir ShieldEndMessage)
 	{ Index = 10, Id = "ShieldEnd", At = 10 * 60, Goal = "Fin du bouclier débutant : son colis volé peut tomber à la batte", Bubble = nil },
 	-- Vague 36 (L-085 point 4, a121) : le vol entre joueurs, sur la boutique du bot (BotService). Ajoutées à la
@@ -92,9 +92,9 @@ local Tutorial = {
 	-- V0 : un joueur des étapes 1 et 2 à cette distance (studs) d'une vitrine de la zone 1 ouverte passe
 	-- à l'étape 3, même si c'est un autre joueur qui l'a cassée (même rayon que le chrono HeistTimer).
 	StoreNearRadius = 60,
-	TrainDuration = 30, -- doc, section 3, étape 6 : « 30 s d'entraînement guidé » (tapis et banc cumulés)
+	TrainDuration = 30, -- doc, section 3, étape 6 : « 30 s d'entraînement guidé » (au tapis ; plus de banc, v2)
 	ToolToBuy = "Wrench", -- doc, étape 7 : la clé à molette (300 $, table 7.2) ; un outil plus fort compte aussi
-	GoalZone = 2, -- doc, étape 9 : objectif la zone 2 (vitesse conseillée 22, dégâts conseillés 10)
+	GoalZone = 2, -- doc, étape 9 : objectif la zone 2 (Speed 3K, Strength 10 : Wrench × Spark)
 	MessageDuration = 8, -- V0 : secondes d'affichage de ShieldEndMessage avant la fin du tuto
 	Tick = 0.5, -- V0 : secondes entre deux contrôles de TutorialService (seuils, zone 2, bouclier, nuit)
 	-- Vague 36 (L-085 point 4, a121), étapes 11 à 13 (vol sur la boutique du bot), V0 proposés, absents du doc :

@@ -9,7 +9,9 @@ local DeepFreeze = require(script.Parent.DeepFreeze)
 -- L-086 (2026-11-08) : plus d'établis d'ouverture, les colis s'ouvrent sur les présentoirs.
 -- L'amélioration « Workbenches » (UnboxBenches) n'est plus vendue ; son niveau reste dans le profil
 -- (Upgrades.UnboxBenches, Types/Profile), sans effet.
-export type UpgradeId = "Treadmill" | "Bench" | "DisplaySlots"
+-- Rééquilibrage v2 (Cantin, 2026-11-14) : plus de banc. L'amélioration « Weight Bench » (Bench) n'est plus
+-- vendue ; son niveau reste dans le profil (Upgrades.Bench), sans effet, comme UnboxBenches.
+export type UpgradeId = "Treadmill" | "DisplaySlots"
 
 export type Upgrade = {
 	Id: UpgradeId,
@@ -21,10 +23,12 @@ export type Upgrade = {
 }
 
 local List: { Upgrade } = {
-	-- +0,5 au multiplicateur de gain de vitesse du tapis
-	{ Id = "Treadmill", DisplayName = "Treadmill", EffectPerLevel = 0.5, MaxLevel = 20, BaseCost = 200, Growth = 1.9 },
-	-- +0,5 au multiplicateur de gain de force du banc
-	{ Id = "Bench", DisplayName = "Weight Bench", EffectPerLevel = 0.5, MaxLevel = 20, BaseCost = 200, Growth = 1.9 },
+	-- Tapis (v2 ; note equilibrage-v2-proposition.md, 4.2). Niveau AFFICHÉ = niveau enregistré + 1 : le joueur
+	-- commence au niveau 1 (+1 Vitesse par seconde, Cantin) et 19 achats mènent au niveau 20.
+	-- Gain = 2^(niveau affiché − 1) par seconde (Cantin ; Formulas.TreadmillGain, Config/Training) : EffectPerLevel
+	-- ne sert plus au tapis (0). Prix du passage du niveau affiché L au suivant = 150 × 3,8^(L − 1) (V0 proposés,
+	-- réglés au simulateur pour la zone 6 en 7 h 30).
+	{ Id = "Treadmill", DisplayName = "Treadmill", EffectPerLevel = 0, MaxLevel = 19, BaseCost = 150, Growth = 3.8 },
 	-- +1 présentoir, de 4 à 20 (Balance.Display)
 	{ Id = "DisplaySlots", DisplayName = "Display Stands", EffectPerLevel = 1, MaxLevel = 16, BaseCost = 500, Growth = 2.5 },
 }
@@ -40,9 +44,9 @@ end
 -- Ordre validé par Clément (L-097, 2026-11-11). Pour un nouveau tapis (Jungle, Pirate, Samurai…),
 -- l'ajouter à la fin : il arrive TreadmillTierEvery niveaux après le précédent (au-delà de MaxLevel 20,
 -- il faut monter MaxLevel ou baisser le pas).
--- Palier du niveau n = TreadmillVariants[floor(n / TreadmillTierEvery) + 1], le dernier au-delà.
--- V0 proposé, absent du doc : un palier toutes les 2 améliorations (Base aux niveaux 0 et 1, Silver au
--- niveau 2… Void au niveau 20, MaxLevel du tapis).
+-- Palier du niveau AFFICHÉ n (v2 : niveau enregistré + 1) = TreadmillVariants[floor(n / TreadmillTierEvery) + 1],
+-- le dernier au-delà. Un palier toutes les 2 améliorations : Base au niveau 1, Silver aux niveaux 2 et 3…
+-- Void au niveau 20, le dernier (note v2, 4.2).
 local TreadmillTierEvery = 2
 local TreadmillVariants: { string } = {
 	"Base",

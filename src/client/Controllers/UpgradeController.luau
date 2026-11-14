@@ -2,7 +2,7 @@
 -- UpgradeController (DEV-033, client ; liaison L-082 point 1) : achat des améliorations de base sur
 -- sa propre parcelle (Partie 1, sections 5.1, 5.8, 7.5 et 9.4).
 --
--- Améliorations vendues (Config/Upgrades) : tapis (Treadmill), banc (Bench), présentoirs
+-- Améliorations vendues (Config/Upgrades) : tapis (Treadmill ; plus de banc depuis le rééquilibrage v2), présentoirs
 -- (DisplaySlots). Chacune s'achète par BuyItem(Id) ; le serveur (ShopService) revérifie tout (argent,
 -- niveau, prix) et prévient le joueur (Notify). Le niveau est lu dans les attributs TreadmillLevel,
 -- BenchLevel et DisplaySlotsLevel du Player (ShopService), le prix est Formulas.UpgradeCost(Id,
@@ -154,7 +154,6 @@ local fallbackSaid = false
 
 local offers: { Offer } = {
 	{ id = "Treadmill", kind = "Machine", tag = "Treadmill", pendingUntil = 0 },
-	{ id = "Bench", kind = "Machine", tag = "Bench", pendingUntil = 0 },
 	{ id = "DisplaySlots", kind = "Stand", pendingUntil = 0 },
 }
 
@@ -426,7 +425,9 @@ local function showSign(offer: Offer, entry: Entry, template: Model, plotModel: 
 
 	local upgrade = Upgrades.ById[offer.id]
 	setText(currentGui, TITLE_NAME, upgrade.DisplayName)
-	setText(currentGui, LEVEL_NAME, if cost then string.format(TEXT.SignLevel, level, level + 1) else TEXT.SignMax)
+	-- Tapis (v2) : niveau affiché = niveau enregistré + 1 (« Level 1 > Level 2 » au départ, jusqu'à 20).
+	local shown = if offer.kind == "Machine" then level + 1 else level
+	setText(currentGui, LEVEL_NAME, if cost then string.format(TEXT.SignLevel, shown, shown + 1) else TEXT.SignMax)
 	local buy = Find.path(currentGui, BUY_NAME) :: GuiButton
 	buy.Visible = cost ~= nil
 	if cost then
@@ -574,7 +575,7 @@ local function showPrompt(offer: Offer, entry: Entry, plotModel: Instance, level
 	if offer.kind == "Machine" then
 		local upgrade = Upgrades.ById[offer.id]
 		current.ActionText = string.format(TEXT.Upgrade, price)
-		current.ObjectText = string.format(TEXT.MachineLevel, upgrade.DisplayName, level, upgrade.MaxLevel)
+		current.ObjectText = string.format(TEXT.MachineLevel, upgrade.DisplayName, level + 1, upgrade.MaxLevel + 1)
 	else
 		local display = Balance.Display
 		current.ActionText = string.format(TEXT.UnlockStand, price)

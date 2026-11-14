@@ -14,17 +14,29 @@ local PvP = require(script.Parent.PvP)
 
 local Formulas = {}
 
--- Dégâts par coup = P outil × (1 + Force / 100) × M aura.
--- Sans aura équipée, M aura = 1. Exemple zone 3 : Marteau 20, Force 100, Flamme ×2 = 80.
-function Formulas.HitDamage(toolPower: number, strength: number, auraMultiplier: number?): number
-	return toolPower * (1 + strength / Balance.Stats.StrengthDivisor) * (auraMultiplier or 1)
+-- Rééquilibrage v2 (Cantin, 2026-11-14) : plus de banc ni de Force.
+-- Dégâts par coup = P arme × M aura (c'est la « Strength » affichée). Sans aura équipée, M aura = 1.
+-- Exemple zone 3 : Crowbar 40 × Flame ×3 = 120. La potion de force (×1,5) s'applique en plus, au coup
+-- seulement (WindowService.GetHitDamageMultiplier) : elle n'entre dans aucun seuil ni aucun PV.
+function Formulas.HitDamage(toolPower: number, auraMultiplier: number?): number
+	return toolPower * (auraMultiplier or 1)
 end
 
--- WalkSpeed = min(70, 16 + 0,05 × Vitesse × M trail). Sans trail équipé, M trail = 1.
+-- Speed affichée (HUD, panneaux) = Vitesse entraînée × M trail. Sans trail équipé, M trail = 1.
+function Formulas.ShownSpeed(speed: number, trailMultiplier: number?): number
+	return speed * (trailMultiplier or 1)
+end
+
+-- WalkSpeed = min(70, 16 + 4 × log10(1 + Speed affichée / 100)) : chaque fois que la Speed affichée est
+-- multipliée par 10, la marche gagne 4 (v2). Une Vitesse négative ou illisible compte pour 0.
 -- Le malus de portage et l'Adrénaline ne sont pas inclus (voir Balance.Carry et PvP).
 function Formulas.WalkSpeed(speed: number, trailMultiplier: number?): number
 	local stats = Balance.Stats
-	return math.min(stats.MaxWalkSpeed, stats.BaseWalkSpeed + stats.SpeedToWalkSpeed * speed * (trailMultiplier or 1))
+	local shown = Formulas.ShownSpeed(speed, trailMultiplier)
+	if shown ~= shown or shown < 0 then
+		shown = 0
+	end
+	return math.min(stats.MaxWalkSpeed, stats.BaseWalkSpeed + stats.WalkPerDecade * math.log10(1 + shown / stats.SpeedScale))
 end
 
 -- Revenu d'un objet ($/s) = R zone × M rareté × M global.
@@ -50,12 +62,21 @@ function Formulas.UpgradeCost(upgradeId: string, currentLevel: number): number?
 	return math.round(upgrade.BaseCost * upgrade.Growth ^ currentLevel)
 end
 
--- Multiplicateur de gain du tapis ou du banc = 1 + 0,5 × niveau de son amélioration (5.1, 7.5).
-function Formulas.MachineMultiplier(upgradeId: "Treadmill" | "Bench", level: number): number
-	return Training.BaseMultiplier + Upgrades.ById[upgradeId].EffectPerLevel * level
+-- Niveau affiché du tapis (1 à 20) = niveau enregistré de l'amélioration Treadmill (0 à 19, borné) + 1.
+function Formulas.TreadmillShownLevel(level: number): number
+	local stored = if level == level then math.clamp(math.floor(level), 0, Upgrades.ById.Treadmill.MaxLevel) else 0
+	return stored + 1
+end
+
+-- Gain de Vitesse du tapis par seconde = 1 × 2^(niveau affiché − 1), sans les taps ni les bonus (v2, Cantin) :
+-- 1 au niveau enregistré 0, 2 au suivant… 524 288 au niveau enregistré 19 (niveau affiché 20).
+function Formulas.TreadmillGain(level: number): number
+	local settings = Training.Treadmill
+	return settings.GainPerSecond * settings.GainGrowth ^ (Formulas.TreadmillShownLevel(level) - 1)
 end
 
 -- PV de base de la vitrine (porte) d'un joueur, selon le niveau de sa boutique (StageLevel, 1 à 6 ; borné,
+-- v2 : 50, 500, 6K, 75K, 1M, 100M, puisque AdvisedDamage = arme × aura du kit de la zone ;
 -- un niveau illisible compte pour 1) : 50 × les dégâts conseillés de la zone du même rang (vague 29, V0
 -- proposé, absent du doc ; voir Config/PvP). L'arbre (Glass, Walls) multiplie ce nombre (WindowService).
 function Formulas.PlayerWindowHP(stageLevel: number): number

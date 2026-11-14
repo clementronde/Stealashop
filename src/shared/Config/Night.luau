@@ -44,9 +44,9 @@ local Night = {
 	ChaseSpeedBonus = 4, -- règle d'avant L-108 : vitesse conseillée de la zone + 4, gardée comme plancher
 	-- V0 proposé, absent du doc (liaison L-108 point 2, Clément, 2026-11-12) : vigiles de nuit très
 	-- rapides, presque impossibles à semer. Poursuite à ChaseSpeed dans toutes les zones (au moins
-	-- vitesse conseillée + ChaseSpeedBonus), au-dessus de Balance.Stats.MaxWalkSpeed (70) : sans
-	-- potion Speed, on ne les distance plus, il faut gagner la zone safe ou repasser le mur ; sous
-	-- potion Speed (jusqu'à 140), on peut encore s'en sortir. Pas d'abandon au temps ni à l'avance
+	-- vitesse conseillée + ChaseSpeedBonus), au-dessus de Balance.Stats.MaxWalkSpeed (70) : on
+	-- ne les distance plus, il faut gagner la zone safe ou repasser le mur (la potion Speed, qui montait
+	-- jusqu'à 140, est retirée du jeu depuis le 2026-11-14). Pas d'abandon au temps ni à l'avance
 	-- (Cantin, 2026-11-11), seulement en zone safe ou hors du couloir.
 	ChaseSpeed = 80,
 	-- V0 proposé, absent du doc : borne haute de la vitesse de lecture de Run et Walk des vigiles de

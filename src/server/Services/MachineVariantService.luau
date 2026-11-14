@@ -35,13 +35,14 @@
 --   MachineVariantService.GetVariant(plot) -> string?
 --       Variante posée (« Base », « Silver »…), nil si la parcelle n'a pas de tapis suivi.
 --   MachineVariantService.VariantFor(level) -> string
---       Variante du palier de `level` (Config/Upgrades).
+--       Variante du palier de `level`, le niveau enregistré (Config/Upgrades ; lu sur le niveau affiché).
 
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
+local Formulas = require(ReplicatedStorage.Shared.Config.Formulas)
 local Upgrades = require(ReplicatedStorage.Shared.Config.Upgrades)
 local DataService = require(script.Parent.DataService)
 local PlotService = require(script.Parent.PlotService)
@@ -91,10 +92,12 @@ end
 
 -- Palier du niveau (Config/Upgrades : liste ordonnée, un palier toutes les TreadmillTierEvery
 -- améliorations, le dernier au-delà).
+-- Rééquilibrage v2 : le palier se lit sur le niveau AFFICHÉ (niveau enregistré + 1, Formulas.TreadmillShownLevel) :
+-- Base au niveau affiché 1, Silver aux niveaux 2 et 3… Void au niveau 20. `level` reste le niveau enregistré.
 local function variantFor(level: number): string
 	local list = Upgrades.TreadmillVariants
 	local every = math.max(1, Upgrades.TreadmillTierEvery)
-	local index = math.clamp(math.floor(math.max(level, 0) / every) + 1, 1, math.max(#list, 1))
+	local index = math.clamp(math.floor(Formulas.TreadmillShownLevel(level) / every) + 1, 1, math.max(#list, 1))
 	return list[index] or BASE
 end
 

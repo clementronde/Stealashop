@@ -28,9 +28,9 @@
 -- est à lui, encore là (pas expirée, pas déjà prise) et s'il est vivant, son HumanoidRootPart à
 -- Potions.PickupMaxDistance studs au plus de la potion, son profil chargé, et s'il a moins de
 -- Potions.MaxStock potions de ce type. Sinon rien (une ligne en Studio) ; au plafond, la potion reste par terre
--- et un Notify « Warning » (« Your Speed potions are full (5/5). ») part une seule fois par potion. Accepté
+-- et un Notify « Warning » (« Your Money potions are full (5/5). ») part une seule fois par potion. Accepté
 -- (vague 33, demande de Cantin du 2026-11-13 : plus d'effet tout de suite) : PotionRemoved, +1 dans le champ
--- facultatif PotionStock du profil, attribut PotionStock_<Id> remis, Notify « Success » (« Speed potion added
+-- facultatif PotionStock du profil, attribut PotionStock_<Id> remis, Notify « Success » (« Money potion added
 -- to your inventory! »), télémétrie (événement PotionPicked, champ « Potion - <Id> »).
 --
 -- Inventaire des potions (vague 33) : au chargement du profil, PotionStock est nettoyé (Id inconnu retiré,
@@ -39,19 +39,18 @@
 -- connu, le profil chargé, le stock ≥ 1 et le personnage vivant ; sinon rien (une ligne en Studio). Accepté :
 -- −1 dans le stock, attribut remis, effet appliqué comme avant (même durée, même cumul : un effet du même type
 -- déjà actif reçoit la durée en plus, décision V0 d'Ironix, comme deux ramassages avant la vague 33), Notify
--- « Success » (« Speed ×2 for 2:00! », durée qui reste en tout).
+-- « Success » (« Money ×2 for 2:00! », durée qui reste en tout).
 --
--- Effets : attribut du Player Potions.AttributePrefix .. Id (« Potion_Speed ») = heure serveur de fin
+-- Effets : attribut du Player Potions.AttributePrefix .. Id (« Potion_Money ») = heure serveur de fin
 -- (Workspace:GetServerTimeNow()), retiré à la fin. Durée = Potion.Duration × l'effet de PotionTime (1 sans
 -- achat) ; même type déjà actif : la durée s'ajoute à ce qui reste. Mort (Humanoid.Died) ou départ : tous les
 -- effets sont retirés (les potions posées restent pour un mort). Branchés sur les points d'accroche, chacun
 -- gardé et rappelé (jamais écrasé), relus à chaque usage :
---   Speed         StatsService.SetSpeedModifier(player, "Potion", Multiplier, true) : × la WalkSpeed APRÈS le
---                 plafond de 70 (décision de Cantin du 2026-11-12 : la potion dépasse la limite, jusqu'à 140).
---                 L'anti-triche suit la Humanoid.WalkSpeed appliquée (vitesse autorisée). Sans effet en portant
---                 un objet volé à un joueur : vitesse fixe (Balance.Carry.StolenItemWalkSpeed, 2026-11-13).
+--   (Speed        retirée du jeu, Cantin 2026-11-14 : plus dans Config/Potions ; un stock « Speed » d'un ancien
+--                 profil est retiré au chargement comme tout Id inconnu, et plus rien ne touche à la marche.)
 --   Money         DisplayService.GetIncomeMultiplier × Multiplier (revenu des présentoirs).
---   Strength      WindowService.GetHitDamageMultiplier × Multiplier (dégâts d'un coup sur une vitrine, une
+--   Strength      WindowService.GetHitDamageMultiplier × Multiplier (×1,5 depuis le 2026-11-14 : dégâts d'un
+--                 coup = arme × aura × potion ; dégâts d'un coup sur une vitrine, une
 --                 parcelle ou une cible d'événement ; ni l'attribut Damage du HUD, ni les PV de sa boutique).
 --   Invisibility  GuardService.IsHiddenFromNight : les vigiles de nuit ne le repèrent pas ; un vigile qui le
 --                 poursuit déjà continue. L'effet visuel (presque transparent pour les autres) est côté client,
@@ -63,7 +62,7 @@
 --   PotionService.GetStock(player, id) -> number       potions de ce type dans l'inventaire (0 sans profil)
 --
 -- Tester dans Studio (barre de commande serveur ; hors de Studio, l'attribut n'est pas écouté) :
---   workspace:SetAttribute("PotionTest", "<joueur> spawn Speed")   une potion de ce type à TEST_SPAWN_DISTANCE
+--   workspace:SetAttribute("PotionTest", "<joueur> spawn Money")   une potion de ce type à TEST_SPAWN_DISTANCE
 --                                                                   studs devant lui (hors plafond)
 --   workspace:SetAttribute("PotionTest", "<joueur> give Money")    l'effet tout de suite, sans potion
 --   workspace:SetAttribute("PotionTest", "<joueur> stock Money")   une potion de plus dans son inventaire
@@ -87,7 +86,6 @@ local DisplayService = require(script.Parent.DisplayService)
 local GuardService = require(script.Parent.GuardService)
 local NightCycleService = require(script.Parent.NightCycleService)
 local SkillTreeService = require(script.Parent.SkillTreeService)
-local StatsService = require(script.Parent.StatsService)
 local TelemetryService = require(script.Parent.TelemetryService)
 local WindowService = require(script.Parent.WindowService)
 
@@ -124,7 +122,6 @@ local SPAWN_TRIES = 12 -- tirages par apparition
 local RETRY_DELAY = 5 -- s avant un nouvel essai si aucun point n'a été trouvé
 local STREET_RESCAN = 10 -- s au moins entre deux recherches des rues
 local HUMANOID_WAIT = 10 -- s d'attente du Humanoid d'un personnage qui apparaît
-local SPEED_KEY = "Potion" -- clé du modificateur de vitesse (StatsService)
 local NOTIFY_KIND = "Success"
 local FULL_KIND = "Warning" -- vague 33 : plafond de l'inventaire atteint (refus, son UI_Deny)
 local TELEMETRY_EVENT = "PotionPicked" -- clé de Config/Telemetry.Events
@@ -223,9 +220,6 @@ end
 local function endEffect(player: Player, state: State, id: string)
 	state.Effects[id] = nil
 	player:SetAttribute(Potions.AttributePrefix .. id, nil)
-	if id == "Speed" then
-		StatsService.SetSpeedModifier(player, SPEED_KEY, nil)
-	end
 end
 
 local function clearEffects(player: Player, state: State)
@@ -243,9 +237,6 @@ local function applyEffect(player: Player, state: State, potion: Potion): number
 	local endsAt = from + duration
 	state.Effects[potion.Id] = endsAt
 	player:SetAttribute(Potions.AttributePrefix .. potion.Id, endsAt)
-	if potion.Id == "Speed" then
-		StatsService.SetSpeedModifier(player, SPEED_KEY, potion.Multiplier or 1, true) -- au-dessus du plafond
-	end
 	return endsAt - t
 end
 
@@ -737,7 +728,6 @@ local function onPlayerRemoving(player: Player)
 	if died then
 		died:Disconnect()
 	end
-	StatsService.SetSpeedModifier(player, SPEED_KEY, nil)
 end
 
 ------------------------------------------------------------------------------

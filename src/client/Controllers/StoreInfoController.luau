@@ -419,7 +419,7 @@ end
 
 function StoreInfoController.Start()
 	playerGui = localPlayer:WaitForChild("PlayerGui")
-	for _, attribute in { AdvicePanel.DamageAttribute, AdvicePanel.WalkSpeedAttribute } do
+	for _, attribute in { AdvicePanel.DamageAttribute, AdvicePanel.SpeedAttribute } do
 		localPlayer:GetAttributeChangedSignal(attribute):Connect(recolorAll)
 	end
 	-- Avec StreamingEnabled, les magasins arrivent et repartent avec la zone autour du joueur.

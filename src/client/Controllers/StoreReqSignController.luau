@@ -312,7 +312,7 @@ function StoreReqSignController.Start()
 		dropPreview(child)
 	end
 	Workspace.ChildAdded:Connect(dropPreview)
-	for _, attribute in { AdvicePanel.DamageAttribute, AdvicePanel.WalkSpeedAttribute } do
+	for _, attribute in { AdvicePanel.DamageAttribute, AdvicePanel.SpeedAttribute } do
 		localPlayer:GetAttributeChangedSignal(attribute):Connect(recolorAll)
 	end
 	CollectionService:GetInstanceAddedSignal(STORE_TAG):Connect(track)
