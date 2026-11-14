@@ -68,7 +68,19 @@ type Held = {
 local CARRYING_ATTRIBUTE = "Carrying" -- CarryService : portage en cours
 local HANDLE_NAME = "Handle"
 local HANDLE_SIZE = Vector3.new(0.2, 0.2, 0.2) -- poignée invisible
-local BUILD_PIVOT = CFrame.new(0, -500, 0) -- le modèle est construit hors du Workspace : position sans effet
+-- Le modèle est construit à la place du joueur, puis soudé à la main : construit à y = -500 (l'ancienne
+-- valeur), il arrivait pile à workspace.FallenPartsDestroyHeight et Roblox le détruisait souvent avec le Tool
+-- avant que la soudure de la main ne le rattrape (vu en Play le 2026-11-14, 8 fois sur 10).
+local BUILD_FALLBACK = CFrame.new(0, 50, 0) -- sans personnage : au-dessus du sol, loin de la hauteur de destruction
+
+local function buildPivot(player: Player): CFrame
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	if root and root:IsA("BasePart") then
+		return root.CFrame
+	end
+	return BUILD_FALLBACK
+end
 
 local IS_STUDIO = RunService:IsStudio()
 
@@ -218,7 +230,7 @@ local function buildTool(player: Player, uid: string, entry: ItemEntry): Tool?
 	if api == nil then
 		return nil
 	end
-	local model = api.BuildFloorItem(player.UserId, BUILD_PIVOT, uid, entry)
+	local model = api.BuildFloorItem(player.UserId, buildPivot(player), uid, entry)
 	if model == nil then
 		return nil
 	end
