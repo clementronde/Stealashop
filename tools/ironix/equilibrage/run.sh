@@ -4,6 +4,8 @@
 #   GRAINES=40 bash tools/ironix/equilibrage/run.sh      nombre de parties par profil (défaut 25)
 #   HEURES=60 bash tools/ironix/equilibrage/run.sh       durée maximale d'une partie simulée (défaut 40)
 #   SORTIE=fichier.md bash tools/ironix/equilibrage/run.sh   écrit aussi le rapport dans ce fichier
+#   RAPPORT=v2 bash tools/ironix/equilibrage/run.sh      rapport du rééquilibrage v2 (proposition_v2.luau, rapport_v2.luau)
+#   RAPPORT=v2 COURT=1 bash tools/ironix/equilibrage/run.sh   v2 : seulement les temps par zone (pour régler)
 #
 # Il ne modifie rien : il lit les vraies sources de src/shared/Config (et src/shared/Format.luau),
 # les assemble avec les modules de ce dossier en un seul fichier Luau temporaire, et l'exécute avec
@@ -31,12 +33,12 @@ emit() { # emit <clé> <fichier> : SOURCES[clé] = contenu du fichier
 {
   echo "--!nocheck"
   echo "SOURCES = {}"
-  echo "OPTIONS = { Graines = ${GRAINES:-25}, Heures = ${HEURES:-40} }"
+  echo "OPTIONS = { Graines = ${GRAINES:-25}, Heures = ${HEURES:-40}, Rapport = \"${RAPPORT:-v1}\", Court = ${COURT:-0} == 1 }"
   for f in "$ROOT"/src/shared/Config/*.luau; do
     emit "Config/$(basename "$f" .luau)" "$f"
   done
   emit "Format" "$ROOT/src/shared/Format.luau"
-  for m in proposition modele chance caisses rapport; do
+  for m in proposition proposition_v2 modele chance caisses rapport rapport_v2; do
     emit "Outil/$m" "$H/$m.luau"
   done
   tr -d '\r' < "$H/chargeur.luau"

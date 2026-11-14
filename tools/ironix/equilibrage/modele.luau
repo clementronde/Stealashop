@@ -38,6 +38,12 @@ local Tutorial = Config.Tutorial
 
 local Modele = {}
 
+-- Ajouts du rééquilibrage v2 (2026-11-14, Outil/proposition_v2), sans effet sur les autres économies :
+--   eco.SansBanc = true        plus de banc : les dégâts ne dépendent que de l'outil et de l'aura
+--   eco.Zones[z].TeamHits      zone d'équipe : la vitrine se casse à plusieurs, ce total de coups par
+--                              seconde (tous au niveau du joueur simulé), dans le chrono de casse entier
+--   Modele.Aides               nil, ou { Session, Offline, Daily, Truck… } : aides comptées (voir Jouer)
+
 -- Hypothèses du modèle : ce ne sont PAS des valeurs du jeu, mais ce qu'il faut bien supposer pour
 -- faire jouer un joueur. À mesurer en Play et à corriger ici.
 Modele.Hypotheses = {
@@ -258,6 +264,7 @@ function Modele.Jouer(eco, profil, seed, maxSeconds)
 		zone = 1,
 		cycle = -1,
 		supply = {},
+		boostUntil = 0, -- aides : fin du boost ×2 argent (temps de jeu)
 	}
 	local mutationMean = Modele.MutationMean()
 	local out = { Entrees = {}, Achats = {}, Temps = { Tapis = 0, Banc = 0, Braquage = 0 }, Colis = 0, Rattrape = 0 }
@@ -289,13 +296,16 @@ function Modele.Jouer(eco, profil, seed, maxSeconds)
 		return if profil.Taps then rate * (1 + Training.Treadmill.TapBonus) else rate
 	end
 	local function strengthRate()
+		if eco.SansBanc then
+			return 1
+		end
 		return eco.MachineGain("Bench", s.levels.Bench) * math.min(H.BenchRepsPerSecond, Training.Bench.MaxRepsPerSecond)
 	end
 
 	-- Le temps passe : les présentoirs rapportent, la mémoire des ventes s'efface.
 	local function advance(seconds, category)
 		local real = seconds * profil.Flanerie
-		s.cash += standIncome() * real
+		s.cash += standIncome() * real * (if s.t < s.boostUntil then 2 else 1)
 		s.t += real
 		s.sales *= math.exp(-real / H.CashMemory)
 		out.Temps[category] += real
@@ -341,17 +351,25 @@ function Modele.Jouer(eco, profil, seed, maxSeconds)
 		end
 	end
 
+	-- Coups par seconde sur la vitrine de cette zone, et temps de casse accepté : ceux du profil, ou ceux
+	-- de l'équipe dans une zone d'équipe (TeamHits, chrono de casse entier).
+	local function hitsIn(zone)
+		return eco.Zones[zone].TeamHits or profil.Coups
+	end
+	local function breakMax(zone)
+		return if eco.Zones[zone].TeamHits then Balance.Window.BreakTimer else profil.CasseMax
+	end
 	-- Critère d'entrée du profil dans une zone, avec ces dégâts et cette vitesse de marche.
 	local function accepts(zone, hitDamage, walkSpeed)
 		local info = eco.Zones[zone]
-		local breakTime = Modele.BreakTime(info.WindowHP, hitDamage, profil.Coups)
+		local breakTime = Modele.BreakTime(info.WindowHP, hitDamage, hitsIn(zone))
 		local chance = Modele.Escape(eco, zone, walkSpeed)
 		if profil.Vert then
 			-- Marge de 0,1 % : un seuil rond (« 3K ») retombe parfois un cheveu sous la valeur exacte.
 			local green = hitDamage >= info.AdvisedDamage * 0.999 and walkSpeed >= info.AdvisedSpeed * 0.999
-			return green and breakTime <= profil.CasseMax and chance >= 1, breakTime
+			return green and breakTime <= breakMax(zone) and chance >= 1, breakTime
 		end
-		return breakTime <= profil.CasseMax and chance >= 1, breakTime
+		return breakTime <= breakMax(zone) and chance >= 1, breakTime
 	end
 
 	-- Ce qu'il manque pour entrer dans la zone : Vitesse et Force à atteindre avec le kit prévu (celui
@@ -420,7 +438,7 @@ function Modele.Jouer(eco, profil, seed, maxSeconds)
 	local function tripSeconds(zone, tier)
 		local info = eco.Zones[zone]
 		local walkSpeed = walk()
-		local breakTime = Modele.BreakTime(info.WindowHP, damage(), profil.Coups)
+		local breakTime = Modele.BreakTime(info.WindowHP, damage(), hitsIn(zone))
 		local _, back = Modele.Escape(eco, zone, walkSpeed)
 		local outbound = (info.ReturnDistance + H.PlotDistance) / walkSpeed
 		local inside = breakTime + H.InStore + Balance.Heist.BoxTiers[tier].GrabTime
@@ -466,7 +484,7 @@ function Modele.Jouer(eco, profil, seed, maxSeconds)
 				end
 				-- 2. Niveaux de machine : bon marché, ou rentables (le temps de braquage qu'ils coûtent
 				-- est plus court que le temps d'entraînement qu'ils font gagner).
-				for _, machine in { "Treadmill", "Bench" } do
+				for _, machine in if eco.SansBanc then { "Treadmill" } else { "Treadmill", "Bench" } do
 					local price, saved = machineCase(machine, needSpeed, needStrength)
 					if price ~= nil and s.cash >= price then
 						local cheap = rate > 0 and price / rate <= H.UpgradeBudget
@@ -548,7 +566,7 @@ function Modele.Jouer(eco, profil, seed, maxSeconds)
 		local info = eco.Zones[zone]
 		local walkSpeed = walk()
 		local hitDamage = damage()
-		local breakTime = Modele.BreakTime(info.WindowHP, hitDamage, profil.Coups)
+		local breakTime = Modele.BreakTime(info.WindowHP, hitDamage, hitsIn(zone))
 		local chance = Modele.Escape(eco, zone, walkSpeed)
 		local whole, outbound, inside, back = tripSeconds(zone, tier)
 		if random() >= chance then
@@ -626,7 +644,101 @@ function Modele.Jouer(eco, profil, seed, maxSeconds)
 		end
 	end
 
+	-- Aides (Modele.Aides, nil = aucune ; ce sont des hypothèses de jeu, pas des valeurs du jeu) :
+	--   Session   s de jeu par session ; SessionsParJour sessions par jour ;
+	--   Offline   au début de chaque session après la première : Config/Offline (Rate × MaxHours h du
+	--             revenu des présentoirs ; on suppose l'absence plus longue que le plafond) ;
+	--   Daily     Config/Rewards : calendrier de 7 jours (un par jour) et paliers de temps de jeu du jour ;
+	--   Truck     un camion toutes les TruckEvery s de jour, dans une zone au hasard ; s'il est dans une
+	--             zone que le joueur braque déjà seul, il en rapporte TruckBoxes colis (un trajet sans casse chacun).
+	local A = Modele.Aides
+	local aid = { session = 0, day = 0, dayStart = 0, claimed = {}, truckAt = 0 }
+	out.Aides = { Offline = 0, Cash = 0, Boites = 0, Boost = 0, Camions = 0 }
+	local function rarityFrom(zone, tier, minOrder)
+		local odds = ShelfBoxes.OddsFor(zone, tier)
+		local total = 0
+		for _, rarity in Rarities.List do
+			if rarity.Order >= minOrder then
+				total += odds[rarity.Id] or 0
+			end
+		end
+		local roll = random() * total
+		local picked = nil
+		for _, rarity in Rarities.List do
+			if rarity.Order >= minOrder then
+				local share = odds[rarity.Id] or 0
+				picked = picked or (if share > 0 then rarity.Id else nil)
+				if roll < share then
+					return rarity.Id
+				end
+				roll -= share
+			end
+		end
+		return picked or "Common"
+	end
+	local function grant(reward)
+		if reward.Kind == "Cash" then
+			local rate = cashRate() * (if s.t < s.boostUntil then 2 else 1)
+			local amount = math.max(rate * 60, Config.Rewards.MinCashPerMinute) * reward.Minutes
+			s.cash += amount
+			out.Aides.Cash += amount
+		elseif reward.Kind == "Boost" then
+			s.boostUntil = math.max(s.boostUntil, s.t) + reward.Minutes * 60
+			out.Aides.Boost += reward.Minutes
+		else
+			local zone = math.max(s.zone, reward.MinZone or 1)
+			local minOrder = if reward.MinRarity then Rarities.ById[reward.MinRarity].Order else 1
+			place(eco.ItemIncome(zone, rarityFrom(zone, reward.Tier, minOrder)) * mutationOf())
+			out.Aides.Boites += 1
+		end
+	end
+	local function aides()
+		local session = s.t // A.Session
+		if session ~= aid.session then
+			aid.session = session
+			if A.Offline then
+				local amount = Config.Offline.Rate * Config.Offline.MaxHours * 3600 * standIncome()
+				s.cash += amount
+				out.Aides.Offline += amount
+			end
+			if session % A.SessionsParJour == 0 then
+				aid.day += 1
+				aid.dayStart = s.t
+				aid.claimed = {}
+			end
+		end
+		if A.Daily then
+			if not aid.claimed.Daily then
+				aid.claimed.Daily = true
+				grant(Config.Rewards.Daily[aid.day % #Config.Rewards.Daily + 1])
+			end
+			for _, tier in Config.Rewards.Playtime do
+				if not aid.claimed[tier.Minutes] and s.t - aid.dayStart >= tier.Minutes * 60 then
+					aid.claimed[tier.Minutes] = true
+					grant(tier.Reward)
+				end
+			end
+		end
+		if A.Truck and s.t - aid.truckAt >= A.TruckEvery and s.t % Night.CycleDuration < Night.DayDuration then
+			aid.truckAt = s.t
+			local zone = math.floor(random() * zoneCount) + 1
+			if zone <= s.zone and eco.Zones[zone].TeamHits == nil then
+				out.Aides.Camions += 1
+				for _ = 1, A.TruckBoxes do
+					local roll = random() * 12
+					local tier = if roll < 6 then "Standard" elseif roll < 10 then "Premium" else "Luxe"
+					local info = eco.Zones[zone]
+					advance((2 * (info.ReturnDistance + H.PlotDistance)) / walk() + H.Deposit, "Braquage")
+					place(eco.ItemIncome(zone, rarityFrom(zone, tier, 1)) * mutationOf())
+				end
+			end
+		end
+	end
+
 	while s.t < maxSeconds and out.Entrees[zoneCount] == nil do
+		if A ~= nil then
+			aides()
+		end
 		local cycle = s.t // Night.CycleDuration
 		if cycle ~= s.cycle then
 			s.cycle = cycle
