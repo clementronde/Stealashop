@@ -7,8 +7,8 @@
 -- (Balance.Hit.MaxHitsPerSecond ; 10 avant le rééquilibrage v2 du 2026-11-14). Un clic arrivé trop tôt
 -- (moins de 1 / MaxHitsPerSecond s après le coup d'avant) n'est plus perdu : il est gardé (un seul à la fois)
 -- et part dès que l'intervalle est écoulé. Sans cela, un joueur qui clique 7 fois par seconde ne donnerait
--- que 3,5 coups par seconde (un clic sur deux), sous les 4,42 qu'il faut pour casser une vitrine à son
--- niveau en 13 s (Config/Zones) ; avec, il donne 5 coups par seconde. Le plafond reste celui du serveur (Net). Il joue tout de suite l'animation du coup (5.2), même dans
+-- que 3,5 coups par seconde (un clic sur deux), sous les 4,2 qu'il faut pour casser une vitrine à son
+-- niveau dans le chrono de police de 8 s (Config/Zones) ; avec, il donne 5 coups par seconde. Le plafond reste celui du serveur (Net). Il joue tout de suite l'animation du coup (5.2), même dans
 -- le vide : HitWindow, ou HitWindowHeavy du Marteau à la Disqueuse (2.4, champ HitAnimation
 -- de Config.Tools), via AnimationController s'il est là. Sur une vitrine, il passe aussi le
 -- coup à ShatterController.LocalHit (retour local : mini-éclats, son de verre, léger

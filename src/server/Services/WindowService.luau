@@ -27,9 +27,9 @@
 --     au tick suivant (0,1 s), à fraction de PV égale. Une erreur ou une valeur invalide (pas un nombre
 --     fini > 0 pour les PV, ≥ 0 pour la réparation) reprend la valeur de base.
 --   - Chrono de casse, magasins PNJ seulement (Clément, L-074) : le premier coup lance un chrono de
---     Balance.Window.BreakTimer s (13, V0), montré dans HeistTimer à chaque joueur qui frappe (même
+--     Balance.Window.BreakTimer s (8 depuis le 2026-11-14 ; 13 avant), montré dans HeistTimer à chaque joueur qui frappe (même
 --     remote que le chrono du braquage, même identifiant que le magasin, avec police = true : c'est le
---     chrono de police, « POLICE IN 13s », Cantin 2026-11-14). Cassée à temps : il disparaît chez ceux qui
+--     chrono de police, « POLICE IN 8s », Cantin 2026-11-14). Cassée à temps : il disparaît chez ceux qui
 --     ont frappé et StoreHeistService lance le chrono « HEIST » de Balance.Heist.Duration s (BreakInfo.ChronoEndsAt
 --     reste dans BreakInfo, plus lu par StoreHeistService). Sinon la vitre revient à ses PV max, chrono masqué et message à ceux qui
 --     ont frappé. Pas de régénération plus forte en plus : le chrono suffit contre la casse lente.

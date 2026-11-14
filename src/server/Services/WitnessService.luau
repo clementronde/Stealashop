@@ -37,7 +37,7 @@
 --      (NightCycleService.SendHome, Night.SendHomeDelay s après le coup), comme la nuit.
 --   6. Nuit (Clément, L-117 point 2) : les témoins ne sont pas là. À la tombée de la nuit, ils sont
 --      retirés du jeu (Parent = nil) ; à l'aube, remis où ils étaient, et la balade reprend.
---   La vitre se répare comme avant (chrono de 13 s de WindowService, inchangé).
+--   La vitre se répare comme avant (chrono de police de WindowService, Balance.Window.BreakTimer, inchangé).
 --
 -- Un témoin sans WatchedStore, ou dont le magasin est introuvable parmi les modèles taggés NPCStore de la
 -- map, se balade seulement (un avertissement). Rien n'est enregistré dans la place : tags, attributs,

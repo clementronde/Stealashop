@@ -13,7 +13,7 @@
 --     panneaux des vitrines, les arches et le message du vigile (décision d'Ironix, 2026-11-07).
 --   - HeistTimer : chrono du braquage (« HEIST: 6s »), visible pendant un vol, masqué le reste du
 --     temps. Vague 40 (Cantin, 2026-11-14) : pendant les coups sur la vitrine, le même élément montre le
---     chrono de police (« POLICE IN 13s », remote HeistTimer avec police = true), puis « HEIST » à la casse. Piloté par le remote HeistTimer(storeId, endsAt) que HeistController relaie (endsAt
+--     chrono de police (« POLICE IN 8s », remote HeistTimer avec police = true), puis « HEIST » à la casse. Piloté par le remote HeistTimer(storeId, endsAt) que HeistController relaie (endsAt
 --     en heure serveur, workspace:GetServerTimeNow() ; 0 = masquer). Plusieurs chronos à la fois
 --     (deux magasins proches) : celui qui finit le plus tard, donc le plus récent. Masqué tant que le
 --     joueur est poursuivi (ChaseController.IsChased) : « RUN! » prend sa place ; un chrono vu pendant la
@@ -172,7 +172,7 @@ local HEARTBEAT_SOUND = "Chase_Heartbeat"
 local UNKNOWN_TEXT = "…"
 
 -- V0 proposé, absent du doc : texte du chrono « HEIST: 7s », en anglais (L-036). Chrono de police (vague 40,
--- Cantin 2026-11-14, lancé au premier coup sur une vitrine) : « POLICE IN 13s », V0 proposé en attendant le
+-- Cantin 2026-11-14, lancé au premier coup sur une vitrine) : « POLICE IN 8s », V0 proposé en attendant le
 -- choix de Clément (L-153 ; même élément HeistTimer, aucun UI_HUD.PoliceTimer dans le contrat).
 local function timerText(seconds: number, police: boolean): string
 	if police then

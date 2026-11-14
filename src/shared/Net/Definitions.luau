@@ -298,7 +298,7 @@ local List: { RemoteDef } = {
 	{
 		-- endsAt = workspace:GetServerTimeNow() de fin du chrono ; 0 = masquer le chrono.
 		-- Ajout de la vague 40 (Cantin, 2026-11-14) : police = true pour le chrono de police (lancé au premier
-		-- coup sur une vitrine de magasin PNJ, WindowService, « POLICE IN 13s ») ; absent = chrono « HEIST »
+		-- coup sur une vitrine de magasin PNJ, WindowService, « POLICE IN 8s ») ; absent = chrono « HEIST »
 		-- d'après la casse (StoreHeistService). Même identifiant de magasin : le dernier reçu remplace l'autre.
 		Name = "HeistTimer",
 		Direction = "ServerToClient",
