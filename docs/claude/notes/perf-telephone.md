@@ -46,3 +46,56 @@ objets exposés des autres boutiques).
   des plaques ≈ 0,6 kb/s.
 - WindowService, AntiCheatService, TrainingService, MachineVariantService, RayonService, StoreHeistService,
   NightCycleService, ShatterController, minuteurs d'UnboxService : cadencés ou bornés. Aucune fuite mémoire trouvée.
+
+## Mesures avant et après la vague 39 (2026-11-14)
+
+**Méthode** (détail dans les notes de session `perf-avant-vague39-2026-11-14.md` et `perf-apres-vague39-2026-11-14.md`) :
+Play solo dans Studio, profil IRONIX01, boutique `PLOT_Shop_01` avec 20 objets exposés (4 Légendaires, aucun Secret),
+de jour, rien porté. Caméra scriptée qui fait un tour de 18 studs de rayon en 10 s ; ScriptProfiler client à 1000 Hz,
+**temps total** de chaque fonction en ms sur 10 s. S1 : perso dans la boutique ; S2 : perso à 80 studs de la porte.
+AVANT = main f87a40c, 3 mesures ; APRÈS = main e80d556, 5 mesures. Moyenne ± écart type.
+Pas d'A/B dans le même Play : les modules de Config sont gelés (`DeepFreeze`), on ne peut pas couper une correction
+pendant le Play sans changer `src/`.
+
+| Fonction | Situation | Avant | Après | Gain | Décision |
+| --- | --- | --- | --- | --- | --- |
+| Images par seconde | S1 / S2 | 22,3 ± 5,0 / 35,0 ± 1,7 | 36,7 ± 0,9 / 41,6 ± 1,5 | (plus d'images après) | — |
+| Tous nos scripts client | S1 | 764 ± 168 | 726 ± 30 | 38 (dans le bruit) | — |
+| Tous nos scripts client | S2 | 876 ± 35 | 751 ± 32 | 125 (net) | — |
+| `ItemIdleController.onHeartbeat` | S1 | 112 ± 37 | 34,5 ± 14,4 | 78 (net ; par image 0,50 → 0,09 ms) | GARDER (1b, 1c) |
+| `ItemIdleController.onHeartbeat` | S2 | 8,2 ± 6,5 | 1,1 ± 1,7 | 7 (dans le bruit) | — |
+| `DisplayController.animate` | S1 | 46 ± 20 | 28,6 ± 7,5 | 18 (limite) | INCERTAIN (2a, 2b, 2c) |
+| `DisplayController.animate` | S2 | 31,5 ± 12,6 | 16,5 ± 5,5 | 15 (limite) | INCERTAIN |
+| `HudController.update` | S1 | 32 ± 39 | 9,6 ± 7,6 | 23 (dans le bruit) | — |
+| dont `countdownText` | S1 / S2 | 5,3 ± 5,3 / 6,2 ± 4,7 | 0 / 0 (10 mesures sur 10) | 5 à 6 (net) | GARDER (4) |
+| `PvPController.refreshAll` | S1 | 2,2 ± 3,8 | 7,3 ± 2,6 | −5 (plus cher, dans le bruit) | RETIRER |
+| `PvPController.refreshAll` | S2 | 6,3 ± 5,3 | 4,7 ± 1,7 | 2 (dans le bruit) | RETIRER |
+| `CarryController.updateRainbows` | S1 / S2 | 0 | 0 | rien porté : pas exercée | INCERTAIN (3) |
+
+« Net » : l'écart dépasse 2 fois l'erreur sur la différence (test de Welch, t > 2). L'APRÈS a 1,2 à 1,6 fois plus
+d'images que l'AVANT : à coût par image égal, ses totaux seraient plus hauts ; une baisse est donc un vrai gain.
+
+**Highlights** : 1 actif sur 122 avant comme après, dans S1 et S2 (de jour, sans porteur ni colis proche) : la limite
+de 31 n'est pas en jeu dans ces situations.
+
+**Bruit** : AVANT, Studio tournait entre 16 et 37 i/s (écart de 15 à 120 % sur nos fonctions) ; APRÈS, entre 36 et
+43 i/s, beaucoup plus stable. Les petites fonctions (quelques ms sur 10 s) sont à la limite de résolution du
+profileur (1 échantillon = 1 ms).
+
+**Corrections de la vague 39 classées**
+
+- GARDER : 1b (objets exposés animés seulement à l'écran, `ItemIdle.OnScreenOnly`) et 1c (un seul `BulkMoveTo`
+  par pose) : gain net dans la boutique, inséparables sans A/B. 4 (compte à rebours réécrit à la seconde) :
+  `countdownText` absent des 10 mesures après, présent dans les 6 d'avant. 5 (`ShelfBoxes.MaxOutlines` 20) : limite,
+  gardée sans gain à mesurer.
+- RETIRER : PvPController (a129, objets revus seulement quand l'état de la boutique change) : aucun gain mesuré
+  (S1 plutôt plus cher). Remettre le fichier : `git checkout f87a40c -- src/client/Controllers/PvPController.luau`.
+  Réserve : mesuré avec 2 boutiques occupées sur 8, pas 8 pleines.
+- INCERTAIN : 1a (`ItemIdle.FarInterval`, objets entre 30 et 80 studs) : aucune des deux situations ne la fait
+  travailler ; il faudrait mesurer à 40-70 studs, boutique à l'écran, `FarInterval = 0` puis `1/15` dans deux Plays.
+  2a, 2b, 2c (`DisplayHalo`) : baisse de 35 à 50 % mais à la limite du bruit (t ≈ 1,5 et 1,9) ; 2c pas exercée
+  (aucun Secret exposé). Il faudrait deux Plays par champ coupé puis en marche, Studio au premier plan, un Secret
+  exposé ; la lumière et les particules (2a) coûtent surtout au rendu, que le profileur de scripts ne voit pas.
+  3 (`CarryController.updateRainbows`) : rien n'est porté dans ces mesures ; à mesurer en portant un objet
+  arc-en-ciel, sur un profil de test.
+- Hors mesure : BenchBarController (le banc va être retiré du jeu).
