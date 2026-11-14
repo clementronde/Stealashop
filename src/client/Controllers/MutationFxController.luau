@@ -45,6 +45,9 @@
 --      particules, lumière, doubles et arc retirés, rien d'animé ; tout est nettoyé (couleurs d'origine
 --      remises) quand l'objet perd sa mutation ou disparaît.
 --    FX_Mutation_<Id> absent : l'objet reste normal, un avertissement unique.
+--    a139 (optimisation téléphone, Config/PerfClient) : un objet sans mutation n'est relu que quand ses attributs
+--    changent (MutationFxCacheFlags) ; l'effet d'un objet immobile hors de l'écran n'est pas animé et repart au
+--    prochain contrôle où il est en vue (MutationFxOnScreenOnly, sphère agrandie de MutationFxScreenMargin).
 --
 -- API (client) :
 --   MutationFxController.StyleId(mutation) -> string?   Id du style : l'effet, sinon "Size", sinon nil
@@ -100,6 +103,27 @@ local TAU = 2 * math.pi
 local JITTER_STEP = 0.05 -- s, Glitch : les doubles tremblent (aperçu de Clément)
 local BURST_TIME = 0.12 -- s, Glitch : durée d'un saut (aperçu de Clément)
 local IS_STUDIO = RunService:IsStudio()
+
+-- a139 (optimisation téléphone, passe 2) : réglages de Config/PerfClient ; module absent (banc d'avant) : {},
+-- ancien comportement.
+local function perfSettings(): { [string]: any }
+	local ok, found = pcall(function(): Instance?
+		return Config:FindFirstChild("PerfClient") or Config:WaitForChild("PerfClient", 2)
+	end)
+	if ok and found and found:IsA("ModuleScript") then
+		local loaded, result = pcall(require, found)
+		if loaded and type(result) == "table" then
+			return result
+		end
+	end
+	return {}
+end
+local Perf = perfSettings()
+-- Objet sans mutation : plus relu à chaque contrôle, seulement quand MutationSize ou MutationEffect change.
+local CACHE_FLAGS = Perf.MutationFxCacheFlags == true
+-- Effet d'un objet immobile hors de l'écran : plus animé (voir Config/PerfClient).
+local ON_SCREEN_ONLY = Perf.MutationFxOnScreenOnly == true
+local SCREEN_MARGIN: number = if type(Perf.MutationFxScreenMargin) == "number" then Perf.MutationFxScreenMargin else 0
 
 type Motion = "None" | "Shine" | "Pulse" | "Glitch" | "Scan" | "Spin" | string
 
@@ -193,6 +217,10 @@ type Fx = {
 	hidden: { [BasePart]: number }?,
 	lastPaint: number,
 	shown: boolean,
+	-- a139 (PerfClient.MutationFxOnScreenOnly) : sphère autour du centre de la boîte qui contient l'objet, ses
+	-- doubles (même écartés par un saut), l'arc et la portée de la lumière ; onScreen faux = pas animé.
+	radius: number,
+	onScreen: boolean,
 }
 
 type Entry = {
@@ -206,6 +234,7 @@ type Entry = {
 	fx: Fx?,
 	near: boolean,
 	labels: { TextLabel },
+	mutated: boolean?, -- a139 (PerfClient.MutationFxCacheFlags) : nil = à relire (attribut changé)
 }
 
 local MutationFxController = {}
@@ -1051,9 +1080,37 @@ local function buildFx(model: Model, id: string): Fx?
 		hidden = nil,
 		lastPaint = -math.huge,
 		shown = false,
+		radius = 0,
+		onScreen = true,
 	}
 	syncGhostColors(fx)
 	placeGhosts(fx, anchorCFrame, 1)
+	-- a139 : sphère de l'effet, autour du centre de la boîte (doubles écartés au plus par GlitchSpread et leur
+	-- tremblement, saut de Glitch, arc, portée de la lumière).
+	local center = box.Position
+	local spread = math.max(fx.glitchSpread, 1)
+	local radius = size.Magnitude / 2 + fx.glitchJump * maxSide
+	for _, ghost in ghosts do
+		for _, gp in ghost.parts do
+			local reach = (gp.part.Position - center).Magnitude * spread + gp.part.Size.Magnitude / 2 + ghost.jitter * 1.2
+			radius = math.max(radius, reach)
+		end
+	end
+	for _, extra in extras do
+		for _, d in extra.model:GetDescendants() do
+			if d:IsA("BasePart") then
+				local part = d :: BasePart
+				radius = math.max(radius, (part.Position - center).Magnitude + part.Size.Magnitude / 2)
+			end
+		end
+	end
+	if fxPart then
+		radius = math.max(radius, fxPart.Size.Magnitude / 2)
+	end
+	if light then
+		radius = math.max(radius, light.Range)
+	end
+	fx.radius = radius
 	return fx
 end
 
@@ -1237,10 +1294,12 @@ local function track(inst: Instance)
 		fx = nil,
 		near = false,
 		labels = {},
+		mutated = nil,
 	}
 	local function changed()
 		entry.dirty = true
 		entry.labelsDirty = true
+		entry.mutated = nil -- a139 : relu au prochain contrôle
 	end
 	table.insert(entry.connections, model:GetAttributeChangedSignal(EFFECT_ATTRIBUTE):Connect(changed))
 	table.insert(entry.connections, model:GetAttributeChangedSignal(SIZE_ATTRIBUTE):Connect(changed))
@@ -1263,6 +1322,54 @@ local function eyePosition(): Vector3?
 	return if camera then camera.CFrame.Position else nil
 end
 
+-- a139 : la sphère (center, radius + MutationFxScreenMargin) coupe le champ de la caméra (même test que
+-- ItemIdleController.isOnScreen). Caméra sans champ ni taille d'écran (pas encore prête) : à l'écran.
+local function sphereOnScreen(camera: Camera, center: Vector3, radius: number): boolean
+	local viewport: Vector2? = camera.ViewportSize
+	local fov: number? = camera.FieldOfView
+	if viewport == nil or fov == nil or viewport.X <= 0 or viewport.Y <= 0 then
+		return true
+	end
+	local tanV = math.tan(math.rad(fov) / 2)
+	local tanH = tanV * viewport.X / viewport.Y
+	local inCamera = camera.CFrame:PointToObjectSpace(center)
+	local depth = -inCamera.Z
+	local r = radius + SCREEN_MARGIN
+	if depth < -r then
+		return false -- derrière la caméra
+	end
+	return math.abs(inCamera.X) <= depth * tanH + r * math.sqrt(1 + tanH * tanH)
+		and math.abs(inCamera.Y) <= depth * tanV + r * math.sqrt(1 + tanV * tanV)
+end
+
+-- a139 (PerfClient.MutationFxOnScreenOnly) : l'effet d'un objet immobile sort de l'écran : il n'est plus animé,
+-- un saut de Glitch en cours finit (pièces remises exactement, comme setShown) ; il repart, replacé, en vue.
+local function updateOnScreen(fx: Fx, camera: Camera?)
+	local onScreen = true
+	if ON_SCREEN_ONLY and camera ~= nil and fx.anchor.Anchored then
+		onScreen = sphereOnScreen(camera, (fx.anchor.CFrame * fx.boxRel).Position, fx.radius)
+	end
+	if fx.onScreen == onScreen then
+		return
+	end
+	fx.onScreen = onScreen
+	if onScreen then
+		fx.lastAnchor = nil -- tout est replacé à la prochaine image
+		return
+	end
+	endJump(fx)
+	if fx.bursting then
+		fx.bursting = false
+		for _, ghost in fx.ghosts do
+			if ghost.flicker then
+				for _, gp in ghost.parts do
+					gp.part.LocalTransparencyModifier = 0
+				end
+			end
+		end
+	end
+end
+
 local function isTracked(inst: Instance): boolean
 	for _, tag in TRACKED_TAGS do
 		if CollectionService:HasTag(inst, tag) then
@@ -1275,6 +1382,7 @@ end
 -- Contrôle de chaque objet (toutes les DistanceCheckInterval s) : attributs, échelle stable, distance.
 local function checkEntries()
 	local eye = eyePosition()
+	local camera = Workspace.CurrentCamera
 	for model, entry in entries do
 		if model.Parent == nil then
 			untrack(model)
@@ -1291,8 +1399,15 @@ local function checkEntries()
 			entry.labelsDirty = false
 			styleLabels(entry)
 		end
+		if CACHE_FLAGS and entry.mutated == false then
+			entry.near = false -- a139 : toujours sans mutation (relu quand un de ses attributs change)
+			continue
+		end
 		local effect = model:GetAttribute(EFFECT_ATTRIBUTE)
 		local hasMutation = type(effect) == "string" or model:GetAttribute(SIZE_ATTRIBUTE) ~= nil
+		if CACHE_FLAGS then
+			entry.mutated = hasMutation
+		end
 		if not hasMutation then
 			entry.near = false
 			continue
@@ -1313,6 +1428,7 @@ local function checkEntries()
 				continue
 			end
 			setShown(fx, entry.near)
+			updateOnScreen(fx, camera)
 			continue
 		end
 		if entry.lastScale ~= nil and math.abs(scale - entry.lastScale) <= 1e-4 then
@@ -1328,6 +1444,7 @@ local function checkEntries()
 			else
 				entry.fx = built
 				setShown(built, entry.near)
+				updateOnScreen(built, camera)
 			end
 		end
 	end
@@ -1342,7 +1459,7 @@ local function onHeartbeat(dt: number)
 	local t = os.clock()
 	for _, entry in entries do
 		local fx = entry.fx
-		if fx and fx.shown then
+		if fx and fx.shown and fx.onScreen then
 			updateFx(fx, t)
 		end
 	end
