@@ -1,6 +1,6 @@
 # Rééquilibrage v2 : décisions de Cantin (2026-11-14)
 
-Écrit par Claude le 2026-11-14, à la demande de Cantin. Ce fichier sert à mettre ces décisions en place dans le code. Les nouvelles valeurs chiffrées viendront de l'agent d'équilibrage (proposition sur la branche `agents/a132`) : en attendant, aucune valeur ne change dans `Config`.
+Écrit par Claude le 2026-11-14, à la demande de Cantin. Ce fichier sert à mettre ces décisions en place dans le code. **Proposition chiffrée (14/11)** : [equilibrage-v2-proposition.md](equilibrage-v2-proposition.md) (toutes les valeurs, temps par zone, règle de la zone 6, questions pour Cantin et pour Clément en section 9 ; liaison L-151). Elle n'est pas encore appliquée : aucune valeur ne change dans `Config` avant les réponses de Cantin et de Clément.
 
 ## Décidé par Cantin le 14/11
 
@@ -28,7 +28,7 @@ Ses mots :
    - à revoir aussi : `AdminService` et `AdminController` (commandes du banc), `TutorialService`, `GainController`, `AnimationController`, `Shared/Anim`, et tout ce qui lit la stat Force (`Stats.Strength`) : HUD, renaissance, arbre de compétences, bandeau de zone.
 2. **Dégâts = arme × multiplicateur d'aura × potion.** Aujourd'hui, `Formulas.HitDamage(toolPower, strength, auraMultiplier)` vaut `toolPower × (1 + strength / StrengthDivisor) × auraMultiplier`. Sans banc, la part de la force disparaît.
 3. **Potion Strength ×1,5** : `Config/Potions`, `Multiplier = 2` → `1.5`.
-4. **Nouvelles valeurs** (tapis, prix, armes, auras, PV des vitrines par zone, seuils des zones) : celles de la proposition d'`agents/a132`, une fois validées par Cantin. Vérifier les deux contraintes : zone 6 en environ 7 h 30, et zone 6 impossible à casser seul (PV de ses vitrines = dégâts de deux des meilleurs joueurs, arme × aura au maximum, pendant le chrono de 13 s ; potion non comptée).
+4. **Nouvelles valeurs** (tapis, prix, armes, auras, PV des vitrines par zone, seuils des zones) : celles de [equilibrage-v2-proposition.md](equilibrage-v2-proposition.md), une fois validées par Cantin. Vérifier les deux contraintes : zone 6 en environ 7 h 30, et zone 6 impossible à casser seul (PV de ses vitrines = dégâts de deux des meilleurs joueurs, arme × aura au maximum, pendant le chrono de 13 s ; potion non comptée).
 5. **Remise à zéro des profils DEV** quand les nouvelles valeurs arrivent (le profil de Cantin compris), avec son accord au moment de le faire.
 
 ## Côté Clément (liaison)
