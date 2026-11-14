@@ -584,7 +584,7 @@ end
 -- gains au-dessus du joueur (BB_Gain) : vitesse au tapis, force au banc, argent ramassé ---------------
 local GAIN = {
 	Speed = { "rbxassetid://80577187405028", Color3.fromHex("4fd2ff"), "Speed" },
-	Strength = { "rbxassetid://84783828444327", Color3.fromHex("ff7a3a"), "Power" },
+	Strength = { "rbxassetid://90840823209764", Color3.fromHex("ff7a3a"), "Power" },
 	Cash = { "rbxassetid://138179722277427", Color3.fromHex("5cff4a"), nil },
 }
 local function short(n)

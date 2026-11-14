@@ -15,7 +15,7 @@
 
 local CH = game:GetService("ChangeHistoryService")
 local SPEED_ICON = "rbxassetid://80577187405028" -- UI_HUD.StatsPanel.SpeedRow.SpeedIcon.IconImage
-local STRENGTH_ICON = "rbxassetid://84783828444327" -- UI_HUD.StatsPanel.StrengthDamageRow.StrengthIcon.IconImage
+local STRENGTH_ICON = "rbxassetid://90840823209764" -- UI_HUD.StatsPanel.StrengthDamageRow.StrengthIcon.IconImage
 
 local gui = game.StarterGui:FindFirstChild("UI_ZoneBanner")
 assert(gui, "UI_ZoneBanner introuvable")

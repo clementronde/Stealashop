@@ -32,7 +32,7 @@ Demandes de Clément, à reporter dans la liaison pour Ironix. Les parties visue
 - **`ReplicatedStorage/Assets/UI/BB_Gain`** (nom demandé par la liaison L-091) : BillboardGui (4,5 studs + 70 px de large, 3,4 studs au-dessus de la tête, `AlwaysOnTop`) avec `Row`, qui contient `Icon` et `Amount`.
   - Couleurs proposées :
     - vitesse : `4fd2ff`, icône `80577187405028` (celle du HUD) ;
-    - force : `ff7a3a`, icône `84783828444327` ;
+    - force : `ff7a3a`, icône `90840823209764` ;
     - argent : `5cff4a`, icône `138179722277427`.
   - Animation du prototype : `Row` passe de 0,4 à 1 (Back, 0,16 s), le billboard monte de 2,2 studs en 1 s et s'efface à partir de 55 %. Décalage horizontal au hasard de ± 1 stud.
   - Le prototype le déclenche à chaque hausse des attributs `Speed`, `Strength` et `CashCollected` du joueur, avec la vraie hausse.

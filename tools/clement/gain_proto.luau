@@ -149,7 +149,7 @@ local function floatGain(adornee, text, color, icon)
 	task.delay(M.GainTime + 0.05, function() bb:Destroy(); v:Destroy() end)
 end
 local SPEED = { Color3.fromHex("4fd2ff"), "rbxassetid://80577187405028" }
-local POWER = { Color3.fromHex("ff7a3a"), "rbxassetid://84783828444327" }
+local POWER = { Color3.fromHex("ff7a3a"), "rbxassetid://90840823209764" }
 local CASH = { Color3.fromHex("5cff4a"), "rbxassetid://138179722277427" }
 
 -- panneau de démo
