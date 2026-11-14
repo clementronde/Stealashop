@@ -227,6 +227,9 @@ local UiMotion = {
 		Sound = "UI_Click_Tick",
 		RedBelow = 3, -- à 3 s ou moins (prototype feel2_proto.luau : « n <= 3 »)
 		RedColor = Color3.fromHex("E8413C"), -- L-092 3c (Clément) : le texte de HeistTimer
+		-- Vague 42 (L-153, L-157 point 4 : « en rouge », Clément) : HeistTimer pendant tout le chrono de police.
+		-- V0 proposé, absent du doc : le même rouge que RedColor.
+		PoliceColor = Color3.fromHex("E8413C"),
 	},
 	-- RUN! (UI_Chase.RunBanner, UiFeelController ; L-092 3a, accord de Clément) : il s'anime à part,
 	-- avec son propre UIScale passager (Motion.Open et Close ne le mettent pas à l'échelle). Le

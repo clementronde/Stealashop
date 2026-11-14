@@ -12,7 +12,7 @@
 --     onglet choisi). Une ligne par aura ou par trail de Config/Cosmetics, dans l'ordre des
 --     paliers, clonée depuis List.Template :
 --       ItemName     nom affiché (Config, en anglais)
---       Bonus        « ×1.5 power » (aura) ou « ×1.1 speed » (trail)
+--       Bonus        « ×20 Strength » (aura) ou « ×12 Speed » (trail) ; vague 42 (L-157 point 3, Clément)
 --       Price        prix, Format.money (« $15K »)
 --       Icon         texture de Clément (Decal FX_Aura_… ou FX_Trail_… de ReplicatedStorage/Assets)
 --                    si elle est livrée ; sinon l'image posée dans le Template reste
@@ -133,9 +133,10 @@ local function equippedId(kind: string): string?
 	return if type(value) == "string" then value else nil
 end
 
--- « ×1.5 power », « ×1.25 speed » (%g : 1.25 reste 1.25, 2 s'écrit 2).
+-- « ×20 Strength », « ×1.25 Speed » (%g : 1.25 reste 1.25, 2 s'écrit 2). Vague 42 (L-157 point 3) : « Strength »,
+-- le mot du HUD (Clément) ; « Speed » avec la majuscule pour rester pareil (V0 proposé, absent du doc).
 local function bonusText(def: Cosmetic): string
-	local word = if def.Kind == "Aura" then "power" else "speed"
+	local word = if def.Kind == "Aura" then "Strength" else "Speed"
 	return `×{string.format("%g", def.Multiplier)} {word}`
 end
 

@@ -109,6 +109,7 @@ local BOARD_NAME = "Board"
 local GUI_NAME = "SignGui"
 local TITLE_NAME = "Title"
 local LEVEL_NAME = "Level"
+local GAIN_NAME = "Gain" -- vague 42 (L-157 point 2), facultatif
 local BUY_NAME = "BuyButton"
 local ROBUX_NAME = "RobuxButton"
 local PRICE_NAME = "Price"
@@ -123,6 +124,7 @@ local TEXT = {
 	Stands = "Stands %d/%d",
 	SignLevel = "Level %d > Level %d",
 	SignMax = "Max level",
+	SignGain = "+%s/s", -- vague 42 (L-157 point 2) : « +16/s > +32/s » sur UpgradeSign.Gain
 }
 local PROMPT_DISTANCE = 8
 local HOLD_DURATION = 0.5
@@ -428,6 +430,18 @@ local function showSign(offer: Offer, entry: Entry, template: Model, plotModel: 
 	-- Tapis (v2) : niveau affiché = niveau enregistré + 1 (« Level 1 > Level 2 » au départ, jusqu'à 20).
 	local shown = if offer.kind == "Machine" then level + 1 else level
 	setText(currentGui, LEVEL_NAME, if cost then string.format(TEXT.SignLevel, shown, shown + 1) else TEXT.SignMax)
+	-- Vague 42 (L-157 point 2, Clément) : Gain facultatif sous Level, « +16/s > +32/s » (gain du tapis au niveau
+	-- actuel > au suivant, Formulas.TreadmillGain, Format.short) ; au niveau max, le gain actuel seul. Caché sur le
+	-- panneau des présentoirs. Sans lui, rien ne change (ligne orange du ContractChecker).
+	local gain = Find.path(currentGui, GAIN_NAME)
+	if gain and (gain:IsA("TextLabel") or gain:IsA("TextButton")) then
+		local gainLabel = gain :: GuiObject
+		gainLabel.Visible = offer.id == "Treadmill"
+		if offer.id == "Treadmill" then
+			local now = string.format(TEXT.SignGain, Format.short(Formulas.TreadmillGain(level)))
+			setText(currentGui, GAIN_NAME, if cost then `{now} > {string.format(TEXT.SignGain, Format.short(Formulas.TreadmillGain(level + 1)))}` else now)
+		end
+	end
 	local buy = Find.path(currentGui, BUY_NAME) :: GuiButton
 	buy.Visible = cost ~= nil
 	if cost then
