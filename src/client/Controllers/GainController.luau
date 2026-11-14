@@ -77,6 +77,7 @@ local CASH_ROW = "CashRow"
 -- Attributs du Player (mêmes noms dans StatsService, TrainingService et DisplayService).
 local MACHINE_ATTRIBUTE = "TrainingMachine"
 local COLLECTED_ATTRIBUTE = "CashCollected"
+local TRAIL_ATTRIBUTE = "TrailMultiplier" -- posé par StatsService (serveur), vague 47
 
 local SPEED: Kind = {
 	Name = "Speed",
@@ -206,6 +207,19 @@ local function floatGain(kind: Kind, amount: number)
 	local row = typed(billboard, "Row", "GuiObject") :: GuiObject?
 	local amountLabel = typed(billboard, "Amount", "TextLabel") :: TextLabel?
 	local icon = typed(billboard, "Icon", "ImageLabel") :: ImageLabel?
+	local multiplierLabel = typed(billboard, "Multiplier", "TextLabel") :: TextLabel?
+	-- Vague 47 (a155) : multiplicateur du trail (Speed seulement), même format que la boutique (« ×2 »).
+	local trailText: string? = nil
+	if kind == SPEED then
+		local trail = localPlayer:GetAttribute(TRAIL_ATTRIBUTE)
+		if type(trail) == "number" and trail == trail and trail > 1 and trail < math.huge then
+			trailText = `×{string.format("%g", trail)}`
+		end
+	end
+	if multiplierLabel then
+		multiplierLabel.Text = trailText or ""
+		multiplierLabel.Visible = trailText ~= nil
+	end
 	-- L-092 3e : un seul BB_Gain ; la copie dit sa sorte (GainKind) et Amount prend sa couleur.
 	billboard:SetAttribute(FLOAT.KindAttribute, kind.Name)
 	if amountLabel then
@@ -218,6 +232,11 @@ local function floatGain(kind: Kind, amount: number)
 			else (FLOAT.Colors :: { [string]: Color3 })[kind.Name]
 		if color then
 			amountLabel.TextColor3 = color
+		end
+		if trailText and multiplierLabel == nil then
+			amountLabel.RichText = true
+			local hex = (FLOAT.TrailMultiplierColor :: Color3):ToHex()
+			amountLabel.Text = `{amountLabel.Text} <font color="#{hex}">{trailText}</font>`
 		end
 	end
 	-- Vague 24 : l'icône posée par Clément sur BB_Gain (attribut <Sorte>Icon, rbxassetid) passe avant
@@ -244,6 +263,9 @@ local function floatGain(kind: Kind, amount: number)
 	end
 	if icon then
 		table.insert(fades, { object = icon :: Instance, property = "ImageTransparency", from = icon.ImageTransparency })
+	end
+	if multiplierLabel then
+		table.insert(fades, { object = multiplierLabel :: Instance, property = "TextTransparency", from = multiplierLabel.TextTransparency })
 	end
 	for _, descendant in billboard:GetDescendants() do
 		if descendant:IsA("UIStroke") then

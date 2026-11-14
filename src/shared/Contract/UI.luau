@@ -839,5 +839,16 @@ for _, billboard in UI.Billboards do
 		})
 	end
 end
+-- Multiplicateur du trail sur BB_Gain (vague 47, a155 ; nom proposé à Clément) : facultatif. Présent : le
+-- code y écrit « ×2 » (trail équipé > 1) et le montre, sinon le cache. Absent : « ×2 » ajouté à Row.Amount
+-- en texte enrichi (UiMotion.FloatGain.TrailMultiplierColor).
+table.insert(UI.Billboards, {
+	Name = "BB_Gain",
+	Class = "BillboardGui",
+	Optional = true,
+	Elements = {
+		{ Path = "Row.Multiplier", Class = "TextLabel", Optional = true, Note = "le « ×2 » du trail est ajouté à Row.Amount en texte enrichi" },
+	} :: { Element },
+})
 
 return UI

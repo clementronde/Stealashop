@@ -182,6 +182,9 @@ local UiMotion = {
 			Power = Color3.fromHex("FF7A3A"),
 			Cash = Color3.fromHex("5CFF4A"),
 		},
+		-- Vague 47 (a155) : couleur du « ×2 » du trail ajouté à Row.Amount quand BB_Gain n'a pas
+		-- Row.Multiplier. V0 proposé, absent du doc ; Clément choisira dans son élément.
+		TrailMultiplierColor = Color3.fromHex("FFD84D"),
 	},
 	-- Case qui vole vers l'argent (UI_HUD.CashFly.Template, GainController).
 	CashFly = {

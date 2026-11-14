@@ -166,6 +166,8 @@ function StatsService.Refresh(player: Player)
 		player:SetAttribute("Speed", data.Stats.Speed)
 		player:SetAttribute("ShownSpeed", Formulas.ShownSpeed(data.Stats.Speed, trail))
 		player:SetAttribute("WalkSpeed", base)
+		-- Vague 47 (a155) : multiplicateur du trail équipé, lu par GainController (« ×2 » du tapis).
+		player:SetAttribute("TrailMultiplier", trail)
 	end
 	local character = player.Character
 	local humanoid = if character then character:FindFirstChildOfClass("Humanoid") else nil
