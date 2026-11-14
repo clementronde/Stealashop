@@ -223,3 +223,17 @@ Demande de Clément, après le passage aux deux files. Sauvegarde : `ServerStora
 - **`POT_Speed` supprimé** de `ReplicatedStorage/Assets/Potions`. Il reste `POT_Invisibility`, `POT_Money` et `POT_Strength`. **`ICON_POT_Speed` n'existait nulle part** dans Studio, donc il n'y avait rien à supprimer.
 - **`Stage_2/Murets_Sides`** : `HideFromStage = 3` est remplacé par `HideFromWalls = 1` dans le gabarit, et dans le builder. Les 8 boutiques du hub n'ont pas de `Stage_2` (le code le copie depuis le gabarit), donc il n'y avait rien à y changer.
 - **ContractChecker en Edit** : aucune ligne rouge, mais 9 lignes orange disent toutes « Bench introuvable » ou « tag Bench pas posé ». C'est la copie du code dans le Studio de Clément qui n'est pas à jour : sur le disque, `Contract/Tags` n'a plus `Bench`, et `Models.luau` le marque `Optional = true`. Ces lignes devraient disparaître à la prochaine synchro d'Ironix.
+
+## RarestDisplay, le grand socle de l'objet le plus rare (2026-11-14, L-165 point 5)
+
+- Sauvegarde avant changement : `ServerStorage/Assets/MapBackup_Shops_2026-11-14_22h13`. Elle contient le gabarit et les 8 boutiques.
+- **Le modèle** : `RarestDisplay` dans le gabarit `PLOT_Shop` et dans les 8 boutiques du hub, recopié avec le même repère. Il ressemble à la référence 03 : socle gris à studs, rebord, plateau `Plate` bleu nuit bordé de néon blanc, 4 `CornerLight_*`, une `PointLight`, et une plaque `Sign` « RAREST PULL » sur le bord avant (en anglais comme les autres textes du jeu). Il fait 15 pièces, environ 180 triangles, sans couleur d'accent.
+- **Taille et place** : 9 × 10 studs, x 9,75..18,75, z -51,5..-41,5, haut du plateau à y 0,8. Il est devant la façade, entre le montant droit de la porte (x 10) et la place laissée vide du banc (x 18,75), et s'arrête avant l'allée du hub (z -52). Il ne touche ni l'ouverture de la porte, ni le tapis rouge, ni le tapis de course. Il n'y avait pas la place pour 10 studs de large. Le plateau fait 7,6 × 8,6 studs ; le plus grand objet mesure 2,2 studs, soit 6,6 en version Colossal.
+- **Contrat** :
+  - `RarestDisplay/Plate/ItemPoint` : Attachment au centre du plateau, LookVector vers la rue (-Z du gabarit).
+  - `RarestDisplay/Plate/LabelPoint` : Attachment 8 studs au-dessus, pour `BB_RarestDisplay`.
+- **L'ancien `RarestPedestal`** reste en place, avec `Deprecated = true` : toutes ses pièces sont à Transparency 1, sans collision, touch, query ni ombre, et sa lumière est coupée. **Ses Attachments `RarestSlot` et `RarestLabelPoint` sont déplacés sur `ItemPoint` et `LabelPoint`** : le code actuel pose donc déjà l'objet et `BB_Rarest` sur le nouveau socle, au lieu de les laisser flotter au-dessus d'un socle invisible. Quand Ironix lira `RarestDisplay`, il pourra supprimer `RarestPedestal`.
+- **À régler par d'autres sessions** : les panneaux d'aperçu `Workspace/_PREVIEW_UpgradeSigns/PLOT_Shop_0n/Preview_Bench`, qui datent d'avant le retrait du banc, tombent sur le nouveau socle. Je n'y ai pas touché.
+- **Builder** : `buildRarestDisplay` et `retirePedestal` sont ajoutés et appelés après `buildRarest`. `RarestDisplay` est exclu de `narrowWidth`.
+- **Capture** : `StealAShop-Art/Captures/2026-11-14_RarestDisplay/RarestDisplay_Shop04.jpg`.
+- **ContractChecker en Edit** : aucune ligne rouge. Il reste les lignes orange « Bench » (copie du code en retard dans Studio) et une nouvelle, `UI_HUD.ReturnBaseButton introuvable`, qui vient de l'UI et pas de moi.
