@@ -7,6 +7,8 @@
 --      précédente (ou le démarrage du serveur), seulement de jour : phase Day de NightCycleService,
 --      au moins DawnDelay s après l'aube et MinDayLeft s avant l'alerte. Un camion dû pendant
 --      l'alerte ou la nuit attend que ces conditions reviennent. Zone tirée au hasard dans SpawnZones.
+--      Vague 39 : pas de camion tant qu'une vitrine de la Fortune Tower est en jeu (tag FortuneVault posé
+--      par FortuneTowerService, fermée ou ouverte) ; le camion dû attend qu'elle soit retirée.
 --      Où :
 --        - sur un point taggé `TruckSpawn` (Attachment, pièce ou Model, attribut Zone ; nom proposé à
 --          Clément, hors contrat) s'il y en a dans la zone, au hasard : le pivot du camion (en bas au
@@ -199,6 +201,7 @@ local DROPS_FOLDER = "CarryDrops" -- dossier des colis au sol de CarryService
 -- Posés par ce service, lus par TruckController (mêmes noms là-bas).
 local TRUCK_NAME = "EventTruck" -- jamais « ENV_… » dans la map : c'est le nom de l'asset (ContractChecker)
 local TRUCK_TAG = "EventTruck" -- tag posé par le code, hors du contrat de la section 2.1
+local FORTUNE_VAULT_TAG = "FortuneVault" -- vitrine en jeu, posé par FortuneTowerService (vague 39)
 local NUMBER_ATTRIBUTE = "TruckNumber"
 local SPAWNED_AT_ATTRIBUTE = "SpawnedAt" -- heure serveur de l'apparition (sons d'arrivée, vague 26)
 local EXPLODED_AT_ATTRIBUTE = "ExplodedAt"
@@ -1610,6 +1613,16 @@ local function daySpawnAllowed(): boolean
 	return os.clock() - dayStartedAt >= TruckEvent.DawnDelay
 end
 
+-- Une vitrine de la Fortune Tower dans le Workspace (vague 39) : pas de camion en même temps.
+local function fortuneInPlay(): boolean
+	for _, vault in CollectionService:GetTagged(FORTUNE_VAULT_TAG) do
+		if vault:IsDescendantOf(Workspace) then
+			return true
+		end
+	end
+	return false
+end
+
 local function randomZone(): number?
 	local list = TruckEvent.SpawnZones
 	if #list == 0 then
@@ -1637,7 +1650,7 @@ local function step()
 		end
 		return
 	end
-	if now < nextSpawnAt or not daySpawnAllowed() then
+	if now < nextSpawnAt or not daySpawnAllowed() or fortuneInPlay() then
 		return
 	end
 	nextSpawnAt = now + randomInterval()

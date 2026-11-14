@@ -39,7 +39,7 @@
 --      points LootSpawn_01 à _NN du modèle (Attachments ou pièces ; projetés au sol), sinon en rangée devant
 --      la face avant (LootDistance, LootSpacing). Colis PNJ ordinaires : StoreId « Truck_Fortune_<n> »
 --      (préfixe Truck_ : la convention des colis d'événement sans magasin, GuardService n'envoie pas de
---      vigile, StoreHeistService n'a rien à remettre en rayon ; TelemetryService les compte en « Truck »),
+--      vigile, StoreHeistService n'a rien à remettre en rayon ; TelemetryService les compte à part, en « Fortune », vague 39),
 --      SlotId « Truck_Fortune_<n>/<kk> », attributs FortuneBox et Tier (lus par FortuneTowerController).
 --      Notify à tous (Messages.Opened). La copie est retirée RemoveDelay s plus tard.
 --   5. Colis au sol : GrabDropped(dropId) (9.4), en deux appels comme les colis du camion (début du
@@ -57,7 +57,9 @@
 --       workspace:SetAttribute("FortuneTest", "Seal")   -- la vitrine en jeu se referme tout de suite
 --   Le service lit l'attribut, l'efface et agit, même de nuit ou seul. Hors de Studio, rien n'est écouté.
 --
--- API (serveur) : aucune. Posé par ce service, lu par FortuneTowerController : le tag FortuneVault et les
+-- API (serveur, vague 39) : Force(« Spawn » | « Open » | « Seal ») → (ok, message), pour AdminService (commande
+-- StartEvent, événements Fortune, FortuneOpen, FortuneSeal) et le crochet de test. Le camion
+-- (TruckEventService) n'apparaît pas tant qu'une vitrine est en jeu (tag FortuneVault). Posé par ce service, lu par FortuneTowerController : le tag FortuneVault et les
 -- attributs de la vitrine (plus haut ; WindowId, MaxHP, HP et Broken venant de WindowService), les
 -- attributs FortuneBox et Tier de ses colis au sol.
 
@@ -797,6 +799,40 @@ local function onBroken(info: WindowService.BreakInfo)
 	openVault(vault, info.Breaker)
 end
 
+-- Lancer, ouvrir, refermer à la main (crochet de test et AdminService) ----------------------------------
+
+-- Vague 39 : « Spawn » (une vitrine tout de suite, remplace celle en jeu), « Open » (la vitrine fermée en jeu
+-- s'ouvre, butin) ou « Seal » (elle se referme sans rien lâcher), même de nuit ou seul. Refusé quand le
+-- service n'écoute pas (hors de Studio avec Features.FortuneTower = false : ni casse ni colis branchés).
+-- Renvoie ok et un message en anglais (texte du jeu, montré à l'admin).
+function FortuneTowerService.Force(action: string): (boolean, string)
+	if not LISTENING then
+		return false, "Fortune Tower is off (Features.FortuneTower)."
+	end
+	local vault = current
+	if action == "Open" or action == "Seal" then
+		if vault == nil or vault.State ~= "Active" then
+			return false, "No closed Fortune vault in play."
+		end
+		if action == "Open" then
+			WindowService.RemoveTarget(vault.WindowId) -- plus aucun coup
+			openVault(vault, nil)
+			return true, `Fortune vault {vault.Number} opened`
+		end
+		removeVault(vault, FortuneTower.Messages.Sealed)
+		return true, `Fortune vault {vault.Number} sealed`
+	elseif action == "Spawn" then
+		if vault then
+			removeVault(vault, nil)
+		end
+		if not spawnVault() then
+			return false, "No Fortune vault could spawn (see the output)."
+		end
+		return true, `Fortune vault {vaultCount} spawned`
+	end
+	return false, "Unknown Fortune Tower action."
+end
+
 -- Crochet de test (Studio seulement) ------------------------------------------------------------------
 
 local function onTest()
@@ -806,15 +842,9 @@ local function onTest()
 	end
 	Workspace:SetAttribute(TEST_ATTRIBUTE, nil)
 	local word = if type(value) == "string" then string.lower((string.gsub(value, "%s", ""))) else nil
-	local vault = current
 	if word == "open" or word == "seal" then
-		if vault == nil or vault.State ~= "Active" then
+		if not FortuneTowerService.Force(if word == "open" then "Open" else "Seal") then
 			warn(`[FortuneTowerService] {TEST_ATTRIBUTE} = {value} : aucune vitrine fermée en jeu`)
-		elseif word == "open" then
-			WindowService.RemoveTarget(vault.WindowId) -- plus aucun coup
-			openVault(vault, nil)
-		else
-			removeVault(vault, FortuneTower.Messages.Sealed)
 		end
 		return
 	end
@@ -822,10 +852,7 @@ local function onTest()
 		warn(`[FortuneTowerService] {TEST_ATTRIBUTE} = {value} : attendu true, "Open" ou "Seal"`)
 		return
 	end
-	if vault then
-		removeVault(vault, nil)
-	end
-	spawnVault()
+	FortuneTowerService.Force("Spawn")
 end
 
 -- Démarrage -----------------------------------------------------------------------------------------

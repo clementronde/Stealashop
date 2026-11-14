@@ -41,7 +41,9 @@
 --                                      boutique Robux est coupée (Features.RobuxShop)
 --   SetSkill (Studio)                  text = Id de Config/SkillTree, value = niveau : crochet SkillTest
 --   StartEvent (Studio)                text = Truck (value = zone, au hasard sinon : crochet TruckSpawnNow), Night
---                                      ou Day (value = durée en s, facultative : NightCycleService.SkipTo)
+--                                      ou Day (value = durée en s, facultative : NightCycleService.SkipTo) ;
+--                                      vague 39 : Fortune, FortuneOpen, FortuneSeal (FortuneTowerService.Force :
+--                                      lancer, ouvrir, refermer la vitrine) ; Truck refusé pendant une vitrine
 --   Teleport                           value = 0 (sa boutique, PlotService.TeleportHome) ou une zone de 1 à 6 :
 --                                      au milieu des magasins PNJ de la zone (tag NPCStore, attribut Zone), posé
 --                                      au sol ; AntiCheatService.Allow juste avant
@@ -82,6 +84,7 @@ local AntiCheatService = require(script.Parent.AntiCheatService)
 local CosmeticService = require(script.Parent.CosmeticService)
 local DataService = require(script.Parent.DataService)
 local DisplayService = require(script.Parent.DisplayService)
+local FortuneTowerService = require(script.Parent.FortuneTowerService)
 local IndexService = require(script.Parent.IndexService)
 local InventoryService = require(script.Parent.InventoryService)
 local MachineVariantService = require(script.Parent.MachineVariantService)
@@ -121,6 +124,9 @@ local POTION_HOOK = "PotionTest"
 local PASS_HOOK = "MonetizationTest"
 local SKILL_HOOK = "SkillTest"
 local TRUCK_HOOK = "TruckSpawnNow"
+-- Vague 39 : événements de la Fortune Tower → action de FortuneTowerService.Force ; vitrine en jeu (tag).
+local FORTUNE_ACTIONS: { [string]: string } = { Fortune = "Spawn", FortuneOpen = "Open", FortuneSeal = "Seal" }
+local FORTUNE_VAULT_TAG = "FortuneVault"
 
 local IS_STUDIO = RunService:IsStudio()
 
@@ -525,6 +531,11 @@ handlers.StartEvent = function(call: Call): (boolean, string)
 		if not isInt(zone, 1, #Zones) then
 			return false, `Zone must be 1 to {#Zones}.`
 		end
+		for _, vault in CollectionService:GetTagged(FORTUNE_VAULT_TAG) do
+			if vault:IsDescendantOf(Workspace) then
+				return false, "A Fortune vault is in play: no truck now."
+			end
+		end
 		setHook(TRUCK_HOOK, zone)
 		return true, `Truck sent to zone {zone}`
 	elseif event == "Night" or event == "Day" then
@@ -533,6 +544,10 @@ handlers.StartEvent = function(call: Call): (boolean, string)
 			return false, "Day/night cycle is off."
 		end
 		return true, `{event} started`
+	end
+	local action = if event then FORTUNE_ACTIONS[event] else nil
+	if action ~= nil then
+		return FortuneTowerService.Force(action)
 	end
 	return false, "Unknown event."
 end

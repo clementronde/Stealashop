@@ -62,7 +62,8 @@ Animations.Guard = {
 Animations.NightGuard = table.clone(Animations.Guard)
 table.insert(Animations.NightGuard, { Name = "Arrest", Loop = false, Priority = "Action", Marker = "Grab" })
 
--- 2 animations dans chaque vendeur.
+-- 2 animations dans chaque vendeur (Vendor_* des comptoirs du hub). Jouées par VendorService (vague 39) :
+-- Idle en boucle, Wave quand un joueur approche (Config/Vendors).
 Animations.Vendor = {
 	{ Name = "Idle", Loop = true, Priority = "Idle" },
 	{ Name = "Wave", Loop = false, Priority = "Action" },
