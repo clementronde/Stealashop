@@ -98,8 +98,25 @@ local function inContractWall(d: Instance): boolean
 	return CS:HasTag(d, "ZoneGate") or CS:HasTag(d, "NightWall")
 end
 
+-- Clément, 2026-11-14 : dans les zones du couloir, les bâtiments et le décor gardent leurs vrais néons. Seules les
+-- grandes surfaces lumineuses restent en néon la nuit seulement : fenêtres de Tokyo (Zone_3, Windows) et anneaux
+-- de New York (Zone_6, Ring). Les magasins PNJ (STORE_*) suivent toujours la règle.
+local function corridorDecorKept(d: Instance): boolean
+	local zone, store = nil, false
+	local p = d.Parent
+	while p and p ~= workspace do
+		if p.Name:match("^STORE_") then store = true end
+		if p.Parent == workspace.Map and p.Name:match("^Zone_%d$") then zone = tonumber(p.Name:match("%d")) end
+		p = p.Parent
+	end
+	if not zone or store then return false end
+	local base = d.Name:gsub("_?%d+$", "")
+	return not ((zone == 3 and base == "Windows") or (zone == 6 and base == "Ring"))
+end
+
 local plainCount, plateCount, keptBack = 0, 0, 0
 local function treatPart(d: BasePart)
+	if corridorDecorKept(d) then return end
 	if d.Name == "Plate" and d.Parent and d.Parent.Name:match("^CollectPad_") then
 		set(d, "Material", Enum.Material.SmoothPlastic)
 		set(d, "Color", rgb(76, 214, 72))
