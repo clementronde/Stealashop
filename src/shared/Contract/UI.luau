@@ -56,10 +56,10 @@ UI.Screens = {
 			-- Bouton sac à dos de la colonne gauche (L-079, relevé de Studio du 2026-11-10) : ouvre et ferme
 			-- UI_Inventory (InventoryController).
 			{ Path = "InventoryButton", Class = BUTTON },
-			-- Bouton engrenage de SocialRow (L-095 point 2, relevé de Studio du 2026-11-11) : caché par
-			-- Clément, montré par SettingsController (Features.Settings) ; ouvre UI_Settings.
+			-- Bouton engrenage de SocialRow (L-095 point 2, relevé de Studio du 2026-11-11) : visible dans Studio depuis le 2026-11-14 (L-159), caché par HudController sans
+			-- Features.Settings, montré par SettingsController ; ouvre UI_Settings.
 			{ Path = "SettingsButton", Class = BUTTON },
-			-- Bouton « Upgrades » de la colonne gauche (vague 27, L-096 point 2) : caché par Clément, montré
+			-- Bouton « Upgrades » de la colonne gauche (vague 27, L-096 point 2) : visible dans Studio depuis le 2026-11-14 (L-159), montré
 			-- par SkillTreeController ; ouvre UI_SkillTree. Un exemplaire dans LeftRail et un dans
 			-- LeftRailTouch (UI.Twins).
 			{ Path = "SkillTreeButton", Class = BUTTON },

@@ -161,6 +161,8 @@ local TIMER_RED: Color3 = UiMotion.TimerTick.RedColor
 local GATED: { { Element: string, Enabled: boolean } } = {
 	{ Element = "RobuxShopButton", Enabled = Features.RobuxShop or Features.RobuxShopPreview },
 	{ Element = "IndexButton", Enabled = Features.Index },
+	-- Visible dans Studio depuis le 2026-11-14 (L-159) : sans les réglages, l'engrenage ne doit rien montrer.
+	{ Element = "SettingsButton", Enabled = Features.Settings },
 	{ Element = "RebirthButton", Enabled = Features.Rebirth or Features.RebirthPreview },
 	{ Element = "NightCountdown", Enabled = Features.NightCycle },
 }

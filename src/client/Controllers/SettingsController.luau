@@ -21,7 +21,7 @@
 --         Assets/Sounds/UI/Clicks/UI_Click_<Id> de Clément, joué en 2D par MarkerSounds (donc dans le
 --         groupe SFX). Laissés de côté : le Template caché d'une liste (ses copies, elles, sont
 --         branchées), et PrevButton / NextButton de ClickRow, qui jouent eux-mêmes le nouveau son.
---   - UI_HUD.SettingsButton (caché dans Studio) : montré par le code si Features.Settings ; il ouvre
+--   - UI_HUD.SettingsButton (visible dans Studio depuis le 2026-11-14, L-159) : montré par le code si Features.Settings, caché par HudController sinon ; il ouvre
 --     UI_Settings (un 2e appui le ferme), Root.Window.CloseButton le ferme. Ouverture et fermeture par
 --     UI/Motion (groupe ScreenGroup « Menu », Motion.SetCloser), comme les autres menus.
 --   - MusicRow et SoundRow : Slider.Track (clic sur la barre) et Slider.Knob (bouton rond qu'on glisse,
@@ -628,8 +628,8 @@ local function bindHud(gui: Instance)
 	if hudBound[gui] then
 		return
 	end
-	-- Tous ses exemplaires, comme SkillTreeButton (L-108 point 7) : caché par Clément dans Studio
-	-- (SocialRow), montré en Play par le code quand Features.Settings est vrai.
+	-- Tous ses exemplaires, comme SkillTreeButton (L-108 point 7) : visible dans Studio depuis le 2026-11-14 (L-159)
+	-- (SocialRow) ; montré en Play par le code quand Features.Settings est vrai, caché par HudController sinon.
 	local bound = 0
 	for _, found in Find.all(gui, HUD_BUTTON) do
 		if found:IsA("GuiButton") then

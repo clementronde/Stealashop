@@ -6,7 +6,7 @@
 -- valeurs dans Config/UiMotion (SkillTree, Shake, CashBump, Close…).
 --
 -- Rôle :
---   - UI_HUD.SkillTreeButton (caché par Clément) : montré dans tous ses exemplaires (LeftRail sur PC,
+--   - UI_HUD.SkillTreeButton (visible dans Studio depuis le 2026-11-14, L-159) : montré dans tous ses exemplaires (LeftRail sur PC,
 --     LeftRailTouch sur téléphone), il ouvre l'écran (un 2e appui le ferme). Sur téléphone (écran tactile sans
 --     clavier, même règle que la barre du bas), LeftRailTouch est montré et LeftRail caché (décision de Clément,
 --     L-096, version B : la colonne de 5 boutons déborde sur l'argent). CloseButton ferme l'écran. Groupe
