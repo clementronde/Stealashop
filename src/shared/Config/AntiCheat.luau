@@ -2,8 +2,9 @@
 -- Contrôle des déplacements (Partie 1, sections 9.6 et 14.3 ; AntiCheatService, DEV-060 ;
 -- interrupteur : Config/Features.AntiCheat). V0 prudente : un faux positif gâche la partie d'un
 -- joueur honnête, donc chaque marge penche du côté du joueur.
--- Valeurs du doc (9.6) : lues dans Balance.AntiCheat, leur seule source (PvPService lit aussi
--- SpeedTolerance pour son contrôle du dépôt). Les autres : « V0 », proposées, absentes du doc, à
+-- Valeurs du doc (9.6) : lues dans Balance.AntiCheat, leur seule source (PvPService lit
+-- CarrierPushFactor pour son contrôle du dépôt ; GuardService et BatService, CatchVerticalReach par
+-- shared/CatchReach). Les autres : « V0 », proposées, absentes du doc, à
 -- régler en jeu. Unités : secondes, studs, studs/s (comme une WalkSpeed).
 
 local DeepFreeze = require(script.Parent.DeepFreeze)
@@ -45,6 +46,27 @@ local AntiCheat = {
 	-- V0 : un autre joueur ou un vigile à PushRadius studs ou moins peut pousser : sa vitesse compte
 	-- comme vitesse autorisée.
 	PushRadius = 6,
+	-- V0 proposé, absent du doc (audit du 2026-11-14) : un porteur (colis PNJ ou objet volé) n'est poussé
+	-- par un autre joueur qu'à sa propre vitesse × CarrierPushFactor au plus (un complice rapide collé à lui
+	-- ne lui ouvre plus sa vitesse) ; un vigile le pousse toujours à sa vitesse. Même plafond pour le
+	-- contrôle du dépôt d'un objet volé (PvPService : Balance.Carry.StolenItemWalkSpeed × CarrierPushFactor).
+	CarrierPushFactor = 1.5,
+
+	-- Vol (audit du 2026-11-14), V0 proposés, absents du doc : à chaque contrôle, un rayon vers le bas
+	-- sous le HumanoidRootPart. Plus de FlyHeight studs entre ses pieds et le sol (pièce qui bloque,
+	-- terrain ou eau), sans tomber, pendant FlyTime s = détection « Fly » (ligne, retour au dernier point
+	-- au sol hors de Studio, jamais d'expulsion). Un saut monte à environ 7,2 studs (L-140) et dure moins
+	-- d'une seconde. « Tomber » : descendre en moyenne d'au moins FlyFallSpeed studs/s depuis le début du
+	-- compte (le compte repart alors de 0). Position figée (le réseau s'est arrêté) : le compte attend, au
+	-- plus StaleMax s ; un joueur immobile en l'air est donc vu après FlyTime + StaleMax s.
+	FlyHeight = 12,
+	FlyTime = 1.5,
+	FlyFallSpeed = 4,
+
+	-- Capture et coup de batte (GuardService, BatService ; shared/CatchReach), V0 proposé, absent du doc
+	-- (audit du 2026-11-14) : la distance (CatchDistance, Bat.Range) se mesure à l'horizontale, avec au
+	-- plus CatchVerticalReach studs d'écart en hauteur entre les deux HumanoidRootPart.
+	CatchVerticalReach = 10,
 
 	-- Déplacements faits par le code (AntiCheatService.Allow(player, secondes, raison)) : rien n'est
 	-- contrôlé pendant la durée du déplacement + AllowSettle + ping × AllowPingFactor (au plus

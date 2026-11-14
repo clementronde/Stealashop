@@ -60,10 +60,12 @@
 -- automatique, jusqu'à 5 min plus tard). Seul un arrêt brutal du serveur pendant ces deux écritures
 -- pourrait encore laisser un doublon ou une perte (deux clés DataStore, aucune transaction possible) ;
 -- l'uid reste le même chez le voleur : un doublon se repère.
--- Contrôle du dépôt (9.6, V0 proposé, absent du doc) : la distance de la prise au dépôt ne peut pas
--- dépasser ce qu'un joueur au plafond de vitesse parcourt dans ce temps (Balance.Stats.MaxWalkSpeed ×
--- Balance.AntiCheat.SpeedTolerance, plus ESCAPE_MARGIN s ; le voleur, lui, porte à vitesse fixe, 2026-11-13) :
--- sinon CarryService.ReportAnomaly, l'objet revient. Un joueur lent ou qui rame n'est jamais pris.
+-- Contrôle du dépôt (9.6, V0 proposé, absent du doc) : la distance de la prise au dépôt, à l'horizontale, ne
+-- peut pas dépasser ce qu'un porteur parcourt dans ce temps, poussé compris (le voleur porte à vitesse fixe,
+-- 2026-11-13 : Balance.Carry.StolenItemWalkSpeed × AntiCheat.CarrierPushFactor, plus ESCAPE_MARGIN s ;
+-- avant l'audit du 2026-11-14 : Balance.Stats.MaxWalkSpeed × SpeedTolerance, qu'un complice rapide collé
+-- au voleur ouvrait) : sinon CarryService.ReportAnomaly, l'objet revient. Un joueur lent ou qui rame n'est
+-- jamais pris.
 -- Avant lui, AntiCheatService.Verify(voleur, From, StartedAt) (DEV-060) contrôle tout de suite son
 -- dernier déplacement (téléport) et le trajet depuis la prise à sa vitesse réelle (speed hack) :
 -- sanctionné, le portage échoue et l'objet revient. Le contrôle du dépôt reste un filet : il marche
@@ -184,6 +186,7 @@ local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage.Shared
 local Balance = require(Shared.Config.Balance)
+local AntiCheat = require(Shared.Config.AntiCheat)
 local Features = require(Shared.Config.Features)
 local Items = require(Shared.Config.Items)
 local Mutations = require(Shared.Config.Mutations)
@@ -277,9 +280,9 @@ local HOLD_EXPIRY = 1
 local NOTICE_INTERVAL = 3
 -- V0 proposé, absent du doc : marge du contrôle du dépôt (voir l'en-tête), en secondes.
 local ESCAPE_MARGIN = 0.5
--- Filet contre les téléportations : le plafond de vitesse, large exprès (le voleur porte à vitesse fixe,
--- Balance.Carry.StolenItemWalkSpeed, et AntiCheatService.Verify suit déjà sa vitesse réelle).
-local MAX_ESCAPE_SPEED = Balance.Stats.MaxWalkSpeed * Balance.AntiCheat.SpeedTolerance
+-- Filet contre les téléportations : la vitesse fixe du voleur, poussé compris (audit du 2026-11-14, voir
+-- l'en-tête ; AntiCheatService.Verify suit déjà sa vitesse réelle).
+local MAX_ESCAPE_SPEED = Balance.Carry.StolenItemWalkSpeed * AntiCheat.CarrierPushFactor
 
 -- Bot joueur (voir l'en-tête) : ce que ce service lit et appelle chez BotService. require protégé : sans
 -- BotService (anciens bancs), aucune boutique de bot.
@@ -1005,7 +1008,8 @@ local function deposit(theft: Theft, root: BasePart)
 		return
 	end
 	local elapsed = os.clock() - theft.StartedAt
-	local distance = (root.Position - theft.From).Magnitude
+	local offset = root.Position - theft.From
+	local distance = Vector3.new(offset.X, 0, offset.Z).Magnitude -- à l'horizontale : sauter d'un étage est permis
 	if distance > MAX_ESCAPE_SPEED * (elapsed + ESCAPE_MARGIN) then
 		CarryService.ReportAnomaly(thief, `objet volé déposé à {math.round(distance)} studs en {math.round(elapsed * 10) / 10} s`)
 		if thefts[thief] == theft then
