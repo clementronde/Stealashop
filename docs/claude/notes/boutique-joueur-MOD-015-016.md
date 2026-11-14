@@ -157,3 +157,61 @@ Session « boutique du joueur », 2026-11-07, mode Edit seulement (pas de Play, 
 - `CandyTreadmill.lua` **n'est pas posé** (référence : `_scripts/CandyTreadmill_reference.lua`). La partie fixe est dans `treadmill_fx.luau`, dossier `CandyFX` (18 émetteurs) : `SprinkleArch` (vermicelles et lumière rose), `Sparkle1-4`, `Cotton1-5`, `CandyRain1-2`, `Popper1-6` (`Pop` à Rate 0), `CandyGlowGround`, `RunTrail` (Trail modèle éteint), plus `Belt.RunBurstPoint` avec `RunPops` et `RunPuff` éteints.
 - **Pour Ironix** : rotation de `Peppermint` et `PeppermintSwirl` autour de l'axe avant-arrière (centre (0, 2,45, −3,1), 0,6 rad/s au repos, 2,5 en course, sens horaire vu de l'avant), pulsation de `CandyGlow` (FF4FA3 vers blanc, 0,3·pulse, sinus 2,6 rad/s) et de `CandyFX.SprinkleArch.Light` (1,2 à 1,8), clignotement de `BeltArrows` (FFD6EA vers FF4FA3, 6 rad/s au repos, 12 en course), `Emit` d'un `CandyFX.PopperN.Pop` au hasard (18 au repos, 30 en course, toutes les 0,9 à 1,5 s ; 0,4 à 1 s en course), défilement de `BeltTexture` (sens inverse : OffsetStudsV diminue), et pendant la course `RunPops`, `RunPuff` allumés et `CandyFX.RunTrail` copié sur le HumanoidRootPart (attaches en (±0,8, −1,5, 0,4)).
 - Showroom : `_SHOWROOM_CLEMENT/TAPIS`, 11 tapis. ContractChecker en Edit : « Contrat : OK ».
+
+## 2026-11-12 : tapis Void, dossier VoidFX (L-102 q12) et barre du banc (L-101 q3)
+
+- **Tapis Void.** `PLOT_Treadmill_Void` a maintenant son dossier **`VoidFX`**, comme les autres paliers : c'est à ce dossier que le code reconnaît la variante. Ce sont des pièces invisibles, sans collision, tournées vers le coureur.
+  - Allumées en permanence :
+    - `Portal`, avec les émetteurs `Portal` (tourbillon) et `Ring` (anneau de runes), qui tournent seuls (`RotSpeed`) ;
+    - `PortalLight/Light`, une PointLight violette `A35CFF` de luminosité 1,9 ;
+    - `Flame_L` et `Flame_R`, avec l'émetteur `Flame` ;
+    - `Aura_L` et `Aura_R`, avec les émetteurs `Glow` et `Sparkle`.
+  - **`Belt/RunBurstPoint/RunBurst`** : des étincelles violettes aux pieds, **éteintes** (`Enabled = false`).
+  - Les anciens points posés sur `VoidSteel` (`PortalPoint`, `FlamePoint_*`, `AuraPoint_*`) sont retirés.
+  - Pour Ironix, ce que le code anime :
+    - le défilement de `BeltTexture` ;
+    - `RunBurst` allumé pendant la course ;
+    - `PortalLight.Light` qui pulse de 1,4 à 2,4 ;
+    - en course, le `Rate` de `Portal` et de `Ring` multiplié par 2.
+  - Script : `tools/clement/hub/treadmill_fx.luau`.
+- **Barre du banc.** Rien à changer. `Bench/Barbell/Bar` est un cylindre de 6,2 × 0,22 × 0,22, et son grand axe (X local) va d'une main à l'autre, le long de l'axe X de la boutique, puisque le joueur est allongé selon Z. Je l'ai vérifié sur le gabarit et sur les 6 boutiques. `BenchBarController` prend déjà le plus long côté de la boîte : la barre est orientée correctement, et les disques et colliers suivent.
+
+## 2026-11-14 : disposition « Steal a … » (allée centrale et deux files)
+
+Référence : `StealAShop-Art/References/2026-11-13_Boutiques/boutique_joueur_reference.webp`. Sauvegarde : `ServerStorage/Assets/MapBackup_Shops_2026-11-14_09h31` (gabarit, `PLOT_Shop_Rayons` et les 8 boutiques, sans tags). Fait sur le gabarit et sur `PLOT_Shop_Rayons`. Aperçu validé par Clément, puis files écartées de 2 studs de l'allée. Les 8 boutiques du hub sont réinstallées (même pivot, mêmes attributs), l'aperçu est retiré, et le ContractChecker est OK.
+
+Repère du gabarit : avant vers −Z, porte en z −40.
+
+- **Allée** : `Carpet`, un tapis rouge (x −6..6, de z −39,6 à −16,4) dans le cœur, prolongé par `Stage_2/CarpetExt` (de z −16,4 à 39,6). C'est du décor : sans collision, sans contact, sans requête.
+- **Deux files face à face**, avec un rang tous les 7 studs (z = −32, −25, −18, −11, −4, 3, 10, 17, 24, 31) :
+  - **`DisplayStand_xx`** : un socle bas de 4 × 1,2 × 4, centré en x = ±16 (dessus à y 1,5) ;
+  - **`DisplaySlot_xx`** : en (±16, 1,5, z), **tourné vers l'allée** (axe −Z de l'attachment vers +X à gauche et vers −X à droite). Le code pose l'objet à ce point, donc l'objet regarde l'allée ;
+  - **`UnboxBench_01` à `_04`** : au même point que `DisplaySlot_01` à `_04` ;
+  - **`CollectPad_xx`** : en (±11, 0,36, z), devant l'objet, côté allée. Elle reste carrée (3,2) et couchée, et son texte se lit toujours en marchant vers la sortie.
+- **Numérotation** : le rayon r occupe les rangs `2r−1` et `2r`. `4r−3` à gauche et `4r−2` à droite au premier rang, `4r−1` à gauche et `4r` à droite au second. Le rayon 1 (z −32 et −25) est le plus près de l'entrée. Le niveau k contient les rayons 1 à k : au niveau 1, le fond est à z −16,4 ; dès le niveau 2, à z 39,6.
+- **`RayonSpot_02` à `_05`** (dans `Stage_2/RayonSpots`) : deux contours par rayon, un de chaque côté, autour des socles et des plaques.
+- **Décor retiré**, parce qu'il gênait les files ou l'allée, ou ne servait à rien :
+  - `Stage_2/Stock` et `Stage_2/Promo` ;
+  - `Stage_3/WallShelves` (étagères murales et produits factices) ;
+  - `Stage_5/Palms` et `Stage_5/RedCarpet` (l'ancien tapis à cordons).
+- **Inchangé** : `RarestPedestal`, `StageUpgradePoint` (0, −18,6) et `StageUpgradePoint_2` (0, 37,6), `DisplayUpgradePoint` (−15,1, −36,5), `SpawnPoint`, `TrapSlot_xx`, `VaultSlot_xx`, `Treadmill`, `Bench`, les `UseZone`, `Bounds` et `DepositZone`.
+- Contrôlé : socles, plaques et allée ne se chevauchent pas, et aucune autre pièce du gabarit n'est posée sur les files. Seule exception : la rambarde du fond du niveau 1, qui disparaît au niveau 2, quand le rayon 2 arrive. Un rang laisse 3 studs entre deux socles, et 3,4 studs entre une plaque et l'allée (files écartées de 2 studs à la demande de Clément).
+- **Pour Ironix** :
+  - aucun nom ne change ;
+  - à vérifier dans le code : ce qui supposait un objet tourné vers −Z (étiquette au-dessus de l'objet, invite de vol, caméra de l'ouverture du colis sur le présentoir).
+
+## 2026-11-14 : boutique moins large (48 studs au lieu de 64)
+
+Demande de Clément, après le passage aux deux files. Sauvegarde : `ServerStorage/Assets/MapBackup_Shops_2026-11-14_10h10`. Fait sur le gabarit, avec la fonction `narrowWidth` de `plot_shop_builder.luau`. Les 8 boutiques du hub sont réinstallées (même pivot, mêmes attributs), et le ContractChecker est OK.
+
+- **Murs à x = ±24.** Tout ce qui est au-delà de |x| = 10 est resserré vers le centre, de façon continue : x' = ±(10 + (|x| − 10) × 14/22). Rien ne se chevauche et rien ne se décolle.
+  - Pièces concernées : façade, vitrines, murs, toit, auvents, barrières invisibles, champs de force, murets, rambardes et caméras.
+  - Les carreaux du damier hors de |x| ≤ 24 sont retirés.
+- **Nouvelles tailles** : `Bounds` et `PlotFloor` font 48 × 80 (x −24..24), et `DepositZone` va de x −23,7 à 23,7.
+- **Points déplacés** : `DisplayUpgradePoint` passe en (−13,25, 0,3, −36,5) ; `CashPad`, toujours invisible et enfoui, suit la même règle. `SpawnPoint`, `StageUpgradePoint`, `StageUpgradePoint_2`, `TrapSlot_xx` et `VaultSlot_xx` ne bougent pas (|x| ≤ 10).
+- **Inchangé** :
+  - la porte (x −10..10) et l'allée (`Carpet` et `CarpetExt`) ;
+  - les deux files : socles à x ±16, à 5,3 studs des murs, et plaques à x ±11 ;
+  - les `RayonSpots` ;
+  - `Treadmill` (x −24) et `Bench` (x 24), avec leurs `UseZone`, ainsi que `RarestPedestal` (x 7,5) : ils restent devant, aux coins de la façade.
+- **À vérifier dans le hub** : les boutiques laissent 8 studs de pelouse de plus de chaque côté. Les allées du hub posées pour l'ancienne largeur sont à revoir, si besoin.
