@@ -71,7 +71,7 @@ local function refresh()
 	local character = localPlayer.Character
 	local humanoid = if character then character:FindFirstChildOfClass("Humanoid") else nil
 	local previous = blocked
-	if previous and previous ~= humanoid then
+	if previous and not rawequal(previous, humanoid) then
 		-- Ancien perso (réapparition) : on lui rend la grimpe s'il existe encore, et on l'oublie.
 		if previous.Parent then
 			previous:SetStateEnabled(CLIMBING, true)
@@ -89,7 +89,7 @@ local function refresh()
 			humanoid:ChangeState(Enum.HumanoidStateType.Freefall)
 		end
 		blocked = humanoid
-	elseif not want and blocked ~= nil then
+	elseif not want and blocked then
 		humanoid:SetStateEnabled(CLIMBING, true)
 		blocked = nil
 	end
