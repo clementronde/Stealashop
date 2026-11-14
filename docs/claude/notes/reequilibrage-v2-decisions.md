@@ -22,11 +22,23 @@ Ses mots :
 Ses mots, questions de la section 9 de [equilibrage-v2-proposition.md](equilibrage-v2-proposition.md) :
 
 1. Cible de 7 h 30 : « Sans les aides » (7 h 35 de jeu actif).
-2. PV des vitrines de la zone 6 : « 374M » (deux joueurs au maximum à 10 coups/s, et non 320M).
+2. PV des vitrines de la zone 6 : « 374M » (deux joueurs au maximum à 10 coups/s, et non 320M). Remplacé ensuite par la règle du chrono de police (plus bas).
 5. Potion de vitesse : « On enlève potion de vitesse ». L'Index (+3 % de marche par zone) reste, tant que Cantin n'a rien dit.
 6. Gamepass Hydraulic Gloves : « Il peut casser car il a payé » : le pass reste, et un joueur qui l'a peut casser seul une vitrine de la zone 6.
 
 Questions 3, 4 et 7 (niveau 1 du tapis offert, taps au tapis +50 %, joueur prudent à 15 h 30) : pas encore répondues, on garde les choix par défaut de la proposition. Profils DEV : remise à zéro (déjà décidé).
+
+### Chrono de police, braquage de 6 s et 5 coups par seconde (Cantin, 14/11)
+
+Ses mots : « on va avoir un chrono quand qq casse la vitre qui sera "La police arrive dans 13 sec" par exemple et quand on tentre ca sera le heist classique mais ca sera 6 secondes. Donc pour repondre a ta question non un joueur seul ne pourra pas casser les 13 sec d'appel de police. De plus on va capper les coups sur la vitrine ca sera max 5coups/s que ce soit dans tes calculs mais réellement ». Pour les zones 1 à 5 : un joueur seul au niveau conseillé casse une vitrine en « 11 sec ».
+
+Règles qui en découlent :
+
+1. **Chrono de police** : au premier coup sur une vitrine, un chrono « la police arrive dans 13 s » démarre (aujourd'hui `Balance.Window.BreakTimer = 13`, qui remet la vitrine à ses PV max à la fin). Vitrine pas cassée à temps : la police arrive.
+2. **Braquage de 6 s** : une fois la vitrine cassée, le chrono du braquage (« HEIST ») dure 6 s au lieu de 13.
+3. **5 coups par seconde au plus** sur une vitrine, dans les calculs et dans le jeu (aujourd'hui `Balance.Hit.MaxHitsPerSecond = 10`).
+4. **Zones 1 à 5** : PV d'une vitrine = ce que casse un joueur seul au niveau conseillé en 11 s.
+5. **Zone 6** : un joueur seul ne casse pas une vitrine en 13 s, deux joueurs oui. Cette règle remplace les 374M (et les 320M) : les PV seront recalculés.
 
 ## À mettre en place dans le code
 
@@ -42,7 +54,8 @@ Questions 3, 4 et 7 (niveau 1 du tapis offert, taps au tapis +50 %, joueur prude
 4. **Nouvelles valeurs** (tapis, prix, armes, auras, PV des vitrines par zone, seuils des zones) : celles de [equilibrage-v2-proposition.md](equilibrage-v2-proposition.md), une fois validées par Cantin. Vérifier les deux contraintes : zone 6 en environ 7 h 30, et zone 6 impossible à casser seul (PV de ses vitrines = dégâts de deux des meilleurs joueurs, arme × aura au maximum, pendant le chrono de 13 s ; potion non comptée).
 5. **Retirer la potion Speed** : son entrée dans `Config/Potions`, son effet dans `PotionService` (`StatsService.SetSpeedModifier`, le seul modificateur posé au-dessus du plafond), sa carte et son minuteur côté client (`PotionController`, `InventoryController`), son icône, le contrat du modèle `POT_Speed`, et ce qui la cite : `AdminService`, `AntiCheatService`, `StatsService`, `TelemetryService`, les attributs de test (`PotionTest`). Vérifier si la tuile `PotionTime` de l'arbre en dépend (elle allonge toutes les potions : elle reste pour les autres). Les potions déjà dans les profils : à vider à la remise à zéro.
 6. **Hydraulic Gloves** : rien à changer, il casse la zone 6 seul (choix de Cantin).
-7. **Remise à zéro des profils DEV** quand les nouvelles valeurs arrivent (le profil de Cantin compris), avec son accord au moment de le faire.
+7. **Chrono de police et braquage** : le chrono de 13 s qui démarre au premier coup devient un chrono de police visible (« POLICE IN 13s » par exemple, texte à valider avec Clément, liaison) ; la police arrive s'il finit avant la casse ; le chrono « HEIST » après la casse passe à 6 s ; `Balance.Hit.MaxHitsPerSecond` passe de 10 à 5 ; PV des vitrines recalculés (zones 1 à 5 : un joueur seul au niveau conseillé en 11 s ; zone 6 : deux joueurs en 13 s, pas un seul).
+8. **Remise à zéro des profils DEV** quand les nouvelles valeurs arrivent (le profil de Cantin compris), avec son accord au moment de le faire.
 
 ## Côté Clément (liaison)
 
