@@ -272,3 +272,13 @@ avant le 18 décembre.
 
 Aucune règle propre aux jeux « Steal a … » ni au thème du vol n'a été trouvée : le vol cartoon relève des règles
 générales (violence cartoon, pas de techniques criminelles détaillées).
+
+## Résultat du prod-check en lecture seule (Claude, 2026-11-14, place DEV en Team Create, `RETIRER = false`)
+
+- Dossiers de développement à retirer avant la PROD : `Workspace._SHOWROOM_CLEMENT` (30 096 objets), `Workspace._INBOX_CLEMENT` (vide), `ServerStorage._GREYBOX_REMPLACE` (856 objets).
+- Packs piégés de L-143 : aucun (déjà retirés). Scripts suspects (`Runtime`, `ScreenBuilder`, `require` d'un numéro, `loadstring`, `getfenv`, `HttpService`) : aucun.
+- `HttpService.HttpEnabled = false` : bien. Aucun attribut de test sur le Workspace.
+- 5 scripts hors des dossiers de code, à regarder avant la PROD :
+  - `Workspace._PROTO_AURA_ECLAIR.Mannequin.Animate` (LocalScript) : prototype d'aura de Clément, posé à la racine du Workspace et pas dans un dossier de développement, il partirait en PROD ; à ranger dans `_SHOWROOM_CLEMENT` ou à ajouter à la liste du prod-check ;
+  - `ReplicatedStorage.GuiAnimatorPlugin` (3 ModuleScripts sains, restes d'un plugin, déjà cités en L-143) : à retirer s'ils ne servent pas ;
+  - `TestService.LuauLSP_Settings` (ModuleScript, réglages de l'extension Luau LSP) : à retirer de la copie PROD.
