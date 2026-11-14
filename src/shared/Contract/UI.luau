@@ -839,5 +839,32 @@ for _, billboard in UI.Billboards do
 		})
 	end
 end
+-- Panneau d'amélioration UpgradeSign (Model de Clément dans Assets/UI, L-082 ; UpgradeController) : vague 42
+-- (L-157 point 2, accord de Clément), TextLabel facultatif Gain sous Level, « +16/s > +32/s » sur le panneau du
+-- tapis. Seul Gain est vérifié ici (le reste du panneau est contrôlé par UpgradeController au démarrage).
+table.insert(UI.Billboards, {
+	Name = "UpgradeSign",
+	Class = "Model",
+	Optional = true,
+	Elements = {
+		{
+			Path = "Gain",
+			Class = "TextLabel",
+			Optional = true,
+			Note = "le gain du tapis (« +16/s > +32/s ») n'est pas affiché",
+		},
+	} :: { Element },
+})
+-- Multiplicateur du trail sur BB_Gain (vague 47, a155 ; nom proposé à Clément) : facultatif. Présent : le
+-- code y écrit « ×2 » (trail équipé > 1) et le montre, sinon le cache. Absent : « ×2 » ajouté à Row.Amount
+-- en texte enrichi (UiMotion.FloatGain.TrailMultiplierColor).
+table.insert(UI.Billboards, {
+	Name = "BB_Gain",
+	Class = "BillboardGui",
+	Optional = true,
+	Elements = {
+		{ Path = "Row.Multiplier", Class = "TextLabel", Optional = true, Note = "le « ×2 » du trail est ajouté à Row.Amount en texte enrichi" },
+	} :: { Element },
+})
 
 return UI

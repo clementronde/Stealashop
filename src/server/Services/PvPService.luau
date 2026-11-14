@@ -40,8 +40,11 @@
 --      Transfert (voir « Transfert sûr ») : l'objet est à lui tout de suite, Source = "PvP", avec sa
 --      zone et sa mutation (DEV-131 : même revenu, même nom, même taille chez le voleur), sur un
 --      présentoir libre (DisplayService.PlaceAuto, le plus proche de lui) sinon dans son inventaire,
---      et il rapporte aussitôt. Puis Lifetime.Steals + 1 pour le voleur, TheftAlert(false), un Notify
---      à chacun, et une sauvegarde des deux profils (plus d'immunité pour la victime).
+--      et il rapporte aussitôt. Vague 44 (a152, Config/HeldItem.DepositToHand = true, Cantin : « oui en main ») :
+--      plus de présentoir, il va dans sa main s'il a les mains libres (HeldItemService.Give), sinon dans
+--      son inventaire (barre du bas) ; il faut alors de la place dans l'inventaire, dès la prise (FullInventory).
+--      L'objet sous antivol volé au sol va toujours dans l'inventaire (sa pose au sol passe par le mode pose).
+--      Puis Lifetime.Steals + 1 pour le voleur, TheftAlert(false), un Notify à chacun, et une sauvegarde des deux profils (plus d'immunité pour la victime).
 --   6. Échec : coup de batte (CarryService.Fail(voleur, "Bat"), DEV-043), mort, départ ou personnage
 --      retiré du voleur, départ de la victime (Fail « VictimLeft »), anomalie (ReportAnomaly), plus de
 --      place au dépôt (« NoRoom »), ou toute autre fin de portage : l'objet revient sur son présentoir
@@ -86,7 +89,13 @@
 --   - ne peut plus voler cette boutique-là pendant PvP.KickRobCooldown (60) s : coups sur sa porte et
 --     StealItem refusés (Notify au plus un par NOTICE_INTERVAL s), et ressortie 10 fois par seconde si
 --     elle revient dans Bounds, même porte cassée. Les autres boutiques et les magasins PNJ restent
---     ouverts pour elle.
+--     ouverts pour elle ;
+--   - vague 43 (Cantin, 2026-11-14) : sortie alors que la porte est cassée, la porte (PlotDoor/Window) se
+--     reconstruit tout de suite à ses PV max (WindowService.Rebuild, donc OnRebuilt : la fenêtre de vol se
+--     ferme comme avant) dès qu'il ne reste plus aucun intrus dans Bounds (même règle que le point d'attente
+--     de la reconstruction) ; s'il en reste un, elle attend qu'il soit sorti ou éjecté (revu 10 fois par
+--     seconde). Un voleur déjà dehors avec un objet n'est plus un intrus : la porte ne l'attend pas. Décision
+--     de Cantin (2026-11-14) : frappé alors qu'il est déjà dehors, la porte se répare aussi, par la même règle.
 -- Vague 37 (a124, L-117 point 7) : le bot défend aussi sa boutique (BotService) ; son coup réussi
 -- (BatService.OnBotHit, « Intruder » ou « Defend ») a le même effet sur la cible, sans retour au propriétaire.
 -- Un joueur mort dans le volume Bounds d'une boutique qui n'est pas la sienne (joueur ou bot) prend la
@@ -188,6 +197,7 @@ local Shared = ReplicatedStorage.Shared
 local Balance = require(Shared.Config.Balance)
 local AntiCheat = require(Shared.Config.AntiCheat)
 local Features = require(Shared.Config.Features)
+local HeldItem = require(Shared.Config.HeldItem) -- vague 44 (a152) : DepositToHand
 local Items = require(Shared.Config.Items)
 local Mutations = require(Shared.Config.Mutations)
 local PvP = require(Shared.Config.PvP)
@@ -293,6 +303,8 @@ type BotApi = {
 	Release: (plot: Model, uid: string, thief: Player) -> boolean,
 	IsHeld: (plot: Model, uid: string) -> boolean,
 	TakeHeld: (plot: Model, uid: string, thief: Player) -> boolean,
+	-- Vague 42 (L-146 point 3) : interdiction après un coup du bot pendant le tuto (nil : KickRobCooldown).
+	KickCooldown: ((player: Player) -> number?)?,
 }
 local botModule = script.Parent:FindFirstChild("BotService")
 local botLoaded: boolean, botResult: any = false, nil
@@ -379,6 +391,9 @@ local MESSAGES: { [string]: string } = {
 	StolenLocked = "You stole the %s! Put it down in your shop: its anti-theft starts there.",
 	FloorReturned = "Your %s is back in your shop!",
 	FullInventory = "Your inventory is full: make room before stealing.",
+	-- Vague 44 (a152, HeldItem.DepositToHand), V0 proposés, absents du doc :
+	StolenToHand = "You stole the %s: it's in your hand, put it on a display!",
+	StolenToBag = "You stole the %s: it went to your inventory.",
 }
 
 local IS_STUDIO = RunService:IsStudio()
@@ -587,8 +602,10 @@ local function banLeft(player: Player, plot: Model): number
 end
 
 -- `player` ne peut plus voler `plot` pendant PvP.KickRobCooldown s (une interdiction en cours repart à zéro).
-local function ban(player: Player, plot: Model, why: string)
-	local endsAt = Workspace:GetServerTimeNow() + PvP.KickRobCooldown
+-- Vague 42 : `duration` (s) à la place, pour un coup du bot pendant le tuto (BotService.KickCooldown).
+local function ban(player: Player, plot: Model, why: string, duration: number?)
+	local seconds = duration or PvP.KickRobCooldown
+	local endsAt = Workspace:GetServerTimeNow() + seconds
 	local byPlot = robBans[player] or {}
 	robBans[player] = byPlot
 	byPlot[plot] = endsAt
@@ -596,7 +613,7 @@ local function ban(player: Player, plot: Model, why: string)
 	if name then
 		player:SetAttribute(name, endsAt)
 	end
-	log(`{player.Name} ne peut plus voler {plot.Name} pendant {PvP.KickRobCooldown} s ({why})`)
+	log(`{player.Name} ne peut plus voler {plot.Name} pendant {seconds} s ({why})`)
 end
 
 local function cooldownMessage(format: string, left: number): string
@@ -1041,9 +1058,12 @@ local function deposit(theft: Theft, root: BasePart)
 		return
 	end
 	-- Objet sous antivol : il arrive dans l'inventaire (jamais sur un présentoir) ; sinon, présentoir ou inventaire.
-	local room = if theft.Floor then DisplayService.HasInventoryRoom(thief) else DisplayService.HasRoom(thief)
+	-- Vague 44 (a152, Cantin : « oui en main ») : HeldItem.DepositToHand, en main ou dans l'inventaire, jamais seul
+	-- sur un présentoir ; il faut donc de la place dans l'inventaire, comme pour l'objet sous antivol.
+	local toHand = HeldItem.DepositToHand == true
+	local room = if theft.Floor or toHand then DisplayService.HasInventoryRoom(thief) else DisplayService.HasRoom(thief)
 	if not room then
-		notify(thief, if theft.Floor then MESSAGES.FullInventory else MESSAGES.Full, "Warning")
+		notify(thief, if theft.Floor or toHand then MESSAGES.FullInventory else MESSAGES.Full, "Warning")
 		abandon(theft, "NoRoom")
 		return
 	end
@@ -1073,8 +1093,19 @@ local function deposit(theft: Theft, root: BasePart)
 		Mutation = mutation,
 		AntiTheft = if theft.Floor then true else nil,
 	}
-	local slot = if theft.Floor then nil else DisplayService.PlaceAuto(thief, theft.Uid, root.Position)
+	local slot = if theft.Floor or toHand then nil else DisplayService.PlaceAuto(thief, theft.Uid, root.Position)
 	CarryService.Consume(thief, "Deposited")
+	local inHand = false
+	if toHand then
+		local module = script.Parent:FindFirstChild("HeldItemService") -- require protégé : bancs sans lui
+		local ok, given = pcall(function()
+			return module ~= nil and (require(module :: ModuleScript) :: any).Give(thief, theft.Uid) == true
+		end)
+		if not ok then
+			warn(`[PvPService] HeldItemService.Give ({thief.Name}, {theft.Uid}) : {given}`)
+		end
+		inHand = ok and given == true
+	end
 
 	-- Un vol au bot ne compte pas pour les classements (en-tête).
 	if victim then
@@ -1089,6 +1120,8 @@ local function deposit(theft: Theft, root: BasePart)
 	local name = itemName(theft.ItemId)
 	if theft.Floor then
 		notify(thief, string.format(MESSAGES.StolenLocked, name), "Info")
+	elseif toHand then
+		notify(thief, string.format(if inHand then MESSAGES.StolenToHand else MESSAGES.StolenToBag, name), "Info")
 	elseif slot then
 		notify(thief, string.format(MESSAGES.Stolen, name, Format.income(theft.Payload.Income)), "Info")
 	else
@@ -1186,6 +1219,9 @@ local function stealRefusal(player: Player, plot: Model, slot: number): (string?
 	end
 	if safeSlotsOf(victim, exposed)[slot] then
 		return "objet à l'abri (coffre-fort)", "Safe", MESSAGES.Safe
+	end
+	if HeldItem.DepositToHand and not DisplayService.HasInventoryRoom(player) then -- vague 44 : il ira en main
+		return "plus de place dans l'inventaire du voleur", "FullInventory", MESSAGES.FullInventory
 	end
 	if not DisplayService.HasRoom(player) then
 		return "plus de place chez le voleur", "Full", MESSAGES.Full
@@ -1466,16 +1502,52 @@ local function isIntruder(hitter: Player, target: Player): boolean
 	return bounds ~= nil and root ~= nil and inside(bounds, root.Position)
 end
 
+-- Vague 43 (Cantin, 2026-11-14) : porte réparée après l'éjection d'un intrus, dès que la boutique est vide.
+-- Boutiques en attente : leur porte cassée se reconstruit (WindowService.Rebuild, PV max) dès que le point
+-- d'attente de la reconstruction (rebuildGate : aucun non-propriétaire présent dans Bounds) est ouvert ; revu
+-- tout de suite à l'éjection, puis 10 fois par seconde. Oubliées à la reconstruction, quelle qu'elle soit.
+local repairWhenEmpty: { [Model]: boolean } = {}
+
+local function tryRepair(plot: Model)
+	local windowId = WindowService.GetWindowId(plot)
+	if windowId == nil or not WindowService.IsBroken(windowId) then
+		repairWhenEmpty[plot] = nil
+		return
+	end
+	if not rebuildGate(windowId, plot) then
+		return -- il reste un intrus : la porte attend qu'il sorte ou soit éjecté
+	end
+	repairWhenEmpty[plot] = nil
+	if WindowService.Rebuild(windowId) then
+		log(`{plot.Name} : porte reconstruite, plus aucun intrus après l'éjection`)
+	end
+end
+
+local function repairStep()
+	for plot in table.clone(repairWhenEmpty) do
+		tryRepair(plot)
+	end
+end
+
 -- Après un coup du défenseur de `plot` (propriétaire ou bot) : interdiction de PvP.KickRobCooldown s, sortie
--- devant la porte s'il est dedans, et le message à la cible. true s'il a été sorti.
-local function kickOut(plot: Model, target: Player, why: string): boolean
-	ban(target, plot, why)
+-- devant la porte s'il est dedans, et le message à la cible. true s'il a été sorti ; porte cassée : elle se
+-- répare dès qu'il ne reste plus d'intrus (vague 43), qu'il ait été sorti ou qu'il soit déjà dehors
+-- (décision de Cantin, 2026-11-14 : « Oui, réparer »).
+local function kickOut(plot: Model, target: Player, why: string, duration: number?): boolean
+	local seconds = duration or PvP.KickRobCooldown
+	ban(target, plot, why, seconds)
 	local bounds = refsFor(plot).Bounds
-	if bounds and putOut(target, plot, bounds) then
-		notify(target, cooldownMessage(MESSAGES.KickedOut, PvP.KickRobCooldown), "Alert")
+	local moved = bounds ~= nil and putOut(target, plot, bounds)
+	local windowId = WindowService.GetWindowId(plot)
+	if windowId and WindowService.IsBroken(windowId) then
+		repairWhenEmpty[plot] = true
+		tryRepair(plot)
+	end
+	if moved then
+		notify(target, cooldownMessage(MESSAGES.KickedOut, seconds), "Alert")
 		return true
 	end
-	notify(target, cooldownMessage(MESSAGES.RobCooldown, PvP.KickRobCooldown), "Alert")
+	notify(target, cooldownMessage(MESSAGES.RobCooldown, seconds), "Alert")
 	return false
 end
 
@@ -1500,7 +1572,17 @@ local function onBotBatHit(plot: Model, target: Player, usage: string, _payload:
 	if (usage ~= "Intruder" and usage ~= "Defend") or not isBotPlot(plot) or not present(target) then
 		return
 	end
-	if kickOut(plot, target, if usage == "Intruder" then "frappé dans la boutique par le bot" else "frappé par le bot avec son objet") then
+	-- Vague 42 (L-146 point 3) : pendant le tuto de la cible, BotService.KickCooldown (15 s) au lieu de 60.
+	local api = Bot
+	local hook = if api then api.KickCooldown else nil
+	local duration: number? = nil
+	if hook then
+		local ok, value = pcall(hook, target)
+		if ok and type(value) == "number" and value > 0 and value < math.huge then
+			duration = value
+		end
+	end
+	if kickOut(plot, target, if usage == "Intruder" then "frappé dans la boutique par le bot" else "frappé par le bot avec son objet", duration) then
 		log(`{target.Name} sorti de {plot.Name} par le bot`)
 	end
 end
@@ -1620,6 +1702,7 @@ local function step()
 	end
 	deathStep()
 	ejectStep()
+	repairStep()
 	intrusionStep()
 	publishCount += 1
 	if publishCount >= PUBLISH_EVERY then
@@ -1654,6 +1737,7 @@ local function onRebuilt(_windowId: string, model: Model)
 	if not table.find(PlotService.GetPlots(), model) then
 		return -- pas une boutique (magasin PNJ)
 	end
+	repairWhenEmpty[model] = nil
 	local shop = shops[model]
 	if shop then
 		closeShop(shop, "porte reconstruite")

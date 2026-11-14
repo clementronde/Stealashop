@@ -176,7 +176,7 @@ local UNLOCKED_COLOR = Color3.fromHex("5cff4a")
 local UNLOCK_SOUND = "UI_Success"
 -- V0 proposé, absent du doc : textes des invites (anglais, L-036), marge de portée de l'invite de vol (comme
 -- PvPController) et cadence (s) du minuteur.
-local DISPLAY_TEXT = "Display"
+local TAKE_TEXT = "Take" -- vague 44 (a152) : l'objet débloqué se reprend (en main ou dans l'inventaire), « Display » avant
 local STEAL_TEXT = "Steal"
 local STEAL_DISTANCE_MARGIN = 0.5
 local FLOOR_TICK = 0.1
@@ -1108,10 +1108,10 @@ local function addFloorView(inst: Instance)
 		end
 	end
 	if mine then
-		-- Propriétaire : « Display » une fois l'antivol fini (OpenBox : le serveur le reprend et l'expose).
+		-- Propriétaire : « Take » une fois l'antivol fini (OpenBox : le serveur le reprend, en main ou dans l'inventaire).
 		local prompt = Instance.new("ProximityPrompt")
 		prompt.Name = PROMPT_NAME
-		prompt.ActionText = DISPLAY_TEXT
+		prompt.ActionText = TAKE_TEXT
 		prompt.ObjectText = name
 		prompt.MaxActivationDistance = PROMPT_DISTANCE
 		prompt.RequiresLineOfSight = false

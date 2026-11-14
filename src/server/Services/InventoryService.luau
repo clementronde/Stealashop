@@ -37,6 +37,12 @@
 --       (DisplayService.Unplace). Vérifié ici : objet à lui et exposé, pas tenu par un voleur (6.1 :
 --       l'objet volé reste où il est), de la place dans l'inventaire (moins de
 --       Balance.Display.InventoryMax objets non exposés, 5.8). Mêmes réponses.
+--   TakeDisplayItem(itemUid)  vague 44 (a152, Cantin, 2026-11-14) : invite « Take » (touche E) d'un objet
+--       exposé de SA boutique (DisplayController) : mêmes contrôles et mêmes réponses qu'UnplaceItem, plus un
+--       personnage vivant à Unbox.PromptDistance + Unbox.ReachTolerance studs au plus de son présentoir (la
+--       portée des autres invites de la boutique). L'objet va dans l'inventaire ; la barre du bas lui donne sa
+--       première case vide s'il y en a une (HotbarController). Ses $/s s'arrêtent (il n'est plus exposé).
+--       Un voleur qui maintient « Steal » sur cet objet voit sa prise refusée (présentoir vide, PvPService).
 -- DisplayService est chargé au premier appel (il charge lui-même ce service à son démarrage : pas de
 -- require croisé au chargement).
 --
@@ -61,6 +67,7 @@ local Formulas = require(Shared.Config.Formulas)
 local Items = require(Shared.Config.Items)
 local Mutations = require(Shared.Config.Mutations)
 local Rarities = require(Shared.Config.Rarities)
+local Unbox = require(Shared.Config.Unbox) -- vague 44 : portée de l'invite « Take »
 local Zones = require(Shared.Config.Zones)
 local InventoryState = require(Shared.InventoryState)
 local Net = require(Shared.Net.Net)
@@ -77,6 +84,7 @@ type DisplayApi = {
 	Unplace: (player: Player, itemUid: string) -> number?,
 	IsHeld: (player: Player, itemUid: string) -> boolean,
 	HasInventoryRoom: (player: Player) -> boolean,
+	GetSlots: (player: Player) -> { [number]: Attachment }, -- vague 44 : portée de TakeDisplayItem
 }
 -- Et de PlotService (a06).
 type PlotApi = {
@@ -422,7 +430,20 @@ local function onPlaceItemAuto(player: Player, itemUid: string)
 	notify(player, string.format(MESSAGES.Placed, name), "Success") -- réussite : vert dans UI_Toast (L-095 point 3)
 end
 
-local function onUnplaceItem(player: Player, itemUid: string)
+-- Vague 44 (a152) : le personnage vivant est-il à portée du présentoir `slot` (invite « Take ») ?
+local function inTakeReach(player: Player, api: DisplayApi, slot: number): boolean
+	local character = player.Character
+	local root = if character then character:FindFirstChild("HumanoidRootPart") else nil
+	local humanoid = if character then character:FindFirstChildOfClass("Humanoid") else nil
+	local attachment = api.GetSlots(player)[slot]
+	if root == nil or not root:IsA("BasePart") or humanoid == nil or humanoid.Health <= 0 or not attachment then
+		return false
+	end
+	return ((root :: BasePart).Position - attachment.WorldPosition).Magnitude <= Unbox.PromptDistance + Unbox.ReachTolerance
+end
+
+-- UnplaceItem (écran, où que soit le joueur) et, vague 44, TakeDisplayItem (invite « Take », à portée).
+local function unplace(player: Player, itemUid: string, what: string, nearOnly: boolean)
 	local data = DataService.Get(player)
 	local api = display()
 	if data == nil or api == nil then
@@ -430,11 +451,16 @@ local function onUnplaceItem(player: Player, itemUid: string)
 	end
 	local entry, name = ownedItem(data, itemUid)
 	if entry == nil or name == nil then
-		log(`{player.Name} : UnplaceItem({itemUid}) refusé : objet absent de son profil`)
+		log(`{player.Name} : {what}({itemUid}) refusé : objet absent de son profil`)
 		return
 	end
-	if slotOf(data, itemUid) == nil then
-		log(`{player.Name} : UnplaceItem({itemUid}) ignoré : pas exposé`)
+	local exposedAt = slotOf(data, itemUid)
+	if exposedAt == nil then
+		log(`{player.Name} : {what}({itemUid}) ignoré : pas exposé`)
+		return
+	end
+	if nearOnly and not inTakeReach(player, api, exposedAt) then
+		log(`{player.Name} : {what}({itemUid}) refusé : trop loin du présentoir {exposedAt} ou personnage absent`)
 		return
 	end
 	if api.IsHeld(player, itemUid) then
@@ -447,12 +473,20 @@ local function onUnplaceItem(player: Player, itemUid: string)
 	end
 	local slot = api.Unplace(player, itemUid)
 	if slot == nil then
-		log(`{player.Name} : UnplaceItem({itemUid}) refusé par DisplayService`)
+		log(`{player.Name} : {what}({itemUid}) refusé par DisplayService`)
 		return
 	end
 	guardedSync(player)
 	log(`{player.Name} : {itemUid} repris du présentoir {slot} dans l'inventaire`)
 	notify(player, string.format(MESSAGES.Removed, name), INFO_KIND)
+end
+
+local function onUnplaceItem(player: Player, itemUid: string)
+	unplace(player, itemUid, "UnplaceItem", false)
+end
+
+local function onTakeDisplayItem(player: Player, itemUid: string)
+	unplace(player, itemUid, "TakeDisplayItem", true)
 end
 
 ------------------------------------------------------------------------------
@@ -487,6 +521,7 @@ function InventoryService.Init()
 	DataService.OnProfileLoaded(guardedSync)
 	Net.Server.PlaceItemAuto:Connect(onPlaceItemAuto)
 	Net.Server.UnplaceItem:Connect(onUnplaceItem)
+	Net.Server.TakeDisplayItem:Connect(onTakeDisplayItem)
 	local elapsed = 0
 	RunService.Heartbeat:Connect(function(dt: number)
 		elapsed += dt

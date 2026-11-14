@@ -234,7 +234,10 @@ local PlotVisuals: { [string]: PlotVisual } = {
 	Cameras = { Id = "Cameras", Level = 1 },
 	Security = { Id = "Cameras", Level = 1 },
 	Alarm = { Id = "Cameras", Level = 1 },
-	Walls = { Id = "Walls", Level = 1, EveryStage = true },
+	-- Vague 42 (L-150 point 5, réponse (c) de Clément) : plus d'EveryStage, les murs ne se voient qu'à partir du
+	-- niveau 3 de la boutique (avec Stage_3) ; Walls garde son effet en jeu dès le niveau 1 (PV de la porte,
+	-- WindowService). EveryStage reste prêt pour des murs à la taille des niveaux 1 et 2 (réponse (a), plus tard).
+	Walls = { Id = "Walls", Level = 1 },
 }
 
 -- Base sans achat : réparation Balance (RegenPerSecond, 3 %) et coffre-fort offert Config/PvP.VaultSlots (1).

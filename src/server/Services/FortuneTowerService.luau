@@ -1,8 +1,8 @@
 --!strict
 -- FortuneTowerService (liaison L-108 point 8, idée de Clément du 2026-11-12 ; vague 37, a123 ; pas encore
 -- une tâche du backlog) : l'événement de la Fortune Tower. Valeurs : Config/FortuneTower (toutes V0
--- proposées, absentes du doc) ; interrupteur : Config/Features.FortuneTower, false tant que Clément n'a
--- pas validé. Modèle : TruckEventService (événement à plusieurs, PV partagés, butin au sol).
+-- proposées, validées par Clément : L-145 (a), vague 42) ; interrupteur : Config/Features.FortuneTower,
+-- true depuis cette validation. Modèle : TruckEventService (événement à plusieurs, PV partagés, butin au sol).
 --
 -- Une seule vitrine à la fois :
 --   1. Apparition (Features.FortuneTower seulement), SpawnIntervalMin à SpawnIntervalMax s (tiré au
@@ -11,8 +11,8 @@
 --      temps de vivre toute sa vie), au moins MinPlayers joueurs sur le serveur, et aucun camion de
 --      l'événement en jeu (tag EventTruck). Une vitrine due attend que ce soit réuni.
 --      Où, en zone FortuneTower.Zone (6) :
---        - sur un point tagué `FortuneVaultSpawn` (Attachment, pièce ou Model, dans la map ; nom proposé à
---          Clément, hors contrat, comme TruckSpawn) : le pivot de la vitrine (en bas au centre) va sur le
+--        - sur un point tagué `FortuneVaultSpawn` (Attachment, pièce ou Model, dans la map ; au contrat,
+--          facultatif, depuis la vague 42 : Contract/Tags) : le pivot de la vitrine (en bas au centre) va sur le
 --          point, sa face avant suit l'avant (−Z) du point ;
 --        - sinon calculé : au milieu des magasins PNJ de la zone (au milieu de la chaussée), décalé de
 --          ComputedOffset studs dans le sens du couloir (de l'arche de la plus petite zone vers celle de la
@@ -33,15 +33,33 @@
 --      invisible et ne bloque plus rien, son contour OutlineHighlight s'éteint, attribut OpenedAt (heure
 --      serveur, pour un effet de Clément). Butin tiré par le serveur à ce moment-là : LootCount colis
 --      LootTier (Luxe), chacun : rareté selon RarityOdds (Mythique et plus, Divine à 0 sans objet Divine),
---      objet par Items.Pick(LootZone, …), repli sur la rareté tirable la plus proche en dessous dans ce
---      butin (sinon le colis est sauté) ; taille Huge ou Colossal selon SizeOdds, effet par Mutations.Roll
---      (comme sur un rayon). Posés au sol tout de suite (CarryService.PlaceDrop, BoxLifetime s), sur les
---      points LootSpawn_01 à _NN du modèle (Attachments ou pièces ; projetés au sol), sinon en rangée devant
---      la face avant (LootDistance, LootSpacing). Colis PNJ ordinaires : StoreId « Truck_Fortune_<n> »
+--      objet au hasard parmi ceux de cette rareté dans les zones LootZones (2 à 6, vague 42, L-145 (b) :
+--      Items.ByZone, lu dans le catalogue) ou toutes zones pour Secret et Divine (Items.AllZones), repli sur
+--      la rareté tirable la plus proche en dessous dans ce butin (sinon le colis est sauté) ; taille Huge
+--      ou Colossal selon SizeOdds, effet par Mutations.Roll (comme sur un rayon) ; le colis porte la zone
+--      de son objet (CarryService l'exige). Posés tout de suite (CarryService.PlaceDrop, BoxLifetime s) :
+--      vague 42 (L-145 (c) : on entre dans le coffre), sur les points LootSpawn_01 à _NN du modèle
+--      (Attachments ou pièces, à l'intérieur), chacun sur la première surface sous son point, coffre
+--      compris (le sol du coffre ; rayon parti LootRayUp studs au-dessus) ; sans point (ou bloc V0) : en
+--      rangée devant la face avant (LootDistance, LootSpacing), sur le sol de la rue. Rien d'autre que la
+--      vitre ne ferme le coffre : elle cachée, on y entre. Colis PNJ ordinaires : StoreId « Truck_Fortune_<n> »
 --      (préfixe Truck_ : la convention des colis d'événement sans magasin, GuardService n'envoie pas de
 --      vigile, StoreHeistService n'a rien à remettre en rayon ; TelemetryService les compte à part, en « Fortune », vague 39),
 --      SlotId « Truck_Fortune_<n>/<kk> », attributs FortuneBox et Tier (lus par FortuneTowerController).
 --      Notify à tous (Messages.Opened). La copie est retirée RemoveDelay s plus tard.
+--      Ouverture sur place (vague 42, demande de Cantin du 2026-11-14) : avec StoreHeistService.AddEventShelf
+--      (Features.ShelfOpen), les colis ne sont plus posés au sol : un rayon d'événement de StoreHeistService
+--      (StoreId « Truck_Fortune_<n> », un ShelfSlot par point ci-dessus, tourné comme la vitrine) reçoit
+--      LootCount caisses LootTier dont seule la rareté de la caisse est tirée ici (RarityOdds) ; tout le
+--      reste est celui d'un rayon de magasin : maintien sur E (GrabTime), chance tirée par le serveur,
+--      rareté de l'objet (BoxRarityOdds et chance, la rareté de la caisse étant un minimum : la chance ne
+--      fait que monter, L-145 (a)), objet des zones LootZones (Secret : toutes zones), effet comme en
+--      magasin et taille tirée dans SizeOdds (L-145 (a)), puis GrabItem et portage
+--      de l'objet ; ni témoins, ni vigile. Rayon retiré au bout de BoxLifetime s (avec la vitrine). Sans
+--      lui : les colis au sol tels que décrits ici et au point 5.
+--      Jamais enfermé (vague 42) : quand la vitrine se referme ou est retirée (Seal, fin au temps, alerte,
+--      remplacée, retrait après l'ouverture), un joueur dans sa boîte est d'abord posé PushMargin studs
+--      devant elle, comme à l'apparition.
 --   5. Colis au sol : GrabDropped(dropId) (9.4), en deux appels comme les colis du camion (début du
 --      maintien, puis invite déclenchée), mêmes règles que TruckEventService : colis encore au sol, mains
 --      vides, joueur vivant, hors zone safe (tag SafeZone), à Bat.DroppedGrabMaxDistance studs au plus,
@@ -96,7 +114,7 @@ type Vault = {
 
 type Box = { DropId: string, Tier: string }
 type Hold = { DropId: string, StartedAt: number }
-type Loot = { Rarity: string, ItemId: string, Mutation: Mutations.Mutation? }
+type Loot = { Rarity: string, ItemId: string, Zone: number, Mutation: Mutations.Mutation? }
 
 -- Noms proposés à Clément (Contract/Models.FortuneVault, facultatif ; L-108 point 8).
 local VAULT_ASSET = "ENV_Event_FortuneVault"
@@ -104,7 +122,7 @@ local WINDOW_NAME = "Window"
 local HEALTH_BAR_POINT = "HealthBarPoint"
 local LOOT_SPAWN_FORMAT = "LootSpawn_%02d"
 local OUTLINE_NAME = "OutlineHighlight"
-local SPAWN_TAG = "FortuneVaultSpawn" -- point d'apparition, hors contrat (comme TruckSpawn)
+local SPAWN_TAG = "FortuneVaultSpawn" -- point d'apparition, au contrat depuis la vague 42 (Contract/Tags, facultatif)
 -- Lus ailleurs.
 local ASSETS_NAME = "Assets"
 local STORE_TAG = "NPCStore"
@@ -185,6 +203,21 @@ local function refuse(player: Player, dropId: string, reason: string)
 	warn(`[FortuneTowerService] GrabDropped de {player.Name} sur « {dropId} » refusé : {reason}`)
 end
 
+-- Vague 42 : StoreHeistService (rayons d'événement), chargé dans Init, protégé (les bancs d'avant ne l'ont pas).
+type HeistApi = {
+	AddEventShelf: (options: any) -> Model?,
+	RemoveEventShelf: (id: string) -> boolean,
+}
+local heistApi: HeistApi? = nil
+
+-- Retire le rayon d'événement de la vitrine (colis pas ouverts, objets pas pris), s'il y en a un.
+local function removeShelf(vault: Vault)
+	local api = heistApi
+	if api then
+		pcall(api.RemoveEventShelf, `{STORE_PREFIX}{vault.Number}`)
+	end
+end
+
 local function notifyAll(message: string)
 	Net.Server.Notify:FireAll(message, FortuneTower.NotifyKind)
 end
@@ -258,9 +291,15 @@ end
 
 -- Place ---------------------------------------------------------------------------------------------
 
--- Hauteur du sol sous `position` ; personnages, colis au sol, vitrine et camions ignorés.
-local function groundY(position: Vector3, fallbackY: number): number
+-- Hauteur du sol sous `position` ; personnages, colis au sol, vitrine et camions ignorés. Vague 42 :
+-- `inside` (point LootSpawn_NN dans le coffre) : rayon parti `rayUp` studs au-dessus du point, vitrine
+-- comprise (son sol), sauf `ignore` (le point lui-même, s'il est une pièce), et nil quand rien n'est
+-- trouvé dessous.
+local function castGround(position: Vector3, rayUp: number, inside: boolean, ignore: Instance?): number?
 	local exclude: { Instance } = {}
+	if ignore then
+		table.insert(exclude, ignore)
+	end
 	for _, player in Players:GetPlayers() do
 		local character = player.Character
 		if character then
@@ -271,7 +310,8 @@ local function groundY(position: Vector3, fallbackY: number): number
 	if drops then
 		table.insert(exclude, drops)
 	end
-	for _, tag in { VAULT_TAG, TRUCK_TAG } do
+	local tags: { string } = if inside then { TRUCK_TAG } else { VAULT_TAG, TRUCK_TAG }
+	for _, tag in tags do
 		for _, instance in CollectionService:GetTagged(tag) do
 			table.insert(exclude, instance)
 		end
@@ -281,9 +321,13 @@ local function groundY(position: Vector3, fallbackY: number): number
 	params.FilterDescendantsInstances = exclude
 	params.RespectCanCollide = true
 	params.IgnoreWater = true
-	local origin = Vector3.new(position.X, position.Y + GROUND_RAY_UP, position.Z)
-	local result = Workspace:Raycast(origin, Vector3.new(0, -(GROUND_RAY_UP + GROUND_RAY_DOWN), 0), params)
-	return if result then result.Position.Y else fallbackY
+	local origin = Vector3.new(position.X, position.Y + rayUp, position.Z)
+	local result = Workspace:Raycast(origin, Vector3.new(0, -(rayUp + GROUND_RAY_DOWN), 0), params)
+	return if result then result.Position.Y else nil
+end
+
+local function groundY(position: Vector3, fallbackY: number): number
+	return castGround(position, GROUND_RAY_UP, false) or fallbackY
 end
 
 -- Sens du couloir, à plat (même règle que TruckEventService), et position de l'arche de `zone`.
@@ -396,8 +440,9 @@ local function buildV0(): Model
 	return model
 end
 
--- Joueur pris dans la vitrine à son apparition : posé PushMargin studs devant elle, au sol.
-local function pushOut(model: Model)
+-- Joueur pris dans la vitrine (`why` : à son apparition, ou quand elle se referme ou est retirée, vague
+-- 42) : posé PushMargin studs devant elle, au sol.
+local function pushOut(model: Model, why: string)
 	local pivot = model:GetPivot()
 	local cframe, size = model:GetBoundingBox()
 	local front = pivot.LookVector
@@ -408,7 +453,7 @@ local function pushOut(model: Model)
 			local spot = cframe.Position + front * (size.Z / 2 + FortuneTower.PushMargin)
 			local y = groundY(spot, pivot.Position.Y) + PUSH_HEIGHT
 			character:PivotTo(CFrame.new(spot.X, y, spot.Z) * root.CFrame.Rotation)
-			log(`{player.Name} était dans la vitrine à son apparition : posé devant elle`)
+			log(`{player.Name} était dans la vitrine {why} : posé devant elle`)
 		end
 	end
 end
@@ -421,6 +466,8 @@ local function removeVault(vault: Vault, message: string?)
 	end
 	current = nil
 	WindowService.RemoveTarget(vault.WindowId)
+	pushOut(vault.Model, "quand elle s'est refermée") -- vague 42 : jamais enfermé
+	removeShelf(vault)
 	vault.Model:Destroy()
 	if message then
 		notifyAll(message)
@@ -473,7 +520,7 @@ local function spawnVault(): boolean
 		model:Destroy()
 		return false
 	end
-	pushOut(model)
+	pushOut(model, "à son apparition")
 	current = {
 		Number = vaultCount,
 		Model = model,
@@ -522,6 +569,34 @@ for _, size in Mutations.Sizes do
 	table.insert(SIZE_ORDER, size.Id)
 end
 
+-- Objets tirables de `rarity` pour la vitrine (vague 42, L-145 (b)) : ceux de toutes zones pour Secret et
+-- Divine (Items.AllZones), sinon ceux des zones LootZones (Items.ByZone) ; jamais un TutorialOnly. Lus dans
+-- le catalogue à chaque tirage : un objet ajouté à Config/Items sort sans changer ce code.
+local function lootPool(rarity: string): { Items.Item }
+	local pool: { Items.Item } = {}
+	local lists: { { Items.Item } } = {}
+	local allZones = Items.AllZones[rarity]
+	if allZones then
+		table.insert(lists, allZones)
+	else
+		for _, zone in FortuneTower.LootZones do
+			local byRarity = Items.ByZone[zone]
+			local list = if byRarity then byRarity[rarity] else nil
+			if list then
+				table.insert(lists, list)
+			end
+		end
+	end
+	for _, list in lists do
+		for _, item in list do
+			if not item.TutorialOnly then
+				table.insert(pool, item)
+			end
+		end
+	end
+	return pool
+end
+
 -- Un colis du butin, ou nil (aucun objet tirable). Repli : la rareté tirable la plus proche en dessous,
 -- parmi celles du butin (Divine sans objet → Secret ; Secret sans objet → Mythique).
 local function drawLoot(): Loot?
@@ -533,8 +608,9 @@ local function drawLoot(): Loot?
 	for index = #Rarities.List, 1, -1 do
 		local candidate = Rarities.List[index]
 		if candidate.Order <= order and FortuneTower.RarityOdds[candidate.Id] ~= nil then
-			local item = Items.Pick(FortuneTower.LootZone, candidate.Id, random)
-			if item and not item.TutorialOnly then
+			local pool = lootPool(candidate.Id)
+			local item = if #pool > 0 then pool[random:NextInteger(1, #pool)] else nil
+			if item then
 				if candidate.Id ~= rarity then
 					warnOnce(`empty.{rarity}`, `aucun objet {rarity} tirable : ce colis de la vitrine reçoit un objet {candidate.Id}`)
 				end
@@ -544,7 +620,8 @@ local function drawLoot(): Loot?
 					Effect = if effect then effect.Effect else nil,
 				}
 				local rarityId: string = item.Rarity
-				local loot: Loot = { Rarity = rarityId, ItemId = item.Id, Mutation = Mutations.Sanitize(mutation) }
+				local zone: number = item.Zone or FortuneTower.Zone -- Secret, Divine : sans zone
+				local loot: Loot = { Rarity = rarityId, ItemId = item.Id, Zone = zone, Mutation = Mutations.Sanitize(mutation) }
 				return loot
 			end
 		end
@@ -552,7 +629,8 @@ local function drawLoot(): Loot?
 	return nil
 end
 
--- Points au sol du butin : LootSpawn_NN du modèle, sinon une rangée devant sa face avant.
+-- Points au sol du butin : LootSpawn_NN du modèle, posé sur la première surface sous lui, coffre compris
+-- (vague 42 : son sol, à l'intérieur), sinon une rangée devant sa face avant, sur le sol de la rue.
 local function lootPoints(model: Model, count: number): { Vector3 }
 	local pivot = model:GetPivot()
 	local cframe, size = model:GetBoundingBox()
@@ -563,9 +641,14 @@ local function lootPoints(model: Model, count: number): { Vector3 }
 	for index = 1, count do
 		local spawnPoint = Find.path(model, string.format(LOOT_SPAWN_FORMAT, index))
 		local frame = if spawnPoint then frameOf(spawnPoint) else nil
-		local spot = if frame
-			then frame.Position
-			else rowCenter + right * ((index - (count + 1) / 2) * FortuneTower.LootSpacing)
+		if frame then
+			local spot = frame.Position
+			local own: Instance? = if spawnPoint and spawnPoint:IsA("PVInstance") then spawnPoint else nil
+			local y = castGround(spot, FortuneTower.LootRayUp, true, own) or groundY(spot, pivot.Position.Y)
+			table.insert(points, Vector3.new(spot.X, y, spot.Z))
+			continue
+		end
+		local spot = rowCenter + right * ((index - (count + 1) / 2) * FortuneTower.LootSpacing)
 		table.insert(points, Vector3.new(spot.X, groundY(spot, pivot.Position.Y), spot.Z))
 	end
 	return points
@@ -603,7 +686,33 @@ local function openVault(vault: Vault, breaker: Player?)
 	local tier = FortuneTower.LootTier
 	local points = lootPoints(model, FortuneTower.LootCount)
 	local placed: { string } = {}
-	for index, point in points do
+	-- Vague 42 (demande de Cantin) : colis à ouvrir sur place, comme sur un rayon (StoreHeistService) ;
+	-- sans rayon d'événement (Features.ShelfOpen coupé, service absent) : les colis au sol d'avant.
+	local spots: { any } = {}
+	local rotation = model:GetPivot().Rotation
+	for _, point in points do
+		local rarity = roll(FortuneTower.RarityOdds, RARITY_ORDER)
+		if rarity then
+			table.insert(spots, { CFrame = CFrame.new(point) * rotation, Tier = tier, Rarity = rarity })
+			table.insert(placed, rarity)
+		end
+	end
+	local addShelf = if heistApi then heistApi.AddEventShelf else nil
+	local shelf = if addShelf and #spots > 0
+		then addShelf({
+			Id = storeId,
+			Zone = FortuneTower.Zone,
+			ItemZones = FortuneTower.LootZones,
+			SizeOdds = FortuneTower.SizeOdds,
+			Spots = spots,
+			Lifetime = FortuneTower.BoxLifetime,
+		})
+		else nil
+	if shelf == nil then
+		table.clear(placed)
+	end
+	local groundPoints: { Vector3 } = if shelf then {} else points
+	for index, point in groundPoints do
 		local loot = drawLoot()
 		if loot == nil then
 			warnOnce("draw", `aucun objet ne peut sortir de la vitrine (Config/FortuneTower, Config/Items) : colis sauté`)
@@ -612,7 +721,7 @@ local function openVault(vault: Vault, breaker: Player?)
 		local payload: CarryTypes.NPCBoxPayload = {
 			Kind = "NPCBox",
 			Tier = tier :: CarryTypes.BoxTier,
-			Zone = FortuneTower.LootZone,
+			Zone = loot.Zone, -- la zone de l'objet (CarryService refuse un colis d'une autre zone que son objet)
 			Rarity = loot.Rarity,
 			ItemId = loot.ItemId,
 			StoreId = storeId,
@@ -629,13 +738,15 @@ local function openVault(vault: Vault, breaker: Player?)
 	end
 	notifyAll(FortuneTower.Messages.Opened)
 	log(
-		`vitrine n° {vault.Number} cassée{if breaker then " par " .. breaker.Name else ""} : {#placed} colis {tier} au sol ({table.concat(placed, ", ")})`
+		`vitrine n° {vault.Number} cassée{if breaker then " par " .. breaker.Name else ""} : {#placed} colis {tier} {if shelf then "à ouvrir sur place (caisses" else "au sol ("}{table.concat(placed, ", ")})`
 	)
 	task.delay(FortuneTower.RemoveDelay, function()
 		if current == vault then
 			current = nil
 		end
+		removeShelf(vault)
 		if model.Parent ~= nil then
+			pushOut(model, "à son retrait") -- vague 42 : jamais enfermé
 			model:Destroy()
 		end
 	end)
@@ -883,6 +994,16 @@ end
 function FortuneTowerService.Init()
 	if not LISTENING then
 		return
+	end
+	local module = script.Parent:FindFirstChild("StoreHeistService")
+	if module and module:IsA("ModuleScript") then
+		local ok, api = pcall(require, module)
+		if ok and type(api) == "table" and type((api :: any).AddEventShelf) == "function" then
+			heistApi = api :: any
+		end
+	end
+	if heistApi == nil then
+		log("StoreHeistService.AddEventShelf indisponible : les colis de la vitrine restent au sol, à prendre fermés")
 	end
 	WindowService.OnBroken(onBroken)
 	NightCycleService.OnPhaseChanged(onPhaseChanged)

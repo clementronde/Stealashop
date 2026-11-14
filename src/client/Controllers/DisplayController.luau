@@ -21,6 +21,15 @@
 --     lumière et particules de chaque halo exposé éteintes au-delà d'EffectsDistance de la caméra
 --     (rallumées en revenant, sauf VISUAL EFFECTS sur OFF : CosmeticController garde la main), rayons
 --     tournés seulement dans le champ de la caméra, couleurs de l'arc-en-ciel des rayons calculées une fois.
+--   - vague 44 (a152, demande de Cantin du 2026-11-14), invites créées ici, côté client seulement, chez le
+--     propriétaire (textes en anglais et choix V0 proposés, absents du doc ; portée Unbox.PromptDistance, celle
+--     des autres invites de la boutique ; touche E de Roblox) :
+--       « Take » (TakeDisplayPrompt) sur chaque objet exposé de SA boutique (OwnerUserId = le sien) : remote
+--       TakeDisplayItem(uid), InventoryService le remet dans l'inventaire (barre du bas si une case est libre) ;
+--       « Display » (DisplayHeldPrompt) sur chaque présentoir DisplaySlot_xx libre de SA boutique (attribut
+--       UnboxState = "Free" d'UnboxService), seulement avec un objet en main (attribut HeldItem du Player,
+--       HeldItemService) qui n'est pas sous antivol : remote PlaceItem(uid, présentoir), DisplayService vérifie.
+--     Les deux sont cachées pendant un portage (attribut Carrying). Le serveur revérifie tout.
 -- Ce contrôleur ne crée aucune UI (9.3) : l'inventaire et le HUD sont des écrans de Clément.
 --
 -- API (client) :
@@ -38,6 +47,7 @@
 --       Demande au serveur d'exposer un objet de l'inventaire sur un présentoir (pour l'écran
 --       d'inventaire de Clément). Le serveur vérifie tout et répond par Notify en cas de refus.
 --   DisplayController.FormatMoney(amount) -> string  Shared/Format.money : « $300 », « $12.4K », « $2M »
+--   DisplayController.GetOwnerPrompts() -> { Take = { [uid]: allumée }, Display = { [présentoir]: allumée } }
 
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
@@ -47,6 +57,12 @@ local Workspace = game:GetService("Workspace")
 
 local Format = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Format"))
 local HaloConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"):WaitForChild("DisplayHalo"))
+-- Vague 44 (a152) : invites « Take » et « Display » du propriétaire.
+local HeldItemConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"):WaitForChild("HeldItem"))
+local ItemsConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"):WaitForChild("Items"))
+local Mutations = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"):WaitForChild("Mutations"))
+local UnboxConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"):WaitForChild("Unbox"))
+local InventoryState = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("InventoryState"))
 
 type Listener = (value: number) -> ()
 
@@ -87,6 +103,18 @@ local RAINBOW_PERIOD = 3 -- secondes pour parcourir tout l'arc-en-ciel
 local GRADIENT_TURN_SPEED = 90 -- degrés par seconde (texte de rareté d'un Secret)
 local ANIMATION_DISTANCE = 120 -- studs : plus loin de la caméra, le halo n'est pas animé (mobile)
 local HALO_WAIT = 5 -- secondes d'attente du halo d'un objet qui vient d'arriver
+
+-- Vague 44 (a152), V0 proposés, absents du doc : textes (anglais, L-036) et cadence (s) de la revue des invites.
+local TAKE_PROMPT = "TakeDisplayPrompt"
+local TAKE_TEXT = "Take"
+local PLACE_PROMPT = "DisplayHeldPrompt"
+local PLACE_TEXT = "Display"
+local PROMPT_TICK = 0.2
+local SLOT_PATTERN = "^DisplaySlot_(%d+)$" -- présentoirs (contrat 10.4)
+local SLOT_STATE_ATTRIBUTE = "UnboxState" -- UnboxService, sur chaque DisplaySlot_xx : "Free", "Taken", "Locked"
+local CARRYING_ATTRIBUTE = "Carrying" -- CarryService : portage en cours
+local ITEM_UID_ATTRIBUTE = "ItemUid"
+local ITEM_ID_ATTRIBUTE = "ItemId"
 
 type Ray = {
 	attachment: Attachment,
@@ -134,6 +162,13 @@ local animated: { [Instance]: Animated } = {}
 local lit: { [Instance]: Lit } = {}
 local rainbowSequences: { ColorSequence } = {} -- Config/DisplayHalo.RainbowSteps teintes, calculées au démarrage
 local nextCull = 0 -- os.clock() de la prochaine revue des distances (lumière et particules)
+-- Vague 44 (a152) : invites du propriétaire.
+local takePrompts: { [Instance]: ProximityPrompt } = {} -- [objet exposé] = « Take »
+type SlotPrompt = { attachment: Attachment, index: number, prompt: ProximityPrompt }
+local slotPrompts: { [Attachment]: SlotPrompt } = {}
+local slotPlot: Instance? = nil -- parcelle dont les présentoirs ont leur invite « Display »
+local slotConnection: RBXScriptConnection? = nil
+local promptClock = 0
 
 local function subscribe<T>(list: { T }, listener: T): () -> ()
 	table.insert(list, listener)
@@ -513,6 +548,159 @@ local function animate()
 end
 
 ------------------------------------------------------------------------------
+-- Invites du propriétaire (vague 44, a152) : « Take » sur ses objets exposés, « Display » sur ses présentoirs
+-- libres quand il tient un objet en main
+------------------------------------------------------------------------------
+
+local function newPrompt(name: string, action: string): ProximityPrompt
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.Name = name
+	prompt.ActionText = action
+	prompt.ObjectText = ""
+	prompt.MaxActivationDistance = UnboxConfig.PromptDistance
+	prompt.RequiresLineOfSight = false
+	prompt.HoldDuration = 0
+	prompt.Enabled = false
+	return prompt
+end
+
+-- Pièce qui porte l'invite d'un objet exposé : sa PrimaryPart, sinon sa première pièce hors halo.
+local function promptPart(model: Instance): BasePart?
+	if model:IsA("Model") and (model :: Model).PrimaryPart then
+		return (model :: Model).PrimaryPart
+	end
+	for _, descendant in model:GetDescendants() do
+		if descendant:IsA("BasePart") and descendant.Name ~= HALO_PART then
+			return descendant :: BasePart
+		end
+	end
+	return nil
+end
+
+local function trackTake(model: Instance)
+	if takePrompts[model] or model:GetAttribute(OWNER_ATTRIBUTE) ~= localPlayer.UserId then
+		return -- objet d'un autre joueur ou du bot : pas d'invite « Take »
+	end
+	local uid = model:GetAttribute(ITEM_UID_ATTRIBUTE)
+	local part = promptPart(model)
+	if type(uid) ~= "string" or part == nil then
+		return
+	end
+	local itemId = model:GetAttribute(ITEM_ID_ATTRIBUTE)
+	local def = if type(itemId) == "string" then ItemsConfig.ById[itemId] else nil
+	local prompt = newPrompt(TAKE_PROMPT, TAKE_TEXT)
+	if def then
+		local mutation = Mutations.Sanitize({ Size = model:GetAttribute("MutationSize"), Effect = model:GetAttribute("MutationEffect") })
+		prompt.ObjectText = Mutations.ItemName(def.DisplayName, mutation)
+	end
+	prompt.Triggered:Connect(function()
+		if net then
+			net.Client.TakeDisplayItem:Fire(uid)
+		end
+	end)
+	prompt.Parent = part
+	takePrompts[model] = prompt
+end
+
+local function addSlot(instance: Instance)
+	if not instance:IsA("Attachment") or slotPrompts[instance :: Attachment] then
+		return
+	end
+	local digits = string.match(instance.Name, SLOT_PATTERN)
+	local index = if digits then tonumber(digits) else nil
+	if index == nil then
+		return
+	end
+	local attachment = instance :: Attachment
+	local slotIndex: number = index
+	local prompt = newPrompt(PLACE_PROMPT, PLACE_TEXT)
+	prompt.Triggered:Connect(function()
+		local uid = localPlayer:GetAttribute(HeldItemConfig.PlayerAttribute)
+		if net and type(uid) == "string" then
+			net.Client.PlaceItem:Fire(uid, slotIndex)
+		end
+	end)
+	prompt.Parent = attachment
+	slotPrompts[attachment] = { attachment = attachment, index = slotIndex, prompt = prompt }
+end
+
+local function clearSlots()
+	local connection = slotConnection
+	if connection then
+		connection:Disconnect()
+		slotConnection = nil
+	end
+	for _, entry in slotPrompts do
+		entry.prompt:Destroy()
+	end
+	table.clear(slotPrompts)
+end
+
+-- L'objet tenu est-il sous antivol (il se pose au sol, pas sur un présentoir) ?
+local function heldIsAntiTheft(uid: string): boolean
+	local state = InventoryState.Decode(localPlayer:GetAttribute(InventoryState.Attribute))
+	for _, item in state.Items do
+		if item.Uid == uid then
+			return item.AntiTheft == true
+		end
+	end
+	return false
+end
+
+-- Nom de l'objet tenu (nom du Tool de HeldItemService : mutation devant).
+local function heldName(): string
+	local character = localPlayer.Character
+	if character then
+		for _, child in character:GetChildren() do
+			if child:IsA("Tool") and child:GetAttribute(HeldItemConfig.ToolAttribute) ~= nil then
+				return child.Name
+			end
+		end
+	end
+	return ""
+end
+
+local function updatePrompts()
+	if slotPlot ~= ownPlot then
+		clearSlots()
+		slotPlot = ownPlot
+		local plot = ownPlot
+		if plot then
+			for _, descendant in plot:GetDescendants() do
+				addSlot(descendant)
+			end
+			slotConnection = plot.DescendantAdded:Connect(addSlot) -- rayons posés plus tard (RayonService)
+		end
+	end
+	local carrying = localPlayer:GetAttribute(CARRYING_ATTRIBUTE) ~= nil
+	local uid = localPlayer:GetAttribute(HeldItemConfig.PlayerAttribute)
+	local holding = type(uid) == "string" and not carrying and not heldIsAntiTheft(uid)
+	local name = if holding then heldName() else ""
+	for attachment, entry in slotPrompts do
+		if attachment.Parent == nil then
+			entry.prompt:Destroy()
+			slotPrompts[attachment] = nil
+			continue
+		end
+		local on = holding and attachment:GetAttribute(SLOT_STATE_ATTRIBUTE) == "Free"
+		if entry.prompt.ObjectText ~= name then
+			entry.prompt.ObjectText = name
+		end
+		if entry.prompt.Enabled ~= on then
+			entry.prompt.Enabled = on
+		end
+	end
+	for model, prompt in takePrompts do
+		if prompt.Parent == nil or not model:IsDescendantOf(Workspace) then
+			prompt:Destroy()
+			takePrompts[model] = nil
+		elseif prompt.Enabled == carrying then
+			prompt.Enabled = not carrying
+		end
+	end
+end
+
+------------------------------------------------------------------------------
 -- API
 ------------------------------------------------------------------------------
 
@@ -554,6 +742,22 @@ end
 
 DisplayController.FormatMoney = Format.money
 
+-- Vague 44 (a152) : invites du propriétaire en ce moment (bancs, barre de commande) : Take[uid] et
+-- Display[numéro du présentoir] = true si l'invite est allumée, false si elle est cachée.
+function DisplayController.GetOwnerPrompts(): { Take: { [string]: boolean }, Display: { [number]: boolean } }
+	local result = { Take = {} :: { [string]: boolean }, Display = {} :: { [number]: boolean } }
+	for model, prompt in takePrompts do
+		local uid = model:GetAttribute(ITEM_UID_ATTRIBUTE)
+		if type(uid) == "string" then
+			result.Take[uid] = prompt.Enabled
+		end
+	end
+	for _, entry in slotPrompts do
+		result.Display[entry.index] = entry.prompt.Enabled
+	end
+	return result
+end
+
 function DisplayController.Start()
 	local shared = ReplicatedStorage:WaitForChild("Shared")
 	local models = require(shared:WaitForChild("Contract"):WaitForChild("Models") :: ModuleScript) :: any
@@ -585,14 +789,33 @@ function DisplayController.Start()
 	end
 
 	CollectionService:GetInstanceAddedSignal(DISPLAY_TAG):Connect(track)
+	CollectionService:GetInstanceAddedSignal(DISPLAY_TAG):Connect(trackTake) -- vague 44 : invite « Take »
 	CollectionService:GetInstanceRemovedSignal(DISPLAY_TAG):Connect(function(model: Instance)
 		animated[model] = nil
 		lit[model] = nil
+		local prompt = takePrompts[model]
+		if prompt then
+			takePrompts[model] = nil
+			prompt:Destroy()
+		end
 	end)
 	for _, model in CollectionService:GetTagged(DISPLAY_TAG) do
 		track(model)
+		trackTake(model)
 	end
 	RunService.Heartbeat:Connect(animate)
+	-- Vague 44 : invites du propriétaire revues toutes les PROMPT_TICK s.
+	RunService.Heartbeat:Connect(function(dt: number)
+		promptClock += dt
+		if promptClock < PROMPT_TICK then
+			return
+		end
+		promptClock = 0
+		local ok, err = pcall(updatePrompts :: any) -- :: any : sans lui, l'ancien solveur croit que pcall ne renvoie qu'une valeur
+		if not ok and IS_STUDIO then
+			warn(`[DisplayController] invites du propriétaire : {err}`)
+		end
+	end)
 
 	-- Peut attendre que le serveur ait créé les remotes.
 	net = require(shared:WaitForChild("Net"):WaitForChild("Net") :: ModuleScript) :: any

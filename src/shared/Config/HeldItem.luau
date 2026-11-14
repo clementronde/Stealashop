@@ -29,6 +29,11 @@ local HeldItem = {
 	-- Revérification de l'objet tenu (encore à lui, pas exposé, pas vendu, pas au coffre-fort, pas posé au sol).
 	-- Chaque changement de l'inventaire la fait aussi tout de suite.
 	CheckInterval = 0.25, -- V0 proposé, absent du doc : secondes
+	-- Vague 44 (a152, réponse de Cantin du 2026-11-14 : « oui en main ») : un objet volé ramené à sa boutique
+	-- (PvPService, dépôt) va dans la main du voleur s'il a les mains libres, sinon dans la barre du bas ou
+	-- l'inventaire, jamais tout seul sur un présentoir (inventaire plein : le vol échoue, l'objet revient).
+	-- false : l'ancien déroulé (présentoir libre le plus proche, sinon l'inventaire).
+	DepositToHand = true,
 	-- Noms posés par HeldItemService (lus par InventoryController et HotbarController) :
 	ToolAttribute = "HeldItemUid", -- sur le Tool de l'objet tenu : son uid
 	PlayerAttribute = "HeldItem", -- sur le Player : uid de l'objet tenu, absent sinon

@@ -25,15 +25,20 @@
 --      (il revient à chaque boucle ; sans marqueur : Witness.CallMarkerMaxWait s), le son Witness.CallSound
 --      part sur le témoin et la police est lancée. Witness.CallDuration s après le début de l'appel, il
 --      reprend sa balade, « ? » vide. Les coups reçus pendant l'appel ne comptent pas.
---   5. Police : une copie de Assets/Guards/NPC_Police (Witness.Police) arrive en courant du bout de la
---      rue (le point du circuit le plus loin de la vitrine ; sans circuit, à côté du témoin) et poursuit
---      le dernier joueur à avoir frappé (le suivant si celui-ci est parti, mort, à l'abri en zone safe ou
---      déjà poursuivi par un policier ou un conducteur). C'est GuardService qui la pilote
+--   5. Police : des copies de Assets/Guards/NPC_Police (Witness.Police) arrivent en courant du bout de la
+--      rue (le point du circuit le plus loin de la vitrine, côte à côte à Police.SpawnSpacing studs ; sans
+--      circuit, à côté du témoin). Vague 43 (Cantin, 2026-11-14) : UN POLICIER PAR JOUEUR qui a frappé la
+--      vitrine pendant ce braquage (les suspects du témoin : chaque coup validé de WindowService.OnHit,
+--      jusqu'au départ de la police ; vidés quand il reprend sa balade), du dernier à avoir frappé au
+--      premier, au plus Police.MaxPerStore policiers en jeu pour ce magasin. Un suspect parti, mort, à
+--      l'abri en zone safe, déjà poursuivi par un policier de ce magasin, ou refusé par GuardService (déjà
+--      poursuivi par un policier ou un conducteur) n'en a pas. Avant : un seul policier, sur le dernier.
+--      Chaque policier a sa propre poursuite. C'est GuardService qui la pilote
 --      (StartDriverChase : même chemin, même capture à Balance.Guard.CatchDistance, même coup au
 --      marqueur Impact de Catch, même étourdissement, colis perdu s'il en porte un, ChaseState donc
 --      UI_Chase et MUS_Chase). Vitesse : celle du vigile de jour de la zone (ou du tutoriel) ×
 --      Police.SpeedFactor. Fin : capture, zone safe, ou Police.ChaseDuration s de poursuite, puis Tired et
---      fondu. Un seul policier à la fois par magasin. Attrapé (L-118 point 3) : renvoyé à la base
+--      fondu (GuardService le retire du jeu ; oublié ici dès qu'il n'est plus en jeu). Attrapé (L-118 point 3) : renvoyé à la base
 --      (NightCycleService.SendHome, Night.SendHomeDelay s après le coup), comme la nuit.
 --   6. Nuit (Clément, L-117 point 2) : les témoins ne sont pas là. À la tombée de la nuit, ils sont
 --      retirés du jeu (Parent = nil) ; à l'aube, remis où ils étaient, et la balade reprend.
@@ -57,8 +62,11 @@
 --   WitnessService.GetFill(store) -> number        le « ? » le plus rempli des témoins du magasin, 0 à 1 (1 pendant l'appel)
 --   WitnessService.IsCalling(store) -> boolean     un témoin du magasin est au téléphone
 --   WitnessService.OnCall(listener) -> déconnexion
---       listener(store, suspect, police) quand la police est appelée pour `store` : `suspect` = le joueur
---       poursuivi et `police` = sa copie en jeu, ou nil si personne n'est à poursuivre.
+--       listener(store, suspect, police) quand la police est appelée pour `store` : `suspect` = le premier
+--       joueur poursuivi (le dernier à avoir frappé) et `police` = sa copie en jeu, ou nil si aucun
+--       policier n'est parti à cet appel. Les autres : GetPolice.
+--   WitnessService.GetPolice(store) -> { { Player: Player, Police: Model } }
+--       Vague 43 : les policiers en jeu pour ce magasin et leur cible (une copie ; vide sans policier).
 --   Exemple (L-112) : au début de l'ouverture `WitnessService.Raise(store, player)`, au relâché
 --   `WitnessService.Pause(store)`, colis ouvert ou joueur sorti `WitnessService.Calm(store)`.
 --   WitnessService.GetState(store) -> { State }    pour un test : état de chaque témoin du magasin
@@ -94,6 +102,9 @@ export type State = {
 }
 
 export type CallListener = (store: Model, suspect: Player?, police: Model?) -> ()
+
+-- Un policier en jeu et le joueur qu'il poursuit (vague 43).
+export type PoliceChase = { Player: Player, Police: Model }
 
 type WitnessNpc = {
 	model: Model,
@@ -169,7 +180,7 @@ local WitnessService = {}
 
 local witnesses: { WitnessNpc } = {}
 local byStore: { [Model]: { WitnessNpc } } = {}
-local policeByStore: { [Model]: Model } = {} -- le policier en jeu de chaque magasin
+local policeByStore: { [Model]: { PoliceChase } } = {} -- les policiers en jeu de chaque magasin (vague 43)
 local callListeners: { CallListener } = {}
 local warned: { [string]: boolean } = {}
 local rng = Random.new()
@@ -434,30 +445,74 @@ local function policeSpawn(w: WitnessNpc, store: Model): CFrame
 	return CFrame.new(feet + root.CFrame.RightVector * 3)
 end
 
--- Lance le policier du magasin sur le suspect le plus récent encore poursuivable. Renvoie le joueur
--- poursuivi et la copie du policier, ou nil.
-local function launchPolice(w: WitnessNpc, store: Model, now: number): (Player?, Model?)
-	local current = policeByStore[store]
-	if current and current.Parent ~= nil then
-		log(`{w.label} : un policier est déjà là pour {store.Name}`)
-		return nil, nil
+-- Les policiers encore en jeu du magasin (la liste gardée ; ceux que GuardService a retirés sont oubliés).
+local function activePolice(store: Model): { PoliceChase }
+	local list = policeByStore[store]
+	if list == nil then
+		list = {}
+		policeByStore[store] = list
 	end
-	policeByStore[store] = nil
+	for index = #list, 1, -1 do
+		if list[index].Police.Parent == nil then
+			table.remove(list, index)
+		end
+	end
+	return list
+end
+
+local function chasedHere(list: { PoliceChase }, player: Player): boolean
+	for _, entry in list do
+		if entry.Player == player then
+			return true
+		end
+	end
+	return false
+end
+
+-- Point d'apparition du policier numéro `index` (0 pour le premier) de cet appel : côte à côte, à
+-- Police.SpawnSpacing studs, alternativement à droite et à gauche du premier.
+local function spawnFor(spawnAt: CFrame, index: number): CFrame
+	if index <= 0 then
+		return spawnAt
+	end
+	local side = if index % 2 == 1 then 1 else -1
+	local offset = math.ceil(index / 2) * Witness.Police.SpawnSpacing * side
+	return CFrame.new(spawnAt.Position + spawnAt.RightVector * offset)
+end
+
+-- Vague 43 : lance un policier sur chaque suspect encore poursuivable, du plus récent au plus ancien,
+-- tant que le magasin a moins de Police.MaxPerStore policiers en jeu. Renvoie les policiers lancés.
+local function launchPolice(w: WitnessNpc, store: Model, now: number): { PoliceChase }
+	local launched: { PoliceChase } = {}
+	local active = activePolice(store)
+	local cap = math.max(math.floor(Witness.Police.MaxPerStore), 1)
+	if #active >= cap then
+		log(`{w.label} : déjà {#active} policier(s) pour {store.Name} (plafond {cap})`)
+		return launched
+	end
 	local template = GuardService.FindGuardModel(Witness.Police.Template)
 	if template == nil then
 		warnOnce("template", `{Witness.Police.Template} absent de Assets/Guards : aucun policier (L-111)`)
-		return nil, nil
+		return launched
 	end
 	local spawnAt = policeSpawn(w, store)
 	local deadline = now + Witness.Police.ChaseDuration
 	for _, player in suspectsOf(w) do
+		if #active >= cap then
+			log(`{w.label} : plafond de {cap} policier(s) atteint pour {store.Name}, {player.Name} n'en a pas`)
+			break
+		end
+		if chasedHere(active, player) then
+			log(`{w.label} : un policier est déjà là pour {store.Name} ({player.Name})`)
+			continue
+		end
 		if suspectRoot(player) then
 			local speed = policeSpeed(player, w.zone)
 			local model = GuardService.StartDriverChase({
 				Template = template,
 				Name = string.format(Witness.Police.CloneName, w.zone),
 				Target = player,
-				Spawn = spawnAt,
+				Spawn = spawnFor(spawnAt, #launched),
 				Zone = w.zone,
 				SpeedMultiplier = 0, -- vitesse fixe : MinSpeed
 				MinSpeed = speed,
@@ -471,12 +526,16 @@ local function launchPolice(w: WitnessNpc, store: Model, now: number): (Player?,
 				SendHome = sendHome, -- L-118 point 3 : attrapé, renvoyé à la base
 			})
 			if model then
-				policeByStore[store] = model
-				return player, model
+				local entry: PoliceChase = { Player = player, Police = model }
+				table.insert(active, entry)
+				table.insert(launched, entry)
 			end
 		end
 	end
-	return nil, nil
+	if #active == 0 then
+		policeByStore[store] = nil
+	end
+	return launched
 end
 
 -- La police part : son du téléphone, policier, message aux joueurs vus. Une fois par appel.
@@ -490,13 +549,20 @@ local function dispatch(w: WitnessNpc, now: number)
 	if store == nil then
 		return
 	end
-	local suspect, police = launchPolice(w, store, now)
+	local launched = launchPolice(w, store, now)
+	local first = launched[1]
+	local suspect: Player? = if first then first.Player else nil
+	local police: Model? = if first then first.Police else nil
 	for player in w.suspects do
 		if player.Parent == Players then
 			Net.Server.Notify:Fire(player, Witness.Messages.Called, "Alert")
 		end
 	end
-	log(`{w.label} appelle la police pour {store.Name} : {if suspect then `policier lancé sur {suspect.Name}` else "personne à poursuivre"}`)
+	local names: { string } = {}
+	for _, entry in launched do
+		table.insert(names, entry.Player.Name)
+	end
+	log(`{w.label} appelle la police pour {store.Name} : {if #names > 0 then `{#names} policier(s) lancé(s) sur {table.concat(names, ", ")}` else "personne à poursuivre"}`)
 	for _, listener in table.clone(callListeners) do
 		task.spawn(listener, store, suspect, police)
 	end
@@ -894,6 +960,20 @@ function WitnessService.OnCall(listener: CallListener): () -> ()
 			table.remove(callListeners, index)
 		end
 	end
+end
+
+function WitnessService.GetPolice(store: Model): { PoliceChase }
+	local list: { PoliceChase } = {}
+	if policeByStore[store] == nil then
+		return list
+	end
+	for _, entry in activePolice(store) do
+		table.insert(list, { Player = entry.Player, Police = entry.Police })
+	end
+	if #list == 0 then
+		policeByStore[store] = nil
+	end
+	return list
 end
 
 function WitnessService.GetState(store: Model): { State }

@@ -56,6 +56,9 @@ local Bot = {
 		-- (Tutorial.GuardSpeed = 12), et au plus TutorialMaxStrikes coup réussi sur ce joueur pendant son tuto.
 		TutorialRunSpeed = Tutorial.GuardSpeed,
 		TutorialMaxStrikes = 1,
+		-- Vague 42 (L-146 point 3, Clément le 2026-11-14) : pendant son tuto, le joueur frappé par le bot attend 15 s
+		-- (au lieu de PvP.KickRobCooldown, 60) avant de pouvoir revoler le bot. Hors tuto, rien ne change.
+		TutorialKickCooldown = 15,
 		-- Le coup : il lance SwingBat à Bat.Range (7) studs de sa cible au plus, une fois toutes les Bat.Cooldown
 		-- (0,8) s au plus, comme un joueur ; BatService revérifie tout au marqueur Impact.
 		SwingRange = Bat.Range,
@@ -64,6 +67,9 @@ local Bot = {
 		-- du panneau de repérage : « être à la boutique »), ou la poursuite dure depuis plus de
 		-- Balance.Guard.IntruderChaseTime (10) s (l'abandon du vigile qui chasse un intrus, « environ 10 secondes »,
 		-- Cantin). Un nouveau déclenchement (porte cassée, objet pris) relance le temps.
+		-- Vague 42 (Cantin, 2026-11-14) : la poursuite ne démarre qu'à la prise d'un objet ; dans la boutique du bot,
+		-- elle dure sans limite (avec ou sans objet sur lui) ; GiveUpTime ne compte que hors de la boutique (repart de
+		-- zéro à chaque sortie). Une fois le bot rentré, il faut un nouveau vol (V0 proposé).
 		LeashDistance = PvP.ScoutDistance,
 		GiveUpTime = Balance.Guard.IntruderChaseTime,
 		-- Retour : ré-ancré au point d'apparition à 2 studs au plus de lui (à l'horizontale : moins que la moitié de

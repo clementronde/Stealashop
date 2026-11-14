@@ -33,6 +33,9 @@ export type Part = {
 	-- n'est écrit ; présent, il est contrôlé comme les autres (classe, doublons). Pour une série, aucun
 	-- numéro n'est obligatoire.
 	Silent: boolean?,
+	-- Vague 42 (a148) : l'élément (Attachment, pièce ou Model) doit être dans la boîte englobante du modèle ;
+	-- dehors, un avertissement (orange). Seule vérification possible de « à l'intérieur » hors de Studio.
+	InBounds: boolean?,
 }
 
 export type ModelSpec = {
@@ -586,9 +589,9 @@ end
 
 -- Vitrine de l'événement de la Fortune Tower (L-108 point 8, vague 37, a123 ; noms proposés à Clément, pas
 -- encore validés) : rangée dans ReplicatedStorage/Assets (Events), pivot en bas au centre, face avant vers
--- la rue. FortuneTowerService en pose une copie en zone 6, qu'il renomme FortuneVault. Aucun exemplaire
--- attendu (Expected vide : rien d'écrit tant qu'elle n'est pas livrée) ; livrée, chaque élément absent est
--- un avertissement (orange), jamais un problème : le code a un repli pour chacun.
+-- la rue. FortuneTowerService en pose une copie en zone 6, qu'il renomme FortuneVault. Pas encore livrée :
+-- « pas encore livré » (vague 42) ; livrée, chaque élément absent est un avertissement (orange), jamais un
+-- problème : le code a un repli pour chacun.
 local FortuneVault: ModelSpec = {
 	Key = "FortuneVault",
 	Label = "vitrines de l'événement de la Fortune Tower",
@@ -614,10 +617,21 @@ local FortuneVault: ModelSpec = {
 			Optional = true,
 			Note = "facultatif : contour éteint à la casse, L-108",
 		},
-		-- Points au sol où tombe le butin (8 colis) ; facultatifs (Silent) : sans eux, une rangée devant la face avant.
-		{ Name = "LootSpawn_%02d", From = 1, To = 8, Class = "Attachment", Silent = true },
+		-- Vague 42 (L-145 (c) et (d), 2026-11-14 : on entre dans le coffre) : points du butin (8 colis), à
+		-- l'intérieur, chacun posé sur le sol du coffre sous lui ; Attachment ou pièce. Facultatifs (orange) :
+		-- sans eux, une rangée devant la face avant. InBounds : un point hors de la boîte du modèle = orange.
+		{
+			Name = "LootSpawn_%02d",
+			From = 1,
+			To = 8,
+			Optional = true,
+			InBounds = true,
+			Note = "facultatifs : points du butin dans le coffre, Attachment ou pièce ; sans eux, une rangée devant, L-145",
+		},
 	},
-	Expected = {},
+	-- Vague 42 (L-145 (d)) : Clément le livre ; pas encore livré, une ligne « pas encore livré » (jamais un
+	-- problème) : le code a un repli (bloc V0 en Studio, rien en jeu publié).
+	Expected = { "ENV_Event_FortuneVault" },
 }
 Models.FortuneVault = FortuneVault
 table.insert(Models.List, table.find(Models.List, WeaponShopCounter) or #Models.List + 1, FortuneVault)

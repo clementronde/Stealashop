@@ -299,6 +299,9 @@
 --       le rayon, sans yield ; un nombre fini ≥ 1 remplace la chance tirée ; nil ou une valeur invalide
 --       garde le tirage de LuckTable. nil retire l'accroche. drawn comme pour SetContentOverride avec
 --       Features.ShelfOpen (Rarity = rareté de la caisse, ItemId = "").
+--   StoreHeistService.AddEventShelf(options) -> Model? et RemoveEventShelf(id) -> boolean  (vague 42, a148)
+--       Rayon d'événement : colis du coffre de la Fortune Tower (et du camion) ouverts sur place comme sur
+--       un rayon (voir « Rayons d'événement », plus bas dans ce fichier).
 --   StoreHeistService.GetStoreId(model) -> string? et GetStoreModel(storeId) -> Model?
 --       StoreId = l'id de vitrine de WindowService (le nom du modèle, « STORE_Z1_Superette »).
 --
@@ -493,6 +496,11 @@ type Store = {
 	ChronoOver: boolean, -- chrono du vigile fini : les vigiles sont sortis
 	ClosedAt: number, -- os.clock() de la dernière fermeture (reconstruction RebuildDelay s après au plus tôt)
 	KickAfter: { [Player]: number }, -- attrapé dans Bounds : fermé pour lui, sorti à cet os.clock() (après le coup)
+	-- Vague 42 (a148) : rayon d'événement (AddEventShelf) : ni Bounds, ni chrono, ni témoins, ni vigile,
+	-- ni accroches du tuto ; ItemZones : zones des objets à la sortie (nil = celles du magasin).
+	Event: boolean?,
+	ItemZones: { number }?,
+	SizeOdds: { [string]: number }?, -- tailles garanties de l'événement (nil : celles de Mutations.Roll)
 }
 
 -- Leaving : vient de prendre un colis, encore dans Bounds avec lui ; Closed : fermé pour lui, rideau
@@ -638,6 +646,7 @@ local StoreHeistService = {}
 StoreHeistService.Priority = PRIORITY
 
 local stores: { [Instance]: Store } = {}
+local eventStores: { [Instance]: Store } = {} -- vague 42 : rayons d'événement (AddEventShelf), hors des boucles des magasins
 local storesById: { [string]: Store } = {}
 local slotsById: { [string]: Slot } = {}
 local holds: { [Player]: Hold } = {}
@@ -663,6 +672,11 @@ local noticed: { [string]: boolean } = {}
 local random = Random.new()
 
 -- Outils ----------------------------------------------------------------------------------
+
+-- Le magasin (ou le rayon d'événement, vague 42) est encore en jeu.
+local function live(store: Store): boolean
+	return stores[store.Model] == store or eventStores[store.Model] == store
+end
 
 local function subscribe<T>(list: { T }, listener: T): () -> ()
 	table.insert(list, listener)
@@ -1320,7 +1334,7 @@ end
 -- seulement quand plus aucune ouverture n'y est en cours).
 local function calmWitnesses(store: Store)
 	local api = witnessApi
-	if api == nil then
+	if api == nil or store.Event then
 		return
 	end
 	local ok, err = pcall(api.Calm, store.Model)
@@ -1980,11 +1994,11 @@ local function reachRefusal(player: Player, slot: Slot, lenient: boolean): strin
 		return "pas de personnage vivant"
 	end
 	local bounds = store.Bounds
-	if bounds == nil then
+	if bounds == nil and not store.Event then -- vague 42 : un rayon d'événement n'a pas de volume, la distance suffit
 		return "magasin sans volume Bounds"
 	end
 	local pad = if lenient then reachPad(player, humanoid) else 0
-	if distanceTo(bounds, root.Position) > pad then
+	if bounds and distanceTo(bounds, root.Position) > pad then
 		return "hors du volume Bounds"
 	end
 	local distance = (root.Position - slot.Attachment.WorldPosition).Magnitude
@@ -2185,7 +2199,7 @@ local function grantItem(player: Player, slot: Slot)
 		if not ok then
 			warn(`[StoreHeistService] CarryService.StartCarry : {started}`)
 		end
-		if slot.Item == nil and slot.Box == nil and stores[store.Model] == store then
+		if slot.Item == nil and slot.Box == nil and live(store) then
 			slot.Item = item -- rien n'a changé : l'objet reste sur le rayon
 		else
 			discardItem(item) -- rayon rempli entre-temps : pas de doublon
@@ -2286,11 +2300,29 @@ local function itemRarityWeights(boxRarity: string, luck: number): { [string]: n
 end
 
 -- Rareté de l'objet tirée selon itemRarityWeights ; table absente : la rareté de la caisse (avertissement).
-local function drawItemRarity(boxRarity: string, luck: number): string
+-- Vague 42 (a148, L-145 (a)) : `floor` (rayon d'événement) : la rareté de la caisse est un minimum, les raretés
+-- en dessous ne sortent jamais ; la chance ne peut que monter.
+local function drawItemRarity(boxRarity: string, luck: number, floor: boolean?): string
 	local weights = itemRarityWeights(boxRarity, luck)
 	if weights == nil then
 		warnOnce(`boxodds.{boxRarity}`, `aucune table ShelfOpen.BoxRarityOdds.{boxRarity} : l'objet est de la rareté de sa caisse`)
 		return boxRarity
+	end
+	local box = Rarities.ById[boxRarity]
+	if floor and box then
+		local kept: { [string]: number } = {}
+		local any = false
+		for _, rarity in Rarities.List do
+			local weight = weights[rarity.Id]
+			if weight and rarity.Order >= box.Order then
+				kept[rarity.Id] = weight
+				any = true
+			end
+		end
+		if not any then
+			return boxRarity
+		end
+		weights = kept
 	end
 	local total = 0
 	for _, rarity in Rarities.List do
@@ -2316,20 +2348,65 @@ end
 -- (drawMutation). Aucun objet de la rareté tirée nulle part (Config incohérente ; Divine sans catalogue) :
 -- la rareté la plus proche en dessous qui en a un, avec un avertissement. nil si rien ne peut sortir.
 -- Renvoie aussi la rareté tirée (avant ce garde-fou).
-local function drawShelfContent(boxRarity: string, zone: number, luck: number): (Content?, string)
-	local wanted = drawItemRarity(boxRarity, luck)
+-- Vague 42 (a148) : `zones` (rayon d'événement, ItemZones) : un objet de la rareté pris parmi ceux de toutes
+-- ces zones (Items.ByZone, lu dans le catalogue), sinon la règle des magasins (drawItemNear).
+local function drawItemIn(zones: { number }, rarityId: string): string?
+	if Items.AllZones[rarityId] then
+		return nil -- Secret, Divine : toutes zones, drawItemNear s'en charge
+	end
+	local pool: { string } = {}
+	for _, zone in zones do
+		local byRarity = Items.ByZone[zone]
+		local list: { Items.Item } = (if byRarity then byRarity[rarityId] else nil) or {}
+		for _, item in list do
+			table.insert(pool, item.Id)
+		end
+	end
+	return if #pool > 0 then pool[random:NextInteger(1, #pool)] else nil
+end
+
+-- `floor` : la rareté de la caisse est un minimum (drawItemRarity) ; `sizeOdds` ({ [Id de taille] = poids }) :
+-- la taille est tirée là, à la place de celle de Mutations.Roll (l'effet reste celui de Mutations.Roll).
+local function drawShelfContent(
+	boxRarity: string,
+	zone: number,
+	luck: number,
+	zones: { number }?,
+	floor: boolean?,
+	sizeOdds: { [string]: number }?
+): (Content?, string)
+	local wanted = drawItemRarity(boxRarity, luck, floor)
 	local info = Rarities.ById[wanted]
 	if info == nil then
 		return nil, wanted
 	end
 	for order = info.Order, 1, -1 do
 		local rarityId: string = Rarities.List[order].Id
-		local itemId = drawItemNear(zone, rarityId)
+		local itemId = (if zones then drawItemIn(zones, rarityId) else nil) or drawItemNear(zone, rarityId)
 		if itemId then
 			if order < info.Order then
 				warnOnce(`nowhere.{wanted}`, `aucun objet {wanted} tirable dans aucune zone (Config/Items) : un objet {rarityId} sort à la place`)
 			end
-			local content: Content = { Rarity = rarityId, ItemId = itemId, Mutation = drawMutation(itemId) }
+			local mutation = drawMutation(itemId)
+			if sizeOdds then
+				local total, size = 0, nil
+				for _, entry in Mutations.Sizes do
+					total += math.max(sizeOdds[entry.Id] or 0, 0)
+				end
+				local roll = random:NextNumber() * total
+				for _, entry in Mutations.Sizes do
+					local weight = math.max(sizeOdds[entry.Id] or 0, 0)
+					if weight > 0 then
+						size = entry.Id
+						if roll < weight then
+							break
+						end
+						roll -= weight
+					end
+				end
+				mutation = Mutations.Sanitize({ Size = size, Effect = if mutation then mutation.Effect else nil })
+			end
+			local content: Content = { Rarity = rarityId, ItemId = itemId, Mutation = mutation }
 			return content, wanted
 		end
 	end
@@ -2366,7 +2443,7 @@ end
 local function reveal(slot: Slot, box: ShelfBox, luck: number)
 	local opening = box.Opening
 	local store = slot.Store
-	if opening == nil or slot.Box ~= box or stores[store.Model] ~= store then
+	if opening == nil or slot.Box ~= box or not live(store) then
 		return
 	end
 	box.Opening = nil
@@ -2375,7 +2452,7 @@ local function reveal(slot: Slot, box: ShelfBox, luck: number)
 	-- Accroche du tuto d'abord, sans tirage : un contenu imposé est l'objet sorti tel quel (voir l'en-tête).
 	local pending: Content = { Rarity = box.Rarity, ItemId = "", Mutation = nil }
 	local imposed: Content? = nil
-	if opener then
+	if opener and not store.Event then -- vague 42 : pas d'accroche du tuto sur un rayon d'événement
 		local _, given = contentFor(opener, slot, box.Tier, pending)
 		if given ~= pending then
 			imposed = given
@@ -2384,7 +2461,7 @@ local function reveal(slot: Slot, box: ShelfBox, luck: number)
 	local drawnRarity = box.Rarity
 	local final: Content? = imposed
 	if final == nil then
-		final, drawnRarity = drawShelfContent(box.Rarity, store.Zone, luck)
+		final, drawnRarity = drawShelfContent(box.Rarity, store.Zone, luck, store.ItemZones, store.Event, store.SizeOdds)
 	end
 	box.Model:SetAttribute(ShelfOpenState.StateAttribute, "Revealed")
 	discard(box)
@@ -2422,7 +2499,7 @@ local function startOpening(player: Player, slot: Slot, box: ShelfBox)
 	local store = slot.Store
 	local luck = drawLuck()
 	local forced = luckOverride
-	if forced then
+	if forced and not store.Event then -- vague 42 : pas d'accroche du tuto sur un rayon d'événement
 		-- Accroche du tuto (a107, SetLuckOverride) : une chance finie ≥ 1, sinon le tirage normal.
 		-- Vague 32 : le contenu n'est pas encore tiré ; Rarity = rareté de la caisse, ItemId = "".
 		local drawn: OverrideInfo = { StoreId = store.Id, SlotId = slot.Id, Zone = store.Zone, Tier = box.Tier, Rarity = box.Rarity, ItemId = "" }
@@ -2544,7 +2621,7 @@ local function onOpenShelfBox(player: Player, slotId: string)
 	-- Témoins vérifiés au lancement seulement (fin du maintien) : un seul message par appui.
 	local api = witnessApi
 	local okCalling, calling = false, false
-	if api then
+	if api and not slot.Store.Event then -- vague 42 : pas de témoins sur un rayon d'événement
 		okCalling, calling = pcall(api.IsCalling, slot.Store.Model)
 	end
 	if okCalling and calling == true then
@@ -2654,7 +2731,7 @@ local function returnItem(payload: any, from: Vector3?): boolean
 	end
 	outItems[payload] = nil
 	local slot = out.Slot
-	if stores[slot.Store.Model] ~= slot.Store or slot.Box ~= nil or slot.Item ~= nil then
+	if not live(slot.Store) or slot.Box ~= nil or slot.Item ~= nil then
 		return false
 	end
 	placeItem(slot, out.Info, from)
@@ -3026,7 +3103,170 @@ local function onRebuilt(_windowId: string, model: Model)
 	end
 end
 
+-- Rayons d'événement (vague 42, a148, demande de Cantin du 2026-11-14) -------------------------------------
+-- Les colis du coffre de la Fortune Tower et du camion s'ouvrent sur place, exactement comme sur un rayon :
+-- même code (OpenShelfBox, chance, sortie, GrabItem, portage NPCItem). Un rayon d'événement est un faux
+-- magasin hors de stores (aucune boucle des magasins ne le voit : ni chrono, ni rideau, ni remplissage de
+-- nuit, ni fermeture pour le voleur), toujours ouvert, sans Bounds (reachRefusal : la distance seule, souple
+-- au début du maintien et stricte à la fin), sans témoins, sans accroches du tuto ; StoreId « Truck_… » :
+-- GuardService n'envoie aucun vigile, TelemetryService le compte à part. Modèle posé dans le Workspace :
+-- EventShelf_<Id> (tag EventShelf, attributs StoreId et HeistOpen, lus par HeistController), une pièce
+-- invisible Anchor avec les ShelfSlot_NN, et le dossier ShelfBoxes. Retiré en entier au bout de Lifetime s
+-- (colis fermés, ouvertures en cours et objets sortis non pris), ou par RemoveEventShelf.
+
+local EVENT_TAG = "EventShelf" -- posé par le code, lu par HeistController
+local EVENT_NAME_PREFIX = "EventShelf_"
+
+export type EventSpot = {
+	CFrame: CFrame, -- pivot du colis (en bas au centre), posé sur le sol
+	Tier: string, -- type du colis (Balance.Heist.BoxTiers) : son temps de maintien
+	Rarity: string, -- rareté de la caisse (BOX_<Rareté>), tirée par l'appelant
+	From: Vector3?, -- départ d'un vol jusqu'au point (placeBox), sinon posé tout de suite
+}
+
+export type EventShelfOptions = {
+	Id: string, -- StoreId, préfixe « Truck_ » (voir plus haut)
+	Zone: number, -- zone du faux magasin (objet tiré près d'elle, revenu)
+	ItemZones: { number }?, -- zones des objets de rareté rangée par zone (nil : règle des magasins)
+	SizeOdds: { [string]: number }?, -- tailles garanties ({ Huge = 80, Colossal = 20 }), nil : comme en magasin
+	Spots: { EventSpot },
+	Lifetime: number, -- s, puis tout est retiré
+}
+
+local function removeEventStore(store: Store, why: string)
+	if eventStores[store.Model] ~= store then
+		return
+	end
+	eventStores[store.Model] = nil
+	storesById[store.Id] = nil
+	store.Open = false
+	cancelHolds(store)
+	for payload, out in outItems do
+		if out.Slot.Store == store then
+			outItems[payload] = nil -- un objet porté reste porté ; tombé puis oublié, il ne revient plus
+		end
+	end
+	for _, slot in store.Slots do
+		slotsById[slot.Id] = nil
+		removeBox(slot)
+		removeItem(slot)
+	end
+	store.Model:Destroy()
+	log(`rayon d'événement {store.Id} retiré : {why}`)
+end
+
+local function addEventShelf(options: EventShelfOptions): Model?
+	if not SHELF_OPEN then
+		return nil -- ancien déroulé : l'appelant garde ses colis au sol
+	end
+	local id = options.Id
+	if storesById[id] ~= nil or Zones[options.Zone] == nil or #options.Spots == 0 then
+		warn(`[StoreHeistService] AddEventShelf({id}) refusé : StoreId déjà pris, zone inconnue ou aucun point`)
+		return nil
+	end
+	local model = Instance.new("Model")
+	model.Name = EVENT_NAME_PREFIX .. id
+	model.ModelStreamingMode = Enum.ModelStreamingMode.Atomic
+	local anchor = Instance.new("Part")
+	anchor.Name = "Anchor"
+	anchor.Size = Vector3.one
+	anchor.Transparency = 1
+	anchor.Anchored = true
+	anchor.CanCollide = false
+	anchor.CanTouch = false
+	anchor.CanQuery = false
+	anchor.CFrame = CFrame.new(options.Spots[1].CFrame.Position)
+	anchor.Parent = model
+	model.PrimaryPart = anchor
+	local folder = Instance.new("Folder")
+	folder.Name = BOXES_FOLDER
+	folder.Parent = model
+	local store: Store = {
+		Id = id,
+		Model = model,
+		Zone = options.Zone,
+		Bounds = nil,
+		Window = nil,
+		Shutter = nil,
+		ShutterParts = {},
+		ShutterCollide = {},
+		ShutterOpen = CFrame.identity,
+		ShutterClosed = CFrame.identity,
+		ShutterDown = false,
+		ShutterPending = false,
+		ShutterToken = 0,
+		StopShutter = nil,
+		Slots = {},
+		Folder = folder,
+		Open = true,
+		Token = 0,
+		Breaker = nil,
+		ExclusiveUntil = 0,
+		EndsAt = 0,
+		Viewers = {},
+		RefillPending = false,
+		Locked = {},
+		CurtainHeld = false,
+		Entered = {},
+		ChronoOver = false,
+		KickAfter = {},
+		ClosedAt = 0,
+		Event = true,
+		ItemZones = options.ItemZones,
+		SizeOdds = options.SizeOdds,
+	}
+	for number, spot in options.Spots do
+		local name = string.format(SLOT_FORMAT, number)
+		local attachment = Instance.new("Attachment")
+		attachment.Name = name
+		attachment.CFrame = anchor.CFrame:ToObjectSpace(spot.CFrame)
+		attachment.Parent = anchor
+		local slot: Slot = {
+			Store = store,
+			Number = number,
+			Name = name,
+			Id = `{id}/{string.format("%02d", number)}`,
+			Attachment = attachment,
+			Box = nil,
+			Item = nil,
+		}
+		table.insert(store.Slots, slot)
+		slotsById[slot.Id] = slot
+	end
+	eventStores[model] = store
+	storesById[id] = store
+	model:SetAttribute(STORE_ID_ATTRIBUTE, id)
+	model:SetAttribute(OPEN_ATTRIBUTE, true)
+	CollectionService:AddTag(model, EVENT_TAG)
+	model.Parent = Workspace
+	for index, slot in store.Slots do
+		local spot = options.Spots[index]
+		placeBox(slot, spot.Tier, spot.Rarity, nil, spot.From)
+	end
+	task.delay(options.Lifetime, function()
+		removeEventStore(store, `fin de sa durée de vie ({options.Lifetime} s)`)
+	end)
+	log(`rayon d'événement {id} : {#store.Slots} colis à ouvrir sur place, zone {options.Zone}, retiré dans {options.Lifetime} s`)
+	return model
+end
+
 -- API ----------------------------------------------------------------------------------------------
+
+-- Vague 42 (a148) : rayon d'événement (voir plus haut). Renvoie son modèle, ou nil (Features.ShelfOpen
+-- coupé, StoreId déjà pris, zone inconnue) : l'appelant garde alors ses colis au sol (ancien déroulé).
+function StoreHeistService.AddEventShelf(options: EventShelfOptions): Model?
+	return addEventShelf(options)
+end
+
+-- Retire tout de suite le rayon d'événement `id` (colis, ouvertures, objets non pris). false s'il n'existe pas.
+function StoreHeistService.RemoveEventShelf(id: string): boolean
+	local store = storesById[id]
+	if store == nil or not store.Event then
+		return false
+	end
+	removeEventStore(store, "retiré par son événement")
+	return true
+end
 
 function StoreHeistService.RefillAll(): number
 	local count, deferred = 0, 0

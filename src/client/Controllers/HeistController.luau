@@ -64,6 +64,9 @@ type StoreWatch = {
 }
 
 local STORE_TAG = "NPCStore" -- contrat 2.1
+-- Vague 42 (a148) : rayon d'événement de StoreHeistService (coffre de la Fortune Tower, camion), suivi comme
+-- un magasin : mêmes invites « Open » puis « Steal », sans volume Bounds.
+local EVENT_TAG = "EventShelf"
 local BOUNDS_NAME = "Bounds" -- contrat 10.4
 -- Posés par StoreHeistService (mêmes noms là-bas).
 local BOXES_FOLDER = "ShelfBoxes"
@@ -157,6 +160,9 @@ local function canGrabHere(watch: StoreWatch): boolean
 		return false -- avance du casseur
 	end
 	local root = localRoot()
+	if CollectionService:HasTag(model, EVENT_TAG) then
+		return root ~= nil -- vague 42 : rayon d'événement, sans volume Bounds (la portée de l'invite suffit)
+	end
 	local bounds = boundsOf(watch)
 	return root ~= nil and bounds ~= nil and inside(bounds, root.Position)
 end
@@ -505,12 +511,14 @@ function HeistController.Start()
 
 	Net.Client.HeistTimer:Connect(onHeistTimer)
 
-	for _, instance in CollectionService:GetTagged(STORE_TAG) do
-		watchStore(instance)
+	for _, tag in { STORE_TAG, EVENT_TAG } do -- vague 42 : et les rayons d'événement
+		for _, instance in CollectionService:GetTagged(tag) do
+			watchStore(instance)
+		end
+		-- Avec StreamingEnabled, un magasin arrive et repart avec la zone autour du joueur.
+		CollectionService:GetInstanceAddedSignal(tag):Connect(watchStore)
+		CollectionService:GetInstanceRemovedSignal(tag):Connect(unwatchStore)
 	end
-	-- Avec StreamingEnabled, un magasin arrive et repart avec la zone autour du joueur.
-	CollectionService:GetInstanceAddedSignal(STORE_TAG):Connect(watchStore)
-	CollectionService:GetInstanceRemovedSignal(STORE_TAG):Connect(unwatchStore)
 	localPlayer:GetAttributeChangedSignal(CARRYING_ATTRIBUTE):Connect(refreshAll)
 	if SHELF_OPEN then
 		for _, item in CollectionService:GetTagged(ShelfOpenState.ItemTag) do

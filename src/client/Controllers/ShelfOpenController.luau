@@ -23,7 +23,8 @@
 --      puis Unbox_Confetti ; l'objet sort 0,2 → 1 (Back Out), blanc (Highlight passager, réservé dans le
 --      budget de ShelfBoxController) puis à ses couleurs ; BB_Item au-dessus (nom, rareté, Mutation
 --      « BIG GOLD » montrée seulement avec une mutation, $/s) ; chez l'ouvreur, UI_HUD.RevealTint pour
---      Épique et plus (ShelfOpen.RevealTintMinRarity).
+--      Épique et plus (ShelfOpen.RevealTintMinRarity), et (vague 46) le flash d'UI_Escape et le zoom de la
+--      caméra de l'arrivée en zone safe, sans bannière (UiFeelController.RevealFlash, Config/UiMotion.RevealFlash).
 -- a139 (optimisation téléphone, Config/PerfClient.ShelfOpenWatchChanges) : seuls les colis dont l'état d'ouverture
 -- change, ou n'est pas nil, sont relus à chaque image (avant : les attributs des 120 colis, à chaque image).
 -- Tout ce qui est créé ici est local et libéré à la fin (FX, billboards, Highlight, réservation). Un
@@ -194,6 +195,20 @@ local function sayOnce(key: string, message: string)
 	if IS_STUDIO and not said[key] then
 		said[key] = true
 		print(`[ShelfOpen] {message}`)
+	end
+end
+
+-- Vague 46 : flash et zoom de la révélation (UiFeelController.RevealFlash, chargé au premier appel).
+local function revealFlash()
+	local module = script.Parent:FindFirstChild("UiFeelController")
+	if module == nil or not module:IsA("ModuleScript") then
+		sayOnce("revealFlash", "UiFeelController absent : révélation sans flash ni zoom")
+		return
+	end
+	local ok, api = pcall(require, module)
+	local flash = if ok and type(api) == "table" then (api :: any).RevealFlash else nil
+	if type(flash) == "function" then
+		task.spawn(flash)
 	end
 end
 
@@ -779,6 +794,10 @@ local function startReveal(session: Session, item: Model?)
 		session.WhiteFlash = white
 		flashes += 1
 		reserve()
+	end
+	-- Vague 46 (Cantin) : flash d'UI_Escape et zoom de la caméra, sans bannière, chez l'ouvreur seulement.
+	if session.Opener then
+		revealFlash()
 	end
 	-- Voile, chez l'ouvreur seulement.
 	if session.Opener and Logic.wantsTint(rarityId) then
