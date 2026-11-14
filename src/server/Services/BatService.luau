@@ -11,11 +11,13 @@
 --   2. le frappeur : vivant, la batte en main (ToolService.IsHoldingBat), mains vides (pas de
 --      portage), pas étourdi par la batte ;
 --   3. la cible, choisie par le serveur parmi les autres joueurs vivants :
---      - à Bat.Range (7) studs au plus, entre les deux HumanoidRootPart ;
+--      - à Bat.Range (7) studs au plus, entre les deux HumanoidRootPart, à l'horizontale, avec au plus
+--        AntiCheat.CatchVerticalReach (10) studs d'écart en hauteur (a146, audit du 2026-11-14) ;
 --      - devant le frappeur : à Bat.FrontHalfAngle (60°) au plus de son regard, à l'horizontale,
 --        sauf plus près que Bat.PointBlankRange (3) studs (corps contre corps) ;
 --      - sans mur entre eux (rayon qui ignore personnages, vigiles, colis au sol, et tout ce qui
---        ne bloque pas : RespectCanCollide) ;
+--        ne bloque pas : RespectCanCollide) ; sauf une cible perchée sur un meuble bas ou dont le
+--        HumanoidRootPart est dans un mur (shared/CatchReach, a146) ;
 --      - qui porte quelque chose (CarryService.GetPayload) :
 --          usage 1 : un objet volé AU FRAPPEUR (PlayerItem, VictimUserId = frappeur) : partout,
 --                    même en zone safe ;
@@ -108,6 +110,7 @@ local Workspace = game:GetService("Workspace")
 local Shared = ReplicatedStorage.Shared
 local Balance = require(Shared.Config.Balance)
 local Bat = require(Shared.Config.Bat)
+local CatchReach = require(Shared.CatchReach)
 local Net = require(Shared.Net.Net)
 local CarryTypes = require(Shared.Types.Carry)
 
@@ -353,7 +356,8 @@ local function candidateFor(
 	end
 	local offset = root.Position - hitterRoot.Position
 	local distance = offset.Magnitude
-	if distance > Bat.Range then
+	-- Audit du 2026-11-14 (a146, shared/CatchReach) : à l'horizontale, avec un écart en hauteur toléré.
+	if not CatchReach.InRange(hitterRoot.Position, root.Position, Bat.Range) then
 		return nil, `trop loin ({math.round(distance * 10) / 10} studs)`
 	end
 	local flatOffset = flat(offset)
@@ -394,7 +398,8 @@ local function candidateFor(
 	if (immuneUntil[other] or -math.huge) > now then
 		return nil, `immunité de {Bat.HitImmunity} s`
 	end
-	if distance > 1e-3 and Workspace:Raycast(hitterRoot.Position, offset, rayParams()) ~= nil then
+	-- Mur entre eux : la cible reste touchée, perchée sur un meuble bas ou dans un mur (shared/CatchReach).
+	if distance > 1e-3 and not CatchReach.CanTouch(hitterRoot.Position, root, rayParams()) then
 		return nil, "un mur entre eux"
 	end
 	return {

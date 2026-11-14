@@ -11,7 +11,15 @@
 --   - vitesse autorisée = la plus haute Humanoid.WalkSpeed des AntiCheat.SpeedMemory dernières
 --     secondes (StatsService l'applique : formule 7.1, trail, Adrénaline, malus de portage,
 --     étourdissement, entraînement), jamais moins que MinSpeed (16). Un autre joueur ou un vigile à
---     PushRadius studs ou moins peut pousser : sa vitesse compte aussi ;
+--     PushRadius studs ou moins peut pousser : sa vitesse compte aussi. Porteur (colis PNJ ou objet
+--     volé, audit du 2026-11-14) : un autre joueur ne compte qu'à la vitesse du porteur ×
+--     CarrierPushFactor (1,5) au plus, un vigile toujours à la sienne ;
+--   - vol (audit du 2026-11-14) : un rayon vers le bas sous le HumanoidRootPart (personnages et
+--     vigiles ignorés, RespectCanCollide). Plus de FlyHeight (12) studs entre ses pieds et le sol
+--     pendant FlyTime (1,5) s sans tomber (descendre en moyenne d'au moins FlyFallSpeed studs/s) =
+--     détection « Fly », tout de suite. Position figée (rien n'a bougé du tout : le réseau s'est
+--     arrêté) : le compte attend, au plus StaleMax (3) s ; un joueur immobile en l'air est donc vu
+--     après FlyTime + StaleMax s ;
 --   - réserve (latence, rafales du réseau) : chaque contrôle accorde vitesse autorisée ×
 --     SpeedTolerance (1,25) × temps réellement écoulé ; ce qui ne sert pas reste en réserve, au plus
 --     BurstSeconds s de déplacement + SlackStuds. Aller plus loin que la réserve = une anomalie (la
@@ -40,7 +48,7 @@
 -- (renvoi derrière le mur, quand le joueur n'a pas de parcelle), TrainingService (placement sur le
 -- tapis ou le banc), BatService et GuardService (poussées : coup de batte, capture).
 --
--- Détection (Teleport, ou Speed) :
+-- Détection (Teleport, Speed ou Fly) :
 --   - toujours : une ligne dans la sortie (warn), la récidive comptée (par UserId, pour tout le
 --     serveur ; attribut AntiCheat.StrikesAttribute du Player), une entrée au journal (GetLog) et
 --     OnDetection ;
@@ -48,7 +56,8 @@
 --     ce que le joueur porte est rendu (CarryService.ReportAnomaly : le colis revole vers son rayon,
 --     l'objet volé vers son présentoir), puis il revient en arrière : après un téléport, à la position
 --     du contrôle d'avant ; après un excès de vitesse, là où il a commencé (dernier contrôle avec la
---     réserve pleine), réserve vide : continuer à tricher le ramène au même point. Jamais d'expulsion
+--     réserve pleine), réserve vide : continuer à tricher le ramène au même point ; après un vol, au
+--     dernier contrôle où il avait le sol sous les pieds. Jamais d'expulsion
 --     en V0 : les récidives sont seulement comptées.
 --   - En Studio sans l'attribut : détection et ligne seulement, ni retour ni colis rendu (le Claude
 --     principal téléporte souvent son personnage pour tester), le contrôle repart de la nouvelle
@@ -91,7 +100,7 @@ local Features = require(Shared.Config.Features)
 
 local CarryService = require(script.Parent.CarryService)
 
-export type Kind = "Teleport" | "Speed"
+export type Kind = "Teleport" | "Speed" | "Fly"
 
 export type Detection = {
 	At: number, -- os.time()
@@ -123,6 +132,10 @@ type Track = {
 	Credit: number, -- réserve de distance (studs)
 	Stale: number, -- temps (s) où la position est restée figée par le réseau
 	Anomalies: { number }, -- os.clock() des anomalies récentes
+	AirSince: number?, -- os.clock() du début du compte « en l'air » (vol) ; nil = au sol
+	AirY: number, -- hauteur du HumanoidRootPart au début de ce compte
+	AirPaused: number, -- temps (s) de ce compte où la position est restée figée (au plus StaleMax)
+	LastGround: Vector3?, -- position du dernier contrôle avec le sol sous les pieds (retour après un vol)
 	Speed: number, -- Humanoid.WalkSpeed actuelle
 	Marks: { SpeedMark },
 	Dead: boolean,
@@ -257,20 +270,30 @@ local function pushers(now: number): { Pusher }
 end
 
 -- Vitesse autorisée de `player` en `position` : la sienne, ou celle d'un voisin qui peut le pousser.
+-- Porteur (audit du 2026-11-14) : un autre joueur ne le pousse qu'à sa vitesse × CarrierPushFactor au plus
+-- (un complice rapide collé à lui ne lui ouvre plus sa vitesse) ; un vigile, à la sienne.
 local function allowedSpeed(player: Player, track: Track, position: Vector3, list: { Pusher }, now: number): number
-	local speed = ownSpeed(track, now)
+	local own = ownSpeed(track, now)
+	local speed = own
+	local playerCap = if isCarrying(player) then own * AntiCheat.CarrierPushFactor else math.huge
 	local radius = AntiCheat.PushRadius
 	local last = track.LastPos
 	for _, other in list do
-		if other.Player ~= player and other.Speed > speed then
+		local push = if other.Player ~= nil then math.min(other.Speed, playerCap) else other.Speed
+		if other.Player ~= player and push > speed then
 			local close = flat(other.Position - position).Magnitude <= radius
 				or (last ~= nil and flat(other.Position - last).Magnitude <= radius)
 			if close then
-				speed = other.Speed
+				speed = push
 			end
 		end
 	end
 	return speed
+end
+
+-- Nombre pour la sortie, avec `decimals` chiffres après la virgule.
+local function fmt(n: number, decimals: number): string
+	return string.format(`%.{decimals}f`, n)
 end
 
 -- Le contrôle repart de `position` (tenue pour valide), avec `credit` studs de réserve.
@@ -282,6 +305,62 @@ local function rebase(track: Track, position: Vector3, now: number, credit: numb
 	track.Hold = nil
 	track.Credit = credit
 	track.Stale = 0
+	track.AirSince = nil -- le compte « en l'air » repart de zéro
+end
+
+-- Rayon du sol (vol) : ni les personnages ni les vigiles ne portent ; ce qui ne bloque pas non plus.
+local groundParams = RaycastParams.new()
+groundParams.FilterType = Enum.RaycastFilterType.Exclude
+groundParams.RespectCanCollide = true
+
+local function refreshGroundFilter()
+	local list: { Instance } = {}
+	for _, track in tracks do
+		table.insert(list, track.Character)
+	end
+	local folder = Workspace:FindFirstChild(GUARDS_FOLDER)
+	if folder then
+		table.insert(list, folder)
+	end
+	groundParams.FilterDescendantsInstances = list
+end
+
+-- Le sol est-il à FlyHeight studs au plus sous ses pieds ? Si oui, `position` devient son dernier point au sol.
+local function onGround(track: Track, position: Vector3): boolean
+	local feet = track.Humanoid.HipHeight + track.Root.Size.Y / 2
+	if Workspace:Raycast(position, Vector3.new(0, -(feet + AntiCheat.FlyHeight), 0), groundParams) then
+		track.LastGround = position
+		return true
+	end
+	return false
+end
+
+-- Vol (voir l'en-tête) : nil, ou le détail d'une détection « Fly ». `moved` : distance (3D) depuis le
+-- contrôle d'avant, il y a `dt` s.
+local function airborne(track: Track, position: Vector3, moved: number, dt: number, now: number): string?
+	if onGround(track, position) then
+		track.AirSince = nil
+		return nil
+	end
+	local since = track.AirSince
+	if since == nil or position.Y <= track.AirY - AntiCheat.FlyFallSpeed * (now - since) then
+		track.AirSince = now -- il vient de quitter le sol, ou il tombe : le compte (re)part d'ici
+		track.AirY = position.Y
+		track.AirPaused = 0
+		return nil
+	end
+	if moved < STILL and track.AirPaused < AntiCheat.StaleMax then
+		-- Position figée : réseau arrêté (le compte attend), au plus StaleMax s par compte (comme Stale) ;
+		-- au-delà, c'est un joueur immobile en l'air.
+		track.AirSince = since + dt
+		track.AirPaused += dt
+		return nil
+	end
+	if now - since < AntiCheat.FlyTime then
+		return nil
+	end
+	track.AirSince = nil
+	return `en l'air depuis {fmt(now - since, 1)} s à plus de {AntiCheat.FlyHeight} studs du sol, sans tomber (hauteur {fmt(position.Y, 0)})`
 end
 
 -- Distance la plus longue d'un seul contrôle à l'autre, au-delà de laquelle c'est un téléport.
@@ -311,18 +390,14 @@ local function lateArrival(player: Player, last: Vector3, position: Vector3, spe
 	return true
 end
 
--- Nombre pour la sortie, avec `decimals` chiffres après la virgule.
-local function fmt(n: number, decimals: number): string
-	return string.format(`%.{decimals}f`, n)
-end
-
 -- Un contrôle (voir l'en-tête). Renvoie nil (rien), "Anomaly" (une anomalie, pas encore une
--- détection), "Teleport" ou "Speed", et le détail pour la sortie.
+-- détection), "Teleport", "Speed" ou "Fly", et le détail pour la sortie.
 local function evaluate(player: Player, track: Track, position: Vector3, speed: number, now: number): (string?, string)
 	local last = track.LastPos
 	local allowedTo = allowUntil[player]
 	if last == nil or (allowedTo ~= nil and now < allowedTo) then
 		rebase(track, position, now, fullCredit(speed))
+		onGround(track, position) -- point du retour après un vol, même pendant un déplacement du code
 		return nil, ""
 	end
 	-- Retenue après un retour en arrière : jusqu'à ce que le client l'ait reçu, il envoie encore ses
@@ -396,6 +471,10 @@ local function evaluate(player: Player, track: Track, position: Vector3, speed: 
 	if track.Credit >= r * AntiCheat.BurstSeconds then
 		track.LastFull = position -- réserve (presque) pleine : rien d'emprunté jusqu'ici
 	end
+	local flying = airborne(track, position, (position - last).Magnitude, dt, now)
+	if flying then
+		return "Fly", flying
+	end
 	return nil, ""
 end
 
@@ -411,9 +490,13 @@ end
 
 -- Retour en arrière (sanction) : après un téléport, à la dernière position valide (le contrôle
 -- d'avant) ; après un excès de vitesse, là où il a commencé (dernier contrôle réserve pleine), réserve
--- vide : continuer à tricher le ramène au même point. Puis la retenue de RollbackGrace s (evaluate).
+-- vide : continuer à tricher le ramène au même point ; après un vol, au dernier point au sol. Puis la
+-- retenue de RollbackGrace s (evaluate).
 local function rollback(player: Player, track: Track, kind: Kind, now: number)
-	local target = if kind == "Speed" then track.LastFull or track.LastValid else track.LastValid
+	local target = if kind == "Speed"
+		then track.LastFull or track.LastValid
+		elseif kind == "Fly" then track.LastGround or track.LastValid
+		else track.LastValid
 	local character = track.Character
 	local root = track.Root
 	if target == nil or character.Parent == nil or root.Parent == nil then
@@ -456,7 +539,10 @@ local function detect(player: Player, track: Track, kind: Kind, detail: string, 
 
 	local context = `({count}e détection de {player.Name} sur ce serveur{lastAllowText(player, now)})`
 	if sanctioned then
-		local where = if kind == "Speed" then "là où l'excès a commencé" else "à la dernière position valide"
+		local where = if kind == "Speed"
+			then "là où l'excès a commencé"
+			elseif kind == "Fly" then "au dernier point au sol"
+			else "à la dernière position valide"
 		local what = if carrying then "portage rendu et retour" else "retour"
 		warn(`[AntiCheatService] {player.Name} : {detail} : {what} {where} {context}`)
 		if carrying then
@@ -487,7 +573,7 @@ local function checkPlayer(player: Player, track: Track, list: { Pusher }, now: 
 	local position = track.Root.Position
 	local speed = allowedSpeed(player, track, position, list, now)
 	local outcome, detail = evaluate(player, track, position, speed, now)
-	if outcome == "Teleport" or outcome == "Speed" then
+	if outcome == "Teleport" or outcome == "Speed" or outcome == "Fly" then
 		return detect(player, track, outcome :: Kind, detail, now)
 	elseif outcome == "Anomaly" and IS_STUDIO then
 		print(`[AntiCheatService] {player.Name} : {detail}`)
@@ -498,6 +584,7 @@ end
 local function step()
 	local now = os.clock()
 	local list = pushers(now)
+	refreshGroundFilter()
 	for player, track in table.clone(tracks) do
 		if tracks[player] == track then
 			checkPlayer(player, track, list, now)
@@ -544,6 +631,10 @@ local function watch(player: Player, character: Model)
 		Credit = 0,
 		Stale = 0,
 		Anomalies = {},
+		AirSince = nil,
+		AirY = 0,
+		AirPaused = 0,
+		LastGround = nil,
 		Speed = humanoid.WalkSpeed,
 		Marks = {},
 		Dead = humanoid.Health <= 0,
@@ -645,6 +736,7 @@ function AntiCheatService.Verify(player: Player, from: Vector3?, since: number?)
 	end
 	local now = os.clock()
 	local list = pushers(now)
+	refreshGroundFilter()
 	if checkPlayer(player, track, list, now) then
 		return false
 	end
