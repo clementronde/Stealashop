@@ -15,7 +15,7 @@ local Night = {
 	-- V0 d'Ironix (2026-11-08, liaison L-078), absent du doc : dès que plus aucun joueur n'est dans le
 	-- couloir, la nuit ne dure plus qu'au plus ce nombre de secondes (on n'attend plus devant le mur
 	-- pour rien). Les rayons se remplissent toujours à la tombée de la nuit.
-	EmptyCorridorRemaining = 30,
+	EmptyCorridorRemaining = 15, -- s (30 au départ ; 15, Cantin, 2026-11-14)
 	CycleDuration = 10 * 60, -- DayDuration + NightDuration
 
 	WarningText = "NIGHT FALLS IN 30s", -- doc : « LA NUIT TOMBE DANS 30 S », en anglais (L-036)
