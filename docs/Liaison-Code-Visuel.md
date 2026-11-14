@@ -29,7 +29,7 @@ C'est **la seule liste des tests en jeu**, pour les deux Claude. Elle remplace l
 
 Avant de commencer, relance le Play : un Play déjà lancé garde l'ancien code. À deux joueurs : dans Studio, onglet Test > Clients and Servers, 2 joueurs (Clément peut être le 2e). Sur téléphone : Test > Device, un téléphone, puis Play ; ensuite, sur un vrai téléphone.
 
-Prochain numéro : **T-050**.
+Prochain numéro : **T-051**.
 
 - T-003 | Ironix, à deux | Vigile qui garde l'objet : le 2e joueur reprend l'objet tombé → le vigile poursuit celui qui l'a pris. Pas joué par Claude (14/11) : il faut deux vrais joueurs. Vu seul : quand le voleur reprend lui-même le colis tombé, le vigile change de cible et le poursuit aussitôt ; reste à toi : le même cas avec le 2e joueur.
 - T-004 | Ironix, seul | HEIST et RUN! : casse une vitrine → « HEIST: 13s » en haut au centre. Prends un objet → « RUN! » s'affiche et « HEIST » disparaît : jamais les deux en même temps. Vu par Claude (14/11) : « HEIST: 13s » à la casse, « RUN! » à la prise, « HEIST » caché ensuite pour tout le vol ; mais « HEIST » reste affiché pendant son fondu de sortie, 0,1 à 0,17 s en même temps que « RUN! ». Reste à toi : dire si on voit les deux ensemble à ce moment.
@@ -65,6 +65,7 @@ Prochain numéro : **T-050**.
 - T-047 | Ironix, seul | Saut de Glitch porté (vague 38, L-131) : prends un objet avec la mutation Glitch (porté sur la tête), puis regarde un objet Glitch animé exposé → toutes les secondes environ, il fait un petit saut net, sans tremblement du portage ni de l'idle ; ses décalques restent à leur place pendant le saut (L-150 question 2). Pas joué par Claude : c'est un jugement de rendu (logique vue au banc a125).
 - T-048 | Ironix, téléphone | Perf téléphone (vague 39, L-152) : sur un vrai téléphone, dans une boutique pleine (dont un Secret), regarde les objets exposés de près puis recule à 40 et 70 studs, et tourne le dos → de près, rien ne change (mouvement, halo, rayons) ; au loin, le mouvement reste fluide à l'œil, la lumière du halo s'éteint sans clignoter à la limite ; le jeu reste fluide.
 - T-049 | Ironix, téléphone | Perf téléphone (vague 39, L-152) : sur un vrai téléphone, porte un objet arc-en-ciel, puis rien, pendant une nuit (compte à rebours affiché) et à côté d'une boutique d'un autre joueur → l'arc-en-ciel du porteur tourne, le compte à rebours baisse d'une seconde à chaque seconde, l'invite de vol s'allume dès qu'on s'approche ; aucune saccade nouvelle.
+- T-050 | Ironix, à plusieurs | Mesure de `PvPController` (vague 39, perf téléphone ; décision de Cantin du 14/11 : on garde la correction et on la mesure à plusieurs) : au premier test avec plusieurs vrais joueurs, le plus de boutiques occupées possible (idéalement 8), préviens Claude avant de jouer → il profile le jeu côté client 10 s dans une boutique et 10 s à 80 studs, et compare `refreshAll` à la mesure du 14/11 (environ 2 ms sur 10 s avec 2 boutiques). Si la correction ne gagne toujours rien, on la retire (remettre le fichier d'avant la vague 39, commande dans `docs/claude/notes/perf-telephone.md`).
 
 ## 1. Attentes ouvertes
 

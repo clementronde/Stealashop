@@ -68,8 +68,8 @@ pendant le Play sans changer `src/`.
 | `DisplayController.animate` | S2 | 31,5 ± 12,6 | 16,5 ± 5,5 | 15 (limite) | INCERTAIN |
 | `HudController.update` | S1 | 32 ± 39 | 9,6 ± 7,6 | 23 (dans le bruit) | — |
 | dont `countdownText` | S1 / S2 | 5,3 ± 5,3 / 6,2 ± 4,7 | 0 / 0 (10 mesures sur 10) | 5 à 6 (net) | GARDER (4) |
-| `PvPController.refreshAll` | S1 | 2,2 ± 3,8 | 7,3 ± 2,6 | −5 (plus cher, dans le bruit) | RETIRER |
-| `PvPController.refreshAll` | S2 | 6,3 ± 5,3 | 4,7 ± 1,7 | 2 (dans le bruit) | RETIRER |
+| `PvPController.refreshAll` | S1 | 2,2 ± 3,8 | 7,3 ± 2,6 | −5 (plus cher, dans le bruit) | gardé (Cantin), à remesurer à plusieurs (T-050) |
+| `PvPController.refreshAll` | S2 | 6,3 ± 5,3 | 4,7 ± 1,7 | 2 (dans le bruit) | gardé (Cantin), à remesurer à plusieurs (T-050) |
 | `CarryController.updateRainbows` | S1 / S2 | 0 | 0 | rien porté : pas exercée | INCERTAIN (3) |
 
 « Net » : l'écart dépasse 2 fois l'erreur sur la différence (test de Welch, t > 2). L'APRÈS a 1,2 à 1,6 fois plus
@@ -91,6 +91,7 @@ profileur (1 échantillon = 1 ms).
 - RETIRER : PvPController (a129, objets revus seulement quand l'état de la boutique change) : aucun gain mesuré
   (S1 plutôt plus cher). Remettre le fichier : `git checkout f87a40c -- src/client/Controllers/PvPController.luau`.
   Réserve : mesuré avec 2 boutiques occupées sur 8, pas 8 pleines.
+  **Décision de Cantin (2026-11-14) : on la garde**, et on la mesure au premier test avec plusieurs vrais joueurs (le plus de boutiques occupées possible) ; si elle ne gagne toujours rien, on la retire (commande ci-dessus). Rappel : test T-050 de la liaison.
 - INCERTAIN : 1a (`ItemIdle.FarInterval`, objets entre 30 et 80 studs) : aucune des deux situations ne la fait
   travailler ; il faudrait mesurer à 40-70 studs, boutique à l'écran, `FarInterval = 0` puis `1/15` dans deux Plays.
   2a, 2b, 2c (`DisplayHalo`) : baisse de 35 à 50 % mais à la limite du bruit (t ≈ 1,5 et 1,9) ; 2c pas exercée
