@@ -228,6 +228,7 @@ local Mutations = require(ReplicatedStorage.Shared.Config.Mutations)
 local Rarities = require(ReplicatedStorage.Shared.Config.Rarities)
 local Zones = require(ReplicatedStorage.Shared.Config.Zones)
 local Format = require(ReplicatedStorage.Shared.Format)
+local RarityHalo = require(ReplicatedStorage.Shared.RarityHalo)
 local Find = require(ReplicatedStorage.Shared.Contract.Find)
 local UI = require(ReplicatedStorage.Shared.Contract.UI)
 local Net = require(ReplicatedStorage.Shared.Net.Net)
@@ -297,10 +298,7 @@ local FOLDER_NAME = "DisplayItems"
 local MODEL_FORMAT = "DisplayItem_%02d"
 local DISPLAY_TAG = "DisplayItem" -- tag de code, pas un tag de la map : lu par DisplayController
 local FLOOR_ITEM_NAME = "FloorItem" -- vague 31 (L-112) : objet sous antivol posé au sol (BuildFloorItem, UnboxService)
-local HALO_PART = "RarityHalo"
 local BILLBOARD_POINT = "BillboardPoint"
-local RAYS_CENTER = "RaysCenter"
-local RAY_FORMAT = "Ray_%02d"
 local RAINBOW_GRADIENT = "RarityRainbow"
 
 -- V0 proposé, absent du doc : cadence de la mise à jour des montants des plaques (texte Amount,
@@ -346,30 +344,7 @@ local TEXT_COLOR = Color3.new(1, 1, 1)
 local OUTLINE_COLOR = Color3.fromHex("#1B1B24") -- contour du texte, planche 10.6
 local INCOME_COLOR = Color3.fromHex("#35C93B") -- vert « acheter / OK », planche 10.6
 
--- V0 proposé, absent du doc : halo de rareté par palier (5.6 : « particules et lumière de la
--- couleur de la rareté, plus denses à chaque palier » ; Commun : aucun). Texture de particule
--- par défaut de Roblox (étincelles) en attendant les textures de halo de Clément (MOD-041).
-type HaloSpec = {
-	Brightness: number, -- PointLight
-	Range: number,
-	Rate: number, -- particules par seconde
-	Size: number, -- taille d'une particule à sa naissance, en studs
-	Rays: number, -- rayons de lumière derrière l'objet (0 = aucun)
-}
-local HALOS: { [string]: HaloSpec } = {
-	Light = { Brightness = 0.8, Range = 6, Rate = 3, Size = 0.2, Rays = 0 }, -- Peu commun
-	Clear = { Brightness = 1.5, Range = 8, Rate = 8, Size = 0.3, Rays = 0 }, -- Rare, Épique
-	Rays = { Brightness = 2.5, Range = 12, Rate = 14, Size = 0.35, Rays = 8 }, -- Légendaire, Mythique
-	Rainbow = { Brightness = 3, Range = 14, Rate = 20, Size = 0.4, Rays = 10 }, -- Secret
-	Divine = { Brightness = 3.5, Range = 16, Rate = 24, Size = 0.45, Rays = 12 }, -- Divine (L-106)
-}
-local HALO_MARGIN = 0.3 -- écart entre l'objet et le volume d'où partent les particules
-local PARTICLE_LIFETIME = NumberRange.new(0.9, 1.5)
-local PARTICLE_SPEED = NumberRange.new(0.3, 0.8)
-local PARTICLE_RISE = Vector3.new(0, 0.6, 0)
-local RAY_REACH = 1.2 -- les rayons dépassent l'objet de cette longueur
-local RAY_START_WIDTH = 0.05
-local RAY_END_WIDTH = 0.4 -- × longueur du rayon
+-- Halo de rareté (5.6) : rendu commun avec CarryService, Shared/RarityHalo (vague 37, a122).
 
 -- Messages lus par le joueur (Notify « Warning ») quand PlaceItem est refusé, en anglais (L-036).
 -- Les refus qui ne viennent pas d'un joueur honnête (objet qui n'est pas à lui, profil absent)
@@ -978,109 +953,6 @@ local function copyOfTemplate(def: ItemDef): Model?
 	return model
 end
 
-local function rarityColors(rarity: Rarity): { Color3 }
-	local colors = rarity.RainbowColors
-	if rarity.Rainbow and colors and #colors > 0 then
-		return colors
-	end
-	return { rarity.Color }
-end
-
-local function colorSequence(colors: { Color3 }): ColorSequence
-	if #colors == 1 then
-		return ColorSequence.new(colors[1])
-	end
-	local keypoints = {}
-	for i, color in colors do
-		table.insert(keypoints, ColorSequenceKeypoint.new((i - 1) / (#colors - 1), color))
-	end
-	return ColorSequence.new(keypoints)
-end
-
-local function fade(from: number, to: number): NumberSequence
-	return NumberSequence.new({ NumberSequenceKeypoint.new(0, from), NumberSequenceKeypoint.new(1, to) })
-end
-
--- Halo de rareté (5.6) : un volume invisible autour de l'objet, avec une lumière, des
--- particules qui en partent et, du Légendaire au Secret, des rayons derrière l'objet
--- (DisplayController les fait tourner et anime l'arc-en-ciel du Secret, côté client).
-local function addHalo(model: Model, rarity: Rarity, boxCFrame: CFrame, boxSize: Vector3)
-	local spec = HALOS[rarity.Halo]
-	if spec == nil then
-		return -- Commun : aucun halo
-	end
-	local colors = rarityColors(rarity)
-
-	local part = Instance.new("Part")
-	part.Name = HALO_PART
-	part.Transparency = 1
-	part.Anchored = true
-	part.CanCollide = false
-	part.CanQuery = false
-	part.CanTouch = false
-	part.CastShadow = false
-	part.Size = boxSize + Vector3.one * (2 * HALO_MARGIN)
-	part.CFrame = boxCFrame
-
-	local light = Instance.new("PointLight")
-	light.Name = "HaloLight"
-	light.Color = colors[1]
-	light.Brightness = spec.Brightness
-	light.Range = spec.Range
-	light.Shadows = false
-	light.Parent = part
-
-	local sparkles = Instance.new("ParticleEmitter")
-	sparkles.Name = "HaloSparkles"
-	sparkles.Color = colorSequence(colors)
-	sparkles.LightEmission = 1
-	sparkles.LightInfluence = 0
-	sparkles.Rate = spec.Rate
-	sparkles.Lifetime = PARTICLE_LIFETIME
-	sparkles.Speed = PARTICLE_SPEED
-	sparkles.Acceleration = PARTICLE_RISE
-	sparkles.Size = fade(spec.Size, 0)
-	sparkles.Transparency = fade(0.2, 1)
-	sparkles.Rotation = NumberRange.new(0, 360)
-	sparkles.RotSpeed = NumberRange.new(-90, 90)
-	sparkles.Shape = Enum.ParticleEmitterShape.Box
-	sparkles.ShapeStyle = Enum.ParticleEmitterShapeStyle.Surface
-	sparkles.ShapeInOut = Enum.ParticleEmitterShapeInOut.Outward
-	sparkles.Parent = part
-
-	if spec.Rays > 0 then
-		-- Dans le plan de la face avant, juste derrière l'objet (sa face avant regarde −Z, 10.1).
-		local radius = math.max(boxSize.X, boxSize.Y) / 2 + RAY_REACH
-		local center = Instance.new("Attachment")
-		center.Name = RAYS_CENTER
-		center.Position = Vector3.new(0, 0, boxSize.Z / 2 + HALO_MARGIN)
-		center.Parent = part
-		for i = 1, spec.Rays do
-			local angle = (i - 1) * 2 * math.pi / spec.Rays
-			local tip = Instance.new("Attachment")
-			tip.Name = string.format(RAY_FORMAT, i)
-			tip.Position = center.Position + Vector3.new(math.cos(angle) * radius, math.sin(angle) * radius, 0)
-			tip.Parent = part
-
-			local beam = Instance.new("Beam")
-			beam.Name = "RayBeam"
-			beam.Attachment0 = center
-			beam.Attachment1 = tip
-			beam.Color = ColorSequence.new(colors[(i - 1) % #colors + 1])
-			beam.Width0 = RAY_START_WIDTH
-			beam.Width1 = radius * RAY_END_WIDTH
-			beam.Transparency = fade(0.35, 1)
-			beam.LightEmission = 1
-			beam.LightInfluence = 0
-			beam.FaceCamera = true
-			beam.Segments = 1
-			beam.Parent = tip
-		end
-	end
-
-	part.Parent = model
-end
-
 local function makeBillboard(): BillboardGui
 	local gui = Instance.new("BillboardGui")
 	gui.Name = ITEM_BILLBOARD
@@ -1180,7 +1052,7 @@ local function addBillboard(
 	if rarity.Rainbow and rarityLabel and rarityLabel:FindFirstChildOfClass("UIGradient") == nil then
 		local gradient = Instance.new("UIGradient")
 		gradient.Name = RAINBOW_GRADIENT
-		gradient.Color = colorSequence(rarityColors(rarity))
+		gradient.Color = RarityHalo.Sequence(RarityHalo.Colors(rarity))
 		gradient.Parent = rarityLabel
 	end
 	billboard.Parent = model
@@ -1214,7 +1086,7 @@ local function buildItemModel(ownerUserId: number, pivot: CFrame, name: string, 
 	display:PivotTo(pivot)
 
 	local boxCFrame, boxSize = display:GetBoundingBox()
-	addHalo(display, rarity, boxCFrame, boxSize)
+	RarityHalo.AddDisplayed(display, rarity, boxCFrame, boxSize)
 	if billboard then
 		addBillboard(display, def, rarity, income, boxCFrame, boxSize, mutation)
 	end

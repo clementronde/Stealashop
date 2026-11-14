@@ -163,6 +163,7 @@ local Zones = require(Shared.Config.Zones)
 local Find = require(Shared.Contract.Find)
 local UI = require(Shared.Contract.UI)
 local Format = require(Shared.Format)
+local RarityHalo = require(Shared.RarityHalo)
 local CarryTypes = require(Shared.Types.Carry)
 
 local StatsService = require(script.Parent.StatsService)
@@ -192,7 +193,6 @@ local RAINBOW_TAG = "CarryRainbow"
 local CARRIED_ITEM_TAG = "CarriedItem" -- a119 : objet porté ou lâché (MutationFxController, client)
 local VISUAL_NAME = "CarryVisual"
 local WELD_NAME = "CarryWeld"
-local HALO_POINT = "HaloPoint"
 local LABEL_POINT = "LabelPoint"
 local DROPS_FOLDER = "CarryDrops"
 local DROP_ID_ATTRIBUTE = "DropId"
@@ -211,36 +211,7 @@ local PLACEHOLDER_ITEM_SIZE = Vector3.new(1.2, 1.2, 1.2)
 local OUTLINE_COLOR = Color3.fromHex("#E8413C")
 -- V0 proposé, absent du doc : contour du texte de l'étiquette V0 (couleur de contour de 10.6).
 local TEXT_STROKE_COLOR = Color3.fromHex("#1B1B24")
--- V0 proposé, absent du doc : texture de particules livrée avec Roblox (aucun asset publié).
-local SPARKLE_TEXTURE = "rbxasset://textures/particles/sparkles_main.dds"
-
--- V0 proposé, absent du doc : intensité de chaque palier de halo (Rarities.Halo). Le doc dit
--- seulement « plus denses à chaque palier » ; Commun (None) n'a rien.
-type HaloSpec = {
-	LightRange: number, -- studs
-	LightBrightness: number,
-	ParticleRate: number, -- particules par seconde
-	ParticleSize: number, -- studs
-	Rays: boolean, -- rayons de lumière autour du colis
-}
-local HALOS: { [string]: HaloSpec } = {
-	Light = { LightRange = 6, LightBrightness = 1, ParticleRate = 4, ParticleSize = 0.25, Rays = false },
-	Clear = { LightRange = 10, LightBrightness = 2, ParticleRate = 10, ParticleSize = 0.35, Rays = false },
-	Rays = { LightRange = 14, LightBrightness = 3, ParticleRate = 14, ParticleSize = 0.4, Rays = true },
-	Rainbow = { LightRange = 16, LightBrightness = 3, ParticleRate = 20, ParticleSize = 0.45, Rays = true },
-	Divine = { LightRange = 18, LightBrightness = 3.5, ParticleRate = 24, ParticleSize = 0.5, Rays = true }, -- L-106
-}
--- V0 proposé, absent du doc : 8 rayons vers les coins d'un cube ; longueur et largeur en studs.
-local RAY_LENGTH = 2.6
-local RAY_WIDTH = 0.35
-local RAY_DIRECTIONS: { Vector3 } = {}
-for _, x in { -1, 1 } do
-	for _, y in { -1, 1 } do
-		for _, z in { -1, 1 } do
-			table.insert(RAY_DIRECTIONS, Vector3.new(x, y, z).Unit)
-		end
-	end
-end
+-- Halo de rareté (5.6) : rendu commun avec DisplayService, Shared/RarityHalo (vague 37, a122).
 
 type Visual = {
 	model: Model,
@@ -512,105 +483,6 @@ local function tint(model: Model, color: Color3): number
 	return count
 end
 
-local function colorSequence(rarity: Rarity): ColorSequence
-	local colors = rarity.RainbowColors
-	if rarity.Rainbow and colors and #colors >= 2 then
-		local keypoints: { ColorSequenceKeypoint } = {}
-		for index, color in colors do
-			table.insert(keypoints, ColorSequenceKeypoint.new((index - 1) / (#colors - 1), color))
-		end
-		return ColorSequence.new(keypoints)
-	end
-	return ColorSequence.new(rarity.Color)
-end
-
--- Effets déjà posés par Clément dans un modèle BOX_<Rareté> (L-097 point 3 : Épique, une lumière Glow ;
--- Légendaire et plus, des étincelles Sparkles et Glow dans Body) : le halo du code ne les double pas.
-type OwnEffects = { Light: boolean, Particles: boolean, Beams: boolean }
-local NO_EFFECTS: OwnEffects = { Light = false, Particles = false, Beams = false }
-
-local function ownEffects(model: Model): OwnEffects
-	local found: OwnEffects = { Light = false, Particles = false, Beams = false }
-	for _, descendant in model:GetDescendants() do
-		if descendant:IsA("Light") then
-			found.Light = true
-		elseif descendant:IsA("ParticleEmitter") or descendant:IsA("Sparkles") then
-			found.Particles = true
-		elseif descendant:IsA("Beam") then
-			found.Beams = true
-		end
-	end
-	return found
-end
-
--- Halo de rareté (5.6) autour de `center` (CFrame dans l'espace de anchor). `own` : effets que le modèle
--- a déjà (choix d'a79, L-097 point 3) : sa lumière remplace celle du halo, ses particules les
--- étincelles du halo, ses Beams les rayons ; le reste du halo est posé comme avant.
-local function addHalo(anchor: BasePart, center: CFrame, rarity: Rarity, own: OwnEffects)
-	local spec = HALOS[rarity.Halo]
-	if spec == nil then
-		return -- Commun : aucun halo
-	end
-	local wantsRays = spec.Rays and not own.Beams
-	if own.Light and own.Particles and not wantsRays then
-		return -- le modèle a déjà tout le halo
-	end
-	local colors = colorSequence(rarity)
-	local point = Instance.new("Attachment")
-	point.Name = HALO_POINT
-	point.CFrame = center
-	point.Parent = anchor
-
-	if not own.Light then
-		local light = Instance.new("PointLight")
-		light.Color = rarity.Color
-		light.Range = spec.LightRange
-		light.Brightness = spec.LightBrightness
-		light.Shadows = false
-		light.Parent = point
-	end
-
-	if not own.Particles then
-		local sparkles = Instance.new("ParticleEmitter")
-		sparkles.Name = "HaloSparkles"
-		sparkles.Texture = SPARKLE_TEXTURE
-		sparkles.Color = colors
-		sparkles.LightEmission = 1
-		sparkles.LightInfluence = 0
-		sparkles.Rate = spec.ParticleRate
-		sparkles.Lifetime = NumberRange.new(0.8, 1.4)
-		sparkles.Speed = NumberRange.new(1.5, 2.5)
-		sparkles.SpreadAngle = Vector2.new(180, 180)
-		sparkles.Size = NumberSequence.new(spec.ParticleSize, 0)
-		sparkles.Transparency = NumberSequence.new(0.1, 1)
-		sparkles.LockedToPart = true -- un halo qui suit le colis, pas une traînée
-		sparkles.Parent = point
-	end
-
-	if not wantsRays then
-		return
-	end
-	for index, direction in RAY_DIRECTIONS do
-		local tip = Instance.new("Attachment")
-		tip.Name = `HaloRayTip_{index}`
-		tip.CFrame = center * CFrame.new(direction * RAY_LENGTH)
-		tip.Parent = anchor
-		local ray = Instance.new("Beam")
-		ray.Name = `HaloRay_{index}`
-		ray.Attachment0 = point
-		ray.Attachment1 = tip
-		ray.FaceCamera = true
-		ray.Color = colors
-		ray.LightEmission = 1
-		ray.LightInfluence = 0
-		ray.Width0 = RAY_WIDTH
-		ray.Width1 = 0
-		ray.Transparency = NumberSequence.new(0.15, 1)
-		ray.Segments = 1
-		ray.Parent = point
-	end
-end
-
 -- Écrit `text` dans l'élément `name` de l'étiquette (TextLabel ou TextButton, cherché parmi les
 -- descendants, Contract/Find), ou cache l'élément (tout GuiObject) si `text` est nil ; `color`
 -- colore le texte. Élément absent : rien (le ContractChecker le signale déjà).
@@ -785,8 +657,8 @@ local function buildVisual(payload: Payload): Visual
 		once(`{assetName}.{TINT}`, `[CarryService] {assetName} : aucune pièce {TINT} (10.4), colis pas teint à la couleur de sa rareté`, true)
 	end
 	local height = model:GetExtentsSize().Y
-	local own = if payload.Kind == "NPCBox" and not isPlaceholder then ownEffects(model) else NO_EFFECTS
-	addHalo(anchor, offset * CFrame.new(0, height / 2, 0), rarity, own)
+	local own = if payload.Kind == "NPCBox" and not isPlaceholder then RarityHalo.OwnEffects(model) else RarityHalo.NoEffects
+	RarityHalo.AddCarried(anchor, offset * CFrame.new(0, height / 2, 0), rarity, own)
 	addLabel(model, anchor, offset * CFrame.new(0, height, 0), payload, rarity)
 	if payload.Kind == "PlayerItem" then
 		addOutline(model)

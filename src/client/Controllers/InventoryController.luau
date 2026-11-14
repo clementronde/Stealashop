@@ -138,6 +138,7 @@ local Rarities = require(Config:WaitForChild("Rarities"))
 local Tools = require(Config:WaitForChild("Tools"))
 local Unbox = require(Config:WaitForChild("Unbox"))
 local ShelfOpen = require(Config:WaitForChild("ShelfOpen"))
+local AlertBadge = require(Shared:WaitForChild("AlertBadge"))
 local Format = require(Shared:WaitForChild("Format"))
 local InventoryState = require(Shared:WaitForChild("InventoryState"))
 local Contract = Shared:WaitForChild("Contract")
@@ -980,51 +981,9 @@ end
 -- Pastilles « ! » des cartes (vague 34, L-127 point 3)
 ------------------------------------------------------------------------------
 
--- CardAlert de Clément (caché dans Studio) : montré quand la carte demande une action, son UIScale Pulse bat
--- (Scale 1 → 1,15 → 1 en 0,8 s, en boucle, une seule écoute Heartbeat pour toutes les pastilles allumées,
--- coupée quand il n'y en a plus) ; éteint quand l'action est faite (proposition de Clément), Scale remis à 1.
-local PULSE_PEAK = 1.15
-local PULSE_PERIOD = 0.8
-local pulses: { [Instance]: boolean } = {}
-local pulseClock = 0
-local pulseConnection: RBXScriptConnection? = nil
-
-local function stepPulses(dt: number)
-	pulseClock = (pulseClock + dt) % PULSE_PERIOD
-	local scale = 1 + (PULSE_PEAK - 1) * (1 - math.cos(2 * math.pi * pulseClock / PULSE_PERIOD)) / 2
-	local any = false
-	for inst in pulses do
-		if inst.Parent == nil then
-			pulses[inst] = nil -- carte détruite
-			continue
-		end
-		any = true;
-		(inst :: any).Scale = scale
-	end
-	local connection = pulseConnection
-	if not any and connection then
-		connection:Disconnect()
-		pulseConnection = nil
-	end
-end
-
-local function setAlert(alert: Instance?, pulse: Instance?, on: boolean)
-	setVisible(alert, on)
-	if pulse == nil or not pulse:IsA("UIScale") then
-		return
-	end
-	if on then
-		if not pulses[pulse] then
-			pulses[pulse] = true
-			if pulseConnection == nil then
-				pulseConnection = RunService.Heartbeat:Connect(stepPulses)
-			end
-		end
-	elseif pulses[pulse] then
-		pulses[pulse] = nil;
-		(pulse :: any).Scale = 1
-	end
-end
+-- CardAlert de Clément (caché dans Studio) : montré quand la carte demande une action, éteint quand l'action est faite
+-- (L-127 point 3). Allumage et battement de son UIScale Pulse (1 → 1,15 → 1 en 0,8 s) : Shared/AlertBadge,
+-- comme les pastilles de la colonne de gauche et de l'Index (vague 37, a122).
 
 -- Présentoirs libres (débloqués moins objets exposés).
 local function freeDisplays(): number
@@ -1065,10 +1024,7 @@ local function destroyView(view: CardView)
 	for _, connection in view.connections do
 		connection:Disconnect()
 	end
-	local pulse = view.refs["CardAlert.Pulse"]
-	if pulse then
-		pulses[pulse] = nil
-	end
+	AlertBadge.Set(view.refs.CardAlert, false) -- la pastille ne bat plus (cartes recréées)
 	view.frame:Destroy()
 end
 
@@ -1194,7 +1150,7 @@ local function paintItem(view: CardView, entry: InventoryState.ItemEntry, free: 
 			setText(refs["AntiTheft.LockLabel"], timerText(seconds))
 		end
 	end
-	setAlert(refs.CardAlert, refs["CardAlert.Pulse"], itemNeedsAction(entry, free))
+	AlertBadge.Set(refs.CardAlert, itemNeedsAction(entry, free))
 	local function place()
 		if antiTheft then
 			-- Vague 31 (L-112) : sous antivol, il se pose au sol de sa boutique (mode pose, comme un colis).
@@ -1239,7 +1195,7 @@ local function paintBox(view: CardView, entry: InventoryState.BoxEntry, now: num
 	if placed and not ready then
 		setText(refs["TimerPill.TimerLabel"], timerText(remaining))
 	end
-	setAlert(refs.CardAlert, refs["CardAlert.Pulse"], boxNeedsAction(entry, now)) -- vague 34
+	AlertBadge.Set(refs.CardAlert, boxNeedsAction(entry, now)) -- vague 34
 	local uid = entry.Uid
 	local function place()
 		close()
