@@ -637,6 +637,17 @@ local List: { RemoteDef } = {
 		Args = { { Name = "zone", Kind = "int", Min = 1, Max = MAX_INDEX, Optional = true } },
 		RatePerSecond = 2, -- V0 proposé, absent du doc (comme ClaimDaily)
 	},
+	{
+		-- Agent a142 (Cantin, 2026-11-14), absent du tableau 9.4 : mettre en main un objet de l'inventaire choisi
+		-- dans la barre du bas (InventoryController.HoldItem). HeldItemService revérifie tout (objet à lui, ni
+		-- exposé, ni au coffre-fort, ni tenu par un voleur, ni au sol ; pas de portage) ; le ranger ne passe pas
+		-- par ici (le client range le Tool, le serveur le détruit). Rien de sensible : le Tool n'est qu'un visuel.
+		Name = "HoldItem",
+		Direction = "ClientToServer",
+		Reliable = true,
+		Args = { id("itemUid") },
+		RatePerSecond = 4, -- V0 proposé, absent du doc
+	},
 }
 
 return {
