@@ -16,7 +16,11 @@
 --     chez le propriétaire, prévient aussi les écouteurs d'OnCollect. Le montant écrit sur la plaque
 --     (AmountGui/Amount) vient du serveur, visible par tous ;
 --   - anime en local les halos créés par le serveur : les rayons des objets Légendaire, Mythique
---     et Secret tournent, l'arc-en-ciel du Secret défile. Rien n'est envoyé au serveur.
+--     et Secret tournent, l'arc-en-ciel du Secret défile. Rien n'est envoyé au serveur ;
+--   - téléphone (vague 39, a129 ; audit perf-telephone.md, correction 2 ; valeurs : Config/DisplayHalo) :
+--     lumière et particules de chaque halo exposé éteintes au-delà d'EffectsDistance de la caméra
+--     (rallumées en revenant, sauf VISUAL EFFECTS sur OFF : CosmeticController garde la main), rayons
+--     tournés seulement dans le champ de la caméra, couleurs de l'arc-en-ciel des rayons calculées une fois.
 -- Ce contrôleur ne crée aucune UI (9.3) : l'inventaire et le HUD sont des écrans de Clément.
 --
 -- API (client) :
@@ -42,6 +46,7 @@ local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
 local Format = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Format"))
+local HaloConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"):WaitForChild("DisplayHalo"))
 
 type Listener = (value: number) -> ()
 
@@ -88,15 +93,25 @@ type Ray = {
 	beam: Beam?,
 	angle: number, -- angle de départ autour du centre, dans le plan XY du halo
 	radius: number,
+	step: number?, -- teinte de l'arc-en-ciel écrite sur le rayon (Secret), nil avant la première
 }
 
 type Animated = {
 	halo: BasePart,
 	center: Attachment?,
 	rays: { Ray },
+	reach: number, -- rayon (studs) d'une sphère autour du halo qui contient tous les rayons
 	rainbow: boolean,
 	light: PointLight?,
 	gradient: UIGradient?,
+}
+
+-- Lumière et particules d'un halo, coupées au loin (Config/DisplayHalo.EffectsDistance).
+type Lit = {
+	halo: BasePart,
+	lights: { Light },
+	emitters: { ParticleEmitter },
+	on: boolean, -- état voulu au dernier passage
 }
 
 local DisplayController = {}
@@ -116,6 +131,9 @@ type CollectListener = (amount: number, slotIndex: number, position: Vector3) ->
 local collectListeners: { CollectListener } = {}
 local plateRest: { [BasePart]: CFrame } = {} -- position de repos d'une plaque enfoncée
 local animated: { [Instance]: Animated } = {}
+local lit: { [Instance]: Lit } = {}
+local rainbowSequences: { ColorSequence } = {} -- Config/DisplayHalo.RainbowSteps teintes, calculées au démarrage
+local nextCull = 0 -- os.clock() de la prochaine revue des distances (lumière et particules)
 
 local function subscribe<T>(list: { T }, listener: T): () -> ()
 	table.insert(list, listener)
@@ -299,11 +317,43 @@ local function rainbowAt(phase: number): Color3
 	return from:Lerp(to, x - k)
 end
 
+-- Champ de la caméra pour l'image en cours (rayons tournés seulement à l'écran) : CFrame, tangentes des
+-- demi-angles du champ et 1 / leur cosinus (pour élargir le champ du rayon d'une sphère).
+local viewCFrame = CFrame.identity
+local viewTanX, viewTanY, viewSecX, viewSecY = 1, 1, 1, 1
+
+-- Lit le champ de la caméra ; false si elle n'a pas encore de taille (fenêtre pas prête) : tout est alors
+-- réputé à l'écran.
+local function readView(camera: Camera): boolean
+	local fov = camera.FieldOfView
+	local size = camera.ViewportSize
+	if fov <= 0 or size.X <= 0 or size.Y <= 0 then
+		return false
+	end
+	viewCFrame = camera.CFrame
+	viewTanY = math.tan(math.rad(fov) / 2)
+	viewTanX = viewTanY * size.X / size.Y
+	viewSecX = math.sqrt(1 + viewTanX * viewTanX)
+	viewSecY = math.sqrt(1 + viewTanY * viewTanY)
+	return true
+end
+
+-- Une sphère (centre `position`, rayon `radius`) touche-t-elle le champ de la caméra (readView) ?
+local function onScreen(position: Vector3, radius: number): boolean
+	local p = viewCFrame:PointToObjectSpace(position)
+	local depth = -p.Z -- devant la caméra : positif
+	if depth < -radius then
+		return false
+	end
+	return math.abs(p.X) <= depth * viewTanX + radius * viewSecX and math.abs(p.Y) <= depth * viewTanY + radius * viewSecY
+end
+
 local function track(model: Instance)
 	local kind = model:GetAttribute(HALO_ATTRIBUTE)
-	if kind ~= "Rays" and kind ~= "Rainbow" and kind ~= "Divine" then -- rayons qui tournent (Divine : L-106)
-		return
+	if type(kind) ~= "string" or kind == "None" then
+		return -- Commun : aucun halo
 	end
+	local turns = kind == "Rays" or kind == "Rainbow" or kind == "Divine" -- rayons qui tournent (Divine : L-106)
 	task.spawn(function()
 		local found = model:FindFirstChild(HALO_PART) or model:WaitForChild(HALO_PART, HALO_WAIT)
 		if found == nil or not found:IsA("BasePart") then
@@ -313,19 +363,39 @@ local function track(model: Instance)
 			return -- retiré pendant l'attente
 		end
 		local halo = found :: BasePart
+		-- Lumière et particules du halo (HaloLight, HaloSparkles), coupées au loin (cullEffects).
+		local lights: { Light } = {}
+		local emitters: { ParticleEmitter } = {}
+		for _, child in halo:GetChildren() do
+			if child:IsA("Light") then
+				table.insert(lights, child :: Light)
+			elseif child:IsA("ParticleEmitter") then
+				table.insert(emitters, child :: ParticleEmitter)
+			end
+		end
+		if #lights > 0 or #emitters > 0 then
+			lit[model] = { halo = halo, lights = lights, emitters = emitters, on = true }
+		end
+		if not turns then
+			return
+		end
 		local centerFound = halo:FindFirstChild(RAYS_CENTER)
 		local center = if centerFound ~= nil and centerFound:IsA("Attachment") then centerFound :: Attachment else nil
 		local rays: { Ray } = {}
+		local longest = 0
 		if center then
 			for _, child in halo:GetChildren() do
 				if child:IsA("Attachment") and string.sub(child.Name, 1, #RAY_PREFIX) == RAY_PREFIX then
 					local tip = child :: Attachment
 					local offset = tip.Position - center.Position
+					local radius = math.sqrt(offset.X * offset.X + offset.Y * offset.Y)
+					longest = math.max(longest, radius)
 					table.insert(rays, {
 						attachment = tip,
 						beam = tip:FindFirstChildOfClass("Beam") :: Beam?,
 						angle = math.atan2(offset.Y, offset.X),
-						radius = math.sqrt(offset.X * offset.X + offset.Y * offset.Y),
+						radius = radius,
+						step = nil,
 					})
 				end
 			end
@@ -336,6 +406,8 @@ local function track(model: Instance)
 			halo = halo,
 			center = center,
 			rays = rays,
+			-- Le halo entier, plus les rayons et leur largeur au bout (RarityHalo : 0,4 × la longueur).
+			reach = halo.Size.Magnitude / 2 + longest * 1.25,
 			rainbow = kind == "Rainbow",
 			light = halo:FindFirstChildOfClass("PointLight") :: PointLight?,
 			gradient = if gradient ~= nil and gradient:IsA("UIGradient") then gradient :: UIGradient else nil,
@@ -343,13 +415,66 @@ local function track(model: Instance)
 	end)
 end
 
+-- Lumière et particules des halos allumées seulement près de la caméra (Config/DisplayHalo). Rien quand
+-- VISUAL EFFECTS est sur OFF : CosmeticController les a toutes éteintes et les rallumera à leur état ; le
+-- passage suivant remet ensuite l'état voulu ici.
+local function cullEffects(eye: Vector3)
+	local limit = HaloConfig.EffectsDistance
+	if limit <= 0 or (settings ~= nil and settings.VfxReduced(localPlayer)) then
+		return
+	end
+	local far = limit + math.max(HaloConfig.EffectsMargin, 0)
+	for model, entry in lit do
+		local halo = entry.halo
+		if halo.Parent == nil then
+			lit[model] = nil
+			continue
+		end
+		local distance = (halo.Position - eye).Magnitude
+		local on = if distance < limit then true elseif distance > far then false else entry.on
+		entry.on = on
+		for _, light in entry.lights do
+			if light.Enabled ~= on then
+				light.Enabled = on
+			end
+		end
+		for _, emitter in entry.emitters do
+			if emitter.Enabled ~= on then
+				emitter.Enabled = on
+			end
+		end
+	end
+end
+
+-- Couleur d'un rayon du Secret à la phase `phase` : teinte précalculée, écrite seulement si elle change.
+local function paintRay(ray: Ray, beam: Beam, phase: number)
+	local count = #rainbowSequences
+	if count == 0 then
+		beam.Color = ColorSequence.new(rainbowAt(phase)) -- RainbowSteps à 0 : comme avant la vague 39
+		return
+	end
+	local k = math.min(math.floor((phase % 1) * count), count - 1) + 1
+	if ray.step ~= k then
+		ray.step = k
+		beam.Color = rainbowSequences[k]
+	end
+end
+
 local function animate()
 	local camera = Workspace.CurrentCamera
-	if camera == nil or next(animated) == nil then
+	if camera == nil then
 		return
 	end
 	local eye = camera.CFrame.Position
 	local t = os.clock()
+	if t >= nextCull then
+		nextCull = t + HaloConfig.EffectsInterval
+		cullEffects(eye)
+	end
+	if next(animated) == nil then
+		return
+	end
+	local screenOnly = HaloConfig.RaysOnScreenOnly and readView(camera)
 	for model, entry in animated do
 		local halo = entry.halo
 		if halo.Parent == nil then
@@ -360,7 +485,7 @@ local function animate()
 			continue
 		end
 		local center = entry.center
-		if center then
+		if center and (not screenOnly or onScreen(halo.Position, entry.reach)) then
 			local base = center.Position
 			local turn = t * RAYS_TURN_SPEED
 			for i, ray in entry.rays do
@@ -368,7 +493,7 @@ local function animate()
 				ray.attachment.Position = base + Vector3.new(math.cos(angle) * ray.radius, math.sin(angle) * ray.radius, 0)
 				local beam = ray.beam
 				if entry.rainbow and beam then
-					beam.Color = ColorSequence.new(rainbowAt(t / RAINBOW_PERIOD + i / #entry.rays))
+					paintRay(ray, beam, t / RAINBOW_PERIOD + i / #entry.rays)
 				end
 			end
 		end
@@ -434,6 +559,11 @@ function DisplayController.Start()
 	local rarities = require(shared:WaitForChild("Config"):WaitForChild("Rarities") :: ModuleScript) :: any
 	local secret = rarities.ById.Secret
 	rainbowColors = if secret and secret.RainbowColors then secret.RainbowColors else {}
+	-- Vague 39 : un tour de l'arc-en-ciel des rayons, calculé une fois (Config/DisplayHalo.RainbowSteps).
+	local steps = math.max(math.floor(HaloConfig.RainbowSteps), 0)
+	for k = 0, steps - 1 do
+		table.insert(rainbowSequences, ColorSequence.new(rainbowAt(k / steps)))
+	end
 	local settingsModule = shared:WaitForChild("Config"):FindFirstChild("Settings")
 	if settingsModule and settingsModule:IsA("ModuleScript") then
 		settings = require(settingsModule) :: any
@@ -455,6 +585,7 @@ function DisplayController.Start()
 	CollectionService:GetInstanceAddedSignal(DISPLAY_TAG):Connect(track)
 	CollectionService:GetInstanceRemovedSignal(DISPLAY_TAG):Connect(function(model: Instance)
 		animated[model] = nil
+		lit[model] = nil
 	end)
 	for _, model in CollectionService:GetTagged(DISPLAY_TAG) do
 		track(model)
