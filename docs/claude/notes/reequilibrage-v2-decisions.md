@@ -40,6 +40,18 @@ Règles qui en découlent :
 4. **Zones 1 à 5** : PV d'une vitrine = ce que casse un joueur seul au niveau conseillé en 11 s.
 5. **Zone 6** : un joueur seul ne casse pas une vitrine en 13 s, deux joueurs oui. Cette règle remplace les 374M (et les 320M) : les PV seront recalculés.
 
+### Chrono de police à 8 s (Cantin, 14/11, remplace les 13 s et les 11 s ci-dessus)
+
+Ses mots : « On reste sur 8 secondes et du coup faut tout revoir sur 8 secondes » (les témoins appellent la police à 8 s, `Witness.FillTime = 8`, alors que le chrono affichait 13 s). Pour les zones 1 à 5 : un joueur seul au niveau conseillé casse une vitrine en « 6,5 s ».
+
+Règles qui en découlent :
+
+1. **Chrono de police de 8 s** au premier coup (`Balance.Window.BreakTimer` 13 → 8), texte « POLICE IN 8s » ; les témoins restent à 8 s (`Witness.FillTime`).
+2. **Zones 1 à 5** : un joueur seul au niveau conseillé casse une vitrine en 6,5 s.
+3. **Zone 6** : un joueur seul ne casse pas une vitrine en 8 s, deux joueurs oui.
+4. **Braquage** : 6 s après la casse, inchangé. 5 coups par seconde au plus, inchangé.
+5. Les PV des vitrines sont recalculés avec ces règles (passe 3 du rééquilibrage, branche `agents/a138`) : les valeurs de la passe 2 ne valent plus.
+
 ## À mettre en place dans le code
 
 1. **Retirer le banc du jeu**, partout où il sert :
@@ -51,10 +63,10 @@ Règles qui en découlent :
    - à revoir aussi : `AdminService` et `AdminController` (commandes du banc), `TutorialService`, `GainController`, `AnimationController`, `Shared/Anim`, et tout ce qui lit la stat Force (`Stats.Strength`) : HUD, renaissance, arbre de compétences, bandeau de zone.
 2. **Dégâts = arme × multiplicateur d'aura × potion.** Aujourd'hui, `Formulas.HitDamage(toolPower, strength, auraMultiplier)` vaut `toolPower × (1 + strength / StrengthDivisor) × auraMultiplier`. Sans banc, la part de la force disparaît.
 3. **Potion Strength ×1,5** : `Config/Potions`, `Multiplier = 2` → `1.5`.
-4. **Nouvelles valeurs** (tapis, prix, armes, auras, PV des vitrines par zone, seuils des zones) : celles de la « Passe 2 du 14/11 » en tête de [equilibrage-v2-proposition.md](equilibrage-v2-proposition.md), qui prime sur le reste de la note, une fois validées par Cantin : 5 coups/s pour tous ; PV des vitrines des zones 1 à 5 = 41,35 × dégâts du panneau (un joueur seul au niveau conseillé en 11 s) ; zone 6 = 165,4M (deux joueurs en 11,0 s ; seul avec la potion 16,5 s, raté ; seul avec Hydraulic Gloves 8,3 s) ; joueur moyen en zone 6 en 7 h 35 sans aides. À ne pas oublier : la formule de la Fortune Tower compte 7 coups/s, à passer à 5. Vérifier les deux contraintes : zone 6 en environ 7 h 30, et zone 6 impossible à casser seul (PV de ses vitrines = dégâts de deux des meilleurs joueurs, arme × aura au maximum, pendant le chrono de 13 s ; potion non comptée).
+4. **Nouvelles valeurs** (tapis, prix, armes, auras, PV des vitrines par zone, seuils des zones) : celles de la passe 3 (chrono de police à 8 s, branche `agents/a138`, à venir) ; la passe 2 ci-dessous ne vaut plus pour les PV des vitrines. Passe 2 : celles de la « Passe 2 du 14/11 » en tête de [equilibrage-v2-proposition.md](equilibrage-v2-proposition.md), qui prime sur le reste de la note, une fois validées par Cantin : 5 coups/s pour tous ; PV des vitrines des zones 1 à 5 = 41,35 × dégâts du panneau (un joueur seul au niveau conseillé en 11 s) ; zone 6 = 165,4M (deux joueurs en 11,0 s ; seul avec la potion 16,5 s, raté ; seul avec Hydraulic Gloves 8,3 s) ; joueur moyen en zone 6 en 7 h 35 sans aides. À ne pas oublier : la formule de la Fortune Tower compte 7 coups/s, à passer à 5. Vérifier les deux contraintes : zone 6 en environ 7 h 30, et zone 6 impossible à casser seul (PV de ses vitrines = dégâts de deux des meilleurs joueurs, arme × aura au maximum, pendant le chrono de 13 s ; potion non comptée).
 5. **Retirer la potion Speed** : son entrée dans `Config/Potions`, son effet dans `PotionService` (`StatsService.SetSpeedModifier`, le seul modificateur posé au-dessus du plafond), sa carte et son minuteur côté client (`PotionController`, `InventoryController`), son icône, le contrat du modèle `POT_Speed`, et ce qui la cite : `AdminService`, `AntiCheatService`, `StatsService`, `TelemetryService`, les attributs de test (`PotionTest`). Vérifier si la tuile `PotionTime` de l'arbre en dépend (elle allonge toutes les potions : elle reste pour les autres). Les potions déjà dans les profils : à vider à la remise à zéro.
 6. **Hydraulic Gloves** : rien à changer, il casse la zone 6 seul (choix de Cantin).
-7. **Chrono de police et braquage** : le chrono de 13 s qui démarre au premier coup (affiché aujourd'hui « HEIST: 13s ») devient le chrono de police (« POLICE IN 13s » par exemple, texte à valider avec Clément, liaison) ; la police arrive s'il finit avant la casse ; le chrono « HEIST » après la casse passe de 10 à 6 s (`Balance.Heist.Duration`) ; `Balance.Hit.MaxHitsPerSecond` passe de 10 à 5 ; PV des vitrines recalculés (zones 1 à 5 : un joueur seul au niveau conseillé en 11 s ; zone 6 : deux joueurs en 13 s, pas un seul).
+7. **Chrono de police et braquage** : le chrono qui démarre au premier coup (affiché aujourd'hui « HEIST: 13s ») passe de 13 à 8 s (`Balance.Window.BreakTimer`) et devient le chrono de police (« POLICE IN 8s », texte à valider avec Clément, liaison L-153), au même rythme que les témoins (`Witness.FillTime = 8`) ; la police arrive s'il finit avant la casse ; le chrono « HEIST » après la casse passe de 10 à 6 s (`Balance.Heist.Duration`) ; `Balance.Hit.MaxHitsPerSecond` passe de 10 à 5 ; PV des vitrines recalculés (zones 1 à 5 : un joueur seul au niveau conseillé en 6,5 s ; zone 6 : deux joueurs en 8 s, pas un seul ; passe 3, `agents/a138`).
 8. **Remise à zéro des profils DEV** quand les nouvelles valeurs arrivent (le profil de Cantin compris), avec son accord au moment de le faire.
 
 ## Côté Clément (liaison)
