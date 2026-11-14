@@ -5,7 +5,179 @@ Note de l'agent a132 (2026-11-14), pour Cantin et Clément. **Rien n'est changé
 - Outil : `RAPPORT=v2 bash tools/ironix/equilibrage/run.sh` (hors Studio, 2 min environ). Il lit les vraies tables de `src/shared/Config`, fait jouer 3 profils de joueurs, 25 parties chacun, et sort les tableaux de cette note.
 - Toutes les valeurs proposées sont dans un seul fichier : `tools/ironix/equilibrage/proposition_v2.luau`. On change un nombre, on relance (`COURT=1` : seulement les temps par zone, 20 s).
 - Cette note remplace `equilibrage-proposition.md` (L-108 point 1, L-116 point 4), qui gardait le banc.
+- **Passe 2 du 14/11** (5 coups par seconde, casse en 11 s, braquage de 6 s, zone 6 à 165M) : section suivante. Elle passe avant les sections 1 à 10 quand elles se contredisent, et le simulateur donne maintenant les chiffres de la passe 2.
 - Nombres écrits comme dans le jeu (`Format.short` : K, M, B, T, Qa).
+
+## Passe 2 du 14/11 (agent a133) : 5 coups par seconde, casse en 11 s, braquage de 6 s
+
+**Cette section passe avant le reste de la note quand les deux se contredisent** (PV des vitrines, zone 6, temps par zone, portes). Les sections 1 à 10 sont la passe 1, gardées pour la trace ; ce qu'elles disent du tapis, des armes, des auras, des trails, des seuils de Speed, des vigiles et des revenus reste valable. Toutes les valeurs nouvelles sont des V0 proposés, avec leur calcul. Rien n'est changé dans `src/`.
+
+### P2.1 Réponses et nouvelles règles de Cantin (14/11)
+
+| | Règle | Effet |
+| --- | --- | --- |
+| a | Cible de 7 h 30 en zone 6 pour le joueur moyen, **sans les aides** | Cible gardée |
+| b | **Potion de vitesse retirée du jeu** | `Config/Potions` : l'entrée `Speed` part (la question 5 de la passe 1 tombe) |
+| c | Gamepass Hydraulic Gloves gardé : il casse la zone 6 seul, « car il a payé » | Vérifié : 8,3 s seul (P2.3) |
+| d | **Coups sur une vitrine plafonnés à 5 par seconde** pour tout le monde | `Balance.Hit.MaxHitsPerSecond` et le débit du remote `HitWindow` : 10 → 5 |
+| e | Au premier coup, chrono « la police arrive dans 13 s » ; vitrine pas cassée en 13 s = police | `Balance.Window.BreakTimer` reste à 13 ; texte du chrono à changer |
+| f | Vitrine cassée : **le chrono du braquage (HEIST) dure 6 s** | `Balance.Heist.Duration` : 10 → 6 (le code dit 10 aujourd'hui, pas 13) |
+| g | **Zones 1 à 5 : un joueur seul au niveau conseillé casse en 11 s** (5 coups/s, régénération 3 %/s) | PV = 41,35 × dégâts du panneau (passe 1 : 35) |
+| h | **Zone 6 : un joueur seul ne casse pas dans les 13 s, deux oui** | PV = 82,7 × D = 165M (passe 1 : 160 × D = 320M ; les 374M ne s'appliquent plus) |
+
+### P2.2 PV des vitrines (`Config/Zones`)
+
+Une vitrine casse en t secondes si `coups/s × dégâts × t = PV × (1 + 0,03 × t)`. Pour 11 s à 5 coups/s :
+
+```
+PV / dégâts = 11 × 5 / (1 + 0,03 × 11) = 55 / 1,33 = 41,35
+```
+
+| Zone | Strength du panneau | `WindowHP` aujourd'hui | Passe 1 | **Passe 2** | PV / dégâts (passe 1 → passe 2) |
+| --- | --- | --- | --- | --- | --- |
+| 1 | 1 | 35 | 35 | **41** | 35 → 41,35 |
+| 2 | 10 | 350 | 350 | **414** | 35 → 41,35 |
+| 3 | 120 | 2.8K | 4.2K | **4 962** | 35 → 41,35 |
+| 4 | 1.5K | 21K | 52.5K | **62 030** | 35 → 41,35 |
+| 5 | 20K | 175K | 700K | **827 068** | 35 → 41,35 |
+| 6 | 2M | 1.4M | 320M | **165.4M** | 160 → 82,7 |
+
+Casse par un joueur seul qui a les dégâts du panneau (chrono de 13 s) :
+
+| Zone | à 4 coups/s | à 4,5 coups/s | à 5 coups/s (plafond) | avec le kit de la zone d'avant, 5 coups/s | kit de la zone d'avant et potion ×1,5 |
+| --- | --- | --- | --- | --- | --- |
+| 1 à 5 | non (15.0 s) | 12.7 s | **11.0 s** | jamais | jamais |
+| 6 | non | non | non (32.8 s) | jamais | jamais |
+
+**À signaler** : la marge est mince. Au niveau du panneau, il faut tenir au moins **4,42 coups par seconde** pendant toute la casse (88 % du plafond) ; à 4 coups/s, la police arrive avant. Passe 1 : 7 s à 6 coups/s, 12 s à 4. Deux façons d'élargir sans toucher à la règle : garder le bouton enfoncé frappe tout seul à 5 coups/s, ou le joueur achète l'arme ou l'aura suivante (un kit au-dessus casse en moins de 1 s).
+
+### P2.3 Zone 6 : seul non, à deux oui
+
+D = meilleure arme × meilleure aura = Angle Grinder 100K × Royal ×20 = **2M par coup**. 5 coups/s par joueur, chrono 13 s, régénération 3 %/s. PV cassables en 13 s = 9,353 × coups/s × dégâts :
+
+| Qui frappe | Dégâts par seconde | PV cassables en 13 s | En multiples de D |
+| --- | --- | --- | --- |
+| Seul, sans potion | 10M | 93.5M | 46.8 |
+| Seul, potion ×1,5 | 15M | 140M | 70.1 |
+| Deux, sans potion | 20M | 187M | 93.5 |
+| Deux, potion tous les deux | 30M | 280M | 140.3 |
+| Seul, Hydraulic Gloves ×2,5 | 25M | 233M | 116.9 |
+
+**Bornes** :
+
+- **sans compter la potion** (comme Cantin l'avait dit) : plus de 46,8 × D (93.5M) et au plus 93,5 × D (187M) ;
+- **en comptant la potion ×1,5** : plus de 70,1 × D (140M) et au plus 93,5 × D (187M).
+
+**Attention : entre 93.5M et 140M, un joueur seul avec la potion casse la vitrine.** « 1,5 < 2 » ne suffit que si les PV sont au-dessus de ce que fait un joueur seul avec potion, donc au-dessus de 140M. Temps de casse selon les PV :
+
+| PV de la vitrine (× D) | 46.8 | 60 | 70.1 | 75 | **82.7** | 88 | 93.5 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| PV | 93.5M | 120M | 140M | 150M | **165M** | 176M | 187M |
+| Deux, 5 coups/s, sans potion | 5.4 s | 7.3 s | 8.9 s | 9.7 s | **11.0 s** | 12.0 s | 13.0 s |
+| Deux, 4,5 coups/s, sans potion | 6.2 s | 8.3 s | 10.2 s | 11.1 s | 12.7 s | non (13.8 s) | non (15.1 s) |
+| Deux, 5 coups/s, potion tous les deux | 3.4 s | 4.5 s | 5.4 s | 5.9 s | 6.6 s | 7.1 s | 7.7 s |
+| Seul, 5 coups/s, sans potion | non (13.0 s) | non (18.8 s) | non (24.2 s) | non (27.3 s) | non (32.8 s) | non (37.3 s) | non (42.6 s) |
+| **Seul, 5 coups/s, potion** | **7.7 s** | **10.5 s** | 13.0 s | non (14.3 s) | non (16.5 s) | non (18.1 s) | non (19.9 s) |
+| Seul, Hydraulic Gloves | 4.2 s | 5.6 s | 6.7 s | 7.3 s | 8.3 s | 8.9 s | 9.6 s |
+| Trois, 5 coups/s, sans potion | 3.4 s | 4.5 s | 5.4 s | 5.9 s | 6.6 s | 7.1 s | 7.7 s |
+
+**Valeur proposée : 82,7 × D = 165.4M PV, soit 2 × la règle des zones 1 à 5** (`2 × 41,35`). Elle se dit en une phrase : *deux joueurs au niveau du panneau cassent la zone 6 en 11 s, comme un joueur seul casse les autres zones en 11 s.*
+
+- Deux joueurs : 11,0 s à 5 coups/s, 12,7 s à 4,5 (même marge que dans les autres zones : 4,42 coups/s chacun au moins).
+- Seul sans potion : jamais dans le chrono (32,8 s). Seul avec la potion : 16,5 s, raté de 3,5 s.
+- Seul avec Hydraulic Gloves : 8,3 s (choix de Cantin). Avec le gamepass et la potion : 5,1 s.
+- Trois joueurs avec Angle Grinder × Galaxy (1.2M) : 12,7 s ; quatre : 8,7 s. Avec le kit de la zone 5, même à huit : jamais.
+
+À écrire dans le code comme un calcul : `Zones[6].WindowHP = 2 × 41,35 × meilleur Power × meilleur Multiplier d'aura`.
+
+### P2.4 Temps de jeu actif par zone (passe 2)
+
+Médiane de 25 parties (de la plus rapide à la plus lente), sans aucune aide. Tous les profils frappent au plafond de 5 coups/s (avant : prudent 4, moyen 6, acharné 9) ; l'équipe de la zone 6 est de deux joueurs, 10 coups/s en tout (avant : 18) ; chrono du braquage 6 s.
+
+| Profil | Zone 2 | Zone 3 | Zone 4 | Zone 5 | Zone 6 | Zone 6 en passe 1 |
+| --- | --- | --- | --- | --- | --- | --- |
+| Prudent | 13 min (9 à 19) | 47 min (36 à 53) | 2 h 03 (1 h 33 à 2 h 37) | 5 h 36 (3 h 55 à 6 h 32) | 15 h 29 (12 h 27 à 17 h 08) | 15 h 37 |
+| **Moyen** | **7 min** (5 à 11) | **24 min** (19 à 32) | **1 h 03** (56 min à 1 h 21) | **2 h 37** (2 h 15 à 3 h 01) | **7 h 47** (5 h 01 à 10 h 04) | 7 h 35 |
+| Acharné | 7 min (4 à 8) | 21 min (16 à 24) | 55 min (42 min à 1 h 04) | 2 h 21 (1 h 55 à 2 h 41) | 6 h 12 (5 h 05 à 7 h 44) | 6 h 05 |
+
+- **Joueur moyen : 7 h 47 sur 25 parties, 7 h 35 sur 75 parties** (passe 1 : 7 h 35 et 7 h 27). L'écart entre deux médianes de 25 parties est de 15 min environ : la cible de 7 h 30 est tenue.
+- Joueur acharné : 6 h 12. Le plus rapide des 25 parties : 5 h 01 (un joueur moyen) ; 5 h 05 pour le plus rapide des acharnés.
+- Joueur prudent : 15 h 29 (question 7 de la passe 1, toujours ouverte).
+
+**Compensation.** Les nouvelles règles ralentissent peu le joueur simulé : la casse passe de 7 à 11 s et le chrono de 10 à 6 s, soit 8 à 12 min de plus sur la zone 6. Je garde donc le prix du tapis de la passe 1 (150 × 3,8^(niveau − 1)). À ×3,75 par niveau, on obtient 7 h 21 (25 parties) et 7 h 18 (75) ; à ×3,7, 7 h 06 : c'est le bouton à tourner si la bêta mesure plus long.
+
+**Le chrono de 6 s est le point le plus fragile.** Le simulateur compte un seul objet par vitrine cassée (on n'en porte qu'un), 3 s pour atteindre le rayon (hypothèse, pas mesurée), puis l'ouverture (0,6 s de rabats, 0 à 2 s de montée de la chance) et la prise (0,3 à 1 s). Cela tient presque toujours en 6 s. Mais si le rayon est à 5 s de la vitrine, le vigile sort avant la prise et la zone 6 recule de 1 h 30 :
+
+| Variante (joueur moyen, 25 parties) | Zone 5 | Zone 6 |
+| --- | --- | --- |
+| Passe 2 telle quelle | 2 h 37 | 7 h 47 |
+| Chrono du braquage à 10 s (aujourd'hui) | 2 h 37 | 7 h 33 |
+| 4 s pour atteindre le rayon (au lieu de 3) | 2 h 49 | 7 h 47 |
+| 5 s pour atteindre le rayon | 3 h 27 | 9 h 23 |
+| Prix du tapis ×3,5 par niveau | 2 h 25 | 6 h 59 |
+| Prix du tapis ×4,1 par niveau | 2 h 58 | 8 h 44 |
+| Armes, auras et trails 2 fois moins chers | 2 h 27 | 7 h 32 |
+| Armes, auras et trails 2 fois plus chers | 2 h 59 | 8 h 52 |
+| Vigile à 0,9 × vitesse conseillée (sans le + 1) | 2 h 15 | 5 h 59 |
+| Vigile à 0,9 × vitesse conseillée + 2 | 3 h 31 | 10 h 11 |
+| Avance sur le vigile 10 studs (au lieu de 20) | 3 h 05 | 8 h 34 |
+| Avance sur le vigile 30 studs | 2 h 16 | 6 h 43 |
+
+Le joueur moyen à son entrée dans chaque zone (médianes) :
+
+| Zone | Temps de jeu | Speed affichée | WalkSpeed | Strength | Casse | Outil | Niveau du tapis | Présentoirs | Revenus | Depuis la zone d'avant : tapis | braquages |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 2 | 7 min | 808 | 19.8 | 10 | 11.0 s | Wrench | 3 | 5 | $16.1/s | 1 min | 6 min |
+| 3 | 24 min | 37.8K | 26.3 | 120 | 11.0 s | Crowbar | 6 | 9 | $541/s | 7 min | 10 min |
+| 4 | 1 h 03 | 1.3M | 32.5 | 1.5K | 11.0 s | Hammer | 9 | 12 | $7.5K/s | 16 min | 23 min |
+| 5 | 2 h 37 | 49.7M | 38.8 | 20K | 11.0 s | Sledgehammer | 12 | 15 | $109K/s | 46 min | 49 min |
+| 6 | 7 h 47 | 1.6B | 44.8 | 2M | 11.0 s (à deux) | Angle Grinder | 15 | 18 | $2.1M/s | 2 h 08 | 2 h 58 |
+
+Répartition jusqu'à la zone 6 : prudent 9 h 39 de tapis et 5 h 47 de braquages (63 %), moyen 3 h 19 et 4 h 26 (43 %), acharné 2 h 47 et 3 h 27 (45 %) ; 247 à 308 colis rapportés ; tapis au niveau 15 pour tous.
+
+Aides (75 parties, mêmes hypothèses que la section 6.5 ; hors cible, pour information) : gains hors ligne seuls 6 h 27 à 6 h 36 (13 à 15 %), récompenses seules 6 h 58 (8 %), camion 7 h 28 (2 %, dans le bruit), les trois 6 h 36 (13 %), pour une référence à 7 h 35.
+
+### P2.5 Portes des boutiques de joueurs à 5 coups/s
+
+Règle et arbre inchangés (base = 50 × Strength du panneau du même rang ; Glass ×8, Walls ×3, réparation jusqu'à 8 %/s). Pas de chrono sur une porte.
+
+| Niveau de boutique | PV de base | Arbre complet (×24) | Sans arbre : voleur du même rang | Sans arbre : une zone au-dessus | Arbre complet : même rang | Arbre complet : une zone au-dessus | Arbre complet : deux zones au-dessus | Arbre complet : meilleur kit |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | 50 | 1.2K | 14.3 s | 1.0 s | jamais | jamais | 2.4 s | < 0.1 s |
+| 2 | 500 | 12K | 14.3 s | 0.9 s | jamais | jamais | 1.8 s | < 0.1 s |
+| 3 | 6K | 144K | 14.3 s | 0.8 s | jamais | jamais | 1.6 s | < 0.1 s |
+| 4 | 75K | 1.8M | 14.3 s | 0.8 s | jamais | jamais | 0.2 s | 0.2 s |
+| 5 | 1M | 24M | 14.3 s | 0.1 s | jamais | 3.0 s | — | 3.0 s |
+
+Ce qui change avec le plafond de 5 coups/s : sans arbre, le voleur du même rang met 14,3 s (passe 1 : 11,1 s à 6 coups/s) ; avec l'arbre complet, **un voleur d'une zone au-dessus ne passe plus du tout** (passe 1 : 30 s à 5 min à 10 coups/s), sauf le joueur de zone 6 contre une boutique de niveau 5 (3 s). L'arbre protège donc mieux qu'avant. À valider par Clément (question 4).
+
+### P2.6 Ce qui change par rapport à la passe 1
+
+| Clé | Aujourd'hui | Passe 1 | Passe 2 |
+| --- | --- | --- | --- |
+| `Balance.Hit.MaxHitsPerSecond` (et débit de `HitWindow`) | 10 | 10 | **5** |
+| `Balance.Heist.Duration` | 10 s | 10 s | **6 s** |
+| `Balance.Window.BreakTimer` | 13 s | 13 s | 13 s (« la police arrive ») |
+| `Zones[1..5].WindowHP` | 35 × dégâts | 35 × dégâts | **41,35 × dégâts** (11 s à 5 coups/s) |
+| `Zones[6].WindowHP` | 1.4M | 320M (160 × D) | **165.4M (82,7 × D)** |
+| `Potions.Speed` | ×2 sur la marche | inchangé | **retirée** |
+| `Potions.Strength.Multiplier` | 2 | 1,5 | 1,5 |
+| `Upgrades.Treadmill.Growth` | 1,9 | 3,8 | 3,8 (inchangé) |
+| Armes, auras, trails, seuils de Speed, vigiles, revenus, portes (règle) | | | comme en passe 1 |
+| `FortuneTower` : `HITS_PER_SECOND` | 7 | 7 | 5 à prévoir : `MAX_HP = 4 × 2M × 5 × 90 = 3.6B` |
+| `TruckEvent.MaxHP` (V0 proposé) | 1000 | 100 × dégâts de la zone | 100 × dégâts de la zone : 20 s seul au panneau à 5 coups/s |
+| Simulateur : coups des profils | 4, 6, 9 | 4, 6, 9 | 5 pour tous (`eco.MaxHits`) |
+| Simulateur : équipe de la zone 6 (`TeamHits`) | — | 18 | 10 (deux joueurs) |
+
+Dans le code, en plus de la section 7 : `Balance.Hit.MaxHitsPerSecond`, `Net/Definitions` (`HitWindow`, `RatePerSecond`), `HitController` (`MIN_INTERVAL`), `Balance.Heist.Duration`, le texte du chrono de casse (`HeistTimer`), le retrait de la potion Speed (`reequilibrage-v2-decisions.md`, point 5).
+
+### P2.7 Ce qui reste incertain
+
+- **Le chemin jusqu'au rayon** : le chrono de 6 s ne laisse que 3 s de marge après l'entrée. À mesurer en Play dans chaque magasin, surtout ceux de la zone 6 (les plus grands). S'il faut plus de 4 s, soit le chrono remonte, soit le vigile attend la prise.
+- **4,42 coups par seconde au moins** pour casser au niveau du panneau : sur téléphone, à vérifier ; sinon, frappe automatique bouton enfoncé.
+- **La potion de force et la zone 6** : avec 165M, un joueur seul avec potion échoue (16,5 s). Toute valeur sous 140M le laisserait passer.
+- Le simulateur suppose toujours un partenaire disponible en zone 6, et un seul objet pris par vitrine cassée.
+- L'avance du voleur sur le vigile (20 studs supposés) et la règle du vigile (+ 1) pèsent autant qu'avant : 1 de marche vaut 2 h sur la zone 6.
 
 ## 1. Décisions de départ (Cantin, 2026-11-14)
 

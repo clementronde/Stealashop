@@ -42,6 +42,11 @@ local Modele = {}
 --   eco.SansBanc = true        plus de banc : les dégâts ne dépendent que de l'outil et de l'aura
 --   eco.Zones[z].TeamHits      zone d'équipe : la vitrine se casse à plusieurs, ce total de coups par
 --                              seconde (tous au niveau du joueur simulé), dans le chrono de casse entier
+--   eco.MaxHits                passe 2 : plafond de coups par seconde ; tous les profils frappent à ce plafond
+--   eco.CasseMax               passe 2 : temps de casse accepté par tous les profils (à la place de profil.CasseMax)
+--   eco.HeistDuration          passe 2 : chrono du braquage après la casse ; l'ouverture du colis (rabats et
+--                              montée de la chance, Config/ShelfOpen) est comptée, et chaque seconde passée
+--                              dans le magasin après le chrono rapproche le vigile (voir heist)
 --   Modele.Aides               nil, ou { Session, Offline, Daily, Truck… } : aides comptées (voir Jouer)
 
 -- Hypothèses du modèle : ce ne sont PAS des valeurs du jeu, mais ce qu'il faut bien supposer pour
@@ -126,7 +131,28 @@ function Modele.BreakTime(hp, damage, hitsPerSecond, regen)
 end
 
 -- Fuite avec un colis PNJ : (chance de rentrer, durée du retour jusqu'à l'arche safe).
-function Modele.Escape(eco, zone, walk)
+-- Durée de l'ouverture d'un colis sur le rayon pour cette chance : rabats, puis montée (Config/ShelfOpen,
+-- L-118 point 4 : RiseMax × √(tics / tics de la plus forte chance)).
+function Modele.OpenTime(luck)
+	local ShelfOpen = Config.ShelfOpen
+	local most = 1
+	for _, entry in ShelfOpen.LuckTable do
+		most = math.max(most, entry.Luck)
+	end
+	local rise = ShelfOpen.RiseMax * math.min(1, math.sqrt(math.log(luck) / math.log(most)))
+	return ShelfOpen.FlapsTime + rise
+end
+function Modele.OpenTimeMean()
+	local ShelfOpen = Config.ShelfOpen
+	local total, weight = 0, 0
+	for _, entry in ShelfOpen.LuckTable do
+		total += entry.Weight * Modele.OpenTime(entry.Luck)
+		weight += entry.Weight
+	end
+	return total / weight
+end
+
+function Modele.Escape(eco, zone, walk, gap)
 	local H = Modele.Hypotheses
 	local info = eco.Zones[zone]
 	local carry = walk * Balance.Carry.NPCBoxSpeedMultiplier
@@ -134,7 +160,7 @@ function Modele.Escape(eco, zone, walk)
 	if carry >= info.GuardSpeed then
 		return 1, back
 	end
-	local caughtAfter = (H.GuardGap + H.GuardReaction * carry) / (info.GuardSpeed - carry)
+	local caughtAfter = ((gap or H.GuardGap) + H.GuardReaction * carry) / (info.GuardSpeed - carry)
 	if caughtAfter >= back then
 		return 1, back
 	end
@@ -354,10 +380,10 @@ function Modele.Jouer(eco, profil, seed, maxSeconds)
 	-- Coups par seconde sur la vitrine de cette zone, et temps de casse accepté : ceux du profil, ou ceux
 	-- de l'équipe dans une zone d'équipe (TeamHits, chrono de casse entier).
 	local function hitsIn(zone)
-		return eco.Zones[zone].TeamHits or profil.Coups
+		return eco.Zones[zone].TeamHits or eco.MaxHits or profil.Coups
 	end
 	local function breakMax(zone)
-		return if eco.Zones[zone].TeamHits then Balance.Window.BreakTimer else profil.CasseMax
+		return if eco.Zones[zone].TeamHits then Balance.Window.BreakTimer else (eco.CasseMax or profil.CasseMax)
 	end
 	-- Critère d'entrée du profil dans une zone, avec ces dégâts et cette vitesse de marche.
 	local function accepts(zone, hitDamage, walkSpeed)
@@ -435,6 +461,7 @@ function Modele.Jouer(eco, profil, seed, maxSeconds)
 	end
 
 	-- Durée d'un braquage réussi dans cette zone, de sa boutique à sa boutique (sans la flânerie).
+	local openMean = if eco.HeistDuration ~= nil then Modele.OpenTimeMean() else 0
 	local function tripSeconds(zone, tier)
 		local info = eco.Zones[zone]
 		local walkSpeed = walk()
@@ -442,6 +469,9 @@ function Modele.Jouer(eco, profil, seed, maxSeconds)
 		local _, back = Modele.Escape(eco, zone, walkSpeed)
 		local outbound = (info.ReturnDistance + H.PlotDistance) / walkSpeed
 		local inside = breakTime + H.InStore + Balance.Heist.BoxTiers[tier].GrabTime
+		if eco.HeistDuration ~= nil then
+			inside += openMean
+		end
 		return outbound + inside + back + H.PlotDistance / walkSpeed + H.Deposit, outbound, inside, back
 	end
 	-- Argent par seconde que le joueur attend d'un braquage dans sa zone : ses présentoirs, plus un
@@ -569,6 +599,23 @@ function Modele.Jouer(eco, profil, seed, maxSeconds)
 		local breakTime = Modele.BreakTime(info.WindowHP, hitDamage, hitsIn(zone))
 		local chance = Modele.Escape(eco, zone, walkSpeed)
 		local whole, outbound, inside, back = tripSeconds(zone, tier)
+		if eco.HeistDuration ~= nil then
+			-- Chrono du braquage : la chance de l'ouverture est tirée (Config/ShelfOpen.LuckTable) ; si la prise
+			-- finit après le chrono, le vigile est sorti à la fin du chrono et a couru vers le joueur entre-temps.
+			local roll, luck = random() * 100, 1
+			for _, entry in Config.ShelfOpen.LuckTable do
+				luck = entry.Luck
+				if roll < entry.Weight then
+					break
+				end
+				roll -= entry.Weight
+			end
+			local late = H.InStore + Modele.OpenTime(luck) + Balance.Heist.BoxTiers[tier].GrabTime - eco.HeistDuration
+			if late > 0 then
+				out.EnRetard = (out.EnRetard or 0) + 1
+				chance = Modele.Escape(eco, zone, walkSpeed, math.max(0, H.GuardGap - late * info.GuardSpeed))
+			end
+		end
 		if random() >= chance then
 			out.Rattrape += 1
 			advance(outbound + inside + back / 2 + H.CaughtLoss, "Braquage")

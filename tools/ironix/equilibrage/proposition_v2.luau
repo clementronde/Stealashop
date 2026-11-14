@@ -82,24 +82,32 @@ V2.Zones = {
 	{ SpeedRequired = 100e6, Kit = { "Sledgehammer", "Plasma" }, BaseIncome = 3_500 },
 	{ SpeedRequired = 3e9, Kit = { "AngleGrinder", "Royal" }, BaseIncome = 25_000 },
 }
-V2.WindowHPPerDamage = 35 -- zones 1 à 5 : casse en 7 s à 6 coups/s, 12 s à 4 coups/s (chrono : 13 s)
+-- Passe 2 (Cantin, 14/11) : coups plafonnés à 5 par seconde pour tout le monde ; zones 1 à 5, un joueur seul
+-- au niveau du panneau casse en 11 s ; chrono du braquage après la casse : 6 s (Balance.Heist.Duration : 10).
+--   PV / dégâts = BreakSeconds × MaxHitsPerSecond / (1 + Regen × BreakSeconds) = 11 × 5 / 1,33 = 41,35
+--   (passe 1 : 35, soit 7 s à 6 coups/s). Sous 4,42 coups/s, un joueur au panneau ne casse plus dans les 13 s.
+V2.MaxHitsPerSecond = 5 -- Balance.Hit.MaxHitsPerSecond (aujourd'hui 10)
+V2.BreakSeconds = 11
+V2.HeistDuration = 6
+V2.WindowHPPerDamage = V2.BreakSeconds * V2.MaxHitsPerSecond / (1 + 0.03 * V2.BreakSeconds)
 V2.GuardCarryFactor = 0.9 -- = Balance.Carry.NPCBoxSpeedMultiplier (vitesse du porteur d'un colis)
 V2.GuardMargin = 1 -- au seuil du panneau, le vigile reprend 1 stud par seconde au porteur (aujourd'hui − 1)
 
--- Zone 6, jamais seul (règle de Cantin). D = meilleure arme × meilleure aura, sans potion.
---   PV maximum = Players × HitsPerSecond × D × BreakTimer / (1 + Regen × BreakTimer)
---              = 2 × 10 × D × 13 / (1 + 0,03 × 13) = 187,05 × D    (260 × D sans la régénération de 3 %/s)
---   Marge : à 187 × D il faudrait deux joueurs à 10 coups/s parfaits pendant 13 s. Valeur choisie :
---   Zone6HPPerDamage = 160 (0,855 × le maximum) : deux joueurs à 8,6 coups/s chacun y arrivent.
---   Seul avec la potion ×1,5 à 10 coups/s : casse au plus 1,5 × 10 × 13 / 1,39 = 140,3 × D < 160 × D.
-V2.Zone6 = { Players = 2, HitsPerSecond = 10, HPPerDamage = 160 }
+-- Zone 6 (passe 2) : un joueur seul ne casse pas dans les 13 s, deux oui. D = meilleure arme × meilleure aura.
+-- PV cassables en 13 s = 9,353 × coups/s × dégâts (13 / (1 + 0,03 × 13)), 5 coups/s par joueur :
+--   seul sans potion 46,8 × D ; seul avec la potion ×1,5 : 70,1 × D ; deux sans potion : 93,5 × D.
+--   Sans compter la potion, les PV vont de 46,8 à 93,5 × D ; MAIS entre 46,8 et 70,1 × D un joueur seul avec
+--   la potion casse. Pour que « jamais seul » tienne aussi avec la potion : de 70,1 à 93,5 × D.
+-- Valeur choisie : 2 × la règle des zones 1 à 5 = 82,7 × D : deux joueurs au panneau cassent en 11 s, comme un
+-- joueur seul dans les autres zones ; seul avec la potion : 16,5 s, raté. (Passe 1 : 160 × D à 10 coups/s.)
+V2.Zone6 = { Players = 2, HitsPerSecond = V2.MaxHitsPerSecond, HPPerDamage = 2 * V2.WindowHPPerDamage }
 
 V2.PotionStrength = 1.5 -- Potions.Strength.Multiplier (aujourd'hui 2)
 V2.PlayerWindowHPPerDamage = 50 -- PvP : inchangé (porte = 50 × dégâts conseillés de la zone du rang de la boutique)
 
 -- Hypothèse du simulateur (pas une valeur du jeu) : coups par seconde de l'équipe qui casse la zone 6
--- avec le joueur simulé, tous à son niveau (2 joueurs à 9, ou 3 à 6).
-V2.TeamHits = 18
+-- avec le joueur simulé, tous à son niveau (2 joueurs au plafond de 5).
+V2.TeamHits = 2 * V2.MaxHitsPerSecond
 
 local function byId(list)
 	local map = {}
@@ -120,7 +128,9 @@ function V2.Construire()
 	local Balance = Config.Balance
 	local stats = V2.Stats
 
-	local eco = { Nom = "V2", SansBanc = true }
+	local eco = { Nom = "V2", SansBanc = true, MaxHits = V2.MaxHitsPerSecond, HeistDuration = V2.HeistDuration }
+	-- Tous les profils frappent au plafond et acceptent la casse du panneau (11 s) ; marge jusqu'à 12 s.
+	eco.CasseMax = V2.BreakSeconds + 1
 
 	function eco.WalkSpeed(speed, trailMultiplier)
 		local shown = speed * (trailMultiplier or 1)
@@ -159,7 +169,7 @@ function V2.Construire()
 		local last = index == #Zones
 		local walk = eco.WalkSpeed(proposed.SpeedRequired, 1)
 		eco.Zones[index] = {
-			WindowHP = (if last then V2.Zone6.HPPerDamage else V2.WindowHPPerDamage) * damage,
+			WindowHP = math.round((if last then V2.Zone6.HPPerDamage else V2.WindowHPPerDamage) * damage),
 			AdvisedDamage = damage,
 			AdvisedSpeed = walk,
 			GuardSpeed = if index == 1 then zone.GuardSpeed else math.round((V2.GuardCarryFactor * walk + V2.GuardMargin) * 10) / 10,
@@ -202,9 +212,10 @@ function V2.Construire()
 	local perHit = T / (1 + r * T) -- PV cassables en 13 s par coup/s et par point de dégâts : 9,353
 	eco.Zone6 = {
 		PerHit = perHit,
-		Upper = V2.Zone6.Players * V2.Zone6.HitsPerSecond * perHit, -- × D : 187,05
-		UpperNoRegen = V2.Zone6.Players * V2.Zone6.HitsPerSecond * T, -- × D : 260
-		Lower = V2.PotionStrength * V2.Zone6.HitsPerSecond * perHit, -- × D : 140,3 (seul, potion)
+		Upper = V2.Zone6.Players * V2.Zone6.HitsPerSecond * perHit, -- × D : 93,5 (deux, sans potion)
+		UpperNoRegen = V2.Zone6.Players * V2.Zone6.HitsPerSecond * T, -- × D : 130
+		LowerNoPotion = V2.Zone6.HitsPerSecond * perHit, -- × D : 46,8 (seul, sans potion)
+		Lower = V2.PotionStrength * V2.Zone6.HitsPerSecond * perHit, -- × D : 70,1 (seul, potion)
 		Chosen = V2.Zone6.HPPerDamage,
 	}
 	return eco

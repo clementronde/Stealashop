@@ -215,14 +215,16 @@ end
 print("")
 print("Casse d'une vitrine par un joueur seul qui a les dégâts du panneau (régénération 3 %/s, chrono 13 s) :")
 print("")
-entete({ "Zone", "à 4 coups/s", "à 6 coups/s", "à 10 coups/s", "avec le kit de la zone d'avant, 10 coups/s" })
+local cap = V2.MaxHitsPerSecond
+entete({ "Zone", "à 4 coups/s", "à 4,5 coups/s", `à {cap} coups/s (plafond)`, `avec le kit de la zone d'avant, {cap} coups/s`, `kit de la zone d'avant et potion ×{V2.PotionStrength}` })
 for index = 1, #eco.Zones do
 	local new = eco.Zones[index]
 	local function t(damage, hits)
 		local seconds = Modele.BreakTime(new.WindowHP, damage, hits)
 		return if seconds > Balance.Window.BreakTimer then `non ({duree(seconds)})` else duree(seconds)
 	end
-	ligne({ tostring(index), t(new.AdvisedDamage, 4), t(new.AdvisedDamage, 6), t(new.AdvisedDamage, 10), if index > 1 then t(eco.Zones[index - 1].AdvisedDamage, 10) else "—" })
+	local before = if index > 1 then eco.Zones[index - 1].AdvisedDamage else nil
+	ligne({ tostring(index), t(new.AdvisedDamage, 4), t(new.AdvisedDamage, 4.5), t(new.AdvisedDamage, cap), if before then t(before, cap) else "—", if before then t(before * V2.PotionStrength, cap) else "—" })
 end
 
 ---------------------------------------------------------------------------------------------- 3. zone 6
@@ -231,7 +233,7 @@ titre("3. Zone 6 : jamais seul")
 local z6 = eco.Zone6
 local best = eco.BestDamage
 local T, regen = Balance.Window.BreakTimer, Balance.Window.RegenPerSecond
-print(`D = meilleure arme × meilleure aura = {nombre(eco.Tools[#eco.Tools].Power)} × {eco.Auras[#eco.Auras].Multiplier} = {nombre(best)} par coup, sans potion. Chrono {T} s, régénération {regen * 100} %/s des PV max, {Balance.Hit.MaxHitsPerSecond} coups/s au plus par joueur.`)
+print(`D = meilleure arme × meilleure aura = {nombre(eco.Tools[#eco.Tools].Power)} × {eco.Auras[#eco.Auras].Multiplier} = {nombre(best)} par coup, sans potion. Chrono {T} s, régénération {regen * 100} %/s des PV max, {V2.MaxHitsPerSecond} coups/s au plus par joueur (aujourd'hui {Balance.Hit.MaxHitsPerSecond}).`)
 print("")
 print(`Une vitrine de PV points casse dans le chrono si : coups/s × dégâts × {T} ≥ PV × (1 + {regen} × {T}), soit PV ≤ {fixe(z6.PerHit, 3)} × coups/s × dégâts.`)
 print("")
@@ -240,33 +242,48 @@ local function cas(label, players, hits, factor)
 	local dps = players * hits * factor * best
 	ligne({ label, nombre(dps), nombre(dps * z6.PerHit), fixe(players * hits * factor * z6.PerHit, 1) })
 end
-cas("Seul, 10 coups/s, sans potion", 1, 10, 1)
-cas(`Seul, 10 coups/s, potion ×{V2.PotionStrength}`, 1, 10, V2.PotionStrength)
-cas("Deux, 10 coups/s chacun, sans potion (maximum de la règle)", 2, 10, 1)
-cas("Deux, 8,6 coups/s chacun, sans potion", 2, 8.6, 1)
-cas("Trois, 6 coups/s chacun, sans potion", 3, 6, 1)
-cas(`Deux, 6 coups/s chacun, potion ×{V2.PotionStrength}`, 2, 6, V2.PotionStrength)
-cas("Deux, 6 coups/s chacun, sans potion", 2, 6, 1)
+local gloves = 2.5 -- gamepass Hydraulic Gloves : « 2.5× your best tool » (Config/Monetization)
+cas(`Seul, {cap} coups/s, sans potion`, 1, cap, 1)
+cas(`Seul, {cap} coups/s, potion ×{V2.PotionStrength}`, 1, cap, V2.PotionStrength)
+cas(`Deux, {cap} coups/s chacun, sans potion`, 2, cap, 1)
+cas(`Deux, {cap} coups/s chacun, potion ×{V2.PotionStrength}`, 2, cap, V2.PotionStrength)
+cas(`Seul, {cap} coups/s, Hydraulic Gloves ×{gloves}`, 1, cap, gloves)
 print("")
-print(`Bornes : plus de {fixe(z6.Lower, 1)} × D (seul avec potion), au plus {fixe(z6.Upper, 2)} × D (deux au maximum ; {fixe(z6.UpperNoRegen, 0)} × D sans la régénération). Valeur choisie : {z6.Chosen} × D = {nombre(z6.Chosen * best)} PV.`)
+print(`Bornes des PV, en multiples de D : sans compter la potion, de {fixe(z6.LowerNoPotion, 1)} (seul) à {fixe(z6.Upper, 1)} (deux) ; en comptant la potion ×{V2.PotionStrength}, de {fixe(z6.Lower, 1)} (seul avec potion) à {fixe(z6.Upper, 1)}. Valeur choisie : {fixe(z6.Chosen, 1)} × D = {nombre(eco.Zones[#eco.Zones].WindowHP)} PV (2 × la règle des zones 1 à 5).`)
+print("")
+local hpOf = { fixe(z6.LowerNoPotion, 1), "60.0", fixe(z6.Lower, 1), "75.0", fixe(z6.Chosen, 1), "88.0", fixe(z6.Upper, 1) }
+local head = { "PV de la vitrine (× D)" }
+for _, k in hpOf do
+	table.insert(head, k)
+end
+entete(head)
+local function rangee(label, players, hits, factor)
+	local cells = { label }
+	for _, k in hpOf do
+		local seconds = Modele.BreakTime(tonumber(k) * best, best * factor, players * hits)
+		table.insert(cells, if seconds > T + 0.005 then `non ({duree(seconds)})` else string.format("%.1f s", seconds))
+	end
+	ligne(cells)
+end
+rangee(`Deux, {cap} coups/s, sans potion`, 2, cap, 1)
+rangee("Deux, 4,5 coups/s, sans potion", 2, 4.5, 1)
+rangee(`Deux, {cap} coups/s, potion tous les deux`, 2, cap, V2.PotionStrength)
+rangee(`Seul, {cap} coups/s, sans potion`, 1, cap, 1)
+rangee(`Seul, {cap} coups/s, potion`, 1, cap, V2.PotionStrength)
+rangee(`Seul, {cap} coups/s, Hydraulic Gloves`, 1, cap, gloves)
+rangee(`Seul, {cap} coups/s, Hydraulic Gloves et potion`, 1, cap, gloves * V2.PotionStrength)
+rangee(`Trois, {cap} coups/s, sans potion`, 3, cap, 1)
 print("")
 entete({ "Avec les PV choisis", "Temps de casse" })
-local hp6 = z6.Chosen * best
+local hp6 = eco.Zones[#eco.Zones].WindowHP
 local function casse(label, players, hits, factor, damage)
 	local seconds = Modele.BreakTime(hp6, (damage or best) * factor, players * hits)
 	ligne({ label, if seconds > T then `non ({duree(seconds)} > {T} s)` else duree(seconds) })
 end
-casse("Seul, 10 coups/s, sans potion", 1, 10, 1)
-casse("Seul, 10 coups/s, potion", 1, 10, V2.PotionStrength)
-casse("Deux, 10 coups/s", 2, 10, 1)
-casse("Deux, 9 coups/s", 2, 9, 1)
-casse("Deux, 8 coups/s", 2, 8, 1)
-casse("Trois, 6 coups/s", 3, 6, 1)
-casse("Quatre, 6 coups/s", 4, 6, 1)
-casse("Deux, 6 coups/s, potion", 2, 6, V2.PotionStrength)
 local mid = eco.Tools[#eco.Tools].Power * eco.Auras[#eco.Auras - 1].Multiplier
-casse(`Quatre, 10 coups/s, {eco.Tools[#eco.Tools].DisplayName} × {eco.Auras[#eco.Auras - 1].DisplayName} ({nombre(mid)})`, 4, 10, 1, mid)
-casse(`Huit, 10 coups/s, kit de la zone 5 ({nombre(eco.Zones[5].AdvisedDamage)})`, 8, 10, 1, eco.Zones[5].AdvisedDamage)
+casse(`Trois, {cap} coups/s, {eco.Tools[#eco.Tools].DisplayName} × {eco.Auras[#eco.Auras - 1].DisplayName} ({nombre(mid)})`, 3, cap, 1, mid)
+casse(`Quatre, {cap} coups/s, {eco.Tools[#eco.Tools].DisplayName} × {eco.Auras[#eco.Auras - 1].DisplayName} ({nombre(mid)})`, 4, cap, 1, mid)
+casse(`Huit, {cap} coups/s, kit de la zone 5 ({nombre(eco.Zones[5].AdvisedDamage)})`, 8, cap, 1, eco.Zones[5].AdvisedDamage)
 
 ---------------------------------------------------------------------------------------------- 4. tapis
 
@@ -315,31 +332,32 @@ print(`Potion de force (Config/Potions) : ×{Potions.ById.Strength.Multiplier} �
 ---------------------------------------------------------------------------------------------- 6. portes
 
 titre("6. Portes des boutiques de joueurs (Config/PvP, Formulas.PlayerWindowHP)")
-print(`Base = {V2.PlayerWindowHPPerDamage} × Strength du panneau de la zone du même rang que le niveau de la boutique (règle inchangée). Arbre inchangé : Glass jusqu'à ×{eco.Glass[#eco.Glass]}, Walls jusqu'à ×{eco.Walls[#eco.Walls]}, réparation de {regen * 100} à {eco.Regen[#eco.Regen] * 100} %/s. Pas de chrono sur la porte d'un joueur.`)
+print(`Base = {V2.PlayerWindowHPPerDamage} × Strength du panneau de la zone du même rang que le niveau de la boutique (règle inchangée). Arbre inchangé : Glass jusqu'à ×{eco.Glass[#eco.Glass]}, Walls jusqu'à ×{eco.Walls[#eco.Walls]}, réparation de {regen * 100} à {eco.Regen[#eco.Regen] * 100} %/s. Pas de chrono sur la porte d'un joueur. Voleur à {V2.MaxHitsPerSecond} coups/s.`)
 print("")
 local function porte(level, treeFull, damage, hits)
 	local hp = eco.DoorHP(level) * (if treeFull then eco.Glass[#eco.Glass] * eco.Walls[#eco.Walls] else 1)
 	return Modele.BreakTime(hp, damage, hits, if treeFull then eco.Regen[#eco.Regen] else regen)
 end
-entete({ "Niveau de boutique", "PV de base (avant → après)", "Arbre complet (×24)", "Sans arbre : voleur du même rang, 6 coups/s", "Sans arbre : voleur d'une zone au-dessus", "Arbre complet : même rang, 10 coups/s", "Arbre complet : une zone au-dessus, 10 coups/s", "Arbre complet : meilleur kit, 10 coups/s" })
+entete({ "Niveau de boutique", "PV de base (avant → après)", "Arbre complet (×24)", "Sans arbre : voleur du même rang", "Sans arbre : voleur d'une zone au-dessus", "Arbre complet : même rang", "Arbre complet : une zone au-dessus", "Arbre complet : deux zones au-dessus", "Arbre complet : meilleur kit" })
 for level = 1, 5 do
 	local own, above = eco.Zones[level].AdvisedDamage, eco.Zones[level + 1].AdvisedDamage
 	ligne({
 		tostring(level),
 		`{nombre(Formulas.PlayerWindowHP(level))} → {nombre(eco.DoorHP(level))}`,
 		nombre(eco.DoorHP(level) * eco.Glass[#eco.Glass] * eco.Walls[#eco.Walls]),
-		duree(porte(level, false, own, 6)),
-		duree(porte(level, false, above, 6)),
-		duree(porte(level, true, own, 10)),
-		duree(porte(level, true, above, 10)),
-		duree(porte(level, true, best, 10)),
+		duree(porte(level, false, own, cap)),
+		duree(porte(level, false, above, cap)),
+		duree(porte(level, true, own, cap)),
+		duree(porte(level, true, above, cap)),
+		if level + 2 <= #eco.Zones then duree(porte(level, true, eco.Zones[level + 2].AdvisedDamage, cap)) else "—",
+		duree(porte(level, true, best, cap)),
 	})
 end
 
 ---------------------------------------------------------------------------------------------- 7. parties
 
 titre("7. Parties simulées : temps de jeu actif pour entrer dans chaque zone")
-print(`Médiane de {seeds} parties (de la plus rapide à la plus lente), premier colis rapporté de la zone, sans aucune aide (ni gains hors ligne, ni récompenses, ni camion, ni potion, ni gamepass). Zone 6 : cassée en équipe ({V2.TeamHits} coups/s en tout, au niveau du joueur).`)
+print(`Médiane de {seeds} parties (de la plus rapide à la plus lente), premier colis rapporté de la zone, sans aucune aide (ni gains hors ligne, ni récompenses, ni camion, ni potion, ni gamepass). Tous les profils frappent au plafond de {V2.MaxHitsPerSecond} coups/s. Zone 6 : cassée à deux ({V2.TeamHits} coups/s en tout, au niveau du joueur). Chrono du braquage : {V2.HeistDuration} s.`)
 print("")
 tableauTemps()
 
@@ -496,6 +514,9 @@ essai("Vigile à 0,9 × vitesse conseillée + 2", champDe(V2, "GuardMargin", 2))
 local H = Modele.Hypotheses
 essai("Avance sur le vigile 10 studs (au lieu de 20)", champDe(H, "GuardGap", 10))
 essai("Avance sur le vigile 30 studs", champDe(H, "GuardGap", 30))
+essai("Chrono du braquage 10 s (aujourd'hui, au lieu de 6 s)", champDe(V2, "HeistDuration", 10))
+essai("4 s pour atteindre le rayon (au lieu de 3)", champDe(H, "InStore", 4))
+essai("5 s pour atteindre le rayon", champDe(H, "InStore", 5))
 local partBefore = moyen.Part
 essai("Il obtient 25 % des colis de sa zone (au lieu de 50 %)", function()
 	moyen.Part = 0.25
