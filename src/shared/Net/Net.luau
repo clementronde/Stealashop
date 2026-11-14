@@ -15,7 +15,8 @@
 --   -- Serveur → client :
 --   Net.Server.Notify:Fire(player, "Caught!", "Warning")
 --   Net.Server.WindowHP:FireAll(windowId, hp, maxHp)
---   -- Rappel des appels refusés, à remplacer par AntiCheatService (un seul rappel) :
+--   -- Rappel des appels refusés (un seul rappel ; vague 41 : posé par TelemetryService, qui compte
+--   -- les refus par joueur et les envoie en RemoteRefused). Qui le remplace garde l'ancien et l'appelle :
 --   Net.OnViolation = function(player, remoteName, reason, detail) end
 --
 -- Client
@@ -85,7 +86,7 @@ local IS_STUDIO = RunService:IsStudio()
 
 local Net = {}
 
--- Appelé pour chaque appel refusé. AntiCheatService remplace cette fonction.
+-- Appelé pour chaque appel refusé. TelemetryService remplace cette fonction (vague 41), en gardant l'ancienne.
 function Net.OnViolation(_player: Player, _remoteName: string, _reason: ViolationReason, _detail: string) end
 
 -- Contrôle de la liste au chargement : une erreur ici est une faute dans Definitions.

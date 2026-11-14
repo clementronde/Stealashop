@@ -63,6 +63,10 @@ local Events: { [string]: string } = {
 	DefenseBought = "DefenseBought", -- achat d'une défense (MAJ 2) : point d'accroche
 	PotionPicked = "PotionPicked", -- potion ramassée (vague 28, PotionService) ; champ Potion (Money, Strength…)
 	AdminCommand = "AdminCommand", -- commande du panel admin acceptée (vague 29, AdminService) ; champ Command
+	-- Vague 41 (audit de sécurité du 14/11), TelemetryService :
+	RemoteRefused = "RemoteRefused", -- demandes refusées par Net (Net.OnViolation), cumulées par joueur, remote et raison ; valeur = nombre ; champs Remote, Reason
+	DuplicateItem = "DuplicateItem", -- un même uid d'objet chez deux joueurs du serveur (vu au chargement d'un profil) ; joueur = celui qui arrive ; champs Rarity, Zone
+	ZoneReached = "ZoneReached", -- 1re entrée d'un profil dans une zone (1 à 6), mesure de la bêta ; valeur = temps de jeu cumulé (s) ; champ Zone
 }
 
 local Telemetry = {
@@ -74,6 +78,11 @@ local Telemetry = {
 	-- V0 proposé, absent du doc : un gain regroupé (Aggregate) part au plus tard FlushInterval s
 	-- après le premier ajout de son cumul (voir TelemetryService).
 	FlushInterval = 60,
+	-- V0 proposé, absent du doc (vague 41) : les demandes refusées (RemoteRefused) d'un joueur partent au
+	-- plus RefusalFlushInterval s après la première de leur cumul, et à son départ.
+	RefusalFlushInterval = 60,
+	-- V0 proposé, absent du doc (vague 41) : intervalle (s) du relevé de la zone de chaque joueur (ZoneReached).
+	ZoneCheckInterval = 0.5,
 	Economy = Economy,
 	Events = Events,
 }

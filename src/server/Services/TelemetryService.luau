@@ -63,6 +63,22 @@
 --       boost ; champs : Source (Daily, Playtime), Sku (Day1 à Day7, Playtime5…), Gift (Cash, Box, Boost).
 --   DefenseBought  pas encore codé (défenses, MAJ 2) : point d'accroche LogEvent.
 --   PotionPicked  potion ramassée (PotionService, vague 28) ; champ : Potion (Money, Strength, Invisibility ; Speed retirée le 2026-11-14).
+--   Vague 41 (audit de sécurité du 14/11) :
+--   RemoteRefused  demandes refusées par Net (rappel Net.OnViolation, posé ici : débit, forme des arguments,
+--       mauvais sens ; un refus de débit est déjà un signalement espacé par Net) ; cumulées par joueur, remote et
+--       raison, envoyées au plus RefusalFlushInterval s (60, V0) après la première du cumul et au départ ;
+--       valeur = nombre ; champs Remote, Reason. Compteur de la session : GetRefusalCount ; en Studio, une ligne
+--       par refus. Aucune sanction ni expulsion. Le rappel qui était déjà sur Net.OnViolation est appelé après.
+--   DuplicateItem  au chargement d'un profil, un uid de ses objets (Items) déjà chez un autre joueur du serveur
+--       (plantage entre les deux sauvegardes de PvPService.deposit) : avertissement dans la sortie et événement ;
+--       joueur = celui qui arrive ; champs Rarity, Zone. Rien n'est retiré.
+--   ZoneReached  1re entrée d'un profil dans une zone 1 à 6 (mesure de la bêta) : relevé toutes les
+--       ZoneCheckInterval s (0,5, V0) de la position de chaque joueur, zone calculée comme ZoneGateController
+--       (arches ZoneGate le long du couloir), jamais dans une zone safe ; valeur = temps de jeu cumulé en s
+--       (Lifetime.PlaySeconds + session) ; champ Zone. Gardé dans le champ facultatif ZonesReached du profil
+--       (une fois par zone et par profil) ; les zones sautées entre deux relevés comptent avec le même temps.
+--   Ces trois mesures n'envoient rien quand Telemetry.Enabled est false ; le compteur, les lignes de la sortie
+--   et l'avertissement des doublons restent ; ZoneReached ne note alors rien dans le profil.
 --
 -- Noms et champs : texte sans virgule, guillemet ni apostrophe, droits ou typographiques (Roblox refuse
 -- l'événement sinon, « Event field … is invalid », vu en Studio le 2026-11-07 pour le funnel). Au
@@ -86,17 +102,22 @@
 --       il ajoute un événement On…, branché ici.
 --   TelemetryService.LogEvent(player, key, fields?, value?) -> boolean
 --       key = clé de Telemetry.Events ; fields : jusqu'à 3 textes ; value : nombre (1 par défaut).
+--   TelemetryService.GetRefusalCount(player) -> number
+--       Vague 41 : demandes du joueur refusées par Net depuis son arrivée (0 si aucune).
 -- Point d'accroche (OfflineService le remplace en gardant celui d'avant) :
 --   TelemetryService.ClaimOfflineShare(player, amount) -> number
 --       Appelé à chaque encaissement (amount $) : la part qui vient des gains hors ligne, retirée de ce
 --       qu'il reste à compter (0 par défaut). Une erreur ou une valeur invalide compte pour 0. Sans yield.
 
 local AnalyticsService = game:GetService("AnalyticsService")
+local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage.Shared
+local Net = require(Shared.Net.Net)
 local Cosmetics = require(Shared.Config.Cosmetics)
 local Items = require(Shared.Config.Items)
 local Telemetry = require(Shared.Config.Telemetry)
@@ -104,6 +125,7 @@ local Tools = require(Shared.Config.Tools)
 local Tutorial = require(Shared.Config.Tutorial)
 local Upgrades = require(Shared.Config.Upgrades)
 local CarryTypes = require(Shared.Types.Carry)
+local ProfileTypes = require(Shared.Types.Profile)
 
 local BatService = require(script.Parent.BatService)
 local CarryService = require(script.Parent.CarryService)
@@ -155,6 +177,17 @@ local pending: { [Player]: { [string]: Pending } } = {}
 local warned: { [string]: boolean } = {}
 -- Membres de Enum.AnalyticsEconomyTransactionType : nom → Name du membre (rempli au démarrage).
 local standardTransactions: { [string]: string } = {}
+
+-- Vague 41 : demandes refusées (Net.OnViolation), objets en double, zones atteintes.
+type RefusalEntry = { remote: string, reason: string, count: number }
+local refusals: { [Player]: number } = {} -- total de la session, par joueur
+local refusalBatches: { [Player]: { [string]: RefusalEntry } } = {} -- cumul pas encore envoyé
+local loadedAt: { [Player]: number } = {} -- os.time() du chargement du profil (temps de jeu de la session)
+
+local GATE_TAG = "ZoneGate"
+local SAFE_ZONE_TAG = "SafeZone"
+local INBOX_NAME = "_INBOX_CLEMENT"
+local MAX_ZONE = 6
 
 ------------------------------------------------------------------------------
 -- Outils
@@ -443,6 +476,210 @@ local function onGuardCatch(player: Player, zone: number, night: boolean, carryi
 end
 
 ------------------------------------------------------------------------------
+-- Vague 41 : demandes refusées, objets en double, zones atteintes
+------------------------------------------------------------------------------
+
+-- Envoie le cumul des demandes refusées d'un joueur : un RemoteRefused par remote et raison.
+local function flushRefusals(player: Player)
+	local batch = refusalBatches[player]
+	if batch == nil then
+		return
+	end
+	refusalBatches[player] = nil
+	for _, entry in batch do
+		logEvent(player, "RemoteRefused", field("Remote", entry.remote), field("Reason", entry.reason), nil, entry.count)
+	end
+end
+
+-- Net.OnViolation : chaque demande refusée par Net (débit, forme des arguments, mauvais sens). Net écrit
+-- déjà le refus dans la sortie en Studio ; ici, le compteur du joueur, sans aucune sanction.
+local function onViolation(player: Player, remoteName: string, reason: string, _detail: string)
+	local total = (refusals[player] or 0) + 1
+	refusals[player] = total
+	log(`{player.Name} : demande refusée n° {total} de la session ({remoteName}, {reason})`)
+	if not enabled then
+		return
+	end
+	local batch = refusalBatches[player]
+	if batch == nil then
+		local fresh: { [string]: RefusalEntry } = {}
+		batch = fresh
+		refusalBatches[player] = fresh
+		task.delay(Telemetry.RefusalFlushInterval, function()
+			if refusalBatches[player] == fresh then
+				flushRefusals(player)
+			end
+		end)
+	end
+	local key = `{remoteName}|{reason}`
+	local entry = (batch :: { [string]: RefusalEntry })[key]
+	if entry then
+		entry.count += 1
+	else
+		(batch :: { [string]: RefusalEntry })[key] = { remote = remoteName, reason = reason, count = 1 }
+	end
+end
+
+-- Objet en double (PvPService.deposit fait deux sauvegardes séparées : un plantage entre les deux peut laisser
+-- l'objet chez le voleur et chez la victime). Au chargement d'un profil, chaque uid de ses objets est cherché
+-- chez les autres joueurs du serveur. Surveillance seulement : rien n'est retiré ni changé.
+local function checkDuplicates(player: Player)
+	local data = DataService.Get(player)
+	if data == nil then
+		return
+	end
+	for _, other in Players:GetPlayers() do
+		local otherData = if other ~= player then DataService.Get(other) else nil
+		if otherData then
+			for uid, item in data.Items do
+				if otherData.Items[uid] ~= nil then
+					warn(`[TelemetryService] objet en double : uid {uid} ({tostring(item.Id)}) chez {player.Name} et chez {other.Name} (rien n'est changé)`)
+					local def = Items.ById[item.Id]
+					local zone: number? = item.Zone or (if def then def.Zone else nil)
+					logEvent(player, "DuplicateItem", field("Rarity", if def then def.Rarity else nil), field("Zone", zone), nil, nil)
+				end
+			end
+		end
+	end
+end
+
+-- Dans la map (Workspace, hors _INBOX_CLEMENT).
+local function inMap(instance: Instance): boolean
+	if not instance:IsDescendantOf(Workspace) then
+		return false
+	end
+	local parent = instance.Parent
+	while parent and parent ~= Workspace do
+		if parent.Name == INBOX_NAME then
+			return false
+		end
+		parent = parent.Parent
+	end
+	return true
+end
+
+local function pointOf(instance: Instance): Vector3?
+	if instance:IsA("BasePart") then
+		return instance.Position
+	elseif instance:IsA("PVInstance") then
+		return instance:GetPivot().Position
+	end
+	return nil
+end
+
+-- Arches de la map, [zone] = point (pivot), comme ZoneGateController côté client.
+local function gatePoints(): { [number]: Vector3 }
+	local points: { [number]: Vector3 } = {}
+	for _, gate in CollectionService:GetTagged(GATE_TAG) do
+		local zone = gate:GetAttribute("Zone")
+		if type(zone) == "number" and zone >= 1 and zone <= MAX_ZONE and zone == math.floor(zone) and not points[zone] and inMap(gate) then
+			local point = pointOf(gate)
+			if point then
+				points[zone] = point
+			end
+		end
+	end
+	return points
+end
+
+-- Zone d'une position (0 = avant la première arche), même règle que ZoneGateController : l'axe du couloir va de
+-- l'arche de la plus petite zone à celle de la plus grande (à plat) ; avec une seule arche, de la zone safe vers
+-- elle ; la zone est la plus grande dont l'arche est dépassée le long de cet axe.
+local function zoneAt(position: Vector3, points: { [number]: Vector3 }): number
+	local low, high = math.huge, -math.huge
+	for zone in points do
+		low = math.min(low, zone)
+		high = math.max(high, zone)
+	end
+	if low > high then
+		return 0
+	end
+	local to: Vector3 = points[high]
+	local from: Vector3? = if low ~= high then points[low] else nil
+	if not from then
+		for _, safe in CollectionService:GetTagged(SAFE_ZONE_TAG) do
+			local point = if inMap(safe) then pointOf(safe) else nil
+			if point then
+				from = point
+				break
+			end
+		end
+	end
+	local origin: Vector3? = from
+	if not origin then
+		return 0
+	end
+	local flat = Vector3.new(to.X - origin.X, 0, to.Z - origin.Z)
+	if flat.Magnitude < 1 then
+		return 0
+	end
+	local axis = flat.Unit
+	local best = 0
+	for zone, point in points do
+		if zone > best and (position - point):Dot(axis) >= 0 then
+			best = zone
+		end
+	end
+	return best
+end
+
+-- Temps de jeu cumulé (s) : celui des sessions passées (Lifetime.PlaySeconds, ajouté au départ par DataService)
+-- plus la session en cours.
+local function playSeconds(player: Player, data: ProfileTypes.Data): number
+	local now = os.time()
+	local past = data.Lifetime.PlaySeconds
+	local base = if type(past) == "number" and past == past and past >= 0 then past else 0
+	return math.floor(base + math.max(0, now - (loadedAt[player] or now)))
+end
+
+-- 1re entrée dans une zone : ZoneReached, une fois par zone et par profil (champ ZonesReached). Passer de la
+-- zone 1 à la zone 3 entre deux relevés compte aussi la zone 2 (même temps de jeu).
+local function checkZone(player: Player, points: { [number]: Vector3 })
+	local data = DataService.Get(player)
+	local character = player.Character
+	local root = if character then character:FindFirstChild("HumanoidRootPart") else nil
+	if data == nil or root == nil or not root:IsA("BasePart") then
+		return
+	end
+	local position = root.Position
+	local zone = zoneAt(position, points)
+	if zone == 0 then
+		return
+	end
+	local okSafe, safe = pcall(GuardService.IsInSafeZone :: any, position) -- :: any : voir send
+	if okSafe and safe == true then
+		return -- dans le hub (une boutique peut être au-delà d'une arche le long de l'axe)
+	end
+	local reached: { [string]: number } = data.ZonesReached or {}
+	local played: number? = nil
+	for z = 1, zone do
+		local key = tostring(z)
+		if reached[key] == nil then
+			local seconds = played or playSeconds(player, data)
+			played = seconds
+			reached[key] = seconds
+			data.ZonesReached = reached
+			logEvent(player, "ZoneReached", field("Zone", z), nil, nil, seconds)
+		end
+	end
+end
+
+local function zoneLoop()
+	while true do
+		task.wait(Telemetry.ZoneCheckInterval)
+		local points = gatePoints()
+		if next(points) ~= nil then
+			for _, player in Players:GetPlayers() do
+				local ok, err = pcall(checkZone :: any, player, points) -- :: any : voir send
+				if not ok then
+					warnOnce("zone", `relevé des zones : {err}`)
+				end
+			end
+		end
+	end
+end
+
+------------------------------------------------------------------------------
 -- Démarrage
 ------------------------------------------------------------------------------
 
@@ -502,8 +739,32 @@ function TelemetryService.LogEvent(player: Player, key: string, fields: { string
 	return logEvent(player, key, extra[1], extra[2], extra[3], value)
 end
 
+-- Vague 41 : nombre de demandes refusées par Net depuis l'arrivée du joueur (0 si aucune).
+function TelemetryService.GetRefusalCount(player: Player): number
+	return refusals[player] or 0
+end
+
 function TelemetryService.Init()
 	enabled = Telemetry.Enabled == true
+	-- Vague 41, toujours branchés (télémétrie coupée : compteur et lignes de la sortie seulement) : demandes
+	-- refusées et objets en double. Un rappel déjà posé sur Net.OnViolation est gardé et appelé après.
+	local previous = Net.OnViolation
+	Net.OnViolation = function(player: Player, remoteName: string, reason: Net.ViolationReason, detail: string)
+		onViolation(player, remoteName, reason, detail)
+		previous(player, remoteName, reason, detail)
+	end
+	DataService.OnProfileLoaded(function(player: Player)
+		loadedAt[player] = os.time()
+		checkDuplicates(player)
+	end)
+	Players.PlayerRemoving:Connect(function(player: Player)
+		task.defer(function()
+			flushRefusals(player)
+			refusals[player] = nil
+			refusalBatches[player] = nil
+			loadedAt[player] = nil
+		end)
+	end)
 	if not enabled then
 		print("[TelemetryService] Config.Telemetry.Enabled = false : rien n'est envoyé à AnalyticsService (économie, événements custom, funnel)")
 		return
@@ -519,6 +780,7 @@ function TelemetryService.Init()
 	BatService.OnHit(onBatHit)
 	CarryService.OnCarryEnded(onCarryEnded)
 	GuardService.OnCatch(onGuardCatch)
+	task.spawn(zoneLoop) -- vague 41 : ZoneReached
 	-- Départ : DisplayService a déjà encaissé les plaques (il s'abonne avant ce service).
 	DataService.OnProfileReleasing(flushPlayer)
 	Players.PlayerRemoving:Connect(function(player: Player)
