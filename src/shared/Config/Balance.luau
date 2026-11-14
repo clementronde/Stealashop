@@ -97,7 +97,7 @@ local Balance = {
 		-- Portée tolérée pendant un maintien (début et revérifications, pas la fin ; Cantin, 2026-11-14) : le serveur
 		-- voit le perso en retard d'environ vitesse × latence. Tolérance = min(WalkSpeed × (ping + ReachLatencyPad),
 		-- ReachToleranceMax), en plus de GrabMaxDistance et autour du volume Bounds. Aussi pour les colis au sol.
-		ReachLatencyPad = 0.1, -- s, V0
+		ReachLatencyPad = 0.3, -- s, V0 (0,1 au départ ; en Play le 14/11, le serveur voyait le perso environ 0,22 s en retard même à ping 0, refus à 11,4 studs)
 		ReachToleranceMax = 8, -- studs, V0
 		ShelfSlots = 10, -- ShelfSlot_01 à ShelfSlot_10 (10.4)
 		TierOrder = TIER_ORDER,
