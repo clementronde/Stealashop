@@ -85,6 +85,8 @@
 --     StealItem refusés (Notify au plus un par NOTICE_INTERVAL s), et ressortie 10 fois par seconde si
 --     elle revient dans Bounds, même porte cassée. Les autres boutiques et les magasins PNJ restent
 --     ouverts pour elle.
+-- Vague 37 (a124, L-117 point 7) : le bot défend aussi sa boutique (BotService) ; son coup réussi
+-- (BatService.OnBotHit, « Intruder » ou « Defend ») a le même effet sur la cible, sans retour au propriétaire.
 -- Un joueur mort dans le volume Bounds d'une boutique qui n'est pas la sienne (joueur ou bot) prend la
 -- même interdiction sur cette boutique (pièges de l'arbre à venir compris). Interdictions oubliées au
 -- départ du joueur, et celles d'une boutique quand son propriétaire part (OnPlotReleased).
@@ -311,6 +313,8 @@ end
 type BatApi = {
 	IsIntruder: (hitter: Player, target: Player) -> boolean,
 	OnHit: (listener: (hitter: Player, target: Player, usage: string, payload: any) -> ()) -> () -> (),
+	-- Vague 37 : coups du bot (absent d'un ancien BatService).
+	OnBotHit: ((listener: (plot: Model, target: Player, usage: string, payload: any) -> ()) -> () -> ())?,
 }
 local batModule = script.Parent:FindFirstChild("BatService")
 local batLoaded: boolean, batResult: any = false, nil
@@ -1458,6 +1462,19 @@ local function isIntruder(hitter: Player, target: Player): boolean
 	return bounds ~= nil and root ~= nil and inside(bounds, root.Position)
 end
 
+-- Après un coup du défenseur de `plot` (propriétaire ou bot) : interdiction de PvP.KickRobCooldown s, sortie
+-- devant la porte s'il est dedans, et le message à la cible. true s'il a été sorti.
+local function kickOut(plot: Model, target: Player, why: string): boolean
+	ban(target, plot, why)
+	local bounds = refsFor(plot).Bounds
+	if bounds and putOut(target, plot, bounds) then
+		notify(target, cooldownMessage(MESSAGES.KickedOut, PvP.KickRobCooldown), "Alert")
+		return true
+	end
+	notify(target, cooldownMessage(MESSAGES.RobCooldown, PvP.KickRobCooldown), "Alert")
+	return false
+end
+
 -- Coup de batte réussi (BatService.OnHit, l'effet déjà appliqué : l'objet volé au frappeur est déjà revenu).
 -- Seuls les coups du propriétaire sur un intrus (« Intruder ») ou sur son voleur (« Defend ») comptent ici.
 local function onBatHit(hitter: Player, target: Player, usage: string, _payload: any)
@@ -1468,14 +1485,19 @@ local function onBatHit(hitter: Player, target: Player, usage: string, _payload:
 	if plot == nil or not present(target) then
 		return
 	end
-	ban(target, plot, if usage == "Intruder" then `frappé dans la boutique par {hitter.Name}` else `frappé par {hitter.Name} avec son objet`)
-	local bounds = refsFor(plot).Bounds
-	if bounds and putOut(target, plot, bounds) then
-		notify(target, cooldownMessage(MESSAGES.KickedOut, PvP.KickRobCooldown), "Alert")
+	if kickOut(plot, target, if usage == "Intruder" then `frappé dans la boutique par {hitter.Name}` else `frappé par {hitter.Name} avec son objet`) then
 		notify(hitter, string.format(MESSAGES.IntruderOut, target.DisplayName), "Success")
 		log(`{target.Name} sorti de {plot.Name} par son propriétaire {hitter.Name}`)
-	else
-		notify(target, cooldownMessage(MESSAGES.RobCooldown, PvP.KickRobCooldown), "Alert")
+	end
+end
+
+-- Vague 37 : coup réussi du bot de la boutique `plot` (BatService.OnBotHit), même effet qu'un coup du propriétaire.
+local function onBotBatHit(plot: Model, target: Player, usage: string, _payload: any)
+	if (usage ~= "Intruder" and usage ~= "Defend") or not isBotPlot(plot) or not present(target) then
+		return
+	end
+	if kickOut(plot, target, if usage == "Intruder" then "frappé dans la boutique par le bot" else "frappé par le bot avec son objet") then
+		log(`{target.Name} sorti de {plot.Name} par le bot`)
 	end
 end
 
@@ -1726,6 +1748,10 @@ function PvPService.Init()
 	if bat then
 		bat.IsIntruder = isIntruder
 		bat.OnHit(onBatHit)
+		local onBotHit = bat.OnBotHit
+		if onBotHit then
+			onBotHit(onBotBatHit)
+		end
 	end
 	Net.Server.StealItem:Connect(onStealItem)
 	if Floor then

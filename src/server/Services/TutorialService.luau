@@ -59,8 +59,10 @@
 --   Step garde l'étape atteinte. Seule attente : une session qui reprend aux étapes 11 à 13 attend un bot absent
 --   pendant ses BotWait premières secondes (serveur neuf : le bot arrive Bot.ArriveDelay s plus tard).
 --   Un vol commencé avant l'étape 11 ne compte pas pour finir (remis à zéro en entrant à l'étape 11), un objet
---   tenu à ce moment-là si. Vol d'un vrai joueur : ne compte pas (le tuto montre le bot). Le bot ne défend pas
---   encore sa boutique (L-117 point 7) : pas d'étape « le voir défendre ».
+--   tenu à ce moment-là si. Vol d'un vrai joueur : ne compte pas (le tuto montre le bot). Vague 37 (a124, L-117
+--   point 7) : le bot défend sa boutique (BotService) ; pas d'étape nouvelle ni de numéro changé : pendant le tuto
+--   du joueur poursuivi, BotService.IsGentle (remplacé ici : session en cours) le fait courir moins vite et frapper
+--   au plus une fois, et la bulle BotChase remplace celle des étapes 12 et 13 pendant la poursuite.
 -- Retours en arrière, seulement pendant le braquage : étape 3 sans colis et magasin fermé → 2 ;
 -- étape 4 sans colis, ni sur la tête ni dans l'inventaire (rattrapé, mort, déconnecté) → 3 si un magasin de la zone du tuto est encore
 -- ouvert près du joueur, sinon 2. Ils ne changent que l'étape affichée, pas Tutorial.Step du profil
@@ -221,6 +223,10 @@ type BotApi = {
 	GetExposed: (plot: Model) -> { [number]: { Uid: string, ItemId: string, Income: number } },
 	OnTheft: (listener: (thief: Player, itemId: string, stage: string) -> ()) -> any,
 	OnChanged: (listener: (plot: Model?) -> ()) -> any,
+	-- Vague 37 (a124, le bot défend sa boutique) : point d'accroche remplacé ici (poursuite plus douce pendant le
+	-- tuto), et la poursuite en cours (bulle BotChase). Absents d'un ancien BotService.
+	IsGentle: ((player: Player) -> boolean)?,
+	IsChasing: ((player: Player) -> boolean)?,
 }
 local botModule = script.Parent:FindFirstChild("BotService")
 local botLoaded: boolean, botResult: any = false, nil
@@ -980,6 +986,17 @@ local function botItemTarget(plot: Model, position: Vector3?): Vector3?
 	return best
 end
 
+-- Vague 37 : le bot poursuit-il ce joueur ? (BotService.IsChasing ; false sans bot ou avec un ancien BotService)
+local function chasedByBot(player: Player): boolean
+	local api = Bot
+	local isChasing = if api then api.IsChasing else nil
+	if isChasing == nil then
+		return false
+	end
+	local ok, value = pcall(isChasing, player)
+	return ok and value == true
+end
+
 -- Le joueur porte un objet volé au bot (portage PlayerItem de PvPService, VictimUserId 0).
 local function carryingBotItem(player: Player): boolean
 	local ok, payload = pcall(CarryService.GetPayload, player)
@@ -1293,12 +1310,15 @@ local function rawGuidance(session: Session, data: Data, position: Vector3?): (s
 		if plot == nil then
 			return nil, nil
 		end
+		-- Vague 37 : bulle BotChase pendant que le bot le poursuit (la flèche ne change pas).
+		local chased = if chasedByBot(player) then "BotChase" else nil
 		if step == STEP_BOT_GRAB and (plot:GetAttribute(STEAL_OPEN_ATTRIBUTE) == true or insidePlot(plot, position)) then
-			return nil, botItemTarget(plot, position) or botDoor(plot)
+			return chased, botItemTarget(plot, position) or botDoor(plot)
 		end
-		return nil, botDoor(plot)
+		return chased, botDoor(plot)
 	elseif step == STEP_BOT_HOME then
-		return nil, shopTarget(player) -- dépôt : la DepositZone couvre le sol de sa boutique
+		-- dépôt : la DepositZone couvre le sol de sa boutique ; bulle BotChase pendant la poursuite (vague 37)
+		return if chasedByBot(player) then "BotChase" else nil, shopTarget(player)
 	end
 	return nil, nil
 end
@@ -1822,6 +1842,14 @@ function TutorialService.Init()
 	DisplayService.OnCashOut(onCashOut)
 	local botApi = Bot
 	if botApi then
+		-- Vague 37 : pendant son tuto, le bot poursuit le joueur moins vite et le frappe au plus une fois.
+		local previousGentle = botApi.IsGentle
+		botApi.IsGentle = function(player: Player): boolean
+			if sessions[player] ~= nil then
+				return true
+			end
+			return previousGentle ~= nil and previousGentle(player)
+		end
 		botApi.OnTheft(onBotTheft)
 		-- Arrivée ou départ du bot : les étapes 10 à 13 se relisent tout de suite.
 		botApi.OnChanged(function(_plot: Model?)

@@ -84,6 +84,19 @@
 --       Point d'accroche (comme WindowService.CanBeHit) : `target` est-il un intrus que `hitter` peut
 --       frapper chez lui ? false par défaut ; PvPService le remplace (target dans Bounds de la boutique
 --       de hitter). Appelé à chaque coup, sans yield.
+--   Vague 37 (a124, L-117 point 7) : le bot joueur défend sa boutique (BotService, Config/Bot.Defense).
+--   BatService.BotSwing(plot, root, target, bounds?) -> (boolean, string)
+--       Coup du bot de la boutique `plot` (HumanoidRootPart `root`, volume Bounds `bounds`) sur `target`,
+--       appelé par BotService au marqueur Impact de SwingBat (ou Bat.ImpactMaxWait s après). Mêmes
+--       règles que le coup d'un propriétaire (portée, angle, mur, immunité de Bat.HitImmunity s), sur
+--       deux cibles seulement, partout, même en zone safe : son voleur (portage PlayerItem de
+--       VictimUserId 0, « Defend » : l'objet revole sur son présentoir) ou un intrus dans `bounds`
+--       (« Intruder »). Même effet (étourdissement, attribut BatStun : son et animations chez les
+--       clients). Renvoie true et l'usage, ou false et la raison du refus. Sans yield.
+--   BatService.OnBotHit(listener) -> déconnexion
+--       listener(plot, target, usage, payload?) après chaque coup réussi du bot (PvPService : sortie de
+--       la boutique et PvP.KickRobCooldown s sans la voler, comme après un coup du propriétaire). Les
+--       écouteurs d'OnHit ne sont pas appelés : le bot n'est pas un Player.
 
 local CollectionService = game:GetService("CollectionService")
 local Debris = game:GetService("Debris")
@@ -107,6 +120,7 @@ type Payload = CarryTypes.Payload
 
 export type Usage = "Defend" | "Box" | "Intruder" | "Thief"
 export type HitListener = (hitter: Player, target: Player, usage: Usage, payload: Payload?) -> ()
+export type BotHitListener = (plot: Model, target: Player, usage: Usage, payload: Payload?) -> ()
 
 -- Une cible possible d'un coup.
 type Candidate = {
@@ -133,6 +147,8 @@ local STUN_ATTRIBUTE = "BatStun"
 local KNOCKBACK_NAME = "BatKnockback"
 -- Modificateur de vitesse de StatsService pendant l'étourdissement.
 local STUN_KEY = "BatStun"
+-- Portage d'un objet volé au bot : VictimUserId 0 (PvPService).
+local BOT_VICTIM_USER_ID = 0
 
 -- V0 proposé, absent du doc : écarts du réseau tolérés sur la recharge et sur le maintien.
 local COOLDOWN_TOLERANCE = 0.1
@@ -164,6 +180,7 @@ local holds: { [Player]: Hold } = {}
 local lastRefusal: { [Player]: number } = {}
 local lastShieldNotice: { [Player]: number } = {}
 local hitListeners: { HitListener } = {}
+local botHitListeners: { BotHitListener } = {}
 local boxCache: { [Instance]: { cframe: CFrame, size: Vector3 } } = setmetatable({}, { __mode = "k" }) :: any
 
 -- Outils ----------------------------------------------------------------------------------------
@@ -307,15 +324,27 @@ function BatService.OnHit(listener: HitListener): () -> ()
 	end
 end
 
+function BatService.OnBotHit(listener: BotHitListener): () -> ()
+	table.insert(botHitListeners, listener)
+	return function()
+		local index = table.find(botHitListeners, listener)
+		if index then
+			table.remove(botHitListeners, index)
+		end
+	end
+end
+
 -- Le coup ----------------------------------------------------------------------------------------
 
--- `other` peut-il recevoir le coup de `hitter` ? Renvoie la cible, ou la raison du refus.
+-- `other` peut-il recevoir le coup de `hitter` ? Renvoie la cible, ou la raison du refus. `hitter` nil : le
+-- bot (BotSwing), dont la boutique a le volume `botBounds`.
 local function candidateFor(
-	hitter: Player,
+	hitter: Player?,
 	hitterRoot: BasePart,
 	hitterSafe: boolean,
 	other: Player,
-	now: number
+	now: number,
+	botBounds: BasePart?
 ): (Candidate?, string)
 	local root, humanoid = bodyOf(other)
 	if root == nil or humanoid == nil then
@@ -335,7 +364,16 @@ local function candidateFor(
 	end
 	local payload = CarryService.GetPayload(other)
 	local usage: Usage
-	if payload and payload.Kind == "PlayerItem" and payload.VictimUserId == hitter.UserId then
+	if hitter == nil then
+		-- Vague 37 : le bot ne frappe que son voleur ou un intrus de sa boutique, partout (comme un propriétaire).
+		if payload and payload.Kind == "PlayerItem" and payload.VictimUserId == BOT_VICTIM_USER_ID then
+			usage = "Defend"
+		elseif botBounds and insideBox(botBounds.CFrame, botBounds.Size, root.Position) then
+			usage = "Intruder"
+		else
+			return nil, "ni voleur ni intrus du bot"
+		end
+	elseif payload and payload.Kind == "PlayerItem" and payload.VictimUserId == hitter.UserId then
 		usage = "Defend" -- usage 1 : même en zone safe
 	elseif isIntruder(hitter, other) then
 		usage = "Intruder" -- dans la boutique du frappeur : même en zone safe, même mains vides
@@ -415,7 +453,8 @@ local function stun(player: Player, kind: string)
 	end)
 end
 
-local function applyHit(hitter: Player, hitterRoot: BasePart, target: Candidate, now: number)
+-- L'effet du coup (`who` : nom du frappeur pour la sortie de Studio). Les écouteurs sont prévenus par l'appelant.
+local function applyHit(who: string, hitterRoot: BasePart, target: Candidate, now: number)
 	local player = target.player
 	immuneUntil[player] = now + Bat.HitImmunity
 	local direction = flat(target.root.Position - hitterRoot.Position)
@@ -433,20 +472,17 @@ local function applyHit(hitter: Player, hitterRoot: BasePart, target: Candidate,
 		knockback(target.root, direction)
 		stun(player, "Knockback")
 		Net.Server.Notify:Fire(player, Bat.Messages.BoxKnockedDown, "Alert") -- avertissement, pas un refus : sans UI_Deny (L-106 point 6)
-		log(`{hitter.Name} frappe {player.Name} : colis {payload.Rarity} au sol ({dropId or "?"})`)
+		log(`{who} frappe {player.Name} : colis {payload.Rarity} au sol ({dropId or "?"})`)
 	elseif target.usage == "Intruder" then
 		-- Rien ne tombe : PvPService le sort de la boutique (OnHit).
 		stun(player, "Stun")
-		log(`{hitter.Name} frappe l'intrus {player.Name} dans sa boutique`)
+		log(`{who} frappe l'intrus {player.Name} dans sa boutique`)
 	else
 		local ground = groundBelow(target.root, target.humanoid)
 		-- Objet volé : il ne tombe pas, PvPService le rend à son présentoir (OnCarryEnded « Bat »).
 		CarryService.Drop(player, ground)
 		stun(player, "Stun")
-		log(`{hitter.Name} frappe {player.Name} ({target.usage}) : l'objet volé retourne chez son propriétaire`)
-	end
-	for _, listener in table.clone(hitListeners) do
-		task.spawn(listener, hitter, player, target.usage, target.payload)
+		log(`{who} frappe {player.Name} ({target.usage}) : l'objet volé retourne chez son propriétaire`)
 	end
 end
 
@@ -518,7 +554,28 @@ local function onSwingBat(player: Player)
 		end
 		return
 	end
-	applyHit(player, root, target, now)
+	applyHit(player.Name, root, target, now)
+	for _, listener in table.clone(hitListeners) do
+		task.spawn(listener, player, target.player, target.usage, target.payload)
+	end
+end
+
+-- Vague 37 : coup du bot (voir l'en-tête). Sans yield.
+function BatService.BotSwing(plot: Model, root: BasePart, target: Player, bounds: BasePart?): (boolean, string)
+	local now = os.clock()
+	if not root:IsDescendantOf(Workspace) or target.Parent ~= Players then
+		return false, "bot ou cible absents"
+	end
+	local candidate, reason = candidateFor(nil, root, false, target, now, bounds)
+	if candidate == nil then
+		log(`le bot de {plot.Name} frappe dans le vide ({target.Name} : {reason})`)
+		return false, reason
+	end
+	applyHit(`le bot de {plot.Name}`, root, candidate, now)
+	for _, listener in table.clone(botHitListeners) do
+		task.spawn(listener, plot, target, candidate.usage, candidate.payload)
+	end
+	return true, candidate.usage
 end
 
 -- Colis tombé au sol ---------------------------------------------------------------------------------
