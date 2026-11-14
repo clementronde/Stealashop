@@ -180,8 +180,9 @@
 --       yield.
 --   UnboxService.GiveItem(player, tier, zone, minRarity?) -> (string?, string?, string?)
 --       Vague 43 (récompenses, RewardService) : le même tirage que GiveBox (rareté, objet, mutation et taille),
---       mais l'objet entre tout de suite dans Items (Source « NPC », Zone, Mutation ; sans antivol ni cran
---       d'amélioration), IndexService.Discover, inventaire remis à jour. Inventaire plein
+--       puis les crans d'amélioration de l'ouverture en base (rollUpgrades, GetLuck : 10 % par cran, 2 au
+--       plus), et l'objet entre tout de suite dans Items (Source « NPC », Zone, Mutation ; sans antivol),
+--       IndexService.Discover, inventaire remis à jour. Inventaire plein
 --       (DisplayService.HasInventoryRoom) : rien n'est écrit. Renvoie (uid de l'objet, nil, ItemId), ou nil et
 --       la raison : "NoProfile", "InventoryFull", "Invalid", "NoContent". Sans yield.
 --   UnboxService.GetBoxPosition(player, boxUid) -> Vector3?
@@ -2165,11 +2166,26 @@ function UnboxService.GiveItem(player: Player, tier: string, zone: number, minRa
 	if rarityId == nil or item == nil then
 		return nil, "NoContent", nil
 	end
+	-- Amélioration du colis, comme à son ouverture en base (OpenBox) : rollUpgrades avec la chance du joueur
+	-- (UpgradeChance 10 % par cran, UpgradeMax 2), puis un objet de la rareté atteinte. Elle ne fait que monter :
+	-- MinRarity reste garanti (J7 Épique ou mieux, 3.3).
+	local box: Box = { Tier = tier :: any, Zone = zone, ItemId = item.Id, Rarity = rarityId, ReadyAt = nil, Mutation = mutation, Spot = nil, At = os.time() }
+	local steps = rollUpgrades(box, luckOf(player, box), random)
+	if #steps > 0 then
+		local target = steps[#steps]
+		local picked = Items.Pick(zone, target :: Rarities.RarityId, random)
+		if picked ~= nil and picked.Rarity == target then
+			item, rarityId = picked, target
+		else
+			table.clear(steps)
+		end
+	end
 	local itemUid = newUid(data.Items)
 	-- Zone gardée pour le revenu du Secret, qui n'a pas de zone au catalogue (comme OpenBox).
 	data.Items[itemUid] = { Id = item.Id, Source = "NPC", At = os.time(), Zone = zone, Mutation = mutation }
 	local mutated = Mutations.Label(mutation)
-	log(`{player.Name} : objet offert {item.Id} ({rarityId}, colis {tier} zone {zone}{if mutated then ", mutation " .. mutated else ""}) mis dans l'inventaire ({itemUid})`)
+	local upgraded = if #steps > 0 then `, {#steps} cran(s) : {table.concat(steps, " → ")}` else ""
+	log(`{player.Name} : objet offert {item.Id} ({rarityId}, colis {tier} zone {zone}{upgraded}{if mutated then ", mutation " .. mutated else ""}) mis dans l'inventaire ({itemUid})`)
 	discover(player, item.Id)
 	refreshInventory(player)
 	return itemUid, nil, item.Id
