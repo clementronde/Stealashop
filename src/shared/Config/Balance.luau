@@ -97,13 +97,13 @@ local Balance = {
 		-- Portée tolérée pendant un maintien (début et revérifications, pas la fin ; Cantin, 2026-11-14) : le serveur
 		-- voit le perso en retard d'environ vitesse × latence. Tolérance = min(WalkSpeed × (ping + ReachLatencyPad), plafond),
 		-- plafond = max(ReachToleranceMin, WalkSpeed × ReachToleranceSeconds), en plus de GrabMaxDistance et autour du volume Bounds. Aussi pour les colis au sol.
-		ReachLatencyPad = 0.5, -- s, V0 (0,1 puis 0,3 ; en Play le 14/11, le serveur voyait le perso jusqu'à 0,37 s en retard à ping 0 : à 65 studs/s, 0,3 s refusait une ouverture sur 6 ; 0,5 s suit le plafond ReachToleranceSeconds)
+		ReachLatencyPad = 0.8, -- s, V0 (0,1 puis 0,3 puis 0,5 ; en Play le 14/11, jusqu'à 0,37 s de retard à ping 0 ; 0,8 s couvre aussi environ 400 ms de ping en ligne ; la télémétrie RemoteRefused dira s'il faut régler)
 		-- Plafond qui suit la vitesse (Cantin, 2026-11-14, « une ouverture très clean ») : un plafond fixe de 8 studs
 		-- était trop juste en courant vite (en Play le 14/11, à 65 studs/s, le serveur voyait le perso jusqu'à 15,7 studs
 		-- pour une limite de 16). À 65 studs/s le plafond vaut 32,5 studs ; à 16 studs/s il reste 8. La fin du maintien
 		-- reste stricte. La télémétrie RemoteRefused dira en ligne combien de « trop loin » restent, pour régler 0,5 s.
 		ReachToleranceMin = 8, -- studs, V0 (plafond minimal, l'ancien ReachToleranceMax)
-		ReachToleranceSeconds = 0.5, -- s, V0 (plafond = WalkSpeed × 0,5 s quand c'est plus que ReachToleranceMin)
+		ReachToleranceSeconds = 0.8, -- s, V0 (plafond = WalkSpeed × 0,8 s quand c'est plus que ReachToleranceMin ; 0,5 au départ)
 		ShelfSlots = 10, -- ShelfSlot_01 à ShelfSlot_10 (10.4)
 		TierOrder = TIER_ORDER,
 		BoxTiers = BOX_TIERS,
