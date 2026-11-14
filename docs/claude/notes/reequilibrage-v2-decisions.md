@@ -13,6 +13,9 @@ Ses mots :
 - **Plus de banc** : « il n'y aura plus de banc seulement les armes et on va mettre en place le fait que l'aura aura aussi un multiplicateur de force met le dans un doc du git pour qu'on le mette en place ».
 - **Potion de force** : « la potion sera une potion x1.5 comme ça plus de problèmes ». La potion Strength passe de ×2 à ×1,5.
 - **Profils DEV** : « Remise à zéro en DEV » quand les nouvelles valeurs arriveront.
+- **Dégâts pour le calcul, sans la potion** (précision du 14/11) : « pour le calcul final des dégâts, il ne faut pas prendre la potion en compte. Parce que de toute façon, puisqu'elle multiplie fois 1,5, une personne en zone 6 ne pourra pas casser la vitrine toute seule [...] tu prends juste l'aura et l'arme, les dégâts de l'arme. »
+  - Règle qui en découle pour l'équilibrage : les calculs se font avec **dégâts = arme × aura**. La potion ×1,5 reste un bonus en plus, en jeu.
+  - **PV des vitrines de la zone 6** = les dégâts de deux des meilleurs joueurs possibles (arme × aura au maximum) pendant le chrono de casse de 13 s.
 
 ## À mettre en place dans le code
 
@@ -25,7 +28,7 @@ Ses mots :
    - à revoir aussi : `AdminService` et `AdminController` (commandes du banc), `TutorialService`, `GainController`, `AnimationController`, `Shared/Anim`, et tout ce qui lit la stat Force (`Stats.Strength`) : HUD, renaissance, arbre de compétences, bandeau de zone.
 2. **Dégâts = arme × multiplicateur d'aura × potion.** Aujourd'hui, `Formulas.HitDamage(toolPower, strength, auraMultiplier)` vaut `toolPower × (1 + strength / StrengthDivisor) × auraMultiplier`. Sans banc, la part de la force disparaît.
 3. **Potion Strength ×1,5** : `Config/Potions`, `Multiplier = 2` → `1.5`.
-4. **Nouvelles valeurs** (tapis, prix, armes, auras, PV des vitrines par zone, seuils des zones) : celles de la proposition d'`agents/a132`, une fois validées par Cantin. Vérifier les deux contraintes : zone 6 en environ 7 h 30, et zone 6 impossible à casser seul (en tenant compte du chrono de casse de 13 s).
+4. **Nouvelles valeurs** (tapis, prix, armes, auras, PV des vitrines par zone, seuils des zones) : celles de la proposition d'`agents/a132`, une fois validées par Cantin. Vérifier les deux contraintes : zone 6 en environ 7 h 30, et zone 6 impossible à casser seul (PV de ses vitrines = dégâts de deux des meilleurs joueurs, arme × aura au maximum, pendant le chrono de 13 s ; potion non comptée).
 5. **Remise à zéro des profils DEV** quand les nouvelles valeurs arrivent (le profil de Cantin compris), avec son accord au moment de le faire.
 
 ## Côté Clément (liaison)
