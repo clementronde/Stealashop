@@ -82,4 +82,4 @@ Config = setmetatable({}, {
 })
 Format = charge("Format")
 
-charge("Outil/rapport")
+charge(if OPTIONS.Rapport == "v2" then "Outil/rapport_v2" else "Outil/rapport")
