@@ -5,8 +5,114 @@ Note de l'agent a132 (2026-11-14), pour Cantin et Clément. **Rien n'est changé
 - Outil : `RAPPORT=v2 bash tools/ironix/equilibrage/run.sh` (hors Studio, 2 min environ). Il lit les vraies tables de `src/shared/Config`, fait jouer 3 profils de joueurs, 25 parties chacun, et sort les tableaux de cette note.
 - Toutes les valeurs proposées sont dans un seul fichier : `tools/ironix/equilibrage/proposition_v2.luau`. On change un nombre, on relance (`COURT=1` : seulement les temps par zone, 20 s).
 - Cette note remplace `equilibrage-proposition.md` (L-108 point 1, L-116 point 4), qui gardait le banc.
-- **Passe 2 du 14/11** (5 coups par seconde, casse en 11 s, braquage de 6 s, zone 6 à 165M) : section suivante. Elle passe avant les sections 1 à 10 quand elles se contredisent, et le simulateur donne maintenant les chiffres de la passe 2.
+- **Passe 3 du 14/11 (8 s)** : chrono de police de 8 s, casse en 6,5 s, zone 6 à 108.8M. Elle passe avant tout le reste, et le simulateur donne maintenant les chiffres de la passe 3.
+- **Passe 2 du 14/11** (5 coups par seconde, casse en 11 s, braquage de 6 s, zone 6 à 165M) : section suivante. Elle passe avant les sections 1 à 10 quand elles se contredisent.
 - Nombres écrits comme dans le jeu (`Format.short` : K, M, B, T, Qa).
+
+## Passe 3 du 14/11 (8 s) (agent a138) : chrono de police de 8 s, casse en 6,5 s
+
+**Cette section passe avant tout le reste de la note** (passe 2 et sections 1 à 10) pour les PV des vitrines, la zone 6 et les temps par zone. Le reste de la passe 2 tient toujours : 5 coups par seconde, braquage de 6 s, potion de vitesse retirée, Hydraulic Gloves gardé. Tapis, armes, auras, trails, seuils de Speed, vigiles et revenus : comme en passe 1. Toutes les valeurs nouvelles sont des V0 proposés, avec leur calcul. Rien n'est changé dans `src/`.
+
+### P3.1 Règles de Cantin (14/11, « On reste sur 8 secondes »)
+
+- Le chrono de police passe de **13 s à 8 s** (`Balance.Window.BreakTimer`). Les témoins appellent déjà la police à 8 s (`Witness.FillTime`, gardé).
+- **Zones 1 à 5** : un joueur seul au niveau conseillé casse une vitrine en **6,5 s** (5 coups/s, régénération 3 %/s).
+- **Zone 6** : un joueur seul ne casse pas en 8 s, **même avec la potion ×1,5** ; deux joueurs sans potion oui. Hydraulic Gloves peut passer seul (voulu).
+- Braquage de 6 s : inchangé.
+
+### P3.2 PV des vitrines (`Config/Zones`)
+
+```
+PV / dégâts = 6,5 × 5 / (1 + 0,03 × 6,5) = 32,5 / 1,195 = 27,197
+```
+
+| Zone | Strength du panneau | `WindowHP` aujourd'hui | Passe 1 | Passe 2 (13 s) | **Passe 3 (8 s)** | PV / dégâts (passe 2 → passe 3) |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | 1 | 35 | 35 | 41 | **27** | 41,35 → 27,197 |
+| 2 | 10 | 350 | 350 | 414 | **272** | 41,35 → 27,197 |
+| 3 | 120 | 2.8K | 4.2K | 4 962 | **3 264** | 41,35 → 27,197 |
+| 4 | 1.5K | 21K | 52.5K | 62 030 | **40 795** | 41,35 → 27,197 |
+| 5 | 20K | 175K | 700K | 827 068 | **543 933** | 41,35 → 27,197 |
+| 6 | 2M | 1.4M | 320M | 165.4M | **108 786 611 (108.8M)** | 82,7 → 54,393 |
+
+Casse par un joueur seul qui a les dégâts du panneau (chrono de 8 s) :
+
+| Zone | à 4 coups/s | à 4,5 coups/s | à 5 coups/s (plafond) | avec le kit de la zone d'avant, même avec potion |
+| --- | --- | --- | --- | --- |
+| 1 à 5 | non (8.5 s) | 7.4 s | **6.5 s** | jamais |
+| 6 | non (23.0 s) | non (19.0 s) | non (16.1 s) | jamais |
+
+Au niveau du panneau, il faut tenir au moins **4,22 coups par seconde** (84 % du plafond) pour casser en 8 s ; la marge est un peu plus large qu'en passe 2 (4,42).
+
+### P3.3 Zone 6 : seul non (même avec la potion), à deux oui
+
+D = Angle Grinder 100K × Royal ×20 = **2M par coup**, 5 coups/s par joueur. PV cassables en 8 s = `8 / (1 + 0,03 × 8)` × coups/s × dégâts = 6,452 × coups/s × dégâts :
+
+| Qui frappe | Dégâts par seconde | PV cassables en 8 s | En multiples de D |
+| --- | --- | --- | --- |
+| Seul, sans potion | 10M | 64.5M | 32.26 |
+| **Seul, potion ×1,5 (borne basse)** | 15M | **96.8M** | **48.39** |
+| **Deux, sans potion (borne haute)** | 20M | **129M** | **64.52** |
+| Deux, potion tous les deux | 30M | 193.5M | 96.77 |
+| Seul, Hydraulic Gloves ×2,5 | 25M | 161.3M | 80.65 |
+
+Les PV doivent être **au-dessus de 96.8M et au plus à 129M**. Temps de casse selon les PV :
+
+| PV de la vitrine (× D) | 32.26 | 40.32 | 48.39 | 51.39 | **54.39** | 59.45 | 64.52 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| PV | 64.5M | 80.6M | 96.8M | 102.8M | **108.8M** | 118.9M | 129M |
+| Deux, 5 coups/s, sans potion | 3.6 s | 4.6 s | 5.7 s | 6.1 s | **6.5 s** | 7.2 s | 8.0 s |
+| Deux, 4,5 coups/s, sans potion | 4.0 s | 5.2 s | 6.4 s | 6.9 s | 7.4 s | non (8.2 s) | non (9.1 s) |
+| Deux, 5 coups/s, potion tous les deux | 2.3 s | 2.9 s | 3.6 s | 3.8 s | 4.1 s | 4.5 s | 4.9 s |
+| Seul, 5 coups/s, sans potion | 8.0 s | non (10.6 s) | non (13.6 s) | non (14.9 s) | non (16.1 s) | non (18.5 s) | non (21.1 s) |
+| Seul, 5 coups/s, potion | 4.9 s | 6.4 s | 8.0 s | non (8.6 s) | **non (9.3 s)** | non (10.4 s) | non (11.6 s) |
+| Seul, Hydraulic Gloves | 2.8 s | 3.6 s | 4.4 s | 4.7 s | 5.0 s | 5.5 s | 6.1 s |
+| Trois, 5 coups/s, sans potion | 2.3 s | 2.9 s | 3.6 s | 3.8 s | 4.1 s | 4.5 s | 4.9 s |
+
+**Valeur proposée : 2 × 27,197 = 54,393 × D = 108 786 611 PV (108.8M)**, la même phrase qu'en passe 2 : deux joueurs au niveau du panneau cassent la zone 6 en 6,5 s, comme un joueur seul casse les autres zones en 6,5 s.
+
+- Deux joueurs : 6,5 s à 5 coups/s, 7,4 s à 4,5 (au moins 4,22 coups/s chacun).
+- Seul sans potion : 16,1 s. Seul avec la potion : 9,3 s, raté de 1,3 s (12 % au-dessus de la borne basse).
+- Seul avec Hydraulic Gloves : 5,0 s (voulu).
+- Trois joueurs avec Angle Grinder × Galaxy (1.2M) : 7,4 s ; quatre : 5,2 s.
+
+Dans le code : `Zones[6].WindowHP = 2 × 27,197 × meilleur Power × meilleur Multiplier d'aura`.
+
+### P3.4 Ce qui ne dépend pas du chrono
+
+- **Portes des boutiques de joueurs** : pas de chrono sur une porte. Base = 50 × Strength du panneau du même rang (50, 500, 6K, 75K, 1M), tableau P2.5 inchangé.
+- **Camion** (V0 proposé) : 100 × dégâts de la zone (100, 1K, 12K, 150K, 2M, 200M), sans régénération ni chrono de casse : 20 s seul au panneau. Inchangé.
+- **Fortune Tower** : 4 × 2M × 5 × 90 = 3.6B, inchangé depuis la passe 2.
+
+### P3.5 Temps de jeu actif par zone (passe 3)
+
+Médiane de 25 parties (de la plus rapide à la plus lente), sans aucune aide ; 5 coups/s pour tous, zone 6 à deux, braquage de 6 s.
+
+| Profil | Zone 2 | Zone 3 | Zone 4 | Zone 5 | Zone 6 | Zone 6 en passe 2 |
+| --- | --- | --- | --- | --- | --- | --- |
+| Prudent | 13 min (8 à 19) | 45 min (35 à 51) | 2 h 04 (1 h 25 à 2 h 36) | 5 h 27 (3 h 42 à 6 h 41) | 14 h 27 (10 h 14 à 17 h 42) | 15 h 29 |
+| **Moyen** | **7 min** (4 à 11) | **23 min** (19 à 31) | **1 h 04** (54 min à 1 h 21) | **2 h 37** (2 h 04 à 3 h 14) | **7 h 26** (5 h 51 à 9 h 21) | 7 h 47 |
+| Acharné | 6 min (4 à 11) | 21 min (15 à 26) | 56 min (33 min à 1 h 08) | 2 h 18 (1 h 24 à 2 h 41) | 6 h 26 (4 h 59 à 7 h 14) | 6 h 12 |
+
+Joueur moyen : **7 h 26 sur 25 parties, 7 h 31 sur 75 parties**. La casse plus courte (6,5 s au lieu de 11) rend chaque braquage un peu plus rapide ; la cible de 7 h 30 est tenue **sans toucher au prix du tapis** (`Upgrades.Treadmill` : 150 × 3,8^(niveau − 1), inchangé). Aides (75 parties, pour information) : les trois ensemble, 6 h 13.
+
+Les points fragiles de la passe 2 restent les mêmes : 5 s pour atteindre le rayon au lieu de 3 donnent 9 h 24 ; le vigile sans le + 1, 6 h 29 ; 10 studs d'avance de moins, 8 h 19.
+
+### P3.6 Valeurs par clé de Config (passe 3)
+
+| Clé | Aujourd'hui | Passe 2 | **Passe 3** |
+| --- | --- | --- | --- |
+| `Balance.Window.BreakTimer` | 13 | 13 | **8** |
+| `Balance.Hit.MaxHitsPerSecond` (et `HitWindow.RatePerSecond`) | 10 | 5 | 5 |
+| `Balance.Heist.Duration` | 10 | 6 | 6 |
+| `Zones[1].WindowHP` | 35 | 41 | **27** |
+| `Zones[2].WindowHP` | 350 | 414 | **272** |
+| `Zones[3].WindowHP` | 2 800 | 4 962 | **3 264** |
+| `Zones[4].WindowHP` | 21 000 | 62 030 | **40 795** |
+| `Zones[5].WindowHP` | 175 000 | 827 068 | **543 933** |
+| `Zones[6].WindowHP` | 1 400 000 | 165 413 534 | **108 786 611** |
+| `Witness.FillTime` | 8 | 8 | 8 |
+| `PvP.PlayerWindowHPPerDamage`, `TruckEvent.MaxHP` (V0), `Upgrades.Treadmill` | | | comme en passe 2 |
 
 ## Passe 2 du 14/11 (agent a133) : 5 coups par seconde, casse en 11 s, braquage de 6 s
 

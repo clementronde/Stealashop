@@ -43,6 +43,7 @@ local Modele = {}
 --   eco.Zones[z].TeamHits      zone d'équipe : la vitrine se casse à plusieurs, ce total de coups par
 --                              seconde (tous au niveau du joueur simulé), dans le chrono de casse entier
 --   eco.MaxHits                passe 2 : plafond de coups par seconde ; tous les profils frappent à ce plafond
+--   eco.BreakTimer             passe 3 : chrono de casse proposé (à la place de Balance.Window.BreakTimer)
 --   eco.CasseMax               passe 2 : temps de casse accepté par tous les profils (à la place de profil.CasseMax)
 --   eco.HeistDuration          passe 2 : chrono du braquage après la casse ; l'ouverture du colis (rabats et
 --                              montée de la chance, Config/ShelfOpen) est comptée, et chaque seconde passée
@@ -383,7 +384,7 @@ function Modele.Jouer(eco, profil, seed, maxSeconds)
 		return eco.Zones[zone].TeamHits or eco.MaxHits or profil.Coups
 	end
 	local function breakMax(zone)
-		return if eco.Zones[zone].TeamHits then Balance.Window.BreakTimer else (eco.CasseMax or profil.CasseMax)
+		return if eco.Zones[zone].TeamHits then (eco.BreakTimer or Balance.Window.BreakTimer) else (eco.CasseMax or profil.CasseMax)
 	end
 	-- Critère d'entrée du profil dans une zone, avec ces dégâts et cette vitesse de marche.
 	local function accepts(zone, hitDamage, walkSpeed)

@@ -82,24 +82,25 @@ V2.Zones = {
 	{ SpeedRequired = 100e6, Kit = { "Sledgehammer", "Plasma" }, BaseIncome = 3_500 },
 	{ SpeedRequired = 3e9, Kit = { "AngleGrinder", "Royal" }, BaseIncome = 25_000 },
 }
--- Passe 2 (Cantin, 14/11) : coups plafonnés à 5 par seconde pour tout le monde ; zones 1 à 5, un joueur seul
--- au niveau du panneau casse en 11 s ; chrono du braquage après la casse : 6 s (Balance.Heist.Duration : 10).
---   PV / dégâts = BreakSeconds × MaxHitsPerSecond / (1 + Regen × BreakSeconds) = 11 × 5 / 1,33 = 41,35
---   (passe 1 : 35, soit 7 s à 6 coups/s). Sous 4,42 coups/s, un joueur au panneau ne casse plus dans les 13 s.
+-- Passe 3 (Cantin, 14/11) : le chrono de casse (police) passe de 13 s à 8 s. Coups plafonnés à 5 par seconde
+-- pour tout le monde ; zones 1 à 5, un joueur seul au niveau du panneau casse en 6,5 s ; chrono du braquage
+-- après la casse : 6 s (Balance.Heist.Duration : 10).
+--   PV / dégâts = BreakSeconds × MaxHitsPerSecond / (1 + Regen × BreakSeconds) = 6,5 × 5 / 1,195 = 27,197
+--   (passe 2 : 41,35, soit 11 s ; passe 1 : 35). Sous 4,22 coups/s, un joueur au panneau ne casse plus dans les 8 s.
 V2.MaxHitsPerSecond = 5 -- Balance.Hit.MaxHitsPerSecond (aujourd'hui 10)
-V2.BreakSeconds = 11
+V2.BreakTimer = 8 -- Balance.Window.BreakTimer (aujourd'hui 13)
+V2.BreakSeconds = 6.5
 V2.HeistDuration = 6
 V2.WindowHPPerDamage = V2.BreakSeconds * V2.MaxHitsPerSecond / (1 + 0.03 * V2.BreakSeconds)
 V2.GuardCarryFactor = 0.9 -- = Balance.Carry.NPCBoxSpeedMultiplier (vitesse du porteur d'un colis)
 V2.GuardMargin = 1 -- au seuil du panneau, le vigile reprend 1 stud par seconde au porteur (aujourd'hui − 1)
 
--- Zone 6 (passe 2) : un joueur seul ne casse pas dans les 13 s, deux oui. D = meilleure arme × meilleure aura.
--- PV cassables en 13 s = 9,353 × coups/s × dégâts (13 / (1 + 0,03 × 13)), 5 coups/s par joueur :
---   seul sans potion 46,8 × D ; seul avec la potion ×1,5 : 70,1 × D ; deux sans potion : 93,5 × D.
---   Sans compter la potion, les PV vont de 46,8 à 93,5 × D ; MAIS entre 46,8 et 70,1 × D un joueur seul avec
---   la potion casse. Pour que « jamais seul » tienne aussi avec la potion : de 70,1 à 93,5 × D.
--- Valeur choisie : 2 × la règle des zones 1 à 5 = 82,7 × D : deux joueurs au panneau cassent en 11 s, comme un
--- joueur seul dans les autres zones ; seul avec la potion : 16,5 s, raté. (Passe 1 : 160 × D à 10 coups/s.)
+-- Zone 6 (passe 3) : un joueur seul ne casse pas dans les 8 s, même avec la potion ×1,5 ; deux sans potion oui.
+-- D = meilleure arme × meilleure aura. PV cassables en 8 s = 6,452 × coups/s × dégâts (8 / (1 + 0,03 × 8)),
+-- 5 coups/s par joueur : seul sans potion 32,3 × D ; seul avec la potion : 48,4 × D ; deux sans potion : 64,5 × D.
+-- Les PV doivent donc être au-dessus de 48,4 × D et au plus à 64,5 × D.
+-- Valeur choisie : 2 × la règle des zones 1 à 5 = 54,39 × D : deux joueurs au panneau cassent en 6,5 s, comme un
+-- joueur seul dans les autres zones ; seul avec la potion : 9,3 s, raté. (Passe 2 : 82,7 × D ; passe 1 : 160 × D.)
 V2.Zone6 = { Players = 2, HitsPerSecond = V2.MaxHitsPerSecond, HPPerDamage = 2 * V2.WindowHPPerDamage }
 
 V2.PotionStrength = 1.5 -- Potions.Strength.Multiplier (aujourd'hui 2)
@@ -131,6 +132,7 @@ function V2.Construire()
 	local eco = { Nom = "V2", SansBanc = true, MaxHits = V2.MaxHitsPerSecond, HeistDuration = V2.HeistDuration }
 	-- Tous les profils frappent au plafond et acceptent la casse du panneau (11 s) ; marge jusqu'à 12 s.
 	eco.CasseMax = V2.BreakSeconds + 1
+	eco.BreakTimer = V2.BreakTimer
 
 	function eco.WalkSpeed(speed, trailMultiplier)
 		local shown = speed * (trailMultiplier or 1)
@@ -208,8 +210,8 @@ function V2.Construire()
 	eco.Regen = SkillTree.ById.GlassRegen.Effects
 
 	-- Bornes de la zone 6 (pour le rapport).
-	local T, r = Balance.Window.BreakTimer, Balance.Window.RegenPerSecond
-	local perHit = T / (1 + r * T) -- PV cassables en 13 s par coup/s et par point de dégâts : 9,353
+	local T, r = V2.BreakTimer, Balance.Window.RegenPerSecond
+	local perHit = T / (1 + r * T) -- PV cassables dans le chrono par coup/s et par point de dégâts : 6,452
 	eco.Zone6 = {
 		PerHit = perHit,
 		Upper = V2.Zone6.Players * V2.Zone6.HitsPerSecond * perHit, -- × D : 93,5 (deux, sans potion)
