@@ -24,6 +24,8 @@
 --      budget de ShelfBoxController) puis à ses couleurs ; BB_Item au-dessus (nom, rareté, Mutation
 --      « BIG GOLD » montrée seulement avec une mutation, $/s) ; chez l'ouvreur, UI_HUD.RevealTint pour
 --      Épique et plus (ShelfOpen.RevealTintMinRarity).
+-- a139 (optimisation téléphone, Config/PerfClient.ShelfOpenWatchChanges) : seuls les colis dont l'état d'ouverture
+-- change, ou n'est pas nil, sont relus à chaque image (avant : les attributs des 120 colis, à chaque image).
 -- Tout ce qui est créé ici est local et libéré à la fin (FX, billboards, Highlight, réservation). Un
 -- colis dont l'ouverture est annulée (attribut retiré avant la sortie) est remis comme avant.
 --
@@ -71,6 +73,23 @@ local SOUND_CONFETTI = "Unbox_Confetti"
 
 local WHITE = Color3.new(1, 1, 1)
 local IS_STUDIO = RunService:IsStudio()
+
+-- a139 (optimisation téléphone, passe 2) : réglages de Config/PerfClient ; module absent (banc d'avant) : {},
+-- ancien comportement.
+local function perfSettings(): { [string]: any }
+	local ok, found = pcall(function(): Instance?
+		return Config:FindFirstChild("PerfClient") or Config:WaitForChild("PerfClient", 2)
+	end)
+	if ok and found and found:IsA("ModuleScript") then
+		local loaded, result = pcall(require, found)
+		if loaded and type(result) == "table" then
+			return result
+		end
+	end
+	return {}
+end
+-- Un colis n'est relu que si son état d'ouverture change ou tant qu'il en a un (false : tous à chaque image).
+local WATCH_CHANGES = perfSettings().ShelfOpenWatchChanges == true
 
 type Mover = {
 	Target: Instance, -- Model ou BasePart
@@ -158,6 +177,9 @@ local ShelfOpenController = {}
 
 local localPlayer = Players.LocalPlayer
 local boxes: { [Model]: boolean } = {}
+-- a139 (PerfClient.ShelfOpenWatchChanges) : colis à relire à la prochaine image (état changé, ou état non nil).
+local watched: { [Model]: boolean } = {}
+local boxConnections: { [Model]: { RBXScriptConnection } } = {}
 local sessions: { [Model]: Session } = {}
 local hiddenBoxes: { [Model]: Saved } = {} -- colis cachés à la sortie, remis si leur état revient à nil
 local doneAt: { [Model]: number } = {} -- colis dont la sortie est jouée → son ShelfOpenAt (pas de 2e fois)
@@ -636,6 +658,9 @@ local function finish(session: Session)
 			hiddenBoxes[box] = session.Hidden
 		end
 	end
+	if WATCH_CHANGES and boxes[box] then
+		watched[box] = true -- a139 : doneAt ou colis caché posés ici, relus à la prochaine image comme avant
+	end
 end
 
 -- Sortie ------------------------------------------------------------------------------------------
@@ -1045,7 +1070,20 @@ end
 
 local function onBox(instance: Instance)
 	if instance:IsA("Model") then
-		boxes[instance :: Model] = true
+		local box = instance :: Model
+		boxes[box] = true
+		if WATCH_CHANGES and boxConnections[box] == nil then
+			local function changed()
+				if boxes[box] then
+					watched[box] = true
+				end
+			end
+			boxConnections[box] = {
+				box:GetAttributeChangedSignal(ShelfOpenState.StateAttribute):Connect(changed),
+				box:GetAttributeChangedSignal(ShelfOpenState.AtAttribute):Connect(changed),
+			}
+			watched[box] = true -- relu à la prochaine image, comme avant
+		end
 	end
 end
 
@@ -1055,6 +1093,14 @@ local function offBox(instance: Instance)
 	end
 	local box = instance :: Model
 	boxes[box] = nil
+	watched[box] = nil
+	local connections = boxConnections[box]
+	if connections then
+		boxConnections[box] = nil
+		for _, connection in connections do
+			connection:Disconnect()
+		end
+	end
 	hiddenBoxes[box] = nil
 	doneAt[box] = nil
 	local session = sessions[box]
@@ -1066,7 +1112,10 @@ end
 local function step()
 	local serverNow = Workspace:GetServerTimeNow()
 	local clock = os.clock()
-	for box in boxes do
+	-- a139 : avec PerfClient.ShelfOpenWatchChanges, seuls les colis dont l'état a changé ou n'est pas nil ; les
+	-- autres n'ont rien à faire ici (état nil, ni ouverture, ni colis caché, ni ouverture déjà jouée).
+	local list: { [Model]: boolean } = if WATCH_CHANGES then watched else boxes
+	for box in list do
 		local state = box:GetAttribute(ShelfOpenState.StateAttribute)
 		local session = sessions[box]
 		if state == "Opening" and session == nil then
@@ -1084,7 +1133,12 @@ local function step()
 				hiddenBoxes[box] = nil
 				showBox(saved)
 			end
+			watched[box] = nil -- plus rien à faire tant que son état ne change pas (ou qu'une sortie ne finit pas)
 		end
+	end
+	if next(sessions) == nil then
+		updateItemBoards(clock)
+		return -- a139 : aucune ouverture en cours, pas de copie de la table à chaque image
 	end
 	for _, session in table.clone(sessions) do
 		if session.Phase == "Revealing" then

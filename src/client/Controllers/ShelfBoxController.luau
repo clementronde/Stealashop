@@ -26,6 +26,10 @@
 -- portée est refaite toutes les RefreshInterval s. Un colis qui arrive a son étiquette coupée
 -- jusqu'à son premier contrôle. Les étiquettes des colis portés ou au sol ne sont pas touchées.
 --
+-- a139 (optimisation téléphone, Config/PerfClient.ShelfBoxFarSkip) : un colis du rayon (tag ShelfBox, immobile)
+-- trouvé trop loin, de d studs au-delà de la portée, n'est revu qu'une fois que la caméra a bougé de
+-- d − ShelfBoxFarTolerance studs, ou au bout de ShelfBoxFarMaxSkip s : il ne peut pas revenir à portée avant.
+--
 -- API (client) :
 --   ShelfBoxController.GetStats() -> { Outlines, ActiveOutlines, Labels, NearLabels, VisibleLabels }
 --       Compteurs, pour un test dans Studio (barre de commande côté client).
@@ -51,6 +55,19 @@ type LabelEntry = {
 	Box: Instance,
 	Gui: BillboardGui?,
 	CheckedAt: number, -- os.clock() du dernier rayon
+	-- a139 (PerfClient.ShelfBoxFarSkip) : trouvée trop loin depuis FarFrom, de FarMargin studs ; pas revue avant
+	-- que la caméra ait bougé de FarMargin, ou FarUntil (os.clock).
+	FarFrom: Vector3,
+	FarMargin: number,
+	FarUntil: number,
+}
+
+-- a139 : contour d'un colis du rayon trouvé trop loin (mêmes champs que dans LabelEntry).
+type FarOutline = {
+	Box: Instance,
+	From: Vector3,
+	Margin: number,
+	Until: number,
 }
 
 type OutlineEntry = {
@@ -68,11 +85,32 @@ export type Stats = {
 
 local IS_STUDIO = RunService:IsStudio()
 
+-- a139 (optimisation téléphone, passe 2) : réglages de Config/PerfClient ; module absent (banc d'avant) : {},
+-- ancien comportement.
+local function perfSettings(): { [string]: any }
+	local ok, found = pcall(function(): Instance?
+		return Config:FindFirstChild("PerfClient") or Config:WaitForChild("PerfClient", 2)
+	end)
+	if ok and found and found:IsA("ModuleScript") then
+		local loaded, result = pcall(require, found)
+		if loaded and type(result) == "table" then
+			return result
+		end
+	end
+	return {}
+end
+local Perf = perfSettings()
+local FAR_TOLERANCE: number = if type(Perf.ShelfBoxFarTolerance) == "number" then Perf.ShelfBoxFarTolerance else 0
+local FAR_MAX_SKIP: number = if type(Perf.ShelfBoxFarMaxSkip) == "number" then Perf.ShelfBoxFarMaxSkip else 0
+-- Colis du rayon lointains revus seulement quand la caméra s'en est assez rapprochée (voir Config/PerfClient).
+local FAR_SKIP = Perf.ShelfBoxFarSkip == true and FAR_MAX_SKIP > 0
+
 local localPlayer = Players.LocalPlayer
 
 local ShelfBoxController = {}
 
 local outlines: { [Highlight]: boolean } = {}
+local farOutlines: { [Highlight]: FarOutline } = {} -- a139 : contours de colis du rayon trouvés trop loin
 local reserved: { [string]: number } = {} -- places de Highlight gardées pour d'autres (Reserve)
 local labels: { [Instance]: LabelEntry } = {}
 local near: { LabelEntry } = {} -- étiquettes à portée, revues par rayon chacune à son tour
@@ -108,19 +146,41 @@ local function trackOutline(instance: Instance)
 	end
 end
 
-local function refreshOutlines(cameraPosition: Vector3)
+local function refreshOutlines(cameraPosition: Vector3, now: number)
 	local list: { OutlineEntry } = {}
 	for highlight in outlines do
+		local far = farOutlines[highlight]
+		if far then
+			-- a139 : colis du rayon (toujours taggé ShelfBox, donc immobile) encore trop loin : déjà coupé.
+			if labels[far.Box] ~= nil and now < far.Until and (cameraPosition - far.From).Magnitude < far.Margin then
+				continue
+			end
+			farOutlines[highlight] = nil
+		end
 		if not highlight:IsDescendantOf(Workspace) then
 			outlines[highlight] = nil
 			continue
 		end
-		local position = positionOf(highlight.Adornee or highlight.Parent)
+		local owner = highlight.Adornee or highlight.Parent
+		local position = positionOf(owner)
 		local distance = if position then (position - cameraPosition).Magnitude else math.huge
 		if distance <= ShelfBoxes.OutlineMaxDistance then
 			table.insert(list, { Highlight = highlight, Distance = distance })
-		elseif highlight.Enabled then
-			highlight.Enabled = false
+		else
+			if highlight.Enabled then
+				highlight.Enabled = false
+			end
+			-- a139 (PerfClient.ShelfBoxFarSkip) : pas revu avant que la caméra ait pu le ramener à portée.
+			local margin = distance - ShelfBoxes.OutlineMaxDistance - FAR_TOLERANCE
+			if FAR_SKIP and owner ~= nil and labels[owner] ~= nil and margin > 0 then
+				if far then
+					far.Box, far.From, far.Margin, far.Until = owner, cameraPosition, margin, now + FAR_MAX_SKIP
+					farOutlines[highlight] = far
+				else
+					local record: FarOutline = { Box = owner, From = cameraPosition, Margin = margin, Until = now + FAR_MAX_SKIP }
+					farOutlines[highlight] = record
+				end
+			end
 		end
 	end
 	table.sort(list, function(a: OutlineEntry, b: OutlineEntry): boolean
@@ -169,7 +229,14 @@ local function addBox(box: Instance)
 	if labels[box] then
 		return
 	end
-	local entry: LabelEntry = { Box = box, Gui = nil, CheckedAt = -math.huge }
+	local entry: LabelEntry = {
+		Box = box,
+		Gui = nil,
+		CheckedAt = -math.huge,
+		FarFrom = Vector3.zero,
+		FarMargin = 0,
+		FarUntil = 0,
+	}
 	labels[box] = entry
 	labelOf(entry)
 end
@@ -224,22 +291,38 @@ local function inView(origin: Vector3, target: Vector3): boolean
 end
 
 -- Liste des étiquettes à portée ; les autres sont coupées.
-local function refreshNear(cameraPosition: Vector3)
+local function refreshNear(cameraPosition: Vector3, now: number)
 	table.clear(near)
 	for box, entry in labels do
 		if box.Parent == nil then
 			labels[box] = nil
 			continue
 		end
+		if entry.FarMargin > 0 then
+			-- a139 : colis du rayon encore trop loin, étiquette déjà coupée.
+			if now < entry.FarUntil and (cameraPosition - entry.FarFrom).Magnitude < entry.FarMargin then
+				continue
+			end
+			entry.FarMargin = 0
+		end
 		local gui = labelOf(entry)
 		if gui == nil then
 			continue -- étiquette pas encore arrivée : revue au prochain tri
 		end
 		local position = positionOf(gui.Adornee or gui.Parent)
-		if position and (position - cameraPosition).Magnitude <= rangeOf(gui) then
+		local range = rangeOf(gui)
+		local distance = if position then (position - cameraPosition).Magnitude else math.huge
+		if position and distance <= range then
 			table.insert(near, entry)
-		elseif gui.Enabled then
-			gui.Enabled = false
+		else
+			if gui.Enabled then
+				gui.Enabled = false
+			end
+			-- a139 (PerfClient.ShelfBoxFarSkip) : pas revue avant que la caméra ait pu la ramener à portée.
+			local margin = distance - range - FAR_TOLERANCE
+			if FAR_SKIP and position and margin > 0 then
+				entry.FarFrom, entry.FarMargin, entry.FarUntil = cameraPosition, margin, now + FAR_MAX_SKIP
+			end
 		end
 	end
 	if cursor > #near then
@@ -284,12 +367,13 @@ local function step(deltaTime: number)
 	end
 	local cameraPosition = camera.CFrame.Position
 	sinceRefresh += deltaTime
+	local now = os.clock()
 	if sinceRefresh >= ShelfBoxes.RefreshInterval then
 		sinceRefresh = 0
-		refreshOutlines(cameraPosition)
-		refreshNear(cameraPosition)
+		refreshOutlines(cameraPosition, now)
+		refreshNear(cameraPosition, now)
 	end
-	checkLabels(os.clock(), cameraPosition)
+	checkLabels(now, cameraPosition)
 end
 
 -- API -----------------------------------------------------------------------------------------
