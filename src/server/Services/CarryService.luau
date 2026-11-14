@@ -587,9 +587,9 @@ local function npcItemIncome(payload: NPCItemPayload): number
 end
 
 -- Étiquette BB_Carry d'un objet porté (objet volé à un joueur, 6.1 ; objet sorti d'un colis, L-112) :
--- nom (précédé de sa mutation, DEV-131), rareté à sa couleur, $/s. Champ Mutation facultatif, hors
--- contrat tant que Clément ne l'a pas créé : s'il existe, la mutation y va en capitales et ItemName
--- garde le nom seul.
+-- nom (précédé de sa mutation, DEV-131), rareté à sa couleur, $/s. Champ Mutation facultatif (a125,
+-- L-131 g : au contrat, Contract/UI, avertissement orange s'il manque) : s'il existe, la mutation y va en
+-- capitales, ItemName garde le nom seul et MutationFxController (client) lui donne le style de la mutation.
 local function itemLabel(itemId: string, mutation: Mutations.Mutation?, income: number, rarity: Rarity): BillboardGui
 	local template = labelTemplate(BB_CARRY)
 	local gui = if template then template:Clone() :: BillboardGui else placeholderLabel(nil)

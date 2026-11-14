@@ -6,7 +6,8 @@
 --    - étiquette MutationTag des cartes de l'inventaire (StyleTag, appelé par InventoryController) : son
 --      UIGradient est éteint (Enabled = false) et remplacé par une copie de TagGradient (MutationGradient),
 --      MutationLabel prend LabelColor, les UIStroke de l'étiquette et du texte prennent StrokeColor ;
---    - ligne Mutation de BB_Item (et de BB_Carry si Clément l'ajoute) (StyleText) : copie de TextGradient,
+--    - ligne Mutation de BB_Item et de BB_Carry (a125, L-131 g : élément facultatif du contrat ; sans
+--      lui, rien) (StyleText) : copie de TextGradient,
 --      texte blanc (pour que la couleur se voie), UIStroke à StrokeColor. Les billboards des objets suivis
 --      (ci-dessous) sont faits ici ; celui que ShelfOpenController copie dans le PlayerGui, par lui.
 --    Mouvement (attributs Motion, MotionPeriod en s ; Config/MutationFx) : Shine (Offset X du dégradé de −1
@@ -32,7 +33,10 @@
 --    - les copies sont vidées de leurs tags, attributs, scripts, invites et billboards, ancrées, sans
 --      collision ni requête : elles ne déclenchent rien et le serveur n'en sait rien ;
 --    - le saut de Glitch ne déplace que les pièces visibles ancrées de l'objet, remises exactement à leur
---      place au bout de 0,12 s, et jamais sur un objet porté ou animé (Idle, pièces Spin_ / Wave_) ;
+--      place au bout de 0,12 s ; sur un objet porté ou animé (Idle, pièces Spin_ / Wave_), a125 (L-131 f,
+--      Clément : le saut reste) : rien n'est déplacé (la soudure à la tête et l'idle ne sont pas touchés),
+--      les pièces sont cachées en local (Transparency, remise exactement) et une copie de l'objet
+--      (MutationJump, comme un double) est montrée décalée, qui suit chaque pièce, puis retirée ;
 --    - jamais touchés : les pièces invisibles (Root…), le halo de rareté (RarityHalo, HaloPoint), les
 --      chaînes de l'antivol (AntiTheftChains), les billboards ;
 --    - l'objet n'est habillé qu'à échelle stable (Config/MutationFx.SettleChecks : la révélation du rayon
@@ -183,6 +187,10 @@ type Fx = {
 	burstOffset: Vector3,
 	bursting: boolean,
 	jumped: { [BasePart]: CFrame }?,
+	-- a125 : saut d'un objet porté ou animé (copie MutationJump, pièces cachées pendant le saut)
+	jumpModel: Model?,
+	jumpParts: { GhostPart },
+	hidden: { [BasePart]: number }?,
 	lastPaint: number,
 	shown: boolean,
 }
@@ -712,6 +720,24 @@ local function placeGhosts(fx: Fx, anchorCFrame: CFrame, factor: number)
 	Workspace:BulkMoveTo(parts, cframes, Enum.BulkMoveMode.FireCFrameChanged)
 end
 
+-- a125 : copie MutationJump d'un objet porté ou animé, décalée du saut, chaque pièce sur sa pièce
+-- d'origine (et cachée en local comme elle : CarryController, potion d'invisibilité).
+local function placeJump(fx: Fx, anchorCFrame: CFrame)
+	if fx.jumpModel == nil or fx.hidden == nil then
+		return
+	end
+	local world: Vector3 = (anchorCFrame * fx.boxRel):VectorToWorldSpace(fx.burstOffset)
+	local shift = CFrame.new(world)
+	local parts: { BasePart } = {}
+	local cframes: { CFrame } = {}
+	for _, gp in fx.jumpParts do
+		gp.part.LocalTransparencyModifier = gp.source.LocalTransparencyModifier
+		table.insert(parts, gp.part)
+		table.insert(cframes, shift * gp.source.CFrame * gp.rel)
+	end
+	Workspace:BulkMoveTo(parts, cframes, Enum.BulkMoveMode.FireCFrameChanged)
+end
+
 local function placeAll(fx: Fx, anchorCFrame: CFrame)
 	local fxPart = fx.fxPart
 	if fxPart then
@@ -721,10 +747,48 @@ local function placeAll(fx: Fx, anchorCFrame: CFrame)
 		extra.model:PivotTo(anchorCFrame * extra.rel)
 	end
 	placeGhosts(fx, anchorCFrame, if fx.bursting then fx.glitchSpread else 1)
+	placeJump(fx, anchorCFrame)
 end
 
--- Fin du saut de Glitch : les pièces déplacées reviennent exactement à leur place.
+-- a125 : début du saut d'un objet porté ou animé : la copie prend l'aspect de chaque pièce, les pièces
+-- visibles sont cachées (Transparency gardée pour être remise exactement).
+local function startHiddenJump(fx: Fx)
+	local model = fx.jumpModel
+	if model == nil or fx.hidden ~= nil then
+		return
+	end
+	local hidden: { [BasePart]: number } = {}
+	for _, gp in fx.jumpParts do
+		local source = gp.source
+		gp.part.Color = source.Color
+		gp.part.Material = source.Material
+		gp.part.Reflectance = source.Reflectance
+		gp.part.Transparency = source.Transparency
+		if source.Transparency < 1 then
+			hidden[source] = source.Transparency
+			source.Transparency = 1
+		end
+	end
+	fx.hidden = hidden
+	model.Parent = fx.holder
+end
+
+-- Fin du saut de Glitch : les pièces déplacées reviennent exactement à leur place ; celles cachées
+-- (objet porté ou animé) reprennent leur transparence, la copie est retirée.
 local function endJump(fx: Fx)
+	local hidden = fx.hidden
+	if hidden ~= nil then
+		fx.hidden = nil
+		for part, transparency in hidden do
+			if part.Transparency == 1 then -- sinon changée entre-temps par le serveur : gardée
+				part.Transparency = transparency
+			end
+		end
+		local model = fx.jumpModel
+		if model then
+			model.Parent = nil
+		end
+	end
 	local jumped = fx.jumped
 	if jumped == nil then
 		return
@@ -938,6 +1002,22 @@ local function buildFx(model: Model, id: string): Fx?
 	end
 
 	local moving = not anchor.Anchored or hasMovingPieces(model)
+	local motion = stringAttribute(style, "Motion", "None")
+	-- a125 (L-131 f) : objet porté ou animé avec Glitch : copie de l'objet habillé pour son saut, montrée
+	-- seulement pendant un saut (pas de pièce déplacée).
+	local jumpModel: Model? = nil
+	local jumpParts: { GhostPart } = {}
+	if moving and motion == "Glitch" then
+		local copy, twins = cleanCopy(model, visible)
+		copy.Name = "MutationJump"
+		for _, source in visible do
+			local twin = twins[source]
+			if twin then
+				table.insert(jumpParts, { part = twin, source = source, rel = source.CFrame:Inverse() * twin.CFrame })
+			end
+		end
+		jumpModel = copy
+	end
 	local fx: Fx = {
 		id = id,
 		style = style,
@@ -953,7 +1033,7 @@ local function buildFx(model: Model, id: string): Fx?
 		light = light,
 		lightBrightness = lightBrightness,
 		extras = extras,
-		motion = stringAttribute(style, "Motion", "None"),
+		motion = motion,
 		period = math.max(numberAttribute(style, "MotionPeriod", 1), 0.05),
 		glitchJump = numberAttribute(style, "GlitchJump", 0.03),
 		glitchSpread = numberAttribute(style, "GlitchSpread", 1.8),
@@ -966,6 +1046,9 @@ local function buildFx(model: Model, id: string): Fx?
 		burstOffset = Vector3.zero,
 		bursting = false,
 		jumped = nil,
+		jumpModel = jumpModel,
+		jumpParts = jumpParts,
+		hidden = nil,
 		lastPaint = -math.huge,
 		shown = false,
 	}
@@ -983,6 +1066,10 @@ local function removeFx(fx: Fx)
 		p.part.Reflectance = p.origReflectance
 	end
 	fx.holder:Destroy()
+	local jumpModel = fx.jumpModel
+	if jumpModel then
+		jumpModel:Destroy()
+	end
 	fx.shown = false
 end
 
@@ -1059,6 +1146,8 @@ local function updateFx(fx: Fx, t: number)
 					end
 				end
 				fx.jumped = jumped
+			elseif bursting then
+				startHiddenJump(fx) -- a125 : objet porté ou animé
 			elseif not bursting then
 				endJump(fx)
 				for _, ghost in fx.ghosts do
@@ -1277,6 +1366,8 @@ function MutationFxController.GetState(model: Model): { [string]: any }?
 		Parts = #fx.parts,
 		Holder = fx.holder,
 		Bursting = fx.bursting,
+		Jumping = fx.hidden ~= nil or fx.jumped ~= nil,
+		Jump = fx.jumpModel,
 	}
 end
 
