@@ -57,7 +57,12 @@ local Witness = {
 		ChaseDuration = 30,
 		-- V0 : il arrive « du bout de la rue » : le point du circuit WitnessPaths de la zone le plus loin
 		-- de la vitrine. Zone sans circuit : à côté du témoin qui appelle.
-		-- V0 : un seul policier à la fois par magasin ; il poursuit le dernier joueur à avoir frappé.
+		-- Vague 43 (Cantin, 2026-11-14) : un policier par joueur qui a frappé la vitrine pendant ce braquage
+		-- (avant : un seul, sur le dernier à avoir frappé). V0 : au plus ce nombre de policiers en jeu à la
+		-- fois pour un magasin (les derniers à avoir frappé d'abord).
+		MaxPerStore = 4,
+		-- V0 : écart entre les policiers d'un même appel à l'apparition (studs), côte à côte.
+		SpawnSpacing = 3,
 	},
 
 	-- Messages (Notify), en anglais. V0 : textes à valider par Clément.

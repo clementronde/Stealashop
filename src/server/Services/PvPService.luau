@@ -86,7 +86,12 @@
 --   - ne peut plus voler cette boutique-là pendant PvP.KickRobCooldown (60) s : coups sur sa porte et
 --     StealItem refusés (Notify au plus un par NOTICE_INTERVAL s), et ressortie 10 fois par seconde si
 --     elle revient dans Bounds, même porte cassée. Les autres boutiques et les magasins PNJ restent
---     ouverts pour elle.
+--     ouverts pour elle ;
+--   - vague 43 (Cantin, 2026-11-14) : sortie alors que la porte est cassée, la porte (PlotDoor/Window) se
+--     reconstruit tout de suite à ses PV max (WindowService.Rebuild, donc OnRebuilt : la fenêtre de vol se
+--     ferme comme avant) dès qu'il ne reste plus aucun intrus dans Bounds (même règle que le point d'attente
+--     de la reconstruction) ; s'il en reste un, elle attend qu'il soit sorti ou éjecté (revu 10 fois par
+--     seconde). Un voleur déjà dehors avec un objet n'est plus un intrus : la porte ne l'attend pas.
 -- Vague 37 (a124, L-117 point 7) : le bot défend aussi sa boutique (BotService) ; son coup réussi
 -- (BatService.OnBotHit, « Intruder » ou « Defend ») a le même effet sur la cible, sans retour au propriétaire.
 -- Un joueur mort dans le volume Bounds d'une boutique qui n'est pas la sienne (joueur ou bot) prend la
@@ -1466,13 +1471,46 @@ local function isIntruder(hitter: Player, target: Player): boolean
 	return bounds ~= nil and root ~= nil and inside(bounds, root.Position)
 end
 
+-- Vague 43 (Cantin, 2026-11-14) : porte réparée après l'éjection d'un intrus, dès que la boutique est vide.
+-- Boutiques en attente : leur porte cassée se reconstruit (WindowService.Rebuild, PV max) dès que le point
+-- d'attente de la reconstruction (rebuildGate : aucun non-propriétaire présent dans Bounds) est ouvert ; revu
+-- tout de suite à l'éjection, puis 10 fois par seconde. Oubliées à la reconstruction, quelle qu'elle soit.
+local repairWhenEmpty: { [Model]: boolean } = {}
+
+local function tryRepair(plot: Model)
+	local windowId = WindowService.GetWindowId(plot)
+	if windowId == nil or not WindowService.IsBroken(windowId) then
+		repairWhenEmpty[plot] = nil
+		return
+	end
+	if not rebuildGate(windowId, plot) then
+		return -- il reste un intrus : la porte attend qu'il sorte ou soit éjecté
+	end
+	repairWhenEmpty[plot] = nil
+	if WindowService.Rebuild(windowId) then
+		log(`{plot.Name} : porte reconstruite, plus aucun intrus après l'éjection`)
+	end
+end
+
+local function repairStep()
+	for plot in table.clone(repairWhenEmpty) do
+		tryRepair(plot)
+	end
+end
+
 -- Après un coup du défenseur de `plot` (propriétaire ou bot) : interdiction de PvP.KickRobCooldown s, sortie
--- devant la porte s'il est dedans, et le message à la cible. true s'il a été sorti.
+-- devant la porte s'il est dedans, et le message à la cible. true s'il a été sorti ; porte cassée : elle se
+-- répare dès qu'il ne reste plus d'intrus (vague 43).
 local function kickOut(plot: Model, target: Player, why: string): boolean
 	ban(target, plot, why)
 	local bounds = refsFor(plot).Bounds
 	if bounds and putOut(target, plot, bounds) then
 		notify(target, cooldownMessage(MESSAGES.KickedOut, PvP.KickRobCooldown), "Alert")
+		local windowId = WindowService.GetWindowId(plot)
+		if windowId and WindowService.IsBroken(windowId) then
+			repairWhenEmpty[plot] = true
+			tryRepair(plot)
+		end
 		return true
 	end
 	notify(target, cooldownMessage(MESSAGES.RobCooldown, PvP.KickRobCooldown), "Alert")
@@ -1620,6 +1658,7 @@ local function step()
 	end
 	deathStep()
 	ejectStep()
+	repairStep()
 	intrusionStep()
 	publishCount += 1
 	if publishCount >= PUBLISH_EVERY then
@@ -1654,6 +1693,7 @@ local function onRebuilt(_windowId: string, model: Model)
 	if not table.find(PlotService.GetPlots(), model) then
 		return -- pas une boutique (magasin PNJ)
 	end
+	repairWhenEmpty[model] = nil
 	local shop = shops[model]
 	if shop then
 		closeShop(shop, "porte reconstruite")
