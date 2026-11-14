@@ -117,6 +117,15 @@ if LINE then
 	local z1 = SIDES > 0 and (LINE_HALF + LINE_GAP + SHOP_D + 3) or (LINE_HALF + 8)
 	HUB = { x0 = LINE_FX - SHOP_D - 3, x1 = 30, z0 = -z1, z1 = z1 } -- x -181..30
 end
+-- Zones du hub (L-165, Clément 2026-11-14) : dans la bande est (x 0..27,5), au-delà des stands ; au nord le cadeau
+-- gratuit puis les deux leaderboards dos au grand mur, au sud la roue puis le noob « invite un ami »
+local HUB_ZONES = LINE and {
+	gift = Vector3.new(12, 0, 152), noob = Vector3.new(12, 0, -200),
+	wheel = Vector3.new(21, 13, -160), wheelZone = Vector3.new(9, 0, -160), -- centre de la roue ; sa zone devant elle
+	boards = { { "Income", 186 }, { "Speed", 216 } }, -- z du centre de chaque panneau
+} or nil
+-- pelouse laissée sans taches sous les zones (x0, z0, x1, z1)
+local ZONE_CLEAR = HUB_ZONES and { { 3, 141, 21, 163 }, { 22, 171, 27.5, 231 }, { 0, -175, 27.5, -145 }, { 3, -211, 21, -189 } } or {}
 
 local function rr(deg) local a = math.rad(deg + ROT); return Vector3.new(-math.cos(a), 0, math.sin(a)) end
 local C = E + rr(0) * D_C
@@ -557,7 +566,7 @@ local map = workspace:FindFirstChild("Map")
 assert(map, "Workspace/Map introuvable")
 local hub = map:FindFirstChild("Hub")
 if not hub then hub = Instance.new("Folder"); hub.Name = "Hub"; hub.Parent = map end
-local OWN = { "Ground", "Plaza", "Mall", "Trucks", "Stalls", "Parking", "Garden", "Walls", "PlotSites", "SafeZone", "Spawn" }
+local OWN = { "Ground", "Plaza", "Mall", "Trucks", "Stalls", "Zones", "Parking", "Garden", "Walls", "PlotSites", "SafeZone", "Spawn" }
 for _, n in OWN do
 	for _, c in hub:GetChildren() do if c.Name == n then c:Destroy() end end
 end
@@ -631,6 +640,9 @@ do
 			if x > -20 and x < 2 then return false end -- allée des stands
 			if x >= 2 and az < 104 + EXIT_W then return false end -- stands, rue de la sortie
 			if SIDES > 0 and az > spz0 - 9 and x < math.max(SIDE_X + SHOP_W / 2, 0) + 4 then return false end -- promenades et boutiques des côtés
+			for _, r in ZONE_CLEAR do -- zones du hub (cadeau, leaderboards, roue, noob)
+				if x + 2 > r[1] and x - 2 < r[3] and z + 2 > r[2] and z - 2 < r[4] then return false end
+			end
 			return true
 		end
 		local pm = Instance.new("Model"); pm.Name = "GrassPatches"
@@ -863,19 +875,19 @@ local ROT_FACE = CFrame.Angles(0, math.rad(90), 0) -- axe du cylindre vers l'ava
 local STALLS = {
 	{ name = "ENV_Hub_WeaponStall", tag = "WeaponShop", pos = Vector3.new(12, 0, 55 + EXIT_W), goods = "weapons",
 		title = "WEAPONS", tagline = "SMASH MORE GLASS!", stripes = { rgb(214, 56, 50), WHITE }, cloth = rgb(190, 40, 40),
-		signBg = rgb(44, 30, 24), titleColor = rgb(255, 205, 60), trim = rgb(255, 196, 40),
+		signBg = rgb(44, 30, 24), titleColor = rgb(255, 205, 60), trim = rgb(255, 196, 40), ring = rgb(240, 70, 60),
 		vendor = { name = "Vendor_Weapons", skin = rgb(234, 184, 146), shirt = rgb(62, 66, 74), pants = rgb(84, 62, 46), shoes = rgb(40, 36, 34), acc = "weapons" } },
 	{ name = "ENV_Hub_RobuxStall", tag = "RobuxShop", pos = Vector3.new(12, 0, 87 + EXIT_W), goods = "robux",
 		title = "ROBUX", tagline = "BOOSTS & PASSES", stripes = { rgb(255, 196, 40), WHITE }, cloth = rgb(52, 168, 90),
-		signBg = rgb(30, 34, 42), titleColor = rgb(255, 214, 70), trim = rgb(52, 168, 90),
+		signBg = rgb(30, 34, 42), titleColor = rgb(255, 214, 70), trim = rgb(52, 168, 90), ring = rgb(80, 220, 110),
 		vendor = { name = "Vendor_Robux", skin = rgb(198, 140, 100), shirt = rgb(60, 170, 100), pants = rgb(232, 226, 212), shoes = rgb(40, 40, 46), acc = "robux" } },
 	{ name = "ENV_Hub_AuraStall", tag = "AuraShop", pos = Vector3.new(12, 0, -55 - EXIT_W), goods = "auras",
 		title = "AURAS", tagline = "GLOW UP · RUN FASTER", stripes = { rgb(132, 84, 224), WHITE }, cloth = rgb(64, 204, 226),
-		signBg = rgb(36, 26, 64), titleColor = rgb(120, 236, 255), trim = rgb(255, 120, 200),
+		signBg = rgb(36, 26, 64), titleColor = rgb(120, 236, 255), trim = rgb(255, 120, 200), ring = rgb(160, 100, 255),
 		vendor = { name = "Vendor_Auras", skin = rgb(255, 214, 182), shirt = rgb(118, 78, 200), pants = rgb(54, 44, 82), shoes = rgb(36, 30, 52), acc = "auras" } },
 	{ name = "ENV_Hub_PawnStall", tag = "PawnShop", pos = Vector3.new(12, 0, -87 - EXIT_W), goods = "pawn",
 		title = "PAWN SHOP", tagline = "WE BUY ANYTHING. NO QUESTIONS.", stripes = { rgb(34, 116, 78), CREAM }, cloth = rgb(120, 30, 36),
-		signBg = rgb(22, 52, 38), titleColor = rgb(255, 214, 90), trim = GOLD,
+		signBg = rgb(22, 52, 38), titleColor = rgb(255, 214, 90), trim = GOLD, ring = rgb(255, 170, 50),
 		vendor = { name = "Vendor_Pawn", skin = rgb(124, 84, 60), shirt = rgb(40, 40, 46), pants = rgb(92, 94, 102), shoes = rgb(28, 28, 30), acc = "pawn" } },
 }
 
@@ -1081,15 +1093,14 @@ local function goods(m, cf, t)
 			Vc(m, cf, "CoinStack_" .. i, -7.2 + i * 1.2, 4.2, 4.2 + h, -3.3, 1.0, GOLD_L, { decor = true, refl = 0.2 })
 		end
 		Vc(m, cf, "BigCoinStand", 0, 4.2, 4.6, -3.2, 1.2, DARK, D)
-		local coin = P(m, "BigCoin", cf * CFrame.new(0, 6.4, -3.2) * ROT_FACE, Vector3.new(0.6, 3.6, 3.6), GOLD_L, { shape = CYL, refl = 0.2, decor = true })
-		for _, face in { RIGHT, LEFT } do txt(surface(coin, face, 30), "R$", rgb(130, 86, 10), 0.15, 0.18, 0.7, 0.64, { font = LUCKY, strokeT = 0 }) end
+		-- pièces sans texte (L-165 : plus aucun texte écrit sur les modèles)
+		P(m, "BigCoin", cf * CFrame.new(0, 6.4, -3.2) * ROT_FACE, Vector3.new(0.6, 3.6, 3.6), GOLD_L, { shape = CYL, refl = 0.2, decor = true })
 		for i, x in { 3.6, 5.6 } do
 			B("GiftBox_" .. i, x - 0.8, 4.2, -4.0, x + 0.8, 5.6, -2.6, rgb(52, 168, 90), D)
 			B("GiftRibbonA_" .. i, x - 0.15, 4.2, -4.05, x + 0.15, 5.65, -2.55, GOLD_L, D)
 			B("GiftRibbonB_" .. i, x - 0.85, 4.2, -3.45, x + 0.85, 5.65, -3.15, GOLD_L, D)
 		end
-		local wall = P(m, "WallCoin", cf * CFrame.new(0, 8.4, 4.3) * ROT_FACE, Vector3.new(0.4, 4.4, 4.4), GOLD_L, { shape = CYL, refl = 0.15, decor = true })
-		txt(surface(wall, RIGHT, 30), "R$", rgb(130, 86, 10), 0.15, 0.18, 0.7, 0.64, { font = LUCKY, strokeT = 0 })
+		P(m, "WallCoin", cf * CFrame.new(0, 8.4, 4.3) * ROT_FACE, Vector3.new(0.4, 4.4, 4.4), GOLD_L, { shape = CYL, refl = 0.15, decor = true })
 	else
 		-- receleur : caisse enregistreuse, lingots, vase ; étagères de butin au fond ; trois boules dorées sur potence
 		B("CashRegister", -6.2, 4.2, -4.0, -3.6, 5.4, -2.5, STEEL, D)
@@ -1122,6 +1133,233 @@ if ROWS then
 		AuraShop = Vector3.new(-9, 0, 0.5 - ROW_Z), PawnShop = Vector3.new(-35, 0, 0.5 - ROW_Z) } -- sur pieds dépasse de 13,3 d'un côté
 	for _, t in STALLS do t.pos = RP[t.tag]; t.face = Vector3.new(0, 0, -math.sign(t.pos.Z)) end
 end
+-- Zones du hub et anneaux des stands (L-165, Clément 2026-11-14) -------------------------------------------------------
+-- Chaque zone : une pièce `Zone` invisible sans collision (touchable, interrogeable) qui porte son tag, un anneau néon au
+-- sol (discret de jour), un Attachment `LabelPoint` au-dessus (billboard `BB_ZoneLabel` de la session UI) et un attribut
+-- `LabelKey` sur le modèle. Aucun texte sur les modèles, aucun script : le mouvement du cadeau et de la roue est au code.
+local RING_T = 0.3 -- transparence du néon des anneaux
+local function circlePts(cx, cz, r, n)
+	local pts = {}
+	for i = 0, n - 1 do
+		local a = i / n * 2 * math.pi
+		table.insert(pts, Vector2.new(cx + r * math.cos(a), cz + r * math.sin(a)))
+	end
+	return pts
+end
+-- rectangle à coins ronds : demi-côtés hx (X local) et hz (Z local), rayon r, nArc segments par coin
+local function roundRectPts(cx, cz, hx, hz, r, nArc)
+	local pts = {}
+	for k, c in { { 1, 1 }, { -1, 1 }, { -1, -1 }, { 1, -1 } } do
+		local ox, oz = cx + c[1] * (hx - r), cz + c[2] * (hz - r)
+		for i = 0, nArc do
+			local a = (k - 1 + i / nArc) * math.pi / 2
+			table.insert(pts, Vector2.new(ox + r * math.cos(a), oz + r * math.sin(a)))
+		end
+	end
+	return pts
+end
+-- Anneau au sol : segments de néon le long d'une boucle de points (X, Z) du repère f, dessus à 0,16 (sur l'herbe et les
+-- taches, sous rien), sans collision ; un segment sur deux 0,01 plus haut, pour qu'aucune face ne se confonde aux jointures
+local function groundLoop(parent, f, name, pts, color)
+	local m = Instance.new("Model"); m.Name = name
+	for i, a2 in pts do
+		local b2 = pts[i % #pts + 1]
+		local a = f:PointToWorldSpace(Vector3.new(a2.X, 0, a2.Y))
+		local b = f:PointToWorldSpace(Vector3.new(b2.X, 0, b2.Y))
+		local len = (Vector3.new(b.X, 0, b.Z) - Vector3.new(a.X, 0, a.Z)).Magnitude
+		if len > 0.05 then
+			local h = (i % 2 == 0) and 0.01 or 0
+			local y = 0.1 + h / 2
+			local mid = (a + b) / 2
+			P(m, "RingSeg_" .. i, CFrame.lookAt(Vector3.new(mid.X, y, mid.Z), Vector3.new(b.X, y, b.Z)), Vector3.new(0.9, 0.12 + h, len + 0.1), color,
+				{ mat = NEON, T = RING_T, decor = true, noShadow = true })
+		end
+	end
+	m.Parent = parent
+	return m
+end
+-- Zone de détection : cylindre debout invisible de rayon r et de hauteur h, posé au sol en c
+local function zonePart(parent, c, r, h, tag)
+	local z = P(parent, "Zone", CFrame.new(c.X, h / 2, c.Z) * CFrame.Angles(0, 0, math.rad(90)), Vector3.new(h, 2 * r, 2 * r), WHITE,
+		{ shape = CYL, T = 1, noShadow = true })
+	z.CanCollide = false; z.CanTouch = true; z.CanQuery = true
+	CS:AddTag(z, tag)
+	return z
+end
+local function labelPoint(part, pos)
+	local a = Instance.new("Attachment"); a.Name = "LabelPoint"
+	a.Parent = part
+	a.WorldCFrame = CFrame.new(pos)
+	return a
+end
+-- Triangle plein dans le plan (X, Y) du repère f, épaisseur thick le long de Z : deux WedgeParts de part et d'autre de
+-- la hauteur issue de a (sommets en Vector2)
+local function tri(parent, f, name, a, b, c, thick, color, opt)
+	local A = f:PointToWorldSpace(Vector3.new(a.X, a.Y, 0))
+	local B = f:PointToWorldSpace(Vector3.new(b.X, b.Y, 0))
+	local C = f:PointToWorldSpace(Vector3.new(c.X, c.Y, 0))
+	local bc = C - B
+	local M = B + bc * ((A - B):Dot(bc) / bc:Dot(bc)) -- pied de la hauteur
+	for i, E in { B, C } do
+		local s, h = (E - M).Magnitude, (A - M).Magnitude
+		if s > 0.01 and h > 0.01 then
+			local zAx, yAx = (M - A).Unit, (E - M).Unit -- angle droit en M ; A au bout de -Z, E au bout de +Y
+			local w = Instance.new("WedgePart")
+			w.Name = name .. "_" .. i; w.Size = Vector3.new(thick, s, h); w.Color = color; w.Anchored = true
+			w.CFrame = CFrame.fromMatrix((A + E) / 2, yAx:Cross(zAx), yAx, zAx)
+			if opt and opt.studs then w.Material = Enum.Material.Plastic; w.MaterialVariant = "Studs" else w.Material = SMOOTH end
+			w.TopSurface = Enum.SurfaceType.Smooth; w.BottomSurface = Enum.SurfaceType.Smooth
+			w.Parent = parent
+		end
+	end
+end
+
+-- 1) Cadeau gratuit : boîte rouge à ruban jaune en studs (6,6 de côté), qui flotte à 3 du sol ; anneau jaune de rayon 8
+local GS = 1.5 -- échelle du cadeau (1 = boîte de 4,4)
+local function freeGift(parent, c)
+	local m = Instance.new("Model"); m.Name = "ENV_Hub_FreeGift"
+	m:SetAttribute("LabelKey", "FreeGift")
+	local g = Instance.new("Model"); g.Name = "Gift"
+	local gf = CFrame.new(c + Vector3.new(0, 3 + 2 * GS, 0)) -- dessous de la boîte à 3 du sol
+	local RED, RED_D, YEL = rgb(222, 44, 44), rgb(188, 30, 34), rgb(255, 204, 40)
+	local S = { studs = true, decor = true }
+	local function G(name, x0, y0, z0, x1, y1, z1, color)
+		return Bx(g, gf, name, x0 * GS, y0 * GS, z0 * GS, x1 * GS, y1 * GS, z1 * GS, color, S)
+	end
+	local box = G("Box", -2.2, -2, -2.2, 2.2, 1.6, 2.2, RED)
+	G("Lid", -2.5, 1.6, -2.5, 2.5, 2.4, 2.5, RED_D)
+	G("RibbonX", -0.45, -2.05, -2.3, 0.45, 1.65, 2.3, YEL)
+	G("RibbonZ", -2.3, -2.05, -0.45, 2.3, 1.62, 0.45, YEL)
+	G("RibbonLidX", -0.45, 1.55, -2.6, 0.45, 2.45, 2.6, YEL)
+	G("RibbonLidZ", -2.6, 1.55, -0.45, 2.6, 2.47, 0.45, YEL)
+	G("Knot", -0.6, 2.45, -0.6, 0.6, 3.25, 0.6, YEL)
+	for i, s in { 1, -1 } do
+		P(g, "BowLoop_" .. i, gf * CFrame.new(1.05 * s * GS, 3.15 * GS, 0) * CFrame.Angles(0, 0, math.rad(-32 * s)), Vector3.new(1.9, 0.55, 1.1) * GS, YEL, S)
+		P(g, "BowTail_" .. i, gf * CFrame.new(0.55 * s * GS, 2.6 * GS, 0.9 * s * GS) * CFrame.Angles(math.rad(25 * s), 0, 0), Vector3.new(0.5, 0.25, 1.2) * GS, YEL, S)
+	end
+	sparkles(box, rgb(255, 240, 170), rgb(255, 200, 80), 5)
+	g.WorldPivot = gf
+	g.Parent = m
+	local zone = zonePart(m, c, 8, 10, "RewardsZone")
+	labelPoint(zone, c + Vector3.new(0, 14, 0))
+	groundLoop(m, CFrame.new(c.X, 0, c.Z), "Ring", circlePts(0, 0, 8, 44), rgb(255, 214, 60))
+	m.WorldPivot = CFrame.new(c.X, 0, c.Z)
+	m.Parent = parent
+	return m
+end
+
+-- 2) Noob « invite un ami » : rig R15 (tête et bras jaunes, torse bleu, jambes vertes) une fois et demie plus grand qu'un
+-- joueur, face à la place ; Humanoid avec Animator, dossier Animations vide (Idle et Wave de Clément) ; anneau cyan de 7
+local function inviteNoob(parent, c)
+	local m = Instance.new("Model"); m.Name = "ENV_Hub_InviteNoob"
+	m:SetAttribute("LabelKey", "InviteFriend")
+	local YEL, BLU, GRN = rgb(245, 205, 48), rgb(13, 105, 172), rgb(75, 151, 75)
+	local desc = Instance.new("HumanoidDescription")
+	desc.HeadColor = YEL; desc.TorsoColor = BLU; desc.LeftArmColor = YEL; desc.RightArmColor = YEL; desc.LeftLegColor = GRN; desc.RightLegColor = GRN
+	local ok, rig = pcall(function() return Players:CreateHumanoidModelFromDescriptionAsync(desc, Enum.HumanoidRigType.R15) end)
+	desc:Destroy()
+	local top = 8
+	if ok and rig then
+		rig.Name = "Noob"
+		for _, d in rig:GetDescendants() do if d:IsA("LuaSourceContainer") or d:IsA("BodyColors") then d:Destroy() end end
+		local hum = rig:FindFirstChildOfClass("Humanoid")
+		hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+		hum.HealthDisplayType = Enum.HumanoidHealthDisplayType.AlwaysOff
+		hum.NameDisplayDistance = 0
+		if not hum:FindFirstChildOfClass("Animator") then Instance.new("Animator").Parent = hum end
+		local COLORS = { Head = YEL, UpperTorso = BLU, LowerTorso = BLU, LeftUpperArm = YEL, RightUpperArm = YEL, LeftLowerArm = YEL,
+			RightLowerArm = YEL, LeftHand = YEL, RightHand = YEL, LeftUpperLeg = GRN, RightUpperLeg = GRN, LeftLowerLeg = GRN,
+			RightLowerLeg = GRN, LeftFoot = GRN, RightFoot = GRN }
+		for _, p in rig:GetChildren() do if p:IsA("BasePart") and COLORS[p.Name] then p.Color = COLORS[p.Name] end end
+		poseRest(rig, hum)
+		local root = rig:FindFirstChild("HumanoidRootPart")
+		root.Anchored = true
+		local anims = Instance.new("Folder"); anims.Name = "Animations"; anims.Parent = rig
+		rig:ScaleTo(1.5)
+		local piv = rig:GetPivot()
+		rig:PivotTo(CFrame.lookAt(Vector3.new(c.X, piv.Y, c.Z), Vector3.new(c.X - 1, piv.Y, c.Z))) -- face à l'ouest (la place)
+		local bcf, bsz = rig:GetBoundingBox()
+		rig:PivotTo(rig:GetPivot() + Vector3.new(0, -(bcf.Y - bsz.Y / 2), 0)) -- pieds au sol
+		top = bsz.Y
+		rig.Parent = m
+	else
+		add("Noob : rig impossible (" .. tostring(rig) .. ")")
+	end
+	local zone = zonePart(m, c, 7, 10, "InviteZone")
+	labelPoint(zone, c + Vector3.new(0, top + 3, 0))
+	groundLoop(m, CFrame.new(c.X, 0, c.Z), "Ring", circlePts(0, 0, 7, 40), rgb(70, 210, 255))
+	m.WorldPivot = CFrame.new(c.X, 0, c.Z)
+	m.Parent = parent
+	return m
+end
+
+-- 3) Roue de la fortune debout, face à la place : `Wheel` (12 parts de 6 couleurs, jante dorée, tétons, moyeu), pivot au
+-- centre, LookVector = axe de rotation (vers la place) : le code la tourne autour de son Z local. Portique sombre derrière
+-- (socle, montants, traverse), flèche rouge en haut ; zone et anneau rose devant, côté place
+local function fortuneWheel(parent, c, zc)
+	local m = Instance.new("Model"); m.Name = "ENV_Hub_Wheel"
+	m:SetAttribute("LabelKey", "Wheel")
+	local R = 10
+	local wf = CFrame.lookAt(c, c + Vector3.new(-1, 0, 0)) -- avant (-Z local) vers l'ouest ; la roue dans le plan (X, Y) local
+	local w = Instance.new("Model"); w.Name = "Wheel"
+	local SLICE = { rgb(232, 62, 62), rgb(255, 204, 48), rgb(48, 140, 240), rgb(72, 200, 92), rgb(160, 92, 240), rgb(255, 150, 40) }
+	local RS = R / math.cos(math.rad(15)) + 0.1 -- le milieu de chaque bord du dodécagone touche la jante
+	for k = 0, 11 do
+		local a0, a1 = math.rad(k * 30), math.rad((k + 1) * 30)
+		tri(w, wf, "Slice_" .. (k + 1), Vector2.zero, Vector2.new(RS * math.cos(a0), RS * math.sin(a0)), Vector2.new(RS * math.cos(a1), RS * math.sin(a1)),
+			0.8, SLICE[k % 6 + 1], { studs = true })
+	end
+	local chord = 2 * (R + 0.8) * math.tan(math.rad(7.5)) + 0.05
+	for i = 0, 23 do
+		P(w, "Rim_" .. (i + 1), wf * CFrame.Angles(0, 0, math.rad(i * 15 + 7.5)) * CFrame.new(R + 0.4, 0, 0), Vector3.new(0.8, chord, 1.2),
+			rgb(255, 226, 130), { studs = true })
+	end
+	for k = 0, 11 do
+		Ball(w, wf * CFrame.Angles(0, 0, math.rad(k * 30)), "Peg_" .. (k + 1), R - 0.6, 0, -0.75, 0.8, rgb(250, 250, 250), {})
+	end
+	P(w, "Hub", wf * CFrame.new(0, 0, -0.3) * ROT_Z, Vector3.new(1.6, 3, 3), rgb(255, 204, 48), { shape = CYL, refl = 0.15 })
+	P(w, "HubCap", wf * CFrame.new(0, 0, -1.2) * ROT_Z, Vector3.new(0.3, 1.6, 1.6), rgb(232, 62, 62), { shape = CYL })
+	w.WorldPivot = wf
+	w.Parent = m
+	-- portique (ne tourne pas), repère du monde posé au sol sous le centre de la roue
+	local G = { studs = true }
+	local D = rgb(58, 62, 72)
+	local bf = CFrame.new(c.X, 0, c.Z)
+	Bx(m, bf, "Base", -4, 0, -13, 5, 1, 13, rgb(90, 96, 108), G)
+	for i, s in { 1, -1 } do Bx(m, bf, "Post_" .. i, 1.2, 1, 11.4 * s - 0.7, 2.6, 25, 11.4 * s + 0.7, D, G) end
+	local bar = Bx(m, bf, "Crossbar", 0.6, 25, -12.1, 2.6, 26.4, 12.1, D, G)
+	Bx(m, bf, "AxleBeam", 1.2, c.Y - 0.7, -10.7, 2.6, c.Y + 0.7, 10.7, D, G)
+	P(m, "Axle", CFrame.new(c + Vector3.new(0.9, 0, 0)), Vector3.new(1.4, 1, 1), D, { shape = CYL })
+	tri(m, wf * CFrame.new(0, 0, -1.6), "Pointer", Vector2.new(0, R - 0.6), Vector2.new(1.4, R + 2.4), Vector2.new(-1.4, R + 2.4), 0.6, rgb(232, 40, 40), G)
+	Bx(m, bf, "PointerMount", -2.0, 24.6, -0.9, 0.8, 26.4, 0.9, D, G)
+	labelPoint(bar, Vector3.new(c.X, 29.5, c.Z))
+	zonePart(m, zc, 7, 10, "WheelZone")
+	groundLoop(m, CFrame.new(zc.X, 0, zc.Z), "Ring", circlePts(0, 0, 7, 40), rgb(255, 90, 200))
+	m.WorldPivot = bf
+	m.Parent = parent
+	return m
+end
+
+-- 4) Leaderboard : grand panneau clair sur deux pieds, toit et socle à la couleur de la stat (argent vert, vitesse bleu),
+-- dos au grand mur est, face à la place ; pièce `Screen` (24 × 26, face avant = Front, vers la place) prête pour la
+-- SurfaceGui `Board` de la session UI
+local function leaderboard(parent, stat, z)
+	local m = Instance.new("Model"); m.Name = "ENV_Hub_Leaderboard"
+	m:SetAttribute("Stat", stat)
+	local f = CFrame.lookAt(Vector3.new(25.6, 0, z), Vector3.new(24.6, 0, z))
+	local G = { studs = true }
+	local accent = (stat == "Income") and rgb(60, 190, 90) or rgb(60, 160, 240)
+	for i, s in { 1, -1 } do Bx(m, f, "Leg_" .. i, 10 * s - 0.7, 0, -0.7, 10 * s + 0.7, 5, 0.7, rgb(58, 62, 72), G) end
+	Bx(m, f, "Frame", -13, 5, -0.5, 13, 33, 0.5, rgb(226, 229, 234), G)
+	Bx(m, f, "Footer", -13.3, 4.4, -0.9, 13.3, 5.4, 0.8, accent, G)
+	Bx(m, f, "Roof", -13.6, 33, -1.1, 13.6, 34.2, 1.0, accent, G)
+	Bx(m, f, "Screen", -12, 6, -0.8, 12, 32, -0.5, rgb(36, 40, 56), {})
+	m.WorldPivot = f
+	CS:AddTag(m, "Leaderboard")
+	m.Parent = parent
+	return m
+end
+
 local function stall(parent, t)
 	local cf = frameAt(t.pos, t.face or Vector3.new(-1, 0, 0)) -- comptoir vers l'ouest (la place) ou vers l'allée
 	local m = Instance.new("Model"); m.Name = t.name
@@ -1166,13 +1404,8 @@ local function stall(parent, t)
 		B("Valance_" .. (i + 1), xc - w / 2, 9.75, -6.55, xc + w / 2, 10.55, -6.25, col, { decor = true })
 		B("ValanceTooth_" .. (i + 1), xc - w / 4, 9.3, -6.55, xc + w / 4, 9.75, -6.25, col, { decor = true })
 	end
-	-- enseigne au-dessus du store, deux faces
-	local sign = B("SignBoard", -6.8, 13.4, 5.15, 6.8, 17.0, 5.75, t.signBg, MO)
-	B("SignTrim_Bottom", -7.1, 13.1, 5.05, 7.1, 13.45, 5.85, t.trim, { decor = true })
-	B("SignTrim_Top", -7.1, 16.95, 5.05, 7.1, 17.3, 5.85, t.trim, { decor = true })
-	for _, face in { FRONT, BACK } do
-		txt(surface(sign, face, 24), t.title, t.titleColor, 0.04, 0.1, 0.92, 0.8, { font = LUCKY, strokeT = 3 })
-	end
+	-- plus d'enseigne ni de panneau sur pieds (L-165, Clément 2026-11-14) : le nom du stand est dans le billboard
+	-- BB_ZoneLabel, posé au LabelPoint au-dessus du store et traduit par le code (t.title et t.tagline ne servent plus)
 	-- lanterne sous le store (allumée la nuit par le code)
 	B("LanternChain", -0.08, 9.7, -4.6, 0.08, 11.2, -4.44, DARK, { decor = true })
 	nightLight(B("Lantern", -0.55, 8.5, -5.05, 0.55, 9.7, -3.95, LAMP_OFF, { decor = true }), 22, 1.2)
@@ -1180,18 +1413,19 @@ local function stall(parent, t)
 	-- zone d'ouverture ShopPad (nom proposé, à valider par Ironix) : plaque au sol sous l'avant du stand et devant, contour
 	-- néon à la couleur du stand ; sans collision, touchable et interrogeable : le code ouvrira l'écran du stand quand un
 	-- joueur marche dessus ; aucun script
-	local pad = B("ShopPad", -8.5, 0.02, -11.5, 8.5, 0.22, -2.0, t.stripes[1], { T = 0.55, noShadow = true })
+	-- (avant de la plaque à -10,5 depuis le 2026-11-14, pour laisser passer l'anneau entre elle et la bordure de l'allée)
+	local pad = B("ShopPad", -8.5, 0.02, -10.5, 8.5, 0.22, -2.0, t.stripes[1], { T = 0.55, noShadow = true })
 	pad.CanCollide = false
 	pad.CanTouch = true
 	pad.CanQuery = true
-	for i, e in { { -8.5, -11.5, 8.5, -11.0 }, { -8.5, -2.5, 8.5, -2.0 }, { -8.5, -11.0, -8.0, -2.5 }, { 8.0, -11.0, 8.5, -2.5 } } do
+	for i, e in { { -8.5, -10.5, 8.5, -10.0 }, { -8.5, -2.5, 8.5, -2.0 }, { -8.5, -10.0, -8.0, -2.5 }, { 8.0, -10.0, 8.5, -2.5 } } do
 		Bx(pad, cf, "PadEdge_" .. i, e[1], 0.02, e[2], e[3], 0.28, e[4], t.stripes[1], { decor = true, mat = NEON, noShadow = true })
 	end
-	-- panneau sur pieds, à gauche du stand
-	B("StandSignLeg_1", -12.9, 0, -4.0, -12.6, 3.4, -3.7, WOOD_D, { decor = true })
-	B("StandSignLeg_2", -10.4, 0, -4.0, -10.1, 3.4, -3.7, WOOD_D, { decor = true })
-	local board = B("StandSign", -13.3, 1.7, -4.2, -9.7, 4.1, -3.9, WOOD_M, MO)
-	txt(surface(board, FRONT, 40), t.tagline, rgb(255, 246, 230), 0.05, 0.12, 0.9, 0.76, { strokeT = 2, strokeC = rgb(60, 40, 28) })
+	-- anneau lumineux au sol autour du stand et de sa plaque (x monde 0,5..19,5, à 0,5 de la bordure de l'allée), point du
+	-- billboard BB_ZoneLabel au-dessus du store, clé du nom à traduire (L-165)
+	groundLoop(m, cf, "Ring", roundRectPts(0, -2, 11.5, 9.5, 3, 4), t.ring)
+	m:SetAttribute("LabelKey", t.tag)
+	labelPoint(counter, cf:PointToWorldSpace(Vector3.new(0, 17.5, 0)))
 	goods(m, cf, t)
 	local v, err = vendor(t.vendor, cf)
 	if v then v.Parent = m else add("Vendeur " .. t.vendor.name .. " : " .. tostring(err)) end
@@ -1222,6 +1456,16 @@ do
 			strip(m, "WalkwayEdge_" .. n .. (s > 0 and "L" or "R"), from + o, to + o, 1.2, 0.06, BRICK, F)
 		end
 	end
+	done(m)
+end
+
+-- Zones du hub (L-165) : cadeau gratuit, noob « invite un ami », roue, deux leaderboards (voir HUB_ZONES)
+if HUB_ZONES then
+	local m = section("Zones")
+	freeGift(m, HUB_ZONES.gift)
+	inviteNoob(m, HUB_ZONES.noob)
+	fortuneWheel(m, HUB_ZONES.wheel, HUB_ZONES.wheelZone)
+	for _, b in HUB_ZONES.boards do leaderboard(m, b[1], b[2]) end
 	done(m)
 end
 

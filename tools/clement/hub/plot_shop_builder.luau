@@ -61,7 +61,9 @@
 	- Treadmill : identique dans les 6 boutiques (pas de couleur d'accent). Chacun a une
 	  UseZone : Part invisible, sans collision, CanTouch, autour de la machine (+3 studs, 8 de haut) ;
 	  le code fait monter le joueur dès qu'il y entre.
-	- RarestPedestal : Model du socle de l'objet le plus rare, devant la façade, entre la porte et le
+	- RarestDisplay (L-165, 2026-11-14) : grand socle 9 x 10 devant la façade (x 9,75..18,75, z -51,5..-41,5) ;
+	  ItemPoint (objet, face à la rue) et LabelPoint (8 studs au-dessus, BB_RarestDisplay) sur Plate.
+	- RarestPedestal (Deprecated, caché, ses points déplacés sur RarestDisplay) : Model du socle de l'objet le plus rare, devant la façade, entre la porte et le
 	  banc (x 7,5, z -48,5), à tous les niveaux. RarestSlot : Attachment sur le plateau, où le code pose
 	  l'objet (face à la rue). RarestLabelPoint : Attachment 6 studs au-dessus, pour l'étiquette.
 	Aucun élément du contrat n'est dans un Stage_n.
@@ -867,6 +869,89 @@ local function buildRarest(M)
 	return R
 end
 
+-- Plateau sombre bordé de blanc sur un socle gris à studs, 4 lumières aux coins, plaque « RAREST PULL »
+-- sur le bord avant (référence Clément : References/2026-11-14_Hub_Zones/03_Objet_le_plus_rare_plateforme).
+-- 9 x 10 studs (x 9,75..18,75, z -51,5..-41,5) : entre le montant droit de la porte (x 10) et la place
+-- laissée vide du banc (x 18,75), devant la façade (z -40) et avant l'allée du hub (z -52). Le plateau
+-- (7,6 x 8,6) prend un objet Colossal (2,2 x 3 = 6,6 studs). Pas de couleur d'accent : identique partout.
+local function buildRarestDisplay(M)
+	local B, att, rgb = P.B, P.att, P.rgb
+	local FONT = Font.new("rbxasset://fonts/families/Montserrat.json", Enum.FontWeight.Heavy)
+	local X0, X1, Z0, Z1 = 9.75, 18.75, -51.5, -41.5
+	local XC, ZC = (X0 + X1) / 2, (Z0 + Z1) / 2
+	local RIM, YB, YR, YP = 0.7, 0.6, 1.0, 0.8 -- largeur du rebord, haut du socle, du rebord, du plateau
+	local grey, rimGrey = rgb(196, 203, 212), rgb(222, 226, 232)
+	local navy, trim = rgb(30, 34, 56), rgb(232, 238, 250)
+	local NEON = Enum.Material.Neon
+	local R = Instance.new("Model")
+	R.Name = "RarestDisplay"
+	R.Parent = M
+	B(R, "Base", X0, 0, Z0, X1, YB, Z1, grey)
+	for _, e in { { "F", X0, Z0, X1, Z0 + RIM }, { "B", X0, Z1 - RIM, X1, Z1 }, { "L", X0, Z0 + RIM, X0 + RIM, Z1 - RIM }, { "R", X1 - RIM, Z0 + RIM, X1, Z1 - RIM } } do
+		B(R, "Rim_" .. e[1], e[2], YB, e[3], e[4], YR, e[5], rimGrey)
+	end
+	local ix0, ix1, iz0, iz1 = X0 + RIM, X1 - RIM, Z0 + RIM, Z1 - RIM
+	local plate = B(R, "Plate", ix0, YB, iz0, ix1, YP, iz1, navy, { studs = false })
+	for _, e in { { "F", ix0, iz0, ix1, iz0 + 0.18 }, { "B", ix0, iz1 - 0.18, ix1, iz1 }, { "L", ix0, iz0 + 0.18, ix0 + 0.18, iz1 - 0.18 }, { "R", ix1 - 0.18, iz0 + 0.18, ix1, iz1 - 0.18 } } do
+		B(R, "Trim_" .. e[1], e[2], YP, e[3], e[4], YP + 0.04, e[5], trim, { mat = NEON, decor = true, noShadow = true })
+	end
+	for _, c in { { "FL", X0, Z0 }, { "FR", X1, Z0 }, { "BL", X0, Z1 }, { "BR", X1, Z1 } } do
+		local cx = c[2] + (c[2] < XC and RIM / 2 or -RIM / 2)
+		local cz = c[3] + (c[3] < ZC and RIM / 2 or -RIM / 2)
+		B(R, "CornerLight_" .. c[1], cx - 0.25, YR, cz - 0.25, cx + 0.25, YR + 0.5, cz + 0.25, trim, { mat = NEON, decor = true, noShadow = true })
+	end
+	-- plaque sur le bord avant, lisible depuis l'allée
+	local sign = B(R, "Sign", XC - 3, 0.12, Z0 - 0.22, XC + 3, 1.12, Z0, rgb(24, 24, 32), { studs = false, decor = true })
+	local g = Instance.new("SurfaceGui")
+	g.Name = "LabelGui_Front"
+	g.Face = Enum.NormalId.Front
+	g.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+	g.PixelsPerStud = 50
+	g.LightInfluence = 0
+	local t = Instance.new("TextLabel")
+	t.Name = "Label"
+	t.BackgroundTransparency = 1
+	t.Size = UDim2.fromScale(1, 1)
+	t.Text = "RAREST PULL"
+	t.TextScaled = true
+	t.TextWrapped = true
+	t.TextColor3 = rgb(255, 255, 255)
+	t.FontFace = FONT
+	local pad = Instance.new("UIPadding")
+	pad.PaddingTop = UDim.new(0.18, 0); pad.PaddingBottom = UDim.new(0.18, 0)
+	pad.PaddingLeft = UDim.new(0.06, 0); pad.PaddingRight = UDim.new(0.06, 0)
+	pad.Parent = t
+	t.Parent = g
+	g.Parent = sign
+	-- points du contrat : l'objet debout au centre du plateau, face à la rue (-Z) ; l'étiquette au-dessus
+	att("ItemPoint", plate, XC, YP, ZC, Vector3.new(0, 0, -1))
+	att("LabelPoint", plate, XC, YP + 8, ZC, Vector3.new(0, 0, -1))
+	local l = Instance.new("PointLight")
+	l.Range = 12; l.Brightness = 1.2; l.Color = rgb(235, 240, 255); l.Shadows = false
+	l.Parent = plate
+	R.WorldPivot = CFrame.new(XC, 0, ZC)
+	return R
+end
+
+-- Ancien socle : caché, sans collision, Deprecated (le code le lit encore). Ses points sont déplacés sur le
+-- nouveau socle, pour que l'objet et l'étiquette posés par le code actuel n'y flottent pas en l'air.
+local function retirePedestal(rp, display)
+	rp:SetAttribute("Deprecated", true)
+	for _, d in rp:GetDescendants() do
+		if d:IsA("BasePart") then
+			d.Transparency = 1; d.CanCollide = false; d.CanTouch = false; d.CanQuery = false; d.CastShadow = false
+		elseif d:IsA("Light") then
+			d.Enabled = false
+		end
+	end
+	local item = display:FindFirstChild("ItemPoint", true)
+	local lab = display:FindFirstChild("LabelPoint", true)
+	local slot = rp:FindFirstChild("RarestSlot", true)
+	local lp = rp:FindFirstChild("RarestLabelPoint", true)
+	if slot and item then slot.WorldCFrame = item.WorldCFrame end
+	if lp and lab then lp.WorldCFrame = lab.WorldCFrame end
+end
+
 -- Boutique moins large (Clément, 2026-11-14) : 48 studs au lieu de 64 (murs à x = ±24). Resserre tout ce
 -- qui est hors de la porte et de l'allée (|x| > 10) vers le centre, de façon continue : x' = ±(10 + (|x| - 10)
 -- * 14 / 22). Les bords des pièces suivent la même règle, donc rien ne se chevauche ni ne se décolle. Ne bouge
@@ -880,7 +965,7 @@ local function narrowX(x)
 end
 local function narrowWidth(M)
 	local keep = {}
-	for _, n in { "Treadmill", "Bench", "RarestPedestal", "FloorTiles" } do
+	for _, n in { "Treadmill", "Bench", "RarestPedestal", "RarestDisplay", "FloorTiles" } do
 		local x = M:FindFirstChild(n); if x then table.insert(keep, x) end
 	end
 	for r = 1, 5 do
@@ -949,7 +1034,7 @@ local function build()
 	local steps = {
 		buildCore, function(t) buildInterior(t, store) end,
 		function(t) buildTreadmill(t, -24, -46) end, -- devant la façade, hors des murs ; place du banc (24, -46) laissée vide (Clément, 2026-11-14)
-		buildRarest,
+		function(t) retirePedestal(buildRarest(t), buildRarestDisplay(t)) end, -- L-165 point 5 : grand socle, ancien caché
 		buildStage1, buildStage2, buildStage3, buildStage4, buildStage5,
 	}
 	for _, step in steps do
