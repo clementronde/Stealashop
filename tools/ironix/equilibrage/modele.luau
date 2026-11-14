@@ -19,7 +19,7 @@
 --   eco.ShownSpeed(vitesse, mTrail), eco.ShownStrength(pOutil, force, mAura)   nombres du HUD
 --
 -- Ce que le modèle NE compte PAS (toutes des aides : le jeu réel va un peu plus vite) : gamepasses et
--- boosts Robux, renaissances (Partie 2, pas codées), gains hors ligne, récompenses quotidiennes et de
+-- boosts Robux, renaissances (sauf par les options de Jouer, Outil/renaissance), gains hors ligne, récompenses quotidiennes et de
 -- temps de jeu, primes et bonus de l'Index, camion, potions, vols entre joueurs (somme nulle).
 
 local Balance = Config.Balance
@@ -258,7 +258,17 @@ end
 -- Fait jouer un joueur du profil donné jusqu'à son premier colis de zone 6 (ou maxSeconds).
 -- Renvoie { Entrees[z] = { T, Vitesse, Force, Marche, Degats, Casse, Revenu, Tapis, Banc }, Achats = {…},
 -- Temps = { Tapis, Banc, Braquage }, Colis, Rattrape, Fin }.
-function Modele.Jouer(eco, profil, seed, maxSeconds)
+--
+-- options (facultatif, renaissances : Outil/renaissance ; absent, rien ne change) :
+--   Depart = { T, Stands, Cash }   temps de départ (cumulé), revenus des objets gardés, argent de départ
+--   Revenu                         multiplicateur des revenus des présentoirs (+50 % par renaissance…)
+--   Entrainement                   multiplicateur du gain du tapis (+25 % de la 3e renaissance…)
+--   SansTuto                       pas de premier colis Rare garanti (le tuto n'est fait qu'une fois)
+--   Fin(s, out) -> boolean         condition d'arrêt, à la place de « premier colis de la zone 6 »
+--   Objet(zone, rareté, revenu)    appelé à chaque objet gagné dans un magasin PNJ
+--   Chasse(s, out) -> zone?        zone où braquer en priorité (objet requis d'une zone plus basse)
+function Modele.Jouer(eco, profil, seed, maxSeconds, options)
+	local O = options or {}
 	local H = Modele.Hypotheses
 	local random = generator(seed)
 	local zoneCount = #eco.Zones
@@ -282,7 +292,7 @@ function Modele.Jouer(eco, profil, seed, maxSeconds)
 		speed = 0,
 		strength = 0,
 		levels = { Treadmill = 0, Bench = 0, DisplaySlots = 0 },
-		tool = 1, -- Tools.List[1] = poings
+		tool = 1, -- Tools.List[1] = poings (options.Depart.Tool : outil gardé)
 		aura = 0,
 		trail = 0,
 		stands = {}, -- revenus des objets exposés
@@ -293,6 +303,14 @@ function Modele.Jouer(eco, profil, seed, maxSeconds)
 		supply = {},
 		boostUntil = 0, -- aides : fin du boost ×2 argent (temps de jeu)
 	}
+	if O.Depart ~= nil then
+		s.t = O.Depart.T or 0
+		s.cash = O.Depart.Cash or 0
+		s.stands = table.clone(O.Depart.Stands or {})
+		s.tool = O.Depart.Tool or 1
+	end
+	local incomeMultiplier = O.Revenu or 1
+	local trainingMultiplier = O.Entrainement or 1
 	local mutationMean = Modele.MutationMean()
 	local out = { Entrees = {}, Achats = {}, Temps = { Tapis = 0, Banc = 0, Braquage = 0 }, Colis = 0, Rattrape = 0 }
 
@@ -313,13 +331,13 @@ function Modele.Jouer(eco, profil, seed, maxSeconds)
 		for _, income in s.stands do
 			total += income
 		end
-		return total
+		return total * incomeMultiplier
 	end
 	local function cashRate()
 		return standIncome() + s.sales
 	end
 	local function speedRate()
-		local rate = eco.MachineGain("Treadmill", s.levels.Treadmill)
+		local rate = eco.MachineGain("Treadmill", s.levels.Treadmill) * trainingMultiplier
 		return if profil.Taps then rate * (1 + Training.Treadmill.TapBonus) else rate
 	end
 	local function strengthRate()
@@ -627,7 +645,7 @@ function Modele.Jouer(eco, profil, seed, maxSeconds)
 		out.Colis += 1
 		local rarityId
 		local openDelay
-		if out.Colis == 1 then
+		if out.Colis == 1 and not O.SansTuto then
 			-- Premier colis du tuto : rareté garantie, attente raccourcie (Config/Tutorial).
 			rarityId, openDelay = Tutorial.GuaranteedRarity, Tutorial.OpenDelay
 		else
@@ -671,7 +689,11 @@ function Modele.Jouer(eco, profil, seed, maxSeconds)
 				end
 			end
 		end
-		table.insert(s.pending, { Ready = s.t + openDelay, Income = eco.ItemIncome(zone, rarityId) * mutationOf() })
+		local itemIncome = eco.ItemIncome(zone, rarityId) * mutationOf()
+		table.insert(s.pending, { Ready = s.t + openDelay, Income = itemIncome })
+		if O.Objet ~= nil then
+			O.Objet(zone, rarityId, itemIncome, s)
+		end
 		if out.Entrees[zone] == nil then
 			out.Entrees[zone] = {
 				T = s.t,
@@ -783,7 +805,13 @@ function Modele.Jouer(eco, profil, seed, maxSeconds)
 		end
 	end
 
-	while s.t < maxSeconds and out.Entrees[zoneCount] == nil do
+	local function finished()
+		if O.Fin ~= nil then
+			return O.Fin(s, out)
+		end
+		return out.Entrees[zoneCount] ~= nil
+	end
+	while s.t < maxSeconds and not finished() do
 		if A ~= nil then
 			aides()
 		end
@@ -800,7 +828,10 @@ function Modele.Jouer(eco, profil, seed, maxSeconds)
 		-- Où braquer : sa meilleure zone, sinon celle d'en dessous, s'il y reste des colis pour lui.
 		local isDay = s.t % Night.CycleDuration < Night.DayDuration
 		local heistZone, heistTier = nil, nil
-		if isDay then
+		local hunted = if isDay and O.Chasse ~= nil then O.Chasse(s, out) else nil
+		if hunted ~= nil and hunted <= s.zone and pickTier(hunted) ~= nil then
+			heistZone, heistTier = hunted, pickTier(hunted)
+		elseif isDay then
 			for zone = s.zone, math.max(1, s.zone - 1), -1 do
 				local tier = pickTier(zone)
 				if tier ~= nil then

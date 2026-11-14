@@ -6,6 +6,7 @@
 #   SORTIE=fichier.md bash tools/ironix/equilibrage/run.sh   écrit aussi le rapport dans ce fichier
 #   RAPPORT=v2 bash tools/ironix/equilibrage/run.sh      rapport du rééquilibrage v2 (proposition_v2.luau, rapport_v2.luau)
 #   RAPPORT=v2 COURT=1 bash tools/ironix/equilibrage/run.sh   v2 : seulement les temps par zone (pour régler)
+#   RAPPORT=renaissance bash tools/ironix/equilibrage/run.sh   renaissances 1 à 10 dans l'économie v2 (renaissance.luau, rapport_renaissance.luau)
 #
 # Il ne modifie rien : il lit les vraies sources de src/shared/Config (et src/shared/Format.luau),
 # les assemble avec les modules de ce dossier en un seul fichier Luau temporaire, et l'exécute avec
@@ -38,7 +39,7 @@ emit() { # emit <clé> <fichier> : SOURCES[clé] = contenu du fichier
     emit "Config/$(basename "$f" .luau)" "$f"
   done
   emit "Format" "$ROOT/src/shared/Format.luau"
-  for m in proposition proposition_v2 modele chance caisses rapport rapport_v2; do
+  for m in proposition proposition_v2 modele chance caisses rapport rapport_v2 renaissance rapport_renaissance; do
     emit "Outil/$m" "$H/$m.luau"
   done
   tr -d '\r' < "$H/chargeur.luau"
