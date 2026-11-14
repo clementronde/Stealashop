@@ -83,8 +83,9 @@
 --      les colis ne tombent plus au sol pour être pris fermés : un rayon d'événement de StoreHeistService
 --      (StoreId « Truck_<n> », un ShelfSlot par point d'arrivée ci-dessus) reçoit les caisses, chacune en vol
 --      (serveur) de son BoxSpawn à son point ; la rareté tirée au chargement est celle de la CAISSE (le
---      modèle du camion en dépend toujours) ; on l'ouvre sur place exactement comme sur un rayon (maintien
---      GrabTime, chance tirée par le serveur, objet, mutation et taille tirés à la sortie), puis on prend
+--      modèle du camion en dépend toujours), minimum de l'objet (la chance ne fait que monter) ; on l'ouvre
+--      sur place comme sur un rayon (maintien GrabTime, chance tirée par le serveur, objet, mutation et
+--      taille tirés à la sortie comme aujourd'hui, Mutations.Roll : pas de taille garantie), puis on prend
 --      l'objet (GrabItem, portage NPCItem). Ni témoins, ni vigile ; les conducteurs (point 3') poursuivent
 --      aussi qui porte un objet de ce camion. Pas ouverte : la caisse disparaît FlightTime + BoxLifetime s
 --      après l'explosion. Sans rayon d'événement : les colis au sol du point 5, comme avant.

@@ -499,6 +499,7 @@ type Store = {
 	-- ni accroches du tuto ; ItemZones : zones des objets à la sortie (nil = celles du magasin).
 	Event: boolean?,
 	ItemZones: { number }?,
+	SizeOdds: { [string]: number }?, -- tailles garanties de l'événement (nil : celles de Mutations.Roll)
 }
 
 -- Leaving : vient de prendre un colis, encore dans Bounds avec lui ; Closed : fermé pour lui, rideau
@@ -2296,11 +2297,29 @@ local function itemRarityWeights(boxRarity: string, luck: number): { [string]: n
 end
 
 -- Rareté de l'objet tirée selon itemRarityWeights ; table absente : la rareté de la caisse (avertissement).
-local function drawItemRarity(boxRarity: string, luck: number): string
+-- Vague 42 (a148, L-145 (a)) : `floor` (rayon d'événement) : la rareté de la caisse est un minimum, les raretés
+-- en dessous ne sortent jamais ; la chance ne peut que monter.
+local function drawItemRarity(boxRarity: string, luck: number, floor: boolean?): string
 	local weights = itemRarityWeights(boxRarity, luck)
 	if weights == nil then
 		warnOnce(`boxodds.{boxRarity}`, `aucune table ShelfOpen.BoxRarityOdds.{boxRarity} : l'objet est de la rareté de sa caisse`)
 		return boxRarity
+	end
+	local box = Rarities.ById[boxRarity]
+	if floor and box then
+		local kept: { [string]: number } = {}
+		local any = false
+		for _, rarity in Rarities.List do
+			local weight = weights[rarity.Id]
+			if weight and rarity.Order >= box.Order then
+				kept[rarity.Id] = weight
+				any = true
+			end
+		end
+		if not any then
+			return boxRarity
+		end
+		weights = kept
 	end
 	local total = 0
 	for _, rarity in Rarities.List do
@@ -2343,8 +2362,17 @@ local function drawItemIn(zones: { number }, rarityId: string): string?
 	return if #pool > 0 then pool[random:NextInteger(1, #pool)] else nil
 end
 
-local function drawShelfContent(boxRarity: string, zone: number, luck: number, zones: { number }?): (Content?, string)
-	local wanted = drawItemRarity(boxRarity, luck)
+-- `floor` : la rareté de la caisse est un minimum (drawItemRarity) ; `sizeOdds` ({ [Id de taille] = poids }) :
+-- la taille est tirée là, à la place de celle de Mutations.Roll (l'effet reste celui de Mutations.Roll).
+local function drawShelfContent(
+	boxRarity: string,
+	zone: number,
+	luck: number,
+	zones: { number }?,
+	floor: boolean?,
+	sizeOdds: { [string]: number }?
+): (Content?, string)
+	local wanted = drawItemRarity(boxRarity, luck, floor)
 	local info = Rarities.ById[wanted]
 	if info == nil then
 		return nil, wanted
@@ -2356,7 +2384,26 @@ local function drawShelfContent(boxRarity: string, zone: number, luck: number, z
 			if order < info.Order then
 				warnOnce(`nowhere.{wanted}`, `aucun objet {wanted} tirable dans aucune zone (Config/Items) : un objet {rarityId} sort à la place`)
 			end
-			local content: Content = { Rarity = rarityId, ItemId = itemId, Mutation = drawMutation(itemId) }
+			local mutation = drawMutation(itemId)
+			if sizeOdds then
+				local total, size = 0, nil
+				for _, entry in Mutations.Sizes do
+					total += math.max(sizeOdds[entry.Id] or 0, 0)
+				end
+				local roll = random:NextNumber() * total
+				for _, entry in Mutations.Sizes do
+					local weight = math.max(sizeOdds[entry.Id] or 0, 0)
+					if weight > 0 then
+						size = entry.Id
+						if roll < weight then
+							break
+						end
+						roll -= weight
+					end
+				end
+				mutation = Mutations.Sanitize({ Size = size, Effect = if mutation then mutation.Effect else nil })
+			end
+			local content: Content = { Rarity = rarityId, ItemId = itemId, Mutation = mutation }
 			return content, wanted
 		end
 	end
@@ -2411,7 +2458,7 @@ local function reveal(slot: Slot, box: ShelfBox, luck: number)
 	local drawnRarity = box.Rarity
 	local final: Content? = imposed
 	if final == nil then
-		final, drawnRarity = drawShelfContent(box.Rarity, store.Zone, luck, store.ItemZones)
+		final, drawnRarity = drawShelfContent(box.Rarity, store.Zone, luck, store.ItemZones, store.Event, store.SizeOdds)
 	end
 	box.Model:SetAttribute(ShelfOpenState.StateAttribute, "Revealed")
 	discard(box)
@@ -3078,6 +3125,7 @@ export type EventShelfOptions = {
 	Id: string, -- StoreId, préfixe « Truck_ » (voir plus haut)
 	Zone: number, -- zone du faux magasin (objet tiré près d'elle, revenu)
 	ItemZones: { number }?, -- zones des objets de rareté rangée par zone (nil : règle des magasins)
+	SizeOdds: { [string]: number }?, -- tailles garanties ({ Huge = 80, Colossal = 20 }), nil : comme en magasin
 	Spots: { EventSpot },
 	Lifetime: number, -- s, puis tout est retiré
 }
@@ -3162,6 +3210,7 @@ local function addEventShelf(options: EventShelfOptions): Model?
 		ClosedAt = 0,
 		Event = true,
 		ItemZones = options.ItemZones,
+		SizeOdds = options.SizeOdds,
 	}
 	for number, spot in options.Spots do
 		local name = string.format(SLOT_FORMAT, number)

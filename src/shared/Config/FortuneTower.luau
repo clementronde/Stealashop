@@ -109,9 +109,9 @@ local FortuneTower = {
 	-- sont toutes zones (Items.AllZones). Un colis porte la zone de son objet (règle de CarryService).
 	LootZones = { 2, 3, 4, 5, ZONE },
 	RarityOdds = lootOdds(), -- { Mythic = 90, Secret = 10, Divine = 0 }
-	-- Vague 42 : les colis s'ouvrent sur place comme sur un rayon (Cantin) : RarityOdds n'y tire que la rareté
-	-- de la CAISSE, et la taille est tirée comme en magasin ; SizeOdds ne sert plus qu'aux colis au sol
-	-- (Features.ShelfOpen coupé).
+	-- Vague 42 : les colis s'ouvrent sur place comme sur un rayon (Cantin) : RarityOdds y tire la rareté de la
+	-- CAISSE, minimum de l'objet (la chance ne fait que monter) ; SizeOdds y remplace le tirage de taille du
+	-- rayon (L-145 (a), valeurs validées par Clément).
 	SizeOdds = sizeOdds(), -- { Huge = 80, Colossal = 20 }
 	BoxLifetime = TruckEvent.BoxLifetime, -- 60 s au sol, comme les colis du camion, puis il disparaît
 	-- Point LootSpawn_NN : le colis est posé sur la première surface sous lui (le sol du coffre), cherchée

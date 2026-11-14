@@ -52,8 +52,9 @@
 --      (StoreId « Truck_Fortune_<n> », un ShelfSlot par point ci-dessus, tourné comme la vitrine) reçoit
 --      LootCount caisses LootTier dont seule la rareté de la caisse est tirée ici (RarityOdds) ; tout le
 --      reste est celui d'un rayon de magasin : maintien sur E (GrabTime), chance tirée par le serveur,
---      rareté de l'objet (BoxRarityOdds et chance), objet des zones LootZones (Secret : toutes zones),
---      mutation et taille (SizeOdds ne sert plus que pour les colis au sol), puis GrabItem et portage
+--      rareté de l'objet (BoxRarityOdds et chance, la rareté de la caisse étant un minimum : la chance ne
+--      fait que monter, L-145 (a)), objet des zones LootZones (Secret : toutes zones), effet comme en
+--      magasin et taille tirée dans SizeOdds (L-145 (a)), puis GrabItem et portage
 --      de l'objet ; ni témoins, ni vigile. Rayon retiré au bout de BoxLifetime s (avec la vitrine). Sans
 --      lui : les colis au sol tels que décrits ici et au point 5.
 --      Jamais enfermé (vague 42) : quand la vitrine se referme ou est retirée (Seal, fin au temps, alerte,
@@ -702,6 +703,7 @@ local function openVault(vault: Vault, breaker: Player?)
 			Id = storeId,
 			Zone = FortuneTower.Zone,
 			ItemZones = FortuneTower.LootZones,
+			SizeOdds = FortuneTower.SizeOdds,
 			Spots = spots,
 			Lifetime = FortuneTower.BoxLifetime,
 		})
