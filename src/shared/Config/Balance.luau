@@ -94,6 +94,11 @@ local Balance = {
 		BreakerHeadStart = 1, -- avance exclusive du casseur (5.3, point 8 : proposition à valider en section 15)
 		MaxCarried = 1, -- un seul colis porté à la fois
 		GrabMaxDistance = 8, -- GrabItem (9.4)
+		-- Portée tolérée pendant un maintien (début et revérifications, pas la fin ; Cantin, 2026-11-14) : le serveur
+		-- voit le perso en retard d'environ vitesse × latence. Tolérance = min(WalkSpeed × (ping + ReachLatencyPad),
+		-- ReachToleranceMax), en plus de GrabMaxDistance et autour du volume Bounds. Aussi pour les colis au sol.
+		ReachLatencyPad = 0.1, -- s, V0
+		ReachToleranceMax = 8, -- studs, V0
 		ShelfSlots = 10, -- ShelfSlot_01 à ShelfSlot_10 (10.4)
 		TierOrder = TIER_ORDER,
 		BoxTiers = BOX_TIERS,

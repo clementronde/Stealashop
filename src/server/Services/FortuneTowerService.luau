@@ -648,7 +648,25 @@ local function grabTimeOf(tier: string): number
 	return if info then info.GrabTime else 0
 end
 
-local function grabRefusal(player: Player, box: Box): string?
+-- Tolérance de portée pendant un maintien (Cantin, 2026-11-14 ; même règle que StoreHeistService, « Portée ») :
+-- min(WalkSpeed × (ping + ReachLatencyPad), ReachToleranceMax) studs, WalkSpeed et ping lus sur le serveur.
+local function reachPad(player: Player): number
+	local character = player.Character
+	local humanoid = if character then character:FindFirstChildOfClass("Humanoid") else nil
+	-- Lectures protégées (comme pingOf d'AntiCheatService) : les faux Roblox des bancs n'ont pas toujours ces membres.
+	local okPing, ping = pcall(function(): number
+		return player:GetNetworkPing()
+	end)
+	local okSpeed, walkSpeed = pcall(function(): number
+		return if humanoid then humanoid.WalkSpeed else 0
+	end)
+	local latency = (if okPing and type(ping) == "number" and ping > 0 then ping else 0) + Balance.Heist.ReachLatencyPad
+	local speed = if okSpeed and type(walkSpeed) == "number" and walkSpeed > 0 then walkSpeed else 0
+	return math.min(speed * latency, Balance.Heist.ReachToleranceMax)
+end
+
+-- `lenient` : début du maintien ou revérification (tolérance reachPad), sinon strict (fin du maintien).
+local function grabRefusal(player: Player, box: Box, lenient: boolean): string?
 	local payload, position = CarryService.GetDrop(box.DropId)
 	if payload == nil or position == nil then
 		return "colis plus au sol"
@@ -664,7 +682,7 @@ local function grabRefusal(player: Player, box: Box): string?
 		return "en zone safe"
 	end
 	local distance = (root.Position - position).Magnitude
-	if distance > Bat.DroppedGrabMaxDistance then
+	if distance > Bat.DroppedGrabMaxDistance + (if lenient then reachPad(player) else 0) then
 		return `trop loin ({math.round(distance * 10) / 10} studs)`
 	end
 	return nil
@@ -686,7 +704,9 @@ local function onGrabDropped(player: Player, dropId: string)
 		return -- pas un colis de la vitrine : laissé au service qui l'a posé
 	end
 	local hold = holds[player]
-	local reason = grabRefusal(player, box)
+	-- Portée souple au début du maintien, stricte à la fin (règle de StoreHeistService, « Portée »).
+	local starting = not (hold ~= nil and hold.DropId == dropId) and grabTimeOf(box.Tier) > 0
+	local reason = grabRefusal(player, box, starting)
 	if reason then
 		if hold and hold.DropId == dropId then
 			holds[player] = nil
@@ -758,7 +778,7 @@ local function step()
 	local now = os.clock()
 	for player, hold in holds do
 		local box = boxes[hold.DropId]
-		if box == nil or now - hold.StartedAt > grabTimeOf(box.Tier) + HOLD_EXPIRY or grabRefusal(player, box) ~= nil then
+		if box == nil or now - hold.StartedAt > grabTimeOf(box.Tier) + HOLD_EXPIRY or grabRefusal(player, box, true) ~= nil then
 			holds[player] = nil
 		end
 	end
