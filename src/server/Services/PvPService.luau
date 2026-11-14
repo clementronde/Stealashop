@@ -40,8 +40,11 @@
 --      Transfert (voir « Transfert sûr ») : l'objet est à lui tout de suite, Source = "PvP", avec sa
 --      zone et sa mutation (DEV-131 : même revenu, même nom, même taille chez le voleur), sur un
 --      présentoir libre (DisplayService.PlaceAuto, le plus proche de lui) sinon dans son inventaire,
---      et il rapporte aussitôt. Puis Lifetime.Steals + 1 pour le voleur, TheftAlert(false), un Notify
---      à chacun, et une sauvegarde des deux profils (plus d'immunité pour la victime).
+--      et il rapporte aussitôt. Vague 44 (a152, Config/HeldItem.DepositToHand = true, Cantin : « oui en main ») :
+--      plus de présentoir, il va dans sa main s'il a les mains libres (HeldItemService.Give), sinon dans
+--      son inventaire (barre du bas) ; il faut alors de la place dans l'inventaire, dès la prise (FullInventory).
+--      L'objet sous antivol volé au sol va toujours dans l'inventaire (sa pose au sol passe par le mode pose).
+--      Puis Lifetime.Steals + 1 pour le voleur, TheftAlert(false), un Notify à chacun, et une sauvegarde des deux profils (plus d'immunité pour la victime).
 --   6. Échec : coup de batte (CarryService.Fail(voleur, "Bat"), DEV-043), mort, départ ou personnage
 --      retiré du voleur, départ de la victime (Fail « VictimLeft »), anomalie (ReportAnomaly), plus de
 --      place au dépôt (« NoRoom »), ou toute autre fin de portage : l'objet revient sur son présentoir
@@ -194,6 +197,7 @@ local Shared = ReplicatedStorage.Shared
 local Balance = require(Shared.Config.Balance)
 local AntiCheat = require(Shared.Config.AntiCheat)
 local Features = require(Shared.Config.Features)
+local HeldItem = require(Shared.Config.HeldItem) -- vague 44 (a152) : DepositToHand
 local Items = require(Shared.Config.Items)
 local Mutations = require(Shared.Config.Mutations)
 local PvP = require(Shared.Config.PvP)
@@ -387,6 +391,9 @@ local MESSAGES: { [string]: string } = {
 	StolenLocked = "You stole the %s! Put it down in your shop: its anti-theft starts there.",
 	FloorReturned = "Your %s is back in your shop!",
 	FullInventory = "Your inventory is full: make room before stealing.",
+	-- Vague 44 (a152, HeldItem.DepositToHand), V0 proposés, absents du doc :
+	StolenToHand = "You stole the %s: it's in your hand, put it on a display!",
+	StolenToBag = "You stole the %s: it went to your inventory.",
 }
 
 local IS_STUDIO = RunService:IsStudio()
@@ -1051,9 +1058,12 @@ local function deposit(theft: Theft, root: BasePart)
 		return
 	end
 	-- Objet sous antivol : il arrive dans l'inventaire (jamais sur un présentoir) ; sinon, présentoir ou inventaire.
-	local room = if theft.Floor then DisplayService.HasInventoryRoom(thief) else DisplayService.HasRoom(thief)
+	-- Vague 44 (a152, Cantin : « oui en main ») : HeldItem.DepositToHand, en main ou dans l'inventaire, jamais seul
+	-- sur un présentoir ; il faut donc de la place dans l'inventaire, comme pour l'objet sous antivol.
+	local toHand = HeldItem.DepositToHand == true
+	local room = if theft.Floor or toHand then DisplayService.HasInventoryRoom(thief) else DisplayService.HasRoom(thief)
 	if not room then
-		notify(thief, if theft.Floor then MESSAGES.FullInventory else MESSAGES.Full, "Warning")
+		notify(thief, if theft.Floor or toHand then MESSAGES.FullInventory else MESSAGES.Full, "Warning")
 		abandon(theft, "NoRoom")
 		return
 	end
@@ -1083,8 +1093,19 @@ local function deposit(theft: Theft, root: BasePart)
 		Mutation = mutation,
 		AntiTheft = if theft.Floor then true else nil,
 	}
-	local slot = if theft.Floor then nil else DisplayService.PlaceAuto(thief, theft.Uid, root.Position)
+	local slot = if theft.Floor or toHand then nil else DisplayService.PlaceAuto(thief, theft.Uid, root.Position)
 	CarryService.Consume(thief, "Deposited")
+	local inHand = false
+	if toHand then
+		local module = script.Parent:FindFirstChild("HeldItemService") -- require protégé : bancs sans lui
+		local ok, given = pcall(function()
+			return module ~= nil and (require(module :: ModuleScript) :: any).Give(thief, theft.Uid) == true
+		end)
+		if not ok then
+			warn(`[PvPService] HeldItemService.Give ({thief.Name}, {theft.Uid}) : {given}`)
+		end
+		inHand = ok and given == true
+	end
 
 	-- Un vol au bot ne compte pas pour les classements (en-tête).
 	if victim then
@@ -1099,6 +1120,8 @@ local function deposit(theft: Theft, root: BasePart)
 	local name = itemName(theft.ItemId)
 	if theft.Floor then
 		notify(thief, string.format(MESSAGES.StolenLocked, name), "Info")
+	elseif toHand then
+		notify(thief, string.format(if inHand then MESSAGES.StolenToHand else MESSAGES.StolenToBag, name), "Info")
 	elseif slot then
 		notify(thief, string.format(MESSAGES.Stolen, name, Format.income(theft.Payload.Income)), "Info")
 	else
@@ -1196,6 +1219,9 @@ local function stealRefusal(player: Player, plot: Model, slot: number): (string?
 	end
 	if safeSlotsOf(victim, exposed)[slot] then
 		return "objet à l'abri (coffre-fort)", "Safe", MESSAGES.Safe
+	end
+	if HeldItem.DepositToHand and not DisplayService.HasInventoryRoom(player) then -- vague 44 : il ira en main
+		return "plus de place dans l'inventaire du voleur", "FullInventory", MESSAGES.FullInventory
 	end
 	if not DisplayService.HasRoom(player) then
 		return "plus de place chez le voleur", "Full", MESSAGES.Full

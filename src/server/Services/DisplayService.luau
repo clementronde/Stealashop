@@ -180,6 +180,9 @@
 -- Studio) si le joueur n'a pas de parcelle, n'est pas dans le volume Bounds de sa parcelle, ne
 -- possède pas l'objet, l'a rangé au coffre-fort, si un voleur l'emporte (tenu), ou si le présentoir
 -- est verrouillé, absent ou déjà occupé. Un objet déjà exposé sur un autre présentoir y est déplacé.
+-- Vague 44 (a152) : envoyé par l'invite « Display » d'un présentoir libre quand on tient un objet en main
+-- (DisplayController). Pas de contrôle de portée en plus de Bounds : PlaceItemAuto pose déjà de n'importe où,
+-- et le joueur ne pose que chez lui. L'objet tenu, exposé, quitte la main (HeldItemService).
 -- Depuis L-091 point 6, l'écran d'inventaire (UI_Inventory) pose un objet par PlaceItemAuto
 -- (premier présentoir libre) et le reprend par UnplaceItem ; PlaceItem reste pour un présentoir choisi.
 -- Remote EquipBest() : DisplayService.EquipBest (plus haut), puis un Notify « Info » (MESSAGES).

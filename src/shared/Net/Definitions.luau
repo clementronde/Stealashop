@@ -676,6 +676,17 @@ local List: { RemoteDef } = {
 		Reliable = true,
 		Args = { id("itemId") },
 	},
+	{
+		-- Vague 44 (a152, Cantin, 2026-11-14), absent du tableau 9.4 : invite « Take » (touche E) sur un objet
+		-- exposé de SA boutique (DisplayController) : il quitte son présentoir pour l'inventaire (barre du bas si
+		-- une case est libre). InventoryService revérifie tout (objet à lui et exposé, pas tenu par un voleur,
+		-- personnage vivant à portée du présentoir, de la place dans l'inventaire).
+		Name = "TakeDisplayItem",
+		Direction = "ClientToServer",
+		Reliable = true,
+		Args = { id("itemUid") },
+		RatePerSecond = 4, -- V0 proposé, absent du doc
+	},
 }
 
 return {

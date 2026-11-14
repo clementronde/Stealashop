@@ -33,6 +33,13 @@
 -- API (côté serveur) :
 --   HeldItemService.GetHeld(player) -> string?   uid de l'objet tenu en main (nil : rien)
 --   HeldItemService.Stow(player)                 range l'objet tenu (rien s'il n'y en a pas)
+--   HeldItemService.Give(player, itemUid) -> boolean
+--       Vague 44 (a152) : met l'objet en main de lui-même (fin de l'antivol, UnboxService ; objet volé déposé,
+--       PvPService) si le joueur a les mains libres : vivant, sans portage, AUCUN Tool en main (ni outil de
+--       casse, ni batte, ni autre objet : V0 proposé, absent du doc, on ne lui retire rien de la main). L'état
+--       de l'inventaire est d'abord réécrit (InventoryService.Refresh), puis les mêmes contrôles que HoldItem.
+--       true : l'objet est en main ; false : il reste dans l'inventaire (la barre du bas lui donne sa
+--       première case vide, HotbarController). Sans yield.
 
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
@@ -103,6 +110,10 @@ local function once(key: string, message: string)
 		log(message)
 	end
 end
+
+-- Vague 44 (a152) : InventoryService, chargé au premier appel de Give (il ne charge pas ce service).
+type InventoryApi = { Refresh: (player: Player) -> () }
+local inventoryApi: InventoryApi? = nil
 
 local function display(): DisplayApi?
 	if displayApi == nil then
@@ -379,6 +390,28 @@ end
 
 function HeldItemService.Stow(player: Player)
 	stow(player)
+end
+
+function HeldItemService.Give(player: Player, itemUid: string): boolean
+	local character = player.Character
+	if character == nil or character:FindFirstChildOfClass("Tool") ~= nil then
+		return false -- mains prises (outil, batte, autre objet) : il reste dans l'inventaire
+	end
+	if inventoryApi == nil then
+		local module = script.Parent:FindFirstChild("InventoryService")
+		if module and module:IsA("ModuleScript") then
+			local ok, result = pcall(require, module)
+			if ok and type(result) == "table" then
+				inventoryApi = result :: any
+			end
+		end
+	end
+	local inventory = inventoryApi
+	if inventory then
+		inventory.Refresh(player) -- l'objet doit être dans l'état de l'inventaire (refusal)
+	end
+	onHoldItem(player, itemUid)
+	return HeldItemService.GetHeld(player) == itemUid
 end
 
 local function watchPlayer(player: Player)
