@@ -100,3 +100,49 @@ profileur (1 échantillon = 1 ms).
   3 (`CarryController.updateRainbows`) : rien n'est porté dans ces mesures ; à mesurer en portant un objet
   arc-en-ciel, sur un profil de test.
 - Hors mesure : BenchBarController (le banc va être retiré du jeu).
+
+## Passe 2 (a139), mesures en marche et coupée (2026-11-14)
+
+Méthode : celle du 14/11 (Play solo, IRONIX01, de jour, caméra scriptée qui fait un tour en 10 s, ScriptProfiler
+client à 1000 Hz, temps total en ms sur 10 s), 5 mesures par situation, un Play avec `Config/PerfClient` tel que
+dans git (en marche), un Play avec les 4 interrupteurs à `false` (coupée). Main 77d96f8.
+Situations : S1 dans la boutique (perso -43, 3, 255 ; 5 objets à effet de mutation exposés, dont Neon en Pulse,
+toujours une partie derrière la caméra) ; S2 à 80 studs (perso -43, 3, 147,5 ; colis du couloir à 115 studs et plus) ;
+S3 hub, allée `Walkway_Main` (perso -60, 3, 0 ; colis du couloir à 132 studs et plus, caméra tournée vers le couloir
+la moitié du tour). Studio en arrière-plan : 11 à 30 i/s (moyennes 16 à 26 selon la série), donc bruit fort.
+Gain = coupée − en marche (moyennes) ; « éc » = écart type sur 5 mesures.
+
+| fonction | situation | coupée (éc) | en marche (éc) | gain | décision |
+| --- | --- | --- | --- | --- | --- |
+| `ShelfOpenController.step` | S1 boutique | 55,4 (26,1) | 2,1 (3,4) | 53,3 | GARDER |
+| `ShelfOpenController.step` | S2 80 studs | 48,8 (18,4) | 0,0 (0) | 48,8 | GARDER |
+| `ShelfOpenController.step` | S3 hub | 13,9 (17,2) | 2,2 (4,8) | 11,7 | (dans le bruit) |
+| `ShelfBoxController.step` | S1 boutique | 32,6 (20,0) | 19,8 (18,4) | 12,9 | (dans le bruit) |
+| `ShelfBoxController.step` | S2 80 studs | 61,3 (35,2) | 13,2 (10,0) | 48,1 | INCERTAIN |
+| `ShelfBoxController.step` | S3 colis > 100 studs | 20,6 (8,9) | 20,1 (17,9) | 0,6 | INCERTAIN |
+| `MutationFxController.checkEntries` | S1 boutique | 1,9 (3,5) | 5,2 (6,7) | −3,2 | COUPER |
+| `MutationFxController.checkEntries` | S2 / S3 | 3,7 / 10,1 | 1,9 / 7,5 | 1,8 / 2,6 | (dans le bruit) |
+| `MutationFxController.onHeartbeat` | S1 boutique | 50,0 (15,9) | 50,4 (26,0) | −0,4 | INCERTAIN |
+| dont `updateFx` | S1 boutique | 35,2 (13,3) | 37,6 (27,2) | −2,5 | |
+| Tous nos scripts client | S1 / S2 / S3 | 466 / 466 / 305 | 421 / 471 / 387 | dans le bruit | |
+| Images par seconde | S1 / S2 / S3 | 15,8 / 21,7 / 20,7 | 18,9 / 26,1 / 21,9 | dans le bruit | |
+
+- `ShelfOpenWatchChanges` : GARDER (gain ≈ 50 ms / 10 s, plus de 2 écarts, en boutique comme à 80 studs).
+- `ShelfBoxFarSkip` : INCERTAIN. Gain net en S2, rien en S1 ni en S3 (où il devrait pourtant jouer le plus).
+  Pour trancher : refaire S2 et S3 avec Studio au premier plan, 10 mesures, et compter les colis revus par image.
+- `MutationFxCacheFlags` : COUPER (`MutationFxCacheFlags = false`). **Coupé le 14/11 dans `Config/PerfClient`.** `checkEntries` ne coûte que 2 à 10 ms / 10 s
+  avec ou sans ; rien à gagner avec 24 objets suivis.
+- `MutationFxOnScreenOnly` : INCERTAIN. Il marche (voir plus bas), mais la boutique de Cantin n'a qu'un effet
+  animé (Neon, Pulse) ; Diamond et Shiny n'ont pas de mouvement. Pour trancher : un profil de test avec plusieurs
+  objets Rainbow, Glitch ou Hacked exposés (ne pas muter le profil de Cantin), puis les deux Plays.
+- **Décision (Claude, 14/11, comme pour PvPController)** : les deux INCERTAIN sont gardés en marche et seront remesurés (Studio au premier plan, 10 mesures ; profil de test avec des objets Rainbow ou Glitch exposés). On les coupe s'ils ne gagnent toujours rien.
+- Profil DEV : seulement des téléportations et la caméra ; aucun Claim, aucune potion ramassée. L'écran UI_Offline
+  a été caché en local pendant les captures (rien de réclamé).
+
+À l'œil, au bord de l'écran (`MutationFxOnScreenOnly` en marche) : caméra en (-43, 8, 240), qui tourne lentement
+(180° en 30 s puis en 60 s) jusqu'à voir l'objet Neon (`DisplayItem_16`, -27, 1,5, 284). Relevé image par image de la
+couleur de sa pièce `Glass` : aucune couleur changée de 1 à 13 s (objet hors de l'écran, donc bien figé), puis
+l'animation repart vers 14 s, alors que le centre de l'objet n'entre dans l'image qu'à 18,1 s : la sphère agrandie
+le relance environ 4 s avant qu'il soit visible. Il ne peut donc pas avoir l'air figé en entrant. Les captures
+(`screen_capture`) montrent la rangée d'objets entrer normalement, mais l'objet Neon y est trop petit pour juger la
+pulsation à l'œil ; le relevé chiffré fait foi.

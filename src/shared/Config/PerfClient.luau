@@ -24,7 +24,7 @@ local PerfClient = {
 
 	-- MutationFxController : un objet suivi sans mutation n'est plus relu à chaque contrôle (toutes les
 	-- MutationFx.DistanceCheckInterval s) ; il l'est quand MutationSize ou MutationEffect change. false : relu.
-	MutationFxCacheFlags = true, -- V0 proposé, absent du doc
+	MutationFxCacheFlags = false, -- coupé le 2026-11-14 : aucun gain mesuré en Play (2 à 10 ms sur 10 s avec ou sans), perf-telephone.md
 
 	-- MutationFxController : l'effet d'un objet immobile (exposé, au sol, sorti du rayon) hors de l'écran n'est
 	-- plus animé (couleurs Rainbow et Pulse, tremblement et saut de Glitch, doubles replacés) : il garde sa
