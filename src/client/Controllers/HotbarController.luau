@@ -52,8 +52,12 @@
 --     l'outil en main ou le colis en cours de pose ;
 --   - touches 1 à SlotCount (1 à TouchSlotCount sur téléphone), clic ou appui sur une case : outil de
 --     casse ou batte en main, ou rangé s'il y était ; colis : mode pose (InventoryController.StartPlacing),
---     ou fin du mode pose s'il était en cours pour ce colis ; objet : posé sur le présentoir libre le
---     plus proche (PlaceItemAuto) ; case vide : rien. Le serveur revérifie tout ;
+--     ou fin du mode pose s'il était en cours pour ce colis ; objet : EN MAIN (agent a142, demande de
+--     Cantin du 2026-11-14 : InventoryController.HoldItem, remote HoldItem, HeldItemService fait le Tool à la
+--     taille du présentoir), rangé si on re-choisit sa case ou si on en choisit une autre ; sous antivol, en
+--     main ET en mode pose au sol ; pour l'exposer : PlaceButton de l'écran d'inventaire ou Equip Best (avant
+--     a142 : posé sur le présentoir libre le plus proche, PlaceItemAuto) ; case vide : rien. Le serveur
+--     revérifie tout. Equipped aussi sur l'objet tenu en main ;
 --   - animations (Controllers/UI/Motion, sans le modifier) : survol T.34 HoverCard (Icon grossi et
 --     penché, HoverOutline ; UiFeelController le branche aussi sur toute carte qui a un HoverOutline,
 --     sans effet la 2e fois) ; appui et relâché T.31-32 par Motion.Pop (× Press.To puis retour en
@@ -61,6 +65,7 @@
 --     par Motion.Pop (× Success.From → 1 en Success.Time) sur la case d'un outil qui arrive en main ;
 --   - un outil arrive en main (barre, touche, écran, près d'une vitrine…) : son UI_Equip et message vert
 --     « <outil> equipped! » (NotifyController.Show, catégorie Success ; UI_Toast passe derrière Notify) ;
+--     un objet de l'inventaire (a142) : son UI_Equip et réussite T.33 sur sa case, sans message ;
 --   - Enabled de l'écran = branché et pas en poursuite (ChaseController.IsChased), revu toutes les TICK s :
 --     ChaseFeelController cache la barre pendant la poursuite, ce code ne la rallume jamais tant qu'elle
 --     dure, et la rallume après (même si l'écran est arrivé pendant la poursuite).
@@ -91,6 +96,7 @@ local UserInputService = game:GetService("UserInputService")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = Shared:WaitForChild("Config")
 local Bat = require(Config:WaitForChild("Bat"))
+local HeldItem = require(Config:WaitForChild("HeldItem"))
 local Items = require(Config:WaitForChild("Items"))
 local Rarities = require(Config:WaitForChild("Rarities"))
 local Tools = require(Config:WaitForChild("Tools"))
@@ -121,6 +127,7 @@ type InventoryApi = {
 	StartPlacing: (boxUid: string) -> (),
 	StopPlacing: () -> (),
 	PlaceItem: (itemUid: string) -> (),
+	HoldItem: ((itemUid: string) -> ())?, -- agent a142 : objet en main ou rangé (absent : PlaceItem, comme avant)
 	NeedsAction: ((uid: string) -> boolean)?, -- vague 34 : pastille SlotAlert (absente : éteinte)
 }
 type ChaseApi = { IsChased: () -> boolean }
@@ -486,7 +493,8 @@ local function readStock(api: InventoryApi): ({ [string]: Slot }, { Slot }, bool
 				icon = def.Id,
 				rarity = rarity,
 				income = income,
-				equipped = false,
+				-- Agent a142 : l'objet tenu en main (Tool HeldItemUid), ou en cours de pose au sol (antivol).
+				equipped = (held ~= nil and held:GetAttribute(HeldItem.ToolAttribute) == item.Uid) or placingUid == item.Uid,
 				antiTheft = item.AntiTheft == true,
 				alert = alertOf(item.Uid),
 			}
@@ -653,7 +661,12 @@ local function use(slot: Slot)
 			api.StartPlacing(uid)
 		end
 	elseif kind == "Item" and uid then
-		api.PlaceItem(uid)
+		local hold = api.HoldItem
+		if hold then
+			hold(uid) -- agent a142 : en main, ou rangé (sous antivol : avec le mode pose au sol)
+		else
+			api.PlaceItem(uid)
+		end
 	end
 end
 
@@ -1223,6 +1236,17 @@ end
 local function onEquipped(tool: Tool)
 	local key: string
 	local name: string
+	local heldUid = tool:GetAttribute(HeldItem.ToolAttribute)
+	if type(heldUid) == "string" then
+		-- Agent a142 : objet de l'inventaire en main : son et réussite T.33 sur sa case, sans message.
+		Motion.PlaySound(EQUIP_SOUND)
+		local current = screen
+		local view = if current then current.views["Item_" .. heldUid] else nil
+		if view and view.frame.Parent ~= nil then
+			Motion.Pop(view.frame, UiMotion.Success.From, SUCCESS_INFO)
+		end
+		return
+	end
 	if tool:GetAttribute(BAT_ATTRIBUTE) == true then
 		key, name = "Bat", Bat.DisplayName
 	elseif tool:GetAttribute(TOOL_ID_ATTRIBUTE) ~= nil then
