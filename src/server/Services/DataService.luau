@@ -47,6 +47,11 @@
 --       sauvegardé, comme le recommande ProfileStore.
 --   DataService.NewData() -> Data
 --       Copie neuve du modèle d'un nouveau profil (remise à zéro du panel admin, AdminService).
+--   DataService.GetStoreName() -> string
+--       Nom de la DataStore des profils de ce serveur (vague 40 : « PlayerData » en PROD, Balance.Profiles.
+--       DevStoreName dans le jeu DEV).
+--   DataService.StoreNameFor(gameId) -> string
+--       Le même choix pour un GameId donné (bancs).
 --
 -- Attribut du Player (écrit seulement ici) : Cash, l'argent du profil, posé au chargement puis à
 -- chaque AddCash ou SpendCash. Le HUD l'affiche (HudController, DEV-021) ; il ne sert qu'à
@@ -120,8 +125,28 @@ type Store = {
 	StartSessionAsync: (self: Store, key: string, params: { Cancel: () -> boolean }) -> StoreProfile?,
 }
 
--- Nom de la DataStore des joueurs. Ne jamais le changer : un autre nom = profils vides.
-local STORE_NAME = "PlayerData"
+-- Nom de la DataStore des joueurs, selon le jeu (Balance.Profiles, vague 40) : PROD et tout autre jeu
+-- gardent Balance.Profiles.StoreName (« PlayerData », ne jamais le changer : un autre nom = profils vides) ;
+-- seul le jeu DEV (game.GameId = DevGameId) lit DevStoreName (remise à zéro des profils DEV de Cantin,
+-- 2026-11-14). Aucune DataStore n'est effacée : l'ancienne « PlayerData » du jeu DEV reste intacte.
+local function storeNameFor(gameId: number?): string
+	local profiles = Balance.Profiles
+	local base: string = profiles.StoreName
+	local devName: string = profiles.DevStoreName
+	if gameId ~= nil and gameId ~= 0 and gameId == profiles.DevGameId and devName ~= "" then
+		return devName
+	end
+	return base
+end
+
+local function currentGameId(): number?
+	local ok, value = pcall(function(): any
+		return (game :: any).GameId
+	end)
+	return if ok and type(value) == "number" then value else nil
+end
+
+local STORE_NAME = storeNameFor(currentGameId())
 -- Délai par défaut de WaitFor, en secondes. V0 proposé, absent du doc : ProfileStore
 -- reprend une session bloquée sur un autre serveur au bout d'environ 40 s.
 local DEFAULT_WAIT_TIMEOUT = 60
@@ -611,6 +636,14 @@ local MESSAGES = {
 local DataService = {}
 DataService.Priority = 1 -- démarre avant les autres services
 
+function DataService.GetStoreName(): string
+	return STORE_NAME
+end
+
+function DataService.StoreNameFor(gameId: number?): string
+	return storeNameFor(gameId)
+end
+
 local store: Store? = nil
 local profiles: { [Player]: StoreProfile } = {}
 local loading: { [Player]: boolean } = {}
@@ -936,6 +969,10 @@ function DataService.Start()
 		task.wait()
 	end
 	local state = ProfileStore.DataStoreState
+	if STORE_NAME ~= Balance.Profiles.StoreName then
+		-- Vague 40 : jeu DEV, profils remis à zéro (Balance.Profiles) ; l'ancienne DataStore reste intacte.
+		print(`[DataService] jeu DEV : profils lus dans « {STORE_NAME} » (remise à zéro du 2026-11-14) ; « {Balance.Profiles.StoreName} » n'est ni lue ni effacée`)
+	end
 	if state == "Access" then
 		if RunService:IsStudio() then
 			print(`[DataService] Studio avec accès aux services d'API : les profils sont réellement sauvegardés (DataStore « {STORE_NAME} » de cette expérience)`)
