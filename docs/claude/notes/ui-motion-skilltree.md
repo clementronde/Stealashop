@@ -50,10 +50,31 @@ Elles remplacent, pour les fenêtres et les boutons, les lignes « Écran qui s'
 | Témoin : « ? » qui se remplit (`BB_Witness.Mark.Fill`) | `Fill.Size` Y de 0 à 1 du bas vers le haut, **en 8 s** (décision de Clément, 2026-11-12 : le temps que la vitre se casse ; à 8 s, le témoin appelle) ; `Fill.FillMark.TextColor3` jaune `ffd84a` jusqu'à 50 %, orange `ff8c1a` jusqu'à 80 %, puis rouge `e8413c` ; à chaque changement de couleur, `Mark` 1,1 → 1 en 0,15 ; prototype en Edit (`_G.WitnessProto`) | linéaire, Back Out pour le saut | `WitnessFill` |
 | Témoin : passage au « ! » (`BB_Witness.Alert`) | `Mark` caché, `Alert` visible : 0 → 1,3 en 0,12, puis 1 en 0,1 ; tremblement de ± 8° (`Rotation`), 4 allers-retours en 0,3 | Back Out, puis Quad Out | `WitnessAlert` |
 | Témoin : pendant l'appel | `Alert` bat de 1 à 1,12, 2 fois par seconde ; `Alert.PhoneIcon` sonne : ± 12° autour de −12°, 6 fois par seconde ; jusqu'à la fin de l'appel | sinus | `WitnessCall` |
-| Colis ouvert sur le rayon : les rabats (L-112) | les deux rabats du couvercle (`BOX_*/Lid.FlapL` et `FlapR`, à modéliser) tournent de 115° autour de leur bord extérieur, en 0,35 ; puis la lumière : `FX_ShelfLight` posé sur le haut du colis, `InnerGlow` de 0 à 3 en 0,25 ; prototype `open_counter_antitheft_preview.luau` | Back Out, puis Quad Out | `ShelfFlaps` |
+| Colis ouvert sur le rayon : les rabats (L-112) | les deux rabats du couvercle (`BOX_*/Lid.FlapL` et `FlapR`, Models faits sur les 11 colis le 2026-11-13, pivot sur la charnière : `PivotTo(fermé * CFrame.Angles(0, 0, a))`, a > 0 lève le rabat) tournent de 115° autour de leur bord extérieur, en 0,35 ; puis la lumière : `FX_ShelfLight` posé sur le haut du colis, `InnerGlow` de 0 à 3 en 0,25 ; prototype `open_counter_antitheft_preview.luau` | Back Out, puis Quad Out | `ShelfFlaps` |
 | Colis : la chance monte (`BB_ShelfOpen.Row.Luck`) | un tic toutes les 0,1 s : chance × 1,03 (la montée accélère, comme la vidéo de référence), texte « ×N LUCK », `Row` 1,12 → 1 en 0,1, `LuckIcon` penche de ± 10° ; le colis grandit avec la chance : échelle 1 + 0,6 × k (k = 0 sans chance, 1 au plus haut), battement de + 4 % à chaque tic ; la lumière grandit avec k (`InnerLight.Width1` 3,4 → 6,4, `InnerGlow` 3 → 7, `Sparkles.Rate` 14 → 54). **Sans chance, aucune montée : le colis s'ouvre tout de suite.** En jeu, le tic sonne avec une note qui monte d'une octave sur la montée | Back Out | `ShelfLuck` |
 | Colis : révélation | le colis et son contour noir (`OutlineHighlight`, `OutlineBox`) disparaissent ; `FX_ShelfReveal` : `Emit(EmitCount)` sur chaque émetteur, `Flash` de 9 à 0 en 0,7, `Shaft` allumé puis effacé en 0,6 (après 0,55) ; couleurs à la rareté ; à partir d'Épique, `UI_HUD.RevealTint` transparence 0,62 → 1 en 0,55. L'objet sort à la place du colis, **tourné comme le rayon** (face avant vers l'allée), 0,2 → 1,15 → 1 en 0,35, blanc puis à ses couleurs en 0,2 ; `BB_Item` 0 → 1 en 0,3, avec `Mutation` | Back Out, puis Quad Out | `ShelfReveal` |
 | Objet en base : antivol (`BB_AntiTheft`) | `TimeLabel` compte à rebours (aperçu : 10 s, comme l'attente du colis aujourd'hui) ; à 0, « UNLOCKED! » en vert `5cff4a`, 1,35 → 1 en 0,3 ; visible à 10 studs seulement | Back Out | `AntiTheft` |
+
+## Boutiques sur le modèle de la vidéo de Clément (2026-11-13, prototype validé par Clément)
+
+Mesuré image par image sur `StealAShop-Art/References/2026-11-13_Boutiques/boutique_reference.mp4` (1866 × 950, 30 images/s). Prototype : `tools/clement/shop_ref_proto.luau` (Edit, CoreGui). Ces valeurs ne valent que pour les boutiques (auras, trails, armes, Robux) ; elles sont plus vives que celles du reste du jeu (tableau du dessus).
+
+| Moment | Valeur | Courbe | Nom proposé dans `UiMotion` |
+| --- | --- | --- | --- |
+| Boutique qui s'ouvre | `Root` 0,5 → 1 en 0,10, en montant de 0,2 × sa hauteur (pivot à 70 % de la hauteur, depuis le haut) ; les cartes arrivent avec le panneau, sans cascade | Quad Out | `ShopOpen` |
+| Boutique qui se ferme | 1 → 0,7 en 0,11, pivot à 62,5 % de la hauteur, puis l'écran s'éteint | Quad In | `ShopClose` |
+| Bouton survolé (boutique) | × 1,12 en 0,10 ; `Shade` de transparence 1 → 0,9 (10 % plus sombre) ; retour en 0,08 | Quad Out | `ShopHover` |
+| Bouton appuyé (boutique) | × 0,88 en 0,04 ; relâché : retour en 0,07 (à 1,12 si la souris est encore dessus) | Quad Out | `ShopPress` |
+| Carte survolée (boutique) | rien ne bouge : seuls les boutons réagissent | — | — |
+| Défilement des cartes (`List`) | 3 cartes visibles, de droite à gauche ; un cran de molette = 26 % d'une case (carte + écart) ; le contenu rattrape sa cible en divisant l'écart par 2 toutes les 0,033 s ; pas de calage sur une carte ; au doigt : glisser, puis élan | exponentielle | `ShopScroll` |
+| Fond de carte Common à Legendary | dégradé fixe, clair en haut, saturé en bas | — | — |
+| Fond de carte Mythic | bande claire (blanc, transparence 0,45) qui descend : une toutes les 2,1 s (0,85 hauteur de carte par seconde) | linéaire, en boucle | `CardSheen` |
+| Fond de carte Secret | arc-en-ciel vertical (nos 5 couleurs, éclaircies de 35 %) qui glisse vers la gauche, 0,36 largeur de carte par seconde ; un tour d'arc-en-ciel par largeur de carte | linéaire, en boucle | `CardRainbow` |
+| Fond de carte Divine | reflet clair penché de 18° qui passe de gauche à droite, un toutes les 3 s | linéaire, en boucle | `CardSweep` |
+| Palier de carte : rayons (`IconArea.Rays`, Epic et plus) | rotation sans fin, `RaysSpin` degrés par seconde : Epic 10, Legendary 14, Mythic 18, Secret et Divine 24 (attribut de `ShopCardBg/<Rareté>`) ; prototype `shop_tiers_proto.luau` | linéaire, en boucle | `CardRays` |
+| Palier de carte : lueur (`IconArea.Glow`, Rare et plus) | transparence de base ± `GlowPulse` (0,12), 2,4 radians par seconde | sinus | `CardGlow` |
+| Palier de carte : étincelles (`IconArea.Star1` à `Star5`, Legendary et plus) | taille 0,12 → 0,22, transparence 0,6 → 0, 3 radians par seconde, chacune décalée de 1,3 ; tournent de 40° par seconde | sinus | `CardStars` |
+| Palier de carte : contour Secret (`Card.UIStroke.BorderGradient`) | le dégradé arc-en-ciel du contour tourne de 90° par seconde | linéaire, en boucle | `CardBorderSpin` |
 
 ## Propres à l'arbre de compétences
 
