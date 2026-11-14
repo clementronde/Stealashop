@@ -91,7 +91,8 @@
 --     reconstruit tout de suite à ses PV max (WindowService.Rebuild, donc OnRebuilt : la fenêtre de vol se
 --     ferme comme avant) dès qu'il ne reste plus aucun intrus dans Bounds (même règle que le point d'attente
 --     de la reconstruction) ; s'il en reste un, elle attend qu'il soit sorti ou éjecté (revu 10 fois par
---     seconde). Un voleur déjà dehors avec un objet n'est plus un intrus : la porte ne l'attend pas.
+--     seconde). Un voleur déjà dehors avec un objet n'est plus un intrus : la porte ne l'attend pas. Décision
+--     de Cantin (2026-11-14) : frappé alors qu'il est déjà dehors, la porte se répare aussi, par la même règle.
 -- Vague 37 (a124, L-117 point 7) : le bot défend aussi sa boutique (BotService) ; son coup réussi
 -- (BatService.OnBotHit, « Intruder » ou « Defend ») a le même effet sur la cible, sans retour au propriétaire.
 -- Un joueur mort dans le volume Bounds d'une boutique qui n'est pas la sienne (joueur ou bot) prend la
@@ -1504,18 +1505,20 @@ end
 
 -- Après un coup du défenseur de `plot` (propriétaire ou bot) : interdiction de PvP.KickRobCooldown s, sortie
 -- devant la porte s'il est dedans, et le message à la cible. true s'il a été sorti ; porte cassée : elle se
--- répare dès qu'il ne reste plus d'intrus (vague 43).
+-- répare dès qu'il ne reste plus d'intrus (vague 43), qu'il ait été sorti ou qu'il soit déjà dehors
+-- (décision de Cantin, 2026-11-14 : « Oui, réparer »).
 local function kickOut(plot: Model, target: Player, why: string, duration: number?): boolean
 	local seconds = duration or PvP.KickRobCooldown
 	ban(target, plot, why, seconds)
 	local bounds = refsFor(plot).Bounds
-	if bounds and putOut(target, plot, bounds) then
+	local moved = bounds ~= nil and putOut(target, plot, bounds)
+	local windowId = WindowService.GetWindowId(plot)
+	if windowId and WindowService.IsBroken(windowId) then
+		repairWhenEmpty[plot] = true
+		tryRepair(plot)
+	end
+	if moved then
 		notify(target, cooldownMessage(MESSAGES.KickedOut, seconds), "Alert")
-		local windowId = WindowService.GetWindowId(plot)
-		if windowId and WindowService.IsBroken(windowId) then
-			repairWhenEmpty[plot] = true
-			tryRepair(plot)
-		end
 		return true
 	end
 	notify(target, cooldownMessage(MESSAGES.RobCooldown, seconds), "Alert")
