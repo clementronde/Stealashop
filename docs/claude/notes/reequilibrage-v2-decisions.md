@@ -17,6 +17,17 @@ Ses mots :
   - Règle qui en découle pour l'équilibrage : les calculs se font avec **dégâts = arme × aura**. La potion ×1,5 reste un bonus en plus, en jeu.
   - **PV des vitrines de la zone 6** = les dégâts de deux des meilleurs joueurs possibles (arme × aura au maximum) pendant le chrono de casse de 13 s.
 
+### Réponses de Cantin aux questions de la proposition (14/11)
+
+Ses mots, questions de la section 9 de [equilibrage-v2-proposition.md](equilibrage-v2-proposition.md) :
+
+1. Cible de 7 h 30 : « Sans les aides » (7 h 35 de jeu actif).
+2. PV des vitrines de la zone 6 : « 374M » (deux joueurs au maximum à 10 coups/s, et non 320M).
+5. Potion de vitesse : « On enlève potion de vitesse ». L'Index (+3 % de marche par zone) reste, tant que Cantin n'a rien dit.
+6. Gamepass Hydraulic Gloves : « Il peut casser car il a payé » : le pass reste, et un joueur qui l'a peut casser seul une vitrine de la zone 6.
+
+Questions 3, 4 et 7 (niveau 1 du tapis offert, taps au tapis +50 %, joueur prudent à 15 h 30) : pas encore répondues, on garde les choix par défaut de la proposition. Profils DEV : remise à zéro (déjà décidé).
+
 ## À mettre en place dans le code
 
 1. **Retirer le banc du jeu**, partout où il sert :
@@ -29,7 +40,9 @@ Ses mots :
 2. **Dégâts = arme × multiplicateur d'aura × potion.** Aujourd'hui, `Formulas.HitDamage(toolPower, strength, auraMultiplier)` vaut `toolPower × (1 + strength / StrengthDivisor) × auraMultiplier`. Sans banc, la part de la force disparaît.
 3. **Potion Strength ×1,5** : `Config/Potions`, `Multiplier = 2` → `1.5`.
 4. **Nouvelles valeurs** (tapis, prix, armes, auras, PV des vitrines par zone, seuils des zones) : celles de [equilibrage-v2-proposition.md](equilibrage-v2-proposition.md), une fois validées par Cantin. Vérifier les deux contraintes : zone 6 en environ 7 h 30, et zone 6 impossible à casser seul (PV de ses vitrines = dégâts de deux des meilleurs joueurs, arme × aura au maximum, pendant le chrono de 13 s ; potion non comptée).
-5. **Remise à zéro des profils DEV** quand les nouvelles valeurs arrivent (le profil de Cantin compris), avec son accord au moment de le faire.
+5. **Retirer la potion Speed** : son entrée dans `Config/Potions`, son effet dans `PotionService` (`StatsService.SetSpeedModifier`, le seul modificateur posé au-dessus du plafond), sa carte et son minuteur côté client (`PotionController`, `InventoryController`), son icône, le contrat du modèle `POT_Speed`, et ce qui la cite : `AdminService`, `AntiCheatService`, `StatsService`, `TelemetryService`, les attributs de test (`PotionTest`). Vérifier si la tuile `PotionTime` de l'arbre en dépend (elle allonge toutes les potions : elle reste pour les autres). Les potions déjà dans les profils : à vider à la remise à zéro.
+6. **Hydraulic Gloves** : rien à changer, il casse la zone 6 seul (choix de Cantin).
+7. **Remise à zéro des profils DEV** quand les nouvelles valeurs arrivent (le profil de Cantin compris), avec son accord au moment de le faire.
 
 ## Côté Clément (liaison)
 

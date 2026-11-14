@@ -24,7 +24,7 @@ Note de l'agent a132 (2026-11-14), pour Cantin et Clément. **Rien n'est changé
 | Stats entraînées | Vitesse (tapis) et Force (banc) | Vitesse seule |
 | Dégâts d'un coup | arme × (1 + Force / 100) × aura | arme × aura |
 | Strength du panneau de la zone 6 | 40K | 2M (Angle Grinder 100K × Royal ×20) |
-| Vitrine de la zone 6 | 1.4M PV, cassable seul | 320M PV, il faut être deux |
+| Vitrine de la zone 6 | 1.4M PV, cassable seul | 374M PV, il faut être deux (choix de Cantin, 14/11 ; 320M proposé d'abord) |
 | Speed du panneau de la zone 6 | 48 (un WalkSpeed) | 3B (marche réelle : 46) |
 | Vitesse de marche au plafond de 70 | au bout de 29 min | jamais en pratique (45 à l'entrée en zone 6) |
 | Niveau du tapis à l'entrée en zone 6 | 20 sur 20 | 15 sur 20 |
@@ -79,7 +79,7 @@ Un seul nombre sur le HUD et sur les panneaux : la Speed affichée (trail compri
 | 3 | 28 → 100K | 28 → 28 | Crowbar × Flame | 80 → 120 | 2.8K → 4.2K | 35 → 35 | 24.2 → 26.2 | 60 → 60 |
 | 4 | 34 → 3M | 34 → 34 | Hammer × Lightning | 600 → 1.5K | 21K → 52.5K | 35 → 35 | 29.6 → 31.5 | 450 → 450 |
 | 5 | 40 → 100M | 40 → 40 | Sledgehammer × Plasma | 5K → 20K | 175K → 700K | 35 → 35 | 35 → 37 | 3.5K → 3.5K |
-| 6 | 48 → 3B | 48 → 46 | Angle Grinder × Royal | 40K → 2M | 1.4M → **320M** | 35 → **160** | 42.2 → 42.3 | 25K → 25K |
+| 6 | 48 → 3B | 48 → 46 | Angle Grinder × Royal | 40K → 2M | 1.4M → **374M** | 35 → **187** | 42.2 → 42.3 | 25K → 25K |
 
 D'où viennent ces nombres :
 
@@ -245,19 +245,24 @@ coups/s × dégâts × 13 ≥ PV × (1 + 0,03 × 13)      soit      PV ≤ 9,353
 - maximum = la règle = 2 × 10 × D × 13 / 1,39 = **187,05 × D = 374M** (260 × D = 520M si on oublie la régénération : avec 520M, deux joueurs parfaits n'y arriveraient pas) ;
 - minimum = plus que ce que fait un joueur seul avec la potion = 1,5 × 10 × D × 13 / 1,39 = **140,3 × D = 280M**.
 
-**Valeur choisie (V0 proposé) : 160 × D = 320M PV**, soit 0,855 × le maximum de la règle. À 374M tout rond, il faudrait deux joueurs à 10 coups/s sans un seul coup manqué pendant 13 s, ce que personne ne tient à la main. À 320M, deux joueurs à 8,6 coups/s y arrivent, et le joueur seul avec la potion reste 14 % en dessous. Si Cantin veut la règle sans marge, c'est 374M (`Zone6.HPPerDamage = 187`).
+**Valeur choisie par Cantin (14/11, « 374M ») : 187 × D = 374M PV** (`Zone6.HPPerDamage = 187`), la règle sans marge. Il faut deux joueurs au meilleur kit à 10 coups/s pendant tout le chrono, ou quatre joueurs à 6 coups/s ; trois ne suffisent plus. Le joueur seul avec la potion de force reste loin en dessous. Exception voulue par Cantin (« Il peut casser car il a payé ») : avec le gamepass Hydraulic Gloves, un joueur seul casse la vitrine. Proposé d'abord : 160 × D = 320M (deux joueurs à 8,6 coups/s).
 
-| Avec 320M PV | Temps de casse |
+**À vérifier avant d'appliquer (Claude, 14/11)** : le simulateur tourne encore avec 160. Avec `HPPerDamage = 187`, `RAPPORT=v2 COURT=1 bash tools/ironix/equilibrage/run.sh` donne 0 partie sur 25 qui atteint la zone 5 ou la zone 6, pour les trois profils (avec 160 : zone 6 en 7 h 35 pour le joueur moyen). La cause n'est pas encore trouvée : les temps par zone de cette note sont ceux de 320M.
+
+Temps de casse avec 374M PV, régénération de 3 %/s comprise (temps = PV / (dégâts par seconde − 0,03 × PV) ; « non » au-delà du chrono de 13 s) :
+
+| Avec 374M PV | Temps de casse |
 | --- | --- |
-| Seul, 10 coups/s, sans potion | non (30.8 s) |
-| Seul, 10 coups/s, potion | non (15.7 s) |
-| Deux, 10 coups/s | 10.5 s |
-| Deux, 9 coups/s | 12.1 s |
-| Deux, 8 coups/s | non (14.3 s) |
-| Trois, 6 coups/s | 12.1 s |
-| Quatre, 6 coups/s | 8.3 s |
-| Deux, 6 coups/s, potion | 12.1 s |
-| Quatre, 10 coups/s, Angle Grinder × Galaxy (1.2M) | 8.3 s |
+| Seul, 10 coups/s, sans potion | non (42.6 s) |
+| Seul, 10 coups/s, potion | non (19.9 s) |
+| Seul, 10 coups/s, Hydraulic Gloves (2,5 × l'arme) | 9.6 s |
+| Deux, 10 coups/s | 13.0 s (tout juste) |
+| Deux, 9 coups/s | non (15.1 s) |
+| Deux, 8 coups/s | non (18.0 s) |
+| Trois, 6 coups/s | non (15.1 s) |
+| Quatre, 6 coups/s | 10.2 s |
+| Deux, 6 coups/s, potion | non (15.1 s) |
+| Quatre, 10 coups/s, Angle Grinder × Galaxy (1.2M) | 10.2 s |
 | Huit, 10 coups/s, kit de la zone 5 (20K) | jamais |
 
 À écrire dans le code comme un calcul, pas comme un nombre : `Zones[6].WindowHP = 160 × (meilleur Power de Tools) × (meilleur Multiplier des auras)`. Toute nouvelle arme ou aura (renaissances, gamepass) déplace alors la vitrine avec elle.
@@ -412,6 +417,17 @@ Les trois vrais boutons : le prix des niveaux du tapis, la vitesse des vigiles (
 6. **Gamepass Hydraulic Gloves** (« 2.5× your best tool ») : il permettrait de casser la zone 6 seul. On le retire, ou il compte dans « le meilleur joueur possible » (les PV montent alors de 2,5 fois pour tout le monde) ?
 7. **Joueur prudent à 15 h 30** : acceptable ? Sinon, vigile à 0,9 × vitesse conseillée (sans le + 1) et tapis un peu plus cher.
 8. **Profils de la place DEV** : remise à zéro au passage ?
+
+**Réponses de Cantin (2026-11-14), ses mots** :
+
+1. « Sans les aides » : la cible reste 7 h 35 de jeu actif.
+2. « 374M » : vitrines de la zone 6 à 374M PV (`Zone6.HPPerDamage = 187`), deux joueurs au maximum à 10 coups/s. Voir la section de la zone 6.
+3. Pas encore répondu : on garde le choix par défaut (niveau 1 offert).
+4. Pas encore répondu : on garde le choix par défaut (taps gardés, +50 %).
+5. « On enlève potion de vitesse » : la potion Speed sort du jeu. L'Index (+3 % de marche par zone) reste, tant que Cantin n'a rien dit.
+6. « Il peut casser car il a payé » : le gamepass Hydraulic Gloves reste, et un joueur qui l'a peut casser la zone 6 seul (2,5 × 100K × 20 = 5M par coup, 10 coups/s : 374M en 9,6 s). Les PV ne montent pas pour autant.
+7. Pas encore répondu : on garde le choix par défaut (joueur prudent à 15 h 30 accepté).
+8. Remise à zéro des profils DEV (déjà décidé).
 
 ### Pour Clément
 
