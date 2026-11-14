@@ -73,8 +73,8 @@
 --     Le modèle (DisplayService.BuildFloorItem : ITM_, halo) est au sol, tag FloorItem, attribut UnlockAt ;
 --     UnboxController y met BB_AntiTheft (minuteur, puis « UNLOCKED! ») et les invites. Pendant l'antivol :
 --     jamais sur un présentoir (DisplayService le refuse), volable (PvPService, StealFloorItem).
---   - Fini : un Notify au propriétaire ; OpenBox(itemUid) le reprend (antivol retiré) et le met sur le
---     présentoir libre le plus proche (DisplayService.PlaceAuto), sinon dans l'inventaire.
+--   - Fini : un Notify au propriétaire ; OpenBox(itemUid) le reprend (antivol retiré) et, vague 44 (a152), le met
+--     en main (HeldItemService.Give, mains libres), sinon dans l'inventaire ; jamais tout seul sur un présentoir.
 --   - Au retour du joueur, ses objets posés reviennent à leur place (l'antivol compte aussi hors ligne, comme
 --     l'attente des colis) ; un point hors de Bounds : retour dans l'inventaire, sous antivol.
 --   - Les colis déjà dans les profils deviennent des objets au chargement (DataService, convertBoxes). Les
@@ -395,8 +395,9 @@ local MESSAGES = {
 	ItemHeld = "This item is being stolen: hit the thief to get it back!",
 	-- %s = nom de l'objet (mutation devant)
 	ItemUnlocked = "%s is UNLOCKED! Put it on a display.",
-	ItemToStand = "%s placed on a display!",
-	ItemBack = "%s is back in your inventory: your displays are full.",
+	-- Vague 44 (a152), V0 proposés, absents du doc : l'objet repris après l'antivol (jamais posé tout seul).
+	ItemToHand = "%s is in your hand: put it on a display!",
+	ItemToInventory = "%s is in your inventory.",
 	ItemBackToInventory = "An item of yours didn't fit in this shop: it's back in your inventory.",
 }
 -- Catégorie des Notify d'information (objet gardé…) ; les refus partent en « Warning ».
@@ -1676,8 +1677,8 @@ local function placeFloorItem(player: Player, data: Data, session: Session, item
 end
 
 -- Vague 31 (L-112) : OpenBox(itemUid) sur un objet posé au sol, antivol fini (« UNLOCKED! ») : le propriétaire
--- le reprend ; il n'est plus sous antivol et va sur le présentoir libre le plus proche (DisplayService.PlaceAuto,
--- le chemin existant), sinon dans l'inventaire. Même portée que l'ouverture d'un colis.
+-- le reprend ; il n'est plus sous antivol et va en main s'il a les mains libres (vague 44, a152 : HeldItemService.Give),
+-- sinon dans l'inventaire (barre du bas) ; jamais posé tout seul. Même portée que l'ouverture d'un colis.
 local function takeFloorItem(player: Player, session: Session, itemUid: string, entry: any)
 	local shown = session.items[itemUid]
 	local what = `OpenBox({itemUid}) (objet sous antivol)`
@@ -1699,24 +1700,23 @@ local function takeFloorItem(player: Player, session: Session, itemUid: string, 
 		notify(player, MESSAGES.ItemLocked)
 		return
 	end
-	-- D'un seul tenant : l'objet redevient un objet libre de l'inventaire, puis va sur un présentoir.
+	-- D'un seul tenant : l'objet redevient un objet libre de l'inventaire, puis va en main (vague 44, a152).
 	entry.AntiTheft = nil
 	entry.UnlockAt = nil
 	entry.Spot = nil
 	clearShownItem(session, itemUid)
 	local name = itemNameOf(entry)
-	local ok, slot = pcall(DisplayService.PlaceAuto, player, itemUid, where)
-	if ok and type(slot) == "number" then
-		notify(player, string.format(MESSAGES.ItemToStand, name), SUCCESS_KIND)
-		log(`{player.Name} : objet {itemUid} repris du sol, exposé sur le présentoir {slot}`)
-	else
-		if not ok then
-			warn(`[UnboxService] DisplayService.PlaceAuto ({player.Name}, {itemUid}) : {slot}`)
-		end
-		notify(player, string.format(MESSAGES.ItemBack, name), INFO_KIND)
-		log(`{player.Name} : objet {itemUid} repris du sol, dans l'inventaire (présentoirs pleins)`)
-	end
 	refreshInventory(player)
+	local module = script.Parent:FindFirstChild("HeldItemService") -- require protégé : bancs sans lui
+	local ok, inHand = pcall(function()
+		return module ~= nil and (require(module :: ModuleScript) :: any).Give(player, itemUid) == true
+	end)
+	if not ok then
+		warn(`[UnboxService] HeldItemService.Give ({player.Name}, {itemUid}) : {inHand}`)
+	end
+	local dest = if ok and inHand then "en main" else "dans l'inventaire (mains prises)"
+	notify(player, string.format(if ok and inHand then MESSAGES.ItemToHand else MESSAGES.ItemToInventory, name), SUCCESS_KIND)
+	log(`{player.Name} : objet {itemUid} repris du sol, {dest}`)
 	refreshStates(player)
 end
 
