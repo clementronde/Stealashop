@@ -55,8 +55,9 @@
 --     (MESSAGES.ToStand) à la révélation. Ni l'un ni l'autre : ouverture refusée (MESSAGES.InventoryFull).
 --   - Au retour du joueur (profil chargé et parcelle attribuée), ses colis posés réapparaissent à leur
 --     place, et BoxReady part pour ceux déjà prêts. Un colis posé dont le point n'est plus dans le
---     volume Bounds de la parcelle (modèle de boutique changé) revient dans l'inventaire, ReadyAt gardé
---     (MESSAGES.BackToInventory) : jamais perdu.
+--     volume Bounds de la parcelle (modèle de boutique changé ; le colis doit y tenir entier) ou qui est à
+--     moins de StandClearance d'un présentoir (L-141 : présentoirs déplacés) revient dans l'inventaire,
+--     ReadyAt gardé (MESSAGES.BackToInventory) : jamais perdu. Même règle pour les objets sous antivol.
 --   - L'objet exact reste caché jusqu'à l'ouverture (5.7) : l'ItemId ne quitte le serveur que dans
 --     UnboxReveal. Aucun attribut, nom ni modèle (colis posé, état de l'inventaire) ne le montre avant.
 --
@@ -1029,6 +1030,32 @@ local function insideFootprint(bounds: BasePart, world: Vector3, margin: number)
 	return math.abs(p.X) <= half.X - margin and math.abs(p.Z) <= half.Z - margin
 end
 
+-- Le point (monde) est-il à moins de StandClearance studs (à plat) d'un DisplaySlot_xx de la boutique ?
+local function nearStand(session: Session, world: Vector3): boolean
+	for _, slot in session.slots do
+		local offset = slot.WorldPosition - world
+		if Vector3.new(offset.X, 0, offset.Z).Magnitude < Unbox.StandClearance then
+			return true
+		end
+	end
+	return false
+end
+
+-- Colis ou objet posé au sol, revu au retour du joueur : nil s'il peut rester à sa place. L-141 (2026-11-14) :
+-- la boutique passe de 64 à 48 studs de large et ses présentoirs bougent ; un point posé avec l'ancienne forme
+-- peut être hors du volume Bounds, dans un mur (le colis doit tenir entier dans Bounds) ou sur un présentoir
+-- (même écart StandClearance qu'à la pose) : il revient alors dans l'inventaire.
+local function placedProblem(session: Session, bounds: BasePart?, world: Vector3): string?
+	local footprint = Unbox.BoxFootprint
+	if bounds and not insideFootprint(bounds, world, math.max(footprint.X, footprint.Z) / 2) then
+		return "hors du volume Bounds de cette boutique"
+	end
+	if nearStand(session, world) then
+		return "sur un présentoir"
+	end
+	return nil
+end
+
 local function markReady(player: Player, boxUid: string, shown: Shown)
 	shown.ready = true
 	setLabel(shown, READY_TEXT)
@@ -1196,11 +1223,8 @@ local function findFloor(player: Player, session: Session, data: Data, aim: Vect
 	if not inReach(player, point) then
 		return nil, "TooFar"
 	end
-	for _, slot in session.slots do
-		local offset = slot.WorldPosition - point
-		if Vector3.new(offset.X, 0, offset.Z).Magnitude < Unbox.StandClearance then
-			return nil, "Blocked"
-		end
+	if nearStand(session, point) then
+		return nil, "Blocked"
 	end
 	for _, box in data.Boxes do
 		local spot = spotOf(box)
@@ -1514,8 +1538,8 @@ local function restoreItems(player: Player, session: Session, data: Data)
 			problem = `Spot invalide ({tostring(item.Spot)})`
 		elseif not isFinite(item.UnlockAt) then
 			problem = `UnlockAt invalide ({tostring(item.UnlockAt)})`
-		elseif bounds and not insideFootprint(bounds, worldOf(session.plot, spot), 0) then
-			problem = "hors du volume Bounds de cette boutique"
+		else
+			problem = placedProblem(session, bounds, worldOf(session.plot, spot))
 		end
 		if problem then
 			item.Spot = nil
@@ -1576,8 +1600,8 @@ local function setup(player: Player)
 		end
 		local problem = checkPlaced(box)
 		local spot = spotOf(box)
-		if problem == nil and spot and bounds and not insideFootprint(bounds, worldOf(plot, spot), 0) then
-			problem = "hors du volume Bounds de cette boutique"
+		if problem == nil and spot then
+			problem = placedProblem(session, bounds, worldOf(plot, spot))
 		end
 		if problem then
 			-- Jamais perdu : retour dans l'inventaire, l'heure promise gardée si elle est lisible.

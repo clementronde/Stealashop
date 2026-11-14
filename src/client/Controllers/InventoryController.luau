@@ -75,7 +75,8 @@
 --     (Humanoid:EquipTool, permis côté client, aucun remote). Une seule fois par approche : rangé exprès
 --     (ou autre chose en main à l'arrivée), il n'est pas remis tant que le joueur n'est pas reparti à
 --     plus de Balance.Hit.ServerMaxDistance de toute vitrine cassable, puis revenu. Jamais rien n'est
---     retiré de la main.
+--     retiré de la main. Agent a142 : un objet de l'inventaire tenu en main (HeldItemService) ne compte pas
+--     pour « quelque chose en main » : l'outil de casse le remplace (le serveur range l'objet).
 --   - vague 31 (L-112) : un objet sous antivol de l'inventaire (champ AntiTheft de l'état, InventoryService) se
 --     pose au sol de sa boutique par le même mode pose qu'un colis (PlaceBox avec son uid ; son PlaceButton, un
 --     clic sur sa carte, PlaceItem et la barre du bas lancent ce mode au lieu de PlaceItemAuto). Au sol, il
@@ -107,7 +108,10 @@
 --   InventoryController.GetTools() -> { Breaking: Tool?, Bat: Tool?, Held: Tool? }
 --   InventoryController.ToggleBreakingTool() / ToggleBat()       comme les touches 1 et 2 : en main ou rangé
 --   InventoryController.PlaceItem(itemUid)     PlaceItemAuto, comme le PlaceButton d'une carte d'objet
---   InventoryController.StopPlacing()          fin du mode pose
+--   InventoryController.HoldItem(itemUid)      agent a142 : l'objet en main (remote HoldItem, HeldItemService),
+--       ou rangé s'il y était ; sous antivol, avec le mode pose au sol. Rien pendant un portage
+--   InventoryController.GetHeldItem() -> string?   uid de l'objet tenu en main (Tool HeldItemUid), nil sinon
+--   InventoryController.StopPlacing()         fin du mode pose
 --   InventoryController.NeedsAction(uid) -> boolean   vague 34 : pastille « ! » de cette carte (voir plus bas)
 --   InventoryController.OnChanged(fn) -> déconnexion
 --       fn() après chaque changement de l'état, du mode pose, de l'outil en main ou du Backpack
@@ -131,6 +135,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = Shared:WaitForChild("Config")
 local Balance = require(Config:WaitForChild("Balance"))
 local Bat = require(Config:WaitForChild("Bat"))
+local HeldItem = require(Config:WaitForChild("HeldItem"))
 local Items = require(Config:WaitForChild("Items"))
 local Mutations = require(Config:WaitForChild("Mutations"))
 local Potions = require(Config:WaitForChild("Potions"))
@@ -560,6 +565,25 @@ local function findTool(test: (Instance) -> boolean): Tool?
 				if test(child) then
 					return child :: Tool
 				end
+			end
+		end
+	end
+	return nil
+end
+
+-- Agent a142 : le Tool d'un objet de l'inventaire tenu en main (HeldItemService), jamais un outil.
+local function isHeldItem(inst: Instance): boolean
+	return inst:IsA("Tool") and inst:GetAttribute(HeldItem.ToolAttribute) ~= nil
+end
+
+-- Uid de l'objet tenu en main en ce moment (Tool dans le personnage), nil sinon.
+local function heldItemUid(): string?
+	local character = localPlayer.Character
+	if character then
+		for _, child in character:GetChildren() do
+			if isHeldItem(child) then
+				local uid = child:GetAttribute(HeldItem.ToolAttribute)
+				return if type(uid) == "string" then uid else nil
 			end
 		end
 	end
@@ -1727,8 +1751,8 @@ local function watchCharacter(character: Model?)
 			if isBreakingTool(child) and child:GetAttribute(TOOL_ID_ATTRIBUTE) == pendingTool then
 				pendingTool = nil -- le serveur l'a mis en main lui-même (l'ancien y était)
 			end
-			if child.Parent == character then
-				stopPlacing()
+			if child.Parent == character and not isHeldItem(child) then
+				stopPlacing() -- agent a142 : l'objet tenu (sous antivol) garde son mode pose
 			end
 			local current = screen
 			if current and isOpen then
@@ -1810,10 +1834,14 @@ local function autoEquipStep()
 	if autoEquipDone then
 		return
 	end
-	if character:FindFirstChildWhichIsA("Tool") then
-		autoEquipDone = true -- déjà quelque chose en main (outil, batte) : on n'y touche pas
-		return
+	for _, child in character:GetChildren() do
+		if child:IsA("Tool") and not isHeldItem(child) then
+			autoEquipDone = true -- déjà quelque chose en main (outil, batte) : on n'y touche pas
+			return
+		end
 	end
+	-- Agent a142 : un objet de l'inventaire tenu en main ne compte pas : l'outil de casse le remplace (le
+	-- serveur range l'objet).
 	if isCarrying() or placing ~= nil then
 		return -- un colis ou un objet porté, ou un colis en cours de pose : on attend
 	end
@@ -1901,6 +1929,37 @@ function InventoryController.PlaceItem(itemUid: string)
 		return
 	end
 	placeItem(itemUid)
+end
+
+-- Agent a142 (Cantin, 2026-11-14) : l'objet de l'inventaire `itemUid` en main (HoldItem, HeldItemService
+-- revérifie tout), ou rangé s'il y était déjà. Sous antivol, il garde aussi le mode pose au sol (vague 31) :
+-- re-choisi, le mode pose finit avec lui.
+function InventoryController.HoldItem(itemUid: string)
+	local current = placing
+	if heldItemUid() == itemUid or (current ~= nil and current.uid == itemUid) then
+		stopPlacing()
+		if heldItemUid() == itemUid then
+			unequip()
+		end
+		return
+	end
+	if isCarrying() or humanoidOf() == nil then
+		return
+	end
+	if isAntiTheftItem(itemUid) then
+		startPlacing(itemUid) -- range ce qui est en main ; l'objet arrive ensuite sans finir le mode pose
+	else
+		stopPlacing()
+	end
+	-- Sans la garde SEND_GUARD des boutons : ranger puis reprendre tout de suite doit marcher, et le serveur
+	-- ignore un objet déjà en main (le débit reste limité par Net).
+	if net then
+		net.Client.HoldItem:Fire(itemUid)
+	end
+end
+
+function InventoryController.GetHeldItem(): string?
+	return heldItemUid()
 end
 
 -- Vague 34 (L-127 point 3) : la carte de cet objet ou de ce colis demande-t-elle une action ? (pastilles
