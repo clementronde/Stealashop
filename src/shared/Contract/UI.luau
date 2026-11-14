@@ -43,7 +43,7 @@ UI.Screens = {
 			{ Path = "NightCountdown", Class = "TextLabel" },
 			{ Path = "GuardMeter", Class = "Frame" },
 			{ Path = "GuardMeter.Fill" },
-			{ Path = "ReturnBaseButton", Class = BUTTON },
+			-- ReturnBaseButton : retiré le 2026-11-14 (vague 38, L-135 point 3, Clément : « le bouton BASE n'existe plus »).
 			{ Path = "RobuxShopButton", Class = BUTTON }, -- caché jusqu'à la MAJ 1
 			{ Path = "IndexButton", Class = BUTTON }, -- caché jusqu'à la MAJ 2 (L-026)
 			{ Path = "RebirthButton", Class = BUTTON }, -- caché jusqu'à la MAJ 3 (L-026)

@@ -6,7 +6,8 @@
 --
 --   - AdminButton (caché par Clément) : montré seulement quand le serveur a posé l'attribut IsAdmin = true sur le
 --     joueur ; il ouvre et ferme UI_Admin (UI/Motion, groupe ScreenGroup « Menu », Motion.SetCloser). Attribut
---     retiré : bouton caché, écran fermé.
+--     retiré : bouton caché, écran fermé. Vague 38 (L-135 point 3) : caché aussi tant qu'un autre écran le demande
+--     (SetHidden ; PawnShopController pendant le dialogue UI_PawnShop.Dialog, qui passait dessus), remontré ensuite.
 --   - Listes (PlayerList, ChoiceList, MutationList, EventList, ZoneList) : une copie du Template caché par entrée,
 --     EntryName = le texte, Selected allumé sur l'entrée choisie ; entrées de Shared/AdminLists (Config), joueurs
 --     de Players (tenus à jour pendant que l'écran existe).
@@ -101,6 +102,7 @@ local choiceId: string? = nil
 local mutationId = ""
 local resetArmedAt: number? = nil
 local hudButton: GuiButton? = nil
+local hiddenBy: { [string]: boolean } = {} -- vague 38 : écrans qui cachent AdminButton (SetHidden)
 local reported: { [string]: boolean } = {}
 
 local function reportOnce(key: string, message: string)
@@ -493,11 +495,22 @@ end
 local function showButton()
 	local button = hudButton
 	if button then
-		button.Visible = isAdmin()
+		button.Visible = isAdmin() and next(hiddenBy) == nil
 	end
 	if not isAdmin() and isOpen then
 		close()
 	end
+end
+
+-- Vague 38 (L-135 point 3) : `reason` (ex. « PawnShop ») cache AdminButton tant qu'il le demande ; le bouton revient
+-- quand plus aucun écran ne le cache (et seulement pour un admin). Le panel ouvert reste ouvert.
+function AdminController.SetHidden(reason: string, hidden: boolean)
+	if hidden then
+		hiddenBy[reason] = true
+	else
+		hiddenBy[reason] = nil
+	end
+	showButton()
 end
 
 local function bindHud(gui: Instance)

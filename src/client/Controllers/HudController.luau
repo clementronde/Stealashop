@@ -29,14 +29,11 @@
 --     (Night.DayCountdownText), pendant l'alerte « NIGHT FALLS IN 29s » (Night.WarningCountdownText),
 --     la nuit « Dawn in 1:42 » (Night.NightCountdownText) ; « 45s » sous une minute. Phase pas
 --     encore posée : « … ».
---   - ReturnBaseButton (DEV-045) : un clic envoie ReturnToBase ; le serveur décide (recharge, mains
---     vides) et répond par Notify s'il refuse. Recharge affichée (« 84s ») depuis l'attribut
---     ReturnBaseReadyAt du Player (ReturnBaseService) : dans l'enfant Cooldown (TextLabel) du bouton
---     s'il existe (proposé à Clément, montré pendant la recharge, caché sinon), à défaut dans le
---     texte du bouton lui-même (TextButton), remis tel quel à la fin. Le label décoratif BaseLabel
---     (« BASE ») n'est jamais touché.
+--   - Plus de bouton BASE (vague 38, L-135 point 3, Clément le 2026-11-14 : « le bouton BASE n'existe plus ») :
+--     ReturnBaseButton est sorti du contrat et n'est plus lu ici (s'il reste dans l'écran, caché par Clément, le
+--     code n'y touche pas). Avant : un clic envoyait ReturnToBase et la recharge s'affichait (DEV-045).
 --   - Cache les éléments des fonctions pas encore livrées (Config/Features) : RobuxShopButton,
---     IndexButton, RebirthButton, NightCountdown, ReturnBaseButton. Shop et Rebirth restent visibles
+--     IndexButton, RebirthButton, NightCountdown. Shop et Rebirth restent visibles
 --     pendant leur aperçu (RobuxShopPreview, RebirthPreview : L-071, les trois boutons de gauche sont
 --     visibles dès maintenant) ; leur clic est branché par RobuxShopController, IndexController et
 --     RebirthController, pas ici.
@@ -118,9 +115,6 @@ type Hud = {
 	fill: GuiObject?,
 	fillSize: UDim2, -- taille de Fill posée par Clément : seule la largeur en Scale change
 	nightCountdown: TextLabel?,
-	returnButton: GuiButton?,
-	cooldownLabel: TextLabel?, -- ReturnBaseButton.Cooldown, s'il existe
-	buttonText: string?, -- texte d'origine du bouton (TextButton sans Cooldown), remis après la recharge
 }
 
 local SCREEN = "UI_HUD"
@@ -165,7 +159,6 @@ local GATED: { { Element: string, Enabled: boolean } } = {
 	{ Element = "IndexButton", Enabled = Features.Index },
 	{ Element = "RebirthButton", Enabled = Features.Rebirth or Features.RebirthPreview },
 	{ Element = "NightCountdown", Enabled = Features.NightCycle },
-	{ Element = "ReturnBaseButton", Enabled = Features.ReturnToBase },
 }
 
 -- V0 proposé, absent du doc : nom du son des battements de cœur (DEV-051), cherché comme les sons
@@ -179,13 +172,10 @@ local function timerText(seconds: number): string
 	return `HEIST: {seconds}s`
 end
 
--- Attributs posés par le serveur (mêmes noms dans NightCycleService et ReturnBaseService).
+-- Attributs posés par le serveur (mêmes noms dans NightCycleService).
 local PHASE_ATTRIBUTE = "NightPhase"
 local ENDS_AT_ATTRIBUTE = "NightPhaseEndsAt"
 local FALLS_AT_ATTRIBUTE = "NightFallsAt"
-local READY_AT_ATTRIBUTE = "ReturnBaseReadyAt"
--- V0 proposé, absent du contrat 2.2 : enfant facultatif de ReturnBaseButton où écrire la recharge.
-local COOLDOWN_LABEL = "Cooldown"
 
 -- Durée restante : « 7:42 » à partir d'une minute, « 45s » en dessous (secondes arrondies vers le haut).
 local function clockText(seconds: number): string
@@ -205,10 +195,8 @@ local HudController = {}
 local localPlayer = Players.LocalPlayer
 local heist: HeistApi? = nil
 local chase: ChaseApi? = nil
-local net: any = nil -- Shared/Net, chargé au démarrage (attend les remotes du serveur)
 local hud: Hud? = nil
 local shownCountdown: string? = nil -- texte affiché par NightCountdown
-local shownCooldown: string? = nil -- recharge affichée sur ReturnBaseButton ; nil = prêt
 local timers: { [string]: number } = {} -- storeId → endsAt (heure serveur)
 -- Chronos vus pendant une poursuite (storeId → leur endsAt) : plus jamais montrés pour ce vol (Cantin,
 -- 2026-11-13). Un nouveau chrono du même magasin (autre endsAt, nouvelle casse) se montre de nouveau.
@@ -550,37 +538,6 @@ local function updateNightCountdown(current: Hud, now: number)
 	end
 end
 
--- Retour base ---------------------------------------------------------------------------------
-
-local function onReturnBase()
-	if net then
-		net.Client.ReturnToBase:Fire()
-	end
-end
-
-local function updateReturnButton(current: Hud, now: number)
-	local button = current.returnButton
-	if button == nil then
-		return
-	end
-	local readyAt = localPlayer:GetAttribute(READY_AT_ATTRIBUTE)
-	local left = if type(readyAt) == "number" then math.ceil(readyAt - now - 1e-6) else 0
-	local text = if left > 0 then `{left}s` else nil -- « 84s », comme le Notify du serveur
-	if text == shownCooldown then
-		return
-	end
-	shownCooldown = text
-	local label = current.cooldownLabel
-	if label then
-		if text then
-			label.Text = text
-		end
-		label.Visible = text ~= nil
-	elseif button:IsA("TextButton") then
-		(button :: TextButton).Text = text or current.buttonText or ""
-	end
-end
-
 -- Écran ---------------------------------------------------------------------------------------
 
 local function bind(gui: ScreenGui)
@@ -608,7 +565,7 @@ local function bind(gui: ScreenGui)
 		end
 	end
 
-	-- Effet « pop » au survol de chaque bouton fixe du HUD (Shop, Index, Rebirth, Base, Invite, Rewards).
+	-- Effet « pop » au survol de chaque bouton fixe du HUD (Shop, Index, Rebirth, Invite, Rewards).
 	for _, inst in gui:GetDescendants() do
 		if inst:IsA("GuiButton") then
 			Motion.Hover(inst)
@@ -616,27 +573,7 @@ local function bind(gui: ScreenGui)
 	end
 
 	local nightCountdown = if Features.NightCycle then element(gui, "NightCountdown", "TextLabel") :: TextLabel? else nil
-	local returnButton = if Features.ReturnToBase then element(gui, "ReturnBaseButton", "GuiButton") :: GuiButton? else nil
-	local cooldownLabel: TextLabel? = nil
-	local buttonText: string? = nil
-	if returnButton then
-		returnButton.Activated:Connect(onReturnBase)
-		local found = Find.path(returnButton, COOLDOWN_LABEL)
-		if found and found:IsA("TextLabel") then
-			local label = found :: TextLabel
-			label.Visible = false -- montré pendant la recharge
-			cooldownLabel = label
-		elseif returnButton:IsA("TextButton") then
-			buttonText = (returnButton :: TextButton).Text
-		else
-			warnOnce(
-				"cooldown",
-				`[HUD] ReturnBaseButton n'est pas un TextButton et n'a pas d'enfant {COOLDOWN_LABEL} (TextLabel) : la recharge n'est pas affichée`
-			)
-		end
-	end
 	shownCountdown = nil
-	shownCooldown = nil
 
 	-- Chrono et jauge masqués jusqu'à la prochaine image (update les affiche s'il le faut).
 	if heistTimer then
@@ -657,9 +594,6 @@ local function bind(gui: ScreenGui)
 		fill = fill,
 		fillSize = if fill then fill.Size else UDim2.new(),
 		nightCountdown = nightCountdown,
-		returnButton = returnButton,
-		cooldownLabel = cooldownLabel,
-		buttonText = buttonText,
 	}
 	for _, stat in STATS do
 		writeStat(stat)
@@ -678,21 +612,11 @@ local function update()
 	updateGuardMeter(current)
 	local now = Workspace:GetServerTimeNow()
 	updateNightCountdown(current, now)
-	updateReturnButton(current, now)
 end
 
 function HudController.Start()
 	heist = sibling("HeistController")
 	chase = sibling("ChaseController")
-	-- Le bouton Retour base attend les remotes du serveur ; le reste du HUD, non.
-	task.spawn(function()
-		local ok, result = pcall(require, Shared:WaitForChild("Net"):WaitForChild("Net"))
-		if ok then
-			net = result
-		else
-			warnOnce("net", `[HUD] Net : require impossible ({result}) ; ReturnBaseButton ne fait rien`)
-		end
-	end)
 
 	incomeSeen = localPlayer:GetAttribute(INCOME_ATTRIBUTE)
 	incomeTracked = true
