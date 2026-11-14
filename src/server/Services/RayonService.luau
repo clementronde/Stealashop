@@ -204,7 +204,7 @@ end
 -- visuels (présentoirs, CollectPad, produits) sont rangés dans Assets/Plots/PLOT_Shop_Rayons/Rayon_0n,
 -- dans le repère du gabarit Assets/Plots/PLOT_Shop. Le code en pose une copie (`RayonVisuals`) dans
 -- `Rayon_0n`, au pivot de la boutique, quand la rangée est débloquée, et la retire sinon. Le contour
--- au sol `RayonSpot_0n` (s'il existe) est caché quand la rangée est là.
+-- au sol `RayonSpot_0n` (s'il existe ; deux par rayon depuis L-141, tous suivis) est caché quand la rangée est là.
 local VISUALS_NAME = "RayonVisuals"
 
 local function storedVisuals(rayonName: string): (Model?, CFrame?)
@@ -241,8 +241,27 @@ local function removeVisuals(rayon: Rayon)
 	end
 end
 
-local function spotOf(plot: Model, rayon: Rayon): Instance?
-	return plot:FindFirstChild(string.format("RayonSpot_%02d", rayon.index), true)
+-- Contours au sol du rayon (L-141, 2026-11-14 : deux par rayon, un de chaque côté de l'allée) : tous les
+-- `RayonSpot_0n` de la boutique, deux pièces du même nom comme un modèle qui porte les deux. Un contour rangé
+-- dans un autre du même nom suit celui-ci (caché deux fois, il perdrait ses valeurs d'origine).
+local function spotsOf(plot: Model, rayon: Rayon): { Instance }
+	local name = string.format("RayonSpot_%02d", rayon.index)
+	local found: { Instance } = {}
+	for _, inst in plot:GetDescendants() do
+		if inst.Name == name then
+			local nested = false
+			for _, other in found do
+				if inst:IsDescendantOf(other) then
+					nested = true
+					break
+				end
+			end
+			if not nested then
+				table.insert(found, inst)
+			end
+		end
+	end
+	return found
 end
 
 local function apply(plot: Model)
@@ -265,18 +284,18 @@ local function apply(plot: Model)
 	end
 	local shown = 0
 	for _, rayon in rayonsFor(plot) do
-		local spot = spotOf(plot, rayon)
+		local spots = spotsOf(plot, rayon)
 		if rayon.first <= count then
 			showRayon(rayon.model)
 			addVisuals(plot, rayon)
-			if spot then
+			for _, spot in spots do
 				hideRayon(spot)
 			end
 			shown += 1
 		else
 			removeVisuals(rayon)
 			hideRayon(rayon.model)
-			if spot then
+			for _, spot in spots do
 				showRayon(spot)
 			end
 		end

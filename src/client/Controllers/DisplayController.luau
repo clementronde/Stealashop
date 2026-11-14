@@ -270,7 +270,9 @@ local function burst(pad: Instance): Vector3
 	if type(sink) == "number" and sink == sink and sink > 0 then
 		local rest = plateRest[part] or part.CFrame
 		plateRest[part] = rest
-		part.CFrame = rest * CFrame.new(0, -sink, 0)
+		-- Vers le bas du monde, quelle que soit la rotation de la plaque (épaisseur sur Y ou sur Z, comme
+		-- DisplayService.isOnPad) : avant, le long de son Y local, une plaque couchée sur Z glissait de côté.
+		part.CFrame = CFrame.new(0, -sink, 0) * rest
 		task.delay(SINK_TIME, function()
 			if plateRest[part] == rest then
 				part.CFrame = rest
