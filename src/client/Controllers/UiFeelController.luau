@@ -28,14 +28,23 @@
 --     à sa Rotation, BoxIcon (Image = ICON_BOX_<Rareté>, sinon ICON_BOX_<Tier>) et Subtitle l'un après l'autre ; au bout de Hold
 --     s, Banner rapetisse, puis l'écran s'éteint et tout reprend la valeur de Clément. L'effet FX_Escape
 --     aux pieds du joueur est à VfxController.Escape (vague 26), appelé d'ici.
+--     Vague 46 (a154) : même effet pour un OBJET sorti d'un colis (remote ItemSecured d'UnboxService) :
+--     BoxIcon = icône de l'objet (ICON_<ItemId>), sinon ICON_BOX_<Rareté> ; Title = SafeFlash.ItemTitle et
+--     Subtitle = « <Rareté> <Nom> » le temps de l'écran, puis les textes de Clément reviennent.
+--   - Révélation d'un colis ouvert sur le rayon (vague 46, ShelfOpenController, chez l'ouvreur) :
+--     RevealFlash, le même flash d'UI_Escape et le même zoom, sans la bannière (Banner à l'échelle 0 par un
+--     UIScale passager), sans son ni FX_Escape. Une arrivée en cours garde sa bannière (seul le flash
+--     repart) ; une arrivée qui suit une révélation la remplace. La caméra repart toujours du même champ
+--     de vision de base : jamais bloquée en zoom.
 -- Ce qui est touché, et rien d'autre : ce que fait Motion (UIScale passagers, Shade, HoverOutline, Icon
 -- des cartes, tous remis ensuite), la transparence des bords de UI_Chase et RunBanner pendant la poursuite,
--- Camera.FieldOfView, et dans UI_Escape : Enabled, Flash.BackgroundTransparency et Title.Rotation (remis),
--- BoxIcon.Image. Aucun objet n'est laissé une fois l'animation finie.
+-- Camera.FieldOfView, et dans UI_Escape : Enabled, Flash.BackgroundTransparency, Title.Rotation, Title.Text
+-- et Subtitle.Text (remis), BoxIcon.Image. Aucun objet n'est laissé une fois l'animation finie.
 --
 -- API (client) :
---   UiFeelController.Escape(tier?)        joue l'arrivée en zone safe (aussi pour un test en Studio)
---   UiFeelController.GetEscapeState()     { Count, Active, Escaping } (banc)
+--   UiFeelController.Escape(tier?, rarity?, itemId?)  joue l'arrivée en zone safe (aussi pour un test en Studio)
+--   UiFeelController.RevealFlash()                    flash et zoom de la révélation, sans bannière
+--   UiFeelController.GetEscapeState()                 { Count, Active, Escaping, Reveals, Kind } (banc)
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -103,16 +112,25 @@ local SAFE_BANNER_INFO = TweenInfo.new(SAFE.BannerTime, SAFE.BannerStyle, Enum.E
 local SAFE_TITLE_INFO = TweenInfo.new(SAFE.TitleTime, SAFE.BannerStyle, Enum.EasingDirection.Out)
 local SAFE_PARTS_INFO = TweenInfo.new(SAFE.PartsTime, SAFE.BannerStyle, Enum.EasingDirection.Out)
 local SAFE_OUT_INFO = TweenInfo.new(SAFE.OutTime, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+-- Révélation d'un colis ouvert sur le rayon (vague 46) : le même flash et le même zoom, sans bannière.
+local REVEAL = UiMotion.RevealFlash
+local REVEAL_FLASH_INFO = TweenInfo.new(REVEAL.FlashTime, REVEAL.FlashStyle, Enum.EasingDirection.Out)
+local REVEAL_FOV_IN_INFO = TweenInfo.new(REVEAL.FovInTime, REVEAL.FovStyle, Enum.EasingDirection.Out)
+local REVEAL_FOV_OUT_INFO = TweenInfo.new(REVEAL.FovOutTime, REVEAL.FovStyle, Enum.EasingDirection.Out)
 type Escape = {
 	screen: ScreenGui,
+	kind: string, -- "Escape" (arrivée, avec bannière) ou "Reveal" (flash seul)
 	tweens: { Tween },
 	scales: { UIScale },
 	rotations: { [GuiObject]: number },
 	transparencies: { [GuiObject]: number },
+	texts: { [TextLabel]: string },
+	visibles: { [GuiObject]: boolean },
 }
 local escape: Escape? = nil
 local escaping = false -- champ de vision de l'arrivée en zone safe en cours
 local escapes = 0
+local reveals = 0
 local escapeMissingSaid = false
 local IS_STUDIO = RunService:IsStudio()
 
@@ -379,8 +397,10 @@ end
 ------------------------------------------------------------------------------
 
 -- Champ de vision : la poursuite le rend d'un coup (note de Clément), puis + FovAdd en FovInTime et
--- retour en FovOutTime.
-local function escapeFov()
+-- retour en FovOutTime. Vague 46 : la révélation passe ici avec ses réglages (RevealFlash) ; un 2e appel
+-- pendant le 1er repart du même champ de vision de base (fovBase), et une poursuite encore en cours à la
+-- fin retrouve son ChaseFov.
+local function escapeFov(add: number?, inInfo: TweenInfo?, outInfo: TweenInfo?)
 	local camera = Workspace.CurrentCamera
 	if camera == nil then
 		return
@@ -394,11 +414,13 @@ local function escapeFov()
 	end
 	camera.FieldOfView = base
 	escaping = true
-	tweenFov(base + SAFE.FovAdd, SAFE_FOV_IN_INFO, function()
-		tweenFov(base, SAFE_FOV_OUT_INFO, function()
+	tweenFov(base + (add or SAFE.FovAdd), inInfo or SAFE_FOV_IN_INFO, function()
+		tweenFov(base, outInfo or SAFE_FOV_OUT_INFO, function()
 			escaping = false
 			if not chasing then
 				fovBase = nil
+			elseif not Settings.VfxReduced(localPlayer) then
+				tweenFov(base + FOV.Add, FOV_IN_INFO, nil)
 			end
 		end)
 	end)
@@ -428,6 +450,28 @@ local function resetEscape()
 			object.BackgroundTransparency = transparency
 		end
 	end
+	for label, text in state.texts do
+		if label.Parent ~= nil then
+			label.Text = text
+		end
+	end
+	for object, visible in state.visibles do
+		if object.Parent ~= nil then
+			object.Visible = visible
+		end
+	end
+end
+
+-- Texte passager (objet ramené) : celui de Clément est gardé et remis par resetEscape.
+local function escapeText(state: Escape, object: Instance?, text: string?)
+	if text == nil or object == nil or not object:IsA("TextLabel") then
+		return
+	end
+	local label = object :: TextLabel
+	if state.texts[label] == nil then
+		state.texts[label] = label.Text
+	end
+	label.Text = text
 end
 
 local function escapePlay(state: Escape, tween: Tween)
@@ -448,20 +492,43 @@ local function escapeScale(state: Escape, object: GuiObject, value: number): UIS
 	return scale
 end
 
-local function boxIcon(tier: string?, rarity: string?): string?
-	if tier == nil or tier == "" then
-		return nil
-	end
+-- Icône de BoxIcon : celle de l'objet (ICON_<ItemId>, vague 46) s'il y en a un, sinon ICON_BOX_<Rareté>
+-- (L-097 point 3), sinon ICON_BOX_<Tier>.
+local function boxIcon(tier: string?, rarity: string?, itemId: string?): string?
 	local ok, texture = pcall(function()
 		local Icons = require(Shared:WaitForChild("Contract"):WaitForChild("Icons")) :: any
-		-- ICON_BOX_<Rareté> (L-097 point 3), sinon ICON_BOX_<Tier>.
+		local byItem = if type(itemId) == "string" and itemId ~= "" then Icons.get(itemId) else nil
 		local byRarity = if type(rarity) == "string" and rarity ~= "" then Icons.get(SAFE.BoxIconPrefix .. rarity) else nil
-		return byRarity or Icons.get(SAFE.BoxIconPrefix .. tier)
+		local byTier = if type(tier) == "string" and tier ~= "" then Icons.get(SAFE.BoxIconPrefix .. tier) else nil
+		return byItem or byRarity or byTier
 	end)
 	return if ok and type(texture) == "string" then texture else nil
 end
 
-local function escapeScreen(tier: string?, rarity: string?)
+-- Objet du catalogue (vague 46) : sa rareté et « <Rareté> <Nom> » (SafeFlash.ItemSubtitle) ; nil s'il est inconnu.
+local function itemInfo(itemId: string?): (string?, string?)
+	if type(itemId) ~= "string" or itemId == "" then
+		return nil, nil
+	end
+	local ok, rarity, text = pcall(function(): (string?, string?)
+		local Config = Shared:WaitForChild("Config")
+		local Items = require(Config:WaitForChild("Items")) :: any
+		local Rarities = require(Config:WaitForChild("Rarities")) :: any
+		local def = Items.ById[itemId]
+		if def == nil then
+			return nil, nil
+		end
+		local rarityDef = Rarities.ById[def.Rarity]
+		local rarityName = if rarityDef then rarityDef.DisplayName else def.Rarity
+		return def.Rarity, string.format(SAFE.ItemSubtitle, tostring(rarityName), tostring(def.DisplayName))
+	end)
+	if not ok then
+		return nil, nil
+	end
+	return rarity, text
+end
+
+local function findEscapeScreen(): ScreenGui?
 	local gui = localPlayer:FindFirstChildOfClass("PlayerGui")
 	local found = if gui then gui:FindFirstChild(SAFE.Screen) else nil
 	if found == nil or not found:IsA("ScreenGui") then
@@ -469,21 +536,55 @@ local function escapeScreen(tier: string?, rarity: string?)
 			escapeMissingSaid = true
 			print(`[UiFeel] {SAFE.Screen} absent du PlayerGui : arrivée en zone safe sans écran (sons et caméra seulement)`)
 		end
-		return
+		return nil
 	end
-	local screen = found :: ScreenGui
+	return found :: ScreenGui
+end
+
+local function newEscape(screen: ScreenGui, kind: string): Escape
 	resetEscape()
-	local state: Escape = { screen = screen, tweens = {}, scales = {}, rotations = {}, transparencies = {} }
+	local state: Escape =
+		{ screen = screen, kind = kind, tweens = {}, scales = {}, rotations = {}, transparencies = {}, texts = {}, visibles = {} }
 	escape = state
 	screen.Enabled = true
+	return state
+end
 
-	local flash = Find.path(screen, "Flash")
+-- Flash : de `from` à 1 ; la transparence de Clément est gardée une seule fois par écran.
+local function escapeFlash(state: Escape, from: number, info: TweenInfo)
+	local flash = Find.path(state.screen, "Flash")
 	if flash and flash:IsA("GuiObject") then
-		state.transparencies[flash] = flash.BackgroundTransparency
-		flash.BackgroundTransparency = SAFE.FlashFrom
-		escapePlay(state, TweenService:Create(flash, SAFE_FLASH_INFO, { BackgroundTransparency = 1 }))
+		if state.transparencies[flash] == nil then
+			state.transparencies[flash] = flash.BackgroundTransparency
+		end
+		flash.BackgroundTransparency = from
+		escapePlay(state, TweenService:Create(flash, info, { BackgroundTransparency = 1 }))
 	end
+end
 
+-- Éteint l'écran au bout de `delay` s s'il montre toujours `state`.
+local function closeEscapeLater(state: Escape, delay: number)
+	task.delay(delay, function()
+		if escape ~= state then
+			return
+		end
+		resetEscape()
+		if state.screen.Parent ~= nil then
+			state.screen.Enabled = false
+		end
+	end)
+end
+
+local function escapeScreen(tier: string?, rarity: string?, itemId: string?)
+	local screen = findEscapeScreen()
+	if screen == nil then
+		return
+	end
+	local state = newEscape(screen, "Escape")
+	escapeFlash(state, SAFE.FlashFrom, SAFE_FLASH_INFO)
+
+	-- Objet ramené (vague 46) : Title et Subtitle passagers, remis par resetEscape.
+	local itemRarity, itemText = itemInfo(itemId)
 	local foundBanner = Find.path(screen, "Banner")
 	local banner: GuiObject? = if foundBanner and foundBanner:IsA("GuiObject") then foundBanner :: GuiObject else nil
 	local bannerScale = if banner then escapeScale(state, banner, 0) else nil
@@ -503,8 +604,12 @@ local function escapeScreen(tier: string?, rarity: string?)
 			title.Rotation = SAFE.TitleFrom
 			escapePlay(state, TweenService:Create(title, SAFE_TITLE_INFO, { Rotation = goal }))
 		end
+		if itemText then
+			escapeText(state, title, SAFE.ItemTitle)
+			escapeText(state, Find.path(banner, "Subtitle"), itemText)
+		end
 		local icon = Find.path(banner, "BoxIcon")
-		local texture = boxIcon(tier, rarity)
+		local texture = boxIcon(tier, itemRarity or rarity, itemId)
 		if texture and icon and (icon:IsA("ImageLabel") or icon:IsA("ImageButton")) then
 			(icon :: any).Image = texture
 		end
@@ -529,21 +634,14 @@ local function escapeScreen(tier: string?, rarity: string?)
 		if bannerScale then
 			escapePlay(state, TweenService:Create(bannerScale, SAFE_OUT_INFO, { Scale = 0 }))
 		end
-		task.delay(SAFE.OutTime, function()
-			if escape ~= state then
-				return
-			end
-			resetEscape()
-			if screen.Parent ~= nil then
-				screen.Enabled = false
-			end
-		end)
+		closeEscapeLater(state, SAFE.OutTime)
 	end)
 end
 
 -- L'arrivée en zone safe : sons (Heist_SafeFlash, puis Heist_Escape SoundGap s après), champ de
--- vision, écran UI_Escape (Flash, puis Banner, Title, BoxIcon = ICON_BOX_<tier>, Subtitle).
-function UiFeelController.Escape(tier: string?, rarity: string?)
+-- vision, écran UI_Escape (Flash, puis Banner, Title, BoxIcon, Subtitle), FX_Escape. `itemId` (vague 46,
+-- remote ItemSecured) : objet ramené, son icône et son nom.
+function UiFeelController.Escape(tier: string?, rarity: string?, itemId: string?)
 	escapes += 1
 	for rank, name in SAFE.Sounds do
 		if rank == 1 then
@@ -555,7 +653,7 @@ function UiFeelController.Escape(tier: string?, rarity: string?)
 		end
 	end
 	escapeFov()
-	escapeScreen(tier, rarity)
+	escapeScreen(tier, rarity, itemId)
 	-- Confettis, étoiles et anneau de FX_Escape aux pieds du joueur (vague 26, VfxController).
 	local vfx = sibling("VfxController")
 	if vfx and type(vfx.Escape) == "function" then
@@ -563,9 +661,42 @@ function UiFeelController.Escape(tier: string?, rarity: string?)
 	end
 end
 
--- Arrivées en zone safe jouées depuis le démarrage, et l'écran en cours (banc, barre de commande).
-function UiFeelController.GetEscapeState(): { Count: number, Active: boolean, Escaping: boolean }
-	return { Count = escapes, Active = escape ~= nil, Escaping = escaping }
+-- Révélation d'un colis ouvert (vague 46, ShelfOpenController, chez l'ouvreur) : flash d'UI_Escape et zoom,
+-- sans bannière, sans son ni FX_Escape. Une arrivée en cours garde son écran : seul le flash repart.
+function UiFeelController.RevealFlash()
+	reveals += 1
+	escapeFov(REVEAL.FovAdd, REVEAL_FOV_IN_INFO, REVEAL_FOV_OUT_INFO)
+	local current = escape
+	if current and current.kind == "Escape" then
+		escapeFlash(current, REVEAL.FlashFrom, REVEAL_FLASH_INFO)
+		return
+	end
+	local screen = findEscapeScreen()
+	if screen == nil then
+		return
+	end
+	local state = newEscape(screen, "Reveal")
+	local banner = Find.path(screen, "Banner")
+	if banner and banner:IsA("GuiObject") and escapeScale(state, banner :: GuiObject, 0) == nil then
+		-- Banner a déjà un UIScale (celui de Clément) : caché le temps du flash, remis par resetEscape.
+		local object = banner :: GuiObject
+		state.visibles[object] = object.Visible
+		object.Visible = false
+	end
+	escapeFlash(state, REVEAL.FlashFrom, REVEAL_FLASH_INFO)
+	closeEscapeLater(state, REVEAL.FlashTime)
+end
+
+-- Arrivées en zone safe et révélations jouées depuis le démarrage, et l'écran en cours (banc, barre de commande).
+function UiFeelController.GetEscapeState(): { Count: number, Active: boolean, Escaping: boolean, Reveals: number, Kind: string? }
+	local current = escape
+	return {
+		Count = escapes,
+		Active = current ~= nil,
+		Escaping = escaping,
+		Reveals = reveals,
+		Kind = if current then current.kind else nil,
+	}
 end
 
 local function step()
@@ -615,6 +746,13 @@ function UiFeelController.Start()
 			local Net = require(Shared:WaitForChild("Net"):WaitForChild("Net")) :: any
 			Net.Client.BoxSecured:Connect(function(tier: string, rarity: string?)
 				UiFeelController.Escape(tier, rarity)
+			end)
+		end)
+		-- Vague 46 : objet sorti d'un colis, mis à l'abri en zone safe (UnboxService, remote ItemSecured).
+		pcall(function()
+			local Net = require(Shared:WaitForChild("Net"):WaitForChild("Net")) :: any
+			Net.Client.ItemSecured:Connect(function(itemId: string)
+				UiFeelController.Escape(nil, nil, itemId)
 			end)
 		end)
 		if not wired and IS_STUDIO then
