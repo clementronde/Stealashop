@@ -24,7 +24,7 @@ local Features = {
 	RebirthPreview = true, -- L-071 : UI_HUD.RebirthButton visible et UI_Rebirth en aperçu (RebirthController), sans renaissance
 	NightCycle = true, -- DEV-047, cycle jour/nuit (5.12) : UI_HUD.NightCountdown, NightCycleService, SkyController
 	AntiCheat = true, -- DEV-060, contrôle des déplacements (9.6, Config/AntiCheat) : false coupe AntiCheatService (Allow et Verify ne font rien), aucune UI
-	ReturnToBase = true, -- DEV-045, retour base : ReturnBaseService (remote ReturnToBase) ; plus de bouton UI_HUD.ReturnBaseButton depuis le 2026-11-14 (L-135 point 3, vague 38) : aucun client n'envoie plus le remote, le service reste (refus validés côté serveur)
+	ReturnToBase = false, -- DEV-045, retour base : ReturnBaseService (remote ReturnToBase) ; plus de bouton UI_HUD.ReturnBaseButton depuis le 2026-11-14 (L-135 point 3, vague 38) ; false depuis la vague 41 (audit de sécurité du 14/11) : le remote, que plus aucun client n'envoie, est refusé sans effet par le serveur
 	TruckEvent = true, -- L-049, événement camion (Config/TruckEvent) : TruckEventService, TruckController
 	Settings = true, -- L-095 point 2, réglages : UI_HUD.SettingsButton (montré par SettingsController) et écran UI_Settings ; à false, les réglages sauvegardés s'appliquent quand même (sons, effets)
 	ShelfOpen = true, -- L-112, ouverture des colis sur le rayon du magasin PNJ et antivol en base (Config/ShelfOpen) ; false = ancienne ouverture en base (colis rangé, posé, attente, rouleau), gardée en secours jusqu'à la validation en Play
