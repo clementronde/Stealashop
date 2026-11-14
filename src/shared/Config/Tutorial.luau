@@ -38,10 +38,16 @@ local Steps: { Step } = {
 	-- Vague 36 (L-085 point 4, a121) : le vol entre joueurs, sur la boutique du bot (BotService). Ajoutées à la
 	-- fin, sans changer les numéros ni les Id d'avant (un Tutorial.Step sauvegardé garde son sens). Sautées
 	-- sans bot sur le serveur : le tuto finit alors à l'étape 10, comme avant. V0 proposés, absents du doc
-	-- (étapes, At, bulles). Vague 37 : le bot défend sa boutique sans étape nouvelle (bulle BotChase des Hints).
+	-- (étapes, At, bulles). Vague 37 : le bot défend sa boutique (bulle BotChase des Hints) ; vague 38 : étape 14.
 	{ Index = 11, Id = "GoToBotShop", At = 10 * 60 + 30, Goal = "Flèche vers la porte de la boutique du bot", Bubble = "Steal from another shop!" },
 	{ Index = 12, Id = "StealFromBot", At = 10 * 60 + 60, Goal = "Casser la porte du bot et lui prendre un objet exposé", Bubble = "Break in and grab an item!" },
 	{ Index = 13, Id = "BringStolenHome", At = 10 * 60 + 90, Goal = "Ramener l'objet volé dans sa boutique (dépôt PvPService), fin du tuto", Bubble = "Bring it back to your shop!" },
+	-- Vague 38 (L-085 point 4, L-136 (a), a126) : « le bot défend ». Elle se joue ENTRE 12 et 13 (objet du bot pris
+	-- pendant que le bot le poursuit, BotService.IsChasing), mais elle est ajoutée à la fin pour ne changer ni les
+	-- numéros ni les Id d'avant (un Tutorial.Step sauvegardé garde son sens). Le bot semé (il ne le poursuit plus,
+	-- objet toujours en main) : étape 13 ; frappé, l'objet revole chez le bot : étape 12. V0 proposés, absents du
+	-- doc (At, bulle).
+	{ Index = 14, Id = "EscapeBot", At = 10 * 60 + 75, Goal = "Le bot poursuit le joueur qui tient son objet : le semer avec l'objet, ou se le faire reprendre (retour à 12)", Bubble = "The bot fights back: escape with it!" },
 }
 
 -- Textes écrits dans le doc, traduits en anglais (L-036). ShieldEndMessage dépasse les 8 mots
@@ -127,7 +133,8 @@ local Tutorial = {
 		PlaceFloorItem = "Open your inventory, place it on the floor!", -- étapes 4 et 5 : objet sous antivol dans l'inventaire
 		WaitUnlock = "Guard it until it is UNLOCKED!", -- étape 5 : objet au sol, antivol en cours (volable)
 		DisplayUnlocked = "UNLOCKED! Now put it on display!", -- étape 5 : antivol fini, invite « Display »
-		-- Vague 37 (a124, V0 proposé, absent du doc) : étapes 12 et 13, le bot poursuit le joueur (BotService.IsChasing)
+		-- Vague 37 (a124, V0 proposé, absent du doc) : étape 12, le bot poursuit le joueur (BotService.IsChasing) ; vague 38 :
+		-- poursuivi avec l'objet, il passe à l'étape 14 (sa bulle), plus à 13 avec celle-ci
 		BotChase = "The bot is chasing you: run!",
 	} :: { [string]: string },
 
@@ -159,6 +166,9 @@ local Tutorial = {
 		"Boutique du bot atteinte",
 		"Premier objet pris au bot",
 		"Objet du bot ramené chez soi",
+		-- Vague 38 (a126, V0 proposé) : étape 14 du tuto, envoyée quand le joueur sème le bot avec son objet (14 → 13),
+		-- donc avant le 13 : l'ordre des numéros ne suit pas celui du jeu (ajoutée à la fin, comme l'étape).
+		"Bot semé avec son objet",
 	},
 }
 

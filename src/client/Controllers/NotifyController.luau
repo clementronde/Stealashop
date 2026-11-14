@@ -26,6 +26,12 @@
 --     marge de ICON_PAD px, puis le texte, ICON_GAP px après la pastille, aligné à gauche et réduit au
 --     besoin pour tenir (deux lignes au plus sur téléphone). Bandeau de 48 px de haut, au plus 560 px
 --     de large. Le repli est détruit dès que UI_Notify arrive.
+-- Pendant le tuto (vague 38, L-135 point 2, réponse « code » de Clément du 2026-11-14 : dès 2 messages, la pile
+-- de UI_Toast passait sur UI_Tutorial.Bubble) : UN SEUL message à la fois dans UI_Toast. Le suivant attend que le
+-- précédent soit parti (fin de son effacement compris) ; un message déjà en attente ne se répète pas (« ×2 »), et
+-- la file garde au plus MAX_SHOWN messages en tout (le plus ancien en attente part). Tuto en cours = attribut
+-- TutorialStep du Player > 0 (TutorialService). Tuto fini : les messages en attente partent tout de suite. Hors
+-- tuto, et pour les replis UI_Notify et NotifyV0, rien ne change.
 -- Au plus MAX_SHOWN messages à la fois (le plus ancien part). Le même message encore affiché ne se
 -- répète pas : il reste DURATION s de plus et son texte finit par « ×2 », « ×3 »…, après une espace.
 -- Une nouvelle copie de l'écran (ResetOnSpawn) : les messages en cours restent sur l'ancienne, qui
@@ -39,6 +45,8 @@
 --   NotifyController.GetShown() -> { { Message, Kind, Count, Text, Fallback, Toast, Color } }
 --       Messages affichés, du plus ancien au plus récent, pour un test dans Studio (barre de commande
 --       côté client).
+--   NotifyController.GetPending() -> { { Message, Kind, Count } }
+--       Vague 38 : messages en attente pendant le tuto, du plus ancien au plus récent (tests).
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -123,6 +131,9 @@ local ICON_COLORS: { [string]: Color3 } = {
 }
 local ICON_GLYPHS: { [string]: string } = { Warning = "!", Info = "i", Announce = "!", Alert = "!" }
 
+-- Vague 38 : attribut du Player posé par TutorialService (étape envoyée au client, 0 à la fin du tuto).
+local TUTORIAL_ATTRIBUTE = "TutorialStep"
+
 local IS_STUDIO = RunService:IsStudio()
 
 local localPlayer = Players.LocalPlayer
@@ -131,6 +142,11 @@ local NotifyController = {}
 
 local listeners: { Listener } = {}
 local entries: { Entry } = {} -- du plus ancien au plus récent
+-- Vague 38 : messages en attente pendant le tuto (un seul à la fois dans UI_Toast), et fin de l'effacement du
+-- dernier message de UI_Toast parti (os.clock) : le suivant attend jusque-là.
+type Pending = { Message: string, Kind: string?, Count: number }
+local pending: { Pending } = {}
+local toastFreeAt = 0
 local fallback: ScreenGui? = nil
 local stack: Frame? = nil -- pile du repli
 local order = 0
@@ -374,6 +390,9 @@ local function removeEntry(entry: Entry, now: boolean?)
 		return
 	end
 	if entry.Toast then
+		-- Vague 38 : pendant le tuto, le message suivant attend la fin de l'effacement.
+		local freeAt = os.clock() + if now == true then 0 else math.max(TOAST.FadeTime, 0)
+		toastFreeAt = math.max(toastFreeAt, freeAt)
 		fadeToast(object, now == true)
 		return
 	end
@@ -396,17 +415,61 @@ local function show(object: GuiObject)
 	end
 end
 
-local function display(message: string, kind: string?)
+-- Vague 38 (L-135 point 2) : le joueur fait son tuto (attribut TutorialStep posé par TutorialService).
+local function inTutorial(): boolean
+	local step = localPlayer:GetAttribute(TUTORIAL_ATTRIBUTE)
+	return type(step) == "number" and step > 0
+end
+
+-- Un message de UI_Toast encore là, ou en train de s'effacer.
+local function toastBusy(): boolean
+	if os.clock() < toastFreeAt then
+		return true
+	end
+	for _, entry in entries do
+		if entry.Toast and entry.Object.Parent ~= nil then
+			return true
+		end
+	end
+	return false
+end
+
+-- Pendant le tuto : met le message en attente (voir l'en-tête). Le même message déjà en attente est compté.
+local function enqueue(message: string, kind: string?, count: number)
+	for _, item in pending do
+		if item.Message == message then
+			item.Count += count
+			return
+		end
+	end
+	table.insert(pending, { Message = message, Kind = kind, Count = count })
+	-- Au plus MAX_SHOWN messages en tout (affiché compris) : le plus ancien en attente part.
+	while #pending > math.max(MAX_SHOWN - 1, 1) do
+		table.remove(pending, 1)
+	end
+end
+
+-- `count` : messages identiques regroupés en attente (vague 38) ; `queued` : sorti de la file, ne la refait pas.
+local function display(message: string, kind: string?, count: number?, queued: boolean?)
 	local playerGui = localPlayer:FindFirstChildOfClass("PlayerGui")
 	if playerGui == nil then
 		return
 	end
+	local repeats = count or 1
 	-- Le même message encore affiché : compté, pas répété.
 	for _, entry in entries do
 		if entry.Message == message and entry.Object.Parent ~= nil then
-			entry.Count += 1
+			entry.Count += repeats
 			entry.ExpiresAt = os.clock() + DURATION
 			refreshText(entry)
+			return
+		end
+	end
+	-- Vague 38 : pendant le tuto, un seul message à la fois dans UI_Toast ; les autres attendent leur tour.
+	if not queued and inTutorial() and (toastBusy() or #pending > 0) then
+		local _, toastReady = toastTemplate(playerGui)
+		if toastReady then
+			enqueue(message, kind, repeats)
 			return
 		end
 	end
@@ -425,7 +488,7 @@ local function display(message: string, kind: string?)
 		local entry: Entry = {
 			Message = message,
 			Kind = kind,
-			Count = 1,
+			Count = repeats,
 			Object = copy,
 			Label = copy,
 			ExpiresAt = os.clock() + DURATION,
@@ -476,7 +539,7 @@ local function display(message: string, kind: string?)
 	local entry: Entry = {
 		Message = message,
 		Kind = kind,
-		Count = 1,
+		Count = repeats,
 		Object = object,
 		Label = label,
 		ExpiresAt = os.clock() + DURATION,
@@ -496,6 +559,28 @@ local function step()
 			table.remove(entries, index) -- écran recréé (ResetOnSpawn) ou retiré
 		elseif now >= entry.ExpiresAt then
 			removeEntry(entry)
+		end
+	end
+	-- Vague 38 : file du tuto. Tuto fini (ou UI_Toast parti) : tout ce qui attend s'affiche ; sinon le suivant, dès
+	-- que le précédent est parti.
+	if #pending > 0 then
+		local playerGui = localPlayer:FindFirstChildOfClass("PlayerGui")
+		local toastReady: TextLabel? = nil
+		if playerGui then
+			local _, template = toastTemplate(playerGui)
+			toastReady = template
+		end
+		if not inTutorial() or toastReady == nil then
+			local waiting = pending
+			pending = {}
+			for _, item in waiting do
+				display(item.Message, item.Kind, item.Count, true)
+			end
+		elseif not toastBusy() then
+			local item: Pending? = table.remove(pending, 1)
+			if item then
+				display(item.Message, item.Kind, item.Count, true)
+			end
 		end
 	end
 	-- L'écran de Clément arrive : le repli part.
@@ -555,6 +640,14 @@ function NotifyController.GetShown(): { ShownInfo }
 			Toast = entry.Toast,
 			Color = if entry.Toast and label then label.TextColor3 else nil,
 		})
+	end
+	return list
+end
+
+function NotifyController.GetPending(): { { Message: string, Kind: string?, Count: number } }
+	local list: { { Message: string, Kind: string?, Count: number } } = {}
+	for _, item in pending do
+		table.insert(list, { Message = item.Message, Kind = item.Kind, Count = item.Count })
 	end
 	return list
 end
