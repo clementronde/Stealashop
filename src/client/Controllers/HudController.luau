@@ -508,30 +508,55 @@ end
 
 -- Cycle jour / nuit ---------------------------------------------------------------------------
 
-local function countdownText(now: number): string
+-- Instant (heure serveur) où le nombre de secondes affiché pour `at` baisse d'un cran : les secondes
+-- affichées valent ceil(at − now − 1e-6), elles passent de s à s − 1 quand now atteint at − 1e-6 − (s − 1).
+-- math.huge à 0 s : plus rien ne change avant le prochain attribut.
+local function nextSecondAt(at: number, now: number): number
+	local s = math.ceil(at - now - 1e-6)
+	if s <= 0 then
+		return math.huge
+	end
+	return at - 1e-6 - (s - 1)
+end
+
+-- Texte du compte à rebours, et l'instant où il changera (sans nouvel attribut).
+local function countdownText(now: number): (string, number)
 	local phase = Workspace:GetAttribute(PHASE_ATTRIBUTE)
 	local endsAt = Workspace:GetAttribute(ENDS_AT_ATTRIBUTE)
 	if type(endsAt) ~= "number" then
-		return UNKNOWN_TEXT
+		return UNKNOWN_TEXT, math.huge
 	end
 	if phase == "Day" then
 		local fallsAt = Workspace:GetAttribute(FALLS_AT_ATTRIBUTE)
 		local at = if type(fallsAt) == "number" then fallsAt else endsAt + Night.WarningDuration
-		return string.format(Night.DayCountdownText, clockText(at - now))
+		return string.format(Night.DayCountdownText, clockText(at - now)), nextSecondAt(at, now)
 	elseif phase == "Warning" then
-		return string.format(Night.WarningCountdownText, math.max(0, math.ceil(endsAt - now - 1e-6)))
+		return string.format(Night.WarningCountdownText, math.max(0, math.ceil(endsAt - now - 1e-6))), nextSecondAt(endsAt, now)
 	elseif phase == "Night" then
-		return string.format(Night.NightCountdownText, clockText(endsAt - now))
+		return string.format(Night.NightCountdownText, clockText(endsAt - now)), nextSecondAt(endsAt, now)
 	end
-	return UNKNOWN_TEXT
+	return UNKNOWN_TEXT, math.huge
 end
+
+-- Vague 39 (optimisation téléphone, audit perf-telephone.md, correction 4) : le texte n'est recalculé
+-- (3 attributs lus, string.format) que quand la seconde affichée change, qu'un attribut de phase
+-- change, qu'un nouvel écran est branché ou que l'heure serveur recule ; avant, à chaque image.
+local countdownDirty = true -- attribut de phase changé ou écran rebranché : à recalculer
+local countdownChangesAt = math.huge -- heure serveur où le texte affiché change de seconde
+local countdownComputedAt = -math.huge -- heure serveur du dernier calcul
 
 local function updateNightCountdown(current: Hud, now: number)
 	local label = current.nightCountdown
 	if label == nil then
 		return
 	end
-	local text = countdownText(now)
+	if not countdownDirty and now < countdownChangesAt and now >= countdownComputedAt then
+		return
+	end
+	countdownDirty = false
+	countdownComputedAt = now
+	local text, changesAt = countdownText(now)
+	countdownChangesAt = changesAt
 	if text ~= shownCountdown then
 		shownCountdown = text
 		label.Text = text
@@ -574,6 +599,7 @@ local function bind(gui: ScreenGui)
 
 	local nightCountdown = if Features.NightCycle then element(gui, "NightCountdown", "TextLabel") :: TextLabel? else nil
 	shownCountdown = nil
+	countdownDirty = true
 
 	-- Chrono et jauge masqués jusqu'à la prochaine image (update les affiche s'il le faut).
 	if heistTimer then
@@ -637,6 +663,12 @@ function HudController.Start()
 		end
 	end
 
+	-- Vague 39 : le compte à rebours est recalculé quand une de ses trois valeurs change.
+	for _, attribute in { PHASE_ATTRIBUTE, ENDS_AT_ATTRIBUTE, FALLS_AT_ATTRIBUTE } do
+		Workspace:GetAttributeChangedSignal(attribute):Connect(function()
+			countdownDirty = true
+		end)
+	end
 	RunService.Heartbeat:Connect(update)
 
 	local playerGui = localPlayer:WaitForChild("PlayerGui")

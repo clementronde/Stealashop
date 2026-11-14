@@ -51,7 +51,8 @@
 --       NoRoom, Anomaly, Caught…), Rarity, Zone de l'objet.
 --   BatBoxKnock (BatBoxKnockdown)  un coup de batte fait tomber le colis PNJ d'un porteur, hors zone
 --       safe (BatService.OnHit, usage « Box ») ; joueur = le frappeur ; champs : Zone du colis,
---       Rarity, Source (Store : colis d'un magasin ; Truck : colis du camion, StoreId « Truck_<n> »).
+--       Rarity, Source (Store : colis d'un magasin ; Truck : colis du camion, StoreId « Truck_<n> » ;
+--       Fortune : colis de la vitrine de la Fortune Tower, StoreId « Truck_Fortune_<n> », vague 39).
 --   GuardCatch  un vigile rattrape le porteur d'un colis PNJ (CarryService.OnCarryEnded, « Failed »
 --       et raison « Caught », que GuardService donne de jour comme de nuit ; colis PNJ seulement : un
 --       voleur d'objet attrapé la nuit part en TheftFail « Caught ») ; joueur = le porteur ; champs :
@@ -140,6 +141,9 @@ local FIELD_KEYS = {
 
 -- StoreId des colis du camion (TruckEventService : « Truck_<n> »).
 local TRUCK_PREFIX = "Truck_"
+-- StoreId des colis de la Fortune Tower (FortuneTowerService : « Truck_Fortune_<n> », même préfixe Truck_) :
+-- catégorie à part (vague 39), lue avant celle du camion.
+local FORTUNE_PREFIX = "Truck_Fortune_"
 
 local TelemetryService = {}
 -- V0 proposé, absent du doc : après les services qu'il écoute (au départ, DisplayService encaisse les
@@ -412,7 +416,11 @@ local function onBatHit(hitter: Player, _target: Player, usage: BatService.Usage
 		return
 	end
 	if payload.Kind == "NPCBox" then
-		local source = if string.sub(payload.StoreId, 1, #TRUCK_PREFIX) == TRUCK_PREFIX then "Truck" else "Store"
+		local storeId = payload.StoreId
+		local source = if string.sub(storeId, 1, #FORTUNE_PREFIX) == FORTUNE_PREFIX
+			then "Fortune"
+			elseif string.sub(storeId, 1, #TRUCK_PREFIX) == TRUCK_PREFIX then "Truck"
+			else "Store"
 		logEvent(hitter, "BatBoxKnock", field("Zone", payload.Zone), field("Rarity", payload.Rarity), field("Source", source), nil)
 	end
 end

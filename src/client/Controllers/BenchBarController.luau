@@ -44,10 +44,20 @@ type Follow = {
 	axis: Vector3, -- grand axe d'origine (monde), tourné vers la main droite
 }
 
+-- Vague 39 (optimisation téléphone, audit perf-telephone.md) : la pièce Bar de chaque banc est cherchée
+-- une fois et gardée ; un banc sans Bar n'est fouillé de nouveau (recherche dans tout le modèle) qu'au
+-- plus toutes les BAR_RETRY s, au lieu de chaque image. Les mains, elles, sont toujours revues à chaque
+-- image (quelques recherches directes) : la barre suit dès qu'elles arrivent, comme avant.
+-- V0 proposé, absent du doc : secondes entre deux recherches de Bar dans un banc qui n'en a pas.
+local BAR_RETRY = 1
+
 local BenchBarController = {}
 
 local benches: { [Instance]: boolean } = {}
 local follows: { [Instance]: Follow } = {}
+local bars: { [Instance]: Instance } = {} -- Bar trouvée dans chaque banc
+local barRetryAt: { [Instance]: number } = {} -- banc sans Bar : os.clock() de la prochaine recherche
+local lastUsers: { [Instance]: number } = {} -- dernier BenchUserId vu en attente de suivi
 
 local function findPart(character: Model, names: { string }): BasePart?
 	for _, name in names do
@@ -91,14 +101,41 @@ local function rotationBetween(from: Vector3, to: Vector3): CFrame
 	return CFrame.fromAxisAngle(cross.Unit, math.acos(dot))
 end
 
--- Commence à suivre les mains : mémorise la place exacte de chaque pièce. nil si rien à suivre.
-local function begin(bench: Instance, userId: number): Follow?
-	local bar = bench:FindFirstChild(BAR, true)
-	if bar == nil or not (bar:IsA("BasePart") or bar:IsA("Model")) then
+-- Le banc n'a pas (encore) de Bar utilisable : pas de nouvelle recherche avant BAR_RETRY s.
+local function barMissing(bench: Instance)
+	bars[bench] = nil
+	barRetryAt[bench] = os.clock() + BAR_RETRY
+end
+
+-- Bar du banc (BasePart ou Model), gardée d'une fois sur l'autre tant qu'elle est là.
+local function barOf(bench: Instance): Instance?
+	local bar = bars[bench]
+	if bar and bar.Parent ~= nil then
+		return bar
+	end
+	local retryAt = barRetryAt[bench]
+	if retryAt and os.clock() < retryAt then
 		return nil
 	end
+	local found = bench:FindFirstChild(BAR, true)
+	if found == nil or not (found:IsA("BasePart") or found:IsA("Model")) then
+		barMissing(bench)
+		return nil
+	end
+	bars[bench] = found
+	barRetryAt[bench] = nil
+	return found
+end
+
+-- Commence à suivre les mains : mémorise la place exacte de chaque pièce. nil si rien à suivre.
+local function begin(bench: Instance, userId: number): Follow?
+	-- Vague 39 : les mains d'abord (peu coûteux), la Bar ensuite (gardée, voir barOf).
 	local left, right = handsOf(userId)
 	if left == nil or right == nil then
+		return nil
+	end
+	local bar = barOf(bench)
+	if bar == nil then
 		return nil
 	end
 	-- Vague 25 : si Bar est dans un modèle Barbell, toute l'haltère suit (disques, colliers) en
@@ -118,6 +155,7 @@ local function begin(bench: Instance, userId: number): Follow?
 		end
 	end
 	if #list == 0 then
+		barMissing(bench) -- Bar sans pièce : comme un banc sans Bar
 		return nil
 	end
 	local center: CFrame, size: Vector3
@@ -201,10 +239,16 @@ local function step()
 	for bench in benches do
 		local value = bench:GetAttribute(USER_ATTRIBUTE)
 		if follows[bench] == nil and type(value) == "number" then
+			if lastUsers[bench] ~= value then
+				lastUsers[bench] = value
+				barRetryAt[bench] = nil -- nouvelle séance : la Bar est cherchée tout de suite
+			end
 			local follow: Follow? = begin(bench, value)
 			if follow then
 				follows[bench] = follow
 			end
+		elseif type(value) ~= "number" then
+			lastUsers[bench] = nil -- séance finie : la prochaine repart d'une recherche immédiate
 		end
 	end
 	for _, follow in follows do
@@ -229,6 +273,9 @@ function BenchBarController.Start()
 	end)
 	CollectionService:GetInstanceRemovedSignal(BENCH_TAG):Connect(function(bench: Instance)
 		benches[bench] = nil
+		bars[bench] = nil
+		barRetryAt[bench] = nil
+		lastUsers[bench] = nil
 		local follow = follows[bench]
 		if follow then
 			follows[bench] = nil

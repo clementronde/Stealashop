@@ -37,6 +37,9 @@
 --     contour rouge, malus) et CarryController (animations, outils rangés) suffisent.
 -- Mobile : l'état de chaque boutique (volume, porte, droit de voler, objets à l'abri) est calculé une
 -- fois par tour, puis lu par ses objets ; volume et porte sont gardés tant qu'ils sont dans la parcelle.
+-- Vague 39 (a129, téléphone) : les objets d'une boutique ne sont revus qu'au tour où son état change
+-- (numéro Version), ou tant que leur invite ou leur étiquette n'a pas pu être créée ; le tour reste à
+-- REFRESH_INTERVAL, une invite s'allume donc au même tour qu'avant. Panneau : textes écrits s'ils changent.
 --
 -- API (client), pour les tests dans Studio :
 --   PvPController.GetPanelText(plot) -> { OwnerName, Income, HP, Status }?   panneau affiché, ou nil
@@ -77,14 +80,18 @@ type ItemWatch = {
 	Plot: Model?, -- sa parcelle, trouvée à l'arrivée de l'objet
 	Prompt: ProximityPrompt?,
 	SafeTag: BillboardGui?,
+	Seen: number?, -- Version de la boutique déjà appliquée à l'objet (nil : à refaire au prochain tour)
 }
 
 type PlotWatch = {
 	Plot: Model,
 	Bounds: BasePart?, -- gardés tant qu'ils sont dans la parcelle (streaming)
 	Door: Instance?,
-	Allowed: boolean, -- le joueur local peut voler ici en ce moment (refait à chaque tour)
-	Safe: { [number]: boolean }, -- présentoirs à l'abri (refait à chaque tour)
+	Allowed: boolean, -- le joueur local peut voler ici en ce moment (revu à chaque tour)
+	Mine: boolean, -- boutique du joueur local (revu à chaque tour)
+	SafeText: string?, -- attribut SafeSlots lu au dernier tour
+	Safe: { [number]: boolean }, -- présentoirs à l'abri (relu quand SafeSlots change)
+	Version: number, -- renouvelé quand Allowed, Mine ou SafeSlots change : ses objets sont alors revus
 	Gui: BillboardGui?,
 	Point: Attachment?,
 	Text: PanelText?,
@@ -413,6 +420,9 @@ local function refreshItem(watch: ItemWatch)
 	if plot == nil or state == nil then
 		return
 	end
+	if watch.Seen == state.Version then
+		return -- rien n'a changé dans sa boutique depuis le dernier tour (vague 39)
+	end
 	local slot = number(watch.Model, SLOT_ATTRIBUTE)
 	local safe = slot ~= nil and state.Safe[slot] == true
 	local tag = watch.SafeTag
@@ -421,8 +431,10 @@ local function refreshItem(watch: ItemWatch)
 	elseif tag and not safe then
 		removeSafeTag(watch)
 	end
-	if isMine(plot) then
+	local tagDone = safe == (watch.SafeTag ~= nil)
+	if state.Mine then
 		removePrompt(watch)
+		watch.Seen = if tagDone then state.Version else nil
 		return
 	end
 	if watch.Prompt == nil then
@@ -430,8 +442,13 @@ local function refreshItem(watch: ItemWatch)
 	end
 	local prompt = watch.Prompt
 	if prompt then
-		prompt.Enabled = state.Allowed and not safe
+		local enabled = state.Allowed and not safe
+		if prompt.Enabled ~= enabled then
+			prompt.Enabled = enabled
+		end
 	end
+	-- Invite ou étiquette pas encore possible (pièce ou PlayerGui absents) : réessayé au prochain tour.
+	watch.Seen = if tagDone and prompt ~= nil then state.Version else nil
 end
 
 -- Panneau de repérage ------------------------------------------------------------------------------------
@@ -574,13 +591,27 @@ local function refreshPanel(watch: PlotWatch, root: BasePart?)
 		local label = textLabel(gui, name)
 		if label then
 			local value = (text :: any)[name]
-			label.Visible = value ~= nil
-			label.Text = if value ~= nil then value else ""
+			local visible = value ~= nil
+			local shown = if value ~= nil then value else ""
+			if label.Visible ~= visible then
+				label.Visible = visible
+			end
+			if label.Text ~= shown then
+				label.Text = shown
+			end
 		end
 	end
 end
 
 -- Suivi ---------------------------------------------------------------------------------------------------------
+
+-- Numéros d'état des boutiques, uniques pour toute la session (une boutique suivie à nouveau après le
+-- streaming ne reprend jamais un numéro déjà vu par ses objets).
+local lastVersion = 0
+local function newVersion(): number
+	lastVersion += 1
+	return lastVersion
+end
 
 local function watchPlot(instance: Instance): PlotWatch?
 	-- Seules les boutiques de la map : le gabarit PLOT_Shop de Clément (ReplicatedStorage/Assets/Plots)
@@ -597,7 +628,10 @@ local function watchPlot(instance: Instance): PlotWatch?
 		Bounds = nil,
 		Door = nil,
 		Allowed = false,
+		Mine = false,
+		SafeText = nil,
 		Safe = {},
+		Version = newVersion(),
 		Gui = nil,
 		Point = nil,
 		Text = nil,
@@ -614,10 +648,24 @@ local function unwatchPlot(instance: Instance)
 	end
 end
 
--- État d'une boutique pour ce tour : droit de voler et objets à l'abri.
+-- État d'une boutique pour ce tour : droit de voler, boutique du joueur local et objets à l'abri ;
+-- Version monte quand l'un d'eux change (ses objets sont revus au même tour).
 local function updatePlot(watch: PlotWatch, root: BasePart?)
-	watch.Safe = safeSlots(watch.Plot)
-	watch.Allowed = canStealIn(watch, root)
+	local plot = watch.Plot
+	local text = plot:GetAttribute(SAFE_SLOTS_ATTRIBUTE)
+	local safeText = if type(text) == "string" then text else nil
+	local mine = isMine(plot)
+	local allowed = canStealIn(watch, root)
+	local changed = mine ~= watch.Mine or allowed ~= watch.Allowed
+	if safeText ~= watch.SafeText then
+		watch.SafeText = safeText
+		watch.Safe = safeSlots(plot)
+		changed = true
+	end
+	watch.Mine, watch.Allowed = mine, allowed
+	if changed then
+		watch.Version = newVersion()
+	end
 end
 
 local function watchItem(instance: Instance)
@@ -625,7 +673,7 @@ local function watchItem(instance: Instance)
 		return
 	end
 	local plot = plotOf(instance)
-	local watch: ItemWatch = { Model = instance :: Model, Plot = plot, Prompt = nil, SafeTag = nil }
+	local watch: ItemWatch = { Model = instance :: Model, Plot = plot, Prompt = nil, SafeTag = nil, Seen = nil }
 	itemWatches[instance] = watch
 	local state = if plot then watchPlot(plot) else nil
 	if state then

@@ -55,6 +55,7 @@ type Rainbow = {
 	tints: { BasePart },
 	lights: { Light },
 	labels: { TextLabel },
+	added: RBXScriptConnection?, -- descendants arrivés après le tag (streaming) : ajoutés à leur arrivée
 }
 
 -- Visuel du colis caché en local en attendant que Grab l'ait posé : valeurs à remettre.
@@ -260,27 +261,37 @@ local function rainbowAt(clock: number): Color3
 	return from:Lerp(to, position - index)
 end
 
+-- Vague 39 (optimisation téléphone, audit perf-telephone.md, correction 3) : avant, un modèle tagué
+-- sans rien à colorer était relu (GetDescendants) à chaque image. Désormais il est lu une fois au tag,
+-- puis chaque descendant qui arrive après coup (streaming) est ajouté à son arrivée ; la boucle
+-- d'image ne tourne que s'il y a quelque chose à colorer (aucun travail par image sinon).
+local colorable = 0 -- pièces Tint, lumières et textes Rarity suivis, tous modèles confondus
+
+local function addOne(rainbow: Rainbow, descendant: Instance): boolean
+	if descendant:IsA("BasePart") and descendant.Name == TINT then
+		table.insert(rainbow.tints, descendant)
+	elseif descendant:IsA("Light") then
+		table.insert(rainbow.lights, descendant)
+	elseif descendant:IsA("TextLabel") and descendant.Name == RARITY_LABEL then
+		table.insert(rainbow.labels, descendant)
+	else
+		return false
+	end
+	colorable += 1
+	return true
+end
+
 local function collect(model: Instance): Rainbow
-	local rainbow: Rainbow = { tints = {}, lights = {}, labels = {} }
+	local rainbow: Rainbow = { tints = {}, lights = {}, labels = {}, added = nil }
 	for _, descendant in model:GetDescendants() do
-		if descendant:IsA("BasePart") and descendant.Name == TINT then
-			table.insert(rainbow.tints, descendant)
-		elseif descendant:IsA("Light") then
-			table.insert(rainbow.lights, descendant)
-		elseif descendant:IsA("TextLabel") and descendant.Name == RARITY_LABEL then
-			table.insert(rainbow.labels, descendant)
-		end
+		addOne(rainbow, descendant)
 	end
 	return rainbow
 end
 
 local function updateRainbows()
 	local color = rainbowAt(os.clock())
-	for model, rainbow in rainbows do
-		if #rainbow.tints + #rainbow.lights + #rainbow.labels == 0 then
-			rainbow = collect(model) -- descendants pas encore arrivés au moment du tag
-			rainbows[model] = rainbow
-		end
+	for _, rainbow in rainbows do
 		for _, part in rainbow.tints do
 			part.Color = color
 		end
@@ -293,20 +304,48 @@ local function updateRainbows()
 	end
 end
 
-local function addRainbow(model: Instance)
-	rainbows[model] = collect(model)
-	if rainbowConnection == nil then
-		rainbowConnection = RunService.RenderStepped:Connect(updateRainbows)
-	end
-end
-
-local function removeRainbow(model: Instance)
-	rainbows[model] = nil
+-- Boucle d'image branchée seulement quand il y a quelque chose à colorer.
+local function syncRainbowLoop()
 	local connection = rainbowConnection
-	if next(rainbows) == nil and connection then
+	if colorable > 0 and connection == nil then
+		rainbowConnection = RunService.RenderStepped:Connect(updateRainbows)
+	elseif colorable == 0 and connection then
 		connection:Disconnect()
 		rainbowConnection = nil
 	end
+end
+
+local function forget(rainbow: Rainbow)
+	colorable -= #rainbow.tints + #rainbow.lights + #rainbow.labels
+	local added = rainbow.added
+	if added then
+		added:Disconnect()
+	end
+end
+
+local function addRainbow(model: Instance)
+	local old = rainbows[model]
+	if old then
+		forget(old) -- tag annoncé deux fois : relu une seule fois
+	end
+	local rainbow = collect(model)
+	rainbow.added = model.DescendantAdded:Connect(function(descendant: Instance)
+		if rainbows[model] == rainbow and addOne(rainbow, descendant) then
+			syncRainbowLoop()
+		end
+	end)
+	rainbows[model] = rainbow
+	syncRainbowLoop()
+end
+
+local function removeRainbow(model: Instance)
+	local rainbow = rainbows[model]
+	if rainbow == nil then
+		return
+	end
+	rainbows[model] = nil
+	forget(rainbow)
+	syncRainbowLoop()
 end
 
 function CarryController.IsCarrying(): boolean

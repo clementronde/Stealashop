@@ -6,11 +6,11 @@
 -- Contours. Les modèles BOX_* de Clément portent un Highlight `OutlineHighlight` (contour noir,
 -- DepthMode Occluded), mais Roblox n'affiche que 31 Highlight à la fois et la map compte 120
 -- colis. Ce contrôleur suit tous les Highlight `OutlineHighlight` du Workspace : colis des rayons,
--- colis portés, colis sur les établis, colis au sol. Seuls les ShelfBoxes.MaxOutlines (25) plus
+-- colis portés, colis sur les établis, colis au sol. Seuls les ShelfBoxes.MaxOutlines (20) plus
 -- proches de la caméra, à OutlineMaxDistance studs au plus, restent actifs ; les autres sont
 -- coupés en local. Les arêtes noires `Outline` (SelectionBox) restent toujours visibles, en
 -- secours. Les autres Highlight du jeu (contour rouge d'un objet volé, StolenOutline) ne sont pas
--- touchés : la marge de 6 leur sert.
+-- touchés : la marge de 11 leur sert.
 --
 -- Étiquettes. Chaque colis d'un rayon (tag ShelfBox, posé par StoreHeistService) porte BB_Box,
 -- en AlwaysOnTop chez Clément : on la verrait à travers les rayons voisins. Elle n'est active que

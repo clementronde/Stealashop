@@ -55,7 +55,10 @@ local ShelfBoxes = {
 	-- plus proches de la caméra gardent le leur. Les arêtes noires `Outline` (SelectionBox) restent
 	-- toujours visibles, en secours.
 	OutlineName = "OutlineHighlight", -- L-031 : nom du Highlight dans BOX_*
-	MaxOutlines = 25, -- L-031 : 25 contours, la marge sert aux autres Highlight du jeu
+	-- Vague 39 (audit perf-telephone.md, correction 5) : 20 au lieu des 25 de L-031. Avec 25, les
+	-- 6 porteurs (StolenOutline) et les 3 alertes de vol passaient à 34, au-delà des 31 de Roblox (les
+	-- derniers ne s'affichent pas, sans erreur) ; 20 + 6 + 3 = 29. V0 proposé, à faire valider par Clément.
+	MaxOutlines = 20, -- V0 (L-031 : 25) : contours de colis, la marge sert aux autres Highlight du jeu
 	OutlineMaxDistance = 100, -- V0 : au-delà, aucun contour, même parmi les 25 plus proches
 	RefreshInterval = 0.25, -- V0 : tri des colis par distance (contours, étiquettes à revoir)
 
