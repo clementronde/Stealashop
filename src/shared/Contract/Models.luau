@@ -592,4 +592,42 @@ for _, spec in { MutationStyles, MutationFxSpec } do
 	table.insert(Models.List, table.find(Models.List, WeaponShopCounter) or #Models.List + 1, spec)
 end
 
+-- Vitrine de l'événement de la Fortune Tower (L-108 point 8, vague 37, a123 ; noms proposés à Clément, pas
+-- encore validés) : rangée dans ReplicatedStorage/Assets (Events), pivot en bas au centre, face avant vers
+-- la rue. FortuneTowerService en pose une copie en zone 6, qu'il renomme FortuneVault. Aucun exemplaire
+-- attendu (Expected vide : rien d'écrit tant qu'elle n'est pas livrée) ; livrée, chaque élément absent est
+-- un avertissement (orange), jamais un problème : le code a un repli pour chacun.
+local FortuneVault: ModelSpec = {
+	Key = "FortuneVault",
+	Label = "vitrines de l'événement de la Fortune Tower",
+	Category = "Événements",
+	Names = { "ENV_Event_FortuneVault" },
+	Class = "Model",
+	Parts = {
+		{
+			Name = "Window",
+			Class = "BasePart",
+			Optional = true,
+			Note = "facultative : la vitre géante, cachée à la casse ; sans elle, rien n'est caché, L-108",
+		},
+		{
+			Name = "HealthBarPoint",
+			Class = "Attachment",
+			Optional = true,
+			Note = "facultatif : point de la barre de PV ; sans lui, la barre se pose sur Window, L-108",
+		},
+		{
+			Name = "OutlineHighlight",
+			Class = "Highlight",
+			Optional = true,
+			Note = "facultatif : contour éteint à la casse, L-108",
+		},
+		-- Points au sol où tombe le butin (8 colis) ; facultatifs (Silent) : sans eux, une rangée devant la face avant.
+		{ Name = "LootSpawn_%02d", From = 1, To = 8, Class = "Attachment", Silent = true },
+	},
+	Expected = {},
+}
+Models.FortuneVault = FortuneVault
+table.insert(Models.List, table.find(Models.List, WeaponShopCounter) or #Models.List + 1, FortuneVault)
+
 return Models
