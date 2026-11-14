@@ -12,8 +12,8 @@
 		_G.ClaudePlotShop.check(model)               -- triangles, noms du contrat, scripts
 
 	Gabarit : ReplicatedStorage/Assets/Plots/PLOT_Shop, tags PlayerPlot (boutique), CashPad,
-	Treadmill et Bench déjà posés, pas de PlotIndex (posé par install). Bâtiment 64 x 80 studs, plus le devant
-	(x -32..32, z -40..40), pivot en bas au centre, avant vers -Z.
+	Treadmill et Bench déjà posés, pas de PlotIndex (posé par install). Bâtiment 48 x 80 studs (64 avant le 2026-11-14, resserré par narrowWidth), plus le devant
+	(x -24..24, z -40..40), pivot en bas au centre, avant vers -Z.
 
 	Contrat 10.4 (cœur, présent à tous les niveaux) : Window (porte vitrée à 2 vantaux Leaf_L et
 	Leaf_R, 18 x 10,5 x 0,6 = WIN_M x 1,5), WindowFractured (WIN_M_Fractured x 1,5, cachée),
@@ -250,8 +250,8 @@ end
 -- 20 présentoirs en 5 rayons de 4 (Rayon_01 devant, près de l'entrée ; 7.5 : 4 au départ, +1 par
 -- achat). Chaque rayon court le long de la façade, en deux moitiés (x -25..-7 et 7..25) autour de
 -- l'allée centrale. Présentoirs d'un rayon, dans l'ordre : x -11, 11, -21, 21.
-local RAYON_Z = { -22, -13, -4, 5, 14 }
-local STAND_X = { -11, 11, -21, 21 }
+local RAYON_Z = { -22, -13, -4, 5, 14 } -- ancienne disposition en îlots (avant 2026-11-14), plus utilisée
+local STAND_X = { -11, 11, -21, 21 } -- idem
 -- Fond de la boutique de niveau 1 (une seule rangée, Rayon_01) : z -40..SMALL_Z. Le niveau 2 l'agrandit à z 40.
 local SMALL_Z = -16
 
@@ -272,7 +272,7 @@ local RAYON_Z, STAND_X, SMALL_Z, productsX, PRODUCT_COLORS = P.RAYON_Z, P.STAND_
 local function floorTiles(parent, name, iz0, iz1)
 	local tiles = group(parent, name)
 	local nt = 0
-	for ix = 0, 15 do
+	for ix = 2, 13 do -- x -24..24 (boutique de 48 de large depuis le 2026-11-14)
 		for iz = iz0, iz1 do
 			if (ix + iz) % 2 == 0 then
 				nt += 1
@@ -385,59 +385,62 @@ local function buildCore(M)
 end
 
 local function buildInterior(M, store)
-	-- 5 rayons de 4 présentoirs (Rayon_01 à _05). Chaque présentoir a sa case CollectPad_xx au sol,
-	-- devant lui : le joueur y marche pour ramasser l'argent de cet objet. RayonSpot_xx = contour au
-	-- sol de l'emplacement d'un rayon pas encore là (à partir du niveau 2, quand le sol s'agrandit).
+	-- Disposition « Steal a … » (Clément, 2026-11-14, référence boutique_joueur_reference.webp) : une allée
+	-- centrale (tapis rouge, x -6..6) de la porte au fond, et deux files face à face de 10 socles bas
+	-- (DisplayStand_xx, 4 x 1,2 x 4, x = ±16), un rang tous les 7 studs (z -32, -25, ..., 31). L'objet est
+	-- tourné vers l'allée (DisplaySlot_xx : axe -Z vers l'allée) ; sa plaque CollectPad_xx est devant lui,
+	-- côté allée (x = ±11). Rayon r = 4 présentoirs, 2 rangs : n = 4r-3 gauche, 4r-2 droite (rang a),
+	-- 4r-1 gauche, 4r droite (rang b) ; le rayon 1 est au plus près de l'entrée. Chaque niveau k (= nombre
+	-- de rayons) allonge les deux files vers le fond. RayonSpot_xx = contour au sol des deux demi-rangées
+	-- d'un rayon pas encore là (à partir du niveau 2, rangé dans Stage_2).
 	-- Rayon_01 est complet dans la boutique. Rayon_02 à _05 (L-082) : dans la boutique, seulement une
 	-- pièce d'ancrage invisible RayonAnchor qui porte les DisplaySlot (contrat) ; leurs visuels
-	-- (présentoirs, CollectPad, produits) sont rangés dans `store` (PLOT_Shop_Rayons), même repère.
-	local HEADERS = { "SNACKS", "DRINKS", "TOYS", "TECH", "GIFTS" }
-	local HEADER_COLORS = { C.orange, C.purple, C.green, C.red, C.pink }
+	-- (socles et plaques) sont rangés dans `store` (PLOT_Shop_Rayons), même repère.
+	local Z0, DZ, SX, PX = -32, 7, 16, 11 -- files écartées de 2 studs de l'allée (Clément, 2026-11-14)
+	local function rowZ(r, b) return Z0 + DZ * (2 * (r - 1) + b) end
 	local spots = group(M, "RayonSpots", { FromStage = 2 })
-	for r, zr in RAYON_Z do
+	for r = 1, 5 do
 		local inPlot = group(M, string.format("Rayon_%02d", r))
 		local R = (r == 1) and inPlot or group(store, string.format("Rayon_%02d", r))
+		local za, zb = rowZ(r, 0), rowZ(r, 1)
 		local anchor
 		if r > 1 then
-			anchor = B(inPlot, "RayonAnchor", -0.5, 3.5, zr - 0.5, 0.5, 4.0, zr + 0.5, C.white, { studs = false, decor = true, T = 1, noShadow = true })
-		end
-		local spot = (r > 1) and group(spots, string.format("RayonSpot_%02d", r)) or nil
-		for _, half in { { "L", -25, -7, -1 }, { "R", 7, 25, 1 } } do
-			local h, x0, x1, sx = half[1], half[2], half[3], half[4]
-			B(R, "Kick_" .. h, x0, 0.3, zr - 1.7, x1, 0.6, zr + 1.7, C.kick, { studs = false })
-			B(R, "Spine_" .. h, x0 + 0.2, 0.6, zr - 0.9, x1 - 0.2, 3.0, zr + 0.9, C.shelfBack, { studs = false })
-			B(R, "Top_" .. h, x0, 3.0, zr - 1.7, x1, 3.25, zr + 1.7, C.white, { studs = false })
-			B(R, "Band_F" .. h, x0, 2.75, zr - 1.72, x1, 3.25, zr - 1.68, C.accent, { studs = false, decor = true, accent = true })
-			B(R, "Band_B" .. h, x0, 2.75, zr + 1.68, x1, 3.25, zr + 1.72, C.accent, { studs = false, decor = true, accent = true })
-			-- plus de produits factices, de planche ni d'étiquettes de prix (Clément, 2026-11-10 : le plus simple possible)
-			local ex = (sx < 0) and x0 or x1
-			local hdr = B(R, "Header_" .. h, math.min(ex, ex + sx * 0.25), 0.9, zr - 1.5, math.max(ex, ex + sx * 0.25), 2.75, zr + 1.5, HEADER_COLORS[r], { studs = false, decor = true })
-			label(hdr, (sx < 0) and Enum.NormalId.Left or Enum.NormalId.Right, HEADERS[r], C.white, 40)
-			if spot then
-				for i, b in { { x0, zr - 1.7, x1, zr - 1.4 }, { x0, zr + 1.4, x1, zr + 1.7 }, { x0, zr - 1.4, x0 + 0.3, zr + 1.4 }, { x1 - 0.3, zr - 1.4, x1, zr + 1.4 } } do
-					B(spot, "Outline_" .. h .. i, b[1], 0.32, b[2], b[3], 0.36, b[4], C.white, { studs = false, decor = true, noShadow = true })
+			anchor = B(inPlot, "RayonAnchor", -0.5, 1.0, za - 0.5, 0.5, 1.5, za + 0.5, C.white, { studs = false, decor = true, T = 1, noShadow = true })
+			local spot = group(spots, string.format("RayonSpot_%02d", r))
+			for _, sd in { { "L", -1 }, { "R", 1 } } do
+				local x0, x1 = math.min(sd[2] * (PX - 2), sd[2] * (SX + 2.4)), math.max(sd[2] * (PX - 2), sd[2] * (SX + 2.4))
+				local z0, z1 = za - 2.4, zb + 2.4
+				for i, bx in { { x0, z0, x1, z0 + 0.3 }, { x0, z1 - 0.3, x1, z1 }, { x0, z0 + 0.3, x0 + 0.3, z1 - 0.3 }, { x1 - 0.3, z0 + 0.3, x1, z1 - 0.3 } } do
+					B(spot, "Outline_" .. sd[1] .. i, bx[1], 0.32, bx[2], bx[3], 0.36, bx[4], C.white, { studs = false, decor = true, noShadow = true })
 				end
 			end
 		end
-		for i, sxp in STAND_X do
+		for i = 1, 4 do
 			local n = (r - 1) * 4 + i
-			local stand = B(R, string.format("DisplayStand_%02d", n), sxp - 1.3, 3.25, zr - 1.3, sxp + 1.3, 3.75, zr + 1.3, C.accent, { accent = true })
-			att(string.format("DisplaySlot_%02d", n), anchor or stand, sxp, 3.75, zr)
+			local side = (i % 2 == 1) and -1 or 1
+			local z = (i <= 2) and za or zb
+			local sx = side * SX
+			local stand = B(R, string.format("DisplayStand_%02d", n), sx - 2, 0.3, z - 2, sx + 2, 1.5, z + 2, C.accent, { accent = true })
+			local look = Vector3.new(-side, 0, 0) -- vers l'allée
+			att(string.format("DisplaySlot_%02d", n), anchor or stand, sx, 1.5, z, look)
 			if r == 1 then
 				-- L-086 : on pose et on ouvre le colis sur le présentoir, plus d'établi
-				att(string.format("UnboxBench_%02d", i), stand, sxp, 3.75, zr)
+				att(string.format("UnboxBench_%02d", i), stand, sx, 1.5, z, look)
 			end
 			-- une seule plaque carrée au sol par présentoir (3,2 x 3,2, Clément, 2026-11-11), avec le montant de
 			-- l'objet : SurfaceGui AmountGui > TextLabel Amount, que le code remplit (« $1.2K »). La plaque est
 			-- couchée : sa face Front (-Z local) regarde le ciel et son haut (+Y local) pointe vers la porte,
 			-- donc le texte se lit à l'endroit en marchant vers la sortie.
 			local cp = B(R, string.format("CollectPad_%02d", n), -1.6, -1.6, -0.06, 1.6, 1.6, 0.06, C.green, { studs = false, mat = Enum.Material.Neon })
-			cp.CFrame = CFrame.fromMatrix(Vector3.new(sxp, 0.36, zr - 3.5), Vector3.new(-1, 0, 0), Vector3.new(0, 0, -1), Vector3.new(0, -1, 0))
+			cp.CFrame = CFrame.fromMatrix(Vector3.new(side * PX, 0.36, z), Vector3.new(-1, 0, 0), Vector3.new(0, 0, -1), Vector3.new(0, -1, 0))
 			cp.CanCollide = false; cp.CanTouch = true; cp.CanQuery = false
 			label(cp, Enum.NormalId.Front, "$0", C.white, 40, nil, "Amount")
 			cp.LabelGui_Front.Name = "AmountGui"
 		end
 	end
+	-- allée : tapis rouge du seuil au fond du niveau 1 (la suite, CarpetExt, est dans Stage_2)
+	local carpet = B(M, "Carpet", -6, 0.32, -39.6, 6, 0.35, P.SMALL_Z - 0.4, P.rgb(200, 40, 45), { decor = true, noShadow = true })
+	carpet.CanCollide = false
 	-- plus de bornes noires à côté de la porte (Clément, 2026-11-10) : le point reste, posé sur le sol
 	att("DisplayUpgradePoint", M.PlotFloor, -15.1, 0.3, -36.5) -- panneau au sol (session UI, 2026-11-08)
 
@@ -576,20 +579,14 @@ local function buildStage1(M)
 end
 
 -- Niveau 2, la boutique s'agrandit : suite du sol jusqu'au fond (z SMALL_Z..40), champ de force sur tout
--- le pourtour, cartons au fond.
+-- le pourtour, suite de l'allée.
 local function buildStage2Ext(S)
 	B(S, "PlotFloorExt", -32, -0.6, P.SMALL_Z, 32, 0.3, 40, C.accent, { accent = true })
 	P.floorTiles(S, "FloorTilesExt", (P.SMALL_Z + 40) / 4, 19)
 	forceField(S, SEGMENTS, 3)
-	local st = group(S, "Stock")
-	B(st, "Pallet_1", -31, 0.32, 19.5, -27, 0.6, 23.5, C.wood, { studs = false })
-	for i, c in { { -30.8, 19.7, -28.9, 21.5, 1.6 }, { -28.8, 19.7, -27.2, 21.4, 1.2 }, { -30.6, 21.7, -28.6, 23.3, 1.4 }, { -30.5, 19.9, -29.1, 21.3, 1.0 } } do
-		local y0 = (i == 4) and 2.2 or 0.6
-		B(st, "Carton_" .. i, c[1], y0, c[2], c[3], y0 + c[5], c[4], C.carton, { studs = false })
-	end
-	B(st, "Pallet_2", -13, 0.32, 36, -9.5, 0.6, 39, C.wood, { studs = false })
-	B(st, "Carton_5", -12.8, 0.6, 36.2, -10.8, 2.0, 38.0, C.carton, { studs = false })
-	B(st, "Carton_6", -10.6, 0.6, 36.4, -9.7, 1.5, 38.6, C.carton, { studs = false })
+	-- suite de l'allée (Clément, 2026-11-14) ; plus de cartons de stock au fond (gênaient la file de gauche)
+	local carpet = B(S, "CarpetExt", -6, 0.32, P.SMALL_Z - 0.4, 6, 0.35, 39.6, rgb(200, 40, 45), { decor = true, noShadow = true })
+	carpet.CanCollide = false
 	return S
 end
 
@@ -621,19 +618,12 @@ local function buildStage2(M)
 			muret(sides, sg[1])
 		end
 	end
-	local Pr = group(S, "Promo")
-	B(Pr, "PromoBin", -14, 0.3, -31, -10, 1.8, -28, C.yellow, { studs = false })
-	for k = 0, 2 do
-		B(Pr, "PromoPack_" .. k, -13.7 + k * 1.2, 1.8, -30.6, -12.8 + k * 1.2, 2.7, -28.4, ({ C.red, C.accent, C.green })[k + 1], { studs = false, decor = true })
-	end
-	B(Pr, "PromoPole", -12.05, 2.7, -29.6, -11.95, 4.2, -29.4, C.frame, { studs = false, decor = true })
-	local ps = B(Pr, "PromoSign", -13.4, 4.2, -29.6, -10.6, 5.4, -29.4, C.yellow, { studs = false, decor = true })
-	label(ps, Enum.NormalId.Front, "SALE", C.red, 60, C.white)
+	-- plus de bac promo (2026-11-14 : il gênait la file de gauche)
 	-- plus de support d'haltères devant la boutique (2026-11-11 : plus de terrasse, le plus simple possible)
 	return S
 end
 
--- Niveau 3 : murs pleins, vitrines de façade, rayons muraux.
+-- Niveau 3 : murs pleins, vitrines de façade.
 local function buildStage3(M)
 	local S = stage(M, 3)
 	local Wl = group(S, "Walls")
@@ -664,40 +654,7 @@ local function buildStage3(M)
 	local pil = group(S, "Pilasters", { HideFromStage = 5 })
 	B(pil, "Pilaster_L", -32.05, 0.3, -40.4, -30.8, 16.5, -39.3, C.accent, { accent = true })
 	B(pil, "Pilaster_R", 30.8, 0.3, -40.4, 32.05, 16.5, -39.3, C.accent, { accent = true })
-	-- rayons muraux (3 étages, 5 studs de haut, comme les magasins PNJ)
-	local WS = group(S, "WallShelves")
-	local WALL_HEADERS = { L = { "PERSONAL CARE", C.accent }, R = { "GROCERY", C.green } }
-	for _, side in { { "L", -30.9, 1 }, { "R", 30.9, -1 } } do
-		local wx, s = side[2], side[3]
-		local fx = wx + s * 2
-		local name = side[1]
-		local function X(a, b) return math.min(wx + s * a, wx + s * b), math.max(wx + s * a, wx + s * b) end
-		local bx0, bx1 = X(0, 0.15)
-		B(WS, "Back_" .. name, bx0, 0.3, -24, bx1, 5.0, 18, C.shelfBack, { studs = false })
-		local kx0, kx1 = X(0, 2)
-		B(WS, "Kick_" .. name, kx0, 0.3, -24, kx1, 0.6, 18, C.kick, { studs = false })
-		for li, ly in { 1.85, 3.6 } do
-			B(WS, "Board_" .. name .. li, kx0, ly - 0.15, -24, kx1, ly, 18, C.shelf, { studs = false })
-			local px0, px1 = X(2, 2.06)
-			B(WS, "Price_" .. name .. li, px0, ly - 0.15, -24, px1, ly, 18, C.price, { studs = false, decor = true })
-			products(WS, "Prod_" .. name .. li, fx, s, -23.8, 17.8, ly, (li == 1) and 1.45 or 1.15)
-		end
-		local z = -23.8
-		local k = 0
-		while z < 17 do
-			k += 1
-			local pair = PRODUCT_COLORS[(k * 5) % #PRODUCT_COLORS + 1]
-			local qx0, qx1 = X(0.2, 1.9)
-			B(WS, "Bulk_" .. name .. "_" .. k, qx0, 0.6, z, qx1, 1.5, z + 1.6, pair[1], { studs = false, decor = true, noShadow = true })
-			z += 1.75
-		end
-		B(WS, "Top_" .. name, kx0, 4.85, -24, kx1, 5.0, 18, C.shelf, { studs = false })
-		B(WS, "EndA_" .. name, kx0, 0.3, -24.2, kx1, 5.0, -24, C.shelf, { studs = false })
-		B(WS, "EndB_" .. name, kx0, 0.3, 18, kx1, 5.0, 18.2, C.shelf, { studs = false })
-		local hx0, hx1 = X(0.05, 0.3)
-		local hdr = B(WS, "Header_" .. name, hx0, 5.4, -20, hx1, 6.6, 14, WALL_HEADERS[name][2], { studs = false, decor = true })
-		label(hdr, (s > 0) and Enum.NormalId.Right or Enum.NormalId.Left, WALL_HEADERS[name][1], C.white, 40)
-	end
+	-- plus de rayons muraux (2026-11-14 : intérieur simple, comme la référence de Clément)
 	return S
 end
 
@@ -833,21 +790,7 @@ local function buildStage5(M)
 		B(SG, "Bulb_B" .. k, x - 0.13, 16.05, -41.22, x + 0.13, 16.3, -41.1, C.yellow, { studs = false, decor = true, mat = NEON })
 	end
 	-- plus de coffre-fort autour de la porte (L-086, 2026-11-08) : VaultFrame et VaultDoor retirés
-	-- tapis rouge et poteaux à corde
-	local RC = group(S, "RedCarpet")
-	B(RC, "Carpet", -3, 0.32, -39, 3, 0.36, -24, C.velvet, { studs = false, decor = true, noShadow = true, mat = Enum.Material.Fabric })
-	B(RC, "CarpetEdge_L", -3.2, 0.32, -39, -3, 0.37, -24, C.gold, { studs = false, decor = true, noShadow = true })
-	B(RC, "CarpetEdge_R", 3, 0.32, -39, 3.2, 0.37, -24, C.gold, { studs = false, decor = true, noShadow = true })
-	for k, z in { -36, -31, -26 } do
-		for _, s in { -1, 1 } do
-			local tag = (s < 0 and "L" or "R") .. k
-			B(RC, "Stanchion_" .. tag, s * 3.9 - 0.15, 0.3, z - 0.15, s * 3.9 + 0.15, 3.0, z + 0.15, C.gold, { studs = false })
-			B(RC, "StanchionTop_" .. tag, s * 3.9 - 0.25, 3.0, z - 0.25, s * 3.9 + 0.25, 3.25, z + 0.25, C.gold, { studs = false, decor = true })
-			if k < 3 then
-				B(RC, "Rope_" .. tag, s * 3.9 - 0.08, 2.5, z, s * 3.9 + 0.08, 2.66, z + 5, C.velvet, { studs = false, decor = true })
-			end
-		end
-	end
+	-- plus de tapis à cordons (2026-11-14 : l'allée a son tapis Carpet dès le niveau 1)
 	-- lustres au-dessus de l'allée centrale
 	local CH = group(S, "Chandeliers")
 	for i, z in { -12, 4 } do
@@ -861,17 +804,7 @@ local function buildStage5(M)
 		end
 		light(B(CH, "Bulb_" .. i, -0.3, 12.8, z - 0.3, 0.3, 13.3, z + 0.3, rgb(255, 236, 190), { studs = false, decor = true, mat = NEON }), 22, 0.6, rgb(255, 230, 190))
 	end
-	-- palmiers en pot de part et d'autre de l'entrée
-	local PL = group(S, "Palms")
-	for _, x in { -12.5, 12.5 } do
-		local tag = x < 0 and "L" or "R"
-		B(PL, "Pot_" .. tag, x - 0.8, 0.3, -34.3, x + 0.8, 1.9, -32.7, C.gold, { studs = false })
-		B(PL, "Trunk_" .. tag, x - 0.25, 1.9, -33.75, x + 0.25, 6.2, -33.25, C.woodDark, { studs = false, decor = true })
-		for k = 0, 3 do
-			local leaf = B(PL, "Frond_" .. tag .. k, -0.25, -0.08, 0, 0.25, 0.08, 2.4, C.leaf, { studs = false, decor = true })
-			leaf.CFrame = CFrame.new(x, 6.2, -33.5) * CFrame.Angles(0, math.rad(k * 90 + 45), 0) * CFrame.Angles(math.rad(25), 0, 0) * CFrame.new(0, 0, 1.2)
-		end
-	end
+	-- plus de palmiers à l'entrée (2026-11-14 : ils gênaient le premier rang de plaques)
 	buildSecurity(S)
 	return S
 end
@@ -934,6 +867,71 @@ local function buildRarest(M)
 	return R
 end
 
+-- Boutique moins large (Clément, 2026-11-14) : 48 studs au lieu de 64 (murs à x = ±24). Resserre tout ce
+-- qui est hors de la porte et de l'allée (|x| > 10) vers le centre, de façon continue : x' = ±(10 + (|x| - 10)
+-- * 14 / 22). Les bords des pièces suivent la même règle, donc rien ne se chevauche ni ne se décolle. Ne bouge
+-- pas : les rayons (socles, plaques, DisplaySlot), leurs contours RayonSpots, le tapis, le banc, le socle de
+-- l'objet le plus rare. Le damier du sol est recoupé (carreaux de |x| <= 24 seulement).
+local NARROW_IN, NARROW_K = 10, 14 / 22
+local function narrowX(x)
+	local a = math.abs(x)
+	if a <= NARROW_IN then return x end
+	return math.sign(x) * (NARROW_IN + (a - NARROW_IN) * NARROW_K)
+end
+local function narrowWidth(M)
+	local keep = {}
+	for _, n in { "Treadmill", "Bench", "RarestPedestal", "FloorTiles" } do
+		local x = M:FindFirstChild(n); if x then table.insert(keep, x) end
+	end
+	for r = 1, 5 do
+		local x = M:FindFirstChild(string.format("Rayon_%02d", r)); if x then table.insert(keep, x) end
+	end
+	local s2 = M:FindFirstChild("Stage_2")
+	for _, n in { "RayonSpots", "FloorTilesExt", "CarpetExt" } do
+		local x = s2 and s2:FindFirstChild(n); if x then table.insert(keep, x) end
+	end
+	local function kept(p)
+		for _, k in keep do if p == k or p:IsDescendantOf(k) then return true end end
+		return false
+	end
+	local moved = 0
+	for _, p in M:GetDescendants() do
+		if p:IsA("BasePart") and not kept(p) then
+			-- attachments : même règle, à leur place dans le monde
+			local atts = {}
+			for _, a in p:GetChildren() do if a:IsA("Attachment") then atts[a] = a.WorldPosition end end
+			local cf, size = p.CFrame, p.Size
+			local axes = { cf.RightVector, cf.UpVector, cf.LookVector }
+			local k = nil
+			for i, v in axes do if math.abs(math.abs(v.X) - 1) < 1e-3 then k = i end end
+			local c = cf.Position
+			if k then
+				local half = ({ size.X, size.Y, size.Z })[k] / 2
+				local x0, x1 = narrowX(c.X - half), narrowX(c.X + half)
+				local w = x1 - x0
+				local sz = { size.X, size.Y, size.Z }
+				sz[k] = math.max(w, 0.05)
+				p.Size = Vector3.new(sz[1], sz[2], sz[3])
+				p.CFrame = cf.Rotation + Vector3.new((x0 + x1) / 2, c.Y, c.Z)
+			else
+				p.CFrame = cf.Rotation + Vector3.new(narrowX(c.X), c.Y, c.Z) -- pièce tournée : déplacée, pas resserrée
+			end
+			for a, wp in atts do a.WorldPosition = Vector3.new(narrowX(wp.X), wp.Y, wp.Z) end
+			moved += 1
+		end
+	end
+	-- damier : seulement les carreaux dans la nouvelle largeur
+	local cut = 0
+	for _, t in { M:FindFirstChild("FloorTiles"), s2 and s2:FindFirstChild("FloorTilesExt") } do
+		if t then
+			for _, p in t:GetChildren() do
+				if p:IsA("BasePart") and math.abs(p.Position.X) + p.Size.X / 2 > 24.01 then p:Destroy(); cut += 1 end
+			end
+		end
+	end
+	return moved, cut
+end
+
 -- (Re)construit ReplicatedStorage/Assets/Plots/PLOT_Shop, morceau par morceau (task.wait entre deux).
 local function build()
 	P.setSeed(4242)
@@ -973,6 +971,7 @@ local function build()
 			d.Parent = d:IsA("BasePart") and barriers or s2
 		end
 	end
+	narrowWidth(M) -- 48 de large (Clément, 2026-11-14), après le rangement de Stage_2
 	local pad = M:FindFirstChild("CashPad")
 	CS:AddTag(pad, "CashPad")
 	M.WorldPivot = CFrame.identity
