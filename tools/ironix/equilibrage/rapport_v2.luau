@@ -213,7 +213,7 @@ for index, zone in Zones do
 	})
 end
 print("")
-print("Casse d'une vitrine par un joueur seul qui a les dégâts du panneau (régénération 3 %/s, chrono 13 s) :")
+print(`Casse d'une vitrine par un joueur seul qui a les dégâts du panneau (régénération 3 %/s, chrono {V2.BreakTimer} s ; aujourd'hui {Balance.Window.BreakTimer} s) :`)
 print("")
 local cap = V2.MaxHitsPerSecond
 entete({ "Zone", "à 4 coups/s", "à 4,5 coups/s", `à {cap} coups/s (plafond)`, `avec le kit de la zone d'avant, {cap} coups/s`, `kit de la zone d'avant et potion ×{V2.PotionStrength}` })
@@ -221,7 +221,7 @@ for index = 1, #eco.Zones do
 	local new = eco.Zones[index]
 	local function t(damage, hits)
 		local seconds = Modele.BreakTime(new.WindowHP, damage, hits)
-		return if seconds > Balance.Window.BreakTimer then `non ({duree(seconds)})` else duree(seconds)
+		return if seconds > V2.BreakTimer then `non ({duree(seconds)})` else duree(seconds)
 	end
 	local before = if index > 1 then eco.Zones[index - 1].AdvisedDamage else nil
 	ligne({ tostring(index), t(new.AdvisedDamage, 4), t(new.AdvisedDamage, 4.5), t(new.AdvisedDamage, cap), if before then t(before, cap) else "—", if before then t(before * V2.PotionStrength, cap) else "—" })
@@ -232,12 +232,12 @@ end
 titre("3. Zone 6 : jamais seul")
 local z6 = eco.Zone6
 local best = eco.BestDamage
-local T, regen = Balance.Window.BreakTimer, Balance.Window.RegenPerSecond
+local T, regen = V2.BreakTimer, Balance.Window.RegenPerSecond
 print(`D = meilleure arme × meilleure aura = {nombre(eco.Tools[#eco.Tools].Power)} × {eco.Auras[#eco.Auras].Multiplier} = {nombre(best)} par coup, sans potion. Chrono {T} s, régénération {regen * 100} %/s des PV max, {V2.MaxHitsPerSecond} coups/s au plus par joueur (aujourd'hui {Balance.Hit.MaxHitsPerSecond}).`)
 print("")
 print(`Une vitrine de PV points casse dans le chrono si : coups/s × dégâts × {T} ≥ PV × (1 + {regen} × {T}), soit PV ≤ {fixe(z6.PerHit, 3)} × coups/s × dégâts.`)
 print("")
-entete({ "Qui frappe", "Dégâts par seconde", "PV cassables en 13 s", "En multiples de D" })
+entete({ "Qui frappe", "Dégâts par seconde", `PV cassables en {T} s`, "En multiples de D" })
 local function cas(label, players, hits, factor)
 	local dps = players * hits * factor * best
 	ligne({ label, nombre(dps), nombre(dps * z6.PerHit), fixe(players * hits * factor * z6.PerHit, 1) })
@@ -249,9 +249,9 @@ cas(`Deux, {cap} coups/s chacun, sans potion`, 2, cap, 1)
 cas(`Deux, {cap} coups/s chacun, potion ×{V2.PotionStrength}`, 2, cap, V2.PotionStrength)
 cas(`Seul, {cap} coups/s, Hydraulic Gloves ×{gloves}`, 1, cap, gloves)
 print("")
-print(`Bornes des PV, en multiples de D : sans compter la potion, de {fixe(z6.LowerNoPotion, 1)} (seul) à {fixe(z6.Upper, 1)} (deux) ; en comptant la potion ×{V2.PotionStrength}, de {fixe(z6.Lower, 1)} (seul avec potion) à {fixe(z6.Upper, 1)}. Valeur choisie : {fixe(z6.Chosen, 1)} × D = {nombre(eco.Zones[#eco.Zones].WindowHP)} PV (2 × la règle des zones 1 à 5).`)
+print(`Bornes des PV, en multiples de D : sans compter la potion, de {fixe(z6.LowerNoPotion, 1)} (seul) à {fixe(z6.Upper, 1)} (deux) ; en comptant la potion ×{V2.PotionStrength}, de {fixe(z6.Lower, 1)} (seul avec potion) à {fixe(z6.Upper, 1)}. Valeur choisie : {fixe(z6.Chosen, 2)} × D = {nombre(eco.Zones[#eco.Zones].WindowHP)} PV (2 × la règle des zones 1 à 5).`)
 print("")
-local hpOf = { fixe(z6.LowerNoPotion, 1), "60.0", fixe(z6.Lower, 1), "75.0", fixe(z6.Chosen, 1), "88.0", fixe(z6.Upper, 1) }
+local hpOf = { fixe(z6.LowerNoPotion, 2), fixe((z6.LowerNoPotion + z6.Lower) / 2, 2), fixe(z6.Lower, 2), fixe((z6.Lower + z6.Chosen) / 2, 2), fixe(z6.Chosen, 2), fixe((z6.Chosen + z6.Upper) / 2, 2), fixe(z6.Upper, 2) }
 local head = { "PV de la vitrine (× D)" }
 for _, k in hpOf do
 	table.insert(head, k)
