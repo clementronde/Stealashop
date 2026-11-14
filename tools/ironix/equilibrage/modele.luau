@@ -772,7 +772,16 @@ function Modele.Jouer(eco, profil, seed, maxSeconds)
 			local needSpeed, needStrength, cost = needs(target)
 			if needSpeed == math.huge or needStrength == math.huge then
 				out.Bloque = target -- zone inatteignable avec cette économie (plafond de vitesse)
-				break
+				if out.Entrees[s.zone] ~= nil then
+					break
+				end
+				-- Entré dans sa zone sans y avoir encore rapporté de colis : il y braque d'abord (son entrée compte).
+				if heistZone ~= nil then
+					heist(heistZone, heistTier)
+				else
+					train(math.huge, 0)
+				end
+				continue
 			end
 			local trainTime = math.max(0, needSpeed - s.speed) / speedRate() + math.max(0, needStrength - s.strength) / strengthRate()
 			local rate = cashRate()
