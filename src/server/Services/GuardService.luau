@@ -16,7 +16,16 @@
 --      plafond, un vigile qui rentre s'efface (fondu, point 5) pour laisser sa place ; sans vigile
 --      qui rentre, pas de vigile. Un vigile en fondu ne compte plus dans ces plafonds. Le serveur
 --      possède sa physique ; nage, escalade et autres états inutiles sont coupés (9.7).
---   2. Poursuite, après REACTION_DELAY s : WalkSpeed = Zones[zone].GuardSpeed (section 4).
+--   2. Poursuite, après REACTION_DELAY s. Nouvelle règle (Cantin, 2026-11-14, vague 45 ; Features.GuardChaseV2,
+--      Config/Chase ; vigile de nuit, policier et conducteur aussi, avec leur propre minimum, voir
+--      Config/Chase) : ruée droit sur le voleur à
+--      Chase.RushWalkFactor × sa marche (au moins Chase.RushMinSpeed) jusqu'à Chase.HoldDistance studs à
+--      l'horizontale, puis la marche que le serveur lui donne (Humanoid.WalkSpeed, colis compris) + un
+--      rapprochement Chase.ClosingSpeedMax × (1 − Speed effective (Speed × trail) / SpeedRequired de la zone), borné ; à 100 %
+--      du minimum, la distance ne bouge pas tant qu'il court tout droit (Chase.AboveRequired au-dessus).
+--      Recalculée à chaque image (distanceRuleStep). Tutoriel (GetSpeedOverride) ou règle coupée : l'ancienne,
+--      WalkSpeed = Zones[zone].GuardSpeed (section 4), fixe. Le reste (interception, chemins) est commun,
+--      sauf pendant la ruée, qui vise le voleur lui-même et non un point devant lui.
 --      Il coupe la route du joueur (Cantin, 2026-11-11, vague 24) : il vise le point d'interception,
 --      là où, en ligne droite à sa WalkSpeed, il retrouve le joueur qui garde sa vitesse au sol lissée
 --      (VELOCITY_SMOOTHING : un zigzag ne le fait presque pas zigzaguer), au plus INTERCEPT_MAX_TIME s
@@ -143,7 +152,8 @@
 --     torche (Night.DetectionConeAngle autour de l'avant du vigile, à l'horizontale) et sans mur
 --     entre eux (même ligne de vue que la poursuite). Le plus proche. Puis délai de réaction et
 --     poursuite à Night.ChaseSpeed (80, plus vite qu'un joueur sans potion, L-108), au moins
---     Zones[zone].AdvisedSpeed + Night.ChaseSpeedBonus, avec ou sans colis.
+--     Zones[zone].AdvisedSpeed + Night.ChaseSpeedBonus, avec ou sans colis. Avec Features.GuardChaseV2 et
+--     Chase.Apply.NightGuard (vague 45) : ruée, puis rapprochement sur un minimum de 2 × sa Speed (Config/Chase).
 --   - Abandon : comme le jour (zone safe ; ni temps ni avance), et aussi quand la cible quitte le
 --     couloir (passée à travers le mur de nuit), devient ignorée ou n'a plus de personnage. Puis essoufflé, il retourne au point de
 --     ronde le plus proche et reprend sa ronde. Il ne disparaît qu'à l'aube.
@@ -237,7 +247,9 @@
 -- de Catch, étourdi Balance.Guard.CatchStunDuration s, CarryService.Fail(…, "Caught") : le colis du
 -- camion est perdu, il n'a pas de rayon où revenir). Ce qui change :
 --   - vitesse : la WalkSpeed actuelle de sa cible × chase.SpeedMultiplier, au moins chase.MinSpeed,
---     relue à chaque pas de pilotage : il court toujours un peu plus vite qu'elle ;
+--     relue à chaque pas de pilotage : il court toujours un peu plus vite qu'elle. Avec Features.GuardChaseV2
+--     (vague 45, Config/Chase) : ruée, puis la marche de sa cible × 1 + 2 %/s (conducteur, Apply.TruckDriver)
+--     ou rapprochement sur un minimum de 2 × sa Speed (policier, Apply.Police) ;
 --   - abandon : la cible ne vaut plus la poursuite (chase.Keeps(player) faux : elle ne porte plus le
 --     colis du camion, par exemple rangé dans l'inventaire à l'entrée de la zone safe), la zone safe,
 --     ou plus de personnage. Ni au bout d'un temps, ni pour l'avance prise (point 4) ;
@@ -265,6 +277,8 @@ local Workspace = game:GetService("Workspace")
 local Shared = ReplicatedStorage.Shared
 local Balance = require(Shared.Config.Balance)
 local Bat = require(Shared.Config.Bat)
+local Chase = require(Shared.Config.Chase)
+local Features = require(Shared.Config.Features)
 local Night = require(Shared.Config.Night)
 local Zones = require(Shared.Config.Zones)
 local Format = require(Shared.Format)
@@ -345,7 +359,11 @@ type Guard = {
 	store: Model?, -- magasin du vigile de jour ; nil la nuit
 	home: Vector3, -- GuardSpawn, but du retour ; la nuit : point de ronde visé
 	zone: number,
-	speed: number, -- WalkSpeed de poursuite
+	speed: number, -- WalkSpeed de poursuite (ancienne règle ; et Follow)
+	-- Nouvelle poursuite (Features.GuardChaseV2, Config/Chase) : "Rush" (ruée), puis "Hold" (distance gardée) ;
+	-- nil : ancienne règle, ou hors poursuite. Décidé à chaque départ de poursuite (startChase).
+	chasePhase: ("Rush" | "Hold")?,
+	holdSince: number?, -- fin de la ruée (conducteur du camion : sa vitesse grandit depuis)
 	target: Player?, -- joueur poursuivi, nil hors poursuite
 	state: GuardState,
 	spawnedAt: number,
@@ -1098,6 +1116,8 @@ local function setState(guard: Guard, state: GuardState)
 	guard.chaseAimAt = nil
 	guard.chaseVelocity = nil
 	guard.chaseVelocityAt = nil
+	guard.chasePhase = nil
+	guard.holdSince = nil
 	guard.pathFailures = 0
 end
 
@@ -1317,12 +1337,138 @@ local function fadeStep(guard: Guard, now: number)
 	end
 end
 
+-- Nouvelle poursuite (Cantin, 2026-11-14, vague 45 ; Features.GuardChaseV2, Config/Chase) ---------
+-- Ruée jusqu'à Chase.HoldDistance studs, puis la marche du voleur (donnée par le serveur) + un
+-- rapprochement qui dépend de sa Speed effective par rapport à un minimum (conducteur : sa marche, qui
+-- grandit avec le temps). Voir l'en-tête de Config/Chase.
+
+-- Les quatre poursuivants de la règle : vigile de magasin, vigile de nuit, policier (DriverChase avec
+-- Label : WitnessService), conducteur du camion (DriverChase sans Label).
+type RuleKind = "Store" | "Night" | "Police" | "Truck"
+
+local function ruleKindOf(guard: Guard): RuleKind
+	if guard.kind == "Day" then
+		return "Store"
+	elseif guard.kind == "Night" then
+		return "Night"
+	end
+	local driver = guard.driver
+	return if driver ~= nil and driver.Label ~= nil then "Police" else "Truck"
+end
+
+-- Ce poursuivant suit-il la nouvelle règle (Features.GuardChaseV2, Chase.Apply) ? Vitesse imposée par le
+-- tutoriel (GetSpeedOverride) : non, l'ancienne règle.
+local function followsDistanceRule(guard: Guard, player: Player): boolean
+	if not Features.GuardChaseV2 or Zones[guard.zone] == nil then
+		return false
+	end
+	local kind = ruleKindOf(guard)
+	local applies = if kind == "Store"
+		then Chase.Apply.StoreGuard
+		elseif kind == "Night" then Chase.Apply.NightGuard
+		elseif kind == "Police" then Chase.Apply.Police
+		else Chase.Apply.TruckDriver
+	if not applies then
+		return false
+	end
+	local ok, value = pcall(GuardService.GetSpeedOverride, player, guard.zone)
+	return not (ok and isPositiveNumber(value))
+end
+
+-- Speed effective du voleur = Speed du profil × multiplicateur du trail (le calcul de Formulas.ShownSpeed, comme
+-- le HUD et Formulas.WalkSpeed), lue ici côté serveur (StatsService) ; jamais une valeur du client.
+local function effectiveSpeed(player: Player): number
+	local ok, trail = pcall(StatsService.GetTrailMultiplier, player)
+	if not ok or not isPositiveNumber(trail) then
+		trail = 1
+	end
+	local speed = StatsService.GetSpeed(player) * (trail :: number)
+	return if speed == speed and speed >= 0 and speed < math.huge then speed else 0
+end
+
+-- Rapprochement (studs/s, négatif : le voleur s'éloigne) pour r = Speed effective / minimum.
+local function closingFor(r: number): number
+	if r <= 1 then
+		return Chase.ClosingSpeedMax * (1 - math.max(r, 0))
+	elseif Chase.AboveRequired == "Gain" then
+		return -Chase.ClosingSpeedMax * math.min(r - 1, 1)
+	end
+	return 0
+end
+
+-- Rapprochement de ce poursuivant sur `player`. Vigile de magasin : minimum = SpeedRequired de sa zone
+-- (zone 1 : Chase.Zone1SpeedRequired ; 0 = sans minimum, la distance ne bouge pas). Vigile de nuit et
+-- policier : minimum = Speed effective actuelle × leur facteur, donc r = 1 / facteur.
+local function closingSpeed(guard: Guard, player: Player): number
+	local kind = ruleKindOf(guard)
+	if kind == "Night" or kind == "Police" then
+		local factor = if kind == "Night" then Chase.NightGuardRequiredFactor else Chase.PoliceRequiredFactor
+		return closingFor(if isPositiveNumber(factor) then 1 / factor else 1)
+	end
+	local required = if guard.zone == 1 then Chase.Zone1SpeedRequired else Zones[guard.zone].SpeedRequired
+	if not isPositiveNumber(required) then
+		return 0
+	end
+	return closingFor(effectiveSpeed(player) / required)
+end
+
+-- WalkSpeed du poursuivant selon la phase : la ruée ; puis la marche du voleur + le rapprochement
+-- (conducteur : sa marche × 1 + Chase.DriverGrowthPerSecond par seconde depuis la fin de la ruée, au plus
+-- × Chase.DriverMaxFactor), jamais moins de Chase.HoldMinSpeed. La marche du voleur est son
+-- Humanoid.WalkSpeed lu ici, côté serveur (posée par StatsService, colis compris) : jamais une vitesse
+-- mesurée ni envoyée par le client.
+local function distanceRuleSpeed(guard: Guard, player: Player, targetHumanoid: Humanoid, now: number): number
+	local walk = targetHumanoid.WalkSpeed
+	if not isPositiveNumber(walk) then
+		walk = 0
+	end
+	if guard.chasePhase == "Rush" then
+		return math.max(Chase.RushMinSpeed, Chase.RushWalkFactor * walk)
+	end
+	if ruleKindOf(guard) == "Truck" then
+		local elapsed = math.max(now - (guard.holdSince or now), 0)
+		local factor = math.min(1 + Chase.DriverGrowthPerSecond * elapsed, Chase.DriverMaxFactor)
+		return math.max(walk * factor, Chase.HoldMinSpeed)
+	end
+	return math.max(walk + closingSpeed(guard, player), Chase.HoldMinSpeed)
+end
+
+-- À chaque pas de poursuite : fin de la ruée à Chase.HoldDistance studs (à l'horizontale), puis la
+-- vitesse de la phase, redonnée seulement si elle change.
+local function distanceRuleStep(guard: Guard, player: Player, targetRoot: BasePart, targetHumanoid: Humanoid, now: number)
+	if guard.chasePhase == "Rush" then
+		local distance = flat(targetRoot.Position - guard.root.Position).Magnitude
+		if distance <= Chase.HoldDistance then
+			guard.chasePhase = "Hold"
+			guard.holdSince = now
+			log(string.format("%s : à %.1f studs de %s, poursuite à distance (rapprochement %.2f studs/s)",
+				guard.label, distance, player.Name, closingSpeed(guard, player)))
+		end
+	end
+	local speed = distanceRuleSpeed(guard, player, targetHumanoid, now)
+	if math.abs(speed - guard.humanoid.WalkSpeed) > 0.05 then
+		setWalkSpeed(guard, speed)
+	end
+end
+
 local function startChase(guard: Guard, now: number)
 	setState(guard, "Chase")
 	guard.nextSteerAt = now
 	guard.nextPathAt = now
 	guard.anims:Stop("Walk") -- vigile de nuit : il marchait sur sa ronde
-	setWalkSpeed(guard, guard.speed)
+	local player = guard.target
+	local targetHumanoid: Humanoid? = nil
+	if player then
+		local _, humanoid = bodyOf(player)
+		targetHumanoid = humanoid
+	end
+	if player and targetHumanoid and followsDistanceRule(guard, player) then
+		guard.chasePhase = "Rush"
+		setWalkSpeed(guard, distanceRuleSpeed(guard, player, targetHumanoid, now))
+		log(`{guard.label} : ruée sur {player.Name} à {Format.short(guard.humanoid.WalkSpeed)} studs/s`)
+	else
+		setWalkSpeed(guard, guard.speed)
+	end
 	playGait(guard, "Run")
 end
 
@@ -2029,12 +2175,17 @@ local function chaseStep(guard: Guard, now: number)
 		end
 		return
 	end
+	-- Nouvelle poursuite (vague 45) : la fin de la ruée se teste à chaque image, pas au rythme du pilotage.
+	local distanceRule = guard.chasePhase ~= nil
+	if distanceRule then
+		distanceRuleStep(guard, player, targetRoot, targetHumanoid, now)
+	end
 	-- Poursuite sans fin (Cantin, 2026-11-11) : ni temps de poursuite ni avance ne la font abandonner.
 	if now < guard.nextSteerAt then
 		return
 	end
 	guard.nextSteerAt = now + CHASE_STEER_INTERVAL
-	if driver then
+	if driver and not distanceRule then
 		-- Toujours un peu plus vite que sa cible, même si elle accélère en route.
 		local speed = driverSpeed(driver, targetHumanoid)
 		if math.abs(speed - guard.speed) > 0.05 then
@@ -2045,6 +2196,11 @@ local function chaseStep(guard: Guard, now: number)
 	-- Ligne de vue à chaque pas : en vue, droit sur le point d'interception (chaseInSight) ; sinon un
 	-- chemin vers ce point (vu de la cible : jamais derrière un mur ni en zone safe).
 	local velocity = sampleVelocity(guard, targetRoot, targetHumanoid, now)
+	if guard.chasePhase == "Rush" then
+		-- Ruée : droit sur le voleur (vitesse visée nulle), pas sur un point devant lui, pour arriver
+		-- derrière lui et non lui couper la route à 3 fois sa vitesse.
+		velocity = Vector3.zero
+	end
 	local sees = canSee(guard, targetRoot, targetHumanoid)
 	if IS_STUDIO and workspace:GetAttribute("ChaseDebug") == true then
 		-- Diagnostic Studio (retard du vigile, 2026-11-11) : une ligne par seconde et par vigile.
