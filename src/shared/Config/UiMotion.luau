@@ -283,6 +283,21 @@ local UiMotion = {
 		SoundGap = 0.12,
 		BoxIconPrefix = "BOX_", -- Icons.get("BOX_<Tier>") = ICON_BOX_<Tier>, comme l'inventaire (L-089)
 		ScaleName = "EscapeScale", -- V0 proposé, absent du doc : UIScale passager de Banner, BoxIcon, Subtitle
+		-- Vague 46 (a154), objet ramené (remote ItemSecured) : textes passagers de Title et Subtitle, V0 proposés,
+		-- absents du doc (Clément garde ses textes pour le colis). Subtitle : rareté puis nom de l'objet.
+		ItemTitle = "Item secured!",
+		ItemSubtitle = "%s %s",
+	},
+	-- Vague 46 (a154) : révélation d'un colis ouvert sur le rayon (ShelfOpenController → UiFeelController.RevealFlash),
+	-- chez l'ouvreur : le flash d'UI_Escape et le zoom de SafeFlash, sans bannière. V0 = les valeurs de SafeFlash.
+	RevealFlash = {
+		FlashFrom = 0.05,
+		FlashTime = 0.5,
+		FlashStyle = Enum.EasingStyle.Quad,
+		FovAdd = 12,
+		FovInTime = 0.08,
+		FovOutTime = 0.45,
+		FovStyle = Enum.EasingStyle.Quad,
 	},
 	-- Bandeau d'entrée de zone (UI_ZoneBanner, liaison L-110 ; ZoneBannerController, au passage d'une arche).
 	-- V0 proposés, absents du doc (L-110 dit seulement « quelques secondes, avec un fondu ») : à valider par Clément.

@@ -666,6 +666,16 @@ local List: { RemoteDef } = {
 		Args = { id("itemUid") },
 		RatePerSecond = 4, -- V0 proposé, absent du doc
 	},
+	{
+		-- Vague 46 (Cantin, 2026-11-14, agent a154), absent du tableau 9.4 : l'objet sorti d'un colis que portait le
+		-- joueur vient d'être mis à l'abri en zone safe (UnboxService, rangé sous antivol). UiFeelController joue
+		-- l'arrivée en zone safe (UI_Escape) avec l'icône et le nom de l'objet. Rien de sensible : l'objet est déjà
+		-- révélé (porté au-dessus de sa tête, BB_Item), effet visuel du seul joueur concerné.
+		Name = "ItemSecured",
+		Direction = "ServerToClient",
+		Reliable = true,
+		Args = { id("itemId") },
+	},
 }
 
 return {

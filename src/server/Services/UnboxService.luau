@@ -65,7 +65,7 @@
 -- s'ouvre sur le rayon du magasin (StoreHeistService, a103) ; le joueur rapporte l'objet lui-même (portage
 -- Kind « NPCItem »). Ici, la base (à false : rien de tout cela, l'ancien déroulé exact) :
 --   - Arrivée : à l'entrée de la zone safe, comme le colis (même boucle, AntiCheatService.Verify, Consume,
---     profil écrit d'un seul tenant, braquage compté, Notify, BoxSecured), l'objet entre dans Items sous un
+--     profil écrit d'un seul tenant, braquage compté, Notify, ItemSecured), l'objet entre dans Items sous un
 --     uid neuf, AntiTheft = true (Types/Profile) ; IndexService.Discover. Inventaire plein
 --     (DisplayService.HasInventoryRoom) : le portage échoue (« InventoryFull »).
 --   - Pose : PlaceBox(itemUid, point) (même remote, mêmes règles que le colis : findFloor, MaxPlacedBoxes
@@ -1393,12 +1393,12 @@ local function stowItem(player: Player, data: Data, payload: any)
 	local heists = countHeist(player, data) -- d'un seul tenant avec l'objet : sauvegardés ensemble
 	log(`{player.Name} : objet {def.Id} ({def.Rarity}) rangé sous antivol ({itemUid} ; braquages réussis : {heists or "?"})`)
 	notify(player, MESSAGES.ItemStowed, SUCCESS_KIND)
-	-- Arrivée en zone safe (UI_Escape, L-095 point 4) : même remote que le colis, icône de sa rareté (V0).
+	-- Arrivée en zone safe (UI_Escape, L-095 point 4) ; vague 46 : remote ItemSecured, icône et nom de l'objet.
 	local secured, securedErr = pcall(function()
-		Net.Server.BoxSecured:Fire(player, "Standard", def.Rarity)
+		Net.Server.ItemSecured:Fire(player, def.Id)
 	end)
 	if not secured then
-		warn(`[UnboxService] BoxSecured vers {player.Name} : {securedErr}`)
+		warn(`[UnboxService] ItemSecured vers {player.Name} : {securedErr}`)
 	end
 	discover(player, def.Id)
 	refreshInventory(player)
