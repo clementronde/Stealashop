@@ -13,13 +13,15 @@
 --     coupés à la nouvelle bordure, chaussée du greybox ±(52,5 − W) ; magasins avancés de ADV (attribut StoreAdvance) ;
 --     trottoir dégagé devant les magasins (x de leur façade) : tout le petit décor posé sur le trottoir est rangé ;
 --  2) tons neutres sur les façades voisines et le fond (Calm de la table) ; couleur d'origine dans ShowcaseColor ;
---     les magasins PNJ et les monuments gardent leurs couleurs ;
+--     les magasins PNJ et les monuments gardent leurs couleurs. **Coupé depuis le 2026-11-14 (CALM = false)** :
+--     Clément veut les couleurs d'origine des bâtiments, remises ce jour-là depuis ShowcaseColor ;
 --  3) cadre de la vitrine (Facade/Frame_T, _B, _L, _R) en néon et lumière dirigée (STORE_*/Showcase/SpotPart) ;
 --  4) fond plus simple : décor de la table Stash rangé, effets d'ambiance éteints (Off) ou moitié moins denses (Half) ;
 --  5) repère au sol : tapis clair et deux chevrons vers la vitrine (STORE_*/Showcase/Mat, Chevron_*).
 -- Aucun script, aucun tag ajouté, aucun nom du contrat 10.4 touché.
 
 local W, ADV = 6, 6
+local CALM = false -- étape 2 (tons neutres) coupée le 2026-11-14 : les bâtiments gardent leurs couleurs
 local NEON_C = Color3.fromRGB(255, 232, 150)
 local MAT_C, CHEVRON_C = Color3.fromRGB(255, 240, 190), Color3.fromRGB(255, 196, 40)
 local DRY = _G.ShowcaseDry == true
@@ -258,7 +260,7 @@ local function processZone(n)
 		local h, s, v = c:ToHSV()
 		return Color3.fromHSV(h, s * 0.18, 0.6 + v * 0.32)
 	end
-	for _, path in cfg.Calm or {} do
+	for _, path in (CALM and cfg.Calm) or {} do
 		local root = walkPath(Z, path)
 		for _, d in (root and root:GetDescendants() or {}) do
 			local mon = false
