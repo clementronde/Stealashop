@@ -35,30 +35,35 @@ export type Cosmetic = {
 	Kind: CosmeticKind,
 	Order: number, -- palier, du plus faible au plus fort
 	DisplayName: string,
-	Multiplier: number, -- aura : M aura des dégâts ; trail : M trail du WalkSpeed (7.1)
+	Multiplier: number, -- aura : M aura des dégâts ; trail : M trail de la Speed affichée (7.1, v2)
 	Price: number, -- en $ du jeu
 	TargetZones: { number }, -- { première, dernière } zone visée
 	Texture: string,
 	Color: Color3,
 }
 
--- doc 7.4 : multiplicateurs, prix et zones visées. Color : couleurs de Clément (MOD-045, liaison L-042, 2026-11-07).
+-- Rééquilibrage v2 (Cantin, 2026-11-14 ; note equilibrage-v2-proposition.md, 4.4, V0 proposés) : l'aura est LE
+-- multiplicateur de force (dégâts d'un coup = P arme × M aura) ; un kit par zone (arme, aura, trail), mêmes paliers
+-- pour les auras et les trails (×2, ×3, ×5, ×8, ×12), plus Royal ×20. Galaxy : palier du milieu de la zone 5.
+-- Color : couleurs de Clément (MOD-045, liaison L-042, 2026-11-07).
 local Auras: { Cosmetic } = {
-	{ Id = "Spark", Kind = "Aura", Order = 1, DisplayName = "Spark", Multiplier = 1.5, Price = 500, TargetZones = { 1, 2 }, Texture = "FX_Aura_Etincelle", Color = Color3.fromRGB(255, 217, 59) },
-	{ Id = "Flame", Kind = "Aura", Order = 2, DisplayName = "Flame", Multiplier = 2, Price = 15_000, TargetZones = { 2, 3 }, Texture = "FX_Aura_Flamme", Color = Color3.fromRGB(255, 106, 26) },
-	{ Id = "Lightning", Kind = "Aura", Order = 3, DisplayName = "Lightning", Multiplier = 3, Price = 400_000, TargetZones = { 3, 4 }, Texture = "FX_Aura_Foudre", Color = Color3.fromRGB(47, 196, 255) },
-	{ Id = "Plasma", Kind = "Aura", Order = 4, DisplayName = "Plasma", Multiplier = 5, Price = 10_000_000, TargetZones = { 4, 5 }, Texture = "FX_Aura_Plasma", Color = Color3.fromRGB(255, 59, 212) },
-	{ Id = "Galaxy", Kind = "Aura", Order = 5, DisplayName = "Galaxy", Multiplier = 8, Price = 250_000_000, TargetZones = { 5, 6 }, Texture = "FX_Aura_Galaxie", Color = Color3.fromRGB(139, 92, 255) },
-	{ Id = "Royal", Kind = "Aura", Order = 6, DisplayName = "Royal", Multiplier = 11, Price = 3_000_000_000, TargetZones = { 6, 6 }, Texture = "FX_Aura_Royale", Color = Color3.fromRGB(255, 194, 26) },
+	{ Id = "Spark", Kind = "Aura", Order = 1, DisplayName = "Spark", Multiplier = 2, Price = 500, TargetZones = { 2, 2 }, Texture = "FX_Aura_Etincelle", Color = Color3.fromRGB(255, 217, 59) },
+	{ Id = "Flame", Kind = "Aura", Order = 2, DisplayName = "Flame", Multiplier = 3, Price = 60_000, TargetZones = { 3, 3 }, Texture = "FX_Aura_Flamme", Color = Color3.fromRGB(255, 106, 26) },
+	{ Id = "Lightning", Kind = "Aura", Order = 3, DisplayName = "Lightning", Multiplier = 5, Price = 1_500_000, TargetZones = { 4, 4 }, Texture = "FX_Aura_Foudre", Color = Color3.fromRGB(47, 196, 255) },
+	{ Id = "Plasma", Kind = "Aura", Order = 4, DisplayName = "Plasma", Multiplier = 8, Price = 30_000_000, TargetZones = { 5, 5 }, Texture = "FX_Aura_Plasma", Color = Color3.fromRGB(255, 59, 212) },
+	{ Id = "Galaxy", Kind = "Aura", Order = 5, DisplayName = "Galaxy", Multiplier = 12, Price = 400_000_000, TargetZones = { 5, 5 }, Texture = "FX_Aura_Galaxie", Color = Color3.fromRGB(139, 92, 255) },
+	{ Id = "Royal", Kind = "Aura", Order = 6, DisplayName = "Royal", Multiplier = 20, Price = 8_000_000_000, TargetZones = { 6, 6 }, Texture = "FX_Aura_Royale", Color = Color3.fromRGB(255, 194, 26) },
 }
 
--- doc 7.4 : multiplicateurs, prix et zones visées. Color : couleurs de Clément (MOD-045, liaison L-042, 2026-11-07).
+-- Rééquilibrage v2 (note 4.4, V0 proposés) : le trail multiplie la Speed affichée (Vitesse × M trail), d'où sort
+-- la marche (Formulas.WalkSpeed, en log) : un trail ×2 vaut un niveau de tapis.
+-- Color : couleurs de Clément (MOD-045, liaison L-042, 2026-11-07).
 local Trails: { Cosmetic } = {
-	{ Id = "Dust", Kind = "Trail", Order = 1, DisplayName = "Dust", Multiplier = 1.1, Price = 300, TargetZones = { 1, 2 }, Texture = "FX_Trail_Poussiere", Color = Color3.fromRGB(229, 195, 138) },
-	{ Id = "Wind", Kind = "Trail", Order = 2, DisplayName = "Wind", Multiplier = 1.25, Price = 10_000, TargetZones = { 2, 3 }, Texture = "FX_Trail_Vent", Color = Color3.fromRGB(140, 255, 212) },
-	{ Id = "Turbo", Kind = "Trail", Order = 3, DisplayName = "Turbo", Multiplier = 1.4, Price = 300_000, TargetZones = { 3, 4 }, Texture = "FX_Trail_Turbo", Color = Color3.fromRGB(255, 122, 26) },
-	{ Id = "Comet", Kind = "Trail", Order = 4, DisplayName = "Comet", Multiplier = 1.6, Price = 8_000_000, TargetZones = { 4, 5 }, Texture = "FX_Trail_Comete", Color = Color3.fromRGB(79, 195, 255) },
-	{ Id = "Hyperspace", Kind = "Trail", Order = 5, DisplayName = "Hyperspace", Multiplier = 1.8, Price = 200_000_000, TargetZones = { 5, 6 }, Texture = "FX_Trail_Hyperespace", Color = Color3.fromRGB(155, 92, 255) },
+	{ Id = "Dust", Kind = "Trail", Order = 1, DisplayName = "Dust", Multiplier = 2, Price = 300, TargetZones = { 2, 2 }, Texture = "FX_Trail_Poussiere", Color = Color3.fromRGB(229, 195, 138) },
+	{ Id = "Wind", Kind = "Trail", Order = 2, DisplayName = "Wind", Multiplier = 3, Price = 40_000, TargetZones = { 3, 3 }, Texture = "FX_Trail_Vent", Color = Color3.fromRGB(140, 255, 212) },
+	{ Id = "Turbo", Kind = "Trail", Order = 3, DisplayName = "Turbo", Multiplier = 5, Price = 1_000_000, TargetZones = { 4, 4 }, Texture = "FX_Trail_Turbo", Color = Color3.fromRGB(255, 122, 26) },
+	{ Id = "Comet", Kind = "Trail", Order = 4, DisplayName = "Comet", Multiplier = 8, Price = 20_000_000, TargetZones = { 5, 5 }, Texture = "FX_Trail_Comete", Color = Color3.fromRGB(79, 195, 255) },
+	{ Id = "Hyperspace", Kind = "Trail", Order = 5, DisplayName = "Hyperspace", Multiplier = 12, Price = 2_500_000_000, TargetZones = { 6, 6 }, Texture = "FX_Trail_Hyperespace", Color = Color3.fromRGB(155, 92, 255) },
 }
 
 -- Auras et trails partagent le même espace d'Id (un seul catalogId pour BuyItem).

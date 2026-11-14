@@ -38,7 +38,7 @@ export type Pass = {
 	Price: number, -- Robux (doc 4.1)
 	Id: number, -- gamepass du Creator Hub ; 0 = pas encore créé
 	Ready: boolean,
-	Multiplier: number?, -- ×2 Argent (revenus), ×2 Entraînement (gains du tapis et du banc)
+	Multiplier: number?, -- ×2 Argent (revenus), ×2 Entraînement (gains du tapis ; plus de banc, v2)
 	DelayFactor: number?, -- Ouverture rapide : facteur des attentes d'ouverture des colis PNJ
 	Stands: number?, -- +4 présentoirs : présentoirs au-delà du maximum
 }
@@ -70,7 +70,7 @@ export type Product = {
 -- +4 DISPLAYS), puis les Gants hydrauliques.
 local Passes: { Pass } = {
 	{ Key = "DoubleCash", Id = 0, Order = 1, Price = 449, Ready = true, Multiplier = 2, DisplayName = "×2 Cash", Effect = "Doubles all your income", Icon = "UI_Icon_GP_x2Cash" },
-	{ Key = "DoubleTraining", Id = 0, Order = 2, Price = 299, Ready = true, Multiplier = 2, DisplayName = "×2 Training", Effect = "×2 treadmill and bench gains", Icon = "UI_Icon_GP_x2Training" },
+	{ Key = "DoubleTraining", Id = 0, Order = 2, Price = 299, Ready = true, Multiplier = 2, DisplayName = "×2 Training", Effect = "×2 treadmill gains", Icon = "UI_Icon_GP_x2Training" },
 	{ Key = "VIP", Id = 0, Order = 3, Price = 249, Ready = false, DisplayName = "VIP", Effect = "+10% income, aura, chat tag", Icon = "UI_Icon_GP_VIP" },
 	{ Key = "AutoCollect", Id = 0, Order = 4, Price = 199, Ready = true, DisplayName = "Auto Collect", Effect = "Cash collects itself, anywhere", Icon = "UI_Icon_GP_AutoCollect" },
 	{ Key = "FastOpen", Id = 0, Order = 5, Price = 299, Ready = true, DelayFactor = 0.5, DisplayName = "Fast Open", Effect = "Anti-theft 2× shorter", Icon = "UI_Icon_GP_FastOpen" },

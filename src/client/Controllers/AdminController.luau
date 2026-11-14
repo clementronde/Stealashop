@@ -79,9 +79,7 @@ local KINDS: { { button: string, list: string, command: string } } = {
 local ROWS: { { button: string, box: string, command: string } } = {
 	{ button = "GiveCashButton", box = "CashBox", command = "GiveCash" },
 	{ button = "GiveSpeedButton", box = "SpeedBox", command = "GiveSpeed" },
-	{ button = "GiveStrengthButton", box = "StrengthBox", command = "GiveStrength" },
 	{ button = "SetTreadmillButton", box = "TreadmillBox", command = "SetTreadmill" },
-	{ button = "SetBenchButton", box = "BenchBox", command = "SetBench" },
 	{ button = "SetShopLevelButton", box = "ShopLevelBox", command = "SetShopLevel" },
 	{ button = "SetRayonsButton", box = "RayonsBox", command = "SetRayons" },
 }

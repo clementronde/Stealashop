@@ -324,7 +324,7 @@ function display(zoneIndex: number)
 		zoneName.Text = if city then city else string.upper(zone.Theme)
 	end
 	if speed then
-		speed.Text = `Speed {Format.short(zone.AdvisedSpeed)}`
+		speed.Text = `Speed {Format.short(zone.SpeedRequired)}`
 	end
 	if damage then
 		damage.Text = `Damage {Format.short(zone.AdvisedDamage)}`
@@ -371,7 +371,7 @@ function ZoneBannerController.Start()
 	hud = sibling("HudController")
 	theftAlert = sibling("TheftAlertController")
 	playerGui = localPlayer:WaitForChild("PlayerGui")
-	for _, attribute in { AdvicePanel.DamageAttribute, AdvicePanel.WalkSpeedAttribute } do
+	for _, attribute in { AdvicePanel.DamageAttribute, AdvicePanel.SpeedAttribute } do
 		localPlayer:GetAttributeChangedSignal(attribute):Connect(recolor)
 	end
 	ZoneGateController.OnZoneChanged(function(zone: number, _previous: number)

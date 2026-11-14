@@ -1669,7 +1669,7 @@ local function catch(guard: Guard, player: Player)
 	local driver = guard.driver
 	local message = if driver
 		then driver.CaughtMessage
-		else `Caught! Recommended speed: {Format.short(Zones[zone].AdvisedSpeed)}`
+		else `Caught! Recommended speed: {Format.short(Zones[zone].SpeedRequired)}`
 	emitCatch(player, zone, false)
 	-- Cantin, 2026-11-13 : attrapé dans le magasin d'où vient l'objet, il revole sur son rayon (pas de chute).
 	local backToShelf = inItsStore(player)

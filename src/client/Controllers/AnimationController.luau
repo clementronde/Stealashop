@@ -7,9 +7,7 @@
 -- l'état en cours. Préchargement une fois par session. Déjà branché, sans autre service :
 --   - TreadmillRun en boucle tant que l'attribut TrainingMachine du Player vaut "Treadmill" (posé
 --     par TrainingService quand le joueur s'arrête sur la bande du tapis, L-071) ;
---   - BenchLift à chaque hausse de l'attribut BenchReps du Player (TrainingService), sauf s'il joue
---     déjà : TrainingController le lance au tap, la hausse confirmée par le serveur ne le relance pas ;
---   - BenchIdle en boucle tant que TrainingMachine vaut "Bench" (L-020) ;
+--   - (plus de BenchLift ni de BenchIdle depuis le rééquilibrage v2 du 2026-11-14 : plus de banc) ;
 --   - portage : SetCarrying(true), appelé par CarryController quand l'attribut Carrying du joueur
 --     arrive (CarryService), joue CarryIdle à l'arrêt et CarryRun en mouvement ; SetCarrying(false)
 --     les arrête. Grab pose le colis sur la tête, puis CarryIdle et CarryRun le tiennent (L-071,
@@ -54,7 +52,6 @@ local AnimationController = {}
 
 -- Attributs du Player posés par TrainingService, lus ici sans require.
 local TRAINING_MACHINE = "TrainingMachine"
-local BENCH_REPS = "BenchReps"
 
 -- V0 proposé, absent du doc : vitesse (studs/s) au-dessus de laquelle le porteur court
 -- (CarryRun) ; en dessous, CarryIdle. Même seuil que le script Animate de Roblox.
@@ -87,7 +84,6 @@ local carrying = false
 local carryReady = false -- la boucle de portage peut jouer (Grab a posé le colis, ou pas de Grab)
 local carryToken = 0 -- change à chaque SetCarrying : périme une attente de Grab d'avant
 local carryAnim: string? = nil
-local benchReps = 0
 -- Grab lancés (PlayPlayer) et dernier Grab qui a posé son colis ; appels d'AfterGrab en attente.
 local grabPlays = 0
 local grabDone = 0
@@ -261,29 +257,7 @@ local function applyTreadmill()
 	else
 		AnimationController.StopPlayer("TreadmillRun")
 	end
-	-- BenchIdle en boucle tant qu'on est au banc (L-020) ; BenchLift, en Action, passe
-	-- par-dessus à chaque répétition.
-	if machine == "Bench" then
-		AnimationController.PlayPlayer("BenchIdle")
-	else
-		AnimationController.StopPlayer("BenchIdle")
-	end
-end
-
-local function readBenchReps(): number
-	local value = player:GetAttribute(BENCH_REPS)
-	return if type(value) == "number" then value else 0
-end
-
--- Répétition confirmée par le serveur. TrainingController a déjà lancé BenchLift au tap : on ne le
--- relance pas en pleine répétition (il repartirait du début, son marqueur Top deux fois).
-local function onBenchReps()
-	local reps = readBenchReps()
-	local anims = current
-	if reps > benchReps and not (anims and anims:IsPlaying("BenchLift")) then
-		AnimationController.PlayPlayer("BenchLift")
-	end
-	benchReps = reps
+	-- Rééquilibrage v2 (2026-11-14) : plus de banc, donc plus de BenchIdle ni de BenchLift joués ici.
 end
 
 -- Personnage -------------------------------------------------------------------
@@ -386,9 +360,7 @@ function AnimationController.Start()
 		grabReached(grabPlays)
 	end)
 
-	benchReps = readBenchReps()
 	player:GetAttributeChangedSignal(TRAINING_MACHINE):Connect(applyTreadmill)
-	player:GetAttributeChangedSignal(BENCH_REPS):Connect(onBenchReps)
 
 	player.CharacterAdded:Connect(onCharacter)
 	player.CharacterRemoving:Connect(onCharacterRemoving)

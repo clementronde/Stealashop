@@ -17,8 +17,8 @@
 --     possédé, 7.5) ; refusé au niveau max ou hors de sa parcelle (volume Bounds, sinon l'emprise
 --     de la parcelle), sauf à SIGN_REACH studs au plus d'un point de panneau de SA parcelle
 --     (UpgradePoint, DisplayUpgradePoint : L-082, des panneaux plantés dehors, vu en Play le
---     2026-11-10). Niveau + 1 dans Upgrades du profil. Effet : le tapis et le banc relisent
---     leur niveau à chaque gain (TrainingService), les présentoirs à chaque pose (DisplayService,
+--     2026-11-10). Niveau + 1 dans Upgrades du profil. Effet : le tapis relit
+--     son niveau à chaque gain (TrainingService), les présentoirs à chaque pose (DisplayService,
 --     qui republie DisplaySlotsUnlocked chaque seconde), et UnboxService.Refresh remet tout de suite
 --     à jour leur attribut UnboxState (un colis peut s'y poser, L-086). L'ancienne amélioration
 --     « Workbenches » (UnboxBenches) n'est plus au catalogue depuis L-086 : BuyItem("UnboxBenches")
@@ -43,7 +43,7 @@
 --   OwnedTools          Id des outils possédés, dans l'ordre de Config/Tools, séparés par des
 --                       virgules (« Fists,Wrench ») ;
 --   EquippedTool        Id de l'outil équipé (ToolService.GetEquippedId) ;
---   TreadmillLevel, BenchLevel, DisplaySlotsLevel
+--   TreadmillLevel, DisplaySlotsLevel (BenchLevel n'est plus posé : plus de banc, v2)
 --                       niveau acheté de chaque amélioration de Config/Upgrades (Upgrades du profil).
 --
 -- API (côté serveur) :
@@ -393,7 +393,8 @@ local function buyUpgrade(player: Player, data: Data, upgrade: UpgradeDef)
 		local display = Balance.Display
 		message = string.format(MESSAGES.StandUnlocked, math.min(display.StartSlots + newLevel, display.MaxSlots), display.MaxSlots)
 	else
-		message = string.format(MESSAGES.MachineUpgraded, upgrade.DisplayName, newLevel)
+		-- Tapis (v2) : niveau affiché = niveau enregistré + 1 (le joueur commence au niveau 1).
+		message = string.format(MESSAGES.MachineUpgraded, upgrade.DisplayName, Formulas.TreadmillShownLevel(newLevel))
 	end
 	notify(player, message, "Info")
 	log(`{player.Name} : {upgrade.Id} niveau {level} → {newLevel} pour {Format.money(cost)}`)

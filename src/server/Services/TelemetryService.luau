@@ -62,7 +62,7 @@
 --   RewardClaim (RewardClaimed)  chaque récompense réclamée (RewardService, DEV-101), argent, colis ou
 --       boost ; champs : Source (Daily, Playtime), Sku (Day1 à Day7, Playtime5…), Gift (Cash, Box, Boost).
 --   DefenseBought  pas encore codé (défenses, MAJ 2) : point d'accroche LogEvent.
---   PotionPicked  potion ramassée (PotionService, vague 28) ; champ : Potion (Speed, Money, Strength, Invisibility).
+--   PotionPicked  potion ramassée (PotionService, vague 28) ; champ : Potion (Money, Strength, Invisibility ; Speed retirée le 2026-11-14).
 --
 -- Noms et champs : texte sans virgule, guillemet ni apostrophe, droits ou typographiques (Roblox refuse
 -- l'événement sinon, « Event field … is invalid », vu en Studio le 2026-11-07 pour le funnel). Au

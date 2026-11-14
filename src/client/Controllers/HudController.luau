@@ -122,8 +122,10 @@ local SCREEN = "UI_HUD"
 local STATS: { Stat } = {
 	{ Attribute = "Cash", Element = "Cash", Write = Format.money, Roll = true },
 	{ Attribute = "Income", Element = "Income", Write = Format.income, Roll = true },
-	{ Attribute = "WalkSpeed", Element = "Speed", Write = Format.short, Roll = false }, -- vitesse de marche, pas les points
-	{ Attribute = "Strength", Element = "Strength", Write = Format.short, Roll = false },
+	-- Rééquilibrage v2 (note equilibrage-v2-proposition.md, section 3) : « Speed » = Vitesse × trail (attribut
+	-- ShownSpeed de StatsService), « Strength » = arme × aura (attribut Damage de ToolService ; sans la potion).
+	{ Attribute = "ShownSpeed", Element = "Speed", Write = Format.short, Roll = false },
+	{ Attribute = "Damage", Element = "Strength", Write = Format.short, Roll = false },
 	{ Attribute = "Damage", Element = "Damage", Write = Format.short, Roll = false },
 }
 

@@ -35,7 +35,7 @@
 --   - HitWindow(windowId) (9.4), ignoré si : vitrine inconnue, cassée ou incassable ; vitrine
 --     du joueur lui-même ; outil de casse pas en main ; plus de 10 studs entre le joueur et
 --     le point le plus proche de la vitre (Balance.Hit.ServerMaxDistance) ; CanBeHit refuse.
---     Le débit (≤ 10 coups/s) est déjà limité par Net. Dégâts = ToolService.GetHitDamage.
+--     Le débit (≤ 5 coups/s depuis le 2026-11-14, Balance.Hit.MaxHitsPerSecond) est déjà limité par Net. Dégâts = ToolService.GetHitDamage.
 --   - Chaque coup validé, celui qui casse compris : WindowHit(windowId, point de frappe, frappeur,
 --     dégâts), non fiable, au frappeur et aux joueurs à moins de Config.Shatter.HitBroadcastRadius
 --     studs du point (L-028 a) : chacun voit le creux des coups des autres (ShatterController, L-081) et

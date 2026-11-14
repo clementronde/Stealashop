@@ -1256,7 +1256,10 @@ local function spawnTruck(zone: number): boolean
 	model.Parent = Workspace
 	CollectionService:AddTag(model, TRUCK_TAG)
 	playDriverIdles(drivers)
-	local windowId = WindowService.AddTarget(model, TruckEvent.MaxHP)
+	-- PV selon la zone (rééquilibrage v2) : HPPerDamage × les dégâts conseillés de sa zone.
+	local zoneInfo = Zones[zone] or Zones[1]
+	local maxHP = math.max(1, math.round(TruckEvent.HPPerDamage * zoneInfo.AdvisedDamage))
+	local windowId = WindowService.AddTarget(model, maxHP)
 	if windowId == nil then
 		model:Destroy()
 		return false
@@ -1280,7 +1283,7 @@ local function spawnTruck(zone: number): boolean
 	local p = frame.Position
 	local drivenBy = if borrowed > 0 then `, {borrowed} conducteur(s) repris de {TRUCK_ASSET}` else ""
 	log(
-		`camion n° {truckCount} en zone {zone} ({math.round(p.X)}, {math.round(p.Y)}, {math.round(p.Z)}), modèle {asset}{drivenBy}, {TruckEvent.MaxHP} PV, part dans {TruckEvent.Lifetime} s`
+		`camion n° {truckCount} en zone {zone} ({math.round(p.X)}, {math.round(p.Y)}, {math.round(p.Z)}), modèle {asset}{drivenBy}, {maxHP} PV, part dans {TruckEvent.Lifetime} s`
 	)
 	return true
 end

@@ -28,7 +28,11 @@ local TruckEvent = {
 	DawnDelay = 30, -- V0 : pas d'apparition dans les 30 premières secondes du jour (ruée de l'aube)
 
 	-- Vie du camion ------------------------------------------------------------------------------
-	MaxHP = 1000, -- V0 provisoire, décision d'Ironix du 2026-11-07 : PV partagés, sans régénération
+	-- PV partagés, sans régénération = HPPerDamage × les dégâts conseillés de la zone où il passe
+	-- (Zones[zone].AdvisedDamage) : 100, 1K, 12K, 150K, 2M, 200M. V0 proposé (rééquilibrage v2, note
+	-- equilibrage-v2-proposition.md, P2.6 ; avant : 1000 PV fixes) : un joueur seul au niveau du panneau, à
+	-- 5 coups/s, le casse en 20 s (inchangé en passe 3). Calcul dans TruckEventService.
+	HPPerDamage = 100,
 	Lifetime = 3 * 60, -- V0 provisoire, décision d'Ironix du 2026-11-07 : pas cassé en 3 min, il part sans rien lâcher
 
 	-- Colis --------------------------------------------------------------------------------------

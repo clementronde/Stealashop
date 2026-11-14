@@ -1,5 +1,7 @@
 --!strict
--- TrainingController (DEV-012, client) : tapis et banc côté joueur (Partie 1, sections 5.1 et 9.4).
+-- TrainingController (DEV-012, client) : le tapis côté joueur (Partie 1, sections 5.1 et 9.4).
+-- Rééquilibrage v2 (Cantin, 2026-11-14) : plus de banc. Le tag Bench n'est plus lu ici non plus (ni montée,
+-- ni BenchLift, ni TrainTap de répétition).
 --
 -- Rôle :
 --   - montée instantanée (a115, Cantin 2026-11-13 : 1 à 2 s de décalage avant) : à chaque image, le
@@ -15,21 +17,16 @@
 --   - au tapis, le joueur descend dès qu'il bouge (touche de déplacement ou joystick :
 --     Humanoid.MoveDirection) : le client envoie TrainLeave, rend sa vitesse et arrête TreadmillRun tout
 --     de suite. Une entrée de déplacement tenue depuis la montée (il arrivait en marchant) ne compte
---     pas : il faut la relâcher, puis bouger. Au banc, rien ne change (il descend en sautant) ;
+--     pas : il faut la relâcher, puis bouger. ;
 --   - TreadmillRun est rejoué s'il s'arrête pendant la séance (boucle garantie, même si une autre
 --     animation l'a coupé) ;
 --   - au tapis (TrainingMachine = "Treadmill"), un tap sur l'écran, un clic gauche ou la gâchette
 --     droite de la manette envoie TrainTap (bonus du tapis). Les taps qui tombent sur l'UI
 --     (gameProcessed) ne comptent pas ;
---   - au banc (TrainingMachine = "Bench"), le joueur soulève tout seul, sans clic (L-091, point 2) :
---     BenchLift est rejoué en boucle tant qu'il y est, et chaque marqueur Top envoie TrainTap (une
---     répétition ; le serveur décide du gain). Sans BenchLift (ou sans son marqueur), rien n'est
---     envoyé : le serveur compte alors les répétitions à son propre rythme (TrainingService) ;
---   - n'envoie jamais plus de 6 TrainTap au tapis ni 3 au banc sur WINDOW secondes
---     (Config.Training) : au-delà, le serveur les ignorerait ;
---   - joue TreadmillRun (tapis) ou BenchIdle (banc) par AnimationController s'il est là (rien sinon,
---     sans erreur ; AnimationController les joue aussi d'après l'attribut, et ne relance pas un
---     BenchLift déjà parti quand le serveur confirme la répétition).
+--   - n'envoie jamais plus de 6 TrainTap au tapis sur WINDOW secondes (Config.Training) : au-delà, le
+--     serveur les ignorerait ;
+--   - joue TreadmillRun par AnimationController s'il est là (rien sinon, sans erreur ;
+--     AnimationController le joue aussi d'après l'attribut).
 -- Aucune UI et aucun gain ici, le serveur décide : ni le tapis ni le banc n'ont d'invite, on y monte en
 -- entrant dans leur zone (L-071, L-093 ; TrainingService).
 
@@ -61,15 +58,6 @@ type Frozen = { humanoid: Humanoid, walkSpeed: number }
 -- V0 proposé, absent du doc : fenêtre (s) de la limite côté client, un peu plus longue que la
 -- seconde du serveur pour que les écarts du réseau ne fassent pas dépasser la limite à l'arrivée.
 local WINDOW = 1.1
--- Banc automatique (L-091, point 2) : animation rejouée en boucle et marqueur qui compte une
--- répétition (contrat 2.4, Shared/Contract/Animations).
-local BENCH_LIFT = "BenchLift"
-local BENCH_MARKER = "Top"
--- V0 proposé, absent du doc : attente (s) avant de réessayer BenchLift quand l'animation manque.
-local BENCH_RETRY = 1
--- V0 proposé, absent du doc : au plus la durée de BenchLift + ce délai (s) avant de la relancer, si
--- sa fin n'est pas vue (piste pas encore chargée, Length à 0…).
-local BENCH_MAX_EXTRA = 3
 -- Montée prédite (a115). V0 proposés, absents du doc :
 -- attente (s) de la confirmation du serveur (aller-retour du réseau, avec de la marge) avant d'annuler ;
 local PREDICT_TIMEOUT = 1.5
@@ -80,7 +68,6 @@ local RESEND_WINDOW = 1.5
 local MOVE_EPSILON = 0.05
 
 local TREADMILL_TAG = "Treadmill"
-local BENCH_TAG = "Bench"
 local PLOT_TAG = "PlayerPlot"
 local OWNER_ATTRIBUTE = "OwnerUserId"
 
@@ -90,9 +77,8 @@ local localPlayer = Players.LocalPlayer
 local net: any = nil
 local TrainingZone: any = nil
 local animation: AnimationApi? = nil
-local machine: string? = nil -- machine jouée ici : "Treadmill", "Bench" ou nil
+local machine: string? = nil -- machine jouée ici : "Treadmill" ou nil
 local limiters: { [string]: Limiter } = {}
-local benchToken = 0 -- change à chaque changement de machine : périme l'ancienne boucle du banc
 
 local serverMachine: string? = nil -- attribut TrainingMachine (posé par le serveur)
 local current: Machine? = nil -- machine où le joueur est (prédite ou confirmée)
@@ -140,24 +126,6 @@ local function sendTap(kind: string)
 	net.Client.TrainTap:Fire()
 end
 
--- Banc : BenchLift rejoué tant que le joueur y est (boucle n° `token`). Le marqueur Top envoie la
--- répétition (branché une fois dans Start).
-local function benchLoop(token: number)
-	while benchToken == token and machine == "Bench" do
-		local anim = animation
-		local track = if anim then anim.PlayPlayer(BENCH_LIFT) else nil
-		if track == nil then
-			task.wait(BENCH_RETRY)
-			continue
-		end
-		local deadline = os.clock() + math.max(track.Length, 0) + BENCH_MAX_EXTRA
-		task.wait()
-		while benchToken == token and track.IsPlaying and os.clock() < deadline do
-			task.wait()
-		end
-	end
-end
-
 -- Machine jouée ici : rien après une descente locale, sinon celle du serveur, sinon celle prédite.
 local function effectiveMachine(): string?
 	if leftAt then
@@ -173,7 +141,7 @@ local function effectiveMachine(): string?
 	return nil
 end
 
--- Animations et boucle du banc quand la machine jouée change.
+-- Animation du tapis quand la machine jouée change.
 local function refresh()
 	local new = effectiveMachine()
 	if new == machine then
@@ -181,24 +149,15 @@ local function refresh()
 	end
 	local previous = machine
 	machine = new
-	benchToken += 1
-	if new == "Bench" then
-		task.spawn(benchLoop, benchToken)
-	end
 	local anim = animation
 	if anim == nil then
 		return
 	end
 	if previous == "Treadmill" then
 		anim.StopPlayer("TreadmillRun")
-	elseif previous == "Bench" then
-		anim.StopPlayer("BenchLift")
-		anim.StopPlayer("BenchIdle")
 	end
 	if new == "Treadmill" then
 		anim.PlayPlayer("TreadmillRun")
-	elseif new == "Bench" then
-		anim.PlayPlayer("BenchIdle")
 	end
 end
 
@@ -284,7 +243,7 @@ end
 local function ownMachineAt(position: Vector3): Machine?
 	local best: Machine? = nil
 	local bestDistance = math.huge
-	for _, tag in { TREADMILL_TAG, BENCH_TAG } do
+	for _, tag in { TREADMILL_TAG } do
 		for _, model in CollectionService:GetTagged(tag) do
 			local m = machineOf(model, tag)
 			local plot = if m then m.plot else nil
@@ -394,7 +353,7 @@ end
 
 local function onMachineChanged()
 	local value = localPlayer:GetAttribute("TrainingMachine")
-	local new: string? = if value == "Treadmill" or value == "Bench" then value else nil
+	local new: string? = if value == "Treadmill" then value else nil
 	if new == serverMachine then
 		return
 	end
@@ -442,7 +401,6 @@ end
 
 local function onInputBegan(input: InputObject, gameProcessed: boolean)
 	local kind = machine
-	-- Au banc, plus de clic : les répétitions viennent du marqueur Top (L-091, point 2).
 	if gameProcessed or kind ~= "Treadmill" or not isTap(input) then
 		return
 	end
@@ -463,22 +421,12 @@ function TrainingController.Start()
 	local training = require(shared:WaitForChild("Config"):WaitForChild("Training") :: ModuleScript) :: any
 	TrainingZone = require(shared:WaitForChild("TrainingZone") :: ModuleScript) :: any
 	limiters.Treadmill = newLimiter(training.Treadmill.MaxTapsPerSecond)
-	limiters.Bench = newLimiter(training.Bench.MaxRepsPerSecond)
 	-- Peut attendre que le serveur ait créé les remotes.
 	net = require(shared:WaitForChild("Net"):WaitForChild("Net") :: ModuleScript) :: any
 	animation = loadAnimationController()
-	local anim = animation
-	if anim then
-		-- Suit le joueur d'une vie à l'autre (AnimationController rebranche les marqueurs).
-		anim.OnMarker(BENCH_LIFT, BENCH_MARKER, function()
-			if machine == "Bench" then
-				sendTap("Bench")
-			end
-		end)
-	end
 
 	-- Machines retirées (variante du tapis remplacée…) : leur zone est oubliée.
-	for _, tag in { TREADMILL_TAG, BENCH_TAG } do
+	for _, tag in { TREADMILL_TAG } do
 		CollectionService:GetInstanceRemovedSignal(tag):Connect(function(model: Instance)
 			known[model] = nil
 		end)
