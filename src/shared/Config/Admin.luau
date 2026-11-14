@@ -50,7 +50,8 @@ local Commands: { Command } = {
 	{ Id = "GiveGamepass", Section = "Give", Target = true, StudioOnly = true, Args = "text = pass key (VIP…)" },
 	-- Pas encore à l'écran : niveau d'une compétence de l'arbre.
 	{ Id = "SetSkill", Section = "Base", Target = true, StudioOnly = true, Args = "text = skill Id, value = level" },
-	-- EventsSection : Truck (value = zone, au hasard sinon), Night ou Day (value = durée en s, facultative).
+	-- EventsSection : Truck (value = zone, au hasard sinon), Night ou Day (value = durée en s, facultative),
+	-- Fortune, FortuneOpen, FortuneSeal (vague 39, Fortune Tower ; sans value).
 	{ Id = "StartEvent", Section = "Events", Target = false, StudioOnly = true, Args = "text = event Id, value = zone or seconds (optional)" },
 	-- TeleportSection : 0 = zone safe (sa boutique), 1 à 6 = zone.
 	{ Id = "Teleport", Section = "Teleport", Target = true, Args = "value = zone (0 to 6)" },
@@ -80,8 +81,9 @@ local Admin = {
 	MaxAmount = 1e15,
 	-- Mot envoyé par le client au second clic de ResetProfileButton.
 	ResetConfirm = "RESET",
-	-- Événements de StartEvent (Rain plus tard).
-	Events = { "Truck", "Night", "Day" },
+	-- Événements de StartEvent (Rain plus tard). Vague 39 : Fortune (une vitrine de la Fortune Tower tout de suite,
+	-- remplace celle en jeu), FortuneOpen (la vitrine fermée en jeu s'ouvre, butin), FortuneSeal (elle se referme).
+	Events = { "Truck", "Night", "Day", "Fortune", "FortuneOpen", "FortuneSeal" },
 	-- Textes du jeu (anglais).
 	Messages = {
 		Kicked = "An admin reset your progress. Rejoin to start fresh!",
