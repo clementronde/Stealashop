@@ -11,6 +11,10 @@ export type Element = {
 	Path: string,
 	Class: string?, -- IsA attendu
 	Template: boolean?, -- élément modèle cloné par le code : Visible = false
+	-- a125 : élément facultatif (le code ne fait rien sans lui) : absent, avertissement orange (Note dit le
+	-- repli), jamais un problème ; présent, contrôlé comme les autres.
+	Optional: boolean?,
+	Note: string?,
 }
 
 export type Screen = {
@@ -821,5 +825,19 @@ table.insert(UI.Billboards, {
 	Optional = true,
 	Elements = { { Path = "Fill" }, { Path = "Label" } } :: { Element },
 })
+-- Ligne Mutation de BB_Carry (L-131 g, vague 38, a125 ; nom proposé à Clément, comme celle de BB_Item) :
+-- facultative. Présente : CarryService y écrit la mutation (« BIG · GOLD ») et MutationFxController lui
+-- donne le style de Assets/UI/MutationStyles/<Id>, comme à BB_Item et MutationTag. Absente : la mutation
+-- reste écrite devant ItemName, sans style.
+for _, billboard in UI.Billboards do
+	if billboard.Name == "BB_Carry" then
+		table.insert(billboard.Elements, {
+			Path = "Mutation",
+			Class = "TextLabel",
+			Optional = true,
+			Note = "la mutation reste écrite devant ItemName, sans style de mutation",
+		})
+	end
+end
 
 return UI
