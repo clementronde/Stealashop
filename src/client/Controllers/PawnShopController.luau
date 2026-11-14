@@ -26,6 +26,8 @@
 --     relâché, T.31 et T.32, viennent d'UiFeelController, comme pour tous les boutons) ;
 --   - touches 1, 2 et 3 sur PC (ContextActionService, priorité haute, tant que l'écran est ouvert : la barre
 --     du bas ne les reçoit pas pendant ce temps).
+--   - vague 38 (L-135 point 3, Clément le 2026-11-14) : pendant le dialogue (ouvert → fermé), UI_HUD.AdminButton est
+--     caché (AdminController.SetHidden("PawnShop", …), s'il est là) : Dialog passait dessus ; remontré à la fermeture.
 -- Seuls sont touchés : Enabled de l'écran, Visible des 5 choix, le texte des Price, la couleur du texte des
 -- KeyLabel, ChoiceLabel et Price (survol et grisé demandés par Clément, remise à sa couleur ensuite), la Position
 -- de Choices pendant la secousse (remise ensuite), et la copie de la bulle. Rien ne se décide ici.
@@ -355,6 +357,35 @@ local function unbindKeys()
 	ContextActionService:UnbindAction(KEYS_ACTION)
 end
 
+-- Vague 38 : AdminButton caché pendant le dialogue (AdminController.SetHidden), cherché au premier besoin ; sans
+-- AdminController (ou sans SetHidden), rien.
+type AdminApi = { SetHidden: (reason: string, hidden: boolean) -> () }
+local ADMIN_HIDE_REASON = "PawnShop"
+local admin: AdminApi? = nil
+local adminSearched = false
+local function hideAdminButton(hidden: boolean)
+	if not adminSearched then
+		adminSearched = true
+		local module = script.Parent:FindFirstChild("AdminController")
+		if module and module:IsA("ModuleScript") then
+			local ok, result = pcall(require, module)
+			if ok and type(result) == "table" and type((result :: any).SetHidden) == "function" then
+				admin = result :: any
+			end
+		end
+	end
+	local api: AdminApi? = admin
+	if api ~= nil then
+		local setHidden: (reason: string, hidden: boolean) -> () = api.SetHidden
+		local ok, err = pcall(function()
+			setHidden(ADMIN_HIDE_REASON, hidden)
+		end)
+		if not ok then
+			reportOnce("admin", `[PawnShop] AdminController.SetHidden : {err}`)
+		end
+	end
+end
+
 local function closeDialog(farewell: boolean)
 	if mode == "Closed" then
 		return
@@ -364,6 +395,7 @@ local function closeDialog(farewell: boolean)
 	pending = nil
 	unbindKeys()
 	confirmShown = false
+	hideAdminButton(false) -- vague 38 : AdminButton remontré
 	local current = screen
 	if current then
 		Motion.Close(current.gui)
@@ -525,6 +557,9 @@ local function bind(gui: ScreenGui)
 			connection:Disconnect()
 		end
 	end
+	if mode ~= "Closed" then
+		hideAdminButton(false) -- vague 38 : dialogue fermé avec l'ancien écran
+	end
 	mode = "Closed" -- écran recréé (ResetOnSpawn) : fermé
 	openAt = nil
 	pending = nil
@@ -606,6 +641,7 @@ function PawnShopController.Open(anchor: BasePart)
 	confirmShown = false
 	render()
 	Motion.Open(current.gui)
+	hideAdminButton(true) -- vague 38 (L-135 point 3) : Dialog passait sur AdminButton
 	say(LINES.Greeting)
 	ContextActionService:BindActionAtPriority(KEYS_ACTION, onKey, false, Enum.ContextActionPriority.High.Value, table.unpack(KEY_CODES))
 	if net then

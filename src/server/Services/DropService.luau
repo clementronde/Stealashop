@@ -14,7 +14,9 @@
 -- Puis CarryService.Drop(player, nil, "Released") : la mécanique du coup de batte, sans coup ni étourdissement.
 --   - colis PNJ et objet NPCItem : au sol sous le joueur (Workspace/CarryDrops, attribut BatDrop), reprenable
 --     par n'importe qui avec GrabDropped (BatService, mêmes règles, le joueur qui l'a lâché compris), et
---     revole vers son rayon au bout de Bat.DroppedLifetime s sans preneur (StoreHeistService) ;
+--     revole vers son rayon au bout de Bat.DroppedLifetime s sans preneur (StoreHeistService) ; lâché dans le
+--     magasin d'où vient l'objet NPCItem (Clément, 2026-11-14, L-135 point 5) : il revole tout de suite sur son
+--     rayon, rien ne tombe (CarryService.SetBackToShelfCheck, règle posée par GuardService) ;
 --   - objet volé à un joueur : comme après un coup de batte, il ne tombe pas, il revole tout de suite vers
 --     le présentoir de son propriétaire (PvPService, OnCarryEnded « Failed », raison « Released ») ;
 --   - vigile : comme après une chute à la batte (GuardService écoute OnCarryEnded « Dropped », quelle que

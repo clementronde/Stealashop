@@ -2,7 +2,7 @@
 -- Interrupteurs des fonctions pas encore livrées (DEV-021 ; décision d'Ironix du 2026-11-07,
 -- liaison L-026). false = la fonction n'existe pas encore : ses éléments d'UI sont cachés
 -- (HudController). Repasser un interrupteur à true suffit à les réafficher, tels que Clément
--- les a posés (le code ne force jamais Visible = true). NightCycle et ReturnToBase coupent aussi
+-- les a posés (le code ne force jamais Visible = true ; ReturnToBase n'a plus d'UI, vague 38). NightCycle et ReturnToBase coupent aussi
 -- leur service serveur (NightCycleService, ReturnBaseService) et le ciel animé (SkyController).
 -- TruckEvent n'a pas d'UI : false coupe TruckEventService (aucun camion) et TruckController.
 -- RobuxShop coupe aussi toute la boutique Robux (DEV-100) : MonetizationService (ni ProcessReceipt,
@@ -24,7 +24,7 @@ local Features = {
 	RebirthPreview = true, -- L-071 : UI_HUD.RebirthButton visible et UI_Rebirth en aperçu (RebirthController), sans renaissance
 	NightCycle = true, -- DEV-047, cycle jour/nuit (5.12) : UI_HUD.NightCountdown, NightCycleService, SkyController
 	AntiCheat = true, -- DEV-060, contrôle des déplacements (9.6, Config/AntiCheat) : false coupe AntiCheatService (Allow et Verify ne font rien), aucune UI
-	ReturnToBase = true, -- DEV-045, bouton Retour base : UI_HUD.ReturnBaseButton, ReturnBaseService
+	ReturnToBase = true, -- DEV-045, retour base : ReturnBaseService (remote ReturnToBase) ; plus de bouton UI_HUD.ReturnBaseButton depuis le 2026-11-14 (L-135 point 3, vague 38) : aucun client n'envoie plus le remote, le service reste (refus validés côté serveur)
 	TruckEvent = true, -- L-049, événement camion (Config/TruckEvent) : TruckEventService, TruckController
 	Settings = true, -- L-095 point 2, réglages : UI_HUD.SettingsButton (montré par SettingsController) et écran UI_Settings ; à false, les réglages sauvegardés s'appliquent quand même (sons, effets)
 	ShelfOpen = true, -- L-112, ouverture des colis sur le rayon du magasin PNJ et antivol en base (Config/ShelfOpen) ; false = ancienne ouverture en base (colis rangé, posé, attente, rouleau), gardée en secours jusqu'à la validation en Play

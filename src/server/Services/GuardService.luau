@@ -118,6 +118,10 @@
 --     l'objet ne tombe pas, il revole tout de suite vers son rayon (CarryService.FailNoDrop « Caught » :
 --     échec sans chute) ; le lien finit, le vigile rentre au GuardSpawn à la fin de Catch et le
 --     magasin se referme comme d'habitude ;
+--   - objet lâché ou tombé dans ce même volume (touche G, coup de batte, capture par un autre ; Clément,
+--     2026-11-14, L-135 point 5) : pareil, il revole tout de suite vers son rayon (CarryService
+--     .SetBackToShelfCheck, posé au Start avec la même règle) ; le vigile abandonne (portage « Failed »).
+--     Dans la rue, rien ne change : l'objet tombe et le vigile le garde ;
 --   - vigile déjà parti (rentré, en fondu, mort) ou occupé à poursuivre un autre joueur : un vigile du même
 --     magasin ressort du GuardSpawn pour le nouveau porteur (mêmes plafonds) ; nouveau porteur déjà
 --     poursuivi par un vigile de jour : c'est lui qui devient lié (jamais deux vigiles pour un joueur).
@@ -280,6 +284,7 @@ type CarryApi = {
 	OnCarryEnded: (listener: (player: Player, payload: any, result: string, reason: string) -> ()) -> any,
 	OnDropExpired: (listener: (dropId: string, payload: any, position: Vector3) -> ()) -> any,
 	GetPayload: (player: Player) -> any,
+	SetBackToShelfCheck: ((check: ((player: Player) -> boolean)?) -> ())?,
 }
 local CarryService: CarryApi = require(script.Parent.CarryService) :: any
 
@@ -3480,6 +3485,12 @@ function GuardService.Start()
 	CarryService.OnCarryStarted(onCarryStarted)
 	CarryService.OnCarryEnded(onCarryEnded)
 	CarryService.OnDropExpired(onDropExpired)
+	-- L-135 point 5 (Clément, 2026-11-14) : lâché ou tombé dans le magasin d'où vient l'objet (G, coup de
+	-- batte, capture…), il revole sur son rayon au lieu de tomber (même règle que la capture, inItsStore).
+	local setCheck = CarryService.SetBackToShelfCheck
+	if setCheck then
+		setCheck(inItsStore)
+	end
 	RunService.Heartbeat:Connect(step)
 	Players.PlayerRemoving:Connect(function(player: Player)
 		local guard = chasedBy[player]

@@ -27,6 +27,9 @@
 -- `Skill_<Id>` du propriétaire ; sans propriétaire joueur sur le serveur (parcelle libre, bot), l'attribut
 -- `Skill_<Id>` de la parcelle (0 s'il manque). Revu quand le propriétaire change, quand un de ces attributs
 -- change et quand une pièce arrive. Id inconnu dans `ShowFromSkill` : une ligne, la pièce n'est pas touchée.
+-- Noms suivis (2026-11-14) : Cameras, Security (digicode) et Alarm (gyrophare) avec Cameras 1 (L-137 point 1) ;
+-- Walls (Stage_3/Walls) avec Walls 1, à tous les niveaux de la boutique (L-137 point 3 : ShopStageService en pose
+-- une copie dans le dossier SkillVisuals tant que la boutique est sous le niveau 3, PlotVisuals.EveryStage).
 --
 -- API (serveur) :
 --   ShopWallsService.GetLevel(plot) -> number   WallsLevel de la parcelle (0 s'il manque)

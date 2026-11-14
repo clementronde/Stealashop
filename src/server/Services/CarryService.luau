@@ -52,6 +52,12 @@
 --   CarryService.FailNoDrop(player, reason) -> boolean
 --       Comme Fail, sans jamais de chute : OnCarryEnded(…, "Failed", reason), l'objet revole vers son rayon.
 --       GuardService (Cantin, 2026-11-13) : porteur attrapé dans le magasin d'où vient l'objet ("Caught").
+--   CarryService.SetBackToShelfCheck(check)
+--       L-135 point 5 (Clément, 2026-11-14) : `check(player) -> boolean`, posé par GuardService (porteur d'un
+--       objet NPCItem dans le volume Bounds du magasin d'où il vient). Vrai au moment d'une chute (Drop : G, coup
+--       de batte… ; Fail "Caught" d'un objet NPCItem) : rien ne tombe, l'objet revole tout de suite vers son
+--       rayon, comme FailNoDrop (OnCarryEnded(…, "Failed", raison), Drop renvoie nil). Sans check, ou s'il
+--       échoue : la chute habituelle. Dans la rue, rien ne change.
 --   CarryService.ReportAnomaly(player, detail) -> boolean
 --       Point d'accroche de l'anti-triche (9.6, AntiCheatService DEV-060) : écrit `detail` dans la
 --       sortie (warn), puis Fail(player, "Anomaly"). false si le joueur ne portait rien.
@@ -255,6 +261,22 @@ local startedListeners: { StartedListener } = {}
 local endedListeners: { EndedListener } = {}
 local dropExpiredListeners: { DropExpiredListener } = {}
 local noticed: { [string]: boolean } = {}
+-- L-135 point 5 : porteur dans le magasin d'où vient son objet (SetBackToShelfCheck, posé par GuardService).
+local backToShelfCheck: ((player: Player) -> boolean)? = nil
+
+-- Vrai si l'objet de `player` doit revoler sur son rayon au lieu de tomber (voir SetBackToShelfCheck).
+local function backToShelf(player: Player, carry: Carry): boolean
+	local check = backToShelfCheck
+	if check == nil or carry.payload.Kind == "PlayerItem" then
+		return false
+	end
+	local ok, result = pcall(check, player)
+	if not ok then
+		warn(`[CarryService] contrôle « dans son magasin » ({player.Name}) : {result}`)
+		return false
+	end
+	return result == true
+end
 
 -- Renvoie une fonction qui retire `listener` de `list`.
 local function subscribe<T>(list: { T }, listener: T): () -> ()
@@ -587,9 +609,9 @@ local function npcItemIncome(payload: NPCItemPayload): number
 end
 
 -- Étiquette BB_Carry d'un objet porté (objet volé à un joueur, 6.1 ; objet sorti d'un colis, L-112) :
--- nom (précédé de sa mutation, DEV-131), rareté à sa couleur, $/s. Champ Mutation facultatif, hors
--- contrat tant que Clément ne l'a pas créé : s'il existe, la mutation y va en capitales et ItemName
--- garde le nom seul.
+-- nom (précédé de sa mutation, DEV-131), rareté à sa couleur, $/s. Champ Mutation facultatif (a125,
+-- L-131 g : au contrat, Contract/UI, avertissement orange s'il manque) : s'il existe, la mutation y va en
+-- capitales, ItemName garde le nom seul et MutationFxController (client) lui donne le style de la mutation.
 local function itemLabel(itemId: string, mutation: Mutations.Mutation?, income: number, rarity: Rarity): BillboardGui
 	local template = labelTemplate(BB_CARRY)
 	local gui = if template then template:Clone() :: BillboardGui else placeholderLabel(nil)
@@ -828,7 +850,7 @@ local groundBelow: (player: Player, humanoid: Humanoid) -> Vector3
 function CarryService.Fail(player: Player, reason: string): boolean
 	local text = if type(reason) == "string" and reason ~= "" then reason else "Unknown"
 	local carry = carries[player]
-	if carry ~= nil and carry.payload.Kind == "NPCItem" and text == CAUGHT_REASON then
+	if carry ~= nil and carry.payload.Kind == "NPCItem" and text == CAUGHT_REASON and not backToShelf(player, carry) then
 		-- L-112 : attrapé avec un objet sorti d'un colis, il le lâche ; l'objet reste au sol, à reprendre.
 		local dropId = fall(player, carry, groundBelow(player, carry.humanoid), text)
 		local drop = drops[dropId]
@@ -844,6 +866,10 @@ end
 function CarryService.FailNoDrop(player: Player, reason: string): boolean
 	local text = if type(reason) == "string" and reason ~= "" then reason else "Unknown"
 	return finish(player, "Failed", text) ~= nil
+end
+
+function CarryService.SetBackToShelfCheck(check: ((player: Player) -> boolean)?)
+	backToShelfCheck = check
 end
 
 function CarryService.ReportAnomaly(player: Player, detail: string): boolean
@@ -1033,6 +1059,14 @@ function CarryService.Drop(player: Player, position: Vector3?, reason: string?):
 	local payload = carry.payload
 	if payload.Kind == "PlayerItem" then
 		CarryService.Fail(player, why) -- 6.2 : l'objet revole vers le présentoir de son propriétaire
+		return nil
+	end
+	if backToShelf(player, carry) then
+		-- L-135 point 5 (Clément, 2026-11-14) : lâché ou tombé dans son propre magasin, il revole sur son rayon.
+		if IS_STUDIO then
+			print(`[CarryService] {player.Name} lâche ({why}) dans le magasin de l'objet : {describe(payload)} revole sur son rayon`)
+		end
+		finish(player, "Failed", why)
 		return nil
 	end
 	local at: Vector3

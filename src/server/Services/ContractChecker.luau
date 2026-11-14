@@ -989,7 +989,11 @@ local function checkScreen(category: string, gui: Instance, screen: Screen)
 			local matches = Find.all(current, segment)
 			if #matches == 0 then
 				-- Un parent manquant compte une fois, pas une fois par élément qu'il contient.
-				if not reported[walked] then
+				if element.Optional then
+					-- a125 : élément facultatif, le code ne fait rien sans lui (avertissement orange).
+					local note = if element.Note then ` : {element.Note}` else ""
+					warning(category, `{screen.Name}.{element.Path} absent (facultatif){note}`)
+				elseif not reported[walked] then
 					reported[walked] = true
 					local detail = hint(nearName(indexOf(current), segment), segment)
 					table.insert(missing, { name = walked, detail = detail, plural = false })

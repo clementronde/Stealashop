@@ -11,6 +11,10 @@ export type Element = {
 	Path: string,
 	Class: string?, -- IsA attendu
 	Template: boolean?, -- élément modèle cloné par le code : Visible = false
+	-- a125 : élément facultatif (le code ne fait rien sans lui) : absent, avertissement orange (Note dit le
+	-- repli), jamais un problème ; présent, contrôlé comme les autres.
+	Optional: boolean?,
+	Note: string?,
 }
 
 export type Screen = {
@@ -39,7 +43,7 @@ UI.Screens = {
 			{ Path = "NightCountdown", Class = "TextLabel" },
 			{ Path = "GuardMeter", Class = "Frame" },
 			{ Path = "GuardMeter.Fill" },
-			{ Path = "ReturnBaseButton", Class = BUTTON },
+			-- ReturnBaseButton : retiré le 2026-11-14 (vague 38, L-135 point 3, Clément : « le bouton BASE n'existe plus »).
 			{ Path = "RobuxShopButton", Class = BUTTON }, -- caché jusqu'à la MAJ 1
 			{ Path = "IndexButton", Class = BUTTON }, -- caché jusqu'à la MAJ 2 (L-026)
 			{ Path = "RebirthButton", Class = BUTTON }, -- caché jusqu'à la MAJ 3 (L-026)
@@ -821,5 +825,19 @@ table.insert(UI.Billboards, {
 	Optional = true,
 	Elements = { { Path = "Fill" }, { Path = "Label" } } :: { Element },
 })
+-- Ligne Mutation de BB_Carry (L-131 g, vague 38, a125 ; nom proposé à Clément, comme celle de BB_Item) :
+-- facultative. Présente : CarryService y écrit la mutation (« BIG · GOLD ») et MutationFxController lui
+-- donne le style de Assets/UI/MutationStyles/<Id>, comme à BB_Item et MutationTag. Absente : la mutation
+-- reste écrite devant ItemName, sans style.
+for _, billboard in UI.Billboards do
+	if billboard.Name == "BB_Carry" then
+		table.insert(billboard.Elements, {
+			Path = "Mutation",
+			Class = "TextLabel",
+			Optional = true,
+			Note = "la mutation reste écrite devant ItemName, sans style de mutation",
+		})
+	end
+end
 
 return UI

@@ -13,7 +13,7 @@
 --     ou un trail (Cosmetics.Auras, Cosmetics.Trails), ou une amélioration achetée (un niveau de
 --     Upgrades > 0). L'argent, les stats et le temps de jeu seuls ne comptent pas : un joueur qui n'a
 --     fait que s'entraîner a encore besoin du tuto ;
---   - reprise : un profil à Step 1 à 13 et Done = false reprend à son étape. Step garde l'étape la
+--   - reprise : un profil à Step 1 à 14 et Done = false reprend à son étape. Step garde l'étape la
 --     plus avancée atteinte ; ce qui n'est pas sauvegardé (vitrine, magasin ouvert, colis porté) est
 --     relu sur place : un joueur parti avec un colis sur la tête (Step = 4) reprend à l'étape 2, car
 --     le colis est revenu sur son rayon (5.6) ;
@@ -54,15 +54,22 @@
 --   12 → 13 StealFromBot : un objet du bot pris (BotService.OnTheft « Grabbed », ou un portage PlayerItem de
 --           VictimUserId 0, celui de PvPService pour le bot) ;
 --   13 → 12 BringStolenHome : l'objet perdu (vol raté : coup de batte, mort, BotService.OnTheft « Returned ») ;
+--   12 → 14, 13 → 14  objet en main et le bot le poursuit (BotService.IsChasing) ; vague 38 (L-085 point 4, L-136 (a),
+--           a126). « Grabbed » arrive juste avant le départ de la poursuite : relu un peu plus tard (task.defer) ;
+--   14 → 13 EscapeBot (« le bot défend ») : le bot ne le poursuit plus (semé : laisse ou abandon), objet toujours en
+--           main (funnel 14), ou l'objet déposé ; 14 → 12 : frappé, l'objet revole chez le bot (« Returned »).
+--           L'étape 14 se joue entre 12 et 13 mais porte le numéro 14 (ajoutée à la fin, numéros et Id d'avant
+--           inchangés) : pour garder dans Tutorial.Step l'étape la plus avancée, elle compte comme 12,5 (rank).
+--           Sans IsChasing (ancien BotService), jamais d'étape 14 ;
 --   13      l'objet déposé chez lui (OnTheft « Stolen ») : le tuto est fini (Step = 13, Done = true).
 --   Sans bot (GetBotPlot = nil : jamais venu, ou parti pendant ces étapes, BotService.OnChanged) : le tuto finit,
 --   Step garde l'étape atteinte. Seule attente : une session qui reprend aux étapes 11 à 13 attend un bot absent
 --   pendant ses BotWait premières secondes (serveur neuf : le bot arrive Bot.ArriveDelay s plus tard).
 --   Un vol commencé avant l'étape 11 ne compte pas pour finir (remis à zéro en entrant à l'étape 11), un objet
 --   tenu à ce moment-là si. Vol d'un vrai joueur : ne compte pas (le tuto montre le bot). Vague 37 (a124, L-117
---   point 7) : le bot défend sa boutique (BotService) ; pas d'étape nouvelle ni de numéro changé : pendant le tuto
---   du joueur poursuivi, BotService.IsGentle (remplacé ici : session en cours) le fait courir moins vite et frapper
---   au plus une fois, et la bulle BotChase remplace celle des étapes 12 et 13 pendant la poursuite.
+--   point 7) : le bot défend sa boutique (BotService) : pendant le tuto du joueur poursuivi, BotService.IsGentle
+--   (remplacé ici : session en cours) le fait courir moins vite et frapper au plus une fois, et la bulle BotChase
+--   remplace celle de l'étape 12 pendant la poursuite (objet en main : étape 14, vague 38).
 -- Retours en arrière, seulement pendant le braquage : étape 3 sans colis et magasin fermé → 2 ;
 -- étape 4 sans colis, ni sur la tête ni dans l'inventaire (rattrapé, mort, déconnecté) → 3 si un magasin de la zone du tuto est encore
 -- ouvert près du joueur, sinon 2. Ils ne changent que l'étape affichée, pas Tutorial.Step du profil
@@ -151,8 +158,8 @@
 -- premier envoi d'une étape. Étapes : 1 tuto commencé, 2 coup sur une vitrine de magasin PNJ, 3 vitrine
 -- PNJ cassée par lui, 4 colis PNJ soulevé, 5 dans la zone safe avec ce colis, 6 colis posé, 7 colis
 -- ouvert, 8 un objet exposé, 9 premier encaissement, 10 un outil acheté ; vague 36, seulement pendant le tuto :
--- 11 boutique du bot atteinte (étape 12), 12 objet du bot pris (étape 13), 13 objet du bot déposé chez lui
--- (fin). Interrupteur de la télémétrie
+-- 11 boutique du bot atteinte (étape 12), 12 objet du bot pris (étape 13 ou 14), 13 objet du bot déposé chez lui
+-- (fin) ; vague 38 : 14 bot semé avec son objet (14 → 13). Interrupteur de la télémétrie
 -- (Config/Telemetry.Enabled = false, DEV-054) : aucune étape n'est envoyée.
 --
 -- Crochet de test, STUDIO SEULEMENT : workspace:SetAttribute("TutorialReset", userId) (barre de
@@ -165,7 +172,8 @@
 --
 -- Attributs du Player (pour les tests en Studio : la barre de commande a son propre cache de modules,
 -- elle lit ces attributs) : TutorialStep (le step envoyé, 0 à la fin) et TutorialHint (l'indice envoyé,
--- absent sans indice). Un joueur qui n'a jamais eu de tuto n'en a pas.
+-- absent sans indice). Un joueur qui n'a jamais eu de tuto n'en a pas. Vague 38 : NotifyController lit aussi
+-- TutorialStep (> 0 = tuto en cours : un seul message à la fois dans UI_Toast, L-135 point 2).
 --
 -- API (serveur) :
 --   TutorialService.GetStep(player) -> number    étape en cours, 0 sans tuto en cours
@@ -283,7 +291,8 @@ local STEP_SHIELD = 10 -- ShieldEnd
 local STEP_BOT_SHOP = 11 -- GoToBotShop (vague 36)
 local STEP_BOT_GRAB = 12 -- StealFromBot
 local STEP_BOT_HOME = 13 -- BringStolenHome
-local LAST_STEP = STEP_BOT_HOME
+local STEP_BOT_CHASE = 14 -- EscapeBot (vague 38) : se joue entre 12 et 13 (voir rank)
+local LAST_STEP = STEP_BOT_CHASE -- plus grand numéro (bornes de la reprise), pas la dernière étape jouée
 
 -- Étapes du funnel (Config/Tutorial.FunnelSteps, même ordre ; 14.2).
 local FUNNEL_PLOT = 1
@@ -299,6 +308,13 @@ local FUNNEL_TOOL = 10
 local FUNNEL_BOT_SHOP = 11 -- vague 36, seulement pendant le tuto
 local FUNNEL_BOT_GRAB = 12
 local FUNNEL_BOT_HOME = 13
+local FUNNEL_BOT_ESCAPE = 14 -- vague 38 : bot semé avec son objet (14 → 13)
+
+-- Rang d'une étape dans le jeu : son numéro, sauf l'étape 14, jouée entre 12 et 13 (vague 38). Sert à garder dans
+-- Tutorial.Step l'étape la plus avancée (setStep).
+local function rank(step: number): number
+	return if step == STEP_BOT_CHASE then STEP_BOT_GRAB + 0.5 else step
+end
 
 -- Noms du contrat (2.1 et 10.4) lus ici.
 local STORE_TAG = "NPCStore"
@@ -784,6 +800,7 @@ local function loggedFunnel(data: Data): { [number]: boolean }
 		[FUNNEL_BOT_SHOP] = step >= STEP_BOT_GRAB,
 		[FUNNEL_BOT_GRAB] = step >= STEP_BOT_HOME,
 		[FUNNEL_BOT_HOME] = false,
+		[FUNNEL_BOT_ESCAPE] = false, -- vague 38 : comme 13 (un renvoi après une reprise n'est pas compté par Roblox)
 	}
 end
 
@@ -1062,7 +1079,8 @@ local function setStep(session: Session, data: Data, step: number, why: string)
 	session.step = step
 	-- Le profil garde l'étape la plus avancée : un retour en arrière du braquage (étapes 2 à 4) ne se
 	-- sauvegarde pas, il se refait à la reprise d'après l'état du jeu (et le funnel reste exact).
-	if step > data.Tutorial.Step then
+	-- Vague 38 : comparé par rang (l'étape 14 se joue entre 12 et 13).
+	if rank(step) > rank(data.Tutorial.Step) then
 		data.Tutorial.Step = step
 	end
 	if step == STEP_TRAIN then
@@ -1077,8 +1095,12 @@ local function setStep(session: Session, data: Data, step: number, why: string)
 	if step >= STEP_BOT_GRAB then
 		logFunnel(session.player, FUNNEL_BOT_SHOP)
 	end
-	if step == STEP_BOT_HOME then
+	if step == STEP_BOT_HOME or step == STEP_BOT_CHASE then
 		logFunnel(session.player, FUNNEL_BOT_GRAB)
+	end
+	-- Vague 38 : funnel 14, le bot semé (ou l'objet déposé) pendant l'étape 14.
+	if previous == STEP_BOT_CHASE and step == STEP_BOT_HOME then
+		logFunnel(session.player, FUNNEL_BOT_ESCAPE)
 	end
 	log(`{session.player.Name} : étape {previous} → {step} ({why})`)
 end
@@ -1200,16 +1222,28 @@ local function transition(session: Session, data: Data, position: Vector3?, carr
 			return nil, nil -- sans bot : evaluate finit le tuto (après l'attente d'une reprise)
 		end
 		local held = session.botHeld or carryingBotItem(session.player)
+		local stolen = session.botStolen
 		if step == STEP_BOT_SHOP then
-			if held or session.botStolen or atBotShop(plot, position) then
+			if held or stolen or atBotShop(plot, position) then
 				return STEP_BOT_GRAB, "boutique du bot atteinte"
 			end
 		elseif step == STEP_BOT_GRAB then
-			if held or session.botStolen then
+			if held and not stolen and chasedByBot(session.player) then
+				return STEP_BOT_CHASE, "objet du bot pris, le bot le poursuit" -- vague 38
+			elseif held or stolen then
 				return STEP_BOT_HOME, "objet du bot pris"
 			end
-		elseif not held and not session.botStolen then
-			return STEP_BOT_GRAB, "objet du bot perdu"
+		elseif not held and not stolen then
+			return STEP_BOT_GRAB, "objet du bot perdu" -- étapes 13 et 14
+		elseif step == STEP_BOT_HOME then
+			-- Vague 38 : « le bot défend », objet en main pendant la poursuite.
+			if not stolen and chasedByBot(session.player) then
+				return STEP_BOT_CHASE, "le bot le poursuit"
+			end
+		elseif step == STEP_BOT_CHASE then
+			if stolen or not chasedByBot(session.player) then
+				return STEP_BOT_HOME, if stolen then "objet déposé pendant la poursuite" else "bot semé avec son objet"
+			end
 		end
 	end
 	return nil, nil
@@ -1316,9 +1350,10 @@ local function rawGuidance(session: Session, data: Data, position: Vector3?): (s
 			return chased, botItemTarget(plot, position) or botDoor(plot)
 		end
 		return chased, botDoor(plot)
-	elseif step == STEP_BOT_HOME then
-		-- dépôt : la DepositZone couvre le sol de sa boutique ; bulle BotChase pendant la poursuite (vague 37)
-		return if chasedByBot(player) then "BotChase" else nil, shopTarget(player)
+	elseif step == STEP_BOT_HOME or step == STEP_BOT_CHASE then
+		-- dépôt : la DepositZone couvre le sol de sa boutique. Poursuivi avec l'objet : étape 14 et sa bulle (vague 38 ;
+		-- avant, bulle BotChase à l'étape 13) ; la flèche ne change pas : on s'enfuit vers chez soi.
+		return nil, shopTarget(player)
 	end
 	return nil, nil
 end
@@ -1688,6 +1723,10 @@ local function onBotTheft(thief: Player, _itemId: string, stage: string)
 	end
 	if stage == "Grabbed" then
 		session.botHeld = true
+		-- Vague 38 : relu un peu plus tard. BotService émet « Grabbed » juste AVANT de lancer sa poursuite : relu
+		-- tout de suite, l'étape 13 partirait chez le client une fraction de seconde avant l'étape 14.
+		task.defer(evaluate, session)
+		return
 	elseif stage == "Returned" then
 		session.botHeld = false
 	elseif stage == "Stolen" then
