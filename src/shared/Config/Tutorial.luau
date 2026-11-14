@@ -38,7 +38,7 @@ local Steps: { Step } = {
 	-- Vague 36 (L-085 point 4, a121) : le vol entre joueurs, sur la boutique du bot (BotService). Ajoutées à la
 	-- fin, sans changer les numéros ni les Id d'avant (un Tutorial.Step sauvegardé garde son sens). Sautées
 	-- sans bot sur le serveur : le tuto finit alors à l'étape 10, comme avant. V0 proposés, absents du doc
-	-- (étapes, At, bulles). L'étape « le voir défendre sa base » attend la défense du bot (L-117 point 7).
+	-- (étapes, At, bulles). Vague 37 : le bot défend sa boutique sans étape nouvelle (bulle BotChase des Hints).
 	{ Index = 11, Id = "GoToBotShop", At = 10 * 60 + 30, Goal = "Flèche vers la porte de la boutique du bot", Bubble = "Steal from another shop!" },
 	{ Index = 12, Id = "StealFromBot", At = 10 * 60 + 60, Goal = "Casser la porte du bot et lui prendre un objet exposé", Bubble = "Break in and grab an item!" },
 	{ Index = 13, Id = "BringStolenHome", At = 10 * 60 + 90, Goal = "Ramener l'objet volé dans sa boutique (dépôt PvPService), fin du tuto", Bubble = "Bring it back to your shop!" },
@@ -127,6 +127,8 @@ local Tutorial = {
 		PlaceFloorItem = "Open your inventory, place it on the floor!", -- étapes 4 et 5 : objet sous antivol dans l'inventaire
 		WaitUnlock = "Guard it until it is UNLOCKED!", -- étape 5 : objet au sol, antivol en cours (volable)
 		DisplayUnlocked = "UNLOCKED! Now put it on display!", -- étape 5 : antivol fini, invite « Display »
+		-- Vague 37 (a124, V0 proposé, absent du doc) : étapes 12 et 13, le bot poursuit le joueur (BotService.IsChasing)
+		BotChase = "The bot is chasing you: run!",
 	} :: { [string]: string },
 
 	-- Flèche au sol de Clément (UI-006, pas encore livrée) : noms proposés, pas encore au contrat. Cherchés
