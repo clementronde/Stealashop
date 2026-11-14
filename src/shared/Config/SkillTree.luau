@@ -221,9 +221,20 @@ local Renamed: { [string]: SkillId } = {
 -- (n'importe où dans la parcelle, copies Stage_j comprises) ; une pièce peut aussi porter l'attribut
 -- ShowFromSkill = "<Id>" ou "<Id> <niveau>" (ex. "Cameras", "Cameras 2"), qui passe avant son nom.
 --   Cameras : Stage_5/Cameras du gabarit PLOT_Shop (5 caméras de Clément, décor du niveau 5 avant l'arbre).
-export type PlotVisual = { Id: SkillId, Level: number }
+--   Security et Alarm : Stage_5/Security (le digicode) et Stage_5/Alarm (le gyrophare), avec Cameras 1 comme les
+--     caméras (Clément, 2026-11-14, L-137 point 1).
+--   Walls : Stage_3/Walls (murs pleins et vitrines de façade), avec Walls 1 (Clément, 2026-11-14, L-137 point 3 :
+--     les murs suivent la tuile Walls, pas le niveau de la boutique).
+-- EveryStage = true : la pièce ne dépend pas du niveau de la boutique. Tant que la boutique est sous le niveau du
+-- Stage_j qui la contient dans le gabarit, ShopStageService en pose une copie à part (dossier SkillVisuals de la
+-- boutique), cachée ou montrée par ShopWallsService comme les autres ; à partir de ce niveau, c'est celle du
+-- Stage_j copié.
+export type PlotVisual = { Id: SkillId, Level: number, EveryStage: boolean? }
 local PlotVisuals: { [string]: PlotVisual } = {
 	Cameras = { Id = "Cameras", Level = 1 },
+	Security = { Id = "Cameras", Level = 1 },
+	Alarm = { Id = "Cameras", Level = 1 },
+	Walls = { Id = "Walls", Level = 1, EveryStage = true },
 }
 
 -- Base sans achat : réparation Balance (RegenPerSecond, 3 %) et coffre-fort offert Config/PvP.VaultSlots (1).
@@ -237,6 +248,7 @@ local SkillTree = {
 	HideFromWalls = "HideFromWalls",
 	ShowFromSkill = "ShowFromSkill", -- attribut d'une pièce de la parcelle (voir PlotVisuals)
 	PlotVisuals = PlotVisuals,
+	SkillVisualsFolder = "SkillVisuals", -- dossier de la boutique : copies EveryStage (V0 proposé, absent du doc)
 	AttributePrefix = "Skill_", -- attribut Skill_<Id> du joueur, posé par le serveur
 	RootTile = "RootTile", -- tuile centrale « UPGRADES » : rien ne s'y achète
 	NeverTile = "Tile_Next2", -- « ??? » qui ne s'ouvre jamais (maquette de Clément)

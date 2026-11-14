@@ -24,6 +24,11 @@
 --      (parcelle libérée : retour au niveau 1 ; renaissance en Partie 2) ;
 --   5. pose sur la boutique l'attribut `StageLevel` = k (nom V0 proposé, absent du doc) : UpgradeController
 --      (client) y lit où planter le panneau du niveau suivant (StageUpgradePoint, puis StageUpgradePoint_2).
+-- Visuels de compétence sans niveau de boutique (Config/SkillTree.PlotVisuals avec EveryStage, ex. Stage_3/Walls ;
+-- Clément, 2026-11-14, L-137 point 3) : pour chaque Stage_j du gabarit (j ≥ 2) au-dessus de k, chaque pièce de ce
+-- Stage_j qui porte un de ces noms est copiée à part (même pose, même recoloration, sans script) dans le dossier
+-- `SkillVisuals` de la boutique (SkillTree.SkillVisualsFolder) ; dès que k atteint j, cette copie est retirée (la
+-- pièce arrive avec la copie de Stage_j). Montrée ou cachée par ShopWallsService selon la compétence, pas ici.
 -- `Bounds` et `DepositZone` ne changent pas (grande taille dès le niveau 1, à décider avec Clément).
 --
 -- API (serveur) :
@@ -34,6 +39,8 @@
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+
+local SkillTree = require(ReplicatedStorage.Shared.Config.SkillTree)
 
 -- Noms de Clément (L-096, plot_shop_builder) ; StageLevel : V0 proposé, absent du doc.
 local TEMPLATE_NAME = "PLOT_Shop"
@@ -129,8 +136,9 @@ local function restoreOne(inst: Instance, before: { [string]: any })
 	end
 end
 
--- Copie de `source` (Stage_j du gabarit), recolorée, sans script, posée dans la boutique.
-local function placeCopy(plot: Model, template: Model, source: Instance)
+-- Copie de `source` (Stage_j du gabarit, ou une de ses pièces), recolorée, sans script, posée dans la boutique
+-- (rangée dans `parent`, la boutique elle-même par défaut).
+local function placeCopy(plot: Model, template: Model, source: Instance, parent: Instance?)
 	local copy = source:Clone()
 	local all = copy:GetDescendants()
 	table.insert(all, copy)
@@ -158,7 +166,41 @@ local function placeCopy(plot: Model, template: Model, source: Instance)
 		end
 	end
 	copy.Name = source.Name
-	copy.Parent = plot
+	copy.Parent = parent or plot
+end
+
+-- Visuels EveryStage (voir l'en-tête) : copie à part tant que la boutique est sous le Stage_j qui les contient.
+local function applyEveryStage(plot: Model, template: Model?, k: number)
+	local folder = plot:FindFirstChild(SkillTree.SkillVisualsFolder)
+	for name, visual in SkillTree.PlotVisuals do
+		if not visual.EveryStage then
+			continue
+		end
+		local existing = if folder then folder:FindFirstChild(name) else nil
+		local source: Instance? = nil
+		local fromStage = 0
+		if template then
+			for j, stage in stagesOf(template) do
+				local found = if j >= 2 then stage:FindFirstChild(name, true) else nil
+				if found and (source == nil or j < fromStage) then
+					source, fromStage = found, j
+				end
+			end
+		end
+		if source == nil or k >= fromStage then
+			if existing then
+				existing:Destroy()
+			end
+		elseif existing == nil then
+			if folder == nil then
+				local created = Instance.new("Folder")
+				created.Name = SkillTree.SkillVisualsFolder
+				created.Parent = plot
+				folder = created
+			end
+			placeCopy(plot, template :: Model, source, folder)
+		end
+	end
 end
 
 -- HideFromStage ≤ k caché (avec les descendants), le reste rendu à ses valeurs d'origine.
@@ -211,6 +253,7 @@ function ShopStageService.Apply(plot: Model, level: number): number
 			end
 		end
 	end
+	applyEveryStage(plot, template, k)
 	applyHide(plot, current, k)
 	if current.level ~= k and IS_STUDIO then
 		print(`[ShopStageService] {plot.Name} : boutique niveau {current.level} → {k}`)
