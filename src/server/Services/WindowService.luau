@@ -28,9 +28,10 @@
 --     fini > 0 pour les PV, ≥ 0 pour la réparation) reprend la valeur de base.
 --   - Chrono de casse, magasins PNJ seulement (Clément, L-074) : le premier coup lance un chrono de
 --     Balance.Window.BreakTimer s (13, V0), montré dans HeistTimer à chaque joueur qui frappe (même
---     remote que le chrono du braquage, même identifiant que le magasin). Cassée à temps : ce chrono
---     continue, c'est celui du vigile (L-118 point 9 : BreakInfo.ChronoEndsAt, repris par StoreHeistService ;
---     cassée d'un coup, il part à la casse). Sinon la vitre revient à ses PV max, chrono masqué et message à ceux qui
+--     remote que le chrono du braquage, même identifiant que le magasin, avec police = true : c'est le
+--     chrono de police, « POLICE IN 13s », Cantin 2026-11-14). Cassée à temps : il disparaît chez ceux qui
+--     ont frappé et StoreHeistService lance le chrono « HEIST » de Balance.Heist.Duration s (BreakInfo.ChronoEndsAt
+--     reste dans BreakInfo, plus lu par StoreHeistService). Sinon la vitre revient à ses PV max, chrono masqué et message à ceux qui
 --     ont frappé. Pas de régénération plus forte en plus : le chrono suffit contre la casse lente.
 --   - HitWindow(windowId) (9.4), ignoré si : vitrine inconnue, cassée ou incassable ; vitrine
 --     du joueur lui-même ; outil de casse pas en main ; plus de 10 studs entre le joueur et
@@ -440,6 +441,7 @@ local function breakWindow(window: Window, breaker: Player, impactPoint: Vector3
 	local chronoEndsAt = if window.Kind == "NPC"
 		then window.BreakEndsAt or Workspace:GetServerTimeNow() + Balance.Window.BreakTimer
 		else nil
+	local hitters = window.Hitters
 	window.BreakEndsAt = nil
 	window.Hitters = nil
 	window.Broken = true
@@ -468,6 +470,15 @@ local function breakWindow(window: Window, breaker: Player, impactPoint: Vector3
 			rebuild(window)
 		end
 	end)
+	-- Vague 40 (Cantin, 2026-11-14) : cassée à temps, le chrono de police disparaît chez ceux qui ont frappé ;
+	-- StoreHeistService (OnBroken, juste après, même remote et même identifiant) montre le chrono « HEIST ».
+	if hitters then
+		for hitter in hitters do
+			if hitter.Parent == Players then
+				Net.Server.HeistTimer:Fire(hitter, window.Id, 0)
+			end
+		end
+	end
 	emitBroken(window, breaker, impactPoint, chronoEndsAt)
 end
 
@@ -586,7 +597,7 @@ local function onHitWindow(player: Player, windowId: string)
 		window.Hitters = hitters
 		if not hitters[player] then
 			hitters[player] = true
-			Net.Server.HeistTimer:Fire(player, window.Id, endsAt)
+			Net.Server.HeistTimer:Fire(player, window.Id, endsAt, true) -- chrono de police (vague 40)
 		end
 	end
 	-- Avant la casse : le chiffre du coup qui casse part comme les autres (DEV-053).

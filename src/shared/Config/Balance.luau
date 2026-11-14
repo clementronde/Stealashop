@@ -88,7 +88,9 @@ local Balance = {
 
 	-- 5.3 et 9.4 : braquage d'un magasin PNJ
 	Heist = {
-		Duration = 10, -- chrono après la casse ; le rideau tombe à la fin
+		-- Chrono « HEIST » après la casse (Cantin, 2026-11-14, rééquilibrage v2 : 10 → 6 s). Il part à la casse
+		-- (il ne reprend plus la fin du chrono de police, Balance.Window.BreakTimer) ; le rideau tombe à la fin.
+		Duration = 6,
 		BreakerHeadStart = 1, -- avance exclusive du casseur (5.3, point 8 : proposition à valider en section 15)
 		MaxCarried = 1, -- un seul colis porté à la fois
 		GrabMaxDistance = 8, -- GrabItem (9.4)
@@ -101,6 +103,17 @@ local Balance = {
 		-- envois au même joueur (s).
 		OneAtATimeMessage = "Easy there, greedy! Finish your heist first.",
 		OneAtATimeCooldown = 3,
+	},
+
+	-- 9.5 : DataStore des profils joueurs (DataService), choisie selon le jeu Roblox (game.GameId).
+	-- Remise à zéro des profils de la place DEV (Cantin, 2026-11-14, rééquilibrage v2) : le jeu DEV lit une
+	-- autre DataStore, vide ; le jeu PROD (GameId 10774998269) et tout autre jeu gardent StoreName, à ne
+	-- jamais changer. L'ancienne DataStore « PlayerData » du jeu DEV n'est ni effacée ni modifiée : pour y
+	-- revenir, DevStoreName = "PlayerData". Pour une nouvelle remise à zéro du DEV : un nouveau nom.
+	Profiles = {
+		StoreName = "PlayerData", -- PROD : ne jamais le changer (un autre nom = profils vides)
+		DevGameId = 10774974820, -- « Steal a Shop [DEV] » (liaison, L-001)
+		DevStoreName = "PlayerData_DEV_20261114",
 	},
 
 	-- 5.4 : séquence de casse, simulée côté client

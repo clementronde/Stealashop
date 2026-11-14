@@ -11,8 +11,9 @@
 --     Speed affiche la vitesse de marche (attribut WalkSpeed : 16 au départ, formule 5.1 avec le
 --     trail), pas les points d'entraînement (attribut Speed) : c'est le nombre que comparent les
 --     panneaux des vitrines, les arches et le message du vigile (décision d'Ironix, 2026-11-07).
---   - HeistTimer : chrono du braquage (« HEIST: 7s »), visible pendant un vol, masqué le reste du
---     temps. Piloté par le remote HeistTimer(storeId, endsAt) que HeistController relaie (endsAt
+--   - HeistTimer : chrono du braquage (« HEIST: 6s »), visible pendant un vol, masqué le reste du
+--     temps. Vague 40 (Cantin, 2026-11-14) : pendant les coups sur la vitrine, le même élément montre le
+--     chrono de police (« POLICE IN 13s », remote HeistTimer avec police = true), puis « HEIST » à la casse. Piloté par le remote HeistTimer(storeId, endsAt) que HeistController relaie (endsAt
 --     en heure serveur, workspace:GetServerTimeNow() ; 0 = masquer). Plusieurs chronos à la fois
 --     (deux magasins proches) : celui qui finit le plus tard, donc le plus récent. Masqué tant que le
 --     joueur est poursuivi (ChaseController.IsChased) : « RUN! » prend sa place ; un chrono vu pendant la
@@ -89,8 +90,9 @@ local UiMotion = require(Config:WaitForChild("UiMotion"))
 
 -- Ce que ce contrôleur utilise de HeistController (a10) et de ChaseController (a12).
 type HeistApi = {
-	OnTimer: (listener: (storeId: string, endsAt: number) -> ()) -> () -> (),
+	OnTimer: (listener: (storeId: string, endsAt: number, police: boolean) -> ()) -> () -> (),
 	GetTimers: () -> { [string]: number },
+	IsPoliceTimer: ((storeId: string) -> boolean)?, -- vague 40 (facultatif : bancs plus anciens)
 }
 type ChaseApi = {
 	IsChased: () -> boolean,
@@ -169,8 +171,13 @@ local HEARTBEAT_SOUND = "Chase_Heartbeat"
 -- V0 proposé, absent du doc : texte d'une valeur pas encore posée par le serveur.
 local UNKNOWN_TEXT = "…"
 
--- V0 proposé, absent du doc : texte du chrono « HEIST: 7s », en anglais (L-036).
-local function timerText(seconds: number): string
+-- V0 proposé, absent du doc : texte du chrono « HEIST: 7s », en anglais (L-036). Chrono de police (vague 40,
+-- Cantin 2026-11-14, lancé au premier coup sur une vitrine) : « POLICE IN 13s », V0 proposé en attendant le
+-- choix de Clément (L-153 ; même élément HeistTimer, aucun UI_HUD.PoliceTimer dans le contrat).
+local function timerText(seconds: number, police: boolean): string
+	if police then
+		return `POLICE IN {seconds}s`
+	end
 	return `HEIST: {seconds}s`
 end
 
@@ -204,6 +211,8 @@ local timers: { [string]: number } = {} -- storeId → endsAt (heure serveur)
 -- 2026-11-13). Un nouveau chrono du même magasin (autre endsAt, nouvelle casse) se montre de nouveau.
 local muted: { [string]: number } = {}
 local shownSeconds: number? = nil -- secondes affichées par HeistTimer ; nil = masqué
+local policeTimers: { [string]: boolean } = {} -- storeId → chrono de police (vague 40)
+local shownPolice = false -- HeistTimer montre le chrono de police
 -- Couleur d'origine du texte de HeistTimer, gardée pendant qu'il est rouge (clés faibles : écran remplacé).
 local timerColors: { [TextLabel]: Color3 } = setmetatable({}, { __mode = "k" }) :: any
 local chased = false -- GuardMeter affiché
@@ -365,11 +374,17 @@ end
 
 -- Chrono du braquage --------------------------------------------------------------------------
 
-local function onTimer(storeId: string, endsAt: number)
+local function onTimer(storeId: string, endsAt: number, police: boolean?)
 	if endsAt > 0 then
 		timers[storeId] = endsAt
+		if police == true then
+			policeTimers[storeId] = true
+		else
+			policeTimers[storeId] = nil
+		end
 	else
 		timers[storeId] = nil
+		policeTimers[storeId] = nil
 		muted[storeId] = nil
 	end
 end
@@ -386,9 +401,11 @@ local function updateHeistTimer(current: Hud)
 	local api = chase
 	local hidden = api ~= nil and api.IsChased()
 	local endsAt: number? = nil
+	local police = false
 	for storeId, at in timers do
 		if at <= now then
 			timers[storeId] = nil -- fini : le rideau est tombé
+			policeTimers[storeId] = nil
 			muted[storeId] = nil
 		else
 			if hidden then
@@ -396,15 +413,20 @@ local function updateHeistTimer(current: Hud)
 			end
 			if muted[storeId] ~= at and (endsAt == nil or at > endsAt) then
 				endsAt = at
+				police = policeTimers[storeId] == true
 			end
 		end
 	end
 	local seconds = if endsAt and not hidden then math.ceil(endsAt - now) else nil
-	if seconds == shownSeconds then
+	if seconds == nil then
+		police = false
+	end
+	if seconds == shownSeconds and police == shownPolice then
 		return
 	end
 	local ticking = seconds ~= nil and shownSeconds ~= nil -- déjà affiché : une seconde de moins
 	shownSeconds = seconds
+	shownPolice = police
 	-- L-092 3c : rouge sous le seuil, couleur d'origine sinon (fin du vol, chrono remonté).
 	local red = seconds ~= nil and seconds <= UiMotion.TimerTick.RedBelow
 	local original: Color3? = timerColors[label]
@@ -416,7 +438,7 @@ local function updateHeistTimer(current: Hud)
 		label.TextColor3 = original
 	end
 	if seconds then
-		label.Text = timerText(seconds)
+		label.Text = timerText(seconds, police)
 		Motion.Show(label)
 		if ticking then
 			-- TimerTick (L-091 point 7) : sursaut et tic à chaque seconde.
@@ -660,8 +682,9 @@ function HudController.Start()
 	local heistApi = heist
 	if heistApi then
 		heistApi.OnTimer(onTimer)
+		local isPolice = heistApi.IsPoliceTimer
 		for storeId, endsAt in heistApi.GetTimers() do
-			onTimer(storeId, endsAt)
+			onTimer(storeId, endsAt, isPolice ~= nil and isPolice(storeId))
 		end
 	end
 

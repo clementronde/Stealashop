@@ -1,5 +1,5 @@
 --!strict
--- StoreHeistService (DEV-015) : braquage des magasins PNJ, chrono de 10 s, rideau, rayons et
+-- StoreHeistService (DEV-015) : braquage des magasins PNJ, chrono HEIST (Balance.Heist.Duration, 6 s), rideau, rayons et
 -- tirage des colis (Partie 1, sections 5.3, 5.5, 5.6, 5.7, 5.11, 5.12, 7.3 et 9.4 ; question
 -- « Vitrine PNJ partagée » de la section 15 ; règles des colis de Clément, liaison L-031 et L-033,
 -- acceptées par Ironix le 2026-11-07).
@@ -48,7 +48,7 @@
 --     garde la même étiquette (CarryService). ShelfBoxController (client) ne montre que celles des
 --     colis en vue et ne garde que 25 contours.
 --   - Casse (WindowService.OnBroken, vitrine d'un magasin PNJ) : le magasin ouvre pour
---     Balance.Heist.Duration (10 s). Vitrine partagée (proposition de 5.3 point 8 et de la
+--     Balance.Heist.Duration (6 s depuis le 2026-11-14). Vitrine partagée (proposition de 5.3 point 8 et de la
 --     section 15) : tout le monde peut entrer ; le casseur a Balance.Heist.BreakerHeadStart
 --     (1 s) d'avance exclusive pour prendre un colis. HeistTimer(storeId, endsAt) part au
 --     casseur et aux joueurs à TIMER_RADIUS studs ou moins du magasin, puis à ceux qui
@@ -96,7 +96,7 @@
 --   - Un seul braquage à la fois (a70, Cantin 2026-11-11, L-099 point 3 ; WindowService.AddHitGate) :
 --     un joueur dont le braquage n'est pas fini ne fait aucun dégât à la vitrine d'un AUTRE magasin
 --     PNJ, et reçoit Balance.Heist.OneAtATimeMessage, au plus une fois toutes les
---     Balance.Heist.OneAtATimeCooldown s. Braquage en cours (V0) : le chrono de 10 s d'un magasin dont
+--     Balance.Heist.OneAtATimeCooldown s. Braquage en cours (V0) : le chrono HEIST d'un magasin dont
 --     il a cassé la vitrine (Breaker) tourne encore, ou il porte un colis PNJ (de n'importe quel
 --     magasin). La poursuite du vigile de jour ne finit qu'avec le portage (capture, zone safe, colis
 --     posé, tombé ou perdu) : « porte un colis » la couvre. Braquage fini = chrono fini et mains vides
@@ -153,9 +153,9 @@
 -- n'existe.
 --   - Règle du braquage (Clément, L-118 points 8 et 9, 2026-11-13 ; remplace le chrono de 10 s après la
 --     casse) : (a) pendant la casse, vitrine pas cassée avant que le « ? » des témoins soit plein : la
---     police vient (WitnessService), et elle renvoie à la base. (b) Le chrono du vigile part au PREMIER
---     coup sur la vitrine (Balance.Window.BreakTimer, WindowService : BreakInfo.ChronoEndsAt) et continue
---     après la casse ; il est montré à chaque intrus (entré dans Bounds pendant cette ouverture : Entered),
+--     police vient (WitnessService), et elle renvoie à la base. (b) Le chrono du vigile (« HEIST ») part à
+--     la casse et dure Balance.Heist.Duration (Cantin, 2026-11-14 : 6 s ; avant, il reprenait la fin du chrono
+--     lancé au premier coup, qui est maintenant le chrono de police de WindowService) ; il est montré à chaque intrus (entré dans Bounds pendant cette ouverture : Entered),
 --     dedans ou dehors, objet ou non. Entre la casse et la fin du chrono, tout le monde peut entrer. À la
 --     fin du chrono (chronoEnd) : GuardService.ChaseIntruder pour chaque intrus ENCORE DANS le magasin (a114,
 --     Cantin 2026-11-13 : ceux qui en sont sortis avec un objet ont déjà le vigile de leur prise), même sans
@@ -262,7 +262,7 @@
 --       tout de suite (les magasins ouverts sont remplis à leur fermeture, pas comptés). Pour
 --       NightCycleService (la nuit, 5.12).
 --   StoreHeistService.IsOpen(store) -> boolean
---       store = le Model du magasin ou son StoreId. true pendant les 10 s du chrono.
+--       store = le Model du magasin ou son StoreId. true pendant le chrono (Balance.Heist.Duration).
 --   StoreHeistService.OnBoxGrabbed(listener) -> déconnexion
 --       listener(player, payload) après chaque prise réussie (CarryService.StartCarry a accepté).
 --   StoreHeistService.ReturnBox(payload, from?) -> boolean
@@ -1514,7 +1514,7 @@ local function shutterBlocker(store: Store): string?
 	-- L-112 (V0, précision de l'équilibrage, même esprit que L-064) : le rideau ne tombe pas tant qu'une
 	-- ouverture lancée dans ce magasin n'est pas finie et que la réservation de son objet sorti
 	-- (ShelfReservedUntil) n'est pas passée ; sinon un gros tirage (6 à 8,4 s de montée) ne pourrait
-	-- jamais être pris dans les 10 s du chrono.
+	-- jamais être pris pendant le chrono.
 	if storeBusy(store) then
 		return "ouverture en cours ou objet sorti encore réservé"
 	end
@@ -1888,14 +1888,15 @@ local function anyoneInside(store: Store): boolean
 	return false
 end
 
--- `endsAt` (L-118 point 9, Features.ShelfOpen) : fin du chrono du vigile lancé au premier coup sur la
--- vitrine (WindowService) ; sans lui, Balance.Heist.Duration s à partir de maintenant.
-local function openStore(store: Store, breaker: Player?, endsAt: number?)
+-- Chrono « HEIST » : Balance.Heist.Duration s à partir de la casse (Cantin, 2026-11-14, rééquilibrage v2 :
+-- 6 s ; remplace L-118 point 9, où il reprenait la fin du chrono lancé au premier coup, devenu le chrono de
+-- police de WindowService).
+local function openStore(store: Store, breaker: Player?)
 	if store.Open then
 		return
 	end
 	local now = Workspace:GetServerTimeNow()
-	local duration = if SHELF_OPEN and endsAt then math.max(endsAt - now, 0) else Balance.Heist.Duration
+	local duration = Balance.Heist.Duration
 	store.Open = true
 	store.Token += 1
 	local token = store.Token
@@ -2914,7 +2915,7 @@ local function onBroken(info: WindowService.BreakInfo)
 	if store == nil then
 		return
 	end
-	openStore(store, info.Breaker, info.ChronoEndsAt)
+	openStore(store, info.Breaker)
 end
 
 -- Un seul braquage à la fois (voir l'en-tête) : le magasin du braquage en cours de `player` qui
