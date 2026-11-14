@@ -455,7 +455,32 @@ end
 
 local checkParts: (category: string, root: Instance, label: string, parts: { Part }) -> ()
 
-local function checkFound(category: string, inst: Instance, shown: string, part: Part)
+-- Vague 42 (InBounds) : position de l'élément, et s'il est dans la boîte englobante de `root`.
+local function inBoundsOf(root: Instance, inst: Instance): boolean
+	local position: Vector3? = nil
+	if inst:IsA("Attachment") then
+		position = (inst :: Attachment).WorldPosition
+	elseif inst:IsA("PVInstance") then
+		position = (inst :: PVInstance):GetPivot().Position
+	end
+	if position == nil or not (root:IsA("Model") or root:IsA("BasePart")) then
+		return true -- rien à mesurer
+	end
+	local cframe: CFrame, size: Vector3
+	if root:IsA("Model") then
+		cframe, size = (root :: Model):GetBoundingBox()
+	else
+		cframe, size = (root :: BasePart).CFrame, (root :: BasePart).Size
+	end
+	local p = cframe:PointToObjectSpace(position :: Vector3)
+	local margin = 1e-3
+	return math.abs(p.X) <= size.X / 2 + margin and math.abs(p.Y) <= size.Y / 2 + margin and math.abs(p.Z) <= size.Z / 2 + margin
+end
+
+local function checkFound(category: string, inst: Instance, shown: string, part: Part, root: Instance)
+	if part.InBounds and not inBoundsOf(root, inst) then
+		warning(category, `{shown} est hors de la boîte du modèle : il doit être à l'intérieur`)
+	end
 	local class = part.Class
 	if class and not inst:IsA(class) then
 		problem(category, `{shown} doit être un {class} (trouvé : {inst.ClassName})`)
@@ -501,7 +526,7 @@ local function checkSeries(category: string, root: Instance, label: string, part
 			if #found > 1 then
 				problem(category, `{label} : {#found} éléments nommés {name}, un seul attendu`)
 			end
-			checkFound(category, found[1], `{label}.{name}`, part)
+			checkFound(category, found[1], `{label}.{name}`, part, root)
 			local tier = found[1]:GetAttribute(Attributes.Tier.Name)
 			if type(tier) == "string" then
 				byTier[tier] = (byTier[tier] or 0) + 1
@@ -512,7 +537,12 @@ local function checkSeries(category: string, root: Instance, label: string, part
 	end
 
 	local noteText = if part.Note then ` ({part.Note})` else ""
-	if #missing > 0 and #missing == min - from + 1 then
+	if #missing > 0 and part.Optional then
+		-- Vague 42 : série facultative, le code a un repli : un avertissement (orange), jamais un problème.
+		local whole = #missing == min - from + 1
+		local names = if whole then `{seriesName(part, from)} à {seriesName(part, min)}` else listNames(missing)
+		warning(category, `{label} : {names} introuvable(s){noteText}`)
+	elseif #missing > 0 and #missing == min - from + 1 then
 		return `{seriesName(part, from)} à {seriesName(part, min)}`
 	elseif #missing > 0 then
 		problem(category, `{label} : {listNames(missing)} introuvable(s){noteText}`)
@@ -591,7 +621,7 @@ checkParts = function(category: string, root: Instance, label: string, parts: { 
 				if #found > 1 then
 					problem(category, `{label} : {#found} éléments nommés {part.Name}, un seul attendu`)
 				end
-				checkFound(category, found[1], `{label}.{part.Name}`, part)
+				checkFound(category, found[1], `{label}.{part.Name}`, part, root)
 			end
 		end
 	end

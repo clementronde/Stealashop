@@ -3,7 +3,7 @@
 -- tâche du backlog). Très rarement, une énorme vitrine apparaît en zone 6 (la Fortune Tower), pleine
 -- d'objets énormes et très rares ; il faut s'y mettre à plusieurs pour la casser. Lu par
 -- FortuneTowerService (serveur) et FortuneTowerController (client) ; interrupteur :
--- Config/Features.FortuneTower (false tant que Clément n'a pas validé la proposition).
+-- Config/Features.FortuneTower (true depuis la validation de Clément, L-145 réponse (a), 2026-11-14).
 --
 -- Le doc ne fixe aucune valeur : TOUTES sont des « V0 proposé, absent du doc », tirées des valeurs
 -- existantes (camion : Config/TruckEvent ; zones : Config/Zones ; chances : Config/Rarities ; tailles :
@@ -99,20 +99,31 @@ local FortuneTower = {
 
 	-- Butin -------------------------------------------------------------------------------------------
 	-- Un colis Luxe (la caisse cerclée d'or, temps de prise 1 s de Balance.Heist.BoxTiers) par joueur d'un
-	-- serveur plein (8, doc section 1), posé au sol devant la vitrine à la casse, ramassable par tous.
-	LootCount = 8, -- V0 proposé, absent du doc
-	LootTier = "Luxe", -- V0 proposé, absent du doc
-	-- Objets tirés dans la zone 6 (Items.Pick) ; le Secret et le Divine sont toutes zones (Items.AllZones).
-	-- Attention : la zone 6 n'a qu'un objet Mythique (Ultimate Vault Key), voir le rapport pour Clément.
-	LootZone = ZONE,
+	-- serveur plein (8, doc section 1), posé à la casse sur les points LootSpawn_NN à l'intérieur du coffre
+	-- (L-145 réponse (c) de Clément, 2026-11-14 : on entre dans le coffre), ramassable par tous.
+	LootCount = 8, -- V0 validé par Clément (L-145 réponse (a), 2026-11-14)
+	LootTier = "Luxe", -- V0 validé par Clément (L-145 réponse (a))
+	-- Zones dont les objets Mythiques (et toute rareté rangée par zone) peuvent sortir d'un colis : 2 à 6
+	-- (L-145 réponse (b) de Clément, 2026-11-14 : la zone 6 n'a qu'un Mythique). Lu dans le catalogue
+	-- (Items.ByZone) : un objet ajouté à Config/Items en zone 2 à 6 sort de lui-même. Le Secret et le Divine
+	-- sont toutes zones (Items.AllZones). Un colis porte la zone de son objet (règle de CarryService).
+	LootZones = { 2, 3, 4, 5, ZONE },
 	RarityOdds = lootOdds(), -- { Mythic = 90, Secret = 10, Divine = 0 }
+	-- Vague 42 : les colis s'ouvrent sur place comme sur un rayon (Cantin) : RarityOdds y tire la rareté de la
+	-- CAISSE, minimum de l'objet (la chance ne fait que monter) ; SizeOdds y remplace le tirage de taille du
+	-- rayon (L-145 (a), valeurs validées par Clément).
 	SizeOdds = sizeOdds(), -- { Huge = 80, Colossal = 20 }
 	BoxLifetime = TruckEvent.BoxLifetime, -- 60 s au sol, comme les colis du camion, puis il disparaît
-	-- Sans points LootSpawn_NN dans le modèle de Clément : une rangée devant la face avant, à LootDistance
-	-- studs d'elle, un colis tous les LootSpacing studs.
+	-- Point LootSpawn_NN : le colis est posé sur la première surface sous lui (le sol du coffre), cherchée
+	-- par un rayon parti LootRayUp studs au-dessus du point (V0 proposé, absent du doc : un point posé
+	-- au ras du sol, ou un peu dedans, trouve quand même ce sol).
+	LootRayUp = 1,
+	-- Sans points LootSpawn_NN dans le modèle de Clément (ou bloc V0) : une rangée devant la face avant, à
+	-- LootDistance studs d'elle, un colis tous les LootSpacing studs.
 	LootDistance = TruckEvent.ScatterMinRadius, -- 6 studs, l'écart minimal des colis du camion
 	LootSpacing = TruckEvent.BoxFallbackWidth + 2 * TruckEvent.BoxGap, -- 2 + 2 × 1 = 4 studs, centre à centre
-	-- La vitrine ouverte reste aussi longtemps que son butin peut rester au sol, puis elle est retirée.
+	-- La vitrine ouverte reste aussi longtemps que son butin peut rester au sol, puis elle est retirée (un
+	-- joueur encore dedans est d'abord posé PushMargin studs devant elle).
 	RemoveDelay = TruckEvent.BoxLifetime,
 
 	-- Place -------------------------------------------------------------------------------------------
@@ -120,7 +131,9 @@ local FortuneTower = {
 	-- ComputedOffset studs plus loin dans le couloir, là où le camion ne se pose pas (le camion se pose au
 	-- milieu, 34 studs de long : demi-longueur 17 + 13 de marge = 30), face aux joueurs qui arrivent.
 	ComputedOffset = 30,
-	PushMargin = 3, -- V0 proposé, absent du doc : joueur pris dans la vitrine à l'apparition, posé à 3 studs devant elle
+	-- V0 proposé, absent du doc : joueur pris dans la vitrine à l'apparition, ou encore dedans quand elle se
+	-- referme ou est retirée, posé à 3 studs devant elle (jamais enfermé).
+	PushMargin = 3,
 
 	-- Bloc V0 (Studio seulement, tant qu'ENV_Event_FortuneVault n'est pas livré) : vitre de 24 × 16 studs
 	-- (8 joueurs de front, 3 studs d'épaule chacun) dans un cadre doré de 8 studs de profondeur.
