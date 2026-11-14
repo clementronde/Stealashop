@@ -41,6 +41,10 @@ Tags.List = {
 	-- Un mur géant à l'entrée du couloir (section 5.12).
 	{ Tag = "NightWall", Count = 1, For = "mur de nuit" },
 	{ Tag = "NightPatrol", For = "points de ronde des vigiles de nuit" },
+	-- Vague 42 (L-145 (d), 2026-11-14) : point d'apparition de la vitrine de la Fortune Tower (pièce, Attachment
+	-- ou Model, en zone 6), posé par Clément. Facultatif : sans lui, FortuneTowerService calcule la place ;
+	-- pas encore posé, il est dans la ligne « Tags pas encore posés » (jamais un problème).
+	{ Tag = "FortuneVaultSpawn", For = "point d'apparition de la vitrine de la Fortune Tower (facultatif)" },
 } :: { TagSpec }
 
 return Tags
