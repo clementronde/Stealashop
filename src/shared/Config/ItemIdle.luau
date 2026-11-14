@@ -24,7 +24,19 @@ local ItemIdle = {
 	-- Plus loin de la caméra, l'objet reprend sa position de repos et n'est plus animé (9.7, pour le
 	-- mobile), comme les halos de DisplayController (120 studs) et les auras (CosmeticController, 60).
 	MaxDistance = 80, -- V0 : studs
-	DistanceCheckInterval = 0.25, -- V0 : secondes entre deux tris par distance
+	DistanceCheckInterval = 0.25, -- V0 : secondes entre deux tris par distance (et contrôles « à l'écran »)
+	-- Vague 39 (optimisation téléphone, audit perf-telephone.md, correction 1) : de près, rien ne change.
+	-- Entre NearDistance et MaxDistance, l'objet n'est replacé que toutes les FarInterval s (le mouvement
+	-- reste calculé depuis l'instant : il saccade un peu, il ne ralentit pas). FarInterval = 0 : chaque
+	-- image, comme avant.
+	NearDistance = 30, -- V0 proposé, absent du doc : studs
+	FarInterval = 1 / 15, -- V0 proposé, absent du doc : secondes (15 images par seconde au-delà de 30 studs)
+	-- Un objet hors de l'écran (derrière la caméra, sur le côté) n'est pas animé : il garde sa dernière
+	-- pose et repart au prochain contrôle où il est en vue. Son rayon (pièces animées) est agrandi de
+	-- ScreenMargin studs pour qu'un objet au bord de l'écran reste animé. false : animé hors de l'écran,
+	-- comme avant.
+	OnScreenOnly = true, -- V0 proposé, absent du doc
+	ScreenMargin = 2, -- V0 proposé, absent du doc : studs
 }
 
 export type ItemIdle = typeof(ItemIdle)
