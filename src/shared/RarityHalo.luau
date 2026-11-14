@@ -181,13 +181,20 @@ type DisplaySpec = {
 	Size: number, -- taille d'une particule à sa naissance, en studs
 	Rays: number, -- rayons de lumière derrière l'objet (0 = aucun)
 }
+-- L-142 (revue « trop lumineux » de Clément, docs/claude/notes/revue-lumiere.md, point 4) : lumière à environ un
+-- tiers (0,3 / 0,5 / 0,8 / 1 / 1,2, valeurs de Clément), portée de 4 à 10 (Clément : les deux bouts ; 5, 7,5 et 9
+-- entre les deux, V0 proposés, à l'échelle des anciennes 6 à 16), particules à Rate divisé par 2 (Clément).
 local DISPLAY_HALOS: { [string]: DisplaySpec } = {
-	Light = { Brightness = 0.8, Range = 6, Rate = 3, Size = 0.2, Rays = 0 }, -- Peu commun
-	Clear = { Brightness = 1.5, Range = 8, Rate = 8, Size = 0.3, Rays = 0 }, -- Rare, Épique
-	Rays = { Brightness = 2.5, Range = 12, Rate = 14, Size = 0.35, Rays = 8 }, -- Légendaire, Mythique
-	Rainbow = { Brightness = 3, Range = 14, Rate = 20, Size = 0.4, Rays = 10 }, -- Secret
-	Divine = { Brightness = 3.5, Range = 16, Rate = 24, Size = 0.45, Rays = 12 }, -- Divine (L-106)
+	Light = { Brightness = 0.3, Range = 4, Rate = 1.5, Size = 0.2, Rays = 0 }, -- Peu commun
+	Clear = { Brightness = 0.5, Range = 5, Rate = 4, Size = 0.3, Rays = 0 }, -- Rare, Épique
+	Rays = { Brightness = 0.8, Range = 7.5, Rate = 7, Size = 0.35, Rays = 8 }, -- Légendaire, Mythique
+	Rainbow = { Brightness = 1, Range = 9, Rate = 10, Size = 0.4, Rays = 10 }, -- Secret
+	Divine = { Brightness = 1.2, Range = 10, Rate = 12, Size = 0.45, Rays = 12 }, -- Divine (L-106)
 }
+-- L-142 (Clément) : particules et rayons moins émissifs, rayons plus transparents (0,35 avant).
+local SPARKLE_EMISSION = 0.3
+local RAY_EMISSION = 0.3
+local RAY_TRANSPARENCY = 0.6
 local HALO_MARGIN = 0.3 -- écart entre l'objet et le volume d'où partent les particules
 local PARTICLE_LIFETIME = NumberRange.new(0.9, 1.5)
 local PARTICLE_SPEED = NumberRange.new(0.3, 0.8)
@@ -252,7 +259,7 @@ function RarityHalo.AddDisplayed(model: Model, rarity: Rarity, boxCFrame: CFrame
 	local sparkles = Instance.new("ParticleEmitter")
 	sparkles.Name = "HaloSparkles"
 	sparkles.Color = RarityHalo.Sequence(colors)
-	sparkles.LightEmission = 1
+	sparkles.LightEmission = SPARKLE_EMISSION
 	sparkles.LightInfluence = 0
 	sparkles.Rate = spec.Rate
 	sparkles.Lifetime = PARTICLE_LIFETIME
@@ -288,8 +295,8 @@ function RarityHalo.AddDisplayed(model: Model, rarity: Rarity, boxCFrame: CFrame
 			beam.Color = ColorSequence.new(colors[(i - 1) % #colors + 1])
 			beam.Width0 = RAY_START_WIDTH
 			beam.Width1 = radius * RAY_END_WIDTH
-			beam.Transparency = fade(0.35, 1)
-			beam.LightEmission = 1
+			beam.Transparency = fade(RAY_TRANSPARENCY, 1)
+			beam.LightEmission = RAY_EMISSION
 			beam.LightInfluence = 0
 			beam.FaceCamera = true
 			beam.Segments = 1

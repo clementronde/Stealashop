@@ -24,7 +24,7 @@ local TreadmillFX = {
 	-- Candy, FF4FA3 pour CandyGlow) et vont vers To de Amount·p.
 	Gold = {
 		HaloSpeed = 1.1, -- rotation de GoldFX.Halo1 à 4 autour de Y (impairs −, pairs +)
-		WingLight = { Min = 1.2, Max = 2.2, Omega = 3 },
+		WingLight = { Min = 1.2, Max = 1.2, Omega = 3 }, -- L-142 (Clément) : Max 2,2 → 1,2
 		GlowTint = 0.3, -- V0 : GoldGlow va de sa couleur vers le blanc de 0,3·p (« faire pulser »)
 		GlowOmega = 3, -- V0
 	},
@@ -41,7 +41,7 @@ local TreadmillFX = {
 		FlashTime = 0.12,
 		BlueOffset = 0.45,
 		DimFactor = 0.65, -- SirenRed / SirenBlue assombries à 65 % hors flash
-		LightOn = 6, -- PoliceFX.Light_*.Light pendant un flash (0 sinon)
+		LightOn = 2, -- PoliceFX.Light_*.Light pendant un flash (0 sinon) ; L-142 (Clément) : 6 → 2
 		SweepSpeed = 4.5, -- Sweep_red et Sweep_blue autour de Y, sens opposés
 		TrailOffset = Vector3.new(0.9, -0.5, 0.4), -- attaches du RunTrail sur le HumanoidRootPart (±X)
 	},
@@ -49,7 +49,7 @@ local TreadmillFX = {
 		AlarmRate = 9, -- a = max(0, sin(rate·t))², 9 en course
 		AlarmLow = Color3.fromHex("3A0A10"),
 		AlarmHigh = Color3.fromHex("FF3B5C"),
-		AlarmLight = 3, -- Alarm*.Light = 3a
+		AlarmLight = 1.5, -- Alarm*.Light = 1,5a ; L-142 (Clément) : 3 → 1,5
 		FlashAbove = 0.9, -- Emit(1) des Alarm*.Flash quand a > 0,9…
 		FlashGap = 0.3, -- … au plus une fois toutes les 0,3 s
 		BeamFlicker = { Min = 0.05, Max = 0.13 }, -- transparence des Beam
