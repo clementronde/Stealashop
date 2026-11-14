@@ -16,10 +16,11 @@ local DeepFreeze = require(script.Parent.DeepFreeze)
 -- Une récompense :
 --   Cash   Minutes minutes de revenus (revenu par seconde du joueur au moment où il réclame, bonus
 --          compris, comme le HUD), au moins MinCashPerMinute $ par minute ;
---   Box    un colis Tier mis dans l'inventaire (un Tool de la barre, à poser au sol de sa boutique) :
---          zone = la plus haute parmi les objets du joueur (zone 1 sans objet), au moins MinZone ;
---          rareté tirée avec les probabilités de ce type de colis dans cette zone, seulement parmi
---          MinRarity et au-dessus si MinRarity est donné ;
+--   Box    l'objet d'un colis Tier, donné tout de suite dans l'inventaire (vague 43, Cantin du 2026-11-14 :
+--          plus de colis à ouvrir en base ; UnboxService.GiveItem) : zone = la plus haute parmi les objets
+--          du joueur (zone 1 sans objet), au moins MinZone ; rareté tirée avec les probabilités de ce type
+--          de colis dans cette zone, seulement parmi MinRarity et au-dessus si MinRarity est donné ; objet
+--          de cette rareté dans la zone, mutation et taille tirées comme à la mise en rayon ;
 --   Boost  boost ×2 argent pendant Minutes minutes (MonetizationService.AddCashBoost : compté seulement
 --          en jeu, un 2e boost prolonge le 1er).
 export type RewardKind = "Cash" | "Box" | "Boost"
@@ -92,7 +93,9 @@ local Rewards = {
 	-- Messages au joueur (Notify), en anglais (L-036). V0 proposés, absents du doc.
 	Messages = {
 		Cash = "+%s cash!", -- %s = la somme (Format.money)
-		Box = "%s Box added to your inventory!", -- %s = le type (« Standard »)
+		Box = "%s Box added to your inventory!", -- %s = le type (« Standard ») ; plus utilisé depuis la vague 43
+		Item = "%s Item: %s", -- vague 43 : %s = la rareté (« Rare »), puis le nom de l'objet, mutation comprise
+		ItemsFull = "Your inventory is full: display or sell an item, then claim your gift.", -- vague 43
 		Boost = "×2 Cash for %d min!",
 		AlreadyClaimed = "Already claimed today. Come back tomorrow!",
 		NotYet = "Keep playing to unlock this gift.",

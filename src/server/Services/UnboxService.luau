@@ -178,6 +178,13 @@
 --       nil et la raison : "NoProfile", "InventoryFull" (rien n'est écrit : la récompense reste à
 --       réclamer), "Invalid" (type, zone ou rareté inconnus), "NoContent" (aucune rareté possible). Sans
 --       yield.
+--   UnboxService.GiveItem(player, tier, zone, minRarity?) -> (string?, string?, string?)
+--       Vague 43 (récompenses, RewardService) : le même tirage que GiveBox (rareté, objet, mutation et taille),
+--       puis les crans d'amélioration de l'ouverture en base (rollUpgrades, GetLuck : 10 % par cran, 2 au
+--       plus), et l'objet entre tout de suite dans Items (Source « NPC », Zone, Mutation ; sans antivol),
+--       IndexService.Discover, inventaire remis à jour. Inventaire plein
+--       (DisplayService.HasInventoryRoom) : rien n'est écrit. Renvoie (uid de l'objet, nil, ItemId), ou nil et
+--       la raison : "NoProfile", "InventoryFull", "Invalid", "NoContent". Sans yield.
 --   UnboxService.GetBoxPosition(player, boxUid) -> Vector3?
 --       Point du monde (pied du colis) d'un colis posé au sol et affiché ; nil sinon (tutoriel).
 --   Boutique Robux (DEV-100, MonetizationService : « Ouvrir maintenant », « Ouverture rapide ») :
@@ -2082,14 +2089,36 @@ local function drawGiftRarity(zone: number, tier: string, minOrder: number): str
 	return last -- arrondi des nombres à virgule : la dernière rareté possible
 end
 
+-- Le type, la zone et la rareté minimale d'un don sont-ils connus ? (avertissement sinon)
+local function validGift(player: Player, what: string, tier: string, zone: number, minRarity: string?): boolean
+	local minimum = if minRarity ~= nil then Rarities.ById[minRarity] else nil
+	if Balance.Heist.BoxTiers[tier] == nil or Zones[zone] == nil or (minRarity ~= nil and minimum == nil) then
+		warn(`[UnboxService] {what} ({player.Name}) : colis {tostring(tier)} zone {tostring(zone)} rareté {tostring(minRarity)} inconnu`)
+		return false
+	end
+	return true
+end
+
+-- Contenu d'un colis offert (GiveBox, et GiveItem qui donne l'objet tout de suite) : rareté (drawGiftRarity),
+-- objet de cette rareté dans la zone (Items.Pick), mutation tirée comme à la mise en rayon (DEV-131).
+-- nil (avertissement une fois) si aucune rareté n'est possible.
+local function drawGift(tier: string, zone: number, minRarity: string?): (string?, Items.Item?, Mutations.Mutation?)
+	local minimum = if minRarity ~= nil then Rarities.ById[minRarity] else nil
+	local rarityId = drawGiftRarity(zone, tier, if minimum then minimum.Order else 0)
+	local item = if rarityId then Items.Pick(zone, rarityId :: Rarities.RarityId, random) else nil
+	if rarityId == nil or item == nil then
+		warnOnce(`gift.{tier}.{zone}.{tostring(minRarity)}`, `colis offert {tier} zone {zone} (au moins {tostring(minRarity)}) : aucune rareté possible (Config)`)
+		return nil, nil, nil
+	end
+	return rarityId, item, if item.TutorialOnly then nil else Mutations.Roll(random)
+end
+
 function UnboxService.GiveBox(player: Player, tier: string, zone: number, minRarity: string?): (string?, string?)
 	local data = DataService.Get(player)
 	if data == nil or type(data.Boxes) ~= "table" then
 		return nil, "NoProfile"
 	end
-	local minimum = if minRarity ~= nil then Rarities.ById[minRarity] else nil
-	if Balance.Heist.BoxTiers[tier] == nil or Zones[zone] == nil or (minRarity ~= nil and minimum == nil) then
-		warn(`[UnboxService] GiveBox ({player.Name}) : colis {tostring(tier)} zone {tostring(zone)} rareté {tostring(minRarity)} inconnu`)
+	if not validGift(player, "GiveBox", tier, zone, minRarity) then
 		return nil, "Invalid"
 	end
 	local stored = countBoxes(data)
@@ -2097,10 +2126,8 @@ function UnboxService.GiveBox(player: Player, tier: string, zone: number, minRar
 		log(`{player.Name} : {stored} colis dans l'inventaire, colis offert {tier} pas donné`)
 		return nil, "InventoryFull"
 	end
-	local rarityId = drawGiftRarity(zone, tier, if minimum then minimum.Order else 0)
-	local item = if rarityId then Items.Pick(zone, rarityId :: Rarities.RarityId, random) else nil
+	local rarityId, item, mutation = drawGift(tier, zone, minRarity)
 	if rarityId == nil or item == nil then
-		warnOnce(`gift.{tier}.{zone}.{tostring(minRarity)}`, `colis offert {tier} zone {zone} (au moins {tostring(minRarity)}) : aucune rareté possible (Config)`)
 		return nil, "NoContent"
 	end
 	local box: Box = {
@@ -2109,7 +2136,7 @@ function UnboxService.GiveBox(player: Player, tier: string, zone: number, minRar
 		ItemId = item.Id,
 		Rarity = rarityId,
 		ReadyAt = nil,
-		Mutation = if item.TutorialOnly then nil else Mutations.Roll(random), -- comme la mise en rayon (DEV-131)
+		Mutation = mutation,
 		Spot = nil,
 		At = os.time(),
 	}
@@ -2118,6 +2145,50 @@ function UnboxService.GiveBox(player: Player, tier: string, zone: number, minRar
 	log(`{player.Name} : colis offert {tier} {rarityId} (zone {zone}) mis dans l'inventaire ({boxUid})`)
 	refreshInventory(player)
 	return boxUid, nil
+end
+
+-- Vague 43 (Cantin, 2026-11-14 : « qu'on récupère des items à la place des box ») : le contenu d'un colis
+-- offert (drawGift, le même tirage que GiveBox) entre tout de suite dans l'inventaire comme un objet.
+function UnboxService.GiveItem(player: Player, tier: string, zone: number, minRarity: string?): (string?, string?, string?)
+	local data = DataService.Get(player)
+	if data == nil or type(data.Items) ~= "table" then
+		return nil, "NoProfile", nil
+	end
+	if not validGift(player, "GiveItem", tier, zone, minRarity) then
+		return nil, "Invalid", nil
+	end
+	local roomOk, room = pcall(DisplayService.HasInventoryRoom, player)
+	if not (roomOk and room == true) then
+		log(`{player.Name} : inventaire plein, objet offert ({tier}) pas donné`)
+		return nil, "InventoryFull", nil
+	end
+	local rarityId, item, mutation = drawGift(tier, zone, minRarity)
+	if rarityId == nil or item == nil then
+		return nil, "NoContent", nil
+	end
+	-- Amélioration du colis, comme à son ouverture en base (OpenBox) : rollUpgrades avec la chance du joueur
+	-- (UpgradeChance 10 % par cran, UpgradeMax 2), puis un objet de la rareté atteinte. Elle ne fait que monter :
+	-- MinRarity reste garanti (J7 Épique ou mieux, 3.3).
+	local box: Box = { Tier = tier :: any, Zone = zone, ItemId = item.Id, Rarity = rarityId, ReadyAt = nil, Mutation = mutation, Spot = nil, At = os.time() }
+	local steps = rollUpgrades(box, luckOf(player, box), random)
+	if #steps > 0 then
+		local target = steps[#steps]
+		local picked = Items.Pick(zone, target :: Rarities.RarityId, random)
+		if picked ~= nil and picked.Rarity == target then
+			item, rarityId = picked, target
+		else
+			table.clear(steps)
+		end
+	end
+	local itemUid = newUid(data.Items)
+	-- Zone gardée pour le revenu du Secret, qui n'a pas de zone au catalogue (comme OpenBox).
+	data.Items[itemUid] = { Id = item.Id, Source = "NPC", At = os.time(), Zone = zone, Mutation = mutation }
+	local mutated = Mutations.Label(mutation)
+	local upgraded = if #steps > 0 then `, {#steps} cran(s) : {table.concat(steps, " → ")}` else ""
+	log(`{player.Name} : objet offert {item.Id} ({rarityId}, colis {tier} zone {zone}{upgraded}{if mutated then ", mutation " .. mutated else ""}) mis dans l'inventaire ({itemUid})`)
+	discover(player, item.Id)
+	refreshInventory(player)
+	return itemUid, nil, item.Id
 end
 
 function UnboxService.GetWaiting(player: Player): { [string]: number }
