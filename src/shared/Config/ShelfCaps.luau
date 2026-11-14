@@ -1,7 +1,7 @@
 --!strict
 -- Murs invisibles au-dessus des rayons des magasins PNJ (Cantin, 2026-11-14, liaison L-140 : « des murs
 -- invisibles au-dessus des étagères pour qu'il n'y ait personne qui puisse se mettre au-dessus »).
--- Lu par ShelfCapService (serveur). Toutes les valeurs sont des V0 proposés, absents du doc, à régler en jeu.
+-- Lu par ShelfCapService (serveur) et StoreClimbController (client). Toutes les valeurs sont des V0 proposés, absents du doc, à régler en jeu.
 -- Unités : studs.
 
 local DeepFreeze = require(script.Parent.DeepFreeze)
@@ -24,6 +24,32 @@ local ShelfCaps = {
 	-- StackGap au-dessus de la précédente n'est plus le même meuble (une lampe au plafond, par exemple).
 	-- Plus grand que l'écart entre deux planches, plus petit qu'un perso.
 	StackGap = 3, -- V0
+
+	-- Grands meubles sans emplacement de colis (Play du 14/11 : le frigo du fond, `Fridge_Top`, haut à 7,8,
+	-- dans les 12 magasins). Dans Bounds, toute pièce solide dont le dessus est assez large pour s'y tenir
+	-- et plus haut qu'une marche reçoit aussi un bloc (mêmes règles : Gap au-dessus du dessus, jusqu'au
+	-- haut de Bounds).
+	-- Dessus d'au moins FurnitureMinTop × FurnitureMinTop studs (la partie dans Bounds) : en dessous, une
+	-- pièce fine (mur, pilier, montant, cadre de porte) n'en reçoit pas.
+	FurnitureMinTop = 2, -- V0
+	-- Dessus à au moins FurnitureMinHeight studs au-dessus du sol du magasin (bas de Bounds) : plus bas,
+	-- c'est une marche, on peut y monter sans risque.
+	FurnitureMinHeight = 3, -- V0
+	-- Dessus à moins de FurnitureCeilingMargin studs du haut de Bounds : mur, plafond, pilier, rien à
+	-- couvrir (un perso R15 de 5 studs n'y tient pas debout).
+	FurnitureCeilingMargin = 2, -- V0
+	-- Attribut d'exception de Clément, sur une pièce ou un modèle (vrai) : pas de bloc au-dessus.
+	NoCapAttribute = "NoShelfCap", -- V0
+	-- Comptage, attributs posés sur le dossier ShelfCaps de chaque magasin : blocs des rayons (trouvés par
+	-- les ShelfSlot) et blocs des grands meubles.
+	ShelfCountAttribute = "OnShelves", -- V0
+	FurnitureCountAttribute = "OnFurniture", -- V0
+
+	-- Grimpe (Play du 14/11) : en sautant contre une gondole, le perso passait en état Climbing et restait
+	-- accroché à la face du rayon, sous le bloc. StoreClimbController (client) coupe l'état Climbing du
+	-- perso du joueur local tant qu'il est dans le volume Bounds d'un magasin PNJ, et le rend dehors.
+	NoClimbInStores = true, -- V0
+	ClimbCheckInterval = 0.2, -- V0 : secondes entre deux vérifications
 }
 
 export type ShelfCaps = typeof(ShelfCaps)
