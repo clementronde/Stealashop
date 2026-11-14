@@ -5,7 +5,7 @@ description: Savoir-faire pour concevoir, construire et juger les auras, trails 
 
 # Auras et VFX de Steal a Shop
 
-Tout ce qui suit a été vérifié le 2026-11-14 (14 versions d'aura Éclair refusées, 39 packs du Creator Store démontés, une vidéo de pro lue en entier). Ce qui n'est pas vérifié est marqué « à vérifier ».
+Tout ce qui suit a été vérifié le 2026-11-14 (14 versions d'aura Éclair refusées, 39 packs du Creator Store démontés, 5 vidéos d'artistes VFX analysées). Ce qui n'est pas vérifié est marqué « à vérifier ».
 
 Références : `StealAShop-Art/References/Auras_VFX/` (`images/` de Clément, `videos/liens.md`, `benchmark/` avec les planches et les notes). **Ouvrir les images avant de construire.**
 
@@ -49,6 +49,8 @@ Une bonne aura = **2 à 4 grands motifs lisibles** + 2 ou 3 couches de finition.
 | **Fumée d'ambiance** | 1 émetteur | À peine visible, émission en sphère |
 | **Lumière** | 0 à 1 PointLight | Luminosité ≤ 1,2 de jour ; sans ombres |
 
+**Réglage de base de toute couche lumineuse** (vidéo 2, et relevé sur les packs) : `LightInfluence` 0, `LightEmission` 1, **`Brightness` 3 à 10**, couleur vive du thème. `Brightness` (défaut 1, existe aussi sur les Beams) est la propriété que les bons packs montent : moyenne 10 sur B04, B17, B30, B32 (maximum 35), 3 sur B14. Toutes mes versions refusées étaient restées à 1. Si c'est trop lumineux : monter la transparence (0,5 à 0,9) ou baisser le débit, pas la `Brightness` d'abord. À revérifier de jour sur notre map à chaque aura.
+
 **Règles de réglage**
 - **Toujours un fondu**, en taille ou en transparence. Une particule qui apparaît d'un coup est une faute.
 - **Varier** vitesse et durée de vie (plages, pas des valeurs fixes) ; rotation −45 à 45 ; texture décentrée + rotation pour faire « flotter ».
@@ -58,6 +60,23 @@ Une bonne aura = **2 à 4 grands motifs lisibles** + 2 ou 3 couches de finition.
 - `Squash` étire une texture (utile pour la pluie) ; il déforme mal les textures en diagonale.
 - Traits verticaux : `FacingCameraWorldUp`, sinon ils sont plats vus de côté.
 - `VelocityParallel` aligne l'**axe X de l'image** sur la vitesse : dessiner les traits **couchés**.
+
+**Valeurs par type de couche** (vidéo 2, affichées à l'écran ; tableau complet dans `videos/liens.md`)
+
+| Couche | Orientation | Lifetime | Rate | Speed | Spread | À noter |
+| --- | --- | --- | --- | --- | --- | --- |
+| Feu / fumée à plat | VelocityPerpendicular | 0,8 à 1,8 | 5 à 15 | 0,001 | 5 | Planche 4×4 `OneShot`, rotation −360 à 360, taille depuis 0 |
+| Tourbillon (slash) | VelocityPerpendicular | 0,4 à 1 | 20 | 0,001 à 10 | 15 | `RotSpeed` −350 à −200, `Drag` 2,5, transparence 1 → 0 (t 0,2) → 1 |
+| Cercle | VelocityPerpendicular | 1 à 2 | 2 à 5 | 0,001 | 0 | Sans rotation, `LockedToPart`, transparence 1 → 0 à 0,5 → 1 |
+| Specs | VelocityParallel | 0,3 à 2 | 25 à 75 | 2 à 12 | 80 | `RotSpeed` −500 à 500, taille 0 → 0,4 à 1,5 → 0 |
+| Étoiles / scintillement | VelocityParallel | 0,2 à 0,5 | 20 à 50 | 5 à 50 | 0 à 90 | Taille 0 → 0,5 à 3,5 → 0, `Squash` −1 → 3, `Drag` 1 à 4 |
+| Flares | FacingCamera | 0,5 à 4 | 5 à 25 | 0,001 à 10 | 90 à 200 | `Drag` 1 à 5, transparence 1 → 0 à 0,85 → 1 |
+| Fumée | FacingCamera | 1 à 3 | 10 à 50 | 0,001 à 5 | 360 | Planche 8×8 `Loop` 5 à 15 img/s + `FlipbookStartRandom`, transparence 0,5 à 0,95 |
+
+- Débit : 5 à 10 pour une longue durée de vie, 10 à 20 pour une courte.
+- La fumée est toujours à moitié transparente ou plus, plus grande que son support, à longue durée de vie. Étoiles et flares : petits et nombreux.
+- Une texture d'étoile inclinée se redresse par `Rotation` 45, 90 ou 180.
+- Cette vidéo construit une grande aura au sol : en reprendre les réglages, **pas l'ampleur** (règle 4).
 
 **Planches animées (flipbooks)** — doc Roblox
 - Grilles 2×2, 4×4, 8×8 ou `Custom`. **Laisser une marge transparente autour de chaque image** (sinon bavures).
@@ -114,7 +133,9 @@ Ce sont des points de départ tirés des références ; **aucune n'est encore va
   - textures : copier les PNG dans `%LOCALAPPDATA%\Roblox\Versions\<version>\content\textures\StealAShopFX\` → `rbxasset://textures/StealAShopFX/<nom>.png` ;
   - meshes : écrire un fichier Roblox « version 2.00 » (`_src/export_rbxmesh.py`) dans `content\meshes\…` puis `AssetService:CreateMeshPartAsync(Content.fromUri("rbxasset://meshes/…"))`. Changer de nom de dossier à chaque version (cache).
   - Ces aperçus ne s'affichent pas chez Ironix ni dans le jeu : **rien n'est fini tant que ce n'est pas importé au nom du groupe**.
-- **Vidéos** : `yt-dlp` et `ffmpeg` ne sont pas installés ; demander avant d'installer. La transcription se lit par le navigateur intégré (panneau « Afficher la transcription »).
+- **Meshes animés (vent, course, coups)** : la technique des artistes (vidéo 3) n'est pas du Blender : c'est un plugin Studio qui anime des meshes de vent tout faits d'un état `Start` à un état `End` (durée environ 1,1 s, transparence 0,4 à 0,7), **par script**. Sans script dans l'aura, ça ne marche pas : passer par des Beams ou des particules, ou décrire l'animation pour Ironix. Un « slash » (vidéo 4) est un seul ParticleEmitter à texture de trait étirée, déplacé par un tween scripté.
+- **Flammes toon** (vidéo 1, image 09) : une planche animée dessinée en 3 tons (contour foncé, corps coloré, cœur clair), en grosses particules de 2 à 3 studs accrochées aux mains et aux hanches, qui change de forme d'une image à l'autre ; plus des traits noirs verticaux brefs. Le toon vient du dessin, pas d'un réglage.
+- **Analyser une vidéo** : `yt-dlp` et `ffmpeg` sont dans `%LOCALAPPDATA%\Microsoft\WinGet\Links\` (les appeler par le chemin complet). Extraire une image toutes les 2 s, composer des planches de survol avec `References/Auras_VFX/videos/make_survol.py`, supprimer la vidéo. Demander l'accord de Clément avant tout téléchargement. La transcription, quand elle existe, se lit par le navigateur intégré (panneau « Afficher la transcription ») ; la capture d'images par le navigateur ne marche pas (publicités).
 
 ## 7. Budget
 
@@ -163,7 +184,9 @@ Si une réponse est mauvaise : corriger et refaire un tour avant d'envoyer.
 
 ## 11. Ce qui reste à apprendre
 
-- Vidéos 1 à 4 de `videos/liens.md` : non vues (pas d'images, pas de transcription).
-- Meshes de vent et de flammes dans Blender (vidéo 3), « slash » (vidéo 4), ailes en fumée (image 08) : techniques non vérifiées.
+- Les 5 vidéos sont analysées (`videos/liens.md`), mais les 1 à 4 sur planches de survol : relire les images en pleine taille (`videos/<n>_<nom>/img_NNNN.jpg`) avant de recopier une valeur fine.
+- `Brightness` 3 à 10 : relevée dans les packs et la vidéo 2, **pas encore essayée de jour sur notre map**.
+- Aucune source vue sur la fabrication de textures ou de meshes VFX **dans Blender** (les 5 vidéos travaillent dans Studio avec des plugins de textures). Ailes en fumée (image 08) : technique non vérifiée.
+- Dessiner une planche de flammes toon à la main (image 09) : pas encore fait.
 - Thèmes money, ninja, neige, vent : pas encore benchmarkés.
 - Bibliothèques B18 (898 images) et B20 (1 381 textures) : seule une sélection de 20 est testée.
