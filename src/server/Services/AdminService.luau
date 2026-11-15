@@ -41,10 +41,13 @@
 --                                      de la session ; jamais un produit, un achat ni un reçu). Refusé si la
 --                                      boutique Robux est coupée (Features.RobuxShop)
 --   SetSkill (Studio)                  text = Id de Config/SkillTree, value = niveau : crochet SkillTest
---   StartEvent (Studio)                text = Truck (value = zone, au hasard sinon : crochet TruckSpawnNow), Night
+--   StartEvent                         text = Truck (value = zone, au hasard sinon : crochet TruckSpawnNow), Night
 --                                      ou Day (value = durée en s, facultative : NightCycleService.SkipTo) ;
 --                                      vague 39 : Fortune, FortuneOpen, FortuneSeal (FortuneTowerService.Force :
---                                      lancer, ouvrir, refermer la vitrine) ; Truck refusé pendant une vitrine
+--                                      lancer, ouvrir, refermer la vitrine) ; Truck refusé pendant une vitrine.
+--                                      Vague 51 (a167) : un Id de Config/LiveEvents (EventService.Launch, ce
+--                                      serveur, tout de suite) ou Admin.StopLiveEvent (EventService.Stop),
+--                                      permis en ligne, journal dans EventService ; les autres Studio seulement
 --   Teleport                           value = 0 (sa boutique, PlotService.TeleportHome) ou une zone de 1 à 6 :
 --                                      au milieu des magasins PNJ de la zone (tag NPCStore, attribut Zone), posé
 --                                      au sol ; AntiCheatService.Allow juste avant
@@ -69,6 +72,7 @@ local Balance = require(Shared.Config.Balance)
 local Cosmetics = require(Shared.Config.Cosmetics)
 local Features = require(Shared.Config.Features)
 local Items = require(Shared.Config.Items)
+local LiveEvents = require(Shared.Config.LiveEvents)
 local Monetization = require(Shared.Config.Monetization)
 local Mutations = require(Shared.Config.Mutations)
 local Potions = require(Shared.Config.Potions)
@@ -85,6 +89,7 @@ local AntiCheatService = require(script.Parent.AntiCheatService)
 local CosmeticService = require(script.Parent.CosmeticService)
 local DataService = require(script.Parent.DataService)
 local DisplayService = require(script.Parent.DisplayService)
+local EventService = require(script.Parent.EventService)
 local FortuneTowerService = require(script.Parent.FortuneTowerService)
 local IndexService = require(script.Parent.IndexService)
 local InventoryService = require(script.Parent.InventoryService)
@@ -505,6 +510,15 @@ end
 
 handlers.StartEvent = function(call: Call): (boolean, string)
 	local event = nonEmpty(call.text)
+	-- Vague 51 (a167) : événements live (EventService), permis en ligne ; les autres restent Studio seulement.
+	local who = `{call.admin.Name} ({call.admin.UserId})`
+	if event == Admin.StopLiveEvent then
+		return EventService.Stop(who)
+	elseif event ~= nil and LiveEvents.ById[event] ~= nil then
+		return EventService.Launch(event, who)
+	elseif not IS_STUDIO then
+		return false, Admin.Messages.StudioOnly
+	end
 	if event == "Truck" then
 		if not Features.TruckEvent then
 			return false, "Truck event is off (Features.TruckEvent)."

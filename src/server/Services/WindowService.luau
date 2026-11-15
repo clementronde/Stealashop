@@ -325,7 +325,7 @@ local function computeMaxHP(window: Window): number
 		return window.FixedMaxHP
 	end
 	if window.Kind == "NPC" then
-		return Zones[window.Zone].WindowHP
+		return math.max(1, math.round(Zones[window.Zone].WindowHP * (Workspace:GetAttribute("LiveEventWindowHealth") :: number? or 1))) -- a167 : EventService
 	end
 	if window.OwnerUserId == 0 then
 		return freePlotHP(window.Model) -- 0 (incassable), sauf la boutique du bot joueur (L-105)
@@ -656,7 +656,7 @@ local function step(dt: number)
 			end
 			continue
 		end
-		if window.Kind == "Plot" then
+		if window.Kind == "Plot" or window.Kind == "NPC" then -- a167 : NPC aussi (PV d'un événement live)
 			setMaxHP(window, computeMaxHP(window))
 		end
 		local endsAt = window.BreakEndsAt

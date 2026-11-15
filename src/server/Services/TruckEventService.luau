@@ -1473,7 +1473,7 @@ end
 local function randomInterval(): number
 	local low = math.max(TruckEvent.SpawnIntervalMin, 0)
 	local high = math.max(TruckEvent.SpawnIntervalMax, low)
-	return low + random:NextNumber() * (high - low)
+	return (low + random:NextNumber() * (high - low)) * (Workspace:GetAttribute("LiveEventTruckDelay") :: number? or 1) -- a167 : EventService
 end
 
 -- De jour, assez loin de l'aube et de l'alerte (voir l'en-tête). Cycle coupé : toujours le jour.
@@ -1521,6 +1521,7 @@ local function step()
 		end
 		return
 	end
+	nextSpawnAt = math.min(nextSpawnAt, now + math.max(TruckEvent.SpawnIntervalMax, 0) * (Workspace:GetAttribute("LiveEventTruckDelay") :: number? or 1)) -- a167 : attente raccourcie dès le début
 	if now < nextSpawnAt or not daySpawnAllowed() or fortuneInPlay() then
 		return
 	end

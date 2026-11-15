@@ -71,6 +71,9 @@ local Events: { [string]: string } = {
 	DuplicateItem = "DuplicateItem", -- un même uid d'objet chez deux joueurs du serveur (vu au chargement d'un profil) ; joueur = celui qui arrive ; champs Rarity, Zone
 	ZoneReached = "ZoneReached", -- 1re entrée d'un profil dans une zone (1 à 6), mesure de la bêta ; valeur = temps de jeu cumulé (s) ; champ Zone
 	Rebirth = "Rebirth", -- vague 51 (a164, RebirthService) : renaissance faite ; valeur = temps de jeu cumulé (s) ; champ Level
+	-- Vague 51 (a167, EventService) : début et fin d'un événement live, pour chaque joueur présent ; valeur = joueurs présents ; champs Event, Source
+	LiveEventStart = "LiveEventStart",
+	LiveEventEnd = "LiveEventEnd",
 }
 
 local Telemetry = {
