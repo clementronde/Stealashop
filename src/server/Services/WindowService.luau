@@ -114,6 +114,9 @@
 --   WindowService.GetWindowId(model) -> string?
 --       Id de la vitrine d'un magasin PNJ ou d'une parcelle.
 --   WindowService.IsBroken(windowId) -> boolean
+--   WindowService.IsBreaking(model, player) -> boolean
+--       Vague 55 (a177) : `player` casse la porte de la parcelle `model` (coup compté il y a au plus
+--       PvP.BreakerMemory s, encore à Balance.Hit.ServerMaxDistance + PvP.BreakerMargin studs de la vitre).
 --   WindowService.Rebuild(windowId) -> boolean
 --       Reconstruit tout de suite (ex. à l'aube, NightCycleService) ; false si la vitrine
 --       est inconnue ou déjà intacte.
@@ -183,6 +186,7 @@ type Window = {
 	DoorTokens: number?, -- porte de boutique (L-163) : jetons du plafond de coups par seconde
 	DoorTokensAt: number?, -- os.clock() de leur dernier calcul
 	LastDoorHitAt: number?, -- os.clock() du dernier coup compté sur la porte (réparation après PvP.DoorRepairDelay)
+	DoorHitters: { [Player]: number }?, -- a177 : os.clock() du dernier coup compté de chaque frappeur (IsBreaking)
 }
 
 -- Modèles qui portent une vitrine (contrat 2.1, Contract/Tags).
@@ -608,6 +612,9 @@ local function onHitWindow(player: Player, windowId: string)
 		end
 		window.DoorTokens = tokens - 1
 		window.LastDoorHitAt = now -- Door Repair arrêtée (PvP.DoorRepairDelay)
+		local doorHitters: { [Player]: number } = window.DoorHitters or setmetatable({}, { __mode = "k" }) :: any
+		window.DoorHitters = doorHitters -- clés faibles : un joueur parti s'en va
+		doorHitters[player] = now -- a177 : casseur de la porte (IsBreaking)
 	else
 		damage = ToolService.GetHitDamage(player)
 			* modifier("GetHitDamageMultiplier", WindowService.GetHitDamageMultiplier, player, 1, true)
@@ -834,6 +841,28 @@ end
 function WindowService.IsBroken(windowId: string): boolean
 	local window = windows[windowId]
 	return window ~= nil and window.Broken
+end
+
+-- Vague 55 (a177, Cantin, 2026-11-15) : `player` casse-t-il la porte de la parcelle `model` ? Porte encore debout
+-- (cassée : il a fini, c'est un voleur), un coup compté sur
+-- elle il y a au plus PvP.BreakerMemory s, et il est encore, vivant, à Balance.Hit.ServerMaxDistance +
+-- PvP.BreakerMargin studs au plus de la vitre. PvPService (propriétaire) et BotService (bot) le frappent à la batte.
+function WindowService.IsBreaking(model: Instance, player: Player): boolean
+	local window = byModel[model]
+	local hitters = if window then window.DoorHitters else nil
+	local at = if hitters then hitters[player] else nil
+	if window == nil or window.Broken or at == nil or os.clock() - at > PvP.BreakerMemory then
+		return false
+	end
+	local character = player.Character
+	local humanoid = if character then character:FindFirstChildOfClass("Humanoid") else nil
+	local root = if character then character:FindFirstChild("HumanoidRootPart") else nil
+	if humanoid == nil or humanoid.Health <= 0 or root == nil or not root:IsA("BasePart") then
+		return false
+	end
+	local position = (root :: BasePart).Position
+	local cf, size = windowBox(window)
+	return (closestPoint(cf, size, position) - position).Magnitude <= Balance.Hit.ServerMaxDistance + PvP.BreakerMargin
 end
 
 -- Ajoute un point d'attente à la reconstruction automatique (après la casse) : tant qu'il renvoie

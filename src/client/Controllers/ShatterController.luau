@@ -14,6 +14,8 @@
 --     vers celui qui frappe, rebondissent au sol et s'effacent (Carve.Life, Carve.Fade) ;
 --     Carve.MaxDebris au plus en même temps. Version mobile (appareil faible, ou tactile sans
 --     clavier) : moins d'éclats par coup et un plafond plus bas (Carve.Light) ;
+--     vitre Model (porte des boutiques, vague 55) : seules ses pièces de verre sont cachées et remplacées, avec
+--     leur verre à elles (glassParts), le cadre reste ;
 --   - même creux pour tous ? Même endroit (le point de frappe du serveur) et même taille (les PV
 --     du serveur), mais la forme exacte est tirée au hasard sur chaque client : WindowHit n'est pas
 --     fiable, celui qui frappe creuse avant la réponse du serveur, et un joueur qui arrive voit la
@@ -325,14 +327,58 @@ local function isParticipant(windowId: string): boolean
 	return at ~= nil and os.clock() - at <= Break.ParticipantWindow
 end
 
+-- Vague 55 (a177, Cantin 2026-11-15 : « la vitrine est opaque ») : les pièces de verre d'une vitre, la plus
+-- transparente d'abord. Une vitre Model (porte des boutiques, PlotDoor/Window : vantaux Leaf_L et Leaf_R, chacun un
+-- Glass entre montants chromés) : avant, la première pièce venue donnait son verre à toute la vitre creusée, et chez
+-- le client l'ordre des pièces suit le streaming : un montant opaque pouvait passer en premier, et toute la porte
+-- devenait un bloc opaque au premier coup. Maintenant : les pièces en matériau Glass, sinon les plus transparentes
+-- (Transparency < 1), sinon toutes ; seules elles sont cachées et remplacées, le cadre reste visible.
+local function glassParts(all: { BasePart }): { BasePart }
+	local picked: { BasePart } = {}
+	for _, part in all do
+		if part.Material == Enum.Material.Glass and part.Transparency < 0.99 then
+			table.insert(picked, part)
+		end
+	end
+	if #picked == 0 then
+		local best = 0
+		for _, part in all do
+			if part.Transparency < 0.99 and part.Transparency > best then
+				best = part.Transparency
+			end
+		end
+		for _, part in all do
+			if best > 0 and part.Transparency < 0.99 and part.Transparency >= best - 0.01 then
+				table.insert(picked, part)
+			end
+		end
+	end
+	if #picked == 0 then
+		picked = table.clone(all)
+	end
+	table.sort(picked, function(a: BasePart, b: BasePart): boolean
+		if a.Transparency ~= b.Transparency then
+			return a.Transparency > b.Transparency
+		end
+		return a.Name < b.Name
+	end)
+	return picked
+end
+
 local function glassColor(source: Instance?): Color3
 	if source and source:IsA("BasePart") then
 		return (source :: BasePart).Color
 	end
 	if source and source:IsA("Model") then
-		local part = source:FindFirstChildWhichIsA("BasePart", true)
-		if part then
-			return part.Color
+		-- a177 : la couleur du verre (glassParts), pas celle d'un montant arrivé le premier
+		local all: { BasePart } = {}
+		for _, descendant in source:GetDescendants() do
+			if descendant:IsA("BasePart") then
+				table.insert(all, descendant :: BasePart)
+			end
+		end
+		if #all > 0 then
+			return glassParts(all)[1].Color
 		end
 	end
 	return Config.GlassColor
@@ -1381,24 +1427,34 @@ local function carveState(windowId: string): CarveState?
 	if window == nil then
 		return nil
 	end
-	local glass = windowGlass(window)
-	if glass == nil or glass.Width <= 0 or glass.Height <= 0 or glass.Thickness <= 0 then
-		return nil
-	end
-	local parts: { BasePart } = {}
+	local all: { BasePart } = {}
 	if window:IsA("BasePart") then
-		table.insert(parts, window :: BasePart)
+		table.insert(all, window :: BasePart)
 	else
 		for _, descendant in window:GetDescendants() do
 			if descendant:IsA("BasePart") then
-				table.insert(parts, descendant :: BasePart)
+				table.insert(all, descendant :: BasePart)
 			end
 		end
 	end
-	if #parts == 0 then
+	if #all == 0 then
 		return nil
 	end
+	-- a177 : seulement le verre (voir glassParts), le plus transparent d'abord ; sa boîte, dans l'orientation de la vitre.
+	local parts = glassParts(all)
 	local look = parts[1]
+	local glass: Glass? = nil
+	if window:IsA("BasePart") then
+		glass = windowGlass(window)
+	else
+		local cf, size = boxOf(parts, (window :: Model):GetPivot())
+		if cf and size then
+			glass = toGlass(cf, size)
+		end
+	end
+	if glass == nil or glass.Width <= 0 or glass.Height <= 0 or glass.Thickness <= 0 then
+		return nil
+	end
 	local proxy = Instance.new("Part")
 	setGlass(proxy, look, CARVED_PREFIX .. windowId)
 	proxy.Size = Vector3.new(glass.Width, glass.Height, glass.Thickness)
