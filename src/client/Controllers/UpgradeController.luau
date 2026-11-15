@@ -20,7 +20,9 @@
 --     serveur). Panneau du niveau suivant (L-096 point 1) : la boutique grandit avec ses rayons, donc
 --     avec les présentoirs ; le panneau des présentoirs va sur `StageUpgradePoint_n`, n le plus grand sans
 --     dépasser le niveau de la boutique (attribut StageLevel de la parcelle, ShopStageService), sinon sur
---     `StageUpgradePoint` ; sans aucun de ces points, sur DisplayUpgradePoint comme avant ;
+--     `StageUpgradePoint` ; sans aucun de ces points, sur DisplayUpgradePoint comme avant. Vague 55 : le
+--     serveur avance `StageUpgradePoint_n` avec le fond de la boutique (attribut StageDepth) : le panneau
+--     est reposé dès que son point a bougé ;
 --   - pose : le bas de la boîte du panneau au point, la face de Board (SurfaceGui Face = Front, donc
 --     son LookVector) tournée comme le LookVector de l'Attachment, mis à l'horizontale. Pour tourner
 --     un panneau, Clément tourne son point. Aucune taille ni couleur changée ; pièces ancrées ;
@@ -89,6 +91,7 @@ type Entry = {
 	gui: SurfaceGui?,
 	shownLevel: number?, -- niveau dont le prix est affiché sur le panneau
 	click: RBXScriptConnection?,
+	pose: Vector3?, -- position du point à la pose du panneau (vague 55 : StageUpgradePoint_n avance avec le fond)
 }
 
 -- Contrat (2.1, 2.2 et 10.4) et attributs posés par les services serveur (lus sans require).
@@ -101,6 +104,7 @@ local DISPLAY_POINT_NAME = "DisplayUpgradePoint" -- dans la parcelle (L-082)
 local STAGE_POINT_NAME = "StageUpgradePoint" -- niveau 1, dans PlotFloor (L-096)
 local STAGE_POINT_FORMAT = "StageUpgradePoint_%d" -- niveau n et plus (StageUpgradePoint_2 : niveaux 2 à 5)
 local STAGE_ATTRIBUTE = "StageLevel" -- ShopStageService : niveau de la boutique (nombre de rayons)
+local DEPTH_ATTRIBUTE = "StageDepth" -- ShopStageService (vague 55) : fond de la boutique ; son point de panneau a bougé
 local STAGE_POINT_MAX = 5 -- V0 proposé, absent du doc : 5 niveaux de boutique (Stage_1 à Stage_5)
 local MADE_POINT_NAME = "UpgradePointV0" -- point créé ici à défaut, côté client seulement
 local PROMPT_NAME = "UpgradePrompt"
@@ -399,12 +403,15 @@ local function showSign(offer: Offer, entry: Entry, template: Model, plotModel: 
 	end
 	local sign = entry.sign
 	local gui = entry.gui
-	if sign == nil or sign.Parent == nil or gui == nil or gui.Parent == nil or entry.target ~= target then
-		-- Neuf, déplacé (présentoir suivant), ou perdu : un panneau neuf.
+	local pose = target.WorldCFrame.Position
+	local lastPose = entry.pose
+	local moved = lastPose == nil or (lastPose - pose).Magnitude > 0.01
+	if sign == nil or sign.Parent == nil or gui == nil or gui.Parent == nil or entry.target ~= target or moved then
+		-- Neuf, déplacé (présentoir suivant, point avancé avec le fond), ou perdu : un panneau neuf.
 		clearSign(entry)
 		local fresh = placeSign(template, target, plotModel)
 		local freshGui = Find.path(fresh, GUI_NAME) :: SurfaceGui
-		entry.sign, entry.gui, entry.target = fresh, freshGui, target
+		entry.sign, entry.gui, entry.target, entry.pose = fresh, freshGui, target, pose
 		local buy = Find.path(freshGui, BUY_NAME) :: GuiButton
 		entry.click = buy.Activated:Connect(function()
 			onBuy(offer, entry)
@@ -673,6 +680,7 @@ local function watchPlot(inst: Instance)
 	watchedPlots[inst] = {
 		inst:GetAttributeChangedSignal(OWNER_ATTRIBUTE):Connect(onChange),
 		inst:GetAttributeChangedSignal(STAGE_ATTRIBUTE):Connect(onChange),
+		inst:GetAttributeChangedSignal(DEPTH_ATTRIBUTE):Connect(onChange),
 		inst.DescendantAdded:Connect(onChange),
 		inst.DescendantRemoving:Connect(onChange),
 	}

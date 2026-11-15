@@ -31,24 +31,49 @@
 -- pièce arrive avec la copie de Stage_j). Montrée ou cachée par ShopWallsService selon la compétence, pas ici.
 -- `Bounds` et `DepositZone` ne changent pas (grande taille dès le niveau 1, à décider avec Clément).
 --
+-- Croissance petit à petit (vague 55, a179, retour de Cantin du 15/11 ; valeurs V0 dans Config/ShopGrowth) :
+-- `Stage_2` du gabarit contient à lui seul toute l'extension (sol PlotFloorExt, damier, allée, murets, champ de
+-- force et grands murs invisibles jusqu'au fond, z 40), et `Stage_3` à `Stage_5` les murs, le toit et le décor
+-- sur toute la longueur : au 5e présentoir, toute la base arrivait d'un coup. Désormais, avec le nombre de
+-- présentoirs débloqués (3e argument d'Apply, donné par RayonService), le fond de la boutique est posé derrière
+-- le rang du dernier présentoir débloqué (position de son `DisplaySlot_xx` dans le repère de la boutique,
+-- + RowMargin, arrondi au damier) ; quand ce rang est le dernier de la boutique (19 ou 20 présentoirs), ou sans
+-- ce 3e argument, rien n'est coupé, comme avant. Les copies `Stage_j` (et SkillVisuals) sont coupées en les
+-- posant, d'après le fond du gabarit (bord arrière le plus loin de ses `Stage_j`) : pièce entièrement devant le
+-- nouveau fond : intacte ; pièce fine du fond (mur du fond, parapet, caméras) : avancée avec le fond ; longue
+-- pièce (sol, murs, toit) : raccourcie ; le reste au-delà : retiré de la copie. Quand le fond change, les copies
+-- sont refaites depuis le gabarit : un profil chargé voit la même base qu'en y arrivant pas à pas. Les points
+-- `StageUpgradePoint_n` (n ≥ 2) du fond avancent aussi (position d'origine rendue sans coupe) et la boutique
+-- porte l'attribut `StageDepth` (z du fond dans son repère ; absent sans coupe ; nom V0) : UpgradeController
+-- y replace son panneau. Le gabarit et les pièces de Clément posées dans le Workspace ne changent pas.
+--
 -- API (serveur) :
---   ShopStageService.Apply(plot, k) -> number
---       Met la boutique au niveau k (ramené à 1 au moins) ; renvoie le niveau posé. Sans yield.
+--   ShopStageService.Apply(plot, k, unlocked?) -> number
+--       Met la boutique au niveau k (ramené à 1 au moins), coupée au fond du présentoir `unlocked` (nombre de
+--       présentoirs débloqués ; nil : pas de coupe) ; renvoie le niveau posé. Sans yield.
 --   ShopStageService.GetLevel(plot) -> number
 --       Niveau posé par le dernier Apply (1 si aucun).
+--   ShopStageService.IsBeyond(plot, inst) -> boolean
+--       Une pièce de `inst` (lui compris) dépasse-t-elle le fond posé ? false sans coupe.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
+local Balance = require(ReplicatedStorage.Shared.Config.Balance)
+local ShopGrowth = require(ReplicatedStorage.Shared.Config.ShopGrowth)
 local SkillTree = require(ReplicatedStorage.Shared.Config.SkillTree)
 
--- Noms de Clément (L-096, plot_shop_builder) ; StageLevel : V0 proposé, absent du doc.
+-- Noms de Clément (L-096, plot_shop_builder) ; StageLevel et StageDepth : V0 proposés, absents du doc.
 local TEMPLATE_NAME = "PLOT_Shop"
 local STAGE_PATTERN = "^Stage_(%d+)$"
 local ACCENT = "Accent"
 local ACCENT_COLOR = "AccentColor"
 local HIDE_FROM = "HideFromStage"
 local LEVEL_ATTRIBUTE = "StageLevel"
+local DEPTH_ATTRIBUTE = "StageDepth"
+local SLOT_PATTERN = "^DisplaySlot_(%d+)$"
+local POINT_PATTERN = "^StageUpgradePoint_(%d+)$"
+local EPS = 1e-3
 
 -- Propriétés changées pour cacher, par famille de classes (les mêmes que RayonService).
 local PART_HIDDEN: { [string]: any } = { Transparency = 1, CanCollide = false, CanTouch = false, CanQuery = false }
@@ -57,7 +82,10 @@ local ENABLED_HIDDEN: { [string]: any } = { Enabled = false }
 local ENABLED_CLASSES = { "SurfaceGui", "BillboardGui", "Light", "ParticleEmitter", "Beam", "Trail", "Fire", "Smoke", "Sparkles", "Highlight" }
 
 type Saved = { [Instance]: { [string]: any } }
-type PlotState = { level: number, saved: Saved }
+-- depth : fond posé (nil = entier) ; slots : z de chaque DisplaySlot_xx ; points : CFrame d'origine des StageUpgradePoint_n.
+type PlotState = { level: number, saved: Saved, depth: number?, slots: { [number]: number }?, points: { [Attachment]: CFrame } }
+-- Coupe d'une copie : fond posé, fond du gabarit, repère de la boutique.
+type Cut = { depth: number, back: number, pivot: CFrame }
 
 local IS_STUDIO = RunService:IsStudio()
 
@@ -136,9 +164,155 @@ local function restoreOne(inst: Instance, before: { [string]: any })
 	end
 end
 
+-- Profondeur d'une pièce dans le repère `pivot` : CFrame locale, z avant, z arrière, et l'axe de la pièce (1 X,
+-- 2 Y, 3 Z) aligné sur Z s'il y en a un.
+local function zSpan(pivot: CFrame, part: BasePart): (CFrame, number, number, number?)
+	local cf = pivot:Inverse() * part.CFrame
+	local size = part.Size
+	local axes = { cf.RightVector, cf.UpVector, -cf.LookVector }
+	local lengths = { size.X, size.Y, size.Z }
+	local half, aligned = 0, nil
+	for i, axis in axes do
+		half += math.abs(axis.Z) * lengths[i] / 2
+		if math.abs(axis.Z) >= 1 - EPS then
+			aligned = i
+		end
+	end
+	local z = cf.Position.Z
+	return cf, z - half, z + half, aligned
+end
+
+-- Coupe d'une pièce copiée au fond posé (règle de l'en-tête, valeurs de Config/ShopGrowth). false : retirée.
+local function cutPart(part: BasePart, cut: Cut): boolean
+	local cf, z0, z1, aligned = zSpan(cut.pivot, part)
+	local depth, back = cut.depth, cut.back
+	if z1 <= depth + EPS then
+		return true
+	end
+	local nearBack = back - z1 <= ShopGrowth.BackZone
+	if nearBack and z0 >= back - ShopGrowth.BackZone and z1 - z0 <= ShopGrowth.BackThickness then
+		part.CFrame = cut.pivot * (cf + Vector3.new(0, 0, depth - back)) -- pièce fine du fond : elle avance avec lui
+		return true
+	end
+	if aligned and z1 - z0 > ShopGrowth.ClipMinLength and z0 < depth then
+		local newZ1 = if nearBack then z1 + depth - back else depth - ShopGrowth.InnerInset
+		if newZ1 - z0 >= ShopGrowth.MinLength then
+			local lengths = { part.Size.X, part.Size.Y, part.Size.Z }
+			lengths[aligned] = newZ1 - z0
+			part.Size = Vector3.new(lengths[1], lengths[2], lengths[3])
+			part.CFrame = cut.pivot * (cf + Vector3.new(0, 0, (z0 + newZ1) / 2 - cf.Position.Z))
+			return true
+		end
+	elseif (z0 + z1) / 2 <= depth then
+		return true -- petite pièce à cheval sur le fond, centre devant : gardée
+	end
+	part:Destroy()
+	return false
+end
+
+-- Coupe toute une copie (pas encore rangée dans la boutique). false : la copie elle-même est retirée.
+local function cutCopy(copy: Instance, cut: Cut): boolean
+	for _, inst in copy:GetDescendants() do
+		if inst:IsA("BasePart") and inst:IsDescendantOf(copy) then
+			cutPart(inst :: BasePart, cut)
+		end
+	end
+	return if copy:IsA("BasePart") then cutPart(copy :: BasePart, cut) else true
+end
+
+-- Fond du gabarit : bord arrière le plus loin des pièces de ses Stage_j (j ≥ 2), dans son repère.
+local backOf: { [Instance]: number } = {}
+local function templateBack(template: Model): number
+	local cached = backOf[template]
+	if cached then
+		return cached
+	end
+	local pivot = template:GetPivot()
+	local back = -math.huge
+	for j, stage in stagesOf(template) do
+		local pieces: { Instance } = if j >= 2 then stage:GetDescendants() else {}
+		for _, inst in pieces do
+			if inst:IsA("BasePart") then
+				local _, _, z1 = zSpan(pivot, inst :: BasePart)
+				back = math.max(back, z1)
+			end
+		end
+	end
+	backOf[template] = back
+	return back
+end
+
+-- z de chaque DisplaySlot_xx (1 à MaxSlots) dans le repère de la boutique (cherchés une fois).
+local function slotDepths(plot: Model, state: PlotState): { [number]: number }
+	local cached = state.slots
+	if cached and next(cached) ~= nil then
+		return cached
+	end
+	local pivot = plot:GetPivot()
+	local out: { [number]: number } = {}
+	for _, inst in plot:GetDescendants() do
+		local digits = string.match(inst.Name, SLOT_PATTERN)
+		local n = if digits and inst:IsA("Attachment") then tonumber(digits) else nil
+		if n and n <= Balance.Display.MaxSlots then
+			out[n] = pivot:PointToObjectSpace((inst :: Attachment).WorldCFrame.Position).Z
+		end
+	end
+	state.slots = out
+	return out
+end
+
+-- Fond de la boutique pour `unlocked` présentoirs débloqués, ou nil (boutique entière).
+local function depthFor(plot: Model, state: PlotState, unlocked: number?, back: number): number?
+	if not ShopGrowth.Enabled or unlocked == nil or unlocked ~= unlocked then
+		return nil
+	end
+	local last, deepest = -math.huge, -math.huge
+	for n, z in slotDepths(plot, state) do
+		deepest = math.max(deepest, z)
+		if n <= unlocked then
+			last = math.max(last, z)
+		end
+	end
+	if last == -math.huge or last >= deepest - EPS then
+		return nil -- dernier rang de la boutique atteint : entière, comme avant
+	end
+	local depth = last + ShopGrowth.RowMargin
+	local step = ShopGrowth.Step
+	if step > 0 then
+		depth = ShopGrowth.StepOrigin + math.ceil((depth - ShopGrowth.StepOrigin) / step - EPS) * step
+	end
+	return if depth < back - EPS then depth else nil
+end
+
+-- Points StageUpgradePoint_n (n ≥ 2) du fond : avancés avec le fond, rendus à leur place sans coupe.
+local function placePoints(plot: Model, state: PlotState, cut: Cut?)
+	for _, inst in plot:GetDescendants() do
+		local digits = string.match(inst.Name, POINT_PATTERN)
+		if digits == nil or (tonumber(digits) :: number) < 2 or not inst:IsA("Attachment") then
+			continue
+		end
+		local point = inst :: Attachment
+		local origin = state.points[point] or point.CFrame
+		state.points[point] = origin
+		local target = origin
+		local parent = point.Parent
+		if cut and parent and parent:IsA("BasePart") then
+			local base = (parent :: BasePart).CFrame
+			local here = cut.pivot:PointToObjectSpace(base * origin.Position)
+			if cut.back - here.Z <= ShopGrowth.BackZone then
+				local moved = cut.pivot:PointToWorldSpace(here + Vector3.new(0, 0, cut.depth - cut.back))
+				target = origin + (base:PointToObjectSpace(moved) - origin.Position)
+			end
+		end
+		if point.CFrame ~= target then
+			point.CFrame = target
+		end
+	end
+end
+
 -- Copie de `source` (Stage_j du gabarit, ou une de ses pièces), recolorée, sans script, posée dans la boutique
--- (rangée dans `parent`, la boutique elle-même par défaut).
-local function placeCopy(plot: Model, template: Model, source: Instance, parent: Instance?)
+-- (rangée dans `parent`, la boutique elle-même par défaut), coupée au fond posé s'il y en a un.
+local function placeCopy(plot: Model, template: Model, source: Instance, parent: Instance?, cut: Cut?)
 	local copy = source:Clone()
 	local all = copy:GetDescendants()
 	table.insert(all, copy)
@@ -166,11 +340,14 @@ local function placeCopy(plot: Model, template: Model, source: Instance, parent:
 		end
 	end
 	copy.Name = source.Name
+	if cut and not cutCopy(copy, cut) then
+		return -- pièce entière au-delà du fond
+	end
 	copy.Parent = parent or plot
 end
 
 -- Visuels EveryStage (voir l'en-tête) : copie à part tant que la boutique est sous le Stage_j qui les contient.
-local function applyEveryStage(plot: Model, template: Model?, k: number)
+local function applyEveryStage(plot: Model, template: Model?, k: number, cut: Cut?)
 	local folder = plot:FindFirstChild(SkillTree.SkillVisualsFolder)
 	for name, visual in SkillTree.PlotVisuals do
 		if not visual.EveryStage then
@@ -198,7 +375,7 @@ local function applyEveryStage(plot: Model, template: Model?, k: number)
 				created.Parent = plot
 				folder = created
 			end
-			placeCopy(plot, template :: Model, source, folder)
+			placeCopy(plot, template :: Model, source, folder, cut)
 		end
 	end
 end
@@ -232,40 +409,75 @@ end
 -- API
 ------------------------------------------------------------------------------
 
-function ShopStageService.Apply(plot: Model, level: number): number
+function ShopStageService.Apply(plot: Model, level: number, unlocked: number?): number
 	local k = if level == level then math.max(1, math.floor(level)) else 1
 	local state = states[plot]
 	if state == nil then
-		state = { level = 1, saved = {} }
+		state = { level = 1, saved = {}, depth = nil, slots = nil, points = {} } :: PlotState
 		states[plot] = state
 	end
 	local current = state :: PlotState
+	local template = templateOf()
+	local back = if template then templateBack(template) else nil
+	local depth = if back and k >= 2 then depthFor(plot, current, unlocked, back) else nil
+	local depthChanged = depth ~= current.depth
 	for j, stage in stagesOf(plot) do
-		if j >= 2 and j > k then
-			stage:Destroy()
+		if j >= 2 and (j > k or depthChanged) then
+			stage:Destroy() -- au-dessus du niveau, ou fond changé : refait depuis le gabarit plus bas
 		end
 	end
-	local template = templateOf()
+	local skillFolder = if depthChanged then plot:FindFirstChild(SkillTree.SkillVisualsFolder) else nil
+	local visuals: { Instance } = if skillFolder then skillFolder:GetChildren() else {}
+	for _, visual in visuals do
+		local rule = SkillTree.PlotVisuals[visual.Name]
+		if rule and rule.EveryStage then
+			visual:Destroy()
+		end
+	end
+	local cut: Cut? = if depth and back then { depth = depth, back = back, pivot = plot:GetPivot() } else nil
 	if template then
 		for j, source in stagesOf(template) do
 			if j >= 2 and j <= k and plot:FindFirstChild(source.Name) == nil then
-				placeCopy(plot, template, source)
+				placeCopy(plot, template, source, nil, cut)
 			end
 		end
 	end
-	applyEveryStage(plot, template, k)
+	applyEveryStage(plot, template, k, cut)
 	applyHide(plot, current, k)
-	if current.level ~= k and IS_STUDIO then
-		print(`[ShopStageService] {plot.Name} : boutique niveau {current.level} → {k}`)
+	placePoints(plot, current, cut)
+	if (current.level ~= k or depthChanged) and IS_STUDIO then
+		print(`[ShopStageService] {plot.Name} : boutique niveau {current.level} → {k}, fond {if depth then string.format("%.1f", depth) else "entier"}`)
 	end
 	current.level = k
+	current.depth = depth
 	plot:SetAttribute(LEVEL_ATTRIBUTE, k)
+	plot:SetAttribute(DEPTH_ATTRIBUTE, depth)
 	return k
 end
 
 function ShopStageService.GetLevel(plot: Model): number
 	local state = states[plot]
 	return if state then state.level else 1
+end
+
+function ShopStageService.IsBeyond(plot: Model, inst: Instance): boolean
+	local state = states[plot]
+	local depth = if state then state.depth else nil
+	if depth == nil then
+		return false
+	end
+	local pivot = plot:GetPivot()
+	local parts = inst:GetDescendants()
+	table.insert(parts, inst)
+	for _, part in parts do
+		if part:IsA("BasePart") then
+			local _, _, z1 = zSpan(pivot, part :: BasePart)
+			if z1 > depth + EPS then
+				return true
+			end
+		end
+	end
+	return false
 end
 
 return ShopStageService
