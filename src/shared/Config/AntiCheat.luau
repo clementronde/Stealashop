@@ -28,7 +28,10 @@ local AntiCheat = {
 	-- V0 : jamais moins : un joueur étourdi ou sur une machine (vitesse 0) peut encore glisser un peu
 	-- (les poussées des autres joueurs et des vigiles : PushRadius). Sous la WalkSpeed d'un porteur
 	-- (12 avec un objet volé), sinon un speed hack × 2 passerait presque inaperçu en portant.
-	MinSpeed = 10,
+	-- Vague 61 (a198) : 10 à l'échelle 1, × Balance.Stats.RealSpeedScale (20 sous les 32 d'un porteur à × 2). Le reste
+	-- suit tout seul la Humanoid.WalkSpeed ; les distances (SlackStuds, TeleportDistance, PushRadius), StaleSpeed
+	-- (« le perso bouge ») et la chute (FlyFallSpeed) ne changent pas.
+	MinSpeed = 10 * Balance.Stats.RealSpeedScale,
 	-- V0 : réserve de distance gardée d'un contrôle à l'autre, en secondes de déplacement à la vitesse
 	-- autorisée (× SpeedTolerance), plus SlackStuds : le réseau livre souvent les positions en rafale.
 	-- Une rafale ne fait au plus qu'une anomalie (la réserve repart de 0).

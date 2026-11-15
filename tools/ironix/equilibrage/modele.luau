@@ -608,7 +608,7 @@ function Modele.Jouer(eco, profil, seed, maxSeconds, options)
 		else
 			local seconds = math.clamp(if leftSpeed > 0 then leftSpeed else H.TrainChunk, 1, H.TrainChunk)
 			s.speed += speedRate() * seconds
-			if out.Plafond == nil and walk() >= Balance.Stats.MaxWalkSpeed then
+			if out.Plafond == nil and walk() >= Balance.Stats.MaxWalkSpeed * (Balance.Stats.RealSpeedScale or 1) then -- vague 61
 				out.Plafond = s.t -- la vitesse de marche touche le plafond
 			end
 			advance(seconds, "Tapis")

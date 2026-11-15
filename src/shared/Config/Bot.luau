@@ -52,10 +52,13 @@ local Bot = {
 		-- WalkSpeed du bot = celui du vigile de la zone 1 (Zones[1].GuardSpeed = 0,9 × 16 − 1 = 13,4) : la boutique du
 		-- bot est au niveau de la zone 1 ; un voleur qui porte (Balance.Carry.StolenItemWalkSpeed = 16) le distance,
 		-- comme on distance ce vigile. Le bot ne rattrape que celui qui traîne dans sa boutique.
+		-- Vague 61 (a198) : vitesse réelle × Balance.Stats.RealSpeedScale (13,4 et 16 à l'échelle 1 ; Zones[1].GuardSpeed
+		-- et StolenItemWalkSpeed sont déjà multipliés).
 		RunSpeed = Zones[1].GuardSpeed,
 		-- Pendant le tuto du joueur poursuivi (TutorialService.IsActive) : la vitesse du vigile lent du tuto
-		-- (Tutorial.GuardSpeed = 12), et au plus TutorialMaxStrikes coup réussi sur ce joueur pendant son tuto.
-		TutorialRunSpeed = Tutorial.GuardSpeed,
+		-- (Tutorial.GuardSpeed = 12, à l'échelle 1 : × RealSpeedScale ici), et au plus TutorialMaxStrikes coup
+		-- réussi sur ce joueur pendant son tuto.
+		TutorialRunSpeed = Tutorial.GuardSpeed * Balance.Stats.RealSpeedScale,
 		TutorialMaxStrikes = 1,
 		-- Vague 42 (L-146 point 3, Clément le 2026-11-14) : pendant son tuto, le joueur frappé par le bot attend 15 s
 		-- (au lieu de PvP.KickRobCooldown, 60) avant de pouvoir revoler le bot. Hors tuto, rien ne change.

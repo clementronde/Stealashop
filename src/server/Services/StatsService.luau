@@ -19,6 +19,8 @@
 --      potion de vitesse (Cantin, 2026-11-14) ; le mécanisme reste pour un futur bonus.
 --   Conséquences : au plafond, le malus de portage se sent quand même (70 → 63 avec un colis
 --   PNJ) ; l'Adrénaline ne fait jamais dépasser 70.
+--   Vague 61 (a198) : les nombres ci-dessus sont à l'échelle 1 ; la formule et le plafond sont multipliés par
+--   Balance.Stats.RealSpeedScale (16 → 32, 70 → 140 à × 2 ; Formulas.WalkSpeed et Formulas.MaxWalkSpeed).
 --   Vitesse fixe (SetFixedSpeed, objet volé à un joueur, Cantin 2026-11-13) : remplace les étapes 1 à 4 ;
 --   seul un modificateur à 0 (étourdi, entraînement) compte encore et immobilise.
 --
@@ -147,7 +149,7 @@ function StatsService.Refresh(player: Player)
 			end
 		end
 	end
-	value = math.min(value, Balance.Stats.MaxWalkSpeed)
+	value = math.min(value, Formulas.MaxWalkSpeed()) -- vague 61 : 70 × RealSpeedScale
 	value *= StatsService.GetSpeedBoost(player)
 	local fixed = fixedSpeeds[player]
 	if fixed ~= nil then

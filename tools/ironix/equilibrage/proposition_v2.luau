@@ -128,6 +128,8 @@ function V2.Construire()
 	local Formulas = Config.Formulas
 	local Balance = Config.Balance
 	local stats = V2.Stats
+	-- Vague 61 (a198) : vitesse réelle × Balance.Stats.RealSpeedScale (marche, vigiles), comme le jeu.
+	local K = Balance.Stats.RealSpeedScale or 1
 
 	local eco = { Nom = "V2", SansBanc = true, MaxHits = V2.MaxHitsPerSecond, HeistDuration = V2.HeistDuration }
 	-- Tous les profils frappent au plafond et acceptent la casse du panneau (11 s) ; marge jusqu'à 12 s.
@@ -136,7 +138,7 @@ function V2.Construire()
 
 	function eco.WalkSpeed(speed, trailMultiplier)
 		local shown = speed * (trailMultiplier or 1)
-		return math.min(stats.MaxWalkSpeed, stats.BaseWalkSpeed + stats.WalkPerDecade * math.log10(1 + shown / stats.SpeedScale))
+		return K * math.min(stats.MaxWalkSpeed, stats.BaseWalkSpeed + stats.WalkPerDecade * math.log10(1 + shown / stats.SpeedScale))
 	end
 	function eco.HitDamage(toolPower, _strength, auraMultiplier)
 		return toolPower * (auraMultiplier or 1)
@@ -171,10 +173,11 @@ function V2.Construire()
 		local last = index == #Zones
 		local walk = eco.WalkSpeed(proposed.SpeedRequired, 1)
 		eco.Zones[index] = {
-			WindowHP = math.round((if last then V2.Zone6.HPPerDamage else V2.WindowHPPerDamage) * damage),
+			-- Vague 61 : la zone 1 prend les PV fixés dans Config/Zones (15).
+			WindowHP = if index == 1 then zone.WindowHP else math.round((if last then V2.Zone6.HPPerDamage else V2.WindowHPPerDamage) * damage),
 			AdvisedDamage = damage,
 			AdvisedSpeed = walk,
-			GuardSpeed = if index == 1 then zone.GuardSpeed else math.round((V2.GuardCarryFactor * walk + V2.GuardMargin) * 10) / 10,
+			GuardSpeed = if index == 1 then zone.GuardSpeed else K * math.round((V2.GuardCarryFactor * walk / K + V2.GuardMargin) * 10) / 10,
 			ReturnDistance = zone.ReturnDistance,
 			BaseIncome = proposed.BaseIncome,
 			SpeedShown = proposed.SpeedRequired,
