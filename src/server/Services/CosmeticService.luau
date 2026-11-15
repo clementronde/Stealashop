@@ -57,6 +57,8 @@
 --       Retire l'aura (kind = "Aura") ou le trail (kind = "Trail") équipé.
 --   CosmeticService.GetEquippedId(player, kind) -> string?
 --       Objet équipé de ce type ; un Id enregistré inconnu ou pas possédé compte comme rien.
+--   CosmeticService.Refresh(player)
+--       Attributs, effets, dégâts et vitesse remis d'accord avec le profil (vague 51 : renaissance).
 --   CosmeticService.GetAuraMultiplier(player) -> number     M aura, 1 sans aura (7.1)
 --   CosmeticService.GetTrailMultiplier(player) -> number    M trail, 1 sans trail (7.1)
 --
@@ -659,6 +661,20 @@ function CosmeticService.Unequip(player: Player, kind: Kind): boolean
 		onChanged(player, data, kind)
 	end
 	return true
+end
+
+-- Vague 51 (a164, RebirthService) : remet attributs, effets, dégâts et vitesse d'accord avec le profil après
+-- un changement fait ailleurs (renaissance : auras et trails vidés). Sans yield.
+function CosmeticService.Refresh(player: Player)
+	local data = DataService.Get(player)
+	if data == nil then
+		return
+	end
+	writeAttributes(player, data)
+	applyEffects(player, "Aura")
+	applyEffects(player, "Trail")
+	ToolService.RefreshDamage(player)
+	StatsService.Refresh(player)
 end
 
 function CosmeticService.GetEquippedId(player: Player, kind: Kind): string?

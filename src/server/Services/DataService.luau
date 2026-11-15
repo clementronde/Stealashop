@@ -183,6 +183,7 @@ local TEMPLATE: Data = {
 	Offline = { LastSeenAt = 0, Income = 0 }, -- v6 : 0 = heure inconnue, aucun gain hors ligne (OfflineService)
 	-- v8 : calendrier (aucun jour réclamé) et temps de jeu du jour (aucun jour compté) (RewardService)
 	Rewards = { Daily = { Streak = 0, LastDay = 0 }, Playtime = { Day = 0, Seconds = 0, Claimed = {} } },
+	Rebirths = 0, -- vague 51 (a164) : renaissances faites (RebirthService), sans changement de version
 }
 
 -- Journal d'une migration : chaque ligne part dans la sortie, préfixée du joueur et de sa clé.

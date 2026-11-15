@@ -51,6 +51,9 @@ local Economy: { [string]: EconomyKind } = {
 	Code = { Flow = "Source", Transaction = "Code" }, -- code cadeau ; SKU : le code
 	Robux = { Flow = "Source", Transaction = "IAP" }, -- argent acheté en Robux (MAJ 1, MonetizationService) ; SKU : clé du produit (Cash10…)
 	Defense = { Flow = "Sink", Transaction = "Shop" }, -- défense de boutique (MAJ 2, DEV-110) ; SKU : Id
+	-- Vague 51 (a164) : argent requis remis à la renaissance (RebirthService, Features.Rebirth) ; SKU Rebirth1,
+	-- Rebirth2… Type V0 proposé : Gameplay.
+	Rebirth = { Flow = "Sink", Transaction = "Gameplay" },
 }
 
 -- Événements custom (LogCustomEvent) : clé lue par le code = nom envoyé à Roblox.
@@ -67,6 +70,7 @@ local Events: { [string]: string } = {
 	RemoteRefused = "RemoteRefused", -- demandes refusées par Net (Net.OnViolation), cumulées par joueur, remote et raison ; valeur = nombre ; champs Remote, Reason
 	DuplicateItem = "DuplicateItem", -- un même uid d'objet chez deux joueurs du serveur (vu au chargement d'un profil) ; joueur = celui qui arrive ; champs Rarity, Zone
 	ZoneReached = "ZoneReached", -- 1re entrée d'un profil dans une zone (1 à 6), mesure de la bêta ; valeur = temps de jeu cumulé (s) ; champ Zone
+	Rebirth = "Rebirth", -- vague 51 (a164, RebirthService) : renaissance faite ; valeur = temps de jeu cumulé (s) ; champ Level
 }
 
 local Telemetry = {
