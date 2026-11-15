@@ -1061,4 +1061,60 @@ for _, screenDef in UI.Screens do
 	end
 end
 
+-- Écrans refaits de L-183 (vague 59, a191 ; noms de la page Figma « 20 Index et Exposés », pas encore dans
+-- Studio) : facultatifs. UI_Index_v4 (IndexController) passe avant UI_Index_v3 quand il est là.
+table.insert(UI.Screens, {
+	Name = "UI_Index_v4",
+	Class = "ScreenGui",
+	Optional = true,
+	Elements = {
+		{ Path = "CloseButton", Class = BUTTON },
+		{ Path = "UnlockedBar.Counter", Class = "TextLabel" },
+		{ Path = "ZoneArt" },
+		{ Path = "ZoneArt.ZoneName", Class = "TextLabel" },
+		{ Path = "ZoneArt.ZoneTheme", Class = "TextLabel", Optional = true, Note = "les magasins de la zone ne sont pas écrits" },
+		{ Path = "ZoneBar.Fill", Class = "GuiObject" },
+		{ Path = "ZoneBar.ZoneCount", Class = "TextLabel" },
+		{ Path = "Tabs.Zone1Tab", Class = BUTTON },
+		{ Path = "Tabs.Zone2Tab", Class = BUTTON },
+		{ Path = "Tabs.Zone3Tab", Class = BUTTON },
+		{ Path = "Tabs.Zone4Tab", Class = BUTTON },
+		{ Path = "Tabs.Zone5Tab", Class = BUTTON },
+		{ Path = "Tabs.Zone6Tab", Class = BUTTON },
+		{ Path = "Tabs.SecretsTab", Class = BUTTON, Optional = true, Note = "pas d'onglet des Secrets" },
+		{ Path = "Cards", Class = "GuiObject" },
+		{ Path = "Cards.Template", Template = true },
+		{ Path = "Cards.Template.Clip", Class = "GuiObject" },
+		{ Path = "Cards.Template.Icon", Class = "ImageLabel" },
+		{ Path = "Cards.Template.ItemName", Class = "TextLabel" },
+		{ Path = "Footer.Pager.PrevButton", Class = BUTTON },
+		{ Path = "Footer.Pager.NextButton", Class = BUTTON },
+		{ Path = "Footer.Pager.PageLabel", Class = "TextLabel", Optional = true, Note = "la page n'est pas écrite" },
+		{ Path = "Footer.ClaimButton", Class = BUTTON },
+		{ Path = "Footer.ClaimButton.RewardCaption", Class = "TextLabel", Optional = true, Note = "la récompense n'est pas écrite" },
+		{ Path = "Footer.ClaimButton.RewardIcon", Class = "ImageLabel", Optional = true, Note = "pas d'icône de l'objet donné" },
+		{ Path = "Footer.ClaimButton.ClaimAlert", Optional = true, Note = "pas de pastille « ! » sur la récompense" },
+	} :: { Element },
+})
+-- UI_Displayed (DisplayedController ; nom à confirmer par Clément) : panneau des objets exposés, ouvert par
+-- UI_HUD.RightRail.DisplayedButton (ou OpenButton tant qu'il est dans l'écran).
+table.insert(UI.Screens, {
+	Name = "UI_Displayed",
+	Class = "ScreenGui",
+	Optional = true,
+	Elements = {
+		{ Path = "Panel", Class = "GuiObject" },
+		{ Path = "CloseButton", Class = BUTTON, Optional = true, Note = "le panneau se ferme par le bouton du HUD seulement" },
+		{ Path = "OpenButton", Class = BUTTON, Optional = true, Note = "ouvert par UI_HUD.RightRail.DisplayedButton" },
+		{ Path = "DisplayCount.CountLabel", Class = "TextLabel", Optional = true, Note = "le compte « 3/8 » n'est pas écrit" },
+		{ Path = "List.Template", Template = true },
+		{ Path = "List.Template.Icon", Class = "ImageLabel" },
+		{ Path = "List.Template.ItemName", Class = "TextLabel" },
+		{ Path = "List.Template.Income", Class = "TextLabel" },
+		{ Path = "List.Template.RarityChip.RarityLabel", Class = "TextLabel", Optional = true, Note = "la rareté n'est pas écrite" },
+		{ Path = "List.Template.RemoveButton", Class = BUTTON, Optional = true, Note = "un objet ne se retire pas depuis le panneau" },
+		{ Path = "DisplayBestButton", Class = BUTTON },
+	} :: { Element },
+})
+
 return UI

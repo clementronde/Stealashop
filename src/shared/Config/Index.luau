@@ -4,21 +4,19 @@
 -- (IndexService). Règles communes au serveur (IndexService ; DataService pour la migration des
 -- profils en v4) et au client (IndexController, écran UI_Index de Clément).
 --
---   Index.ZoneBonus     0,05 : une zone complète donne +5 % de revenus permanents (doc 3.4). Bonus en
---                       pour cent : il s'additionne aux autres (Partie 2, section 4 ;
---                       DisplayService.GetIncomeBonus)
---   Récompense d'une zone complète, en plus des +5 % (Clément, 2026-11-10, liaison L-083 point 7 : à la
---   place de l'aura « Collectionneur », chaque zone complète donne de l'argent et de la vitesse) :
---   Index.ZoneCashMinutes   10 : prime unique = 10 min de revenu de la collection complète de la zone
---                           exposée (Index.ZoneCash), versée une fois par zone et par joueur (IndexService)
---   Index.ZoneSpeedBonus    0,03 : +3 % de WalkSpeed permanent par zone complète (StatsService,
---                           modificateur « Index ») : × 1,18 avec les 6 zones
+--   Récompense d'une zone complète (décision de Clément, 2026-11-15, liaison L-183 ; vague 59, a191) : des
+--   valeurs FIXES, versées une seule fois quand le joueur la réclame (IndexService), au lieu des
+--   pourcentages d'avant (+5 % de revenus, +3 % de vitesse, prime de 10 min de revenus : retirés) :
+--   Index.ZoneRewards[zone]  { Cash, Speed, Item = { Kind, Id } } : prime en $, Vitesse ajoutée à la stat
+--                            entraînée au tapis (StatsService.AddSpeed), et un objet de boutique donné
+--                            (Kind = "Weapon" : Config/Tools ; "Aura" ou "Trail" : Config/Cosmetics)
 --   Index.ZoneCash(zone) -> number              prime de la zone, en $ (entier), 0 pour une zone inconnue
---   Index.SpeedMultiplier(discovered) -> number 1 + ZoneSpeedBonus × zones complètes
---   Index.ZoneReward(zone) -> ZoneReward        { Cash, Speed, Income } : prime ($), vitesse et revenus
---                                               (fractions : 0,03 = +3 %) d'une zone, pour l'écran
---   Index.ZoneRewardText(zone) -> string        la même, écrite pour le joueur (anglais, L-036) :
---                                               « +$10.2K +3% SPEED +5% INCOME » (RewardLabel)
+--   Index.ZoneReward(zone) -> ZoneReward?       la ligne de ZoneRewards (nil pour une zone inconnue)
+--   Index.ZoneRewardName(zone) -> string        nom de l'objet donné (« Wrench »), "" sans récompense
+--   Index.ZoneRewardIcon(zone) -> string?       nom à passer à Contract/Icons.get pour l'icône de boutique
+--                                               de l'objet (« TOOL_Wrench », « Aura_Flamme »), nil sans
+--   Index.ZoneRewardText(zone) -> string        la récompense écrite pour le joueur (anglais, L-036) :
+--                                               « +$10K +300 SPEED +WRENCH » (RewardLabel, RewardCaption)
 --   Index.Attribute    « IndexDiscovered » : attribut du Player posé par IndexService, lu par
 --                       IndexController (texte d'Index.Encode)
 --   Index.ZoneCount     6 : les zones du couloir (Config/Zones), onglets Zone1Tab à Zone6Tab
@@ -32,7 +30,6 @@
 --   Index.IsZoneComplete(discovered, zone) -> boolean    tous les objets de la zone (les Secrets n'en
 --                                                        font partie d'aucune)
 --   Index.CompletedZones(discovered) -> { number }       zones complètes, dans l'ordre
---   Index.IncomeBonus(discovered) -> number              ZoneBonus × zones complètes (0,1 = +10 %)
 --   Index.Encode(discovered) -> string                   ItemId découverts du catalogue, dans son ordre,
 --                                                        séparés par des virgules
 --   Index.Decode(text) -> { [ItemId]: true }             l'inverse ; ItemId inconnus du catalogue ignorés
@@ -45,21 +42,24 @@
 --   Index.ClaimableZones(discovered, claimed) -> { number }  zones complètes pas encore réclamées
 -- discovered : table [ItemId] = valeur vraie (dans le profil : os.time() de la découverte).
 -- Index complet (les 83) : l'aura « Collectionneur » du doc 3.4 est abandonnée (Clément, 2026-11-10,
--- L-083 point 7) ; ce sont les zones complètes qui récompensent (argent et vitesse en plus des +5 %).
+-- L-083 point 7) ; ce sont les zones complètes qui récompensent (argent, vitesse et un objet).
+-- Écran UI_Index_v4 (L-183) : Index.View.PageSize cartes par page (grille 4 × 2 de Cards).
 
 local DeepFreeze = require(script.Parent.DeepFreeze)
+local Cosmetics = require(script.Parent.Cosmetics)
 local Format = require(script.Parent.Parent.Format)
-local Formulas = require(script.Parent.Formulas)
 local Items = require(script.Parent.Items)
+local Tools = require(script.Parent.Tools)
 local Zones = require(script.Parent.Zones)
 
 type Item = Items.Item
 export type Discovered = { [string]: any }
--- Récompense d'une zone complète : Cash en $, Speed et Income en fractions (0,03 = +3 %).
+export type RewardKind = "Weapon" | "Aura" | "Trail"
+-- Récompense d'une zone complète : Cash en $, Speed en points de Vitesse (stat du tapis), Item l'objet donné.
 export type ZoneReward = {
 	Cash: number,
 	Speed: number,
-	Income: number,
+	Item: { Kind: RewardKind, Id: string },
 }
 
 local ZONE_COUNT = #Zones
@@ -115,30 +115,38 @@ local function completedZones(discovered: Discovered): { number }
 	return zones
 end
 
--- V0 proposé, absent du doc : la prime vaut ZONE_CASH_MINUTES min de revenu de la collection complète
--- de la zone exposée (somme des revenus 7.1 de ses objets, sans bonus). Même unité que les récompenses
--- en argent de Config/Rewards (« X min de revenus ») ; 10 min, deux fois J1 du calendrier, pour une
--- collection qui demande un Mythique (zones 2 à 6). Zone 1 : 17 $/s × 600 = 10,2 K$, le prix de la 1re
--- renaissance (Config/Rebirths, 10 K$).
-local ZONE_CASH_MINUTES = 10
-
--- Revenu ($/s) de tous les objets de chaque zone, exposés une fois chacun (Formulas.ItemIncome).
-local setIncome: { [number]: number } = {}
+-- V0 proposés à Clément, absents du doc (décision du 2026-11-15 : des valeurs fixes, L-183). Le simulateur
+-- d'équilibrage ne couvre pas l'index : les montants partent des revenus des zones de Config.
+--   Cash  : environ 10 min de revenu de la collection complète de la zone exposée (somme des revenus 7.1
+--           de ses objets : 17, 2 552, 19 140, 138 150, 1 046 500, 7 475 000 $/s), arrondi ; c'est l'ordre de
+--           grandeur de l'ancienne prime (10,2 K$ … 4,49 B$), qui en dépendait.
+--   Speed : 10 % de la Vitesse demandée par la zone suivante (Zones[n + 1].SpeedRequired : 3 K, 100 K, 3 M,
+--           100 M, 3 B) ; zone 6, la dernière : 1 B (un tiers de la sienne).
+--   Item  : un objet visé par la zone suivante (Kit de Config/Zones ou TargetZones), deux de chaque sorte :
+--           Wrench (300 $), Flame (60 K$), Turbo (1 M$), Sledgehammer (20 M$), Galaxy (400 M$), Hyperspace (2,5 B$).
+--           Déjà possédé : rien de plus (ni doublon, ni argent à la place).
+local ZONE_REWARDS: { [number]: ZoneReward } = {
+	{ Cash = 10_000, Speed = 300, Item = { Kind = "Weapon", Id = "Wrench" } },
+	{ Cash = 1_500_000, Speed = 10_000, Item = { Kind = "Aura", Id = "Flame" } },
+	{ Cash = 10_000_000, Speed = 300_000, Item = { Kind = "Trail", Id = "Turbo" } },
+	{ Cash = 80_000_000, Speed = 10_000_000, Item = { Kind = "Weapon", Id = "Sledgehammer" } },
+	{ Cash = 600_000_000, Speed = 300_000_000, Item = { Kind = "Aura", Id = "Galaxy" } },
+	{ Cash = 4_500_000_000, Speed = 1_000_000_000, Item = { Kind = "Trail", Id = "Hyperspace" } },
+}
 for zone = 1, ZONE_COUNT do
-	local total = 0
-	for _, item in byZone[zone] do
-		total += Formulas.ItemIncome(zone, item.Rarity)
+	local reward = ZONE_REWARDS[zone]
+	assert(reward ~= nil, `Config.Index : pas de récompense pour la zone {zone}`)
+	local item = reward.Item
+	if item.Kind == "Weapon" then
+		assert(Tools.ById[item.Id] ~= nil, `Config.Index : arme {item.Id} (zone {zone}) absente de Config/Tools`)
+	else
+		local cosmetic = Cosmetics.ById[item.Id]
+		assert(cosmetic ~= nil and cosmetic.Kind == item.Kind, `Config.Index : {item.Kind} {item.Id} (zone {zone}) absent de Config/Cosmetics`)
 	end
-	setIncome[zone] = total
 end
 
 local Index = {
-	ZoneBonus = 0.05, -- doc 3.4 : zone complète = +5 % de revenus permanents
-	ZoneCashMinutes = ZONE_CASH_MINUTES, -- V0 proposé, absent du doc (voir plus haut)
-	-- V0 proposé, absent du doc : +3 % de WalkSpeed par zone complète, × 1,18 au plus (6 zones). Sous
-	-- l'écart entre deux zones voisines (vitesse conseillée +17 % à +38 %, Config/Zones) : on ne saute pas
-	-- l'entraînement d'une zone, mais le vigile (0,9 × conseillée − 1) se sème plus facilement.
-	ZoneSpeedBonus = 0.03,
+	ZoneRewards = ZONE_REWARDS,
 	Attribute = "IndexDiscovered", -- V0 proposé, absent du doc : nom de l'attribut du Player
 	ClaimedAttribute = "IndexClaimed", -- V0 proposé, absent du doc : zones dont la prime est réclamée (L-127)
 	ZoneCount = ZONE_COUNT,
@@ -165,6 +173,8 @@ local Index = {
 		-- Prototype : « Claim » sur une zone pas complète, son UI_Deny et le bouton tremble (décalages en
 		-- part de la largeur de son parent, un toutes les 0,04 s, puis retour à sa place).
 		Deny = { Sound = "UI_Deny", Offsets = { -0.03, 0.03, -0.02, 0.02 }, Step = 0.04 },
+		-- UI_Index_v4 (L-183, vague 59) : grille Cards de 4 × 2 cartes, Footer.Pager pour les pages suivantes.
+		PageSize = 8,
 	},
 }
 
@@ -188,30 +198,50 @@ function Index.CompletedZones(discovered: Discovered): { number }
 	return completedZones(discovered)
 end
 
-function Index.IncomeBonus(discovered: Discovered): number
-	return Index.ZoneBonus * #completedZones(discovered)
+function Index.ZoneReward(zone: number): ZoneReward?
+	return ZONE_REWARDS[zone]
 end
 
 function Index.ZoneCash(zone: number): number
-	local income = setIncome[zone]
-	if income == nil then
-		return 0
+	local reward = ZONE_REWARDS[zone]
+	return if reward then reward.Cash else 0
+end
+
+function Index.ZoneRewardName(zone: number): string
+	local reward = ZONE_REWARDS[zone]
+	if reward == nil then
+		return ""
 	end
-	return math.floor(income * ZONE_CASH_MINUTES * 60)
+	local item = reward.Item
+	local def: any = if item.Kind == "Weapon" then Tools.ById[item.Id] else Cosmetics.ById[item.Id]
+	return if def then def.DisplayName else item.Id
 end
 
-function Index.SpeedMultiplier(discovered: Discovered): number
-	return 1 + Index.ZoneSpeedBonus * #completedZones(discovered)
+function Index.ZoneRewardIcon(zone: number): string?
+	local reward = ZONE_REWARDS[zone]
+	if reward == nil then
+		return nil
+	end
+	local item = reward.Item
+	if item.Kind == "Weapon" then
+		return "TOOL_" .. item.Id -- ICON_TOOL_<Id>, comme la boutique d'armes (L-090)
+	end
+	local cosmetic = Cosmetics.ById[item.Id]
+	local texture = if cosmetic then cosmetic.Texture else nil
+	if type(texture) ~= "string" then
+		return nil
+	end
+	-- FX_Aura_Flamme → ICON_Aura_Flamme, comme la boutique d'auras (L-171)
+	return if string.sub(texture, 1, 3) == "FX_" then string.sub(texture, 4) else texture
 end
 
-function Index.ZoneReward(zone: number): ZoneReward
-	return { Cash = Index.ZoneCash(zone), Speed = Index.ZoneSpeedBonus, Income = Index.ZoneBonus }
-end
-
--- V0 proposé, absent du doc : texte du RewardLabel (maquette de Clément : « +5% INCOME »).
+-- V0 proposé, absent du doc : texte de la récompense (RewardLabel, RewardCaption).
 function Index.ZoneRewardText(zone: number): string
-	local reward = Index.ZoneReward(zone)
-	return `+{Format.money(reward.Cash)} +{math.round(reward.Speed * 100)}% SPEED +{math.round(reward.Income * 100)}% INCOME`
+	local reward = ZONE_REWARDS[zone]
+	if reward == nil then
+		return ""
+	end
+	return `+{Format.money(reward.Cash)} +{Format.short(reward.Speed)} SPEED +{string.upper(Index.ZoneRewardName(zone))}`
 end
 
 function Index.Encode(discovered: Discovered): string

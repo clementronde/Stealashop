@@ -209,6 +209,10 @@ export type Data = {
 	-- sans changement de version (comme Item.Mutation) : absent = aucune prime versée ; créé par
 	-- IndexService au premier versement. Une zone complète sans entrée attend que le joueur réclame sa
 	-- prime (L-127 point 2, vague 34 : remote ClaimIndexReward ; avant, elle était versée toute seule).
+	IndexGifts: { [string]: number }?, -- vague 59 (a191, L-183) : [numéro de zone en texte] = os.time() du don de
+	-- la Vitesse et de l'objet de la récompense de zone (IndexService). Champ facultatif, sans changement de
+	-- version : absent = rien donné ; une zone dans IndexRewards sans entrée ici (réclamée avant la vague 59)
+	-- reçoit la Vitesse et l'objet au chargement suivant, sans nouvelle prime.
 	Settings: Settings?, -- réglages du joueur (L-095 point 2 ; SettingsService, Config/Settings). Champ
 	-- facultatif, sans changement de version : absent = réglages par défaut ; un champ invalide reprend
 	-- sa valeur par défaut au chargement (Settings.Sanitize).
@@ -232,6 +236,9 @@ export type Data = {
 	Rebirths: number?, -- vague 51 (a164, DEV-120) : renaissances faites (RebirthService, Config/Rebirths), entier ≥ 0.
 	-- Champ facultatif, sans changement de version : 0 dans le gabarit de DataService (absent = 0). Écrit d'un seul
 	-- tenant avec la remise à zéro ; ne compte qu'avec Features.Rebirth (coupé : sans effet).
+	Diamonds: number?, -- vague 59 (a191, L-182 point 10) : diamants, 2e monnaie pour personnaliser sa boutique.
+	-- Champ facultatif, sans changement de version : 0 dans le gabarit de DataService (absent = 0). Lu par
+	-- DataService.GetDiamonds ; aucun gain ni achat encore (règles à venir), affiché seulement dans UI_DiamondShop.
 	-- Partie 2 : Defenses, Rebirths, ajoutés par migration (Version = 9 et suivantes : la v2 est prise
 	-- par le catalogue d'objets v2, la v3 par la boutique Robux, la v4 par l'index, la v5 par les colis
 	-- sur les présentoirs, la v6 par les gains hors ligne, la v7 par les colis dans l'inventaire, la v8
