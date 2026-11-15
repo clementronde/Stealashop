@@ -96,7 +96,12 @@ end
 -- l'entrée de la zone 1 (on comprend tout de suite qu'il faut aller en face), 10 entre deux boutiques, 120 de place
 -- entre les façades et la ligne de la zone sûre (x 22) ; un grand mur en damier (48 de haut) fait le tour du hub et
 -- cache le décor du dehors ; les stands sont de part et d'autre de l'entrée, comptoir vers les boutiques.
-local LINE_FX, LINE_GAP, BIG_H = -98, 10, 48 -- x des façades, écart entre deux boutiques, hauteur du grand mur
+-- Clément, 2026-11-15 : « les boutiques sont trop loin du couloir » : façades avancées de 38 (x -98 → -60 ; la pelouse entre la
+-- promenade et l'allée des stands devient un terre-plein de 12), rangée resserrée au vrai gabarit de PLOT_Shop (53 de large
+-- et 13 de plaques devant la façade, au lieu de 64), toujours 10 entre deux boutiques ; hub raccourci d'autant.
+local LINE_FX, LINE_GAP, BIG_H = -60, 10, 48 -- x des façades, écart entre deux boutiques, hauteur du grand mur
+local SHOP_REAL_W, SHOP_PADS = 53, 13 -- largeur réelle d'une boutique, plaques (tapis, banc, panneaux) devant sa façade
+local LINE_PITCH = SHOP_REAL_W + LINE_GAP -- d'une boutique à la suivante dans la rangée (63)
 -- 2026-11-12 : serveurs de 8 joueurs (L-113, décision de Clément) : 8 boutiques en ligne (PlotIndex 1 à 8, 1 au nord).
 -- Le demi-cercle et les rangées 3 face à 3 gardent 6 emplacements.
 local SHOP_COUNT = LINE and 8 or 6
@@ -104,7 +109,7 @@ local SHOP_COUNT = LINE and 8 or 6
 -- côté, à 90°, dos au mur nord ou sud, face à la place (1 au nord, 8 au sud), entre la promenade et les stands.
 local SIDES = (LINE and SHOP_COUNT == 8) and 2 or 0
 local ROW_N = SHOP_COUNT - SIDES -- boutiques de la rangée du fond
-local LINE_HALF = (ROW_N / 2) * SHOP_W + ((ROW_N - 1) / 2) * LINE_GAP -- demi-longueur de la rangée (217 pour 6)
+local LINE_HALF = (ROW_N / 2) * SHOP_REAL_W + ((ROW_N - 1) / 2) * LINE_GAP -- demi-longueur de la rangée (184 pour 6)
 local PATH_W = 16 -- largeur de tous les chemins de la base (dalle), plus 1 de bordure de chaque côté
 -- centre des boutiques des côtés : au milieu de la promenade devant elles (dalle x -85..-1), donc -43 (Clément, 2026-11-12 :
 -- « ceux sur le bord ne sont pas centrés »)
@@ -114,18 +119,18 @@ if LINE then
 	-- mur ouest collé au dos des boutiques (pas de couloir derrière la rangée)
 	-- Clément, 2026-11-12 : hub élargi pour que les boutiques des côtés viennent après les dernières du fond (façade à 10
 	-- après le bout de la rangée, dos au grand mur) : |z| <= 310 avec elles, 225 sans
-	local z1 = SIDES > 0 and (LINE_HALF + LINE_GAP + SHOP_D + 3) or (LINE_HALF + 8)
-	HUB = { x0 = LINE_FX - SHOP_D - 3, x1 = 30, z0 = -z1, z1 = z1 } -- x -181..30
+	local z1 = SIDES > 0 and (LINE_HALF + LINE_GAP + SHOP_PADS + SHOP_D + 3) or (LINE_HALF + 8) -- 290 (310 avant le 2026-11-15)
+	HUB = { x0 = LINE_FX - SHOP_D - 3, x1 = 30, z0 = -z1, z1 = z1 } -- x -143..30 (-181 avant)
 end
 -- Zones du hub (L-165, Clément 2026-11-14) : dans la bande est (x 0..27,5), au-delà des stands ; au nord le cadeau
 -- gratuit puis les deux leaderboards dos au grand mur, au sud la roue puis le noob « invite un ami »
 local HUB_ZONES = LINE and {
-	gift = Vector3.new(12, 0, 152), noob = Vector3.new(12, 0, -200),
+	gift = Vector3.new(12, 0, 152), noob = Vector3.new(13, 0, 262), -- noob au nord-est depuis le 2026-11-15 (la boutique 8 avance jusqu'à x 5)
 	wheel = Vector3.new(21, 13, -160), wheelZone = Vector3.new(9, 0, -160), -- centre de la roue ; sa zone devant elle
 	boards = { { "Income", 186 }, { "Speed", 216 } }, -- z du centre de chaque panneau
 } or nil
 -- pelouse laissée sans taches sous les zones (x0, z0, x1, z1)
-local ZONE_CLEAR = HUB_ZONES and { { 3, 141, 21, 163 }, { 22, 171, 27.5, 231 }, { 0, -175, 27.5, -145 }, { 3, -211, 21, -189 } } or {}
+local ZONE_CLEAR = HUB_ZONES and { { 3, 141, 21, 163 }, { 22, 171, 27.5, 231 }, { 0, -175, 27.5, -145 }, { 4, 251, 22, 273 } } or {}
 
 local function rr(deg) local a = math.rad(deg + ROT); return Vector3.new(-math.cos(a), 0, math.sin(a)) end
 local C = E + rr(0) * D_C
@@ -158,7 +163,7 @@ if LINE then -- rangée du fond, avant vers l'entrée (+X) ; boutiques des côt�
 	for i = 1, ROW_N do
 		local k = i + SIDES / 2
 		local n = Vector3.new(1, 0, 0)
-		local front = Vector3.new(LINE_FX, 0, ((ROW_N + 1) / 2 - i) * (SHOP_W + LINE_GAP))
+		local front = Vector3.new(LINE_FX, 0, ((ROW_N + 1) / 2 - i) * LINE_PITCH)
 		local center = front - n * (SHOP_D / 2)
 		SITES[k] = { k = k, angle = 0, side = 1, front = front, center = center, n = n, cf = frameAt(center, n) }
 	end
@@ -567,8 +572,14 @@ assert(map, "Workspace/Map introuvable")
 local hub = map:FindFirstChild("Hub")
 if not hub then hub = Instance.new("Folder"); hub.Name = "Hub"; hub.Parent = map end
 local OWN = { "Ground", "Plaza", "Mall", "Trucks", "Stalls", "Zones", "Parking", "Garden", "Walls", "PlotSites", "SafeZone", "Spawn" }
+-- _G.HUB_ONLY = { Ground = true, … } : ne refait que ces sections (plus Shops : boutiques recollées à leur emplacement, et
+-- Previews : aperçus des panneaux) ; le reste du hub n'est pas touché (2026-11-15 : stands et zones gardent l'UI posée dessus)
+local ONLY = _G.HUB_ONLY
+local function want(n) return ONLY == nil or ONLY[n] == true end
 for _, n in OWN do
-	for _, c in hub:GetChildren() do if c.Name == n then c:Destroy() end end
+	if want(n) then
+		for _, c in hub:GetChildren() do if c.Name == n then c:Destroy() end end
+	end
 end
 local F = { studs = true, noShadow = true } -- dallages
 local function section(name) local m = Instance.new("Model"); m.Name = name; return m end
@@ -602,7 +613,7 @@ local function ground(parent, name, x0, z0, x1, z1, color, top)
 end
 
 -- Sol : place, flancs, et sortie dans l'axe du couloir (rue, trottoirs à 0,45, rail du mur de nuit à plat)
-do
+if want("Ground") then
 	local g = section("Ground")
 	local O = { studs = true, noShadow = true, under = true }
 	-- pelouse (hub simplifié, 2026-11-08) : les allées claires et les boutiques ressortent dessus
@@ -627,6 +638,8 @@ do
 	local plate = P(g, "SafeZoneText", CFrame.lookAt(Vector3.new(16, 0.03, 0), Vector3.new(15, 0.03, 0)), Vector3.new(32, 0.05, 7), SAFE_C,
 		{ T = 1, decor = true, noShadow = true })
 	txt(surface(plate, TOP, 20), "SAFE ZONE", SAFE_C, 0, 0, 1, 1, { font = LUCKY, strokeT = 4 })
+	-- (2026-11-14 : hub_ambiance_ville.luau, à relancer après ce script, remplace l'herbe et ces taches par un dallage
+	-- 2 tons, et pose la ville au loin, les jardinières et le mobilier)
 	-- pelouse habillée (Clément, 2026-11-08 : « des petits carrés vert foncé ») : taches de cases de 4 studs sur la place,
 	-- hors des boutiques, de la promenade, des lampadaires, de l'avenue, des stands et de la rue ; tirage fixe (graine 2611)
 	if LINE then
@@ -671,7 +684,7 @@ end
 -- lampadaires. Clément, 2026-11-08 : chaque élément a un rôle lisible ; le rond du spawn, sa plaque, ses bornes,
 -- l'ancienne fontaine décentrée et les seuils (cachés sous les terrasses des boutiques) sont retirés ; puis hub simplifié :
 -- plus de bancs ni de tables de pique-nique.
-do
+if want("Plaza") then
 	local m = section("Plaza")
 	-- fontaine et sa place ronde ; en rangée, plus sur la place (Clément, 2026-11-08 : « une grosse fontaine en plein milieu
 	-- pour rien ») mais gardée en asset : ServerStorage/Assets/Env/ENV_Hub_Fountain, pivot au sol au centre (créé s'il manque)
@@ -700,7 +713,11 @@ do
 		-- de l'un couvre la bordure de l'autre, sans trait en travers. Promenade en U devant les boutiques, toujours à 12 de
 		-- leur façade (le coin avant de la boutique : tapis, banc, socle de l'objet le plus rare, panneaux) ; avenue tout droit
 		-- jusqu'à la rue de la zone 1 ; allée des stands qui relie l'avenue au U, à 0,5 des plaques ShopPad.
+		-- Clément, 2026-11-15 : « retire les plaza, ça fait moche » : plus d'allées dallées de crème, le dallage du hub
+		-- (hub_ambiance_ville.luau) passe partout. PATHS = true les remet.
+		local PATHS = false
 		local function path(name, x0, z0, x1, z1)
+			if not PATHS then return end
 			local ax0, ax1, az0, az1 = math.min(x0, x1), math.max(x0, x1), math.min(z0, z1), math.max(z0, z1)
 			Bx(m, W, "WalkwayBorder_" .. name, ax0 - 1, -0.05, az0 - 1, ax1 + 1, 0.08, az1 + 1, BRICK, F)
 			Bx(m, W, "Walkway_" .. name, ax0, -0.05, az0, ax1, 0.12, az1, PAVE, F)
@@ -784,7 +801,7 @@ end
 
 -- Centre commercial : façade en arc derrière les boutiques, tour centrale à l'enseigne, piliers, tours d'angle
 -- (seulement si MALL)
-if MALL then
+if MALL and want("Mall") then
 	local m = section("Mall")
 	local O = { studs = true }
 	for i = 0, 28 do -- de -84° à 84° : les deux bouts de l'arc rejoignent le mur est
@@ -1214,8 +1231,8 @@ local function tri(parent, f, name, a, b, c, thick, color, opt)
 	end
 end
 
--- 1) Cadeau gratuit : boîte rouge à ruban jaune en studs (6,6 de côté), qui flotte à 3 du sol ; anneau jaune de rayon 8
-local GS = 1.5 -- échelle du cadeau (1 = boîte de 4,4)
+-- 1) Cadeau gratuit : boîte rouge à ruban jaune en studs (9,9 de côté), qui flotte à 3 du sol ; anneau jaune de rayon 8
+local GS = 2.25 -- échelle du cadeau (1 = boîte de 4,4) ; 1,5 puis +50 % (Clément, 2026-11-14)
 local function freeGift(parent, c)
 	local m = Instance.new("Model"); m.Name = "ENV_Hub_FreeGift"
 	m:SetAttribute("LabelKey", "FreeGift")
@@ -1241,14 +1258,14 @@ local function freeGift(parent, c)
 	g.WorldPivot = gf
 	g.Parent = m
 	local zone = zonePart(m, c, 8, 10, "RewardsZone")
-	labelPoint(zone, c + Vector3.new(0, 14, 0))
+	labelPoint(zone, c + Vector3.new(0, 3 + 2 * GS + 3.6 * GS + 3, 0)) -- 3 au-dessus du nœud
 	groundLoop(m, CFrame.new(c.X, 0, c.Z), "Ring", circlePts(0, 0, 8, 44), rgb(255, 214, 60))
 	m.WorldPivot = CFrame.new(c.X, 0, c.Z)
 	m.Parent = parent
 	return m
 end
 
--- 2) Noob « invite un ami » : rig R15 (tête et bras jaunes, torse bleu, jambes vertes) une fois et demie plus grand qu'un
+-- 2) Noob « invite un ami » : rig R15 (tête et bras jaunes, torse bleu, jambes vertes) 2,25 fois plus grand qu'un
 -- joueur, face à la place ; Humanoid avec Animator, dossier Animations vide (Idle et Wave de Clément) ; anneau cyan de 7
 local function inviteNoob(parent, c)
 	local m = Instance.new("Model"); m.Name = "ENV_Hub_InviteNoob"
@@ -1275,12 +1292,22 @@ local function inviteNoob(parent, c)
 		local root = rig:FindFirstChild("HumanoidRootPart")
 		root.Anchored = true
 		local anims = Instance.new("Folder"); anims.Name = "Animations"; anims.Parent = rig
-		rig:ScaleTo(1.5)
+		rig:ScaleTo(2.25) -- 1,5 puis +50 % (Clément, 2026-11-14)
 		local piv = rig:GetPivot()
 		rig:PivotTo(CFrame.lookAt(Vector3.new(c.X, piv.Y, c.Z), Vector3.new(c.X - 1, piv.Y, c.Z))) -- face à l'ouest (la place)
-		local bcf, bsz = rig:GetBoundingBox()
-		rig:PivotTo(rig:GetPivot() + Vector3.new(0, -(bcf.Y - bsz.Y / 2), 0)) -- pieds au sol
-		top = bsz.Y
+		-- pieds au sol, par les coins des pièces visibles (GetBoundingBox du rig se trompait de 2,2 à l'échelle 2,25)
+		local mnY, mxY = math.huge, -math.huge
+		for _, p in rig:GetDescendants() do
+			if p:IsA("BasePart") and p.Transparency < 1 then
+				for _, q in { Vector3.new(1, 1, 1), Vector3.new(-1, 1, 1), Vector3.new(1, -1, 1), Vector3.new(1, 1, -1),
+					Vector3.new(-1, -1, 1), Vector3.new(-1, 1, -1), Vector3.new(1, -1, -1), Vector3.new(-1, -1, -1) } do
+					local y = p.CFrame:PointToWorldSpace(p.Size / 2 * q).Y
+					mnY = math.min(mnY, y); mxY = math.max(mxY, y)
+				end
+			end
+		end
+		rig:PivotTo(rig:GetPivot() + Vector3.new(0, -mnY, 0))
+		top = mxY - mnY
 		rig.Parent = m
 	else
 		add("Noob : rig impossible (" .. tostring(rig) .. ")")
@@ -1332,7 +1359,7 @@ local function fortuneWheel(parent, c, zc)
 	P(m, "Axle", CFrame.new(c + Vector3.new(0.9, 0, 0)), Vector3.new(1.4, 1, 1), D, { shape = CYL })
 	tri(m, wf * CFrame.new(0, 0, -1.6), "Pointer", Vector2.new(0, R - 0.6), Vector2.new(1.4, R + 2.4), Vector2.new(-1.4, R + 2.4), 0.6, rgb(232, 40, 40), G)
 	Bx(m, bf, "PointerMount", -2.0, 24.6, -0.9, 0.8, 26.4, 0.9, D, G)
-	labelPoint(bar, Vector3.new(c.X, 29.5, c.Z))
+	labelPoint(bar, Vector3.new(13, 29.5, c.Z)) -- à 14,5 du mur est (billboard qui ne rentre pas dans le mur)
 	zonePart(m, zc, 7, 10, "WheelZone")
 	groundLoop(m, CFrame.new(zc.X, 0, zc.Z), "Ring", circlePts(0, 0, 7, 40), rgb(255, 90, 200))
 	m.WorldPivot = bf
@@ -1348,7 +1375,7 @@ local function leaderboard(parent, stat, z)
 	m:SetAttribute("Stat", stat)
 	local f = CFrame.lookAt(Vector3.new(25.6, 0, z), Vector3.new(24.6, 0, z))
 	local G = { studs = true }
-	local accent = (stat == "Income") and rgb(60, 190, 90) or rgb(60, 160, 240)
+	local accent = (stat == "Income") and rgb(60, 190, 90) or rgb(150, 90, 230) -- vitesse : violet, comme son écran (UI)
 	for i, s in { 1, -1 } do Bx(m, f, "Leg_" .. i, 10 * s - 0.7, 0, -0.7, 10 * s + 0.7, 5, 0.7, rgb(58, 62, 72), G) end
 	Bx(m, f, "Frame", -13, 5, -0.5, 13, 33, 0.5, rgb(226, 229, 234), G)
 	Bx(m, f, "Footer", -13.3, 4.4, -0.9, 13.3, 5.4, 0.8, accent, G)
@@ -1437,7 +1464,7 @@ local function stall(parent, t)
 	m.Parent = parent
 	return m
 end
-do
+if want("Stalls") then
 	local m = section("Stalls")
 	for _, t in STALLS do stall(m, t) end
 	-- un lampadaire devant chaque paire de stands, entre les deux (armes et Robux au nord, auras et receleur au sud)
@@ -1460,7 +1487,7 @@ do
 end
 
 -- Zones du hub (L-165) : cadeau gratuit, noob « invite un ami », roue, deux leaderboards (voir HUB_ZONES)
-if HUB_ZONES then
+if HUB_ZONES and want("Zones") then
 	local m = section("Zones")
 	freeGift(m, HUB_ZONES.gift)
 	inviteNoob(m, HUB_ZONES.noob)
@@ -1470,7 +1497,7 @@ if HUB_ZONES then
 end
 
 -- Mur est contre la zone 1, blocs au bout de l'arc, piliers au bout du mur de nuit, mâts à la sortie ------------------
-do
+if want("Walls") then
 	local m = section("Walls")
 	local WO = { studs = true }
 	-- mur est contre la zone 1, du bout du mur de nuit jusqu'à la façade (les deux bouts de l'arc ferment le nord et le sud) ;
@@ -1569,7 +1596,7 @@ do
 end
 
 -- Emplacements des boutiques (repères invisibles : PivotTo(PlotSite_k.CFrame) pose le modèle, avant vers la place)
-do
+if want("PlotSites") then
 	local m = section("PlotSites")
 	for k, site in SITES do
 		P(m, "PlotSite_" .. k, site.cf, Vector3.new(SHOP_W, 0.1, SHOP_D), rgb(255, 120, 200), { T = 1, decor = true, noShadow = true, anywhere = true })
@@ -1579,7 +1606,7 @@ end
 
 -- 4) Boutiques des joueurs (PLOT_Shop) : une copie du gabarit par emplacement, niveau 1, PlotIndex = numéro de l'emplacement
 local shopsReady = false
-do
+if want("Shops") then
 	local shops = hub:FindFirstChild("Shops")
 	if not shops then shops = Instance.new("Folder"); shops.Name = "Shops"; shops.Parent = hub end
 	local builder = _G.ClaudePlotShop
@@ -1590,7 +1617,14 @@ do
 		end
 		add("Boutiques posées par plot_shop_builder (niveau 1) : " .. SHOP_COUNT .. ", dans Map/Hub/Shops")
 	else
-		add("Boutiques : constructeur pas chargé (tools/clement/hub/plot_shop_builder.luau) ; celles déjà posées restent")
+		-- sans le constructeur : les boutiques déjà posées sont recollées à leur emplacement d'un bloc (PivotTo), sans rien
+		-- démonter ; ce qui leur appartient les suit (Clément, 2026-11-15 : boutiques rapprochées du couloir)
+		local moved = 0
+		for _, m in shops:GetChildren() do
+			local site = m:IsA("Model") and CS:HasTag(m, "PlayerPlot") and SITES[m:GetAttribute("PlotIndex")]
+			if site and (m:GetPivot().Position - site.cf.Position).Magnitude > 0.01 then m:PivotTo(site.cf); moved += 1 end
+		end
+		add("Boutiques : constructeur pas chargé ; celles déjà posées sont recollées à leur emplacement (" .. moved .. " déplacées)")
 	end
 	local n = 0
 	for _, m in shops:GetChildren() do if m:IsA("Model") and CS:HasTag(m, "PlayerPlot") then n += 1 end end
@@ -1602,7 +1636,7 @@ end
 -- (CFrame dans le repère de la boutique, posé le 2026-11-12) ; une boutique sans aperçus reçoit une copie de ceux d'une
 -- autre (Clément, 2026-11-12 : « les panneaux d'amélioration doivent suivre les boutiques »). En jeu, UpgradeController
 -- pose les vrais panneaux sur les points de la boutique, qui la suivent déjà.
-do
+if want("Previews") then
 	local pv = workspace:FindFirstChild("_PREVIEW_UpgradeSigns")
 	local shops = hub:FindFirstChild("Shops")
 	if pv and shops then
@@ -1628,10 +1662,12 @@ end
 -- joueur sur le SpawnPoint de sa boutique à chaque apparition : ce spawn ne sert que si un joueur n'a pas de boutique.
 -- Il est invisible, à ras du dallage, sur l'allée de la sortie, tourné vers la fontaine (Clément, 2026-11-08 : plus de
 -- plaque jaune qui ne veut rien dire).
-do
+if want("SafeZone") then
 	local sz = P(hub, "SafeZone", CFrame.new((HUB.x0 + 24) / 2, 75, 0), Vector3.new(24 - HUB.x0, 170, HUB.z1 - HUB.z0), rgb(255, 120, 200),
 		{ T = 1, decor = true, noShadow = true, anywhere = true })
 	CS:AddTag(sz, "SafeZone")
+end
+if want("Spawn") then
 	local sp = Instance.new("SpawnLocation")
 	sp.Name = "Spawn"; sp.Size = Vector3.new(8, 0.2, 8); sp.Anchored = true
 	local c = E + rr(0) * 37 + Vector3.new(0, 0.22, 0) -- (-7, 0, 0), posé sur la dalle de l'avenue (0,12), dessus à 0,32
