@@ -27,6 +27,11 @@
 --      gardée avec l'objet. Title est le texte de Clément. Rays tourne, CrownIcon se balance (V0). Chaque
 --      client la pose : tous les joueurs la voient. Aucun objet exposé : pas de billboard. L-118 point 6 :
 --      l'objet lui-même aussi, une copie (RarestItem) posée sur l'Attachment RarestSlot du socle.
+--      Vague 50 (a161, L-165 point 5) : si la parcelle a le grand socle RarestDisplay (Vfx.RarestDisplay), il
+--      remplace RarestPedestal : BB_RarestDisplay (sinon BB_Rarest) sur LabelPoint, avec Rarity, ItemName,
+--      Mutation (« BIG · GOLD », caché sans mutation) et Odds (« 1 in 5,300,000,000 », chance de référence de
+--      Shared/ItemOdds) ; l'objet sur ItemPoint, à sa taille réelle, tourné comme ItemPoint. Sans RarestDisplay :
+--      l'ancien socle, comme avant (Odds caché).
 -- VISUAL EFFECTS sur OFF (Settings.VfxReduced) : billets et pièces coupés, particules et lumière de la
 -- victoire et du camion × Vfx.OffEmitFactor (0 : rien). Le contour du vigile et BB_Rarest restent.
 -- Un modèle de Clément absent : rien (une ligne en Studio, une fois).
@@ -51,6 +56,8 @@ local Vfx = require(Config:WaitForChild("Vfx"))
 local Settings = require(Config:WaitForChild("Settings"))
 local Rarities = require(Config:WaitForChild("Rarities"))
 local Items = require(Config:WaitForChild("Items"))
+local Mutations = require(Config:WaitForChild("Mutations"))
+local ItemOdds = require(Shared:WaitForChild("ItemOdds"))
 
 local IS_STUDIO = RunService:IsStudio()
 local PLOT_TAG = "PlayerPlot" -- contrat 2.1 (Contract/Tags)
@@ -77,6 +84,9 @@ type RarestEntry = {
 	CrownBase: number,
 	Item: Model?, -- copie de l'objet le plus rare sur RarestSlot (L-118 point 6)
 	ItemUid: string?,
+	Slot: Attachment?, -- RarestSlot, ou ItemPoint du grand socle (a161)
+	Holder: Instance, -- où ranger la copie de l'objet : RarestPedestal ou RarestDisplay
+	Large: boolean, -- a161 : grand socle RarestDisplay (L-165 point 5)
 }
 
 export type State = {
@@ -453,13 +463,30 @@ end
 -- BB_Rarest
 ------------------------------------------------------------------------------
 
-local function labelPoint(plot: Instance): Attachment?
+type Spot = { Point: Attachment, Slot: Attachment?, Holder: Instance, Large: boolean }
+
+local function attachment(root: Instance, name: string): Attachment?
+	local found = root:FindFirstChild(name, true)
+	return if found and found:IsA("Attachment") then found else nil
+end
+
+-- Où poser billboard et objet : le grand socle RarestDisplay s'il a son LabelPoint (a161, L-165 point 5),
+-- sinon l'ancien socle RarestPedestal (TopPlate/RarestLabelPoint, RarestSlot), sinon nil.
+local function rarestSpot(plot: Instance): Spot?
+	local large = Vfx.RarestDisplay
+	local display = plot:FindFirstChild(large.Model, true)
+	if display then
+		local point = attachment(display, large.LabelPoint)
+		if point then
+			return { Point = point, Slot = attachment(display, large.ItemPoint), Holder = display, Large = true }
+		end
+	end
 	local spec = Vfx.Rarest
 	local pedestal = plot:FindFirstChild(spec.Pedestal, true)
 	local plate = if pedestal then pedestal:FindFirstChild(spec.Plate, true) else nil
-	local point = if plate then plate:FindFirstChild(spec.Point, true) else nil
-	if point and point:IsA("Attachment") then
-		return point
+	local point = if plate then attachment(plate, spec.Point) else nil
+	if pedestal and point then
+		return { Point = point, Slot = attachment(pedestal, spec.Slot), Holder = pedestal, Large = false }
 	end
 	return nil
 end
@@ -515,17 +542,18 @@ end
 -- RarestSlot du socle, tournée comme sur son présentoir. Copie locale, comme BB_Rarest : sans billboard,
 -- invite, script ni tag (les autres contrôleurs ne la prennent pas pour un objet exposé), ancrée, sans
 -- collision. Refaite quand l'objet le plus rare change ; pas de RarestSlot : rien.
-local function placeRarestItem(plot: Instance, entry: RarestEntry, best: Best)
+-- Grand socle (a161, L-165 point 5) : sur ItemPoint, à sa taille réelle (copie de l'objet exposé, mutation de
+-- taille comprise, jamais réduite), tournée comme ItemPoint (face avant posée par Clément).
+local function placeRarestItem(entry: RarestEntry, best: Best)
 	if entry.Item then
 		entry.Item:Destroy()
 		entry.Item = nil
 	end
 	entry.ItemUid = best.Uid
 	local spec = Vfx.Rarest
-	local pedestal = plot:FindFirstChild(spec.Pedestal, true)
-	local slot = if pedestal then pedestal:FindFirstChild(spec.Slot, true) else nil
+	local slot = entry.Slot
 	local source = best.Source
-	if pedestal == nil or slot == nil or not slot:IsA("Attachment") or not source:IsA("Model") then
+	if slot == nil or slot.Parent == nil or not source:IsA("Model") then
 		return
 	end
 	local copy = source:Clone()
@@ -548,9 +576,15 @@ local function placeRarestItem(plot: Instance, entry: RarestEntry, best: Best)
 		copy:RemoveTag(tag)
 	end
 	copy.Name = spec.ItemName
-	copy:PivotTo(CFrame.new((slot :: Attachment).WorldPosition) * source:GetPivot().Rotation)
-	copy.Parent = pedestal
+	local rotation = if entry.Large then slot.WorldCFrame.Rotation else source:GetPivot().Rotation
+	copy:PivotTo(CFrame.new(slot.WorldPosition) * rotation)
+	copy.Parent = entry.Holder
 	entry.Item = copy
+end
+
+-- Mutation d'un objet exposé (attributs MutationSize et MutationEffect de DisplayService), ou nil.
+local function mutationOf(source: Instance): Mutations.Mutation?
+	return Mutations.Sanitize({ Size = source:GetAttribute("MutationSize"), Effect = source:GetAttribute("MutationEffect") })
 end
 
 local function textOf(gui: Instance, name: string): TextLabel?
@@ -573,19 +607,28 @@ local function refreshRarest()
 	local seen: { [Instance]: boolean } = {}
 	for _, plot in CollectionService:GetTagged(PLOT_TAG) do
 		seen[plot] = true
-		local point = labelPoint(plot)
-		local best = if point then bestOf(plot) else nil
-		if point == nil or best == nil then
+		local spot = rarestSpot(plot)
+		local best = if spot then bestOf(plot) else nil
+		if spot == nil or best == nil then
 			removeRarest(plot)
 			continue
 		end
+		local point = spot.Point
 		local entry: RarestEntry? = rarest[plot]
-		if entry and (entry.Point ~= point or entry.Gui.Parent ~= point) then
+		if entry and (entry.Point ~= point or entry.Gui.Parent ~= point or entry.Large ~= spot.Large or entry.Slot ~= spot.Slot) then
 			removeRarest(plot)
 			entry = nil
 		end
 		if entry == nil then
-			local source = template(Vfx.UiFolder, Vfx.Rarest.Billboard, "BillboardGui")
+			-- Grand socle : BB_RarestDisplay, sinon BB_Rarest (mêmes noms Rarity, ItemName, Odds).
+			local ui = if spot.Large then folderOf(Vfx.UiFolder) else nil
+			local found = if ui then ui:FindFirstChild(Vfx.RarestDisplay.Billboard, true) else nil
+			local source = if found and found:IsA("BillboardGui")
+				then found
+				else template(Vfx.UiFolder, Vfx.Rarest.Billboard, "BillboardGui")
+			if spot.Large and source ~= found then
+				sayOnce("rarestDisplay", `{Vfx.RarestDisplay.Billboard} pas encore livré : {Vfx.Rarest.Billboard} sur le grand socle`)
+			end
 			if source == nil then
 				return
 			end
@@ -603,12 +646,16 @@ local function refreshRarest()
 				RaysBase = if rays then rays.Rotation else 0,
 				Crown = crown,
 				CrownBase = if crown then crown.Rotation else 0,
+				Slot = spot.Slot,
+				Holder = spot.Holder,
+				Large = spot.Large,
 			}
 			rarest[plot] = entry :: RarestEntry
 		end
 		local current = entry :: RarestEntry
 		local chosen = best :: Best
-		local key = `{chosen.ItemId}|{chosen.Rarity.Id}`
+		local mutation = mutationOf(chosen.Source)
+		local key = `{chosen.ItemId}|{chosen.Rarity.Id}|{Mutations.Label(mutation) or ""}`
 		if current.Key ~= key then
 			current.Key = key
 			local rarityLabel = textOf(current.Gui, "Rarity")
@@ -620,15 +667,27 @@ local function refreshRarest()
 			if nameLabel then
 				nameLabel.Text = Items.ById[chosen.ItemId].DisplayName
 			end
-			-- La chance du tirage n'est pas gardée avec l'objet exposé : Odds caché.
+			-- Ancien socle : la chance du tirage n'est pas gardée avec l'objet exposé, Odds caché. Grand socle
+			-- (a161) : chance de référence (Shared/ItemOdds), cachée si elle est inconnue ; Mutation
+			-- (« BIG · GOLD »), cachée sans mutation. Header : le texte de Clément.
 			local odds = textOf(current.Gui, "Odds")
 			if odds then
-				odds.Visible = false
+				local oneIn = if current.Large then ItemOdds.OneIn(chosen.ItemId, mutation, Vfx.RarestDisplay.OddsBox) else nil
+				odds.Visible = oneIn ~= nil
+				if oneIn then
+					odds.Text = ItemOdds.Format(oneIn)
+				end
+			end
+			local mutationLabel = if current.Large then textOf(current.Gui, "Mutation") else nil
+			if mutationLabel then
+				local text = Mutations.Label(mutation)
+				mutationLabel.Text = text or ""
+				mutationLabel.Visible = text ~= nil
 			end
 		end
 		local item = current.Item
 		if current.ItemUid ~= chosen.Uid or (item ~= nil and item.Parent == nil) then
-			placeRarestItem(plot, current, chosen)
+			placeRarestItem(current, chosen)
 		end
 	end
 	for plot in rarest do

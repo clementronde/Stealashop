@@ -175,7 +175,7 @@ local TEMPLATE: Data = {
 	Vault = {},
 	Boxes = {}, -- v7 : [uid du colis] = colis dans l'inventaire ou posé au sol de la boutique (UnboxService)
 	Tutorial = { Step = 0, Done = false },
-	Lifetime = { Heists = 0, Steals = 0, Defenses = 0, PlaySeconds = 0 },
+	Lifetime = { Heists = 0, Steals = 0, Defenses = 0, PlaySeconds = 0, BestIncome = 0 }, -- BestIncome : vague 50 (a161), LeaderboardService
 	Purchases = {}, -- [PurchaseId] = os.time() du don (MonetizationService)
 	Monetization = { Passes = {}, StarterPack = false, OpenNowCredit = 0 }, -- v3
 	Boosts = { Cash = 0 }, -- v3

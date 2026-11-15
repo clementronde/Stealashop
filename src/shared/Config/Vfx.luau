@@ -95,6 +95,17 @@ local Vfx = {
 		CrownPeriod = 2, -- V0 : en 2 s
 		MaxDistance = 220, -- V0 : au-delà (caméra), rien n'est animé (MaxDistance de Clément : 200)
 	},
+
+	-- 6. Grand socle de l'objet le plus rare devant la boutique (vague 50, a161, L-165 point 5 ; noms proposés
+	-- par Clément, pas encore livrés). Présent dans la parcelle, il remplace RarestPedestal ; absent, l'ancien
+	-- socle (Rarest, plus haut) marche comme avant. Mêmes réglages de rafraîchissement et d'animation que Rarest.
+	RarestDisplay = {
+		Model = "RarestDisplay", -- Clément : dans PLOT_Shop
+		ItemPoint = "ItemPoint", -- Attachment où l'objet est posé, à sa taille réelle (pivot en bas au centre)
+		LabelPoint = "LabelPoint", -- Attachment du billboard
+		Billboard = "BB_RarestDisplay", -- Clément (Assets/UI) ; absent : BB_Rarest sur LabelPoint
+		OddsBox = "Common", -- V0 : caisse de référence de la chance écrite dans Odds (Shared/ItemOdds)
+	},
 }
 
 return DeepFreeze(Vfx)

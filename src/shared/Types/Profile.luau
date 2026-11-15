@@ -111,6 +111,7 @@ export type Lifetime = {
 	Steals: number,
 	Defenses: number,
 	PlaySeconds: number,
+	BestIncome: number?, -- vague 50 (a161) : meilleur revenu par seconde de tous les temps (LeaderboardService) ; absent = 0
 }
 
 -- Boutique Robux (v3, DEV-100 ; MonetizationService).

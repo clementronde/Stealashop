@@ -188,6 +188,17 @@ local Plot: ModelSpec = {
 		-- Point d'apparition du propriétaire, axe −Z tourné vers l'allée (L-019).
 		{ Name = "SpawnPoint", Class = "Attachment" },
 		{ Name = "Bounds", Class = "BasePart" },
+		-- Vague 50 (a161, L-165 point 5) : grand socle de l'objet le plus rare, devant la boutique (remplace
+		-- RarestPedestal). Facultatif : sans lui, l'ancien socle (VfxController).
+		{
+			Name = "RarestDisplay",
+			Optional = true,
+			Note = "facultatif : grand socle de l'objet le plus rare ; sans lui, RarestPedestal comme avant, L-165",
+			Inside = {
+				{ Name = "ItemPoint", Class = "Attachment", Optional = true, Note = "facultatif : sans lui, pas d'objet sur le socle, L-165" },
+				{ Name = "LabelPoint", Class = "Attachment", Optional = true, Note = "facultatif : sans lui, le grand socle est ignoré, L-165" },
+			},
+		},
 	},
 }
 
@@ -635,5 +646,43 @@ local FortuneVault: ModelSpec = {
 }
 Models.FortuneVault = FortuneVault
 table.insert(Models.List, table.find(Models.List, WeaponShopCounter) or #Models.List + 1, FortuneVault)
+
+-- Panneaux de classement du hub (vague 50, a161, L-165 point 4 ; noms proposés par Clément, pas encore livrés) :
+-- ENV_Hub_Leaderboard, deux copies taggées Leaderboard, attribut texte Stat = Income ou Speed. LeaderboardService
+-- écrit Title et clone List.Template (Rank, Avatar, PlayerName, Value). Tout est facultatif (orange).
+local LeaderboardBoard: ModelSpec = {
+	Key = "Leaderboard",
+	Label = "panneaux de classement du hub",
+	Category = "Hub",
+	Tag = "Leaderboard",
+	Parts = {
+		{
+			Name = "Board",
+			Class = "SurfaceGui",
+			Optional = true,
+			Note = "facultatif : sans lui, le panneau reste vide, L-165",
+			Inside = {
+				{ Name = "Title", Class = "TextLabel", Optional = true },
+				{ Name = "List", Class = "GuiObject", Optional = true, Note = "facultatif : sans lui, aucune ligne" },
+				{
+					Name = "Template",
+					Class = "GuiObject",
+					Optional = true,
+					Note = "facultatif : List.Template invisible, cloné par ligne, L-165",
+					Inside = {
+						{ Name = "Rank", Class = "TextLabel", Optional = true },
+						{ Name = "Avatar", Class = "ImageLabel", Optional = true },
+						{ Name = "PlayerName", Class = "TextLabel", Optional = true },
+						{ Name = "Value", Class = "TextLabel", Optional = true },
+					},
+				},
+			},
+		},
+	},
+	WarnWhenEmpty = true,
+}
+Models.Leaderboard = LeaderboardBoard
+-- Avant les comptoirs du hub, qui restent à la fin du rapport.
+table.insert(Models.List, table.find(Models.List, WeaponShopCounter) or #Models.List + 1, LeaderboardBoard)
 
 return Models

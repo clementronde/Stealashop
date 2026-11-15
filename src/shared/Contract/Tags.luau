@@ -45,6 +45,9 @@ Tags.List = {
 	-- ou Model, en zone 6), posé par Clément. Facultatif : sans lui, FortuneTowerService calcule la place ;
 	-- pas encore posé, il est dans la ligne « Tags pas encore posés » (jamais un problème).
 	{ Tag = "FortuneVaultSpawn", For = "point d'apparition de la vitrine de la Fortune Tower (facultatif)" },
+	-- Vague 50 (a161, L-165 point 4) : les deux panneaux ENV_Hub_Leaderboard du hub (attribut Stat = Income ou
+	-- Speed). Facultatif : pas encore posé, ligne « Tags pas encore posés » (jamais un problème).
+	{ Tag = "Leaderboard", For = "panneaux de classement du hub ENV_Hub_Leaderboard (facultatif)" },
 } :: { TagSpec }
 
 return Tags
