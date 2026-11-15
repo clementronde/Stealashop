@@ -10,6 +10,7 @@
 
 local DeepFreeze = require(script.Parent.DeepFreeze)
 local Balance = require(script.Parent.Balance)
+local PvP = require(script.Parent.PvP) -- AnyoneCanRob lit le nombre de coups de la porte (PvP.DoorHits)
 
 export type Step = {
 	Index: number,
@@ -137,7 +138,7 @@ local Tutorial = {
 		-- 8 mots, comme ShieldEndMessage). AnyoneCanRob : étape 12, porte du bot pas encore cassée (le nombre de
 		-- coups est celui de la porte d'une boutique de joueur, PvP.DoorHits d'a159 : 40). ProtectShop : à la fin
 		-- du tuto (bot volé et ramené, ou fin sans bot), affiché MessageDuration s avant de tout cacher.
-		AnyoneCanRob = "Anyone can rob anyone: every shop door breaks in 40 hits!",
+		AnyoneCanRob = `Anyone can rob anyone: every shop door breaks in {PvP.DoorHits} hits!`,
 		ProtectShop = "Protect your shop: Reinforced Door, Lock, Cameras!",
 	} :: { [string]: string },
 
