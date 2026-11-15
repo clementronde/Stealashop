@@ -20,7 +20,7 @@
 --      donne un minimum à la zone 1 (0 = aucun).
 --   5. Vigile de nuit et policier (Cantin, 2026-11-14) : même ruée, même rapprochement, mais leur minimum
 --      vaut la Speed effective actuelle du voleur × NightGuardRequiredFactor (PoliceRequiredFactor) : r = 1/2,
---      rapprochement 4 studs/s, ils attrapent toujours (environ 1,5 s après la ruée), sauf si la poursuite
+--      rapprochement 4 studs/s, ils attrapent toujours (environ 2,5 s après la ruée : 14 − 4 studs à 4 studs/s, a174), sauf si la poursuite
 --      finit avant (zone safe ; policier : durée de WitnessService).
 --   6. Conducteur du camion : même ruée, puis la marche du voleur × (1 + DriverGrowthPerSecond × secondes
 --      depuis la fin de la ruée), au plus × DriverMaxFactor : il rattrape de plus en plus vite.
@@ -35,9 +35,12 @@ local DeepFreeze = require(script.Parent.DeepFreeze)
 export type AboveRequired = "Hold" | "Gain"
 
 local Chase = {
-	RushWalkFactor = 3, -- ruée : × la marche du voleur
-	RushMinSpeed = 60, -- ruée : au moins (studs/s)
-	HoldDistance = 10, -- fin de la ruée, à l'horizontale (studs)
+	RushWalkFactor = 3.9, -- ruée : × la marche du voleur (a174, Cantin 2026-11-15 : +30 %, 3 → 3,9)
+	RushMinSpeed = 78, -- ruée : au moins (studs/s) (a174 : +30 %, 60 → 78)
+	HoldDistance = 14, -- fin de la ruée, à l'horizontale (studs) (a174, Cantin 2026-11-15 : 10 → 14)
+	-- a174 : freinage de la fin de ruée (studs/s²) : sa vitesse ne dépasse pas la marche du voleur +
+	-- √(2 × RushBrake × (distance − HoldDistance)), pour que l'élan du Humanoid ne le porte pas trop près. 0 = sans.
+	RushBrake = 250, -- V0
 	ClosingSpeedMax = 8, -- rapprochement à 0 % du minimum (studs/s)
 	HoldMinSpeed = 12, -- plancher de la poursuite à distance (studs/s), sous toute marche d'un voleur qui court
 	AboveRequired = "Hold" :: AboveRequired, -- Cantin, 2026-11-14 : au-dessus, « ça garde toujours la même distance »
@@ -53,6 +56,12 @@ local Chase = {
 	-- moins la distance de capture. Pas pour le conducteur du camion.
 	HoldRecallGain = 2, -- par seconde (V0)
 	HoldRecallMax = 4, -- studs/s (V0)
+	-- a174 (Cantin, 2026-11-15) : à la N-ième capture d'un porteur du même objet sorti d'un rayon (vigile du
+	-- magasin, vigile de nuit, policier, conducteur du camion ; quel que soit le porteur, l'objet tombé puis
+	-- ramassé par un autre compte toujours), l'objet ne tombe pas : il revole tel quel sur son rayon, comme une
+	-- capture dans son magasin (GuardService). Compteur effacé quand l'objet est rangé en zone safe ou revient
+	-- au rayon. 0 = jamais.
+	ReturnToShelfAfterCatches = 3, -- V0 (Cantin : « au bout de la troisième fois »)
 	-- Qui suit cette règle (false : la vitesse d'avant, voir l'en-tête).
 	Apply = {
 		StoreGuard = true, -- vigile de jour d'un magasin PNJ
