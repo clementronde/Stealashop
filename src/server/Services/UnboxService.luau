@@ -110,8 +110,9 @@
 --   UnboxService.SkipWait(player, itemUid, seconds) -> number?
 --       Avance de `seconds` (au plus jusqu'à maintenant) la fin de l'antivol de cet objet posé, dans le profil
 --       et au sol ; renvoie l'attente restante (0 = débloqué), nil s'il n'est pas posé et en attente. Sans yield.
---   Inertes depuis la vague 50, gardées pour TutorialService jusqu'au lot C (voir plus bas) :
---       GetOpenDelay, OnBoxStowed, OnBoxPlaced, OnBoxOpened, GetBoxPosition.
+--   Inertes depuis la vague 50 (voir plus bas) : GetOpenDelay (MonetizationService : Fast Open), OnBoxPlaced
+--       (MonetizationService), OnBoxOpened (IndexService), gardées tant que ces services les lisent ;
+--       OnBoxStowed et GetBoxPosition retirées à la vague 52 (a169 : seul TutorialService les lisait).
 
 local CollectionService = game:GetService("CollectionService")
 local HttpService = game:GetService("HttpService")
@@ -1225,18 +1226,15 @@ function UnboxService.Refresh(player: Player)
 	refreshStates(player)
 end
 
--- Vague 50 (a158) : accroches du colis rangé, posé et ouvert en base, gardées INERTES pour TutorialService
--- (lot C, qui les retirera avec ses abonnements) : plus aucun colis n'est rangé, posé ni ouvert, donc
--- GetOpenDelay n'est plus appelée, les écouteurs OnBox* ne reçoivent plus rien et GetBoxPosition rend nil.
+-- Vague 50 (a158) : accroches du colis posé et ouvert en base, gardées INERTES : plus aucun colis n'est posé
+-- ni ouvert, donc GetOpenDelay n'est plus appelée et les écouteurs OnBox* ne reçoivent plus rien. Vague 52
+-- (a169, lot C) : TutorialService ne les lit plus ; OnBoxStowed et GetBoxPosition, lues par lui seul, sont
+-- retirées ; GetOpenDelay et OnBoxPlaced (MonetizationService), OnBoxOpened (IndexService) restent pour eux.
 function UnboxService.GetOpenDelay(_player: Player, box: Box): number
 	return Rarities.ById[box.Rarity].OpenDelay
 end
 
 local function neverCalled() end
-
-function UnboxService.OnBoxStowed(_listener: BoxListener): () -> ()
-	return neverCalled
-end
 
 function UnboxService.OnBoxPlaced(_listener: BoxListener): () -> ()
 	return neverCalled
@@ -1244,10 +1242,6 @@ end
 
 function UnboxService.OnBoxOpened(_listener: OpenedListener): () -> ()
 	return neverCalled
-end
-
-function UnboxService.GetBoxPosition(_player: Player, _boxUid: string): Vector3?
-	return nil
 end
 
 -- Vague 31 (L-112) : objets sous antivol ------------------------------------------------------------------
