@@ -398,6 +398,13 @@ local function suspectRoot(player: Player): BasePart?
 	return root :: BasePart
 end
 
+-- a157 : son HumanoidRootPart est-il dans une zone safe (Shared/SafeZone, par GuardService) ?
+local function sheltered(player: Player): boolean
+	local character = player.Character
+	local root = if character then character:FindFirstChild("HumanoidRootPart") else nil
+	return root ~= nil and root:IsA("BasePart") and GuardService.IsInSafeZone((root :: BasePart).Position)
+end
+
 -- Les suspects du témoin, du plus récent au plus ancien.
 local function suspectsOf(w: WitnessNpc): { Player }
 	local list: { Player } = {}
@@ -554,7 +561,7 @@ local function dispatch(w: WitnessNpc, now: number)
 	local suspect: Player? = if first then first.Player else nil
 	local police: Model? = if first then first.Police else nil
 	for player in w.suspects do
-		if player.Parent == Players then
+		if player.Parent == Players and not sheltered(player) then -- a157 : pas à l'abri en zone safe
 			Net.Server.Notify:Fire(player, Witness.Messages.Called, "Alert")
 		end
 	end
@@ -670,7 +677,36 @@ end
 
 -- Boucle -----------------------------------------------------------------------------------------
 
+-- a157 (Cantin, 2026-11-14) : un suspect à l'abri en zone safe n'en est plus un. S'il n'en reste aucun, le « ? »
+-- se vide (Calm), ou l'appel pas encore passé s'arrête : ni son, ni police, ni Notify, ni OnCall.
+local function shelter(w: WitnessNpc, now: number): boolean
+	if w.state ~= "Watch" and (w.state ~= "Call" or w.dispatched) then
+		return false
+	end
+	local removed = false
+	for player in table.clone(w.suspects) do
+		if player.Parent == Players and sheltered(player) then
+			w.suspects[player] = nil
+			removed = true
+		end
+	end
+	if not removed or next(w.suspects) ~= nil then
+		return false
+	end
+	if w.state == "Call" then
+		log(`{w.label} : suspects à l'abri en zone safe, appel coupé`)
+		toStroll(w, now)
+		return true
+	end
+	log(`{w.label} : suspects à l'abri en zone safe, le « ? » se vide`)
+	calm(w, now)
+	return false
+end
+
 local function update(w: WitnessNpc, now: number)
+	if shelter(w, now) then
+		return
+	end
 	if w.fleeUntil > 0 then
 		fleeStep(w, now)
 	elseif w.state == "Stroll" then

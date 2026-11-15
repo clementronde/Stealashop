@@ -269,6 +269,7 @@ local Night = require(Shared.Config.Night)
 local Zones = require(Shared.Config.Zones)
 local Format = require(Shared.Format)
 local CatchReach = require(Shared.CatchReach)
+local SafeZone = require(Shared.SafeZone)
 local Animations = require(Shared.Contract.Animations)
 local Find = require(Shared.Contract.Find)
 local AnimPlayer = require(Shared.Anim.AnimPlayer)
@@ -397,7 +398,6 @@ type Guard = {
 
 -- Noms du contrat (2.1, 10.4) lus ici.
 local STORE_TAG = "NPCStore"
-local SAFE_ZONE_TAG = "SafeZone"
 local GUARD_SPAWN = "GuardSpawn"
 local BOUNDS = "Bounds"
 local WINDOW = "Window"
@@ -567,8 +567,6 @@ local activeFolder: Folder? = nil
 local fallbackTemplate: Model? = nil
 local fallbackBuilding = false
 local warned: { [string]: boolean } = {}
--- Boîte englobante des zones safe sans Bounds, calculée une fois.
-local boxCache: { [Instance]: { cframe: CFrame, size: Vector3 } } = setmetatable({}, { __mode = "k" }) :: any
 
 local rayParams = RaycastParams.new()
 rayParams.FilterType = Enum.RaycastFilterType.Exclude
@@ -638,33 +636,9 @@ local function insideBox(cframe: CFrame, size: Vector3, position: Vector3): bool
 	return math.abs(p.X) <= size.X / 2 and math.abs(p.Y) <= size.Y / 2 and math.abs(p.Z) <= size.Z / 2
 end
 
--- Le volume d'un objet taggé SafeZone : la pièce elle-même, sinon son enfant direct Bounds
--- (pas ceux des parcelles qu'il contient peut-être), sinon la boîte englobante du modèle.
-local function insideSafeZone(inst: Instance, position: Vector3): boolean
-	local part: Instance? = if inst:IsA("BasePart") then inst else inst:FindFirstChild(BOUNDS)
-	if part and part:IsA("BasePart") then
-		local box = part :: BasePart
-		return insideBox(box.CFrame, box.Size, position)
-	end
-	if inst:IsA("Model") then
-		local cached = boxCache[inst]
-		if cached == nil then
-			local cframe, size = (inst :: Model):GetBoundingBox()
-			cached = { cframe = cframe, size = size }
-			boxCache[inst] = cached
-		end
-		return insideBox(cached.cframe, cached.size, position)
-	end
-	return false
-end
-
+-- Tag SafeZone, dans la map : Shared/SafeZone, seul point de vérité depuis a157 (même règle qu'avant).
 local function isInSafeZone(position: Vector3): boolean
-	for _, inst in CollectionService:GetTagged(SAFE_ZONE_TAG) do
-		if inMap(inst) and insideSafeZone(inst, position) then
-			return true
-		end
-	end
-	return false
+	return SafeZone.Contains(position)
 end
 
 -- Magasin et modèle -------------------------------------------------------------------------
@@ -2425,7 +2399,9 @@ local function update(guard: Guard, now: number)
 	if state == "Wait" then
 		local player = guard.target
 		local root = if player then bodyOf(player) else nil
-		if night then
+		if root and isInSafeZone(root.Position) then
+			giveUp(guard, "zone safe, avant le départ") -- a157 : tous les genres (jour, nuit, policier, conducteur)
+		elseif night then
 			local reason = if player == nil or root == nil then "plus de cible" else nightRefusal(player, root.Position)
 			if reason then
 				giveUp(guard, `{reason}, avant le départ`)

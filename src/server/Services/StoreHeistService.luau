@@ -666,6 +666,8 @@ local lastGreedy: { [Player]: number } = {} -- dernier message « un seul braqua
 local returningGuards: ((store: Model) -> { BasePart })? = nil
 -- GuardService.ChaseIntruder, s'il existe (Init) : le vigile sort à la fin du chrono (L-118).
 local chaseIntruder: ((player: Player, store: Model) -> boolean)? = nil
+-- GuardService.IsInSafeZone, s'il existe (Init) ; sans lui, personne n'est en zone safe (a157).
+local inSafeZone: ((position: Vector3) -> boolean)? = nil
 local templates: { [string]: Instance } = {} -- BOX_<Rareté> ou BOX_<Tier> trouvé, par nom
 local templateSearched: { [string]: boolean } = {} -- cherché une fois par nom, trouvé ou non
 local noticed: { [string]: boolean } = {}
@@ -1760,7 +1762,16 @@ end
 local function updateViewers(store: Store)
 	local center = if store.Bounds then store.Bounds.Position else store.Model:GetPivot().Position
 	for _, player in Players:GetPlayers() do
-		if SHELF_OPEN and store.Entered[player] then
+		local sheltered = rootOf(player)
+		local safe = inSafeZone
+		if sheltered and safe and safe(sheltered.Position) then
+			-- a157 (Cantin, 2026-11-14) : à l'abri, plus de chrono ni de vigile de fin de chrono pour lui ici.
+			if store.Entered[player] then
+				store.Entered[player] = nil
+				log(`{player.Name} en zone safe : plus de chrono ni de vigile pour {store.Id}`)
+			end
+			hideTimer(store, player)
+		elseif SHELF_OPEN and store.Entered[player] then
 			showTimer(store, player) -- L-118 : le vigile viendra pour lui à la fin, dedans ou dehors, objet ou non
 		elseif isCarrying(player) or store.Locked[player] ~= nil then
 			hideTimer(store, player)
@@ -3359,6 +3370,10 @@ function StoreHeistService.Init()
 	-- fin du chrono (ChaseIntruder), plus à la prise.
 	local onGone: any = if okGuard and type(guardApi) == "table" and not SHELF_OPEN then guardApi.OnGuardGone else nil
 	local chase: any = if okGuard and type(guardApi) == "table" then guardApi.ChaseIntruder else nil
+	local safe: any = if okGuard and type(guardApi) == "table" then guardApi.IsInSafeZone else nil
+	if type(safe) == "function" then
+		inSafeZone = safe -- a157 : Shared/SafeZone, par GuardService
+	end
 	if type(chase) == "function" then
 		chaseIntruder = chase
 	elseif SHELF_OPEN then

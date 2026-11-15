@@ -33,6 +33,8 @@
 --     ont frappé et StoreHeistService lance le chrono « HEIST » de Balance.Heist.Duration s (BreakInfo.ChronoEndsAt
 --     reste dans BreakInfo, plus lu par StoreHeistService). Sinon la vitre revient à ses PV max, chrono masqué et message à ceux qui
 --     ont frappé. Pas de régénération plus forte en plus : le chrono suffit contre la casse lente.
+--     Zone safe (a157, Cantin 2026-11-14 ; Shared/SafeZone) : un frappeur à l'abri perd son chrono (HeistTimer 0, sans
+--     message à la fin), et un coup sur une vitrine PNJ depuis la zone safe est refusé.
 --   - HitWindow(windowId) (9.4), ignoré si : vitrine inconnue, cassée ou incassable ; vitrine
 --     du joueur lui-même ; outil de casse pas en main ; plus de 10 studs entre le joueur et
 --     le point le plus proche de la vitre (Balance.Hit.ServerMaxDistance) ; CanBeHit refuse.
@@ -135,6 +137,7 @@ local Shatter = require(Shared.Config.Shatter)
 local Zones = require(Shared.Config.Zones)
 local Attributes = require(Shared.Contract.Attributes)
 local Net = require(Shared.Net.Net)
+local SafeZone = require(Shared.SafeZone)
 
 local ToolService = require(script.Parent.ToolService)
 
@@ -576,6 +579,10 @@ local function onHitWindow(player: Player, windowId: string)
 	if not canBeHit(player, windowId) then
 		return
 	end
+	if window.Kind == "NPC" and SafeZone.Contains(position) then
+		refuse(player, windowId, "en zone safe") -- a157 : aucun événement PNJ ne démarre depuis la zone safe
+		return
+	end
 	if not gatesAllow(player, window) then
 		return
 	end
@@ -629,6 +636,16 @@ local function step(dt: number)
 			setMaxHP(window, computeMaxHP(window))
 		end
 		local endsAt = window.BreakEndsAt
+		local sheltered = window.Hitters
+		if endsAt and sheltered then
+			-- a157 : à l'abri en zone safe, le chrono de police disparaît pour lui, sans « too slow » à la fin.
+			for hitter in table.clone(sheltered) do
+				if hitter.Parent == Players and SafeZone.ContainsPlayer(hitter) then
+					sheltered[hitter] = nil
+					Net.Server.HeistTimer:Fire(hitter, window.Id, 0)
+				end
+			end
+		end
 		if endsAt and not window.Broken and Workspace:GetServerTimeNow() >= endsAt then
 			-- Pas cassée à temps (L-074) : la vitre revient à ses PV max.
 			window.HP = window.MaxHP
