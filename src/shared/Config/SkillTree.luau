@@ -1,6 +1,6 @@
 --!strict
 -- Arbre de compétences (liaison L-085 et L-096 point 2 ; note de Clément docs/claude/notes/ui-skilltree-pour-ironix.md ;
--- écran StarterGui/UI_SkillTree). Décision de Clément (2026-11-11) : il sort au lancement du 18 décembre.
+-- écran StarterGui/UI_SkillTree). Décision de Clément (2026-11-11) : il sort au lancement du MVP.
 -- Prix et effets : Partie 2, section 2 (V0 du doc). Ce qui est marqué « V0 proposé, absent du doc » est à valider.
 --
 -- Contrat partagé entre le serveur (SkillTreeService) et le client (SkillTreeController) :

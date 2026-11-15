@@ -1,15 +1,15 @@
 # Partie 2 · Features à ajouter
 
-Tout ce qui sort après le lancement du MVP du 18 décembre 2026, à raison d'une mise à jour par samedi. Le cœur du jeu, l'équipe, la tech et la bible assets sont dans la [Partie 1 · MVP](Partie-1-MVP.md).
+Tout ce qui sort après le lancement du MVP, à raison d'une mise à jour par samedi. Les MAJ sont numérotées dans leur ordre de sortie, sans date fixe. Le cœur du jeu, l'équipe, la tech et la bible assets sont dans la [Partie 1 · MVP](Partie-1-MVP.md).
 
 ## 1. Ordre de sortie
 
-La boutique Robux sort en premier, le 26 décembre : c'est le moment où les joueurs activent les cartes cadeaux Roblox reçues à Noël. Sans boutique ce jour-là, on rate le pic d'achat de l'année.
+La boutique Robux sort en premier, à la MAJ 1 : sans elle, le jeu n'a aucun revenu.
 
-1. **MAJ 1, samedi 26 décembre** : boutique Robux (gamepasses et produits), récompenses quotidiennes et hebdomadaires.
-2. **MAJ 2, samedi 2 janvier** : défenses de niveau 1 (épaisseur de vitre, caméras de sécurité, rideau, coffre-fort, niveaux de boutique) + index d'objets.
-3. **MAJ 3, samedi 9 janvier** : renaissances + agents de sécurité.
-4. **MAJ 4, samedi 16 janvier** : pièges, régénération de vitre, mutations, quêtes quotidiennes, premier événement « Casse du siècle ».
+1. **MAJ 1** : boutique Robux (gamepasses et produits), récompenses quotidiennes et hebdomadaires.
+2. **MAJ 2** : défenses de niveau 1 (épaisseur de vitre, caméras de sécurité, rideau, coffre-fort, niveaux de boutique) + index d'objets.
+3. **MAJ 3** : renaissances + agents de sécurité.
+4. **MAJ 4** : pièges, régénération de vitre, mutations, quêtes quotidiennes, premier événement « Casse du siècle ».
 5. **Ensuite** : une nouveauté par semaine, prise dans les idées de rétention (section 5), puis la grande MAJ « Centre commercial » (section 6).
 
 Chaque mise à jour sort à 16 h (heure de Paris, 10 h à New York), avec un compte à rebours visible en jeu et un code cadeau.

@@ -40,9 +40,12 @@ local Codes = {
 	-- V0 : longueur maximale d'un code saisi (au-delà : refusé par Net et par CodeService).
 	MaxLength = 20,
 
-	-- V0 : prochaine MAJ, os.time() UTC. 1797696000 = samedi 2026-12-19 16:00 UTC (MAJ 0). 0 ou passée :
-	-- le compte à rebours est caché.
-	NextUpdateAt = 1797696000,
+	-- V0 : la MAJ de la semaine, chaque samedi à 15:00 UTC (16 h à Paris l'hiver ; Cantin, 15/11 : une MAJ par
+	-- samedi, sans date fixe). Weekday : 0 = dimanche … 6 = samedi. Le compte à rebours vise la prochaine
+	-- (Codes.NextUpdateAt) et repart pour la semaine suivante dès l'heure passée.
+	UpdateWeekday = 6,
+	UpdateHour = 15,
+	UpdateMinute = 0,
 	-- V0 : texte du compte à rebours (%s = Codes.FormatCountdown).
 	CountdownFormat = "NEXT UPDATE IN %s",
 
@@ -63,6 +66,14 @@ function Codes.Normalize(text: string): string
 	return string.upper((string.gsub(text, "^%s*(.-)%s*$", "%1")))
 end
 
+
+local WEEK = 7 * 86400
+-- Prochaine MAJ après `now` (secondes Unix UTC) : le samedi UpdateHour:UpdateMinute UTC qui suit, strictement.
+-- Le jour Unix 3 (1970-01-04) est un dimanche.
+function Codes.NextUpdateAt(now: number): number
+	local first = 3 * 86400 + Codes.UpdateWeekday * 86400 + Codes.UpdateHour * 3600 + Codes.UpdateMinute * 60
+	return first + (math.floor((now - first) / WEEK) + 1) * WEEK
+end
 
 -- « 2d 04h », « 3h 12m » sous un jour, « 45m » sous une heure (minute entamée comptée) ; nil si fini.
 function Codes.FormatCountdown(seconds: number): string?

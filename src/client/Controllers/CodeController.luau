@@ -70,7 +70,8 @@ local function bind(gui: Instance)
 end
 
 local function refresh()
-	local text = Codes.FormatCountdown(Codes.NextUpdateAt - Workspace:GetServerTimeNow())
+	local now = Workspace:GetServerTimeNow()
+	local text = Codes.FormatCountdown(Codes.NextUpdateAt(now) - now)
 	for _, label in countdowns do
 		label.Visible = text ~= nil
 		if text then
@@ -113,7 +114,8 @@ function CodeController.Start()
 end
 
 function CodeController.GetCountdownText(): string?
-	return Codes.FormatCountdown(Codes.NextUpdateAt - Workspace:GetServerTimeNow())
+	local now = Workspace:GetServerTimeNow()
+	return Codes.FormatCountdown(Codes.NextUpdateAt(now) - now)
 end
 
 return CodeController

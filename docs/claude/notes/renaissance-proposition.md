@@ -69,7 +69,7 @@ Comme la Partie 2 (3.2), en enlevant le banc (il n'existe plus en v2) :
 - **Pas de Mythique d'une zone normale** : le joueur moyen a 2,4 % de chance par cycle de 10 min d'en tirer un (3 colis Premium et 1 Luxe pour lui)
   (Rarities.BoxOdds), soit **7 h en moyenne** et plus de 16 h pour un joueur sur dix (essai précédent du simulateur avec la
   Météorite : cycle 9 à 12 h 23, de 6 h 35 à 22 h 31). Seule exception, la **Clé du coffre ultime** (Mythique de la
-  zone 6) pour les 9e et 10e : la **Fortune Tower** (MAJ 2, 2/1) donne des colis Mythique à 90 %, et le seul Mythique
+  zone 6) pour les 9e et 10e : la **Fortune Tower** (MAJ 2) donne des colis Mythique à 90 %, et le seul Mythique
   de la zone 6 est la Clé. Hypothèse du simulateur : une tour toutes les 50 min de jeu en zone 6, un colis pour le
   joueur ; la Clé tombe alors en 1 h 10.
 
@@ -81,7 +81,7 @@ Comme la Partie 2 (3.2), en enlevant le banc (il n'existe plus en v2) :
 - **10e renaissance vers 60 à 80 h : justifié.** Avec ces parts, la 10e arrive à 8,2 × le 1er cycle, soit
   67 h 39. Pour tomber sous 60 h, il faudrait des cycles à 61 % du premier en moyenne ; pour passer 80 h, des
   cycles plus longs que le premier, ce qui contredit « grâce au bonus ». 60 à 80 h, c'est 3 à 4 semaines à 3 h par
-  jour : la 10e tombe vers la mi-janvier pour un joueur arrivé le 18/12, après la MAJ 3 du 9/1.
+  jour : la 10e tombe 3 à 4 semaines après la sortie pour un joueur arrivé le premier jour, après la MAJ 3.
 
 ## 2. Le tableau des 10 renaissances
 
@@ -149,7 +149,7 @@ Lecture :
 - **Le Marteau-piqueur gardé** ne gagne presque rien (moins d'une heure en tout) : l'argent ne manque jamais après
   la 1re renaissance. Sa vraie valeur est le confort (pas d'outil à racheter), pas le temps.
 - **Sans Fortune Tower**, la Clé de la 10e ne tombe que des colis de la zone 6 : +3 h 30 sur la 10e. La Fortune
-  Tower doit donc être allumée avant les renaissances 9 et 10 (elle l'est le 2/1 dans la feuille de route).
+  Tower doit donc être allumée avant les renaissances 9 et 10 (elle l'est à la MAJ 2 dans la feuille de route).
 
 ## 4. Zone 6 à deux joueurs (décision 4)
 
@@ -207,9 +207,9 @@ Ce qu'il faut faire :
 4. **Arbre de compétences gardé** (décision 3) ? Proposition : oui.
 5. **Colis pas encore ouverts** au moment de renaître : perdus, gardés dans l'inventaire, ou ouverts d'office ?
    Proposition : ouverts d'office (l'objet entre dans le choix des 3 gardés ou part).
-6. **Renaissances 1 à 4 le 26/12, 5 à 10 le 9/1** : l'acharné arrive à la 4e vers 26 h de jeu ; à 4 h par jour
-   depuis le 18/12, il attend la 5e du 26/12 au 9/1. Sortir 5 et 6 dès le 26/12, ou 5 à 10 le 2/1 avec la Fortune
-   Tower ?
+6. **Renaissances 1 à 4 à la MAJ 1, 5 à 10 à la MAJ 3** : l'acharné arrive à la 4e vers 26 h de jeu ; à 4 h par
+   jour depuis la sortie, il attend la 5e de la MAJ 1 à la MAJ 3. Sortir 5 et 6 dès la MAJ 1, ou 5 à 10 à la MAJ 2
+   avec la Fortune Tower ?
 
 ### Pour Clément
 
