@@ -10,7 +10,7 @@
 --   - boutique au niveau le plus faible : pour les autres services elle reste libre (OwnerUserId = 0,
 --     GetOwner = nil : rayons, machines et présentoirs de base, murs au niveau 0, aucune amélioration) ;
 --     seule sa porte devient cassable, aux PV de base d'une boutique de niveau 1 (WindowService.
---     GetFreePlotHP remplacé ici : Formulas.PlayerWindowHP(Bot.StageLevel), sans Glass ni Walls,
+--     GetFreePlotHP remplacé ici : PvP.DoorHits coups (L-163, a159), sans Reinforced Door,
 --     régénération de base) ;
 --   - objets : Bot.ItemCount (4) Communs de la zone 1 tirés au hasard (Items.Pick), sur DisplaySlot_01 à
 --     _04, construits par DisplayService.BuildBotItem (même modèle, halo, billboard, tag DisplayItem
@@ -197,7 +197,8 @@ local SPAWN_LIFT = 0.1
 local TEMPLATE_WAIT = 10
 
 -- PV de la porte du bot : base d'une boutique de niveau 1 (voir l'en-tête et Config/Bot).
-local DOOR_HP = Formulas.PlayerWindowHP(Bot.StageLevel)
+-- L-163 (a159) : les mêmes PvP.DoorHits coups que la porte d'un joueur sans arbre (un coup = 1, WindowService).
+local DOOR_HP = require(Shared.Config.PvP).DoorHits
 
 local BotService = {}
 -- Après PlotService (10), DisplayService et WindowService (100 par défaut, ordre des noms : B avant

@@ -59,6 +59,9 @@
 --     client joue Knockback puis Stunned, ou Stunned seule (BatController). Étourdi, il ne frappe
 --     pas et ne ramasse rien ;
 --   - OnHit(hitter, target, usage, payload) pour les autres services (PvPService : défense réussie).
+-- Combat égal (L-163, décision de Clément du 2026-11-14 ; vérifié par a159) : recul et étourdissement sont les
+-- valeurs fixes de Config/Bat pour tout le monde (bot et propriétaire compris) ; aucun dégât, rien ne dépend de
+-- la force (arme, aura, potion) ni du temps de jeu. Ne rien brancher ici qui en dépende.
 --
 -- Colis tombé au sol (6.2) : GrabDropped(dropId) (9.4), pour les colis posés par un coup de batte
 -- seulement (ceux du camion restent à TruckEventService, qui ignore les autres). En deux appels,

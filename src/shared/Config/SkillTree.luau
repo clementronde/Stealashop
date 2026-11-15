@@ -50,42 +50,44 @@ local List: { Skill } = {
 	{
 		-- Murs de la boutique (décision de Clément du 2026-11-12, L-105 point 3 et L-106 point 2) : l'ancienne tuile
 		-- ShopLevel (Partie 2 : Stand, Boutique…) devient Walls ; la boutique grandit toujours avec ses présentoirs
-		-- (ShopStageService). Effects[n] = multiplicateur des PV de la porte de la boutique : c'est la vitre
-		-- PlotDoor/Window, la même barre que Glass (les deux se multiplient). Effets : V0 proposés, absents du doc ;
-		-- prix : ceux de l'ancienne tuile Shop Level (Partie 2). Mur visible par niveau : ShopWallsService
-		-- (attributs ShowFromWalls / HideFromWalls). Tuile d'UI : Tile_Walls, ou Tile_ShopLevel tant que Clément
-		-- ne l'a pas renommée (OldTiles).
+		-- (ShopStageService). L-163 (a159, 2026-11-14) : Walls ne touche plus aux coups de la porte (décor : la
+		-- porte reste le seul passage) ; aucun effet en jeu, Effects vide. Prix : ceux de l'ancienne tuile Shop Level
+		-- (Partie 2). Mur visible par niveau : ShopWallsService (attributs ShowFromWalls / HideFromWalls). Tuile
+		-- d'UI : Tile_Walls, ou Tile_ShopLevel tant que Clément ne l'a pas renommée (OldTiles).
 		Id = "Walls",
 		Tile = "Tile_Walls",
 		OldTiles = { "Tile_ShopLevel" },
 		DisplayName = "Walls",
-		Stat = "Door HP",
+		Stat = "Shop walls", -- V0 (L-163)
 		MaxLevel = 4,
 		Prices = { 10_000, 250_000, 6_250_000, 156_000_000 },
-		Effects = { 1.25, 1.5, 2, 3 },
-		Labels = { [0] = "×1", "×1.25", "×1.5", "×2", "×3" },
+		Effects = {},
+		Labels = { "I", "II", "III", "IV" },
 		Coded = 4,
 		Icon = "rbxassetid://89598496809365",
 	},
 	{
-		-- Effects[n] = multiplicateur des PV de la vitrine de la boutique (Partie 2 : ×1,5, ×2, ×3, ×5, ×8).
+		-- « Reinforced Door » (L-163, correction de Clément du 2026-11-14 au soir ; V0) : Effects[n] = coups ajoutés
+		-- à la porte de la boutique (PvP.DoorHits = 40), +8 par niveau, 80 coups au plus (16 s seul, 10 s en groupe,
+		-- hors réparation). Avant : PV × 1,5 à × 8 (Partie 2).
 		Id = "GlassThickness",
 		Tile = "Tile_Glass",
-		DisplayName = "Glass",
-		Stat = "Window HP",
+		DisplayName = "Reinforced Door",
+		Stat = "Door hits",
 		MaxLevel = 5,
 		Prices = { 25_000, 300_000, 4_000_000, 50_000_000, 600_000_000 },
-		Effects = { 1.5, 2, 3, 5, 8 },
-		Labels = { [0] = "×1", "×1.5", "×2", "×3", "×5", "×8" },
+		Effects = { 8, 16, 24, 32, 40 },
+		Labels = { [0] = "40", "48", "56", "64", "72", "80" },
 		Coded = 5,
 		Icon = "rbxassetid://101463818389249",
 	},
 	{
-		-- Effects[n] = réparation de la vitrine en part de ses PV par seconde (Partie 2 : base 3 %, +1 % par niveau).
+		-- Effects[n] = réparation de la porte en part de son maximum par seconde (Partie 2 : base 3 %, +1 % par
+		-- niveau). L-163 : même règle, comptée en coups (8 % de 80 coups = 6,4 coups par seconde).
 		Id = "GlassRegen",
 		Tile = "Tile_GlassRegen",
-		DisplayName = "Glass Regen",
-		Stat = "Window repair",
+		DisplayName = "Door Repair", -- V0 (L-163)
+		Stat = "Door repair",
 		MaxLevel = 5,
 		Prices = { 50_000, 500_000, 5_000_000, 50_000_000, 500_000_000 },
 		Effects = { 0.04, 0.05, 0.06, 0.07, 0.08 },
@@ -135,16 +137,18 @@ local List: { Skill } = {
 		Icon = "rbxassetid://82423065290603",
 	},
 	{
-		-- Partie 2 : rideau 30 s offert, 60 s pour 50 K $, 90 s pour 1 M $ ; bouton dans la boutique (modèle à venir).
+		-- L-163 (a159) : le rideau devient un verrou à la Brainrot (SkillTreeService, remote LockShop) : le
+		-- propriétaire ferme sa boutique Lock.BaseDuration (30) s offertes, puis Effects[n] s ; ensuite
+		-- Lock.Cooldown s de recharge. V0. Prix : ceux du rideau (Partie 2). Avant : rideau 30, 60, 90 s.
 		Id = "Curtain",
 		Tile = "Tile_Curtain",
-		DisplayName = "Curtain",
-		Stat = "Curtain time",
+		DisplayName = "Lock",
+		Stat = "Lock time",
 		MaxLevel = 2,
 		Prices = { 50_000, 1_000_000 },
-		Effects = { 60, 90 },
-		Labels = { [0] = "30s", "60s", "90s" },
-		Coded = 0,
+		Effects = { 45, 60 },
+		Labels = { [0] = "30s", "45s", "60s" },
+		Coded = 2,
 		OpensWhen = { Id = "GlassThickness", Level = 1 },
 		Icon = "rbxassetid://135129985966759",
 	},
@@ -235,8 +239,7 @@ local PlotVisuals: { [string]: PlotVisual } = {
 	Security = { Id = "Cameras", Level = 1 },
 	Alarm = { Id = "Cameras", Level = 1 },
 	-- Vague 42 (L-150 point 5, réponse (c) de Clément) : plus d'EveryStage, les murs ne se voient qu'à partir du
-	-- niveau 3 de la boutique (avec Stage_3) ; Walls garde son effet en jeu dès le niveau 1 (PV de la porte,
-	-- WindowService). EveryStage reste prêt pour des murs à la taille des niveaux 1 et 2 (réponse (a), plus tard).
+	-- niveau 3 de la boutique (avec Stage_3) ; Walls n'a plus d'effet en jeu sur la porte depuis L-163. EveryStage reste prêt pour des murs à la taille des niveaux 1 et 2 (réponse (a), plus tard).
 	Walls = { Id = "Walls", Level = 1 },
 }
 
@@ -253,6 +256,14 @@ local SkillTree = {
 	PlotVisuals = PlotVisuals,
 	SkillVisualsFolder = "SkillVisuals", -- dossier de la boutique : copies EveryStage (V0 proposé, absent du doc)
 	AttributePrefix = "Skill_", -- attribut Skill_<Id> du joueur, posé par le serveur
+	-- Verrou de la boutique (tuile Curtain, L-163, V0) : durée offerte sans achat, recharge après la fin du verrou,
+	-- et attribut de la parcelle (heure serveur de la fin du verrou ; absent = ouverte) lu par les clients.
+	Lock = {
+		BaseDuration = 30,
+		Cooldown = 120,
+		UntilAttribute = "LockedUntil",
+		ReadyAttribute = "LockReadyAt", -- attribut du Player : heure serveur où le verrou se recharge
+	},
 	RootTile = "RootTile", -- tuile centrale « UPGRADES » : rien ne s'y achète
 	NeverTile = "Tile_Next2", -- « ??? » qui ne s'ouvre jamais (maquette de Clément)
 }
