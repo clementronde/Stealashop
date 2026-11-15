@@ -636,4 +636,54 @@ local FortuneVault: ModelSpec = {
 Models.FortuneVault = FortuneVault
 table.insert(Models.List, table.find(Models.List, WeaponShopCounter) or #Models.List + 1, FortuneVault)
 
+-- Hub façon « Steal a … » (L-165 points 1 et 2, vague 50, a160 ; noms proposés par Clément, V0) : cadeau
+-- gratuit et noob « invite un ami ». Tout est facultatif (orange) : le code ne fait rien sans eux. Pas encore
+-- livrés : « pas encore livré », jamais un problème.
+local HubFreeGift: ModelSpec = {
+	Key = "HubFreeGift",
+	Label = "cadeaux gratuits du hub",
+	Category = "Hub",
+	Names = { "ENV_Hub_FreeGift" },
+	Class = "Model",
+	Parts = {
+		{ Name = "Gift", Optional = true, Note = "facultatif : le cadeau qui flotte et tourne (Model ou pièce), L-165" },
+		{
+			Name = "Zone",
+			Class = "BasePart",
+			Tag = "RewardsZone",
+			Optional = true,
+			Note = "facultative : pièce invisible sans collision ; y entrer ouvre UI_Rewards, L-165",
+		},
+	},
+	Expected = { "ENV_Hub_FreeGift" },
+}
+local HubInviteNoob: ModelSpec = {
+	Key = "HubInviteNoob",
+	Label = "noobs « invite un ami » du hub",
+	Category = "Hub",
+	Names = { "ENV_Hub_InviteNoob" },
+	Class = "Model",
+	Parts = {
+		{
+			Name = "Noob",
+			Class = "Model",
+			Optional = true,
+			Note = "facultatif : rig R15 avec Animations/Idle et Wave (Contract/Animations.Vendor), L-165",
+		},
+		{
+			Name = "Zone",
+			Class = "BasePart",
+			Tag = "InviteZone",
+			Optional = true,
+			Note = "facultative : pièce invisible sans collision ; y entrer ouvre l'invitation de Roblox, L-165",
+		},
+	},
+	Expected = { "ENV_Hub_InviteNoob" },
+}
+Models.HubFreeGift = HubFreeGift
+Models.HubInviteNoob = HubInviteNoob
+for _, spec in { HubFreeGift, HubInviteNoob } do
+	table.insert(Models.List, table.find(Models.List, WeaponShopCounter) or #Models.List + 1, spec)
+end
+
 return Models

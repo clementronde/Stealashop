@@ -12,7 +12,8 @@
 -- L'élément est cherché par son nom parmi les descendants de l'écran (Contract/Find) : SocialRow est
 -- un cadre décoratif. Seul Activated est écouté (2.2, « Libre pour Ironix ») : ni texte, ni
 -- visibilité, ni style. Roblox copie UI_HUD de StarterGui dans PlayerGui ; un écran recréé
--- (ResetOnSpawn) est rebranché. Rien n'est envoyé au serveur. API (client) : aucune.
+-- (ResetOnSpawn) est rebranché. Rien n'est envoyé au serveur. API (client) : InviteController.Prompt()
+-- (vague 50 : ouvre l'invitation, pour la zone du noob du hub, HubController).
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -88,6 +89,11 @@ local function bind(gui: Instance)
 	button.Activated:Connect(function()
 		task.spawn(invite)
 	end)
+end
+
+-- Vague 50 (L-165 point 2, a160) : la zone du noob du hub (HubController) ouvre l'invitation comme le bouton.
+function InviteController.Prompt()
+	task.spawn(invite)
 end
 
 function InviteController.Start()

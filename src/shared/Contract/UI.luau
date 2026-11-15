@@ -866,5 +866,16 @@ table.insert(UI.Billboards, {
 		{ Path = "Row.Multiplier", Class = "TextLabel", Optional = true, Note = "le « ×2 » du trail est ajouté à Row.Amount en texte enrichi" },
 	} :: { Element },
 })
+-- Étiquette des stands et des zones du hub (L-165 point 6, vague 50, a160 ; nom proposé par Clément, V0) : posée
+-- par Clément au-dessus de chaque stand et de chaque zone (dans la map, pas seulement ici), avec l'attribut texte
+-- LabelKey ; HubController écrit dans Label le texte anglais de Config/Hub.Labels. Facultative.
+table.insert(UI.Billboards, {
+	Name = "BB_ZoneLabel",
+	Class = "BillboardGui",
+	Optional = true,
+	Elements = {
+		{ Path = "Label", Class = "TextLabel", Optional = true, Note = "le texte de LabelKey n'est pas écrit" },
+	} :: { Element },
+})
 
 return UI
