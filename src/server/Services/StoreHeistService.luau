@@ -287,6 +287,8 @@
 --       un rayon (voir « Rayons d'événement », plus bas dans ce fichier).
 --   StoreHeistService.GetStoreId(model) -> string? et GetStoreModel(storeId) -> Model?
 --       StoreId = l'id de vitrine de WindowService (le nom du modèle, « STORE_Z1_Superette »).
+--   StoreHeistService.DrawForZone(zone) -> (Content?, chance)  (vague 58, a188 : pluie d'objets)
+--       Un objet tiré comme sur un rayon d'un magasin de la zone, sans rayon ni caisse (voir la fonction).
 --
 -- Payload d'un objet sorti, transmis à CarryService : { Kind = "NPCItem", ItemId, Rarity, Mutation?, Zone,
 -- StoreId, SlotId, Luck } (Shared/Types/Carry).
@@ -3110,6 +3112,24 @@ end
 function StoreHeistService.GetStoreModel(storeId: string): Model?
 	local store = storesById[storeId]
 	return if store then store.Model else nil
+end
+
+-- Vague 58 (a188, pluie d'objets, ItemRainService) : un objet tiré comme sur un rayon d'un magasin de la zone `zone`,
+-- sans rayon ni caisse : type de caisse au hasard dans un remplissage (layoutTiers), rareté de la caisse selon la
+-- zone (drawRarity), chance (drawLuck), puis la sortie (drawShelfContent : rareté, objet, mutation). Renvoie le
+-- contenu (nil si rien ne peut sortir) et la chance tirée.
+function StoreHeistService.DrawForZone(zone: number): (Content?, number)
+	local tiers = layoutTiers()
+	if #tiers == 0 then
+		return nil, 1
+	end
+	local boxRarity = drawRarity(tiers[random:NextInteger(1, #tiers)], zone)
+	if boxRarity then
+		local luck = drawLuck()
+		local content = drawShelfContent(boxRarity, zone, luck)
+		return content, luck
+	end
+	return nil, 1
 end
 
 function StoreHeistService.Init()

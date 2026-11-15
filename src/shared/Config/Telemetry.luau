@@ -74,6 +74,9 @@ local Events: { [string]: string } = {
 	-- Vague 51 (a167, EventService) : début et fin d'un événement live, pour chaque joueur présent ; valeur = joueurs présents ; champs Event, Source
 	LiveEventStart = "LiveEventStart",
 	LiveEventEnd = "LiveEventEnd",
+	-- Vague 58 (a188, ItemRainService) : pluie d'objets ; champs Zone, Rarity de l'objet
+	ItemRainPickup = "ItemRainPickup", -- 1re prise d'un objet tombé de la pluie ; joueur = celui qui le ramasse
+	ItemRainBanked = "ItemRainBanked", -- objet de la pluie rangé en base (entrée de la zone safe) ; joueur = le porteur
 }
 
 local Telemetry = {

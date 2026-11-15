@@ -53,7 +53,10 @@
 --       vague 50, a158 : le colis porté fermé n'existe plus, le nom de l'événement reste) d'un porteur, hors
 --       zone safe (BatService.OnHit, usage « Box ») ; joueur = le frappeur ; champs : Zone du magasin,
 --       Rarity de l'objet, Source (Store : magasin ; Truck : camion, StoreId « Truck_<n> » ;
---       Fortune : vitrine de la Fortune Tower, StoreId « Truck_Fortune_<n> », vague 39).
+--       Fortune : vitrine de la Fortune Tower, StoreId « Truck_Fortune_<n> », vague 39 ; Rain : pluie
+--       d'objets, StoreId « Truck_ItemRain », vague 58).
+--   ItemRainPickup, ItemRainBanked  pluie d'objets (ItemRainService, vague 58, par LogEvent) : 1re prise d'un
+--       objet tombé, puis objet rangé en base ; champs : Zone, Rarity.
 --   GuardCatch  un vigile rattrape le porteur d'un objet sorti d'un colis PNJ (NPCItem, vague 50 ;
 --       CarryService.OnCarryEnded, raison « Caught », que GuardService donne de jour comme de nuit : résultat
 --       « Dropped », l'objet tombe, ou « Failed », il revole sur son rayon ; pas un objet volé à un joueur : un
@@ -455,6 +458,7 @@ local function onBatHit(hitter: Player, _target: Player, usage: BatService.Usage
 		local storeId = payload.StoreId
 		local source = if string.sub(storeId, 1, #FORTUNE_PREFIX) == FORTUNE_PREFIX
 			then "Fortune"
+			elseif storeId == "Truck_ItemRain" then "Rain" -- a188 : pluie d'objets (Config/ItemRain.StoreId)
 			elseif string.sub(storeId, 1, #TRUCK_PREFIX) == TRUCK_PREFIX then "Truck"
 			else "Store"
 		logEvent(hitter, "BatBoxKnock", field("Zone", payload.Zone), field("Rarity", payload.Rarity), field("Source", source), nil)

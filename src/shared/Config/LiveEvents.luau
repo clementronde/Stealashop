@@ -77,6 +77,10 @@ local Formats: { Format } = {
 	{ Id = "SaleNight", DisplayName = "SALE NIGHT", Effect = "Store windows at half health", Duration = 10 * 60, Effects = { WindowHealth = 0.5 } },
 	-- Pluie de potions : 5 fois plus fréquentes.
 	{ Id = "PotionRain", DisplayName = "POTION RAIN", Effect = "Potions spawn 5x more often", Duration = 10 * 60, Effects = { PotionDelay = 0.2 } },
+	-- Pluie d'objets (vague 58, a188 ; L-170 Q7, Clément : à la place de la pluie de colis) : aucun facteur, des objets
+	-- tombent dans la rue du couloir. ItemRainService lit l'attribut LiveEvent ; valeurs : Config/ItemRain. Lancée
+	-- par un admin (StartEvent), jamais au planning.
+	{ Id = "ItemRain", DisplayName = "ITEM RAIN", Effect = "Items fall from the sky in the street: grab them!", Duration = 15 * 60, Effects = {} },
 	-- Week-end ×2 entraînement : samedi et dimanche.
 	{ Id = "TrainingWeekend", DisplayName = "TRAINING WEEKEND", Effect = "x2 treadmill gains", Duration = 48 * 3600, Effects = { TrainingGain = 2 } },
 }
