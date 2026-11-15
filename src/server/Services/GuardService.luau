@@ -298,6 +298,16 @@ local Zones = require(Shared.Config.Zones)
 local Format = require(Shared.Format)
 local CatchReach = require(Shared.CatchReach)
 local SafeZone = require(Shared.SafeZone)
+-- Vague 62 (Features.SingleBoxReveal) : ouvreur protégé pendant sa cinématique, attribut RevealProtected du Player
+-- posé par StoreHeistService (contrat : Shared/ShelfOpenState.ProtectedAttribute). Lu ici sans require : les faux
+-- arbres de bancs plus anciens n'ont pas les modules partagés de la vague 62.
+local RevealState = {}
+function RevealState.IsProtected(player: any): boolean
+	local ok, value = pcall(function(): any
+		return player:GetAttribute("RevealProtected")
+	end)
+	return ok and value == true
+end
 local Animations = require(Shared.Contract.Animations)
 local Find = require(Shared.Contract.Find)
 local AnimPlayer = require(Shared.Anim.AnimPlayer)
@@ -430,6 +440,7 @@ type Guard = {
 	connections: { RBXScriptConnection },
 	alive: boolean,
 	driver: DriverChase?, -- conducteur du camion : sa poursuite ; nil pour un vigile
+	revealFrozenAt: number?, -- vague 62 : figé depuis (os.clock()) : sa cible est dans sa cinématique d'ouverture
 }
 
 -- Noms du contrat (2.1, 10.4) lus ici.
@@ -1856,6 +1867,10 @@ local function releaseKnockback(guard: Guard)
 	local player = guard.knockTarget
 	if player then
 		guard.knockTarget = nil
+		if RevealState.IsProtected(player) then
+			guard.onKnock = nil -- vague 62 : protégé par sa cinématique, ni poussée ni suite du coup
+			return
+		end
 		knockback(player, guard.root.Position)
 		local after = guard.onKnock
 		if after then
@@ -2575,7 +2590,7 @@ local function scan(guard: Guard): Player?
 	local best: Player? = nil
 	local bestDistance = math.huge
 	for _, player in Players:GetPlayers() do
-		if nightChasedBy[player] == nil and not caughtAtNight[player] then
+		if nightChasedBy[player] == nil and not caughtAtNight[player] and not RevealState.IsProtected(player) then
 			local root, humanoid = bodyOf(player)
 			if root and humanoid then
 				local offset = root.Position - guard.root.Position
@@ -2752,6 +2767,35 @@ local function update(guard: Guard, now: number)
 	end
 	local state = guard.state
 	local night = guard.kind == "Night"
+	-- Vague 62 (Features.SingleBoxReveal) : cible protégée par sa cinématique d'ouverture (attribut RevealProtected) :
+	-- figé pour elle avant le départ et en poursuite (ni départ, ni pas, ni capture) ; ensuite il reprend, le temps
+	-- de la pause rendu (départ, fin de poursuite de l'intrus), sa poursuite relancée.
+	local frozenFor = guard.target
+	if (state == "Wait" or state == "Chase") and frozenFor and RevealState.IsProtected(frozenFor) then
+		if guard.revealFrozenAt == nil then
+			guard.revealFrozenAt = now
+			stop(guard)
+			guard.anims:Stop("Run")
+			guard.anims:Stop("Walk")
+			log(`{guard.label} : figé, {frozenFor.Name} est dans sa cinématique d'ouverture`)
+		end
+		return
+	end
+	local frozenAt = guard.revealFrozenAt
+	if frozenAt then
+		guard.revealFrozenAt = nil
+		local paused = now - frozenAt
+		guard.stateEndsAt += paused
+		local until_ = guard.intruderUntil
+		if until_ then
+			guard.intruderUntil = until_ + paused
+		end
+		if state == "Chase" then
+			startChase(guard, now)
+		end
+		log(`{guard.label} : reprend après {math.round(paused * 10) / 10} s de cinématique`)
+		return
+	end
 	-- Vigile de nuit : il cherche une cible pendant sa ronde et sur le chemin du retour.
 	if night and (state == "Patrol" or state == "Return") and now >= guard.nextScanAt then
 		guard.nextScanAt = now + STEER_INTERVAL
@@ -3736,7 +3780,7 @@ end
 
 function GuardService.ChaseIntruder(player: Player, store: Model): boolean
 	local body = bodyOf(player)
-	if player.Parent ~= Players or body == nil or isInSafeZone(body.Position) or chasedBy[player] ~= nil then
+	if player.Parent ~= Players or body == nil or isInSafeZone(body.Position) or chasedBy[player] ~= nil or RevealState.IsProtected(player) then
 		return false
 	end
 	local zone = store:GetAttribute("Zone")

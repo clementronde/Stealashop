@@ -291,7 +291,33 @@
 --       Un objet tiré comme sur un rayon d'un magasin de la zone, sans rayon ni caisse (voir la fonction).
 --
 -- Payload d'un objet sorti, transmis à CarryService : { Kind = "NPCItem", ItemId, Rarity, Mutation?, Zone,
--- StoreId, SlotId, Luck } (Shared/Types/Carry).
+-- StoreId, SlotId, Luck, Weight? } (Shared/Types/Carry ; Weight : vague 62).
+--
+-- Vague 62 (décision de Cantin et Clément, liaison L-198 ; Features.SingleBoxReveal, valeurs V0 de
+-- Config/ShelfOpen.Reveal) : un seul colis par braquage, la cinématique, l'objet porté d'office. Sur un magasin
+-- PNJ (jamais un rayon d'événement, qui garde l'ouverture d'avant), à la fin du maintien d'OpenShelfBox :
+--   - tirage complet tout de suite, sur le serveur : chance de la boîte = le tirage de ShelfOpen.LuckTable
+--     (Reveal.TableLuck ; la montée avec le temps et sa coupure par la police n'existent pas ici, le bonus
+--     LiveEventShelfLuck est coupé par Reveal.EventLuck), accroche du tuto d'abord ; rareté par la caisse et
+--     cette chance (BoxRarityOdds, LuckBoost), objet, mutation d'effet (Mutations.Roll), poids
+--     (ItemWeight.Roll avec la même chance), mutation de taille par le poids (ItemWeight.SizeMutationFor, à la
+--     place de celle tirée), taille (ScaleFor) et classe (SizeClassFor : hauteur libre jusqu'au haut de Bounds,
+--     hauteur de ITM_<ItemId> ou du bloc V0) ;
+--   - cinématique : aucun attribut ShelfOpen* sur le colis (l'ouverture d'avant ne joue pas chez le client),
+--     RevealStarted à tous les clients ;
+--     l'ouvreur est protégé (attribut RevealProtected du Player, Shared/ShelfOpenState.ProtectedAttribute : GuardService fige ses
+--     vigiles, BatService refuse la batte, ChaseIntruder et les vigiles de nuit l'ignorent) et immobile
+--     (StatsService, modificateur « Reveal » à 0) ; son chrono est en pause (masqué, le vigile de fin de chrono
+--     attend) ; ni prise ni autre ouverture pour lui (reachRefusal) ; Large ou Colossal : attribut CeilingBroken
+--     du magasin à true, remis à false Reveal.CeilingRepairSeconds s après la fin de la dernière ;
+--   - fin sur RevealDone de l'ouvreur ou au plafond Reveal.RevealMaxSeconds[classe], le premier des deux (sortie,
+--     mort, colis retiré : fin propre) : protection levée, RevealEnded à tous, colis retiré, objet porté d'office
+--     (CarryService.StartCarry, comme une prise : le vigile lié part, GuardService) ; sinon posé sur le rayon,
+--     réservé à l'ouvreur comme avant ; sans objet, son chrono reprend où il était (pausedChronos).
+--   - un seul colis par braquage : tant qu'il porte son objet, « mains pleines » ; il rouvre après dépôt, perte
+--     ou retour au rayon. Ensuite tout est comme avant (capture, 3 captures, dépôt).
+--   Le poids suit l'objet : Content.Weight, payload Weight, attribut Weight de l'objet posé sur un rayon ; avec
+--   un poids, la taille et le revenu de l'objet posé viennent du poids (ItemWeight.ScaleFor, IncomeFactor).
 
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
@@ -314,6 +340,10 @@ local Unbox = require(Shared.Config.Unbox)
 local Attributes = require(Shared.Contract.Attributes)
 local Net = require(Shared.Net.Net)
 local ShelfOpenState = require(Shared.ShelfOpenState)
+local Features = require(Shared.Config.Features)
+-- Vague 62 (a203) : poids de l'objet tiré. Absent (faux arbres de bancs plus anciens) : aucun poids tiré, les replis
+-- de rollWeight, scaleFor, sizeClassFor (chaque appel passe par pcall).
+local ItemWeight: any = if Shared:FindFirstChild("ItemWeight") then require(Shared.ItemWeight) else {}
 
 local AntiCheatService = require(script.Parent.AntiCheatService)
 local WindowService = require(script.Parent.WindowService)
@@ -329,6 +359,7 @@ export type NPCItemPayload = {
 	StoreId: string,
 	SlotId: string,
 	Luck: number, -- chance de l'ouverture (≥ 1)
+	Weight: number?, -- vague 62 : poids tiré à l'ouverture (kg, Shared/ItemWeight) ; nil dans l'ancien déroulé
 }
 
 -- Contenu du colis du rayon, passé à l'accroche du tuto.
@@ -374,13 +405,15 @@ type WitnessApi = {
 }
 
 -- Mutation (DEV-131) : nil = aucune ; jamais pour l'accroche du tuto.
-type Content = { Rarity: string, ItemId: string, Mutation: Mutations.Mutation? }
+-- Vague 62 : Weight = poids tiré à l'ouverture (kg) ; nil dans l'ancien déroulé (Features.SingleBoxReveal = false).
+type Content = { Rarity: string, ItemId: string, Mutation: Mutations.Mutation?, Weight: number? }
 
 -- Ouverture en cours d'un colis sur son rayon (L-112).
 type Opening = {
 	ByUserId: number, -- l'ouvreur
 	Luck: number, -- chance tirée (≥ 1)
 	OpenAt: number, -- heure serveur du lancement
+	Cinematic: boolean?, -- vague 62 : cinématique (Reveal), sans montée de chance ni sortie différée
 }
 
 -- Colis posé sur un rayon, ou en vol vers lui.
@@ -467,6 +500,27 @@ type Store = {
 	NextZoneChance: number?, -- vague 56 (a181, L-166 Q5) : voir EventShelfOptions
 }
 
+-- Vague 62 (Features.SingleBoxReveal) : cinématique d'ouverture en cours d'un joueur (voir l'en-tête).
+type Reveal = {
+	Id: string, -- RevealId des remotes RevealStarted, RevealEnded et RevealDone
+	Player: Player,
+	Slot: Slot,
+	Box: ShelfBox,
+	Opening: Opening,
+	Info: ItemInfo, -- contenu tiré (poids compris), porté ou posé à la fin
+	SizeClass: string,
+	StartedAt: number, -- os.clock()
+	ChronoLeft: number?, -- secondes de chrono du braquage restantes au début ; nil : chrono déjà fini
+	Ceiling: boolean, -- a cassé le plafond (Large ou Colossal)
+	Ended: boolean,
+}
+
+-- Chrono personnel d'un ouvreur resté sans objet après sa cinématique (repli) : le temps de la pause en plus.
+type PausedChrono = { Store: Store, EndsAt: number, Token: number }
+
+-- Plafond cassé d'un magasin : cinématiques Large ou Colossal en cours, jeton de la réparation différée.
+type Ceiling = { Count: number, Token: number }
+
 -- Leaving : vient de prendre un colis, encore dans Bounds avec lui ; Closed : fermé pour lui, rideau
 -- baissé chez lui et sorti s'il entre.
 type LockState = "Leaving" | "Closed"
@@ -514,6 +568,7 @@ local RARITY_ATTRIBUTE = "Rarity"
 local MUTATION_SIZE_ATTRIBUTE = "MutationSize"
 local MUTATION_EFFECT_ATTRIBUTE = "MutationEffect"
 local INCOME_ATTRIBUTE = "Income"
+local WEIGHT_ATTRIBUTE = "Weight" -- vague 62 : poids de l'objet (kg), contrat a202, a203, a204
 -- Fermeture pour le voleur seulement (même noms dans StoreLockController).
 local CLOSED_ATTRIBUTE = "ClosedStores" -- sur le Player
 local CLOSED_SEPARATOR = ","
@@ -590,6 +645,10 @@ local V0_LOOKS: { [string]: BoxLook } = {
 -- V0 proposé, absent du doc : bloc de remplacement d'un objet sorti tant que ITM_<ItemId> n'est pas
 -- livré, à la couleur de sa rareté (la taille du bloc des présentoirs, DisplayService).
 local V0_ITEM_SIZE = Vector3.new(1.2, 1.6, 1.2)
+-- Vague 62, V0 proposé, absent du doc : hauteur libre au-dessus d'un rayon d'un magasin sans Bounds (classe de
+-- taille, ItemWeight.SizeClassFor) ; clé du modificateur de vitesse qui immobilise l'ouvreur (StatsService).
+local V0_FREE_HEIGHT = 10
+local REVEAL_SPEED_KEY = "Reveal"
 -- V0 proposé, absent du doc : au plus un Notify « les témoins appellent la police » par seconde et par joueur.
 local CALL_NOTICE_INTERVAL = 1
 
@@ -631,6 +690,14 @@ local templates: { [string]: Instance } = {} -- BOX_<Rareté> ou BOX_<Tier> trou
 local templateSearched: { [string]: boolean } = {} -- cherché une fois par nom, trouvé ou non
 local noticed: { [string]: boolean } = {}
 local random = Random.new()
+-- Vague 62 (Features.SingleBoxReveal) : cinématiques en cours, par joueur et par RevealId ; chronos repris
+-- d'un ouvreur sans objet ; plafonds cassés ; StatsService.SetSpeedModifier (require protégé dans Init).
+local reveals: { [Player]: Reveal } = {}
+local revealsById: { [string]: Reveal } = {}
+local revealCount = 0
+local pausedChronos: { [Player]: PausedChrono } = {}
+local ceilings: { [Store]: Ceiling } = {}
+local setSpeedModifier: ((player: Player, key: string, multiplier: number?) -> ())? = nil
 
 -- Outils ----------------------------------------------------------------------------------
 
@@ -1060,10 +1127,21 @@ end
 
 -- $/s de l'objet (attribut Income, pour BB_Item), comme une fois exposé (DisplayService) : revenu de sa
 -- zone (celle du magasin pour un Secret, qui n'en a pas) et de sa rareté, mutation comprise.
+-- Vague 62 : avec un poids (Content.Weight), le poids remplace la mutation de taille dans le revenu
+-- (ItemWeight.IncomeFactor ; seule la mutation d'effet compte en plus).
 local function itemIncome(zone: number, content: Content): number
 	local def = Items.ById[content.ItemId]
 	local itemZone: number = if def and def.Zone then def.Zone else zone
-	return Formulas.ItemIncome(itemZone, content.Rarity) * Mutations.IncomeMultiplier(content.Mutation)
+	local base = Formulas.ItemIncome(itemZone, content.Rarity)
+	local weight = content.Weight
+	if weight == nil then
+		return base * Mutations.IncomeMultiplier(content.Mutation)
+	end
+	local mutation = content.Mutation
+	local effect = Mutations.IncomeMultiplier(if mutation and mutation.Effect then { Effect = mutation.Effect } else nil)
+	local ok, factor = pcall(ItemWeight.IncomeFactor, weight)
+	local safe = if ok and type(factor) == "number" and factor >= 0 and factor < math.huge then factor else 1
+	return base * effect * safe
 end
 
 -- Bloc V0 d'un objet : pivot en bas au centre (10.1), comme un ITM_* livré.
@@ -1121,7 +1199,13 @@ local function makeItemModel(slot: Slot, info: ItemInfo): Model
 			descendant.CanQuery = false
 		end
 	end
+	-- Vague 62 : avec un poids, la taille vient du poids (ItemWeight.ScaleFor), plus de la mutation de taille.
 	local scale = Mutations.Scale(content.Mutation)
+	local weight = content.Weight
+	if weight ~= nil then
+		local ok, value = pcall(ItemWeight.ScaleFor, weight)
+		scale = if ok and type(value) == "number" and value > 0 and value < math.huge then value else 1
+	end
 	if scale ~= 1 then
 		local ok, problem = pcall(object.ScaleTo, object, scale)
 		if not ok then
@@ -1140,6 +1224,7 @@ local function makeItemModel(slot: Slot, info: ItemInfo): Model
 	object:SetAttribute(MUTATION_SIZE_ATTRIBUTE, if mutation then mutation.Size else nil)
 	object:SetAttribute(MUTATION_EFFECT_ATTRIBUTE, if mutation then mutation.Effect else nil)
 	object:SetAttribute(INCOME_ATTRIBUTE, itemIncome(slot.Store.Zone, content))
+	object:SetAttribute(WEIGHT_ATTRIBUTE, weight) -- vague 62 : absent dans l'ancien déroulé
 	object:SetAttribute(ShelfOpenState.LuckAttribute, info.Luck)
 	object:SetAttribute(ShelfOpenState.ReservedByAttribute, info.OpenerId)
 	object:SetAttribute(ShelfOpenState.ReservedUntilAttribute, info.ReservedUntilServer)
@@ -1665,7 +1750,12 @@ local function updateViewers(store: Store)
 	for _, player in Players:GetPlayers() do
 		local sheltered = rootOf(player)
 		local safe = inSafeZone
-		if sheltered and safe and safe(sheltered.Position) then
+		local paused = pausedChronos[player]
+		if reveals[player] ~= nil then
+			hideTimer(store, player) -- vague 62 : sa cinématique, chrono en pause pour lui
+		elseif paused ~= nil and paused.Store == store then
+			continue -- vague 62 : son chrono personnel, repris après sa cinématique (resumeChrono)
+		elseif sheltered and safe and safe(sheltered.Position) then
 			-- a157 (Cantin, 2026-11-14) : à l'abri, plus de chrono ni de vigile de fin de chrono pour lui ici.
 			if store.Entered[player] then
 				store.Entered[player] = nil
@@ -1756,15 +1846,26 @@ end
 -- et le vigile de sa prise s'en occupe (lié à l'objet, GuardService) : rien de plus pour lui ici.
 local function chronoEnd(store: Store)
 	store.ChronoOver = true
+	-- Vague 62 : chrono en pause pendant la cinématique d'un ouvreur, puis repris pour lui (resumeChrono) ; le
+	-- vigile de fin de chrono viendra pour lui à la fin de son chrono, pas maintenant.
+	local function deferred(player: Player): boolean
+		local paused = pausedChronos[player]
+		local session = reveals[player]
+		return (session ~= nil and session.Slot.Store == store) or (paused ~= nil and paused.Store == store)
+	end
 	for player in table.clone(store.Viewers) do
-		hideTimer(store, player)
+		if not deferred(player) then
+			hideTimer(store, player)
+		end
 	end
 	local inStore: { Player } = {}
 	local outside = 0
 	local bounds = store.Bounds
 	for player in store.Entered do
 		local root = rootOf(player)
-		if player.Parent == Players and root then
+		if deferred(player) then
+			log(`{store.Id} : fin du chrono, {player.Name} en cinématique ou chrono repris : son vigile attend la fin de son chrono`)
+		elseif player.Parent == Players and root then
 			if bounds == nil or inside(bounds, root.Position) then
 				table.insert(inStore, player)
 			else
@@ -1860,6 +1961,11 @@ local function openStore(store: Store, breaker: Player?)
 	store.Entered = {}
 	store.ChronoOver = false
 	store.ShutterPending = false
+	for player, paused in pausedChronos do
+		if paused.Store == store then
+			pausedChronos[player] = nil -- vague 62 : chrono repris d'une ouverture précédente, périmé
+		end
+	end
 	raiseShutter(store, true) -- au cas où il serait resté baissé
 	setHeistAttributes(store)
 	local first = store.Breaker
@@ -1891,11 +1997,14 @@ end
 -- Bounds tolèrent reachPad(...) studs de plus ; sinon (fin du maintien, prise sans maintien) : strict.
 local function reachRefusal(player: Player, slot: Slot, lenient: boolean): string?
 	local store = slot.Store
+	if reveals[player] ~= nil then
+		return "cinématique d'ouverture en cours" -- vague 62 : un seul colis par braquage, ni prise ni ouverture
+	end
 	if store.Locked[player] then
 		return "magasin fermé pour lui : son vigile n'est pas encore rentré"
 	end
 	if isCarrying(player) then
-		return "mains pleines"
+		return "mains pleines" -- vague 62 : aussi « un seul colis par braquage », tant qu'il porte son objet
 	end
 	local root, humanoid = rootOf(player)
 	if root == nil then
@@ -2018,6 +2127,24 @@ end
 
 -- Ouverture sur le rayon (L-112 ; voir l'en-tête) -------------------------------------------------
 
+-- Payload NPCItem de l'objet `info` sorti du colis de `slot` (prise sur le rayon, ou portage d'office à la fin de
+-- la cinématique, vague 62 : Weight y est recopié).
+local function payloadFor(slot: Slot, info: ItemInfo): NPCItemPayload
+	local store = slot.Store
+	local content = info.Content
+	return {
+		Kind = "NPCItem",
+		ItemId = content.ItemId,
+		Rarity = content.Rarity,
+		Mutation = content.Mutation,
+		Zone = store.Zone,
+		StoreId = store.Id,
+		SlotId = slot.Id,
+		Luck = info.Luck,
+		Weight = content.Weight,
+	}
+end
+
 -- `player` prend l'objet sorti posé sur `slot` : portage NPCItem (CarryService), rayon vidé, magasin
 -- fermé pour lui (le vigile part à la prise, GuardService).
 local function grantItem(player: Player, slot: Slot)
@@ -2028,16 +2155,7 @@ local function grantItem(player: Player, slot: Slot)
 	end
 	local info = item.Info
 	local content = info.Content
-	local payload: NPCItemPayload = {
-		Kind = "NPCItem",
-		ItemId = content.ItemId,
-		Rarity = content.Rarity,
-		Mutation = content.Mutation,
-		Zone = store.Zone,
-		StoreId = store.Id,
-		SlotId = slot.Id,
-		Luck = info.Luck,
-	}
+	local payload = payloadFor(slot, info)
 	-- Rayon réservé pendant l'appel : une autre prise ne peut pas passer si StartCarry attend.
 	slot.Item = nil
 	outItems[payload] = { Slot = slot, Info = info }
@@ -2257,6 +2375,19 @@ local function drawShelfContent(
 				mutation = Mutations.Sanitize({ Size = size, Effect = if mutation then mutation.Effect else nil })
 			end
 			local content: Content = { Rarity = rarityId, ItemId = itemId, Mutation = mutation }
+			if sizeOdds and Features.SingleBoxReveal == true then
+				-- Vague 62 (a203) : la taille garantie devient un poids tiré dans son palier (ItemWeight.RollForSize ;
+				-- sans taille, tout le poids). Absent ou en erreur : pas de poids, la taille d'avant.
+				local roller = (ItemWeight :: any).RollForSize
+				local ok, kg = pcall(function(): any
+					return roller(random, luck, if mutation then mutation.Size else nil)
+				end)
+				if ok and type(kg) == "number" and kg > 0 and kg < math.huge then
+					content.Weight = kg
+				elseif type(roller) == "function" then
+					warnOnce("weight.rollForSize", `ItemWeight.RollForSize a échoué ou renvoyé {kg} : pas de poids`)
+				end
+			end
 			return content, wanted
 		end
 	end
@@ -2395,7 +2526,7 @@ local function onPoliceCalled(model: Model)
 	for _, slot in store.Slots do
 		local box = slot.Box
 		local opening = if box then box.Opening else nil
-		if box and opening then
+		if box and opening and not opening.Cinematic then -- vague 62 : une cinématique n'a pas de montée à couper
 			local reached = ShelfOpenState.luckAt(opening.OpenAt, opening.Luck, now)
 			box.Model:SetAttribute(ShelfOpenState.RevealAtAttribute, now)
 			log(`{slot.Id} : police appelée pendant la montée, la chance s'arrête à ×{reached} (tirée : ×{opening.Luck})`)
@@ -2421,6 +2552,378 @@ local function openRefusal(player: Player, slot: Slot, lenient: boolean): string
 		return "avance du casseur"
 	end
 	return reachRefusal(player, slot, lenient)
+end
+
+-- Cinématique d'ouverture (vague 62, Features.SingleBoxReveal ; voir l'en-tête) ------------------------------
+
+-- Le nouveau déroulé s'applique-t-il à ce magasin ? Jamais sur un rayon d'événement (camion, Fortune Tower) :
+-- ils gardent l'ouverture d'avant.
+local function singleBoxReveal(store: Store): boolean
+	return Features.SingleBoxReveal == true and not store.Event
+end
+
+-- Appels protégés de Shared/ItemWeight (a203) : une valeur absurde ou une erreur donne le repli (10 kg, taille 1,
+-- aucune mutation de taille, classe Small), avec un avertissement unique.
+local function finiteOr(value: any, fallback: number, minimum: number): number
+	if type(value) == "number" and value == value and value >= minimum and value < math.huge then
+		return value
+	end
+	return fallback
+end
+
+local function rollWeight(luck: number): number
+	local ok, kg = pcall(ItemWeight.Roll, random, luck)
+	if not ok or finiteOr(kg, -1, 0) < 0 then
+		warnOnce("weight.roll", `ItemWeight.Roll a échoué ou renvoyé {kg} : poids de repli {ShelfOpen.Reveal.TutorialWeight} kg`)
+		return ShelfOpen.Reveal.TutorialWeight
+	end
+	return kg
+end
+
+local function sizeMutationFor(kg: number): string?
+	local ok, size = pcall(ItemWeight.SizeMutationFor, kg)
+	return if ok and type(size) == "string" then size else nil
+end
+
+local function scaleFor(kg: number): number
+	local ok, scale = pcall(ItemWeight.ScaleFor, kg)
+	return finiteOr(if ok then scale else nil, 1, 1e-3)
+end
+
+local function sizeClassFor(kg: number, freeHeight: number, modelHeight: number): string
+	local ok, class = pcall(ItemWeight.SizeClassFor, kg, freeHeight, modelHeight)
+	if ok and (class == "Small" or class == "Large" or class == "Colossal") then
+		return class
+	end
+	warnOnce("weight.class", `ItemWeight.SizeClassFor a échoué ou renvoyé {class} : classe Small`)
+	return "Small"
+end
+
+-- Hauteur libre au-dessus du rayon `slot`, jusqu'au haut du volume Bounds (le plafond du magasin).
+local function freeHeightAbove(slot: Slot): number
+	local bounds = slot.Store.Bounds
+	if bounds == nil then
+		return V0_FREE_HEIGHT
+	end
+	local top = bounds.Position.Y + extentAlong(bounds.CFrame, bounds.Size, Vector3.yAxis) / 2
+	return math.max(top - slot.Attachment.WorldPosition.Y, 0)
+end
+
+-- Hauteur du modèle de l'objet à la taille 1 : ITM_<ItemId> de Clément, sinon le bloc V0.
+local function modelHeightOf(itemId: string): number
+	local def = Items.ById[itemId]
+	local template = if def then boxTemplate(def.Asset) else nil
+	if template and template:IsA("BasePart") then
+		return template.Size.Y
+	elseif template and template:IsA("Model") then
+		local ok, size = pcall(function(): Vector3
+			return (template :: Model):GetExtentsSize()
+		end)
+		if ok and typeof(size) == "Vector3" and size.Y > 0 then
+			return size.Y
+		end
+	end
+	return V0_ITEM_SIZE.Y
+end
+
+-- Plafond du magasin cassé (attribut CeilingBroken, visuel côté client) tant qu'une cinématique Large ou
+-- Colossal y joue, puis réparé Reveal.CeilingRepairSeconds s après la fin de la dernière.
+local function breakCeiling(store: Store)
+	local entry = ceilings[store]
+	if entry == nil then
+		entry = { Count = 0, Token = 0 }
+		ceilings[store] = entry
+	end
+	local ceiling = entry :: Ceiling
+	ceiling.Count += 1
+	ceiling.Token += 1 -- une réparation déjà programmée ne fait plus rien
+	store.Model:SetAttribute(ShelfOpenState.CeilingAttribute, true)
+end
+
+local function repairCeilingLater(store: Store)
+	local entry = ceilings[store]
+	if entry == nil then
+		return
+	end
+	entry.Count = math.max(entry.Count - 1, 0)
+	if entry.Count > 0 then
+		return
+	end
+	entry.Token += 1
+	local token = entry.Token
+	task.delay(ShelfOpen.Reveal.CeilingRepairSeconds, function()
+		if ceilings[store] == entry and entry.Token == token and entry.Count == 0 then
+			ceilings[store] = nil
+			store.Model:SetAttribute(ShelfOpenState.CeilingAttribute, false)
+			log(`{store.Id} : plafond réparé`)
+		end
+	end)
+end
+
+local function setProtected(player: Player, on: boolean)
+	pcall(function()
+		player:SetAttribute(ShelfOpenState.ProtectedAttribute, if on then true else nil)
+	end)
+	local setter = setSpeedModifier
+	if setter then
+		local ok, err = pcall(function()
+			setter(player, REVEAL_SPEED_KEY, if on then 0 else nil)
+		end)
+		if not ok then
+			warn(`[StoreHeistService] StatsService.SetSpeedModifier({player.Name}, {REVEAL_SPEED_KEY}) : {err}`)
+		end
+	end
+end
+
+-- Remote de la cinématique (Net/Definitions) ; erreur avalée et signalée : jamais de cinématique bloquée.
+local function fireReveal(name: string, ...: any)
+	local ok, err = pcall(function(...: any)
+		(Net.Server :: any)[name]:FireAll(...)
+	end, ...)
+	if not ok then
+		warnOnce(`fire.{name}`, `Net.Server.{name}:FireAll : {err}`)
+	end
+end
+
+-- Chrono du braquage repris pour l'ouvreur à la fin de sa cinématique, s'il n'a pas pu porter son objet
+-- (repli) : celui qu'il lui restait au début, ou le vigile de fin de chrono tout de suite s'il était fini.
+-- Avec son objet sur la tête, rien : le vigile lié à l'objet le poursuit déjà (GuardService, a114).
+local function resumeChrono(session: Reveal, carried: boolean)
+	local player = session.Player
+	local store = session.Slot.Store
+	if carried or player.Parent ~= Players or not live(store) or not store.Open or not store.Entered[player] then
+		return
+	end
+	local function chaseIfInside()
+		local root = rootOf(player)
+		local bounds = store.Bounds
+		local chase = chaseIntruder
+		if chase and root and (bounds == nil or inside(bounds, root.Position)) and not isCarrying(player) then
+			local ok, err = pcall(chase, player, store.Model)
+			if not ok then
+				warn(`[StoreHeistService] GuardService.ChaseIntruder({player.Name}) : {err}`)
+			end
+		end
+	end
+	local left = session.ChronoLeft
+	if left == nil or left <= 0 then
+		if store.ChronoOver then
+			chaseIfInside()
+		end
+		return
+	end
+	local endsAt = Workspace:GetServerTimeNow() + left
+	local paused: PausedChrono = { Store = store, EndsAt = endsAt, Token = store.Token }
+	pausedChronos[player] = paused
+	store.Viewers[player] = true
+	Net.Server.HeistTimer:Fire(player, store.Id, endsAt)
+	task.delay(left, function()
+		if pausedChronos[player] ~= paused then
+			return
+		end
+		pausedChronos[player] = nil
+		if store.Token ~= paused.Token or not live(store) then
+			return
+		end
+		hideTimer(store, player)
+		if store.ChronoOver and store.Entered[player] then
+			chaseIfInside()
+		end
+	end)
+end
+
+-- Fin de la cinématique `session` (RevealDone de l'ouvreur, plafond de temps, sortie ou mort), une seule fois :
+-- protection levée, RevealEnded à tous, colis retiré, objet porté d'office (CarryService, le vigile lié part
+-- à cette prise comme à une prise sur le rayon) ; sinon (mort, parti, portage refusé) posé sur le rayon,
+-- réservé ShelfOpen.ReserveTime s à l'ouvreur s'il est encore là. Le chrono reprend.
+local function finishReveal(session: Reveal, why: string, gone: boolean?)
+	if session.Ended then
+		return
+	end
+	session.Ended = true
+	local player = session.Player
+	if reveals[player] == session then
+		reveals[player] = nil
+	end
+	revealsById[session.Id] = nil
+	setProtected(player, false)
+	fireReveal("RevealEnded", session.Id)
+	local slot, box = session.Slot, session.Box
+	local store = slot.Store
+	if session.Ceiling then
+		repairCeilingLater(store)
+	end
+	local seconds = math.round((os.clock() - session.StartedAt) * 10) / 10
+	if slot.Box ~= box or box.Opening ~= session.Opening or not live(store) then
+		log(`cinématique {session.Id} de {player.Name} finie ({why}, {seconds} s) : colis retiré entre-temps, aucun objet`)
+		if live(store) and openingCount(store) == 0 then
+			calmWitnesses(store)
+		end
+		return
+	end
+	box.Opening = nil
+	slot.Box = nil
+	discard(box)
+	local info = session.Info
+	local present = not gone and player.Parent == Players -- PlayerRemoving : encore dans Players
+	local carried = false
+	if present and rootOf(player) ~= nil then
+		local payload = payloadFor(slot, info)
+		outItems[payload] = { Slot = slot, Info = info }
+		local ok, started = pcall(CarryService.StartCarry, player, payload)
+		if ok and started == true then
+			carried = true
+		else
+			outItems[payload] = nil
+			if not ok then
+				warn(`[StoreHeistService] CarryService.StartCarry : {started}`)
+			end
+		end
+	end
+	if not carried then
+		local reserve = if present then ShelfOpen.ReserveTime else 0
+		info.ReservedUntil = os.clock() + reserve
+		info.ReservedUntilServer = Workspace:GetServerTimeNow() + reserve
+		placeItem(slot, info, nil)
+	end
+	if openingCount(store) == 0 then
+		calmWitnesses(store)
+	end
+	local content = info.Content
+	local mutation = Mutations.Label(content.Mutation)
+	local where = if carried then "sur sa tête" elseif present then `posé sur {slot.Name}, réservé {ShelfOpen.ReserveTime} s` else `posé sur {slot.Name}`
+	log(`cinématique {session.Id} de {player.Name} finie ({why}, {seconds} s) : {content.Rarity} ({content.ItemId}), {content.Weight} kg{if mutation then ", " .. mutation else ""}, {where}`)
+	announce(if present then player else nil, content)
+	resumeChrono(session, carried or not present) -- parti : rien à reprendre
+end
+
+-- Lance l'ouverture du colis `box` de `slot` par `player` dans le nouveau déroulé : chance de la boîte (seule
+-- source, Config/ShelfOpen.Reveal), contenu tiré tout de suite (accroche du tuto, sinon rareté par la caisse et
+-- la chance, objet, mutation d'effet, poids, mutation de taille par le poids), puis la cinématique.
+local function startReveal(player: Player, slot: Slot, box: ShelfBox)
+	local store = slot.Store
+	local config = ShelfOpen.Reveal
+	-- La chance liée au temps (montée, police) n'existe pas ici ; le bonus des événements est coupé par V0.
+	local luck = if config.TableLuck then drawLuck() else 1
+	if config.EventLuck then
+		luck *= finiteOr(Workspace:GetAttribute("LiveEventShelfLuck"), 1, 1e-3)
+	end
+	local forced = luckOverride
+	if forced then
+		local drawn: OverrideInfo = { StoreId = store.Id, SlotId = slot.Id, Zone = store.Zone, Tier = box.Tier, Rarity = box.Rarity, ItemId = "" }
+		local ok, value = pcall(forced, player, drawn)
+		if ok and type(value) == "number" and value >= 1 and value < math.huge then
+			luck = value
+		elseif not ok then
+			warn(`[StoreHeistService] accroche SetLuckOverride : {value}`)
+		end
+	end
+	local pending: Content = { Rarity = box.Rarity, ItemId = "", Mutation = nil }
+	local _, given = contentFor(player, slot, box.Tier, pending)
+	local imposed = given ~= pending
+	local content: Content? = nil
+	local drawnRarity = box.Rarity
+	if imposed then
+		-- Contenu imposé par le tuto, sans tirage : ni mutation, ni poids tiré.
+		content = { Rarity = given.Rarity, ItemId = given.ItemId, Mutation = nil, Weight = config.TutorialWeight }
+	else
+		local drawn, wanted = drawShelfContent(box.Rarity, store.Zone, luck)
+		drawnRarity = wanted
+		if drawn then
+			local weight = rollWeight(luck)
+			local effect = if drawn.Mutation then drawn.Mutation.Effect else nil
+			content = {
+				Rarity = drawn.Rarity,
+				ItemId = drawn.ItemId,
+				-- Le poids remplace la mutation de taille tirée (Cantin) ; la mutation d'effet reste un tirage à part.
+				Mutation = Mutations.Sanitize({ Size = sizeMutationFor(weight), Effect = effect }),
+				Weight = weight,
+			}
+		end
+	end
+	if content == nil then
+		-- Garde-fou (Config incohérente), comme reveal : rien ne peut sortir de cette caisse, le rayon reste vide.
+		warnOnce(`reveal.{box.Rarity}.{store.Zone}`, `aucun objet ne peut sortir d'une caisse {box.Rarity} en zone {store.Zone} (Config : ShelfOpen.BoxRarityOdds, Items) : rayon laissé vide`)
+		slot.Box = nil
+		discard(box)
+		return
+	end
+	local final = content :: Content
+	local weight = final.Weight or config.TutorialWeight
+	local scale = scaleFor(weight)
+	local sizeClass = sizeClassFor(weight, freeHeightAbove(slot), modelHeightOf(final.ItemId))
+	local openAt = Workspace:GetServerTimeNow()
+	local opening: Opening = { ByUserId = player.UserId, Luck = luck, OpenAt = openAt, Cinematic = true }
+	box.Opening = opening
+	-- Aucun attribut ShelfOpen* sur le colis (a204) : l'ouverture d'avant ne joue pas chez le client par-dessus la
+	-- cinématique ; l'état est sur le serveur seul (box.Opening, Cinematic).
+	revealCount += 1
+	local id = `R{revealCount}`
+	local session: Reveal = {
+		Id = id,
+		Player = player,
+		Slot = slot,
+		Box = box,
+		Opening = opening,
+		Info = {
+			Tier = box.Tier,
+			Content = final,
+			Luck = luck,
+			OpenerId = player.UserId,
+			ReservedUntil = 0, -- posé à la fin s'il reste sur le rayon (finishReveal)
+			ReservedUntilServer = 0,
+		},
+		SizeClass = sizeClass,
+		StartedAt = os.clock(),
+		ChronoLeft = if store.Open and not store.ChronoOver then math.max(store.EndsAt - openAt, 0) else nil,
+		Ceiling = sizeClass == "Large" or sizeClass == "Colossal",
+		Ended = false,
+	}
+	reveals[player] = session
+	revealsById[id] = session
+	holds[player] = nil
+	openHolds[player] = nil
+	setProtected(player, true)
+	hideTimer(store, player)
+	if session.Ceiling then
+		breakCeiling(store)
+	end
+	local effect = if final.Mutation and final.Mutation.Effect then final.Mutation.Effect else ""
+	-- Bornes du remote (Net/Definitions : poids 1 000 000 kg, taille 100 au plus).
+	fireReveal("RevealStarted", player, store.Id, slot.Name, final.ItemId, final.Rarity, effect, math.min(weight, 1_000_000), math.min(scale, 100), sizeClass, id)
+	local maxSeconds = config.RevealMaxSeconds[sizeClass] or config.DefaultMaxSeconds
+	task.delay(maxSeconds, function()
+		finishReveal(session, "plafond de temps")
+	end)
+	local how = if imposed then " (contenu imposé par le tuto, sans tirage)"
+		elseif drawnRarity ~= final.Rarity then ` (tirée : {drawnRarity}, aucun objet nulle part)`
+		else ""
+	local mutation = Mutations.Label(final.Mutation)
+	log(`{player.Name} ouvre la caisse {box.Rarity} ({box.Tier}) {slot.Name} de {store.Id} : cinématique {id}, chance ×{luck}, objet {final.Rarity} ({final.ItemId}){how}, {weight} kg, taille ×{scale}, classe {sizeClass}{if mutation then ", " .. mutation else ""}, {maxSeconds} s au plus`)
+end
+
+-- RevealDone(revealId) : l'ouvreur a fini de voir sa cinématique. Seule la sienne, en cours ; sinon ignoré.
+local function onRevealDone(player: Player, revealId: string)
+	local session = revealsById[revealId]
+	if session == nil or session.Player ~= player or session.Ended then
+		refuse(player, revealId, "cinématique inconnue, d'un autre joueur ou déjà finie", "RevealDone")
+		return
+	end
+	finishReveal(session, "RevealDone")
+end
+
+-- Tick : cinématique d'un joueur parti ou mort, ou dont le colis a disparu (magasin retiré) : fin propre.
+local function stepReveals()
+	for player, session in table.clone(reveals) do
+		local slot = session.Slot
+		if player.Parent ~= Players then
+			finishReveal(session, "joueur parti")
+		elseif rootOf(player) == nil then
+			finishReveal(session, "joueur mort")
+		elseif slot.Box ~= session.Box or not live(slot.Store) then
+			finishReveal(session, "colis retiré")
+		end
+	end
 end
 
 -- OpenShelfBox(slotId) : premier appel = début du maintien, second = fin (voir l'en-tête).
@@ -2484,7 +2987,11 @@ local function onOpenShelfBox(player: Player, slotId: string)
 		refuse(player, slotId, "un témoin du magasin appelle la police", "OpenShelfBox")
 		return
 	end
-	startOpening(player, slot, box)
+	if singleBoxReveal(slot.Store) then
+		startReveal(player, slot, box) -- vague 62 : tout est tiré maintenant, puis la cinématique
+	else
+		startOpening(player, slot, box)
+	end
 end
 
 -- GrabItem(slotId) : premier appel = début du maintien, second = fin (voir l'en-tête).
@@ -2798,6 +3305,7 @@ end
 -- Tick : maintiens, chrono des joueurs proches, sortie des magasins fermés.
 local function step()
 	local now = os.clock()
+	stepReveals() -- vague 62
 	for player, hold in holds do
 		local slot = hold.Slot
 		local current: any = slot.Item
@@ -3154,7 +3662,29 @@ function StoreHeistService.Init()
 	CarryService.OnDropExpired(onDropExpired)
 	Net.Server.GrabItem:Connect(onGrabItem)
 	Net.Server.OpenShelfBox:Connect(onOpenShelfBox)
+	-- Vague 62 : accès protégé, les faux Net des bancs n'ont pas tous RevealDone.
+	local okDone, doneErr = pcall(function()
+		(Net.Server :: any).RevealDone:Connect(onRevealDone)
+	end)
+	if not okDone then
+		log(`remote RevealDone indisponible ({doneErr}) : chaque cinématique finit à son plafond de temps`)
+	end
+	-- Vague 62 : StatsService.SetSpeedModifier immobilise l'ouvreur pendant sa cinématique (require protégé :
+	-- sans lui, bancs, il n'est pas immobilisé).
+	local okStats, stats = pcall(function(): any
+		return require(script.Parent.StatsService) :: any
+	end)
+	if okStats and type(stats) == "table" and type(stats.SetSpeedModifier) == "function" then
+		setSpeedModifier = stats.SetSpeedModifier
+	else
+		log("StatsService.SetSpeedModifier indisponible : l'ouvreur n'est pas immobilisé pendant sa cinématique")
+	end
 	Players.PlayerRemoving:Connect(function(player: Player)
+		local session = reveals[player]
+		if session then
+			finishReveal(session, "joueur parti", true) -- vague 62 : fin propre, l'objet reste sur le rayon
+		end
+		pausedChronos[player] = nil
 		holds[player] = nil
 		openHolds[player] = nil
 		lastRefusal[player] = nil

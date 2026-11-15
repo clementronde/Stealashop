@@ -711,6 +711,46 @@ local List: { RemoteDef } = {
 			{ Name = "itemId", Kind = "string", Max = MAX_ID_LENGTH, Optional = true },
 		},
 	},
+	{
+		-- Vague 62 (a202, a204 ; L-198), absent du tableau 9.4 : la cinématique d'ouverture d'un colis, à TOUS les
+		-- clients (tout le monde la voit). Rien de sensible : le tirage est fait et ne change plus. opener = qui ouvre
+		-- (sa caméra joue la cinématique, il est protégé par le serveur) ; shopId = StoreId du magasin ; slotName = le
+		-- rayon (« ShelfSlot_03 », ou le SlotId « <StoreId>/03 ») ; mutation = mutation d'effet (« » sans) ; weight en
+		-- kg ; scale = taille finale du modèle (Shared/ItemWeight.ScaleFor) ; sizeClass = « Small », « Large » ou
+		-- « Colossal » (ItemWeight.SizeClassFor) ; revealId = id de cette cinématique (RevealEnded, RevealDone).
+		Name = "RevealStarted",
+		Direction = "ServerToClient",
+		Reliable = true,
+		Args = {
+			{ Name = "opener", Kind = "Player" },
+			id("shopId"),
+			id("slotName"),
+			id("itemId"),
+			{ Name = "rarity", Kind = "string", Max = 32 },
+			{ Name = "mutation", Kind = "string", Min = 0, Max = 32 },
+			{ Name = "weight", Kind = "number", Min = 0, Max = 1_000_000 },
+			{ Name = "scale", Kind = "number", Min = 0, Max = 100 },
+			{ Name = "sizeClass", Kind = "string", Max = 16 },
+			id("revealId"),
+		},
+	},
+	{
+		-- Vague 62 (a202, a204 ; L-198) : fin de la cinématique revealId, à tous les clients (RevealDone de
+		-- l'ouvreur, plafond RevealMaxSeconds, départ ou mort de l'ouvreur) ; l'objet est alors sur sa tête.
+		Name = "RevealEnded",
+		Direction = "ServerToClient",
+		Reliable = true,
+		Args = { id("revealId") },
+	},
+	{
+		-- Vague 62 (a202, a204 ; L-198) : l'ouvreur a vu sa cinématique jusqu'au bout (marqueur Land, ou fin du
+		-- repli). Le serveur n'accepte que l'ouvreur de cette cinématique, une fois ; sinon il attend son plafond.
+		Name = "RevealDone",
+		Direction = "ClientToServer",
+		Reliable = true,
+		Args = { id("revealId") },
+		RatePerSecond = 2, -- V0 proposé, absent du doc
+	},
 }
 
 return {

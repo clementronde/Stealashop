@@ -85,6 +85,32 @@ local ShelfOpen = {
 	RevealTintMinRarity = "Epic", -- L-112 : voile plein écran UI_HUD.RevealTint pour Épique et plus
 	AnnounceMinRarity = "Legendary", -- V0 : un objet sorti de cette rareté ou plus est annoncé à tout le serveur
 
+	-- Vague 62 (Features.SingleBoxReveal, liaison L-198), valeurs V0 : un seul colis par braquage, contenu tiré à
+	-- l'ouverture, cinématique, objet porté d'office (StoreHeistService ; voir son en-tête).
+	Reveal = {
+		-- Chance de la boîte : la chance tirée dans LuckTable au lancement (comme avant), seule source ; elle agit
+		-- sur la rareté (LuckBoost) et sur le poids (ItemWeight.Roll). false = ×1 (la rareté de la caisse seule).
+		TableLuck = true,
+		-- Bonus de chance des événements (attribut LiveEventShelfLuck du Workspace) : coupé (Cantin : la chance ne
+		-- vient que de la boîte pour l'instant). true = multiplié comme avant. La montée de la chance avec le temps
+		-- et sa coupure par la police n'existent pas dans ce déroulé (aucune attente).
+		EventLuck = false,
+		-- Plafond de la cinématique par classe de taille (ItemWeight.SizeClassFor), en s : sans RevealDone de
+		-- l'ouvreur, elle finit là. Le client se coupe lui-même à Reveal.MaxSeconds (a204 : 6, 8 et 10 s) ; ici
+		-- 2 s de marge au-dessus. Classe inconnue : DefaultMaxSeconds.
+		RevealMaxSeconds = {
+			Small = 8,
+			Large = 10,
+			Colossal = 12,
+		} :: { [string]: number },
+		DefaultMaxSeconds = 10,
+		-- Plafond du magasin cassé (attribut CeilingBroken) par un objet Large ou Colossal : réparé après ce temps,
+		-- compté depuis la fin de la dernière cinématique qui l'a cassé.
+		CeilingRepairSeconds = 20,
+		-- Poids de l'objet imposé par le tuto (contentFor) : la taille d'aujourd'hui, sans tirage.
+		TutorialWeight = 10,
+	},
+
 	-- L-112 (Cantin) : durée de l'antivol en base, par rareté (Id de Config/Rarities) ; volable pendant ce temps.
 	AntiTheft = {
 		Common = 5,
