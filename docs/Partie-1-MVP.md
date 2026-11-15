@@ -1106,6 +1106,8 @@ Chaque étape est envoyée une seule fois par joueur avec `AnalyticsService:LogO
 
 | Date | Décision | Par |
 | --- | --- | --- |
+| 2026-11-15 | Plus de bouton « More » : 3 gros boutons à gauche (Robux, Index, Upgrades) ; Rewards, Invite et Settings en petites icônes en haut à gauche, près du menu Roblox ; Rebirth caché tant qu'elle est coupée (liaison L-192). | Clément |
+| 2026-11-15 | Sans inventaire : un objet retiré d'un présentoir revient dans la main du joueur ; un objet remplacé par « Exposer les meilleurs » va dans une réserve listée en bas du panneau « Mes objets exposés » ; le « +$/s » d'un objet posé vole jusqu'à l'argent (liaison L-192). | Clément |
 | 2026-11-15 | Index : une zone complète ne donne qu'un objet (une nouvelle arme, une nouvelle aura ou une trail), ni argent, ni vitesse, ni diamants (liaison L-192). | Clément |
 | 2026-11-15 | Base qui grandit : Clément découpera `Stage_2` à `Stage_5` en tronçons, un par rang de présentoirs. Record « Most money/s » sans le bonus d'amis. `Street` entre au contrat 10.4 (pluie d'objets). Fonds des cartes : un palier par rang d'objet pour l'instant. Bot sur la parcelle 8 (liaison L-185 à L-187). | Clément |
 | 2026-11-15 | Capture mise en scène dans les 2,4 s d'étourdissement (caméra qui plonge au coup, poussière, écran « CAUGHT! » avec l'objet qui repart ; bandes noires la nuit), sans consolation. Alerte en deux paliers (discret en jaune, puis « RUN! » et bord rouge). Gains ponctuels qui volent jusqu'au compteur. « ITEM SECURED! » devient une carte d'objet. Caisses (MAJ 1) avec chance qui grimpe et offre « relancer ». Décor léger dans la boutique Robux. Refusés : barre de trajet, clic « PARFAIT ! » (idée gardée) (liaison L-184). | Clément |
