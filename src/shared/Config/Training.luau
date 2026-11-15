@@ -15,6 +15,10 @@ local Training = {
 		TapBonus = 0.5, -- taper l'écran donne +50 % de gain
 		TapBonusWindow = 1, -- V0 proposé, absent du doc : durée du bonus après un tap
 		MaxTapsPerSecond = 6, -- TrainTap au tapis (9.4)
+		-- a180 (Cantin, 2026-11-15) : on ne monte qu'arrivé sur la bande par un de ses grands côtés (passer
+		-- devant ou derrière ne déclenche rien ; Shared/TrainingZone.track). Interrupteur : false = règle
+		-- d'avant (on monte dès l'entrée dans la zone), gardée pour les bancs qui la vérifient.
+		SideEntryOnly = true,
 	},
 
 	-- Section 3, étape 6 : le tapis s'allume, 30 s d'entraînement guidé

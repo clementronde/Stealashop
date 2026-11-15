@@ -5,7 +5,8 @@
 --
 -- Rôle :
 --   - montée instantanée (a115, Cantin 2026-11-13 : 1 à 2 s de décalage avant) : à chaque image, le
---     client regarde si son HumanoidRootPart entre dans la zone d'une machine de SA parcelle (mêmes
+--     client regarde si son HumanoidRootPart entre dans la zone d'une machine de SA parcelle (a180 : sur
+--     la bande, arrivé par un de ses grands côtés, jamais par un bout : TrainingZone.track ; mêmes
 --     calculs que le serveur : Shared/TrainingZone, même blocage « pas de remontée en boucle »). Si oui,
 --     sans attendre le serveur, il se place lui-même sur le UsePoint (le client possède la physique de
 --     son perso), se fige (WalkSpeed 0 et AutoRotate coupé, en local) et joue l'animation. Le serveur,
@@ -89,6 +90,9 @@ local block: Block? = nil
 local frozen: Frozen? = nil
 local moveReleased = false -- au tapis : l'entrée de déplacement a été relâchée depuis la montée
 local known: { [Instance]: Machine | false } = {} -- machines taggées (false : sans UsePoint)
+-- a180 : arrivée sur la bande d'un tapis (TrainingZone.track, comme au serveur), créé au Start.
+local approach: any = nil
+local sideEntryOnly = true -- Config.Training.Treadmill.SideEntryOnly, lu au Start
 
 local function newLimiter(limit: number): Limiter
 	return { limit = limit, times = table.create(limit, -math.huge), cursor = 1 }
@@ -321,7 +325,16 @@ local function onHeartbeat()
 		refresh()
 	end
 	if humanoid == nil or root == nil then
+		approach.lastPosition = nil
+		approach.zone = nil
 		return
+	end
+	-- a180 : suivi à chaque image, même au tapis (comme le serveur) ; un tapis n'accueille que sur sa
+	-- bande, entré par un de ses grands côtés.
+	local position = root.Position
+	local m = ownMachineAt(position)
+	if not TrainingZone.track(approach, if m then m.zone else nil, position) and sideEntryOnly then
+		m = nil
 	end
 	local kind = machine
 	if kind == "Treadmill" then
@@ -343,9 +356,7 @@ local function onHeartbeat()
 	if humanoid.SeatPart ~= nil then
 		return
 	end
-	local position = root.Position
 	local blockedOne = blockedMachine(position)
-	local m = ownMachineAt(position)
 	if m and m ~= blockedOne then
 		predict(m, humanoid, root)
 	end
@@ -413,6 +424,10 @@ local function onCharacterAdded()
 	current = nil
 	frozen = nil
 	block = nil
+	if approach then
+		approach.lastPosition = nil
+		approach.zone = nil
+	end
 	refresh()
 end
 
@@ -420,6 +435,8 @@ function TrainingController.Start()
 	local shared = ReplicatedStorage:WaitForChild("Shared")
 	local training = require(shared:WaitForChild("Config"):WaitForChild("Training") :: ModuleScript) :: any
 	TrainingZone = require(shared:WaitForChild("TrainingZone") :: ModuleScript) :: any
+	approach = TrainingZone.newApproach()
+	sideEntryOnly = training.Treadmill.SideEntryOnly ~= false
 	limiters.Treadmill = newLimiter(training.Treadmill.MaxTapsPerSecond)
 	-- Peut attendre que le serveur ait créé les remotes.
 	net = require(shared:WaitForChild("Net"):WaitForChild("Net") :: ModuleScript) :: any
