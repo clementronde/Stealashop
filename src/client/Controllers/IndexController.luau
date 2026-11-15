@@ -14,8 +14,10 @@
 -- est livrée, ZoneName (ville, sinon thème), ZoneTheme (les 2 magasins) ; ZoneBar (Fill, ZoneCount « 9/13 »)
 -- = progression vers la récompense ; UnlockedBar.Counter « Unlocked: 7/83 ». Footer.ClaimButton (caché pour
 -- les Secrets) réclame la zone affichée (ClaimIndexReward(zone)), RewardCaption = Index.ZoneRewardText ou
--- « Claimed! », RewardIcon = icône de boutique de l'objet donné, ClaimAlert ; facultatifs : Footer.CashReward,
--- SpeedReward et ItemReward (Amount). Refus : View.Deny ; réussite : T.33 Success, comme la v3.
+-- « Claimed! », RewardIcon = icône de boutique de l'objet donné, ClaimAlert. Vague 61 (L-192, l'objet seul) :
+-- Footer.ItemReward (facultatif) : RewardIcon = la même icône, RewardCaption = le nom de l'objet (« Wrench »,
+-- aussi dans Amount d'un écran d'avant) ; Footer.CashReward et SpeedReward d'un écran d'avant : cachés.
+-- Refus : View.Deny ; réussite : T.33 Success, comme la v3.
 -- Seulement si Features.Index : à false, rien n'est branché et l'écran reste fermé.
 --
 -- Rôle commun :
@@ -52,9 +54,8 @@
 --     « ??? » s'il n'est pas trouvé). À l'ouverture : le dernier objet cliqué, sinon le 1er de la zone 1.
 --     Animation T.45 DetailPop (Motion.Pop sur DetailIcon) à chaque clic ;
 --   - Rewards, la récompense de la zone visible dans la liste (la dernière section visible dont le haut
---     est passé à moins de View.ViewMargin px sous le haut de la liste) : SpeedReward.Amount « +3% » (Icon vide :
---     l'icône de vitesse du HUD, SpeedRow.SpeedIcon.IconImage)
---     (Index.ZoneSpeedBonus), CashReward.Amount « +$10.2K » (Index.ZoneCash). Vague 34 (L-127 point 2) : la
+--     est passé à moins de View.ViewMargin px sous le haut de la liste) ; SpeedReward et CashReward cachés
+--     depuis la vague 61 (L-192 : plus d'argent ni de vitesse, l'objet n'a pas de place en v3). Vague 34 (L-127 point 2) : la
 --     prime d'une zone complète attend d'être réclamée (IndexService). ClaimButton réclame la zone visible
 --     (remote ClaimIndexReward(zone)) ; UnlockedBar.ClaimAllButton toutes les zones complètes pas encore
 --     réclamées, en une demande (ClaimIndexReward sans zone) ; le serveur revérifie tout. Rien à réclamer
@@ -174,9 +175,8 @@ type Screen = {
 	detailIncome: Instance?,
 	rewards: GuiObject?,
 	rewardsShown: boolean, -- visibilité de Rewards posée par Clément
-	speedAmount: Instance?,
-	speedIcon: Instance?, -- Rewards.SpeedReward.Icon, remplie avec l'icône de vitesse du HUD si vide
-	cashAmount: Instance?,
+	speedReward: GuiObject?, -- Rewards.SpeedReward et CashReward : cachés (L-192, plus d'argent ni de vitesse)
+	cashReward: GuiObject?,
 	claimButton: GuiObject?,
 	claimLabel: Instance?,
 	claimText: string?, -- texte de ClaimLabel posé par Clément (« Claim! »)
@@ -241,12 +241,8 @@ local CLAIM_ALL_ALERT = "ClaimAllAlert"
 local CATEGORY_ALERT = "CategoryAlert"
 local SECRETS_NAME = "Secrets" -- ZoneName des Secrets sans texte de Clément
 local STORE_SEPARATOR = "\n" -- V0 : entre les 2 noms de magasins dans ZoneName (v3)
--- Icône de vitesse du HUD (UI_HUD.StatsPanel.SpeedRow.SpeedIcon.IconImage), reprise dans
--- Rewards.SpeedReward.Icon quand Clément l'a laissée vide (comme GainController pour BB_Gain).
-local HUD_SPEED_LABEL = "Speed"
-local HUD_SPEED_ICON = "IconImage"
--- Récompense d'une zone complète affichée dans RewardLabel (v2) : Index.ZoneRewardText (argent, vitesse
--- et revenus, L-083 point 7), suivi de ce mot une fois la zone complète. V0, en anglais.
+-- Récompense d'une zone complète affichée dans RewardLabel (v2) : Index.ZoneRewardText (l'objet donné,
+-- L-192), suivi de ce mot une fois la zone complète. V0, en anglais.
 local REWARD_EARNED_SUFFIX = " EARNED"
 -- Teintes de l'icône des cartes d'exemple de Clément (relevé de Studio du 2026-11-08), quand aucune
 -- carte Preview_* ne les donne (v2, repli).
@@ -671,44 +667,15 @@ local function countSection(current: Screen, section: Section): (number, number)
 	return found, #items
 end
 
--- Rewards.SpeedReward.Icon vide (aucune icône de chaussure livrée) : l'image de l'icône de vitesse du
--- HUD (SpeedRow.SpeedIcon.IconImage, sinon la 1re image non vide de la ligne du nombre Speed). Seule
--- l'image est posée, et seulement si Clément l'a laissée vide.
-local function fillSpeedIcon(icon: Instance?)
-	if icon == nil or not isImage(icon) or (icon :: any).Image ~= "" then
-		return
-	end
-	local playerGui = localPlayer:FindFirstChildOfClass("PlayerGui")
-	local hud = if playerGui then playerGui:FindFirstChild(HUD) else nil
-	local label = if hud then Find.path(hud, HUD_SPEED_LABEL) else nil
-	local row = if label and label:IsA("TextLabel") then label.Parent else nil
-	if row == nil or row:IsA("ScreenGui") then
-		return
-	end
-	local image: string? = nil
-	local preferred = Find.path(row, HUD_SPEED_ICON)
-	if preferred and isImage(preferred) and (preferred :: any).Image ~= "" then
-		image = (preferred :: any).Image
-	else
-		for _, child in row:GetDescendants() do
-			if child:IsA("ImageLabel") and (child :: ImageLabel).Image ~= "" then
-				image = (child :: ImageLabel).Image
-				break
-			end
-		end
-	end
-	if image then
-		(icon :: any).Image = image
-	end
-end
-
--- Rewards (v3) : la zone de la section visible dans la liste.
+-- Rewards (v3) : la zone de la section visible dans la liste. Vague 61 (L-192) : la récompense n'est plus
+-- qu'un objet, sans place en v3 ; SpeedReward et CashReward (argent et vitesse d'avant) sont cachés.
 local function refreshRewards(current: Screen)
 	local rewards = current.rewards
 	if rewards == nil then
 		return
 	end
-	fillSpeedIcon(current.speedIcon)
+	setVisible(current.speedReward, false)
+	setVisible(current.cashReward, false)
 	local rank = current.viewSection
 	local section = if rank then current.sections[rank] else nil
 	local zone = if section then section.def.zone else nil
@@ -716,10 +683,6 @@ local function refreshRewards(current: Screen)
 	if zone == nil or section == nil then
 		return
 	end
-	local reward = Index.ZoneReward(zone)
-	-- Vague 59 (L-183) : valeurs fixes (Vitesse en points, plus de %) ; l'objet donné n'a pas de place en v3.
-	setText(current.speedAmount, if reward then `+{Format.short(reward.Speed)}` else "")
-	setText(current.cashAmount, `+{Format.money(Index.ZoneCash(zone))}`)
 	setText(current.claimLabel, if claimed[zone] then CLAIMED_TEXT else (current.claimText or ""))
 end
 
@@ -1226,9 +1189,8 @@ local function bind(gui: ScreenGui)
 		detailIncome = if detail then Find.path(detail, "DetailIncome") else nil,
 		rewards = rewards,
 		rewardsShown = if rewards then rewards.Visible else false,
-		speedAmount = if rewards then Find.path(rewards, "SpeedReward.Amount") else nil,
-		speedIcon = if rewards then Find.path(rewards, "SpeedReward.Icon") else nil,
-		cashAmount = if rewards then Find.path(rewards, "CashReward.Amount") else nil,
+		speedReward = if rewards then guiObject(rewards, "SpeedReward") else nil,
+		cashReward = if rewards then guiObject(rewards, "CashReward") else nil,
 		claimButton = claimButton,
 		claimLabel = claimLabel,
 		claimText = textOf(claimLabel),
@@ -1450,9 +1412,11 @@ type V4 = {
 	claimAlert: GuiObject?,
 	rewardIcon: Instance?,
 	rewardCaption: Instance?,
-	cashAmount: Instance?,
-	speedAmount: Instance?,
-	itemAmount: Instance?,
+	itemIcon: Instance?, -- Footer.ItemReward.RewardIcon (L-192)
+	itemCaption: Instance?, -- Footer.ItemReward.RewardCaption (L-192)
+	itemAmount: Instance?, -- Footer.ItemReward.Amount, d'avant L-192
+	cashReward: GuiObject?, -- Footer.CashReward et SpeedReward d'avant L-192 : cachés
+	speedReward: GuiObject?,
 	shaking: { [GuiObject]: boolean },
 	connections: { RBXScriptConnection },
 	cards: { V4Card },
@@ -1639,19 +1603,23 @@ local function refreshV4(current: V4)
 	-- Récompense : seulement pour une zone (les Secrets n'en ont pas).
 	setVisible(current.claimButton, current.claimShown and zone ~= nil)
 	if zone then
-		local reward = Index.ZoneReward(zone)
+		local name = Index.ZoneRewardName(zone)
 		setText(current.rewardCaption, if claimed[zone] then CLAIMED_TEXT else Index.ZoneRewardText(zone))
+		-- Vague 61 (L-192) : Footer.ItemReward, l'objet seul (son nom et son image).
+		setText(current.itemCaption, name)
+		setText(current.itemAmount, name)
 		local iconName = Index.ZoneRewardIcon(zone)
 		local image = if iconName then Icons.get(iconName) else nil
 		if image then
 			setImage(current.rewardIcon, image, FOUND_COLOR)
+			setImage(current.itemIcon, image, FOUND_COLOR)
 		elseif iconName then
 			reportOnce(`rewardicon:{iconName}`, `[Index] icône {Icons.name(iconName)} pas livrée : RewardIcon garde l'image de l'écran`)
 		end
-		setText(current.cashAmount, `+{Format.money(Index.ZoneCash(zone))}`)
-		setText(current.speedAmount, if reward then `+{Format.short(reward.Speed)}` else "")
-		setText(current.itemAmount, Index.ZoneRewardName(zone))
 	end
+	-- Plus d'argent ni de vitesse (L-192) : CashReward et SpeedReward d'un écran d'avant sont cachés.
+	setVisible(current.cashReward, false)
+	setVisible(current.speedReward, false)
 	refreshV4Alerts(current)
 end
 
@@ -1728,9 +1696,11 @@ local function bindV4(gui: ScreenGui)
 		claimAlert = if claimButton then guiObject(claimButton, CLAIM_ALERT) else nil,
 		rewardIcon = if claimButton then Find.path(claimButton, "RewardIcon") else nil,
 		rewardCaption = if claimButton then Find.path(claimButton, "RewardCaption") else nil,
-		cashAmount = if footer then Find.path(footer, "CashReward.Amount") else nil,
-		speedAmount = if footer then Find.path(footer, "SpeedReward.Amount") else nil,
+		itemIcon = if footer then Find.path(footer, "ItemReward.RewardIcon") else nil,
+		itemCaption = if footer then Find.path(footer, "ItemReward.RewardCaption") else nil,
 		itemAmount = if footer then Find.path(footer, "ItemReward.Amount") else nil,
+		cashReward = if footer then guiObject(footer, "CashReward") else nil,
+		speedReward = if footer then guiObject(footer, "SpeedReward") else nil,
 		shaking = {},
 		connections = {},
 		cards = {},

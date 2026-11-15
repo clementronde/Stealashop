@@ -4,19 +4,17 @@
 -- (IndexService). Règles communes au serveur (IndexService ; DataService pour la migration des
 -- profils en v4) et au client (IndexController, écran UI_Index de Clément).
 --
---   Récompense d'une zone complète (décision de Clément, 2026-11-15, liaison L-183 ; vague 59, a191) : des
---   valeurs FIXES, versées une seule fois quand le joueur la réclame (IndexService), au lieu des
---   pourcentages d'avant (+5 % de revenus, +3 % de vitesse, prime de 10 min de revenus : retirés) :
---   Index.ZoneRewards[zone]  { Cash, Speed, Item = { Kind, Id } } : prime en $, Vitesse ajoutée à la stat
---                            entraînée au tapis (StatsService.AddSpeed), et un objet de boutique donné
+--   Récompense d'une zone complète (décisions de Clément, 2026-11-15, liaison L-183 puis L-192 ; vagues 59
+--   et 61) : UN OBJET SEULEMENT, donné une seule fois quand le joueur la réclame (IndexService) ; ni argent,
+--   ni vitesse, ni diamants (la prime et la Vitesse d'a191 sont retirées, comme les pourcentages d'avant) :
+--   Index.ZoneRewards[zone]  { Item = { Kind, Id } } : un objet de boutique donné
 --                            (Kind = "Weapon" : Config/Tools ; "Aura" ou "Trail" : Config/Cosmetics)
---   Index.ZoneCash(zone) -> number              prime de la zone, en $ (entier), 0 pour une zone inconnue
 --   Index.ZoneReward(zone) -> ZoneReward?       la ligne de ZoneRewards (nil pour une zone inconnue)
 --   Index.ZoneRewardName(zone) -> string        nom de l'objet donné (« Wrench »), "" sans récompense
 --   Index.ZoneRewardIcon(zone) -> string?       nom à passer à Contract/Icons.get pour l'icône de boutique
 --                                               de l'objet (« TOOL_Wrench », « Aura_Flamme »), nil sans
 --   Index.ZoneRewardText(zone) -> string        la récompense écrite pour le joueur (anglais, L-036) :
---                                               « +$10K +300 SPEED +WRENCH » (RewardLabel, RewardCaption)
+--                                               « +WRENCH » (RewardLabel, ClaimButton.RewardCaption)
 --   Index.Attribute    « IndexDiscovered » : attribut du Player posé par IndexService, lu par
 --                       IndexController (texte d'Index.Encode)
 --   Index.ZoneCount     6 : les zones du couloir (Config/Zones), onglets Zone1Tab à Zone6Tab
@@ -42,12 +40,11 @@
 --   Index.ClaimableZones(discovered, claimed) -> { number }  zones complètes pas encore réclamées
 -- discovered : table [ItemId] = valeur vraie (dans le profil : os.time() de la découverte).
 -- Index complet (les 83) : l'aura « Collectionneur » du doc 3.4 est abandonnée (Clément, 2026-11-10,
--- L-083 point 7) ; ce sont les zones complètes qui récompensent (argent, vitesse et un objet).
+-- L-083 point 7) ; ce sont les zones complètes qui récompensent (un objet chacune, L-192).
 -- Écran UI_Index_v4 (L-183) : Index.View.PageSize cartes par page (grille 4 × 2 de Cards).
 
 local DeepFreeze = require(script.Parent.DeepFreeze)
 local Cosmetics = require(script.Parent.Cosmetics)
-local Format = require(script.Parent.Parent.Format)
 local Items = require(script.Parent.Items)
 local Tools = require(script.Parent.Tools)
 local Zones = require(script.Parent.Zones)
@@ -55,10 +52,8 @@ local Zones = require(script.Parent.Zones)
 type Item = Items.Item
 export type Discovered = { [string]: any }
 export type RewardKind = "Weapon" | "Aura" | "Trail"
--- Récompense d'une zone complète : Cash en $, Speed en points de Vitesse (stat du tapis), Item l'objet donné.
+-- Récompense d'une zone complète : Item, l'objet donné (L-192 : rien d'autre).
 export type ZoneReward = {
-	Cash: number,
-	Speed: number,
 	Item: { Kind: RewardKind, Id: string },
 }
 
@@ -115,23 +110,17 @@ local function completedZones(discovered: Discovered): { number }
 	return zones
 end
 
--- V0 proposés à Clément, absents du doc (décision du 2026-11-15 : des valeurs fixes, L-183). Le simulateur
--- d'équilibrage ne couvre pas l'index : les montants partent des revenus des zones de Config.
---   Cash  : environ 10 min de revenu de la collection complète de la zone exposée (somme des revenus 7.1
---           de ses objets : 17, 2 552, 19 140, 138 150, 1 046 500, 7 475 000 $/s), arrondi ; c'est l'ordre de
---           grandeur de l'ancienne prime (10,2 K$ … 4,49 B$), qui en dépendait.
---   Speed : 10 % de la Vitesse demandée par la zone suivante (Zones[n + 1].SpeedRequired : 3 K, 100 K, 3 M,
---           100 M, 3 B) ; zone 6, la dernière : 1 B (un tiers de la sienne).
---   Item  : un objet visé par la zone suivante (Kit de Config/Zones ou TargetZones), deux de chaque sorte :
---           Wrench (300 $), Flame (60 K$), Turbo (1 M$), Sledgehammer (20 M$), Galaxy (400 M$), Hyperspace (2,5 B$).
---           Déjà possédé : rien de plus (ni doublon, ni argent à la place).
+-- Objets gardés par Clément (L-192, 2026-11-15) ; choisis par a191 (V0) : un objet visé par la zone suivante
+-- (Kit de Config/Zones ou TargetZones), deux de chaque sorte : Wrench (300 $), Flame (60 K$), Turbo (1 M$),
+-- Sledgehammer (20 M$), Galaxy (400 M$), Hyperspace (2,5 B$). Déjà possédé : rien de plus (ni doublon, ni
+-- argent à la place).
 local ZONE_REWARDS: { [number]: ZoneReward } = {
-	{ Cash = 10_000, Speed = 300, Item = { Kind = "Weapon", Id = "Wrench" } },
-	{ Cash = 1_500_000, Speed = 10_000, Item = { Kind = "Aura", Id = "Flame" } },
-	{ Cash = 10_000_000, Speed = 300_000, Item = { Kind = "Trail", Id = "Turbo" } },
-	{ Cash = 80_000_000, Speed = 10_000_000, Item = { Kind = "Weapon", Id = "Sledgehammer" } },
-	{ Cash = 600_000_000, Speed = 300_000_000, Item = { Kind = "Aura", Id = "Galaxy" } },
-	{ Cash = 4_500_000_000, Speed = 1_000_000_000, Item = { Kind = "Trail", Id = "Hyperspace" } },
+	{ Item = { Kind = "Weapon", Id = "Wrench" } },
+	{ Item = { Kind = "Aura", Id = "Flame" } },
+	{ Item = { Kind = "Trail", Id = "Turbo" } },
+	{ Item = { Kind = "Weapon", Id = "Sledgehammer" } },
+	{ Item = { Kind = "Aura", Id = "Galaxy" } },
+	{ Item = { Kind = "Trail", Id = "Hyperspace" } },
 }
 for zone = 1, ZONE_COUNT do
 	local reward = ZONE_REWARDS[zone]
@@ -202,11 +191,6 @@ function Index.ZoneReward(zone: number): ZoneReward?
 	return ZONE_REWARDS[zone]
 end
 
-function Index.ZoneCash(zone: number): number
-	local reward = ZONE_REWARDS[zone]
-	return if reward then reward.Cash else 0
-end
-
 function Index.ZoneRewardName(zone: number): string
 	local reward = ZONE_REWARDS[zone]
 	if reward == nil then
@@ -235,13 +219,12 @@ function Index.ZoneRewardIcon(zone: number): string?
 	return if string.sub(texture, 1, 3) == "FX_" then string.sub(texture, 4) else texture
 end
 
--- V0 proposé, absent du doc : texte de la récompense (RewardLabel, RewardCaption).
+-- V0 proposé, absent du doc : texte de la récompense (RewardLabel, ClaimButton.RewardCaption, Notify).
 function Index.ZoneRewardText(zone: number): string
-	local reward = ZONE_REWARDS[zone]
-	if reward == nil then
+	if ZONE_REWARDS[zone] == nil then
 		return ""
 	end
-	return `+{Format.money(reward.Cash)} +{Format.short(reward.Speed)} SPEED +{string.upper(Index.ZoneRewardName(zone))}`
+	return `+{string.upper(Index.ZoneRewardName(zone))}`
 end
 
 function Index.Encode(discovered: Discovered): string

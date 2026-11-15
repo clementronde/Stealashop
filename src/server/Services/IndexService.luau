@@ -20,22 +20,20 @@
 --     puis à chaque découverte : les ItemId découverts, dans l'ordre du catalogue, séparés par des
 --     virgules (Index.Encode). Rien n'est lu du client, sauf la réclamation (plus bas).
 --   - récompense d'une zone complète (tous ses objets ; les Secrets n'appartiennent à aucune zone).
---     Vague 59 (a191, décision de Clément du 2026-11-15, L-183) : des valeurs FIXES de
---     Index.ZoneRewards[zone], une seule fois par zone et par joueur, QUAND IL LA RÉCLAME (L-127 point 2) :
---       * la prime Cash (DataService.AddCash ; télémétrie LogEconomy « IndexReward », SKU IndexZone<n>) ;
---       * Speed points de Vitesse ajoutés à la stat du tapis (StatsService.AddSpeed) ;
---       * l'objet Item : une arme (ToolService.Grant) ou une aura ou un trail (CosmeticService.Grant), ajouté
---         aux possédés sans être équipé ; déjà possédé : rien de plus.
---     Les anciens bonus en pour cent (+5 % de revenus et +3 % de vitesse par zone complète, comptés en
---     direct d'après l'Index, rien dans le profil) n'existent plus, pour personne : ils sont échangés contre
---     la nouvelle récompense. Choix le plus sûr : rien n'est versé deux fois et rien de ce qui est dans le
---     profil n'est repris. Une zone déjà réclamée avant (entrée dans IndexRewards, prime d'argent déjà
---     versée) reçoit au chargement suivant la Vitesse et l'objet seulement, sans nouvelle prime.
+--     Vague 61 (a201, décision de Clément du 2026-11-15, L-192, qui remplace celle de la vague 59, L-183) :
+--     UN OBJET SEULEMENT, Index.ZoneRewards[zone].Item, une seule fois par zone et par joueur, QUAND IL LA
+--     RÉCLAME (L-127 point 2) : une arme (ToolService.Grant) ou une aura ou un trail (CosmeticService.Grant),
+--     ajouté aux possédés sans être équipé ; déjà possédé : rien de plus. Ni argent, ni Vitesse, ni diamants
+--     (la prime et la Vitesse d'a191 sont retirées). Les anciens bonus en pour cent (+5 % de revenus et +3 %
+--     de vitesse par zone complète) n'existent plus non plus. Choix le plus sûr : rien n'est versé deux fois
+--     et rien de ce qui est dans le profil n'est repris (argent ou Vitesse déjà versés par a191 : gardés).
+--     Une zone déjà réclamée avant (entrée dans IndexRewards, rien dans IndexGifts) reçoit au chargement
+--     suivant l'objet seulement, une fois.
 --     Remote ClaimIndexReward(zone) depuis le bouton de réclamation de l'écran (la zone affichée), ou
 --     ClaimIndexReward() sans zone (UnlockedBar.ClaimAllButton de la v3 : toutes les zones complètes pas
 --     encore réclamées, en une demande). Le serveur revérifie tout d'après le profil (index ouvert, zone
---     complète, pas déjà réclamée). Profil : IndexRewards[« zone »] = os.time() de la réclamation (la prime
---     d'argent) et IndexGifts[« zone »] = os.time() du don de la Vitesse et de l'objet, notés avant le don
+--     complète, pas déjà réclamée). Profil : IndexRewards[« zone »] = os.time() de la réclamation et
+--     IndexGifts[« zone »] = os.time() du don de l'objet, notés avant le don
 --     (jamais deux fois, même pour deux demandes d'affilée : sans yield). Rien à réclamer : rien ne change
 --     (l'attribut est reposé pour remettre le client d'accord). Attribut Index.ClaimedAttribute
 --     (« IndexClaimed ») du Player : les zones réclamées, « 1,3 » (Index.EncodeZones), posé au chargement et
@@ -70,8 +68,6 @@ local ProfileTypes = require(Shared.Types.Profile)
 
 local DataService = require(script.Parent.DataService)
 local PvPService = require(script.Parent.PvPService)
-local StatsService = require(script.Parent.StatsService)
-local TelemetryService = require(script.Parent.TelemetryService)
 
 type Data = ProfileTypes.Data
 
@@ -82,9 +78,6 @@ local IS_STUDIO = RunService:IsStudio()
 local MESSAGES = {
 	ZoneComplete = "Index: Zone %d complete! Claim %s in the Index!",
 }
--- Genre de télémétrie de la prime (Config/Telemetry) ; SKU = SKU_PREFIX .. zone.
-local TELEMETRY_KIND = "IndexReward"
-local SKU_PREFIX = "IndexZone"
 -- Catégorie de ce Notify : une bonne nouvelle, rien n'est refusé.
 local NOTIFY_KIND = "Info"
 -- Résultat d'OnTheftEnded quand l'objet est déposé chez le voleur (PvPService.TheftResult).
@@ -196,18 +189,15 @@ local function grantItem(player: Player, kind: string, id: string): boolean
 	return true
 end
 
--- Vitesse et objet de la zone `zone` (pas la prime d'argent), notés dans IndexGifts avant le don. Sans yield.
+-- L'objet de la zone `zone`, noté dans IndexGifts avant le don. Sans yield.
 local function giveGifts(player: Player, data: Data, zone: number)
 	local reward = Index.ZoneReward(zone)
 	if reward == nil then
 		return
 	end
 	ensureBook(data, "IndexGifts")[tostring(zone)] = os.time()
-	if reward.Speed > 0 then
-		StatsService.AddSpeed(player, reward.Speed)
-	end
 	grantItem(player, reward.Item.Kind, reward.Item.Id)
-	log(`{player.Name} : zone {zone}, +{reward.Speed} de Vitesse et {reward.Item.Kind} {reward.Item.Id} donnés`)
+	log(`{player.Name} : zone {zone}, {reward.Item.Kind} {reward.Item.Id} donné`)
 end
 
 -- Zone `zone` complétée : message (la récompense attend d'être réclamée). Sans yield.
@@ -240,15 +230,11 @@ local function claim(player: Player, wanted: number?): number
 			ensureBook(data, "IndexRewards")[key] = os.time()
 			paid = data.IndexRewards
 			count += 1
-			local cash = Index.ZoneCash(zone)
-			if cash > 0 and DataService.AddCash(player, cash) ~= nil then
-				-- Télémétrie juste après AddCash, sans yield (le solde est lu à l'appel).
-				TelemetryService.LogEconomy(player, TELEMETRY_KIND, cash, `{SKU_PREFIX}{zone}`)
-			end
 			if gifts == nil or gifts[key] == nil then
 				giveGifts(player, data, zone)
+				gifts = data.IndexGifts
 			end
-			log(`{player.Name} : récompense de la zone {zone} réclamée, {cash} $ versés`)
+			log(`{player.Name} : récompense de la zone {zone} réclamée`)
 		end
 	end
 	if count == 0 then
@@ -258,8 +244,8 @@ local function claim(player: Player, wanted: number?): number
 	return count
 end
 
--- Chargement : une zone réclamée avant la vague 59 (prime d'argent versée, rien dans IndexGifts) reçoit
--- la Vitesse et l'objet de la nouvelle récompense, une fois, sans nouvelle prime.
+-- Chargement : une zone réclamée avant (entrée dans IndexRewards, rien dans IndexGifts) reçoit l'objet de
+-- la récompense, une fois, rien d'autre.
 local function catchUpGifts(player: Player, data: Data)
 	local paid, readable = bookOf(player, data, "IndexRewards")
 	local gifts, giftsReadable = bookOf(player, data, "IndexGifts")
@@ -338,7 +324,7 @@ local function onProfileLoaded(player: Player)
 	-- Zones réclamées (pastilles du client) ; les récompenses dues attendent d'être réclamées.
 	publishClaimed(player, data)
 	if enabled then
-		-- Au tour suivant : StatsService n'ajoute la Vitesse qu'une fois le joueur suivi (son PlayerAdded),
+		-- Au tour suivant : le don attend que les services suivent le joueur (son PlayerAdded),
 		-- qui peut passer après un profil chargé sans attente.
 		task.defer(function()
 			local loaded = DataService.Get(player)
@@ -401,7 +387,7 @@ function IndexService.Init()
 	enabled = Features.Index == true
 	Net.Server.ClaimIndexReward:Connect(onClaimIndexReward)
 	if not enabled then
-		print("[IndexService] Features.Index = false : découvertes notées, sans bonus de revenus, prime, vitesse ni message")
+		print("[IndexService] Features.Index = false : découvertes notées, sans récompense ni message")
 	end
 	DataService.OnProfileLoaded(onProfileLoaded)
 	PvPService.OnTheftEnded(onTheftEnded)
