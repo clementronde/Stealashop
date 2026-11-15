@@ -68,38 +68,26 @@
 --        Pieces/Piece_xx depuis BlastPoint puis les efface (effet seulement, côté client : rien de ce
 --        qui compte n'en dépend). La copie est retirée RemoveDelay s plus tard.
 --      - Colis : Boxes (12 : 6 Standard, 4 Premium, 2 Luxe), types répartis au hasard sur
---        BoxSpawn_01 à _12 (BlastPoint pour un point qui manque), tirés à l'apparition. Contenu tiré comme sur un rayon de
---        la zone du camion : rareté selon ShelfBoxes.OddsFor (zone 1 : Communs seulement, L-033),
---        objet par Items.Pick, repli sur la rareté tirable la plus proche en dessous (comme
---        StoreHeistService), mutation par Mutations.Roll (DEV-131, comme sur un rayon). Chaque colis est posé tout de suite à son point d'arrivée
---        (CarryService.PlaceDrop), au sol, de ScatterMinRadius à ScatterRadius studs du centre du
---        camion, du côté de son point de sortie (ScatterSpread), et jamais sur un autre : au moins
---        BoxGap studs bord à bord entre deux colis, d'après la largeur des modèles BOX_<Rareté>, sinon BOX_<Tier> (cône
---        élargi, puis cercles plus grands si la place manque : voir landingPoint). Le client le fait voler depuis son
---        BoxSpawn avec la traînée FX_BoxTrail (attributs TruckBox, Tier, FlightFrom, FlightStartsAt,
---        FlightDuration) ; les départs sont espacés de LaunchStagger s. Ramassable une fois atterri.
+--        BoxSpawn_01 à _12 (BlastPoint pour un point qui manque), tirés à l'apparition : rareté selon
+--        ShelfBoxes.OddsFor de la zone du camion (zone 1 : Communs seulement, L-033), repli sur la rareté
+--        tirable la plus proche en dessous (comme StoreHeistService). Chaque colis a son point d'arrivée au
+--        sol, de ScatterMinRadius à ScatterRadius studs du centre du camion, du côté de son point de sortie
+--        (ScatterSpread), et jamais sur un autre : au moins BoxGap studs bord à bord entre deux colis, d'après
+--        la largeur des modèles BOX_<Rareté>, sinon BOX_<Tier> (cône élargi, puis cercles plus grands si la
+--        place manque : voir landingPoint).
 --      - Notify à tous.
---   4'. Vague 42 (a148, demande de Cantin du 2026-11-14) : avec StoreHeistService.AddEventShelf (Features.ShelfOpen),
---      les colis ne tombent plus au sol pour être pris fermés : un rayon d'événement de StoreHeistService
---      (StoreId « Truck_<n> », un ShelfSlot par point d'arrivée ci-dessus) reçoit les caisses, chacune en vol
---      (serveur) de son BoxSpawn à son point ; la rareté tirée au chargement est celle de la CAISSE (le
---      modèle du camion en dépend toujours), minimum de l'objet (la chance ne fait que monter) ; on l'ouvre
---      sur place comme sur un rayon (maintien GrabTime, chance tirée par le serveur, objet, mutation et
---      taille tirés à la sortie comme aujourd'hui, Mutations.Roll : pas de taille garantie), puis on prend
---      l'objet (GrabItem, portage NPCItem). Ni témoins, ni vigile ; les conducteurs (point 3') poursuivent
---      aussi qui porte un objet de ce camion. Pas ouverte : la caisse disparaît FlightTime + BoxLifetime s
---      après l'explosion. Sans rayon d'événement : les colis au sol du point 5, comme avant.
---   5. Colis du camion au sol : GrabDropped(dropId) (9.4), en deux appels comme GrabItem (début du
---      maintien, puis invite déclenchée). Le serveur vérifie : colis atterri et encore au sol, mains
---      vides, joueur vivant, hors zone safe (tag SafeZone), à Bat.DroppedGrabMaxDistance studs au
---      plus du colis, maintien du temps de prise de son type (Balance.Heist.BoxTiers[Tier].GrabTime),
---      revérifiés 10 fois par seconde pendant le maintien. Alors CarryService.PickUpDrop : porté,
---      c'est un colis PNJ ordinaire (StoreId « Truck_<n> », SlotId « Truck_<n>/<kk> »), à poser sur
---      un établi pour l'ouvrir. Aucun vigile ne le poursuit : le camion n'a pas de magasin. Pas
---      ramassé : il disparaît BoxLifetime s après son atterrissage. Porteur en échec (mort, départ,
---      attrapé la nuit) : le colis est perdu, il n'a pas de rayon où revenir.
---      Ce service ne traite GrabDropped que pour ses colis : un autre colis au sol (batte, DEV-048) est
---      laissé au service qui l'a posé.
+--   4'. Vague 42 (a148, demande de Cantin du 2026-11-14) : les colis vont sur un rayon d'événement de
+--      StoreHeistService (AddEventShelf, StoreId « Truck_<n> », un ShelfSlot par point d'arrivée ci-dessus),
+--      chacun en vol (serveur) de son BoxSpawn à son point ; la rareté tirée au chargement est celle de la
+--      CAISSE (le modèle du camion en dépend toujours), minimum de l'objet (la chance ne fait que monter) ; on
+--      l'ouvre sur place comme sur un rayon (maintien GrabTime, chance tirée par le serveur, objet, mutation et
+--      taille tirés à la sortie, Mutations.Roll : pas de taille garantie), puis on prend l'objet (GrabItem,
+--      portage NPCItem). Ni témoins, ni vigile ; les conducteurs (point 3') poursuivent qui porte un objet de
+--      ce camion. Pas ouverte : la caisse disparaît FlightTime + BoxLifetime s après l'explosion.
+--   5. Vague 50 (a158, décision de Cantin du 2026-11-14 : le colis porté n'existe plus) : plus aucun colis du
+--      camion posé au sol pour être pris fermé (CarryService.PlaceDrop, GrabDropped, portage NPCBox retirés).
+--      Sans rayon d'événement (StoreHeistService absent d'un banc, AddEventShelf refusé) : le camion explose
+--      sans colis (avertissement si AddEventShelf refuse ; une ligne en Studio si le service manque).
 --
 -- Crochet de test, STUDIO SEULEMENT (comme NightSkipTo) : en Play, dans la barre de commande serveur :
 --       workspace:SetAttribute("TruckSpawnNow", 3)          -- un camion tout de suite en zone 3 (1 à 6)
@@ -125,7 +113,7 @@ local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage.Shared
 local Balance = require(Shared.Config.Balance)
-local Bat = require(Shared.Config.Bat)
+
 local Features = require(Shared.Config.Features)
 local Items = require(Shared.Config.Items)
 local Mutations = require(Shared.Config.Mutations)
@@ -136,7 +124,6 @@ local Zones = require(Shared.Config.Zones)
 local Find = require(Shared.Contract.Find)
 local Animations = require(Shared.Contract.Animations)
 local Net = require(Shared.Net.Net)
-local CarryTypes = require(Shared.Types.Carry)
 
 local CarryService = require(script.Parent.CarryService)
 local NightCycleService = require(script.Parent.NightCycleService)
@@ -174,14 +161,6 @@ type Chrono = {
 -- Ce que ce service utilise de GuardService (chargé à la fin du chrono, voir loadGuardService).
 type GuardApi = { StartDriverChase: (chase: any) -> Model? }
 
--- Colis du camion au sol (ou en vol vers le sol).
-type TruckBox = {
-	DropId: string,
-	Tier: string,
-	LandsAt: number, -- os.clock() de l'atterrissage
-}
-
-type Hold = { DropId: string, StartedAt: number }
 
 -- Point d'arrivée d'un colis déjà posé à l'explosion, et sa largeur au sol.
 type Landing = { Position: Vector3, Width: number }
@@ -219,11 +198,7 @@ local EXPLODED_AT_ATTRIBUTE = "ExplodedAt"
 -- (poussière à l'arrivée et au départ ; un retrait après l'explosion porte aussi ExplodedAt : pas de poussière).
 -- SpawnedAt est déclaré plus haut (même attribut, posé une seule fois).
 local LEFT_AT_ATTRIBUTE = "LeftAt"
-local TRUCK_BOX_ATTRIBUTE = "TruckBox"
-local TIER_ATTRIBUTE = "Tier"
-local FLIGHT_FROM_ATTRIBUTE = "FlightFrom"
-local FLIGHT_STARTS_AT_ATTRIBUTE = "FlightStartsAt"
-local FLIGHT_DURATION_ATTRIBUTE = "FlightDuration"
+
 local SKIP_ATTRIBUTE = "TruckSpawnNow" -- Studio seulement (test), voir l'en-tête
 -- Arrivée en roulant (a97, vague 29), lus par TruckController et VfxController (mêmes noms là-bas) :
 -- pose debout du camion par rapport à son pivot final (CFrame), et heure serveur de l'impact au sol.
@@ -234,14 +209,8 @@ local PUSH_HEIGHT = 3
 
 -- V0 proposé, absent du doc : après NightCycleService (120), dont il lit les phases.
 local PRIORITY = 130
--- V0 proposé, absent du doc : horaire, départ et maintiens revus 10 fois par seconde.
+-- V0 proposé, absent du doc : horaire et départ revus 10 fois par seconde.
 local TICK = 0.1
--- V0 proposé, absent du doc : écart du réseau toléré sur la durée de maintien (comme GrabItem), et
--- sur l'heure d'atterrissage (le client voit le colis atterrir à l'heure serveur, à la latence près).
-local GRAB_TIME_TOLERANCE = 0.1
-local LANDING_TOLERANCE = 0.15
--- V0 proposé, absent du doc : un maintien non conclu expire 1 s après sa durée (comme GrabItem).
-local HOLD_EXPIRY = 1
 -- V0 proposé, absent du doc : sol cherché de 20 studs au-dessus à 40 en dessous du point visé.
 local GROUND_RAY_UP = 20
 local GROUND_RAY_DOWN = 40
@@ -264,11 +233,8 @@ local chrono: Chrono? = nil
 local truckCount = 0
 local nextSpawnAt = math.huge -- os.clock() ; posé au Start
 local dayStartedAt = -math.huge -- os.clock() de la dernière aube
-local boxes: { [string]: TruckBox } = {}
 -- Vague 42 : StoreHeistService (AddEventShelf), chargé dans Init, protégé.
 local heistApi: { AddEventShelf: (options: any) -> Model? }? = nil
-local holds: { [Player]: Hold } = {}
-local lastRefusal: { [Player]: number } = {}
 local warned: { [string]: boolean } = {}
 local boxCache: { [Instance]: { cframe: CFrame, size: Vector3 } } = {}
 local random = Random.new()
@@ -289,18 +255,6 @@ local function warnOnce(key: string, message: string)
 	warn(`[TruckEventService] {message}`)
 end
 
--- Prise refusée : signalée en Studio seulement (aide au test), une ligne par seconde et par joueur.
-local function refuse(player: Player, dropId: string, reason: string)
-	if not IS_STUDIO then
-		return
-	end
-	local now = os.clock()
-	if now - (lastRefusal[player] or -math.huge) < 1 then
-		return
-	end
-	lastRefusal[player] = now
-	warn(`[TruckEventService] GrabDropped de {player.Name} sur « {dropId} » refusé : {reason}`)
-end
 
 local function notifyAll(message: string, kind: string)
 	Net.Server.Notify:FireAll(message, kind)
@@ -1344,11 +1298,10 @@ local function explode(truck: Truck, impactPoint: Vector3?, breaker: Player?)
 	-- Vague 42 (a148, demande de Cantin) : colis à ouvrir sur place, comme sur un rayon (rayon d'événement de
 	-- StoreHeistService : même maintien, même chance tirée par le serveur, même sortie, objet et mutation tirés
 	-- à l'ouverture, puis GrabItem) ; la rareté du chargement devient celle de la caisse. Chaque caisse vole du
-	-- BoxSpawn à son point d'arrivée (vol du serveur, placeBox). Sans rayon d'événement : les colis au sol d'avant.
+	-- BoxSpawn à son point d'arrivée (vol du serveur, placeBox). Vague 50 (a158, Cantin 2026-11-14) : plus aucun
+	-- colis posé au sol pour être porté fermé ; sans rayon d'événement, le camion ne lâche rien (avertissement).
 	local spots: { any } = {}
-	-- Sans rayon d'événement, rien n'est tiré ici (les places des colis au sol restent celles d'avant).
-	local shelfLoad: { Load } = if heistApi then truck.Load else {}
-	for index, entry in shelfLoad do
+	for index, entry in truck.Load do
 		local spawnPoint = Find.path(model, string.format(BOX_SPAWN_FORMAT, index))
 		local from: Vector3 = if spawnPoint and spawnPoint:IsA("Attachment")
 			then (spawnPoint :: Attachment).WorldPosition
@@ -1372,60 +1325,10 @@ local function explode(truck: Truck, impactPoint: Vector3?, breaker: Player?)
 			placed += 1
 			byTier[spot.Tier] = (byTier[spot.Tier] or 0) + 1
 		end
-	else
-		table.clear(taken) -- repli : les colis au sol d'avant, places recalculées
-		if drops then
-			for _, drop in drops:GetChildren() do
-				if drop:IsA("Model") and drop:FindFirstChildWhichIsA("BasePart", true) then
-					local frame, size = (drop :: Model):GetBoundingBox()
-					table.insert(taken, { Position = frame.Position, Width = math.max(size.X, size.Z) })
-				end
-			end
-		end
-	end
-	local groundLoad: { Load } = if shelf then {} else truck.Load
-	for index, entry in groundLoad do
-		local tier = entry.Tier
-		local spawnPoint = Find.path(model, string.format(BOX_SPAWN_FORMAT, index))
-		local from: Vector3 = if spawnPoint and spawnPoint:IsA("Attachment")
-			then (spawnPoint :: Attachment).WorldPosition
-			else blastPosition
-		local rarity, itemId = entry.Rarity, entry.ItemId
-		if rarity == nil or itemId == nil then
-			warnOnce(`draw.{tier}.{truck.Zone}`, `aucun objet ne peut sortir d'un colis {tier} en zone {truck.Zone} : colis du camion sauté`)
-			continue
-		end
-		local payload: CarryTypes.NPCBoxPayload = {
-			Kind = "NPCBox",
-			Tier = tier :: CarryTypes.BoxTier,
-			Zone = truck.Zone,
-			Rarity = rarity,
-			ItemId = itemId,
-			StoreId = storeId,
-			SlotId = `{storeId}/{string.format("%02d", index)}`,
-			-- DEV-131 (L-084) : mêmes règles que la mise en rayon, jamais pour un objet TutorialOnly (drawLoad).
-			Mutation = entry.Mutation,
-		}
-		local launch = (index - 1) * TruckEvent.LaunchStagger
-		local landsIn = launch + TruckEvent.FlightTime
-		local attributes: { [string]: any } = {
-			[TRUCK_BOX_ATTRIBUTE] = true,
-			[TIER_ATTRIBUTE] = tier,
-			[FLIGHT_FROM_ATTRIBUTE] = from,
-			[FLIGHT_STARTS_AT_ATTRIBUTE] = serverNow + launch,
-			[FLIGHT_DURATION_ATTRIBUTE] = TruckEvent.FlightTime,
-		}
-		local look = `{rarity}.{tier}`
-		local width = widths[look] or boxWidth(rarity, tier)
-		widths[look] = width
-		local landing = landingPoint(from, center, width, taken)
-		local dropId = CarryService.PlaceDrop(payload, landing, landsIn + TruckEvent.BoxLifetime, attributes)
-		if dropId then
-			table.insert(taken, { Position = landing, Width = width })
-			boxes[dropId] = { DropId = dropId, Tier = tier, LandsAt = os.clock() + landsIn }
-			placed += 1
-			byTier[tier] = (byTier[tier] or 0) + 1
-		end
+	elseif #spots > 0 and addShelf then
+		warnOnce("noshelf", "StoreHeistService.AddEventShelf a refusé le rayon d'événement : le camion explose sans colis")
+	elseif #spots > 0 then
+		log("StoreHeistService.AddEventShelf indisponible : le camion explose sans colis (plus de colis porté)")
 	end
 	notifyAll(TruckEvent.Messages.Exploded, "Info")
 	local parts: { string } = {}
@@ -1464,11 +1367,10 @@ local function loadGuardService(): GuardApi?
 	return nil
 end
 
--- `player` porte-t-il un colis du camion `storeId` (« Truck_<n> ») ?
+-- `player` porte-t-il un objet sorti d'une caisse du camion `storeId` (« Truck_<n> », NPCItem, vague 42) ?
 local function carriesBoxOf(player: Player, storeId: string): boolean
 	local payload = CarryService.GetPayload(player)
-	-- Vague 42 : ou l'objet sorti d'une de ses caisses ouvertes sur place (NPCItem, même StoreId).
-	if payload == nil or (payload.Kind ~= "NPCBox" and payload.Kind ~= "NPCItem") then
+	if payload == nil or payload.Kind ~= "NPCItem" then
 		return false
 	end
 	return (payload :: any).StoreId == storeId
@@ -1566,90 +1468,6 @@ local function endChrono(c: Chrono, why: string, leftMessage: string)
 	launchDrivers(c, why)
 end
 
--- Colis du camion au sol ------------------------------------------------------------------------------
-
-local function grabTimeOf(tier: string): number
-	local info = Balance.Heist.BoxTiers[tier]
-	return if info then info.GrabTime else 0
-end
-
--- Raison du refus d'une prise de `box` par `player`, ou nil si elle est permise maintenant.
-local function grabRefusal(player: Player, box: TruckBox): string?
-	if os.clock() + LANDING_TOLERANCE < box.LandsAt then
-		return "colis encore en vol"
-	end
-	local payload, position = CarryService.GetDrop(box.DropId)
-	if payload == nil or position == nil then
-		return "colis plus au sol"
-	end
-	if CarryService.IsCarrying(player) then
-		return "mains pleines"
-	end
-	local root = rootOf(player)
-	if root == nil then
-		return "pas de personnage vivant"
-	end
-	if inSafeZone(root.Position) then
-		return "en zone safe"
-	end
-	local distance = (root.Position - position).Magnitude
-	if distance > Bat.DroppedGrabMaxDistance then
-		return `trop loin ({math.round(distance * 10) / 10} studs)`
-	end
-	return nil
-end
-
-local function grant(player: Player, box: TruckBox)
-	if not CarryService.PickUpDrop(player, box.DropId) then
-		refuse(player, box.DropId, "CarryService a refusé le ramassage")
-		return
-	end
-	boxes[box.DropId] = nil
-	log(`{player.Name} ramasse le colis {box.Tier} {box.DropId} du camion`)
-end
-
--- GrabDropped(dropId) : premier appel = début du maintien, second = fin (comme GrabItem).
-local function onGrabDropped(player: Player, dropId: string)
-	local box = boxes[dropId]
-	if box == nil then
-		return -- pas un colis du camion : laissé au service qui l'a posé (batte, DEV-048)
-	end
-	local hold = holds[player]
-	local reason = grabRefusal(player, box)
-	if reason then
-		if hold and hold.DropId == dropId then
-			holds[player] = nil
-		end
-		refuse(player, dropId, reason)
-		return
-	end
-	local required = grabTimeOf(box.Tier)
-	local now = os.clock()
-	if hold and hold.DropId == dropId then
-		local elapsed = now - hold.StartedAt
-		if elapsed + GRAB_TIME_TOLERANCE >= required then
-			holds[player] = nil
-			grant(player, box)
-		else
-			refuse(player, dropId, `maintien trop court ({math.round(elapsed * 100) / 100} s sur {required} s)`)
-		end
-		return
-	end
-	if required <= 0 then
-		holds[player] = nil
-		grant(player, box)
-		return
-	end
-	holds[player] = { DropId = dropId, StartedAt = now }
-end
-
-local function onDropExpired(dropId: string, _payload: any)
-	if boxes[dropId] then
-		boxes[dropId] = nil
-		log(`colis du camion {dropId} jamais ramassé : disparu`)
-	end
-end
-
 -- Horaire ---------------------------------------------------------------------------------------------
 
 local function randomInterval(): number
@@ -1692,12 +1510,6 @@ end
 
 local function step()
 	local now = os.clock()
-	for player, hold in holds do
-		local box = boxes[hold.DropId]
-		if box == nil or now - hold.StartedAt > grabTimeOf(box.Tier) + HOLD_EXPIRY or grabRefusal(player, box) ~= nil then
-			holds[player] = nil
-		end
-	end
 	local running = chrono
 	if running and now >= running.EndsAt then
 		endChrono(running, `{TruckEvent.Lifetime} s`, TruckEvent.Messages.Left)
@@ -1805,7 +1617,7 @@ function TruckEventService.Init()
 		end
 	end
 	if heistApi == nil then
-		log("StoreHeistService.AddEventShelf indisponible : les colis du camion restent au sol, à prendre fermés")
+		log("StoreHeistService.AddEventShelf indisponible : le camion explosera sans colis (plus de colis porté)")
 	end
 	WindowService.OnBroken(onBroken)
 	-- Accès protégé : les faux WindowService des bancs n'ont pas tous AddHitGate.
@@ -1814,12 +1626,6 @@ function TruckEventService.Init()
 		addHitGate(hitGate)
 	end
 	NightCycleService.OnPhaseChanged(onPhaseChanged)
-	CarryService.OnDropExpired(onDropExpired)
-	Net.Server.GrabDropped:Connect(onGrabDropped)
-	Players.PlayerRemoving:Connect(function(player: Player)
-		holds[player] = nil
-		lastRefusal[player] = nil
-	end)
 end
 
 function TruckEventService.Start()

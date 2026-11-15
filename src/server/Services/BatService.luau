@@ -21,7 +21,8 @@
 --      - qui porte quelque chose (CarryService.GetPayload) :
 --          usage 1 : un objet volé AU FRAPPEUR (PlayerItem, VictimUserId = frappeur) : partout,
 --                    même en zone safe ;
---          usage 2 : un colis PNJ (NPCBox, colis du camion compris) : ni le frappeur ni la cible en
+--          usage 2 : un objet sorti d'un colis PNJ (NPCItem, L-112 ; rayon de magasin, camion, Fortune Tower ;
+--                    vague 50 : plus de colis porté fermé, l'usage garde son nom « Box ») : ni le frappeur ni la cible en
 --                    zone safe (tag SafeZone), et la cible pas sous bouclier débutant (6.4 :
 --                    « les autres ne peuvent pas faire tomber son colis »,
 --                    NightCycleService.IsShielded) ;
@@ -60,8 +61,8 @@
 --     pas et ne ramasse rien ;
 --   - OnHit(hitter, target, usage, payload) pour les autres services (PvPService : défense réussie).
 --
--- Colis tombé au sol (6.2) : GrabDropped(dropId) (9.4), pour les colis posés par un coup de batte
--- seulement (ceux du camion restent à TruckEventService, qui ignore les autres). En deux appels,
+-- Objet tombé au sol (6.2, L-112) : GrabDropped(dropId) (9.4), pour ce qui est tombé des mains d'un porteur
+-- (coup de batte, capture, lâcher ; vague 50 : plus de colis du camion ni de la Fortune Tower au sol). En deux appels,
 -- comme GrabItem : le client l'envoie au début du maintien de l'invite, puis quand elle se
 -- déclenche. Vérifié : colis encore au sol (CarryService.GetDrop), mains vides, joueur vivant, pas
 -- étourdi, hors zone safe, à Bat.DroppedGrabMaxDistance (8) studs au plus du colis, maintien de
@@ -386,8 +387,9 @@ local function candidateFor(
 		return nil, "ne porte rien"
 	elseif hitterSafe or isInSafeZone(root.Position) then
 		return nil, "zone safe"
-	elseif payload.Kind == "NPCBox" or payload.Kind == "NPCItem" then
-		-- L-112 : l'objet sorti d'un colis ouvert sur le rayon tombe au sol comme un colis (bouclier compris).
+	elseif payload.Kind == "NPCItem" then
+		-- L-112 : l'objet sorti d'un colis ouvert sur le rayon tombe au sol (bouclier compris). Vague 50 (a158) :
+		-- le colis porté fermé (NPCBox) n'existe plus ; l'usage garde son nom « Box ».
 		if shielded(other) then
 			return nil, SHIELD_REFUSAL
 		end
@@ -478,7 +480,7 @@ local function applyHit(who: string, hitterRoot: BasePart, target: Candidate, no
 		knockback(target.root, direction)
 		stun(player, "Knockback")
 		Net.Server.Notify:Fire(player, Bat.Messages.BoxKnockedDown, "Alert") -- avertissement, pas un refus : sans UI_Deny (L-106 point 6)
-		log(`{who} frappe {player.Name} : colis {payload.Rarity} au sol ({dropId or "?"})`)
+		log(`{who} frappe {player.Name} : objet {payload.Rarity} au sol ({dropId or "?"})`)
 	elseif target.usage == "Intruder" then
 		-- Rien ne tombe : PvPService le sort de la boutique (OnHit).
 		stun(player, "Stun")

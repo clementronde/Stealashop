@@ -30,10 +30,11 @@
 --   GiveItem                           text = ItemId, text2 = mutation (« Huge », « Gold », « Huge Gold » ;
 --                                      "" = aucune), value = zone d'un objet sans zone (Secret ; 1 par défaut).
 --                                      Refusé si l'inventaire est plein (DisplayService.HasInventoryRoom)
---   GiveBox                            text = rareté : un colis de cette rareté exactement (objet tiré dans
---                                      Config/Items, mutation tirée comme en rayon), value = zone facultative
---                                      (sinon la première zone qui a un objet de cette rareté) ; Tier V0 selon la
---                                      rareté (BOX_TIER_BY_ORDER) ; refusé au plafond Unbox.BoxInventoryMax
+--   GiveBox                            text = rareté : un objet de cette rareté exactement, tiré dans Config/Items
+--                                      (mutation tirée comme en rayon), mis tout de suite dans l'inventaire, libre ;
+--                                      value = zone facultative (sinon la première zone qui a un objet de cette
+--                                      rareté). Vague 50 (a158) : plus de colis rangé (Boxes), le nom de la commande
+--                                      reste (bouton BoxKindButton de UI_Admin). Refusé si l'inventaire est plein
 --   GiveAura, GiveTrail                text = Id de Config/Cosmetics : CosmeticService.Grant puis Equip
 --   GivePotion (Studio)                text = Id de Config/Potions : crochet PotionTest « <UserId> give <Id> »
 --   GiveGamepass (Studio)              text = clé de Config/Monetization.Passes : crochet MonetizationTest (drapeau
@@ -73,7 +74,7 @@ local Mutations = require(Shared.Config.Mutations)
 local Potions = require(Shared.Config.Potions)
 local Rarities = require(Shared.Config.Rarities)
 local SkillTree = require(Shared.Config.SkillTree)
-local Unbox = require(Shared.Config.Unbox)
+
 local Upgrades = require(Shared.Config.Upgrades)
 local Zones = require(Shared.Config.Zones)
 local Format = require(Shared.Format)
@@ -98,7 +99,7 @@ local TelemetryService = require(script.Parent.TelemetryService)
 local UnboxService = require(script.Parent.UnboxService)
 
 type Data = ProfileTypes.Data
-type Box = ProfileTypes.Box
+
 
 -- Ce qu'une commande reçoit, déjà résolu.
 type Call = {
@@ -118,7 +119,7 @@ local STORE_TAG = "NPCStore"
 local SLOTS_PER_RAYON = 4 -- L-082 : 5 rayons de 4 présentoirs (comme RayonService)
 local TELEPORT_RAY_HEIGHT = 60 -- studs au-dessus du milieu des magasins d'où part le rayon vers le sol
 local TELEPORT_LIFT = 4 -- studs au-dessus du sol trouvé
-local BOX_TIER_BY_ORDER: { [number]: string } = { "Standard", "Standard", "Premium", "Premium", "Luxe" } -- au-delà : Luxe
+
 -- Crochets de test (en-têtes de PotionService, MonetizationService, SkillTreeService et TruckEventService).
 local POTION_HOOK = "PotionTest"
 local PASS_HOOK = "MonetizationTest"
@@ -411,14 +412,8 @@ handlers.GiveBox = function(call: Call): (boolean, string)
 	if data == nil then
 		return false, "Profile not loaded."
 	end
-	local stored = 0
-	for _, box in data.Boxes do
-		if type(box) == "table" and box.Spot == nil then
-			stored += 1
-		end
-	end
-	if stored >= Unbox.BoxInventoryMax then
-		return false, `{call.target.Name} has too many boxes.`
+	if not DisplayService.HasInventoryRoom(call.target) then
+		return false, `{call.target.Name}'s inventory is full.`
 	end
 	-- La zone demandée d'abord, puis les autres dans l'ordre.
 	local order: { number } = {}
@@ -439,21 +434,16 @@ handlers.GiveBox = function(call: Call): (boolean, string)
 		end
 	end
 	if item == nil then
-		return false, `No {rarity.DisplayName} item to put in a box.`
+		return false, `No {rarity.DisplayName} item to give.`
 	end
-	local box: Box = {
-		Tier = (BOX_TIER_BY_ORDER[rarity.Order] or "Luxe") :: any,
-		Zone = zone,
-		ItemId = item.Id,
-		Rarity = rarity.Id,
-		ReadyAt = nil,
-		Mutation = Mutations.Roll(random),
-		Spot = nil,
-		At = os.time(),
-	}
-	data.Boxes[newUid(data.Boxes)] = box
+	-- Vague 50 (a158, Cantin 2026-11-14 : le colis porté ou rangé n'existe plus) : l'objet entre tout de suite
+	-- dans l'inventaire, libre (sans antivol), comme GiveItem ; rien n'est écrit dans Boxes.
+	local mutation = Mutations.Roll(random)
+	local uid = newUid(data.Items)
+	data.Items[uid] = { Id = item.Id, Source = "NPC", At = os.time(), Zone = zone, Mutation = mutation }
+	IndexService.Discover(call.target, item.Id)
 	InventoryService.Refresh(call.target)
-	return true, `Gave {rarity.DisplayName} box to {call.target.Name}`
+	return true, `Gave {rarity.DisplayName} item ({Mutations.ItemName(item.DisplayName, mutation)}) to {call.target.Name}`
 end
 
 local function giveCosmetic(call: Call, kind: string): (boolean, string)

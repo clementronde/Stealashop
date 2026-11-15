@@ -42,8 +42,9 @@ local Bat = {
 
 	-- Messages lus par le joueur (Notify), en anglais (L-036)
 	Messages = {
-		BoxKnockedDown = "You got hit! Your box fell to the ground.", -- V0 : au porteur frappé (usage 2)
-		TargetShielded = "Beginner shield: you can't knock their box down yet.", -- V0 : au frappeur (6.4)
+		-- Vague 50 (a158) : ce qui tombe est un objet (le colis porté n'existe plus) ; les clés gardent leur nom.
+		BoxKnockedDown = "You got hit! Your item fell to the ground.", -- V0 : au porteur frappé (usage 2)
+		TargetShielded = "Beginner shield: you can't knock their item down yet.", -- V0 : au frappeur (6.4)
 	},
 }
 

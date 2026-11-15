@@ -3182,8 +3182,8 @@ local function onCarryStarted(player: Player, payload: any)
 	-- sa prise, comme un colis (Cantin, 2026-11-13, a114 : rétabli, lié à l'objet) ; tombé au sol (coup de
 	-- batte, lâché, ou porteur attrapé : CarryService.Fail « Caught » le lâche, résultat « Dropped »), il
 	-- suit les mêmes règles qu'un colis tombé, plus celles de l'objet lié.
-	if type(payload) ~= "table" or (payload.Kind ~= "NPCBox" and payload.Kind ~= "NPCItem") then
-		return -- seuls les colis PNJ et les objets sortis de ces colis ont un vigile (5.5)
+	if type(payload) ~= "table" or payload.Kind ~= "NPCItem" then
+		return -- seuls les objets sortis d'un colis PNJ ont un vigile (5.5 ; vague 50 : plus de colis porté fermé, NPCBox)
 	end
 	if droppedPayloads[payload] then
 		-- Ramassé au sol (6.2) : le vigile qui suivait ce colis change de cible ; sinon le vigile lié à
