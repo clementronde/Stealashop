@@ -37,7 +37,7 @@
 --   2026-11-14 ; détail de l'étape 3 à 5 dans le paragraphe « Vague 31 » plus bas) ;
 --   5 → 6   premier ramassage sur une plaque (DisplayService.OnCashOut, sauf « Leave »,
 --           l'encaissement automatique au départ, et « Offline », les gains hors ligne) ;
---   6 → 7   TrainDuration (30) s sur le tapis, cumulées (attribut TrainingMachine, posé par
+--   6 → 7   TrainDuration (10 depuis la vague 61, 30 avant) s sur le tapis, cumulées (attribut TrainingMachine, posé par
 --           TrainingService quand le joueur s'arrête sur la bande, L-071). Plus de banc depuis le
 --           rééquilibrage v2 (2026-11-14) : l'étape garde son numéro et son Id, le tapis seul la passe ;
 --   7 → 8   la clé à molette possédée (ToolToBuy), ou un outil plus fort ;
@@ -46,7 +46,8 @@
 --           plan de l'arche, du côté opposé à l'arche de la zone 1 (sinon à la zone safe) ;
 --   10      fin du bouclier débutant (NightCycleService.IsShielded) : ShieldEndMessage pendant
 --           MessageDuration s, puis, avec un bot sur le serveur, l'étape 11 ; sans bot, le tuto est fini
---           (Step = 10, Done = true), comme avant la vague 36 ;
+--           (Step = 10, Done = true), comme avant la vague 36. Vague 61 (a199) : seulement avec
+--           Tutorial.WaitShieldEnd ; sinon l'étape 10 passe tout de suite (11 avec un bot, sinon la fin) ;
 --   Vague 36 (L-085 point 4, a121, V0 proposé) : le vol entre joueurs sur la boutique du bot (BotService). Après
 --   l'étape 10 parce qu'une fois le bouclier débutant fini, le joueur entre dans le PvP : on lui montre alors à voler
 --   (et le message « keep your bat close! » annonce la suite) ; avant, il n'a souvent pas de quoi casser une porte
@@ -157,13 +158,24 @@
 -- poursuite du bot ne ramène plus à 14 avant un nouveau passage à 12) ; 12 et 13 : fin du tuto (13 demande l'objet du
 -- bot en main), avec ProtectShop. L'étape sautée compte comme faite (Tutorial.Step garde l'étape la plus avancée, la
 -- reprise part de la suivante). Passer ne donne rien : étape 5 sans objet exposé ni encaissement, 7 sans la clé à
--- molette, 8 sans aura (l'argent reste au joueur). Une étape suivante déjà remplie s'enchaîne (outil déjà acheté…).
+-- molette, 8 sans aura (l'argent reste au joueur, don de la vague 61 compris ; l'étape suivante verse le sien). Une étape suivante déjà remplie s'enchaîne (outil déjà acheté…).
 -- Passer pendant ProtectShop cache tout. SkipOneStep = false : l'ancienne règle (Done = true, Step garde l'étape).
 --
 -- Liste des tâches (vague 60, a197) : TutorialStep porte aussi la progression de l'étape (have, need ; progressOf :
 -- tapis, argent pour l'outil ou l'aura, Speed pour la zone 2, temps du bouclier) ; Shared/TutorialTasks en fait le
 -- texte côté client. Flèche (vague 60) : toujours la cible exacte de l'étape, plus le détour par la porte de la
 -- boutique du joueur (throughDoor, gardé derrière Tutorial.ArrowViaDoor).
+--
+-- Tuto court (vague 61, a199 ; Cantin : « maximum dans son entièreté 2 à 3 minutes » ; V0 de Config/Tutorial) :
+--   - dons : en entrant à l'étape 7 (ou en la reprenant) sans la clé à molette ni de quoi la payer, le jeu verse
+--     Tutorial.ToolGift (son prix) ; à l'étape 8, sans aura ni de quoi payer, Tutorial.AuraGift. Une seule fois par
+--     profil : Tutorial.Gifts[« Tool » | « Aura »] = true, posé avant le versement (reprise au milieu, Passer, retour
+--     à l'étape : jamais deux fois). Passer l'étape 6 mène à l'étape 7, qui donne son argent ; passer l'étape 7 ou 8 ne
+--     reprend rien. Indices ToolGift et AuraGift (« Here's $300 for the tutorial: buy the Wrench! ») tant que le don est
+--     versé et que l'argent suffit ; Tutorial.GiftCash = false : plus aucun don (attente d'avant) ;
+--   - étape 10 : sans Tutorial.WaitShieldEnd, plus d'attente de la fin du bouclier débutant (10 min de jeu) : 10 → 11
+--     tout de suite avec un bot, sinon fin du tuto (ProtectShop). Le bouclier lui-même ne change pas ;
+--   - Tutorial.TrainDuration : 10 s de tapis.
 --
 -- Funnel d'onboarding (14.2) : AnalyticsService:LogOnboardingFunnelStepEvent(player, n, nom), dans
 -- un pcall (refusé en Studio et côté client : la sortie de Studio l'écrit). Pour les nouveaux joueurs
@@ -765,6 +777,33 @@ local function cheapestAura(): number
 	return price
 end
 
+-- Vague 61 (a199) : dons du tuto (voir l'en-tête, « Tuto court »).
+local GIFT_TOOL = "Tool"
+local GIFT_AURA = "Aura"
+
+local function gifted(data: Data, id: string): boolean
+	local gifts = data.Tutorial.Gifts
+	return type(gifts) == "table" and gifts[id] == true
+end
+
+-- Verse le don `id` une seule fois par profil, s'il manque de quoi payer `price` ; true si versé maintenant.
+local function giveGift(player: Player, data: Data, id: string, amount: number, price: number): boolean
+	if not Tutorial.GiftCash or gifted(data, id) or amount <= 0 or amount ~= amount or amount == math.huge or data.Cash >= price then
+		return false
+	end
+	local gifts = data.Tutorial.Gifts
+	if type(gifts) ~= "table" then
+		gifts = {}
+		data.Tutorial.Gifts = gifts
+	end
+	local marks = gifts :: { [string]: boolean }
+	marks[id] = true -- avant le versement : jamais deux fois, même si la suite échoue
+	if DataService.AddCash(player, amount) == nil then
+		return false
+	end
+	return true
+end
+
 -- Ancien joueur (voir l'en-tête) : la raison, ou nil pour un nouveau joueur.
 local function hasPlayed(data: Data): string?
 	if next(data.Items) ~= nil then
@@ -1219,8 +1258,11 @@ local function transition(session: Session, data: Data, position: Vector3?, carr
 		end
 	elseif step == STEP_SHIELD then
 		-- Vague 36 : message de fin du bouclier montré jusqu'au bout, et un bot présent (sinon evaluate finit le tuto).
-		if session.shielded == false and session.shieldShown and os.clock() >= session.messageUntil and botPlot() ~= nil then
-			return STEP_BOT_SHOP, "fin du bouclier débutant, bot présent"
+		-- Vague 61 (a199) : sans WaitShieldEnd, plus d'attente du bouclier.
+		local over = not Tutorial.WaitShieldEnd
+			or (session.shielded == false and session.shieldShown and os.clock() >= session.messageUntil)
+		if over and botPlot() ~= nil then
+			return STEP_BOT_SHOP, if Tutorial.WaitShieldEnd then "fin du bouclier débutant, bot présent" else "zone 2 atteinte, bot présent"
 		end
 	elseif step >= STEP_BOT_SHOP then
 		local plot = botPlot()
@@ -1325,12 +1367,13 @@ local function rawGuidance(session: Session, data: Data, position: Vector3?): (s
 		if data.Cash < toolPrice() then
 			return "CollectCash", collectTarget(player)
 		end
-		return nil, positionOf(taggedInMap(WEAPON_SHOP_TAG))
+		-- Vague 61 : le don versé, l'indice le dit (« Here's $300 for the tutorial: buy the Wrench! »).
+		return if gifted(data, GIFT_TOOL) then "ToolGift" else nil, positionOf(taggedInMap(WEAPON_SHOP_TAG))
 	elseif step == STEP_AURA then
 		if data.Cash < cheapestAura() then
 			return "CollectCash", collectTarget(player)
 		end
-		return nil, positionOf(taggedInMap(AURA_SHOP_TAG))
+		return if gifted(data, GIFT_AURA) then "AuraGift" else nil, positionOf(taggedInMap(AURA_SHOP_TAG))
 	elseif step == STEP_ZONE then
 		return nil, positionOf(taggedInMap(GATE_TAG, Tutorial.GoalZone))
 	elseif step == STEP_BOT_SHOP or step == STEP_BOT_GRAB then
@@ -1441,15 +1484,27 @@ local function evaluate(session: Session)
 		setStep(session, data, nextStep, why or "")
 	end
 
-	if session.step == STEP_SHIELD and session.shielded == false then
-		if not session.shieldShown then
+	-- Vague 61 (a199) : sans WaitShieldEnd, l'étape 10 finit tout de suite (pas de bot : la transition n'est pas passée à 11).
+	if session.step == STEP_SHIELD and (not Tutorial.WaitShieldEnd or session.shielded == false) then
+		if Tutorial.WaitShieldEnd and not session.shieldShown then
 			showShieldMessage(session)
 		end
 		if os.clock() >= session.messageUntil then
 			-- Avec un bot, la transition est déjà passée à l'étape 11 : ici, pas de bot (fin d'avant la vague 36).
 			data.Tutorial.Step = STEP_SHIELD
-			endByGame(session, data, "bouclier débutant fini")
+			endByGame(session, data, if Tutorial.WaitShieldEnd then "bouclier débutant fini" else "zone 2 atteinte, pas de bot")
 			return
+		end
+	end
+
+	-- Vague 61 (a199) : dons des étapes 7 et 8 (voir l'en-tête), une seule fois par profil.
+	if session.step == STEP_TOOL and not ownsToolToBuy(data) then
+		if giveGift(player, data, GIFT_TOOL, Tutorial.ToolGift, toolPrice()) then
+			log(`{player.Name} : don de {Tutorial.ToolGift} $ pour la clé à molette`)
+		end
+	elseif session.step == STEP_AURA and not ownsAura(data) then
+		if giveGift(player, data, GIFT_AURA, Tutorial.AuraGift, cheapestAura()) then
+			log(`{player.Name} : don de {Tutorial.AuraGift} $ pour l'aura`)
 		end
 	end
 

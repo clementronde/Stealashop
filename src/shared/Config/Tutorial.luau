@@ -11,6 +11,18 @@
 local DeepFreeze = require(script.Parent.DeepFreeze)
 local Balance = require(script.Parent.Balance)
 local PvP = require(script.Parent.PvP) -- AnyoneCanRob lit le nombre de coups de la porte (PvP.DoorHits)
+local Tools = require(script.Parent.Tools) -- vague 61 : prix de la clé à molette (don de l'étape 7)
+local Cosmetics = require(script.Parent.Cosmetics) -- vague 61 : prix de l'aura la moins chère (don de l'étape 8)
+
+-- Vague 61 (a199 ; Cantin : « le tuto, il est trop long […] Quitte à leur donner l'argent […] maximum dans son
+-- entièreté 2 à 3 minutes ») : le tuto entier en 3 min au plus (cible 2 à 2 min 30, durées des étapes dans les At
+-- plus bas). Trois leviers, V0 :
+--   - l'étape 10 n'attend plus la fin du bouclier débutant (10 min de jeu cumulées) : on passe de la zone 2 au vol
+--     sur le bot, ou à la fin sans bot. false → true : l'ancienne règle (attente, message ShieldEndMessage) ;
+--   - dons d'argent aux étapes 7 et 8 (GiftCash) : le prix de la clé à molette puis de l'aura, une seule fois par
+--     profil (Tutorial.Gifts), plus d'attente de 300 $ puis de 500 $ à 5 $/s ;
+--   - TrainDuration : 10 s de tapis au lieu de 30.
+local WAIT_SHIELD_END = false
 
 export type Step = {
 	Index: number,
@@ -42,31 +54,36 @@ export type Task = {
 -- le tuto ne parle plus que d'objets. Mêmes numéros et mêmes Id (GrabBox, PlaceBox gardés : un Tutorial.Step
 -- sauvegardé garde son sens), aucune étape retirée ; les bulles des étapes 3 et 4 sont celles de l'ouverture
 -- sur le rayon (l'ancien champ ShelfBubble, retiré).
+-- Vague 61 (a199) : At = moment visé depuis l'arrivée dans le tuto court (V0, calcul du rapport d'a199 : marche à
+-- 32 studs/s avec le ×2 d'a198, vitrine de la zone 1 à 15 PV, dons des étapes 7 et 8, 10 s de tapis, pas d'attente du
+-- bouclier ; fin vers 2 min 10 avec le message ProtectShop). Avant : 0, 15, 25, 45, 60, 120, 180, 240, 300, 600, 630,
+-- 660, 690 et 675 s (plus de 11 min jusqu'au bout).
 local Steps: { Step } = {
 	{ Index = 1, Id = "ArriveAtPlot", At = 0, Goal = "Arrivée sur sa parcelle, flèche au sol vers la Supérette", Bubble = "Smash the Mini Mart window!" },
-	{ Index = 2, Id = "HitWindow", At = 15, Goal = "Premiers coups aux poings sur la vitre (35 PV)", Bubble = "Hit the glass again and again!" },
-	{ Index = 3, Id = "GrabBox", At = 25, Goal = "Casse et chrono de 10 s ; ouvrir un colis sur le rayon (chance ×1,5), le Pot de nouilles sort, le prendre ; vigile lent", Bubble = "Open a box on the shelf!" },
-	{ Index = 4, Id = "PlaceBox", At = 45, Goal = "Ramener l'objet en zone safe (rangé sous antivol dans l'inventaire), le poser au sol de sa boutique", Bubble = "Bring the item back to your shop!" },
-	{ Index = 5, Id = "DisplayItem", At = 60, Goal = "Antivol de 5 s, reprendre l'objet (en main), le poser sur un présentoir (5 $/s), premier encaissement", Bubble = "Display your item to earn cash!" },
-	{ Index = 6, Id = "Train", At = 2 * 60, Goal = "Le tapis s'allume, 30 s d'entraînement guidé (plus de banc, v2)", Bubble = "Train on the treadmill" },
-	{ Index = 7, Id = "BuyTool", At = 3 * 60, Goal = "Flèche vers la boutique d'armes, clé à molette (300 $)", Bubble = "Buy the Wrench!" },
-	{ Index = 8, Id = "BuyAura", At = 4 * 60, Goal = "Flèche vers la boutique d'auras, première aura (500 $)", Bubble = "An aura multiplies your damage!" },
-	{ Index = 9, Id = "GoToZone2", At = 5 * 60, Goal = "Objectif affiché : la zone 2 (Speed 3K, Strength 10)", Bubble = "Next goal: Zone 2!" },
-	-- Étape 10 : message de fin du bouclier débutant (texte du doc, voir ShieldEndMessage)
-	{ Index = 10, Id = "ShieldEnd", At = 10 * 60, Goal = "Fin du bouclier débutant : l'objet qu'il porte peut tomber à la batte", Bubble = nil },
+	{ Index = 2, Id = "HitWindow", At = 8, Goal = "Premiers coups aux poings sur la vitre (15 PV depuis la vague 61, environ 3,5 s)", Bubble = "Hit the glass again and again!" },
+	{ Index = 3, Id = "GrabBox", At = 13, Goal = "Casse et chrono du braquage ; ouvrir un colis sur le rayon (chance ×1,5), le Pot de nouilles sort, le prendre ; vigile lent", Bubble = "Open a box on the shelf!" },
+	{ Index = 4, Id = "PlaceBox", At = 21, Goal = "Ramener l'objet en zone safe (rangé sous antivol dans l'inventaire), le poser au sol de sa boutique", Bubble = "Bring the item back to your shop!" },
+	{ Index = 5, Id = "DisplayItem", At = 29, Goal = "Antivol de 5 s, reprendre l'objet (en main), le poser sur un présentoir (5 $/s), premier encaissement", Bubble = "Display your item to earn cash!" },
+	{ Index = 6, Id = "Train", At = 49, Goal = "Le tapis s'allume, TrainDuration (10 s, vague 61) d'entraînement guidé (plus de banc, v2)", Bubble = "Train on the treadmill" },
+	{ Index = 7, Id = "BuyTool", At = 62, Goal = "Le jeu donne le prix de la clé à molette (ToolGift, vague 61), flèche vers la boutique d'armes, l'acheter", Bubble = "Buy the Wrench!" },
+	{ Index = 8, Id = "BuyAura", At = 72, Goal = "Le jeu donne le prix de la première aura (AuraGift, vague 61), flèche vers la boutique d'auras, l'acheter", Bubble = "An aura multiplies your damage!" },
+	{ Index = 9, Id = "GoToZone2", At = 82, Goal = "Objectif affiché : la zone 2 (Speed 3K, Strength 10), passer son arche", Bubble = "Next goal: Zone 2!" },
+	-- Étape 10 : message de fin du bouclier débutant (texte du doc, voir ShieldEndMessage). Vague 61 : sans
+	-- WaitShieldEnd, elle ne se joue plus (passage immédiat à l'étape 11, ou fin sans bot) ; gardée pour Tutorial.Step.
+	{ Index = 10, Id = "ShieldEnd", At = 92, Goal = "Fin du bouclier débutant : l'objet qu'il porte peut tomber à la batte (vague 61 : plus attendue)", Bubble = nil },
 	-- Vague 36 (L-085 point 4, a121) : le vol entre joueurs, sur la boutique du bot (BotService). Ajoutées à la
 	-- fin, sans changer les numéros ni les Id d'avant (un Tutorial.Step sauvegardé garde son sens). Sautées
 	-- sans bot sur le serveur : le tuto finit alors à l'étape 10, comme avant. V0 proposés, absents du doc
 	-- (étapes, At, bulles). Vague 37 : le bot défend sa boutique (bulle BotChase des Hints) ; vague 38 : étape 14.
-	{ Index = 11, Id = "GoToBotShop", At = 10 * 60 + 30, Goal = "Flèche vers la porte de la boutique du bot", Bubble = "Steal from another shop!" },
-	{ Index = 12, Id = "StealFromBot", At = 10 * 60 + 60, Goal = "Casser la porte du bot et lui prendre un objet exposé", Bubble = "Break in and grab an item!" },
-	{ Index = 13, Id = "BringStolenHome", At = 10 * 60 + 90, Goal = "Ramener l'objet volé dans sa boutique (dépôt PvPService), fin du tuto", Bubble = "Bring it back to your shop!" },
+	{ Index = 11, Id = "GoToBotShop", At = 92, Goal = "Flèche vers la porte de la boutique du bot", Bubble = "Steal from another shop!" },
+	{ Index = 12, Id = "StealFromBot", At = 102, Goal = "Casser la porte du bot et lui prendre un objet exposé", Bubble = "Break in and grab an item!" },
+	{ Index = 13, Id = "BringStolenHome", At = 118, Goal = "Ramener l'objet volé dans sa boutique (dépôt PvPService), fin du tuto", Bubble = "Bring it back to your shop!" },
 	-- Vague 38 (L-085 point 4, L-136 (a), a126) : « le bot défend ». Elle se joue ENTRE 12 et 13 (objet du bot pris
 	-- pendant que le bot le poursuit, BotService.IsChasing), mais elle est ajoutée à la fin pour ne changer ni les
 	-- numéros ni les Id d'avant (un Tutorial.Step sauvegardé garde son sens). Le bot semé (il ne le poursuit plus,
 	-- objet toujours en main) : étape 13 ; frappé, l'objet revole chez le bot : étape 12. V0 proposés, absents du
 	-- doc (At, bulle).
-	{ Index = 14, Id = "EscapeBot", At = 10 * 60 + 75, Goal = "Le bot poursuit le joueur qui tient son objet : le semer avec l'objet, ou se le faire reprendre (retour à 12)", Bubble = "The bot fights back: escape with it!" },
+	{ Index = 14, Id = "EscapeBot", At = 114, Goal = "Le bot poursuit le joueur qui tient son objet : le semer avec l'objet, ou se le faire reprendre (retour à 12)", Bubble = "The bot fights back: escape with it!" },
 }
 
 -- Textes écrits dans le doc, traduits en anglais (L-036). ShieldEndMessage dépasse les 8 mots
@@ -78,6 +95,14 @@ local NIGHT_BUBBLE = "Night is falling: hurry home!" -- 5.12, pour les nouveaux 
 -- Vague 60 (a197, T-099 : « je savais pas qu'est-ce qu'il fallait qu'on fasse, où on en était et pourquoi ») :
 -- textes de la liste des tâches (TutorialController, Shared/TutorialTasks). Anglais, V0 proposés, absents du doc.
 local TOOL_NAME = "Wrench" -- Tools.ById[ToolToBuy].DisplayName (étape 7 : la clé à molette, 300 $)
+-- Vague 61 (a199) : dons des étapes 7 et 8 = le prix de la clé à molette et celui de l'aura la moins chère (Spark),
+-- relus dans Config/Tools et Config/Cosmetics (300 $ et 500 $ aujourd'hui). V0.
+local WRENCH: Tools.Tool? = Tools.ById.Wrench
+local TOOL_GIFT = if WRENCH then WRENCH.Price else 0
+local AURA_GIFT = math.huge
+for _, aura in Cosmetics.Auras do
+	AURA_GIFT = math.min(AURA_GIFT, aura.Price)
+end
 local Todos: { [number]: Todo } = {
 	[1] = { Do = "Smash the Mini Mart window" },
 	[2] = { Do = "Keep hitting until the glass breaks" },
@@ -87,7 +112,9 @@ local Todos: { [number]: Todo } = {
 	[6] = { Do = "Stand on the treadmill", Need = "Train: {have} / {need} to get faster", NeedFormat = "Seconds" },
 	[7] = { Do = "Go to the Weapon Shop and buy it", Need = "Earn cash: {have} / {need} to buy the " .. TOOL_NAME, NeedFormat = "Money" },
 	[8] = { Do = "Go to the Aura Shop and buy one", Need = "Earn cash: {have} / {need} to buy an Aura", NeedFormat = "Money" },
-	[9] = { Do = "Walk through the Zone 2 gate", Need = "Speed: {have} / {need} to outrun Zone 2 guards", NeedFormat = "Short" },
+	-- Vague 61 (a199) : plus de « Speed: 12 / 3K » à l'étape 9, lu comme une Speed à atteindre avant d'y aller (l'arche ne
+	-- bloque pas). Avant : Need = "Speed: {have} / {need} to outrun Zone 2 guards", NeedFormat = "Short".
+	[9] = { Do = "Walk through the Zone 2 gate" },
 	[10] = { Do = "Keep stealing and earning cash", Need = "Beginner protection ends in {left}", NeedFormat = "Time" },
 	[11] = { Do = "Go to the bot's shop" },
 	[12] = { Do = "Break its door, grab an item" },
@@ -102,10 +129,13 @@ local Tasks: { Task } = {
 	{ Id = "BuyTool", Steps = { 7 }, Goal = "Buy the " .. TOOL_NAME, Why = "A better tool breaks windows faster" },
 	{ Id = "BuyAura", Steps = { 8 }, Goal = "Buy an Aura", Why = "An aura multiplies your damage" },
 	{ Id = "Zone2", Steps = { 9 }, Goal = "Reach Zone 2", Why = "Zone 2 shops have better items" },
-	{ Id = "Shield", Steps = { 10 }, Goal = "Get ready for PvP", Why = "Soon other players can bonk you" },
-	{ Id = "RobBot", Steps = { 11, 12, 14 }, Goal = "Rob another shop", Why = "Anyone can rob anyone" },
-	{ Id = "BringStolen", Steps = { 13 }, Goal = "Bring the stolen item home", Why = "Then it is yours" },
 }
+-- Vague 61 (a199) : sans attente du bouclier, l'étape 10 ne se joue plus : pas de tâche « Get ready for PvP ».
+if WAIT_SHIELD_END then
+	table.insert(Tasks, { Id = "Shield", Steps = { 10 }, Goal = "Get ready for PvP", Why = "Soon other players can bonk you" })
+end
+table.insert(Tasks, { Id = "RobBot", Steps = { 11, 12, 14 }, Goal = "Rob another shop", Why = "Anyone can rob anyone" })
+table.insert(Tasks, { Id = "BringStolen", Steps = { 13 }, Goal = "Bring the stolen item home", Why = "Then it is yours" })
 
 local Tutorial = {
 	-- V0 : interrupteur. false = aucun tutoriel : TutorialService ne pose aucune accroche, ne
@@ -157,7 +187,16 @@ local Tutorial = {
 	-- V0 : un joueur des étapes 1 et 2 à cette distance (studs) d'une vitrine de la zone 1 ouverte passe
 	-- à l'étape 3, même si c'est un autre joueur qui l'a cassée (même rayon que le chrono HeistTimer).
 	StoreNearRadius = 60,
-	TrainDuration = 30, -- doc, section 3, étape 6 : « 30 s d'entraînement guidé » (au tapis ; plus de banc, v2)
+	-- Doc, section 3, étape 6 : « 30 s d'entraînement guidé » (au tapis ; plus de banc, v2). Vague 61 (a199, Cantin : tuto
+	-- de 3 min au plus) : 10 s, V0 (on voit la Speed monter ; 30 avant).
+	TrainDuration = 10,
+	-- Vague 61 (a199, V0) : voir l'en-tête. WaitShieldEnd = false : l'étape 10 passe tout de suite (11 avec un bot, sinon
+	-- fin) ; GiftCash : dons d'argent des étapes 7 et 8 (ToolGift, AuraGift), versés une seule fois par profil
+	-- (Tutorial.Gifts), seulement s'il manque de quoi payer ; false = plus de don (l'attente d'avant).
+	WaitShieldEnd = WAIT_SHIELD_END,
+	GiftCash = true,
+	ToolGift = TOOL_GIFT,
+	AuraGift = AURA_GIFT,
 	ToolToBuy = "Wrench", -- doc, étape 7 : la clé à molette (300 $, table 7.2) ; un outil plus fort compte aussi
 	GoalZone = 2, -- doc, étape 9 : objectif la zone 2 (Speed 3K, Strength 10 : Wrench × Spark)
 	MessageDuration = 8, -- V0 : secondes d'affichage de ShieldEndMessage avant la fin du tuto, puis de l'indice ProtectShop (vague 52)
@@ -206,6 +245,10 @@ local Tutorial = {
 		-- du tuto (bot volé et ramené, ou fin sans bot), affiché MessageDuration s avant de tout cacher.
 		AnyoneCanRob = `Anyone can rob anyone: every shop door breaks in {PvP.DoorHits} hits!`,
 		ProtectShop = "Protect your shop: Reinforced Door, Lock, Cameras!",
+		-- Vague 61 (a199, Cantin : « expliquer qu'on te donne de l'argent pour ce tuto ») : étapes 7 et 8, le don versé
+		-- (Tutorial.Gifts) et assez d'argent pour payer ; flèche vers la boutique. V0, 8 mots.
+		ToolGift = `Here's ${TOOL_GIFT} for the tutorial: buy the {TOOL_NAME}!`,
+		AuraGift = `Here's ${AURA_GIFT} for the tutorial: buy an Aura!`,
 	} :: { [string]: string },
 
 	-- Flèche au sol de Clément (UI-006, pas encore livrée) : noms proposés, pas encore au contrat. Cherchés
