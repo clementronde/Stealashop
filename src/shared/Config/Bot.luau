@@ -81,6 +81,16 @@ local Bot = {
 		-- passage est atteint à 3 studs (Bat.PointBlankRange). Contrôle 10 fois par seconde (comme PvPService).
 		DoorPassDistance = Bat.PointBlankRange,
 		Tick = 0.1,
+		-- Vague 60 (a194, Cantin, 2026-11-15 : « il n'est pas censé essayer de nous chasser dès qu'on tape sa
+		-- vitrine ») : false = le bot ne bouge pas vers celui qui casse sa porte (ni poursuite, ni batte) ; true =
+		-- règle d'a177 (il sort le frapper devant elle). La règle du casseur frappé reste pour un vrai propriétaire
+		-- (PvPService). V0.
+		HitBreaker = false,
+		-- Vague 60 (a194, Cantin : « il faut qu'il nous pourchasse jusqu'au bout ») : true = le voleur sorti avec un
+		-- de ses objets est poursuivi sans laisse (LeashDistance) ni compte GiveUpTime, jusqu'à la capture (coup :
+		-- l'objet revient), au dépôt chez lui (fin de la poursuite pour lui) ou à une zone safe qui ne contient pas
+		-- la boutique du bot (Shared/SafeZone) ; false = laisse et compte d'avant. V0.
+		ChaseToEnd = true,
 	},
 }
 

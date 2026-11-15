@@ -36,7 +36,10 @@
 --     dans sa boutique, avec ou sans objet ; dehors, le compte de Defense.GiveUpTime (10) s démarre (laisse de
 --     15 studs aussi), s'arrête s'il rentre et repart de zéro s'il ressort ; dehors sans objet, il est suivi, pas
 --     frappé. Bot rentré : un nouveau vol pour une nouvelle poursuite (V0). Les mentions du casseur de porte, de
---     l'intrus et du temps depuis le dernier déclenchement ci-dessous datent d'avant. Quand un joueur casse sa porte
+--     l'intrus et du temps depuis le dernier déclenchement ci-dessous datent d'avant. Vague 60 (a194, Cantin) : le
+--     casseur de sa porte n'est plus visé (Defense.HitBreaker) ; le voleur sorti avec un de ses objets est poursuivi
+--     sans laisse ni GiveUpTime (Defense.ChaseToEnd) jusqu'à la capture, au dépôt chez lui ou à une zone safe qui ne
+--     contient pas la boutique du bot (avant : perdu à 15 studs de Bounds, moins d'une seconde à sa vitesse). Quand un joueur casse sa porte
 --     (WindowService.OnBroken) ou lui prend un objet (Hold), l'avatar se désancre (SetNetworkOwner(nil) : le
 --     serveur le déplace), joue Animations/Run (celle de Clément, sinon la course par défaut de Roblox gardée du
 --     script Animate) et court vers lui (Humanoid:MoveTo, 10 fois par seconde, à Defense.RunSpeed ; chemin
@@ -702,7 +705,9 @@ local function reach(current: State, chase: Chase, player: Player): BasePart?
 	end
 	local root = rootOf(player)
 	local bounds = boundsOf(current.Plot)
-	if root == nil or (bounds and distanceOutside(bounds, root.Position) > DEFENSE.LeashDistance) then
+	-- Vague 60 (a194) : pas de laisse pour un voleur qui porte un de ses objets (Defense.ChaseToEnd).
+	local leashed = not (DEFENSE.ChaseToEnd and carrying(current, player))
+	if root == nil or (leashed and bounds and distanceOutside(bounds, root.Position) > DEFENSE.LeashDistance) then
 		return nil
 	end
 	return root
@@ -710,15 +715,61 @@ end
 
 -- Vague 55 (a177, Cantin, 2026-11-15) : `player` casse-t-il sa porte (WindowService.IsBreaking, lu prudemment) ?
 -- Alors il est visé et frappé devant elle, comme un intrus. Pas pendant son tuto (il doit casser la porte du bot).
+-- Vague 60 (a194, Cantin : « il n'est pas censé essayer de nous chasser dès qu'on tape sa vitrine ») : plus rien sans
+-- Defense.HitBreaker (le bot ne bouge pas vers le casseur).
 local function breaking(current: State, player: Player): boolean
+	if not DEFENSE.HitBreaker then
+		return false
+	end
 	local check: ((Model, Player) -> boolean)? = (WindowService :: any).IsBreaking
 	return not gentle(player) and check ~= nil and check(current.Plot, player) == true
+end
+
+-- Vague 60 (a194) : Shared/SafeZone, chargé à la première poursuite (require protégé : bancs sans lui = jamais à
+-- l'abri). Le lobby (zone safe) contient sans doute la boutique du bot et celle du voleur : seule une zone safe qui
+-- ne contient pas la boutique du bot arrête la poursuite (V0) ; sinon, elle finit à la capture ou au dépôt.
+local safeZone: { Shares: (Vector3, Vector3) -> boolean, ContainsPlayer: (Player) -> boolean }? = nil
+local safeZoneTried = false
+local function sheltered(current: State, player: Player): boolean
+	if not DEFENSE.ChaseToEnd then
+		return false
+	end
+	if not safeZoneTried then
+		safeZoneTried = true
+		local module = Shared:FindFirstChild("SafeZone")
+		if module and module:IsA("ModuleScript") then
+			local ok, result = pcall(require, module)
+			if ok and type(result) == "table" and type(result.Shares) == "function" then
+				safeZone = result :: any
+			end
+		end
+	end
+	local zone = safeZone
+	local bounds = boundsOf(current.Plot)
+	if zone == nil or bounds == nil then
+		return false
+	end
+	local containsPlayer: (Player) -> boolean = zone.ContainsPlayer
+	local shares: (Vector3, Vector3) -> boolean = zone.Shares
+	local center: Vector3 = bounds.Position
+	local root = rootOf(player)
+	if root == nil then
+		return false
+	end
+	local position: Vector3 = root.Position
+	local ok, value = pcall(function(): boolean
+		return containsPlayer(player) and not shares(position, center)
+	end)
+	return ok and value == true
 end
 
 -- Vague 42 (Cantin, 2026-11-14) : `player` est-il une cible de cette poursuite ? Il porte un de ses objets, ou il
 -- lui en a pris un pendant cette poursuite (Engaged) : alors poursuivi dans sa boutique même sans objet, et dehors
 -- jusqu'à la fin du compte GiveUpTime. Un intrus qui n'a rien volé n'est jamais visé.
 local function isQuarry(current: State, chase: Chase, player: Player): boolean
+	if sheltered(current, player) then
+		return false -- a194 : arrivé dans une zone safe qui n'est pas celle de la boutique du bot
+	end
 	return carrying(current, player) or chase.Engaged[player] == true or breaking(current, player) -- a177
 end
 
@@ -727,7 +778,7 @@ end
 -- volé l'objet, pas quand on est dans sa base ») : plus jamais un intrus qui n'a rien volé.
 local function pickTarget(current: State, chase: Chase): Player?
 	for uid, holder in current.Holders do
-		if not current.Pending[uid] and reach(current, chase, holder) then
+		if not current.Pending[uid] and not sheltered(current, holder) and reach(current, chase, holder) then
 			return holder
 		end
 	end
@@ -1003,7 +1054,10 @@ local function defenseStep()
 			-- relance de zéro.
 			local bounds = boundsOf(current.Plot)
 			local inside = targetRoot ~= nil and bounds ~= nil and insideBox(bounds, targetRoot.Position)
-			if targetRoot ~= nil and not inside then
+			-- Vague 60 (a194) : pas de compte pour un voleur qui porte un de ses objets (Defense.ChaseToEnd).
+			if targetRoot ~= nil and not inside and target and DEFENSE.ChaseToEnd and carrying(current, target) then
+				chase.OutsideSince = nil
+			elseif targetRoot ~= nil and not inside then
 				local since = chase.OutsideSince or now
 				chase.OutsideSince = since
 				if now - since > DEFENSE.GiveUpTime then
@@ -1146,6 +1200,11 @@ function BotService.TakeHeld(plot: Model, uid: string, thief: Player): boolean
 	current.Held[uid] = nil
 	current.Holders[uid] = nil
 	current.Pending[uid] = nil
+	-- Vague 60 (a194) : déposé chez lui, la poursuite de ce voleur s'arrête (plus suivi dans sa base).
+	local chase = current.Chase
+	if chase and DEFENSE.ChaseToEnd then
+		chase.Engaged[thief] = nil
+	end
 	local item = current.Items[slot]
 	current.Items[slot] = nil
 	publish(current)
@@ -1199,7 +1258,8 @@ function BotService.Init()
 	-- Vague 55 (a177, Cantin, 2026-11-15) : et contre celui qui frappe sa porte (coup compté), visé tant qu'il la casse
 	-- (breaking) : frappé devant elle, il ne peut plus la frapper ni voler le bot (PvPService). Pas pendant son tuto.
 	local onWindowHit: ((listener: (Player, string, string, Model) -> ()) -> () -> ())? = (WindowService :: any).OnHit
-	if onWindowHit then
+	-- Vague 60 (a194) : plus rien sans Defense.HitBreaker.
+	if onWindowHit and DEFENSE.HitBreaker then
 		onWindowHit(function(player: Player, _windowId: string, kind: string, model: Model)
 			local current = state
 			local already = BotService.IsChasing(player) -- déjà sa cible : rien à relancer à chaque coup

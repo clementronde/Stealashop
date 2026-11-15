@@ -9,6 +9,7 @@
 -- API :
 --   SafeZone.Contains(position) -> boolean        `position` est dans une zone safe
 --   SafeZone.ContainsPlayer(player) -> boolean    son HumanoidRootPart (personnage vivant) est dans une zone safe
+--   SafeZone.Shares(a, b) -> boolean              a194 : une même zone safe contient `a` et `b`
 
 local CollectionService = game:GetService("CollectionService")
 local Workspace = game:GetService("Workspace")
@@ -55,6 +56,17 @@ end
 function SafeZone.Contains(position: Vector3): boolean
 	for _, inst in CollectionService:GetTagged(TAG) do
 		if inMap(inst) and inside(inst, position) then
+			return true
+		end
+	end
+	return false
+end
+
+-- a194 (vague 60) : une même zone safe contient-elle `a` et `b` ? (BotService : le lobby contient la boutique du bot,
+-- seule une autre zone safe arrête sa poursuite.)
+function SafeZone.Shares(a: Vector3, b: Vector3): boolean
+	for _, inst in CollectionService:GetTagged(TAG) do
+		if inMap(inst) and inside(inst, a) and inside(inst, b) then
 			return true
 		end
 	end
