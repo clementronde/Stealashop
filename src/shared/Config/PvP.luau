@@ -13,7 +13,21 @@ local PvP = {
 	-- base = 50 × les dégâts conseillés de la zone du même rang (Zones[niveau].AdvisedDamage), soit
 	-- 50, 500, 4 000, 30 000, 250 000 (Formulas.PlayerWindowHP) : sans arbre, un joueur du même rang
 	-- la casse en 9 s environ, comme l'ancienne règle « 50 × ».
+	-- Plus lu pour les portes depuis L-163 (a159, ci-dessous) : reste pour Formulas.PlayerWindowHP.
 	PlayerWindowHPPerDamage = 50,
+	-- L-163 (décision de Clément, 2026-11-14 au soir, avec sa correction « 40 coups ») : n'importe qui peut braquer
+	-- n'importe qui. La porte d'une boutique (joueur ou bot) se casse en NOMBRE DE COUPS, le même pour tous :
+	-- un coup validé = 1, quelle que soit la force du voleur ou du propriétaire (arme, aura, potion). La force ne
+	-- sert plus qu'aux vitrines des magasins PNJ et aux événements. Reinforced Door (GlassThickness) ajoute des
+	-- coups (Config/SkillTree). V0 à valider par Cantin :
+	DoorHits = 40, -- coups de base : 8 s seul à Balance.Hit.MaxHitsPerSecond (5), hors réparation
+	-- La porte encaisse au plus ce nombre de coups par seconde, tous voleurs confondus (un coup compté au plus
+	-- toutes les 1/8 s) : à deux ou plus, 40 coups en 5 s environ (hors réparation). Les coups en trop sont ignorés.
+	DoorMaxHitsPerSecond = 8,
+	-- L-163 (Clément : la porte regagne des coups « quand personne ne frappe ») : la porte d'une boutique ne se
+	-- répare (Door Repair, même pourcentage du maximum par seconde) qu'après ce délai sans aucun coup compté ;
+	-- un coup l'arrête aussitôt. Un voleur seul qui frappe sans pause casse donc toujours la porte. V0 :
+	DoorRepairDelay = 3,
 
 	-- 6.1 : voler un joueur
 	ScoutDistance = 15, -- panneau propriétaire, valeur exposée, PV de la vitrine

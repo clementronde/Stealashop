@@ -3,8 +3,8 @@
 -- (Partie 1, sections 6, 6.1, 6.2, 6.4, 9.3, 9.4, 9.6 et 14.3 ; boutique du hub, liaison L-050).
 --
 -- Une boutique = un Model taggé PlayerPlot (PlotService), avec sa porte à casser `PlotDoor/Window`
--- (la vitrine « Plot_<PlotIndex> » de WindowService : PV de base selon le niveau de la boutique,
--- Formulas.PlayerWindowHP, × Glass et Walls de l'arbre ; porte du bot joueur : base du niveau 1 ;
+-- (la vitrine « Plot_<PlotIndex> » de WindowService ; L-163 : elle se casse en PvP.DoorHits coups, le même
+-- nombre pour tous, plus Reinforced Door de l'arbre ; porte du bot joueur : PvP.DoorHits ; verrou : SkillTreeService ;
 -- régénération 3 %/s), son volume `Bounds`, sa `DepositZone` et ses `DisplaySlot_01` à `_20`.
 --
 -- Le vol, dans l'ordre (6.1) :

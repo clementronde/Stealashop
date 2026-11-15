@@ -22,15 +22,22 @@
 --
 -- Effets codés (Coded > 0), sur la boutique du joueur, par les points d'accroche de WindowService et de
 -- PvPService (remplacés à l'Init, comme PvPService remplace WindowService.CanBeHit) :
---   GlassThickness  PV max de la vitrine de sa boutique × Effects[niveau] (WindowService.GetPlotHPMultiplier ;
---                   base : Formulas.PlayerWindowHP selon le niveau de la boutique, attribut StageLevel). Relu à
---                   chaque tick de WindowService : l'achat compte dans les 0,1 s, à fraction de PV égale.
---   Walls           (vague 29, L-105 point 3) la porte de la boutique EST cette vitrine (PlotDoor/Window, une
---                   seule barre de PV) : ses PV max × Effects[niveau] aussi, multiplié avec Glass. Le mur
---                   visible par niveau : ShopWallsService (attribut WallsLevel de la parcelle).
---   GlassRegen      réparation de Effects[niveau] des PV max par seconde au lieu de Balance.Window.RegenPerSecond
---                   (WindowService.GetPlotRegen).
---   Safe            présentoirs non volables = PvP.VaultSlots (1 offert) + Effects[niveau] (PvPService.GetVaultSlots).
+--   GlassThickness  « Reinforced Door » (L-163, a159) : coups de la porte de sa boutique (PlotDoor/Window) =
+--                   PvP.DoorHits (40) + Effects[niveau] (+8 par niveau, 80 au plus ; WindowService.GetPlotDoorHits).
+--                   Relu à chaque tick de WindowService : l'achat compte dans les 0,1 s, à fraction égale.
+--   Walls           (vague 29, L-105 point 3) le mur visible par niveau : ShopWallsService (attribut WallsLevel
+--                   de la parcelle). L-163 : plus aucun effet sur la porte.
+--   GlassRegen      réparation de Effects[niveau] du maximum de coups par seconde au lieu de
+--                   Balance.Window.RegenPerSecond (WindowService.GetPlotRegen), en coups, quand personne ne frappe (PvP.DoorRepairDelay).
+--   Safe            présentoirs non volables = PvP.VaultSlots (1 offert) + Effects[niveau] (PvPService.GetVaultSlots),
+--                   3 au plus (MaxLevel 2).
+--   Curtain         verrou de la boutique (L-163, V0) : remote LockShop (sans argument, ShopLockController) ; le
+--                   serveur vérifie que le joueur a une boutique, que sa porte est intacte, qu'elle n'est pas déjà
+--                   verrouillée et que la recharge est finie (refus honnête : Notify « Warning »). Accepté : la
+--                   porte ignore tout coup pendant Lock.BaseDuration (30) s, ou Effects[niveau] (45, 60) s
+--                   (WindowService.AddHitGate ; au voleur, un Notify au plus toutes les LOCK_NOTICE_INTERVAL s),
+--                   attribut LockedUntil de la parcelle = fin (heure serveur), puis Lock.Cooldown (120) s de
+--                   recharge après la fin (attribut LockReadyAt du Player). Verrou levé si la boutique est libérée.
 --   Cameras         sur chaque coup compté sur la vitrine de sa boutique (WindowService.OnHit, coups refusés
 --                   par les protections exclus) : niveau 1, le propriétaire est alerté dès le 1er coup, une
 --                   fois par attaque (Notify « Warning », comme l'alarme de la casse de PvPService) ; une
@@ -67,6 +74,7 @@ local Net = require(Shared.Net.Net)
 local ProfileTypes = require(Shared.Types.Profile)
 
 local DataService = require(script.Parent.DataService)
+local PlotService = require(script.Parent.PlotService)
 local PvPService = require(script.Parent.PvPService)
 local TelemetryService = require(script.Parent.TelemetryService)
 local WindowService = require(script.Parent.WindowService)
@@ -97,7 +105,16 @@ local MESSAGES = {
 	NotEnoughCash = "Not enough cash: %s needed.",
 	Bought = "%s upgraded: %s!",
 	CameraAlert = "Your cameras spotted %s hitting your shop door!",
+	-- Verrou (L-163, V0)
+	LockDone = "Shop locked for %ds!",
+	LockNoShop = "You need a shop to lock it.",
+	LockBroken = "Your door is broken: you can't lock it now!",
+	LockActive = "Your shop is already locked.",
+	LockCooldown = "Lock recharging: %ds left.",
+	LockedDoor = "This shop is locked! Opens in %ds.",
 }
+-- V0 : au plus un message « shop locked » par voleur toutes les LOCK_NOTICE_INTERVAL s.
+local LOCK_NOTICE_INTERVAL = 2
 
 local IS_STUDIO = RunService:IsStudio()
 
@@ -105,6 +122,8 @@ local SkillTreeService = {}
 
 local changedListeners: { ChangedListener } = {}
 local attacks: { [Player]: { [Player]: Attack } } = {} -- [propriétaire][attaquant]
+local lockNoticeAt: { [Player]: number } = {} -- verrou : os.clock() du dernier message à ce voleur
+local lockTokens: { [Model]: number } = {} -- verrou : change à chaque verrou ou levée (périme l'ancien délai)
 
 local function log(message: string)
 	if IS_STUDIO then
@@ -320,10 +339,82 @@ local function onWindowHit(attacker: Player, _windowId: string, kind: string, mo
 	log(`{owner.Name} : caméras niveau {level}, {attacker.Name} frappe sa vitrine`)
 end
 
-local function installEffects()
-	WindowService.GetPlotHPMultiplier = function(owner: Player): number
-		return (SkillTreeService.GetEffect(owner, "GlassThickness") or 1) * (SkillTreeService.GetEffect(owner, "Walls") or 1)
+------------------------------------------------------------------------------
+-- Verrou de la boutique (Curtain, L-163 ; voir l'en-tête)
+------------------------------------------------------------------------------
+
+local Lock = SkillTree.Lock
+
+local function lockedFor(plot: Instance): number
+	local untilAt = plot:GetAttribute(Lock.UntilAttribute)
+	if type(untilAt) ~= "number" then
+		return 0
 	end
+	return math.max(0, untilAt - Workspace:GetServerTimeNow())
+end
+
+local function unlock(plot: Model)
+	lockTokens[plot] = (lockTokens[plot] or 0) + 1
+	plot:SetAttribute(Lock.UntilAttribute, nil)
+end
+
+local function onLockShop(player: Player)
+	local plot = PlotService.GetPlot(player)
+	local windowId = if plot then WindowService.GetWindowId(plot) else nil
+	if plot == nil or windowId == nil then
+		notify(player, MESSAGES.LockNoShop, "Warning")
+		return
+	end
+	if lockedFor(plot) > 0 then
+		notify(player, MESSAGES.LockActive, "Warning")
+		return
+	end
+	local now = Workspace:GetServerTimeNow()
+	local readyAt = player:GetAttribute(Lock.ReadyAttribute)
+	if type(readyAt) == "number" and readyAt > now then
+		notify(player, string.format(MESSAGES.LockCooldown, math.ceil(readyAt - now)), "Warning")
+		return
+	end
+	if WindowService.IsBroken(windowId :: string) then
+		notify(player, MESSAGES.LockBroken, "Warning")
+		return
+	end
+	local duration = SkillTreeService.GetEffect(player, "Curtain") or Lock.BaseDuration
+	unlock(plot)
+	local token = lockTokens[plot]
+	plot:SetAttribute(Lock.UntilAttribute, now + duration)
+	player:SetAttribute(Lock.ReadyAttribute, now + duration + Lock.Cooldown)
+	notify(player, string.format(MESSAGES.LockDone, duration), "Success")
+	log(`{player.Name} verrouille sa boutique {duration} s`)
+	task.delay(duration, function()
+		if lockTokens[plot] == token then
+			unlock(plot)
+		end
+	end)
+end
+
+-- Point d'accroche de WindowService : un coup sur la porte d'une boutique verrouillée est ignoré.
+local function lockGate(player: Player, _windowId: string, kind: string, model: Model): boolean
+	if kind ~= "Plot" then
+		return true
+	end
+	local left = lockedFor(model)
+	if left <= 0 then
+		return true
+	end
+	local now = os.clock()
+	if now - (lockNoticeAt[player] or -math.huge) >= LOCK_NOTICE_INTERVAL then
+		lockNoticeAt[player] = now
+		notify(player, string.format(MESSAGES.LockedDoor, math.ceil(left)), "Alert")
+	end
+	return false
+end
+
+local function installEffects()
+	WindowService.GetPlotDoorHits = function(owner: Player): number
+		return PvP.DoorHits + (SkillTreeService.GetEffect(owner, "GlassThickness") or 0)
+	end
+	WindowService.AddHitGate(lockGate)
 	WindowService.GetPlotRegen = function(owner: Player): number
 		return SkillTreeService.GetEffect(owner, "GlassRegen") or Balance.Window.RegenPerSecond
 	end
@@ -351,6 +442,7 @@ end
 
 local function onPlayerRemoving(player: Player)
 	attacks[player] = nil
+	lockNoticeAt[player] = nil
 	for _, byAttacker in attacks do
 		byAttacker[player] = nil
 	end
@@ -415,6 +507,11 @@ end
 function SkillTreeService.Init()
 	installEffects()
 	Net.Server.BuySkill:Connect(onBuySkill)
+	Net.Server.LockShop:Connect(onLockShop)
+	PlotService.OnPlotReleased(function(_player: Player, plot: Model)
+		unlock(plot)
+		lockTokens[plot] = nil
+	end)
 	DataService.OnProfileLoaded(onProfileLoaded)
 	Players.PlayerRemoving:Connect(onPlayerRemoving)
 	if IS_STUDIO then

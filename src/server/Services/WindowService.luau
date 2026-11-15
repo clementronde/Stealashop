@@ -14,15 +14,18 @@
 --
 -- Règles :
 --   - PV max : magasin PNJ = Zones[Zone].WindowHP (4). Parcelle occupée (attribut
---     OwnerUserId ≠ 0, posé par PlotService, propriétaire présent) = base fixe selon le niveau de la
---     boutique (attribut StageLevel de la parcelle, 1 s'il manque ; Formulas.PlayerWindowHP, vague 29,
---     L-106 point 3 : plus les dégâts du propriétaire), recalculés à chaque tick : un niveau de
---     boutique qui change compte à fraction de PV égale. Parcelle libre : incassable. Sur une parcelle,
+--     OwnerUserId ≠ 0, posé par PlotService, propriétaire présent) : L-163 (a159, décision de Clément du
+--     2026-11-14) : ses PV sont des COUPS, GetPlotDoorHits(propriétaire) (PvP.DoorHits = 40 de base, plus
+--     Reinforced Door), recalculés à chaque tick, à fraction de PV égale. Chaque coup validé sur une porte
+--     de boutique (bot compris) retire 1, quelle que soit la force (ni GetHitDamage ni potion), et la porte
+--     compte au plus PvP.DoorMaxHitsPerSecond (8) coups par seconde, tous voleurs confondus (un coup trop
+--     tôt est ignoré, sans rien envoyer). Parcelle libre : incassable. Sur une parcelle,
 --     cette vitrine est la vitre de la porte (PlotDoor/Window) : la porte n'a pas d'autres PV.
---   - Régénération continue de 3 % des PV max par seconde (5.3, Balance.Window).
+--   - Régénération continue de 3 % des PV max par seconde (5.3, Balance.Window). Porte de boutique (L-163) :
+--     seulement quand aucun coup n'y a été compté depuis PvP.DoorRepairDelay (3) s ; un coup l'arrête.
 --   - Défenses de la boutique (arbre de compétences, vague 27 ; SkillTreeService remplace les points
---     d'accroche GetPlotHPMultiplier et GetPlotRegen, plus bas) : PV max d'une parcelle occupée ×
---     GetPlotHPMultiplier(propriétaire) (Glass × Walls), réparation de GetPlotRegen(propriétaire) des PV max par
+--     d'accroche GetPlotDoorHits et GetPlotRegen, plus bas) : coups de la porte d'une parcelle occupée =
+--     GetPlotDoorHits(propriétaire) (Reinforced Door), réparation de GetPlotRegen(propriétaire) des PV max par
 --     seconde au lieu de Balance.Window.RegenPerSecond (Glass Regen). Lus à chaque tick : un achat compte
 --     au tick suivant (0,1 s), à fraction de PV égale. Une erreur ou une valeur invalide (pas un nombre
 --     fini > 0 pour les PV, ≥ 0 pour la réparation) reprend la valeur de base.
@@ -38,7 +41,7 @@
 --   - HitWindow(windowId) (9.4), ignoré si : vitrine inconnue, cassée ou incassable ; vitrine
 --     du joueur lui-même ; outil de casse pas en main ; plus de 10 studs entre le joueur et
 --     le point le plus proche de la vitre (Balance.Hit.ServerMaxDistance) ; CanBeHit refuse.
---     Le débit (≤ 5 coups/s depuis le 2026-11-14, Balance.Hit.MaxHitsPerSecond) est déjà limité par Net. Dégâts = ToolService.GetHitDamage.
+--     Le débit (≤ 5 coups/s depuis le 2026-11-14, Balance.Hit.MaxHitsPerSecond) est déjà limité par Net. Dégâts = ToolService.GetHitDamage (porte de boutique : 1, L-163).
 --   - Chaque coup validé, celui qui casse compris : WindowHit(windowId, point de frappe, frappeur,
 --     dégâts), non fiable, au frappeur et aux joueurs à moins de Config.Shatter.HitBroadcastRadius
 --     studs du point (L-028 a) : chacun voit le creux des coups des autres (ShatterController, L-081) et
@@ -87,9 +90,9 @@
 --       de casse ; c'est au point d'accroche de prévenir le joueur s'il le faut. Une erreur laisse
 --       passer le coup (un avertissement). StoreHeistService s'en sert : un seul braquage à la fois
 --       (Cantin, 2026-11-11, L-099 point 3).
---   WindowService.GetPlotHPMultiplier(owner) -> number
+--   WindowService.GetPlotDoorHits(owner) -> number      (L-163 ; remplace GetPlotHPMultiplier)
 --   WindowService.GetPlotRegen(owner) -> number
---       Points d'accroche des défenses de la boutique de `owner` (voir les règles) : 1 et
+--       Points d'accroche des défenses de la boutique de `owner` (voir les règles) : PvP.DoorHits et
 --       Balance.Window.RegenPerSecond par défaut. SkillTreeService les remplace (WindowService.X = function…).
 --   WindowService.GetHitDamageMultiplier(player) -> number
 --       Point d'accroche des potions (vague 28, L-085 : Strength) : multiplicateur des dégâts d'un coup de
@@ -131,7 +134,6 @@ local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage.Shared
 local Balance = require(Shared.Config.Balance)
-local Formulas = require(Shared.Config.Formulas)
 local PvP = require(Shared.Config.PvP)
 local Shatter = require(Shared.Config.Shatter)
 local Zones = require(Shared.Config.Zones)
@@ -178,6 +180,9 @@ type Window = {
 	Connections: { RBXScriptConnection },
 	BreakEndsAt: number?, -- chrono de casse (L-074) : GetServerTimeNow() de la fin ; nil = pas lancé
 	Hitters: { [Player]: boolean }?, -- joueurs qui voient ce chrono (ceux qui ont frappé)
+	DoorTokens: number?, -- porte de boutique (L-163) : jetons du plafond de coups par seconde
+	DoorTokensAt: number?, -- os.clock() de leur dernier calcul
+	LastDoorHitAt: number?, -- os.clock() du dernier coup compté sur la porte (réparation après PvP.DoorRepairDelay)
 }
 
 -- Modèles qui portent une vitrine (contrat 2.1, Contract/Tags).
@@ -191,7 +196,6 @@ local WINDOW_NAME = "Window" -- enfant obligatoire (10.4)
 local INBOX_NAME = "_INBOX_CLEMENT"
 local OWNER_ATTRIBUTE = "OwnerUserId" -- posé par PlotService sur la parcelle
 local PLOT_INDEX_ATTRIBUTE = "PlotIndex" -- posé sur la parcelle (greybox, L-015)
-local STAGE_LEVEL_ATTRIBUTE = "StageLevel" -- posé sur la parcelle par ShopStageService (niveau de la boutique)
 -- Posés ici sur l'objet Window, lus par les clients (mêmes noms dans HitController).
 local WINDOW_ID_ATTRIBUTE = "WindowId"
 local MAX_HP_ATTRIBUTE = "MaxHP"
@@ -203,6 +207,8 @@ local HIT_TARGET_TAG = "HitTarget"
 local MAX_ID_LENGTH = 64
 
 local SYNC_INTERVAL = 1 / Balance.Window.HPSyncHz
+-- Porte de boutique (L-163) : jetons au plus du plafond de coups par seconde (V0 : 2, un coup d'avance au plus).
+local DOOR_BURST = 2
 local IS_STUDIO = RunService:IsStudio()
 -- Chrono de casse (L-074) : message quand la vitre se répare faute d'être cassée à temps. V0, en anglais (L-036).
 local BREAK_TOO_SLOW = "Too slow! The glass repaired itself. Hit harder, or bring friends!"
@@ -227,8 +233,8 @@ function WindowService.CanBeHit(_player: Player, _windowId: string): boolean
 end
 
 -- Points d'accroche des défenses de la boutique (voir l'en-tête) : valeurs de base.
-function WindowService.GetPlotHPMultiplier(_owner: Player): number
-	return 1
+function WindowService.GetPlotDoorHits(_owner: Player): number
+	return PvP.DoorHits
 end
 
 function WindowService.GetPlotRegen(_owner: Player): number
@@ -328,9 +334,8 @@ local function computeMaxHP(window: Window): number
 	if owner == nil then
 		return 0
 	end
-	local stage = window.Model:GetAttribute(STAGE_LEVEL_ATTRIBUTE)
-	local base = Formulas.PlayerWindowHP(if type(stage) == "number" then stage else 1)
-	return base * modifier("GetPlotHPMultiplier", WindowService.GetPlotHPMultiplier, owner, 1, true)
+	-- L-163 (a159) : PV d'une porte = nombre de coups, sans lien avec le niveau de la boutique ni la force.
+	return math.max(1, math.floor(modifier("GetPlotDoorHits", WindowService.GetPlotDoorHits, owner, PvP.DoorHits, true)))
 end
 
 -- Part des PV max réparée par seconde (5.3) ; parcelle occupée : celle de son propriétaire (Glass Regen).
@@ -586,10 +591,29 @@ local function onHitWindow(player: Player, windowId: string)
 	if not gatesAllow(player, window) then
 		return
 	end
-	local damage = ToolService.GetHitDamage(player)
-		* modifier("GetHitDamageMultiplier", WindowService.GetHitDamageMultiplier, player, 1, true)
-	if damage <= 0 then
-		return
+	local damage = 1 -- porte de boutique (L-163) : un coup = 1, quelle que soit la force
+	if window.Kind == "Plot" then
+		-- Au plus PvP.DoorMaxHitsPerSecond coups comptés par seconde, tous voleurs confondus (seau de jetons de
+		-- DOOR_BURST jetons : deux voleurs qui frappent en alternance à 5 coups/s comptent bien 8 coups/s) : le
+		-- coup en trop est ignoré, sans rien envoyer (comme un coup refusé).
+		local now = os.clock()
+		local tokens = math.min(
+			DOOR_BURST,
+			(window.DoorTokens or DOOR_BURST) + (now - (window.DoorTokensAt or now)) * PvP.DoorMaxHitsPerSecond
+		)
+		window.DoorTokensAt = now
+		if tokens < 1 then
+			window.DoorTokens = tokens
+			return
+		end
+		window.DoorTokens = tokens - 1
+		window.LastDoorHitAt = now -- Door Repair arrêtée (PvP.DoorRepairDelay)
+	else
+		damage = ToolService.GetHitDamage(player)
+			* modifier("GetHitDamageMultiplier", WindowService.GetHitDamageMultiplier, player, 1, true)
+		if damage <= 0 then
+			return
+		end
 	end
 	window.HP = math.max(0, window.HP - damage)
 	window.Dirty = true
@@ -662,7 +686,10 @@ local function step(dt: number)
 			window.BreakEndsAt = nil
 			window.Hitters = nil
 		end
-		if not window.Broken and window.HP < window.MaxHP then
+		-- Porte de boutique (L-163) : réparée seulement quand personne ne frappe depuis PvP.DoorRepairDelay s.
+		local hitAt = window.LastDoorHitAt
+		local repairing = window.Kind ~= "Plot" or hitAt == nil or os.clock() - hitAt >= PvP.DoorRepairDelay
+		if repairing and not window.Broken and window.HP < window.MaxHP then
 			window.HP = math.min(window.MaxHP, window.HP + regenRate(window) * dt * window.MaxHP)
 			window.Dirty = true
 		end

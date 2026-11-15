@@ -718,6 +718,17 @@ local List: { RemoteDef } = {
 		Args = { { Name = "level", Kind = "int", Min = 1, Max = 1000 } },
 		RatePerSecond = 1, -- V0 proposé, absent du doc
 	},
+	{
+		-- Agent a159 (L-163, décision de Clément du 2026-11-14), absent du tableau 9.4 : le propriétaire verrouille
+		-- sa boutique (tuile Curtain devenue Lock, invite de ShopLockController sur sa porte). Aucun argument :
+		-- SkillTreeService retrouve sa boutique et décide de tout (porte intacte, pas déjà verrouillée, recharge
+		-- finie, durée selon son niveau).
+		Name = "LockShop",
+		Direction = "ClientToServer",
+		Reliable = true,
+		Args = {},
+		RatePerSecond = 2, -- V0 proposé, absent du doc
+	},
 }
 
 return {

@@ -22,11 +22,11 @@
 --       OwnerName  « Alice's Shop » ;
 --       Income     valeur exposée, attribut ExposedIncome du propriétaire (DisplayService, sinon
 --                  Income) : « +$12.4K/s » ;
---       HP         PV de la porte, « HP 840 » (WindowController.GetHP, sinon l'attribut MaxHP de la
---                  porte ; 0 si elle est cassée), écrits comme la barre BB_WindowHP (Format.hp) ;
+--       HP         coups restants de la porte sur son maximum, « 7/40 » (L-163 ; WindowController.GetHP,
+--                  sinon l'attribut MaxHP de la porte ; 0 si elle est cassée ; Format.hp) ;
 --       Status     caché, sauf : « ROB AGAIN IN 42s » (interdiction du joueur local sur cette
 --                  boutique), sinon « OPEN » (porte cassée, fenêtre de vol ouverte ; vague 33 : sans
---                  chrono, le voleur a tout son temps).
+--                  chrono, le voleur a tout son temps), sinon « LOCKED 23s » (verrou du propriétaire, L-163).
 --     Copie du billboard BB_ShopInfo de Clément (ReplicatedStorage/Assets/UI, mêmes 4 éléments ;
 --     nom proposé, pas encore au contrat 2.2) dès qu'il existe, sinon un panneau V0 gris.
 --   - Étiquette « SAFE » V0 au pied de chaque objet à l'abri (coffre-fort V0 de PvPService), chez
@@ -131,12 +131,14 @@ local SAFE_POINT_NAME = "SafeTagPoint"
 -- Textes lus par le joueur, en anglais (L-036).
 local ACTION_TEXT = "Steal"
 local SHOP_NAME = "%s's Shop"
-local HP_TEXT = "HP %s"
+local HP_TEXT = "%s/%s" -- L-163 (a159) : coups restants de la porte, « 7/40 » (V0, à valider par Clément)
 local SAFE_TEXT = "SAFE"
 local STATUS = {
 	Cooldown = "ROB AGAIN IN %ds", -- V0, à valider par Clément
 	Open = "OPEN", -- V0, vague 33 : sans chrono (avant « OPEN: %ds »)
+	Locked = "LOCKED %ds", -- V0, L-163 : boutique verrouillée par son propriétaire (SkillTreeService)
 }
+local LOCKED_UNTIL_ATTRIBUTE = "LockedUntil" -- Config/SkillTree.Lock.UntilAttribute, posé sur la parcelle
 
 -- V0 proposé, absent du doc : invites et panneaux revus 5 fois par seconde.
 local REFRESH_INTERVAL = 0.2
@@ -563,6 +565,10 @@ local function statusOf(plot: Model): string?
 	if plot:GetAttribute(OPEN_ATTRIBUTE) == true then
 		return STATUS.Open -- vague 33 : plus de chrono chez un joueur
 	end
+	local lockedUntil = plot:GetAttribute(LOCKED_UNTIL_ATTRIBUTE)
+	if type(lockedUntil) == "number" and lockedUntil > Workspace:GetServerTimeNow() then
+		return string.format(STATUS.Locked, math.ceil(lockedUntil - Workspace:GetServerTimeNow()))
+	end
 	return nil
 end
 
@@ -583,7 +589,7 @@ local function refreshPanel(watch: PlotWatch, root: BasePart?)
 	local text: PanelText = {
 		OwnerName = string.format(SHOP_NAME, name),
 		Income = Format.income(income),
-		HP = string.format(HP_TEXT, Format.hp(doorHP(door))),
+		HP = string.format(HP_TEXT, Format.hp(doorHP(door)), Format.hp(number(door, MAX_HP_ATTRIBUTE) or 0)),
 		Status = statusOf(plot),
 	}
 	watch.Text = text

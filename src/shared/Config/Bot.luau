@@ -25,7 +25,8 @@ local Bot = {
 	Rarity = "Common" :: Rarities.RarityId,
 	ItemCount = Balance.Display.StartSlots, -- 4 présentoirs de départ (5.8)
 
-	-- Porte du niveau le plus faible : PV de base d'une boutique de niveau 1, Formulas.PlayerWindowHP(1) (vague
+	-- L-163 (a159) : sa porte se casse en PvP.DoorHits coups comme celle d'un joueur (BotService) ; StageLevel n'est
+	-- plus lu (gardé pour les bancs). Avant : PV de base d'une boutique de niveau 1, Formulas.PlayerWindowHP(1) (vague
 	-- 29, a93 : 50 × les dégâts conseillés de la zone 1 = 50 ; avant a93 : 50 × 1 dégât, celui d'un profil
 	-- neuf, aussi 50), sans Glass ni Walls, régénération de base (5.3).
 	StageLevel = 1,

@@ -2,7 +2,8 @@
 -- ShopWallsService (vague 29, liaison L-105 point 3 et L-106 point 2) : le mur visible de la boutique selon le
 -- niveau de sa tuile Walls (arbre de compétences), et depuis le 2026-11-13 tous les visuels de la boutique liés à
 -- une compétence (caméras…), cachés jusqu'à son déblocage (paragraphe « Autres compétences »). Les PV de la
--- porte, eux, sont dans WindowService (GetPlotHPMultiplier, remplacé par SkillTreeService : Glass × Walls).
+-- porte, eux, sont dans WindowService (GetPlotDoorHits, remplacé par SkillTreeService : Reinforced Door ; L-163 :
+-- Walls n'y compte plus).
 --
 -- Niveau : chaque parcelle taggée `PlayerPlot` (dans le Workspace) reçoit l'attribut `WallsLevel` (nombre) =
 -- l'attribut `Skill_Walls` de son propriétaire (posé par SkillTreeService ; 0 s'il manque), revu quand
