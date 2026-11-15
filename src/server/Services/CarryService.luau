@@ -96,6 +96,13 @@
 --   CarryService.GetDrop(dropId) -> (Payload?, Vector3?)
 --       Payload et position (point du sol) d'un colis encore au sol ; nil, nil sinon (ramassé,
 --       expiré, inconnu, ou dropId qui n'est pas une chaîne).
+--   CarryService.PlaceItemDrop(payload, position, lifetime) -> (dropId?, Model?)
+--       Vague 58 (a188, pluie d'objets, ItemRainService) : pose au sol à `position` (point du sol), sans porteur,
+--       un objet NPCItem neuf, pour `lifetime` s. Même objet au sol qu'après un Drop (attributs DropId, BatDrop,
+--       ItemId, MutationSize, MutationEffect ; invite de BatController, ramassage GrabDropped de BatService,
+--       IsFallenDrop vrai, OnDropExpired à la fin). Renvoie aussi son modèle (l'appelant peut jouer une chute :
+--       PivotTo, le point du sol ne change pas). nil, nil avec un avertissement si le payload est invalide, pas
+--       un NPCItem, déjà porté ou au sol, ou si la position ou la durée est invalide.
 --   CarryService.OnDropExpired(listener) -> déconnexion
 --       listener(dropId, payload, position) quand un colis reste au sol sans être ramassé :
 --       Bat.DroppedLifetime secondes (6.2 : 15 s). Le modèle est déjà retiré et GetDrop(dropId) vaut nil.
@@ -225,7 +232,7 @@ type Drop = {
 	position: Vector3,
 	lifetime: number, -- secondes au sol avant d'expirer
 	timer: thread,
-	fallen: boolean, -- tombé des mains d'un porteur (Drop, capture) : toujours vrai depuis la vague 50 (plus de PlaceDrop)
+	fallen: boolean, -- tombé des mains d'un porteur (Drop, capture) ou posé par PlaceItemDrop (a188) : toujours vrai depuis la vague 50
 	lockedFor: Player?, -- L-112 : le joueur attrapé, qui ne peut pas le reprendre avant lockedUntil
 	lockedUntil: number, -- os.clock()
 }
@@ -1071,6 +1078,36 @@ function CarryService.GetDrop(dropId: string): (Payload?, Vector3?)
 		return nil, nil
 	end
 	return drop.payload, drop.position
+end
+
+function CarryService.PlaceItemDrop(payload: Payload, position: Vector3, lifetime: number): (string?, Model?)
+	local problem = invalidReason(payload)
+	if problem == nil and payload.Kind ~= "NPCItem" then
+		problem = "seul un objet NPCItem se pose au sol sans porteur"
+	elseif problem == nil and held[keyOf(payload)] then
+		problem = `{describe(payload)} déjà porté ou au sol`
+	elseif problem == nil and not isValidPosition(position) then
+		problem = `position invalide ({position})`
+	elseif problem == nil and not (type(lifetime) == "number" and lifetime > 0 and lifetime < math.huge) then
+		problem = `durée au sol invalide ({lifetime})`
+	end
+	if problem then
+		warn(debug.traceback(`[CarryService] PlaceItemDrop refusé : {problem}`, 2))
+		return nil, nil
+	end
+	local mutation = payload.Mutation
+	local dropId = createDrop(payload, position, lifetime, {
+		[BAT_DROP_ATTRIBUTE] = true,
+		ItemId = payload.ItemId,
+		MutationSize = if mutation then mutation.Size else nil,
+		MutationEffect = if mutation then mutation.Effect else nil,
+	})
+	local drop = drops[dropId]
+	drop.fallen = true -- se ramasse par GrabDropped, comme un objet tombé des mains (BatService)
+	if IS_STUDIO then
+		print(`[CarryService] {dropId} : {describe(payload)} posé au sol sans porteur pour {lifetime} s`)
+	end
+	return dropId, drop.visual.model
 end
 
 function CarryService.OnDropExpired(listener: DropExpiredListener): () -> ()
