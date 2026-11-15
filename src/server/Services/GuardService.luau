@@ -366,6 +366,8 @@ type Guard = {
 	chasePhase: ("Rush" | "Hold")?,
 	holdSince: number?, -- fin de la ruée (conducteur du camion : sa vitesse grandit depuis)
 	rushStepAt: number?, -- a168 : dernier pas de la ruée (durée d'image, pour anticiper sa fin)
+	holdTarget: number?, -- a173 : distance prévue de la poursuite à distance (studs), rappel vers elle
+	holdStepAt: number?, -- a173 : dernier pas de la poursuite à distance
 	target: Player?, -- joueur poursuivi, nil hors poursuite
 	state: GuardState,
 	spawnedAt: number,
@@ -396,6 +398,7 @@ type Guard = {
 	chaseVelocityAt: number?, -- poursuite : instant de la dernière mesure de cette vitesse
 	progressPos: Vector3,
 	progressAt: number,
+	patrolStepAt: number?, -- a173 : dernier pas de la ronde de nuit (image trop longue : progressAt décalé)
 	knockTarget: Player?, -- joueur à projeter au marqueur Impact de Catch
 	followPayload: any?, -- Follow : le payload du colis tombé au sol que le vigile suit
 	followPosition: Vector3, -- Follow : où il est tombé (là où était la cible au coup)
@@ -497,6 +500,7 @@ local RETURN_WALK_SPEED = 10 -- retour en marchant (WalkSpeed)
 local RETURN_PATH_INTERVAL = 1 -- vigile de nuit : recalcul du chemin du retour à la ronde et de la ronde (s)
 local RETURN_MAX_DURATION = 20 -- au-delà, il s'efface là où il est (la nuit : reprend sa ronde) (s)
 local RETURN_STUCK_TIME = 2 -- sans avancer d'un stud pendant ce temps, il est bloqué (s)
+local PATROL_LONG_FRAME = 0.5 -- a173 : image plus longue (s) = gel du serveur, pas compté dans la ronde
 local ARRIVE_DISTANCE = 3 -- à cette distance du GuardSpawn, il est rentré et s'efface (studs)
 -- V0 proposé, absent du doc : retour du vigile de jour (L-077, point 1).
 local RETURN_NO_PATH_TIMEOUT = 3 -- sans chemin ni ligne de vue pendant ce temps, il s'efface sur place (s)
@@ -1093,6 +1097,8 @@ local function setState(guard: Guard, state: GuardState)
 	guard.chaseVelocityAt = nil
 	guard.chasePhase = nil
 	guard.holdSince = nil
+	guard.holdTarget = nil
+	guard.holdStepAt = nil
 	guard.pathFailures = 0
 end
 
@@ -1425,6 +1431,23 @@ end
 -- a168 : durée d'image la plus longue prise en compte pour anticiper la fin de la ruée (s).
 local MAX_RUSH_STEP = 0.2
 
+-- a173 (2026-11-15, Play de fusion48) : la fin de ruée tombait vers 7,5 studs au lieu de 10 (image plus
+-- longue que la précédente, élan du Humanoid à ≈ 42 studs/s une image de plus), d'où une capture de nuit et
+-- de police en 0,7 à 1,3 s au lieu de 1,5 s. En poursuite à distance, le vigile est rappelé vers sa distance
+-- prévue : + clamp(Chase.HoldRecallGain × (distance − prévue), ±Chase.HoldRecallMax). La distance prévue part
+-- de Chase.HoldDistance et suit le rapprochement (closingSpeed, image par image : 0 pour le vigile de magasin
+-- au minimum, 4 studs/s la nuit et pour le policier), jamais sous la distance de capture.
+local function holdRecall(guard: Guard, player: Player, targetRoot: BasePart, now: number): number
+	local last = guard.holdStepAt or guard.holdSince or now
+	guard.holdStepAt = now
+	local catchDistance = if guard.kind == "Night" then Night.CatchDistance else Balance.Guard.CatchDistance
+	local previous = guard.holdTarget or Chase.HoldDistance
+	local target = math.max(previous - closingSpeed(guard, player) * math.max(now - last, 0), catchDistance)
+	guard.holdTarget = target
+	local distance = flat(targetRoot.Position - guard.root.Position).Magnitude
+	return math.clamp(Chase.HoldRecallGain * (distance - target), -Chase.HoldRecallMax, Chase.HoldRecallMax)
+end
+
 -- À chaque pas de poursuite : fin de la ruée à Chase.HoldDistance studs (à l'horizontale), puis la
 -- vitesse de la phase, redonnée seulement si elle change.
 -- a168 (2026-11-15, Play de a153) : la fin de ruée n'était testée qu'une fois par image, le vigile finissait
@@ -1447,6 +1470,8 @@ local function distanceRuleStep(guard: Guard, player: Player, targetRoot: BasePa
 			guard.chasePhase = "Hold"
 			guard.holdSince = now
 			guard.rushStepAt = nil
+			guard.holdTarget = nil
+			guard.holdStepAt = nil
 			local hold = distanceRuleSpeed(guard, player, targetHumanoid, now)
 			if dt > 0 and distance > Chase.HoldDistance then
 				approach = math.clamp(walk + (distance - Chase.HoldDistance) / dt, hold, math.max(rush, hold))
@@ -1459,6 +1484,9 @@ local function distanceRuleStep(guard: Guard, player: Player, targetRoot: BasePa
 		end
 	end
 	local speed = approach or distanceRuleSpeed(guard, player, targetHumanoid, now)
+	if approach == nil and guard.chasePhase == "Hold" and ruleKindOf(guard) ~= "Truck" then
+		speed = math.max(speed + holdRecall(guard, player, targetRoot, now), Chase.HoldMinSpeed)
+	end
 	if math.abs(speed - guard.humanoid.WalkSpeed) > 0.05 then
 		setWalkSpeed(guard, speed)
 	end
@@ -2300,6 +2328,7 @@ local function startPatrol(guard: Guard, now: number)
 	guard.pauseUntil = 0
 	guard.progressPos = guard.root.Position
 	guard.progressAt = now
+	guard.patrolStepAt = now
 	guard.nextSteerAt = now
 	guard.nextPathAt = now
 	guard.anims:Stop("Run")
@@ -2333,6 +2362,13 @@ local function patrolStep(guard: Guard, now: number)
 	local count = #guard.patrol
 	if count == 0 then
 		return
+	end
+	-- a173 (2026-11-15, Play de fusion48) : le serveur gèle 1 à 8 s à la tombée de la nuit ; ce temps sans
+	-- image ne compte pas comme une ronde sans progrès (sinon les 12 vigiles se disent « bloqués » ensemble).
+	local lastStep = guard.patrolStepAt
+	guard.patrolStepAt = now
+	if lastStep and now - lastStep > PATROL_LONG_FRAME then
+		guard.progressAt += now - lastStep
 	end
 	local position = guard.root.Position
 	if guard.pauseUntil > 0 then
