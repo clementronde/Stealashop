@@ -23,6 +23,7 @@ local Hub = {
 	LabelBillboard = "BB_ZoneLabel",
 	LabelElement = "Label",
 	LabelKeyAttribute = "LabelKey",
+	LabelColorAttribute = "LabelColor", -- Color3 sur le LabelPoint (Clément, L-165) : posé sur Label.TextColor3
 
 	-- Zone d'entrée (V0 proposés, absents du doc) : la boîte de la pièce Zone, à l'horizontale ; en hauteur, de
 	-- ZoneBelow sous son bas à ZoneAbove au-dessus de son haut (une Zone peut être un disque plat au sol, et le
@@ -62,7 +63,8 @@ local Hub = {
 		RobuxShop = "ROBUX SHOP",
 		PawnShop = "PAWN SHOP",
 		FreeGift = "FREE!",
-		InviteFriend = `INVITE A FRIEND: +{math.round(PER_FRIEND * 100)}% MONEY PER FRIEND`,
+		-- L-169 (Q2, Clément) : « +15 % MONEY PER FRIEND » est dans sa sous-ligne SubLabel, gardée telle quelle.
+		InviteFriend = "INVITE A FRIEND",
 		Wheel = "SPIN THE WHEEL",
 		Leaderboard = "LEADERBOARD",
 		Rewards = "REWARDS",

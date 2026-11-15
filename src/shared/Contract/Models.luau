@@ -178,10 +178,8 @@ local Plot: ModelSpec = {
 		},
 		{ Name = "DepositZone", Class = "BasePart" },
 		{ Name = "Treadmill", Tag = "Treadmill" },
-		-- Rééquilibrage v2 (Cantin, 2026-11-14) : plus de banc. L'enfant Bench et son tag sont facultatifs
-		-- (le code ne les lit plus : un banc resté dans la parcelle est du décor), en attendant que Clément
-		-- le retire.
-		{ Name = "Bench", Tag = "Bench", Optional = true },
+		-- Rééquilibrage v2 (Cantin, 2026-11-14) : plus de banc. Vague 56 (a181, L-168) : Clément l'a retiré des
+		-- parcelles (L-149), l'enfant Bench sort du contrat.
 		-- Le code écrit « <Pseudo>'s Shop » dans OwnerName (L-019, validé le 2026-11-07 ; en
 		-- anglais depuis L-036).
 		{ Name = "NameSign", Inside = { { Name = "OwnerName", Class = "TextLabel" } } },

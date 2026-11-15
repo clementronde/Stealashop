@@ -1318,7 +1318,7 @@ local function explode(truck: Truck, impactPoint: Vector3?, breaker: Player?)
 	end
 	local addShelf = if heistApi then heistApi.AddEventShelf else nil
 	local shelf = if addShelf and #spots > 0
-		then addShelf({ Id = storeId, Zone = truck.Zone, Spots = spots, Lifetime = TruckEvent.FlightTime + TruckEvent.BoxLifetime })
+		then addShelf({ Id = storeId, Zone = truck.Zone, Spots = spots, Lifetime = TruckEvent.FlightTime + TruckEvent.BoxLifetime, NextZoneChance = TruckEvent.NextZoneChance }) -- L-166 Q5 (a181)
 		else nil
 	if shelf then
 		for _, spot in spots do

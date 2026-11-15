@@ -27,6 +27,7 @@
 --   AnimationController.OnMarker(animName, markerName, callback) -> débrancher
 --     (le branchement suit le joueur d'une vie à l'autre)
 --   AnimationController.SetCarrying(carrying)
+--   AnimationController.NeedsTwoHands(character) -> boolean   objet tenu Big, Huge ou Colossal (HoldItem, vague 56)
 --   AnimationController.AfterGrab(callback) -> boolean
 --     callback(fromGrab) quand le Grab en cours a posé le colis (voir plus haut) : fromGrab = true.
 --     Sans Grab en cours, tout de suite, avant le retour : callback(false), et AfterGrab renvoie
@@ -71,6 +72,16 @@ end
 local GRAB_MAX_WAIT = 1.5
 -- V0 proposé, absent du doc : fondu (s) entre Grab et la boucle de portage (CarryIdle ou CarryRun).
 local GRAB_BLEND = 0.2
+
+-- Vague 56 (a181, L-162, Clément) : objet tenu en main (Tool de HeldItemService, attribut HeldItemUid ; son modèle
+-- HeldItem porte MutationSize, DisplayService) de taille Big, Huge ou Colossal : HoldItem (deux mains, boucle) tant
+-- qu'il est en main. Pas encore livrée, ou autre taille : la pose « outil » de Roblox reste. Noms de Config/HeldItem
+-- et DisplayService, lus ici sans require.
+local HOLD_ANIMATION = "HoldItem"
+local HELD_TOOL_ATTRIBUTE = "HeldItemUid"
+local HELD_MODEL_NAME = "HeldItem"
+local SIZE_ATTRIBUTE = "MutationSize"
+local TWO_HAND_SIZES: { [string]: boolean } = { Big = true, Huge = true, Colossal = true }
 
 local IS_STUDIO = RunService:IsStudio()
 
@@ -260,6 +271,36 @@ local function applyTreadmill()
 	-- Rééquilibrage v2 (2026-11-14) : plus de banc, donc plus de BenchIdle ni de BenchLift joués ici.
 end
 
+-- Objet tenu (vague 56, voir HOLD_ANIMATION) -----------------------------------
+
+local holdPlaying = false
+
+-- true si `character` tient en main un objet de l'inventaire assez gros pour les deux mains.
+function AnimationController.NeedsTwoHands(character: Instance): boolean
+	for _, child in character:GetChildren() do
+		if child:IsA("Tool") and child:GetAttribute(HELD_TOOL_ATTRIBUTE) ~= nil then
+			local model = child:FindFirstChild(HELD_MODEL_NAME)
+			local size = if model then model:GetAttribute(SIZE_ATTRIBUTE) else nil
+			return type(size) == "string" and TWO_HAND_SIZES[size] == true
+		end
+	end
+	return false
+end
+
+local function applyHold()
+	local character = currentCharacter
+	local want = character ~= nil and AnimationController.NeedsTwoHands(character)
+	if want == holdPlaying then
+		return
+	end
+	holdPlaying = want
+	if want then
+		AnimationController.PlayPlayer(HOLD_ANIMATION)
+	else
+		AnimationController.StopPlayer(HOLD_ANIMATION)
+	end
+end
+
 -- Personnage -------------------------------------------------------------------
 
 local function clearCharacter()
@@ -276,6 +317,7 @@ local function clearCharacter()
 		anims:Destroy()
 	end
 	carryAnim = nil
+	holdPlaying = false
 end
 
 local function onCharacter(character: Model)
@@ -311,8 +353,16 @@ local function onCharacter(character: Model)
 			end)
 		)
 	end
+	-- Objet tenu : un Tool arrive dans le personnage ou en sort (task.defer : son modèle et ses attributs d'abord).
+	table.insert(characterConnections, character.ChildAdded:Connect(function()
+		task.defer(applyHold)
+	end))
+	table.insert(characterConnections, character.ChildRemoved:Connect(function()
+		task.defer(applyHold)
+	end))
 	applyTreadmill()
 	updateCarry(horizontalSpeed())
+	applyHold()
 end
 
 local function onCharacterRemoving(character: Model)

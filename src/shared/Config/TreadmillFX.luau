@@ -24,7 +24,7 @@ local TreadmillFX = {
 	-- Candy, FF4FA3 pour CandyGlow) et vont vers To de Amount·p.
 	Gold = {
 		HaloSpeed = 1.1, -- rotation de GoldFX.Halo1 à 4 autour de Y (impairs −, pairs +)
-		WingLight = { Min = 1.2, Max = 1.2, Omega = 3 }, -- L-142 (Clément) : Max 2,2 → 1,2
+		WingLight = { Min = 0.6, Max = 1.2, Omega = 3 }, -- L-142 (Clément) : Max 2,2 → 1,2 ; L-161 (Clément) : Min 0,6
 		GlowTint = 0.3, -- V0 : GoldGlow va de sa couleur vers le blanc de 0,3·p (« faire pulser »)
 		GlowOmega = 3, -- V0
 	},

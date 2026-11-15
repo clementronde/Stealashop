@@ -49,12 +49,14 @@ type CarrySpec = {
 	ParticleSize: number, -- studs
 	Rays: boolean, -- rayons de lumière autour du colis
 }
+-- L-161 (Clément, 2026-11-15) : lumière baissée comme le halo exposé (environ ÷ 3 : 1 / 2 / 3 / 3 / 3,5 →
+-- 0,3 / 0,5 / 0,8 / 1 / 1,2, les valeurs du halo exposé) ; portées et particules inchangées.
 local CARRY_HALOS: { [string]: CarrySpec } = {
-	Light = { LightRange = 6, LightBrightness = 1, ParticleRate = 4, ParticleSize = 0.25, Rays = false },
-	Clear = { LightRange = 10, LightBrightness = 2, ParticleRate = 10, ParticleSize = 0.35, Rays = false },
-	Rays = { LightRange = 14, LightBrightness = 3, ParticleRate = 14, ParticleSize = 0.4, Rays = true },
-	Rainbow = { LightRange = 16, LightBrightness = 3, ParticleRate = 20, ParticleSize = 0.45, Rays = true },
-	Divine = { LightRange = 18, LightBrightness = 3.5, ParticleRate = 24, ParticleSize = 0.5, Rays = true }, -- L-106
+	Light = { LightRange = 6, LightBrightness = 0.3, ParticleRate = 4, ParticleSize = 0.25, Rays = false },
+	Clear = { LightRange = 10, LightBrightness = 0.5, ParticleRate = 10, ParticleSize = 0.35, Rays = false },
+	Rays = { LightRange = 14, LightBrightness = 0.8, ParticleRate = 14, ParticleSize = 0.4, Rays = true },
+	Rainbow = { LightRange = 16, LightBrightness = 1, ParticleRate = 20, ParticleSize = 0.45, Rays = true },
+	Divine = { LightRange = 18, LightBrightness = 1.2, ParticleRate = 24, ParticleSize = 0.5, Rays = true }, -- L-106
 }
 -- V0 proposé, absent du doc : 8 rayons vers les coins d'un cube ; longueur et largeur en studs.
 local CARRY_RAY_LENGTH = 2.6

@@ -22,8 +22,8 @@ local Animations = {}
 Animations.FolderName = "Animations"
 Animations.PlayerFolder = { "Assets", "Animations", "Player" }
 
--- 13 animations du joueur (15 avant le retrait d'Unbox et de Celebrate, vague 52 ; BenchLift et BenchIdle
--- retirés en v2).
+-- 14 animations du joueur (15 avant le retrait d'Unbox et de Celebrate, vague 52 ; BenchLift et BenchIdle
+-- retirés en v2 ; HoldItem ajoutée en vague 56).
 Animations.Player = {
 	{ Name = "HitWindow", Loop = false, Priority = "Action", Marker = "Impact" },
 	{ Name = "HitWindowHeavy", Loop = false, Priority = "Action", Marker = "Impact" },
@@ -44,6 +44,9 @@ Animations.Player = {
 	{ Name = "Knockdown", Loop = false, Priority = "Action", Marker = "Land" },
 	{ Name = "GetUp", Loop = false, Priority = "Action" },
 	{ Name = "Arrested", Loop = false, Priority = "Action", Marker = "Grab" },
+	-- Vague 56 (a181, L-162, Clément) : objet Big, Huge ou Colossal tenu à deux mains (HeldItemService), haut du
+	-- corps seulement. Pas encore livrée : orange au ContractChecker, la pose « outil » de Roblox reste.
+	{ Name = "HoldItem", Loop = true, Priority = "Action", UpperBodyOnly = true },
 } :: { Anim }
 
 -- 5 animations dans chaque modèle de vigile, de jour comme de nuit (mêmes noms).

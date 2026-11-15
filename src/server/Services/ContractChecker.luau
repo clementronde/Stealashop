@@ -51,6 +51,15 @@ local Rarities = require(Shared:WaitForChild("Config"):WaitForChild("Rarities"))
 for _, rarity in Rarities.List do
 	table.insert(OTHER_ICON_IDS, "BOX_" .. rarity.Id)
 end
+-- Vague 56 (a181, L-171) : icônes de boutique des traînées et des auras (AuraShopController) : ICON_Trail_<Nom> et
+-- ICON_Aura_<Nom>, <Nom> = Texture de Config/Cosmetics sans « FX_<Kind>_ ». Pas des objets du catalogue.
+local Cosmetics = require(Shared:WaitForChild("Config"):WaitForChild("Cosmetics"))
+for _, list in { Cosmetics.Auras, Cosmetics.Trails } do
+	for _, def in list do
+		local texture: string = def.Texture
+		table.insert(OTHER_ICON_IDS, if string.sub(texture, 1, 3) == "FX_" then string.sub(texture, 4) else texture)
+	end
+end
 -- Modèle du vigile de nuit (Assets/Guards/NightGuard, nom lu aussi par GuardService) : sa liste
 -- d'animations a Arrest en plus (Animations.NightGuard, L-076).
 local NIGHT_GUARD_NAME = "NightGuard"
