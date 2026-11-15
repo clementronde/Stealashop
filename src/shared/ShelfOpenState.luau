@@ -47,6 +47,16 @@ ShelfOpenState.RevealAtAttribute = "ShelfRevealAt"
 ShelfOpenState.ReservedByAttribute = "ShelfReservedBy"
 ShelfOpenState.ReservedUntilAttribute = "ShelfReservedUntil"
 
+-- Vague 62 (Features.SingleBoxReveal, Config/ShelfOpen.Reveal) : pendant la cinématique d'un colis (remotes
+-- RevealStarted et RevealEnded), le serveur ne pose AUCUN des attributs ci-dessus sur le colis (a204 :
+-- l'ouverture d'avant ne doit pas jouer chez le client par-dessus la cinématique) ; à la fin, le colis disparaît
+-- et l'objet est porté par l'ouvreur. Sur le Player de l'ouvreur, de RevealStarted à RevealEnded :
+-- RevealProtected = true (ProtectedAttribute) : vigiles figés pour lui, ni coup de batte, ni capture (GuardService, BatService) ; absent sinon.
+-- Sur le magasin (Model tagué NPCStore) : plafond cassé par un gros objet (classe Large ou Colossal),
+-- remis à false après Config/ShelfOpen.Reveal.CeilingRepairSeconds s ; visuel côté client (a204).
+ShelfOpenState.CeilingAttribute = "CeilingBroken"
+ShelfOpenState.ProtectedAttribute = "RevealProtected"
+
 export type State = "Opening" | "Revealed"
 
 -- Nombre de tics pour monter de ×1 à `luck` (0 pour ×1 ou moins).
