@@ -30,7 +30,8 @@
 -- Les éléments sont cherchés par leur nom parmi les descendants de l'écran (Contract/Find). Seuls
 -- sont touchés : Enabled de l'écran, les textes, la visibilité, le nom et l'ordre des lignes
 -- clonées, l'image de Icon (2.2, « Libre pour Ironix ») ; jamais un style (l'effet d'échelle de
--- Motion est passager). Texte d'un bouton :
+-- Motion est passager), sauf l'habillage de chaque carte selon son palier, demandé par Clément (L-176,
+-- vague 58 : Shared/ShopCardTier). Texte d'un bouton :
 -- écrit sur le bouton s'il en porte déjà un, sinon dans le premier TextLabel qu'il contient.
 -- Casse : un texte d'exemple en capitales (« AURA NAME », « EQUIP ») donne un texte en capitales
 -- (« SPARK », « UNEQUIP ») ; sinon le texte est écrit tel quel.
@@ -53,6 +54,7 @@ local Cosmetics = require(Shared:WaitForChild("Config"):WaitForChild("Cosmetics"
 local Find = require(Shared:WaitForChild("Contract"):WaitForChild("Find"))
 local Format = require(Shared:WaitForChild("Format"))
 local Motion = require(script.Parent:WaitForChild("UI"):WaitForChild("Motion"))
+local ShopCardTier = require(Shared:WaitForChild("ShopCardTier"))
 
 type Kind = "Aura" | "Trail"
 type Cosmetic = typeof(Cosmetics.Auras[1])
@@ -79,6 +81,7 @@ local PROMPT_NAME = "AuraShopPrompt"
 local ROW_PREFIX = "Item_" -- nom des lignes clonées (jamais « Template »)
 local ROOT_PART = "HumanoidRootPart"
 local ASSETS_FOLDER = "Assets" -- textures de Clément, depuis ReplicatedStorage
+local TRAIL_ROTATION_ATTRIBUTE = "TrailIconRotation" -- L-176 : sur List.Template, Rotation du visuel d'un trail
 
 -- Attributs du Player posés par CosmeticService (mêmes noms là-bas).
 local OWNED_ATTRIBUTE = "OwnedCosmetics"
@@ -286,6 +289,15 @@ local function buildRows()
 			equipText = if equip then textHolder(equip) else nil,
 		})
 		frame.Parent = template.Parent
+		-- L-176 (a186) : fond, bordure, ombre et décor du palier de la carte (rang Order, comme Preview_<n>) ; une
+		-- texture d'effet FX_ (blanche) prend la couleur de l'objet, une icône déjà en couleurs non ; trails couchés.
+		local cardIcon = ShopCardTier.IconOf(frame)
+		local effect = textureOf(def.Texture)
+		local trailRotation = template:GetAttribute(TRAIL_ROTATION_ATTRIBUTE)
+		ShopCardTier.Apply(frame, def.Order, {
+			tint = if effect and cardIcon and cardIcon.Image == effect then def.Color else nil,
+			rotation = if def.Kind == "Trail" and type(trailRotation) == "number" then trailRotation else nil,
+		})
 	end
 	refreshRows()
 end

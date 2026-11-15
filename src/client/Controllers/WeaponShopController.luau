@@ -33,7 +33,8 @@
 -- manque (UI-002 pas encore livré), le contrôleur attend sans erreur, avec une seule ligne dans la
 -- sortie en Studio. Un écran recréé (ResetOnSpawn) est rebranché. Seuls les textes, la visibilité,
 -- les lignes clonées et ScreenGui.Enabled sont touchés (2.2, « Libre pour Ironix »), jamais un style ;
--- l'effet d'échelle de Motion est passager.
+-- l'effet d'échelle de Motion est passager. Seule exception, demandée par Clément (L-176, vague 58) :
+-- l'habillage de chaque carte selon son palier (Shared/ShopCardTier).
 --
 -- API (client) :
 --   WeaponShopController.Open(anchor)
@@ -54,6 +55,7 @@ local Find = require(Shared:WaitForChild("Contract"):WaitForChild("Find"))
 local Icons = require(Shared:WaitForChild("Contract"):WaitForChild("Icons"))
 local Format = require(Shared:WaitForChild("Format"))
 local Motion = require(script.Parent:WaitForChild("UI"):WaitForChild("Motion"))
+local ShopCardTier = require(Shared:WaitForChild("ShopCardTier"))
 
 type ToolDef = Tools.Tool
 
@@ -283,6 +285,7 @@ local function buildRow(template: GuiObject, tool: ToolDef, connections: { RBXSc
 	end
 	frame.Visible = true
 	frame.Parent = template.Parent
+	ShopCardTier.Apply(frame, tool.Order) -- L-176 (a186) : fond, bordure, ombre et décor du palier (rang Order)
 	return { tool = tool, frame = frame, buy = buy, equip = equip, equipText = equipText }
 end
 

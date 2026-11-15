@@ -734,4 +734,33 @@ for _, spec in { HubFreeGift, HubInviteNoob } do
 	table.insert(Models.List, table.find(Models.List, WeaponShopCounter) or #Models.List + 1, spec)
 end
 
+-- Fonds des cartes des boutiques par palier (vague 58, a186, L-176 ; Shared/ShopCardTier) : ReplicatedStorage/Assets/UI/
+-- ShopCardBg/<Rareté> (Frame ; attributs RarityColor, BorderColor, BorderThickness, IconScale, IconGrey, StudsTransparency,
+-- RaysSpin, GlowPulse, et Motion avec Period ou Speed pour Mythic, Secret, Divine). Tout facultatif : un palier absent,
+-- ses cartes gardent le fond du Template.
+local shopCardBgParts: { Part } = {}
+for _, id in { "Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic", "Secret", "Divine" } do
+	table.insert(shopCardBgParts, {
+		Name = id,
+		Class = "Frame",
+		Optional = true,
+		Note = "sans lui, les cartes de ce palier gardent le fond du Template, L-176",
+		Inside = {
+			{ Name = "Colors", Class = "UIGradient", Optional = true, Note = "dégradé du fond, L-176" },
+			{ Name = "IconDecor", Class = "Folder", Optional = true, Note = "Rays, Glow, Star1 à Star5 autour du visuel, L-176" },
+		},
+	})
+end
+local ShopCardBg: ModelSpec = {
+	Key = "ShopCardBg",
+	Label = "fonds des cartes des boutiques par palier",
+	Category = "Hub",
+	Names = { "ShopCardBg" },
+	Class = "Folder",
+	Parts = shopCardBgParts,
+	Expected = { "ShopCardBg" },
+}
+Models.ShopCardBg = ShopCardBg
+table.insert(Models.List, table.find(Models.List, WeaponShopCounter) or #Models.List + 1, ShopCardBg)
+
 return Models

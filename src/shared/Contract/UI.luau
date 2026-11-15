@@ -931,4 +931,16 @@ table.insert(UI.Screens, {
 	} :: { Element },
 })
 
+-- Cartes des boutiques par palier (vague 58, a186, L-176 ; Shared/ShopCardTier) : tout facultatif. Le fond de chaque
+-- palier est dans Assets/UI/ShopCardBg (Contract/Models.ShopCardBg) ; TrailIconRotation est un attribut du Template
+-- d'UI_AuraShop (trails couchés), pas un élément.
+for _, screenDef in UI.Screens do
+	if screenDef.Name == "UI_WeaponShop" or screenDef.Name == "UI_AuraShop" then
+		table.insert(screenDef.Elements, { Path = "List.Template.Card", Optional = true, Note = "la carte garde le fond, la bordure et les studs du Template (L-176)" })
+		table.insert(screenDef.Elements, { Path = "List.Template.RarityLabel", Class = "TextLabel", Optional = true, Note = "le nom du palier n'est pas écrit (L-176)" })
+		table.insert(screenDef.Elements, { Path = "List.Template.IconArea", Optional = true, Note = "ni taille du visuel, ni ombre, ni rayons, lueur et étoiles (L-176)" })
+		table.insert(screenDef.Elements, { Path = "List.Template.IconShadow", Class = "ImageLabel", Optional = true, Note = "le visuel n'a pas d'ombre (L-176)" })
+	end
+end
+
 return UI
