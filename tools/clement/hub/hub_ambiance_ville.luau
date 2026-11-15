@@ -311,8 +311,9 @@ do
 		Fx(bm, f, "PanelBand", -28, 0, -0.6, 28, 6, -0.5, rgb(40, 140, 225), D)
 		Fx(bm, f, "GiftBox", -20, 4, -1.2, -6, 16, -0.5, rgb(225, 45, 45), D)
 		Fx(bm, f, "GiftLid", -21, 16, -1.4, -5, 19, -0.5, rgb(190, 30, 34), D)
-		Fx(bm, f, "GiftRibbonV", -14.2, 4, -1.5, -11.8, 19, -1.1, rgb(255, 206, 40), D)
-		Fx(bm, f, "GiftRibbonH", -20, 9, -1.4, -6, 11, -1.1, rgb(255, 206, 40), D)
+		-- rubans 0,025 plus longs à chaque bout (chevauchements, 2026-11-15)
+		Fx(bm, f, "GiftRibbonV", -14.2, 3.975, -1.5, -11.8, 19.025, -1.1, rgb(255, 206, 40), D)
+		Fx(bm, f, "GiftRibbonH", -20.025, 9, -1.4, -5.975, 11, -1.1, rgb(255, 206, 40), D)
 		for i, s in { -1, 1 } do
 			P(bm, "GiftBow_" .. i, f * CFrame.new(-13 + 2.6 * s, 20.6, -1.3) * CFrame.Angles(0, 0, math.rad(-28 * s)), Vector3.new(4.6, 2, 0.6), rgb(255, 206, 40), D)
 		end
@@ -338,7 +339,7 @@ do
 	local mesh = Instance.new("SpecialMesh"); mesh.MeshType = Enum.MeshType.Sphere; mesh.Parent = env
 	for i, s in { 1, -1 } do
 		local band = P(dm, "Banner_" .. i, f * CFrame.new(10.6 * s, 0, 0) * CFrame.Angles(0, math.rad(90), 0), Vector3.new(34, 9, 0.6), rgb(255, 90, 80), D)
-		P(dm, "BannerStripe_" .. i, band.CFrame * CFrame.new(0, 0, 0.35 * s), Vector3.new(34, 2.2, 0.3), rgb(255, 206, 40), D)
+		P(dm, "BannerStripe_" .. i, band.CFrame * CFrame.new(0, 0, 0.35 * s), Vector3.new(34.05, 2.2, 0.3), rgb(255, 206, 40), D) -- 0,025 de plus à chaque bout (chevauchements)
 		P(dm, "BannerCoin_" .. i, band.CFrame * CFrame.new(-11, 0, 0.5 * s) * CFrame.Angles(0, math.rad(90), 0), Vector3.new(0.5, 6.4, 6.4), rgb(255, 206, 40), D)
 	end
 	Fx(dm, f, "Gondola", -3, -14.5, -8, 3, -10.5, 6, rgb(60, 66, 82), D)
@@ -386,7 +387,8 @@ for _, g in grass do
 					local cx, cz = (x0 + x1) / 2, (z0 + z1) / 2
 					local all = covered(cx, cz) and covered(x0 + 0.4, z0 + 0.4) and covered(x1 - 0.4, z0 + 0.4) and covered(x0 + 0.4, z1 - 0.4) and covered(x1 - 0.4, z1 - 0.4)
 					if not all then
-						Bx(tiles, "Tile", x0, -0.05, z0, x1, 0.03, z1, TILE_B, { decor = true, studs = true })
+						-- 0,025 de plus de chaque côté : les côtés ne se confondent plus avec ceux des voisins (chevauchements, 2026-11-15)
+						Bx(tiles, "Tile", x0 - 0.025, -0.05, z0 - 0.025, x1 + 0.025, 0.03, z1 + 0.025, TILE_B, { decor = true, studs = true })
 						nTiles += 1
 					end
 				end

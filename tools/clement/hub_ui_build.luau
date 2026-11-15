@@ -89,7 +89,7 @@ local function buildZoneLabel()
 	end
 	local bb = new("BillboardGui", {
 		Name = "BB_ZoneLabel",
-		Size = UDim2.new(24, 0, 6, 0),
+		Size = UDim2.new(26, 0, 7, 0),
 		SizeOffset = Vector2.new(0, 0.5), -- le bas du billboard au point
 		MaxDistance = 300,
 		LightInfluence = 0,
@@ -106,14 +106,14 @@ local function buildZoneLabel()
 	local label = text("Label", "FREE!", bb, {
 		FontFace = ROUND,
 		TextColor3 = Color3.fromHex("ffd23a"),
-		Size = UDim2.fromScale(1, 0.74),
+		Size = UDim2.fromScale(1, 0.68),
 		LayoutOrder = 1,
 	})
 	gradient(label, WHITE, Color3.fromHex("c9c9c9"), 90)
 	stroke(label, 0.12, Color3.fromHex("140a26"))
 	local sub = text("SubLabel", "+15% MONEY PER FRIEND", bb, {
 		FontFace = ROUND,
-		Size = UDim2.fromScale(1, 0.26),
+		Size = UDim2.fromScale(1, 0.32),
 		LayoutOrder = 2,
 		Visible = false,
 	})

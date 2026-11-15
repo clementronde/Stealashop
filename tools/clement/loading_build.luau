@@ -3,9 +3,9 @@
 -- À lancer en Edit (barre de commande ou execute_luau). Relançable : remplace l'ancien UI_Loading.
 -- Aucun script dedans : le code d'Ironix le clone dans PlayerGui depuis ReplicatedFirst.
 
-local KEYART = "rbxassetid://0" -- UI_Loading_KeyArt (groupe RoundStone Studio), remplacé après l'import
-local LOGO = "rbxassetid://0" -- UI_Loading_Logo (groupe RoundStone Studio), remplacé après l'import
-local RAYS ="rbxassetid://96610322911997" -- UI_Rays_Soft (groupe), déjà utilisée par les cartes de boutique
+local KEYART = "rbxassetid://77648886089425" -- UI_Loading_KeyArt (groupe RoundStone Studio)
+local LOGO = "rbxassetid://134874268685857" -- UI_Loading_Logo (groupe RoundStone Studio)
+local RAYS = "rbxassetid://96610322911997" -- UI_Rays_Soft (groupe), déjà utilisée par les cartes de boutique
 
 local NAVY = Color3.fromHex("040435")
 local YELLOW = Color3.fromHex("FFD23A")

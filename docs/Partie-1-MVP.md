@@ -1106,6 +1106,13 @@ Chaque étape est envoyée une seule fois par joueur avec `AnalyticsService:LogO
 
 | Date | Décision | Par |
 | --- | --- | --- |
+| 2026-11-15 | Diamants : leur solde ne s'affiche que dans la boutique de diamants, jamais dans le HUD (liaison L-182). | Clément |
+| 2026-11-15 | Direction de l'UI d'après Break and Steal an Egg (analyse dans `References/Videos_Jeux`) : écrans qui s'ouvrent vite et sans rebond (0,15 s), contenu en cascade, survol et clic qui réagissent, titres en relief, raretés animées (reflet à Légendaire, arc-en-ciel à Mythique et Secret), flou derrière les fenêtres sauf en poursuite, HUD réduit à 2 ou 3 boutons plus des boutons qui n'apparaissent qu'en situation (liaison L-182). | Clément |
+| 2026-11-15 | Inventaire archivé et retiré de l'UI ; un panneau « Mes objets exposés » avec « Exposer les meilleurs » le remplace ; les armes s'équipent depuis la boutique d'armes (liaison L-182). | Clément |
+| 2026-11-15 | Diamants : deuxième monnaie dès le MVP, pour personnaliser sa boutique ; gains et prix à fixer (liaison L-182). | Clément |
+| 2026-11-15 | Boutons Robux en situation : « x2 vitesse » sur le tapis, « zZz » dans le couloir qui endort vigiles et policiers 60 s ; prix et règles à proposer par Ironix (liaison L-182). | Clément |
+| 2026-11-15 | Tapis : gain affiché en 5 morceaux par seconde (même total). Poursuite : HUD masqué sauf « RUN! », le chrono et « Lâcher », vigile poursuivant en rouge (liaison L-182). | Clément |
+| 2026-11-15 | Caisses à ouvrir : l'ouverture revient pour la MAJ 1, avec des caisses achetées en boutique, une phase de charge puis l'éclosion ; raretés et prix à fixer (liaison L-182). Index : 4 × 2 cartes par zone, façade de la zone, barre de progression vers une récompense. | Clément |
 | 2026-11-15 | Renaissance : ses seules récompenses sont un multiplicateur d'argent et le déverrouillage de zones de l'arbre de compétences (plus de cosmétique ni d'outil), plus un titre au-dessus du joueur ; les 3 objets qui rapportent le plus sont gardés d'office (liaison L-168, L-173). | Clément |
 | 2026-11-15 | Témoin : quand il voit un joueur casser une vitrine, il s'approche, appelle la police et prend des photos au flash jusqu'à l'arrivée de la police, pour que le joueur sache qu'il est repéré (liaison L-172). | Clément |
 | 2026-11-15 | Camion : événement rare, il peut donner un objet de la zone suivante avec une faible probabilité ; objet en main : animation à deux mains `HoldItem` pour les gros objets (liaison L-166, L-162). | Clément |
