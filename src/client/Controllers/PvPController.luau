@@ -28,8 +28,9 @@
 --       Status     caché, sauf : « ROB AGAIN IN 42s » (interdiction du joueur local sur cette
 --                  boutique), sinon « OPEN » (porte cassée, fenêtre de vol ouverte ; vague 33 : sans
 --                  chrono, le voleur a tout son temps), sinon « LOCKED 23s » (verrou du propriétaire, L-163).
---     Copie du billboard BB_ShopInfo de Clément (ReplicatedStorage/Assets/UI, mêmes 4 éléments ;
---     nom proposé, pas encore au contrat 2.2) dès qu'il existe, sinon un panneau V0 gris.
+--     Copie du billboard BB_ShopInfo de Clément (ReplicatedStorage/Assets/UI, mêmes 4 éléments, livré
+--     le 2026-11-15, L-169 Q6 ; tailles et SizeOffset gardés tels quels) dès qu'il existe, sinon un
+--     panneau V0 gris. Status peut être une pastille (cadre + texte) : le cadre est caché ou montré.
 --   - Étiquette « SAFE » V0 au pied de chaque objet à l'abri (coffre-fort V0 de PvPService), chez
 --     tout le monde : le voleur comprend pourquoi l'objet n'a pas d'invite.
 --   - Bot joueur (L-105, BotService) : sa boutique (attribut BotName de la parcelle, OwnerUserId = 0) a
@@ -103,7 +104,7 @@ local DISPLAY_TAG = "DisplayItem" -- posé par DisplayService (tag de code)
 local BOUNDS = "Bounds" -- contrat 10.4
 local DOOR = "PlotDoor" -- boutique du hub (L-050)
 local WINDOW = "Window"
-local TEMPLATE_NAME = "BB_ShopInfo" -- proposé à Clément, pas encore au contrat 2.2
+local TEMPLATE_NAME = "BB_ShopInfo" -- livré par Clément (L-169 Q6), facultatif au contrat (Contract/UI)
 local FIELDS = { "OwnerName", "Income", "HP", "Status" }
 local GRAB_ANIMATION = "Grab" -- contrat 2.4
 -- Posés par PlotService, DisplayService, WindowService, CarryService et PvPService (mêmes noms là-bas).
@@ -323,9 +324,19 @@ local function mainPart(model: Model): BasePart?
 	return if first then first :: BasePart else nil
 end
 
-local function textLabel(gui: Instance, name: string): TextLabel?
+-- Élément `name` du panneau (montré ou caché) et le texte où écrire : lui-même s'il est un TextLabel,
+-- sinon son premier TextLabel (pastille Status de BB_ShopInfo faite d'un cadre et d'un texte, L-169).
+local function panelField(gui: Instance, name: string): (GuiObject?, TextLabel?)
 	local found = Find.path(gui, name)
-	return if found and found:IsA("TextLabel") then found :: TextLabel else nil
+	if found == nil or not found:IsA("GuiObject") then
+		return nil, nil
+	end
+	local element = found :: GuiObject
+	if element:IsA("TextLabel") then
+		return element, element :: TextLabel
+	end
+	local inner = element:FindFirstChildWhichIsA("TextLabel", true)
+	return element, if inner then inner :: TextLabel else nil
 end
 
 -- Invites et étiquettes des objets exposés -----------------------------------------------------------
@@ -604,13 +615,13 @@ local function refreshPanel(watch: PlotWatch, root: BasePart?)
 	}
 	watch.Text = text
 	for _, name in FIELDS do
-		local label = textLabel(gui, name)
-		if label then
+		local element, label = panelField(gui, name)
+		if element and label then
 			local value = (text :: any)[name]
 			local visible = value ~= nil
 			local shown = if value ~= nil then value else ""
-			if label.Visible ~= visible then
-				label.Visible = visible
+			if element.Visible ~= visible then
+				element.Visible = visible
 			end
 			if label.Text ~= shown then
 				label.Text = shown

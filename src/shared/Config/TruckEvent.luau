@@ -148,7 +148,7 @@ local TruckEvent = {
 	-- Messages lus par le joueur (Notify à tous), en anglais (L-036) ----------------------------------
 	Messages = {
 		Spawned = "A truck appeared in Zone %d! Break it together!", -- V0 : %d = zone
-		Exploded = "The truck exploded: grab the boxes!", -- V0
+		Exploded = "The truck exploded: grab the items!", -- V0
 		Left = "The truck drove away.", -- V0 : pas cassé à temps
 		LeftNight = "Night is coming: the truck drove away.", -- V0 : parti à l'alerte de la nuit
 		DriversChase = "The truck drivers are after your box! Run to the safe zone!", -- V0 proposé, absent du doc : au porteur poursuivi

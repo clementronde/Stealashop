@@ -354,6 +354,19 @@ local function checkPlotIndex()
 			problem("Parcelles", `{spec.Name} = {index} posé sur {#list} parcelles (une seule attendue) : {table.concat(list, ", ")}`)
 		end
 	end
+	-- L-174 : AssignOrder facultatif (orange), l'ordre des PlotIndex sert de secours.
+	local order = Attributes.AssignOrder
+	for _, plot in CollectionService:GetTagged("PlayerPlot") do
+		if isInside(plot, sandbox) or isInside(plot, inbox) or not plot:IsDescendantOf(Workspace) then
+			continue
+		end
+		local value = plot:GetAttribute(order.Name)
+		if value == nil then
+			pending("Parcelles", `{plot:GetFullName()} : attribut {order.Name} absent (facultatif, entier de {order.Min} à {order.Max}, L-174 ; ordre des {spec.Name} en secours)`)
+		elseif type(value) ~= "number" or value % 1 ~= 0 or value < order.Min or value > order.Max then
+			warning("Parcelles", `{plot:GetFullName()} : {order.Name} = {tostring(value)}, attendu un entier de {order.Min} à {order.Max}`)
+		end
+	end
 end
 
 local function checkTags()

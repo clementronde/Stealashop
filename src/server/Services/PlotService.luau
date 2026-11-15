@@ -2,7 +2,8 @@
 -- PlotService (DEV-010) : les 6 parcelles des joueurs (Partie 1, sections 3, 4, 5.8, 9.3, 10.4).
 --
 -- Rôle : dès que le profil d'un joueur est chargé, lui donne la parcelle libre de plus
--- petit numéro, place son personnage dessus à chaque apparition et écrit son pseudo sur
+-- petit attribut AssignOrder (L-174, posé par Clément : 1 = en face du point d'arrivée ; sans
+-- lui, plus petit numéro PlotIndex, l'ordre d'avant), place son personnage dessus à chaque apparition et écrit son pseudo sur
 -- le panneau `NameSign`. À son départ, la parcelle redevient libre pour le joueur suivant.
 -- Aucun remote : rien ne vient du client. Seules les parcelles taggées `PlayerPlot` dans
 -- le Workspace comptent (pas celles de _INBOX_CLEMENT ni de _SANDBOX_IRONIX).
@@ -62,7 +63,8 @@
 -- donnée à aucun joueur tant qu'il l'occupe. Attribut BotName (texte, nom du bot) posé sur la parcelle
 -- pendant ce temps, et panneau « <BotName>'s Shop ». Sans yield :
 --   PlotService.ReserveForBot(name) -> Model?
---       Donne au bot la parcelle libre de plus GRAND numéro (les joueurs gardent les premiers) ; nil si
+--       Donne au bot la DERNIÈRE parcelle libre dans l'ordre d'attribution (plus grand AssignOrder, sur
+--       le côté, sinon plus grand numéro : les joueurs gardent les premières) ; nil si
 --       aucune n'est libre ou si un joueur attend une parcelle.
 --   PlotService.ReleaseBot(plot)
 --       La parcelle redevient libre (BotName retiré, panneau vidé) et sert au premier joueur qui attend.
@@ -105,6 +107,8 @@ local NAME_SIGN = "NameSign"
 -- Attributs de cette vague (voir l'en-tête).
 local OWNER_ATTRIBUTE = "OwnerUserId"
 local INDEX_ATTRIBUTE = "PlotIndex"
+-- L-174 : ordre d'attribution posé par Clément (1 = la plus en face du point d'arrivée), facultatif.
+local ASSIGN_ORDER_ATTRIBUTE = "AssignOrder"
 local BOT_ATTRIBUTE = "BotName" -- bot joueur (L-105) : nom du bot, nil sans bot
 
 -- Absents du contrat 10.4, proposés pour y entrer (à valider par Clément) :
@@ -269,6 +273,21 @@ local function collectPlots(): { Model }
 		return indexOf[a] < indexOf[b]
 	end)
 	return found
+end
+
+-- L-174 : plus petit AssignOrder d'abord ; une parcelle sans l'attribut (ou invalide) vient
+-- après, dans l'ordre des PlotIndex (l'ordre d'avant, en secours).
+local function sortForAssign(list: { Model }): { Model }
+	local sorted = table.clone(list)
+	table.sort(sorted, function(a: Model, b: Model): boolean
+		local oa = validIndex(a:GetAttribute(ASSIGN_ORDER_ATTRIBUTE)) or math.huge
+		local ob = validIndex(b:GetAttribute(ASSIGN_ORDER_ATTRIBUTE)) or math.huge
+		if oa ~= ob then
+			return oa < ob
+		end
+		return indexOf[a] < indexOf[b]
+	end)
+	return sorted
 end
 
 ------------------------------------------------------------------------------
@@ -564,7 +583,7 @@ local function notify(player: Player, message: string, kind: string)
 end
 
 local function firstFreePlot(): Model?
-	for _, plot in plots do
+	for _, plot in sortForAssign(plots) do -- relu à chaque arrivée (8 parcelles au plus)
 		if ownerOf[plot] == nil and botNames[plot] == nil then
 			return plot
 		end
@@ -760,8 +779,11 @@ function PlotService.ReserveForBot(name: string): Model?
 	if #waiting > 0 then
 		return nil
 	end
-	for index = #plots, 1, -1 do
-		local plot = plots[index]
+	-- Le bot garde sa règle, la dernière parcelle libre, lue dans l'ordre d'attribution :
+	-- la plus sur le côté (AssignOrder 8, L-174).
+	local ordered = sortForAssign(plots)
+	for index = #ordered, 1, -1 do
+		local plot = ordered[index]
 		if not ownerOf[plot] and not botNames[plot] then
 			botNames[plot] = name
 			plot:SetAttribute(BOT_ATTRIBUTE, name)
