@@ -107,4 +107,30 @@ Animations.Retired = {
 	Celebrate = "ouverture des colis en base retirée (fin du colis porté, 2026-11-15)",
 } :: { [string]: string }
 
+-- Vague 62 (a204, L-198 ; noms proposés à Clément, tous facultatifs) : la cinématique d'ouverture d'un colis, jouée
+-- par RevealController sur une copie locale du rig de caméra ReplicatedStorage/Assets/Cinematics/CAM_Reveal (un
+-- AnimationController et son Animator, les pièces CameraPart et ItemAnchor, son dossier Animations ; Config/Reveal).
+-- D'abord Open<Rareté> (une par Id de Config/Rarities : OpenCommon … OpenSecret, OpenDivine ; une rareté ajoutée =
+-- une ligne ici), puis Grow<Classe>
+-- (classe de taille du serveur). Marqueurs, chacun sur son image clé : Open (le colis s'ouvre), Reveal (l'objet
+-- apparaît), Grow et Top (début et fin de la croissance : le code agrandit l'objet entre les deux), Explode (le plafond
+-- saute : GrowLarge et GrowColossal), Land (fin). Un marqueur absent tombe à la fin de son animation (Explode : à Top) ;
+-- une animation absente = repli codé, mêmes étapes. La caméra est animée pour un objet de taille 1 : le code multiplie
+-- l'écart CameraPart ↔ ItemAnchor par la taille de l'objet. Priorité Action, sans boucle.
+Animations.RigPath = { "Assets", "Cinematics", "CAM_Reveal" }
+Animations.RevealMarkers = { "Open", "Reveal", "Grow", "Top", "Explode", "Land" }
+Animations.Reveal = {
+	{ Name = "OpenCommon", Loop = false, Priority = "Action", Marker = "Reveal" },
+	{ Name = "OpenUncommon", Loop = false, Priority = "Action", Marker = "Reveal" },
+	{ Name = "OpenRare", Loop = false, Priority = "Action", Marker = "Reveal" },
+	{ Name = "OpenEpic", Loop = false, Priority = "Action", Marker = "Reveal" },
+	{ Name = "OpenLegendary", Loop = false, Priority = "Action", Marker = "Reveal" },
+	{ Name = "OpenMythic", Loop = false, Priority = "Action", Marker = "Reveal" },
+	{ Name = "OpenSecret", Loop = false, Priority = "Action", Marker = "Reveal" },
+	{ Name = "OpenDivine", Loop = false, Priority = "Action", Marker = "Reveal" },
+	{ Name = "GrowSmall", Loop = false, Priority = "Action", Marker = "Land" },
+	{ Name = "GrowLarge", Loop = false, Priority = "Action", Marker = "Explode" },
+	{ Name = "GrowColossal", Loop = false, Priority = "Action", Marker = "Explode" },
+} :: { Anim }
+
 return Animations
