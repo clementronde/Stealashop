@@ -60,14 +60,18 @@ local Witness = {
 		LeaveDistance = 40, -- V0 : plus aucun voleur (dehors, vivant) à moins de ce nombre de studs de la vitrine : il arrête
 		MaxTime = 20, -- V0 : il filme au plus ce temps
 		Sound = "Witness_Photo", -- V0 : Sound de ReplicatedStorage/Assets/Sounds, joué à chaque flash ; absent : pas de son
-		-- Clément (L-172) : l'effet, posé à chaque flash par le client.
+		-- Clément (L-172) : l'effet, joué par le client. Les enfants de l'Attachment FxSource de Fx sont copiés une
+		-- fois par témoin dans l'Attachment PhonePoint du Handle de son téléphone (le flash part du téléphone).
 		Fx = "FX_Witness_Flash",
 		FxFolder = { "Assets", "FX" }, -- depuis ReplicatedStorage
-		Phone = "ACC_Temoin_Telephone", -- le Handle de cet accessoire du témoin, 0,4 stud devant lui…
+		FxSource = "Flash",
+		Phone = "ACC_Temoin_Telephone",
 		PhonePart = "Handle",
+		PhonePoint = "FlashPoint",
+		-- Repli sans FlashPoint : Forward stud devant le témoin, au Handle ; sans téléphone : à la main droite.
 		Forward = 0.4,
-		Hand = "RightHand", -- … sinon sa main droite
-		CopyKeep = 3, -- V0 : copie de l'effet gardée ce temps après son dernier flash (au moins sa Duration)
+		Hand = "RightHand",
+		CodePoint = "WitnessFlashPoint", -- V0 : nom de l'Attachment que le code crée pour ce repli (chez le joueur)
 	},
 
 	-- La police -------------------------------------------------------------------------------------
