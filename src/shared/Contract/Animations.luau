@@ -76,6 +76,10 @@ Animations.Witness = {
 	{ Name = "CallPolice", Loop = true, Priority = "Action", Marker = "Call" },
 	-- L-118 point 10 (Clément, en cours) : course paniquée à la casse. Boucle et priorité V0, comme Run des vigiles.
 	{ Name = "Flee", Loop = true, Priority = "Movement" },
+	-- L-172 (Clément, 2026-11-15, pas encore publiée : orange tant qu'elle manque) : photos au flash après l'appel ;
+	-- à chaque marqueur Flash, WitnessService fait partir le flash de FX_Witness_Flash. Sans elle, le témoin garde
+	-- sa pose et le flash part toutes les Witness.Photo.Interval s.
+	{ Name = "TakePhoto", Loop = true, Priority = "Action", Marker = "Flash" },
 } :: { Anim }
 
 -- Conducteurs du camion de l'événement (liaison L-071, point 7 ; a42) : des modèles avec un Humanoid,

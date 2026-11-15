@@ -42,6 +42,25 @@
 --      (NightCycleService.SendHome, Night.SendHomeDelay s après le coup), comme la nuit.
 --   6. Nuit (Clément, L-117 point 2) : les témoins ne sont pas là. À la tombée de la nuit, ils sont
 --      retirés du jeu (Parent = nil) ; à l'aube, remis où ils étaient, et la balade reprend.
+--   7. Le témoin qui filme la casse (Clément, L-172 ; valeurs : Witness.Photo ; Photo.Enabled = false :
+--      l'ancien déroulé ci-dessus) :
+--      a. au premier coup (point 2), au lieu de regarder sur place, il marche (Walk, Photo.ApproachSpeed)
+--         jusqu'à son poste : Photo.Distance studs devant la vitrine (du côté où il est ; normale de la vitre
+--         Window, sinon la ligne vitrine → témoin), décalé de Photo.SideOffset studs sur le côté (témoin
+--         impair à droite, pair à gauche). Arrivé ou bloqué Witness.StuckTime s : il se tourne et joue Look.
+--         Le « ? » monte pendant ce temps comme avant ; plein en chemin, il s'arrête et appelle sur place ;
+--      b. l'appel fini (CallDuration), au lieu de reprendre sa balade, il filme : le « ! » s'efface
+--         (WitnessState = "Stroll"), il joue TakePhoto en boucle (sans elle, il garde sa pose CallPolice) et
+--         à chaque marqueur Flash (sans marqueur, toutes les Photo.Interval s ; jamais deux à moins de
+--         Photo.MinInterval s) le compteur WitnessFlash du témoin monte (chaque client joue alors le flash de
+--         FX_Witness_Flash, WitnessController) et le son Photo.Sound part sur lui s'il existe ;
+--      c. il arrête et reprend sa balade (depuis le point du circuit le plus proche) quand un policier du
+--         magasin arrive à Photo.PoliceArrive studs de la vitrine, quand tous les policiers du magasin sont
+--         repartis, quand aucun voleur n'est plus dehors, vivant et à Photo.LeaveDistance studs de la
+--         vitrine (parti, mort, à l'abri en zone safe), ou au bout de Photo.MaxTime s ;
+--      d. pendant qu'il filme : la casse ne le fait pas fuir, les coups ne relancent pas son « ? » (le
+--         joueur qui frappe compte comme voleur), IsCalling est faux. Les autres témoins fuient toujours à
+--         la casse (point 3) tant que leur « ? » n'est pas plein.
 --   La vitre se répare comme avant (chrono de police de WindowService, Balance.Window.BreakTimer, inchangé).
 --
 -- Un témoin sans WatchedStore, ou dont le magasin est introuvable parmi les modèles taggés NPCStore de la
@@ -69,7 +88,8 @@
 --       Vague 43 : les policiers en jeu pour ce magasin et leur cible (une copie ; vide sans policier).
 --   Exemple (L-112) : au début de l'ouverture `WitnessService.Raise(store, player)`, au relâché
 --   `WitnessService.Pause(store)`, colis ouvert ou joueur sorti `WitnessService.Calm(store)`.
---   WitnessService.GetState(store) -> { State }    pour un test : état de chaque témoin du magasin
+--   WitnessService.GetState(store) -> { State }    pour un test : état de chaque témoin du magasin (L-172 :
+--       Approaching, Filming, Flashes)
 
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
@@ -99,6 +119,9 @@ export type State = {
 	Fill: number,
 	Rate: number,
 	Suspects: number,
+	Approaching: boolean, -- L-172 : il marche vers son poste devant la vitrine
+	Filming: boolean, -- L-172 : il prend des photos au flash
+	Flashes: number, -- L-172 : flashs depuis le début de la partie (attribut WitnessFlash)
 }
 
 export type CallListener = (store: Model, suspect: Player?, police: Model?) -> ()
@@ -140,6 +163,17 @@ type WitnessNpc = {
 	fleeAnim: string?, -- "Flee", ou "Walk" accélérée tant que Flee n'est pas livrée
 	-- Nuit (L-117 point 2) : retiré du jeu, remis ici à l'aube
 	hiddenParent: Instance?,
+	-- L-172 : il s'approche de la vitrine (vers approachGoal), puis filme
+	approaching: boolean,
+	approachGoal: Vector3,
+	filming: boolean,
+	filmStartedAt: number,
+	photoAnim: boolean, -- TakePhoto joue (sinon il garde la pose CallPolice)
+	flashMarkerSeen: boolean, -- un marqueur Flash est venu pendant ces photos : plus de rythme de secours
+	nextFlashAt: number,
+	lastFlashAt: number,
+	flashCount: number,
+	policeSeen: boolean, -- un policier du magasin était en jeu pendant ces photos
 }
 
 -- Noms du contrat lus ici.
@@ -156,12 +190,16 @@ local POLICE_LABEL = "policier"
 
 -- Le marqueur de CallPolice dans le contrat (Call).
 local CALL_MARKER = "Call"
+local FLASH_MARKER = "Flash" -- L-172 : celui de TakePhoto
 for _, spec in Animations.Witness do
 	local marker = spec.Marker
 	if spec.Name == "CallPolice" and marker then
 		CALL_MARKER = marker
+	elseif spec.Name == "TakePhoto" and marker then
+		FLASH_MARKER = marker
 	end
 end
+local PHOTO = Witness.Photo
 
 -- États du Humanoid inutiles à un témoin (comme les vigiles, 9.7) : il ne tombe pas quand on le bouscule.
 local DISABLED_STATES = {
@@ -301,6 +339,14 @@ local function toStroll(w: WitnessNpc, now: number)
 	table.clear(w.suspects)
 	w.anims:Stop("Look")
 	w.anims:Stop("CallPolice")
+	if w.approaching then
+		w.approaching = false
+		stopWalking(w) -- la balade relance Walk à son pas
+	end
+	if w.filming then
+		w.filming = false
+		w.anims:Stop("TakePhoto")
+	end
 	w.pauseUntil = 0
 	w.nextMoveAt = now
 	w.progressPos = w.root.Position
@@ -318,9 +364,8 @@ local function windowPosition(store: Model): Vector3
 	return store:GetPivot().Position
 end
 
--- Il s'arrête, se tourne vers la vitrine et regarde.
-local function startWatch(w: WitnessNpc)
-	stopWalking(w)
+-- Il se tourne vers la vitrine de son magasin.
+local function faceWindow(w: WitnessNpc)
 	local store = w.store
 	if store then
 		local position = w.root.Position
@@ -329,12 +374,101 @@ local function startWatch(w: WitnessNpc)
 			w.root.CFrame = CFrame.lookAt(position, position + look.Unit)
 		end
 	end
+end
+
+-- L-172 : la normale horizontale de la vitre Window (son axe le plus mince entre X et Z), ou nil.
+local function windowNormal(store: Model): Vector3?
+	local ok, normal = pcall(function(): Vector3?
+		local window = Find.path(store, WINDOW)
+		local frame: CFrame, size: Vector3
+		if window and window:IsA("BasePart") then
+			frame, size = (window :: BasePart).CFrame, (window :: BasePart).Size
+		elseif window and window:IsA("Model") then
+			frame, size = (window :: Model):GetBoundingBox()
+		else
+			return nil
+		end
+		local axis = flat(if size.X <= size.Z then frame.RightVector else frame.LookVector)
+		return if axis.Magnitude > 1e-3 then axis.Unit else nil
+	end)
+	return if ok then normal else nil
+end
+
+-- L-172 : son poste, Photo.Distance studs devant la vitrine, du côté où il est, décalé de Photo.SideOffset.
+local function photoSpot(w: WitnessNpc, store: Model): Vector3
+	local window = windowPosition(store)
+	local position = w.root.Position
+	local toward = flat(position - window)
+	local out = windowNormal(store) or (if toward.Magnitude > 1e-3 then toward.Unit else nil)
+	if out == nil then
+		return position
+	end
+	if out.X * toward.X + out.Z * toward.Z < 0 then
+		out = out * -1 -- la normale du côté du témoin (la rue)
+	end
+	local side = Vector3.new(-out.Z, 0, out.X) * (PHOTO.SideOffset * w.pathStep)
+	local spot = window + out * PHOTO.Distance + side
+	return Vector3.new(spot.X, position.Y, spot.Z)
+end
+
+-- Il s'arrête, se tourne vers la vitrine et regarde. L-172 : il marche d'abord jusqu'à son poste.
+local function startWatch(w: WitnessNpc, now: number)
+	stopWalking(w)
+	local store = w.store
+	if PHOTO.Enabled and store then
+		local spot = photoSpot(w, store)
+		if flat(spot - w.root.Position).Magnitude > Witness.PointReached then
+			w.approaching = true
+			w.approachGoal = spot
+			w.progressPos = w.root.Position
+			w.progressAt = now
+			w.nextMoveAt = now + Witness.MoveRefresh
+			w.humanoid.WalkSpeed = PHOTO.ApproachSpeed
+			w.humanoid:MoveTo(spot)
+			w.walking = true
+			local gait = math.clamp(w.gait * PHOTO.ApproachSpeed / Witness.WalkSpeed, Witness.WalkAnimMin, Witness.WalkAnimMax)
+			w.anims:Play("Walk", nil, nil, gait)
+			return
+		end
+	end
+	faceWindow(w)
 	w.anims:Play("Look")
+end
+
+-- L-172 : arrivé à son poste (ou bloqué), il se tourne vers la vitrine.
+local function endApproach(w: WitnessNpc)
+	w.approaching = false
+	stopWalking(w)
+	faceWindow(w)
+end
+
+local function approachStep(w: WitnessNpc, now: number)
+	local position = w.root.Position
+	if flat(position - w.progressPos).Magnitude >= 1 then
+		w.progressPos = position
+		w.progressAt = now
+	end
+	if flat(w.approachGoal - position).Magnitude <= Witness.PointReached or now - w.progressAt >= Witness.StuckTime then
+		endApproach(w)
+		w.anims:Play("Look")
+		log(`{w.label} est à son poste devant la vitrine`)
+		return
+	end
+	if now >= w.nextMoveAt then
+		w.nextMoveAt = now + Witness.MoveRefresh
+		w.humanoid:MoveTo(w.approachGoal)
+	end
 end
 
 local function raise(w: WitnessNpc, suspect: Player?, fillTime: number, now: number): boolean
 	if w.hiddenParent or now < w.fleeUntil then
 		return false -- caché la nuit, ou en fuite
+	end
+	if w.filming then
+		if suspect then
+			w.suspects[suspect] = now -- L-172 : il filme ; celui qui frappe compte comme voleur
+		end
+		return false
 	end
 	if suspect and not w.dispatched then
 		w.suspects[suspect] = now -- vu aussi pendant l'appel, tant que la police n'est pas partie
@@ -348,7 +482,7 @@ local function raise(w: WitnessNpc, suspect: Player?, fillTime: number, now: num
 	end
 	local value = valueNow(w, now)
 	if w.state == "Stroll" then
-		startWatch(w)
+		startWatch(w, now)
 		log(`{w.label} regarde {if w.store then w.store.Name else "?"}`)
 	end
 	w.pausedAt = 0
@@ -580,8 +714,120 @@ local function startCall(w: WitnessNpc, now: number)
 	w.pausedAt = 0
 	w.dispatched = false
 	w.callStartedAt = now
+	if w.approaching then
+		endApproach(w) -- L-172 : « ? » plein en chemin, il appelle là où il est
+	end
 	w.anims:Stop("Look")
 	w.anims:Play("CallPolice") -- son marqueur Call lance dispatch (branché à la création du témoin)
+end
+
+-- Photos au flash (L-172) -------------------------------------------------------------------------
+
+-- Un flash : le compteur WitnessFlash monte (chaque client joue FX_Witness_Flash) et le son part.
+-- Jamais deux à moins de Photo.MinInterval s.
+local function flash(w: WitnessNpc, now: number): boolean
+	if now - w.lastFlashAt < PHOTO.MinInterval then
+		return false
+	end
+	w.lastFlashAt = now
+	w.flashCount += 1
+	w.model:SetAttribute(WitnessGauge.FlashAttribute, w.flashCount)
+	MarkerSounds.play(PHOTO.Sound, w.root)
+	return true
+end
+
+-- L'appel fini : il filme, devant la vitrine.
+local function startFilming(w: WitnessNpc, now: number)
+	setGauge(w, "Stroll", 0, 0, now) -- le « ! » s'efface
+	w.pausedAt = 0
+	w.filming = true
+	w.filmStartedAt = now
+	w.flashMarkerSeen = false
+	w.lastFlashAt = -math.huge
+	w.policeSeen = false
+	faceWindow(w)
+	w.photoAnim = w.anims:Play("TakePhoto") ~= nil
+	if w.photoAnim then
+		w.anims:Stop("CallPolice")
+	end
+	-- Sans TakePhoto, il garde la pose CallPolice et le flash part au rythme de Photo.Interval ; avec elle, ce
+	-- rythme ne sert que si aucun marqueur Flash ne vient (deux intervalles de grâce).
+	w.nextFlashAt = now + PHOTO.Interval * (if w.photoAnim then 2 else 1)
+	log(`{w.label} prend des photos ({if w.photoAnim then "TakePhoto" else "TakePhoto pas livrée : pose de l'appel"})`)
+end
+
+-- Le point du circuit le plus proche devient le prochain point de la balade.
+local function nearestPoint(w: WitnessNpc)
+	local position = w.root.Position
+	local nearest = math.huge
+	for index, point in w.path do
+		local distance = flat(point - position).Magnitude
+		if distance < nearest then
+			nearest = distance
+			w.pathIndex = index
+		end
+	end
+end
+
+local function stopFilming(w: WitnessNpc, now: number, reason: string)
+	toStroll(w, now)
+	nearestPoint(w)
+	stopWalking(w)
+	log(`{w.label} arrête les photos ({reason}) et reprend sa balade`)
+end
+
+-- La partie du modèle d'un policier qui dit où il est.
+local function policePart(police: Model): BasePart?
+	local part = police.PrimaryPart or police:FindFirstChild("HumanoidRootPart")
+	return if part and part:IsA("BasePart") then part :: BasePart else nil
+end
+
+local function filmStep(w: WitnessNpc, now: number)
+	local store = w.store
+	if store == nil then
+		stopFilming(w, now, "pas de magasin")
+		return
+	end
+	if now - w.filmStartedAt >= PHOTO.MaxTime then
+		stopFilming(w, now, "temps écoulé")
+		return
+	end
+	local window = windowPosition(store)
+	local anyPolice = false
+	local list: { PoliceChase } = policeByStore[store] or {}
+	for _, entry in list do
+		local police = entry.Police
+		if police.Parent ~= nil then
+			anyPolice = true
+			local part = policePart(police)
+			if part and flat(part.Position - window).Magnitude <= PHOTO.PoliceArrive then
+				stopFilming(w, now, "le policier est arrivé")
+				return
+			end
+		end
+	end
+	if anyPolice then
+		w.policeSeen = true
+	elseif w.policeSeen then
+		stopFilming(w, now, "la police est repartie")
+		return
+	end
+	local thief = false
+	for player in w.suspects do
+		local root = suspectRoot(player) -- en jeu, vivant, hors zone safe
+		if root and flat(root.Position - window).Magnitude <= PHOTO.LeaveDistance then
+			thief = true
+			break
+		end
+	end
+	if not thief then
+		stopFilming(w, now, "le voleur est parti")
+		return
+	end
+	if not w.flashMarkerSeen and now >= w.nextFlashAt then
+		w.nextFlashAt = now + PHOTO.Interval
+		flash(w, now)
+	end
 end
 
 -- Fuite à la casse (L-118 point 10) ----------------------------------------------------------------
@@ -589,8 +835,8 @@ end
 -- La vitrine de son magasin vient de casser : le « ? » disparaît et il court à l'opposé de la vitrine.
 local function flee(w: WitnessNpc, now: number)
 	local store = w.store
-	if store == nil or w.state == "Call" then
-		return -- au téléphone : il finit son appel
+	if store == nil or w.state == "Call" or w.filming then
+		return -- au téléphone : il finit son appel ; L-172 : il filme la casse
 	end
 	toStroll(w, now)
 	local position = w.root.Position
@@ -709,9 +955,14 @@ local function update(w: WitnessNpc, now: number)
 	end
 	if w.fleeUntil > 0 then
 		fleeStep(w, now)
+	elseif w.filming then
+		filmStep(w, now) -- L-172
 	elseif w.state == "Stroll" then
 		strollStep(w, now)
 	elseif w.state == "Watch" then
+		if w.approaching then
+			approachStep(w, now) -- L-172
+		end
 		local value = valueNow(w, now)
 		if w.rate > 0 and value >= 1 then
 			startCall(w, now)
@@ -728,7 +979,11 @@ local function update(w: WitnessNpc, now: number)
 			if not w.dispatched then
 				dispatch(w, now)
 			end
-			toStroll(w, now)
+			if PHOTO.Enabled and w.store and w.state == "Call" then
+				startFilming(w, now) -- L-172 : il filme au lieu de reprendre sa balade
+			else
+				toStroll(w, now)
+			end
 		end
 	end
 end
@@ -900,6 +1155,16 @@ local function add(model: Model)
 		fleeGoal = root.Position,
 		fleeAnim = nil,
 		hiddenParent = nil,
+		approaching = false,
+		approachGoal = root.Position,
+		filming = false,
+		filmStartedAt = 0,
+		photoAnim = false,
+		flashMarkerSeen = false,
+		nextFlashAt = 0,
+		lastFlashAt = -math.huge,
+		flashCount = 0,
+		policeSeen = false,
 	}
 	-- Il part du point du circuit le plus proche de lui.
 	local nearest = math.huge
@@ -915,6 +1180,12 @@ local function add(model: Model)
 	end
 	w.anims:OnMarker("CallPolice", CALL_MARKER, function()
 		dispatch(w, os.clock()) -- premier marqueur de l'appel seulement (dispatched)
+	end)
+	w.anims:OnMarker("TakePhoto", FLASH_MARKER, function()
+		if w.filming then
+			w.flashMarkerSeen = true -- L-172 : les marqueurs donnent le rythme
+			flash(w, os.clock())
+		end
 	end)
 	w.anims:Play("Idle")
 	setGauge(w, "Stroll", 0, 0, now)
@@ -1020,7 +1291,16 @@ function WitnessService.GetState(store: Model): { State }
 		for _ in w.suspects do
 			count += 1
 		end
-		table.insert(list, { Witness = w.model, State = w.state, Fill = valueNow(w, now), Rate = w.rate, Suspects = count })
+		table.insert(list, {
+			Witness = w.model,
+			State = w.state,
+			Fill = valueNow(w, now),
+			Rate = w.rate,
+			Suspects = count,
+			Approaching = w.approaching,
+			Filming = w.filming,
+			Flashes = w.flashCount,
+		})
 	end
 	return list
 end

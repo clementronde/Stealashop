@@ -11,6 +11,8 @@
 --   WitnessFill (nombre, 0 à 1)     remplissage à l'instant WitnessAt ;
 --   WitnessRate (nombre, par s)     pente : > 0 il monte, < 0 il se vide, 0 il est figé ;
 --   WitnessAt (nombre)              heure du serveur de cette écriture.
+--   WitnessFlash (nombre)           L-172 : compteur des flashs du témoin qui filme ; à chaque hausse, le client
+--                                   joue le flash de FX_Witness_Flash (WitnessController).
 
 local Witness = require(script.Parent:WaitForChild("Config"):WaitForChild("Witness"))
 
@@ -23,6 +25,7 @@ WitnessGauge.StateAttribute = "WitnessState"
 WitnessGauge.FillAttribute = "WitnessFill"
 WitnessGauge.RateAttribute = "WitnessRate"
 WitnessGauge.AtAttribute = "WitnessAt"
+WitnessGauge.FlashAttribute = "WitnessFlash"
 
 local function finite(value: any): boolean
 	return type(value) == "number" and value == value and math.abs(value) < math.huge
