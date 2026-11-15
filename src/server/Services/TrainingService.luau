@@ -11,7 +11,8 @@
 --     Shared/TrainingZone (mêmes calculs chez le client, qui se met en place sans attendre :
 --     TrainingController). Le serveur seul décide : à chaque Heartbeat (CHECK_INTERVAL = 0), il regarde où
 --     est le HumanoidRootPart de chaque joueur. Dans la zone (même en marchant, sans attente :
---     START_DWELL = 0, a115), le joueur monte sur le tapis : placé sur le UsePoint (debout, tourné vers son
+--     START_DWELL = 0, a115) et, a180, sur la bande, arrivé par un de ses grands côtés (passer devant ou
+--     derrière ne déclenche rien : TrainingZone.track), le joueur monte sur le tapis : placé sur le UsePoint (debout, tourné vers son
 --     axe −Z). Zones qui se recouvrent : la machine au UsePoint le plus proche ;
 --   - le tapis garde le joueur en place : vitesse 0 par le modificateur « Training » de StatsService, sans
 --     rotation (a115 : il ne glisse plus hors de la bande en bougeant un peu) ;
@@ -160,6 +161,8 @@ local sessions: { [Player]: Session } = {}
 local standing: { [Player]: Standing } = {}
 local blocked: { [Player]: Block } = {}
 local refusedAt: { [Player]: number } = {}
+-- a180 : arrivée de chaque joueur sur la bande d'un tapis (par un grand côté ?), TrainingZone.track.
+local approaches: { [Player]: TrainingZone.Approach } = {}
 local checkClock = 0
 local gainHookWarned = false
 
@@ -379,14 +382,32 @@ end
 -- Contrôle des zones (CHECK_INTERVAL) : qui reste START_DWELL s dans la zone d'une machine y monte.
 local function checkZones(now: number)
 	for _, player in Players:GetPlayers() do
+		local root, humanoid = bodyOf(player)
+		local position = if root then root.Position else nil
+		local found = if position then machineAt(position) else nil
+		-- a180 : suivi à chaque contrôle, même en séance (comme le client) ; un tapis n'accueille que sur
+		-- sa bande, entré par un de ses grands côtés.
+		local approach = approaches[player]
+		if approach == nil then
+			approach = TrainingZone.newApproach()
+			approaches[player] = approach
+		end
+		local allowed = true
+		if position == nil then
+			approach.lastPosition = nil
+			approach.zone = nil
+		elseif
+			not TrainingZone.track(approach, if found then found.zone else nil, position)
+			and Training.Treadmill.SideEntryOnly
+		then
+			allowed = false
+		end
+		local machine = if allowed then found else nil
 		if sessions[player] then
 			standing[player] = nil
 			continue -- déjà en séance (leaveReason la surveille)
 		end
-		local root, humanoid = bodyOf(player)
-		local position = if root then root.Position else nil
 		local block = blockedMachine(player, position)
-		local machine = if position then machineAt(position) else nil
 		if root == nil or humanoid == nil or machine == nil or machine == block or humanoid.SeatPart ~= nil then
 			standing[player] = nil
 			continue
@@ -611,6 +632,7 @@ function TrainingService.Init()
 		standing[player] = nil
 		blocked[player] = nil
 		refusedAt[player] = nil
+		approaches[player] = nil
 	end)
 end
 

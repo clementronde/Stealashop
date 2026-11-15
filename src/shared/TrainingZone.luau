@@ -146,6 +146,71 @@ function TrainingZone.inCore(zone: Zone, position: Vector3): boolean
 	return Vector3.new(offset.X, 0, offset.Z).Magnitude <= TrainingZone.REENTRY_RADIUS
 end
 
+-- a180 (Cantin, 2026-11-15 : « seulement quand tu vas sur le côté du tapis et pas quand tu passes
+-- devant ») : on ne monte sur un tapis que le HumanoidRootPart au-dessus de sa bande ET arrivé sur elle
+-- par un de ses deux grands côtés. Entrée par un bout (avant ou arrière) : rien, même en restant sur la
+-- bande, tant qu'on n'en est pas ressorti. Le serveur et le client tiennent chacun un Approach par
+-- joueur et l'avancent à chaque contrôle (TrainingZone.track) : mêmes positions, même décision.
+export type Approach = {
+	lastPosition: Vector3?, -- position au contrôle précédent (nil : aucune, ex. nouveau perso)
+	zone: Zone?, -- tapis dont la bande contenait lastPosition (nil : hors de toute bande)
+	fromSide: boolean, -- l'entrée sur la bande de `zone` s'est faite par un grand côté
+}
+
+-- V0 proposé, absent du doc (a180) : hauteur (studs) au-dessus du dessus de la bande jusqu'à laquelle
+-- le HumanoidRootPart compte comme sur la bande pour monter (debout, il est à environ 3 studs).
+TrainingZone.ENTRY_ABOVE = 4
+
+function TrainingZone.newApproach(): Approach
+	return { lastPosition = nil, zone = nil, fromSide = false }
+end
+
+-- `position`, hors de la bande, en a-t-elle franchi un grand côté plutôt qu'un bout ? Dans le repère de
+-- la bande, l'axe du tapis est celui de ses deux axes horizontaux le plus proche du −Z du UsePoint ;
+-- on compare de combien `position` déborde de la bande en travers et en long.
+function TrainingZone.fromSide(zone: Zone, position: Vector3): boolean
+	local cframe, size = TrainingZone.beltBox(zone)
+	local p = cframe:PointToObjectSpace(position)
+	local outX = math.abs(p.X) - size.X / 2
+	local outZ = math.abs(p.Z) - size.Z / 2
+	if outX <= 0 and outZ <= 0 then
+		return false -- déjà sur la bande (pas de bord franchi)
+	end
+	local point = zone.usePoint.WorldCFrame
+	local axis = cframe:PointToObjectSpace(point.Position + point.LookVector) - cframe:PointToObjectSpace(point.Position)
+	local alongZ = math.abs(axis.Z) >= math.abs(axis.X)
+	if alongZ then
+		return outX > outZ -- tapis le long de Z : les grands côtés sont en ±X
+	end
+	return outZ > outX
+end
+
+-- Avance `approach` avec la position `position` du HumanoidRootPart et la machine `zone` choisie à cet
+-- endroit (nil : aucune) ; true si l'on peut y monter : banc toujours (règle inchangée), tapis
+-- seulement sur sa bande, entré par un grand côté. L'entrée se décide au premier contrôle sur la bande
+-- (emprise au sol, TrainingZone.inCore), d'après la position du contrôle précédent, hors de la bande.
+function TrainingZone.track(approach: Approach, zone: Zone?, position: Vector3): boolean
+	local onBelt: Zone? = nil
+	if zone and zone.kind == "Treadmill" and TrainingZone.inCore(zone, position) then
+		onBelt = zone
+	end
+	if onBelt and approach.zone ~= onBelt then
+		local last = approach.lastPosition
+		approach.fromSide = last ~= nil and TrainingZone.fromSide(onBelt, last)
+	end
+	approach.zone = onBelt
+	approach.lastPosition = position
+	if zone == nil then
+		return false
+	end
+	if zone.kind ~= "Treadmill" then
+		return true
+	end
+	return onBelt ~= nil
+		and approach.fromSide
+		and TrainingZone.overBelt(zone, position, 0, TrainingZone.ENTRY_ABOVE)
+end
+
 -- Place du HumanoidRootPart : debout, pieds sur le UsePoint, tourné vers l'avant du UsePoint (son axe
 -- −Z, LookVector) ramené à l'horizontale.
 function TrainingZone.standingCFrame(usePoint: Attachment, humanoid: Humanoid, root: BasePart): CFrame
