@@ -6,7 +6,7 @@
 --   AdminLists.Entries(kind) -> { Entry }   dans l'ordre de Config ; kind :
 --       "Items" (Config/Items), "Boxes" (raretés, Config/Rarities), "Auras" et "Trails" (Config/Cosmetics),
 --       "Potions" (Config/Potions), "Gamepasses" (Config/Monetization.Passes), "Mutations" (« None » d'Id "",
---       puis tailles et effets de Config/Mutations), "Events" (Config/Admin.Events), "Zones" (Id "0" = zone safe,
+--       puis tailles et effets de Config/Mutations), "Events" (Config/Admin.Events, puis Config/LiveEvents et StopLive), "Zones" (Id "0" = zone safe,
 --       puis "1" à "6")
 --   AdminLists.Has(kind, id) -> boolean
 
@@ -14,6 +14,7 @@ local Config = script.Parent.Config
 local Admin = require(Config.Admin)
 local Cosmetics = require(Config.Cosmetics)
 local Items = require(Config.Items)
+local LiveEvents = require(Config.LiveEvents)
 local Monetization = require(Config.Monetization)
 local Mutations = require(Config.Mutations)
 local Potions = require(Config.Potions)
@@ -67,6 +68,11 @@ local function build(kind: string): { Entry }
 		for _, id in Admin.Events do
 			add(id, id)
 		end
+		-- Vague 51 (a167) : événements live (Config/LiveEvents), puis leur arrêt.
+		for _, format in LiveEvents.Formats do
+			add(format.Id, format.DisplayName)
+		end
+		add(Admin.StopLiveEvent, "Stop live event")
 	elseif kind == "Zones" then
 		add("0", "Safe zone")
 		for index in Zones do

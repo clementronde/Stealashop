@@ -67,6 +67,9 @@ local Events: { [string]: string } = {
 	RemoteRefused = "RemoteRefused", -- demandes refusées par Net (Net.OnViolation), cumulées par joueur, remote et raison ; valeur = nombre ; champs Remote, Reason
 	DuplicateItem = "DuplicateItem", -- un même uid d'objet chez deux joueurs du serveur (vu au chargement d'un profil) ; joueur = celui qui arrive ; champs Rarity, Zone
 	ZoneReached = "ZoneReached", -- 1re entrée d'un profil dans une zone (1 à 6), mesure de la bêta ; valeur = temps de jeu cumulé (s) ; champ Zone
+	-- Vague 51 (a167, EventService) : début et fin d'un événement live, pour chaque joueur présent ; valeur = joueurs présents ; champs Event, Source
+	LiveEventStart = "LiveEventStart",
+	LiveEventEnd = "LiveEventEnd",
 }
 
 local Telemetry = {

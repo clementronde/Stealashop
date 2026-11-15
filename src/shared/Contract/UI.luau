@@ -866,5 +866,19 @@ table.insert(UI.Billboards, {
 		{ Path = "Row.Multiplier", Class = "TextLabel", Optional = true, Note = "le « ×2 » du trail est ajouté à Row.Amount en texte enrichi" },
 	} :: { Element },
 })
+-- Bannière d'événement live (vague 51, a167, MAJ 0 ; noms proposés à Clément) : facultative. En bas ou au milieu
+-- de l'écran, jamais en haut. EventBannerController l'allume (Enabled) pendant un événement de Config/LiveEvents :
+-- Title (« ADMIN ABUSE »), Timer (« 29:59 »), Effect (effet en une ligne). Absente : aucun affichage, les effets
+-- jouent quand même.
+table.insert(UI.Screens, {
+	Name = "UI_EventBanner",
+	Class = "ScreenGui",
+	Optional = true,
+	Elements = {
+		{ Path = "Title", Class = "TextLabel" },
+		{ Path = "Timer", Class = "TextLabel" },
+		{ Path = "Effect", Class = "TextLabel" },
+	} :: { Element },
+})
 
 return UI

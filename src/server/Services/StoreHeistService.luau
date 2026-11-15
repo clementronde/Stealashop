@@ -2497,7 +2497,7 @@ end
 -- sortie programmée.
 local function startOpening(player: Player, slot: Slot, box: ShelfBox)
 	local store = slot.Store
-	local luck = drawLuck()
+	local luck = drawLuck() * (Workspace:GetAttribute("LiveEventShelfLuck") :: number? or 1) -- a167 : chance d'un événement live (EventService)
 	local forced = luckOverride
 	if forced and not store.Event then -- vague 42 : pas d'accroche du tuto sur un rayon d'événement
 		-- Accroche du tuto (a107, SetLuckOverride) : une chance finie ≥ 1, sinon le tirage normal.

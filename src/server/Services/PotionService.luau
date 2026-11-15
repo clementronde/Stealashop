@@ -527,7 +527,7 @@ local function findSpot(state: State, t: number): Vector3?
 end
 
 local function spawnInterval(player: Player): number
-	return Potions.SpawnEvery * skillFactor(player, "PotionLuck")
+	return Potions.SpawnEvery * skillFactor(player, "PotionLuck") * (Workspace:GetAttribute("LiveEventPotionDelay") :: number? or 1) -- a167 : EventService
 end
 
 local function trySpawn(player: Player, state: State, t: number): boolean

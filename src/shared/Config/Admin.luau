@@ -49,8 +49,10 @@ local Commands: { Command } = {
 	-- Pas encore à l'écran : niveau d'une compétence de l'arbre.
 	{ Id = "SetSkill", Section = "Base", Target = true, StudioOnly = true, Args = "text = skill Id, value = level" },
 	-- EventsSection : Truck (value = zone, au hasard sinon), Night ou Day (value = durée en s, facultative),
-	-- Fortune, FortuneOpen, FortuneSeal (vague 39, Fortune Tower ; sans value).
-	{ Id = "StartEvent", Section = "Events", Target = false, StudioOnly = true, Args = "text = event Id, value = zone or seconds (optional)" },
+	-- Fortune, FortuneOpen, FortuneSeal (vague 39, Fortune Tower ; sans value) : Studio seulement (refusés en ligne
+	-- par AdminService). Vague 51 (a167) : un Id de Config/LiveEvents (événement live sur ce serveur, tout de suite)
+	-- ou StopLiveEvent (arrête l'événement live en cours), permis en ligne.
+	{ Id = "StartEvent", Section = "Events", Target = false, Args = "text = event Id, value = zone or seconds (optional)" },
 	-- TeleportSection : 0 = zone safe (sa boutique), 1 à 6 = zone.
 	{ Id = "Teleport", Section = "Teleport", Target = true, Args = "value = zone (0 to 6)" },
 	-- DangerSection : text = ResetConfirm (le client l'envoie au second clic). Le joueur est renvoyé du serveur,
@@ -82,6 +84,9 @@ local Admin = {
 	-- Événements de StartEvent (Rain plus tard). Vague 39 : Fortune (une vitrine de la Fortune Tower tout de suite,
 	-- remplace celle en jeu), FortuneOpen (la vitrine fermée en jeu s'ouvre, butin), FortuneSeal (elle se referme).
 	Events = { "Truck", "Night", "Day", "Fortune", "FortuneOpen", "FortuneSeal" },
+	-- Vague 51 (a167) : Id de StartEvent qui arrête l'événement live en cours (les Id des événements live viennent
+	-- de Config/LiveEvents, ajoutés à la liste « Events » par Shared/AdminLists).
+	StopLiveEvent = "StopLive",
 	-- Textes du jeu (anglais).
 	Messages = {
 		Kicked = "An admin reset your progress. Rejoin to start fresh!",
