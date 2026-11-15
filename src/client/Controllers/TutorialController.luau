@@ -31,9 +31,19 @@
 -- cible. Repère : copie de MarkerAsset (FX_Tutorial_Marker, Model ou pièce, pivot posé sur la cible),
 -- sinon une boule V0 qui flotte. La flèche se cache à ARRIVE_RADIUS studs de la cible.
 --
+-- Liste des tâches (vague 60, a197 ; Cantin : « je savais pas qu'est-ce qu'il fallait qu'on fasse, où on en était et
+-- pourquoi ») : TutorialStep porte aussi la progression (have, need) ; Shared/TutorialTasks en fait les lignes (but,
+-- ce qu'il faut faire avec la progression, raison, tâches faites cochées). Écran de Clément avec `Tasks.Template`
+-- (noms proposés, facultatifs : Goal, Check, Progress, Why) : une copie par tâche montrée, dans Tasks ; sans lui, la
+-- tâche et sa progression s'écrivent sous la bulle, dans Bubble.Label (« Buy the Wrench (5/10): Earn cash: $100 /
+-- $300 to buy the Wrench »). Le repli V0 du code a son propre panneau Tasks gris, aux mêmes noms. ProtectShop (fin du
+-- tuto) : toutes les tâches cochées. Passer (vague 60) : une étape à la fois (le serveur choisit la suivante) ; sans
+-- réponse du serveur en SkipReplyTimeout s, la bulle revient.
+--
 -- API (client) :
---   TutorialController.GetState() -> { Step, Hint, Text, Target, Shown, Fallback, Arrow }
---       Ce qui est affiché, pour un test dans Studio (barre de commande côté client).
+--   TutorialController.GetState() -> { Step, Hint, Text, Target, Shown, Fallback, Arrow, Have, Need, Tasks }
+--       Ce qui est affiché, pour un test dans Studio (barre de commande côté client). Tasks : les lignes de la
+--       liste (Shared/TutorialTasks.Row), vide sans tuto.
 
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
@@ -44,12 +54,24 @@ local Workspace = game:GetService("Workspace")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Tutorial = require(Shared:WaitForChild("Config"):WaitForChild("Tutorial"))
 local Find = require(Shared:WaitForChild("Contract"):WaitForChild("Find"))
+local TutorialTasks = require(Shared:WaitForChild("TutorialTasks"))
 
 -- Écran de Clément et ses éléments (contrat 2.2). SkipButton : nom proposé, pas encore au contrat.
 local SCREEN_NAME = "UI_Tutorial"
 local LABEL_PATH = "Bubble.Label"
 local SKIP_BUTTON = "SkipButton"
 local NEXT_BUTTON = "NextButton"
+-- Vague 60 (a197) : liste des tâches, noms proposés à Clément (Contract/UI, facultatifs).
+local TASKS_PATH = "Tasks"
+local TASK_TEMPLATE = "Template"
+local TASK_GOAL = "Goal"
+local TASK_CHECK = "Check"
+local TASK_PROGRESS = "Progress"
+local TASK_WHY = "Why"
+local TASK_ROW_ATTRIBUTE = "TutorialTaskRow" -- posé sur les copies du Template (pour les retrouver)
+local OUTRO_HINT = "ProtectShop" -- fin du tuto : toutes les tâches cochées
+local FALLBACK_ROW_HEIGHT = 0.18 -- V0 : hauteur d'une ligne du panneau Tasks du repli (part de la liste)
+local FALLBACK_ROW_GAP = 0.02 -- V0 : écart entre deux lignes
 -- Écrans qui cachent la bulle et la flèche quand ils sont ouverts.
 local COVERING_SCREENS = { "UI_WeaponShop", "UI_AuraShop" } -- vague 53 : UI_Unbox n'existe plus
 -- Attribut posé par ToolService sur le Tool de casse.
@@ -80,6 +102,8 @@ type View = {
 	label: Instance, -- TextLabel ou TextButton : a un Text
 	skip: GuiButton?,
 	fallback: boolean,
+	tasks: Instance?, -- vague 60 : Tasks, s'il a un Template (GuiObject)
+	template: GuiObject?,
 }
 
 type Arrow = {
@@ -98,8 +122,14 @@ local state = {
 	step = 0,
 	hint = nil :: string?,
 	target = nil :: Vector3?,
+	have = nil :: number?, -- vague 60 : progression de l'étape
+	need = nil :: number?,
 	skipping = false, -- Passer envoyé : tout reste caché jusqu'à la réponse du serveur
+	skippedAt = 0, -- os.clock() de l'envoi de Passer
 }
+local shownRows: { TutorialTasks.Row } = {}
+local tasksList: Instance? = nil -- liste remplie la dernière fois, et sa signature (rien ne change : rien n'est refait)
+local tasksSignature = ""
 local shownText: string? = nil
 local shown = false
 local fallback: View? = nil
@@ -214,6 +244,16 @@ local function currentText(): string?
 	return if def then def.Bubble else nil
 end
 
+-- Vague 60 : la liste Tasks d'un écran et son Template (GuiObject), sinon nil, nil.
+local function tasksOf(screen: Instance): (Instance?, GuiObject?)
+	local list = Find.path(screen, TASKS_PATH)
+	local template = if list then list:FindFirstChild(TASK_TEMPLATE) else nil
+	if list and template and template:IsA("GuiObject") then
+		return list, template :: GuiObject
+	end
+	return nil, nil
+end
+
 -- Écran de Clément s'il a au moins Bubble.Label.
 local function clementView(gui: Instance): View?
 	local screen = gui:FindFirstChild(SCREEN_NAME)
@@ -225,12 +265,61 @@ local function clementView(gui: Instance): View?
 		return nil
 	end
 	local skip = Find.path(screen, SKIP_BUTTON) or Find.path(screen, NEXT_BUTTON)
+	local tasks, template = tasksOf(screen)
 	return {
 		gui = screen :: ScreenGui,
 		label = label :: Instance,
 		skip = if skip and skip:IsA("GuiButton") then skip :: GuiButton else nil,
 		fallback = false,
+		tasks = tasks,
+		template = template,
 	}
+end
+
+-- Vague 60 : panneau Tasks gris du repli V0 (mêmes noms que ceux proposés à Clément), à gauche, au milieu de l'écran
+-- (rien d'important en haut, 2.2). Une ligne : Check (carré vert), Goal, Progress, Why.
+local function makeFallbackTasks(screen: ScreenGui)
+	local list = Instance.new("Frame")
+	list.Name = TASKS_PATH
+	list.AnchorPoint = Vector2.new(0, 0.5)
+	list.Position = UDim2.fromScale(0.01, 0.5)
+	list.Size = UDim2.fromScale(0.24, 0.4)
+	list.BackgroundTransparency = 1
+	list.Parent = screen
+
+	-- Lignes empilées par fillTasks (Position), sans UIListLayout.
+	local row = Instance.new("Frame")
+	row.Name = TASK_TEMPLATE
+	row.Visible = false
+	row.Size = UDim2.fromScale(1, FALLBACK_ROW_HEIGHT)
+	row.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+	row.BackgroundTransparency = 0.25
+	row.BorderSizePixel = 0
+	row.Parent = list
+	local check = Instance.new("Frame")
+	check.Name = TASK_CHECK
+	check.Position = UDim2.fromScale(0.02, 0.1)
+	check.Size = UDim2.fromScale(0.07, 0.35)
+	check.BackgroundColor3 = Color3.fromRGB(80, 200, 90)
+	check.BorderSizePixel = 0
+	check.Visible = false
+	check.Parent = row
+	local function text(name: string, y: number, height: number, bold: boolean): TextLabel
+		local label = Instance.new("TextLabel")
+		label.Name = name
+		label.Position = UDim2.fromScale(0.12, y)
+		label.Size = UDim2.fromScale(0.86, height)
+		label.BackgroundTransparency = 1
+		label.Font = if bold then Enum.Font.GothamBold else Enum.Font.Gotham
+		label.TextScaled = true
+		label.TextColor3 = Color3.new(1, 1, 1)
+		label.Text = ""
+		label.Parent = row
+		return label
+	end
+	text(TASK_GOAL, 0.05, 0.4, true)
+	text(TASK_PROGRESS, 0.47, 0.27, false)
+	text(TASK_WHY, 0.74, 0.22, false).TextColor3 = Color3.fromRGB(200, 200, 200)
 end
 
 -- Repli V0 (voir l'en-tête) : gris, sans style, aux noms du contrat.
@@ -283,8 +372,11 @@ local function makeFallback(gui: Instance): View
 	minimum.MinSize = Vector2.new(88, 44) -- 2.2 : boutons d'au moins 44 px de haut sur téléphone
 	minimum.Parent = skip
 
+	makeFallbackTasks(screen)
+	local tasks, template = tasksOf(screen)
+
 	screen.Parent = gui
-	return { gui = screen, label = label, skip = skip, fallback = true }
+	return { gui = screen, label = label, skip = skip, fallback = true, tasks = tasks, template = template }
 end
 
 -- L'écran à remplir : celui de Clément (le repli est alors détruit), sinon le repli, créé seulement
@@ -316,6 +408,7 @@ local function onSkip()
 		return
 	end
 	state.skipping = true
+	state.skippedAt = os.clock()
 	skipRemote:Fire()
 end
 
@@ -466,11 +559,113 @@ end
 -- Affichage
 ------------------------------------------------------------------------------
 
+-- Vague 60 : lignes de la liste des tâches (Shared/TutorialTasks) ; vide sans tuto ou pendant un Passer.
+local function taskRows(): { TutorialTasks.Row }
+	if state.step <= 0 or state.skipping or not Tutorial.TaskList then
+		return {}
+	end
+	local rows = TutorialTasks.Rows(state.step, state.have, state.need)
+	if state.hint == OUTRO_HINT then
+		for _, row in rows do
+			if row.Current then
+				row.Done = true
+				row.Line = nil
+			end
+		end
+	end
+	return rows
+end
+
+local function setText(inst: Instance?, text: string)
+	if inst and (inst:IsA("TextLabel") or inst:IsA("TextButton") or inst:IsA("TextBox")) then
+		local label = inst :: any
+		if label.Text ~= text then
+			label.Text = text
+		end
+	end
+end
+
+local function setVisible(inst: Instance?, visible: boolean)
+	if inst and inst:IsA("GuiObject") and (inst :: GuiObject).Visible ~= visible then
+		(inst :: GuiObject).Visible = visible
+	end
+end
+
+-- Vague 60 : une copie du Template par ligne, refaites seulement quand une ligne change.
+local function fillTasks(view: View, rows: { TutorialTasks.Row })
+	local list, template = view.tasks, view.template
+	if list == nil or template == nil then
+		return
+	end
+	local parts: { string } = {}
+	for _, row in rows do
+		table.insert(parts, `{row.Index}|{row.Done}|{row.Current}|{row.Line or ""}`)
+	end
+	local signature = table.concat(parts, "\n")
+	if list == tasksList and signature == tasksSignature then
+		return
+	end
+	tasksList, tasksSignature = list, signature
+	for _, child in list:GetChildren() do
+		if child:GetAttribute(TASK_ROW_ATTRIBUTE) then
+			child:Destroy()
+		end
+	end
+	for order, row in rows do
+		local copy = template:Clone()
+		copy.Name = `Task_{row.Index}`
+		copy:SetAttribute(TASK_ROW_ATTRIBUTE, true)
+		if view.fallback then
+			copy.Position = UDim2.fromScale(0, (order - 1) * (FALLBACK_ROW_HEIGHT + FALLBACK_ROW_GAP))
+		else
+			copy.LayoutOrder = row.Index -- l'UIListLayout de Clément range les lignes
+		end
+		setText(copy:FindFirstChild(TASK_GOAL, true), row.Goal)
+		setVisible(copy:FindFirstChild(TASK_CHECK, true), row.Done)
+		local progress = copy:FindFirstChild(TASK_PROGRESS, true)
+		setText(progress, row.Line or "")
+		setVisible(progress, row.Current and row.Line ~= nil)
+		local why = copy:FindFirstChild(TASK_WHY, true)
+		setText(why, row.Why)
+		setVisible(why, row.Current)
+		copy.Visible = true
+		copy.Parent = list
+	end
+end
+
 local function render()
-	local text = currentText()
+	if state.skipping and os.clock() - state.skippedAt >= Tutorial.SkipReplyTimeout then
+		state.skipping = false -- vague 60 : pas de réponse du serveur, la bulle revient
+	end
+	local bubble = currentText()
+	local rows = taskRows()
+	shownRows = rows
+	-- Vague 60 : sans panneau Tasks, la tâche et sa progression s'écrivent sous la bulle (Bubble.Label) ; avec lui,
+	-- la bulle garde son texte, ou, sans bulle à cette étape (étape 10), ce qu'il faut faire.
+	local gui = playerGui()
+	local clement = if gui then clementView(gui) else nil
+	local hasPanel = clement == nil or clement.tasks ~= nil -- le repli V0 a toujours son panneau
+	local text: string? = bubble
+	if #rows > 0 and state.hint ~= OUTRO_HINT then
+		if hasPanel then
+			if text == nil then
+				for _, row in rows do
+					if row.Current then
+						text = row.Line
+					end
+				end
+			end
+		else
+			local compact = TutorialTasks.Compact(state.step, state.have, state.need)
+			if compact then
+				text = if text then `{text}\n{compact}` else compact
+			end
+		end
+	end
 	local visible = text ~= nil and not covered()
 	local view = resolveView(text ~= nil)
 	if view then
+		fillTasks(view, rows)
 		local label = view.label :: any
 		if text and label.Text ~= text then
 			label.Text = text
@@ -492,10 +687,12 @@ local function render()
 	updateArrow()
 end
 
-local function onStep(step: number, hint: string?, target: Vector3?)
+local function onStep(step: number, hint: string?, target: Vector3?, have: number?, need: number?)
 	state.step = step
 	state.hint = hint
 	state.target = target
+	state.have = have
+	state.need = need
 	state.skipping = false
 	render()
 end
@@ -513,6 +710,9 @@ function TutorialController.GetState(): { [string]: any }
 		Shown = shown,
 		Fallback = fallback ~= nil,
 		Arrow = arrowShown,
+		Have = state.have,
+		Need = state.need,
+		Tasks = shownRows,
 	}
 end
 

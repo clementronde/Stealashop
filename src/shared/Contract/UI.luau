@@ -1119,4 +1119,19 @@ table.insert(UI.Screens, {
 	} :: { Element },
 })
 
+
+-- Liste des tâches du tuto (vague 60, a197 ; noms proposés à Clément, tous facultatifs) : TutorialController clone
+-- Tasks.Template par tâche montrée (LayoutOrder = numéro de la tâche), écrit Goal, montre Check sur une tâche faite,
+-- Progress (ce qu'il faut faire, « Earn cash: $100 / $300 to buy the Wrench ») et Why sur la tâche en cours.
+for _, screenDef in UI.Screens do
+	if screenDef.Name == "UI_Tutorial" then
+		table.insert(screenDef.Elements, { Path = "Tasks", Optional = true, Note = "pas de liste des tâches : l'étape et sa progression s'écrivent dans Bubble.Label, sous la bulle" })
+		table.insert(screenDef.Elements, { Path = "Tasks.Template", Template = true, Optional = true, Note = "la liste des tâches n'est pas remplie" })
+		table.insert(screenDef.Elements, { Path = "Tasks.Template.Goal", Class = "TextLabel", Optional = true, Note = "le but de la tâche n'est pas écrit" })
+		table.insert(screenDef.Elements, { Path = "Tasks.Template.Check", Optional = true, Note = "une tâche faite n'est pas cochée" })
+		table.insert(screenDef.Elements, { Path = "Tasks.Template.Progress", Class = "TextLabel", Optional = true, Note = "ce qu'il faut faire et la progression ne sont pas écrits" })
+		table.insert(screenDef.Elements, { Path = "Tasks.Template.Why", Class = "TextLabel", Optional = true, Note = "la raison de la tâche n'est pas écrite" })
+	end
+end
+
 return UI
