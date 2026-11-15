@@ -137,6 +137,12 @@
 --     magasin ressort du GuardSpawn pour le nouveau porteur (mêmes plafonds) ; nouveau porteur déjà
 --     poursuivi par un vigile de jour : c'est lui qui devient lié (jamais deux vigiles pour un joueur).
 -- Les vigiles de nuit, les policiers et les conducteurs du camion ne se lient jamais.
+-- Troisième capture (Cantin, 2026-11-15, a174) : chaque capture d'un porteur d'objet NPCItem (vigile de jour,
+-- vigile de nuit, policier, conducteur du camion) compte pour CET objet (son payload, la même table d'un porteur
+-- à l'autre, CarryService.PickUpDrop). À la Chase.ReturnToShelfAfterCatches-ième, l'objet ne tombe pas : il
+-- revole tel quel sur son rayon (CarryService.FailNoDrop « Caught », comme une capture dans son magasin ;
+-- StoreHeistService le pose sur un autre rayon libre du magasin si le sien est pris). Le compteur s'efface quand
+-- le portage finit sans chute (rangé en zone safe, revenu au rayon) ou quand l'objet resté au sol revole.
 --
 -- Vigiles de nuit (DEV-047, section 5.12), lancés par NightCycleService à la tombée de la nuit
 -- (StartNightPatrol) et retirés à l'aube (StopNightPatrol). Même poursuite, même capture, mêmes
@@ -586,6 +592,8 @@ local droppedPayloads: { [any]: boolean } = setmetatable({}, { __mode = "k" }) :
 -- aucun pour l'instant, un vigile de ce magasin ressortira à la prochaine prise) et le porteur actuel.
 type Link = { store: Model, guard: Guard?, carrier: Player? }
 local links: { [any]: Link } = {}
+-- a174 : captures par objet porté (payload NPCItem), voir l'en-tête (« Troisième capture »).
+local itemCatches: { [any]: number } = setmetatable({}, { __mode = "k" }) :: any
 local activeFolder: Folder? = nil
 local fallbackTemplate: Model? = nil
 local fallbackBuilding = false
@@ -1481,6 +1489,13 @@ local function distanceRuleStep(guard: Guard, player: Player, targetRoot: BasePa
 				else string.format("marche %.2f + rapprochement %.2f", walk, closingSpeed(guard, player))
 			log(string.format("%s : à %.1f studs de %s, fin de la ruée, poursuite à distance à %.2f studs/s (%s)",
 				guard.label, distance, player.Name, hold, how))
+		elseif Chase.RushBrake > 0 then
+			-- a174 : freinage de fin de ruée, au plus Chase.RushBrake studs/s² (ruée à +30 % : l'élan du Humanoid
+			-- l'aurait porté jusqu'à 4 à 10 studs de plus que HoldDistance, assez pour attraper tout de suite).
+			local cap = walk + math.sqrt(2 * Chase.RushBrake * (distance - Chase.HoldDistance))
+			if cap < distanceRuleSpeed(guard, player, targetHumanoid, now) then
+				approach = math.max(cap, Chase.HoldMinSpeed)
+			end
 		end
 	end
 	local speed = approach or distanceRuleSpeed(guard, player, targetHumanoid, now)
@@ -1808,6 +1823,21 @@ local function emitCatch(player: Player, zone: number, night: boolean)
 	end
 end
 
+-- a174 : compte une capture de `player` pour l'objet NPCItem qu'il porte ; true quand c'est la
+-- Chase.ReturnToShelfAfterCatches-ième (l'objet revole alors tel quel sur son rayon, sans chute).
+local function catchSendsBack(player: Player): boolean
+	local ok, payload = pcall(CarryService.GetPayload, player)
+	if not ok or type(payload) ~= "table" or payload.Kind ~= "NPCItem" then
+		return false
+	end
+	local count = (itemCatches[payload] or 0) + 1
+	itemCatches[payload] = count
+	local limit = Chase.ReturnToShelfAfterCatches
+	local back = limit > 0 and count >= limit
+	log(`{player.Name} attrapé avec {payload.ItemId} : capture {count} de cet objet{if back then ", il revole sur son rayon" else ""}`)
+	return back
+end
+
 local function catch(guard: Guard, player: Player)
 	local now = os.clock()
 	endChase(guard)
@@ -1867,6 +1897,8 @@ local function catch(guard: Guard, player: Player)
 	local backToShelf = inItsStore(player)
 	if backToShelf then
 		log(`{guard.label} : {player.Name} attrapé dans le magasin de son objet, l'objet revole sur son rayon`)
+	elseif catchSendsBack(player) then
+		backToShelf = true -- a174 : 3e capture de cet objet, même retour qu'une capture dans son magasin
 	end
 	-- a114 : l'objet lié qui va tomber reste lié à ce vigile (demi-tour s'il est repris).
 	local store = guard.store
@@ -1905,8 +1937,9 @@ local function nightCatch(guard: Guard, player: Player)
 	stun(player, NIGHT_FREEZE_MAX) -- jusqu'au renvoi ; l'étourdissement de 2 s part de là
 	caughtAtNight[player] = true
 	emitCatch(player, guard.zone, true)
+	local fail = if catchSendsBack(player) then CarryService.FailNoDrop else CarryService.Fail -- a174
 	task.spawn(function()
-		local ok, err = pcall(CarryService.Fail :: any, player, "Caught")
+		local ok, err = pcall(fail :: any, player, "Caught")
 		if not ok then
 			warn(`[GuardService] CarryService.Fail({player.Name}, "Caught") : {err}`)
 		end
@@ -3448,6 +3481,9 @@ local function onCarryEnded(player: Player, payload: any, result: string, reason
 	if dropped then
 		droppedPayloads[payload] = true -- au sol jusqu'à sa prise (onCarryStarted) ou sa fin
 	end
+	if not dropped and type(payload) == "table" then
+		itemCatches[payload] = nil -- a174 : rangé en zone safe ou revenu au rayon, le compteur s'efface
+	end
 	-- a114 : objet lié au sol, il le reste ; rangé en base ou reparti vers son rayon, le lien finit.
 	local link = if type(payload) == "table" then links[payload] else nil
 	if link then
@@ -3486,6 +3522,7 @@ local function onDropExpired(_dropId: string, payload: any, _position: Vector3)
 	end
 	droppedPayloads[payload] = nil
 	links[payload] = nil -- a114 : fin du lien
+	itemCatches[payload] = nil -- a174 : reparti vers son rayon
 	local guard = following[payload]
 	if guard then
 		giveUp(guard, "colis resté au sol, reparti vers son rayon")

@@ -240,7 +240,9 @@
 --     départ, personnage retiré, anomalie de l'anti-triche, refus du rangement, attrapé par un vigile de
 --     jour dans le magasin d'où vient l'objet, Cantin 2026-11-13 : « Failed ») : il revole
 --     vers son rayon, objet déjà sorti, sa réservation n'est pas relancée (V0 : le plus simple, la règle
---     des colis), sauf si son magasin a été rempli depuis ou si son rayon est occupé : il disparaît.
+--     des colis), sauf si son magasin a été rempli depuis ou si son rayon est occupé : il disparaît
+--     (attrapé, « Caught » : un autre rayon libre du magasin d'abord, a174). 3e capture d'un même objet
+--     (GuardService, Chase.ReturnToShelfAfterCatches) : le même retour qu'une capture dans son magasin.
 --
 -- Posé par le serveur, lu par HeistController, ShelfBoxController et StoreLockController :
 --   sur le magasin : StoreId (texte), HeistOpen (booléen), ShutterClosedPivot (CFrame : pivot du
@@ -2535,15 +2537,40 @@ end
 -- L-112 : remet sur son emplacement l'objet sorti de ce payload NPCItem, en vol depuis `from` s'il est
 -- donné. Sa réservation n'est pas relancée. false s'il est inconnu, déjà revenu, d'avant un
 -- remplissage de son magasin, ou si son emplacement est occupé (il disparaît alors).
-local function returnItem(payload: any, from: Vector3?): boolean
+-- a174 (Cantin, 2026-11-15) : `anySlot` (porteur attrapé, « Caught » : dans le magasin de l'objet ou à la 3e
+-- capture de cet objet) : emplacement occupé, il va sur un autre rayon libre du même magasin (ni colis, ni
+-- objet, ni objet sorti qui doit y revenir), sinon il disparaît. Magasin retiré (rayon d'événement fini) ou
+-- rempli depuis (nuit) : il disparaît, comme avant (nouveau tirage, pas de doublon).
+local function returnItem(payload: any, from: Vector3?, anySlot: boolean?): boolean
 	local out = outItems[payload]
 	if out == nil then
 		return false
 	end
 	outItems[payload] = nil
 	local slot = out.Slot
-	if not live(slot.Store) or slot.Box ~= nil or slot.Item ~= nil then
+	if not live(slot.Store) then
 		return false
+	end
+	if slot.Box ~= nil or slot.Item ~= nil then
+		if not anySlot then
+			return false
+		end
+		local awaited: { [Slot]: boolean } = {}
+		for _, other in outItems do
+			awaited[other.Slot] = true
+		end
+		local free: Slot? = nil
+		for _, candidate in slot.Store.Slots do
+			if candidate.Box == nil and candidate.Item == nil and not awaited[candidate] then
+				free = candidate
+				break
+			end
+		end
+		if free == nil then
+			return false
+		end
+		log(`objet {payload.ItemId} : {slot.Id} occupé, il revient sur {free.Id}`)
+		slot = free
 	end
 	placeItem(slot, out.Info, from)
 	return true
@@ -2574,7 +2601,7 @@ local function onCarryEnded(player: Player, payload: any, result: string, reason
 		if result == "Consumed" then
 			outItems[payload] = nil
 		elseif result == "Failed" then
-			local back = returnItem(payload, carrierPosition(player))
+			local back = returnItem(payload, carrierPosition(player), reason == "Caught") -- a174 : autre rayon libre si le sien est pris
 			log(`objet {payload.ItemId} de {player.Name} ({reason}) : {if back then "revient" else "ne revient pas"} sur {payload.SlotId}`)
 		end
 	end
