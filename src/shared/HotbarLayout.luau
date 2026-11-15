@@ -6,7 +6,7 @@
 -- Une disposition = Size cases, dans l'ordre ; chaque case contient un identifiant :
 --   "Tool"  l'outil de casse (Tools.DefaultId ou celui que le joueur a équipé) ;
 --   "Bat"   la batte ;
---   <uid>   un colis ou un objet du joueur (uid de Boxes ou d'Items du profil) ;
+--   <uid>   un objet du joueur (uid d'Items du profil ; vague 52 : plus de colis) ;
 --   ""      case vide.
 -- Texte de l'attribut HotbarLayout du Player (posé par HotbarService au chargement du profil puis à
 -- chaque disposition acceptée) : les Size identifiants séparés par « , », toujours Size champs

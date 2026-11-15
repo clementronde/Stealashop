@@ -140,8 +140,8 @@ local OBJECT_TEXT = "Robux Shop"
 local PROMPT_DISTANCE = 10
 local OPEN_NOW_TEXT = {
 	Waiting = "%s (%s left)", -- effet, attente restante
-	NoBox = "No box is waiting",
-	AlmostReady = "Your box is almost ready",
+	NoBox = "No item is waiting", -- vague 53 : l'antivol d'un objet posé (V0, anglais)
+	AlmostReady = "Your item is almost unlocked",
 }
 local CASH_PACK_TEXT = "+%s · %s" -- montant, effet
 -- V0 proposé, absent du doc : cadence (s) de la mise à jour des cartes, écran ouvert.

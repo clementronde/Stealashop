@@ -2,36 +2,21 @@
 -- Types du portage (DEV-017) : ce qu'un joueur porte au-dessus de la tête (Partie 1, sections
 -- 5.6, 6.1 et 6.2). ReplicatedStorage/Shared/Types/Carry. Ce module ne contient que des types :
 --   local CarryTypes = require(ReplicatedStorage.Shared.Types.Carry)
---   local payload: CarryTypes.NPCBoxPayload = { Kind = "NPCBox", ... }
+--   local payload: CarryTypes.NPCItemPayload = { Kind = "NPCItem", ... }
 --
--- Le payload est fabriqué par le serveur seulement (StoreHeistService pour un colis PNJ,
+-- Le payload est fabriqué par le serveur seulement (StoreHeistService pour un objet sorti d'un colis,
 -- PvPService pour un objet volé), jamais avec une valeur envoyée par le client (9.6).
 -- CarryService garde la même table pendant tout le portage et la repasse à ses écouteurs :
--- ne plus la modifier une fois donnée à StartCarry (6.2 : le contenu tiré ne change pas, même
--- quand le colis change de porteur). StoreHeistService reconnaît un colis qui revient sur son
--- rayon à cette table.
+-- ne plus la modifier une fois donnée à StartCarry (6.2 : l'objet ne change pas, même quand il
+-- change de porteur). StoreHeistService reconnaît un objet qui revient sur son rayon à cette table.
+--
+-- Vague 50 (a158, décision de Cantin du 2026-11-14) : le colis porté fermé (NPCBoxPayload, Kind « NPCBox »)
+-- n'existe plus ; les colis s'ouvrent sur place (rayon, camion, coffre de la Fortune Tower).
 
 -- Type de colis : attribut `Tier` du colis posé sur le rayon par StoreHeistService (L-033 : le
 -- type appartient au colis, plus à l'emplacement). « Luxe » est l'identifiant technique ; à
 -- l'écran, le type s'écrit « Luxury » (L-036).
 export type BoxTier = "Standard" | "Premium" | "Luxe"
-
--- Colis volé à un magasin PNJ (5.3, 5.6). Rareté et objet sont tirés par le serveur à la mise en
--- rayon (L-031), ou remplacés à la prise par l'accroche du tuto (StoreHeistService.SetContentOverride).
--- La rareté et la catégorie de l'objet se voient dès le rayon, sur l'étiquette BB_Box ; l'objet
--- lui-même reste caché jusqu'à l'ouverture (5.7) : son nom et son ItemId ne sont jamais affichés.
-export type NPCBoxPayload = {
-	Kind: "NPCBox",
-	Tier: BoxTier,
-	Zone: number, -- 1 à 6, zone du magasin
-	Rarity: string, -- Id de Config.Rarities, ex. « Epic »
-	ItemId: string, -- Id de Config.Items, ex. « Z3_Smartphone » (de la même rareté), secret jusqu'à OpenBox
-	StoreId: string, -- magasin d'origine, ex. « STORE_Z1_Superette » (Id de sa vitrine)
-	SlotId: string, -- emplacement de rayon d'origine, au format choisi par StoreHeistService
-	-- DEV-131 (L-084) : mutation tirée avec le contenu (Config/Mutations) ; nil = aucune. Visible sur
-	-- BB_Box dès le rayon ; jamais pour le colis du tuto.
-	Mutation: Mutation?,
-}
 
 -- Mutation (Config/Mutations, Types/Profile) : { Size = "Big", Effect = "Gold" }, champs facultatifs.
 export type Mutation = {
@@ -54,7 +39,7 @@ export type PlayerItemPayload = {
 	Mutation: Mutation?, -- DEV-131 : celle de l'objet de la victime (nom de BB_Carry) ; nil = aucune
 }
 
--- Objet sorti d'un colis ouvert sur le rayon d'un magasin PNJ (L-112, Features.ShelfOpen), fabriqué par
+-- Objet sorti d'un colis ouvert sur le rayon d'un magasin PNJ (L-112), fabriqué par
 -- StoreHeistService quand le joueur prend l'objet sur le rayon. C'est l'objet lui-même qui flotte (comme
 -- PlayerItemPayload), avec son halo de rareté et BB_Carry. Rareté finale (crans de chance compris) et
 -- mutation sont tirées par le serveur ; rien ne vient du client. À l'entrée de la zone safe, UnboxService
@@ -66,21 +51,21 @@ export type NPCItemPayload = {
 	Rarity: string, -- Id de Config.Rarities, rareté finale (après les crans de chance)
 	Mutation: Mutation?, -- tirée avec le contenu (DEV-131) ; nil = aucune
 	Zone: number, -- 1 à 6, zone du magasin d'origine
-	StoreId: string, -- magasin d'origine (même format que NPCBoxPayload.StoreId)
-	SlotId: string, -- emplacement de rayon d'origine (même format que NPCBoxPayload.SlotId)
+	StoreId: string, -- magasin d'origine, ex. « STORE_Z1_Superette » (Id de sa vitrine) ; « Truck_<n> » pour un événement
+	SlotId: string, -- emplacement de rayon d'origine, au format choisi par StoreHeistService
 	Luck: number, -- chance tirée à l'ouverture (≥ 1), pour l'annonce et les statistiques
 }
 
-export type Payload = NPCBoxPayload | PlayerItemPayload | NPCItemPayload
+export type Payload = PlayerItemPayload | NPCItemPayload
 
 -- Fin d'un portage, passée à CarryService.OnCarryEnded :
---   "Consumed"  réussite : le colis est rangé dans l'inventaire à l'entrée de la zone safe (L-089,
---               UnboxService) (ou l'objet déposé chez le voleur,
+--   "Consumed"  réussite : l'objet est rangé dans l'inventaire à l'entrée de la zone safe (L-112,
+--               UnboxService) (ou l'objet volé déposé chez le voleur,
 --               raison « Deposited », après le transfert entre les deux profils) ;
---   "Failed"    échec : le colis ou l'objet retourne d'où il vient, remis par le service
---               d'origine (StoreHeistService remet le colis sur son rayon) ;
---   "Dropped"   coup de batte (DEV-048, raison « Bat »), ou porteur d'un objet NPCItem attrapé
---               (L-112, raison « Caught ») : le colis ou l'objet est tombé au sol. Il n'est pas
+--   "Failed"    échec : l'objet retourne d'où il vient, remis par le service
+--               d'origine (StoreHeistService le remet sur son rayon) ;
+--   "Dropped"   coup de batte (DEV-048, raison « Bat »), lâcher (« Released »), ou porteur d'un objet
+--               NPCItem attrapé (L-112, raison « Caught ») : l'objet est tombé au sol. Il n'est pas
 --               perdu : CarryService le garde (voir CarryService.Drop et CarryService.Fail).
 export type EndResult = "Consumed" | "Failed" | "Dropped"
 

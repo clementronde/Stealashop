@@ -14,9 +14,10 @@
 --     Upgrades > 0). L'argent, les stats et le temps de jeu seuls ne comptent pas : un joueur qui n'a
 --     fait que s'entraîner a encore besoin du tuto ;
 --   - reprise : un profil à Step 1 à 14 et Done = false reprend à son étape. Step garde l'étape la
---     plus avancée atteinte ; ce qui n'est pas sauvegardé (vitrine, magasin ouvert, colis porté) est
---     relu sur place : un joueur parti avec un colis sur la tête (Step = 4) reprend à l'étape 2, car
---     le colis est revenu sur son rayon (5.6) ;
+--     plus avancée atteinte ; ce qui n'est pas sauvegardé (vitrine, magasin ouvert, objet porté) est
+--     relu sur place : un joueur parti avec l'objet sur la tête (Step = 4) reprend à l'étape 2, car
+--     l'objet est revenu sur son rayon (5.6). Vague 52 : un ancien profil à Step = 4 avec un colis dans
+--     Boxes a un objet libre à la place (DataService.convertBoxes, au chargement) : il reprend à l'étape 5 ;
 --   - Done = true : plus rien (tuto fini, passé, ou ancien joueur).
 --
 -- Étapes (Config/Tutorial.Steps, section 3) et ce qui les fait avancer : toujours ce qui se passe
@@ -28,10 +29,12 @@
 --   2 → 3   un magasin de la zone du tuto ouvert (vitrine cassée, chrono de 10 s :
 --           StoreHeistService.IsOpen) et le joueur à StoreNearRadius studs au plus de sa vitrine :
 --           c'est lui qui l'a cassée, ou un autre joueur juste devant lui. Possible dès l'étape 1 ;
---   3 → 4   un colis PNJ sur la tête (CarryService), ou dans l'inventaire (Boxes sans Spot : rangé à
---           l'entrée de la zone safe, L-089) ;
---   4 → 5   un colis posé au sol de sa boutique (UnboxService.OnBoxPlaced ; L-089 : plus d'établi ni
---           de présentoir imposé) ;
+--   3 → 4   un objet de magasin PNJ sur la tête (portage NPCItem de CarryService), ou rangé sous
+--           antivol dans l'inventaire (Items, AntiTheft sans Spot : à l'entrée de la zone safe) ;
+--   4 → 5   l'objet posé au sol de sa boutique (UnboxService.OnItemPlaced), ou l'objet du tuto déjà au
+--           sol, ou libre dans l'inventaire (reprise) ;
+--   (vague 52, a169 : plus aucun colis porté, rangé, posé ni ouvert en base, décision de Cantin du
+--   2026-11-14 ; détail de l'étape 3 à 5 dans le paragraphe « Vague 31 » plus bas) ;
 --   5 → 6   premier ramassage sur une plaque (DisplayService.OnCashOut, sauf « Leave »,
 --           l'encaissement automatique au départ, et « Offline », les gains hors ligne) ;
 --   6 → 7   TrainDuration (30) s sur le tapis, cumulées (attribut TrainingMachine, posé par
@@ -62,6 +65,11 @@
 --           inchangés) : pour garder dans Tutorial.Step l'étape la plus avancée, elle compte comme 12,5 (rank).
 --           Sans IsChasing (ancien BotService), jamais d'étape 14 ;
 --   13      l'objet déposé chez lui (OnTheft « Stolen ») : le tuto est fini (Step = 13, Done = true).
+--   Vague 52 (a169, L-163, V0) : à l'étape 12, tant que la porte du bot n'est pas cassée (StealOpen) et que le
+--   joueur n'est pas dedans, l'indice AnyoneCanRob (« every shop door breaks in 40 hits ») remplace la bulle.
+--   Fin du tuto par le jeu (objet du bot ramené, fin du bouclier sans bot, bot absent aux étapes 11 à 13) :
+--   Done = true tout de suite (sauvegardé), puis l'indice ProtectShop MessageDuration s, puis tout est caché
+--   (step 0). Passer, ou un profil déjà fini : tout est caché tout de suite, sans ProtectShop.
 --   Sans bot (GetBotPlot = nil : jamais venu, ou parti pendant ces étapes, BotService.OnChanged) : le tuto finit,
 --   Step garde l'étape atteinte. Seule attente : une session qui reprend aux étapes 11 à 13 attend un bot absent
 --   pendant ses BotWait premières secondes (serveur neuf : le bot arrive Bot.ArriveDelay s plus tard).
@@ -70,16 +78,17 @@
 --   point 7) : le bot défend sa boutique (BotService) : pendant le tuto du joueur poursuivi, BotService.IsGentle
 --   (remplacé ici : session en cours) le fait courir moins vite et frapper au plus une fois, et la bulle BotChase
 --   remplace celle de l'étape 12 pendant la poursuite (objet en main : étape 14, vague 38).
--- Retours en arrière, seulement pendant le braquage : étape 3 sans colis et magasin fermé → 2 ;
--- étape 4 sans colis, ni sur la tête ni dans l'inventaire (rattrapé, mort, déconnecté) → 3 si un magasin de la zone du tuto est encore
+-- Retours en arrière, seulement pendant le braquage : étape 3 sans objet et magasin fermé → 2 ;
+-- étape 4 sans objet, ni sur la tête ni dans l'inventaire (rattrapé, mort, déconnecté) → 3 si un magasin de la zone du tuto est encore
 -- ouvert près du joueur, sinon 2. Ils ne changent que l'étape affichée, pas Tutorial.Step du profil
 -- (l'étape la plus avancée). Une étape dont la condition est déjà remplie (reprise, achat fait
 -- en avance) s'enchaîne avec la suivante dans le même contrôle. Contrôles : à chaque événement des
 -- services, et toutes les Tutorial.Tick s (seuils d'argent, zone 2, bouclier, nuit, entraînement).
 --
--- Vague 31 (L-112, Features.ShelfOpen = true ; a107). Mêmes 10 étapes, mêmes Id et mêmes numéros (un
--- Tutorial.Step déjà sauvegardé garde son sens ; funnel 14.2 inchangé), mais le braquage se joue ainsi :
---   3 GrabBox    bulle ShelfBubble « Open a box on the shelf! », flèche vers le colis fermé du rayon le
+-- Vague 31 (L-112, a107), seul déroulé depuis la vague 52 (a169 ; décision de Cantin du 2026-11-14 : plus de
+-- colis ramené en zone safe ; Features.ShelfOpen n'est plus lu ici). Mêmes étapes, mêmes Id et mêmes numéros
+-- (un Tutorial.Step déjà sauvegardé garde son sens ; funnel 14.2 inchangé) ; le braquage se joue ainsi :
+--   3 GrabBox    bulle « Open a box on the shelf! », flèche vers le colis fermé du rayon le
 --                plus proche ; son colis s'ouvre : WaitReveal (flèche : le colis) ; l'objet sorti (le sien,
 --                réservé, sinon un objet libre du rayon) : GrabItem (flèche : l'objet). Lu sur les rayons
 --                (Shared/ShelfOpenState : tag ShelfItem, ShelfOpenState, ShelfOpenBy, ShelfReservedBy/Until).
@@ -90,42 +99,36 @@
 --                zone safe (UnboxService.OnItemStowed) : PlaceFloorItem ;
 --   4 → 5        un objet posé au sol de sa boutique (UnboxService.OnItemPlaced), ou l'objet du tuto déjà au
 --                sol ou libre (reprise, colis converti au chargement par DataService) ;
---   5            WaitUnlock pendant l'antivol (objet volable ; flèche : l'objet au sol), DisplayUnlocked après
---                « UNLOCKED! » (invite « Display » d'UnboxController : l'objet va sur un présentoir), puis
---                CollectCash comme avant. Un objet sous antivol n'est jamais compté « dans l'inventaire »
---                pour PlaceItem (il n'est pas exposable).
---   Résultats garantis : SetContentOverride est appelée par StoreHeistService à la SORTIE de l'objet (pour
---   l'ouvreur) : le Pot de nouilles est l'objet sorti, sans cran de rareté (contenu imposé, StoreHeistService
---   ne l'améliore pas), une seule fois par braquage (Session.guaranteed, remis à false au retour à l'étape 2).
---   SetLuckOverride impose Tutorial.ShelfLuck (×1,5, V0) aux ouvertures du tuto tant qu'il n'est pas sorti.
---   GetAntiTheftDelay rend Tutorial.AntiTheftDelay (5 s) pour l'objet du tuto posé aux étapes 1 à 4.
+--   5            WaitUnlock pendant l'antivol (objet volable ; flèche : l'objet au sol) ; vague 52 (a152 : l'objet
+--                repris du sol va en main) : TakeUnlocked après « UNLOCKED! » (invite « Take » ; flèche : l'objet),
+--                DisplayUnlocked l'objet en main (attribut HeldItem de HeldItemService ; flèche : un présentoir
+--                libre, invite « Display »), PlaceItem l'objet libre dans l'inventaire, puis CollectCash comme
+--                avant. Un objet sous antivol n'est jamais compté « dans l'inventaire » (il n'est pas exposable).
 --   Funnel : 4 = objet NPCItem soulevé, 5 = rangé, 6 = posé au sol, 7 (« Premier objet révélé ») = premier
---   objet libre (antivol fini), pour garder l'ordre 6 → 7 → 8 du Creator Dashboard.
--- À false, rien de ce paragraphe : l'ancien tuto exact.
+--   objet libre (antivol fini), pour garder l'ordre 6 → 7 → 8 du Creator Dashboard (noms d'avant gardés).
 --
 -- Résultats garantis (5.11), branchés sur les accroches des services, seulement pour ce joueur et
 -- seulement pendant son tuto :
---   - 1er colis : StoreHeistService.SetContentOverride. Tant que le joueur n'a pas posé de colis
---     (étapes 1 à 4), le colis qu'il soulève dans un magasin de la zone du tuto devient un colis
---     FirstBoxTier (Premium) qui contient GuaranteedItemId (le Pot de nouilles, Rare, TutorialOnly).
---     S'il est rattrapé, le colis revient sur son rayon avec son contenu d'origine, et le suivant est
---     garanti à son tour ;
+--   - 1er objet : StoreHeistService.SetContentOverride, appelée à la SORTIE de l'objet (pour l'ouvreur) d'un
+--     colis d'un magasin de la zone du tuto, aux étapes 1 à 3 : l'objet sorti est GuaranteedItemId (le Pot de
+--     nouilles, Rare, TutorialOnly ; Tier FirstBoxTier), sans cran de rareté (contenu imposé), une seule fois par
+--     braquage (Session.guaranteed, remis à false au retour à l'étape 2 : rattrapé, le suivant est garanti) ;
+--   - chance : StoreHeistService.SetLuckOverride impose Tutorial.ShelfLuck (×1,5, V0) aux ouvertures du tuto
+--     tant que l'objet garanti n'est pas sorti ;
 --   - vigile lent : GuardService.GetSpeedOverride rend GuardSpeed (12) pour ce joueur dans la zone
 --     du tuto, aux étapes 1 à 4 ;
---   - attente de 5 s : UnboxService.GetOpenDelay rend OpenDelay pour le colis du Pot de nouilles posé
---     pendant le tuto (étapes 1 à 4) ;
---   - aucun cran d'amélioration : UnboxService.GetLuck rend 0 pour tout colis qui contient
---     GuaranteedItemId (ce colis n'existe que par le tuto ; il reste sans cran même ouvert après
---     Passer). UnboxService ne l'améliorerait pas de toute façon (Rare impossible en Premium de zone 1).
--- Les accroches d'avant sont gardées et appelées pour tous les autres cas.
+--   - antivol de 5 s : UnboxService.GetAntiTheftDelay rend Tutorial.AntiTheftDelay pour l'objet du tuto posé
+--     aux étapes 1 à 4 (gardé comme dans le jeu normal : V0 de la vague 52).
+-- Les accroches d'avant sont gardées et appelées pour tous les autres cas. Vague 52 : plus d'accroche sur
+-- UnboxService.GetOpenDelay, GetLuck, OnBoxStowed, OnBoxPlaced, OnBoxOpened (plus aucun colis ouvert en base).
 --
 -- Guidage envoyé au client : TutorialStep(step, hint?, target?) (9.4), au début et à chaque
 -- changement, jamais deux fois le même. step = étape en cours (0 = plus de tuto : tout cacher) ;
 -- hint = clé de Config/Tutorial.Hints à afficher à la place de la bulle de l'étape (nil = la bulle
 -- de l'étape) ; target = point du monde visé par la flèche (nil = pas de flèche). Cibles : vitrine
 -- du magasin (étapes 1 à 3 ; la Supérette tant que le joueur n'en a pas choisi un autre), sa boutique
--- (4 : son SpawnPoint, au sol près de l'entrée), colis posé au sol, puis présentoir libre (objet dans
--- l'inventaire), puis plaque de ramassage (5), tapis (6), plaque de ramassage ou
+-- (4 : son SpawnPoint, au sol près de l'entrée), objet posé au sol, puis présentoir libre (objet en main ou
+-- dans l'inventaire), puis plaque de ramassage (5), tapis (6), plaque de ramassage ou
 -- comptoir WeaponShop (7) et AuraShop (8) selon l'argent, arche de la zone 2 (9), porte du bot (11, et 12
 -- tant que sa boutique n'est pas ouverte au vol), objet du bot volable le plus proche (12, porte cassée ou
 -- joueur dedans : présentoirs SafeSlots exclus, attributs StealOpen et SafeSlots de PvPService), sa boutique
@@ -134,13 +137,14 @@
 -- porte le plus d'argent, sinon celle du premier objet exposé). Boutique du hub (PLOT_Shop, L-050) :
 -- entre l'intérieur de la boutique (volume Bounds) et l'extérieur, la flèche vise d'abord la porte
 -- (PlotDoor/Window) ; le joueur apparaît dans sa boutique, la première flèche va donc à sa porte.
--- Indices (Hints) : WindowRebuilding (étape 2, vitrine cassée rideau baissé) ; PlaceBox (étapes 4 et 5,
--- colis dans l'inventaire) ; WaitBox, OpenBox, PlaceItem (objet dans l'inventaire, rien d'exposé),
--- CollectCash (étape 5) ; StandOnTreadmill (étape 6, flèche vers le tapis, qui n'a plus d'invite :
+-- Indices (Hints) : WindowRebuilding (étape 2, vitrine cassée rideau baissé) ; WaitReveal, GrabItem (3) ;
+-- PlaceFloorItem (4 et 5, objet sous antivol dans l'inventaire) ; WaitUnlock, TakeUnlocked, DisplayUnlocked,
+-- PlaceItem (objet dans l'inventaire, rien d'exposé), CollectCash (étape 5) ; StandOnTreadmill (étape 6, flèche vers le tapis, qui n'a plus d'invite :
 -- L-071) ; CollectCash (7 et 8 sans assez d'argent) ; Night (bulle de nuit 5.12 :
 -- alerte ou nuit, joueur dans le couloir ; flèche vers sa parcelle) ; NightClosed (la nuit, côté
 -- zone safe, aux étapes qui visent le couloir : 1 à 3 et 9 ; pas de flèche) ; ShieldEnd (fin du
--- bouclier débutant). EquipFists est choisi par le client (outil pas en main près de la vitrine).
+-- bouclier débutant) ; BotChase, AnyoneCanRob (12) ; ProtectShop (fin du tuto). EquipFists est choisi par le
+-- client (outil pas en main près de la vitrine).
 --
 -- Fin du bouclier débutant (6.4, 10 min de jeu cumulées) : quand IsShielded passe de true à false
 -- pendant le tuto, ShieldEndMessage s'affiche MessageDuration s, quelle que soit l'étape (une fois
@@ -156,18 +160,18 @@
 -- joueur. Une seule fois par joueur et par étape : déjà envoyées dans cette session, ou déjà
 -- franchies d'après le profil au chargement (loggedFunnel). Roblox ne compte de toute façon que le
 -- premier envoi d'une étape. Étapes : 1 tuto commencé, 2 coup sur une vitrine de magasin PNJ, 3 vitrine
--- PNJ cassée par lui, 4 colis PNJ soulevé, 5 dans la zone safe avec ce colis, 6 colis posé, 7 colis
--- ouvert, 8 un objet exposé, 9 premier encaissement, 10 un outil acheté ; vague 36, seulement pendant le tuto :
+-- PNJ cassée par lui, 4 objet PNJ soulevé, 5 dans la zone safe avec cet objet, 6 objet posé au sol, 7 objet
+-- libre (antivol fini ; noms du Creator Dashboard gardés : « Premier colis volé »…), 8 un objet exposé, 9 premier encaissement, 10 un outil acheté ; vague 36, seulement pendant le tuto :
 -- 11 boutique du bot atteinte (étape 12), 12 objet du bot pris (étape 13 ou 14), 13 objet du bot déposé chez lui
 -- (fin) ; vague 38 : 14 bot semé avec son objet (14 → 13). Interrupteur de la télémétrie
 -- (Config/Telemetry.Enabled = false, DEV-054) : aucune étape n'est envoyée.
 --
 -- Crochet de test, STUDIO SEULEMENT : workspace:SetAttribute("TutorialReset", userId) (barre de
 -- commande serveur ; un nom de joueur marche aussi). Le tuto de ce joueur repart de l'étape 1
--- (Done = false), funnel compris, même pour un ancien joueur. Les objets, colis et outils du profil
--- ne changent pas : un présentoir déjà occupé reste occupé, un colis du tuto (Pot de nouilles) encore
--- posé au sol fait reprendre à l'étape 5 et un colis de l'inventaire à l'étape 4 (l'ouvrir avant pour
--- rejouer le braquage). Hors de Studio,
+-- (Done = false), funnel compris, même pour un ancien joueur. Les objets et outils du profil
+-- ne changent pas : un présentoir déjà occupé reste occupé, un objet du tuto (Pot de nouilles) encore
+-- posé au sol fait reprendre à l'étape 5 et un objet sous antivol de l'inventaire à l'étape 4 (le poser
+-- et le reprendre avant pour rejouer le braquage). Hors de Studio,
 -- l'attribut n'est pas écouté.
 --
 -- Attributs du Player (pour les tests en Studio : la barre de commande a son propre cache de modules,
@@ -190,7 +194,6 @@ local Workspace = game:GetService("Workspace")
 local Shared = ReplicatedStorage.Shared
 local Balance = require(Shared.Config.Balance)
 local Cosmetics = require(Shared.Config.Cosmetics)
-local Features = require(Shared.Config.Features)
 local ShelfOpenState = require(Shared.ShelfOpenState)
 local Telemetry = require(Shared.Config.Telemetry)
 local Tools = require(Shared.Config.Tools)
@@ -209,7 +212,6 @@ local UnboxService = require(script.Parent.UnboxService)
 local WindowService = require(script.Parent.WindowService)
 
 type Data = ProfileTypes.Data
-type Box = ProfileTypes.Box
 
 -- Ce que ce service utilise de CarryService et de DisplayService (typé ici, comme UnboxService).
 type CarryApi = {
@@ -261,8 +263,8 @@ type Session = {
 	shieldShown: boolean, -- ShieldEndMessage déjà montré dans cette session
 	messageUntil: number, -- os.clock() de fin d'affichage de ShieldEndMessage (0 : rien)
 	sent: Sent?,
-	-- Features.ShelfOpen : l'objet garanti est déjà sorti d'un colis de ce braquage (une seule fois par
-	-- braquage ; remis à false au retour à l'étape 2).
+	-- L'objet garanti est déjà sorti d'un colis de ce braquage (une seule fois par braquage ; remis à false
+	-- au retour à l'étape 2).
 	guaranteed: boolean,
 	-- Vague 36 (étapes 11 à 13) : début de la session (os.clock, attente d'un bot à la reprise), un objet du bot
 	-- tenu (OnTheft « Grabbed » jusqu'à « Returned » ou « Stolen »), un objet du bot déposé chez lui depuis
@@ -270,12 +272,13 @@ type Session = {
 	startedAt: number,
 	botHeld: boolean,
 	botStolen: boolean,
+	-- Vague 52 (L-163) : fin du tuto par le jeu, indice ProtectShop affiché jusqu'à cet os.clock() (0 : pas de
+	-- fin en cours), puis tout est caché ; la raison de la fin, pour la sortie de Studio.
+	outroUntil: number,
+	outroWhy: string,
 }
 
 local IS_STUDIO = RunService:IsStudio()
--- Vague 31 (L-112, a107) : true = colis ouverts sur le rayon, l'objet se rapporte et se pose sous antivol.
--- false = l'ancien tuto exact (colis porté, posé, ouvert en base).
-local SHELF_OPEN: boolean = Features.ShelfOpen == true
 
 -- Étapes (Config/Tutorial.Steps, même ordre).
 local STEP_ARRIVE = 1 -- ArriveAtPlot
@@ -345,6 +348,8 @@ local PLAYER_ITEM_KIND = "PlayerItem"
 local BOT_VICTIM_USER_ID = 0
 -- Attribut du Player posé par TrainingService : la machine utilisée, nil sinon.
 local MACHINE_ATTRIBUTE = "TrainingMachine"
+-- Attribut du Player posé par HeldItemService : uid de l'objet tenu en main, absent sinon (vague 52, étape 5).
+local HELD_ITEM_ATTRIBUTE = "HeldItem"
 -- Attribut du Workspace du crochet de test (Studio seulement).
 local RESET_ATTRIBUTE = "TutorialReset"
 -- Attributs du Player posés ici (voir l'en-tête) : étape et indice envoyés au client.
@@ -468,7 +473,7 @@ local function collectTarget(player: Player): Vector3?
 	return if ok and typeof(result) == "Vector3" then result else nil
 end
 
--- Features.ShelfOpen : pied de l'objet sous antivol posé au sol (UnboxService.GetFloorItem), nil s'il
+-- Pied de l'objet sous antivol posé au sol (UnboxService.GetFloorItem), nil s'il
 -- n'est pas affiché ou qu'un voleur l'a en main (faux UnboxService d'un banc sans lui : nil).
 local function floorItemTarget(player: Player, itemUid: string): Vector3?
 	local getter = (UnboxService :: any).GetFloorItem
@@ -587,10 +592,10 @@ local function openStoreNear(position: Vector3?): string?
 	return best
 end
 
--- Features.ShelfOpen (L-112) : ce que StoreHeistService pose sur les rayons de `store` (Shared/ShelfOpenState),
+-- L-112 : ce que StoreHeistService pose sur les rayons de `store` (Shared/ShelfOpenState),
 -- lu ici pour l'étape 3. (hint, cible) : son objet sorti (ou un objet libre, réservation passée) → GrabItem ;
 -- son colis qui s'ouvre → WaitReveal ; sinon le colis fermé du rayon le plus proche du joueur, sans indice
--- (bulle ShelfBubble de l'étape). `pending` : une ouverture à lui en cours ou son objet encore réservé (il
+-- (bulle de l'étape). `pending` : une ouverture à lui en cours ou son objet encore réservé (il
 -- peut le prendre même après le chrono). Les deux premiers résultats sont nil sans rien sur les rayons.
 local function shelfState(store: Model, player: Player, position: Vector3?): (string?, Vector3?, boolean)
 	local now = serverNow()
@@ -642,20 +647,21 @@ end
 -- Lecture du profil
 ------------------------------------------------------------------------------
 
+-- Portage d'un objet de magasin PNJ (NPCItem ; vague 52 : plus de colis NPCBox porté).
 local function npcPayload(player: Player): any
 	local ok, payload = pcall(CarryService.GetPayload, player)
-	if ok and type(payload) == "table" and (payload.Kind == "NPCBox" or (SHELF_OPEN and payload.Kind == "NPCItem")) then
+	if ok and type(payload) == "table" and payload.Kind == "NPCItem" then
 		return payload
 	end
 	return nil
 end
 
--- Features.ShelfOpen : objet sous antivol du profil (Types/Profile : AntiTheft, UnlockAt, Spot).
+-- Objet sous antivol du profil (Types/Profile : AntiTheft, UnlockAt, Spot).
 local function isAntiTheft(entry: any): boolean
-	return SHELF_OPEN and type(entry) == "table" and entry.AntiTheft == true
+	return type(entry) == "table" and entry.AntiTheft == true
 end
 
--- Features.ShelfOpen : objet sous antivol posé au sol (`placed` = true) ou dans l'inventaire (false),
+-- Objet sous antivol posé au sol (`placed` = true) ou dans l'inventaire (false),
 -- l'objet du tuto (le Pot de nouilles) d'abord, sinon celui de plus petit uid : (uid, objet).
 local function findAntiTheftItem(data: Data, placed: boolean): (string?, any)
 	local foundUid: string? = nil
@@ -673,13 +679,10 @@ local function findAntiTheftItem(data: Data, placed: boolean): (string?, any)
 	return foundUid, found
 end
 
--- Features.ShelfOpen : l'objet du tuto est posé au sol sous antivol, ou (reprise à l'étape 4 : colis du tuto
--- converti au chargement par DataService) libre dans l'inventaire, ni exposé ni au coffre : l'étape 5 peut
+-- L'objet du tuto est posé au sol sous antivol, ou (reprise à l'étape 4 : colis du tuto converti au
+-- chargement par DataService) libre dans l'inventaire, ni exposé ni au coffre : l'étape 5 peut
 -- commencer. Un objet du tuto déjà exposé (crochet TutorialReset) ne compte pas : le braquage se rejoue.
 local function tutorialItemHome(data: Data, step: number): boolean
-	if not SHELF_OPEN then
-		return false
-	end
 	local placed: { [string]: boolean } = {}
 	for _, uid in data.Display do
 		placed[uid] = true
@@ -772,16 +775,13 @@ end
 -- Étapes du funnel déjà franchies d'après le profil d'un nouveau joueur (voir l'en-tête).
 local function loggedFunnel(data: Data): { [number]: boolean }
 	local step = data.Tutorial.Step
-	local hasItem = next(data.Items) ~= nil
-	local heisted = data.Lifetime.Heists > 0 or next(data.Boxes) ~= nil or hasItem
-	if SHELF_OPEN then
-		-- Funnel 7 (« Premier objet révélé ») = un objet libre : l'antivol fini (voir l'en-tête).
-		hasItem = false
-		for _, entry in data.Items do
-			if not isAntiTheft(entry) then
-				hasItem = true
-				break
-			end
+	local heisted = data.Lifetime.Heists > 0 or next(data.Boxes) ~= nil or next(data.Items) ~= nil
+	-- Funnel 7 (« Premier objet révélé ») = un objet libre : l'antivol fini (voir l'en-tête).
+	local hasItem = false
+	for _, entry in data.Items do
+		if not isAntiTheft(entry) then
+			hasItem = true
+			break
 		end
 	end
 	return {
@@ -803,24 +803,6 @@ local function loggedFunnel(data: Data): { [number]: boolean }
 	}
 end
 
--- Colis du tuto (le Pot de nouilles), sinon celui de plus petit uid, posé au sol (`placed` = true) ou
--- dans l'inventaire (`placed` = false, L-089) : (uid, colis).
-local function findBox(data: Data, placed: boolean): (string?, Box?)
-	local foundUid: string? = nil
-	local foundBox: Box? = nil
-	for uid, box in data.Boxes do
-		if type(box) == "table" and (box.Spot ~= nil) == placed then
-			if box.ItemId == Tutorial.GuaranteedItemId then
-				return uid, box
-			end
-			if foundUid == nil or uid < (foundUid :: string) then
-				foundUid, foundBox = uid, box
-			end
-		end
-	end
-	return foundUid, foundBox
-end
-
 -- Un objet dans l'inventaire (ni exposé ni au coffre-fort) ?
 local function hasStoredItem(data: Data): boolean
 	local placed: { [string]: boolean } = {}
@@ -831,11 +813,31 @@ local function hasStoredItem(data: Data): boolean
 		placed[uid] = true
 	end
 	for uid, entry in data.Items do
-		if not placed[uid] and not isAntiTheft(entry) then -- sous antivol : pas encore exposable (ShelfOpen)
+		if not placed[uid] and not isAntiTheft(entry) then -- sous antivol : pas encore exposable
 			return true
 		end
 	end
 	return false
+end
+
+-- Vague 52 : un objet de son inventaire en main (attribut HeldItem de HeldItemService ; a152 : l'objet repris du
+-- sol à la fin de l'antivol y va), ni exposé ni au coffre-fort.
+local function holdsStoredItem(player: Player, data: Data): boolean
+	local uid = player:GetAttribute(HELD_ITEM_ATTRIBUTE)
+	if type(uid) ~= "string" or isAntiTheft(data.Items[uid]) or data.Items[uid] == nil then
+		return false
+	end
+	for _, placedUid in data.Display do
+		if placedUid == uid then
+			return false
+		end
+	end
+	for _, placedUid in data.Vault do
+		if placedUid == uid then
+			return false
+		end
+	end
+	return true
 end
 
 local function unlockedCount(base: number, level: any, max: number): number
@@ -859,15 +861,6 @@ end
 -- l'étape 4 (on y rapporte le colis, puis on le pose au sol, L-089).
 local function shopTarget(player: Player): Vector3?
 	return positionOf(plotPart(player, SPAWN_POINT)) or positionOf(PlotService.GetPlot(player))
-end
-
-local function isDisplayed(data: Data, itemUid: string): boolean
-	for _, uid in data.Display do
-		if uid == itemUid then
-			return true
-		end
-	end
-	return false
 end
 
 ------------------------------------------------------------------------------
@@ -1119,6 +1112,16 @@ local function finish(session: Session, data: Data?, why: string)
 	log(`{player.Name} : tuto terminé à l'étape {session.step} ({why})`)
 end
 
+-- Vague 52 (L-163) : fin du tuto par le jeu. Done = true tout de suite (un départ pendant le message ne
+-- fait pas rejouer la fin), puis l'indice ProtectShop MessageDuration s (evaluate), puis finish.
+local function endByGame(session: Session, data: Data, why: string)
+	data.Tutorial.Done = true
+	session.outroUntil = os.clock() + Tutorial.MessageDuration
+	session.outroWhy = why
+	log(`{session.player.Name} : fin du tuto à l'étape {session.step} ({why}), message ProtectShop`)
+	send(session, session.step, "ProtectShop", nil)
+end
+
 local function showShieldMessage(session: Session)
 	session.shieldShown = true
 	session.messageUntil = os.clock() + Tutorial.MessageDuration
@@ -1141,18 +1144,12 @@ end
 -- arrière (voir l'en-tête) ; nil si rien ne change.
 local function transition(session: Session, data: Data, position: Vector3?, carrying: boolean): (number?, string?)
 	local step = session.step
-	if step <= STEP_PLACE then
-		local _, box = findBox(data, true)
-		if box ~= nil and box.ItemId == Tutorial.GuaranteedItemId then
-			return STEP_DISPLAY, "colis du tuto posé au sol"
-		end
-		if tutorialItemHome(data, step) then
-			return STEP_DISPLAY, "objet du tuto posé au sol"
-		end
+	if step <= STEP_PLACE and tutorialItemHome(data, step) then
+		return STEP_DISPLAY, "objet du tuto posé au sol"
 	end
-	local stored = findBox(data, false) ~= nil or findAntiTheftItem(data, false) ~= nil
+	local stored = findAntiTheftItem(data, false) ~= nil
 	if step < STEP_PLACE and (carrying or stored) then
-		return STEP_PLACE, if carrying then "colis sur la tête" else "colis dans l'inventaire"
+		return STEP_PLACE, if carrying then "objet sur la tête" else "objet sous antivol dans l'inventaire"
 	end
 	if step == STEP_PLACE then
 		if carrying or stored then
@@ -1161,9 +1158,9 @@ local function transition(session: Session, data: Data, position: Vector3?, carr
 		local open = openStoreNear(position)
 		if open then
 			session.storeId = open
-			return STEP_GRAB, "colis perdu, magasin encore ouvert"
+			return STEP_GRAB, "objet perdu, magasin encore ouvert"
 		end
-		return STEP_HIT, "colis perdu"
+		return STEP_HIT, "objet perdu"
 	end
 	if step <= STEP_HIT then
 		local open = openStoreNear(position)
@@ -1179,16 +1176,16 @@ local function transition(session: Session, data: Data, position: Vector3?, carr
 	if step == STEP_GRAB then
 		local id = session.storeId
 		if id == nil or not StoreHeistService.IsOpen(id) then
-			-- ShelfOpen : une ouverture lancée va au bout et son objet reste à lui pendant la réservation,
-			-- même après le chrono (StoreHeistService) : l'étape attend.
-			local store = if SHELF_OPEN and id then StoreHeistService.GetStoreModel(id) else nil
+			-- Une ouverture lancée va au bout et son objet reste à lui pendant la réservation, même après le
+			-- chrono (StoreHeistService) : l'étape attend.
+			local store = if id then StoreHeistService.GetStoreModel(id) else nil
 			if store then
 				local _, _, pending = shelfState(store, session.player, position)
 				if pending then
 					return nil, nil
 				end
 			end
-			return STEP_HIT, "magasin fermé sans colis"
+			return STEP_HIT, "magasin fermé sans objet"
 		end
 	elseif step == STEP_DISPLAY then
 		if session.cashedOut then
@@ -1275,41 +1272,33 @@ local function rawGuidance(session: Session, data: Data, position: Vector3?): (s
 		if store then
 			target = positionOf(Find.path(store, WINDOW)) or store:GetPivot().Position
 		end
-		if SHELF_OPEN and step == STEP_GRAB and store then
+		if step == STEP_GRAB and store then
 			-- L-112 : le colis du rayon à ouvrir, puis son colis qui s'ouvre, puis l'objet sorti.
 			local shelfHint, shelfTarget = shelfState(store, player, position)
 			return shelfHint, shelfTarget or target
 		end
 		return hint, target
-	elseif SHELF_OPEN and step == STEP_PLACE and npcPayload(player) == nil and findAntiTheftItem(data, false) ~= nil then
-		return "PlaceFloorItem", shopTarget(player) -- L-112 : objet rangé, à poser au sol de sa boutique
 	elseif step == STEP_PLACE then
-		-- Colis sur la tête : la bulle de l'étape (rentrer à sa boutique) ; rangé : le poser au sol.
-		local hint = if npcPayload(player) == nil and findBox(data, false) ~= nil then "PlaceBox" else nil
+		-- Objet sur la tête : la bulle de l'étape (rentrer à sa boutique) ; rangé sous antivol : le poser au sol.
+		local hint = if npcPayload(player) == nil and findAntiTheftItem(data, false) ~= nil then "PlaceFloorItem" else nil
 		return hint, shopTarget(player)
 	elseif step == STEP_DISPLAY then
 		local floorUid, floorItem = findAntiTheftItem(data, true)
 		if floorUid and floorItem and next(data.Display) == nil then
-			-- L-112 : objet au sol sous antivol (volable), puis « UNLOCKED! » et l'invite « Display ».
+			-- L-112 : objet au sol sous antivol (volable), puis « UNLOCKED! » et l'invite « Take » (vague 52 :
+			-- a152, l'objet repris va en main).
 			local unlockAt = floorItem.UnlockAt
 			local unlocked = type(unlockAt) == "number" and serverNow() >= unlockAt
-			return if unlocked then "DisplayUnlocked" else "WaitUnlock", floorItemTarget(player, floorUid) or shopTarget(player)
-		end
-		local uid, box = findBox(data, true)
-		if uid and box then
-			local readyAt = box.ReadyAt
-			local ready = type(readyAt) ~= "number" or serverNow() >= readyAt
-			local hint = if ready then "OpenBox" else "WaitBox"
-			return hint, UnboxService.GetBoxPosition(player, uid) or shopTarget(player)
+			return if unlocked then "TakeUnlocked" else "WaitUnlock", floorItemTarget(player, floorUid) or shopTarget(player)
 		end
 		if next(data.Display) ~= nil then
 			return "CollectCash", collectTarget(player)
 		end
+		if holdsStoredItem(player, data) then
+			return "DisplayUnlocked", freeSlotTarget(player, data) -- vague 52 : en main, l'invite « Display »
+		end
 		if hasStoredItem(data) then
 			return "PlaceItem", freeSlotTarget(player, data)
-		end
-		if findBox(data, false) ~= nil then
-			return "PlaceBox", shopTarget(player)
 		end
 		if findAntiTheftItem(data, false) ~= nil then
 			return "PlaceFloorItem", shopTarget(player)
@@ -1345,6 +1334,9 @@ local function rawGuidance(session: Session, data: Data, position: Vector3?): (s
 		if step == STEP_BOT_GRAB and (plot:GetAttribute(STEAL_OPEN_ATTRIBUTE) == true or insidePlot(plot, position)) then
 			return chased, botItemTarget(plot, position) or botDoor(plot)
 		end
+		if step == STEP_BOT_GRAB and chased == nil then
+			return "AnyoneCanRob", botDoor(plot) -- vague 52 (L-163) : porte du bot pas encore cassée
+		end
 		return chased, botDoor(plot)
 	elseif step == STEP_BOT_HOME or step == STEP_BOT_CHASE then
 		-- dépôt : la DepositZone couvre le sol de sa boutique. Poursuivi avec l'objet : étape 14 et sa bulle (vague 38 ;
@@ -1370,6 +1362,15 @@ local function evaluate(session: Session)
 	if data == nil then
 		return
 	end
+	if session.outroUntil > 0 then
+		-- Vague 52 : message de fin (ProtectShop) en cours, puis tout est caché.
+		if os.clock() >= session.outroUntil then
+			finish(session, nil, session.outroWhy)
+		else
+			send(session, session.step, "ProtectShop", nil)
+		end
+		return
+	end
 	if data.Tutorial.Done then
 		finish(session, nil, "profil déjà marqué fini")
 		return
@@ -1382,7 +1383,7 @@ local function evaluate(session: Session)
 	-- Vague 36 : étapes 11 à 13 sans bot (jamais venu ou parti) : le tuto finit, sauf pendant les BotWait
 	-- premières secondes d'une reprise (le bot d'un serveur neuf arrive un peu plus tard).
 	if session.step >= STEP_BOT_SHOP and botPlot() == nil and os.clock() - session.startedAt >= Tutorial.BotWait then
-		finish(session, data, "pas de bot sur le serveur : étapes du vol sautées")
+		endByGame(session, data, "pas de bot sur le serveur : étapes du vol sautées")
 		return
 	end
 
@@ -1401,7 +1402,7 @@ local function evaluate(session: Session)
 		if os.clock() >= session.messageUntil then
 			-- Avec un bot, la transition est déjà passée à l'étape 11 : ici, pas de bot (fin d'avant la vague 36).
 			data.Tutorial.Step = STEP_SHIELD
-			finish(session, data, "bouclier débutant fini")
+			endByGame(session, data, "bouclier débutant fini")
 			return
 		end
 	end
@@ -1409,7 +1410,7 @@ local function evaluate(session: Session)
 	-- Vague 36 : objet du bot déposé chez lui pendant l'étape 13 : le tuto est fini (Step = 13).
 	if session.step == STEP_BOT_HOME and session.botStolen then
 		logFunnel(player, FUNNEL_BOT_HOME)
-		finish(session, data, "objet du bot ramené chez lui")
+		endByGame(session, data, "objet du bot ramené chez lui")
 		return
 	end
 
@@ -1434,6 +1435,8 @@ local function newSession(player: Player, step: number): Session
 		startedAt = os.clock(),
 		botHeld = false,
 		botStolen = false,
+		outroUntil = 0,
+		outroWhy = "",
 	}
 end
 
@@ -1495,20 +1498,18 @@ end
 
 local function installHooks()
 	StoreHeistService.SetContentOverride(function(player: Player, drawn: StoreHeistService.OverrideInfo): StoreHeistService.OverrideResult?
-		-- Avant la 1re prise seulement : à l'étape PlaceBox, le colis du tuto est déjà porté ou rangé, et
-		-- sinon chaque colis de zone 1 volé ensuite donnait l'objet garanti (audit du 2026-11-10).
+		-- Avant la 1re prise seulement : à l'étape PlaceBox, l'objet du tuto est déjà porté ou rangé, et
+		-- sinon chaque colis de zone 1 ouvert ensuite donnait l'objet garanti (audit du 2026-11-10).
 		local session = sessions[player]
 		if session == nil or session.step >= STEP_PLACE or drawn.Zone ~= Tutorial.TutorialZone then
 			return nil
 		end
-		-- ShelfOpen (L-112) : appelée à la SORTIE de l'objet, pour l'ouvreur ; une seule fois par braquage
-		-- (sinon chaque colis ouvert avant la prise donnerait l'objet garanti). Contenu imposé : aucun cran.
-		if SHELF_OPEN then
-			if session.guaranteed then
-				return nil
-			end
-			session.guaranteed = true
+		-- L-112 : appelée à la SORTIE de l'objet, pour l'ouvreur ; une seule fois par braquage (sinon chaque
+		-- colis ouvert avant la prise donnerait l'objet garanti). Contenu imposé : aucun cran.
+		if session.guaranteed then
+			return nil
 		end
+		session.guaranteed = true
 		local result: StoreHeistService.OverrideResult = {
 			Tier = Tutorial.FirstBoxTier :: string,
 			ItemId = Tutorial.GuaranteedItemId,
@@ -1524,40 +1525,22 @@ local function installHooks()
 		return baseSpeed(player, zone)
 	end
 
-	local baseDelay = UnboxService.GetOpenDelay
-	UnboxService.GetOpenDelay = function(player: Player, box: Box): number
-		if box.ItemId == Tutorial.GuaranteedItemId and inTutorialHeist(player) then
-			return Tutorial.OpenDelay
+	-- L-112 : chance imposée à l'ouverture sur le rayon (Tutorial.ShelfLuck), tant que l'objet garanti
+	-- n'est pas sorti dans ce braquage.
+	StoreHeistService.SetLuckOverride(function(player: Player, drawn: StoreHeistService.OverrideInfo): number?
+		local session = sessions[player]
+		if session == nil or session.step >= STEP_PLACE or session.guaranteed or drawn.Zone ~= Tutorial.TutorialZone then
+			return nil
 		end
-		return baseDelay(player, box)
-	end
-
-	if SHELF_OPEN then
-		-- L-112 : chance imposée à l'ouverture sur le rayon (Tutorial.ShelfLuck), tant que l'objet garanti
-		-- n'est pas sorti dans ce braquage.
-		StoreHeistService.SetLuckOverride(function(player: Player, drawn: StoreHeistService.OverrideInfo): number?
-			local session = sessions[player]
-			if session == nil or session.step >= STEP_PLACE or session.guaranteed or drawn.Zone ~= Tutorial.TutorialZone then
-				return nil
-			end
-			return Tutorial.ShelfLuck
-		end)
-		-- L-112 : antivol raccourci de l'objet du tuto posé pendant le tuto (comme l'attente du 1er colis).
-		local baseAntiTheft = UnboxService.GetAntiTheftDelay
-		UnboxService.GetAntiTheftDelay = function(player: Player, itemId: string): number
-			if itemId == Tutorial.GuaranteedItemId and inTutorialHeist(player) then
-				return Tutorial.AntiTheftDelay
-			end
-			return baseAntiTheft(player, itemId)
+		return Tutorial.ShelfLuck
+	end)
+	-- L-112 : antivol raccourci de l'objet du tuto posé pendant le tuto (les 5 s du 1er colis d'avant).
+	local baseAntiTheft = UnboxService.GetAntiTheftDelay
+	UnboxService.GetAntiTheftDelay = function(player: Player, itemId: string): number
+		if itemId == Tutorial.GuaranteedItemId and inTutorialHeist(player) then
+			return Tutorial.AntiTheftDelay
 		end
-	end
-
-	local baseLuck = UnboxService.GetLuck
-	UnboxService.GetLuck = function(player: Player, box: Box): number
-		if box.ItemId == Tutorial.GuaranteedItemId then
-			return 0
-		end
-		return baseLuck(player, box)
+		return baseAntiTheft(player, itemId)
 	end
 end
 
@@ -1611,13 +1594,13 @@ local function onBroken(info: WindowService.BreakInfo)
 end
 
 local function onCarryStarted(player: Player, payload: any)
-	if type(payload) ~= "table" or (payload.Kind ~= "NPCBox" and not (SHELF_OPEN and payload.Kind == "NPCItem")) then
+	if type(payload) ~= "table" or payload.Kind ~= "NPCItem" then
 		return
 	end
 	logFunnel(player, FUNNEL_GRAB)
 	local session = sessions[player]
 	if session then
-		-- Seulement un magasin de la zone du tuto (pas un colis venu d'ailleurs, le camion par exemple).
+		-- Seulement un magasin de la zone du tuto (pas un objet venu d'ailleurs, le camion par exemple).
 		local storeId = payload.StoreId
 		local store = if type(storeId) == "string" then StoreHeistService.GetStoreModel(storeId) else nil
 		if store and store:GetAttribute(ZONE_ATTRIBUTE) == Tutorial.TutorialZone then
@@ -1628,8 +1611,8 @@ local function onCarryStarted(player: Player, payload: any)
 end
 
 local function onCarryEnded(player: Player, _payload: any, result: string, _reason: string)
-	-- « Consumed » : colis rangé dans l'inventaire, l'étape suit par OnBoxStowed (le profil n'a pas
-	-- encore le colis ici).
+	-- « Consumed » : objet rangé dans l'inventaire, l'étape suit par OnItemStowed (le profil n'a pas
+	-- encore l'objet ici).
 	if result == "Consumed" then
 		return
 	end
@@ -1639,30 +1622,8 @@ local function onCarryEnded(player: Player, _payload: any, result: string, _reas
 	end
 end
 
--- Colis rangé dans l'inventaire à l'entrée de la zone safe (L-089) : funnel 5.
-local function onBoxStowed(player: Player, _boxUid: string, _box: Box)
-	logFunnel(player, FUNNEL_SAFE)
-	local session = sessions[player]
-	if session then
-		evaluate(session)
-	end
-end
-
-local function onBoxPlaced(player: Player, _boxUid: string, _box: Box)
-	logFunnel(player, FUNNEL_SAFE)
-	logFunnel(player, FUNNEL_PLACED)
-	local session = sessions[player]
-	local data = DataService.Get(player)
-	if session and data and session.step <= STEP_PLACE then
-		setStep(session, data, STEP_DISPLAY, "colis posé au sol")
-	end
-	if session then
-		evaluate(session)
-	end
-end
-
--- Features.ShelfOpen (L-112) : objet rapporté, rangé dans l'inventaire à l'entrée de la zone safe
--- (funnel 5), puis posé au sol de sa boutique sous antivol (funnel 6 ; étape 4 → 5, comme un colis posé).
+-- L-112 : objet rapporté, rangé dans l'inventaire à l'entrée de la zone safe
+-- (funnel 5), puis posé au sol de sa boutique sous antivol (funnel 6 ; étape 4 → 5).
 local function onItemStowed(player: Player, _itemUid: string, _itemId: string)
 	logFunnel(player, FUNNEL_SAFE)
 	local session = sessions[player]
@@ -1679,18 +1640,6 @@ local function onItemPlaced(player: Player, _itemUid: string, _itemId: string)
 	if session and data and session.step <= STEP_PLACE then
 		setStep(session, data, STEP_DISPLAY, "objet posé au sol")
 	end
-	if session then
-		evaluate(session)
-	end
-end
-
-local function onBoxOpened(player: Player, _boxUid: string, itemUid: string, _itemId: string)
-	logFunnel(player, FUNNEL_REVEALED)
-	local data = DataService.Get(player)
-	if data and isDisplayed(data, itemUid) then
-		logFunnel(player, FUNNEL_DISPLAYED)
-	end
-	local session = sessions[player]
 	if session then
 		evaluate(session)
 	end
@@ -1759,14 +1708,14 @@ local function tick(dt: number)
 		evaluate(session)
 	end
 	for player, logged in funnels do
-		if logged[FUNNEL_SAFE] and logged[FUNNEL_DISPLAYED] and logged[FUNNEL_TOOL] and (not SHELF_OPEN or logged[FUNNEL_REVEALED]) then
+		if logged[FUNNEL_SAFE] and logged[FUNNEL_DISPLAYED] and logged[FUNNEL_TOOL] and logged[FUNNEL_REVEALED] then
 			continue
 		end
 		local data = DataService.Get(player)
 		if data == nil then
 			continue
 		end
-		if SHELF_OPEN and not logged[FUNNEL_REVEALED] then
+		if not logged[FUNNEL_REVEALED] then
 			-- L-112 : funnel 7 au premier objet libre (antivol fini, ou repris « UNLOCKED! ») : l'équivalent
 			-- de l'ouverture en base, entre la pose (6) et l'exposition (8).
 			local now = serverNow()
@@ -1867,13 +1816,8 @@ function TutorialService.Init()
 	WindowService.OnBroken(onBroken)
 	CarryService.OnCarryStarted(onCarryStarted)
 	CarryService.OnCarryEnded(onCarryEnded)
-	UnboxService.OnBoxStowed(onBoxStowed)
-	UnboxService.OnBoxPlaced(onBoxPlaced)
-	UnboxService.OnBoxOpened(onBoxOpened)
-	if SHELF_OPEN then
-		UnboxService.OnItemStowed(onItemStowed)
-		UnboxService.OnItemPlaced(onItemPlaced)
-	end
+	UnboxService.OnItemStowed(onItemStowed)
+	UnboxService.OnItemPlaced(onItemPlaced)
 	DisplayService.OnCashOut(onCashOut)
 	local botApi = Bot
 	if botApi then

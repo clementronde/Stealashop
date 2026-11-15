@@ -22,7 +22,8 @@
 --     RunBanner (L-092 3a) : entrée 0 → 1,18 → 1 par un UIScale passager (RunBanner.ScaleName),
 --     puis il bat (+5 %) et penche (± 1,5°) au rythme des bords ; à la fin, UIScale détruit et
 --     Rotation d'origine remise. Motion.KeepScale l'écarte de l'échelle de Motion.Open.
---   - Arrivée en zone safe avec un colis (L-095 point 4, SafeFlash ; remote BoxSecured d'UnboxService) :
+--   - Arrivée en zone safe (L-095 point 4, SafeFlash ; le remote BoxSecured du colis porté est retiré
+--     en vague 52, seul ItemSecured reste) :
 --     Heist_SafeFlash puis Heist_Escape ; champ de vision rendu d'un coup par la poursuite, + FovAdd puis
 --     retour ; UI_Escape allumé : Flash de FlashFrom à 1, Banner de 0 à 1 (Back Out), Title de TitleFrom
 --     à sa Rotation, BoxIcon (Image = ICON_BOX_<Rareté>, sinon ICON_BOX_<Tier>) et Subtitle l'un après l'autre ; au bout de Hold
@@ -749,24 +750,18 @@ function UiFeelController.Start()
 	end
 	chase = sibling("ChaseController")
 	RunService.Heartbeat:Connect(step)
-	-- Colis mis à l'abri en zone safe (UnboxService, remote BoxSecured) : l'arrivée en zone safe. Un
-	-- arbre sans ce remote (ancien Net/Definitions) : rien.
+	-- Vague 46 : objet sorti d'un colis, mis à l'abri en zone safe (UnboxService, remote ItemSecured) ;
+	-- aussi un objet volé déposé chez soi (PvPService, a158). Vague 52 (a170) : le remote BoxSecured (colis
+	-- porté) est retiré. Un arbre sans ItemSecured : rien.
 	task.spawn(function()
 		local wired = pcall(function()
-			local Net = require(Shared:WaitForChild("Net"):WaitForChild("Net")) :: any
-			Net.Client.BoxSecured:Connect(function(tier: string, rarity: string?)
-				UiFeelController.Escape(tier, rarity)
-			end)
-		end)
-		-- Vague 46 : objet sorti d'un colis, mis à l'abri en zone safe (UnboxService, remote ItemSecured).
-		pcall(function()
 			local Net = require(Shared:WaitForChild("Net"):WaitForChild("Net")) :: any
 			Net.Client.ItemSecured:Connect(function(itemId: string)
 				UiFeelController.Escape(nil, nil, itemId)
 			end)
 		end)
 		if not wired and IS_STUDIO then
-			print("[UiFeel] remote BoxSecured absent : pas d'arrivée en zone safe (UI_Escape)")
+			print("[UiFeel] remote ItemSecured absent : pas d'arrivée en zone safe (UI_Escape)")
 		end
 	end)
 

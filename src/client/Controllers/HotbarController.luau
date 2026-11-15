@@ -6,25 +6,24 @@
 --
 -- Une seule source : InventoryController. Il lit l'état (attribut InventoryState du Player), trouve
 -- l'outil de casse et la batte, et fait les actions ; la barre ne fait que les montrer et les appeler
--- (GetInventory, GetTools, OnChanged, ToggleBreakingTool, ToggleBat, StartPlacing, StopPlacing,
--- PlaceItem). Les touches restent écoutées par InventoryController, qui les passe à la barre
+-- (GetInventory, GetTools, OnChanged, ToggleBreakingTool, ToggleBat, PlaceItem, HoldItem). Les touches restent écoutées par InventoryController, qui les passe à la barre
 -- (SetSlotKeys) : une seule écoute, jamais deux actions pour une touche.
 --
 -- Cases stables, rangées par le joueur (vague 25, retour du Play de Cantin du 2026-11-11 ; décision
 -- d'Ironix) : la disposition = HotbarLayout.Size (6) cases, chacune "Tool" (outil de casse), "Bat"
--- (batte), l'uid d'un colis de l'inventaire (pas posé) ou d'un objet de l'inventaire (pas exposé), ou
--- vide (Shared/HotbarLayout) :
---   - chaque chose garde sa case tant qu'elle est dans l'inventaire. Partie (colis posé, objet exposé,
---     ouvert, volé), sa case devient vide : rien ne se décale. Une chose nouvelle (arrivée pendant la
+-- (batte), l'uid d'un objet de l'inventaire (pas exposé), ou vide (Shared/HotbarLayout ; vague 52, a170 :
+-- plus de colis dans la barre, le colis porté n'existe plus) :
+--   - chaque chose garde sa case tant qu'elle est dans l'inventaire. Partie (objet exposé, posé au sol,
+--     volé), sa case devient vide : rien ne se décale. Une chose nouvelle (arrivée pendant la
 --     partie, ou revenue d'un présentoir) prend la première case vide montrée ; s'il n'y en a pas, elle
 --     reste seulement dans l'écran d'inventaire ;
 --   - au chargement : la disposition sauvegardée (attribut HotbarLayout du Player, posé par HotbarService
 --     au chargement du profil) ; ce qui n'existe plus devient une case vide, ce qui est dans l'inventaire
 --     sans case y reste (pas « nouveau »). Rien de sauvegardé (texte vide, ou attribut toujours absent
---     LAYOUT_WAIT s après l'inventaire) : outil, batte, puis les colis (le plus récent d'abord) et les
+--     LAYOUT_WAIT s après l'inventaire) : outil, batte, puis les
 --     objets (ordre d'InventoryService, les plus rentables d'abord) dans les cases suivantes ;
---   - glisser-déposer, souris et doigt : une carte de UI_Inventory (objet de l'inventaire, colis pas
---     posé, outil : n'importe quel outil de casse donne "Tool", la batte "Bat") lâchée sur une case la
+--   - glisser-déposer, souris et doigt : une carte de UI_Inventory (objet de l'inventaire,
+--     outil : n'importe quel outil de casse donne "Tool", la batte "Bat") lâchée sur une case la
 --     remplace (l'ancienne chose retourne seulement dans l'inventaire ; si la chose avait déjà une case,
 --     celle-ci se vide) ; une case lâchée sur une autre : échange ; lâchée hors de Bar : case vidée.
 --     Le glisser commence après DRAG_PIXELS de déplacement (ou, au doigt, après HOLD_TIME sans bouger :
@@ -40,19 +39,18 @@
 --   - Bar (en bas au centre) : SlotCount cases sur PC, TouchSlotCount sur téléphone (attributs de Bar
 --     posés par Clément, au plus HotbarLayout.Size ; écran tactile sans clavier = téléphone, règle de
 --     ShatterController ; les cases suivantes sont gardées mais pas montrées). Une case = une copie de
---     Bar.Template nommée Slot_<clé> (Slot_Tool, Slot_Bat, Slot_Box_<uid>, Slot_Item_<uid>, et
+--     Bar.Template nommée Slot_<clé> (Slot_Tool, Slot_Bat, Slot_Item_<uid>, et
 --     Slot_Empty_<rang> pour une case vide), LayoutOrder = son rang ;
---   - chaque case : Icon = ICON_TOOL_<Id>, ICON_TOOL_Bat, ICON_BOX_<Tier> ou ICON_<ItemId> (Contract/
---     Icons ; pas livrée : l'image du Template pour un outil ou un colis, rien pour un objet ; rien sur
+--   - chaque case : Icon = ICON_TOOL_<Id>, ICON_TOOL_Bat ou ICON_<ItemId> (Contract/
+--     Icons ; pas livrée : l'image du Template pour un outil, rien pour un objet ; rien sur
 --     une case vide), KeyLabel = son numéro (caché sur téléphone), ItemName = le nom (« Fists »,
---     « Premium Box », nom de l'objet ; vide sur une case vide), Income = « $X/s » pour un objet seulement
+--     nom de l'objet ; vide sur une case vide), Income = « $X/s » pour un objet seulement
 --     ($/s de l'objet, mutation comprise, calculé par le serveur avec Formulas.ItemIncome), caché sinon ;
 --     Clip.BackgroundColor3 = couleur de la rareté assombrie de 45 % et Clip.Glow à la couleur de la
---     rareté (colis et objets ; les outils et les cases vides gardent le fond du modèle) ; Equipped sur
---     l'outil en main ou le colis en cours de pose ;
+--     rareté (objets ; les outils et les cases vides gardent le fond du modèle) ; Equipped sur
+--     l'outil en main ou l'objet en cours de pose au sol ;
 --   - touches 1 à SlotCount (1 à TouchSlotCount sur téléphone), clic ou appui sur une case : outil de
---     casse ou batte en main, ou rangé s'il y était ; colis : mode pose (InventoryController.StartPlacing),
---     ou fin du mode pose s'il était en cours pour ce colis ; objet : EN MAIN (agent a142, demande de
+--     casse ou batte en main, ou rangé s'il y était ; objet : EN MAIN (agent a142, demande de
 --     Cantin du 2026-11-14 : InventoryController.HoldItem, remote HoldItem, HeldItemService fait le Tool à la
 --     taille du présentoir), rangé si on re-choisit sa case ou si on en choisit une autre ; sous antivol, en
 --     main ET en mode pose au sol ; pour l'exposer : PlaceButton de l'écran d'inventaire ou Equip Best (avant
@@ -124,8 +122,6 @@ type InventoryApi = {
 	SetCardDrag: (hooks: CardDrag?) -> (),
 	ToggleBreakingTool: () -> (),
 	ToggleBat: () -> (),
-	StartPlacing: (boxUid: string) -> (),
-	StopPlacing: () -> (),
 	PlaceItem: (itemUid: string) -> (),
 	HoldItem: ((itemUid: string) -> ())?, -- agent a142 : objet en main ou rangé (absent : PlaceItem, comme avant)
 	NeedsAction: ((uid: string) -> boolean)?, -- vague 34 : pastille SlotAlert (absente : éteinte)
@@ -133,12 +129,12 @@ type InventoryApi = {
 type ChaseApi = { IsChased: () -> boolean }
 type NotifyApi = { Show: (message: string, kind: string?) -> () }
 
--- "Tool", "Bat", "Box", "Item" ou "Empty" (une chaîne : l'ancien solveur suit mal les unions de chaînes fixes).
+-- "Tool", "Bat", "Item" ou "Empty" (une chaîne : l'ancien solveur suit mal les unions de chaînes fixes).
 type Kind = string
 
 -- Ce que montre une case.
 type Slot = {
-	key: string, -- Tool, Bat, Box_<uid>, Item_<uid>, Empty_<rang>
+	key: string, -- Tool, Bat, Item_<uid>, Empty_<rang>
 	id: string, -- identifiant de la disposition : "Tool", "Bat", uid, "" (vide)
 	kind: Kind,
 	uid: string?,
@@ -165,7 +161,7 @@ type Screen = {
 	gui: ScreenGui,
 	bar: Instance,
 	template: GuiButton,
-	templateIcon: string, -- image de l'Icon du Template (outil ou colis sans icône livrée)
+	templateIcon: string, -- image de l'Icon du Template (outil sans icône livrée)
 	views: { [string]: View },
 	connections: { RBXScriptConnection },
 }
@@ -207,17 +203,13 @@ local TOOL_ID_ATTRIBUTE = "ToolId" -- ToolService : l'outil de casse
 local BAT_ATTRIBUTE = "BatTool" -- ToolService : la batte
 local TOOL_ICON_PREFIX = "TOOL_" -- « ICON_TOOL_Fists » (L-090)
 local BAT_ICON = "TOOL_Bat" -- « ICON_TOOL_Bat » (L-092 2a)
-local BOX_ICON_PREFIX = "BOX_" -- « ICON_BOX_Premium » (L-089)
--- Noms des cartes de UI_Inventory (InventoryController) : Item_<uid>, Box_<uid>, Tool_<Id>, Tool_Bat.
+-- Noms des cartes de UI_Inventory (InventoryController) : Item_<uid>, Tool_<Id>, Tool_Bat.
 local CARD_ITEM = "Item_"
-local CARD_BOX = "Box_"
 local CARD_TOOL = "Tool_"
 local CARD_BAT = "Tool_Bat"
 
--- Textes, en anglais (L-036) : prototype de Clément (« $22.5K/s », « Crown equipped! ») ; « Premium Box »
--- V0 proposé, absent du doc.
+-- Textes, en anglais (L-036) : prototype de Clément (« $22.5K/s », « Crown equipped! »).
 local INCOME_TEXT = "%s/s"
-local BOX_NAME = "%s Box"
 local EQUIPPED_TEXT = "%s equipped!"
 local SUCCESS_KIND = "Success" -- catégorie du message vert (NotifyController, UI_Toast)
 local EQUIP_SOUND = "UI_Equip" -- ReplicatedStorage/Assets/Sounds/UI/UI_Equip
@@ -415,9 +407,8 @@ local function emptySlot(rank: number): Slot
 	}
 end
 
--- Ce qui peut aller dans la barre (outil, batte, colis pas posés, objets pas exposés), par identifiant,
--- et l'ordre de la disposition de départ et des arrivées : colis du plus récent au plus ancien, puis
--- objets (ordre d'InventoryService).
+-- Ce qui peut aller dans la barre (outil, batte, objets pas exposés), par identifiant, et l'ordre de la
+-- disposition de départ et des arrivées : objets (ordre d'InventoryService).
 local function readStock(api: InventoryApi): ({ [string]: Slot }, { Slot }, boolean)
 	local tools = api.GetTools()
 	local held = tools.Held
@@ -458,26 +449,6 @@ local function readStock(api: InventoryApi): ({ [string]: Slot }, { Slot }, bool
 		end
 		local ok, result = pcall(needsAction, uid)
 		return ok and result == true
-	end
-	for _, box in current.Boxes do
-		if not box.Placed then
-			local slot: Slot = {
-				key = "Box_" .. box.Uid,
-				id = box.Uid,
-				kind = "Box",
-				uid = box.Uid,
-				name = string.format(BOX_NAME, box.Tier),
-				-- ICON_BOX_<Rareté> (a79, L-097 point 3), sinon ICON_BOX_<Tier>
-				icon = if textureOf(BOX_ICON_PREFIX .. box.Rarity) then BOX_ICON_PREFIX .. box.Rarity else BOX_ICON_PREFIX .. box.Tier,
-				rarity = box.Rarity,
-				income = nil,
-				equipped = placingUid == box.Uid,
-				antiTheft = false,
-				alert = alertOf(box.Uid),
-			}
-			found[box.Uid] = slot
-			table.insert(order, 1, slot) -- InventoryService : le plus ancien d'abord ; ici le plus récent d'abord
-		end
 	end
 	for _, item in current.Items do
 		local def = Items.ById[item.ItemId]
@@ -654,12 +625,6 @@ local function use(slot: Slot)
 		api.ToggleBreakingTool()
 	elseif kind == "Bat" then
 		api.ToggleBat()
-	elseif kind == "Box" and uid then
-		if api.GetState().Placing == uid then
-			api.StopPlacing()
-		else
-			api.StartPlacing(uid)
-		end
 	elseif kind == "Item" and uid then
 		local hold = api.HoldItem
 		if hold then
@@ -968,13 +933,11 @@ local function cardId(key: string): string?
 		return HotbarLayout.Tool -- n'importe quel outil de casse : la case de l'outil de casse
 	end
 	local uid: string? = nil
-	if string.sub(key, 1, #CARD_BOX) == CARD_BOX then
-		uid = string.sub(key, #CARD_BOX + 1)
-	elseif string.sub(key, 1, #CARD_ITEM) == CARD_ITEM then
+	if string.sub(key, 1, #CARD_ITEM) == CARD_ITEM then
 		uid = string.sub(key, #CARD_ITEM + 1)
 	end
 	if uid and stock[uid] ~= nil then
-		return uid -- pas un objet exposé ni un colis posé
+		return uid -- pas un objet exposé
 	end
 	return nil
 end

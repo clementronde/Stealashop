@@ -57,10 +57,6 @@ local MAX_INDEX = 100
 -- V0 proposé, absent du doc : longueur maximale d'un message Notify.
 local MAX_MESSAGE_LENGTH = 200
 
--- V0 proposé, absent du doc : borne de sécurité du nombre de crans d'amélioration d'un colis
--- (6 = de Commun à Secret). La vraie limite est Config.Unbox.UpgradeMax (2).
-local MAX_UPGRADES = 6
-
 local function id(name: string): ArgSpec
 	return { Name = name, Kind = "string", Max = MAX_ID_LENGTH }
 end
@@ -105,10 +101,10 @@ local List: { RemoteDef } = {
 		RatePerSecond = 5, -- V0 proposé, absent du doc ; maintien vérifié par le service
 	},
 	{
-		-- L-089 (2026-11-09) : boxUid = uid du colis de l'inventaire (Boxes du profil, montré par l'attribut
-		-- InventoryState du Player depuis la vague 21) ; point = point du monde visé sur le sol de sa
-		-- boutique. Le serveur cherche lui-même le sol sous ce point (Bounds de SA boutique, à portée, ni sur un colis, ni sur un présentoir, ni
-		-- dans le décor). Avant : slotIndex d'un présentoir (L-086), d'un établi avant.
+		-- Vague 52 (a170) : depuis la fin du colis porté (a158), boxUid = uid d'un objet sous antivol de
+		-- l'inventaire (Items du profil, AntiTheft) ; le nom du remote et de l'argument restent. point = point du
+		-- monde visé sur le sol de sa boutique. Le serveur cherche lui-même le sol sous ce point (Bounds de SA
+		-- boutique, à portée, ni sur un autre objet posé, ni sur un présentoir, ni dans le décor).
 		Name = "PlaceBox",
 		Direction = "ClientToServer",
 		Reliable = true,
@@ -116,7 +112,8 @@ local List: { RemoteDef } = {
 		RatePerSecond = 4, -- V0 proposé, absent du doc
 	},
 	{
-		-- L-089 : boxUid = uid d'un colis posé au sol de sa boutique (attribut BoxUid de son modèle).
+		-- Vague 52 (a170) : boxUid = uid d'un objet posé au sol de sa boutique, débloqué (attribut ItemUid du
+		-- modèle FloorItem) : le serveur le reprend (a152 : en main, sinon dans l'inventaire).
 		Name = "OpenBox",
 		Direction = "ClientToServer",
 		Reliable = true,
@@ -334,38 +331,7 @@ local List: { RemoteDef } = {
 			{ Name = "itemId", Kind = "string", Max = MAX_ID_LENGTH, Optional = true },
 		},
 	},
-	{
-		-- L-089 : boxUid = uid du colis posé au sol dont l'attente est finie (avant : slotIndex).
-		Name = "BoxReady",
-		Direction = "ServerToClient",
-		Reliable = true,
-		Args = { id("boxUid") },
-	},
-	{
-		-- Seulement après OpenBox : l'identité de l'objet n'est jamais envoyée avant (5.7).
-		-- Ouverture v2 (DEV-050, 2026-11-07) : itemId = l'objet final, après l'amélioration du
-		-- colis ; zone et tier = ceux du colis (composition du rouleau, revenu du Secret) ;
-		-- startRarity = la rareté du colis avant amélioration ; upgrades = le nombre de crans
-		-- réussis, chacun monte d'une rareté (le client en déduit les raretés des crans).
-		-- Mutations (DEV-131, L-084) : mutationSize et mutationEffect = Id de Config/Mutations de
-		-- l'objet ouvert (nom et revenu de l'écran d'ouverture), nil sans mutation dans la famille.
-		-- L-089 : boxUid = uid du colis ouvert, posé au sol (avant : slotIndex d'un présentoir) ; l'objet
-		-- va dans l'inventaire.
-		Name = "UnboxReveal",
-		Direction = "ServerToClient",
-		Reliable = true,
-		Args = {
-			id("boxUid"),
-			id("itemUid"),
-			id("itemId"),
-			{ Name = "zone", Kind = "int", Min = 1, Max = MAX_INDEX },
-			id("tier"),
-			id("startRarity"),
-			{ Name = "upgrades", Kind = "int", Min = 0, Max = MAX_UPGRADES },
-			{ Name = "mutationSize", Kind = "string", Max = 32, Optional = true },
-			{ Name = "mutationEffect", Kind = "string", Max = 32, Optional = true },
-		},
-	},
+	-- Vague 52 (a170) : BoxReady et UnboxReveal (colis posé puis ouvert en base) retirés.
 	{
 		-- Guidage du tuto (DEV-046, TutorialService) : step = étape en cours, 0 = plus de tuto (tout
 		-- cacher) ; hint = clé de Config.Tutorial.Hints à afficher à la place de la bulle de l'étape
@@ -420,20 +386,7 @@ local List: { RemoteDef } = {
 		},
 		RatePerSecond = 4, -- V0 proposé, absent du doc (Config/Settings.SaveRate) ; le client attend 0,5 s entre deux envois
 	},
-	{
-		-- Ajout de la vague 24 (L-095 point 4), absent du tableau 9.4 : le colis volé du joueur vient d'être
-		-- mis à l'abri en zone safe (UnboxService, rangé dans l'inventaire). tier = Tier du colis (Standard,
-		-- Premium, Luxe). UiFeelController joue l'arrivée en zone safe (UI_Escape, SafeFlash) avec
-		-- l'icône ICON_BOX_<rarity>, sinon ICON_BOX_<tier> (rarity ajouté par a79, L-097 point 3 : rareté du
-		-- colis, déjà visible de tous sur son étiquette). Rien de sensible : effet visuel du seul joueur concerné.
-		Name = "BoxSecured",
-		Direction = "ServerToClient",
-		Reliable = true,
-		Args = {
-			{ Name = "tier", Kind = "string", Max = 16 },
-			{ Name = "rarity", Kind = "string", Max = 16, Optional = true },
-		},
-	},
+	-- Vague 52 (a170) : BoxSecured (colis porté mis à l'abri) retiré ; l'objet a ItemSecured.
 	{
 		-- Ajout de la vague 25 (retour du Play de Cantin du 2026-11-11), absent du tableau 9.4 : le joueur a
 		-- rangé sa barre du bas UI_Hotbar (HotbarController, glisser-déposer). slot1 à slot6 = identifiant de
@@ -591,7 +544,7 @@ local List: { RemoteDef } = {
 		},
 	},
 	{
-		-- Vague 31 (L-112, Features.ShelfOpen) : lancer l'ouverture d'un colis du rayon. Deux appels, comme GrabItem
+		-- Vague 31 (L-112) : lancer l'ouverture d'un colis du rayon. Deux appels, comme GrabItem
 		-- (Cantin, 2026-11-13) : début du maintien, puis fin (GrabTime du type du colis). slotId = même format
 		-- que GrabItem (attribut SlotId du colis). StoreHeistService décide de
 		-- tout (magasin ouvert, joueur dedans, colis fermé, témoins) et tire la chance. Même forme que GrabItem.

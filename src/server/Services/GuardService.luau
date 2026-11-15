@@ -3,7 +3,7 @@
 -- (Partie 1, sections 4, 5.5 et 9.7 ; animations : 2.4 et liaison 3.2).
 --
 -- Déroulé d'un vigile :
---   1. Apparition. Règle de Clément (L-118, Features.ShelfOpen) : à la fin du chrono du magasin,
+--   1. Apparition. Règle de Clément (L-118) : à la fin du chrono du magasin,
 --      StoreHeistService appelle ChaseIntruder pour chaque intrus ; le vigile sort du GuardSpawn et le
 --      poursuit, qu'il porte un objet ou non (pas d'abandon parce qu'il ne porte rien). Et (Cantin,
 --      2026-11-13, a114, revient en partie sur L-118) : la PRISE d'un objet sorti sur le rayon (NPCItem)
@@ -110,7 +110,7 @@
 --     Sauf un objet lié (a114, plus bas) : son vigile fait demi-tour, ou un autre ressort.
 --   - Les vigiles de nuit ne suivent pas les colis : ils poursuivent toute personne dans le couloir.
 --
--- Objet lié (Cantin, 2026-11-13, a114 ; Features.ShelfOpen) : un objet sorti d'un colis d'un magasin PNJ
+-- Objet lié (Cantin, 2026-11-13, a114) : un objet sorti d'un colis d'un magasin PNJ
 -- (payload NPCItem ; jamais le camion, un objet volé à un joueur, un colis de l'ancien déroulé) est lié au
 -- vigile de jour sorti à sa prise sur le rayon (ou, si le preneur était déjà poursuivi par un vigile de
 -- jour, à celui-là), puis au vigile de jour qui poursuit son porteur. Ce vigile s'en occupe jusqu'à ce que
@@ -1152,8 +1152,8 @@ local function releaseFollow(guard: Guard)
 	end
 end
 
--- a114 (objet lié) : un objet sorti d'un colis d'un magasin PNJ, hors camion. Seulement avec
--- Features.ShelfOpen (l'ancien déroulé ne porte que des colis NPCBox : rien ne change pour lui).
+-- a114 (objet lié) : un objet sorti d'un colis d'un magasin PNJ, hors camion (l'ancien déroulé, qui ne portait que des
+-- colis NPCBox, est parti avec Features.ShelfOpen, vague 53).
 local function linkable(payload: any): boolean
 	return type(payload) == "table"
 		and payload.Kind == "NPCItem"
@@ -3255,6 +3255,13 @@ end
 -- Le colis que suit le vigile vient d'être ramassé par `player` : nouvelle poursuite, comme un
 -- vigile qui vient d'apparaître (Wait : REACTION_DELAY s sans capture, puis Chase).
 local function retarget(guard: Guard, player: Player)
+	-- Vague 53 (point d'a157) : ramassé en zone safe, aucune poursuite ne repart ; le vigile qui suivait le
+	-- colis au sol l'abandonne et rentre, celui qui rentrait continue.
+	local body = bodyOf(player)
+	if body and isInSafeZone(body.Position) then
+		giveUp(guard, `{player.Name} est en zone safe`)
+		return
+	end
 	local other = chasedBy[player]
 	if other and other ~= guard then
 		giveUp(other, "cible reprise par le vigile du colis ramassé")
@@ -3321,6 +3328,11 @@ end
 -- parti ou occupé, un vigile du même magasin ressort pour lui (voir l'en-tête, « Objet lié »).
 local function onLinkedPickup(player: Player, payload: any, link: Link)
 	link.carrier = player
+	local body = bodyOf(player)
+	if body and isInSafeZone(body.Position) then
+		log(`{player.Name} reprend un objet lié en zone safe : aucun vigile ne repart`)
+		return -- vague 53 (point d'a157) : ni demi-tour, ni nouveau vigile
+	end
 	local guard = link.guard
 	local other = chasedBy[player]
 	if guard and guard.alive then
@@ -3355,8 +3367,8 @@ local function onCarryStarted(player: Player, payload: any)
 	-- sa prise, comme un colis (Cantin, 2026-11-13, a114 : rétabli, lié à l'objet) ; tombé au sol (coup de
 	-- batte, lâché, ou porteur attrapé : CarryService.Fail « Caught » le lâche, résultat « Dropped »), il
 	-- suit les mêmes règles qu'un colis tombé, plus celles de l'objet lié.
-	if type(payload) ~= "table" or (payload.Kind ~= "NPCBox" and payload.Kind ~= "NPCItem") then
-		return -- seuls les colis PNJ et les objets sortis de ces colis ont un vigile (5.5)
+	if type(payload) ~= "table" or payload.Kind ~= "NPCItem" then
+		return -- seuls les objets sortis d'un colis PNJ ont un vigile (5.5 ; vague 50 : plus de colis porté fermé, NPCBox)
 	end
 	if droppedPayloads[payload] then
 		-- Ramassé au sol (6.2) : le vigile qui suivait ce colis change de cible ; sinon le vigile lié à

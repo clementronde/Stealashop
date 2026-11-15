@@ -22,7 +22,8 @@ local Animations = {}
 Animations.FolderName = "Animations"
 Animations.PlayerFolder = { "Assets", "Animations", "Player" }
 
--- 12 animations du joueur (14 avant le retrait de BenchLift et de BenchIdle, v2).
+-- 13 animations du joueur (15 avant le retrait d'Unbox et de Celebrate, vague 52 ; BenchLift et BenchIdle
+-- retirés en v2).
 Animations.Player = {
 	{ Name = "HitWindow", Loop = false, Priority = "Action", Marker = "Impact" },
 	{ Name = "HitWindowHeavy", Loop = false, Priority = "Action", Marker = "Impact" },
@@ -33,8 +34,8 @@ Animations.Player = {
 	{ Name = "TreadmillRun", Loop = true, Priority = "Movement" },
 	-- Rééquilibrage v2 (Cantin, 2026-11-14) : plus de banc. BenchLift (marqueur Top) et BenchIdle sortent du
 	-- contrat : le code ne les charge plus ; les objets Animation de Clément peuvent rester dans le dossier.
-	{ Name = "Unbox", Loop = false, Priority = "Action", Marker = "Open" },
-	{ Name = "Celebrate", Loop = false, Priority = "Action" },
+	-- Vague 52 (a170) : Unbox (marqueur Open) et Celebrate sortent du contrat avec l'ouverture des colis en base
+	-- (écran UI_Unbox) : le code ne les joue plus (Animations.Retired).
 	{ Name = "SwingBat", Loop = false, Priority = "Action", Marker = "Impact" },
 	{ Name = "Stunned", Loop = true, Priority = "Action" },
 	{ Name = "Knockback", Loop = false, Priority = "Action", Marker = "Land" },
@@ -95,6 +96,8 @@ Animations.Driver = {
 Animations.Retired = {
 	BenchLift = "banc retiré du jeu (rééquilibrage v2, 2026-11-14)",
 	BenchIdle = "banc retiré du jeu (rééquilibrage v2, 2026-11-14)",
+	Unbox = "ouverture des colis en base retirée (fin du colis porté, 2026-11-15)",
+	Celebrate = "ouverture des colis en base retirée (fin du colis porté, 2026-11-15)",
 } :: { [string]: string }
 
 return Animations

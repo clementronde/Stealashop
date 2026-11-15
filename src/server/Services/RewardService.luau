@@ -29,8 +29,8 @@
 --          l'inventaire ; zone = la plus haute parmi les objets du joueur (zone 1 sans objet), au moins
 --          MinZone ; Notify « Rare Item: <nom> » ; inventaire d'objets plein (DisplayService.HasInventoryRoom) :
 --          rien n'est donné ni noté, la récompense reste à réclamer (Notify ItemsFull). Ce service ne retire
---          ni ne convertit aucun colis déjà dans un profil (DataService, convertBoxes, le fait au chargement
---          avec Features.ShelfOpen) ;
+--          ni ne convertit aucun colis déjà dans un profil (DataService, convertBoxes, le fait au chargement,
+--          sans condition) ;
 --   Boost  MonetizationService.AddCashBoost (×2 argent, compté seulement en jeu, un 2e prolonge le 1er ;
 --          marche aussi boutique Robux coupée).
 -- Idempotence : la vérification, le don et la note de la réclamation (Streak et LastDay, ou

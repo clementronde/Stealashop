@@ -1,6 +1,11 @@
 --!strict
--- CarryService (DEV-017) : le colis ou l'objet porté au-dessus de la tête (Partie 1, sections
+-- CarryService (DEV-017) : l'objet porté au-dessus de la tête (Partie 1, sections
 -- 5.6, 5.5, 6.1, 6.2, 9.3, 9.4 et 9.6).
+--
+-- Vague 50 (a158, décision de Cantin du 2026-11-14) : le colis porté fermé (payload « NPCBox ») n'existe plus.
+-- On ne porte que des objets : sorti d'un colis ouvert sur place (« NPCItem » : rayon de magasin, camion,
+-- coffre de la Fortune Tower) ou volé à un joueur (« PlayerItem »). PlaceDrop (colis posé au sol sans
+-- porteur) est retiré ; dans la suite, « colis » porté ou au sol se lit « objet NPCItem ».
 --
 -- Un seul colis porté à la fois (5.3). Dès qu'un joueur le soulève, il flotte au-dessus de sa
 -- tête, soudé à la tête et sans masse, à la couleur de sa rareté, avec son halo et son étiquette
@@ -14,8 +19,7 @@
 -- la zone safe (UnboxService, L-089), le
 -- dépôt d'un objet volé par PvPService (Consume, raison « Deposited »).
 --
--- Payload (Shared/Types/Carry) : { Kind = "NPCBox", Tier, Zone, Rarity, ItemId, StoreId, SlotId, Mutation? }
--- pour un colis PNJ ; { Kind = "PlayerItem", ItemUid, ItemId, Rarity, Income, VictimUserId,
+-- Payload (Shared/Types/Carry) : { Kind = "PlayerItem", ItemUid, ItemId, Rarity, Income, VictimUserId,
 -- SlotIndex } pour un objet volé à un joueur (DEV-041, PvPService : vitesse fixe, contour rouge,
 -- BB_Carry) ; { Kind = "NPCItem", ItemId, Rarity, Mutation?, Zone, StoreId, SlotId, Luck } pour un objet
 -- sorti d'un colis ouvert sur le rayon d'un magasin PNJ (L-112, StoreHeistService : c'est l'objet qui
@@ -88,28 +92,19 @@
 --       la distance, le temps de prise, la zone safe et les protections (BatService, TruckEventService).
 --   CarryService.IsFallenDrop(dropId) -> boolean
 --       true si `dropId` est encore au sol et y est tombé des mains d'un porteur (Drop, ou Fail
---       "Caught" d'un objet NPCItem), pas posé par PlaceDrop : BatService accepte alors GrabDropped.
+--       "Caught" d'un objet NPCItem) : BatService accepte alors GrabDropped.
 --   CarryService.GetDrop(dropId) -> (Payload?, Vector3?)
 --       Payload et position (point du sol) d'un colis encore au sol ; nil, nil sinon (ramassé,
 --       expiré, inconnu, ou dropId qui n'est pas une chaîne).
 --   CarryService.OnDropExpired(listener) -> déconnexion
 --       listener(dropId, payload, position) quand un colis reste au sol sans être ramassé :
---       Bat.DroppedLifetime secondes (6.2 : 15 s) après un coup de batte, le `lifetime` de PlaceDrop
---       sinon. Le modèle est déjà retiré et GetDrop(dropId) vaut nil. StoreHeistService remet alors
---       sur son rayon un colis de magasin (vol depuis `position`) ; un colis du camion disparaît.
---   Événement camion (liaison L-049, TruckEventService) :
---   CarryService.PlaceDrop(payload, position, lifetime?, attributes?) -> string?
---       Pose au sol à `position` un colis PNJ qu'aucun joueur ne porte : le même colis au sol que
---       Drop (couleur, halo, BB_Box, Workspace/CarryDrops, attribut DropId, PickUpDrop, GetDrop),
---       sans OnCarryEnded. Il expire (OnDropExpired, modèle retiré) au bout de `lifetime` secondes
---       (défaut Bat.DroppedLifetime). `attributes` : posés sur le modèle avant qu'il entre dans la map
---       (lus par le client ; DropId ne se remplace pas). Renvoie le dropId ; nil, avec un
---       avertissement, si le payload est invalide, déjà porté ou au sol, ou n'est pas un colis PNJ.
+--       Bat.DroppedLifetime secondes (6.2 : 15 s). Le modèle est déjà retiré et GetDrop(dropId) vaut nil.
+--       StoreHeistService remet alors sur son rayon un objet de magasin (vol depuis `position`).
 --   Étiquette des colis du rayon (L-031) :
 --   CarryService.AttachBoxLabel(model, rarityId, itemId?, mutation?) -> BillboardGui?
 --       Pose sur `model`, un colis qui n'est pas porté (StoreHeistService : chaque colis du rayon),
---       la même étiquette BB_Box que sur la tête (voir plus bas), à son LabelPoint. itemId nil (vague 32,
---       Features.ShelfOpen : caisse dont le contenu n'est tiré qu'à l'ouverture) : rareté seule. Secret : tag
+--       la même étiquette BB_Box que sur la tête (voir plus bas), à son LabelPoint : rareté seule
+--       (vague 32 ; itemId et mutation ne servent plus qu'à la vérification, vague 53). Secret : tag
 --       CarryRainbow sur l'étiquette seule, CarryController anime sa rareté (le colis du rayon
 --       garde l'aspect de son type). nil, avec un avertissement, si la rareté ou l'objet est
 --       inconnu ; nil si le modèle n'a aucune pièce.
@@ -137,10 +132,8 @@
 --     L-031 ; il règle la hauteur avec le StudsOffset de l'étiquette), sinon à un LabelPoint créé
 --     au sommet du visuel (objet volé, bloc V0) :
 --       colis PNJ : copie de ReplicatedStorage/Assets/UI/BB_Box (contrat 2.2, L-031), la même que
---       sur le rayon : Category = catégorie de l'objet (Items, ligne cachée tant qu'elle est vide),
---       Rarity = nom de la rareté en capitales (« LEGENDARY ») à sa couleur, Mutation = la mutation
---       du payload en capitales (DEV-131, Mutations.Label : « BIG · GOLD »), cachée sans mutation.
---       Vague 32 (Cantin, 2026-11-13), avec Features.ShelfOpen : sur une caisse (rayon, portée, au sol),
+--       sur le rayon : Rarity = nom de la rareté en capitales (« LEGENDARY ») à sa couleur.
+--       Vague 32 (Cantin, 2026-11-13) : sur une caisse (rayon, portée, au sol),
 --       la rareté seule, Category et Mutation cachées (la mutation ne se voit qu'une fois l'objet
 --       sorti, BB_Item). Ni le nom ni l'ItemId de l'objet : il reste secret
 --       jusqu'à l'ouverture (5.7). Taille, décalage, AlwaysOnTop et MaxDistance : ceux de Clément ;
@@ -159,7 +152,6 @@ local Workspace = game:GetService("Workspace")
 local Shared = ReplicatedStorage.Shared
 local Balance = require(Shared.Config.Balance)
 local Bat = require(Shared.Config.Bat)
-local Features = require(Shared.Config.Features)
 local Formulas = require(Shared.Config.Formulas)
 local Items = require(Shared.Config.Items)
 local Mutations = require(Shared.Config.Mutations)
@@ -182,16 +174,12 @@ type Item = Items.Item
 
 -- Noms du contrat (10.4 et 2.2).
 local ASSETS_FOLDER = "Assets"
-local BOX_PREFIX = "BOX_"
 local CARRY_ATTACHMENT = "CarryAttachment"
 local TINT = "Tint"
 local BB_CARRY = "BB_Carry" -- objet volé à un joueur
 local BB_BOX = "BB_Box" -- colis PNJ, sur le rayon comme sur la tête (L-031)
 -- Champ de la mutation : au contrat de BB_Box ; facultatif dans BB_Carry (nom proposé à Clément, DEV-131).
 local MUTATION_FIELD = "Mutation"
--- Vague 32 (Cantin, 2026-11-13), Features.ShelfOpen : sur une caisse (rayon, portée ou au sol), BB_Box ne
--- montre que sa rareté ; la catégorie et la mutation n'apparaissent qu'une fois l'objet sorti (BB_Item).
-local BOX_LABEL_RARITY_ONLY: boolean = Features.ShelfOpen == true
 -- Noms posés par ce service (mêmes noms dans CarryController pour l'attribut et le tag).
 local CARRYING_ATTRIBUTE = "Carrying"
 local SPEED_KEY = "Carry"
@@ -210,8 +198,7 @@ local ACTIVE_GUARDS = "ActiveGuards" -- vigiles en jeu (GuardService), ignorés 
 
 -- Espace (studs) entre le haut de la tête et le dessous du colis : Balance.Carry.HeadGap (V0, L-071).
 local HEAD_GAP: number = Balance.Carry.HeadGap
--- V0 proposé, absent du doc : blocs gris tant que BOX_<Tier> ou ITM_<ItemId> n'est pas livré.
-local PLACEHOLDER_BOX_SIZE = Vector3.new(2, 1.6, 2)
+-- V0 proposé, absent du doc : bloc gris tant que ITM_<ItemId> n'est pas livré.
 local PLACEHOLDER_ITEM_SIZE = Vector3.new(1.2, 1.2, 1.2)
 -- V0 proposé, absent du doc : contour de l'objet volé (6.1), rouge « fermer » de la planche 10.6.
 local OUTLINE_COLOR = Color3.fromHex("#E8413C")
@@ -238,7 +225,7 @@ type Drop = {
 	position: Vector3,
 	lifetime: number, -- secondes au sol avant d'expirer
 	timer: thread,
-	fallen: boolean, -- tombé des mains d'un porteur (Drop, capture), pas posé par PlaceDrop
+	fallen: boolean, -- tombé des mains d'un porteur (Drop, capture) : toujours vrai depuis la vague 50 (plus de PlaceDrop)
 	lockedFor: Player?, -- L-112 : le joueur attrapé, qui ne peut pas le reprendre avant lockedUntil
 	lockedUntil: number, -- os.clock()
 }
@@ -311,16 +298,14 @@ local function keyOf(payload: Payload): any
 end
 
 local function describe(payload: Payload): string
-	if payload.Kind == "NPCBox" then
-		return `colis {payload.Tier} {payload.Rarity} ({payload.StoreId}, {payload.SlotId})`
-	elseif payload.Kind == "NPCItem" then
+	if payload.Kind == "NPCItem" then
 		return `objet {payload.ItemId} ({payload.Rarity}) sorti d'un colis ({payload.StoreId}, {payload.SlotId})`
 	end
 	return `objet {payload.ItemId} ({payload.Rarity}) du joueur {payload.VictimUserId}`
 end
 
--- Objet volé à un joueur : vitesse fixe (Cantin, 2026-11-13) ; sinon −10 % (5.6) : colis PNJ, et objet
--- sorti d'un colis (L-112).
+-- Objet volé à un joueur : vitesse fixe (Cantin, 2026-11-13) ; sinon −10 % (5.6) : objet sorti d'un colis
+-- (L-112 ; Balance.Carry.NPCBoxSpeedMultiplier garde son nom).
 local function applySpeed(player: Player, payload: Payload)
 	if payload.Kind == "PlayerItem" then
 		StatsService.SetFixedSpeed(player, Balance.Carry.StolenItemWalkSpeed)
@@ -359,21 +344,15 @@ local function invalidReason(payload: any): string?
 	if not Mutations.IsValid(payload.Mutation) then
 		return "mutation invalide (Config/Mutations)"
 	end
-	if payload.Kind == "NPCBox" or payload.Kind == "NPCItem" then
-		if payload.Kind == "NPCBox" and Balance.Heist.BoxTiers[payload.Tier] == nil then
-			return `type de colis inconnu ({payload.Tier})`
-		end
+	if payload.Kind == "NPCItem" then
 		local luck = payload.Luck
-		if payload.Kind == "NPCItem" and (type(luck) ~= "number" or not (luck >= 1) or luck == math.huge) then
+		if type(luck) ~= "number" or not (luck >= 1) or luck == math.huge then
 			return `chance invalide ({luck})`
 		end
+		-- Objet sorti (L-112) : le tirage de la sortie peut le prendre dans une zone voisine (StoreHeistService,
+		-- vague 32), Zone reste celle du magasin.
 		if not isInteger(payload.Zone) or Zones[payload.Zone] == nil then
 			return `zone inconnue ({payload.Zone})`
-		end
-		-- Colis : son objet est de la zone du magasin. Objet sorti (L-112) : le tirage de la sortie peut le
-		-- prendre dans une zone voisine (StoreHeistService, vague 32), Zone reste celle du magasin.
-		if payload.Kind == "NPCBox" and item.Zone ~= nil and item.Zone ~= payload.Zone then
-			return `{item.Id} est un objet de la zone {item.Zone}, pas de la zone {payload.Zone}`
 		end
 		if not isText(payload.StoreId) or not isText(payload.SlotId) then
 			return "StoreId ou SlotId manquant"
@@ -454,7 +433,7 @@ local function placeholder(size: Vector3): (Model, BasePart, CFrame)
 end
 
 -- Modèle du visuel, sa pièce d'accroche, le point d'accroche, et true si c'est le bloc V0.
-local function sourceModel(payload: Payload, assetName: string): (Model, BasePart, CFrame, boolean)
+local function sourceModel(assetName: string): (Model, BasePart, CFrame, boolean)
 	local model = cloneAsset(assetName)
 	if model then
 		local anchor, offset = anchorOf(model)
@@ -464,7 +443,7 @@ local function sourceModel(payload: Payload, assetName: string): (Model, BasePar
 		once(`{assetName}.anchor`, `[CarryService] {assetName} ne contient aucune pièce : bloc V0 à la place`, true)
 		model:Destroy()
 	end
-	local block, part, offset = placeholder(if payload.Kind == "NPCBox" then PLACEHOLDER_BOX_SIZE else PLACEHOLDER_ITEM_SIZE)
+	local block, part, offset = placeholder(PLACEHOLDER_ITEM_SIZE)
 	return block, part, offset, true
 end
 
@@ -584,20 +563,16 @@ local function labelPoint(model: Model, anchor: BasePart, top: CFrame): Attachme
 	return point
 end
 
--- Étiquette BB_Box d'un colis PNJ (L-031), sur le rayon comme sur la tête : la catégorie de
--- l'objet (ligne cachée tant qu'elle est vide), la rareté à sa couleur, la mutation (DEV-131,
--- « BIG · GOLD », cachée sans mutation). Jamais le nom ni l'ItemId de l'objet (5.7).
--- Vague 32 : avec Features.ShelfOpen (BOX_LABEL_RARITY_ONLY), ou sans objet (`item` nil : caisse du rayon
--- dont le contenu n'est pas encore tiré), la rareté seule : lignes Category et Mutation cachées.
-local function boxLabel(rarity: Rarity, item: Item?, mutation: Mutations.Mutation?): BillboardGui
+-- Étiquette BB_Box d'un colis PNJ (L-031) : la rareté de la caisse à sa couleur, seule (vague 32,
+-- Cantin, 2026-11-13) ; lignes Category et Mutation cachées, la mutation ne se voit qu'une fois l'objet
+-- sorti (BB_Item). Jamais le nom ni l'ItemId de l'objet (5.7).
+local function boxLabel(rarity: Rarity): BillboardGui
 	local template = labelTemplate(BB_BOX)
 	local gui = if template then template:Clone() :: BillboardGui else placeholderLabel(ShelfBoxes.V0LabelMaxDistance)
 	gui.Name = BB_BOX
-	local shown: Item? = if BOX_LABEL_RARITY_ONLY then nil else item
-	local category = if shown then shown.Category else nil
-	fill(gui, "Category", if category ~= nil and category ~= "" then category else nil)
+	fill(gui, "Category", nil)
 	fill(gui, "Rarity", rarity.DisplayNameUpper, rarity.Color)
-	fill(gui, "Mutation", if shown then Mutations.Label(mutation) else nil)
+	fill(gui, "Mutation", nil)
 	return gui
 end
 
@@ -628,14 +603,12 @@ local function itemLabel(itemId: string, mutation: Mutations.Mutation?, income: 
 	return gui
 end
 
--- Étiquette au-dessus du visuel (voir labelPoint) : BB_Box pour un colis PNJ, BB_Carry pour un
--- objet (volé à un joueur, ou sorti d'un colis).
+-- Étiquette au-dessus du visuel (voir labelPoint) : BB_Carry pour un objet (volé à un joueur, ou sorti
+-- d'un colis). BB_Box ne sert plus qu'aux colis du rayon (AttachBoxLabel).
 local function addLabel(model: Model, anchor: BasePart, top: CFrame, payload: Payload, rarity: Rarity)
 	local point = labelPoint(model, anchor, top)
 	local gui: BillboardGui
-	if payload.Kind == "NPCBox" then
-		gui = boxLabel(rarity, Items.ById[payload.ItemId], payload.Mutation)
-	elseif payload.Kind == "PlayerItem" then
+	if payload.Kind == "PlayerItem" then
 		gui = itemLabel(payload.ItemId, payload.Mutation, payload.Income, rarity)
 	else
 		gui = itemLabel(payload.ItemId, payload.Mutation, npcItemIncome(payload), rarity)
@@ -658,29 +631,18 @@ end
 -- Visuel complet d'un payload (modèle, teinte, halo, étiquette), pas encore placé ni parenté.
 local function buildVisual(payload: Payload): Visual
 	local rarity = Rarities.ById[payload.Rarity]
-	local assetName: string
-	-- Colis PNJ : BOX_<Rareté> de Clément (L-097 point 3), déjà à la couleur de sa rareté, sinon BOX_<Tier>.
-	local byRarity = false
-	if payload.Kind == "NPCBox" then
-		local rarityName = BOX_PREFIX .. payload.Rarity
-		byRarity = findAsset(rarityName) ~= nil
-		assetName = if byRarity then rarityName else BOX_PREFIX .. payload.Tier
-	else
-		assetName = Items.ById[payload.ItemId].Asset
-	end
-	local model, anchor, offset, isPlaceholder = sourceModel(payload, assetName)
+	-- Vague 50 (a158) : ce qui se porte est toujours un objet (ITM_<ItemId>) ; plus de colis BOX_ sur la tête.
+	local assetName: string = Items.ById[payload.ItemId].Asset
+	local model, anchor, offset, isPlaceholder = sourceModel(assetName)
 	model.Name = VISUAL_NAME
 	model.ModelStreamingMode = Enum.ModelStreamingMode.Atomic -- arrive en entier chez les clients
 	prepare(model, anchor)
-	-- Un objet volé garde ses couleurs, BOX_<Rareté> aussi (Tint déjà à la couleur, choix de Clément) ;
-	-- BOX_<Tier> et le bloc V0 prennent celle de la rareté.
-	local paint = isPlaceholder or (payload.Kind == "NPCBox" and not byRarity)
-	if paint and tint(model, rarity.Color) == 0 then
-		once(`{assetName}.{TINT}`, `[CarryService] {assetName} : aucune pièce {TINT} (10.4), colis pas teint à la couleur de sa rareté`, true)
+	-- Un objet garde ses couleurs ; seul le bloc V0 (pièce Tint) prend celle de la rareté.
+	if isPlaceholder then
+		tint(model, rarity.Color)
 	end
 	local height = model:GetExtentsSize().Y
-	local own = if payload.Kind == "NPCBox" and not isPlaceholder then RarityHalo.OwnEffects(model) else RarityHalo.NoEffects
-	RarityHalo.AddCarried(anchor, offset * CFrame.new(0, height / 2, 0), rarity, own)
+	RarityHalo.AddCarried(anchor, offset * CFrame.new(0, height / 2, 0), rarity, RarityHalo.NoEffects)
 	addLabel(model, anchor, offset * CFrame.new(0, height, 0), payload, rarity)
 	if payload.Kind == "PlayerItem" then
 		addOutline(model)
@@ -688,14 +650,12 @@ local function buildVisual(payload: Payload): Visual
 	if rarity.Rainbow then
 		CollectionService:AddTag(model, RAINBOW_TAG)
 	end
-	-- a119 (L-127 point 5) : un objet porté ou lâché (pas un colis) montre sa mutation comme exposé ;
+	-- a119 (L-127 point 5) : un objet porté ou lâché montre sa mutation comme exposé ;
 	-- MutationFxController (client) joue l'effet de Clément sur les modèles taggés CarriedItem.
-	if payload.Kind ~= "NPCBox" then
-		local mutation = Mutations.Sanitize(payload.Mutation)
-		model:SetAttribute("MutationSize", if mutation then mutation.Size else nil)
-		model:SetAttribute("MutationEffect", if mutation then mutation.Effect else nil)
-		CollectionService:AddTag(model, CARRIED_ITEM_TAG)
-	end
+	local mutation = Mutations.Sanitize(payload.Mutation)
+	model:SetAttribute("MutationSize", if mutation then mutation.Size else nil)
+	model:SetAttribute("MutationEffect", if mutation then mutation.Effect else nil)
+	CollectionService:AddTag(model, CARRIED_ITEM_TAG)
 	return { model = model, anchor = anchor, offset = offset }
 end
 
@@ -889,9 +849,9 @@ function CarryService.OnCarryEnded(listener: EndedListener): () -> ()
 end
 
 -- Étiquette BB_Box d'un colis qui n'est pas porté (colis du rayon, L-031) : voir l'en-tête.
--- Vague 32 : `itemId` nil = caisse dont le contenu n'est pas encore tiré (Features.ShelfOpen) : la rareté
--- seule (celle de la caisse).
-function CarryService.AttachBoxLabel(model: Model, rarityId: string, itemId: string?, mutation: Mutations.Mutation?): BillboardGui?
+-- Vague 32 : la rareté seule (celle de la caisse) ; `itemId` (nil : contenu pas encore tiré) et `mutation`
+-- ne sont plus montrés (vague 53).
+function CarryService.AttachBoxLabel(model: Model, rarityId: string, itemId: string?, _mutation: Mutations.Mutation?): BillboardGui?
 	local rarity = Rarities.ById[rarityId]
 	local item: Item? = if itemId ~= nil then Items.ById[itemId] else nil
 	if rarity == nil or (itemId ~= nil and item == nil) then
@@ -903,7 +863,7 @@ function CarryService.AttachBoxLabel(model: Model, rarityId: string, itemId: str
 		return nil
 	end
 	local point = labelPoint(model, anchor, offset * CFrame.new(0, model:GetExtentsSize().Y, 0))
-	local gui = boxLabel(rarity, item, Mutations.Sanitize(mutation))
+	local gui = boxLabel(rarity)
 	if rarity.Rainbow then
 		CollectionService:AddTag(gui, RAINBOW_TAG) -- l'étiquette seule : le colis garde l'aspect de son type
 	end
@@ -912,10 +872,9 @@ function CarryService.AttachBoxLabel(model: Model, rarityId: string, itemId: str
 	return gui
 end
 
--- Colis au sol (DEV-048 : coup de batte, BatService ; camion : PlaceDrop) ------------
+-- Objet au sol (DEV-048, L-112 : coup de batte, capture, lâcher) ---------------------
 
--- Attributs posés sur un colis tombé après un coup de batte, lus par BatController (même nom là-bas).
-local TIER_ATTRIBUTE = "Tier"
+-- Attribut posé sur un objet tombé au sol, lu par BatController (même nom là-bas).
 local BAT_DROP_ATTRIBUTE = "BatDrop"
 
 local function dropsFolder(): Instance
@@ -1032,9 +991,7 @@ end
 function fall(player: Player, carry: Carry, position: Vector3, reason: string): string
 	local payload = carry.payload
 	local attributes: { [string]: any } = { [BAT_DROP_ATTRIBUTE] = true }
-	if payload.Kind == "NPCBox" then
-		attributes[TIER_ATTRIBUTE] = payload.Tier
-	elseif payload.Kind == "NPCItem" then
+	if payload.Kind == "NPCItem" then
 		-- a107 : objet déjà visible, son nom va sur l'invite au sol (BatController), pas « Box ».
 		local mutation = payload.Mutation
 		attributes.ItemId = payload.ItemId
@@ -1079,29 +1036,6 @@ function CarryService.Drop(player: Player, position: Vector3?, reason: string?):
 		at = feetOf(player, carry.humanoid)
 	end
 	return fall(player, carry, at, why)
-end
-
-function CarryService.PlaceDrop(payload: Payload, position: Vector3, lifetime: number?, attributes: { [string]: any }?): string?
-	local problem = invalidReason(payload)
-	if problem == nil and payload.Kind ~= "NPCBox" then
-		problem = "seul un colis PNJ se pose au sol (6.2)"
-	end
-	if problem == nil and held[keyOf(payload)] then
-		problem = `{describe(payload)} déjà porté ou au sol`
-	end
-	if problem == nil and (typeof(position) ~= "Vector3" or position ~= position) then
-		problem = `position invalide ({position})`
-	end
-	if problem then
-		warn(debug.traceback(`[CarryService] PlaceDrop refusé : {problem}`, 2))
-		return nil
-	end
-	local seconds = if type(lifetime) == "number" and lifetime > 0 and lifetime < math.huge then lifetime else Bat.DroppedLifetime
-	local dropId = createDrop(payload, position, seconds, attributes)
-	if IS_STUDIO then
-		print(`[CarryService] {dropId} posé au sol sans porteur pour {seconds} s : {describe(payload)}`)
-	end
-	return dropId
 end
 
 function CarryService.PickUpDrop(player: Player, dropId: string): boolean

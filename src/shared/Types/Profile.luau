@@ -61,7 +61,7 @@ export type Item = {
 	-- plusieurs zones (le Secret) ; absent des objets créés avant le 2026-11-06 (zone 1 par défaut)
 	Mutation: Mutation?, -- DEV-131 (L-084) : mutation tirée avec le colis, gardée au vol ; absent =
 	-- aucune mutation. Champ facultatif, sans changement de version (un objet sans champ = sans mutation)
-	-- Vague 31 (L-112, Features.ShelfOpen ; UnboxService) : objet sorti d'un colis ouvert sur le rayon, ou volé
+	-- Vague 31 (L-112 ; UnboxService) : objet sorti d'un colis ouvert sur le rayon, ou volé
 	-- au sol d'une autre boutique pendant son antivol. Trois champs facultatifs, sans changement de version
 	-- (absents = objet libre, comme avant) :
 	AntiTheft: boolean?, -- true = sous antivol : il ne va sur un présentoir qu'une fois repris « UNLOCKED! »

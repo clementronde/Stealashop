@@ -19,8 +19,8 @@
 --   - HeistTimer(storeId, endsAt) : chrono du braquage, endsAt en heure serveur
 --     (workspace:GetServerTimeNow()), 0 = masqué. Relayé à OnTimer : HudController l'affiche dans
 --     UI_HUD.HeistTimer (DEV-021). En Studio, une ligne dans la sortie à chaque envoi du serveur.
---   - Ouverture sur le rayon (vague 31, L-112), seulement si Features.ShelfOpen (false : tout ce qui
---     précède, inchangé) : sur un colis fermé, l'invite « Open » (maintien = GrabTime du type du colis,
+--   - Ouverture sur le rayon (vague 31, L-112 ; seul déroulé depuis la vague 53, l'interrupteur
+--     Features.ShelfOpen est parti) : sur un colis fermé, l'invite « Open » (maintien = GrabTime du type du colis,
 --     comme la prise) demande OpenShelfBox(slotId) au début et à la fin du maintien ; plus d'invite sur
 --     ce colis pendant son ouverture (attribut ShelfOpenState,
 --     Shared/ShelfOpenState ; l'animation est à ShelfOpenController). Sur l'objet sorti (tag ShelfItem),
@@ -42,7 +42,6 @@ local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Balance = require(Shared:WaitForChild("Config"):WaitForChild("Balance"))
-local Features = require(Shared:WaitForChild("Config"):WaitForChild("Features"))
 local Items = require(Shared:WaitForChild("Config"):WaitForChild("Items"))
 local Mutations = require(Shared:WaitForChild("Config"):WaitForChild("Mutations"))
 local ShelfOpenState = require(Shared:WaitForChild("ShelfOpenState"))
@@ -87,14 +86,12 @@ local REFRESH_INTERVAL = 0.2
 -- V0 proposé, absent du doc : invite visible un demi-stud avant la portée du serveur, pour qu'un
 -- léger retard de la position côté serveur ne fasse pas refuser la prise.
 local PROMPT_DISTANCE_MARGIN = 0.5
--- V0 proposé, absent du doc : texte de l'invite, en anglais (L-036). Sous lui, le type du colis :
+-- V0 proposé, absent du doc : sous le texte de l'invite, le type du colis, en anglais (L-036) :
 -- « Standard Box », « Premium Box », « Luxury Box » (BoxTiers[Tier].DisplayName + BOX_SUFFIX).
-local ACTION_TEXT = "Steal"
 local BOX_SUFFIX = "Box"
 
 -- Ouverture sur le rayon (L-112). V0 proposé, absent du doc : textes en anglais (L-036) ; après un appui
 -- sur « Open », l'invite reste coupée 1 s en attendant l'état posé par le serveur (pas de double envoi).
-local SHELF_OPEN = Features.ShelfOpen
 local OPEN_ACTION_TEXT = "Open"
 local ITEM_ACTION_TEXT = "Steal"
 local ITEM_PROMPT_NAME = "ShelfItemPrompt"
@@ -175,7 +172,7 @@ local function refreshStore(watch: StoreWatch)
 	local clock = os.clock()
 	for box, prompt in watch.Prompts do
 		local enabled = allowed and box:GetAttribute(LANDED_ATTRIBUTE) ~= false
-		if SHELF_OPEN and enabled then
+		if enabled then
 			-- Colis fermé seulement, et pas juste après un appui.
 			local pendingAt: number? = openPending[box]
 			if pendingAt and clock - pendingAt >= OPEN_PENDING_TIME then
@@ -319,7 +316,7 @@ local function addPrompt(watch: StoreWatch, box: Instance)
 	if watch.Prompts[box] then
 		return
 	end
-	if SHELF_OPEN and CollectionService:HasTag(box, ShelfOpenState.ItemTag) then
+	if CollectionService:HasTag(box, ShelfOpenState.ItemTag) then
 		return -- objet sorti : son invite à part (addItemPrompt)
 	end
 	local slotId = box:GetAttribute(SLOT_ID_ATTRIBUTE)
@@ -336,33 +333,22 @@ local function addPrompt(watch: StoreWatch, box: Instance)
 	end
 	local prompt = Instance.new("ProximityPrompt")
 	prompt.Name = PROMPT_NAME
-	prompt.ActionText = ACTION_TEXT
+	-- L-112 : rester appuyé ouvre le colis sur place (Cantin, 2026-11-13 : même maintien que la prise,
+	-- GrabTime du type) ; le serveur vérifie la durée, tire la chance et décide de tout.
+	prompt.ActionText = OPEN_ACTION_TEXT
 	prompt.ObjectText = `{info.DisplayName} {BOX_SUFFIX}`
 	prompt.HoldDuration = info.GrabTime
 	prompt.MaxActivationDistance = math.max(Balance.Heist.GrabMaxDistance - PROMPT_DISTANCE_MARGIN, 1)
 	prompt.RequiresLineOfSight = false -- les rayons cachent parfois le colis
 	prompt.Enabled = false
-	if SHELF_OPEN then
-		-- L-112 : rester appuyé ouvre le colis sur place (Cantin, 2026-11-13 : même maintien que la prise,
-		-- GrabTime du type) ; le serveur vérifie la durée, tire la chance et décide de tout.
-		prompt.ActionText = OPEN_ACTION_TEXT
-		prompt.PromptButtonHoldBegan:Connect(function()
-			Net.Client.OpenShelfBox:Fire(slotId) -- début du maintien
-		end)
-		prompt.Triggered:Connect(function()
-			openPending[box] = os.clock()
-			prompt.Enabled = false
-			Net.Client.OpenShelfBox:Fire(slotId) -- fin du maintien
-		end)
-	else
-		prompt.PromptButtonHoldBegan:Connect(function()
-			Net.Client.GrabItem:Fire(slotId) -- début du maintien
-		end)
-		prompt.Triggered:Connect(function()
-			Net.Client.GrabItem:Fire(slotId) -- fin du maintien
-			playGrab()
-		end)
-	end
+	prompt.PromptButtonHoldBegan:Connect(function()
+		Net.Client.OpenShelfBox:Fire(slotId) -- début du maintien
+	end)
+	prompt.Triggered:Connect(function()
+		openPending[box] = os.clock()
+		prompt.Enabled = false
+		Net.Client.OpenShelfBox:Fire(slotId) -- fin du maintien
+	end)
 	prompt.Parent = anchor
 	watch.Prompts[box] = prompt
 	refreshStore(watch)
@@ -520,13 +506,11 @@ function HeistController.Start()
 		CollectionService:GetInstanceRemovedSignal(tag):Connect(unwatchStore)
 	end
 	localPlayer:GetAttributeChangedSignal(CARRYING_ATTRIBUTE):Connect(refreshAll)
-	if SHELF_OPEN then
-		for _, item in CollectionService:GetTagged(ShelfOpenState.ItemTag) do
-			addItemPrompt(item)
-		end
-		CollectionService:GetInstanceAddedSignal(ShelfOpenState.ItemTag):Connect(addItemPrompt)
-		CollectionService:GetInstanceRemovedSignal(ShelfOpenState.ItemTag):Connect(removeItemPrompt)
+	for _, item in CollectionService:GetTagged(ShelfOpenState.ItemTag) do
+		addItemPrompt(item)
 	end
+	CollectionService:GetInstanceAddedSignal(ShelfOpenState.ItemTag):Connect(addItemPrompt)
+	CollectionService:GetInstanceRemovedSignal(ShelfOpenState.ItemTag):Connect(removeItemPrompt)
 
 	while true do
 		task.wait(REFRESH_INTERVAL)
