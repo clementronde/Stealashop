@@ -499,6 +499,12 @@ local WitnessNpc: ModelSpec = {
 			Optional = true,
 			Note = "facultatif : sans lui, la bulle BB_Witness se pose au-dessus de la Head, L-111",
 		},
+		{
+			Name = "FlashPoint",
+			Class = "Attachment",
+			Optional = true,
+			Note = "facultatif : dans le Handle de ACC_Temoin_Telephone ; le flash des photos en part (sans lui, 0,4 stud devant le Handle), L-172",
+		},
 	},
 }
 -- Policier appelé par les témoins : ReplicatedStorage/Assets/Guards/NPC_Police, copié en jeu par
@@ -735,9 +741,9 @@ for _, spec in { HubFreeGift, HubInviteNoob } do
 end
 
 -- Flash des photos du témoin (Clément, L-172, posé et validé le 2026-11-15) : ReplicatedStorage/Assets/FX/
--- FX_Witness_Flash, copié par WitnessController à chaque marqueur Flash de TakePhoto. Part Root (ancrée,
--- invisible, sans collision) et son Attachment Flash (PointLight Light, ParticleEmitter Glare, Glint, Specks
--- à Rate 0 avec leur attribut EmitCount) ; attributs LightTime et Duration du modèle. Absent : pas de flash.
+-- FX_Witness_Flash : son Attachment Flash (PointLight Light, ParticleEmitter Glare, Glint, Specks à Rate 0 avec leur
+-- attribut EmitCount ; attributs LightTime et Duration du modèle). WitnessController copie les enfants de Flash dans
+-- le FlashPoint du téléphone de chaque témoin ; la Part Root ne sert pas au code. Absent : pas de flash.
 local WitnessFlash: ModelSpec = {
 	Key = "WitnessFlash",
 	Label = "flash des photos des témoins",
@@ -746,10 +752,9 @@ local WitnessFlash: ModelSpec = {
 	Class = "Model",
 	Parts = {
 		{
-			Name = "Root",
-			Class = "BasePart",
-			Inside = { { Name = "Flash", Class = "Attachment" } },
-			Note = "le code la pose au téléphone du témoin à chaque flash, L-172",
+			Name = "Flash",
+			Class = "Attachment",
+			Note = "ses enfants sont copiés dans le FlashPoint du téléphone de chaque témoin, L-172",
 		},
 	},
 }

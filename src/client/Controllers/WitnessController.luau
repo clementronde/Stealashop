@@ -20,17 +20,18 @@
 -- un cadre qui a déjà un UIScale de Clément n'est pas mis à l'échelle. Rien n'est changé dans le gabarit
 -- de Clément, rien n'est envoyé au serveur. BB_Witness absent : pas de bulle (une ligne en Studio).
 --
--- Flash des photos (L-172, Clément) : à chaque hausse de l'attribut WitnessFlash d'un témoin (écrit par
--- WitnessService), une copie de ReplicatedStorage/Assets/FX/FX_Witness_Flash (une par témoin, rangée dans
--- Workspace chez ce joueur seulement) : sa Part Root posée au Handle de ACC_Temoin_Telephone, 0,4 stud
--- devant le témoin (sinon à sa RightHand), Emit(EmitCount) de chaque ParticleEmitter de l'Attachment
--- Flash, PointLight Light allumée LightTime s. Une copie qui a flashé il y a moins de Duration s n'est pas
--- reprise (une autre est faite) ; elle est détruite Witness.Photo.CopyKeep s après son dernier flash
--- (au moins Duration). FX_Witness_Flash absent : pas de flash (une ligne en Studio).
+-- Flash des photos (L-172, Clément : « le flash part du téléphone ») : à chaque hausse de l'attribut WitnessFlash
+-- d'un témoin (écrit par WitnessService). Une fois par témoin, les enfants de l'Attachment Flash de
+-- ReplicatedStorage/Assets/FX/FX_Witness_Flash (PointLight Light, ParticleEmitter Glare, Glint, Specks) sont copiés,
+-- chez ce joueur seulement, dans l'Attachment FlashPoint du Handle de ACC_Temoin_Telephone : le flash suit le
+-- téléphone pendant TakePhoto. À chaque flash : Emit(EmitCount) de chaque ParticleEmitter, Light allumée
+-- LightTime s ; jamais deux à moins de Duration s. La Part Root du modèle ne sert pas. Sans FlashPoint : un
+-- Attachment du code dans le Handle, posé Photo.Forward stud devant le témoin ; sans téléphone : à la
+-- RightHand. FX_Witness_Flash ou son Attachment Flash absent : pas de flash (une ligne en Studio).
 --
 -- API (client, pour un test dans Studio) :
 --   WitnessController.GetState() -> { { Witness, State, Fill, Bubble } }
---   WitnessController.GetFlashes() -> (flashs joués, copies de FX_Witness_Flash en jeu)   L-172
+--   WitnessController.GetFlashes() -> (flashs joués, témoins équipés du flash)   L-172
 
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
@@ -67,10 +68,11 @@ type Bubble = {
 	popAt: number, -- début du saut de Mark (os.clock) ; 0 = aucun
 }
 
--- Une copie de FX_Witness_Flash (L-172).
-type FlashCopy = {
-	model: Model,
-	root: BasePart,
+-- Les copies du flash dans le téléphone d'un témoin (L-172).
+type FlashRig = {
+	point: Attachment, -- FlashPoint de Clément, ou l'Attachment du code
+	moved: boolean, -- Attachment du code au Handle : replacé devant le témoin à chaque flash
+	made: { Instance }, -- ce que le code a créé (détruit avec le témoin)
 	light: Light?,
 	emitters: { ParticleEmitter },
 	lastAt: number, -- os.clock du dernier flash
@@ -87,7 +89,7 @@ local tracked: { [Model]: boolean } = {} -- témoins présents chez ce joueur (t
 local bubbles: { [Model]: Bubble } = {}
 local said: { [string]: boolean } = {}
 local flashLinks: { [Model]: RBXScriptConnection } = {} -- L-172 : écoute de WitnessFlash
-local flashCopies: { [Model]: FlashCopy } = {}
+local flashRigs: { [Model]: FlashRig } = {}
 local flashTotal = 0 -- flashs joués (pour un test)
 
 local function sayOnce(key: string, message: string)
@@ -313,124 +315,133 @@ local function positiveAttribute(inst: Instance, name: string, default: number):
 	return default
 end
 
-local function flashTemplate(): Model?
+-- Le modèle FX_Witness_Flash de Clément et son Attachment Flash (sa Part Root ne sert pas au code).
+local function flashTemplate(): (Model?, Attachment?)
 	local current: Instance? = ReplicatedStorage
 	for _, segment in PHOTO.FxFolder do
 		current = if current then current:FindFirstChild(segment) else nil
 	end
 	local found = if current then current:FindFirstChild(PHOTO.Fx) else nil
-	if found and found:IsA("Model") then
-		return found :: Model
+	if found == nil or not found:IsA("Model") then
+		sayOnce("flash", `{PHOTO.Fx} absent de ReplicatedStorage.Assets.FX : pas de flash sur les photos des témoins (L-172)`)
+		return nil, nil
 	end
-	sayOnce("flash", `{PHOTO.Fx} absent de ReplicatedStorage.Assets.FX : pas de flash sur les photos des témoins (L-172)`)
-	return nil
+	local source = found:FindFirstChild(PHOTO.FxSource, true)
+	if source == nil or not source:IsA("Attachment") then
+		sayOnce("flashSource", `{PHOTO.Fx} : Attachment {PHOTO.FxSource} introuvable (L-172)`)
+		return found :: Model, nil
+	end
+	return found :: Model, source :: Attachment
 end
 
--- Où part le flash : le Handle du téléphone, Photo.Forward stud devant le témoin ; sinon sa main droite.
-local function flashFrame(model: Model): CFrame?
-	local rootInst = model:FindFirstChild("HumanoidRootPart")
-	local look = if rootInst and rootInst:IsA("BasePart") then (rootInst :: BasePart).CFrame.LookVector else Vector3.new(0, 0, -1)
+-- Où part le flash : l'Attachment FlashPoint du Handle de ACC_Temoin_Telephone (Clément) ; sinon un Attachment
+-- du code, posé à chaque flash Photo.Forward stud devant le témoin au Handle, ou à la RightHand. `moved` : un
+-- Attachment du code, à replacer à chaque flash.
+local function flashPoint(model: Model): (Attachment?, boolean)
 	local phone = model:FindFirstChild(PHOTO.Phone, true)
 	local handle = if phone then phone:FindFirstChild(PHOTO.PhonePart) else nil
-	local at: Vector3? = nil
 	if handle and handle:IsA("BasePart") then
-		at = (handle :: BasePart).Position + look * PHOTO.Forward
+		local point = handle:FindFirstChild(PHOTO.PhonePoint)
+		if point and point:IsA("Attachment") then
+			return point :: Attachment, false
+		end
 	else
 		local hand = model:FindFirstChild(PHOTO.Hand, true)
-		if hand and hand:IsA("BasePart") then
-			at = (hand :: BasePart).Position
-		end
+		handle = if hand and hand:IsA("BasePart") then hand else nil
 	end
-	if at == nil then
-		return nil
+	if handle == nil then
+		return nil, false
 	end
-	local position = at :: Vector3
-	return CFrame.lookAt(position, position + look)
-end
-
-local function newFlashCopy(template: Model): FlashCopy?
-	local clone = template:Clone()
-	local rootInst = clone:FindFirstChild("Root")
-	if rootInst == nil or not rootInst:IsA("BasePart") then
-		sayOnce("flashRoot", `{PHOTO.Fx} : Part Root introuvable (L-172)`)
-		clone:Destroy()
-		return nil
+	local made = handle:FindFirstChild(PHOTO.CodePoint)
+	if made == nil or not made:IsA("Attachment") then
+		local created = Instance.new("Attachment")
+		created.Name = PHOTO.CodePoint
+		created.Parent = handle
+		made = created
 	end
-	local root = rootInst :: BasePart
-	root.Anchored = true
-	local flashPoint = root:FindFirstChild("Flash", true)
-	local emitters: { ParticleEmitter } = {}
-	local light: Light? = nil
-	if flashPoint then
-		for _, descendant in flashPoint:GetDescendants() do
-			if descendant:IsA("ParticleEmitter") then
-				table.insert(emitters, descendant :: ParticleEmitter)
-			elseif light == nil and descendant:IsA("Light") then
-				light = descendant :: Light
-			end
-		end
-	else
-		sayOnce("flashPoint", `{PHOTO.Fx} : Attachment Flash introuvable dans Root (L-172)`)
-	end
-	if light then
-		light.Enabled = false
-	end
-	clone.Parent = Workspace
-	return { model = clone, root = root, light = light, emitters = emitters, lastAt = -math.huge }
+	return made :: Attachment, handle.Name == PHOTO.PhonePart
 end
 
 local function destroyFlash(model: Model)
-	local copy = flashCopies[model]
-	if copy then
-		flashCopies[model] = nil
-		copy.model:Destroy()
+	local rig = flashRigs[model]
+	if rig then
+		flashRigs[model] = nil
+		for _, inst in rig.made do
+			inst:Destroy()
+		end
 	end
 end
 
--- Un flash du témoin `model`.
+-- Les copies des enfants de Flash dans le point du témoin, faites une fois (refaites si le téléphone a changé).
+local function rigOf(model: Model, source: Attachment): FlashRig?
+	local point, moved = flashPoint(model)
+	if point == nil then
+		sayOnce(`flashPoint:{model.Name}`, `{model.Name} : ni {PHOTO.Phone}.{PHOTO.PhonePart} ni {PHOTO.Hand} : pas de flash (L-172)`)
+		return nil
+	end
+	local rig = flashRigs[model]
+	if rig and rig.point == point and point.Parent ~= nil then
+		return rig
+	end
+	destroyFlash(model)
+	local made: { Instance } = {}
+	local emitters: { ParticleEmitter } = {}
+	local light: Light? = nil
+	for _, child in source:GetChildren() do
+		local copy = child:Clone()
+		if copy:IsA("ParticleEmitter") then
+			table.insert(emitters, copy :: ParticleEmitter)
+		elseif light == nil and copy:IsA("Light") then
+			light = copy :: Light
+			(copy :: Light).Enabled = false
+		end
+		copy.Parent = point
+		table.insert(made, copy)
+	end
+	if point.Name == PHOTO.CodePoint then
+		table.insert(made, point) -- l'Attachment du code part avec les copies
+	end
+	local fresh: FlashRig = { point = point, moved = moved, light = light, emitters = emitters, made = made, lastAt = -math.huge }
+	flashRigs[model] = fresh
+	return fresh
+end
+
+-- Un flash du témoin `model` (pas deux à moins de Duration s).
 local function playFlash(model: Model)
-	local template = flashTemplate()
-	local frame = if template then flashFrame(model) else nil
-	if template == nil or frame == nil then
+	local template, source = flashTemplate()
+	if template == nil or source == nil then
 		return
 	end
-	local duration = positiveAttribute(template, "Duration", 0.5)
-	local lightTime = positiveAttribute(template, "LightTime", 0.1)
-	local now = os.clock()
-	local copy = flashCopies[model]
-	if copy == nil or copy.model.Parent == nil or now - copy.lastAt < duration then
-		-- Pas de copie, ou la sienne n'a pas fini son flash : une neuve (l'ancienne finit et part seule).
-		local made = newFlashCopy(template)
-		if made == nil then
-			return
-		end
-		copy = made
-		flashCopies[model] = made
+	local rig = rigOf(model, source)
+	if rig == nil then
+		return
 	end
-	local current = copy :: FlashCopy
-	current.root.CFrame = frame
-	for _, emitter in current.emitters do
+	local now = os.clock()
+	if now - rig.lastAt < positiveAttribute(template, "Duration", 0.5) then
+		return
+	end
+	if rig.moved then
+		-- Pas de FlashPoint : Photo.Forward stud devant le témoin, au Handle.
+		local rootInst = model:FindFirstChild("HumanoidRootPart")
+		local parent = rig.point.Parent
+		if rootInst and rootInst:IsA("BasePart") and parent and parent:IsA("BasePart") then
+			rig.point.WorldPosition = (parent :: BasePart).Position + (rootInst :: BasePart).CFrame.LookVector * PHOTO.Forward
+		end
+	end
+	for _, emitter in rig.emitters do
 		emitter:Emit(math.max(math.floor(positiveAttribute(emitter, "EmitCount", 1)), 1))
 	end
-	current.lastAt = now
+	rig.lastAt = now
 	flashTotal += 1
-	local light = current.light
+	local light = rig.light
 	if light then
 		light.Enabled = true
-		task.delay(lightTime, function()
-			if current.lastAt == now then
+		task.delay(positiveAttribute(template, "LightTime", 0.1), function()
+			if rig.lastAt == now then
 				light.Enabled = false
 			end
 		end)
 	end
-	task.delay(math.max(PHOTO.CopyKeep, duration), function()
-		if current.lastAt == now then
-			if flashCopies[model] == current then
-				flashCopies[model] = nil
-			end
-			current.model:Destroy()
-		end
-	end)
 end
 
 local function track(inst: Instance)
@@ -472,10 +483,10 @@ function WitnessController.GetState(): { State }
 	return list
 end
 
--- L-172 : flashs joués chez ce joueur depuis le début, et copies de FX_Witness_Flash en jeu.
+-- L-172 : flashs joués chez ce joueur depuis le début, et témoins équipés du flash.
 function WitnessController.GetFlashes(): (number, number)
 	local copies = 0
-	for _ in flashCopies do
+	for _ in flashRigs do
 		copies += 1
 	end
 	return flashTotal, copies
