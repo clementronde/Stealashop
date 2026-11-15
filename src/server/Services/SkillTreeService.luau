@@ -28,7 +28,7 @@
 --   Walls           (vague 29, L-105 point 3) le mur visible par niveau : ShopWallsService (attribut WallsLevel
 --                   de la parcelle). L-163 : plus aucun effet sur la porte.
 --   GlassRegen      réparation de Effects[niveau] du maximum de coups par seconde au lieu de
---                   Balance.Window.RegenPerSecond (WindowService.GetPlotRegen) ; même règle qu'avant, en coups.
+--                   Balance.Window.RegenPerSecond (WindowService.GetPlotRegen), en coups, quand personne ne frappe (PvP.DoorRepairDelay).
 --   Safe            présentoirs non volables = PvP.VaultSlots (1 offert) + Effects[niveau] (PvPService.GetVaultSlots),
 --                   3 au plus (MaxLevel 2).
 --   Curtain         verrou de la boutique (L-163, V0) : remote LockShop (sans argument, ShopLockController) ; le

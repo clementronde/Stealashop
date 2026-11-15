@@ -21,7 +21,8 @@
 --     compte au plus PvP.DoorMaxHitsPerSecond (8) coups par seconde, tous voleurs confondus (un coup trop
 --     tôt est ignoré, sans rien envoyer). Parcelle libre : incassable. Sur une parcelle,
 --     cette vitrine est la vitre de la porte (PlotDoor/Window) : la porte n'a pas d'autres PV.
---   - Régénération continue de 3 % des PV max par seconde (5.3, Balance.Window).
+--   - Régénération continue de 3 % des PV max par seconde (5.3, Balance.Window). Porte de boutique (L-163) :
+--     seulement quand aucun coup n'y a été compté depuis PvP.DoorRepairDelay (3) s ; un coup l'arrête.
 --   - Défenses de la boutique (arbre de compétences, vague 27 ; SkillTreeService remplace les points
 --     d'accroche GetPlotDoorHits et GetPlotRegen, plus bas) : coups de la porte d'une parcelle occupée =
 --     GetPlotDoorHits(propriétaire) (Reinforced Door), réparation de GetPlotRegen(propriétaire) des PV max par
@@ -178,6 +179,7 @@ type Window = {
 	Hitters: { [Player]: boolean }?, -- joueurs qui voient ce chrono (ceux qui ont frappé)
 	DoorTokens: number?, -- porte de boutique (L-163) : jetons du plafond de coups par seconde
 	DoorTokensAt: number?, -- os.clock() de leur dernier calcul
+	LastDoorHitAt: number?, -- os.clock() du dernier coup compté sur la porte (réparation après PvP.DoorRepairDelay)
 }
 
 -- Modèles qui portent une vitrine (contrat 2.1, Contract/Tags).
@@ -598,6 +600,7 @@ local function onHitWindow(player: Player, windowId: string)
 			return
 		end
 		window.DoorTokens = tokens - 1
+		window.LastDoorHitAt = now -- Door Repair arrêtée (PvP.DoorRepairDelay)
 	else
 		damage = ToolService.GetHitDamage(player)
 			* modifier("GetHitDamageMultiplier", WindowService.GetHitDamageMultiplier, player, 1, true)
@@ -666,7 +669,10 @@ local function step(dt: number)
 			window.BreakEndsAt = nil
 			window.Hitters = nil
 		end
-		if not window.Broken and window.HP < window.MaxHP then
+		-- Porte de boutique (L-163) : réparée seulement quand personne ne frappe depuis PvP.DoorRepairDelay s.
+		local hitAt = window.LastDoorHitAt
+		local repairing = window.Kind ~= "Plot" or hitAt == nil or os.clock() - hitAt >= PvP.DoorRepairDelay
+		if repairing and not window.Broken and window.HP < window.MaxHP then
 			window.HP = math.min(window.MaxHP, window.HP + regenRate(window) * dt * window.MaxHP)
 			window.Dirty = true
 		end

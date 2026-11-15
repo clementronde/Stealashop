@@ -24,6 +24,10 @@ local PvP = {
 	-- La porte encaisse au plus ce nombre de coups par seconde, tous voleurs confondus (un coup compté au plus
 	-- toutes les 1/8 s) : à deux ou plus, 40 coups en 5 s environ (hors réparation). Les coups en trop sont ignorés.
 	DoorMaxHitsPerSecond = 8,
+	-- L-163 (Clément : la porte regagne des coups « quand personne ne frappe ») : la porte d'une boutique ne se
+	-- répare (Door Repair, même pourcentage du maximum par seconde) qu'après ce délai sans aucun coup compté ;
+	-- un coup l'arrête aussitôt. Un voleur seul qui frappe sans pause casse donc toujours la porte. V0 :
+	DoorRepairDelay = 3,
 
 	-- 6.1 : voler un joueur
 	ScoutDistance = 15, -- panneau propriétaire, valeur exposée, PV de la vitrine

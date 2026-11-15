@@ -83,7 +83,8 @@ local List: { Skill } = {
 	},
 	{
 		-- Effects[n] = réparation de la porte en part de son maximum par seconde (Partie 2 : base 3 %, +1 % par
-		-- niveau). L-163 : même règle, comptée en coups (8 % de 80 coups = 6,4 coups par seconde).
+		-- niveau). L-163 : comptée en coups (8 % de 80 = 6,4 coups par seconde), et
+		-- seulement quand personne ne frappe depuis PvP.DoorRepairDelay (3) s (WindowService).
 		Id = "GlassRegen",
 		Tile = "Tile_GlassRegen",
 		DisplayName = "Door Repair", -- V0 (L-163)
