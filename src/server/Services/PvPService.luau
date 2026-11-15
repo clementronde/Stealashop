@@ -1193,9 +1193,40 @@ local function shopRefusal(player: Player, plot: Model): (string?, string?, stri
 	return nil, nil, nil
 end
 
+-- Vague 51 (a165) : tolérance au retard du réseau, la même que les rayons (StoreHeistService.ReachPad :
+-- min(WalkSpeed × (ping + Balance.Heist.ReachLatencyPad), plafond), lus sur le serveur). require protégé et
+-- fait au premier besoin (pas de boucle de require au démarrage) : sans StoreHeistService (bancs), 0.
+local reachPadOf: ((Player, Humanoid?) -> number)? = nil
+local reachPadSearched = false
+local function stealReachPad(player: Player): number
+	if not reachPadSearched then
+		reachPadSearched = true
+		local module = script.Parent:FindFirstChild("StoreHeistService")
+		if module and module:IsA("ModuleScript") then
+			local ok, result = pcall(require, module)
+			if ok and type(result) == "table" and type((result :: any).ReachPad) == "function" then
+				reachPadOf = (result :: any).ReachPad
+			end
+		end
+	end
+	local found = reachPadOf
+	if found == nil then
+		return 0
+	end
+	local reach: (Player, Humanoid?) -> number = found
+	local character = player.Character
+	local humanoid: Humanoid? = if character then character:FindFirstChildOfClass("Humanoid") else nil
+	local ok, pad = pcall(function(): number
+		return reach(player, humanoid)
+	end)
+	return if ok and type(pad) == "number" and pad > 0 then pad else 0
+end
+
 -- Raison du refus d'une prise sur le présentoir `slot` de `plot` (texte pour la sortie de Studio) et,
 -- pour un joueur honnête, la clé et le texte du message à lui envoyer ; nil si la prise est permise.
-local function stealRefusal(player: Player, plot: Model, slot: number): (string?, string?, string?)
+-- `lenient` (vague 51, comme les rayons) : début du maintien et revérifications, la distance tolère
+-- stealReachPad studs de plus ; fin du maintien : stricte.
+local function stealRefusal(player: Player, plot: Model, slot: number, lenient: boolean?): (string?, string?, string?)
 	local reason, key, message = shopRefusal(player, plot)
 	if reason then
 		return reason, key, message
@@ -1209,7 +1240,7 @@ local function stealRefusal(player: Player, plot: Model, slot: number): (string?
 		return `présentoir {slot} absent de la boutique`, nil, nil
 	end
 	local distance = (root.Position - attachment.WorldPosition).Magnitude
-	if distance > PvP.StealMaxDistance then
+	if distance > PvP.StealMaxDistance + (if lenient then stealReachPad(player) else 0) then
 		return `trop loin ({math.round(distance * 10) / 10} studs)`, nil, nil
 	end
 	local exposed = exposedOf(plot, victim)
@@ -1395,7 +1426,9 @@ local function onStealItem(player: Player, plotIndex: number, slotIndex: number)
 		return
 	end
 	local hold = holds[player]
-	local reason, key, message = stealRefusal(player, plot, slotIndex)
+	-- Vague 51 : souple au premier appel (début du maintien), stricte au second (fin du maintien).
+	local starting = not (hold and hold.Plot == plot and hold.Slot == slotIndex)
+	local reason, key, message = stealRefusal(player, plot, slotIndex, starting)
 	if reason then
 		if hold and hold.Plot == plot and hold.Slot == slotIndex then
 			holds[player] = nil
@@ -1672,7 +1705,7 @@ local function step()
 			exposed == nil
 			or exposed.Uid ~= hold.Uid
 			or now - hold.StartedAt > PvP.StealGrabTime + HOLD_EXPIRY
-			or stealRefusal(player, hold.Plot, hold.Slot) ~= nil
+			or stealRefusal(player, hold.Plot, hold.Slot, true) ~= nil
 		then
 			holds[player] = nil
 		end

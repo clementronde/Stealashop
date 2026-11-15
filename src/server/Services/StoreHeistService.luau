@@ -793,6 +793,8 @@ local function reachPad(player: Player, humanoid: Humanoid?): number
 	local cap = math.max(Balance.Heist.ReachToleranceMin, speed * Balance.Heist.ReachToleranceSeconds)
 	return math.min(speed * latency, cap)
 end
+-- Vague 51 (a165) : la même tolérance pour StealItem (PvPService, require protégé), sans la recopier.
+StoreHeistService.ReachPad = reachPad
 
 local function isCarrying(player: Player): boolean
 	local ok, carrying = pcall(CarryService.IsCarrying, player)
