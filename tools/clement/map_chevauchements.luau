@@ -8,6 +8,8 @@
 --   _G.MapZF.detect({"Zone_1", "Zone_2"})                  -> rapport par zone, rien ne change
 --   _G.MapZF.backup({"Zone_1"}, "2026-11-15_Chevauchements") -> copie dans ServerStorage/MapBackups/<nom>
 --   _G.MapZF.fix({"Zone_1"})                               -> corrige, annulable (Ctrl+Z)
+--   _G.MapZF.fix({"Hub"}, { allowNoUndo = true })          -> si un enregistrement reste ouvert (éditeur
+--                                                             d'animation…), avec l'accord de Clément
 --   _G.MapZF.worst(5)                                      -> pires cas du dernier detect (pour les captures)
 -- Les noms de la liste sont des enfants de Workspace/Map (Zone_1..6, Entry, Hub, Skyline). On peut
 -- aussi y mettre une Instance hors de la map, par exemple le gabarit des boutiques :
@@ -599,7 +601,7 @@ local function moveFace(p, ax, s, delta)
 	return true
 end
 
-function M.fix(names)
+function M.fix(names, opts)
 	-- Un autre plugin ou une autre session peut tenir un enregistrement ouvert : on attend, et
 	-- sans enregistrement on ne change rien (tout doit rester annulable par Ctrl+Z).
 	local rec
@@ -610,8 +612,9 @@ function M.fix(names)
 		end
 		task.wait(0.25)
 	end
-	if not rec then
+	if not rec and not (opts and opts.allowNoUndo) then
 		return "Rien changé : un autre enregistrement est ouvert dans Studio, relancer dans un moment"
+			.. " (ou fix(names, { allowNoUndo = true }) avec l'accord de Clément : Ctrl+Z ne marchera pas)"
 	end
 	local ok, res = pcall(function()
 		local last = M.detect(names, true)
@@ -719,7 +722,9 @@ function M.fix(names)
 		end
 		return table.concat(out, "\n")
 	end)
-	ChangeHistoryService:FinishRecording(rec, ok and Enum.FinishRecordingOperation.Commit or Enum.FinishRecordingOperation.Cancel)
+	if rec then
+		ChangeHistoryService:FinishRecording(rec, ok and Enum.FinishRecordingOperation.Commit or Enum.FinishRecordingOperation.Cancel)
+	end
 	if not ok then
 		error(res)
 	end
