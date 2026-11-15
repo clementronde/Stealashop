@@ -29,7 +29,7 @@ C'est **la seule liste des tests en jeu**, pour les deux Claude. Elle remplace l
 
 Avant de commencer, relance le Play : un Play déjà lancé garde l'ancien code. À deux joueurs : dans Studio, onglet Test > Clients and Servers, 2 joueurs (Clément peut être le 2e). Sur téléphone : Test > Device, un téléphone, puis Play ; ensuite, sur un vrai téléphone.
 
-Prochain numéro : **T-068**.
+Prochain numéro : **T-071**.
 
 - T-003 | Ironix, à deux | Vigile qui garde l'objet : le 2e joueur reprend l'objet tombé → le vigile poursuit celui qui l'a pris. Pas joué par Claude (14/11) : il faut deux vrais joueurs. Vu seul : quand le voleur reprend lui-même le colis tombé, le vigile change de cible et le poursuit aussitôt ; reste à toi : le même cas avec le 2e joueur.
 - T-004 | Ironix, seul | HEIST et RUN! : casse une vitrine → « HEIST: 13s » en haut au centre. Prends un objet → « RUN! » s'affiche et « HEIST » disparaît : jamais les deux en même temps. Vu par Claude (14/11) : « HEIST: 13s » à la casse, « RUN! » à la prise, « HEIST » caché ensuite pour tout le vol ; mais « HEIST » reste affiché pendant son fondu de sortie, 0,1 à 0,17 s en même temps que « RUN! ». Reste à toi : dire si on voit les deux ensemble à ce moment.
@@ -84,6 +84,8 @@ Prochain numéro : **T-068**.
 - T-066 | Ironix, à trois | Police et porte (L-166, a151) : Player1 et Player2 frappent la même vitrine sans la casser → 8 s plus tard, deux `NPC_Police_Z1`, un sur chacun, et plus aucun à la fin ; Player2 et Player3 entrent dans la boutique de Player1 par la porte cassée, Player1 frappe Player2 → la porte reste cassée tant que Player3 est dedans, puis revient ; Player2 prend un objet et sort, Player1 le frappe dehors → la porte revient tout de suite. Vu par Claude seul (14/11) : un policier pour un casseur, porte reconstruite à l'éjection quand la boutique est vide.
 - T-067 | Ironix, seul | Bot en tuto (L-166, a149 ; profil neuf) : vole le bot et laisse-le te frapper → 15 s avant de pouvoir le revoler (60 s hors tuto) ; son coup a réparé sa porte : la flèche du tuto ramène bien à la porte ; prends, sors, rentre, ressors → il abandonne 10 s après la dernière sortie ; dis si voler le bot seul est trop dur (Claude a été frappé 0,8 à 1,5 s après chaque prise).
 - T-068 | Ironix, seul | Hub rapproché (L-167) : rejoins le jeu → tu apparais sur ta boutique ; le tuto te guide jusqu'à l'arche de la zone 1 ; le bot prend une boutique libre et y apparaît ; de nuit, les lampadaires et les vitres de la ville s'allument.
+- T-069 | Ironix, seul | Nouvelle poursuite du vigile (a153, vague 45) : braque un magasin de zone 3 avec la Speed du panneau, puis avec le double → la ruée doit faire peur, puis le vigile colle juste derrière sans gagner tant que tu cours tout droit ; un virage serré ou un arrêt, et il t'attrape ; en dessous de la Speed du panneau, il te rattrape. Dis si c'est trop collé. Vu par Claude (15/11) : vitesses exactes, mais la ruée s'arrête un peu trop près, la distance gardée est de 5 à 9 studs au lieu de 10 (correction à décider). `workspace:SetAttribute("ChaseDebug", true)` (barre serveur) écrit les vitesses dans la sortie.
+- T-070 | Ironix, seul | Vigile de nuit, policier et conducteur du camion (a153, vague 45) : ils attrapent toujours, mais on doit sentir une vraie course. Dis si c'est trop rapide. Vu par Claude (15/11) : nuit et police attrapent environ 1 s après la ruée, le camion en 4,5 s ; si le chrono du camion finit juste après la prise, le conducteur réapparaît à 10 studs et attrape en 0,2 s.
 
 ## 1. Attentes ouvertes
 
