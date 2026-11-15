@@ -10,7 +10,7 @@
 --     PvP.StealGrabTime (1 s), portée PvP.StealMaxDistance − PROMPT_DISTANCE_MARGIN. Active
 --     seulement si la boutique est ouverte au vol (attribut StealOpen de la parcelle, posé par
 --     PvPService), mains vides (attribut Carrying du joueur, CarryService), joueur dans le volume
---     Bounds de la boutique, objet pas à l'abri (SafeSlots), et pas d'interdiction de voler cette
+--     Bounds de la boutique, et pas d'interdiction de voler cette
 --     boutique (attribut RobCooldown_<PlotIndex> du joueur local, heure serveur de fin, posé par
 --     PvPService quand le propriétaire l'a frappé ou qu'il est mort dedans). Plus aucune protection
 --     des boutiques (Cantin, 2026-11-12).
@@ -31,13 +31,12 @@
 --     Copie du billboard BB_ShopInfo de Clément (ReplicatedStorage/Assets/UI, mêmes 4 éléments, livré
 --     le 2026-11-15, L-169 Q6 ; tailles et SizeOffset gardés tels quels) dès qu'il existe, sinon un
 --     panneau V0 gris. Status peut être une pastille (cadre + texte) : le cadre est caché ou montré.
---   - Étiquette « SAFE » V0 au pied de chaque objet à l'abri (coffre-fort V0 de PvPService), chez
---     tout le monde : le voleur comprend pourquoi l'objet n'a pas d'invite.
+--   - Vague 54 (a176) : plus de coffre-fort, donc plus d'étiquette « SAFE » ni d'objet sans invite.
 --   - Bot joueur (L-105, BotService) : sa boutique (attribut BotName de la parcelle, OwnerUserId = 0) a
 --     les mêmes invites et le même panneau (« Bot's Shop », valeur exposée = attribut BotIncome).
 --   - L'objet volé porté au-dessus de la tête : rien ici, CarryService (visuel serveur, BB_Carry,
 --     contour rouge, malus) et CarryController (animations, outils rangés) suffisent.
--- Mobile : l'état de chaque boutique (volume, porte, droit de voler, objets à l'abri) est calculé une
+-- Mobile : l'état de chaque boutique (volume, porte, droit de voler) est calculé une
 -- fois par tour, puis lu par ses objets ; volume et porte sont gardés tant qu'ils sont dans la parcelle.
 -- Vague 39 (a129, téléphone) : les objets d'une boutique ne sont revus qu'au tour où son état change
 -- (numéro Version), ou tant que leur invite ou leur étiquette n'a pas pu être créée ; le tour reste à
@@ -81,7 +80,6 @@ type ItemWatch = {
 	Model: Model,
 	Plot: Model?, -- sa parcelle, trouvée à l'arrivée de l'objet
 	Prompt: ProximityPrompt?,
-	SafeTag: BillboardGui?,
 	Seen: number?, -- Version de la boutique déjà appliquée à l'objet (nil : à refaire au prochain tour)
 }
 
@@ -91,9 +89,7 @@ type PlotWatch = {
 	Door: Instance?,
 	Allowed: boolean, -- le joueur local peut voler ici en ce moment (revu à chaque tour)
 	Mine: boolean, -- boutique du joueur local (revu à chaque tour)
-	SafeText: string?, -- attribut SafeSlots lu au dernier tour
-	Safe: { [number]: boolean }, -- présentoirs à l'abri (relu quand SafeSlots change)
-	Version: number, -- renouvelé quand Allowed, Mine ou SafeSlots change : ses objets sont alors revus
+	Version: number, -- renouvelé quand Allowed ou Mine change : ses objets sont alors revus
 	Gui: BillboardGui?,
 	Point: Attachment?,
 	Text: PanelText?,
@@ -119,7 +115,6 @@ local WINDOW_ID_ATTRIBUTE = "WindowId"
 local MAX_HP_ATTRIBUTE = "MaxHP"
 local BROKEN_ATTRIBUTE = "Broken"
 local OPEN_ATTRIBUTE = "StealOpen"
-local SAFE_SLOTS_ATTRIBUTE = "SafeSlots"
 local ROB_COOLDOWN_FORMAT = "RobCooldown_%d" -- sur le joueur local, posé par PvPService
 local BOT_NAME_ATTRIBUTE = "BotName" -- PlotService : boutique du bot joueur (L-105)
 local BOT_INCOME_ATTRIBUTE = "BotIncome" -- BotService : sa valeur exposée
@@ -127,14 +122,11 @@ local BOT_INCOME_ATTRIBUTE = "BotIncome" -- BotService : sa valeur exposée
 local PROMPT_NAME = "StealPrompt"
 local PANEL_PREFIX = "ShopInfo_"
 local POINT_NAME = "ShopInfoPoint"
-local SAFE_TAG_NAME = "SafeTag"
-local SAFE_POINT_NAME = "SafeTagPoint"
 
 -- Textes lus par le joueur, en anglais (L-036).
 local ACTION_TEXT = "Steal"
 local SHOP_NAME = "%s's Shop"
 local HP_TEXT = "%s/%s" -- L-163 (a159) : coups restants de la porte, « 7/40 » (V0, à valider par Clément)
-local SAFE_TEXT = "SAFE"
 local STATUS = {
 	Cooldown = "ROB AGAIN IN %ds", -- V0, à valider par Clément
 	Open = "OPEN", -- V0, vague 33 : sans chrono (avant « OPEN: %ds »)
@@ -154,11 +146,6 @@ local TEXT_COLOR = Color3.new(1, 1, 1)
 local STROKE_COLOR = Color3.fromHex("#1B1B24") -- contour du texte, planche 10.6
 local INCOME_COLOR = Color3.fromHex("#35C93B") -- vert « acheter / OK », planche 10.6
 local STATUS_COLOR = Color3.fromHex("#FF8C1A") -- orange « améliorations », planche 10.6
--- V0 proposé, absent du doc : étiquette « SAFE » au pied de l'objet à l'abri.
-local SAFE_SIZE = UDim2.fromScale(2.2, 0.7)
-local SAFE_LIFT = 0.4
-local SAFE_COLOR = Color3.fromHex("#4FC3FF")
-local SAFE_MAX_DISTANCE = 60
 
 local localPlayer = Players.LocalPlayer
 
@@ -271,21 +258,6 @@ local function doorOf(watch: PlotWatch): Instance?
 	return watch.Door
 end
 
--- Présentoirs à l'abri : attribut SafeSlots « 3 » ou « 3,7 ».
-local function safeSlots(plot: Model): { [number]: boolean }
-	local slots: { [number]: boolean } = {}
-	local text = plot:GetAttribute(SAFE_SLOTS_ATTRIBUTE)
-	if type(text) == "string" then
-		for piece in string.gmatch(text, "%d+") do
-			local slot = tonumber(piece)
-			if slot then
-				slots[slot] = true
-			end
-		end
-	end
-	return slots
-end
-
 -- Secondes restantes de l'interdiction du joueur local sur cette boutique (0 : aucune).
 local function cooldownLeft(plot: Model): number
 	local index = number(plot, PLOT_INDEX_ATTRIBUTE)
@@ -376,50 +348,6 @@ local function makePrompt(watch: ItemWatch, plot: Model)
 	watch.Prompt = prompt
 end
 
-local function removeSafeTag(watch: ItemWatch)
-	local tag = watch.SafeTag
-	if tag then
-		watch.SafeTag = nil
-		local point = tag.Adornee
-		tag:Destroy()
-		if point and point.Name == SAFE_POINT_NAME then
-			point:Destroy()
-		end
-	end
-end
-
-local function makeSafeTag(watch: ItemWatch)
-	local part = mainPart(watch.Model)
-	local parent = playerGui
-	if part == nil or parent == nil then
-		return
-	end
-	local point = Instance.new("Attachment")
-	point.Name = SAFE_POINT_NAME
-	point.Parent = part
-	point.WorldPosition = watch.Model:GetPivot().Position + Vector3.new(0, SAFE_LIFT, 0)
-	local gui = Instance.new("BillboardGui")
-	gui.Name = SAFE_TAG_NAME
-	gui.Size = SAFE_SIZE
-	gui.LightInfluence = 0
-	gui.ResetOnSpawn = false
-	gui.MaxDistance = SAFE_MAX_DISTANCE
-	local label = Instance.new("TextLabel")
-	label.Name = "Label"
-	label.Size = UDim2.fromScale(1, 1)
-	label.BackgroundTransparency = 1
-	label.TextScaled = true
-	label.FontFace = Font.fromEnum(Enum.Font.FredokaOne)
-	label.TextColor3 = SAFE_COLOR
-	label.TextStrokeColor3 = STROKE_COLOR
-	label.TextStrokeTransparency = 0
-	label.Text = SAFE_TEXT
-	label.Parent = gui
-	gui.Adornee = point
-	gui.Parent = parent
-	watch.SafeTag = gui
-end
-
 local function removePrompt(watch: ItemWatch)
 	local prompt = watch.Prompt
 	if prompt then
@@ -437,18 +365,9 @@ local function refreshItem(watch: ItemWatch)
 	if watch.Seen == state.Version then
 		return -- rien n'a changé dans sa boutique depuis le dernier tour (vague 39)
 	end
-	local slot = number(watch.Model, SLOT_ATTRIBUTE)
-	local safe = slot ~= nil and state.Safe[slot] == true
-	local tag = watch.SafeTag
-	if safe and not tag then
-		makeSafeTag(watch)
-	elseif tag and not safe then
-		removeSafeTag(watch)
-	end
-	local tagDone = safe == (watch.SafeTag ~= nil)
 	if state.Mine then
 		removePrompt(watch)
-		watch.Seen = if tagDone then state.Version else nil
+		watch.Seen = state.Version
 		return
 	end
 	if watch.Prompt == nil then
@@ -456,13 +375,13 @@ local function refreshItem(watch: ItemWatch)
 	end
 	local prompt = watch.Prompt
 	if prompt then
-		local enabled = state.Allowed and not safe
+		local enabled = state.Allowed
 		if prompt.Enabled ~= enabled then
 			prompt.Enabled = enabled
 		end
 	end
-	-- Invite ou étiquette pas encore possible (pièce ou PlayerGui absents) : réessayé au prochain tour.
-	watch.Seen = if tagDone and prompt ~= nil then state.Version else nil
+	-- Invite pas encore possible (pièce absente) : réessayé au prochain tour.
+	watch.Seen = if prompt ~= nil then state.Version else nil
 end
 
 -- Panneau de repérage ------------------------------------------------------------------------------------
@@ -656,8 +575,6 @@ local function watchPlot(instance: Instance): PlotWatch?
 		Door = nil,
 		Allowed = false,
 		Mine = false,
-		SafeText = nil,
-		Safe = {},
 		Version = newVersion(),
 		Gui = nil,
 		Point = nil,
@@ -675,20 +592,13 @@ local function unwatchPlot(instance: Instance)
 	end
 end
 
--- État d'une boutique pour ce tour : droit de voler, boutique du joueur local et objets à l'abri ;
+-- État d'une boutique pour ce tour : droit de voler et boutique du joueur local ;
 -- Version monte quand l'un d'eux change (ses objets sont revus au même tour).
 local function updatePlot(watch: PlotWatch, root: BasePart?)
 	local plot = watch.Plot
-	local text = plot:GetAttribute(SAFE_SLOTS_ATTRIBUTE)
-	local safeText = if type(text) == "string" then text else nil
 	local mine = isMine(plot)
 	local allowed = canStealIn(watch, root)
 	local changed = mine ~= watch.Mine or allowed ~= watch.Allowed
-	if safeText ~= watch.SafeText then
-		watch.SafeText = safeText
-		watch.Safe = safeSlots(plot)
-		changed = true
-	end
 	watch.Mine, watch.Allowed = mine, allowed
 	if changed then
 		watch.Version = newVersion()
@@ -700,7 +610,7 @@ local function watchItem(instance: Instance)
 		return
 	end
 	local plot = plotOf(instance)
-	local watch: ItemWatch = { Model = instance :: Model, Plot = plot, Prompt = nil, SafeTag = nil, Seen = nil }
+	local watch: ItemWatch = { Model = instance :: Model, Plot = plot, Prompt = nil, Seen = nil }
 	itemWatches[instance] = watch
 	local state = if plot then watchPlot(plot) else nil
 	if state then
@@ -716,7 +626,6 @@ local function unwatchItem(instance: Instance)
 	end
 	itemWatches[instance] = nil
 	removePrompt(watch)
-	removeSafeTag(watch)
 end
 
 local function refreshAll()

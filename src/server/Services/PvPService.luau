@@ -29,8 +29,7 @@
 --      ouverte, pas la sienne, les deux profils chargés, mains vides (un objet à la fois), pas
 --      d'interdiction sur cette boutique (voir 2), le voleur a une boutique et de la place (DisplayService.HasRoom), il est
 --      vivant, dans Bounds de la boutique et à PvP.StealMaxDistance (8 studs) au plus du présentoir,
---      l'objet est exposé sur ce présentoir (ni colis des établis, ni coffre-fort, ni objet déjà
---      tenu) et n'est pas l'objet à l'abri (coffre-fort V0, plus bas).
+--      l'objet est exposé sur ce présentoir (ni colis des établis, ni objet déjà tenu).
 --   4. Fuite : DisplayService.Hold vide le présentoir (le profil de la victime ne change pas), puis
 --      CarryService.StartCarry(voleur, PlayerItemPayload) : l'objet flotte au-dessus de sa tête avec
 --      son halo, BB_Carry et un contour rouge, vitesse fixe (CarryService). TheftAlert(true,
@@ -76,7 +75,7 @@
 --
 -- Protections (6.4, décision de Cantin du 2026-11-12) : plus de bouclier débutant sur la boutique, plus
 -- d'immunité après un vol subi, plus d'anti-racket. Restent : 3 s d'immunité aux coups de batte
--- (DEV-043, BatService) ; coffre-fort ; l'argent n'est jamais volé (ni Cash ni la caisse ne sont lus ou
+-- (DEV-043, BatService) ; l'argent n'est jamais volé (ni Cash ni la caisse ne sont lus ou
 -- écrits ici) ; transfert sûr. Le bouclier débutant ne protège plus que le colis PNJ porté (BatService).
 --
 -- Défense par le propriétaire (Cantin, 2026-11-12) : BatService.IsIntruder est remplacé ici : le
@@ -107,12 +106,8 @@
 -- même interdiction sur cette boutique (pièges de l'arbre à venir compris). Interdictions oubliées au
 -- départ du joueur, et celles d'une boutique quand son propriétaire part (OnPlotReleased).
 -- require protégé de BatService (bancs sans lui) : sans lui, pas de défense par le propriétaire.
--- Coffre-fort V0 (6.4 « au moins 1 objet est toujours à l'abri » ; Partie 2, section 2 : « présentoirs
--- non volables, 1 offert dès le MVP ») : les PvP.VaultSlots (1) objets exposés qui rapportent le
--- plus ne sont jamais volables (à revenu égal, le présentoir de plus petit numéro). Ils restent sur
--- leur présentoir et rapportent ; aucune action du joueur, aucun remote, profil inchangé (le champ
--- Vault et VaultSlot_01 restent pour le coffre physique de la MAJ 2, DEV-110). Un joueur qui n'expose
--- qu'un objet ne peut donc pas être volé.
+-- Vague 54 (a176, Cantin, 2026-11-15 : « ce n'est pas censé exister ») : plus de coffre-fort ; tout objet
+-- exposé se vole, celui qui rapporte le plus compris, chez un joueur comme chez le bot.
 --
 -- Boutique du hub (L-050), sortie par le serveur devant la porte (PlotService.PutOutside), avec ce
 -- qu'il porte :
@@ -138,8 +133,7 @@
 -- la boutique du bot. L'Adrénaline reste aux vols (objet pris).
 --
 -- Posé par ce service sur la parcelle, lu par PvPController (aucun nom du contrat) :
---   StealOpen (booléen, nil fermé ; plus de StealEndsAt depuis la vague 33) ;
---   SafeSlots (texte « 3 » ou « 3,7 » : présentoirs à l'abri, nil sans objet exposé).
+--   StealOpen (booléen, nil fermé ; plus de StealEndsAt depuis la vague 33).
 -- Posé sur le Player interdit de voler une boutique (lu par PvPController, son panneau) :
 --   RobCooldown_<PlotIndex> (heure serveur de la fin de l'interdiction), retiré à la fin.
 --
@@ -149,7 +143,7 @@
 -- objet posé au sol d'une boutique est volable. Remote StealFloorItem(plotIndex, itemUid), deux appels comme
 -- StealItem, mêmes règles (boutique ouverte au vol, mains vides, interdiction, dans Bounds, à
 -- PvP.StealMaxDistance de l'objet, maintien PvP.StealGrabTime), plus : un vrai joueur (le bot n'en a pas),
--- antivol encore en cours (UnboxService.IsStealable), place dans l'inventaire du voleur ; pas de coffre-fort.
+-- antivol encore en cours (UnboxService.IsStealable), place dans l'inventaire du voleur.
 -- Fuite : UnboxService.HoldFloorItem sort le modèle du monde, même portage PlayerItem (SlotIndex = 0). Échec :
 -- UnboxService.ReleaseFloorItem, l'objet revient à sa place (son antivol a continué de courir). Dépôt (même
 -- transfert sûr) : UnboxService.TakeFloorItem, l'objet quitte le profil de la victime et arrive chez le voleur
@@ -166,10 +160,6 @@
 --   PvPService.GetIntruders(victim) -> { Player }
 --       Vague 33 : intrus annoncés à `victim` (voir « Alerte d'intrusion »), dans l'ordre d'arrivée ; une
 --       copie, vide sans intrus. Pour la réannonce de TheftAlertService.
---   PvPService.GetVaultSlots(owner) -> number
---       Point d'accroche : nombre d'objets exposés à l'abri chez `owner` (coffre-fort V0) ; PvP.VaultSlots
---       (1) par défaut, remplacé par SkillTreeService (compétence Safe, vague 27 : 1 + Effects[niveau]).
---       Jamais moins que PvP.VaultSlots ; une erreur ou une valeur invalide reprend PvP.VaultSlots.
 --   PvPService.OnTheftStarted(listener) -> déconnexion     listener(thief, victim, itemId)
 --   PvPService.OnTheftEnded(listener) -> déconnexion
 --       listener(thief, victim, itemId, result, reason) ; result = "Stolen" (dépôt) ou "Returned"
@@ -182,8 +172,7 @@
 -- BotName de la parcelle, PlotService) se braque comme celle d'un joueur, par le même chemin (HitWindow,
 -- casse, StealItem en deux appels, fuite, dépôt chez soi, échec). Ici, une victime nil = le bot : ses objets
 -- exposés viennent de BotService (Hold, Release, IsHeld, TakeHeld). Ce qui change pour lui :
---   - aucune protection (comme un joueur depuis le 2026-11-12) et pas de coffre-fort de l'arbre
---     (PvP.VaultSlots objet à l'abri, comme un joueur sans compétence) ;
+--   - aucune protection (comme un joueur depuis le 2026-11-12) ;
 --   - le voleur reçoit l'objet au dépôt (Source = "PvP", zone du catalogue, sans mutation) et sa sauvegarde
 --     part tout de suite ; le bot n'a pas de profil, BotService fait revenir un objet plus tard ;
 --   - jamais compté comme un joueur : ni Notify, ni TheftAlert, ni alarme de base vers lui, ni
@@ -275,13 +264,12 @@ local DEPOSIT_ZONE = "DepositZone"
 local SLOT_FORMAT = "DisplaySlot_%02d"
 -- Attributs posés par ce service sur la parcelle (mêmes noms dans PvPController).
 local OPEN_ATTRIBUTE = "StealOpen"
-local SAFE_SLOTS_ATTRIBUTE = "SafeSlots"
 -- Posé sur le Player interdit de voler une boutique (même nom dans PvPController).
 local ROB_COOLDOWN_FORMAT = "RobCooldown_%d"
 local PLOT_INDEX_ATTRIBUTE = "PlotIndex" -- numéro de la parcelle, posé par PlotService
 
 -- V0 proposé, absent du doc : services, joueurs et maintiens vérifiés 10 fois par seconde (comme
--- StoreHeistService) ; attributs de la parcelle publiés toutes les PUBLISH_EVERY images.
+-- StoreHeistService) ; interdictions revues toutes les PUBLISH_EVERY images.
 local TICK = 0.1
 local PUBLISH_EVERY = 5
 -- V0 proposé, absent du doc : après WindowService et StoreHeistService (110), avant les écrans.
@@ -388,7 +376,6 @@ local MESSAGES: { [string]: string } = {
 	RobCooldown = "You can rob this shop again in %ds.", -- refus pendant l'interdiction, et voleur frappé dehors
 	IntruderOut = "%s was kicked out of your shop!", -- au propriétaire
 	BreakerHit = "Bonked! You can't break into this shop for %ds.", -- a177 : au casseur de la porte frappé, V0
-	Safe = "This item is in the safe: nobody can steal it.",
 	Full = "Your shop is full: make room before stealing.",
 	NoShop = "You need a shop to steal.",
 	DoorBack = "The door is fixed: you were moved outside.",
@@ -645,45 +632,6 @@ local function releaseItem(plot: Model, victim: Player?, uid: string, thief: Pla
 	if api then
 		api.Release(plot, uid, thief)
 	end
-end
-
--- Nombre de présentoirs à l'abri chez `owner` : PvPService.GetVaultSlots (arbre de compétences, Safe),
--- un entier ≥ PvP.VaultSlots ; une erreur ou une valeur invalide reprend PvP.VaultSlots.
-local vaultWarned = false
-local function vaultSlotsOf(owner: Player): number
-	local ok, value = pcall(PvPService.GetVaultSlots, owner)
-	if not ok then
-		if not vaultWarned then
-			vaultWarned = true
-			warn(`[PvPService] GetVaultSlots : erreur ({value}), {PvP.VaultSlots} présentoir(s) à l'abri`)
-		end
-		return PvP.VaultSlots
-	end
-	if type(value) ~= "number" or value ~= value or value == math.huge then
-		return PvP.VaultSlots
-	end
-	return math.max(PvP.VaultSlots, math.floor(value))
-end
-
--- Coffre-fort V0 : présentoirs à l'abri parmi les objets exposés de `owner` (voir l'en-tête) ; le bot
--- (owner nil) en a PvP.VaultSlots.
-local function safeSlotsOf(owner: Player?, exposed: { [number]: DisplayService.ExposedItem }): { [number]: boolean }
-	local list: { number } = {}
-	for slot in exposed do
-		table.insert(list, slot)
-	end
-	table.sort(list, function(a: number, b: number): boolean
-		local ia, ib = exposed[a].Income, exposed[b].Income
-		if ia ~= ib then
-			return ia > ib
-		end
-		return a < b
-	end)
-	local safe: { [number]: boolean } = {}
-	for index = 1, math.min(if owner then vaultSlotsOf(owner) else PvP.VaultSlots, #list) do
-		safe[list[index]] = true
-	end
-	return safe
 end
 
 -- Remplace WindowService.CanBeHit (voir l'en-tête).
@@ -1262,9 +1210,6 @@ local function stealRefusal(player: Player, plot: Model, slot: number, lenient: 
 	if item == nil or (victimData and (victimData.Display[tostring(slot)] ~= item.Uid or victimData.Items[item.Uid] == nil)) then
 		return "présentoir vide", nil, nil
 	end
-	if safeSlotsOf(victim, exposed)[slot] then
-		return "objet à l'abri (coffre-fort)", "Safe", MESSAGES.Safe
-	end
 	if HeldItem.DepositToHand and not DisplayService.HasInventoryRoom(player) then -- vague 44 : il ira en main
 		return "plus de place dans l'inventaire du voleur", "FullInventory", MESSAGES.FullInventory
 	end
@@ -1277,7 +1222,7 @@ end
 -- Vague 31 (L-112) : refus d'une prise de l'objet sous antivol `uid` posé au sol de `plot`. Mêmes règles que
 -- le présentoir (shopRefusal, PvP.StealMaxDistance de l'objet), plus : un vrai joueur (le bot n'a rien au
 -- sol), l'antivol court encore (UnboxService.IsStealable), et de la place dans l'inventaire du voleur
--- (l'objet y arrive sous antivol). Pas de coffre-fort : l'objet au sol est volable par décision de Cantin.
+-- (l'objet y arrive sous antivol). L'objet au sol est volable par décision de Cantin.
 local function floorRefusal(player: Player, plot: Model, uid: string): (string?, string?, string?)
 	local api = Floor
 	if api == nil then
@@ -1506,34 +1451,6 @@ local function onStealFloorItem(player: Player, plotIndex: number, itemUid: stri
 		return
 	end
 	holds[player] = { Plot = plot, Victim = victim, Slot = 0, Uid = itemUid, StartedAt = now, Floor = true }
-end
-
--- Attributs de la parcelle -----------------------------------------------------------------------------------
-
-local function setIfChanged(plot: Model, name: string, value: any)
-	if plot:GetAttribute(name) ~= value then
-		plot:SetAttribute(name, value)
-	end
-end
-
-local function publish(plot: Model)
-	local owner = PlotService.GetOwner(plot) -- nil : boutique libre, ou celle du bot
-	local safeText: string? = nil
-	if owner or isBotPlot(plot) then
-		local slots: { number } = {}
-		for slot in safeSlotsOf(owner, exposedOf(plot, owner)) do
-			table.insert(slots, slot)
-		end
-		table.sort(slots)
-		if #slots > 0 then
-			local parts: { string } = {}
-			for _, slot in slots do
-				table.insert(parts, tostring(slot))
-			end
-			safeText = table.concat(parts, ",")
-		end
-	end
-	setIfChanged(plot, SAFE_SLOTS_ATTRIBUTE, safeText)
 end
 
 -- Défense par le propriétaire ------------------------------------------------------------------------------------
@@ -1769,9 +1686,6 @@ local function step()
 	publishCount += 1
 	if publishCount >= PUBLISH_EVERY then
 		publishCount = 0
-		for _, plot in PlotService.GetPlots() do
-			publish(plot)
-		end
 		banStep()
 	end
 end
@@ -1866,12 +1780,6 @@ end
 function PvPService.GetIntruders(victim: Player): { Player }
 	local list = intruders[victim]
 	return if list then table.clone(list) else {}
-end
-
--- Point d'accroche du coffre-fort (voir l'en-tête) : PvP.VaultSlots par défaut ; SkillTreeService le
--- remplace (compétence Safe).
-function PvPService.GetVaultSlots(_owner: Player): number
-	return PvP.VaultSlots
 end
 
 function PvPService.OnTheftStarted(listener: StartedListener): () -> ()

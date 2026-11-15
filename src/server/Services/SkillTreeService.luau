@@ -5,13 +5,18 @@
 --
 -- Sauvegarde : champ facultatif SkillTree du profil, [Id] = niveau acheté (Types/Profile, sans changement
 -- de version). Au chargement, nettoyé : ancien Id de SkillTree.Renamed relu sous son nouvel Id (ShopLevel →
--- Walls, vague 29 ; le plus haut niveau gagne), Id inconnu retiré, niveau entier borné à MaxLevel, niveau ≤ 0
+-- Walls, vague 29 ; le plus haut niveau gagne), Id retiré de SkillTree.Removed (Safe, vague 54 : le coffre-fort
+-- n'existe plus) effacé sans avertissement ni remboursement, Id inconnu retiré, niveau entier borné à MaxLevel, niveau ≤ 0
 -- retiré (table vide : champ retiré). Puis l'attribut `Skill_<Id>` (SkillTree.AttributePrefix) = niveau,
 -- 0 compris, est posé sur le Player pour chaque Id de Config/SkillTree ; republié à chaque achat.
 --
 -- Remote BuySkill(id) (Net/Definitions ; Net a déjà contrôlé la forme et le débit) : achète le niveau
 -- suivant. Le serveur décide tout, dans cet ordre :
 --   - Id inconnu ou profil pas chargé : envoi malhonnête, ignoré sans message (une ligne en Studio) ;
+--   - tuile à renaissance (L-173, a183 : RequiresRebirth de Config/SkillTree) pas encore ouverte : refus honnête
+--     « Reach Rebirth n first. ». Renaissances faites = attribut `Rebirths` du Player, posé par RebirthService
+--     (le serveur seul l'écrit) ; absent (renaissance coupée) : toujours refusé. Une tuile déjà achetée
+--     (niveau ≥ 1) n'est pas refermée (SkillTree.NeedsRebirth) ;
 --   - tuile fermée (OpensWhen : la compétence voisine n'a pas le niveau demandé), niveau maximum
 --     atteint, niveau suivant au-delà de Coded ou sans prix (« Soon »), argent insuffisant au prix
 --     Prices[niveau suivant] : refus honnête, Notify « Warning » en anglais ;
@@ -20,8 +25,8 @@
 --     DefenseBought), puis OnChanged. Débit et octroi dans la même exécution, sans yield.
 -- Aucun lieu imposé : l'écran s'ouvre de partout (bouton du HUD).
 --
--- Effets codés (Coded > 0), sur la boutique du joueur, par les points d'accroche de WindowService et de
--- PvPService (remplacés à l'Init, comme PvPService remplace WindowService.CanBeHit) :
+-- Effets codés (Coded > 0), sur la boutique du joueur, par les points d'accroche de WindowService
+-- (remplacés à l'Init, comme PvPService remplace WindowService.CanBeHit) :
 --   GlassThickness  « Reinforced Door » (L-163, a159) : coups de la porte de sa boutique (PlotDoor/Window) =
 --                   PvP.DoorHits (40) + Effects[niveau] (+8 par niveau, 80 au plus ; WindowService.GetPlotDoorHits).
 --                   Relu à chaque tick de WindowService : l'achat compte dans les 0,1 s, à fraction égale.
@@ -29,8 +34,6 @@
 --                   de la parcelle). L-163 : plus aucun effet sur la porte.
 --   GlassRegen      réparation de Effects[niveau] du maximum de coups par seconde au lieu de
 --                   Balance.Window.RegenPerSecond (WindowService.GetPlotRegen), en coups, quand personne ne frappe (PvP.DoorRepairDelay).
---   Safe            présentoirs non volables = PvP.VaultSlots (1 offert) + Effects[niveau] (PvPService.GetVaultSlots),
---                   3 au plus (MaxLevel 2).
 --   Curtain         verrou de la boutique (L-163, V0) : remote LockShop (sans argument, ShopLockController) ; le
 --                   serveur vérifie que le joueur a une boutique, que sa porte est intacte, qu'elle n'est pas déjà
 --                   verrouillée et que la recharge est finie (refus honnête : Notify « Warning »). Accepté : la
@@ -75,7 +78,6 @@ local ProfileTypes = require(Shared.Types.Profile)
 
 local DataService = require(script.Parent.DataService)
 local PlotService = require(script.Parent.PlotService)
-local PvPService = require(script.Parent.PvPService)
 local TelemetryService = require(script.Parent.TelemetryService)
 local WindowService = require(script.Parent.WindowService)
 
@@ -100,6 +102,7 @@ local TELEMETRY_EVENT = "DefenseBought"
 -- Messages lus par le joueur (Notify), en anglais (L-036). V0 proposés, absents du doc.
 local MESSAGES = {
 	Locked = "Locked: get %s level %d first.",
+	RebirthLocked = "Locked: reach Rebirth %d first.", -- L-173, V0
 	Max = "%s is already at max level.",
 	Soon = "%s: coming soon!",
 	NotEnoughCash = "Not enough cash: %s needed.",
@@ -196,6 +199,10 @@ local function sanitize(data: Data): number
 	for key, value in raw do
 		-- Ancien Id (SkillTree.Renamed, ex. ShopLevel → Walls) : relu sous le nouveau, sans perte ni avertissement ;
 		-- si les deux sont là, le plus haut niveau gagne.
+		if type(key) == "string" and SkillTree.Removed[key] ~= nil then
+			log(`profil : {key} retiré (compétence qui n'existe plus), niveau ignoré`)
+			continue
+		end
 		local renamed = if type(key) == "string" then SkillTree.Renamed[key] else nil
 		local skill = if renamed then SkillTree.ById[renamed] elseif type(key) == "string" then SkillTree.ById[key] else nil
 		if skill == nil or type(value) ~= "number" or value ~= value then
@@ -246,6 +253,12 @@ local function onBuySkill(player: Player, id: string)
 	local data = DataService.Get(player)
 	if data == nil then
 		reject(player, id, "profil pas chargé")
+		return
+	end
+	local rebirths = SkillTree.RebirthsOf(player:GetAttribute(SkillTree.RebirthsAttribute))
+	local rebirthNeeded = SkillTree.NeedsRebirth(skill, levelIn(data, skill), rebirths)
+	if rebirthNeeded ~= nil then
+		notify(player, string.format(MESSAGES.RebirthLocked, rebirthNeeded), "Warning")
 		return
 	end
 	if not isOpen(data, skill) then
@@ -417,9 +430,6 @@ local function installEffects()
 	WindowService.AddHitGate(lockGate)
 	WindowService.GetPlotRegen = function(owner: Player): number
 		return SkillTreeService.GetEffect(owner, "GlassRegen") or Balance.Window.RegenPerSecond
-	end
-	PvPService.GetVaultSlots = function(owner: Player): number
-		return PvP.VaultSlots + (SkillTreeService.GetEffect(owner, "Safe") or 0)
 	end
 	WindowService.OnHit(onWindowHit)
 end

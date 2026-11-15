@@ -21,7 +21,8 @@
 --       Icon           l'icône ICON_<ItemId> de l'objet (Contract/Icons) quand elle est livrée, sinon
 --                      l'image posée par Clément
 --       GainList       dans la ligne TIER_ROW (« Rebirth Aura » sur la maquette), la récompense propre
---                      au palier (Config/Rebirths, RewardText) ; ses autres lignes et les colonnes Lose
+--                      au palier : depuis L-173 (a183), les tuiles de l'arbre qu'il ouvre (« New skill: Lock » ;
+--                      Config/Rebirths, RewardText ; ligne cachée quand il est vide) ; ses autres lignes et les colonnes Lose
 --                      et Keep gardent les textes de Clément
 --       Status         texte de Clément gardé (« Not owned yet ») : le client ne peut pas savoir si le
 --                      joueur a l'objet (son inventaire et son coffre-fort ne lui sont pas envoyés, et
@@ -34,7 +35,9 @@
 -- faites) posé par le serveur sur le Player, seulement avec Features.Rebirth (ou RebirthTest en Studio).
 -- Sans lui, l'aperçu ci-dessus, inchangé. Avec lui :
 --       Level          « Level n → n+1 » (n = Rebirths) ; argent, objet et récompense du palier n+1
---       Status         OWNED_TEXT si l'attribut RebirthItemOwned est vrai, sinon le texte de Clément
+--       Status         OWNED_TEXT si l'attribut RebirthItemOwned est vrai, sinon le texte de Clément ;
+--                      « Owned! » prend la couleur de l'attribut OwnedColor de Status (vert, L-168 Q4 ;
+--                      facultatif), le texte de Clément retrouve sa couleur d'origine (rouge)
 --       ConfirmButton  confirmation en 2 temps (L-047) : Disabled tant qu'il manque l'argent (attribut Cash)
 --                      ou l'objet ; Ready sinon ; un appui → Confirm pendant CONFIRM_WINDOW s ; un 2e appui
 --                      envoie Rebirth(n+1) au serveur, qui décide tout (refus : un Notify)
@@ -76,6 +79,10 @@ type Screen = {
 	-- Textes de Clément relevés au branchement, remis quand l'état change (vague 51).
 	statusText: string?,
 	hintText: string?,
+	-- L-168 Q4 (a183) : ItemRequirement.Status, sa couleur de Clément et son attribut OwnedColor (Color3, facultatif).
+	status: TextLabel?,
+	statusColor: Color3,
+	ownedColor: Color3?,
 }
 
 local SCREEN = "UI_Rebirth"
@@ -91,6 +98,7 @@ local OWNED_ATTRIBUTE = "RebirthItemOwned"
 -- V0 proposés, absents du doc : textes et délai de la confirmation en 2 temps, ligne de la colonne Keep.
 local CONFIRM_WINDOW = 4 -- s pendant lesquelles le 2e appui confirme
 local OWNED_TEXT = "Owned!"
+local OWNED_COLOR_ATTRIBUTE = "OwnedColor" -- Color3 posé par Clément sur ItemRequirement.Status (L-168 Q4)
 local HINT_CONFIRM = "Tap again to rebirth"
 local HINT_LOCKED = "Get the cash and the item first"
 local KEEP_ROW = "KeepList.Row1.RowLabel"
@@ -240,14 +248,28 @@ local function refresh(current: Screen)
 		end
 	end
 	setText(gui, `GainList.{TIER_ROW}.{ROW_LABEL}`, tier.RewardText)
+	-- Vague 54 : palier sans récompense propre (RewardText vide, 2e renaissance) : sa ligne est cachée.
+	local tierRow = Find.path(gui, `GainList.{TIER_ROW}`)
+	if tierRow and tierRow:IsA("GuiObject") then
+		tierRow.Visible = tier.RewardText ~= ""
+	end
 
 	local live = liveCount() ~= nil
 	local shown = "Disabled"
 	local hint = HINT_TEXT
 	if live then
-		local status = if localPlayer:GetAttribute(OWNED_ATTRIBUTE) == true then OWNED_TEXT else current.statusText
+		local owned = localPlayer:GetAttribute(OWNED_ATTRIBUTE) == true
+		local status = if owned then OWNED_TEXT else current.statusText
 		if status then
 			setText(gui, "ItemRequirement.Status", status)
+		end
+		-- L-168 Q4 : « Owned! » à la couleur OwnedColor de Clément (vert), sinon sa couleur d'origine (rouge).
+		local statusLabel = current.status
+		if statusLabel then
+			local color = (if owned then current.ownedColor else nil) or current.statusColor
+			if statusLabel.TextColor3 ~= color then
+				statusLabel.TextColor3 = color
+			end
 		end
 		setText(gui, KEEP_ROW, KEEP_TEXT)
 		if not canRebirth() then
@@ -322,6 +344,9 @@ local function bind(gui: ScreenGui)
 		local found = Find.path(gui, path)
 		return if found and (found:IsA("TextLabel") or found:IsA("TextButton")) then (found :: any).Text else nil
 	end
+	local statusFound = Find.path(gui, "ItemRequirement.Status")
+	local status: TextLabel? = if statusFound and statusFound:IsA("TextLabel") then statusFound :: TextLabel else nil
+	local ownedColor: any = if status then status:GetAttribute(OWNED_COLOR_ATTRIBUTE) else nil
 	local current: Screen = {
 		gui = gui,
 		fill = fill,
@@ -329,6 +354,9 @@ local function bind(gui: ScreenGui)
 		connections = {},
 		statusText = textOf("ItemRequirement.Status"),
 		hintText = textOf("Hint"),
+		status = status,
+		statusColor = if status then status.TextColor3 else Color3.new(),
+		ownedColor = if typeof(ownedColor) == "Color3" then ownedColor else nil,
 	}
 	screen = current
 	armedUntil = 0

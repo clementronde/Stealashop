@@ -583,7 +583,7 @@ local skillTreeElements = {
 } :: { Element }
 -- Tile_ShopLevel : la tuile Walls (vague 29, L-105 point 3). Renommage en Tile_Walls proposé, pas encore annoncé :
 -- le contrat garde l'ancien nom ; SkillTreeController accepte les deux (Config/SkillTree, OldTiles).
-for _, tile in { "Tile_ShopLevel", "Tile_Glass", "Tile_GlassRegen", "Tile_Cameras", "Tile_Guards", "Tile_PotionLuck", "Tile_Curtain", "Tile_DoorGuard", "Tile_PotionTime", "Tile_Next1", "Tile_Next4" } do
+for _, tile in { "Tile_ShopLevel", "Tile_Glass", "Tile_GlassRegen", "Tile_Cameras", "Tile_Guards", "Tile_PotionLuck", "Tile_Curtain", "Tile_DoorGuard", "Tile_PotionTime", "Tile_Next1" } do
 	table.insert(skillTreeElements, { Path = `Tree.{tile}`, Class = BUTTON })
 	for _, part in { "Bought", "Available", "Locked", "Info", "Info.Level", "Info.TileName", "Info.PriceRow.Price", "Info.PriceRow.PriceNeed" } do
 		table.insert(skillTreeElements, { Path = `Tree.{tile}.{part}` })
@@ -970,6 +970,30 @@ table.insert(UI.Billboards, {
 		{ Path = "Income", Class = "TextLabel" },
 		{ Path = "HP", Class = "TextLabel" },
 		{ Path = "Status", Class = "GuiObject" },
+	} :: { Element },
+})
+
+-- Récompenses de renaissance (L-173 et L-168 Q2, vague 56, a183), tout est facultatif.
+-- Tuiles à renaissance de l'arbre (les 4 tuiles de Config/SkillTree qui ont RequiresRebirth ; noms proposés par
+-- Clément le 2026-11-15, adoptés) : calque RebirthLocked à côté de Bought, Available et Locked, avec LockedName
+-- (« REBIRTH 1 ») et LockedLabel (« TO UNLOCK ») écrits par SkillTreeController.
+for _, screenDef in UI.Screens do
+	if screenDef.Name == "UI_SkillTree" then
+		for _, tile in { "Tile_Curtain", "Tile_PotionTime", "Tile_DoorGuard", "Tile_Next1" } do
+			table.insert(screenDef.Elements, { Path = `Tree.{tile}.RebirthLocked`, Optional = true, Note = "tuile à renaissance : le calque Locked est montré à la place" })
+			table.insert(screenDef.Elements, { Path = `Tree.{tile}.RebirthLocked.LockedName`, Class = "TextLabel", Optional = true, Note = "« REBIRTH n » n'est pas écrit" })
+			table.insert(screenDef.Elements, { Path = `Tree.{tile}.RebirthLocked.LockedLabel`, Class = "TextLabel", Optional = true, Note = "« TO UNLOCK » n'est pas écrit" })
+		end
+	end
+end
+-- Titre au-dessus du joueur (noms proposés à Clément, Config/Rebirths.Title) : RebirthTitleController en pose une
+-- copie sur la tête de chaque joueur qui a fait une renaissance et écrit « REBIRTH n » dans TitleLabel.
+table.insert(UI.Billboards, {
+	Name = "BB_RebirthTitle",
+	Class = "BillboardGui",
+	Optional = true,
+	Elements = {
+		{ Path = "TitleLabel", Class = "TextLabel", Optional = true, Note = "« REBIRTH n » n'est pas écrit au-dessus du joueur" },
 	} :: { Element },
 })
 

@@ -11,8 +11,9 @@
 --          tous les objets sauf ceux qu'il garde ; l'objet requis est remis (il disparaît)
 --   garde  Garde objets au choix (les meilleurs, hors objet requis), l'index, l'arbre de compétences, les achats
 --          Robux (ni l'index, ni l'arbre, ni le Robux ne sont simulés : le jeu réel ira un peu plus vite)
---   gagne  +Bonus de revenus des présentoirs par renaissance (additionnés : ×1,5, ×2, ×2,5…) et la récompense
---          du palier (seules celles qui changent une durée sont simulées : entraînement, outil gardé)
+--   gagne  +Bonus de revenus des présentoirs par renaissance (additionnés : ×1,5, ×2, ×2,5…) ; depuis L-173 (a183,
+--          2026-11-15) plus de « Tapis ×1,5 » ni d'outil gardé : seulement des tuiles de l'arbre (pas simulées).
+--          Entrainement et Outil d'un palier restent lus s'ils sont donnés (variantes du rapport).
 --
 -- L'objet requis tombe d'un colis de sa zone et de sa rareté avec la chance 1 / (nombre d'objets de cette rareté
 -- dans la zone, Config/Items.ByZone) ; il ne compte que s'il est gagné après la renaissance d'avant. Quand il
@@ -41,16 +42,16 @@ R.Part = { 1, 0.95, 0.9, 0.85, 0.8, 0.8, 0.75, 0.75, 0.7, 0.7 }
 -- Le tableau proposé. Cash : argent requis ; Objet : ItemId (Config/Items) ; Entrainement : multiplicateur du
 -- tapis gagné à ce palier (cumulé) ; Outil : outil gardé à partir de ce palier (Id de Config/Tools).
 R.Paliers = {
-	{ Cash = 20e9, Objet = "Z6_DiamantGeant", Recompense = "Aura « Renaissance » (sans effet sur les dégâts)" },
-	{ Cash = 500e9, Objet = "Z6_TroneEnOr", Recompense = "+1 coffre-fort" },
-	{ Cash = 1.3e12, Objet = "Z6_StatueDeLaLiberte", Recompense = "Tapis ×1,5", Entrainement = 1.5 },
-	{ Cash = 2e12, Objet = "Z2_PelucheGeante", Recompense = "Trail « Renaissance » (sans effet sur la Speed)" },
-	{ Cash = 2.6e12, Objet = "Z3_PcGamer", Recompense = "Marteau-piqueur (= Angle Grinder, gardé)", Outil = "AngleGrinder" },
-	{ Cash = 3.2e12, Objet = "Z4_Couronne", Recompense = "Tapis ×1,5 (×2,25 en tout)", Entrainement = 1.5 },
-	{ Cash = 5e12, Objet = "Z5_MasqueAncien", Recompense = "Bélier (portes des joueurs seulement)" },
-	{ Cash = 7e12, Objet = "Z6_CoffreDeDiamants", Recompense = "2e agent de sécurité (MAJ 5)" },
-	{ Cash = 7.5e12, Objet = "Z6_CleDuCoffreUltime", Recompense = "Aura « Légende » (sans effet sur les dégâts)" },
-	{ Cash = 9e12, Objet = "Z6_CleDuCoffreUltime", Recompense = "Titre au-dessus de la tête" },
+	{ Cash = 20e9, Objet = "Z6_DiamantGeant", Recompense = "Arbre : Lock" },
+	{ Cash = 500e9, Objet = "Z6_TroneEnOr", Recompense = "Arbre : Potion Time" },
+	{ Cash = 1.3e12, Objet = "Z6_StatueDeLaLiberte", Recompense = "Arbre : Door Guard" },
+	{ Cash = 2e12, Objet = "Z2_PelucheGeante", Recompense = "Arbre : Traps" },
+	{ Cash = 2.6e12, Objet = "Z3_PcGamer" },
+	{ Cash = 3.2e12, Objet = "Z4_Couronne" },
+	{ Cash = 5e12, Objet = "Z5_MasqueAncien" },
+	{ Cash = 7e12, Objet = "Z6_CoffreDeDiamants" },
+	{ Cash = 7.5e12, Objet = "Z6_CleDuCoffreUltime" },
+	{ Cash = 9e12, Objet = "Z6_CleDuCoffreUltime" },
 }
 
 -- La même échelle, telle que la Partie 2 (3.2) l'écrit aujourd'hui, pour comparer.
