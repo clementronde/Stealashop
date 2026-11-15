@@ -48,6 +48,7 @@
 --       Piste visée (nil : silence), part du volume plein de chaque copie (0 à 1) et événement dont la
 --       musique joue ("Chase", "Heist", "Truck", nil : le fond), pour un test dans Studio (barre de
 --       commande côté client).
+--   MusicController.CutChase()   vague 59 : coupe MUS_Chase d'un coup (capture, CatchSceneController)
 
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
@@ -409,6 +410,20 @@ function MusicController.GetState(): State
 		levels[name] = track.Level
 	end
 	return { Track = target, Levels = levels, Event = event }
+end
+
+-- Vague 59 (a192, L-184 point 1) : à la capture, la musique de poursuite est coupée d'un coup (sans fondu de
+-- sortie) ; le fond remonte ensuite comme d'habitude. Pas encore jouée : rien.
+function MusicController.CutChase()
+	local track = tracks[Music.ChaseTrack]
+	if track == nil then
+		return
+	end
+	track.Level = 0
+	track.Written = 0
+	track.Copy.Volume = 0
+	track.Copy.Playing = false
+	sinceCheck = math.huge -- musique revue dès la prochaine image
 end
 
 -- ChaseController, s'il est là (poursuite : L-071, point 6) ; sans lui, pas de musique de poursuite.

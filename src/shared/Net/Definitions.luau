@@ -692,6 +692,21 @@ local List: { RemoteDef } = {
 		Args = {},
 		RatePerSecond = 2, -- V0 proposé, absent du doc (comme ClaimDaily)
 	},
+	{
+		-- Vague 59 (a192, L-184 point 1), absent du tableau 9.4 : la capture mise en scène, au coup du vigile (marqueur
+		-- Impact de Catch, ou délai de secours ; arrestation de nuit : à son début), envoyée au seul joueur attrapé par
+		-- GuardService. Rien de sensible : la capture est décidée. outcome = "Shelf", "Drop" ou "None" ; homeIn =
+		-- secondes avant le renvoi à la base (0 : pas de renvoi) ; itemId = l'objet porté, s'il y en avait un.
+		Name = "CatchScene",
+		Direction = "ServerToClient",
+		Reliable = true,
+		Args = {
+			{ Name = "night", Kind = "boolean" },
+			{ Name = "outcome", Kind = "string", Max = 8 },
+			{ Name = "homeIn", Kind = "number", Min = 0, Max = 60 },
+			{ Name = "itemId", Kind = "string", Max = MAX_ID_LENGTH, Optional = true },
+		},
+	},
 }
 
 return {

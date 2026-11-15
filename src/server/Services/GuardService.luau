@@ -202,6 +202,10 @@
 --   - sur le joueur rattrapé, pendant la poussée : un Attachment KNOCKBACK_NAME (avec sa
 --     LinearVelocity) dans son HumanoidRootPart. ChaseController le reconnaît à ce nom pour
 --     jouer Knockback et Stunned.
+-- Envoyé au joueur attrapé (vague 59, a192, L-184 point 1) : remote CatchScene(night, outcome, homeIn, itemId?) au
+-- coup (en même temps que la poussée ; arrestation de nuit : à son début), pour la mise en scène côté client
+-- (CatchSceneController). outcome = "Shelf" (l'objet revole sur son rayon), "Drop" (il tombe, ou est perdu) ou
+-- "None" ; homeIn = secondes avant le renvoi à la base (nuit, policier), 0 sinon. Aucune règle de jeu ne change.
 --
 -- API (serveur) :
 --   GuardService.ChaseIntruder(player, store) -> boolean
@@ -1838,6 +1842,33 @@ local function catchSendsBack(player: Player): boolean
 	return back
 end
 
+-- Vague 59 (a192, L-184 point 1) : la capture mise en scène chez le joueur attrapé (CatchSceneController). Ce que
+-- devient ce qu'il porte, lu au moment de la capture, avant que le portage soit perdu : "Shelf" (revole sur son
+-- rayon), "Drop" (tombe au sol, ou perdu : camion) ou "None" (il ne portait rien), et l'objet (ItemId) s'il y en a un.
+local function sceneOutcome(player: Player, backToShelf: boolean): (string, string?)
+	local okCarry, carrying = pcall(CarryService.IsCarrying, player)
+	if not (okCarry and carrying == true) then
+		return "None", nil
+	end
+	local okPayload, payload = pcall(CarryService.GetPayload, player)
+	local itemId = if okPayload and type(payload) == "table" and type(payload.ItemId) == "string" then payload.ItemId else nil
+	return (if backToShelf then "Shelf" else "Drop"), itemId
+end
+
+-- Remote CatchScene, au coup (marqueur Impact de Catch, ou délai de secours) : rien de sensible, la capture est déjà
+-- décidée ; `homeIn` = secondes avant le renvoi à la base (nuit, policier), 0 sinon. Aucune règle de jeu ne change.
+local function sendCatchScene(player: Player, night: boolean, outcome: string, homeIn: number, itemId: string?)
+	if player.Parent ~= Players then
+		return
+	end
+	local ok, err = pcall(function()
+		Net.Server.CatchScene:Fire(player, night, outcome, homeIn, itemId)
+	end)
+	if not ok then
+		warn(`[GuardService] CatchScene vers {player.Name} : {err}`)
+	end
+end
+
 local function catch(guard: Guard, player: Player)
 	local now = os.clock()
 	endChase(guard)
@@ -1847,42 +1878,6 @@ local function catch(guard: Guard, player: Player)
 	local track = guard.anims:Play("Catch")
 	guard.stateEndsAt = now + pauseFor(track, CATCH_PAUSE, CATCH_MAX)
 	log(`{guard.label} : {player.Name} rattrapé`)
-
-	-- Le coup : au marqueur Impact de Catch (délai de secours : impactMaxWait), ou tout de suite si
-	-- Catch n'est pas livrée (pas de geste à attendre). Immobilisé dès la capture (plus bas), le
-	-- joueur reste étourdi CatchStunDuration s à partir du coup, comme son client le montre avec
-	-- Knockback puis Stunned (ChaseController), et non à partir de la capture.
-	-- Policier (L-118 point 3) : Night.SendHomeDelay s après le coup, renvoyé à la base, comme la nuit.
-	local sendHome = if guard.driver then guard.driver.SendHome else nil
-	local function sendHomeLater(caught: Player)
-		if sendHome == nil then
-			return
-		end
-		local send: (player: Player) -> boolean = sendHome
-		task.delay(Night.SendHomeDelay, function()
-			if caught.Parent == Players then
-				local ok, err = pcall(send, caught)
-				if not ok then
-					warn(`[GuardService] SendHome({caught.Name}) après la police : {err}`)
-				end
-			end
-		end)
-	end
-	if track then
-		guard.knockTarget = player
-		guard.onKnock = function(caught: Player)
-			stun(caught, Balance.Guard.CatchStunDuration)
-			sendHomeLater(caught)
-		end
-		task.delay(impactMaxWait(track), function()
-			if guard.knockTarget == player then
-				releaseKnockback(guard)
-			end
-		end)
-	else
-		knockback(player, guard.root.Position)
-		sendHomeLater(player)
-	end
 
 	-- Colis, étourdissement, message : décidés ici, au moment de la capture, dans leur propre tâche
 	-- pour qu'un appel qui attend ne bloque pas les autres vigiles.
@@ -1908,6 +1903,49 @@ local function catch(guard: Guard, player: Player)
 			bindLink(carried, store, guard)
 		end
 	end
+
+	-- Le coup : au marqueur Impact de Catch (délai de secours : impactMaxWait), ou tout de suite si
+	-- Catch n'est pas livrée (pas de geste à attendre). Immobilisé dès la capture (plus bas), le
+	-- joueur reste étourdi CatchStunDuration s à partir du coup, comme son client le montre avec
+	-- Knockback puis Stunned (ChaseController), et non à partir de la capture.
+	-- Policier (L-118 point 3) : Night.SendHomeDelay s après le coup, renvoyé à la base, comme la nuit.
+	-- Vague 59 (a192) : au coup, la mise en scène (remote CatchScene) ; placé après le choix du retour au rayon
+	-- (même image) pour dire au joueur ce que devient son objet.
+	local sendHome = if driver then driver.SendHome else nil
+	local outcome, sceneItem = sceneOutcome(player, backToShelf)
+	local homeIn = if sendHome then Night.SendHomeDelay else 0
+	local function sendHomeLater(caught: Player)
+		if sendHome == nil then
+			return
+		end
+		local send: (player: Player) -> boolean = sendHome
+		task.delay(Night.SendHomeDelay, function()
+			if caught.Parent == Players then
+				local ok, err = pcall(send, caught)
+				if not ok then
+					warn(`[GuardService] SendHome({caught.Name}) après la police : {err}`)
+				end
+			end
+		end)
+	end
+	if track then
+		guard.knockTarget = player
+		guard.onKnock = function(caught: Player)
+			stun(caught, Balance.Guard.CatchStunDuration)
+			sendCatchScene(caught, false, outcome, homeIn, sceneItem)
+			sendHomeLater(caught)
+		end
+		task.delay(impactMaxWait(track), function()
+			if guard.knockTarget == player then
+				releaseKnockback(guard)
+			end
+		end)
+	else
+		knockback(player, guard.root.Position)
+		sendCatchScene(player, false, outcome, homeIn, sceneItem)
+		sendHomeLater(player)
+	end
+
 	task.spawn(function()
 		local fail = if backToShelf then CarryService.FailNoDrop else CarryService.Fail
 		local ok, err = pcall(fail :: any, player, "Caught")
@@ -1937,7 +1975,9 @@ local function nightCatch(guard: Guard, player: Player)
 	stun(player, NIGHT_FREEZE_MAX) -- jusqu'au renvoi ; l'étourdissement de 2 s part de là
 	caughtAtNight[player] = true
 	emitCatch(player, guard.zone, true)
-	local fail = if catchSendsBack(player) then CarryService.FailNoDrop else CarryService.Fail -- a174
+	local sendsBack = catchSendsBack(player) -- a174
+	local outcome, sceneItem = sceneOutcome(player, sendsBack) -- vague 59 : remote CatchScene, plus bas
+	local fail = if sendsBack then CarryService.FailNoDrop else CarryService.Fail
 	task.spawn(function()
 		local ok, err = pcall(fail :: any, player, "Caught")
 		if not ok then
@@ -1985,15 +2025,20 @@ local function nightCatch(guard: Guard, player: Player)
 		end
 		local length = if arrest.Length > 0 then arrest.Length else ARREST_FALLBACK_LENGTH
 		guard.stateEndsAt = now + length
-		task.delay(math.max(length - Night.SendHomeDelay, 0), sendHome, player)
+		local wait = math.max(length - Night.SendHomeDelay, 0)
+		sendCatchScene(player, true, outcome, wait + Night.SendHomeDelay, sceneItem) -- vague 59 : pas de coup, tout de suite
+		task.delay(wait, sendHome, player)
 		return
 	end
 
 	-- Le coup : au marqueur Impact de Catch (délai de secours : impactMaxWait), ou tout de suite si
-	-- Catch n'est pas livrée.
+	-- Catch n'est pas livrée. Vague 59 : la mise en scène part au coup (renvoi Night.SendHomeDelay s après).
 	if track then
 		guard.knockTarget = player
-		guard.onKnock = sendHome
+		guard.onKnock = function(caught: Player)
+			sendCatchScene(caught, true, outcome, Night.SendHomeDelay, sceneItem)
+			sendHome(caught)
+		end
 		task.delay(impactMaxWait(track), function()
 			if guard.knockTarget == player then
 				releaseKnockback(guard)
@@ -2001,6 +2046,7 @@ local function nightCatch(guard: Guard, player: Player)
 		end)
 	else
 		knockback(player, guard.root.Position)
+		sendCatchScene(player, true, outcome, Night.SendHomeDelay, sceneItem)
 		task.spawn(sendHome, player)
 	end
 end

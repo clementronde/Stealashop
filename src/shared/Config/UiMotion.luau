@@ -252,7 +252,9 @@ local UiMotion = {
 	ChasePulse = {
 		Min = 0.1, -- tableau : « transparence de 0,1 à 0,6, 1,6 battement par seconde »
 		Max = 0.6,
-		Rate = 1.6,
+		-- Vague 59 (a192, L-184 point 2, Clément : « un bord d'écran rouge qui pulse environ toutes les 1,2 s ») :
+		-- 1 battement toutes les 1,2 s (avant : 1,6 par seconde).
+		Rate = 1 / 1.2,
 		Targets = { "ScreenEdges", "Vignette.Edge" },
 	},
 	-- Caméra pendant la poursuite.
