@@ -6,7 +6,7 @@ Ce doc a deux parties. **Partie 1 · MVP** (ce fichier) : tout ce qui sort au la
 
 ## 1. Pitch & TL;DR
 
-**Steal a Shop** est un « Steal a … » à 6 joueurs : on casse la vitrine de magasins PNJ, on vole un colis mystère en 10 secondes, on sème le vigile, et l'objet déballé rapporte de l'argent par seconde dans sa propre boutique. Les 5 autres joueurs peuvent braquer cette boutique à leur tour.
+**Steal a Shop** est un « Steal a … » à 8 joueurs : on casse la vitrine de magasins PNJ, on vole un colis mystère en 10 secondes, on sème le vigile, et l'objet déballé rapporte de l'argent par seconde dans sa propre boutique. Les 7 autres joueurs peuvent braquer cette boutique à leur tour.
 
 **La boucle en une phrase** : s'entraîner → casser une vitrine → voler un colis → semer le vigile → déballer → exposer → encaisser → améliorer → braquer plus loin, ou braquer un joueur.
 
@@ -957,7 +957,7 @@ Le MVP sort quand il est prêt, après les jalons ci-dessous dans cet ordre (dé
 | DEV-003 | Greybox : zone safe, 6 parcelles, couloir, 12 magasins en blocs | On court du spawn à la zone 6 aux distances de la section 4 | M0 | P0 | DEV-001 | À faire |
 | DEV-004 | DataService : ProfileStore, schéma v1, migrations | Argent sauvegardé et rechargé ; verrou de session testé sur 2 serveurs | M0 | P0 | DEV-002 | À faire |
 | DEV-005 | ContractChecker : tags, modèles et UI | Liste claire dans la sortie de ce qui manque ; testé en renommant un élément | M0 | P0 | DEV-002 | À faire |
-| DEV-010 | PlotService : attribution, libération, spawn, panneau du nom | 6 joueurs ont chacun leur parcelle ; un départ libère la place | M1 | P0 | DEV-003, DEV-004 | À faire |
+| DEV-010 | PlotService : attribution, libération, spawn, panneau du nom | 8 joueurs ont chacun leur parcelle ; un départ libère la place | M1 | P0 | DEV-003, DEV-004 | À faire |
 | DEV-011 | StatsService : Vitesse, Force, WalkSpeed serveur | Formules 7.1, plafond 70, appliqué par le serveur | M1 | P0 | DEV-004 | À faire |
 | DEV-012 | TrainingService : tapis et banc | Gains × multiplicateurs, AFK au tapis, +50 % au tap, limites de taps | M1 | P0 | DEV-011, MOD-016 | À faire |
 | DEV-013 | ToolService : outils, équipement, calcul des dégâts | Dégâts selon la formule 7.1, calculés côté serveur | M1 | P0 | DEV-011 | À faire |
