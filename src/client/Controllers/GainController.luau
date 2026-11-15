@@ -9,6 +9,10 @@
 --     par StatsService, quand ils montent pendant que l'attribut TrainingMachine vaut « Treadmill » ou
 --     « Bench » (TrainingService). Gains rapprochés : un BB_Gain au plus par FloatGain.MinGap s, les
 --     gains entre deux s'additionnent dans le suivant. Sans son (Train_Gain retiré, L-118 point 7).
+--     Vague 59 (a190, L-182 point 8) : sur le tapis, le gain d'une seconde s'affiche en Config/Hud.TreadmillGain
+--     .Pieces morceaux (« +0.4 Speed », un toutes les 0,2 s, même total, chacun vit Life s ; le « ×2 » en exposant
+--     d'a178 reste), et le compteur Speed du HUD pulse à chaque morceau (Config/Hud.SpeedPulse, Motion.Pop).
+--     Pieces = 1 : l'ancien « +2 Speed/s ».
 --   - Argent : quand l'attribut Cash du Player monte (DataService), Cash est retenu au HUD
 --     (HudController.HoldCash) et le gain est classé à la fin de l'image (task.defer) :
 --       * ramassage : l'attribut CashCollected du Player (DisplayService, il ne fait que monter) est
@@ -109,6 +113,15 @@ local FLY_INFO = TweenInfo.new(FLY.Time, FLY.Style, FLY.Direction)
 local BUMP_INFO = TweenInfo.new(UiMotion.CashBump.Time, UiMotion.CashBump.Style, UiMotion.CashBump.Direction)
 local COUNTER_POP_INFO = TweenInfo.new(POP.Time, POP.Style, POP.Direction)
 local COUNTER_FADE_INFO = TweenInfo.new(POP.FadeTime, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+-- Vague 59 (a190) : morceaux du tapis et pulsation du compteur Speed (Config/Hud, facultatif : bancs plus anciens).
+local hudConfigModule = Shared:WaitForChild("Config"):FindFirstChild("Hud")
+local HudConfig: any = if hudConfigModule and hudConfigModule:IsA("ModuleScript") then require(hudConfigModule) :: any else nil
+local TREAD: any = if HudConfig then HudConfig.TreadmillGain else nil
+local SPEED_PULSE: any = if HudConfig then HudConfig.SpeedPulse else nil
+local PIECE_RISE_INFO: TweenInfo? = if TREAD then TweenInfo.new(TREAD.Life, FLOAT.Style, FLOAT.Direction) else nil
+local PULSE_INFO: TweenInfo? = if SPEED_PULSE
+	then TweenInfo.new(SPEED_PULSE.Time, SPEED_PULSE.Style, SPEED_PULSE.Direction)
+	else nil
 -- V0 proposé, absent du doc : nom des UIScale posés sur les copies (détruits avec elles).
 local COPY_SCALE = "GainScale"
 
@@ -205,7 +218,8 @@ end
 -- Gain au-dessus du joueur (FloatGain)
 ------------------------------------------------------------------------------
 
-local function floatGain(kind: Kind, amount: number)
+-- `info` et `text` (vague 59, morceaux du tapis) : une autre montée et un autre texte que FloatGain et kind.Text.
+local function floatGain(kind: Kind, amount: number, info: TweenInfo?, text: string?)
 	local root = rootPart()
 	local gui = playerGui()
 	local assets = ReplicatedStorage:FindFirstChild("Assets")
@@ -238,7 +252,7 @@ local function floatGain(kind: Kind, amount: number)
 	-- L-092 3e : un seul BB_Gain ; la copie dit sa sorte (GainKind) et Amount prend sa couleur.
 	billboard:SetAttribute(FLOAT.KindAttribute, kind.Name)
 	if amountLabel then
-		amountLabel.Text = kind.Text(amount)
+		amountLabel.Text = text or kind.Text(amount)
 		-- Vague 24 : la couleur posée par Clément sur BB_Gain (attribut <Sorte>Color, Color3) passe
 		-- avant celle de Config/UiMotion.FloatGain.Colors.
 		local attributeColor = template:GetAttribute(`{kind.Name}Color`)
@@ -312,7 +326,7 @@ local function floatGain(kind: Kind, amount: number)
 			(item.object :: any)[item.property] = item.from + (1 - item.from) * fade
 		end
 	end)
-	local rise = TweenService:Create(progress, GAIN_RISE_INFO, { Value = 1 })
+	local rise = TweenService:Create(progress, info or GAIN_RISE_INFO, { Value = 1 })
 	rise.Completed:Connect(function()
 		active.Gains -= 1
 		billboard:Destroy()
@@ -613,10 +627,52 @@ local function riseOf(attribute: string): (number, number?)
 	return value - previous, previous
 end
 
+-- Vague 59 (a190, L-182 point 8) : le compteur Speed du HUD (SpeedRow s'il existe) pulse au morceau `rank`.
+local function pulseSpeed(rank: number, pieces: number)
+	local pulse = SPEED_PULSE
+	local info: TweenInfo? = PULSE_INFO
+	local label = typed(hudScreen(), SPEED.HudLabel, "TextLabel") :: TextLabel?
+	if pulse == nil or info == nil or label == nil then
+		return
+	end
+	local target: GuiObject = label
+	local row = label:FindFirstAncestor(pulse.Row)
+	if row and row:IsA("GuiObject") then
+		target = row :: GuiObject
+	end
+	local t = if pieces > 1 then (rank - 1) / (pieces - 1) else 1
+	Motion.Pop(target, pulse.Min + (pulse.Max - pulse.Min) * t, info)
+end
+
+-- Le gain d'une seconde du tapis en Pieces « +X » répartis sur Period s, même total (le dernier morceau prend le
+-- reste des arrondis). Chaque morceau vit Life s.
+local function showPieces(amount: number)
+	local tread = TREAD :: any
+	local pieces = math.max(1, math.floor(tread.Pieces))
+	local gap = tread.Period / pieces
+	local piece = amount / pieces
+	for rank = 1, pieces do
+		local value = if rank == pieces then amount - piece * (pieces - 1) else piece
+		local function show()
+			floatGain(SPEED, value, PIECE_RISE_INFO, string.format(tread.Text, Format.short(value)))
+			pulseSpeed(rank, pieces)
+		end
+		if rank == 1 then
+			show()
+		else
+			task.delay(gap * (rank - 1), show)
+		end
+	end
+end
+
 local function onTraining(kind: Kind)
 	local amount = riseOf(kind.Attribute)
 	if amount > 0 and localPlayer:GetAttribute(MACHINE_ATTRIBUTE) == kind.Machine then
-		showGain(kind, amount)
+		if kind == SPEED and TREAD ~= nil and TREAD.Pieces > 1 then
+			showPieces(amount)
+		else
+			showGain(kind, amount)
+		end
 	end
 end
 

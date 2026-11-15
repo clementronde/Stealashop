@@ -47,6 +47,11 @@
 --     HeistTimer (ou son enfant Box) sursaute à chaque seconde, avec un tic (TimerTick, L-091).
 --   - Argent retenu (L-091 point 3) : GainController retient Cash (HoldCash) pendant qu'un gain vole
 --     vers le compteur ; l'argent défile à l'arrivée de la case.
+--   - Vague 59 (a190, L-182 point 4) : après un achat (toute baisse de l'attribut Cash hors retenue), Cash décompte
+--     en Config/Hud.CashSpent.Time (Quint Out) au lieu du défilement court, et CashSpent (TextLabel rouge de
+--     Clément, facultatif, caché) montre « -$X » le temps du décompte (achats rapprochés additionnés). Seul
+--     point d'entrée du compteur d'argent : ce contrôleur (writeStat) ; les gains qui volent passent par HoldCash.
+--     Menu, RightRail et boutons en situation : HudMenuController.
 -- Les éléments sont cherchés par leur nom parmi les descendants de l'écran (Contract/Find) : les
 -- cadres autour (LeftRail, StatsPanel…) sont décoratifs et peuvent changer. Seuls les textes, la
 -- visibilité et la largeur de Fill sont touchés (2.2, « Libre pour Ironix »), jamais un style ;
@@ -76,6 +81,9 @@ local Format = require(Shared:WaitForChild("Format"))
 local MarkerSounds = require(Shared:WaitForChild("Anim"):WaitForChild("MarkerSounds"))
 local Motion = require(script.Parent:WaitForChild("UI"):WaitForChild("Motion"))
 local UiMotion = require(Config:WaitForChild("UiMotion"))
+-- Vague 59 (a190) : facultatif (bancs plus anciens sans Config/Hud) : sans lui, pas de décompte après un achat.
+local hudConfigModule = Config:FindFirstChild("Hud")
+local HudConfig: any = if hudConfigModule and hudConfigModule:IsA("ModuleScript") then require(hudConfigModule) :: any else nil
 
 -- Ce que ce contrôleur utilise de HeistController (a10) et de ChaseController (a12).
 type HeistApi = {
@@ -106,6 +114,7 @@ type Hud = {
 	fill: GuiObject?,
 	fillSize: UDim2, -- taille de Fill posée par Clément : seule la largeur en Scale change
 	nightCountdown: TextLabel?,
+	cashSpent: TextLabel?, -- vague 59 : « -$X » après un achat (facultatif)
 }
 
 local SCREEN = "UI_HUD"
@@ -273,6 +282,33 @@ local function element(root: Instance, name: string, class: string): Instance?
 	return nil
 end
 
+-- Argent dépensé (vague 59, L-182 point 4) ---------------------------------------------------
+
+local SPENT: any = if HudConfig then HudConfig.CashSpent else nil
+local SPENT_INFO: TweenInfo? = if SPENT then TweenInfo.new(SPENT.Time, SPENT.Style, SPENT.Direction) else nil
+local spentAmount = 0 -- dépensé depuis le début du décompte en cours
+local spentToken = 0
+
+-- « -$X » dans CashSpent pendant le décompte ; un achat de plus s'ajoute et repart pour une durée complète.
+local function showSpent(current: Hud, amount: number)
+	local label = current.cashSpent
+	if label == nil or SPENT == nil or amount <= 0 then
+		return
+	end
+	spentAmount += amount
+	spentToken += 1
+	local token = spentToken
+	label.Text = `{SPENT.Prefix}{Format.money(spentAmount)}`
+	label.Visible = true
+	task.delay(SPENT.Time + SPENT.Hold, function()
+		if spentToken ~= token then
+			return -- un autre achat a relancé le décompte
+		end
+		spentAmount = 0
+		label.Visible = false
+	end)
+end
+
 -- Valeurs -------------------------------------------------------------------------------------
 
 -- Dernière valeur d'Income connue de ce contrôleur (avant Start : celle du Player).
@@ -308,7 +344,14 @@ local function writeStat(stat: Stat)
 		current.written[stat] = nil
 		label.Text = UNKNOWN_TEXT
 	elseif stat.Roll then
-		Motion.Roll(label, current.written[stat], value, stat.Write)
+		local previous = current.written[stat]
+		-- Vague 59 : une baisse de l'argent (achat), hors retenue, décompte lentement et montre CashSpent.
+		local info: TweenInfo? = nil
+		if stat == CASH_STAT and SPENT_INFO ~= nil and cashHolds[1] == nil and previous ~= nil and value < previous then
+			info = SPENT_INFO
+			showSpent(current, previous - value)
+		end
+		Motion.Roll(label, previous, value, stat.Write, info)
 		current.written[stat] = value
 	else
 		label.Text = stat.Write(value)
@@ -640,6 +683,14 @@ local function bind(gui: ScreenGui)
 	end
 	shownSeconds = nil
 	chased = false
+	-- Vague 59 : CashSpent (facultatif, sans avertissement : le nouveau HUD n'est pas encore construit) caché.
+	local spentFound = if SPENT then Find.path(gui, SPENT.Element) else nil
+	local cashSpent: TextLabel? = if spentFound and spentFound:IsA("TextLabel") then spentFound :: TextLabel else nil
+	if cashSpent then
+		cashSpent.Visible = false
+	end
+	spentAmount = 0
+	spentToken += 1
 
 	hud = {
 		gui = gui,
@@ -650,6 +701,7 @@ local function bind(gui: ScreenGui)
 		fill = fill,
 		fillSize = if fill then fill.Size else UDim2.new(),
 		nightCountdown = nightCountdown,
+		cashSpent = cashSpent,
 	}
 	for _, stat in STATS do
 		writeStat(stat)
