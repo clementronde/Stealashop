@@ -364,6 +364,7 @@ type Guard = {
 	-- nil : ancienne règle, ou hors poursuite. Décidé à chaque départ de poursuite (startChase).
 	chasePhase: ("Rush" | "Hold")?,
 	holdSince: number?, -- fin de la ruée (conducteur du camion : sa vitesse grandit depuis)
+	rushStepAt: number?, -- a168 : dernier pas de la ruée (durée d'image, pour anticiper sa fin)
 	target: Player?, -- joueur poursuivi, nil hors poursuite
 	state: GuardState,
 	spawnedAt: number,
@@ -1375,6 +1376,20 @@ local function followsDistanceRule(guard: Guard, player: Player): boolean
 	return not (ok and isPositiveNumber(value))
 end
 
+-- a168 : vitesse de poursuite écrite dans les journaux. Nouvelle poursuite : la règle (les vraies vitesses
+-- s'écrivent à la ruée et à sa fin) ; sinon `old`, le texte d'avant (inchangé : les bancs le lisent).
+-- Sans joueur (vigile de nuit en ronde) : Features.GuardChaseV2 et Chase.Apply.NightGuard seulement.
+local function chaseSpeedText(guard: Guard, player: Player?, old: string): string
+	local rule = if player then followsDistanceRule(guard, player) else Features.GuardChaseV2 and Chase.Apply.NightGuard
+	if not rule then
+		return old
+	end
+	if ruleKindOf(guard) == "Truck" then
+		return `ruée, puis sa marche × (1 + {Chase.DriverGrowthPerSecond} × s), au plus × {Chase.DriverMaxFactor}`
+	end
+	return `ruée, puis marche du voleur + rapprochement (distance {Chase.HoldDistance} studs)`
+end
+
 -- Speed effective du voleur = Speed du profil × multiplicateur du trail (le calcul de Formulas.ShownSpeed, comme
 -- le HUD et Formulas.WalkSpeed), lue ici côté serveur (StatsService) ; jamais une valeur du client.
 local function effectiveSpeed(player: Player): number
@@ -1433,19 +1448,43 @@ local function distanceRuleSpeed(guard: Guard, player: Player, targetHumanoid: H
 	return math.max(walk + closingSpeed(guard, player), Chase.HoldMinSpeed)
 end
 
+-- a168 : durée d'image la plus longue prise en compte pour anticiper la fin de la ruée (s).
+local MAX_RUSH_STEP = 0.2
+
 -- À chaque pas de poursuite : fin de la ruée à Chase.HoldDistance studs (à l'horizontale), puis la
 -- vitesse de la phase, redonnée seulement si elle change.
+-- a168 (2026-11-15, Play de a153) : la fin de ruée n'était testée qu'une fois par image, le vigile finissait
+-- 1 à 5 studs trop près. Elle est anticipée : finie dès que distance − (vitesse du vigile − marche du
+-- voleur) × dt ≤ HoldDistance (dt = durée de l'image précédente) ; pour cette dernière image, le vigile
+-- court juste assez vite (entre sa vitesse à distance et la ruée) pour arriver à HoldDistance.
 local function distanceRuleStep(guard: Guard, player: Player, targetRoot: BasePart, targetHumanoid: Humanoid, now: number)
+	local approach: number? = nil
 	if guard.chasePhase == "Rush" then
 		local distance = flat(targetRoot.Position - guard.root.Position).Magnitude
-		if distance <= Chase.HoldDistance then
+		local last = guard.rushStepAt
+		local dt = if last then math.clamp(now - last, 0, MAX_RUSH_STEP) else 0
+		guard.rushStepAt = now
+		local walk = targetHumanoid.WalkSpeed
+		if not isPositiveNumber(walk) then
+			walk = 0
+		end
+		local rush = guard.humanoid.WalkSpeed
+		if distance - math.max(rush - walk, 0) * dt <= Chase.HoldDistance then
 			guard.chasePhase = "Hold"
 			guard.holdSince = now
-			log(string.format("%s : à %.1f studs de %s, poursuite à distance (rapprochement %.2f studs/s)",
-				guard.label, distance, player.Name, closingSpeed(guard, player)))
+			guard.rushStepAt = nil
+			local hold = distanceRuleSpeed(guard, player, targetHumanoid, now)
+			if dt > 0 and distance > Chase.HoldDistance then
+				approach = math.clamp(walk + (distance - Chase.HoldDistance) / dt, hold, math.max(rush, hold))
+			end
+			local how = if ruleKindOf(guard) == "Truck"
+				then string.format("sa marche %.2f × (1 + %g × s), au plus × %g", walk, Chase.DriverGrowthPerSecond, Chase.DriverMaxFactor)
+				else string.format("marche %.2f + rapprochement %.2f", walk, closingSpeed(guard, player))
+			log(string.format("%s : à %.1f studs de %s, fin de la ruée, poursuite à distance à %.2f studs/s (%s)",
+				guard.label, distance, player.Name, hold, how))
 		end
 	end
-	local speed = distanceRuleSpeed(guard, player, targetHumanoid, now)
+	local speed = approach or distanceRuleSpeed(guard, player, targetHumanoid, now)
 	if math.abs(speed - guard.humanoid.WalkSpeed) > 0.05 then
 		setWalkSpeed(guard, speed)
 	end
@@ -1464,6 +1503,7 @@ local function startChase(guard: Guard, now: number)
 	end
 	if player and targetHumanoid and followsDistanceRule(guard, player) then
 		guard.chasePhase = "Rush"
+		guard.rushStepAt = nil
 		setWalkSpeed(guard, distanceRuleSpeed(guard, player, targetHumanoid, now))
 		log(`{guard.label} : ruée sur {player.Name} à {Format.short(guard.humanoid.WalkSpeed)} studs/s`)
 	else
@@ -2429,7 +2469,7 @@ local function spot(guard: Guard, player: Player, now: number)
 	refreshChaseState(player)
 	local root = bodyOf(player)
 	local distance = if root then (root.Position - guard.root.Position).Magnitude else 0
-	log(`{guard.label} : repère {player.Name} à {Format.short(distance)} studs, poursuite à {Format.short(guard.speed)}`)
+	log(`{guard.label} : repère {player.Name} à {Format.short(distance)} studs, {chaseSpeedText(guard, player, `poursuite à {Format.short(guard.speed)}`)}`)
 end
 
 -- Vigile de nuit : retour au point de ronde le plus proche, puis la ronde reprend (inchangé par L-077).
@@ -2848,7 +2888,7 @@ local function spawnGuard(player: Player, store: Model, zone: number, template: 
 	chasedBy[player] = guard
 	refreshChaseState(player)
 	log(
-		`vigile ({label}) lancé sur {player.Name} depuis {store.Name}, zone {zone}, vitesse {Format.short(guard.speed)}, {sizeText(scale, agent)} ({#guards} en jeu)`
+		`vigile ({label}) lancé sur {player.Name} depuis {store.Name}, zone {zone}, {chaseSpeedText(guard, player, `vitesse {Format.short(guard.speed)}`)}, {sizeText(scale, agent)} ({#guards} en jeu)`
 	)
 	return guard
 end
@@ -3067,7 +3107,7 @@ local function spawnNightGuard(zone: number, number: number, points: { Vector3 }
 	guard.anims:Play("Idle")
 	table.insert(nightGuards, guard)
 	startPatrol(guard, now)
-	log(`{guard.label} ({label}) en ronde, zone {zone}, {#points} point(s), poursuite à {Format.short(guard.speed)}, {sizeText(scale, agent)}`)
+	log(`{guard.label} ({label}) en ronde, zone {zone}, {#points} point(s), {chaseSpeedText(guard, nil, `poursuite à {Format.short(guard.speed)}`)}, {sizeText(scale, agent)}`)
 end
 
 -- Conducteurs du camion (L-083 point 3) -----------------------------------------------------------
@@ -3207,7 +3247,7 @@ local function spawnDriver(chase: DriverChase): Model?
 	driverChasedBy[player] = guard
 	refreshChaseState(player)
 	log(
-		`{guard.label} lancé sur {player.Name}, zone {chase.Zone}, vitesse {Format.short(guard.speed)} (× {Format.short(chase.SpeedMultiplier)} la sienne), {sizeText(scale, agent)}`
+		`{guard.label} lancé sur {player.Name}, zone {chase.Zone}, {chaseSpeedText(guard, player, `vitesse {Format.short(guard.speed)} (× {Format.short(chase.SpeedMultiplier)} la sienne)`)}, {sizeText(scale, agent)}`
 	)
 	return model
 end
