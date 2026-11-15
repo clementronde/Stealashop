@@ -931,4 +931,18 @@ table.insert(UI.Screens, {
 	} :: { Element },
 })
 
+-- Vague 56 (a181, L-166 Q4) : icône de Damage dans UI_HUD, montrée avec Damage pendant la potion de force (HudController).
+-- Rangée juste après Damage (SkillTreeButton reste le dernier élément du HUD).
+for _, screenDef in UI.Screens do
+	if screenDef.Name == "UI_HUD" then
+		local after = #screenDef.Elements
+		for rank, element in screenDef.Elements do
+			if element.Path == "Damage" then
+				after = rank
+			end
+		end
+		table.insert(screenDef.Elements, after + 1, { Path = "DamageIcon", Optional = true, Note = "Damage se montre sans son icône pendant la potion" })
+	end
+end
+
 return UI

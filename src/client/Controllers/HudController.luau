@@ -290,10 +290,18 @@ local function writeStat(stat: Stat)
 		then latestIncome()
 		elseif stat == CASH_STAT and cashHolds[1] ~= nil then cashHolds[1].base
 		else localPlayer:GetAttribute(stat.Attribute)
-	if stat == DAMAGE_STAT and type(value) == "number" then
+	if stat == DAMAGE_STAT then
 		local factor = potionFactor()
 		strengthPotionOn = factor ~= 1
-		value *= factor
+		if type(value) == "number" then
+			value *= factor
+		end
+		-- Vague 56 (a181, L-166 Q4, Clément) : Damage et DamageIcon (facultatif) montrés seulement pendant la potion.
+		label.Visible = strengthPotionOn
+		local icon = Find.path(current.gui, "DamageIcon")
+		if icon and icon:IsA("GuiObject") then
+			icon.Visible = strengthPotionOn
+		end
 	end
 	if type(value) ~= "number" then
 		Motion.StopRoll(label)

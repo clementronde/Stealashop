@@ -43,6 +43,9 @@ local TruckEvent = {
 		{ Tier = "Luxe", Count = 2 }, -- V0 provisoire, décision d'Ironix du 2026-11-07
 	} :: { BoxCount },
 	BoxLifetime = 60, -- V0 provisoire, décision d'Ironix du 2026-11-07 : jamais ramassé, il disparaît (compté depuis l'atterrissage)
+	-- L-166 (Q5, Clément : « c'est un événement, donc rare ») : à chaque ouverture d'un colis du camion, un objet de
+	-- la zone suivante avec cette probabilité, sinon un objet de la zone du camion (L-033 : zone 1, Communs seulement).
+	NextZoneChance = 0.1, -- V0 proposé, absent du doc
 	ScatterRadius = 15, -- V0 provisoire, décision d'Ironix du 2026-11-07 : retombent dans ~15 studs autour du camion
 	ScatterMinRadius = 6, -- V0 : pas plus près que 6 studs du centre du camion
 	ScatterSpread = math.rad(50), -- V0 : écart au hasard autour de la direction centre du camion → point de sortie

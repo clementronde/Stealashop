@@ -13,7 +13,8 @@
 --   - étiquettes : chaque BillboardGui BB_ZoneLabel du Workspace reçoit dans son TextLabel Label le texte
 --     anglais de son attribut LabelKey (Hub.Labels ; attribut lu sur le billboard, sinon sur son parent).
 --     Clé absente ou inconnue : le texte de Clément reste (un avertissement en Studio).
--- Seuls sont touchés : le pivot local du cadeau et le texte de Label ; jamais une couleur, une taille ni une
+--     Couleur : l'attribut LabelColor du LabelPoint de Clément, posé sur Label.TextColor3 (vague 56, a181).
+-- Seuls sont touchés : le pivot local du cadeau, le texte de Label et sa couleur LabelColor ; jamais une taille ni une
 -- position de Clément. Avec StreamingEnabled, zones, cadeaux et étiquettes arrivent et repartent : suivis par
 -- tag et par DescendantAdded. Rien n'est envoyé au serveur.
 --
@@ -191,6 +192,21 @@ local function paintLabel(gui: BillboardGui)
 		return
 	end
 	(found :: TextLabel).Text = text
+	-- Vague 56 (a181, L-165) : couleur du nom = attribut LabelColor (Color3) du LabelPoint de Clément (le billboard,
+	-- son Adornee, puis ses ancêtres jusqu'au Workspace) ; sans l'attribut, la couleur du modèle reste.
+	local color = gui:GetAttribute(Hub.LabelColorAttribute)
+	local adornee: Instance? = gui.Adornee
+	if color == nil and adornee ~= nil then
+		color = adornee:GetAttribute(Hub.LabelColorAttribute)
+	end
+	local holder = gui.Parent
+	while color == nil and holder ~= nil and holder ~= workspace do
+		color = holder:GetAttribute(Hub.LabelColorAttribute)
+		holder = holder.Parent
+	end
+	if typeof(color) == "Color3" then
+		(found :: TextLabel).TextColor3 = color
+	end
 end
 
 local function considerLabel(instance: Instance)

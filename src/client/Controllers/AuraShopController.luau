@@ -14,7 +14,8 @@
 --       ItemName     nom affiché (Config, en anglais)
 --       Bonus        « ×20 Strength » (aura) ou « ×12 Speed » (trail) ; vague 42 (L-157 point 3, Clément)
 --       Price        prix, Format.money (« $15K »)
---       Icon         texture de Clément (Decal FX_Aura_… ou FX_Trail_… de ReplicatedStorage/Assets)
+--       Icon         icône de Clément ICON_Trail_… (ICON_Aura_… plus tard ; L-171), sinon la texture
+--                    FX_Aura_… ou FX_Trail_… (Decals de ReplicatedStorage/Assets)
 --                    si elle est livrée ; sinon l'image posée dans le Template reste
 --       BuyButton    visible tant que l'objet n'est pas possédé : envoie BuyItem(id), traité par
 --                    ShopService
@@ -153,6 +154,12 @@ local function textureOf(name: string): string?
 	return nil
 end
 
+-- L-171 (a181) : nom de l'icône de boutique d'un cosmétique, depuis sa texture : FX_Trail_Vent → ICON_Trail_Vent
+-- (FX_Aura_Flamme → ICON_Aura_Flamme, quand Clément livrera celles des auras).
+local function shopIconName(texture: string): string
+	return "ICON_" .. (if string.sub(texture, 1, 3) == "FX_" then string.sub(texture, 4) else texture)
+end
+
 -- Écran ----------------------------------------------------------------------------------------
 
 -- En capitales si le texte d'exemple de Clément l'est (« AURA NAME » : noms en capitales, planche
@@ -264,7 +271,8 @@ local function buildRows()
 		setText(frame, "ItemName", def.DisplayName)
 		setText(frame, "Bonus", bonusText(def))
 		setText(frame, "Price", Format.money(def.Price))
-		local texture = textureOf(def.Texture)
+		-- L-171 : l'icône de boutique ICON_<Kind>_<Nom> de Clément, sinon le Decal FX_<Kind>_<Nom> (texture du ruban).
+		local texture = textureOf(shopIconName(def.Texture)) or textureOf(def.Texture)
 		local icon = Find.path(frame, "Icon")
 		if texture and icon and (icon:IsA("ImageLabel") or icon:IsA("ImageButton")) then
 			(icon :: any).Image = texture

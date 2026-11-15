@@ -6,7 +6,7 @@
 --
 --   - Meilleur revenu : Lifetime.BestIncome du profil (champ nouveau, 0 par défaut ; absent = 0), monté à
 --     chaque changement de l'attribut Income du Player (revenu par seconde affiché, posé par DisplayService :
---     revenu exposé × multiplicateurs du moment).
+--     revenu exposé × multiplicateurs), sans les boosts du moment (vague 56, L-168 Q6 : voir momentaryFactor).
 --   - Écriture : toutes les WriteInterval s, pour chaque joueur du serveur et chaque stat, SetAsync(UserId,
 --     valeur codée) dans l'OrderedDataStore de la stat (Config/Leaderboard.StoreName, suffixe DEV dans le
 --     jeu DEV comme les profils) si la valeur a changé depuis la dernière écriture réussie ; aussi au départ.
@@ -70,6 +70,34 @@ local function finite(value: any): number
 	return if type(value) == "number" and value == value and value > -math.huge and value < math.huge and value > 0 then value else 0
 end
 
+-- Vague 56 (a181, L-168 Q6, Clément : « record sans les boosts du moment ») : part du moment du revenu affiché
+-- (attribut Income = revenu exposé × (1 + bonus) × multiplicateurs, DisplayService). Retirés : la part temporaire de
+-- MonetizationService.GetTemporaryIncomeMultiplier (boost ×2 argent, potion Money, événement live) et le bonus des amis
+-- présents (HubService.GetFriendBonus). Gardés : Premium, ×2 Argent, index, renaissances. Services chargés à l'appel
+-- (pas de require croisé) ; absents ou en erreur : 1 (le revenu affiché, une ligne).
+local function momentaryFactor(player: Player): number
+	local ok, value = pcall(function(): number
+		local Display = require(script.Parent.DisplayService) :: any
+		local Monetization = require(script.Parent.MonetizationService) :: any
+		local Hub = require(script.Parent.HubService) :: any
+		local bonus = math.max(0, Display.GetIncomeBonus(player))
+		local friends = math.clamp(Hub.GetFriendBonus(player), 0, bonus)
+		return Monetization.GetTemporaryIncomeMultiplier(player) * (1 + bonus) / (1 + bonus - friends)
+	end)
+	if ok and type(value) == "number" and value == value and value >= 1 and value < math.huge then
+		return value
+	end
+	if not ok then
+		sayOnce("momentary", `part du moment du revenu illisible ({tostring(value)}) : record au revenu affiché`)
+	end
+	return 1
+end
+
+-- Revenu par seconde qui compte pour le record « Most money/s » (sans les boosts du moment).
+local function recordIncome(player: Player): number
+	return finite(player:GetAttribute(INCOME_ATTRIBUTE)) / momentaryFactor(player)
+end
+
 function LeaderboardService.TrackBest(player: Player)
 	local data = DataService.Get(player)
 	if data == nil then
@@ -79,7 +107,7 @@ function LeaderboardService.TrackBest(player: Player)
 	if type(lifetime) ~= "table" then
 		return
 	end
-	local income = finite(player:GetAttribute(INCOME_ATTRIBUTE))
+	local income = recordIncome(player)
 	local best = finite(lifetime.BestIncome)
 	if income > best then
 		lifetime.BestIncome = income
@@ -96,7 +124,7 @@ function LeaderboardService.ValueOf(player: Player, stat: string): number
 	if stat == "Income" then
 		local lifetime: any = data.Lifetime
 		local best = if type(lifetime) == "table" then finite(lifetime.BestIncome) else 0
-		return math.max(best, finite(player:GetAttribute(INCOME_ATTRIBUTE)))
+		return math.max(best, recordIncome(player))
 	elseif stat == "Speed" then
 		local stats: any = data.Stats
 		return if type(stats) == "table" then finite(stats.Speed) else 0
