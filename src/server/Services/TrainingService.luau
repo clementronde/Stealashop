@@ -20,8 +20,12 @@
 --     de déplacement ou joystick) : le client envoie TrainLeave (a115). Fin de la séance aussi :
 --     HumanoidRootPart hors de la bande élargie de LEAVE_MARGIN, jusqu'à STAY_ABOVE au-dessus (un saut
 --     sur place ne coupe rien, poussé hors du tapis si), mort, état Seated, Swimming, Ragdoll…,
---     parcelle perdue, départ, machine retirée (variante posée par MachineVariantService : il est remis
---     sur la nouvelle), ou TrainingService.Stop ;
+--     parcelle perdue, départ, machine retirée sans remplaçante, ou TrainingService.Stop ;
+--   - a200 (Cantin, 2026-11-15) : tapis remplacé par une variante (MachineVariantService, à l'amélioration) :
+--     la séance continue sur le nouveau tapis de la même parcelle, sans s'arrêter ni repasser par l'entrée
+--     par le côté d'a180 (crédits, bonus du tap et TrainingMachine gardés). La séance dont le tapis est
+--     retiré attend son remplaçant au plus Training.Treadmill.SwapGrace s (l'ancien peut partir avant ou
+--     après l'arrivée du nouveau) ; le joueur n'est replacé que si le UsePoint du nouveau a bougé ;
 --   - pas de remontée en boucle : une séance finie (descendu, Stop, état…) ou un refus bloque ce tapis
 --     pour ce joueur. Débloqué s'il sort de la zone (son emprise au sol, à n'importe quelle hauteur :
 --     sauter sur place ne débloque rien), ou (a115, la zone de Clément couvre tout le modèle) s'il quitte
@@ -93,6 +97,7 @@ type Session = {
 	gained: number, -- gagné pendant cette séance (pour la sortie de Studio)
 	autoRotate: boolean, -- Humanoid.AutoRotate avant la séance (remis à la fin)
 	connections: { RBXScriptConnection },
+	orphanedAt: number?, -- a200 : heure où son tapis a été retiré (nil : tapis en place)
 }
 
 -- Joueur dans la zone d'une machine, pas encore en séance (START_DWELL).
@@ -138,6 +143,10 @@ local START_DWELL = 0
 -- d'environ 7 studs : sauter sur place ne coupe pas la séance).
 local LEAVE_MARGIN = 1
 local STAY_ABOVE = 12
+-- a200 : attente (s) du tapis remplaçant d'une séance dont le tapis a été retiré (Config/Training).
+local SWAP_GRACE: number = if type(Training.Treadmill.SwapGrace) == "number" then Training.Treadmill.SwapGrace else 0.5
+-- a200 : écart (studs) entre l'ancienne et la nouvelle place au-dessous duquel le joueur n'est pas replacé.
+local SWAP_REPLACE_EPSILON = 0.05
 
 -- États du Humanoid qui font descendre du tapis : siège, nage… Sauter sur place ne fait pas descendre :
 -- seule la position compte pour le saut.
@@ -457,10 +466,69 @@ local function leaveReason(player: Player, session: Session, now: number): strin
 	return nil
 end
 
+-- a200 : tapis qui remplace celui de `session` (même parcelle, même sorte, libre) sous le joueur, ou nil.
+local function replacementFor(player: Player, session: Session): Machine?
+	local old = session.machine
+	local position = session.root.Position
+	for _, machine in machines do
+		if
+			machine ~= old
+			and machine.plot == old.plot
+			and machine.kind == old.kind
+			and (machine.occupant == nil or machine.occupant == player)
+			and (inZone(machine, position) or TrainingZone.overBelt(machine.zone, position, LEAVE_MARGIN, STAY_ABOVE))
+		then
+			return machine
+		end
+	end
+	return nil
+end
+
+-- a200 : la séance passe sur `machine` (variante posée à l'amélioration), sans rien couper.
+local function adopt(player: Player, session: Session, machine: Machine)
+	local old = session.machine
+	if old.occupant == player then
+		old.occupant = nil
+	end
+	session.machine = machine
+	session.orphanedAt = nil
+	machine.occupant = player
+	local approach = approaches[player]
+	if approach then
+		TrainingZone.adopt(approach, machine.zone)
+	end
+	local target = TrainingZone.standingCFrame(machine.zone.usePoint, session.humanoid, session.root)
+	if (target.Position - session.target.Position).Magnitude > SWAP_REPLACE_EPSILON then
+		local character = player.Character
+		if character then
+			AntiCheatService.Allow(player, 0, "TrainingService (tapis remplacé par sa variante)")
+			character:PivotTo(target)
+		end
+	end
+	session.target = target
+	log(`{player.Name} reste en séance sur le nouveau tapis ({machine.model:GetFullName()})`)
+end
+
 local function update(dt: number)
 	local now = os.clock()
 	for player, session in sessions do
-		local reason = leaveReason(player, session, now)
+		local orphanedAt = session.orphanedAt
+		if orphanedAt then
+			-- a200 : tapis retiré ; la séance attend son remplaçant (crédits gardés pendant l'attente).
+			local replacement = replacementFor(player, session)
+			if replacement then
+				adopt(player, session, replacement)
+			elseif now - orphanedAt >= SWAP_GRACE then
+				stop(player, "machine retirée")
+				continue
+			end
+		end
+		local reason: string? = nil
+		if session.orphanedAt == nil then
+			reason = leaveReason(player, session, now)
+		elseif player.Parent ~= Players or session.humanoid.Health <= 0 or session.root.Parent == nil then
+			reason = "perso absent"
+		end
 		if reason then
 			stop(player, reason)
 		else
@@ -562,7 +630,11 @@ local function unregister(model: Instance)
 	end
 	machines[model] = nil
 	local occupant = machine.occupant
-	if occupant then
+	local session = if occupant then sessions[occupant] else nil
+	if session and session.machine == machine then
+		-- a200 : variante posée à l'amélioration : la séance attend le nouveau tapis (update), sans s'arrêter.
+		session.orphanedAt = os.clock()
+	elseif occupant then
 		stop(occupant, "machine retirée")
 	end
 	for player, stand in standing do

@@ -211,6 +211,14 @@ function TrainingZone.track(approach: Approach, zone: Zone?, position: Vector3):
 		and TrainingZone.overBelt(zone, position, 0, TrainingZone.ENTRY_ABOVE)
 end
 
+-- a200 : le tapis où le joueur est en séance vient d'être remplacé par une variante (MachineVariantService) :
+-- son suivi passe sur la bande du nouveau tapis, comme s'il y était monté par le côté (il l'avait fait sur
+-- l'ancien). Sans cela, la nouvelle bande compterait pour une arrivée par le bout après la séance.
+function TrainingZone.adopt(approach: Approach, zone: Zone)
+	approach.zone = zone
+	approach.fromSide = true
+end
+
 -- Place du HumanoidRootPart : debout, pieds sur le UsePoint, tourné vers l'avant du UsePoint (son axe
 -- −Z, LookVector) ramené à l'horizontale.
 function TrainingZone.standingCFrame(usePoint: Attachment, humanoid: Humanoid, root: BasePart): CFrame

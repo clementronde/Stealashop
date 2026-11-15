@@ -19,8 +19,8 @@
 --     (contrat 10.4) : le tapis actuel reste, une ligne dans la sortie (une fois par variante). Une
 --     variante sans Belt ou sans UpgradePoint est posée quand même, avec une ligne : TrainingService
 --     et UpgradeController ont leurs replis ;
---   - le reste suit tout seul, par le tag et les noms : TrainingService retire l'ancien tapis (le
---     joueur dessus en descend) et enregistre le nouveau (il y est remis s'il est dans sa zone),
+--   - le reste suit tout seul, par le tag et les noms : TrainingService retire l'ancien tapis et
+--     enregistre le nouveau (a200 : le joueur en séance y reste, sans interruption, client compris),
 --     UpgradeController (client) repose le panneau UpgradeSign sur le nouvel UpgradePoint (il suit
 --     les descendants de la parcelle), ShopService et TutorialService cherchent le tapis à chaque fois.
 --

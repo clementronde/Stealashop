@@ -12,7 +12,9 @@
 --     Vague 59 (a190, L-182 point 8) : sur le tapis, le gain d'une seconde s'affiche en Config/Hud.TreadmillGain
 --     .Pieces morceaux (« +0.4 Speed », un toutes les 0,2 s, même total, chacun vit Life s ; le « ×2 » en exposant
 --     d'a178 reste), et le compteur Speed du HUD pulse à chaque morceau (Config/Hud.SpeedPulse, Motion.Pop).
---     Pieces = 1 : l'ancien « +2 Speed/s ».
+--     a200 (décision de Cantin, 2026-11-15) : Config/Hud.TreadmillGain.ChunksPerSecond = 1 : de nouveau un seul
+--     « +2 Speed/s » par seconde avec le gain entier (exposant « ×2 » gardé), et le compteur Speed pulse une fois
+--     (SpeedPulse.Max) ; ChunksPerSecond = 5 rend les morceaux d'a190.
 --     Vague 60 (a196, T-097) : sans Row.Multiplier, le « ×2 » du trail est un petit TextLabel (UiMotion.FloatGain
 --     .TrailExponent) posé par le code au coin haut droit du nombre, dans Row.Amount ; Mode = "Unicode" : celui d'a178.
 --   - Argent : quand l'attribut Cash du Player monte (DataService), Cash est retenu au HUD
@@ -126,6 +128,10 @@ local COUNTER_FADE_INFO = TweenInfo.new(POP.FadeTime, Enum.EasingStyle.Quad, Enu
 local hudConfigModule = Shared:WaitForChild("Config"):FindFirstChild("Hud")
 local HudConfig: any = if hudConfigModule and hudConfigModule:IsA("ModuleScript") then require(hudConfigModule) :: any else nil
 local TREAD: any = if HudConfig then HudConfig.TreadmillGain else nil
+-- a200 : morceaux par seconde (Config/Hud.TreadmillGain.ChunksPerSecond ; 1 sans Config/Hud).
+local CHUNKS: number = if TREAD and type(TREAD.ChunksPerSecond) == "number"
+	then math.max(1, math.floor(TREAD.ChunksPerSecond))
+	else 1
 local SPEED_PULSE: any = if HudConfig then HudConfig.SpeedPulse else nil
 local PIECE_RISE_INFO: TweenInfo? = if TREAD then TweenInfo.new(TREAD.Life, FLOAT.Style, FLOAT.Direction) else nil
 local PULSE_INFO: TweenInfo? = if SPEED_PULSE
@@ -854,11 +860,11 @@ local function pulseSpeed(rank: number, pieces: number)
 	Motion.Pop(target, pulse.Min + (pulse.Max - pulse.Min) * t, info)
 end
 
--- Le gain d'une seconde du tapis en Pieces « +X » répartis sur Period s, même total (le dernier morceau prend le
+-- Le gain d'une seconde du tapis en CHUNKS « +X » répartis sur Period s, même total (le dernier morceau prend le
 -- reste des arrondis). Chaque morceau vit Life s.
 local function showPieces(amount: number)
 	local tread = TREAD :: any
-	local pieces = math.max(1, math.floor(tread.Pieces))
+	local pieces = CHUNKS
 	local gap = tread.Period / pieces
 	local piece = amount / pieces
 	for rank = 1, pieces do
@@ -878,10 +884,14 @@ end
 local function onTraining(kind: Kind)
 	local amount = riseOf(kind.Attribute)
 	if amount > 0 and localPlayer:GetAttribute(MACHINE_ATTRIBUTE) == kind.Machine then
-		if kind == SPEED and TREAD ~= nil and TREAD.Pieces > 1 then
+		if kind == SPEED and TREAD ~= nil and CHUNKS > 1 then
 			showPieces(amount)
 		else
+			-- a200 (Cantin) : un seul « +X Speed/s » par seconde, le gain entier ; le compteur pulse une fois.
 			showGain(kind, amount)
+			if kind == SPEED then
+				pulseSpeed(1, 1)
+			end
 		end
 	end
 end
