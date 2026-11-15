@@ -54,6 +54,7 @@
 --   MutationFxController.StyleTag(tag, label?, mutation?)  étiquette de carte (nil : remise comme avant)
 --   MutationFxController.StyleText(label, mutation?, gate?)  ligne de texte (gate : animer seulement si vrai)
 --   MutationFxController.GetState(model) -> { Effect, Shown, Ghosts, Parts }?   pour les tests
+--   MutationFxController.ClonePristine(model) -> Model   copie sans l'effet posé (a178, socle de l'objet le plus rare)
 --   MutationFxController.GetStats() -> { Tracked, Dressed, Shown, Texts }
 
 local CollectionService = game:GetService("CollectionService")
@@ -68,7 +69,8 @@ local Mutations = require(Config:WaitForChild("Mutations"))
 
 -- Tags posés par le serveur (mêmes noms là-bas : DisplayService, UnboxService, ShelfOpenState.ItemTag,
 -- CarryService).
-local TRACKED_TAGS = { "DisplayItem", "FloorItem", "ShelfItem", "CarriedItem" }
+-- a178 : RarestItem = copie locale de l'objet le plus rare sur le socle (VfxController, Config/Vfx.Rarest.CopyTag).
+local TRACKED_TAGS = { "DisplayItem", "FloorItem", "ShelfItem", "CarriedItem", "RarestItem" }
 local SIZE_ATTRIBUTE = "MutationSize"
 local EFFECT_ATTRIBUTE = "MutationEffect"
 -- Noms de Clément (L-127).
@@ -1486,6 +1488,29 @@ function MutationFxController.GetState(model: Model): { [string]: any }?
 		Jumping = fx.hidden ~= nil or fx.jumped ~= nil,
 		Jump = fx.jumpModel,
 	}
+end
+
+-- a178 : copie de l'objet telle qu'avant l'effet (couleurs, matière, reflet d'origine, saut de Glitch fini),
+-- pour une copie locale que ce contrôleur habillera à son tour (socle de l'objet le plus rare, VfxController).
+-- Objet pas habillé : simple Clone. L'objet lui-même est remis tel quel dans la même image.
+function MutationFxController.ClonePristine(model: Model): Model
+	local entry = entries[model]
+	local fx = if entry then entry.fx else nil
+	if fx == nil then
+		return model:Clone()
+	end
+	endJump(fx)
+	local saved: { { part: BasePart, color: Color3, material: Enum.Material, reflectance: number } } = {}
+	for _, p in fx.parts do
+		local part = p.part
+		table.insert(saved, { part = part, color = part.Color, material = part.Material, reflectance = part.Reflectance })
+		part.Color, part.Material, part.Reflectance = p.origColor, p.origMaterial, p.origReflectance
+	end
+	local copy = model:Clone()
+	for _, s in saved do
+		s.part.Color, s.part.Material, s.part.Reflectance = s.color, s.material, s.reflectance
+	end
+	return copy
 end
 
 function MutationFxController.GetStats(): { [string]: number }

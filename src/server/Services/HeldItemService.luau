@@ -246,6 +246,15 @@ local function buildTool(player: Player, uid: string, entry: ItemEntry): Tool?
 		return nil
 	end
 	model.Name = HeldItem.ModelName
+	-- a178 (Cantin, 15/11) : objet encore sous antivol (profil : AntiTheft, UnlockAt) : UnboxController y montre
+	-- le même verrou qu'au sol (BB_AntiTheft), jusqu'à la fin de l'antivol. Visuel seulement. Posé avant le tag.
+	if entry.AntiTheft == true then
+		model:SetAttribute(HeldItem.LockedAttribute, true)
+		local unlockAt = entry.UnlockAt
+		if type(unlockAt) == "number" and unlockAt == unlockAt then
+			model:SetAttribute(HeldItem.UnlockAtAttribute, unlockAt)
+		end
+	end
 	CollectionService:AddTag(model, HeldItem.CarriedTag)
 	local pivot = model:GetPivot()
 	local center, size = measure(model, pivot)

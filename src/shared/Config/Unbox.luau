@@ -128,6 +128,12 @@ local Unbox = {
 
 	-- Annonce à tout le serveur (5.7, étape 6 : Légendaire et plus, Rarities.Announce) -----------
 	AnnounceKind = "Announce", -- V0 : catégorie du Notify envoyé aux autres joueurs
+
+	-- Verrou de l'antivol (a178, Cantin 15/11) -------------------------------------------------------
+	-- BB_AntiTheft (UnboxController) se montre selon la distance entre le PERSONNAGE local et l'objet, pas
+	-- la caméra : MaxDistance du billboard de Clément ignorée, quel que soit le zoom.
+	LockShowDistance = 40, -- V0 : studs
+	LockedText = "LOCKED", -- V0 (anglais) : TimeLabel d'un objet tenu sous antivol pas encore lancé (sans UnlockAt)
 }
 
 export type Unbox = typeof(Unbox)

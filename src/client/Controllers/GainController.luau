@@ -38,6 +38,7 @@
 --
 -- API (client) : aucune. Pour un test dans Studio (barre de commande côté client) :
 --   GainController.GetActive() -> { Gains: number, Flyers: number, Pops: number }
+--   GainController.Superscript(text) -> string   « ×2 » en exposant Unicode (a178)
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -114,6 +115,20 @@ local COPY_SCALE = "GainScale"
 local IS_STUDIO = RunService:IsStudio()
 
 local GainController = {}
+
+-- a178 : « ×12 » → « ˣ¹² » (chiffres et × en exposant Unicode ; « . » → « · » ; tout autre caractère gardé).
+local SUPERSCRIPT: { [string]: string } = {
+	["×"] = "ˣ", ["0"] = "⁰", ["1"] = "¹", ["2"] = "²", ["3"] = "³", ["4"] = "⁴",
+	["5"] = "⁵", ["6"] = "⁶", ["7"] = "⁷", ["8"] = "⁸", ["9"] = "⁹", ["."] = "·",
+}
+function GainController.Superscript(text: string): string
+	local out = {}
+	for _, code in utf8.codes(text) do
+		local char = utf8.char(code)
+		table.insert(out, SUPERSCRIPT[char] or char)
+	end
+	return table.concat(out)
+end
 
 local localPlayer = Players.LocalPlayer
 local random = Random.new()
@@ -234,9 +249,14 @@ local function floatGain(kind: Kind, amount: number)
 			amountLabel.TextColor3 = color
 		end
 		if trailText and multiplierLabel == nil then
+			-- a178 (Cantin, 15/11) : en exposant, juste après le nombre (« +1ˣ² Speed/s »), en caractères
+			-- Unicode en exposant (un BillboardGui ne sait pas monter un texte au-dessus de la ligne).
 			amountLabel.RichText = true
 			local hex = (FLOAT.TrailMultiplierColor :: Color3):ToHex()
-			amountLabel.Text = `{amountLabel.Text} <font color="#{hex}">{trailText}</font>`
+			local text = amountLabel.Text
+			local cut = string.find(text, " ", 1, true) or (#text + 1)
+			local sup = `<font color="#{hex}">{GainController.Superscript(trailText)}</font>`
+			amountLabel.Text = string.sub(text, 1, cut - 1) .. sup .. string.sub(text, cut)
 		end
 	end
 	-- Vague 24 : l'icône posée par Clément sur BB_Gain (attribut <Sorte>Icon, rbxassetid) passe avant
