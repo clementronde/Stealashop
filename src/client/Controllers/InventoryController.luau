@@ -1634,12 +1634,10 @@ local function bindHud(gui: Instance)
 		return
 	end
 	hudBound[gui] = true
-	local found = Find.all(gui, HUD_BUTTON)
-	for _, inst in found do
+	-- Vague 59 (a190, L-182 point 5, L-183) : inventaire archivé, InventoryButton retiré du nouveau HUD. Son absence
+	-- est normale (plus de ligne dans la sortie) ; s'il est encore là, il ouvre l'écran comme avant (code en sommeil).
+	for _, inst in Find.all(gui, HUD_BUTTON) do
 		bindHudButton(inst)
-	end
-	if #found == 0 then
-		reportOnce("hud", `[Inventory] {HUD}.{HUD_BUTTON} introuvable : l'inventaire ne s'ouvre pas par le HUD`)
 	end
 	gui.DescendantAdded:Connect(bindHudButton)
 end

@@ -53,9 +53,8 @@ UI.Screens = {
 			{ Path = "InviteButton", Class = BUTTON },
 			{ Path = "RewardsButton", Class = BUTTON },
 			{ Path = "RewardsButton.RewardsAlert" },
-			-- Bouton sac à dos de la colonne gauche (L-079, relevé de Studio du 2026-11-10) : ouvre et ferme
-			-- UI_Inventory (InventoryController).
-			{ Path = "InventoryButton", Class = BUTTON },
+			-- Bouton sac à dos de la colonne gauche (L-079) : sorti du contrat à la vague 59 (L-182 point 5, L-183 :
+			-- inventaire archivé) ; encore là, une note (UI.Retired), et il ouvre toujours UI_Inventory (code en sommeil).
 			-- Bouton engrenage de SocialRow (L-095 point 2, relevé de Studio du 2026-11-11) : visible dans Studio depuis le 2026-11-14 (L-159), caché par HudController sans
 			-- Features.Settings, montré par SettingsController ; ouvre UI_Settings.
 			{ Path = "SettingsButton", Class = BUTTON },
@@ -422,6 +421,8 @@ end
 table.insert(UI.Screens, {
 	Name = "UI_Inventory",
 	Class = "ScreenGui",
+	-- Vague 59 (L-182 point 5) : inventaire archivé, Clément range l'écran hors de StarterGui ; absent, rien à dire.
+	Optional = true,
 	Elements = inventoryElements,
 })
 
@@ -601,7 +602,7 @@ table.insert(UI.Screens, {
 UI.Twins = {
 	UI_HUD = {
 		Containers = { "LeftRail", "LeftRailTouch" },
-		Names = { "RobuxShopButton", "IndexButton", "RebirthButton", "InventoryButton", "SkillTreeButton" },
+		Names = { "RobuxShopButton", "IndexButton", "RebirthButton", "InventoryButton", "SkillTreeButton", "MenuButton" },
 	},
 } :: { [string]: { Containers: { string }, Names: { string } } }
 
@@ -732,7 +733,8 @@ table.insert(UI.Billboards, {
 -- UIScale Pulse bat tant qu'elles sont visibles. Entrées à part, à la fin, pour ne pas changer les listes existantes.
 -- UI_HUD : un exemplaire dans LeftRail et un dans LeftRailTouch (UI.Twins) ; RailAlertController et RewardsController.
 local hudAlerts = {} :: { Element }
-for _, pair in { { "IndexButton", "IndexAlert" }, { "InventoryButton", "InventoryAlert" }, { "RebirthButton", "RebirthAlert" }, { "SkillTreeButton", "SkillTreeAlert" }, { "RewardsButton", "RewardsAlert" } } do
+-- Vague 59 : InventoryButton.InventoryAlert sorti avec l'inventaire (UI.Retired).
+for _, pair in { { "IndexButton", "IndexAlert" }, { "RebirthButton", "RebirthAlert" }, { "SkillTreeButton", "SkillTreeAlert" }, { "RewardsButton", "RewardsAlert" } } do
 	table.insert(hudAlerts, { Path = `{pair[1]}.{pair[2]}` })
 	table.insert(hudAlerts, { Path = `{pair[1]}.{pair[2]}.Pulse`, Class = "UIScale" })
 end
@@ -910,6 +912,8 @@ UI.Retired = {
 		UI_Unbox = BOX_GONE,
 		["UI_Inventory.Tabs.BoxesTab"] = BOX_GONE,
 		["UI_Inventory.BoxesSection"] = BOX_GONE,
+		-- Vague 59 (a190, L-182 point 5, L-183) : inventaire archivé (InventoryController en sommeil).
+		["UI_HUD.InventoryButton"] = "inventaire archivé (L-182 point 5), bouton retiré du nouveau HUD (L-183)",
 	},
 	Billboards = {
 		BB_OpenTimer = BOX_GONE,
@@ -994,6 +998,32 @@ table.insert(UI.Billboards, {
 	Optional = true,
 	Elements = {
 		{ Path = "TitleLabel", Class = "TextLabel", Optional = true, Note = "« REBIRTH n » n'est pas écrit au-dessus du joueur" },
+	} :: { Element },
+})
+
+-- Nouveau HUD (vague 59, a190 ; L-183 `UI_HUD`, noms de la page Figma « 30 HUD, tapis, poursuite », validés par
+-- Clément ; docs/claude/notes/2026-11-15_figma-refonte-coordination.md). Pas encore construit dans Studio : tout est
+-- facultatif, l'ancien HUD marche sans. MenuButton (un dans LeftRail, un dans LeftRailTouch : UI.Twins) ouvre
+-- MenuPanel (un seul, où passent IndexButton, RebirthButton, RewardsButton, InviteButton et SettingsButton, mêmes
+-- noms : les contrôleurs les cherchent partout dans l'écran) ; MenuAlert s'allume quand une pastille du menu l'est.
+-- RightRail porte DisplayedButton (ouvre UI_Displayed) et les boutons en situation de Config/Boosts, cachés par
+-- Clément. CashSpent : « -$X » rouge après un achat. HudController et HudMenuController.
+table.insert(UI.Screens, {
+	Name = "UI_HUD",
+	Class = "ScreenGui",
+	Optional = true,
+	Elements = {
+		{ Path = "MenuButton", Class = BUTTON, Optional = true, Note = "pas de menu : les boutons restent où Clément les a mis" },
+		{ Path = "MenuButton.MenuAlert", Optional = true, Note = "pas de pastille sur le menu" },
+		{ Path = "MenuButton.MenuAlert.Pulse", Class = "UIScale", Optional = true, Note = "la pastille du menu ne bat pas" },
+		{ Path = "MenuPanel", Optional = true, Note = "MenuButton n'ouvre rien" },
+		{ Path = "DisplayedButton", Class = BUTTON, Optional = true, Note = "UI_Displayed ne s'ouvre que par son propre bouton" },
+		{ Path = "SpeedBoostButton", Class = BUTTON, Optional = true, Note = "pas de bouton « x2 » sur le tapis" },
+		{ Path = "SpeedBoostButton.Price.Amount", Class = "TextLabel", Optional = true, Note = "le prix Robux n'est pas écrit" },
+		{ Path = "SleepButton", Class = BUTTON, Optional = true, Note = "pas de bouton « zZz » dans le couloir" },
+		{ Path = "SleepButton.Price.Amount", Class = "TextLabel", Optional = true, Note = "le prix Robux n'est pas écrit" },
+		{ Path = "SleepButton.Cooldown", Class = "TextLabel", Optional = true, Note = "la recharge n'est pas affichée" },
+		{ Path = "CashSpent", Class = "TextLabel", Optional = true, Note = "l'argent décompte sans « -$X » à côté" },
 	} :: { Element },
 })
 

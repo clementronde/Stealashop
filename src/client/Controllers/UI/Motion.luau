@@ -38,7 +38,8 @@
 --   Motion.SetSoundPlayer(play?) / Motion.PlaySound(name)
 --                               sons d'UI (UI_Hover, UI_Success…) : joués par la fonction donnée
 --                               (UiFeelController), rien sans elle.
---   Motion.Roll(label, from, to, format)
+--   Motion.Roll(label, from, to, format, info?)
+--                               (info : un autre TweenInfo que Roll ; vague 59 : décompte de Cash après un achat)
 --                               le nombre défile de `from` à `to`, écrit par `format` à chaque image
 --                               (Shared/Format) ; à la fin, exactement format(to). from = nil
 --                               (premier remplissage) : format(to) tout de suite, sans défilement.
@@ -1256,7 +1257,7 @@ function Motion.StopRoll(label: TextLabel)
 	roll.value:Destroy()
 end
 
-function Motion.Roll(label: TextLabel, from: number?, to: number, format: (number) -> string)
+function Motion.Roll(label: TextLabel, from: number?, to: number, format: (number) -> string, info: TweenInfo?)
 	local current = rolls[label]
 	if current ~= nil and current.to == to then
 		return -- déjà en route vers cette valeur
@@ -1298,7 +1299,7 @@ function Motion.Roll(label: TextLabel, from: number?, to: number, format: (numbe
 			label.Text = text
 		end
 	end)
-	local tween = TweenService:Create(value, ROLL_INFO, { Value = to })
+	local tween = TweenService:Create(value, info or ROLL_INFO, { Value = to })
 	rolls[label] = { token = token, value = value, tween = tween, connection = connection, to = to, integers = integers }
 	tween.Completed:Connect(function(state: Enum.PlaybackState)
 		local roll = rolls[label]
