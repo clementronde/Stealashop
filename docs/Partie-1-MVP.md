@@ -1106,6 +1106,7 @@ Chaque étape est envoyée une seule fois par joueur avec `AnalyticsService:LogO
 
 | Date | Décision | Par |
 | --- | --- | --- |
+| 2026-11-15 | Coins de l'UI : tous les boutons et éléments ont des coins droits ; seuls les boutons pour payer (argent ou Robux) sont légèrement arrondis. Index : on retire le nom des objets dans les cartes et on agrandit les dessins. | Clément |
 | 2026-11-15 | Plus de bouton « More » : 3 gros boutons à gauche (Robux, Index, Upgrades) ; Rewards, Invite et Settings en petites icônes en haut à gauche, près du menu Roblox ; Rebirth caché tant qu'elle est coupée (liaison L-192). | Clément |
 | 2026-11-15 | Sans inventaire : un objet retiré d'un présentoir revient dans la main du joueur ; un objet remplacé par « Exposer les meilleurs » va dans une réserve listée en bas du panneau « Mes objets exposés » ; le « +$/s » d'un objet posé vole jusqu'à l'argent (liaison L-192). | Clément |
 | 2026-11-15 | Index : une zone complète ne donne qu'un objet (une nouvelle arme, une nouvelle aura ou une trail), ni argent, ni vitesse, ni diamants (liaison L-192). | Clément |
