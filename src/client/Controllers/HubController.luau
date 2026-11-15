@@ -173,9 +173,12 @@ end
 
 local function paintLabel(gui: BillboardGui)
 	local key = gui:GetAttribute(Hub.LabelKeyAttribute)
-	local parent = gui.Parent
-	if key == nil and parent then
-		key = parent:GetAttribute(Hub.LabelKeyAttribute)
+	-- LabelKey peut être sur le billboard ou sur un ancêtre (Clément le pose sur le modèle ENV_Hub_*, Play du 2026-11-15) :
+	-- le premier qui le porte gagne, sans dépasser le Workspace.
+	local node = gui.Parent
+	while key == nil and node ~= nil and node ~= workspace do
+		key = node:GetAttribute(Hub.LabelKeyAttribute)
+		node = node.Parent
 	end
 	local text = HubZone.labelText(key)
 	if text == nil then

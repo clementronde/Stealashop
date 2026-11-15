@@ -83,7 +83,7 @@ local LIST_MAX = 6 -- noms affichés au plus dans une liste « pas encore livré
 local MISSING_PER_LINE = 3 -- au-delà, les manques d'un même modèle tiennent sur une ligne
 
 -- Reconnaître un vendeur d'un vigile : nom du modèle, sinon place sous une boutique.
-local VENDOR_WORDS = { "vendeur", "vendor", "seller", "shopkeeper" }
+local VENDOR_WORDS = { "vendeur", "vendor", "seller", "shopkeeper", "noob" } -- noob du hub (a160) : Idle et Wave, comme un vendeur
 local GUARD_WORDS = { "vigile", "guard" }
 local VENDOR_SHOP_TAGS = { "WeaponShop", "AuraShop", "RobuxShop" }
 

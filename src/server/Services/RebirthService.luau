@@ -473,7 +473,7 @@ local function request(player: Player, level: any): (boolean, string?)
 	refreshServices(player, keptUids, fromBoxes)
 	publish(player)
 	DataService.Save(player)
-	pcall(TelemetryService.LogEconomy, player, "Rebirth", tier.Cash, `Rebirth{level}`, nil)
+	pcall(TelemetryService.LogEconomy, player, "Rebirth", paid, `Rebirth{level}`, nil) -- l'argent réellement remis à 0 (Play du 2026-11-15)
 	pcall(TelemetryService.LogEvent, player, "Rebirth", { `Level - {level}` }, data.Lifetime.PlaySeconds)
 	notify(player, string.format(MESSAGES.Done, level, Format.short(Rebirths.IncomeMultiplier(level))), NOTIFY_INFO)
 	for _, other in Players:GetPlayers() do
