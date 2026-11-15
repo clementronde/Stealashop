@@ -44,6 +44,32 @@ local Witness = {
 	FleeMaxTime = 4, -- V0 : … au plus ce temps…
 	FleeStuckTime = 1, -- V0 : … ou jusqu'à rester ce temps sans avancer d'un stud (un mur)
 
+	-- Le témoin qui filme la casse (Clément, L-172, 2026-11-15) : au premier coup il s'approche de la vitrine
+	-- (Walk) pendant que son « ? » monte, puis il appelle (CallPolice) et, l'appel fini, il prend des photos
+	-- au flash (TakePhoto, marqueur Flash ; effet FX_Witness_Flash côté client) jusqu'à l'arrivée du policier
+	-- ou au départ du voleur, puis reprend sa balade. -----------------------------------------------------
+	Photo = {
+		-- V0 : false = l'ancien déroulé (il regarde sur place, reprend sa balade après l'appel).
+		Enabled = true,
+		Distance = 8, -- V0 : il se poste à ce nombre de studs devant la vitrine…
+		SideOffset = 2, -- V0 : … décalé de ce nombre de studs sur le côté (témoin impair à droite, pair à gauche)
+		ApproachSpeed = 10, -- V0 : WalkSpeed pendant qu'il s'approche (il presse le pas)
+		Interval = 0.9, -- Clément : un flash toutes les 0,9 s environ (rythme tant qu'aucun marqueur Flash ne vient)
+		MinInterval = 0.45, -- Clément : jamais plus d'un flash toutes les 0,45 s (le reflet dure 0,2 s)
+		PoliceArrive = 15, -- V0 : un policier du magasin à moins de ce nombre de studs de la vitrine : il arrête
+		LeaveDistance = 40, -- V0 : plus aucun voleur (dehors, vivant) à moins de ce nombre de studs de la vitrine : il arrête
+		MaxTime = 20, -- V0 : il filme au plus ce temps
+		Sound = "Witness_Photo", -- V0 : Sound de ReplicatedStorage/Assets/Sounds, joué à chaque flash ; absent : pas de son
+		-- Clément (L-172) : l'effet, posé à chaque flash par le client.
+		Fx = "FX_Witness_Flash",
+		FxFolder = { "Assets", "FX" }, -- depuis ReplicatedStorage
+		Phone = "ACC_Temoin_Telephone", -- le Handle de cet accessoire du témoin, 0,4 stud devant lui…
+		PhonePart = "Handle",
+		Forward = 0.4,
+		Hand = "RightHand", -- … sinon sa main droite
+		CopyKeep = 3, -- V0 : copie de l'effet gardée ce temps après son dernier flash (au moins sa Duration)
+	},
+
 	-- La police -------------------------------------------------------------------------------------
 	Police = {
 		Template = "NPC_Police", -- Clément : ReplicatedStorage/Assets/Guards/NPC_Police

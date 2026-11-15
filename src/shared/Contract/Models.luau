@@ -734,4 +734,26 @@ for _, spec in { HubFreeGift, HubInviteNoob } do
 	table.insert(Models.List, table.find(Models.List, WeaponShopCounter) or #Models.List + 1, spec)
 end
 
+-- Flash des photos du témoin (Clément, L-172, posé et validé le 2026-11-15) : ReplicatedStorage/Assets/FX/
+-- FX_Witness_Flash, copié par WitnessController à chaque marqueur Flash de TakePhoto. Part Root (ancrée,
+-- invisible, sans collision) et son Attachment Flash (PointLight Light, ParticleEmitter Glare, Glint, Specks
+-- à Rate 0 avec leur attribut EmitCount) ; attributs LightTime et Duration du modèle. Absent : pas de flash.
+local WitnessFlash: ModelSpec = {
+	Key = "WitnessFlash",
+	Label = "flash des photos des témoins",
+	Category = "Magasins PNJ",
+	Names = { "FX_Witness_Flash" },
+	Class = "Model",
+	Parts = {
+		{
+			Name = "Root",
+			Class = "BasePart",
+			Inside = { { Name = "Flash", Class = "Attachment" } },
+			Note = "le code la pose au téléphone du témoin à chaque flash, L-172",
+		},
+	},
+}
+Models.WitnessFlash = WitnessFlash
+table.insert(Models.List, table.find(Models.List, WeaponShopCounter) or #Models.List + 1, WitnessFlash)
+
 return Models
