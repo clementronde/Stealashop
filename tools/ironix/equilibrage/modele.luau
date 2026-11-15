@@ -651,7 +651,7 @@ function Modele.Jouer(eco, profil, seed, maxSeconds, options)
 		local openDelay
 		if out.Colis == 1 and not O.SansTuto then
 			-- Premier colis du tuto : rareté garantie, attente raccourcie (Config/Tutorial).
-			rarityId, openDelay = Tutorial.GuaranteedRarity, Tutorial.OpenDelay
+			rarityId, openDelay = Tutorial.GuaranteedRarity or "Rare", Tutorial.OpenDelay or 5 -- a183 : valeurs retirées de Config/Tutorial (vague 52), gardées ici
 		else
 			local roll = random() * 100
 			for _, rarity in Rarities.List do

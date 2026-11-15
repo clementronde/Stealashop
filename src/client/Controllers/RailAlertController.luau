@@ -21,7 +21,8 @@
 --   SkillTreeButton.SkillTreeAlert une amélioration achetable : une compétence ouverte (OpensWhen), niveau
 --                                  suivant codé (Coded), avec un prix, pas au maximum, et l'argent du joueur
 --                                  (attribut Cash) au moins égal à ce prix. Même règle que l'écran
---                                  (SkillTreeController : prix blanc, BuyButton) et que SkillTreeService.
+--                                  (SkillTreeController : prix blanc, BuyButton) et que SkillTreeService. Une tuile
+--                                  à renaissance encore fermée (L-173, SkillTree.NeedsRebirth) ne compte pas.
 -- Recalcul : à chaque changement d'un attribut du joueur ou d'un tag FloorItem (une fois par image au plus),
 -- et toutes les REFRESH s (fin d'un antivol). HUD recréé (ResetOnSpawn) : rebranché.
 --
@@ -111,9 +112,10 @@ local function skillTreePending(): boolean
 	if type(cash) ~= "number" or cash ~= cash then
 		return false -- profil pas encore chargé
 	end
+	local rebirths = SkillTree.RebirthsOf(localPlayer:GetAttribute(SkillTree.RebirthsAttribute)) -- L-173 : nil = renaissance coupée
 	for _, skill in SkillTree.List do
 		local opens = skill.OpensWhen
-		if opens == nil or levelOf(opens.Id) >= opens.Level then
+		if (opens == nil or levelOf(opens.Id) >= opens.Level) and SkillTree.NeedsRebirth(skill, levelOf(skill.Id), rebirths) == nil then
 			local level = levelOf(skill.Id)
 			local price = skill.Prices[level + 1]
 			if level < skill.MaxLevel and level + 1 <= skill.Coded and price ~= nil and cash >= price then

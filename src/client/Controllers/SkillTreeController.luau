@@ -14,6 +14,11 @@
 --   - Tuiles (12, posées à la main dans Tree, pas de Template) : seuls les visibilités et les textes changent.
 --     Tuile d'une compétence retirée (SkillTree.Removed, Tile_Next4 du coffre-fort, vague 54) : cachée si elle
 --     est encore dans Tree.
+--     Tuile à renaissance (L-173, vague 56, a183 ; RequiresRebirth de Config/SkillTree, recopié en attribut
+--     RequiresRebirth sur la tuile ; renaissances faites = attribut Rebirths du Player) : tant que le joueur n'a
+--     ni la renaissance ni un niveau acheté, calque RebirthLocked (facultatif ; LockedName « REBIRTH 1 »,
+--     LockedLabel « TO UNLOCK » ; sans ce calque : Locked), Info caché, tuile impossible à choisir ; renaissance
+--     coupée (attribut Rebirths absent) : la tuile entière est cachée (SkillTree.HideWhenRebirthOff).
 --     Calque selon le niveau (attribut Skill_<Id>, 0 s'il manque) et OpensWhen : Bought si niveau ≥ 1,
 --     Available si la tuile est ouverte, Locked sinon (Info caché). Tile_Next2 toujours Locked ; RootTile
 --     (« UPGRADES ») : rien à acheter, jamais choisie. Info.Level « Lv 2/5 » ; Info.TileName = DisplayName et
@@ -67,7 +72,7 @@ local Fx = require(Helpers:WaitForChild("Fx"))
 local Nav = require(Helpers:WaitForChild("Nav"))
 
 type Skill = SkillTree.Skill
-type LayerName = "Bought" | "Available" | "Locked"
+type LayerName = "Bought" | "Available" | "Locked" | "RebirthLocked"
 type OfferKind = "Price" | "Need" | "Max" | "Soon"
 type Offer = { kind: OfferKind, price: number? }
 
@@ -82,6 +87,9 @@ type Tile = {
 	price: Instance?,
 	priceNeed: Instance?,
 	icon: Instance?,
+	rebirthName: Instance?, -- RebirthLocked.LockedName (L-173, facultatif)
+	rebirthLabel: Instance?, -- RebirthLocked.LockedLabel
+	shown: boolean, -- Visible posé par Clément, relevé au branchement (une tuile à renaissance peut être cachée)
 	ring: number, -- anneau autour de la tuile centrale (coordonnées Q, R)
 	angle: number,
 	revealing: boolean, -- se découvre (T.61) : reste Locked jusqu'au retournement
@@ -124,7 +132,7 @@ local RAIL_PC = "LeftRail"
 local RAIL_TOUCH = "LeftRailTouch"
 local CASH_ATTRIBUTE = "Cash" -- posé par DataService sur le Player
 local REMOTE = "BuySkill"
-local LAYERS: { LayerName } = { "Bought", "Available", "Locked" }
+local LAYERS: { LayerName } = { "Bought", "Available", "Locked", "RebirthLocked" }
 local BODY = "Body" -- corps de l'hexagone dans chaque calque (copié pour l'éclat, T.59)
 
 -- V0 proposés, absents du doc : textes de l'écran, en anglais (L-036), repris du prototype de Clément
@@ -191,11 +199,30 @@ local function isOpenSkill(skill: Skill): boolean
 	return opens == nil or levelOf(opens.Id) >= opens.Level
 end
 
+-- Renaissances faites (attribut du serveur), nil quand la renaissance est coupée.
+local function rebirthsDone(): number?
+	return SkillTree.RebirthsOf(localPlayer:GetAttribute(SkillTree.RebirthsAttribute))
+end
+
+-- La renaissance qui ferme encore la tuile (L-173), ou nil ; même règle que le serveur.
+local function rebirthNeeded(skill: Skill): number?
+	return SkillTree.NeedsRebirth(skill, levelOf(skill.Id), rebirthsDone())
+end
+
 local function layerOf(skill: Skill): LayerName
 	if levelOf(skill.Id) >= 1 then
 		return "Bought"
 	end
+	if rebirthNeeded(skill) ~= nil then
+		return "RebirthLocked"
+	end
 	return if isOpenSkill(skill) then "Available" else "Locked"
+end
+
+-- Tuile que l'on peut choisir : achetée ou ouverte (ni Locked ni RebirthLocked).
+local function canChoose(skill: Skill): boolean
+	local layer = layerOf(skill)
+	return layer == "Bought" or layer == "Available"
 end
 
 -- Ce que montre le prix : le prochain niveau, l'argent qui manque, le maximum ou « bientôt ».
@@ -287,10 +314,23 @@ local function refreshTile(tile: Tile)
 	end
 	local level = levelOf(skill.Id)
 	local layer = layerOf(skill)
-	for _, name in LAYERS do
-		setVisible(tile.layers[name], name == layer)
+	-- Tuile à renaissance (L-173) : cachée tant que la renaissance est coupée (HideWhenRebirthOff), sinon calque
+	-- RebirthLocked « REBIRTH n » / « TO UNLOCK » ; calque pas encore livré : Locked à sa place.
+	local needed = if layer == "RebirthLocked" then rebirthNeeded(skill) else nil
+	if skill.RequiresRebirth ~= nil then
+		local hidden = needed ~= nil and SkillTree.HideWhenRebirthOff and rebirthsDone() == nil
+		setVisible(tile.button, tile.shown and not hidden)
 	end
-	setVisible(tile.info, layer ~= "Locked")
+	local rebirthLayer: GuiObject? = tile.layers[SkillTree.RebirthLayer]
+	local shown: string = if layer == "RebirthLocked" and rebirthLayer == nil then "Locked" else layer
+	for _, name in LAYERS do
+		setVisible(tile.layers[name], name == shown)
+	end
+	if needed ~= nil then
+		setText(tile.rebirthName, string.format(SkillTree.RebirthNameText, needed))
+		setText(tile.rebirthLabel, SkillTree.RebirthLabelText)
+	end
+	setVisible(tile.info, layer == "Bought" or layer == "Available")
 	setText(tile.level, string.format(LEVEL_TEXT, level, skill.MaxLevel))
 	setText(tile.tileName, tileNameOf(skill, level))
 	local offer = offerOf(skill, level, cashOf())
@@ -336,7 +376,7 @@ local function refreshPanel(current: Screen)
 		elseif offer.kind == "Soon" then SOON_TEXT
 		else Format.money(offer.price :: number)
 	setText(panel.nodePrice, priceText)
-	local canBuy = offer.kind == "Price" and layerOf(skill) ~= "Locked"
+	local canBuy = offer.kind == "Price" and canChoose(skill)
 	setVisible(panel.buy, canBuy)
 	setVisible(panel.need, not canBuy)
 	local needText = if offer.kind == "Max" then NEED_MAX_TEXT
@@ -387,7 +427,7 @@ end
 local function defaultTile(current: Screen): Tile?
 	for _, skill in SkillTree.List do
 		local tile = current.bySkill[skill.Id]
-		if tile and layerOf(skill) ~= "Locked" then
+		if tile and canChoose(skill) then
 			return tile
 		end
 	end
@@ -397,7 +437,7 @@ end
 -- Choisit `tile` (ouverte) : contour dessous, panneau à jour ; `animate` : T.55 et T.56.
 local function choose(current: Screen, tile: Tile, animate: boolean): boolean
 	local skill = tile.skill
-	if skill == nil or tile.revealing or layerOf(skill) == "Locked" then
+	if skill == nil or tile.revealing or not canChoose(skill) then
 		return false
 	end
 	local changed = selected ~= tile.name
@@ -450,7 +490,7 @@ local function onBuy()
 		return
 	end
 	local offer = offerOf(skill, levelOf(skill.Id), cashOf())
-	if offer.kind ~= "Price" or layerOf(skill) == "Locked" then
+	if offer.kind ~= "Price" or not canChoose(skill) then
 		deny(current.panel.buy)
 		refreshPanel(current)
 		return
@@ -491,7 +531,7 @@ local function celebrate(current: Screen, skill: Skill, old: number, new: number
 		local opens = other.OpensWhen
 		local otherTile = current.bySkill[other.Id]
 		if opens and opens.Id == skill.Id and opens.Level > old and opens.Level <= new and otherTile
-			and levelOf(other.Id) == 0 then
+			and levelOf(other.Id) == 0 and rebirthNeeded(other) == nil then
 			otherTile.revealing = true
 			table.insert(reveals, otherTile)
 		end
@@ -574,7 +614,15 @@ local function newTile(object: GuiObject, skill: Skill?): Tile
 	end
 	local info = guiObject(object, "Info")
 	local ring, angle = ringOf(object)
+	local rebirthLayer = layers[SkillTree.RebirthLayer]
+	-- L-173 : l'attribut RequiresRebirth de la tuile vient de Config/SkillTree (qui fait foi), posé ici pour Clément.
+	if skill and skill.RequiresRebirth ~= nil then
+		object:SetAttribute(SkillTree.RequiresRebirthAttribute, skill.RequiresRebirth)
+	end
 	return {
+		rebirthName = if rebirthLayer then Find.path(rebirthLayer, SkillTree.RebirthLockedName) else nil,
+		rebirthLabel = if rebirthLayer then Find.path(rebirthLayer, SkillTree.RebirthLockedLabel) else nil,
+		shown = object.Visible,
 		name = object.Name,
 		skill = skill,
 		button = object,
@@ -918,6 +966,13 @@ function SkillTreeController.Start()
 		end)
 	end
 	localPlayer:GetAttributeChangedSignal(CASH_ATTRIBUTE):Connect(onCashChanged)
+	-- L-173 : renaissance faite, allumée ou coupée : les tuiles à renaissance s'ouvrent, se ferment ou se cachent.
+	localPlayer:GetAttributeChangedSignal(SkillTree.RebirthsAttribute):Connect(function()
+		local current = screen
+		if current and current.gui.Parent ~= nil then
+			refreshAll(current)
+		end
+	end)
 
 	local playerGui = localPlayer:WaitForChild("PlayerGui")
 	playerGui.ChildAdded:Connect(function(child: Instance)

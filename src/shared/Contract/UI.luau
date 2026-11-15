@@ -931,4 +931,28 @@ table.insert(UI.Screens, {
 	} :: { Element },
 })
 
+-- Récompenses de renaissance (L-173 et L-168 Q2, vague 56, a183), tout est facultatif.
+-- Tuiles à renaissance de l'arbre (les 4 tuiles de Config/SkillTree qui ont RequiresRebirth ; noms proposés par
+-- Clément le 2026-11-15, adoptés) : calque RebirthLocked à côté de Bought, Available et Locked, avec LockedName
+-- (« REBIRTH 1 ») et LockedLabel (« TO UNLOCK ») écrits par SkillTreeController.
+for _, screenDef in UI.Screens do
+	if screenDef.Name == "UI_SkillTree" then
+		for _, tile in { "Tile_Curtain", "Tile_PotionTime", "Tile_DoorGuard", "Tile_Next1" } do
+			table.insert(screenDef.Elements, { Path = `Tree.{tile}.RebirthLocked`, Optional = true, Note = "tuile à renaissance : le calque Locked est montré à la place" })
+			table.insert(screenDef.Elements, { Path = `Tree.{tile}.RebirthLocked.LockedName`, Class = "TextLabel", Optional = true, Note = "« REBIRTH n » n'est pas écrit" })
+			table.insert(screenDef.Elements, { Path = `Tree.{tile}.RebirthLocked.LockedLabel`, Class = "TextLabel", Optional = true, Note = "« TO UNLOCK » n'est pas écrit" })
+		end
+	end
+end
+-- Titre au-dessus du joueur (noms proposés à Clément, Config/Rebirths.Title) : RebirthTitleController en pose une
+-- copie sur la tête de chaque joueur qui a fait une renaissance et écrit « REBIRTH n » dans TitleLabel.
+table.insert(UI.Billboards, {
+	Name = "BB_RebirthTitle",
+	Class = "BillboardGui",
+	Optional = true,
+	Elements = {
+		{ Path = "TitleLabel", Class = "TextLabel", Optional = true, Note = "« REBIRTH n » n'est pas écrit au-dessus du joueur" },
+	} :: { Element },
+})
+
 return UI

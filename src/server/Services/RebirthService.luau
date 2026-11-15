@@ -31,18 +31,19 @@
 --   gardé         index, arbre de compétences, achats Robux et Monetization, boosts, récompenses, tuto,
 --                 Lifetime, réglages, potions en stock, zones atteintes
 --   gagné         Rebirths (renaissances faites) + 1 dans le profil, d'où : revenus des présentoirs ×
---                 Rebirths.IncomeMultiplier (DisplayService.GetIncomeMultiplier ; pas le receleur), tapis ×
---                 Rebirths.TreadmillMultiplier (TrainingService.GetGainMultiplier). Vague 54 : plus de coffre-fort,
---                 la 2e renaissance n'a plus de récompense propre (Effect « None »). Aura, trail, Marteau-piqueur, Bélier,
---                 2e agent et titre : notés gagnés (Rebirths.HasReward), sans effet en jeu tant qu'ils
---                 n'existent pas (Config/Rebirths, RewardEffect). Le Bélier n'agit pas sur les portes (L-163)
+--                 Rebirths.IncomeMultiplier (DisplayService.GetIncomeMultiplier ; pas le receleur). Vague 56
+--                 (a183, L-173, décision de Clément du 2026-11-15) : plus aucune autre récompense ici (aura,
+--                 trail, Marteau-piqueur, Bélier, 2e agent, « Tapis ×1,5 » retirés). L'attribut Rebirths ouvre
+--                 les tuiles à renaissance de l'arbre (SkillTreeService, Config/SkillTree.RequiresRebirth) et
+--                 le titre au-dessus du joueur (RebirthTitleController, Config/Rebirths.Title)
 -- D'un seul tenant : toutes les écritures du profil se font dans une seule exécution sans yield (commit), le
 -- versement de l'argent restant en dernier ; une sauvegarde de ProfileStore passe avant ou après, jamais au
 -- milieu. Les services sont remis d'accord ensuite (affichage, outils, effets), chacun sous pcall : une
 -- erreur là ne touche plus le profil. Puis DataService.Save. Télémétrie : dépense « Rebirth » (SKU Rebirth<n>)
 -- et événement « Rebirth » (champ Level, valeur = temps de jeu cumulé en s).
 --
--- Attributs du Player (seulement allumé ; lus par RebirthController) :
+-- Attributs du Player (seulement allumé ; lus par RebirthController, RebirthTitleController, SkillTreeController
+-- et, côté serveur, SkillTreeService) :
 --   Rebirths          renaissances faites (0 au départ) ; sa présence dit au client que la renaissance est ouverte
 --   RebirthItemOwned  true si le joueur a l'objet requis de la prochaine (hors sol), revu chaque seconde
 --
@@ -497,11 +498,7 @@ local function installHooks()
 	DisplayService.GetIncomeMultiplier = function(player: Player): number
 		return baseIncome(player) * Rebirths.IncomeMultiplier(activeCount(player))
 	end
-	local baseGain = TrainingService.GetGainMultiplier
-	TrainingService.GetGainMultiplier = function(player: Player, kind: any): number
-		local multiplier = if kind == "Treadmill" then Rebirths.TreadmillMultiplier(activeCount(player)) else 1
-		return baseGain(player, kind) * multiplier
-	end
+	-- Vague 56 (a183, L-173) : plus de « Tapis ×1,5 », TrainingService.GetGainMultiplier n'est plus remplacé.
 end
 
 ------------------------------------------------------------------------------

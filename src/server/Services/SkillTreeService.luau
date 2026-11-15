@@ -13,6 +13,10 @@
 -- Remote BuySkill(id) (Net/Definitions ; Net a déjà contrôlé la forme et le débit) : achète le niveau
 -- suivant. Le serveur décide tout, dans cet ordre :
 --   - Id inconnu ou profil pas chargé : envoi malhonnête, ignoré sans message (une ligne en Studio) ;
+--   - tuile à renaissance (L-173, a183 : RequiresRebirth de Config/SkillTree) pas encore ouverte : refus honnête
+--     « Reach Rebirth n first. ». Renaissances faites = attribut `Rebirths` du Player, posé par RebirthService
+--     (le serveur seul l'écrit) ; absent (renaissance coupée) : toujours refusé. Une tuile déjà achetée
+--     (niveau ≥ 1) n'est pas refermée (SkillTree.NeedsRebirth) ;
 --   - tuile fermée (OpensWhen : la compétence voisine n'a pas le niveau demandé), niveau maximum
 --     atteint, niveau suivant au-delà de Coded ou sans prix (« Soon »), argent insuffisant au prix
 --     Prices[niveau suivant] : refus honnête, Notify « Warning » en anglais ;
@@ -98,6 +102,7 @@ local TELEMETRY_EVENT = "DefenseBought"
 -- Messages lus par le joueur (Notify), en anglais (L-036). V0 proposés, absents du doc.
 local MESSAGES = {
 	Locked = "Locked: get %s level %d first.",
+	RebirthLocked = "Locked: reach Rebirth %d first.", -- L-173, V0
 	Max = "%s is already at max level.",
 	Soon = "%s: coming soon!",
 	NotEnoughCash = "Not enough cash: %s needed.",
@@ -248,6 +253,12 @@ local function onBuySkill(player: Player, id: string)
 	local data = DataService.Get(player)
 	if data == nil then
 		reject(player, id, "profil pas chargé")
+		return
+	end
+	local rebirths = SkillTree.RebirthsOf(player:GetAttribute(SkillTree.RebirthsAttribute))
+	local rebirthNeeded = SkillTree.NeedsRebirth(skill, levelIn(data, skill), rebirths)
+	if rebirthNeeded ~= nil then
+		notify(player, string.format(MESSAGES.RebirthLocked, rebirthNeeded), "Warning")
 		return
 	end
 	if not isOpen(data, skill) then

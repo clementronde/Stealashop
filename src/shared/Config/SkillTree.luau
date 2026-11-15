@@ -10,7 +10,12 @@
 --   - une tuile est ouverte si OpensWhen est nil (les 6 autour de la tuile centrale) ou si la compétence
 --     OpensWhen.Id a au moins le niveau OpensWhen.Level ;
 --   - Coded = nombre de niveaux achetables aujourd'hui (effet codé) ; 0 = « Soon » : la tuile se voit, rien ne
---     s'achète. Un niveau au-delà de Coded est refusé par le serveur, même ouvert.
+--     s'achète. Un niveau au-delà de Coded est refusé par le serveur, même ouvert ;
+--   - RequiresRebirth = n (L-173, vague 56, a183 ; V0, Clément valide) : tuile de l'anneau extérieur fermée tant
+--     que le joueur n'a pas fait n renaissances (attribut `Rebirths` du Player, posé par RebirthService ; absent :
+--     renaissance coupée, la tuile reste fermée). Règle commune au serveur et au client : SkillTree.NeedsRebirth.
+--     Une tuile déjà achetée (niveau ≥ 1) n'est jamais refermée. Tableau proposé (List) : Curtain 1,
+--     PotionTime 2, DoorGuard 3, Traps 4.
 -- Labels[n] = texte de l'effet au niveau n (n = 0 possible : effet offert sans achat), pour Info.TileName
 -- (« Glass ×2 ») et StatBox.NodeEffect (« ×2 ▶ ×3 »). Textes du jeu en anglais.
 
@@ -42,6 +47,7 @@ export type Skill = {
 	Labels: { [number]: string },
 	Coded: number,
 	OpensWhen: Opens?,
+	RequiresRebirth: number?, -- renaissances faites pour ouvrir la tuile (L-173, V0) ; nil : aucune
 	Icon: string?, -- rbxassetid de la note de Clément (l'image est déjà posée sur la tuile dans Studio)
 }
 
@@ -150,6 +156,7 @@ local List: { Skill } = {
 		Labels = { [0] = "30s", "45s", "60s" },
 		Coded = 2,
 		OpensWhen = { Id = "GlassThickness", Level = 1 },
+		RequiresRebirth = 1, -- V0 (L-173) : les 30 s offertes restent sans renaissance
 		Icon = "rbxassetid://135129985966759",
 	},
 	{
@@ -163,6 +170,7 @@ local List: { Skill } = {
 		Labels = {},
 		Coded = 0,
 		OpensWhen = { Id = "Bodyguards", Level = 1 },
+		RequiresRebirth = 3, -- V0 (L-173)
 		Icon = "rbxassetid://133701105676131",
 	},
 	{
@@ -178,6 +186,7 @@ local List: { Skill } = {
 		Labels = { "×1.25", "×1.5" },
 		Coded = 2,
 		OpensWhen = { Id = "PotionLuck", Level = 1 },
+		RequiresRebirth = 2, -- V0 (L-173)
 		Icon = "rbxassetid://102799696275335",
 	},
 	{
@@ -192,6 +201,7 @@ local List: { Skill } = {
 		Labels = {},
 		Coded = 0,
 		OpensWhen = { Id = "Walls", Level = 2 },
+		RequiresRebirth = 4, -- V0 (L-173)
 	},
 }
 
@@ -236,6 +246,37 @@ local PlotVisuals: { [string]: PlotVisual } = {
 	Walls = { Id = "Walls", Level = 1 },
 }
 
+-- Renaissances faites, lues dans l'attribut `Rebirths` du Player : entier ≥ 0, ou nil (attribut absent ou
+-- illisible : renaissance coupée).
+local function rebirthsOf(value: any): number?
+	if type(value) ~= "number" or value ~= value or value < 0 or value == math.huge then
+		return nil
+	end
+	return math.floor(value)
+end
+
+-- La renaissance qui ferme encore la tuile (L-173), ou nil si aucune ne la ferme. `level` = niveau acheté,
+-- `rebirths` = renaissances faites (nil : renaissance coupée, toute tuile à renaissance est fermée). Une tuile
+-- déjà achetée (niveau ≥ 1) reste ouverte : rien de ce qu'un joueur a acheté n'est retiré.
+local function needsRebirth(skill: Skill, level: number, rebirths: number?): number?
+	local needed = skill.RequiresRebirth
+	if needed == nil or level >= 1 or (rebirths ~= nil and rebirths >= needed) then
+		return nil
+	end
+	return needed
+end
+
+-- Les compétences que la renaissance numéro `rebirth` ouvre, dans l'ordre de List.
+local function unlockedBy(rebirth: number): { Skill }
+	local list: { Skill } = {}
+	for _, skill in List do
+		if skill.RequiresRebirth == rebirth then
+			table.insert(list, skill)
+		end
+	end
+	return list
+end
+
 -- Base sans achat : réparation Balance (RegenPerSecond, 3 %).
 local SkillTree = {
 	List = List,
@@ -260,6 +301,20 @@ local SkillTree = {
 	},
 	RootTile = "RootTile", -- tuile centrale « UPGRADES » : rien ne s'y achète
 	NeverTile = "Tile_Next2", -- « ??? » qui ne s'ouvre jamais (maquette de Clément)
+	-- Tuiles à renaissance (L-173, a183 ; noms proposés par Clément le 2026-11-15, adoptés ; facultatifs).
+	RebirthsAttribute = "Rebirths", -- attribut du Player (RebirthService) : renaissances faites ; absent = coupée
+	RequiresRebirthAttribute = "RequiresRebirth", -- attribut de la tuile, posé en jeu par SkillTreeController (Config fait foi)
+	RebirthLayer = "RebirthLocked", -- calque de la tuile, à côté de Bought, Available et Locked
+	RebirthLockedName = "LockedName", -- dans RebirthLocked : RebirthNameText (« REBIRTH 1 »)
+	RebirthLockedLabel = "LockedLabel", -- dans RebirthLocked : RebirthLabelText (« TO UNLOCK »)
+	RebirthNameText = "REBIRTH %d", -- maquette de Clément
+	RebirthLabelText = "TO UNLOCK",
+	-- Renaissance coupée (Features.Rebirth = false, lancement) : true, les tuiles à renaissance sont cachées
+	-- (aucune promesse que le joueur ne peut pas tenir) ; false, montrées verrouillées. V0, à valider par Cantin.
+	HideWhenRebirthOff = true,
+	RebirthsOf = rebirthsOf,
+	NeedsRebirth = needsRebirth,
+	UnlockedBy = unlockedBy,
 }
 
 export type SkillTree = typeof(SkillTree)
