@@ -37,7 +37,7 @@ Claude lit [CLAUDE.md](../../CLAUDE.md) au démarrage : il connaît déjà les n
 
 Les étapes 1 à 17 (M0 à M3) et A1 à A3 sont livrées : retirées le 2026-11-13 pour alléger ce parcours (elles restent dans l'historique git).
 
-## M4 · du 1er au 13 décembre
+## M4 · finition, avant le gel
 
 ### Étape 18 · UI-007, UI-004 et UI-008 · Habillage final de l'UI
 
@@ -57,7 +57,7 @@ Les étapes 1 à 17 (M0 à M3) et A1 à A3 sont livrées : retirées le 2026-11-
 
   > Crée les textures de particules en PNG 256 × 256 transparent : éclats de verre, étincelles, confettis, rayons de révélation, et les halos des 7 raretés. Puis propose 3 compositions de miniatures 1920 × 1080 avec la casse de vitrine en vedette, et une icône 512 × 512 lisible en tout petit.
 
-**Gel du 13 décembre** : plus aucune nouveauté, seulement des corrections jusqu'au lancement du 18.
+**Gel des fonctionnalités** (après M4) : plus aucune nouveauté, seulement des corrections jusqu'au lancement.
 
 ## Piste « Animations » (en parallèle)
 

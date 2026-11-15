@@ -1,7 +1,7 @@
 # Publication PROD : page du jeu, questionnaire de maturité, liste pas à pas (DEV-063, 2026-11-14)
 
-**Tâche** : DEV-063, « Page du jeu, questionnaire de maturité, publication PROD ». **Fini quand** : jeu public le
-18 décembre avec icône et miniatures. **Dépend de** : MOD-043. Propriétaire : Ironix (Cantin) ; Clément fait l'icône
+**Tâche** : DEV-063, « Page du jeu, questionnaire de maturité, publication PROD ». **Fini quand** : jeu public à la
+sortie avec icône et miniatures. **Dépend de** : MOD-043. Propriétaire : Ironix (Cantin) ; Clément fait l'icône
 et les miniatures (Partie 1, section 2, tableau « Page du jeu »).
 
 Règles Roblox relues le 2026-11-14 sur la doc officielle (liens en fin de note). Rien n'est encore fait sur le
@@ -107,7 +107,7 @@ Sans note, Roblox restreint le jeu pour tout le monde ; une réponse inexacte pe
 | Langage | Grossièretés ? | **Non** | Textes du jeu en anglais neutre |
 | Substances | Alcool, drogue, tabac ? | **Non** | Les « potions » sont des bonus magiques : vérifier qu'aucune icône ne ressemble à une bouteille d'alcool |
 | Humour grossier | | **Non** | |
-| Achats numériques | Le jeu vend-il des produits, passes, objets aléatoires payants ? | **Non au MVP** | `Features.RobuxShop = false` : aucun produit ni passe, aucun appel à MarketplaceService. **À refaire à la MAJ 1 (26 décembre)** : « Oui » aux achats ; « Non » aux objets aléatoires payants tant qu'on tient la règle de la Partie 2 (pas de colis contre Robux ; « Chance ×3 » affiche les cotes et se cache si `PolicyService` renvoie `ArePaidRandomItemsRestricted`) |
+| Achats numériques | Le jeu vend-il des produits, passes, objets aléatoires payants ? | **Non au MVP** | `Features.RobuxShop = false` : aucun produit ni passe, aucun appel à MarketplaceService. **À refaire à la MAJ 1** : « Oui » aux achats ; « Non » aux objets aléatoires payants tant qu'on tient la règle de la Partie 2 (pas de colis contre Robux ; « Chance ×3 » affiche les cotes et se cache si `PolicyService` renvoie `ArePaidRandomItemsRestricted`) |
 | Divers | Communication entre joueurs ? | **Oui** | Chat Roblox (TextChatService) |
 | Divers | Blocage et signalement ? | **Oui / Oui** | Fournis par Roblox |
 | Divers | Modération du chat ? | **Oui** | Filtre de Roblox ; le jeu n'affiche aucun texte écrit par un joueur à part les noms |
@@ -134,7 +134,7 @@ jeu à tous les âges, Roblox Kids et Roblox Select compris (sous réserve de le
    passer un contrôle d'âge (estimation faciale ou pièce d'identité). Pour tous les âges : vérification d'identité,
    double authentification, et soit 2 mois de Roblox Plus/Premium, soit des frais remboursables de 1 000 Robux.
    **À vérifier** : pour un jeu de groupe, la doc ne dit pas si c'est le compte qui publie (Cantin) ou le propriétaire
-   du groupe (Clément) qui doit remplir ces conditions. Le tester sur la place PROD **avant** décembre, pas le 18.
+   du groupe (Clément) qui doit remplir ces conditions. Le tester sur la place PROD **bien avant** la sortie, pas le jour même.
 2. La **police** et le **vigile** « attrapent » sans frapper (renvoi en zone safe ou en base) : le confirmer en Play ;
    s'ils frappent, la réponse « Humains, violence directe » ne change pas.
 3. Les **potions** (icônes et noms) ne doivent rien évoquer d'alcool ; sinon, « Substances » change.
@@ -146,7 +146,7 @@ jeu à tous les âges, Roblox Kids et Roblox Select compris (sous réserve de le
 
 ## 3. Liste de publication PROD, pas à pas
 
-À faire par Cantin, de préférence une première fois à blanc vers le 7 décembre (place PROD restée privée), puis le
+À faire par Cantin, de préférence une première fois à blanc à la fin de la bêta (place PROD restée privée), puis le
 jour du lancement.
 
 ### Étape 1 : place PROD et droits du groupe
@@ -227,7 +227,7 @@ jour du lancement.
 - [ ] Sur la place PROD encore privée : rejoindre en ligne avec 2 comptes, refaire la boucle, vérifier la sauvegarde
       (quitter, revenir).
 - [ ] Remplir la page (section 1), téléverser icône et miniatures, remplir le questionnaire (section 2).
-- [ ] Le 18 décembre : passer l'expérience en **Publique** (Creator Hub > Publier > Gérer l’audience).
+- [ ] Le jour de la sortie : passer l'expérience en **Publique** (Creator Hub > Publier > Gérer l’audience).
 - [ ] Noter la publication dans le journal des décisions (section 15 du doc partagé) et passer DEV-063 à « Fait ».
 
 ---
@@ -244,7 +244,7 @@ jour du lancement.
 | Miniature « samedi » | Même format | Une version « NEW UPDATE! » par mise à jour |
 
 Toutes ces images passent par la modération de Roblox avant d'être visibles : les envoyer au moins 2 ou 3 jours
-avant le 18 décembre.
+avant la sortie.
 
 ### Cantin (Ironix), lui-même
 
@@ -254,7 +254,7 @@ avant le 18 décembre.
 3. Régler le rang « Dev » ou `Admin.UserIds` (étape 2).
 4. Remplir la page, choisir le genre, téléverser icône et miniatures de Clément.
 5. Remplir le questionnaire avec la section 2, relire l'aperçu de la note, l'envoyer.
-6. Faire la liste de publication (section 3), publier, passer en public le 18 décembre.
+6. Faire la liste de publication (section 3), publier, passer en public le jour de la sortie.
 7. Écrire la part des Robux du groupe reversée à chacun avant toute publication (Partie 1, question ouverte
    « Partage des revenus »).
 

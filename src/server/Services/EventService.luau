@@ -3,7 +3,7 @@
 -- du samedi. Formats, planning et textes : Config/LiveEvents.
 --
 -- Planning : toutes les LiveEvents.TickInterval s, l'heure du serveur (Workspace:GetServerTimeNow, secondes Unix,
--- la même sur tous les serveurs) est comparée aux créneaux (LiveEvents.Slots). Sans événement en cours, le premier
+-- la même sur tous les serveurs) est comparée aux créneaux (LiveEvents.SlotsAt : datés et rendez-vous de la semaine). Sans événement en cours, le premier
 -- créneau ouvert (début ≤ maintenant < fin) pas encore lancé sur ce serveur part, jusqu'à la fin de son créneau :
 -- tous les serveurs le lancent à la même seconde, sans admin ; un serveur qui démarre au milieu le rejoint avec le
 -- temps qui reste. Un seul événement à la fois : un créneau ouvert pendant un autre événement attend sa fin, puis
@@ -144,7 +144,7 @@ local function step()
 	if current ~= nil then
 		return
 	end
-	for _, slot in LiveEvents.Slots do
+	for _, slot in LiveEvents.SlotsAt(t) do
 		if not launched[slot.Key] and slot.StartsAt <= t and t < slot.EndsAt then
 			launched[slot.Key] = true
 			local format = LiveEvents.ById[slot.Event]
@@ -190,7 +190,7 @@ function EventService.Launch(eventId: string, who: string): (boolean, string)
 	end
 	-- Un créneau ouvert maintenant cède la place à l'admin et ne repartira pas sur ce serveur.
 	local t = now()
-	for _, slot in LiveEvents.Slots do
+	for _, slot in LiveEvents.SlotsAt(t) do
 		if slot.StartsAt <= t and t < slot.EndsAt then
 			launched[slot.Key] = true
 		end
@@ -234,8 +234,15 @@ function EventService.Start()
 		return
 	end
 	loopStarted = true
-	local nextSlot = LiveEvents.Slots[1]
-	print(`[EventService] {#LiveEvents.Formats} formats, {#LiveEvents.Slots} créneau(x) planifié(s){if nextSlot then `, premier : {nextSlot.Event} le {os.date("!%Y-%m-%d %H:%M", nextSlot.StartsAt)} UTC` else ""}`)
+	local t = now()
+	local nextSlot: LiveEvents.Slot? = nil
+	for _, slot in LiveEvents.SlotsAt(t) do
+		if slot.EndsAt > t then
+			nextSlot = slot
+			break
+		end
+	end
+	print(`[EventService] {#LiveEvents.Formats} formats, {#LiveEvents.Weekly} rendez-vous par semaine, {#LiveEvents.Slots} créneau(x) daté(s){if nextSlot then `, prochain : {nextSlot.Event} le {os.date("!%Y-%m-%d %H:%M", nextSlot.StartsAt)} UTC` else ""}`)
 	while true do
 		local ok, err = pcall(step :: any) -- :: any : l'ancien solveur croit que pcall ne renvoie qu'une valeur
 		if not ok then

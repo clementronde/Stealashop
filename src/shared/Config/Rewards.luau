@@ -80,7 +80,7 @@ local Rewards = {
 		-- 3.3 : « 1 colis Luxe » ; depuis le 14/11 (Cantin, vague 43) un objet tiré comme un colis Luxe
 		-- (UnboxService.GiveItem). V0 : zone 2 au moins, comme J7 (la zone 1 n'a que des Communs, L-033).
 		Reward = { Kind = "Box", Tier = "Luxe", MinZone = 2 } :: Reward,
-		-- 3.3 : « l'aura ou le trail exclusif de la semaine ». [date du lundi en UTC, « 2026-12-21 »] = Id de
+		-- 3.3 : « l'aura ou le trail exclusif de la semaine ». [date du lundi en UTC, « AAAA-MM-JJ »] = Id de
 		-- Config/Cosmetics (aura ou trail). Vide en V0 : seulement l'objet tant que Clément n'a rien livré.
 		Exclusives = {} :: { [string]: string },
 		-- Studio seulement : workspace:SetAttribute(TestAttribute, true) allume le coffre (Features.WeeklyChest

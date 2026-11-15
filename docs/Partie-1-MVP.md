@@ -2,7 +2,7 @@
 
 Nov 6, 2026 · @Clément RONDEPIERRE
 
-Ce doc a deux parties. **Partie 1 · MVP** (ce fichier) : tout ce qui sort au lancement du 18 décembre 2026, plus l'équipe, la tech et la bible assets. **Partie 2 · Features à ajouter** ([Partie 2 · Features à ajouter](Partie-2-Features-a-ajouter.md)) : défenses avancées, écrans d'UI et rétention, une mise à jour par samedi après le lancement.
+Ce doc a deux parties. **Partie 1 · MVP** (ce fichier) : tout ce qui sort au lancement du MVP, plus l'équipe, la tech et la bible assets. **Partie 2 · Features à ajouter** ([Partie 2 · Features à ajouter](Partie-2-Features-a-ajouter.md)) : défenses avancées, écrans d'UI et rétention, une mise à jour par samedi après le lancement.
 
 ## 1. Pitch & TL;DR
 
@@ -16,7 +16,7 @@ Ce doc a deux parties. **Partie 1 · MVP** (ce fichier) : tout ce qui sort au la
 | Joueurs par serveur | 6, une parcelle-boutique chacun |
 | Plateforme prioritaire | Mobile d'abord : tap sur la vitre, UI au pouce, perf sur téléphone d'entrée de gamme |
 | Public visé | 9–15 ans, sessions de 15 à 30 min, retour quotidien |
-| Lancement visé | MVP public le vendredi 18 décembre 2026 (début des vacances de Noël), puis une mise à jour par semaine |
+| Lancement visé | MVP public quand il est prêt, sans date fixe (l'ordre des tâches seul compte), puis une mise à jour par semaine |
 
 **Dans le MVP (ce fichier)**
 
@@ -576,7 +576,7 @@ Le multiplicateur de puissance vient désormais des auras, plus d'une améliorat
 
 ## 8. Monétisation & rétention : en Partie 2
 
-Le MVP sort sans boutique Robux ; elle arrive dès la MAJ 1 du 26 décembre. Boutique, renaissances, récompenses quotidiennes et hebdomadaires, index d'objets et idées de rétention sont décrits dans [Partie 2 · Features à ajouter](Partie-2-Features-a-ajouter.md).
+Le MVP sort sans boutique Robux ; elle arrive dès la MAJ 1. Boutique, renaissances, récompenses quotidiennes et hebdomadaires, index d'objets et idées de rétention sont décrits dans [Partie 2 · Features à ajouter](Partie-2-Features-a-ajouter.md).
 
 ## 9. Spécifications techniques (Ironix)
 
@@ -928,7 +928,7 @@ Direction retenue : un Roblox « mode studs », d'après les références de Cl�
 
 ## 11. Roadmap & jalons
 
-Le MVP sort le vendredi 18 décembre 2026, six semaines après le démarrage du lundi 9 novembre ; ensuite, une mise à jour chaque samedi.
+Le MVP sort quand il est prêt, après les jalons ci-dessous dans cet ordre (démarrage le lundi 9 novembre 2026) ; ensuite, une mise à jour chaque samedi. Les dates n'indiquent que l'ordre (Cantin, 2026-11-15).
 
 ![Roadmap du MVP](images/roadmap-mvp.png)
 
@@ -939,7 +939,7 @@ Le MVP sort le vendredi 18 décembre 2026, six semaines après le démarrage du 
 1. **M0** : Clément édite la map en Team Create, le code se synchronise par Script Sync sans toucher à son travail, la sauvegarde fonctionne, le cube de test arrive à la bonne échelle.
 2. **M1** : un joueur fait toute la boucle en zone 1 (casse, vol, vigile, attente, ouverture, présentoir, caisse) avec les vrais modèles de la Supérette et de la vitre, et les écrans gris de Clément branchés.
 3. **M2** : zones 1 à 6 jouables ; outils, auras, trails et améliorations achetables ; un testeur atteint la zone 3 en moins d'1 h.
-4. **Go / no-go du 6 décembre** : si les magasins des zones 5 et 6 ne sont pas prêts, on lance avec les zones 1 à 4 et on ajoute 5 et 6 dans la MAJ 1. La date du 18 décembre ne bouge pas.
+4. **Go / no-go des zones 5 et 6** (à la fin de la bêta) : si les magasins des zones 5 et 6 ne sont pas prêts, on lance avec les zones 1 à 4 et on ajoute 5 et 6 dans la MAJ 1.
 5. **M3** : deux joueurs se volent et se défendent à la batte sans aucune duplication sur 20 essais ; le tutoriel mène un nouveau joueur jusqu'à son premier objet exposé.
 6. **M4** : la casse et l'ouverture sont assez belles pour une vidéo promo ; toute l'UI finale marche au pouce.
 7. **Gel des fonctionnalités** : plus aucune nouveauté, uniquement des corrections.
@@ -991,7 +991,7 @@ Le MVP sort le vendredi 18 décembre 2026, six semaines après le démarrage du 
 | DEV-060 | AntiCheatService | Speed hack et téléport détectés en test, colis rendu | M5 | P0 | DEV-017 | À faire |
 | DEV-061 | Passe performance mobile, auras et halos compris | Pas de chute sous 30 FPS pendant une casse sur le téléphone de test | M5 | P0 | DEV-016, DEV-032 | À faire |
 | DEV-062 | Bêta fermée : 20 à 30 testeurs, réglage de `Config` | Plus aucun bug P0 ouvert | M5 | P0 | M1 à M4 | À faire |
-| DEV-063 | Page du jeu, questionnaire de maturité, publication PROD | Jeu public le 18 décembre avec icône et miniatures | M5 | P0 | MOD-043 | À faire |
+| DEV-063 | Page du jeu, questionnaire de maturité, publication PROD | Jeu public à la sortie avec icône et miniatures | M5 | P0 | MOD-043 | À faire |
 
 ## 13. Backlog MVP Clément (MOD et UI)
 
@@ -1013,8 +1013,8 @@ Le MVP sort le vendredi 18 décembre 2026, six semaines après le démarrage du 
 | MOD-020 | Zone 2 : Jouets + variante Confiserie | Contrat 10.4 complet | M2 | P0 | MOD-012 | En revue |
 | MOD-021 | Zone 3 : Électronique + variante Jeux vidéo | Contrat 10.4 complet | M2 | P0 | MOD-012 | En revue |
 | MOD-022 | Zone 4 : Bijouterie + variante Horlogerie | Contrat 10.4 complet | M2 | P0 | MOD-012 | En revue |
-| MOD-023 | Zone 5 : Galerie + variante Antiquaire | Contrat 10.4 complet, avant le go / no-go du 6 décembre | M2 | P0 | MOD-012 | En revue |
-| MOD-024 | Zone 6 : Banque + variante Salle des coffres | Contrat 10.4 complet, avant le go / no-go du 6 décembre | M2 | P0 | MOD-012 | En revue |
+| MOD-023 | Zone 5 : Galerie + variante Antiquaire | Contrat 10.4 complet, avant le go / no-go des zones 5 et 6 | M2 | P0 | MOD-012 | En revue |
+| MOD-024 | Zone 6 : Banque + variante Salle des coffres | Contrat 10.4 complet, avant le go / no-go des zones 5 et 6 | M2 | P0 | MOD-012 | En revue |
 | MOD-025 | Vitres S et L intactes + pré-fracturées | Mêmes règles que MOD-010 | M2 | P0 | MOD-010 | À faire |
 | MOD-026 | 30 objets des zones 2 à 6 | Budgets, nommage, idle à partir de Légendaire | M2 | P0 | MOD-014 | À faire |
 | MOD-027 | Outils : clé, pied-de-biche, marteau, masse, hache, disqueuse + batte | `Handle` + `HitPoint`, ≤ 1 500 triangles | M2 | P0 | MOD-001 | À faire |
@@ -1076,12 +1076,12 @@ Chaque étape est envoyée une seule fois par joueur avec `AnalyticsService:LogO
 | Risque | Gravité | Parade | Responsable |
 | --- | --- | --- | --- |
 | Duplication d'objets lors d'un vol PvP | Critique | Transfert atomique, uid uniques, annulation à la déconnexion, test dédié | Ironix |
-| Charge de Clément : 6 zones, 37 objets, toute l'UI et 20 animations en 6 semaines | Élevée | Variantes de magasins, décor du Creator Store, écrans gris et animations simples d'abord (finition en M4), go / no-go du 6 décembre (zones 5 et 6 repoussables en MAJ 1) | Clément |
+| Charge de Clément : 6 zones, 37 objets, toute l'UI et 20 animations | Élevée | Variantes de magasins, décor du Creator Store, écrans gris et animations simples d'abord (finition en M4), go / no-go des zones 5 et 6 (repoussables en MAJ 1) | Clément |
 | Code et visuel qui se cassent mutuellement | Élevée | Un dossier = un propriétaire, Script Sync limité aux 3 dossiers de code, tags et contrat UI, ContractChecker (section 2.1) | Les deux |
 | Frustration PvP sans défenses achetables au MVP | Élevée | Vitrine à 50 × les dégâts du propriétaire, règles 6.4, batte, retour base ; défenses dès la MAJ 2 | Ironix |
 | Exploits de vitesse ou de téléport pendant un vol | Élevée | Contrôles serveur de la section 9.6, colis rendu | Ironix |
 | Aucun trafic au lancement | Élevée | Plusieurs miniatures testées, budget pub à décider (section 15), Discord prêt le jour J | Les deux |
-| Aucun revenu avant le 26 décembre | Moyenne | Boutique Robux codée et testée pendant la bêta, activée par la MAJ 1 | Ironix |
+| Aucun revenu avant la MAJ 1 | Moyenne | Boutique Robux codée et testée pendant la bêta, activée par la MAJ 1 | Ironix |
 | Performance mobile (éclats, vigiles, auras) | Moyenne | Éclats côté client limités à 40, auras allégées au loin, test hebdo sur téléphone réel | Ironix |
 | Trop proche du jeu de référence | Moyenne | Noms, modèles, UI et sons 100 % originaux | Les deux |
 | Thème du vol mal perçu par la modération | Faible | Ton cartoon, aucune arme réaliste, questionnaire de maturité rempli honnêtement | Ironix |

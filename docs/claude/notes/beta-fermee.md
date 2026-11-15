@@ -4,8 +4,8 @@
 ouvert. **Dépend de** : M1 à M4. Jalon M5 (Partie 1, section 11, point 8 : 20 à 30 testeurs, zéro P0, `Config`
 ajustée). Propriétaire : Ironix (Cantin). Clément : rôles du groupe (il en est propriétaire) et retours visuels.
 
-Dates proposées : **bêta du lundi 30 novembre au dimanche 6 décembre**, bilan le lundi 7, ce qui tombe avec le
-go / no-go du 6 décembre (zones 5 et 6). Lancement le vendredi 18 décembre, date fixe.
+Ordre proposé (aucune date fixe, Cantin 2026-11-15) : **une bêta de 7 jours** (jour 1 à jour 7), bilan le
+lendemain, qui sert aussi de go / no-go des zones 5 et 6. La sortie vient après, quand le jeu est prêt.
 
 Règles Roblox relues le 2026-11-14 (sources en fin de note). Rien n'est fait sur le Creator Hub : cette note
 prépare, Cantin et Clément cliquent. Tout ce qui est marqué **V0 proposé** est à valider.
@@ -31,15 +31,15 @@ Trois choix possibles :
    DEV) sont mélangés aux testeurs, et `Admin.StudioEveryone` ou les attributs de test traînent dans la place.
 2. **PROD** (« Steal a Shop ») restée privée : répète la vraie publication, mais les profils des testeurs restent
    dans le `PlayerData` de PROD au lancement (un testeur qui a joué 10 h partirait devant tout le monde). Il faudrait
-   effacer ces profils avant le 18, à la main, sans droit à l'erreur.
+   effacer ces profils avant la sortie, à la main, sans droit à l'erreur.
 3. **Recommandé : une expérience BETA dans le groupe**. Les DataStores appartiennent à l'expérience (note
    publication-prod, étape 3) : BETA a donc son propre `PlayerData`, PROD reste vierge, **aucun changement dans
    `src/`**. On y publie avec la même chaîne que pour PROD (copie locale, `tools/prod-check.luau`, « Publier sur
-   Roblox sous… »), ce qui fait la répétition à blanc prévue vers le 7 décembre.
+   Roblox sous… »), ce qui fait la répétition à blanc prévue à la fin de la bêta.
 
 ### Pas à pas
 
-**Clément (propriétaire du groupe)**, avant le jeudi 26 novembre :
+**Clément (propriétaire du groupe)**, avant le playtest à deux qui précède la bêta :
 
 - [ ] Creator Hub > sélecteur de compte > RoundStone Studio > **Roles** > créer le rôle **« Beta Tester »**, de rang
       **bas (par ex. 10), bien sous 254** : `Config/Admin` rend admin tout membre de rang 254 ou plus
@@ -64,14 +64,14 @@ Trois choix possibles :
       `Telemetry.Enabled = true` (déjà le cas).
 - [ ] Copie locale, `tools/prod-check.luau` (`RETIRER = true` puis rapport propre), publication sur la tuile BETA.
       Mêmes étapes 4 à 6 que publication-prod. Chaque correctif de la semaine repasse par cette chaîne.
-- [ ] Jeudi 26 novembre : playtest à deux sur BETA (Cantin et Clément), avec deux comptes : rejoindre en ligne,
+- [ ] Avant la bêta : playtest à deux sur BETA (Cantin et Clément), avec deux comptes : rejoindre en ligne,
       boucle complète, quitter, revenir, la sauvegarde tient.
 - [ ] Copier le lien de l'expérience BETA pour les testeurs (il ne s'ouvre que pour les membres qui ont le rôle).
 
 **Le testeur** : demande à rejoindre le groupe RoundStone Studio (lien), on accepte et on lui donne « Beta Tester »,
 puis il ouvre le lien du jeu.
 
-**Après la bêta** (lundi 7 décembre) : retirer le rôle à tous (ou couper sa permission), passer BETA en privée sans
+**Après la bêta** (le jour du bilan) : retirer le rôle à tous (ou couper sa permission), passer BETA en privée sans
 testeurs. Garder l'expérience : elle resservira aux tests des mises à jour du samedi.
 
 ---
@@ -88,7 +88,7 @@ testeurs. Garder l'expérience : elle resservira aux tests des mises à jour du 
 | Quelques « acharnés » prêts à jouer 1 h par jour ou plus | 4 à 5 | Les seuls qui iront vers les zones 4 à 6 en une semaine |
 | Proches du studio qui savent décrire un bug (âge indifférent) | 3 à 4 | Rapports précis, présents aux sessions dirigées |
 
-**Recrutement** (du 16 au 27 novembre) :
+**Recrutement** (dans les deux semaines avant la bêta) :
 
 1. Cercle proche : amis, frères et sœurs, cousins de Cantin et de Clément, et leurs amis. C'est la source la plus
    sûre pour les plus jeunes (un adulte connu est dans la boucle).
@@ -108,11 +108,11 @@ testeurs. Garder l'expérience : elle resservira aux tests des mises à jour du 
 
 **Message d'invitation (anglais, avec traduction)** :
 
-> Steal a Shop closed beta, Nov 30 to Dec 6. Break into shops, steal the loot, run from the guard, show it off in your
+> Steal a Shop closed beta, for 7 days. Break into shops, steal the loot, run from the guard, show it off in your
 > own store, and rob your friends. Join the RoundStone Studio group, we give you the Beta Tester role, then play
 > whenever you want. Group sessions every evening at 6 pm (French time). Your progress will be reset at launch.
 
-> Bêta fermée de Steal a Shop, du 30 nov. au 6 déc. Casse des magasins, vole le butin, sème le vigile, expose-le dans
+> Bêta fermée de Steal a Shop, pendant 7 jours. Casse des magasins, vole le butin, sème le vigile, expose-le dans
 > ta propre boutique et braque tes amis. Rejoins le groupe RoundStone Studio, on te donne le rôle Beta Tester, puis
 > joue quand tu veux. Sessions à plusieurs chaque soir à 18 h (heure française). Ta progression sera remise à zéro au
 > lancement.
@@ -131,15 +131,15 @@ passé sort de la liste « Tests à faire » de la liaison (règle de la liaison
 
 | Jour | Thème du jour (jeu libre) | Session dirigée de 18 h | Tests de la liaison |
 | --- | --- | --- | --- |
-| **Lun 30/11** | **Premier quart d'heure et tuto** : chaque testeur arrive avec un profil neuf (c'est le cas sur BETA). Ne rien leur expliquer : on regarde où ils bloquent | Le bot du tuto dans le serveur : 3 testeurs font le tuto en même temps, Cantin regarde | T-016, T-017, T-018 (serveur sans bot), T-019, T-043, T-044, T-045, T-013 |
-| **Mar 1/12** | **Progression zones 1 à 3** : tapis, banc, outils, auras. Critère M2 : un testeur atteint la zone 3 en moins d'1 h | Course : qui arrive en zone 3 le premier (chrono noté) ; ressenti du vigile et de la vitesse portée | T-004, T-010, T-023, T-036, T-037, T-015 (gains hors ligne au retour du lendemain) |
-| **Mer 2/12** | **Vol entre joueurs** : se voler, se défendre à la batte, alerte, Adrénaline, caméras, coffre | Serveur plein (8 boutiques occupées) : vols croisés pendant 30 min. Cantin prévient Claude avant : **mesure T-050** (`PvPController`) | T-003, T-012, T-021, T-024 à T-029, **T-050** |
-| **Jeu 3/12** | Jeu libre | **Duplication, critère M3** : 20 essais de vol entre joueurs et 20 essais de colis PNJ à la batte (protocole plus bas), à 3 clients au moins | Critère M3, DEV-048 (20 essais), T-025 |
-| **Ven 4/12** | **Nuit et camion** : jouer pendant les phases de nuit, vigiles de nuit, mur du couloir, camion | Attendre une nuit tous ensemble dans le couloir ; casser le camion à plusieurs | T-030, T-049 (compte à rebours de nuit) ; T-046 seulement si la Fortune Tower est allumée |
-| **Sam 5/12** | **Téléphone** : tous les testeurs sur téléphone jouent au moins 30 min ; ceux qui ont PC et téléphone comparent | Session sur téléphone : casse à plusieurs devant le même magasin, poursuite, boutique pleine. Chacun note s'il y a des saccades | T-031 à T-035, T-038, T-048, T-049 ; DEV-061 (30 FPS pendant une casse) |
-| **Dim 6/12** | **Zones 3 à 6** : les acharnés poussent le plus loin possible. Contenu des zones 5 et 6 vu par 2 testeurs (profil monté par le panel admin si personne n'y est arrivé : on teste le contenu, pas le temps) | Bilan à chaud : formulaire rempli en direct, questions ouvertes à l'oral | Go / no-go des zones 5 et 6 (Partie 1, section 11, point 4) |
+| **Jour 1** | **Premier quart d'heure et tuto** : chaque testeur arrive avec un profil neuf (c'est le cas sur BETA). Ne rien leur expliquer : on regarde où ils bloquent | Le bot du tuto dans le serveur : 3 testeurs font le tuto en même temps, Cantin regarde | T-016, T-017, T-018 (serveur sans bot), T-019, T-043, T-044, T-045, T-013 |
+| **Jour 2** | **Progression zones 1 à 3** : tapis, banc, outils, auras. Critère M2 : un testeur atteint la zone 3 en moins d'1 h | Course : qui arrive en zone 3 le premier (chrono noté) ; ressenti du vigile et de la vitesse portée | T-004, T-010, T-023, T-036, T-037, T-015 (gains hors ligne au retour du lendemain) |
+| **Jour 3** | **Vol entre joueurs** : se voler, se défendre à la batte, alerte, Adrénaline, caméras, coffre | Serveur plein (8 boutiques occupées) : vols croisés pendant 30 min. Cantin prévient Claude avant : **mesure T-050** (`PvPController`) | T-003, T-012, T-021, T-024 à T-029, **T-050** |
+| **Jour 4** | Jeu libre | **Duplication, critère M3** : 20 essais de vol entre joueurs et 20 essais de colis PNJ à la batte (protocole plus bas), à 3 clients au moins | Critère M3, DEV-048 (20 essais), T-025 |
+| **Jour 5** | **Nuit et camion** : jouer pendant les phases de nuit, vigiles de nuit, mur du couloir, camion | Attendre une nuit tous ensemble dans le couloir ; casser le camion à plusieurs | T-030, T-049 (compte à rebours de nuit) ; T-046 seulement si la Fortune Tower est allumée |
+| **Jour 6** | **Téléphone** : tous les testeurs sur téléphone jouent au moins 30 min ; ceux qui ont PC et téléphone comparent | Session sur téléphone : casse à plusieurs devant le même magasin, poursuite, boutique pleine. Chacun note s'il y a des saccades | T-031 à T-035, T-038, T-048, T-049 ; DEV-061 (30 FPS pendant une casse) |
+| **Jour 7** | **Zones 3 à 6** : les acharnés poussent le plus loin possible. Contenu des zones 5 et 6 vu par 2 testeurs (profil monté par le panel admin si personne n'y est arrivé : on teste le contenu, pas le temps) | Bilan à chaud : formulaire rempli en direct, questions ouvertes à l'oral | Go / no-go des zones 5 et 6 (Partie 1, section 11, point 4) |
 
-**Protocole de duplication (critère M3, jeudi)** — un essai = une situation, notée par Cantin dans un tableau :
+**Protocole de duplication (critère M3, jour 4)** — un essai = une situation, notée par Cantin dans un tableau :
 
 1. Avant l'essai, chaque joueur concerné ouvre son inventaire et compte objets et présentoirs (capture d'écran).
 2. On joue la situation, puis on recompte chez les deux, puis **chacun quitte et revient** (sauvegarde relue).
@@ -179,12 +179,12 @@ ne garde pas de temps de jeu total). Or c'est la mesure qui valide le rééquili
 7 min, zone 3 en 23 min, zone 4 en 1 h 04, zone 5 en 2 h 37, zone 6 en **7 h 26 à 7 h 31** (passe 3, cible 7 h 30
 sans les aides, `equilibrage-v2-proposition.md`).
 
-**Proposé à Cantin, à coder avant le 30/11 (petit, V0 proposé)** : un temps de jeu actif cumulé dans le profil, et
+**Proposé à Cantin, à coder avant la bêta (petit, V0 proposé)** : un temps de jeu actif cumulé dans le profil, et
 un événement custom `ZoneReached` envoyé une fois par zone et par joueur au **premier colis rapporté de la zone**
 (la même définition que le simulateur), champs `Zone - n` et `Minutes - <tranche>` (tranches de 5 min jusqu'à 1 h,
 puis de 15 min, pour rester sous les 8 000 combinaisons de valeurs). Sans lui, solution de secours : les testeurs
 notent l'heure à laquelle ils rapportent leur premier colis de chaque zone (peu fiable, à croiser avec la session
-dirigée de mardi).
+dirigée du jour 2).
 
 **Lecture** : un écart de plus de 25 % sur les zones 2 à 4, dans le même sens chez la plupart des testeurs, fait
 tourner le bouton prévu : prix du tapis (`Upgrades.Treadmill`, ×3,8 par niveau ; ×3,75 donne environ 10 min de
@@ -194,7 +194,7 @@ moyen : on ne les juge pas sur le temps, seulement sur le contenu.
 ### Formulaire de retours (7 questions, en anglais pour les testeurs)
 
 Google Forms (V0 proposé), **sans connexion requise et sans collecte d'adresse e-mail**, lien dans le salon de la
-bêta. Rempli le dimanche 6 (et une fois en cours de semaine pour ceux qui veulent).
+bêta. Rempli le jour 7 (et une fois en cours de semaine pour ceux qui veulent).
 
 | # | Question (anglais, à coller) | Traduction | Type |
 | --- | --- | --- | --- |
@@ -215,36 +215,36 @@ ligne L- quand Clément doit agir.
 
 ## 5. Lancer ou repousser
 
-La **date du 18 décembre ne bouge pas** (Partie 1, section 11, point 4). « Repousser » veut donc dire couper une
-fonction ou une zone pour la MAJ 1 du 26 décembre ; seul un P0 non corrigé sur les données justifierait de
-repousser la date elle-même, décision à prendre à deux et à noter en section 15.
+Il n'y a pas de date de sortie fixe : le jeu sort quand il est prêt, sans presser (Cantin, 2026-11-15).
+« Repousser » veut d'abord dire couper une fonction ou une zone pour la MAJ 1 ; un P0 non corrigé sur les données
+retarde la sortie elle-même, décision à prendre à deux et à noter en section 15.
 
 **Bug P0** (V0 proposé, absent du doc) : crash ou blocage du serveur, perte ou duplication d'objet ou d'argent,
 sauvegarde perdue ou abîmée, exploit qui donne de l'argent ou des objets, tuto qui bloque un nouveau joueur, jeu
 injouable sur téléphone (bouton inaccessible, chute de FPS qui empêche de jouer).
 
-| Critère | Lancer tel quel | Couper ou corriger avant le 18 |
+| Critère | Lancer tel quel | Couper ou corriger avant la sortie |
 | --- | --- | --- |
-| Bugs P0 | **Zéro ouvert** le 11 décembre (gel des fonctionnalités) | Un P0 ouvert le 11 : la fonction en cause passe à `false` dans `Features` si elle en a un (camion, nuit, aperçus), sinon correction prioritaire et nouveau test à deux |
+| Bugs P0 | **Zéro ouvert** au gel des fonctionnalités (avant la sortie) | Un P0 ouvert au gel : la fonction en cause passe à `false` dans `Features` si elle en a un (camion, nuit, aperçus), sinon correction prioritaire et nouveau test à deux |
 | Duplication | **Zéro sur 20 essais** de vol entre joueurs et zéro sur 20 essais de colis à la batte (M3, DEV-048) | Une seule duplication : P0. Correction, puis les 20 essais refaits en entier |
 | Perf téléphone | **30 FPS au moins pendant une casse** sur le téléphone de test (DEV-061), aucun plantage chez les testeurs téléphone, T-048 et T-049 bons | Sous 30 FPS : passe téléphone (corrections restantes de `perf-telephone.md`, auras et halos allégés) ; si T-050 ne gagne rien, retirer la correction de `PvPController` |
-| Temps par zone | Zones 2 à 4 à ±25 % de 7 / 23 / 64 min pour le joueur médian ; personne en zone 3 après plus d'1 h 30 sans avoir décroché | Écart plus grand : régler `Config` (prix du tapis d'abord), une seule valeur à la fois, republier BETA et remesurer avant le 11 |
+| Temps par zone | Zones 2 à 4 à ±25 % de 7 / 23 / 64 min pour le joueur médian ; personne en zone 3 après plus d'1 h 30 sans avoir décroché | Écart plus grand : régler `Config` (prix du tapis d'abord), une seule valeur à la fois, republier BETA et remesurer avant le gel |
 | Tuto et funnel | 80 % déballent un objet ; moins de 20 % lâchent avant le premier déballage | Corriger l'onboarding avant tout le reste (Partie 1, section 14) |
-| Zones 5 et 6 | Magasins prêts et vus par 2 testeurs le 6 décembre | Pas prêts : lancement avec les zones 1 à 4, zones 5 et 6 dans la MAJ 1 (go / no-go du 6 décembre) |
+| Zones 5 et 6 | Magasins prêts et vus par 2 testeurs au jour 7 de la bêta | Pas prêts : lancement avec les zones 1 à 4, zones 5 et 6 dans la MAJ 1 (go / no-go de fin de bêta) |
 | Rétention J1, sessions | J1 ≥ 25 %, sessions ≥ 12 min (indicatif, échantillon trop petit pour bloquer) | Très en dessous : lire le formulaire (questions 4, 5, 7) pour trouver pourquoi, sans bloquer le lancement |
 
 ---
 
-## Ce que Cantin doit faire, et quand
+## Ce que Cantin doit faire, dans l'ordre
 
-| Quand | Quoi |
+| Ordre | Quoi |
 | --- | --- |
-| Cette semaine (avant le 20/11) | Valider les choix V0 de cette note (expérience BETA, sessions à 18 h, définition des P0, `ZoneReached`) ; demander à Clément le rôle « Beta Tester » (liaison) ; noter la décision en section 15 |
-| Du 16 au 27/11 | Recruter 25 testeurs (section 2), ouvrir le salon de la bêta, préparer le Google Form |
-| Avant le 26/11 | Créer l'expérience BETA au nom du groupe, coder `ZoneReached` et le temps de jeu cumulé, publier BETA |
-| Jeudi 26/11 | Playtest à deux sur BETA (sauvegarde, boucle complète) |
-| Du 30/11 au 6/12 | Programme de la section 3 ; corrections du matin ; prévenir Claude avant la session du mercredi (T-050) |
-| Lundi 7/12 | Bilan : formulaire, Analytics, tableau de duplication, décisions de `Config` et go / no-go, notés dans le doc partagé |
+| 1. D'abord | Valider les choix V0 de cette note (expérience BETA, sessions à 18 h, définition des P0, `ZoneReached`) ; demander à Clément le rôle « Beta Tester » (liaison) ; noter la décision en section 15 |
+| 2. Avant la bêta | Recruter 25 testeurs (section 2), ouvrir le salon de la bêta, préparer le Google Form |
+| 3. Avant la bêta | Créer l'expérience BETA au nom du groupe, coder `ZoneReached` et le temps de jeu cumulé, publier BETA |
+| 4. Juste avant la bêta | Playtest à deux sur BETA (sauvegarde, boucle complète) |
+| 5. Bêta (jours 1 à 7) | Programme de la section 3 ; corrections du matin ; prévenir Claude avant la session du jour 3 (T-050) |
+| 6. Le lendemain | Bilan : formulaire, Analytics, tableau de duplication, décisions de `Config` et go / no-go, notés dans le doc partagé |
 
 ## Sources (lues le 2026-11-14)
 

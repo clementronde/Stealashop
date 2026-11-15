@@ -202,7 +202,7 @@ Ordre de priorité : **T-025, T-003, T-027, T-012, T-029**, puis T-021, T-028, T
 | **T-024** : vitesse fixe avec un objet volé, alerte et rattrapage avec l'Adrénaline | La vague 40 change la vitesse de marche (a134 : nouvelle formule, plafond à 70) et les vitesses des zones. Rattraper le voleur « facilement » dépend de ces valeurs. |
 | **T-026** : PV de la porte d'une boutique avec Glass et Glass Regen | La vague 40 recalcule les PV (a134 : plus de banc, dégâts = arme × aura, 5 coups par seconde). Les PV de la porte sont à revoir (L-151, question 4). |
 | **T-046** : Fortune Tower à deux | Ses PV passent à 3,6 milliards avec 5 coups par seconde (a134). En plus, `FortuneTest` ne marche qu'en Studio, et la Fortune Tower est coupée en ligne (`Features.FortuneTower = false`). À jouer dans Studio (« Clients and Servers », 2 joueurs, Cantin seul avec deux fenêtres) ou en Team Test si les commandes y marchent. |
-| **T-050** : mesure de `PvPController` à plusieurs | Il faut le plus de boutiques occupées possible (idéalement 8). À deux plus le bot, on n'a que 3 boutiques, presque comme la mesure du 14/11 (2 boutiques). Le plan de la bêta le prévoit le mercredi 2/12 (serveur plein). Prévenir Claude avant (section 3). |
+| **T-050** : mesure de `PvPController` à plusieurs | Il faut le plus de boutiques occupées possible (idéalement 8). À deux plus le bot, on n'a que 3 boutiques, presque comme la mesure du 14/11 (2 boutiques). Le plan de la bêta le prévoit au jour 3 (serveur plein). Prévenir Claude avant (section 3). |
 
 Pour T-029 et T-030, on peut jouer maintenant, mais on refera un essai rapide après la vague 40 (voir les notes
 plus haut).

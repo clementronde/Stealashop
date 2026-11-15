@@ -3,7 +3,7 @@
 **Tâche** : MOD-043, « Icône du jeu + 3 miniatures ». **Fini quand** : icône 512 × 512, miniatures 1920 × 1080, la
 casse de vitrine en vedette. **Dépend de** : MOD-012. **Bloque** : DEV-063 (publication PROD). Propriétaire : Clément.
 
-**À livrer avant le 18/12/2026**, et en pratique **envoyées sur le Creator Hub au plus tard le 14 ou le 15 décembre** :
+**À livrer avant la sortie**, et en pratique **envoyées sur le Creator Hub 3 ou 4 jours avant la sortie** :
 Roblox modère chaque image avant de l'afficher (2 à 3 jours de marge, `publication-prod.md`, section 4).
 
 Le backlog demande 3 miniatures. Ce brief en propose 6 (celles de `publication-prod.md`) : **les 3 premières de
@@ -271,7 +271,7 @@ laisser « NEW UPDATE! » sur une vieille mise à jour devient un texte trompeur
 - [ ] Fichiers nommés `ICON_StealAShop_v1.png` et `THUMB_01_SmashGrab.png` à `THUMB_06_SecretItems.png` (sans accents
       ni espaces), rangés dans le dossier d'art de Clément.
 - [ ] Relues par Ironix (vrai gameplay, textes) : une ligne dans la liaison avec les fichiers et un aperçu.
-- [ ] Téléversées sur la page de l'expérience **PROD** au plus tard le 14 ou le 15 décembre, pour laisser la modération
+- [ ] Téléversées sur la page de l'expérience **PROD** 3 ou 4 jours avant la sortie, pour laisser la modération
       passer.
 - [ ] Après la modération : vérifier sur un téléphone, page du jeu et accueil, que rien n'est coupé ni étiré.
 - [ ] MOD-043 passé à « Fait » dans le doc de suivi ; DEV-063 débloqué.
