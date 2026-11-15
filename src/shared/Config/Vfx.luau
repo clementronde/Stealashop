@@ -97,6 +97,15 @@ local Vfx = {
 		CrownSwing = 6, -- V0 : la couronne penche de ± 6°
 		CrownPeriod = 2, -- V0 : en 2 s
 		MaxDistance = 220, -- V0 : au-delà (caméra), rien n'est animé (MaxDistance de Clément : 200)
+		-- a196 (Cantin, T-096) : « BEST ITEM », l'objet exposé qui rapporte le plus (attribut Income de DisplayService :
+		-- revenu de l'objet, mutation comprise, sans le M global ni les boosts du moment) ; même revenu : le plus rare.
+		-- V0 : "Rarity" = avant a196 (le plus rare, puis le plus gros revenu), Title nil = le texte de Clément.
+		Pick = "Income",
+		Title = "BEST ITEM", -- Cantin : écrit dans TitleFields (Header de BB_RarestDisplay, Title de BB_Rarest)
+		TitleFields = { "Header", "Title" },
+		IncomeField = "Income", -- nom proposé à Clément (TextLabel facultatif) : « +$1.2K/s » (Format.income)
+		-- V0 : sans Income dans le billboard, le revenu s'écrit dans Odds à la place de la chance (nil : pas de revenu).
+		IncomeFallback = "Odds",
 	},
 
 	-- 6. Grand socle de l'objet le plus rare devant la boutique (vague 50, a161, L-165 point 5 ; noms proposés

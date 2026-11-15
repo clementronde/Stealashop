@@ -25,7 +25,7 @@
 -- ReplicatedStorage/Assets/FX/FX_Witness_Flash (PointLight Light, ParticleEmitter Glare, Glint, Specks) sont copiés,
 -- chez ce joueur seulement, dans l'Attachment FlashPoint du Handle de ACC_Temoin_Telephone : le flash suit le
 -- téléphone pendant TakePhoto. À chaque flash : Emit(EmitCount) de chaque ParticleEmitter, Light allumée
--- LightTime s ; jamais deux à moins de Duration s. La Part Root du modèle ne sert pas. Sans FlashPoint : un
+-- LightTime s ; jamais deux à moins de Duration s. Vague 60 (a196) : Photo.Bursts émissions par flash (V0 2). La Part Root du modèle ne sert pas. Sans FlashPoint : un
 -- Attachment du code dans le Handle, posé Photo.Forward stud devant le témoin ; sans téléphone : à la
 -- RightHand. FX_Witness_Flash ou son Attachment Flash absent : pas de flash (une ligne en Studio).
 --
@@ -428,15 +428,25 @@ local function playFlash(model: Model)
 			rig.point.WorldPosition = (parent :: BasePart).Position + (rootInst :: BasePart).CFrame.LookVector * PHOTO.Forward
 		end
 	end
-	for _, emitter in rig.emitters do
-		emitter:Emit(math.max(math.floor(positiveAttribute(emitter, "EmitCount", 1)), 1))
+	-- a196 (T-087, V0) : Photo.Bursts émissions à Photo.BurstGap s d'écart, pour un flash qui se voit mieux.
+	local bursts = math.max(math.floor(PHOTO.Bursts), 1)
+	local function emit()
+		for _, emitter in rig.emitters do
+			if emitter.Parent ~= nil then
+				emitter:Emit(math.max(math.floor(positiveAttribute(emitter, "EmitCount", 1)), 1))
+			end
+		end
+	end
+	emit()
+	for index = 2, bursts do
+		task.delay((index - 1) * PHOTO.BurstGap, emit)
 	end
 	rig.lastAt = now
 	flashTotal += 1
 	local light = rig.light
 	if light then
 		light.Enabled = true
-		task.delay(positiveAttribute(template, "LightTime", 0.1), function()
+		task.delay(positiveAttribute(template, "LightTime", 0.1) + (bursts - 1) * PHOTO.BurstGap, function()
 			if rig.lastAt == now then
 				light.Enabled = false
 			end

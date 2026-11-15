@@ -828,17 +828,19 @@ table.insert(UI.Billboards, {
 })
 -- Billboard du grand socle de l'objet le plus rare (vague 50, a161, L-165 point 5 ; noms proposés par Clément,
 -- pas encore livré) : facultatif. VfxController en pose une copie sur RarestDisplay/LabelPoint de chaque boutique ;
--- absent : BB_Rarest à la place. Header est le texte de Clément (« RAREST PULL »), le code n'y écrit rien.
+-- absent : BB_Rarest à la place. Vague 60 (a196, T-096) : le code écrit « BEST ITEM » dans Header (Config/Vfx.Rarest.Title)
+-- et le revenu/s de l'objet dans Income (nom proposé à Clément ; absent : dans Odds).
 table.insert(UI.Billboards, {
 	Name = "BB_RarestDisplay",
 	Class = "BillboardGui",
 	Optional = true,
 	Elements = {
-		{ Path = "Header", Class = "TextLabel", Optional = true, Note = "texte fixe de Clément, le code n'y écrit rien" },
+		{ Path = "Header", Class = "TextLabel", Optional = true, Note = "« BEST ITEM » n'est pas affiché" },
 		{ Path = "Rarity", Class = "TextLabel", Optional = true, Note = "la rareté n'est pas affichée" },
 		{ Path = "ItemName", Class = "TextLabel", Optional = true, Note = "le nom de l'objet n'est pas affiché" },
 		{ Path = "Mutation", Class = "TextLabel", Optional = true, Note = "la mutation n'est pas affichée" },
 		{ Path = "Odds", Class = "TextLabel", Optional = true, Note = "la chance (« 1 in 5,300,000,000 ») n'est pas affichée" },
+		{ Path = "Income", Class = "TextLabel", Optional = true, Note = "le revenu/s de l'objet s'écrit dans Odds, à la place de la chance" },
 	} :: { Element },
 })
 

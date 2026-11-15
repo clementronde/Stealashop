@@ -32,6 +32,9 @@
 --      Mutation (« BIG · GOLD », caché sans mutation) et Odds (« 1 in 5,300,000,000 », chance de référence de
 --      Shared/ItemOdds) ; l'objet sur ItemPoint, à sa taille réelle, tourné comme ItemPoint. Sans RarestDisplay :
 --      l'ancien socle, comme avant (Odds caché).
+--      Vague 60 (a196, Cantin, T-096) : « BEST ITEM » : le socle montre l'objet exposé au plus gros revenu (attribut
+--      Income de DisplayService ; Vfx.Rarest.Pick), titre Vfx.Rarest.Title dans Header / Title, revenu/s dans Income
+--      (sinon dans Odds, à la place de la chance). Pick = "Rarity" : le plus rare, comme avant.
 -- VISUAL EFFECTS sur OFF (Settings.VfxReduced) : billets et pièces coupés, particules et lumière de la
 -- victoire et du camion × Vfx.OffEmitFactor (0 : rien). Le contour du vigile et BB_Rarest restent.
 -- Un modèle de Clément absent : rien (une ligne en Studio, une fois).
@@ -58,6 +61,7 @@ local Rarities = require(Config:WaitForChild("Rarities"))
 local Items = require(Config:WaitForChild("Items"))
 local Mutations = require(Config:WaitForChild("Mutations"))
 local ItemOdds = require(Shared:WaitForChild("ItemOdds"))
+local Format = require(Shared:WaitForChild("Format"))
 
 local IS_STUDIO = RunService:IsStudio()
 local PLOT_TAG = "PlayerPlot" -- contrat 2.1 (Contract/Tags)
@@ -494,7 +498,23 @@ end
 
 type Best = { ItemId: string, Rarity: any, Income: number, Uid: string, Source: Instance }
 
--- L'objet exposé le plus rare de la parcelle (même rareté : le plus gros revenu), ou nil.
+-- a196 : vrai si `entry` passe avant `current`. Pick = "Income" : le plus gros revenu, puis le plus rare ;
+-- "Rarity" (avant a196) : le plus rare, puis le plus gros revenu. Égalité : le plus petit ItemUid.
+local function better(entry: Best, current: Best): boolean
+	local byIncome = Vfx.Rarest.Pick ~= "Rarity"
+	if byIncome and entry.Income ~= current.Income then
+		return entry.Income > current.Income
+	end
+	if entry.Rarity.Order ~= current.Rarity.Order then
+		return entry.Rarity.Order > current.Rarity.Order
+	end
+	if entry.Income ~= current.Income then
+		return entry.Income > current.Income
+	end
+	return entry.Uid < current.Uid
+end
+
+-- L'objet exposé de la parcelle à montrer sur le socle (`better`), ou nil.
 local function bestOf(plot: Instance): Best?
 	local folder = plot:FindFirstChild(Vfx.Rarest.ItemsFolder, true)
 	if folder == nil then
@@ -517,11 +537,7 @@ local function bestOf(plot: Instance): Best?
 			Source = child,
 		}
 		local current = best
-		if
-			current == nil
-			or rarity.Order > current.Rarity.Order
-			or (rarity.Order == current.Rarity.Order and (entry.Income > current.Income or (entry.Income == current.Income and entry.Uid < current.Uid)))
-		then
+		if current == nil or better(entry, current) then
 			best = entry
 		end
 	end
@@ -662,9 +678,27 @@ local function refreshRarest()
 		local current = entry :: RarestEntry
 		local chosen = best :: Best
 		local mutation = mutationOf(chosen.Source)
-		local key = `{chosen.ItemId}|{chosen.Rarity.Id}|{Mutations.Label(mutation) or ""}`
+		local key = `{chosen.ItemId}|{chosen.Rarity.Id}|{Mutations.Label(mutation) or ""}|{chosen.Income}`
 		if current.Key ~= key then
 			current.Key = key
+			-- a196 (Cantin, T-096) : « BEST ITEM » dans le titre de Clément, et le revenu/s de l'objet dans Income
+			-- (sinon dans IncomeFallback, à la place de la chance).
+			local spec = Vfx.Rarest
+			if spec.Title then
+				for _, field in spec.TitleFields do
+					local title = textOf(current.Gui, field)
+					if title then
+						title.Text = spec.Title
+					end
+				end
+			end
+			local byIncome = spec.Pick ~= "Rarity"
+			local incomeLabel = if byIncome then textOf(current.Gui, spec.IncomeField) else nil
+			local incomeInOdds = byIncome and incomeLabel == nil and spec.IncomeFallback == "Odds"
+			if incomeLabel then
+				incomeLabel.Text = Format.income(chosen.Income)
+				incomeLabel.Visible = true
+			end
 			local rarityLabel = textOf(current.Gui, "Rarity")
 			if rarityLabel then
 				rarityLabel.Text = chosen.Rarity.DisplayNameUpper
@@ -676,9 +710,12 @@ local function refreshRarest()
 			end
 			-- Ancien socle : la chance du tirage n'est pas gardée avec l'objet exposé, Odds caché. Grand socle
 			-- (a161) : chance de référence (Shared/ItemOdds), cachée si elle est inconnue ; Mutation
-			-- (« BIG · GOLD »), cachée sans mutation. Header : le texte de Clément.
+			-- (« BIG · GOLD »), cachée sans mutation. Header : Vfx.Rarest.Title (a196).
 			local odds = textOf(current.Gui, "Odds")
-			if odds then
+			if odds and incomeInOdds then
+				odds.Text = Format.income(chosen.Income)
+				odds.Visible = true
+			elseif odds then
 				local oneIn = if current.Large then ItemOdds.OneIn(chosen.ItemId, mutation, Vfx.RarestDisplay.OddsBox) else nil
 				odds.Visible = oneIn ~= nil
 				if oneIn then
