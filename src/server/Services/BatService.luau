@@ -30,7 +30,8 @@
 --                    frappeur, qu'elle porte quelque chose ou non : partout, même en zone safe (les
 --                    boutiques sont dans le hub). Décidé par BatService.IsIntruder, point d'accroche
 --                    remplacé par PvPService (false par défaut). Seul le propriétaire est concerné :
---                    les coups d'un autre joueur gardent les règles ci-dessus ;
+--                    les coups d'un autre joueur gardent les règles ci-dessus. Vague 55 (a177, Cantin, 2026-11-15) :
+--                    celui qui casse sa porte, dehors devant elle, compte aussi (PvPService, WindowService.IsBreaking) ;
 --          tiers : un objet volé à quelqu'un d'autre (PlayerItem) : ni l'un ni l'autre en zone safe.
 --          Le bouclier débutant ne protège pas un voleur ni un intrus (usage 1, intrus et tiers) : 6.4
 --          ne parle que de « son colis », et sinon un débutant qui vole serait intouchable ;
@@ -99,6 +100,9 @@
 --       VictimUserId 0, « Defend » : l'objet revole sur son présentoir) ou un intrus dans `bounds`
 --       (« Intruder »). Même effet (étourdissement, attribut BatStun : son et animations chez les
 --       clients). Renvoie true et l'usage, ou false et la raison du refus. Sans yield.
+--   BatService.IsBotIntruder(plot, target) -> boolean
+--       Vague 55 (a177) : point d'accroche, `target` est-il aussi un intrus du bot de `plot` hors de `bounds`
+--       (le casseur de sa porte, « Intruder ») ? false par défaut ; PvPService le remplace. Sans yield.
 --   BatService.OnBotHit(listener) -> déconnexion
 --       listener(plot, target, usage, payload?) après chaque coup réussi du bot (PvPService : sortie de
 --       la boutique et PvP.KickRobCooldown s sans la voler, comme après un coup du propriétaire). Les
@@ -318,6 +322,20 @@ local function isIntruder(hitter: Player, target: Player): boolean
 	return value == true
 end
 
+-- Vague 55 (a177) : point d'accroche (voir l'en-tête), remplacé par PvPService.
+function BatService.IsBotIntruder(_plot: Model, _target: Player): boolean
+	return false
+end
+
+local function isBotIntruder(plot: Model, target: Player): boolean
+	local ok, value = pcall(BatService.IsBotIntruder, plot, target)
+	if not ok then
+		warn(`[BatService] IsBotIntruder({plot.Name}, {target.Name}) : {value}`)
+		return false
+	end
+	return value == true
+end
+
 function BatService.IsStunned(player: Player): boolean
 	return stunTokens[player] ~= nil
 end
@@ -352,7 +370,8 @@ local function candidateFor(
 	hitterSafe: boolean,
 	other: Player,
 	now: number,
-	botBounds: BasePart?
+	botBounds: BasePart?,
+	botPlot: Model?
 ): (Candidate?, string)
 	local root, humanoid = bodyOf(other)
 	if root == nil or humanoid == nil then
@@ -377,7 +396,10 @@ local function candidateFor(
 		-- Vague 37 : le bot ne frappe que son voleur ou un intrus de sa boutique, partout (comme un propriétaire).
 		if payload and payload.Kind == "PlayerItem" and payload.VictimUserId == BOT_VICTIM_USER_ID then
 			usage = "Defend"
-		elseif botBounds and insideBox(botBounds.CFrame, botBounds.Size, root.Position) then
+		elseif
+			(botBounds and insideBox(botBounds.CFrame, botBounds.Size, root.Position))
+			or (botPlot and isBotIntruder(botPlot, other)) -- a177 : le casseur de sa porte
+		then
 			usage = "Intruder"
 		else
 			return nil, "ni voleur ni intrus du bot"
@@ -577,7 +599,7 @@ function BatService.BotSwing(plot: Model, root: BasePart, target: Player, bounds
 	if not root:IsDescendantOf(Workspace) or target.Parent ~= Players then
 		return false, "bot ou cible absents"
 	end
-	local candidate, reason = candidateFor(nil, root, false, target, now, bounds)
+	local candidate, reason = candidateFor(nil, root, false, target, now, bounds, plot)
 	if candidate == nil then
 		log(`le bot de {plot.Name} frappe dans le vide ({target.Name} : {reason})`)
 		return false, reason

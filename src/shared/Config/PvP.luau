@@ -28,6 +28,15 @@ local PvP = {
 	-- répare (Door Repair, même pourcentage du maximum par seconde) qu'après ce délai sans aucun coup compté ;
 	-- un coup l'arrête aussitôt. Un voleur seul qui frappe sans pause casse donc toujours la porte. V0 :
 	DoorRepairDelay = 3,
+	-- Vague 55 (a177, Cantin, 2026-11-15) : celui qui casse la porte se frappe à la batte, dehors devant elle, comme
+	-- un intrus (même interdiction de KickRobCooldown s ; WindowService.IsBreaking). Casseur = un coup compté sur la
+	-- porte il y a au plus BreakerMemory s, et encore à Balance.Hit.ServerMaxDistance + BreakerMargin studs au plus de
+	-- la vitre. V0 :
+	BreakerMemory = 3,
+	BreakerMargin = 2,
+	-- a177 : panneau de repérage (PvPController) posé devant la porte, côté rue, à ce nombre de studs du plan de la
+	-- vitre (avant : dans le plan de la porte, donc dans le linteau). V0 :
+	ShopPanelForward = 3,
 
 	-- 6.1 : voler un joueur
 	ScoutDistance = 15, -- panneau propriétaire, valeur exposée, PV de la vitrine

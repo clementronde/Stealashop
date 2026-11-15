@@ -17,7 +17,8 @@
 --     Début du maintien : StealItem(plotIndex, slotIndex) ; invite déclenchée : StealItem une seconde
 --     fois (le serveur mesure le maintien entre les deux) et animation Grab.
 --   - Panneau de repérage (6.1, point 1) : à PvP.ScoutDistance studs ou moins du volume Bounds de la
---     boutique d'un autre joueur, un panneau au-dessus de sa porte (PlotDoor/Window), vu par le
+--     boutique d'un autre joueur, un panneau au-dessus de sa porte (PlotDoor/Window ; vague 55 : devant elle, côté
+--     rue, PvP.ShopPanelForward studs), vu par le
 --     joueur local seul (rangé dans son PlayerGui) :
 --       OwnerName  « Alice's Shop » ;
 --       Income     valeur exposée, attribut ExposedIncome du propriétaire (DisplayService, sinon
@@ -530,11 +531,20 @@ local function showPanel(watch: PlotWatch, door: Instance): BillboardGui?
 	local gui = if model then model:Clone() else placeholderPanel()
 	gui.Name = PANEL_PREFIX .. watch.Plot.Name
 	gui.ResetOnSpawn = false
-	-- Point d'accroche au-dessus du milieu de la porte (les vantaux ne sont pas centrés).
+	-- Point d'accroche au-dessus du milieu de la porte (les vantaux ne sont pas centrés). Vague 55 (a177, Cantin :
+	-- « il est dans le mur ») : dans le plan de la porte, il tombait dans le linteau (Header de PlotDoor) ; il passe
+	-- devant, côté rue, à PvP.ShopPanelForward studs du plan de la vitre (sa normale, à l'opposé du volume Bounds).
+	local normal = if size.X < size.Z then cf.RightVector else cf.LookVector
+	normal = Vector3.new(normal.X, 0, normal.Z)
+	local bounds = boundsOf(watch)
+	if bounds and (bounds.Position - cf.Position):Dot(normal) > 0 then
+		normal = -normal
+	end
+	local forward = if normal.Magnitude > 1e-3 then normal.Unit * PvP.ShopPanelForward else Vector3.zero
 	local point = Instance.new("Attachment")
 	point.Name = POINT_NAME
 	point.Parent = part
-	point.WorldPosition = cf.Position + Vector3.new(0, size.Y / 2 + PANEL_LIFT, 0)
+	point.WorldPosition = cf.Position + Vector3.new(0, size.Y / 2 + PANEL_LIFT, 0) + forward
 	gui.Adornee = point
 	gui.Parent = parent
 	watch.Gui, watch.Point = gui, point

@@ -98,6 +98,11 @@
 --     de Cantin (2026-11-14) : frappé alors qu'il est déjà dehors, la porte se répare aussi, par la même règle.
 -- Vague 37 (a124, L-117 point 7) : le bot défend aussi sa boutique (BotService) ; son coup réussi
 -- (BatService.OnBotHit, « Intruder » ou « Defend ») a le même effet sur la cible, sans retour au propriétaire.
+-- Vague 55 (a177, Cantin, 2026-11-15) : celui qui casse la porte (WindowService.IsBreaking : un coup compté il y a au
+-- plus PvP.BreakerMemory s, encore devant la vitre, porte pas encore cassée) est aussi un intrus pour le propriétaire
+-- (IsIntruder) et pour le bot (BatService.IsBotIntruder) : même chemin (kickOut), même interdiction, message
+-- BreakerHit. La porte fait comme pour l'intrus (kickOut ne refait qu'une porte cassée) : elle garde ses coups reçus
+-- et se répare comme d'habitude (PvP.DoorRepairDelay s sans coup).
 -- Un joueur mort dans le volume Bounds d'une boutique qui n'est pas la sienne (joueur ou bot) prend la
 -- même interdiction sur cette boutique (pièges de l'arbre à venir compris). Interdictions oubliées au
 -- départ du joueur, et celles d'une boutique quand son propriétaire part (OnPlotReleased).
@@ -326,6 +331,7 @@ end
 -- sans BatService (anciens bancs), pas de défense par le propriétaire.
 type BatApi = {
 	IsIntruder: (hitter: Player, target: Player) -> boolean,
+	IsBotIntruder: (plot: Model, target: Player) -> boolean, -- a177
 	OnHit: (listener: (hitter: Player, target: Player, usage: string, payload: any) -> ()) -> () -> (),
 	-- Vague 37 : coups du bot (absent d'un ancien BatService).
 	OnBotHit: ((listener: (plot: Model, target: Player, usage: string, payload: any) -> ()) -> () -> ())?,
@@ -381,6 +387,7 @@ local MESSAGES: { [string]: string } = {
 	Eliminated = "Eliminated! You can rob this shop again in %ds.", -- au joueur mort dans la boutique d'un autre
 	RobCooldown = "You can rob this shop again in %ds.", -- refus pendant l'interdiction, et voleur frappé dehors
 	IntruderOut = "%s was kicked out of your shop!", -- au propriétaire
+	BreakerHit = "Bonked! You can't break into this shop for %ds.", -- a177 : au casseur de la porte frappé, V0
 	Safe = "This item is in the safe: nobody can steal it.",
 	Full = "Your shop is full: make room before stealing.",
 	NoShop = "You need a shop to steal.",
@@ -1531,6 +1538,13 @@ end
 
 -- Défense par le propriétaire ------------------------------------------------------------------------------------
 
+-- Vague 55 (a177) : `target` casse-t-il la porte de `plot` (WindowService.IsBreaking) ? Lu prudemment : un faux
+-- WindowService de banc ancien ne l'a pas.
+local function breaking(plot: Model, target: Player): boolean
+	local check: ((Model, Player) -> boolean)? = (WindowService :: any).IsBreaking
+	return check ~= nil and check(plot, target) == true
+end
+
 -- Remplace BatService.IsIntruder : `target` est-il dans le volume Bounds de la boutique de `hitter` ?
 local function isIntruder(hitter: Player, target: Player): boolean
 	if hitter == target then
@@ -1539,7 +1553,14 @@ local function isIntruder(hitter: Player, target: Player): boolean
 	local plot = PlotService.GetPlot(hitter)
 	local bounds = if plot then refsFor(plot).Bounds else nil
 	local root = rootOf(target)
-	return bounds ~= nil and root ~= nil and inside(bounds, root.Position)
+	-- Vague 55 (a177, Cantin, 2026-11-15) : ou celui qui casse sa porte, dehors devant elle (WindowService.IsBreaking).
+	return (bounds ~= nil and root ~= nil and inside(bounds, root.Position))
+		or (plot ~= nil and breaking(plot, target))
+end
+
+-- Vague 55 (a177) : remplace BatService.IsBotIntruder : le casseur de la porte du bot, dehors devant elle.
+local function isBotIntruder(plot: Model, target: Player): boolean
+	return isBotPlot(plot) and breaking(plot, target)
 end
 
 -- Vague 43 (Cantin, 2026-11-14) : porte réparée après l'éjection d'un intrus, dès que la boutique est vide.
@@ -1575,7 +1596,8 @@ end
 -- (décision de Cantin, 2026-11-14 : « Oui, réparer »).
 local function kickOut(plot: Model, target: Player, why: string, duration: number?): boolean
 	local seconds = duration or PvP.KickRobCooldown
-	ban(target, plot, why, seconds)
+	local breaker = breaking(plot, target) -- a177 : frappé pendant qu'il casse la porte
+	ban(target, plot, if breaker then `{why}, en cassant la porte` else why, seconds)
 	local bounds = refsFor(plot).Bounds
 	local moved = bounds ~= nil and putOut(target, plot, bounds)
 	local windowId = WindowService.GetWindowId(plot)
@@ -1587,7 +1609,7 @@ local function kickOut(plot: Model, target: Player, why: string, duration: numbe
 		notify(target, cooldownMessage(MESSAGES.KickedOut, seconds), "Alert")
 		return true
 	end
-	notify(target, cooldownMessage(MESSAGES.RobCooldown, seconds), "Alert")
+	notify(target, cooldownMessage(if breaker then MESSAGES.BreakerHit else MESSAGES.RobCooldown, seconds), "Alert")
 	return false
 end
 
@@ -1875,6 +1897,7 @@ function PvPService.Init()
 	local bat = BatHooks
 	if bat then
 		bat.IsIntruder = isIntruder
+		bat.IsBotIntruder = isBotIntruder -- a177 (absent d'un ancien BatService : champ ajouté sans effet)
 		bat.OnHit(onBatHit)
 		local onBotHit = bat.OnBotHit
 		if onBotHit then

@@ -40,7 +40,7 @@
 --     script Animate) et court vers lui (Humanoid:MoveTo, 10 fois par seconde, à Defense.RunSpeed ; chemin
 --     simple : entre l'intérieur et l'extérieur de sa boutique, il passe par la porte PlotDoor/Window). Cible
 --     frappable comme par un propriétaire (elle porte un de ses objets, ou elle est dans sa boutique ; un casseur
---     resté devant la porte est suivi, pas frappé) et à Defense.SwingRange studs : au plus toutes les
+--     qui frappe sa porte est frappé devant elle, vague 55, hors tuto) et à Defense.SwingRange studs : au plus toutes les
 --     Defense.SwingCooldown s, il lance SwingBat (l'animation du
 --     joueur, ReplicatedStorage/Assets/Animations/Player/SwingBat, batte TOOL_Batte en main si elle est livrée
 --     en Tool ou en Model avec Handle) ; au marqueur Impact (ou Bat.ImpactMaxWait s après), le son
@@ -701,11 +701,18 @@ local function reach(current: State, chase: Chase, player: Player): BasePart?
 	return root
 end
 
+-- Vague 55 (a177, Cantin, 2026-11-15) : `player` casse-t-il sa porte (WindowService.IsBreaking, lu prudemment) ?
+-- Alors il est visé et frappé devant elle, comme un intrus. Pas pendant son tuto (il doit casser la porte du bot).
+local function breaking(current: State, player: Player): boolean
+	local check: ((Model, Player) -> boolean)? = (WindowService :: any).IsBreaking
+	return not gentle(player) and check ~= nil and check(current.Plot, player) == true
+end
+
 -- Vague 42 (Cantin, 2026-11-14) : `player` est-il une cible de cette poursuite ? Il porte un de ses objets, ou il
 -- lui en a pris un pendant cette poursuite (Engaged) : alors poursuivi dans sa boutique même sans objet, et dehors
 -- jusqu'à la fin du compte GiveUpTime. Un intrus qui n'a rien volé n'est jamais visé.
 local function isQuarry(current: State, chase: Chase, player: Player): boolean
-	return carrying(current, player) or chase.Engaged[player] == true
+	return carrying(current, player) or chase.Engaged[player] == true or breaking(current, player) -- a177
 end
 
 -- Une autre cible : d'abord un voleur qui porte un de ses objets, puis un joueur qui lui a pris un objet pendant
@@ -908,7 +915,7 @@ local function alert(current: State, player: Player, why: "Door" | "Grab")
 			LastSwing = -math.huge,
 			Swinging = false,
 			Struck = {},
-			Engaged = { [player] = true },
+			Engaged = if why == "Grab" then { [player] = true } else {}, -- a177 : le casseur n'est visé qu'en cassant
 			OutsideSince = nil,
 		}
 		current.Chase = created
@@ -927,10 +934,12 @@ local function alert(current: State, player: Player, why: "Door" | "Grab")
 		chase.Phase = "Chase"
 		chase.StartedAt = now
 		chase.Struck[player] = nil
-		chase.Engaged[player] = true
+		if why == "Grab" then
+			chase.Engaged[player] = true
+		end
 		chase.OutsideSince = nil -- un nouveau vol relance le compte (recompté au prochain pas s'il est dehors)
 	end
-	log(`le bot poursuit {player.Name} ({if why == "Door" then "porte cassée" else "objet pris"})`)
+	log(`le bot poursuit {player.Name} ({if why == "Door" then "il casse sa porte" else "objet pris"})`)
 end
 
 -- 10 fois par seconde : poursuite, coup, retour. Sans yield.
@@ -984,7 +993,10 @@ local function defenseStep()
 				local distance = (targetRoot.Position - root.Position).Magnitude
 				-- Frappable : il porte un objet du bot, ou il est dans sa boutique après lui avoir pris un objet (vague
 				-- 42, Cantin : un intrus qui n'a rien volé n'est jamais frappé ; dehors sans objet, suivi seulement).
-				local hittable = carrying(current, target) or inside
+				-- a177 : le casseur de sa porte aussi, une fois le bot sorti (pas à travers la vitre).
+				local hittable = carrying(current, target)
+					or inside
+					or (breaking(current, target) and not (bounds ~= nil and insideBox(bounds, root.Position)))
 				if
 					hittable
 					and not chase.Swinging
@@ -1154,6 +1166,18 @@ function BotService.Init()
 	end)
 	-- Vague 37 : porte du bot cassée, il poursuivait celui qui l'a cassée. Vague 42 (Cantin, 2026-11-14) : plus rien,
 	-- le bot ne part qu'à la prise d'un objet (Hold → alert « Grab »).
+	-- Vague 55 (a177, Cantin, 2026-11-15) : et contre celui qui frappe sa porte (coup compté), visé tant qu'il la casse
+	-- (breaking) : frappé devant elle, il ne peut plus la frapper ni voler le bot (PvPService). Pas pendant son tuto.
+	local onWindowHit: ((listener: (Player, string, string, Model) -> ()) -> () -> ())? = (WindowService :: any).OnHit
+	if onWindowHit then
+		onWindowHit(function(player: Player, _windowId: string, kind: string, model: Model)
+			local current = state
+			local already = BotService.IsChasing(player) -- déjà sa cible : rien à relancer à chaque coup
+			if kind == "Plot" and current and model == current.Plot and not already and breaking(current, player) then
+				alert(current, player, "Door")
+			end
+		end)
+	end
 	Players.PlayerAdded:Connect(function()
 		evaluate() -- départ immédiat au 5e vrai joueur
 	end)
