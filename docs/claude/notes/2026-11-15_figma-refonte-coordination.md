@@ -97,19 +97,22 @@ Une fois livrées : import dans `ReplicatedStorage/Assets/Icons` au nom du group
 
 Seulement ce qui change vraiment le rendu. Rien à reprendre du jeu de référence : nos magasins, nos objets, notre style (Roblox « studs », ombrage toon à 2 tons, contour sombre `#1B1B24`). Aucun texte lisible dans les images (enseignes en formes ou pictogrammes) : les noms restent dans `ZoneName` et `ZoneTheme`.
 
-### 1. Façades de zone de l'index (prioritaire)
+### 1. Illustrations de zone de l'index (prioritaire, prompts écrits)
 
-Toutes : `ZoneArt` de `UI_Index` (colonne gauche de la fenêtre), affichée à 232 × 492 sur PC et 96 × 245 sur téléphone. **PNG 480 × 1024 (portrait, rapport 0,47), fond plein, pas transparent** (l'image remplit le cadre ; les coins sont arrondis par l'UI). Façade **de nuit, néons allumés**, vue de face légèrement en contre-plongée, magasin centré, trottoir en bas. **Les 22 % du bas restent sombres et calmes** : `ZoneName` et `ZoneTheme` s'y écrivent par-dessus. Partir de nos vrais modèles de magasins (ex. `StealAShop-Art/Captures/2026-11-07_Zone1/01_Superette_facade.jpg`) pour rester fidèle à la map.
+`ZoneArt` de chaque `Zone<N>Section` de `UI_Index` : colonne à gauche des cartes, 170 px de large sur PC et haute comme la section (484 px pour 3 rangées de cartes, 624 px pour 4). **À générer en portrait 1024 × 1536, fond plein.** Dans le jeu : `ScaleType = Crop`, centré : on ne voit que la bande du milieu (environ 40 % de la largeur), d'où une composition très verticale. Fichiers `UI_ZoneArt_Z1` à `UI_ZoneArt_Z6`, PNG, recadrés à 512 × 1024 avant l'import (rapport 1:2) au nom du groupe. Joindre au prompt une capture du quartier dans le jeu quand il y en a une (`StealAShop-Art/Captures/`), pour rester fidèle à nos magasins.
 
-| Fichier | Zone | Ce qu'elle montre | Couleur dominante |
-| --- | --- | --- | --- |
-| `UI_ZoneArt_Z1` | 1 · Mini Mart | Supérette de quartier, vitrine éclairée, rayons de canettes et de chips visibles, petit kiosque à côté | vert et jaune néon |
-| `UI_ZoneArt_Z2` | 2 · London · Toys | Magasin de jouets à l'anglaise (devanture en bois, vitrine de peluches et de robots), confiserie à côté, réverbère et pavés | rouge et rose |
-| `UI_ZoneArt_Z3` | 3 · Tokyo · Electronics | Boutique d'électronique et de jeux vidéo, écrans et consoles en vitrine, panneaux néon empilés (sans caractères lisibles) | cyan et magenta |
-| `UI_ZoneArt_Z4` | 4 · Los Angeles · Jewelry | Bijouterie chic à palmiers, vitrine de bagues et de montres sur coussins, horlogerie à côté | or et violet |
-| `UI_ZoneArt_Z5` | 5 · Paris · Gallery | Galerie d'art haussmannienne, tableaux et statues derrière de hautes vitrines, antiquaire à côté | bleu nuit et crème |
-| `UI_ZoneArt_Z6` | 6 · New York · Bank | Banque à colonnes avec porte de coffre ronde visible derrière la vitre, gratte-ciel derrière | vert billet et or |
-| `UI_ZoneArt_Secrets` (si on garde l'onglet Secrets) | Secrets | Porte de coffre entrouverte d'où sort une lueur arc-en-ciel, rien de reconnaissable derrière | arc-en-ciel sur fond sombre |
+Début commun à coller avant chaque sujet :
+
+> Illustration verticale pour l'interface d'un jeu Roblox, format portrait 1024 × 1536. Rendu 3D stylisé façon Roblox : formes simples et épaisses, texture de studs discrète sur les surfaces, couleurs vives et saturées, lumière douce de fin d'après-midi, léger voile atmosphérique au fond. Composition très verticale : tout ce qui compte tient dans une bande centrale large de 40 % de l'image, du ciel en haut jusqu'au trottoir en bas ; les côtés gauche et droit seront coupés. Aucun personnage, aucun texte, aucune lettre, aucun chiffre ni logo (les enseignes sont des formes et des pictogrammes). Pas de cadre ni de bordure.
+
+| Fichier | Zone | Sujet à ajouter après le début commun |
+| --- | --- | --- |
+| `UI_ZoneArt_Z1` | 1 · Mini Mart | Une petite supérette de quartier vue de face : vitrine éclairée pleine de canettes, de chips et de fruits, store rayé vert et blanc, distributeur de boissons à côté, un petit kiosque à journaux devant, un réverbère haut qui monte dans le ciel bleu. Dominante vert pomme et jaune. |
+| `UI_ZoneArt_Z2` | 2 · London · Toys | Un magasin de jouets anglais à devanture en bois rouge vernie, vitrine de peluches, de robots et de trains, une confiserie aux bocaux colorés juste au-dessus ou à côté, rue pavée, réverbère noir, un bus rouge à impériale et une grande roue au loin dans le haut de l'image. Dominante rouge et rose bonbon. |
+| `UI_ZoneArt_Z3` | 3 · Tokyo · Electronics | Une boutique d'électronique et de jeux vidéo dans une ruelle étroite : écrans et consoles en vitrine, panneaux lumineux empilés verticalement jusqu'en haut de l'image (formes et pictogrammes seulement), lanternes en papier rouges, un petit portique torii au fond. Dominante cyan et magenta. |
+| `UI_ZoneArt_Z4` | 4 · Los Angeles · Jewelry | Une bijouterie chic à façade blanche et dorée, vitrine de bagues, de colliers et de montres sur coussins de velours, une horlogerie à côté, deux grands palmiers qui montent jusqu'en haut, trottoir sable et chaussée prune, ciel orangé. Dominante or et violet. |
+| `UI_ZoneArt_Z5` | 5 · Paris · Gallery | Une galerie d'art dans un immeuble haussmannien en pierre crème : devanture vert sapin, auvent vert et crème, balcons en fer forgé, toit mansardé en zinc ; tableaux et statues derrière les hautes vitrines, la tour Eiffel dans le haut de l'image, un peu de neige sur le trottoir. Dominante bleu nuit, crème et vert sapin. |
+| `UI_ZoneArt_Z6` | 6 · New York · Bank | Une banque en forme de temple de pierre calcaire à colonnes, fronton orné d'une pièce d'or, toit de cuivre vert ; en dessous ou à côté, une porte ronde de coffre-fort en acier avec bandes jaune et noir ; gratte-ciel qui montent jusqu'en haut de l'image. Dominante vert billet et or. |
 
 ### 2. Icônes de récompense de zone
 
@@ -152,3 +155,41 @@ Ce qui n'est pas dans la liste, et pourquoi :
 - figma-boutiques (2026-11-15) : **Clément a validé** l'état actuel des 4 boutiques de `10 Boutiques` (armes, auras, Robux v2 avec la caisse animée et les 6 objets exclusifs, diamants). Les noms à reporter dans la liaison sont ceux des entrées figma-boutiques ci-dessus. La boutique Robux v2 remplace la v1. Rien n'est commité.
 
 - figma-index-exposes : **décision de Clément (2026-11-15), récompense de zone de l'index** = argent + vitesse en valeurs fixes (pas en %) + une arme, une aura ou une trail. Maquettes mises à jour : `Footer.CashReward` et `Footer.SpeedReward` (noms de la v3 : `Icon`, `Amount`) entre la barre et `ClaimButton`, qui porte l'objet (`RewardIcon`, `RewardCaption` = son nom). **Pour la liaison (Ironix)** : aujourd'hui `Config/Index` donne +3 % de WalkSpeed (`ZoneSpeedBonus`), +5 % de revenus (`ZoneBonus`) et une prime de 10 min de revenu (`ZoneCashMinutes`) ; à remplacer par une prime fixe, une vitesse fixe et un objet par zone, montants et objets à proposer. À demander à Clément : le +5 % de revenus disparaît-il aussi ? À noter dans le journal des décisions (section 15).
+- figma-index-exposes : **retour de Clément (2026-11-15)** : plus de coins arrondis, tout en carré (« c'est plus clean »). Appliqué à `UI_Index` (PC et téléphone), y compris aux instances des briques (rayons forcés à 0) ; seules les pastilles « ! » restent rondes. À voir avec figma-briques : passer les briques elles-mêmes en carré pour que tous les écrans suivent.
+- figma-boutiques (2026-11-15, L-184 point 6, « soft ») : **décor qui tombe et bord arc-en-ciel à l'achat Robux** dans `UI_RobuxShop`. Cadres de démonstration animés (« Démo — UI_RobuxShop PC, ouverture et achat », « Démo — … téléphone, achat », 4,5 s), une bande d'images clés et deux vidéos (`captures-boutiques-figma/UI_RobuxShop_decor_et_achat_PC.mp4`, `UI_RobuxShop_achat_telephone.mp4`).
+  - **Décor**, noms proposés : `UI_RobuxShop.Decor` (à côté de `Root`, hors de la fenêtre), avec `Hang1` à `Hang4`, chacun avec `String`, `Knot` et `Icon` (billets, caisse, étoile, fusée). Seulement sur PC, dans les marges : rien sur téléphone.
+  - **Entrée** : chaque décor tombe de −(sa hauteur) à sa place en 0,25 s (Back Out), avec 0,05 s d'écart, dès que la fenêtre est posée. Il se balance ensuite de ± 2 à 3° toutes les 1,2 s. Une fois par ouverture. Attribut proposé : `Appear = "DropIn"` (vocabulaire de L-182).
+  - **Bord**, noms proposés : un ScreenGui `UI_PurchaseGlow`, avec `RainbowBorder`, qui fait 8 px sur PC et 5 px sur téléphone. Dans Roblox : 4 Frames ou une ImageLabel en 9-slice, avec un `UIGradient` arc-en-ciel (`#1DC395`, `#3C9AB6`, `#8B63D9`, `#FF5CC8`, `#FFC21A`) dont la `Rotation` tourne d'environ 0,5 tour/s.
+  - **Allumage** : d'un coup au clic sur un prix Robux. Le HUD se cache, et la fenêtre de Roblox arrive environ 0,3 s après. Le bord s'efface en 0,1 s à `PromptProductPurchaseFinished` ou `PromptGamePassPurchaseFinished`, puis le HUD revient. Sert aussi aux boutons Robux en situation (×2 Speed, zZz).
+- figma-boutiques (2026-11-15) : **Clément a validé** le décor qui tombe et le bord arc-en-ciel de l'achat Robux (L-184, point 6). Noms et réglages : entrée précédente. Rien n'est commité.
+- figma-index-exposes : `UI_Displayed` aussi passé en carré (PC, téléphone, bande d'images clés 126:1344), à la demande de Clément.
+
+- figma-hud-tapis-poursuite : L-184 dessiné sur la page 30, en attente des retours de Clément : 10 CAUGHT! (132:6962), 11 discret puis repéré (132:9641), 12 carte ITEM SECURED! (134:369), 13 gains qui volent (135:805). Tableau des noms (106:10614) complété.
+
+## Noms nouveaux de L-184 (page 30, à ajouter au contrat 2.2 après accord)
+
+| Écran | Nom | Rôle |
+| --- | --- | --- |
+| `UI_Caught` (nouvel écran, nom à valider) | `Title`, `ItemCard` (`Icon`, `ItemName`), `Hint`, `LetterboxTop`, `LetterboxBottom` | « CAUGHT! » en Stamp ; la carte de l'objet perdu repart vers son présentoir ; `Hint` = vitesse conseillée (message actuel) ; bandes noires cachées, la nuit seulement |
+| `UI_HUD` | `SneakLabel` | petit texte jaune pendant le braquage tant que personne n'a vu le joueur ; caché d'un coup à « RUN! » |
+| `UI_Chase` | `ScreenEdges` (inchangé) | pulse en poursuite : transparence 0 ↔ 0,4, Sine InOut, 1,2 s le cycle |
+| `UI_Escape.Banner` | `Title`, `Subtitle`, `BoxIcon` (gardés) ; `Rays`, `RarityLabel`, `Income`, `NewBadge` (nouveaux) | carte d'objet ; `Subtitle` = nom dans la couleur de la rareté ; `NewBadge` seulement si nouveau dans l'index |
+| `UI_Escape` | `Hint` | « Place it in your shop! », caché dès que l'objet est exposé |
+| `UI_HUD.CashFly` | `CounterPop` (gardé) | « +$ » du gain ponctuel ; les billets sont des copies de `CashIcon` faites par le code |
+- figma-index-exposes : **Clément a validé le nouvel Index en carré (2026-11-15)** : mise en page de sa capture de référence (liste de zones qui défile, `Detail`, `Rewards`, `Categories` NORMAL / LIMITED / MUTATIONS), titre jaune et compteur « 23 / 83 discovered » gardés. Écrans 105:507 (PC) et 106:369 (téléphone), noms dans 106:11389. Bandes refaites : 136:719 (ouverture), 136:1791 (survol, clic et 3 états de la récompense : en cours = `ClaimButton` grisé, prête = vert + `ClaimAlert`, réclamée = « CLAIMED »). `UI_Displayed` validé aussi. Prompts des 6 images de zone dans la section « Images à générer (figma-index-exposes) ». Page `20 Index et Exposés` terminée.
+- **Pour la liaison (Ironix), à reporter par le chef de projet** : catégorie `LimitedButton` à définir (n'existe pas dans le code ; remplace `SecretsButton`) ; `RewardIcon` (arme, aura ou trail) au bout de `ZoneBar` dans chaque `Zone<N>Section` ; `SpeedReward` et `CashReward` en valeurs fixes ; plus d'onglets de ville (`Tabs`) ni de pages.
+
+- figma-hud-tapis-poursuite : Clément a validé les états 10 à 13 de la page 30 (L-184 : CAUGHT!, braquage discret puis repéré, carte ITEM SECURED!, gains qui volent), 2026-11-15. Gardés tels quels : « Recommended speed: 28 » sous CAUGHT! ; nom `UI_Caught`. Reste : effet de poussière de la capture (nom à venir, Clément).
+
+- figma-hud-tapis-poursuite : icônes générées posées sur la page 30 (2026-11-15) : `UI_Icon_Upgrades` (SkillTreeButton), `UI_Icon_Displays` (DisplayedButton), `UI_Icon_SpeedBoost` (SpeedBoostButton), `UI_Icon_Sleep` (SleepButton), dans tous les états et vignettes. `UI_Icon_Drop` manque encore : DROP reste sans icône.
+- figma-boutiques (2026-11-15) : **images générées par Clément posées** dans `10 Boutiques`.
+  - `UI_Bg_CrateVault` sert de fond aux 21 `Crate.Backdrop` (écrans, liste complète, démos, bandes). La porte de coffre en vecteurs est cachée ; rayons et projecteurs animés restent par-dessus.
+  - `UI_Bg_StarterPack` remplit les 21 `Featured` (remplissage recadré), avec un voile bleu nuit dégradé à gauche pour que le titre et les étiquettes restent lisibles.
+  - `UI_Icon_Diamond` est dans le composant `Draft/DiamondIcon` : solde, boutons de prix, packs, onglet Diamonds.
+  - `UI_Icon_SpeedBoost` et `UI_Icon_Sleep` sont dans les cartes ×2 Speed et zZz (`Icon`). Noms des Decals pour Ironix : `UI_Icon_SpeedBoost` et `UI_Icon_Sleep` (au lieu des noms proposés `UI_Icon_DP_x2Speed` et `UI_Icon_DP_Sleep`).
+  - Le fond `ShopPanel` est refusé : le fond des fenêtres reste en vecteurs.
+  - Vérifié : aucune coupe sur les 10 vues.
+- figma-index-exposes : les 6 illustrations de Clément (`UI_Index_Zone1` à `Zone6`) et `UI_Icon_Displays` importées (cadre 103:1453). Zone 2 posée dans `ZoneArt` des deux écrans de l'index (remplissage recadré = `ScaleType Crop`) ; planche des 6 zones à la taille réelle avec la bande visible (142:621) : on voit 54 % de la largeur en zone 1 (1:2), 41 % en zones 2 à 4, 53 % en zones 5 et 6 (3 rangées). `UI_Icon_Displays` dans tous les `OpenButton.OpenIcon`. Corrigé au passage : la liste de l'index s'arrête après 2 rangées entières (plus de carte coupée) et le panneau des exposés sur téléphone montre 3 lignes entières.
+- figma-index-exposes : nouvelle `UI_Index_Zone1` (683 × 1024, 2:3) posée à la place de l'ancienne (cadre Assets et planche 142:621) ; on en voit maintenant 41 % de la largeur, comme les zones 2 à 4.
+- figma-boutiques (2026-11-15) : **Clément a validé** les images générées posées dans `10 Boutiques` (chambre forte, Starter Pack avec voile, diamant, ×2 Speed, zZz). Rien n'est commité.
+- figma-hud-tapis-poursuite : icônes générées validées par Clément sur la page 30 (2026-11-15). Reste `UI_Icon_Drop`.
