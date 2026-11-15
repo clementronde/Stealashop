@@ -21,6 +21,11 @@
 -- copie de l'écran (ResetOnSpawn) est reprise dans les SCREEN_REFRESH s ; arrivée allumée de
 -- StarterGui hors poursuite, elle s'éteint d'un coup. Pas encore livré : rien à l'écran (une ligne
 -- en Studio, une fois). La musique de poursuite est à MusicController (il lit IsChased).
+-- Alerte en deux paliers (vague 59, a192, L-184 point 2) : avec l'élément facultatif UI_Chase.HeistHint (texte
+-- jaune discret de Clément, Config/HeistFeel.Alert.Hint), l'écran est aussi allumé pendant un braquage que personne
+-- ne poursuit encore (un chrono de HeistController.GetTimers en cours) : seul HeistHint s'y voit (les autres enfants
+-- de l'écran sont cachés, Visible gardé puis remis). Dès que le joueur est poursuivi, à l'image suivante : HeistHint
+-- caché, tout le reste revient (RUN!, bords rouges qui battent : UiFeelController). Sans HeistHint : comme avant.
 --
 -- API (client) :
 --   ChaseController.IsChased() -> boolean
@@ -80,6 +85,12 @@ local motionSearched = false
 local screenDirty = false -- la poursuite a commencé ou fini : écran revu à la prochaine image
 local sinceScreen = 0
 local screenMissingSaid = false
+-- Vague 59 (L-184 point 2) : palier « braquage, pas encore repéré ».
+type HeistApi = { GetTimers: () -> { [string]: number } }
+local heist: HeistApi? = nil
+local heistSearched = false
+local hintName = "HeistHint" -- remplacé au démarrage par Config/HeistFeel.Alert.Hint
+local hintSaved: { [GuiObject]: boolean } = {} -- Visible d'origine de ce que le palier 1 a changé
 
 -- 12.34 → « 12,3 ».
 local function format(n: number): string
@@ -233,7 +244,83 @@ local function motionApi(): MotionApi?
 	return motion
 end
 
--- Allume UI_Chase pendant la poursuite, l'éteint sinon (voir l'en-tête).
+-- Vague 59 : HeistController, s'il est là (chronos du braquage).
+local function heistApi(): HeistApi?
+	if heistSearched then
+		return heist
+	end
+	heistSearched = true
+	local module = script.Parent:FindFirstChild("HeistController")
+	if module and module:IsA("ModuleScript") then
+		local ok, result = pcall(require, module)
+		if ok and type(result) == "table" and type((result :: any).GetTimers) == "function" then
+			heist = result :: any
+		end
+	end
+	return heist
+end
+
+-- Un chrono de braquage est en cours chez le joueur (heure serveur).
+local function heistRunning(): boolean
+	local api = heistApi()
+	if api == nil then
+		return false
+	end
+	local ok, timers = pcall(api.GetTimers)
+	if not ok or type(timers) ~= "table" then
+		return false
+	end
+	local now = Workspace:GetServerTimeNow()
+	for _, endsAt in timers do
+		if type(endsAt) == "number" and endsAt > now then
+			return true
+		end
+	end
+	return false
+end
+
+local function setVisible(object: GuiObject, visible: boolean)
+	if hintSaved[object] == nil then
+		hintSaved[object] = object.Visible
+	end
+	object.Visible = visible
+end
+
+local function restoreHint()
+	for object, visible in hintSaved do
+		if object.Parent ~= nil then
+			object.Visible = visible
+		end
+	end
+	table.clear(hintSaved)
+end
+
+-- Palier 1 (L-184 point 2) : seul `hint` visible dans l'écran (ses ancêtres gardés, le reste caché). Palier 2 :
+-- hint caché, le reste remis.
+local function showHintOnly(screen: ScreenGui, hint: GuiObject)
+	local ancestors: { [Instance]: boolean } = {}
+	local parent = hint.Parent
+	while parent and parent ~= screen do
+		ancestors[parent] = true
+		parent = parent.Parent
+	end
+	local function walk(container: Instance)
+		for _, child in container:GetChildren() do
+			if child == hint then
+				continue
+			end
+			if ancestors[child] then
+				walk(child)
+			elseif child:IsA("GuiObject") then
+				setVisible(child :: GuiObject, false)
+			end
+		end
+	end
+	walk(screen)
+	setVisible(hint, true)
+end
+
+-- Allume UI_Chase pendant la poursuite (et, avec HeistHint, pendant un braquage pas encore repéré), l'éteint sinon.
 local function applyScreen()
 	local gui = localPlayer:FindFirstChildOfClass("PlayerGui")
 	local screen = if gui then gui:FindFirstChild(SCREEN_NAME) else nil
@@ -246,7 +333,20 @@ local function applyScreen()
 	end
 	local chaseScreen = screen :: ScreenGui
 	local api = motionApi()
-	if active then
+	local hintObject = chaseScreen:FindFirstChild(hintName, true)
+	local hint: GuiObject? = if hintObject and hintObject:IsA("GuiObject") then hintObject :: GuiObject else nil
+	local sneaking = not active and hint ~= nil and heistRunning()
+	if sneaking and hint then
+		showHintOnly(chaseScreen, hint)
+	elseif active then
+		restoreHint() -- bascule du palier 1 au palier 2 dans la même image
+		if hint then
+			setVisible(hint, false)
+		end
+	elseif not chaseScreen.Enabled then
+		restoreHint()
+	end
+	if active or sneaking then
 		if api then
 			api.Open(chaseScreen) -- déjà ouvert : rien
 		elseif not chaseScreen.Enabled then
@@ -254,9 +354,12 @@ local function applyScreen()
 		end
 	elseif chaseScreen.Enabled then
 		if api then
-			api.Close(chaseScreen) -- sortie animée ; arrivé allumé au repos : éteint d'un coup
+			-- sortie animée (ce que le palier 1 a caché est remis une fois l'écran éteint) ; arrivé allumé au
+			-- repos : éteint d'un coup
+			api.Close(chaseScreen, restoreHint)
 		else
 			chaseScreen.Enabled = false
+			restoreHint()
 		end
 	end
 end
@@ -338,6 +441,13 @@ function ChaseController.Start()
 	local balance = require(shared:WaitForChild("Config"):WaitForChild("Balance") :: ModuleScript) :: any
 	heartbeatDistance = balance.Guard.HeartbeatDistance
 	stunDuration = balance.Guard.CatchStunDuration
+	local feelModule = shared:WaitForChild("Config"):FindFirstChild("HeistFeel") -- vague 59 (bancs sans lui : défaut)
+	if feelModule and feelModule:IsA("ModuleScript") then
+		local ok, feel = pcall(require, feelModule)
+		if ok and type(feel) == "table" and type((feel :: any).Alert) == "table" then
+			hintName = (feel :: any).Alert.Hint
+		end
+	end
 	animation = loadAnimationController()
 
 	localPlayer.CharacterAdded:Connect(watchCharacter)

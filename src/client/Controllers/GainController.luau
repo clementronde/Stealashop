@@ -19,7 +19,13 @@
 --         monté en même temps → « +$X » au-dessus du joueur (BB_Gain), et la case part de là ;
 --       * récompense : l'écran UI_Rewards est ouvert (RewardsController.GetState().Open) → la case
 --         part du centre de l'écran (UiMotion.CashFly.From) ;
---       * autre gain (index, camion…) : pas de case, le compteur sursaute seulement (CashBump).
+--       * autre gain (camion…) : pas de case, le compteur sursaute seulement (CashBump).
+--       * vague 59 (a192, L-184 point 3) : récompense (UI_Rewards ouvert) ou prime de l'index (un écran UI_Index*
+--         allumé), jamais un ramassage, l'encaissement automatique ni les gains hors ligne : « +$X » qui monte au
+--         centre, pause, billets qui volent vers Cash, qui ne défile qu'à leur arrivée (billFly, Config/HeistFeel
+--         .BillFly ; avant le cas « récompense » ci-dessus). Le compteur n'a qu'un point d'entrée : HudController
+--         (attribut Cash → son écriture qui défile, HoldCash pour retenir) ; GainController ne fait que retenir et
+--         relâcher, la baisse après un achat (CashSpent) se fait là-bas aussi.
 --     La case est une copie de UI_HUD.CashFly.Template de Clément (Icon, FlyerAmount = « $X »), rangée
 --     à la racine de UI_HUD comme dans son prototype (tools/clement/gain_proto.luau) : elle surgit,
 --     attend, puis vole jusqu'au nombre Cash en rapetissant (UiMotion.CashFly). À l'arrivée : Cash est
@@ -41,7 +47,7 @@
 -- ligne), sinon celle du modèle BB_Gain.
 --
 -- API (client) : aucune. Pour un test dans Studio (barre de commande côté client) :
---   GainController.GetActive() -> { Gains: number, Flyers: number, Pops: number }
+--   GainController.GetActive() -> { Gains: number, Flyers: number, Pops: number, Bills: number }
 --   GainController.Superscript(text) -> string   « ×2 » en exposant Unicode (a178)
 
 local Players = game:GetService("Players")
@@ -52,6 +58,7 @@ local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local UiMotion = require(Shared:WaitForChild("Config"):WaitForChild("UiMotion"))
+local HeistFeel = require(Shared:WaitForChild("Config"):WaitForChild("HeistFeel"))
 local Find = require(Shared:WaitForChild("Contract"):WaitForChild("Find"))
 local Format = require(Shared:WaitForChild("Format"))
 local Motion = require(script.Parent:WaitForChild("UI"):WaitForChild("Motion"))
@@ -122,6 +129,11 @@ local PIECE_RISE_INFO: TweenInfo? = if TREAD then TweenInfo.new(TREAD.Life, FLOA
 local PULSE_INFO: TweenInfo? = if SPEED_PULSE
 	then TweenInfo.new(SPEED_PULSE.Time, SPEED_PULSE.Style, SPEED_PULSE.Direction)
 	else nil
+-- Vague 59 (a192) : gains ponctuels qui volent (Config/HeistFeel.BillFly).
+local BILL = HeistFeel.BillFly
+local BILL_RISE_INFO = TweenInfo.new(BILL.RiseTime, Enum.EasingStyle.Quad, Enum.EasingDirection.Out) -- V0
+local BILL_FADE_INFO = TweenInfo.new(BILL.FadeTime, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+local BILL_FLY_INFO = TweenInfo.new(BILL.FlyTime, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
 -- V0 proposé, absent du doc : nom des UIScale posés sur les copies (détruits avec elles).
 local COPY_SCALE = "GainScale"
 
@@ -155,7 +167,7 @@ local collected = 0
 local classifyQueued = false
 local flyer: Flyer? = nil -- case qui attend encore au départ (un nouveau gain s'y ajoute)
 local counterPop: GuiObject? = nil
-local active = { Gains = 0, Flyers = 0, Pops = 0 }
+local active = { Gains = 0, Flyers = 0, Pops = 0, Bills = 0 } -- Bills : gains ponctuels en vol (vague 59)
 local warned: { [string]: boolean } = {}
 
 local function warnOnce(key: string, message: string)
@@ -561,6 +573,110 @@ local function screenOpen(api: RewardsApi?): boolean
 	return ok and type(state) == "table" and state.Open == true
 end
 
+-- Vague 59 : un écran de l'index (UI_Index, UI_Index_v3…) est allumé (réclamation d'une prime de zone).
+local function indexOpen(): boolean
+	local gui = playerGui()
+	if gui == nil then
+		return false
+	end
+	local prefix = BILL.IndexPrefix
+	for _, child in gui:GetChildren() do
+		if child:IsA("ScreenGui") and string.sub(child.Name, 1, #prefix) == prefix and (child :: ScreenGui).Enabled then
+			return true
+		end
+	end
+	return false
+end
+
+------------------------------------------------------------------------------
+-- Gains ponctuels qui volent (vague 59, a192, L-184 point 3)
+------------------------------------------------------------------------------
+
+-- « +$X » qui monte au centre (BillFly.RiseTime), courte pause, puis BillFly.Bills billets qui volent vers le
+-- nombre Cash (FlyTime, décalés de Stagger) ; à l'arrivée du premier : Cash relâché (il défile, HudController),
+-- sursaut, « +$X » à côté du compteur et un seul son (arrive). Éléments facultatifs de UI_HUD.CashFly proposés à
+-- Clément : GainPop (TextLabel du « +$X ») et Bill (le billet) ; sans eux, CounterPop et Template de CashFly ; sans
+-- rien : l'argent défile tout de suite et le compteur sursaute (comme avant).
+local function billFly(amount: number, releases: { () -> () })
+	local refs = hudRefs()
+	local billTemplate = if refs then (typed(refs.fly, "Bill", "GuiObject") or typed(refs.fly, "Template", "GuiObject")) :: GuiObject? else nil
+	local popTemplate = if refs then (typed(refs.fly, "GainPop", "TextLabel") or typed(refs.fly, "CounterPop", "TextLabel")) :: TextLabel? else nil
+	if refs == nil or (billTemplate == nil and popTemplate == nil) then
+		warnOnce("bill", `[Gains] UI_HUD.{CASH_FLY} (Bill, GainPop) absent : l'argent défile sans billets qui volent`)
+		releaseAll(releases)
+		bump(refs)
+		return
+	end
+	local screen = refs.screen
+	local size = screen.AbsoluteSize
+	local start = Vector2.new(size.X * BILL.From.X, size.Y * BILL.From.Y)
+	active.Bills += 1
+	local pop: TextLabel? = nil
+	if popTemplate then
+		local copy = popTemplate:Clone()
+		copy.Text = CASH.Text(amount)
+		copy.Visible = true
+		copy.AnchorPoint = Vector2.new(0.5, 0.5)
+		copy.Position = UDim2.fromOffset(start.X, start.Y)
+		copy.Parent = screen
+		pop = copy
+		TweenService:Create(copy, BILL_RISE_INFO, { Position = UDim2.fromOffset(start.X, start.Y - BILL.Rise) }):Play()
+	end
+	task.delay(BILL.RiseTime + BILL.Pause, function()
+		local label = pop
+		if label then
+			local fade = TweenService:Create(label, BILL_FADE_INFO, { TextTransparency = 1 })
+			fade.Completed:Connect(function()
+				label:Destroy()
+			end)
+			fade:Play()
+		end
+		local arrived = false
+		local function land()
+			if not arrived then
+				arrived = true
+				active.Bills -= 1
+				arrive(amount, releases)
+			end
+		end
+		local now = hudRefs()
+		if now == nil or billTemplate == nil then
+			task.delay(BILL.FlyTime, land)
+			return
+		end
+		local target = now.label
+		local origin = now.screen.AbsolutePosition
+		local goal = UDim2.fromOffset(
+			target.AbsolutePosition.X - origin.X + BILL.TargetOffsetX,
+			target.AbsolutePosition.Y - origin.Y + target.AbsoluteSize.Y / 2
+		)
+		local from = Vector2.new(start.X, start.Y - BILL.Rise)
+		local template = billTemplate :: GuiObject -- non nil : vérifié plus haut
+		for i = 1, BILL.Bills do
+			task.delay((i - 1) * BILL.Stagger, function()
+				local bill = template:Clone()
+				bill.Visible = true
+				bill.AnchorPoint = Vector2.new(0.5, 0.5)
+				bill.Position = UDim2.fromOffset(
+					from.X + (random:NextNumber() * 2 - 1) * BILL.Spread,
+					from.Y + (random:NextNumber() * 2 - 1) * BILL.Spread / 2
+				)
+				local scale = Instance.new("UIScale")
+				scale.Name = COPY_SCALE
+				scale.Parent = bill
+				bill.Parent = now.screen
+				TweenService:Create(scale, BILL_FLY_INFO, { Scale = BILL.EndScale }):Play()
+				local move = TweenService:Create(bill, BILL_FLY_INFO, { Position = goal })
+				move.Completed:Connect(function()
+					bill:Destroy()
+					land()
+				end)
+				move:Play()
+			end)
+		end
+	end)
+end
+
 -- Fin d'image : les montées de Cash de l'image sont classées ensemble (voir l'en-tête).
 local function classify()
 	classifyQueued = false
@@ -578,6 +694,12 @@ local function classify()
 		if rise.release then
 			table.insert(releases, rise.release)
 		end
+	end
+	-- Vague 59 (L-184 point 3) : récompense ou prime de l'index, jamais un revenu de la base (plaque, encaissement
+	-- automatique : CashCollected monte aussi ; gains hors ligne) : billets qui volent, avec ou sans FLY.Enabled.
+	if not fromPad and not screenOpen(offline) and (screenOpen(rewards) or indexOpen()) then
+		billFly(total, releases)
+		return
 	end
 	if not FLY.Enabled then
 		-- Sans case qui vole (L-091, retour de Clément) : l'argent défile tout de suite, le compteur sursaute,
@@ -702,7 +824,7 @@ local function onCollected()
 	end
 end
 
-function GainController.GetActive(): { Gains: number, Flyers: number, Pops: number }
+function GainController.GetActive(): { Gains: number, Flyers: number, Pops: number, Bills: number }
 	return table.clone(active)
 end
 

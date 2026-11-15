@@ -15,10 +15,14 @@
 --      ShoutHold s, rapetissent, puis sont cachés (Visible = false) jusqu'à la phrase suivante ;
 --      Guard_Radio une phrase sur RadioEvery. Vigile pas encore là (streaming) : la bulle arrive avec
 --      lui ; vigile disparu : la bulle s'en va et revient avec lui ;
---   3. UI_HUD.LeftRail et UI_HUD.LeftRailTouch (Visible ; ChaseFeel.Rails) et la barre du bas UI_Hotbar
---      (Enabled) cachées pendant la poursuite, revues toutes les BarsRefresh s (copie neuve d'un
---      écran), puis remises dans l'état où elles étaient au départ.
--- À la fin de la poursuite : la bulle est détruite, les barres reviennent. Un son ou BB_GuardShout absent : rien (une ligne en Studio, une fois).
+--   3. vague 59 (a192, L-182 point 9) : tout le HUD masqué pendant la poursuite sauf UI_Chase (« RUN! », les bords),
+--      UI_HUD.HeistTimer et UI_HUD.DropButton (Config/HeistFeel.ChaseMask, par Controllers/UI/HudMask : écrans
+--      Enabled, éléments Visible, revus toutes les HeistFeel.MaskRefresh s), puis rendu tel qu'il était. Avant :
+--      seulement LeftRail, LeftRailTouch et UI_Hotbar (ChaseFeel.Rails, Hotbar et BarsRefresh ne sont plus lus) ;
+--   4. vague 59 : le vigile qui poursuit le joueur passe en rouge, un Highlight (HeistFeel.Highlight) posé par ce
+--      client dans le modèle du vigile, que lui seul voit ; il part avec la bulle.
+-- À la fin de la poursuite (fin, capture, mort, renvoi : ChaseState(false)) : bulle et Highlight détruits, le HUD
+-- revient. Un son ou BB_GuardShout absent : rien (une ligne en Studio, une fois).
 -- Rien n'est envoyé au serveur. Ne touche ni aux écrans de StarterGui ni aux modèles de Clément.
 --
 -- API (client, pour un test dans Studio) :
@@ -33,6 +37,8 @@ local Workspace = game:GetService("Workspace")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local ChaseFeel = require(Shared:WaitForChild("Config"):WaitForChild("ChaseFeel"))
 local MarkerSounds = require(Shared:WaitForChild("Anim"):WaitForChild("MarkerSounds"))
+local HeistFeel = require(Shared:WaitForChild("Config"):WaitForChild("HeistFeel"))
+local HudMask = require(script.Parent:WaitForChild("UI"):WaitForChild("HudMask"))
 
 -- Ce que ce contrôleur utilise de ChaseController.
 type ChaseApi = {
@@ -58,9 +64,8 @@ local bubble: BillboardGui? = nil
 local bubbleToken = 0
 local shouts = 0
 local lastLine = 0
-local sinceBars = 0
-local railStates: { [GuiObject]: boolean } = {} -- Visible d'origine de chaque LeftRail caché
-local hotbarStates: { [ScreenGui]: boolean } = {} -- Enabled d'origine de chaque UI_Hotbar caché
+local highlight: Highlight? = nil -- vague 59 : le vigile qui poursuit, en rouge
+local MASK_KEY = "Chase" -- vague 59 : masque du HUD (Controllers/UI/HudMask)
 local said: { [string]: boolean } = {}
 local rng = Random.new()
 
@@ -155,6 +160,37 @@ local function destroyBubble()
 	if gui then
 		gui:Destroy()
 	end
+end
+
+local function clearHighlight()
+	local mark = highlight
+	highlight = nil
+	if mark then
+		mark:Destroy()
+	end
+end
+
+-- Vague 59 (L-182 point 9) : Highlight rouge dans le modèle du vigile qui poursuit, côté client seulement ; il
+-- suit le vigile (streaming, changement de vigile) indépendamment de la bulle.
+local function markGuard(guard: Model?)
+	local current = highlight
+	if current and guard and current.Parent == guard and current.Adornee == guard then
+		return
+	end
+	clearHighlight()
+	if guard == nil or not guard:IsDescendantOf(Workspace) then
+		return
+	end
+	local spec = HeistFeel.Highlight
+	local mark = Instance.new("Highlight")
+	mark.Name = spec.Name
+	mark.FillColor = spec.FillColor
+	mark.FillTransparency = spec.FillTransparency
+	mark.OutlineColor = spec.OutlineColor
+	mark.OutlineTransparency = spec.OutlineTransparency
+	mark.Adornee = guard
+	mark.Parent = guard
+	highlight = mark
 end
 
 -- Morceaux de la bulle qui apparaissent et disparaissent ensemble (vague 24 : avant, Tail ou Bang
@@ -266,6 +302,7 @@ end
 
 -- Bulle sur le vigile qui poursuit le joueur local, s'il est là ; partie avec lui sinon.
 local function updateBubble(api: ChaseApi)
+	markGuard(api.GetGuard())
 	local current = bubble
 	if current then
 		local adornee = current.Adornee
@@ -280,47 +317,14 @@ local function updateBubble(api: ChaseApi)
 	end
 end
 
--- Barres cachées -------------------------------------------------------------------------------------------
+-- HUD masqué (vague 59, L-182 point 9) -----------------------------------------------------------------------
 
-local function hideBars()
-	local playerGui = localPlayer:FindFirstChildOfClass("PlayerGui")
-	if playerGui == nil then
-		return
-	end
-	local hud = playerGui:FindFirstChild(ChaseFeel.HudScreen)
-	for _, railName in ChaseFeel.Rails do
-		local rail = if hud then hud:FindFirstChild(railName, true) else nil
-		if rail and rail:IsA("GuiObject") then
-			local railObject = rail :: GuiObject
-			if railStates[railObject] == nil then
-				railStates[railObject] = railObject.Visible
-			end
-			railObject.Visible = false
-		end
-	end
-	local hotbar = playerGui:FindFirstChild(ChaseFeel.Hotbar)
-	if hotbar and hotbar:IsA("ScreenGui") then
-		local screen = hotbar :: ScreenGui
-		if hotbarStates[screen] == nil then
-			hotbarStates[screen] = screen.Enabled
-		end
-		screen.Enabled = false
-	end
-end
-
-local function restoreBars()
-	for rail, visible in railStates do
-		if rail.Parent then
-			rail.Visible = visible
-		end
-	end
-	for screen, enabled in hotbarStates do
-		if screen.Parent then
-			screen.Enabled = enabled
-		end
-	end
-	table.clear(railStates)
-	table.clear(hotbarStates)
+local function maskHud()
+	local spec = HeistFeel.ChaseMask
+	HudMask.Push(MASK_KEY, {
+		KeepScreens = spec.KeepScreens,
+		Partial = { [spec.Hud] = spec.KeepHud },
+	})
 end
 
 -- Départ et fin ----------------------------------------------------------------------------------------------
@@ -335,15 +339,15 @@ local function begin()
 			playOnce(ChaseFeel.Sounds.Whistle)
 		end
 	end)
-	sinceBars = 0
-	hideBars()
+	maskHud()
 end
 
 local function finish()
 	active = false
 	chaseToken += 1
 	destroyBubble()
-	restoreBars()
+	clearHighlight()
+	HudMask.Pop(MASK_KEY)
 end
 
 local function step(dt: number)
@@ -361,11 +365,6 @@ local function step(dt: number)
 		return
 	end
 	updateBubble(api)
-	sinceBars += dt
-	if sinceBars >= ChaseFeel.BarsRefresh then
-		sinceBars = 0
-		hideBars()
-	end
 end
 
 -- API -------------------------------------------------------------------------------------------------

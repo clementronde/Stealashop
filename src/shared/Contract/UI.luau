@@ -1027,4 +1027,38 @@ table.insert(UI.Screens, {
 	} :: { Element },
 })
 
+-- Capture, alerte et gains qui volent (vague 59, a192, L-184 et L-182 point 9 ; noms proposés à Clément), tout est
+-- facultatif. UI_Caught : écran de la capture (CatchSceneController) : Title (« CAUGHT! », tamponné), ItemIcon (l'objet
+-- qui repart vers son présentoir ou tombe), BarTop et BarBottom (bandes noires du renvoi à la base, la nuit : leur
+-- taille de Clément = fermées, le code part de 0). Sans lui : un écran V0 du code, mêmes noms.
+table.insert(UI.Screens, {
+	Name = "UI_Caught",
+	Class = "ScreenGui",
+	Optional = true,
+	Elements = {
+		{ Path = "Title", Class = "GuiObject", Optional = true, Note = "pas de « CAUGHT! » tamponné" },
+		{ Path = "ItemIcon", Class = "ImageLabel", Optional = true, Note = "l'objet ne repart pas à l'écran" },
+		{ Path = "BarTop", Class = "GuiObject", Optional = true, Note = "pas de bande noire en haut au renvoi de nuit" },
+		{ Path = "BarBottom", Class = "GuiObject", Optional = true, Note = "pas de bande noire en bas au renvoi de nuit" },
+	} :: { Element },
+})
+for _, screenDef in UI.Screens do
+	-- UI_Chase.HeistHint (palier 1 de l'alerte, ChaseController) n'est pas mis au contrat : UI_Chase n'a aucun nom imposé
+	-- (L-071 point 6) ; sans lui, UI_Chase n'arrive qu'avec la poursuite, comme avant.
+	if screenDef.Name == "UI_Escape" then
+		-- « ITEM SECURED! » en carte (CatchSceneController).
+		table.insert(screenDef.Elements, { Path = "Card", Optional = true, Note = "pas de carte d'objet" })
+		table.insert(screenDef.Elements, { Path = "Card.ItemIcon", Class = "ImageLabel", Optional = true, Note = "pas d'objet en grand" })
+		table.insert(screenDef.Elements, { Path = "Card.ItemName", Class = "TextLabel", Optional = true, Note = "pas de nom" })
+		table.insert(screenDef.Elements, { Path = "Card.Rarity", Class = "TextLabel", Optional = true, Note = "pas de rareté" })
+		table.insert(screenDef.Elements, { Path = "Card.Income", Class = "TextLabel", Optional = true, Note = "pas de revenu/s" })
+		table.insert(screenDef.Elements, { Path = "Card.NewBadge", Class = "GuiObject", Optional = true, Note = "pas de « NEW! »" })
+	elseif screenDef.Name == "UI_HUD" and screenDef.Elements[1] and screenDef.Elements[1].Path == "Cash" then
+		-- Gains ponctuels qui volent (GainController) : le « +$X » du départ et le billet. Rangés juste après Cash (la
+		-- fin de la liste du HUD reste SkillTreeButton).
+		table.insert(screenDef.Elements, 2, { Path = "CashFly.Bill", Class = "GuiObject", Optional = true, Note = "CashFly.Template sert de billet" })
+		table.insert(screenDef.Elements, 2, { Path = "CashFly.GainPop", Class = "TextLabel", Optional = true, Note = "CashFly.CounterPop sert au « +$X » du départ" })
+	end
+end
+
 return UI
