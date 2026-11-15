@@ -463,8 +463,8 @@ local indexV3Elements = {
 	{ Path = "Detail.DetailRarity" },
 	{ Path = "Detail.DetailIncome" },
 	{ Path = "Rewards" },
-	{ Path = "Rewards.SpeedReward.Amount" },
-	{ Path = "Rewards.CashReward.Amount" },
+	{ Path = "Rewards.SpeedReward", Optional = true, Note = "caché depuis L-192 (plus de vitesse), peut sortir de l'écran" },
+	{ Path = "Rewards.CashReward", Optional = true, Note = "caché depuis L-192 (plus d'argent), peut sortir de l'écran" },
 	{ Path = "Rewards.ClaimButton", Class = BUTTON },
 	{ Path = "Rewards.ClaimButton.ClaimLabel" },
 	{ Path = "MutationTabs" },
@@ -1131,6 +1131,16 @@ for _, screenDef in UI.Screens do
 		table.insert(screenDef.Elements, { Path = "Tasks.Template.Check", Optional = true, Note = "une tâche faite n'est pas cochée" })
 		table.insert(screenDef.Elements, { Path = "Tasks.Template.Progress", Class = "TextLabel", Optional = true, Note = "ce qu'il faut faire et la progression ne sont pas écrits" })
 		table.insert(screenDef.Elements, { Path = "Tasks.Template.Why", Class = "TextLabel", Optional = true, Note = "la raison de la tâche n'est pas écrite" })
+	end
+end
+
+-- Récompense de zone de l'index v4 : l'objet seul (vague 61, a201, décision de Clément L-192) ; Footer.ItemReward
+-- remplace SpeedReward et CashReward (cachés par IndexController s'ils sont encore là). Facultatifs.
+for _, screenDef in UI.Screens do
+	if screenDef.Name == "UI_Index_v4" then
+		table.insert(screenDef.Elements, { Path = "Footer.ItemReward", Optional = true, Note = "l'objet donné par la zone n'est montré que sur ClaimButton" })
+		table.insert(screenDef.Elements, { Path = "Footer.ItemReward.RewardIcon", Class = "ImageLabel", Optional = true, Note = "pas d'image de l'objet donné" })
+		table.insert(screenDef.Elements, { Path = "Footer.ItemReward.RewardCaption", Class = "TextLabel", Optional = true, Note = "le nom de l'objet donné n'est pas écrit" })
 	end
 end
 
