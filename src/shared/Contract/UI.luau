@@ -867,4 +867,18 @@ table.insert(UI.Billboards, {
 	} :: { Element },
 })
 
+-- Code cadeau et compte à rebours de MAJ (MAJ 0, a162 ; noms proposés à Clément) : CodeController. Tous
+-- facultatifs ; le code les cherche aussi dans UI_Rewards.
+table.insert(UI.Screens, {
+	Name = "UI_Settings",
+	Class = "ScreenGui",
+	Optional = true,
+	Elements = {
+		{ Path = "CodeBox", Class = "TextBox", Optional = true, Note = "pas de champ de code cadeau" },
+		{ Path = "RedeemButton", Class = BUTTON, Optional = true, Note = "le code s'envoie avec Entrée seulement" },
+		{ Path = "CodeStatus", Class = "TextLabel", Optional = true, Note = "la réponse arrive en Notify seulement" },
+		{ Path = "UpdateCountdown", Class = "TextLabel", Optional = true, Note = "pas de compte à rebours de MAJ" },
+	} :: { Element },
+})
+
 return UI

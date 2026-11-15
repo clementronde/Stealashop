@@ -298,6 +298,17 @@ function PotionService.GetStock(player: Player, id: string): number
 	return if data then stockOf(data, id) else 0
 end
 
+-- a162 (codes cadeaux, CodeService) : ajoute `count` potions `id` à l'inventaire. Renvoie false sans rien
+-- changer si l'Id est inconnu, le profil absent ou le plafond MaxStock déjà atteint (sinon borné à MaxStock).
+function PotionService.AddStock(player: Player, id: string, count: number): boolean
+	local data = DataService.Get(player)
+	if data == nil or Potions.ById[id] == nil or count < 1 or stockOf(data, id) >= Potions.MaxStock then
+		return false
+	end
+	changeStock(player, data, id, math.floor(count))
+	return true
+end
+
 -- Chargement du profil : champ nettoyé (voir l'en-tête), attributs posés.
 local function onProfileLoaded(player: Player)
 	local data = DataService.Get(player)
