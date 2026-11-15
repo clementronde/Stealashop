@@ -32,6 +32,14 @@
 --   Motion.Success(button)      le bouton saute à Success.From et revient ; son Success.Sound.
 --   Motion.HoverCard(card)      carte survolée : HoverOutline visible, Icon grossi, penché, décalé ;
 --                               tout revient à la sortie (L-091 point 7).
+--                               Vague 59 (L-182) : attribut Hover = Pop sur un bouton : × HoverPop.To en
+--                               HoverPop.Time ; sur une carte : elle penche de CardTilt et son Icon grossit
+--                               (IconScale) sans bouger. Press = Squash : × PressSquash.To tant que le
+--                               bouton est tenu, puis 1,1 et retour au relâché.
+--   Motion.Click(button, play)  joue le clic (play) à la fin de l'image, sauf si l'action a déjà son son
+--                               (bouton de réussite, ou UI_Open / UI_Close… au même moment) : un son par action.
+--   Close et Hide attendent la fermeture des éléments Appear (Controllers/UI/Appear) ; Open et Close ne
+--   mettent pas à l'échelle un cadre racine qui porte Appear, ni OpenStagger les cartes d'une Cascade.
 --   Motion.Pop(object, from, info)
 --                               sursaut passager from → 1 (UIScale PopScaleName détruit à la fin) :
 --                               CashBump, TimerTick. Rien sur un objet qui a déjà un autre UIScale.
@@ -129,6 +137,46 @@ local ROLL_INFO = TweenInfo.new(UiMotion.Roll.Time, UiMotion.Roll.Style, UiMotio
 local HOVER_INFO = TweenInfo.new(UiMotion.Hover.Time, UiMotion.Hover.Style, UiMotion.Hover.Direction)
 
 local IS_STUDIO = RunService:IsStudio()
+
+-- Vague 59 (a189, L-182 point 1) : apparitions posées par Clément en attribut Appear (Controllers/UI/Appear). Un cadre
+-- racine qui porte Appear n'est pas mis à l'échelle par Open et Close (Appear l'anime), les cartes d'une Cascade
+-- n'entrent pas par OpenStagger, et Close (ou Hide) attend la fin de leur fermeture. Module absent (banc qui ne
+-- monte que Motion) : rien de tout cela, Motion fait comme avant.
+type AppearApi = {
+	Has: (Instance) -> boolean,
+	Covers: (Instance) -> boolean,
+	Open: (Instance) -> (),
+	Close: (Instance) -> number,
+	Reset: (Instance) -> (),
+}
+local appear: AppearApi = (function(): AppearApi
+	local module = script.Parent:FindFirstChild("Appear")
+	if module ~= nil and module:IsA("ModuleScript") then
+		local ok, result = pcall(require, module)
+		if ok and type(result) == "table" then
+			return result :: any
+		end
+	end
+	return {
+		Has = function(_: Instance): boolean
+			return false
+		end,
+		Covers = function(_: Instance): boolean
+			return false
+		end,
+		Open = function(_: Instance) end,
+		Close = function(_: Instance): number
+			return 0
+		end,
+		Reset = function(_: Instance) end,
+	}
+end)()
+-- Hover = Pop et Press = Squash (L-182 point 1) : variantes de Motion.Button et Motion.HoverCard, lues sur le bouton
+-- (ou la carte) à chaque survol et appui (une copie de Template garde les attributs de son modèle).
+local HOVER_ATTRIBUTE = "Hover"
+local PRESS_ATTRIBUTE = "Press"
+local HOVER_POP = "Pop"
+local PRESS_SQUASH = "Squash"
 
 local Motion = {}
 
@@ -290,11 +338,11 @@ end
 -- qui couvrent tout l'écran et ceux qui s'animent à part (Motion.KeepScale).
 local function targetsOf(inst: Instance): { GuiObject }
 	if inst:IsA("GuiObject") then
-		return { inst :: GuiObject }
+		return if appear.Has(inst) then {} else { inst :: GuiObject } -- vague 59 : un élément Appear s'anime à part
 	end
 	local list: { GuiObject } = {}
 	for _, child in inst:GetChildren() do
-		if child:IsA("GuiObject") and not fillsScreen(child :: GuiObject) and not apart[child] then
+		if child:IsA("GuiObject") and not fillsScreen(child :: GuiObject) and not apart[child] and not appear.Has(child) then
 			table.insert(list, child :: GuiObject)
 		end
 	end
@@ -686,6 +734,7 @@ local function enter(inst: Instance, transition: Transition)
 			entry.phase = "Open"
 			release(entry)
 		end)
+		appear.Open(inst) -- vague 59 : ses éléments Appear repartent de là où la fermeture les a laissés
 		return
 	end
 	local current = entryOf(inst)
@@ -703,7 +752,14 @@ local function enter(inst: Instance, transition: Transition)
 		release(current)
 	end)
 	if inst:IsA("ScreenGui") then
-		staggerIn(inst, staggerItems(inst)) -- L-094 : les cartes arrivent une à une après la fenêtre
+		-- L-094 : les cartes arrivent une à une après la fenêtre ; vague 59 : sauf celles qu'anime Appear (Cascade).
+		local items: { GuiObject } = {}
+		for _, item in staggerItems(inst) do
+			if not appear.Covers(item) then
+				table.insert(items, item)
+			end
+		end
+		staggerIn(inst, items)
 	end
 end
 
@@ -738,13 +794,30 @@ local function leave(inst: Instance, transition: Transition, after: (() -> ())?)
 		table.insert(entry.after, after)
 	end
 	entry.phase = "Closing"
-	run(entry, targetsOf(inst), nil, 1, transition.scale, transition.info, function()
+	-- Vague 59 : fermeture des éléments Appear (0 s s'il n'y en a pas : comme avant), attendue avant d'éteindre.
+	local hold = appear.Close(inst)
+	local started = os.clock()
+	local function closed()
 		entry.phase = "Closed"
 		setShown(inst, false)
 		release(entry)
+		appear.Reset(inst) -- éléments Appear remis à l'état de Clément, écran éteint
 		local callbacks = table.clone(entry.after)
 		table.clear(entry.after)
 		runAfter(callbacks)
+	end
+	run(entry, targetsOf(inst), nil, 1, transition.scale, transition.info, function()
+		local left = hold - (os.clock() - started)
+		if left <= 0 then
+			closed()
+			return
+		end
+		local token = entry.token
+		task.delay(left, function()
+			if entry.token == token and entry.phase == "Closing" then
+				closed()
+			end
+		end)
 	end)
 end
 
@@ -831,20 +904,59 @@ end
 -- Sons (L-091 point 7) : joués par le contrôleur qui en donne le moyen (UiFeelController)
 ------------------------------------------------------------------------------
 
-local soundPlayer: ((name: string) -> ())? = nil
+local soundPlayer: ((name: string) -> boolean?)? = nil
 
-function Motion.SetSoundPlayer(play: ((name: string) -> ())?)
+function Motion.SetSoundPlayer(play: ((name: string) -> boolean?)?)
 	soundPlayer = play
+end
+
+-- Vague 59 (L-182 point 1, « un seul son par action ») : heure du dernier son d'action (tout sauf UI_Hover), lue par
+-- Motion.Click.
+local lastActionSound = -math.huge
+
+local SUCCESS_NAMES: { [string]: boolean } = {}
+for _, name in UiMotion.Success.Buttons do
+	SUCCESS_NAMES[name] = true
 end
 
 function Motion.PlaySound(name: string)
 	local play = soundPlayer
 	if play then
-		local ok = pcall(play, name)
+		local ok, played = pcall(play, name)
 		if not ok and IS_STUDIO then
 			warn(`[Motion] son « {name} » : erreur dans le lecteur de sons`)
 		end
+		-- Vague 59 : seul un son vraiment joué (le lecteur renvoie true) fait taire le clic ; un son absent
+		-- d'Assets/Sounds laisse le clic sonner.
+		if ok and played == true and name ~= UiMotion.Hover.Sound then
+			lastActionSound = os.clock()
+		end
 	end
+end
+
+-- Clic d'un bouton (vague 59) : `play` joue le son de clic (SettingsController, UI_Click_<Id>), sauf si l'action a
+-- déjà le sien : bouton de réussite (Success.Buttons, hors Success.SkipScreens : UI_Success suit), ou son d'action
+-- joué par Motion (UI_Open, UI_Close…) dans les ClickGuard s autour du clic (attendu jusqu'à la fin de l'image).
+function Motion.Click(button: GuiButton, play: () -> ())
+	if SUCCESS_NAMES[button.Name] then
+		local skipped = false
+		for _, screen in UiMotion.Success.SkipScreens do
+			if button:FindFirstAncestor(screen) ~= nil then
+				skipped = true
+				break
+			end
+		end
+		if not skipped then
+			return
+		end
+	end
+	local at = os.clock()
+	task.defer(function()
+		if lastActionSound >= at - UiMotion.ClickGuard then
+			return
+		end
+		play()
+	end)
 end
 
 ------------------------------------------------------------------------------
@@ -863,7 +975,24 @@ type ButtonState = {
 	shade: GuiObject?, -- calque Shade de Clément (enfant direct), s'il existe
 	shadeBase: number, -- sa transparence posée par Clément, remise à la sortie
 	shadeTween: Tween?,
+	bouncing: boolean, -- Press = Squash : rebond du relâché en cours (1,1 puis retour)
 }
+
+-- Vague 59 (L-182 point 1) : Hover = Pop et Press = Squash.
+local POP = UiMotion.HoverPop
+local SQUASH = UiMotion.PressSquash
+local POP_INFO = TweenInfo.new(POP.Time, POP.Style, POP.Direction)
+local SQUASH_INFO = TweenInfo.new(SQUASH.Time, SQUASH.Style, SQUASH.Direction)
+local BOUNCE_INFO = TweenInfo.new(SQUASH.BounceTime, SQUASH.Style, SQUASH.Direction)
+local BOUNCE_BACK_INFO = TweenInfo.new(SQUASH.BackTime, SQUASH.Style, SQUASH.Direction)
+
+local function hoverPop(object: Instance): boolean
+	return object:GetAttribute(HOVER_ATTRIBUTE) == HOVER_POP
+end
+
+local function squashes(object: Instance): boolean
+	return object:GetAttribute(PRESS_ATTRIBUTE) == PRESS_SQUASH
+end
 
 local PRESS_INFO = TweenInfo.new(UiMotion.Press.Time, UiMotion.Press.Style, UiMotion.Press.Direction)
 local RELEASE_INFO = TweenInfo.new(UiMotion.Release.Time, UiMotion.Release.Style, UiMotion.Release.Direction)
@@ -889,6 +1018,7 @@ local function buttonState(button: GuiButton): ButtonState
 		shade = shadeObject,
 		shadeBase = if shadeObject then shadeObject.BackgroundTransparency else 1,
 		shadeTween = nil,
+		bouncing = false,
 	}
 	buttons[button] = created
 	return created
@@ -912,7 +1042,8 @@ local function buttonScale(button: GuiButton, state: ButtonState): UIScale?
 	return scale
 end
 
-local function scaleButton(button: GuiButton, state: ButtonState, goal: number, info: TweenInfo, from: number?)
+local function scaleButton(button: GuiButton, state: ButtonState, goal: number, info: TweenInfo, from: number?, after: (() -> ())?)
+	state.bouncing = false -- tout nouvel effet remplace un rebond en cours
 	if goal == 1 and from == nil and state.scale == nil then
 		return -- déjà à 1, sans UIScale : rien à faire
 	end
@@ -937,6 +1068,10 @@ local function scaleButton(button: GuiButton, state: ButtonState, goal: number, 
 			return
 		end
 		state.tween = nil
+		if after then
+			after()
+			return
+		end
 		if goal == 1 and not state.over and not state.down then
 			if state.scale == current then
 				state.scale = nil
@@ -969,19 +1104,41 @@ function Motion.Button(button: GuiButton)
 		return
 	end
 	state.wired = true
+	-- Vague 59 : Hover = Pop (× HoverPop.To en HoverPop.Time) à la place du survol validé (Hover).
+	local function hoverTo(): number
+		return if hoverPop(button) then POP.To else UiMotion.Hover.To
+	end
+	local function hoverInfo(): TweenInfo
+		return if hoverPop(button) then POP_INFO else HOVER_INFO
+	end
+	-- Press = Squash : au relâché, 1,1 puis retour au repos (survol ou 1) ; un survol quitté pendant le rebond est
+	-- pris en compte à la fin du rebond.
+	local function bounce()
+		-- Pic : 1,1 fois le repos (1,1 au doigt ; au-dessus du survol à la souris, sinon le rebond ne se verrait pas).
+		local peak = (if state.over then hoverTo() else 1) * SQUASH.Bounce
+		scaleButton(button, state, peak, BOUNCE_INFO, nil, function()
+			state.bouncing = false
+			scaleButton(button, state, if state.over then hoverTo() else 1, BOUNCE_BACK_INFO)
+		end)
+		state.bouncing = state.tween ~= nil
+	end
 	local function hoverIn()
 		state.over = true
-		if not state.down then
-			scaleButton(button, state, UiMotion.Hover.To, HOVER_INFO)
-			shadeTo(state, UiMotion.Hover.ShadeTransparency, HOVER_INFO)
+		if not state.down and not state.bouncing then
+			local info = hoverInfo()
+			scaleButton(button, state, hoverTo(), info)
+			shadeTo(state, UiMotion.Hover.ShadeTransparency, info)
 		end
 		Motion.PlaySound(UiMotion.Hover.Sound)
 	end
 	local function hoverOut()
 		state.over = false
 		state.down = false
-		scaleButton(button, state, 1, HOVER_INFO)
-		shadeTo(state, state.shadeBase, HOVER_INFO)
+		local info = hoverInfo()
+		shadeTo(state, state.shadeBase, info)
+		if not state.bouncing then
+			scaleButton(button, state, 1, info)
+		end
 	end
 	-- Vague 25 : survol seulement si le bouton est l'élément du dessus (voir onTop).
 	button.MouseEnter:Connect(function()
@@ -992,7 +1149,11 @@ function Motion.Button(button: GuiButton)
 	button.MouseLeave:Connect(hoverOut)
 	button.MouseButton1Down:Connect(function()
 		state.down = true
-		scaleButton(button, state, UiMotion.Press.To, PRESS_INFO)
+		if squashes(button) then
+			scaleButton(button, state, SQUASH.To, SQUASH_INFO)
+		else
+			scaleButton(button, state, UiMotion.Press.To, PRESS_INFO)
+		end
 		shadeTo(state, UiMotion.Press.ShadeTransparency, PRESS_INFO)
 	end)
 	button.MouseButton1Up:Connect(function()
@@ -1000,15 +1161,26 @@ function Motion.Button(button: GuiButton)
 			return
 		end
 		state.down = false
-		scaleButton(button, state, if state.over then UiMotion.Hover.To else 1, RELEASE_INFO)
+		if squashes(button) then
+			bounce()
+		else
+			scaleButton(button, state, if state.over then hoverTo() else 1, RELEASE_INFO)
+		end
 		shadeTo(state, if state.over then UiMotion.Hover.ShadeTransparency else state.shadeBase, RELEASE_INFO)
 	end)
 	-- L-092 3g : sur un écran tactile, pas de MouseLeave ; à la fin du toucher (doigt levé, ou
 	-- glissé hors du bouton), le bouton revient à 1 et Shade à sa transparence d'origine.
 	local function touchEnded()
 		state.over = false
+		local wasDown = state.down
 		state.down = false
-		scaleButton(button, state, 1, RELEASE_INFO)
+		if squashes(button) then
+			if not state.bouncing and (wasDown or state.scale ~= nil) then
+				bounce() -- doigt levé sans MouseButton1Up : le rebond quand même
+			end
+		else
+			scaleButton(button, state, 1, RELEASE_INFO)
+		end
 		shadeTo(state, state.shadeBase, RELEASE_INFO)
 	end
 	button.InputBegan:Connect(function(input: InputObject)
@@ -1043,7 +1215,8 @@ end
 function Motion.Success(button: GuiButton)
 	local state = buttonState(button)
 	state.down = false
-	scaleButton(button, state, if state.over then UiMotion.Hover.To else 1, SUCCESS_INFO, UiMotion.Success.From)
+	local rest = if not state.over then 1 elseif hoverPop(button) then POP.To else UiMotion.Hover.To
+	scaleButton(button, state, rest, SUCCESS_INFO, UiMotion.Success.From)
 	task.delay(UiMotion.Success.SoundDelay, function()
 		Motion.PlaySound(UiMotion.Success.Sound)
 	end)
@@ -1106,7 +1279,11 @@ type CardState = {
 	basePosition: UDim2?, -- Position et Rotation de l'Icon posées par Clément, remises au retour
 	baseRotation: number,
 	outlineBase: boolean?, -- Visible de HoverOutline avant le survol
+	pop: boolean, -- vague 59 : survol Hover = Pop en cours (la carte penche, l'Icon grossit sans bouger)
+	cardRotation: number?, -- Rotation de la carte posée par Clément, remise au retour (Pop)
 }
+
+local CARD_POP_INFO = TweenInfo.new(UiMotion.HoverPop.Time, UiMotion.HoverPop.Style, UiMotion.HoverPop.Direction)
 
 local CARD_INFO = TweenInfo.new(UiMotion.HoverCard.Time, UiMotion.HoverCard.Style, UiMotion.HoverCard.Direction)
 local CARD_BACK_INFO = TweenInfo.new(UiMotion.HoverCard.BackTime, UiMotion.HoverCard.BackStyle, Enum.EasingDirection.Out)
@@ -1158,9 +1335,14 @@ function Motion.HoverCard(card: GuiObject)
 		basePosition = nil,
 		baseRotation = 0,
 		outlineBase = nil,
+		pop = false,
+		cardRotation = nil,
 	}
 	cards[card] = state
 	local function cardIn()
+		local pop = hoverPop(card)
+		state.pop = pop
+		local info = if pop then CARD_POP_INFO else CARD_INFO
 		local outline = card:FindFirstChild(spec.Outline)
 		if outline and outline:IsA("GuiObject") then
 			if state.outlineBase == nil then
@@ -1190,12 +1372,24 @@ function Motion.HoverCard(card: GuiObject)
 				state.scale = scale
 			end
 			if scale then
-				table.insert(list, TweenService:Create(scale, CARD_INFO, { Scale = spec.IconScale }))
+				table.insert(list, TweenService:Create(scale, info, { Scale = if pop then UiMotion.HoverPop.IconScale else spec.IconScale }))
 			end
-			table.insert(list, TweenService:Create(icon, CARD_INFO, {
-				Rotation = state.baseRotation + spec.Tilt,
-				Position = basePosition + UDim2.fromScale(spec.ShiftX, spec.ShiftY),
-			}))
+			if pop then
+				-- Vague 59 : l'Icon reste à sa place (sa rotation et sa position de Clément).
+				icon.Rotation = state.baseRotation
+				icon.Position = basePosition
+			else
+				table.insert(list, TweenService:Create(icon, CARD_INFO, {
+					Rotation = state.baseRotation + spec.Tilt,
+					Position = basePosition + UDim2.fromScale(spec.ShiftX, spec.ShiftY),
+				}))
+			end
+		end
+		if pop then
+			if state.cardRotation == nil then
+				state.cardRotation = card.Rotation
+			end
+			table.insert(list, TweenService:Create(card, info, { Rotation = (state.cardRotation :: number) + UiMotion.HoverPop.CardTilt }))
 		end
 		cardTweens(state, list, nil)
 		Motion.PlaySound(UiMotion.Hover.Sound)
@@ -1208,19 +1402,33 @@ function Motion.HoverCard(card: GuiObject)
 		end
 		local icon = state.icon
 		local basePosition = state.basePosition
-		if icon == nil or basePosition == nil then
+		local cardRotation = state.cardRotation
+		local list: { Tween } = {}
+		if cardRotation ~= nil then
+			table.insert(list, TweenService:Create(card, CARD_BACK_INFO, { Rotation = cardRotation }))
+		end
+		if icon ~= nil and basePosition ~= nil then
+			local scale = state.scale
+			if scale and scale.Parent == icon then
+				table.insert(list, TweenService:Create(scale, CARD_BACK_INFO, { Scale = 1 }))
+			end
+			if not state.pop then
+				table.insert(list, TweenService:Create(icon, CARD_BACK_INFO, { Rotation = state.baseRotation, Position = basePosition }))
+			end
+		end
+		if #list == 0 then
 			return
 		end
-		local list: { Tween } = {}
-		local scale = state.scale
-		if scale and scale.Parent == icon then
-			table.insert(list, TweenService:Create(scale, CARD_BACK_INFO, { Scale = 1 }))
-		end
-		table.insert(list, TweenService:Create(icon, CARD_BACK_INFO, { Rotation = state.baseRotation, Position = basePosition }))
 		cardTweens(state, list, function()
-			icon.Position = basePosition
-			icon.Rotation = state.baseRotation
-			state.basePosition = nil
+			if cardRotation ~= nil then
+				card.Rotation = cardRotation
+				state.cardRotation = nil
+			end
+			if icon ~= nil and basePosition ~= nil then
+				icon.Position = basePosition
+				icon.Rotation = state.baseRotation
+				state.basePosition = nil
+			end
 			local own = state.scale
 			state.scale = nil
 			if own then
