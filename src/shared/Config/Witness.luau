@@ -54,6 +54,15 @@ local Witness = {
 		Distance = 8, -- V0 : il se poste à ce nombre de studs devant la vitrine…
 		SideOffset = 2, -- V0 : … décalé de ce nombre de studs sur le côté (témoin impair à droite, pair à gauche)
 		ApproachSpeed = 10, -- V0 : WalkSpeed pendant qu'il s'approche (il presse le pas)
+		-- Vague 60 (a196, Cantin, T-087) : loin, il va plus vite, pour être à son poste ApproachLead s avant que son
+		-- « ? » soit plein (vitesse = distance / temps restant, revue à chaque MoveTo) ; jamais moins
+		-- qu'ApproachSpeed ni plus qu'ApproachMaxSpeed (V0).
+		ApproachLead = 1,
+		ApproachMaxSpeed = 32,
+		-- V0 (a196, T-087 : « le flash se voit mal ») : chaque flash émet Bursts fois, à BurstGap s d'écart (la lumière
+		-- reste allumée jusqu'au dernier) ; l'effet de Clément (EmitCount, LightTime) n'est pas touché.
+		Bursts = 2,
+		BurstGap = 0.08,
 		Interval = 0.9, -- Clément : un flash toutes les 0,9 s environ (rythme tant qu'aucun marqueur Flash ne vient)
 		MinInterval = 0.45, -- Clément : jamais plus d'un flash toutes les 0,45 s (le reflet dure 0,2 s)
 		PoliceArrive = 15, -- V0 : un policier du magasin à moins de ce nombre de studs de la vitrine : il arrête

@@ -13,6 +13,8 @@
 --     .Pieces morceaux (« +0.4 Speed », un toutes les 0,2 s, même total, chacun vit Life s ; le « ×2 » en exposant
 --     d'a178 reste), et le compteur Speed du HUD pulse à chaque morceau (Config/Hud.SpeedPulse, Motion.Pop).
 --     Pieces = 1 : l'ancien « +2 Speed/s ».
+--     Vague 60 (a196, T-097) : sans Row.Multiplier, le « ×2 » du trail est un petit TextLabel (UiMotion.FloatGain
+--     .TrailExponent) posé par le code au coin haut droit du nombre, dans Row.Amount ; Mode = "Unicode" : celui d'a178.
 --   - Argent : quand l'attribut Cash du Player monte (DataService), Cash est retenu au HUD
 --     (HudController.HoldCash) et le gain est classé à la fin de l'image (task.defer) :
 --       * ramassage : l'attribut CashCollected du Player (DisplayService, il ne fait que monter) est
@@ -230,6 +232,78 @@ end
 -- Gain au-dessus du joueur (FloatGain)
 ------------------------------------------------------------------------------
 
+-- a196 : largeur relative de `text` dans la police de `label` (TextService, taille 100) ; sans TextService ou
+-- police inconnue : le nombre de caractères.
+local function textWidth(label: TextLabel, text: string): number
+	local ok, width = pcall(function(): number
+		local font = label.Font
+		assert(font ~= Enum.Font.Unknown)
+		local service = game:GetService("TextService") :: TextService
+		return service:GetTextSize(text, 100, font, Vector2.new(1e5, 1e5)).X
+	end)
+	if ok and type(width) == "number" and width > 0 then
+		return width
+	end
+	return (utf8.len(text) or #text) * 50
+end
+
+-- a196 (Cantin, T-097) : « ×2 » en exposant au coin haut droit du nombre `head` de Row.Amount : un petit TextLabel
+-- (FloatGain.TrailExponent) dans `amountLabel`, replacé quand le texte prend sa taille (TextBounds). Le texte de
+-- Row.Amount reçoit des espaces à la place de l'exposant. Renvoie le TextLabel créé.
+local function addExponent(amountLabel: TextLabel, head: string, tail: string, trailText: string): TextLabel
+	local spec = FLOAT.TrailExponent
+	local space = textWidth(amountLabel, " ")
+	local gap = math.clamp(math.ceil(textWidth(amountLabel, trailText) * spec.Size / math.max(space, 1)), 1, 8)
+	amountLabel.Text = head .. string.rep(" ", gap) .. tail
+	local label = Instance.new("TextLabel")
+	label.Name = spec.Name
+	label.BackgroundTransparency = 1
+	label.Text = trailText
+	label.TextColor3 = FLOAT.TrailMultiplierColor
+	label.FontFace = amountLabel.FontFace
+	label.TextScaled = true
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.TextYAlignment = Enum.TextYAlignment.Center
+	label.TextTransparency = amountLabel.TextTransparency
+	label.AnchorPoint = Vector2.new(0, 0.5)
+	label.ZIndex = amountLabel.ZIndex + 1
+	local stroke = amountLabel:FindFirstChildOfClass("UIStroke")
+	if stroke then
+		stroke:Clone().Parent = label
+	end
+	local ratio = textWidth(amountLabel, head) / math.max(textWidth(amountLabel, amountLabel.Text), 1)
+	local function layout()
+		local size = amountLabel.AbsoluteSize
+		local bounds = amountLabel.TextBounds
+		if size.X <= 0 or size.Y <= 0 then
+			size = Vector2.new(100, 100) -- pas encore à l'écran : en proportions seulement
+			bounds = size
+		elseif bounds.X <= 0 or bounds.Y <= 0 then
+			bounds = size -- avant le premier rendu : le texte remplit le cadre (TextScaled)
+		end
+		local alignX = amountLabel.TextXAlignment
+		local left = if alignX == Enum.TextXAlignment.Left
+			then 0
+			elseif alignX == Enum.TextXAlignment.Right then size.X - bounds.X
+			else (size.X - bounds.X) / 2
+		local alignY = amountLabel.TextYAlignment
+		local top = if alignY == Enum.TextYAlignment.Top
+			then 0
+			elseif alignY == Enum.TextYAlignment.Bottom then size.Y - bounds.Y
+			else (size.Y - bounds.Y) / 2
+		local height = spec.Size * bounds.Y
+		label.Position = UDim2.fromScale((left + ratio * bounds.X) / size.X, (top + spec.Raise * bounds.Y) / size.Y)
+		label.Size = UDim2.fromScale(height * 3 / size.X, height / size.Y)
+	end
+	layout()
+	pcall(function() -- liens coupés quand la copie du billboard est détruite
+		amountLabel:GetPropertyChangedSignal("TextBounds"):Connect(layout)
+		amountLabel:GetPropertyChangedSignal("AbsoluteSize"):Connect(layout)
+	end)
+	label.Parent = amountLabel
+	return label
+end
+
 -- `info` et `text` (vague 59, morceaux du tapis) : une autre montée et un autre texte que FloatGain et kind.Text.
 local function floatGain(kind: Kind, amount: number, info: TweenInfo?, text: string?)
 	local root = rootPart()
@@ -261,6 +335,7 @@ local function floatGain(kind: Kind, amount: number, info: TweenInfo?, text: str
 		multiplierLabel.Text = trailText or ""
 		multiplierLabel.Visible = trailText ~= nil
 	end
+	local exponentLabel: TextLabel? = nil -- a196 : le « ×2 » du code, sans Row.Multiplier
 	-- L-092 3e : un seul BB_Gain ; la copie dit sa sorte (GainKind) et Amount prend sa couleur.
 	billboard:SetAttribute(FLOAT.KindAttribute, kind.Name)
 	if amountLabel then
@@ -275,14 +350,24 @@ local function floatGain(kind: Kind, amount: number, info: TweenInfo?, text: str
 			amountLabel.TextColor3 = color
 		end
 		if trailText and multiplierLabel == nil then
-			-- a178 (Cantin, 15/11) : en exposant, juste après le nombre (« +1ˣ² Speed/s »), en caractères
-			-- Unicode en exposant (un BillboardGui ne sait pas monter un texte au-dessus de la ligne).
-			amountLabel.RichText = true
-			local hex = (FLOAT.TrailMultiplierColor :: Color3):ToHex()
 			local text = amountLabel.Text
 			local cut = string.find(text, " ", 1, true) or (#text + 1)
-			local sup = `<font color="#{hex}">{GainController.Superscript(trailText)}</font>`
-			amountLabel.Text = string.sub(text, 1, cut - 1) .. sup .. string.sub(text, cut)
+			-- a196 (Cantin, T-097) : plus haut, au coin haut droit du nombre (petit TextLabel du code) ; en cas
+			-- d'erreur, l'exposant Unicode d'a178.
+			local ok: boolean, made: any = false, nil
+			if FLOAT.TrailExponent.Mode == "Label" then
+				ok, made = pcall(addExponent, amountLabel, string.sub(text, 1, cut - 1), string.sub(text, cut), trailText)
+			end
+			if ok then
+				exponentLabel = made
+			else
+				-- a178 (Cantin, 15/11) : en exposant, juste après le nombre (« +1ˣ² Speed/s »), en caractères
+				-- Unicode en exposant (un BillboardGui ne sait pas monter un texte au-dessus de la ligne).
+				amountLabel.RichText = true
+				local hex = (FLOAT.TrailMultiplierColor :: Color3):ToHex()
+				local sup = `<font color="#{hex}">{GainController.Superscript(trailText)}</font>`
+				amountLabel.Text = string.sub(text, 1, cut - 1) .. sup .. string.sub(text, cut)
+			end
 		end
 	end
 	-- Vague 24 : l'icône posée par Clément sur BB_Gain (attribut <Sorte>Icon, rbxassetid) passe avant
@@ -312,6 +397,9 @@ local function floatGain(kind: Kind, amount: number, info: TweenInfo?, text: str
 	end
 	if multiplierLabel then
 		table.insert(fades, { object = multiplierLabel :: Instance, property = "TextTransparency", from = multiplierLabel.TextTransparency })
+	end
+	if exponentLabel then
+		table.insert(fades, { object = exponentLabel :: Instance, property = "TextTransparency", from = exponentLabel.TextTransparency })
 	end
 	for _, descendant in billboard:GetDescendants() do
 		if descendant:IsA("UIStroke") then

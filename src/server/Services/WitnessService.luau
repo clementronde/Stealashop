@@ -44,7 +44,7 @@
 --      retirés du jeu (Parent = nil) ; à l'aube, remis où ils étaient, et la balade reprend.
 --   7. Le témoin qui filme la casse (Clément, L-172 ; valeurs : Witness.Photo ; Photo.Enabled = false :
 --      l'ancien déroulé ci-dessus) :
---      a. au premier coup (point 2), au lieu de regarder sur place, il marche (Walk, Photo.ApproachSpeed)
+--      a. au premier coup (point 2), au lieu de regarder sur place, il marche (Walk, Photo.ApproachSpeed, plus vite s'il est loin : a196)
 --         jusqu'à son poste : Photo.Distance studs devant la vitrine (du côté où il est ; normale de la vitre
 --         Window, sinon la ligne vitrine → témoin), décalé de Photo.SideOffset studs sur le côté (témoin
 --         impair à droite, pair à gauche). Arrivé ou bloqué Witness.StuckTime s : il se tourne et joue Look.
@@ -411,8 +411,20 @@ local function photoSpot(w: WitnessNpc, store: Model): Vector3
 	return Vector3.new(spot.X, position.Y, spot.Z)
 end
 
+-- a196 (Cantin, T-087) : vitesse de l'approche, pour être au poste Photo.ApproachLead s avant que le « ? » soit
+-- plein (`timeLeft` s), entre Photo.ApproachSpeed et Photo.ApproachMaxSpeed ; la marche (Walk) suit ce pas.
+local function setApproachSpeed(w: WitnessNpc, timeLeft: number)
+	local distance = flat(w.approachGoal - w.root.Position).Magnitude
+	local time = timeLeft - PHOTO.ApproachLead
+	local wanted = if time > 0 then distance / time else math.huge
+	local speed = math.clamp(wanted, PHOTO.ApproachSpeed, math.max(PHOTO.ApproachMaxSpeed, PHOTO.ApproachSpeed))
+	w.humanoid.WalkSpeed = speed
+	local gait = math.clamp(w.gait * speed / Witness.WalkSpeed, Witness.WalkAnimMin, Witness.WalkAnimMax)
+	w.anims:Play("Walk", nil, nil, gait) -- déjà jouée : seule sa vitesse change (AnimPlayer)
+end
+
 -- Il s'arrête, se tourne vers la vitrine et regarde. L-172 : il marche d'abord jusqu'à son poste.
-local function startWatch(w: WitnessNpc, now: number)
+local function startWatch(w: WitnessNpc, now: number, timeLeft: number)
 	stopWalking(w)
 	local store = w.store
 	if PHOTO.Enabled and store then
@@ -423,11 +435,9 @@ local function startWatch(w: WitnessNpc, now: number)
 			w.progressPos = w.root.Position
 			w.progressAt = now
 			w.nextMoveAt = now + Witness.MoveRefresh
-			w.humanoid.WalkSpeed = PHOTO.ApproachSpeed
 			w.humanoid:MoveTo(spot)
 			w.walking = true
-			local gait = math.clamp(w.gait * PHOTO.ApproachSpeed / Witness.WalkSpeed, Witness.WalkAnimMin, Witness.WalkAnimMax)
-			w.anims:Play("Walk", nil, nil, gait)
+			setApproachSpeed(w, timeLeft) -- a196
 			return
 		end
 	end
@@ -457,6 +467,7 @@ local function approachStep(w: WitnessNpc, now: number)
 	if now >= w.nextMoveAt then
 		w.nextMoveAt = now + Witness.MoveRefresh
 		w.humanoid:MoveTo(w.approachGoal)
+		setApproachSpeed(w, WitnessGauge.timeLeft(valueNow(w, now), w.rate)) -- a196 : le pas suit le « ? »
 	end
 end
 
@@ -482,7 +493,7 @@ local function raise(w: WitnessNpc, suspect: Player?, fillTime: number, now: num
 	end
 	local value = valueNow(w, now)
 	if w.state == "Stroll" then
-		startWatch(w, now)
+		startWatch(w, now, WitnessGauge.timeLeft(value, rate))
 		log(`{w.label} regarde {if w.store then w.store.Name else "?"}`)
 	end
 	w.pausedAt = 0

@@ -185,6 +185,16 @@ local UiMotion = {
 		-- Vague 47 (a155) : couleur du « ×2 » du trail ajouté à Row.Amount quand BB_Gain n'a pas
 		-- Row.Multiplier. V0 proposé, absent du doc ; Clément choisira dans son élément.
 		TrailMultiplierColor = Color3.fromHex("FFD84D"),
+		-- Vague 60 (a196, Cantin, T-097) : sans Row.Multiplier, le « ×2 » est un petit TextLabel (Name) créé par le
+		-- code dans Row.Amount, posé au coin haut droit du nombre (V0 proposés, absents du doc) : hauteur Size × celle
+		-- du texte, centre à Raise × la hauteur du texte depuis son haut ; Row.Amount garde un blanc à sa place.
+		-- Mode = "Unicode" : l'exposant Unicode d'a178 (« +1ˣ² Speed/s »).
+		TrailExponent = {
+			Mode = "Label",
+			Name = "TrailExponent",
+			Size = 0.55,
+			Raise = 0.15,
+		},
 	},
 	-- Case qui vole vers l'argent (UI_HUD.CashFly.Template, GainController).
 	CashFly = {
