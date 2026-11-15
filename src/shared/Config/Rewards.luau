@@ -9,7 +9,7 @@
 --   V0      V0 proposé, absent du doc.
 -- Unités : minutes pour les récompenses et les paliers (comme le doc), secondes ailleurs.
 --
--- Le coffre hebdomadaire (3.3) reste pour la MAJ 1 : pas d'onglet dans UI_Rewards, rien ici.
+-- Coffre hebdomadaire (3.3, MAJ 1 ; agent a166) : Weekly ci-dessous, coupé par Features.WeeklyChest.
 
 local DeepFreeze = require(script.Parent.DeepFreeze)
 
@@ -72,6 +72,22 @@ local Rewards = {
 	-- repart à J1.
 	BackPerMissedDay = 1,
 
+	-- Coffre hebdomadaire (3.3 ; agent a166, MAJ 1), coupé par Features.WeeklyChest. Semaine = du lundi
+	-- 00:00 UTC au dimanche (V0 : UTC, comme le calendrier) ; son numéro = (jour UTC + MondayOffset) // 7.
+	Weekly = {
+		DaysNeeded = 5, -- 3.3 : 5 jours de connexion différents entre lundi et dimanche
+		MondayOffset = 3, -- le jour UTC 0 (1/1/1970) était un jeudi : jour + 3 tombe sur un multiple de 7 le lundi
+		-- 3.3 : « 1 colis Luxe » ; depuis le 14/11 (Cantin, vague 43) un objet tiré comme un colis Luxe
+		-- (UnboxService.GiveItem). V0 : zone 2 au moins, comme J7 (la zone 1 n'a que des Communs, L-033).
+		Reward = { Kind = "Box", Tier = "Luxe", MinZone = 2 } :: Reward,
+		-- 3.3 : « l'aura ou le trail exclusif de la semaine ». [date du lundi en UTC, « 2026-12-21 »] = Id de
+		-- Config/Cosmetics (aura ou trail). Vide en V0 : seulement l'objet tant que Clément n'a rien livré.
+		Exclusives = {} :: { [string]: string },
+		-- Studio seulement : workspace:SetAttribute(TestAttribute, true) allume le coffre (Features.WeeklyChest
+		-- à false) ; RewardTest « weekly <joueur> <jours> » pose les jours comptés de la semaine.
+		TestAttribute = "WeeklyChestTest",
+	},
+
 	-- V0 : cadence (s) du compte du temps de jeu et de la remise à zéro de minuit (serveur).
 	Tick = 1,
 
@@ -82,12 +98,17 @@ local Rewards = {
 		DayEndsAt = "RewardDayEndsAt", -- heure serveur (GetServerTimeNow) du prochain minuit UTC
 		PlayStart = "RewardPlayStart", -- heure serveur où le temps de jeu du jour vaudrait 0 (jeu = maintenant − PlayStart)
 		PlayClaimed = "RewardPlayClaimed", -- paliers réclamés aujourd'hui, en minutes : « 5,15 » (vide : aucun)
+		-- Coffre hebdomadaire (a166) : absents (nil) quand le coffre est coupé.
+		WeeklyDays = "RewardWeeklyDays", -- jours de connexion comptés cette semaine (0 à 7)
+		WeeklyClaimed = "RewardWeeklyClaimed", -- true : le coffre de cette semaine est réclamé
+		WeekEndsAt = "RewardWeekEndsAt", -- heure serveur (GetServerTimeNow) du prochain lundi 00:00 UTC
 	},
 
 	-- Studio seulement (RewardService) : workspace:SetAttribute(TestAttribute, …), barre de commande serveur :
 	--   « days <n> »               avance l'horloge des récompenses de n jours (tout le serveur) ;
 	--   « play <joueur> <secondes> » ajoute ce temps de jeu à la journée du joueur ;
-	--   « reset <joueur> »         remet ses récompenses à zéro (calendrier et temps de jeu).
+	--   « reset <joueur> »         remet ses récompenses à zéro (calendrier, temps de jeu, coffre) ;
+	--   « weekly <joueur> <jours> » pose les jours comptés de sa semaine (coffre allumé seulement).
 	TestAttribute = "RewardTest",
 
 	-- Messages au joueur (Notify), en anglais (L-036). V0 proposés, absents du doc.
@@ -101,6 +122,10 @@ local Rewards = {
 		NotYet = "Keep playing to unlock this gift.",
 		BoxesFull = "Too many boxes in your inventory: open some, then claim your gift.",
 		Unavailable = "This gift can't be given right now. Try again later.",
+		-- Coffre hebdomadaire (a166), V0 :
+		WeeklyNotYet = "Play on %d different days this week to open the chest.", -- %d = Weekly.DaysNeeded
+		WeeklyAlreadyClaimed = "Weekly chest already opened. Come back on Monday!",
+		WeeklyExclusive = "Weekly exclusive: %s!", -- %s = le nom de l'aura ou du trail (Config/Cosmetics)
 	},
 }
 
