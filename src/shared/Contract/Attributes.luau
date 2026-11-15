@@ -20,6 +20,9 @@ local Attributes = {
 	-- fois, égal au numéro écrit sur la parcelle (« Parcelle 2 » = 2). Ajouté le 2026-11-06
 	-- (liaison L-015 et L-017).
 	PlotIndex = { Name = "PlotIndex", Min = 1, Max = 8 },
+	-- Ordre d'attribution d'une parcelle PlayerPlot (L-174, 2026-11-15) : entier de 1 à 8, 1 = la
+	-- plus en face du point d'arrivée, donnée au premier joueur. Facultatif (sans lui : ordre des PlotIndex).
+	AssignOrder = { Name = "AssignOrder", Min = 1, Max = 8 },
 }
 
 return Attributes

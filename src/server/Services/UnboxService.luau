@@ -272,7 +272,7 @@ local MESSAGES = {
 	ItemLocked = "Anti-theft still on: wait until it's UNLOCKED!",
 	ItemHeld = "This item is being stolen: hit the thief to get it back!",
 	-- %s = nom de l'objet (mutation devant)
-	ItemUnlocked = "%s is UNLOCKED! Put it on a display.",
+	ItemUnlocked = "%s is UNLOCKED! Take your item!",
 	-- Vague 44 (a152), V0 proposés, absents du doc : l'objet repris après l'antivol (jamais posé tout seul).
 	ItemToHand = "%s is in your hand: put it on a display!",
 	ItemToInventory = "%s is in your inventory.",

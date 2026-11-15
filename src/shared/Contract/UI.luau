@@ -931,4 +931,20 @@ table.insert(UI.Screens, {
 	} :: { Element },
 })
 
+-- Panneau du voleur devant la boutique d'un autre joueur (L-169 Q6, livré par Clément le 2026-11-15) :
+-- copié par PvPController. OwnerName (« Alice's Shop »), Income, HP (« 7/40 », dans HPLine avec HPIcon),
+-- Status (pastille « LOCKED 23s », « OPEN », « ROB AGAIN IN 42s », cachée quand il n'y a rien à dire).
+-- Panel, HPLine et HPIcon sont du décor. Facultatif : sans lui, un panneau V0 gris.
+table.insert(UI.Billboards, {
+	Name = "BB_ShopInfo",
+	Class = "BillboardGui",
+	Optional = true,
+	Elements = {
+		{ Path = "OwnerName", Class = "TextLabel" },
+		{ Path = "Income", Class = "TextLabel" },
+		{ Path = "HP", Class = "TextLabel" },
+		{ Path = "Status", Class = "GuiObject" },
+	} :: { Element },
+})
+
 return UI
