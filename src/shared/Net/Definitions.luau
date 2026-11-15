@@ -687,6 +687,17 @@ local List: { RemoteDef } = {
 		Args = { id("itemUid") },
 		RatePerSecond = 4, -- V0 proposé, absent du doc
 	},
+	{
+		-- Vague 51 (a164, DEV-120), absent du tableau 9.4 : le joueur confirme sa renaissance (2e appui sur
+		-- UI_Rebirth.ConfirmButton, RebirthController). level = la renaissance confirmée (faites + 1) : une
+		-- demande en retard ou en double est ignorée. RebirthService revérifie tout (Features.Rebirth, argent,
+		-- objet requis, rien au sol, rien de porté ni de volé) ; coupé, le remote est ignoré.
+		Name = "Rebirth",
+		Direction = "ClientToServer",
+		Reliable = true,
+		Args = { { Name = "level", Kind = "int", Min = 1, Max = 1000 } },
+		RatePerSecond = 1, -- V0 proposé, absent du doc
+	},
 }
 
 return {

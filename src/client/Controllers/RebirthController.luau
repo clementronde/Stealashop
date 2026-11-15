@@ -30,6 +30,18 @@
 --       ConfirmButton  reste dans l'état Disabled (Ready et Confirm cachés) ; un clic ne fait rien
 --       Hint           HINT_TEXT (« Coming soon ») à la place de « Tap twice to confirm »
 --     Les textes de l'argent suivent l'attribut Cash tant que l'écran est ouvert.
+-- Vague 51 (a164, DEV-120 ; RebirthService) : renaissance ouverte = l'attribut Rebirths (renaissances
+-- faites) posé par le serveur sur le Player, seulement avec Features.Rebirth (ou RebirthTest en Studio).
+-- Sans lui, l'aperçu ci-dessus, inchangé. Avec lui :
+--       Level          « Level n → n+1 » (n = Rebirths) ; argent, objet et récompense du palier n+1
+--       Status         OWNED_TEXT si l'attribut RebirthItemOwned est vrai, sinon le texte de Clément
+--       ConfirmButton  confirmation en 2 temps (L-047) : Disabled tant qu'il manque l'argent (attribut Cash)
+--                      ou l'objet ; Ready sinon ; un appui → Confirm pendant CONFIRM_WINDOW s ; un 2e appui
+--                      envoie Rebirth(n+1) au serveur, qui décide tout (refus : un Notify)
+--       Hint           texte de Clément en Ready, HINT_CONFIRM en Confirm, HINT_LOCKED en Disabled
+--       KeepList.Row1  KEEP_TEXT (les 3 objets qui rapportent le plus sont gardés : le choix de Clément est
+--                      retiré, L-158) ; les autres lignes des colonnes gardent leurs textes
+--     L'écran se ferme quand Rebirths monte (renaissance faite).
 -- Textes en capitales si le texte d'exemple de Clément l'est (« INSTANT NOODLES », « RARE »), comme
 -- dans les boutiques. Éléments cherchés par leur nom parmi les descendants (Contract/Find) ; un
 -- élément absent est sauté (le ContractChecker le signale). Seuls sont touchés : Enabled de l'écran,
@@ -61,6 +73,9 @@ type Screen = {
 	fill: GuiObject?, -- CashBar.Fill
 	fillSize: UDim2, -- taille de Fill posée par Clément : seule la largeur en Scale change
 	connections: { RBXScriptConnection },
+	-- Textes de Clément relevés au branchement, remis quand l'état change (vague 51).
+	statusText: string?,
+	hintText: string?,
 }
 
 local SCREEN = "UI_Rebirth"
@@ -68,8 +83,18 @@ local HUD = "UI_HUD"
 local HUD_BUTTON = "RebirthButton"
 local CASH_ATTRIBUTE = "Cash" -- posé par DataService sur le Player
 
--- Aucune renaissance n'est codée (DEV-120, MAJ 3) : tous les joueurs sont au niveau 0.
-local CURRENT_LEVEL = 0
+-- Aperçu (renaissance coupée) : tous les joueurs sont au niveau 0.
+local PREVIEW_LEVEL = 0
+-- Vague 51 : attributs posés par RebirthService quand la renaissance est ouverte.
+local COUNT_ATTRIBUTE = "Rebirths"
+local OWNED_ATTRIBUTE = "RebirthItemOwned"
+-- V0 proposés, absents du doc : textes et délai de la confirmation en 2 temps, ligne de la colonne Keep.
+local CONFIRM_WINDOW = 4 -- s pendant lesquelles le 2e appui confirme
+local OWNED_TEXT = "Owned!"
+local HINT_CONFIRM = "Tap again to rebirth"
+local HINT_LOCKED = "Get the cash and the item first"
+local KEEP_ROW = "KeepList.Row1.RowLabel"
+local KEEP_TEXT = "Your 3 best items"
 
 -- V0 proposés, absents du doc : textes de l'écran, en anglais (L-036).
 local LEVEL_TEXT = "Level %d → %d" -- niveau actuel, niveau suivant
@@ -80,12 +105,8 @@ local UNKNOWN_TEXT = "…" -- argent pas encore posé par le serveur (comme le H
 -- montre la récompense propre au palier, et le TextLabel de chaque ligne.
 local TIER_ROW = "Row2"
 local ROW_LABEL = "RowLabel"
--- États du bouton en 2 temps (L-047) : seul Disabled est montré tant que la renaissance n'est pas codée.
-local BUTTON_STATES: { { Name: string, Shown: boolean } } = {
-	{ Name = "Disabled", Shown = true },
-	{ Name = "Ready", Shown = false },
-	{ Name = "Confirm", Shown = false },
-}
+-- États du bouton en 2 temps (L-047), un seul visible : Disabled seul en aperçu.
+local BUTTON_STATES = { "Disabled", "Ready", "Confirm" }
 
 local IS_STUDIO = RunService:IsStudio()
 
@@ -95,6 +116,8 @@ local localPlayer = Players.LocalPlayer
 local screen: Screen? = nil
 local isOpen = false
 local reported: { [string]: boolean } = {}
+local armedUntil = 0 -- os.clock() de fin de la confirmation en cours (0 : aucune)
+local net: any = nil -- Shared/Net, chargé au premier envoi
 
 -- Une ligne de sortie par sujet, en Studio seulement.
 local function reportOnce(key: string, message: string)
@@ -145,8 +168,32 @@ end
 
 -- Écran -----------------------------------------------------------------------------------------
 
+-- Renaissances faites (attribut du serveur), nil en aperçu.
+local function liveCount(): number?
+	local value = localPlayer:GetAttribute(COUNT_ATTRIBUTE)
+	if type(value) == "number" and value == value and value >= 0 and value < math.huge then
+		return math.floor(value)
+	end
+	return nil
+end
+
+local function currentLevel(): number
+	return liveCount() or PREVIEW_LEVEL
+end
+
 local function nextTier(): Rebirths.Tier?
-	return Rebirths.Get(CURRENT_LEVEL + 1)
+	return Rebirths.Get(currentLevel() + 1)
+end
+
+-- La renaissance ouverte et possible d'après ce que le client voit (le serveur revérifie tout).
+local function canRebirth(): boolean
+	local tier = nextTier()
+	local cash = cashOf()
+	return liveCount() ~= nil and tier ~= nil and cash ~= nil and cash >= tier.Cash and localPlayer:GetAttribute(OWNED_ATTRIBUTE) == true
+end
+
+local function isArmed(): boolean
+	return armedUntil > 0 and os.clock() < armedUntil
 end
 
 -- Argent : CashAmount, CashLabel et la largeur de CashBar.Fill.
@@ -176,7 +223,7 @@ local function refresh(current: Screen)
 	if tier == nil then
 		return
 	end
-	setText(gui, "Level", string.format(LEVEL_TEXT, CURRENT_LEVEL, tier.Level))
+	setText(gui, "Level", string.format(LEVEL_TEXT, currentLevel(), tier.Level))
 	refreshCash(current)
 
 	local item = Items.ById[tier.ItemId]
@@ -194,13 +241,61 @@ local function refresh(current: Screen)
 	end
 	setText(gui, `GainList.{TIER_ROW}.{ROW_LABEL}`, tier.RewardText)
 
+	local live = liveCount() ~= nil
+	local shown = "Disabled"
+	local hint = HINT_TEXT
+	if live then
+		local status = if localPlayer:GetAttribute(OWNED_ATTRIBUTE) == true then OWNED_TEXT else current.statusText
+		if status then
+			setText(gui, "ItemRequirement.Status", status)
+		end
+		setText(gui, KEEP_ROW, KEEP_TEXT)
+		if not canRebirth() then
+			armedUntil = 0
+			hint = HINT_LOCKED
+		elseif isArmed() then
+			shown, hint = "Confirm", HINT_CONFIRM
+		else
+			armedUntil = 0
+			shown, hint = "Ready", current.hintText or HINT_TEXT
+		end
+	end
 	local button = Find.path(gui, "ConfirmButton")
 	if button then
 		for _, state in BUTTON_STATES do
-			setVisible(guiObject(button, state.Name), state.Shown)
+			setVisible(guiObject(button, state), state == shown)
 		end
 	end
-	setText(gui, "Hint", HINT_TEXT)
+	setText(gui, "Hint", hint)
+end
+
+-- Appui sur ConfirmButton : rien en aperçu ou sans les conditions ; Ready → Confirm ; Confirm → envoi.
+local function onConfirm()
+	local current = screen
+	if current == nil or liveCount() == nil or not canRebirth() then
+		return
+	end
+	if not isArmed() then
+		armedUntil = os.clock() + CONFIRM_WINDOW
+		refresh(current)
+		task.delay(CONFIRM_WINDOW, function()
+			local now = screen
+			if now and now.gui.Parent ~= nil and armedUntil > 0 and not isArmed() then
+				armedUntil = 0
+				refresh(now)
+			end
+		end)
+		return
+	end
+	armedUntil = 0
+	local tier = nextTier()
+	if tier then
+		if net == nil then
+			net = require(Shared:WaitForChild("Net"):WaitForChild("Net")) :: any
+		end
+		net.Client.Rebirth:Fire(tier.Level)
+	end
+	refresh(current)
 end
 
 local function close()
@@ -223,11 +318,27 @@ local function bind(gui: ScreenGui)
 	Motion.SetCloser(gui, close) -- un autre écran du groupe ScreenGroup s'ouvre (L-089)
 
 	local fill = guiObject(gui, "CashRequirement.CashBar.Fill")
-	local current: Screen = { gui = gui, fill = fill, fillSize = if fill then fill.Size else UDim2.new(), connections = {} }
+	local function textOf(path: string): string?
+		local found = Find.path(gui, path)
+		return if found and (found:IsA("TextLabel") or found:IsA("TextButton")) then (found :: any).Text else nil
+	end
+	local current: Screen = {
+		gui = gui,
+		fill = fill,
+		fillSize = if fill then fill.Size else UDim2.new(),
+		connections = {},
+		statusText = textOf("ItemRequirement.Status"),
+		hintText = textOf("Hint"),
+	}
 	screen = current
+	armedUntil = 0
 	local closeButton = Find.path(gui, "CloseButton")
 	if closeButton and closeButton:IsA("GuiButton") then
 		table.insert(current.connections, (closeButton :: GuiButton).Activated:Connect(close))
+	end
+	local confirmButton = Find.path(gui, "ConfirmButton")
+	if confirmButton and confirmButton:IsA("GuiButton") then
+		table.insert(current.connections, (confirmButton :: GuiButton).Activated:Connect(onConfirm))
 	end
 	refresh(current)
 end
@@ -297,7 +408,32 @@ function RebirthController.Start()
 	localPlayer:GetAttributeChangedSignal(CASH_ATTRIBUTE):Connect(function()
 		local current = screen
 		if isOpen and current and current.gui.Parent ~= nil then
-			refreshCash(current)
+			if liveCount() ~= nil then
+				refresh(current) -- l'argent change aussi l'état du bouton
+			else
+				refreshCash(current)
+			end
+		end
+	end)
+	-- Vague 51 : renaissance ouverte ou faite, objet requis trouvé ou perdu (RebirthService).
+	local lastCount = liveCount()
+	localPlayer:GetAttributeChangedSignal(COUNT_ATTRIBUTE):Connect(function()
+		local count = liveCount()
+		local done = count ~= nil and lastCount ~= nil and count > lastCount
+		lastCount = count
+		armedUntil = 0
+		local current = screen
+		if current and current.gui.Parent ~= nil then
+			refresh(current)
+			if done and isOpen then
+				close() -- renaissance faite
+			end
+		end
+	end)
+	localPlayer:GetAttributeChangedSignal(OWNED_ATTRIBUTE):Connect(function()
+		local current = screen
+		if current and current.gui.Parent ~= nil then
+			refresh(current)
 		end
 	end)
 
