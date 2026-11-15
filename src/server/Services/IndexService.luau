@@ -18,35 +18,33 @@
 --     Tout autre code qui ajoute un objet à Items (récompense, échange…) appelle IndexService.Discover.
 --   - envoi au client : attribut Index.Attribute (« IndexDiscovered ») du Player, posé au chargement
 --     puis à chaque découverte : les ItemId découverts, dans l'ordre du catalogue, séparés par des
---     virgules (Index.Encode). Rien n'est lu du client : aucun remote.
---   - récompense (doc 3.4) : chaque zone complète (tous ses objets ; les Secrets n'appartiennent à
---     aucune zone) donne Index.ZoneBonus (+5 %) de revenus permanents, compté d'après l'Index
---     sauvegardé. Bonus en pour cent : il s'additionne aux autres (Roblox Premium…) par l'accroche
---     DisplayService.GetIncomeBonus (Partie 2, section 4 : les % s'additionnent, les ×2 se
---     multiplient).
---   - récompense en plus (Clément, 2026-11-10, liaison L-083 point 7, à la place de l'aura
---     « Collectionneur » de l'index complet) : chaque zone complète donne aussi
---       * une prime unique Index.ZoneCash(zone) (DataService.AddCash), une seule fois par zone et par
---         joueur, QUAND IL LA RÉCLAME (L-127 point 2, vague 34 : avant, elle était versée toute seule) :
---         remote ClaimIndexReward(zone) depuis Rewards.ClaimButton de UI_Index_v3 (la zone visible), ou
---         ClaimIndexReward() sans zone depuis UnlockedBar.ClaimAllButton (toutes les zones complètes pas
---         encore réclamées, en une demande). Le serveur revérifie tout d'après le profil (index ouvert,
---         zone complète, pas déjà réclamée) ; profil IndexRewards[« zone »] = os.time() de la
---         réclamation, noté avant le don (jamais deux fois, même pour deux demandes d'affilée : sans
---         yield) ; télémétrie LogEconomy « IndexReward », SKU IndexZone<n>. Les primes versées avant
---         (entrées déjà dans IndexRewards) restent versées. Rien à réclamer : rien ne change (l'attribut
---         est reposé pour remettre le client d'accord). Attribut Index.ClaimedAttribute
---         (« IndexClaimed ») du Player : les zones réclamées, « 1,3 » (Index.EncodeZones), posé au
---         chargement et à chaque réclamation ; le client en tire les pastilles « ! » ;
---       * +Index.ZoneSpeedBonus (+3 %) de WalkSpeed permanent par zone complète : modificateur
---         « Index » de StatsService (Index.SpeedMultiplier), donc connu de l'anti-triche, qui lit
---         Humanoid.WalkSpeed ; posé au chargement et à la complétion, gardé à la réapparition. Il ne
---         se réclame pas (comme les +5 % de revenus).
---     Notify (MESSAGES.ZoneComplete, « Info ») et vitesse au moment où la zone se complète. Sa prime
---     attend d'être réclamée.
+--     virgules (Index.Encode). Rien n'est lu du client, sauf la réclamation (plus bas).
+--   - récompense d'une zone complète (tous ses objets ; les Secrets n'appartiennent à aucune zone).
+--     Vague 59 (a191, décision de Clément du 2026-11-15, L-183) : des valeurs FIXES de
+--     Index.ZoneRewards[zone], une seule fois par zone et par joueur, QUAND IL LA RÉCLAME (L-127 point 2) :
+--       * la prime Cash (DataService.AddCash ; télémétrie LogEconomy « IndexReward », SKU IndexZone<n>) ;
+--       * Speed points de Vitesse ajoutés à la stat du tapis (StatsService.AddSpeed) ;
+--       * l'objet Item : une arme (ToolService.Grant) ou une aura ou un trail (CosmeticService.Grant), ajouté
+--         aux possédés sans être équipé ; déjà possédé : rien de plus.
+--     Les anciens bonus en pour cent (+5 % de revenus et +3 % de vitesse par zone complète, comptés en
+--     direct d'après l'Index, rien dans le profil) n'existent plus, pour personne : ils sont échangés contre
+--     la nouvelle récompense. Choix le plus sûr : rien n'est versé deux fois et rien de ce qui est dans le
+--     profil n'est repris. Une zone déjà réclamée avant (entrée dans IndexRewards, prime d'argent déjà
+--     versée) reçoit au chargement suivant la Vitesse et l'objet seulement, sans nouvelle prime.
+--     Remote ClaimIndexReward(zone) depuis le bouton de réclamation de l'écran (la zone affichée), ou
+--     ClaimIndexReward() sans zone (UnlockedBar.ClaimAllButton de la v3 : toutes les zones complètes pas
+--     encore réclamées, en une demande). Le serveur revérifie tout d'après le profil (index ouvert, zone
+--     complète, pas déjà réclamée). Profil : IndexRewards[« zone »] = os.time() de la réclamation (la prime
+--     d'argent) et IndexGifts[« zone »] = os.time() du don de la Vitesse et de l'objet, notés avant le don
+--     (jamais deux fois, même pour deux demandes d'affilée : sans yield). Rien à réclamer : rien ne change
+--     (l'attribut est reposé pour remettre le client d'accord). Attribut Index.ClaimedAttribute
+--     (« IndexClaimed ») du Player : les zones réclamées, « 1,3 » (Index.EncodeZones), posé au chargement et
+--     à chaque réclamation ; le client en tire les pastilles « ! ».
+--     Notify (MESSAGES.ZoneComplete, « Info ») au moment où la zone se complète : la récompense attend
+--     d'être réclamée.
 -- Features.Index à false (MAJ 2 pas ouverte) : les découvertes sont notées et l'attribut posé quand
--- même (rien n'est perdu à l'ouverture), mais ni bonus de revenus, ni prime (réclamation refusée), ni
--- vitesse, ni message.
+-- même (rien n'est perdu à l'ouverture), mais ni récompense (réclamation refusée, rien donné au
+-- chargement), ni message.
 --
 -- API (côté serveur) :
 --   IndexService.Discover(player, itemId) -> boolean
@@ -54,16 +52,10 @@
 --       du catalogue ou profil pas chargé. Sans yield.
 --   IndexService.IsDiscovered(player, itemId) -> boolean
 --   IndexService.GetCompletedZones(player) -> { number }   zones complètes, dans l'ordre
---   IndexService.GetIncomeBonus(player) -> number
---       Bonus de revenus de l'index appliqué, en fraction (0,05 par zone complète) ; 0 si
---       Features.Index est coupé ou si le profil n'est pas chargé.
---   IndexService.GetSpeedMultiplier(player) -> number
---       Multiplicateur de WalkSpeed de l'index appliqué (1,03 par zone complète, 1 sans) ; 1 si
---       Features.Index est coupé ou si le profil n'est pas chargé.
---   IndexService.GetClaimableZones(player) -> { number }   zones complètes dont la prime attend
+--   IndexService.GetClaimableZones(player) -> { number }   zones complètes dont la récompense attend
 --   IndexService.Claim(player, zone?) -> number
---       Ce que fait le remote ClaimIndexReward : réclame la prime de `zone` (nil = toutes les zones
---       complètes pas encore réclamées) ; renvoie le nombre de primes versées (0 : refus). Sans yield.
+--       Ce que fait le remote ClaimIndexReward : réclame la récompense de `zone` (nil = toutes les zones
+--       complètes pas encore réclamées) ; renvoie le nombre de récompenses versées (0 : refus). Sans yield.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -71,14 +63,12 @@ local RunService = game:GetService("RunService")
 
 local Shared = ReplicatedStorage.Shared
 local Features = require(Shared.Config.Features)
-local Format = require(Shared.Format)
 local Index = require(Shared.Config.Index)
 local Items = require(Shared.Config.Items)
 local Net = require(Shared.Net.Net)
 local ProfileTypes = require(Shared.Types.Profile)
 
 local DataService = require(script.Parent.DataService)
-local DisplayService = require(script.Parent.DisplayService)
 local PvPService = require(script.Parent.PvPService)
 local StatsService = require(script.Parent.StatsService)
 local TelemetryService = require(script.Parent.TelemetryService)
@@ -88,13 +78,10 @@ type Data = ProfileTypes.Data
 local IS_STUDIO = RunService:IsStudio()
 
 -- Messages lus par le joueur (Notify), en anglais (L-036). V0 proposé, absent du doc : %d = numéro de
--- la zone (celui des arches, « ZONE 3 »), vitesse et revenus en pour cent, puis la prime à réclamer
--- (Format.money ; L-127 point 2 : elle n'est plus versée toute seule).
+-- la zone (celui des arches, « ZONE 3 »), %s = la récompense à réclamer (Index.ZoneRewardText).
 local MESSAGES = {
-	ZoneComplete = "Index: Zone %d complete! +%d%% speed and +%d%% income forever. Claim your %s in the Index!",
+	ZoneComplete = "Index: Zone %d complete! Claim %s in the Index!",
 }
--- Clé du modificateur de vitesse de l'index dans StatsService.
-local SPEED_KEY = "Index"
 -- Genre de télémétrie de la prime (Config/Telemetry) ; SKU = SKU_PREFIX .. zone.
 local TELEMETRY_KIND = "IndexReward"
 local SKU_PREFIX = "IndexZone"
@@ -106,8 +93,6 @@ local STOLEN = "Stolen"
 local IndexService = {}
 
 local enabled = false
--- Bonus de revenus de l'index de chaque joueur présent (fraction), recalculé à chaque changement.
-local bonusOf: { [Player]: number } = {}
 
 local function log(message: string)
 	if IS_STUDIO then
@@ -135,9 +120,8 @@ local function indexOf(player: Player, data: Data): { [string]: number }
 	return index
 end
 
--- Bonus et attribut du joueur, d'après son Index.
+-- Attribut du joueur, d'après son Index.
 local function publish(player: Player, index: { [string]: number })
-	bonusOf[player] = Index.IncomeBonus(index)
 	player:SetAttribute(Index.Attribute, Index.Encode(index))
 end
 
@@ -158,28 +142,31 @@ local function obtainedAt(entry: any, now: number): number
 	return now
 end
 
--- Vitesse de l'index (modificateur « Index » de StatsService), d'après les zones complètes. Retiré
--- quand il vaut 1 (aucune zone) ou que l'index est fermé.
-local function applySpeed(player: Player, index: { [string]: number })
-	local multiplier = if enabled then Index.SpeedMultiplier(index) else 1
-	StatsService.SetSpeedModifier(player, SPEED_KEY, if multiplier > 1 then multiplier else nil)
-end
-
--- Primes réclamées du profil (IndexRewards) : la table (nil = aucune encore), et false si le champ est
--- illisible (profil abîmé : on ne sait plus lesquelles sont versées ; repartir vide paierait deux fois).
-local function claimedOf(player: Player, data: Data): ({ [string]: number }?, boolean)
-	local paid: any = data.IndexRewards
-	if paid ~= nil and type(paid) ~= "table" then
-		warn(`[IndexService] {player.Name} : IndexRewards illisible ({typeof(paid)}), aucune prime versée`)
+-- Un carnet du profil (IndexRewards, IndexGifts) : la table (nil = aucune entrée encore), et false si le
+-- champ est illisible (profil abîmé : on ne sait plus ce qui est versé ; repartir vide paierait deux fois).
+local function bookOf(player: Player, data: Data, field: string): ({ [string]: number }?, boolean)
+	local book: any = (data :: any)[field]
+	if book ~= nil and type(book) ~= "table" then
+		warn(`[IndexService] {player.Name} : {field} illisible ({typeof(book)}), rien n'est versé`)
 		return nil, false
 	end
-	return paid, true
+	return book, true
+end
+
+-- Le carnet `field`, créé vide s'il manque (à n'appeler qu'après bookOf lisible).
+local function ensureBook(data: Data, field: string): { [string]: number }
+	local book: any = (data :: any)[field]
+	if type(book) ~= "table" then
+		book = {}
+		;(data :: any)[field] = book
+	end
+	return book
 end
 
 -- Attribut IndexClaimed : les zones réclamées. Champ illisible : toutes les zones complètes comptent
 -- comme réclamées (rien n'est montré à réclamer, puisque rien ne serait versé).
 local function publishClaimed(player: Player, data: Data)
-	local paid, readable = claimedOf(player, data)
+	local paid, readable = bookOf(player, data, "IndexRewards")
 	local text: string
 	if readable then
 		text = Index.EncodeZones(paid or {})
@@ -193,35 +180,55 @@ local function publishClaimed(player: Player, data: Data)
 	player:SetAttribute(Index.ClaimedAttribute, text)
 end
 
--- Zone `zone` complétée : message (la prime attend d'être réclamée) et vitesse. Sans yield.
-local function announce(player: Player, zone: number)
-	local data = DataService.Get(player)
-	if data == nil or not enabled then
-		return
+-- L'objet de la récompense : arme (ToolService) ou aura et trail (CosmeticService), requis ici seulement
+-- (ils ne servent qu'au don). Une erreur n'arrête pas la réclamation : avertissement, objet pas donné.
+local function grantItem(player: Player, kind: string, id: string): boolean
+	local ok, result = pcall(function(): any
+		if kind == "Weapon" then
+			return (require(script.Parent.ToolService) :: any).Grant(player, id)
+		end
+		return (require(script.Parent.CosmeticService) :: any).Grant(player, id)
+	end)
+	if not ok or result ~= true then
+		warn(`[IndexService] {player.Name} : {kind} {id} pas donné ({if ok then tostring(result) else result})`)
+		return false
 	end
-	applySpeed(player, indexOf(player, data))
-	notify(
-		player,
-		string.format(
-			MESSAGES.ZoneComplete,
-			zone,
-			math.round(Index.ZoneSpeedBonus * 100),
-			math.round(Index.ZoneBonus * 100),
-			Format.money(Index.ZoneCash(zone))
-		)
-	)
+	return true
 end
 
--- Réclamation (remote ClaimIndexReward) : la prime de `wanted`, ou de toutes les zones complètes pas
+-- Vitesse et objet de la zone `zone` (pas la prime d'argent), notés dans IndexGifts avant le don. Sans yield.
+local function giveGifts(player: Player, data: Data, zone: number)
+	local reward = Index.ZoneReward(zone)
+	if reward == nil then
+		return
+	end
+	ensureBook(data, "IndexGifts")[tostring(zone)] = os.time()
+	if reward.Speed > 0 then
+		StatsService.AddSpeed(player, reward.Speed)
+	end
+	grantItem(player, reward.Item.Kind, reward.Item.Id)
+	log(`{player.Name} : zone {zone}, +{reward.Speed} de Vitesse et {reward.Item.Kind} {reward.Item.Id} donnés`)
+end
+
+-- Zone `zone` complétée : message (la récompense attend d'être réclamée). Sans yield.
+local function announce(player: Player, zone: number)
+	if DataService.Get(player) == nil or not enabled then
+		return
+	end
+	notify(player, string.format(MESSAGES.ZoneComplete, zone, Index.ZoneRewardText(zone)))
+end
+
+-- Réclamation (remote ClaimIndexReward) : la récompense de `wanted`, ou de toutes les zones complètes pas
 -- encore réclamées si `wanted` est nil ; chacune notée avant le don, une seule fois. Renvoie le nombre de
--- primes versées. Sans yield. Rien si l'index est fermé ou le profil pas chargé.
+-- récompenses versées. Sans yield. Rien si l'index est fermé ou le profil pas chargé.
 local function claim(player: Player, wanted: number?): number
 	local data = DataService.Get(player)
 	if data == nil or not enabled then
 		return 0
 	end
-	local paid, readable = claimedOf(player, data)
-	if not readable then
+	local paid, readable = bookOf(player, data, "IndexRewards")
+	local gifts, giftsReadable = bookOf(player, data, "IndexGifts")
+	if not readable or not giftsReadable then
 		publishClaimed(player, data)
 		return 0
 	end
@@ -229,20 +236,19 @@ local function claim(player: Player, wanted: number?): number
 	for _, zone in Index.CompletedZones(indexOf(player, data)) do
 		local key = tostring(zone)
 		if (wanted == nil or wanted == zone) and (paid == nil or paid[key] == nil) then
-			local book: { [string]: number } = paid or {}
-			if paid == nil then
-				paid = book
-				data.IndexRewards = book
-			end
 			-- Noté avant le don : jamais deux fois, même si la suite échoue.
-			book[key] = os.time()
+			ensureBook(data, "IndexRewards")[key] = os.time()
+			paid = data.IndexRewards
 			count += 1
 			local cash = Index.ZoneCash(zone)
 			if cash > 0 and DataService.AddCash(player, cash) ~= nil then
 				-- Télémétrie juste après AddCash, sans yield (le solde est lu à l'appel).
 				TelemetryService.LogEconomy(player, TELEMETRY_KIND, cash, `{SKU_PREFIX}{zone}`)
 			end
-			log(`{player.Name} : prime de la zone {zone} réclamée, {cash} $ versés`)
+			if gifts == nil or gifts[key] == nil then
+				giveGifts(player, data, zone)
+			end
+			log(`{player.Name} : récompense de la zone {zone} réclamée, {cash} $ versés`)
 		end
 	end
 	if count == 0 then
@@ -252,6 +258,23 @@ local function claim(player: Player, wanted: number?): number
 	return count
 end
 
+-- Chargement : une zone réclamée avant la vague 59 (prime d'argent versée, rien dans IndexGifts) reçoit
+-- la Vitesse et l'objet de la nouvelle récompense, une fois, sans nouvelle prime.
+local function catchUpGifts(player: Player, data: Data)
+	local paid, readable = bookOf(player, data, "IndexRewards")
+	local gifts, giftsReadable = bookOf(player, data, "IndexGifts")
+	if not readable or not giftsReadable or paid == nil then
+		return
+	end
+	for zone = 1, Index.ZoneCount do
+		local key = tostring(zone)
+		if paid[key] ~= nil and (gifts == nil or gifts[key] == nil) then
+			giveGifts(player, data, zone)
+			gifts = data.IndexGifts
+		end
+	end
+end
+
 local function onClaimIndexReward(player: Player, zone: number?)
 	if zone ~= nil and (type(zone) ~= "number" or zone ~= math.floor(zone) or zone < 1 or zone > Index.ZoneCount) then
 		return -- zone hors de l'index (Net borne déjà le type)
@@ -259,8 +282,8 @@ local function onClaimIndexReward(player: Player, zone: number?)
 	claim(player, zone)
 end
 
--- Note `itemId` comme découvert ; vitesse et message de zone complète `delay` s plus tard (pour un
--- colis : à la révélation). La prime attend d'être réclamée.
+-- Note `itemId` comme découvert ; message de zone complète `delay` s plus tard (pour un colis : à la
+-- révélation). La récompense attend d'être réclamée.
 local function discover(player: Player, itemId: string, delay: number?): boolean
 	local data = DataService.Get(player)
 	local item = Items.ById[itemId]
@@ -280,7 +303,7 @@ local function discover(player: Player, itemId: string, delay: number?): boolean
 		local completedZone = zone :: number
 		local wait = if type(delay) == "number" and delay == delay and delay > 0 then delay else 0
 		if wait > 0 then
-			-- Parti avant : rien de perdu, la vitesse revient au chargement suivant et la prime attend.
+			-- Parti avant : rien de perdu, la récompense attend d'être réclamée.
 			task.delay(wait, function()
 				if player.Parent == Players then
 					announce(player, completedZone)
@@ -293,7 +316,7 @@ local function discover(player: Player, itemId: string, delay: number?): boolean
 	return true
 end
 
--- Chargement du profil : filet (objets possédés absents de l'Index), puis bonus et attribut.
+-- Chargement du profil : filet (objets possédés absents de l'Index), puis attribut et zones réclamées.
 local function onProfileLoaded(player: Player)
 	local data = DataService.Get(player)
 	if data == nil then
@@ -312,19 +335,18 @@ local function onProfileLoaded(player: Player)
 	publish(player, index)
 	local extra = if added > 0 then `, dont {added} objet(s) possédé(s) ajouté(s) au chargement` else ""
 	log(`{player.Name} : {Index.CountAll(index)} / {Index.Total} objet(s) découvert(s){extra} ; zone(s) complète(s) : {zonesText(index)}`)
-	-- Zones réclamées (pastilles du client) et vitesse ; les primes dues attendent d'être réclamées.
+	-- Zones réclamées (pastilles du client) ; les récompenses dues attendent d'être réclamées.
 	publishClaimed(player, data)
 	if enabled then
-		applySpeed(player, index)
+		-- Au tour suivant : StatsService n'ajoute la Vitesse qu'une fois le joueur suivi (son PlayerAdded),
+		-- qui peut passer après un profil chargé sans attente.
+		task.defer(function()
+			local loaded = DataService.Get(player)
+			if loaded ~= nil and player.Parent == Players then
+				catchUpGifts(player, loaded)
+			end
+		end)
 	end
-	-- La vitesse encore une fois au tour suivant : StatsService n'accepte un modificateur qu'une fois
-	-- le joueur suivi (son PlayerAdded), qui peut passer après un profil chargé sans attente.
-	task.defer(function()
-		local loaded = DataService.Get(player)
-		if loaded ~= nil and player.Parent == Players then
-			applySpeed(player, indexOf(player, loaded))
-		end
-	end)
 end
 
 local function onTheftEnded(thief: Player, _victim: Player, itemId: string, result: string, _reason: string)
@@ -359,28 +381,12 @@ function IndexService.GetCompletedZones(player: Player): { number }
 	return Index.CompletedZones(index)
 end
 
-function IndexService.GetIncomeBonus(player: Player): number
-	if not enabled or DataService.Get(player) == nil then
-		return 0
-	end
-	return bonusOf[player] or 0
-end
-
-function IndexService.GetSpeedMultiplier(player: Player): number
-	local data = DataService.Get(player)
-	local index: any = if data then (data :: any).Index else nil
-	if not enabled or type(index) ~= "table" then
-		return 1
-	end
-	return Index.SpeedMultiplier(index)
-end
-
 function IndexService.GetClaimableZones(player: Player): { number }
 	local data = DataService.Get(player)
 	if data == nil or not enabled then
 		return {}
 	end
-	local paid, readable = claimedOf(player, data)
+	local paid, readable = bookOf(player, data, "IndexRewards")
 	if not readable then
 		return {}
 	end
@@ -394,20 +400,11 @@ end
 function IndexService.Init()
 	enabled = Features.Index == true
 	Net.Server.ClaimIndexReward:Connect(onClaimIndexReward)
-	if enabled then
-		-- Les bonus en pour cent s'additionnent (DisplayService : M global = (1 + bonus) × multiplicateurs).
-		local baseBonus = DisplayService.GetIncomeBonus
-		DisplayService.GetIncomeBonus = function(player: Player): number
-			return baseBonus(player) + IndexService.GetIncomeBonus(player)
-		end
-	else
+	if not enabled then
 		print("[IndexService] Features.Index = false : découvertes notées, sans bonus de revenus, prime, vitesse ni message")
 	end
 	DataService.OnProfileLoaded(onProfileLoaded)
 	PvPService.OnTheftEnded(onTheftEnded)
-	Players.PlayerRemoving:Connect(function(player: Player)
-		bonusOf[player] = nil
-	end)
 end
 
 return IndexService

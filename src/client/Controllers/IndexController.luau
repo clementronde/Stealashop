@@ -3,6 +3,19 @@
 -- l'Index du jeu de référence, docs/claude/notes/ui-index-v3.md), avec repli sur UI_Index_v2 (L-083,
 -- points 5 et 6), puis sur l'ancien UI_Index (onglets, maquette UI-111), tant que la v3 n'est pas dans
 -- PlayerGui. Partie 2, section 3.4 ; règles : Config/Index ; découvertes : IndexService.
+-- Vague 59 (a191, L-183) : UI_Index_v4 (ou UI_Index refait, reconnu à Cards et Footer.Pager) passe avant
+-- tous les autres, qui restent lus tant qu'il n'est pas dans PlayerGui. Une zone à la fois (onglets
+-- Tabs.Zone1Tab…Zone6Tab, SecretsTab : Selected allumé sur l'onglet choisi, ZoneAlert = sa récompense à
+-- réclamer) ; Cards = Index.View.PageSize cartes (4 × 2) clonées depuis Template, Footer.Pager (PrevButton,
+-- NextButton, en boucle ; PageLabel « 1/2 ») pour les suivantes. Carte : Clip à la couleur de la rareté
+-- (assombrie tant que l'objet n'est pas trouvé ; Clip.RarityGradient en arc-en-ciel pour Mythique et
+-- Secret), Rays et Glow teints, Icon (silhouette), ItemName (« ??? ») et l'attribut Rarity pour le module
+-- d'animations d'UI. ZoneArt : façade Decal UI_ZoneArt_Z<n> (ou _Secrets) de ReplicatedStorage/Assets si elle
+-- est livrée, ZoneName (ville, sinon thème), ZoneTheme (les 2 magasins) ; ZoneBar (Fill, ZoneCount « 9/13 »)
+-- = progression vers la récompense ; UnlockedBar.Counter « Unlocked: 7/83 ». Footer.ClaimButton (caché pour
+-- les Secrets) réclame la zone affichée (ClaimIndexReward(zone)), RewardCaption = Index.ZoneRewardText ou
+-- « Claimed! », RewardIcon = icône de boutique de l'objet donné, ClaimAlert ; facultatifs : Footer.CashReward,
+-- SpeedReward et ItemReward (Amount). Refus : View.Deny ; réussite : T.33 Success, comme la v3.
 -- Seulement si Features.Index : à false, rien n'est branché et l'écran reste fermé.
 --
 -- Rôle commun :
@@ -704,8 +717,9 @@ local function refreshRewards(current: Screen)
 		return
 	end
 	local reward = Index.ZoneReward(zone)
-	setText(current.speedAmount, `+{math.round(reward.Speed * 100)}%`)
-	setText(current.cashAmount, `+{Format.money(reward.Cash)}`)
+	-- Vague 59 (L-183) : valeurs fixes (Vitesse en points, plus de %) ; l'objet donné n'a pas de place en v3.
+	setText(current.speedAmount, if reward then `+{Format.short(reward.Speed)}` else "")
+	setText(current.cashAmount, `+{Format.money(Index.ZoneCash(zone))}`)
 	setText(current.claimLabel, if claimed[zone] then CLAIMED_TEXT else (current.claimText or ""))
 end
 
@@ -967,12 +981,12 @@ local function setMutation(current: Screen, id: string)
 end
 
 -- Rien à réclamer : son de refus et le bouton tremble (View.Deny).
-local function deny(current: Screen, button: GuiObject?)
+local function deny(shaking: { [GuiObject]: boolean }, button: GuiObject?)
 	Motion.PlaySound(VIEW.Deny.Sound)
-	if button == nil or current.shaking[button] then
+	if button == nil or shaking[button] then
 		return
 	end
-	current.shaking[button] = true
+	shaking[button] = true
 	local base = button.Position
 	for index, offset in VIEW.Deny.Offsets do
 		task.delay((index - 1) * VIEW.Deny.Step, function()
@@ -983,7 +997,7 @@ local function deny(current: Screen, button: GuiObject?)
 	end
 	task.delay(#VIEW.Deny.Offsets * VIEW.Deny.Step, function()
 		button.Position = base
-		current.shaking[button] = nil
+		shaking[button] = nil
 	end)
 end
 
@@ -1014,7 +1028,7 @@ local function onClaim(current: Screen)
 	if isClaimable(zone) then
 		sendClaim(button, zone)
 	else
-		deny(current, button) -- zone pas complète ou déjà réclamée
+		deny(current.shaking, button) -- zone pas complète ou déjà réclamée
 	end
 end
 
@@ -1027,7 +1041,7 @@ local function onClaimAll(current: Screen)
 	if anyClaimable() then
 		sendClaim(button, nil)
 	else
-		deny(current, button)
+		deny(current.shaking, button)
 	end
 end
 
@@ -1342,11 +1356,24 @@ local function bind(gui: ScreenGui)
 	end
 end
 
--- L'écran à brancher dans PlayerGui : UI_Index_v3, sinon UI_Index_v2, sinon l'ancien UI_Index.
+-- Vague 59 (L-183) : un écran v4 = UI_Index_v4, ou UI_Index refait sous son ancien nom (Cards et Footer.Pager
+-- dedans). Il passe avant tous les autres (bloc « UI_Index_v4 » plus bas).
+local V4_SCREEN = "UI_Index_v4"
+local function isV4(inst: Instance): boolean
+	if not inst:IsA("ScreenGui") then
+		return false
+	end
+	if inst.Name == V4_SCREEN then
+		return true
+	end
+	return inst.Name == LEGACY_SCREEN and Find.path(inst, "Cards") ~= nil and Find.path(inst, "Footer.Pager") ~= nil
+end
+
+-- L'écran à brancher dans PlayerGui : UI_Index_v3, sinon UI_Index_v2, sinon l'ancien UI_Index (jamais un v4).
 local function findScreen(playerGui: Instance): ScreenGui?
 	for _, name in SCREEN_ORDER do
 		local gui = playerGui:FindFirstChild(name)
-		if gui and gui:IsA("ScreenGui") then
+		if gui and gui:IsA("ScreenGui") and not isV4(gui) then
 			return gui :: ScreenGui
 		end
 	end
@@ -1396,9 +1423,415 @@ local function open()
 	Motion.Open(current.gui)
 end
 
+------------------------------------------------------------------------------
+-- UI_Index_v4 (L-183, vague 59, a191) : une zone à la fois, grille Cards de 4 × 2, pages
+------------------------------------------------------------------------------
+
+-- Une carte de la v4 (page affichée).
+type V4Card = { item: Item, frame: GuiObject }
+
+type V4 = {
+	gui: ScreenGui,
+	template: GuiObject?,
+	cardParent: Instance?, -- Cards
+	counter: Instance?, -- UnlockedBar.Counter
+	zoneArt: Instance?,
+	zoneArtImage: string?, -- image posée par Clément, gardée quand aucune façade n'est livrée
+	zoneName: Instance?,
+	zoneTheme: Instance?,
+	fill: GuiObject?,
+	fillSize: UDim2,
+	zoneCount: Instance?,
+	tabs: { [number]: GuiObject }, -- [rang dans TABS] = onglet
+	tabAlerts: { [number]: GuiObject },
+	pageLabel: Instance?,
+	claimButton: GuiObject?,
+	claimShown: boolean, -- visibilité de ClaimButton posée par Clément
+	claimAlert: GuiObject?,
+	rewardIcon: Instance?,
+	rewardCaption: Instance?,
+	cashAmount: Instance?,
+	speedAmount: Instance?,
+	itemAmount: Instance?,
+	shaking: { [GuiObject]: boolean },
+	connections: { RBXScriptConnection },
+	cards: { V4Card },
+}
+
+local V4_PAGE_TEXT = "%d/%d" -- V0 proposé, absent du doc : PageLabel « 1/2 »
+local ZONE_ART_PREFIX = "UI_ZoneArt_" -- façades de l'index (notes figma, Images à générer) : UI_ZoneArt_Z1…, _Secrets
+local v4: V4? = nil
+local v4Open = false
+local v4Tab = 1 -- rang dans TABS : zones 1 à 6, puis les Secrets
+local v4Page = 1
+local zoneArts: { [string]: string | false } = {} -- [nom du Decal] = image (false : pas livrée)
+
+local function findV4(playerGui: Instance): ScreenGui?
+	for _, name in { V4_SCREEN, LEGACY_SCREEN } do
+		local gui = playerGui:FindFirstChild(name)
+		if gui and isV4(gui) then
+			return gui :: ScreenGui
+		end
+	end
+	return nil
+end
+
+-- Image de la façade de la zone (Decal UI_ZoneArt_Z<n> ou UI_ZoneArt_Secrets sous ReplicatedStorage/Assets),
+-- cherchée une fois par session ; nil si elle n'est pas livrée.
+local function zoneArtOf(def: TabDef): string?
+	local name = ZONE_ART_PREFIX .. (if def.zone then `Z{def.zone}` else "Secrets")
+	local known = zoneArts[name]
+	if known ~= nil then
+		if type(known) == "string" then
+			return known
+		end
+		return nil
+	end
+	local assets = ReplicatedStorage:FindFirstChild("Assets")
+	local image: string | false = false
+	if assets then
+		for _, descendant in assets:GetDescendants() do
+			if descendant.Name == name and descendant:IsA("Decal") and (descendant :: Decal).Texture ~= "" then
+				image = (descendant :: Decal).Texture
+				break
+			end
+		end
+	end
+	zoneArts[name] = image
+	if image == false then
+		reportOnce(`zoneart:{name}`, `[Index] façade {name} pas livrée : ZoneArt garde l'image de l'écran`)
+		return nil
+	end
+	return image
+end
+
+local function v4Items(): { Item }
+	return itemsOf(TABS[v4Tab])
+end
+
+local function v4Pages(): number
+	return math.max(1, math.ceil(#v4Items() / VIEW.PageSize))
+end
+
+local function clearV4Cards(current: V4)
+	for _, card in current.cards do
+		card.frame:Destroy()
+	end
+	table.clear(current.cards)
+end
+
+-- Fond de la couleur de la rareté (assombri tant que l'objet n'est pas trouvé), silhouette et « ??? ».
+local function paintV4Card(card: V4Card)
+	local item = card.item
+	local found = discovered[item.Id] == true
+	local color = rarityColor(item)
+	local clip = guiObject(card.frame, "Clip")
+	if clip then
+		clip.BackgroundColor3 = if found then color else color:Lerp(BLACK, VIEW.ClipDarken)
+	end
+	setImage(Find.path(card.frame, "Icon"), textureOf(item.Id) or "", if found then FOUND_COLOR else silhouetteOf(item))
+	setText(Find.path(card.frame, "ItemName"), if found then item.DisplayName else UNKNOWN_NAME)
+end
+
+-- Cartes de la page affichée, clonées depuis Template.
+local function buildV4Cards(current: V4)
+	clearV4Cards(current)
+	local template = current.template
+	local parent = current.cardParent
+	if template == nil or parent == nil then
+		return
+	end
+	local items = v4Items()
+	local first = (v4Page - 1) * VIEW.PageSize
+	local wanted: { string } = {}
+	for rank = first + 1, math.min(first + VIEW.PageSize, #items) do
+		local item = items[rank]
+		local clone: Instance? = template:Clone()
+		if clone == nil then
+			return -- Archivable = false : rien à cloner
+		end
+		local frame = clone :: GuiObject
+		frame.Name = string.format(CARD_FORMAT, rank, item.Id)
+		frame.LayoutOrder = rank
+		-- Rareté lue par le module d'animations d'UI (dégradés qui bougent, L-182 point 2).
+		frame:SetAttribute("Rarity", item.Rarity)
+		local color = rarityColor(item)
+		for _, name in TINTED do
+			local tinted = Find.path(frame, name)
+			if tinted and isImage(tinted) then
+				(tinted :: any).ImageColor3 = color
+			end
+		end
+		local rainbow = RAINBOW
+		if rainbow and isRainbow(item) then
+			local gradient = Find.path(frame, "Clip.RarityGradient")
+			if gradient == nil or not gradient:IsA("UIGradient") then
+				local clip = Find.path(frame, "Clip")
+				gradient = if clip then clip:FindFirstChildOfClass("UIGradient") else nil
+			end
+			if gradient and gradient:IsA("UIGradient") then
+				(gradient :: UIGradient).Color = rainbow
+			end
+		end
+		local card: V4Card = { item = item, frame = frame }
+		paintV4Card(card)
+		frame.Visible = true
+		frame.Parent = parent
+		table.insert(current.cards, card)
+		local texture = textureOf(item.Id)
+		if texture then
+			table.insert(wanted, texture)
+		end
+	end
+	if #wanted > 0 then
+		task.spawn(Icons.preload, wanted)
+	end
+end
+
+-- Pastilles « ! » de la v4, ouverte ou pas : la zone affichée (ClaimAlert) et chaque onglet de zone.
+local function refreshV4Alerts(current: V4)
+	AlertBadge.Set(current.claimAlert, isClaimable(TABS[v4Tab].zone))
+	for rank, alert in current.tabAlerts do
+		AlertBadge.Set(alert, isClaimable(TABS[rank].zone)) -- Secrets (zone nil) : toujours éteinte
+	end
+end
+
+-- En-tête, barre de progression, pages et récompense de la zone affichée.
+local function refreshV4(current: V4)
+	local def = TABS[v4Tab]
+	local zone = def.zone
+	local items = itemsOf(def)
+	local found, total = 0, #items
+	for _, item in items do
+		if discovered[item.Id] then
+			found += 1
+		end
+	end
+	setText(current.counter, string.format(V3_COUNTER_TEXT, Index.CountAll(discovered), Index.Total))
+	local info = if zone then Zones[zone] else nil
+	if info then
+		setText(current.zoneName, string.upper(info.City or info.Theme))
+		setText(current.zoneTheme, if #info.Stores > 0 then string.upper(table.concat(info.Stores, " · ")) else info.Theme)
+	else
+		setText(current.zoneName, string.upper(SECRETS_NAME))
+	end
+	local art = zoneArtOf(def)
+	local zoneArt = current.zoneArt
+	if zoneArt and isImage(zoneArt) then
+		local wantedArt = art or current.zoneArtImage
+		if wantedArt and (zoneArt :: any).Image ~= wantedArt then
+			(zoneArt :: any).Image = wantedArt
+		end
+	end
+	setText(current.zoneCount, string.format(V3_ZONE_COUNT_TEXT, found, total))
+	local fill = current.fill
+	if fill then
+		local size = current.fillSize
+		local wantedSize = UDim2.new(if total > 0 then math.clamp(found / total, 0, 1) else 0, size.X.Offset, size.Y.Scale, size.Y.Offset)
+		if fill.Size ~= wantedSize then
+			fill.Size = wantedSize
+		end
+	end
+	for rank, button in current.tabs do
+		setVisible(guiObject(button, SELECTED), rank == v4Tab)
+	end
+	setText(current.pageLabel, string.format(V4_PAGE_TEXT, v4Page, v4Pages()))
+	-- Récompense : seulement pour une zone (les Secrets n'en ont pas).
+	setVisible(current.claimButton, current.claimShown and zone ~= nil)
+	if zone then
+		local reward = Index.ZoneReward(zone)
+		setText(current.rewardCaption, if claimed[zone] then CLAIMED_TEXT else Index.ZoneRewardText(zone))
+		local iconName = Index.ZoneRewardIcon(zone)
+		local image = if iconName then Icons.get(iconName) else nil
+		if image then
+			setImage(current.rewardIcon, image, FOUND_COLOR)
+		elseif iconName then
+			reportOnce(`rewardicon:{iconName}`, `[Index] icône {Icons.name(iconName)} pas livrée : RewardIcon garde l'image de l'écran`)
+		end
+		setText(current.cashAmount, `+{Format.money(Index.ZoneCash(zone))}`)
+		setText(current.speedAmount, if reward then `+{Format.short(reward.Speed)}` else "")
+		setText(current.itemAmount, Index.ZoneRewardName(zone))
+	end
+	refreshV4Alerts(current)
+end
+
+local function closeV4()
+	v4Open = false
+	local current = v4
+	if current then
+		Motion.Close(current.gui, function()
+			if not v4Open then
+				clearV4Cards(current)
+			end
+		end)
+	end
+end
+
+local function showV4(current: V4)
+	if v4 ~= current or not v4Open then
+		return
+	end
+	buildV4Cards(current)
+	refreshV4(current)
+end
+
+local function bindV4(gui: ScreenGui)
+	local old = v4
+	if old then
+		for _, connection in old.connections do
+			connection:Disconnect()
+		end
+		clearV4Cards(old)
+	end
+	v4Open = false
+	gui.Enabled = false -- fermé jusqu'au bouton du HUD
+	Motion.SetCloser(gui, closeV4)
+	-- Les écrans d'avant, rangés à côté, restent éteints.
+	local parent = gui.Parent
+	if parent then
+		for _, name in SCREEN_ORDER do
+			local other = parent:FindFirstChild(name)
+			if other and other ~= gui and other:IsA("ScreenGui") then
+				(other :: ScreenGui).Enabled = false
+			end
+		end
+	end
+	local template = guiObject(gui, "Cards.Template") or guiObject(gui, "Template")
+	if template == nil then
+		reportOnce("v4template", `[Index] {gui.Name}.Cards.Template introuvable : l'index restera vide`)
+	else
+		template.Visible = false
+	end
+	local cards = Find.path(gui, "Cards")
+	local zoneArt = Find.path(gui, "ZoneArt")
+	local zoneBar = Find.path(gui, "ZoneBar")
+	local fill = if zoneBar then guiObject(zoneBar, "Fill") else nil
+	local footer = Find.path(gui, "Footer")
+	local claimButton = if footer then guiObject(footer, "ClaimButton") else nil
+	local current: V4 = {
+		gui = gui,
+		template = template,
+		cardParent = cards or (if template then template.Parent else nil),
+		counter = Find.path(gui, "UnlockedBar.Counter"),
+		zoneArt = zoneArt,
+		zoneArtImage = if zoneArt and isImage(zoneArt) then (zoneArt :: any).Image else nil,
+		zoneName = if zoneArt then Find.path(zoneArt, "ZoneName") else nil,
+		zoneTheme = if zoneArt then Find.path(zoneArt, "ZoneTheme") else nil,
+		fill = fill,
+		fillSize = if fill then fill.Size else UDim2.new(1, 0, 1, 0),
+		zoneCount = if zoneBar then Find.path(zoneBar, "ZoneCount") else nil,
+		tabs = {},
+		tabAlerts = {},
+		pageLabel = if footer then Find.path(footer, "Pager.PageLabel") else nil,
+		claimButton = claimButton,
+		claimShown = if claimButton then claimButton.Visible else false,
+		claimAlert = if claimButton then guiObject(claimButton, CLAIM_ALERT) else nil,
+		rewardIcon = if claimButton then Find.path(claimButton, "RewardIcon") else nil,
+		rewardCaption = if claimButton then Find.path(claimButton, "RewardCaption") else nil,
+		cashAmount = if footer then Find.path(footer, "CashReward.Amount") else nil,
+		speedAmount = if footer then Find.path(footer, "SpeedReward.Amount") else nil,
+		itemAmount = if footer then Find.path(footer, "ItemReward.Amount") else nil,
+		shaking = {},
+		connections = {},
+		cards = {},
+	}
+	v4 = current
+	local function keep(connection: RBXScriptConnection?)
+		if connection then
+			table.insert(current.connections, connection)
+		end
+	end
+	keep(onClick(Find.path(gui, "CloseButton"), closeV4))
+	for rank, def in TABS do
+		local button = guiObject(gui, def.path)
+		if button == nil then
+			reportOnce(`v4tab:{def.path}`, `[Index] {gui.Name}.{def.path} introuvable : onglet pas branché`)
+			continue
+		end
+		current.tabs[rank] = button
+		local alert = guiObject(button, "ZoneAlert")
+		if alert then
+			current.tabAlerts[rank] = alert
+		end
+		keep(onClick(button, function()
+			if v4 == current and v4Open and v4Tab ~= rank then
+				v4Tab = rank
+				v4Page = 1
+				showV4(current)
+			end
+		end))
+	end
+	local pager = if footer then Find.path(footer, "Pager") else nil
+	if pager == nil then
+		reportOnce("v4pager", `[Index] {gui.Name}.Footer.Pager introuvable : seule la 1re page se voit`)
+	end
+	-- Page suivante ou précédente, en boucle.
+	local function turn(step: number)
+		if v4 == current and v4Open then
+			local pages = v4Pages()
+			v4Page = ((v4Page - 1 + step) % pages) + 1
+			showV4(current)
+		end
+	end
+	keep(onClick(if pager then Find.path(pager, "PrevButton") else nil, function()
+		turn(-1)
+	end))
+	keep(onClick(if pager then Find.path(pager, "NextButton") else nil, function()
+		turn(1)
+	end))
+	if claimButton == nil then
+		reportOnce("v4claim", `[Index] {gui.Name}.Footer.ClaimButton introuvable : récompense de zone pas réclamable`)
+	end
+	keep(onClick(claimButton, function()
+		local zone = TABS[v4Tab].zone
+		local button = claimButton
+		if v4 ~= current or not v4Open or zone == nil or button == nil then
+			return
+		end
+		if isClaimable(zone) then
+			sendClaim(button, zone)
+		else
+			deny(current.shaking, button) -- zone pas complète ou déjà réclamée
+		end
+	end))
+	refreshV4Alerts(current) -- pastilles « ! » allumées dès le branchement, écran fermé
+end
+
+local function openV4(gui: ScreenGui)
+	local current = v4
+	if current == nil or current.gui ~= gui then
+		bindV4(gui)
+		current = v4
+	end
+	if current == nil then
+		return
+	end
+	readDiscovered()
+	v4Open = true
+	if v4Page > v4Pages() then
+		v4Page = 1
+	end
+	showV4(current)
+	Motion.Open(current.gui)
+end
+
 local function toggle()
+	local fourth = v4
+	if v4Open and fourth and fourth.gui.Parent == nil then
+		v4Open = false -- écran recréé (ResetOnSpawn) : le nouveau est fermé
+	end
+	if v4Open then
+		closeV4()
+		return
+	end
 	if isOpen then
 		close()
+		return
+	end
+	local playerGui = localPlayer:FindFirstChildOfClass("PlayerGui")
+	local gui = if playerGui then findV4(playerGui) else nil
+	if gui then
+		openV4(gui)
 	else
 		open()
 	end
@@ -1443,6 +1876,17 @@ function IndexController.Start()
 		if current and current.gui.Parent ~= nil then
 			refreshAlerts(current)
 		end
+		local fourth = v4
+		if fourth and fourth.gui.Parent ~= nil then
+			if v4Open then
+				for _, card in fourth.cards do
+					paintV4Card(card)
+				end
+				refreshV4(fourth)
+			else
+				refreshV4Alerts(fourth)
+			end
+		end
 	end
 	localPlayer:GetAttributeChangedSignal(Index.Attribute):Connect(function()
 		readDiscovered()
@@ -1471,11 +1915,15 @@ function IndexController.Start()
 		if not child:IsA("ScreenGui") then
 			return
 		end
+		if isV4(child) then
+			bindV4(child :: ScreenGui) -- vague 59 : la v4 passe avant les autres (bindV4 les éteint)
+			return
+		end
 		local rank = screenRank(child.Name)
 		if rank ~= nil then
 			local current = screen
 			local currentRank = if current and current.gui.Parent ~= nil then screenRank(current.gui.Name) else nil
-			if currentRank ~= nil and currentRank < rank then
+			if (currentRank ~= nil and currentRank < rank) or (v4 ~= nil and (v4 :: V4).gui.Parent ~= nil) then
 				(child :: ScreenGui).Enabled = false -- un écran plus récent est là : l'ancien reste éteint
 			else
 				bind(child :: ScreenGui)
@@ -1487,6 +1935,10 @@ function IndexController.Start()
 	local existing = findScreen(playerGui)
 	if existing then
 		bind(existing)
+	end
+	local fourth = findV4(playerGui)
+	if fourth then
+		bindV4(fourth)
 	end
 	local hud = playerGui:FindFirstChild(HUD)
 	if hud and hud:IsA("ScreenGui") then

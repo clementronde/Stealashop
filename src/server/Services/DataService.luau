@@ -45,6 +45,9 @@
 --       par la sauvegarde automatique ou celle du départ : l'attente continue jusque-là. Pour les
 --       achats Robux (9.6, MonetizationService) : PurchaseGranted seulement quand le PurchaseId est
 --       sauvegardé, comme le recommande ProfileStore.
+--   DataService.GetDiamonds(player) -> number
+--       Vague 59 (a191, L-182 point 10) : diamants du profil (entier ≥ 0) ; 0 si le profil n'est pas chargé
+--       ou si le champ manque ou est invalide. Lecture seule : aucun gain ni achat encore.
 --   DataService.NewData() -> Data
 --       Copie neuve du modèle d'un nouveau profil (remise à zéro du panel admin, AdminService).
 --   DataService.GetStoreName() -> string
@@ -188,6 +191,7 @@ local TEMPLATE: Data = {
 		Weekly = { Week = 0, Days = 0, LastDay = 0, ClaimedWeek = 0 }, -- a166, coffre hebdomadaire (facultatif)
 	},
 	Rebirths = 0, -- vague 51 (a164) : renaissances faites (RebirthService), sans changement de version
+	Diamonds = 0, -- vague 59 (a191, L-182 point 10) : diamants (DataService.GetDiamonds), sans changement de version
 }
 
 -- Journal d'une migration : chaque ligne part dans la sortie, préfixée du joueur et de sa clé.
@@ -893,6 +897,15 @@ function DataService.SpendCash(player: Player, amount: number): boolean
 	data.Cash -= amount
 	notifyCash(player, data.Cash)
 	return true
+end
+
+function DataService.GetDiamonds(player: Player): number
+	local data = DataService.Get(player)
+	local diamonds: any = if data then data.Diamonds else nil
+	if type(diamonds) ~= "number" or diamonds ~= diamonds or diamonds < 0 or diamonds == math.huge then
+		return 0
+	end
+	return math.floor(diamonds)
 end
 
 function DataService.Save(player: Player): boolean
