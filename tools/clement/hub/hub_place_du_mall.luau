@@ -635,7 +635,8 @@ if want("Ground") then
 		Bx(g, W, "Ground_ExitSidewalk_" .. tag, 0, -2, z0, 25.4, 0.45, z1, PAVEMENT, O)
 		z0, z1 = zz(EXIT_ROAD, EXIT_HALF)
 		Bx(g, W, "Ground_WallTrack_" .. tag, 25.4, -2, z0, 30, 0, z1, STEEL, O) -- là où monte le mur de nuit
-		z0, z1 = zz(EXIT_ROAD, EXIT_HALF)
+		-- 2026-11-15 (chevauchements) : bord côté rue avancé de 0,025, contre le z-fighting avec la ligne SafeLine
+		z0, z1 = zz(EXIT_ROAD - 0.025, EXIT_HALF)
 		Bx(g, W, "SafeLine_" .. tag, 21.4, 0.44, z0, 22.6, 0.5, z1, SAFE_C, { decor = true, noShadow = true })
 	end
 	Bx(g, W, "SafeLine", 21.4, -0.01, -EXIT_ROAD, 22.6, 0.05, EXIT_ROAD, SAFE_C, { decor = true, noShadow = true })
@@ -1406,7 +1407,8 @@ local function stall(parent, t)
 	B("CounterFront", -8.2, 0.5, -4.3, 8.2, 3.7, -2.4, WOOD_L, MO)
 	B("CounterKick", -8.25, 0.5, -4.4, 8.25, 1.1, -2.4, WOOD_D, MO)
 	local counter = B("Counter", -8.7, 3.7, -4.8, 8.7, 4.2, -2.0, WOOD_D, MO)
-	B("CounterCloth", -5.6, 4.2, -4.85, 5.6, 4.28, -2.4, t.cloth, { decor = true })
+	-- 2026-11-15 (chevauchements) : sur le stand d'armes, la nappe dépasse de 0,025 la caisse posée contre elle
+	B("CounterCloth", -5.6, 4.2, -4.85, 5.6, 4.28, (t.goods == "weapons") and -2.375 or -2.4, t.cloth, { decor = true })
 	B("CounterClothDrape", -5.6, 2.5, -4.93, 5.6, 4.28, -4.83, t.cloth, { decor = true })
 	for _, s in { -1, 1 } do
 		local side = (s < 0) and "L" or "R"
@@ -1431,7 +1433,9 @@ local function stall(parent, t)
 	for i = 0, n - 1 do
 		local xc = x0 + (i + 0.5) * w
 		local col = t.stripes[i % 2 + 1]
-		beam("Awning_" .. (i + 1), Vector3.new(xc, 13.5, 5.9), Vector3.new(xc, 10.5, -6.3), w + 0.02, 0.3, col, { decor = true })
+		-- 2026-11-15 (chevauchements) : épaisseurs alternées, les bandes voisines qui se recouvrent n'ont plus le même dessus
+		local th = ({ [1] = 0.35, [3] = 0.4, [4] = 0.35, [6] = 0.4, [7] = 0.35 })[i + 1] or 0.3
+		beam("Awning_" .. (i + 1), Vector3.new(xc, 13.5, 5.9), Vector3.new(xc, 10.5, -6.3), w + 0.02, th, col, { decor = true })
 		B("Valance_" .. (i + 1), xc - w / 2, 9.75, -6.55, xc + w / 2, 10.55, -6.25, col, { decor = true })
 		B("ValanceTooth_" .. (i + 1), xc - w / 4, 9.3, -6.55, xc + w / 4, 9.75, -6.25, col, { decor = true })
 	end
