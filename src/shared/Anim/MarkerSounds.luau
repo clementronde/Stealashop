@@ -41,7 +41,7 @@ MarkerSounds.Player = {
 	{ Anim = "Grab", Marker = "Grab", Sound = "Grab_Grab" },
 	{ Anim = "Place", Marker = "Release", Sound = "Place_Release" },
 	-- BenchLift/Top : plus de son (L-118 point 7, Clément : rien ne sonne à l'entraînement).
-	{ Anim = "Unbox", Marker = "Open", Sound = "Unbox_Open" },
+	-- Unbox/Open : retiré avec l'animation (vague 52, a170) ; le son Unbox_Open reste (ShelfOpenController).
 	{ Anim = "SwingBat", Marker = "Impact", Sound = "SwingBat_Impact" },
 	{ Anim = "Knockback", Marker = "Land", Sound = "Knockback_Land" },
 	-- Chute et arrestation (L-076, 2026-11-10) : sons à choisir avec le reste de DEV-051.

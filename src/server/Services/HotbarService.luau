@@ -4,14 +4,14 @@
 --
 -- Rôle :
 --   - chargement du profil : le champ facultatif Hotbar (sans changement de version ; absent = rien de
---     sauvegardé) est nettoyé (un uid qui n'est plus ni dans Items ni dans Boxes du profil devient une
+--     sauvegardé) est nettoyé (un uid qui n'est plus dans Items du profil devient une
 --     case vide, un identifiant en double ou mal formé aussi) et posé dans l'attribut HotbarLayout du
 --     Player (texte de HotbarLayout.Encode ; texte vide = rien de sauvegardé : le client fait la
 --     disposition de départ). Le profil nettoyé est gardé ;
 --   - SetHotbar(slot1 … slot6) : Net a déjà contrôlé la forme (6 textes de 64 caractères au plus, 7e
 --     argument refusé) et le débit. Le service refuse toute la disposition si un identifiant n'est ni
---     "Tool", ni "Bat", ni vide, ni l'uid d'un colis ou d'un objet de CE joueur (Items ou Boxes du
---     profil : un objet exposé ou un colis posé est encore à lui), ou s'il est en double : rien ne change
+--     "Tool", ni "Bat", ni vide, ni l'uid d'un objet de CE joueur (Items du
+--     profil : un objet exposé est encore à lui), ou s'il est en double : rien ne change
 --     (une ligne en Studio). Acceptée : champ Hotbar remplacé, attribut remis.
 -- Rien de sensible : la disposition ne donne rien ; chaque action d'une case repasse par son propre remote.
 --
@@ -45,7 +45,7 @@ local function owns(data: Data, id: string): boolean
 	if id == HotbarLayout.Tool or id == HotbarLayout.Bat then
 		return true
 	end
-	return data.Items[id] ~= nil or data.Boxes[id] ~= nil
+	return data.Items[id] ~= nil -- vague 52 (a170) : plus de colis (Boxes reste dans le profil, vide)
 end
 
 local function publish(player: Player, layout: { string }?)

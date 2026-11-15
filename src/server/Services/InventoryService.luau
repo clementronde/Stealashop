@@ -19,8 +19,8 @@
 --     les plus rentables d'abord ; chacun avec son revenu ($/s de l'objet, mutation comprise, sans bonus,
 --     règle de DisplayService : zone du catalogue, sinon celle de l'objet, sinon 1), son présentoir s'il
 --     est exposé (Display), sa mutation (Config/Mutations) ;
---   - colis : Boxes[uid] lisibles (type et rareté connus), ceux de l'inventaire d'abord (les plus anciens
---     d'abord, At), puis ceux posés au sol (les plus tôt prêts d'abord, ReadyAt). Jamais leur ItemId (5.7).
+--   - vague 52 (a170) : plus de colis dans l'état (le colis porté, rangé, posé n'existe plus) ; le champ
+--     Boxes du profil reste, vide après chargement (DataService.convertBoxes).
 -- Un objet tout juste sorti d'un colis n'apparaît qu'à sa révélation (HoldBack, UnboxService).
 -- Vague 31 (L-112, Features.ShelfOpen) : un objet sous antivol (Items[uid].AntiTheft) est marqué dans l'état
 -- (AntiTheft) tant qu'il est dans l'inventaire : l'écran le pose au sol (PlaceBox), PlaceItemAuto le refuse
@@ -61,12 +61,10 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
 local Shared = ReplicatedStorage.Shared
-local Balance = require(Shared.Config.Balance)
 local Features = require(Shared.Config.Features)
 local Formulas = require(Shared.Config.Formulas)
 local Items = require(Shared.Config.Items)
 local Mutations = require(Shared.Config.Mutations)
-local Rarities = require(Shared.Config.Rarities)
 local Unbox = require(Shared.Config.Unbox) -- vague 44 : portée de l'invite « Take »
 local Zones = require(Shared.Config.Zones)
 local InventoryState = require(Shared.InventoryState)
@@ -76,7 +74,6 @@ local DataService = require(script.Parent.DataService)
 
 type Data = ProfileTypes.Data
 type ItemEntry = InventoryState.ItemEntry
-type BoxEntry = InventoryState.BoxEntry
 
 -- Ce que ce service utilise de DisplayService (a14, a46, a51).
 type DisplayApi = {
@@ -98,7 +95,6 @@ type State = {
 
 -- Avant leur tri.
 type SortedItem = { entry: ItemEntry, income: number }
-type SortedBox = { entry: BoxEntry, key: number }
 
 -- V0 proposé, absent du doc : cadence (s) de la remise d'accord avec le profil.
 local SYNC_INTERVAL = 0.5
@@ -199,21 +195,6 @@ local function incomeOf(entry: ProfileTypes.Item, def: Items.Item): number
 	return Formulas.ItemIncome(zone, def.Rarity) * Mutations.IncomeMultiplier(entry.Mutation)
 end
 
-local function boxIsReadable(box: any): boolean
-	return type(box) == "table"
-		and type(box.Tier) == "string"
-		and Balance.Heist.BoxTiers[box.Tier] ~= nil
-		and type(box.Rarity) == "string"
-		and Rarities.ById[box.Rarity] ~= nil
-end
-
-local function finiteOr(value: any, default: number): number
-	if type(value) == "number" and value == value and value > -math.huge and value < math.huge then
-		return value
-	end
-	return default
-end
-
 -- Vague 31 (L-112, Features.ShelfOpen) : objet sous antivol (Types/Profile : AntiTheft, UnlockAt, Spot).
 -- Interrupteur coupé : l'ancien déroulé, les champs sont ignorés.
 local function isAntiTheft(entry: any): boolean
@@ -297,45 +278,9 @@ local function stateFrom(player: Player, data: Data): InventoryState.State
 		return a.entry.Uid < b.entry.Uid
 	end)
 
-	local stored: { SortedBox } = {}
-	local placed: { SortedBox } = {}
-	local boxes = (data :: any).Boxes
-	if type(boxes) == "table" then
-		for uid, box in boxes do
-			if type(uid) ~= "string" or not boxIsReadable(box) then
-				continue
-			end
-			if not InventoryState.IsSafeId(uid) then
-				once(`uid:{uid}`, `colis « {uid} » : uid illisible pour l'écran, pas montré`)
-				continue
-			end
-			local isPlaced = box.Spot ~= nil
-			local readyAt = if type(box.ReadyAt) == "number" then finiteOr(box.ReadyAt, 0) else nil
-			local entry: BoxEntry = { Uid = uid, Tier = box.Tier, Rarity = box.Rarity, ReadyAt = readyAt, Placed = isPlaced }
-			if isPlaced then
-				table.insert(placed, { entry = entry, key = readyAt or 0 })
-			else
-				table.insert(stored, { entry = entry, key = finiteOr(box.At, 0) })
-			end
-		end
-	end
-	local function byKey(a: SortedBox, b: SortedBox): boolean
-		if a.key ~= b.key then
-			return a.key < b.key
-		end
-		return a.entry.Uid < b.entry.Uid
-	end
-	table.sort(stored, byKey)
-	table.sort(placed, byKey)
-
-	local result: InventoryState.State = { Items = {}, Boxes = {} }
+	local result: InventoryState.State = { Items = {} }
 	for _, item in items do
 		table.insert(result.Items, item.entry)
-	end
-	for _, list in { stored, placed } do
-		for _, box in list do
-			table.insert(result.Boxes, box.entry)
-		end
 	end
 	return result
 end

@@ -7,9 +7,9 @@
 --     le possède. Profil v4 (DataService, Types/Profile) : Index[ItemId] = os.time() de la
 --     découverte, écrit une seule fois (une 2e copie ne change rien) et jamais retiré (objet volé,
 --     remis à une renaissance : il reste découvert). Les points d'entrée d'un objet dans Items :
---       * l'ouverture d'un colis PNJ (UnboxService.OnBoxOpened) : tous les colis passent par un
---         établi, ceux des magasins, le colis garanti du tuto (le Pot de nouilles), ceux du camion
---         et ceux ramassés au sol ;
+--       * l'objet sorti d'un colis sur place (rayon, camion, coffre) et ramené en zone safe, et l'objet
+--         donné (UnboxService : stowItem et GiveItem appellent IndexService.Discover) ; vague 52 (a170) :
+--         l'accroche UnboxService.OnBoxOpened (ouverture en base, retirée par a158) est retirée ;
 --       * le vol à un autre joueur, au dépôt (PvPService.OnTheftEnded, résultat « Stolen ») ;
 --       * filet, au chargement du profil : un objet possédé (Items : l'inventaire, les présentoirs et
 --         le coffre-fort) qui manque à l'Index y est ajouté, sans message, à sa date d'obtention. La
@@ -42,9 +42,8 @@
 --         « Index » de StatsService (Index.SpeedMultiplier), donc connu de l'anti-triche, qui lit
 --         Humanoid.WalkSpeed ; posé au chargement et à la complétion, gardé à la réapparition. Il ne
 --         se réclame pas (comme les +5 % de revenus).
---     Notify (MESSAGES.ZoneComplete, « Info ») et vitesse au moment où la zone se complète ; pour un
---     colis, quand l'objet se révèle chez lui (le revealDelay d'OnBoxOpened), pas avant. Un joueur parti
---     pendant ce délai retrouve sa vitesse au chargement suivant, et sa prime attend d'être réclamée.
+--     Notify (MESSAGES.ZoneComplete, « Info ») et vitesse au moment où la zone se complète. Sa prime
+--     attend d'être réclamée.
 -- Features.Index à false (MAJ 2 pas ouverte) : les découvertes sont notées et l'attribut posé quand
 -- même (rien n'est perdu à l'ouverture), mais ni bonus de revenus, ni prime (réclamation refusée), ni
 -- vitesse, ni message.
@@ -83,7 +82,6 @@ local DisplayService = require(script.Parent.DisplayService)
 local PvPService = require(script.Parent.PvPService)
 local StatsService = require(script.Parent.StatsService)
 local TelemetryService = require(script.Parent.TelemetryService)
-local UnboxService = require(script.Parent.UnboxService)
 
 type Data = ProfileTypes.Data
 
@@ -329,10 +327,6 @@ local function onProfileLoaded(player: Player)
 	end)
 end
 
-local function onBoxOpened(player: Player, _boxUid: string, _itemUid: string, itemId: string, revealDelay: number?)
-	discover(player, itemId, revealDelay)
-end
-
 local function onTheftEnded(thief: Player, _victim: Player, itemId: string, result: string, _reason: string)
 	if result == STOLEN then
 		discover(thief, itemId, nil)
@@ -410,7 +404,6 @@ function IndexService.Init()
 		print("[IndexService] Features.Index = false : découvertes notées, sans bonus de revenus, prime, vitesse ni message")
 	end
 	DataService.OnProfileLoaded(onProfileLoaded)
-	UnboxService.OnBoxOpened(onBoxOpened)
 	PvPService.OnTheftEnded(onTheftEnded)
 	Players.PlayerRemoving:Connect(function(player: Player)
 		bonusOf[player] = nil

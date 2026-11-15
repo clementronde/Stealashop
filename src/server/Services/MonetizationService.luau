@@ -36,10 +36,8 @@
 --   ×2 Entraînement    TrainingService.GetGainMultiplier × 2 (tapis et banc)
 --   Encaissement auto  DisplayService.HasAutoCollect : la caisse se vide chaque seconde, où que soit
 --                      le joueur
---   Ouverture rapide   UnboxService.GetOpenDelay × 0,5 pour chaque colis posé ; à l'achat, l'attente
---                      restante des colis déjà posés est aussi divisée par 2 (UnboxService.SkipWait).
---                      Priority 150 : posé avant TutorialService (200), le colis garanti du tuto garde
---                      ses 5 s
+--   Ouverture rapide   vague 52 (a170) : plus de colis posé (a158) ; Fast Open ne raccourcit plus que
+--                      l'antivol d'un objet posé au sol (voir vague 31 plus bas)
 --   +4 présentoirs     DisplayService.GetExtraSlots = 4 : DisplaySlot_21 à _24, au-delà du maximum de
 --                      20, s'ils sont posés dans la boutique (Clément)
 --   Roblox Premium     +10 % de revenus (Player.MembershipType, relu chaque seconde) :
@@ -180,8 +178,8 @@ local MESSAGES = {
 }
 
 local MonetizationService = {}
--- Après les services dont il remplace les accroches (100) ; avant TutorialService (200), qui pose la
--- sienne sur GetOpenDelay par-dessus (colis du tuto : 5 s exactes) ; avant TelemetryService (210).
+-- Après les services dont il remplace les accroches (100) ; avant TutorialService (200) et
+-- TelemetryService (210).
 MonetizationService.Priority = 150
 
 local enabled = false
@@ -942,12 +940,8 @@ local function installHooks()
 		local multiplier = if hasPass(player, "DoubleTraining") then passValue("DoubleTraining", "Multiplier", 1) else 1
 		return baseGain(player, kind) * multiplier
 	end
-	local baseDelay = UnboxService.GetOpenDelay
-	UnboxService.GetOpenDelay = function(player: Player, box: any): number
-		local factor = if hasPass(player, "FastOpen") then passValue("FastOpen", "DelayFactor", 1) else 1
-		return baseDelay(player, box) * factor
-	end
-	-- Vague 31 (L-112, Cantin 2026-11-12) : Fast Open raccourcit aussi l'antivol d'un objet posé au sol.
+	-- Vague 31 (L-112, Cantin 2026-11-12) : Fast Open raccourcit l'antivol d'un objet posé au sol. Vague 52 (a170) :
+	-- son seul effet (l'accroche UnboxService.GetOpenDelay des colis posés, inerte depuis a158, est retirée).
 	local baseAntiTheft = UnboxService.GetAntiTheftDelay
 	if (baseAntiTheft :: any) ~= nil then -- absent d'un UnboxService de banc
 		UnboxService.GetAntiTheftDelay = function(player: Player, itemId: string): number
@@ -981,8 +975,8 @@ function MonetizationService.Init()
 	DataService.OnProfileLoaded(onProfileLoaded)
 	DataService.OnProfileReleasing(onProfileReleasing)
 	if enabled then
-		UnboxService.OnBoxPlaced(onBoxPlaced)
-		-- Vague 31 : le crédit d'« Ouvrir maintenant » raccourcit aussi l'antivol d'un objet posé au sol.
+		-- Vague 31 : le crédit d'« Ouvrir maintenant » raccourcit l'antivol d'un objet posé au sol (vague 52 : plus
+		-- l'attente d'un colis posé, UnboxService.OnBoxPlaced inerte depuis a158 n'est plus écouté).
 		-- pcall : OnItemPlaced absent d'un UnboxService de banc → rien.
 		pcall((UnboxService :: any).OnItemPlaced, function(player: Player, itemUid: string, _itemId: string)
 			onBoxPlaced(player, itemUid, nil)

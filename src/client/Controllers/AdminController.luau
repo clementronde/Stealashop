@@ -68,6 +68,7 @@ local RESET_WINDOW = 5 -- V0 : secondes pour le second clic de ResetProfileButto
 -- Sortes de GiveSection : bouton de KindRow, liste de AdminLists, commande.
 local KINDS: { { button: string, list: string, command: string } } = {
 	{ button = "ItemKindButton", list = "Items", command = "GiveItem" },
+	-- Vague 52 (a170) : GiveBox donne un objet de la rareté choisie, libre (a158 : plus de colis) ; nom du bouton gardé.
 	{ button = "BoxKindButton", list = "Boxes", command = "GiveBox" },
 	{ button = "AuraKindButton", list = "Auras", command = "GiveAura" },
 	{ button = "TrailKindButton", list = "Trails", command = "GiveTrail" },

@@ -41,7 +41,8 @@ local UI = require(ContractFolder:WaitForChild("UI"))
 local Items = require(Shared:WaitForChild("Config"):WaitForChild("Items"))
 -- Autres icônes lues par le code, même règle (Contract/Icons) : outils de casse (WeaponShopController,
 -- L-090, `ICON_TOOL_<Id>`), batte (`ICON_TOOL_Bat`, livrée par Clément, carte Tool_Bat de l'inventaire, L-092 2a) et colis
--- de l'inventaire (InventoryService, L-089, `ICON_BOX_<Tier>`, nom proposé à Clément).
+-- (`ICON_BOX_<Tier>`, L-089 ; vague 52 : plus dans l'inventaire ni la barre, seulement le repli de
+-- UI_Escape.BoxIcon, a154).
 local Tools = require(Shared:WaitForChild("Config"):WaitForChild("Tools"))
 local OTHER_ICON_IDS: { string } = { "TOOL_Bat", "BOX_Standard", "BOX_Premium", "BOX_Luxe" }
 -- Icônes de colis par rareté (a79, L-097 point 3 : ICON_BOX_<Rareté>, sinon ICON_BOX_<Tier>), de Common à
@@ -1116,6 +1117,18 @@ local function checkGuiSet(
 	end
 end
 
+-- Vague 52 (a170) : éléments d'UI sortis du contrat (UI.Retired) encore livrés : une note, jamais un problème.
+local function checkRetiredUi(category: string, retired: { [string]: string }?, container: Instance?, containerPath: string)
+	if retired == nil or container == nil then
+		return
+	end
+	for path, why in retired do
+		if Find.path(container, path) ~= nil then
+			note(category, `{containerPath}.{path} : {why}, plus lu par le code ; peut être retiré`)
+		end
+	end
+end
+
 -- Animations (2.4) -------------------------------------------------------------
 
 local function checkAnimFolder(folder: Instance, specs: { Anim }, jobs: { Job })
@@ -1485,6 +1498,11 @@ local function run()
 	checkGuiSet("UI", UI.Screens, StarterGui, "StarterGui", "écran", false)
 	local billboardPath = `ReplicatedStorage.{table.concat(UI.BillboardFolder, ".")}`
 	checkGuiSet("Billboards", UI.Billboards, walk(ReplicatedStorage, UI.BillboardFolder), billboardPath, "billboard", true)
+	local retired = (UI :: any).Retired -- vague 52 : absent d'un ancien Contract/UI (bancs), rien
+	if type(retired) == "table" then
+		checkRetiredUi("UI", retired.Screens, StarterGui, "StarterGui")
+		checkRetiredUi("Billboards", retired.Billboards, walk(ReplicatedStorage, UI.BillboardFolder), billboardPath)
+	end
 	local jobs: { Job } = {}
 	checkPlayerAnimations(jobs)
 	checkAnimatedModels(scanned, jobs)
