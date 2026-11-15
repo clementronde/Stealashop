@@ -46,6 +46,10 @@
 -- `StageUpgradePoint_n` (n ≥ 2) du fond avancent aussi (position d'origine rendue sans coupe) et la boutique
 -- porte l'attribut `StageDepth` (z du fond dans son repère ; absent sans coupe ; nom V0) : UpgradeController
 -- y replace son panneau. Le gabarit et les pièces de Clément posées dans le Workspace ne changent pas.
+-- Gabarit découpé (L-190) : avec l'attribut ShopGrowth.RowCutAttribute (`RowCut` = true) sur PLOT_Shop, Clément a
+-- coupé chaque pièce aux plans des fonds ; rien n'est plus raccourci : une pièce dont le bord arrière dépasse le
+-- fond de moins de ShopGrowth.RowCutTolerance est gardée telle quelle, une pièce fine du fond avance encore, le
+-- reste est retiré de la copie.
 --
 -- API (serveur) :
 --   ShopStageService.Apply(plot, k, unlocked?) -> number
@@ -84,8 +88,8 @@ local ENABLED_CLASSES = { "SurfaceGui", "BillboardGui", "Light", "ParticleEmitte
 type Saved = { [Instance]: { [string]: any } }
 -- depth : fond posé (nil = entier) ; slots : z de chaque DisplaySlot_xx ; points : CFrame d'origine des StageUpgradePoint_n.
 type PlotState = { level: number, saved: Saved, depth: number?, slots: { [number]: number }?, points: { [Attachment]: CFrame } }
--- Coupe d'une copie : fond posé, fond du gabarit, repère de la boutique.
-type Cut = { depth: number, back: number, pivot: CFrame }
+-- Coupe d'une copie : fond posé, fond du gabarit, repère de la boutique, gabarit découpé par Clément (L-190).
+type Cut = { depth: number, back: number, pivot: CFrame, rowCut: boolean }
 
 local IS_STUDIO = RunService:IsStudio()
 
@@ -186,7 +190,7 @@ end
 local function cutPart(part: BasePart, cut: Cut): boolean
 	local cf, z0, z1, aligned = zSpan(cut.pivot, part)
 	local depth, back = cut.depth, cut.back
-	if z1 <= depth + EPS then
+	if z1 <= depth + (if cut.rowCut then ShopGrowth.RowCutTolerance else EPS) then
 		return true
 	end
 	local nearBack = back - z1 <= ShopGrowth.BackZone
@@ -194,7 +198,9 @@ local function cutPart(part: BasePart, cut: Cut): boolean
 		part.CFrame = cut.pivot * (cf + Vector3.new(0, 0, depth - back)) -- pièce fine du fond : elle avance avec lui
 		return true
 	end
-	if aligned and z1 - z0 > ShopGrowth.ClipMinLength and z0 < depth then
+	if cut.rowCut then
+		-- gabarit découpé par Clément (L-190) : rien n'est raccourci, le tronçon au-delà du fond est retiré
+	elseif aligned and z1 - z0 > ShopGrowth.ClipMinLength and z0 < depth then
 		local newZ1 = if nearBack then z1 + depth - back else depth - ShopGrowth.InnerInset
 		if newZ1 - z0 >= ShopGrowth.MinLength then
 			local lengths = { part.Size.X, part.Size.Y, part.Size.Z }
@@ -434,7 +440,8 @@ function ShopStageService.Apply(plot: Model, level: number, unlocked: number?): 
 			visual:Destroy()
 		end
 	end
-	local cut: Cut? = if depth and back then { depth = depth, back = back, pivot = plot:GetPivot() } else nil
+	local rowCut = template ~= nil and template:GetAttribute(ShopGrowth.RowCutAttribute) == true
+	local cut: Cut? = if depth and back then { depth = depth, back = back, pivot = plot:GetPivot(), rowCut = rowCut } else nil
 	if template then
 		for j, source in stagesOf(template) do
 			if j >= 2 and j <= k and plot:FindFirstChild(source.Name) == nil then

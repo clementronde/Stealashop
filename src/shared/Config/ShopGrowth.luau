@@ -16,9 +16,11 @@ local ShopGrowth = {
 	Enabled = true, -- V0
 	-- Fond de la boutique = rang du dernier présentoir débloqué + RowMargin (un socle fait 4 de profondeur),
 	-- arrondi au-dessus sur la grille du damier : StepOrigin + n × Step (carreaux de 4 depuis la porte).
-	RowMargin = 5, -- V0 : au moins 2 studs entre le dos d'un socle et le revêtement du mur du fond
-	Step = 4, -- V0 (0 : pas d'arrondi)
-	StepOrigin = -40, -- V0 : z de la porte dans le gabarit
+	-- RowMargin, Step et StepOrigin sont FIGÉS (L-190 Q3) : Clément coupe les pièces du gabarit à ces fonds, plans
+	-- z −12, −4, 4, 8, 16, 24, 32 et 40 (boutique entière). Les changer = lui demander de recouper.
+	RowMargin = 5, -- figé (L-190) : au moins 2 studs entre le dos d'un socle et le revêtement du mur du fond
+	Step = 4, -- figé (L-190)
+	StepOrigin = -40, -- figé (L-190) : z de la porte dans le gabarit
 	-- Pièces « du fond » : leur bord arrière est à moins de BackZone du fond du gabarit. Une pièce fine
 	-- (profondeur ≤ BackThickness : mur du fond, parapet, caméras du fond) avance avec le fond ; une longue pièce
 	-- (sol, murs des côtés, toit) est raccourcie en gardant son écart au fond.
@@ -30,6 +32,12 @@ local ShopGrowth = {
 	ClipMinLength = 6, -- V0
 	InnerInset = 1.5, -- V0 : épaisseur du mur du fond et de son revêtement, plus un peu
 	MinLength = 1, -- V0
+	-- Gabarit découpé par Clément (L-190 Q1 et Q2) : avec l'attribut booléen RowCutAttribute = true sur PLOT_Shop,
+	-- le code ne raccourcit plus rien. Une pièce dont le bord arrière est au plus à RowCutTolerance au-delà du
+	-- fond est gardée telle quelle, une pièce fine du fond avance toujours avec lui, toute autre est retirée.
+	-- Sans l'attribut, la coupe ci-dessus reste (filet).
+	RowCutAttribute = "RowCut", -- nom convenu avec Clément (L-190)
+	RowCutTolerance = 0.05, -- V0 : un tronçon coupé pile sur le plan reste devant le fond
 }
 
 return DeepFreeze(ShopGrowth)
