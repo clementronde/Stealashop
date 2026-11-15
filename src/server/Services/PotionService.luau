@@ -602,6 +602,33 @@ end
 -- Ramassage
 ------------------------------------------------------------------------------
 
+-- a173 (2026-11-15, Play de fusion48 : « trop loin (10.3 studs) » pour une potion touchée en courant) : même
+-- tolérance au retard du réseau que StealItem (a165) : StoreHeistService.ReachPad (WalkSpeed et ping lus sur le
+-- serveur), require protégé et fait au premier besoin ; sans StoreHeistService (bancs), 0.
+local reachPadOf: ((Player, Humanoid?) -> number)? = nil
+local reachPadSearched = false
+local function pickReachPad(player: Player, humanoid: Humanoid): number
+	if not reachPadSearched then
+		reachPadSearched = true
+		local module = script.Parent:FindFirstChild("StoreHeistService")
+		if module and module:IsA("ModuleScript") then
+			local ok, result = pcall(require, module)
+			if ok and type(result) == "table" and type((result :: any).ReachPad) == "function" then
+				reachPadOf = (result :: any).ReachPad
+			end
+		end
+	end
+	local found = reachPadOf
+	if found == nil then
+		return 0
+	end
+	local reach: (Player, Humanoid?) -> number = found
+	local ok, pad = pcall(function(): number
+		return reach(player, humanoid)
+	end)
+	return if ok and type(pad) == "number" and pad > 0 then pad else 0
+end
+
 local function onPickPotion(player: Player, uid: string)
 	local state = states[player]
 	local entry = if state then state.Potions[uid] else nil
@@ -621,7 +648,7 @@ local function onPickPotion(player: Player, uid: string)
 		return
 	end
 	local distance = (root.Position - entry.Position).Magnitude
-	if distance > Potions.PickupMaxDistance then
+	if distance > Potions.PickupMaxDistance + pickReachPad(player, humanoid) then
 		reject(player, uid, `trop loin ({math.round(distance * 10) / 10} studs)`)
 		return
 	end

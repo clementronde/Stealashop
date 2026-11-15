@@ -46,6 +46,13 @@ local Chase = {
 	PoliceRequiredFactor = 2, -- policier : minimum = Speed effective actuelle du voleur × ceci (Cantin)
 	DriverGrowthPerSecond = 0.02, -- conducteur : + 2 % de la marche du voleur par seconde depuis la fin de la ruée
 	DriverMaxFactor = 2, -- conducteur : au plus × la marche du voleur
+	-- a173 (2026-11-15, Play de fusion48) : en poursuite à distance, rappel vers la distance prévue (la fin de
+	-- ruée tombe 1 à 3 studs trop près quand les images n'ont pas la même durée, ou par l'élan du Humanoid) :
+	-- vitesse + clamp(HoldRecallGain × (distance − distance prévue), −HoldRecallMax, +HoldRecallMax). Distance
+	-- prévue = HoldDistance, qui baisse au rythme du rapprochement (vigile de nuit, policier : 4 studs/s), au
+	-- moins la distance de capture. Pas pour le conducteur du camion.
+	HoldRecallGain = 2, -- par seconde (V0)
+	HoldRecallMax = 4, -- studs/s (V0)
 	-- Qui suit cette règle (false : la vitesse d'avant, voir l'en-tête).
 	Apply = {
 		StoreGuard = true, -- vigile de jour d'un magasin PNJ
