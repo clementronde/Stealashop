@@ -20,6 +20,12 @@
 -- quand la parcelle est libérée. Vague 55 (a179) : Apply reçoit aussi le nombre de présentoirs
 -- débloqués et coupe la boutique au fond du dernier ; les pièces des RayonVisuals d'un rayon montré
 -- au-delà de ce fond (socles et plaques du rang suivant) sont cachées comme un rayon, puis rendues.
+-- Vague 60 (a195, T-086) : un présentoir pas encore débloqué ne se voit pas, même si son rang est là. Chaque pièce
+-- des RayonVisuals appartient au présentoir dont le numéro finit son nom (`DisplayStand_06`, `CollectPad_06`), à
+-- défaut au DisplaySlot du rayon le plus proche au sol (Config/ShopGrowth.LockedStandRadius) ; numéro au-dessus
+-- des présentoirs débloqués : cachée comme un rayon, rendue à l'achat (ShopGrowth.HideLockedStands). Son invite
+-- « Display » reste éteinte par DisplayService (présentoir « Locked »), son contour RayonSpot part avec le rayon.
+-- Rayon_01 (dans la boutique, toujours débloqué avec StartSlots 4) n'est pas concerné.
 --
 -- Quand : à l'attribution d'une parcelle et au départ du joueur (PlotService), à chaque achat de
 -- présentoir (attribut DisplaySlotsLevel du Player, écrit par ShopService), et une fois par seconde
@@ -51,6 +57,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
 local Balance = require(ReplicatedStorage.Shared.Config.Balance)
+local ShopGrowth = require(ReplicatedStorage.Shared.Config.ShopGrowth)
 local DataService = require(script.Parent.DataService)
 local PlotService = require(script.Parent.PlotService)
 local ShopStageService = require(script.Parent.ShopStageService)
@@ -266,6 +273,43 @@ local function spotsOf(plot: Model, rayon: Rayon): { Instance }
 	return found
 end
 
+-- Vague 60 (a195) : numéro du présentoir d'une pièce des RayonVisuals (voir l'en-tête), nil pour le décor du rang.
+local NUMBER_SUFFIX = "_(%d+)$"
+local FLAT = Vector3.new(1, 0, 1)
+
+-- DisplaySlot_xx du rayon (hors visuels), par numéro.
+local function slotsOf(rayon: Rayon, visuals: Instance): { [number]: Attachment }
+	local slots: { [number]: Attachment } = {}
+	for _, inst in rayon.model:GetDescendants() do
+		local slotDigits = string.match(inst.Name, SLOT_PATTERN)
+		if slotDigits and inst:IsA("Attachment") and not inst:IsDescendantOf(visuals) then
+			slots[tonumber(slotDigits) :: number] = inst
+		end
+	end
+	return slots
+end
+
+-- Un numéro de nom compte seulement si le rayon a ce présentoir (un décor `Light_12` du rayon 2 n'est pas le 12).
+local function standOf(slots: { [number]: Attachment }, piece: Instance): number?
+	local digits = string.match(piece.Name, NUMBER_SUFFIX)
+	local n = if digits then tonumber(digits) else nil
+	if n and slots[n] then
+		return n
+	end
+	if not piece:IsA("PVInstance") then
+		return nil
+	end
+	local at = (piece :: PVInstance):GetPivot().Position
+	local best: number?, bestDistance: number = nil, ShopGrowth.LockedStandRadius
+	for index, slot in slots do
+		local distance = ((slot.WorldCFrame.Position - at) * FLAT).Magnitude
+		if distance <= bestDistance then
+			best, bestDistance = index, distance
+		end
+	end
+	return best
+end
+
 local function apply(plot: Model)
 	local count = unlockedFor(plot)
 	-- Bâtiment d'abord (L-096 point 1) : niveau de la boutique = nombre de rayons montrés ; Stage_2 apporte
@@ -293,8 +337,11 @@ local function apply(plot: Model)
 			-- Vague 55 (a179) : socles et plaques du rayon au-delà du fond de la boutique cachés jusqu'à leur rang.
 			local visuals = rayon.model:FindFirstChild(VISUALS_NAME)
 			local pieces: { Instance } = if visuals then visuals:GetChildren() else {}
+			-- Vague 60 (a195) : présentoir pas encore débloqué caché aussi, même dans un rang montré.
+			local slots = if ShopGrowth.HideLockedStands and visuals then slotsOf(rayon, visuals) else nil
 			for _, piece in pieces do
-				if ShopStageService.IsBeyond(plot, piece) then
+				local stand = if slots then standOf(slots, piece) else nil
+				if (stand ~= nil and stand > count) or ShopStageService.IsBeyond(plot, piece) then
 					hideRayon(piece)
 				else
 					showRayon(piece)

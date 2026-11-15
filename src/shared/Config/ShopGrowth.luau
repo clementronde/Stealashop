@@ -14,6 +14,12 @@ local DeepFreeze = require(script.Parent.DeepFreeze)
 local ShopGrowth = {
 	-- false : la boutique reprend tout de suite la taille entière de chaque niveau, comme avant la vague 55.
 	Enabled = true, -- V0
+	-- Vague 60 (a195, T-086, Cantin : « un seul présentoir sur les deux ») : dans un rang déjà montré, le socle
+	-- et la plaque d'un présentoir pas encore débloqué restent cachés (RayonService). false : tout le rang d'un coup.
+	-- Une pièce des visuels d'un rayon sans numéro dans son nom (`…_07`) suit le DisplaySlot le plus proche à moins
+	-- de LockedStandRadius (au sol) ; plus loin, c'est le décor du rang, montré avec lui.
+	HideLockedStands = true, -- V0
+	LockedStandRadius = 6, -- V0 : la plaque est à 5 studs de son socle, le socle voisin du même côté à 8,6
 	-- Fond de la boutique = rang du dernier présentoir débloqué + RowMargin (un socle fait 4 de profondeur),
 	-- arrondi au-dessus sur la grille du damier : StepOrigin + n × Step (carreaux de 4 depuis la porte).
 	-- RowMargin, Step et StepOrigin sont FIGÉS (L-190 Q3) : Clément coupe les pièces du gabarit à ces fonds, plans
