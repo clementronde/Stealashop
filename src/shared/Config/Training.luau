@@ -19,6 +19,11 @@ local Training = {
 		-- devant ou derrière ne déclenche rien ; Shared/TrainingZone.track). Interrupteur : false = règle
 		-- d'avant (on monte dès l'entrée dans la zone), gardée pour les bancs qui la vérifient.
 		SideEntryOnly = true,
+		-- a200 (Cantin, 2026-11-15 : « quand on l'améliore, parfois ça nous arrête […] il faudrait que ça
+		-- continue ») : quand MachineVariantService remplace le tapis (nouveau palier), la séance passe sur le
+		-- nouveau tapis de la même parcelle sans s'arrêter. V0 proposé, absent du doc : délai (s) pendant
+		-- lequel une séance dont le tapis vient d'être retiré attend son remplaçant avant de finir.
+		SwapGrace = 0.5,
 	},
 
 	-- Section 3, étape 6 : le tapis s'allume, 30 s d'entraînement guidé

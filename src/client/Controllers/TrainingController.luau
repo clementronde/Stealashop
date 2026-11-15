@@ -19,6 +19,8 @@
 --     Humanoid.MoveDirection) : le client envoie TrainLeave, rend sa vitesse et arrête TreadmillRun tout
 --     de suite. Une entrée de déplacement tenue depuis la montée (il arrivait en marchant) ne compte
 --     pas : il faut la relâcher, puis bouger. ;
+--   - a200 : tapis remplacé par sa variante pendant la séance (amélioration) : la séance continue sur le
+--     nouveau, comme au serveur (followSwap) ;
 --   - TreadmillRun est rejoué s'il s'arrête pendant la séance (boucle garantie, même si une autre
 --     animation l'a coupé) ;
 --   - au tapis (TrainingMachine = "Treadmill"), un tap sur l'écran, un clic gauche ou la gâchette
@@ -67,6 +69,8 @@ local PREDICT_TIMEOUT = 1.5
 local RESEND_WINDOW = 1.5
 -- en dessous de cette norme, Humanoid.MoveDirection compte pour « ne bouge pas ».
 local MOVE_EPSILON = 0.05
+-- a200 : écart (studs) au-dessous duquel le joueur n'est pas replacé sur le tapis remplacé (comme le serveur).
+local SWAP_REPLACE_EPSILON = 0.05
 
 local TREADMILL_TAG = "Treadmill"
 local PLOT_TAG = "PlayerPlot"
@@ -296,6 +300,26 @@ local function predict(m: Machine, humanoid: Humanoid, root: BasePart)
 	refresh()
 end
 
+-- a200 (Cantin, 2026-11-15) : le tapis où l'on est (prédit ou confirmé) vient d'être remplacé par sa variante
+-- (MachineVariantService, à l'amélioration) : on passe sur le nouveau, de la même parcelle, sans rien couper,
+-- comme le serveur (TrainingService.adopt) : suivi a180 repris (TrainingZone.adopt), animation et vitesse
+-- gardées, replacé seulement si le UsePoint a bougé.
+local function followSwap(m: Machine?, humanoid: Humanoid, root: BasePart)
+	if m == nil then
+		return
+	end
+	local here = current
+	if here and here ~= m and here.plot == m.plot and not here.model:IsDescendantOf(workspace) then
+		current = m
+		TrainingZone.adopt(approach, m.zone)
+		local target = TrainingZone.standingCFrame(m.zone.usePoint, humanoid, root)
+		local character = localPlayer.Character
+		if character and (target.Position - root.Position).Magnitude > SWAP_REPLACE_EPSILON then
+			character:PivotTo(target)
+		end
+	end
+end
+
 -- Descente du tapis décidée ici (le joueur bouge) : le serveur est prévenu, tout est rendu tout de suite.
 local function leaveTreadmill(now: number)
 	if serverMachine ~= nil then
@@ -333,6 +357,7 @@ local function onHeartbeat()
 	-- bande, entré par un de ses grands côtés.
 	local position = root.Position
 	local m = ownMachineAt(position)
+	followSwap(m, humanoid, root)
 	if not TrainingZone.track(approach, if m then m.zone else nil, position) and sideEntryOnly then
 		m = nil
 	end

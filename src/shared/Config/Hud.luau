@@ -22,11 +22,13 @@ local Hud = {
 		Prefix = "-", -- V0 proposé, absent du doc : « -$1.2K » (Shared/Format.money derrière)
 	},
 	-- L-182 point 8 : sur le tapis, le gain d'une seconde (TrainingService, TREADMILL_TICK = 1, inchangé) s'affiche
-	-- en Pieces « +X » répartis sur la seconde (un toutes les 1 / Pieces s), même total ; chacun vit Life s
-	-- (montée et effacement de Config/UiMotion.FloatGain, plus courts). Pieces = 1 : l'ancien affichage
-	-- (« +2 Speed/s », un BB_Gain par seconde).
+	-- en ChunksPerSecond « +X » répartis sur la seconde (un toutes les 1 / ChunksPerSecond s), même total ; chacun
+	-- vit Life s (montée et effacement de Config/UiMotion.FloatGain, plus courts).
+	-- a200 (décision de Cantin, 2026-11-15 : « il faudrait qu'il n'y en ait que 1 par seconde ») : 1 = un seul
+	-- « +X Speed/s » par seconde avec le gain entier (l'affichage d'avant a190, vie FloatGain.Time), le compteur
+	-- Speed pulse une fois (SpeedPulse.Max) ; 5 = les morceaux d'a190 (code gardé).
 	TreadmillGain = {
-		Pieces = 5, -- L-182 : « 5 morceaux par seconde »
+		ChunksPerSecond = 1, -- V0 (Cantin) : 1 par seconde ; L-182 disait « 5 morceaux par seconde »
 		Period = 1, -- s couvertes par les morceaux : TREADMILL_TICK de TrainingService
 		Life = 0.75, -- L-182 : « chaque +X vit environ 0,75 s »
 		Text = "+%s Speed", -- V0 proposé, absent du doc : « +0.4 Speed » (un morceau n'est plus « par seconde »)
