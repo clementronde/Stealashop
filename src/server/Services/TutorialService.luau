@@ -131,7 +131,7 @@
 -- dans l'inventaire), puis plaque de ramassage (5), tapis (6), plaque de ramassage ou
 -- comptoir WeaponShop (7) et AuraShop (8) selon l'argent, arche de la zone 2 (9), porte du bot (11, et 12
 -- tant que sa boutique n'est pas ouverte au vol), objet du bot volable le plus proche (12, porte cassée ou
--- joueur dedans : présentoirs SafeSlots exclus, attributs StealOpen et SafeSlots de PvPService), sa boutique
+-- joueur dedans : attribut StealOpen de PvPService ; plus de coffre-fort depuis la vague 54), sa boutique
 -- (13). Le tapis
 -- est trouvé par son tag dans la parcelle ; la plaque, par DisplayService.GetCollectTarget (celle qui
 -- porte le plus d'argent, sinon celle du premier objet exposé). Boutique du hub (PLOT_Shop, L-050) :
@@ -339,10 +339,8 @@ local LANDED_ATTRIBUTE = "Landed"
 -- Entrée de la boutique du joueur (PLOT_Shop, nom validé par Ironix en L-050, pas encore au contrat).
 local PLOT_DOOR = "PlotDoor"
 local SLOT_FORMAT = "DisplaySlot_%02d"
--- Posés par PvPService sur une boutique (aucun nom du contrat) : ouverte au vol (porte cassée), et présentoirs
--- à l'abri (« 3 » ou « 3,7 »).
+-- Posé par PvPService sur une boutique (aucun nom du contrat) : ouverte au vol (porte cassée).
 local STEAL_OPEN_ATTRIBUTE = "StealOpen"
-local SAFE_SLOTS_ATTRIBUTE = "SafeSlots"
 -- Portage d'un objet volé (Types/Carry.PlayerItemPayload) : VictimUserId 0 = le bot (PvPService).
 local PLAYER_ITEM_KIND = "PlayerItem"
 local BOT_VICTIM_USER_ID = 0
@@ -960,8 +958,8 @@ local function atBotShop(plot: Model, position: Vector3?): boolean
 	return door ~= nil and (door - position).Magnitude <= Tutorial.BotShopRadius
 end
 
--- Étape 12 : présentoir de l'objet exposé du bot volable le plus proche de `position` (présentoirs à l'abri,
--- attribut SafeSlots de PvPService, exclus) ; nil sans objet volable.
+-- Étape 12 : présentoir de l'objet exposé du bot le plus proche de `position` (tous volables depuis la vague 54) ;
+-- nil sans objet exposé.
 local function botItemTarget(plot: Model, position: Vector3?): Vector3?
 	local api = Bot
 	if api == nil then
@@ -971,20 +969,10 @@ local function botItemTarget(plot: Model, position: Vector3?): Vector3?
 	if not ok or type(exposed) ~= "table" then
 		return nil
 	end
-	local safe: { [number]: boolean } = {}
-	local safeText = plot:GetAttribute(SAFE_SLOTS_ATTRIBUTE)
-	if type(safeText) == "string" then
-		for _, piece in string.split(safeText, ",") do
-			local slot = tonumber(piece)
-			if slot then
-				safe[slot] = true
-			end
-		end
-	end
 	local best: Vector3? = nil
 	local bestDistance = math.huge
 	for slot in exposed do
-		if type(slot) == "number" and not safe[slot] then
+		if type(slot) == "number" then
 			local at = positionOf(Find.path(plot, string.format(SLOT_FORMAT, slot)))
 			local distance = if at and position then (at - position).Magnitude else slot
 			if at and distance < bestDistance then

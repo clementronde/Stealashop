@@ -5,7 +5,8 @@
 --
 -- Sauvegarde : champ facultatif SkillTree du profil, [Id] = niveau acheté (Types/Profile, sans changement
 -- de version). Au chargement, nettoyé : ancien Id de SkillTree.Renamed relu sous son nouvel Id (ShopLevel →
--- Walls, vague 29 ; le plus haut niveau gagne), Id inconnu retiré, niveau entier borné à MaxLevel, niveau ≤ 0
+-- Walls, vague 29 ; le plus haut niveau gagne), Id retiré de SkillTree.Removed (Safe, vague 54 : le coffre-fort
+-- n'existe plus) effacé sans avertissement ni remboursement, Id inconnu retiré, niveau entier borné à MaxLevel, niveau ≤ 0
 -- retiré (table vide : champ retiré). Puis l'attribut `Skill_<Id>` (SkillTree.AttributePrefix) = niveau,
 -- 0 compris, est posé sur le Player pour chaque Id de Config/SkillTree ; republié à chaque achat.
 --
@@ -20,8 +21,8 @@
 --     DefenseBought), puis OnChanged. Débit et octroi dans la même exécution, sans yield.
 -- Aucun lieu imposé : l'écran s'ouvre de partout (bouton du HUD).
 --
--- Effets codés (Coded > 0), sur la boutique du joueur, par les points d'accroche de WindowService et de
--- PvPService (remplacés à l'Init, comme PvPService remplace WindowService.CanBeHit) :
+-- Effets codés (Coded > 0), sur la boutique du joueur, par les points d'accroche de WindowService
+-- (remplacés à l'Init, comme PvPService remplace WindowService.CanBeHit) :
 --   GlassThickness  « Reinforced Door » (L-163, a159) : coups de la porte de sa boutique (PlotDoor/Window) =
 --                   PvP.DoorHits (40) + Effects[niveau] (+8 par niveau, 80 au plus ; WindowService.GetPlotDoorHits).
 --                   Relu à chaque tick de WindowService : l'achat compte dans les 0,1 s, à fraction égale.
@@ -29,8 +30,6 @@
 --                   de la parcelle). L-163 : plus aucun effet sur la porte.
 --   GlassRegen      réparation de Effects[niveau] du maximum de coups par seconde au lieu de
 --                   Balance.Window.RegenPerSecond (WindowService.GetPlotRegen), en coups, quand personne ne frappe (PvP.DoorRepairDelay).
---   Safe            présentoirs non volables = PvP.VaultSlots (1 offert) + Effects[niveau] (PvPService.GetVaultSlots),
---                   3 au plus (MaxLevel 2).
 --   Curtain         verrou de la boutique (L-163, V0) : remote LockShop (sans argument, ShopLockController) ; le
 --                   serveur vérifie que le joueur a une boutique, que sa porte est intacte, qu'elle n'est pas déjà
 --                   verrouillée et que la recharge est finie (refus honnête : Notify « Warning »). Accepté : la
@@ -75,7 +74,6 @@ local ProfileTypes = require(Shared.Types.Profile)
 
 local DataService = require(script.Parent.DataService)
 local PlotService = require(script.Parent.PlotService)
-local PvPService = require(script.Parent.PvPService)
 local TelemetryService = require(script.Parent.TelemetryService)
 local WindowService = require(script.Parent.WindowService)
 
@@ -196,6 +194,10 @@ local function sanitize(data: Data): number
 	for key, value in raw do
 		-- Ancien Id (SkillTree.Renamed, ex. ShopLevel → Walls) : relu sous le nouveau, sans perte ni avertissement ;
 		-- si les deux sont là, le plus haut niveau gagne.
+		if type(key) == "string" and SkillTree.Removed[key] ~= nil then
+			log(`profil : {key} retiré (compétence qui n'existe plus), niveau ignoré`)
+			continue
+		end
 		local renamed = if type(key) == "string" then SkillTree.Renamed[key] else nil
 		local skill = if renamed then SkillTree.ById[renamed] elseif type(key) == "string" then SkillTree.ById[key] else nil
 		if skill == nil or type(value) ~= "number" or value ~= value then
@@ -417,9 +419,6 @@ local function installEffects()
 	WindowService.AddHitGate(lockGate)
 	WindowService.GetPlotRegen = function(owner: Player): number
 		return SkillTreeService.GetEffect(owner, "GlassRegen") or Balance.Window.RegenPerSecond
-	end
-	PvPService.GetVaultSlots = function(owner: Player): number
-		return PvP.VaultSlots + (SkillTreeService.GetEffect(owner, "Safe") or 0)
 	end
 	WindowService.OnHit(onWindowHit)
 end

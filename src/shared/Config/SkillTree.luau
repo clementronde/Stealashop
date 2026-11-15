@@ -27,7 +27,6 @@ export type SkillId =
 	| "DoorGuard"
 	| "PotionTime"
 	| "Traps"
-	| "Safe"
 
 export type Opens = { Id: SkillId, Level: number }
 
@@ -194,20 +193,6 @@ local List: { Skill } = {
 		Coded = 0,
 		OpensWhen = { Id = "Walls", Level = 2 },
 	},
-	{
-		-- Partie 2 : coffre-fort, présentoirs non volables (1 offert dès le MVP), +1 à 250 K $, +1 à 25 M $.
-		-- Effects[n] = présentoirs protégés en plus de celui offert.
-		Id = "Safe",
-		Tile = "Tile_Next4",
-		DisplayName = "Safe",
-		Stat = "Protected stands",
-		MaxLevel = 2,
-		Prices = { 250_000, 25_000_000 },
-		Effects = { 1, 2 },
-		Labels = { [0] = "1", "2", "3" },
-		Coded = 2,
-		OpensWhen = { Id = "GlassRegen", Level = 1 },
-	},
 }
 
 local ById: { [string]: Skill } = {}
@@ -219,6 +204,13 @@ end
 -- douce, sans changer la version du profil).
 local Renamed: { [string]: SkillId } = {
 	ShopLevel = "Walls", -- L-105 point 3 (2026-11-12)
+}
+
+-- Compétences retirées (vague 54, a176) : [ancien Id] = son ancienne tuile. Un niveau sauvegardé sous cet Id est
+-- ignoré sans avertissement au chargement (SkillTreeService, pas de remboursement) ; la tuile, si elle est encore
+-- dans UI_SkillTree, est cachée par SkillTreeController. Safe : le coffre-fort n'existe plus (Cantin, 2026-11-15).
+local Removed: { [string]: string } = {
+	Safe = "Tile_Next4",
 }
 
 -- Visuels de la boutique liés à une compétence (règle de Cantin du 2026-11-13) : cachés tant que le propriétaire
@@ -244,11 +236,12 @@ local PlotVisuals: { [string]: PlotVisual } = {
 	Walls = { Id = "Walls", Level = 1 },
 }
 
--- Base sans achat : réparation Balance (RegenPerSecond, 3 %) et coffre-fort offert Config/PvP.VaultSlots (1).
+-- Base sans achat : réparation Balance (RegenPerSecond, 3 %).
 local SkillTree = {
 	List = List,
 	ById = ById,
 	Renamed = Renamed,
+	Removed = Removed,
 	-- Mur visible de la boutique (ShopWallsService) : attribut de la parcelle et attributs des pièces de Clément.
 	WallsLevelAttribute = "WallsLevel",
 	ShowFromWalls = "ShowFromWalls",

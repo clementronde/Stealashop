@@ -11,7 +11,9 @@
 --     clavier, même règle que la barre du bas), LeftRailTouch est montré et LeftRail caché (décision de Clément,
 --     L-096, version B : la colonne de 5 boutons déborde sur l'argent). CloseButton ferme l'écran. Groupe
 --     ScreenGroup « Menu » : un seul écran du groupe à la fois (Motion.SetCloser).
---   - Tuiles (13, posées à la main dans Tree, pas de Template) : seuls les visibilités et les textes changent.
+--   - Tuiles (12, posées à la main dans Tree, pas de Template) : seuls les visibilités et les textes changent.
+--     Tuile d'une compétence retirée (SkillTree.Removed, Tile_Next4 du coffre-fort, vague 54) : cachée si elle
+--     est encore dans Tree.
 --     Calque selon le niveau (attribut Skill_<Id>, 0 s'il manque) et OpensWhen : Bought si niveau ≥ 1,
 --     Available si la tuile est ouverte, Locked sinon (Info caché). Tile_Next2 toujours Locked ; RootTile
 --     (« UPGRADES ») : rien à acheter, jamais choisie. Info.Level « Lv 2/5 » ; Info.TileName = DisplayName et
@@ -680,6 +682,12 @@ local function bind(gui: ScreenGui)
 		local wanted: { [string]: Skill | boolean } = { [SkillTree.RootTile] = true, [SkillTree.NeverTile] = true }
 		for _, skill in SkillTree.List do
 			wanted[skill.Tile] = skill
+		end
+		for _, oldTile in SkillTree.Removed do
+			local removed = guiObject(treeFrame, oldTile)
+			if removed then
+				removed.Visible = false
+			end
 		end
 		for name, value in wanted do
 			local skill: Skill? = if type(value) == "table" then value :: Skill else nil

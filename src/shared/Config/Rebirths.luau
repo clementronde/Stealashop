@@ -25,7 +25,6 @@
 --       `level` n'est pas un entier ≥ 1.
 --   Rebirths.IncomeMultiplier(done) -> number     1 + IncomeBonus × done (done = renaissances faites)
 --   Rebirths.TreadmillMultiplier(done) -> number  produit des « Tapis ×1,5 » gagnés (1 sans renaissance)
---   Rebirths.ExtraSafes(done) -> number           coffres-forts gagnés (« +1 coffre-fort »)
 --   Rebirths.HasReward(done, effect) -> boolean   une récompense de ce genre déjà gagnée
 
 local DeepFreeze = require(script.Parent.DeepFreeze)
@@ -34,11 +33,12 @@ local Rarities = require(script.Parent.Rarities)
 
 -- Genre de la récompense d'un palier, lu par RebirthService. Effet en jeu en V0 (vague 51) :
 --   Treadmill  gain du tapis × Value (TrainingService.GetGainMultiplier)
---   Safe       Value présentoir(s) à l'abri de plus (PvPService.GetVaultSlots)
+--   None       aucune récompense propre (2e renaissance depuis la vague 54 : le coffre-fort n'existe plus ;
+--              RewardText vide, la ligne de GainList est cachée par RebirthController)
 --   Aura, Trail, Tool, Guard, Title  noté « gagné » (attribut RebirthRewards), sans effet en jeu tant
 --              que l'aura, le trail, l'outil, l'agent de sécurité ou le billboard de titre n'existent pas
 --              (Config/Cosmetics et Config/Tools n'en ont pas ; les ajouter les mettrait dans les boutiques)
-export type RewardEffect = "Aura" | "Safe" | "Treadmill" | "Trail" | "Tool" | "Guard" | "Title"
+export type RewardEffect = "Aura" | "None" | "Treadmill" | "Trail" | "Tool" | "Guard" | "Title"
 
 export type Tier = {
 	Level: number, -- numéro de la renaissance (1 = la première)
@@ -51,7 +51,7 @@ export type Tier = {
 	-- (traduction ; « Rebirth Aura » est le texte de la maquette de Clément).
 	RewardText: string,
 	Effect: RewardEffect, -- genre de la récompense (voir RewardEffect)
-	Value: number?, -- Treadmill : multiplicateur ; Safe : nombre de coffres-forts ; nil sinon
+	Value: number?, -- Treadmill : multiplicateur ; nil sinon
 	PlayTimeMinutes: number?, -- temps de jeu simulé (joueur moyen), cumulé depuis la première connexion
 }
 
@@ -74,15 +74,16 @@ local TIERS: { Tier } = {
 		PlayTimeMinutes = 494,
 	},
 	{ -- 2 | 500B | Trône en or (Épique, zone 6) | +1 coffre-fort | 15 h 56
+		-- Vague 54 (a176, Cantin, 2026-11-15) : le coffre-fort n'existe plus ; palier sans récompense propre
+		-- (V0, en attendant une autre récompense choisie par Clément), seulement les +50 % de revenus.
 		Level = 2,
 		Cash = 500e9,
 		ItemId = "Z6_TroneEnOr",
 		Rarity = "Epic",
 		Zone = 6,
-		Reward = "+1 coffre-fort",
-		RewardText = "+1 Safe",
-		Effect = "Safe",
-		Value = 1,
+		Reward = "aucune (V0)",
+		RewardText = "",
+		Effect = "None",
 		PlayTimeMinutes = 956,
 	},
 	{ -- 3 | 1.3T | Statue de la Liberté (Épique, zone 6) | Tapis ×1,5 | 22 h 49
@@ -240,17 +241,6 @@ local function treadmillMultiplier(done: number): number
 	return multiplier
 end
 
-local function extraSafes(done: number): number
-	local extra = 0
-	for level = 1, math.min(clean(done), #TIERS) do
-		local tier = TIERS[level]
-		if tier.Effect == "Safe" then
-			extra += tier.Value or 0
-		end
-	end
-	return extra
-end
-
 local function hasReward(done: number, effect: RewardEffect): boolean
 	for level = 1, math.min(clean(done), #TIERS) do
 		if TIERS[level].Effect == effect then
@@ -268,7 +258,6 @@ local Rebirths = {
 	Get = get,
 	IncomeMultiplier = incomeMultiplier,
 	TreadmillMultiplier = treadmillMultiplier,
-	ExtraSafes = extraSafes,
 	HasReward = hasReward,
 }
 

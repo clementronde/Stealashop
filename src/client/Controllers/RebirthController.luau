@@ -21,7 +21,7 @@
 --       Icon           l'icône ICON_<ItemId> de l'objet (Contract/Icons) quand elle est livrée, sinon
 --                      l'image posée par Clément
 --       GainList       dans la ligne TIER_ROW (« Rebirth Aura » sur la maquette), la récompense propre
---                      au palier (Config/Rebirths, RewardText) ; ses autres lignes et les colonnes Lose
+--                      au palier (Config/Rebirths, RewardText ; ligne cachée quand il est vide) ; ses autres lignes et les colonnes Lose
 --                      et Keep gardent les textes de Clément
 --       Status         texte de Clément gardé (« Not owned yet ») : le client ne peut pas savoir si le
 --                      joueur a l'objet (son inventaire et son coffre-fort ne lui sont pas envoyés, et
@@ -240,6 +240,11 @@ local function refresh(current: Screen)
 		end
 	end
 	setText(gui, `GainList.{TIER_ROW}.{ROW_LABEL}`, tier.RewardText)
+	-- Vague 54 : palier sans récompense propre (RewardText vide, 2e renaissance) : sa ligne est cachée.
+	local tierRow = Find.path(gui, `GainList.{TIER_ROW}`)
+	if tierRow and tierRow:IsA("GuiObject") then
+		tierRow.Visible = tier.RewardText ~= ""
+	end
 
 	local live = liveCount() ~= nil
 	local shown = "Disabled"

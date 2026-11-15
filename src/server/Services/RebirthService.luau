@@ -32,8 +32,8 @@
 --                 Lifetime, réglages, potions en stock, zones atteintes
 --   gagné         Rebirths (renaissances faites) + 1 dans le profil, d'où : revenus des présentoirs ×
 --                 Rebirths.IncomeMultiplier (DisplayService.GetIncomeMultiplier ; pas le receleur), tapis ×
---                 Rebirths.TreadmillMultiplier (TrainingService.GetGainMultiplier), présentoirs à l'abri +
---                 Rebirths.ExtraSafes (PvPService.GetVaultSlots). Aura, trail, Marteau-piqueur, Bélier,
+--                 Rebirths.TreadmillMultiplier (TrainingService.GetGainMultiplier). Vague 54 : plus de coffre-fort,
+--                 la 2e renaissance n'a plus de récompense propre (Effect « None »). Aura, trail, Marteau-piqueur, Bélier,
 --                 2e agent et titre : notés gagnés (Rebirths.HasReward), sans effet en jeu tant qu'ils
 --                 n'existent pas (Config/Rebirths, RewardEffect). Le Bélier n'agit pas sur les portes (L-163)
 -- D'un seul tenant : toutes les écritures du profil se font dans une seule exécution sans yield (commit), le
@@ -77,7 +77,6 @@ local IndexService = require(script.Parent.IndexService)
 local InventoryService = require(script.Parent.InventoryService)
 local MachineVariantService = require(script.Parent.MachineVariantService)
 local PlotService = require(script.Parent.PlotService)
-local PvPService = require(script.Parent.PvPService)
 local RayonService = require(script.Parent.RayonService)
 local ShopService = require(script.Parent.ShopService)
 local StatsService = require(script.Parent.StatsService)
@@ -502,10 +501,6 @@ local function installHooks()
 	TrainingService.GetGainMultiplier = function(player: Player, kind: any): number
 		local multiplier = if kind == "Treadmill" then Rebirths.TreadmillMultiplier(activeCount(player)) else 1
 		return baseGain(player, kind) * multiplier
-	end
-	local baseVault = PvPService.GetVaultSlots
-	PvPService.GetVaultSlots = function(owner: Player): number
-		return baseVault(owner) + Rebirths.ExtraSafes(activeCount(owner))
 	end
 end
 

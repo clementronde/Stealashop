@@ -66,7 +66,7 @@
 -- (TelemetryService.LogEconomy, SKU = clé du produit).
 --
 -- Pas codés, juste listés (Ready = false : ni affichés ni vendus) :
---   VIP                tag de chat, aura VIP, +10 % de revenus, +1 coffre-fort, rideau +30 s : attend
+--   VIP                tag de chat, aura VIP, +10 % de revenus, rideau +30 s (plus de coffre-fort, vague 54) : attend
 --                      l'aura VIP (Clément) et les défenses de la MAJ 2
 --   Gants hydrauliques outil exclusif, puissance = 2,5 × le meilleur outil acheté : attend son modèle
 --                      TOOL_ et sa règle de puissance dans ToolService
