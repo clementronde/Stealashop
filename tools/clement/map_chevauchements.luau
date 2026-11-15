@@ -9,7 +9,9 @@
 --   _G.MapZF.backup({"Zone_1"}, "2026-11-15_Chevauchements") -> copie dans ServerStorage/MapBackups/<nom>
 --   _G.MapZF.fix({"Zone_1"})                               -> corrige, annulable (Ctrl+Z)
 --   _G.MapZF.worst(5)                                      -> pires cas du dernier detect (pour les captures)
--- Les noms de la liste sont des enfants de Workspace/Map (Zone_1..6, Entry, Hub, Skyline).
+-- Les noms de la liste sont des enfants de Workspace/Map (Zone_1..6, Entry, Hub, Skyline). On peut
+-- aussi y mettre une Instance hors de la map, par exemple le gabarit des boutiques :
+--   _G.MapZF.fix({game.ReplicatedStorage.Assets.Plots.PLOT_Shop})
 --
 -- Ce qui est cherché, seulement sur les Part en bloc visibles (Transparency < 0,99, sans mesh) :
 --   * deux faces de même sens, dans le même plan à moins de 0,02 stud, qui se recouvrent
@@ -42,16 +44,17 @@ for _, n in {
 	"StageUpgradePoint", "DisplayUpgradePoint", "NightWall", "NightWallSlot", "TruckSpawn",
 	"FortuneVaultSpawn", "Spawn", "SafeZone", "NameSign", "StoreReqSign", "Leaderboard", "Board",
 	"Lid", "Box", "Handle", "Root", "HumanoidRootPart", "DepositZone", "InviteZone", "RewardsZone",
-	"OwnerName", "RarestDisplay", "Truck",
+	"OwnerName", "RarestDisplay", "Truck", "Plate", -- Plate : lu par DisplayController (CollectPad)
 } do
 	PROTECTED_NAMES[n] = true
 end
 local PROTECTED_PATTERNS = { "^Shard_%d+$", "^ShelfSlot_%d+$", "^CollectPad_%d+$", "Point$", "^Stage_%d+$" }
--- Dossiers ou modèles du contrat : tout ce qu'ils contiennent ne bouge pas.
+-- Dossiers ou modèles du contrat : tout ce qu'ils contiennent ne bouge pas. PlotDoor et ShopPad
+-- n'y sont pas : la pièce elle-même reste fixe, mais leurs moulures de décor peuvent bouger.
 local PROTECTED_CONTAINERS = {
 	Window = true, WindowFractured = true, Shutter = true, Door = true, Bounds = true,
 	Witnesses = true, WitnessPaths = true, TruckSpawn = true, NightWall = true, NightWallSlot = true,
-	Belt = true, Leaderboard = true, PlotDoor = true, PlotBarrier = true, ShopPad = true,
+	Belt = true, Leaderboard = true, PlotBarrier = true,
 	FortuneVaultSpawn = true, RarestDisplay = true,
 }
 
@@ -200,7 +203,7 @@ local function collect(names)
 	local mapRoot = workspace:FindFirstChild("Map")
 	local parts = {}
 	for _, nm in names do
-		local f = mapRoot:FindFirstChild(nm)
+		local f = if typeof(nm) == "Instance" then nm else mapRoot:FindFirstChild(nm)
 		if f then
 			for _, d in f:GetDescendants() do
 				if d:IsA("BasePart") and not inRig(d, mapRoot) then
@@ -216,9 +219,17 @@ end
 -- Une paire ne compte que si un point juste devant la face commune (0,05 stud) est à l'air
 -- libre : pas dans une autre pièce opaque, pas sous le sol (face tournée vers le bas sous y = 1).
 local CELL = 16
-function M.buildOccluders()
+function M.buildOccluders(extraRoots)
 	local grid, big = {}, {}
-	for _, d in workspace.Map:GetDescendants() do
+	local all = workspace.Map:GetDescendants()
+	for _, root in extraRoots or {} do
+		if typeof(root) == "Instance" and not root:IsDescendantOf(workspace.Map) then
+			for _, d in root:GetDescendants() do
+				all[#all + 1] = d
+			end
+		end
+	end
+	for _, d in all do
 		if d:IsA("Part") and d.Shape == Enum.PartType.Block and d.Transparency < 0.05
 			and not d:FindFirstChildWhichIsA("DataModelMesh") then
 			local cf, h = d.CFrame, d.Size / 2
@@ -272,8 +283,8 @@ local function occluded(q, ex1, ex2)
 	return false
 end
 
-function M.markVisible(prs)
-	M.buildOccluders()
+function M.markVisible(prs, extraRoots)
+	M.buildOccluders(extraRoots)
 	for i, pr in prs do
 		local n = pr.a.n
 		local d = (pr.a.d + pr.b.d) / 2 + 0.05
@@ -316,8 +327,13 @@ function M.detect(names, quiet)
 	-- Doublons exacts
 	local seen, dups = {}, {}
 	for i, p in parts do
-		local k = dupKey(p)
-		if seen[k] then
+		-- une pièce invisible ne clignote pas : pas de doublon à retirer
+		local k = p.Transparency < 0.99 and dupKey(p)
+		if not k then
+			-- rien
+		elseif seen[k] and (seen[k]:IsAncestorOf(p) or p:IsAncestorOf(seen[k])) then
+			-- pièce posée dans une autre (ex. CollectPad et sa Plate) : ce n'est pas un doublon
+		elseif seen[k] then
 			dups[#dups + 1] = { keep = seen[k], drop = p }
 		else
 			seen[k] = p
@@ -457,7 +473,7 @@ function M.detect(names, quiet)
 
 	-- Dédoublonnage (une paire vue depuis deux bacs voisins) et stats
 	local uniq, list = {}, {}
-	M.markVisible(pairsFound)
+	M.markVisible(pairsFound, names)
 	local hidden = 0
 	for _, pr in pairsFound do
 		if not pr.visible then
@@ -517,6 +533,8 @@ end
 
 -- Sauvegarde ------------------------------------------------------------------------------
 function M.backup(names, label)
+	-- Copie complète, tags retirés et gardés dans l'attribut _Tags : sinon le code et le
+	-- ContractChecker verraient les magasins et les parcelles en double.
 	local ss = game:GetService("ServerStorage")
 	local root = ss:FindFirstChild("MapBackups") or Instance.new("Folder")
 	root.Name = "MapBackups"
@@ -529,11 +547,27 @@ function M.backup(names, label)
 	end
 	local done = {}
 	for _, nm in names do
-		local src = workspace.Map:FindFirstChild(nm)
-		if src and not dest:FindFirstChild(nm) then
+		local src = if typeof(nm) == "Instance" then nm else workspace.Map:FindFirstChild(nm)
+		if src and not dest:FindFirstChild(src.Name) then
 			local copy = src:Clone()
+			for _, d in copy:GetDescendants() do
+				local tags = CollectionService:GetTags(d)
+				if #tags > 0 then
+					d:SetAttribute("_Tags", table.concat(tags, ","))
+					for _, t in tags do
+						CollectionService:RemoveTag(d, t)
+					end
+				end
+			end
+			local tags = CollectionService:GetTags(copy)
+			if #tags > 0 then
+				copy:SetAttribute("_Tags", table.concat(tags, ","))
+				for _, t in tags do
+					CollectionService:RemoveTag(copy, t)
+				end
+			end
 			copy.Parent = dest
-			done[#done + 1] = nm
+			done[#done + 1] = src.Name
 			task.wait()
 		end
 	end
@@ -541,6 +575,14 @@ function M.backup(names, label)
 end
 
 -- Correction ------------------------------------------------------------------------------
+function M.label(names)
+	local t = {}
+	for _, nm in names do
+		t[#t + 1] = if typeof(nm) == "Instance" then nm.Name else tostring(nm)
+	end
+	return table.concat(t, ",")
+end
+
 local function moveFace(p, ax, s, delta)
 	-- déplace la face (ax, s) de delta le long de sa normale ; seule cette face bouge
 	local sz = p.Size
@@ -562,7 +604,7 @@ function M.fix(names)
 	-- sans enregistrement on ne change rien (tout doit rester annulable par Ctrl+Z).
 	local rec
 	for _ = 1, 40 do
-		rec = ChangeHistoryService:TryBeginRecording("Chevauchements " .. table.concat(names, ","))
+		rec = ChangeHistoryService:TryBeginRecording("Chevauchements " .. M.label(names))
 		if rec then
 			break
 		end
@@ -573,8 +615,13 @@ function M.fix(names)
 	end
 	local ok, res = pcall(function()
 		local last = M.detect(names, true)
-		local mapRoot = workspace.Map
 		local stats = {}
+		-- Journal des changements (M.changes) : pour reporter les décalages dans les scripts
+		-- qui reconstruisent le décor (hub, zones, gabarit des boutiques).
+		M.changes = {}
+		local function log(p, what)
+			M.changes[#M.changes + 1] = fullName(p) .. " : " .. what
+		end
 		local function st(z)
 			stats[z] = stats[z] or { dupRemoved = 0, faces = 0, skipped = 0 }
 			return stats[z]
@@ -589,6 +636,7 @@ function M.fix(names)
 				if isPrimary then
 					st(d.zone).skipped += 1
 				else
+					log(d.drop, "doublon retiré")
 					d.drop.Parent = nil -- annulable par ChangeHistoryService
 					st(d.zone).dupRemoved += 1
 				end
@@ -658,6 +706,7 @@ function M.fix(names)
 				elseif delta > MAX_SHIFT + 1e-4 then
 					st(f.zone).skipped += 1 -- plus de 0,05 : laissé, à voir à la main
 				elseif moveFace(f.part, f.ax, f.s, delta) then
+					log(f.part, string.format("face %s%s %+.3f", f.s > 0 and "+" or "-", AXES[f.ax], delta))
 					st(f.zone).faces += 1
 				else
 					st(f.zone).skipped += 1
