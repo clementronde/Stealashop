@@ -1095,6 +1095,14 @@ local function deposit(theft: Theft, root: BasePart)
 	}
 	local slot = if theft.Floor or toHand then nil else DisplayService.PlaceAuto(thief, theft.Uid, root.Position)
 	CarryService.Consume(thief, "Deposited")
+	-- Vague 50 (a158) : l'arrivée en zone safe (UI_Escape, remote ItemSecured, a154) part aussi pour un objet volé
+	-- à un joueur ou au bot et déposé chez soi ; une fois par dépôt (le vol est déjà retiré de `thefts`).
+	local secured, securedErr = pcall(function()
+		Net.Server.ItemSecured:Fire(thief, theft.ItemId)
+	end)
+	if not secured then
+		warn(`[PvPService] ItemSecured vers {thief.Name} : {securedErr}`)
+	end
 	local inHand = false
 	if toHand then
 		local module = script.Parent:FindFirstChild("HeldItemService") -- require protégé : bancs sans lui

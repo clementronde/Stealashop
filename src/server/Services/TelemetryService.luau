@@ -49,14 +49,16 @@
 --   TheftFail (PvPTheftFail)  vol raté (« Returned » : l'objet revient à son présentoir) ; joueur = le
 --       voleur ; champs : Reason (raison du portage : Bat, Died, Left, CharacterRemoved, VictimLeft,
 --       NoRoom, Anomaly, Caught…), Rarity, Zone de l'objet.
---   BatBoxKnock (BatBoxKnockdown)  un coup de batte fait tomber le colis PNJ d'un porteur, hors zone
---       safe (BatService.OnHit, usage « Box ») ; joueur = le frappeur ; champs : Zone du colis,
---       Rarity, Source (Store : colis d'un magasin ; Truck : colis du camion, StoreId « Truck_<n> » ;
---       Fortune : colis de la vitrine de la Fortune Tower, StoreId « Truck_Fortune_<n> », vague 39).
---   GuardCatch  un vigile rattrape le porteur d'un colis PNJ (CarryService.OnCarryEnded, « Failed »
---       et raison « Caught », que GuardService donne de jour comme de nuit ; colis PNJ seulement : un
+--   BatBoxKnock (BatBoxKnockdown)  un coup de batte fait tomber l'objet sorti d'un colis PNJ (NPCItem ;
+--       vague 50, a158 : le colis porté fermé n'existe plus, le nom de l'événement reste) d'un porteur, hors
+--       zone safe (BatService.OnHit, usage « Box ») ; joueur = le frappeur ; champs : Zone du magasin,
+--       Rarity de l'objet, Source (Store : magasin ; Truck : camion, StoreId « Truck_<n> » ;
+--       Fortune : vitrine de la Fortune Tower, StoreId « Truck_Fortune_<n> », vague 39).
+--   GuardCatch  un vigile rattrape le porteur d'un objet sorti d'un colis PNJ (NPCItem, vague 50 ;
+--       CarryService.OnCarryEnded, raison « Caught », que GuardService donne de jour comme de nuit : résultat
+--       « Dropped », l'objet tombe, ou « Failed », il revole sur son rayon ; pas un objet volé à un joueur : un
 --       voleur d'objet attrapé la nuit part en TheftFail « Caught ») ; joueur = le porteur ; champs :
---       Zone du colis, Phase (Day, Warning ou Night : NightCycleService.GetPhase), Rarity. Un joueur
+--       Zone du magasin, Phase (Day, Warning ou Night : NightCycleService.GetPhase), Rarity. Un joueur
 --       attrapé la nuit sans rien porter ne passe pas par CarryService : il est compté par
 --       GuardService.OnCatch, avec la Zone du vigile, Phase Night et Rarity None.
 --   RewardClaim (RewardClaimed)  chaque récompense réclamée (RewardService, DEV-101), argent, colis ou
@@ -448,7 +450,8 @@ local function onBatHit(hitter: Player, _target: Player, usage: BatService.Usage
 	if usage ~= "Box" or payload == nil then
 		return
 	end
-	if payload.Kind == "NPCBox" then
+	-- Vague 50 (a158) : ce qui tombe est un objet sorti d'un colis (NPCItem) ; le colis porté n'existe plus.
+	if payload.Kind == "NPCItem" then
 		local storeId = payload.StoreId
 		local source = if string.sub(storeId, 1, #FORTUNE_PREFIX) == FORTUNE_PREFIX
 			then "Fortune"
@@ -459,10 +462,12 @@ local function onBatHit(hitter: Player, _target: Player, usage: BatService.Usage
 end
 
 local function onCarryEnded(player: Player, payload: Payload, result: CarryTypes.EndResult, reason: string)
-	if result ~= "Failed" or reason ~= "Caught" then
+	-- Vague 50 (a158) : un porteur d'objet (NPCItem) attrapé le lâche (« Dropped », raison « Caught », L-112),
+	-- sauf dans le magasin d'où vient l'objet (« Failed » : il revole sur son rayon).
+	if reason ~= "Caught" or (result ~= "Failed" and result ~= "Dropped") then
 		return
 	end
-	if payload.Kind == "NPCBox" then
+	if payload.Kind == "NPCItem" then
 		local ok, phase = pcall(NightCycleService.GetPhase)
 		logEvent(player, "GuardCatch", field("Zone", payload.Zone), field("Phase", if ok then phase else nil), field("Rarity", payload.Rarity), nil)
 	end

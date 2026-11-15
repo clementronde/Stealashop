@@ -83,8 +83,9 @@
 -- L-089) = colis dans l'inventaire, ouverts au sol de la boutique : Boxes rangé par uid de colis, plus de
 -- BoxQueue (voir MIGRATIONS[7]) ; v8 (2026-11-09, DEV-101) = récompenses quotidiennes et de temps de jeu :
 -- Rewards (RewardService ; voir MIGRATIONS[8]).
--- Vague 31 (L-112, Features.ShelfOpen) : au chargement, après la migration, les colis du profil deviennent des
--- objets de l'inventaire (convertBoxes, plus bas), sans changement de version ; idempotent.
+-- Vague 31 (L-112) : au chargement, après la migration, les colis du profil deviennent des objets de
+-- l'inventaire (convertBoxes, plus bas), sans changement de version ; idempotent. Vague 50 (a158) : toujours,
+-- sans lire Features.ShelfOpen ; le champ Boxes reste dans le profil (gabarit), vide après le chargement.
 -- Nouvelle version du schéma (ex. v9 de la Partie 2) :
 --   1. ajouter les champs dans Types/Profile et dans TEMPLATE ci-dessous ;
 --   2. ajouter MIGRATIONS[9] (transforme un profil v8 en v9 ; ce qui est seulement
@@ -97,7 +98,6 @@ local RunService = game:GetService("RunService")
 
 local Balance = require(ReplicatedStorage.Shared.Config.Balance)
 local Catalog = require(ReplicatedStorage.Shared.Config.Items)
-local Features = require(ReplicatedStorage.Shared.Config.Features)
 local ProfileTypes = require(ReplicatedStorage.Shared.Types.Profile)
 
 local Server = (script.Parent :: Instance).Parent :: Instance
@@ -585,8 +585,7 @@ local MIGRATIONS: { [number]: (data: any, log: MigrationLog) -> () } = {
 -- (aucun champ nouveau dans Boxes ni dans Items). Idempotent : le colis quitte Boxes dans la même exécution,
 -- et un objet déjà présent sous cet uid avec le même ItemId (conversion déjà faite) n'est pas recréé. Un colis
 -- illisible (pas une table, ItemId inconnu du catalogue) reste dans Boxes, tel quel. Mutation : celle du colis,
--- jamais sur un objet TutorialOnly. Les colis donnés pendant la partie (récompense, camion, tuto) restent
--- des colis jusqu'au chargement suivant (UnboxService garde l'ancien déroulé pour eux).
+-- jamais sur un objet TutorialOnly. Vague 50 (a158) : plus aucun colis n'est donné ni rangé pendant la partie.
 local function convertBoxes(data: any, log: MigrationLog)
 	local boxes, items = data.Boxes, data.Items
 	if type(boxes) ~= "table" or type(items) ~= "table" or next(boxes) == nil then
@@ -768,11 +767,10 @@ local function loadProfile(player: Player)
 	profile.Data = migrated
 	profile:Reconcile()
 	-- Vague 31 (L-112) : colis déjà rangés → objets de l'inventaire (convertBoxes), avant tout écouteur.
-	if Features.ShelfOpen then
-		local converted, problem = pcall(convertBoxes :: any, profile.Data, migrationLog) -- :: any : sinon l'ancien solveur croit que pcall ne renvoie qu'une valeur
-		if not converted then
-			warn(`[DataService] {player.Name} ({key}) : conversion des colis impossible ({problem}), colis gardés`)
-		end
+	-- Vague 50 (a158) : sans condition (plus aucun colis rangé ni ouvert en base, quel que soit Features.ShelfOpen).
+	local converted, problem = pcall(convertBoxes :: any, profile.Data, migrationLog) -- :: any : sinon l'ancien solveur croit que pcall ne renvoie qu'une valeur
+	if not converted then
+		warn(`[DataService] {player.Name} ({key}) : conversion des colis impossible ({problem}), colis gardés`)
 	end
 	profile:AddUserId(player.UserId)
 

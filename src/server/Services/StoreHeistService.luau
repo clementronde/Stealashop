@@ -274,14 +274,9 @@
 --       NightCycleService (la nuit, 5.12).
 --   StoreHeistService.IsOpen(store) -> boolean
 --       store = le Model du magasin ou son StoreId. true pendant le chrono (Balance.Heist.Duration).
---   StoreHeistService.OnBoxGrabbed(listener) -> déconnexion
---       listener(player, payload) après chaque prise réussie (CarryService.StartCarry a accepté).
---   StoreHeistService.ReturnBox(payload, from?) -> boolean
---       Remet sur son emplacement, avec son contenu d'origine, le colis sorti de ce payload NPCBox,
---       en vol depuis `from` (Vector3) s'il est donné. false si le colis est inconnu, déjà revenu,
---       d'avant un remplissage de son magasin, ou si son emplacement est occupé. Utilisé ici à
---       l'échec du porteur et pour le colis tombé au sol qui revient au bout de 15 s (DEV-048) :
---       le payload doit être la même table que celle donnée à StartCarry (CarryService la garde).
+--   Vague 50 (a158, Cantin 2026-11-14 : le colis porté fermé n'existe plus) : OnBoxGrabbed et ReturnBox
+--       retirés, comme la prise d'un colis fermé (payload NPCBox) ; avec Features.ShelfOpen = false, GrabItem
+--       refuse tout (le reste de l'ancien déroulé part au lot E).
 --   StoreHeistService.SetContentOverride(fn?)
 --       Accroche du tuto (voir plus haut). fn(player, drawn) -> override?, appelée à chaque prise,
 --       ne doit pas yield. drawn = { StoreId, SlotId, Zone, Tier, Rarity, ItemId } (contenu du
@@ -305,10 +300,8 @@
 --   StoreHeistService.GetStoreId(model) -> string? et GetStoreModel(storeId) -> Model?
 --       StoreId = l'id de vitrine de WindowService (le nom du modèle, « STORE_Z1_Superette »).
 --
--- Payload d'un colis PNJ, transmis à CarryService : { Kind = "NPCBox", Tier, Zone, Rarity,
--- ItemId, StoreId, SlotId, Mutation? }. ItemId ne doit jamais partir vers un client avant OpenBox (5.7).
--- Payload d'un objet sorti (Features.ShelfOpen) : { Kind = "NPCItem", ItemId, Rarity, Mutation?, Zone,
--- StoreId, SlotId, Luck } (Shared/Types/Carry). OnBoxGrabbed ne prévient que pour un colis.
+-- Payload d'un objet sorti, transmis à CarryService : { Kind = "NPCItem", ItemId, Rarity, Mutation?, Zone,
+-- StoreId, SlotId, Luck } (Shared/Types/Carry).
 
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
@@ -336,16 +329,6 @@ local ShelfOpenState = require(Shared.ShelfOpenState)
 local AntiCheatService = require(script.Parent.AntiCheatService)
 local WindowService = require(script.Parent.WindowService)
 
-export type NPCBoxPayload = {
-	Kind: "NPCBox",
-	Tier: string, -- "Standard", "Premium" ou "Luxe"
-	Zone: number,
-	Rarity: string, -- Id de Rarities ("Epic"…)
-	ItemId: string, -- Id de Items ("Z3_Smartphone"…), secret jusqu'à OpenBox
-	StoreId: string,
-	SlotId: string,
-	Mutation: Mutations.Mutation?, -- DEV-131 : tirée à la mise en rayon ; nil = aucune
-}
 
 -- Objet sorti d'un colis ouvert sur le rayon (L-112), porté : même forme que Shared/Types/Carry.
 export type NPCItemPayload = {
@@ -383,7 +366,7 @@ export type LuckOverride = (player: Player, drawn: OverrideInfo) -> number?
 -- Ce que ce service utilise de CarryService (a11, DEV-017). Typé ici pour ne pas dépendre
 -- des noms de types de son module.
 type CarryApi = {
-	StartCarry: (player: Player, payload: NPCBoxPayload | NPCItemPayload) -> boolean,
+	StartCarry: (player: Player, payload: NPCItemPayload) -> boolean,
 	IsCarrying: (player: Player) -> boolean,
 	GetPayload: (player: Player) -> any,
 	OnCarryEnded: (listener: (player: Player, payload: any, result: string, reason: string) -> ()) -> any,
@@ -458,12 +441,6 @@ type OutItem = {
 	Info: ItemInfo,
 }
 
--- Colis sorti du magasin (porté, ou au sol au jalon M3) : ce qui revient sur le rayon s'il revient.
-type OutBox = {
-	Slot: Slot,
-	Tier: string,
-	Content: Content, -- contenu d'origine, même si l'accroche du tuto a changé celui du porteur
-}
 
 type Store = {
 	Id: string,
@@ -510,7 +487,6 @@ type LockState = "Leaving" | "Closed"
 -- Target : le colis (ShelfBox) ou l'objet sorti (ShelfItem, L-112) visé par le maintien.
 type Hold = { Slot: Slot, Target: any, Tier: string, StartedAt: number }
 
-type GrabbedListener = (player: Player, payload: NPCBoxPayload) -> ()
 
 type BoxLook = {
 	Size: Vector3,
@@ -651,13 +627,12 @@ local storesById: { [string]: Store } = {}
 local slotsById: { [string]: Slot } = {}
 local holds: { [Player]: Hold } = {}
 local openHolds: { [Player]: Hold } = {} -- maintiens d'ouverture d'un colis sur le rayon (L-112, Cantin 2026-11-13)
--- Colis sortis, par payload (la table donnée à StartCarry, que CarryService garde telle quelle).
-local outBoxes: { [any]: OutBox } = {}
--- Objets sortis de leur magasin (L-112), par payload NPCItem (même règle que outBoxes).
+-- Objets sortis de leur magasin (L-112), par payload NPCItem (la table donnée à StartCarry, que CarryService
+-- garde telle quelle). Vague 50 (a158) : plus de colis sorti fermé (outBoxes, payload NPCBox).
 local outItems: { [any]: OutItem } = {}
 local lastCallNotice: { [Player]: number } = {} -- dernier Notify « les témoins appellent la police »
 local witnessApi: WitnessApi? = nil -- WitnessService, s'il existe (Init)
-local grabbedListeners: { GrabbedListener } = {}
+
 local contentOverride: ContentOverride? = nil
 local luckOverride: LuckOverride? = nil -- accroche du tuto (a107), voir SetLuckOverride
 local lastRefusal: { [Player]: number } = {}
@@ -680,15 +655,6 @@ local function live(store: Store): boolean
 	return stores[store.Model] == store or eventStores[store.Model] == store
 end
 
-local function subscribe<T>(list: { T }, listener: T): () -> ()
-	table.insert(list, listener)
-	return function()
-		local index = table.find(list, listener)
-		if index then
-			table.remove(list, index)
-		end
-	end
-end
 
 local function log(message: string)
 	if IS_STUDIO then
@@ -1364,11 +1330,6 @@ end
 local function fillStore(store: Store): number
 	store.RefillPending = false
 	cancelHolds(store)
-	for payload, out in outBoxes do
-		if out.Slot.Store == store then
-			outBoxes[payload] = nil -- tirage précédent : il ne reviendra pas
-		end
-	end
 	for payload, out in outItems do
 		if out.Slot.Store == store then
 			outItems[payload] = nil -- objet sorti d'un colis du tirage précédent : il ne reviendra pas
@@ -1624,10 +1585,6 @@ local function publishClosed(player: Player)
 	end
 end
 
--- Il vient de prendre un colis sur un rayon de ce magasin : fermé pour lui (d'abord en sortie).
-local function lockFor(store: Store, player: Player)
-	store.Locked[player] = "Leaving"
-end
 
 local function unlock(store: Store, player: Player, why: string)
 	local state = store.Locked[player]
@@ -2132,53 +2089,6 @@ local function contentFor(player: Player, slot: Slot, baseTier: string, base: Co
 	return tier, content
 end
 
-local function grant(player: Player, slot: Slot)
-	local store = slot.Store
-	local box = slot.Box
-	-- Ancien déroulé seulement : avec Features.ShelfOpen, grabRefusal refuse toute prise d'un colis fermé
-	-- (et son contenu n'existe pas encore, vague 32).
-	local original = if box then box.Content else nil
-	if box == nil or original == nil then
-		return
-	end
-	local tier, content = contentFor(player, slot, box.Tier, original)
-	local payload: NPCBoxPayload = {
-		Kind = "NPCBox",
-		Tier = tier,
-		Zone = store.Zone,
-		Rarity = content.Rarity,
-		ItemId = content.ItemId,
-		StoreId = store.Id,
-		SlotId = slot.Id,
-		Mutation = content.Mutation,
-	}
-	-- Rayon réservé pendant l'appel : une autre prise ne peut pas passer si StartCarry attend.
-	slot.Box = nil
-	outBoxes[payload] = { Slot = slot, Tier = box.Tier, Content = original }
-	local ok, started = pcall(CarryService.StartCarry, player, payload)
-	if not ok or started ~= true then
-		outBoxes[payload] = nil
-		if not ok then
-			warn(`[StoreHeistService] CarryService.StartCarry : {started}`)
-		end
-		if slot.Box == nil and stores[store.Model] == store then
-			slot.Box = box -- rien n'a changé : le colis reste sur le rayon
-		else
-			discard(box) -- rayon rempli entre-temps : pas de doublon
-		end
-		refuse(player, slot.Id, "CarryService a refusé le portage")
-		return
-	end
-	discard(box)
-	hideTimer(store, player)
-	lockFor(store, player)
-	local mutation = Mutations.Label(content.Mutation)
-	log(`{player.Name} prend le colis {box.Tier} {slot.Name} de {store.Id} : {content.Rarity} ({content.ItemId}){if mutation then ", " .. mutation else ""}`)
-	for _, listener in table.clone(grabbedListeners) do
-		task.spawn(listener, player, payload)
-	end
-end
-
 -- Ouverture sur le rayon (L-112, Features.ShelfOpen ; voir l'en-tête) -----------------------------------
 
 -- `player` prend l'objet sorti posé sur `slot` : portage NPCItem (CarryService), rayon vidé, magasin
@@ -2657,6 +2567,12 @@ local function onGrabItem(player: Player, slotId: string)
 		refuse(player, slotId, "déplacement sanctionné par l'anti-triche (audit 9.8)")
 		return
 	end
+	if not SHELF_OPEN then
+		-- Vague 50 (a158, Cantin 2026-11-14) : le colis fermé ne se porte plus ; sans l'ouverture sur le rayon
+		-- (Features.ShelfOpen = false), plus rien ne se prend (les branches restantes partent au lot E).
+		refuse(player, slotId, "colis fermé : il ne se porte plus (Features.ShelfOpen = false n'a plus de prise)")
+		return
+	end
 	local hold = holds[player]
 	-- Début du maintien : portée souple ; fin du maintien ou prise sans maintien : stricte (« Portée »).
 	local current: any, currentTier: string? = nil, nil
@@ -2685,10 +2601,10 @@ local function onGrabItem(player: Player, slotId: string)
 	end
 	-- grabRefusal a vérifié qu'il est posé : le colis, ou l'objet sorti (L-112).
 	local target: any, tier: string
-	local give = grant
+	local give = grantItem
 	if SHELF_OPEN then
 		local item = slot.Item :: ShelfItem
-		target, tier, give = item, item.Info.Tier, grantItem
+		target, tier = item, item.Info.Tier
 	else
 		local box = slot.Box :: ShelfBox
 		target, tier = box, box.Tier
@@ -2714,23 +2630,6 @@ local function onGrabItem(player: Player, slotId: string)
 end
 
 -- Retour d'un colis ------------------------------------------------------------------------------
-
-local function returnBox(payload: any, from: Vector3?): boolean
-	if type(payload) ~= "table" then
-		return false
-	end
-	local out = outBoxes[payload]
-	if out == nil then
-		return false -- inconnu, déjà revenu, ou d'avant un remplissage de son magasin
-	end
-	outBoxes[payload] = nil
-	local slot = out.Slot
-	if stores[slot.Store.Model] ~= slot.Store or slot.Box ~= nil or slot.Item ~= nil then
-		return false -- magasin retiré, ou emplacement occupé : pas de doublon
-	end
-	placeBox(slot, out.Tier, out.Content.Rarity, out.Content, from)
-	return true
-end
 
 -- L-112 : remet sur son emplacement l'objet sorti de ce payload NPCItem, en vol depuis `from` s'il est
 -- donné. Sa réservation n'est pas relancée. false s'il est inconnu, déjà revenu, d'avant un
@@ -2777,53 +2676,17 @@ local function onCarryEnded(player: Player, payload: any, result: string, reason
 			local back = returnItem(payload, carrierPosition(player))
 			log(`objet {payload.ItemId} de {player.Name} ({reason}) : {if back then "revient" else "ne revient pas"} sur {payload.SlotId}`)
 		end
-		return
-	end
-	if type(payload) ~= "table" or payload.Kind ~= "NPCBox" then
-		return
-	end
-	if result == "Consumed" then
-		outBoxes[payload] = nil -- posé sur un établi : il ne reviendra jamais
-		return
-	end
-	if result ~= "Failed" then
-		return -- « Dropped » (DEV-048) : au sol, il revient par onDropExpired s'il n'est pas ramassé
-	end
-	-- Attrapé dans le magasin : il en est sorti par la fermeture pour le voleur (stepLocks).
-	if returnBox(payload, carrierPosition(player)) then
-		log(`colis {payload.Tier} de {player.Name} ({reason}) : revient sur {payload.SlotId}`)
-	else
-		log(
-			`colis {payload.Tier} de {player.Name} ({reason}) : ne revient pas sur {payload.SlotId} (magasin rempli depuis, ou colis inconnu)`
-		)
 	end
 end
 
--- Colis tombé au sol après un coup de batte, jamais ramassé (6.2 : Bat.DroppedLifetime s) : il
--- revole vers son emplacement depuis l'endroit où il était, avec son contenu d'origine. Un colis
--- qui n'est pas d'un magasin (camion) est inconnu ici : il disparaît, rien à faire.
+-- Objet tombé au sol (coup de batte, capture, lâcher), jamais ramassé (6.2 : Bat.DroppedLifetime s) : il
+-- revole vers son emplacement depuis l'endroit où il était.
 local function onDropExpired(dropId: string, payload: any, position: Vector3?)
 	if type(payload) == "table" and payload.Kind == "NPCItem" then
 		-- L-112 : objet resté au sol sans preneur, il revole vers son rayon (ou disparaît, voir returnItem).
 		local start = if typeof(position) == "Vector3" then position + Vector3.new(0, DROP_RETURN_LIFT, 0) else nil
 		local back = returnItem(payload, start)
 		log(`objet {payload.ItemId} {dropId} resté au sol : {if back then "revient" else "ne revient pas"} sur {payload.SlotId}`)
-		return
-	end
-	if type(payload) ~= "table" or payload.Kind ~= "NPCBox" then
-		return
-	end
-	if outBoxes[payload] == nil then
-		if storesById[payload.StoreId] then
-			log(`colis {payload.Tier} {dropId} resté au sol : ne revient pas sur {payload.SlotId} (magasin rempli depuis)`)
-		end
-		return -- colis du camion, ou d'avant un remplissage de son magasin : il disparaît
-	end
-	local from = if typeof(position) == "Vector3" then position + Vector3.new(0, DROP_RETURN_LIFT, 0) else nil
-	if returnBox(payload, from) then
-		log(`colis {payload.Tier} {dropId} resté au sol : revient sur {payload.SlotId}`)
-	else
-		log(`colis {payload.Tier} {dropId} resté au sol : ne revient pas sur {payload.SlotId} (emplacement occupé)`)
 	end
 end
 
@@ -2981,11 +2844,6 @@ local function unregister(instance: Instance)
 	for player in table.clone(store.Viewers) do
 		hideTimer(store, player)
 	end
-	for payload, out in outBoxes do
-		if out.Slot.Store == store then
-			outBoxes[payload] = nil
-		end
-	end
 	for payload, out in outItems do
 		if out.Slot.Store == store then
 			outItems[payload] = nil
@@ -3070,7 +2928,7 @@ local function otherHeist(player: Player, target: Store): string?
 		end
 	end
 	local payload = CarryService.GetPayload(player)
-	if type(payload) == "table" and (payload.Kind == "NPCBox" or payload.Kind == "NPCItem") and payload.StoreId ~= target.Id then
+	if type(payload) == "table" and payload.Kind == "NPCItem" and payload.StoreId ~= target.Id then
 		return if type(payload.StoreId) == "string" then payload.StoreId else "?"
 	end
 	return nil
@@ -3300,13 +3158,6 @@ function StoreHeistService.IsOpen(store: Instance | string): boolean
 	return found ~= nil and found.Open
 end
 
-function StoreHeistService.OnBoxGrabbed(listener: GrabbedListener): () -> ()
-	return subscribe(grabbedListeners, listener)
-end
-
-function StoreHeistService.ReturnBox(payload: NPCBoxPayload, from: Vector3?): boolean
-	return returnBox(payload, from)
-end
 
 function StoreHeistService.SetContentOverride(override: ContentOverride?)
 	contentOverride = override

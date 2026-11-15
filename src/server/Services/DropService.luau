@@ -1,6 +1,6 @@
 --!strict
 -- DropService (vague 33, Cantin 2026-11-13, agent a113) : le joueur lâche lui-même ce qu'il porte au-dessus
--- de la tête (objet sorti d'un colis NPCItem, objet volé PlayerItem, ancien colis NPCBox).
+-- de la tête (objet sorti d'un colis NPCItem, objet volé PlayerItem ; vague 50 : plus de colis porté).
 --
 -- Remote DropCarried (Net/Definitions, aucun argument, 2 par seconde au plus), envoyé par DropController
 -- (touche G sur PC, bouton « Drop » sur téléphone). Vérifié ici dans cet ordre, refus sans rien changer :
