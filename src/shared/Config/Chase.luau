@@ -30,24 +30,35 @@
 -- Features.GuardChaseV2 = false, ou Apply.<X> = false : la vitesse d'avant (Zones[zone].GuardSpeed,
 -- Night.ChaseSpeed, vitesse fixe du policier, × la marche de sa cible pour le conducteur).
 
+-- Vague 61 (a198, Cantin : vitesse réelle × Balance.Stats.RealSpeedScale, k) : les vitesses (studs/s) sont écrites à
+-- l'échelle 1 puis × k ; le freinage (studs/s²) × k², pour freiner sur la même distance ; la croissance du
+-- conducteur (par seconde) × k, pour qu'il rattrape sur la même distance. Les distances (HoldDistance, LagMaxStuds,
+-- LagContactReach), les durées (LagMaxSeconds), le rappel HoldRecallGain (un temps de réponse) et les rapports de
+-- Speed affichée (RushWalkFactor, *RequiredFactor, DriverMaxFactor) ne changent pas. Conséquence : un rapprochement
+-- × k sur la même distance prend 1/k du temps (vigile de nuit, policier : 14 − 4 studs en ~1,25 s au lieu de 2,5 s),
+-- comme le trajet jusqu'à la zone safe, qui se fait aussi en 1/k du temps.
+
 local DeepFreeze = require(script.Parent.DeepFreeze)
+local Balance = require(script.Parent.Balance)
+
+local K = Balance.Stats.RealSpeedScale
 
 export type AboveRequired = "Hold" | "Gain"
 
 local Chase = {
 	RushWalkFactor = 3.9, -- ruée : × la marche du voleur (a174, Cantin 2026-11-15 : +30 %, 3 → 3,9)
-	RushMinSpeed = 78, -- ruée : au moins (studs/s) (a174 : +30 %, 60 → 78)
+	RushMinSpeed = 78 * K, -- ruée : au moins (studs/s) (a174 : +30 %, 60 → 78 ; vague 61 : × k)
 	HoldDistance = 14, -- fin de la ruée, à l'horizontale (studs) (a174, Cantin 2026-11-15 : 10 → 14)
 	-- a174 : freinage de la fin de ruée (studs/s²) : sa vitesse ne dépasse pas la marche du voleur +
 	-- √(2 × RushBrake × (distance − HoldDistance)), pour que l'élan du Humanoid ne le porte pas trop près. 0 = sans.
-	RushBrake = 250, -- V0
-	ClosingSpeedMax = 8, -- rapprochement à 0 % du minimum (studs/s)
-	HoldMinSpeed = 12, -- plancher de la poursuite à distance (studs/s), sous toute marche d'un voleur qui court
+	RushBrake = 250 * K * K, -- V0 (vague 61 : × k²)
+	ClosingSpeedMax = 8 * K, -- rapprochement à 0 % du minimum (studs/s ; vague 61 : × k)
+	HoldMinSpeed = 12 * K, -- plancher de la poursuite à distance (studs/s), sous toute marche d'un voleur qui court (× k)
 	AboveRequired = "Hold" :: AboveRequired, -- Cantin, 2026-11-14 : au-dessus, « ça garde toujours la même distance »
 	Zone1SpeedRequired = 0, -- minimum de la zone 1 pour cette règle (Cantin : zone 1 sans minimum)
 	NightGuardRequiredFactor = 2, -- vigile de nuit : minimum = Speed effective actuelle du voleur × ceci (Cantin)
 	PoliceRequiredFactor = 2, -- policier : minimum = Speed effective actuelle du voleur × ceci (Cantin)
-	DriverGrowthPerSecond = 0.02, -- conducteur : + 2 % de la marche du voleur par seconde depuis la fin de la ruée
+	DriverGrowthPerSecond = 0.02 * K, -- conducteur : + 2 % de la marche du voleur par seconde depuis la fin de la ruée (× k)
 	DriverMaxFactor = 2, -- conducteur : au plus × la marche du voleur
 	-- a173 (2026-11-15, Play de fusion48) : en poursuite à distance, rappel vers la distance prévue (la fin de
 	-- ruée tombe 1 à 3 studs trop près quand les images n'ont pas la même durée, ou par l'élan du Humanoid) :
@@ -55,7 +66,7 @@ local Chase = {
 	-- prévue = HoldDistance, qui baisse au rythme du rapprochement (vigile de nuit, policier : 4 studs/s), au
 	-- moins la distance de capture. Pas pour le conducteur du camion.
 	HoldRecallGain = 2, -- par seconde (V0)
-	HoldRecallMax = 4, -- studs/s (V0)
+	HoldRecallMax = 4 * K, -- studs/s (V0 ; vague 61 : × k)
 	-- a174 (Cantin, 2026-11-15) : à la N-ième capture d'un porteur du même objet sorti d'un rayon (vigile du
 	-- magasin, vigile de nuit, policier, conducteur du camion ; quel que soit le porteur, l'objet tombé puis
 	-- ramassé par un autre compte toujours), l'objet ne tombe pas : il revole tel quel sur son rayon, comme une

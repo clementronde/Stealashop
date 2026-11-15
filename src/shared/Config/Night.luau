@@ -4,6 +4,12 @@
 -- l'aube est instantanée.
 
 local DeepFreeze = require(script.Parent.DeepFreeze)
+local Balance = require(script.Parent.Balance)
+
+-- Vague 61 (a198) : vitesse réelle × Balance.Stats.RealSpeedScale (k) pour la poursuite (ChaseSpeed,
+-- ChaseSpeedBonus) et la borne du pas (GaitSpeedMax, pour que les pieds suivent toujours) ; la ronde
+-- (PatrolSpeed) ne court pas contre le joueur et ne change pas.
+local K = Balance.Stats.RealSpeedScale
 
 -- L'aube n'est pas une phase : c'est le passage instantané de Night à Day.
 export type Phase = "Day" | "Warning" | "Night"
@@ -41,18 +47,18 @@ local Night = {
 	DetectionConeAngle = 45, -- V0 proposé, absent du doc : demi-angle du cône, en degrés
 	PatrolSpeed = 10, -- V0 proposé, absent du doc : WalkSpeed pendant la ronde
 	PatrolPause = 2, -- V0 proposé, absent du doc : pause à chaque point de ronde (s)
-	ChaseSpeedBonus = 4, -- règle d'avant L-108 : vitesse conseillée de la zone + 4, gardée comme plancher
+	ChaseSpeedBonus = 4 * K, -- (× k) règle d'avant L-108 : vitesse conseillée de la zone + 4, gardée comme plancher
 	-- V0 proposé, absent du doc (liaison L-108 point 2, Clément, 2026-11-12) : vigiles de nuit très
 	-- rapides, presque impossibles à semer. Poursuite à ChaseSpeed dans toutes les zones (au moins
 	-- vitesse conseillée + ChaseSpeedBonus), au-dessus de Balance.Stats.MaxWalkSpeed (70) : on
 	-- ne les distance plus, il faut gagner la zone safe ou repasser le mur (la potion Speed, qui montait
 	-- jusqu'à 140, est retirée du jeu depuis le 2026-11-14). Pas d'abandon au temps ni à l'avance
 	-- (Cantin, 2026-11-11), seulement en zone safe ou hors du couloir.
-	ChaseSpeed = 80,
+	ChaseSpeed = 80 * K, -- 80 à l'échelle 1 (vague 61 : × k ; plafond du joueur 70 × k)
 	-- V0 proposé, absent du doc : borne haute de la vitesse de lecture de Run et Walk des vigiles de
 	-- nuit (celle des vigiles de jour reste 1,6). Run est faite pour ~20 studs/s : à 80, ×4 garde les
 	-- pieds au sol au lieu de glisser.
-	GaitSpeedMax = 4,
+	GaitSpeedMax = 4 * K, -- (× k, vague 61)
 	CatchDistance = 4, -- V0 proposé, absent du doc : même valeur que le vigile de jour (5.5)
 
 	-- Attrapé la nuit : colis rendu au magasin, retour à sa base, étourdi 2 s, aucune autre perte

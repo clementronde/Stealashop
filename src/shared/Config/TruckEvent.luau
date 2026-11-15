@@ -10,6 +10,7 @@
 -- Unités : secondes, studs, studs/s, radians/s.
 
 local DeepFreeze = require(script.Parent.DeepFreeze)
+local Balance = require(script.Parent.Balance)
 
 -- Colis du camion, par type (clé de Balance.Heist.BoxTiers). Le temps de prise de chaque type est
 -- celui des rayons (Balance.Heist.BoxTiers[Tier].GrabTime).
@@ -137,7 +138,9 @@ local TruckEvent = {
 	-- multiplicateur plutôt qu'une marge fixe : il rattrape au même rythme à 16 qu'à 70 studs/s (+3
 	-- studs/s ferait +19 % à 16 mais +4 % à 70), et chaque conducteur suit son porteur, pas le plus rapide.
 	DriverSpeedMultiplier = 1.2, -- V0 proposé, absent du doc : 20 % plus vite que son porteur
-	DriverMinSpeed = 20, -- V0 proposé, absent du doc : jamais moins vite (porteur ralenti ou immobilisé)
+	-- V0 proposé, absent du doc : jamais moins vite (porteur ralenti ou immobilisé). Vague 61 (a198) : 20 à l'échelle 1,
+	-- × Balance.Stats.RealSpeedScale (le camion, les pièces et l'éjection ne courent pas contre le joueur : inchangés).
+	DriverMinSpeed = 20 * Balance.Stats.RealSpeedScale,
 	DriverSpawnSpacing = 4, -- V0 proposé, absent du doc : écart entre les deux conducteurs à l'apparition (studs), de part et d'autre du pivot du camion
 
 	-- Barre de vie au point HealthBarPoint (côté client) : BB_TruckHP de Clément (L-052), telle qu'il

@@ -100,6 +100,7 @@ local Workspace = game:GetService("Workspace")
 local Shared = ReplicatedStorage.Shared
 local Witness = require(Shared.Config.Witness)
 local Zones = require(Shared.Config.Zones)
+local Balance = require(Shared.Config.Balance)
 local Animations = require(Shared.Contract.Animations)
 local Find = require(Shared.Contract.Find)
 local AnimPlayer = require(Shared.Anim.AnimPlayer)
@@ -568,10 +569,10 @@ end
 
 -- Vitesse du policier pour ce joueur : celle du vigile de jour de la zone (GetSpeedOverride : tutoriel).
 local function policeSpeed(player: Player, zone: number): number
-	local base = Zones[zone].GuardSpeed
+	local base = Zones[zone].GuardSpeed -- déjà × RealSpeedScale (Config/Zones)
 	local ok, value = pcall(GuardService.GetSpeedOverride, player, zone)
 	if ok and isPositiveNumber(value) then
-		base = value :: number
+		base = (value :: number) * Balance.Stats.RealSpeedScale -- vague 61 : vitesse imposée à l'échelle 1
 	end
 	return base * Witness.Police.SpeedFactor
 end

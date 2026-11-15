@@ -236,7 +236,8 @@
 --       Point d'accroche du tutoriel (5.11, vigile lent : Config.Tutorial.GuardSpeed). Renvoie
 --       nil ici : la vitesse de la zone s'applique. TutorialService le remplace
 --       (GuardService.GetSpeedOverride = function(player, zone) ... end). Une valeur qui n'est
---       pas un nombre fini > 0, ou une erreur, compte pour nil.
+--       pas un nombre fini > 0, ou une erreur, compte pour nil. Vague 61 (a198) : la valeur rendue est à
+--       l'échelle 1, multipliée ici (et par WitnessService pour le policier) par Balance.Stats.RealSpeedScale.
 --   GuardService.IsHiddenFromNight(player) -> boolean
 --       Point d'accroche des potions (vague 28, L-085 : Invisibility) : renvoie false ici. PotionService le
 --       remplace en gardant celui d'avant. true = les vigiles de nuit ne repèrent pas ce joueur (scan) ; un
@@ -548,7 +549,9 @@ local WAYPOINT_SPACING = 4
 -- les bornes de la vitesse de lecture, pour que les pieds ne glissent pas de la zone 1 à la zone 6.
 local GAIT_REFERENCE: { [string]: number } = { Run = 20, Walk = 10 }
 local GAIT_SPEED_MIN = 0.6
-local GAIT_SPEED_MAX = 1.6
+-- Vague 61 (a198) : vitesse réelle × Balance.Stats.RealSpeedScale, la borne haute suit (1,6 à l'échelle 1).
+local REAL_SPEED_SCALE = Balance.Stats.RealSpeedScale
+local GAIT_SPEED_MAX = 1.6 * REAL_SPEED_SCALE
 
 -- Nom des vigiles dans les avertissements d'AnimPlayer, le même de jour et de nuit (mêmes modèles,
 -- mêmes noms d'animations) : une animation pas encore livrée n'est signalée qu'une fois.
@@ -2838,11 +2841,11 @@ local function chaseSpeed(player: Player, zone: number): number
 		warn(`[GuardService] GetSpeedOverride({player.Name}) : {value}`)
 	elseif value ~= nil then
 		if isPositiveNumber(value) then
-			return value :: number
+			return (value :: number) * REAL_SPEED_SCALE -- vague 61 : la vitesse imposée est à l'échelle 1
 		end
 		warn(`[GuardService] GetSpeedOverride({player.Name}) invalide ({value}) : vitesse de la zone`)
 	end
-	return Zones[zone].GuardSpeed
+	return Zones[zone].GuardSpeed -- déjà × RealSpeedScale (Config/Zones)
 end
 
 -- Vigiles qui poursuivent pour ce magasin, ou suivent un de ses colis tombé au sol (ceux qui

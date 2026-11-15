@@ -19,6 +19,12 @@
 --   GuardSpeed    = 0,9 × AdvisedSpeed + 1, arrondi à 0,1 (20.8, 26.2, 31.5, 37, 42.3) : au seuil du panneau,
 --                   le vigile reprend 1 stud par seconde au porteur (−10 % avec un colis). Zone 1 : 13,4 gardé
 --                   (zone du tuto : 0,9 × 16 − 1).
+-- Vague 61 (a198, Cantin) : vitesse réelle × Balance.Stats.RealSpeedScale. AdvisedSpeed (la marche réelle que
+-- donne SpeedRequired, Formulas.WalkSpeed) et GuardSpeed (marge de 1 stud/s comprise, zone 1 : 13,4 à l'échelle 1)
+-- en sont multipliés ; SpeedRequired (Speed affichée) ne change pas.
+-- Vague 61 (a198, Cantin : « Tu les mets à 15 PV ») : la zone 1 fixe ses PV (WindowHP = 15, V0) au lieu du calcul
+-- (27) : 15 coups avec les poings de départ (Fists, 1 dégât), 3 s au plafond de 5 coups/s (3,3 s avec la
+-- régénération de 3 %/s). Les autres zones gardent le calcul.
 
 local DeepFreeze = require(script.Parent.DeepFreeze)
 local Balance = require(script.Parent.Balance)
@@ -59,7 +65,8 @@ type ZoneBase = {
 	StoreIds: { string },
 	SpeedRequired: number,
 	Kit: { string },
-	GuardSpeed: number?, -- fixé seulement pour la zone 1
+	GuardSpeed: number?, -- fixé seulement pour la zone 1, à l'échelle 1 (× RealSpeedScale plus bas)
+	WindowHP: number?, -- fixé seulement pour la zone 1 (vague 61) ; sinon calculé
 	ReturnDistance: number,
 	BaseIncome: number,
 }
@@ -73,6 +80,7 @@ local List: { ZoneBase } = {
 		SpeedRequired = 0,
 		Kit = { "Fists" },
 		GuardSpeed = 13.4,
+		WindowHP = 15, -- V0 (Cantin, vague 61) : 15 coups aux poings
 		ReturnDistance = 75,
 		BaseIncome = 1,
 	},
@@ -138,6 +146,8 @@ local window = Balance.Window
 
 -- La formule de Formulas.WalkSpeed, sans trail (Formulas requiert ce module : elle est recopiée ici, et un
 -- banc vérifie que les deux donnent le même nombre).
+-- Vague 61 : à l'échelle 1 ; la marche réelle (AdvisedSpeed) = RealSpeedScale × walkFor.
+local SPEED_SCALE = stats.RealSpeedScale
 local function walkFor(shownSpeed: number): number
 	return math.min(stats.MaxWalkSpeed, stats.BaseWalkSpeed + stats.WalkPerDecade * math.log10(1 + shownSpeed / stats.SpeedScale))
 end
@@ -175,10 +185,12 @@ for index, base in List do
 		StoreIds = base.StoreIds,
 		SpeedRequired = base.SpeedRequired,
 		Kit = base.Kit,
-		WindowHP = math.round((if index == #List then LAST_HP_PER_DAMAGE else SOLO_HP_PER_DAMAGE) * damage),
+		WindowHP = base.WindowHP or math.round((if index == #List then LAST_HP_PER_DAMAGE else SOLO_HP_PER_DAMAGE) * damage),
 		AdvisedDamage = damage,
-		AdvisedSpeed = walk,
-		GuardSpeed = base.GuardSpeed or math.round((Balance.Carry.NPCBoxSpeedMultiplier * walk + GUARD_MARGIN) * 10) / 10,
+		AdvisedSpeed = walk * SPEED_SCALE,
+		-- Calculée à l'échelle 1 (arrondi à 0,1 comme avant), puis × RealSpeedScale (vague 61).
+		GuardSpeed = SPEED_SCALE
+			* (base.GuardSpeed or math.round((Balance.Carry.NPCBoxSpeedMultiplier * walk + GUARD_MARGIN) * 10) / 10),
 		ReturnDistance = base.ReturnDistance,
 		BaseIncome = base.BaseIncome,
 	}

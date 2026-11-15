@@ -30,13 +30,21 @@ end
 -- WalkSpeed = min(70, 16 + 4 × log10(1 + Speed affichée / 100)) : chaque fois que la Speed affichée est
 -- multipliée par 10, la marche gagne 4 (v2). Une Vitesse négative ou illisible compte pour 0.
 -- Le malus de portage et l'Adrénaline ne sont pas inclus (voir Balance.Carry et PvP).
+-- Vague 61 (a198, Cantin) : × Balance.Stats.RealSpeedScale, base et plafond compris (32 au départ, 140 au plus
+-- à × 2) ; la Speed affichée ne change pas.
 function Formulas.WalkSpeed(speed: number, trailMultiplier: number?): number
 	local stats = Balance.Stats
 	local shown = Formulas.ShownSpeed(speed, trailMultiplier)
 	if shown ~= shown or shown < 0 then
 		shown = 0
 	end
-	return math.min(stats.MaxWalkSpeed, stats.BaseWalkSpeed + stats.WalkPerDecade * math.log10(1 + shown / stats.SpeedScale))
+	return stats.RealSpeedScale
+		* math.min(stats.MaxWalkSpeed, stats.BaseWalkSpeed + stats.WalkPerDecade * math.log10(1 + shown / stats.SpeedScale))
+end
+
+-- Plafond réel de la marche (vague 61) : Balance.Stats.MaxWalkSpeed × RealSpeedScale (140 à × 2).
+function Formulas.MaxWalkSpeed(): number
+	return Balance.Stats.MaxWalkSpeed * Balance.Stats.RealSpeedScale
 end
 
 -- Revenu d'un objet ($/s) = R zone × M rareté × M global.

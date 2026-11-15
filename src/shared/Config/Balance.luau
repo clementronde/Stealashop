@@ -24,14 +24,25 @@ local BOX_TIERS: { [string]: BoxTierInfo } = {
 	Luxe = { DisplayName = "Luxury", Look = "Caisse en bois cerclée d'or", Count = 1, GrabTime = 1.0 },
 }
 
+-- Vague 61 (a198, Cantin : « x2 la vitesse réelle par rapport à la fausse vitesse écrite en bas à gauche ») :
+-- facteur unique de la vitesse RÉELLE (studs/s). La Speed affichée (HUD, panneaux, seuils des zones) ne change
+-- pas ; la marche du joueur (Formulas.WalkSpeed, base et plafond compris : 16 → 32, 70 → 140) et tout ce qui court
+-- contre lui (vigiles, vigiles de nuit, policier, conducteur du camion, bot, porteur, anti-triche) en sont
+-- multipliés, chacun dans son Config (Zones, Chase, Night, Bot, TruckEvent, AntiCheat) ou, pour la vitesse imposée
+-- par le tutoriel (Tutorial.GuardSpeed, à l'échelle 1), dans GuardService et WitnessService. Les distances et les
+-- durées ne changent pas. 1 = tout comme avant. V0.
+local REAL_SPEED_SCALE = 2
+
 local Balance = {
 	-- Rééquilibrage v2 (Cantin, 2026-11-14 ; docs/claude/notes/equilibrage-v2-proposition.md, section 3) :
 	--   Speed affichée = Vitesse entraînée × M trail
 	--   WalkSpeed      = min(70, 16 + 4 × log10(1 + Speed affichée / 100)) : « un zéro de plus = +4 de marche »
 	--   Plus de banc ni de Force : dégâts d'un coup = P arme × M aura (× potion de force). Formulas.
+	--   Ces nombres sont à l'échelle 1 : marche réelle = RealSpeedScale × la formule (32 au départ, 140 au plus).
 	Stats = {
-		BaseWalkSpeed = 16,
-		MaxWalkSpeed = 70, -- au-delà, collisions et caméra instables (une sécurité : Speed 3,2Qa)
+		RealSpeedScale = REAL_SPEED_SCALE, -- vague 61, voir plus haut (V0)
+		BaseWalkSpeed = 16, -- à l'échelle 1
+		MaxWalkSpeed = 70, -- à l'échelle 1 (plafond réel : 70 × RealSpeedScale) ; une sécurité : Speed 3,2Qa
 		WalkPerDecade = 4, -- V0 proposé (note v2) : WalkSpeed gagné chaque fois que la Speed affichée est multipliée par 10
 		SpeedScale = 100, -- V0 proposé (note v2) : Speed affichée à partir de laquelle la marche commence à monter
 	},
@@ -176,7 +187,7 @@ local Balance = {
 		-- Objet volé à un joueur (ou au bot) : vitesse FIXE, la même pour tous, quels que soient la Vitesse,
 		-- le trail, l'Adrénaline ou la potion du voleur (Cantin, 2026-11-13 : contre les voleurs trop rapides ;
 		-- remplace le −25 % du doc, 6.1). V0 proposé : 16 = la vitesse d'un joueur neuf, à régler en test.
-		StolenItemWalkSpeed = 16,
+		StolenItemWalkSpeed = 16 * REAL_SPEED_SCALE, -- vague 61 : 16 à l'échelle 1 (32 à × 2)
 		CanJump = true,
 		-- V0 proposé, absent du doc (L-071, point 4) : espace (studs) entre le haut de la tête et le
 		-- dessous du colis ou de l'objet porté (CarryAttachment), soudé à la tête. À régler sur la
