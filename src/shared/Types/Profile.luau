@@ -153,10 +153,20 @@ export type PlaytimeRewards = {
 	Claimed: { [string]: number }, -- [minutes du palier en texte, « 15 »] = os.time() de la réclamation
 }
 
+-- Coffre hebdomadaire (agent a166, MAJ 1 ; champ facultatif, sans nouvelle version : complété depuis
+-- TEMPLATE). Semaine = numéro de Config/Rewards.Weekly (lundi 00:00 UTC).
+export type WeeklyRewards = {
+	Week: number, -- semaine comptée (0 = aucune) : une autre semaine remet Days et LastDay à zéro
+	Days: number, -- jours de connexion différents comptés cette semaine
+	LastDay: number, -- dernier jour UTC compté (0 = aucun)
+	ClaimedWeek: number, -- semaine du dernier coffre réclamé (0 = jamais)
+}
+
 -- Récompenses (v8, DEV-101 ; Partie 2, 3.3). Écrit par RewardService seulement.
 export type Rewards = {
 	Daily: DailyRewards,
 	Playtime: PlaytimeRewards,
+	Weekly: WeeklyRewards?, -- a166, facultatif
 }
 
 -- Réglages du joueur (L-095 point 2, écran UI_Settings ; Config/Settings). Écrit par SettingsService

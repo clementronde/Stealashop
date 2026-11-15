@@ -687,6 +687,16 @@ local List: { RemoteDef } = {
 		Args = { id("itemUid") },
 		RatePerSecond = 4, -- V0 proposé, absent du doc
 	},
+	{
+		-- Agent a166 (MAJ 1, DEV-101 ; Partie 2, 3.3), absent du tableau 9.4 : bouton WeeklyClaimButton de
+		-- UI_Rewards. Aucun argument : RewardService vérifie que le coffre est allumé (Features.WeeklyChest),
+		-- les 5 jours de connexion de la semaine (comptés par le serveur) et qu'il n'est pas déjà réclamé.
+		Name = "ClaimWeekly",
+		Direction = "ClientToServer",
+		Reliable = true,
+		Args = {},
+		RatePerSecond = 2, -- V0 proposé, absent du doc (comme ClaimDaily)
+	},
 }
 
 return {

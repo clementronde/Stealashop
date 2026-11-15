@@ -1,7 +1,8 @@
 --!strict
 -- RewardsController (DEV-101, client) : écran des récompenses UI_Rewards de Clément (L-057 ; Partie 2,
 -- section 3.3 ; règles : Config/Rewards ; serveur : RewardService). Onglets Daily (calendrier de 7 jours)
--- et Playtime (paliers de temps de jeu du jour) ; pas d'onglet pour le coffre hebdomadaire (MAJ 1).
+-- et Playtime (paliers de temps de jeu du jour) ; coffre hebdomadaire (a166, MAJ 1) dans des éléments
+-- facultatifs, sans onglet.
 --
 -- Rôle :
 --   - UI_HUD.RewardsButton ouvre l'écran (un 2e appui le ferme) ; CloseButton le ferme. Ouverture et
@@ -28,6 +29,12 @@
 --     (« 12:34 », « 1:02:03 »), ClaimButton et Claimed cachés ; atteint → Timer « Ready! », ClaimButton
 --     visible (envoie ClaimPlaytime(minutes)) ; réclamé → Timer « CLAIMED », Claimed visible, ClaimButton
 --     caché.
+--   - coffre hebdomadaire (a166, noms proposés à Clément, tous facultatifs) : cadre WeeklyChest, caché tant
+--     que le serveur n'envoie pas l'état du coffre (Features.WeeklyChest coupé), sinon laissé comme Clément
+--     l'a posé ; WeeklyChest.Progress « 3/5 » ; WeeklyChest.WeekDays.Day1 à Day5, leur Done visible pour
+--     chaque jour compté ; WeeklyChest.WeeklyClaimButton (et son ClaimLabel) : envoie ClaimWeekly quand
+--     le coffre est prêt, texte de Clément (« CLAIM »), « LOCKED » avant 5 jours, « CLAIMED » après.
+--     RewardsAlert s'allume aussi quand le coffre est prêt.
 -- État lu sur les attributs du Player posés par RewardService (Config/Rewards.Attributes) : jour du
 -- calendrier, réclamé aujourd'hui, heure serveur du temps de jeu à 0 (le client compte
 -- GetServerTimeNow() − RewardPlayStart), paliers réclamés. Le client ne décide rien : il demande.
@@ -36,7 +43,7 @@
 -- taille ni une position de Clément. Écran recréé (ResetOnSpawn) : rebranché, fermé.
 --
 -- API (client) :
---   RewardsController.GetState() -> { Open, Tab, Day, DailyClaimed, PlaySeconds, Pending }
+--   RewardsController.GetState() -> { Open, Tab, Day, DailyClaimed, PlaySeconds, Pending, WeeklyDays?, WeeklyReady }
 --       Pour un test (banc, barre de commande en Studio).
 
 local Players = game:GetService("Players")
@@ -82,6 +89,12 @@ type Screen = {
 	connections: { RBXScriptConnection },
 	dailyAlert: GuiObject?, -- Tabs.DailyTab.TabAlert (L-127)
 	playtimeAlert: GuiObject?, -- Tabs.PlaytimeTab.TabAlert (L-127)
+	weekly: GuiObject?, -- WeeklyChest (a166, facultatif)
+	weeklyVisible: boolean, -- Visible posé par Clément sur WeeklyChest
+	weeklyProgress: Instance?,
+	weeklyDays: { GuiObject? }, -- Done de WeekDays.Day1 à Day5
+	weeklyLabel: Instance?,
+	weeklyClaimText: string,
 }
 
 local SCREEN = "UI_Rewards"
@@ -99,6 +112,9 @@ local GIFT_TEXT = "Gift at %d min"
 local READY_TEXT = "Ready!"
 local CLAIMED_TEXT = "CLAIMED"
 local CLAIM_TEXT = "CLAIM" -- si ClaimLabel n'a pas de texte
+local LOCKED_TEXT = "LOCKED" -- a166 : coffre hebdomadaire pas encore prêt
+local PROGRESS_FORMAT = "%d/%d" -- a166 : jours de connexion de la semaine
+local WEEKLY = Rewards.Weekly
 -- V0 proposé, absent du doc : cadence (s) des minuteurs et de la pastille.
 local REFRESH = 0.25
 
@@ -211,6 +227,8 @@ type Status = {
 	dailyClaimed: boolean,
 	playSeconds: number,
 	playClaimed: { [number]: boolean },
+	weeklyDays: number?, -- nil : coffre hebdomadaire coupé (aucun attribut)
+	weeklyClaimed: boolean,
 }
 
 local function readStatus(): Status
@@ -227,12 +245,15 @@ local function readStatus(): Status
 		end
 	end
 	local known = type(day) == "number" and type(start) == "number"
+	local weeklyDays = localPlayer:GetAttribute(ATTRIBUTES.WeeklyDays)
 	return {
 		known = known,
 		day = if type(day) == "number" then day else 1,
 		dailyClaimed = localPlayer:GetAttribute(ATTRIBUTES.DailyClaimed) == true,
 		playSeconds = if type(start) == "number" then math.max(0, Workspace:GetServerTimeNow() - start) else 0,
 		playClaimed = claimed,
+		weeklyDays = if type(weeklyDays) == "number" then weeklyDays else nil,
+		weeklyClaimed = localPlayer:GetAttribute(ATTRIBUTES.WeeklyClaimed) == true,
 	}
 end
 
@@ -254,9 +275,15 @@ local function playtimePending(status: Status): boolean
 	return false
 end
 
--- Une récompense attend : le jour pas réclamé, ou un palier atteint et pas réclamé.
+-- Le coffre hebdomadaire est allumé, prêt et pas réclamé (a166).
+local function weeklyPending(status: Status): boolean
+	local days = status.weeklyDays
+	return days ~= nil and days >= WEEKLY.DaysNeeded and not status.weeklyClaimed
+end
+
+-- Une récompense attend : le jour pas réclamé, un palier atteint et pas réclamé, ou le coffre prêt.
 local function hasPending(status: Status): boolean
-	return dailyPending(status) or playtimePending(status)
+	return dailyPending(status) or playtimePending(status) or weeklyPending(status)
 end
 
 ------------------------------------------------------------------------------
@@ -289,6 +316,21 @@ local function paintRows(current: Screen, status: Status)
 	end
 end
 
+-- Coffre hebdomadaire (a166) : caché s'il est coupé, sinon jauge des jours et bouton.
+local function paintWeekly(current: Screen, status: Status)
+	local days = status.weeklyDays
+	setVisible(current.weekly, days ~= nil and current.weeklyVisible)
+	if days == nil then
+		return
+	end
+	setText(current.weeklyProgress, string.format(PROGRESS_FORMAT, math.min(days, WEEKLY.DaysNeeded), WEEKLY.DaysNeeded))
+	for index, done in current.weeklyDays do
+		setVisible(done, index <= days)
+	end
+	local text = if status.weeklyClaimed then CLAIMED_TEXT elseif weeklyPending(status) then current.weeklyClaimText else LOCKED_TEXT
+	setText(current.weeklyLabel, text)
+end
+
 local function refresh()
 	local status = readStatus()
 	local pending = hasPending(status)
@@ -305,6 +347,7 @@ local function refresh()
 		-- Pastilles des onglets, écran ouvert ou pas (L-127 : éteintes quand la récompense est réclamée).
 		AlertBadge.Set(current.dailyAlert, dailyPending(status))
 		AlertBadge.Set(current.playtimeAlert, playtimePending(status))
+		paintWeekly(current, status)
 	end
 	if current and isOpen then
 		paintDaily(current, status)
@@ -330,6 +373,13 @@ local function claimPlaytime(minutes: number)
 		return
 	end
 	net.Client.ClaimPlaytime:Fire(minutes)
+end
+
+local function claimWeekly()
+	if not weeklyPending(readStatus()) or net == nil then
+		return
+	end
+	net.Client.ClaimWeekly:Fire()
 end
 
 ------------------------------------------------------------------------------
@@ -408,6 +458,9 @@ local function bind(gui: ScreenGui)
 	local dailyPage = guiObject(gui, "DailyPage")
 	local claimButton = if dailyPage then Find.path(dailyPage, "DailyClaimButton") else nil
 	local claimLabel = if claimButton then Find.path(claimButton, "ClaimLabel") else nil
+	local weekly = guiObject(gui, "WeeklyChest")
+	local weeklyButton = if weekly then Find.path(weekly, "WeeklyClaimButton") else nil
+	local weeklyLabel = if weeklyButton then Find.path(weeklyButton, "ClaimLabel") else nil
 	local current: Screen = {
 		gui = gui,
 		dailyPage = dailyPage,
@@ -421,7 +474,16 @@ local function bind(gui: ScreenGui)
 		connections = {},
 		dailyAlert = guiObject(dailyTab, TAB_ALERT),
 		playtimeAlert = guiObject(playtimeTab, TAB_ALERT),
+		weekly = weekly,
+		weeklyVisible = if weekly then weekly.Visible else false,
+		weeklyProgress = if weekly then Find.path(weekly, "Progress") else nil,
+		weeklyDays = {},
+		weeklyLabel = weeklyLabel or weeklyButton,
+		weeklyClaimText = textOf(weeklyLabel or weeklyButton) or CLAIM_TEXT,
 	}
+	for index = 1, WEEKLY.DaysNeeded do
+		current.weeklyDays[index] = if weekly then guiObject(weekly, `WeekDays.Day{index}.Done`) else nil
+	end
 	screen = current
 	local function keep(connection: RBXScriptConnection?)
 		if connection then
@@ -439,6 +501,7 @@ local function bind(gui: ScreenGui)
 		reportOnce("dailyClaim", `{SCREEN}.DailyPage.DailyClaimButton introuvable : le jour ne se réclame pas`)
 	end
 	keep(onClick(claimButton, claimDaily))
+	keep(onClick(weeklyButton, claimWeekly))
 	keep(onClick(Find.path(gui, "CloseButton"), close))
 	keep(onClick(dailyTab, function()
 		selectTab(current, "Daily")
@@ -472,6 +535,7 @@ local function bind(gui: ScreenGui)
 		end
 	end
 	paintTabs(current)
+	paintWeekly(current, readStatus())
 end
 
 -- Écran branché encore présent, ou celui de PlayerGui (branché au passage), ou nil.
@@ -533,7 +597,7 @@ local function bindHud(gui: Instance)
 	refresh()
 end
 
-function RewardsController.GetState(): { Open: boolean, Tab: string, Day: number, DailyClaimed: boolean, PlaySeconds: number, Pending: boolean }
+function RewardsController.GetState(): { Open: boolean, Tab: string, Day: number, DailyClaimed: boolean, PlaySeconds: number, Pending: boolean, WeeklyDays: number?, WeeklyReady: boolean }
 	local status = readStatus()
 	return {
 		Open = isOpen,
@@ -542,6 +606,8 @@ function RewardsController.GetState(): { Open: boolean, Tab: string, Day: number
 		DailyClaimed = status.dailyClaimed,
 		PlaySeconds = status.playSeconds,
 		Pending = hasPending(status),
+		WeeklyDays = status.weeklyDays,
+		WeeklyReady = weeklyPending(status),
 	}
 end
 
@@ -549,7 +615,7 @@ function RewardsController.Start()
 	-- Peut attendre que le serveur ait créé les remotes.
 	net = require(Shared:WaitForChild("Net"):WaitForChild("Net") :: ModuleScript) :: any
 
-	for _, name in { ATTRIBUTES.Day, ATTRIBUTES.DailyClaimed, ATTRIBUTES.PlayStart, ATTRIBUTES.PlayClaimed } do
+	for _, name in { ATTRIBUTES.Day, ATTRIBUTES.DailyClaimed, ATTRIBUTES.PlayStart, ATTRIBUTES.PlayClaimed, ATTRIBUTES.WeeklyDays, ATTRIBUTES.WeeklyClaimed } do
 		localPlayer:GetAttributeChangedSignal(name):Connect(refresh)
 	end
 	local playerGui = localPlayer:WaitForChild("PlayerGui")

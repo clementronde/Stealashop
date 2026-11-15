@@ -866,5 +866,18 @@ table.insert(UI.Billboards, {
 		{ Path = "Row.Multiplier", Class = "TextLabel", Optional = true, Note = "le « ×2 » du trail est ajouté à Row.Amount en texte enrichi" },
 	} :: { Element },
 })
+-- Coffre hebdomadaire de UI_Rewards (agent a166, MAJ 1 ; noms proposés à Clément, tous facultatifs) :
+-- RewardsController cache WeeklyChest tant que Features.WeeklyChest est coupé.
+for _, screenDef in UI.Screens do
+	if screenDef.Name == "UI_Rewards" then
+		table.insert(screenDef.Elements, { Path = "WeeklyChest", Optional = true, Note = "pas de coffre hebdomadaire dans UI_Rewards (MAJ 1)" })
+		table.insert(screenDef.Elements, { Path = "WeeklyChest.Progress", Class = "TextLabel", Optional = true, Note = "le compte « 3/5 » des jours n'est pas écrit" })
+		for day = 1, 5 do
+			table.insert(screenDef.Elements, { Path = `WeeklyChest.WeekDays.Day{day}.Done`, Optional = true, Note = "la jauge des 5 jours ne s'allume pas" })
+		end
+		table.insert(screenDef.Elements, { Path = "WeeklyChest.WeeklyClaimButton", Class = BUTTON, Optional = true, Note = "le coffre hebdomadaire ne se réclame pas" })
+		table.insert(screenDef.Elements, { Path = "WeeklyChest.WeeklyClaimButton.ClaimLabel", Optional = true, Note = "le texte CLAIM / LOCKED / CLAIMED va dans le bouton" })
+	end
+end
 
 return UI

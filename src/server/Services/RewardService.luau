@@ -39,6 +39,15 @@
 -- 2e serveur ne lit le profil qu'après la fin de session du 1er, réclamation comprise. Un don qui lève
 -- une erreur est noté quand même (avertissement dans la sortie) : jamais deux fois le même don.
 --
+-- Coffre hebdomadaire (agent a166, MAJ 1 ; 3.3), coupé par Features.WeeklyChest (en Studio, l'attribut
+-- WeeklyChestTest = true du Workspace l'allume) ; coupé, rien ne change : aucun jour compté, aucun attribut,
+-- ClaimWeekly ignoré. Allumé : chaque jour UTC où le joueur est présent (profil chargé) compte une fois pour
+-- la semaine (lundi 00:00 UTC à dimanche, Config/Rewards.Weekly ; Rewards.Weekly du profil, facultatif) ;
+-- une autre semaine remet le compte à zéro. À Weekly.DaysNeeded jours (5), ClaimWeekly() donne une fois par
+-- semaine l'objet Weekly.Reward (comme un colis Luxe, refusé sans rien noter si l'inventaire est plein) puis
+-- l'aura ou le trail exclusif de la semaine (Weekly.Exclusives[date du lundi], vide en V0 : rien) ;
+-- télémétrie : RewardClaim, Source Weekly, Sku Week<numéro>.
+--
 -- Télémétrie (Partie 1, 14.2) : chaque gain d'argent part en économie (TelemetryService.LogEconomy,
 -- genres DailyReward et PlaytimeReward, SKU Day1 à Day7, Playtime5 à Playtime60) ; chaque réclamation,
 -- argent, colis ou boost, part en événement RewardClaimed (champs Source, Sku, Gift).
@@ -46,14 +55,16 @@
 -- Attributs du Player (Config/Rewards.Attributes, lus par RewardsController ; le serveur ne les lit
 -- jamais) : RewardDay (1 à 7), RewardDailyClaimed, RewardDayEndsAt (heure serveur du prochain minuit
 -- UTC), RewardPlayStart (heure serveur où le temps de jeu du jour vaudrait 0 : le client compte
--- GetServerTimeNow() − RewardPlayStart), RewardPlayClaimed (« 5,15 »). Remis à jour à chaque réclamation
+-- GetServerTimeNow() − RewardPlayStart), RewardPlayClaimed (« 5,15 ») ; coffre allumé seulement :
+-- RewardWeeklyDays, RewardWeeklyClaimed, RewardWeekEndsAt (prochain lundi 00:00 UTC). Remis à jour à chaque réclamation
 -- et chaque seconde s'ils changent.
 --
 -- API (côté serveur) :
 --   RewardService.GetDay() -> number
 --       Jour UTC du serveur (os.time() // 86400, plus le décalage du test Studio).
 --   RewardService.GetState(player) -> State?
---       { Day, DailyClaimed, PlaySeconds, PlayClaimed = { minutes… } } ; nil si le profil n'est pas chargé.
+--       { Day, DailyClaimed, PlaySeconds, PlayClaimed = { minutes… }, WeeklyOn, WeeklyDays, WeeklyClaimed } ;
+--       nil si le profil n'est pas chargé.
 --       Pour les bancs d'essai et la barre de commande.
 --
 -- Tester dans Studio (barre de commande serveur ; hors de Studio, l'attribut n'est pas écouté) :
@@ -61,6 +72,8 @@
 --                                                             (tout le serveur ; « days 2 » : un jour manqué)
 --   workspace:SetAttribute("RewardTest", "play <joueur> 900") ajoute 15 min de jeu à sa journée
 --   workspace:SetAttribute("RewardTest", "reset <joueur>")    remet ses récompenses à zéro
+--   workspace:SetAttribute("RewardTest", "weekly <joueur> 4") pose 4 jours comptés cette semaine (coffre allumé)
+--   workspace:SetAttribute("WeeklyChestTest", true)           allume le coffre hebdomadaire
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -68,6 +81,8 @@ local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage.Shared
+local Cosmetics = require(Shared.Config.Cosmetics)
+local Features = require(Shared.Config.Features)
 local Items = require(Shared.Config.Items)
 local Mutations = require(Shared.Config.Mutations)
 local Rarities = require(Shared.Config.Rarities)
@@ -86,13 +101,17 @@ local UnboxService = require(script.Parent.UnboxService)
 type Data = ProfileTypes.Data
 type RewardsData = ProfileTypes.Rewards
 type Reward = Rewards.Reward
-type Source = "Daily" | "Playtime"
+type WeeklyData = ProfileTypes.WeeklyRewards
+type Source = "Daily" | "Playtime" | "Weekly"
 
 export type State = {
 	Day: number, -- jour du calendrier d'aujourd'hui (1 à 7)
 	DailyClaimed: boolean,
 	PlaySeconds: number,
 	PlayClaimed: { number }, -- minutes des paliers réclamés aujourd'hui, dans l'ordre de Config/Rewards
+	WeeklyOn: boolean, -- coffre hebdomadaire allumé
+	WeeklyDays: number, -- jours comptés cette semaine (0 si coupé)
+	WeeklyClaimed: boolean,
 }
 
 -- Ce que ce service garde d'un joueur présent.
@@ -102,6 +121,7 @@ type Session = {
 
 local DAY = Rewards.DayLength
 local ATTRIBUTES = Rewards.Attributes
+local WEEKLY = Rewards.Weekly
 local MESSAGES = Rewards.Messages
 local IS_STUDIO = RunService:IsStudio()
 -- V0 proposé, absent du doc : écart (s) au-delà duquel RewardDayEndsAt et RewardPlayStart sont réécrits
@@ -219,6 +239,45 @@ local function claimedList(playtime: ProfileTypes.PlaytimeRewards): { number }
 	return list
 end
 
+-- Coffre hebdomadaire allumé : Features.WeeklyChest, ou en Studio l'attribut de test du Workspace.
+local function weeklyOn(): boolean
+	return Features.WeeklyChest or (IS_STUDIO and Workspace:GetAttribute(WEEKLY.TestAttribute) == true)
+end
+
+local function weekOf(day: number): number
+	return (day + WEEKLY.MondayOffset) // 7
+end
+
+-- Rewards.Weekly du profil, créé ou réparé s'il manque ou s'il est abîmé (champ facultatif).
+local function weeklyOf(rewards: RewardsData): WeeklyData
+	local weekly: any = (rewards :: any).Weekly
+	if type(weekly) ~= "table" then
+		weekly = {}
+		rewards.Weekly = weekly
+	end
+	for _, field in { "Week", "Days", "LastDay", "ClaimedWeek" } do
+		weekly[field] = math.floor(finite(weekly[field]))
+	end
+	return weekly :: WeeklyData
+end
+
+-- Compte le jour UTC `day` pour sa semaine (une fois par jour ; une autre semaine repart de zéro). Renvoie
+-- (semaine, jours comptés, réclamé cette semaine). Sans yield.
+local function touchWeek(rewards: RewardsData, day: number): (number, number, boolean)
+	local weekly = weeklyOf(rewards)
+	local week = weekOf(day)
+	if weekly.Week ~= week then
+		weekly.Week = week
+		weekly.Days = 0
+		weekly.LastDay = 0
+	end
+	if day > weekly.LastDay then -- horloge qui recule : rien de compté deux fois
+		weekly.Days = math.min(weekly.Days + 1, 7)
+		weekly.LastDay = day
+	end
+	return week, weekly.Days, weekly.ClaimedWeek == week
+end
+
 local function setAttribute(player: Player, name: string, value: any)
 	if player.Parent == Players and player:GetAttribute(name) ~= value then
 		player:SetAttribute(name, value)
@@ -252,6 +311,16 @@ local function publish(player: Player)
 		table.insert(list, tostring(minutes))
 	end
 	setAttribute(player, ATTRIBUTES.PlayClaimed, table.concat(list, ","))
+	if weeklyOn() then
+		local week, weekDays, weekClaimed = touchWeek(rewards, day)
+		setAttribute(player, ATTRIBUTES.WeeklyDays, weekDays)
+		setAttribute(player, ATTRIBUTES.WeeklyClaimed, weekClaimed)
+		setTime(player, ATTRIBUTES.WeekEndsAt, serverNow + ((week + 1) * 7 - WEEKLY.MondayOffset) * DAY - now())
+	else
+		setAttribute(player, ATTRIBUTES.WeeklyDays, nil)
+		setAttribute(player, ATTRIBUTES.WeeklyClaimed, nil)
+		setAttribute(player, ATTRIBUTES.WeekEndsAt, nil)
+	end
 end
 
 -- Zone des colis offerts : la plus haute parmi les objets du joueur (zone du catalogue, sinon celle de
@@ -336,7 +405,7 @@ local function claim(player: Player, data: Data, reward: Reward, source: Source,
 	mark()
 	-- Télémétrie juste après AddCash, sans yield (le solde est lu à l'appel).
 	if amount > 0 then
-		TelemetryService.LogEconomy(player, if source == "Daily" then "DailyReward" else "PlaytimeReward", amount, sku)
+		TelemetryService.LogEconomy(player, if source == "Daily" then "DailyReward" elseif source == "Weekly" then "WeeklyReward" else "PlaytimeReward", amount, sku)
 	end
 	TelemetryService.LogEvent(player, "RewardClaim", { `Source - {source}`, `Sku - {sku}`, `Gift - {reward.Kind}` })
 	log(`{player.Name} : {sku} réclamé ({message})`)
@@ -396,6 +465,52 @@ local function onClaimPlaytime(player: Player, minutes: number)
 	end
 	claim(player, data, tier.Reward, "Playtime", `Playtime{minutes}`, function()
 		playtime.Claimed[key] = os.time()
+	end)
+end
+
+-- Aura ou trail exclusif de la semaine `week` (Weekly.Exclusives[date du lundi]), s'il y en a un. CosmeticService
+-- n'est requis qu'ici (liste vide en V0). Une erreur est écrite ; l'objet du coffre reste donné.
+local function grantExclusive(player: Player, week: number)
+	local monday = os.date("!%Y-%m-%d", (week * 7 - WEEKLY.MondayOffset) * DAY)
+	local cosmeticId = WEEKLY.Exclusives[monday]
+	if cosmeticId == nil then
+		return
+	end
+	local def = Cosmetics.ById[cosmeticId]
+	local ok, granted = pcall(function(): boolean
+		-- require dynamique : CosmeticService n'est chargé que si un exclusif existe (aucun en V0)
+		return (require :: any)(script.Parent:FindFirstChild("CosmeticService")).Grant(player, cosmeticId)
+	end)
+	if not ok or granted ~= true or def == nil then
+		warn(`[RewardService] {player.Name} : exclusif {cosmeticId} de la semaine du {monday} pas donné ({tostring(granted)})`)
+		return
+	end
+	notify(player, string.format(MESSAGES.WeeklyExclusive, def.DisplayName), "Info")
+end
+
+local function onClaimWeekly(player: Player)
+	if not weeklyOn() then
+		return -- coupé : rien ne change en jeu
+	end
+	local data = DataService.Get(player)
+	local rewards = rewardsOf(player, data)
+	if data == nil or rewards == nil then
+		return
+	end
+	local week, weekDays, weekClaimed = touchWeek(rewards, today())
+	if weekClaimed then
+		notify(player, MESSAGES.WeeklyAlreadyClaimed, "Warning")
+		publish(player)
+		return
+	end
+	if weekDays < WEEKLY.DaysNeeded then
+		notify(player, string.format(MESSAGES.WeeklyNotYet, WEEKLY.DaysNeeded), "Warning")
+		publish(player)
+		return
+	end
+	claim(player, data, WEEKLY.Reward, "Weekly", `Week{week}`, function()
+		weeklyOf(rewards).ClaimedWeek = week
+		grantExclusive(player, week)
 	end)
 end
 
@@ -475,6 +590,7 @@ local function onTestAttribute()
 	if command == "reset" and player and rewards then
 		rewards.Daily = { Streak = 0, LastDay = 0 }
 		rewards.Playtime = { Day = today(), Seconds = 0, Claimed = {} }
+		rewards.Weekly = { Week = 0, Days = 0, LastDay = 0, ClaimedWeek = 0 }
 		local session = sessions[player]
 		if session then
 			session.lastClock = os.clock()
@@ -483,7 +599,15 @@ local function onTestAttribute()
 		publish(player)
 		return
 	end
-	warn(`[RewardService] test : « {tostring(value)} » : attendu « days <n> », « play <joueur> <secondes> » ou « reset <joueur> » avec un joueur présent`)
+	if command == "weekly" and player and rewards and tonumber(words[3]) and weeklyOn() then
+		touchWeek(rewards, today())
+		local weekly = weeklyOf(rewards)
+		weekly.Days = math.clamp(math.floor(tonumber(words[3]) :: number), 0, 7)
+		print(`[RewardService] test : {player.Name} a {weekly.Days} jour(s) de connexion cette semaine`)
+		publish(player)
+		return
+	end
+	warn(`[RewardService] test : « {tostring(value)} » : attendu « days <n> », « play <joueur> <secondes> », « reset <joueur> » ou « weekly <joueur> <jours> » (coffre allumé) avec un joueur présent`)
 end
 
 ------------------------------------------------------------------------------
@@ -503,17 +627,27 @@ function RewardService.GetState(player: Player): State?
 	local day = today()
 	rollover(rewards.Playtime, day)
 	local calendarDay, claimed = dailyStatus(rewards.Daily, day)
+	local on = weeklyOn()
+	local weekDays, weekClaimed = 0, false
+	if on then
+		local _, days, done = touchWeek(rewards, day)
+		weekDays, weekClaimed = days, done
+	end
 	return {
 		Day = calendarDay,
 		DailyClaimed = claimed,
 		PlaySeconds = finite(rewards.Playtime.Seconds),
 		PlayClaimed = claimedList(rewards.Playtime),
+		WeeklyOn = on,
+		WeeklyDays = weekDays,
+		WeeklyClaimed = weekClaimed,
 	}
 end
 
 function RewardService.Init()
 	Net.Server.ClaimDaily:Connect(onClaimDaily)
 	Net.Server.ClaimPlaytime:Connect(onClaimPlaytime)
+	Net.Server.ClaimWeekly:Connect(onClaimWeekly)
 	DataService.OnProfileLoaded(onProfileLoaded)
 	DataService.OnProfileReleasing(onProfileReleasing)
 	Players.PlayerRemoving:Connect(function(player: Player)
