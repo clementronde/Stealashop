@@ -227,6 +227,8 @@ local Balance = require(ReplicatedStorage.Shared.Config.Balance)
 local Formulas = require(ReplicatedStorage.Shared.Config.Formulas)
 local ItemsConfig = require(ReplicatedStorage.Shared.Config.Items)
 local Mutations = require(ReplicatedStorage.Shared.Config.Mutations)
+local WeightConfig = require(ReplicatedStorage.Shared.Config.Weight)
+local ItemWeight = require(ReplicatedStorage.Shared.ItemWeight)
 local Rarities = require(ReplicatedStorage.Shared.Config.Rarities)
 local Zones = require(ReplicatedStorage.Shared.Config.Zones)
 local Format = require(ReplicatedStorage.Shared.Format)
@@ -647,7 +649,7 @@ end
 -- Revenu d'un objet ($/s), formule 7.1, mutation comprise (DEV-131 : taille × effet du champ
 -- Mutation de Items[uid], 1 sans champ) ; le M global s'applique au total (Account.multiplier).
 local function itemIncome(def: ItemDef, entry: ItemEntry, uid: string): number
-	return Formulas.ItemIncome(itemZone(def, entry, uid), def.Rarity) * Mutations.IncomeMultiplier(entry.Mutation)
+	return Formulas.ItemIncome(itemZone(def, entry, uid), def.Rarity) * Mutations.IncomeMultiplier(entry.Mutation, entry.Weight) -- vague 62 : poids compris
 end
 
 ------------------------------------------------------------------------------
@@ -1003,7 +1005,8 @@ local function addBillboard(
 	income: number,
 	boxCFrame: CFrame,
 	boxSize: Vector3,
-	mutation: Mutations.Mutation?
+	mutation: Mutations.Mutation?,
+	weight: number? -- vague 62 (a203) : poids de l'objet (kg), écrit dans Weight s'il existe
 )
 	local anchor = model.PrimaryPart or (model:FindFirstChildWhichIsA("BasePart", true) :: BasePart?)
 	if anchor == nil then
@@ -1016,7 +1019,7 @@ local function addBillboard(
 	point.Parent = anchor
 	-- Mutation de taille (DEV-131) : BB_Item de Clément monte (ou descend) de ce que l'objet a gagné en
 	-- hauteur, pour garder le même écart au-dessus de lui (V0 proposé). Le V0 suit déjà le sommet.
-	local scale = Mutations.Scale(mutation)
+	local scale = Mutations.Scale(mutation, weight)
 	local lift = boxSize.Y - boxSize.Y / scale
 	point.WorldPosition = if gui
 		then (model:GetPivot() * CFrame.new(0, lift, 0)).Position
@@ -1048,6 +1051,10 @@ local function addBillboard(
 		setText(billboard, "ItemName", Mutations.ItemName(def.DisplayName, mutation))
 	end
 	setText(billboard, "Income", Format.income(income))
+	-- Vague 62 (a203) : poids « 1,250 kg » dans l'élément facultatif Weight de BB_Item (nom proposé à Clément) ; rien sans lui.
+	if ItemWeight.Enabled() then
+		setText(billboard, WeightConfig.Field, ItemWeight.Format(weight or WeightConfig.Reference))
+	end
 	local rarityLabel = setText(billboard, "Rarity", rarity.DisplayNameUpper, if rarity.Rainbow then TEXT_COLOR else rarity.Color)
 	-- Secret : arc-en-ciel (DisplayController le fait tourner). Un dégradé déjà posé par Clément
 	-- sur ce texte est gardé.
@@ -1078,7 +1085,10 @@ local function buildItemModel(ownerUserId: number, pivot: CFrame, name: string, 
 	-- au centre, 10.1 : il reste posé sur le présentoir), avant le halo et le billboard qui suivent
 	-- sa nouvelle taille. Échec (modèle sans pièce ?) : taille normale, signalé une fois.
 	local mutation = Mutations.Sanitize(entry.Mutation)
-	local scale = Mutations.Scale(mutation)
+	-- Vague 62 (a203) : poids de l'objet (Items[uid].Weight ; absent : celui de son ancienne taille, ItemWeight.Effective).
+	local rawMutation = entry.Mutation
+	local weight = ItemWeight.Effective(entry.Weight, if rawMutation then rawMutation.Size else nil)
+	local scale = Mutations.Scale(mutation, weight)
 	if scale ~= 1 then
 		local ok, problem = pcall(display.ScaleTo, display, scale)
 		if not ok then
@@ -1090,7 +1100,7 @@ local function buildItemModel(ownerUserId: number, pivot: CFrame, name: string, 
 	local boxCFrame, boxSize = display:GetBoundingBox()
 	RarityHalo.AddDisplayed(display, rarity, boxCFrame, boxSize)
 	if billboard then
-		addBillboard(display, def, rarity, income, boxCFrame, boxSize, mutation)
+		addBillboard(display, def, rarity, income, boxCFrame, boxSize, mutation, weight)
 	end
 
 	display:SetAttribute("ItemUid", uid)
@@ -1104,6 +1114,8 @@ local function buildItemModel(ownerUserId: number, pivot: CFrame, name: string, 
 	-- visuels sont à Clément (MOD-131) : le code n'en pose aucun.
 	display:SetAttribute(MUTATION_SIZE_ATTRIBUTE, if mutation then mutation.Size else nil)
 	display:SetAttribute(MUTATION_EFFECT_ATTRIBUTE, if mutation then mutation.Effect else nil)
+	-- Vague 62 (a203) : poids (kg) lu par les contrôleurs (deux mains, socle « BEST ITEM »), absent sans le poids.
+	display:SetAttribute(WeightConfig.Attribute, if ItemWeight.Enabled() then weight else nil)
 	return display, income
 end
 

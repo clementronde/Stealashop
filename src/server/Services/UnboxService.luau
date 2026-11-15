@@ -126,6 +126,7 @@ local Balance = require(Shared.Config.Balance)
 local Formulas = require(Shared.Config.Formulas)
 local Items = require(Shared.Config.Items)
 local Mutations = require(Shared.Config.Mutations)
+local ItemWeight = require(Shared.ItemWeight) -- vague 62 (a203)
 local Rarities = require(Shared.Config.Rarities)
 local ShelfBoxes = require(Shared.Config.ShelfBoxes)
 local ShelfOpen = require(Shared.Config.ShelfOpen)
@@ -473,7 +474,7 @@ local function itemIncomeOf(entry: any): number
 		return 0
 	end
 	local zone = def.Zone or (if type(entry.Zone) == "number" and Zones[entry.Zone] ~= nil then entry.Zone else nil) or 1
-	return Formulas.ItemIncome(zone, def.Rarity) * Mutations.IncomeMultiplier(Mutations.Sanitize(entry.Mutation))
+	return Formulas.ItemIncome(zone, def.Rarity) * Mutations.IncomeMultiplier(entry.Mutation, entry.Weight) -- vague 62 : poids compris (mutation brute : repli de l'ancienne taille)
 end
 
 local function emitItem(list: { ItemListener }, player: Player, itemUid: string, itemId: string)
@@ -935,6 +936,7 @@ local function stowItem(player: Player, data: Data, payload: any)
 		At = os.time(),
 		Zone = payload.Zone,
 		Mutation = if def.TutorialOnly then nil else Mutations.Sanitize(payload.Mutation),
+		Weight = if def.TutorialOnly then nil else ItemWeight.Sanitize(payload.Weight), -- vague 62 (a203) : le poids suit l'objet
 		AntiTheft = true,
 	}
 	local heists = countHeist(player, data) -- d'un seul tenant avec l'objet : sauvegardés ensemble

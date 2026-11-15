@@ -1159,4 +1159,20 @@ table.insert(UI.Billboards, {
 	} :: { Element },
 })
 
+
+-- Poids des objets (vague 62, a203 ; noms proposés à Clément, tous facultatifs) : « 1,250 kg » (Shared/ItemWeight.Format)
+-- dans un texte Weight à côté du revenu/s, sur l'étiquette d'un objet exposé (BB_Item, DisplayService), d'un objet porté
+-- (BB_Carry, CarryService), du grand socle « BEST ITEM » (BB_RarestDisplay, VfxController) et des cases de la barre du
+-- bas (UI_Hotbar Bar.Template, HotbarController). Absent : le poids n'est pas affiché.
+for _, billboardDef in UI.Billboards do
+	if billboardDef.Name == "BB_Item" or billboardDef.Name == "BB_Carry" or billboardDef.Name == "BB_RarestDisplay" then
+		table.insert(billboardDef.Elements, { Path = "Weight", Class = "TextLabel", Optional = true, Note = "le poids de l'objet n'est pas affiché" })
+	end
+end
+for _, screenDef in UI.Screens do
+	if screenDef.Name == "UI_Hotbar" then
+		table.insert(screenDef.Elements, { Path = "Bar.Template.Weight", Class = "TextLabel", Optional = true, Note = "le poids de l'objet n'est pas affiché dans sa case" })
+	end
+end
+
 return UI

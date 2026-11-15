@@ -61,6 +61,8 @@ local Rarities = require(Config:WaitForChild("Rarities"))
 local Items = require(Config:WaitForChild("Items"))
 local Mutations = require(Config:WaitForChild("Mutations"))
 local ItemOdds = require(Shared:WaitForChild("ItemOdds"))
+local WeightConfig = require(Config:WaitForChild("Weight"))
+local ItemWeight = require(Shared:WaitForChild("ItemWeight"))
 local Format = require(Shared:WaitForChild("Format"))
 
 local IS_STUDIO = RunService:IsStudio()
@@ -599,6 +601,10 @@ local function placeRarestItem(entry: RarestEntry, best: Best)
 	end
 	copy.Name = spec.ItemName
 	copy:AddTag(spec.CopyTag)
+	-- Vague 62 (a203) : un objet très lourd est plafonné à Weight.RarestMaxScale sur le socle (V0).
+	if ItemWeight.Enabled() and copy:GetScale() > WeightConfig.RarestMaxScale then
+		pcall(copy.ScaleTo, copy, WeightConfig.RarestMaxScale)
+	end
 	local rotation = if entry.Large then slot.WorldCFrame.Rotation else source:GetPivot().Rotation
 	copy:PivotTo(CFrame.new(slot.WorldPosition) * rotation)
 	copy.Parent = entry.Holder
@@ -678,7 +684,7 @@ local function refreshRarest()
 		local current = entry :: RarestEntry
 		local chosen = best :: Best
 		local mutation = mutationOf(chosen.Source)
-		local key = `{chosen.ItemId}|{chosen.Rarity.Id}|{Mutations.Label(mutation) or ""}|{chosen.Income}`
+		local key = `{chosen.ItemId}|{chosen.Rarity.Id}|{Mutations.Label(mutation) or ""}|{chosen.Income}|{tostring(chosen.Source:GetAttribute(WeightConfig.Attribute))}`
 		if current.Key ~= key then
 			current.Key = key
 			-- a196 (Cantin, T-096) : « BEST ITEM » dans le titre de Clément, et le revenu/s de l'objet dans Income
@@ -721,6 +727,13 @@ local function refreshRarest()
 				if oneIn then
 					odds.Text = ItemOdds.Format(oneIn)
 				end
+			end
+			-- Vague 62 (a203) : poids de l'objet (« 1,250 kg ») dans l'élément facultatif Weight, caché sans poids.
+			local weightLabel = textOf(current.Gui, WeightConfig.Field)
+			if weightLabel then
+				local kg = if ItemWeight.Enabled() then ItemWeight.Sanitize(chosen.Source:GetAttribute(WeightConfig.Attribute)) else nil
+				weightLabel.Text = if kg then ItemWeight.Format(kg) else ""
+				weightLabel.Visible = kg ~= nil
 			end
 			local mutationLabel = if current.Large then textOf(current.Gui, "Mutation") else nil
 			if mutationLabel then

@@ -780,6 +780,18 @@ local function loadProfile(player: Player)
 	if not converted then
 		warn(`[DataService] {player.Name} ({key}) : conversion des colis impossible ({problem}), colis gardés`)
 	end
+	-- Vague 62 (a203, Cantin) : un objet sans poids reçoit celui de son ancienne mutation de taille (ItemWeight.Migrate,
+	-- Config/Weight.Legacy : au moins son revenu d'avant), sans changement de version (champ facultatif Items[uid].Weight).
+	local weighed, weightProblem = pcall(function()
+		local ItemWeight = require(ReplicatedStorage.Shared.ItemWeight) :: any -- lu ici seulement, comme Config/Mutations (convertBoxes)
+		local count = ItemWeight.Migrate(profile.Data.Items)
+		if count > 0 then
+			migrationLog(`poids (vague 62) : {count} objet(s) pesé(s)`)
+		end
+	end)
+	if not weighed then
+		warn(`[DataService] {player.Name} ({key}) : poids des objets impossible ({weightProblem}), objets gardés tels quels`)
+	end
 	profile:AddUserId(player.UserId)
 
 	-- Fin de session sans départ du joueur : profil repris par un autre serveur.

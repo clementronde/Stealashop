@@ -111,7 +111,8 @@ local FortuneTower = {
 	RarityOdds = lootOdds(), -- { Mythic = 90, Secret = 10, Divine = 0 }
 	-- Vague 42 : les colis s'ouvrent sur place comme sur un rayon (Cantin) : RarityOdds y tire la rareté de la
 	-- CAISSE, minimum de l'objet (la chance ne fait que monter) ; SizeOdds y remplace le tirage de taille du
-	-- rayon (L-145 (a), valeurs validées par Clément).
+	-- rayon (L-145 (a), valeurs validées par Clément). Vague 62 (a203) : le poids de l'objet est ensuite tiré dans le
+	-- palier de la taille gagnée (Shared/ItemWeight.RollForSize : Huge 250 à 2 500 kg, Colossal 2 500 à 10 000 kg).
 	SizeOdds = sizeOdds(), -- { Huge = 80, Colossal = 20 }
 	BoxLifetime = TruckEvent.BoxLifetime, -- 60 s au sol, comme les colis du camion, puis il disparaît
 	-- Point LootSpawn_NN : le colis est posé sur la première surface sous lui (le sol du coffre), cherchée

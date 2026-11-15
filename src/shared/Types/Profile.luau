@@ -67,6 +67,10 @@ export type Item = {
 	AntiTheft: boolean?, -- true = sous antivol : il ne va sur un présentoir qu'une fois repris « UNLOCKED! »
 	UnlockAt: number?, -- heure serveur (Workspace:GetServerTimeNow) de la fin de l'antivol, posée à la pose au sol
 	Spot: Spot?, -- posé au sol de sa boutique (même repère que Box.Spot) ; nil = dans l'inventaire
+	-- Vague 62 (a203, Cantin) : poids tiré avec l'objet, en kg (1 à 10 000 ; Config/Weight, Shared/ItemWeight) : taille du
+	-- modèle et revenu. Facultatif, sans changement de version : absent = posé au chargement par DataService
+	-- (ItemWeight.Migrate, selon l'ancienne mutation de taille ; au moins le revenu d'avant).
+	Weight: number?,
 }
 
 -- Mutation d'un objet ou d'un colis (DEV-131, L-084 point 3 ; Config/Mutations) : une par famille au
