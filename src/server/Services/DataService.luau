@@ -175,7 +175,7 @@ local TEMPLATE: Data = {
 	Vault = {},
 	Boxes = {}, -- v7 : [uid du colis] = colis dans l'inventaire ou posé au sol de la boutique (UnboxService)
 	Tutorial = { Step = 0, Done = false },
-	Lifetime = { Heists = 0, Steals = 0, Defenses = 0, PlaySeconds = 0 },
+	Lifetime = { Heists = 0, Steals = 0, Defenses = 0, PlaySeconds = 0, BestIncome = 0 }, -- BestIncome : vague 50 (a161), LeaderboardService
 	Purchases = {}, -- [PurchaseId] = os.time() du don (MonetizationService)
 	Monetization = { Passes = {}, StarterPack = false, OpenNowCredit = 0 }, -- v3
 	Boosts = { Cash = 0 }, -- v3
@@ -183,6 +183,7 @@ local TEMPLATE: Data = {
 	Offline = { LastSeenAt = 0, Income = 0 }, -- v6 : 0 = heure inconnue, aucun gain hors ligne (OfflineService)
 	-- v8 : calendrier (aucun jour réclamé) et temps de jeu du jour (aucun jour compté) (RewardService)
 	Rewards = { Daily = { Streak = 0, LastDay = 0 }, Playtime = { Day = 0, Seconds = 0, Claimed = {} } },
+	Rebirths = 0, -- vague 51 (a164) : renaissances faites (RebirthService), sans changement de version
 }
 
 -- Journal d'une migration : chaque ligne part dans la sortie, préfixée du joueur et de sa clé.

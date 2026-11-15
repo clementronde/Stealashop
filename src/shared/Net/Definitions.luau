@@ -687,6 +687,37 @@ local List: { RemoteDef } = {
 		Args = { id("itemUid") },
 		RatePerSecond = 4, -- V0 proposé, absent du doc
 	},
+	{
+		-- a162 (MAJ 0), absent du tableau 9.4 : champ de saisie d'un code cadeau (UI_Settings ou UI_Rewards,
+		-- CodeController). CodeService compare à Config/Codes, vérifie la fin et le code déjà pris, donne et note.
+		Name = "RedeemCode",
+		Direction = "ClientToServer",
+		Reliable = true,
+		Args = { { Name = "code", Kind = "string", Max = 20 } }, -- Config/Codes.MaxLength
+		RatePerSecond = 1, -- V0 proposé, absent du doc
+	},
+	{
+		-- a162 (MAJ 0) : réponse à RedeemCode, au seul joueur. status = Redeemed, Invalid, AlreadyUsed, Expired ou
+		-- Unavailable ; message = texte anglais de Config/Codes.Messages.
+		Name = "CodeResult",
+		Direction = "ServerToClient",
+		Reliable = true,
+		Args = {
+			{ Name = "status", Kind = "string", Max = 32 },
+			{ Name = "message", Kind = "string", Max = MAX_MESSAGE_LENGTH },
+		},
+	},
+	{
+		-- Vague 51 (a164, DEV-120), absent du tableau 9.4 : le joueur confirme sa renaissance (2e appui sur
+		-- UI_Rebirth.ConfirmButton, RebirthController). level = la renaissance confirmée (faites + 1) : une
+		-- demande en retard ou en double est ignorée. RebirthService revérifie tout (Features.Rebirth, argent,
+		-- objet requis, rien au sol, rien de porté ni de volé) ; coupé, le remote est ignoré.
+		Name = "Rebirth",
+		Direction = "ClientToServer",
+		Reliable = true,
+		Args = { { Name = "level", Kind = "int", Min = 1, Max = 1000 } },
+		RatePerSecond = 1, -- V0 proposé, absent du doc
+	},
 }
 
 return {

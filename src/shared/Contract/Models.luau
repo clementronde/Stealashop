@@ -188,6 +188,17 @@ local Plot: ModelSpec = {
 		-- Point d'apparition du propriétaire, axe −Z tourné vers l'allée (L-019).
 		{ Name = "SpawnPoint", Class = "Attachment" },
 		{ Name = "Bounds", Class = "BasePart" },
+		-- Vague 50 (a161, L-165 point 5) : grand socle de l'objet le plus rare, devant la boutique (remplace
+		-- RarestPedestal). Facultatif : sans lui, l'ancien socle (VfxController).
+		{
+			Name = "RarestDisplay",
+			Optional = true,
+			Note = "facultatif : grand socle de l'objet le plus rare ; sans lui, RarestPedestal comme avant, L-165",
+			Inside = {
+				{ Name = "ItemPoint", Class = "Attachment", Optional = true, Note = "facultatif : sans lui, pas d'objet sur le socle, L-165" },
+				{ Name = "LabelPoint", Class = "Attachment", Optional = true, Note = "facultatif : sans lui, le grand socle est ignoré, L-165" },
+			},
+		},
 	},
 }
 
@@ -635,5 +646,92 @@ local FortuneVault: ModelSpec = {
 }
 Models.FortuneVault = FortuneVault
 table.insert(Models.List, table.find(Models.List, WeaponShopCounter) or #Models.List + 1, FortuneVault)
+
+-- Panneaux de classement du hub (vague 50, a161, L-165 point 4 ; noms proposés par Clément, pas encore livrés) :
+-- ENV_Hub_Leaderboard, deux copies taggées Leaderboard, attribut texte Stat = Income ou Speed. LeaderboardService
+-- écrit Title et clone List.Template (Rank, Avatar, PlayerName, Value). Tout est facultatif (orange).
+local LeaderboardBoard: ModelSpec = {
+	Key = "Leaderboard",
+	Label = "panneaux de classement du hub",
+	Category = "Hub",
+	Tag = "Leaderboard",
+	Parts = {
+		{
+			Name = "Board",
+			Class = "SurfaceGui",
+			Optional = true,
+			Note = "facultatif : sans lui, le panneau reste vide, L-165",
+			Inside = {
+				{ Name = "Title", Class = "TextLabel", Optional = true },
+				{ Name = "List", Class = "GuiObject", Optional = true, Note = "facultatif : sans lui, aucune ligne" },
+				{
+					Name = "Template",
+					Class = "GuiObject",
+					Optional = true,
+					Note = "facultatif : List.Template invisible, cloné par ligne, L-165",
+					Inside = {
+						{ Name = "Rank", Class = "TextLabel", Optional = true },
+						{ Name = "Avatar", Class = "ImageLabel", Optional = true },
+						{ Name = "PlayerName", Class = "TextLabel", Optional = true },
+						{ Name = "Value", Class = "TextLabel", Optional = true },
+					},
+				},
+			},
+		},
+	},
+	WarnWhenEmpty = true,
+}
+Models.Leaderboard = LeaderboardBoard
+-- Avant les comptoirs du hub, qui restent à la fin du rapport.
+table.insert(Models.List, table.find(Models.List, WeaponShopCounter) or #Models.List + 1, LeaderboardBoard)
+-- Hub façon « Steal a … » (L-165 points 1 et 2, vague 50, a160 ; noms proposés par Clément, V0) : cadeau
+-- gratuit et noob « invite un ami ». Tout est facultatif (orange) : le code ne fait rien sans eux. Pas encore
+-- livrés : « pas encore livré », jamais un problème.
+local HubFreeGift: ModelSpec = {
+	Key = "HubFreeGift",
+	Label = "cadeaux gratuits du hub",
+	Category = "Hub",
+	Names = { "ENV_Hub_FreeGift" },
+	Class = "Model",
+	Parts = {
+		{ Name = "Gift", Optional = true, Note = "facultatif : le cadeau qui flotte et tourne (Model ou pièce), L-165" },
+		{
+			Name = "Zone",
+			Class = "BasePart",
+			Tag = "RewardsZone",
+			Optional = true,
+			Note = "facultative : pièce invisible sans collision ; y entrer ouvre UI_Rewards, L-165",
+		},
+	},
+	Expected = { "ENV_Hub_FreeGift" },
+}
+local HubInviteNoob: ModelSpec = {
+	Key = "HubInviteNoob",
+	Label = "noobs « invite un ami » du hub",
+	Category = "Hub",
+	Names = { "ENV_Hub_InviteNoob" },
+	Class = "Model",
+	Parts = {
+		{
+			Name = "Noob",
+			Class = "Model",
+			Optional = true,
+			Note = "facultatif : rig R15 avec Animations/Idle et Wave (Contract/Animations.Vendor), L-165",
+		},
+		{
+			Name = "Zone",
+			Class = "BasePart",
+			Tag = "InviteZone",
+			Optional = true,
+			Note = "facultative : pièce invisible sans collision ; y entrer ouvre l'invitation de Roblox, L-165",
+		},
+	},
+	Expected = { "ENV_Hub_InviteNoob" },
+}
+Models.HubFreeGift = HubFreeGift
+Models.HubInviteNoob = HubInviteNoob
+for _, spec in { HubFreeGift, HubInviteNoob } do
+	table.insert(Models.List, table.find(Models.List, WeaponShopCounter) or #Models.List + 1, spec)
+end
 
 return Models

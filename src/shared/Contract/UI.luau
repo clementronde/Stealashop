@@ -866,5 +866,46 @@ table.insert(UI.Billboards, {
 		{ Path = "Row.Multiplier", Class = "TextLabel", Optional = true, Note = "le « ×2 » du trail est ajouté à Row.Amount en texte enrichi" },
 	} :: { Element },
 })
+-- Billboard du grand socle de l'objet le plus rare (vague 50, a161, L-165 point 5 ; noms proposés par Clément,
+-- pas encore livré) : facultatif. VfxController en pose une copie sur RarestDisplay/LabelPoint de chaque boutique ;
+-- absent : BB_Rarest à la place. Header est le texte de Clément (« RAREST PULL »), le code n'y écrit rien.
+table.insert(UI.Billboards, {
+	Name = "BB_RarestDisplay",
+	Class = "BillboardGui",
+	Optional = true,
+	Elements = {
+		{ Path = "Header", Class = "TextLabel", Optional = true, Note = "texte fixe de Clément, le code n'y écrit rien" },
+		{ Path = "Rarity", Class = "TextLabel", Optional = true, Note = "la rareté n'est pas affichée" },
+		{ Path = "ItemName", Class = "TextLabel", Optional = true, Note = "le nom de l'objet n'est pas affiché" },
+		{ Path = "Mutation", Class = "TextLabel", Optional = true, Note = "la mutation n'est pas affichée" },
+		{ Path = "Odds", Class = "TextLabel", Optional = true, Note = "la chance (« 1 in 5,300,000,000 ») n'est pas affichée" },
+	} :: { Element },
+})
+
+-- Code cadeau et compte à rebours de MAJ (MAJ 0, a162 ; noms proposés à Clément) : CodeController. Tous
+-- facultatifs ; le code les cherche aussi dans UI_Rewards.
+table.insert(UI.Screens, {
+	Name = "UI_Settings",
+	Class = "ScreenGui",
+	Optional = true,
+	Elements = {
+		{ Path = "CodeBox", Class = "TextBox", Optional = true, Note = "pas de champ de code cadeau" },
+		{ Path = "RedeemButton", Class = BUTTON, Optional = true, Note = "le code s'envoie avec Entrée seulement" },
+		{ Path = "CodeStatus", Class = "TextLabel", Optional = true, Note = "la réponse arrive en Notify seulement" },
+		{ Path = "UpdateCountdown", Class = "TextLabel", Optional = true, Note = "pas de compte à rebours de MAJ" },
+	} :: { Element },
+})
+
+-- Étiquette des stands et des zones du hub (L-165 point 6, vague 50, a160 ; nom proposé par Clément, V0) : posée
+-- par Clément au-dessus de chaque stand et de chaque zone (dans la map, pas seulement ici), avec l'attribut texte
+-- LabelKey ; HubController écrit dans Label le texte anglais de Config/Hub.Labels. Facultative.
+table.insert(UI.Billboards, {
+	Name = "BB_ZoneLabel",
+	Class = "BillboardGui",
+	Optional = true,
+	Elements = {
+		{ Path = "Label", Class = "TextLabel", Optional = true, Note = "le texte de LabelKey n'est pas écrit" },
+	} :: { Element },
+})
 
 return UI

@@ -111,6 +111,7 @@ export type Lifetime = {
 	Steals: number,
 	Defenses: number,
 	PlaySeconds: number,
+	BestIncome: number?, -- vague 50 (a161) : meilleur revenu par seconde de tous les temps (LeaderboardService) ; absent = 0
 }
 
 -- Boutique Robux (v3, DEV-100 ; MonetizationService).
@@ -216,6 +217,11 @@ export type Data = {
 	ZonesReached: { [string]: number }?, -- vague 41 (mesure ZoneReached de la bêta) : [numéro de zone en texte,
 	-- « 3 »] = temps de jeu cumulé (s) à la 1re entrée dans cette zone (TelemetryService). Champ facultatif, sans
 	-- changement de version : absent = aucune zone atteinte depuis la vague 41 ; créé à la 1re entrée.
+	Codes: { [string]: number }?, -- a162 (MAJ 0) : codes cadeaux pris par ce profil (CodeService, Config/Codes),
+	-- [code en majuscules] = os.time() du don. Champ facultatif, sans changement de version : absent = aucun.
+	Rebirths: number?, -- vague 51 (a164, DEV-120) : renaissances faites (RebirthService, Config/Rebirths), entier ≥ 0.
+	-- Champ facultatif, sans changement de version : 0 dans le gabarit de DataService (absent = 0). Écrit d'un seul
+	-- tenant avec la remise à zéro ; ne compte qu'avec Features.Rebirth (coupé : sans effet).
 	-- Partie 2 : Defenses, Rebirths, ajoutés par migration (Version = 9 et suivantes : la v2 est prise
 	-- par le catalogue d'objets v2, la v3 par la boutique Robux, la v4 par l'index, la v5 par les colis
 	-- sur les présentoirs, la v6 par les gains hors ligne, la v7 par les colis dans l'inventaire, la v8
