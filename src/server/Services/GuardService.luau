@@ -40,6 +40,9 @@
 --      point visé était la position du joueur, gardée jusqu'à 0,25 s ; près du vigile, un joueur qui
 --      passe derrière lui avait déjà bougé de 4 à 6 studs, le vigile courait à un point vide puis le
 --      suivait de dos (plus lent que lui, il ne rattrapait jamais son retard).
+--      a193 (Cantin, 2026-11-15, T-069) : distance gardée, point visé et capture se mesurent sur la position
+--      estimée du voleur (position reçue + vitesse × retard du réseau, estimatedPosition, Config/Chase
+--      LagCompensation), plus sur la position que le serveur reçoit en retard.
 --   3. Capture : distance ≤ Balance.Guard.CatchDistance entre les deux HumanoidRootPart, sans
 --      mur entre eux, mesurée ici, côté serveur (a146, audit du 2026-11-14, shared/CatchReach : à
 --      l'horizontale, avec AntiCheat.CatchVerticalReach studs d'écart en hauteur au plus ; sans mur, ou
@@ -1393,6 +1396,46 @@ local function effectiveSpeed(player: Player): number
 	return if speed == speed and speed >= 0 and speed < math.huge then speed else 0
 end
 
+-- a193 (Cantin, 2026-11-15, T-069) : position estimée du voleur, pour la distance gardée, le point visé et la
+-- capture (Config/Chase, LagCompensation). Le serveur reçoit la position du personnage (au client) en retard,
+-- et le client voit le vigile en retard : position reçue + vitesse au sol × retard, retard =
+-- min(GetNetworkPing × LagPingFactor, LagMaxSeconds), avance au plus LagMaxStuds studs. La vitesse est celle
+-- que le serveur reçoit, bornée à la WalkSpeed qu'il donne (une poussée, un téléport ne comptent pas) ; le
+-- ping est mesuré par Roblox : rien ne vient d'un remote. Une avance qui traverse un mur : la position reçue.
+-- Compensation coupée, ping inconnu ou voleur immobile : la position reçue (la règle d'avant).
+local function lagSeconds(player: Player): number
+	if not Chase.LagCompensation then
+		return 0
+	end
+	local ok, ping = pcall(function(): number
+		return player:GetNetworkPing()
+	end)
+	if not ok or not isPositiveNumber(ping) or not isPositiveNumber(Chase.LagPingFactor) then
+		return 0
+	end
+	return math.min(ping * Chase.LagPingFactor, Chase.LagMaxSeconds)
+end
+
+local function estimatedPosition(player: Player, targetRoot: BasePart, targetHumanoid: Humanoid): Vector3
+	local position = targetRoot.Position
+	local lag = lagSeconds(player)
+	if lag <= 0 then
+		return position
+	end
+	local velocity = flat(targetRoot.AssemblyLinearVelocity)
+	local speed = velocity.Magnitude
+	local cap = targetHumanoid.WalkSpeed
+	if not isPositiveNumber(speed) or not isPositiveNumber(cap) then
+		return position
+	end
+	local ahead = math.min(speed, cap) * lag
+	if isPositiveNumber(Chase.LagMaxStuds) then
+		ahead = math.min(ahead, Chase.LagMaxStuds)
+	end
+	local estimate = position + velocity.Unit * ahead
+	return if clearLine(position, estimate) then estimate else position
+end
+
 -- Rapprochement (studs/s, négatif : le voleur s'éloigne) pour r = Speed effective / minimum.
 local function closingFor(r: number): number
 	if r <= 1 then
@@ -1449,14 +1492,14 @@ local MAX_RUSH_STEP = 0.2
 -- prévue : + clamp(Chase.HoldRecallGain × (distance − prévue), ±Chase.HoldRecallMax). La distance prévue part
 -- de Chase.HoldDistance et suit le rapprochement (closingSpeed, image par image : 0 pour le vigile de magasin
 -- au minimum, 4 studs/s la nuit et pour le policier), jamais sous la distance de capture.
-local function holdRecall(guard: Guard, player: Player, targetRoot: BasePart, now: number): number
+local function holdRecall(guard: Guard, player: Player, targetAt: Vector3, now: number): number
 	local last = guard.holdStepAt or guard.holdSince or now
 	guard.holdStepAt = now
 	local catchDistance = if guard.kind == "Night" then Night.CatchDistance else Balance.Guard.CatchDistance
 	local previous = guard.holdTarget or Chase.HoldDistance
 	local target = math.max(previous - closingSpeed(guard, player) * math.max(now - last, 0), catchDistance)
 	guard.holdTarget = target
-	local distance = flat(targetRoot.Position - guard.root.Position).Magnitude
+	local distance = flat(targetAt - guard.root.Position).Magnitude
 	return math.clamp(Chase.HoldRecallGain * (distance - target), -Chase.HoldRecallMax, Chase.HoldRecallMax)
 end
 
@@ -1466,10 +1509,11 @@ end
 -- 1 à 5 studs trop près. Elle est anticipée : finie dès que distance − (vitesse du vigile − marche du
 -- voleur) × dt ≤ HoldDistance (dt = durée de l'image précédente) ; pour cette dernière image, le vigile
 -- court juste assez vite (entre sa vitesse à distance et la ruée) pour arriver à HoldDistance.
-local function distanceRuleStep(guard: Guard, player: Player, targetRoot: BasePart, targetHumanoid: Humanoid, now: number)
+-- a193 : distances mesurées jusqu'à `targetAt`, la position estimée du voleur (estimatedPosition).
+local function distanceRuleStep(guard: Guard, player: Player, targetAt: Vector3, targetHumanoid: Humanoid, now: number)
 	local approach: number? = nil
 	if guard.chasePhase == "Rush" then
-		local distance = flat(targetRoot.Position - guard.root.Position).Magnitude
+		local distance = flat(targetAt - guard.root.Position).Magnitude
 		local last = guard.rushStepAt
 		local dt = if last then math.clamp(now - last, 0, MAX_RUSH_STEP) else 0
 		guard.rushStepAt = now
@@ -1504,7 +1548,7 @@ local function distanceRuleStep(guard: Guard, player: Player, targetRoot: BasePa
 	end
 	local speed = approach or distanceRuleSpeed(guard, player, targetHumanoid, now)
 	if approach == nil and guard.chasePhase == "Hold" and ruleKindOf(guard) ~= "Truck" then
-		speed = math.max(speed + holdRecall(guard, player, targetRoot, now), Chase.HoldMinSpeed)
+		speed = math.max(speed + holdRecall(guard, player, targetAt, now), Chase.HoldMinSpeed)
 	end
 	if math.abs(speed - guard.humanoid.WalkSpeed) > 0.05 then
 		setWalkSpeed(guard, speed)
@@ -2150,8 +2194,8 @@ end
 -- elle. Jamais en zone safe, jamais derrière un mur vu de la cible et, si `kneeDrop` est donné (en vue),
 -- toujours en vue du vigile (les deux rayons de canSee) : sinon il essaie la moitié du chemin, puis vise
 -- la cible elle-même. Sans solution (cible plus rapide qui s'éloigne) : la cible.
-local function interceptPoint(guard: Guard, targetRoot: BasePart, velocity: Vector3, kneeDrop: number?): Vector3
-	local position = targetRoot.Position
+local function interceptPoint(guard: Guard, targetRoot: BasePart, velocity: Vector3, kneeDrop: number?, at: Vector3?): Vector3
+	local position = at or targetRoot.Position -- a193 : la position estimée du voleur, si donnée
 	local from = guard.root.Position
 	local found = interceptTime(flat(position - from), velocity, guard.humanoid.WalkSpeed)
 	if found == nil then
@@ -2179,7 +2223,7 @@ end
 -- point visé. Un nouveau MoveTo seulement si le point a bougé d'au moins AIM_MIN_CHANGE studs (pas
 -- d'à-coups), ou au bout d'AIM_REFRESH s. Un joueur qui passe derrière lui : le point bascule de son
 -- côté au calcul suivant (≤ 0,1 s), et le vigile coupe vers où il va au lieu de refaire son trajet.
-local function chaseInSight(guard: Guard, targetRoot: BasePart, targetHumanoid: Humanoid, velocity: Vector3, now: number)
+local function chaseInSight(guard: Guard, targetRoot: BasePart, targetHumanoid: Humanoid, velocity: Vector3, now: number, targetAt: Vector3?)
 	guard.waypoints = nil -- jamais un point de chemin périmé quand il voit sa cible
 	guard.lastSeen = targetRoot.Position
 	local aim = guard.chaseAim
@@ -2189,7 +2233,7 @@ local function chaseInSight(guard: Guard, targetRoot: BasePart, targetHumanoid: 
 	end
 	guard.nextAimAt = now + CHASE_REAIM_INTERVAL
 	local kneeDrop = targetHumanoid.HipHeight + targetRoot.Size.Y / 2 - KNEE_HEIGHT
-	local fresh = interceptPoint(guard, targetRoot, velocity, kneeDrop)
+	local fresh = interceptPoint(guard, targetRoot, velocity, kneeDrop, targetAt)
 	if aim == nil or reached or flat(fresh - aim).Magnitude >= AIM_MIN_CHANGE or now >= (guard.chaseAimAt or 0) + AIM_REFRESH then
 		guard.chaseAim = fresh
 		guard.chaseAimAt = now
@@ -2282,8 +2326,13 @@ local function chaseStep(guard: Guard, now: number)
 	-- vue, ou perché sur un meuble bas, ou dans un mur (shared/CatchReach) : voler ou traverser les murs
 	-- ne protège plus.
 	local catchDistance = if night then Night.CatchDistance else Balance.Guard.CatchDistance
+	-- a193 (T-069) : portée mesurée jusqu'à la position estimée du voleur (Chase.LagCompensation), ou au contact
+	-- de sa copie sur le serveur (Chase.LagContactReach : un vigile qui bute contre elle).
+	local targetAt = estimatedPosition(player, targetRoot, targetHumanoid)
 	local touch, how = false, ""
-	if CatchReach.InRange(guard.root.Position, targetRoot.Position, catchDistance) then
+	if CatchReach.InRange(guard.root.Position, targetAt, catchDistance)
+		or (targetAt ~= targetRoot.Position and CatchReach.InRange(guard.root.Position, targetRoot.Position, Chase.LagContactReach))
+	then
 		touch, how = CatchReach.CanTouch(guard.root.Position, targetRoot, rayParams)
 	end
 	if touch then
@@ -2300,7 +2349,7 @@ local function chaseStep(guard: Guard, now: number)
 	-- Nouvelle poursuite (vague 45) : la fin de la ruée se teste à chaque image, pas au rythme du pilotage.
 	local distanceRule = guard.chasePhase ~= nil
 	if distanceRule then
-		distanceRuleStep(guard, player, targetRoot, targetHumanoid, now)
+		distanceRuleStep(guard, player, targetAt, targetHumanoid, now)
 	end
 	-- Poursuite sans fin (Cantin, 2026-11-11) : ni temps de poursuite ni avance ne la font abandonner.
 	if now < guard.nextSteerAt then
@@ -2349,19 +2398,20 @@ local function chaseStep(guard: Guard, now: number)
 			for name, count in trace.hits do
 				table.insert(hits, `{name} ×{count}`)
 			end
-			print(string.format("[ChaseDebug] %s : distance %.1f, joueur %.1f studs/s (WalkSpeed %.0f), vigile WalkSpeed %.0f, en vue %d, au chemin %d%s",
+			print(string.format("[ChaseDebug] %s : distance %.1f, joueur %.1f studs/s (WalkSpeed %.0f), vigile WalkSpeed %.0f, estimée à %.1f (retard %.0f ms), en vue %d, au chemin %d%s",
 				guard.model.Name, (targetRoot.Position - guard.root.Position).Magnitude, flat(targetRoot.AssemblyLinearVelocity).Magnitude,
-				targetHumanoid.WalkSpeed, guard.humanoid.WalkSpeed, trace.sight, trace.path,
+				targetHumanoid.WalkSpeed, guard.humanoid.WalkSpeed, flat(targetAt - guard.root.Position).Magnitude, lagSeconds(player) * 1000,
+				trace.sight, trace.path,
 				if #hits > 0 then " ; vue bloquée par " .. table.concat(hits, ", ") else ""))
 			trace.sight, trace.path, trace.hits = 0, 0, {}
 		end
 	end
 	if sees then
-		chaseInSight(guard, targetRoot, targetHumanoid, velocity, now)
+		chaseInSight(guard, targetRoot, targetHumanoid, velocity, now, targetAt)
 		return
 	end
 	guard.chaseAim = nil
-	chaseBehindObstacle(guard, interceptPoint(guard, targetRoot, velocity, nil), now)
+	chaseBehindObstacle(guard, interceptPoint(guard, targetRoot, velocity, nil, targetAt), now)
 end
 
 -- Colis tombé au sol (6.2) : le vigile court vers l'endroit du coup et attend à côté qu'on le

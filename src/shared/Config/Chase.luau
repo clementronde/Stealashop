@@ -62,6 +62,29 @@ local Chase = {
 	-- capture dans son magasin (GuardService). Compteur effacé quand l'objet est rangé en zone safe ou revient
 	-- au rayon. 0 = jamais.
 	ReturnToShelfAfterCatches = 3, -- V0 (Cantin : « au bout de la troisième fois »)
+	-- a193 (Cantin, 2026-11-15, T-069 : « plus on est rapide, plus on a l'impression que le vigile est loin de
+	-- nous », « il nous attrape de loin ») : le personnage appartient au client, le serveur reçoit sa position
+	-- en retard (l'aller), et le client voit le vigile en retard (le retour). Pour tous les poursuivants
+	-- (GuardService.chaseStep), la distance gardée (ruée, HoldDistance, rappel), le point visé et la capture se
+	-- mesurent sur la position estimée du voleur : position reçue + sa vitesse au sol (bornée à sa WalkSpeed,
+	-- donnée par le serveur) × min(player:GetNetworkPing() × LagPingFactor, LagMaxSeconds), au plus
+	-- LagMaxStuds studs devant, et jamais à travers un mur (sinon la position reçue).
+	-- false : la règle d'avant (position reçue seulement).
+	LagCompensation = true, -- V0
+	-- GetNetworkPing ≈ l'aller simple (comme AntiCheat.AllowPingFactor) : × 2 = l'aller-retour, ce que le
+	-- joueur voit. Si un Play montre que GetNetworkPing donne déjà l'aller-retour (Shift+F3), mettre 1.
+	LagPingFactor = 2, -- V0
+	LagMaxSeconds = 0.3, -- V0 : plafond du retard compensé (s) ; au-delà, un client qui se met en retard exprès ne gagne rien de plus
+	-- V0 : plafond de l'avance (studs). Sur le serveur, le vigile bute sur la copie du voleur (collisions) :
+	-- à 14 studs de l'estimation, il reste ainsi au moins HoldDistance − LagMaxStuds (6) studs derrière elle.
+	-- math.huge : sans plafond.
+	LagMaxStuds = 8,
+	-- V0 : capture aussi à LagContactReach studs de la copie du voleur sur le serveur (à l'horizontale, comme
+	-- CatchReach.InRange ; corps qui se touchent, gros vigile compris) : un vigile bloqué derrière elle par les
+	-- collisions attrape quand même. Dès que l'avance dépasse CatchDistance − LagContactReach (1 stud), c'est
+	-- cette règle qui attrape en ligne droite : la capture se fait 1 stud plus près qu'avant, pas plus (le
+	-- vigile ne peut pas doubler la copie du serveur).
+	LagContactReach = 3,
 	-- Qui suit cette règle (false : la vitesse d'avant, voir l'en-tête).
 	Apply = {
 		StoreGuard = true, -- vigile de jour d'un magasin PNJ
