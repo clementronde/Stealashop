@@ -36,6 +36,7 @@
 -- taille ni une position de Clément. Écran recréé (ResetOnSpawn) : rebranché, fermé.
 --
 -- API (client) :
+--   RewardsController.Open()  ouvre l'écran s'il est fermé (zone du cadeau du hub, HubController)
 --   RewardsController.GetState() -> { Open, Tab, Day, DailyClaimed, PlaySeconds, Pending }
 --       Pour un test (banc, barre de commande en Studio).
 
@@ -531,6 +532,14 @@ local function bindHud(gui: Instance)
 	end
 	(found :: GuiButton).Activated:Connect(toggle)
 	refresh()
+end
+
+-- Vague 50 (L-165 point 1, a160) : la zone du cadeau gratuit du hub (HubController) ouvre l'écran comme
+-- RewardsButton, sans le refermer s'il est déjà ouvert.
+function RewardsController.Open()
+	if not isOpen then
+		open()
+	end
 end
 
 function RewardsController.GetState(): { Open: boolean, Tab: string, Day: number, DailyClaimed: boolean, PlaySeconds: number, Pending: boolean }

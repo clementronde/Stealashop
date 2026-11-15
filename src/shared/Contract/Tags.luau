@@ -48,6 +48,11 @@ Tags.List = {
 	-- Vague 50 (a161, L-165 point 4) : les deux panneaux ENV_Hub_Leaderboard du hub (attribut Stat = Income ou
 	-- Speed). Facultatif : pas encore posé, ligne « Tags pas encore posés » (jamais un problème).
 	{ Tag = "Leaderboard", For = "panneaux de classement du hub ENV_Hub_Leaderboard (facultatif)" },
+	-- Vague 50 (L-165 points 1 et 2, a160 ; noms proposés par Clément, V0) : pièce Zone du cadeau gratuit
+	-- (ENV_Hub_FreeGift, ouvre UI_Rewards) et du noob « invite un ami » (ENV_Hub_InviteNoob, ouvre l'invitation).
+	-- Facultatifs : pas encore posés, ils sont dans la ligne « Tags pas encore posés » (HubController, HubService).
+	{ Tag = "RewardsZone", For = "zone du cadeau gratuit du hub (facultatif)" },
+	{ Tag = "InviteZone", For = "zone du noob « invite un ami » du hub (facultatif)" },
 } :: { TagSpec }
 
 return Tags

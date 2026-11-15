@@ -71,7 +71,7 @@ local ContractChecker = {}
 ContractChecker.Priority = 1
 
 local PREFIX = "[Contrat]"
-local CATEGORIES = { "Tags", "Magasins PNJ", "Parcelles", "Boutiques d'achat", "UI", "Billboards", "Animations", "Objets", "Événements", "Scripts" }
+local CATEGORIES = { "Tags", "Magasins PNJ", "Parcelles", "Boutiques d'achat", "Hub", "UI", "Billboards", "Animations", "Objets", "Événements", "Scripts" }
 local INBOX_NAME = "_INBOX_CLEMENT" -- livraisons : vérifiées, mais pas comptées dans la map
 local SANDBOX_NAME = "_SANDBOX_IRONIX" -- tests d'Ironix : ignorés
 
