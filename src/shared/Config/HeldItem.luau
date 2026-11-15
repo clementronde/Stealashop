@@ -39,6 +39,10 @@ local HeldItem = {
 	PlayerAttribute = "HeldItem", -- sur le Player : uid de l'objet tenu, absent sinon
 	ModelName = "HeldItem", -- le modèle de l'objet, dans le Tool
 	CarriedTag = "CarriedItem", -- tag de code de CarryService : MutationFxController y montre l'effet de la mutation
+	-- a178 : objet tenu encore sous antivol (profil AntiTheft) ; UnboxController y pose BB_AntiTheft. UnlockAt =
+	-- heure serveur de la fin (absent : antivol pas encore lancé, verrou montré sans minuteur).
+	LockedAttribute = "AntiTheft",
+	UnlockAtAttribute = "UnlockAt",
 }
 
 export type HeldItem = typeof(HeldItem)

@@ -74,6 +74,7 @@ local COLLECTED_ATTRIBUTE = "CashCollected"
 local SLOTS_ATTRIBUTE = "DisplaySlotsUnlocked"
 local REGISTER_ATTRIBUTE = "CashRegister"
 local DISPLAY_TAG = "DisplayItem"
+local RAREST_TAG = "RarestItem" -- a178 : copie locale du socle (VfxController) : son halo est animé aussi
 local HALO_ATTRIBUTE = "Halo"
 local HALO_PART = "RarityHalo"
 local RAYS_CENTER = "RaysCenter"
@@ -396,7 +397,8 @@ local function track(model: Instance)
 		if found == nil or not found:IsA("BasePart") then
 			return
 		end
-		if not CollectionService:HasTag(model, DISPLAY_TAG) or not model:IsDescendantOf(Workspace) then
+		local tagged = CollectionService:HasTag(model, DISPLAY_TAG) or CollectionService:HasTag(model, RAREST_TAG)
+		if not tagged or not model:IsDescendantOf(Workspace) then
 			return -- retiré pendant l'attente
 		end
 		local halo = found :: BasePart
@@ -803,6 +805,12 @@ function DisplayController.Start()
 		track(model)
 		trackTake(model)
 	end
+	-- a178 : halo de la copie du socle (pas d'invite « Take » sur elle).
+	CollectionService:GetInstanceAddedSignal(RAREST_TAG):Connect(track)
+	CollectionService:GetInstanceRemovedSignal(RAREST_TAG):Connect(function(model: Instance)
+		animated[model] = nil
+		lit[model] = nil
+	end)
 	RunService.Heartbeat:Connect(animate)
 	-- Vague 44 : invites du propriétaire revues toutes les PROMPT_TICK s.
 	RunService.Heartbeat:Connect(function(dt: number)

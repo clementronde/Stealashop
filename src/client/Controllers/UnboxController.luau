@@ -22,6 +22,12 @@
 --     AntiTheftChains sous l'objet, ancrés, sans collision ni requête. À « UNLOCKED! » : le cadenas saute de
 --     0,3 × k en 0,12 s, tout passe en transparence 1 en 0,25 s et est détruit. Kit absent : rien (une ligne
 --     dans la sortie). BB_AntiTheft reste au-dessus de l'objet.
+--   - a178 (Cantin, 15/11) : BB_AntiTheft se montre selon la distance entre le personnage local et l'objet
+--     (Config/Unbox.LockShowDistance), quel que soit le zoom : sa MaxDistance (comptée depuis la caméra) est
+--     levée et Enabled suit cette distance. Un objet tenu en main encore sous antivol (Model HeldItem, tag
+--     CarriedItem, attributs AntiTheft et UnlockAt de HeldItemService) porte le même BB_AntiTheft (nom,
+--     minuteur, ou Unbox.LockedText sans UnlockAt), retiré à la fin de l'antivol ou quand l'objet quitte la main.
+--     UnboxController.GetHeldView(model) -> { TimeText, Shown }? (bancs).
 -- Aucune règle de jeu : le serveur décide.
 
 local CollectionService = game:GetService("CollectionService")
@@ -37,6 +43,7 @@ local Items = require(Config:WaitForChild("Items"))
 local Mutations = require(Config:WaitForChild("Mutations"))
 local Rarities = require(Config:WaitForChild("Rarities"))
 local Unbox = require(Config:WaitForChild("Unbox"))
+local HeldItem = require(Config:WaitForChild("HeldItem"))
 local Find = require(Shared:WaitForChild("Contract"):WaitForChild("Find"))
 local UI = require(Shared:WaitForChild("Contract"):WaitForChild("UI"))
 local UnboxFolder = script.Parent:WaitForChild("Unbox")
@@ -104,6 +111,9 @@ local net: any = nil
 local animation: AnimationApi? = nil
 -- Vague 31 : objets sous antivol affichés au sol, par modèle (toutes les boutiques).
 local floorViews: { [Instance]: FloorView } = {}
+-- a178 : objets tenus en main encore sous antivol, par modèle HeldItem.
+type HeldView = { model: Model, gui: BillboardGui, point: Attachment, timeLabel: TextLabel?, connection: RBXScriptConnection? }
+local heldViews: { [Instance]: HeldView } = {}
 local floorElapsed = 0
 local antiTheftMissingWarned = false
 local chainsMissingWarned = false
@@ -210,8 +220,28 @@ local function removeFloorView(model: Instance)
 	end
 end
 
+-- a178 : d'où se compte la distance du verrou : le personnage local (nil : pas encore de personnage).
+local function lockOrigin(): Vector3?
+	local character = localPlayer.Character
+	local root = if character then character:FindFirstChild("HumanoidRootPart") else nil
+	if root and root:IsA("BasePart") then
+		return root.Position
+	end
+	return nil
+end
+
+-- a178 : BB_AntiTheft allumé à LockShowDistance studs au plus du personnage, quel que soit le zoom ; sans
+-- personnage, allumé (comme avant).
+local function showLock(gui: BillboardGui, point: Attachment, origin: Vector3?)
+	local shown = origin == nil or (point.WorldPosition - origin).Magnitude <= Unbox.LockShowDistance
+	if gui.Enabled ~= shown then
+		gui.Enabled = shown
+	end
+end
+
 -- Remet à jour le minuteur et les invites d'un objet sous antivol (heure serveur, attributs du serveur).
-local function refreshFloorView(view: FloorView, now: number)
+local function refreshFloorView(view: FloorView, now: number, origin: Vector3?)
+	showLock(view.gui, view.point, origin)
 	local unlockAt = view.model:GetAttribute(UNLOCK_AT_ATTRIBUTE)
 	local remaining = if type(unlockAt) == "number" then unlockAt - now else 0
 	local unlocked = remaining <= 0
@@ -284,6 +314,7 @@ local function addFloorView(inst: Instance)
 	local gui = antiTheftBillboard()
 	gui.Name = ANTI_THEFT_BILLBOARD
 	gui.Adornee = point
+	gui.MaxDistance = math.huge -- a178 : la distance au personnage décide (showLock)
 	local itemLabel = floorLabel(gui, "ItemName")
 	if itemLabel then
 		itemLabel.Text = name
@@ -382,7 +413,95 @@ local function addFloorView(inst: Instance)
 		end)
 	)
 	floorViews[model] = view
-	refreshFloorView(view, Workspace:GetServerTimeNow())
+	refreshFloorView(view, Workspace:GetServerTimeNow(), lockOrigin())
+end
+
+------------------------------------------------------------------------------
+-- a178 : objet tenu en main encore sous antivol (HeldItemService)
+------------------------------------------------------------------------------
+
+local function removeHeldView(model: Instance)
+	local view = heldViews[model]
+	if view == nil then
+		return
+	end
+	heldViews[model] = nil
+	if view.connection then
+		view.connection:Disconnect()
+	end
+	view.gui:Destroy()
+	view.point:Destroy()
+end
+
+-- Minuteur du verrou en main ; false : l'antivol est fini (le verrou part).
+local function refreshHeldView(view: HeldView, now: number, origin: Vector3?): boolean
+	local unlockAt = view.model:GetAttribute(HeldItem.UnlockAtAttribute)
+	if view.model:GetAttribute(HeldItem.LockedAttribute) ~= true or (type(unlockAt) == "number" and unlockAt <= now) then
+		return false
+	end
+	local label = view.timeLabel
+	if label then
+		local text = if type(unlockAt) == "number" then floorTimeText(unlockAt - now) else Unbox.LockedText
+		if label.Text ~= text then
+			label.Text = text
+		end
+	end
+	showLock(view.gui, view.point, origin)
+	return true
+end
+
+local function addHeldView(inst: Instance)
+	if heldViews[inst] or not inst:IsA("Model") or inst.Name ~= HeldItem.ModelName then
+		return
+	end
+	local model = inst :: Model
+	if model:GetAttribute(HeldItem.LockedAttribute) ~= true then
+		return
+	end
+	local holder = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart", true)
+	local itemId = model:GetAttribute("ItemId")
+	if holder == nil or type(itemId) ~= "string" then
+		local retry: RBXScriptConnection? = nil
+		retry = model.DescendantAdded:Connect(function()
+			if retry then
+				retry:Disconnect()
+			end
+			addHeldView(model)
+		end)
+		return
+	end
+	local part = holder :: BasePart
+	local def = Items.ById[itemId]
+	local rarity = if def then Rarities.ById[def.Rarity] else nil
+	local mutation = Mutations.Sanitize({ Size = model:GetAttribute("MutationSize"), Effect = model:GetAttribute("MutationEffect") })
+	local boxCFrame, boxSize = model:GetBoundingBox()
+	local point = Instance.new("Attachment")
+	point.Name = ANTI_THEFT_POINT
+	point.Parent = part
+	point.WorldPosition = boxCFrame.Position + Vector3.new(0, boxSize.Y / 2, 0)
+	local gui = antiTheftBillboard()
+	gui.Name = ANTI_THEFT_BILLBOARD
+	gui.Adornee = point
+	gui.MaxDistance = math.huge
+	local itemLabel = floorLabel(gui, "ItemName")
+	if itemLabel then
+		itemLabel.Text = if def then Mutations.ItemName(def.DisplayName, mutation) else itemId
+		if rarity then
+			itemLabel.TextColor3 = rarity.Color
+		end
+	end
+	gui.Parent = part
+	local view: HeldView = { model = model, gui = gui, point = point, timeLabel = floorLabel(gui, "TimeLabel"), connection = nil }
+	-- Tool détruit (rangé, posé, autre outil) : le tag CarriedItem part avec lui (Start), ou le modèle est sorti.
+	view.connection = model.AncestryChanged:Connect(function()
+		if model.Parent == nil then
+			removeHeldView(model)
+		end
+	end)
+	heldViews[model] = view
+	if not refreshHeldView(view, Workspace:GetServerTimeNow(), lockOrigin()) then
+		removeHeldView(model)
+	end
 end
 
 local function stepFloorViews(dt: number)
@@ -393,9 +512,23 @@ local function stepFloorViews(dt: number)
 	end
 	floorElapsed = 0
 	local now = Workspace:GetServerTimeNow()
+	local origin = lockOrigin()
 	for _, view in floorViews do
-		refreshFloorView(view, now)
+		refreshFloorView(view, now, origin)
 	end
+	for model, view in heldViews do
+		if not refreshHeldView(view, now, origin) then
+			removeHeldView(model) -- a178 : fin de l'antivol, le verrou en main part
+		end
+	end
+end
+
+function UnboxController.GetHeldView(model: Instance): { TimeText: string?, Shown: boolean }?
+	local view = heldViews[model]
+	if view == nil then
+		return nil
+	end
+	return { TimeText = if view.timeLabel then view.timeLabel.Text else nil, Shown = view.gui.Enabled }
 end
 
 local function chainsShown(view: FloorView): boolean
@@ -432,6 +565,12 @@ function UnboxController.Start()
 	CollectionService:GetInstanceRemovedSignal(FLOOR_ITEM_TAG):Connect(removeFloorView)
 	for _, inst in CollectionService:GetTagged(FLOOR_ITEM_TAG) do
 		addFloorView(inst)
+	end
+	-- a178 : objet tenu en main sous antivol (HeldItemService : Model HeldItem, tag CarriedItem).
+	CollectionService:GetInstanceAddedSignal(HeldItem.CarriedTag):Connect(addHeldView)
+	CollectionService:GetInstanceRemovedSignal(HeldItem.CarriedTag):Connect(removeHeldView)
+	for _, inst in CollectionService:GetTagged(HeldItem.CarriedTag) do
+		addHeldView(inst)
 	end
 	RunService.Heartbeat:Connect(stepFloorViews)
 end

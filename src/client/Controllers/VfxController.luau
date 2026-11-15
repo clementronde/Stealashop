@@ -105,6 +105,7 @@ local flyers: { Flyer } = {}
 local bursts = 0 -- copies de FX_Escape et FX_TruckDust encore là
 local chase: any = nil
 local shelf: any = nil
+local mutationFx: any = nil -- a178 : ClonePristine (copie de l'objet du socle)
 local chaseGuard: Model? = nil
 local chaseCopy: Highlight? = nil
 local rarest: { [Instance]: RarestEntry } = {} -- [parcelle] = billboard posé
@@ -556,7 +557,12 @@ local function placeRarestItem(entry: RarestEntry, best: Best)
 	if slot == nil or slot.Parent == nil or not source:IsA("Model") then
 		return
 	end
-	local copy = source:Clone()
+	-- a178 : copie aux couleurs d'origine (MutationFxController.ClonePristine, sans l'effet déjà posé sur
+	-- l'objet exposé), taggée CopyTag : MutationFxController y pose l'effet de la mutation et
+	-- DisplayController anime son halo de rareté (RarityHalo, copié avec l'objet), comme sur un présentoir.
+	local copy: Model = if mutationFx and type(mutationFx.ClonePristine) == "function"
+		then (mutationFx.ClonePristine :: any)(source)
+		else source:Clone()
 	for _, inst in copy:GetDescendants() do
 		if inst:IsA("BillboardGui") or inst:IsA("ProximityPrompt") or inst:IsA("LuaSourceContainer") or inst:IsA("ClickDetector") then
 			inst:Destroy()
@@ -576,6 +582,7 @@ local function placeRarestItem(entry: RarestEntry, best: Best)
 		copy:RemoveTag(tag)
 	end
 	copy.Name = spec.ItemName
+	copy:AddTag(spec.CopyTag)
 	local rotation = if entry.Large then slot.WorldCFrame.Rotation else source:GetPivot().Rotation
 	copy:PivotTo(CFrame.new(slot.WorldPosition) * rotation)
 	copy.Parent = entry.Holder
@@ -755,6 +762,7 @@ end
 function VfxController.Start()
 	chase = sibling("ChaseController")
 	shelf = sibling("ShelfBoxController")
+	mutationFx = sibling("MutationFxController")
 	local display = sibling("DisplayController")
 	if display and type(display.OnCollect) == "function" then
 		(display.OnCollect :: any)(function(amount: number, _slotIndex: number, position: Vector3)

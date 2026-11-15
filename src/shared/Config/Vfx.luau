@@ -87,6 +87,9 @@ local Vfx = {
 		CopyName = "RarestLabel", -- V0 : nom de la copie posée sur le point
 		Slot = "RarestSlot", -- Clément : Attachment du socle où l'objet lui-même est posé (L-118 point 6)
 		ItemName = "RarestItem", -- V0 : nom de la copie de l'objet, rangée dans le socle (chez chaque client)
+		-- a178 : tag local de cette copie (même nom dans MutationFxController et DisplayController) : effet de
+		-- mutation et halo de rareté animés comme sur un présentoir.
+		CopyTag = "RarestItem",
 		DisplayTag = "DisplayItem", -- tag de code de DisplayService
 		ItemsFolder = "DisplayItems", -- dossier de DisplayService dans la parcelle
 		Refresh = 1, -- V0 : objet le plus rare revu toutes les secondes
