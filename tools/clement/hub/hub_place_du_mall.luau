@@ -101,6 +101,10 @@ end
 -- et 13 de plaques devant la façade, au lieu de 64), toujours 10 entre deux boutiques ; hub raccourci d'autant.
 local LINE_FX, LINE_GAP, BIG_H = -60, 10, 48 -- x des façades, écart entre deux boutiques, hauteur du grand mur
 local SHOP_REAL_W, SHOP_PADS = 53, 13 -- largeur réelle d'une boutique, plaques (tapis, banc, panneaux) devant sa façade
+local HUB_DECOR = false -- 2026-11-15 : hub épuré (lanternes des piliers, mâts à drapeau) ; true remet ce petit décor
+-- L-174 (Clément, 2026-11-15) : ordre d'attribution des boutiques, AssignOrder par PlotIndex : 1 = la plus en face du
+-- point d'arrivée (Map/Hub/Spawn, x -7, z 0, tourné vers les boutiques), les plus grands numéros sur les côtés
+local ASSIGN_ORDER = { [4] = 1, [5] = 2, [3] = 3, [6] = 4, [2] = 5, [7] = 6, [1] = 7, [8] = 8 }
 local LINE_PITCH = SHOP_REAL_W + LINE_GAP -- d'une boutique à la suivante dans la rangée (63)
 -- 2026-11-12 : serveurs de 8 joueurs (L-113, décision de Clément) : 8 boutiques en ligne (PlotIndex 1 à 8, 1 au nord).
 -- Le demi-cercle et les rangées 3 face à 3 gardent 6 emplacements.
@@ -125,12 +129,12 @@ end
 -- Zones du hub (L-165, Clément 2026-11-14) : dans la bande est (x 0..27,5), au-delà des stands ; au nord le cadeau
 -- gratuit puis les deux leaderboards dos au grand mur, au sud la roue puis le noob « invite un ami »
 local HUB_ZONES = LINE and {
-	gift = Vector3.new(12, 0, 152), noob = Vector3.new(13, 0, 262), -- noob au nord-est depuis le 2026-11-15 (la boutique 8 avance jusqu'à x 5)
+	gift = Vector3.new(12, 0, 152), noob = Vector3.new(14, 0, 38), -- noob devant l'entrée du couloir, bien en vue, hors de l'axe (2026-11-15)
 	wheel = Vector3.new(21, 13, -160), wheelZone = Vector3.new(9, 0, -160), -- centre de la roue ; sa zone devant elle
 	boards = { { "Income", 186 }, { "Speed", 216 } }, -- z du centre de chaque panneau
 } or nil
 -- pelouse laissée sans taches sous les zones (x0, z0, x1, z1)
-local ZONE_CLEAR = HUB_ZONES and { { 3, 141, 21, 163 }, { 22, 171, 27.5, 231 }, { 0, -175, 27.5, -145 }, { 4, 251, 22, 273 } } or {}
+local ZONE_CLEAR = HUB_ZONES and { { 3, 141, 21, 163 }, { 22, 171, 27.5, 231 }, { 0, -175, 27.5, -145 }, { 5, 29, 23, 47 } } or {}
 
 local function rr(deg) local a = math.rad(deg + ROT); return Vector3.new(-math.cos(a), 0, math.sin(a)) end
 local C = E + rr(0) * D_C
@@ -1580,6 +1584,9 @@ if want("Walls") then
 		local z0, z1 = math.min(EXIT_HALF * s, (EXIT_HALF + 4) * s), math.max(EXIT_HALF * s, (EXIT_HALF + 4) * s)
 		Bx(m, W, "GatePost_" .. tag, 18, 0, z0, 27.5, 22, z1, STONE, WO)
 		Bx(m, W, "GatePost_" .. tag .. "_Cap", 17.4, 22, s > 0 and EXIT_HALF or -(EXIT_HALF + 4.6), 27.5, 23.4, s > 0 and (EXIT_HALF + 4.6) or -EXIT_HALF, BRICK, WO)
+		-- Clément, 2026-11-15 (« trop d'info tue l'info ») : plus de lanterne sur les piliers, plus de mâts à drapeau ;
+		-- HUB_DECOR = true les remet
+		if not HUB_DECOR then continue end
 		local lf = CFrame.new(22.75, 23.4, (EXIT_HALF + 2) * s)
 		Bx(m, lf, "GatePost_" .. tag .. "_LampBase", -1, 0, -1, 1, 1, 1, DARK, { decor = true })
 		nightLight(Bx(m, lf, "GatePost_" .. tag .. "_Lamp", -1.1, 1, -1.1, 1.1, 3.8, 1.1, LAMP_OFF, { decor = true }), 34, 1.6)
@@ -1629,6 +1636,11 @@ if want("Shops") then
 	local n = 0
 	for _, m in shops:GetChildren() do if m:IsA("Model") and CS:HasTag(m, "PlayerPlot") then n += 1 end end
 	shopsReady = (n == SHOP_COUNT)
+	-- L-174 : ordre d'attribution (AssignOrder) sur chaque boutique posée
+	for _, m in shops:GetChildren() do
+		local o = m:IsA("Model") and CS:HasTag(m, "PlayerPlot") and ASSIGN_ORDER[m:GetAttribute("PlotIndex")]
+		if o then m:SetAttribute("AssignOrder", o) end
+	end
 end
 
 -- Aperçus des panneaux d'amélioration posés en Edit (Workspace/_PREVIEW_UpgradeSigns/PLOT_Shop_0k : Preview_Treadmill,
