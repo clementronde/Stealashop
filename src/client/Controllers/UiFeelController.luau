@@ -126,6 +126,7 @@ type Escape = {
 	transparencies: { [GuiObject]: number },
 	texts: { [TextLabel]: string },
 	visibles: { [GuiObject]: boolean },
+	images: { [Instance]: string }, -- vague 51 (a165) : Image de Clément sur BoxIcon, remise par resetEscape
 }
 local escape: Escape? = nil
 local escaping = false -- champ de vision de l'arrivée en zone safe en cours
@@ -396,7 +397,7 @@ end
 -- Arrivée en zone safe avec un colis (SafeFlash, L-095 point 4) : UI_Escape, sons, champ de vision
 ------------------------------------------------------------------------------
 
--- Champ de vision : la poursuite le rend d'un coup (note de Clément), puis + FovAdd en FovInTime et
+-- Champ de vision : depuis le champ de vision actuel (vague 51, plus d'à-coup vers 70), + FovAdd en FovInTime et
 -- retour en FovOutTime. Vague 46 : la révélation passe ici avec ses réglages (RevealFlash) ; un 2e appel
 -- pendant le 1er repart du même champ de vision de base (fovBase), et une poursuite encore en cours à la
 -- fin retrouve son ChaseFov.
@@ -412,7 +413,8 @@ local function escapeFov(add: number?, inInfo: TweenInfo?, outInfo: TweenInfo?)
 		fovTween = nil
 		previous:Cancel()
 	end
-	camera.FieldOfView = base
+	-- Vague 51 (a165) : le zoom part du champ de vision actuel (poursuite, 2e colis), sans le remettre à la
+	-- base d'un coup ; le retour se fait toujours vers la base.
 	escaping = true
 	tweenFov(base + (add or SAFE.FovAdd), inInfo or SAFE_FOV_IN_INFO, function()
 		tweenFov(base, outInfo or SAFE_FOV_OUT_INFO, function()
@@ -458,6 +460,11 @@ local function resetEscape()
 	for object, visible in state.visibles do
 		if object.Parent ~= nil then
 			object.Visible = visible
+		end
+	end
+	for object, image in state.images do
+		if object.Parent ~= nil then
+			(object :: any).Image = image
 		end
 	end
 end
@@ -544,7 +551,7 @@ end
 local function newEscape(screen: ScreenGui, kind: string): Escape
 	resetEscape()
 	local state: Escape =
-		{ screen = screen, kind = kind, tweens = {}, scales = {}, rotations = {}, transparencies = {}, texts = {}, visibles = {} }
+		{ screen = screen, kind = kind, tweens = {}, scales = {}, rotations = {}, transparencies = {}, texts = {}, visibles = {}, images = {} }
 	escape = state
 	screen.Enabled = true
 	return state
@@ -611,6 +618,9 @@ local function escapeScreen(tier: string?, rarity: string?, itemId: string?)
 		local icon = Find.path(banner, "BoxIcon")
 		local texture = boxIcon(tier, itemRarity or rarity, itemId)
 		if texture and icon and (icon:IsA("ImageLabel") or icon:IsA("ImageButton")) then
+			if state.images[icon] == nil then
+				state.images[icon] = (icon :: any).Image
+			end
 			(icon :: any).Image = texture
 		end
 		for rank, name in SAFE.Parts do

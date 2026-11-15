@@ -176,6 +176,11 @@ local TICK_INFO = TweenInfo.new(UiMotion.TimerTick.Time, UiMotion.TimerTick.Styl
 local TIMER_RED: Color3 = UiMotion.TimerTick.RedColor
 -- Vague 42 (L-153, L-157 point 4) : couleur du chrono de police « POLICE IN 8s » (V0 dans Config/UiMotion).
 local TIMER_POLICE: Color3 = UiMotion.TimerTick.PoliceColor
+-- L-157 (posés par Clément le 2026-11-14) : UIGradient éteint de HeistTimer.Box, allumé pendant « POLICE IN » à la
+-- place de Box.UIGradient, et attribut Color3 de HeistTimer pour le texte du chrono de police.
+local POLICE_GRADIENT = "PoliceGradient"
+local BOX_GRADIENT = "UIGradient"
+local POLICE_TEXT_COLOR = "PoliceTextColor"
 
 -- Éléments cachés tant que leur fonction n'existe pas (Config/Features, liaison L-026). Les boutons
 -- Shop et Rebirth restent visibles pendant leur aperçu (L-071).
@@ -458,14 +463,31 @@ local function updateHeistTimer(current: Hud)
 	-- L-092 3c : rouge sous le seuil, couleur d'origine sinon (fin du vol, chrono remonté). Vague 42 (L-153 et
 	-- L-157 point 4, Clément) : « POLICE IN 8s » en rouge (UiMotion.TimerTick.PoliceColor) tout le temps du chrono
 	-- de police ; la couleur de Clément, lue sur l'élément au branchement (bind), revient pour « HEIST ».
+	-- Vague 51 (a165) : couleurs touchées seulement s'il reste des secondes ; à la fin, le dernier texte garde
+	-- les siennes pendant le fondu (plus de retour au jaune pendant Motion.Hide).
 	local original: Color3 = timerColors[label] or label.TextColor3
 	timerColors[label] = original
-	if seconds ~= nil and police then
-		label.TextColor3 = TIMER_POLICE
-	elseif seconds ~= nil and seconds <= UiMotion.TimerTick.RedBelow then
-		label.TextColor3 = TIMER_RED
-	else
-		label.TextColor3 = original
+	if seconds ~= nil then
+		-- L-157 (Clément) : pendant « POLICE IN », Box.PoliceGradient allumé à la place de Box.UIGradient et
+		-- texte en HeistTimer@PoliceTextColor (UiMotion.TimerTick.PoliceColor sans l'attribut) ; tout revient
+		-- pour « HEIST ». Gradients facultatifs : sans eux, seule la couleur du texte change.
+		local box = label:FindFirstChild(TIMER_BOX, true)
+		local policeGradient = if box then box:FindFirstChild(POLICE_GRADIENT) else nil
+		if box and policeGradient and policeGradient:IsA("UIGradient") then
+			policeGradient.Enabled = police
+			local normal = box:FindFirstChild(BOX_GRADIENT)
+			if normal and normal:IsA("UIGradient") then
+				normal.Enabled = not police
+			end
+		end
+		if police then
+			local custom = label:GetAttribute(POLICE_TEXT_COLOR)
+			label.TextColor3 = if typeof(custom) == "Color3" then custom else TIMER_POLICE
+		elseif seconds <= UiMotion.TimerTick.RedBelow then
+			label.TextColor3 = TIMER_RED
+		else
+			label.TextColor3 = original
+		end
 	end
 	if seconds then
 		label.Text = timerText(seconds, police)

@@ -738,7 +738,7 @@ local function openVault(vault: Vault, breaker: Player?)
 	end
 	notifyAll(FortuneTower.Messages.Opened)
 	log(
-		`vitrine n° {vault.Number} cassée{if breaker then " par " .. breaker.Name else ""} : {#placed} colis {tier} {if shelf then "à ouvrir sur place (caisses" else "au sol ("}{table.concat(placed, ", ")})`
+		`vitrine n° {vault.Number} cassée{if breaker then " par " .. breaker.Name else ""} : {#placed} colis {tier} {if shelf then "à ouvrir sur place (caisses " else "au sol ("}{table.concat(placed, ", ")})`
 	)
 	task.delay(FortuneTower.RemoveDelay, function()
 		if current == vault then

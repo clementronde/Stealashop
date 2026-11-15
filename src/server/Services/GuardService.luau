@@ -1672,7 +1672,8 @@ local function catch(guard: Guard, player: Player)
 	local driver = guard.driver
 	local message = if driver
 		then driver.CaughtMessage
-		else `Caught! Recommended speed: {Format.short(Zones[zone].SpeedRequired)}`
+		elseif Zones[zone].SpeedRequired > 0 then `Caught! Recommended speed: {Format.short(Zones[zone].SpeedRequired)}`
+		else "Caught!" -- vague 51 (a165) : zone 1, aucune vitesse demandée
 	emitCatch(player, zone, false)
 	-- Cantin, 2026-11-13 : attrapé dans le magasin d'où vient l'objet, il revole sur son rayon (pas de chute).
 	local backToShelf = inItsStore(player)
@@ -3051,7 +3052,7 @@ local function spawnDriver(chase: DriverChase): Model?
 	driverChasedBy[player] = guard
 	refreshChaseState(player)
 	log(
-		`{guard.label} lancé sur {player.Name}, zone {chase.Zone}, vitesse {Format.short(guard.speed)} (× {Format.short(chase.SpeedMultiplier)} la sienne), {sizeText(scale, agent)}`
+		`{guard.label} lancé sur {player.Name}, zone {chase.Zone}, vitesse {Format.short(guard.speed)} ({if chase.SpeedMultiplier > 0 then `× {Format.short(chase.SpeedMultiplier)} la sienne` else "fixe"}), {sizeText(scale, agent)}`
 	)
 	return model
 end

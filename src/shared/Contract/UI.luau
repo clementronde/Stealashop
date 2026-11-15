@@ -866,5 +866,25 @@ table.insert(UI.Billboards, {
 		{ Path = "Row.Multiplier", Class = "TextLabel", Optional = true, Note = "le « ×2 » du trail est ajouté à Row.Amount en texte enrichi" },
 	} :: { Element },
 })
+-- Chrono de police (vague 51, a165 ; L-157, posé par Clément) : UIGradient éteint de HeistTimer.Box, allumé par
+-- HudController pendant « POLICE IN » à la place de Box.UIGradient. Facultatif : sans lui, seul le texte change de
+-- couleur (attribut HeistTimer@PoliceTextColor, sinon UiMotion.TimerTick.PoliceColor).
+-- Rangé juste après HeistTimer (la fin de la liste du HUD reste SkillTreeButton).
+for _, screen in UI.Screens do
+	if screen.Name == "UI_HUD" then
+		local after = #screen.Elements
+		for rank, element in screen.Elements do
+			if element.Path == "HeistTimer" then
+				after = rank
+			end
+		end
+		table.insert(screen.Elements, after + 1, {
+			Path = "HeistTimer.Box.PoliceGradient",
+			Class = "UIGradient",
+			Optional = true,
+			Note = "le fond du chrono de police reste orange",
+		})
+	end
+end
 
 return UI
