@@ -104,6 +104,9 @@ export type Box = {
 export type Tutorial = {
 	Step: number,
 	Done: boolean,
+	-- Vague 61 (a199) : dons du tuto déjà versés ([« Tool » | « Aura »] = true), une seule fois par profil.
+	-- Facultatif (profil sans le champ : aucun don versé).
+	Gifts: { [string]: boolean }?,
 }
 
 export type Lifetime = {
