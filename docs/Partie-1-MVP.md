@@ -1106,6 +1106,7 @@ Chaque étape est envoyée une seule fois par joueur avec `AnalyticsService:LogO
 
 | Date | Décision | Par |
 | --- | --- | --- |
+| 2026-11-15 | Diamants : leur solde ne s'affiche que dans la boutique de diamants, jamais dans le HUD (liaison L-182). | Clément |
 | 2026-11-15 | Direction de l'UI d'après Break and Steal an Egg (analyse dans `References/Videos_Jeux`) : écrans qui s'ouvrent vite et sans rebond (0,15 s), contenu en cascade, survol et clic qui réagissent, titres en relief, raretés animées (reflet à Légendaire, arc-en-ciel à Mythique et Secret), flou derrière les fenêtres sauf en poursuite, HUD réduit à 2 ou 3 boutons plus des boutons qui n'apparaissent qu'en situation (liaison L-182). | Clément |
 | 2026-11-15 | Inventaire archivé et retiré de l'UI ; un panneau « Mes objets exposés » avec « Exposer les meilleurs » le remplace ; les armes s'équipent depuis la boutique d'armes (liaison L-182). | Clément |
 | 2026-11-15 | Diamants : deuxième monnaie dès le MVP, pour personnaliser sa boutique ; gains et prix à fixer (liaison L-182). | Clément |
