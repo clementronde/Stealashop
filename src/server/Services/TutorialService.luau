@@ -152,7 +152,18 @@
 -- dans cette session, puis le tuto finit.
 --
 -- Passer (5.11, remote TutorialSkip, 9.4) : accepté pour un tuto en cours à l'étape SkipFromStep (5)
--- ou plus ; Done = true, Step garde l'étape passée. Refusé avant (sortie de Studio seulement).
+-- ou plus. Refusé avant (sortie de Studio seulement). Vague 60 (a197, Cantin ; Tutorial.SkipOneStep, V0) : Passer
+-- saute UNE étape, dans l'ordre du jeu : 5 → 6 → 7 → 8 → 9 → 10 → 11 (avec un bot, sinon fin) → 12 ; 14 → 13 (la
+-- poursuite du bot ne ramène plus à 14 avant un nouveau passage à 12) ; 12 et 13 : fin du tuto (13 demande l'objet du
+-- bot en main), avec ProtectShop. L'étape sautée compte comme faite (Tutorial.Step garde l'étape la plus avancée, la
+-- reprise part de la suivante). Passer ne donne rien : étape 5 sans objet exposé ni encaissement, 7 sans la clé à
+-- molette, 8 sans aura (l'argent reste au joueur). Une étape suivante déjà remplie s'enchaîne (outil déjà acheté…).
+-- Passer pendant ProtectShop cache tout. SkipOneStep = false : l'ancienne règle (Done = true, Step garde l'étape).
+--
+-- Liste des tâches (vague 60, a197) : TutorialStep porte aussi la progression de l'étape (have, need ; progressOf :
+-- tapis, argent pour l'outil ou l'aura, Speed pour la zone 2, temps du bouclier) ; Shared/TutorialTasks en fait le
+-- texte côté client. Flèche (vague 60) : toujours la cible exacte de l'étape, plus le détour par la porte de la
+-- boutique du joueur (throughDoor, gardé derrière Tutorial.ArrowViaDoor).
 --
 -- Funnel d'onboarding (14.2) : AnalyticsService:LogOnboardingFunnelStepEvent(player, n, nom), dans
 -- un pcall (refusé en Studio et côté client : la sortie de Studio l'écrit). Pour les nouveaux joueurs
@@ -198,6 +209,8 @@ local ShelfOpenState = require(Shared.ShelfOpenState)
 local Telemetry = require(Shared.Config.Telemetry)
 local Tools = require(Shared.Config.Tools)
 local Tutorial = require(Shared.Config.Tutorial)
+local PvP = require(Shared.Config.PvP) -- vague 60 : BeginnerShieldDuration (progression de l'étape 10)
+local Zones = require(Shared.Config.Zones) -- vague 60 : SpeedRequired de la zone 2 (progression de l'étape 9)
 local Find = require(Shared.Contract.Find)
 local Net = require(Shared.Net.Net)
 local ProfileTypes = require(Shared.Types.Profile)
@@ -248,7 +261,7 @@ local Bot: BotApi? = if botLoaded and type(botResult) == "table" and type(botRes
 	else nil
 
 -- Dernier guidage envoyé au client (pour ne jamais renvoyer le même).
-type Sent = { step: number, hint: string?, target: Vector3? }
+type Sent = { step: number, hint: string?, target: Vector3?, have: number?, need: number? }
 
 -- Tuto en cours d'un joueur (rien n'est gardé ici après Done).
 type Session = {
@@ -276,6 +289,8 @@ type Session = {
 	-- fin en cours), puis tout est caché ; la raison de la fin, pour la sortie de Studio.
 	outroUntil: number,
 	outroWhy: string,
+	-- Vague 60 (a197) : l'étape 14 passée (Skip) : jusqu'au retour à l'étape 12, la poursuite du bot ne ramène plus à 14.
+	chaseSkipped: boolean,
 }
 
 local IS_STUDIO = RunService:IsStudio()
@@ -1040,15 +1055,20 @@ local function sameTarget(a: Vector3?, b: Vector3?): boolean
 	return (a - b).Magnitude < 0.5
 end
 
-local function send(session: Session, step: number, hint: string?, target: Vector3?)
+-- Vague 60 : have et need, la progression de l'étape (liste des tâches, Shared/TutorialTasks), nil sans progression.
+local function send(session: Session, step: number, hint: string?, target: Vector3?, have: number?, need: number?)
 	local last = session.sent
-	if last and last.step == step and last.hint == hint and sameTarget(last.target, target) then
+	if last and last.step == step and last.hint == hint and sameTarget(last.target, target) and last.have == have and last.need == need then
 		return
 	end
-	session.sent = { step = step, hint = hint, target = target }
+	session.sent = { step = step, hint = hint, target = target, have = have, need = need }
 	session.player:SetAttribute(STEP_ATTRIBUTE, step)
 	session.player:SetAttribute(HINT_ATTRIBUTE, hint)
-	Net.Server.TutorialStep:Fire(session.player, step, hint, target)
+	if have ~= nil and need ~= nil then
+		Net.Server.TutorialStep:Fire(session.player, step, hint, target, have, need)
+	else
+		Net.Server.TutorialStep:Fire(session.player, step, hint, target)
+	end
 end
 
 local function setStep(session: Session, data: Data, step: number, why: string)
@@ -1068,6 +1088,8 @@ local function setStep(session: Session, data: Data, step: number, why: string)
 		table.clear(session.used)
 	elseif step == STEP_HIT then
 		session.guaranteed = false -- nouveau braquage : l'objet du tuto est de nouveau garanti (ShelfOpen)
+	elseif step == STEP_BOT_GRAB then
+		session.chaseSkipped = false -- vague 60 : un nouveau vol sur le bot, sa poursuite compte de nouveau
 	elseif step == STEP_BOT_SHOP then
 		session.botStolen = false -- vague 36 : un vol au bot d'avant l'étape 11 ne compte pas
 	end
@@ -1220,8 +1242,8 @@ local function transition(session: Session, data: Data, position: Vector3?, carr
 		elseif not held and not stolen then
 			return STEP_BOT_GRAB, "objet du bot perdu" -- étapes 13 et 14
 		elseif step == STEP_BOT_HOME then
-			-- Vague 38 : « le bot défend », objet en main pendant la poursuite.
-			if not stolen and chasedByBot(session.player) then
+			-- Vague 38 : « le bot défend », objet en main pendant la poursuite. Vague 60 : pas après un Skip de l'étape 14.
+			if not stolen and not session.chaseSkipped and chasedByBot(session.player) then
 				return STEP_BOT_CHASE, "le bot le poursuit"
 			end
 		elseif step == STEP_BOT_CHASE then
@@ -1334,10 +1356,46 @@ local function rawGuidance(session: Session, data: Data, position: Vector3?): (s
 	return nil, nil
 end
 
--- Indice et cible de la flèche, qui passe par la porte de la boutique du joueur (throughDoor).
+-- Indice et cible de la flèche. Vague 60 (a197, Cantin) : la flèche vise la cible exacte de l'étape ; elle ne passe
+-- plus d'abord par la porte de la boutique du joueur (throughDoor), sauf avec Tutorial.ArrowViaDoor (ancienne règle).
 local function guidance(session: Session, data: Data, position: Vector3?): (string?, Vector3?)
 	local hint, target = rawGuidance(session, data, position)
-	return hint, throughDoor(session.player, position, target)
+	if Tutorial.ArrowViaDoor then
+		return hint, throughDoor(session.player, position, target)
+	end
+	return hint, target
+end
+
+-- Vague 60 (a197, liste des tâches) : progression de l'étape en cours, (have, need), ou nil, nil sans progression.
+-- 6 : secondes de tapis ; 7 : argent / prix de l'outil ; 8 : argent / prix de l'aura la moins chère ; 9 : Speed
+-- affichée / SpeedRequired de la zone 2 (conseil des panneaux, l'arche ne bloque pas) ; 10 : temps de jeu / durée du
+-- bouclier débutant. Entiers (arrondis vers le bas) : un renvoi au plus par seconde ou par dollar.
+local function progressOf(session: Session, data: Data): (number?, number?)
+	local step = session.step
+	if step == STEP_TRAIN then
+		return math.floor(session.trainSeconds), Tutorial.TrainDuration
+	elseif step == STEP_TOOL or step == STEP_AURA then
+		local price = if step == STEP_TOOL then toolPrice() else cheapestAura()
+		if price > 0 and price < math.huge then
+			return math.floor(math.max(0, data.Cash)), price
+		end
+	elseif step == STEP_ZONE then
+		local zone = Zones[Tutorial.GoalZone]
+		local speed = session.player:GetAttribute("ShownSpeed") -- posé par StatsService
+		if zone and zone.SpeedRequired > 0 and type(speed) == "number" and speed == speed then
+			return math.floor(math.max(0, speed)), zone.SpeedRequired
+		end
+	elseif step == STEP_SHIELD then
+		local getter = (NightCycleService :: any).GetShieldPlayed
+		local ok, played = false, nil
+		if type(getter) == "function" then
+			ok, played = pcall(getter, session.player)
+		end
+		if ok and type(played) == "number" and played == played then
+			return math.floor(math.max(0, played)), PvP.BeginnerShieldDuration
+		end
+	end
+	return nil, nil
 end
 
 -- Relit tout pour ce joueur : étape, fin du tuto, guidage envoyé au client.
@@ -1403,7 +1461,8 @@ local function evaluate(session: Session)
 	end
 
 	local hint, target = guidance(session, data, position)
-	send(session, session.step, hint, target)
+	local have, need = progressOf(session, data)
+	send(session, session.step, hint, target, have, need)
 end
 
 local function newSession(player: Player, step: number): Session
@@ -1425,6 +1484,7 @@ local function newSession(player: Player, step: number): Session
 		botStolen = false,
 		outroUntil = 0,
 		outroWhy = "",
+		chaseSkipped = false,
 	}
 end
 
@@ -1676,11 +1736,39 @@ local function onSkip(player: Player)
 		log(`{player.Name} : TutorialSkip refusé : pas de tuto en cours`)
 		return
 	end
+	if session.outroUntil > 0 then
+		finish(session, nil, "message de fin passé") -- vague 60 : Passer pendant ProtectShop cache tout tout de suite
+		return
+	end
 	if session.step < Tutorial.SkipFromStep then
 		log(`{player.Name} : TutorialSkip refusé à l'étape {session.step} (possible à partir de l'étape {Tutorial.SkipFromStep})`)
 		return
 	end
-	finish(session, data, "passé par le joueur")
+	if not Tutorial.SkipOneStep then
+		finish(session, data, "passé par le joueur")
+		return
+	end
+	-- Vague 60 (a197, Cantin) : Passer saute UNE étape, dans l'ordre du jeu (voir l'en-tête, « Passer »).
+	local step = session.step
+	local nextStep: number? = nil
+	if step >= STEP_DISPLAY and step < STEP_SHIELD then
+		nextStep = step + 1
+	elseif step == STEP_SHIELD then
+		nextStep = if botPlot() ~= nil then STEP_BOT_SHOP else nil
+	elseif step == STEP_BOT_SHOP then
+		nextStep = STEP_BOT_GRAB
+	elseif step == STEP_BOT_CHASE then
+		nextStep = STEP_BOT_HOME
+		session.chaseSkipped = true
+	end
+	-- Étape 12 (13 demande l'objet du bot en main) et 13 (la dernière) : passer finit le tuto.
+	if nextStep == nil then
+		endByGame(session, data, `étape {step} passée par le joueur, dernière étape`)
+		return
+	end
+	session.messageUntil = 0 -- un message de fin du bouclier en cours ne cache plus l'étape suivante
+	setStep(session, data, nextStep, `étape {step} passée par le joueur`)
+	evaluate(session)
 end
 
 -- Contrôle régulier (voir l'en-tête) : entraînement, seuils, bouclier, nuit, et funnel 5, 8 et 10.

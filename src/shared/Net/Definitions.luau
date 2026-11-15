@@ -343,6 +343,10 @@ local List: { RemoteDef } = {
 			{ Name = "step", Kind = "int", Min = 0, Max = MAX_INDEX },
 			{ Name = "hint", Kind = "string", Max = 32, Optional = true },
 			{ Name = "target", Kind = "Vector3", Optional = true },
+			-- Vague 60 (a197, liste des tâches) : progression de l'étape (have sur need : argent, secondes de tapis,
+			-- Speed, temps de bouclier), nil sans progression ; Shared/TutorialTasks en fait le texte.
+			{ Name = "have", Kind = "number", Optional = true },
+			{ Name = "need", Kind = "number", Optional = true },
 		},
 	},
 	{

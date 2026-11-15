@@ -71,6 +71,7 @@
 --       l'aube déjà appliqués). Peut yield.
 --   NightCycleService.IsInCorridor(position) -> boolean   pas côté safe (côté couloir ou au mur)
 --   NightCycleService.IsShielded(player) -> boolean       point d'accroche, voir plus haut
+--   NightCycleService.GetShieldPlayed(player) -> number?  secondes jouées vers la fin du bouclier (vague 60, tuto)
 --   NightCycleService.SendHome(player) -> boolean
 --       Renvoie le joueur sur sa parcelle (PlotService.TeleportHome), sinon juste derrière le mur,
 --       côté safe. Peut yield (2 s au plus). false s'il n'a pu aller nulle part.
@@ -647,6 +648,17 @@ function NightCycleService.IsShielded(player: Player): boolean
 	local now = os.time()
 	local played = data.Lifetime.PlaySeconds + math.max(0, now - (loadedAt[player] or now))
 	return played < PvP.BeginnerShieldDuration
+end
+
+-- Vague 60 (a197) : secondes de jeu jouées vers la fin du bouclier débutant (même calcul que IsShielded), pour la
+-- progression du tuto (étape 10, TutorialService) ; nil sans profil.
+function NightCycleService.GetShieldPlayed(player: Player): number?
+	local data = DataService.Get(player)
+	if data == nil then
+		return nil
+	end
+	local now = os.time()
+	return data.Lifetime.PlaySeconds + math.max(0, now - (loadedAt[player] or now))
 end
 
 -- Ignoré par les vigiles de nuit (Night.IgnoreShieldedPlayers).

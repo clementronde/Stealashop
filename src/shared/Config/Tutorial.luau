@@ -20,6 +20,24 @@ export type Step = {
 	Bubble: string?, -- texte de la bulle, en anglais (L-036), 8 mots au plus ; V0 proposé, absent du doc
 }
 
+-- Vague 60 (a197, liste des tâches) : ce qu'il faut faire à une étape (Do) et, quand le serveur envoie une
+-- progression (have < need, remote TutorialStep), le texte affiché à sa place (Need : {have}, {need} et {left} =
+-- need - have, écrits au format NeedFormat). Anglais, V0 proposés, absents du doc.
+export type Todo = {
+	Do: string,
+	Need: string?,
+	NeedFormat: ("Money" | "Short" | "Seconds" | "Time")?,
+}
+
+-- Vague 60 (a197) : une tâche de la liste = une ou plusieurs étapes qui se suivent (Steps, dans l'ordre du jeu :
+-- l'étape 14 se joue entre 12 et 13), avec son but (Goal) et sa raison (Why). Anglais, V0 proposés, absents du doc.
+export type Task = {
+	Id: string,
+	Steps: { number },
+	Goal: string,
+	Why: string,
+}
+
 -- Vague 52 (a169, lot C de la vague 48 ; décision de Cantin du 2026-11-14 : plus de colis ramené en zone safe) :
 -- le tuto ne parle plus que d'objets. Mêmes numéros et mêmes Id (GrabBox, PlaceBox gardés : un Tutorial.Step
 -- sauvegardé garde son sens), aucune étape retirée ; les bulles des étapes 3 et 4 sont celles de l'ouverture
@@ -57,6 +75,38 @@ local Steps: { Step } = {
 local SHIELD_END_MESSAGE = "Beginner protection is over: keep your bat close!"
 local NIGHT_BUBBLE = "Night is falling: hurry home!" -- 5.12, pour les nouveaux joueurs
 
+-- Vague 60 (a197, T-099 : « je savais pas qu'est-ce qu'il fallait qu'on fasse, où on en était et pourquoi ») :
+-- textes de la liste des tâches (TutorialController, Shared/TutorialTasks). Anglais, V0 proposés, absents du doc.
+local TOOL_NAME = "Wrench" -- Tools.ById[ToolToBuy].DisplayName (étape 7 : la clé à molette, 300 $)
+local Todos: { [number]: Todo } = {
+	[1] = { Do = "Smash the Mini Mart window" },
+	[2] = { Do = "Keep hitting until the glass breaks" },
+	[3] = { Do = "Open a box on the shelf, grab the item" },
+	[4] = { Do = "Run back to your shop with it" },
+	[5] = { Do = "Display it, then step on the green pad" },
+	[6] = { Do = "Stand on the treadmill", Need = "Train: {have} / {need} to get faster", NeedFormat = "Seconds" },
+	[7] = { Do = "Go to the Weapon Shop and buy it", Need = "Earn cash: {have} / {need} to buy the " .. TOOL_NAME, NeedFormat = "Money" },
+	[8] = { Do = "Go to the Aura Shop and buy one", Need = "Earn cash: {have} / {need} to buy an Aura", NeedFormat = "Money" },
+	[9] = { Do = "Walk through the Zone 2 gate", Need = "Speed: {have} / {need} to outrun Zone 2 guards", NeedFormat = "Short" },
+	[10] = { Do = "Keep stealing and earning cash", Need = "Beginner protection ends in {left}", NeedFormat = "Time" },
+	[11] = { Do = "Go to the bot's shop" },
+	[12] = { Do = "Break its door, grab an item" },
+	[13] = { Do = "Run back to your shop with it" },
+	[14] = { Do = "Run home, the bot is chasing you!" },
+}
+local Tasks: { Task } = {
+	{ Id = "RobStore", Steps = { 1, 2, 3 }, Goal = "Rob the Mini Mart", Why = "Stolen items earn you cash" },
+	{ Id = "BringHome", Steps = { 4 }, Goal = "Bring the item home", Why = "Items earn cash in your shop" },
+	{ Id = "Display", Steps = { 5 }, Goal = "Display your item", Why = "Displayed items earn cash every second" },
+	{ Id = "Train", Steps = { 6 }, Goal = "Train your Speed", Why = "Speed helps you escape the guards" },
+	{ Id = "BuyTool", Steps = { 7 }, Goal = "Buy the " .. TOOL_NAME, Why = "A better tool breaks windows faster" },
+	{ Id = "BuyAura", Steps = { 8 }, Goal = "Buy an Aura", Why = "An aura multiplies your damage" },
+	{ Id = "Zone2", Steps = { 9 }, Goal = "Reach Zone 2", Why = "Zone 2 shops have better items" },
+	{ Id = "Shield", Steps = { 10 }, Goal = "Get ready for PvP", Why = "Soon other players can bonk you" },
+	{ Id = "RobBot", Steps = { 11, 12, 14 }, Goal = "Rob another shop", Why = "Anyone can rob anyone" },
+	{ Id = "BringStolen", Steps = { 13 }, Goal = "Bring the stolen item home", Why = "Then it is yours" },
+}
+
 local Tutorial = {
 	-- V0 : interrupteur. false = aucun tutoriel : TutorialService ne pose aucune accroche, ne
 	-- change aucun profil et n'envoie rien (ni bulle, ni flèche, ni funnel).
@@ -64,6 +114,22 @@ local Tutorial = {
 
 	Steps = Steps,
 	SkipFromStep = 5, -- bouton Passer à partir de l'étape 5 (TutorialSkip, 9.4)
+	-- Vague 60 (a197, Cantin) : Passer saute UNE étape (la suivante devient l'étape en cours), plus tout le tuto.
+	-- false = l'ancienne règle (Passer finit le tuto). V0.
+	SkipOneStep = true,
+	-- Vague 60 (a197, Cantin : « il ne faut pas que la flèche mène jusqu'à la vitrine ») : la flèche vise toujours la
+	-- cible exacte de l'étape. true = l'ancienne règle (d'abord la porte de sa boutique quand on est de l'autre côté
+	-- de ses murs). V0.
+	ArrowViaDoor = false,
+
+	-- Vague 60 (a197) : liste des tâches (TutorialController, Shared/TutorialTasks ; textes plus haut).
+	-- false = pas de liste (ni panneau Tasks, ni ligne sous la bulle) : la bulle seule, comme avant. V0.
+	TaskList = true,
+	Todos = Todos,
+	Tasks = Tasks,
+	TasksAhead = 1, -- V0 : tâches à venir montrées après la tâche en cours
+	TasksMax = 5, -- V0 : lignes au plus dans la liste (les plus anciennes tâches faites partent d'abord)
+	SkipReplyTimeout = 3, -- V0 : s après Passer sans réponse du serveur, la bulle revient (client)
 	BubbleMaxWords = 8,
 	FirstStoreDistance = 60, -- flèche vers la Supérette, à 60 studs
 
