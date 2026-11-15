@@ -17,7 +17,9 @@
 --
 -- Avant les rayons, chaque mise à jour met le bâtiment au niveau du nombre de rayons montrés
 -- (ShopStageService.Apply, L-096 point 1) : la boutique grandit avec eux et redescend au niveau 1
--- quand la parcelle est libérée.
+-- quand la parcelle est libérée. Vague 55 (a179) : Apply reçoit aussi le nombre de présentoirs
+-- débloqués et coupe la boutique au fond du dernier ; les pièces des RayonVisuals d'un rayon montré
+-- au-delà de ce fond (socles et plaques du rang suivant) sont cachées comme un rayon, puis rendues.
 --
 -- Quand : à l'attribution d'une parcelle et au départ du joueur (PlotService), à chaque achat de
 -- présentoir (attribut DisplaySlotsLevel du Player, écrit par ShopService), et une fois par seconde
@@ -274,7 +276,7 @@ local function apply(plot: Model)
 			level += 1
 		end
 	end
-	ShopStageService.Apply(plot, level)
+	ShopStageService.Apply(plot, level, count) -- vague 55 : coupée au fond du dernier présentoir débloqué
 	-- Contours retirés avec leur Stage_j (niveau redescendu) : plus rien à rendre.
 	for inst, hidden in hiddenOf do
 		if inst.Parent == nil then
@@ -288,6 +290,16 @@ local function apply(plot: Model)
 		if rayon.first <= count then
 			showRayon(rayon.model)
 			addVisuals(plot, rayon)
+			-- Vague 55 (a179) : socles et plaques du rayon au-delà du fond de la boutique cachés jusqu'à leur rang.
+			local visuals = rayon.model:FindFirstChild(VISUALS_NAME)
+			local pieces: { Instance } = if visuals then visuals:GetChildren() else {}
+			for _, piece in pieces do
+				if ShopStageService.IsBeyond(plot, piece) then
+					hideRayon(piece)
+				else
+					showRayon(piece)
+				end
+			end
 			for _, spot in spots do
 				hideRayon(spot)
 			end
