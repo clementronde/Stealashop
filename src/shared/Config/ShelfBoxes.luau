@@ -21,8 +21,8 @@ local ZONE_ODDS: ZoneOdds = {
 	-- L-033 : la zone 1 est la zone tuto. Elle ne tire que des objets Communs, pour les trois
 	-- types de colis (6 Standard, 3 Premium et 1 Luxe, placés au hasard comme ailleurs).
 	-- Exception : le premier colis du tuto garde son objet Rare garanti (5.11, Tutorial.FirstBoxTier
-	-- et Tutorial.GuaranteedRarity). Il est donné à la prise par l'accroche
-	-- StoreHeistService.SetContentOverride, que TutorialService posera.
+	-- et Tutorial.GuaranteedItemId). Il est imposé à la sortie de l'objet par l'accroche
+	-- StoreHeistService.SetContentOverride, que pose TutorialService.
 	[1] = {
 		Standard = { Common = 100 },
 		Premium = { Common = 100 },
