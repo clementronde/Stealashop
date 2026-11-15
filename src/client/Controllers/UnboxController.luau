@@ -32,7 +32,6 @@ local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = Shared:WaitForChild("Config")
-local Features = require(Config:WaitForChild("Features"))
 local PvP = require(Config:WaitForChild("PvP"))
 local Items = require(Config:WaitForChild("Items"))
 local Mutations = require(Config:WaitForChild("Mutations"))
@@ -429,14 +428,12 @@ function UnboxController.Start()
 	animation = loadAnimationController()
 
 	-- Vague 31 (L-112) : objets sous antivol posés au sol, toutes les boutiques (tag de code FloorItem).
-	if Features.ShelfOpen then
-		CollectionService:GetInstanceAddedSignal(FLOOR_ITEM_TAG):Connect(addFloorView)
-		CollectionService:GetInstanceRemovedSignal(FLOOR_ITEM_TAG):Connect(removeFloorView)
-		for _, inst in CollectionService:GetTagged(FLOOR_ITEM_TAG) do
-			addFloorView(inst)
-		end
-		RunService.Heartbeat:Connect(stepFloorViews)
+	CollectionService:GetInstanceAddedSignal(FLOOR_ITEM_TAG):Connect(addFloorView)
+	CollectionService:GetInstanceRemovedSignal(FLOOR_ITEM_TAG):Connect(removeFloorView)
+	for _, inst in CollectionService:GetTagged(FLOOR_ITEM_TAG) do
+		addFloorView(inst)
 	end
+	RunService.Heartbeat:Connect(stepFloorViews)
 end
 
 return UnboxController

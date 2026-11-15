@@ -49,7 +49,7 @@
 --                      selon l'attente du colis qui attend le plus) ; le reçu retire jusqu'à Skip s à
 --                      ce colis. Aucun colis en attente : les secondes payées vont dans
 --                      Monetization.OpenNowCredit du profil, retirées des prochains colis posés
---   Vague 31 (L-112, Features.ShelfOpen ; décision de Cantin du 2026-11-12) : les deux mêmes achats valent pour
+--   Vague 31 (L-112 ; décision de Cantin du 2026-11-12) : les deux mêmes achats valent pour
 --                      l'antivol d'un objet posé au sol, par le même chemin : UnboxService.GetWaiting et
 --                      SkipWait le comptent comme un colis en attente (Ouvrir maintenant, crédit, Fast Open à
 --                      l'achat) ; Fast Open multiplie aussi UnboxService.GetAntiTheftDelay par DelayFactor
@@ -166,10 +166,11 @@ local MESSAGES = {
 	PassUnlocked = "%s unlocked!",
 	FastOpen = "Fast Open: anti-theft 2× shorter!",
 	CashPack = "+%s added to your cash!",
-	OpenNowReady = "Your box is ready to open!",
-	OpenNowShorter = "Your box wait is %s shorter!",
-	OpenNowCredit = "No box is waiting: Open Now will speed up your next boxes.",
-	OpenNowCreditUsed = "Open Now: your new box wait is %s shorter!",
+	-- Vague 53 : plus de colis en base, ces textes parlent aussi de l'antivol d'un objet (V0, anglais).
+	OpenNowReady = "Your item is UNLOCKED!",
+	OpenNowShorter = "Your item's anti-theft is %s shorter!",
+	OpenNowCredit = "No item is waiting: Open Now will speed up your next anti-theft.",
+	OpenNowCreditUsed = "Open Now: your new item's anti-theft is %s shorter!",
 	-- Vague 31 (L-112, Cantin 2026-11-12) : les mêmes achats sur l'antivol d'un objet posé au sol.
 	OpenNowUnlocked = "Anti-theft removed: your item is UNLOCKED!",
 	OpenNowShorterItem = "Your item's anti-theft is %s shorter!",

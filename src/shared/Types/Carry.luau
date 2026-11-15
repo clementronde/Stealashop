@@ -39,7 +39,7 @@ export type PlayerItemPayload = {
 	Mutation: Mutation?, -- DEV-131 : celle de l'objet de la victime (nom de BB_Carry) ; nil = aucune
 }
 
--- Objet sorti d'un colis ouvert sur le rayon d'un magasin PNJ (L-112, Features.ShelfOpen), fabriqué par
+-- Objet sorti d'un colis ouvert sur le rayon d'un magasin PNJ (L-112), fabriqué par
 -- StoreHeistService quand le joueur prend l'objet sur le rayon. C'est l'objet lui-même qui flotte (comme
 -- PlayerItemPayload), avec son halo de rareté et BB_Carry. Rareté finale (crans de chance compris) et
 -- mutation sont tirées par le serveur ; rien ne vient du client. À l'entrée de la zone safe, UnboxService

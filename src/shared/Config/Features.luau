@@ -27,7 +27,6 @@ local Features = {
 	ReturnToBase = false, -- DEV-045, retour base : ReturnBaseService (remote ReturnToBase) ; plus de bouton UI_HUD.ReturnBaseButton depuis le 2026-11-14 (L-135 point 3, vague 38) ; false depuis la vague 41 (audit de sécurité du 14/11) : le remote, que plus aucun client n'envoie, est refusé sans effet par le serveur
 	TruckEvent = true, -- L-049, événement camion (Config/TruckEvent) : TruckEventService, TruckController
 	Settings = true, -- L-095 point 2, réglages : UI_HUD.SettingsButton (montré par SettingsController) et écran UI_Settings ; à false, les réglages sauvegardés s'appliquent quand même (sons, effets)
-	ShelfOpen = true, -- L-112, ouverture des colis sur le rayon du magasin PNJ et antivol en base (Config/ShelfOpen) ; false = ancienne ouverture en base (colis rangé, posé, attente, rouleau), gardée en secours jusqu'à la validation en Play
 	GuardChaseV2 = true, -- vague 45 (Cantin, 2026-11-14), poursuite du vigile de magasin (Config/Chase) : ruée jusqu'à 10 studs, puis distance gardée selon la Speed du voleur ; false = l'ancienne vitesse (Zones[zone].GuardSpeed)
 	FortuneTower = true, -- L-108 point 8 (vague 37, a123), événement de la Fortune Tower (Config/FortuneTower) : FortuneTowerService, FortuneTowerController ; true depuis la validation de Clément (L-145 réponse (a), vague 42) ; sans ENV_Event_FortuneVault, rien en jeu publié (bloc V0 en Studio seulement) ; en Studio, workspace:SetAttribute("FortuneTest", true) la fait apparaître tout de suite
 }

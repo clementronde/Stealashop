@@ -51,7 +51,7 @@ local LABEL_PATH = "Bubble.Label"
 local SKIP_BUTTON = "SkipButton"
 local NEXT_BUTTON = "NextButton"
 -- Écrans qui cachent la bulle et la flèche quand ils sont ouverts.
-local COVERING_SCREENS = { "UI_Unbox", "UI_WeaponShop", "UI_AuraShop" }
+local COVERING_SCREENS = { "UI_WeaponShop", "UI_AuraShop" } -- vague 53 : UI_Unbox n'existe plus
 -- Attribut posé par ToolService sur le Tool de casse.
 local TOOL_ID_ATTRIBUTE = "ToolId"
 local ASSETS = "Assets"

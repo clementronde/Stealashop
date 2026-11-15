@@ -1,6 +1,6 @@
 --!strict
 -- ShelfOpenController (vague 31, client, liaison L-112) : l'ouverture d'un colis sur son rayon, vue par
--- tous les joueurs qui ont le magasin chargé. Seulement si Features.ShelfOpen (false : rien n'est branché).
+-- tous les joueurs qui ont le magasin chargé (seul déroulé depuis la vague 53).
 -- Visuel validé par Clément : tools/clement/open_counter_antitheft_preview.luau ; animations T.53 à T.55
 -- de docs/claude/notes/ui-motion-skilltree.md ; valeurs : Config/ShelfOpen et ShelfOpen/Logic.
 --
@@ -42,7 +42,6 @@ local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = Shared:WaitForChild("Config")
-local Features = require(Config:WaitForChild("Features"))
 local ShelfOpen = require(Config:WaitForChild("ShelfOpen"))
 local Items = require(Config:WaitForChild("Items"))
 local Rarities = require(Config:WaitForChild("Rarities"))
@@ -1205,9 +1204,6 @@ function ShelfOpenController.GetItemBoards(): { [Instance]: BillboardGui }
 end
 
 function ShelfOpenController.Start()
-	if not Features.ShelfOpen then
-		return -- ancienne ouverture en base : rien ici
-	end
 	local module = script.Parent:FindFirstChild("ShelfBoxController")
 	if module and module:IsA("ModuleScript") then
 		local ok, result = pcall(require, module)

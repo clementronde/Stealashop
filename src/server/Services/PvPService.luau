@@ -140,7 +140,7 @@
 --
 -- Remote StealItem(plotIndex, slotIndex) (Net/Definitions, ajout de la vague 10 au tableau 9.4).
 --
--- Objet sous antivol au sol (vague 31, L-112, Features.ShelfOpen ; UnboxService) : pendant son antivol, un
+-- Objet sous antivol au sol (vague 31, L-112 ; UnboxService) : pendant son antivol, un
 -- objet posé au sol d'une boutique est volable. Remote StealFloorItem(plotIndex, itemUid), deux appels comme
 -- StealItem, mêmes règles (boutique ouverte au vol, mains vides, interdiction, dans Bounds, à
 -- PvP.StealMaxDistance de l'objet, maintien PvP.StealGrabTime), plus : un vrai joueur (le bot n'en a pas),
@@ -196,7 +196,6 @@ local Workspace = game:GetService("Workspace")
 local Shared = ReplicatedStorage.Shared
 local Balance = require(Shared.Config.Balance)
 local AntiCheat = require(Shared.Config.AntiCheat)
-local Features = require(Shared.Config.Features)
 local HeldItem = require(Shared.Config.HeldItem) -- vague 44 (a152) : DepositToHand
 local Items = require(Shared.Config.Items)
 local Mutations = require(Shared.Config.Mutations)
@@ -360,7 +359,7 @@ type FloorApi = {
 }
 local floorModule = script.Parent:FindFirstChild("UnboxService")
 local floorLoaded: boolean, floorResult: any = false, nil
-if Features.ShelfOpen and floorModule and floorModule:IsA("ModuleScript") then
+if floorModule and floorModule:IsA("ModuleScript") then
 	floorLoaded, floorResult = pcall(require, floorModule)
 end
 local Floor: FloorApi? = if floorLoaded and type(floorResult) == "table" and type(floorResult.HoldFloorItem) == "function"
@@ -1244,7 +1243,7 @@ end
 local function floorRefusal(player: Player, plot: Model, uid: string): (string?, string?, string?)
 	local api = Floor
 	if api == nil then
-		return "objets au sol coupés (Features.ShelfOpen ou UnboxService absent)", nil, nil
+		return "objets au sol coupés (UnboxService absent)", nil, nil
 	end
 	local reason, key, message = shopRefusal(player, plot)
 	if reason then

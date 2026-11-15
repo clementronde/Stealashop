@@ -22,7 +22,7 @@
 --   - vague 52 (a170) : plus de colis dans l'état (le colis porté, rangé, posé n'existe plus) ; le champ
 --     Boxes du profil reste, vide après chargement (DataService.convertBoxes).
 -- Un objet tout juste sorti d'un colis n'apparaît qu'à sa révélation (HoldBack, UnboxService).
--- Vague 31 (L-112, Features.ShelfOpen) : un objet sous antivol (Items[uid].AntiTheft) est marqué dans l'état
+-- Vague 31 (L-112) : un objet sous antivol (Items[uid].AntiTheft) est marqué dans l'état
 -- (AntiTheft) tant qu'il est dans l'inventaire : l'écran le pose au sol (PlaceBox), PlaceItemAuto le refuse
 -- (Notify « Warning »). Posé au sol (Spot), il n'est plus dans l'état : UnboxService l'affiche au sol.
 --
@@ -61,7 +61,6 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
 local Shared = ReplicatedStorage.Shared
-local Features = require(Shared.Config.Features)
 local Formulas = require(Shared.Config.Formulas)
 local Items = require(Shared.Config.Items)
 local Mutations = require(Shared.Config.Mutations)
@@ -195,10 +194,9 @@ local function incomeOf(entry: ProfileTypes.Item, def: Items.Item): number
 	return Formulas.ItemIncome(zone, def.Rarity) * Mutations.IncomeMultiplier(entry.Mutation)
 end
 
--- Vague 31 (L-112, Features.ShelfOpen) : objet sous antivol (Types/Profile : AntiTheft, UnlockAt, Spot).
--- Interrupteur coupé : l'ancien déroulé, les champs sont ignorés.
+-- Vague 31 (L-112) : objet sous antivol (Types/Profile : AntiTheft, UnlockAt, Spot).
 local function isAntiTheft(entry: any): boolean
-	return Features.ShelfOpen == true and type(entry) == "table" and entry.AntiTheft == true
+	return type(entry) == "table" and entry.AntiTheft == true
 end
 
 local function inVault(data: Data, uid: string): boolean

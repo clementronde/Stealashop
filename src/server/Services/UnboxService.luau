@@ -14,7 +14,7 @@
 -- Gardé, le tronc commun de l'antivol au sol : remotes PlaceBox et OpenBox, attribut UnboxState des
 -- présentoirs, findFloor, Config.Unbox (portée, sol, MaxPlacedBoxes).
 --
--- Rôle (avec Features.ShelfOpen ; à false, isAntiTheft ignore tout : rien ne se range, lot E) :
+-- Rôle :
 --   - Arrivée (5.6 ; 14.2 étape 5) : 4 fois par seconde, un porteur d'un objet sorti d'un colis (CarryService,
 --     payload Kind = "NPCItem") dont le HumanoidRootPart est dans le volume d'un objet taggé SafeZone (la pièce
 --     elle-même, sinon son enfant direct Bounds, sinon la boîte englobante du Model ; seulement dans la map,
@@ -110,9 +110,8 @@
 --   UnboxService.SkipWait(player, itemUid, seconds) -> number?
 --       Avance de `seconds` (au plus jusqu'à maintenant) la fin de l'antivol de cet objet posé, dans le profil
 --       et au sol ; renvoie l'attente restante (0 = débloqué), nil s'il n'est pas posé et en attente. Sans yield.
---   Inertes depuis la vague 50 (voir plus bas) : GetOpenDelay (MonetizationService : Fast Open), OnBoxPlaced
---       (MonetizationService), OnBoxOpened (IndexService), gardées tant que ces services les lisent ;
---       OnBoxStowed et GetBoxPosition retirées à la vague 52 (a169 : seul TutorialService les lisait).
+--   Accroches du colis posé et ouvert en base (GetOpenDelay, OnBoxPlaced, OnBoxOpened, OnBoxStowed,
+--       GetBoxPosition) : retirées aux vagues 52 et 53, plus aucun appelant.
 
 local CollectionService = game:GetService("CollectionService")
 local HttpService = game:GetService("HttpService")
@@ -124,7 +123,6 @@ local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage.Shared
 local Balance = require(Shared.Config.Balance)
-local Features = require(Shared.Config.Features)
 local Formulas = require(Shared.Config.Formulas)
 local Items = require(Shared.Config.Items)
 local Mutations = require(Shared.Config.Mutations)
@@ -181,8 +179,6 @@ if inventoryModule and inventoryModule:IsA("ModuleScript") then
 end
 local InventoryService: InventoryApi? = if inventoryLoaded and type(inventoryResult) == "table" then inventoryResult :: any else nil
 
-export type BoxListener = (player: Player, boxUid: string, box: Box) -> ()
-export type OpenedListener = (player: Player, boxUid: string, itemUid: string, itemId: string, revealDelay: number) -> ()
 -- Vague 31 (L-112) : objet sous antivol rangé à l'arrivée, ou posé au sol (itemId = Id du catalogue).
 export type ItemListener = (player: Player, itemUid: string, itemId: string) -> ()
 
@@ -420,10 +416,9 @@ local function newUid(list: { [string]: any }): string
 	return uid
 end
 
--- Vague 31 (L-112, Features.ShelfOpen) : objet sous antivol (Types/Profile : AntiTheft, UnlockAt, Spot).
--- Interrupteur coupé : champs ignorés, l'ancien déroulé exact.
+-- Vague 31 (L-112) : objet sous antivol (Types/Profile : AntiTheft, UnlockAt, Spot).
 local function isAntiTheft(entry: any): boolean
-	return Features.ShelfOpen == true and type(entry) == "table" and entry.AntiTheft == true
+	return type(entry) == "table" and entry.AntiTheft == true
 end
 
 -- Objets sous antivol posés au sol (comptés pour Unbox.MaxPlacedBoxes).
@@ -894,7 +889,7 @@ local function discover(player: Player, itemId: string)
 	end
 end
 
--- Vague 31 (L-112, Features.ShelfOpen) : l'objet sorti d'un colis ouvert sur le rayon (payload NPCItem,
+-- Vague 31 (L-112) : l'objet sorti d'un colis ouvert sur le rayon (payload NPCItem,
 -- StoreHeistService et CarryService, a103) entre dans l'inventaire à l'entrée de la zone safe, au même
 -- endroit et avec les mêmes contrôles que le colis (anti-triche, Consume, profil écrit d'un seul tenant,
 -- braquage compté). Il y est sous antivol (AntiTheft = true, sans UnlockAt : l'attente démarre à la pose au
@@ -964,7 +959,7 @@ local function stow(player: Player)
 	end
 	local payload = CarryService.GetPayload(player)
 	-- Vague 50 (a158) : seul un objet sorti d'un colis (NPCItem) se range ; le colis porté fermé n'existe plus.
-	if type(payload) == "table" and payload.Kind == NPC_ITEM_KIND and Features.ShelfOpen then
+	if type(payload) == "table" and payload.Kind == NPC_ITEM_KIND then
 		stowItem(player, data, payload)
 	end
 end
@@ -1007,7 +1002,7 @@ end
 -- ou plus dans le volume Bounds de cette boutique revient dans l'inventaire, toujours sous antivol (UnlockAt
 -- gardé : à la pose suivante, l'attente déjà commencée n'est pas perdue). Jamais perdu.
 local function restoreItems(player: Player, session: Session, data: Data)
-	if not Features.ShelfOpen or type(data.Items) ~= "table" then
+	if type(data.Items) ~= "table" then
 		return
 	end
 	local bounds = boundsOf(session.plot)
@@ -1209,7 +1204,7 @@ end
 ------------------------------------------------------------------------------
 
 -- Vague 31 (L-112) : durée de l'antivol d'un objet posé au sol (ShelfOpen.AntiTheft[rareté]) ; remplaçable
--- comme GetOpenDelay (MonetizationService : Fast Open × DelayFactor). Ne doit pas yield.
+-- par MonetizationService (Fast Open × DelayFactor). Ne doit pas yield.
 function UnboxService.GetAntiTheftDelay(_player: Player, itemId: string): number
 	return antiTheftDuration(itemId)
 end
@@ -1226,23 +1221,6 @@ function UnboxService.Refresh(player: Player)
 	refreshStates(player)
 end
 
--- Vague 50 (a158) : accroches du colis posé et ouvert en base, gardées INERTES : plus aucun colis n'est posé
--- ni ouvert, donc GetOpenDelay n'est plus appelée et les écouteurs OnBox* ne reçoivent plus rien. Vague 52
--- (a169, lot C) : TutorialService ne les lit plus ; OnBoxStowed et GetBoxPosition, lues par lui seul, sont
--- retirées ; GetOpenDelay et OnBoxPlaced (MonetizationService), OnBoxOpened (IndexService) restent pour eux.
-function UnboxService.GetOpenDelay(_player: Player, box: Box): number
-	return Rarities.ById[box.Rarity].OpenDelay
-end
-
-local function neverCalled() end
-
-function UnboxService.OnBoxPlaced(_listener: BoxListener): () -> ()
-	return neverCalled
-end
-
-function UnboxService.OnBoxOpened(_listener: OpenedListener): () -> ()
-	return neverCalled
-end
 
 -- Vague 31 (L-112) : objets sous antivol ------------------------------------------------------------------
 

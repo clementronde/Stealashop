@@ -74,7 +74,7 @@ local Tutorial = {
 	-- pas. TutorialService le passe en ItemId à StoreHeistService.SetContentOverride (une Rarity
 	-- seule tirerait dans la zone, où aucun Rare n'est tirable).
 	GuaranteedItemId = "Z1_PotDeNouilles",
-	-- Vague 31 (L-112, Features.ShelfOpen ; a107). Le Pot de nouilles est l'objet SORTI du premier colis ouvert
+	-- Vague 31 (L-112 ; a107). Le Pot de nouilles est l'objet SORTI du premier colis ouvert
 	-- sur le rayon (SetContentOverride, appliqué à la sortie ; contenu imposé : aucun cran de rareté).
 	-- V0 : chance imposée à l'ouverture du tuto (StoreHeistService.SetLuckOverride). ×1,5 plutôt que ×1 :
 	-- le compteur « ×N LUCK » monte 1,4 s (rabats compris : 2 s), assez pour voir la mécanique et le « ? »
@@ -120,7 +120,7 @@ local Tutorial = {
 		NightClosed = "The street opens again at dawn!", -- nuit, étapes 1 à 3 et 9, côté zone safe
 		Night = NIGHT_BUBBLE, -- 5.12 : alerte et nuit, joueur dans le couloir
 		ShieldEnd = SHIELD_END_MESSAGE, -- 6.4 : fin du bouclier débutant
-		-- Vague 31 (L-112, Features.ShelfOpen ; a107), V0 proposés, absents du doc :
+		-- Vague 31 (L-112 ; a107), V0 proposés, absents du doc :
 		WaitReveal = "Watch your luck go up!", -- étape 3 : son colis s'ouvre sur le rayon (flèche : le colis)
 		GrabItem = "Grab your item and run!", -- étape 3 : son objet est sorti (flèche : l'objet)
 		PlaceFloorItem = "Open your inventory, place it on the floor!", -- étapes 4 et 5 : objet sous antivol dans l'inventaire

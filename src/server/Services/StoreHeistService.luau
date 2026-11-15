@@ -19,33 +19,19 @@
 --     incomplet) : le Luxe est posé d'abord, puis les Premium, les Standard en trop manquent.
 --     Les colis sont créés par le code dans un dossier `ShelfBoxes` du magasin (`ShelfBox_01`…,
 --     numéro de l'emplacement, tag ShelfBox) : le modèle du magasin n'en contient pas. Aspect :
---     modèle `BOX_<Rareté>` de Clément (rareté du contenu, tiré à la mise en rayon ; L-097 point 3)
+--     modèle `BOX_<Rareté>` de Clément (rareté de la caisse, tirée à la mise en rayon ; L-097 point 3)
 --     s'il existe dans ReplicatedStorage/Assets (ou ServerStorage/Assets), sinon `BOX_<Tier>`, sinon
 --     un bloc V0 (carton brun, carton bleu scellé, caisse en bois cerclée d'or, 7.3). Sur le rayon,
 --     le colis n'est pas teint (BOX_<Rareté> est déjà à la couleur de sa rareté).
---     Avec Features.ShelfOpen (vague 32, règle de Cantin du 2026-11-13) : seule la rareté de la CAISSE
+--     Vague 32 (règle de Cantin du 2026-11-13) : seule la rareté de la CAISSE
 --     est tirée à la mise en rayon, comme la rareté ci-dessous (ZoneOdds, sinon Rarities.BoxOdds par
 --     type) ; elle choisit BOX_<Rareté>, va dans l'attribut BoxRarity du colis et sur son BB_Box (rareté
 --     seule). Le contenu (objet, rareté de l'objet, mutation, taille) n'est PAS tiré ici : il l'est à
---     l'ouverture (« Sortie », plus bas). Les deux points suivants (contenu et mutation à la mise en
---     rayon) ne valent donc que pour l'ancien déroulé.
---   - Contenu tiré à la mise en rayon (L-031), plus à la prise : la rareté selon
---     ShelfBoxes.ZoneOdds[zone][Tier] s'il existe (zone 1 = zone tuto : Communs seulement, L-033),
---     sinon Rarities.BoxOdds[Tier] (7.3) ; puis un objet au hasard parmi ceux de la zone et de
---     cette rareté (Items.Pick, catalogue v2 : plusieurs objets par case, jamais un objet
---     TutorialOnly ; un Secret, toutes zones). Case vide (Config incohérente) : la rareté tirable
---     la plus proche en dessous, avec un avertissement par case (drawContent). Ce contenu ne quitte
---     jamais le serveur avant OpenBox (5.7) : ni le colis ni son étiquette ne portent l'ItemId ou
---     le nom de l'objet.
---   - Mutation (DEV-131, L-084 point 3) : tirée au même moment, côté serveur (Mutations.Roll : une
---     taille et un effet au plus, indépendants de la rareté), gardée avec le contenu : le colis qui
---     revient sur son rayon garde la sienne, le payload la porte jusqu'au présentoir (UnboxService).
---     Jamais pour un objet TutorialOnly, ni pour un contenu remplacé par l'accroche du tuto.
+--     l'ouverture (« Sortie », plus bas). (L'ancien tirage du contenu et de la mutation à la mise en
+--     rayon, L-031, est parti avec Features.ShelfOpen, vague 53.)
 --   - Étiquette : chaque colis du rayon porte BB_Box (CarryService.AttachBoxLabel : copie de
---     ReplicatedStorage/Assets/UI/BB_Box accrochée à son LabelPoint) : catégorie de l'objet (ligne
---     cachée tant qu'elle est vide), rareté à sa couleur, mutation (« BIG · GOLD », cachée sans
---     mutation). Le colis porté
---     garde la même étiquette (CarryService). ShelfBoxController (client) ne montre que celles des
+--     ReplicatedStorage/Assets/UI/BB_Box accrochée à son LabelPoint) : rareté de la caisse à sa couleur,
+--     seule. ShelfBoxController (client) ne montre que celles des
 --     colis en vue et ne garde que 25 contours.
 --   - Casse (WindowService.OnBroken, vitrine d'un magasin PNJ) : le magasin ouvre pour
 --     Balance.Heist.Duration (6 s depuis le 2026-11-14). Vitrine partagée (proposition de 5.3 point 8 et de la
@@ -157,11 +143,11 @@
 -- ou lance l'ouverture), et pour un colis à GrabTime 0 (un seul appel) : contrôle strict (dans Bounds,
 -- GrabMaxDistance au plus). Un tricheur qui envoie les deux appels de loin ne prend ni n'ouvre rien.
 --
--- Ouverture des colis sur le rayon (liaison L-112, décisions de Cantin du 2026-11-12 ; interrupteur
--- Features.ShelfOpen ; valeurs : Config/ShelfOpen ; attributs : Shared/ShelfOpenState). À true, le colis
--- ne se porte plus fermé : on l'ouvre sur son rayon, on voit l'objet, et c'est l'objet qu'on vole. À
--- false, tout ce qui précède reste tel quel (ancien déroulé, gardé en secours) et rien de ce qui suit
--- n'existe.
+-- Ouverture des colis sur le rayon (liaison L-112, décisions de Cantin du 2026-11-12 ; valeurs :
+-- Config/ShelfOpen ; attributs : Shared/ShelfOpenState). Le colis ne se porte plus fermé : on l'ouvre sur
+-- son rayon, on voit l'objet, et c'est l'objet qu'on vole. Seul déroulé depuis la vague 53 (l'interrupteur
+-- Features.ShelfOpen et l'ancien déroulé, gardé en secours, sont partis) : ce qui précède sur la prise
+-- d'un colis fermé, son contenu tiré à la mise en rayon et son retour ne vaut plus.
 --   - Règle du braquage (Clément, L-118 points 8 et 9, 2026-11-13 ; remplace le chrono de 10 s après la
 --     casse) : (a) pendant la casse, vitrine pas cassée avant que le « ? » des témoins soit plein : la
 --     police vient (WitnessService), et elle renvoie à la base. (b) Le chrono du vigile (« HEIST ») part à
@@ -264,7 +250,7 @@
 --   sur le Player : ClosedStores (texte, StoreId séparés par des virgules, triés ; absent = aucun) ;
 --   sur chaque colis du rayon : tag ShelfBox ; SlotId (à renvoyer dans GrabItem, « <StoreId>/03 »),
 --     Slot (nom de l'Attachment, « ShelfSlot_03 »), Tier (type du colis), Landed (false tant
---     qu'un colis rendu vole) ; son étiquette BB_Box ; avec Features.ShelfOpen, BoxRarity (rareté de la
+--     qu'un colis rendu vole) ; son étiquette BB_Box ; BoxRarity (rareté de la
 --     caisse, vague 32 ; Shared/ShelfOpenState) et les attributs ShelfOpen* de l'ouverture.
 --
 -- API (serveur) :
@@ -275,8 +261,8 @@
 --   StoreHeistService.IsOpen(store) -> boolean
 --       store = le Model du magasin ou son StoreId. true pendant le chrono (Balance.Heist.Duration).
 --   Vague 50 (a158, Cantin 2026-11-14 : le colis porté fermé n'existe plus) : OnBoxGrabbed et ReturnBox
---       retirés, comme la prise d'un colis fermé (payload NPCBox) ; avec Features.ShelfOpen = false, GrabItem
---       refuse tout (le reste de l'ancien déroulé part au lot E).
+--       retirés, comme la prise d'un colis fermé (payload NPCBox) ; vague 53 : Features.ShelfOpen et les
+--       restes de l'ancien déroulé sont partis (GrabItem ne prend plus que l'objet sorti).
 --   StoreHeistService.SetContentOverride(fn?)
 --       Accroche du tuto (voir plus haut). fn(player, drawn) -> override?, appelée à chaque prise,
 --       ne doit pas yield. drawn = { StoreId, SlotId, Zone, Tier, Rarity, ItemId } (contenu du
@@ -286,14 +272,14 @@
 --       magasin, ou un Secret) ; Rarity seule = un objet de cette rareté est tiré dans la zone
 --       (Items.Pick : jamais un objet TutorialOnly, sans le repli de la mise en rayon).
 --       Un remplacement invalide est ignoré, avec un avertissement. nil retire l'accroche.
---       Avec Features.ShelfOpen : appelée à la sortie de l'objet, pour l'ouvreur, avant tout tirage ;
+--       Vague 31 : appelée à la sortie de l'objet, pour l'ouvreur, avant tout tirage ;
 --       drawn.Rarity = rareté de la caisse et drawn.ItemId = "" (contenu pas encore tiré, vague 32) ;
 --       un override avec ItemId ou Rarity donne l'objet sorti tel quel, sans tirage ni mutation.
---   StoreHeistService.SetLuckOverride(fn?)  (vague 31, a107 ; Features.ShelfOpen)
+--   StoreHeistService.SetLuckOverride(fn?)  (vague 31, a107)
 --       Accroche du tuto : fn(player, drawn) -> number?, appelée au lancement de chaque ouverture sur
 --       le rayon, sans yield ; un nombre fini ≥ 1 remplace la chance tirée ; nil ou une valeur invalide
---       garde le tirage de LuckTable. nil retire l'accroche. drawn comme pour SetContentOverride avec
---       Features.ShelfOpen (Rarity = rareté de la caisse, ItemId = "").
+--       garde le tirage de LuckTable. nil retire l'accroche. drawn comme pour SetContentOverride
+--       (Rarity = rareté de la caisse, ItemId = "").
 --   StoreHeistService.AddEventShelf(options) -> Model? et RemoveEventShelf(id) -> boolean  (vague 42, a148)
 --       Rayon d'événement : colis du coffre de la Fortune Tower (et du camion) ouverts sur place comme sur
 --       un rayon (voir « Rayons d'événement », plus bas dans ce fichier).
@@ -318,7 +304,6 @@ local Rarities = require(Shared.Config.Rarities)
 local ShelfBoxes = require(Shared.Config.ShelfBoxes)
 local Mutations = require(Shared.Config.Mutations)
 local Zones = require(Shared.Config.Zones)
-local Features = require(Shared.Config.Features)
 local Formulas = require(Shared.Config.Formulas)
 local ShelfOpen = require(Shared.Config.ShelfOpen)
 local Unbox = require(Shared.Config.Unbox)
@@ -397,10 +382,7 @@ type Opening = {
 -- Colis posé sur un rayon, ou en vol vers lui.
 type ShelfBox = {
 	Tier: string,
-	Rarity: string, -- rareté de la caisse (BOX_<Rareté>, BB_Box) ; ancien déroulé : celle de son contenu
-	-- Ancien déroulé : tiré à la mise en rayon (L-031), jamais envoyé aux clients. Features.ShelfOpen
-	-- (vague 32) : nil, le contenu n'est tiré qu'à la sortie de l'objet (reveal).
-	Content: Content?,
+	Rarity: string, -- rareté de la caisse (BOX_<Rareté>, BB_Box) ; le contenu n'est tiré qu'à la sortie (reveal, vague 32)
 	Model: Model,
 	Landed: boolean, -- false tant que le colis rendu vole vers le rayon
 	StopFlight: (() -> ())?,
@@ -468,7 +450,7 @@ type Store = {
 	RefillPending: boolean, -- RefillAll pendant le chrono : nouveau tirage à la fermeture
 	Locked: { [Player]: LockState }, -- fermé pour ces voleurs seulement (voir l'en-tête)
 	CurtainHeld: boolean, -- un vigile y est (ou va y entrer) : rideaux locaux levés (voir l'en-tête)
-	-- Règle du braquage de Clément (L-118 points 8 et 9, Features.ShelfOpen ; voir l'en-tête) :
+	-- Règle du braquage de Clément (L-118 points 8 et 9 ; voir l'en-tête) :
 	Entered: { [Player]: boolean }, -- entrés dans Bounds pendant cette ouverture (les intrus)
 	ChronoOver: boolean, -- chrono du vigile fini : les vigiles sont sortis
 	ClosedAt: number, -- os.clock() de la dernière fermeture (reconstruction RebuildDelay s après au plus tôt)
@@ -612,9 +594,6 @@ local MESSAGES = {
 	WitnessCalling = "Witnesses are calling the police!", -- V0 (L-112) : ouverture refusée pendant l'appel
 }
 
--- Features.ShelfOpen (L-112) : true = les colis s'ouvrent sur le rayon et c'est l'objet qu'on vole ;
--- false = l'ancien déroulé (colis porté fermé), inchangé.
-local SHELF_OPEN: boolean = Features.ShelfOpen == true
 
 local IS_STUDIO = RunService:IsStudio()
 
@@ -848,49 +827,15 @@ local function drawItem(zone: number, rarityId: string): string?
 	return if item then item.Id else nil
 end
 
--- Contenu d'un colis de la mise en rayon. Repli (V0 proposé, absent du doc) si la case (zone,
--- rareté) tirée est vide : la rareté tirable la plus proche en dessous, avec un avertissement par
--- case ; rien en dessous : nil (rayon laissé vide, signalé par fillStore). Le catalogue v2 n'a
--- aucune case vide qu'un tirage puisse atteindre (zone 1 : Communs seulement, ShelfBoxes.ZoneOdds) :
--- ce repli ne sert qu'à une Config incohérente. La rareté du contenu reste celle de son objet.
--- Mutation du colis (DEV-131, L-084 point 3) : tirée avec le contenu, jamais pour un objet
--- TutorialOnly (qu'aucun tirage ne donne : garde-fou).
+-- Mutation d'un objet sorti (DEV-131, L-084 point 3), tirée à la sortie (vague 32), jamais pour un objet
+-- TutorialOnly (qu'aucun tirage ne donne : garde-fou). L'ancien tirage du contenu à la mise en rayon
+-- (drawContent) est parti avec Features.ShelfOpen (vague 53).
 local function drawMutation(itemId: string): Mutations.Mutation?
 	local item = Items.ById[itemId]
 	if item == nil or item.TutorialOnly then
 		return nil
 	end
 	return Mutations.Roll(random)
-end
-
-local function drawContent(tier: string, zone: number): Content?
-	local rarity = drawRarity(tier, zone)
-	if rarity == nil then
-		return nil
-	end
-	local itemId = drawItem(zone, rarity)
-	if itemId then
-		return { Rarity = rarity, ItemId = itemId, Mutation = drawMutation(itemId) }
-	end
-	-- Rarities.List va de Commun à Secret : en partant de la fin, la première rareté plus basse qui
-	-- a un objet est la plus proche en dessous.
-	local drawnOrder = Rarities.ById[rarity].Order
-	local list = Rarities.List
-	for index = #list, 1, -1 do
-		local candidate = list[index]
-		if candidate.Order < drawnOrder then
-			local fallbackRarity: string = candidate.Id
-			local fallbackItem = drawItem(zone, fallbackRarity)
-			if fallbackItem then
-				warnOnce(
-					`empty.{zone}.{rarity}`,
-					`aucun objet {rarity} tirable en zone {zone} (Config/Items) : ces colis reçoivent un objet {fallbackRarity} à la place`
-				)
-				return { Rarity = fallbackRarity, ItemId = fallbackItem, Mutation = drawMutation(fallbackItem) }
-			end
-		end
-	end
-	return nil
 end
 
 -- Types des colis d'un remplissage, du plus rare au plus courant (1 Luxe, 3 Premium, 6 Standard) :
@@ -978,11 +923,11 @@ local function makeV0Box(tier: string): Model
 end
 
 -- Modèle d'un colis de type `tier` pour l'emplacement `slot`, avec son étiquette BB_Box : celui de la
--- rareté `rarity` de la caisse, tirée à la mise en rayon (BOX_<Rareté>, L-097 point 3 ; ancien déroulé :
--- la rareté de son contenu), sinon BOX_<Tier>, sinon le bloc V0. Seul le modèle change : le type reste la
--- règle de jeu (prise, chances, ShelfSlot). `content` nil (Features.ShelfOpen, vague 32) : étiquette à la
--- rareté seule, attribut BoxRarity ; jamais d'ItemId, de Rarity d'objet ni de mutation sur le colis.
-local function makeBoxModel(slot: Slot, tier: string, rarity: string, content: Content?): Model
+-- rareté `rarity` de la caisse, tirée à la mise en rayon (BOX_<Rareté>, L-097 point 3), sinon BOX_<Tier>,
+-- sinon le bloc V0. Seul le modèle change : le type reste la règle de jeu (prise, chances, ShelfSlot).
+-- Vague 32 : étiquette à la rareté seule, attribut BoxRarity ; jamais d'ItemId, de Rarity d'objet ni de
+-- mutation sur le colis.
+local function makeBoxModel(slot: Slot, tier: string, rarity: string): Model
 	local model: Model? = nil
 	local template = boxTemplate(BOX_PREFIX .. rarity) or boxTemplate(BOX_PREFIX .. tier)
 	if template then
@@ -1020,16 +965,9 @@ local function makeBoxModel(slot: Slot, tier: string, rarity: string, content: C
 	box:SetAttribute(SLOT_ID_ATTRIBUTE, slot.Id)
 	box:SetAttribute(SLOT_ATTRIBUTE, slot.Name)
 	box:SetAttribute(TIER_ATTRIBUTE, tier)
-	if SHELF_OPEN then
-		box:SetAttribute(ShelfOpenState.BoxRarityAttribute, rarity)
-	end
+	box:SetAttribute(ShelfOpenState.BoxRarityAttribute, rarity)
 	CollectionService:AddTag(box, SHELF_BOX_TAG)
-	local ok, label
-	if content then
-		ok, label = pcall(CarryService.AttachBoxLabel, box, content.Rarity, content.ItemId, content.Mutation)
-	else
-		ok, label = pcall(CarryService.AttachBoxLabel, box, rarity, nil, nil)
-	end
+	local ok, label = pcall(CarryService.AttachBoxLabel, box, rarity, nil, nil)
 	if not ok then
 		warnOnce("label.error", `CarryService.AttachBoxLabel : {label}`)
 	elseif label == nil then
@@ -1054,10 +992,10 @@ local function discard(box: ShelfBox)
 end
 
 -- Pose un colis sur le rayon vide `slot`, en vol depuis `from` s'il est donné. `rarity` : rareté de la
--- caisse ; `content` : nil avec Features.ShelfOpen (tiré à la sortie, vague 32).
-local function placeBox(slot: Slot, tier: string, rarity: string, content: Content?, from: Vector3?)
-	local model = makeBoxModel(slot, tier, rarity, content)
-	local box: ShelfBox = { Tier = tier, Rarity = rarity, Content = content, Model = model, Landed = false, StopFlight = nil }
+-- caisse (le contenu est tiré à la sortie, vague 32).
+local function placeBox(slot: Slot, tier: string, rarity: string, from: Vector3?)
+	local model = makeBoxModel(slot, tier, rarity)
+	local box: ShelfBox = { Tier = tier, Rarity = rarity, Model = model, Landed = false, StopFlight = nil }
 	local target = slot.Attachment.WorldCFrame
 	slot.Box = box
 	if from == nil then
@@ -1096,7 +1034,7 @@ local function removeBox(slot: Slot)
 	end
 end
 
--- Objets sortis des colis (L-112, Features.ShelfOpen) ------------------------------------------------
+-- Objets sortis des colis (L-112) --------------------------------------------------------------------
 
 -- Trajectoire du vol de retour vers un rayon (la même que celle d'un colis rendu, placeBox) : de `start`
 -- à `target` en arc, et sa durée.
@@ -1346,11 +1284,10 @@ local function fillStore(store: Store): number
 		if tier == nil then
 			break -- plus de rayons que de colis : le reste reste vide
 		end
-		-- Vague 32 (Features.ShelfOpen) : la rareté de la caisse seule ; le contenu est tiré à la sortie.
-		local content = if SHELF_OPEN then nil else drawContent(tier, store.Zone)
-		local rarity = if SHELF_OPEN then drawRarity(tier, store.Zone) elseif content then content.Rarity else nil
+		-- Vague 32 : la rareté de la caisse seule ; le contenu est tiré à la sortie.
+		local rarity = drawRarity(tier, store.Zone)
 		if rarity then
-			placeBox(slot, tier, rarity, content, nil)
+			placeBox(slot, tier, rarity, nil)
 			count += 1
 		else
 			warnOnce(
@@ -1728,7 +1665,7 @@ local function updateViewers(store: Store)
 				log(`{player.Name} en zone safe : plus de chrono ni de vigile pour {store.Id}`)
 			end
 			hideTimer(store, player)
-		elseif SHELF_OPEN and store.Entered[player] then
+		elseif store.Entered[player] then
 			showTimer(store, player) -- L-118 : le vigile viendra pour lui à la fin, dedans ou dehors, objet ou non
 		elseif isCarrying(player) or store.Locked[player] ~= nil then
 			hideTimer(store, player)
@@ -1925,11 +1862,7 @@ local function openStore(store: Store, breaker: Player?)
 	updateViewers(store)
 	task.delay(duration, function()
 		if store.Token == token and stores[store.Model] == store then
-			if SHELF_OPEN then
-				chronoEnd(store) -- L-118 : le magasin reste ouvert pour ceux qui y sont
-			else
-				closeStore(store)
-			end
+			chronoEnd(store) -- L-118 : le magasin reste ouvert pour ceux qui y sont
 		end
 	end)
 	log(
@@ -1979,46 +1912,33 @@ end
 -- Raison du refus d'une prise sur `slot`, ou nil si elle est permise maintenant.
 function grabRefusal(player: Player, slot: Slot, lenient: boolean): string?
 	local store = slot.Store
-	if SHELF_OPEN then
-		-- L-112 : on ne prend plus un colis fermé, seulement l'objet sorti de son colis.
-		local item = slot.Item
-		if item == nil then
-			return if slot.Box then "colis fermé : il s'ouvre d'abord sur son rayon (OpenShelfBox)" else "rayon vide"
-		end
-		if not item.Landed then
-			return "objet en vol vers son rayon"
-		end
-		local reserved = os.clock() < item.Info.ReservedUntil
-		if reserved and player.UserId ~= item.Info.OpenerId then
-			return "objet encore réservé à celui qui a ouvert le colis"
-		end
-		-- L'ouvreur prend son objet réservé même après la fin du chrono (voir l'en-tête) ; sinon les
-		-- règles du magasin : ouvert, avance du casseur.
-		if not reserved then
-			if not store.Open then
-				return "magasin fermé"
-			end
-			if player ~= store.Breaker and os.clock() < store.ExclusiveUntil then
-				return "avance du casseur"
-			end
-		end
-		return reachRefusal(player, slot, lenient)
+	-- L-112 : on ne prend plus un colis fermé, seulement l'objet sorti de son colis.
+	local item = slot.Item
+	if item == nil then
+		return if slot.Box then "colis fermé : il s'ouvre d'abord sur son rayon (OpenShelfBox)" else "rayon vide"
 	end
-	if not store.Open then
-		return "magasin fermé"
+	if not item.Landed then
+		return "objet en vol vers son rayon"
 	end
-	local box = slot.Box
-	if box == nil or not box.Landed then
-		return "rayon vide"
+	local reserved = os.clock() < item.Info.ReservedUntil
+	if reserved and player.UserId ~= item.Info.OpenerId then
+		return "objet encore réservé à celui qui a ouvert le colis"
 	end
-	if player ~= store.Breaker and os.clock() < store.ExclusiveUntil then
-		return "avance du casseur"
+	-- L'ouvreur prend son objet réservé même après la fin du chrono (voir l'en-tête) ; sinon les
+	-- règles du magasin : ouvert, avance du casseur.
+	if not reserved then
+		if not store.Open then
+			return "magasin fermé"
+		end
+		if player ~= store.Breaker and os.clock() < store.ExclusiveUntil then
+			return "avance du casseur"
+		end
 	end
 	return reachRefusal(player, slot, lenient)
 end
 
 -- Contenu remis au porteur : `base` (celui du colis, de type `baseTier`), ou celui de l'accroche du tuto
--- s'il est valide. Renvoie la table `base` elle-même quand rien ne change. Features.ShelfOpen (vague 32) :
+-- s'il est valide. Renvoie la table `base` elle-même quand rien ne change. Vague 32 :
 -- appelée à la sortie avec base = { Rarity = rareté de la caisse, ItemId = "" } (contenu pas encore tiré) ;
 -- une Rarity imposée seule tire alors un objet de cette rareté (itemId == "").
 local function contentFor(player: Player, slot: Slot, baseTier: string, base: Content): (string, Content)
@@ -2089,7 +2009,7 @@ local function contentFor(player: Player, slot: Slot, baseTier: string, base: Co
 	return tier, content
 end
 
--- Ouverture sur le rayon (L-112, Features.ShelfOpen ; voir l'en-tête) -----------------------------------
+-- Ouverture sur le rayon (L-112 ; voir l'en-tête) -------------------------------------------------
 
 -- `player` prend l'objet sorti posé sur `slot` : portage NPCItem (CarryService), rayon vidé, magasin
 -- fermé pour lui (le vigile part à la prise, GuardService).
@@ -2491,9 +2411,6 @@ end
 
 -- OpenShelfBox(slotId) : premier appel = début du maintien, second = fin (voir l'en-tête).
 local function onOpenShelfBox(player: Player, slotId: string)
-	if not SHELF_OPEN then
-		return -- ancien déroulé : les colis ne s'ouvrent pas sur le rayon
-	end
 	local slot = slotsById[slotId]
 	if slot == nil then
 		refuse(player, slotId, "emplacement inconnu", "OpenShelfBox")
@@ -2567,25 +2484,13 @@ local function onGrabItem(player: Player, slotId: string)
 		refuse(player, slotId, "déplacement sanctionné par l'anti-triche (audit 9.8)")
 		return
 	end
-	if not SHELF_OPEN then
-		-- Vague 50 (a158, Cantin 2026-11-14) : le colis fermé ne se porte plus ; sans l'ouverture sur le rayon
-		-- (Features.ShelfOpen = false), plus rien ne se prend (les branches restantes partent au lot E).
-		refuse(player, slotId, "colis fermé : il ne se porte plus (Features.ShelfOpen = false n'a plus de prise)")
-		return
-	end
 	local hold = holds[player]
 	-- Début du maintien : portée souple ; fin du maintien ou prise sans maintien : stricte (« Portée »).
+	-- Vague 50 (a158) : le colis fermé ne se porte plus ; seul l'objet sorti de son colis se prend (L-112).
 	local current: any, currentTier: string? = nil, nil
-	if SHELF_OPEN then
-		local item = slot.Item
-		if item then
-			current, currentTier = item, item.Info.Tier
-		end
-	else
-		local box = slot.Box
-		if box then
-			current, currentTier = box, box.Tier
-		end
+	local shown = slot.Item
+	if shown then
+		current, currentTier = shown, shown.Info.Tier
 	end
 	local starting = current ~= nil
 		and currentTier ~= nil
@@ -2599,16 +2504,10 @@ local function onGrabItem(player: Player, slotId: string)
 		refuse(player, slotId, reason)
 		return
 	end
-	-- grabRefusal a vérifié qu'il est posé : le colis, ou l'objet sorti (L-112).
-	local target: any, tier: string
+	-- grabRefusal a vérifié qu'il est posé : l'objet sorti (L-112).
 	local give = grantItem
-	if SHELF_OPEN then
-		local item = slot.Item :: ShelfItem
-		target, tier = item, item.Info.Tier
-	else
-		local box = slot.Box :: ShelfBox
-		target, tier = box, box.Tier
-	end
+	local item = slot.Item :: ShelfItem
+	local target: any, tier: string = item, item.Info.Tier
 	local required = grabTime(tier)
 	local now = os.clock()
 	if hold and hold.Slot == slot and hold.Target == target then
@@ -2862,7 +2761,7 @@ local function step()
 	local now = os.clock()
 	for player, hold in holds do
 		local slot = hold.Slot
-		local current: any = if SHELF_OPEN then slot.Item else slot.Box
+		local current: any = slot.Item
 		if
 			current ~= hold.Target
 			or now - hold.StartedAt > grabTime(hold.Tier) + HOLD_EXPIRY
@@ -2882,7 +2781,7 @@ local function step()
 	end
 	for _, store in stores do
 		stepLocks(store)
-		if store.Open and SHELF_OPEN then
+		if store.Open then
 			-- L-118 : fermé quand le chrono est fini et que plus personne n'est dedans (ouvertures finies).
 			stepEntries(store)
 			if not store.ChronoOver then
@@ -2890,8 +2789,6 @@ local function step()
 			elseif not anyoneInside(store) and not storeBusy(store) then
 				closeStore(store)
 			end
-		elseif store.Open then
-			updateViewers(store)
 		else
 			for _, player in ejectInside(store, false) do
 				log(`{player.Name} sorti de {store.Id} (magasin fermé)`)
@@ -2923,7 +2820,7 @@ end
 local function otherHeist(player: Player, target: Store): string?
 	for _, store in stores do
 		-- L-118 : sorti du magasin (fermé pour lui), son braquage là-bas est fini, sauf l'objet qu'il porte.
-		if store ~= target and store.Open and store.Breaker == player and not (SHELF_OPEN and store.Locked[player]) then
+		if store ~= target and store.Open and store.Breaker == player and not store.Locked[player] then
 			return store.Id
 		end
 	end
@@ -3025,9 +2922,6 @@ local function removeEventStore(store: Store, why: string)
 end
 
 local function addEventShelf(options: EventShelfOptions): Model?
-	if not SHELF_OPEN then
-		return nil -- ancien déroulé : l'appelant garde ses colis au sol
-	end
 	local id = options.Id
 	if storesById[id] ~= nil or Zones[options.Zone] == nil or #options.Spots == 0 then
 		warn(`[StoreHeistService] AddEventShelf({id}) refusé : StoreId déjà pris, zone inconnue ou aucun point`)
@@ -3110,7 +3004,7 @@ local function addEventShelf(options: EventShelfOptions): Model?
 	model.Parent = Workspace
 	for index, slot in store.Slots do
 		local spot = options.Spots[index]
-		placeBox(slot, spot.Tier, spot.Rarity, nil, spot.From)
+		placeBox(slot, spot.Tier, spot.Rarity, spot.From)
 	end
 	task.delay(options.Lifetime, function()
 		removeEventStore(store, `fin de sa durée de vie ({options.Lifetime} s)`)
@@ -3121,8 +3015,8 @@ end
 
 -- API ----------------------------------------------------------------------------------------------
 
--- Vague 42 (a148) : rayon d'événement (voir plus haut). Renvoie son modèle, ou nil (Features.ShelfOpen
--- coupé, StoreId déjà pris, zone inconnue) : l'appelant garde alors ses colis au sol (ancien déroulé).
+-- Vague 42 (a148) : rayon d'événement (voir plus haut). Renvoie son modèle, ou nil (StoreId déjà pris,
+-- zone inconnue, aucun point).
 function StoreHeistService.AddEventShelf(options: EventShelfOptions): Model?
 	return addEventShelf(options)
 end
@@ -3212,14 +3106,12 @@ function StoreHeistService.Init()
 			store.KickAfter[player] = nil
 		end
 	end)
-	-- Le vigile apparu pour un vol est parti : le magasin se rouvre pour ce voleur. require protégé :
-	-- sans GuardService (bancs), la fermeture pour le voleur dure jusqu'à la réouverture du magasin.
+	-- require protégé : sans GuardService (bancs), pas de vigile à la fin du chrono.
 	local okGuard, guardApi = pcall(function(): any
 		return require(script.Parent.GuardService) :: any
 	end)
-	-- L-118 (Features.ShelfOpen) : fermé pour lui jusqu'à la réouverture seulement, et le vigile sort à la
-	-- fin du chrono (ChaseIntruder), plus à la prise.
-	local onGone: any = if okGuard and type(guardApi) == "table" and not SHELF_OPEN then guardApi.OnGuardGone else nil
+	-- L-118 : fermé pour le voleur jusqu'à la réouverture seulement (plus de réouverture au départ de son
+	-- vigile, GuardService.OnGuardGone), et le vigile sort à la fin du chrono (ChaseIntruder), plus à la prise.
 	local chase: any = if okGuard and type(guardApi) == "table" then guardApi.ChaseIntruder else nil
 	local safe: any = if okGuard and type(guardApi) == "table" then guardApi.IsInSafeZone else nil
 	if type(safe) == "function" then
@@ -3227,14 +3119,14 @@ function StoreHeistService.Init()
 	end
 	if type(chase) == "function" then
 		chaseIntruder = chase
-	elseif SHELF_OPEN then
+	else
 		log("GuardService.ChaseIntruder indisponible : aucun vigile à la fin du chrono")
 	end
-	-- Attrapé DANS le magasin par un vigile de jour (Cantin, 2026-11-13 ; Features.ShelfOpen) : le magasin se
+	-- Attrapé DANS le magasin par un vigile de jour (Cantin, 2026-11-13) : le magasin se
 	-- ferme pour lui tout de suite (plus d'ouverture ni de prise, reachRefusal), puis il est sorti devant la
 	-- vitrine par stepLocks une fois le coup donné (Balance.Guard.CatchStunDuration s, V0), comme un joueur
 	-- qui sort : rideau baissé pour lui jusqu'à la réouverture. La nuit renvoie déjà à la base.
-	local onCatch: any = if okGuard and type(guardApi) == "table" and SHELF_OPEN then guardApi.OnCatch else nil
+	local onCatch: any = if okGuard and type(guardApi) == "table" then guardApi.OnCatch else nil
 	if type(onCatch) == "function" then
 		(onCatch :: any)(function(player: Player, _zone: number, night: boolean, _carrying: boolean)
 			if night then
@@ -3254,27 +3146,16 @@ function StoreHeistService.Init()
 				end
 			end
 		end)
-	elseif SHELF_OPEN then
+	else
 		log("GuardService.OnCatch indisponible : un joueur attrapé dans un magasin y reste")
 	end
-	if SHELF_OPEN then
-		-- La vitrine n'est reconstruite qu'une fois le magasin fermé, et RebuildDelay s après au plus tôt.
-		local addGate: any = (WindowService :: any).AddRebuildGate
-		if addGate ~= nil then
-			(addGate :: any)(function(_windowId: string, model: Model?): boolean
-				local store = if model then stores[model] else nil
-				return store == nil or (not store.Open and os.clock() >= store.ClosedAt + Balance.Window.RebuildDelay)
-			end)
-		end
-	end
-	local subscribed = onGone ~= nil and pcall(onGone, function(thief: Player, model: Model)
-		local store = stores[model]
-		if store then
-			unlock(store, thief, "son vigile est rentré")
-		end
-	end)
-	if not subscribed and not SHELF_OPEN then
-		log("GuardService.OnGuardGone indisponible : un magasin reste fermé pour son voleur jusqu'à sa réouverture")
+	-- La vitrine n'est reconstruite qu'une fois le magasin fermé, et RebuildDelay s après au plus tôt.
+	local addGate: any = (WindowService :: any).AddRebuildGate
+	if addGate ~= nil then
+		(addGate :: any)(function(_windowId: string, model: Model?): boolean
+			local store = if model then stores[model] else nil
+			return store == nil or (not store.Open and os.clock() >= store.ClosedAt + Balance.Window.RebuildDelay)
+		end)
 	end
 	-- a70 : vigiles qui rentrent vers la réserve, pour lever le rideau local avant leur arrivée.
 	local getReturning: any = if okGuard and type(guardApi) == "table" then guardApi.GetReturningGuards else nil
@@ -3286,27 +3167,23 @@ function StoreHeistService.Init()
 
 	-- L-112 : témoins et police (WitnessService, L-111). require protégé : sans lui (bancs), les colis
 	-- s'ouvrent sans témoins.
-	if SHELF_OPEN then
-		local okWitness, witness = pcall(function(): any
-			return require(script.Parent.WitnessService) :: any
-		end)
-		local usable = okWitness
-			and type(witness) == "table"
-			and type(witness.Raise) == "function"
-			and type(witness.Calm) == "function"
-			and type(witness.IsCalling) == "function"
-			and type(witness.OnCall) == "function"
-		if usable then
-			witnessApi = witness
-			local okCall, err = pcall(witness.OnCall, onPoliceCalled)
-			if not okCall then
-				warn(`[StoreHeistService] WitnessService.OnCall : {err}`)
-			end
-		else
-			log("WitnessService indisponible : les colis s'ouvrent sur le rayon sans témoins ni police")
+	local okWitness, witness = pcall(function(): any
+		return require(script.Parent.WitnessService) :: any
+	end)
+	local usable = okWitness
+		and type(witness) == "table"
+		and type(witness.Raise) == "function"
+		and type(witness.Calm) == "function"
+		and type(witness.IsCalling) == "function"
+		and type(witness.OnCall) == "function"
+	if usable then
+		witnessApi = witness
+		local okCall, err = pcall(witness.OnCall, onPoliceCalled)
+		if not okCall then
+			warn(`[StoreHeistService] WitnessService.OnCall : {err}`)
 		end
 	else
-		log("Features.ShelfOpen = false : ancien déroulé, les colis se portent fermés")
+		log("WitnessService indisponible : les colis s'ouvrent sur le rayon sans témoins ni police")
 	end
 
 	local storeCount, boxCount = 0, 0
@@ -3331,7 +3208,7 @@ function StoreHeistService.Init()
 	end
 	local looks = if #delivered > 0 then `modèles {table.concat(delivered, ", ")}` else "blocs V0 (aucun BOX_* livré)"
 	print(
-		`[StoreHeistService] {storeCount} magasin(s) prêt(s), {boxCount} colis répartis au hasard sur les rayons, {if SHELF_OPEN then "rareté de la caisse tirée à la mise en rayon, objet tiré à l'ouverture" else "contenu tiré à la mise en rayon"} ({looks})`
+		`[StoreHeistService] {storeCount} magasin(s) prêt(s), {boxCount} colis répartis au hasard sur les rayons, rareté de la caisse tirée à la mise en rayon, objet tiré à l'ouverture ({looks})`
 	)
 end
 

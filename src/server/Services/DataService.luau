@@ -577,7 +577,7 @@ local MIGRATIONS: { [number]: (data: any, log: MigrationLog) -> () } = {
 	[8] = migrateToV8,
 }
 
--- Vague 31 (L-112, Features.ShelfOpen ; agent a105) : les colis s'ouvrent désormais sur le rayon du magasin.
+-- Vague 31 (L-112 ; agent a105) : les colis s'ouvrent désormais sur le rayon du magasin.
 -- Au chargement, chaque colis déjà rangé dans le profil (Boxes, dans l'inventaire ou posé au sol : son contenu
 -- ItemId, Rarity et Mutation est déjà tiré) devient un objet de l'inventaire, sans antivol (il a déjà été
 -- rapporté) : Items[uid] = { Id = ItemId, Source = "NPC", At, Zone, Mutation }, sous l'uid du colis (une case

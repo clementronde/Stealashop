@@ -103,8 +103,8 @@
 --   Étiquette des colis du rayon (L-031) :
 --   CarryService.AttachBoxLabel(model, rarityId, itemId?, mutation?) -> BillboardGui?
 --       Pose sur `model`, un colis qui n'est pas porté (StoreHeistService : chaque colis du rayon),
---       la même étiquette BB_Box que sur la tête (voir plus bas), à son LabelPoint. itemId nil (vague 32,
---       Features.ShelfOpen : caisse dont le contenu n'est tiré qu'à l'ouverture) : rareté seule. Secret : tag
+--       la même étiquette BB_Box que sur la tête (voir plus bas), à son LabelPoint : rareté seule
+--       (vague 32 ; itemId et mutation ne servent plus qu'à la vérification, vague 53). Secret : tag
 --       CarryRainbow sur l'étiquette seule, CarryController anime sa rareté (le colis du rayon
 --       garde l'aspect de son type). nil, avec un avertissement, si la rareté ou l'objet est
 --       inconnu ; nil si le modèle n'a aucune pièce.
@@ -132,10 +132,8 @@
 --     L-031 ; il règle la hauteur avec le StudsOffset de l'étiquette), sinon à un LabelPoint créé
 --     au sommet du visuel (objet volé, bloc V0) :
 --       colis PNJ : copie de ReplicatedStorage/Assets/UI/BB_Box (contrat 2.2, L-031), la même que
---       sur le rayon : Category = catégorie de l'objet (Items, ligne cachée tant qu'elle est vide),
---       Rarity = nom de la rareté en capitales (« LEGENDARY ») à sa couleur, Mutation = la mutation
---       du payload en capitales (DEV-131, Mutations.Label : « BIG · GOLD »), cachée sans mutation.
---       Vague 32 (Cantin, 2026-11-13), avec Features.ShelfOpen : sur une caisse (rayon, portée, au sol),
+--       sur le rayon : Rarity = nom de la rareté en capitales (« LEGENDARY ») à sa couleur.
+--       Vague 32 (Cantin, 2026-11-13) : sur une caisse (rayon, portée, au sol),
 --       la rareté seule, Category et Mutation cachées (la mutation ne se voit qu'une fois l'objet
 --       sorti, BB_Item). Ni le nom ni l'ItemId de l'objet : il reste secret
 --       jusqu'à l'ouverture (5.7). Taille, décalage, AlwaysOnTop et MaxDistance : ceux de Clément ;
@@ -154,7 +152,6 @@ local Workspace = game:GetService("Workspace")
 local Shared = ReplicatedStorage.Shared
 local Balance = require(Shared.Config.Balance)
 local Bat = require(Shared.Config.Bat)
-local Features = require(Shared.Config.Features)
 local Formulas = require(Shared.Config.Formulas)
 local Items = require(Shared.Config.Items)
 local Mutations = require(Shared.Config.Mutations)
@@ -183,9 +180,6 @@ local BB_CARRY = "BB_Carry" -- objet volé à un joueur
 local BB_BOX = "BB_Box" -- colis PNJ, sur le rayon comme sur la tête (L-031)
 -- Champ de la mutation : au contrat de BB_Box ; facultatif dans BB_Carry (nom proposé à Clément, DEV-131).
 local MUTATION_FIELD = "Mutation"
--- Vague 32 (Cantin, 2026-11-13), Features.ShelfOpen : sur une caisse (rayon, portée ou au sol), BB_Box ne
--- montre que sa rareté ; la catégorie et la mutation n'apparaissent qu'une fois l'objet sorti (BB_Item).
-local BOX_LABEL_RARITY_ONLY: boolean = Features.ShelfOpen == true
 -- Noms posés par ce service (mêmes noms dans CarryController pour l'attribut et le tag).
 local CARRYING_ATTRIBUTE = "Carrying"
 local SPEED_KEY = "Carry"
@@ -569,20 +563,16 @@ local function labelPoint(model: Model, anchor: BasePart, top: CFrame): Attachme
 	return point
 end
 
--- Étiquette BB_Box d'un colis PNJ (L-031), sur le rayon comme sur la tête : la catégorie de
--- l'objet (ligne cachée tant qu'elle est vide), la rareté à sa couleur, la mutation (DEV-131,
--- « BIG · GOLD », cachée sans mutation). Jamais le nom ni l'ItemId de l'objet (5.7).
--- Vague 32 : avec Features.ShelfOpen (BOX_LABEL_RARITY_ONLY), ou sans objet (`item` nil : caisse du rayon
--- dont le contenu n'est pas encore tiré), la rareté seule : lignes Category et Mutation cachées.
-local function boxLabel(rarity: Rarity, item: Item?, mutation: Mutations.Mutation?): BillboardGui
+-- Étiquette BB_Box d'un colis PNJ (L-031) : la rareté de la caisse à sa couleur, seule (vague 32,
+-- Cantin, 2026-11-13) ; lignes Category et Mutation cachées, la mutation ne se voit qu'une fois l'objet
+-- sorti (BB_Item). Jamais le nom ni l'ItemId de l'objet (5.7).
+local function boxLabel(rarity: Rarity): BillboardGui
 	local template = labelTemplate(BB_BOX)
 	local gui = if template then template:Clone() :: BillboardGui else placeholderLabel(ShelfBoxes.V0LabelMaxDistance)
 	gui.Name = BB_BOX
-	local shown: Item? = if BOX_LABEL_RARITY_ONLY then nil else item
-	local category = if shown then shown.Category else nil
-	fill(gui, "Category", if category ~= nil and category ~= "" then category else nil)
+	fill(gui, "Category", nil)
 	fill(gui, "Rarity", rarity.DisplayNameUpper, rarity.Color)
-	fill(gui, "Mutation", if shown then Mutations.Label(mutation) else nil)
+	fill(gui, "Mutation", nil)
 	return gui
 end
 
@@ -859,9 +849,9 @@ function CarryService.OnCarryEnded(listener: EndedListener): () -> ()
 end
 
 -- Étiquette BB_Box d'un colis qui n'est pas porté (colis du rayon, L-031) : voir l'en-tête.
--- Vague 32 : `itemId` nil = caisse dont le contenu n'est pas encore tiré (Features.ShelfOpen) : la rareté
--- seule (celle de la caisse).
-function CarryService.AttachBoxLabel(model: Model, rarityId: string, itemId: string?, mutation: Mutations.Mutation?): BillboardGui?
+-- Vague 32 : la rareté seule (celle de la caisse) ; `itemId` (nil : contenu pas encore tiré) et `mutation`
+-- ne sont plus montrés (vague 53).
+function CarryService.AttachBoxLabel(model: Model, rarityId: string, itemId: string?, _mutation: Mutations.Mutation?): BillboardGui?
 	local rarity = Rarities.ById[rarityId]
 	local item: Item? = if itemId ~= nil then Items.ById[itemId] else nil
 	if rarity == nil or (itemId ~= nil and item == nil) then
@@ -873,7 +863,7 @@ function CarryService.AttachBoxLabel(model: Model, rarityId: string, itemId: str
 		return nil
 	end
 	local point = labelPoint(model, anchor, offset * CFrame.new(0, model:GetExtentsSize().Y, 0))
-	local gui = boxLabel(rarity, item, Mutations.Sanitize(mutation))
+	local gui = boxLabel(rarity)
 	if rarity.Rainbow then
 		CollectionService:AddTag(gui, RAINBOW_TAG) -- l'étiquette seule : le colis garde l'aspect de son type
 	end

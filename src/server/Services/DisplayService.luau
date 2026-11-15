@@ -173,7 +173,7 @@
 --       construit comme un objet exposé (modèle ITM_ ou bloc V0, mutation de taille, halo, attributs), sans
 --       BB_Item (BB_AntiTheft le remplace, côté client), sans tag DisplayItem ni DisplaySlot (ni invite de vol
 --       de présentoir, ni revenu). Nommé FloorItem. À l'appelant de le ranger et de le détruire.
--- Objet sous antivol (vague 31, L-112, Features.ShelfOpen ; Items[uid].AntiTheft) : PlaceItem (« AntiTheft »,
+-- Objet sous antivol (vague 31, L-112 ; Items[uid].AntiTheft) : PlaceItem (« AntiTheft »,
 -- Notify), PlaceAuto (nil) et Equip Best le refusent ; une entrée de Display qui le montre est retirée.
 --
 -- Remote PlaceItem(itemUid, slotIndex) : refusé (Notify « Warning » au joueur, avertissement en
@@ -224,7 +224,6 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
 local Balance = require(ReplicatedStorage.Shared.Config.Balance)
-local Features = require(ReplicatedStorage.Shared.Config.Features)
 local Formulas = require(ReplicatedStorage.Shared.Config.Formulas)
 local ItemsConfig = require(ReplicatedStorage.Shared.Config.Items)
 local Mutations = require(ReplicatedStorage.Shared.Config.Mutations)
@@ -584,10 +583,10 @@ local function refreshInventory(player: Player)
 	end
 end
 
--- Vague 31 (L-112, Features.ShelfOpen) : objet sous antivol (Items[uid].AntiTheft, UnboxService) : jamais
--- sur un présentoir avant « UNLOCKED! » (voir l'en-tête). Interrupteur coupé : champ ignoré.
+-- Vague 31 (L-112) : objet sous antivol (Items[uid].AntiTheft, UnboxService) : jamais
+-- sur un présentoir avant « UNLOCKED! » (voir l'en-tête).
 local function isAntiTheft(entry: any): boolean
-	return Features.ShelfOpen == true and type(entry) == "table" and entry.AntiTheft == true
+	return type(entry) == "table" and entry.AntiTheft == true
 end
 
 -- L'objet est-il tenu par un voleur (vol en cours, voir l'en-tête) ?
