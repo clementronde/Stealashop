@@ -1045,6 +1045,7 @@ local function deposit(theft: Theft, root: BasePart)
 		At = os.time(),
 		Zone = zone,
 		Mutation = mutation,
+		Weight = if entry then entry.Weight else nil, -- vague 62 (a203) : le poids suit l'objet, comme sa mutation
 		AntiTheft = if theft.Floor then true else nil,
 	}
 	local slot = if theft.Floor or toHand then nil else DisplayService.PlaceAuto(thief, theft.Uid, root.Position)
@@ -1305,6 +1306,13 @@ local function grantFloor(thief: Player, victim: Player, plot: Model, uid: strin
 	beginTheft(thief, victim, plot, 0, uid, def, item.Income, mutation, true, root)
 end
 
+-- Vague 62 (a203) : poids de l'objet `uid` de la victime (Items[uid].Weight), nil sans profil (bot) ou sans poids.
+local function victimWeight(victim: Player?, uid: string): number?
+	local data = if victim then DataService.Get(victim) else nil
+	local entry = if data then data.Items[uid] else nil
+	return if entry then entry.Weight else nil
+end
+
 -- L'objet tenu (présentoir ou sol) part sur la tête du voleur : portage, alertes, écouteurs.
 beginTheft = function(
 	thief: Player,
@@ -1327,6 +1335,7 @@ beginTheft = function(
 		VictimUserId = if victim then victim.UserId else 0, -- 0 : le bot (personne ne le défend à la batte)
 		SlotIndex = slot, -- 0 : objet pris au sol (vague 31)
 		Mutation = mutation,
+		Weight = victimWeight(victim, uid), -- vague 62 (a203) : affiché sur BB_Carry (Weight)
 	}
 	local theft: Theft = {
 		Thief = thief,

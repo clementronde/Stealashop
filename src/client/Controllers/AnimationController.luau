@@ -82,6 +82,10 @@ local HELD_TOOL_ATTRIBUTE = "HeldItemUid"
 local HELD_MODEL_NAME = "HeldItem"
 local SIZE_ATTRIBUTE = "MutationSize"
 local TWO_HAND_SIZES: { [string]: boolean } = { Big = true, Huge = true, Colossal = true }
+-- Vague 62 (a203) : avec le poids, attribut Weight (kg) du modèle (DisplayService) : deux mains dès TWO_HANDS_FROM kg (mêmes
+-- valeurs que Config/Weight.Attribute et .TwoHandsFrom, lues ici sans require, comme les noms ci-dessus).
+local WEIGHT_ATTRIBUTE = "Weight"
+local TWO_HANDS_FROM = 50
 
 local IS_STUDIO = RunService:IsStudio()
 
@@ -280,6 +284,10 @@ function AnimationController.NeedsTwoHands(character: Instance): boolean
 	for _, child in character:GetChildren() do
 		if child:IsA("Tool") and child:GetAttribute(HELD_TOOL_ATTRIBUTE) ~= nil then
 			local model = child:FindFirstChild(HELD_MODEL_NAME)
+			local weight = if model then model:GetAttribute(WEIGHT_ATTRIBUTE) else nil
+			if type(weight) == "number" then
+				return weight >= TWO_HANDS_FROM
+			end
 			local size = if model then model:GetAttribute(SIZE_ATTRIBUTE) else nil
 			return type(size) == "string" and TWO_HAND_SIZES[size] == true
 		end

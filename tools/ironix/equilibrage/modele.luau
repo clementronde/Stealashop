@@ -216,6 +216,9 @@ end
 Modele.KitIndex = kitIndex
 
 -- Espérance du multiplicateur de revenu des mutations (une taille et un effet tirés à part).
+-- Vague 62 (a203) : Modele.Poids = { Moyenne = number, Tirage = function(random) -> number } (rapport « poids ») : la
+-- taille vient du poids (ItemWeight.IncomeFactor) au lieu des tailles de Config/Mutations ; nil = aujourd'hui.
+Modele.Poids = nil
 function Modele.MutationMean()
 	local function family(list)
 		local mean = 1
@@ -224,7 +227,8 @@ function Modele.MutationMean()
 		end
 		return mean
 	end
-	return family(Mutations.Sizes) * family(Mutations.Effects)
+	local poids = Modele.Poids
+	return (if poids then poids.Moyenne else family(Mutations.Sizes)) * family(Mutations.Effects)
 end
 
 -- Espérance du multiplicateur de rareté d'un colis de ce type dans cette zone.
@@ -277,11 +281,15 @@ function Modele.Jouer(eco, profil, seed, maxSeconds, options)
 	local random = generator(seed)
 	local zoneCount = #eco.Zones
 	local mutationOf = function()
-		local size = rollWeighted(random, Mutations.Sizes, function(e)
-			return e.Chance
-		end, function(e)
-			return e.IncomeMultiplier
-		end) or 1
+		local poids = Modele.Poids
+		local size = if poids then poids.Tirage(random) else nil
+		if size == nil then
+			size = rollWeighted(random, Mutations.Sizes, function(e)
+				return e.Chance
+			end, function(e)
+				return e.IncomeMultiplier
+			end) or 1
+		end
 		local effect = rollWeighted(random, Mutations.Effects, function(e)
 			return e.Chance
 		end, function(e)

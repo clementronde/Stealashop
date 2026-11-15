@@ -46,6 +46,7 @@
 --     une case vide), KeyLabel = son numéro (caché sur téléphone), ItemName = le nom (« Fists »,
 --     nom de l'objet ; vide sur une case vide), Income = « $X/s » pour un objet seulement
 --     ($/s de l'objet, mutation comprise, calculé par le serveur avec Formulas.ItemIncome), caché sinon ;
+--     vague 62 (a203) : Weight (facultatif) = « 1,250 kg » pour un objet au poids connu, caché sinon ;
 --     Clip.BackgroundColor3 = couleur de la rareté assombrie de 45 % et Clip.Glow à la couleur de la
 --     rareté (objets ; les outils et les cases vides gardent le fond du modèle) ; Equipped sur
 --     l'outil en main ou l'objet en cours de pose au sol ;
@@ -103,6 +104,7 @@ local AlertBadge = require(Shared:WaitForChild("AlertBadge"))
 local Format = require(Shared:WaitForChild("Format"))
 local HotbarLayout = require(Shared:WaitForChild("HotbarLayout"))
 local InventoryState = require(Shared:WaitForChild("InventoryState"))
+local ItemWeight = require(Shared:WaitForChild("ItemWeight")) -- vague 62 : poids (« 1,250 kg ») dans Weight
 local Contract = Shared:WaitForChild("Contract")
 local Find = require(Contract:WaitForChild("Find"))
 local Icons = require(Contract:WaitForChild("Icons"))
@@ -142,6 +144,7 @@ type Slot = {
 	icon: string?, -- nom passé à Icons.get ; nil pour une case vide
 	rarity: string?,
 	income: number?,
+	weight: number?, -- vague 62 (a203) : kg, nil s'il est inconnu (élément facultatif Weight caché)
 	equipped: boolean,
 	antiTheft: boolean?, -- vague 34 : objet sous antivol (voile AntiTheft)
 	alert: boolean?, -- vague 34 : la case demande une action (SlotAlert)
@@ -191,7 +194,7 @@ local BAR = "Bar"
 local TEMPLATE = "Template"
 local SLOT_PREFIX = "Slot_"
 -- Vague 34 (L-127 points 3 et 4) : AntiTheft (voile, son LockLabel reste caché ici), SlotAlert et son UIScale Pulse.
-local PARTS = { "Clip", "Clip.Glow", "Icon", "KeyLabel", "ItemName", "Income", "Equipped", "HoverOutline", "AntiTheft", "SlotAlert", "SlotAlert.Pulse" }
+local PARTS = { "Clip", "Clip.Glow", "Icon", "KeyLabel", "ItemName", "Income", "Weight", "Equipped", "HoverOutline", "AntiTheft", "SlotAlert", "SlotAlert.Pulse" }
 local SLOT_COUNT_ATTRIBUTE = "SlotCount"
 local TOUCH_SLOT_COUNT_ATTRIBUTE = "TouchSlotCount"
 -- Valeurs de la note de Clément (ligne 22), si l'attribut manque.
@@ -464,6 +467,7 @@ local function readStock(api: InventoryApi): ({ [string]: Slot }, { Slot }, bool
 				icon = def.Id,
 				rarity = rarity,
 				income = income,
+				weight = item.Weight,
 				-- Agent a142 : l'objet tenu en main (Tool HeldItemUid), ou en cours de pose au sol (antivol).
 				equipped = (held ~= nil and held:GetAttribute(HeldItem.ToolAttribute) == item.Uid) or placingUid == item.Uid,
 				antiTheft = item.AntiTheft == true,
@@ -1031,6 +1035,11 @@ local function paint(current: Screen, view: View, slot: Slot, rank: number)
 	if income ~= nil then
 		setText(refs.Income, string.format(INCOME_TEXT, Format.money(income)))
 	end
+	local weight = slot.weight
+	setVisible(refs.Weight, weight ~= nil)
+	if weight ~= nil then
+		setText(refs.Weight, ItemWeight.Format(weight))
+	end
 	local rarity = if slot.rarity then Rarities.ById[slot.rarity] else nil
 	if rarity then
 		local color = rarity.Color
@@ -1267,6 +1276,7 @@ function HotbarController.GetState(): { [string]: any }
 			Uid = slot.uid,
 			Name = slot.name,
 			Income = slot.income,
+			Weight = slot.weight, -- vague 62
 			Equipped = slot.equipped,
 			AntiTheft = slot.antiTheft == true, -- vague 34
 			Alert = slot.alert == true,

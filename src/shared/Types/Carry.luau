@@ -37,6 +37,7 @@ export type PlayerItemPayload = {
 	VictimUserId: number, -- propriétaire, chez qui l'objet revient en cas d'échec (6.1)
 	SlotIndex: number, -- présentoir d'origine (Display, 9.5)
 	Mutation: Mutation?, -- DEV-131 : celle de l'objet de la victime (nom de BB_Carry) ; nil = aucune
+	Weight: number?, -- vague 62 (a203) : poids de l'objet (kg, Items[uid].Weight de la victime) ; nil = inconnu
 }
 
 -- Objet sorti d'un colis ouvert sur le rayon d'un magasin PNJ (L-112), fabriqué par
@@ -50,6 +51,7 @@ export type NPCItemPayload = {
 	ItemId: string, -- Id de Config.Items
 	Rarity: string, -- Id de Config.Rarities, rareté finale (après les crans de chance)
 	Mutation: Mutation?, -- tirée avec le contenu (DEV-131) ; nil = aucune
+	Weight: number?, -- vague 62 (a203) : poids tiré avec le contenu (kg, ItemWeight.Roll, a202) ; nil = poids de sa taille (ItemWeight.LegacyFor)
 	Zone: number, -- 1 à 6, zone du magasin d'origine
 	StoreId: string, -- magasin d'origine, ex. « STORE_Z1_Superette » (Id de sa vitrine) ; « Truck_<n> » pour un événement
 	SlotId: string, -- emplacement de rayon d'origine, au format choisi par StoreHeistService

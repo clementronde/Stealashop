@@ -67,6 +67,7 @@ local Mutations = require(Shared.Config.Mutations)
 local Unbox = require(Shared.Config.Unbox) -- vague 44 : portée de l'invite « Take »
 local Zones = require(Shared.Config.Zones)
 local InventoryState = require(Shared.InventoryState)
+local ItemWeight = require(Shared.ItemWeight) -- vague 62 : poids montré dans la barre d'objets
 local Net = require(Shared.Net.Net)
 local ProfileTypes = require(Shared.Types.Profile)
 local DataService = require(script.Parent.DataService)
@@ -191,7 +192,7 @@ end
 -- Revenu d'un objet ($/s, sans bonus), même règle que DisplayService (7.1).
 local function incomeOf(entry: ProfileTypes.Item, def: Items.Item): number
 	local zone = def.Zone or validZone((entry :: any).Zone) or 1
-	return Formulas.ItemIncome(zone, def.Rarity) * Mutations.IncomeMultiplier(entry.Mutation)
+	return Formulas.ItemIncome(zone, def.Rarity) * Mutations.IncomeMultiplier(entry.Mutation, entry.Weight) -- vague 62 : poids compris
 end
 
 -- Vague 31 (L-112) : objet sous antivol (Types/Profile : AntiTheft, UnlockAt, Spot).
@@ -266,6 +267,7 @@ local function stateFrom(player: Player, data: Data): InventoryState.State
 				Size = if mutation then mutation.Size else nil,
 				Effect = if mutation then mutation.Effect else nil,
 				AntiTheft = if antiTheft then true else nil,
+				Weight = if ItemWeight.Enabled() then ItemWeight.Sanitize(entry.Weight) else nil,
 			},
 		})
 	end

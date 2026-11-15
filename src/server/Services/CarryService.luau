@@ -162,6 +162,8 @@ local Bat = require(Shared.Config.Bat)
 local Formulas = require(Shared.Config.Formulas)
 local Items = require(Shared.Config.Items)
 local Mutations = require(Shared.Config.Mutations)
+local ItemWeight = require(Shared.ItemWeight) -- vague 62 (a203)
+local WeightConfig = require(Shared.Config.Weight)
 local Rarities = require(Shared.Config.Rarities)
 local ShelfBoxes = require(Shared.Config.ShelfBoxes)
 local Zones = require(Shared.Config.Zones)
@@ -587,14 +589,14 @@ end
 -- (celle du magasin pour un Secret, qui n'a pas de zone) et de sa rareté, mutation comprise.
 local function npcItemIncome(payload: NPCItemPayload): number
 	local item = Items.ById[payload.ItemId]
-	return Formulas.ItemIncome(item.Zone or payload.Zone, payload.Rarity) * Mutations.IncomeMultiplier(payload.Mutation)
+	return Formulas.ItemIncome(item.Zone or payload.Zone, payload.Rarity) * Mutations.IncomeMultiplier(payload.Mutation, payload.Weight) -- vague 62 : poids compris
 end
 
 -- Étiquette BB_Carry d'un objet porté (objet volé à un joueur, 6.1 ; objet sorti d'un colis, L-112) :
 -- nom (précédé de sa mutation, DEV-131), rareté à sa couleur, $/s. Champ Mutation facultatif (a125,
 -- L-131 g : au contrat, Contract/UI, avertissement orange s'il manque) : s'il existe, la mutation y va en
 -- capitales, ItemName garde le nom seul et MutationFxController (client) lui donne le style de la mutation.
-local function itemLabel(itemId: string, mutation: Mutations.Mutation?, income: number, rarity: Rarity): BillboardGui
+local function itemLabel(itemId: string, mutation: Mutations.Mutation?, income: number, rarity: Rarity, weight: number?): BillboardGui
 	local template = labelTemplate(BB_CARRY)
 	local gui = if template then template:Clone() :: BillboardGui else placeholderLabel(nil)
 	gui.Name = BB_CARRY
@@ -607,6 +609,9 @@ local function itemLabel(itemId: string, mutation: Mutations.Mutation?, income: 
 	end
 	fill(gui, "Rarity", rarity.DisplayNameUpper, rarity.Color)
 	fill(gui, "Income", Format.income(income))
+	-- Vague 62 (a203) : poids « 1,250 kg » dans l'élément facultatif Weight de BB_Carry (nom proposé à Clément), caché sans poids connu.
+	local kg = if ItemWeight.Enabled() then ItemWeight.Sanitize(weight) else nil
+	fill(gui, WeightConfig.Field, if kg then ItemWeight.Format(kg) else nil)
 	return gui
 end
 
@@ -616,9 +621,9 @@ local function addLabel(model: Model, anchor: BasePart, top: CFrame, payload: Pa
 	local point = labelPoint(model, anchor, top)
 	local gui: BillboardGui
 	if payload.Kind == "PlayerItem" then
-		gui = itemLabel(payload.ItemId, payload.Mutation, payload.Income, rarity)
+		gui = itemLabel(payload.ItemId, payload.Mutation, payload.Income, rarity, payload.Weight)
 	else
-		gui = itemLabel(payload.ItemId, payload.Mutation, npcItemIncome(payload), rarity)
+		gui = itemLabel(payload.ItemId, payload.Mutation, npcItemIncome(payload), rarity, payload.Weight)
 	end
 	gui.Adornee = point
 	gui.Parent = point
@@ -662,6 +667,7 @@ local function buildVisual(payload: Payload): Visual
 	local mutation = Mutations.Sanitize(payload.Mutation)
 	model:SetAttribute("MutationSize", if mutation then mutation.Size else nil)
 	model:SetAttribute("MutationEffect", if mutation then mutation.Effect else nil)
+	model:SetAttribute(WeightConfig.Attribute, if ItemWeight.Enabled() then ItemWeight.Sanitize(payload.Weight) else nil) -- vague 62 (a203)
 	CollectionService:AddTag(model, CARRIED_ITEM_TAG)
 	return { model = model, anchor = anchor, offset = offset }
 end

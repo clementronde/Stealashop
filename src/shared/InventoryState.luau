@@ -13,6 +13,7 @@
 --      Config/Mutations, vides sans mutation dans la famille ; vague 31 (L-112) : un 8e champ « A » pour
 --      un objet sous antivol (à poser au sol de sa boutique avant un présentoir), absent sinon (le texte
 --      d'un objet libre ne change pas) ;
+--      vague 62 (a203) : un 9e champ, le poids en kg, quand il est connu (8e champ alors « A » ou vide) ;
 --   Vague 52 (a170) : l'enregistrement B d'un colis (colis porté, rangé, posé) est retiré ; un « B »
 --   d'un ancien serveur est ignoré à la lecture.
 -- Un identifiant qui contient autre chose que des lettres, chiffres, « _ », « - », « . », « { » et « } »
@@ -34,6 +35,7 @@ export type ItemEntry = {
 	Size: string?, -- Config/Mutations
 	Effect: string?,
 	AntiTheft: boolean?, -- vague 31 (L-112) : sous antivol, se pose au sol de sa boutique (PlaceBox), pas sur un présentoir
+	Weight: number?, -- vague 62 (a203) : poids en kg (Shared/ItemWeight), nil s'il est inconnu
 }
 
 export type State = {
@@ -77,8 +79,14 @@ function InventoryState.Encode(state: State): string
 				optionalId(item.Size),
 				optionalId(item.Effect),
 			}
+			local weight = if finite(item.Weight) then item.Weight else nil
 			if item.AntiTheft == true then
 				table.insert(fields, ANTI_THEFT_FLAG)
+			elseif weight ~= nil then
+				table.insert(fields, "")
+			end
+			if weight ~= nil then
+				table.insert(fields, string.format("%.6g", weight))
 			end
 			table.insert(records, table.concat(fields, FIELD))
 		end
@@ -115,7 +123,7 @@ function InventoryState.Decode(text: any): State
 		end
 		local fields = fieldsOf(record)
 		local kind = fields[1]
-		if kind == "I" and (#fields == 7 or #fields == 8) then
+		if kind == "I" and (#fields >= 7 and #fields <= 9) then
 			local income = tonumber(fields[4])
 			local slot = tonumber(fields[5])
 			if InventoryState.IsSafeId(fields[2]) and InventoryState.IsSafeId(fields[3]) and finite(income) and finite(slot) then
@@ -127,6 +135,7 @@ function InventoryState.Decode(text: any): State
 					Size = emptyToNil(fields[6]),
 					Effect = emptyToNil(fields[7]),
 					AntiTheft = if fields[8] == ANTI_THEFT_FLAG then true else nil,
+					Weight = if fields[9] and finite(tonumber(fields[9])) then tonumber(fields[9]) else nil,
 				})
 			end
 		end

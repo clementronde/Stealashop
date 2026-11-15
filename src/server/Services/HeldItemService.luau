@@ -50,6 +50,8 @@ local Shared = ReplicatedStorage.Shared
 local HeldItem = require(Shared.Config.HeldItem)
 local Items = require(Shared.Config.Items)
 local Mutations = require(Shared.Config.Mutations)
+local ItemWeight = require(Shared.ItemWeight) -- vague 62 (a203)
+local WeightConfig = require(Shared.Config.Weight)
 local InventoryState = require(Shared.InventoryState)
 local Net = require(Shared.Net.Net)
 local RarityHalo = require(Shared.RarityHalo)
@@ -246,6 +248,11 @@ local function buildTool(player: Player, uid: string, entry: ItemEntry): Tool?
 		return nil
 	end
 	model.Name = HeldItem.ModelName
+	-- Vague 62 (a203) : un objet lourd (poids, Config/Weight) se tient à sa taille, au plus Weight.HeldMaxScale (V0),
+	-- pour ne pas cacher le joueur. Échec : la taille du présentoir, sans bruit.
+	if ItemWeight.Enabled() and model:GetScale() > WeightConfig.HeldMaxScale then
+		pcall(model.ScaleTo, model, WeightConfig.HeldMaxScale)
+	end
 	-- a178 (Cantin, 15/11) : objet encore sous antivol (profil : AntiTheft, UnlockAt) : UnboxController y montre
 	-- le même verrou qu'au sol (BB_AntiTheft), jusqu'à la fin de l'antivol. Visuel seulement. Posé avant le tag.
 	if entry.AntiTheft == true then

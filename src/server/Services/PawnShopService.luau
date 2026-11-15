@@ -145,7 +145,7 @@ local function priceOfEntry(entry: any): number?
 		return nil
 	end
 	local zone = def.Zone or validZone(entry.Zone) or 1
-	local income = Formulas.ItemIncome(zone, def.Rarity) * Mutations.IncomeMultiplier(entry.Mutation)
+	local income = Formulas.ItemIncome(zone, def.Rarity) * Mutations.IncomeMultiplier(entry.Mutation, entry.Weight) -- vague 62 : poids compris
 	local price = math.floor(Pawn.PriceFactor * income)
 	if price ~= price or price < 0 or price == math.huge then
 		return nil

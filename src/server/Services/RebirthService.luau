@@ -96,6 +96,7 @@ type Candidate = {
 	id: string, -- ItemId
 	zone: number?,
 	mutation: Mutation?,
+	weight: number?, -- vague 62 (a203) : Items[uid].Weight (nil pour un colis)
 	fromBox: boolean,
 	exposed: boolean,
 	income: number,
@@ -164,7 +165,7 @@ end
 ------------------------------------------------------------------------------
 
 -- Revenu d'un objet ($/s), formule 7.1 × mutation (comme DisplayService et Equip Best) ; 0 si illisible.
-local function incomeOf(id: string, zone: number?, mutation: Mutation?): number
+local function incomeOf(id: string, zone: number?, mutation: Mutation?, weight: number?): number
 	local def = Items.ById[id]
 	if def == nil then
 		return 0
@@ -173,7 +174,7 @@ local function incomeOf(id: string, zone: number?, mutation: Mutation?): number
 	if not ok or type(value) ~= "number" or value ~= value then
 		return 0
 	end
-	return value * Mutations.IncomeMultiplier(mutation)
+	return value * Mutations.IncomeMultiplier(mutation, weight) -- vague 62 : poids compris
 end
 
 local function exposedSet(data: Data): { [string]: boolean }
@@ -190,7 +191,7 @@ local function requiredUid(data: Data, itemId: string): string?
 	local bestIncome = math.huge
 	for uid, entry in data.Items do
 		if type(entry) == "table" and entry.Id == itemId and entry.Spot == nil then
-			local income = incomeOf(entry.Id, entry.Zone, entry.Mutation)
+			local income = incomeOf(entry.Id, entry.Zone, entry.Mutation, entry.Weight)
 			if income < bestIncome or (income == bestIncome and best ~= nil and uid < best) then
 				best, bestIncome = uid, income
 			end
@@ -210,9 +211,10 @@ local function candidates(data: Data, remitted: string?): { Candidate }
 				id = entry.Id,
 				zone = entry.Zone,
 				mutation = entry.Mutation,
+				weight = entry.Weight,
 				fromBox = false,
 				exposed = exposed[uid] == true,
-				income = incomeOf(entry.Id, entry.Zone, entry.Mutation),
+				income = incomeOf(entry.Id, entry.Zone, entry.Mutation, entry.Weight),
 			})
 		end
 	end
@@ -321,7 +323,7 @@ local function commit(player: Player, data: Data, level: number, remitted: strin
 			while data.Items[uid] ~= nil or kept[uid] ~= nil do
 				uid = HttpService:GenerateGUID(false)
 			end
-			kept[uid] = { Id = candidate.id, Source = "NPC", At = now, Zone = candidate.zone, Mutation = candidate.mutation }
+			kept[uid] = { Id = candidate.id, Source = "NPC", At = now, Zone = candidate.zone, Mutation = candidate.mutation, Weight = candidate.weight }
 			table.insert(keptUids, uid)
 			table.insert(fromBoxes, candidate.id)
 		else

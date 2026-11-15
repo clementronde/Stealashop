@@ -12,6 +12,7 @@
 --     comme Items.Pick ; un objet hors de cette liste (TutorialOnly) n'a pas de chance : nil ;
 --   - P(taille), P(effet) : Chance de la mutation (Config/Mutations, pour cent) ; sans mutation dans une
 --     famille, cette famille ne compte pas (la chance est celle d'un objet « au moins » de cette mutation).
+--     Vague 62 (a203) : sous Features.SingleBoxReveal, P(taille) = chance du palier de poids (ItemWeight.SizeChance, ×1).
 --
 -- API :
 --   ItemOdds.Chance(itemId, mutation?, box) -> number?   probabilité entre 0 et 1, nil si inconnue ou nulle
@@ -23,6 +24,7 @@ local Items = require(Config:WaitForChild("Items"))
 local Mutations = require(Config:WaitForChild("Mutations"))
 local ShelfOpen = require(Config:WaitForChild("ShelfOpen"))
 local Format = require(script.Parent:WaitForChild("Format"))
+local ItemWeight = require(script.Parent:WaitForChild("ItemWeight"))
 
 -- Au-delà, les chiffres ne tiennent plus sur le billboard ni dans un double exact : écriture courte.
 local GROUPED_UNTIL = 1e15
@@ -65,7 +67,8 @@ function ItemOdds.Chance(itemId: string, mutation: any, box: string): number?
 		local size = if clean.Size then Mutations.SizeById[clean.Size] else nil
 		local effect = if clean.Effect then Mutations.EffectById[clean.Effect] else nil
 		if size then
-			chance *= size.Chance / 100
+			-- Vague 62 (a203) : Huge et Colossal sont des paliers de poids (Shared/ItemWeight, sans chance de la boîte).
+			chance *= (if ItemWeight.Enabled() then ItemWeight.SizeChance(size.Id, 1) else size.Chance) / 100
 		end
 		if effect then
 			chance *= effect.Chance / 100
