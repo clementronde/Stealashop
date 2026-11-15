@@ -97,36 +97,7 @@ UI.Screens = {
 			{ Path = "List.Template.EquipButton", Class = BUTTON },
 		},
 	},
-	{
-		Name = "UI_Unbox",
-		Class = "ScreenGui",
-		Elements = {
-			{ Path = "Rarity", Class = "TextLabel" },
-			{ Path = "ItemName", Class = "TextLabel" },
-			{ Path = "Income", Class = "TextLabel" },
-			-- Dans un cadre Buttons depuis la v2 (avec OpenNextButton) : chemin inchangé (Contract/Find).
-			{ Path = "ContinueButton", Class = BUTTON },
-			-- Ouverture des colis v2 (spec ouverture-colis, liaison L-046, UI_Unbox v2 de Clément du
-			-- 2026-11-07, DEV-050) : cachés au repos, sauf ItemPreview, Backdrop et les cadres vides.
-			{ Path = "Backdrop", Class = "Frame" }, -- scène assombrie (version complète)
-			{ Path = "SkipButton", Class = BUTTON }, -- « TAP TO SKIP », plein écran
-			{ Path = "Upgrade", Class = "Frame" }, -- amélioration du colis, au-dessus du colis
-			{ Path = "Upgrade.UpgradeLabel", Class = "TextLabel" }, -- « UPGRADE! »
-			{ Path = "Upgrade.UpgradeRarity", Class = "TextLabel" }, -- rareté atteinte, à sa couleur
-			{ Path = "Reel", Class = "Frame" }, -- rouleau, un objet à la fois
-			{ Path = "Reel.ReelGlow", Class = "Frame" }, -- lueur à la couleur de l'objet au centre
-			{ Path = "Reel.ReelView", Class = "ViewportFrame" }, -- clones ITM_*, silhouettes par ImageColor3
-			{ Path = "ItemPreview", Class = "Frame" }, -- l'objet révélé (ViewportFrame posé par le code)
-			{ Path = "Rays", Class = "ImageLabel" }, -- rayons à la couleur de la rareté (texture MOD-041)
-			{ Path = "Rarity.Rainbow", Class = "UIGradient" }, -- arc-en-ciel du Secret, désactivé au repos
-			{ Path = "Rays.Rainbow", Class = "UIGradient" },
-			{ Path = "UpgradeRarity.Rainbow", Class = "UIGradient" },
-			{ Path = "Confetti", Class = "Frame" },
-			{ Path = "Confetti.Template", Class = "Frame", Template = true }, -- cloné par le code
-			{ Path = "Flash", Class = "Frame" }, -- flash blanc
-			{ Path = "OpenNextButton", Class = BUTTON }, -- « OPEN NEXT », caché au repos
-		},
-	},
+	-- Vague 52 (a170) : UI_Unbox (ouverture des colis en base) retiré du contrat ; Clément peut retirer l'écran.
 	{
 		Name = "UI_TheftAlert",
 		Class = "ScreenGui",
@@ -224,7 +195,7 @@ UI.Billboards = {
 	-- Barre de vie du camion de l'événement (nom proposé par Ironix en L-052, livré par Clément le
 	-- 2026-11-07) : mêmes éléments que BB_WindowHP (TruckController ; sans elle, BB_WindowHP agrandie).
 	{ Name = "BB_TruckHP", Class = "BillboardGui", Elements = { { Path = "Fill" }, { Path = "Label" } } },
-	{ Name = "BB_OpenTimer", Class = "BillboardGui", Elements = { { Path = "Label" } } },
+	-- Vague 52 (a170) : BB_OpenTimer (minuteur du colis posé) retiré du contrat ; Clément peut le retirer.
 	{
 		Name = "BB_Item",
 		Class = "BillboardGui",
@@ -388,7 +359,7 @@ table.insert(UI.Screens, {
 
 -- Inventaire (L-079, L-089, L-091 point 6 ; relevé de Studio du 2026-11-10, agents/wave21-studio.md) :
 -- écran UI_Inventory de Clément, qui remplace toute la barre d'outils de Roblox, branché par
--- InventoryController. Quatre onglets (Tabs.<Nom>Tab, image Selected sur l'onglet choisi), une section
+-- InventoryController. Trois onglets depuis la vague 52 (Tabs.<Nom>Tab, image Selected sur l'onglet choisi), une section
 -- par onglet dans List (une seule visible). Les cartes clonées du Template de chaque section vont dans
 -- son Cards (UIGridLayout). PotionsSection n'a pas de Template (pas de potions dans le jeu). Counter est
 -- dans CounterPill, Displays dans DisplayPill ; Rays et Glow (dans le cadre Clip d'une carte) prennent
@@ -402,7 +373,9 @@ local inventoryElements = {
 	{ Path = "EquipBestButton", Class = BUTTON },
 	{ Path = "PotionsSection" },
 } :: { Element }
-for _, tab in { "Items", "Boxes", "Tools", "Potions" } do
+-- Vague 52 (a170) : Tabs.BoxesTab et BoxesSection retirés du contrat (plus de colis dans l'inventaire) ; s'ils
+-- sont encore là, InventoryController les cache. Clément peut les retirer.
+for _, tab in { "Items", "Tools", "Potions" } do
 	table.insert(inventoryElements, { Path = `Tabs.{tab}Tab`, Class = BUTTON })
 	table.insert(inventoryElements, { Path = `Tabs.{tab}Tab.Selected` })
 end
@@ -426,21 +399,6 @@ local inventoryCards: { [string]: { Element } } = {
 		{ Path = "CardAlert" },
 		{ Path = "CardAlert.Pulse", Class = "UIScale" },
 	},
-	BoxesSection = {
-		{ Path = "Icon" },
-		{ Path = "BoxName" },
-		{ Path = "RarityBar.Rarity" },
-		{ Path = "Rays" },
-		{ Path = "Glow" },
-		{ Path = "PlaceButton", Class = BUTTON },
-		{ Path = "PlacedPill" },
-		{ Path = "ReadyPill" },
-		{ Path = "TimerPill" },
-		{ Path = "TimerPill.TimerLabel" },
-		{ Path = "HoverOutline" },
-		{ Path = "CardAlert" }, -- vague 34 (L-127 point 3)
-		{ Path = "CardAlert.Pulse", Class = "UIScale" },
-	},
 	ToolsSection = {
 		{ Path = "Icon" },
 		{ Path = "ToolName" },
@@ -452,7 +410,7 @@ local inventoryCards: { [string]: { Element } } = {
 		{ Path = "HoverOutline" },
 	},
 }
-for _, section in { "ItemsSection", "BoxesSection", "ToolsSection" } do
+for _, section in { "ItemsSection", "ToolsSection" } do
 	table.insert(inventoryElements, { Path = section })
 	table.insert(inventoryElements, { Path = `{section}.SectionCount.CountLabel` })
 	table.insert(inventoryElements, { Path = `{section}.Cards` })
@@ -866,5 +824,20 @@ table.insert(UI.Billboards, {
 		{ Path = "Row.Multiplier", Class = "TextLabel", Optional = true, Note = "le « ×2 » du trail est ajouté à Row.Amount en texte enrichi" },
 	} :: { Element },
 })
+
+-- Vague 52 (a170) : éléments sortis du contrat, que le code ne lit plus. Encore là chez Clément, le ContractChecker
+-- les signale en note, jamais en problème : il peut les retirer quand il veut. Screens : chemin depuis StarterGui ;
+-- Billboards : depuis le dossier BillboardFolder (Contract/Find, segments cherchés parmi les descendants).
+local BOX_GONE = "colis porté et ouvert en base retirés (2026-11-15)"
+UI.Retired = {
+	Screens = {
+		UI_Unbox = BOX_GONE,
+		["UI_Inventory.Tabs.BoxesTab"] = BOX_GONE,
+		["UI_Inventory.BoxesSection"] = BOX_GONE,
+	},
+	Billboards = {
+		BB_OpenTimer = BOX_GONE,
+	},
+} :: { Screens: { [string]: string }, Billboards: { [string]: string } }
 
 return UI

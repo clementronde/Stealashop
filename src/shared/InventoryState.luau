@@ -3,19 +3,18 @@
 -- UI_Inventory, mis en texte par InventoryService dans l'attribut InventoryState du Player, relu par
 -- InventoryController. Un attribut plutôt qu'un remote : c'est un état, toujours à jour, même pour un
 -- client qui arrive après le dernier changement. Il est visible des autres clients (attribut d'un
--- Player) : il ne contient rien de secret, jamais l'objet d'un colis (5.7).
+-- Player) : il ne contient rien de secret.
 --
 -- Texte (V0, plus court et plus simple à relire qu'un JSON, sans HttpService) : enregistrements séparés
 -- par « ; », champs par « , », le premier enregistrement est la version du format :
---   1;I,<uid>,<ItemId>,<revenu>,<présentoir>,<taille>,<effet>;B,<uid>,<type>,<rareté>,<prêt à>,<posé>
+--   1;I,<uid>,<ItemId>,<revenu>,<présentoir>,<taille>,<effet>
 --   I  un objet du joueur, exposé (présentoir = son numéro) ou dans l'inventaire (présentoir = 0) ;
 --      revenu = $/s de l'objet, mutation comprise, sans les bonus du joueur ; taille et effet = Id de
 --      Config/Mutations, vides sans mutation dans la famille ; vague 31 (L-112) : un 8e champ « A » pour
 --      un objet sous antivol (à poser au sol de sa boutique avant un présentoir), absent sinon (le texte
 --      d'un objet libre ne change pas) ;
---   B  un colis : type (Standard, Premium, Luxe), rareté (Config/Rarities), heure serveur à partir de
---      laquelle il s'ouvre (vide si inconnue), posé = 1 s'il est au sol de la boutique, 0 dans
---      l'inventaire.
+--   Vague 52 (a170) : l'enregistrement B d'un colis (colis porté, rangé, posé) est retiré ; un « B »
+--   d'un ancien serveur est ignoré à la lecture.
 -- Un identifiant qui contient autre chose que des lettres, chiffres, « _ », « - », « . », « { » et « } »
 -- n'est pas écrit (il casserait le texte ; les remotes refusent de toute façon un uid de plus de 64
 -- caractères).
@@ -37,17 +36,8 @@ export type ItemEntry = {
 	AntiTheft: boolean?, -- vague 31 (L-112) : sous antivol, se pose au sol de sa boutique (PlaceBox), pas sur un présentoir
 }
 
-export type BoxEntry = {
-	Uid: string,
-	Tier: string,
-	Rarity: string,
-	ReadyAt: number?, -- heure serveur (Workspace:GetServerTimeNow) d'ouverture possible
-	Placed: boolean, -- au sol de sa boutique
-}
-
 export type State = {
 	Items: { ItemEntry },
-	Boxes: { BoxEntry },
 }
 
 local VERSION = "1"
@@ -93,12 +83,6 @@ function InventoryState.Encode(state: State): string
 			table.insert(records, table.concat(fields, FIELD))
 		end
 	end
-	for _, box in state.Boxes do
-		if InventoryState.IsSafeId(box.Uid) and InventoryState.IsSafeId(box.Tier) and InventoryState.IsSafeId(box.Rarity) then
-			local readyAt = if finite(box.ReadyAt) then string.format("%.3f", box.ReadyAt :: number) else ""
-			table.insert(records, table.concat({ "B", box.Uid, box.Tier, box.Rarity, readyAt, if box.Placed then "1" else "0" }, FIELD))
-		end
-	end
 	return table.concat(records, RECORD)
 end
 
@@ -116,7 +100,7 @@ local function emptyToNil(text: string): string?
 end
 
 function InventoryState.Decode(text: any): State
-	local state: State = { Items = {}, Boxes = {} }
+	local state: State = { Items = {} }
 	if type(text) ~= "string" then
 		return state
 	end
@@ -143,17 +127,6 @@ function InventoryState.Decode(text: any): State
 					Size = emptyToNil(fields[6]),
 					Effect = emptyToNil(fields[7]),
 					AntiTheft = if fields[8] == ANTI_THEFT_FLAG then true else nil,
-				})
-			end
-		elseif kind == "B" and #fields == 6 then
-			local readyAt = tonumber(fields[5])
-			if InventoryState.IsSafeId(fields[2]) and InventoryState.IsSafeId(fields[3]) and InventoryState.IsSafeId(fields[4]) then
-				table.insert(state.Boxes, {
-					Uid = fields[2],
-					Tier = fields[3],
-					Rarity = fields[4],
-					ReadyAt = if finite(readyAt) then readyAt else nil,
-					Placed = fields[6] == "1",
 				})
 			end
 		end

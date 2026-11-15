@@ -11,8 +11,6 @@
 --   InventoryButton.InventoryAlert un objet à poser ou prêt à exposer :
 --                                    - un objet de l'inventaire sous antivol, à poser au sol de sa boutique
 --                                      (champ AntiTheft de l'attribut InventoryState, Shared/InventoryState) ;
---                                    - un colis de l'inventaire pas encore posé, ou posé et prêt à ouvrir
---                                      (ReadyAt passé ; ancien déroulé, Features.ShelfOpen à false) ;
 --                                    - un objet à lui posé au sol dont l'antivol est fini (« UNLOCKED! ») :
 --                                      Model taggé FloorItem, OwnerUserId = son UserId, UnlockAt passé (heure
 --                                      serveur ; UnboxService), à reprendre pour l'exposer.
@@ -25,7 +23,7 @@
 --                                  (attribut Cash) au moins égal à ce prix. Même règle que l'écran
 --                                  (SkillTreeController : prix blanc, BuyButton) et que SkillTreeService.
 -- Recalcul : à chaque changement d'un attribut du joueur ou d'un tag FloorItem (une fois par image au plus),
--- et toutes les REFRESH s (fin d'un antivol ou d'une attente de colis). HUD recréé (ResetOnSpawn) : rebranché.
+-- et toutes les REFRESH s (fin d'un antivol). HUD recréé (ResetOnSpawn) : rebranché.
 --
 -- API (client ; bancs, barre de commande en Studio) :
 --   RailAlertController.GetState() -> { Index: boolean, Inventory: boolean, Rebirth: boolean, SkillTree: boolean }
@@ -87,12 +85,6 @@ local function inventoryPending(now: number): boolean
 	for _, item in inventory.Items do
 		if item.AntiTheft == true and item.Slot == nil then
 			return true -- à poser au sol de sa boutique
-		end
-	end
-	for _, box in inventory.Boxes do
-		local readyAt = box.ReadyAt
-		if not box.Placed or (readyAt ~= nil and readyAt <= now) then
-			return true -- colis à poser, ou posé et prêt à ouvrir
 		end
 	end
 	for _, model in CollectionService:GetTagged(FLOOR_ITEM_TAG) do

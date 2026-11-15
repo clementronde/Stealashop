@@ -16,13 +16,14 @@
 --     L-095). Ouverture et
 --     fermeture animées par UI/Motion (groupe ScreenGroup de l'écran, Motion.SetCloser) ; les cartes sont
 --     retirées une fois l'écran éteint ;
---   - onglets Tabs.ItemsTab, BoxesTab, ToolsTab, PotionsTab : l'image Selected sur l'onglet choisi, sa
+--   - onglets Tabs.ItemsTab, ToolsTab, PotionsTab (vague 52, a170 : BoxesTab et BoxesSection retirés, cachés
+--     s'ils sont encore dans l'écran) : l'image Selected sur l'onglet choisi, sa
 --     section (ItemsSection…) seule visible dans List. À la première ouverture, Items ; ensuite, le
 --     dernier choisi. ScrollTrack suit la liste (même règle que l'Index v2, IndexController) ;
 --   - état lu dans l'attribut InventoryState du Player (InventoryService, texte de Shared/InventoryState),
 --     OwnedTools (ShopService), DisplaySlotsUnlocked (DisplayService) ; l'écran ouvert suit chaque
 --     changement. Une carte par élément, clonée du Template de sa section dans son Cards, nommée
---     Item_<uid>, Box_<uid> ou Tool_<Id> (Tool_Bat pour la batte), LayoutOrder = rang :
+--     Item_<uid> ou Tool_<Id> (Tool_Bat pour la batte), LayoutOrder = rang :
 --       Items  (les plus rentables d'abord) Icon = ICON_<ItemId> (Contract/Icons ; pas livrée : vide),
 --              ItemName, RarityBar.Rarity, Rays et Glow à la couleur de la rareté, MutationTag caché sans
 --              mutation (MutationLabel « BIG · GOLD »), Income (« +$12K/s », mutation comprise, sans les
@@ -30,11 +31,6 @@
 --              PlaceItemAuto(uid) : le serveur le pose sur le présentoir libre le plus proche, sinon le
 --              premier libre ; UnequipButton (objet exposé) → UnplaceItem(uid) : il revient dans
 --              l'inventaire ;
---       Boxes  (ceux de l'inventaire, puis ceux posés au sol) Icon = ICON_BOX_<Tier> (pas livrée : l'image
---              du Template), BoxName « PREMIUM BOX », RarityBar.Rarity, Rays et Glow à la couleur de la
---              rareté. Dans l'inventaire : PlaceButton → mode pose (plus bas). Posé : PlacedPill
---              (« ON FLOOR »), puis TimerPill/TimerLabel (« 0:42 », heure serveur) pendant l'attente, puis
---              ReadyPill quand il est prêt ;
 --       Tools  outils possédés (Config/Tools, dans leur ordre), puis la batte : Icon = ICON_TOOL_<Id>
 --              (ICON_TOOL_Bat pour la batte ; pas livrée : l'image du Template), ToolName, ToolStat
 --              (« Power 20 » ; batte : « Stun 2s »). EquippedPill sur l'outil tenu en main, EquipButton sur
@@ -56,15 +52,15 @@
 --   - Counter « 9 / 30 items » (objets non exposés / Balance.Display.InventoryMax), Displays
 --     « 4 / 6 displays » (objets exposés / présentoirs débloqués), SectionCount.CountLabel de chaque
 --     section = son nombre de cartes ; EquipBestButton → EquipBest ;
---   - mode pose d'un colis (PlaceButton d'un colis de l'inventaire, sans Tool en main) : l'écran se
---     ferme, l'outil tenu est rangé, un aperçu fantôme (une pièce translucide de la taille d'un colis
---     posé, Config.Unbox.BoxFootprint, tournée comme la parcelle) suit le point visé sous le curseur ou
+--   - mode pose d'un objet sous antivol (vague 52, a170 : plus de colis ; PlaceButton de sa carte, sans Tool
+--     en main) : l'écran se ferme, l'outil tenu est rangé, un aperçu fantôme (une pièce translucide de la
+--     taille d'un objet posé, Config.Unbox.BoxFootprint, tournée comme la parcelle) suit le point visé sous le curseur ou
 --     le doigt : vert si la pose a des chances de passer (dans le volume Bounds de SA boutique, sol assez
 --     plat au niveau du bas de Bounds, à portée), rouge sinon. Un clic ou un appui sur le monde envoie
---     PlaceBox(boxUid, point visé) et joue Place (contrat 2.4) ; le serveur revérifie tout et répond par
+--     PlaceBox(uid, point visé) et joue Place (contrat 2.4) ; le serveur revérifie tout et répond par
 --     un Notify en cas de refus (le mode reste, pour réessayer). Clics répétés (vague 25) : un clic à moins
 --     de PLACE_MOVE studs du point déjà envoyé, moins de PLACE_GUARD s après, est ignoré (une seule
---     demande PlaceBox par double clic ; visée ailleurs, le nouvel essai part). Fin du mode : colis posé (il quitte
+--     demande PlaceBox par double clic ; visée ailleurs, le nouvel essai part). Fin du mode : objet posé (il quitte
 --     l'inventaire), touche Q (V0), écran rouvert, outil pris (1, 2, écran), portage, mort ;
 --   - outil de casse mis en main tout seul près d'une vitrine (L-092 point 2c, réponse de Clément du
 --     2026-11-11 : sur téléphone, sans barre Roblox, on ne le sortait que par l'écran). Toutes les TICK s,
@@ -78,16 +74,15 @@
 --     retiré de la main. Agent a142 : un objet de l'inventaire tenu en main (HeldItemService) ne compte pas
 --     pour « quelque chose en main » : l'outil de casse le remplace (le serveur range l'objet).
 --   - vague 31 (L-112) : un objet sous antivol de l'inventaire (champ AntiTheft de l'état, InventoryService) se
---     pose au sol de sa boutique par le même mode pose qu'un colis (PlaceBox avec son uid ; son PlaceButton, un
+--     pose au sol de sa boutique par ce mode pose (PlaceBox avec son uid ; son PlaceButton, un
 --     clic sur sa carte, PlaceItem et la barre du bas lancent ce mode au lieu de PlaceItemAuto). Au sol, il
 --     n'est plus dans l'état ; UnboxController montre son antivol et son invite de reprise.
 --   - vague 34 (L-127, Clément) : point 4, sur la carte d'un objet sous antivol, le voile AntiTheft (caché par
 --     Clément) est montré et AntiTheft.LockLabel dit la durée de l'antivol, qui ne démarre qu'à la pose au sol
 --     (Config/ShelfOpen.AntiTheft[rareté], « 0:30 ») ; PlaceButton reste montré et cliquable. Point 3, la
---     pastille CardAlert (cartes d'ItemsSection et de BoxesSection) est montrée quand la carte demande une
+--     pastille CardAlert (cartes d'ItemsSection) est montrée quand la carte demande une
 --     action, avec le battement de son UIScale Pulse (1 → 1,15 → 1 en 0,8 s) : objet de l'inventaire sous
---     antivol (à poser) ou libre avec un présentoir libre (à exposer) ; colis de l'inventaire (à poser) ou
---     posé et prêt (à ouvrir). Éteinte (Scale remis à 1) dès que l'action est faite.
+--     antivol (à poser) ou libre avec un présentoir libre (à exposer). Éteinte (Scale remis à 1) dès que l'action est faite.
 -- Rien de ce qui compte ne se décide ici : chaque bouton envoie un uid ou un Id que le serveur revérifie.
 -- Seuls sont touchés (2.2, « Libre pour Ironix ») : Enabled de l'écran, les textes, la visibilité, les
 -- cartes clonées (nom, ordre), l'image de leur icône et la teinte (ImageColor3) de leurs rayons, le
@@ -96,10 +91,10 @@
 --
 -- API (client) :
 --   InventoryController.Open() / Close() / Toggle()
---   InventoryController.SelectTab(name)        "Items", "Boxes", "Tools" ou "Potions"
---   InventoryController.StartPlacing(boxUid)   mode pose de ce colis (barre de commande, bancs)
+--   InventoryController.SelectTab(name)        "Items", "Tools" ou "Potions"
+--   InventoryController.StartPlacing(itemUid)  mode pose de cet objet sous antivol (barre de commande, bancs)
 --   InventoryController.EquipBest()            demande au serveur de poser ses meilleurs objets
---   InventoryController.GetState() -> { Open, Tab, Placing, Aim, AimValid, Items, Boxes, Tools, Potions, Loaded }
+--   InventoryController.GetState() -> { Open, Tab, Placing, Aim, AimValid, Items, Tools, Potions, Loaded }
 --       Potions : nombre total de potions dans l'inventaire (vague 33)
 --   InventoryController.UsePotion(id)          UsePotion(id), comme le bouton d'une carte de potion
 --       Loaded : l'état de l'inventaire lu vient du profil chargé (attribut InventoryState posé)
@@ -119,7 +114,7 @@
 --       été traitée ? nil (défaut) : touches 1 et 2 d'origine
 --   InventoryController.SetCardDrag(hooks?)    vague 25 (glisser une carte vers la barre du bas) :
 --       hooks.Press(key, frame, input, list) à chaque appui (clic gauche ou doigt) sur une carte (key = son
---       nom, Item_<uid>, Box_<uid>, Tool_<Id>, Tool_Bat ; list = le ScrollingFrame List) ;
+--       nom, Item_<uid>, Tool_<Id>, Tool_Bat ; list = le ScrollingFrame List) ;
 --       hooks.Suppress() -> boolean : vrai juste après un glisser, le clic de la carte (ou de son bouton)
 --       est alors ignoré. nil (défaut) : rien
 
@@ -155,7 +150,7 @@ type AnimationApi = {
 	PlayPlayer: (name: string) -> AnimationTrack?,
 }
 
--- "Items", "Boxes", "Tools" ou "Potions" (TAB_ORDER ; une chaîne : l'ancien solveur suit mal les unions de
+-- "Items", "Tools" ou "Potions" (TAB_ORDER ; une chaîne : l'ancien solveur suit mal les unions de
 -- chaînes fixes).
 type TabName = string
 
@@ -227,11 +222,13 @@ type Placing = {
 local SCREEN = "UI_Inventory"
 local HUD = "UI_HUD"
 local HUD_BUTTON = "InventoryButton"
-local TAB_ORDER: { TabName } = { "Items", "Boxes", "Tools", "Potions" }
+-- Vague 52 (a170) : l'onglet Boxes est retiré (plus de colis dans l'inventaire) ; s'il est encore dans l'écran
+-- de Clément, BoxesTab et BoxesSection sont cachés (bind).
+local TAB_ORDER: { TabName } = { "Items", "Tools", "Potions" }
+local OLD_BOX_PARTS = { "Tabs.BoxesTab", "BoxesSection" }
 local CARD_PARTS: { [TabName]: { string } } = {
 	-- Vague 34 (L-127 points 3 et 4) : AntiTheft, AntiTheft.LockLabel, CardAlert et son UIScale Pulse en fin de liste.
 	Items = { "Icon", "ItemName", "RarityBar.Rarity", "Rays", "Glow", "MutationTag", "MutationTag.MutationLabel", "Income", "DisplayedBadge", "PlaceButton", "UnequipButton", "HoverOutline", "AntiTheft", "AntiTheft.LockLabel", "CardAlert", "CardAlert.Pulse" },
-	Boxes = { "Icon", "BoxName", "RarityBar.Rarity", "Rays", "Glow", "PlaceButton", "PlacedPill", "ReadyPill", "TimerPill", "TimerPill.TimerLabel", "HoverOutline", "CardAlert", "CardAlert.Pulse" },
 	Tools = { "Icon", "ToolName", "ToolStat", "Rays", "Glow", "EquipButton", "EquippedPill", "HoverOutline" },
 	-- Vague 33 : noms demandés à Clément (Template de PotionsSection), puis ceux du Template de ToolsSection
 	-- pris en V0 tant qu'il n'existe pas.
@@ -239,7 +236,6 @@ local CARD_PARTS: { [TabName]: { string } } = {
 }
 local CARD_BUTTONS = { "PlaceButton", "UnequipButton", "EquipButton", "UseButton" }
 local PREVIEW_PREFIX = "Preview_"
-local BOX_ICON_PREFIX = "BOX_" -- Icons.name("BOX_Premium") = « ICON_BOX_Premium » (L-089)
 local TOOL_ICON_PREFIX = "TOOL_" -- « ICON_TOOL_Hammer » (L-090)
 local BAT_KEY = "Bat" -- carte Tool_Bat, icône ICON_TOOL_Bat (nom confirmé par Clément, L-092 2a)
 
@@ -260,11 +256,10 @@ local BROKEN_ATTRIBUTE = "Broken" -- WindowService
 local GHOST_NAME = "BoxGhost"
 
 -- Textes, en anglais (L-036). V0 proposés, absents du doc, sur les exemples de la maquette de Clément
--- (« 9 / 30 items », « 4 / 6 displays », « PREMIUM BOX », « Power 20 », « 0:42 ») ; la batte n'a pas de
+-- (« 9 / 30 items », « 4 / 6 displays », « Power 20 », « 0:42 ») ; la batte n'a pas de
 -- puissance : sa carte dit son étourdissement (Config/Bat).
 local COUNTER_TEXT = "%d / %d items"
 local DISPLAYS_TEXT = "%d / %d displays"
-local BOX_NAME = "%s BOX"
 local TOOL_STAT = "Power %s"
 local BAT_STAT = "Stun %ss"
 local TIMER_TEXT = "%d:%02d"
@@ -303,7 +298,7 @@ local SEND_GUARD = 0.5
 local PLACE_GUARD = 1
 local PLACE_MOVE = 2
 local TRACK_MIN_SHARE = 0.1
--- Aperçu du colis (couleurs de la planche 10.6 ; portée acceptée par le serveur, PlaceBox).
+-- Aperçu de l'objet posé (couleurs de la planche 10.6 ; portée acceptée par le serveur, PlaceBox).
 local REACH = Unbox.PromptDistance + Unbox.ReachTolerance
 local AIM_DISTANCE = 200 -- studs : longueur du rayon de visée (V0)
 local GHOST_TRANSPARENCY = 0.6 -- V0
@@ -324,7 +319,7 @@ local animation: AnimationApi? = nil
 local screen: Screen? = nil
 local isOpen = false
 local tab: TabName = "Items"
-local state: InventoryState.State = { Items = {}, Boxes = {} }
+local state: InventoryState.State = { Items = {} }
 local loaded = false -- état lu dans un attribut InventoryState posé (profil chargé)
 local plot: Model? = nil
 local watchedPlots: { [Instance]: RBXScriptConnection } = {}
@@ -345,7 +340,7 @@ local backpackConnections: { RBXScriptConnection } = {}
 local listeners: { () -> () } = {} -- OnChanged (barre du bas)
 local slotKeys: ((index: number) -> boolean)? = nil -- SetSlotKeys (barre du bas)
 local cardDrag: CardDrag? = nil -- SetCardDrag (barre du bas, vague 25)
-local placeSentAt: { [string]: { at: number, point: Vector3 } } = {} -- uid du colis → dernier PlaceBox
+local placeSentAt: { [string]: { at: number, point: Vector3 } } = {} -- uid de l'objet → dernier PlaceBox
 local nearWindow = false -- dans la zone d'une vitrine cassable (L-092 2c)
 local autoEquipDone = false -- déjà servi pendant cette approche : rien de plus tant qu'il n'est pas reparti
 
@@ -848,10 +843,11 @@ local function updateAim()
 end
 
 ------------------------------------------------------------------------------
--- Mode pose d'un colis
+-- Mode pose d'un objet sous antivol
 ------------------------------------------------------------------------------
 
--- Vague 31 (L-112) : objet sous antivol de l'inventaire (à poser au sol de sa boutique, comme un colis).
+-- Vague 31 (L-112) : objet sous antivol de l'inventaire (à poser au sol de sa boutique) ; vague 52 (a170) : le
+-- seul qui se pose encore (plus de colis).
 local function isAntiTheftItem(uid: string): boolean
 	for _, item in state.Items do
 		if item.Uid == uid then
@@ -859,17 +855,6 @@ local function isAntiTheftItem(uid: string): boolean
 		end
 	end
 	return false
-end
-
--- Le colis est-il encore dans l'inventaire (pas posé) d'après l'état du serveur ? Vague 31 : un objet sous
--- antivol de l'inventaire se pose de la même façon (PlaceBox avec son uid).
-local function isStoredBox(uid: string): boolean
-	for _, box in state.Boxes do
-		if box.Uid == uid then
-			return not box.Placed
-		end
-	end
-	return isAntiTheftItem(uid)
 end
 
 stopPlacing = function()
@@ -907,7 +892,7 @@ end
 
 local function startPlacing(uid: string)
 	stopPlacing()
-	if not isStoredBox(uid) or isCarrying() or humanoidOf() == nil then
+	if not isAntiTheftItem(uid) or isCarrying() or humanoidOf() == nil then
 		return
 	end
 	unequip() -- un clic ne doit pas aussi frapper avec l'outil tenu
@@ -949,7 +934,7 @@ local function readState()
 	state = InventoryState.Decode(text)
 	loaded = text ~= nil -- profil chargé : l'état lu est complet (barre du bas, vague 25)
 	local current = placing
-	if current and not isStoredBox(current.uid) then
+	if current and not isAntiTheftItem(current.uid) then
 		stopPlacing() -- posé (ou disparu) : fin du mode pose
 	end
 	changed()
@@ -1029,15 +1014,6 @@ local function itemNeedsAction(entry: InventoryState.ItemEntry, free: number): b
 		return false
 	end
 	return entry.AntiTheft == true or free > 0
-end
-
--- Un colis de l'inventaire (à poser), ou posé et prêt (à ouvrir).
-local function boxNeedsAction(entry: InventoryState.BoxEntry, now: number): boolean
-	if not entry.Placed then
-		return true
-	end
-	local readyAt = entry.ReadyAt
-	return readyAt ~= nil and readyAt <= now
 end
 
 ------------------------------------------------------------------------------
@@ -1194,41 +1170,6 @@ local function paintItem(view: CardView, entry: InventoryState.ItemEntry, free: 
 	view.handlers.Card = if displayed then unplace else place
 end
 
-local function paintBox(view: CardView, entry: InventoryState.BoxEntry, now: number)
-	local refs = view.refs
-	local rarity = Rarities.ById[entry.Rarity]
-	-- ICON_BOX_<Rareté> (a79, L-097 point 3), sinon ICON_BOX_<Tier>
-	local texture = textureOf(BOX_ICON_PREFIX .. entry.Rarity) or textureOf(BOX_ICON_PREFIX .. entry.Tier)
-	if texture then
-		setImage(refs.Icon, texture) -- pas livrée : l'image du Template reste
-	end
-	if rarity then
-		tint(refs.Rays, rarity.Color)
-		tint(refs.Glow, rarity.Color)
-		setText(refs["RarityBar.Rarity"], rarity.DisplayNameUpper)
-	end
-	setText(refs.BoxName, string.format(BOX_NAME, string.upper(entry.Tier)))
-	local placed = entry.Placed
-	local readyAt = entry.ReadyAt
-	local remaining = if placed and readyAt then readyAt - now else 0
-	local ready = placed and remaining <= 0
-	setVisible(refs.PlaceButton, not placed)
-	setVisible(refs.PlacedPill, placed)
-	setVisible(refs.TimerPill, placed and not ready)
-	setVisible(refs.ReadyPill, ready)
-	if placed and not ready then
-		setText(refs["TimerPill.TimerLabel"], timerText(remaining))
-	end
-	AlertBadge.Set(refs.CardAlert, boxNeedsAction(entry, now)) -- vague 34
-	local uid = entry.Uid
-	local function place()
-		close()
-		startPlacing(uid)
-	end
-	view.handlers.PlaceButton = if placed then nil else place
-	view.handlers.Card = if placed then nil else place
-end
-
 local function paintTool(view: CardView, card: ToolCard, held: Tool?)
 	local refs = view.refs
 	local texture = textureOf(card.icon)
@@ -1358,15 +1299,6 @@ local function heldTool(): Tool?
 	return if character then character:FindFirstChildWhichIsA("Tool") else nil
 end
 
-local function refreshBoxes(current: Screen)
-	local now = serverNow()
-	syncSection(current.sections["Boxes"], state.Boxes, function(entry: InventoryState.BoxEntry): string
-		return "Box_" .. entry.Uid
-	end, function(view: CardView, entry: InventoryState.BoxEntry)
-		paintBox(view, entry, now)
-	end)
-end
-
 local function refreshTools(current: Screen)
 	local held = heldTool()
 	syncSection(current.sections["Tools"], toolCards(), function(card: ToolCard): string
@@ -1462,7 +1394,6 @@ local function refresh()
 			table.insert(wanted, texture)
 		end
 	end)
-	refreshBoxes(current)
 	refreshTools(current)
 	refreshPotions(current)
 	refreshCounters(current)
@@ -1472,7 +1403,7 @@ local function refresh()
 	end
 end
 
--- Minuteurs des colis posés, tant que l'écran est ouvert.
+-- Minuteurs des potions actives, tant que l'écran est ouvert.
 local function startTicker()
 	tickToken += 1
 	local token = tickToken
@@ -1483,7 +1414,6 @@ local function startTicker()
 			if token ~= tickToken or not isOpen or current == nil then
 				return
 			end
-			refreshBoxes(current)
 			refreshPotions(current) -- minuteurs des effets actifs (vague 33)
 		end
 	end)
@@ -1581,6 +1511,13 @@ local function bind(gui: ScreenGui)
 			selected = guiObject(button, "Selected"),
 			views = {},
 		}
+	end
+	-- Vague 52 (a170) : onglet et section des colis encore livrés (écran d'avant) : cachés sur la copie du joueur.
+	for _, path in OLD_BOX_PARTS do
+		local old = Find.path(gui, path)
+		if old and old:IsA("GuiObject") then
+			old.Visible = false
+		end
 	end
 
 	local track = guiObject(gui, "ScrollTrack")
@@ -1895,12 +1832,12 @@ function InventoryController.SelectTab(name: string)
 	end
 end
 
-function InventoryController.StartPlacing(boxUid: string)
+function InventoryController.StartPlacing(itemUid: string)
 	readState()
 	if isOpen then
 		close()
 	end
-	startPlacing(boxUid)
+	startPlacing(itemUid)
 end
 
 function InventoryController.StopPlacing()
@@ -1962,17 +1899,12 @@ function InventoryController.GetHeldItem(): string?
 	return heldItemUid()
 end
 
--- Vague 34 (L-127 point 3) : la carte de cet objet ou de ce colis demande-t-elle une action ? (pastilles
+-- Vague 34 (L-127 point 3) : la carte de cet objet demande-t-elle une action ? (pastilles
 -- CardAlert de l'écran et SlotAlert de la barre du bas, même règle.)
 function InventoryController.NeedsAction(uid: string): boolean
 	for _, item in state.Items do
 		if item.Uid == uid then
 			return itemNeedsAction(item, freeDisplays())
-		end
-	end
-	for _, box in state.Boxes do
-		if box.Uid == uid then
-			return boxNeedsAction(box, serverNow())
 		end
 	end
 	return false
@@ -2016,7 +1948,6 @@ function InventoryController.GetState(): { [string]: any }
 		Aim = lastAim,
 		AimValid = lastAimValid,
 		Items = #state.Items,
-		Boxes = #state.Boxes,
 		Tools = #toolCards(),
 		Potions = potionTotal(potionCards()),
 	}

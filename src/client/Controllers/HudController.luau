@@ -38,16 +38,11 @@
 --     pendant leur aperçu (RobuxShopPreview, RebirthPreview : L-071, les trois boutons de gauche sont
 --     visibles dès maintenant) ; leur clic est branché par RobuxShopController, IndexController et
 --     RebirthController, pas ici.
---   - Revenu retenu pendant l'ouverture d'un colis (vague 8) : le serveur expose l'objet, et
---     l'attribut Income monte, dès l'ouverture, plusieurs secondes avant que l'écran UI_Unbox
---     révèle l'objet. UnboxController retient donc Income (HoldIncome) à l'arrivée d'UnboxReveal et
---     le relâche quand l'écran a montré le revenu de l'objet. Pendant ce temps, Income garde la
---     valeur d'avant l'objet ; rien ne change côté serveur (argent et sauvegarde). Plusieurs
---     ouvertures d'affilée : chacune montre la hausse de son objet, dans l'ordre.
+--   - Vague 52 (a170) : la retenue du revenu pendant l'ouverture d'un colis en base (HoldIncome) est
+--     retirée avec l'ouverture en base.
 --   - Animations (DEV-052, module UI/Motion, valeurs dans Config/UiMotion) : Cash et Income
 --     défilent de l'ancienne valeur à la nouvelle (Motion.Roll), au même format ; au premier
---     remplissage, la valeur s'écrit d'un coup. Le revenu retenu ne défile qu'à son relâchement,
---     donc à la révélation de l'objet (DEV-050). HeistTimer et GuardMeter apparaissent et
+--     remplissage, la valeur s'écrit d'un coup. HeistTimer et GuardMeter apparaissent et
 --     disparaissent par Motion.Show et Motion.Hide (un UIScale passager, créé et retiré par Motion).
 --     HeistTimer (ou son enfant Box) sursaute à chaque seconde, avec un tic (TimerTick, L-091).
 --   - Argent retenu (L-091 point 3) : GainController retient Cash (HoldCash) pendant qu'un gain vole
@@ -59,13 +54,6 @@
 -- Roblox copie UI_HUD de StarterGui dans PlayerGui ; un écran recréé (ResetOnSpawn) est rebranché.
 --
 -- API (client) :
---   HudController.HoldIncome() -> relâcher
---       Income garde la valeur que ce contrôleur connaît à cet instant (la dernière qu'il a vue
---       arriver, même si la suivante est déjà posée sur le Player sans qu'il l'ait encore traitée)
---       jusqu'à l'appel de `relâcher` (sans effet la deuxième fois). Plusieurs retenues : Income
---       montre la valeur gardée par la plus ancienne encore active, puis, quand toutes sont
---       relâchées, la valeur réelle. Une retenue oubliée se relâche toute seule au bout de
---       MAX_INCOME_HOLD secondes.
 --   HudController.HoldCash(base) -> relâcher
 --       Cash montre `base` jusqu'à l'appel de `relâcher` (voir plus bas, L-091 point 3).
 --   HudController.IsHeistTimerShown() -> boolean
@@ -150,7 +138,7 @@ local function potionFactor(): number
 	return if strengthPotionActive() then STRENGTH_POTION.Multiplier or 1 else 1
 end
 
-local INCOME_ATTRIBUTE = "Income" -- posé par DisplayService ; retenu par HoldIncome
+local INCOME_ATTRIBUTE = "Income" -- posé par DisplayService
 local INCOME_STAT: Stat = STATS[2]
 local CASH_STAT: Stat = STATS[1] -- retenu par HoldCash (GainController, L-091 point 3)
 for _, stat in STATS do
@@ -161,10 +149,6 @@ for _, stat in STATS do
 	end
 end
 
--- V0 proposé, absent du doc : durée max (s) d'une retenue du revenu, filet de sécurité si elle
--- n'était jamais relâchée. Une ouverture montre son revenu en moins de 10 s ; une file de trois ou
--- quatre ouvertures d'affilée tient dans ce délai.
-local MAX_INCOME_HOLD = 60
 -- V0 proposé, absent du doc : durée max (s) d'une retenue de l'argent (une case vole en moins d'une
 -- seconde, Config/UiMotion.CashFly) : filet de sécurité si elle n'était jamais relâchée.
 local MAX_CASH_HOLD = 10
@@ -244,9 +228,7 @@ local heartbeatOn = false
 local heartbeatSound: Sound? = nil
 local warned: { [string]: boolean } = {}
 
--- Retenues du revenu (HoldIncome), dans l'ordre de création.
 type IncomeHold = { base: any, expiresAt: number }
-local incomeHolds: { IncomeHold } = {}
 local incomeSeen: any = nil -- dernière valeur d'Income traitée par ce contrôleur
 local incomeTracked = false -- incomeSeen suit l'attribut (Start est passé)
 -- Retenues de l'argent (HoldCash) : chacune garde l'argent d'avant un gain qui vole vers le compteur.
@@ -293,15 +275,6 @@ local function latestIncome(): any
 	return if incomeTracked then incomeSeen else localPlayer:GetAttribute(INCOME_ATTRIBUTE)
 end
 
--- Valeur d'Income à afficher : celle de la plus ancienne retenue active, sinon la dernière connue.
-local function shownIncome(): any
-	local hold = incomeHolds[1]
-	if hold then
-		return hold.base
-	end
-	return latestIncome()
-end
-
 local function writeStat(stat: Stat)
 	local current = hud
 	local label = if current then current.stats[stat] else nil
@@ -309,7 +282,7 @@ local function writeStat(stat: Stat)
 		return
 	end
 	local value = if stat == INCOME_STAT
-		then shownIncome()
+		then latestIncome()
 		elseif stat == CASH_STAT and cashHolds[1] ~= nil then cashHolds[1].base
 		else localPlayer:GetAttribute(stat.Attribute)
 	if stat == DAMAGE_STAT and type(value) == "number" then
@@ -329,15 +302,6 @@ local function writeStat(stat: Stat)
 	end
 end
 
-local function releaseHold(hold: IncomeHold)
-	local index = table.find(incomeHolds, hold)
-	if index == nil then
-		return -- déjà relâchée (ou expirée)
-	end
-	table.remove(incomeHolds, index)
-	writeStat(INCOME_STAT)
-end
-
 -- Filet de sécurité : relâche les retenues trop vieilles.
 local function expireHolds()
 	if #cashHolds > 0 then
@@ -353,29 +317,6 @@ local function expireHolds()
 			warnOnce("cashHold", `[HUD] argent retenu plus de {MAX_CASH_HOLD} s : relâché (GainController ne l'a pas fait)`)
 			writeStat(CASH_STAT)
 		end
-	end
-	if #incomeHolds == 0 then
-		return
-	end
-	local now = os.clock()
-	local expired = false
-	for index = #incomeHolds, 1, -1 do
-		if incomeHolds[index].expiresAt <= now then
-			table.remove(incomeHolds, index)
-			expired = true
-		end
-	end
-	if expired then
-		warnOnce("incomeHold", `[HUD] revenu retenu plus de {MAX_INCOME_HOLD} s : relâché (UnboxController ne l'a pas fait)`)
-		writeStat(INCOME_STAT)
-	end
-end
-
-function HudController.HoldIncome(): () -> ()
-	local hold: IncomeHold = { base = latestIncome(), expiresAt = os.clock() + MAX_INCOME_HOLD }
-	table.insert(incomeHolds, hold)
-	return function()
-		releaseHold(hold)
 	end
 end
 
