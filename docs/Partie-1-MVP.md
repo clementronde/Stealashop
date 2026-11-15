@@ -1106,6 +1106,7 @@ Chaque étape est envoyée une seule fois par joueur avec `AnalyticsService:LogO
 
 | Date | Décision | Par |
 | --- | --- | --- |
+| 2026-11-15 | Capture mise en scène dans les 2,4 s d'étourdissement (caméra qui plonge au coup, poussière, écran « CAUGHT! » avec l'objet qui repart ; bandes noires la nuit), sans consolation. Alerte en deux paliers (discret en jaune, puis « RUN! » et bord rouge). Gains ponctuels qui volent jusqu'au compteur. « ITEM SECURED! » devient une carte d'objet. Caisses (MAJ 1) avec chance qui grimpe et offre « relancer ». Décor léger dans la boutique Robux. Refusés : barre de trajet, clic « PARFAIT ! » (idée gardée) (liaison L-184). | Clément |
 | 2026-11-15 | Diamants : leur solde ne s'affiche que dans la boutique de diamants, jamais dans le HUD (liaison L-182). | Clément |
 | 2026-11-15 | Direction de l'UI d'après Break and Steal an Egg (analyse dans `References/Videos_Jeux`) : écrans qui s'ouvrent vite et sans rebond (0,15 s), contenu en cascade, survol et clic qui réagissent, titres en relief, raretés animées (reflet à Légendaire, arc-en-ciel à Mythique et Secret), flou derrière les fenêtres sauf en poursuite, HUD réduit à 2 ou 3 boutons plus des boutons qui n'apparaissent qu'en situation (liaison L-182). | Clément |
 | 2026-11-15 | Inventaire archivé et retiré de l'UI ; un panneau « Mes objets exposés » avec « Exposer les meilleurs » le remplace ; les armes s'équipent depuis la boutique d'armes (liaison L-182). | Clément |
