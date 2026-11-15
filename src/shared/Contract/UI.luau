@@ -1144,4 +1144,19 @@ for _, screenDef in UI.Screens do
 	end
 end
 
+-- Billboard de la cinématique d'ouverture (vague 62, a204, L-198 ; noms proposés à Clément) : facultatif. RevealController
+-- en pose une copie au-dessus de l'objet qui sort du colis, au marqueur Reveal, et y écrit le nom, la rareté (à sa
+-- couleur), le poids (« 1 250 kg ») et la mutation d'effet (cachée sans). Absent : un billboard V0 du code, mêmes noms.
+table.insert(UI.Billboards, {
+	Name = "BB_Reveal",
+	Class = "BillboardGui",
+	Optional = true,
+	Elements = {
+		{ Path = "ItemName", Class = "TextLabel" },
+		{ Path = "Rarity", Class = "TextLabel" },
+		{ Path = "Weight", Class = "TextLabel", Optional = true, Note = "le poids n'est pas écrit" },
+		{ Path = "Mutation", Class = "TextLabel", Optional = true, Note = "la mutation n'est pas écrite" },
+	} :: { Element },
+})
+
 return UI

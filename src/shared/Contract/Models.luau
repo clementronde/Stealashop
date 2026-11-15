@@ -113,6 +113,27 @@ local Store: ModelSpec = {
 			Silent = true, -- rien d'écrit s'il manque : les copies de sauvegarde de Clément (ServerStorage) n'en ont pas
 			Note = "facultatif : sans lui, pas de panneau StoreReqSign devant ce magasin, L-108",
 		},
+		-- Vague 62 (a204, L-198 ; noms proposés à Clément) : le plafond qui explose quand un gros objet sort d'un colis
+		-- (classe Large ou Colossal ; attribut CeilingBroken du serveur ; RevealController, Config/Reveal.Ceiling).
+		-- Ceiling (pièce ou Model) est caché en local tant que le plafond est cassé ; les copies locales des Shard_NN de
+		-- CeilingFractured (laissés invisibles dans la map, comme une vitre pré-fracturée) partent au marqueur Explode.
+		-- Facultatifs, et rien d'écrit s'ils manquent (greybox : sa pièce Ceiling et des morceaux V0 du code).
+		{
+			Name = "Ceiling",
+			Optional = true,
+			Silent = true,
+			Note = "facultatif : sans lui, rien ne casse au-dessus d'un gros objet, L-198",
+		},
+		{
+			Name = "CeilingFractured",
+			Class = "Model",
+			Optional = true,
+			Silent = true,
+			Inside = {
+				{ Name = "Shard_%02d", From = 1, To = 40, Min = 1, Optional = true, Note = "éclats du plafond, L-198" },
+			},
+			Note = "facultatif : sans lui, des morceaux V0 de la couleur de Ceiling, L-198",
+		},
 	},
 }
 
