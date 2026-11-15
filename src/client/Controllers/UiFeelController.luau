@@ -171,7 +171,9 @@ local function wire(inst: Instance)
 		return
 	end
 	local object = inst :: GuiObject
-	if object:FindFirstChild(UiMotion.HoverCard.Outline) ~= nil then
+	-- Vague 59 (L-182) : un cadre qui n'est pas un bouton et porte Hover = Pop est aussi une carte.
+	if object:FindFirstChild(UiMotion.HoverCard.Outline) ~= nil
+		or (not object:IsA("GuiButton") and object:GetAttribute("Hover") == "Pop") then
 		Motion.HoverCard(object)
 		return
 	end
@@ -744,8 +746,9 @@ function UiFeelController.Start()
 		return require(Shared:WaitForChild("Anim"):WaitForChild("MarkerSounds")) :: any
 	end)
 	if ok and type(markerSounds) == "table" then
-		Motion.SetSoundPlayer(function(name: string)
-			markerSounds.play(name, nil) -- son 2D, pour le joueur local seulement
+		Motion.SetSoundPlayer(function(name: string): boolean
+			-- son 2D, pour le joueur local seulement ; vague 59 : true s'il a joué (Motion.Click)
+			return markerSounds.play(name, nil) ~= nil
 		end)
 	end
 	chase = sibling("ChaseController")

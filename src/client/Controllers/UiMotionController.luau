@@ -1,0 +1,365 @@
+--!strict
+-- UiMotionController (vague 59, a189, L-182 points 1 et 3 ; client) : le module commun de la nouvelle direction de
+-- l'UI. Il suit les écrans UI_* du PlayerGui (copies de StarterGui, et ce que les contrôleurs y clonent ensuite).
+--
+-- Rôle :
+--   - Apparitions (attribut Appear de Clément, Controllers/UI/Appear) : un écran qui s'allume (Enabled passe à vrai)
+--     joue l'entrée de ses éléments Appear visibles ; un élément Appear qui devient visible (Visible) joue la sienne.
+--     Un écran qui s'éteint, un élément caché, retiré ou détruit : tout revient à l'état de Clément. La fermeture
+--     courte se joue par Motion.Close (écran) ou Motion.Hide (élément), qui l'attendent avant d'éteindre ; un écran
+--     éteint directement (Enabled = false) disparaît d'un coup. Hover et Press sont lus par Motion.Button et
+--     Motion.HoverCard (branchés par UiFeelController) ; la valeur d'un des trois attributs qui n'est pas au contrat
+--     donne une ligne dans la sortie, en Studio, une fois par élément.
+--   - Flou (L-182 point 3) : un BlurEffect UiMotion.Blur.Name créé dans Lighting (local au joueur) monte à Blur.Size
+--     quand un écran de Blur.Screens (ou un ScreenGui qui porte l'attribut Blur.Attribute = true) est allumé, et part
+--     en Blur.OutTime à sa fermeture (dès que Motion le ferme), ou dès qu'une poursuite commence
+--     (ChaseController.IsChased) : jamais de flou pendant une poursuite. Parti, il est détruit. Une connexion
+--     Heartbeat seulement tant qu'un de ces écrans est allumé ou que le flou est là.
+-- Connexions : une par écran pour Enabled, DescendantAdded et AncestryChanged, et une ou deux par élément qui porte
+-- un attribut d'animation ; toutes coupées quand l'élément quitte l'écran ou que l'écran quitte le PlayerGui.
+-- Aucun script dans l'UI ; aucune valeur de Clément changée durablement.
+--
+-- API (client) :
+--   UiMotionController.GetBlur() -> { Active: boolean, Size: number, Wanted: boolean }   état du flou (bancs)
+--   UiMotionController.GetWatchCount() -> number   éléments suivis (bancs : aucune connexion qui reste)
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local UiMotion = require(Shared:WaitForChild("Config"):WaitForChild("UiMotion"))
+local Attributes = require(Shared:WaitForChild("Contract"):WaitForChild("Attributes"))
+local UI = script.Parent:WaitForChild("UI")
+local Appear = require(UI:WaitForChild("Appear"))
+local Motion = require(UI:WaitForChild("Motion"))
+
+type ChaseApi = { IsChased: () -> boolean }
+
+local SCREEN_PREFIX = "UI_"
+local TEMPLATE = "Template"
+local BLUR = UiMotion.Blur
+local BLUR_IN_INFO = TweenInfo.new(BLUR.InTime, BLUR.Style, BLUR.Direction)
+local BLUR_OUT_INFO = TweenInfo.new(BLUR.OutTime, BLUR.Style, BLUR.Direction)
+local IS_STUDIO = RunService:IsStudio()
+
+local BLUR_SCREENS: { [string]: boolean } = {}
+for _, name in BLUR.Screens do
+	BLUR_SCREENS[name] = true
+end
+
+-- Les trois attributs d'animation et leurs valeurs connues (Contract/Attributes).
+local WATCHED: { { name: string, values: { [string]: boolean }, list: string } } = {}
+for _, def in { Attributes.Appear, Attributes.Hover, Attributes.Press } do
+	local values: { [string]: boolean } = {}
+	for _, value in def.Values do
+		values[value] = true
+	end
+	table.insert(WATCHED, { name = def.Name, values = values, list = table.concat(def.Values, ", ") })
+end
+
+local UiMotionController = {}
+
+local localPlayer = Players.LocalPlayer
+local chase: ChaseApi? = nil
+local screens: { [Instance]: { RBXScriptConnection } } = {}
+local objects: { [Instance]: { RBXScriptConnection } } = {}
+local warned: { [Instance]: boolean } = setmetatable({}, { __mode = "k" }) :: any
+local blurScreens: { [ScreenGui]: boolean } = {}
+local blur: BlurEffect? = nil
+local blurTween: Tween? = nil
+local blurWanted = false
+local blurStep: RBXScriptConnection? = nil
+
+local function sibling(name: string): any
+	local module = script.Parent:FindFirstChild(name)
+	if module == nil or not module:IsA("ModuleScript") then
+		return nil
+	end
+	local ok, result = pcall(require, module)
+	return if ok and type(result) == "table" then result else nil
+end
+
+local function inTemplate(inst: Instance): boolean
+	local current: Instance? = inst
+	while current ~= nil and not current:IsA("LayerCollector") do
+		if current.Name == TEMPLATE then
+			return true
+		end
+		current = current.Parent
+	end
+	return false
+end
+
+local function shownInScreen(object: GuiObject): boolean
+	local current: Instance? = object
+	while current ~= nil do
+		if current:IsA("GuiObject") and not (current :: GuiObject).Visible then
+			return false
+		end
+		if current:IsA("LayerCollector") then
+			return (current :: LayerCollector).Enabled
+		end
+		current = current.Parent
+	end
+	return false
+end
+
+------------------------------------------------------------------------------
+-- Flou
+------------------------------------------------------------------------------
+
+local function lighting(): Instance?
+	local ok, service = pcall(function(): Instance
+		return game:GetService("Lighting")
+	end)
+	return if ok then service else nil
+end
+
+local function wantsBlur(): boolean
+	local api = chase
+	if api ~= nil and api.IsChased() then
+		return false
+	end
+	for gui in blurScreens do
+		if gui.Enabled and gui.Parent ~= nil and Motion.GetState(gui) ~= "Closing" then
+			return true
+		end
+	end
+	return false
+end
+
+local function stopBlurStep()
+	local connection = blurStep
+	blurStep = nil
+	if connection then
+		connection:Disconnect()
+	end
+end
+
+local function setBlur(wanted: boolean)
+	if wanted == blurWanted then
+		return
+	end
+	blurWanted = wanted
+	local previous = blurTween
+	blurTween = nil
+	if previous then
+		previous:Cancel()
+	end
+	local effect = blur
+	if wanted and (effect == nil or effect.Parent == nil) then
+		local parent = lighting()
+		if parent == nil then
+			return
+		end
+		local created = Instance.new("BlurEffect")
+		created.Name = BLUR.Name
+		created.Size = 0
+		created.Parent = parent
+		blur = created
+		effect = created
+	end
+	if effect == nil then
+		return
+	end
+	local current: BlurEffect = effect
+	local tween = TweenService:Create(current, if wanted then BLUR_IN_INFO else BLUR_OUT_INFO, { Size = if wanted then BLUR.Size else 0 })
+	blurTween = tween
+	tween.Completed:Connect(function(playback: Enum.PlaybackState)
+		if playback ~= Enum.PlaybackState.Completed or blurTween ~= tween then
+			return
+		end
+		blurTween = nil
+		if not blurWanted then
+			if blur == current then
+				blur = nil
+			end
+			current:Destroy() -- parti : rien n'est laissé dans Lighting
+		end
+	end)
+	tween:Play()
+end
+
+local function updateBlur()
+	setBlur(wantsBlur())
+	local anyOpen = false
+	for gui in blurScreens do
+		if gui.Enabled then
+			anyOpen = true
+			break
+		end
+	end
+	-- Heartbeat (poursuite, fermeture par Motion) seulement tant qu'un écran à flou est allumé ou que le flou est là.
+	if anyOpen or blur ~= nil then
+		if blurStep == nil then
+			blurStep = RunService.Heartbeat:Connect(function()
+				updateBlur()
+			end)
+		end
+	else
+		stopBlurStep()
+	end
+end
+
+local function blursBehind(screen: Instance): boolean
+	return BLUR_SCREENS[screen.Name] == true or screen:GetAttribute(BLUR.Attribute) == true
+end
+
+------------------------------------------------------------------------------
+-- Éléments et écrans
+------------------------------------------------------------------------------
+
+local function unwatchObject(object: Instance)
+	local list = objects[object]
+	if list == nil then
+		return
+	end
+	objects[object] = nil
+	for _, connection in list do
+		connection:Disconnect()
+	end
+	Appear.Reset(object)
+end
+
+-- Ligne dans la sortie (Studio, une fois par élément) pour une valeur qui n'est pas au contrat.
+local function checkValues(object: Instance)
+	if not IS_STUDIO or warned[object] then
+		return
+	end
+	for _, def in WATCHED do
+		local value = object:GetAttribute(def.name)
+		if value ~= nil and not (type(value) == "string" and def.values[value]) then
+			warned[object] = true
+			print(`[UiMotion] {object:GetFullName()} : {def.name} = « {tostring(value)} » inconnu ({def.list}) : ignoré`)
+		end
+	end
+end
+
+local function hasAnimation(object: Instance): boolean
+	for _, def in WATCHED do
+		if object:GetAttribute(def.name) ~= nil then
+			return true
+		end
+	end
+	return false
+end
+
+local function watchObject(inst: Instance, screen: Instance)
+	if objects[inst] or inst.Parent == nil or not inst:IsA("GuiObject") or not inst:IsDescendantOf(screen) then
+		return
+	end
+	if not hasAnimation(inst) then
+		return
+	end
+	checkValues(inst)
+	if inTemplate(inst) or not Appear.Has(inst) then
+		return -- Hover et Press : lus par Motion à chaque survol et appui, rien à suivre ici
+	end
+	local object = inst :: GuiObject
+	local list: { RBXScriptConnection } = {}
+	objects[object] = list
+	table.insert(list, object:GetPropertyChangedSignal("Visible"):Connect(function()
+		if object.Visible then
+			if shownInScreen(object) then
+				Appear.Play(object)
+			end
+		else
+			Appear.Reset(object)
+		end
+	end))
+	table.insert(list, object.AncestryChanged:Connect(function()
+		if object.Parent == nil or not object:IsDescendantOf(screen) then
+			unwatchObject(object)
+		end
+	end))
+end
+
+local function unwatchScreen(screen: Instance)
+	local list = screens[screen]
+	if list == nil then
+		return
+	end
+	screens[screen] = nil
+	for _, connection in list do
+		connection:Disconnect()
+	end
+	for object in table.clone(objects) do
+		if object:IsDescendantOf(screen) then
+			unwatchObject(object)
+		end
+	end
+	Appear.Reset(screen)
+	if screen:IsA("ScreenGui") then
+		blurScreens[screen :: ScreenGui] = nil
+	end
+	updateBlur()
+end
+
+local function watchScreen(screen: Instance)
+	if screens[screen] or not screen:IsA("ScreenGui") or string.sub(screen.Name, 1, #SCREEN_PREFIX) ~= SCREEN_PREFIX then
+		return
+	end
+	local gui = screen :: ScreenGui
+	local list: { RBXScriptConnection } = {}
+	screens[gui] = list
+	if blursBehind(gui) then
+		blurScreens[gui] = true
+	end
+	table.insert(list, gui:GetPropertyChangedSignal("Enabled"):Connect(function()
+		if gui.Enabled then
+			Appear.Open(gui)
+		else
+			Appear.Reset(gui)
+		end
+		if blurScreens[gui] then
+			updateBlur()
+		end
+	end))
+	-- Branché à la fin de l'image : une copie renommée juste après son arrivée n'est plus « Template ».
+	table.insert(list, gui.DescendantAdded:Connect(function(descendant: Instance)
+		task.defer(watchObject, descendant, gui)
+	end))
+	table.insert(list, gui.AncestryChanged:Connect(function()
+		if gui.Parent == nil or gui.Parent ~= localPlayer:FindFirstChildOfClass("PlayerGui") then
+			unwatchScreen(gui)
+		end
+	end))
+	for _, descendant in gui:GetDescendants() do
+		watchObject(descendant, gui)
+	end
+	if blurScreens[gui] then
+		updateBlur()
+	end
+end
+
+------------------------------------------------------------------------------
+
+function UiMotionController.GetBlur(): { Active: boolean, Size: number, Wanted: boolean }
+	local effect = blur
+	return {
+		Active = effect ~= nil and effect.Parent ~= nil,
+		Size = if effect then effect.Size else 0,
+		Wanted = blurWanted,
+	}
+end
+
+function UiMotionController.GetWatchCount(): number
+	local n = 0
+	for _ in objects do
+		n += 1
+	end
+	return n
+end
+
+function UiMotionController.Start()
+	chase = sibling("ChaseController")
+	local playerGui = localPlayer:WaitForChild("PlayerGui")
+	playerGui.ChildAdded:Connect(watchScreen)
+	for _, child in playerGui:GetChildren() do
+		watchScreen(child)
+	end
+end
+
+return UiMotionController

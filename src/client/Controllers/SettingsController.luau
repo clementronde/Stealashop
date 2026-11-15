@@ -244,8 +244,17 @@ local function wireClick(inst: Instance)
 		return
 	end
 	clickWired[inst] = true
-	(inst :: GuiButton).Activated:Connect(function()
-		playClick(nil)
+	local button = inst :: GuiButton
+	button.Activated:Connect(function()
+		-- Vague 59 (L-182) : un seul son par action, le clic se tait si l'action a déjà le sien (Motion.Click).
+		local click: ((GuiButton, () -> ()) -> ())? = (Motion :: any).Click
+		if click == nil then
+			playClick(nil)
+			return
+		end
+		click(button, function()
+			playClick(nil)
+		end)
 	end)
 end
 

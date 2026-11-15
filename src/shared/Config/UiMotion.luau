@@ -405,6 +405,141 @@ local UiMotion = {
 		-- (ZIndex du prototype).
 		NavLayerZIndex = 15,
 	},
+
+	-- Vague 59 (a189, L-182 points 1 à 3) : nouvelle direction de l'UI (vidéo de Break and Steal an Egg mesurée image
+	-- par image). Valeurs de la ligne L-182, sauf celles marquées « V0 proposé, absent du doc ».
+	-- Animations posées par Clément en attributs sur ses GuiObject (noms et valeurs : Contract/Attributes, Appear, Hover,
+	-- Press) : Appear est joué par Controllers/UI/Appear (UiMotionController le lance à l'ouverture, Motion.Close et
+	-- Motion.Hide attendent sa fermeture) ; Hover et Press par Motion.Button et Motion.HoverCard.
+	Appear = {
+		-- Pop : « cadre de 0,55 à 1 en 0,15 s, Quint Out, sans rebond ; fermeture en 0,07 s, Quad In ».
+		Pop = {
+			From = 0.55,
+			Time = 0.15,
+			Style = Enum.EasingStyle.Quint,
+			Direction = Enum.EasingDirection.Out,
+			CloseTo = 0.4, -- L-188 : « fermeture de 1 à 0,4 en 0,07 s, Quad In »
+			CloseTime = 0.07,
+			CloseStyle = Enum.EasingStyle.Quad,
+			CloseDirection = Enum.EasingDirection.In,
+		},
+		-- Cascade : « les enfants d'une liste entrent l'un après l'autre, 0,05 s d'écart, d'abord le fond puis le
+		-- contenu » : le cadre (le fond) est là tout de suite, ses enfants visibles (sauf Template) entrent ensuite.
+		Cascade = {
+			Gap = 0.05,
+			Start = 0.05, -- L-188 : le contenu « une ou deux images après » le fond (0,05 s : entre les deux, à 30 images/s)
+			From = 0, -- V0 proposé, absent du doc
+			Time = 0.15, -- V0 proposé, absent du doc : comme Pop
+			Style = Enum.EasingStyle.Quint, -- V0 proposé, absent du doc : comme Pop
+			Direction = Enum.EasingDirection.Out,
+			Max = 14, -- V0 proposé, absent du doc : comme OpenStagger.Max (les suivants partent avec le 14e)
+			Late = 0.3, -- V0 proposé, absent du doc : s pendant lesquelles un enfant cloné après l'ouverture entre aussi
+			CloseTo = 0.4, -- V0 proposé, absent du doc : tous ensemble, comme la fermeture de Pop
+			CloseTime = 0.07,
+		},
+		-- Stamp : « titre de 1,6 à 1 et de −5° à 0 en 0,13 s ».
+		Stamp = {
+			From = 1.6,
+			Tilt = -5, -- degrés, ajoutés à la Rotation posée par Clément, qui revient exactement
+			Time = 0.13,
+			Style = Enum.EasingStyle.Quad, -- V0 proposé, absent du doc
+			Direction = Enum.EasingDirection.Out, -- V0 proposé, absent du doc
+			CloseTo = 0.4, -- V0 proposé, absent du doc : comme Pop
+			CloseTime = 0.07,
+		},
+		-- SlideRight : « panneau depuis le bord droit en 0,17 s, Quint Out ». Il part de juste derrière le bord droit
+		-- de l'écran ; seule sa Position bouge, remise exactement à la fin.
+		SlideRight = {
+			Time = 0.17,
+			Style = Enum.EasingStyle.Quint,
+			Direction = Enum.EasingDirection.Out,
+			CloseTime = 0.1, -- V0 proposé, absent du doc : il repart vers la droite
+			CloseStyle = Enum.EasingStyle.Quad, -- V0 proposé, absent du doc
+			CloseDirection = Enum.EasingDirection.In,
+		},
+		-- DropIn (L-188) : « tombe de sa hauteur à sa place en 0,25 s, Back Out, 0,05 s d'écart, puis se balance de ± 2 à
+		-- 3° toutes les 1,2 s » (décor Decor.Hang1 à Hang4 de UI_RobuxShop). L'écart : entre frères DropIn, dans l'ordre
+		-- LayoutOrder puis nom. Le balancement dure tant que l'élément est affiché ; pas de fermeture.
+		DropIn = {
+			Time = 0.25,
+			Style = Enum.EasingStyle.Back,
+			Direction = Enum.EasingDirection.Out,
+			Gap = 0.05,
+			Sway = 2.5, -- degrés de part et d'autre de la Rotation de Clément (« ± 2 à 3° »)
+			SwayPeriod = 1.2, -- s pour un aller-retour
+		},
+		ScaleName = "AppearScale", -- V0 proposé, absent du doc : UIScale passager, détruit à la fin de l'animation
+		SlideName = "AppearSlide", -- V0 proposé, absent du doc : NumberValue passagère du glissement
+	},
+	-- Hover = Pop : « × 1,10 en 0,067 s, un peu plus foncé (calque Shade, Hover.ShadeTransparency) ; une carte se
+	-- penche de 3° et son objet grossit de 15 % en débordant » (carte : cadre avec HoverOutline, ou un cadre qui n'est
+	-- pas un bouton). Son UI_Hover comme Hover.
+	HoverPop = {
+		To = 1.1,
+		Time = 0.067,
+		Style = Enum.EasingStyle.Quad, -- V0 proposé, absent du doc
+		Direction = Enum.EasingDirection.Out,
+		CardTilt = 3, -- degrés, ajoutés à la Rotation de la carte posée par Clément
+		IconScale = 1.15, -- son Icon (pas de décalage ni de rotation de l'Icon, contrairement à HoverCard)
+	},
+	-- Press = Squash : « 0,75 en 0,033 s puis 1,1 et retour en 0,1 s » : 0,75 tant que le bouton est tenu, puis au
+	-- relâché 1,1 et retour (à 1, ou au survol si la souris est dessus ; le pic est alors 1,1 fois le survol).
+	PressSquash = {
+		To = 0.75,
+		Time = 0.033,
+		Bounce = 1.1,
+		BounceTime = 0.05, -- V0 proposé, absent du doc : la ligne ne donne que le total
+		BackTime = 0.1,
+		Style = Enum.EasingStyle.Quad, -- V0 proposé, absent du doc
+		Direction = Enum.EasingDirection.Out,
+	},
+	-- Un seul son par action : le clic d'un bouton (son choisi dans les réglages, UI_Click_<Id>, SettingsController)
+	-- se tait quand l'action a déjà son son (UI_Success des boutons de Success.Buttons ; UI_Open, UI_Close, UI_Deny
+	-- joués par Motion dans les ClickGuard s autour du clic). UI_Hover ne compte pas.
+	ClickGuard = 0.05, -- V0 proposé, absent du doc
+	-- Raretés qui bougent (Controllers/UI/RarityFx) : un UIGradient (celui de Clément nommé GradientName, sinon créé
+	-- par le code) sur le texte ou le fond d'une carte ; la couleur de l'élément passe au blanc le temps de l'effet
+	-- (le dégradé porte les couleurs) et revient à Clear.
+	RarityFx = {
+		GradientName = "RarityGradient", -- nom des maquettes Figma (Clip.RarityGradient de l'index v4)
+		-- « dégradé fixe jusqu'à Épique, reflet qui passe à Légendaire, arc-en-ciel qui défile pour Mythique et
+		-- Secret » ; L-188 : Divine aussi en arc-en-ciel.
+		Kinds = {
+			Common = "Static",
+			Uncommon = "Static",
+			Rare = "Static",
+			Epic = "Static",
+			Legendary = "Sheen",
+			Mythic = "Rainbow",
+			Secret = "Rainbow",
+			Divine = "Rainbow",
+		} :: { [string]: string },
+		Light = 0.25, -- V0 proposé, absent du doc : haut du dégradé, couleur de la rareté tirée vers le blanc
+		Dark = 0.3, -- V0 proposé, absent du doc : bas du dégradé, tirée vers le noir
+		Rotation = 90, -- V0 proposé, absent du doc : dégradé fixe de haut en bas
+		SheenRotation = 45, -- V0 proposé, absent du doc : reflet en biais
+		SheenPeriod = 2, -- V0 proposé, absent du doc : un reflet toutes les 2 s
+		SheenPass = 0.6, -- V0 proposé, absent du doc : il traverse en 0,6 s
+		SheenWidth = 0.12, -- V0 proposé, absent du doc : demi-largeur du reflet, en part de l'élément
+		SheenColor = Color3.new(1, 1, 1),
+		SheenStrength = 0.8, -- V0 proposé, absent du doc
+		RainbowRotation = 0, -- V0 proposé, absent du doc : il défile de gauche à droite
+		RainbowPeriod = 3, -- « cycle d'environ 3 s »
+	},
+	-- Flou derrière les boutiques et l'index (UiMotionController) : BlurEffect Name créé par le code dans Lighting
+	-- (local au joueur), jamais pendant une poursuite (ChaseController.IsChased) ; détruit une fois parti.
+	Blur = {
+		Name = "UiBlur", -- V0 proposé, absent du doc
+		Size = 12, -- V0 proposé, absent du doc
+		InTime = 0.17, -- V0 proposé, absent du doc : comme la sortie
+		OutTime = 0.17, -- « il disparaît en 0,17 s à la fermeture »
+		Style = Enum.EasingStyle.Quint, -- V0 proposé, absent du doc
+		Direction = Enum.EasingDirection.Out,
+		-- Écrans qui floutent le jeu derrière eux (V0 proposé : les boutiques d'achat et l'index, toutes versions) ;
+		-- un autre ScreenGui aussi s'il porte l'attribut Attribute = true (posé par Clément).
+		Screens = { "UI_WeaponShop", "UI_AuraShop", "UI_RobuxShop", "UI_DiamondShop", "UI_Index", "UI_Index_v2", "UI_Index_v3" },
+		Attribute = "Blur",
+	},
 }
 
 export type UiMotion = typeof(UiMotion)
