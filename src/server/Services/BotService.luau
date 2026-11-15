@@ -30,7 +30,9 @@
 --   - défense (vague 37, a124, L-117 point 7, Config/Bot.Defense, V0 proposés). Vague 42 (Cantin, 2026-11-14 :
 --     « il est censé nous courir après une fois qu'on a volé l'objet, pas quand on est dans sa base ») : porte
 --     cassée et intrus qui n'a rien volé ne déclenchent plus rien ; la poursuite démarre à la prise d'un objet.
---     Ensuite, celui qui lui a pris un objet (Engaged) est poursuivi et frappé sans limite de temps tant qu'il est
+--     Vague 54 (a175, Cantin, 2026-11-15) : elle démarre seulement quand le voleur SORT de sa boutique (pieds hors
+--     de l'emprise au sol de Bounds) en portant l'objet pris (Pending, exitStep) ; dedans, même objet en main, ni
+--     poursuite ni coup ; une fois par objet pris (après abandon, il faut un nouveau vol). Ensuite, celui qui lui a pris un objet (Engaged) est poursuivi et frappé sans limite de temps tant qu'il est
 --     dans sa boutique, avec ou sans objet ; dehors, le compte de Defense.GiveUpTime (10) s démarre (laisse de
 --     15 studs aussi), s'arrête s'il rentre et repart de zéro s'il ressort ; dehors sans objet, il est suivi, pas
 --     frappé. Bot rentré : un nouveau vol pour une nouvelle poursuite (V0). Les mentions du casseur de porte, de
@@ -169,6 +171,9 @@ type State = {
 	Tracks: { [string]: AnimationTrack },
 	Bat: Tool?,
 	Chase: Chase?,
+	-- Vague 54 (a175, Cantin, 2026-11-15) : objets pris (uid) dont le voleur n'est pas encore sorti de la boutique
+	-- avec : pas de poursuite ni de coup pour eux tant qu'il est dedans (exitStep).
+	Pending: { [string]: boolean },
 }
 
 -- Mêmes noms que DisplayService (dossier des objets exposés) et PvPController (valeur exposée du bot).
@@ -534,6 +539,7 @@ local function arrive()
 		Tracks = {},
 		Bat = nil,
 		Chase = nil,
+		Pending = {},
 	}
 	state = current
 	for slot = 1, Bot.ItemCount do
@@ -674,9 +680,10 @@ function BotService.KickCooldown(player: Player): number?
 	return if gentle(player) then DEFENSE.TutorialKickCooldown else nil
 end
 
+-- Vague 54 (a175) : un objet pris mais pas encore sorti de la boutique (Pending) ne compte pas.
 local function carrying(current: State, player: Player): boolean
-	for _, holder in current.Holders do
-		if holder == player then
+	for uid, holder in current.Holders do
+		if holder == player and not current.Pending[uid] then
 			return true
 		end
 	end
@@ -712,8 +719,8 @@ end
 -- cette poursuite et qui est dans sa boutique. Vague 42 (Cantin : « il est censé nous courir après une fois qu'on a
 -- volé l'objet, pas quand on est dans sa base ») : plus jamais un intrus qui n'a rien volé.
 local function pickTarget(current: State, chase: Chase): Player?
-	for _, holder in current.Holders do
-		if reach(current, chase, holder) then
+	for uid, holder in current.Holders do
+		if not current.Pending[uid] and reach(current, chase, holder) then
 			return holder
 		end
 	end
@@ -933,9 +940,29 @@ local function alert(current: State, player: Player, why: "Door" | "Grab")
 	log(`le bot poursuit {player.Name} ({if why == "Door" then "porte cassée" else "objet pris"})`)
 end
 
--- 10 fois par seconde : poursuite, coup, retour. Sans yield.
+-- Vague 54 (a175, Cantin, 2026-11-15 : « il faut qu'il commence à nous courir après, seulement lorsqu'on sort de
+-- son magasin avec l'item ») : un voleur qui porte un objet pris (Pending) et dont les pieds quittent l'emprise au
+-- sol de Bounds déclenche la poursuite (alert), une seule fois par objet pris. Dedans, rien. Sans yield.
+local function exitStep(current: State)
+	local bounds = boundsOf(current.Plot)
+	for uid in current.Pending do
+		local thief: Player? = current.Holders[uid]
+		local root = if thief then rootOf(thief) else nil
+		if thief == nil then
+			current.Pending[uid] = nil
+		elseif root and (bounds == nil or distanceOutside(bounds, root.Position) > 0) then
+			current.Pending[uid] = nil
+			alert(current, thief, "Grab")
+		end
+	end
+end
+
+-- 10 fois par seconde : sortie avec un objet, poursuite, coup, retour. Sans yield.
 local function defenseStep()
 	local current = state
+	if current then
+		exitStep(current)
+	end
 	local chase = if current then current.Chase else nil
 	if current == nil or chase == nil then
 		return
@@ -1066,7 +1093,8 @@ function BotService.Hold(plot: Model, uid: string, thief: Player): boolean
 			end
 			publish(current)
 			emitTheft(thief, item.ItemId, "Grabbed")
-			alert(current, thief, "Grab") -- vague 37 : il défend sa boutique
+			-- Vague 54 (a175) : plus de poursuite à la prise ; elle part quand le voleur sort avec (exitStep).
+			current.Pending[uid] = true
 			return true
 		end
 	end
@@ -1081,6 +1109,7 @@ function BotService.Release(plot: Model, uid: string, thief: Player): boolean
 	end
 	current.Held[uid] = nil
 	current.Holders[uid] = nil
+	current.Pending[uid] = nil
 	local item = current.Items[slot]
 	if item == nil or item.Uid ~= uid then
 		return false
@@ -1104,6 +1133,7 @@ function BotService.TakeHeld(plot: Model, uid: string, thief: Player): boolean
 	end
 	current.Held[uid] = nil
 	current.Holders[uid] = nil
+	current.Pending[uid] = nil
 	local item = current.Items[slot]
 	current.Items[slot] = nil
 	publish(current)
