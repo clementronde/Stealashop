@@ -65,13 +65,13 @@
 -- Le nombre reste à la valeur d'avant (HudController.HoldSpeed, base = Formulas.ShownSpeed de la Vitesse d'avant) et
 -- monte à l'arrivée, avec la pulsation SpeedPulse. Copie de UI_HUD.TrainGainFly.Template de Clément (facultatif),
 -- sinon de BB_Gain.Row dans un cadre fait ici ; « ×2 » du trail comme au-dessus du joueur. Animations réduites,
--- poursuite en cours, plafond MaxInFlight, joueur hors de l'écran ou Enabled = false : l'ancien « +X » sur place.
+-- joueur hors de l'écran ou Enabled = false : l'ancien « +X » sur place (ni plafond ni poursuite, fusion58).
 -- Avec ChunksPerSecond > 1, chaque morceau vole de même.
 --
 -- API (client) :
 --   GainController.FlyGain(text, fromWorld, kind) -> boolean   vague 64 : un « +X » qui jaillit de `fromWorld` et vole
 --       jusqu'au compteur du HUD de `kind` ("Speed"), qui pulse à l'arrivée (sans retenir son nombre : l'appelant ne
---       dit pas ce qu'il ajoute) ; false s'il n'a pas pu voler (animations réduites, poursuite, rien à l'écran…).
+--       dit pas ce qu'il ajoute) ; false s'il n'a pas pu voler (animations réduites, rien à l'écran…).
 -- Pour un test dans Studio (barre de commande côté client) :
 --   GainController.GetActive() -> { Gains: number, Flyers: number, Pops: number, Bills: number, IncomeFlies: number, TrainFlies: number }
 --   GainController.Superscript(text) -> string   « ×2 » en exposant Unicode (a178)
@@ -1096,15 +1096,13 @@ local function reducedMotion(): boolean
 	return ok and value == true
 end
 
--- Un gain peut voler maintenant ; sinon (réglage coupé, animations réduites, poursuite, plafond atteint) : l'ancien
--- « +X » qui monte sur place. Pendant une poursuite, rien ne traverse l'écran (lecture du danger d'abord).
+-- Un gain du tapis peut voler maintenant ; sinon (réglage coupé, animations réduites) : l'ancien « +X » qui monte sur
+-- place. Ni plafond ni poursuite (fusion58, Cantin) : un gain par seconde, et le tapis est en zone safe.
 local function canFly(): boolean
 	local spec = TRAIN_FLY
 	return spec ~= nil
 		and spec.Enabled == true
-		and active.TrainFlies < spec.MaxInFlight
 		and not reducedMotion()
-		and not isChased()
 end
 
 -- La copie qui vole : le modèle facultatif de Clément (UI_HUD.TrainGainFly.Template), sinon une copie de BB_Gain.Row

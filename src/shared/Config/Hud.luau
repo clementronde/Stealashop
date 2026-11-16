@@ -49,7 +49,7 @@ local Hud = {
 	-- Speed du HUD l'aspire ; le nombre Speed ne monte qu'à son arrivée (HudController.HoldSpeed), avec la pulsation
 	-- SpeedPulse. Mesures de la vidéo de référence (docs/claude/notes/2026-11-16_video-effets-ui.md, section 2 : « +8 »
 	-- du banc, trajet joueur → compteur) ; le reste est « V0 proposé, absent du doc ». Animations réduites (VISUAL
-	-- EFFECTS sur OFF ou ReducedMotionEnabled de Roblox), poursuite en cours, joueur hors de l'écran ou Enabled = false :
+	-- EFFECTS sur OFF ou ReducedMotionEnabled de Roblox), joueur hors de l'écran ou Enabled = false (ni plafond ni poursuite) :
 	-- l'ancien « +X » qui monte sur place (BB_Gain, UiMotion.FloatGain) et le compteur qui pulse tout de suite.
 	TrainGainFly = {
 		Enabled = true,
@@ -69,7 +69,6 @@ local Hud = {
 		SuckStyle = Enum.EasingStyle.Quad, -- In
 		EndScale = 0.3, -- fiche : rétrécit de 1 à ≈ 0,3
 		Edge = 0.06, -- V0 proposé, absent du doc : le gain reste à 6 % au moins des bords de l'écran
-		MaxInFlight = 6, -- fiche : « garder un plafond (par exemple 6 gains en vol) » ; au-delà : l'ancien « +X »
 		-- Repli sans modèle de Clément (V0 proposés, absents du doc) : hauteur en part de celle de l'écran (fiche : chiffre
 		-- à ≈ 3,5 %, pastille comprise ≈ 5 %), largeur = Aspect × hauteur (« +2 Speed/s »), au-dessus du HUD (ZIndex).
 		Height = 0.05,

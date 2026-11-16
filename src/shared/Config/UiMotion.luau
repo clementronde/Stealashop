@@ -583,7 +583,7 @@ local UiMotion = {
 		Direction = Enum.EasingDirection.Out,
 		-- Écrans qui floutent le jeu derrière eux (V0 proposé : les boutiques d'achat et l'index, toutes versions) ;
 		-- un autre ScreenGui aussi s'il porte l'attribut Attribute = true (posé par Clément).
-		Screens = { "UI_WeaponShop", "UI_AuraShop", "UI_RobuxShop", "UI_DiamondShop", "UI_Index", "UI_Index_v2", "UI_Index_v3" },
+		Screens = { "UI_WeaponShop", "UI_AuraShop", "UI_RobuxShop", "UI_RobuxShop_v2", "UI_DiamondShop", "UI_Index", "UI_Index_v2", "UI_Index_v3" },
 		Attribute = "Blur",
 	},
 	-- Vague 64 (a212 ; L-188 B : « le HUD se cache derrière les fenêtres de boutique » ; vidéo, section 3 : la barre du
@@ -596,7 +596,7 @@ local UiMotion = {
 	HudAway = {
 		Enabled = VIDEO_RHYTHM,
 		-- V0 proposé, absent du doc : les boutiques d'achat (L-188 ; index et récompenses : Clément tranche).
-		Screens = { "UI_WeaponShop", "UI_AuraShop", "UI_RobuxShop", "UI_DiamondShop" },
+		Screens = { "UI_WeaponShop", "UI_AuraShop", "UI_RobuxShop", "UI_RobuxShop_v2", "UI_DiamondShop" },
 		Attribute = "HudAway", -- V0 proposé, absent du doc
 		-- V0 proposé, absent du doc : la barre d'actions (écran, chemin depuis l'écran).
 		Targets = { { Screen = "UI_Hotbar", Path = "Bar" } },
