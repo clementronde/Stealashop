@@ -102,9 +102,10 @@ UI.Screens = {
 		Class = "ScreenGui",
 		Elements = {
 			{ Path = "Banner" },
-			{ Path = "ThiefName" },
-			{ Path = "ItemName" },
-			{ Path = "Arrow", Class = "ImageLabel" },
+			-- L-175 (Clément, 2026-11-15) : l'alerte n'est plus qu'un bandeau de texte ; ces trois éléments sont facultatifs.
+			{ Path = "ThiefName", Optional = true, Note = "le pseudo du voleur n'est pas affiché (L-175)" },
+			{ Path = "ItemName", Optional = true, Note = "le nom de l'objet n'est pas affiché (L-175)" },
+			{ Path = "Arrow", Class = "ImageLabel", Optional = true, Note = "pas de flèche vers le voleur (L-175)" },
 		},
 	},
 	{

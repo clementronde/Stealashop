@@ -30,9 +30,9 @@
 --   - flèche permanente vers le voleur : Arrow de Clément, tournée à chaque image comme une boussole
 --     vue de la caméra, à l'horizontale : 0° = droit devant (haut de l'écran), 90° = à droite,
 --     180° = derrière. L'image pointe vers le haut : la Rotation posée par Clément sert de départ (une
---     image qui pointe ailleurs se corrige ainsi). Sans Arrow : un Beam V0 rouge au sol, des pieds du
---     joueur à ceux du voleur, qui s'affine vers lui (comme la flèche du tuto), dans un dossier
---     TheftAlertArrow de la caméra. Cachée tant que le personnage du voleur n'est pas là (streaming) ;
+--     image qui pointe ailleurs se corrige ainsi). Cachée tant que le personnage du voleur n'est pas là
+--     (streaming). L-175 (Clément, 2026-11-15) : l'alerte n'est plus qu'un bandeau de texte ; ThiefName,
+--     ItemName et Arrow sont facultatifs et, sans Arrow, plus aucune flèche (le Beam V0 au sol est retiré) ;
 --   - voleur surligné à travers les murs : un Highlight AlwaysOnTop dans son personnage, créé par ce
 --     client (vu de lui seul), pour MAX_HIGHLIGHTS voleurs au plus. Roblox n'affiche que 31 Highlight
 --     à la fois (ShelfBoxController en garde 25 pour les colis, la marge de 6 sert aux autres) : le
@@ -51,7 +51,7 @@
 --
 -- API (client) :
 --   TheftAlertController.GetState() -> { Active, Thefts, Thief, ItemId, ThiefName, ItemName,
---       Headline, Fallback, Arrow, ArrowRotation, Beam, Highlights, Siren }
+--       Headline, Fallback, Arrow, ArrowRotation, Highlights, Siren }
 --       Ce qui est affiché, pour un test dans Studio (barre de commande côté client).
 --   TheftAlertController.IsShown() -> boolean
 --       L'alerte est à l'écran (pour ZoneBannerController, qui ne s'affiche pas par-dessus ; Cantin, 2026-11-13).
@@ -87,13 +87,6 @@ type View = {
 	fallback: boolean,
 }
 
-type ArrowV0 = {
-	folder: Folder,
-	from: Attachment,
-	to: Attachment,
-	beam: Beam,
-}
-
 type Glow = {
 	highlight: Highlight,
 	character: Model,
@@ -120,7 +113,6 @@ local INTRUSION_TEXT = "SHOP"
 -- V0 proposés, absents du doc :
 local FALLBACK_NAME = "TheftAlertV0" -- écran de repli, fait par le code tant que UI_TheftAlert manque
 local HIGHLIGHT_NAME = "TheftAlertHighlight"
-local ARROW_FOLDER = "TheftAlertArrow"
 local SIREN_NAME = "TheftAlertSiren"
 local DISPLAY_ORDER = 20 -- au-dessus du HUD et des autres écrans
 local ALERT_RED = Color3.fromHex("#E8413C") -- rouge « fermer » de la planche 10.6, celui de StolenOutline
@@ -132,8 +124,6 @@ local VEIL_PULSE = 0.07
 local VEIL_PERIOD = 0.7 -- s
 local MAX_HIGHLIGHTS = 3 -- voleurs surlignés à la fois au plus (les plus récents)
 local HIGHLIGHT_FILL_TRANSPARENCY = 0.55
-local BEAM_WIDTH_FROM = 1.2 -- studs, aux pieds du joueur
-local BEAM_WIDTH_TO = 0.3 -- studs, aux pieds du voleur
 local REFRESH_INTERVAL = 0.2 -- s : écran repris, surbrillances revues
 local ERROR_INTERVAL = 10 -- s : une erreur écrite au plus toutes les 10 s, pas une par image
 
@@ -148,14 +138,12 @@ local dirty = false -- un message est arrivé : appliqué à la prochaine image
 local shown = false
 local view: View? = nil
 local fallback: View? = nil
-local arrowV0: ArrowV0? = nil
 local glows: { [Player]: Glow } = {}
 local siren: Sound? = nil
 -- Rotation posée par Clément sur chaque copie de l'Arrow (relue sur une nouvelle copie).
 local arrowBase: { [Instance]: number } = setmetatable({}, { __mode = "k" }) :: any
 local arrowShown = false
 local arrowRotation: number? = nil
-local beamShown = false
 local sinceRefresh = 0
 local lastError = -math.huge
 local noticed: { [string]: boolean } = {}
@@ -184,12 +172,6 @@ local function bodyOf(player: Player): (BasePart?, Humanoid?)
 	local root = character:FindFirstChild("HumanoidRootPart")
 	local part = if root and root:IsA("BasePart") then root :: BasePart else nil
 	return part, character:FindFirstChildOfClass("Humanoid")
-end
-
--- Pieds d'un personnage (au ras du sol), sous son HumanoidRootPart.
-local function feetOf(root: BasePart, humanoid: Humanoid?): Vector3
-	local hip = if humanoid then humanoid.HipHeight else 2
-	return root.Position - Vector3.new(0, hip + root.Size.Y / 2 - 0.2, 0)
 end
 
 -- Le vol de `thief` s'affiche-t-il encore ? Parti ou mort : non. Personnage absent (streaming) : oui.
@@ -498,57 +480,6 @@ end
 -- Flèche
 ------------------------------------------------------------------------------
 
-local function hideArrowV0()
-	if arrowV0 then
-		arrowV0.beam.Enabled = false
-	end
-	beamShown = false
-end
-
-local function makeArrowV0(): ArrowV0?
-	local camera = Workspace.CurrentCamera
-	if camera == nil then
-		return nil
-	end
-	local folder = Instance.new("Folder")
-	folder.Name = ARROW_FOLDER
-
-	local anchor = Instance.new("Part")
-	anchor.Name = "Anchor"
-	anchor.Anchored = true
-	anchor.CanCollide = false
-	anchor.CanQuery = false
-	anchor.CanTouch = false
-	anchor.CastShadow = false
-	anchor.Transparency = 1
-	anchor.Size = Vector3.new(0.2, 0.2, 0.2)
-	anchor.CFrame = CFrame.new(0, 0, 0)
-	anchor.Parent = folder
-	local from = Instance.new("Attachment")
-	from.Name = "From"
-	from.Parent = anchor
-	local to = Instance.new("Attachment")
-	to.Name = "To"
-	to.Parent = anchor
-
-	local beam = Instance.new("Beam")
-	beam.Name = "Beam"
-	beam.Color = ColorSequence.new(ALERT_RED)
-	beam.LightEmission = 0.6
-	beam.Transparency = NumberSequence.new(0.1, 0.35)
-	beam.Width0 = BEAM_WIDTH_FROM
-	beam.Width1 = BEAM_WIDTH_TO
-	beam.FaceCamera = true
-	beam.Segments = 10
-	beam.Attachment0 = from
-	beam.Attachment1 = to
-	beam.Enabled = false
-	beam.Parent = anchor
-
-	folder.Parent = camera
-	return { folder = folder, from = from, to = to, beam = beam }
-end
-
 -- Angle (degrés, sens des aiguilles d'une montre) de `target` vu de la caméra, à l'horizontale :
 -- 0 = droit devant, 90 = à droite, ±180 = derrière. nil si la cible est à l'aplomb de la caméra.
 local function compassAngle(camera: Camera, target: Vector3): number?
@@ -570,59 +501,33 @@ end
 local function updateArrow()
 	local current = thefts[#thefts]
 	local target = view
-	if current == nil or target == nil then
-		hideArrowV0()
+	local arrow = if target then target.arrow else nil
+	if current == nil or arrow == nil then
+		arrowShown = false -- L-175 : sans Arrow, plus de flèche du tout
+		return
+	end
+	local root = bodyOf(current.Thief)
+	local camera = Workspace.CurrentCamera
+	if root == nil or camera == nil then
+		setVisible(arrow, false)
 		arrowShown = false
 		return
 	end
-	local root, humanoid = bodyOf(current.Thief)
-	local arrow = target.arrow
-	if arrow then
-		hideArrowV0()
-		local camera = Workspace.CurrentCamera
-		if root == nil or camera == nil then
-			setVisible(arrow, false)
-			arrowShown = false
-			return
+	local angle = compassAngle(camera, root.Position)
+	if angle then
+		local base = arrowBase[arrow]
+		if base == nil then
+			base = arrow.Rotation
+			arrowBase[arrow] = base
 		end
-		local angle = compassAngle(camera, root.Position)
-		if angle then
-			local base = arrowBase[arrow]
-			if base == nil then
-				base = arrow.Rotation
-				arrowBase[arrow] = base
-			end
-			local rotation = (base :: number) + angle
-			if math.abs(arrow.Rotation - rotation) > 0.05 then
-				arrow.Rotation = rotation
-			end
-			arrowRotation = angle
+		local rotation = (base :: number) + angle
+		if math.abs(arrow.Rotation - rotation) > 0.05 then
+			arrow.Rotation = rotation
 		end
-		setVisible(arrow, true)
-		arrowShown = true
-		return
+		arrowRotation = angle
 	end
-	arrowShown = false
-	local mine, myHumanoid = bodyOf(localPlayer)
-	if root == nil or mine == nil then
-		hideArrowV0()
-		return
-	end
-	local existing = arrowV0
-	if existing == nil or existing.folder.Parent == nil then
-		if existing then
-			existing.folder:Destroy()
-		end
-		arrowV0 = makeArrowV0()
-	end
-	local beam = arrowV0
-	if beam == nil then
-		return
-	end
-	beam.from.Position = feetOf(mine, myHumanoid)
-	beam.to.Position = feetOf(root, humanoid)
-	beam.beam.Enabled = true
-	beamShown = true
+	setVisible(arrow, true)
+	arrowShown = true
 end
 
 ------------------------------------------------------------------------------
@@ -635,7 +540,6 @@ local function hideAll()
 	for _, thief in keysOf(glows) do
 		removeGlow(thief)
 	end
-	hideArrowV0()
 	arrowShown = false
 	arrowRotation = nil
 	hideScreens()
@@ -657,7 +561,7 @@ local function apply()
 	if target then
 		showView(target, current)
 		if target.fallback then
-			once("fallback", "UI_TheftAlert pas encore livré : bannière et flèche V0")
+			once("fallback", "UI_TheftAlert pas encore livré : bannière V0")
 		else
 			once("screen", "bannière : écran UI_TheftAlert de Clément")
 		end
@@ -739,7 +643,6 @@ function TheftAlertController.GetState(): { [string]: any }
 		Fallback = target ~= nil and target.fallback,
 		Arrow = arrowShown,
 		ArrowRotation = if arrowShown then arrowRotation else nil,
-		Beam = beamShown,
 		Highlights = count,
 		Siren = siren ~= nil,
 	}
