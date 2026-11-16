@@ -38,6 +38,18 @@
 --     d'aura porte aussi le tag CosmeticAura, et ses ParticleEmitter l'attribut FullRate (comme la
 --     pièce V0). Retirées au changement et à la mort ; le personnage part avec le joueur. Sans modèle
 --     (ou sans aucune pièce commune avec le personnage) : l'effet V0 ci-dessus.
+--   - pièces soudées (vague 63, a210, L-206) : toute BasePart ou tout Model du modèle FX_ qui porte l'attribut
+--     WeldTo (« Head » ou « HumanoidRootPart » ; le plus haut seulement, ses enfants viennent avec) est cloné dans
+--     le personnage et soudé à la pièce de ce nom par une Weld CosmeticWeld (C0 = CFrame relatif à la pièce WeldTo du
+--     modèle ; un Model est d'abord soudé à son PrimaryPart). Pièces décrochées, sans collision, sans masse, sans
+--     contact ni requête. Une pièce au sol (bas à moins de GROUND_HEIGHT du sol du modèle) soudée au
+--     HumanoidRootPart garde sa hauteur au-dessus des pieds, comme les Attachments au sol. Chaque clone porte
+--     CosmeticFx, CosmeticId et le tag CosmeticPiece (mouvement Spin, Orbit, Tumble, Period : CosmeticController) ;
+--     ses pièces et Attachments portent CosmeticFx (et, pour une aura, le tag CosmeticAura et FullRate). Retirés
+--     avec l'aura, au changement et à la mort.
+--   - auras de Clément (vague 63, Features.NewAuras, proposition a210) : au chargement du profil, chaque ancienne
+--     aura possédée ou équipée devient sa remplaçante (Config/Cosmetics.Migration) ; Grant, Equip et Owns lisent
+--     l'Id à jour (Cosmetics.Current). Avec NewAuras à false : rien ne change.
 -- Le serveur décide tout. Un refus qu'un joueur honnête peut rencontrer (objet pas possédé,
 -- sauvegarde pas encore chargée) reçoit un Notify en anglais (L-036) ; un Id inconnu, impossible
 -- depuis l'UI, n'est écrit que dans la sortie, en Studio.
@@ -77,6 +89,7 @@ local RunService = game:GetService("RunService")
 
 local Shared = ReplicatedStorage.Shared
 local Cosmetics = require(Shared.Config.Cosmetics)
+local Features = require(Shared.Config.Features)
 local Find = require(Shared.Contract.Find)
 local Net = require(Shared.Net.Net)
 local ProfileTypes = require(Shared.Types.Profile)
@@ -100,6 +113,11 @@ local COSMETIC_ID_ATTRIBUTE = "CosmeticId" -- Id de Config/Cosmetics, sur la pi�
 -- Sur chaque Attachment copié d'un modèle FX_ de Clément : "Aura" ou "Trail". Même nom dans CosmeticController.
 local FX_ATTRIBUTE = "CosmeticFx"
 local ROOT_PART = "HumanoidRootPart"
+-- Vague 63 (a210, L-206) : pièces du modèle FX_ à cloner et souder (attribut de Clément), leur tag et leur Weld.
+-- PIECE_TAG et PIECE_WELD : mêmes noms dans CosmeticController.
+local WELD_TO_ATTRIBUTE = "WeldTo"
+local PIECE_TAG = "CosmeticPiece" -- tag de code, pas un tag de la map
+local PIECE_WELD = "CosmeticWeld"
 -- Dossier des assets de Clément (9.2), où l'on cherche ses textures.
 local ASSETS_FOLDER = "Assets"
 
@@ -224,6 +242,39 @@ local function equippedDef(data: Data, kind: Kind): Cosmetic?
 	return nil
 end
 
+-- Vague 63 (a210, proposition) : avec Features.NewAuras, chaque ancienne aura possédée devient sa remplaçante de même
+-- multiplicateur (Config/Cosmetics.Migration), l'aura équipée aussi. Sans doublon ; rien sans NewAuras. Renvoie le
+-- nombre d'auras remplacées.
+local function migrateLegacyAuras(data: Data): number
+	if not Features.NewAuras then
+		return 0
+	end
+	local owned = data.Cosmetics.Auras
+	local kept: { string } = {}
+	local replaced = 0
+	for _, id in owned do
+		local newId: string? = Cosmetics.Migration[id]
+		if newId ~= nil then
+			replaced += 1
+		end
+		local final: string = newId or id
+		if table.find(kept, final) == nil then
+			table.insert(kept, final)
+		end
+	end
+	if replaced > 0 then
+		table.clear(owned)
+		for _, id in kept do
+			table.insert(owned, id)
+		end
+	end
+	local equipped = data.Cosmetics.EquippedAura
+	if type(equipped) == "string" and Cosmetics.Migration[equipped] ~= nil then
+		data.Cosmetics.EquippedAura = Cosmetics.Migration[equipped]
+	end
+	return replaced
+end
+
 local function writeAttributes(player: Player, data: Data)
 	local owned: { string } = {}
 	local function collect(kind: Kind)
@@ -271,6 +322,12 @@ end
 
 -- Copies des modèles FX_ de Clément de ce type, sur toutes les pièces du personnage.
 local function clearFx(character: Model, kind: Kind)
+	-- Pièces soudées (vague 63) : clones posés à la racine du personnage, leurs Attachments partent avec eux.
+	for _, inst in character:GetChildren() do
+		if (inst:IsA("BasePart") or inst:IsA("Model")) and inst:GetAttribute(FX_ATTRIBUTE) == kind then
+			inst:Destroy()
+		end
+	end
 	for _, inst in character:GetDescendants() do
 		if inst:IsA("Attachment") and inst:GetAttribute(FX_ATTRIBUTE) == kind then
 			inst:Destroy()
@@ -342,14 +399,104 @@ local function rootToFloor(model: Model, source: BasePart): number
 	return if floor then source.Position.Y - floor else source.Size.Y / 2 + R15_HIP_HEIGHT
 end
 
--- Copie sur `character` les Attachments de chaque pièce du modèle `model` (pièce de même nom).
--- false si aucune pièce du modèle n'existe dans le personnage (rien n'est posé).
+-- Vague 63 (a210, L-206) : valeur de l'attribut WeldTo de Clément (nom d'une pièce R15), ou nil.
+local function weldToOf(inst: Instance): string?
+	local value = inst:GetAttribute(WELD_TO_ATTRIBUTE)
+	return if type(value) == "string" and value ~= "" then value else nil
+end
+
+-- Pièces et Models du modèle qui portent WeldTo, les plus hauts seulement (ce qu'ils contiennent vient avec eux).
+local function weldedSources(model: Model): { Instance }
+	local out: { Instance } = {}
+	for _, inst in model:GetDescendants() do
+		if (inst:IsA("BasePart") or inst:IsA("Model")) and weldToOf(inst) ~= nil then
+			local inner = false
+			local parent = inst.Parent
+			while parent ~= nil and parent ~= model do
+				if weldToOf(parent) ~= nil then
+					inner = true
+					break
+				end
+				parent = parent.Parent
+			end
+			if not inner then
+				table.insert(out, inst)
+			end
+		end
+	end
+	return out
+end
+
+-- Pièce par laquelle un clone est soudé : la pièce elle-même, sinon le PrimaryPart du Model, sinon sa première pièce.
+local function primaryOf(piece: Instance): BasePart?
+	if piece:IsA("BasePart") then
+		return piece :: BasePart
+	end
+	local primary = (piece :: Model).PrimaryPart
+	if primary ~= nil then
+		return primary
+	end
+	local first = piece:FindFirstChildWhichIsA("BasePart", true)
+	return if first ~= nil then first :: BasePart else nil
+end
+
+-- Bas d'une pièce ou d'un Model, en y monde (orientation de la pièce ignorée : flaque et cercles sont à plat).
+local function bottomOf(piece: Instance): number
+	if piece:IsA("BasePart") then
+		local part = piece :: BasePart
+		return part.Position.Y - part.Size.Y / 2
+	end
+	local box: CFrame, size: Vector3 = (piece :: Model):GetBoundingBox()
+	return box.Position.Y - size.Y / 2
+end
+
+-- Beams et Trails sous `root` reliés aux copies (un lien interne à une copie l'est déjà par Clone). Un lien vers un
+-- Attachment qui n'est ni copié ni une copie (pièce absente du personnage) : effet retiré.
+local function relinkEffects(root: Instance, copies: { [Instance]: Attachment }, isCopy: { [Instance]: boolean })
+	local function relink(attachment: Attachment?): (Attachment?, boolean)
+		if attachment == nil then
+			return nil, true
+		end
+		local copy = copies[attachment]
+		if copy then
+			return copy, true
+		end
+		return attachment, isCopy[attachment] == true
+	end
+	for _, inst in root:GetDescendants() do
+		if inst:IsA("Beam") or inst:IsA("Trail") then
+			local effect = inst :: any
+			local a0, ok0 = relink(effect.Attachment0)
+			local a1, ok1 = relink(effect.Attachment1)
+			if ok0 and ok1 then
+				effect.Attachment0 = a0
+				effect.Attachment1 = a1
+			else
+				inst:Destroy()
+			end
+		end
+	end
+end
+
+-- Copie sur `character` les Attachments de chaque pièce du modèle `model` (pièce de même nom), puis clone et soude
+-- ses pièces WeldTo (vague 63). false si rien n'est posé (aucune pièce commune avec le personnage).
 local function attachFx(def: Cosmetic, character: Model, model: Model): boolean
 	local copies: { [Instance]: Attachment } = {} -- [Attachment du modèle] = copie
 	local isCopy: { [Instance]: boolean } = {}
 	local placed: { Placed } = {}
+	-- Sol du modèle et sol du personnage, vus du HumanoidRootPart (effets au sol, plus bas).
+	local modelDrop: number? = nil
+	local characterDrop: number? = nil
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	local hip: any = if humanoid then humanoid.HipHeight else nil
+	local modelRoot = model:FindFirstChild(ROOT_PART)
+	local characterRoot = rootOf(character)
+	if type(hip) == "number" and modelRoot ~= nil and modelRoot:IsA("BasePart") and characterRoot ~= nil then
+		modelDrop = rootToFloor(model, modelRoot :: BasePart)
+		characterDrop = hip + characterRoot.Size.Y / 2
+	end
 	for _, source in model:GetChildren() do
-		if not source:IsA("BasePart") then
+		if not source:IsA("BasePart") or weldToOf(source) ~= nil then
 			continue
 		end
 		local target = character:FindFirstChild(source.Name)
@@ -357,19 +504,11 @@ local function attachFx(def: Cosmetic, character: Model, model: Model): boolean
 			reportOnce(`part:{model.Name}:{source.Name}`, `[CosmeticService] {model.Name} : pas de pièce {source.Name} dans le personnage, ses effets sont ignorés`)
 			continue
 		end
-		-- Sol du modèle et sol du personnage, vus du HumanoidRootPart (effets au sol, plus haut).
-		local modelDrop: number? = nil
-		local characterDrop: number? = nil
-		local humanoid = character:FindFirstChildOfClass("Humanoid")
-		local hip: any = if humanoid then humanoid.HipHeight else nil
-		if source.Name == ROOT_PART and type(hip) == "number" then
-			modelDrop = rootToFloor(model, source)
-			characterDrop = hip + (target :: BasePart).Size.Y / 2
-		end
+		local onRoot = source.Name == ROOT_PART
 		for _, child in source:GetChildren() do
 			if child:IsA("Attachment") then
 				local copy = child:Clone() :: Attachment
-				if modelDrop and characterDrop then
+				if onRoot and modelDrop and characterDrop then
 					local height = child.Position.Y + modelDrop
 					if height <= GROUND_HEIGHT then
 						copy.Position = Vector3.new(child.Position.X, height - characterDrop, child.Position.Z)
@@ -383,43 +522,111 @@ local function attachFx(def: Cosmetic, character: Model, model: Model): boolean
 			end
 		end
 	end
-	if #placed == 0 then
-		return false
-	end
-	-- Beams et Trails reliés aux copies (un lien interne à une copie l'est déjà par Clone). Un lien
-	-- vers un Attachment qui n'est ni copié ni une copie (pièce absente du personnage) : effet retiré.
-	local function relink(attachment: Attachment?): (Attachment?, boolean)
-		if attachment == nil then
-			return nil, true
+
+	-- Pièces soudées (vague 63, L-206) : clonées, décrochées, soudées à la pièce WeldTo du personnage.
+	local pieces: { Instance } = {}
+	for _, source in weldedSources(model) do
+		local anchorName = weldToOf(source) :: string
+		local modelAnchor = model:FindFirstChild(anchorName)
+		local target = character:FindFirstChild(anchorName)
+		local sourcePrimary = primaryOf(source)
+		if modelAnchor == nil or not modelAnchor:IsA("BasePart") or target == nil or not target:IsA("BasePart") or sourcePrimary == nil then
+			reportOnce(`weld:{model.Name}:{source.Name}`, `[CosmeticService] {model.Name} : {source.Name} (WeldTo {anchorName}) sans pièce {anchorName} dans le modèle ou le personnage, ou sans pièce : ignoré`)
+			continue
 		end
-		local copy = copies[attachment]
-		if copy then
-			return copy, true
+		local anchorCFrame = (modelAnchor :: BasePart).CFrame
+		local targetPart = target :: BasePart
+		-- Pièce au sol soudée au HumanoidRootPart : même hauteur au-dessus des pieds que sur le mannequin.
+		local lift = CFrame.identity
+		if anchorName == ROOT_PART and modelDrop and characterDrop then
+			local floor = anchorCFrame.Position.Y - modelDrop
+			if bottomOf(source) - floor <= GROUND_HEIGHT then
+				lift = CFrame.new(0, modelDrop - characterDrop, 0)
+			end
 		end
-		return attachment, isCopy[attachment] == true
-	end
-	for _, entry in placed do
-		for _, inst in entry.copy:GetDescendants() do
-			if inst:IsA("Beam") or inst:IsA("Trail") then
-				local effect = inst :: any
-				local a0, ok0 = relink(effect.Attachment0)
-				local a1, ok1 = relink(effect.Attachment1)
-				if ok0 and ok1 then
-					effect.Attachment0 = a0
-					effect.Attachment1 = a1
-				else
-					inst:Destroy()
+		local clone = source:Clone()
+		local primary = primaryOf(clone) :: BasePart
+		-- Attachments de la pièce du modèle → leurs copies (même ordre d'arbre), pour relier les Beams plus bas.
+		local sourceList = source:GetDescendants()
+		local cloneList = clone:GetDescendants()
+		for index, inst in sourceList do
+			local copy: Instance? = cloneList[index]
+			if inst:IsA("Attachment") and copy and copy:IsA("Attachment") and copy.Name == inst.Name then
+				copies[inst] = copy :: Attachment
+			end
+		end
+		-- Place d'arrivée (la Weld la tient ensuite) : pas d'image à l'endroit du modèle de Clément.
+		local function placeOf(where: CFrame): CFrame
+			return targetPart.CFrame * lift * anchorCFrame:ToObjectSpace(where)
+		end
+		if clone:IsA("Model") then
+			(clone :: Model):PivotTo(placeOf((source :: Model):GetPivot()))
+		else
+			primary.CFrame = placeOf(sourcePrimary.CFrame)
+		end
+		table.insert(cloneList, clone)
+		for _, inst in cloneList do
+			if inst:IsA("BasePart") then
+				local part = inst :: BasePart
+				part.Anchored = false
+				part.CanCollide = false
+				part.CanQuery = false
+				part.CanTouch = false -- ne déclenche aucun contact (tapis de caisse…)
+				part.Massless = true
+				part:SetAttribute(FX_ATTRIBUTE, def.Kind)
+				if part ~= primary then
+					local glue = Instance.new("WeldConstraint")
+					glue.Part0 = primary
+					glue.Part1 = part
+					glue.Parent = part
 				end
-			elseif def.Kind == "Aura" and inst:IsA("ParticleEmitter") then
+				if def.Kind == "Aura" then
+					CollectionService:AddTag(part, AURA_TAG)
+				end
+			elseif inst:IsA("Attachment") then
+				inst:SetAttribute(FX_ATTRIBUTE, def.Kind)
+				isCopy[inst] = true
+				if def.Kind == "Aura" then
+					CollectionService:AddTag(inst, AURA_TAG)
+				end
+			elseif inst:IsA("ParticleEmitter") and def.Kind == "Aura" then
 				inst:SetAttribute(FULL_RATE_ATTRIBUTE, (inst :: ParticleEmitter).Rate)
 			end
 		end
+		local weld = Instance.new("Weld")
+		weld.Name = PIECE_WELD
+		weld.Part0 = targetPart
+		weld.Part1 = primary
+		weld.C0 = lift * anchorCFrame:ToObjectSpace(sourcePrimary.CFrame)
+		weld.Parent = primary
+		clone:SetAttribute(FX_ATTRIBUTE, def.Kind)
+		clone:SetAttribute(COSMETIC_ID_ATTRIBUTE, def.Id)
+		CollectionService:AddTag(clone, PIECE_TAG)
+		table.insert(pieces, clone)
+	end
+	if #placed == 0 and #pieces == 0 then
+		return false
+	end
+
+	for _, entry in placed do
+		relinkEffects(entry.copy, copies, isCopy)
 		if def.Kind == "Aura" then
+			for _, inst in entry.copy:GetDescendants() do
+				if inst:IsA("ParticleEmitter") then
+					inst:SetAttribute(FULL_RATE_ATTRIBUTE, (inst :: ParticleEmitter).Rate)
+				end
+			end
 			CollectionService:AddTag(entry.copy, AURA_TAG)
 		end
 	end
+	for _, piece in pieces do
+		relinkEffects(piece, copies, isCopy)
+	end
 	for _, entry in placed do
 		entry.copy.Parent = entry.target
+	end
+	for _, piece in pieces do
+		piece.Parent = character
 	end
 	return true
 end
@@ -621,13 +828,13 @@ end
 
 function CosmeticService.Owns(player: Player, cosmeticId: string): boolean
 	local data = DataService.Get(player)
-	local def: Cosmetic? = Cosmetics.ById[cosmeticId]
+	local def: Cosmetic? = Cosmetics.ById[Cosmetics.Current(cosmeticId)]
 	return data ~= nil and def ~= nil and ownsDef(data, def)
 end
 
 function CosmeticService.Grant(player: Player, cosmeticId: string): boolean
 	local data = DataService.Get(player)
-	local def: Cosmetic? = Cosmetics.ById[cosmeticId]
+	local def: Cosmetic? = Cosmetics.ById[Cosmetics.Current(cosmeticId)]
 	if data == nil or def == nil then
 		return false
 	end
@@ -640,7 +847,7 @@ end
 
 function CosmeticService.Equip(player: Player, cosmeticId: string): boolean
 	local data = DataService.Get(player)
-	local def: Cosmetic? = Cosmetics.ById[cosmeticId]
+	local def: Cosmetic? = Cosmetics.ById[Cosmetics.Current(cosmeticId)]
 	if data == nil or def == nil or not ownsDef(data, def) then
 		return false
 	end
@@ -698,7 +905,7 @@ end
 -- Remote EquipCosmetic(cosmeticId) : forme déjà contrôlée par Net (chaîne de 1 à 64 caractères,
 -- 4 appels par seconde au plus).
 local function onEquipCosmetic(player: Player, cosmeticId: string)
-	local def: Cosmetic? = Cosmetics.ById[cosmeticId]
+	local def: Cosmetic? = Cosmetics.ById[Cosmetics.Current(cosmeticId)]
 	if def == nil then
 		if IS_STUDIO then
 			warn(`[CosmeticService] {player.Name} : EquipCosmetic « {cosmeticId} » inconnu de Config/Cosmetics, ignoré`)
@@ -739,6 +946,10 @@ function CosmeticService.Init()
 		local data = DataService.Get(player)
 		if data == nil then
 			return
+		end
+		local migrated = migrateLegacyAuras(data)
+		if IS_STUDIO and migrated > 0 then
+			print(`[CosmeticService] {player.Name} : {migrated} ancienne(s) aura(s) remplacée(s) (Features.NewAuras)`)
 		end
 		writeAttributes(player, data)
 		applyEffects(player)

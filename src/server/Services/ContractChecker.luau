@@ -60,6 +60,9 @@ for _, list in { Cosmetics.Auras, Cosmetics.Trails } do
 		table.insert(OTHER_ICON_IDS, if string.sub(texture, 1, 3) == "FX_" then string.sub(texture, 4) else texture)
 	end
 end
+-- Vague 63 (a210, L-206) : en plus, tout nom qui commence par ICON_Aura_ ou ICON_Trail_ est une icône de boutique (les
+-- 8 icônes d'auras de L-179 avant Features.NewAuras comprises) : jamais « hors catalogue », seulement un Decal.
+local SHOP_ICON_PREFIXES: { string } = { "ICON_Aura_", "ICON_Trail_" }
 -- Modèle du vigile de nuit (Assets/Guards/NightGuard, nom lu aussi par GuardService) : sa liste
 -- d'animations a Arrest en plus (Animations.NightGuard, L-076).
 local NIGHT_GUARD_NAME = "NightGuard"
@@ -989,9 +992,13 @@ local function checkIcons(scanned: { Instance })
 			continue
 		end
 		local label = inst:GetFullName()
+		local shopIcon = false
+		for _, prefix in SHOP_ICON_PREFIXES do
+			shopIcon = shopIcon or startsWith(name, prefix)
+		end
 		if not inst:IsA("Decal") then
 			problem("Objets", `{label} : une icône d'objet doit être un Decal (trouvé : {inst.ClassName}, 10.3)`)
-		elseif not names[name] then
+		elseif not names[name] and not shopIcon then
 			local near = nearName(names, name)
 			local fix = if near then ` : la renommer {near}` else ""
 			problem("Objets", `{label} : {string.sub(name, #iconPrefix + 1)} n'est pas au catalogue d'objets (Config/Items){fix}`)

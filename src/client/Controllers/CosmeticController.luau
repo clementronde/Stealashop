@@ -16,8 +16,17 @@
 -- sont copiés par CosmeticService en Attachments sur les pièces du personnage : chaque Attachment
 -- d'aura porte le tag CosmeticAura (sa distance = WorldPosition), et tout émetteur, lumière, Beam ou
 -- Trail sous un Attachment marqué CosmeticFx (aura ou trail) est éteint à VISUAL EFFECTS OFF.
+-- Vague 63 (a210, L-206) : pièces soudées des auras de Clément (clones taggés CosmeticPiece par CosmeticService,
+-- soudés par une Weld CosmeticWeld). Attributs facultatifs, lus sur le clone : Spin (rad/s, autour de l'axe Y local
+-- de la pièce), Orbit (rad/s, autour de l'axe vertical de la pièce WeldTo), Tumble (rad/s, culbute sur elle-même, axe
+-- tiré par pièce), Period (s, cycle d'une bulle : gonfle, enfle, disparaît, repart ailleurs sur la flaque). Une seule
+-- boucle Heartbeat pour tous les porteurs, branchée tant qu'il y a des pièces, débranchée sans pièce ; elle change en
+-- local le C0 de la Weld (et la taille d'une bulle), jamais au-delà de Cosmetics.PieceMotion.MaxDistance de la caméra.
+-- Pièce retirée (aura changée, porteur parti, streaming) : oubliée. VISUAL EFFECTS OFF : pièces cachées en local
+-- (LocalTransparencyModifier), mouvement arrêté ; leurs émetteurs, lumières et Beams s'éteignent comme le reste.
 --
 -- API (client) : CosmeticController.CutCount() -> number (effets natifs éteints, pour un banc).
+--   CosmeticController.PieceCount() -> (number, boolean) : pièces soudées suivies, boucle de mouvement branchée.
 
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
@@ -126,8 +135,9 @@ local function isCuttable(inst: Instance): boolean
 		return false
 	end
 	local parent = inst.Parent
-	-- Effet complet de Clément (aura ou trail), copié par CosmeticService (vague 26).
-	if parent ~= nil and parent:IsA("Attachment") and parent:GetAttribute(FX_ATTRIBUTE) ~= nil then
+	-- Effet complet de Clément (aura ou trail), copié par CosmeticService (vague 26) ; vague 63 : aussi sous une pièce
+	-- soudée (BasePart marquée CosmeticFx).
+	if parent ~= nil and (parent:IsA("Attachment") or parent:IsA("BasePart")) and parent:GetAttribute(FX_ATTRIBUTE) ~= nil then
 		return true
 	end
 	if inst:IsA("Trail") then
@@ -161,12 +171,201 @@ local function cutOne(inst: Instance)
 	effect.Enabled = false
 end
 
+-- Pièces soudées des auras de Clément (vague 63, a210, L-206) -------------------------------------------------
+local PIECE_TAG = "CosmeticPiece" -- CosmeticService
+local PIECE_WELD = "CosmeticWeld" -- CosmeticService
+local MOTION = Cosmetics.PieceMotion
+
+type Piece = {
+	weld: Weld?, -- Weld CosmeticWeld, trouvée à la première image où elle est là (streaming)
+	base: CFrame, -- C0 posé par le serveur
+	part: BasePart?, -- Part1 de la Weld (taille d'une bulle)
+	size: Vector3, -- taille livrée de Part1
+	spin: number,
+	orbit: number,
+	tumble: number,
+	period: number,
+	axis: Vector3, -- axe de culbute, tiré par pièce
+	seed: number, -- décalage de cycle et endroits des bulles, dans [0, 1[
+}
+
+local pieces: { [Instance]: Piece } = {}
+local motionConnection: RBXScriptConnection? = nil
+local motionClock = 0
+local pieceCount = 0
+
+-- Nombre pseudo-aléatoire dans [0, 1[ tiré de n (même suite à chaque partie, sans Random).
+local function hash01(n: number): number
+	local x = math.sin(n * 12.9898 + 78.233) * 43758.5453
+	return x - math.floor(x)
+end
+
+local function numberAttribute(inst: Instance, name: string): number
+	local value = inst:GetAttribute(name)
+	return if type(value) == "number" then value else 0
+end
+
+local function isMoving(piece: Piece): boolean
+	return piece.spin ~= 0 or piece.orbit ~= 0 or piece.tumble ~= 0 or piece.period > 0
+end
+
+-- VISUAL EFFECTS OFF : la pièce (et un Model, toutes ses pièces) cachée en local, rien ne change pour les autres.
+local function setPieceHidden(inst: Instance, hidden: boolean)
+	local modifier = if hidden then 1 else 0
+	if inst:IsA("BasePart") then
+		(inst :: BasePart).LocalTransparencyModifier = modifier
+	end
+	for _, d in inst:GetDescendants() do
+		if d:IsA("BasePart") then
+			(d :: BasePart).LocalTransparencyModifier = modifier
+		end
+	end
+end
+
+local function resolveWeld(inst: Instance, piece: Piece): Weld?
+	local found = inst:FindFirstChild(PIECE_WELD, true)
+	if found == nil or not found:IsA("Weld") then
+		return nil
+	end
+	local weld = found :: Weld
+	piece.weld = weld
+	piece.base = weld.C0
+	local part = weld.Part1
+	piece.part = part
+	if part ~= nil then
+		piece.size = part.Size
+	end
+	return weld
+end
+
+-- Bulle (Period) : C0 de son cycle (endroit tiré sur la flaque, autour de l'axe de la pièce d'accroche) ; sa taille
+-- et sa visibilité suivent la phase du cycle.
+local function bubbleC0(piece: Piece, part: BasePart, t: number): CFrame
+	local time = t / piece.period + piece.seed
+	local cycle = math.floor(time)
+	local phase = time - cycle
+	local scale: number
+	local hidden = false
+	if phase < MOTION.BubbleGrowShare then
+		scale = math.max(MOTION.BubbleMinScale, phase / MOTION.BubbleGrowShare)
+	elseif phase < MOTION.BubbleGrowShare + MOTION.BubblePopShare then
+		scale = 1 + (MOTION.BubblePopScale - 1) * (phase - MOTION.BubbleGrowShare) / MOTION.BubblePopShare
+	else
+		scale = MOTION.BubbleMinScale
+		hidden = true
+	end
+	part.Size = piece.size * scale
+	part.LocalTransparencyModifier = if hidden then 1 else 0
+	local angle = 2 * math.pi * hash01(piece.seed * 1000 + cycle)
+	local radius = MOTION.BubbleSpread * math.sqrt(hash01(piece.seed * 2000 + cycle + 0.5))
+	local base = piece.base.Position
+	return CFrame.new(radius * math.cos(angle) - base.X, 0, radius * math.sin(angle) - base.Z) * piece.base
+end
+
+local function stopMotion()
+	local connection = motionConnection
+	if connection ~= nil then
+		connection:Disconnect()
+		motionConnection = nil
+	end
+end
+
+-- Une image : chaque pièce mobile, assez proche, prend son C0 du moment (en local).
+local function stepPieces(dt: number)
+	motionClock += dt
+	local from = viewPoint()
+	for inst, piece in pieces do
+		if inst.Parent == nil then
+			pieces[inst] = nil
+			continue
+		end
+		if vfxReduced or not isMoving(piece) then
+			continue
+		end
+		local weld = piece.weld or resolveWeld(inst, piece)
+		local anchor = if weld ~= nil then weld.Part0 else nil
+		if weld == nil or anchor == nil then
+			continue
+		end
+		if from ~= nil and (anchor.Position - from).Magnitude > MOTION.MaxDistance then
+			continue
+		end
+		local t = motionClock
+		local c0 = piece.base
+		local part = piece.part
+		if piece.period > 0 and part ~= nil then
+			c0 = bubbleC0(piece, part, t)
+		end
+		if piece.orbit ~= 0 then
+			c0 = CFrame.Angles(0, piece.orbit * t, 0) * c0
+		end
+		if piece.spin ~= 0 then
+			c0 = c0 * CFrame.Angles(0, piece.spin * t, 0)
+		end
+		if piece.tumble ~= 0 then
+			c0 = c0 * CFrame.fromAxisAngle(piece.axis, piece.tumble * t)
+		end
+		weld.C0 = c0
+	end
+	if next(pieces) == nil then
+		stopMotion()
+	end
+end
+
+local function trackPiece(inst: Instance)
+	if pieces[inst] ~= nil or not (inst:IsA("BasePart") or inst:IsA("Model")) then
+		return
+	end
+	pieceCount += 1
+	local axis = Vector3.new(hash01(pieceCount + 0.1) - 0.5, hash01(pieceCount + 0.2) - 0.5, hash01(pieceCount + 0.3) - 0.5)
+	local length = axis.Magnitude
+	local piece: Piece = {
+		weld = nil,
+		base = CFrame.identity,
+		part = nil,
+		size = Vector3.new(1, 1, 1),
+		spin = numberAttribute(inst, "Spin"),
+		orbit = numberAttribute(inst, "Orbit"),
+		tumble = numberAttribute(inst, "Tumble"),
+		period = numberAttribute(inst, "Period"),
+		axis = if length > 1e-3 then axis / length else Vector3.new(0, 1, 0),
+		seed = hash01(pieceCount),
+	}
+	pieces[inst] = piece
+	resolveWeld(inst, piece)
+	if vfxReduced then
+		setPieceHidden(inst, true)
+	end
+	if motionConnection == nil then
+		motionConnection = RunService.Heartbeat:Connect(stepPieces)
+	end
+end
+
+local function untrackPiece(inst: Instance)
+	pieces[inst] = nil
+	if next(pieces) == nil then
+		stopMotion()
+	end
+end
+
+-- Pièces soudées suivies et boucle de mouvement branchée (banc, Studio).
+function CosmeticController.PieceCount(): (number, boolean)
+	local n = 0
+	for _ in pieces do
+		n += 1
+	end
+	return n, motionConnection ~= nil
+end
+
 local function applyVfx()
 	local reduced = Settings.VfxReduced(localPlayer)
 	if reduced == vfxReduced then
 		return
 	end
 	vfxReduced = reduced
+	for inst in pieces do
+		setPieceHidden(inst, reduced)
+	end
 	if reduced then
 		for _, inst in Workspace:GetDescendants() do
 			cutOne(inst)
@@ -203,6 +402,12 @@ function CosmeticController.Start()
 	end)
 	for _, inst in CollectionService:GetTagged(AURA_TAG) do
 		track(inst)
+	end
+	-- Vague 63 (a210) : pièces soudées des auras de Clément (mouvement, VISUAL EFFECTS OFF).
+	CollectionService:GetInstanceAddedSignal(PIECE_TAG):Connect(trackPiece)
+	CollectionService:GetInstanceRemovedSignal(PIECE_TAG):Connect(untrackPiece)
+	for _, inst in CollectionService:GetTagged(PIECE_TAG) do
+		trackPiece(inst)
 	end
 
 	-- VISUAL EFFECTS (vague 24) : trails, lumière d'aura et halos de rareté éteints tant que c'est OFF.

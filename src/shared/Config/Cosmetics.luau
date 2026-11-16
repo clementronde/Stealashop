@@ -27,6 +27,7 @@
 -- Clément (MOD-045, L-042).
 
 local DeepFreeze = require(script.Parent.DeepFreeze)
+local Features = require(script.Parent.Features)
 
 export type CosmeticKind = "Aura" | "Trail"
 
@@ -40,13 +41,17 @@ export type Cosmetic = {
 	TargetZones: { number }, -- { première, dernière } zone visée
 	Texture: string,
 	Color: Color3,
+	-- Vague 63 (a210) : ancienne aura retirée de la boutique (Features.NewAuras) ; gardée dans ById pour les
+	-- sauvegardes, les kits de Config/Zones et les récompenses de Config/Index.
+	Retired: boolean?,
 }
 
 -- Rééquilibrage v2 (Cantin, 2026-11-14 ; note equilibrage-v2-proposition.md, 4.4, V0 proposés) : l'aura est LE
 -- multiplicateur de force (dégâts d'un coup = P arme × M aura) ; un kit par zone (arme, aura, trail), mêmes paliers
 -- pour les auras et les trails (×2, ×3, ×5, ×8, ×12), plus Royal ×20. Galaxy : palier du milieu de la zone 5.
 -- Color : couleurs de Clément (MOD-045, liaison L-042, 2026-11-07).
-local Auras: { Cosmetic } = {
+-- Vague 63 (a210) : la boutique d'aujourd'hui, tant que Features.NewAuras est false.
+local LegacyAuras: { Cosmetic } = {
 	{ Id = "Spark", Kind = "Aura", Order = 1, DisplayName = "Spark", Multiplier = 2, Price = 500, TargetZones = { 2, 2 }, Texture = "FX_Aura_Etincelle", Color = Color3.fromRGB(255, 217, 59) },
 	{ Id = "Flame", Kind = "Aura", Order = 2, DisplayName = "Flame", Multiplier = 3, Price = 60_000, TargetZones = { 3, 3 }, Texture = "FX_Aura_Flamme", Color = Color3.fromRGB(255, 106, 26) },
 	{ Id = "Lightning", Kind = "Aura", Order = 3, DisplayName = "Lightning", Multiplier = 5, Price = 1_500_000, TargetZones = { 4, 4 }, Texture = "FX_Aura_Foudre", Color = Color3.fromRGB(47, 196, 255) },
@@ -54,6 +59,37 @@ local Auras: { Cosmetic } = {
 	{ Id = "Galaxy", Kind = "Aura", Order = 5, DisplayName = "Galaxy", Multiplier = 12, Price = 400_000_000, TargetZones = { 5, 5 }, Texture = "FX_Aura_Galaxie", Color = Color3.fromRGB(139, 92, 255) },
 	{ Id = "Royal", Kind = "Aura", Order = 6, DisplayName = "Royal", Multiplier = 20, Price = 8_000_000_000, TargetZones = { 6, 6 }, Texture = "FX_Aura_Royale", Color = Color3.fromRGB(255, 194, 26) },
 }
+
+-- Vague 63 (a210, L-205 et L-206) : PROPOSITION pour les 8 auras de Clément, à valider par lui (rien en jeu tant que
+-- Features.NewAuras est false). Ordre de Clément (L-205), du plus simple au plus fort. Les 6 paliers d'aujourd'hui
+-- gardent leur multiplicateur, leur prix et leurs zones (×2, ×3, ×5, ×8, ×12, ×20 : mêmes PV de vitrine, même kit
+-- par zone dans Config/Zones) ; deux paliers s'intercalent : Storm ×4 (fin de zone 3) et Demon ×16 (fin de zone 5).
+-- Id = clé de sauvegarde, en anglais (L-036) ; « Lightning » est pris par l'ancienne aura, d'où Storm pour Éclair
+-- (nuage, pluie et éclairs). Texture = modèle de Clément dans Assets/FX/Auras (et ICON_Aura_<Nom> de L-179).
+-- Prix de Storm et Demon, Id, DisplayName et Color : V0 proposés, absents du doc.
+local NewAuras: { Cosmetic } = {
+	{ Id = "Shine", Kind = "Aura", Order = 1, DisplayName = "Shine", Multiplier = 2, Price = 500, TargetZones = { 2, 2 }, Texture = "FX_Aura_Shine", Color = Color3.fromRGB(255, 240, 170) },
+	{ Id = "Fire", Kind = "Aura", Order = 2, DisplayName = "Fire", Multiplier = 3, Price = 60_000, TargetZones = { 3, 3 }, Texture = "FX_Aura_Feu", Color = Color3.fromRGB(255, 106, 26) },
+	{ Id = "Storm", Kind = "Aura", Order = 3, DisplayName = "Storm", Multiplier = 4, Price = 300_000, TargetZones = { 3, 3 }, Texture = "FX_Aura_Eclair", Color = Color3.fromRGB(47, 196, 255) },
+	{ Id = "Poison", Kind = "Aura", Order = 4, DisplayName = "Poison", Multiplier = 5, Price = 1_500_000, TargetZones = { 4, 4 }, Texture = "FX_Aura_Poison", Color = Color3.fromRGB(120, 230, 60) },
+	{ Id = "Tornado", Kind = "Aura", Order = 5, DisplayName = "Tornado", Multiplier = 8, Price = 30_000_000, TargetZones = { 5, 5 }, Texture = "FX_Aura_Tornado", Color = Color3.fromRGB(200, 210, 220) },
+	{ Id = "Angel", Kind = "Aura", Order = 6, DisplayName = "Angel", Multiplier = 12, Price = 400_000_000, TargetZones = { 5, 5 }, Texture = "FX_Aura_Angel", Color = Color3.fromRGB(255, 230, 150) },
+	{ Id = "Demon", Kind = "Aura", Order = 7, DisplayName = "Demon", Multiplier = 16, Price = 2_000_000_000, TargetZones = { 5, 5 }, Texture = "FX_Aura_Demon", Color = Color3.fromRGB(220, 30, 40) },
+	{ Id = "Chained", Kind = "Aura", Order = 8, DisplayName = "Chained", Multiplier = 20, Price = 8_000_000_000, TargetZones = { 6, 6 }, Texture = "FX_Aura_Chained", Color = Color3.fromRGB(110, 70, 160) },
+}
+
+-- Proposition a210 : chaque ancienne aura achetée devient la nouvelle de même multiplicateur (personne ne perd
+-- rien). Appliquée au chargement du profil par CosmeticService, seulement avec Features.NewAuras.
+local Migration: { [string]: string } = {
+	Spark = "Shine",
+	Flame = "Fire",
+	Lightning = "Poison",
+	Plasma = "Tornado",
+	Galaxy = "Angel",
+	Royal = "Chained",
+}
+
+local Auras: { Cosmetic } = if Features.NewAuras then NewAuras else LegacyAuras
 
 -- Rééquilibrage v2 (note 4.4, V0 proposés) : le trail multiplie la Speed affichée (Vitesse × M trail), d'où sort
 -- la marche (Formulas.WalkSpeed, en log) : un trail ×2 vaut un niveau de tapis.
@@ -67,18 +103,54 @@ local Trails: { Cosmetic } = {
 }
 
 -- Auras et trails partagent le même espace d'Id (un seul catalogId pour BuyItem).
+-- Avec Features.NewAuras, les anciennes auras restent dans ById, marquées Retired (pas dans Auras : ni boutique ni
+-- achat) : un Id d'ancienne aura (sauvegarde, kit de Config/Zones, récompense de Config/Index) se lit toujours.
 local ById: { [string]: Cosmetic } = {}
-for _, list in { Auras, Trails } do
+local retired: { Cosmetic } = {}
+if Features.NewAuras then
+	for _, cosmetic in LegacyAuras do
+		cosmetic.Retired = true
+		table.insert(retired, cosmetic)
+	end
+end
+for _, list in { Auras, Trails, retired } do
 	for _, cosmetic in list do
 		assert(ById[cosmetic.Id] == nil, `Config.Cosmetics : Id en double {cosmetic.Id}`)
 		ById[cosmetic.Id] = cosmetic
 	end
+end
+-- Proposition a210 : la migration garde le multiplicateur (même kit, mêmes PV de vitrine).
+for old, new in Migration do
+	local before: number? = nil
+	for _, legacy in LegacyAuras do
+		if legacy.Id == old then
+			before = legacy.Multiplier
+		end
+	end
+	local after: number? = nil
+	for _, aura in NewAuras do
+		if aura.Id == new then
+			after = aura.Multiplier
+		end
+	end
+	assert(before ~= nil and before == after, `Config.Cosmetics : migration {old} → {new} sans le même multiplicateur`)
+end
+
+-- Id à jour : avec Features.NewAuras, une ancienne aura donne sa remplaçante (Migration) ; sinon l'Id tel quel.
+local function current(id: string): string
+	return if Features.NewAuras then Migration[id] or id else id
 end
 
 local Cosmetics = {
 	Auras = Auras,
 	Trails = Trails,
 	ById = ById,
+	-- Vague 63 (a210) : proposition des 8 auras de Clément (L-205) et migration des 6 anciennes, en jeu seulement
+	-- avec Features.NewAuras. Current(id) : Id à jour (Grant, Equip, Owns de CosmeticService).
+	NewAuras = NewAuras,
+	LegacyAuras = LegacyAuras,
+	Migration = Migration,
+	Current = current,
 	-- doc 7.1 : sans aura ou sans trail équipé, le multiplicateur vaut 1.
 	NoneMultiplier = 1,
 	-- doc 7.4 : acheter le palier suivant ne demande pas d'avoir le précédent.
@@ -89,6 +161,18 @@ local Cosmetics = {
 	RemoteParticleCutFactor = 0.5,
 	-- V0 : intervalle (s) entre deux mesures de distance des auras des autres joueurs.
 	RemoteParticleCheckInterval = 0.5,
+	-- Vague 63 (a210, L-206) : mouvement des pièces soudées des auras de Clément (attributs Spin, Orbit, Tumble,
+	-- Period ; CosmeticController), une seule boucle côté client pour tous les porteurs.
+	PieceMotion = {
+		MaxDistance = 120, -- V0 : au-delà (studs, de la caméra à la pièce d'accroche), les pièces restent figées
+		-- Bulles (Period) : prototype de Clément (L-206) : gonfle de 0 à sa taille sur 86 % du cycle, enfle d'un coup,
+		-- disparaît, puis repart ailleurs sur la flaque.
+		BubbleGrowShare = 0.86, -- Clément (note du 2026-11-16)
+		BubblePopShare = 0.07, -- V0 : part du cycle où la bulle enfle d'un coup (puis cachée jusqu'au cycle suivant)
+		BubblePopScale = 1.25, -- V0 : taille au moment d'éclater (× taille livrée)
+		BubbleMinScale = 0.05, -- V0 : taille de départ (une pièce ne peut pas avoir une taille nulle)
+		BubbleSpread = 1.6, -- V0 : rayon (studs) autour de l'axe de la pièce d'accroche où la bulle réapparaît
+	},
 }
 
 export type Cosmetics = typeof(Cosmetics)
