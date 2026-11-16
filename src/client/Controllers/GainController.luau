@@ -131,7 +131,7 @@ local SPEED: Kind = {
 	Machine = "Treadmill",
 	HudLabel = "Speed",
 	Text = function(amount: number): string
-		return `+{Format.short(amount)} Speed/s` -- L-091 : « +2 Speed/s »
+		return `+{Format.short(amount)}` -- vague 67 (a224, Cantin) : « +2 », le nombre seul (L-091 disait « +2 Speed/s »)
 	end,
 }
 local CASH: Kind = {
@@ -170,6 +170,10 @@ local PULSE_INFO: TweenInfo? = if SPEED_PULSE
 -- Vague 64 (a213) : gains du tapis qui volent jusqu'au compteur Speed (Config/Hud.TrainGainFly ; facultatif : bancs
 -- plus anciens) ; réglage « animations réduites » (Config/Settings.VfxReduced).
 local TRAIN_FLY: any = if HudConfig then HudConfig.TrainGainFly else nil
+-- Vague 67 (a224) : échelle du gain du tapis (et d'une bulle), en vol et sur place (Config/Hud.TrainGainFly.Scale ; 1 sans).
+local TRAIN_SCALE: number = if TRAIN_FLY and type(TRAIN_FLY.Scale) == "number" and TRAIN_FLY.Scale > 0
+	then TRAIN_FLY.Scale
+	else 1
 local settingsModule = Shared:WaitForChild("Config"):FindFirstChild("Settings")
 local SettingsConfig: any = if settingsModule and settingsModule:IsA("ModuleScript") then require(settingsModule) :: any else nil
 -- Vague 65 (a215) : gain d'une bulle ×N (Config/Hud.BubbleGain ; facultatif : bancs plus anciens).
@@ -458,6 +462,11 @@ local function floatGain(kind: Kind, amount: number, info: TweenInfo?, text: str
 	local spread = (random:NextNumber() * 2 - 1) * FLOAT.SpreadX
 	billboard.Adornee = root
 	billboard.StudsOffset = base + Vector3.new(spread, 0, 0)
+	if kind == SPEED and TRAIN_SCALE ~= 1 then
+		-- Vague 67 (a224) : le « +X » du tapis sur place, plus gros (TrainGainFly.Scale) ; texte à l'échelle du cadre.
+		local s = billboard.Size
+		billboard.Size = UDim2.new(s.X.Scale * TRAIN_SCALE, s.X.Offset * TRAIN_SCALE, s.Y.Scale * TRAIN_SCALE, s.Y.Offset * TRAIN_SCALE)
+	end
 
 	-- Ce qui s'efface : le texte, l'icône et leurs contours, depuis leur transparence d'origine.
 	local fades: { Fade } = {}
@@ -1241,7 +1250,8 @@ local function flyGain(
 	local edgeX, edgeY = size.X * spec.Edge, size.Y * spec.Edge
 	local jetX = math.clamp(from.X + math.sin(angle) * distance, edgeX, math.max(edgeX, size.X - edgeX))
 	local jetY = math.clamp(from.Y - math.cos(angle) * distance, edgeY, math.max(edgeY, size.Y - edgeY))
-	TweenService:Create(scale, TweenInfo.new(spec.PopTime, spec.PopStyle, Enum.EasingDirection.Out), { Scale = 1 }):Play()
+	-- Vague 67 (a224) : taille pleine = TrainGainFly.Scale (« tu grossis le tout »).
+	TweenService:Create(scale, TweenInfo.new(spec.PopTime, spec.PopStyle, Enum.EasingDirection.Out), { Scale = TRAIN_SCALE }):Play()
 	TweenService:Create(flyer, TweenInfo.new(spec.JetTime, spec.JetStyle, Enum.EasingDirection.Out), {
 		Position = UDim2.fromOffset(jetX, jetY),
 	}):Play()
@@ -1271,7 +1281,7 @@ local function flyGain(
 			label.AbsolutePosition.Y - origin.Y + label.AbsoluteSize.Y / 2
 		)
 		local info = TweenInfo.new(spec.SuckTime, spec.SuckStyle, Enum.EasingDirection.In)
-		TweenService:Create(scale, info, { Scale = spec.EndScale }):Play()
+		TweenService:Create(scale, info, { Scale = spec.EndScale * TRAIN_SCALE }):Play()
 		local move = TweenService:Create(flyer, info, { Position = goal })
 		move.Completed:Connect(land)
 		move:Play()
