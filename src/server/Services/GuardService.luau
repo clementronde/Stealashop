@@ -1524,7 +1524,43 @@ end
 -- voleur) × dt ≤ HoldDistance (dt = durée de l'image précédente) ; pour cette dernière image, le vigile
 -- court juste assez vite (entre sa vitesse à distance et la ruée) pour arriver à HoldDistance.
 -- a193 : distances mesurées jusqu'à `targetAt`, la position estimée du voleur (estimatedPosition).
-local function distanceRuleStep(guard: Guard, player: Player, targetAt: Vector3, targetHumanoid: Humanoid, now: number)
+-- Vague 67 (a224, Cantin : « la vitesse doit être décroissante quand il commence à arriver ») : plafond de la vitesse
+-- de tout poursuivant de cette règle, ruée comprise, pour qu'il ralentisse en continu jusqu'à la capture :
+--   part de la vitesse du voleur qui l'éloigne du poursuivant (AssemblyLinearVelocity à plat, bornée à sa WalkSpeed
+--   donnée par le serveur, comme estimatedPosition) + max(√(2 × RushBrake × (d − HoldDistance)⁺
+--   + 2 × ApproachBrake × (d − capture)⁺), ApproachMinClosing), d mesurée jusqu'à `targetAt`.
+-- Un voleur immobile le voit arriver à ≈ √(20 × ApproachBrake) studs/s à 10 studs, puis ralentir jusqu'à
+-- ApproachMinClosing (il est toujours attrapé) ; un voleur qui court tout droit garde la règle d'avant, sauf sur les
+-- derniers studs d'un rapprochement. Chase.ApproachBrake = 0 : sans plafond (la règle d'avant).
+local function approachCap(guard: Guard, targetAt: Vector3, targetRoot: BasePart, targetHumanoid: Humanoid): number
+	local brake = Chase.ApproachBrake
+	if not isPositiveNumber(brake) then
+		return math.huge
+	end
+	local offset = flat(targetAt - guard.root.Position)
+	local distance = offset.Magnitude
+	local away = 0
+	local walk = targetHumanoid.WalkSpeed
+	if distance > 1e-3 and isPositiveNumber(walk) then
+		away = math.clamp(flat(targetRoot.AssemblyLinearVelocity):Dot(offset / distance), 0, walk)
+		if away ~= away then
+			away = 0
+		end
+	end
+	local catchDistance = if guard.kind == "Night" then Night.CatchDistance else Balance.Guard.CatchDistance
+	local rushBrake = if isPositiveNumber(Chase.RushBrake) then Chase.RushBrake else 0
+	local room = 2 * rushBrake * math.max(distance - Chase.HoldDistance, 0) + 2 * brake * math.max(distance - catchDistance, 0)
+	return away + math.max(math.sqrt(room), Chase.ApproachMinClosing)
+end
+
+local function distanceRuleStep(
+	guard: Guard,
+	player: Player,
+	targetAt: Vector3,
+	targetRoot: BasePart,
+	targetHumanoid: Humanoid,
+	now: number
+)
 	local approach: number? = nil
 	if guard.chasePhase == "Rush" then
 		local distance = flat(targetAt - guard.root.Position).Magnitude
@@ -1564,6 +1600,7 @@ local function distanceRuleStep(guard: Guard, player: Player, targetAt: Vector3,
 	if approach == nil and guard.chasePhase == "Hold" and ruleKindOf(guard) ~= "Truck" then
 		speed = math.max(speed + holdRecall(guard, player, targetAt, now), Chase.HoldMinSpeed)
 	end
+	speed = math.min(speed, approachCap(guard, targetAt, targetRoot, targetHumanoid))
 	if math.abs(speed - guard.humanoid.WalkSpeed) > 0.05 then
 		setWalkSpeed(guard, speed)
 	end
@@ -2367,7 +2404,7 @@ local function chaseStep(guard: Guard, now: number)
 	-- Nouvelle poursuite (vague 45) : la fin de la ruée se teste à chaque image, pas au rythme du pilotage.
 	local distanceRule = guard.chasePhase ~= nil
 	if distanceRule then
-		distanceRuleStep(guard, player, targetAt, targetHumanoid, now)
+		distanceRuleStep(guard, player, targetAt, targetRoot, targetHumanoid, now)
 	end
 	-- Poursuite sans fin (Cantin, 2026-11-11) : ni temps de poursuite ni avance ne la font abandonner.
 	if now < guard.nextSteerAt then

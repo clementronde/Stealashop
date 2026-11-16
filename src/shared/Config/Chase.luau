@@ -52,6 +52,14 @@ local Chase = {
 	-- a174 : freinage de la fin de ruée (studs/s²) : sa vitesse ne dépasse pas la marche du voleur +
 	-- √(2 × RushBrake × (distance − HoldDistance)), pour que l'élan du Humanoid ne le porte pas trop près. 0 = sans.
 	RushBrake = 250 * K * K, -- V0 (vague 61 : × k²)
+	-- Vague 67 (a224, Cantin : « il va tellement vite que parfois il nous attrape d'un coup ») : en arrivant, tout
+	-- poursuivant de cette règle ralentit en continu. Sa vitesse ne dépasse pas la part de la vitesse du voleur qui
+	-- l'éloigne + max(√(2 × RushBrake × (d − HoldDistance)⁺ + 2 × ApproachBrake × (d − capture)⁺), ApproachMinClosing).
+	-- Voleur immobile : ≈ 14 studs/s à 10 studs de la capture, puis de moins en moins vite, les 10 derniers studs en
+	-- ≈ 1,25 s ; jamais moins de ApproachMinClosing (il est toujours attrapé). En studs/s² et studs/s RÉELS, sans × k :
+	-- Cantin veut voir arriver le vigile pendant une durée réelle. ApproachBrake = 0 : sans ce plafond (avant a224).
+	ApproachBrake = 10, -- V0 proposé, absent du doc (studs/s²)
+	ApproachMinClosing = 3, -- V0 proposé, absent du doc (studs/s)
 	ClosingSpeedMax = 8 * K, -- rapprochement à 0 % du minimum (studs/s ; vague 61 : × k)
 	HoldMinSpeed = 12 * K, -- plancher de la poursuite à distance (studs/s), sous toute marche d'un voleur qui court (× k)
 	AboveRequired = "Hold" :: AboveRequired, -- Cantin, 2026-11-14 : au-dessus, « ça garde toujours la même distance »
