@@ -398,6 +398,13 @@ function AuraShopController.Open(anchor: BasePart)
 	openShop(anchor)
 end
 
+-- Vague 66 (a223, L-210 point 7) : le joueur sort de la plaque `anchor` : fermé s'il a été ouvert depuis elle.
+function AuraShopController.Leave(anchor: BasePart)
+	if openAt ~= nil and openAt == anchor then
+		closeShop()
+	end
+end
+
 -- Fermeture quand le joueur s'éloigne du comptoir, ou que le comptoir ou l'écran disparaît.
 local function checkOpen()
 	local counter = openAt

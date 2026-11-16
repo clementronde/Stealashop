@@ -14,8 +14,14 @@
 --     (DisplayService) : l'emprise de la plaque élargie de PAD_MARGIN, de PAD_BELOW sous sa face du
 --     haut à PAD_ABOVE au-dessus. La face du haut est celle de l'axe de la plaque le plus proche de la
 --     verticale : une plaque posée à plat marche quelle que soit sa rotation (cylindre couché compris) ;
---   - l'écran se ferme ensuite selon les règles de sa boutique : à distance de la plaque pour les
---     armes et les auras, jamais pour la boutique Robux ; l'invite « Shop » des comptoirs reste ;
+--   - vague 66 (a223, L-210 point 7 : « entrer dans la zone ouvre la boutique, en sortir la ferme ») : descendre
+--     de la plaque appelle Leave de la boutique (armes, auras, Robux, receleur), qui ferme l'écran s'il est ouvert ;
+--     la fermeture à distance des armes et des auras reste en secours. Une boutique ouverte ailleurs (bouton du
+--     HUD, invite « Shop ») n'est fermée que si le joueur descend de SA plaque ;
+--   - vague 66 : pas d'ouverture pendant une poursuite (ChaseController.IsChased) ; une poursuite qui commence
+--     sur la plaque compte comme une descente (l'écran se ferme) ; finie, le joueur encore dessus = une montée ;
+--   - une seule boutique ouverte à la fois : les écrans des boutiques sont du groupe ScreenGroup « Menu »
+--     (Clément), Motion.Open ferme les autres ; l'invite « Shop » des comptoirs reste ;
 --   - comptoirs rangés dans _INBOX_CLEMENT ignorés ; comptoir sans plaque : rien (le ContractChecker
 --     le signale) ; plaque qui arrive ou repart avec le streaming : suivie.
 -- Côté client seulement : ouvrir un écran n'a rien de sensible, le serveur revérifie chaque achat.
@@ -34,8 +40,11 @@ local Find = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Cont
 -- RobuxShopController).
 type ShopApi = {
 	Open: (anchor: BasePart) -> (),
-	Leave: ((anchor: BasePart) -> ())?, -- facultatif : le joueur descend de la plaque (receleur)
+	Leave: ((anchor: BasePart) -> ())?, -- le joueur descend de la plaque (facultatif ; les 4 boutiques l'ont, vague 66)
 }
+
+-- Ce que ce contrôleur utilise de ChaseController (vague 66).
+type ChaseApi = { IsChased: () -> boolean }
 
 -- Un comptoir suivi.
 type Counter = {
@@ -71,6 +80,7 @@ local ShopPadController = {}
 local localPlayer = Players.LocalPlayer
 local counters: { [Instance]: Counter } = {}
 local warned: { [string]: boolean } = {}
+local chase: ChaseApi? = nil -- ChaseController, cherché tant qu'il manque
 
 local function warnOnce(key: string, message: string)
 	if IS_STUDIO and not warned[key] then
@@ -182,8 +192,28 @@ local function detach(inst: Instance)
 	end
 end
 
+-- Vague 66 : le joueur local est-il poursuivi ? ChaseController absent ou en erreur : non.
+local function isChased(): boolean
+	local api = chase
+	if api == nil then
+		local module = script.Parent:FindFirstChild("ChaseController")
+		if module == nil or not module:IsA("ModuleScript") then
+			return false
+		end
+		local ok, result = pcall(require, module)
+		if not ok or type(result) ~= "table" or type(result.IsChased) ~= "function" then
+			return false
+		end
+		api = result :: any
+		chase = api
+	end
+	local ok, result = pcall((api :: ChaseApi).IsChased)
+	return ok and result == true
+end
+
 local function onHeartbeat()
-	local position = rootPosition()
+	-- Poursuivi : comme hors de toute plaque (rien ne s'ouvre, une boutique ouverte par sa plaque se ferme).
+	local position = if isChased() then nil else rootPosition()
 	for _, counter in counters do
 		local pad = counter.pad
 		if pad and not pad:IsDescendantOf(counter.inst) then

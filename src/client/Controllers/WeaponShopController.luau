@@ -41,6 +41,8 @@
 --       Ouvre l'écran comme l'invite du comptoir ; il se ferme quand le joueur s'éloigne de `anchor`
 --       (pièce ou Attachment) de plus de CLOSE_DISTANCE studs. Écran pas encore branché : rien.
 --       Appelé par ShopPadController avec la plaque ShopPad du comptoir.
+--   WeaponShopController.Leave(anchor)
+--       Vague 66 : le joueur sort de la plaque `anchor` ; l'écran se ferme s'il a été ouvert depuis elle.
 
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
@@ -211,6 +213,13 @@ end
 
 function WeaponShopController.Open(anchor: Instance)
 	open(anchor)
+end
+
+-- Vague 66 (a223, L-210 point 7) : le joueur sort de la zone `anchor` (plaque ShopPad) : fermé s'il a été ouvert là.
+function WeaponShopController.Leave(anchor: Instance)
+	if openAnchor ~= nil and openAnchor == anchor then
+		close()
+	end
 end
 
 local function onBuy(tool: ToolDef)

@@ -85,6 +85,8 @@
 --       Ouvre l'écran, comme le bouton du HUD (sans effet s'il est déjà ouvert, ou si la boutique et
 --       sa vitrine sont coupées). `anchor` est ignoré : la boutique Robux ne se ferme pas quand on
 --       s'éloigne. Appelé par ShopPadController (plaque ShopPad du comptoir, L-071).
+--   RobuxShopController.Leave(anchor?)
+--       Vague 66 (L-210 point 7) : le joueur descend de la plaque du comptoir : l'écran se ferme s'il est ouvert.
 
 local CollectionService = game:GetService("CollectionService")
 local MarketplaceService = game:GetService("MarketplaceService")
@@ -1267,6 +1269,13 @@ end
 function RobuxShopController.Open(_anchor: Instance?)
 	if started and not isOpen then
 		openShop()
+	end
+end
+
+-- Vague 66 (a223, L-210 point 7) : le joueur sort de la plaque ShopPad du comptoir : l'écran se ferme s'il est ouvert.
+function RobuxShopController.Leave(_anchor: Instance?)
+	if isOpen then
+		closeShop()
 	end
 end
 
