@@ -13,15 +13,15 @@
 --     « ×N »). Apparition : Appear (0,35 → 1, Back Out) sur le UIScale PopScale du bouton (repris ou créé) ;
 --   - clic (Activated) : la bulle gonfle (Claim, 1 → 1,2) et ClaimBubble(id) part au serveur, qui décide. Sans
 --     réponse après ClaimTimeout s, elle redevient cliquable ;
---   - BubbleGone(id, "Claimed", gain) : « +gain Speed » (GainText, notre propre texte, pas celui de GainController)
---     monte à sa place, la bulle s'écrase (Squash) et le son Bubble_Pop part (absent : muet) ;
+--   - BubbleGone(id, "Claimed", gain) : la bulle s'écrase (Squash) et le son Bubble_Pop part (absent : muet) ; le gain n'a
+--     pas de texte ici (fusion58) : la Vitesse monte et GainController le fait voler jusqu'au compteur, une seule fois ;
 --     BubbleGone(id, "Expired" ou "Cleared") : elle gonfle un peu puis rétrécit (Expire, Shrink), sans son ;
 --   - grosses valeurs (N ≥ ShineFrom) : le premier UIGradient du bouton tourne (ShineDegreesPerSecond) ;
 --   - « animations réduites » (Settings.VfxReduced ou ReducedMotionEnabled de Roblox) : aucun tween ni rotation, la
---     bulle apparaît et part d'un coup, le texte reste en place puis disparaît ;
+--     bulle apparaît et part d'un coup ;
 --   - poursuite : rien de caché. Les bulles n'existent qu'en séance sur le tapis de sa propre boutique (zone safe),
 --     où aucun vigile ne poursuit ; la séance finie, le serveur les retire toutes.
--- Rien n'est laissé : chaque bulle et chaque texte est une copie détruite à la fin. Le modèle de Clément n'est jamais
+-- Rien n'est laissé : chaque bulle est une copie détruite à la fin. Le modèle de Clément n'est jamais
 -- modifié. Bubbles.Enabled = false : rien.
 --
 -- API (bancs, barre de commande en Studio) :
@@ -37,8 +37,6 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = Shared:WaitForChild("Config")
 local Bubbles = require(Config:WaitForChild("Bubbles"))
 local Settings = require(Config:WaitForChild("Settings"))
-local UiMotion = require(Config:WaitForChild("UiMotion"))
-local Format = require(Shared:WaitForChild("Format"))
 local MarkerSounds = require(Shared:WaitForChild("Anim"):WaitForChild("MarkerSounds"))
 
 local SPEC = Bubbles.Client
@@ -273,73 +271,6 @@ local function destroyView(view: View)
 	view.gui:Destroy()
 end
 
--- « +gain Speed » qui monte à la place de la bulle puis s'efface (fiche : vie environ 1 s).
-local function showGain(view: View, gain: number)
-	local root = rootPart()
-	if root == nil or gain <= 0 then
-		return
-	end
-	local text = SPEC.GainText
-	local screen = viewportHeight()
-	local height = math.max(text.MinPixels, math.floor(screen * text.HeightFraction))
-	local rise = math.floor(screen * text.RiseFraction)
-	local calm = reduced()
-
-	local gui = Instance.new("BillboardGui")
-	gui.Name = "BubbleGain"
-	gui.Size = UDim2.fromOffset(height * 8, height + rise)
-	gui.AlwaysOnTop = true
-	gui.LightInfluence = 0
-	gui.ResetOnSpawn = false
-	gui.ClipsDescendants = false
-	gui.Adornee = root
-	gui.StudsOffsetWorldSpace = view.gui.StudsOffsetWorldSpace
-
-	local label = Instance.new("TextLabel")
-	label.Name = "Amount"
-	label.BackgroundTransparency = 1
-	label.AnchorPoint = Vector2.new(0.5, 1)
-	label.Position = UDim2.fromScale(0.5, 1)
-	label.Size = UDim2.new(1, 0, 0, height)
-	label.Font = Enum.Font.GothamBlack
-	label.TextScaled = true
-	label.TextColor3 = UiMotion.FloatGain.Colors.Speed
-	label.Text = string.format(text.Text, Format.short(gain))
-	label.TextTransparency = if calm then 0 else 1
-	label.Parent = gui
-
-	local stroke = Instance.new("UIStroke")
-	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
-	stroke.Thickness = math.max(1.5, height * 0.1)
-	stroke.Color = text.StrokeColor
-	stroke.Transparency = if calm then 0 else 1
-	stroke.Parent = label
-
-	gui.Parent = localPlayer:WaitForChild("PlayerGui")
-
-	if not calm then
-		local fadeIn = { Time = text.FadeIn, Style = Enum.EasingStyle.Linear, Direction = Enum.EasingDirection.Out }
-		tween(label, fadeIn, { TextTransparency = 0 })
-		tween(stroke, fadeIn, { Transparency = 0 })
-		tween(
-			label,
-			{ Time = text.Life, Style = Enum.EasingStyle.Quad, Direction = Enum.EasingDirection.Out },
-			{ Position = UDim2.new(0.5, 0, 1, -rise) }
-		)
-		task.delay(math.max(0, text.Life - text.FadeOut), function()
-			if gui.Parent == nil then
-				return
-			end
-			local fadeOut = { Time = text.FadeOut, Style = Enum.EasingStyle.Linear, Direction = Enum.EasingDirection.In }
-			tween(label, fadeOut, { TextTransparency = 1 })
-			tween(stroke, fadeOut, { Transparency = 1 })
-		end)
-	end
-	task.delay(text.Life, function()
-		gui:Destroy()
-	end)
-end
-
 local function playPop()
 	local sound = MarkerSounds.find(SPEC.Sound)
 	if sound then
@@ -496,17 +427,12 @@ local function onSpawn(id: string, multiplier: number, lifetime: number)
 	end)
 end
 
-local function onGone(id: string, reason: string, gain: number?)
+local function onGone(id: string, reason: string, _gain: number?)
 	local view = views[id]
 	if view == nil then
 		return
 	end
-	if reason == "Claimed" then
-		showGain(view, gain or 0)
-		leave(view, true)
-	else
-		leave(view, false)
-	end
+	leave(view, reason == "Claimed")
 end
 
 -- Perso retiré (mort, réapparition) : tout part d'un coup ; le serveur retire aussi les bulles.

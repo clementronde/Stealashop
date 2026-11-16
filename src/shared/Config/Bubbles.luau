@@ -65,20 +65,6 @@ local Bubbles = {
 		Shrink = { Time = 0.1, Style = Enum.EasingStyle.Back, Direction = Enum.EasingDirection.In },
 		-- V0 : sans réponse du serveur à un clic après ClaimTimeout s (refus de débit…), la bulle redevient cliquable.
 		ClaimTimeout = 1.5,
-		-- Texte de gain (fiche : « vie environ 1,0 s, fondu d'entrée 0,1 s, montée d'environ 3 % de l'écran qui
-		-- ralentit, fondu de sortie 0,15 s », hauteur 2,8 % de l'écran). Le nôtre, pas celui de GainController.
-		-- V0 : texte en anglais comme celui du tapis (Config/Hud.TreadmillGain.Text), au moins 20 px de haut ;
-		-- couleur de la Vitesse (UiMotion.FloatGain.Colors.Speed) et contour sombre.
-		GainText = {
-			Text = "+%s Speed",
-			Life = 1,
-			FadeIn = 0.1,
-			FadeOut = 0.15,
-			RiseFraction = 0.03,
-			HeightFraction = 0.028,
-			MinPixels = 20,
-			StrokeColor = Color3.fromHex("0B2346"),
-		},
 		-- V0 : son de la prise, dans ReplicatedStorage/Assets/Sounds (nom proposé à Clément) ; absent : muet.
 		Sound = "Bubble_Pop",
 		-- Éclat des grosses valeurs (brief de la vague 64 : en V0, ×10 et ×20 ont un éclat simple) : à partir de
