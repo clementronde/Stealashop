@@ -10,6 +10,10 @@
 			index = 1, parent = workspace.Map.Hub, stage = 1, accent = Color3 })
 		_G.ClaudePlotShop.preview(model, stage)      -- montre un niveau (1 à 5), en Edit seulement
 		_G.ClaudePlotShop.check(model)               -- triangles, noms du contrat, scripts
+	Après chaque build() : relancer tools/clement/map_chevauchements.luau puis
+		_G.MapZF.fix({ game.ReplicatedStorage.Assets.Plots.PLOT_Shop })
+	(anti-clignotement, 112 retouches du 2026-11-15 pas encore reportées ici : voir
+	chevauchements-hub-pieces-modifiees.md, section « Gabarit », dans les notes partagées).
 
 	Gabarit : ReplicatedStorage/Assets/Plots/PLOT_Shop, tags PlayerPlot (boutique), CashPad,
 	Treadmill déjà posé (plus de banc depuis le 2026-11-14, place laissée vide), pas de PlotIndex (posé par install). Bâtiment 48 x 80 studs (64 avant le 2026-11-14, resserré par narrowWidth), plus le devant
@@ -440,9 +444,7 @@ local function buildInterior(M, store)
 			cp.LabelGui_Front.Name = "AmountGui"
 		end
 	end
-	-- allée : tapis rouge du seuil au fond du niveau 1 (la suite, CarpetExt, est dans Stage_2)
-	local carpet = B(M, "Carpet", -6, 0.32, -39.6, 6, 0.35, P.SMALL_Z - 0.4, P.rgb(200, 40, 45), { decor = true, noShadow = true })
-	carpet.CanCollide = false
+	-- plus de tapis rouge Carpet dans l'allée (Clément, 2026-11-15 : « trop d'info tue l'info »)
 	-- plus de bornes noires à côté de la porte (Clément, 2026-11-10) : le point reste, posé sur le sol
 	att("DisplayUpgradePoint", M.PlotFloor, -15.1, 0.3, -36.5) -- panneau au sol (session UI, 2026-11-08)
 
@@ -586,9 +588,7 @@ local function buildStage2Ext(S)
 	B(S, "PlotFloorExt", -32, -0.6, P.SMALL_Z, 32, 0.3, 40, C.accent, { accent = true })
 	P.floorTiles(S, "FloorTilesExt", (P.SMALL_Z + 40) / 4, 19)
 	forceField(S, SEGMENTS, 3)
-	-- suite de l'allée (Clément, 2026-11-14) ; plus de cartons de stock au fond (gênaient la file de gauche)
-	local carpet = B(S, "CarpetExt", -6, 0.32, P.SMALL_Z - 0.4, 6, 0.35, 39.6, rgb(200, 40, 45), { decor = true, noShadow = true })
-	carpet.CanCollide = false
+	-- plus de cartons de stock au fond (gênaient la file de gauche) ; plus de tapis CarpetExt (Clément, 2026-11-15 : « retire tous les tapis »)
 	return S
 end
 
@@ -792,7 +792,7 @@ local function buildStage5(M)
 		B(SG, "Bulb_B" .. k, x - 0.13, 16.05, -41.22, x + 0.13, 16.3, -41.1, C.yellow, { studs = false, decor = true, mat = NEON })
 	end
 	-- plus de coffre-fort autour de la porte (L-086, 2026-11-08) : VaultFrame et VaultDoor retirés
-	-- plus de tapis à cordons (2026-11-14 : l'allée a son tapis Carpet dès le niveau 1)
+	-- plus de tapis à cordons (2026-11-14) ; plus aucun tapis depuis le 2026-11-15
 	-- lustres au-dessus de l'allée centrale
 	local CH = group(S, "Chandeliers")
 	for i, z in { -12, 4 } do
@@ -972,7 +972,7 @@ local function narrowWidth(M)
 		local x = M:FindFirstChild(string.format("Rayon_%02d", r)); if x then table.insert(keep, x) end
 	end
 	local s2 = M:FindFirstChild("Stage_2")
-	for _, n in { "RayonSpots", "FloorTilesExt", "CarpetExt" } do
+	for _, n in { "RayonSpots", "FloorTilesExt" } do
 		local x = s2 and s2:FindFirstChild(n); if x then table.insert(keep, x) end
 	end
 	local function kept(p)

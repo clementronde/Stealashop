@@ -17,7 +17,10 @@
 	    l'Attachment UsePoint (place du coureur, tourné vers -Z). Pour Void et Fire, Belt est une
 	    Part plate qui reprend l'image de la bande (importée sur le maillage) en BeltTexture ;
 	  - UpgradePoint (Attachment au sol en (8,4, 0, -4) depuis le pivot, tourné vers +Z (la boutique), même point pour toutes les variantes) ;
-	  - UseZone (Part invisible, sans collision, CanTouch) : la machine + 3 studs autour (1,5 côté boutique, +Z), 8 studs de haut ; le code fait monter le joueur dès qu'il y entre ;
+	  - UseZone (Part invisible, sans collision, CanTouch) : la machine visible (sans le dossier <Nom>FX ni les pièces invisibles) + 3 studs autour (1,5 côté boutique, +Z), 8 studs de haut ; le code fait monter le joueur dès qu'il y entre ;
+	  - attribut WidthScale : largeur (X) de la machine par rapport au modèle importé. Bande élargie ×1,5 le 2026-11-15
+	    (Clément) : 3,44 → 5,16 studs, longueur 6,3 inchangée (elle doit rester plus longue que large : on monte par
+	    les grands côtés, L-187). Tout s'élargit en X (châssis, console, flèches, effets), UpgradePoint ne bouge pas ;
 	  - des boîtes invisibles Collision_* qui portent les collisions.
 	La boutique (plot_shop_builder.luau) copie PLOT_Treadmill_Base sous le nom Treadmill.
 ]]
@@ -271,14 +274,31 @@ end
 -- Le code fait monter le joueur dès qu'il y entre. Marge de 3 studs autour du tapis, 8 studs de haut.
 -- Côté boutique (+Z, l'arrière du tapis), marge réduite : la zone s'arrête avant le mur de façade.
 local USE_MARGIN, USE_REAR, USE_HEIGHT = 3, 1.5, 8
+-- Boîte de la machine visible dans le repère du pivot : sans UseZone, sans pièces invisibles, sans le dossier
+-- <Nom>FX (ses hôtes d'effets, invisibles, débordent : le panneau d'amélioration tombait dans la zone, 2026-11-15).
+local function machineBox(m, pivot)
+	local x0, x1, z0, z1 = math.huge, -math.huge, math.huge, -math.huge
+	for _, p in m:GetDescendants() do
+		if p:IsA("BasePart") and p.Name ~= "UseZone" and p.Transparency < 1 then
+			local fx, a = false, p.Parent
+			while a and a ~= m do if a.Name:match("FX$") then fx = true end; a = a.Parent end
+			if not fx then
+				local cf, s = pivot:ToObjectSpace(p.CFrame), p.Size
+				local hx = math.abs(cf.RightVector.X) * s.X / 2 + math.abs(cf.UpVector.X) * s.Y / 2 + math.abs(cf.LookVector.X) * s.Z / 2
+				local hz = math.abs(cf.RightVector.Z) * s.X / 2 + math.abs(cf.UpVector.Z) * s.Y / 2 + math.abs(cf.LookVector.Z) * s.Z / 2
+				x0 = math.min(x0, cf.X - hx); x1 = math.max(x1, cf.X + hx)
+				z0 = math.min(z0, cf.Z - hz); z1 = math.max(z1, cf.Z + hz)
+			end
+		end
+	end
+	return x0, x1, z0, z1
+end
 local function useZone(m)
 	local old = m:FindFirstChild("UseZone")
 	if old then old:Destroy() end
 	local pivot = m:GetPivot()
-	local cf, size = m:GetBoundingBox()
-	local c = pivot:PointToObjectSpace(cf.Position)
-	local x0, x1 = c.X - size.X / 2 - USE_MARGIN, c.X + size.X / 2 + USE_MARGIN
-	local z0, z1 = c.Z - size.Z / 2 - USE_MARGIN, c.Z + size.Z / 2 + USE_REAR
+	local x0, x1, z0, z1 = machineBox(m, pivot)
+	x0 -= USE_MARGIN; x1 += USE_MARGIN; z0 -= USE_MARGIN; z1 += USE_REAR
 	local z = Instance.new("Part")
 	z.Name = "UseZone"
 	z.Size = Vector3.new(x1 - x0, USE_HEIGHT, z1 - z0)
@@ -291,6 +311,38 @@ local function useZone(m)
 	z.CastShadow = false
 	z.Parent = m
 	return z
+end
+
+-- Bande plus large (Clément, 2026-11-15) : toute la machine s'élargit en X autour de son pivot (pièces, effets,
+-- attachments), sauf UpgradePoint ; l'image d'une bande plate (StudsPerTileU = largeur) suit la largeur.
+-- Idempotent : l'attribut WidthScale garde l'échelle déjà posée.
+local WIDTH_SCALE = 1.5
+local function widen(m)
+	local k = WIDTH_SCALE / (m:GetAttribute("WidthScale") or 1)
+	m:SetAttribute("WidthScale", WIDTH_SCALE)
+	if math.abs(k - 1) < 1e-4 then return end
+	local pv = m:GetPivot()
+	for _, d in m:GetDescendants() do
+		if d:IsA("BasePart") and d.Name ~= "UseZone" then
+			local atts = {}
+			for _, a in d:GetChildren() do if a:IsA("Attachment") then atts[a] = pv:ToObjectSpace(a.WorldCFrame) end end
+			local cf = pv:ToObjectSpace(d.CFrame)
+			local sz, oldX = { d.Size.X, d.Size.Y, d.Size.Z }, d.Size.X
+			for i, v in { cf.RightVector, cf.UpVector, cf.LookVector } do
+				if math.abs(math.abs(v.X) - 1) < 1e-3 then sz[i] *= k end
+			end
+			d.Size = Vector3.new(sz[1], sz[2], sz[3])
+			d.CFrame = pv * (CFrame.new(cf.X * k, cf.Y, cf.Z) * cf.Rotation)
+			for a, lcf in atts do
+				a.WorldCFrame = if a.Name == "UpgradePoint" then pv * lcf else pv * (CFrame.new(lcf.X * k, lcf.Y, lcf.Z) * lcf.Rotation)
+			end
+			if d.Name == "Belt" then
+				for _, t in d:GetChildren() do
+					if t:IsA("Texture") and math.abs(t.StudsPerTileU - oldX) < 0.05 then t.StudsPerTileU = d.Size.X end
+				end
+			end
+		end
+	end
 end
 
 local function prepare(import, name)
@@ -368,6 +420,7 @@ local function prepare(import, name)
 	for _, c in spec.colliders do
 		box(m, c[1], c[2], c[3])
 	end
+	widen(m)
 	useZone(m)
 	import:Destroy()
 	return m
@@ -388,7 +441,7 @@ for name in VARIANTS do
 			name, b.Position.Y + b.Size.Y / 2, b.Position.Z - b.Size.Z / 2, b.Position.Z + b.Size.Z / 2, up.X, up.Y, up.Z, b.BeltTexture.Texture))
 	else
 		local kept = plots:FindFirstChild(name)
-		if kept and not kept:FindFirstChild("UseZone") then useZone(kept) end
+		if kept then widen(kept); useZone(kept) end
 		table.insert(report, name .. " : pas d'import dans Workspace, " .. (kept and "version rangée gardée" or "ABSENT"))
 	end
 end
