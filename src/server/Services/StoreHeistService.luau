@@ -3720,6 +3720,20 @@ function StoreHeistService.Init()
 	local onCatch: any = if okGuard and type(guardApi) == "table" then guardApi.OnCatch else nil
 	if type(onCatch) == "function" then
 		(onCatch :: any)(function(player: Player, _zone: number, night: boolean, _carrying: boolean)
+			-- a211 (bug vu en Play le 16/11) : attrapé, il n'est plus l'intrus d'aucun magasin (plus de chrono ni de
+			-- vigile de fin de chrono pour lui) ; avant, chronoEnd lui envoyait un 2e vigile s'il était encore dedans,
+			-- étourdi, à la fin du chrono : deux « Caught! » et deux scènes de capture.
+			for _, store in stores do
+				if store.Entered[player] then
+					store.Entered[player] = nil
+					local paused = pausedChronos[player]
+					if paused ~= nil and paused.Store == store then
+						pausedChronos[player] = nil
+					end
+					hideTimer(store, player)
+					log(`{player.Name} attrapé : plus intrus de {store.Id}, plus de chrono ni de vigile de fin de chrono`)
+				end
+			end
 			if night then
 				return
 			end
