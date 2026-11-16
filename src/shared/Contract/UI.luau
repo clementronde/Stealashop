@@ -1291,5 +1291,19 @@ table.insert(UI.Screens, {
 		{ Path = "Balance.Spent", Class = "TextLabel", Optional = true, Note = "le solde décompte sans « -X » à côté" },
 	} :: { Element },
 })
+-- Bulles ×N du tapis (vague 64, a214 ; noms proposés à Clément, pas encore livré) : facultatif. BubbleController en pose
+-- une copie autour du joueur sur son tapis ; Button reçoit le clic (son UIScale PopScale est animé, créé s'il manque),
+-- MultiplierLabel reçoit « ×N », Shine n'est visible qu'à partir de Config/Bubbles.Client.ShineFrom. Absent ou sans
+-- Button : bulle de repli construite par le code.
+table.insert(UI.Billboards, {
+	Name = "BB_TrainBubble",
+	Class = "BillboardGui",
+	Optional = true,
+	Elements = {
+		{ Path = "Button", Class = BUTTON },
+		{ Path = "MultiplierLabel", Class = "TextLabel", Optional = true, Note = "la bulle n'affiche pas son « ×N »" },
+		{ Path = "Shine", Class = "GuiObject", Optional = true, Note = "les grosses valeurs n'ont pas d'éclat à elles" },
+	} :: { Element },
+})
 
 return UI
