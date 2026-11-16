@@ -25,6 +25,10 @@
 --     ItemName (couleur de la rareté), Income, attribut Rarity ; DisplayButton → remote PlaceFromReserve(uid) :
 --     le serveur le pose sur un présentoir libre (sinon « No free display », rien ne bouge). Sans Reserve dans
 --     l'écran : la réserve n'est pas montrée, rien ne casse.
+--   - vague 66 (a219, L-210 point 2, Config/Displayed) : le serveur met dans la réserve tout objet ni exposé ni en
+--     main (ReserveCatchAll) et échange avec l'exposé le moins rentable quand tout est pris (SwapWhenFull) ; ici, un
+--     objet sous antivol pas encore posé au sol est listé à la suite, DisplayButton.DisplayLabel = LockedButtonText
+--     (« PLACE ») : le bouton ferme le panneau et lance la pose au sol (InventoryController.PlaceItem).
 -- Tout vient des attributs du Player posés par le serveur : InventoryState (Shared/InventoryState,
 -- InventoryService), DisplaySlotsUnlocked et DisplayReserve (DisplayService). Le client ne décide rien.
 -- Seuls sont touchés : Enabled de l'écran, Visible de Panel.Reserve, les lignes clonées (taille du Template
@@ -197,11 +201,24 @@ local function reserved(items: { Entry }): { Entry }
 	end
 	local rank: { [string]: number } = {}
 	local list: { Entry } = {}
-	for index, uid in reserveUids() do
+	local count = 0
+	for _, uid in reserveUids() do
 		local entry = byUid[uid]
 		if entry and rank[uid] == nil then
-			rank[uid] = index
+			count += 1
+			rank[uid] = count
 			table.insert(list, entry)
+		end
+	end
+	-- Vague 66 (a219, L-210 point 2, Config/Displayed.ReserveCatchAll) : un objet sous antivol pas encore posé au sol
+	-- (seul cas où l'état le montre) est listé aussi : son bouton lance la pose au sol (plus haut, buildReserve).
+	if DisplayedConfig.ReserveCatchAll == true then
+		for _, entry in items do
+			if entry.AntiTheft == true and rank[entry.Uid] == nil and byUid[entry.Uid] ~= nil then
+				count += 1
+				rank[entry.Uid] = count
+				table.insert(list, entry)
+			end
 		end
 	end
 	table.sort(list, function(a: Entry, b: Entry): boolean
@@ -300,6 +317,26 @@ local function buildRows(current: Screen, list: { Entry })
 	end
 end
 
+local closePanel: () -> () -- défini plus bas (DisplayedController.Close)
+
+-- Vague 66 (a219) : objet sous antivol de la réserve : le panneau se ferme et la pose au sol commence
+-- (InventoryController.PlaceItem, comme la barre du bas ; le serveur revérifie tout à PlaceBox).
+local function placeOnFloor(uid: string)
+	local module = script.Parent:FindFirstChild("InventoryController")
+	local ok, result = pcall(function(): any
+		return if module and module:IsA("ModuleScript") then (require(module) :: any).PlaceItem else nil
+	end)
+	if not ok or type(result) ~= "function" then
+		reportOnce("placeOnFloor", `[Displayed] InventoryController.PlaceItem introuvable : objet sous antivol pas posé ({result})`)
+		return
+	end
+	closePanel()
+	local placed, err = pcall(result, uid)
+	if not placed then
+		reportOnce("placeOnFloorError", `[Displayed] InventoryController.PlaceItem : {err}`)
+	end
+end
+
 local function buildReserve(current: Screen, list: { Entry })
 	clearRows(current.reserveRows)
 	local template = current.reserveTemplate
@@ -312,8 +349,17 @@ local function buildReserve(current: Screen, list: { Entry })
 			continue
 		end
 		local uid = entry.Uid
-		local _ = onClick(Find.path(row, "DisplayButton"), function()
-			send("PlaceFromReserve", uid) -- détruite avec la ligne
+		local locked = entry.AntiTheft == true
+		local button = Find.path(row, "DisplayButton")
+		if locked and button then
+			setText(button:FindFirstChild("DisplayLabel"), DisplayedConfig.LockedButtonText) -- vague 66 : « PLACE »
+		end
+		local _ = onClick(button, function()
+			if locked then
+				placeOnFloor(uid)
+			else
+				send("PlaceFromReserve", uid) -- détruite avec la ligne
+			end
 		end)
 		row.Visible = true
 		row.Parent = template.Parent
@@ -346,7 +392,6 @@ local function apply(current: Screen)
 end
 
 -- Définies plus bas (elles rebranchent l'écran au besoin).
-local closePanel: () -> ()
 local displayBest: () -> ()
 
 local function bind(gui: ScreenGui)

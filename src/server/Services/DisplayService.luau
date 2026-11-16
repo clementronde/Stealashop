@@ -133,6 +133,11 @@
 --       Remote PlaceFromReserve (DisplayButton de UI_Displayed) : l'objet de sa réserve va sur le présentoir libre et
 --       débloqué le plus proche (PlaceAuto) ; refus : "NoProfile", "NotInReserve", "NoPlot", "NoFreeDisplay" (V0 : Notify
 --       « No free display », rien ne bouge, règle à proposer à Clément). Réussite : Notify « Success ».
+--   Vague 66 (a219, L-210 point 2 « bloqués à vie », Config/Displayed) : un objet en main n'est pas dans la réserve
+--   (attribut HeldItem du Player) ; ReserveCatchAll : une fois par seconde et au chargement, tout objet que la réserve
+--   peut garder et qui n'y est pas y entre au bout (les plus rentables d'abord, au plus ReserveMax) ; SwapWhenFull :
+--   PlaceFromReserve sans présentoir libre échange avec l'exposé qui rapporte le moins (il va dans la réserve, 3e valeur
+--   rendue = son uid ; Notify « … moved to your reserve »).
 --   DisplayService.GetIncome(player) -> number      $/s total exposé, sans bonus (0 sans parcelle)
 --   DisplayService.GetRegister(player) -> number    total des plaques, en dollars entiers
 --   DisplayService.GetCollectTarget(player) -> Vector3?
@@ -245,6 +250,7 @@ local ItemWeight = require(ReplicatedStorage.Shared.ItemWeight)
 local Rarities = require(ReplicatedStorage.Shared.Config.Rarities)
 local Zones = require(ReplicatedStorage.Shared.Config.Zones)
 local DisplayedConfig = require(ReplicatedStorage.Shared.Config.Displayed) -- vague 63 (a206) : réserve
+local HeldItemConfig = require(ReplicatedStorage.Shared.Config.HeldItem) -- vague 66 (a219) : objet en main, hors réserve
 local InventoryState = require(ReplicatedStorage.Shared.InventoryState) -- vague 63 : IsSafeId (attribut de la réserve)
 local Format = require(ReplicatedStorage.Shared.Format)
 local RarityHalo = require(ReplicatedStorage.Shared.RarityHalo)
@@ -385,6 +391,8 @@ local MESSAGES: { [string]: string } = {
 	-- V0 en attendant la règle de Clément ; ReservePlaced : V0, comme InventoryService (MESSAGES.Placed).
 	NoFreeDisplay = "No free display",
 	ReservePlaced = "%s placed on a display!",
+	-- Vague 66 (a219), V0 : présentoirs tous pris, échange (Config/Displayed.SwapWhenFull).
+	ReserveSwapped = "%s placed on a display, %s moved to your reserve",
 }
 
 local SOURCE_LABELS: { [string]: string } = {
@@ -594,7 +602,7 @@ local function isInVault(data: Data, uid: string): boolean
 end
 
 -- Vague 63 (a206) : réserve nettoyée et republiée (définie plus bas, avec la réserve).
-local syncReserve: (player: Player) -> ()
+local syncReserve: (player: Player, fill: boolean?) -> ()
 
 -- Barre d'inventaire remise à jour tout de suite (en-tête) ; sans InventoryService, sa boucle suit.
 -- Vague 63 : la réserve aussi (attribut DisplayReserve).
@@ -683,14 +691,25 @@ end
 local RESERVE_MAX = DisplayedConfig.ReserveMax
 local RESERVE_ATTRIBUTE = DisplayedConfig.ReserveAttribute
 
--- Objets que la réserve peut garder : au joueur, connus du catalogue, ni exposés, ni au coffre-fort, ni sous antivol.
-local function reservable(data: Data): (uid: string) -> boolean
+-- Vague 66 (a219) : uid de l'objet tenu en main (attribut HeldItem du Player, HeldItemService), nil sinon. Un objet en
+-- main n'est pas dans la réserve (L-192 Q3 : retiré à la main = dans la main) ; rangé, il y revient (ReserveCatchAll).
+local function inHandOf(player: Player): string?
+	local uid = player:GetAttribute(HeldItemConfig.PlayerAttribute)
+	return if type(uid) == "string" then uid else nil
+end
+
+-- Objets que la réserve peut garder : au joueur, connus du catalogue, ni exposés, ni au coffre-fort, ni sous antivol,
+-- ni en main (vague 66).
+local function reservable(data: Data, inHand: string?): (uid: string) -> boolean
 	local excluded: { [string]: boolean } = {}
 	for _, uid in data.Display do
 		excluded[uid] = true
 	end
 	for _, uid in data.Vault do
 		excluded[uid] = true
+	end
+	if inHand then
+		excluded[inHand] = true
 	end
 	return function(uid: string): boolean
 		if type(uid) ~= "string" or excluded[uid] then
@@ -703,12 +722,12 @@ end
 
 -- La réserve nettoyée (doublons, objets partis, exposés, au coffre-fort, sous antivol, au-delà de RESERVE_MAX
 -- retirés), réécrite dans le profil si elle a changé. Sans profil migré (champ absent) : vide, rien d'écrit.
-local function cleanReserve(data: Data): { string }
+local function cleanReserve(data: Data, inHand: string?): { string }
 	local list = data.Reserve
 	if type(list) ~= "table" then
 		return {}
 	end
-	local ok = reservable(data)
+	local ok = reservable(data, inHand)
 	local clean: { string } = {}
 	local seen: { [string]: boolean } = {}
 	for _, uid in list do
@@ -733,9 +752,9 @@ local function cleanReserve(data: Data): { string }
 end
 
 -- Ajoute l'objet au bout de la réserve. false s'il ne peut pas y aller (pas reservable, déjà dedans, pleine).
-local function addToReserve(data: Data, uid: string): boolean
-	local list = cleanReserve(data)
-	if #list >= RESERVE_MAX or table.find(list, uid) ~= nil or not reservable(data)(uid) then
+local function addToReserve(data: Data, uid: string, inHand: string?): boolean
+	local list = cleanReserve(data, inHand)
+	if #list >= RESERVE_MAX or table.find(list, uid) ~= nil or not reservable(data, inHand)(uid) then
 		return false
 	end
 	table.insert(list, uid)
@@ -743,17 +762,13 @@ local function addToReserve(data: Data, uid: string): boolean
 	return true
 end
 
--- Profil d'avant la réserve (champ absent) : ses objets ni exposés, ni au coffre-fort, ni sous antivol y vont, les
--- plus rentables d'abord (puis par uid), au plus RESERVE_MAX. Rien ne quitte Items. Sans yield.
-local function migrateReserve(player: Player, data: Data)
-	if data.Reserve ~= nil then
-		return
-	end
-	local ok = reservable(data)
+-- Objets que la réserve peut garder et qui n'y sont pas (sauf `skip`), les plus rentables d'abord (puis par uid).
+local function missingFromReserve(data: Data, inHand: string?, skip: { [string]: boolean }): { string }
+	local ok = reservable(data, inHand)
 	type Ranked = { uid: string, income: number }
 	local ranked: { Ranked } = {}
 	for uid, entry in data.Items do
-		if ok(uid) then
+		if not skip[uid] and ok(uid) then
 			local _, def = lookup(data, uid)
 			table.insert(ranked, { uid = uid, income = if def then itemIncome(def, entry, uid) else 0 })
 		end
@@ -765,8 +780,24 @@ local function migrateReserve(player: Player, data: Data)
 		return a.uid < b.uid
 	end)
 	local list: { string } = {}
-	for index = 1, math.min(#ranked, RESERVE_MAX) do
-		table.insert(list, ranked[index].uid)
+	for _, item in ranked do
+		table.insert(list, item.uid)
+	end
+	return list
+end
+
+-- Profil d'avant la réserve (champ absent) : ses objets ni exposés, ni au coffre-fort, ni sous antivol, ni en main y
+-- vont, les plus rentables d'abord (puis par uid), au plus RESERVE_MAX. Rien ne quitte Items. Sans yield.
+local function migrateReserve(player: Player, data: Data)
+	if data.Reserve ~= nil then
+		return
+	end
+	local list: { string } = {}
+	for _, uid in missingFromReserve(data, inHandOf(player), {}) do
+		if #list >= RESERVE_MAX then
+			break
+		end
+		table.insert(list, uid)
 	end
 	data.Reserve = list
 	if IS_STUDIO then
@@ -774,15 +805,53 @@ local function migrateReserve(player: Player, data: Data)
 	end
 end
 
+-- Vague 66 (a219, L-210 point 2, Config/Displayed.ReserveCatchAll) : chaque objet que la réserve peut garder et qui
+-- n'y est pas (arrivé après la migration : fin d'antivol les mains prises, objet rangé de la main, volé à un joueur,
+-- donné, revenu d'une renaissance…) y entre au bout, les plus rentables d'abord, au plus RESERVE_MAX (pleine : il
+-- attend une place, il entre dès qu'un objet en sort). Seulement depuis la boucle d'une seconde et au chargement,
+-- jamais pendant un retrait (InventoryService : main, puis AddToReserve, dans la même exécution). Sans yield.
+local function fillReserve(player: Player, data: Data)
+	if DisplayedConfig.ReserveCatchAll ~= true or type(data.Reserve) ~= "table" then
+		return
+	end
+	local inHand = inHandOf(player)
+	local list = cleanReserve(data, inHand)
+	if #list >= RESERVE_MAX then
+		return
+	end
+	local seen: { [string]: boolean } = {}
+	for _, uid in list do
+		seen[uid] = true
+	end
+	local added = 0
+	for _, uid in missingFromReserve(data, inHand, seen) do
+		if #list >= RESERVE_MAX then
+			break
+		end
+		table.insert(list, uid)
+		added += 1
+	end
+	if added > 0 then
+		data.Reserve = list
+		if IS_STUDIO then
+			print(`[DisplayService] {player.Name} : {added} objet(s) non exposé(s) ajouté(s) à la réserve`)
+		end
+	end
+end
+
 -- Attribut DisplayReserve du Player : les uids de la réserve, dans l'ordre, séparés par « , » (lu par
--- DisplayedController avec l'état de l'inventaire). Écrit seulement s'il change. Sans yield.
-syncReserve = function(player: Player)
+-- DisplayedController avec l'état de l'inventaire). Écrit seulement s'il change. Sans yield. `fill` (vague 66) :
+-- d'abord les objets qui manquent (fillReserve).
+syncReserve = function(player: Player, fill: boolean?)
 	local data = DataService.Get(player)
 	if data == nil or player.Parent ~= Players then
 		return
 	end
+	if fill then
+		fillReserve(player, data)
+	end
 	local shown: { string } = {}
-	for _, uid in cleanReserve(data) do
+	for _, uid in cleanReserve(data, inHandOf(player)) do
 		if InventoryState.IsSafeId(uid) then
 			table.insert(shown, uid)
 		end
@@ -1709,7 +1778,7 @@ local function onProfileLoaded(player: Player)
 	local data = DataService.Get(player)
 	if data then
 		migrateReserve(player, data)
-		syncReserve(player)
+		syncReserve(player, true)
 	end
 	local plot = PlotService.GetPlot(player)
 	if plot then
@@ -1895,7 +1964,7 @@ local function refreshAll()
 	-- Vague 63 (a206) : réserve d'accord avec le profil (objet vendu, volé, rangé au coffre-fort ailleurs), parcelle
 	-- ou pas.
 	for _, player in Players:GetPlayers() do
-		syncReserve(player)
+		syncReserve(player, true)
 	end
 end
 
@@ -2231,7 +2300,7 @@ function DisplayService.EquipBest(player: Player): number
 		migrateReserve(player, data) -- profil pas encore migré (chargé avant ce service) : tout le non-exposé y va
 	end
 	for _, candidate in bumped do
-		addToReserve(data, candidate.uid)
+		addToReserve(data, candidate.uid, inHandOf(player))
 	end
 	-- … et les meilleurs pas encore exposés prennent les présentoirs libres, dans l'ordre.
 	local moved = 0
@@ -2272,7 +2341,7 @@ end
 -- Vague 63 (a206) : réserve (voir l'en-tête). Sans yield.
 function DisplayService.GetReserve(player: Player): { string }
 	local data = DataService.Get(player)
-	return if data then table.clone(cleanReserve(data)) else {}
+	return if data then table.clone(cleanReserve(data, inHandOf(player))) else {}
 end
 
 function DisplayService.AddToReserve(player: Player, itemUid: string): boolean
@@ -2283,7 +2352,7 @@ function DisplayService.AddToReserve(player: Player, itemUid: string): boolean
 	if data.Reserve == nil then
 		migrateReserve(player, data)
 	end
-	local added = addToReserve(data, itemUid)
+	local added = addToReserve(data, itemUid, inHandOf(player))
 	syncReserve(player)
 	return added
 end
@@ -2292,36 +2361,95 @@ end
 -- de SA réserve. Renvoie le présentoir, ou nil et la raison : "NoProfile", "NotInReserve" (pas dans sa réserve
 -- nettoyée : pas à lui, exposé, au coffre-fort, sous antivol, parti), "NoPlot", "NoFreeDisplay". Rien ne bouge sur
 -- un refus. Où que soit le joueur (comme Equip Best). Sans yield.
-function DisplayService.PlaceFromReserve(player: Player, itemUid: string): (number?, string?)
+-- Vague 66 (a219, Config/Displayed.SwapWhenFull, V0) : aucun présentoir libre : l'objet prend la place de l'exposé
+-- qui rapporte le moins (à revenu égal, le plus grand numéro ; jamais un objet tenu par un voleur), qui prend sa
+-- place dans la réserve. Troisième valeur rendue : l'uid de l'objet sorti, nil sans échange.
+
+-- L'échange (voir plus haut). Renvoie le présentoir et l'uid sorti, ou nil (rien ne bouge). Sans yield.
+local function swapIn(player: Player, data: Data, plot: Model, itemUid: string): (number?, string?)
+	local account = accounts[player]
+	if DisplayedConfig.SwapWhenFull ~= true or account == nil then
+		return nil, nil
+	end
+	local refs = refsFor(plot)
+	local heldBy = held[player] or {}
+	local slot: number?, out: string?, lowest = nil, nil, math.huge
+	for _, index in unlockedList(player, data, refs) do
+		local uid = data.Display[tostring(index)]
+		if refs.slots[index] ~= nil and uid ~= nil and not heldBy[uid] then
+			local entry, def = lookup(data, uid)
+			local income = if entry and def then itemIncome(def, entry, uid) else 0
+			if income < lowest or (income == lowest and slot ~= nil and index > slot) then
+				slot, out, lowest = index, uid, income
+			end
+		end
+	end
+	if slot == nil or out == nil then
+		return nil, nil
+	end
+	local key = tostring(slot)
+	data.Display[key] = itemUid
+	reconcile(player, account, data, plot)
+	if data.Display[key] ~= itemUid then
+		data.Display[key] = out -- refusé par la mise d'accord : l'ancien revient
+		reconcile(player, account, data, plot)
+		return nil, nil
+	end
+	-- L'objet sorti prend la place de l'objet exposé dans la réserve (même taille : jamais au-delà de ReserveMax).
+	local list = data.Reserve
+	local at = if type(list) == "table" then table.find(list, itemUid) else nil
+	if list and at then
+		list[at] = out :: string
+	else
+		addToReserve(data, out :: string, inHandOf(player))
+	end
+	refreshInventory(player)
+	if IS_STUDIO then
+		print(`[DisplayService] {player.Name} : {describe(data, itemUid, slot)} à la place de {out} (réserve), revenu {Format.money(account.income)}/s`)
+	end
+	return slot, out
+end
+
+function DisplayService.PlaceFromReserve(player: Player, itemUid: string): (number?, string?, string?)
 	local data, _, plot = context(player)
 	if data == nil then
-		return nil, "NoProfile"
+		return nil, "NoProfile", nil
 	end
-	if type(itemUid) ~= "string" or table.find(cleanReserve(data), itemUid) == nil then
-		return nil, "NotInReserve"
+	if type(itemUid) ~= "string" or table.find(cleanReserve(data, inHandOf(player)), itemUid) == nil then
+		return nil, "NotInReserve", nil
 	end
 	if plot == nil then
-		return nil, "NoPlot"
+		return nil, "NoPlot", nil
 	end
 	local slot = DisplayService.PlaceAuto(player, itemUid)
 	if slot == nil then
-		return nil, "NoFreeDisplay"
+		local swapped, out = swapIn(player, data, plot, itemUid)
+		if swapped == nil then
+			return nil, "NoFreeDisplay", nil
+		end
+		return swapped, nil, out
 	end
 	syncReserve(player) -- exposé : il quitte la réserve (cleanReserve)
-	return slot, nil
+	return slot, nil, nil
 end
 
 -- Remote PlaceFromReserve(itemUid) : DisplayButton d'une ligne de UI_Displayed.Panel.Reserve (DisplayedController).
 local function onPlaceFromReserve(player: Player, itemUid: string)
-	local slot, reason = DisplayService.PlaceFromReserve(player, itemUid)
+	local slot, reason, out = DisplayService.PlaceFromReserve(player, itemUid)
 	if slot then
 		local data = DataService.Get(player)
-		local entry: ItemEntry?, def: ItemDef? = nil, nil
-		if data then
-			entry, def = lookup(data, itemUid)
+		local function nameOf(uid: string): string
+			local entry: ItemEntry?, def: ItemDef? = nil, nil
+			if data then
+				entry, def = lookup(data, uid)
+			end
+			return if entry and def then Mutations.ItemName(def.DisplayName, Mutations.Sanitize(entry.Mutation)) else "Item"
 		end
-		local name = if entry and def then Mutations.ItemName(def.DisplayName, Mutations.Sanitize(entry.Mutation)) else "Item"
-		notify(player, string.format(MESSAGES.ReservePlaced, name), "Success")
+		if out then -- vague 66 (a219) : échange, présentoirs tous pris
+			notify(player, string.format(MESSAGES.ReserveSwapped, nameOf(itemUid), nameOf(out)), "Success")
+		else
+			notify(player, string.format(MESSAGES.ReservePlaced, nameOf(itemUid)), "Success")
+		end
 		return
 	end
 	if reason == "NoFreeDisplay" then
