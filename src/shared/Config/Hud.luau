@@ -31,7 +31,7 @@ local Hud = {
 		ChunksPerSecond = 1, -- V0 (Cantin) : 1 par seconde ; L-182 disait « 5 morceaux par seconde »
 		Period = 1, -- s couvertes par les morceaux : TREADMILL_TICK de TrainingService
 		Life = 0.75, -- L-182 : « chaque +X vit environ 0,75 s »
-		Text = "+%s Speed", -- V0 proposé, absent du doc : « +0.4 Speed » (un morceau n'est plus « par seconde »)
+		Text = "+%s", -- vague 67 (a224, Cantin) : le nombre seul, « +0.4 » (avant : « +0.4 Speed »)
 	},
 	-- L-182 point 8 : le compteur de vitesse du HUD (SpeedRow s'il existe, sinon le nombre Speed) pulse à chaque
 	-- morceau : il saute à une échelle entre Min et Max, puis revient à 1 en Time. Les 5 morceaux d'une seconde
@@ -78,13 +78,16 @@ local Hud = {
 		-- Vague 65 (a215) : sans modèle de Clément, le cadre s'élargit pour que le texte tienne sur une ligne à sa hauteur
 		-- (plus de retour à la ligne) ; marge en part de la largeur mesurée du texte. V0 proposé, absent du doc.
 		TextMargin = 0.1,
+		-- Vague 67 (a224, Cantin : « tu grossis le tout ») : le gain du tapis (« +2 ») et celui d'une bulle, qu'ils volent ou
+		-- montent sur place, à Scale fois leur taille d'avant (modèle de Clément ou repli). V0 proposé, absent du doc.
+		Scale = 1.5,
 	},
 	-- Vague 65 (a215, restes de fusion58) : la Vitesse d'une bulle ×N prise (BubbleService) est un gain unique, pas un
 	-- gain par seconde : « +32 Speed », sans « /s » (même vol ou même « +X » sur place que le tapis). Le client l'apprend
 	-- par BubbleGone(id, "Claimed", gain), envoyé juste avant la hausse de Speed ; Window : délai (s) au-delà duquel un
 	-- gain de bulle annoncé et pas encore vu monter est oublié. V0 proposés, absents du doc.
 	BubbleGain = {
-		Text = "+%s Speed",
+		Text = "+%s", -- vague 67 (a224, Cantin) : « +32 », le nombre seul (avant : « +32 Speed »)
 		Window = 0.5,
 	},
 	-- Vague 63 (a205, L-202 point 1, L-192 Q1) : plus de menu « More » (MenuButton, MenuPanel retirés par Clément).
