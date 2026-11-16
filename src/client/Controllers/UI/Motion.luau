@@ -40,6 +40,9 @@
 --                               (bouton de réussite, ou UI_Open / UI_Close… au même moment) : un son par action.
 --   Close et Hide attendent la fermeture des éléments Appear (Controllers/UI/Appear) ; Open et Close ne
 --   mettent pas à l'échelle un cadre racine qui porte Appear, ni OpenStagger les cartes d'une Cascade.
+--   Vague 64 (a212) : réglage « animations réduites » (Appear.Reduced) : Open, Close, Show, Hide et les cartes
+--   (OpenStagger, Swap) se font d'un coup, sans mouvement. Rythme (Config/UiMotion.VideoRhythm) : Open 0,38 s
+--   Back Out, Close Back In 0,2 s jusqu'à 0, cartes de gauche à droite (22 ms d'écart, à partir de +230 ms).
 --   Motion.Pop(object, from, info)
 --                               sursaut passager from → 1 (UIScale PopScaleName détruit à la fin) :
 --                               CashBump, TimerTick. Rien sur un objet qui a déjà un autre UIScale.
@@ -148,6 +151,7 @@ type AppearApi = {
 	Open: (Instance) -> (),
 	Close: (Instance) -> number,
 	Reset: (Instance) -> (),
+	Reduced: () -> boolean,
 }
 local appear: AppearApi = (function(): AppearApi
 	local module = script.Parent:FindFirstChild("Appear")
@@ -169,6 +173,9 @@ local appear: AppearApi = (function(): AppearApi
 			return 0
 		end,
 		Reset = function(_: Instance) end,
+		Reduced = function(): boolean
+			return false
+		end,
 	}
 end)()
 -- Hover = Pop et Press = Squash (L-182 point 1) : variantes de Motion.Button et Motion.HoverCard, lues sur le bouton
@@ -405,6 +412,11 @@ local function run(entry: Entry, targets: { GuiObject }, start: number?, fresh: 
 		tween:Cancel()
 	end
 	table.clear(entry.tweens)
+	if appear.Reduced() then
+		release(entry) -- vague 64 : animations réduites, aucun mouvement (ouvert ou fermé d'un coup)
+		finish()
+		return
+	end
 
 	local wanted: { [GuiObject]: boolean } = {}
 	for _, target in targets do
@@ -589,6 +601,10 @@ end
 -- Start + (k − 1) × Gap s après (k au plus Max), dans l'ordre de lecture (calculé à la fin de l'image,
 -- une fois les positions à jour).
 local function staggerIn(gui: Instance, items: { GuiObject })
+	if appear.Reduced() then
+		stopStagger(gui) -- vague 64 : animations réduites, les cartes sont là d'un coup
+		return
+	end
 	local state = newStagger(gui)
 	for _, item in items do
 		addStaggerScale(state, item, STAGGER.From)
@@ -637,7 +653,7 @@ end
 -- Écran allumé dont le contenu peut changer de page en douceur : ni éteint, ni en train de se fermer.
 local function swappable(gui: ScreenGui): boolean
 	local entry = entries[gui]
-	return gui.Enabled and gui.Parent ~= nil and (entry == nil or entry.phase ~= "Closing")
+	return gui.Enabled and gui.Parent ~= nil and (entry == nil or entry.phase ~= "Closing") and not appear.Reduced()
 end
 
 -- Changement d'onglet (Swap) : sortie des cartes visibles, de la dernière à la première, puis

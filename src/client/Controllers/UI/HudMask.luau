@@ -21,13 +21,22 @@
 --   HudMask.IsActive(key?) -> boolean
 --   HudMask.Refresh()          revoit les écrans tout de suite (fait aussi à chaque Push et Pop)
 --   HudMask.GetHidden() -> (écrans masqués, éléments masqués)   pour un banc
+--   HudMask.SetAway(away, instant?)   (vague 64, a212 ; L-188 B, Config/UiMotion.HudAway) la barre du bas s'écarte
+--                              (away = true) : chaque élément de HudAway.Targets descend sous le bord du bas par sa
+--                              Position (OutTime, OutStyle), puis revient (BackTime, BackStyle) exactement à la
+--                              Position de Clément. instant : d'un coup (animations réduites). Rappelé souvent
+--                              (UiMotionController) : sans effet si rien ne change ; une copie neuve de l'écran
+--                              (ResetOnSpawn) s'écarte à son tour. Seule la Position est touchée, le temps de l'écart.
+--   HudMask.GetAway() -> (away, éléments écartés ou en mouvement)   pour un banc
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local HeistFeel = require(Shared:WaitForChild("Config"):WaitForChild("HeistFeel"))
+local UiMotion = require(Shared:WaitForChild("Config"):WaitForChild("UiMotion"))
 local Find = require(Shared:WaitForChild("Contract"):WaitForChild("Find"))
 
 export type Spec = {
@@ -297,6 +306,167 @@ function HudMask.IsActive(key: string?): boolean
 		return masks[key] ~= nil
 	end
 	return anyMask()
+end
+
+------------------------------------------------------------------------------
+-- La barre du bas qui s'écarte (vague 64)
+------------------------------------------------------------------------------
+
+local AWAY = UiMotion.HudAway
+
+-- Un élément écarté : sa Position de Clément, la distance (px vers le bas, ou part de l'écran si inconnue) et le
+-- mouvement en cours (de `from` à `to`, 0 = à sa place, 1 = sorti).
+type Away = {
+	base: UDim2,
+	pixels: number,
+	scale: number,
+	alpha: number,
+	from: number,
+	to: number,
+	elapsed: number,
+	duration: number,
+	style: Enum.EasingStyle,
+	direction: Enum.EasingDirection,
+}
+
+local awayWanted = false
+local aways: { [GuiObject]: Away } = {}
+local awayStep: RBXScriptConnection? = nil
+
+local function placeAway(object: GuiObject, item: Away)
+	local base = item.base
+	if item.alpha == 0 then
+		object.Position = base -- à sa place : la Position de Clément exactement (au retour, le Back Out passe un peu
+		-- au-dessus avant de s'y poser)
+	elseif item.pixels > 0 then
+		object.Position = UDim2.new(base.X.Scale, base.X.Offset, base.Y.Scale, base.Y.Offset + item.pixels * item.alpha)
+	else
+		object.Position = UDim2.new(base.X.Scale, base.X.Offset, base.Y.Scale + item.scale * item.alpha, base.Y.Offset)
+	end
+end
+
+local function moveAway(item: Away, to: number, instant: boolean)
+	item.from = item.alpha
+	item.to = to
+	item.elapsed = 0
+	local out = to > item.alpha
+	item.duration = if instant then 0 else (if out then AWAY.OutTime else AWAY.BackTime)
+	item.style = if out then AWAY.OutStyle else AWAY.BackStyle
+	item.direction = if out then AWAY.OutDirection else AWAY.BackDirection
+end
+
+-- Les éléments de HudAway.Targets dans le PlayerGui (écrans UI_* allumés ou non).
+local function awayTargets(): { GuiObject }
+	local list: { GuiObject } = {}
+	local playerGui = localPlayer:FindFirstChildOfClass("PlayerGui")
+	if playerGui == nil then
+		return list
+	end
+	for _, target in AWAY.Targets do
+		local screen = playerGui:FindFirstChild(target.Screen)
+		if screen and screen:IsA("ScreenGui") then
+			local found = Find.path(screen, target.Path)
+			if found and found:IsA("GuiObject") then
+				table.insert(list, found :: GuiObject)
+			end
+		end
+	end
+	return list
+end
+
+-- px entre le haut de l'élément (à sa place) et le bord du bas de son écran ; 0 si inconnu.
+local function distanceToBottom(object: GuiObject): number
+	local screen = object:FindFirstAncestorWhichIsA("LayerCollector")
+	local height = if screen and screen:IsA("ScreenGui") then (screen :: ScreenGui).AbsoluteSize.Y else 0
+	local distance = height - object.AbsolutePosition.Y
+	return if height > 0 and distance > 0 then distance else 0
+end
+
+local function stepAway(dt: number)
+	for object, item in table.clone(aways) do
+		if object.Parent == nil then
+			aways[object] = nil -- écran parti (ResetOnSpawn) : oublié
+			continue
+		end
+		if item.alpha == item.to then
+			continue
+		end
+		item.elapsed += dt
+		local u = if item.duration <= 0 then 1 else math.min(item.elapsed / item.duration, 1)
+		if u >= 1 then
+			item.alpha = item.to
+		else
+			item.alpha = item.from + (item.to - item.from) * TweenService:GetValue(u, item.style, item.direction)
+		end
+		placeAway(object, item)
+		if item.alpha == 0 and item.to == 0 then
+			aways[object] = nil -- revenu : Position de Clément exactement, rien n'est gardé
+		end
+	end
+	local moving = false
+	for _, item in aways do
+		if item.alpha ~= item.to then
+			moving = true
+			break
+		end
+	end
+	if not moving and awayStep ~= nil then
+		local connection = awayStep
+		awayStep = nil
+		connection:Disconnect()
+	end
+end
+
+function HudMask.SetAway(away: boolean, instant: boolean?)
+	local now = instant == true
+	awayWanted = away
+	if away then
+		for _, object in awayTargets() do
+			local item = aways[object]
+			if item == nil then
+				local created: Away = {
+					base = object.Position,
+					pixels = distanceToBottom(object),
+					scale = AWAY.Distance,
+					alpha = 0,
+					from = 0,
+					to = 0,
+					elapsed = 0,
+					duration = 0,
+					style = AWAY.OutStyle,
+					direction = AWAY.OutDirection,
+				}
+				aways[object] = created
+				moveAway(created, 1, now)
+			elseif item.to ~= 1 then
+				moveAway(item, 1, now)
+			end
+		end
+	else
+		for _, item in aways do
+			if item.to ~= 0 then
+				moveAway(item, 0, now)
+			end
+		end
+	end
+	if now then
+		stepAway(0)
+	elseif awayStep == nil then
+		for _, item in aways do
+			if item.alpha ~= item.to then
+				awayStep = RunService.Heartbeat:Connect(stepAway)
+				break
+			end
+		end
+	end
+end
+
+function HudMask.GetAway(): (boolean, { GuiObject })
+	local list: { GuiObject } = {}
+	for object in aways do
+		table.insert(list, object)
+	end
+	return awayWanted, list
 end
 
 function HudMask.GetHidden(): ({ ScreenGui }, { GuiObject })
