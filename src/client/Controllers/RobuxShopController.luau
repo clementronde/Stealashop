@@ -53,6 +53,32 @@
 -- (« ×2 CASH »). Le serveur décide tout (MonetizationService) : le client n'envoie rien, il ouvre la
 -- fenêtre d'achat de Roblox et affiche.
 --
+-- Vague 63 (a208 ; L-196, L-200, L-204) :
+--   - 6 packs d'argent ; les boosts du HUD « ×2 Speed » et « zZz » (Monetization.ShopBoosts, prix, Id et Ready
+--     de Config/Boosts : même produit que les boutons du HUD) dans l'onglet Boosts, avant Ouvrir maintenant.
+--     Pas encore codés côté serveur (Ready = false) : la carte montre le prix et « Soon » au clic, rien n'est
+--     vendu, même boutique ouverte ;
+--   - UI_RobuxShop_v2 (L-200, noms v3 de L-204) passe avant UI_RobuxShop quand il est dans PlayerGui (l'ancien
+--     reste éteint) ; sans lui, UI_RobuxShop marche comme avant. Une seule liste List qui défile :
+--       Tabs.*Tab   ne filtrent plus : ils font défiler List jusqu'à leur section (Shop.ScrollTime) :
+--                   OffersTab = Crate, ou Featured si la caisse est cachée, sinon GamepassesSection ;
+--       GamepassesSection, BoostsSection, CashSection : Grid remplie depuis son Template (mêmes champs que
+--                   les cartes plus haut, sauf Effect, jamais écrit : caché par Clément) ; section cachée
+--                   sans offre ; la Grid prend le nombre de rangées de ses cartes (attribut Columns de la
+--                   Grid) et List.Content suit (seules les hauteurs en Scale et les rapports changent) ;
+--       CardColor   couleur de chaque carte (Config/Monetization, proposition de Clément en L-204) : les tons
+--                   du UIGradient de la carte et ses Studs passent de la couleur du Template à la sienne,
+--                   en gardant les mêmes écarts (plus clair, plus foncé) ;
+--       Featured    pack de départ tant qu'il est proposé (caché sinon) : ItemName, Perks.Perk1 à 3 (Label,
+--                   d'après la Config), Timer.Label (« Ends in 42:10 »), BuyButton (Price) ;
+--       Crate       caisse exclusive (Monetization.Crate) : cachée sauf Features.RobuxCrate, chances
+--                   décidées (Odds) et PolicyService:GetPolicyInfoForPlayerAsync qui permet les objets
+--                   payants au hasard (ArePaidRandomItemsRestricted faux ; erreur = cachée). Odd_n.Chance =
+--                   chance réelle, BuyRow.BuyButton1 à 3 : Price, Count (« 3 CRATES ») et OldPrice
+--                   (UnitPrice × Count, caché sans remise). Crate.Ready à false : « Soon », rien de vendu.
+--   - lueur d'achat (L-204 point 2) : juste avant d'ouvrir une fenêtre d'achat de Roblox, PurchaseGlow.Show()
+--     (Controllers/UI/PurchaseGlow, a209) s'il existe ; jamais sur « Soon » (aucune fenêtre ne se fermerait).
+--
 -- API (client) :
 --   RobuxShopController.Open(anchor?)
 --       Ouvre l'écran, comme le bouton du HUD (sans effet s'il est déjà ouvert, ou si la boutique et
@@ -78,8 +104,10 @@ local Motion = require(script.Parent:WaitForChild("UI"):WaitForChild("Motion"))
 type Tab = string
 type Pass = Monetization.Pass
 type Product = Monetization.Product
+type ShopBoost = Monetization.ShopBoost
+type CratePack = Monetization.CratePack
 
--- Une offre de l'écran : un gamepass ou un produit développeur.
+-- Une offre de l'écran : un gamepass, un produit développeur, un boost du HUD ou un lot de la caisse.
 type Offer = {
 	key: string,
 	tab: Tab,
@@ -87,29 +115,75 @@ type Offer = {
 	displayName: string,
 	effect: string,
 	icon: string,
+	color: Color3?,
 	pass: Pass?,
 	product: Product?,
+	boost: ShopBoost?,
+	crate: CratePack?,
 }
 
--- Une carte clonée.
+-- Une carte : clonée (cloned = true, retirée à la fermeture) ou un cadre de Clément de la v2 (Featured, un
+-- bouton de la caisse : gardés).
 type Card = {
 	offer: Offer,
 	frame: GuiObject,
 	buy: GuiObject?,
 	owned: GuiObject?,
 	soonUntil: number?, -- os.clock() jusqu'où Price montre SOON_TEXT (clic sans achat possible)
+	cloned: boolean,
+}
+
+-- Hauteurs d'une section de la v2, en largeurs de la section, lues au branchement (fitGrid).
+type GridFit = {
+	ratio: UIAspectRatioConstraint,
+	grid: GuiObject,
+	layout: UIGridLayout,
+	height: number, -- hauteur de la section
+	gridHeight: number,
+	cell: number, -- hauteur d'une carte
+	gap: number, -- écart entre deux rangées
+	columns: number,
+	scales: { [GuiObject]: { position: number, size: number } }, -- Scale en Y des enfants de la section
+}
+
+-- Une section à cartes de la v2.
+type Section = {
+	tab: Tab,
+	frame: GuiObject,
+	grid: GuiObject?,
+	template: GuiObject?,
+	fit: GridFit?,
+}
+
+-- List.Content de la v2 : hauteur gardée en rapport largeur / hauteur (fitContent).
+type ContentFit = {
+	ratio: UIAspectRatioConstraint,
+	layout: UIListLayout,
+	gap: number, -- écart entre deux blocs, en largeurs de Content
+	extra: number, -- marge en bas, en largeurs de Content
 }
 
 -- Écran branché.
 type Shop = {
 	gui: ScreenGui,
+	v2: boolean,
 	template: GuiObject?,
 	icons: { [string]: string }, -- [IconAsset] = image, lues dans les cartes de la maquette
 	connections: { RBXScriptConnection },
 	cards: { Card },
+	-- v2
+	list: ScrollingFrame?,
+	content: ContentFit?,
+	sections: { Section },
+	featured: GuiObject?,
+	featuredCard: Card?,
+	crate: GuiObject?,
+	crateCards: { Card },
+	state: string?, -- pack de départ et caisse montrés à la dernière construction
 }
 
 local SCREEN = "UI_RobuxShop"
+local SCREEN_V2 = "UI_RobuxShop_v2" -- vague 63 (L-200) : passe avant SCREEN quand il est là
 local HUD = "UI_HUD"
 local HUD_BUTTON = "RobuxShopButton"
 local SHOP_TAG = "RobuxShop"
@@ -117,6 +191,8 @@ local PROMPT_NAME = "RobuxShopPrompt"
 local CARD_PREFIX = "Offer_" -- nom des cartes clonées (jamais « Template »)
 local ASSETS_FOLDER = "Assets" -- icônes de Clément (MOD-100), depuis ReplicatedStorage
 local ICON_ASSET_ATTRIBUTE = "IconAsset" -- posé par Clément sur les Icon de la maquette
+local CARD_COLOR_ATTRIBUTE = "CardColor" -- posé par Clément sur chaque carte de la v2 (L-204)
+local COLUMNS_ATTRIBUTE = "Columns" -- posé par Clément sur chaque Grid de la v2 (L-204)
 
 -- Onglets, dans l'ordre de l'écran (L-047).
 local TABS: { { Tab: Tab, Path: string } } = {
@@ -126,6 +202,12 @@ local TABS: { { Tab: Tab, Path: string } } = {
 	{ Tab = "Boosts", Path = "Tabs.BoostsTab" },
 }
 local TAB_RANK: { [string]: number } = { Offers = 1, Gamepasses = 2, Cash = 3, Boosts = 4 }
+-- Sections à cartes de la v2 (L-200), dans l'ordre de la liste.
+local SECTIONS: { { Tab: Tab, Name: string } } = {
+	{ Tab = "Gamepasses", Name = "GamepassesSection" },
+	{ Tab = "Boosts", Name = "BoostsSection" },
+	{ Tab = "Cash", Name = "CashSection" },
+}
 
 -- Attributs du Player posés par DisplayService et MonetizationService (mêmes noms là-bas).
 local INCOME_ATTRIBUTE = "Income"
@@ -144,6 +226,11 @@ local OPEN_NOW_TEXT = {
 	AlmostReady = "Your item is almost unlocked",
 }
 local CASH_PACK_TEXT = "+%s · %s" -- montant, effet
+-- Vague 63, V0 proposé, absent du doc (textes de la maquette de Clément, L-200) : minuteur du pack de départ,
+-- lot de la caisse, chance d'une case, avantages du pack de départ.
+local TIMER_TEXT = "Ends in %s"
+local CRATE_COUNT_TEXT = { One = "%d Crate", Many = "%d Crates" }
+local PERK_TEXT = { Boost = "×%d Cash %s", Hours = "%dh", Minutes = "%d min" }
 -- V0 proposé, absent du doc : cadence (s) de la mise à jour des cartes, écran ouvert.
 local REFRESH_INTERVAL = 1
 -- V0 proposé, absent du doc (L-071) : texte écrit à la place du prix quand on clique sur une offre
@@ -156,12 +243,14 @@ local IS_STUDIO = RunService:IsStudio()
 -- MarketplaceService.
 local LIVE = Features.RobuxShop
 local ACTIVE = Features.RobuxShop or Features.RobuxShopPreview
+local CRATE_FEATURE = Features.RobuxCrate
 
 local RobuxShopController = {}
 
 local localPlayer = Players.LocalPlayer
 local started = false -- Start est passé avec la boutique ou sa vitrine
 local offers: { Offer } = {}
+local crateOffers: { Offer } = {}
 local shop: Shop? = nil
 local isOpen = false
 local chosenTab: Tab? = nil -- dernier onglet choisi par le joueur
@@ -171,6 +260,9 @@ local fetching: { [number]: boolean } = {}
 local prompts: { [Instance]: ProximityPrompt } = {}
 local shopConnections: { [Instance]: { RBXScriptConnection } } = {}
 local reported: { [string]: boolean } = {}
+-- Règle Roblox des objets payants au hasard (caisse) : "unknown" tant que PolicyService n'a pas répondu.
+local cratePolicy: "unknown" | "allowed" | "restricted" = "unknown"
+local scrollTween: Tween? = nil
 
 -- Une ligne de sortie par sujet, en Studio seulement.
 local function reportOnce(key: string, message: string)
@@ -193,8 +285,11 @@ local function buildOffers()
 				displayName = pass.DisplayName,
 				effect = pass.Effect,
 				icon = pass.Icon,
+				color = pass.CardColor,
 				pass = pass :: Pass?,
 				product = nil :: Product?,
+				boost = nil :: ShopBoost?,
+				crate = nil :: CratePack?,
 			}
 			table.insert(offers, offer)
 		end
@@ -208,11 +303,31 @@ local function buildOffers()
 				displayName = product.DisplayName,
 				effect = product.Effect,
 				icon = product.Icon,
+				color = product.CardColor,
 				pass = nil :: Pass?,
 				product = product :: Product?,
+				boost = nil :: ShopBoost?,
+				crate = nil :: CratePack?,
 			}
 			table.insert(offers, offer)
 		end
+	end
+	-- Vague 63 : boosts du HUD, montrés même pas codés (« Soon » au clic, comme leur bouton du HUD).
+	for _, boost in Monetization.ShopBoosts do
+		local offer: Offer = {
+			key = boost.Key,
+			tab = "Boosts",
+			order = boost.Order,
+			displayName = boost.DisplayName,
+			effect = boost.Effect,
+			icon = boost.Icon,
+			color = boost.CardColor,
+			pass = nil :: Pass?,
+			product = nil :: Product?,
+			boost = boost :: ShopBoost?,
+			crate = nil :: CratePack?,
+		}
+		table.insert(offers, offer)
 	end
 	table.sort(offers, function(a: Offer, b: Offer): boolean
 		if a.tab ~= b.tab then
@@ -220,6 +335,23 @@ local function buildOffers()
 		end
 		return a.order < b.order
 	end)
+	table.clear(crateOffers)
+	for index, pack in Monetization.Crate.Packs do
+		local offer: Offer = {
+			key = `Crate{pack.Count}`,
+			tab = "Crate",
+			order = index,
+			displayName = "",
+			effect = "",
+			icon = "",
+			color = nil :: Color3?,
+			pass = nil :: Pass?,
+			product = nil :: Product?,
+			boost = nil :: ShopBoost?,
+			crate = pack :: CratePack?,
+		}
+		table.insert(crateOffers, offer)
+	end
 end
 
 local function serverNow(): number
@@ -234,6 +366,11 @@ end
 local function starterOffered(): boolean
 	local endsAt = numberAttribute(STARTER_ATTRIBUTE)
 	return endsAt ~= nil and endsAt > serverNow()
+end
+
+-- Vague 63 : caisse montrée (interrupteur, chances décidées, règle Roblox du pays du joueur).
+local function crateShown(): boolean
+	return CRATE_FEATURE and #Monetization.Crate.Odds > 0 and cratePolicy == "allowed"
 end
 
 local function owns(offer: Offer): boolean
@@ -259,6 +396,14 @@ local function purchaseOf(offer: Offer): (number?, boolean, number)
 	if pass then
 		return pass.Id, true, pass.Price
 	end
+	local boost = offer.boost
+	if boost then
+		return boost.Boost.Id, false, boost.Boost.Price
+	end
+	local pack = offer.crate
+	if pack then
+		return pack.Id, false, pack.Price
+	end
 	local product = offer.product :: Product
 	if product.Tiers then
 		local remaining = openNowRemaining()
@@ -271,6 +416,15 @@ local function purchaseOf(offer: Offer): (number?, boolean, number)
 	return product.Id, false, product.Price
 end
 
+-- Effet pas encore codé (vague 63 : boost du HUD ou caisse) : « Soon » au clic, rien de vendu.
+local function notReady(offer: Offer): boolean
+	local boost = offer.boost
+	if boost then
+		return not boost.Boost.Ready
+	end
+	return offer.crate ~= nil and not Monetization.Crate.Ready
+end
+
 local function offersOf(current: Tab): { Offer }
 	local list: { Offer } = {}
 	for _, offer in offers do
@@ -279,6 +433,15 @@ local function offersOf(current: Tab): { Offer }
 		end
 	end
 	return list
+end
+
+local function starterOffer(): Offer?
+	for _, offer in offers do
+		if offer.key == "StarterPack" then
+			return offer
+		end
+	end
+	return nil
 end
 
 -- Écran ------------------------------------------------------------------------------------------
@@ -361,6 +524,64 @@ local function decalTexture(name: string): string?
 	return nil
 end
 
+-- Vague 63 (L-204) : ton `sample` d'une carte de couleur `base` (base éclaircie ou foncée), refait sur `color`.
+local WHITE = Color3.new(1, 1, 1)
+local BLACK = Color3.new(0, 0, 0)
+local function retone(sample: Color3, base: Color3, color: Color3): Color3
+	local s = { sample.R, sample.G, sample.B }
+	local b = { base.R, base.G, base.B }
+	if s[1] + s[2] + s[3] >= b[1] + b[2] + b[3] then
+		-- sample = base:Lerp(blanc, k) : k lu sur le canal qui a le plus de marge
+		local room, k = 0, 0
+		for i = 1, 3 do
+			if 1 - b[i] > room then
+				room = 1 - b[i]
+				k = (s[i] - b[i]) / room
+			end
+		end
+		return color:Lerp(WHITE, math.clamp(k, 0, 1))
+	end
+	-- sample = base:Lerp(noir, k)
+	local most, k = 0, 0
+	for i = 1, 3 do
+		if b[i] > most then
+			most = b[i]
+			k = 1 - s[i] / most
+		end
+	end
+	return color:Lerp(BLACK, math.clamp(k, 0, 1))
+end
+
+local function sameColor(a: Color3, b: Color3): boolean
+	return math.abs(a.R - b.R) + math.abs(a.G - b.G) + math.abs(a.B - b.B) < 0.02
+end
+
+-- Carte clonée repeinte à la couleur de son offre : seulement si Clément a posé CardColor sur le Template
+-- (couleur de départ), et seulement les tons de la carte (ses UIGradient) et ses Studs, enfants directs.
+local function paintCard(frame: GuiObject, color: Color3?)
+	local base = frame:GetAttribute(CARD_COLOR_ATTRIBUTE)
+	if color == nil or typeof(base) ~= "Color3" then
+		return
+	end
+	local from = base :: Color3
+	frame:SetAttribute(CARD_COLOR_ATTRIBUTE, color)
+	if sameColor(from, color) then
+		return
+	end
+	for _, child in frame:GetChildren() do
+		if child:IsA("UIGradient") then
+			local gradient = child :: UIGradient
+			local keypoints = {}
+			for _, keypoint in gradient.Color.Keypoints do
+				table.insert(keypoints, ColorSequenceKeypoint.new(keypoint.Time, retone(keypoint.Value, from, color)))
+			end
+			gradient.Color = ColorSequence.new(keypoints)
+		elseif child.Name == "Studs" and child:IsA("ImageLabel") and sameColor((child :: ImageLabel).ImageColor3, from) then
+			(child :: ImageLabel).ImageColor3 = color
+		end
+	end
+end
+
 -- Prix Roblox d'un Id (cache), demandé une fois en tâche de fond ; la carte se met à jour à l'arrivée.
 local refreshCards: () -> ()
 local function robloxPrice(id: number, isPass: boolean): number?
@@ -410,13 +631,48 @@ local function effectOf(offer: Offer): string
 	return offer.effect
 end
 
+-- Vague 63 : textes propres à la v2 (lot de la caisse, minuteur et avantages du pack de départ).
+local function refreshExtras(card: Card)
+	local offer = card.offer
+	local pack = offer.crate
+	if pack then
+		setText(card.frame, "Count", string.format(if pack.Count == 1 then CRATE_COUNT_TEXT.One else CRATE_COUNT_TEXT.Many, pack.Count))
+		local old = guiObject(card.frame, "OldPrice")
+		local full = Monetization.Crate.UnitPrice * pack.Count
+		local discounted = full > pack.Price
+		local holder = if old and discounted then textHolder(old) else nil
+		if holder and (holder :: any).Text ~= tostring(full) then
+			(holder :: any).Text = tostring(full)
+		end
+		setVisible(old, discounted)
+		return
+	end
+	if offer.key == "StarterPack" and not card.cloned then
+		local endsAt = numberAttribute(STARTER_ATTRIBUTE)
+		setText(card.frame, "Timer", string.format(TIMER_TEXT, duration(if endsAt then endsAt - serverNow() else 0)))
+		local starter = Monetization.StarterPack
+		local seconds = starter.BoostSeconds
+		local length = if seconds % 3600 == 0
+			then string.format(PERK_TEXT.Hours, seconds // 3600)
+			else string.format(PERK_TEXT.Minutes, math.floor(seconds / 60))
+		setText(card.frame, "Perk1", string.format(PERK_TEXT.Boost, Monetization.CashBoost.Multiplier, length))
+		setText(card.frame, "Perk2", starter.Tool)
+		setText(card.frame, "Perk3", Format.money(starter.Cash))
+	end
+end
+
 local function refreshCard(card: Card)
 	local offer = card.offer
 	local id, isPass, configPrice = purchaseOf(offer)
 	-- Vitrine : jamais de lecture chez Roblox, le prix de la Config.
 	local price = if LIVE and id and id ~= 0 then robloxPrice(id, isPass) or configPrice else configPrice
-	setText(card.frame, "ItemName", offer.displayName)
-	setText(card.frame, "Effect", effectOf(offer))
+	local v2 = shop ~= nil and (shop :: Shop).v2
+	if offer.displayName ~= "" then
+		setText(card.frame, "ItemName", offer.displayName)
+	end
+	if not v2 then
+		setText(card.frame, "Effect", effectOf(offer)) -- v2 (L-204) : Effect gardé caché, jamais écrit
+	end
 	local soonUntil = card.soonUntil
 	if soonUntil and os.clock() < soonUntil then
 		setText(card.frame, "Price", SOON_TEXT)
@@ -424,14 +680,21 @@ local function refreshCard(card: Card)
 		card.soonUntil = nil
 		setText(card.frame, "Price", tostring(math.floor(price)))
 	end
-	local owned = owns(offer)
-	setVisible(card.owned, owned)
-	setVisible(card.buy, not owned and id ~= nil)
+	if card.buy ~= card.frame then
+		local owned = owns(offer)
+		setVisible(card.owned, owned)
+		setVisible(card.buy, not owned and id ~= nil)
+	end
+	if v2 then
+		refreshExtras(card)
+	end
 end
 
 local function clearCards(current: Shop)
 	for _, card in current.cards do
-		card.frame:Destroy()
+		if card.cloned then
+			card.frame:Destroy()
+		end
 	end
 	table.clear(current.cards)
 end
@@ -448,6 +711,23 @@ local function showSoon(card: Card)
 	end)
 end
 
+-- Vague 63 (L-204 point 2) : lueur d'achat d'a209 (Controllers/UI/PurchaseGlow), si elle existe.
+local function showPurchaseGlow()
+	local ui = script.Parent:FindFirstChild("UI")
+	local module = if ui then ui:FindFirstChild("PurchaseGlow") else nil
+	if module == nil or not module:IsA("ModuleScript") then
+		return
+	end
+	local ok, glow = pcall(require :: any, module) -- module d'a209, peut-être absent : pas de require statique
+	local show = if ok and type(glow) == "table" then (glow :: any).Show else nil
+	if type(show) == "function" then
+		local shown, err = pcall(show)
+		if not shown and IS_STUDIO then
+			warn(`[RobuxShop] PurchaseGlow.Show : {err}`)
+		end
+	end
+end
+
 local function buy(card: Card)
 	local offer = card.offer
 	local id, isPass = purchaseOf(offer)
@@ -459,11 +739,17 @@ local function buy(card: Card)
 		showSoon(card)
 		return
 	end
+	if notReady(offer) then
+		reportOnce(`ready:{offer.key}`, `[RobuxShop] {offer.key} : effet pas encore codé côté serveur (Ready = false) : pas d'achat`)
+		showSoon(card)
+		return
+	end
 	if id == 0 then
 		reportOnce(`id0:{offer.key}`, `[RobuxShop] {offer.key} : Id à 0 dans Config/Monetization (pas encore créé sur le Creator Hub) : pas d'achat`)
 		showSoon(card)
 		return
 	end
+	showPurchaseGlow()
 	local ok, err = pcall(function()
 		if isPass then
 			MarketplaceService:PromptGamePassPurchase(localPlayer, id)
@@ -476,10 +762,231 @@ local function buy(card: Card)
 	end
 end
 
--- Cartes de l'onglet ouvert, clonées depuis List.Template.
+-- Carte clonée depuis `template`, posée dans le parent du Template.
+local function cloneCard(current: Shop, template: GuiObject, offer: Offer): Card
+	local frame = template:Clone()
+	frame.Name = CARD_PREFIX .. offer.key
+	frame.LayoutOrder = offer.order
+	frame.Visible = true
+	paintCard(frame, offer.color)
+	local image = decalTexture(offer.icon) or current.icons[offer.icon]
+	local icon = Find.path(frame, "Icon")
+	if image and icon and (icon:IsA("ImageLabel") or icon:IsA("ImageButton")) then
+		(icon :: any).Image = image
+	end
+	local card: Card = { offer = offer, frame = frame, buy = guiObject(frame, "BuyButton"), owned = guiObject(frame, "Owned"), soonUntil = nil, cloned = true }
+	onClick(card.buy, function()
+		buy(card)
+	end)
+	table.insert(current.cards, card)
+	refreshCard(card)
+	frame.Parent = template.Parent
+	return card
+end
+
+-- v2 : hauteurs ---------------------------------------------------------------------------------
+
+-- La Grid d'une section prend la hauteur de `count` cartes (rangées de `columns`), la section et ses enfants
+-- gardent leurs hauteurs en pixels (seuls les Scale en Y et le rapport de la section changent).
+local function fitGrid(fit: GridFit, count: number)
+	local rows = math.max(1, math.ceil(count / fit.columns))
+	local gridHeight = rows * fit.cell + (rows - 1) * fit.gap
+	local height = fit.height - fit.gridHeight + gridHeight
+	local k = fit.height / height
+	for child, scale in fit.scales do
+		local position, size = child.Position, child.Size
+		child.Position = UDim2.new(position.X.Scale, position.X.Offset, scale.position * k, position.Y.Offset)
+		child.Size = UDim2.new(size.X.Scale, size.X.Offset, scale.size * k, size.Y.Offset)
+	end
+	local gridSize = fit.grid.Size
+	fit.grid.Size = UDim2.new(gridSize.X.Scale, gridSize.X.Offset, gridHeight / height, gridSize.Y.Offset)
+	local cellSize, cellPadding = fit.layout.CellSize, fit.layout.CellPadding
+	fit.layout.CellSize = UDim2.new(cellSize.X.Scale, cellSize.X.Offset, fit.cell / gridHeight, cellSize.Y.Offset)
+	fit.layout.CellPadding = UDim2.new(cellPadding.X.Scale, cellPadding.X.Offset, fit.gap / gridHeight, cellPadding.Y.Offset)
+	fit.ratio.AspectRatio = 1 / height
+end
+
+-- Hauteurs d'une section lues telles que Clément les a construites, ou nil (pas de rapport ou de UIGridLayout).
+local function readGridFit(section: GuiObject, grid: GuiObject?): GridFit?
+	local ratio = section:FindFirstChildOfClass("UIAspectRatioConstraint")
+	local layout = if grid then grid:FindFirstChildOfClass("UIGridLayout") else nil
+	if ratio == nil or layout == nil or grid == nil or ratio.AspectRatio <= 0 then
+		return nil
+	end
+	local height = 1 / ratio.AspectRatio
+	local gridHeight = grid.Size.Y.Scale * height
+	local cell = layout.CellSize.Y.Scale * gridHeight
+	if gridHeight <= 0 or cell <= 0 then
+		return nil
+	end
+	local attribute = grid:GetAttribute(COLUMNS_ATTRIBUTE)
+	local columns = if type(attribute) == "number" and attribute >= 1
+		then math.floor(attribute)
+		elseif layout.FillDirectionMaxCells > 0 then layout.FillDirectionMaxCells
+		else math.max(1, math.floor(1 / math.max(layout.CellSize.X.Scale, 0.01)))
+	local scales: { [GuiObject]: { position: number, size: number } } = {}
+	for _, child in section:GetChildren() do
+		if child:IsA("GuiObject") then
+			local object = child :: GuiObject
+			scales[object] = { position = object.Position.Y.Scale, size = object.Size.Y.Scale }
+		end
+	end
+	return {
+		ratio = ratio,
+		grid = grid,
+		layout = layout,
+		height = height,
+		gridHeight = gridHeight,
+		cell = cell,
+		gap = layout.CellPadding.Y.Scale * gridHeight,
+		columns = columns,
+		scales = scales,
+	}
+end
+
+-- Blocs de List.Content (enfants qui gardent un rapport largeur / hauteur) et leur hauteur en largeurs.
+local function blockHeights(content: Instance, visibleOnly: boolean): (number, number)
+	local total, count = 0, 0
+	for _, child in content:GetChildren() do
+		if child:IsA("GuiObject") and (not visibleOnly or (child :: GuiObject).Visible) then
+			local ratio = child:FindFirstChildOfClass("UIAspectRatioConstraint")
+			if ratio and ratio.AspectRatio > 0 then
+				total += (child :: GuiObject).Size.X.Scale / ratio.AspectRatio
+				count += 1
+			end
+		end
+	end
+	return total, count
+end
+
+local function readContentFit(content: Instance?): ContentFit?
+	if content == nil then
+		return nil
+	end
+	local ratio = content:FindFirstChildOfClass("UIAspectRatioConstraint")
+	local layout = content:FindFirstChildOfClass("UIListLayout")
+	if ratio == nil or layout == nil or ratio.AspectRatio <= 0 then
+		return nil
+	end
+	local total = 1 / ratio.AspectRatio
+	local gap = layout.Padding.Scale * total
+	local heights, count = blockHeights(content, true)
+	return { ratio = ratio, layout = layout, gap = gap, extra = math.max(0, total - heights - gap * math.max(0, count - 1)) }
+end
+
+-- List.Content reprend la hauteur de ses blocs visibles (sections cachées ou agrandies).
+local function fitContent(current: Shop)
+	local fit = current.content
+	local list = current.list
+	local content = if list then list:FindFirstChild("Content") else nil
+	if fit == nil or content == nil then
+		return
+	end
+	local heights, count = blockHeights(content, true)
+	local total = heights + fit.gap * math.max(0, count - 1) + fit.extra
+	if total > 0 then
+		fit.ratio.AspectRatio = 1 / total
+		fit.layout.Padding = UDim.new(fit.gap / total, 0)
+	end
+end
+
+-- v2 : défilement ----------------------------------------------------------------------------------
+
+local function scrollTo(current: Shop, target: GuiObject?)
+	local list = current.list
+	if list == nil or target == nil then
+		return
+	end
+	local y = target.AbsolutePosition.Y - list.AbsolutePosition.Y + list.CanvasPosition.Y
+	local bottom = math.max(0, list.AbsoluteCanvasSize.Y - list.AbsoluteWindowSize.Y)
+	local goal = Vector2.new(list.CanvasPosition.X, math.clamp(y, 0, bottom))
+	local previous = scrollTween
+	if previous then
+		previous:Cancel()
+		scrollTween = nil
+	end
+	local time = Monetization.Shop.ScrollTime
+	if time <= 0 then
+		list.CanvasPosition = goal
+		return
+	end
+	local tween = game:GetService("TweenService"):Create(list, TweenInfo.new(time, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { CanvasPosition = goal })
+	scrollTween = tween
+	tween:Play()
+end
+
+-- Section d'un onglet de la v2 (OffersTab : la caisse, sinon le pack de départ, sinon les gamepasses).
+local function sectionOf(current: Shop, chosen: Tab): GuiObject?
+	if chosen == "Offers" then
+		for _, candidate in { current.crate, current.featured } do
+			if candidate and candidate.Visible then
+				return candidate
+			end
+		end
+		chosen = "Gamepasses"
+	end
+	for _, section in current.sections do
+		if section.tab == chosen and section.frame.Visible then
+			return section.frame
+		end
+	end
+	return nil
+end
+
+-- Cartes ---------------------------------------------------------------------------------------
+
+local function v2State(): string
+	return (if starterOffered() then "S" else "-") .. (if crateShown() then "C" else "-")
+end
+
+-- v2 : toutes les sections à la fois, le pack de départ et la caisse.
+local function buildV2(current: Shop)
+	clearCards(current)
+	for _, section in current.sections do
+		local list = offersOf(section.tab)
+		local template = section.template
+		if template then
+			for _, offer in list do
+				cloneCard(current, template, offer)
+			end
+		end
+		setVisible(section.frame, #list > 0 and template ~= nil)
+		if section.fit then
+			fitGrid(section.fit, #list)
+		end
+	end
+	local featuredCard = current.featuredCard
+	local showFeatured = featuredCard ~= nil and starterOffered()
+	setVisible(current.featured, showFeatured)
+	if featuredCard and showFeatured then
+		table.insert(current.cards, featuredCard)
+		refreshCard(featuredCard)
+	end
+	local showCrate = crateShown() and #current.crateCards > 0
+	setVisible(current.crate, showCrate)
+	if showCrate and current.crate then
+		local odds = Monetization.Crate.Odds
+		for index, chance in odds do
+			local text = if chance == math.floor(chance) then string.format("%d%%", chance) else string.format("%.1f%%", chance)
+			setText(current.crate, `Odd_{index}.Chance`, text)
+		end
+		for _, card in current.crateCards do
+			table.insert(current.cards, card)
+			refreshCard(card)
+		end
+	end
+	current.state = v2State()
+	fitContent(current)
+end
+
+-- Cartes de l'onglet ouvert, clonées depuis List.Template (v2 : toute la liste).
 local function buildCards()
 	local current = shop
 	if current == nil then
+		return
+	end
+	if current.v2 then
+		buildV2(current)
 		return
 	end
 	clearCards(current)
@@ -488,22 +995,7 @@ local function buildCards()
 		return
 	end
 	for _, offer in offersOf(tab) do
-		local frame = template:Clone()
-		frame.Name = CARD_PREFIX .. offer.key
-		frame.LayoutOrder = offer.order
-		frame.Visible = true
-		local image = decalTexture(offer.icon) or current.icons[offer.icon]
-		local icon = Find.path(frame, "Icon")
-		if image and icon and (icon:IsA("ImageLabel") or icon:IsA("ImageButton")) then
-			(icon :: any).Image = image
-		end
-		local card: Card = { offer = offer, frame = frame, buy = guiObject(frame, "BuyButton"), owned = guiObject(frame, "Owned"), soonUntil = nil }
-		onClick(card.buy, function()
-			buy(card)
-		end)
-		table.insert(current.cards, card)
-		refreshCard(card)
-		frame.Parent = template.Parent
+		cloneCard(current, template, offer)
 	end
 end
 
@@ -511,6 +1003,16 @@ end
 refreshCards = function()
 	local current = shop
 	if current == nil or not isOpen then
+		return
+	end
+	if current.v2 then
+		if current.state ~= v2State() then
+			buildV2(current)
+			return
+		end
+		for _, card in current.cards do
+			refreshCard(card)
+		end
 		return
 	end
 	local wanted = offersOf(tab)
@@ -544,6 +1046,13 @@ end
 local function setTab(chosen: Tab)
 	chosenTab = chosen
 	tab = chosen
+	local current = shop
+	if current and current.v2 then
+		if isOpen then
+			scrollTo(current, sectionOf(current, chosen))
+		end
+		return
+	end
 	if isOpen then
 		buildCards()
 	end
@@ -564,6 +1073,70 @@ local function readIcons(list: Instance): { [string]: string }
 	return icons
 end
 
+-- Cartes d'exemple de la maquette de Clément (Preview_*, à côté du Template) : retirées de la copie du
+-- joueur, seules les cartes du code restent (comme L-041).
+local function removePreviews(parent: Instance)
+	for _, sibling in parent:GetChildren() do
+		if string.sub(sibling.Name, 1, 8) == "Preview_" then
+			sibling:Destroy()
+		end
+	end
+end
+
+-- v2 (L-200) : sections, pack de départ et caisse.
+local function bindV2(current: Shop, keep: (RBXScriptConnection?) -> ())
+	local gui = current.gui
+	local list = Find.path(gui, "List")
+	current.list = if list and list:IsA("ScrollingFrame") then list :: ScrollingFrame else nil
+	if current.list == nil then
+		reportOnce("v2list", `[RobuxShop] {SCREEN_V2}.List introuvable ou pas un ScrollingFrame : pas de défilement`)
+	end
+	for _, entry in SECTIONS do
+		local frame = guiObject(gui, entry.Name)
+		if frame == nil then
+			reportOnce(`v2:{entry.Name}`, `[RobuxShop] {SCREEN_V2}.{entry.Name} introuvable : ses offres ne sont pas montrées`)
+		else
+			local grid = guiObject(frame, "Grid")
+			local template = if grid then guiObject(grid, "Template") else nil
+			if grid then
+				removePreviews(grid)
+			end
+			local fit = readGridFit(frame, grid)
+			table.insert(current.sections, { tab = entry.Tab, frame = frame, grid = grid, template = template, fit = fit })
+		end
+	end
+	local featured = guiObject(gui, "Featured")
+	current.featured = featured
+	local starter = starterOffer()
+	if featured and starter then
+		local button = guiObject(featured, "BuyButton")
+		local card: Card = { offer = starter, frame = featured, buy = button, owned = nil, soonUntil = nil, cloned = false }
+		current.featuredCard = card
+		keep(onClick(button, function()
+			buy(card)
+		end))
+	end
+	local crate = guiObject(gui, "Crate")
+	current.crate = crate
+	if crate then
+		for index, offer in crateOffers do
+			local button = guiObject(crate, `BuyButton{index}`)
+			if button then
+				local card: Card = { offer = offer, frame = button, buy = button, owned = nil, soonUntil = nil, cloned = false }
+				table.insert(current.crateCards, card)
+				keep(onClick(button, function()
+					buy(card)
+				end))
+			end
+		end
+	end
+	-- Hauteur de List.Content lue avec tous les blocs de la maquette visibles, puis caisse et pack de départ
+	-- cachés jusqu'à l'ouverture (buildV2).
+	current.content = readContentFit(if current.list then (current.list :: ScrollingFrame):FindFirstChild("Content") else nil)
+	setVisible(crate, false)
+	setVisible(featured, false)
+end
+
 local function bind(gui: ScreenGui)
 	local old = shop
 	if old then
@@ -571,32 +1144,50 @@ local function bind(gui: ScreenGui)
 			connection:Disconnect()
 		end
 		clearCards(old)
+		if old.gui ~= gui and gui.Name == SCREEN_V2 then
+			old.gui.Enabled = false -- vague 63 : la v2 remplace l'ancien écran
+		end
 	end
 	isOpen = false
 	gui.Enabled = false -- fermé jusqu'au bouton du HUD ou à l'invite
 	Motion.SetCloser(gui, closeShop) -- un autre écran du groupe ScreenGroup s'ouvre (L-089)
 
-	local template = guiObject(gui, "List.Template")
+	local v2 = gui.Name == SCREEN_V2
+	local template = if v2 then nil else guiObject(gui, "List.Template")
 	local icons: { [string]: string } = {}
-	if template == nil then
+	if v2 then
+		icons = readIcons(gui)
+	elseif template == nil then
 		reportOnce("template", `[RobuxShop] {SCREEN}.List.Template introuvable : la boutique restera vide`)
 	else
 		local list = template.Parent :: Instance
 		icons = readIcons(list)
-		-- Cartes d'exemple de la maquette de Clément (Preview_*, à côté du Template) : retirées de la
-		-- copie du joueur, seules les cartes du code restent (comme L-041).
-		for _, sibling in list:GetChildren() do
-			if string.sub(sibling.Name, 1, 8) == "Preview_" then
-				sibling:Destroy()
-			end
-		end
+		removePreviews(list)
 	end
-	local current: Shop = { gui = gui, template = template, icons = icons, connections = {}, cards = {} }
+	local current: Shop = {
+		gui = gui,
+		v2 = v2,
+		template = template,
+		icons = icons,
+		connections = {},
+		cards = {},
+		list = nil,
+		content = nil,
+		sections = {},
+		featured = nil,
+		featuredCard = nil,
+		crate = nil,
+		crateCards = {},
+		state = nil,
+	}
 	shop = current
 	local function keep(connection: RBXScriptConnection?)
 		if connection then
 			table.insert(current.connections, connection)
 		end
+	end
+	if v2 then
+		bindV2(current, keep)
 	end
 	keep(onClick(Find.path(gui, "CloseButton"), closeShop))
 	for _, entry in TABS do
@@ -607,16 +1198,28 @@ local function bind(gui: ScreenGui)
 	end
 end
 
--- Écran branché encore présent, ou celui de PlayerGui (branché au passage), ou nil.
+-- Écran à brancher dans PlayerGui : UI_RobuxShop_v2 s'il est là, sinon UI_RobuxShop.
+local function findScreen(playerGui: Instance): ScreenGui?
+	for _, name in { SCREEN_V2, SCREEN } do
+		local gui = playerGui:FindFirstChild(name)
+		if gui and gui:IsA("ScreenGui") then
+			return gui :: ScreenGui
+		end
+	end
+	return nil
+end
+
+-- Écran branché encore présent (l'ancien seulement si la v2 n'est pas là), ou celui de PlayerGui
+-- (branché au passage), ou nil.
 local function currentShop(): Shop?
+	local playerGui = localPlayer:FindFirstChildOfClass("PlayerGui")
+	local wanted = if playerGui then findScreen(playerGui) else nil
 	local current = shop
-	if current and current.gui.Parent ~= nil then
+	if current and current.gui.Parent ~= nil and (wanted == nil or current.gui == wanted) then
 		return current
 	end
-	local playerGui = localPlayer:FindFirstChildOfClass("PlayerGui")
-	local gui = if playerGui then playerGui:FindFirstChild(SCREEN) else nil
-	if gui and gui:IsA("ScreenGui") then
-		bind(gui :: ScreenGui)
+	if wanted then
+		bind(wanted)
 		return shop
 	end
 	return nil
@@ -631,6 +1234,15 @@ local function openShop()
 	tab = chosenTab or (if starterOffered() then "Offers" else "Gamepasses")
 	isOpen = true
 	buildCards()
+	local list = current.list
+	if current.v2 and list then
+		local previous = scrollTween
+		if previous then
+			previous:Cancel()
+			scrollTween = nil
+		end
+		list.CanvasPosition = Vector2.new(0, 0) -- la liste s'ouvre en haut (caisse ou pack de départ)
+	end
 	Motion.Open(current.gui)
 end
 
@@ -646,6 +1258,28 @@ function RobuxShopController.Open(_anchor: Instance?)
 	if started and not isOpen then
 		openShop()
 	end
+end
+
+-- Règle Roblox de la caisse (vague 63) -------------------------------------------------------------
+
+-- PolicyService : objets payants au hasard permis pour ce joueur ? Lu une fois, seulement avec la caisse
+-- allumée ; une erreur la garde cachée.
+local function readCratePolicy()
+	if not CRATE_FEATURE then
+		return
+	end
+	task.spawn(function()
+		local ok, info = pcall(function(): any
+			return game:GetService("PolicyService"):GetPolicyInfoForPlayerAsync(localPlayer)
+		end)
+		if ok and type(info) == "table" and type(info.ArePaidRandomItemsRestricted) == "boolean" then
+			cratePolicy = if info.ArePaidRandomItemsRestricted then "restricted" else "allowed"
+		else
+			cratePolicy = "restricted"
+			reportOnce("policy", `[RobuxShop] PolicyService pas lu ({if ok then "réponse inattendue" else tostring(info)}) : caisse cachée`)
+		end
+		refreshCards()
+	end)
 end
 
 -- Bouton du HUD --------------------------------------------------------------------------------
@@ -754,6 +1388,7 @@ function RobuxShopController.Start()
 	end
 	started = true
 	buildOffers()
+	readCratePolicy()
 
 	local watched = { INCOME_ATTRIBUTE, STARTER_ATTRIBUTE, OPEN_NOW_ATTRIBUTE }
 	for _, pass in Monetization.Passes do
@@ -767,15 +1402,29 @@ function RobuxShopController.Start()
 
 	local playerGui = localPlayer:WaitForChild("PlayerGui")
 	playerGui.ChildAdded:Connect(function(child: Instance)
-		if child.Name == SCREEN and child:IsA("ScreenGui") then
-			bind(child :: ScreenGui)
-		elseif child.Name == HUD and child:IsA("ScreenGui") then
+		if not child:IsA("ScreenGui") then
+			return
+		end
+		if child.Name == SCREEN_V2 then
+			bind(child :: ScreenGui) -- vague 63 : la v2 passe avant l'ancien écran (bind l'éteint)
+		elseif child.Name == SCREEN then
+			local current = shop
+			if current and current.v2 and current.gui.Parent ~= nil then
+				(child :: ScreenGui).Enabled = false -- la v2 est là : l'ancien écran reste éteint
+			else
+				bind(child :: ScreenGui)
+			end
+		elseif child.Name == HUD then
 			bindHud(child)
 		end
 	end)
-	local existing = playerGui:FindFirstChild(SCREEN)
-	if existing and existing:IsA("ScreenGui") then
-		bind(existing :: ScreenGui)
+	local existing = findScreen(playerGui)
+	if existing then
+		bind(existing)
+		local legacy = playerGui:FindFirstChild(SCREEN)
+		if existing.Name == SCREEN_V2 and legacy and legacy:IsA("ScreenGui") then
+			(legacy :: ScreenGui).Enabled = false
+		end
 	end
 	local hud = playerGui:FindFirstChild(HUD)
 	if hud and hud:IsA("ScreenGui") then
