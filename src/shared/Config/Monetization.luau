@@ -212,7 +212,11 @@ local Monetization = {
 		} :: { CratePack },
 		-- Chances (en %) des cases Odd_1 à Odd_6, de la plus commune à la plus rare ; vide = pas décidées
 		-- (caisse cachée : règle Roblox, chances affichées avant l'achat).
-		Odds = {} :: { number },
+		-- Vague 66 (a218, L-210 précision (b)) : V0 proposé, à valider par Clément (la caisse reste cachée :
+		-- Features.RobuxCrate = false). Dans l'esprit de Break and Steal an Egg, le plus rare à 1 % ; total 100.
+		-- Cases de UI_RobuxShop_v2 : Boule disco (Rare) 45, Gramophone doré (Épique) 28, Fusée en or (Légendaire) 15,
+		-- Crâne de cristal (Mythique) 7, Jukebox néon (Secret) 4, Planète dorée (Divine) 1.
+		Odds = { 45, 28, 15, 7, 4, 1 } :: { number },
 	},
 
 	-- Vague 63 (L-200) : UI_RobuxShop_v2. V0 proposé, absent du doc : durée (s) du défilement de List jusqu'à la

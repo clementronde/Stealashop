@@ -59,6 +59,15 @@ V2.Auras = {
 	{ Id = "Galaxy", Multiplier = 12, Price = 400_000_000, Zones = { 5, 5 } }, -- palier du milieu de la zone 5
 	{ Id = "Royal", Multiplier = 20, Price = 8_000_000_000, Zones = { 6, 6 } },
 }
+-- Vague 66 (a218) : avec Features.NewAuras, les 8 auras de Clément (Config/Cosmetics) remplacent ces 6 ; le
+-- rééquilibrage v2 est déjà dans Config (vague 40) : on les y lit telles quelles. Les kits de V2.Zones gardent les
+-- anciens Id, traduits par Cosmetics.Current (même multiplicateur).
+if Config.Features.NewAuras then
+	V2.Auras = {}
+	for _, aura in Config.Cosmetics.Auras do
+		table.insert(V2.Auras, { Id = aura.Id, Multiplier = aura.Multiplier, Price = aura.Price, Zones = aura.TargetZones })
+	end
+end
 
 -- Remplacerait Cosmetics.Trails : le trail multiplie la Speed affichée (mêmes paliers que les auras).
 V2.Trails = {
@@ -169,7 +178,7 @@ function V2.Construire()
 	eco.Zones = {}
 	for index, zone in Zones do
 		local proposed = V2.Zones[index]
-		local damage = eco.Tools[toolIndex[proposed.Kit[1]]].Power * (if proposed.Kit[2] then eco.Auras[auraIndex[proposed.Kit[2]]].Multiplier else 1)
+		local damage = eco.Tools[toolIndex[proposed.Kit[1]]].Power * (if proposed.Kit[2] then eco.Auras[auraIndex[Cosmetics.Current(proposed.Kit[2])]].Multiplier else 1)
 		local last = index == #Zones
 		local walk = eco.WalkSpeed(proposed.SpeedRequired, 1)
 		eco.Zones[index] = {
