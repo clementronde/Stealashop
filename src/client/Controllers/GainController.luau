@@ -67,11 +67,17 @@
 -- sinon de BB_Gain.Row dans un cadre fait ici ; « ×2 » du trail comme au-dessus du joueur. Animations réduites,
 -- joueur hors de l'écran ou Enabled = false : l'ancien « +X » sur place (ni plafond ni poursuite, fusion58).
 -- Avec ChunksPerSecond > 1, chaque morceau vole de même.
+-- Vague 65 (a215) : sans modèle de Clément, le cadre fait ici s'élargit pour que le texte tienne sur une ligne (Amount
+-- copié sans retour à la ligne, Config/Hud.TrainGainFly.TextMargin), et le « ×2 » du trail se place juste après le
+-- nombre sans le couvrir (aussi sur le BB_Gain sur place). Une bulle ×N prise (BubbleController → NoteBubble, annoncée
+-- avant la hausse de Speed) s'affiche « +32 Speed » (Config/Hud.BubbleGain), sans « /s » ; tombée sur la même hausse
+-- qu'une seconde du tapis, les deux textes partent séparés, même total.
 --
 -- API (client) :
 --   GainController.FlyGain(text, fromWorld, kind) -> boolean   vague 64 : un « +X » qui jaillit de `fromWorld` et vole
 --       jusqu'au compteur du HUD de `kind` ("Speed"), qui pulse à l'arrivée (sans retenir son nombre : l'appelant ne
 --       dit pas ce qu'il ajoute) ; false s'il n'a pas pu voler (animations réduites, rien à l'écran…).
+--   GainController.NoteBubble(gain)   vague 65 : la prochaine hausse de Speed contient `gain` venu d'une bulle (BubbleGone).
 -- Pour un test dans Studio (barre de commande côté client) :
 --   GainController.GetActive() -> { Gains: number, Flyers: number, Pops: number, Bills: number, IncomeFlies: number, TrainFlies: number }
 --   GainController.Superscript(text) -> string   « ×2 » en exposant Unicode (a178)
@@ -166,6 +172,8 @@ local PULSE_INFO: TweenInfo? = if SPEED_PULSE
 local TRAIN_FLY: any = if HudConfig then HudConfig.TrainGainFly else nil
 local settingsModule = Shared:WaitForChild("Config"):FindFirstChild("Settings")
 local SettingsConfig: any = if settingsModule and settingsModule:IsA("ModuleScript") then require(settingsModule) :: any else nil
+-- Vague 65 (a215) : gain d'une bulle ×N (Config/Hud.BubbleGain ; facultatif : bancs plus anciens).
+local BUBBLE_GAIN: any = if HudConfig then HudConfig.BubbleGain else nil
 -- Vague 63 (a206) : « +$X/s » qui vole à chaque pose (Config/Displayed.IncomeFly ; facultatif : bancs plus anciens).
 local InventoryState = require(Shared:WaitForChild("InventoryState"))
 local displayedModule = Shared:WaitForChild("Config"):FindFirstChild("Displayed")
@@ -216,6 +224,9 @@ local counterPop: GuiObject? = nil
 local active = { Gains = 0, Flyers = 0, Pops = 0, Bills = 0, IncomeFlies = 0, TrainFlies = 0 }
 local chase: ChaseApi? = nil
 local placed: { [string]: boolean }? = nil -- vague 63 : uids exposés à la dernière lecture (nil : pas encore lu)
+-- Vague 65 (a215) : Vitesse de bulle annoncée (NoteBubble) et pas encore vue monter, et l'heure de l'annonce.
+local bubblePending = 0
+local bubbleAt = -math.huge
 local warned: { [string]: boolean } = {}
 
 local function warnOnce(key: string, message: string)
@@ -296,7 +307,12 @@ end
 -- a196 (Cantin, T-097) : « ×2 » en exposant au coin haut droit du nombre `head` de Row.Amount : un petit TextLabel
 -- (FloatGain.TrailExponent) dans `amountLabel`, replacé quand le texte prend sa taille (TextBounds). Le texte de
 -- Row.Amount reçoit des espaces à la place de l'exposant. Renvoie le TextLabel créé.
-local function addExponent(amountLabel: TextLabel, head: string, tail: string, trailText: string): TextLabel
+-- Vague 65 (a215) : `oneLine` (copies de BB_Gain) : Amount ne passe plus à la ligne (TextScaled réduit le texte à la
+-- place) ; la place de l'exposant suppose une seule ligne, sinon il tombait sur le nombre.
+local function addExponent(amountLabel: TextLabel, head: string, tail: string, trailText: string, oneLine: boolean): TextLabel
+	if oneLine and amountLabel.TextScaled then
+		amountLabel.TextWrapped = false
+	end
 	local spec = FLOAT.TrailExponent
 	local space = textWidth(amountLabel, " ")
 	local gap = math.clamp(math.ceil(textWidth(amountLabel, trailText) * spec.Size / math.max(space, 1)), 1, 8)
@@ -390,7 +406,8 @@ local function dressGain(copy: Instance, source: Instance, kind: Kind, amount: n
 			-- d'erreur, l'exposant Unicode d'a178.
 			local ok: boolean, made: any = false, nil
 			if FLOAT.TrailExponent.Mode == "Label" then
-				ok, made = pcall(addExponent, amountLabel, string.sub(text, 1, cut - 1), string.sub(text, cut), trailText)
+				local head, tail = string.sub(text, 1, cut - 1), string.sub(text, cut)
+				ok, made = pcall(addExponent, amountLabel, head, tail, trailText, source:IsA("BillboardGui"))
 			end
 			if ok then
 				exponentLabel = made
@@ -1106,22 +1123,23 @@ local function canFly(): boolean
 end
 
 -- La copie qui vole : le modèle facultatif de Clément (UI_HUD.TrainGainFly.Template), sinon une copie de BB_Gain.Row
--- dans un cadre transparent fait ici ; renvoie aussi le modèle qui porte les attributs <Sorte>Color et <Sorte>Icon.
-local function makeFlyer(screen: ScreenGui): (GuiObject?, Instance?)
+-- dans un cadre transparent fait ici ; renvoie aussi le modèle qui porte les attributs <Sorte>Color et <Sorte>Icon, et
+-- vrai pour le cadre fait ici (vague 65 : son Amount ne passe pas à la ligne, widenToText l'élargit).
+local function makeFlyer(screen: ScreenGui): (GuiObject?, Instance?, boolean)
 	local spec = TRAIN_FLY
 	local template = typed(screen, spec.Template, "GuiObject") :: GuiObject?
 	if template then
 		local copy = template:Clone()
 		copy.Name = spec.Name
 		copy.Visible = true
-		return copy, template
+		return copy, template, false
 	end
 	local assets = ReplicatedStorage:FindFirstChild("Assets")
 	local folder = if assets then assets:FindFirstChild("UI") else nil
 	local billboard = if folder then folder:FindFirstChild(GAIN_TEMPLATE) else nil
 	local row = if billboard then typed(billboard, "Row", "GuiObject") :: GuiObject? else nil
 	if billboard == nil or row == nil then
-		return nil, nil
+		return nil, nil, false
 	end
 	local height = screen.AbsoluteSize.Y * spec.Height
 	local holder = Instance.new("Frame")
@@ -1134,8 +1152,39 @@ local function makeFlyer(screen: ScreenGui): (GuiObject?, Instance?)
 	copy.Position = UDim2.fromScale(0, 0)
 	copy.Size = UDim2.fromScale(1, 1)
 	copy.Visible = true
+	local amountLabel = typed(copy, "Amount", "TextLabel") :: TextLabel?
+	if amountLabel and amountLabel.TextScaled then
+		amountLabel.TextWrapped = false -- vague 65 : une seule ligne (« +8 Speed/s » passait sur deux)
+	end
 	copy.Parent = holder
-	return holder, billboard
+	return holder, billboard, true
+end
+
+-- Vague 65 (a215) : le cadre fait ici (`holder`, en px, sans UIScale) s'élargit pour que le texte de `label` tienne sur
+-- une ligne à la hauteur de son cadre (TextScaled : taille ≈ hauteur, au plus 100 ou MaxTextSize), plus TextMargin ; sa
+-- hauteur ne change pas. Texte plus court : rien ne change. Tailles calculées depuis les UDim2 (Amount enfant de la
+-- copie de Row, qui remplit le cadre) : AbsoluteSize n'est pas forcément à jour avant le premier rendu.
+local function widenToText(holder: GuiObject, label: TextLabel)
+	local width, height = holder.Size.X.Offset, holder.Size.Y.Offset
+	local parent = label.Parent
+	if parent == nil or parent.Parent ~= holder then
+		return -- Amount plus profond dans Row : rien d'élargi (il tient quand même sur une ligne, en plus petit)
+	end
+	local sx, ox = label.Size.X.Scale, label.Size.X.Offset
+	local box = Vector2.new(sx * width + ox, label.Size.Y.Scale * height + label.Size.Y.Offset)
+	if box.X <= 0 or box.Y <= 0 or sx <= 0 then
+		return
+	end
+	local size = math.min(box.Y, 100)
+	local limit = label:FindFirstChildOfClass("UITextSizeConstraint")
+	if limit then
+		size = math.min(size, limit.MaxTextSize)
+	end
+	local text = if label.RichText then (string.gsub(label.Text, "<[^>]*>", "")) else label.Text
+	local need = textWidth(label, text) * size / 100 * (1 + TRAIN_FLY.TextMargin)
+	if need > box.X then
+		holder.Size = UDim2.fromOffset((need - ox) / sx, height)
+	end
 end
 
 -- Le « +X » jaillit de `fromWorld` (au-dessus du joueur sans lui) : taille pleine en PopTime, jet de JetMin à JetMax
@@ -1167,21 +1216,25 @@ local function flyGain(
 	if target == nil or start == nil then
 		return false
 	end
-	local flyer, source = makeFlyer(screen)
+	local flyer, source, built = makeFlyer(screen)
 	if flyer == nil or source == nil then
 		warnOnce("trainFly", `[Gains] UI_HUD.{spec.Template} et {GAIN_TEMPLATE}.Row absents : le gain monte sur place`)
 		return false
 	end
 	local from = start :: Vector2
-	dressGain(flyer, source, kind, amount, text)
+	local dressed = dressGain(flyer, source, kind, amount, text)
 	local size = screen.AbsoluteSize
 	flyer.AnchorPoint = Vector2.new(0.5, 0.5)
 	flyer.Position = UDim2.fromOffset(from.X, from.Y)
+	flyer.Parent = screen
+	-- Vague 65 : le repli s'élargit à son texte (une ligne) avant de partir.
+	if built and dressed.amount then
+		widenToText(flyer, dressed.amount)
+	end
 	local scale = Instance.new("UIScale")
 	scale.Name = COPY_SCALE
 	scale.Scale = spec.PopFrom
 	scale.Parent = flyer
-	flyer.Parent = screen
 	active.TrainFlies += 1
 	local angle = math.rad((random:NextNumber() * 2 - 1) * spec.JetAngle)
 	local distance = size.X * (spec.JetMin + random:NextNumber() * (spec.JetMax - spec.JetMin))
@@ -1305,10 +1358,65 @@ local function showPieces(amount: number, previous: number)
 	end
 end
 
+-- Vague 65 (a215) : la part de la hausse `amount` de Speed venue d'une bulle annoncée (NoteBubble) depuis moins de
+-- BubbleGain.Window s ; 0 sans annonce.
+local function takeBubble(amount: number): number
+	local spec = BUBBLE_GAIN
+	if spec == nil or bubblePending <= 0 then
+		return 0
+	end
+	if os.clock() - bubbleAt > spec.Window then
+		bubblePending = 0
+		return 0
+	end
+	local part = math.min(amount, bubblePending)
+	bubblePending -= part
+	return part
+end
+
+-- Vague 65 (a215) : « +32 Speed » d'une bulle (gain unique, sans « /s ») : il vole jusqu'au compteur comme celui du
+-- tapis (nombre retenu depuis `previous`), sinon monte sur place.
+local function showBubble(amount: number, previous: number)
+	local text = string.format(BUBBLE_GAIN.Text, Format.short(amount))
+	if canFly() then
+		local release = holdSpeed(shownSpeed(previous))
+		if flyGain(SPEED, amount, text, nil, { release }, 1, 1) then
+			return
+		end
+		release()
+	end
+	floatGain(SPEED, amount, nil, text)
+	pulseSpeed(1, 1)
+end
+
+function GainController.NoteBubble(gain: number)
+	if type(gain) ~= "number" or not (gain > 0 and gain < math.huge) or BUBBLE_GAIN == nil then
+		return
+	end
+	local now = os.clock()
+	if now - bubbleAt > BUBBLE_GAIN.Window then
+		bubblePending = 0 -- annonce trop vieille, jamais vue monter : oubliée
+	end
+	bubblePending += gain
+	bubbleAt = now
+end
+
 local function onTraining(kind: Kind)
 	local amount, previous = riseOf(kind.Attribute)
 	if amount > 0 and localPlayer:GetAttribute(MACHINE_ATTRIBUTE) == kind.Machine then
 		local before: number = previous or 0 -- une hausse a toujours une valeur d'avant
+		if kind == SPEED then
+			-- Vague 65 : la part d'une bulle part d'abord, avec son texte ; le reste (seconde du tapis) comme avant.
+			local bubble = takeBubble(amount)
+			if bubble > 0 then
+				showBubble(bubble, before)
+				amount -= bubble
+				before += bubble
+				if amount <= 1e-6 * bubble then
+					return -- écart d'arrondi seulement
+				end
+			end
+		end
 		if kind == SPEED and TREAD ~= nil and CHUNKS > 1 then
 			showPieces(amount, before)
 		elseif kind == SPEED and flyTreadmill(amount, before) then

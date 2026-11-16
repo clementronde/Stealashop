@@ -75,6 +75,17 @@ local Hud = {
 		Aspect = 3.5,
 		ZIndex = 10,
 		Name = "TrainGain", -- V0 : nom des copies en vol dans UI_HUD (détruites à l'arrivée ; pas « TrainGainFly », le dossier du modèle)
+		-- Vague 65 (a215) : sans modèle de Clément, le cadre s'élargit pour que le texte tienne sur une ligne à sa hauteur
+		-- (plus de retour à la ligne) ; marge en part de la largeur mesurée du texte. V0 proposé, absent du doc.
+		TextMargin = 0.1,
+	},
+	-- Vague 65 (a215, restes de fusion58) : la Vitesse d'une bulle ×N prise (BubbleService) est un gain unique, pas un
+	-- gain par seconde : « +32 Speed », sans « /s » (même vol ou même « +X » sur place que le tapis). Le client l'apprend
+	-- par BubbleGone(id, "Claimed", gain), envoyé juste avant la hausse de Speed ; Window : délai (s) au-delà duquel un
+	-- gain de bulle annoncé et pas encore vu monter est oublié. V0 proposés, absents du doc.
+	BubbleGain = {
+		Text = "+%s Speed",
+		Window = 0.5,
 	},
 	-- Vague 63 (a205, L-202 point 1, L-192 Q1) : plus de menu « More » (MenuButton, MenuPanel retirés par Clément).
 	-- Les petites icônes (RewardsButton, InviteButton, SettingsButton, RebirthButton) sont dans le cadre TopLeftRow,
