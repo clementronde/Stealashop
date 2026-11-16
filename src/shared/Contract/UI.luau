@@ -1175,4 +1175,44 @@ for _, screenDef in UI.Screens do
 	end
 end
 
+-- Boutique Robux v2 (vague 63, a208 ; L-200, noms v3 de L-204) : facultative. RobuxShopController la préfère à
+-- UI_RobuxShop quand elle est là : une seule liste List qui défile, les onglets y font défiler jusqu'à leur
+-- section ; chaque section remplit sa Grid depuis son Template ; Featured = pack de départ ; Crate = caisse
+-- exclusive (cachée tant que Features.RobuxCrate est à false).
+do
+	local elements: { Element } = {
+		{ Path = "CloseButton", Class = BUTTON },
+		{ Path = "Tabs.OffersTab" },
+		{ Path = "Tabs.GamepassesTab" },
+		{ Path = "Tabs.CashTab" },
+		{ Path = "Tabs.BoostsTab" },
+		{ Path = "List", Class = "ScrollingFrame" },
+	}
+	for _, section in { "GamepassesSection", "BoostsSection", "CashSection" } do
+		table.insert(elements, { Path = `{section}.Grid`, Class = "GuiObject" })
+		table.insert(elements, { Path = `{section}.Grid.Template`, Template = true })
+		table.insert(elements, { Path = `{section}.Grid.Template.Icon` })
+		table.insert(elements, { Path = `{section}.Grid.Template.ItemName` })
+		table.insert(elements, { Path = `{section}.Grid.Template.Price` })
+		table.insert(elements, { Path = `{section}.Grid.Template.BuyButton`, Class = BUTTON })
+	end
+	table.insert(elements, { Path = "GamepassesSection.Grid.Template.Owned", Optional = true, Note = "un gamepass possédé n'est pas montré" })
+	table.insert(elements, { Path = "Featured", Class = "GuiObject", Optional = true, Note = "pas de pack de départ dans la v2" })
+	table.insert(elements, { Path = "Featured.BuyButton", Class = BUTTON, Optional = true, Note = "le pack de départ ne s'achète pas" })
+	table.insert(elements, { Path = "Featured.Timer", Optional = true, Note = "le temps restant du pack de départ n'est pas écrit" })
+	table.insert(elements, { Path = "Crate", Class = "GuiObject", Optional = true, Note = "pas de caisse exclusive dans la v2" })
+	for index = 1, 3 do
+		table.insert(elements, { Path = `Crate.BuyRow.BuyButton{index}`, Class = BUTTON, Optional = true, Note = "ce lot de caisses ne s'achète pas" })
+	end
+	for index = 1, 6 do
+		table.insert(elements, { Path = `Crate.Odd_{index}.Chance`, Optional = true, Note = "la chance de cette case n'est pas écrite" })
+	end
+	table.insert(UI.Screens, {
+		Name = "UI_RobuxShop_v2",
+		Class = "ScreenGui",
+		Optional = true,
+		Elements = elements,
+	})
+end
+
 return UI

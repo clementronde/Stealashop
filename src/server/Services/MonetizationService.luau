@@ -43,8 +43,8 @@
 --   Roblox Premium     +10 % de revenus (Player.MembershipType, relu chaque seconde) :
 --                      DisplayService.GetIncomeBonus + 0,1, additionné aux autres bonus en pour cent
 --                      (zones complètes de l'index, IndexService)
---   Packs d'argent     10, 60 ou 300 min des revenus actuels (ceux du HUD, bonus compris), au moins
---                      CashPacks.MinPerMinute $ par minute (Monetization.CashPackAmount)
+--   Packs d'argent     Minutes des revenus actuels, ceux du HUD, bonus compris (6 packs, de 10 min à
+--                      12 h, vague 63), au moins CashPacks.MinPerMinute $ par minute (Monetization.CashPackAmount)
 --   Ouvrir maintenant  un produit par palier de prix (Monetization.OpenNowTier, que l'écran choisit
 --                      selon l'attente du colis qui attend le plus) ; le reçu retire jusqu'à Skip s à
 --                      ce colis. Aucun colis en attente : les secondes payées vont dans

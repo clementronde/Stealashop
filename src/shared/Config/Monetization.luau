@@ -19,14 +19,31 @@
 -- la maquette pour les gamepasses (UI_Icon_GP_…), un nom proposé pour les produits (UI_Icon_DP_…,
 -- V0 proposé, absent du doc : à confirmer par Clément avec les rendus MOD-100).
 -- Valeurs absentes du doc : marquées « V0 proposé, absent du doc ».
+-- Vague 63 (a208 ; L-196, L-200, L-204) : 6 packs d'argent au lieu de 3 (icônes UI_Icon_DP_Cash_1 à _6),
+-- CardColor par offre (couleur de la carte de UI_RobuxShop_v2, proposition de Clément en L-204), boosts du
+-- HUD aussi dans l'onglet Boosts (ShopBoosts : même produit que les boutons du HUD, Config/Boosts), caisse
+-- exclusive (Crate, derrière Features.RobuxCrate) et défilement de la v2 (Shop).
 
 local DeepFreeze = require(script.Parent.DeepFreeze)
+local Boosts = require(script.Parent.Boosts)
 
 -- Onglets de l'écran (3.1 : Offres, Gamepasses, Argent, Boosts ; Tabs.OffersTab… de L-047).
 export type Tab = "Offers" | "Gamepasses" | "Cash" | "Boosts"
 
 export type PassKey = "DoubleCash" | "DoubleTraining" | "VIP" | "AutoCollect" | "FastOpen" | "ExtraStands" | "HydraulicGloves"
-export type ProductKey = "OpenNow" | "Cash10" | "Cash60" | "Cash300" | "Revenge" | "InstantShutter" | "StarterPack" | "Luck3" | "Shield30"
+export type ProductKey =
+	"OpenNow"
+	| "Cash10"
+	| "Cash30"
+	| "Cash60"
+	| "Cash180"
+	| "Cash300"
+	| "Cash720"
+	| "Revenge"
+	| "InstantShutter"
+	| "StarterPack"
+	| "Luck3"
+	| "Shield30"
 
 -- Un gamepass (achat unique, 4.1).
 export type Pass = {
@@ -38,6 +55,7 @@ export type Pass = {
 	Price: number, -- Robux (doc 4.1)
 	Id: number, -- gamepass du Creator Hub ; 0 = pas encore créé
 	Ready: boolean,
+	CardColor: Color3?, -- couleur de sa carte dans UI_RobuxShop_v2 (L-204) ; nil = celle du Template
 	Multiplier: number?, -- ×2 Argent (revenus), ×2 Entraînement (gains du tapis ; plus de banc, v2)
 	DelayFactor: number?, -- Ouverture rapide : facteur des attentes d'ouverture des colis PNJ
 	Stands: number?, -- +4 présentoirs : présentoirs au-delà du maximum
@@ -62,19 +80,40 @@ export type Product = {
 	Price: number, -- Robux (doc 4.2) ; Ouvrir maintenant : le premier palier
 	Id: number, -- produit du Creator Hub ; 0 = pas encore créé ; Ouvrir maintenant : un Id par palier (Tiers)
 	Ready: boolean,
-	Minutes: number?, -- pack d'argent : minutes des revenus actuels (doc 4.2 : 10, 60, 300)
+	CardColor: Color3?, -- couleur de sa carte dans UI_RobuxShop_v2 (L-204) ; nil = celle du Template
+	Minutes: number?, -- pack d'argent : minutes des revenus actuels (doc 4.2 : 10, 60, 300 ; 30, 180 et 720 : V0, L-196)
 	Tiers: { OpenNowTier }?, -- Ouvrir maintenant
+}
+
+-- Vague 63 (L-196 point 3, L-204) : un boost du HUD (Config/Boosts) montré aussi dans l'onglet Boosts de la
+-- boutique. Prix, Id et Ready sont ceux de Config/Boosts (Boost) : la carte et le bouton du HUD achètent le
+-- même produit. Ready à false : la carte montre le prix et « Soon » au clic, rien n'est vendu.
+export type ShopBoost = {
+	Key: string, -- clé de Config/Boosts.List
+	Order: number, -- rang de la carte dans l'onglet Boosts (avant Ouvrir maintenant, comme la maquette de Clément)
+	DisplayName: string,
+	Effect: string,
+	Icon: string,
+	CardColor: Color3?,
+	Boost: Boosts.Boost,
+}
+
+-- Vague 63 (L-200, L-204) : un lot de la caisse exclusive (Crate.BuyRow.BuyButton1 à 3).
+export type CratePack = {
+	Count: number, -- caisses du lot
+	Price: number, -- Robux
+	Id: number, -- produit développeur ; 0 = pas encore créé
 }
 
 -- Gamepasses (4.1), dans l'ordre de la maquette (×2 CASH, ×2 TRAINING, VIP, AUTO COLLECT, FAST OPEN,
 -- +4 DISPLAYS), puis les Gants hydrauliques.
 local Passes: { Pass } = {
-	{ Key = "DoubleCash", Id = 0, Order = 1, Price = 449, Ready = true, Multiplier = 2, DisplayName = "×2 Cash", Effect = "Doubles all your income", Icon = "UI_Icon_GP_x2Cash" },
-	{ Key = "DoubleTraining", Id = 0, Order = 2, Price = 299, Ready = true, Multiplier = 2, DisplayName = "×2 Training", Effect = "×2 treadmill gains", Icon = "UI_Icon_GP_x2Training" },
-	{ Key = "VIP", Id = 0, Order = 3, Price = 249, Ready = false, DisplayName = "VIP", Effect = "+10% income, aura, chat tag", Icon = "UI_Icon_GP_VIP" },
-	{ Key = "AutoCollect", Id = 0, Order = 4, Price = 199, Ready = true, DisplayName = "Auto Collect", Effect = "Cash collects itself, anywhere", Icon = "UI_Icon_GP_AutoCollect" },
-	{ Key = "FastOpen", Id = 0, Order = 5, Price = 299, Ready = true, DelayFactor = 0.5, DisplayName = "Fast Open", Effect = "Anti-theft 2× shorter", Icon = "UI_Icon_GP_FastOpen" },
-	{ Key = "ExtraStands", Id = 0, Order = 6, Price = 349, Ready = true, Stands = 4, DisplayName = "+4 Displays", Effect = "4 extra display stands", Icon = "UI_Icon_GP_Displays" },
+	{ Key = "DoubleCash", Id = 0, Order = 1, Price = 449, Ready = true, CardColor = Color3.fromHex("45D63A"), Multiplier = 2, DisplayName = "×2 Cash", Effect = "Doubles all your income", Icon = "UI_Icon_GP_x2Cash" },
+	{ Key = "DoubleTraining", Id = 0, Order = 2, Price = 299, Ready = true, CardColor = Color3.fromHex("FF9A2E"), Multiplier = 2, DisplayName = "×2 Training", Effect = "×2 treadmill gains", Icon = "UI_Icon_GP_x2Training" },
+	{ Key = "VIP", Id = 0, Order = 3, Price = 249, Ready = false, CardColor = Color3.fromHex("8A5CF0"), DisplayName = "VIP", Effect = "+10% income, aura, chat tag", Icon = "UI_Icon_GP_VIP" },
+	{ Key = "AutoCollect", Id = 0, Order = 4, Price = 199, Ready = true, CardColor = Color3.fromHex("FFC928"), DisplayName = "Auto Collect", Effect = "Cash collects itself, anywhere", Icon = "UI_Icon_GP_AutoCollect" },
+	{ Key = "FastOpen", Id = 0, Order = 5, Price = 299, Ready = true, CardColor = Color3.fromHex("2FA8F0"), DelayFactor = 0.5, DisplayName = "Fast Open", Effect = "Anti-theft 2× shorter", Icon = "UI_Icon_GP_FastOpen" },
+	{ Key = "ExtraStands", Id = 0, Order = 6, Price = 349, Ready = true, CardColor = Color3.fromHex("E05AD8"), Stands = 4, DisplayName = "+4 Displays", Effect = "4 extra display stands", Icon = "UI_Icon_GP_Displays" },
 	-- Texte V0 proposé, absent de la maquette.
 	{ Key = "HydraulicGloves", Id = 0, Order = 7, Price = 499, Ready = false, DisplayName = "Hydraulic Gloves", Effect = "Exclusive tool: 2.5× your best tool", Icon = "UI_Icon_GP_HydraulicGloves" },
 }
@@ -82,14 +121,21 @@ local Passes: { Pass } = {
 -- Produits développeur (4.2). Noms et lignes d'effet : V0 proposés, absents de la maquette.
 local Products: { Product } = {
 	{ Key = "StarterPack", Id = 0, Tab = "Offers", Order = 1, Price = 99, Ready = true, DisplayName = "Starter Pack", Effect = "×2 Cash 1h + Hammer + $50K", Icon = "UI_Icon_DP_StarterPack" },
-	{ Key = "Cash10", Id = 0, Tab = "Cash", Order = 1, Price = 49, Ready = true, Minutes = 10, DisplayName = "10 Minutes of Cash", Effect = "10 min of income", Icon = "UI_Icon_DP_Cash10" },
-	{ Key = "Cash60", Id = 0, Tab = "Cash", Order = 2, Price = 199, Ready = true, Minutes = 60, DisplayName = "1 Hour of Cash", Effect = "1 hour of income", Icon = "UI_Icon_DP_Cash60" },
-	{ Key = "Cash300", Id = 0, Tab = "Cash", Order = 3, Price = 799, Ready = true, Minutes = 300, DisplayName = "5 Hours of Cash", Effect = "5 hours of income", Icon = "UI_Icon_DP_Cash300" },
+	-- 6 packs d'argent (L-196 point 1), du plus petit au plus gros. 10 min, 1 h et 5 h : doc 4.2 ; 30 min,
+	-- 3 h et 12 h : V0 proposé, absent du doc (prix par minute qui baisse avec la taille du pack : 4,9 ; 4,3 ;
+	-- 3,3 ; 2,8 ; 2,7 ; 2,2 R$). Couleurs du vert à l'or (L-204 ; 2, 4 et 6 : V0 entre celles de Clément).
+	{ Key = "Cash10", Id = 0, Tab = "Cash", Order = 1, Price = 49, Ready = true, CardColor = Color3.fromHex("5BCB3A"), Minutes = 10, DisplayName = "10 Minutes of Cash", Effect = "10 min of income", Icon = "UI_Icon_DP_Cash_1" },
+	{ Key = "Cash30", Id = 0, Tab = "Cash", Order = 2, Price = 129, Ready = true, CardColor = Color3.fromHex("3EBA4A"), Minutes = 30, DisplayName = "30 Minutes of Cash", Effect = "30 min of income", Icon = "UI_Icon_DP_Cash_2" },
+	{ Key = "Cash60", Id = 0, Tab = "Cash", Order = 3, Price = 199, Ready = true, CardColor = Color3.fromHex("22A85A"), Minutes = 60, DisplayName = "1 Hour of Cash", Effect = "1 hour of income", Icon = "UI_Icon_DP_Cash_3" },
+	{ Key = "Cash180", Id = 0, Tab = "Cash", Order = 4, Price = 499, Ready = true, CardColor = Color3.fromHex("85A739"), Minutes = 180, DisplayName = "3 Hours of Cash", Effect = "3 hours of income", Icon = "UI_Icon_DP_Cash_4" },
+	{ Key = "Cash300", Id = 0, Tab = "Cash", Order = 5, Price = 799, Ready = true, CardColor = Color3.fromHex("E8A618"), Minutes = 300, DisplayName = "5 Hours of Cash", Effect = "5 hours of income", Icon = "UI_Icon_DP_Cash_5" },
+	{ Key = "Cash720", Id = 0, Tab = "Cash", Order = 6, Price = 1599, Ready = true, CardColor = Color3.fromHex("FFC21A"), Minutes = 720, DisplayName = "12 Hours of Cash", Effect = "12 hours of income", Icon = "UI_Icon_DP_Cash_6" },
 	{
 		Key = "OpenNow",
 		Id = 0, -- inutilisé : un Id par palier, plus bas
 		Tab = "Boosts",
-		Order = 1,
+		Order = 3, -- après ×2 Speed et zZz (ShopBoosts), comme la maquette de Clément
+		CardColor = Color3.fromHex("18B894"),
 		Price = 19,
 		Ready = true,
 		DisplayName = "Open Now",
@@ -105,11 +151,35 @@ local Products: { Product } = {
 		},
 	},
 	-- Pas codés (Ready = false) : voir l'en-tête de MonetizationService.
-	{ Key = "Revenge", Id = 0, Tab = "Boosts", Order = 2, Price = 25, Ready = false, DisplayName = "Revenge", Effect = "Teleport behind your thief", Icon = "UI_Icon_DP_Revenge" },
-	{ Key = "InstantShutter", Id = 0, Tab = "Boosts", Order = 3, Price = 29, Ready = false, DisplayName = "Instant Shutter", Effect = "Close your shop right now", Icon = "UI_Icon_DP_InstantShutter" },
-	{ Key = "Luck3", Id = 0, Tab = "Boosts", Order = 4, Price = 79, Ready = false, DisplayName = "×3 Luck", Effect = "Rarer boxes for 15 min", Icon = "UI_Icon_DP_Luck3" },
-	{ Key = "Shield30", Id = 0, Tab = "Boosts", Order = 5, Price = 99, Ready = false, DisplayName = "30 Min Shield", Effect = "Nobody can rob your shop", Icon = "UI_Icon_DP_Shield30" },
+	{ Key = "Revenge", Id = 0, Tab = "Boosts", Order = 4, Price = 25, Ready = false, DisplayName = "Revenge", Effect = "Teleport behind your thief", Icon = "UI_Icon_DP_Revenge" },
+	{ Key = "InstantShutter", Id = 0, Tab = "Boosts", Order = 5, Price = 29, Ready = false, DisplayName = "Instant Shutter", Effect = "Close your shop right now", Icon = "UI_Icon_DP_InstantShutter" },
+	{ Key = "Luck3", Id = 0, Tab = "Boosts", Order = 6, Price = 79, Ready = false, DisplayName = "×3 Luck", Effect = "Rarer boxes for 15 min", Icon = "UI_Icon_DP_Luck3" },
+	{ Key = "Shield30", Id = 0, Tab = "Boosts", Order = 7, Price = 99, Ready = false, DisplayName = "30 Min Shield", Effect = "Nobody can rob your shop", Icon = "UI_Icon_DP_Shield30" },
 }
+
+-- Vague 63 (L-196 point 3, L-204) : les boutons en situation du HUD (Config/Boosts) aussi dans l'onglet Boosts.
+-- Noms, effets, icônes (UI_Icon_SpeedBoost, UI_Icon_Sleep) et couleurs : maquette de Clément (L-204).
+local ShopBoosts: { ShopBoost } = {}
+for _, entry in
+	{
+		{ Key = "SpeedBoost", Order = 1, DisplayName = "×2 Speed", Effect = "×2 speed on the treadmill", Icon = "UI_Icon_SpeedBoost", CardColor = Color3.fromHex("F2553A") },
+		{ Key = "SleepGuards", Order = 2, DisplayName = "zZz", Effect = "Guards & police sleep 60 s", Icon = "UI_Icon_Sleep", CardColor = Color3.fromHex("5B4BE0") },
+	}
+do
+	for _, boost in Boosts.List do
+		if boost.Key == entry.Key then
+			table.insert(ShopBoosts, {
+				Key = entry.Key,
+				Order = entry.Order,
+				DisplayName = entry.DisplayName,
+				Effect = entry.Effect,
+				Icon = entry.Icon,
+				CardColor = entry.CardColor,
+				Boost = boost,
+			})
+		end
+	end
+end
 
 local PassByKey: { [string]: Pass } = {}
 for _, pass in Passes do
@@ -125,6 +195,31 @@ local Monetization = {
 	Products = Products,
 	PassByKey = PassByKey, -- clé = PassKey ; une clé inconnue renvoie nil
 	ProductByKey = ProductByKey, -- clé = ProductKey
+	ShopBoosts = ShopBoosts, -- vague 63 : boosts du HUD dans l'onglet Boosts (même produit, Config/Boosts)
+
+	-- Vague 63 (L-200, L-204) : caisse exclusive de UI_RobuxShop_v2 (section Crate). Montrée seulement avec
+	-- Features.RobuxCrate, des chances pour chaque case (Odds) et là où Roblox permet les objets payants au
+	-- hasard (PolicyService : ArePaidRandomItemsRestricted faux) ; sinon la section est cachée. Sans Ready, ses
+	-- boutons montrent « Soon » (rien n'est vendu).
+	-- Prix : décision de Clément du 2026-11-16 (repris de Steal an Egg). Contenu et chances : pas décidés.
+	Crate = {
+		Ready = false, -- contenu et don pas codés : rien n'est vendu (un reçu serait refusé, NotProcessedYet)
+		UnitPrice = 99, -- prix d'une caisse seule : OldPrice d'un lot = UnitPrice × Count (caché sans remise)
+		Packs = {
+			{ Count = 1, Price = 99, Id = 0 },
+			{ Count = 3, Price = 249, Id = 0 },
+			{ Count = 10, Price = 799, Id = 0 },
+		} :: { CratePack },
+		-- Chances (en %) des cases Odd_1 à Odd_6, de la plus commune à la plus rare ; vide = pas décidées
+		-- (caisse cachée : règle Roblox, chances affichées avant l'achat).
+		Odds = {} :: { number },
+	},
+
+	-- Vague 63 (L-200) : UI_RobuxShop_v2. V0 proposé, absent du doc : durée (s) du défilement de List jusqu'à la
+	-- section d'un onglet.
+	Shop = {
+		ScrollTime = 0.35,
+	},
 
 	-- Achats de produits (9.6).
 	Receipts = {
