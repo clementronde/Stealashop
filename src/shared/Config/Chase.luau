@@ -56,7 +56,7 @@ local Chase = {
 	-- poursuivant de cette règle ralentit en continu. Sa vitesse ne dépasse pas la part de la vitesse du voleur qui
 	-- l'éloigne + max(√(2 × RushBrake × (d − HoldDistance)⁺ + 2 × ApproachBrake × (d − capture)⁺), ApproachMinClosing).
 	-- Voleur immobile : ≈ 10 studs/s à 10 studs de la capture, puis de moins en moins vite, les 10 derniers studs en
-	-- ≈ 1,7 à 2 s ; jamais moins de ApproachMinClosing (il est toujours attrapé). En studs/s² et studs/s RÉELS, sans × k :
+	-- ≈ 1,5 à 1,7 s (banc a224) ; jamais moins de ApproachMinClosing (il est toujours attrapé). En studs/s² et studs/s RÉELS, sans × k :
 	-- Cantin veut voir arriver le vigile pendant une durée réelle. ApproachBrake = 0 : sans ce plafond (avant a224).
 	ApproachBrake = 5, -- V0, absent du doc (studs/s²) ; Cantin 2026-11-16 : ralentir davantage en arrivant (10 → 5)
 	ApproachMinClosing = 3, -- V0 proposé, absent du doc (studs/s)
