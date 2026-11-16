@@ -45,7 +45,8 @@
 --   - les cartes d'exemple de la maquette (Preview_*, à côté du Template) sont retirées de la copie du
 --     joueur, comme dans les boutiques d'armes et d'auras.
 -- Ouverture et fermeture animées (DEV-052) par UI/Motion, comme les boutiques d'armes et d'auras : les
--- cartes sont retirées une fois l'écran éteint, et une réouverture pendant la fermeture la rattrape.
+-- cartes restent écran fermé (vague 65, a216 : refaites seulement si les offres ont changé), et une réouverture
+-- pendant la fermeture la rattrape.
 -- Seuls sont touchés : Enabled de l'écran, les textes, la visibilité, le nom et l'ordre des cartes
 -- clonées, l'image de Icon (2.2, « Libre pour Ironix ») ; jamais un style (l'effet d'échelle de Motion
 -- est passager). Texte d'un élément : sur lui
@@ -510,18 +511,27 @@ local function onClick(element: Instance?, handler: () -> ()): RBXScriptConnecti
 	return nil
 end
 
--- Image d'un Decal de Clément nommé `name` (ReplicatedStorage/Assets, sous-dossiers compris).
+-- Image d'un Decal de Clément nommé `name` (ReplicatedStorage/Assets, sous-dossiers compris). Vague 65 (a216) :
+-- tout Assets est lu en une seule passe à la première carte de l'écran branché (avant : une passe de tout Assets par
+-- carte, à chaque ouverture), puis gardé jusqu'au prochain branchement (bind).
+local decalTextures: { [string]: string }? = nil
 local function decalTexture(name: string): string?
-	local assets = ReplicatedStorage:FindFirstChild(ASSETS_FOLDER)
-	if assets == nil then
-		return nil
-	end
-	for _, found in Find.all(assets, name) do
-		if found:IsA("Decal") and (found :: Decal).Texture ~= "" then
-			return (found :: Decal).Texture
+	local textures = decalTextures
+	if textures == nil then
+		local assets = ReplicatedStorage:FindFirstChild(ASSETS_FOLDER)
+		if assets == nil then
+			return nil
 		end
+		local read: { [string]: string } = {}
+		for _, found in assets:GetDescendants() do
+			if found:IsA("Decal") and read[found.Name] == nil and (found :: Decal).Texture ~= "" then
+				read[found.Name] = (found :: Decal).Texture -- le premier, comme Find.all avant
+			end
+		end
+		decalTextures = read
+		textures = read
 	end
-	return nil
+	return (textures :: { [string]: string })[name]
 end
 
 -- Vague 63 (L-204) : ton `sample` d'une carte de couleur `base` (base éclaircie ou foncée), refait sur `color`.
@@ -1036,10 +1046,9 @@ local function closeShop()
 	isOpen = false
 	local current = shop
 	if current then
-		-- Cartes retirées une fois l'écran éteint ; une réouverture d'ici là les reconstruit.
-		Motion.Close(current.gui, function()
-			clearCards(current)
-		end)
+		-- Vague 65 (a216) : cartes gardées écran fermé (avant : retirées puis toutes reclonées à chaque ouverture) ;
+		-- l'ouverture les met à jour, ou les refait si les offres ont changé (refreshCards).
+		Motion.Close(current.gui)
 	end
 end
 
@@ -1149,6 +1158,7 @@ local function bind(gui: ScreenGui)
 		end
 	end
 	isOpen = false
+	decalTextures = nil -- vague 65 (a216) : images relues pour ce nouvel écran
 	gui.Enabled = false -- fermé jusqu'au bouton du HUD ou à l'invite
 	Motion.SetCloser(gui, closeShop) -- un autre écran du groupe ScreenGroup s'ouvre (L-089)
 
@@ -1233,7 +1243,7 @@ local function openShop()
 	end
 	tab = chosenTab or (if starterOffered() then "Offers" else "Gamepasses")
 	isOpen = true
-	buildCards()
+	refreshCards() -- vague 65 (a216) : cartes gardées mises à jour ; refaites seulement si les offres ont changé
 	local list = current.list
 	if current.v2 and list then
 		local previous = scrollTween
