@@ -268,10 +268,21 @@ local function styleButton(screen: string, b: GuiButton)
 	-- studs teintés à 45 %
 	local studs = target:FindFirstChild("Studs") or b:FindFirstChild("Studs")
 	if b.Name == "RobuxButton" or b:FindFirstChild("RobuxIcon", true) then
-		-- pas de studs sur les boutons Robux (retour de Clément du 2026-11-16)
-		if studs then
-			studs:Destroy()
-		end
+		-- boutons Robux : studs carrés troués de Clément (studstandalone), tuile de 1,1 fois la hauteur du bouton
+		-- (proportions lues à l'écran : lancer le script avec les écrans visibles, sinon tuile carrée par défaut)
+		local hs = (studs and studs:IsA("ImageLabel")) and studs or Instance.new("ImageLabel")
+		hs.Name = "Studs"
+		hs.BackgroundTransparency = 1
+		hs.Image = "rbxassetid://89499299399116"
+		hs.ScaleType = Enum.ScaleType.Tile
+		hs.Size = UDim2.fromScale(1, 1)
+		local ratio = if target.AbsoluteSize.Y > 1 then target.AbsoluteSize.X / target.AbsoluteSize.Y else 3
+		hs.TileSize = UDim2.fromScale(1.1 / ratio, 1.1)
+		hs.ImageColor3 = WHITE
+		hs.ImageTransparency = 0.55
+		hs.Visible = true
+		hs.Parent = target
+		setCorner(hs, 0.12)
 		return
 	end
 	if not (studs and studs:IsA("ImageLabel")) then

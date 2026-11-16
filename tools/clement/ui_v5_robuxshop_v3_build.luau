@@ -27,6 +27,7 @@ local RAYS = "rbxassetid://110553518823718" -- UI_Tex_Rays (carte de L-196)
 local GLOW = "rbxassetid://130850617844067" -- UI_Tex_Glow
 local STAR = "rbxassetid://98471192881940" -- étoile des cartes de boutique (ShopCardBg/IconDecor)
 local ROBUX = "rbxassetid://139320447847280" -- UI_Icon_Robux
+local STUDS_HOLLOW = "rbxassetid://89499299399116" -- studstandalone (Clément) : 2 × 2 studs carrés troués, pour les boutons Robux
 local W = 1130 -- largeur de List.Content dans Figma (PC)
 
 local icons = ReplicatedStorage:WaitForChild("Assets"):WaitForChild("Icons")
@@ -245,7 +246,14 @@ local function button(parent: Instance, name: string, p: Box, x: number, y: numb
 	end
 	local bp = { w = w, h = h }
 	if not pay then
-		studs(b, base, bp, r) -- pas de studs sur les boutons Robux (retour de Clément du 2026-11-16)
+		studs(b, base, bp, r)
+	else
+		-- boutons Robux : studs carrés troués de Clément (le vert seul faisait vide), tuile de 1,1 fois la hauteur
+		local hs = image(b, "Studs", STUDS_HOLLOW, bp, 0, 0, w, h)
+		hs.ScaleType = Enum.ScaleType.Tile
+		hs.TileSize = UDim2.fromScale(1.1 * h / w, 1.1)
+		hs.ImageTransparency = 0.55
+		corner(hs, 0.12)
 	end
 	gloss(b, bp, r)
 	local shade = frame(b, "Shade", bp, 0, 0, w, h)
@@ -286,6 +294,25 @@ local function priceContent(b: TextButton, bw: number, bh: number, y: number, ch
 	local icon = image(content, "RobuxIcon", ROBUX, cp, 0, 0, 0.85 * ch, 0.85 * ch)
 	icon.LayoutOrder = 1
 	icon:SetAttribute("IconAsset", "UI_Icon_Robux")
+	-- contour noir du logo (retour de Clément du 2026-11-16) : 8 copies noires décalées derrière, l'image n'en a pas
+	local outline = Instance.new("Frame")
+	outline.Name = "IconOutline"
+	outline.BackgroundTransparency = 1
+	outline.Size = UDim2.fromScale(1, 1)
+	for a = 0, 7 do
+		local ang = a * math.pi / 4
+		local copy = Instance.new("ImageLabel")
+		copy.Name = "Copy"
+		copy.BackgroundTransparency = 1
+		copy.Image = ROBUX
+		copy.ScaleType = Enum.ScaleType.Fit
+		copy.ImageColor3 = INK
+		copy.AnchorPoint = Vector2.new(0.5, 0.5)
+		copy.Size = UDim2.fromScale(1, 1)
+		copy.Position = UDim2.fromScale(0.5 + 0.075 * math.cos(ang), 0.5 + 0.075 * math.sin(ang))
+		copy.Parent = outline
+	end
+	outline.Parent = icon
 	local ratio = Instance.new("UIAspectRatioConstraint")
 	ratio.AspectRatio = 1
 	ratio.Parent = icon
@@ -443,11 +470,11 @@ end
 local buyRow = frame(crate, "BuyRow", cb, 360, 262, 746, 84)
 local rb = { w = 746, h = 84 }
 -- Prix d'aperçu repris de Steal an Egg (œuf Robux : 1 = 99, 3 = 249, 10 = 799 R$, décision de Clément du 2026-11-16) ;
--- les lots montrent le prix sans remise barré (99 × le nombre) et la remise (Discount.Label). Le code écrit les vrais prix.
+-- les lots montrent le prix sans remise barré (99 × le nombre), avant le nouveau prix. Le code écrit les vrais prix.
 local CRATE_OFFERS = {
 	{ count = "1 CRATE", price = "99" },
-	{ count = "3 CRATES", price = "249", old = "297", discount = "-16%" },
-	{ count = "10 CRATES", price = "799", old = "990", discount = "-19%" },
+	{ count = "3 CRATES", price = "249", old = "297" },
+	{ count = "10 CRATES", price = "799", old = "990" },
 }
 for i, offer in CRATE_OFFERS do
 	local base = if i == 3 then Color3.fromHex("ffb21f") else Color3.fromHex("4fe03a")
@@ -455,11 +482,22 @@ for i, offer in CRATE_OFFERS do
 	priceContent(b, 236, 84, 6, 44, 29, 72, offer.price)
 	text(b, "Count", offer.count, { w = 236, h = 84 }, 20, 52, 196, 22, WHITE, XBOLD)
 	if offer.old then
+		-- retour de Clément du 2026-11-16 : seulement l'ancien prix barré puis le nouveau, plus espacés, sans remise
 		local content = b:FindFirstChild("Content") :: Frame
-		local old = text(content, "OldPrice", offer.old, { w = 236, h = 44 }, 0, 0, 48, 27, Color3.fromHex("e6ebf2"), HEAVY, Enum.TextXAlignment.Left)
-		old.LayoutOrder = 3
-		-- barre rouge en travers (le <s> du texte riche était trop fin pour se lire)
-		local strike = frame(old, "Strike", { w = 48, h = 27 }, 2, 12, 46, 4)
+		local lay = content:FindFirstChildOfClass("UIListLayout")
+		if lay then
+			lay.Padding = UDim.new(10 / 236, 0)
+		end
+		local old = text(content, "OldPrice", offer.old, { w = 236, h = 44 }, 0, 0, 64, 31, Color3.fromHex("e6ebf2"), HEAVY, Enum.TextXAlignment.Right)
+		old.LayoutOrder = 0
+		local pad = Instance.new("UIPadding")
+		pad.PaddingRight = UDim.new(0.12, 0)
+		pad.Parent = old
+		-- trait rouge en travers des chiffres (le <s> du texte riche était trop fin pour se lire)
+		local strike = frame(old, "Strike", { w = 64, h = 31 }, 0, 0, 64, 31)
+		strike.AnchorPoint = Vector2.new(0.5, 0.5)
+		strike.Position = UDim2.fromScale(0.5, 0.52)
+		strike.Size = UDim2.fromScale(0.85, 0.09)
 		strike.BackgroundTransparency = 0
 		strike.BackgroundColor3 = Color3.fromHex("ff2d3a")
 		strike.Rotation = -12
@@ -467,11 +505,6 @@ for i, offer in CRATE_OFFERS do
 		ss.Color = BLACK
 		ss.Thickness = 1
 		ss.Parent = strike
-		-- remise, droite, au coin haut droit du bouton
-		local tag = frame(b, "Discount", { w = 236, h = 84 }, 236 - 82 + 5, -17, 82, 34)
-		buttonTones(tag, Color3.fromHex("e8222d"))
-		border(tag, BLACK, 3, 34)
-		text(tag, "Label", offer.discount, { w = 82, h = 34 }, 6, 4, 70, 26, WHITE)
 	end
 end
 
@@ -563,8 +596,12 @@ local function card(parent: Instance, name: string, wide: boolean, o: Offer): Fr
 		local ic = image(c, "Icon", img, cp, 28, 27, 152, 152)
 		ic:SetAttribute("IconAsset", o.icon)
 		-- textes un peu plus hauts que dans Figma : sur téléphone, le bouton de 44 px ne les recouvre pas
-		text(c, "ItemName", o.name, cp, 222, 10, 322, 48, WHITE)
-		text(c, "Effect", o.effect, cp, 222, 60, 322, 20, Color3.fromHex(o.effectColor), XBOLD)
+		-- retour de Clément du 2026-11-16 : pas de sous-titre (Effect gardé, caché), titre centré au-dessus du bouton
+		local nm = text(c, "ItemName", o.name, cp, 222, 40, 322, 56, WHITE)
+		nm.AnchorPoint = Vector2.new(0, 0.5)
+		nm.Position = UDim2.fromScale(222 / cw, 68 / ch)
+		local ef = text(c, "Effect", o.effect, cp, 222, 60, 322, 20, Color3.fromHex(o.effectColor), XBOLD)
+		ef.Visible = false
 	else
 		-- 380 px centrés sur (181,5 ; 60) : gauche, droite et haut sous le bord de la carte, le bas s'efface
 		local r = image(clip, "Rays", RAYS, cp, -8.5, -130, 380, 380)
@@ -576,8 +613,11 @@ local function card(parent: Instance, name: string, wide: boolean, o: Offer): Fr
 		wm.ImageTransparency = 0.86
 		local ic = image(c, "Icon", img, cp, 133, 8, 97, 97)
 		ic:SetAttribute("IconAsset", o.icon)
-		text(c, "ItemName", o.name, cp, 14, 104, 335, 36, WHITE)
-		text(c, "Effect", o.effect, cp, 14, 142, 335, 19, Color3.fromHex(o.effectColor), XBOLD)
+		local nm = text(c, "ItemName", o.name, cp, 14, 132, 335, 42, WHITE)
+		nm.AnchorPoint = Vector2.new(0, 0.5)
+		nm.Position = UDim2.fromScale(14 / cw, 153 / ch)
+		local ef = text(c, "Effect", o.effect, cp, 14, 142, 335, 19, Color3.fromHex(o.effectColor), XBOLD)
+		ef.Visible = false
 	end
 	local bx, by, bw, bh = 290, 136, 186, 58
 	if not wide then
@@ -821,6 +861,18 @@ local function stack(o: Instance)
 	end
 end
 stack(content)
+-- les copies noires du contour d'un logo Robux passent sous le logo (l'empilement les avait mises dessus)
+for _, o in content:GetDescendants() do
+	if o.Name == "IconOutline" and o.Parent and o.Parent:IsA("GuiObject") then
+		local z = (o.Parent :: GuiObject).ZIndex - 1
+		;(o :: GuiObject).ZIndex = z
+		for _, copy in o:GetChildren() do
+			if copy:IsA("GuiObject") then
+				copy.ZIndex = z
+			end
+		end
+	end
+end
 z = 1
 stack(decor)
 for _, d in decor:GetDescendants() do
