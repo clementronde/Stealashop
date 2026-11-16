@@ -50,10 +50,20 @@
 -- de la ligne du HUD du même chiffre (SpeedRow, StrengthRow, CashRow : la première ImageLabel de la
 -- ligne), sinon celle du modèle BB_Gain.
 --
+-- Vague 63 (a206, L-192 Q2) : « +$X/s » qui vole. Quand un objet arrive sur un présentoir (l'état de l'inventaire,
+-- attribut InventoryState, lui donne un présentoir qu'il n'avait pas : posé à la main, par « Exposer les meilleurs »
+-- ou depuis la réserve), son revenu « +$X/s » (Format.income) part de son modèle sur le présentoir (tag DisplayItem,
+-- ItemUid, OwnerUserId ; attendu Config/Displayed.IncomeFly.ModelWait s, sinon au-dessus du joueur, sinon du centre
+-- de l'écran) et vole jusqu'au nombre Cash du HUD : copie de UI_HUD.CashFly.GainPop de Clément, sinon de CounterPop,
+-- sinon un texte vert simple fait ici ; à l'arrivée, CashRow sursaute et le son part (l'argent ne change pas). Un
+-- seul vol par pose (première lecture de l'état : rien), plusieurs poses à la fois décalées de Stagger s, aucun
+-- pendant une poursuite (ChaseController.IsChased) ni rattrapé après.
+--
 -- API (client) : aucune. Pour un test dans Studio (barre de commande côté client) :
---   GainController.GetActive() -> { Gains: number, Flyers: number, Pops: number, Bills: number }
+--   GainController.GetActive() -> { Gains: number, Flyers: number, Pops: number, Bills: number, IncomeFlies: number }
 --   GainController.Superscript(text) -> string   « ×2 » en exposant Unicode (a178)
 
+local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -137,6 +147,14 @@ local PIECE_RISE_INFO: TweenInfo? = if TREAD then TweenInfo.new(TREAD.Life, FLOA
 local PULSE_INFO: TweenInfo? = if SPEED_PULSE
 	then TweenInfo.new(SPEED_PULSE.Time, SPEED_PULSE.Style, SPEED_PULSE.Direction)
 	else nil
+-- Vague 63 (a206) : « +$X/s » qui vole à chaque pose (Config/Displayed.IncomeFly ; facultatif : bancs plus anciens).
+local InventoryState = require(Shared:WaitForChild("InventoryState"))
+local displayedModule = Shared:WaitForChild("Config"):FindFirstChild("Displayed")
+local DisplayedConfig: any = if displayedModule and displayedModule:IsA("ModuleScript") then require(displayedModule) :: any else nil
+local INCOME_FLY: any = if DisplayedConfig then DisplayedConfig.IncomeFly else nil
+local DISPLAY_TAG = "DisplayItem" -- tag de code des objets exposés (DisplayService)
+type ChaseApi = { IsChased: () -> boolean }
+
 -- Vague 59 (a192) : gains ponctuels qui volent (Config/HeistFeel.BillFly).
 local BILL = HeistFeel.BillFly
 local BILL_RISE_INFO = TweenInfo.new(BILL.RiseTime, Enum.EasingStyle.Quad, Enum.EasingDirection.Out) -- V0
@@ -175,7 +193,10 @@ local collected = 0
 local classifyQueued = false
 local flyer: Flyer? = nil -- case qui attend encore au départ (un nouveau gain s'y ajoute)
 local counterPop: GuiObject? = nil
-local active = { Gains = 0, Flyers = 0, Pops = 0, Bills = 0 } -- Bills : gains ponctuels en vol (vague 59)
+-- Bills : gains ponctuels en vol (vague 59) ; IncomeFlies : « +$X/s » d'une pose en vol (vague 63)
+local active = { Gains = 0, Flyers = 0, Pops = 0, Bills = 0, IncomeFlies = 0 }
+local chase: ChaseApi? = nil
+local placed: { [string]: boolean }? = nil -- vague 63 : uids exposés à la dernière lecture (nil : pas encore lu)
 local warned: { [string]: boolean } = {}
 
 local function warnOnce(key: string, message: string)
@@ -771,6 +792,169 @@ local function billFly(amount: number, releases: { () -> () })
 	end)
 end
 
+------------------------------------------------------------------------------
+-- « +$X/s » qui vole à chaque pose (vague 63, a206, L-192 Q2)
+------------------------------------------------------------------------------
+
+local function isChased(): boolean
+	local api = chase
+	if api == nil then
+		return false
+	end
+	local ok, result = pcall(api.IsChased)
+	return ok and result == true
+end
+
+-- Modèle de l'objet `uid` exposé chez le joueur local (tag DisplayItem de DisplayService), ou nil.
+local function displayModel(uid: string): Instance?
+	for _, model in CollectionService:GetTagged(DISPLAY_TAG) do
+		if model:GetAttribute("ItemUid") == uid and model:GetAttribute("OwnerUserId") == localPlayer.UserId then
+			return model
+		end
+	end
+	return nil
+end
+
+-- Point du monde → pixels du repère de UI_HUD, ou nil s'il n'est pas à l'écran.
+local function toScreen(refs: HudRefs, point: Vector3): Vector2?
+	local camera = Workspace.CurrentCamera
+	if camera == nil then
+		return nil
+	end
+	local screenPoint, onScreen
+	if refs.screen.IgnoreGuiInset then
+		screenPoint, onScreen = camera:WorldToViewportPoint(point)
+	else
+		screenPoint, onScreen = camera:WorldToScreenPoint(point)
+	end
+	if not onScreen then
+		return nil
+	end
+	local origin = refs.screen.AbsolutePosition
+	return Vector2.new(screenPoint.X - origin.X, screenPoint.Y - origin.Y)
+end
+
+-- Le texte qui vole : copie de CashFly.GainPop, sinon de CashFly.CounterPop, sinon un texte vert simple.
+local function incomeLabel(refs: HudRefs): TextLabel
+	local template = (typed(refs.fly, "GainPop", "TextLabel") or typed(refs.fly, "CounterPop", "TextLabel")) :: TextLabel?
+	if template then
+		return template:Clone()
+	end
+	warnOnce("incomeFly", `[Gains] UI_HUD.{CASH_FLY}.GainPop absent : « +$/s » qui vole en texte simple`)
+	local label = Instance.new("TextLabel")
+	label.Name = "IncomeFly"
+	label.BackgroundTransparency = 1
+	label.Size = UDim2.fromOffset(160, 36)
+	label.FontFace = Font.fromEnum(Enum.Font.GothamBold)
+	label.TextScaled = true
+	label.TextColor3 = INCOME_FLY.Color
+	label.TextStrokeTransparency = 0
+	return label
+end
+
+local function incomeFly(uid: string, income: number)
+	local spec = INCOME_FLY
+	local refs = hudRefs()
+	if spec == nil or refs == nil then
+		return
+	end
+	active.IncomeFlies += 1
+	task.spawn(function()
+		-- Départ : le modèle posé (il arrive juste après l'état de l'inventaire), sinon le joueur, sinon le centre.
+		local model = displayModel(uid)
+		local waited = 0
+		while model == nil and waited < spec.ModelWait do
+			task.wait(0.1)
+			waited += 0.1
+			model = displayModel(uid)
+		end
+		local now = hudRefs()
+		if now == nil then
+			active.IncomeFlies -= 1
+			return
+		end
+		local start: Vector2? = nil
+		if model and model:IsA("Model") then
+			start = toScreen(now, (model :: Model):GetPivot().Position + Vector3.new(0, spec.Lift, 0))
+		end
+		start = start or worldStart(now)
+		local size = now.screen.AbsoluteSize
+		local from = start or Vector2.new(size.X * FLY.From.X, size.Y * FLY.From.Y)
+		local label = incomeLabel(now)
+		label.Text = Format.income(income)
+		label.Visible = true
+		label.AnchorPoint = Vector2.new(0.5, 0.5)
+		label.Position = UDim2.fromOffset(from.X, from.Y)
+		local scale = Instance.new("UIScale")
+		scale.Name = COPY_SCALE
+		scale.Scale = spec.PopFrom
+		scale.Parent = label
+		label.Parent = now.screen
+		TweenService:Create(scale, TweenInfo.new(spec.PopTime, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
+		task.wait(spec.PopTime + spec.Hold)
+		local target = hudRefs()
+		if target == nil or label.Parent == nil then
+			active.IncomeFlies -= 1
+			label:Destroy()
+			return
+		end
+		local cash = target.label
+		local origin = target.screen.AbsolutePosition
+		local goal = UDim2.fromOffset(
+			cash.AbsolutePosition.X - origin.X + spec.TargetOffsetX,
+			cash.AbsolutePosition.Y - origin.Y + cash.AbsoluteSize.Y / 2
+		)
+		local info = TweenInfo.new(spec.FlyTime, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+		TweenService:Create(scale, info, { Scale = spec.EndScale }):Play()
+		local move = TweenService:Create(label, info, { Position = goal })
+		move.Completed:Connect(function()
+			active.IncomeFlies -= 1
+			label:Destroy()
+			bump(hudRefs())
+			Motion.PlaySound(spec.Sound)
+		end)
+		move:Play()
+	end)
+end
+
+-- L'état de l'inventaire a changé : chaque objet qui vient d'arriver sur un présentoir fait voler son revenu.
+local function onInventory()
+	local text = localPlayer:GetAttribute(InventoryState.Attribute)
+	if type(text) ~= "string" then
+		return
+	end
+	local now: { [string]: boolean } = {}
+	local arrived: { InventoryState.ItemEntry } = {}
+	local before = placed
+	for _, entry in InventoryState.Decode(text).Items do
+		if entry.Slot ~= nil then
+			now[entry.Uid] = true
+			if before and not before[entry.Uid] then
+				table.insert(arrived, entry)
+			end
+		end
+	end
+	placed = now
+	if #arrived == 0 or INCOME_FLY == nil or isChased() then
+		return
+	end
+	table.sort(arrived, function(a: InventoryState.ItemEntry, b: InventoryState.ItemEntry): boolean
+		return (a.Slot or 0) < (b.Slot or 0)
+	end)
+	for index, entry in arrived do
+		local uid, income = entry.Uid, entry.Income
+		if index == 1 then
+			incomeFly(uid, income)
+		else
+			task.delay((index - 1) * INCOME_FLY.Stagger, function()
+				if not isChased() then
+					incomeFly(uid, income)
+				end
+			end)
+		end
+	end
+end
+
 -- Fin d'image : les montées de Cash de l'image sont classées ensemble (voir l'en-tête).
 local function classify()
 	classifyQueued = false
@@ -922,7 +1106,7 @@ local function onCollected()
 	end
 end
 
-function GainController.GetActive(): { Gains: number, Flyers: number, Pops: number, Bills: number }
+function GainController.GetActive(): { Gains: number, Flyers: number, Pops: number, Bills: number, IncomeFlies: number }
 	return table.clone(active)
 end
 
@@ -930,6 +1114,9 @@ function GainController.Start()
 	hud = sibling("HudController")
 	rewards = sibling("RewardsController")
 	offline = sibling("OfflineController")
+	chase = sibling("ChaseController") -- vague 63 : aucun « +$/s » qui vole pendant une poursuite
+	onInventory() -- première lecture : rien ne vole
+	localPlayer:GetAttributeChangedSignal(InventoryState.Attribute):Connect(onInventory)
 	for _, kind in { SPEED } do -- v2 : plus de banc, plus de « +X Power »
 		riseOf(kind.Attribute)
 		localPlayer:GetAttributeChangedSignal(kind.Attribute):Connect(function()
