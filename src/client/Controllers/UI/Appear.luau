@@ -23,6 +23,10 @@
 --   Appear.Close(root) -> number       sortie des éléments Appear affichés de root ; durée de la plus longue (0 : rien)
 --   Appear.Reset(root)                 arrête tout sous root et remet chaque élément à l'état de Clément
 --   Appear.GetPhase(object) -> string? "In" ou "Out" tant qu'une animation est en cours ou finie en sortie, sinon nil
+--   Appear.SetCascade(container, rank?, gap?)
+--                                      (vague 63, a209, L-204) règle propre à une Cascade : rank(enfant) -> rang (0 = le
+--                                      premier ; même rang = entrent ensemble), gap = écart entre deux rangs ; sans rien :
+--                                      la règle commune (ordre de lecture, Cascade.Gap). Sert aux cases de la caisse.
 --
 -- Ce qui est touché, le temps de l'animation seulement : un UIScale ScaleName créé ici (sur l'élément, ou sur chaque
 -- enfant d'une Cascade), la Rotation (Stamp) et la Position (SlideRight) de l'élément, remises exactement à la valeur
@@ -89,6 +93,9 @@ type State = {
 local Appear = {}
 
 local states: { [GuiObject]: State } = setmetatable({}, { __mode = "k" }) :: any
+
+type CascadeRule = { rank: ((GuiObject) -> number)?, gap: number? }
+local cascadeRules: { [GuiObject]: CascadeRule } = setmetatable({}, { __mode = "k" }) :: any
 
 ------------------------------------------------------------------------------
 -- Outils
@@ -358,10 +365,13 @@ local function cascadeAdd(container: GuiObject, state: State, item: GuiObject)
 	if existing == nil then
 		scale.Scale = CASCADE.From
 	end
-	local rank = math.min(state.queued, CASCADE.Max - 1)
+	local rule: CascadeRule? = cascadeRules[container]
+	local ranker = if rule then rule.rank else nil
+	local rank = if ranker then math.max(ranker(item), 0) else math.min(state.queued, CASCADE.Max - 1)
+	local gap = if rule and rule.gap then rule.gap else CASCADE.Gap
 	state.queued += 1
 	local token = state.token
-	local delay = math.max(CASCADE.Start + rank * CASCADE.Gap - (os.clock() - state.startedAt), 0)
+	local delay = math.max(CASCADE.Start + rank * gap - (os.clock() - state.startedAt), 0)
 	task.delay(delay, function()
 		if state.token ~= token then
 			return
@@ -679,6 +689,15 @@ function Appear.Reset(root: Instance)
 		if state then
 			restore(object, state)
 		end
+	end
+end
+
+function Appear.SetCascade(container: GuiObject, rank: ((GuiObject) -> number)?, gap: number?)
+	if rank == nil and gap == nil then
+		cascadeRules[container] = nil
+	else
+		local rule: CascadeRule = { rank = rank, gap = gap }
+		cascadeRules[container] = rule
 	end
 end
 
