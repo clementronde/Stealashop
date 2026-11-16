@@ -112,6 +112,15 @@ local function placeRow(row: GuiObject, guiService: GuiService)
 	end
 	local parent = row.Parent
 	local origin = if parent and parent:IsA("GuiBase2d") then (parent :: GuiBase2d).AbsolutePosition else Vector2.new(0, 0)
+	-- fusion57 (vu en Play) : sous un ScreenGui qui garde la place de la barre (IgnoreGuiInset = false, cas d'UI_HUD),
+	-- AbsolutePosition part du bas de la barre ; TopbarInset est en px de l'écran entier : on ajoute ce décalage.
+	local screenGui: Instance? = parent
+	while screenGui and not screenGui:IsA("ScreenGui") do
+		screenGui = screenGui.Parent
+	end
+	if screenGui and not (screenGui :: ScreenGui).IgnoreGuiInset then
+		origin += guiService:GetGuiInset()
+	end
 	local size = row.AbsoluteSize
 	local anchor = row.AnchorPoint
 	local left = inset.Min.X + ROW.Gap
