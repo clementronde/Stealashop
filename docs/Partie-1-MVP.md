@@ -1106,6 +1106,8 @@ Chaque étape est envoyée une seule fois par joueur avec `AnalyticsService:LogO
 
 | Date | Décision | Par |
 | --- | --- | --- |
+| 2026-11-16 | UI : tous les boutons ont un léger arrondi ; les cadres, cartes et contours restent droits (remplace « seuls les boutons de paiement sont arrondis »). L'index se trie du moins rare au plus rare, sans texte sous les objets. | Clément |
+| 2026-11-16 | La première aura (Shine) et la première traînée (Dust) sont très bon marché, achetables dès le tuto. Caisse exclusive : ses 6 objets exclusifs, chances dans l'esprit de Break and Steal an Egg, à proposer par Cantin (liaison L-210). | Clément |
 | 2026-11-16 | Bulles ×N du tapis (fiche vidéo du 2026-11-16, vague 64) : sur le tapis seulement ; un clic donne tout de suite le gain d'une seconde × N ; chances ×2 55 %, ×3 22 %, ×4 11 %, ×5 6 %, ×7 3,5 %, ×10 2 %, ×20 0,5 % ; une bulle toutes les 2 à 3 s, deux au plus, 6 s de vie ; pas de bulle payante pour l'instant. Le banc n'existe plus. Choix V0 du code : le tap (+50 %) n'entre pas dans le gain d'une bulle. | Cantin |
 | 2026-11-16 | Boutique Robux v3 (L-203) : boutons pour payer et Claim à contour noir, sans studs pour les boutons Robux ; caisse exclusive aux cases de plus en plus grandes de la plus commune à la plus rare ; prix proposés de la caisse repris de Steal an Egg (1 = 99, 3 = 249, 10 = 799 R$), avec le prix sans remise barré (297, 990) et la remise (−16 %, −19 %) sur les lots ; rail de gauche du HUD 30 % plus grand. | Clément |
 | 2026-11-16 | Auras : les 8 nouvelles (Éclair, Feu, Poison, Shine, Tornado, Demon, Angel, Chained) remplacent les 6 anciennes en boutique ; Cantin propose l'ordre, les multiplicateurs et les prix, Clément valide (liaison L-205). | Clément |
