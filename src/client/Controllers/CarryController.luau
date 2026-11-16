@@ -35,6 +35,7 @@ local RunService = game:GetService("RunService")
 local Config = ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config")
 local Balance = require(Config:WaitForChild("Balance"))
 local Rarities = require(Config:WaitForChild("Rarities"))
+local WeightConfig = require(Config:WaitForChild("Weight")) -- a220 : objet porté énorme translucide chez le porteur
 
 type AnimationApi = {
 	SetCarrying: (carrying: boolean) -> (),
@@ -182,6 +183,33 @@ local function revealAll()
 	table.clear(hidden)
 end
 
+-- a220 (L-210 point 3) : l'objet porté a la taille de son poids (CarryService, jusqu'à ×10). Chez le porteur seulement,
+-- un objet d'échelle Weight.CarryFadeFromScale ou plus devient translucide (Weight.CarryFade) : il cache sinon le perso et
+-- la rue derrière la caméra. Pièces et décalques encore cachés jusqu'au Grab : leur valeur à remettre devient le fondu.
+local function fadeBig(model: Instance)
+	local fade = WeightConfig.CarryFade
+	if not model:IsA("Model") or fade <= 0 then
+		return
+	end
+	local ok, scale = pcall(function()
+		return (model :: Model):GetScale()
+	end)
+	if not ok or type(scale) ~= "number" or scale < WeightConfig.CarryFadeFromScale then
+		return
+	end
+	local record = hidden[model]
+	for _, d in model:GetDescendants() do
+		if d:IsA("BasePart") or d:IsA("Decal") then
+			local target = d :: any
+			if record and record.modifiers[d] ~= nil then
+				record.modifiers[d] = math.max(record.modifiers[d], fade)
+			elseif target.LocalTransparencyModifier < fade then
+				target.LocalTransparencyModifier = fade
+			end
+		end
+	end
+end
+
 -- Début du portage : si Grab joue encore, le colis reste caché jusqu'à ce qu'il l'ait posé.
 local function holdUntilGrab()
 	local anim = animation
@@ -223,8 +251,11 @@ local function watchCharacter(character: Model)
 	characterConnection = character.ChildAdded:Connect(function(child: Instance)
 		if carrying and child:IsA("Tool") then
 			task.defer(stowTools) -- pas pendant l'événement : Roblox refuse de changer le parent
-		elseif holding and child.Name == VISUAL_NAME then
-			hideVisual(child) -- le colis arrive après l'attribut Carrying
+		elseif child.Name == VISUAL_NAME then
+			if holding then
+				hideVisual(child) -- le colis arrive après l'attribut Carrying
+			end
+			fadeBig(child) -- a220
 		end
 	end)
 	applyJump()
@@ -244,6 +275,11 @@ local function onCarryingChanged()
 	if now then
 		stowTools()
 		holdUntilGrab()
+		local character = localPlayer.Character
+		local visual = if character then character:FindFirstChild(VISUAL_NAME) else nil
+		if visual then
+			fadeBig(visual) -- a220
+		end
 	else
 		revealAll()
 	end

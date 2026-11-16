@@ -37,6 +37,9 @@ local Attributes = {
 	Appear = { Name = "Appear", Values = { "Pop", "Cascade", "Stamp", "SlideRight", "DropIn" } },
 	Hover = { Name = "Hover", Values = { "Pop" } },
 	Press = { Name = "Press", Values = { "Squash" } },
+	-- Meuble qui ne casse jamais sous un objet trop gros pendant l'ouverture d'un colis (L-210 point 3, vague 66, a220 ;
+	-- Controllers/Reveal/Shelf, Config/Reveal.Shelf) : vrai (booléen) sur une pièce ou un Model d'un magasin PNJ. Facultatif.
+	NoShelfBreak = { Name = "NoShelfBreak" },
 }
 
 return Attributes

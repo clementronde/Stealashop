@@ -59,6 +59,7 @@ local HudMask = require(script.Parent:WaitForChild("UI"):WaitForChild("HudMask")
 local RevealFolder = script.Parent:WaitForChild("Reveal")
 local Logic = require(RevealFolder:WaitForChild("Logic"))
 local Ceiling = require(RevealFolder:WaitForChild("Ceiling"))
+local Shelf = require(RevealFolder:WaitForChild("Shelf")) -- a220 : le meuble casse sous un objet trop gros
 
 type Payload = Logic.Payload
 type SizeClass = Logic.SizeClass
@@ -887,6 +888,13 @@ local function updateItem(scene: Scene, dt: number)
 		pop = Reveal.PopFrom + (1 - Reveal.PopFrom) * Logic.backOut(p)
 	end
 	scene.shownScale = Logic.growScale(scene.startScale, payload.Scale, f) * pop
+	if scene.fired.Grow then
+		-- a220 (L-210 point 3) : ce que l'objet touche en grandissant casse (Reveal/Shelf, Config/Reveal.Shelf).
+		local _, first = Shelf.Grow(scene.id, scene.shownScale)
+		if first then
+			playSound(Reveal.Shelf.Sound, soundAt(scene))
+		end
+	end
 	local item = scene.item
 	if item == nil then
 		return
@@ -935,6 +943,7 @@ local function finish(scene: Scene, reason: string)
 	end
 	finished += 1
 	stopTrack(scene)
+	Shelf.Forget(scene.id)
 	for _, connection in scene.connections do
 		connection:Disconnect()
 	end
@@ -988,6 +997,7 @@ local function step(dt: number)
 		end
 	end
 	Ceiling.Step(dt)
+	Shelf.Step(dt)
 end
 
 -- Début ---------------------------------------------------------------------------------------------------------
@@ -1085,6 +1095,13 @@ local function begin(payload: Payload)
 	end)
 	scene.itemBaseScale = if okScale and type(baseScale) == "number" and baseScale > 0 then baseScale else 1
 	scene.item = item
+	-- a220 : pièces du meuble que l'objet touchera à sa taille finale (dimensions à la taille 1, avant toute rotation).
+	local okSize, size1 = pcall(function()
+		return item:GetExtentsSize()
+	end)
+	if okSize and typeof(size1) == "Vector3" then
+		Shelf.Plan(scene.id, store, scene.base, size1, payload.Scale, lowEnd())
+	end
 	buildRig(scene)
 	if store then
 		local shelfItem = taggedIn(SHELF_ITEM_TAG, store, slot, payload.SlotName)

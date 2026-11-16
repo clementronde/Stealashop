@@ -77,11 +77,17 @@ local Weight = {
 
 	-- V0 : plafonds d'échelle du modèle. Présentoir et objet posé au sol : à sa taille (Cantin). Objet tenu en main
 	-- (HeldItemService) et grand socle « BEST ITEM » (VfxController) : plafonnés pour ne pas cacher le joueur ni la
-	-- parcelle. Objet porté sur la tête (CarryService) : CarryMaxScale (aujourd'hui à sa taille de catalogue, ×1).
+	-- parcelle. Objet porté sur la tête (CarryService) : à sa taille comme sur un présentoir (a220, Clément L-210 point 3 :
+	-- « sa vraie taille, même énorme »), au plus CarryMaxScale (1 = l'ancien rendu, taille du catalogue).
 	DisplayMaxScale = 10,
 	HeldMaxScale = 2,
 	RarestMaxScale = 3,
-	CarryMaxScale = 1,
+	CarryMaxScale = 10,
+	-- a220 (V0) : chez le porteur seulement (CarryController), un objet porté à partir de cette échelle devient
+	-- translucide (LocalTransparencyModifier CarryFade) pour qu'il voie encore son perso et la rue ; les autres le voient
+	-- plein. CarryFade = 0 : jamais.
+	CarryFadeFromScale = 2.5,
+	CarryFade = 0.55,
 	-- V0 : objet tenu à deux mains (AnimationController, HoldItem) à partir de ce poids (l'ancien Big = 80 kg).
 	TwoHandsFrom = 50,
 

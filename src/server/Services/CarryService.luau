@@ -640,6 +640,28 @@ local function addOutline(model: Model)
 	outline.Parent = model
 end
 
+-- a220 (L-210 point 3, Clément 2026-11-16 : « sur la tête, l'objet garde sa vraie taille, même énorme ») : le modèle
+-- porté (et le même modèle tombé au sol) prend l'échelle de son poids, comme sur un présentoir (Mutations.Scale :
+-- ItemWeight.ScaleFor, au plus Weight.DisplayMaxScale ; sans poids, sa mutation de taille), au plus
+-- Weight.CarryMaxScale (1 = l'ancien rendu, taille du catalogue). Mise à l'échelle autour du pivot, avant les soudures ;
+-- renvoie le point d'accroche `offset` (espace de la pièce d'accroche) à la nouvelle échelle. Échec : taille normale.
+local function scaleVisual(model: Model, offset: CFrame, payload: Payload): CFrame
+	local ok, value = pcall(Mutations.Scale, payload.Mutation, payload.Weight)
+	local scale = if ok and type(value) == "number" and value == value and value > 0 and value < math.huge then value else 1
+	scale = math.min(scale, WeightConfig.CarryMaxScale)
+	if math.abs(scale - 1) < 1e-3 then
+		return offset
+	end
+	local applied, problem = pcall(function()
+		model:ScaleTo(model:GetScale() * scale)
+	end)
+	if not applied then
+		once(`scale.{payload.ItemId}`, `[CarryService] {payload.ItemId} : Model:ScaleTo(×{scale}) a échoué ({problem}), taille normale`, true)
+		return offset
+	end
+	return offset.Rotation + offset.Position * scale
+end
+
 -- Visuel complet d'un payload (modèle, teinte, halo, étiquette), pas encore placé ni parenté.
 local function buildVisual(payload: Payload): Visual
 	local rarity = Rarities.ById[payload.Rarity]
@@ -648,6 +670,7 @@ local function buildVisual(payload: Payload): Visual
 	local model, anchor, offset, isPlaceholder = sourceModel(assetName)
 	model.Name = VISUAL_NAME
 	model.ModelStreamingMode = Enum.ModelStreamingMode.Atomic -- arrive en entier chez les clients
+	offset = scaleVisual(model, offset, payload) -- a220 : à la taille de son poids, avant le halo et l'étiquette
 	prepare(model, anchor)
 	-- Un objet garde ses couleurs ; seul le bloc V0 (pièce Tint) prend celle de la rareté.
 	if isPlaceholder then
