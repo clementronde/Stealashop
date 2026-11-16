@@ -467,21 +467,17 @@ local indexV3Elements = {
 	{ Path = "Rewards.CashReward", Optional = true, Note = "caché depuis L-192 (plus d'argent), peut sortir de l'écran" },
 	{ Path = "Rewards.ClaimButton", Class = BUTTON },
 	{ Path = "Rewards.ClaimButton.ClaimLabel" },
-	{ Path = "MutationTabs" },
-	{ Path = "MutationCaption" },
 } :: { Element }
+-- Vague 63 (a207, L-201) : retirés de l'écran refait, donc du contrat (IndexController les lit encore s'ils sont là,
+-- sans eux rien ne manque) : MutationTabs et MutationCaption, Categories.SecretsButton, ZoneBar.ZoneItem.
 for _, section in indexSections do
-	for _, path in { "", ".ZoneName", ".ZoneBar", ".ZoneBar.Fill", ".ZoneBar.ZoneCount", ".ZoneBar.ZoneItem", ".Cards" } do
+	for _, path in { "", ".ZoneName", ".ZoneBar", ".ZoneBar.Fill", ".ZoneBar.ZoneCount", ".Cards" } do
 		table.insert(indexV3Elements, { Path = section .. path })
 	end
 end
-for _, button in { "NormalButton", "SecretsButton", "MutationsButton" } do
+for _, button in { "NormalButton", "MutationsButton" } do
 	table.insert(indexV3Elements, { Path = `Categories.{button}`, Class = BUTTON })
 	table.insert(indexV3Elements, { Path = `Categories.{button}.Selected` })
-end
-for _, effect in { "Shiny", "Gold", "Neon", "Diamond", "Glitch", "Hacked", "Rainbow" } do -- Config/Mutations.Effects
-	table.insert(indexV3Elements, { Path = `MutationTabs.{effect}Tab`, Class = BUTTON })
-	table.insert(indexV3Elements, { Path = `MutationTabs.{effect}Tab.Selected` })
 end
 table.insert(UI.Screens, {
 	Name = "UI_Index_v3",
@@ -1191,5 +1187,21 @@ table.insert(UI.Billboards, {
 		{ Path = "LockIcon", Class = "GuiObject", Optional = true, Note = "pas de cadenas au-dessus du nom" },
 	} :: { Element },
 })
+
+-- Index v4 de Figma construit sous le nom UI_Index_v3 (vague 63, a207, L-201) : nouveautés de Clément, facultatives
+-- (IndexController marche sans elles, comme avec l'écran d'avant).
+for _, screenDef in UI.Screens do
+	if screenDef.Name == "UI_Index_v3" then
+		for zone = 1, 6 do
+			local section = `Zone{zone}Section`
+			table.insert(screenDef.Elements, { Path = `{section}.ZoneTheme`, Class = "TextLabel", Optional = true, Note = "ZoneName garde les magasins de la zone, pas la ville" })
+			table.insert(screenDef.Elements, { Path = `{section}.ZoneBar.RewardIcon`, Class = "ImageLabel", Optional = true, Note = "l'objet donné par la zone n'est pas montré au bout de la barre" })
+		end
+		table.insert(screenDef.Elements, { Path = "Rewards.ItemReward.RewardIcon", Class = "ImageLabel", Optional = true, Note = "pas d'image de l'objet donné" })
+		table.insert(screenDef.Elements, { Path = "Rewards.ItemReward.RewardCaption", Class = "TextLabel", Optional = true, Note = "le nom de l'objet donné n'est pas écrit" })
+		table.insert(screenDef.Elements, { Path = "Rewards.ClaimButton.ReadyGradient", Class = "UIGradient", Optional = true, Note = "ClaimButton ne passe pas au vert quand la récompense est prête" })
+		table.insert(screenDef.Elements, { Path = "Categories.LimitedButton", Class = BUTTON, Optional = true, Note = "rien à cacher" })
+	end
+end
 
 return UI

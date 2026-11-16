@@ -18,6 +18,13 @@
 -- Footer.ItemReward (facultatif) : RewardIcon = la même icône, RewardCaption = le nom de l'objet (« Wrench »,
 -- aussi dans Amount d'un écran d'avant) ; Footer.CashReward et SpeedReward d'un écran d'avant : cachés.
 -- Refus : View.Deny ; réussite : T.33 Success, comme la v3.
+-- Vague 63 (a207, L-201) : l'index v4 de Figma est construit sous le nom UI_Index_v3 (liste par zone gardée) ;
+-- nouveautés facultatives, l'écran d'avant marche encore : (1) avec ZoneArt.NameShade.ZoneTheme, ZoneName = la ville
+-- (Config/Zones.City, « LONDON ») et ZoneTheme = le thème (« TOYS ») ; zone sans ville : textes de Clément gardés ;
+-- (2) ZoneBar.RewardIcon = l'icône de l'objet donné par la zone, son « ? » Unknown caché (ZoneItem n'est plus
+-- peint) ; (3) ClaimButton : en cours ou réclamée UIGradient, prête ReadyGradient (et ClaimAlert), ClaimLabel
+-- « CLAIMED » une fois réclamée ; (4) Rewards.ItemReward : RewardIcon (Unknown caché) et RewardCaption = le nom de
+-- l'objet (« WRENCH ») ; (5) Counter « 23 / 83 discovered » ; (6) Categories.LimitedButton caché (catégorie à venir).
 -- Seulement si Features.Index : à false, rien n'est branché et l'écran reste fermé.
 --
 -- Rôle commun :
@@ -77,7 +84,7 @@
 --     : Selected sur l'onglet choisi, MutationCaption « Collect every item in SHINY! ». Changement de
 --     catégorie ou d'onglet : la liste remonte, les cartes entrent une par une (T.29, View.CardsIn) ; les
 --     onglets de mutation entrent à leur tour (View.TabsIn) ;
---   - UnlockedBar.Counter « Unlocked: 7/83 ».
+--   - UnlockedBar.Counter « Unlocked: 7/83 » (« 23 / 83 discovered » depuis L-201).
 -- UI_Index_v2 (repli) : List, 7 sections (Cards, ZoneName, ZoneBar.Fill, ZoneCount, Reward.RewardLabel),
 --   Counter « 23 / 83 discovered », ScrollTrack (curseur de défilement qui suit la liste), cartes avec
 --   Lock et RarityBar.Rarity ; teintes de l'icône lues sur les cartes d'exemple Preview_* (retirées).
@@ -88,7 +95,8 @@
 -- des rayons, du fond Clip des cartes et du fond de Detail (et leur UIGradient pour un Secret), la
 -- couleur du texte de DetailRarity, la largeur de ZoneBar.Fill, le défilement de la liste, la position
 -- et la hauteur de ScrollTrack (v2), la place de ClaimButton et de ClaimAllButton le temps qu'ils
--- tremblent, la visibilité et le UIScale Pulse des pastilles « ! » ; l'effet d'échelle de Motion est
+-- tremblent, la visibilité et le UIScale Pulse des pastilles « ! », l'image des RewardIcon et la visibilité de leur
+-- Unknown, Enabled de UIGradient et ReadyGradient de ClaimButton, LimitedButton caché ; l'effet d'échelle de Motion est
 -- passager. Écran recréé (ResetOnSpawn) : rebranché, fermé.
 --
 -- API (client) : aucune.
@@ -146,6 +154,8 @@ type Section = {
 	rewardLabel: Instance?,
 	zoneItem: GuiObject?, -- v3 : l'objet le plus rare de la section
 	zoneAlert: GuiObject?, -- v3 : ZoneArt.ZoneAlert (L-127)
+	zoneTheme: Instance?, -- v3 refait (L-201) : ZoneArt.NameShade.ZoneTheme, le thème sous la ville
+	rewardIcon: GuiObject?, -- v3 refait (L-201) : ZoneBar.RewardIcon, l'objet donné par la zone
 }
 
 -- Écran branché.
@@ -190,6 +200,12 @@ type Screen = {
 	claimAllAlert: GuiObject?,
 	claimAlert: GuiObject?, -- Rewards.ClaimButton.ClaimAlert
 	categoryAlert: GuiObject?, -- Categories.NormalButton.CategoryAlert
+	-- v3 refait (L-201), facultatifs : ClaimButton.UIGradient (gris) et ReadyGradient (vert, prête) ;
+	-- Rewards.ItemReward (RewardIcon, RewardCaption) : l'objet donné par la zone visible.
+	claimGradient: UIGradient?,
+	readyGradient: UIGradient?,
+	itemIcon: GuiObject?,
+	itemCaption: Instance?,
 }
 
 local SCREEN = "UI_Index_v3"
@@ -225,12 +241,13 @@ table.insert(SECTIONS, { zone = nil, path = "SecretsSection" })
 -- pour la v3, de son prototype (« Unlocked: 7/83 », « 4/13 », « Collect every item in SHINY! »).
 local COUNTER_TEXT = "%d / %d discovered"
 local ZONE_COUNT_TEXT = "%d / %d"
-local V3_COUNTER_TEXT = "Unlocked: %d/%d"
+local V3_COUNTER_TEXT = "Unlocked: %d/%d" -- UI_Index_v4 ; la v3 écrit COUNTER_TEXT depuis L-201 point 5
 local V3_ZONE_COUNT_TEXT = "%d/%d"
 local CAPTION_TEXT = "Collect every item in %s!"
 local UNKNOWN_NAME = "???"
 local UNKNOWN_INCOME = "???"
-local CLAIMED_TEXT = "Claimed!" -- V0 : prime de la zone déjà réclamée (attribut IndexClaimed)
+local CLAIMED_TEXT = "Claimed!" -- V0 : prime de la zone déjà réclamée (attribut IndexClaimed), UI_Index_v4
+local V3_CLAIMED_TEXT = "CLAIMED" -- L-201 point 3 : ClaimLabel de la v3 une fois la zone réclamée
 -- V0 proposé, absent du doc : attente (s) de la réponse du serveur à une réclamation ; un clic pendant ce
 -- temps n'envoie rien, et la confirmation arrivée après ne fait plus sauter le bouton.
 local CLAIM_WAIT = 5
@@ -239,6 +256,12 @@ local ZONE_ALERT = "ZoneArt.ZoneAlert"
 local CLAIM_ALERT = "ClaimAlert"
 local CLAIM_ALL_ALERT = "ClaimAllAlert"
 local CATEGORY_ALERT = "CategoryAlert"
+-- v3 refait (L-201) : « ? » de Clément dans chaque RewardIcon, caché une fois l'image posée ; dégradés de ClaimButton ;
+-- catégorie LIMITED pas encore créée (bouton caché).
+local UNKNOWN = "Unknown"
+local CLAIM_GRADIENT = "UIGradient"
+local READY_GRADIENT = "ReadyGradient"
+local LIMITED = "LimitedButton"
 local SECRETS_NAME = "Secrets" -- ZoneName des Secrets sans texte de Clément
 local STORE_SEPARATOR = "\n" -- V0 : entre les 2 noms de magasins dans ZoneName (v3)
 -- Récompense d'une zone complète affichée dans RewardLabel (v2) : Index.ZoneRewardText (l'objet donné,
@@ -467,6 +490,40 @@ local function rewardText(zone: number, complete: boolean): string
 	return Index.ZoneRewardText(zone) .. (if complete then REWARD_EARNED_SUFFIX else "")
 end
 
+-- v3 refait (L-201 points 2 et 4) : image de l'objet donné par `zone` (Index.ZoneRewardIcon, icône de boutique) sur
+-- `icon`, et son « ? » (Unknown) caché. Icône pas livrée : rien ne change, le « ? » reste.
+local function paintRewardIcon(icon: GuiObject?, zone: number)
+	if icon == nil then
+		return
+	end
+	local iconName = Index.ZoneRewardIcon(zone)
+	local texture = if iconName then textureOf(iconName) else nil
+	if texture == nil then
+		return
+	end
+	local image = icon :: any
+	if image.Image ~= texture then
+		image.Image = texture
+	end
+	setVisible(guiObject(icon, UNKNOWN), false)
+end
+
+-- v3 refait (L-201 point 1) : ZoneName = la ville, ZoneTheme = le thème (« LONDON », « TOYS »). Zone sans ville
+-- (zone 1) : les textes de Clément sont gardés (écrits seulement s'ils sont vides).
+local function paintCity(section: Section, zone: number)
+	local info = Zones[zone]
+	if info == nil then
+		return
+	end
+	local city = info.City
+	if city then
+		setText(section.zoneName, string.upper(city))
+		setText(section.zoneTheme, string.upper(info.Theme))
+	elseif textOf(section.zoneName) == nil then
+		setText(section.zoneName, string.upper(info.Theme))
+	end
+end
+
 local function readDiscovered()
 	discovered = Index.Decode(localPlayer:GetAttribute(Index.Attribute))
 end
@@ -683,7 +740,23 @@ local function refreshRewards(current: Screen)
 	if zone == nil or section == nil then
 		return
 	end
-	setText(current.claimLabel, if claimed[zone] then CLAIMED_TEXT else (current.claimText or ""))
+	setText(current.claimLabel, if claimed[zone] then V3_CLAIMED_TEXT else (current.claimText or ""))
+	-- L-201 point 3 : en cours ou réclamée, UIGradient (gris) ; prête, ReadyGradient (vert) à sa place (ClaimAlert :
+	-- refreshAlerts). Sans ReadyGradient (écran d'avant) : rien ne change.
+	local ready = current.readyGradient
+	if ready then
+		local claimable = isClaimable(zone)
+		if ready.Enabled ~= claimable then
+			ready.Enabled = claimable
+		end
+		local grey = current.claimGradient
+		if grey and grey.Enabled == claimable then
+			grey.Enabled = not claimable
+		end
+	end
+	-- L-201 point 4 : Rewards.ItemReward, l'objet donné par la zone (son image et son nom, « WRENCH »).
+	paintRewardIcon(current.itemIcon, zone)
+	setText(current.itemCaption, string.upper(Index.ZoneRewardName(zone)))
 end
 
 -- Pastilles « ! » de l'écran (L-127 point 3), ouvert ou pas : allumées tant qu'il y a à réclamer.
@@ -715,7 +788,9 @@ local function refreshHeader(current: Screen)
 			found, total = Index.CountSecrets(discovered)
 		end
 		local stores = if current.v3 then storeNames(section.def) else nil
-		if stores then
+		if current.v3 and zone ~= nil and section.zoneTheme ~= nil then
+			paintCity(section, zone) -- v3 refait (L-201) : la ville et le thème ; sans ZoneTheme, les magasins comme avant
+		elseif stores then
 			setText(section.zoneName, stores) -- v3 : les magasins PNJ de la zone (retour de Cantin, vague 24)
 		elseif not section.keepName then
 			setText(section.zoneName, current.tabNames[tab] or string.upper(fallbackName(section.def)))
@@ -728,7 +803,11 @@ local function refreshHeader(current: Screen)
 		if zone ~= nil then
 			setText(section.rewardLabel, rewardText(zone, total > 0 and found >= total))
 		end
-		local rarest = if section.zoneItem then rarestOf(itemsOf(section.def)) else nil
+		-- v3 refait (L-201 point 2) : ZoneBar.RewardIcon (l'objet donné) remplace ZoneItem (laissé tel quel).
+		if section.rewardIcon and zone ~= nil then
+			paintRewardIcon(section.rewardIcon, zone)
+		end
+		local rarest = if section.zoneItem and section.rewardIcon == nil then rarestOf(itemsOf(section.def)) else nil
 		if rarest then
 			setImage(section.zoneItem, textureOf(rarest.Id) or "", if isFound(current, rarest) then FOUND_COLOR else silhouetteOf(rarest))
 		end
@@ -739,7 +818,7 @@ local function refreshHeader(current: Screen)
 				all += 1
 			end
 		end
-		setText(current.counter, string.format(V3_COUNTER_TEXT, all, Index.Total))
+		setText(current.counter, string.format(COUNTER_TEXT, all, Index.Total)) -- L-201 point 5 : « 23 / 83 discovered »
 	else
 		setText(current.counter, string.format(COUNTER_TEXT, Index.CountAll(discovered), Index.Total))
 	end
@@ -1051,6 +1130,7 @@ local function newSection(def: TabDef, root: Instance?, cardParent: Instance?, k
 	local fill = if zoneBar then guiObject(zoneBar, "Fill") else nil
 	local reward = if root then guiObject(root, "Reward") else nil
 	local zoneItem = if zoneBar then Find.path(zoneBar, "ZoneItem") else nil
+	local rewardIcon = if zoneBar then Find.path(zoneBar, "RewardIcon") else nil
 	return {
 		def = def,
 		root = if root and root:IsA("GuiObject") then root :: GuiObject else nil,
@@ -1065,6 +1145,8 @@ local function newSection(def: TabDef, root: Instance?, cardParent: Instance?, k
 		rewardLabel = if reward then Find.path(reward, "RewardLabel") else nil,
 		zoneItem = if zoneItem and isImage(zoneItem) then zoneItem :: GuiObject else nil,
 		zoneAlert = if root then guiObject(root, ZONE_ALERT) else nil,
+		zoneTheme = if root then Find.path(root, "ZoneTheme") else nil,
+		rewardIcon = if rewardIcon and isImage(rewardIcon) then rewardIcon :: GuiObject else nil,
 	}
 end
 
@@ -1164,6 +1246,10 @@ local function bind(gui: ScreenGui)
 	local claimButton = if rewards then guiObject(rewards, "ClaimButton") else nil
 	local claimLabel = if claimButton then Find.path(claimButton, "ClaimLabel") else nil
 	local claimAllButton = if v3 then guiObject(gui, "UnlockedBar.ClaimAllButton") else nil
+	local claimGradient = if claimButton then claimButton:FindFirstChild(CLAIM_GRADIENT) else nil
+	local readyGradient = if claimButton then claimButton:FindFirstChild(READY_GRADIENT) else nil
+	local itemReward = if rewards then Find.path(rewards, "ItemReward") else nil
+	local itemIcon = if itemReward then Find.path(itemReward, "RewardIcon") else nil
 	local current: Screen = {
 		gui = gui,
 		v2 = v2,
@@ -1204,6 +1290,10 @@ local function bind(gui: ScreenGui)
 		claimAllAlert = if claimAllButton then guiObject(claimAllButton, CLAIM_ALL_ALERT) else nil,
 		claimAlert = if claimButton then guiObject(claimButton, CLAIM_ALERT) else nil,
 		categoryAlert = if v3 then guiObject(gui, `Categories.{NORMAL}.{CATEGORY_ALERT}`) else nil,
+		claimGradient = if claimGradient and claimGradient:IsA("UIGradient") then claimGradient :: UIGradient else nil,
+		readyGradient = if readyGradient and readyGradient:IsA("UIGradient") then readyGradient :: UIGradient else nil,
+		itemIcon = if itemIcon and isImage(itemIcon) then itemIcon :: GuiObject else nil,
+		itemCaption = if itemReward then Find.path(itemReward, "RewardCaption") else nil,
 	}
 	screen = current
 	local function keep(connection: RBXScriptConnection?)
@@ -1241,10 +1331,12 @@ local function bind(gui: ScreenGui)
 				keep(onClick(button, function()
 					setCategory(current, key)
 				end))
-			else
+			elseif key ~= SECRETS then -- SecretsButton : retiré de l'écran refait (L-201), facultatif
 				reportOnce(`category:{key}`, `[Index] {name}.Categories.{key} introuvable : catégorie pas branchée`)
 			end
 		end
+		-- L-201 point 6 : la catégorie LIMITED n'existe pas encore, son bouton reste caché.
+		setVisible(if categories then guiObject(categories, LIMITED) else nil, false)
 		local tabs = current.mutationTabs
 		for _, effect in Mutations.Effects do
 			local button = if tabs then guiObject(tabs, `{effect.Id}Tab`) else nil

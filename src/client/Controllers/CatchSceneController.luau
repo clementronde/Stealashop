@@ -26,7 +26,8 @@
 --    UI_Escape, les éléments facultatifs Card.ItemIcon (icône), Card.ItemName, Card.Rarity (« LEGENDARY »),
 --    Card.Income (« +$1.2K/s », revenu de base de l'objet dans sa zone ; caché pour un Secret) et Card.NewBadge
 --    (montré à la première fois : objet entré dans l'index, attribut IndexDiscovered, moins de HeistFeel.Card.NewWindow
---    s avant ou après). Sans Card : rien.
+--    s avant ou après). Sans Card : rien. Vague 63 (a207) : ItemName et Rarity passent par Controllers/UI/RarityFx
+--    (dégradé de la rareté, reflet du Légendaire, arc-en-ciel du Mythique et du Secret).
 --
 -- API (client, pour un banc ou la barre de commande) :
 --   CatchSceneController.Play(night, outcome, homeIn, itemId?)   joue une capture (comme le remote)
@@ -48,6 +49,7 @@ local Find = require(Shared:WaitForChild("Contract"):WaitForChild("Find"))
 local Format = require(Shared:WaitForChild("Format"))
 local MarkerSounds = require(Shared:WaitForChild("Anim"):WaitForChild("MarkerSounds"))
 local HudMask = require(script.Parent:WaitForChild("UI"):WaitForChild("HudMask"))
+local RarityFx = require(script.Parent:WaitForChild("UI"):WaitForChild("RarityFx"))
 
 type MusicApi = { CutChase: () -> () }
 
@@ -615,11 +617,13 @@ local function fillCard(itemId: string)
 	local name = element(escape, "Card.ItemName", "TextLabel") :: TextLabel?
 	if name then
 		name.Text = def.DisplayName
+		RarityFx.Apply(name, def.Rarity) -- vague 63 (a207) : la rareté qui bouge, comme les autres écrans
 	end
 	local rarity = Rarities.ById[def.Rarity]
 	local rarityLabel = element(escape, "Card.Rarity", "TextLabel") :: TextLabel?
 	if rarityLabel and rarity then
 		rarityLabel.Text = rarity.DisplayNameUpper
+		RarityFx.Apply(rarityLabel, def.Rarity)
 	end
 	local income = element(escape, "Card.Income", "TextLabel") :: TextLabel?
 	if income then
