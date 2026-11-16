@@ -55,10 +55,10 @@ local Chase = {
 	-- Vague 67 (a224, Cantin : « il va tellement vite que parfois il nous attrape d'un coup ») : en arrivant, tout
 	-- poursuivant de cette règle ralentit en continu. Sa vitesse ne dépasse pas la part de la vitesse du voleur qui
 	-- l'éloigne + max(√(2 × RushBrake × (d − HoldDistance)⁺ + 2 × ApproachBrake × (d − capture)⁺), ApproachMinClosing).
-	-- Voleur immobile : ≈ 14 studs/s à 10 studs de la capture, puis de moins en moins vite, les 10 derniers studs en
-	-- ≈ 1,25 s ; jamais moins de ApproachMinClosing (il est toujours attrapé). En studs/s² et studs/s RÉELS, sans × k :
+	-- Voleur immobile : ≈ 10 studs/s à 10 studs de la capture, puis de moins en moins vite, les 10 derniers studs en
+	-- ≈ 1,7 à 2 s ; jamais moins de ApproachMinClosing (il est toujours attrapé). En studs/s² et studs/s RÉELS, sans × k :
 	-- Cantin veut voir arriver le vigile pendant une durée réelle. ApproachBrake = 0 : sans ce plafond (avant a224).
-	ApproachBrake = 10, -- V0 proposé, absent du doc (studs/s²)
+	ApproachBrake = 5, -- V0, absent du doc (studs/s²) ; Cantin 2026-11-16 : ralentir davantage en arrivant (10 → 5)
 	ApproachMinClosing = 3, -- V0 proposé, absent du doc (studs/s)
 	ClosingSpeedMax = 8 * K, -- rapprochement à 0 % du minimum (studs/s ; vague 61 : × k)
 	HoldMinSpeed = 12 * K, -- plancher de la poursuite à distance (studs/s), sous toute marche d'un voleur qui court (× k)
