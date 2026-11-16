@@ -1175,4 +1175,44 @@ for _, screenDef in UI.Screens do
 	end
 end
 
+-- Animations des boutiques (vague 63, a209, L-204 points 1 à 3), tout est facultatif. Caisse exclusive de
+-- UI_RobuxShop_v2 (Controllers/UI/CrateLoop, boucle de 4 s ; L-203 pour les noms) ; lueur d'un achat Robux
+-- (Controllers/UI/PurchaseGlow, UI_PurchaseGlow construit par Clément) ; solde de diamants de UI_DiamondShop
+-- (Controllers/UI/DiamondBalance). Un élément absent n'est simplement pas animé. Star et RarityGlow (plusieurs du même
+-- nom dans Odds, voulu) ne sont pas listés : le ContractChecker en ferait des problèmes.
+table.insert(UI.Screens, {
+	Name = "UI_RobuxShop_v2",
+	Class = "ScreenGui",
+	Optional = true,
+	Elements = {
+		{ Path = "Crate", Optional = true, Note = "pas de caisse exclusive : rien ne tourne" },
+		{ Path = "Crate.Backdrop.Rays", Optional = true, Note = "les rayons de la caisse ne tournent pas" },
+		{ Path = "Crate.Backdrop.Rays.Fade", Class = "UIGradient", Optional = true, Note = "le bord fondu des rayons tourne avec eux" },
+		{ Path = "Crate.Backdrop.Glow", Optional = true, Note = "la lueur de la caisse ne respire pas" },
+		{ Path = "Crate.Backdrop.Shadow", Optional = true, Note = "l'ombre de la caisse ne suit pas son mouvement" },
+		{ Path = "Crate.Odds", Optional = true, Note = "les cases de la caisse ne bougent pas" },
+		{ Path = "Crate.Odds.Odd_1", Optional = true, Note = "les cases entrent dans l'ordre commun de la Cascade" },
+		{ Path = "Crate.BuyButton3", Class = BUTTON, Optional = true, Note = "le bouton du plus gros lot ne grossit pas" },
+		{ Path = "Crate.NewBadge", Optional = true, Note = "pas de badge NEW! qui saute" },
+		{ Path = "Decor", Optional = true, Note = "pas de décor suspendu (caché sur téléphone)" },
+	} :: { Element },
+})
+table.insert(UI.Screens, {
+	Name = "UI_PurchaseGlow",
+	Class = "ScreenGui",
+	Optional = true,
+	Elements = {
+		{ Path = "RainbowBorder", Class = "GuiObject", Optional = true, Note = "pas de lueur arc-en-ciel pendant un achat Robux" },
+	} :: { Element },
+})
+table.insert(UI.Screens, {
+	Name = "UI_DiamondShop",
+	Class = "ScreenGui",
+	Optional = true,
+	Elements = {
+		{ Path = "Balance.Amount", Class = "TextLabel", Optional = true, Note = "le solde de diamants n'est pas écrit" },
+		{ Path = "Balance.Spent", Class = "TextLabel", Optional = true, Note = "le solde décompte sans « -X » à côté" },
+	} :: { Element },
+})
+
 return UI
