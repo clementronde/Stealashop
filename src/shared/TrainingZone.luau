@@ -39,8 +39,9 @@ local ZONE_BELOW = 1
 local ZONE_ABOVE = 4
 -- zone d'un modèle sans boîte (ni Model ni BasePart) : posée sur le UsePoint ;
 local FALLBACK_ZONE_SIZE = Vector3.new(6, 4, 6)
--- bande d'un tapis sans Belt : posée sur le UsePoint (centre du dessus) ;
-TrainingZone.FALLBACK_BELT_SIZE = Vector3.new(3, 0.2, 3)
+-- bande d'un tapis sans Belt : posée sur le UsePoint (centre du dessus) ; vague 63 (a205, L-207) : celle des tapis
+-- élargis de Clément, 5,16 studs de large (X) sur 6,08 de long (Z, axe de course), au lieu de 3 × 3 ;
+TrainingZone.FALLBACK_BELT_SIZE = Vector3.new(5.16, 0.2, 6.08)
 -- tolérance (studs) sous le dessus de la bande ;
 local BELT_BELOW = 1
 -- V0 proposé, absent du doc (a115) : rayon (studs, à l'horizontale) du cœur du banc autour de son
