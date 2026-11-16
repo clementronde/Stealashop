@@ -1329,4 +1329,13 @@ table.insert(UI.Billboards, {
 	} :: { Element },
 })
 
+-- Vague 66 (a222, L-210 points 6 et 9 ; Config/UiMotion.ScrollReveal et HoverFit) : rien de nouveau à livrer.
+--   - Dans une liste qui défile (ScrollingFrame) d'une boutique, de l'index, d'UI_Displayed, d'UI_Inventory ou
+--     d'UI_Rewards, les cartes hors de la zone visible entrent quand elles y arrivent en défilant (une fois chacune par
+--     ouverture). Un autre écran fait de même s'il porte l'attribut ScrollReveal = true (booléen, sur le ScreenGui) ;
+--     false le coupe. Une carte = un enfant de la liste ; une section plus haute que la moitié de la liste (zone de
+--     l'index) fait entrer ses propres enfants un par un.
+--   - Un bouton dans une carte de liste grossit (survol, rebond, réussite) au plus jusqu'au bord de sa carte (le
+--     premier parent qui dessine un cadre : fond, UIStroke ou image).
+
 return UI

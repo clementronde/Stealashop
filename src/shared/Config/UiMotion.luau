@@ -609,6 +609,33 @@ local UiMotion = {
 		BackDirection = Enum.EasingDirection.Out,
 		Recheck = 0.5, -- V0 proposé, absent du doc : s entre deux revues de la barre écartée (copie neuve de l'écran)
 	},
+	-- Vague 66 (a222, L-210 point 6 : « surtout l'apparition des éléments au défilement ») : dans une liste qui défile
+	-- (ScrollingFrame) d'un écran de Screens (ou d'un ScreenGui avec l'attribut Attribute = true ; false le coupe), les
+	-- cartes et lignes hors de la zone visible à l'ouverture entrent quand elles y arrivent en défilant, une fois chacune
+	-- par ouverture, avec la courbe des cartes de la cascade (Appear.Cascade : From, Time, Style, Gap, Max).
+	-- Controllers/UI/ScrollReveal, armé par UiMotionController. Enabled = false : rien ne bouge au défilement.
+	ScrollReveal = {
+		Enabled = VIDEO_RHYTHM,
+		-- V0 proposé, absent du doc : boutiques, index, objets exposés (L-210), inventaire et récompenses.
+		Screens = {
+			"UI_WeaponShop", "UI_AuraShop", "UI_RobuxShop", "UI_RobuxShop_v2", "UI_DiamondShop", "UI_PawnShop",
+			"UI_Index", "UI_Index_v2", "UI_Index_v3", "UI_Index_v4", "UI_Displayed", "UI_Inventory", "UI_Rewards",
+		},
+		Attribute = "ScrollReveal", -- V0 proposé, absent du doc
+		ArmDelay = 0.6, -- V0 proposé, absent du doc : s après l'ouverture (la cascade d'ouverture a fini, ~0,55 s)
+		Split = 0.5, -- V0 proposé, absent du doc : un enfant plus long que la moitié de la zone visible est une section (zone de l'index) : ses enfants entrent un par un
+		Depth = 3, -- V0 proposé, absent du doc : niveaux de sections au plus
+		ScaleName = "RevealScale", -- V0 proposé, absent du doc : UIScale passager, détruit à la fin
+	},
+	-- Vague 66 (a222, L-210 point 9 : « le bouton grossit et dépasse du cadre de la carte ») : un bouton posé dans une
+	-- carte de liste (sous une ScrollingFrame) grossit au survol, au rebond de Press = Squash et à la réussite au plus
+	-- jusqu'au bord de sa carte (le premier parent qui dessine un cadre : fond, UIStroke ou image), moins Inset px et
+	-- l'épaisseur de son propre UIStroke. Aucun visuel de Clément changé (ni ClipsDescendants ni taille). Hors d'une
+	-- liste (HUD…) : comme avant. Enabled = false : comme avant partout.
+	HoverFit = {
+		Enabled = true,
+		Inset = 2, -- V0 proposé, absent du doc : px gardés entre le bouton grossi et le bord de la carte
+	},
 }
 
 export type UiMotion = typeof(UiMotion)
