@@ -35,6 +35,10 @@ local Features = {
 	-- objets (Config/Weight, Shared/ItemWeight : taille, revenu, Huge et Colossal par le poids) ; false = l'ouverture
 	-- et les mutations de taille d'avant (Tiny, Big, Huge, Colossal tirées à part).
 	SingleBoxReveal = true, -- vague 62 (Cantin et Clément, 2026-11-15 ; L-198) : un seul colis par braquage, tirage par la boîte seule, cinématique d'ouverture vue par tous (RevealController, Config/Reveal), objet pris d'office ; false = l'ouverture d'avant (aucun RevealStarted, RevealController ne fait rien)
+	-- Vague 63 (a210, L-205) : les 8 auras de Clément (Shine à Chained) à la place des 6 anciennes, proposition à
+	-- valider par Clément (Config/Cosmetics.NewAuras) ; true = boutique des 8 et migration des anciennes au chargement
+	-- du profil (Cosmetics.Migration, CosmeticService) ; false = la boutique d'aujourd'hui, rien ne change.
+	NewAuras = false,
 }
 
 export type Features = typeof(Features)
