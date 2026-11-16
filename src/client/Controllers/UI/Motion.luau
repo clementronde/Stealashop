@@ -30,6 +30,9 @@
 --                               à 1 ; Shade remis à sa transparence d'origine. Toucher fini (tactile,
 --                               sans MouseLeave) : retour à 1 (L-092 3g). Hover = ancien nom.
 --   Motion.Success(button)      le bouton saute à Success.From et revient ; son Success.Sound.
+--                               Vague 66 (a222, L-210 point 9, HoverFit) : un bouton dans une carte de liste
+--                               (sous une ScrollingFrame) grossit au plus jusqu'au bord de sa carte (survol,
+--                               rebond de Squash, réussite) ; ailleurs, comme avant.
 --   Motion.HoverCard(card)      carte survolée : HoverOutline visible, Icon grossi, penché, décalé ;
 --                               tout revient à la sortie (L-091 point 7).
 --                               Vague 59 (L-182) : attribut Hover = Pop sur un bouton : × HoverPop.To en
@@ -1058,6 +1061,94 @@ local function buttonScale(button: GuiButton, state: ButtonState): UIScale?
 	return scale
 end
 
+-- Vague 66 (a222, L-210 point 9, Config/UiMotion.HoverFit) : la carte de liste qui contient le bouton (le premier
+-- parent sous une ScrollingFrame qui dessine un cadre : fond, UIStroke ou image ; sinon la carte elle-même, enfant
+-- de la liste), ou nil hors d'une liste.
+local FIT = UiMotion.HoverFit
+
+local function drawsFrame(object: GuiObject): boolean
+	if object.BackgroundTransparency < 1 then
+		return true
+	end
+	local stroke = object:FindFirstChildOfClass("UIStroke")
+	if stroke ~= nil and stroke.Enabled and stroke.Transparency < 1 then
+		return true
+	end
+	if object:IsA("ImageLabel") or object:IsA("ImageButton") then
+		local image = object :: any
+		return image.Image ~= "" and image.ImageTransparency < 1
+	end
+	return false
+end
+
+local function cardOf(button: GuiButton): GuiObject?
+	local found: GuiObject? = nil
+	local last: GuiObject? = nil
+	local current = button.Parent
+	while current ~= nil and not current:IsA("LayerCollector") do
+		if current:IsA("ScrollingFrame") then
+			return found or last
+		end
+		if current:IsA("GuiObject") then
+			last = current :: GuiObject
+			if found == nil and drawsFrame(current :: GuiObject) then
+				found = current :: GuiObject
+			end
+		end
+		current = current.Parent
+	end
+	return nil -- pas dans une liste : comme avant
+end
+
+-- Échelle la plus grande qui garde le bouton dans sa carte (le UIScale grossit le bouton autour de son AnchorPoint),
+-- ou nil (pas dans une liste, réglage coupé, tailles inconnues).
+local function fitLimit(button: GuiButton, state: ButtonState): number?
+	if not FIT.Enabled then
+		return nil
+	end
+	local ok, limit = pcall(function(): number?
+		local card = cardOf(button)
+		if card == nil then
+			return nil
+		end
+		local own = state.scale
+		local current = if own and own.Parent == button then own.Scale else 1
+		local size, position, anchor = button.AbsoluteSize, button.AbsolutePosition, button.AnchorPoint
+		if current <= 0 or size.X <= 0 or size.Y <= 0 then
+			return nil
+		end
+		local inset = FIT.Inset
+		local stroke = button:FindFirstChildOfClass("UIStroke")
+		if stroke ~= nil and stroke.Enabled and stroke.ApplyStrokeMode == Enum.ApplyStrokeMode.Border then
+			inset += stroke.Thickness
+		end
+		local origin, room = card.AbsolutePosition, card.AbsoluteSize
+		local best = math.huge
+		local function axis(pivot: number, a: number, length: number, low: number, high: number)
+			if a > 0 then
+				best = math.min(best, (pivot - low) / (a * length))
+			end
+			if a < 1 then
+				best = math.min(best, (high - pivot) / ((1 - a) * length))
+			end
+		end
+		local width, height = size.X / current, size.Y / current
+		axis(position.X + size.X * anchor.X, anchor.X, width, origin.X + inset, origin.X + room.X - inset)
+		axis(position.Y + size.Y * anchor.Y, anchor.Y, height, origin.Y + inset, origin.Y + room.Y - inset)
+		return if best < math.huge then best else nil
+	end)
+	return if ok then limit else nil
+end
+
+-- `goal` (> 1 : le bouton grossit), ramené au bord de sa carte ; jamais sous 1.
+local function fitted(button: GuiButton, state: ButtonState, goal: number): number
+	if goal <= 1 then
+		return goal
+	end
+	local limit = fitLimit(button, state)
+	return if limit then math.min(goal, math.max(limit, 1)) else goal
+end
+
 local function scaleButton(button: GuiButton, state: ButtonState, goal: number, info: TweenInfo, from: number?, after: (() -> ())?)
 	state.bouncing = false -- tout nouvel effet remplace un rebond en cours
 	if goal == 1 and from == nil and state.scale == nil then
@@ -1121,8 +1212,9 @@ function Motion.Button(button: GuiButton)
 	end
 	state.wired = true
 	-- Vague 59 : Hover = Pop (× HoverPop.To en HoverPop.Time) à la place du survol validé (Hover).
+	-- Vague 66 : dans une carte de liste, au plus jusqu'au bord de la carte (HoverFit).
 	local function hoverTo(): number
-		return if hoverPop(button) then POP.To else UiMotion.Hover.To
+		return fitted(button, state, if hoverPop(button) then POP.To else UiMotion.Hover.To)
 	end
 	local function hoverInfo(): TweenInfo
 		return if hoverPop(button) then POP_INFO else HOVER_INFO
@@ -1131,7 +1223,7 @@ function Motion.Button(button: GuiButton)
 	-- pris en compte à la fin du rebond.
 	local function bounce()
 		-- Pic : 1,1 fois le repos (1,1 au doigt ; au-dessus du survol à la souris, sinon le rebond ne se verrait pas).
-		local peak = (if state.over then hoverTo() else 1) * SQUASH.Bounce
+		local peak = fitted(button, state, (if state.over then hoverTo() else 1) * SQUASH.Bounce)
 		scaleButton(button, state, peak, BOUNCE_INFO, nil, function()
 			state.bouncing = false
 			scaleButton(button, state, if state.over then hoverTo() else 1, BOUNCE_BACK_INFO)
@@ -1232,7 +1324,8 @@ function Motion.Success(button: GuiButton)
 	local state = buttonState(button)
 	state.down = false
 	local rest = if not state.over then 1 elseif hoverPop(button) then POP.To else UiMotion.Hover.To
-	scaleButton(button, state, rest, SUCCESS_INFO, UiMotion.Success.From)
+	-- Vague 66 : dans une carte de liste, le saut et le repos restent dans la carte (HoverFit).
+	scaleButton(button, state, fitted(button, state, rest), SUCCESS_INFO, fitted(button, state, UiMotion.Success.From))
 	task.delay(UiMotion.Success.SoundDelay, function()
 		Motion.PlaySound(UiMotion.Success.Sound)
 	end)

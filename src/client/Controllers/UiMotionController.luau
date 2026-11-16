@@ -18,6 +18,9 @@
 --   - Barre du bas qui s'écarte (vague 64, a212, Config/UiMotion.HudAway) : tant qu'un écran de HudAway.Screens (ou
 --     un ScreenGui avec l'attribut HudAway.Attribute = true) est allumé, Controllers/UI/HudMask.SetAway la fait sortir
 --     par le bas ; elle revient quand il s'éteint, ou dès qu'une poursuite commence. Animations réduites : d'un coup.
+--   - Cartes au défilement (vague 66, a222, Config/UiMotion.ScrollReveal) : un écran qui s'allume arme
+--     Controllers/UI/ScrollReveal (les cartes de ses listes hors de la zone visible entrent en défilant) ; éteint, il
+--     est désarmé.
 -- Connexions : une par écran pour Enabled, DescendantAdded et AncestryChanged, et une ou deux par élément qui porte
 -- un attribut d'animation ; toutes coupées quand l'élément quitte l'écran ou que l'écran quitte le PlayerGui.
 -- Aucun script dans l'UI ; aucune valeur de Clément changée durablement.
@@ -56,6 +59,17 @@ local AWAY_SCREENS: { [string]: boolean } = {}
 for _, name in AWAY.Screens do
 	AWAY_SCREENS[name] = true
 end
+-- ScrollReveal (vague 66, a222) : lu s'il est là (un banc qui ne le monte pas : rien au défilement).
+type ScrollRevealApi = { Arm: (ScreenGui) -> (), Disarm: (ScreenGui) -> () }
+local scrollReveal: ScrollRevealApi? = (function(): ScrollRevealApi?
+	local module = UI:FindFirstChild("ScrollReveal")
+	if module == nil or not module:IsA("ModuleScript") then
+		return nil
+	end
+	local ok, result = pcall(require, module)
+	return if ok and type(result) == "table" then result :: any else nil
+end)()
+
 local awayScreens: { [ScreenGui]: boolean } = {}
 local awayWanted = false
 local awayRecheck = 0
@@ -354,6 +368,10 @@ local function unwatchScreen(screen: Instance)
 		end
 	end
 	Appear.Reset(screen)
+	local reveal = scrollReveal
+	if reveal ~= nil and screen:IsA("ScreenGui") then
+		reveal.Disarm(screen :: ScreenGui)
+	end
 	if screen:IsA("ScreenGui") then
 		blurScreens[screen :: ScreenGui] = nil
 		awayScreens[screen :: ScreenGui] = nil
@@ -379,6 +397,14 @@ local function watchScreen(screen: Instance)
 			Appear.Open(gui)
 		else
 			Appear.Reset(gui)
+		end
+		local reveal = scrollReveal
+		if reveal ~= nil then
+			if gui.Enabled then
+				reveal.Arm(gui) -- vague 66 : cartes hors de la zone visible, au défilement
+			else
+				reveal.Disarm(gui)
+			end
 		end
 		if blurScreens[gui] or awayScreens[gui] then
 			updateBlur()
