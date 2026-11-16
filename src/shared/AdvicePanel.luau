@@ -61,6 +61,19 @@ AdvicePanel.Colors = {
 } :: { [Level]: Color3 }
 
 local ORANGE_FROM: number = Balance.StorePanel.OrangeFrom -- 50 % (5.3)
+
+-- Vague 68 (a226, Cantin : « 2M × 2 joueurs ») : la dernière zone se casse à Balance.WindowHP.LastZoneTeamSize
+-- joueurs. Son panneau écrit la force d'un joueur suivie de « ×2 players » (texte V0, anglais comme l'UI), et la
+-- couleur compare les dégâts du joueur à ceux de l'équipe (force × 2) : un joueur seul au niveau du panneau est
+-- orange, jamais vert (vert seulement s'il casse seul, avec Hydraulic Gloves par exemple).
+local TEAM_TEXT = " ×%d players"
+local function teamSize(zone: Zones.Zone): number
+	return if zone.Index == #Zones then math.max(1, Balance.WindowHP.LastZoneTeamSize) else 1
+end
+local function teamSuffix(zone: Zones.Zone): string
+	local players = teamSize(zone)
+	return if players > 1 then string.format(TEAM_TEXT, players) else ""
+end
 -- Marge contre les erreurs d'arrondi des nombres à virgule (10 × 1,07 ne donne pas exactement 10,7).
 local EPSILON = 1e-9
 
@@ -77,11 +90,11 @@ function AdvicePanel.template(name: string): BillboardGui?
 end
 
 function AdvicePanel.damageText(zone: Zones.Zone): string
-	return string.format(DAMAGE_TEXT, Format.short(zone.AdvisedDamage))
+	return string.format(DAMAGE_TEXT, Format.short(zone.AdvisedDamage)) .. teamSuffix(zone)
 end
 
 function AdvicePanel.strengthText(zone: Zones.Zone): string
-	return string.format(STRENGTH_TEXT, Format.short(zone.AdvisedDamage))
+	return string.format(STRENGTH_TEXT, Format.short(zone.AdvisedDamage)) .. teamSuffix(zone)
 end
 
 function AdvicePanel.speedText(zone: Zones.Zone): string
@@ -105,7 +118,7 @@ local function playerValue(player: Player, attribute: string): number
 end
 
 function AdvicePanel.levels(player: Player, zone: Zones.Zone): (Level, Level)
-	local damage: Level = levelOf(playerValue(player, AdvicePanel.DamageAttribute), zone.AdvisedDamage)
+	local damage: Level = levelOf(playerValue(player, AdvicePanel.DamageAttribute), zone.AdvisedDamage * teamSize(zone))
 	local speed: Level = levelOf(playerValue(player, AdvicePanel.SpeedAttribute), zone.SpeedRequired)
 	return damage, speed
 end

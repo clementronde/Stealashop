@@ -30,7 +30,7 @@ local TruckEvent = {
 
 	-- Vie du camion ------------------------------------------------------------------------------
 	-- PV partagés, sans régénération = HPPerDamage × les dégâts conseillés de la zone où il passe
-	-- (Zones[zone].AdvisedDamage) : 100, 1K, 12K, 150K, 2M, 200M. V0 proposé (rééquilibrage v2, note
+	-- (Zones[zone].AdvisedDamage) : 100, 1K, 30K, 1M, 32M, 200M (vague 68). V0 proposé (rééquilibrage v2, note
 	-- equilibrage-v2-proposition.md, P2.6 ; avant : 1000 PV fixes) : un joueur seul au niveau du panneau, à
 	-- 5 coups/s, le casse en 20 s (inchangé en passe 3). Calcul dans TruckEventService.
 	HPPerDamage = 100,

@@ -327,7 +327,7 @@ function display(zoneIndex: number)
 		speed.Text = `Speed {Format.short(zone.SpeedRequired)}`
 	end
 	if damage then
-		damage.Text = `Damage {Format.short(zone.AdvisedDamage)}`
+		damage.Text = AdvicePanel.damageText(zone) -- vague 68 : « Damage 2M ×2 players » en dernière zone
 	end
 	recolor()
 	-- Repart pour une durée complète, depuis l'opacité en cours (0 si le bandeau était éteint).
