@@ -762,6 +762,40 @@ local List: { RemoteDef } = {
 		Args = { id("itemUid") },
 		RatePerSecond = 4, -- V0 proposé, absent du doc (comme PlaceItemAuto)
 	},
+	{
+		-- Vague 64 (a214, bulles ×N du tapis ; Config/Bubbles), absent du tableau 9.4 : une bulle apparaît pour le seul
+		-- joueur en séance sur le tapis. Rien de sensible : la valeur est tirée par le serveur, qui seul verse le gain.
+		-- lifetime = secondes avant qu'elle disparaisse (Bubbles.Lifetime).
+		Name = "BubbleSpawn",
+		Direction = "ServerToClient",
+		Reliable = true,
+		Args = {
+			id("bubbleId"),
+			{ Name = "multiplier", Kind = "int", Min = 1, Max = 1000 },
+			{ Name = "lifetime", Kind = "number", Min = 0, Max = 60 },
+		},
+	},
+	{
+		-- Vague 64 (a214) : la bulle bubbleId s'en va. reason = « Claimed » (prise : gain = Vitesse versée), « Expired »
+		-- (personne ne l'a prise à temps) ou « Cleared » (le joueur a quitté le tapis).
+		Name = "BubbleGone",
+		Direction = "ServerToClient",
+		Reliable = true,
+		Args = {
+			id("bubbleId"),
+			{ Name = "reason", Kind = "string", Max = 16 },
+			{ Name = "gain", Kind = "number", Min = 0, Optional = true },
+		},
+	},
+	{
+		-- Vague 64 (a214) : clic sur une bulle. BubbleService vérifie tout (bulle à lui, pas expirée, pas déjà prise,
+		-- joueur toujours sur le tapis, Bubbles.ClaimMinGap) et calcule le gain lui-même.
+		Name = "ClaimBubble",
+		Direction = "ClientToServer",
+		Reliable = true,
+		Args = { id("bubbleId") },
+		RatePerSecond = 4, -- V0 proposé, absent du doc (au plus 2 bulles à la fois, une toutes les 2 à 3 s)
+	},
 }
 
 return {

@@ -62,6 +62,12 @@
 --       depuis le rééquilibrage v2), en plus du gain du niveau ; 1 par défaut. MonetizationService le remplace en
 --       gardant celui d'avant (gamepass ×2 Entraînement). Ne doit pas yield ; une erreur ou une
 --       valeur qui n'est pas un nombre fini > 0 compte pour 1.
+--   TrainingService.IsTraining(player) -> boolean
+--       Vague 64 (a214, bulles ×N) : vrai pendant une séance sur le tapis (dès la montée, jusqu'à la descente ;
+--       aussi pendant l'attente du tapis remplaçant d'a200). Lu par BubbleService.
+--   TrainingService.GainPerSecond(player) -> number
+--       Vague 64 (a214) : gain de Vitesse d'une seconde de tapis pour ce joueur (niveau × GetGainMultiplier, comme
+--       chaque crédit du tapis), sans le bonus du tap. BubbleService verse GainPerSecond × N à la prise d'une bulle.
 
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
@@ -681,6 +687,17 @@ end
 
 function TrainingService.GetGainMultiplier(_player: Player, _kind: MachineKind): number
 	return 1
+end
+
+-- Vague 64 (a214) : en séance sur le tapis (bulles ×N de BubbleService).
+function TrainingService.IsTraining(player: Player): boolean
+	return sessions[player] ~= nil
+end
+
+-- Vague 64 (a214) : gain d'une seconde de tapis, comme creditTreadmill sans le bonus du tap.
+function TrainingService.GainPerSecond(player: Player): number
+	local gain = treadmillGain(player)
+	return TREADMILL_TICK * gain
 end
 
 function TrainingService.Init()
