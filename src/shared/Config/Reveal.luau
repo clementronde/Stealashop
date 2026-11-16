@@ -107,6 +107,34 @@ local Reveal = {
 		V0ChunkSize = { 1.2, 3.2 },
 		Radius = 3, -- studs autour de l'objet, pour une taille 1 (× sa taille)
 	},
+
+	-- a220 (L-210 point 3, Clément 2026-11-16 : « s'il est plus gros que l'étagère, il la casse en sortant ») : repli
+	-- codé, côté client, chez tous ceux qui voient la scène (Controllers/Reveal/Shelf). Pendant la croissance, chaque pièce
+	-- du meuble que la boîte de l'objet (à sa taille montrée, posée sur l'emplacement) vient toucher est cachée en local et
+	-- une copie tombe en morceau (vole, tourne, retombe au sol du magasin, s'efface) ; le meuble revient RestoreAfter s plus
+	-- tard. Rien ne change sur le serveur (collisions, rayons, colis). Toutes les valeurs sont des V0.
+	Shelf = {
+		Enabled = true, -- interrupteur (false : rien ne casse, comme avant)
+		-- Pièce du meuble = BasePart visible du magasin (Transparency < 1), hors Bounds, vitrine, rideau, porte, enseigne,
+		-- plafond (Ceiling, CeilingFractured, GreyboxAlsoHide), murs invisibles ShelfCaps, colis et objets (tags ShelfBox,
+		-- ShelfItem), vigiles et ce qui porte l'attribut NoShelfBreak (Contract/Attributes) ; pas plus grande que cela
+		-- (studs) : le sol, les murs et les piliers ne cassent jamais.
+		MaxPieceLength = 12, -- plus grand côté horizontal
+		MaxPieceHeight = 9,
+		Lift = 0.15, -- studs : bas de la boîte de l'objet au-dessus de l'emplacement (la planche qui le porte ne casse pas)
+		Margin = 0.05, -- studs : jeu de contact
+		MinScale = 1.05, -- en dessous de cette taille finale, rien ne casse (l'objet tient dans son rayon)
+		MaxPieces = 24, -- morceaux qui volent au plus (les autres pièces touchées sont seulement cachées)
+		LowEndPieces = 6, -- appareil faible (ShatterController.IsLowEnd)
+		SpeedUp = { 8, 18 }, -- studs/s vers le haut, au départ
+		SpeedOut = { 6, 16 }, -- studs/s vers l'extérieur (depuis l'axe de l'objet), au départ
+		Spin = 7, -- radians par seconde, au plus
+		Gravity = 70, -- studs/s²
+		Life = 2.2, -- s avant l'effacement
+		Fade = 0.5,
+		RestoreAfter = 20, -- s après le dernier morceau cassé de ce magasin (comme le plafond, CeilingRepairSeconds)
+		Sound = "Shelf_Break", -- Assets/Sounds, facultatif (absent : rien), joué une fois par scène
+	},
 }
 
 export type Reveal = typeof(Reveal)
