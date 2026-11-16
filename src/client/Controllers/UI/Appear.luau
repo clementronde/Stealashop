@@ -27,6 +27,13 @@
 --                                      (vague 63, a209, L-204) règle propre à une Cascade : rank(enfant) -> rang (0 = le
 --                                      premier ; même rang = entrent ensemble), gap = écart entre deux rangs ; sans rien :
 --                                      la règle commune (ordre de lecture, Cascade.Gap). Sert aux cases de la caisse.
+--   Appear.Reduced() -> boolean        (vague 64, a212) réglage « animations réduites » (Settings.VfxReduced, ou
+--                                      ReducedMotionEnabled de Roblox) : rien ne bouge, tout apparaît et part d'un coup
+--
+-- Vague 64 (a212, vidéo de référence, Config/UiMotion.Appear.Blocks) : à l'ouverture d'un écran (Appear.Open), les
+-- éléments Pop et Stamp posés dans un cadre animé (un élément Appear, ou un cadre racine que Motion.Open met à
+-- l'échelle) sont des blocs : cachés (UIScale à Blocks.From), ils entrent l'un après l'autre dans l'ordre de lecture.
+-- Un bloc déjà en train de sortir (écran rouvert pendant sa fermeture) repart tout de suite de là où il en est.
 --
 -- Ce qui est touché, le temps de l'animation seulement : un UIScale ScaleName créé ici (sur l'élément, ou sur chaque
 -- enfant d'une Cascade), la Rotation (Stamp) et la Position (SlideRight) de l'élément, remises exactement à la valeur
@@ -34,14 +41,29 @@
 -- UIScale qui n'est pas le sien (celui de Clément, ou un survol en cours) n'est pas mis à l'échelle. Deux ouvertures
 -- rapides : la deuxième repart de là où en est la première (jamais deux UIScale). Rien ne tourne quand rien ne bouge.
 
+local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
-local UiMotion = require(Shared:WaitForChild("Config"):WaitForChild("UiMotion"))
+local Config = Shared:WaitForChild("Config")
+local UiMotion = require(Config:WaitForChild("UiMotion"))
 local Attributes = require(Shared:WaitForChild("Contract"):WaitForChild("Attributes"))
 
+-- Réglage « animations réduites » (vague 64) : Settings.VfxReduced, lu seulement si le module est là (banc réduit).
+type SettingsApi = { VfxReduced: (Instance?) -> boolean }
+local settings: SettingsApi? = (function(): SettingsApi?
+	local module = Config:FindFirstChild("Settings")
+	if module == nil or not module:IsA("ModuleScript") then
+		return nil
+	end
+	local ok, result = pcall(require, module)
+	return if ok and type(result) == "table" then result :: any else nil
+end)()
+
 local SPEC = UiMotion.Appear
+local BLOCKS = SPEC.Blocks
+local BLOCK_IN = TweenInfo.new(BLOCKS.Time, BLOCKS.Style, BLOCKS.Direction)
 local POP = SPEC.Pop
 local CASCADE = SPEC.Cascade
 local STAMP = SPEC.Stamp
@@ -122,6 +144,21 @@ function Appear.Covers(item: Instance): boolean
 		parent = parent.Parent
 	end
 	return false
+end
+
+function Appear.Reduced(): boolean
+	local api = settings
+	local player = Players.LocalPlayer
+	if api ~= nil and player ~= nil then
+		local ok, reduced = pcall(api.VfxReduced, player)
+		if ok and reduced == true then
+			return true
+		end
+	end
+	local ok, value = pcall(function(): any
+		return (game:GetService("GuiService") :: any).ReducedMotionEnabled
+	end)
+	return ok and value == true
 end
 
 -- `inst` est le Template caché d'une liste, ou dedans : ses copies, elles, s'animent.
@@ -622,6 +659,13 @@ function Appear.Play(object: GuiObject)
 	if kind == nil or object.Parent == nil then
 		return
 	end
+	if Appear.Reduced() then
+		local current = states[object]
+		if current then
+			restore(object, current) -- animations réduites : à l'état de Clément, tout de suite
+		end
+		return
+	end
 	local state = stateOf(object, kind)
 	if kind == "Pop" then
 		scaleIn(object, state, POP.From, POP_IN, nil)
@@ -651,13 +695,116 @@ local function appearing(root: Instance): { GuiObject }
 	return list
 end
 
-function Appear.Open(root: Instance)
-	for _, object in appearing(root) do
-		Appear.Play(object)
+------------------------------------------------------------------------------
+-- Blocs (vague 64) : le contenu d'un écran qui s'ouvre, l'un après l'autre
+------------------------------------------------------------------------------
+
+local BLOCK_KINDS: { [string]: boolean } = { Pop = true, Stamp = true }
+-- Cadres animés qui portent leurs blocs (Cascade : ses cartes s'animent déjà ; DropIn : décor).
+local FRAME_KINDS: { [string]: boolean } = { Pop = true, Stamp = true, SlideRight = true }
+
+-- `object` (Pop ou Stamp) est posé dans un cadre animé de son écran : un élément Appear, ou un cadre racine que
+-- Motion.Open met à l'échelle (enfant direct de l'écran, sans Appear, qui ne couvre pas tout l'écran).
+local function isBlock(object: GuiObject): boolean
+	local kind = Appear.KindOf(object)
+	if kind == nil or not BLOCK_KINDS[kind] then
+		return false
+	end
+	local top: Instance? = nil
+	local current = object.Parent
+	while current ~= nil and not current:IsA("LayerCollector") do
+		local parentKind = Appear.KindOf(current)
+		if parentKind == "Cascade" then
+			return false
+		elseif parentKind ~= nil and FRAME_KINDS[parentKind] then
+			return true
+		end
+		top = current
+		current = current.Parent
+	end
+	if current == nil or top == nil or not top:IsA("GuiObject") or Appear.Has(top) then
+		return false
+	end
+	local size = (top :: GuiObject).Size
+	return not (size.X.Scale >= 1 and size.Y.Scale >= 1)
+end
+
+local function blockIn(object: GuiObject, state: State)
+	if state.kind == "Stamp" then
+		stampIn(object, state)
+	else
+		scaleIn(object, state, BLOCKS.From, BLOCK_IN, nil)
 	end
 end
 
+-- Range les blocs neufs dans l'ordre de lecture (rangée à RowTolerance px près, puis de gauche à droite ; à égalité,
+-- l'ordre de l'arbre) ; chacun attend caché, puis entre à son tour. Un bloc déjà animé (sortie en cours) : tout de suite.
+local function playBlocks(blocks: { GuiObject })
+	local waiting: { GuiObject } = {}
+	local order: { [GuiObject]: number } = {}
+	for index, object in blocks do
+		local state = stateOf(object, Appear.KindOf(object) :: string)
+		if state.phase ~= nil then
+			Appear.Play(object)
+			continue
+		end
+		local hidden = scaleOn(state, object, BLOCKS.From)
+		if hidden == nil then
+			Appear.Play(object) -- son propre UIScale : il apparaît comme avant
+			continue
+		end
+		hidden.Scale = BLOCKS.From
+		order[object] = index
+		table.insert(waiting, object)
+	end
+	if #waiting == 0 then
+		return
+	end
+	local tolerance = BLOCKS.RowTolerance
+	table.sort(waiting, function(a: GuiObject, b: GuiObject): boolean
+		local rowA = math.floor(a.AbsolutePosition.Y / tolerance + 0.5)
+		local rowB = math.floor(b.AbsolutePosition.Y / tolerance + 0.5)
+		if rowA ~= rowB then
+			return rowA < rowB
+		end
+		if a.AbsolutePosition.X ~= b.AbsolutePosition.X then
+			return a.AbsolutePosition.X < b.AbsolutePosition.X
+		end
+		return order[a] < order[b]
+	end)
+	local gap = if #waiting > 1 then math.min(BLOCKS.Gap, BLOCKS.Span / (#waiting - 1)) else BLOCKS.Gap
+	for rank, object in waiting do
+		local state = states[object] :: State
+		local token = state.token
+		task.delay(BLOCKS.Start + (rank - 1) * gap, function()
+			if states[object] ~= state or state.token ~= token or state.phase ~= nil or object.Parent == nil then
+				return -- fermé, remis ou rejoué entre-temps
+			end
+			blockIn(object, state)
+		end)
+	end
+end
+
+function Appear.Open(root: Instance)
+	if Appear.Reduced() then
+		Appear.Reset(root) -- animations réduites : tout à l'état de Clément, d'un coup
+		return
+	end
+	local blocks: { GuiObject } = {}
+	for _, object in appearing(root) do
+		if BLOCKS.Enabled and object ~= root and isBlock(object) then
+			table.insert(blocks, object)
+		else
+			Appear.Play(object)
+		end
+	end
+	playBlocks(blocks)
+end
+
 function Appear.Close(root: Instance): number
+	if Appear.Reduced() then
+		return 0 -- animations réduites : rien ne sort, l'écran s'éteint d'un coup (Motion remet tout à l'état de Clément)
+	end
 	local longest = 0
 	for _, object in appearing(root) do
 		local kind = Appear.KindOf(object) :: string

@@ -15,6 +15,9 @@
 --     en Blur.OutTime à sa fermeture (dès que Motion le ferme), ou dès qu'une poursuite commence
 --     (ChaseController.IsChased) : jamais de flou pendant une poursuite. Parti, il est détruit. Une connexion
 --     Heartbeat seulement tant qu'un de ces écrans est allumé ou que le flou est là.
+--   - Barre du bas qui s'écarte (vague 64, a212, Config/UiMotion.HudAway) : tant qu'un écran de HudAway.Screens (ou
+--     un ScreenGui avec l'attribut HudAway.Attribute = true) est allumé, Controllers/UI/HudMask.SetAway la fait sortir
+--     par le bas ; elle revient quand il s'éteint, ou dès qu'une poursuite commence. Animations réduites : d'un coup.
 -- Connexions : une par écran pour Enabled, DescendantAdded et AncestryChanged, et une ou deux par élément qui porte
 -- un attribut d'animation ; toutes coupées quand l'élément quitte l'écran ou que l'écran quitte le PlayerGui.
 -- Aucun script dans l'UI ; aucune valeur de Clément changée durablement.
@@ -36,6 +39,26 @@ local Appear = require(UI:WaitForChild("Appear"))
 local Motion = require(UI:WaitForChild("Motion"))
 
 type ChaseApi = { IsChased: () -> boolean }
+-- HudMask (vague 64) : lu s'il est là (un banc qui ne monte que Motion et Appear : pas de barre qui s'écarte).
+type HudMaskApi = { SetAway: (boolean, boolean?) -> () }
+local hudMask: HudMaskApi? = (function(): HudMaskApi?
+	local module = UI:FindFirstChild("HudMask")
+	if module == nil or not module:IsA("ModuleScript") then
+		return nil
+	end
+	local ok, result = pcall(require, module)
+	return if ok and type(result) == "table" then result :: any else nil
+end)()
+
+local AWAY = UiMotion.HudAway
+local AWAY_RECHECK = AWAY.Recheck
+local AWAY_SCREENS: { [string]: boolean } = {}
+for _, name in AWAY.Screens do
+	AWAY_SCREENS[name] = true
+end
+local awayScreens: { [ScreenGui]: boolean } = {}
+local awayWanted = false
+local awayRecheck = 0
 
 local SCREEN_PREFIX = "UI_"
 local TEMPLATE = "Template"
@@ -182,10 +205,50 @@ local function setBlur(wanted: boolean)
 	tween:Play()
 end
 
-local function updateBlur()
+-- Vague 64 (a212, Config/UiMotion.HudAway) : la barre du bas s'écarte tant qu'un écran plein est allumé (elle part à
+-- l'ouverture et revient quand l'écran s'est éteint, comme dans la vidéo), jamais pendant une poursuite.
+local function wantsAway(): boolean
+	if not AWAY.Enabled then
+		return false
+	end
+	local api = chase
+	if api ~= nil and api.IsChased() then
+		return false
+	end
+	for gui in awayScreens do
+		if gui.Enabled and gui.Parent ~= nil then
+			return true
+		end
+	end
+	return false
+end
+
+local function updateAway(dt: number)
+	local wanted = wantsAway()
+	awayRecheck += dt
+	-- Rappel toutes les AWAY_RECHECK s tant qu'elle est écartée : une copie neuve de la barre (ResetOnSpawn) suit.
+	if wanted == awayWanted and not (wanted and awayRecheck >= AWAY_RECHECK) then
+		return
+	end
+	awayWanted = wanted
+	awayRecheck = 0
+	local api = hudMask
+	if api ~= nil then
+		api.SetAway(wanted, Appear.Reduced())
+	end
+end
+
+local function updateBlur(dt: number?)
 	setBlur(wantsBlur())
+	updateAway(dt or 0)
 	local anyOpen = false
 	for gui in blurScreens do
+		if gui.Enabled then
+			anyOpen = true
+			break
+		end
+	end
+	for gui in awayScreens do
 		if gui.Enabled then
 			anyOpen = true
 			break
@@ -194,8 +257,8 @@ local function updateBlur()
 	-- Heartbeat (poursuite, fermeture par Motion) seulement tant qu'un écran à flou est allumé ou que le flou est là.
 	if anyOpen or blur ~= nil then
 		if blurStep == nil then
-			blurStep = RunService.Heartbeat:Connect(function()
-				updateBlur()
+			blurStep = RunService.Heartbeat:Connect(function(dt: number)
+				updateBlur(dt)
 			end)
 		end
 	else
@@ -293,6 +356,7 @@ local function unwatchScreen(screen: Instance)
 	Appear.Reset(screen)
 	if screen:IsA("ScreenGui") then
 		blurScreens[screen :: ScreenGui] = nil
+		awayScreens[screen :: ScreenGui] = nil
 	end
 	updateBlur()
 end
@@ -307,13 +371,16 @@ local function watchScreen(screen: Instance)
 	if blursBehind(gui) then
 		blurScreens[gui] = true
 	end
+	if AWAY.Enabled and (AWAY_SCREENS[gui.Name] or gui:GetAttribute(AWAY.Attribute) == true) then
+		awayScreens[gui] = true
+	end
 	table.insert(list, gui:GetPropertyChangedSignal("Enabled"):Connect(function()
 		if gui.Enabled then
 			Appear.Open(gui)
 		else
 			Appear.Reset(gui)
 		end
-		if blurScreens[gui] then
+		if blurScreens[gui] or awayScreens[gui] then
 			updateBlur()
 		end
 	end))
@@ -329,7 +396,7 @@ local function watchScreen(screen: Instance)
 	for _, descendant in gui:GetDescendants() do
 		watchObject(descendant, gui)
 	end
-	if blurScreens[gui] then
+	if blurScreens[gui] or awayScreens[gui] then
 		updateBlur()
 	end
 end

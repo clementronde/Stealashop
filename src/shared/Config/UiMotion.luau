@@ -12,27 +12,37 @@
 
 local DeepFreeze = require(script.Parent.DeepFreeze)
 
+-- Vague 64 (a212, Cantin : des écrans qui « pop ») : rythme de la vidéo de référence mesurée image par image
+-- (docs/claude/notes/2026-11-16_video-effets-ui.md, sections 3 et 4). true : ouverture 0,55 → 1 en 0,38 s Back Out
+-- (dépasse à ~1,045), fermeture Back In 0,2 s (gonfle de ~10 % puis tombe à 0), contenu bloc par bloc (Appear.Blocks),
+-- cartes de gauche à droite (Appear.Cascade, OpenStagger), barre du bas qui s'écarte (HudAway). false : l'ancien
+-- rythme exactement (L-094, L-182, L-188), sans blocs ni barre qui s'écarte.
+local VIDEO_RHYTHM = true
+
 local UiMotion = {
+	VideoRhythm = VIDEO_RHYTHM,
 	-- Écran qui s'ouvre (Motion.Open) : ses cadres racine (Root) passent de From à 1. Valeurs validées par
 	-- Clément sur les prototypes (L-094 ; tableau « Étendues à tout le jeu » de
 	-- docs/claude/notes/ui-motion-skilltree.md, ligne « Fenêtre qui s'ouvre », qui remplace l'ancien V0
 	-- 0,9 → 1 en 0,25 ; tools/clement/inventory_proto.luau, OpenFrom et OpenTime).
 	Open = {
 		From = 0.55, -- tableau : « Root 0,55 → 1 en 0,14 », Back Out
-		Time = 0.14,
+		Time = if VIDEO_RHYTHM then 0.38 else 0.14, -- vague 64 : 0,38 s (vidéo : 0,55 → 1,055 → 1)
 		Style = Enum.EasingStyle.Back, -- le Back Out dépasse un peu 1 (environ 1,04), puis revient à 1
 		Direction = Enum.EasingDirection.Out,
 	},
 	-- Contenu qui arrive après la fenêtre (Motion.Open, puis chaque carte ou rangée) : de From à 1 en
 	-- Time, la première Start s après l'ouverture, puis Gap s entre deux, Max cartes au plus (les
 	-- suivantes partent avec la Max-ième). Tableau : ligne « Contenu qui arrive après la fenêtre ».
+	-- Vague 64 : les cartes comme dans la vidéo (« 5 cartes de gauche à droite, 22 ms de décalage, à partir de +230 ms ;
+	-- chacune de 0,2 à 1 en 0,13 s, Quad Out ») ; Max 8 : décalage total plafonné à ~0,15 s (fiche, section 3).
 	OpenStagger = {
-		From = 0, -- tableau : « chaque carte ou rangée 0 → 1 en 0,14 ; départ à 0,08 ; 0,035 entre deux, 14 au plus »
-		Time = 0.14,
-		Start = 0.08,
-		Gap = 0.035,
-		Max = 14,
-		Style = Enum.EasingStyle.Back,
+		From = if VIDEO_RHYTHM then 0.2 else 0, -- tableau : « chaque carte ou rangée 0 → 1 en 0,14 ; départ à 0,08 ; 0,035 entre deux, 14 au plus »
+		Time = if VIDEO_RHYTHM then 0.13 else 0.14,
+		Start = if VIDEO_RHYTHM then 0.23 else 0.08,
+		Gap = if VIDEO_RHYTHM then 0.022 else 0.035,
+		Max = if VIDEO_RHYTHM then 8 else 14,
+		Style = if VIDEO_RHYTHM then Enum.EasingStyle.Quad else Enum.EasingStyle.Back,
 		Direction = Enum.EasingDirection.Out,
 		-- Cartes = cadres qui ont un enfant HoverOutline (HoverCard.Outline). Sans carte visible : les
 		-- enfants visibles de ces cadres (prototype tools/clement/ui_feel_proto.luau, staggerItems).
@@ -41,11 +51,12 @@ local UiMotion = {
 		ScaleName = "StaggerScale", -- V0 proposé, absent du doc : UIScale passager de chaque carte
 	},
 	-- Écran qui se ferme (Motion.Close) : sortie courte de 1 à To, puis l'écran s'éteint. Tableau :
-	-- « Fenêtre qui se ferme : 1 → 0 en 0,09 », Quad In (L-094).
+	-- « Fenêtre qui se ferme : 1 → 0 en 0,09 », Quad In (L-094). Vague 64 : Back In en 0,2 s (vidéo : elle gonfle
+	-- de ~11 % puis rétrécit jusqu'à 0, en 0,17 à 0,22 s).
 	Close = {
 		To = 0,
-		Time = 0.09,
-		Style = Enum.EasingStyle.Quad,
+		Time = if VIDEO_RHYTHM then 0.2 else 0.09,
+		Style = if VIDEO_RHYTHM then Enum.EasingStyle.Back else Enum.EasingStyle.Quad,
 		Direction = Enum.EasingDirection.In,
 	},
 	-- Changement d'onglet (Motion.Swap) : les cartes visibles sortent (1 → 0 en OutTime, OutGap s entre
@@ -425,29 +436,52 @@ local UiMotion = {
 	-- Motion.Hide attendent sa fermeture) ; Hover et Press par Motion.Button et Motion.HoverCard.
 	Appear = {
 		-- Pop : « cadre de 0,55 à 1 en 0,15 s, Quint Out, sans rebond ; fermeture en 0,07 s, Quad In ».
+		-- Vague 64 (vidéo, sections 3 et 4) : ouverture 0,55 → 1 en 0,38 s Back Out, sans fondu ; fermeture Back In
+		-- en 0,2 s jusqu'à 0 (elle prend son élan, puis disparaît).
 		Pop = {
 			From = 0.55,
-			Time = 0.15,
-			Style = Enum.EasingStyle.Quint,
+			Time = if VIDEO_RHYTHM then 0.38 else 0.15,
+			Style = if VIDEO_RHYTHM then Enum.EasingStyle.Back else Enum.EasingStyle.Quint,
 			Direction = Enum.EasingDirection.Out,
-			CloseTo = 0.4, -- L-188 : « fermeture de 1 à 0,4 en 0,07 s, Quad In »
-			CloseTime = 0.07,
-			CloseStyle = Enum.EasingStyle.Quad,
+			CloseTo = if VIDEO_RHYTHM then 0 else 0.4, -- L-188 : « fermeture de 1 à 0,4 en 0,07 s, Quad In »
+			CloseTime = if VIDEO_RHYTHM then 0.2 else 0.07,
+			CloseStyle = if VIDEO_RHYTHM then Enum.EasingStyle.Back else Enum.EasingStyle.Quad,
 			CloseDirection = Enum.EasingDirection.In,
 		},
 		-- Cascade : « les enfants d'une liste entrent l'un après l'autre, 0,05 s d'écart, d'abord le fond puis le
 		-- contenu » : le cadre (le fond) est là tout de suite, ses enfants visibles (sauf Template) entrent ensuite.
+		-- Vague 64 : les cartes de la vidéo (22 ms d'écart, 0,2 → 1 en 0,13 s Quad Out, à partir de +230 ms, plafond
+		-- ~0,15 s de décalage total) ; fermeture : tout part avec le cadre (CloseTo, CloseTime et la courbe de Pop).
 		Cascade = {
-			Gap = 0.05,
-			Start = 0.05, -- L-188 : le contenu « une ou deux images après » le fond (0,05 s : entre les deux, à 30 images/s)
-			From = 0, -- V0 proposé, absent du doc
-			Time = 0.15, -- V0 proposé, absent du doc : comme Pop
-			Style = Enum.EasingStyle.Quint, -- V0 proposé, absent du doc : comme Pop
+			Gap = if VIDEO_RHYTHM then 0.022 else 0.05,
+			Start = if VIDEO_RHYTHM then 0.23 else 0.05, -- L-188 : le contenu « une ou deux images après » le fond (0,05 s : entre les deux, à 30 images/s)
+			From = if VIDEO_RHYTHM then 0.2 else 0, -- V0 proposé, absent du doc
+			Time = if VIDEO_RHYTHM then 0.13 else 0.15, -- V0 proposé, absent du doc : comme Pop
+			Style = if VIDEO_RHYTHM then Enum.EasingStyle.Quad else Enum.EasingStyle.Quint, -- V0 proposé, absent du doc : comme Pop
 			Direction = Enum.EasingDirection.Out,
-			Max = 14, -- V0 proposé, absent du doc : comme OpenStagger.Max (les suivants partent avec le 14e)
-			Late = 0.3, -- V0 proposé, absent du doc : s pendant lesquelles un enfant cloné après l'ouverture entre aussi
-			CloseTo = 0.4, -- V0 proposé, absent du doc : tous ensemble, comme la fermeture de Pop
-			CloseTime = 0.07,
+			Max = if VIDEO_RHYTHM then 8 else 14, -- V0 proposé, absent du doc : comme OpenStagger.Max (les suivants partent avec le 14e)
+			Late = if VIDEO_RHYTHM then 0.45 else 0.3, -- V0 proposé, absent du doc : s pendant lesquelles un enfant cloné après l'ouverture entre aussi
+			CloseTo = if VIDEO_RHYTHM then 0 else 0.4, -- V0 proposé, absent du doc : tous ensemble, comme la fermeture de Pop
+			CloseTime = if VIDEO_RHYTHM then 0.2 else 0.07,
+		},
+		-- Vague 64 (a212 ; vidéo, section 3 : « titre à +130 ms, onglets à +200, lignes à +270 et +330, récompense à +400,
+		-- bouton à +470 ») : dans un écran qui s'ouvre, les éléments Pop et Stamp posés DANS un cadre animé (un élément
+		-- Appear, ou un cadre racine que Motion.Open met à l'échelle) sont des blocs : ils attendent cachés (UIScale à 0),
+		-- puis entrent l'un après l'autre dans l'ordre de lecture (de haut en bas, puis de gauche à droite), le premier
+		-- Start s après l'ouverture, Gap s entre deux ; si les blocs sont nombreux, l'écart se resserre pour que le dernier
+		-- parte au plus tard Start + Span s après l'ouverture (tout en place en ~0,5 s). Un bloc Pop entre de From à 1 en
+		-- Time (Style) ; un bloc Stamp garde son tampon. Les éléments Appear posés directement dans l'écran (le cadre),
+		-- Cascade, SlideRight et DropIn ne sont pas des blocs. Enabled = false : pas de blocs (comme avant).
+		Blocks = {
+			Enabled = VIDEO_RHYTHM,
+			Start = 0.13,
+			Gap = 0.065,
+			Span = 0.32,
+			From = 0, -- V0 proposé, absent du doc : caché tant qu'il attend
+			Time = 0.15, -- V0 proposé, absent du doc
+			Style = Enum.EasingStyle.Back, -- V0 proposé, absent du doc : petit pop
+			Direction = Enum.EasingDirection.Out,
+			RowTolerance = 4, -- px : même rangée à 4 px près (comme OpenStagger)
 		},
 		-- Stamp : « titre de 1,6 à 1 et de −5° à 0 en 0,13 s ».
 		Stamp = {
@@ -456,8 +490,8 @@ local UiMotion = {
 			Time = 0.13,
 			Style = Enum.EasingStyle.Quad, -- V0 proposé, absent du doc
 			Direction = Enum.EasingDirection.Out, -- V0 proposé, absent du doc
-			CloseTo = 0.4, -- V0 proposé, absent du doc : comme Pop
-			CloseTime = 0.07,
+			CloseTo = if VIDEO_RHYTHM then 0 else 0.4, -- V0 proposé, absent du doc : comme Pop
+			CloseTime = if VIDEO_RHYTHM then 0.2 else 0.07,
 		},
 		-- SlideRight : « panneau depuis le bord droit en 0,17 s, Quint Out ». Il part de juste derrière le bord droit
 		-- de l'écran ; seule sa Position bouge, remise exactement à la fin.
@@ -551,6 +585,29 @@ local UiMotion = {
 		-- un autre ScreenGui aussi s'il porte l'attribut Attribute = true (posé par Clément).
 		Screens = { "UI_WeaponShop", "UI_AuraShop", "UI_RobuxShop", "UI_DiamondShop", "UI_Index", "UI_Index_v2", "UI_Index_v3" },
 		Attribute = "Blur",
+	},
+	-- Vague 64 (a212 ; L-188 B : « le HUD se cache derrière les fenêtres de boutique » ; vidéo, section 3 : la barre du
+	-- bas descend hors de l'écran en ~150 ms à l'ouverture et revient en ~170 ms à la fermeture). Tant qu'un écran plein
+	-- de Screens (ou un ScreenGui qui porte l'attribut Attribute = true, posé par Clément) est allumé, chaque élément de
+	-- Targets descend par sa Position jusqu'à passer sous le bord du bas (taille inconnue : de Distance, en part de la
+	-- hauteur de l'écran), puis revient exactement à la Position de Clément quand l'écran s'est éteint
+	-- (UiMotionController → Controllers/UI/HudMask.SetAway). Jamais en poursuite : la barre reste ou revient. Réglage
+	-- « animations réduites » : elle part et revient d'un coup. Enabled = false : rien ne bouge.
+	HudAway = {
+		Enabled = VIDEO_RHYTHM,
+		-- V0 proposé, absent du doc : les boutiques d'achat (L-188 ; index et récompenses : Clément tranche).
+		Screens = { "UI_WeaponShop", "UI_AuraShop", "UI_RobuxShop", "UI_DiamondShop" },
+		Attribute = "HudAway", -- V0 proposé, absent du doc
+		-- V0 proposé, absent du doc : la barre d'actions (écran, chemin depuis l'écran).
+		Targets = { { Screen = "UI_Hotbar", Path = "Bar" } },
+		Distance = 0.15, -- fiche, section 3 : « Position décalée de +15 % vers le bas »
+		OutTime = 0.15,
+		OutStyle = Enum.EasingStyle.Quad,
+		OutDirection = Enum.EasingDirection.In,
+		BackTime = 0.17,
+		BackStyle = Enum.EasingStyle.Back,
+		BackDirection = Enum.EasingDirection.Out,
+		Recheck = 0.5, -- V0 proposé, absent du doc : s entre deux revues de la barre écartée (copie neuve de l'écran)
 	},
 }
 

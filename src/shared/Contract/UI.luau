@@ -1291,5 +1291,11 @@ table.insert(UI.Screens, {
 		{ Path = "Balance.Spent", Class = "TextLabel", Optional = true, Note = "le solde décompte sans « -X » à côté" },
 	} :: { Element },
 })
+-- Vague 64 (a212, Config/UiMotion.HudAway et Appear.Blocks) : rien de nouveau à livrer, tout est facultatif.
+--   - UI_Hotbar.Bar (déjà au contrat) descend sous le bord du bas par sa Position tant qu'une boutique d'achat est
+--     ouverte, puis revient exactement à la Position de Clément. Un autre écran plein peut faire de même s'il porte
+--     l'attribut HudAway = true (booléen, sur le ScreenGui).
+--   - Dans un écran qui s'ouvre, les éléments Appear = Pop ou Stamp posés dans un cadre animé (titre, onglets, lignes,
+--     objet, bouton) entrent l'un après l'autre, de haut en bas puis de gauche à droite : un bloc = un élément à part.
 
 return UI
