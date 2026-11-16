@@ -1298,4 +1298,17 @@ table.insert(UI.Screens, {
 --   - Dans un écran qui s'ouvre, les éléments Appear = Pop ou Stamp posés dans un cadre animé (titre, onglets, lignes,
 --     objet, bouton) entrent l'un après l'autre, de haut en bas puis de gauche à droite : un bloc = un élément à part.
 
+-- Vague 64 (a213) : modèle facultatif du « +X » du tapis qui vole jusqu'au nombre Speed (GainController,
+-- Config/Hud.TrainGainFly ; nom proposé à Clément). Absent : une copie de BB_Gain.Row dans un cadre fait par le code.
+-- Entrée à part, facultative, comme le bouton d'UI_Admin : la liste d'UI_HUD ne change pas (SkillTreeButton reste le dernier).
+table.insert(UI.Screens, {
+	Name = "UI_HUD",
+	Class = "ScreenGui",
+	Optional = true,
+	Elements = {
+		{ Path = "TrainGainFly.Template", Class = "GuiObject", Optional = true, Note = "le gain du tapis vole dans une copie de BB_Gain.Row" },
+		{ Path = "TrainGainFly.Template.Amount", Class = "TextLabel", Optional = true, Note = "le « +X Speed/s » qui vole n'a pas de texte" },
+	} :: { Element },
+})
+
 return UI

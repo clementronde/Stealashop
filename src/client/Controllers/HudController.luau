@@ -52,6 +52,8 @@
 --     Clément, facultatif, caché) montre « -$X » le temps du décompte (achats rapprochés additionnés). Seul
 --     point d'entrée du compteur d'argent : ce contrôleur (writeStat) ; les gains qui volent passent par HoldCash.
 --     Menu, RightRail et boutons en situation : HudMenuController.
+--   - Vague 64 (a213) : GainController retient aussi le nombre Speed (HoldSpeed) pendant que le « +X » du tapis vole
+--     vers lui ; il monte à l'arrivée (Config/Hud.TrainGainFly).
 -- Les éléments sont cherchés par leur nom parmi les descendants de l'écran (Contract/Find) : les
 -- cadres autour (LeftRail, StatsPanel…) sont décoratifs et peuvent changer. Seuls les textes, la
 -- visibilité et la largeur de Fill sont touchés (2.2, « Libre pour Ironix »), jamais un style ;
@@ -61,6 +63,8 @@
 -- API (client) :
 --   HudController.HoldCash(base) -> relâcher
 --       Cash montre `base` jusqu'à l'appel de `relâcher` (voir plus bas, L-091 point 3).
+--   HudController.HoldSpeed(base) -> relâcher
+--       Vague 64 (a213) : pareil pour le nombre Speed (le « +X » du tapis qui vole jusqu'à lui, GainController).
 --   HudController.IsHeistTimerShown() -> boolean
 --       Le chrono « HEIST » est à l'écran (pour ZoneBannerController, qui attend sa fin ; Cantin, 2026-11-13).
 
@@ -150,11 +154,14 @@ end
 local INCOME_ATTRIBUTE = "Income" -- posé par DisplayService
 local INCOME_STAT: Stat = STATS[2]
 local CASH_STAT: Stat = STATS[1] -- retenu par HoldCash (GainController, L-091 point 3)
+local SPEED_STAT: Stat = STATS[3] -- vague 64 (a213) : retenu par HoldSpeed (gain du tapis qui vole)
 for _, stat in STATS do
 	if stat.Attribute == INCOME_ATTRIBUTE then
 		INCOME_STAT = stat
 	elseif stat.Attribute == "Cash" then
 		CASH_STAT = stat
+	elseif stat.Element == "Speed" then
+		SPEED_STAT = stat
 	end
 end
 
@@ -247,6 +254,8 @@ local incomeSeen: any = nil -- dernière valeur d'Income traitée par ce contrô
 local incomeTracked = false -- incomeSeen suit l'attribut (Start est passé)
 -- Retenues de l'argent (HoldCash) : chacune garde l'argent d'avant un gain qui vole vers le compteur.
 local cashHolds: { IncomeHold } = {}
+-- Vague 64 (a213) : retenues du nombre Speed (HoldSpeed), comme celles de l'argent.
+local speedHolds: { IncomeHold } = {}
 
 local function warnOnce(key: string, message: string)
 	if IS_STUDIO and not warned[key] then
@@ -325,6 +334,7 @@ local function writeStat(stat: Stat)
 	local value = if stat == INCOME_STAT
 		then latestIncome()
 		elseif stat == CASH_STAT and cashHolds[1] ~= nil then cashHolds[1].base
+		elseif stat == SPEED_STAT and speedHolds[1] ~= nil then speedHolds[1].base
 		else localPlayer:GetAttribute(stat.Attribute)
 	if stat == DAMAGE_STAT then
 		local factor = potionFactor()
@@ -374,6 +384,21 @@ local function expireHolds()
 			writeStat(CASH_STAT)
 		end
 	end
+	-- Vague 64 (a213) : même filet pour le nombre Speed.
+	if #speedHolds > 0 then
+		local now = os.clock()
+		local expired = false
+		for index = #speedHolds, 1, -1 do
+			if speedHolds[index].expiresAt <= now then
+				table.remove(speedHolds, index)
+				expired = true
+			end
+		end
+		if expired then
+			warnOnce("speedHold", `[HUD] Speed retenu plus de {MAX_CASH_HOLD} s : relâché (GainController ne l'a pas fait)`)
+			writeStat(SPEED_STAT)
+		end
+	end
 end
 
 -- L-091 point 3 : Cash garde `base` (l'argent d'avant un gain) jusqu'à l'appel de `relâcher`, quand
@@ -393,6 +418,21 @@ function HudController.HoldCash(base: number): () -> ()
 		if index then
 			table.remove(cashHolds, index)
 			writeStat(CASH_STAT)
+		end
+	end
+end
+
+-- Vague 64 (a213) : comme HoldCash, pour le nombre Speed : il montre `base` (la Speed affichée d'avant un gain du tapis)
+-- jusqu'à l'arrivée du « +X » qui vole vers lui (GainController) ; plusieurs retenues : la base de la plus ancienne.
+function HudController.HoldSpeed(base: number): () -> ()
+	local hold: IncomeHold = { base = base, expiresAt = os.clock() + MAX_CASH_HOLD }
+	table.insert(speedHolds, hold)
+	writeStat(SPEED_STAT)
+	return function()
+		local index = table.find(speedHolds, hold)
+		if index then
+			table.remove(speedHolds, index)
+			writeStat(SPEED_STAT)
 		end
 	end
 end
