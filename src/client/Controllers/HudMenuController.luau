@@ -1,15 +1,20 @@
 --!strict
--- HudMenuController (vague 59, a190, client) : le menu et la colonne de droite du nouveau HUD de Clément (liaison
--- L-183 `UI_HUD`, L-182 point 7 ; noms de la page Figma « 30 HUD, tapis, poursuite »). Tout est facultatif : tant
--- que Clément n'a pas construit le nouveau HUD dans Studio, rien de ce qui suit n'existe et l'ancien HUD marche
--- comme avant (ses boutons sont cherchés partout dans l'écran par leurs contrôleurs, menu ou pas).
+-- HudMenuController (vague 59, a190, client) : les boutons du nouveau HUD de Clément qui ne sont à aucun autre
+-- contrôleur (liaison L-183 `UI_HUD`, L-182 point 7 ; noms de la page Figma « 30 HUD, tapis, poursuite »). Tout est
+-- facultatif : sans le nouveau HUD, rien de ce qui suit n'existe et l'ancien HUD marche comme avant (ses boutons sont
+-- cherchés partout dans l'écran par leurs contrôleurs).
 --
---   - MenuButton (un dans LeftRail, un dans LeftRailTouch) ouvre et ferme MenuPanel (caché au départ : Visible).
---     Choisir un bouton du menu (IndexButton, RebirthButton, RewardsButton, InviteButton, SettingsButton :
---     branchés par leurs propres contrôleurs) referme le menu (Config/Hud.Menu.CloseOnPick).
---   - MenuAlert (pastille de MenuButton, Shared/AlertBadge) : allumée tant qu'une pastille « …Alert » rangée dans
---     MenuPanel est visible (IndexAlert, RebirthAlert, RewardsAlert… allumées par RailAlertController et
---     RewardsController, qui les trouvent où qu'elles soient).
+--   - Vague 63 (a205, L-202 point 1, L-192 Q1, décision de Clément) : plus de bouton « More ». MenuButton, MenuAlert,
+--     MenuArea et MenuPanel ne sont plus lus (encore là dans un ancien HUD : ignorés, aucune erreur). Les gros
+--     boutons de LeftRail et LeftRailTouch (RobuxShopButton, IndexButton, SkillTreeButton, deux exemplaires) et les
+--     petites icônes de TopLeftRow (RewardsButton, InviteButton, SettingsButton, RebirthButton, un exemplaire) sont
+--     branchés par leurs propres contrôleurs, qui les cherchent par leur nom dans tout UI_HUD.
+--   - TopLeftRow avec l'attribut FollowTopbarInset = true (Config/Hud.TopLeftRow) : calé sur la place libre de la
+--     barre de Roblox, bord gauche à GuiService.TopbarInset.Min.X + Gap px, centré en hauteur dans la barre ;
+--     recalculé quand TopbarInset, sa taille ou la place de son parent changent. Seul Position est écrit (en px).
+--     Barre de hauteur nulle (barre de Roblox coupée) ou attribut absent : la place de Clément est gardée.
+--   - RebirthButton : caché par Clément tant que la renaissance est coupée ; montré quand elle est ouverte
+--     (attribut Rebirths du Player, posé par RebirthService). Jamais caché ici (l'aperçu L-071 de l'ancien HUD tient).
 --   - DisplayedButton ouvre « Mes objets exposés » (UI_Displayed) : DisplayedController (agent a191) fait tout,
 --     Toggle() s'il existe, sinon Open() ; sans lui, rien (une ligne en Studio).
 --   - Boutons en situation de Config/Boosts (SpeedBoostButton « x2 », SleepButton « zZz ») : cachés au départ,
@@ -17,15 +22,15 @@
 --     Cooldown = la recharge restante (« 4:12 », attribut serveur CooldownAttribute), caché sans recharge. Aucun
 --     achat : l'effet n'est pas codé (Ready = false) et Features.RobuxShop = false ; un clic montre « Soon ».
 --     Visible n'est écrit que quand la règle change : un masquage par un autre contrôleur (poursuite) tient.
--- Seuls Visible, Text de Price.Amount et de Cooldown sont touchés (2.2, « Libre pour Ironix »), jamais un style ;
--- les animations d'ouverture (attribut Appear de Clément) sont jouées par le module d'UI commun quand Visible change.
+-- Seuls Visible, Position de TopLeftRow, Text de Price.Amount et de Cooldown sont touchés (2.2, « Libre pour
+-- Ironix » ; la place de TopLeftRow est demandée par Clément, L-202), jamais un style ; les animations d'ouverture
+-- (attribut Appear de Clément) sont jouées par le module d'UI commun quand Visible change.
 -- HUD recréé (ResetOnSpawn) : rebranché, les connexions de l'ancien écran sont coupées.
 --
 -- API (client ; bancs, barre de commande en Studio) :
---   HudMenuController.IsMenuOpen() -> boolean
---   HudMenuController.SetMenuOpen(open)
 --   HudMenuController.GetShown() -> { [string]: boolean }   bouton en situation (Config/Boosts.Key) → montré
 --   HudMenuController.Refresh()                              recalcule les règles tout de suite
+--   HudMenuController.PlaceTopLeftRow()                      recale TopLeftRow tout de suite
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -37,7 +42,7 @@ local Config = Shared:WaitForChild("Config")
 local Boosts = require(Config:WaitForChild("Boosts"))
 local Features = require(Config:WaitForChild("Features"))
 local HudConfig = require(Config:WaitForChild("Hud"))
-local AlertBadge = require(Shared:WaitForChild("AlertBadge"))
+local SkillTree = require(Config:WaitForChild("SkillTree"))
 local Find = require(Shared:WaitForChild("Contract"):WaitForChild("Find"))
 local Format = require(Shared:WaitForChild("Format"))
 
@@ -46,12 +51,13 @@ type ZoneApi = { GetZone: () -> number }
 type NotifyApi = { Show: (message: string, kind: string?) -> () }
 
 local SCREEN = "UI_HUD"
-local MENU = HudConfig.Menu
+local ROW = HudConfig.TopLeftRow
+local REBIRTH_BUTTON = "RebirthButton"
+local REBIRTHS_ATTRIBUTE: string = SkillTree.RebirthsAttribute -- RebirthService : absent = renaissance coupée
 local MACHINE_ATTRIBUTE = "TrainingMachine" -- TrainingService
 local TREADMILL = "Treadmill"
 local PRICE_PATH = "Price.Amount"
 local COOLDOWN = "Cooldown"
-local ALERT_SUFFIX = "Alert"
 local IS_STUDIO = RunService:IsStudio()
 
 local HudMenuController = {}
@@ -60,14 +66,12 @@ local localPlayer = Players.LocalPlayer
 local zones: ZoneApi? = nil
 local notify: NotifyApi? = nil
 local connections: { RBXScriptConnection } = {}
-local panels: { GuiObject } = {}
-local menuAlerts: { GuiObject } = {}
-local watchedAlerts: { GuiObject } = {}
 local boostButtons: { [string]: { GuiButton } } = {}
 local cooldownLabels: { [string]: { TextLabel } } = {}
 local shown: { [string]: boolean } = {}
 local cooldownTexts: { [string]: string } = {}
-local menuOpen = false
+local rows: { GuiObject } = {}
+local rebirthButtons: { GuiObject } = {}
 local warned: { [string]: boolean } = {}
 
 local function warnOnce(key: string, message: string)
@@ -96,28 +100,53 @@ local function buttonsNamed(root: Instance, name: string): { GuiButton }
 	return list
 end
 
--- Menu ------------------------------------------------------------------------------------------
+-- TopLeftRow (vague 63, L-202) ------------------------------------------------------------------
 
-local function refreshMenuAlert()
-	local on = false
-	for _, badge in watchedAlerts do
-		if badge.Parent ~= nil and badge.Visible then
-			on = true
-			break
+-- Cale `row` sur la place libre de la barre de Roblox (GuiService.TopbarInset, en px de l'écran entier) :
+-- bord gauche à Min.X + Gap, centre vertical au milieu de la barre. Position est écrite en px dans le
+-- repère du parent (sa place à l'écran est retirée), en tenant compte de l'AnchorPoint de Clément.
+local function placeRow(row: GuiObject, guiService: GuiService)
+	local inset = guiService.TopbarInset
+	if inset.Max.Y - inset.Min.Y <= 0 then
+		return -- pas de barre de Roblox : la place de Clément tient
+	end
+	local parent = row.Parent
+	local origin = if parent and parent:IsA("GuiBase2d") then (parent :: GuiBase2d).AbsolutePosition else Vector2.new(0, 0)
+	local size = row.AbsoluteSize
+	local anchor = row.AnchorPoint
+	local left = inset.Min.X + ROW.Gap
+	local top = (inset.Min.Y + inset.Max.Y) / 2 - size.Y / 2
+	local position = UDim2.fromOffset(
+		math.round(left + anchor.X * size.X - origin.X),
+		math.round(top + anchor.Y * size.Y - origin.Y)
+	)
+	if row.Position ~= position then
+		row.Position = position
+	end
+end
+
+function HudMenuController.PlaceTopLeftRow()
+	if #rows == 0 then
+		return
+	end
+	local guiService = game:GetService("GuiService")
+	for _, row in rows do
+		if row.Parent ~= nil then
+			placeRow(row, guiService)
 		end
 	end
-	AlertBadge.SetAll(menuAlerts, on)
 end
 
-function HudMenuController.SetMenuOpen(open: boolean)
-	menuOpen = open and #panels > 0
-	for _, panel in panels do
-		panel.Visible = menuOpen
+-- RebirthButton : montré quand la renaissance est ouverte (attribut Rebirths), jamais caché ici.
+local function refreshRebirth()
+	if type(localPlayer:GetAttribute(REBIRTHS_ATTRIBUTE)) ~= "number" then
+		return
 	end
-end
-
-function HudMenuController.IsMenuOpen(): boolean
-	return menuOpen
+	for _, button in rebirthButtons do
+		if not button.Visible then
+			button.Visible = true
+		end
+	end
 end
 
 -- Boutons en situation ----------------------------------------------------------------------------
@@ -221,33 +250,34 @@ local function bind(gui: ScreenGui)
 		connection:Disconnect()
 	end
 	table.clear(connections)
-	menuOpen = false
-	panels = {}
-	watchedAlerts = {}
-	for _, inst in Find.all(gui, MENU.Panel) do
-		if inst:IsA("GuiObject") then
-			local panel = inst :: GuiObject
-			panel.Visible = false
-			table.insert(panels, panel)
-			for _, descendant in panel:GetDescendants() do
-				if descendant:IsA("GuiButton") and MENU.CloseOnPick then
-					connect((descendant :: GuiButton).Activated, function()
-						HudMenuController.SetMenuOpen(false)
-					end)
-				elseif descendant:IsA("GuiObject") and descendant.Name ~= MENU.Alert and string.sub(descendant.Name, -#ALERT_SUFFIX) == ALERT_SUFFIX then
-					table.insert(watchedAlerts, descendant :: GuiObject)
-					connect(descendant:GetPropertyChangedSignal("Visible"), refreshMenuAlert)
-				end
-			end
+
+	-- Vague 63 : TopLeftRow calé sur la barre de Roblox (attribut de Clément), petites icônes cherchées par leurs
+	-- contrôleurs ; RebirthButton montré si la renaissance est ouverte.
+	rows = {}
+	for _, inst in Find.all(gui, ROW.Frame) do
+		if inst:IsA("GuiObject") and inst:GetAttribute(ROW.Attribute) == true then
+			table.insert(rows, inst :: GuiObject)
 		end
 	end
-	menuAlerts = AlertBadge.Find(gui, MENU.Alert)
-	for _, button in buttonsNamed(gui, MENU.Button) do
-		connect(button.Activated, function()
-			HudMenuController.SetMenuOpen(not menuOpen)
-		end)
+	if #rows > 0 then
+		local guiService = game:GetService("GuiService")
+		connect(guiService:GetPropertyChangedSignal("TopbarInset"), HudMenuController.PlaceTopLeftRow)
+		for _, row in rows do
+			connect(row:GetPropertyChangedSignal("AbsoluteSize"), HudMenuController.PlaceTopLeftRow)
+			local parent = row.Parent
+			if parent and parent:IsA("GuiBase2d") then
+				connect(parent:GetPropertyChangedSignal("AbsolutePosition"), HudMenuController.PlaceTopLeftRow)
+			end
+		end
+		HudMenuController.PlaceTopLeftRow()
 	end
-	refreshMenuAlert()
+	rebirthButtons = {}
+	for _, inst in Find.all(gui, REBIRTH_BUTTON) do
+		if inst:IsA("GuiObject") then
+			table.insert(rebirthButtons, inst :: GuiObject)
+		end
+	end
+	refreshRebirth()
 
 	for _, button in buttonsNamed(gui, "DisplayedButton") do
 		connect(button.Activated, openDisplayed)
@@ -300,6 +330,7 @@ function HudMenuController.Start()
 			refresh()
 		end
 	end)
+	localPlayer:GetAttributeChangedSignal(REBIRTHS_ATTRIBUTE):Connect(refreshRebirth)
 	local playerGui = localPlayer:WaitForChild("PlayerGui")
 	playerGui.ChildAdded:Connect(function(child: Instance)
 		if child.Name == SCREEN and child:IsA("ScreenGui") then

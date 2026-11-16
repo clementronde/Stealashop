@@ -28,6 +28,9 @@
 --     CarriedItem, attributs AntiTheft et UnlockAt de HeldItemService) porte le même BB_AntiTheft (nom,
 --     minuteur, ou Unbox.LockedText sans UnlockAt), retiré à la fin de l'antivol ou quand l'objet quitte la main.
 --     UnboxController.GetHeldView(model) -> { TimeText, Shown }? (bancs).
+--   - vague 63 (a205, L-202 point 3) : BB_AntiTheft.LockIcon (cadenas doré de Clément, facultatif) caché quand
+--     TimeLabel passe à « UNLOCKED! » sur un objet posé au sol, visible sinon ; sur l'objet tenu, il reste tel que
+--     Clément l'a posé (le billboard part avec l'antivol). GetFloorView(model).LockIcon (bancs).
 -- Aucune règle de jeu : le serveur décide.
 
 local CollectionService = game:GetService("CollectionService")
@@ -64,6 +67,7 @@ type FloorView = {
 	gui: BillboardGui,
 	point: Attachment,
 	timeLabel: TextLabel?,
+	lockIcon: GuiObject?, -- vague 63 (L-202 point 3) : cadenas doré de BB_AntiTheft, caché à « UNLOCKED! »
 	ownerPrompt: ProximityPrompt?,
 	stealPrompt: ProximityPrompt?,
 	unlocked: boolean,
@@ -92,6 +96,7 @@ local STEAL_OPEN_ATTRIBUTE = "StealOpen"
 local CARRYING_ATTRIBUTE = "Carrying"
 local ANTI_THEFT_BILLBOARD = "BB_AntiTheft" -- L-112 : ItemName, TimeLabel (MaxDistance 10, de Clément)
 local ANTI_THEFT_POINT = "AntiTheftPoint"
+local LOCK_ICON = "LockIcon" -- vague 63 (L-202 point 3) : cadenas de BB_AntiTheft, facultatif
 local STEAL_PROMPT_NAME = "StealFloorPrompt"
 -- L-112 : « UNLOCKED! » en vert (5cff4a, la couleur de BB_ShelfOpen) ; son V0 en attendant celui de Clément.
 local UNLOCKED_TEXT = "UNLOCKED!"
@@ -199,6 +204,12 @@ local function floorLabel(gui: Instance, name: string): TextLabel?
 	return if found and found:IsA("TextLabel") then found :: TextLabel else nil
 end
 
+-- Vague 63 (L-202 point 3) : LockIcon de BB_AntiTheft (cadenas doré de Clément), ou nil (billboard V0, ancien BB).
+local function lockIconOf(gui: Instance): GuiObject?
+	local found = Find.path(gui, LOCK_ICON)
+	return if found and found:IsA("GuiObject") then found :: GuiObject else nil
+end
+
 local function floorTimeText(remaining: number): string
 	local seconds = math.max(0, math.ceil(remaining))
 	return string.format("%d:%02d", math.floor(seconds / 60), seconds % 60)
@@ -254,6 +265,11 @@ local function refreshFloorView(view: FloorView, now: number, origin: Vector3?)
 		if unlocked and not view.unlocked then
 			label.TextColor3 = UNLOCKED_COLOR
 		end
+	end
+	-- Vague 63 (L-202 point 3) : le cadenas doré disparaît avec « UNLOCKED! » (le cadenas 3D saute déjà).
+	local lockIcon = view.lockIcon
+	if lockIcon and lockIcon.Visible == unlocked then
+		lockIcon.Visible = not unlocked
 	end
 	if unlocked and not view.unlocked then
 		view.unlocked = true
@@ -331,6 +347,7 @@ local function addFloorView(inst: Instance)
 		gui = gui,
 		point = point,
 		timeLabel = floorLabel(gui, "TimeLabel"),
+		lockIcon = lockIconOf(gui),
 		ownerPrompt = nil,
 		stealPrompt = nil,
 		unlocked = false,
@@ -539,7 +556,7 @@ end
 
 function UnboxController.GetFloorView(
 	model: Instance
-): { TimeText: string?, ItemText: string?, OwnerPrompt: boolean?, StealPrompt: boolean?, Chains: boolean }?
+): { TimeText: string?, ItemText: string?, OwnerPrompt: boolean?, StealPrompt: boolean?, Chains: boolean, LockIcon: boolean? }?
 	local view = floorViews[model]
 	if view == nil then
 		return nil
@@ -552,6 +569,7 @@ function UnboxController.GetFloorView(
 		OwnerPrompt = if ownerPrompt then ownerPrompt.Enabled else nil,
 		StealPrompt = if stealPrompt then stealPrompt.Enabled else nil,
 		Chains = chainsShown(view), -- vague 34 : chaînes posées, pas encore en train de partir
+		LockIcon = if view.lockIcon then view.lockIcon.Visible else nil, -- vague 63 : cadenas doré montré
 	}
 end
 

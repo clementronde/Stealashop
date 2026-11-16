@@ -602,7 +602,7 @@ table.insert(UI.Screens, {
 UI.Twins = {
 	UI_HUD = {
 		Containers = { "LeftRail", "LeftRailTouch" },
-		Names = { "RobuxShopButton", "IndexButton", "RebirthButton", "InventoryButton", "SkillTreeButton", "MenuButton" },
+		Names = { "RobuxShopButton", "IndexButton", "RebirthButton", "InventoryButton", "SkillTreeButton" },
 	},
 } :: { [string]: { Containers: { string }, Names: { string } } }
 
@@ -916,6 +916,10 @@ UI.Retired = {
 		["UI_Inventory.BoxesSection"] = BOX_GONE,
 		-- Vague 59 (a190, L-182 point 5, L-183) : inventaire archivé (InventoryController en sommeil).
 		["UI_HUD.InventoryButton"] = "inventaire archivé (L-182 point 5), bouton retiré du nouveau HUD (L-183)",
+		-- Vague 63 (a205, L-202 point 1, L-192 Q1) : plus de menu « More ».
+		["UI_HUD.MenuButton"] = "menu « More » retiré (L-202), les boutons sont dans LeftRail et TopLeftRow",
+		["UI_HUD.MenuPanel"] = "menu « More » retiré (L-202), les boutons sont dans LeftRail et TopLeftRow",
+		["UI_HUD.MenuArea"] = "menu « More » retiré (L-202), les boutons sont dans LeftRail et TopLeftRow",
 	},
 	Billboards = {
 		BB_OpenTimer = BOX_GONE,
@@ -1005,9 +1009,10 @@ table.insert(UI.Billboards, {
 
 -- Nouveau HUD (vague 59, a190 ; L-183 `UI_HUD`, noms de la page Figma « 30 HUD, tapis, poursuite », validés par
 -- Clément ; docs/claude/notes/2026-11-15_figma-refonte-coordination.md). Pas encore construit dans Studio : tout est
--- facultatif, l'ancien HUD marche sans. MenuButton (un dans LeftRail, un dans LeftRailTouch : UI.Twins) ouvre
--- MenuPanel (un seul, où passent IndexButton, RebirthButton, RewardsButton, InviteButton et SettingsButton, mêmes
--- noms : les contrôleurs les cherchent partout dans l'écran) ; MenuAlert s'allume quand une pastille du menu l'est.
+-- facultatif, l'ancien HUD marche sans. Vague 63 (a205, L-202 point 1, L-192 Q1) : plus de menu « More » (MenuButton,
+-- MenuAlert, MenuArea et MenuPanel sortis, UI.Retired) ; les petites icônes RewardsButton, InviteButton, SettingsButton
+-- et RebirthButton sont dans TopLeftRow (attribut FollowTopbarInset : calé sur la barre de Roblox), mêmes noms, les
+-- contrôleurs les cherchent partout dans l'écran.
 -- RightRail porte DisplayedButton (ouvre UI_Displayed) et les boutons en situation de Config/Boosts, cachés par
 -- Clément. CashSpent : « -$X » rouge après un achat. HudController et HudMenuController.
 table.insert(UI.Screens, {
@@ -1015,10 +1020,6 @@ table.insert(UI.Screens, {
 	Class = "ScreenGui",
 	Optional = true,
 	Elements = {
-		{ Path = "MenuButton", Class = BUTTON, Optional = true, Note = "pas de menu : les boutons restent où Clément les a mis" },
-		{ Path = "MenuButton.MenuAlert", Optional = true, Note = "pas de pastille sur le menu" },
-		{ Path = "MenuButton.MenuAlert.Pulse", Class = "UIScale", Optional = true, Note = "la pastille du menu ne bat pas" },
-		{ Path = "MenuPanel", Optional = true, Note = "MenuButton n'ouvre rien" },
 		{ Path = "DisplayedButton", Class = BUTTON, Optional = true, Note = "UI_Displayed ne s'ouvre que par son propre bouton" },
 		{ Path = "SpeedBoostButton", Class = BUTTON, Optional = true, Note = "pas de bouton « x2 » sur le tapis" },
 		{ Path = "SpeedBoostButton.Price.Amount", Class = "TextLabel", Optional = true, Note = "le prix Robux n'est pas écrit" },
@@ -1026,6 +1027,8 @@ table.insert(UI.Screens, {
 		{ Path = "SleepButton.Price.Amount", Class = "TextLabel", Optional = true, Note = "le prix Robux n'est pas écrit" },
 		{ Path = "SleepButton.Cooldown", Class = "TextLabel", Optional = true, Note = "la recharge n'est pas affichée" },
 		{ Path = "CashSpent", Class = "TextLabel", Optional = true, Note = "l'argent décompte sans « -$X » à côté" },
+		-- Vague 63 (a205, L-202 point 1) : cadre des petites icônes, dans la barre de Roblox.
+		{ Path = "TopLeftRow", Optional = true, Note = "les petites icônes restent où Clément les a mises" },
 	} :: { Element },
 })
 
@@ -1174,5 +1177,19 @@ for _, screenDef in UI.Screens do
 		table.insert(screenDef.Elements, { Path = "Bar.Template.Weight", Class = "TextLabel", Optional = true, Note = "le poids de l'objet n'est pas affiché dans sa case" })
 	end
 end
+
+-- Antivol d'un objet posé au sol ou tenu en main (vague 31, L-112 ; a178) : BB_AntiTheft de Clément, copié par
+-- UnboxController (sinon un billboard V0 aux mêmes noms). Vague 63 (a205, L-202 point 3) : LockIcon, le cadenas doré,
+-- caché quand TimeLabel passe à « UNLOCKED! » sur un objet posé au sol ; absent, rien ne casse.
+table.insert(UI.Billboards, {
+	Name = "BB_AntiTheft",
+	Class = "BillboardGui",
+	Optional = true,
+	Elements = {
+		{ Path = "ItemName", Class = "TextLabel" },
+		{ Path = "TimeLabel", Class = "TextLabel" },
+		{ Path = "LockIcon", Class = "GuiObject", Optional = true, Note = "pas de cadenas au-dessus du nom" },
+	} :: { Element },
+})
 
 return UI

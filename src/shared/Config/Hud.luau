@@ -1,7 +1,7 @@
 --!strict
 -- Nouveau HUD (vague 59, a190 ; liaison L-182 points 4, 7 et 8, L-183 `UI_HUD`) : réglages des animations du HUD
 -- qui ne sont pas des attributs d'écran de Clément (ceux-là, Appear, Hover et Press, sont lus par le module d'a189).
--- Lu par HudController (CashSpent), GainController (tapis) et HudMenuController (menu, boutons en situation).
+-- Lu par HudController (CashSpent), GainController (tapis) et HudMenuController (TopLeftRow, boutons en situation).
 -- Les durées viennent des fiches de Clément (L-182 : « environ 1,9 s, Quint Out », « 5 morceaux par seconde »,
 -- « environ 0,75 s », « × 1,1 à × 1,4 toutes les 0,2 s ») ; le reste est marqué « V0 proposé, absent du doc ».
 -- Unités : secondes ; échelles en part de la taille posée par Clément (1 = sa taille).
@@ -44,13 +44,14 @@ local Hud = {
 		Direction = Enum.EasingDirection.Out,
 		Row = "SpeedRow", -- cadre de Clément autour du nombre Speed (comme CashRow), facultatif
 	},
-	-- L-183 : menu de la colonne de gauche (MenuButton ouvre MenuPanel). V0 proposé, absent du doc : le menu se
-	-- referme quand on choisit un de ses boutons, ou au 2e appui sur MenuButton.
-	Menu = {
-		Button = "MenuButton",
-		Panel = "MenuPanel",
-		Alert = "MenuAlert",
-		CloseOnPick = true,
+	-- Vague 63 (a205, L-202 point 1, L-192 Q1) : plus de menu « More » (MenuButton, MenuPanel retirés par Clément).
+	-- Les petites icônes (RewardsButton, InviteButton, SettingsButton, RebirthButton) sont dans le cadre TopLeftRow,
+	-- dans la barre de Roblox. Avec l'attribut FollowTopbarInset = true, le code le cale sur la place libre de cette
+	-- barre : bord gauche à GuiService.TopbarInset.Min.X + Gap px (valeur de Clément), centré en hauteur dans la barre.
+	TopLeftRow = {
+		Frame = "TopLeftRow",
+		Attribute = "FollowTopbarInset",
+		Gap = 8, -- L-202 (Clément) : « TopbarInset.Min.X + 8 px »
 	},
 	-- Cadence (s) du recalcul des boutons en situation (tapis, couloir) et de leur recharge. V0 proposé, absent du doc.
 	Refresh = 0.1,
