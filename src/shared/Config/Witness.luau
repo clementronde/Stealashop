@@ -59,6 +59,15 @@ local Witness = {
 		-- qu'ApproachSpeed ni plus qu'ApproachMaxSpeed (V0).
 		ApproachLead = 1,
 		ApproachMaxSpeed = 32,
+		-- Vague 66 (a221, Clément, L-210 point 4 : « il doit foncer sur le joueur dès le premier coup, arriver vite et
+		-- photographier avec flash »). Avant, le flash ne partait qu'après le « ? » plein (8 s) et l'appel (4 s) : un
+		-- joueur seul casse la vitre en 6,5 s (Balance.WindowHP.SoloBreakTime), le témoin fuyait avant son premier flash.
+		-- Rush = true : il court à son poste à RushSpeed au moins (animation RushAnim, sinon Walk accélérée) et, arrivé,
+		-- prend ses photos tout de suite (TakePhoto, flash) pendant que son « ? » monte ; « ? » plein : l'appel, puis les
+		-- photos comme avant. La casse le fait toujours fuir (L-118 point 10). false = l'approche d'a196 et Look à l'arrivée.
+		Rush = true, -- V0
+		RushSpeed = 24, -- V0 : WalkSpeed de la course (jamais plus qu'ApproachMaxSpeed)
+		RushAnim = "Flee", -- V0 : la course de Clément (Contract/Animations.Witness) ; absente : Walk accélérée
 		-- V0 (a196, T-087 : « le flash se voit mal ») : chaque flash émet Bursts fois, à BurstGap s d'écart (la lumière
 		-- reste allumée jusqu'au dernier) ; l'effet de Clément (EmitCount, LightTime) n'est pas touché.
 		Bursts = 2,
@@ -81,6 +90,31 @@ local Witness = {
 		Forward = 0.4,
 		Hand = "RightHand",
 		CodePoint = "WitnessFlashPoint", -- V0 : nom de l'Attachment que le code crée pour ce repli (chez le joueur)
+	},
+
+	-- La foule qui filme (vague 66, a221, Clément, L-210 point 4 ; proposition à valider par Clément, tout en V0) : quand un
+	-- voleur sort d'un magasin PNJ avec l'objet sur la tête (attribut Carrying, il quitte le volume Bounds), une petite
+	-- foule apparaît en arc devant la vitrine, tournée vers lui : des copies des témoins NPC_Witness_* présents chez le
+	-- joueur (même modèle, même téléphone), créées et jouées par chaque client seul (WitnessCrowdController) : aucun
+	-- remote, rien sur le serveur. Interrupteur : Features.WitnessCrowd.
+	Crowd = {
+		Count = 5, -- V0 : nombre de PNJ
+		Filmers = 2, -- V0 : les premiers filment (TakePhoto figée sur la pose du téléphone levé, sans flash), les autres photographient
+		Duration = 6, -- V0 : s, puis ils s'effacent
+		FadeTime = 0.3, -- V0 : s, apparition et disparition (LocalTransparencyModifier) ; animations réduites : d'un coup
+		Distance = 12, -- V0 : studs devant la vitrine
+		Arc = 110, -- V0 : degrés, largeur de l'arc
+		Jitter = 1.5, -- V0 : studs de hasard sur chaque place
+		FlashMin = 0.7, -- V0 : rythme des flashs sans marqueur Flash (s, au hasard entre les deux)…
+		FlashMax = 1.5, -- V0 : … ; avec TakePhoto, ses marqueurs Flash donnent le rythme
+		FilmFreeze = 1, -- V0 : s ; sans marqueur Flash dans ce temps, le filmeur fige sa pose là où elle est
+		Cooldown = 15, -- V0 : s, pas deux foules pour un même magasin dans ce temps
+		MaxCrowds = 2, -- V0 : foules à la fois chez un joueur
+		ViewDistance = 220, -- V0 : studs ; voleur plus loin de la caméra : pas de foule
+		CheckInterval = 0.2, -- V0 : s, contrôle des porteurs
+		TurnInterval = 0.1, -- V0 : s, la foule se tourne vers le voleur
+		Anim = "TakePhoto", -- l'animation de Clément (Contract/Animations.Witness) ; absente : pose de repos
+		Folder = "WitnessCrowd", -- V0 : dossier du Workspace (chez le joueur seul) qui range les copies
 	},
 
 	-- La police -------------------------------------------------------------------------------------

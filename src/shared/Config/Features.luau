@@ -41,6 +41,9 @@ local Features = {
 	-- Vague 66 (a218, L-210 point 8) : true, prix validés par Clément (L-210 : « OK à tout ») ; le simulateur v2
 	-- tourne avec les 8 auras (tools/ironix/equilibrage, RAPPORT=v2).
 	NewAuras = true,
+	-- Vague 66 (a221, L-210 point 4) : la foule de PNJ qui filme et photographie le voleur à sa sortie d'un magasin PNJ
+	-- (Config/Witness.Crowd, WitnessCrowdController, client seul, aucun remote) ; false = rien ne change.
+	WitnessCrowd = true,
 }
 
 export type Features = typeof(Features)

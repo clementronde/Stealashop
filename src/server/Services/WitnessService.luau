@@ -61,6 +61,13 @@
 --      d. pendant qu'il filme : la casse ne le fait pas fuir, les coups ne relancent pas son « ? » (le
 --         joueur qui frappe compte comme voleur), IsCalling est faux. Les autres témoins fuient toujours à
 --         la casse (point 3) tant que leur « ? » n'est pas plein.
+--   8. Vague 66 (a221, Clément, L-210 point 4 : « il fonce, arrive vite et photographie avec flash » ; Photo.Rush = false :
+--      le point 7 tel quel) : au point 7a, il court à son poste à Photo.RushSpeed au moins (animation Photo.RushAnim, Flee de
+--      Clément, sinon Walk accélérée) ; arrivé, au lieu de Look, il photographie déjà (TakePhoto, flash au marqueur Flash,
+--      sinon tout de suite puis toutes les Photo.Interval s ; sans TakePhoto, Look) pendant que son « ? » monte. « ? »
+--      plein : il range l'appareil et appelle (point 4), puis filme (7b). La casse le fait toujours fuir (point 3) tant
+--      que son « ? » n'est pas plein. Avant, le premier flash venait 12 s après le premier coup (« ? » de 8 s, appel de
+--      4 s) : un joueur seul casse en 6,5 s, le témoin fuyait avant d'avoir photographié (ce que Clément n'a jamais vu).
 --   La vitre se répare comme avant (chrono de police de WindowService, Balance.Window.BreakTimer, inchangé).
 --
 -- Un témoin sans WatchedStore, ou dont le magasin est introuvable parmi les modèles taggés NPCStore de la
@@ -89,7 +96,7 @@
 --   Exemple (L-112) : au début de l'ouverture `WitnessService.Raise(store, player)`, au relâché
 --   `WitnessService.Pause(store)`, colis ouvert ou joueur sorti `WitnessService.Calm(store)`.
 --   WitnessService.GetState(store) -> { State }    pour un test : état de chaque témoin du magasin (L-172 :
---       Approaching, Filming, Flashes)
+--       Approaching, Filming, Flashes ; a221 : Snapping)
 
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
@@ -123,6 +130,7 @@ export type State = {
 	Approaching: boolean, -- L-172 : il marche vers son poste devant la vitrine
 	Filming: boolean, -- L-172 : il prend des photos au flash
 	Flashes: number, -- L-172 : flashs depuis le début de la partie (attribut WitnessFlash)
+	Snapping: boolean, -- a221 (Photo.Rush) : il photographie à son poste, « ? » qui monte
 }
 
 export type CallListener = (store: Model, suspect: Player?, police: Model?) -> ()
@@ -175,6 +183,9 @@ type WitnessNpc = {
 	lastFlashAt: number,
 	flashCount: number,
 	policeSeen: boolean, -- un policier du magasin était en jeu pendant ces photos
+	-- Vague 66 (a221, L-210 point 4, Photo.Rush) : la course de l'approche, et les photos dès l'arrivée (« ? » qui monte)
+	rushAnim: string?, -- l'animation de course qui joue pendant l'approche ; nil : Walk
+	snapping: boolean, -- il photographie à son poste pendant que son « ? » monte
 }
 
 -- Noms du contrat lus ici.
@@ -283,6 +294,19 @@ local function stopWalking(w: WitnessNpc)
 		w.walking = false
 		w.anims:Stop("Walk")
 	end
+	local rush = w.rushAnim
+	if rush then
+		w.rushAnim = nil -- a221 : la course de l'approche
+		w.anims:Stop(rush)
+	end
+end
+
+-- a221 (Photo.Rush) : il ne photographie plus à son poste.
+local function stopSnapping(w: WitnessNpc)
+	if w.snapping then
+		w.snapping = false
+		w.anims:Stop("TakePhoto")
+	end
 end
 
 local function nextIndex(w: WitnessNpc): number
@@ -348,6 +372,7 @@ local function toStroll(w: WitnessNpc, now: number)
 		w.filming = false
 		w.anims:Stop("TakePhoto")
 	end
+	stopSnapping(w) -- a221
 	w.pauseUntil = 0
 	w.nextMoveAt = now
 	w.progressPos = w.root.Position
@@ -418,10 +443,36 @@ local function setApproachSpeed(w: WitnessNpc, timeLeft: number)
 	local distance = flat(w.approachGoal - w.root.Position).Magnitude
 	local time = timeLeft - PHOTO.ApproachLead
 	local wanted = if time > 0 then distance / time else math.huge
-	local speed = math.clamp(wanted, PHOTO.ApproachSpeed, math.max(PHOTO.ApproachMaxSpeed, PHOTO.ApproachSpeed))
+	-- a221 (Photo.Rush) : il fonce, à RushSpeed au moins.
+	local low = if PHOTO.Rush then math.max(PHOTO.ApproachSpeed, PHOTO.RushSpeed) else PHOTO.ApproachSpeed
+	local speed = math.clamp(wanted, low, math.max(PHOTO.ApproachMaxSpeed, low))
 	w.humanoid.WalkSpeed = speed
-	local gait = math.clamp(w.gait * speed / Witness.WalkSpeed, Witness.WalkAnimMin, Witness.WalkAnimMax)
-	w.anims:Play("Walk", nil, nil, gait) -- déjà jouée : seule sa vitesse change (AnimPlayer)
+	if PHOTO.Rush and w.rushAnim == nil and w.anims:Play(PHOTO.RushAnim) ~= nil then
+		w.rushAnim = PHOTO.RushAnim -- a221 : la course de Clément à la place de la marche
+		w.anims:Stop("Walk")
+	end
+	if w.rushAnim == nil then
+		local gait = math.clamp(w.gait * speed / Witness.WalkSpeed, Witness.WalkAnimMin, Witness.WalkAnimMax)
+		w.anims:Play("Walk", nil, nil, gait) -- déjà jouée : seule sa vitesse change (AnimPlayer)
+	end
+end
+
+-- a221 (Photo.Rush, L-210 point 4) : à son poste, il photographie tout de suite (TakePhoto, flash à ses marqueurs Flash,
+-- sinon au rythme de Photo.Interval) pendant que son « ? » monte ; sans Rush, il regarde (Look) comme avant.
+local function lookOrSnap(w: WitnessNpc, now: number)
+	if not (PHOTO.Enabled and PHOTO.Rush and w.store) then
+		w.anims:Play("Look")
+		return
+	end
+	w.snapping = true
+	w.flashMarkerSeen = false
+	w.photoAnim = w.anims:Play("TakePhoto") ~= nil
+	if not w.photoAnim then
+		w.anims:Play("Look") -- TakePhoto pas livrée : il regarde, le flash part quand même
+	end
+	-- Avec TakePhoto, son premier marqueur Flash donne le premier flash (grâce de deux intervalles) ; sans elle, tout de suite.
+	w.nextFlashAt = if w.photoAnim then now + PHOTO.Interval * 2 else now
+	log(`{w.label} photographie la casse ({if w.photoAnim then "TakePhoto" else "TakePhoto pas livrée : Look"})`)
 end
 
 -- Il s'arrête, se tourne vers la vitrine et regarde. L-172 : il marche d'abord jusqu'à son poste.
@@ -443,7 +494,7 @@ local function startWatch(w: WitnessNpc, now: number, timeLeft: number)
 		end
 	end
 	faceWindow(w)
-	w.anims:Play("Look")
+	lookOrSnap(w, now) -- a221
 end
 
 -- L-172 : arrivé à son poste (ou bloqué), il se tourne vers la vitrine.
@@ -461,8 +512,8 @@ local function approachStep(w: WitnessNpc, now: number)
 	end
 	if flat(w.approachGoal - position).Magnitude <= Witness.PointReached or now - w.progressAt >= Witness.StuckTime then
 		endApproach(w)
-		w.anims:Play("Look")
 		log(`{w.label} est à son poste devant la vitrine`)
+		lookOrSnap(w, now) -- a221
 		return
 	end
 	if now >= w.nextMoveAt then
@@ -729,6 +780,7 @@ local function startCall(w: WitnessNpc, now: number)
 	if w.approaching then
 		endApproach(w) -- L-172 : « ? » plein en chemin, il appelle là où il est
 	end
+	stopSnapping(w) -- a221 : il range l'appareil pour appeler
 	w.anims:Stop("Look")
 	w.anims:Play("CallPolice") -- son marqueur Call lance dispatch (branché à la création du témoin)
 end
@@ -746,6 +798,14 @@ local function flash(w: WitnessNpc, now: number): boolean
 	w.model:SetAttribute(WitnessGauge.FlashAttribute, w.flashCount)
 	MarkerSounds.play(PHOTO.Sound, w.root)
 	return true
+end
+
+-- Le rythme de secours des flashs (tant qu'aucun marqueur Flash n'est venu) : un flash toutes les Photo.Interval s.
+local function flashRhythm(w: WitnessNpc, now: number)
+	if not w.flashMarkerSeen and now >= w.nextFlashAt then
+		w.nextFlashAt = now + PHOTO.Interval
+		flash(w, now)
+	end
 end
 
 -- L'appel fini : il filme, devant la vitrine.
@@ -836,10 +896,7 @@ local function filmStep(w: WitnessNpc, now: number)
 		stopFilming(w, now, "le voleur est parti")
 		return
 	end
-	if not w.flashMarkerSeen and now >= w.nextFlashAt then
-		w.nextFlashAt = now + PHOTO.Interval
-		flash(w, now)
-	end
+	flashRhythm(w, now)
 end
 
 -- Fuite à la casse (L-118 point 10) ----------------------------------------------------------------
@@ -974,6 +1031,8 @@ local function update(w: WitnessNpc, now: number)
 	elseif w.state == "Watch" then
 		if w.approaching then
 			approachStep(w, now) -- L-172
+		elseif w.snapping then
+			flashRhythm(w, now) -- a221
 		end
 		local value = valueNow(w, now)
 		if w.rate > 0 and value >= 1 then
@@ -1177,6 +1236,8 @@ local function add(model: Model)
 		lastFlashAt = -math.huge,
 		flashCount = 0,
 		policeSeen = false,
+		rushAnim = nil,
+		snapping = false,
 	}
 	-- Il part du point du circuit le plus proche de lui.
 	local nearest = math.huge
@@ -1194,7 +1255,7 @@ local function add(model: Model)
 		dispatch(w, os.clock()) -- premier marqueur de l'appel seulement (dispatched)
 	end)
 	w.anims:OnMarker("TakePhoto", FLASH_MARKER, function()
-		if w.filming then
+		if w.filming or w.snapping then -- a221 : aussi à son poste, « ? » qui monte
 			w.flashMarkerSeen = true -- L-172 : les marqueurs donnent le rythme
 			flash(w, os.clock())
 		end
@@ -1312,6 +1373,7 @@ function WitnessService.GetState(store: Model): { State }
 			Approaching = w.approaching,
 			Filming = w.filming,
 			Flashes = w.flashCount,
+			Snapping = w.snapping,
 		})
 	end
 	return list

@@ -32,6 +32,7 @@
 -- API (client, pour un test dans Studio) :
 --   WitnessController.GetState() -> { { Witness, State, Fill, Bubble } }
 --   WitnessController.GetFlashes() -> (flashs joués, témoins équipés du flash)   L-172
+--   WitnessController.PlayFlash(model) ; WitnessController.ReleaseFlash(model)   a221 : la foule (WitnessCrowdController)
 
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
@@ -500,6 +501,16 @@ function WitnessController.GetFlashes(): (number, number)
 		copies += 1
 	end
 	return flashTotal, copies
+end
+
+-- Vague 66 (a221) : pour la foule qui filme (WitnessCrowdController) : un flash de FX_Witness_Flash sur n'importe quel
+-- modèle qui porte le téléphone des témoins (mêmes règles que pour un témoin), puis l'oubli de ses copies.
+function WitnessController.PlayFlash(model: Model)
+	playFlash(model)
+end
+
+function WitnessController.ReleaseFlash(model: Model)
+	destroyFlash(model)
 end
 
 function WitnessController.Start()
