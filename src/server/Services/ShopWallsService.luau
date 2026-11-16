@@ -65,6 +65,10 @@ type Saved = { [Instance]: { [string]: any } }
 local ShopWallsService = {}
 
 local hidden: { [Instance]: Saved } = {} -- pièce cachée -> valeurs d'origine (elle et ses descendants)
+-- Vague 69 (a228) : pièce cachée -> sa connexion Destroying, qui retire l'entrée de `hidden` quand la pièce est
+-- détruite (copies Stage_j refaites par ShopStageService). Pas de balayage sur Parent == nil : une pièce sortie
+-- puis remise garde son entrée et ses valeurs d'origine.
+local hiddenGone: { [Instance]: RBXScriptConnection } = {}
 local plotConnections: { [Instance]: { RBXScriptConnection } } = {}
 local warned: { [string]: boolean } = {}
 
@@ -96,13 +100,22 @@ local function hideOne(instance: Instance, saved: Saved)
 	saved[instance] = original
 end
 
+local function forget(piece: Instance)
+	hidden[piece] = nil
+	local gone = hiddenGone[piece]
+	if gone then
+		hiddenGone[piece] = nil
+		gone:Disconnect()
+	end
+end
+
 local function setVisible(piece: Instance, visible: boolean)
 	local saved = hidden[piece]
 	if visible then
 		if saved == nil then
 			return
 		end
-		hidden[piece] = nil
+		forget(piece)
 		for instance, original in saved do
 			if instance.Parent ~= nil then
 				for prop, value in original do
@@ -121,6 +134,9 @@ local function setVisible(piece: Instance, visible: boolean)
 		hideOne(descendant, newSaved)
 	end
 	hidden[piece] = newSaved
+	hiddenGone[piece] = piece.Destroying:Connect(function()
+		forget(piece)
+	end)
 end
 
 local function isWallPiece(instance: Instance): boolean
