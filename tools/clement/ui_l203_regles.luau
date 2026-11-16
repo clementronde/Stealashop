@@ -16,7 +16,14 @@
 local StarterGui = game:GetService("StarterGui")
 local ServerStorage = game:GetService("ServerStorage")
 
-local SCREENS = { "UI_HUD", "UI_Index_v3", "UI_Displayed", "UI_WeaponShop", "UI_AuraShop", "UI_RobuxShop", "UI_RobuxShop_v2" }
+local SCREENS = {
+	"UI_HUD", "UI_Index_v3", "UI_Displayed", "UI_WeaponShop", "UI_AuraShop", "UI_RobuxShop", "UI_RobuxShop_v2",
+	-- ajoutés le 2026-11-16 avec l'en-tête commun (ui_l203_entetes.luau)
+	"UI_Rewards", "UI_Settings", "UI_Wheel", "UI_Offline", "UI_Rebirth",
+}
+-- Formes rondes par fonction, gardées : la roue, son moyeu et son cercle, les curseurs des réglages, les points
+-- de la renaissance (et les studs ronds de la roue).
+local KEEP_ROUND: { [string]: boolean } = { Wheel = true, Hub = true, Rim = true, Knob = true, ToggleKnob = true, Dot = true }
 local WHITE = Color3.new(1, 1, 1)
 local BLACK = Color3.new(0, 0, 0)
 local STUDS = "rbxassetid://3014551673"
@@ -362,7 +369,9 @@ for _, name in SCREENS do
 	for _, c in gui:GetDescendants() do
 		if c:IsA("UICorner") and c.Parent and not inPay(c) then
 			local parentName = (c.Parent :: Instance).Name
-			if not (string.find(parentName, "Alert$") and c.CornerRadius.Scale >= 0.4) then
+			local round = c.CornerRadius.Scale >= 0.4
+			local keep = round and (string.find(parentName, "Alert$") ~= nil or KEEP_ROUND[parentName] == true or (name == "UI_Wheel" and parentName == "Studs"))
+			if not keep then
 				c:Destroy()
 				stats.cornersRemoved += 1
 			end
