@@ -11,7 +11,8 @@
 --            le couloir reçoivent le passage (mur à sens unique, plus bas) ; le mur `NightWall` monte
 --            depuis la position où il est livré (de sa hauteur, ou de son attribut RiseHeight) ;
 --            nouveau tirage de tous les rayons (StoreHeistService.RefillAll, 5.12) ; vigiles de nuit
---            en ronde (GuardService.StartNightPatrol) ; Notify.
+--            en ronde (GuardService.StartNightPatrol) ; Notify. Rayons et vigiles : un magasin et un
+--            vigile par image (a229), pour ne pas geler le serveur.
 --   Aube     instantanée, de Night à Day : vigiles de nuit partis (GuardService.StopNightPatrol), mur
 --            redescendu, passages retirés, toutes les vitrines cassées des magasins PNJ reconstruites
 --            (WindowService.Rebuild) ; Notify.
@@ -727,9 +728,11 @@ local function nightfall()
 		end
 	end
 	moveWalls(true)
-	local ok, boxes = pcall(StoreHeistService.RefillAll)
+	-- Vague 69 (a229) : rayons et vigiles de nuit étalés sur plusieurs images (un magasin et un vigile par
+	-- image), au lieu de tout dans la même (5 à 7 s de gel vus en Studio).
+	local ok, stores = pcall(StoreHeistService.RefillAll, true)
 	if not ok then
-		warn(`[NightCycleService] RefillAll : {boxes}`)
+		warn(`[NightCycleService] RefillAll : {stores}`)
 	end
 	local guardsOk, guards = pcall(GuardService.StartNightPatrol, {
 		InCorridor = NightCycleService.IsInCorridor,
@@ -743,7 +746,7 @@ local function nightfall()
 		notify(player, if allowed[player] then MESSAGES.NightfallCorridor else MESSAGES.NightfallSafe, "Alert")
 	end
 	log(
-		`la nuit tombe : mur levé, {inCorridor} joueur(s) dans le couloir avec le passage, {if ok then boxes else "?"} colis en rayon, {if guardsOk then guards else "?"} vigile(s) de nuit`
+		`la nuit tombe : mur levé, {inCorridor} joueur(s) dans le couloir avec le passage, rayons de {if ok then stores else "?"} magasin(s) remplis un par image, {if guardsOk then guards else "?"} vigile(s) de nuit`
 	)
 end
 
