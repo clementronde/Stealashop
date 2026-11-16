@@ -75,6 +75,7 @@ local Items = require(Shared.Config.Items)
 local LiveEvents = require(Shared.Config.LiveEvents)
 local Monetization = require(Shared.Config.Monetization)
 local Mutations = require(Shared.Config.Mutations)
+local ItemWeight = require(Shared.ItemWeight) -- vague 66 (a219) : poids des objets donnés
 local Potions = require(Shared.Config.Potions)
 local Rarities = require(Shared.Config.Rarities)
 local SkillTree = require(Shared.Config.SkillTree)
@@ -271,6 +272,16 @@ local function parseMutation(text: string?): (Mutations.Mutation?, boolean)
 	return Mutations.Sanitize(mutation), true
 end
 
+-- Vague 66 (a219, dette de la vague 62) : poids d'un objet donné (GiveItem, GiveBox), celui de sa taille d'avant
+-- (ItemWeight.Effective : 10 kg sans taille, Huge 1 250 kg, Colossal 10 000 kg), comme un ancien profil migré ; sans
+-- poids si le poids est coupé (Features.SingleBoxReveal) ou pour l'objet du tuto.
+local function weightFor(item: Items.Item, mutation: Mutations.Mutation?): number?
+	if item.TutorialOnly or not ItemWeight.Enabled() then
+		return nil
+	end
+	return ItemWeight.Effective(nil, if mutation then mutation.Size else nil)
+end
+
 local function newUid(list: { [string]: any }): string
 	local uid = HttpService:GenerateGUID(false)
 	while list[uid] ~= nil do
@@ -398,7 +409,7 @@ handlers.GiveItem = function(call: Call): (boolean, string)
 		mutation = nil
 	end
 	local uid = newUid(data.Items)
-	data.Items[uid] = { Id = item.Id, Source = "NPC", At = os.time(), Zone = item.Zone or call.value or 1, Mutation = mutation }
+	data.Items[uid] = { Id = item.Id, Source = "NPC", At = os.time(), Zone = item.Zone or call.value or 1, Mutation = mutation, Weight = weightFor(item, mutation) }
 	IndexService.Discover(call.target, item.Id)
 	InventoryService.Refresh(call.target)
 	return true, `Gave {Mutations.ItemName(item.DisplayName, mutation)} to {call.target.Name}`
@@ -445,7 +456,7 @@ handlers.GiveBox = function(call: Call): (boolean, string)
 	-- dans l'inventaire, libre (sans antivol), comme GiveItem ; rien n'est écrit dans Boxes.
 	local mutation = Mutations.Roll(random)
 	local uid = newUid(data.Items)
-	data.Items[uid] = { Id = item.Id, Source = "NPC", At = os.time(), Zone = zone, Mutation = mutation }
+	data.Items[uid] = { Id = item.Id, Source = "NPC", At = os.time(), Zone = zone, Mutation = mutation, Weight = weightFor(item, mutation) }
 	IndexService.Discover(call.target, item.Id)
 	InventoryService.Refresh(call.target)
 	return true, `Gave {rarity.DisplayName} item ({Mutations.ItemName(item.DisplayName, mutation)}) to {call.target.Name}`

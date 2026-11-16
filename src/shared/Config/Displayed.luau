@@ -12,6 +12,16 @@ local Displayed = {
 	-- UI_Displayed.Panel.Reserve (DisplayedController), d'où DisplayButton le remet sur un présentoir libre.
 	ReserveMax = 30, -- V0 : comme Balance.Display.InventoryMax (5.8, objets non exposés) ; au-delà, l'objet reste hors liste
 	ReserveAttribute = "DisplayReserve", -- attribut du Player : uids de la réserve, dans l'ordre, séparés par « , »
+	-- Vague 66 (a219, L-210 point 2 : « bloqués à vie ») : sans écran d'inventaire, un objet ni exposé ni dans la
+	-- réserve ne se voyait nulle part (la barre du bas n'a que quelques cases). V0, propositions à Clément :
+	--   ReserveCatchAll : tout objet libre ni exposé, ni au coffre-fort, ni en main entre dans la réserve (au bout,
+	--     les plus rentables d'abord, une fois par seconde) ; un objet sous antivol pas encore posé au sol est listé
+	--     aussi côté client, avec LockedButtonText sur son bouton, qui lance la pose au sol ;
+	--   SwapWhenFull : DisplayButton quand tous les présentoirs sont pris : l'objet prend la place de l'exposé qui
+	--     rapporte le moins, qui va dans la réserve (false : « No free display », rien ne bouge).
+	ReserveCatchAll = true,
+	SwapWhenFull = true,
+	LockedButtonText = "PLACE", -- V0 : texte de DisplayButton.DisplayLabel d'un objet sous antivol (anglais, L-036)
 
 	-- « +$X/s » de l'objet qui vole de son présentoir jusqu'à l'argent du HUD (L-192 Q2), une fois par pose
 	-- (à la main, « Exposer les meilleurs », depuis la réserve), jamais pendant une poursuite (GainController).

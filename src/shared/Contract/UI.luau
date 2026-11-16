@@ -1123,6 +1123,8 @@ table.insert(UI.Screens, {
 		{ Path = "Reserve.ReserveList.Template.ItemName", Class = "TextLabel", Optional = true, Note = "pas de nom dans la réserve" },
 		{ Path = "Reserve.ReserveList.Template.Income", Class = "TextLabel", Optional = true, Note = "pas de revenu/s dans la réserve" },
 		{ Path = "Reserve.ReserveList.Template.DisplayButton", Class = BUTTON, Optional = true, Note = "un objet de la réserve ne se remet pas sur un présentoir" },
+		-- Vague 66 (a219) : texte « PLACE » (Config/Displayed.LockedButtonText) sur un objet sous antivol à poser au sol.
+		{ Path = "Reserve.ReserveList.Template.DisplayButton.DisplayLabel", Class = "TextLabel", Optional = true, Note = "un objet sous antivol garde « DISPLAY » sur son bouton" },
 	} :: { Element },
 })
 
