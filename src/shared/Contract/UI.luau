@@ -1209,6 +1209,7 @@ for _, screenDef in UI.Screens do
 		table.insert(screenDef.Elements, { Path = "Rewards.ClaimButton.ReadyGradient", Class = "UIGradient", Optional = true, Note = "ClaimButton ne passe pas au vert quand la récompense est prête" })
 		table.insert(screenDef.Elements, { Path = "Categories.LimitedButton", Class = BUTTON, Optional = true, Note = "rien à cacher" })
 	end
+end
 
 -- Boutique Robux v2 (vague 63, a208 ; L-200, noms v3 de L-204) : facultative. RobuxShopController la préfère à
 -- UI_RobuxShop quand elle est là : une seule liste List qui défile, les onglets y font défiler jusqu'à leur
