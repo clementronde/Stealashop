@@ -246,6 +246,11 @@ export type Data = {
 	Diamonds: number?, -- vague 59 (a191, L-182 point 10) : diamants, 2e monnaie pour personnaliser sa boutique.
 	-- Champ facultatif, sans changement de version : 0 dans le gabarit de DataService (absent = 0). Lu par
 	-- DataService.GetDiamonds ; aucun gain ni achat encore (règles à venir), affiché seulement dans UI_DiamondShop.
+	Reserve: { string }?, -- vague 63 (a206, L-192 Q3) : uids des objets en réserve, dans l'ordre (DisplayService,
+	-- Config/Displayed) : remplacés par « Exposer les meilleurs », ou retirés d'un présentoir sans main libre. Champ
+	-- facultatif, sans changement de version, absent du gabarit : absent = profil d'avant la réserve, que
+	-- DisplayService migre au chargement (ses objets ni exposés, ni au coffre-fort, ni sous antivol y vont, les plus
+	-- rentables d'abord, au plus Config/Displayed.ReserveMax ; rien n'est retiré de Items). Nettoyé à chaque usage.
 	-- Partie 2 : Defenses, Rebirths, ajoutés par migration (Version = 9 et suivantes : la v2 est prise
 	-- par le catalogue d'objets v2, la v3 par la boutique Robux, la v4 par l'index, la v5 par les colis
 	-- sur les présentoirs, la v6 par les gains hors ligne, la v7 par les colis dans l'inventaire, la v8

@@ -43,6 +43,11 @@
 --       portée des autres invites de la boutique). L'objet va dans l'inventaire ; la barre du bas lui donne sa
 --       première case vide s'il y en a une (HotbarController). Ses $/s s'arrêtent (il n'est plus exposé).
 --       Un voleur qui maintient « Steal » sur cet objet voit sa prise refusée (présentoir vide, PvPService).
+--   Vague 63 (a206, règle de Clément, L-192 Q3) : UnplaceItem (RemoveButton de UI_Displayed) et TakeDisplayItem
+--       remettent l'objet DANS LA MAIN (HeldItemService.Give : mains libres seulement, vivant, sans portage, aucun
+--       Tool en main ; Notify « … removed from its display ») ; mains prises (outil, batte, autre objet, portage,
+--       mort) : il va dans la réserve (DisplayService.AddToReserve ; Notify « … moved to your reserve ») ; réserve
+--       pleine : il reste dans l'inventaire, comme avant.
 -- DisplayService est chargé au premier appel (il charge lui-même ce service à son démarrage : pas de
 -- require croisé au chargement).
 --
@@ -82,6 +87,11 @@ type DisplayApi = {
 	IsHeld: (player: Player, itemUid: string) -> boolean,
 	HasInventoryRoom: (player: Player) -> boolean,
 	GetSlots: (player: Player) -> { [number]: Attachment }, -- vague 44 : portée de TakeDisplayItem
+	AddToReserve: ((player: Player, itemUid: string) -> boolean)?, -- vague 63 (a206) : objet retiré sans main libre
+}
+-- Vague 63 (a206) : et de HeldItemService (objet retiré à la main : en main).
+type HeldApi = {
+	Give: (player: Player, itemUid: string) -> boolean,
 }
 -- Et de PlotService (a06).
 type PlotApi = {
@@ -113,6 +123,8 @@ local MESSAGES = {
 	Held = "This item is being stolen: hit the thief to get it back!",
 	-- Vague 31 (L-112), V0 proposé, absent du doc : objet sous antivol, à poser au sol avant un présentoir.
 	AntiTheft = "Put this item down in your shop first: it can go on a display once UNLOCKED!",
+	-- Vague 63 (a206), V0 proposé, absent du doc : objet retiré d'un présentoir sans main libre, rangé dans la réserve.
+	ToReserve = "%s removed from its display: moved to your reserve", -- vague 63 : mains prises
 }
 
 local IS_STUDIO = RunService:IsStudio()
@@ -176,6 +188,14 @@ local function plots(): PlotApi?
 		plotApi = sibling("PlotService")
 	end
 	return plotApi
+end
+
+local heldApi: HeldApi? = nil
+local function heldItems(): HeldApi?
+	if heldApi == nil then
+		heldApi = sibling("HeldItemService")
+	end
+	return heldApi
 end
 
 ------------------------------------------------------------------------------
@@ -422,8 +442,26 @@ local function unplace(player: Player, itemUid: string, what: string, nearOnly: 
 		return
 	end
 	guardedSync(player)
-	log(`{player.Name} : {itemUid} repris du présentoir {slot} dans l'inventaire`)
-	notify(player, string.format(MESSAGES.Removed, name), INFO_KIND)
+	-- Vague 63 (a206, règle de Clément, L-192 Q3) : l'objet retiré à la main revient DANS LA MAIN (HeldItemService.Give,
+	-- mains libres seulement : vivant, sans portage, aucun Tool en main) ; sinon il va dans la réserve
+	-- (DisplayService.AddToReserve) ; réserve pleine : il reste dans l'inventaire (barre du bas), comme avant.
+	local held = heldItems()
+	local inHand = false
+	if held then
+		local ok, given = pcall(held.Give, player, itemUid)
+		inHand = ok and given == true
+	end
+	local where = "dans l'inventaire"
+	local message = MESSAGES.Removed
+	local addToReserve = api.AddToReserve
+	if inHand then
+		where = "dans la main"
+	elseif addToReserve and addToReserve(player, itemUid) then
+		where = "dans la réserve"
+		message = MESSAGES.ToReserve
+	end
+	log(`{player.Name} : {itemUid} repris du présentoir {slot}, {where}`)
+	notify(player, string.format(message, name), INFO_KIND)
 end
 
 local function onUnplaceItem(player: Player, itemUid: string)

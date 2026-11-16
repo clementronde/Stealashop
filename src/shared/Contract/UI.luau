@@ -1098,8 +1098,9 @@ table.insert(UI.Screens, {
 		{ Path = "Footer.ClaimButton.ClaimAlert", Optional = true, Note = "pas de pastille « ! » sur la récompense" },
 	} :: { Element },
 })
--- UI_Displayed (DisplayedController ; nom à confirmer par Clément) : panneau des objets exposés, ouvert par
--- UI_HUD.RightRail.DisplayedButton (ou OpenButton tant qu'il est dans l'écran).
+-- UI_Displayed (DisplayedController ; nom gardé par Clément, L-192 Q4) : panneau des objets exposés, écran entier
+-- allumé et éteint par UI_HUD.RightRail.DisplayedButton (vague 63 : plus d'OpenButton, L-202 point 4) ; sa réserve
+-- (vague 63, a206, L-192 Q3, noms de L-202) : Panel.Reserve, facultative.
 table.insert(UI.Screens, {
 	Name = "UI_Displayed",
 	Class = "ScreenGui",
@@ -1107,7 +1108,6 @@ table.insert(UI.Screens, {
 	Elements = {
 		{ Path = "Panel", Class = "GuiObject" },
 		{ Path = "CloseButton", Class = BUTTON, Optional = true, Note = "le panneau se ferme par le bouton du HUD seulement" },
-		{ Path = "OpenButton", Class = BUTTON, Optional = true, Note = "ouvert par UI_HUD.RightRail.DisplayedButton" },
 		{ Path = "DisplayCount.CountLabel", Class = "TextLabel", Optional = true, Note = "le compte « 3/8 » n'est pas écrit" },
 		{ Path = "List.Template", Template = true },
 		{ Path = "List.Template.Icon", Class = "ImageLabel" },
@@ -1116,6 +1116,13 @@ table.insert(UI.Screens, {
 		{ Path = "List.Template.RarityChip.RarityLabel", Class = "TextLabel", Optional = true, Note = "la rareté n'est pas écrite" },
 		{ Path = "List.Template.RemoveButton", Class = BUTTON, Optional = true, Note = "un objet ne se retire pas depuis le panneau" },
 		{ Path = "DisplayBestButton", Class = BUTTON },
+		{ Path = "Reserve", Class = "GuiObject", Optional = true, Note = "la réserve n'est pas montrée" },
+		{ Path = "Reserve.ReserveCount.ReserveCountLabel", Class = "TextLabel", Optional = true, Note = "le nombre d'objets en réserve n'est pas écrit" },
+		{ Path = "Reserve.ReserveList.Template", Template = true, Optional = true, Note = "la réserve reste vide" },
+		{ Path = "Reserve.ReserveList.Template.Icon", Class = "ImageLabel", Optional = true, Note = "pas d'icône dans la réserve" },
+		{ Path = "Reserve.ReserveList.Template.ItemName", Class = "TextLabel", Optional = true, Note = "pas de nom dans la réserve" },
+		{ Path = "Reserve.ReserveList.Template.Income", Class = "TextLabel", Optional = true, Note = "pas de revenu/s dans la réserve" },
+		{ Path = "Reserve.ReserveList.Template.DisplayButton", Class = BUTTON, Optional = true, Note = "un objet de la réserve ne se remet pas sur un présentoir" },
 	} :: { Element },
 })
 

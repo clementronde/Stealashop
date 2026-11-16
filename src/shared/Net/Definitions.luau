@@ -751,6 +751,17 @@ local List: { RemoteDef } = {
 		Args = { id("revealId") },
 		RatePerSecond = 2, -- V0 proposé, absent du doc
 	},
+	{
+		-- Vague 63 (a206, L-192 Q3, L-202 point 4), absent du tableau 9.4 : DisplayButton d'un objet de la réserve
+		-- (UI_Displayed.Panel.Reserve) : itemUid va sur le présentoir libre et débloqué le plus proche. DisplayService
+		-- vérifie tout (objet de SA réserve, ni exposé, ni au coffre-fort, ni sous antivol ; sa parcelle ; un présentoir
+		-- libre et débloqué, sinon Notify « No free display » et rien ne bouge).
+		Name = "PlaceFromReserve",
+		Direction = "ClientToServer",
+		Reliable = true,
+		Args = { id("itemUid") },
+		RatePerSecond = 4, -- V0 proposé, absent du doc (comme PlaceItemAuto)
+	},
 }
 
 return {
