@@ -256,10 +256,11 @@
 --     caisse, vague 32 ; Shared/ShelfOpenState) et les attributs ShelfOpen* de l'ouverture.
 --
 -- API (serveur) :
---   StoreHeistService.RefillAll() -> number
+--   StoreHeistService.RefillAll(spread: boolean?) -> number
 --       Nouveau tirage de tous les magasins (voir plus haut). Renvoie le nombre de colis posés
 --       tout de suite (les magasins ouverts sont remplis à leur fermeture, pas comptés). Pour
---       NightCycleService (la nuit, 5.12).
+--       NightCycleService (la nuit, 5.12), avec `spread` : un magasin par image (a229), renvoie le
+--       nombre de magasins.
 --   StoreHeistService.IsOpen(store) -> boolean
 --       store = le Model du magasin ou son StoreId. true pendant le chrono (Balance.Heist.Duration).
 --   Vague 50 (a158, Cantin 2026-11-14 : le colis porté fermé n'existe plus) : OnBoxGrabbed et ReturnBox
@@ -3582,20 +3583,61 @@ function StoreHeistService.RemoveEventShelf(id: string): boolean
 	return true
 end
 
-function StoreHeistService.RefillAll(): number
-	local count, deferred = 0, 0
-	for _, store in stores do
-		if store.Open or storeBusy(store) then
-			-- nouveau tirage à la fermeture, ou (L-112) à la fin des ouvertures et des réservations en cours
-			store.RefillPending = true
-			deferred += 1
-		else
-			count += fillStore(store)
-		end
+-- Vague 69 (a229) : change à chaque RefillAll, pour arrêter un remplissage étalé encore en cours.
+local refillToken = 0
+
+-- Nouveau tirage d'un magasin, ou report : renvoie les colis posés et 1 s'il est reporté.
+local function refillStore(store: Store): (number, number)
+	if store.Open or storeBusy(store) then
+		-- nouveau tirage à la fermeture, ou (L-112) à la fin des ouvertures et des réservations en cours
+		store.RefillPending = true
+		return 0, 1
 	end
+	return fillStore(store), 0
+end
+
+local function logRefill(count: number, deferred: number)
 	local later = if deferred > 0 then `, {deferred} magasin(s) ouvert(s) rempli(s) à leur fermeture` else ""
 	log(`rayons remplis (nouveau tirage) : {count} colis répartis au hasard{later}`)
-	return count
+end
+
+-- `spread` (vague 69, a229 : la tombée de la nuit gelait le serveur) : un magasin par image, le premier
+-- tout de suite ; renvoie alors le nombre de magasins à remplir.
+function StoreHeistService.RefillAll(spread: boolean?): number
+	refillToken += 1
+	local token = refillToken
+	if not spread then
+		local count, deferred = 0, 0
+		for _, store in stores do
+			local placed, later = refillStore(store)
+			count += placed
+			deferred += later
+		end
+		logRefill(count, deferred)
+		return count
+	end
+	local list: { Store } = {}
+	for _, store in stores do
+		table.insert(list, store)
+	end
+	task.spawn(function()
+		local count, deferred = 0, 0
+		for index, store in list do
+			if index > 1 then
+				task.wait()
+			end
+			if refillToken ~= token then
+				return -- un autre remplissage a pris la suite
+			end
+			if stores[store.Model] == store then
+				local placed, later = refillStore(store)
+				count += placed
+				deferred += later
+			end
+		end
+		logRefill(count, deferred)
+	end)
+	return #list
 end
 
 function StoreHeistService.IsOpen(store: Instance | string): boolean

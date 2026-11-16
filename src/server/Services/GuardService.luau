@@ -243,7 +243,7 @@
 --       remplace en gardant celui d'avant. true = les vigiles de nuit ne repèrent pas ce joueur (scan) ; un
 --       vigile de nuit qui le poursuit déjà continue. Une erreur compte pour false.
 --   GuardService.StartNightPatrol(hooks) -> number
---       Lance les vigiles de nuit (voir plus haut), sans attendre ; renvoie le nombre prévu. hooks
+--       Lance les vigiles de nuit (voir plus haut), sans attendre, un par image (a229) ; renvoie le nombre prévu. hooks
 --       (NightCycleService) : InCorridor(position) -> boolean, Ignores(player) -> boolean,
 --       SendHome(player) -> boolean (peut attendre). Déjà lancés : les anciens partent d'abord.
 --   GuardService.StopNightPatrol() -> number    retire les vigiles de nuit, renvoie leur nombre
@@ -3893,9 +3893,13 @@ function GuardService.StartNightPatrol(hooks: NightHooks): number
 			end
 		end
 	end
-	-- Hors de l'appel : le rig de remplacement peut demander d'attendre.
+	-- Hors de l'appel : le rig de remplacement peut demander d'attendre. Vague 69 (a229) : un vigile par
+	-- image, le premier tout de suite (les 12 d'un coup, avec le remplissage des rayons, gelaient le serveur).
 	task.spawn(function()
-		for _, plan in plans do
+		for index, plan in plans do
+			if index > 1 then
+				task.wait()
+			end
 			if nightToken ~= token then
 				return -- l'aube est passée entre-temps
 			end
