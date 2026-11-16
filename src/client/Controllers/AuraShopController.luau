@@ -26,8 +26,9 @@
 --   - tant que UI_AuraShop manque (UI-003 pas encore livré), l'invite reste mais n'ouvre rien :
 --     une seule ligne dans la sortie, en Studio. Un écran recréé (ResetOnSpawn) est rebranché, fermé ;
 --   - ouverture et fermeture animées (DEV-052) par UI/Motion : Motion.Open et Motion.Close
---     allument et éteignent l'écran ; les lignes sont retirées une fois l'écran éteint (pas pendant
---     sa sortie), et une réouverture pendant la fermeture la rattrape.
+--     allument et éteignent l'écran ; une réouverture pendant la fermeture la rattrape. Vague 65 (a217) : les
+--     lignes restent écran fermé et l'ouverture ne fait que les mettre à jour (possédé, équipé) ; elles sont
+--     refaites seulement quand la liste change (autre onglet, écran recréé).
 -- Les éléments sont cherchés par leur nom parmi les descendants de l'écran (Contract/Find). Seuls
 -- sont touchés : Enabled de l'écran, les textes, la visibilité, le nom et l'ordre des lignes
 -- clonées, l'image de Icon (2.2, « Libre pour Ironix ») ; jamais un style (l'effet d'échelle de
@@ -74,6 +75,7 @@ type Shop = {
 	template: GuiObject?,
 	connections: { RBXScriptConnection },
 	rows: { Row },
+	rowsTab: Kind?, -- onglet des lignes en place (vague 65, a217) ; nil = aucune
 }
 
 local SCREEN = "UI_AuraShop"
@@ -146,15 +148,27 @@ end
 
 -- Texture du premier Decal de Clément nommé `name` (ReplicatedStorage/Assets, sous-dossiers
 -- compris), ou nil. Un Decal, pas le premier objet de ce nom : les modèles d'effet portent les mêmes
--- noms (L-042).
+-- noms (L-042). Vague 65 (a217, comme a216 pour la boutique Robux) : tout Assets est lu en une seule passe à
+-- la première ligne (avant : une passe de tout Assets par appel, 2 à 3 par ligne, à chaque ouverture), puis
+-- gardé jusqu'au prochain branchement de l'écran (bind) ou au prochain Decal ajouté dans Assets.
+local assetTextures: { [string]: string }? = nil
 local function textureOf(name: string): string?
-	local assets = ReplicatedStorage:FindFirstChild(ASSETS_FOLDER)
-	for _, found in if assets then Find.all(assets, name) else {} do
-		if found:IsA("Decal") and (found :: Decal).Texture ~= "" then
-			return (found :: Decal).Texture
+	local textures = assetTextures
+	if textures == nil then
+		local assets = ReplicatedStorage:FindFirstChild(ASSETS_FOLDER)
+		if assets == nil then
+			return nil
 		end
+		local read: { [string]: string } = {}
+		for _, found in assets:GetDescendants() do
+			if found:IsA("Decal") and read[found.Name] == nil and (found :: Decal).Texture ~= "" then
+				read[found.Name] = (found :: Decal).Texture -- le premier, comme Find.all avant
+			end
+		end
+		assetTextures = read
+		textures = read
 	end
-	return nil
+	return (textures :: { [string]: string })[name]
 end
 
 -- L-171 (a181) : nom de l'icône de boutique d'un cosmétique, depuis sa texture : FX_Trail_Vent → ICON_Trail_Vent
@@ -228,6 +242,7 @@ local function clearRows(current: Shop)
 		row.frame:Destroy()
 	end
 	table.clear(current.rows)
+	current.rowsTab = nil
 end
 
 -- Boutons et texte d'équipement de chaque ligne, d'après les attributs du Player.
@@ -307,6 +322,7 @@ local function buildRows()
 			rotation = if def.Kind == "Trail" and type(trailRotation) == "number" then trailRotation else nil,
 		})
 	end
+	current.rowsTab = tab
 	refreshRows()
 end
 
@@ -314,10 +330,9 @@ local function closeShop()
 	openAt = nil
 	local current = shop
 	if current then
-		-- Lignes retirées une fois l'écran éteint ; une réouverture d'ici là les reconstruit.
-		Motion.Close(current.gui, function()
-			clearRows(current)
-		end)
+		-- Vague 65 (a217) : lignes gardées écran fermé (avant : retirées puis toutes reclonées à chaque
+		-- ouverture) ; l'ouverture les met à jour.
+		Motion.Close(current.gui)
 	end
 end
 
@@ -337,6 +352,7 @@ local function bind(gui: ScreenGui)
 		clearRows(old)
 	end
 	openAt = nil
+	assetTextures = nil -- vague 65 (a217) : textures relues pour ce nouvel écran
 	gui.Enabled = false -- fermé jusqu'à l'invite
 	Motion.SetCloser(gui, closeShop) -- un autre écran du groupe ScreenGroup s'ouvre (L-089)
 
@@ -358,6 +374,15 @@ local function bind(gui: ScreenGui)
 		if connection then
 			table.insert(current.connections, connection)
 		end
+	end
+	-- Vague 65 (a217) : un Decal livré en cours de partie fait relire Assets à la prochaine ligne faite.
+	local assets = ReplicatedStorage:FindFirstChild(ASSETS_FOLDER)
+	if assets then
+		keep(assets.DescendantAdded:Connect(function(descendant: Instance)
+			if descendant:IsA("Decal") then
+				assetTextures = nil
+			end
+		end))
 	end
 	keep(onClick(Find.path(gui, "CloseButton"), closeShop))
 	keep(onClick(Find.path(gui, "Tabs.AurasTab"), function()
@@ -390,7 +415,13 @@ local function openShop(counter: BasePart)
 		return
 	end
 	openAt = counter
-	buildRows()
+	-- Vague 65 (a217) : lignes de l'onglet déjà en place = simple mise à jour ; sinon (première ouverture, autre
+	-- onglet, écran recréé) elles sont faites.
+	if current.rowsTab == tab and #current.rows > 0 then
+		refreshRows()
+	else
+		buildRows()
+	end
 	Motion.Open(current.gui)
 end
 
