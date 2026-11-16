@@ -38,6 +38,8 @@
 --       BuyButton  ouvre la fenêtre d'achat de Roblox (PromptGamePassPurchase, PromptProductPurchase) ;
 --                  Id à 0 : pas d'achat, « Soon » à la place du prix (vitrine, plus haut) et une ligne
 --                  dans la sortie en Studio. Caché pour Ouvrir maintenant sans colis à ouvrir ;
+--                  vague 66 (a218, L-210) : offre pas en vente (Id à 0, effet pas codé, aucun palier
+--                  d'Ouvrir maintenant créé) : Price dit « Soon » en permanence, bouton visible ;
 --       Owned      gamepass possédé (attribut Pass<Clé> du Player, posé par MonetizationService) :
 --                  Owned visible et BuyButton caché (la coche verte et le bouton gris de la maquette).
 --     Les cartes suivent les attributs du Player (Pass…, StarterPackEndsAt, OpenNowReadyAt, Income) et
@@ -426,6 +428,26 @@ local function notReady(offer: Offer): boolean
 	return offer.crate ~= nil and not Monetization.Crate.Ready
 end
 
+-- Vague 66 (a218, L-210 point 1) : offre pas encore en vente : effet pas codé, produit pas créé sur le Creator
+-- Hub (Id à 0), ou Ouvrir maintenant dont aucun palier n'est créé. Sa carte montre « Soon » à la place du prix, en
+-- permanence, bouton visible (au clic, rien), pour qu'on ne la croie pas en panne.
+local function notForSale(offer: Offer, id: number?): boolean
+	if id == 0 or notReady(offer) then
+		return true
+	end
+	local product = offer.product
+	local tiers = if product then product.Tiers else nil
+	if tiers == nil then
+		return false
+	end
+	for _, tier in tiers do
+		if tier.Id ~= 0 then
+			return false
+		end
+	end
+	return true
+end
+
 local function offersOf(current: Tab): { Offer }
 	local list: { Offer } = {}
 	for _, offer in offers do
@@ -684,7 +706,8 @@ local function refreshCard(card: Card)
 		setText(card.frame, "Effect", effectOf(offer)) -- v2 (L-204) : Effect gardé caché, jamais écrit
 	end
 	local soonUntil = card.soonUntil
-	if soonUntil and os.clock() < soonUntil then
+	local unsold = notForSale(offer, id) -- vague 66 (a218) : « Soon » en permanence
+	if unsold or (soonUntil and os.clock() < soonUntil) then
 		setText(card.frame, "Price", SOON_TEXT)
 	else
 		card.soonUntil = nil
@@ -693,7 +716,7 @@ local function refreshCard(card: Card)
 	if card.buy ~= card.frame then
 		local owned = owns(offer)
 		setVisible(card.owned, owned)
-		setVisible(card.buy, not owned and id ~= nil)
+		setVisible(card.buy, not owned and (id ~= nil or unsold))
 	end
 	if v2 then
 		refreshExtras(card)

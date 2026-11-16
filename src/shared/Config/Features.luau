@@ -38,7 +38,9 @@ local Features = {
 	-- Vague 63 (a210, L-205) : les 8 auras de Clément (Shine à Chained) à la place des 6 anciennes, proposition à
 	-- valider par Clément (Config/Cosmetics.NewAuras) ; true = boutique des 8 et migration des anciennes au chargement
 	-- du profil (Cosmetics.Migration, CosmeticService) ; false = la boutique d'aujourd'hui, rien ne change.
-	NewAuras = false,
+	-- Vague 66 (a218, L-210 point 8) : true, prix validés par Clément (L-210 : « OK à tout ») ; le simulateur v2
+	-- tourne avec les 8 auras (tools/ironix/equilibrage, RAPPORT=v2).
+	NewAuras = true,
 }
 
 export type Features = typeof(Features)

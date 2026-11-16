@@ -197,7 +197,7 @@ for index, zone in Zones do
 	local new = eco.Zones[index]
 	local names = {}
 	for _, id in V2.Zones[index].Kit do
-		table.insert(names, (Tools.ById[id] or Cosmetics.ById[id]).DisplayName)
+		table.insert(names, (Tools.ById[id] or Cosmetics.ById[Cosmetics.Current(id)]).DisplayName) -- a218 : nom de l'aura à jour (NewAuras)
 	end
 	local kit = table.concat(names, " × ")
 	ligne({
@@ -301,7 +301,7 @@ for level = 1, V2.Treadmill.MaxLevel do
 	local variant = Upgrades.TreadmillVariants[math.min(#Upgrades.TreadmillVariants, level // Upgrades.TreadmillTierEvery + 1)]
 	ligne({
 		tostring(level),
-		`{Training.Treadmill.GainPerSecond * Formulas.MachineMultiplier("Treadmill", n)} → {nombre(eco.MachineGain("Treadmill", n))}`,
+		`{nombre(Formulas.TreadmillGain(n))} → {nombre(eco.MachineGain("Treadmill", n))}`,
 		if n > 0 then `${nombre(priceOld)} → ${nombre(priceNew)}` else "—",
 		if n > 0 then `${nombre(cumulOld)} → ${nombre(cumulNew)}` else "—",
 		variant,
@@ -331,28 +331,11 @@ print(`Potion de force (Config/Potions) : ×{Potions.ById.Strength.Multiplier} �
 
 ---------------------------------------------------------------------------------------------- 6. portes
 
-titre("6. Portes des boutiques de joueurs (Config/PvP, Formulas.PlayerWindowHP)")
-print(`Base = {V2.PlayerWindowHPPerDamage} × Strength du panneau de la zone du même rang que le niveau de la boutique (règle inchangée). Arbre inchangé : Glass jusqu'à ×{eco.Glass[#eco.Glass]}, Walls jusqu'à ×{eco.Walls[#eco.Walls]}, réparation de {regen * 100} à {eco.Regen[#eco.Regen] * 100} %/s. Pas de chrono sur la porte d'un joueur. Voleur à {V2.MaxHitsPerSecond} coups/s.`)
-print("")
-local function porte(level, treeFull, damage, hits)
-	local hp = eco.DoorHP(level) * (if treeFull then eco.Glass[#eco.Glass] * eco.Walls[#eco.Walls] else 1)
-	return Modele.BreakTime(hp, damage, hits, if treeFull then eco.Regen[#eco.Regen] else regen)
-end
-entete({ "Niveau de boutique", "PV de base (avant → après)", "Arbre complet (×24)", "Sans arbre : voleur du même rang", "Sans arbre : voleur d'une zone au-dessus", "Arbre complet : même rang", "Arbre complet : une zone au-dessus", "Arbre complet : deux zones au-dessus", "Arbre complet : meilleur kit" })
-for level = 1, 5 do
-	local own, above = eco.Zones[level].AdvisedDamage, eco.Zones[level + 1].AdvisedDamage
-	ligne({
-		tostring(level),
-		`{nombre(Formulas.PlayerWindowHP(level))} → {nombre(eco.DoorHP(level))}`,
-		nombre(eco.DoorHP(level) * eco.Glass[#eco.Glass] * eco.Walls[#eco.Walls]),
-		duree(porte(level, false, own, cap)),
-		duree(porte(level, false, above, cap)),
-		duree(porte(level, true, own, cap)),
-		duree(porte(level, true, above, cap)),
-		if level + 2 <= #eco.Zones then duree(porte(level, true, eco.Zones[level + 2].AdvisedDamage, cap)) else "—",
-		duree(porte(level, true, best, cap)),
-	})
-end
+-- a218 (vague 66) : depuis a159 (vague 50, L-163), la porte d'un joueur se casse en coups, les mêmes pour tous
+-- (Config/PvP.DoorHits, SkillTree GlassThickness) : l'ancien tableau en PV (Walls multiplicateur) plantait.
+titre("6. Portes des boutiques de joueurs (Config/PvP.DoorHits, SkillTree.GlassThickness)")
+local glassHits = Config.SkillTree.ById.GlassThickness.Effects
+print(`En coups, quelle que soit la force : {Config.PvP.DoorHits} coups de base, {Config.PvP.DoorHits + glassHits[#glassHits]} au plus (arbre complet), soit {duree((Config.PvP.DoorHits + glassHits[#glassHits]) / cap)} seul à {cap} coups/s, hors réparation.`)
 
 ---------------------------------------------------------------------------------------------- 7. parties
 
