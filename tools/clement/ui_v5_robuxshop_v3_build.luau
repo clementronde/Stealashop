@@ -442,11 +442,37 @@ end
 
 local buyRow = frame(crate, "BuyRow", cb, 360, 262, 746, 84)
 local rb = { w = 746, h = 84 }
-for i, count in { "1 CRATE", "3 CRATES", "10 CRATES" } do
+-- Prix d'aperçu repris de Steal an Egg (œuf Robux : 1 = 99, 3 = 249, 10 = 799 R$, décision de Clément du 2026-11-16) ;
+-- les lots montrent le prix sans remise barré (99 × le nombre) et la remise (Discount.Label). Le code écrit les vrais prix.
+local CRATE_OFFERS = {
+	{ count = "1 CRATE", price = "99" },
+	{ count = "3 CRATES", price = "249", old = "297", discount = "-16%" },
+	{ count = "10 CRATES", price = "799", old = "990", discount = "-19%" },
+}
+for i, offer in CRATE_OFFERS do
 	local base = if i == 3 then Color3.fromHex("ffb21f") else Color3.fromHex("4fe03a")
 	local b = button(buyRow, "BuyButton" .. i, rb, (i - 1) * 255, 0, 236, 84, base, true, 4)
-	priceContent(b, 236, 84, 6, 44, 29, 60, "?")
-	text(b, "Count", count, { w = 236, h = 84 }, 20, 52, 196, 22, WHITE, XBOLD)
+	priceContent(b, 236, 84, 6, 44, 29, 72, offer.price)
+	text(b, "Count", offer.count, { w = 236, h = 84 }, 20, 52, 196, 22, WHITE, XBOLD)
+	if offer.old then
+		local content = b:FindFirstChild("Content") :: Frame
+		local old = text(content, "OldPrice", offer.old, { w = 236, h = 44 }, 0, 0, 48, 27, Color3.fromHex("e6ebf2"), HEAVY, Enum.TextXAlignment.Left)
+		old.LayoutOrder = 3
+		-- barre rouge en travers (le <s> du texte riche était trop fin pour se lire)
+		local strike = frame(old, "Strike", { w = 48, h = 27 }, 2, 12, 46, 4)
+		strike.BackgroundTransparency = 0
+		strike.BackgroundColor3 = Color3.fromHex("ff2d3a")
+		strike.Rotation = -12
+		local ss = Instance.new("UIStroke")
+		ss.Color = BLACK
+		ss.Thickness = 1
+		ss.Parent = strike
+		-- remise, droite, au coin haut droit du bouton
+		local tag = frame(b, "Discount", { w = 236, h = 84 }, 236 - 82 + 5, -17, 82, 34)
+		buttonTones(tag, Color3.fromHex("e8222d"))
+		border(tag, BLACK, 3, 34)
+		text(tag, "Label", offer.discount, { w = 82, h = 34 }, 6, 4, 70, 26, WHITE)
+	end
 end
 
 -- 2. Offre vedette (Featured, Starter Pack, 1130 × 150) --------------------------------------------------------
