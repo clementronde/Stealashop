@@ -350,6 +350,10 @@ local function buildItem(payload: Payload): Model
 	end
 	quiet(object)
 	object.Name = "RevealItem"
+	-- a225 : la mutation habille la copie comme les autres objets (MutationFxController, tag RevealItem),
+	-- suivie dès son entrée dans le jeu (onReveal) et retirée avec elle (finish).
+	object:SetAttribute("MutationEffect", payload.Mutation)
+	CollectionService:AddTag(object, "RevealItem")
 	return object
 end
 
