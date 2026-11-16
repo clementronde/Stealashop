@@ -21,6 +21,9 @@ local MutationFx = {
 	-- rayon grandit de 0,2 à 1 à la révélation, ShelfOpenController) : il est alors à sa taille finale.
 	-- Tant que ses pièces arrivent ou changent d'échelle, il attend.
 	SettleChecks = 1, -- V0 : contrôles (DistanceCheckInterval) d'échelle stable avant l'habillage
+	-- a225 : la copie de la cinématique d'ouverture (tag RevealItem) est habillée tout de suite, puis rhabillée
+	-- à sa nouvelle taille dès que son échelle a bougé de plus de cette part depuis le dernier habillage.
+	RevealRescale = 0.15, -- V0 : part de l'échelle (0,15 = 15 %)
 	-- Texte (MutationStyles) : « Shine » balaie le dégradé en ce temps, toutes les MotionPeriod s (Clément).
 	ShineTime = 0.6, -- L-127 (Clément)
 	-- « Glitch » du texte : saut de l'Offset X de ±GlitchTextOffset pendant GlitchTextTime s, toutes les

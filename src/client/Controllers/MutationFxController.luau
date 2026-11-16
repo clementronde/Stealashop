@@ -70,7 +70,9 @@ local Mutations = require(Config:WaitForChild("Mutations"))
 -- Tags posés par le serveur (mêmes noms là-bas : DisplayService, UnboxService, ShelfOpenState.ItemTag,
 -- CarryService).
 -- a178 : RarestItem = copie locale de l'objet le plus rare sur le socle (VfxController, Config/Vfx.Rarest.CopyTag).
-local TRACKED_TAGS = { "DisplayItem", "FloorItem", "ShelfItem", "CarriedItem", "RarestItem" }
+-- a225 : RevealItem = copie locale de la cinématique d'ouverture (RevealController), habillée pendant qu'elle grossit.
+local REVEAL_TAG = "RevealItem"
+local TRACKED_TAGS = { "DisplayItem", "FloorItem", "ShelfItem", "CarriedItem", "RarestItem", REVEAL_TAG }
 local SIZE_ATTRIBUTE = "MutationSize"
 local EFFECT_ATTRIBUTE = "MutationEffect"
 -- Noms de Clément (L-127).
@@ -1421,17 +1423,22 @@ local function checkEntries()
 			continue
 		end
 		local scale = model:GetScale()
+		local growing = CollectionService:HasTag(model, REVEAL_TAG) -- a225 : sans attendre une échelle stable
 		if fx then
-			if math.abs(scale - (entry.lastScale or scale)) > 1e-4 then
-				-- l'objet a changé d'échelle : rhabillé quand il sera de nouveau stable
-				dropFx(entry)
-				entry.stable = 0
-				entry.lastScale = scale
+			local last = entry.lastScale or scale
+			if math.abs(scale - last) <= (if growing then MutationFx.RevealRescale * last else 1e-4) then
+				setShown(fx, entry.near)
+				updateOnScreen(fx, camera)
 				continue
 			end
-			setShown(fx, entry.near)
-			updateOnScreen(fx, camera)
-			continue
+			-- l'objet a changé d'échelle : rhabillé quand il sera de nouveau stable (a225 : la copie de la
+			-- cinématique, tout de suite, à sa nouvelle taille)
+			dropFx(entry)
+			entry.stable = 0
+			entry.lastScale = scale
+			if not growing then
+				continue
+			end
 		end
 		if entry.lastScale ~= nil and math.abs(scale - entry.lastScale) <= 1e-4 then
 			entry.stable += 1
@@ -1439,7 +1446,7 @@ local function checkEntries()
 			entry.stable = 0
 		end
 		entry.lastScale = scale
-		if entry.stable >= MutationFx.SettleChecks then
+		if growing or entry.stable >= MutationFx.SettleChecks then
 			local built = buildFx(model, effect)
 			if built == nil then
 				entry.missing = effect
