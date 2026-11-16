@@ -10,7 +10,8 @@
 --   - ClaimBubble(id) : accepté seulement si la bulle est à ce joueur, pas expirée, pas déjà prise, s'il est toujours
 --     sur le tapis et si son dernier ClaimBubble date d'au moins Bubbles.ClaimMinGap s (débit, en plus de Net). Gain =
 --     TrainingService.GainPerSecond × N, versé par StatsService.AddSpeed (le chemin du tapis : stats et profil), une
---     seule fois. Le rythme du tapis ne change pas. Le client reçoit BubbleGone(id, "Claimed", gain) ;
+--     seule fois. Le rythme du tapis ne change pas. Le client reçoit BubbleGone(id, "Claimed", gain), juste avant la
+--     hausse de Speed (vague 65, a215 : il l'affiche alors « +X Speed », sans « /s ») ;
 --   - bulle pas prise à temps : BubbleGone(id, "Expired") ; joueur descendu du tapis (ou parti) : toutes ses bulles
 --     sont retirées (BubbleGone(id, "Cleared")), et le compte repart de zéro à la séance suivante.
 --   Bubbles.Enabled = false : aucune bulle (celles en cours sont retirées).
@@ -152,10 +153,15 @@ function BubbleService.Claim(player: Player, id: string): (boolean, string | num
 		return false, "Expired"
 	end
 	local gain = TrainingService.GainPerSecond(player) * bubble.multiplier
-	if not (gain == gain and gain > 0 and gain < math.huge) or StatsService.AddSpeed(player, gain) == nil then
-		gain = 0 -- profil plus chargé ou gain invalide : rien de versé, la bulle est quand même prise
+	if not (gain == gain and gain > 0 and gain < math.huge) then
+		gain = 0 -- gain invalide : rien de versé, la bulle est quand même prise
 	end
+	-- Vague 65 (a215) : annoncé AVANT la hausse de Speed (remotes et attributs arrivent dans l'ordre) : le client sait
+	-- que cette hausse vient d'une bulle et l'affiche « +X Speed », sans « /s » (GainController.NoteBubble).
 	Net.Server.BubbleGone:Fire(player, bubble.id, "Claimed", gain)
+	if gain > 0 and StatsService.AddSpeed(player, gain) == nil then
+		gain = 0 -- profil plus chargé : rien de versé (le client oublie l'annonce après Hud.BubbleGain.Window)
+	end
 	return true, gain
 end
 

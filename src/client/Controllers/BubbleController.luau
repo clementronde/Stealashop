@@ -15,6 +15,7 @@
 --     réponse après ClaimTimeout s, elle redevient cliquable ;
 --   - BubbleGone(id, "Claimed", gain) : la bulle s'écrase (Squash) et le son Bubble_Pop part (absent : muet) ; le gain n'a
 --     pas de texte ici (fusion58) : la Vitesse monte et GainController le fait voler jusqu'au compteur, une seule fois ;
+--     vague 65 (a215) : le gain lui est d'abord passé (GainController.NoteBubble) pour qu'il dise « +X Speed », sans « /s » ;
 --     BubbleGone(id, "Expired" ou "Cleared") : elle gonfle un peu puis rétrécit (Expire, Shrink), sans son ;
 --   - grosses valeurs (N ≥ ShineFrom) : le premier UIGradient du bouton tourne (ShineDegreesPerSecond) ;
 --   - « animations réduites » (Settings.VfxReduced ou ReducedMotionEnabled de Roblox) : aucun tween ni rotation, la
@@ -72,6 +73,7 @@ local BubbleController = {}
 local localPlayer = Players.LocalPlayer
 local views: { [string]: View } = {}
 local net: any = nil
+local gains: { NoteBubble: (gain: number) -> () }? = nil -- GainController (vague 65, a215), s'il est là
 local spinner: RBXScriptConnection? = nil
 local warnedTemplate = false
 
@@ -427,7 +429,13 @@ local function onSpawn(id: string, multiplier: number, lifetime: number)
 	end)
 end
 
-local function onGone(id: string, reason: string, _gain: number?)
+local function onGone(id: string, reason: string, gain: number?)
+	-- Vague 65 (a215) : le serveur annonce le gain juste avant la hausse de Speed ; GainController l'affiche alors
+	-- « +X Speed » (gain unique), et plus « +X Speed/s ».
+	local api = gains
+	if reason == "Claimed" and type(gain) == "number" and gain > 0 and api then
+		pcall(api.NoteBubble, gain)
+	end
 	local view = views[id]
 	if view == nil then
 		return
@@ -458,6 +466,13 @@ function BubbleController.Start()
 	end
 	-- Peut attendre que le serveur ait créé les remotes.
 	net = require(Shared:WaitForChild("Net"):WaitForChild("Net") :: ModuleScript) :: any
+	local gainModule = script.Parent:FindFirstChild("GainController")
+	if gainModule and gainModule:IsA("ModuleScript") then
+		local ok, api = pcall(require, gainModule)
+		if ok and type(api) == "table" and type((api :: any).NoteBubble) == "function" then
+			gains = api :: any
+		end
+	end
 	net.Client.BubbleSpawn:Connect(onSpawn)
 	net.Client.BubbleGone:Connect(onGone)
 	localPlayer.CharacterRemoving:Connect(clearAll)
