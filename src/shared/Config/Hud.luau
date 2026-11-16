@@ -1,7 +1,7 @@
 --!strict
 -- Nouveau HUD (vague 59, a190 ; liaison L-182 points 4, 7 et 8, L-183 `UI_HUD`) : réglages des animations du HUD
 -- qui ne sont pas des attributs d'écran de Clément (ceux-là, Appear, Hover et Press, sont lus par le module d'a189).
--- Lu par HudController (CashSpent), GainController (tapis) et HudMenuController (TopLeftRow, boutons en situation).
+-- Lu par HudController (CashSpent), GainController (tapis, TrainGainFly) et HudMenuController (TopLeftRow, boutons en situation).
 -- Les durées viennent des fiches de Clément (L-182 : « environ 1,9 s, Quint Out », « 5 morceaux par seconde »,
 -- « environ 0,75 s », « × 1,1 à × 1,4 toutes les 0,2 s ») ; le reste est marqué « V0 proposé, absent du doc ».
 -- Unités : secondes ; échelles en part de la taille posée par Clément (1 = sa taille).
@@ -43,6 +43,39 @@ local Hud = {
 		Style = Enum.EasingStyle.Quad, -- V0 proposé, absent du doc
 		Direction = Enum.EasingDirection.Out,
 		Row = "SpeedRow", -- cadre de Clément autour du nombre Speed (comme CashRow), facultatif
+	},
+	-- Vague 64 (a213, Cantin : « les gains de vitesse se déplacent vers lui pour dire que ça va vers là ») : chaque
+	-- « +X » du tapis (un par seconde, ChunksPerSecond plus haut) jaillit du joueur, reste un instant, puis le compteur
+	-- Speed du HUD l'aspire ; le nombre Speed ne monte qu'à son arrivée (HudController.HoldSpeed), avec la pulsation
+	-- SpeedPulse. Mesures de la vidéo de référence (docs/claude/notes/2026-11-16_video-effets-ui.md, section 2 : « +8 »
+	-- du banc, trajet joueur → compteur) ; le reste est « V0 proposé, absent du doc ». Animations réduites (VISUAL
+	-- EFFECTS sur OFF ou ReducedMotionEnabled de Roblox), poursuite en cours, joueur hors de l'écran ou Enabled = false :
+	-- l'ancien « +X » qui monte sur place (BB_Gain, UiMotion.FloatGain) et le compteur qui pulse tout de suite.
+	TrainGainFly = {
+		Enabled = true,
+		-- Modèle facultatif de Clément dans UI_HUD (Amount, Icon, Multiplier facultatif ; ses attributs SpeedColor et
+		-- SpeedIcon passent avant ceux de BB_Gain). Absent : une copie de BB_Gain.Row dans un cadre fait par le code.
+		Template = "TrainGainFly.Template",
+		PopFrom = 0, -- fiche : « toute petite » sur le joueur
+		PopTime = 0.08, -- fiche : taille finale en ≈ 80 ms
+		PopStyle = Enum.EasingStyle.Back, -- fiche : « Back Out ou Quint Out » (Out)
+		JetTime = 0.33, -- fiche : ≈ 350 px en ≈ 0,33 s, les deux tiers dans les 0,13 premières secondes
+		JetStyle = Enum.EasingStyle.Quint, -- Out
+		JetMin = 0.15, -- part de la largeur de l'écran (fiche : « 12 à 18 % », ≈ 350 px sur 1920) ; V0 dans cet écart
+		JetMax = 0.18,
+		JetAngle = 50, -- V0 proposé, absent du doc : degrés au plus de part et d'autre de la verticale (le gain monte)
+		Hold = 0.7, -- fiche : presque immobile ≈ 0,7 s
+		SuckTime = 0.15, -- fiche : aspiré en ≈ 0,15 s (Quad In)
+		SuckStyle = Enum.EasingStyle.Quad, -- In
+		EndScale = 0.3, -- fiche : rétrécit de 1 à ≈ 0,3
+		Edge = 0.06, -- V0 proposé, absent du doc : le gain reste à 6 % au moins des bords de l'écran
+		MaxInFlight = 6, -- fiche : « garder un plafond (par exemple 6 gains en vol) » ; au-delà : l'ancien « +X »
+		-- Repli sans modèle de Clément (V0 proposés, absents du doc) : hauteur en part de celle de l'écran (fiche : chiffre
+		-- à ≈ 3,5 %, pastille comprise ≈ 5 %), largeur = Aspect × hauteur (« +2 Speed/s »), au-dessus du HUD (ZIndex).
+		Height = 0.05,
+		Aspect = 3.5,
+		ZIndex = 10,
+		Name = "TrainGain", -- V0 : nom des copies en vol dans UI_HUD (détruites à l'arrivée ; pas « TrainGainFly », le dossier du modèle)
 	},
 	-- Vague 63 (a205, L-202 point 1, L-192 Q1) : plus de menu « More » (MenuButton, MenuPanel retirés par Clément).
 	-- Les petites icônes (RewardsButton, InviteButton, SettingsButton, RebirthButton) sont dans le cadre TopLeftRow,

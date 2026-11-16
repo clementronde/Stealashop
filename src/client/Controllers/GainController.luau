@@ -59,8 +59,21 @@
 -- seul vol par pose (première lecture de l'état : rien), plusieurs poses à la fois décalées de Stagger s, aucun
 -- pendant une poursuite (ChaseController.IsChased) ni rattrapé après.
 --
--- API (client) : aucune. Pour un test dans Studio (barre de commande côté client) :
---   GainController.GetActive() -> { Gains: number, Flyers: number, Pops: number, Bills: number, IncomeFlies: number }
+-- Vague 64 (a213, Cantin : « les gains de vitesse se déplacent vers lui ») : sur le tapis, le « +X Speed/s » de chaque
+-- seconde (un seul, a200) jaillit du joueur dans UI_HUD, reste un instant, puis le nombre Speed du HUD l'aspire
+-- (Config/Hud.TrainGainFly : 0,08 s, jet 0,33 s Quint Out, pause 0,7 s, aspiration 0,15 s Quad In jusqu'à × 0,3).
+-- Le nombre reste à la valeur d'avant (HudController.HoldSpeed, base = Formulas.ShownSpeed de la Vitesse d'avant) et
+-- monte à l'arrivée, avec la pulsation SpeedPulse. Copie de UI_HUD.TrainGainFly.Template de Clément (facultatif),
+-- sinon de BB_Gain.Row dans un cadre fait ici ; « ×2 » du trail comme au-dessus du joueur. Animations réduites,
+-- poursuite en cours, plafond MaxInFlight, joueur hors de l'écran ou Enabled = false : l'ancien « +X » sur place.
+-- Avec ChunksPerSecond > 1, chaque morceau vole de même.
+--
+-- API (client) :
+--   GainController.FlyGain(text, fromWorld, kind) -> boolean   vague 64 : un « +X » qui jaillit de `fromWorld` et vole
+--       jusqu'au compteur du HUD de `kind` ("Speed"), qui pulse à l'arrivée (sans retenir son nombre : l'appelant ne
+--       dit pas ce qu'il ajoute) ; false s'il n'a pas pu voler (animations réduites, poursuite, rien à l'écran…).
+-- Pour un test dans Studio (barre de commande côté client) :
+--   GainController.GetActive() -> { Gains: number, Flyers: number, Pops: number, Bills: number, IncomeFlies: number, TrainFlies: number }
 --   GainController.Superscript(text) -> string   « ×2 » en exposant Unicode (a178)
 
 local CollectionService = game:GetService("CollectionService")
@@ -76,9 +89,10 @@ local HeistFeel = require(Shared:WaitForChild("Config"):WaitForChild("HeistFeel"
 local Find = require(Shared:WaitForChild("Contract"):WaitForChild("Find"))
 local Format = require(Shared:WaitForChild("Format"))
 local Motion = require(script.Parent:WaitForChild("UI"):WaitForChild("Motion"))
+local Formulas = require(Shared:WaitForChild("Config"):WaitForChild("Formulas"))
 
 -- Ce que ce contrôleur utilise de HudController et de RewardsController.
-type HudApi = { HoldCash: (base: number) -> () -> () }
+type HudApi = { HoldCash: (base: number) -> () -> (), HoldSpeed: ((base: number) -> () -> ())? }
 type RewardsApi = { GetState: () -> { Open: boolean } }
 
 type Kind = {
@@ -147,6 +161,11 @@ local PIECE_RISE_INFO: TweenInfo? = if TREAD then TweenInfo.new(TREAD.Life, FLOA
 local PULSE_INFO: TweenInfo? = if SPEED_PULSE
 	then TweenInfo.new(SPEED_PULSE.Time, SPEED_PULSE.Style, SPEED_PULSE.Direction)
 	else nil
+-- Vague 64 (a213) : gains du tapis qui volent jusqu'au compteur Speed (Config/Hud.TrainGainFly ; facultatif : bancs
+-- plus anciens) ; réglage « animations réduites » (Config/Settings.VfxReduced).
+local TRAIN_FLY: any = if HudConfig then HudConfig.TrainGainFly else nil
+local settingsModule = Shared:WaitForChild("Config"):FindFirstChild("Settings")
+local SettingsConfig: any = if settingsModule and settingsModule:IsA("ModuleScript") then require(settingsModule) :: any else nil
 -- Vague 63 (a206) : « +$X/s » qui vole à chaque pose (Config/Displayed.IncomeFly ; facultatif : bancs plus anciens).
 local InventoryState = require(Shared:WaitForChild("InventoryState"))
 local displayedModule = Shared:WaitForChild("Config"):FindFirstChild("Displayed")
@@ -194,7 +213,7 @@ local classifyQueued = false
 local flyer: Flyer? = nil -- case qui attend encore au départ (un nouveau gain s'y ajoute)
 local counterPop: GuiObject? = nil
 -- Bills : gains ponctuels en vol (vague 59) ; IncomeFlies : « +$X/s » d'une pose en vol (vague 63)
-local active = { Gains = 0, Flyers = 0, Pops = 0, Bills = 0, IncomeFlies = 0 }
+local active = { Gains = 0, Flyers = 0, Pops = 0, Bills = 0, IncomeFlies = 0, TrainFlies = 0 }
 local chase: ChaseApi? = nil
 local placed: { [string]: boolean }? = nil -- vague 63 : uids exposés à la dernière lecture (nil : pas encore lu)
 local warned: { [string]: boolean } = {}
@@ -331,25 +350,13 @@ local function addExponent(amountLabel: TextLabel, head: string, tail: string, t
 	return label
 end
 
--- `info` et `text` (vague 59, morceaux du tapis) : une autre montée et un autre texte que FloatGain et kind.Text.
-local function floatGain(kind: Kind, amount: number, info: TweenInfo?, text: string?)
-	local root = rootPart()
-	local gui = playerGui()
-	local assets = ReplicatedStorage:FindFirstChild("Assets")
-	local folder = if assets then assets:FindFirstChild("UI") else nil
-	local template = if folder then folder:FindFirstChild(GAIN_TEMPLATE) else nil
-	if template == nil or not template:IsA("BillboardGui") then
-		warnOnce("template", `[Gains] ReplicatedStorage/Assets/UI/{GAIN_TEMPLATE} absent : pas de gain au-dessus du joueur`)
-		return
-	end
-	if root == nil or gui == nil then
-		return
-	end
-	local billboard = (template :: BillboardGui):Clone()
-	local row = typed(billboard, "Row", "GuiObject") :: GuiObject?
-	local amountLabel = typed(billboard, "Amount", "TextLabel") :: TextLabel?
-	local icon = typed(billboard, "Icon", "ImageLabel") :: ImageLabel?
-	local multiplierLabel = typed(billboard, "Multiplier", "TextLabel") :: TextLabel?
+-- Habille une copie (BB_Gain, sa Row, ou UI_HUD.TrainGainFly.Template de la vague 64) : texte, couleur, icône et « ×2 »
+-- du trail. `source` est le modèle qui porte les attributs <Sorte>Color et <Sorte>Icon de Clément.
+type Dressed = { amount: TextLabel?, icon: ImageLabel?, multiplier: TextLabel?, exponent: TextLabel? }
+local function dressGain(copy: Instance, source: Instance, kind: Kind, amount: number, text: string?): Dressed
+	local amountLabel = typed(copy, "Amount", "TextLabel") :: TextLabel?
+	local icon = typed(copy, "Icon", "ImageLabel") :: ImageLabel?
+	local multiplierLabel = typed(copy, "Multiplier", "TextLabel") :: TextLabel?
 	-- Vague 47 (a155) : multiplicateur du trail (Speed seulement), même format que la boutique (« ×2 »).
 	local trailText: string? = nil
 	if kind == SPEED then
@@ -364,12 +371,12 @@ local function floatGain(kind: Kind, amount: number, info: TweenInfo?, text: str
 	end
 	local exponentLabel: TextLabel? = nil -- a196 : le « ×2 » du code, sans Row.Multiplier
 	-- L-092 3e : un seul BB_Gain ; la copie dit sa sorte (GainKind) et Amount prend sa couleur.
-	billboard:SetAttribute(FLOAT.KindAttribute, kind.Name)
+	copy:SetAttribute(FLOAT.KindAttribute, kind.Name)
 	if amountLabel then
 		amountLabel.Text = text or kind.Text(amount)
 		-- Vague 24 : la couleur posée par Clément sur BB_Gain (attribut <Sorte>Color, Color3) passe
 		-- avant celle de Config/UiMotion.FloatGain.Colors.
-		local attributeColor = template:GetAttribute(`{kind.Name}Color`)
+		local attributeColor = source:GetAttribute(`{kind.Name}Color`)
 		local color: Color3? = if typeof(attributeColor) == "Color3"
 			then attributeColor
 			else (FLOAT.Colors :: { [string]: Color3 })[kind.Name]
@@ -399,13 +406,34 @@ local function floatGain(kind: Kind, amount: number, info: TweenInfo?, text: str
 	end
 	-- Vague 24 : l'icône posée par Clément sur BB_Gain (attribut <Sorte>Icon, rbxassetid) passe avant
 	-- celle de la ligne du HUD.
-	local attributeIcon = template:GetAttribute(`{kind.Name}Icon`)
+	local attributeIcon = source:GetAttribute(`{kind.Name}Icon`)
 	local image: string? = if type(attributeIcon) == "string" and attributeIcon ~= ""
 		then attributeIcon
 		else hudIcon(kind.HudLabel)
 	if icon and image then
 		icon.Image = image
 	end
+	return { amount = amountLabel, icon = icon, multiplier = multiplierLabel, exponent = exponentLabel }
+end
+
+-- `info` et `text` (vague 59, morceaux du tapis) : une autre montée et un autre texte que FloatGain et kind.Text.
+local function floatGain(kind: Kind, amount: number, info: TweenInfo?, text: string?)
+	local root = rootPart()
+	local gui = playerGui()
+	local assets = ReplicatedStorage:FindFirstChild("Assets")
+	local folder = if assets then assets:FindFirstChild("UI") else nil
+	local template = if folder then folder:FindFirstChild(GAIN_TEMPLATE) else nil
+	if template == nil or not template:IsA("BillboardGui") then
+		warnOnce("template", `[Gains] ReplicatedStorage/Assets/UI/{GAIN_TEMPLATE} absent : pas de gain au-dessus du joueur`)
+		return
+	end
+	if root == nil or gui == nil then
+		return
+	end
+	local billboard = (template :: BillboardGui):Clone()
+	local row = typed(billboard, "Row", "GuiObject") :: GuiObject?
+	local dressed = dressGain(billboard, template, kind, amount, text)
+	local amountLabel, icon, multiplierLabel, exponentLabel = dressed.amount, dressed.icon, dressed.multiplier, dressed.exponent
 	local base = billboard.StudsOffset
 	if base.Magnitude < 1e-3 then
 		base = Vector3.new(0, FLOAT.Height, 0)
@@ -815,14 +843,14 @@ local function displayModel(uid: string): Instance?
 	return nil
 end
 
--- Point du monde → pixels du repère de UI_HUD, ou nil s'il n'est pas à l'écran.
-local function toScreen(refs: HudRefs, point: Vector3): Vector2?
+-- Point du monde → pixels du repère de `screen`, ou nil s'il n'est pas à l'écran.
+local function projectTo(screen: ScreenGui, point: Vector3): Vector2?
 	local camera = Workspace.CurrentCamera
 	if camera == nil then
 		return nil
 	end
 	local screenPoint, onScreen
-	if refs.screen.IgnoreGuiInset then
+	if screen.IgnoreGuiInset then
 		screenPoint, onScreen = camera:WorldToViewportPoint(point)
 	else
 		screenPoint, onScreen = camera:WorldToScreenPoint(point)
@@ -830,8 +858,13 @@ local function toScreen(refs: HudRefs, point: Vector3): Vector2?
 	if not onScreen then
 		return nil
 	end
-	local origin = refs.screen.AbsolutePosition
+	local origin = screen.AbsolutePosition
 	return Vector2.new(screenPoint.X - origin.X, screenPoint.Y - origin.Y)
+end
+
+-- Point du monde → pixels du repère de UI_HUD, ou nil s'il n'est pas à l'écran.
+local function toScreen(refs: HudRefs, point: Vector3): Vector2?
+	return projectTo(refs.screen, point)
 end
 
 -- Le texte qui vole : copie de CashFly.GainPop, sinon de CashFly.CounterPop, sinon un texte vert simple.
@@ -1044,17 +1077,226 @@ local function pulseSpeed(rank: number, pieces: number)
 	Motion.Pop(target, pulse.Min + (pulse.Max - pulse.Min) * t, info)
 end
 
+------------------------------------------------------------------------------
+-- Gains du tapis qui volent jusqu'au compteur Speed (vague 64, a213 ; Config/Hud.TrainGainFly)
+------------------------------------------------------------------------------
+
+-- Animations réduites : VISUAL EFFECTS sur OFF (Settings.VfxReduced) ou « Réduire les mouvements » de Roblox.
+local function reducedMotion(): boolean
+	local settings = SettingsConfig
+	if settings and type(settings.VfxReduced) == "function" then
+		local ok, reduced = pcall(settings.VfxReduced, localPlayer)
+		if ok and reduced == true then
+			return true
+		end
+	end
+	local ok, value = pcall(function(): any
+		return (game:GetService("GuiService") :: any).ReducedMotionEnabled
+	end)
+	return ok and value == true
+end
+
+-- Un gain peut voler maintenant ; sinon (réglage coupé, animations réduites, poursuite, plafond atteint) : l'ancien
+-- « +X » qui monte sur place. Pendant une poursuite, rien ne traverse l'écran (lecture du danger d'abord).
+local function canFly(): boolean
+	local spec = TRAIN_FLY
+	return spec ~= nil
+		and spec.Enabled == true
+		and active.TrainFlies < spec.MaxInFlight
+		and not reducedMotion()
+		and not isChased()
+end
+
+-- La copie qui vole : le modèle facultatif de Clément (UI_HUD.TrainGainFly.Template), sinon une copie de BB_Gain.Row
+-- dans un cadre transparent fait ici ; renvoie aussi le modèle qui porte les attributs <Sorte>Color et <Sorte>Icon.
+local function makeFlyer(screen: ScreenGui): (GuiObject?, Instance?)
+	local spec = TRAIN_FLY
+	local template = typed(screen, spec.Template, "GuiObject") :: GuiObject?
+	if template then
+		local copy = template:Clone()
+		copy.Name = spec.Name
+		copy.Visible = true
+		return copy, template
+	end
+	local assets = ReplicatedStorage:FindFirstChild("Assets")
+	local folder = if assets then assets:FindFirstChild("UI") else nil
+	local billboard = if folder then folder:FindFirstChild(GAIN_TEMPLATE) else nil
+	local row = if billboard then typed(billboard, "Row", "GuiObject") :: GuiObject? else nil
+	if billboard == nil or row == nil then
+		return nil, nil
+	end
+	local height = screen.AbsoluteSize.Y * spec.Height
+	local holder = Instance.new("Frame")
+	holder.Name = spec.Name
+	holder.BackgroundTransparency = 1
+	holder.Size = UDim2.fromOffset(height * spec.Aspect, height)
+	holder.ZIndex = spec.ZIndex
+	local copy = row:Clone()
+	copy.AnchorPoint = Vector2.new(0, 0)
+	copy.Position = UDim2.fromScale(0, 0)
+	copy.Size = UDim2.fromScale(1, 1)
+	copy.Visible = true
+	copy.Parent = holder
+	return holder, billboard
+end
+
+-- Le « +X » jaillit de `fromWorld` (au-dessus du joueur sans lui) : taille pleine en PopTime, jet de JetMin à JetMax
+-- de la largeur de l'écran vers le haut en JetTime (Quint Out), pause Hold, puis le nombre `kind.HudLabel` du HUD
+-- l'aspire en SuckTime (Quad In) en le rétrécissant à EndScale. À l'arrivée : `releases` (le nombre monte) et la
+-- pulsation du compteur (rang `rank` sur `pieces`, SpeedPulse). false, sans rien créer, si le gain ne peut pas voler
+-- (pas de HUD, de nombre visé ni de modèle, départ hors de l'écran) : à l'appelant de faire l'ancien affichage.
+local function flyGain(
+	kind: Kind,
+	amount: number,
+	text: string?,
+	fromWorld: Vector3?,
+	releases: { () -> () },
+	rank: number,
+	pieces: number
+): boolean
+	local spec = TRAIN_FLY
+	local screen = hudScreen()
+	if spec == nil or screen == nil then
+		return false
+	end
+	local target = typed(screen, kind.HudLabel, "TextLabel") :: TextLabel?
+	local point: Vector3? = fromWorld
+	if point == nil then
+		local root = rootPart()
+		point = if root then root.Position + Vector3.new(0, FLOAT.Height, 0) else nil
+	end
+	local start: Vector2? = if point then projectTo(screen, point) else nil
+	if target == nil or start == nil then
+		return false
+	end
+	local flyer, source = makeFlyer(screen)
+	if flyer == nil or source == nil then
+		warnOnce("trainFly", `[Gains] UI_HUD.{spec.Template} et {GAIN_TEMPLATE}.Row absents : le gain monte sur place`)
+		return false
+	end
+	local from = start :: Vector2
+	dressGain(flyer, source, kind, amount, text)
+	local size = screen.AbsoluteSize
+	flyer.AnchorPoint = Vector2.new(0.5, 0.5)
+	flyer.Position = UDim2.fromOffset(from.X, from.Y)
+	local scale = Instance.new("UIScale")
+	scale.Name = COPY_SCALE
+	scale.Scale = spec.PopFrom
+	scale.Parent = flyer
+	flyer.Parent = screen
+	active.TrainFlies += 1
+	local angle = math.rad((random:NextNumber() * 2 - 1) * spec.JetAngle)
+	local distance = size.X * (spec.JetMin + random:NextNumber() * (spec.JetMax - spec.JetMin))
+	local edgeX, edgeY = size.X * spec.Edge, size.Y * spec.Edge
+	local jetX = math.clamp(from.X + math.sin(angle) * distance, edgeX, math.max(edgeX, size.X - edgeX))
+	local jetY = math.clamp(from.Y - math.cos(angle) * distance, edgeY, math.max(edgeY, size.Y - edgeY))
+	TweenService:Create(scale, TweenInfo.new(spec.PopTime, spec.PopStyle, Enum.EasingDirection.Out), { Scale = 1 }):Play()
+	TweenService:Create(flyer, TweenInfo.new(spec.JetTime, spec.JetStyle, Enum.EasingDirection.Out), {
+		Position = UDim2.fromOffset(jetX, jetY),
+	}):Play()
+	local landed = false
+	local function land()
+		if landed then
+			return
+		end
+		landed = true
+		active.TrainFlies -= 1
+		flyer:Destroy()
+		releaseAll(releases)
+		if kind == SPEED then
+			pulseSpeed(rank, pieces)
+		end
+	end
+	task.delay(spec.JetTime + spec.Hold, function()
+		local now = hudScreen()
+		local label = if now then typed(now, kind.HudLabel, "TextLabel") :: TextLabel? else nil
+		if now == nil or label == nil or flyer.Parent ~= now then
+			land() -- HUD recréé (réapparition) ou nombre retiré : le compteur monte tout de suite
+			return
+		end
+		local origin = now.AbsolutePosition
+		local goal = UDim2.fromOffset(
+			label.AbsolutePosition.X - origin.X + label.AbsoluteSize.X / 2,
+			label.AbsolutePosition.Y - origin.Y + label.AbsoluteSize.Y / 2
+		)
+		local info = TweenInfo.new(spec.SuckTime, spec.SuckStyle, Enum.EasingDirection.In)
+		TweenService:Create(scale, info, { Scale = spec.EndScale }):Play()
+		local move = TweenService:Create(flyer, info, { Position = goal })
+		move.Completed:Connect(land)
+		move:Play()
+	end)
+	return true
+end
+
+-- Speed affichée par le HUD pour `speed` points d'entraînement, avec le trail porté (Formulas.ShownSpeed, comme
+-- StatsService pour l'attribut ShownSpeed).
+local function shownSpeed(speed: number): number
+	local trail = localPlayer:GetAttribute(TRAIL_ATTRIBUTE)
+	return Formulas.ShownSpeed(speed, if type(trail) == "number" and trail == trail and trail > 0 then trail else nil)
+end
+
+-- Retient le nombre Speed du HUD à `base` (HudController.HoldSpeed) ; sans lui : une fonction sans effet.
+local function holdSpeed(base: number): () -> ()
+	local api = hud
+	local hold = if api then api.HoldSpeed else nil
+	if hold then
+		local ok, result = pcall(hold, base)
+		if ok and type(result) == "function" then
+			return result
+		end
+	end
+	return function() end
+end
+
+-- Le gain d'une seconde du tapis (un seul « +X Speed/s », a200) vole jusqu'au compteur, dont le nombre reste à la
+-- valeur d'avant jusqu'à l'arrivée. false : rien n'a volé (l'ancien affichage prend le relais).
+local function flyTreadmill(amount: number, previous: number): boolean
+	if not canFly() then
+		return false
+	end
+	local release = holdSpeed(shownSpeed(previous))
+	if flyGain(SPEED, amount, nil, nil, { release }, 1, 1) then
+		return true
+	end
+	release()
+	return false
+end
+
+-- Vague 64 : un « +X » qui jaillit de `fromWorld` et vole jusqu'au compteur Speed, qui pulse à l'arrivée (pour a214,
+-- les bulles du tapis ; pas encore appelé). Le nombre n'est pas retenu : l'appelant ne dit pas ce qu'il ajoute.
+function GainController.FlyGain(text: string, fromWorld: Vector3, kind: "Speed"): boolean
+	if kind ~= SPEED.Name or not canFly() then
+		return false
+	end
+	return flyGain(SPEED, 0, text, fromWorld, {}, 1, 1)
+end
+
 -- Le gain d'une seconde du tapis en CHUNKS « +X » répartis sur Period s, même total (le dernier morceau prend le
--- reste des arrondis). Chaque morceau vit Life s.
-local function showPieces(amount: number)
+-- reste des arrondis). Chaque morceau vit Life s. Vague 64 : chaque morceau vole jusqu'au compteur ; le nombre Speed
+-- est retenu morceau par morceau (bases prises tout de suite, depuis `previous`, la Vitesse d'avant le gain).
+local function showPieces(amount: number, previous: number)
 	local tread = TREAD :: any
 	local pieces = CHUNKS
 	local gap = tread.Period / pieces
 	local piece = amount / pieces
+	local releases: { [number]: () -> () } = {}
+	if canFly() then
+		for rank = 1, pieces do
+			releases[rank] = holdSpeed(shownSpeed(previous + piece * (rank - 1)))
+		end
+	end
 	for rank = 1, pieces do
 		local value = if rank == pieces then amount - piece * (pieces - 1) else piece
+		local release = releases[rank]
 		local function show()
-			floatGain(SPEED, value, PIECE_RISE_INFO, string.format(tread.Text, Format.short(value)))
+			local text = string.format(tread.Text, Format.short(value))
+			if release then
+				if canFly() and flyGain(SPEED, value, text, nil, { release }, rank, pieces) then
+					return
+				end
+				release()
+			end
+			floatGain(SPEED, value, PIECE_RISE_INFO, text)
 			pulseSpeed(rank, pieces)
 		end
 		if rank == 1 then
@@ -1066,10 +1308,13 @@ local function showPieces(amount: number)
 end
 
 local function onTraining(kind: Kind)
-	local amount = riseOf(kind.Attribute)
+	local amount, previous = riseOf(kind.Attribute)
 	if amount > 0 and localPlayer:GetAttribute(MACHINE_ATTRIBUTE) == kind.Machine then
+		local before: number = previous or 0 -- une hausse a toujours une valeur d'avant
 		if kind == SPEED and TREAD ~= nil and CHUNKS > 1 then
-			showPieces(amount)
+			showPieces(amount, before)
+		elseif kind == SPEED and flyTreadmill(amount, before) then
+			return -- vague 64 : il vole ; le compteur pulse à son arrivée
 		else
 			-- a200 (Cantin) : un seul « +X Speed/s » par seconde, le gain entier ; le compteur pulse une fois.
 			showGain(kind, amount)
@@ -1106,7 +1351,7 @@ local function onCollected()
 	end
 end
 
-function GainController.GetActive(): { Gains: number, Flyers: number, Pops: number, Bills: number, IncomeFlies: number }
+function GainController.GetActive(): { Gains: number, Flyers: number, Pops: number, Bills: number, IncomeFlies: number, TrainFlies: number }
 	return table.clone(active)
 end
 
