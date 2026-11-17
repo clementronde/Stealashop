@@ -39,25 +39,27 @@ V2.Treadmill = {
 	CostGrowth = 3.8, -- V0 proposé : réglé au simulateur pour la zone 6 en 7 h 30 (joueur moyen)
 }
 
+-- Vague 68 (a226) : armes, auras et traînées = celles de Config/Tools et Config/Cosmetics (marche des dégâts 1, 10,
+-- 300, 10K, 320K, 2M ; prix pour des temps entre zones qui s'allongent, zone 6 vers 7 h 30 ; Spark et Dust à 100 $).
 -- Remplacerait Tools.List (Power, Price, TargetZones). Zone = zone dont l'outil fait partie du kit d'entrée.
 V2.Tools = {
 	{ Id = "Fists", Power = 1, Price = 0, Zones = { 1, 1 } },
 	{ Id = "Wrench", Power = 5, Price = 300, Zones = { 2, 2 } },
-	{ Id = "Crowbar", Power = 40, Price = 40_000, Zones = { 3, 3 } },
-	{ Id = "Hammer", Power = 300, Price = 1_000_000, Zones = { 4, 4 } },
-	{ Id = "Sledgehammer", Power = 2_500, Price = 20_000_000, Zones = { 5, 5 } },
-	{ Id = "FireAxe", Power = 20_000, Price = 250_000_000, Zones = { 5, 5 } }, -- palier du milieu de la zone 5
-	{ Id = "AngleGrinder", Power = 100_000, Price = 5_000_000_000, Zones = { 6, 6 } },
+	{ Id = "Crowbar", Power = 100, Price = 80_000, Zones = { 3, 3 } },
+	{ Id = "Hammer", Power = 2_000, Price = 4_000_000, Zones = { 4, 4 } },
+	{ Id = "Sledgehammer", Power = 40_000, Price = 120_000_000, Zones = { 5, 5 } },
+	{ Id = "FireAxe", Power = 60_000, Price = 1_000_000_000, Zones = { 5, 5 } }, -- palier du milieu de la zone 5
+	{ Id = "AngleGrinder", Power = 100_000, Price = 7_000_000_000, Zones = { 6, 6 } },
 }
 
 -- Remplacerait Cosmetics.Auras (Multiplier, Price, TargetZones) : l'aura est le multiplicateur de force.
 V2.Auras = {
-	{ Id = "Spark", Multiplier = 2, Price = 500, Zones = { 2, 2 } },
-	{ Id = "Flame", Multiplier = 3, Price = 60_000, Zones = { 3, 3 } },
-	{ Id = "Lightning", Multiplier = 5, Price = 1_500_000, Zones = { 4, 4 } },
-	{ Id = "Plasma", Multiplier = 8, Price = 30_000_000, Zones = { 5, 5 } },
-	{ Id = "Galaxy", Multiplier = 12, Price = 400_000_000, Zones = { 5, 5 } }, -- palier du milieu de la zone 5
-	{ Id = "Royal", Multiplier = 20, Price = 8_000_000_000, Zones = { 6, 6 } },
+	{ Id = "Spark", Multiplier = 2, Price = 100, Zones = { 2, 2 } },
+	{ Id = "Flame", Multiplier = 3, Price = 120_000, Zones = { 3, 3 } },
+	{ Id = "Lightning", Multiplier = 5, Price = 6_000_000, Zones = { 4, 4 } },
+	{ Id = "Plasma", Multiplier = 8, Price = 180_000_000, Zones = { 5, 5 } },
+	{ Id = "Galaxy", Multiplier = 12, Price = 1_500_000_000, Zones = { 5, 5 } }, -- palier du milieu de la zone 5
+	{ Id = "Royal", Multiplier = 20, Price = 11_000_000_000, Zones = { 6, 6 } },
 }
 -- Vague 66 (a218) : avec Features.NewAuras, les 8 auras de Clément (Config/Cosmetics) remplacent ces 6 ; le
 -- rééquilibrage v2 est déjà dans Config (vague 40) : on les y lit telles quelles. Les kits de V2.Zones gardent les
@@ -71,11 +73,11 @@ end
 
 -- Remplacerait Cosmetics.Trails : le trail multiplie la Speed affichée (mêmes paliers que les auras).
 V2.Trails = {
-	{ Id = "Dust", Multiplier = 2, Price = 300, Zones = { 2, 2 } },
-	{ Id = "Wind", Multiplier = 3, Price = 40_000, Zones = { 3, 3 } },
-	{ Id = "Turbo", Multiplier = 5, Price = 1_000_000, Zones = { 4, 4 } },
-	{ Id = "Comet", Multiplier = 8, Price = 20_000_000, Zones = { 5, 5 } },
-	{ Id = "Hyperspace", Multiplier = 12, Price = 2_500_000_000, Zones = { 6, 6 } },
+	{ Id = "Dust", Multiplier = 2, Price = 100, Zones = { 2, 2 } },
+	{ Id = "Wind", Multiplier = 3, Price = 80_000, Zones = { 3, 3 } },
+	{ Id = "Turbo", Multiplier = 5, Price = 4_000_000, Zones = { 4, 4 } },
+	{ Id = "Comet", Multiplier = 8, Price = 120_000_000, Zones = { 5, 5 } },
+	{ Id = "Hyperspace", Multiplier = 12, Price = 3_000_000_000, Zones = { 6, 6 } },
 }
 
 -- Remplacerait dans Zones : AdvisedDamage, WindowHP, AdvisedSpeed, GuardSpeed, BaseIncome ; ajouterait SpeedRequired.

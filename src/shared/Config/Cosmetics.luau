@@ -51,13 +51,17 @@ export type Cosmetic = {
 -- pour les auras et les trails (×2, ×3, ×5, ×8, ×12), plus Royal ×20. Galaxy : palier du milieu de la zone 5.
 -- Color : couleurs de Clément (MOD-045, liaison L-042, 2026-11-07).
 -- Vague 63 (a210) : la boutique d'aujourd'hui, tant que Features.NewAuras est false.
+-- Vague 68 (a226, V0 proposés) : prix revus avec ceux des armes (Config/Tools, temps entre zones qui s'allonge) ;
+-- la première aura et la première traînée à 100 $ (L-210 (a), Clément : achetables dès le tuto, où l'objet Rare
+-- exposé rapporte 5 $/s ; la clé à molette reste donnée). Multiplicateurs inchangés. Avant : 500, 60 K, 1,5 M, 30 M,
+-- 400 M, 8 B (auras) ; 300, 40 K, 1 M, 20 M, 2,5 B (traînées) ; Storm 300 K, Demon 2 B.
 local LegacyAuras: { Cosmetic } = {
-	{ Id = "Spark", Kind = "Aura", Order = 1, DisplayName = "Spark", Multiplier = 2, Price = 500, TargetZones = { 2, 2 }, Texture = "FX_Aura_Etincelle", Color = Color3.fromRGB(255, 217, 59) },
-	{ Id = "Flame", Kind = "Aura", Order = 2, DisplayName = "Flame", Multiplier = 3, Price = 60_000, TargetZones = { 3, 3 }, Texture = "FX_Aura_Flamme", Color = Color3.fromRGB(255, 106, 26) },
-	{ Id = "Lightning", Kind = "Aura", Order = 3, DisplayName = "Lightning", Multiplier = 5, Price = 1_500_000, TargetZones = { 4, 4 }, Texture = "FX_Aura_Foudre", Color = Color3.fromRGB(47, 196, 255) },
-	{ Id = "Plasma", Kind = "Aura", Order = 4, DisplayName = "Plasma", Multiplier = 8, Price = 30_000_000, TargetZones = { 5, 5 }, Texture = "FX_Aura_Plasma", Color = Color3.fromRGB(255, 59, 212) },
-	{ Id = "Galaxy", Kind = "Aura", Order = 5, DisplayName = "Galaxy", Multiplier = 12, Price = 400_000_000, TargetZones = { 5, 5 }, Texture = "FX_Aura_Galaxie", Color = Color3.fromRGB(139, 92, 255) },
-	{ Id = "Royal", Kind = "Aura", Order = 6, DisplayName = "Royal", Multiplier = 20, Price = 8_000_000_000, TargetZones = { 6, 6 }, Texture = "FX_Aura_Royale", Color = Color3.fromRGB(255, 194, 26) },
+	{ Id = "Spark", Kind = "Aura", Order = 1, DisplayName = "Spark", Multiplier = 2, Price = 100, TargetZones = { 2, 2 }, Texture = "FX_Aura_Etincelle", Color = Color3.fromRGB(255, 217, 59) },
+	{ Id = "Flame", Kind = "Aura", Order = 2, DisplayName = "Flame", Multiplier = 3, Price = 120_000, TargetZones = { 3, 3 }, Texture = "FX_Aura_Flamme", Color = Color3.fromRGB(255, 106, 26) },
+	{ Id = "Lightning", Kind = "Aura", Order = 3, DisplayName = "Lightning", Multiplier = 5, Price = 6_000_000, TargetZones = { 4, 4 }, Texture = "FX_Aura_Foudre", Color = Color3.fromRGB(47, 196, 255) },
+	{ Id = "Plasma", Kind = "Aura", Order = 4, DisplayName = "Plasma", Multiplier = 8, Price = 180_000_000, TargetZones = { 5, 5 }, Texture = "FX_Aura_Plasma", Color = Color3.fromRGB(255, 59, 212) },
+	{ Id = "Galaxy", Kind = "Aura", Order = 5, DisplayName = "Galaxy", Multiplier = 12, Price = 1_500_000_000, TargetZones = { 5, 5 }, Texture = "FX_Aura_Galaxie", Color = Color3.fromRGB(139, 92, 255) },
+	{ Id = "Royal", Kind = "Aura", Order = 6, DisplayName = "Royal", Multiplier = 20, Price = 11_000_000_000, TargetZones = { 6, 6 }, Texture = "FX_Aura_Royale", Color = Color3.fromRGB(255, 194, 26) },
 }
 
 -- Vague 63 (a210, L-205 et L-206) : PROPOSITION pour les 8 auras de Clément, à valider par lui (rien en jeu tant que
@@ -68,14 +72,14 @@ local LegacyAuras: { Cosmetic } = {
 -- (nuage, pluie et éclairs). Texture = modèle de Clément dans Assets/FX/Auras (et ICON_Aura_<Nom> de L-179).
 -- Prix de Storm et Demon, Id, DisplayName et Color : V0 proposés, absents du doc.
 local NewAuras: { Cosmetic } = {
-	{ Id = "Shine", Kind = "Aura", Order = 1, DisplayName = "Shine", Multiplier = 2, Price = 500, TargetZones = { 2, 2 }, Texture = "FX_Aura_Shine", Color = Color3.fromRGB(255, 240, 170) },
-	{ Id = "Fire", Kind = "Aura", Order = 2, DisplayName = "Fire", Multiplier = 3, Price = 60_000, TargetZones = { 3, 3 }, Texture = "FX_Aura_Feu", Color = Color3.fromRGB(255, 106, 26) },
-	{ Id = "Storm", Kind = "Aura", Order = 3, DisplayName = "Storm", Multiplier = 4, Price = 300_000, TargetZones = { 3, 3 }, Texture = "FX_Aura_Eclair", Color = Color3.fromRGB(47, 196, 255) },
-	{ Id = "Poison", Kind = "Aura", Order = 4, DisplayName = "Poison", Multiplier = 5, Price = 1_500_000, TargetZones = { 4, 4 }, Texture = "FX_Aura_Poison", Color = Color3.fromRGB(120, 230, 60) },
-	{ Id = "Tornado", Kind = "Aura", Order = 5, DisplayName = "Tornado", Multiplier = 8, Price = 30_000_000, TargetZones = { 5, 5 }, Texture = "FX_Aura_Tornado", Color = Color3.fromRGB(200, 210, 220) },
-	{ Id = "Angel", Kind = "Aura", Order = 6, DisplayName = "Angel", Multiplier = 12, Price = 400_000_000, TargetZones = { 5, 5 }, Texture = "FX_Aura_Angel", Color = Color3.fromRGB(255, 230, 150) },
-	{ Id = "Demon", Kind = "Aura", Order = 7, DisplayName = "Demon", Multiplier = 16, Price = 2_000_000_000, TargetZones = { 5, 5 }, Texture = "FX_Aura_Demon", Color = Color3.fromRGB(220, 30, 40) },
-	{ Id = "Chained", Kind = "Aura", Order = 8, DisplayName = "Chained", Multiplier = 20, Price = 8_000_000_000, TargetZones = { 6, 6 }, Texture = "FX_Aura_Chained", Color = Color3.fromRGB(110, 70, 160) },
+	{ Id = "Shine", Kind = "Aura", Order = 1, DisplayName = "Shine", Multiplier = 2, Price = 100, TargetZones = { 2, 2 }, Texture = "FX_Aura_Shine", Color = Color3.fromRGB(255, 240, 170) },
+	{ Id = "Fire", Kind = "Aura", Order = 2, DisplayName = "Fire", Multiplier = 3, Price = 120_000, TargetZones = { 3, 3 }, Texture = "FX_Aura_Feu", Color = Color3.fromRGB(255, 106, 26) },
+	{ Id = "Storm", Kind = "Aura", Order = 3, DisplayName = "Storm", Multiplier = 4, Price = 1_000_000, TargetZones = { 3, 3 }, Texture = "FX_Aura_Eclair", Color = Color3.fromRGB(47, 196, 255) },
+	{ Id = "Poison", Kind = "Aura", Order = 4, DisplayName = "Poison", Multiplier = 5, Price = 6_000_000, TargetZones = { 4, 4 }, Texture = "FX_Aura_Poison", Color = Color3.fromRGB(120, 230, 60) },
+	{ Id = "Tornado", Kind = "Aura", Order = 5, DisplayName = "Tornado", Multiplier = 8, Price = 180_000_000, TargetZones = { 5, 5 }, Texture = "FX_Aura_Tornado", Color = Color3.fromRGB(200, 210, 220) },
+	{ Id = "Angel", Kind = "Aura", Order = 6, DisplayName = "Angel", Multiplier = 12, Price = 1_500_000_000, TargetZones = { 5, 5 }, Texture = "FX_Aura_Angel", Color = Color3.fromRGB(255, 230, 150) },
+	{ Id = "Demon", Kind = "Aura", Order = 7, DisplayName = "Demon", Multiplier = 16, Price = 4_000_000_000, TargetZones = { 5, 5 }, Texture = "FX_Aura_Demon", Color = Color3.fromRGB(220, 30, 40) },
+	{ Id = "Chained", Kind = "Aura", Order = 8, DisplayName = "Chained", Multiplier = 20, Price = 11_000_000_000, TargetZones = { 6, 6 }, Texture = "FX_Aura_Chained", Color = Color3.fromRGB(110, 70, 160) },
 }
 
 -- Proposition a210 : chaque ancienne aura achetée devient la nouvelle de même multiplicateur (personne ne perd
@@ -95,11 +99,11 @@ local Auras: { Cosmetic } = if Features.NewAuras then NewAuras else LegacyAuras
 -- la marche (Formulas.WalkSpeed, en log) : un trail ×2 vaut un niveau de tapis.
 -- Color : couleurs de Clément (MOD-045, liaison L-042, 2026-11-07).
 local Trails: { Cosmetic } = {
-	{ Id = "Dust", Kind = "Trail", Order = 1, DisplayName = "Dust", Multiplier = 2, Price = 300, TargetZones = { 2, 2 }, Texture = "FX_Trail_Poussiere", Color = Color3.fromRGB(229, 195, 138) },
-	{ Id = "Wind", Kind = "Trail", Order = 2, DisplayName = "Wind", Multiplier = 3, Price = 40_000, TargetZones = { 3, 3 }, Texture = "FX_Trail_Vent", Color = Color3.fromRGB(140, 255, 212) },
-	{ Id = "Turbo", Kind = "Trail", Order = 3, DisplayName = "Turbo", Multiplier = 5, Price = 1_000_000, TargetZones = { 4, 4 }, Texture = "FX_Trail_Turbo", Color = Color3.fromRGB(255, 122, 26) },
-	{ Id = "Comet", Kind = "Trail", Order = 4, DisplayName = "Comet", Multiplier = 8, Price = 20_000_000, TargetZones = { 5, 5 }, Texture = "FX_Trail_Comete", Color = Color3.fromRGB(79, 195, 255) },
-	{ Id = "Hyperspace", Kind = "Trail", Order = 5, DisplayName = "Hyperspace", Multiplier = 12, Price = 2_500_000_000, TargetZones = { 6, 6 }, Texture = "FX_Trail_Hyperespace", Color = Color3.fromRGB(155, 92, 255) },
+	{ Id = "Dust", Kind = "Trail", Order = 1, DisplayName = "Dust", Multiplier = 2, Price = 100, TargetZones = { 2, 2 }, Texture = "FX_Trail_Poussiere", Color = Color3.fromRGB(229, 195, 138) },
+	{ Id = "Wind", Kind = "Trail", Order = 2, DisplayName = "Wind", Multiplier = 3, Price = 80_000, TargetZones = { 3, 3 }, Texture = "FX_Trail_Vent", Color = Color3.fromRGB(140, 255, 212) },
+	{ Id = "Turbo", Kind = "Trail", Order = 3, DisplayName = "Turbo", Multiplier = 5, Price = 4_000_000, TargetZones = { 4, 4 }, Texture = "FX_Trail_Turbo", Color = Color3.fromRGB(255, 122, 26) },
+	{ Id = "Comet", Kind = "Trail", Order = 4, DisplayName = "Comet", Multiplier = 8, Price = 120_000_000, TargetZones = { 5, 5 }, Texture = "FX_Trail_Comete", Color = Color3.fromRGB(79, 195, 255) },
+	{ Id = "Hyperspace", Kind = "Trail", Order = 5, DisplayName = "Hyperspace", Multiplier = 12, Price = 3_000_000_000, TargetZones = { 6, 6 }, Texture = "FX_Trail_Hyperespace", Color = Color3.fromRGB(155, 92, 255) },
 }
 
 -- Auras et trails partagent le même espace d'Id (un seul catalogId pour BuyItem).

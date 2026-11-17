@@ -96,7 +96,7 @@ local NIGHT_BUBBLE = "Night is falling: hurry home!" -- 5.12, pour les nouveaux 
 -- textes de la liste des tâches (TutorialController, Shared/TutorialTasks). Anglais, V0 proposés, absents du doc.
 local TOOL_NAME = "Wrench" -- Tools.ById[ToolToBuy].DisplayName (étape 7 : la clé à molette, 300 $)
 -- Vague 61 (a199) : dons des étapes 7 et 8 = le prix de la clé à molette et celui de l'aura la moins chère (Spark),
--- relus dans Config/Tools et Config/Cosmetics (300 $ et 500 $ aujourd'hui). V0.
+-- relus dans Config/Tools et Config/Cosmetics (300 $ et 100 $ depuis la vague 68). V0.
 local WRENCH: Tools.Tool? = Tools.ById.Wrench
 local TOOL_GIFT = if WRENCH then WRENCH.Price else 0
 local AURA_GIFT = math.huge

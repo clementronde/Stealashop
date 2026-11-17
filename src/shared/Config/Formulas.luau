@@ -84,7 +84,7 @@ function Formulas.TreadmillGain(level: number): number
 end
 
 -- PV de base de la vitrine (porte) d'un joueur, selon le niveau de sa boutique (StageLevel, 1 à 6 ; borné,
--- v2 : 50, 500, 6K, 75K, 1M, 100M, puisque AdvisedDamage = arme × aura du kit de la zone ;
+-- v2 : 50, 500, 15K, 500K, 16M, 100M (vague 68), puisque AdvisedDamage = arme × aura du kit de la zone ;
 -- un niveau illisible compte pour 1) : 50 × les dégâts conseillés de la zone du même rang (vague 29, V0
 -- proposé, absent du doc ; voir Config/PvP). L'arbre (Glass, Walls) multiplie ce nombre (WindowService).
 function Formulas.PlayerWindowHP(stageLevel: number): number

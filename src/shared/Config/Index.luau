@@ -111,8 +111,8 @@ local function completedZones(discovered: Discovered): { number }
 end
 
 -- Objets gardés par Clément (L-192, 2026-11-15) ; choisis par a191 (V0) : un objet visé par la zone suivante
--- (Kit de Config/Zones ou TargetZones), deux de chaque sorte : Wrench (300 $), Flame (60 K$), Turbo (1 M$),
--- Sledgehammer (20 M$), Galaxy (400 M$), Hyperspace (2,5 B$). Déjà possédé : rien de plus (ni doublon, ni
+-- (Kit de Config/Zones ou TargetZones), deux de chaque sorte : Wrench (300 $), Flame (120 K$), Turbo (4 M$),
+-- Sledgehammer (120 M$), Galaxy (1,5 B$), Hyperspace (3 B$) (prix de la vague 68). Déjà possédé : rien de plus (ni doublon, ni
 -- argent à la place).
 local ZONE_REWARDS: { [number]: ZoneReward } = {
 	{ Item = { Kind = "Weapon", Id = "Wrench" } },

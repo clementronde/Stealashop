@@ -23,14 +23,20 @@ export type Tool = {
 	Asset: string?, -- nil pour les poings
 }
 
+-- Vague 68 (a226, Cantin : « de 20 000 à 2 millions d'un coup, c'est pas normal ») : marche des dégâts du panneau
+-- (arme × aura du kit, Config/Zones) lissée : 1, 10, 300, 10K, 320K, 2M (×30 par zone de 2 à 5 ; la zone 6 se casse
+-- à deux, soit 4M d'équipe, ×12,5). Puissances de Crowbar, Hammer, Sledgehammer et Fire Axe, et prix des kits des
+-- zones 3 à 6 (pour un temps entre zones qui s'allonge d'environ ×2,5, zone 6 vers 7 h 30) : V0 proposés, réglés au
+-- simulateur (RAPPORT=v2 COURT=1 bash tools/ironix/equilibrage/run.sh). Avant : 40, 300, 2 500, 20 000 de puissance ;
+-- 40 K$, 1 M$, 20 M$, 250 M$, 5 B$ de prix.
 local List: { Tool } = {
 	{ Id = "Fists", Order = 1, DisplayName = "Fists", Power = 1, Price = 0, TargetZones = { 1, 1 }, HitAnimation = "HitWindow", Asset = nil },
 	{ Id = "Wrench", Order = 2, DisplayName = "Wrench", Power = 5, Price = 300, TargetZones = { 2, 2 }, HitAnimation = "HitWindow", Asset = "TOOL_CleAMolette" },
-	{ Id = "Crowbar", Order = 3, DisplayName = "Crowbar", Power = 40, Price = 40_000, TargetZones = { 3, 3 }, HitAnimation = "HitWindow", Asset = "TOOL_PiedDeBiche" },
-	{ Id = "Hammer", Order = 4, DisplayName = "Hammer", Power = 300, Price = 1_000_000, TargetZones = { 4, 4 }, HitAnimation = "HitWindowHeavy", Asset = "TOOL_Marteau" },
-	{ Id = "Sledgehammer", Order = 5, DisplayName = "Sledgehammer", Power = 2_500, Price = 20_000_000, TargetZones = { 5, 5 }, HitAnimation = "HitWindowHeavy", Asset = "TOOL_Masse" },
-	{ Id = "FireAxe", Order = 6, DisplayName = "Fire Axe", Power = 20_000, Price = 250_000_000, TargetZones = { 5, 5 }, HitAnimation = "HitWindowHeavy", Asset = "TOOL_HacheDIncendie" },
-	{ Id = "AngleGrinder", Order = 7, DisplayName = "Angle Grinder", Power = 100_000, Price = 5_000_000_000, TargetZones = { 6, 6 }, HitAnimation = "HitWindowHeavy", Asset = "TOOL_Disqueuse" },
+	{ Id = "Crowbar", Order = 3, DisplayName = "Crowbar", Power = 100, Price = 80_000, TargetZones = { 3, 3 }, HitAnimation = "HitWindow", Asset = "TOOL_PiedDeBiche" },
+	{ Id = "Hammer", Order = 4, DisplayName = "Hammer", Power = 2_000, Price = 4_000_000, TargetZones = { 4, 4 }, HitAnimation = "HitWindowHeavy", Asset = "TOOL_Marteau" },
+	{ Id = "Sledgehammer", Order = 5, DisplayName = "Sledgehammer", Power = 40_000, Price = 120_000_000, TargetZones = { 5, 5 }, HitAnimation = "HitWindowHeavy", Asset = "TOOL_Masse" },
+	{ Id = "FireAxe", Order = 6, DisplayName = "Fire Axe", Power = 60_000, Price = 1_000_000_000, TargetZones = { 5, 5 }, HitAnimation = "HitWindowHeavy", Asset = "TOOL_HacheDIncendie" },
+	{ Id = "AngleGrinder", Order = 7, DisplayName = "Angle Grinder", Power = 100_000, Price = 7_000_000_000, TargetZones = { 6, 6 }, HitAnimation = "HitWindowHeavy", Asset = "TOOL_Disqueuse" },
 }
 
 local ById: { [string]: Tool } = {}

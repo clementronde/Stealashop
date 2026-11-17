@@ -6,13 +6,13 @@
 -- Rééquilibrage v2, passes 1 à 3 (Cantin, 2026-11-14 ; docs/claude/notes/equilibrage-v2-proposition.md,
 -- sections « Passe 3 du 14/11 (8 s) », P2.2, P2.3 et 4.1 ; V0 proposés). Chaque zone fixe deux choses, SpeedRequired et son kit (Kit) ;
 -- le reste est CALCULÉ ici, pour suivre tout seul une arme, une aura ou un plafond de coups qui change :
---   AdvisedDamage = « Strength » du panneau = P arme du kit × M aura du kit (1, 10, 120, 1.5K, 20K, 2M)
+--   AdvisedDamage = « Strength » du panneau = P arme du kit × M aura du kit (1, 10, 300, 10K, 320K, 2M ; vague 68, a226 : avant 1, 10, 120, 1.5K, 20K, 2M)
 --   AdvisedSpeed  = marche que donne SpeedRequired (Formulas.WalkSpeed : 16, 22, 28, 33.9, 40, 45.9)
 --   WindowHP      = PV / dégâts × AdvisedDamage, arrondi ; les trois nombres de la règle sont dans
 --                   Balance.WindowHP (SoloBreakTime, LastZoneBreakTime, LastZoneTeamSize) :
 --                   PV / dégâts = temps × MaxHitsPerSecond / (1 + RegenPerSecond × temps)
 --                               = 6,5 × 5 / 1,195 = 27,197 : un joueur seul au niveau du panneau casse en
---                   6,5 s, à 5 coups/s, régénération de 3 %/s comprise (27, 272, 3 264, 40 795, 543 933) ;
+--                   6,5 s, à 5 coups/s, régénération de 3 %/s comprise (27, 272, 8 159, 271 967, 8 702 929) ;
 --                   dernière zone : × 2 joueurs, soit 54,393 × (meilleure arme × meilleure aura) = 108 786 611 :
 --                   deux joueurs au panneau cassent en 6,5 s, un joueur seul jamais dans le chrono de 8 s
 --                   (16,2 s ; 9,3 s avec la potion de force ×1,5)
