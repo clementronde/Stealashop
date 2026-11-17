@@ -29,6 +29,11 @@
 --     main (ReserveCatchAll) et échange avec l'exposé le moins rentable quand tout est pris (SwapWhenFull) ; ici, un
 --     objet sous antivol pas encore posé au sol est listé à la suite, DisplayButton.DisplayLabel = LockedButtonText
 --     (« PLACE ») : le bouton ferme le panneau et lance la pose au sol (InventoryController.PlaceItem).
+--   - vague 72 (a242, L-219 point 4, L-231) : le bouton inventaire du HUD (toujours UI_HUD.DisplayedButton) ouvre cet
+--     écran ; la réserve en sort (Config/Displayed.ShowReserve = false : Panel.Reserve caché, jamais rempli ; le serveur
+--     la garde). CloseArrowButton (la flèche vers la droite, facultative) ferme comme CloseButton (la croix, repli).
+--     Les lignes ne sont refaites que si ce qu'elles montrent change : un clic n'est plus perdu sur une ligne refaite
+--     entre l'appui et le relâché.
 -- Tout vient des attributs du Player posés par le serveur : InventoryState (Shared/InventoryState,
 -- InventoryService), DisplaySlotsUnlocked et DisplayReserve (DisplayService). Le client ne décide rien.
 -- Seuls sont touchés : Enabled de l'écran, Visible de Panel.Reserve, les lignes clonées (taille du Template
@@ -70,6 +75,8 @@ type Screen = {
 	reserveCount: Instance?,
 	reserveTemplate: GuiObject?,
 	reserveRows: { GuiObject },
+	rowsKey: string?, -- vague 72 : ce que montrent les lignes (refaites seulement s'il change)
+	reserveKey: string?,
 	connections: { RBXScriptConnection },
 }
 
@@ -79,6 +86,8 @@ local RESERVE_ROW_FORMAT = "Reserve_%02d_%s" -- vague 63 : lignes de la réserve
 local COUNT_TEXT = "%d/%d" -- V0 proposé, absent du doc : « 3/8 »
 local SLOTS_ATTRIBUTE = "DisplaySlotsUnlocked" -- DisplayService
 local RESERVE_ATTRIBUTE = DisplayedConfig.ReserveAttribute -- DisplayService (vague 63)
+local SHOW_RESERVE = DisplayedConfig.ShowReserve ~= false -- vague 72 (a242, L-231) : réserve montrée dans l'écran
+local CLOSE_ARROW = "CloseArrowButton" -- vague 72 (L-219 point 4) : la flèche vers la droite, nom proposé à Clément
 -- V0 proposé, absent du doc : attente minimale entre deux demandes (Net en accepte une par seconde pour
 -- EquipBest ; quatre par seconde pour UnplaceItem et PlaceFromReserve).
 local BEST_COOLDOWN = 1
@@ -245,6 +254,17 @@ end
 local function clearAll(current: Screen)
 	clearRows(current.rows)
 	clearRows(current.reserveRows)
+	current.rowsKey = nil
+	current.reserveKey = nil
+end
+
+-- Vague 72 : ce que montrent les lignes de `list` (ordre, objet, revenu, antivol).
+local function keyOf(list: { Entry }): string
+	local parts = table.create(#list)
+	for _, entry in list do
+		table.insert(parts, `{entry.Uid}:{entry.ItemId}:{entry.Income}:{entry.AntiTheft == true}`)
+	end
+	return table.concat(parts, ",")
 end
 
 -- Une demande au serveur (remote `name`, un uid), au plus une par REMOVE_COOLDOWN s et par uid.
@@ -297,6 +317,11 @@ local function cloneRow(template: GuiObject, format: string, rank: number, entry
 end
 
 local function buildRows(current: Screen, list: { Entry })
+	local key = keyOf(list)
+	if key == current.rowsKey then
+		return -- rien de changé : les lignes (et leurs boutons) restent
+	end
+	current.rowsKey = key
 	clearRows(current.rows)
 	local template = current.template
 	if template == nil then
@@ -338,6 +363,11 @@ local function placeOnFloor(uid: string)
 end
 
 local function buildReserve(current: Screen, list: { Entry })
+	local key = keyOf(list)
+	if key == current.reserveKey then
+		return
+	end
+	current.reserveKey = key
 	clearRows(current.reserveRows)
 	local template = current.reserveTemplate
 	if template == nil then
@@ -414,9 +444,15 @@ local function bind(gui: ScreenGui)
 		reportOnce("best", `[Displayed] {SCREEN}.DisplayBestButton introuvable : pas d'« Exposer les meilleurs »`)
 	end
 	local reserve = guiObject(gui, "Reserve")
+	if reserve and not SHOW_RESERVE then
+		reserve.Visible = false -- vague 72 (L-231) : la réserve sort de l'écran, jamais remplie
+		reserve = nil
+	end
 	local reserveTemplate = if reserve then guiObject(reserve, "ReserveList.Template") else nil
 	if reserve == nil then
-		reportOnce("reserve", `[Displayed] {SCREEN}.Panel.Reserve introuvable : la réserve n'est pas montrée`)
+		if SHOW_RESERVE then -- sinon rien à signaler : la réserve n'est pas montrée (Config/Displayed.ShowReserve)
+			reportOnce("reserve", `[Displayed] {SCREEN}.Panel.Reserve introuvable : la réserve n'est pas montrée`)
+		end
 	elseif reserveTemplate == nil then
 		reportOnce("reserveTemplate", `[Displayed] {SCREEN}.Panel.Reserve.ReserveList.Template introuvable : réserve vide`)
 	else
@@ -431,6 +467,8 @@ local function bind(gui: ScreenGui)
 		reserveCount = if reserve then Find.path(reserve, "ReserveCount.ReserveCountLabel") else nil,
 		reserveTemplate = reserveTemplate,
 		reserveRows = {},
+		rowsKey = nil,
+		reserveKey = nil,
 		connections = {},
 	}
 	screen = current
@@ -440,6 +478,9 @@ local function bind(gui: ScreenGui)
 		end
 	end
 	keep(onClick(Find.path(gui, "CloseButton"), function()
+		closePanel()
+	end))
+	keep(onClick(Find.path(gui, CLOSE_ARROW), function() -- vague 72 : la flèche, si Clément l'a livrée
 		closePanel()
 	end))
 	keep(onClick(best, function()

@@ -1,7 +1,7 @@
 --!strict
 -- Objets exposés : la réserve et le « +$/s » qui vole (vague 63, a206 ; liaison L-192, réponses de Clément à Q2 et Q3,
 -- et L-202 point 4). Lu par DisplayService, InventoryService, DisplayedController et GainController. Sources :
---   « L-192 » / « L-202 » : la ligne de liaison ;
+--   « L-192 » / « L-202 » / « L-219 » : la ligne de liaison ;
 --   « V0 » : V0 proposé, absent du doc.
 -- Unités : secondes, pixels (repère de l'écran).
 
@@ -22,6 +22,11 @@ local Displayed = {
 	ReserveCatchAll = true,
 	SwapWhenFull = true,
 	LockedButtonText = "PLACE", -- V0 : texte de DisplayButton.DisplayLabel d'un objet sous antivol (anglais, L-036)
+	-- Vague 72 (a242, L-219 point 4 ; Cantin, L-231 : « la réserve sort de l'écran des objets exposés ») : false =
+	-- UI_Displayed.Panel.Reserve caché et jamais rempli (DisplayedController). Le serveur garde la réserve telle quelle
+	-- (ReserveCatchAll, SwapWhenFull, Exposer les meilleurs) : un objet en trop y reste, sans être montré, et
+	-- « Exposer les meilleurs » l'en sort dès qu'il rapporte plus qu'un exposé. true : la réserve de la vague 63.
+	ShowReserve = false,
 
 	-- « +$X/s » de l'objet qui vole de son présentoir jusqu'à l'argent du HUD (L-192 Q2), une fois par pose
 	-- (à la main, « Exposer les meilleurs », depuis la réserve), jamais pendant une poursuite (GainController).
