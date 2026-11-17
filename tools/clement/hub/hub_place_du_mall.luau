@@ -14,7 +14,7 @@
 --     le modèle de boutique ; une parcelle dont l'emplacement touche une zone réservée reste où elle est ;
 --  3) construit Map/Hub en sautant toute pièce qui toucherait une zone réservée (_SHOWROOM_CLEMENT, _INBOX_CLEMENT,
 --     parcelle grise pas déplacée) : relancer après leur départ complète le hub ;
---  4) pose les SHOP_COUNT boutiques (8 en ligne ; PLOT_Shop, 5 niveaux, MOD-015) sur les emplacements, au niveau 1, dans Map/Hub/Shops, avec
+--  4) pose les SHOP_COUNT boutiques (6 en ligne depuis le 2026-11-17, 8 avant ; PLOT_Shop, 5 niveaux, MOD-015) sur les emplacements, au niveau 1, dans Map/Hub/Shops, avec
 --     le constructeur tools/clement/hub/plot_shop_builder.luau : l'envoyer à execute_luau AVANT ce script
 --     (_G.ClaudePlotShop) ; sans lui, les boutiques déjà posées restent telles quelles ;
 --  5) range dans ServerStorage/_GREYBOX_REMPLACE ce que le hub remplace : Greybox/Safe/{Ground, Shops, SafeZone, Spawn},
@@ -100,30 +100,51 @@ end
 -- promenade et l'allée des stands devient un terre-plein de 12), rangée resserrée au vrai gabarit de PLOT_Shop (53 de large
 -- et 13 de plaques devant la façade, au lieu de 64), toujours 10 entre deux boutiques ; hub raccourci d'autant.
 local LINE_FX, LINE_GAP, BIG_H = -60, 10, 48 -- x des façades, écart entre deux boutiques, hauteur du grand mur
+-- Clément, 2026-11-17 (« les boutiques sont vraiment très éloignées entre elles », « le plus près du couloir ») : façades
+-- avancées de 26 (x -60 → -34 ; 18 de passage entre les plaques des boutiques et les disques au sol des stands), 6 entre
+-- deux boutiques au lieu de 15 ; le hub raccourcit d'autant (x -143 → -117, |z| 290 → 270)
+-- Clément, 2026-11-17 (après un Play : « beaucoup trop larges », « recule les boutiques qui sont face au couloir, elles
+-- débordent sur les boutiques sur le côté ») : gabarit remis à sa largeur d'avant (53 avec le tapis et le podium) et
+-- rangée reculée en x -66 : ses plaques s'arrêtent à x -52,7, avant le bord ouest des boutiques des côtés (-54,5)
+LINE_FX, LINE_GAP = -66, 6
 local SHOP_REAL_W, SHOP_PADS = 53, 13 -- largeur réelle d'une boutique, plaques (tapis, banc, panneaux) devant sa façade
+-- Clément, 2026-11-17 : deux boutiques en moins face au couloir (6 en tout, serveurs de 6 joueurs) et boutiques élargies
+-- pour compenser (emplacements de 84,5 d'abord, puis rapprochés le même jour, voir LINE_FX). Le gabarit
+-- PLOT_Shop (plot_shop_builder.luau, session boutique) a fait 79,5 de large le même jour (murs à ±39,75), puis il est
+-- revenu à sa largeur d'avant (murs à ±24, 53 avec le tapis et le podium), en verre.
 local HUB_DECOR = false -- 2026-11-15 : hub épuré (lanternes des piliers, mâts à drapeau) ; true remet ce petit décor
 -- L-174 (Clément, 2026-11-15) : ordre d'attribution des boutiques, AssignOrder par PlotIndex : 1 = la plus en face du
 -- point d'arrivée (Map/Hub/Spawn, x -7, z 0, tourné vers les boutiques), les plus grands numéros sur les côtés
-local ASSIGN_ORDER = { [4] = 1, [5] = 2, [3] = 3, [6] = 4, [2] = 5, [7] = 6, [1] = 7, [8] = 8 }
-local LINE_PITCH = SHOP_REAL_W + LINE_GAP -- d'une boutique à la suivante dans la rangée (63)
+-- (2026-11-17, 6 boutiques) 3 et 4 au milieu de la rangée, puis 2 et 5 à ses bouts, puis les côtés 1 et 6
+local ASSIGN_ORDER = { [3] = 1, [4] = 2, [2] = 3, [5] = 4, [1] = 5, [6] = 6 }
+local LINE_PITCH = SHOP_REAL_W + LINE_GAP -- d'une boutique à la suivante dans la rangée (59 ; 63 avant le 2026-11-17)
 -- 2026-11-12 : serveurs de 8 joueurs (L-113, décision de Clément) : 8 boutiques en ligne (PlotIndex 1 à 8, 1 au nord).
--- Le demi-cercle et les rangées 3 face à 3 gardent 6 emplacements.
-local SHOP_COUNT = LINE and 8 or 6
--- Clément, 2026-11-12 : 6 boutiques au fond, face au couloir (2 à 7, du nord au sud), et une seule boutique de chaque
--- côté, à 90°, dos au mur nord ou sud, face à la place (1 au nord, 8 au sud), entre la promenade et les stands.
-local SIDES = (LINE and SHOP_COUNT == 8) and 2 or 0
+-- 2026-11-17 (Clément) : 6 boutiques en ligne, serveurs de 6 joueurs. Le demi-cercle et les rangées gardent aussi 6.
+local SHOP_COUNT = 6
+-- Clément, 2026-11-12 : boutiques au fond, face au couloir (2 à 5 depuis le 2026-11-17, du nord au sud ; 2 à 7 avant),
+-- et une seule boutique de chaque côté, à 90°, dos au mur nord ou sud, face à la place (1 au nord, 6 au sud), entre la
+-- promenade et les stands.
+local SIDES = LINE and 2 or 0
+if LINE then SHOP_W = SHOP_REAL_W + 3.5 end -- emprise d'une boutique (repère PlotSite, décor à écarter) : 56,5
 local ROW_N = SHOP_COUNT - SIDES -- boutiques de la rangée du fond
-local LINE_HALF = (ROW_N / 2) * SHOP_REAL_W + ((ROW_N - 1) / 2) * LINE_GAP -- demi-longueur de la rangée (184 pour 6)
+local LINE_HALF = (ROW_N / 2) * SHOP_REAL_W + ((ROW_N - 1) / 2) * LINE_GAP -- demi-longueur de la rangée (115 : 4 de 53 et 6 entre deux ; 184 avant le 2026-11-17)
 local PATH_W = 16 -- largeur de tous les chemins de la base (dalle), plus 1 de bordure de chaque côté
 -- centre des boutiques des côtés : au milieu de la promenade devant elles (dalle x -85..-1), donc -43 (Clément, 2026-11-12 :
 -- « ceux sur le bord ne sont pas centrés »)
 local SIDE_X = ((LINE_FX + 13) + (-1)) / 2
+-- 2026-11-17 (boutiques rapprochées) : x -32. Le tapis dépasse de 6,4 d'un côté (emprise x -30,4..24,1 dans le repère de
+-- la boutique) : la boutique du sud va de x -56,1 à -1,6, à 3 de la roue (x 1,5..26, z -173..-147) ; celle du nord de -62,4
+-- à -7,9, à 11 du cadeau (x 3,5..20,5) ; leurs plaques sont à 20 en z du bout de la rangée
+if LINE then SIDE_X = -32 end
 if LINE then
 	MALL = false
 	-- mur ouest collé au dos des boutiques (pas de couloir derrière la rangée)
 	-- Clément, 2026-11-12 : hub élargi pour que les boutiques des côtés viennent après les dernières du fond (façade à 10
 	-- après le bout de la rangée, dos au grand mur) : |z| <= 310 avec elles, 225 sans
-	local z1 = SIDES > 0 and (LINE_HALF + LINE_GAP + SHOP_PADS + SHOP_D + 3) or (LINE_HALF + 8) -- 290 (310 avant le 2026-11-15)
+	local z1 = SIDES > 0 and (LINE_HALF + LINE_GAP + SHOP_PADS + SHOP_D + 3) or (LINE_HALF + 8) -- 217 (310 avant le 2026-11-15, 290 avant le 2026-11-17)
+	-- 2026-11-17 : au moins 232, pour que le second leaderboard (z 216, panneau de 26) reste devant le grand mur nord ; les
+	-- boutiques des côtés (dos au mur) sont alors à |z| 189, leurs plaques à 20 du bout de la rangée
+	z1 = math.max(z1, 232)
 	HUB = { x0 = LINE_FX - SHOP_D - 3, x1 = 30, z0 = -z1, z1 = z1 } -- x -143..30 (-181 avant)
 end
 -- Zones du hub (L-165, Clément 2026-11-14) : dans la bande est (x 0..27,5), au-delà des stands ; au nord le cadeau
@@ -1200,6 +1221,90 @@ local function groundLoop(parent, f, name, pts, color)
 	m.Parent = parent
 	return m
 end
+-- Disque doux au sol (Clément, 2026-11-15 et 2026-11-17 : « les rectangles de lignes font cheap », références
+-- References/Videos_Jeux/2026-11-15_BreakStealEgg_B_frames/b_zone_sol_*.jpg) : remplace les anneaux de néon. Une pièce plate
+-- invisible `GroundDisc` (ni collision, ni toucher, ni requête) porte une SurfaceGui sur sa face du dessus : anneaux
+-- concentriques (UIStroke) plus opaques vers le bord, qui s'effacent vers le centre, à pleine lumière ; puis 2 émetteurs :
+-- fins traits de lumière qui montent du bord (strie de la pluie de FX_Aura_Eclair) et particules à thème (étincelles
+-- natives, billets ou pièces du tapis CashRegister). Aucun script, aucune texture nouvelle.
+local GD = {
+	STREAK = "rbxassetid://109836870688610", SPARK = "rbxasset://textures/particles/sparkles_main.dds",
+	BILL = "rbxassetid://124877141136214", COIN = "rbxassetid://93580691646372",
+	PPS = 16, INNER = 0.4, EDGE = 0.92, T_IN = 0.8, T_EDGE = 0.22, STEP = 0.025,
+}
+local function discT(u) -- transparence à la fraction u du rayon
+	if u <= GD.INNER then return GD.T_IN end
+	if u <= GD.EDGE then local t = (u - GD.INNER) / (GD.EDGE - GD.INNER); t = t * t; return GD.T_IN + (GD.T_EDGE - GD.T_IN) * t end
+	local t = (u - GD.EDGE) / (1 - GD.EDGE); return GD.T_EDGE + (1 - GD.T_EDGE) * math.sqrt(t) -- bord extérieur fondu
+end
+local function gdSeq(list) local k = {} for _, v in list do table.insert(k, NumberSequenceKeypoint.new(v[1], v[2])) end return NumberSequence.new(k) end
+-- center : point au sol ; R : rayon ; theme : "spark", "bills" ou "coins"
+local function groundDisc(parent, center, R, color, theme)
+	local p = Instance.new("Part"); p.Name = "GroundDisc"
+	p.Anchored = true; p.CanCollide = false; p.CanTouch = false; p.CanQuery = false; p.CastShadow = false
+	p.Transparency = 1; p.Material = SMOOTH
+	p.Size = Vector3.new(2 * R, 0.1, 2 * R); p.CFrame = CFrame.new(center.X, 0.07, center.Z)
+	local g = Instance.new("SurfaceGui"); g.Name = "Disc"; g.Face = Enum.NormalId.Top
+	g.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud; g.PixelsPerStud = GD.PPS
+	g.LightInfluence = 0; g.Brightness = 1.2; g.MaxDistance = 400; g.ClipsDescendants = false
+	local function circle(name, u)
+		local f = Instance.new("Frame"); f.Name = name
+		f.AnchorPoint = Vector2.new(0.5, 0.5); f.Position = UDim2.fromScale(0.5, 0.5); f.Size = UDim2.fromScale(u, u)
+		f.BorderSizePixel = 0; f.BackgroundColor3 = color; f.BackgroundTransparency = 1
+		local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0.5, 0); c.Parent = f
+		f.Parent = g
+		return f
+	end
+	circle("Fill", GD.INNER).BackgroundTransparency = GD.T_IN -- voile du centre
+	local px = GD.STEP * R * GD.PPS -- le contour se dessine hors du cercle, de u à u + STEP
+	local i, u = 0, GD.INNER
+	while u < 1 - 1e-6 do
+		i += 1
+		local s = Instance.new("UIStroke"); s.Color = color; s.Thickness = px
+		s.Transparency = discT(u + GD.STEP / 2); s.LineJoinMode = Enum.LineJoinMode.Round
+		s.Parent = circle("Ring_" .. i, u)
+		u += GD.STEP
+	end
+	g.Parent = p
+	local e = Instance.new("ParticleEmitter"); e.Name = "LightRise"
+	e.Texture = GD.STREAK; e.Orientation = Enum.ParticleOrientation.VelocityParallel
+	e.Shape = Enum.ParticleEmitterShape.Disc; e.ShapeStyle = Enum.ParticleEmitterShapeStyle.Volume
+	e.ShapeInOut = Enum.ParticleEmitterShapeInOut.Outward; e.ShapePartial = 0.82; e.EmissionDirection = Enum.NormalId.Top
+	e.Rate = math.max(3, R * 0.45); e.Lifetime = NumberRange.new(1.1, 1.8); e.Speed = NumberRange.new(2.5, 4.5); e.SpreadAngle = Vector2.new(0, 0)
+	e.Size = gdSeq({ { 0, 1.4 }, { 1, 2.6 } })
+	e.Transparency = gdSeq({ { 0, 1 }, { 0.25, 0.3 }, { 0.75, 0.45 }, { 1, 1 } })
+	e.Color = ColorSequence.new(color:Lerp(Color3.new(1, 1, 1), 0.45)); e.LightEmission = 0.6; e.LightInfluence = 0; e.Brightness = 3
+	e.Parent = p
+	local t = Instance.new("ParticleEmitter")
+	t.Shape = Enum.ParticleEmitterShape.Disc; t.ShapeStyle = Enum.ParticleEmitterShapeStyle.Volume
+	t.ShapeInOut = Enum.ParticleEmitterShapeInOut.Outward; t.ShapePartial = 0.5; t.EmissionDirection = Enum.NormalId.Top
+	t.LightInfluence = 0; t.Orientation = Enum.ParticleOrientation.FacingCamera
+	if theme == "bills" or theme == "coins" then
+		t.Name = (theme == "bills") and "Bills" or "Coins"
+		t.Texture = (theme == "bills") and GD.BILL or GD.COIN
+		t.Rate = 1.5; t.Lifetime = NumberRange.new(2.2, 3.2); t.Speed = NumberRange.new(1.5, 2.6); t.SpreadAngle = Vector2.new(15, 15)
+		t.Rotation = NumberRange.new(-180, 180); t.RotSpeed = NumberRange.new(-90, 90)
+		local sz = (theme == "bills") and 0.8 or 0.55
+		t.Size = gdSeq({ { 0, 0 }, { 0.15, sz }, { 0.85, sz }, { 1, 0 } })
+		t.Transparency = gdSeq({ { 0, 0.15 }, { 0.8, 0.15 }, { 1, 1 } })
+		t.Color = ColorSequence.new(Color3.new(1, 1, 1)); t.LightEmission = 0; t.Brightness = 1.3
+	else
+		t.Name = "Sparkles"; t.Texture = GD.SPARK
+		t.Rate = 4; t.Lifetime = NumberRange.new(1.4, 2.4); t.Speed = NumberRange.new(1, 2.2); t.SpreadAngle = Vector2.new(20, 20)
+		t.Rotation = NumberRange.new(-45, 45); t.RotSpeed = NumberRange.new(-60, 60)
+		t.Size = gdSeq({ { 0, 0 }, { 0.3, 0.6 }, { 1, 0 } })
+		t.Transparency = gdSeq({ { 0, 0.25 }, { 0.7, 0.35 }, { 1, 1 } })
+		t.Color = ColorSequence.new(color:Lerp(Color3.new(1, 1, 1), 0.6)); t.LightEmission = 0.8; t.Brightness = 2
+	end
+	t.Parent = p
+	p.Parent = parent
+	return p
+end
+-- couleur (celle de l'étiquette BB_ZoneLabel du stand) et thème des particules de chaque stand
+local STALL_DISC = {
+	WeaponShop = { rgb(242, 63, 57), "spark" }, RobuxShop = { rgb(255, 199, 51), "spark" },
+	AuraShop = { rgb(163, 115, 255), "spark" }, PawnShop = { rgb(71, 242, 163), "coins" },
+}
 -- Zone de détection : cylindre debout invisible de rayon r et de hauteur h, posé au sol en c
 local function zonePart(parent, c, r, h, tag)
 	local z = P(parent, "Zone", CFrame.new(c.X, h / 2, c.Z) * CFrame.Angles(0, 0, math.rad(90)), Vector3.new(h, 2 * r, 2 * r), WHITE,
@@ -1264,7 +1369,7 @@ local function freeGift(parent, c)
 	g.Parent = m
 	local zone = zonePart(m, c, 8, 10, "RewardsZone")
 	labelPoint(zone, c + Vector3.new(0, 3 + 2 * GS + 3.6 * GS + 3, 0)) -- 3 au-dessus du nœud
-	groundLoop(m, CFrame.new(c.X, 0, c.Z), "Ring", circlePts(0, 0, 8, 44), rgb(255, 214, 60))
+	groundDisc(m, c, 9, rgb(255, 214, 60), "spark") -- disque doux (2026-11-17), plus d'anneau de néon
 	m.WorldPivot = CFrame.new(c.X, 0, c.Z)
 	m.Parent = parent
 	return m
@@ -1319,7 +1424,7 @@ local function inviteNoob(parent, c)
 	end
 	local zone = zonePart(m, c, 7, 10, "InviteZone")
 	labelPoint(zone, c + Vector3.new(0, top + 3, 0))
-	groundLoop(m, CFrame.new(c.X, 0, c.Z), "Ring", circlePts(0, 0, 7, 40), rgb(70, 210, 255))
+	groundDisc(m, c, 8, rgb(70, 210, 255), "bills") -- disque doux et billets (2026-11-17), plus d'anneau de néon
 	m.WorldPivot = CFrame.new(c.X, 0, c.Z)
 	m.Parent = parent
 	return m
@@ -1366,7 +1471,7 @@ local function fortuneWheel(parent, c, zc)
 	Bx(m, bf, "PointerMount", -2.0, 24.6, -0.9, 0.8, 26.4, 0.9, D, G)
 	labelPoint(bar, Vector3.new(13, 29.5, c.Z)) -- à 14,5 du mur est (billboard qui ne rentre pas dans le mur)
 	zonePart(m, zc, 7, 10, "WheelZone")
-	groundLoop(m, CFrame.new(zc.X, 0, zc.Z), "Ring", circlePts(0, 0, 7, 40), rgb(255, 90, 200))
+	groundDisc(m, zc, 8, rgb(255, 90, 200), "spark") -- disque doux (2026-11-17), plus d'anneau de néon
 	m.WorldPivot = bf
 	m.Parent = parent
 	return m
@@ -1449,16 +1554,15 @@ local function stall(parent, t)
 	-- néon à la couleur du stand ; sans collision, touchable et interrogeable : le code ouvrira l'écran du stand quand un
 	-- joueur marche dessus ; aucun script
 	-- (avant de la plaque à -10,5 depuis le 2026-11-14, pour laisser passer l'anneau entre elle et la bordure de l'allée)
-	local pad = B("ShopPad", -8.5, 0.02, -10.5, 8.5, 0.22, -2.0, t.stripes[1], { T = 0.55, noShadow = true })
+	-- 2026-11-17 : la plaque est invisible (gardée telle quelle pour le code, ShopPadController) ; plus de bords PadEdge
+	local pad = B("ShopPad", -8.5, 0.02, -10.5, 8.5, 0.22, -2.0, t.stripes[1], { T = 1, noShadow = true })
 	pad.CanCollide = false
 	pad.CanTouch = true
 	pad.CanQuery = true
-	for i, e in { { -8.5, -10.5, 8.5, -10.0 }, { -8.5, -2.5, 8.5, -2.0 }, { -8.5, -10.0, -8.0, -2.5 }, { 8.0, -10.0, 8.5, -2.5 } } do
-		Bx(pad, cf, "PadEdge_" .. i, e[1], 0.02, e[2], e[3], 0.28, e[4], t.stripes[1], { decor = true, mat = NEON, noShadow = true })
-	end
-	-- anneau lumineux au sol autour du stand et de sa plaque (x monde 0,5..19,5, à 0,5 de la bordure de l'allée), point du
-	-- billboard BB_ZoneLabel au-dessus du store, clé du nom à traduire (L-165)
-	groundLoop(m, cf, "Ring", roundRectPts(0, -2, 11.5, 9.5, 3, 4), t.ring)
+	-- disque doux au sol sous le stand et sa plaque (rayon 12, centre 3 devant le pivot), à la couleur de son étiquette
+	-- (2026-11-17, à la place de l'anneau de néon) ; point du billboard BB_ZoneLabel au-dessus du store, clé du nom (L-165)
+	local sd = STALL_DISC[t.tag] or { t.ring, "spark" }
+	groundDisc(m, cf:PointToWorldSpace(Vector3.new(0, 0, -3)), 12, sd[1], sd[2])
 	m:SetAttribute("LabelKey", t.tag)
 	labelPoint(counter, cf:PointToWorldSpace(Vector3.new(0, 17.5, 0)))
 	goods(m, cf, t)
