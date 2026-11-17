@@ -742,12 +742,10 @@ table.insert(UI.Screens, {
 	Optional = true,
 	Elements = hudAlerts,
 })
--- UI_Index_v3 (IndexController) : UnlockedBar.ClaimAllButton (toutes les primes de zone à réclamer, en une demande),
--- ClaimAllAlert, ClaimButton.ClaimAlert (la zone visible), ZoneAlert de chaque section, CategoryAlert de NORMAL.
+-- UI_Index_v3 (IndexController) : ClaimButton.ClaimAlert (la zone visible), ZoneAlert de chaque section, CategoryAlert
+-- de NORMAL. Vague 72 (a242, L-213) : UnlockedBar.ClaimAllButton et son ClaimAllAlert sortis du contrat (retirés de
+-- l'écran par Clément, UI.Retired) ; IndexController le branche encore s'il revient.
 local indexAlerts = {
-	{ Path = "UnlockedBar.ClaimAllButton", Class = BUTTON },
-	{ Path = "UnlockedBar.ClaimAllButton.ClaimAllAlert" },
-	{ Path = "UnlockedBar.ClaimAllButton.ClaimAllAlert.Pulse", Class = "UIScale" },
 	{ Path = "Rewards.ClaimButton.ClaimAlert" },
 	{ Path = "Rewards.ClaimButton.ClaimAlert.Pulse", Class = "UIScale" },
 	{ Path = "Categories.NormalButton.CategoryAlert" },
@@ -918,6 +916,8 @@ UI.Retired = {
 		["UI_HUD.MenuButton"] = "menu « More » retiré (L-202), les boutons sont dans LeftRail et TopLeftRow",
 		["UI_HUD.MenuPanel"] = "menu « More » retiré (L-202), les boutons sont dans LeftRail et TopLeftRow",
 		["UI_HUD.MenuArea"] = "menu « More » retiré (L-202), les boutons sont dans LeftRail et TopLeftRow",
+		-- Vague 72 (a242, L-213) : « Claim All » de l'index retiré de l'écran par Clément.
+		["UI_Index_v3.UnlockedBar.ClaimAllButton"] = "« Claim All » de l'index retiré par Clément (L-213)",
 	},
 	Billboards = {
 		BB_OpenTimer = BOX_GONE,
@@ -1012,7 +1012,8 @@ table.insert(UI.Billboards, {
 -- et RebirthButton sont dans TopLeftRow (attribut FollowTopbarInset : calé sur la barre de Roblox), mêmes noms, les
 -- contrôleurs les cherchent partout dans l'écran.
 -- RightRail porte DisplayedButton (ouvre UI_Displayed) et les boutons en situation de Config/Boosts, cachés par
--- Clément. CashSpent : « -$X » rouge après un achat. HudController et HudMenuController.
+-- Clément. Vague 72 (a242, L-219 point 4) : le bouton inventaire (dernier bouton du HUD) garde le nom DisplayedButton,
+-- où qu'il soit dans UI_HUD (HudMenuController le cherche partout) ; InventoryButton reste l'inventaire archivé. CashSpent : « -$X » rouge après un achat. HudController et HudMenuController.
 table.insert(UI.Screens, {
 	Name = "UI_HUD",
 	Class = "ScreenGui",
@@ -1101,7 +1102,8 @@ table.insert(UI.Screens, {
 })
 -- UI_Displayed (DisplayedController ; nom gardé par Clément, L-192 Q4) : panneau des objets exposés, écran entier
 -- allumé et éteint par UI_HUD.RightRail.DisplayedButton (vague 63 : plus d'OpenButton, L-202 point 4) ; sa réserve
--- (vague 63, a206, L-192 Q3, noms de L-202) : Panel.Reserve, facultative.
+-- (vague 63, a206, L-192 Q3, noms de L-202) : Panel.Reserve, facultative ; vague 72 (a242, L-231) : plus montrée tant que
+-- Config/Displayed.ShowReserve = false (cachée par le code), Clément peut la retirer.
 table.insert(UI.Screens, {
 	Name = "UI_Displayed",
 	Class = "ScreenGui",
@@ -1126,6 +1128,8 @@ table.insert(UI.Screens, {
 		{ Path = "Reserve.ReserveList.Template.DisplayButton", Class = BUTTON, Optional = true, Note = "un objet de la réserve ne se remet pas sur un présentoir" },
 		-- Vague 66 (a219) : texte « PLACE » (Config/Displayed.LockedButtonText) sur un objet sous antivol à poser au sol.
 		{ Path = "Reserve.ReserveList.Template.DisplayButton.DisplayLabel", Class = "TextLabel", Optional = true, Note = "un objet sous antivol garde « DISPLAY » sur son bouton" },
+		-- Vague 72 (a242, L-219 point 4) : la flèche vers la droite qui ferme l'écran (la croix CloseButton reste le repli).
+		{ Path = "CloseArrowButton", Class = BUTTON, Optional = true, Note = "l'écran se ferme par la croix CloseButton" },
 	} :: { Element },
 })
 

@@ -1341,9 +1341,7 @@ local function bind(gui: ScreenGui)
 				onClaim(current)
 			end
 		end))
-		if claimAllButton == nil then
-			reportOnce("claimAll", `[Index] {name}.UnlockedBar.ClaimAllButton introuvable : pas de « Claim All »`)
-		end
+		-- Vague 72 (a242, L-213) : ClaimAllButton retiré par Clément (hors contrat) : branché seulement s'il revient.
 		keep(onClick(claimAllButton, function()
 			if screen == current and isOpen then
 				onClaimAll(current)
