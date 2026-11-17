@@ -5,7 +5,8 @@
 --
 -- Interrupteur : Features.Rebirth (false). Coupé, ce service n'installe aucune accroche, ne pose aucun
 -- attribut et ignore le remote Rebirth : le jeu ne change pas. En Studio seulement, on l'allume pour les
--- tests sans toucher à Features :
+-- tests sans toucher à Features. Vague 72 (a244 ; L-216 point 5, L-231, Cantin) : Features.Rebirth = true, la
+-- renaissance est au lancement ; les attributs ci-dessous ne servent plus qu'à passer un joueur à n renaissances :
 --   Workspace:SetAttribute("RebirthTest", true)              allumé (false ou nil : coupé)
 --   Workspace:SetAttribute("RebirthTestLevel", "<UserId ou nom> <n>")   allumé, et le joueur passe à n
 --                                                            renaissances faites (attribut remis à nil)
@@ -20,7 +21,8 @@
 -- Ce que la renaissance fait (proposition 1.1 et 1.2, V0) :
 --   remis à zéro  argent (plaques encaissées d'abord), Speed et Strength, tapis, banc et présentoirs
 --                 achetés (retour à Balance.Display.StartSlots), outils (Fists), auras et trails, coffre-fort
---                 du profil (Vault), gains hors ligne pas réclamés, et tous les objets sauf Rebirths.KeepItems ;
+--                 du profil (Vault), réserve (Reserve, vague 72), gains hors ligne pas réclamés, et tous les
+--                 objets sauf Rebirths.KeepItems ;
 --                 l'objet requis est remis (la copie qui rapporte le moins) et ne compte pas dans les 3
 --   colis         (question 5, proposition « ouverts d'office ») : chaque colis de l'inventaire compte comme
 --                 l'objet qu'il contient pour le choix des 3 ; s'il est gardé, il devient cet objet (mutation
@@ -29,7 +31,8 @@
 --                 (revenu 7.1 × mutation, comme Equip Best), à revenu égal un objet exposé d'abord puis le plus
 --                 petit uid ; ils reviennent sur les présentoirs (DisplayService.PlaceAuto), sans antivol
 --   gardé         index, arbre de compétences, achats Robux et Monetization, boosts, récompenses, tuto,
---                 Lifetime, réglages, potions en stock, zones atteintes
+--                 Lifetime, réglages, potions en stock, zones atteintes, diamants, codes, dons du tuto et de
+--                 l'index déjà versés (pas redonnés)
 --   gagné         Rebirths (renaissances faites) + 1 dans le profil, d'où : revenus des présentoirs ×
 --                 Rebirths.IncomeMultiplier (DisplayService.GetIncomeMultiplier ; pas le receleur). Vague 56
 --                 (a183, L-173, décision de Clément du 2026-11-15) : plus aucune autre récompense ici (aura,
@@ -342,6 +345,11 @@ local function commit(player: Player, data: Data, level: number, remitted: strin
 	table.clear(data.Display)
 	table.clear(data.Vault)
 	table.clear(data.Boxes)
+	-- Vague 72 (a244) : la réserve (vague 63, DisplayService) se vide aussi ; les gardés vont sur les présentoirs.
+	local reserve = data.Reserve
+	if type(reserve) == "table" then
+		table.clear(reserve)
+	end
 	local hotbar = data.Hotbar
 	if hotbar then
 		for index, slot in hotbar do

@@ -14,10 +14,11 @@
 --                                    - un objet à lui posé au sol dont l'antivol est fini (« UNLOCKED! ») :
 --                                      Model taggé FloorItem, OwnerUserId = son UserId, UnlockAt passé (heure
 --                                      serveur ; UnboxService), à reprendre pour l'exposer.
---   RebirthButton.RebirthAlert     une renaissance possible : la renaissance n'est pas codée (DEV-120,
---                                  Features.Rebirth à false ; UI_Rebirth est un aperçu sans confirmation) et
---                                  le client ne voit ni l'inventaire complet ni le coffre-fort : toujours
---                                  éteinte pour l'instant.
+--   RebirthButton.RebirthAlert     une renaissance possible (vague 72, a244 : Features.Rebirth à true) :
+--                                  attribut Rebirths posé (RebirthService), RebirthItemOwned vrai (objet requis
+--                                  hors sol, revu chaque seconde par le serveur) et attribut Cash au moins égal
+--                                  à l'argent du palier suivant (Config/Rebirths). Même règle que ConfirmButton
+--                                  (RebirthController) ; l'argent des plaques n'est pas compté.
 --   SkillTreeButton.SkillTreeAlert une amélioration achetable : une compétence ouverte (OpensWhen), niveau
 --                                  suivant codé (Coded), avec un prix, pas au maximum, et l'argent du joueur
 --                                  (attribut Cash) au moins égal à ce prix. Même règle que l'écran
@@ -53,6 +54,7 @@ local INVENTORY_ALERT = "InventoryAlert"
 local REBIRTH_ALERT = "RebirthAlert"
 local SKILL_TREE_ALERT = "SkillTreeAlert"
 local CASH_ATTRIBUTE = "Cash" -- DataService
+local REBIRTH_OWNED_ATTRIBUTE = "RebirthItemOwned" -- RebirthService (vague 72)
 -- Objet sous antivol posé au sol (UnboxService, vague 31).
 local FLOOR_ITEM_TAG = "FloorItem"
 local OWNER_ATTRIBUTE = "OwnerUserId"
@@ -97,6 +99,33 @@ local function inventoryPending(now: number): boolean
 		end
 	end
 	return false
+end
+
+-- Vague 72 (a244) : la renaissance est ouverte (Features.Rebirth) ; pastille allumée quand la prochaine est
+-- possible d'après ce que publie RebirthService : attribut Rebirths posé, RebirthItemOwned vrai, argent (attribut
+-- Cash) au moins égal à celui du palier suivant (Config/Rebirths, chargé au premier besoin : false = introuvable).
+local rebirthsConfig: any = nil
+local function rebirthPending(): boolean
+	local done = SkillTree.RebirthsOf(localPlayer:GetAttribute(SkillTree.RebirthsAttribute))
+	if done == nil or localPlayer:GetAttribute(REBIRTH_OWNED_ATTRIBUTE) ~= true then
+		return false
+	end
+	local cash = localPlayer:GetAttribute(CASH_ATTRIBUTE)
+	if type(cash) ~= "number" or cash ~= cash then
+		return false
+	end
+	if rebirthsConfig == nil then
+		local ok, result = pcall(function(): any
+			local module = Config:FindFirstChild("Rebirths")
+			return if module and module:IsA("ModuleScript") then require(module) :: any else false
+		end)
+		rebirthsConfig = if ok and result then result else false
+	end
+	if rebirthsConfig == false then
+		return false
+	end
+	local tier = rebirthsConfig.Get(done + 1)
+	return tier ~= nil and cash >= tier.Cash
 end
 
 local function levelOf(id: string): number
@@ -145,7 +174,7 @@ local function refresh()
 	state = {
 		Index = indexPending(),
 		Inventory = inventoryPending(now),
-		Rebirth = false, -- renaissance pas codée (DEV-120) : voir l'en-tête
+		Rebirth = rebirthPending(), -- vague 72 : voir l'en-tête
 		SkillTree = skillTreePending(),
 	}
 	local gui = hud
