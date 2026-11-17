@@ -10,7 +10,8 @@
 local DeepFreeze = require(script.Parent.DeepFreeze)
 
 -- Un rôle de la foule (Crowd.Roles) : Sign = Side de la pancarte tenue ("For" ou "Against") ; Phone = le téléphone.
-export type CrowdRole = { Name: string, Anim: string, Weight: number, Sign: string?, Phone: boolean? }
+-- Vague 72 (a240, L-229) : Sounds = les sons du marqueur Shout de ce rôle (un au hasard).
+export type CrowdRole = { Name: string, Anim: string, Weight: number, Sign: string?, Phone: boolean?, Sounds: { string }? }
 
 local Witness = {
 	-- Le « ? » -------------------------------------------------------------------------------------
@@ -114,11 +115,11 @@ local Witness = {
 		-- flash à chaque marqueur Flash). Une personne qui n'a pas l'animation (ou la pancarte) de son rôle devient
 		-- photographe ; sans TakePhoto non plus : pose de repos.
 		Roles = {
-			{ Name = "Cheer", Anim = "Cheer", Weight = 2 },
+			{ Name = "Cheer", Anim = "Cheer", Weight = 2, Sounds = { "Crowd_Cheer", "Crowd_Clap" } }, -- sons : Clément (L-229)
 			{ Name = "SignFor", Anim = "HoldSign", Sign = "For", Weight = 1 },
-			{ Name = "Boo", Anim = "Boo", Weight = 2 },
+			{ Name = "Boo", Anim = "Boo", Weight = 2, Sounds = { "Crowd_Boo" } },
 			{ Name = "SignAgainst", Anim = "HoldSign", Sign = "Against", Weight = 1 },
-			{ Name = "Shouter", Anim = "Shout", Weight = 2 },
+			{ Name = "Shouter", Anim = "Shout", Weight = 2, Sounds = { "Crowd_Shout", "Crowd_Scream" } },
 			{ Name = "Photographer", Anim = "TakePhoto", Phone = true, Weight = 3 },
 		} :: { CrowdRole },
 		Photographer = "Photographer", -- le rôle de repli (Roles)
@@ -146,6 +147,23 @@ local Witness = {
 		TurnInterval = 0.1, -- V0 : s, la foule se tourne vers le voleur…
 		TurnIntervalLow = 0.3, -- V0 : … sur appareil faible
 		Folder = "WitnessCrowd", -- V0 : dossier du Workspace (chez le joueur seul) qui range les copies
+		-- Vague 72 (a240) : la foule n'est plus créée en une seule image (mesuré en Play, fusion65 : 140 à 485 ms d'arrêt
+		-- à sa formation) ; à chaque image, au plus BuildPerFrame personnes, et plus aucune une fois BuildBudget s
+		-- dépensées (au moins une par image). Chaque personne fait son propre fondu d'entrée ; rien ne change à la fin.
+		BuildPerFrame = 3, -- V0
+		BuildBudget = 0.004, -- V0 : s par image
+		-- Vague 72 (a240, Clément, L-229) : les sons de la foule, 3D sur la personne (Assets/Sounds, MarkerSounds.find ;
+		-- absent : muet). Cris au marqueur Shout (Roles[].Sounds), photo au flash, Gasp à la casse d'une vitrine de magasin
+		-- PNJ. Jamais relancé sur une personne tant que son son précédent joue.
+		Sounds = {
+			Enabled = true, -- V0
+			Voices = 3, -- V0 : cris de foule (Cheer, Boo, Shout…) joués à la fois chez ce joueur, au plus
+			PhotoVoices = 2, -- V0 : sons de photo joués à la fois, au plus
+			Photo = "Witness_Photo", -- Clément (L-229) : à chaque flash d'un photographe…
+			Burst = "Crowd_PhotoBurst", -- Clément : … parfois la rafale à la place…
+			BurstChance = 0.2, -- V0 : … avec cette chance
+			Gasp = "Crowd_Gasp", -- Clément : une fois à la casse de la vitrine (3D sur la vitrine)
+		},
 	},
 
 	-- La police -------------------------------------------------------------------------------------

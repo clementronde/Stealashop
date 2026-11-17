@@ -557,7 +557,14 @@ function CatchSceneController.Play(night: boolean, outcome: string, homeIn: numb
 		finish(current)
 	end))
 	if IS_STUDIO then
-		print(`[CatchScene] capture mise en scène ({if night then "nuit" else "jour"}, {outcome}, renvoi dans {homeIn} s)`)
+		-- a240 : `night` dit seulement « arrêté par un vigile de nuit » ; un vigile de jour ou un policier peut
+		-- attraper la nuit : l'heure se lit dans NightPhase (NightCycleService).
+		local okPhase, phase = pcall(function(): any
+			return Workspace:GetAttribute("NightPhase")
+		end)
+		local isNight = night or (okPhase and phase == "Night")
+		local by = if night then "vigile de nuit" else "vigile ou policier"
+		print(`[CatchScene] capture mise en scène ({if isNight then "nuit" else "jour"}, {by}, {outcome}, renvoi dans {homeIn} s)`)
 	end
 end
 
