@@ -128,6 +128,16 @@ local Unbox = {
 
 	-- Annonce à tout le serveur (5.7, étape 6 : Légendaire et plus, Rarities.Announce) -----------
 	AnnounceKind = "Announce", -- V0 : catégorie du Notify envoyé aux autres joueurs
+	-- Vague 71 (a239, L-216 point 4) : annonce à tout le serveur quand un colis de NightBoxMinRarity ou plus APPARAÎT
+	-- sur un rayon la nuit (StoreHeistService : remplissage de la nuit, ou magasin rempli à sa fermeture pendant la
+	-- nuit), avec le même Notify (AnnounceKind). Les colis apparus en NightBoxGroupDelay s partent en une seule
+	-- annonce (pas de rafale). Rayons d'événement exclus. Textes en anglais : {rarity} = la plus rare (capitales),
+	-- {store} = son magasin (Config/Zones.Stores, sinon « Zone N »), {count} = nombre de colis. Tout V0.
+	NightBoxAnnounce = true, -- interrupteur ; false = aucune annonce (comme avant)
+	NightBoxMinRarity = "Legendary", -- V0 : comme ShelfOpen.AnnounceMinRarity
+	NightBoxGroupDelay = 1, -- V0 : s ; un remplissage de nuit (un magasin par image) tient dans ce délai
+	NightBoxText = "A {rarity} box just appeared at {store}!", -- V0 : un seul colis
+	NightBoxesText = "{count} rare boxes just appeared! Best: {rarity} at {store}", -- V0 : plusieurs colis
 
 	-- Verrou de l'antivol (a178, Cantin 15/11) -------------------------------------------------------
 	-- BB_AntiTheft (UnboxController) se montre selon la distance entre le PERSONNAGE local et l'objet, pas

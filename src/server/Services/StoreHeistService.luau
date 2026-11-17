@@ -1355,6 +1355,79 @@ local function cancelHolds(store: Store)
 	end
 end
 
+-- Vague 71 (a239, L-216 point 4) : annonce à tout le serveur quand un colis de Unbox.NightBoxMinRarity ou plus
+-- apparaît sur un rayon la nuit (attribut NightPhase = "Night" du Workspace, posé par NightCycleService avant
+-- RefillAll ; aussi un magasin rempli à sa fermeture pendant la nuit). Les colis apparus en NightBoxGroupDelay s
+-- partent en une seule annonce (Notify Unbox.AnnounceKind, à tous). Rayons d'événement exclus.
+local NIGHT_PHASE_ATTRIBUTE = "NightPhase" -- NightCycleService (comme HudController et SkyController)
+type NightBox = { Store: Store, Rarity: Rarities.Rarity }
+local nightBoxes: { NightBox } = {}
+
+-- Nom anglais du magasin (Config/Zones.Stores, par son Id ou par le nom STORE_Z<n>_<Id> du modèle), sinon « Zone N ».
+local function storeDisplayName(store: Store): string
+	local zone = Zones[store.Zone]
+	local rest = string.match(store.Model.Name, "^STORE_Z%d+_(.+)$")
+	if zone then
+		for index, id in zone.StoreIds do
+			if store.Id == id or rest == id or (rest ~= nil and string.sub(rest, 1, #id + 1) == `{id}_`) then
+				local name = zone.Stores[index]
+				if name then
+					return name
+				end
+			end
+		end
+	end
+	return `Zone {store.Zone}`
+end
+
+local function flushNightBoxes()
+	local list = nightBoxes
+	nightBoxes = {}
+	local best = list[1]
+	if best == nil then
+		return
+	end
+	for _, entry in list do
+		if entry.Rarity.Order > best.Rarity.Order then
+			best = entry
+		end
+	end
+	local values: { [string]: string } = {
+		rarity = best.Rarity.DisplayNameUpper,
+		store = storeDisplayName(best.Store),
+		count = tostring(#list),
+	}
+	local template = if #list == 1 then Unbox.NightBoxText else Unbox.NightBoxesText
+	local message = string.gsub(template, "{(%a+)}", function(key: string): string
+		return values[key] or `\{{key}\}`
+	end)
+	for _, player in Players:GetPlayers() do
+		Net.Server.Notify:Fire(player, message, Unbox.AnnounceKind)
+	end
+	log(`annonce de nuit : {message}`)
+end
+
+local function noteNightBoxes(store: Store)
+	if Unbox.NightBoxAnnounce ~= true or store.Event or Workspace:GetAttribute(NIGHT_PHASE_ATTRIBUTE) ~= "Night" then
+		return
+	end
+	local minimum = Rarities.ById[Unbox.NightBoxMinRarity]
+	if minimum == nil then
+		return
+	end
+	local first = #nightBoxes == 0
+	for _, slot in store.Slots do
+		local box = slot.Box
+		local rarity = if box then Rarities.ById[box.Rarity] else nil
+		if rarity and rarity.Order >= minimum.Order then
+			table.insert(nightBoxes, { Store = store, Rarity = rarity })
+		end
+	end
+	if first and #nightBoxes > 0 then
+		task.delay(math.max(Unbox.NightBoxGroupDelay, 0), flushNightBoxes)
+	end
+end
+
 -- Nouveau tirage du magasin (L-031, L-033, 5.12) : retire tous ses colis (posés ou en vol de
 -- retour), oublie ceux qui en sont sortis, puis répartit au hasard un jeu neuf de colis sur ses
 -- rayons, chacun avec son contenu tiré. Renvoie le nombre de colis posés.
@@ -1389,6 +1462,7 @@ local function fillStore(store: Store): number
 			)
 		end
 	end
+	noteNightBoxes(store) -- vague 71 (a239) : annonce de nuit des colis rares
 	return count
 end
 
