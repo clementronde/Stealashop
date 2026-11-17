@@ -809,4 +809,27 @@ local ShopCardBg: ModelSpec = {
 Models.ShopCardBg = ShopCardBg
 table.insert(Models.List, table.find(Models.List, WeaponShopCounter) or #Models.List + 1, ShopCardBg)
 
+-- Pièges de boutique (vague 72, a243 ; Clément, L-218 : préfixe TRAP_ accepté par Cantin le 2026-11-17, L-231) :
+-- ReplicatedStorage/Assets/Traps/TRAP_<Id>, posés par TrapService sur les TrapSlot_0n de la boutique (Config/Traps).
+-- Base = PrimaryPart (pivot en bas au centre) ; TriggerZone = volume invisible où le voleur déclenche ; Armed visible,
+-- Triggered caché, montrés tour à tour par TrapController. Un modèle absent : TrapService construit un repli.
+local Trap: ModelSpec = {
+	Key = "Trap",
+	Label = "pièges de boutique",
+	Category = "Parcelles",
+	Prefix = "TRAP_",
+	Class = "Model",
+	PrimaryPart = "Base",
+	Attributes = { "TrapId" },
+	Parts = {
+		{ Name = "Base", Class = "BasePart" },
+		{ Name = "TriggerZone", Class = "BasePart", Invisible = true, Note = "volume où un voleur déclenche le piège, L-218" },
+		{ Name = "Armed", Class = "Model" },
+		{ Name = "Triggered", Class = "Model", Note = "livré caché, montré au déclenchement, L-218" },
+	},
+	Expected = { "TRAP_GlueMat", "TRAP_NetBox", "TRAP_AlarmGate" },
+}
+Models.Trap = Trap
+table.insert(Models.List, Trap)
+
 return Models

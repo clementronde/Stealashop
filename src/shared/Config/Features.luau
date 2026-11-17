@@ -44,6 +44,10 @@ local Features = {
 	-- Vague 66 (a221, L-210 point 4) : la foule de PNJ qui filme et photographie le voleur à sa sortie d'un magasin PNJ
 	-- (Config/Witness.Crowd, WitnessCrowdController, client seul, aucun remote) ; false = rien ne change.
 	WitnessCrowd = true,
+	-- Vague 72 (a243, L-218, L-216 point 11) : pièges de la boutique (Config/Traps, TrapService, TrapController ; tuile
+	-- Traps de Config/SkillTree achetable) ; false = aucun piège posé, tuile « Soon » ; en Studio,
+	-- workspace:SetAttribute("TrapsTest", true) les allume sans toucher à cette ligne.
+	Traps = false,
 }
 
 export type Features = typeof(Features)

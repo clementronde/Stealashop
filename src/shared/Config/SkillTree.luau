@@ -20,6 +20,7 @@
 -- (« Glass ×2 ») et StatBox.NodeEffect (« ×2 ▶ ×3 »). Textes du jeu en anglais.
 
 local DeepFreeze = require(script.Parent.DeepFreeze)
+local Features = require(script.Parent.Features)
 
 export type SkillId =
 	"Walls"
@@ -191,15 +192,17 @@ local List: { Skill } = {
 	},
 	{
 		-- Partie 2 (MAJ 4) : pièges derrière la vitrine. Ouvre à Walls 2 (Shop Level 2 du prototype de Clément).
+		-- Vague 72 (a243, L-218 ; V0 à valider par Clément) : Effects[n] = pièges posés sur TrapSlot_01 à _0n
+		-- (TrapService, genres de Config/Traps.SlotLayout) ; achetable seulement avec Features.Traps (sinon « Soon »).
 		Id = "Traps",
 		Tile = "Tile_Next1",
 		DisplayName = "Traps",
 		Stat = "Trap slots",
-		MaxLevel = 1,
-		Prices = {},
-		Effects = {},
-		Labels = {},
-		Coded = 0,
+		MaxLevel = 4,
+		Prices = { 1_000_000, 10_000_000, 100_000_000, 1_000_000_000 },
+		Effects = { 1, 2, 3, 4 },
+		Labels = { [0] = "0", "1", "2", "3", "4" },
+		Coded = if Features.Traps then 4 else 0,
 		OpensWhen = { Id = "Walls", Level = 2 },
 		RequiresRebirth = 4, -- V0 (L-173)
 	},
