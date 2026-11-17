@@ -58,3 +58,12 @@ Barrière basse, entrée entre deux piliers à lanternes, tout visible de l'ext�
 - **Ouverture** : comme décrite en section 1, durée selon la rareté.
 - **Tutoriel** : les trois guides de la section 6.
 - **Capture par la police ou le vigile** faute de puissance ou de vitesse : message du genre « Pas assez de puissance ? Invite un ami pour t'aider à braquer le magasin », avec un bouton d'invitation.
+
+## 8. Ouverture d'une fenêtre : HUD, flou, fond translucide (mesuré à la demande de Clément)
+
+Clément : « quand on ouvre un panneau (boutique, index, plantes), tout le reste de l'écran se retire (force, vitesse, autres boutons), on a une sorte de petit zoom, la boutique apparaît et le fond est flouté ; le fond de la boutique est transparent : si le sol était bleu, on verrait un flou bleu derrière ».
+
+- **HUD** : tout disparaît **à l'image même** où la fenêtre apparaît (boutons, force, argent, barre de niveau, réglages), sans fondu ni cascade, et revient à l'image où elle disparaît. Exception : une petite fenêtre (cadeau) ne cache rien et ne floute rien.
+- **Le « petit zoom »** : la caméra ne bouge pas (décor à 1,00 ± 0,01). C'est la fenêtre qui grandit (`UIScale` 0,84 → 1, section 3) pendant que le flou monte. Un seul vrai changement vu : `FieldOfView` +5,5 en 0,22 s (Quad Out) sur leur magasin de graines, sans doute lié au tuto : facultatif, jamais pendant une poursuite.
+- **Flou** : même force sur toutes les fenêtres, σ ≈ 0,75 % de la hauteur d'écran, soit `BlurEffect.Size` ≈ 16 (estimé, à étalonner entre 12 et 24). Entrée `TweenInfo(0.2, Quad, InOut)` dès l'apparition ; sortie 70 ms après le clic, `TweenInfo(0.15, Quad, InOut)`, puis désactivé. Aucun assombrissement.
+- **Corps de la fenêtre** : noir, `BackgroundTransparency` ≈ 0,5, sans dégradé (le décor flouté se voit au travers) ; bandeau de titre opaque ; contour opaque en deux traits (noir 2-3 px, filet clair 2 px) ; colonne d'onglets presque opaque (≈ 0,18).
