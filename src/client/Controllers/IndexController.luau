@@ -33,7 +33,7 @@
 --     fermeture animées par UI/Motion (groupe ScreenGroup de l'écran, Motion.SetCloser), comme les
 --     boutiques : les cartes sont retirées une fois l'écran éteint, et une réouverture pendant la
 --     fermeture la rattrape. L'écran branché éteint les plus anciens (Enabled) ;
---   - une carte par objet (Config/Index : ordre du catalogue, objet du tuto compris), clonée depuis
+--   - une carte par objet (Config/Index, objet du tuto compris ; vague 71 : du moins rare au plus rare), clonée depuis
 --     List.Template et nommée Item_<nn>_<ItemId> (LayoutOrder = rang dans sa zone), Rays et Glow (dans
 --     son cadre Clip) teints de la couleur de la rareté (Config/Rarities), découvert ou pas ;
 --   - l'écran suit l'attribut IndexDiscovered du Player (IndexService) : une découverte le met à jour
@@ -444,12 +444,38 @@ local function silhouetteOf(item: Item): Color3
 	return rarityColor(item):Lerp(BLACK, VIEW.SilhouetteDarken)
 end
 
+-- Vague 71 (a238, L-213 point 3a) : une liste de Config/Index triée du moins rare au plus rare (Rarities.Order),
+-- dans l'ordre du catalogue à égalité ; faite une fois par liste.
+local NO_ITEMS: { Item } = {}
+local sortedLists: { [{ Item }]: { Item } } = {}
+local function byRarity(list: { Item }): { Item }
+	local known = sortedLists[list]
+	if known then
+		return known
+	end
+	local sorted: { Item } = {}
+	local position: { [Item]: number } = {}
+	for index, item in list do
+		table.insert(sorted, item)
+		position[item] = index
+	end
+	table.sort(sorted, function(a: Item, b: Item): boolean
+		local ra, rb = rarityOrder(a), rarityOrder(b)
+		if ra ~= rb then
+			return ra < rb
+		end
+		return position[a] < position[b]
+	end)
+	sortedLists[list] = sorted
+	return sorted
+end
+
 local function itemsOf(def: TabDef): { Item }
 	local zone = def.zone
 	if zone ~= nil then
-		return Index.ByZone[zone] or {}
+		return byRarity(Index.ByZone[zone] or NO_ITEMS)
 	end
-	return Index.Secrets
+	return byRarity(Index.Secrets)
 end
 
 -- L'objet le plus rare d'une liste (le dernier du catalogue à égalité), nil si elle est vide.
@@ -1467,8 +1493,8 @@ local function open()
 	refreshHeader(current)
 	updateTrack(current)
 	if current.v3 then
-		local first = Index.ByZone[1]
-		local item = selected or (if first then first[1] else nil)
+		local first = byRarity(Index.ByZone[1] or NO_ITEMS) -- vague 71 : la première carte montrée
+		local item = selected or first[1]
 		if item then
 			selected = item
 			showDetail(current, item)

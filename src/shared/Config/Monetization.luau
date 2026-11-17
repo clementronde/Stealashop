@@ -163,7 +163,9 @@ local ShopBoosts: { ShopBoost } = {}
 for _, entry in
 	{
 		{ Key = "SpeedBoost", Order = 1, DisplayName = "×2 Speed", Effect = "×2 speed on the treadmill", Icon = "UI_Icon_SpeedBoost", CardColor = Color3.fromHex("F2553A") },
-		{ Key = "SleepGuards", Order = 2, DisplayName = "zZz", Effect = "Guards & police sleep 60 s", Icon = "UI_Icon_Sleep", CardColor = Color3.fromHex("5B4BE0") },
+		-- Vague 71 (a238, L-213 point 1d) : nom de la carte V0 proposé (Clément voulait un texte, pas « zZz ») ;
+		-- le bouton du HUD garde « zZz ».
+		{ Key = "SleepGuards", Order = 2, DisplayName = "Sleeping Guards 60s", Effect = "Guards & police sleep 60 s", Icon = "UI_Icon_Sleep", CardColor = Color3.fromHex("5B4BE0") },
 	}
 do
 	for _, boost in Boosts.List do
