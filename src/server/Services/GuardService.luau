@@ -426,6 +426,7 @@ type Guard = {
 	knockTarget: Player?, -- joueur à projeter au marqueur Impact de Catch
 	followPayload: any?, -- Follow : le payload du colis tombé au sol que le vigile suit
 	followPosition: Vector3, -- Follow : où il est tombé (là où était la cible au coup)
+	followOwner: Player?, -- a231 : porteur attrapé, gardé pour le journal (la cible est déjà vide après Catch)
 	agentRadius: number, -- rayon de son agent du PathfindingService (agentFor)
 	pathFailures: number, -- calculs de chemin ratés de suite, depuis le dernier changement d'état ou de but
 	returnTo: ReturnTarget, -- retour d'un vigile de jour : son but
@@ -1182,6 +1183,7 @@ local function releaseFollow(guard: Guard)
 		return
 	end
 	guard.followPayload = nil
+	guard.followOwner = nil
 	if following[payload] == guard then
 		following[payload] = nil
 	end
@@ -1823,7 +1825,7 @@ local function giveUp(guard: Guard, reason: string)
 	endChase(guard)
 	releaseFollow(guard)
 	if state == "Follow" then
-		log(`{guard.label} : abandonne le colis tombé au sol ({reason})`)
+		log(`{guard.label} : abandonne l'objet tombé au sol ({reason})`)
 	else
 		log(`{guard.label} : abandonne {if player then player.Name else "?"} ({reason})`)
 	end
@@ -2366,7 +2368,7 @@ local function chaseStep(guard: Guard, now: number)
 			end
 		end
 	elseif not CarryService.IsCarrying(player) then
-		giveUp(guard, "ne porte plus de colis")
+		giveUp(guard, "ne porte plus d'objet")
 		return
 	end
 	if isInSafeZone(targetRoot.Position) then
@@ -2473,7 +2475,7 @@ end
 -- ramasse (retarget) ou qu'il reparte vers son rayon (giveUp). Aucune capture ici.
 local function followStep(guard: Guard, now: number)
 	if now >= guard.stateEndsAt then
-		giveUp(guard, `{Bat.DroppedLifetime + FOLLOW_MARGIN} s sans nouvelles du colis au sol`)
+		giveUp(guard, `{Bat.DroppedLifetime + FOLLOW_MARGIN} s sans nouvelles de l'objet au sol`)
 		return
 	end
 	if isInSafeZone(guard.root.Position) then
@@ -3480,9 +3482,11 @@ end
 
 -- Colis tombé au sol (6.2) ----------------------------------------------------------------------
 
--- Le colis de la cible du vigile vient de tomber à `position` (coup de batte) : il le suit.
-local function followDrop(guard: Guard, payload: any, position: Vector3)
-	local player = guard.target
+-- L'objet de `owner` vient de tomber à `position` (coup de batte, ou capture : la cible est alors
+-- déjà vide, d'où `owner`) : le vigile le suit.
+local function followDrop(guard: Guard, payload: any, position: Vector3, owner: Player?)
+	local player = owner or guard.target
+	guard.followOwner = nil
 	endChase(guard)
 	local now = os.clock()
 	setState(guard, "Follow")
@@ -3498,7 +3502,7 @@ local function followDrop(guard: Guard, payload: any, position: Vector3)
 	guard.nextPathAt = now
 	guard.anims:Stop("Walk")
 	setWalkSpeed(guard, guard.speed) -- encore à 0 s'il ne s'était pas élancé (Wait)
-	log(`{guard.label} : le colis de {if player then player.Name else "?"} est tombé au sol, il va vers lui`)
+	log(`{guard.label} : l'objet de {if player then player.Name else "?"} est tombé au sol, il va vers lui`)
 end
 
 -- Le colis que suit le vigile vient d'être ramassé par `player` : nouvelle poursuite, comme un
@@ -3513,7 +3517,7 @@ local function retarget(guard: Guard, player: Player)
 	end
 	local other = chasedBy[player]
 	if other and other ~= guard then
-		giveUp(other, "cible reprise par le vigile du colis ramassé")
+		giveUp(other, "cible reprise par le vigile de l'objet ramassé")
 	end
 	releaseFollow(guard)
 	local now = os.clock()
@@ -3531,7 +3535,7 @@ local function retarget(guard: Guard, player: Player)
 	guard.speed = chaseSpeed(player, guard.zone)
 	guard.stateEndsAt = now + REACTION_DELAY
 	refreshChaseState(player)
-	log(`{guard.label} : change de cible, poursuit {player.Name} qui a ramassé le colis (vitesse {Format.short(guard.speed)})`)
+	log(`{guard.label} : change de cible, poursuit {player.Name} qui a ramassé l'objet (vitesse {Format.short(guard.speed)})`)
 end
 
 -- Un vigile de jour de `store` sort du GuardSpawn pour le porteur `player` de `payload` (colis de l'ancien
@@ -3543,7 +3547,7 @@ local function spawnForCarrier(player: Player, payload: any, store: Model)
 		zone = store:GetAttribute("Zone")
 	end
 	if type(zone) ~= "number" or Zones[zone] == nil then
-		warn(`[GuardService] zone du colis de {player.Name} inconnue ({payload.Zone}) : pas de vigile`)
+		warn(`[GuardService] zone de l'objet de {player.Name} inconnue ({payload.Zone}) : pas de vigile`)
 		return
 	end
 	local template = findTemplate(zone)
@@ -3633,7 +3637,7 @@ local function onCarryStarted(player: Player, payload: any)
 		elseif link then
 			onLinkedPickup(player, payload, link)
 		else
-			log(`{player.Name} ramasse un colis tombé au sol : aucun vigile ne le suivait`)
+			log(`{player.Name} ramasse un objet tombé au sol : aucun vigile ne le suivait`)
 		end
 		return
 	end
@@ -3643,7 +3647,7 @@ local function onCarryStarted(player: Player, payload: any)
 	local storeId = payload.StoreId
 	local store = if type(storeId) == "string" then findStore(storeId) else nil
 	if store == nil then
-		warn(`[GuardService] magasin « {storeId} » du colis de {player.Name} introuvable : pas de vigile`)
+		warn(`[GuardService] magasin « {storeId} » de l'objet de {player.Name} introuvable : pas de vigile`)
 		return
 	end
 	if linkable(payload) then
@@ -3682,6 +3686,7 @@ local function onCarryEnded(player: Player, payload: any, result: string, reason
 			local root = bodyOf(player)
 			linked.followPayload = payload
 			linked.followPosition = if root then root.Position else linked.root.Position
+			linked.followOwner = player -- a231 : pour « l'objet de X » à la fin de Catch
 			following[payload] = linked
 		end
 		return
@@ -3705,7 +3710,7 @@ local function onDropExpired(_dropId: string, payload: any, _position: Vector3)
 	itemCatches[payload] = nil -- a174 : reparti vers son rayon
 	local guard = following[payload]
 	if guard then
-		giveUp(guard, "colis resté au sol, reparti vers son rayon")
+		giveUp(guard, "objet resté au sol, reparti vers son rayon")
 	end
 end
 
@@ -3714,7 +3719,7 @@ followAfterCatch = function(guard: Guard): boolean
 	if not guard.alive or payload == nil or not droppedPayloads[payload] or following[payload] ~= guard then
 		return false
 	end
-	followDrop(guard, payload, guard.followPosition)
+	followDrop(guard, payload, guard.followPosition, guard.followOwner)
 	return true
 end
 
