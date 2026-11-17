@@ -20,10 +20,13 @@
 -- Ce qui est touché, le temps de la lueur seulement : Enabled de l'écran, Visible de RainbowBorder, Rotation (et
 -- Color s'il était blanc) du UIGradient, transparences pendant l'effacement ; tout est remis ensuite (sauf la couleur
 -- écrite sur un dégradé blanc). Une connexion Heartbeat seulement pendant la lueur.
+-- Vague 71 (a238, L-213 point 8) : sur téléphone, Thickness du UIStroke de RainbowBorder = attribut PhoneThickness
+-- (sur le UIStroke, sinon sur RainbowBorder), remis à la fin ; UIStroke.Transparency s'efface avec le reste.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = Shared:WaitForChild("Config")
@@ -33,6 +36,7 @@ local HudMask = require(script.Parent:WaitForChild("HudMask"))
 
 local SPEC = ShopFx.PurchaseGlow
 local SCREEN_PREFIX = "UI_"
+local PHONE_THICKNESS = "PhoneThickness" -- vague 71 (L-213 point 8), attribut de Clément
 
 export type State = "Idle" | "Shown" | "Fading"
 
@@ -49,6 +53,8 @@ type Glow = {
 	shownAt: number,
 	fadeAt: number?, -- os.clock() du début de l'effacement
 	faders: { Fader }, -- transparences à effacer (vide hors effacement)
+	stroke: UIStroke?, -- vague 71 : contour aminci sur téléphone (PhoneThickness), remis à la fin
+	thickness: number, -- Thickness de Clément
 	token: number,
 }
 
@@ -91,6 +97,19 @@ local function paint(gradient: UIGradient)
 		table.insert(list, ColorSequenceKeypoint.new(if count > 1 then (index - 1) / (count - 1) else 0, Color3.fromHex(hex)))
 	end
 	gradient.Color = ColorSequence.new(list)
+end
+
+-- Vague 71 (a238, L-213 point 8) : épaisseur du contour sur téléphone, l'attribut PhoneThickness de Clément (sur le
+-- UIStroke, sinon sur RainbowBorder ; un UIStroke n'a pas de minimum), ou nil (PC, ou pas d'attribut).
+local function phoneThickness(border: GuiObject, stroke: UIStroke): number?
+	if not (UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled) then
+		return nil
+	end
+	local value = stroke:GetAttribute(PHONE_THICKNESS)
+	if value == nil then
+		value = border:GetAttribute(PHONE_THICKNESS)
+	end
+	return if type(value) == "number" and value >= 0 and value < math.huge then value else nil
 end
 
 local function faders(border: GuiObject): { Fader }
@@ -140,6 +159,10 @@ local function finish(glow: Glow)
 	local gradient = glow.gradient
 	if gradient then
 		gradient.Rotation = glow.rotation
+	end
+	local stroke = glow.stroke
+	if stroke then
+		stroke.Thickness = glow.thickness
 	end
 	glow.border.Visible = glow.visible
 	glow.gui.Enabled = glow.enabled
@@ -211,6 +234,8 @@ function PurchaseGlow.Show()
 	if glow == nil then
 		local gradientFound = border:FindFirstChildWhichIsA("UIGradient", true)
 		local gradient: UIGradient? = if gradientFound then gradientFound :: UIGradient else nil
+		local strokeFound = border:FindFirstChildWhichIsA("UIStroke", true)
+		local stroke: UIStroke? = if strokeFound then strokeFound :: UIStroke else nil
 		local created: Glow = {
 			gui = gui,
 			border = border,
@@ -221,10 +246,16 @@ function PurchaseGlow.Show()
 			shownAt = os.clock(),
 			fadeAt = nil,
 			faders = {},
+			stroke = stroke,
+			thickness = if stroke then stroke.Thickness else 0,
 			token = token,
 		}
 		if gradient then
 			paint(gradient)
+		end
+		local phone = if stroke then phoneThickness(border, stroke) else nil
+		if stroke and phone then
+			stroke.Thickness = phone
 		end
 		current = created
 		glow = created

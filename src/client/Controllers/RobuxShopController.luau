@@ -37,7 +37,7 @@
 --                  l'attente restante (Monetization.OpenNowTier) ;
 --       BuyButton  ouvre la fenêtre d'achat de Roblox (PromptGamePassPurchase, PromptProductPurchase) ;
 --                  Id à 0 : pas d'achat, « Soon » à la place du prix (vitrine, plus haut) et une ligne
---                  dans la sortie en Studio. Caché pour Ouvrir maintenant sans colis à ouvrir ;
+--                  dans la sortie en Studio. Ouvrir maintenant sans colis à ouvrir : visible (vague 71) ;
 --                  vague 66 (a218, L-210) : offre pas en vente (Id à 0, effet pas codé, aucun palier
 --                  d'Ouvrir maintenant créé) : Price dit « Soon » en permanence, bouton visible ;
 --       Owned      gamepass possédé (attribut Pass<Clé> du Player, posé par MonetizationService) :
@@ -89,6 +89,14 @@
 --       s'éloigne. Appelé par ShopPadController (plaque ShopPad du comptoir, L-071).
 --   RobuxShopController.Leave(anchor?)
 --       Vague 66 (L-210 point 7) : le joueur descend de la plaque du comptoir : l'écran se ferme s'il est ouvert.
+--
+-- Vague 71 (a238, L-213 point 1) :
+--   (a) v2 : List.CanvasSize posé par le code (AutomaticCanvasSize = None) à la hauteur de List.Content plus le
+--       UIPadding de List (haut + bas, en px), refait à chaque changement de Content.AbsoluteSize : la dernière
+--       rangée (3 h, 5 h, 12 h) n'est plus sous le bord (AutomaticCanvasSize ne suivait pas fitGrid et fitContent) ;
+--   (b) Ouvrir maintenant garde son bouton de prix sans objet à ouvrir : prix du premier palier (Config), et au
+--       clic « No item » (ou « Almost ready » sous OpenNow.MinRemaining) à la place du prix pendant SOON_DURATION s ;
+--   (c) Clip.Watermark de chaque carte clonée reprend l'image de son Icon (sans Watermark : rien).
 
 local CollectionService = game:GetService("CollectionService")
 local MarketplaceService = game:GetService("MarketplaceService")
@@ -135,6 +143,7 @@ type Card = {
 	buy: GuiObject?,
 	owned: GuiObject?,
 	soonUntil: number?, -- os.clock() jusqu'où Price montre SOON_TEXT (clic sans achat possible)
+	soonText: string?, -- vague 71 : texte montré à la place de SOON_TEXT (Ouvrir maintenant sans objet)
 	cloned: boolean,
 }
 
@@ -229,6 +238,9 @@ local OPEN_NOW_TEXT = {
 	Waiting = "%s (%s left)", -- effet, attente restante
 	NoBox = "No item is waiting", -- vague 53 : l'antivol d'un objet posé (V0, anglais)
 	AlmostReady = "Your item is almost unlocked",
+	-- Vague 71 (a238), V0 proposé, absent du doc : écrits dans Price au clic sans palier à acheter.
+	NoItemPrice = "No item",
+	AlmostReadyPrice = "Almost ready",
 }
 local CASH_PACK_TEXT = "+%s · %s" -- montant, effet
 -- Vague 63, V0 proposé, absent du doc (textes de la maquette de Clément, L-200) : minuteur du pack de départ,
@@ -709,16 +721,21 @@ local function refreshCard(card: Card)
 	end
 	local soonUntil = card.soonUntil
 	local unsold = notForSale(offer, id) -- vague 66 (a218) : « Soon » en permanence
-	if unsold or (soonUntil and os.clock() < soonUntil) then
+	if unsold then
 		setText(card.frame, "Price", SOON_TEXT)
+	elseif soonUntil and os.clock() < soonUntil then
+		setText(card.frame, "Price", card.soonText or SOON_TEXT)
 	else
 		card.soonUntil = nil
+		card.soonText = nil
 		setText(card.frame, "Price", tostring(math.floor(price)))
 	end
 	if card.buy ~= card.frame then
 		local owned = owns(offer)
+		-- Vague 71 (a238, L-213 point 1b) : Ouvrir maintenant garde son bouton sans objet à ouvrir (premier palier).
+		local tiered = offer.product ~= nil and (offer.product :: Product).Tiers ~= nil
 		setVisible(card.owned, owned)
-		setVisible(card.buy, not owned and (id ~= nil or unsold))
+		setVisible(card.buy, not owned and (id ~= nil or unsold or tiered))
 	end
 	if v2 then
 		refreshExtras(card)
@@ -735,8 +752,9 @@ local function clearCards(current: Shop)
 end
 
 -- Pas d'achat possible (vitrine, Id à 0) : « Soon » à la place du prix, puis le prix de nouveau.
-local function showSoon(card: Card)
+local function showSoon(card: Card, text: string?)
 	card.soonUntil = os.clock() + SOON_DURATION
+	card.soonText = text
 	refreshCard(card)
 	task.delay(SOON_DURATION, function()
 		local current = shop
@@ -766,6 +784,12 @@ end
 local function buy(card: Card)
 	local offer = card.offer
 	local id, isPass = purchaseOf(offer)
+	local product = offer.product
+	if id == nil and product and product.Tiers and not notForSale(offer, id) then
+		-- Vague 71 (a238, L-213 point 1b) : Ouvrir maintenant sans palier à acheter : on dit pourquoi, rien de vendu.
+		showSoon(card, if openNowRemaining() then OPEN_NOW_TEXT.AlmostReadyPrice else OPEN_NOW_TEXT.NoItemPrice)
+		return
+	end
 	if id == nil or owns(offer) then
 		return -- rien à acheter (Ouvrir maintenant sans colis, gamepass possédé) : bouton caché, clic tardif ignoré
 	end
@@ -808,6 +832,11 @@ local function cloneCard(current: Shop, template: GuiObject, offer: Offer): Card
 	local icon = Find.path(frame, "Icon")
 	if image and icon and (icon:IsA("ImageLabel") or icon:IsA("ImageButton")) then
 		(icon :: any).Image = image
+	end
+	-- Vague 71 (a238, L-213 point 1c) : le filigrane reprend l'image de l'Icon de l'offre (pas celle du Template).
+	local watermark = Find.path(frame, "Clip.Watermark")
+	if icon and watermark and (icon:IsA("ImageLabel") or icon:IsA("ImageButton")) and (watermark:IsA("ImageLabel") or watermark:IsA("ImageButton")) then
+		(watermark :: any).Image = (icon :: any).Image
 	end
 	local card: Card = { offer = offer, frame = frame, buy = guiObject(frame, "BuyButton"), owned = guiObject(frame, "Owned"), soonUntil = nil, cloned = true }
 	onClick(card.buy, function()
@@ -909,6 +938,28 @@ local function readContentFit(content: Instance?): ContentFit?
 	return { ratio = ratio, layout = layout, gap = gap, extra = math.max(0, total - heights - gap * math.max(0, count - 1)) }
 end
 
+-- Vague 71 (a238, L-213 point 1a) : la hauteur à défiler de List suit celle de List.Content (plus le UIPadding de
+-- List, en px) ; AutomaticCanvasSize ne suivait pas les hauteurs changées par fitGrid et fitContent. Seulement quand
+-- Content garde son rapport largeur / hauteur (current.content) : sa hauteur ne dépend alors pas du canvas.
+local function fitCanvas(current: Shop)
+	local list = current.list
+	local content = if list then list:FindFirstChild("Content") else nil
+	if current.content == nil or list == nil or content == nil or not content:IsA("GuiObject") then
+		return
+	end
+	local padding = list:FindFirstChildOfClass("UIPadding")
+	local pad = if padding then padding.PaddingTop.Offset + padding.PaddingBottom.Offset else 0
+	local height = math.ceil((content :: GuiObject).AbsoluteSize.Y + pad)
+	if list.AutomaticCanvasSize ~= Enum.AutomaticSize.None then
+		list.AutomaticCanvasSize = Enum.AutomaticSize.None
+	end
+	local canvas = list.CanvasSize
+	local wanted = UDim2.new(canvas.X.Scale, canvas.X.Offset, 0, height)
+	if canvas ~= wanted then
+		list.CanvasSize = wanted
+	end
+end
+
 -- List.Content reprend la hauteur de ses blocs visibles (sections cachées ou agrandies).
 local function fitContent(current: Shop)
 	local fit = current.content
@@ -923,6 +974,7 @@ local function fitContent(current: Shop)
 		fit.ratio.AspectRatio = 1 / total
 		fit.layout.Padding = UDim.new(fit.gap / total, 0)
 	end
+	fitCanvas(current)
 end
 
 -- v2 : défilement ----------------------------------------------------------------------------------
@@ -1166,7 +1218,16 @@ local function bindV2(current: Shop, keep: (RBXScriptConnection?) -> ())
 	end
 	-- Hauteur de List.Content lue avec tous les blocs de la maquette visibles, puis caisse et pack de départ
 	-- cachés jusqu'à l'ouverture (buildV2).
-	current.content = readContentFit(if current.list then (current.list :: ScrollingFrame):FindFirstChild("Content") else nil)
+	local content = if current.list then (current.list :: ScrollingFrame):FindFirstChild("Content") else nil
+	current.content = readContentFit(content)
+	if content and content:IsA("GuiObject") then
+		-- Vague 71 (a238, L-213 point 1a) : le canvas suit Content (fitContent, largeur de l'écran, barre de défilement).
+		keep((content :: GuiObject):GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+			if shop == current then
+				fitCanvas(current)
+			end
+		end))
+	end
 	setVisible(crate, false)
 	setVisible(featured, false)
 end
