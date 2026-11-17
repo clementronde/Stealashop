@@ -255,6 +255,7 @@ local InventoryState = require(ReplicatedStorage.Shared.InventoryState) -- vague
 local Format = require(ReplicatedStorage.Shared.Format)
 local RarityHalo = require(ReplicatedStorage.Shared.RarityHalo)
 local Find = require(ReplicatedStorage.Shared.Contract.Find)
+local Attributes = require(ReplicatedStorage.Shared.Contract.Attributes) -- a234 : FitSize, Idle
 local UI = require(ReplicatedStorage.Shared.Contract.UI)
 local Net = require(ReplicatedStorage.Shared.Net.Net)
 local ProfileTypes = require(ReplicatedStorage.Shared.Types.Profile)
@@ -1205,6 +1206,99 @@ local function setText(gui: Instance, name: string, text: string, color: Color3?
 	return element :: GuiObject
 end
 
+-- a234 (L-216 point 2, L-217) : boîte FitSize d'un présentoir (Vector3, studs, repère de l'Attachment), ou nil si
+-- elle manque ou n'est pas lisible (trois côtés > 0, finis).
+local function fitSizeOf(slot: Attachment): Vector3?
+	local value = slot:GetAttribute(Attributes.FitSize.Name)
+	if typeof(value) ~= "Vector3" then
+		return nil
+	end
+	local size = value :: Vector3
+	local smallest, largest = math.min(size.X, size.Y, size.Z), math.max(size.X, size.Y, size.Z)
+	if not (smallest > 0 and largest < math.huge) then
+		return nil -- aussi NaN
+	end
+	return size
+end
+
+-- Coins d'une pièce (demi-taille × signe), pour fitFactor.
+local CORNERS = {
+	Vector3.new(1, 1, 1),
+	Vector3.new(1, 1, -1),
+	Vector3.new(1, -1, 1),
+	Vector3.new(1, -1, -1),
+	Vector3.new(-1, 1, 1),
+	Vector3.new(-1, 1, -1),
+	Vector3.new(-1, -1, 1),
+	Vector3.new(-1, -1, -1),
+}
+
+-- Facteur (au plus 1) qui fait tenir `model`, déjà posé en `pivot`, dans la boîte `fit` du repère de `pivot` :
+-- centrée sur le pivot en X et Z, de 0 à fit.Y en hauteur. Pièces visibles seulement (Transparency < 1 : une boîte de
+-- collision invisible ne compte pas). Un objet qui tourne sur lui-même (attribut Idle Spin ou SpinBob,
+-- ItemIdleController) doit tenir en tournant : son rayon horizontal, dans le plus petit côté de la boîte.
+local function fitFactor(model: Model, pivot: CFrame, fit: Vector3): number
+	local idle = model:GetAttribute(Attributes.Idle.Name)
+	local spins = idle == "Spin" or idle == "SpinBob"
+	local maxX, maxY, maxZ, maxRadius = 0, 0, 0, 0
+	local seen = false
+	for _, d in model:GetDescendants() do
+		if not d:IsA("BasePart") or (d :: BasePart).Transparency >= 1 then
+			continue
+		end
+		local part = d :: BasePart
+		local half = part.Size / 2
+		for _, corner in CORNERS do
+			local p = pivot:PointToObjectSpace(part.CFrame * (half * corner))
+			maxX = math.max(maxX, math.abs(p.X))
+			maxY = math.max(maxY, p.Y)
+			maxZ = math.max(maxZ, math.abs(p.Z))
+			maxRadius = math.max(maxRadius, math.sqrt(p.X * p.X + p.Z * p.Z))
+		end
+		seen = true
+	end
+	if not seen then
+		return 1
+	end
+	local factor = 1
+	local function limit(extent: number, room: number)
+		if extent > room and extent > 0 then
+			factor = math.min(factor, room / extent)
+		end
+	end
+	if spins then
+		limit(maxRadius, math.min(fit.X, fit.Z) / 2)
+	else
+		limit(maxX, fit.X / 2)
+		limit(maxZ, fit.Z / 2)
+	end
+	limit(maxY, fit.Y)
+	return factor
+end
+
+-- a234 : portée de chaque lumière du modèle (PointLight, SpotLight, SurfaceLight) avant sa mise à l'échelle.
+local function lightRanges(model: Model): { [Light]: number }
+	local ranges: { [Light]: number } = {}
+	for _, d in model:GetDescendants() do
+		if d:IsA("PointLight") or d:IsA("SpotLight") or d:IsA("SurfaceLight") then
+			ranges[d :: Light] = (d :: any).Range
+		end
+	end
+	return ranges
+end
+
+-- a234 : après la réduction FitSize, la portée d'une lumière ne dépasse pas sa portée d'origine × la taille montrée
+-- (ScaleTo ne la réduit pas toujours) ; elle n'est jamais agrandie ici.
+local function trimLights(ranges: { [Light]: number }, factor: number)
+	for light, range in ranges do
+		local current = (light :: any).Range :: number
+		local wanted = range * factor
+		if light.Parent ~= nil and wanted < current then
+			(light :: any).Range = wanted
+		end
+	end
+end
+
 -- Billboard visible par tous : nom, rareté (couleur), $/s (5.8). BB_Item de Clément : accroché au
 -- pied de l'objet (son pivot, en bas au centre, posé sur le présentoir, 10.1), car Clément règle
 -- son StudsOffset depuis la base (liaison L-027). Billboard V0 : accroché au sommet.
@@ -1216,7 +1310,8 @@ local function addBillboard(
 	boxCFrame: CFrame,
 	boxSize: Vector3,
 	mutation: Mutations.Mutation?,
-	weight: number? -- vague 62 (a203) : poids de l'objet (kg), écrit dans Weight s'il existe
+	weight: number?, -- vague 62 (a203) : poids de l'objet (kg), écrit dans Weight s'il existe
+	fit: number -- a234 : réduction FitSize (1 = aucune)
 )
 	local anchor = model.PrimaryPart or (model:FindFirstChildWhichIsA("BasePart", true) :: BasePart?)
 	if anchor == nil then
@@ -1229,7 +1324,7 @@ local function addBillboard(
 	point.Parent = anchor
 	-- Mutation de taille (DEV-131) : BB_Item de Clément monte (ou descend) de ce que l'objet a gagné en
 	-- hauteur, pour garder le même écart au-dessus de lui (V0 proposé). Le V0 suit déjà le sommet.
-	local scale = Mutations.Scale(mutation, weight)
+	local scale = Mutations.Scale(mutation, weight) * fit
 	local lift = boxSize.Y - boxSize.Y / scale
 	point.WorldPosition = if gui
 		then (model:GetPivot() * CFrame.new(0, lift, 0)).Position
@@ -1281,7 +1376,17 @@ end
 -- Modèle de l'objet (copie d'ITM_ ou bloc V0, mutation de taille, halo, BB_Item si `billboard`), pivot posé
 -- en `pivot`, avec les attributs communs (ItemUid, ItemId, Rarity, Halo, Income, OwnerUserId, Placeholder,
 -- mutation). Sans tag ni DisplaySlot : à l'appelant. Renvoie le modèle et son revenu.
-local function buildItemModel(ownerUserId: number, pivot: CFrame, name: string, uid: string, entry: ItemEntry, def: ItemDef, billboard: boolean): (Model, number)
+-- a234 : `fitSize` (FitSize du présentoir, fitSizeOf) : boîte où l'objet doit tenir ; nil = la taille de son poids.
+local function buildItemModel(
+	ownerUserId: number,
+	pivot: CFrame,
+	name: string,
+	uid: string,
+	entry: ItemEntry,
+	def: ItemDef,
+	billboard: boolean,
+	fitSize: Vector3?
+): (Model, number)
 	local rarity = Rarities.ById[def.Rarity]
 	local income = itemIncome(def, entry, uid)
 	local model = copyOfTemplate(def)
@@ -1299,6 +1404,9 @@ local function buildItemModel(ownerUserId: number, pivot: CFrame, name: string, 
 	local rawMutation = entry.Mutation
 	local weight = ItemWeight.Effective(entry.Weight, if rawMutation then rawMutation.Size else nil)
 	local scale = Mutations.Scale(mutation, weight)
+	-- a234 : échelle et portées d'avant toute mise à l'échelle, seulement s'il faudra peut-être réduire
+	local baseScale = if fitSize then display:GetScale() else 1
+	local ranges = if fitSize then lightRanges(display) else nil
 	if scale ~= 1 then
 		local ok, problem = pcall(display.ScaleTo, display, scale)
 		if not ok then
@@ -1306,11 +1414,30 @@ local function buildItemModel(ownerUserId: number, pivot: CFrame, name: string, 
 		end
 	end
 	display:PivotTo(pivot)
+	-- a234 (L-216 point 2, L-217, L-220) : sur un présentoir qui a FitSize, seulement l'échelle d'affichage est réduite
+	-- pour que l'objet y tienne (jamais grossi) ; poids, revenu et étiquette inchangés. Le halo et le billboard, posés
+	-- ensuite, suivent la taille montrée ; les lumières du modèle aussi (portée au plus proportionnelle à la taille).
+	-- Attribut FitScale (Config/Weight.FitScaleAttribute) : la réduction, lue par le socle « BEST ITEM » (vraie taille).
+	local fit = if fitSize then fitFactor(display, pivot, fitSize) else 1
+	if fit < 1 then
+		local shown = display:GetScale() * fit
+		local ok, problem = pcall(display.ScaleTo, display, shown)
+		if ok then
+			display:PivotTo(pivot)
+			if ranges then
+				trimLights(ranges, shown / baseScale)
+			end
+			display:SetAttribute(WeightConfig.FitScaleAttribute, fit)
+		else
+			fit = 1
+			reportOnce(`fit:{uid}`, `[DisplayService] {def.Id} ({uid}) : Model:ScaleTo({shown}) pour FitSize a échoué ({problem}), taille de son poids`, "warn")
+		end
+	end
 
 	local boxCFrame, boxSize = display:GetBoundingBox()
 	RarityHalo.AddDisplayed(display, rarity, boxCFrame, boxSize)
 	if billboard then
-		addBillboard(display, def, rarity, income, boxCFrame, boxSize, mutation, weight)
+		addBillboard(display, def, rarity, income, boxCFrame, boxSize, mutation, weight, fit)
 	end
 
 	display:SetAttribute("ItemUid", uid)
@@ -1331,8 +1458,9 @@ end
 
 local function buildVisual(ownerUserId: number, refs: PlotRefs, slot: number, uid: string, entry: ItemEntry, def: ItemDef): Visual
 	-- présentoir vérifié par sanitize
-	local pivot = (refs.slots[slot] :: Attachment).WorldCFrame
-	local display, income = buildItemModel(ownerUserId, pivot, string.format(MODEL_FORMAT, slot), uid, entry, def, true)
+	local attachment = refs.slots[slot] :: Attachment
+	local pivot = attachment.WorldCFrame
+	local display, income = buildItemModel(ownerUserId, pivot, string.format(MODEL_FORMAT, slot), uid, entry, def, true, fitSizeOf(attachment))
 	display:SetAttribute("DisplaySlot", slot)
 	CollectionService:AddTag(display, DISPLAY_TAG)
 	return { model = display, uid = uid, itemId = def.Id, income = income }

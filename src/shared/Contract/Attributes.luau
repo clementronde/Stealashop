@@ -40,6 +40,12 @@ local Attributes = {
 	-- Meuble qui ne casse jamais sous un objet trop gros pendant l'ouverture d'un colis (L-210 point 3, vague 66, a220 ;
 	-- Controllers/Reveal/Shelf, Config/Reveal.Shelf) : vrai (booléen) sur une pièce ou un Model d'un magasin PNJ. Facultatif.
 	NoShelfBreak = { Name = "NoShelfBreak" },
+	-- Boîte où l'objet exposé doit tenir (L-216 point 2, L-217 ; a234) : Vector3 en studs, posé par Clément sur chaque
+	-- Attachment DisplaySlot_xx, dans son repère : X le long de RightVector, Y vers le haut depuis le point, Z le long du
+	-- LookVector ; centrée sur le point en X et Z, bas sur le point. DisplayService réduit seulement l'échelle d'affichage
+	-- pour y tenir (jamais plus grand). Celui du Model RarestDisplay n'est pas lu (L-220 : vraie taille sur le socle).
+	-- Facultatif (absent ou illisible : l'objet garde la taille de son poids).
+	FitSize = { Name = "FitSize" },
 }
 
 return Attributes

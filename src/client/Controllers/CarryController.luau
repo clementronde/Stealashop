@@ -183,7 +183,7 @@ local function revealAll()
 	table.clear(hidden)
 end
 
--- a220 (L-210 point 3) : l'objet porté a la taille de son poids (CarryService, jusqu'à ×10). Chez le porteur seulement,
+-- a220 (L-210 point 3) : l'objet porté a la taille de son poids (CarryService, au plus CarryMaxScale). Chez le porteur seulement,
 -- un objet d'échelle Weight.CarryFadeFromScale ou plus devient translucide (Weight.CarryFade) : il cache sinon le perso et
 -- la rue derrière la caméra. Pièces et décalques encore cachés jusqu'au Grab : leur valeur à remettre devient le fondu.
 local function fadeBig(model: Instance)
