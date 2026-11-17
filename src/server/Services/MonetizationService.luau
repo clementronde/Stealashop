@@ -58,6 +58,11 @@
 --                      Marteau (équipé s'il est plus fort que l'outil équipé), 50 000 $ ;
 --                      Monetization.StarterPack = true. Racheté malgré tout (fenêtre d'achat ouverte
 --                      sans l'écran) : il est redonné, avec un avertissement (le joueur a payé)
+--   Chance du serveur  vague 72 (a247, L-216 point 8) : ServerLuck2, 4 et 8 : une tranche (facteur, durée) en
+--                      file pour tout le serveur, annoncée à tous (Notify ServerLuck.AnnounceKind, nom de
+--                      l'acheteur) ; seule la tranche au plus fort facteur tourne (la plus ancienne à égalité),
+--                      les autres attendent ; attributs du Workspace ServerLuck, ServerLuckEndsAt, ServerLuckBy,
+--                      lus par StoreHeistService (chance des colis) et le client. File perdue si le serveur s'arrête
 -- M global des revenus (7.1) : (1 + Premium + les autres bonus en %) × ×2 Argent × boost ×2 argent.
 -- V0 : les bonus en % s'additionnent entre eux (DisplayService.GetIncomeBonus : Premium ici, l'index
 -- dans IndexService ; amis, groupe et VIP viendront de la même façon), les ×2 se multiplient
@@ -188,6 +193,10 @@ local states: { [Player]: State } = {}
 local passesById: { [number]: Pass } = {}
 local salesById: { [number]: Sale } = {}
 local testCount = 0
+-- Vague 72 (a247) : file des tranches de chance du serveur (voir Monetization.ServerLuck).
+type LuckSlice = { multiplier: number, remaining: number, by: string }
+local luckQueue: { LuckSlice } = {}
+local luckClock: number? = nil -- os.clock() du dernier décompte ; nil file vide
 
 ------------------------------------------------------------------------------
 -- Outils
@@ -474,10 +483,103 @@ local function cannotGrant(data: Data, sale: Sale): string?
 		if monetizationOf(data) == nil then
 			return "profil sans Monetization"
 		end
+	elseif sale.product.Luck ~= nil then
+		local minutes = finite(sale.product.LuckMinutes)
+		if finite(sale.product.Luck) < 1 or minutes <= 0 then
+			return "chance du serveur mal réglée (Luck ≥ 1, LuckMinutes > 0)"
+		end
 	elseif sale.product.Minutes == nil then
 		return `pas de don codé pour {key}`
 	end
 	return nil
+end
+
+-- Vague 72 (a247) : chance du serveur ------------------------------------------------------------------
+
+-- Tranche qui tourne : le plus fort facteur, la plus ancienne à égalité.
+local function activeLuck(): number?
+	local best: number? = nil
+	for index, slice in luckQueue do
+		if best == nil or slice.multiplier > luckQueue[best].multiplier then
+			best = index
+		end
+	end
+	return best
+end
+
+-- Décompte le temps écoulé sur la tranche qui tourne (puis la suivante, si elle finit).
+local function advanceLuck()
+	local now = os.clock()
+	local elapsed = if luckClock then now - luckClock else 0
+	luckClock = if #luckQueue > 0 then now else nil
+	while elapsed > 0 do
+		local index = activeLuck()
+		if index == nil then
+			break
+		end
+		local slice = luckQueue[index]
+		local used = math.min(elapsed, slice.remaining)
+		slice.remaining -= used
+		elapsed -= used
+		if slice.remaining <= 1e-6 then
+			table.remove(luckQueue, index)
+			log(`chance du serveur ×{slice.multiplier} de {slice.by} finie ({#luckQueue} tranche(s) en attente)`)
+		end
+	end
+	if #luckQueue == 0 then
+		luckClock = nil
+	end
+end
+
+-- Attributs du Workspace (Monetization.ServerLuck) ; la fin n'est réécrite que si elle bouge de plus d'1/2 s.
+local function publishLuck()
+	local config = Monetization.ServerLuck
+	local index = activeLuck()
+	local slice = if index then luckQueue[index] else nil
+	if slice == nil then
+		Workspace:SetAttribute(config.Attribute, nil)
+		Workspace:SetAttribute(config.EndsAtAttribute, nil)
+		Workspace:SetAttribute(config.ByAttribute, nil)
+		return
+	end
+	local left = 0
+	for _, other in luckQueue do
+		if other.multiplier == slice.multiplier then
+			left += other.remaining
+		end
+	end
+	local endsAt = serverNow() + left
+	local shown = Workspace:GetAttribute(config.EndsAtAttribute)
+	if Workspace:GetAttribute(config.Attribute) ~= slice.multiplier or type(shown) ~= "number" or math.abs(shown - endsAt) > 0.5 then
+		Workspace:SetAttribute(config.EndsAtAttribute, endsAt)
+	end
+	Workspace:SetAttribute(config.Attribute, slice.multiplier)
+	Workspace:SetAttribute(config.ByAttribute, slice.by)
+end
+
+local function grantServerLuck(player: Player, product: Product): string
+	local config = Monetization.ServerLuck
+	local multiplier = product.Luck :: number
+	local minutes = product.LuckMinutes :: number
+	advanceLuck()
+	local index = activeLuck()
+	local running = if index then luckQueue[index].multiplier else nil
+	table.insert(luckQueue, { multiplier = multiplier, remaining = minutes * 60, by = player.DisplayName })
+	luckClock = luckClock or os.clock()
+	publishLuck()
+	local label, length = `×{multiplier}`, `{minutes} min`
+	local message = if running and running > multiplier
+		then string.format(config.Messages.Queued, player.DisplayName, label, length, `×{running}`)
+		else string.format(config.Messages.Started, player.DisplayName, label, length)
+	for _, other in Players:GetPlayers() do
+		local ok, err = pcall(function()
+			Net.Server.Notify:Fire(other, message, config.AnnounceKind)
+		end)
+		if not ok then
+			warn(`[MonetizationService] annonce de la chance du serveur vers {other.Name} : {err}`)
+		end
+	end
+	return `chance du serveur {label} {length}{if running and running > multiplier then ` en attente derrière ×{running}` else ""} ({#luckQueue} tranche(s))`
 end
 
 -- Donne l'outil et l'équipe s'il est plus fort que l'outil équipé (même règle que la boutique d'armes).
@@ -565,6 +667,8 @@ local function grant(player: Player, data: Data, sale: Sale): string
 		return grantStarterPack(player, data)
 	elseif key == "OpenNow" then
 		return grantOpenNow(player, data, sale.tier :: Tier)
+	elseif sale.product.Luck ~= nil then
+		return grantServerLuck(player, sale.product)
 	end
 	return grantCashPack(player, sale.product)
 end
@@ -991,6 +1095,15 @@ function MonetizationService.Init()
 			return
 		end
 		elapsed = 0
+		if luckClock ~= nil then -- vague 72 : chance du serveur en cours
+			local ok, err = pcall(function()
+				advanceLuck()
+				publishLuck()
+			end)
+			if not ok then
+				warn(`[MonetizationService] chance du serveur : {err}`)
+			end
+		end
 		for player, state in states do
 			local ok, err = pcall(tickPlayer :: any, player, state) -- :: any : sans lui, l'ancien solveur croit que pcall ne renvoie qu'une valeur
 			if not ok then

@@ -2559,6 +2559,8 @@ end
 local function startOpening(player: Player, slot: Slot, box: ShelfBox)
 	local store = slot.Store
 	local luck = drawLuck() * (Workspace:GetAttribute("LiveEventShelfLuck") :: number? or 1) -- a167 : chance d'un événement live (EventService)
+	local serverLuck = Workspace:GetAttribute("ServerLuck") -- a247 : chance du serveur achetée en Robux (MonetizationService)
+	luck *= if type(serverLuck) == "number" and serverLuck >= 1 and serverLuck < math.huge then serverLuck else 1
 	local forced = luckOverride
 	if forced and not store.Event then -- vague 42 : pas d'accroche du tuto sur un rayon d'événement
 		-- Accroche du tuto (a107, SetLuckOverride) : une chance finie ≥ 1, sinon le tirage normal.
@@ -2883,6 +2885,7 @@ local function startReveal(player: Player, slot: Slot, box: ShelfBox)
 	if config.EventLuck then
 		luck *= finiteOr(Workspace:GetAttribute("LiveEventShelfLuck"), 1, 1e-3)
 	end
+	luck *= finiteOr(Workspace:GetAttribute("ServerLuck"), 1, 1) -- a247 : chance du serveur achetée en Robux (MonetizationService), toujours comptée
 	local forced = luckOverride
 	if forced then
 		local drawn: OverrideInfo = { StoreId = store.Id, SlotId = slot.Id, Zone = store.Zone, Tier = box.Tier, Rarity = box.Rarity, ItemId = "" }
