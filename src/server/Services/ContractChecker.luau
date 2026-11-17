@@ -68,6 +68,8 @@ local SHOP_ICON_PREFIXES: { string } = { "ICON_Aura_", "ICON_Trail_" }
 local NIGHT_GUARD_NAME = "NightGuard"
 -- Témoins de Clément (Map/Zone_<n>/Witnesses/NPC_Witness_Z<n>_0<k>, L-111) : leur liste est Animations.Witness.
 local WITNESS_PREFIX = "NPC_Witness"
+-- Foule de Clément (Assets/Crowd/Models/NPC_Crowd_01 à _12, L-223) : leur liste est Animations.Crowd.
+local CROWD_PREFIX = "NPC_Crowd"
 
 type Anim = typeof(Animations.Player[1])
 type Part = typeof(Models.Store.Parts[1])
@@ -1304,6 +1306,7 @@ local function checkAnimatedModels(scanned: { Instance }, jobs: { Job })
 		local vendor = isVendor(inst, folder)
 		local driver = isDriver(inst) -- a42 : conducteur du camion, Idle seulement
 		local witness = string.sub(inst.Name, 1, #WITNESS_PREFIX) == WITNESS_PREFIX -- L-111
+		local crowd = string.sub(inst.Name, 1, #CROWD_PREFIX) == CROWD_PREFIX -- L-223
 		if humanoid:FindFirstChildOfClass("Animator") == nil then
 			problem("Animations", `{label}.Humanoid : Animator manquant (10.4)`)
 		end
@@ -1314,6 +1317,7 @@ local function checkAnimatedModels(scanned: { Instance }, jobs: { Job })
 			local specs = if driver
 				then Animations.Driver
 				elseif witness then Animations.Witness
+				elseif crowd then Animations.Crowd
 				elseif vendor then Animations.Vendor
 				elseif inst.Name == NIGHT_GUARD_NAME then Animations.NightGuard
 				else Animations.Guard
@@ -1321,7 +1325,7 @@ local function checkAnimatedModels(scanned: { Instance }, jobs: { Job })
 			for _, spec in specs do
 				table.insert(names, spec.Name)
 			end
-			local kind = if driver then "conducteur" elseif witness then "témoin" elseif vendor then "vendeur" else "vigile"
+			local kind = if driver then "conducteur" elseif witness then "témoin" elseif crowd then "foule" elseif vendor then "vendeur" else "vigile"
 			pending(
 				"Animations",
 				`{label}.{Animations.FolderName} absent : animations de {kind} pas encore livrées ({table.concat(names, ", ")})`
@@ -1332,6 +1336,7 @@ local function checkAnimatedModels(scanned: { Instance }, jobs: { Job })
 				if driver
 					then Animations.Driver
 					elseif witness then Animations.Witness
+					elseif crowd then Animations.Crowd
 					elseif vendor then Animations.Vendor
 					elseif inst.Name == NIGHT_GUARD_NAME then Animations.NightGuard
 					else Animations.Guard,

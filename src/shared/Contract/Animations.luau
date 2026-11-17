@@ -1,6 +1,6 @@
 --!strict
 -- Contrat d'animations (doc, section 2.4 ; liaison, section 3.2) : 21 animations, plus l'Idle facultatif des
--- conducteurs du camion (Animations.Driver, L-071).
+-- conducteurs du camion (Animations.Driver, L-071) ; témoins, foule (Animations.Witness, Animations.Crowd).
 -- Le code cherche chaque objet Animation par son nom, jamais par un ID.
 --
 -- Où : joueur dans ReplicatedStorage/Assets/Animations/Player/<Nom> ; modèle animé
@@ -96,6 +96,19 @@ Animations.Driver = {
 	{ Name = "Walk", Loop = true, Priority = "Movement" },
 	{ Name = "Run", Loop = true, Priority = "Movement" },
 	{ Name = "Catch", Loop = false, Priority = "Action", Marker = "Impact" },
+} :: { Anim }
+
+-- Vague 70 (a231, L-223, Clément, publiées le 2026-11-17) : la foule qui regarde le braquage,
+-- ReplicatedStorage/Assets/Crowd/Models/NPC_Crowd_01 à _12, <Modèle>/Animations/<Nom>. Toutes en boucle, priorité
+-- Action. Marqueur Shout : le cri (son de foule) ; TakePhoto : celle des témoins (même ID, marqueur Flash). Rôles :
+-- pour le voleur Cheer, ou HoldSign avec une pancarte Side = "For" ; contre Boo, ou HoldSign avec une pancarte
+-- "Against" ; crieur Shout ; photographe TakePhoto. Pas encore jouées par le code (WitnessCrowdController).
+Animations.Crowd = {
+	{ Name = "Cheer", Loop = true, Priority = "Action", Marker = "Shout" },
+	{ Name = "Boo", Loop = true, Priority = "Action", Marker = "Shout" },
+	{ Name = "Shout", Loop = true, Priority = "Action", Marker = "Shout" },
+	{ Name = "HoldSign", Loop = true, Priority = "Action" },
+	{ Name = "TakePhoto", Loop = true, Priority = "Action", Marker = "Flash" },
 } :: { Anim }
 
 -- Animations du joueur sorties du contrat : le code ne les lit plus. Laissées dans le dossier de Clément, le

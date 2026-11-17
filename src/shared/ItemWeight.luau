@@ -24,7 +24,7 @@
 --   ItemWeight.LegacyFor(sizeId?) -> number            poids d'un objet d'avant le poids (Config/Weight.Legacy)
 --   ItemWeight.Effective(weight?, sizeId?) -> number   le poids s'il est lisible, sinon LegacyFor(sizeId)
 --   ItemWeight.CappedScale(kg, cap) -> number          ScaleFor(kg), au plus cap
---   ItemWeight.Migrate(items) -> number                Items du profil : Weight posé là où il manque (DataService)
+--   ItemWeight.Migrate(items) -> number                Items du profil : Weight posé là où il manque, Tiny et Big retirées (DataService)
 --   ItemWeight.Format(kg) -> string                    « 3.4 kg », « 12 kg », « 1,250 kg »
 
 local Config = script.Parent.Config
@@ -239,8 +239,12 @@ end
 
 -- Profil (DataService, au chargement, sans changement de version) : chaque objet sans poids lisible reçoit celui
 -- de sa mutation de taille d'avant (Config/Weight.Legacy : au moins son revenu d'avant, Huge et Colossal dans
--- leur palier) ; un poids hors de 1…10 000 kg y est ramené. La mutation n'est pas touchée (Tiny et Big ne sont
--- plus lus quand le poids est en marche, Config/Mutations). Idempotent. Renvoie le nombre d'objets changés.
+-- leur palier) ; un poids hors de 1…10 000 kg y est ramené. Vague 70 (a231) : poids en marche, une fois le poids
+-- posé, la taille d'avant que le poids ne donne plus (Tiny, Big : ni lues ni écrites, Config/Mutations) est retirée
+-- de la mutation (sans effet, la mutation part) ; Huge et Colossal restent. Poids coupé : la mutation n'est pas
+-- touchée. Idempotent. Renvoie le nombre d'objets changés.
+local WEIGHT_SIZES: { [string]: boolean } = { Huge = true, Colossal = true } -- ceux de SizeMutationFor
+
 function ItemWeight.Migrate(items: any): number
 	if type(items) ~= "table" then
 		return 0
@@ -252,12 +256,23 @@ function ItemWeight.Migrate(items: any): number
 		end
 		local current = entry.Weight
 		local clean = ItemWeight.Sanitize(current)
+		local mutation = entry.Mutation
+		local touched = false
 		if clean == nil then
-			local mutation = entry.Mutation
 			entry.Weight = ItemWeight.LegacyFor(if type(mutation) == "table" then mutation.Size else nil)
-			changed += 1
+			touched = true
 		elseif clean ~= current then
 			entry.Weight = clean
+			touched = true
+		end
+		if ItemWeight.Enabled() and type(mutation) == "table" and mutation.Size ~= nil and not WEIGHT_SIZES[mutation.Size] then
+			mutation.Size = nil -- après le poids, qui l'a lue
+			if next(mutation) == nil then
+				entry.Mutation = nil
+			end
+			touched = true
+		end
+		if touched then
 			changed += 1
 		end
 	end
