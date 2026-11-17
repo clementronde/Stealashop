@@ -31,6 +31,7 @@
 --     Copie du billboard BB_ShopInfo de Clément (ReplicatedStorage/Assets/UI, mêmes 4 éléments, livré
 --     le 2026-11-15, L-169 Q6 ; tailles et SizeOffset gardés tels quels) dès qu'il existe, sinon un
 --     panneau V0 gris. Status peut être une pastille (cadre + texte) : le cadre est caché ou montré.
+--     Vague 72 (a245, L-216 point 3) : OwnerAvatar et BestItem, facultatifs (voir AVATAR_FIELD et BEST_FIELD).
 --   - Vague 54 (a176) : plus de coffre-fort, donc plus d'étiquette « SAFE » ni d'objet sans invite.
 --   - Bot joueur (L-105, BotService) : sa boutique (attribut BotName de la parcelle, OwnerUserId = 0) a
 --     les mêmes invites et le même panneau (« Bot's Shop », valeur exposée = attribut BotIncome).
@@ -57,6 +58,7 @@ local Config = Shared:WaitForChild("Config")
 local Contract = Shared:WaitForChild("Contract")
 local Items = require(Config:WaitForChild("Items"))
 local PvP = require(Config:WaitForChild("PvP"))
+local Rarities = require(Config:WaitForChild("Rarities"))
 local Find = require(Contract:WaitForChild("Find"))
 local UI = require(Contract:WaitForChild("UI"))
 local Format = require(Shared:WaitForChild("Format"))
@@ -74,6 +76,7 @@ export type PanelText = {
 	Income: string,
 	HP: string,
 	Status: string?,
+	BestItem: string?, -- vague 72 (a245) : nom du meilleur objet exposé, nil sans objet
 }
 
 type ItemWatch = {
@@ -102,6 +105,13 @@ local DOOR = "PlotDoor" -- boutique du hub (L-050)
 local WINDOW = "Window"
 local TEMPLATE_NAME = "BB_ShopInfo" -- livré par Clément (L-169 Q6), facultatif au contrat (Contract/UI)
 local FIELDS = { "OwnerName", "Income", "HP", "Status" }
+-- Vague 72 (a245, L-216 point 3), facultatifs dans BB_ShopInfo (absents du panneau V0 gris) : OwnerAvatar
+-- (ImageLabel, miniature du propriétaire, cachée pour le bot et tant qu'elle n'est pas arrivée) et BestItem
+-- (TextLabel, nom du meilleur objet exposé à la couleur de sa rareté, caché sans objet). Meilleur = même règle que
+-- le socle « BEST ITEM » (Config/Vfx, Rarest.Pick = "Income") : le plus gros revenu, puis la plus haute rareté.
+local AVATAR_FIELD = "OwnerAvatar"
+local BEST_FIELD = "BestItem"
+local RARITY_ATTRIBUTE = "Rarity" -- posé par DisplayService sur l'objet exposé
 local GRAB_ANIMATION = "Grab" -- contrat 2.4
 -- Posés par PlotService, DisplayService, WindowService, CarryService et PvPService (mêmes noms là-bas).
 local OWNER_ATTRIBUTE = "OwnerUserId"
@@ -157,6 +167,7 @@ local windows: WindowApi? = nil
 local playerGui: Instance? = nil
 local itemWatches: { [Instance]: ItemWatch } = {}
 local plotWatches: { [Instance]: PlotWatch } = {}
+local avatars: { [number]: string } = {} -- miniature par UserId ; "" = demandée, pas (encore) reçue
 
 -- Outils ----------------------------------------------------------------------------------------
 
@@ -512,6 +523,79 @@ local function statusOf(plot: Model): string?
 	return nil
 end
 
+-- Miniature (tête) du joueur `userId`, demandée une fois en tâche de fond ; nil tant qu'elle n'est pas arrivée (ou
+-- si Roblox l'a refusée : pas de nouvel essai, l'élément reste caché).
+local function avatarOf(userId: number): string?
+	local cached = avatars[userId]
+	if cached ~= nil then
+		return if cached ~= "" then cached else nil
+	end
+	avatars[userId] = ""
+	task.spawn(function()
+		local ok, image = pcall(function(): string
+			local url: string = Players:GetUserThumbnailAsync(userId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size150x150)
+			return url -- (url, prête) : seule l'url sert
+		end)
+		if ok and type(image) == "string" and image ~= "" then
+			avatars[userId] = image
+		end
+	end)
+	return nil
+end
+
+-- Meilleur objet exposé de la boutique (règle du socle « BEST ITEM », voir BEST_FIELD) : son nom et sa rareté.
+local function bestItemOf(plot: Model): (string?, Rarities.Rarity?)
+	local bestName: string?, bestRarity: Rarities.Rarity?, bestIncome = nil, nil, -math.huge
+	for _, watch in itemWatches do
+		if watch.Plot ~= plot or watch.Model.Parent == nil then
+			continue
+		end
+		local itemId = watch.Model:GetAttribute(ITEM_ID_ATTRIBUTE)
+		local item = if type(itemId) == "string" then Items.ById[itemId] else nil
+		local rarityId: any = if item then watch.Model:GetAttribute(RARITY_ATTRIBUTE) or item.Rarity else nil
+		local rarity = if type(rarityId) == "string" then Rarities.ById[rarityId] else nil
+		if item == nil or rarity == nil then
+			continue
+		end
+		local income = number(watch.Model, INCOME_ATTRIBUTE) or 0
+		local current = bestRarity
+		if current == nil or income > bestIncome or (income == bestIncome and rarity.Order > current.Order) then
+			bestName, bestRarity, bestIncome = item.DisplayName, rarity, income
+		end
+	end
+	return bestName, bestRarity
+end
+
+-- OwnerAvatar et BestItem (facultatifs) : montrés ou cachés, écrits seulement s'ils changent.
+local function refreshExtras(gui: BillboardGui, plot: Model, text: PanelText)
+	local avatarElement = Find.path(gui, AVATAR_FIELD)
+	if avatarElement and avatarElement:IsA("ImageLabel") then
+		local image = avatarElement :: ImageLabel
+		local owner = ownerOf(plot)
+		local url = if owner then avatarOf(owner.UserId) else nil
+		if image.Visible ~= (url ~= nil) then
+			image.Visible = url ~= nil
+		end
+		if url and image.Image ~= url then
+			image.Image = url
+		end
+	end
+	local name, rarity = bestItemOf(plot)
+	text.BestItem = name
+	local element, label = panelField(gui, BEST_FIELD)
+	if element and label then
+		if element.Visible ~= (name ~= nil) then
+			element.Visible = name ~= nil
+		end
+		if name and label.Text ~= name then
+			label.Text = name
+		end
+		if rarity and label.TextColor3 ~= rarity.Color then
+			label.TextColor3 = rarity.Color
+		end
+	end
+end
+
 local function refreshPanel(watch: PlotWatch, root: BasePart?)
 	local plot = watch.Plot
 	local name, income = shopOwner(plot)
@@ -547,6 +631,7 @@ local function refreshPanel(watch: PlotWatch, root: BasePart?)
 			end
 		end
 	end
+	refreshExtras(gui, plot, text)
 end
 
 -- Suivi ---------------------------------------------------------------------------------------------------------

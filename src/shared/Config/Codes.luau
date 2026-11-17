@@ -13,6 +13,7 @@
 --           haute des objets du joueur, au moins MinZone ; MinRarity facultatif.
 
 local DeepFreeze = require(script.Parent.DeepFreeze)
+local LiveEvents = require(script.Parent.LiveEvents)
 
 export type CodeRewardKind = "Boost" | "Cash" | "Potion" | "Item"
 export type CodeReward = {
@@ -40,12 +41,9 @@ local Codes = {
 	-- V0 : longueur maximale d'un code saisi (au-delà : refusé par Net et par CodeService).
 	MaxLength = 20,
 
-	-- V0 : la MAJ de la semaine, chaque samedi à 15:00 UTC (16 h à Paris l'hiver ; Cantin, 15/11 : une MAJ par
-	-- samedi, sans date fixe). Weekday : 0 = dimanche … 6 = samedi. Le compte à rebours vise la prochaine
-	-- (Codes.NextUpdateAt) et repart pour la semaine suivante dès l'heure passée.
-	UpdateWeekday = 6,
-	UpdateHour = 15,
-	UpdateMinute = 0,
+	-- La MAJ de la semaine : chaque samedi à 16 h à Paris (Cantin, 15/11 ; L-216 point 6), à l'heure du rendez-vous
+	-- de Config/LiveEvents (Weekly) : vague 72 (a245), une seule heure à régler, là-bas, heure d'été comprise. Le
+	-- compte à rebours vise la prochaine (Codes.NextUpdateAt) et repart pour la semaine suivante dès l'heure passée.
 	-- V0 : texte du compte à rebours (%s = Codes.FormatCountdown).
 	CountdownFormat = "NEXT UPDATE IN %s",
 
@@ -67,12 +65,10 @@ function Codes.Normalize(text: string): string
 end
 
 
-local WEEK = 7 * 86400
--- Prochaine MAJ après `now` (secondes Unix UTC) : le samedi UpdateHour:UpdateMinute UTC qui suit, strictement.
--- Le jour Unix 3 (1970-01-04) est un dimanche.
+-- Prochaine MAJ après `now` (secondes Unix UTC), strictement : le prochain rendez-vous de LiveEvents.Weekly ; `now`
+-- sans rendez-vous (compte à rebours caché).
 function Codes.NextUpdateAt(now: number): number
-	local first = 3 * 86400 + Codes.UpdateWeekday * 86400 + Codes.UpdateHour * 3600 + Codes.UpdateMinute * 60
-	return first + (math.floor((now - first) / WEEK) + 1) * WEEK
+	return LiveEvents.NextWeeklyStart(now) or now
 end
 
 -- « 2d 04h », « 3h 12m » sous un jour, « 45m » sous une heure (minute entamée comptée) ; nil si fini.

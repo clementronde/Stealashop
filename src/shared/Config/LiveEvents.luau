@@ -22,7 +22,11 @@
 -- décider), Fortune garantie (Fortune Tower coupée jusqu'à la MAJ 2).
 --
 -- Planning : deux listes. Weekly = les rendez-vous de chaque semaine (Cantin, 15/11 : pas de date fixe) : Event,
--- Weekday (0 = dimanche … 6 = samedi), Time = « HH:MM » en UTC (Paris = UTC + 1 l'hiver), Duration facultative.
+-- Weekday (0 = dimanche … 6 = samedi), Time = « HH:MM », Zone facultative (absente = UTC ; « Paris » = heure de
+-- Paris, calculée : UTC + 1 l'hiver, UTC + 2 du dernier dimanche de mars au dernier dimanche d'octobre, 01:00 UTC),
+-- Duration facultative. Vague 72 (a245, L-216 point 6) : le rendez-vous du samedi reste à 16 h à Paris toute
+-- l'année, et le compte à rebours de la MAJ (Config/Codes.NextUpdateAt, UpdateCountdown d'UI_Rewards) vise ce
+-- même rendez-vous (NextWeeklyStart) : une seule heure à régler, ici.
 -- Schedule = les créneaux datés, ponctuels : Event = Id d'un format, Start = « AAAA-MM-JJ HH:MM » en UTC,
 -- Duration facultative (s, sinon celle du format). Tous les serveurs lisent la même heure (horloge du serveur,
 -- Workspace:GetServerTimeNow) : l'événement part partout à la même seconde, sans admin ; un serveur qui démarre
@@ -54,7 +58,8 @@ export type Planned = {
 export type Weekly = {
 	Event: string,
 	Weekday: number, -- 0 = dimanche … 6 = samedi
-	Time: string, -- UTC, « HH:MM »
+	Time: string, -- « HH:MM », dans Zone
+	Zone: string?, -- nil = UTC, « Paris » = heure de Paris (été compris)
 	Duration: number?,
 }
 
@@ -85,9 +90,9 @@ local Formats: { Format } = {
 	{ Id = "TrainingWeekend", DisplayName = "TRAINING WEEKEND", Effect = "x2 treadmill gains", Duration = 48 * 3600, Effects = { TrainingGain = 2 } },
 }
 
--- V0 : le rendez-vous du samedi, 16 h à Paris (15:00 UTC), 30 min, chaque semaine.
+-- Le rendez-vous du samedi, 16 h à Paris (L-216 point 6), 30 min (V0), chaque semaine ; c'est aussi l'heure de la MAJ.
 local Weekly: { Weekly } = {
-	{ Event = "AdminAbuse", Weekday = 6, Time = "15:00", Duration = 30 * 60 },
+	{ Event = "AdminAbuse", Weekday = 6, Time = "16:00", Zone = "Paris", Duration = 30 * 60 },
 }
 
 -- Créneaux datés ponctuels : aucun (les autres formats se lancent au panel admin, StartEvent).
@@ -147,9 +152,26 @@ table.sort(Slots, function(a: Slot, b: Slot): boolean
 	return a.StartsAt < b.StartsAt
 end)
 
--- Rendez-vous de chaque semaine : premier début (semaine Unix 0, le jour 3 = dimanche 1970-01-04) et durée.
+-- Heure de Paris (vague 72, a245) : décalage (s) sur UTC à l'instant `t` (secondes Unix). Heure d'été du dernier
+-- dimanche de mars, 01:00 UTC, au dernier dimanche d'octobre, 01:00 UTC (règle européenne). L'année est estimée
+-- à un jour près, sans effet : aucun changement d'heure n'est près du 1er janvier.
+local function lastSunday(year: number, month: number): number
+	local nextMonthFirst = if month == 12 then daysFromCivil(year + 1, 1, 1) else daysFromCivil(year, month + 1, 1)
+	local last = nextMonthFirst - 1
+	return last - (last + 4) % 7 -- jour Unix 0 = jeudi, (d + 4) % 7 = 0 le dimanche
+end
+local function parisOffset(t: number): number
+	local year = 1970 + math.floor(t / (365.2425 * 86400))
+	local summerFrom = lastSunday(year, 3) * 86400 + 3600
+	local summerTo = lastSunday(year, 10) * 86400 + 3600
+	return if t >= summerFrom and t < summerTo then 7200 else 3600
+end
+local ZONES: { [string]: (number) -> number } = { Paris = parisOffset }
+
+-- Rendez-vous de chaque semaine : premier début en heure locale de sa zone (semaine Unix 0, le jour 3 = dimanche
+-- 1970-01-04), durée et décalage de la zone (nil = UTC).
 local WEEK = 7 * 86400
-local weeklyRules: { { Event: string, First: number, Duration: number } } = {}
+local weeklyRules: { { Event: string, First: number, Duration: number, Offset: ((number) -> number)? } } = {}
 for _, rule in Weekly do
 	local format = ById[rule.Event]
 	assert(format ~= nil, `Config.LiveEvents : rendez-vous, format inconnu {rule.Event}`)
@@ -159,15 +181,29 @@ for _, rule in Weekly do
 	assert(rule.Weekday == math.floor(rule.Weekday) and rule.Weekday >= 0 and rule.Weekday <= 6, `Config.LiveEvents : rendez-vous, jour invalide ({rule.Event})`)
 	local duration = rule.Duration or format.Duration
 	assert(duration > 0 and duration < WEEK, `Config.LiveEvents : rendez-vous, durée invalide ({rule.Event})`)
-	table.insert(weeklyRules, { Event = rule.Event, First = (3 + rule.Weekday) * 86400 + hour * 3600 + minute * 60, Duration = duration })
+	local offset = if rule.Zone then ZONES[rule.Zone] else nil
+	assert(rule.Zone == nil or offset ~= nil, `Config.LiveEvents : rendez-vous, zone inconnue « {rule.Zone} » ({rule.Event})`)
+	table.insert(weeklyRules, { Event = rule.Event, First = (3 + rule.Weekday) * 86400 + hour * 3600 + minute * 60, Duration = duration, Offset = offset })
+end
+
+-- Débuts (UTC) des rendez-vous `rule` autour de `t` : le dernier commencé (en heure locale) et le suivant. Une heure
+-- locale L vaut L - décalage en UTC ; le décalage est lu une heure avant L : un rendez-vous ne doit donc pas tomber
+-- dans l'heure qui suit un changement d'heure (dimanche 01:00 UTC ; le samedi 16 h en est loin).
+local function weeklyStarts(rule: { First: number, Offset: ((number) -> number)? }, t: number): { number }
+	local offset = rule.Offset
+	local localNow = if offset then t + offset(t) else t
+	local last = rule.First + math.floor((localNow - rule.First) / WEEK) * WEEK
+	if offset == nil then
+		return { last, last + WEEK }
+	end
+	return { last - offset(last - 3600), last + WEEK - offset(last + WEEK - 3600) }
 end
 
 -- Créneaux à regarder à l'heure `t` : les datés, plus le dernier commencé et le suivant de chaque rendez-vous.
 local function slotsAt(t: number): { Slot }
 	local list = table.clone(Slots)
 	for _, rule in weeklyRules do
-		local last = rule.First + math.floor((t - rule.First) / WEEK) * WEEK
-		for _, startsAt in { last, last + WEEK } do
+		for _, startsAt in weeklyStarts(rule, t) do
 			table.insert(list, { Key = `{rule.Event}@{startsAt}`, Event = rule.Event, StartsAt = startsAt, EndsAt = startsAt + rule.Duration })
 		end
 	end
@@ -175,6 +211,21 @@ local function slotsAt(t: number): { Slot }
 		return a.StartsAt < b.StartsAt
 	end)
 	return list
+end
+
+-- Début (UTC) du prochain rendez-vous de la semaine strictement après `t`, tous rendez-vous confondus ; nil sans
+-- rendez-vous. C'est l'heure de la MAJ (Config/Codes.NextUpdateAt).
+local function nextWeeklyStart(t: number): number?
+	local best: number? = nil
+	for _, rule in weeklyRules do
+		for _, startsAt in weeklyStarts(rule, t) do
+			local current = best
+			if startsAt > t and (current == nil or startsAt < current) then
+				best = startsAt
+			end
+		end
+	end
+	return best
 end
 
 -- Chrono de la bannière : « 29:59 », « 1:05:00 ».
@@ -197,6 +248,8 @@ local LiveEvents = {
 	Schedule = Schedule,
 	Slots = Slots,
 	SlotsAt = slotsAt,
+	NextWeeklyStart = nextWeeklyStart,
+	ParisOffset = parisOffset,
 	-- Attributs du Workspace (voir l'en-tête).
 	IdAttribute = "LiveEvent",
 	EndsAtAttribute = "LiveEventEndsAt",
