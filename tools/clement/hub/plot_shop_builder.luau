@@ -71,6 +71,11 @@
 	  banc (x 7,5, z -48,5), à tous les niveaux. RarestSlot : Attachment sur le plateau, où le code pose
 	  l'objet (face à la rue). RarestLabelPoint : Attachment 6 studs au-dessus, pour l'étiquette.
 	Aucun élément du contrat n'est dans un Stage_n.
+	Boutique de verre (2026-11-17, glassShop) : vitrines du sol au plafond, verrière (RoofSlab en verre + SkylightFrame),
+	plus de Ceiling ni de FrontUpper ; FitSize (Vector3) sur chaque DisplaySlot_xx (6,5 x 13,5 x 6 : le long de la file,
+	hauteur au-dessus du socle, vers l'allée) et sur RarestDisplay (9 x 10,5 x 10) ; TrapSlot_01..04 en rangée sur toute
+	la largeur de la porte (z -36) ; Stage_2..5 coupés pile sur les plans de L-190 (z -12, -4, 4, 8, 16, 24, 32) et
+	attribut RowCut = true sur PLOT_Shop.
 ]]
 
 local CS = game:GetService("CollectionService")
@@ -1018,6 +1023,211 @@ local function narrowWidth(M)
 end
 
 -- (Re)construit ReplicatedStorage/Assets/Plots/PLOT_Shop, morceau par morceau (task.wait entre deux).
+-- Boutique lisible de la rue (Clément, 2026-11-17, benchmark du genre, L-216 points 2 et 12) : façade de
+-- verre du sol au toit, verrière, intérieur plus éclairé, tailles maximales FitSize, pièges sur le passage,
+-- puis découpe aux plans de L-190 (RowCut). S'applique au gabarit déjà construit et resserré (48 studs).
+-- Rejouable : chaque étape vérifie l'état avant de changer.
+local GLASS = Color3.fromRGB(205, 232, 255)
+local FRAME = Color3.fromRGB(245, 246, 248)
+local ROW_PLANES = { -12, -4, 4, 8, 16, 24, 32 } -- L-190 (RowMargin 5, Step 4, StepOrigin -40, figés)
+local FIT_SLOT = Vector3.new(6.5, 13.5, 6) -- X le long de la file, Y au-dessus du socle, Z vers l'allée
+local FIT_RAREST = Vector3.new(9, 10.5, 10) -- RarestDisplay : X le long de la rue, Y au-dessus du plateau, Z en profondeur
+local RAREST_LABEL_Y = 11 -- LabelPoint, au-dessus du plateau (sous l'auvent de la façade, y 11,75)
+local TRAP_Z, TRAP_X = -36, { -6.75, -2.25, 2.25, 6.75 } -- une rangée sur toute la largeur de la porte
+
+local function setY(p, y0, y1) -- pièce alignée : nouvelle hauteur, mêmes X et Z
+	local c = p.CFrame
+	p.Size = Vector3.new(p.Size.X, y1 - y0, p.Size.Z)
+	p.CFrame = c.Rotation + Vector3.new(c.X, (y0 + y1) / 2, c.Z)
+end
+local function glass(p, t)
+	p.Material = Enum.Material.Glass
+	p.MaterialVariant = ""
+	p.Color = GLASS
+	p.Transparency = t
+	p.Reflectance = 0.05
+	p.CastShadow = false
+	p:SetAttribute("Accent", nil)
+end
+local function block(parent, name, x0, y0, z0, x1, y1, z1, color)
+	local p = Instance.new("Part")
+	p.Name = name
+	p.Size = Vector3.new(x1 - x0, y1 - y0, z1 - z0)
+	p.CFrame = CFrame.new((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2)
+	p.Anchored = true
+	p.Color = color
+	p.Material = Enum.Material.SmoothPlastic
+	p.TopSurface = Enum.SurfaceType.Smooth
+	p.BottomSurface = Enum.SurfaceType.Smooth
+	p.CanCollide = false; p.CanTouch = false; p.CanQuery = false
+	p.Parent = parent
+	return p
+end
+
+-- 1. Façade : vitrines du sol au plafond, plus de bandeau plein au-dessus, montants de haut en bas.
+-- La porte (PlotDoor/Window) garde son verre plus sombre et son cadre : c'est elle qu'on casse.
+local function glassFacade(M)
+	local W = M.Stage_3.Walls
+	for _, n in { "Vitrine_L", "Vitrine_R" } do
+		local p = W:FindFirstChild(n)
+		if p then setY(p, 0.3, 16.1); glass(p, 0.78) end
+	end
+	for _, n in { "FrontUpper_L", "FrontUpper_R" } do
+		local p = W:FindFirstChild(n)
+		if p then p:Destroy() end
+	end
+	for _, p in W:GetChildren() do
+		if p:IsA("BasePart") and p.Name:match("^FrontPier_") then setY(p, 0.3, 16.2) end
+		if p:IsA("BasePart") and p.Name:match("^Mullion_") then setY(p, 0.6, 16.0) end
+	end
+	-- murets de devant : en verre au niveau 2, cachés dès les vitrines (niveau 3)
+	local mf = M.Stage_2:FindFirstChild("Murets_Front")
+	if mf then
+		mf:SetAttribute("HideFromStage", 3)
+		for _, p in mf:GetDescendants() do if p:IsA("BasePart") then glass(p, 0.6) end end
+	end
+	-- niveau 5 : le bandeau de marbre devient une corniche, au ras du toit
+	local lux = M.Stage_5:FindFirstChild("LuxFacade")
+	if lux then
+		for _, n in { "MarbleBand_L", "MarbleBand_R" } do
+			local p = lux:FindFirstChild(n)
+			if p then setY(p, 15.4, 16.2) end
+		end
+	end
+end
+
+-- 2. Verrière : la dalle du toit en verre, plus de plafond plein, une ossature claire alignée sur les plans de L-190.
+local function glassRoof(M)
+	local R = M.Stage_4.Roof
+	local slab = R:FindFirstChild("RoofSlab")
+	if slab then glass(slab, 0.7) end
+	local ceil = R:FindFirstChild("Ceiling")
+	if ceil then ceil:Destroy() end
+	local old = R:FindFirstChild("SkylightFrame"); if old then old:Destroy() end
+	local F = Instance.new("Model"); F.Name = "SkylightFrame"; F.Parent = R
+	local cuts = { -39 }
+	for _, z in { -32, -24, -16, -12, -4, 4, 8, 16, 24, 32 } do table.insert(cuts, z) end
+	table.insert(cuts, 39)
+	for i = 2, #cuts - 1 do -- traverses, chacune finit pile sur son plan
+		local z = cuts[i]
+		block(F, "Rib_T" .. string.format("%02d", i - 1), -23.3, 15.8, z - 0.4, 23.3, 16.2, z, FRAME)
+	end
+	for i = 1, #cuts - 1 do -- deux longerons, un tronçon entre deux traverses
+		for _, x in { -8, 8 } do
+			block(F, "Rib_L" .. (x < 0 and "L" or "R") .. string.format("%02d", i), x - 0.2, 15.8, cuts[i], x + 0.2, 16.2, cuts[i + 1] - (i < #cuts - 1 and 0.4 or 0), FRAME)
+		end
+	end
+	-- un peu plus de lumière la nuit sous la verrière
+	for _, l in M.Stage_4.CeilingLights:GetDescendants() do
+		if l:IsA("PointLight") then l.Brightness = math.max(l.Brightness, 0.8) end
+	end
+end
+
+-- 3. Tailles maximales : boîte où l'objet exposé doit tenir (le code de Cantin le réduit, ne le grossit jamais).
+local function fitSizes(M)
+	local n = 0
+	for _, d in M:GetDescendants() do
+		if d:IsA("Attachment") and d.Name:match("^DisplaySlot_%d+$") then d:SetAttribute("FitSize", FIT_SLOT); n += 1 end
+	end
+	local rd = M:FindFirstChild("RarestDisplay")
+	if rd then
+		rd:SetAttribute("FitSize", FIT_RAREST)
+		local item = rd:FindFirstChild("ItemPoint", true)
+		local lab = rd:FindFirstChild("LabelPoint", true)
+		if item and lab then lab.WorldCFrame = item.WorldCFrame + Vector3.new(0, RAREST_LABEL_Y, 0) end
+		local rp = M:FindFirstChild("RarestPedestal") -- ancien socle (Deprecated) : ses points suivent
+		local rl = rp and rp:FindFirstChild("RarestLabelPoint", true)
+		if rl and lab then rl.WorldCFrame = lab.WorldCFrame end
+	end
+	return n
+end
+
+-- 4. Pièges : une rangée sur toute la largeur de la porte (x -9..9), juste derrière le seuil.
+local function traps(M)
+	local pv = M:GetPivot()
+	for i, x in TRAP_X do
+		local a = M:FindFirstChild(string.format("TrapSlot_%02d", i), true)
+		if a then
+			local pos = pv:PointToWorldSpace(Vector3.new(x, 0.3, TRAP_Z))
+			a.WorldCFrame = a.WorldCFrame.Rotation + pos -- même orientation qu'avant
+		end
+	end
+end
+
+-- 5. Découpe L-190 : chaque longue pièce alignée de Stage_2 à Stage_5 coupée pile sur les plans, sur place,
+-- même nom, même parent ; ses enfants restent sur le premier tronçon (attachments : sur leur tronçon).
+local function zSpan(p)
+	local cf = p.CFrame
+	local axes = { cf.RightVector, cf.UpVector, cf.LookVector }
+	local s = { p.Size.X, p.Size.Y, p.Size.Z }
+	local half, al = 0, nil
+	for i, v in axes do
+		half += math.abs(v.Z) * s[i] / 2
+		if math.abs(math.abs(v.Z) - 1) < 1e-3 then al = i end
+	end
+	return cf.Z - half, cf.Z + half, al
+end
+local function rowCut(M)
+	local n = 0
+	for j = 2, 5 do
+		for _, p in M["Stage_" .. j]:GetDescendants() do
+			if p:IsA("BasePart") then
+				local z0, z1, al = zSpan(p)
+				local cuts = {}
+				for _, P in ROW_PLANES do if z0 < P - 1e-3 and z1 > P + 1e-3 then table.insert(cuts, P) end end
+				if #cuts > 0 and al and z1 - z0 > 4 then
+					table.insert(cuts, 1, z0); table.insert(cuts, z1)
+					local base, sz = p.CFrame, p.Size
+					local atts = {}
+					for _, a in p:GetChildren() do if a:IsA("Attachment") then atts[a] = a.WorldCFrame end end
+					for i = 2, #cuts - 1 do
+						local seg = p:Clone()
+						for _, c in seg:GetChildren() do c:Destroy() end
+						local a0, a1 = cuts[i], cuts[i + 1]
+						local L = { sz.X, sz.Y, sz.Z }; L[al] = a1 - a0
+						seg.Size = Vector3.new(L[1], L[2], L[3])
+						seg.CFrame = base.Rotation + Vector3.new(base.X, base.Y, (a0 + a1) / 2)
+						seg.Parent = p.Parent
+						for a, wcf in atts do if wcf.Position.Z >= a0 then a.Parent = seg; a.WorldCFrame = wcf end end
+						n += 1
+					end
+					local L = { sz.X, sz.Y, sz.Z }; L[al] = cuts[2] - cuts[1]
+					p.Size = Vector3.new(L[1], L[2], L[3])
+					p.CFrame = base.Rotation + Vector3.new(base.X, base.Y, (cuts[1] + cuts[2]) / 2)
+					for a, wcf in atts do if a.Parent == p then a.WorldCFrame = wcf end end
+				end
+			end
+		end
+	end
+	M:SetAttribute("RowCut", true)
+	return n
+end
+
+-- Petits décors posés à cheval sur un plan : décalés pour tenir dans un seul tronçon.
+local function nudgeDecor(M)
+	if M:GetAttribute("RowCut") then return end
+	for _, p in M.Stage_5.Chandeliers:GetDescendants() do
+		if p:IsA("BasePart") then
+			if p.Name:match("_1$") or p.Name:match("^Crystal_1%d$") then p.CFrame += Vector3.new(0, 0, -2.5)
+			elseif p.Name:match("_2$") or p.Name:match("^Crystal_2%d$") then p.CFrame += Vector3.new(0, 0, 2) end
+		end
+	end
+	for _, n in { "AC_3", "AC_3_Fan" } do
+		local p = M.Stage_4.Roof:FindFirstChild(n)
+		if p then p.CFrame += Vector3.new(0, 0, 2) end
+	end
+end
+
+local function glassShop(M)
+	nudgeDecor(M)
+	glassFacade(M)
+	glassRoof(M)
+	local slots = fitSizes(M)
+	traps(M)
+	local cut = rowCut(M)
+	return slots, cut
+end
+
 local function build()
 	P.setSeed(4242)
 	local folder = plotsFolder()
@@ -1057,6 +1267,7 @@ local function build()
 		end
 	end
 	narrowWidth(M) -- 48 de large (Clément, 2026-11-14), après le rangement de Stage_2
+	glassShop(M) -- façade et toit de verre, FitSize, pièges, découpe L-190 (Clément, 2026-11-17)
 	local pad = M:FindFirstChild("CashPad")
 	CS:AddTag(pad, "CashPad")
 	M.WorldPivot = CFrame.identity
