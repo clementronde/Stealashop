@@ -24,16 +24,25 @@
 --      (TakePhoto + ACC_Temoin_Telephone ; flash FX_Witness_Flash à chaque marqueur Flash, par
 --      WitnessController.PlayFlash ; sans marqueur, toutes les Crowd.FlashMin à Crowd.FlashMax s). L'animation est lue
 --      par son nom dans le dossier Animations du modèle ; absente (ou pancarte absente) : photographe ; sans TakePhoto
---      non plus : pose de repos. Le marqueur Shout (Crowd.ShoutMarker) est exposé par OnShout, pour le son à venir.
+--      non plus : pose de repos. Le marqueur Shout (Crowd.ShoutMarker) est exposé par OnShout (son : point 7).
 --   5. Apparition et disparition en Crowd.FadeTime s (LocalTransparencyModifier), au bout de Crowd.Duration s ;
 --      « animations réduites » (Settings.VfxReduced ou ReducedMotionEnabled de Roblox) : ni fondu, ni flash.
 --   6. Coût : appareil faible (ShatterController.IsLowEnd : effets coupés, moins de 40 i/s ou qualité graphique ≤ 3) :
 --      Crowd.PerSideLow par côté, Crowd.MaxCrowdsLow foule à la fois, regard revu toutes les Crowd.TurnIntervalLow s.
+--      Vague 72 (a240) : les places et les rôles sont tirés d'un coup, mais les personnes sont créées sur plusieurs
+--      images (au plus Crowd.BuildPerFrame par image, arrêt dès Crowd.BuildBudget s dépensées, au moins une) ; chacune
+--      fait son fondu d'entrée depuis sa création. La plus longue image de création : GetStats().FrameMs.
+--   7. Sons (vague 72, a240, L-229 ; Crowd.Sounds, 3D sur la racine de la personne, MarkerSounds.find, absent = muet) :
+--      au marqueur Shout, un son de Roles[].Sounds ; à chaque flash d'un photographe, Sounds.Photo (parfois
+--      Sounds.Burst) ; à la casse d'une vitrine de magasin PNJ (WindowController.OnBroken), Sounds.Gasp sur la vitrine.
+--      Au plus Sounds.Voices cris et Sounds.PhotoVoices photos à la fois ; rien sur une personne dont le son joue encore.
 --
 -- API (client, pour un test dans Studio) :
 --   WitnessCrowdController.GetCrowds() -> { { Store: Model, Thief: Player, Members: { Model } } }
 --   WitnessCrowdController.GetCount() -> number      foules formées chez ce joueur depuis le début
---   WitnessCrowdController.GetStats() -> { Members: number, Parts: number, Tracks: number, Shouts: number }
+--   WitnessCrowdController.GetStats() -> { Members, Parts, Tracks, Shouts, Pending, FrameMax, FrameMs, Voices, Sounds }
+--     Pending : personnes encore à créer ; FrameMax et FrameMs : le plus de personnes et de millisecondes passées à en
+--     créer en une image ; Voices : sons de foule en cours ; Sounds : sons de foule lancés depuis le début
 --   WitnessCrowdController.OnShout(callback: (model: Model, role: string) -> ())   à chaque marqueur Shout
 
 local CollectionService = game:GetService("CollectionService")
@@ -53,7 +62,17 @@ local Find = require(Shared:WaitForChild("Contract"):WaitForChild("Find"))
 local WitnessController = require(script.Parent:WaitForChild("WitnessController"))
 
 export type CrowdInfo = { Store: Model, Thief: Player, Members: { Model } }
-export type CrowdStats = { Members: number, Parts: number, Tracks: number, Shouts: number }
+export type CrowdStats = {
+	Members: number,
+	Parts: number,
+	Tracks: number,
+	Shouts: number,
+	Pending: number,
+	FrameMax: number,
+	FrameMs: number,
+	Voices: number,
+	Sounds: number,
+}
 
 type Role = Witness.CrowdRole
 
@@ -62,6 +81,9 @@ type Member = {
 	root: BasePart,
 	parts: { BasePart }, -- celles qui se voient (fondu)
 	role: string,
+	sounds: { string }?, -- a240 : ceux de son rôle (marqueur Shout)
+	voice: Sound?, -- a240 : son dernier son lancé
+	bornAt: number, -- a240 : créée à cette heure (son fondu d'entrée)
 	track: AnimationTrack?,
 	photographer: boolean,
 	markerSeen: boolean,
@@ -69,10 +91,16 @@ type Member = {
 	links: { RBXScriptConnection },
 }
 
+-- a240 : une personne encore à créer (place et rôle déjà tirés).
+type Pending = { template: Model, index: number, at: Vector3, role: Role? }
+
 type Crowd = {
 	store: Model,
 	thief: Player,
 	members: { Member },
+	pending: { Pending }, -- a240 : créées sur plusieurs images, dans l'ordre
+	nextPending: number,
+	ignore: { Instance },
 	startedAt: number,
 	endsAt: number,
 	nextTurnAt: number,
@@ -81,6 +109,7 @@ type Crowd = {
 }
 
 local CROWD = Witness.Crowd
+local SOUNDS = CROWD.Sounds
 local PHOTO = Witness.Photo
 local IS_STUDIO = RunService:IsStudio()
 
@@ -114,6 +143,11 @@ local formed = 0
 local shouts = 0
 local rng = Random.new()
 local said: { [string]: boolean } = {}
+local frameMax = 0 -- a240 : le plus de personnes créées en une image
+local frameMs = 0 -- a240 : le plus de ms passées à en créer en une image
+local cries: { Sound } = {} -- a240 : cris de foule en cours
+local photos: { Sound } = {} -- a240 : sons de photo en cours
+local soundsPlayed = 0
 
 local function sayOnce(key: string, message: string)
 	if IS_STUDIO and not said[key] then
@@ -154,6 +188,70 @@ local function lowEnd(): boolean
 	end
 	local ok, result = pcall(shatter.IsLowEnd)
 	return ok and result == true
+end
+
+-- Sons (a240, L-229) ----------------------------------------------------------------------------------
+
+-- Shared/Anim/MarkerSounds, chargé à la demande (absent : muet).
+local markers: any = nil
+local function markerSounds(): any
+	if markers == nil then
+		markers = false
+		local anim = Shared:FindFirstChild("Anim")
+		local found = if anim then anim:FindFirstChild("MarkerSounds") else nil
+		if found and found:IsA("ModuleScript") then
+			local ok, loaded = pcall(require, found :: any)
+			if ok and type(loaded) == "table" then
+				markers = loaded
+			end
+		end
+	end
+	return markers
+end
+
+local function playing(sound: Sound?): boolean
+	return sound ~= nil and sound.Parent ~= nil and sound.IsPlaying
+end
+
+-- Les sons de `pool` encore en cours (les autres sont oubliés).
+local function busy(pool: { Sound }): number
+	for index = #pool, 1, -1 do
+		if not playing(pool[index]) then
+			table.remove(pool, index)
+		end
+	end
+	return #pool
+end
+
+-- Joue le son `name` (3D sur `at`) si `pool` a une place ; renvoie la copie jouée, ou nil (absent, plein, coupé).
+local function playIn(pool: { Sound }?, limit: number, name: string, at: Instance): Sound?
+	if not SOUNDS.Enabled or name == "" then
+		return nil
+	end
+	if pool and busy(pool) >= limit then
+		return nil
+	end
+	local module = markerSounds()
+	if not module then
+		return nil
+	end
+	local ok, result = pcall(function(): Sound?
+		local template = module.find(name)
+		if template == nil then
+			return nil
+		end
+		return module.playSound(template, at)
+	end)
+	local sound: Sound? = if ok then result else nil
+	if sound == nil then
+		sayOnce(`sound:{name}`, `son « {name} » absent de Assets/Sounds (L-229) : muet`)
+		return nil
+	end
+	soundsPlayed += 1
+	if pool then
+		table.insert(pool, sound)
+	end
+	return sound
 end
 
 local function rootOf(player: Player): BasePart?
@@ -481,8 +579,33 @@ local function groundY(position: Vector3, fromY: number, fallback: number, ignor
 	return if hit then hit.Position.Y else fallback
 end
 
+-- a240 : le son de `member` (cri ou photo), jamais par-dessus le sien.
+local function voice(member: Member, pool: { Sound }, limit: number, name: string)
+	if playing(member.voice) or member.root.Parent == nil then
+		return
+	end
+	local sound = playIn(pool, limit, name, member.root)
+	if sound then
+		member.voice = sound
+	end
+end
+
+-- Un flash du photographe : l'effet (sauf animations réduites) et le son de la photo, parfois la rafale.
+local function flash(member: Member)
+	if reduced() then
+		return
+	end
+	WitnessController.PlayFlash(member.model)
+	local name = if rng:NextNumber(0, 1) < SOUNDS.BurstChance then SOUNDS.Burst else SOUNDS.Photo
+	voice(member, photos, SOUNDS.PhotoVoices, name)
+end
+
 local function shout(member: Member)
 	shouts += 1
+	local list = member.sounds
+	if list and #list > 0 then
+		voice(member, cries, SOUNDS.Voices, list[rng:NextInteger(1, #list)])
+	end
 	for _, listener in shoutListeners do
 		if not pcall(listener, member.model, member.role) then
 			sayOnce("shout", "OnShout : une fonction a échoué")
@@ -518,9 +641,7 @@ local function startTrack(member: Member, animation: Animation)
 			member.links,
 			track:GetMarkerReachedSignal(FLASH_MARKER):Connect(function()
 				member.markerSeen = true
-				if not reduced() then
-					WitnessController.PlayFlash(model)
-				end
+				flash(member)
 			end)
 		)
 	else
@@ -565,6 +686,9 @@ local function addMember(crowd: Crowd, template: Model, index: number, at: Vecto
 		root = root,
 		parts = ghost(model, root),
 		role = if role then role.Name else "",
+		sounds = if role then role.Sounds else nil,
+		voice = nil,
+		bornAt = now,
 		track = nil,
 		photographer = role ~= nil and role.Phone == true,
 		markerSeen = false,
@@ -635,6 +759,9 @@ local function form(store: Model, thief: Player, now: number)
 		store = store,
 		thief = thief,
 		members = {},
+		pending = {},
+		nextPending = 1,
+		ignore = {},
 		startedAt = now,
 		endsAt = now + CROWD.Duration,
 		nextTurnAt = now,
@@ -660,10 +787,33 @@ local function form(store: Model, thief: Player, now: number)
 			table.insert(ignore, template)
 		end
 	end
+	crowd.ignore = ignore
+	-- a240 : places et rôles tirés tout de suite (même foule qu'avant) ; les personnes, créées par build.
 	local perSide = math.max(math.floor(if low then CROWD.PerSideLow else CROWD.PerSide), 0)
 	for index, at in spots(center, out, width, perSide) do
-		addMember(crowd, order[(index - 1) % #order + 1], index, at, drawRole(), now, ignore)
+		table.insert(crowd.pending, { template = order[(index - 1) % #order + 1], index = index, at = at, role = drawRole() })
 	end
+end
+
+-- a240 : crée les personnes en attente de `crowd`, au plus BuildPerFrame, et plus aucune une fois BuildBudget s
+-- dépensées dans l'image (au moins une par image) ; `room` = places restantes dans l'image. Renvoie le nombre créé.
+local function build(crowd: Crowd, now: number, started: number, room: number, first: boolean): number
+	local made = 0
+	while crowd.nextPending <= #crowd.pending and made < room do
+		if not (first and made == 0) and os.clock() - started >= CROWD.BuildBudget then
+			break
+		end
+		local entry = crowd.pending[crowd.nextPending]
+		crowd.nextPending += 1
+		addMember(crowd, entry.template, entry.index, entry.at, entry.role, now, crowd.ignore)
+		made += 1
+	end
+	if crowd.nextPending > #crowd.pending then
+		table.clear(crowd.pending)
+		crowd.nextPending = 1
+		table.clear(crowd.ignore)
+	end
+	return made
 end
 
 -- Boucle -----------------------------------------------------------------------------------------------
@@ -696,28 +846,28 @@ local function updateCrowd(crowd: Crowd, now: number): boolean
 			destroyMember(member)
 		end
 		table.clear(crowd.members)
+		table.clear(crowd.pending)
 		return true
 	end
-	local fade = 0
-	if fadeTime > 0 then
-		if now >= crowd.endsAt then
-			fade = math.clamp((now - crowd.endsAt) / fadeTime, 0, 1)
-		else
-			fade = 1 - math.clamp((now - crowd.startedAt) / fadeTime, 0, 1)
-		end
-	end
+	-- a240 : fondu d'entrée de chacun depuis sa création (bornAt) ; fondu de sortie commun.
+	local outFade = if fadeTime > 0 and now >= crowd.endsAt then math.clamp((now - crowd.endsAt) / fadeTime, 0, 1) else 0
 	local turn = now >= crowd.nextTurnAt
 	if turn then
 		crowd.nextTurnAt = now + crowd.turnInterval
 	end
 	local fading = not crowd.opaque or now >= crowd.endsAt
-	if fade == 0 and now < crowd.endsAt then
-		crowd.opaque = true -- ce dernier passage écrit 0 : visibles
-	end
+	local allIn = #crowd.pending == 0
 	local thiefRoot = rootOf(crowd.thief)
 	local quiet = reduced()
 	for _, member in crowd.members do
 		if fading then
+			local fade = outFade
+			if now < crowd.endsAt and fadeTime > 0 then
+				fade = 1 - math.clamp((now - member.bornAt) / fadeTime, 0, 1)
+			end
+			if fade > 0 then
+				allIn = false
+			end
 			setFade(member, fade)
 		end
 		if turn and thiefRoot and member.root.Parent ~= nil then
@@ -730,9 +880,12 @@ local function updateCrowd(crowd: Crowd, now: number): boolean
 		if member.photographer and not member.markerSeen and now >= member.nextFlashAt and now < crowd.endsAt then
 			member.nextFlashAt = now + rng:NextNumber(CROWD.FlashMin, CROWD.FlashMax)
 			if not quiet then
-				WitnessController.PlayFlash(member.model)
+				flash(member)
 			end
 		end
+	end
+	if fading and allIn and now < crowd.endsAt then
+		crowd.opaque = true -- tous créés et ce dernier passage a écrit 0 : visibles
 	end
 	return false
 end
@@ -746,6 +899,29 @@ local function step()
 			sayOnce(`check:{err}`, `contrôle des porteurs : {err}`)
 		end
 	end
+	-- a240 : les personnes en attente, sur un budget commun à toutes les foules de l'image.
+	local started = os.clock()
+	local room = math.max(math.floor(CROWD.BuildPerFrame), 1)
+	local made = 0
+	for _, crowd in crowds do
+		if room - made <= 0 then
+			break
+		end
+		if #crowd.pending > 0 then
+			local ok, result = pcall(build, crowd, now, started, room - made, made == 0)
+			if ok then
+				made += result
+			else
+				sayOnce(`build:{result}`, `foule : {result}`)
+				table.clear(crowd.pending)
+				crowd.nextPending = 1
+			end
+		end
+	end
+	if made > 0 then
+		frameMax = math.max(frameMax, made)
+		frameMs = math.max(frameMs, (os.clock() - started) * 1000)
+	end
 	for index = #crowds, 1, -1 do
 		local crowd = crowds[index]
 		local ok, result = pcall(updateCrowd, crowd, now)
@@ -758,6 +934,31 @@ local function step()
 			end
 			table.remove(crowds, index)
 		end
+	end
+end
+
+-- a240 (L-229) : Crowd_Gasp sur la vitrine cassée d'un magasin PNJ (pas une boutique de joueur), mêmes refus que la
+-- foule pour la nuit (Crowd.AtNight) et la distance (Crowd.ViewDistance).
+local function gasp(windows: any, windowId: string, impactPoint: Vector3)
+	local ok, window, store = pcall(windows.GetWindow, windowId)
+	if not ok or window == nil or store == nil or not CollectionService:HasTag(store, STORE_TAG) then
+		return
+	end
+	if not CROWD.AtNight and Workspace:GetAttribute(NIGHT_PHASE) == "Night" then
+		return
+	end
+	local camera = Workspace.CurrentCamera
+	if camera == nil or (camera.CFrame.Position - impactPoint).Magnitude > CROWD.ViewDistance then
+		return
+	end
+	local at: Instance? = nil
+	if window:IsA("BasePart") then
+		at = window
+	elseif window:IsA("Model") then
+		at = (window :: Model).PrimaryPart or window:FindFirstChildWhichIsA("BasePart", true)
+	end
+	if at then
+		playIn(nil, 0, SOUNDS.Gasp, at)
 	end
 end
 
@@ -779,8 +980,21 @@ end
 
 -- La mesure du coût chez ce joueur (L-219 point 1) : personnes, pièces, pistes d'animation en cours, cris entendus.
 function WitnessCrowdController.GetStats(): CrowdStats
-	local stats: CrowdStats = { Members = 0, Parts = 0, Tracks = 0, Shouts = shouts }
+	local stats: CrowdStats = {
+		Members = 0,
+		Parts = 0,
+		Tracks = 0,
+		Shouts = shouts,
+		Pending = 0,
+		FrameMax = frameMax,
+		FrameMs = frameMs,
+		Voices = busy(cries) + busy(photos),
+		Sounds = soundsPlayed,
+	}
 	for _, crowd in crowds do
+		if #crowd.pending > 0 then
+			stats.Pending += #crowd.pending - crowd.nextPending + 1
+		end
 		for _, member in crowd.members do
 			stats.Members += 1
 			for _, inst in member.model:GetDescendants() do
@@ -796,7 +1010,7 @@ function WitnessCrowdController.GetStats(): CrowdStats
 	return stats
 end
 
--- Le son de foule à venir (L-223, marqueur Shout de Cheer, Boo et Shout) s'accroche ici.
+-- Chaque marqueur Shout (L-223 : Cheer, Boo et Shout) ; le son de L-229 est déjà joué par ce contrôleur (a240).
 function WitnessCrowdController.OnShout(callback: (Model, string) -> ())
 	table.insert(shoutListeners, callback)
 end
@@ -809,6 +1023,16 @@ function WitnessCrowdController.Start()
 		insideOf[player] = nil
 	end)
 	RunService.Heartbeat:Connect(step)
+	-- a240 (L-229) : Crowd_Gasp une fois à la casse d'une vitrine de magasin PNJ (WindowController, chargé à la demande).
+	local found = script.Parent:FindFirstChild("WindowController")
+	if found and found:IsA("ModuleScript") then
+		local ok, windows = pcall(require, found :: any)
+		if ok and type(windows) == "table" and type((windows :: any).OnBroken) == "function" then
+			(windows :: any).OnBroken(function(windowId: string, impactPoint: Vector3)
+				gasp(windows, windowId, impactPoint)
+			end)
+		end
+	end
 end
 
 return WitnessCrowdController
