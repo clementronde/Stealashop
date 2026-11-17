@@ -47,6 +47,10 @@ Animations.Player = {
 	-- Vague 56 (a181, L-162, Clément) : objet Big, Huge ou Colossal tenu à deux mains (HeldItemService), haut du
 	-- corps seulement. Pas encore livrée : orange au ContractChecker, la pose « outil » de Roblox reste.
 	{ Name = "HoldItem", Loop = true, Priority = "Action", UpperBodyOnly = true },
+	-- Vague 72 (a243, L-218, noms proposés par Clément) : joueur pris par un piège de boutique (TrapController),
+	-- en boucle tant que l'effet dure. Pas encore livrées : orange au ContractChecker, Stunned se joue à leur place.
+	{ Name = "TrapStuck", Loop = true, Priority = "Action" },
+	{ Name = "TrapNetted", Loop = true, Priority = "Action" },
 } :: { Anim }
 
 -- 5 animations dans chaque modèle de vigile, de jour comme de nuit (mêmes noms).
