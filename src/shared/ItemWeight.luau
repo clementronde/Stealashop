@@ -185,7 +185,7 @@ function ItemWeight.SizeChance(sizeId: string, luck: number): number
 end
 
 function ItemWeight.ScaleFor(kg: number): number
-	return (clampKg(kg) / Weight.Reference) ^ Weight.ScaleExponent
+	return Weight.ScaleAt(clampKg(kg)) -- a234 : courbe par points de Config/Weight (ScaleCurve)
 end
 
 function ItemWeight.IncomeFactor(kg: number): number

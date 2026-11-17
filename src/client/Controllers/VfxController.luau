@@ -602,8 +602,15 @@ local function placeRarestItem(entry: RarestEntry, best: Best)
 	copy.Name = spec.ItemName
 	copy:AddTag(spec.CopyTag)
 	-- Vague 62 (a203) : un objet très lourd est plafonné à Weight.RarestMaxScale sur le socle (V0).
-	if ItemWeight.Enabled() and copy:GetScale() > WeightConfig.RarestMaxScale then
-		pcall(copy.ScaleTo, copy, WeightConfig.RarestMaxScale)
+	-- a234 (L-220) : vraie taille sur le socle : la réduction FitSize de son présentoir (attribut FitScale) est retirée.
+	local shown = copy:GetScale()
+	local fit = source:GetAttribute(WeightConfig.FitScaleAttribute)
+	local wanted = if type(fit) == "number" and fit > 0 and fit < 1 then shown / fit else shown
+	if ItemWeight.Enabled() then
+		wanted = math.min(wanted, WeightConfig.RarestMaxScale)
+	end
+	if math.abs(wanted - shown) > 1e-3 then
+		pcall(copy.ScaleTo, copy, wanted)
 	end
 	local rotation = if entry.Large then slot.WorldCFrame.Rotation else source:GetPivot().Rotation
 	copy:PivotTo(CFrame.new(slot.WorldPosition) * rotation)

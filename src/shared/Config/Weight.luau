@@ -19,6 +19,36 @@ export type Tier = {
 	Chance: number, -- pour cent à ×1 (somme des paliers : 100)
 }
 
+export type ScalePoint = {
+	Kg: number,
+	Scale: number,
+}
+
+-- a234 (V0) : courbe poids → taille (voir ScaleCurve dans la table).
+local SCALE_CURVE: { ScalePoint } = {
+	{ Kg = 1, Scale = 0.1 ^ (1 / 3) },
+	{ Kg = 10, Scale = 1 },
+	{ Kg = 100, Scale = 2.6 },
+	{ Kg = 500, Scale = 7 },
+	{ Kg = 10000, Scale = 16 },
+}
+
+-- Échelle de `kg` sur SCALE_CURVE : droite entre les deux points voisins en échelle logarithmique (une puissance du
+-- poids entre deux points) ; avant le premier point ou après le dernier, la pente du segment le plus proche.
+local function scaleAt(kg: number): number
+	local count = #SCALE_CURVE
+	local index = 1
+	while index < count - 1 and kg > SCALE_CURVE[index + 1].Kg do
+		index += 1
+	end
+	local a, b = SCALE_CURVE[index], SCALE_CURVE[index + 1]
+	if kg == a.Kg or kg == b.Kg then
+		return if kg == a.Kg then a.Scale else b.Scale -- valeur exacte sur un point (10 kg = ×1 tout juste)
+	end
+	local slope = math.log(b.Scale / a.Scale) / math.log(b.Kg / a.Kg)
+	return a.Scale * (math.max(kg, 1e-6) / a.Kg) ^ slope
+end
+
 local Weight = {
 	Min = 1, -- Cantin : de 1 kg…
 	Max = 10000, -- Cantin : … à 10 000 kg
@@ -49,9 +79,15 @@ local Weight = {
 	-- légers. V0 : « lourd » = un palier qui commence à LuckFrom kg ou plus.
 	LuckFrom = 50,
 
-	-- Taille du modèle (Cantin : le poids suit le volume) : (kg / Reference) ^ ScaleExponent, soit 1 kg ≈ ×0,46,
-	-- 10 kg = ×1, 1 000 kg ≈ ×4,6, 10 000 kg = ×10.
-	ScaleExponent = 1 / 3,
+	-- Taille du modèle (échelle ×, 10 kg = ×1) : courbe par points (ScaleAt, plus bas), droite entre deux points en
+	-- échelle logarithmique (kg et taille). a234 (V0, Clément L-219 point 6 et L-220 : « un objet de 500 kg, c'est la
+	-- taille d'une voiture ») : sous 10 kg, la racine cubique d'avant (1 kg ≈ ×0,46) ; puis 50 kg ≈ ×1,95, 100 kg = ×2,6,
+	-- 250 kg ≈ ×4,6, 500 kg = ×7 (un objet de 1,6 à 2 studs : 11 à 14 studs, une voiture), 2 500 kg ≈ ×10,9,
+	-- 10 000 kg = ×16. Avant a234 : (kg / 10) ^ (1/3), soit 500 kg ≈ ×3,7 et 10 000 kg = ×10.
+	-- Ouverture du colis et objet porté : cette taille (au plus CarryMaxScale) ; présentoir : réduite pour tenir dans
+	-- FitSize (DisplayService) ; socle « BEST ITEM » : au plus RarestMaxScale. Points rangés par poids croissant.
+	ScaleCurve = SCALE_CURVE,
+	ScaleAt = scaleAt, -- (kg) -> échelle ; appelé par Shared/ItemWeight.ScaleFor, poids déjà ramené à Min…Max
 	-- Revenu (Cantin : le poids change directement le revenu) : (kg / Reference) ^ IncomeExponent. V0 : la même
 	-- racine cubique que la taille (10 000 kg = ×10, comme l'ancien Colossal ; 1 kg ≈ ×0,46) ; moyenne
 	-- ×1,22 à ×1, ×1,30 avec la chance tirée dans ShelfOpen.LuckTable, comme les anciennes tailles (×1,30 ; rapport
@@ -79,10 +115,14 @@ local Weight = {
 	-- (HeldItemService) et grand socle « BEST ITEM » (VfxController) : plafonnés pour ne pas cacher le joueur ni la
 	-- parcelle. Objet porté sur la tête (CarryService) : à sa taille comme sur un présentoir (a220, Clément L-210 point 3 :
 	-- « sa vraie taille, même énorme »), au plus CarryMaxScale (1 = l'ancien rendu, taille du catalogue).
-	DisplayMaxScale = 10,
+	-- a234 : DisplayMaxScale et CarryMaxScale suivent le haut de ScaleCurve (×16 ; avant ×10), pour que l'objet porté
+	-- garde sa taille de l'ouverture ; sur un présentoir qui a FitSize, l'objet est en plus réduit pour y tenir.
+	-- RarestMaxScale (a234, L-220 : vraie taille sur le socle, sans FitSize, avec une limite pour ne pas couvrir le hub) :
+	-- ×6, soit 9,6 à 12 studs pour un objet de 1,6 à 2 studs, sous LabelPoint (11 studs au-dessus du plateau) ; avant ×3.
+	DisplayMaxScale = 16,
 	HeldMaxScale = 2,
-	RarestMaxScale = 3,
-	CarryMaxScale = 10,
+	RarestMaxScale = 6,
+	CarryMaxScale = 16,
 	-- a220 (V0) : chez le porteur seulement (CarryController), un objet porté à partir de cette échelle devient
 	-- translucide (LocalTransparencyModifier CarryFade) pour qu'il voie encore son perso et la rue ; les autres le voient
 	-- plein. CarryFade = 0 : jamais.
@@ -98,6 +138,9 @@ local Weight = {
 	-- Noms posés par le code (V0) : attribut Weight (kg) des modèles d'objet (présentoir, sol, en main, porté) et
 	-- élément facultatif Weight des billboards et cases qui montrent déjà le revenu (Contract/UI).
 	Attribute = "Weight",
+	-- a234 : attribut posé par DisplayService sur un objet exposé réduit pour tenir dans le FitSize de son présentoir
+	-- (nombre < 1, la réduction ; absent : aucune). VfxController le retire de la copie du socle « BEST ITEM ».
+	FitScaleAttribute = "FitScale",
 	Field = "Weight",
 }
 
