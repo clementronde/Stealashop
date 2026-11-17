@@ -4,7 +4,7 @@ Ce fichier est lu par Claude à chaque session ouverte dans ce dossier. Il dit c
 
 ## Le jeu en 4 lignes
 
-- **Steal a Shop** : jeu Roblox de type « Steal a … » à 8 joueurs, mélangé avec du braquage.
+- **Steal a Shop** : jeu Roblox de type « Steal a … » à 6 joueurs, mélangé avec du braquage.
 - Boucle : s'entraîner (tapis = vitesse, banc = force) → casser la vitrine d'un magasin PNJ → ouvrir un colis sur le rayon et prendre l'objet → semer le vigile → exposer l'objet en base → encaisser des $/s → améliorer → braquer plus loin, ou braquer un autre joueur.
 - 6 zones de magasins PNJ dans un couloir, de plus en plus rares et dures selon la puissance et la vitesse. Cycle jour/nuit : la nuit, un mur ferme le couloir et des vigiles de nuit patrouillent.
 - Sortie du MVP quand il est prêt (peut-être bientôt, sans presser), puis une mise à jour par samedi ; les dates des docs ne donnent que l'ordre des tâches.
@@ -119,7 +119,7 @@ Le code retrouve tout par **tags** et par **noms convenus**, jamais par chemin.
 | Boutique | La parcelle-magasin d'un joueur, où il expose ses objets |
 | Magasin PNJ | Un magasin du couloir que l'on braque |
 | Couloir | La rue des 6 zones de magasins PNJ |
-| Zone safe | Le lobby avec les 8 parcelles ; pas de vigile PNJ, mais le PvP y reste possible |
+| Zone safe | Le lobby avec les 6 parcelles ; pas de vigile PNJ, mais le PvP y reste possible |
 | Colis | La caisse sur le rayon d'un magasin PNJ (Standard, Premium ou Luxe, avec une rareté) ; on l'ouvre sur place et on vole l'objet qui en sort |
 | Rareté | Commun, Peu commun, Rare, Épique, Légendaire, Mythique, Secret |
 | Halo de rareté | L'effet lumineux autour d'un objet porté, aux couleurs de sa rareté |
