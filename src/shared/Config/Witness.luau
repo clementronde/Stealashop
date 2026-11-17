@@ -9,6 +9,9 @@
 
 local DeepFreeze = require(script.Parent.DeepFreeze)
 
+-- Un rôle de la foule (Crowd.Roles) : Sign = Side de la pancarte tenue ("For" ou "Against") ; Phone = le téléphone.
+export type CrowdRole = { Name: string, Anim: string, Weight: number, Sign: string?, Phone: boolean? }
+
 local Witness = {
 	-- Le « ? » -------------------------------------------------------------------------------------
 	FillTime = 8, -- Clément : de vide à plein en 8 s à partir du premier coup ; plein, le témoin appelle
@@ -94,26 +97,54 @@ local Witness = {
 
 	-- La foule qui filme (vague 66, a221, Clément, L-210 point 4 ; proposition à valider par Clément, tout en V0) : quand un
 	-- voleur sort d'un magasin PNJ avec l'objet sur la tête (attribut Carrying, il quitte le volume Bounds), une petite
-	-- foule apparaît en arc devant la vitrine, tournée vers lui : des copies des témoins NPC_Witness_* présents chez le
-	-- joueur (même modèle, même téléphone), créées et jouées par chaque client seul (WitnessCrowdController) : aucun
-	-- remote, rien sur le serveur. Interrupteur : Features.WitnessCrowd.
+	-- foule apparaît devant la vitrine, tournée vers lui, créée et jouée par chaque client seul (WitnessCrowdController) :
+	-- aucun remote, rien sur le serveur. Interrupteur : Features.WitnessCrowd.
+	--
+	-- Vague 71 (a236 ; Clément, L-219 point 1, L-220 point 2, L-223) : les personnes viennent de
+	-- ReplicatedStorage/Assets/Crowd/Models/NPC_Crowd_* (repli : les copies des témoins d'avant), chacune avec un rôle
+	-- (Roles) et l'accessoire de ce rôle (Assets/Crowd/Props) ; rangées des deux côtés du passage qui part de la vitrine
+	-- (personne devant la vitrine, ni tapis ni barrière), plus serrées en s'éloignant ; aucune collision.
 	Crowd = {
-		Count = 5, -- V0 : nombre de PNJ
-		Filmers = 2, -- V0 : les premiers filment (TakePhoto figée sur la pose du téléphone levé, sans flash), les autres photographient
+		Models = { "Assets", "Crowd", "Models" }, -- Clément (L-223), depuis ReplicatedStorage
+		ModelPrefix = "NPC_Crowd_", -- Clément : NPC_Crowd_01 à _12 ; aucun : les copies des témoins NPC_Witness_*
+		Props = { "Assets", "Crowd", "Props" }, -- Clément : accessoires de rôle (Humanoid:AddAccessory)
+		SideAttribute = "Side", -- Clément : attribut des pancartes, "For" ou "Against"
+		-- Rôles (Clément, L-223) tirés au hasard selon Weight (V0) : pour le voleur (Cheer, ou HoldSign + pancarte For),
+		-- contre (Boo, ou HoldSign + pancarte Against), crieur (Shout), photographe (TakePhoto + ACC_Temoin_Telephone,
+		-- flash à chaque marqueur Flash). Une personne qui n'a pas l'animation (ou la pancarte) de son rôle devient
+		-- photographe ; sans TakePhoto non plus : pose de repos.
+		Roles = {
+			{ Name = "Cheer", Anim = "Cheer", Weight = 2 },
+			{ Name = "SignFor", Anim = "HoldSign", Sign = "For", Weight = 1 },
+			{ Name = "Boo", Anim = "Boo", Weight = 2 },
+			{ Name = "SignAgainst", Anim = "HoldSign", Sign = "Against", Weight = 1 },
+			{ Name = "Shouter", Anim = "Shout", Weight = 2 },
+			{ Name = "Photographer", Anim = "TakePhoto", Phone = true, Weight = 3 },
+		} :: { CrowdRole },
+		Photographer = "Photographer", -- le rôle de repli (Roles)
+		ShoutMarker = "Shout", -- Clément (L-223) : le cri, pour le son de foule à venir (WitnessCrowdController.OnShout)
+		PerSide = 12, -- V0 : personnes de chaque côté du passage (Clément : au moins 10)…
+		PerSideLow = 10, -- V0 : … sur appareil faible (ShatterController.IsLowEnd), jamais moins de 10
+		Start = 2, -- V0 : studs devant la vitrine, la première personne de chaque côté…
+		Length = 34, -- V0 : … la dernière à Start + Length studs (la rue fait environ 105 studs entre façades, L-226)
+		Spread = 0.6, -- V0 : < 1 = plus serrés en s'éloignant (place k sur n : Start + Length × (k − 0,5) / n ^ Spread)
+		PassageMin = 8, -- V0 : largeur du passage (studs) au moins…
+		PassageMax = 24, -- V0 : … et au plus ; entre les deux : largeur de la vitrine + 2 × PassageMargin
+		PassageMargin = 1, -- V0 : studs
+		RowGap = 2.5, -- V0 : une personne sur deux un rang derrière (studs), en quinconce
+		Jitter = 0.6, -- V0 : studs de hasard sur chaque place
 		Duration = 6, -- V0 : s, puis ils s'effacent
 		FadeTime = 0.3, -- V0 : s, apparition et disparition (LocalTransparencyModifier) ; animations réduites : d'un coup
-		Distance = 12, -- V0 : studs devant la vitrine
-		Arc = 110, -- V0 : degrés, largeur de l'arc
-		Jitter = 1.5, -- V0 : studs de hasard sur chaque place
 		FlashMin = 0.7, -- V0 : rythme des flashs sans marqueur Flash (s, au hasard entre les deux)…
 		FlashMax = 1.5, -- V0 : … ; avec TakePhoto, ses marqueurs Flash donnent le rythme
-		FilmFreeze = 1, -- V0 : s ; sans marqueur Flash dans ce temps, le filmeur fige sa pose là où elle est
 		Cooldown = 15, -- V0 : s, pas deux foules pour un même magasin dans ce temps
-		MaxCrowds = 2, -- V0 : foules à la fois chez un joueur
+		MaxCrowds = 2, -- V0 : foules à la fois chez un joueur…
+		MaxCrowdsLow = 1, -- V0 : … sur appareil faible
+		AtNight = false, -- V0 : comme avant (la nuit, plus de témoins, donc plus de foule) ; à valider par Clément
 		ViewDistance = 220, -- V0 : studs ; voleur plus loin de la caméra : pas de foule
 		CheckInterval = 0.2, -- V0 : s, contrôle des porteurs
-		TurnInterval = 0.1, -- V0 : s, la foule se tourne vers le voleur
-		Anim = "TakePhoto", -- l'animation de Clément (Contract/Animations.Witness) ; absente : pose de repos
+		TurnInterval = 0.1, -- V0 : s, la foule se tourne vers le voleur…
+		TurnIntervalLow = 0.3, -- V0 : … sur appareil faible
 		Folder = "WitnessCrowd", -- V0 : dossier du Workspace (chez le joueur seul) qui range les copies
 	},
 
