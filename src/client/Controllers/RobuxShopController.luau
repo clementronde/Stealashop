@@ -97,6 +97,11 @@
 --   (b) Ouvrir maintenant garde son bouton de prix sans objet à ouvrir : prix du premier palier (Config), et au
 --       clic « No item » (ou « Almost ready » sous OpenNow.MinRemaining) à la place du prix pendant SOON_DURATION s ;
 --   (c) Clip.Watermark de chaque carte clonée reprend l'image de son Icon (sans Watermark : rien).
+--
+-- Vague 72 (a247, L-229, L-216 point 8) : son Shop_Buy (Motion.PlaySound, Assets/Sounds ; absent = muet) quand une
+-- fenêtre d'achat de Roblox se ferme sur un achat fait (PromptProductPurchaseFinished, PromptGamePassPurchaseFinished
+-- du joueur local), boutique ouverte seulement (Features.RobuxShop), quel que soit le bouton qui l'a ouverte. Les
+-- cartes de la chance du serveur (ServerLuck2, 4, 8) sont des produits comme les autres (onglet Boosts).
 
 local CollectionService = game:GetService("CollectionService")
 local MarketplaceService = game:GetService("MarketplaceService")
@@ -254,6 +259,8 @@ local REFRESH_INTERVAL = 1
 -- qu'on ne peut pas encore acheter (vitrine, ou Id à 0), en anglais (L-036), et durée (s) de ce texte.
 local SOON_TEXT = "Soon"
 local SOON_DURATION = 2
+-- Vague 72 (a247, L-229) : son d'un achat Robux réussi.
+local BUY_SOUND = "Shop_Buy"
 
 local IS_STUDIO = RunService:IsStudio()
 -- Achats réels (MAJ 1) ; sinon, la vitrine (Features.RobuxShopPreview) : aucun appel à
@@ -1492,6 +1499,21 @@ function RobuxShopController.Start()
 	started = true
 	buildOffers()
 	readCratePolicy()
+	if LIVE then
+		-- Vague 72 (a247) : Shop_Buy à la fin d'un achat fait (pcall : signaux absents d'un faux Roblox de banc).
+		pcall(function()
+			MarketplaceService.PromptProductPurchaseFinished:Connect(function(userId: number, _productId: number, isPurchased: boolean)
+				if isPurchased and userId == localPlayer.UserId then
+					Motion.PlaySound(BUY_SOUND)
+				end
+			end)
+			MarketplaceService.PromptGamePassPurchaseFinished:Connect(function(player: Player, _passId: number, wasPurchased: boolean)
+				if wasPurchased and player == localPlayer then
+					Motion.PlaySound(BUY_SOUND)
+				end
+			end)
+		end)
+	end
 
 	local watched = { INCOME_ATTRIBUTE, STARTER_ATTRIBUTE, OPEN_NOW_ATTRIBUTE }
 	for _, pass in Monetization.Passes do
