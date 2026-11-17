@@ -61,6 +61,7 @@ local fromLook: Look? = nil -- état au changement de phase
 local changedAt = 0 -- os.clock() du changement de phase
 local applied: Look? = nil -- dernier état écrit dans Lighting
 local lampsOn = false
+local started = false -- vague 72 (a246) : premier état lu au démarrage (arrivée en pleine nuit : aucun son)
 local lamps: { [BasePart]: LampState } = setmetatable({}, { __mode = "k" }) :: any
 
 local function lerpNumber(a: number, b: number, t: number): number
@@ -154,6 +155,18 @@ local function setLamps(on: boolean)
 	end
 end
 
+-- Vague 72 (a246) : son 2D par Shared/Anim/MarkerSounds, s'il est là (absent : rien).
+local function playSound(name: string)
+	local shared = ReplicatedStorage:FindFirstChild("Shared")
+	local anim = if shared then shared:FindFirstChild("Anim") else nil
+	local module = if anim then anim:FindFirstChild("MarkerSounds") else nil
+	if module and module:IsA("ModuleScript") then
+		pcall(function()
+			(require(module) :: any).play(name, nil)
+		end)
+	end
+end
+
 -- Ciel ---------------------------------------------------------------------------------------
 
 local function current(): Look
@@ -165,6 +178,12 @@ local function onPhaseChanged()
 	local name = if type(newPhase) == "string" then newPhase else nil
 	if name == phase then
 		return
+	end
+	-- Vague 72 (a246, L-229 B) : Night_Start à la tombée de la nuit, Night_End à l'aube (2D, Config/Night.Sounds).
+	if started and name == "Night" then
+		playSound(Night.Sounds.Start)
+	elseif started and phase == "Night" then
+		playSound(Night.Sounds.End)
 	end
 	phase = name
 	fromLook = current()
@@ -209,6 +228,7 @@ function SkyController.Start()
 	phase = "Day"
 	Workspace:GetAttributeChangedSignal(PHASE_ATTRIBUTE):Connect(onPhaseChanged)
 	onPhaseChanged()
+	started = true
 	CollectionService:GetInstanceAddedSignal(LAMP_TAG):Connect(function(instance: Instance)
 		if lampsOn and instance:IsA("BasePart") then
 			setLamp(instance :: BasePart, true) -- pièce arrivée en pleine nuit (streaming)

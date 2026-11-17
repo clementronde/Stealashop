@@ -1126,6 +1126,7 @@ local function onClaimedChanged()
 	local waiting = pendingClaim
 	if waiting and gained then
 		pendingClaim = nil
+		Motion.PlaySound("Index_Reward") -- vague 72 (a246, L-229 B) : la prime de la zone est confirmée
 		local button = waiting.button
 		if os.clock() - waiting.at < CLAIM_WAIT and button.Parent ~= nil and button:IsA("GuiButton") then
 			Motion.Success(button :: GuiButton)

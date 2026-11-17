@@ -234,6 +234,22 @@ local function rarityOrder(id: string): number
 	return if rarity then rarity.Order else 0
 end
 
+-- Vague 72 (a246, L-229 B) : son de la rareté au Reveal (Low, Mid ou High, Config/Reveal.Sounds).
+local function raritySound(id: string): string
+	local order = rarityOrder(id)
+	if order >= rarityOrder(Reveal.Sounds.RarityHighFrom) then
+		return Reveal.Sounds.RarityHigh
+	elseif order >= rarityOrder(Reveal.Sounds.RarityMidFrom) then
+		return Reveal.Sounds.RarityMid
+	end
+	return Reveal.Sounds.RarityLow
+end
+
+-- Son d'une table { Small, Large, Colossal } pour la classe `class` (Small par défaut).
+local function sizeSound(byClass: any, class: string): string
+	return byClass[class] or byClass.Small
+end
+
 -- Magasin, rayon, cadre ----------------------------------------------------------------------------------------
 
 local function findStore(shopId: string): Model?
@@ -661,6 +677,7 @@ local function onReveal(scene: Scene)
 	showBoard(scene)
 	playSound(Reveal.Sounds.Reveal, soundAt(scene))
 	playSound(Reveal.Sounds.Confetti, soundAt(scene))
+	playSound(raritySound(scene.payload.Rarity), soundAt(scene)) -- vague 72 (a246, L-229 B)
 	if scene.opener and rarityOrder(scene.payload.Rarity) >= rarityOrder(Reveal.FlashMinRarity) then
 		local feel = sibling("UiFeelController")
 		if feel and type(feel.RevealFlash) == "function" then
@@ -678,11 +695,14 @@ local function onExplode(scene: Scene)
 		local radius = Reveal.Ceiling.Radius * math.max(scene.payload.Scale, 1)
 		if Ceiling.Explode(store, anchorFrame(scene).Position, radius, lowEnd()) then
 			playSound(Reveal.Sounds.Explode, soundAt(scene))
+			local at = soundAt(scene) -- vague 72 (a246) : Ceiling_Crash, puis Ceiling_Debris
+			task.delay(Reveal.Sounds.DebrisDelay, playSound, Reveal.Sounds.Debris, at)
 		end
 	end
 end
 
 local function onLand(scene: Scene)
+	playSound(sizeSound(Reveal.Sounds.Land, scene.payload.SizeClass), soundAt(scene)) -- vague 72 (a246, L-229 B)
 	scene.stage = "Hold"
 	scene.holdT = 0
 	scene.shownScale = scene.payload.Scale
@@ -760,6 +780,9 @@ local function startStage(scene: Scene, stage: string)
 	stopTrack(scene)
 	scene.stage = stage
 	scene.stageT = 0
+	if stage == "Grow" then
+		playSound(sizeSound(Reveal.Sounds.Grow, scene.payload.SizeClass), soundAt(scene)) -- vague 72 (a246, L-229 B)
+	end
 	scene.mode = "Fallback"
 	scene.trackStopped = false
 	local animator = scene.animator

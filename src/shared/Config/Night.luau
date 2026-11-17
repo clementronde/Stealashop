@@ -87,6 +87,15 @@ local Night = {
 	-- Sons d'ambiance des zones (AmbienceController, liaison L-221) : tout Sound du Workspace avec l'attribut
 	-- PlayAt = "Day" joue le jour (alerte comprise), "Night" la nuit ; fondu de cette durée au changement.
 	AmbienceFade = 3, -- V0 proposé, absent du doc (s) : même durée que le ciel (Sky.TransitionTime)
+
+	-- Vague 72 (a246, L-229 B) : sons de la nuit (Assets/Sounds/Night ; absents : muets). Start et End en 2D chez chaque
+	-- joueur (SkyController), au changement de phase vu en jeu (pas à l'arrivée en pleine nuit) ; WallRise en 3D sur
+	-- chaque mur NightWall qui monte (NightCycleService).
+	Sounds = {
+		Start = "Night_Start",
+		End = "Night_End",
+		WallRise = "Night_WallRise",
+	},
 }
 
 export type Night = typeof(Night)

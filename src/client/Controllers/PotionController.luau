@@ -15,8 +15,8 @@
 --   2. Contact : quand le HumanoidRootPart du joueur local passe à Potions.PickupRadius studs (à plat) d'une de
 --      ses potions, et à VERTICAL_REACH studs au plus en hauteur, PickPotion(uid) part une fois ; il repart au
 --      plus toutes les RESEND_DELAY s tant que la potion est là et le joueur à portée (le serveur peut avoir
---      refusé : trop loin à son goût, débit). PotionRemoved d'une potion demandée = ramassée : son UI_Success
---      (sons d'interface, UI/Motion.PlaySound ; aucun son de potion livré) et la copie grossit en montant
+--      refusé : trop loin à son goût, débit). PotionRemoved d'une potion demandée = ramassée : sons Potion_Pick puis
+--      Potion_Drink (UI/Motion.PlaySound ; vague 72) et la copie grossit en montant
 --      (POP_TIME), puis disparaît. Retirée sans demande (expirée) : elle disparaît tout de suite.
 --   3. Effets actifs : chaque attribut Potion_<Id> du joueur local encore dans le futur donne une ligne, retirée
 --      à la fin. Écran de Clément s'il existe : UI_HUD.PotionBar et son Template caché (Icon, Timer), une copie
@@ -57,7 +57,10 @@ local RESEND_DELAY = 1 -- s entre deux PickPotion de la même potion
 local POP_TIME = 0.25 -- s : la potion ramassée grossit en montant, puis disparaît
 local POP_SCALE = 1.6
 local POP_RISE = 1.5 -- studs
-local PICK_SOUND = "UI_Success" -- son d'interface de Clément, en attendant un son de potion
+-- Vague 72 (a246, L-229 B) : sons de potion de Clément (avant : UI_Success). Ramasser = boire (le serveur pose l'effet
+-- au ramassage) : Potion_Pick au ramassage, Potion_Drink quand la potion disparaît (fin de POP_TIME).
+local PICK_SOUND = "Potion_Pick"
+local DRINK_SOUND = "Potion_Drink"
 local INVISIBLE_OTHERS = 0.85 -- transparence d'un autre joueur invisible
 local VEIL_COLOR = Color3.fromHex("9DB4FF")
 local VEIL_TRANSPARENCY = 0.85
@@ -298,6 +301,10 @@ local function stepPopping(dt: number)
 		if age >= POP_TIME then
 			table.remove(popping, index)
 			destroyShown(entry)
+			local play = motion
+			if play and type(play.PlaySound) == "function" then
+				pcall(play.PlaySound, DRINK_SOUND)
+			end
 		else
 			local k = age / POP_TIME
 			pcall(function()

@@ -481,6 +481,19 @@ local function unregisterWall(instance: Instance)
 	pickMainWall()
 end
 
+-- Vague 72 (a246, L-229 B) : Night_WallRise en 3D sur la première pièce d'un mur qui monte (Shared/Anim/MarkerSounds
+-- s'il est là ; son absent : muet).
+local function playWallSound(instance: Instance)
+	local part = wallParts(instance)[1]
+	local anim = Shared:FindFirstChild("Anim")
+	local module = if anim then anim:FindFirstChild("MarkerSounds") else nil
+	if part and module and module:IsA("ModuleScript") then
+		pcall(function()
+			(require(module) :: any).play(Night.Sounds.WallRise, part)
+		end)
+	end
+end
+
 -- Monte (`up`) ou descend tous les murs, depuis leur position du moment.
 local function moveWalls(up: boolean)
 	for _, wall in walls do
@@ -492,6 +505,9 @@ local function moveWalls(up: boolean)
 			end
 			local from = wall.Instance:GetPivot()
 			local to = if up then wall.Raised else wall.Lowered
+			if up then
+				playWallSound(wall.Instance)
+			end
 			local direction = if up then Enum.EasingDirection.Out else Enum.EasingDirection.In
 			wall.Stop = animate(wall.Instance, function(alpha: number): CFrame
 				return from:Lerp(to, TweenService:GetValue(alpha, Enum.EasingStyle.Quad, direction))

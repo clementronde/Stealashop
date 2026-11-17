@@ -73,7 +73,20 @@ local Reveal = {
 		Open = "Unbox_Open",
 		Reveal = "Unbox_UpgradePop",
 		Confetti = "Unbox_Confetti",
-		Explode = "Glass_BreakShatter",
+		-- Vague 72 (a246, L-229 B) : le plafond qui saute (avant : Glass_BreakShatter), puis ses débris DebrisDelay s après.
+		Explode = "Ceiling_Crash",
+		Debris = "Ceiling_Debris",
+		DebrisDelay = 0.25, -- V0
+		-- Début de l'étape Grow<Classe> et marqueur Land, par classe de taille.
+		Grow = { Small = "Reveal_GrowSmall", Large = "Reveal_GrowLarge", Colossal = "Reveal_GrowColossal" },
+		Land = { Small = "Reveal_Land", Large = "Reveal_Land", Colossal = "Reveal_LandColossal" },
+		-- Au Reveal, en plus de Unbox_UpgradePop : Low jusqu'à Rare, Mid à partir de MidFrom (Épique), High à partir
+		-- de HighFrom (Légendaire, Mythique, Secret, Divine).
+		RarityLow = "Reveal_RarityLow",
+		RarityMid = "Reveal_RarityMid",
+		RarityHigh = "Reveal_RarityHigh",
+		RarityMidFrom = "Epic",
+		RarityHighFrom = "Legendary",
 	},
 	RevealFx = "FX_ShelfReveal", -- Assets/FX : émetteurs lancés au Reveal, aux couleurs de la rareté
 	RevealEmit = 30, -- particules par émetteur (attribut EmitCount d'un émetteur, s'il y en a un, passe avant)

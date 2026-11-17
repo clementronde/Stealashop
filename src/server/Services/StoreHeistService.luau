@@ -1495,6 +1495,10 @@ local function lowerShutter(store: Store)
 		return
 	end
 	store.ShutterDown = true
+	-- Vague 72 (a246, L-229 B) : Shutter_Close en 3D sur le rideau (son absent : muet).
+	pcall(function()
+		(require(Shared.Anim.MarkerSounds) :: any).play("Shutter_Close", if shutter:IsA("BasePart") then shutter else shutter:FindFirstChildWhichIsA("BasePart", true))
+	end)
 	store.ShutterToken += 1
 	local token = store.ShutterToken
 	stopShutter(store)

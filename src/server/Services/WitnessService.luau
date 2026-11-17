@@ -199,6 +199,7 @@ local ZONE_ATTRIBUTE = "Zone"
 local INBOX_NAME = "_INBOX_CLEMENT"
 local ANIM_LABEL = "Témoin"
 local POLICE_LABEL = "policier"
+local POLICE_ARRIVE_SOUND = "Police_Arrive" -- vague 72 (a246, L-229 B)
 
 -- Le marqueur de CallPolice dans le contrat (Call).
 local CALL_MARKER = "Call"
@@ -731,6 +732,11 @@ local function launchPolice(w: WitnessNpc, store: Model, now: number): { PoliceC
 			})
 			if model then
 				local entry: PoliceChase = { Player = player, Police = model }
+				-- Vague 72 (a246, L-229 B) : Police_Arrive en 3D sur le policier qui part (son absent : muet).
+				pcall(function()
+					local police = model :: Model
+					MarkerSounds.play(POLICE_ARRIVE_SOUND, police.PrimaryPart or police:FindFirstChildWhichIsA("BasePart", true))
+				end)
 				table.insert(active, entry)
 				table.insert(launched, entry)
 			end
