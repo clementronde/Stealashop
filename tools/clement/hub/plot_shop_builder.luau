@@ -76,9 +76,8 @@
 	hauteur au-dessus du socle, vers l'allée) et sur RarestDisplay (9 x 10,5 x 10) ; TrapSlot_01..04 en rangée sur toute
 	la largeur de la porte (z -36) ; Stage_2..5 coupés pile sur les plans de L-190 (z -12, -4, 4, 8, 16, 24, 32) et
 	attribut RowCut = true sur PLOT_Shop.
-	Boutique large (2026-11-17, widenShop, 6 boutiques au hub) : murs à x = ±39,75 (79,5 de large) ; les files de
-	présentoirs gardent 8 studs jusqu'au mur (DisplaySlot à x ±31,75) ; tapis à x -25, RarestDisplay à x +25 ;
-	attribut WideShop = 79,5 sur PLOT_Shop.
+	Boutique large (widenShop, 79,5 de large) : essayée puis abandonnée le 2026-11-17 (« beaucoup trop larges ») ;
+	la fonction reste ici mais n'est plus appelée : la boutique garde 48 de large.
 	Tout en verre (2026-11-17, glassAll) : murs des côtés et du fond, vitrines, murets, parapets et toit en verre
 	très clair (Transparency 0,88) ; plus de doublage intérieur, de montants, de colonnes ni d'ossature de verrière ;
 	deux poteaux d'angle fins à l'avant. La porte (PlotDoor) ne change pas. Après build() : relancer l'anti-clignotement.
@@ -1456,7 +1455,7 @@ local function build()
 	end
 	narrowWidth(M) -- 48 de large (Clément, 2026-11-14), après le rangement de Stage_2
 	glassShop(M) -- façade et toit de verre, FitSize, pièges, découpe L-190 (Clément, 2026-11-17)
-	widenShop(M, store) -- 79,5 de large, files contre les murs, tapis et podium de part et d'autre de la porte (Clément, 2026-11-17)
+	-- widenShop(M, store) : boutique de 79,5 abandonnée le jour même, « beaucoup trop larges » (Clément, 2026-11-17)
 	glassAll(M) -- tout le tour en verre très clair, sauf la porte (Clément, 2026-11-17)
 	local pad = M:FindFirstChild("CashPad")
 	CS:AddTag(pad, "CashPad")
