@@ -104,6 +104,13 @@ local Chase = {
 	-- cette règle qui attrape en ligne droite : la capture se fait 1 stud plus près qu'avant, pas plus (le
 	-- vigile ne peut pas doubler la copie du serveur).
 	LagContactReach = 3,
+	-- Vague 72 (a241, L-219 point 2, Clément : « je casse la boutique, je rentre, je ressors : pas de poursuite ») :
+	-- un intrus (entré dans Bounds après la casse) qui en ressort SANS objet avant la fin du chrono « HEIST » est
+	-- poursuivi tout de suite par le vigile du magasin (GuardService.ChaseIntruder, depuis le GuardSpawn), comme
+	-- l'intrus resté dedans à la fin du chrono : Balance.Guard.IntruderChaseTime s de poursuite, sans fin s'il prend un
+	-- objet. false : la règle d'avant (Cantin, 2026-11-13 : sorti sans rien, c'est fini pour lui, aucun vigile).
+	-- Le casseur resté dehors (jamais entré) n'est pas concerné. V0 proposé, absent du doc.
+	ChaseOnEmptyExit = true,
 	-- Qui suit cette règle (false : la vitesse d'avant, voir l'en-tête).
 	Apply = {
 		StoreGuard = true, -- vigile de jour d'un magasin PNJ

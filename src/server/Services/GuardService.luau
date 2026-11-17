@@ -5,7 +5,8 @@
 -- Déroulé d'un vigile :
 --   1. Apparition. Règle de Clément (L-118) : à la fin du chrono du magasin,
 --      StoreHeistService appelle ChaseIntruder pour chaque intrus ; le vigile sort du GuardSpawn et le
---      poursuit, qu'il porte un objet ou non (pas d'abandon parce qu'il ne porte rien). Et (Cantin,
+--      poursuit, qu'il porte un objet ou non (a241, Config/Chase.ChaseOnEmptyExit : aussi dès qu'un intrus ressort
+--      sans objet avant la fin du chrono, même poursuite d'intrus) (pas d'abandon parce qu'il ne porte rien). Et (Cantin,
 --      2026-11-13, a114, revient en partie sur L-118) : la PRISE d'un objet sorti sur le rayon (NPCItem)
 --      fait sortir tout de suite un vigile pour le preneur, comme un colis (mêmes plafonds), lié à cet
 --      objet (voir « Objet lié » plus bas). Ouvrir un colis ne déclenche rien. Ancien déroulé (colis porté fermé) :
