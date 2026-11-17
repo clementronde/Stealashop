@@ -822,7 +822,9 @@ end
 
 -- 3h) Météo de Londres : bruine fine sur la chaussée et brume au ras des pavés, ParticleEmitter seuls (aucun script).
 --     Les émetteurs de brume sont enfouis sous la chaussée : rien ne dépasse du sol ; la bruine tombe de y = 46.
-do
+--     Remplacé le 2026-11-17 par tools/clement/zones/zone2_londres_ambiance.luau (pluie, flaques, brouillard, sons),
+--     à lancer après corridor_widen.luau : ce bloc ne s'exécute plus.
+if false then
 	local Wx = group("Weather")
 	local function emitterPart(name, x0, y0, z0, x1, y1, z1)
 		local p = Bx(Wx, W, name, x0, y0, z0, x1, y1, z1, whiteL, { decor = true, T = 1, noShadow = true })
