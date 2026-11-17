@@ -37,7 +37,7 @@
 --     Balance.Heist.Duration (6 s depuis le 2026-11-14). Vitrine partagée (proposition de 5.3 point 8 et de la
 --     section 15) : tout le monde peut entrer ; le casseur a Balance.Heist.BreakerHeadStart
 --     (1 s) d'avance exclusive pour prendre un colis. HeistTimer(storeId, endsAt) part au
---     casseur et aux joueurs à TIMER_RADIUS studs ou moins du magasin, puis à ceux qui
+--     casseur et aux joueurs à TIMER_REACH studs ou moins du volume Bounds (a241), puis à ceux qui
 --     s'approchent pendant le chrono ; HeistTimer(storeId, 0) le masque.
 --   - Prise : GrabItem(slotId), en deux appels (voir « Maintien » plus bas). Le serveur vérifie :
 --     magasin ouvert (et pas fermé pour lui), colis posé sur le rayon, avance du casseur, mains vides
@@ -164,7 +164,8 @@
 --     rideau local baissé, sorti s'il revient) jusqu'à la réouverture (vitrine reconstruite), plus jusqu'au
 --     départ de son vigile. Sorti SANS objet avant la fin du chrono (Cantin, 2026-11-13) : il n'a rien
 --     volé, c'est fini pour lui ; il n'est plus intrus (retiré d'Entered : aucun vigile pour lui) et son
---     chrono disparaît tout de suite. Sorti en portant un objet, ou encore dedans à la fin du chrono : vigile
+--     chrono disparaît tout de suite ; a241 (L-219 point 2, Chase.ChaseOnEmptyExit, V0 à true) : le vigile sort
+--     tout de suite pour lui (GuardService.ChaseIntruder, poursuite d'intrus sans objet). Sorti en portant un objet, ou encore dedans à la fin du chrono : vigile
 --     comme avant. Rideau local : la règle a70 reste (levé seulement pendant qu'un vigile, sorti pour un
 --     AUTRE intrus, passe ; entrée toujours refusée) ; seul, plus aucun vigile ne le lève. Le magasin se ferme (closeStore, vrai rideau) quand le chrono est fini, que
 --     plus personne n'est dans Bounds et qu'aucune ouverture ni réservation n'est en cours ; la vitrine est
@@ -342,6 +343,8 @@ local Attributes = require(Shared.Contract.Attributes)
 local Net = require(Shared.Net.Net)
 local ShelfOpenState = require(Shared.ShelfOpenState)
 local Features = require(Shared.Config.Features)
+-- a241 : Chase.ChaseOnEmptyExit ; Config/Chase absent (bancs à arbre partiel) : la règle d'avant.
+local Chase: any = if Shared.Config:FindFirstChild("Chase") then require(Shared.Config.Chase) :: any else {}
 -- Vague 62 (a203) : poids de l'objet tiré. Absent (faux arbres de bancs plus anciens) : aucun poids tiré, les replis
 -- de rollWeight, scaleFor, sizeClassFor (chaque appel passe par pcall).
 local ItemWeight: any = if Shared:FindFirstChild("ItemWeight") then require(Shared.ItemWeight) else {}
@@ -582,8 +585,13 @@ local TICK = 0.1
 -- V0 proposé, absent du doc : après WindowService (100) pour lire les WindowId à l'Init.
 local PRIORITY = 110
 -- V0 proposé, absent du doc : le chrono est montré aux joueurs à 60 studs ou moins du centre
--- du magasin (le boulevard devant lui et le magasin d'en face).
+-- du magasin (le boulevard devant lui et le magasin d'en face). Sert seulement sans volume Bounds.
 local TIMER_RADIUS = 60
+-- a241 (L-226, magasins de 78 × 108) : avec Bounds, le chrono est montré à TIMER_REACH studs ou moins du volume
+-- (à 0 dedans), quelle que soit la taille du magasin. 25 = la portée d'avant devant la vitrine (60 − 34,5, la
+-- demi-profondeur de l'ancien Bounds de 57 × 69) ; mesurée du centre, elle tombait à 7,5 studs devant la vitrine
+-- des grands magasins (centre de Bounds reculé de 18). V0 proposé, absent du doc.
+local TIMER_REACH = 25
 -- V0 proposé, absent du doc : écart du réseau toléré sur la durée de maintien.
 local GRAB_TIME_TOLERANCE = 0.1
 -- V0 proposé, absent du doc : un maintien non conclu expire 1 s après sa durée.
@@ -1843,7 +1851,15 @@ local function updateViewers(store: Store)
 			hideTimer(store, player)
 		elseif not store.Viewers[player] then
 			local root = rootOf(player)
-			if root and (root.Position - center).Magnitude <= TIMER_RADIUS then
+			local bounds = store.Bounds
+			if
+				root
+				and (
+					if bounds
+						then distanceTo(bounds, root.Position) <= TIMER_REACH
+						else (root.Position - center).Magnitude <= TIMER_RADIUS
+				)
+			then
 				showTimer(store, player)
 			end
 		end
@@ -1995,7 +2011,21 @@ local function stepEntries(store: Store)
 				-- intrus (aucun vigile pour lui à la fin du chrono) et plus de chrono.
 				store.Entered[player] = nil
 				hideTimer(store, player)
-				log(`{player.Name} sorti de {store.Id} sans objet : rideau baissé pour lui, plus de chrono ni de vigile`)
+				local chase = chaseIntruder
+				if Chase.ChaseOnEmptyExit and chase and player.Parent == Players then
+					-- a241 (L-219 point 2) : casser puis sortir suffit, le vigile sort tout de suite pour lui (hors du
+					-- pas : ChaseIntruder peut attendre le rig de remplacement).
+					log(`{player.Name} sorti de {store.Id} sans objet : rideau baissé pour lui, le vigile sort pour lui (Chase.ChaseOnEmptyExit)`)
+					local model = store.Model
+					task.spawn(function()
+						local ok, err = pcall(chase, player, model)
+						if not ok then
+							warn(`[StoreHeistService] GuardService.ChaseIntruder({player.Name}) : {err}`)
+						end
+					end)
+				else
+					log(`{player.Name} sorti de {store.Id} sans objet : rideau baissé pour lui, plus de chrono ni de vigile`)
+				end
 			else
 				log(`{player.Name} sorti de {store.Id} : rideau baissé pour lui jusqu'à la réouverture`)
 			end
