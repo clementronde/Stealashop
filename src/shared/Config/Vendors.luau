@@ -12,7 +12,7 @@ local Vendors = {
 	-- déclenche Wave ; il doit repasser au-delà de WaveDistance + WaveHysteresis pour la redéclencher.
 	WaveDistance = 12,
 	WaveHysteresis = 3,
-	-- V0 : au plus un Wave par vendeur dans ce délai (8 joueurs dans le hub : pas un salut en boucle).
+	-- V0 : au plus un Wave par vendeur dans ce délai (6 joueurs dans le hub, L-228 : pas un salut en boucle).
 	WaveCooldown = 6,
 	-- V0 : distances relues 4 fois par seconde.
 	Tick = 0.25,

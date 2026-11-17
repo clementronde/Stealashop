@@ -583,7 +583,7 @@ local function notify(player: Player, message: string, kind: string)
 end
 
 local function firstFreePlot(): Model?
-	for _, plot in sortForAssign(plots) do -- relu à chaque arrivée (8 parcelles au plus)
+	for _, plot in sortForAssign(plots) do -- relu à chaque arrivée (6 parcelles, L-228)
 		if ownerOf[plot] == nil and botNames[plot] == nil then
 			return plot
 		end
@@ -780,7 +780,7 @@ function PlotService.ReserveForBot(name: string): Model?
 		return nil
 	end
 	-- Le bot garde sa règle, la dernière parcelle libre, lue dans l'ordre d'attribution :
-	-- la plus sur le côté (AssignOrder 8, L-174).
+	-- la plus sur le côté (plus grand AssignOrder lu sur les modèles : 6 = PLOT_Shop_06, L-228).
 	local ordered = sortForAssign(plots)
 	for index = #ordered, 1, -1 do
 		local plot = ordered[index]
