@@ -29,7 +29,8 @@
 --     (NightPhase, NightPhaseEndsAt, NightFallsAt, heures serveur) : le jour « Night in 7:42 »
 --     (Night.DayCountdownText), pendant l'alerte « NIGHT FALLS IN 29s » (Night.WarningCountdownText),
 --     la nuit « Dawn in 1:42 » (Night.NightCountdownText) ; « 45s » sous une minute. Phase pas
---     encore posée : « … ».
+--     encore posée : « … ». Vague 70 (a230, L-189 point 2) : sur téléphone (tactile sans clavier), sa Position et son
+--     AnchorPoint deviennent ses attributs PhonePosition et PhoneAnchorPoint (Clément, Config/Hud.NightPhone).
 --   - Plus de bouton BASE (vague 38, L-135 point 3, Clément le 2026-11-14 : « le bouton BASE n'existe plus ») :
 --     ReturnBaseButton est sorti du contrat et n'est plus lu ici (s'il reste dans l'écran, caché par Clément, le
 --     code n'y touche pas). Avant : un clic envoyait ReturnToBase et la recharge s'affichait (DEV-045).
@@ -673,6 +674,15 @@ end
 
 -- Écran ---------------------------------------------------------------------------------------
 
+-- Vague 70 : écran tactile sans clavier (règle d'HotbarController). Service lu à l'appel et protégé : false sans lui.
+local function isPhone(): boolean
+	local ok, phone = pcall(function(): boolean
+		local inputs = game:GetService("UserInputService")
+		return inputs.TouchEnabled and not inputs.KeyboardEnabled
+	end)
+	return ok and phone == true
+end
+
 local function bind(gui: ScreenGui)
 	local stats: { [Stat]: TextLabel } = {}
 	for _, stat in STATS do
@@ -706,6 +716,19 @@ local function bind(gui: ScreenGui)
 	end
 
 	local nightCountdown = if Features.NightCycle then element(gui, "NightCountdown", "TextLabel") :: TextLabel? else nil
+	-- Vague 70 (a230, L-189 point 2) : sur téléphone (tactile sans clavier), la place de téléphone de Clément
+	-- (attributs PhonePosition et PhoneAnchorPoint de NightCountdown) ; sinon, ou sans eux, sa place à lui.
+	local phone: any = if HudConfig then HudConfig.NightPhone else nil
+	if nightCountdown and phone and isPhone() then
+		local position = nightCountdown:GetAttribute(phone.PositionAttribute)
+		local anchor = nightCountdown:GetAttribute(phone.AnchorAttribute)
+		if typeof(position) == "UDim2" then
+			nightCountdown.Position = position
+		end
+		if typeof(anchor) == "Vector2" then
+			nightCountdown.AnchorPoint = anchor
+		end
+	end
 	shownCountdown = nil
 	countdownDirty = true
 
