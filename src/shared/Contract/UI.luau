@@ -978,6 +978,9 @@ table.insert(UI.Billboards, {
 		{ Path = "Income", Class = "TextLabel" },
 		{ Path = "HP", Class = "TextLabel" },
 		{ Path = "Status", Class = "GuiObject" },
+		-- Vague 72 (a245, L-216 point 3) : PvPController.
+		{ Path = "OwnerAvatar", Class = "ImageLabel", Optional = true, Note = "pas de miniature du propriétaire" },
+		{ Path = "BestItem", Class = "TextLabel", Optional = true, Note = "pas de nom du meilleur objet exposé" },
 	} :: { Element },
 })
 
