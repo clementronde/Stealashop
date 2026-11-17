@@ -150,6 +150,14 @@ local function sayOnce(key: string, message: string)
 	warn(`[ZoneBannerController] {message}`)
 end
 
+-- Vague 71 (a237, L-219 point 5) : chaque passage d'arche et ce qu'il donne, dans la sortie de Studio seulement (essai
+-- en Play : voir pourquoi un bandeau ne vient pas).
+local function trace(message: string)
+	if IS_STUDIO then
+		print(`[ZoneBanner] {message}`)
+	end
+end
+
 local function label(gui: Instance, path: string): TextLabel?
 	local found = Find.path(gui, path)
 	if found and found:IsA("TextLabel") then
@@ -213,6 +221,15 @@ local function currentScreen(): Screen?
 		Damage = label(gui, "Advice.Damage"),
 		Difficulty = label(gui, "Difficulty"),
 	}
+	-- Vague 71 (a237, L-219 point 5) : un autre code qui rallume l'écran au repos (HudMask remet à la fin d'un masque
+	-- la valeur qu'il avait gardée, « allumé » si le bandeau était à l'écran quand le masque est arrivé) ne le laisse
+	-- pas figé à l'écran : sans zone montrée, il est rééteint.
+	local screenGui = built.Gui
+	screenGui:GetPropertyChangedSignal("Enabled"):Connect(function()
+		if screenGui.Enabled and shownZone == nil then
+			screenGui.Enabled = false
+		end
+	end)
 	screen = built
 	return built
 end
@@ -345,13 +362,16 @@ function ZoneBannerController.Show(zoneIndex: number)
 	end
 	if blocked() then
 		pending = nil -- RUN! ou l'alerte : rien, ni pendant ni après
+		trace(`zone {zoneIndex} : rien (RUN! ou alerte de vol à l'écran)`)
 		return
 	end
 	if heistShown() then
 		pending = zoneIndex -- attend la fin du chrono (remplace une zone déjà en attente)
+		trace(`zone {zoneIndex} : attend la fin du chrono HEIST`)
 		ensureLoop()
 		return
 	end
+	trace(`zone {zoneIndex} : bandeau`)
 	pending = nil
 	display(zoneIndex)
 end

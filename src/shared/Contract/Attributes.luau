@@ -40,6 +40,10 @@ local Attributes = {
 	-- Meuble qui ne casse jamais sous un objet trop gros pendant l'ouverture d'un colis (L-210 point 3, vague 66, a220 ;
 	-- Controllers/Reveal/Shelf, Config/Reveal.Shelf) : vrai (booléen) sur une pièce ou un Model d'un magasin PNJ. Facultatif.
 	NoShelfBreak = { Name = "NoShelfBreak" },
+	-- Son d'ambiance d'une zone (L-221, vague 71, a237 ; AmbienceController) : sur un Sound du Workspace, « Day » = joue le
+	-- jour (alerte comprise), « Night » = joue la nuit, avec un fondu (Config/Night.AmbienceFade). Facultatif : sans lui, le
+	-- son joue comme il est livré.
+	PlayAt = { Name = "PlayAt", Values = { "Day", "Night" } },
 }
 
 return Attributes
