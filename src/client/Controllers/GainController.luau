@@ -294,9 +294,45 @@ end
 -- Gain au-dessus du joueur (FloatGain)
 ------------------------------------------------------------------------------
 
+-- a233 (T-150, T-151) : mesures de GetTextBoundsAsync (police, texte, taille 100), vidées à 256 entrées.
+local boundsCache: { [string]: number } = {}
+local boundsCount = 0
+
 -- a196 : largeur relative de `text` dans la police de `label` (TextService, taille 100) ; sans TextService ou
 -- police inconnue : le nombre de caractères.
+-- a233 : d'abord label.FontFace par GetTextBoundsAsync (le modèle de Clément est en Montserrat Heavy, une
+-- FontFace : label.Font y vaut Unknown et l'exposant tombait sur le chiffre). Le premier appel d'un texte attend
+-- (fils de signaux et de task.delay seulement), les suivants viennent du cache. Texte mesuré entre deux « | » : les
+-- blancs aux bords (espaces insécables) comptent même si Roblox les ignorait seuls.
 local function textWidth(label: TextLabel, text: string): number
+	local okFace, faceWidth = pcall(function(): number
+		local face = label.FontFace
+		local key = `{face.Family}|{face.Weight}|{face.Style}|100|`
+		local function measure(s: string): number
+			local cached = boundsCache[key .. s]
+			if cached then
+				return cached
+			end
+			local params = Instance.new("GetTextBoundsParams")
+			params.Text = s
+			params.Font = face
+			params.Size = 100
+			params.Width = 1e5
+			local width = (game:GetService("TextService") :: TextService):GetTextBoundsAsync(params).X
+			assert(width > 0)
+			if boundsCount >= 256 then
+				table.clear(boundsCache)
+				boundsCount = 0
+			end
+			boundsCache[key .. s] = width
+			boundsCount += 1
+			return width
+		end
+		return measure(`|{text}|`) - measure("||")
+	end)
+	if okFace and type(faceWidth) == "number" and faceWidth > 0 then
+		return faceWidth
+	end
 	local ok, width = pcall(function(): number
 		local font = label.Font
 		assert(font ~= Enum.Font.Unknown)
@@ -1234,14 +1270,15 @@ local function flyGain(
 	end
 	local from = start :: Vector2
 	local dressed = dressGain(flyer, source, kind, amount, text)
+	-- Vague 65 : le repli s'élargit à son texte (une ligne) avant de partir. a233 : avant d'être à l'écran (la mesure
+	-- d'un texte neuf attend un peu).
+	if built and dressed.amount then
+		widenToText(flyer, dressed.amount)
+	end
 	local size = screen.AbsoluteSize
 	flyer.AnchorPoint = Vector2.new(0.5, 0.5)
 	flyer.Position = UDim2.fromOffset(from.X, from.Y)
 	flyer.Parent = screen
-	-- Vague 65 : le repli s'élargit à son texte (une ligne) avant de partir.
-	if built and dressed.amount then
-		widenToText(flyer, dressed.amount)
-	end
 	local scale = Instance.new("UIScale")
 	scale.Name = COPY_SCALE
 	scale.Scale = spec.PopFrom
