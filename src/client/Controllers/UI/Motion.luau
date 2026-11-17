@@ -874,9 +874,30 @@ local function isWindow(gui: ScreenGui): boolean
 	return closers[gui] ~= nil or (type(group) == "string" and group ~= "")
 end
 
+-- Vague 72 (a246, bug de L-229 : UI_Open toutes les 0,5 s pendant la poursuite) : un écran tenu caché par
+-- Controllers/UI/HudMask (poursuite, cinématique) ne s'ouvre pas vraiment, donc pas de UI_Open. C'était UI_Offline :
+-- OfflineController le rouvre à chaque vérification (0,5 s) dès qu'il le trouve éteint, et HudMask le réteint.
+local hudMask: any = nil -- module HudMask, false s'il manque
+
+local function masked(gui: ScreenGui): boolean
+	if hudMask == nil then
+		local module = script.Parent:FindFirstChild("HudMask")
+		local ok: boolean, result: any = false, nil
+		if module and module:IsA("ModuleScript") then
+			ok, result = pcall(require, module)
+		end
+		hudMask = if ok and type(result) == "table" and type(result.GetHidden) == "function" then result else false
+	end
+	if hudMask == false then
+		return false
+	end
+	local ok, screens = pcall(hudMask.GetHidden)
+	return ok and type(screens) == "table" and table.find(screens, gui) ~= nil
+end
+
 function Motion.Open(gui: ScreenGui)
 	local entry = entries[gui]
-	local opening = isWindow(gui) and (not isShown(gui) or (entry ~= nil and entry.phase == "Closing"))
+	local opening = isWindow(gui) and (not isShown(gui) or (entry ~= nil and entry.phase == "Closing")) and not masked(gui)
 	groupClosing = true
 	closeGroup(gui)
 	groupClosing = false

@@ -246,6 +246,27 @@ local function clearRows(current: Shop)
 end
 
 -- Boutons et texte d'équipement de chaque ligne, d'après les attributs du Player.
+-- Vague 72 (a246, L-229 B) : Shop_Buy quand le serveur confirme un achat demandé ici (l'aura ou le trail arrive dans
+-- OWNED_ATTRIBUTE au plus BUY_SOUND_WAIT s après la demande ; V0). UI_Success, lui, reste au clic (Motion.Success).
+local BUY_SOUND = "Shop_Buy"
+local BUY_SOUND_WAIT = 5
+local asked: { [string]: number } = {} -- id -> os.clock() de la demande
+
+local function onOwnedForSound()
+	local owned = ownedSet()
+	local now = os.clock()
+	for id, at in asked do
+		if owned[id] then
+			asked[id] = nil
+			if now - at <= BUY_SOUND_WAIT then
+				Motion.PlaySound(BUY_SOUND)
+			end
+		elseif now - at > BUY_SOUND_WAIT then
+			asked[id] = nil
+		end
+	end
+end
+
 local function refreshRows()
 	local current = shop
 	if current == nil then
@@ -299,6 +320,9 @@ local function buildRows()
 		local equip = guiObject(frame, "EquipButton")
 		local id = def.Id
 		onClick(buy, function()
+			if not ownedSet()[id] then
+				asked[id] = os.clock()
+			end
 			net.Client.BuyItem:Fire(id)
 		end)
 		onClick(equip, function()
@@ -540,6 +564,7 @@ function AuraShopController.Start()
 	for _, attribute in { OWNED_ATTRIBUTE, AURA_ATTRIBUTE, TRAIL_ATTRIBUTE } do
 		localPlayer:GetAttributeChangedSignal(attribute):Connect(refreshRows)
 	end
+	localPlayer:GetAttributeChangedSignal(OWNED_ATTRIBUTE):Connect(onOwnedForSound)
 
 	local playerGui = localPlayer:WaitForChild("PlayerGui")
 	playerGui.ChildAdded:Connect(function(child: Instance)

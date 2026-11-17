@@ -712,9 +712,35 @@ local function unwatchPlot(inst: Instance)
 	scheduleRefresh()
 end
 
+-- Vague 72 (a246, L-229 B) : Unlock (2D) quand un présentoir demandé ici est débloqué (le rang de la boutique monte avec
+-- lui) : niveau DisplaySlots plus haut que celui de la demande, au plus PENDING_TIMEOUT + UNLOCK_GRACE s après (V0).
+local UNLOCK_SOUND = "Unlock"
+local UNLOCK_OFFER = "DisplaySlots"
+local UNLOCK_GRACE = 3
+
+local function onUnlockLevel()
+	for _, offer in offers do
+		local asked = offer.pendingLevel
+		local level = levelOf(localPlayer, offer.id)
+		if offer.id == UNLOCK_OFFER and asked and level and level > asked and os.clock() < offer.pendingUntil + UNLOCK_GRACE then
+			offer.pendingLevel = nil
+			local anim = Shared:FindFirstChild("Anim")
+			local module = if anim then anim:FindFirstChild("MarkerSounds") else nil
+			if module and module:IsA("ModuleScript") then
+				pcall(function()
+					(require(module) :: any).play(UNLOCK_SOUND, nil)
+				end)
+			end
+		end
+	end
+end
+
 local function watchPlayer(player: Player)
 	for _, offer in offers do
 		player:GetAttributeChangedSignal(string.format(LEVEL_FORMAT, offer.id)):Connect(scheduleRefresh)
+		if player == localPlayer and offer.id == UNLOCK_OFFER then
+			player:GetAttributeChangedSignal(string.format(LEVEL_FORMAT, offer.id)):Connect(onUnlockLevel)
+		end
 	end
 	scheduleRefresh()
 end

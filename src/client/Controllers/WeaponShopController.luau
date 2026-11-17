@@ -169,6 +169,27 @@ local function ownedSet(): { [string]: boolean }
 	return set
 end
 
+-- Vague 72 (a246, L-229 B) : Shop_Buy quand le serveur confirme un achat demandé ici (l'objet arrive dans OWNED_ATTRIBUTE au
+-- plus BUY_SOUND_WAIT s après la demande ; V0). UI_Success, lui, reste au clic (Motion.Success).
+local BUY_SOUND = "Shop_Buy"
+local BUY_SOUND_WAIT = 5
+local asked: { [string]: number } = {} -- id -> os.clock() de la demande
+
+local function onOwnedForSound()
+	local owned = ownedSet()
+	local now = os.clock()
+	for id, at in asked do
+		if owned[id] then
+			asked[id] = nil
+			if now - at <= BUY_SOUND_WAIT then
+				Motion.PlaySound(BUY_SOUND)
+			end
+		elseif now - at > BUY_SOUND_WAIT then
+			asked[id] = nil
+		end
+	end
+end
+
 local function refreshRows()
 	local current = screen
 	if current == nil then
@@ -228,6 +249,7 @@ local function onBuy(tool: ToolDef)
 		return
 	end
 	pendingUntil[tool.Id] = now + BUY_COOLDOWN
+	asked[tool.Id] = now
 	net.Client.BuyItem:Fire(tool.Id)
 end
 
@@ -470,6 +492,7 @@ function WeaponShopController.Start()
 	net = require(Shared:WaitForChild("Net"):WaitForChild("Net") :: ModuleScript) :: any
 
 	localPlayer:GetAttributeChangedSignal(OWNED_ATTRIBUTE):Connect(refreshRows)
+	localPlayer:GetAttributeChangedSignal(OWNED_ATTRIBUTE):Connect(onOwnedForSound)
 	localPlayer:GetAttributeChangedSignal(EQUIPPED_ATTRIBUTE):Connect(refreshRows)
 	RunService.Heartbeat:Connect(onHeartbeat)
 
