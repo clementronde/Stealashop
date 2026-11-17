@@ -44,7 +44,9 @@
 --       Hint           texte de Clément en Ready, HINT_CONFIRM en Confirm, HINT_LOCKED en Disabled
 --       KeepList.Row1  KEEP_TEXT (les 3 objets qui rapportent le plus sont gardés : le choix de Clément est
 --                      retiré, L-158) ; les autres lignes des colonnes gardent leurs textes
---     L'écran se ferme quand Rebirths monte (renaissance faite).
+--     L'écran se ferme quand Rebirths monte (renaissance faite) ; vague 72 (a244, L-229) : le son « Rebirth »
+--     part alors en 2D (muet s'il manque). Features.Rebirth est vrai depuis la vague 72 : l'aperçu ne se voit
+--     plus que si le serveur ne pose pas l'attribut (profil pas encore chargé).
 -- Textes en capitales si le texte d'exemple de Clément l'est (« INSTANT NOODLES », « RARE »), comme
 -- dans les boutiques. Éléments cherchés par leur nom parmi les descendants (Contract/Find) ; un
 -- élément absent est sauté (le ContractChecker le signale). Seuls sont touchés : Enabled de l'écran,
@@ -113,6 +115,8 @@ local UNKNOWN_TEXT = "…" -- argent pas encore posé par le serveur (comme le H
 -- montre la récompense propre au palier, et le TextLabel de chaque ligne.
 local TIER_ROW = "Row2"
 local ROW_LABEL = "RowLabel"
+-- Vague 72 (a244, L-229) : son de la renaissance faite (Assets/Sounds/…/Rebirth, 2D).
+local REBIRTH_SOUND = "Rebirth"
 -- États du bouton en 2 temps (L-047), un seul visible : Disabled seul en aperçu.
 local BUTTON_STATES = { "Disabled", "Ready", "Confirm" }
 
@@ -405,6 +409,31 @@ local function toggle()
 	end
 end
 
+-- Son ---------------------------------------------------------------------------------------------
+
+-- Vague 72 (a244, L-229) : le son REBIRTH_SOUND en 2D quand l'attribut Rebirths monte (renaissance faite).
+-- Cherché par MarkerSounds.find (Assets/Sounds, sous-dossiers compris) ; absent : muet, jamais d'erreur.
+local function playRebirthSound()
+	local ok, err = pcall(function(): boolean
+		local anim = Shared:FindFirstChild("Anim")
+		local module = if anim then anim:FindFirstChild("MarkerSounds") else nil
+		if module == nil or not module:IsA("ModuleScript") then
+			return false
+		end
+		local sounds = require(module) :: any
+		local template = sounds.find(REBIRTH_SOUND)
+		if template then
+			sounds.playSound(template, nil)
+		else
+			reportOnce("sound", `[Rebirth] son « {REBIRTH_SOUND} » absent de ReplicatedStorage.Assets.Sounds : renaissance muette`)
+		end
+		return true
+	end)
+	if not ok then
+		reportOnce("soundError", `[Rebirth] son « {REBIRTH_SOUND} » : {err}`)
+	end
+end
+
 -- Bouton du HUD ---------------------------------------------------------------------------------
 
 local hudBound: { [Instance]: boolean } = setmetatable({}, { __mode = "k" }) :: any
@@ -450,6 +479,9 @@ function RebirthController.Start()
 		local done = count ~= nil and lastCount ~= nil and count > lastCount
 		lastCount = count
 		armedUntil = 0
+		if done then
+			playRebirthSound()
+		end
 		local current = screen
 		if current and current.gui.Parent ~= nil then
 			refresh(current)
