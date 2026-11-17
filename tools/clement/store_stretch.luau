@@ -29,6 +29,9 @@
 	  premier meuble du fond, garnie de lots en pavés pris dans les produits du magasin (budget intérieur
 	  ≤ 14 900 triangles) ; allée d'environ 13,4 studs entre les deux rangées ;
 	- ShelfSlot_07 et ShelfSlot_08 (Premium) vont sur les rayons du fond (E côté droit, F côté gauche) ;
+	- addWallShelves (appelé par apply) : chaque tronçon nu des murs gauche et droit (allée du fond, bout de
+	  mur près de l'entrée) reçoit une copie du rayon mural d'origine (`Shelf_WallL2_*`, `Shelf_WallR3_*`…),
+	  garnie de lots ; le budget restant est partagé à densité égale avec la rangée du fond (attribut WallShelves) ;
 	- restore(nom) remet la copie d'avant (ServerStorage/MapBackups/2026-11-17_MagasinsGrands_Avant),
 	  check(magasin) contrôle colis, chevauchements, murs et GuardSpawn ;
 	- pivot remis en bas au centre du nouveau volume (z +18 dans l'ancien repère).
@@ -266,7 +269,8 @@ local function gondolaParts(interior, letter)
 		if p:IsA("BasePart") then
 			local rest = p.Name:match("^Shelf_" .. letter .. "_(.+)$")
 			if rest then
-				if rest:match("^[LR]_[PC]%d*$") then table.insert(products, p) else table.insert(structure, p) end
+				-- produits : « L_P12 » sur un rayon double face, « P12 » sur un rayon mural
+				if rest:match("^[LR]_[PC]%d*$") or rest:match("^[PC]%d*$") then table.insert(products, p) else table.insert(structure, p) end
 			end
 		end
 	end
@@ -281,6 +285,24 @@ local function bbox(list, piv0)
 		mn = mn:Min(rel.Position - e); mx = mx:Max(rel.Position + e)
 	end
 	return mn, mx
+end
+
+-- produits d'un rayon rangés par côté (L, R, ou W pour un rayon mural) et par niveau
+local function levelsOf(products, letter, piv0)
+	local levels = {}
+	for _, p in products do
+		local side = p.Name:match("^Shelf_" .. letter .. "_([LR])_") or "W"
+		local rel = piv0:ToObjectSpace(p.CFrame)
+		local e = extents(rel, p.Size)
+		local base = math.floor((rel.Y - e.Y) * 2 + 0.5) / 2
+		local key = side .. ":" .. base
+		levels[key] = levels[key] or { side = side, base = base, list = {} }
+		if p.Name:match("_P%d*$") then table.insert(levels[key].list, p) end
+	end
+	local lv = {}
+	for _, l in levels do if #l.list >= 4 then table.insert(lv, l) end end
+	table.sort(lv, function(a, b) if a.side ~= b.side then return a.side < b.side end return a.base < b.base end)
+	return lv
 end
 
 -- copie d'un rayon (structure seule) au centre (cx, cz) avec une longueur et une largeur relatives
@@ -307,23 +329,10 @@ local function copyGondola(interior, piv0, letter, newLetter, cx, cz, lenScale, 
 		cl.Parent = interior
 		made[cl.Name] = cl
 	end
-	-- produits d'origine rangés par côté et par niveau
-	local levels = {}
-	for _, p in products do
-		local side = p.Name:match("^Shelf_" .. letter .. "_([LR])_")
-		local rel = piv0:ToObjectSpace(p.CFrame)
-		local e = extents(rel, p.Size)
-		local base = math.floor((rel.Y - e.Y) * 2 + 0.5) / 2
-		local key = side .. ":" .. base
-		levels[key] = levels[key] or { side = side, base = base, list = {} }
-		if p.Name:match("_P%d*$") then table.insert(levels[key].list, p) end
-	end
-	local lv = {}
-	for _, l in levels do if #l.list >= 4 then table.insert(lv, l) end end
-	table.sort(lv, function(a, b) if a.side ~= b.side then return a.side < b.side end return a.base < b.base end)
 	return {
 		letter = newLetter, cx = cx, cz = cz, ox = ox, oz = oz, lenScale = lenScale, widthScale = widthScale,
-		zlo = cz + (mn.Z + 0.3 - oz) * lenScale, zhi = cz + (mx.Z - 0.3 - oz) * lenScale, levels = lv, parts = made,
+		zlo = cz + (mn.Z + 0.3 - oz) * lenScale, zhi = cz + (mx.Z - 0.3 - oz) * lenScale,
+		levels = levelsOf(products, letter, piv0), parts = made,
 	}
 end
 
@@ -515,6 +524,116 @@ local function addShelves(model, piv0)
 		aMn.Z, aMx.Z, removed, backLo, backHi, gap, lots, per, s7 and "déplacé" or "NON", s8 and "déplacé" or "NON", b2, o2, b2 * 12 + o2 * 60)
 end
 
+-- rayons muraux sur les murs restés nus (retour de Clément du 2026-11-17 : « il manque les rayons sur les murs
+-- pour l'allée du fond ») : chaque tronçon libre des murs gauche et droit reçoit une copie du rayon mural
+-- d'origine (même kit), garnie de lots des produits de ce rayon. Le budget restant est partagé à densité égale
+-- entre ces rayons et la rangée du fond (E, F), dont les lots sont refaits.
+local WALL_SKIP = { "^InnerWall", "^Ceiling", "^Floor", "^Tile", "^Bounds$", "^Carpet", "^Plank", "^WallNeon", "^WallRail", "Light", "^EntranceMat" }
+
+local function freeWallSpans(model, piv0)
+	local b = model.Bounds
+	local rb = piv0:ToObjectSpace(b.CFrame)
+	local x0, x1, z0, z1 = rb.X - b.Size.X / 2, rb.X + b.Size.X / 2, rb.Z - b.Size.Z / 2, rb.Z + b.Size.Z / 2
+	local occ = { L = {}, R = {} }
+	for _, p in model:GetDescendants() do
+		if p:IsA("BasePart") and p ~= b and not matchesAny(p.Name, WALL_SKIP) then
+			local top = p
+			while top.Parent ~= model do top = top.Parent end
+			if top.Name ~= "Facade" and top.Name ~= "Roof" and top.Name ~= "UpperFloors" then
+				local r = piv0:ToObjectSpace(p.CFrame)
+				local e = extents(r, p.Size)
+				if r.Y + e.Y > 1.5 and r.Y - e.Y < 10 then
+					if r.X - e.X < x0 + 4 then table.insert(occ.L, { r.Z - e.Z, r.Z + e.Z }) end
+					if r.X + e.X > x1 - 4 then table.insert(occ.R, { r.Z - e.Z, r.Z + e.Z }) end
+				end
+			end
+		end
+	end
+	local spans = {}
+	for side, list in occ do
+		table.sort(list, function(a, c) return a[1] < c[1] end)
+		local free, cur = {}, z0
+		for _, o in list do
+			if o[1] > cur + 6 then table.insert(free, { cur, o[1] }) end
+			cur = math.max(cur, o[2])
+		end
+		if z1 > cur + 6 then table.insert(free, { cur, z1 }) end
+		spans[side] = free
+	end
+	return spans
+end
+
+-- rangée du fond déjà posée : sa description pour la regarnir
+local function gondolaInfo(interior, piv0, letter, srcLetter)
+	local st = gondolaParts(interior, letter)
+	local sst, sprod = gondolaParts(interior, srcLetter)
+	if #st == 0 or #sst == 0 then return nil end
+	local mnE, mxE = bbox(st, piv0)
+	local mnA, _ = bbox(sst, piv0)
+	local _, mxA = bbox(sst, piv0)
+	return { letter = letter, cx = (mnE.X + mxE.X) / 2, ox = (mnA.X + mxA.X) / 2, widthScale = 1,
+		zlo = mnE.Z + 0.3, zhi = mxE.Z - 0.3, levels = levelsOf(sprod, srcLetter, piv0) }
+end
+
+local function slotKeep(model, piv0, slotName, side)
+	local a = model:FindFirstChild(slotName, true)
+	if not a then return {} end
+	local r = piv0:PointToObjectSpace(a.WorldPosition)
+	return { { side = side, base = math.floor(r.Y * 2 + 0.5) / 2, z = r.Z } }
+end
+
+local function addWallShelves(model)
+	if model:GetAttribute("WallShelves") then return model.Name .. " : rayons muraux déjà posés" end
+	local piv0 = model:GetAttribute("StretchBasePivot")
+	assert(piv0, model.Name .. " : pas encore étiré")
+	local interior = model.Interior
+	local spans = freeWallSpans(model, piv0)
+	for _, p in interior:GetChildren() do
+		if p:IsA("BasePart") and p.Name:match("^Shelf_[EF]_[LR]_Lot$") then p:Destroy() end
+	end
+	local list, structure = {}, 0
+	local made = {}
+	for _, side in { "L", "R" } do
+		local src = side == "L" and "WallL" or "WallR"
+		local st = gondolaParts(interior, src)
+		if #st > 0 then
+			local mn, mx = bbox(st, piv0)
+			local len = mx.Z - mn.Z
+			local idx = 1
+			for _, sp in spans[side] do
+				local lo, hi = sp[1] + 1.5, sp[2] - 1.5
+				if hi - lo >= 6 then
+					idx += 1
+					local g = copyGondola(interior, piv0, src, src .. idx, (mn.X + mx.X) / 2, (lo + hi) / 2, (hi - lo) / len, 1)
+					if g then
+						for _ in g.parts do structure += 1 end
+						table.insert(list, { g = g, keep = {} })
+						table.insert(made, string.format("%s%d z %.0f..%.0f", src, idx, lo, hi))
+					end
+				end
+			end
+		end
+	end
+	local gE = gondolaInfo(interior, piv0, "E", "A")
+	local gF = gondolaInfo(interior, piv0, "F", "B")
+	if gE then table.insert(list, { g = gE, keep = slotKeep(model, piv0, "ShelfSlot_07", "R") }) end
+	if gF then table.insert(list, { g = gF, keep = slotKeep(model, piv0, "ShelfSlot_08", "L") }) end
+	local blocks, other = insideCount(model)
+	local allowance = math.floor((CFG.triBudgetInside - blocks * 12 - other * 60) / 12)
+	local total = 0
+	for _, e in list do total += (e.g.zhi - e.g.zlo) * #e.g.levels end
+	local d = total > 0 and math.max(0, allowance) / total or 0
+	local lots = 0
+	for _, e in list do
+		local per = math.max(3, math.min(CFG.row.maxLots, math.floor((e.g.zhi - e.g.zlo) * d)))
+		lots += stockGondola(interior, piv0, e.g, per, e.keep)
+	end
+	model:SetAttribute("WallShelves", true)
+	local b2, o2 = insideCount(model)
+	return string.format("%s : %d rayons muraux (%s), %d pièces de structure, %d lots (%.2f par stud) ; intérieur %d blocs + %d autres ≈ %d triangles",
+		model.Name, #made, table.concat(made, ", "), structure, lots, d, b2, o2, b2 * 12 + o2 * 60)
+end
+
 -- 5) point d'entrée ------------------------------------------------------------------------------------
 local function apply(model)
 	assert(model and model:IsA("Model") and model.Name:match("^STORE_"), "pas un magasin STORE_*")
@@ -528,9 +647,10 @@ local function apply(model)
 		model.WorldPivot = piv0 * CFrame.new(CFG.pivotShift)
 		model:SetAttribute("StoreStretch", CFG.tag)
 		model:SetAttribute("StretchBasePivot", piv0)
+		local walls = addWallShelves(model)
 		local _, size = model:GetBoundingBox()
-		return string.format("%s : %d pièces allongées, %d déplacées, %d produits recopiés, %d dalles ; %s ; Bounds %s ; bbox %.1f × %.1f × %.1f",
-			model.Name, s, m, f, tiles, shelves, tostring(model.Bounds.Size), size.X, size.Y, size.Z)
+		return string.format("%s : %d pièces allongées, %d déplacées, %d produits recopiés, %d dalles ; %s ; %s ; Bounds %s ; bbox %.1f × %.1f × %.1f",
+			model.Name, s, m, f, tiles, shelves, walls, tostring(model.Bounds.Size), size.X, size.Y, size.Z)
 	end)
 	if rec then ChangeHistoryService:FinishRecording(rec, ok and Enum.FinishRecordingOperation.Commit or Enum.FinishRecordingOperation.Cancel) end
 	if not ok then error(res) end
@@ -612,5 +732,5 @@ local function check(m)
 	return table.concat(out, " | ")
 end
 
-_G.ClaudeStoreStretch = { apply = apply, CFG = CFG, restore = restore, check = check }
+_G.ClaudeStoreStretch = { apply = apply, CFG = CFG, restore = restore, check = check, addWallShelves = addWallShelves, freeWallSpans = freeWallSpans }
 return "ClaudeStoreStretch chargé"
