@@ -145,6 +145,7 @@ local CASH: Kind = {
 }
 
 local FLOAT = UiMotion.FloatGain
+local NBSP = utf8.char(0xA0) -- vague 70 (a232) : espace insécable, où Roblox ne coupe pas la ligne
 local FLY = UiMotion.CashFly
 local POP = UiMotion.CounterPop
 local GAIN_POP_INFO = TweenInfo.new(FLOAT.PopTime, FLOAT.PopStyle, Enum.EasingDirection.Out)
@@ -313,14 +314,18 @@ end
 -- Row.Amount reçoit des espaces à la place de l'exposant. Renvoie le TextLabel créé.
 -- Vague 65 (a215) : `oneLine` (copies de BB_Gain) : Amount ne passe plus à la ligne (TextScaled réduit le texte à la
 -- place) ; la place de l'exposant suppose une seule ligne, sinon il tombait sur le nombre.
+-- Vague 70 (a232, T-150, T-151) : dans Roblox, TextWrapped = false remet aussi TextScaled à false (texte en petite
+-- TextSize) et TextScaled = true remet TextWrapped. La ligne tient donc par des espaces insécables (U+00A0), où Roblox
+-- ne coupe pas (vu dans Studio : « +8 Speed/s » reste sur une ligne, réduit à la largeur) ; TextScaled n'est plus touché.
 local function addExponent(amountLabel: TextLabel, head: string, tail: string, trailText: string, oneLine: boolean): TextLabel
-	if oneLine and amountLabel.TextScaled then
-		amountLabel.TextWrapped = false
+	local blank = if oneLine then NBSP else " "
+	if oneLine then
+		head, tail = (string.gsub(head, " ", NBSP)), (string.gsub(tail, " ", NBSP))
 	end
 	local spec = FLOAT.TrailExponent
-	local space = textWidth(amountLabel, " ")
+	local space = textWidth(amountLabel, blank)
 	local gap = math.clamp(math.ceil(textWidth(amountLabel, trailText) * spec.Size / math.max(space, 1)), 1, 8)
-	amountLabel.Text = head .. string.rep(" ", gap) .. tail
+	amountLabel.Text = head .. string.rep(blank, gap) .. tail
 	local label = Instance.new("TextLabel")
 	label.Name = spec.Name
 	label.BackgroundTransparency = 1
@@ -1161,10 +1166,7 @@ local function makeFlyer(screen: ScreenGui): (GuiObject?, Instance?, boolean)
 	copy.Position = UDim2.fromScale(0, 0)
 	copy.Size = UDim2.fromScale(1, 1)
 	copy.Visible = true
-	local amountLabel = typed(copy, "Amount", "TextLabel") :: TextLabel?
-	if amountLabel and amountLabel.TextScaled then
-		amountLabel.TextWrapped = false -- vague 65 : une seule ligne (« +8 Speed/s » passait sur deux)
-	end
+	-- Vague 70 (a232) : plus de TextWrapped = false ici (il coupait TextScaled) ; une ligne : cadre élargi (widenToText).
 	copy.Parent = holder
 	return holder, billboard, true
 end
