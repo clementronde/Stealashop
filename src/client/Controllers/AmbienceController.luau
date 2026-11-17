@@ -37,6 +37,7 @@ export type AmbienceState = {
 type Tracked = {
 	Volume: number, -- volume livré par Clément
 	Tween: Tween?,
+	Connections: { RBXScriptConnection },
 }
 
 -- Posés par NightCycleService (mêmes noms là-bas et dans SkyController).
@@ -51,7 +52,10 @@ local FADE: number = Night.AmbienceFade
 
 local AmbienceController = {}
 
-local tracked: { [Sound]: Tracked } = setmetatable({}, { __mode = "k" }) :: any
+-- Table forte (correctif du Play f66) : des clés faibles laissaient le ramasse-miettes vider la table, car en vrai
+-- Roblox l'objet Lua d'un Sound peut être ramassé quand plus rien ne le tient côté Lua. Un son quitte la table
+-- quand il est détruit ou sort du Workspace (untrack).
+local tracked: { [Sound]: Tracked } = {}
 local isNight = false
 
 local function readNight(): boolean
@@ -78,6 +82,19 @@ local function cancel(entry: Tracked)
 end
 
 -- Met le son dans l'état voulu : d'un coup (instant), ou par un fondu de FADE s.
+-- Oublie un son : fondu arrêté, connexions coupées.
+local function untrack(sound: Sound)
+	local entry = tracked[sound]
+	if entry == nil then
+		return
+	end
+	tracked[sound] = nil
+	cancel(entry)
+	for _, connection in entry.Connections do
+		connection:Disconnect()
+	end
+end
+
 local function apply(sound: Sound, entry: Tracked, on: boolean, instant: boolean)
 	cancel(entry)
 	if instant or FADE <= 0 then
@@ -130,8 +147,16 @@ local function track(instance: Instance)
 	if on == nil then
 		return -- sans PlayAt : rien ne change
 	end
-	local entry: Tracked = { Volume = sound.Volume, Tween = nil }
+	local entry: Tracked = { Volume = sound.Volume, Tween = nil, Connections = {} }
 	tracked[sound] = entry
+	table.insert(entry.Connections, sound.Destroying:Connect(function()
+		untrack(sound)
+	end))
+	table.insert(entry.Connections, sound.AncestryChanged:Connect(function()
+		if not sound:IsDescendantOf(Workspace) then
+			untrack(sound)
+		end
+	end))
 	apply(sound, entry, on, true)
 end
 
@@ -142,9 +167,8 @@ local function onPhaseChanged()
 	end
 	isNight = night
 	for sound, entry in tracked do
-		if sound.Parent == nil then
-			cancel(entry)
-			tracked[sound] = nil
+		if not sound:IsDescendantOf(Workspace) then
+			untrack(sound) -- filet : normalement déjà fait par AncestryChanged
 			continue
 		end
 		local on = wanted(sound)
