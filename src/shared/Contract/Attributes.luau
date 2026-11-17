@@ -46,6 +46,10 @@ local Attributes = {
 	-- pour y tenir (jamais plus grand). Celui du Model RarestDisplay n'est pas lu (L-220 : vraie taille sur le socle).
 	-- Facultatif (absent ou illisible : l'objet garde la taille de son poids).
 	FitSize = { Name = "FitSize" },
+	-- Son d'ambiance d'une zone (L-221, vague 71, a237 ; AmbienceController) : sur un Sound du Workspace, « Day » = joue le
+	-- jour (alerte comprise), « Night » = joue la nuit, avec un fondu (Config/Night.AmbienceFade). Facultatif : sans lui, le
+	-- son joue comme il est livré.
+	PlayAt = { Name = "PlayAt", Values = { "Day", "Night" } },
 }
 
 return Attributes

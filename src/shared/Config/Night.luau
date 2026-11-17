@@ -83,6 +83,10 @@ local Night = {
 		NightBrightness = 1,
 		TransitionTime = 3, -- tombée de la nuit et lever du jour (s)
 	},
+
+	-- Sons d'ambiance des zones (AmbienceController, liaison L-221) : tout Sound du Workspace avec l'attribut
+	-- PlayAt = "Day" joue le jour (alerte comprise), "Night" la nuit ; fondu de cette durée au changement.
+	AmbienceFade = 3, -- V0 proposé, absent du doc (s) : même durée que le ciel (Sky.TransitionTime)
 }
 
 export type Night = typeof(Night)
