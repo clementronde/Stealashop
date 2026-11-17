@@ -101,6 +101,47 @@ local Hud = {
 	},
 	-- Cadence (s) du recalcul des boutons en situation (tapis, couloir) et de leur recharge. V0 proposé, absent du doc.
 	Refresh = 0.1,
+	-- Vague 70 (a230, L-189 point 2) : sur téléphone (écran tactile sans clavier), NightCountdown prend la place des
+	-- attributs de Clément PhonePosition (UDim2) et PhoneAnchorPoint (Vector2) : sous la barre du bas, loin du bouton
+	-- de saut. Attribut absent ou d'un autre type : la place de Clément tient (HudController).
+	NightPhone = {
+		PositionAttribute = "PhonePosition",
+		AnchorAttribute = "PhoneAnchorPoint",
+	},
+	-- Vague 70 (a230, L-189 point 6) : pastilles des bonus de BottomRow (HudMenuController, revues toutes les Refresh s),
+	-- chacune avec Amount (texte) et Timer (facultatif, nom proposé à Clément : temps restant d'un bonus qui finit).
+	--   FriendBoost   : « +X% », X = attribut FriendBonus du Player (HubService, fraction) ;
+	--   VipBoost      : VipText, montré avec le pass VIP (attribut PassVIP, pas encore vendu) ;
+	--   CashBoost     : « x2 » avec le pass ×2 Cash (PassDoubleCash) ou le boost ×2 argent (CashBoostEndsAt), « x4 » avec
+	--                   les deux (même produit que MonetizationService) ; Timer = temps restant du boost ;
+	--   TrainingBoost : « x2 » avec le pass ×2 Training (PassDoubleTraining).
+	-- Les trois derniers sont cachés sans leur bonus ; seuls Visible et les textes sont écrits.
+	BottomRow = {
+		Friend = "FriendBoost",
+		Vip = "VipBoost",
+		Cash = "CashBoost",
+		Training = "TrainingBoost",
+		Amount = "Amount",
+		Timer = "Timer",
+		-- L-189 : FriendBoost est la seule pastille que Clément laisse visible (« +0% » invite à venir avec des amis).
+		-- false : cachée sans ami présent. V0 (choix de Clément dans Studio).
+		FriendAtZero = true,
+		FriendText = "+%d%%",
+		VipText = "+10%", -- doc 4.1 et L-189 : « +10% » de revenus (le bonus VIP n'est pas encore codé)
+		MultiplierText = "x%g", -- L-189 : « x2 »
+	},
+	-- Vague 70 (a230, L-189, demande de Clément) : le revenu de l'objet tenu en main, au-dessus de lui (HeldIncomeController).
+	-- Copie de ReplicatedStorage/Assets/UI/BB_HeldIncome (repli construit sinon), Adornee = la poignée du Tool, posée
+	-- Above studs au-dessus du haut de l'objet (StudsOffsetWorldSpace ; Clément garde son StudsOffset, 0,6 dans son
+	-- billboard : L-189 « moitié de la hauteur + 0,6 »). Texte = celui des cases de la barre du bas (« $1.2K/s »).
+	-- Le joueur local seulement (L-189 : à voir avec Clément pour les autres joueurs).
+	HeldIncome = {
+		Billboard = "BB_HeldIncome",
+		Label = "Income",
+		Text = "%s/s",
+		Above = 0, -- V0 proposé, absent du doc : s'ajoute au StudsOffset de Clément
+		Name = "HeldIncome", -- V0 : nom de la copie dans le Tool
+	},
 }
 
 export type Hud = typeof(Hud)

@@ -22,6 +22,9 @@
 --     Cooldown = la recharge restante (« 4:12 », attribut serveur CooldownAttribute), caché sans recharge. Aucun
 --     achat : l'effet n'est pas codé (Ready = false) et Features.RobuxShop = false ; un clic montre « Soon ».
 --     Visible n'est écrit que quand la règle change : un masquage par un autre contrôleur (poursuite) tient.
+--   - Vague 70 (a230, L-189 point 6) : les 4 bonus de BottomRow (FriendBoost, VipBoost, CashBoost, TrainingBoost),
+--     règles et textes dans Config/Hud.BottomRow, lus dans les attributs que le serveur publie déjà (FriendBonus,
+--     Pass<Clé>, CashBoostEndsAt). Visible et textes écrits seulement quand ils changent.
 -- Seuls Visible, Position de TopLeftRow, Text de Price.Amount et de Cooldown sont touchés (2.2, « Libre pour
 -- Ironix » ; la place de TopLeftRow est demandée par Clément, L-202), jamais un style ; les animations d'ouverture
 -- (attribut Appear de Clément) sont jouées par le module d'UI commun quand Visible change.
@@ -31,6 +34,7 @@
 --   HudMenuController.GetShown() -> { [string]: boolean }   bouton en situation (Config/Boosts.Key) → montré
 --   HudMenuController.Refresh()                              recalcule les règles tout de suite
 --   HudMenuController.PlaceTopLeftRow()                      recale TopLeftRow tout de suite
+--   HudMenuController.GetBonuses() -> { [nom]: { Shown, Amount, Timer } }   vague 70 : pastilles de BottomRow
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -42,6 +46,8 @@ local Config = Shared:WaitForChild("Config")
 local Boosts = require(Config:WaitForChild("Boosts"))
 local Features = require(Config:WaitForChild("Features"))
 local HudConfig = require(Config:WaitForChild("Hud"))
+local Hub = require(Config:WaitForChild("Hub"))
+local Monetization = require(Config:WaitForChild("Monetization"))
 local SkillTree = require(Config:WaitForChild("SkillTree"))
 local Find = require(Shared:WaitForChild("Contract"):WaitForChild("Find"))
 local Format = require(Shared:WaitForChild("Format"))
@@ -73,6 +79,15 @@ local cooldownTexts: { [string]: string } = {}
 local rows: { GuiObject } = {}
 local rebirthButtons: { GuiObject } = {}
 local warned: { [string]: boolean } = {}
+
+-- Vague 70 (a230) : pastilles de BottomRow, par nom (Config/Hud.BottomRow), et ce qui y est écrit.
+local BONUS = HudConfig.BottomRow
+local BONUS_KEYS = { BONUS.Friend, BONUS.Vip, BONUS.Cash, BONUS.Training }
+local PASS_PREFIX = "Pass" -- MonetizationService : attribut Pass<Clé> du Player
+local CASH_BOOST_ATTRIBUTE = "CashBoostEndsAt" -- MonetizationService : fin du boost ×2 argent (heure serveur)
+type Pill = { frame: GuiObject, amount: TextLabel?, timer: TextLabel? }
+local pills: { [string]: { Pill } } = {}
+local pillWritten: { [string]: { shown: boolean, amount: string, timer: string } } = {}
 
 local function warnOnce(key: string, message: string)
 	if IS_STUDIO and not warned[key] then
@@ -171,9 +186,74 @@ local function cooldownEndsAt(boost: Boost): number?
 	return if type(value) == "number" and value == value then value else nil
 end
 
+-- « 4:12 » ; vague 70 : « 1:04:12 » à partir d'une heure (boost ×2 argent du pack de départ).
 local function clockText(seconds: number): string
 	local s = math.max(0, math.ceil(seconds - 1e-6))
+	if s >= 3600 then
+		return string.format("%d:%02d:%02d", s // 3600, (s // 60) % 60, s % 60)
+	end
 	return string.format("%d:%02d", s // 60, s % 60)
+end
+
+-- Bonus de BottomRow (vague 70, a230, L-189 point 6) --------------------------------------------------
+
+local function hasPass(key: string): boolean
+	return localPlayer:GetAttribute(PASS_PREFIX .. key) == true
+end
+
+local function passMultiplier(key: string): number
+	local pass = Monetization.PassByKey[key]
+	local value = if pass then pass.Multiplier else nil
+	return if type(value) == "number" and value == value then value else 1
+end
+
+-- Bonus `key` (nom de sa pastille) : montré, texte d'Amount, texte de Timer (« » sans temps restant).
+local function bonusState(key: string, now: number): (boolean, string, string)
+	if key == BONUS.Friend then
+		local raw = localPlayer:GetAttribute(Hub.FriendBonus.BonusAttribute)
+		local bonus = if type(raw) == "number" and raw == raw then math.max(raw, 0) else 0
+		return bonus > 0 or BONUS.FriendAtZero, string.format(BONUS.FriendText, math.round(bonus * 100)), ""
+	elseif key == BONUS.Vip then
+		return hasPass("VIP"), BONUS.VipText, ""
+	elseif key == BONUS.Cash then
+		local endsAt = localPlayer:GetAttribute(CASH_BOOST_ATTRIBUTE)
+		local left = if type(endsAt) == "number" and endsAt == endsAt then endsAt - now else 0
+		local multiplier = if hasPass("DoubleCash") then passMultiplier("DoubleCash") else 1
+		if left > 0 then
+			multiplier *= Monetization.CashBoost.Multiplier
+		end
+		return multiplier > 1, string.format(BONUS.MultiplierText, multiplier), if left > 0 then clockText(left) else ""
+	end
+	local multiplier = if hasPass("DoubleTraining") then passMultiplier("DoubleTraining") else 1
+	return multiplier > 1, string.format(BONUS.MultiplierText, multiplier), ""
+end
+
+local function refreshBonuses(now: number)
+	for key, list in pills do
+		local shownNow, amount, timer = bonusState(key, now)
+		local written = pillWritten[key]
+		if written == nil then
+			written = { shown = not shownNow, amount = "", timer = "" }
+			pillWritten[key] = written
+		end
+		for _, pill in list do
+			if written.shown ~= shownNow then
+				pill.frame.Visible = shownNow
+			end
+			local amountLabel = pill.amount
+			if amountLabel and written.amount ~= amount then
+				amountLabel.Text = amount
+			end
+			local timerLabel = pill.timer
+			if timerLabel and written.timer ~= timer then
+				timerLabel.Text = timer
+				timerLabel.Visible = timer ~= ""
+			end
+		end
+		written.shown = shownNow
+		written.amount = amount
+		written.timer = timer
+	end
 end
 
 local function ruleHolds(boost: Boost): boolean
@@ -213,6 +293,7 @@ local function refresh()
 			end
 		end
 	end
+	refreshBonuses(now)
 end
 
 local function onBoost(boost: Boost)
@@ -317,11 +398,42 @@ local function bind(gui: ScreenGui)
 			end)
 		end
 	end
+
+	-- Vague 70 (L-189 point 6) : pastilles de BottomRow (absentes : rien).
+	pills = {}
+	pillWritten = {}
+	for _, key in BONUS_KEYS do
+		local list: { Pill } = {}
+		for _, inst in Find.all(gui, key) do
+			if inst:IsA("GuiObject") then
+				local amount = Find.path(inst, BONUS.Amount)
+				local timer = Find.path(inst, BONUS.Timer)
+				local amountLabel: TextLabel? = if amount and amount:IsA("TextLabel") then amount :: TextLabel else nil
+				local timerLabel: TextLabel? = if timer and timer:IsA("TextLabel") then timer :: TextLabel else nil
+				if timerLabel then
+					timerLabel.Visible = false
+				end
+				table.insert(list, { frame = inst :: GuiObject, amount = amountLabel, timer = timerLabel })
+			end
+		end
+		if #list > 0 then
+			pills[key] = list
+		end
+	end
 	refresh()
 end
 
 function HudMenuController.GetShown(): { [string]: boolean }
 	return table.clone(shown)
+end
+
+-- Vague 70 : ce qui est écrit dans chaque pastille de BottomRow présente (nom → Shown, Amount, Timer).
+function HudMenuController.GetBonuses(): { [string]: { Shown: boolean, Amount: string, Timer: string } }
+	local result = {}
+	for key, written in pillWritten do
+		result[key] = { Shown = written.shown, Amount = written.amount, Timer = written.timer }
+	end
+	return result
 end
 
 function HudMenuController.Refresh()

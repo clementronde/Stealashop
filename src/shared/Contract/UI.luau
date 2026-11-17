@@ -599,7 +599,8 @@ table.insert(UI.Screens, {
 UI.Twins = {
 	UI_HUD = {
 		Containers = { "LeftRail", "LeftRailTouch" },
-		Names = { "RobuxShopButton", "IndexButton", "RebirthButton", "InventoryButton", "SkillTreeButton" },
+		-- Vague 70 (a230, L-189 point 8) : InventoryButton retiré (inventaire archivé, UI.Retired).
+		Names = { "RobuxShopButton", "IndexButton", "RebirthButton", "SkillTreeButton" },
 	},
 } :: { [string]: { Containers: { string }, Names: { string } } }
 
@@ -1337,5 +1338,29 @@ table.insert(UI.Billboards, {
 --     l'index) fait entrer ses propres enfants un par un.
 --   - Un bouton dans une carte de liste grossit (survol, rebond, réussite) au plus jusqu'au bord de sa carte (le
 --     premier parent qui dessine un cadre : fond, UIStroke ou image).
+
+-- Vague 70 (a230, L-189 points 2 et 6) : bonus de BottomRow (HudMenuController, Config/Hud.BottomRow), tout facultatif.
+-- NightCountdown lit aussi ses attributs PhonePosition et PhoneAnchorPoint sur téléphone (pas des éléments).
+-- Entrée à part, facultative, comme TrainGainFly : la liste d'UI_HUD ne change pas.
+do
+	local elements: { Element } = {}
+	for _, pill in { "FriendBoost", "VipBoost", "CashBoost", "TrainingBoost" } do
+		table.insert(elements, { Path = pill, Class = "GuiObject", Optional = true, Note = "ce bonus n'est pas montré dans BottomRow" })
+		table.insert(elements, { Path = `{pill}.Amount`, Class = "TextLabel", Optional = true, Note = "la valeur du bonus n'est pas écrite" })
+	end
+	table.insert(elements, { Path = "CashBoost.Timer", Class = "TextLabel", Optional = true, Note = "le temps restant du boost ×2 argent n'est pas écrit (nom proposé à Clément)" })
+	table.insert(UI.Screens, { Name = "UI_HUD", Class = "ScreenGui", Optional = true, Elements = elements })
+end
+
+-- Vague 70 (a230, L-189) : revenu de l'objet tenu en main (HeldIncomeController, Config/Hud.HeldIncome). Facultatif :
+-- absent, un billboard de repli aux mêmes noms.
+table.insert(UI.Billboards, {
+	Name = "BB_HeldIncome",
+	Class = "BillboardGui",
+	Optional = true,
+	Elements = {
+		{ Path = "Income", Class = "TextLabel" },
+	} :: { Element },
+})
 
 return UI
