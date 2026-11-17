@@ -63,7 +63,12 @@ local Chase = {
 	ClosingSpeedMax = 8 * K, -- rapprochement à 0 % du minimum (studs/s ; vague 61 : × k)
 	HoldMinSpeed = 12 * K, -- plancher de la poursuite à distance (studs/s), sous toute marche d'un voleur qui court (× k)
 	AboveRequired = "Hold" :: AboveRequired, -- Cantin, 2026-11-14 : au-dessus, « ça garde toujours la même distance »
-	Zone1SpeedRequired = 0, -- minimum de la zone 1 pour cette règle (Cantin : zone 1 sans minimum)
+	-- Minimum de la zone 1 pour cette règle. a249 (Cantin, 2026-11-17, L-235 décision 3 : « zone 1 : capture possible »,
+	-- petit minimum au lieu de 0) : V0 proposé, absent du doc = la Speed que donne l'étape « Train » du tutoriel
+	-- (Tutorial.TrainDuration 10 s × Training.Treadmill.GainPerSecond 1, sans taper) : un joueur qui a fait le tutoriel
+	-- est au minimum (gardé à distance), un joueur à 0 est rattrapé. Le premier braquage du tutoriel ne suit pas cette
+	-- règle (GetSpeedOverride : vigile lent, Tutorial.GuardSpeed). 0 = sans minimum (avant a249).
+	Zone1SpeedRequired = 10,
 	NightGuardRequiredFactor = 2, -- vigile de nuit : minimum = Speed effective actuelle du voleur × ceci (Cantin)
 	PoliceRequiredFactor = 2, -- policier : minimum = Speed effective actuelle du voleur × ceci (Cantin)
 	DriverGrowthPerSecond = 0.02 * K, -- conducteur : + 2 % de la marche du voleur par seconde depuis la fin de la ruée (× k)
@@ -111,6 +116,34 @@ local Chase = {
 	-- objet. false : la règle d'avant (Cantin, 2026-11-13 : sorti sans rien, c'est fini pour lui, aucun vigile).
 	-- Le casseur resté dehors (jamais entré) n'est pas concerné. V0 proposé, absent du doc.
 	ChaseOnEmptyExit = true,
+	-- a249 (Cantin, 2026-11-17, L-235 décision 1 : garder « Hold », mais une ruée nettement moins forte, sans l'effet
+	-- « très vite puis très lent », et le vigile ne lâche jamais prise). Play du 17/11 : la ruée (RushWalkFactor × la
+	-- marche, ≥ RushMinSpeed : 156 à 329 studs/s) freinait à RushBrake (1 000 studs/s²) alors que le Humanoid ne freine
+	-- qu'à ≈ 700 : il finissait à 8 à 9 studs au lieu de 14, jusqu'à 2,4 studs (capture) si le voleur ralentissait.
+	-- SpringReturn = true : le vigile du magasin (Apply.StoreGuard) ne fait plus de ruée. Sa vitesse est toujours
+	--   marche du voleur + rapprochement + un surplus selon l'écart à la distance prévue (GuardService.springSpeed) :
+	--   loin, au plus (SpringMaxFactor − 1) × la marche ; en arrivant, il freine à SpringBrake, puis le rappel
+	--   (HoldRecallGain, HoldRecallMax) sur les 4 derniers studs, sans à-coup ; au-dessus du minimum, il garde
+	--   HoldDistance studs et revient dès que le voleur s'éloigne (jamais d'abandon). Sur un voleur qui ralentit ou
+	--   s'arrête, le plafond d'arrivée (ApproachBrake) freine à SpringBrake au lieu de RushBrake.
+	--   false : la ruée d'avant. Vigile de nuit, policier, conducteur : la ruée, inchangée (ils attrapent toujours).
+	SpringReturn = true,
+	SpringMaxFactor = 1.5, -- V0 proposé, absent du doc : au plus × la marche du voleur (ruée d'avant : 3,9)
+	SpringBrake = 20 * K * K, -- V0 proposé, absent du doc (studs/s², × k² : 80), bien sous ce que freine un Humanoid
+	-- a249 (L-235 décision 2) : le vigile du magasin part StartDelay s après la prise (apparition, objet ramassé au
+	-- sol ; avant : 0,5 s, toujours le délai du vigile de nuit, du policier et du conducteur). WaitAfterReveal : après
+	-- la cinématique d'ouverture (RevealProtected), tout poursuivant figé repart StartDelay s plus tard, sans capture
+	-- avant (false : il repartait tout de suite).
+	StartDelay = 1, -- V0 (Cantin : 1 s)
+	WaitAfterReveal = true,
+	-- a249 (Play de fusion67, petit chef 2 : le vigile de nuit attrape, puis le vigile de jour « rattrape » 1,3 s
+	-- après) : un joueur attrapé (immobilisé par une capture, ou attrapé la nuit et pas encore renvoyé) n'est plus
+	-- poursuivi ; les autres poursuivants abandonnent. false : la règle d'avant (deux captures possibles).
+	OneCatchAtATime = true,
+	-- a249 : diagnostic de la poursuite dans la sortie (aussi hors Studio) : chaque seconde, la distance, la phase,
+	-- la distance prévue et les parts de la vitesse du vigile ; à chaque capture, la distance, le temps depuis
+	-- l'apparition et dedans/dehors. En Studio, workspace:SetAttribute("ChaseDebug", true) fait de même.
+	Debug = false,
 	-- Qui suit cette règle (false : la vitesse d'avant, voir l'en-tête).
 	Apply = {
 		StoreGuard = true, -- vigile de jour d'un magasin PNJ

@@ -27,6 +27,10 @@
 --      Recalculée à chaque image (distanceRuleStep). Tutoriel (GetSpeedOverride) ou règle coupée : l'ancienne,
 --      WalkSpeed = Zones[zone].GuardSpeed (section 4), fixe. Le reste (interception, chemins) est commun,
 --      sauf pendant la ruée, qui vise le voleur lui-même et non un point devant lui.
+--      a249 (Cantin, 2026-11-17, L-235) : le vigile du magasin part Chase.StartDelay s après la prise (apparition,
+--      objet ramassé) et après la cinématique d'ouverture (Chase.WaitAfterReveal) ; Chase.SpringReturn : plus de
+--      ruée pour lui, un retour doux, au plus Chase.SpringMaxFactor × la marche du voleur (springSpeed) ;
+--      Chase.OneCatchAtATime : un joueur déjà attrapé n'est plus poursuivi par les autres.
 --      Il coupe la route du joueur (Cantin, 2026-11-11, vague 24) : il vise le point d'interception,
 --      là où, en ligne droite à sa WalkSpeed, il retrouve le joueur qui garde sa vitesse au sol lissée
 --      (VELOCITY_SMOOTHING : un zigzag ne le fait presque pas zigzaguer), au plus INTERCEPT_MAX_TIME s
@@ -1503,6 +1507,79 @@ end
 -- a168 : durée d'image la plus longue prise en compte pour anticiper la fin de la ruée (s).
 local MAX_RUSH_STEP = 0.2
 
+-- a249 (Cantin, 2026-11-17, L-235 décision 2) : délai avant le départ du vigile du magasin (apparition, objet
+-- ramassé, reprise après la cinématique d'ouverture). Chase.StartDelay absent ou nul : REACTION_DELAY.
+local function startDelay(): number
+	local value = Chase.StartDelay
+	return if isPositiveNumber(value) then value else REACTION_DELAY
+end
+
+-- a249 (L-235 décision 1) : le vigile du magasin suit-il le retour doux (Chase.SpringReturn) au lieu de la ruée ?
+local function springReturn(guard: Guard): boolean
+	return Chase.SpringReturn == true and ruleKindOf(guard) == "Store"
+end
+
+-- a249 : diagnostic de la poursuite (Chase.Debug, ou l'attribut ChaseDebug du Workspace en Studio).
+local function chaseDebugOn(): boolean
+	return Chase.Debug == true or (IS_STUDIO and Workspace:GetAttribute("ChaseDebug") == true)
+end
+
+-- a249 : écart (studs) sous lequel le premier retour est fini (« fin de la ruée » dans la sortie) ; ensuite la
+-- distance prévue suit le rapprochement, comme la poursuite à distance d'avant (holdRecall).
+local SPRING_ARRIVE = 1
+
+-- a249 (Cantin, 2026-11-17, L-235 décision 1 ; Play du 17/11 : la ruée à 3,9 × la marche finissait à 8 à 9 studs
+-- au lieu de 14, le Humanoid ne freinant qu'à ≈ 700 studs/s² ; ensuite, à la marche du voleur, il paraissait
+-- « très lent ») : vitesse du vigile du magasin en retour doux (Chase.SpringReturn), à chaque image :
+--   marche du voleur + rapprochement + surplus, jamais moins de HoldMinSpeed ; écart = distance − prévue ;
+--   surplus = HoldRecallGain × écart pour un écart ≤ HoldRecallMax / HoldRecallGain (4 studs ; au plus −HoldRecallMax
+--   derrière), au-delà √(HoldRecallMax² + 2 × SpringBrake × (écart − 4)), au plus max((SpringMaxFactor − 1) × marche,
+--   HoldRecallMax).
+-- Loin, il court au plus à SpringMaxFactor × la marche ; en arrivant, il freine à SpringBrake (80 studs/s²), bien sous
+-- ce que freine un Humanoid (≈ 700), puis le rappel des 4 derniers studs : ni dépassement, ni à-coup, ni longue
+-- approche au ralenti ; le rappel linéaire près de la distance prévue ne fait pas trembler sa vitesse quand la
+-- position du voleur bouge d'un stud d'une image à l'autre. Distance prévue : Chase.HoldDistance jusqu'à
+-- l'arrivée (écart ≤ SPRING_ARRIVE), puis elle baisse au rythme du rapprochement, jamais sous la capture. Le voleur
+-- qui s'éloigne de nouveau est rattrapé de la même façon : le vigile ne lâche jamais prise.
+local function springSpeed(guard: Guard, player: Player, targetAt: Vector3, targetHumanoid: Humanoid, now: number): number
+	local walk = targetHumanoid.WalkSpeed
+	if not isPositiveNumber(walk) then
+		walk = 0
+	end
+	local closing = closingSpeed(guard, player)
+	local target = guard.holdTarget or Chase.HoldDistance
+	if guard.chasePhase == "Hold" then
+		local last = guard.holdStepAt or guard.holdSince or now
+		target = math.max(target - closing * math.max(now - last, 0), Balance.Guard.CatchDistance)
+		guard.holdTarget = target
+		guard.holdStepAt = now
+	end
+	local distance = flat(targetAt - guard.root.Position).Magnitude
+	local gap = distance - target
+	if guard.chasePhase == "Rush" and gap <= SPRING_ARRIVE then
+		guard.chasePhase = "Hold"
+		guard.holdSince = now
+		guard.holdStepAt = now
+		guard.holdTarget = target
+		log(string.format("%s : à %.1f studs de %s, fin de la ruée, poursuite à distance (marche %.2f + rapprochement %.2f, retour doux)",
+			guard.label, distance, player.Name, walk, closing))
+	end
+	local gain = if isPositiveNumber(Chase.HoldRecallGain) then Chase.HoldRecallGain else 0
+	local recallMax = if isPositiveNumber(Chase.HoldRecallMax) then Chase.HoldRecallMax else 0
+	local recall = math.max(gain * gap, -recallMax)
+	if gap > 0 then
+		-- Rappel linéaire jusqu'à HoldRecallMax (écart ≤ HoldRecallMax / HoldRecallGain : 4 studs), puis freinage constant.
+		local linear = if gain > 0 then recallMax / gain else 0
+		recall = math.min(gain * gap, recallMax)
+		if gap > linear then
+			local brake = if isPositiveNumber(Chase.SpringBrake) then Chase.SpringBrake else 0
+			recall = math.sqrt(recallMax * recallMax + 2 * brake * (gap - linear))
+		end
+		recall = math.min(recall, math.max(math.max(Chase.SpringMaxFactor - 1, 0) * walk, recallMax))
+	end
+	return math.max(walk + closing + recall, Chase.HoldMinSpeed)
+end
+
 -- a173 (2026-11-15, Play de fusion48) : la fin de ruée tombait vers 7,5 studs au lieu de 10 (image plus
 -- longue que la précédente, élan du Humanoid à ≈ 42 studs/s une image de plus), d'où une capture de nuit et
 -- de police en 0,7 à 1,3 s au lieu de 1,5 s. En poursuite à distance, le vigile est rappelé vers sa distance
@@ -1551,7 +1628,9 @@ local function approachCap(guard: Guard, targetAt: Vector3, targetRoot: BasePart
 		end
 	end
 	local catchDistance = if guard.kind == "Night" then Night.CatchDistance else Balance.Guard.CatchDistance
-	local rushBrake = if isPositiveNumber(Chase.RushBrake) then Chase.RushBrake else 0
+	-- a249 : en retour doux, freinage à Chase.SpringBrake (RushBrake, 1 000 studs/s², dépasse ce que freine un Humanoid).
+	local brakeValue = if springReturn(guard) then Chase.SpringBrake else Chase.RushBrake
+	local rushBrake = if isPositiveNumber(brakeValue) then brakeValue else 0
 	local room = 2 * rushBrake * math.max(distance - Chase.HoldDistance, 0) + 2 * brake * math.max(distance - catchDistance, 0)
 	return away + math.max(math.sqrt(room), Chase.ApproachMinClosing)
 end
@@ -1564,6 +1643,14 @@ local function distanceRuleStep(
 	targetHumanoid: Humanoid,
 	now: number
 )
+	if springReturn(guard) then
+		-- a249 : retour doux (springSpeed), sous le plafond d'arrivée.
+		local speed = math.min(springSpeed(guard, player, targetAt, targetHumanoid, now), approachCap(guard, targetAt, targetRoot, targetHumanoid))
+		if math.abs(speed - guard.humanoid.WalkSpeed) > 0.05 then
+			setWalkSpeed(guard, speed)
+		end
+		return
+	end
 	local approach: number? = nil
 	if guard.chasePhase == "Rush" then
 		local distance = flat(targetAt - guard.root.Position).Magnitude
@@ -1615,16 +1702,24 @@ local function startChase(guard: Guard, now: number)
 	guard.nextPathAt = now
 	guard.anims:Stop("Walk") -- vigile de nuit : il marchait sur sa ronde
 	local player = guard.target
+	local targetRoot: BasePart? = nil
 	local targetHumanoid: Humanoid? = nil
 	if player then
-		local _, humanoid = bodyOf(player)
-		targetHumanoid = humanoid
+		targetRoot, targetHumanoid = bodyOf(player)
 	end
 	if player and targetHumanoid and followsDistanceRule(guard, player) then
 		guard.chasePhase = "Rush"
 		guard.rushStepAt = nil
-		setWalkSpeed(guard, distanceRuleSpeed(guard, player, targetHumanoid, now))
-		log(`{guard.label} : ruée sur {player.Name} à {Format.short(guard.humanoid.WalkSpeed)} studs/s`)
+		if targetRoot and springReturn(guard) then
+			-- a249 : retour doux, au plus Chase.SpringMaxFactor × sa marche.
+			local targetAt = estimatedPosition(player, targetRoot, targetHumanoid)
+			local speed = math.min(springSpeed(guard, player, targetAt, targetHumanoid, now), approachCap(guard, targetAt, targetRoot, targetHumanoid))
+			setWalkSpeed(guard, speed)
+			log(`{guard.label} : ruée sur {player.Name} à {Format.short(guard.humanoid.WalkSpeed)} studs/s (retour doux, au plus {Chase.SpringMaxFactor} × sa marche)`)
+		else
+			setWalkSpeed(guard, distanceRuleSpeed(guard, player, targetHumanoid, now))
+			log(`{guard.label} : ruée sur {player.Name} à {Format.short(guard.humanoid.WalkSpeed)} studs/s`)
+		end
 	else
 		setWalkSpeed(guard, guard.speed)
 	end
@@ -1971,8 +2066,27 @@ local function sendCatchScene(player: Player, night: boolean, outcome: string, h
 	end
 end
 
+-- a249 (Chase.Debug) : chaque capture dans la sortie : distance, temps depuis l'apparition du vigile, joueur dans le
+-- volume Bounds du magasin du vigile ou dehors, phase de la poursuite. À appeler avant endChase (qui efface la phase).
+local function debugCatch(guard: Guard, player: Player, now: number)
+	if not chaseDebugOn() then
+		return
+	end
+	local body = bodyOf(player)
+	if body == nil then
+		return
+	end
+	local store = guard.store
+	local bounds = if store then Find.path(store, BOUNDS) else nil
+	local inside = bounds ~= nil and bounds:IsA("BasePart") and insideBox((bounds :: BasePart).CFrame, (bounds :: BasePart).Size, body.Position)
+	print(string.format("[ChaseDebug] %s : capture de %s à %.1f studs, %.2f s après l'apparition, %s, phase %s",
+		guard.model.Name, player.Name, flat(body.Position - guard.root.Position).Magnitude, now - guard.spawnedAt,
+		if inside then "dans son magasin" else "hors de son magasin", tostring(guard.chasePhase)))
+end
+
 local function catch(guard: Guard, player: Player)
 	local now = os.clock()
+	debugCatch(guard, player, now)
 	endChase(guard)
 	setState(guard, "Catch")
 	stop(guard)
@@ -2066,6 +2180,7 @@ end
 local function nightCatch(guard: Guard, player: Player)
 	local now = os.clock()
 	local hooks = nightHooks
+	debugCatch(guard, player, now)
 	endChase(guard)
 	setState(guard, "Catch")
 	stop(guard)
@@ -2338,6 +2453,12 @@ local function chaseStep(guard: Guard, now: number)
 		giveUp(guard, "plus de personnage")
 		return
 	end
+	-- a249 (Play de fusion67 : le vigile de nuit attrape, le vigile de jour « rattrape » 1,3 s après) : un joueur
+	-- immobilisé par une capture (stun), ou attrapé la nuit et pas encore renvoyé, n'est plus poursuivi.
+	if Chase.OneCatchAtATime and (stunTokens[player] ~= nil or caughtAtNight[player] == true) then
+		giveUp(guard, "déjà attrapé")
+		return
+	end
 	local night = guard.kind == "Night"
 	local driver = guard.driver
 	if night then
@@ -2431,7 +2552,7 @@ local function chaseStep(guard: Guard, now: number)
 		velocity = Vector3.zero
 	end
 	local sees = canSee(guard, targetRoot, targetHumanoid)
-	if IS_STUDIO and workspace:GetAttribute("ChaseDebug") == true then
+	if chaseDebugOn() then
 		-- Diagnostic Studio (retard du vigile, 2026-11-11) : une ligne par seconde et par vigile.
 		local found: ChaseTrace? = guardDebug[guard]
 		if found == nil then
@@ -2461,6 +2582,12 @@ local function chaseStep(guard: Guard, now: number)
 				targetHumanoid.WalkSpeed, guard.humanoid.WalkSpeed, flat(targetAt - guard.root.Position).Magnitude, lagSeconds(player) * 1000,
 				trace.sight, trace.path,
 				if #hits > 0 then " ; vue bloquée par " .. table.concat(hits, ", ") else ""))
+			if guard.chasePhase ~= nil then
+				-- a249 : phase, distance prévue et parts de la vitesse (règle de distance).
+				print(string.format("[ChaseDebug] %s : phase %s%s, prévue %.1f, marche %.1f, rapprochement %.2f, depuis l'apparition %.1f s",
+					guard.model.Name, guard.chasePhase, if springReturn(guard) then " (retour doux)" else "",
+					guard.holdTarget or Chase.HoldDistance, targetHumanoid.WalkSpeed, closingSpeed(guard, player), now - guard.spawnedAt))
+			end
 			trace.sight, trace.path, trace.hits = 0, 0, {}
 		end
 	end
@@ -2830,7 +2957,16 @@ local function update(guard: Guard, now: number)
 		if until_ then
 			guard.intruderUntil = until_ + paused
 		end
-		if state == "Chase" then
+		if Chase.WaitAfterReveal then
+			-- a249 (Cantin, 2026-11-17, L-235 décision 2 ; Play du 17/11 : il repartait dans l'image où la
+			-- cinématique finissait) : il repart Chase.StartDelay s plus tard, sans capture avant (Wait).
+			if state == "Chase" then
+				setState(guard, "Wait")
+				guard.stateEndsAt = now + startDelay()
+			else
+				guard.stateEndsAt = math.max(guard.stateEndsAt, now + startDelay())
+			end
+		elseif state == "Chase" then
 			startChase(guard, now)
 		end
 		log(`{guard.label} : reprend après {math.round(paused * 10) / 10} s de cinématique`)
@@ -3072,7 +3208,7 @@ local function spawnGuard(player: Player, store: Model, zone: number, template: 
 		pauseUntil = 0,
 		onKnock = nil,
 		nextScanAt = 0,
-		stateEndsAt = now + REACTION_DELAY,
+		stateEndsAt = now + startDelay(), -- a249 : Chase.StartDelay (vigile du magasin)
 		returnedAt = now,
 		nextSteerAt = now,
 		nextPathAt = now,
@@ -3534,7 +3670,7 @@ local function retarget(guard: Guard, player: Player)
 	guard.anims:Stop("Walk") -- a114 : demi-tour pendant son retour
 	guard.anims:Stop("Tired")
 	guard.speed = chaseSpeed(player, guard.zone)
-	guard.stateEndsAt = now + REACTION_DELAY
+	guard.stateEndsAt = now + startDelay() -- a249 : Chase.StartDelay, comme à l'apparition
 	refreshChaseState(player)
 	log(`{guard.label} : change de cible, poursuit {player.Name} qui a ramassé l'objet (vitesse {Format.short(guard.speed)})`)
 end
