@@ -1616,22 +1616,32 @@ function Unbox.Step(state: State, dt: number): string?
 end
 
 -- f70c4 : ce qu'il reste à remettre de l'écran de l'ouvreur (champ de vision, bords), de leur valeur en ce moment à
--- celle d'avant la scène ; Unbox.ScreenFade le fait avancer (0 = en ce moment, 1 = remis).
+-- celle d'avant la scène ; Unbox.ScreenFade le fait avancer (0 = en ce moment, 1 = remis). Le champ de vision n'est
+-- plus touché dès qu'un autre code l'a changé (2e passe, Play de fusion71 : la poursuite de UiFeelController le
+-- reprend à Land, le fondu l'écrasait ensuite d'un coup) : ce code décide.
 export type ScreenFade = {
 	fovFrom: number?,
 	fovTo: number?,
+	fovLast: number?, -- dernier champ de vision écrit ici (ou lu à Release)
 	edgeFrom: number,
 	glow: ImageLabel?,
 	screen: ScreenGui?,
 	wasEnabled: boolean,
 }
 
-function Unbox.ScreenFade(fade: ScreenFade, e: number)
+-- e : bords et UI_Unbox ; eFov : champ de vision (e si absent).
+function Unbox.ScreenFade(fade: ScreenFade, e: number, eFov: number?)
 	local f = math.clamp(e, 0, 1)
 	local camera = Workspace.CurrentCamera
 	local from, to = fade.fovFrom, fade.fovTo
 	if camera and from and to then
-		camera.FieldOfView = from + (to - from) * f
+		local last = fade.fovLast
+		if last and math.abs(camera.FieldOfView - last) > 1e-3 then
+			fade.fovFrom = nil -- un autre code a pris le champ de vision
+		else
+			camera.FieldOfView = from + (to - from) * math.clamp(eFov or e, 0, 1)
+			fade.fovLast = camera.FieldOfView
+		end
 	end
 	local glow = fade.glow
 	if glow then
@@ -1658,6 +1668,7 @@ function Unbox.Release(state: State, soft: boolean?): ScreenFade?
 	local fade: ScreenFade = {
 		fovFrom = if camera then camera.FieldOfView else nil,
 		fovTo = state.baseFov,
+		fovLast = if camera then camera.FieldOfView else nil,
 		edgeFrom = state.edge.value,
 		glow = state.edgeLabel,
 		screen = state.edgeScreen,
