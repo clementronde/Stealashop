@@ -6,6 +6,8 @@
 --   KeepScreens : écrans UI_* gardés entiers ;
 --   Partial     : { [écran] = { noms } } écrans gardés, mais seulement ces éléments (cherchés parmi les
 --                 descendants, Contract/Find), leurs ancêtres et leurs descendants ; le reste de l'écran est caché.
+--   HideScreens : (vague 73, a256, L-230) masque inverse : seuls ces écrans sont masqués, tout le reste est gardé
+--                 (KeepScreens et Partial de ce masque sont alors ignorés).
 -- Plusieurs masques à la fois (poursuite, puis capture) : une chose reste à l'écran seulement si TOUS la gardent.
 -- Jamais touchés : les écrans de Config/HeistFeel.NeverMask (messages du serveur, alertes, tutoriel, admin) et tout
 -- ce qui n'est pas un ScreenGui « UI_* » du PlayerGui (billboards, écrans V0 du code).
@@ -42,6 +44,7 @@ local Find = require(Shared:WaitForChild("Contract"):WaitForChild("Find"))
 export type Spec = {
 	KeepScreens: { string }?,
 	Partial: { [string]: { string } }?,
+	HideScreens: { string }?,
 }
 
 type Saved = { value: boolean, connection: RBXScriptConnection? }
@@ -162,6 +165,13 @@ local function wanted(name: string): ("Hide" | "Keep" | "Partial", { string }?)
 	local lists: { { string } } = {}
 	for _, key in order do
 		local spec = masks[key]
+		local hideList = spec.HideScreens
+		if hideList then
+			if table.find(hideList, name) ~= nil then
+				return "Hide", nil
+			end
+			continue
+		end
 		local keepList: { string } = spec.KeepScreens or {}
 		local kept = table.find(keepList, name) ~= nil
 		local partial = if spec.Partial then spec.Partial[name] else nil

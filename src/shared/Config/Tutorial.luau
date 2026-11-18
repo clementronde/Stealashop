@@ -100,8 +100,12 @@ local TOOL_NAME = "Wrench" -- Tools.ById[ToolToBuy].DisplayName (étape 7 : la c
 local WRENCH: Tools.Tool? = Tools.ById.Wrench
 local TOOL_GIFT = if WRENCH then WRENCH.Price else 0
 local AURA_GIFT = math.huge
+local FIRST_AURA = "" -- vague 73 (a256) : Id de l'aura la moins chère (carte visée par UI_TutorialFocus à l'étape 8)
 for _, aura in Cosmetics.Auras do
-	AURA_GIFT = math.min(AURA_GIFT, aura.Price)
+	if aura.Price < AURA_GIFT then
+		AURA_GIFT = aura.Price
+		FIRST_AURA = aura.Id
+	end
 end
 local Todos: { [number]: Todo } = {
 	[1] = { Do = "Smash the Mini Mart window" },
@@ -258,6 +262,28 @@ local Tutorial = {
 	-- centre, posé sur la cible.
 	ArrowAsset = "FX_Tutorial_Arrow",
 	MarkerAsset = "FX_Tutorial_Marker",
+	-- Vague 73 (a256, L-242 point 5) : le repère de Clément rebondit comme le repère V0 (MarkerBob studs d'amplitude,
+	-- période MarkerPeriod s ; V0 proposés, absents du doc, ceux du repère V0).
+	MarkerBob = 0.5,
+	MarkerPeriod = 1.2,
+	MarkerBobClement = true, -- false : le repère de Clément reste posé sur la cible (comme avant la vague 73)
+
+	-- Vague 73 (a256, L-242 point 5, UI_TutorialFocus de Clément ; Throw a Seed, section 6 de
+	-- docs/claude/notes/2026-11-17_throw-a-seed-a-reprendre.md) : à l'étape où il faut cliquer un bouton d'une
+	-- boutique, l'écran s'assombrit sauf ce bouton (Focus posé sur lui, Margin px autour ; son UIStroke Veil fait le
+	-- voile), Ring l'entoure, et Pointer arrive après HesitateTime s sans clic. Écran absent ou bouton introuvable
+	-- (carte pas visible, autre onglet) : rien. Enabled = false : jamais.
+	Focus = {
+		Enabled = true,
+		Screen = "UI_TutorialFocus",
+		HesitateTime = 1.2, -- note de Clément (L-242) : « 1,2 s dans la note »
+		Margin = 6, -- V0 proposé, absent du doc : px entre le bouton et le bord de Focus
+		-- Étape → écran, fin du nom de la carte (Tool_02_Wrench, Item_Spark) et bouton visé dans la carte. V0.
+		Targets = {
+			[7] = { Screen = "UI_WeaponShop", CardSuffix = "_Wrench", Button = "BuyButton" },
+			[8] = { Screen = "UI_AuraShop", CardSuffix = "_" .. FIRST_AURA, Button = "BuyButton" },
+		},
+	},
 
 	-- 14.2 : étapes du funnel d'onboarding, envoyées une seule fois par joueur avec
 	-- AnalyticsService:LogOnboardingFunnelStepEvent (index = numéro d'étape). En français : l'équipe

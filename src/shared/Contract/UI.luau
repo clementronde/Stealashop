@@ -1370,4 +1370,27 @@ table.insert(UI.Billboards, {
 	} :: { Element },
 })
 
+-- Vague 73 (a256, L-242 points 5 et 6) : écrans de Clément du 2026-11-17, facultatifs.
+-- UI_TutorialFocus (TutorialController, Config/Tutorial.Focus) : Focus posé sur le bouton à cliquer, Pointer montré
+-- quand le joueur hésite. UI_HelpInvite (HelpInviteController, Config/HelpInvite) : conseil après une capture.
+table.insert(UI.Screens, {
+	Name = "UI_TutorialFocus",
+	Class = "ScreenGui",
+	Optional = true,
+	Elements = {
+		{ Path = "Focus", Class = "GuiObject", Optional = true, Note = "le bouton à cliquer du tuto n'est pas mis en avant" },
+		{ Path = "Focus.Pointer", Class = "GuiObject", Optional = true, Note = "pas de flèche quand le joueur hésite" },
+	} :: { Element },
+})
+table.insert(UI.Screens, {
+	Name = "UI_HelpInvite",
+	Class = "ScreenGui",
+	Optional = true,
+	Elements = {
+		{ Path = "Card.Message", Class = "TextLabel", Optional = true, Note = "le conseil garde le texte posé par Clément" },
+		{ Path = "Card.InviteButton", Class = BUTTON, Optional = true, Note = "pas d'invitation depuis le conseil" },
+		{ Path = "Card.CloseButton", Class = BUTTON, Optional = true, Note = "le conseil s'éteint seul (HelpInvite.Duration)" },
+	} :: { Element },
+})
+
 return UI

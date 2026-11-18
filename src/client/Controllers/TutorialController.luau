@@ -40,6 +40,12 @@
 -- tuto) : toutes les tâches cochées. Passer (vague 60) : une étape à la fois (le serveur choisit la suivante) ; sans
 -- réponse du serveur en SkipReplyTimeout s, la bulle revient.
 --
+-- Vague 73 (a256, L-242 point 5) : le repère de Clément rebondit (Tutorial.MarkerBob, MarkerPeriod) ; aux étapes de
+-- Tutorial.Focus.Targets (7 : la clé à molette, 8 : la première aura), quand la boutique est ouverte et la carte
+-- visible, UI_TutorialFocus de Clément s'allume : Focus posé sur le BuyButton (Margin px autour, barre de Roblox
+-- comprise), son voile assombrit le reste ; Pointer se montre après HesitateTime s. Seuls Enabled de l'écran,
+-- Position et Size de Focus et Visible de Pointer sont touchés. Écran absent : rien.
+--
 -- API (client) :
 --   TutorialController.GetState() -> { Step, Hint, Text, Target, Shown, Fallback, Arrow, Have, Need, Tasks }
 --       Ce qui est affiché, pour un test dans Studio (barre de commande côté client). Tasks : les lignes de la
@@ -94,8 +100,12 @@ local ARRIVE_RADIUS = 6 -- studs : la flèche se cache près de la cible
 local REFRESH_INTERVAL = 0.2 -- s entre deux mises à jour de la bulle
 local ARROW_COLOR = Color3.fromRGB(255, 197, 46) -- or de la planche 10.6 (#FFC52E)
 local MARKER_HEIGHT = 3.5 -- studs au-dessus de la cible (repère V0)
-local MARKER_BOB = 0.5 -- studs d'amplitude du repère V0
-local MARKER_PERIOD = 1.2 -- s
+local MARKER_BOB = Tutorial.MarkerBob -- studs d'amplitude (vague 73 : repère V0 et repère de Clément, L-242 point 5)
+local MARKER_PERIOD = Tutorial.MarkerPeriod -- s
+-- Vague 73 (a256, L-242 point 5) : écran UI_TutorialFocus de Clément (facultatif).
+local FOCUS = Tutorial.Focus
+local FOCUS_FRAME = "Focus"
+local FOCUS_POINTER = "Pointer"
 
 type View = {
 	gui: ScreenGui,
@@ -138,6 +148,9 @@ local arrowShown = false
 local boundButton: GuiButton? = nil
 local skipConnection: RBXScriptConnection? = nil
 local skipRemote: any = nil
+local focusButton: GuiObject? = nil -- vague 73 : bouton mis en avant (UI_TutorialFocus), depuis focusSince
+local focusSince = 0
+local focusShown = false
 
 ------------------------------------------------------------------------------
 -- Lecture du monde
@@ -550,9 +563,146 @@ local function updateArrow()
 	if current.marker.Parent == nil then
 		current.marker.Parent = current.folder
 	end
-	local height = if current.markerV0 then MARKER_HEIGHT + MARKER_BOB * math.sin(os.clock() * 2 * math.pi / MARKER_PERIOD) else 0
+	-- Vague 73 (L-242 point 5) : le repère de Clément (FX_Tutorial_Marker, grand V à 3,2 studs) rebondit aussi.
+	local bob = MARKER_BOB * math.sin(os.clock() * 2 * math.pi / MARKER_PERIOD)
+	local height = if current.markerV0 then MARKER_HEIGHT + bob elseif Tutorial.MarkerBobClement then bob else 0
 	current.marker:PivotTo(CFrame.new(target + Vector3.new(0, height, 0)))
 	arrowShown = true
+end
+
+------------------------------------------------------------------------------
+-- Bouton mis en avant (vague 73, a256, L-242 point 5 : UI_TutorialFocus de Clément, Config/Tutorial.Focus)
+------------------------------------------------------------------------------
+
+-- Visible jusqu'à son écran, et allumé.
+local function shownOnScreen(object: GuiObject): boolean
+	local current: Instance? = object
+	while current ~= nil do
+		if current:IsA("GuiObject") and not (current :: GuiObject).Visible then
+			return false
+		end
+		if current:IsA("LayerCollector") then
+			return (current :: LayerCollector).Enabled
+		end
+		current = current.Parent
+	end
+	return false
+end
+
+-- Le bouton à mettre en avant à cette étape : celui de la carte visée, dans la boutique ouverte, ou nil.
+local function focusTarget(): GuiObject?
+	if not FOCUS.Enabled or state.step <= 0 or state.skipping then
+		return nil
+	end
+	local spec = FOCUS.Targets[state.step]
+	local gui = playerGui()
+	if spec == nil or gui == nil then
+		return nil
+	end
+	local screen = gui:FindFirstChild(spec.Screen)
+	if screen == nil or not screen:IsA("ScreenGui") or not (screen :: ScreenGui).Enabled then
+		return nil
+	end
+	local suffix: string = spec.CardSuffix
+	for _, card in screen:GetDescendants() do
+		if card:IsA("GuiObject") and card.Name ~= TASK_TEMPLATE and string.sub(card.Name, -#suffix) == suffix then
+			local button = Find.path(card, spec.Button)
+			if button and button:IsA("GuiObject") and shownOnScreen(button :: GuiObject) then
+				return button :: GuiObject
+			end
+		end
+	end
+	return nil
+end
+
+local function focusView(): (ScreenGui?, GuiObject?, GuiObject?)
+	local gui = playerGui()
+	local screen = if gui then gui:FindFirstChild(FOCUS.Screen) else nil
+	if screen == nil or not screen:IsA("ScreenGui") then
+		return nil, nil, nil
+	end
+	local focus = Find.path(screen, FOCUS_FRAME)
+	if focus == nil or not focus:IsA("GuiObject") then
+		return nil, nil, nil
+	end
+	local pointer = Find.path(focus, FOCUS_POINTER)
+	return screen :: ScreenGui, focus :: GuiObject, if pointer and pointer:IsA("GuiObject") then pointer :: GuiObject else nil
+end
+
+-- Décalage du haut de l'écran (barre de Roblox) : un bouton d'un écran qui ne l'ignore pas est plus bas d'autant
+-- dans UI_TutorialFocus, qui l'ignore.
+local function insetOf(button: GuiObject): Vector2
+	local current: Instance? = button
+	while current ~= nil and not current:IsA("ScreenGui") do
+		current = current.Parent
+	end
+	if current == nil or (current :: ScreenGui).IgnoreGuiInset then
+		return Vector2.zero
+	end
+	local ok, topLeft = pcall(function(): any
+		return (game:GetService("GuiService") :: any):GetGuiInset()
+	end)
+	return if ok and typeof(topLeft) == "Vector2" then topLeft else Vector2.zero
+end
+
+local function hideFocus()
+	if focusShown then
+		local screen, _, pointer = focusView()
+		if screen and screen.Enabled then
+			screen.Enabled = false
+		end
+		if pointer and pointer.Visible then
+			pointer.Visible = false
+		end
+	end
+	focusShown = false
+end
+
+-- À chaque image tant qu'un bouton est visé : Focus suit le bouton (fenêtre qui grandit, défilement).
+local function placeFocus()
+	local button = focusButton
+	if button == nil or button.Parent == nil or not shownOnScreen(button) then
+		hideFocus()
+		return
+	end
+	local screen, focus, pointer = focusView()
+	if screen == nil or focus == nil then
+		focusShown = false
+		return
+	end
+	local margin = FOCUS.Margin
+	local size = button.AbsoluteSize + Vector2.new(margin * 2, margin * 2)
+	local topLeft = button.AbsolutePosition + insetOf(button) - Vector2.new(margin, margin)
+	local parent = focus.Parent
+	if parent and parent:IsA("GuiObject") then
+		topLeft -= (parent :: GuiObject).AbsolutePosition
+	end
+	local anchored = topLeft + focus.AnchorPoint * size
+	focus.Position = UDim2.fromOffset(anchored.X, anchored.Y)
+	focus.Size = UDim2.fromOffset(size.X, size.Y)
+	if not screen.Enabled then
+		screen.Enabled = true
+	end
+	focusShown = true
+	if pointer then
+		local wanted = os.clock() - focusSince >= FOCUS.HesitateTime
+		if pointer.Visible ~= wanted then
+			pointer.Visible = wanted
+		end
+	end
+end
+
+local function updateFocus()
+	local button = focusTarget()
+	if button ~= focusButton then
+		focusButton = button
+		focusSince = os.clock() -- nouveau bouton : le joueur hésite à partir de maintenant
+		local _, _, pointer = focusView()
+		if pointer and pointer.Visible then
+			pointer.Visible = false
+		end
+	end
+	placeFocus()
 end
 
 ------------------------------------------------------------------------------
@@ -685,6 +835,7 @@ local function render()
 	shownText = if visible then text else nil
 	shown = visible
 	updateArrow()
+	updateFocus()
 end
 
 local function onStep(step: number, hint: string?, target: Vector3?, have: number?, need: number?)
@@ -713,6 +864,7 @@ function TutorialController.GetState(): { [string]: any }
 		Have = state.have,
 		Need = state.need,
 		Tasks = shownRows,
+		Focus = focusShown,
 	}
 end
 
@@ -732,6 +884,9 @@ function TutorialController.Start()
 			render()
 		elseif arrowShown then
 			updateArrow()
+		end
+		if focusButton ~= nil then
+			placeFocus() -- vague 73 : Focus suit le bouton à chaque image
 		end
 	end)
 end

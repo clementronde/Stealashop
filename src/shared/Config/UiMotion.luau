@@ -19,15 +19,33 @@ local DeepFreeze = require(script.Parent.DeepFreeze)
 -- rythme exactement (L-094, L-182, L-188), sans blocs ni barre qui s'écarte.
 local VIDEO_RHYTHM = true
 
+-- Vague 73 (a256, L-230 et L-224 point 2, Clément : ouverture comme Throw a Seed, mesures dans
+-- docs/claude/notes/2026-11-17_throw-a-seed-a-reprendre.md, sections 3 et 8). true : la fenêtre grandit de 0,84 à 1
+-- (Back Out, 0,26 s), se ferme vers 0,9 en 0,13 s puis s'éteint d'un coup ; flou Size 16 sous la caméra (entrée 0,2 s Quad
+-- InOut, sortie 70 ms après le clic en 0,15 s) sur toutes les grandes fenêtres (Windows) ; tout le HUD (HudHide) caché à
+-- l'image où une grande fenêtre s'allume et rendu à l'image où elle s'éteint (la barre du bas ne s'écarte plus : HudAway
+-- coupé). false : le rythme de la vague 64 exactement.
+local WINDOW_TAS = true
+-- V0 proposé, absent du doc : les grandes fenêtres (L-230 : « boutiques, index, inventaire, renaissance, réglages… ») ;
+-- les petites (cadeau, hors ligne, notification, UI_HelpInvite) ne floutent ni ne cachent rien. Un autre ScreenGui aussi
+-- s'il porte l'attribut Blur (flou) ou HideHud (HUD caché) = true, posé par Clément.
+local WINDOWS: { string } = {
+	"UI_WeaponShop", "UI_AuraShop", "UI_RobuxShop", "UI_RobuxShop_v2", "UI_DiamondShop", "UI_PawnShop",
+	"UI_Index", "UI_Index_v2", "UI_Index_v3", "UI_Index_v4", "UI_Inventory", "UI_Displayed", "UI_Rebirth",
+	"UI_Settings", "UI_Rewards", "UI_SkillTree", "UI_Wheel",
+}
+
 local UiMotion = {
 	VideoRhythm = VIDEO_RHYTHM,
+	WindowTas = WINDOW_TAS,
+	Windows = WINDOWS,
 	-- Écran qui s'ouvre (Motion.Open) : ses cadres racine (Root) passent de From à 1. Valeurs validées par
 	-- Clément sur les prototypes (L-094 ; tableau « Étendues à tout le jeu » de
 	-- docs/claude/notes/ui-motion-skilltree.md, ligne « Fenêtre qui s'ouvre », qui remplace l'ancien V0
 	-- 0,9 → 1 en 0,25 ; tools/clement/inventory_proto.luau, OpenFrom et OpenTime).
 	Open = {
-		From = 0.55, -- tableau : « Root 0,55 → 1 en 0,14 », Back Out
-		Time = if VIDEO_RHYTHM then 0.38 else 0.14, -- vague 64 : 0,38 s (vidéo : 0,55 → 1,055 → 1)
+		From = if WINDOW_TAS then 0.84 else 0.55, -- vague 73 : 0,84 (L-230) ; tableau : « Root 0,55 → 1 en 0,14 », Back Out
+		Time = if WINDOW_TAS then 0.26 elseif VIDEO_RHYTHM then 0.38 else 0.14, -- vague 73 : 0,26 (mesure : 0,2 à 0,33) ; vague 64 : 0,38 s (vidéo : 0,55 → 1,055 → 1)
 		Style = Enum.EasingStyle.Back, -- le Back Out dépasse un peu 1 (environ 1,04), puis revient à 1
 		Direction = Enum.EasingDirection.Out,
 	},
@@ -54,9 +72,9 @@ local UiMotion = {
 	-- « Fenêtre qui se ferme : 1 → 0 en 0,09 », Quad In (L-094). Vague 64 : Back In en 0,2 s (vidéo : elle gonfle
 	-- de ~11 % puis rétrécit jusqu'à 0, en 0,17 à 0,22 s).
 	Close = {
-		To = 0,
-		Time = if VIDEO_RHYTHM then 0.2 else 0.09,
-		Style = if VIDEO_RHYTHM then Enum.EasingStyle.Back else Enum.EasingStyle.Quad,
+		To = if WINDOW_TAS then 0.9 else 0, -- vague 73 : « vers 89 à 92 % en 0,13 s, puis disparition d'un coup »
+		Time = if WINDOW_TAS then 0.13 elseif VIDEO_RHYTHM then 0.2 else 0.09,
+		Style = if WINDOW_TAS then Enum.EasingStyle.Quad elseif VIDEO_RHYTHM then Enum.EasingStyle.Back else Enum.EasingStyle.Quad,
 		Direction = Enum.EasingDirection.In,
 	},
 	-- Changement d'onglet (Motion.Swap) : les cartes visibles sortent (1 → 0 en OutTime, OutGap s entre
@@ -576,14 +594,18 @@ local UiMotion = {
 	-- (local au joueur), jamais pendant une poursuite (ChaseController.IsChased) ; détruit une fois parti.
 	Blur = {
 		Name = "UiBlur", -- V0 proposé, absent du doc
-		Size = 12, -- V0 proposé, absent du doc
-		InTime = 0.17, -- V0 proposé, absent du doc : comme la sortie
-		OutTime = 0.17, -- « il disparaît en 0,17 s à la fermeture »
-		Style = Enum.EasingStyle.Quint, -- V0 proposé, absent du doc
-		Direction = Enum.EasingDirection.Out,
+		Size = if WINDOW_TAS then 16 else 12, -- vague 73 (L-230) : « ≈ 16, à étalonner entre 12 et 24 »
+		InTime = if WINDOW_TAS then 0.2 else 0.17, -- vague 73 : TweenInfo(0.2, Quad, InOut)
+		OutTime = if WINDOW_TAS then 0.15 else 0.17, -- vague 73 : TweenInfo(0.15, Quad, InOut) ; avant : 0,17 s
+		OutDelay = if WINDOW_TAS then 0.07 else 0, -- vague 73 : « sortie 70 ms après le clic »
+		Style = if WINDOW_TAS then Enum.EasingStyle.Quad else Enum.EasingStyle.Quint,
+		Direction = if WINDOW_TAS then Enum.EasingDirection.InOut else Enum.EasingDirection.Out,
+		-- Vague 73 (L-230 : « sous la caméra, pour ne rien laisser dans Lighting ») : true = sous Workspace.CurrentCamera
+		-- (Lighting si la caméra manque) ; false = dans Lighting, comme avant.
+		UnderCamera = WINDOW_TAS,
 		-- Écrans qui floutent le jeu derrière eux (V0 proposé : les boutiques d'achat et l'index, toutes versions) ;
 		-- un autre ScreenGui aussi s'il porte l'attribut Attribute = true (posé par Clément).
-		Screens = { "UI_WeaponShop", "UI_AuraShop", "UI_RobuxShop", "UI_RobuxShop_v2", "UI_DiamondShop", "UI_Index", "UI_Index_v2", "UI_Index_v3" },
+		Screens = (if WINDOW_TAS then WINDOWS else { "UI_WeaponShop", "UI_AuraShop", "UI_RobuxShop", "UI_RobuxShop_v2", "UI_DiamondShop", "UI_Index", "UI_Index_v2", "UI_Index_v3" }) :: { string },
 		Attribute = "Blur",
 	},
 	-- Vague 64 (a212 ; L-188 B : « le HUD se cache derrière les fenêtres de boutique » ; vidéo, section 3 : la barre du
@@ -594,7 +616,7 @@ local UiMotion = {
 	-- (UiMotionController → Controllers/UI/HudMask.SetAway). Jamais en poursuite : la barre reste ou revient. Réglage
 	-- « animations réduites » : elle part et revient d'un coup. Enabled = false : rien ne bouge.
 	HudAway = {
-		Enabled = VIDEO_RHYTHM,
+		Enabled = VIDEO_RHYTHM and not WINDOW_TAS, -- vague 73 : coupé, le HUD entier est caché (HudHide)
 		-- V0 proposé, absent du doc : les boutiques d'achat (L-188 ; index et récompenses : Clément tranche).
 		Screens = { "UI_WeaponShop", "UI_AuraShop", "UI_RobuxShop", "UI_RobuxShop_v2", "UI_DiamondShop" },
 		Attribute = "HudAway", -- V0 proposé, absent du doc
@@ -632,6 +654,16 @@ local UiMotion = {
 	-- jusqu'au bord de sa carte (le premier parent qui dessine un cadre : fond, UIStroke ou image), moins Inset px et
 	-- l'épaisseur de son propre UIStroke. Aucun visuel de Clément changé (ni ClipsDescendants ni taille). Hors d'une
 	-- liste (HUD…) : comme avant. Enabled = false : comme avant partout.
+	-- Vague 73 (a256, L-230 point 1) : tant qu'une grande fenêtre (Windows, ou un ScreenGui avec l'attribut Attribute = true)
+	-- est allumée, les écrans de Hide sont éteints à l'image même (Controllers/UI/HudMask, masque MaskKey), sans fondu, et
+	-- rendus à l'image où elle s'éteint. Jamais en poursuite (comme le flou). Enabled = false : rien n'est caché.
+	HudHide = {
+		Enabled = WINDOW_TAS,
+		Screens = WINDOWS,
+		Attribute = "HideHud", -- V0 proposé, absent du doc
+		Hide = { "UI_HUD", "UI_Hotbar" }, -- V0 proposé, absent du doc : le HUD (stats, argent, boutons de côté, barre du bas)
+		MaskKey = "WindowHud", -- V0 proposé, absent du doc : clé du masque
+	},
 	HoverFit = {
 		Enabled = true,
 		Inset = 2, -- V0 proposé, absent du doc : px gardés entre le bouton grossi et le bord de la carte
