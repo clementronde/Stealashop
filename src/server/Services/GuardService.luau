@@ -620,6 +620,14 @@ GuardService._PathAvoid = (function(): any
 	end)
 	return if ok and type(result) == "table" then result else nil
 end)() :: any
+-- f70c3b (Chase.Sidestep, T-217) : en vue, il contourne un poteau fin au lieu de le percuter (Guard/Sidestep).
+-- Absent : droit sur le point visé. Champ et non locale, comme _CatchShow.
+GuardService._Sidestep = (function(): any
+	local ok, result = pcall(function(): any
+		return require((script.Parent :: any).Guard.Sidestep)
+	end)
+	return if ok and type(result) == "table" then result else nil
+end)() :: any
 
 local guards: { Guard } = {} -- vigiles de jour
 -- Heure (os.clock) où le dernier vigile de jour d'un magasin est parti (rentré, effacé…) : la vitrine
@@ -1187,10 +1195,10 @@ local function followPath(guard: Guard, goal: Vector3, lookahead: boolean?)
 			end
 			jump = not clearLine(knee, knee + offset * (math.min(length, ahead + 1) / length))
 		end
-		if jump then
-			if GuardService._PathAvoid then
-				GuardService._PathAvoid.BeforeJump(guard.humanoid, waypoints, index, guard.root.Position.Y - guard.rootHeight) -- f70c3 : à la hauteur de la marche
-			end
+		-- f70c3 : à la hauteur de la marche ; f70c3b : jamais vers un présentoir marqué (BeforeJump false).
+		if jump and (GuardService._PathAvoid == nil
+			or GuardService._PathAvoid.BeforeJump(guard.humanoid, waypoints, index, guard.root.Position.Y - guard.rootHeight))
+		then
 			guard.humanoid.Jump = true
 		end
 	end
@@ -1821,6 +1829,11 @@ local function approachCap(guard: Guard, targetAt: Vector3, targetRoot: BasePart
 	if guard.standingStill == true then
 		away = 0 -- a249 (Chase.StuckCatch) : il pousse contre un obstacle sans avancer, comme un voleur arrêté
 	end
+	if Chase.ApproachSlowNear == false and isPositiveNumber(walk) then
+		-- f70c3b (Cantin, 2026-11-18) : le voleur compté à sa marche : le plafond ne freine plus le vigile sur un voleur
+		-- qui s'arrête ou ralentit ; sur un voleur qui court tout droit, rien ne change (sa part qui l'éloigne ≈ sa marche).
+		away = walk
+	end
 	local catchDistance = if guard.kind == "Night" then Night.CatchDistance else Balance.Guard.CatchDistance
 	-- a249 : en retour doux, freinage à Chase.SpringBrake (RushBrake, 1 000 studs/s², dépasse ce que freine un Humanoid).
 	local spring = springReturn(guard)
@@ -1854,6 +1867,26 @@ local function approachCap(guard: Guard, targetAt: Vector3, targetRoot: BasePart
 	return cap
 end
 
+-- f70c3b (Chase.ApproachSlowNear = false, Cantin 2026-11-18) : en poursuite à distance, un voleur qui s'éloigne moins
+-- vite que sa marche − HoldRecallMax (arrêté, ou qui ralentit) ne peut pas être tenu à distance : le rappel ne fait
+-- plus ralentir le vigile sous sa marche + le rapprochement, il continue et l'attrape. Voleur qui court : `speed`.
+-- Champ et non locale : ce fichier est à la limite de 200 locales de haut niveau.
+GuardService._KeepUp = function(guard: Guard, player: Player, targetAt: Vector3, targetRoot: BasePart, targetHumanoid: Humanoid, speed: number): number
+	local walk = targetHumanoid.WalkSpeed
+	if Chase.ApproachSlowNear ~= false or guard.chasePhase ~= "Hold" or ruleKindOf(guard) == "Truck" or not isPositiveNumber(walk) then
+		return speed
+	end
+	local offset = flat(targetAt - guard.root.Position)
+	local away = if offset.Magnitude > 1e-3 then flat(targetRoot.AssemblyLinearVelocity):Dot(offset.Unit) else 0
+	if guard.standingStill == true or away ~= away then
+		away = 0
+	end
+	if away >= walk - Chase.HoldRecallMax then
+		return speed
+	end
+	return math.max(speed, walk + closingSpeed(guard, player))
+end
+
 local function distanceRuleStep(
 	guard: Guard,
 	player: Player,
@@ -1864,7 +1897,8 @@ local function distanceRuleStep(
 )
 	if springReturn(guard) then
 		-- a249 : retour doux (springSpeed), sous le plafond d'arrivée.
-		local speed = math.min(springSpeed(guard, player, targetAt, targetHumanoid, now), approachCap(guard, targetAt, targetRoot, targetHumanoid))
+		local spring = GuardService._KeepUp(guard, player, targetAt, targetRoot, targetHumanoid, springSpeed(guard, player, targetAt, targetHumanoid, now)) -- f70c3b
+		local speed = math.min(spring, approachCap(guard, targetAt, targetRoot, targetHumanoid))
 		if math.abs(speed - guard.humanoid.WalkSpeed) > 0.05 then
 			setWalkSpeed(guard, speed)
 		end
@@ -1909,6 +1943,7 @@ local function distanceRuleStep(
 	if approach == nil and guard.chasePhase == "Hold" and ruleKindOf(guard) ~= "Truck" then
 		speed = math.max(speed + holdRecall(guard, player, targetAt, now), Chase.HoldMinSpeed)
 	end
+	speed = GuardService._KeepUp(guard, player, targetAt, targetRoot, targetHumanoid, speed) -- f70c3b
 	speed = math.min(speed, approachCap(guard, targetAt, targetRoot, targetHumanoid))
 	if math.abs(speed - guard.humanoid.WalkSpeed) > 0.05 then
 		setWalkSpeed(guard, speed)
@@ -2674,6 +2709,10 @@ local function chaseInSight(guard: Guard, targetRoot: BasePart, targetHumanoid: 
 	guard.nextAimAt = now + CHASE_REAIM_INTERVAL
 	local kneeDrop = targetHumanoid.HipHeight + targetRoot.Size.Y / 2 - KNEE_HEIGHT
 	local fresh = interceptPoint(guard, targetRoot, velocity, kneeDrop, targetAt)
+	if GuardService._Sidestep then
+		-- f70c3b (T-217) : un poteau fin sur un de ses flancs : d'abord à côté de lui.
+		fresh = GuardService._Sidestep.Aim(guard.root.Position, fresh, 0.75 * guard.agentRadius, guard.rootHeight - KNEE_HEIGHT, rayParams, isInSafeZone)
+	end
 	if aim == nil or reached or flat(fresh - aim).Magnitude >= AIM_MIN_CHANGE or now >= (guard.chaseAimAt or 0) + AIM_REFRESH then
 		guard.chaseAim = fresh
 		guard.chaseAimAt = now
@@ -3235,10 +3274,9 @@ local function walkHome(guard: Guard, goal: Vector3, now: number): boolean
 		return false
 	end
 	local waypoint = waypoints[index]
-	if waypoint.Action == Enum.PathWaypointAction.Jump then
-		if GuardService._PathAvoid then
-			GuardService._PathAvoid.BeforeJump(guard.humanoid, waypoints, index, guard.root.Position.Y - guard.rootHeight) -- f70c3
-		end
+	if waypoint.Action == Enum.PathWaypointAction.Jump and (GuardService._PathAvoid == nil
+		or GuardService._PathAvoid.BeforeJump(guard.humanoid, waypoints, index, guard.root.Position.Y - guard.rootHeight)) -- f70c3, f70c3b
+	then
 		guard.humanoid.Jump = true
 	end
 	moveTo(guard, waypoint.Position) -- jamais par la zone safe

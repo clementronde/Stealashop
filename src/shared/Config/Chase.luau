@@ -60,6 +60,14 @@ local Chase = {
 	-- Cantin veut voir arriver le vigile pendant une durée réelle. ApproachBrake = 0 : sans ce plafond (avant a224).
 	ApproachBrake = 5, -- V0, absent du doc (studs/s²) ; Cantin 2026-11-16 : ralentir davantage en arrivant (10 → 5)
 	ApproachMinClosing = 3, -- V0 proposé, absent du doc (studs/s)
+	-- f70c3b (Cantin, 2026-11-18 : « pour la poursuite enleve le ralentissement quand le vigil est tres proche du joueur
+	-- car sinon c'est bete car le joueur peut sarreter et le vigil ralenti enormement ») : false : le plafond d'arrivée
+	-- ci-dessus compte toujours le voleur à sa marche, comme s'il courait encore (avant : la part de sa vitesse qui
+	-- l'éloigne, 0 s'il s'arrête, d'où ≈ 3 studs/s au contact) ; et en poursuite à distance, un voleur qui s'éloigne
+	-- moins vite que sa marche − HoldRecallMax (arrêté, ou qui ralentit) n'est plus tenu à distance : le vigile garde au
+	-- moins sa marche + le rapprochement et l'attrape. Un voleur qui court tout droit : rien ne change (tenue à
+	-- HoldDistance, retour doux, capture à CatchDistance). true : l'approche lente d'a224 (la règle d'avant).
+	ApproachSlowNear = false, -- V0 (décision de Cantin du 18/11)
 	ClosingSpeedMax = 8 * K, -- rapprochement à 0 % du minimum (studs/s ; vague 61 : × k)
 	HoldMinSpeed = 12 * K, -- plancher de la poursuite à distance (studs/s), sous toute marche d'un voleur qui court (× k)
 	AboveRequired = "Hold" :: AboveRequired, -- Cantin, 2026-11-14 : au-dessus, « ça garde toujours la même distance »
@@ -216,13 +224,34 @@ local Chase = {
 	-- JumpMargin : un saut de chemin monte de la marche à franchir (point d'arrivée moins point de saut) + JumpMargin
 	-- studs, au moins JumpMin, jamais plus que le saut du rig ; saut sans marche à monter : le saut du rig.
 	-- 0 : toujours le saut du rig (7,2 studs, la règle d'avant).
+	-- f70c3b (Play de rejeu de fusion71 : 24 pièces marquées, mais le vigile sautait encore sur Promo_A depuis 2 studs
+	-- de son bord ; le modificateur posé sur la pièce ne couvre pas son dessus) : chaque pièce marquée reçoit aussi un
+	-- volume invisible (ni collision, ni rayon, ni contact) de son empreinte, de son bas jusqu'à Headroom studs au-dessus
+	-- d'elle, avec le même Label ; Cost = math.huge : l'agent ne passe jamais par là (ni dessus ni par un saut). En plus,
+	-- aucun saut de chemin dont le point de saut ou le suivant est à moins de JumpNear studs d'une pièce marquée.
 	PathAvoid = {
 		Enabled = true, -- V0 : contournement des présentoirs bas
 		Prefixes = { "Promo_" }, -- V0 proposé, absent du doc (question à Clément : d'autres présentoirs bas ?)
 		Label = "GuardAvoid", -- nom de la zone pour PathfindingService (Costs de l'agent)
-		Cost = 25, -- V0 proposé, absent du doc (× le coût d'un stud de sol)
+		Cost = math.huge, -- V0 proposé, absent du doc (× le coût d'un stud de sol ; math.huge : interdit)
+		Headroom = 4, -- V0 proposé, absent du doc (studs au-dessus de la pièce couverts par le volume)
+		JumpNear = 3, -- V0 proposé, absent du doc (studs ; 0 : pas d'interdiction de saut)
 		JumpMargin = 2, -- V0 proposé, absent du doc (studs)
 		JumpMin = 3, -- V0 proposé, absent du doc (studs)
+	},
+	-- f70c3b (T-217, Play de rejeu de fusion71, Kiosque : en poursuite directe dans la rue, le vigile percutait le
+	-- lampadaire Lamp_S1, 1,35 stud de large, et passait de 93 à 49 studs/s en une image) : en vue, avant chaque MoveTo
+	-- vers le point visé (GuardService chaseInSight), server/Services/Guard/Sidestep tire des rayons le long de ses
+	-- flancs (à hauteur du centre et des genoux). Si l'un touche un obstacle fin (pièce qui collisionne, au plus ThinMax
+	-- studs en X et en Z), il vise d'abord un point Beyond studs après l'obstacle, décalé de son côté libre du plus petit
+	-- multiple de ShiftStep (au plus ShiftMax) qui laisse son couloir libre. Murs et gros obstacles : rien ne change.
+	-- Enabled = false : droit sur le point visé (la règle d'avant).
+	Sidestep = {
+		Enabled = true, -- V0 : contournement des poteaux en poursuite directe
+		ThinMax = 3, -- V0 proposé, absent du doc (studs)
+		Beyond = 1.5, -- V0 proposé, absent du doc (studs)
+		ShiftStep = 0.5, -- V0 proposé, absent du doc (studs)
+		ShiftMax = 4, -- V0 proposé, absent du doc (studs)
 	},
 	-- a252 (L-244, Clément, 2026-11-18 : « on voit notre personnage tomber, et après le vigile récupère l'objet ») : quand
 	-- l'objet porté revole sur son rayon après une capture par le vigile d'un magasin PNJ (capture dans son magasin, ou
