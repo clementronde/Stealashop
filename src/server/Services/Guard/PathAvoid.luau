@@ -17,14 +17,22 @@
 -- 3. Coins coupés (GuardService farthestReachable) : avec Enabled, les rayons de ses flancs sont aussi tirés à hauteur
 --    des genoux ; avant, seul le rayon du milieu y voyait une table basse, et il en rognait le coin (Play : il y
 --    montait à pied, sans saut).
+-- 4. f70c3b (Play de rejeu de fusion71 : 24 pièces marquées, mais le vigile sautait encore sur Promo_A, à +4,55, depuis
+--    2 studs de son bord ; le modificateur d'une pièce ne couvre pas son dessus, où marche l'agent) : chaque pièce
+--    marquée reçoit aussi un volume (Part « PathAvoidVolume » dans Workspace/PathAvoidVolumes, invisible, Anchored, ni
+--    collision, ni rayon, ni contact) de son empreinte, de son bas à Chase.PathAvoid.Headroom studs au-dessus d'elle,
+--    avec un PathfindingModifier du même Label ; avec Cost = math.huge, l'agent n'y passe jamais. Pièce retirée du jeu :
+--    volume retiré. Et BeforeJump refuse un saut dont le point de saut ou le suivant est à moins de JumpNear studs
+--    (à plat) d'une pièce marquée : l'appelant ne saute pas.
 --
 -- API :
 --   PathAvoid.Start()                                         au démarrage de GuardService
 --   PathAvoid.Enabled() -> boolean                             Chase.PathAvoid.Enabled (et un Label)
 --   PathAvoid.Costs() -> { [string]: number }?                 Costs de l'agent du PathfindingService (nil : rien)
 --   PathAvoid.BeforeJump(humanoid, waypoints, index, feet)    juste avant humanoid.Jump = true vers waypoints[index]
---                                                              (feet : hauteur de ses pieds)
---   PathAvoid.GetState() -> { Marked: number, Stores: number } nombre de pièces marquées et de magasins suivis
+--     -> boolean                                               (feet : hauteur de ses pieds) ; false : ne pas sauter
+--   PathAvoid.GetState() -> { Marked: number, Stores: number, Volumes: number }
+--                                                              pièces marquées, magasins suivis, volumes en place
 
 local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -38,10 +46,15 @@ local RIG_JUMP_HEIGHT = 7.2 -- saut d'un Humanoid de Roblox par défaut (studs),
 
 local PathAvoid = {}
 
+local VOLUME_NAME = "PathAvoidVolume"
+local VOLUME_FOLDER = "PathAvoidVolumes"
+
 local watched: { [Instance]: boolean } = setmetatable({}, { __mode = "k" }) :: any
 local rigJump: { [Humanoid]: number } = setmetatable({}, { __mode = "k" }) :: any
+local volumes: { [BasePart]: BasePart } = {} -- pièce marquée -> son volume
 local marked = 0
 local stores = 0
+local folder: Folder? = nil
 
 local function config(): any
 	local cfg = Chase.PathAvoid
@@ -92,6 +105,40 @@ local function consider(store: Instance, instance: Instance)
 	modifier.PassThrough = false
 	modifier.Parent = part
 	marked += 1
+	-- f70c3b : volume de l'empreinte de la pièce, de son bas à Headroom studs au-dessus (son dessus compris).
+	local headroom = config().Headroom
+	if type(headroom) ~= "number" or headroom < 0 or not part:IsDescendantOf(Workspace) then
+		return
+	end
+	if folder == nil or folder.Parent == nil then
+		local made = Instance.new("Folder")
+		made.Name = VOLUME_FOLDER
+		made.Parent = Workspace
+		folder = made
+	end
+	local volume = Instance.new("Part")
+	volume.Name = VOLUME_NAME
+	volume.Anchored = true
+	volume.CanCollide = false
+	volume.CanQuery = false
+	volume.CanTouch = false
+	volume.CastShadow = false
+	volume.Transparency = 1
+	volume.Size = Vector3.new(part.Size.X, part.Size.Y + headroom, part.Size.Z)
+	volume.CFrame = part.CFrame * CFrame.new(0, headroom / 2, 0)
+	local label = Instance.new("PathfindingModifier")
+	label.Name = MODIFIER_NAME
+	label.Label = config().Label
+	label.PassThrough = false
+	label.Parent = volume
+	volume.Parent = folder
+	volumes[part] = volume
+	part.AncestryChanged:Connect(function()
+		if volumes[part] == volume and not part:IsDescendantOf(Workspace) then
+			volumes[part] = nil
+			volume:Destroy()
+		end
+	end)
 end
 
 local function watch(store: Instance)
@@ -158,11 +205,36 @@ local function rigJumpOf(humanoid: Humanoid): number
 	return result
 end
 
-function PathAvoid.BeforeJump(humanoid: Humanoid, waypoints: { PathWaypoint }, index: number, feet: number)
+-- f70c3b : `point` à moins de `near` studs (à plat) de l'empreinte d'une pièce marquée, entre son bas (- 1) et
+-- Headroom (+ 1) studs au-dessus d'elle ?
+local function nearMarked(point: Vector3, near: number): boolean
+	local headroom = config().Headroom
+	local above = if type(headroom) == "number" and headroom > 0 then headroom else 0
+	for part in volumes do
+		local here = part.CFrame:PointToObjectSpace(point)
+		local half = part.Size / 2
+		if math.abs(here.X) <= half.X + near and math.abs(here.Z) <= half.Z + near
+			and here.Y >= -half.Y - 1 and here.Y <= half.Y + above + 1
+		then
+			return true
+		end
+	end
+	return false
+end
+
+function PathAvoid.BeforeJump(humanoid: Humanoid, waypoints: { PathWaypoint }, index: number, feet: number): boolean
 	local cfg = config()
+	if enabled() and type(cfg.JumpNear) == "number" and cfg.JumpNear > 0 and index >= 1 and index <= #waypoints then
+		-- f70c3b : jamais un saut vers une pièce marquée ou à son pied.
+		if nearMarked(waypoints[index].Position, cfg.JumpNear)
+			or (index < #waypoints and nearMarked(waypoints[index + 1].Position, cfg.JumpNear))
+		then
+			return false
+		end
+	end
 	local margin = if cfg ~= nil then cfg.JumpMargin else nil
 	if type(margin) ~= "number" or margin <= 0 then
-		return
+		return true
 	end
 	local rig = rigJumpOf(humanoid)
 	local height = rig
@@ -180,10 +252,15 @@ function PathAvoid.BeforeJump(humanoid: Humanoid, waypoints: { PathWaypoint }, i
 	end
 	humanoid.UseJumpPower = false
 	humanoid.JumpHeight = height
+	return true
 end
 
-function PathAvoid.GetState(): { Marked: number, Stores: number }
-	return { Marked = marked, Stores = stores }
+function PathAvoid.GetState(): { Marked: number, Stores: number, Volumes: number }
+	local count = 0
+	for _ in volumes do
+		count += 1
+	end
+	return { Marked = marked, Stores = stores, Volumes = count }
 end
 
 return PathAvoid
