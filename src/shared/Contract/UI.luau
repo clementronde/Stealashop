@@ -1105,8 +1105,10 @@ table.insert(UI.Screens, {
 })
 -- UI_Displayed (DisplayedController ; nom gardé par Clément, L-192 Q4) : panneau des objets exposés, écran entier
 -- allumé et éteint par UI_HUD.RightRail.DisplayedButton (vague 63 : plus d'OpenButton, L-202 point 4) ; sa réserve
--- (vague 63, a206, L-192 Q3, noms de L-202) : Panel.Reserve, facultative ; vague 72 (a242, L-231) : plus montrée tant que
--- Config/Displayed.ShowReserve = false (cachée par le code), Clément peut la retirer.
+-- (vague 63, a206, L-192 Q3, noms de L-202) : Panel.Reserve, facultative ; vague 73 (a255, L-241 point 4, décision de
+-- Cantin du 18/11) : elle revient, titrée INVENTORY par Clément (Config/Displayed.ShowReserve = true), toujours montrée ;
+-- l'écran s'ouvre aussi par UI_Hotbar.Bar.InventoryButton (en fin de fichier). La flèche de fermeture est CloseButton
+-- (L-241 : même nom) : CloseArrowButton (vague 72) n'est plus au contrat, le code le branche encore s'il existe.
 table.insert(UI.Screens, {
 	Name = "UI_Displayed",
 	Class = "ScreenGui",
@@ -1131,8 +1133,6 @@ table.insert(UI.Screens, {
 		{ Path = "Reserve.ReserveList.Template.DisplayButton", Class = BUTTON, Optional = true, Note = "un objet de la réserve ne se remet pas sur un présentoir" },
 		-- Vague 66 (a219) : texte « PLACE » (Config/Displayed.LockedButtonText) sur un objet sous antivol à poser au sol.
 		{ Path = "Reserve.ReserveList.Template.DisplayButton.DisplayLabel", Class = "TextLabel", Optional = true, Note = "un objet sous antivol garde « DISPLAY » sur son bouton" },
-		-- Vague 72 (a242, L-219 point 4) : la flèche vers la droite qui ferme l'écran (la croix CloseButton reste le repli).
-		{ Path = "CloseArrowButton", Class = BUTTON, Optional = true, Note = "l'écran se ferme par la croix CloseButton" },
 	} :: { Element },
 })
 
@@ -1392,5 +1392,15 @@ table.insert(UI.Screens, {
 		{ Path = "Card.CloseButton", Class = BUTTON, Optional = true, Note = "le conseil s'éteint seul (HelpInvite.Duration)" },
 	} :: { Element },
 })
+-- Vague 73 (a255, L-241 point 4, L-248 ; décision de Cantin du 18/11) : l'inventaire est la réserve d'UI_Displayed, sous
+-- les objets exposés (DisplayedController). Noms de Clément, tous facultatifs.
+for _, screenDef in UI.Screens do
+	if screenDef.Name == "UI_Hotbar" then
+		table.insert(screenDef.Elements, { Path = "Bar.InventoryButton", Class = BUTTON, Optional = true, Note = "l'écran des objets exposés et de l'inventaire ne s'ouvre que par le HUD" })
+		table.insert(screenDef.Elements, { Path = "Bar.InventoryButton.InventoryAlert", Class = "GuiObject", Optional = true, Note = "pas de pastille pour un objet entré dans l'inventaire" })
+	elseif screenDef.Name == "UI_Displayed" then
+		table.insert(screenDef.Elements, { Path = "Reserve.ReserveEmpty", Class = "GuiObject", Optional = true, Note = "inventaire vide : rien ne le dit" })
+	end
+end
 
 return UI
