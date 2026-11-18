@@ -118,6 +118,7 @@ type Scene = {
 	cameraType: Enum.CameraType?,
 	cameraSubject: Instance?,
 	playerLook: Vector3?, -- f70c4 : direction de la caméra du joueur avant la scène (son inclinaison au retour)
+	returnFocus: Vector3?, -- f70c4 : centre de l'objet à Land (point visé par le dernier plan)
 	blend: number,
 	blendFrom: CFrame?,
 	masked: boolean,
@@ -494,6 +495,9 @@ end
 -- prenne pas le mélange pour sa propre direction, son CFrame à elle lui est remis juste avant qu'elle calcule
 -- (priorité Camera − 1) ; le mélange est écrit juste après (Camera + 1). Les pièces cachées par la scène restent cachées
 -- jusqu'à la fin du retour (la vue ne repasse pas derrière un rayon redevenu opaque).
+-- 2e passe (Play de fusion71) : le mur (L-234) se cherche depuis un point qui glisse du point visé par le dernier plan
+-- vers la tête du perso (plus de Camera.Focus, encore celui d'avant la scène à la première image : éclair sous le sol) ;
+-- les persos et PNJ (vigile, foule) sont ignorés ; la caméra rapprochée par un obstacle s'en éloigne à OutSpeed au plus.
 
 type Return = {
 	scene: Scene,
@@ -503,6 +507,8 @@ type Return = {
 	from: CFrame, -- dernier plan de la cinématique
 	own: CFrame?, -- CFrame calculé par la caméra du jeu à cette image (avant le mélange)
 	fade: any, -- Reveal/Unbox.ScreenFade (champ de vision, bords), ou nil
+	origin: Vector3, -- point visé par le dernier plan (départ du rayon tête → caméra)
+	pull: number, -- studs dont un obstacle rapproche la caméra en ce moment
 	hidden: { [BasePart]: number },
 	connections: { RBXScriptConnection },
 }
@@ -535,11 +541,13 @@ local function endReturn()
 	end
 end
 
--- Point de vue `cf` rapproché devant ce qui le sépare de `focus` (la tête du perso) : jamais derrière un mur (L-234).
-local function clearView(current: Return, focus: Vector3, cf: CFrame): CFrame
-	local offset = cf.Position - focus
-	if offset.Magnitude < 1e-3 then
-		return cf
+-- Distance libre de `origin` vers `target` : ce qui les sépare, moins Margin (jamais derrière un mur, L-234). Les
+-- persos, les PNJ (tout modèle avec un Humanoid : vigile, foule), les volumes invisibles et la scène sont ignorés.
+local function clearReach(current: Return, origin: Vector3, target: Vector3): number
+	local offset = target - origin
+	local full = offset.Magnitude
+	if full < 1e-3 then
+		return full
 	end
 	local exclude: { Instance } = { fxFolder() }
 	for _, player in Players:GetPlayers() do
@@ -550,26 +558,33 @@ local function clearView(current: Return, focus: Vector3, cf: CFrame): CFrame
 	for part in current.hidden do
 		table.insert(exclude, part)
 	end
-	for _ = 1, 6 do
+	for _ = 1, 8 do
 		local ok, hit = pcall(function(): RaycastResult?
 			local params = RaycastParams.new()
 			params.FilterType = Enum.RaycastFilterType.Exclude
 			params.FilterDescendantsInstances = exclude
 			params.RespectCanCollide = true
-			return Workspace:Raycast(focus, offset, params)
+			return Workspace:Raycast(origin, offset, params)
 		end)
 		if not ok or hit == nil then
-			return cf
+			return full
 		end
 		local part = hit.Instance
+		local model = part:FindFirstAncestorWhichIsA("Model")
+		while model and model:FindFirstChildOfClass("Humanoid") == nil do
+			model = model:FindFirstAncestorWhichIsA("Model")
+		end
+		if model then
+			table.insert(exclude, model) -- perso ou PNJ
+			continue
+		end
 		if part:IsA("BasePart") and part.Transparency >= 0.95 then
 			table.insert(exclude, part) -- volume invisible
 			continue
 		end
-		local reach = math.max((hit.Position - focus).Magnitude - Reveal.Return.Margin, 0)
-		return cf.Rotation + (focus + offset.Unit * reach)
+		return math.max((hit.Position - origin).Magnitude - Reveal.Return.Margin, 0)
 	end
-	return cf
+	return full
 end
 
 -- Première image du retour : la caméra du jeu est rendue (avant qu'elle calcule), tournée derrière le perso (sa
@@ -586,6 +601,10 @@ local function handOver(current: Return, camera: Camera)
 		or flat(current.from.LookVector)
 		or Vector3.new(0, 0, -1)
 	local direction = facing * math.cos(pitch) + UP * math.sin(pitch)
+	-- Point visé par le dernier plan : sur son axe, à la profondeur de l'objet (onLand), sinon de la tête.
+	local target = scene.returnFocus or (if root and root:IsA("BasePart") then root.Position + UP * 1.5 else nil)
+	local depth = if target then (target - current.from.Position):Dot(current.from.LookVector) else 0
+	current.origin = current.from.Position + current.from.LookVector * math.max(depth, 0.5)
 	giveCamera(scene)
 	pcall(function()
 		local at = current.from.Position
@@ -606,6 +625,17 @@ local function returnBefore()
 	end
 end
 
+-- Tête du perso (point que la caméra du jeu suit), sinon nil.
+local function headPosition(): Vector3?
+	local character = localPlayer.Character
+	local head = if character then character:FindFirstChild("Head") else nil
+	if head and head:IsA("BasePart") then
+		return head.Position
+	end
+	local root = if character then character:FindFirstChild("HumanoidRootPart") else nil
+	return if root and root:IsA("BasePart") then root.Position + UP * 1.5 else nil
+end
+
 local function returnAfter(dt: number)
 	local current = back
 	local camera = Workspace.CurrentCamera
@@ -616,18 +646,29 @@ local function returnAfter(dt: number)
 		endReturn() -- une autre caméra scriptée a pris la main : elle décide
 		return
 	end
+	local R = Reveal.Return
 	current.t += dt
 	local e = Logic.easeInOut(math.min(current.t / current.time, 1))
 	local own = camera.CFrame
 	current.own = own
 	if current.fade and Unbox then
-		Unbox.ScreenFade(current.fade, e)
+		Unbox.ScreenFade(current.fade, e, Logic.easeInOut(if R.FovTime > 0 then math.min(current.t / R.FovTime, 1) else 1))
 	end
-	if current.t >= current.time then
+	-- Un obstacle peut rapprocher la caméra d'un coup (L-234), elle s'en éloigne à OutSpeed au plus.
+	local cf = current.from:Lerp(own, e)
+	local origin = current.origin:Lerp(headPosition() or current.origin, e)
+	local offset = cf.Position - origin
+	local wanted = offset.Magnitude
+	local blocked = wanted - clearReach(current, origin, cf.Position)
+	current.pull = math.clamp(math.max(blocked, current.pull - R.OutSpeed * dt), 0, wanted)
+	if current.t >= current.time and (current.pull <= 0.05 or current.t >= current.time + R.Settle) then
 		endReturn() -- l'image est déjà celle de la caméra du jeu
 		return
 	end
-	camera.CFrame = clearView(current, camera.Focus.Position, current.from:Lerp(own, e))
+	if wanted > 1e-3 then
+		cf = cf.Rotation + (origin + offset.Unit * (wanted - current.pull))
+	end
+	camera.CFrame = cf
 end
 
 local function startReturn(scene: Scene, fade: any)
@@ -649,6 +690,8 @@ local function startReturn(scene: Scene, fade: any)
 		from = CFrame.identity, -- dernier plan, pris à la première image (handOver)
 		own = nil,
 		fade = fade,
+		origin = Vector3.zero, -- pris à la première image (handOver)
+		pull = 0,
 		hidden = scene.hidden,
 		connections = {},
 	}
@@ -918,6 +961,7 @@ local function onLand(scene: Scene)
 			doneSent += 1
 			net.Client.RevealDone:Fire(scene.id)
 		end
+		scene.returnFocus = itemCenter(scene)
 		releaseOpener(scene, true) -- f70c4 : retour au jeu en douceur (Config/Reveal.Return)
 	end
 end
@@ -1381,6 +1425,7 @@ local function begin(payload: Payload)
 		cameraType = nil,
 		cameraSubject = nil,
 		playerLook = nil,
+		returnFocus = nil,
 		blend = 0,
 		blendFrom = nil,
 		masked = false,

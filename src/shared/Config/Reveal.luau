@@ -63,6 +63,12 @@ local Reveal = {
 		Margin = 0.6, -- V0 : studs gardés devant un mur entre la tête du perso et la caméra (L-234)
 		PitchMin = -1.1, -- V0 : radians (−63°) : inclinaison d'avant la cinématique bornée à cela…
 		PitchMax = 0.2, -- V0 : … et à cela (+11°)
+		-- f70c4, 2e passe (Play de fusion71) : le champ de vision revient en FovTime s (avant que la poursuite ou un
+		-- autre code le reprenne : il décide alors, sans à-coup) ; un obstacle qui a rapproché la caméra la laisse
+		-- s'éloigner à OutSpeed studs/s au plus (pas de saut), le retour finissant au plus Settle s après Time.
+		FovTime = 0.2, -- V0 : s
+		OutSpeed = 25, -- V0 : studs/s
+		Settle = 0.5, -- V0 : s
 	},
 	-- HUD masqué chez l'ouvreur (Controllers/UI/HudMask) : seuls ces écrans restent (UI_Escape : le flash de la
 	-- révélation, UiFeelController.RevealFlash, Épique et plus). Jamais touchés : HeistFeel.NeverMask.
