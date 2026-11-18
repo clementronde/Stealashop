@@ -796,6 +796,20 @@ local List: { RemoteDef } = {
 		Args = { id("bubbleId") },
 		RatePerSecond = 4, -- V0 proposé, absent du doc (au plus 2 bulles à la fois, une toutes les 2 à 3 s)
 	},
+	{
+		-- Vague 73 (a254, L-240 point 3 ; Shared/Announce, AnnounceController), absent du tableau 9.4 : une annonce à
+		-- tout le serveur dans UI_Announce. message en RichText (balises <font>), detail = petite ligne, icon = noms de
+		-- Decals séparés par « | » (vide : l'icône de Clément), plain = message sans balises (repli Notify du client).
+		Name = "Announce",
+		Direction = "ServerToClient",
+		Reliable = true,
+		Args = {
+			{ Name = "message", Kind = "string", Max = 400 },
+			{ Name = "detail", Kind = "string", Min = 0, Max = 120 },
+			{ Name = "icon", Kind = "string", Min = 0, Max = 160 },
+			{ Name = "plain", Kind = "string", Max = MAX_MESSAGE_LENGTH },
+		},
+	},
 }
 
 return {

@@ -124,6 +124,7 @@ local Monetization = require(Shared.Config.Monetization)
 local Tools = require(Shared.Config.Tools)
 local Format = require(Shared.Format)
 local Net = require(Shared.Net.Net)
+local Announce = require(Shared.Announce) -- a254 (L-240 point 3)
 local ProfileTypes = require(Shared.Types.Profile)
 
 local DataService = require(script.Parent.DataService)
@@ -571,14 +572,8 @@ local function grantServerLuck(player: Player, product: Product): string
 	local message = if running and running > multiplier
 		then string.format(config.Messages.Queued, player.DisplayName, label, length, `×{running}`)
 		else string.format(config.Messages.Started, player.DisplayName, label, length)
-	for _, other in Players:GetPlayers() do
-		local ok, err = pcall(function()
-			Net.Server.Notify:Fire(other, message, config.AnnounceKind)
-		end)
-		if not ok then
-			warn(`[MonetizationService] annonce de la chance du serveur vers {other.Name} : {err}`)
-		end
-	end
+	local queued = if running and running > multiplier then running else nil
+	Announce.serverLuck(player, multiplier, minutes, queued, product.Icon, message) -- a254 : UI_Announce (Notify si coupé)
 	return `chance du serveur {label} {length}{if running and running > multiplier then ` en attente derrière ×{running}` else ""} ({#luckQueue} tranche(s))`
 end
 
