@@ -179,16 +179,29 @@ local Chase = {
 	-- a un nom qui commence par StuckThinPrefix ; une porte, une vitrine, un mur, un frigo ou un comptoir reste un mur,
 	-- quelle que soit son épaisseur. "" : tout panneau de StuckWallMax studs au plus (la règle d'avant).
 	StuckThinPrefix = "Shelf", -- V0 proposé, absent du doc (rayons des magasins : Shelf_A_EndA, Shelf_WallL_Back…)
-	-- a250 (Play de fusion68 : un vigile qui marchait encore à 3 studs/s vers un voleur arrêté passait pour bloqué) :
-	-- le vigile n'est bloqué que si, sur les dernières StuckCatchTime s (fenêtre glissante), il a parcouru au plus
-	-- StuckMoveMax studs et au plus StuckProgressShare de ce que sa marche (au moins ApproachMinClosing) lui ferait
-	-- parcourir. 0 : seulement StuckMoveMax depuis son dernier mouvement (la règle d'avant).
+	-- a250 (Play de fusion68 : un vigile qui marchait encore à 3 studs/s vers un voleur arrêté passait pour bloqué) ;
+	-- a250b (Play de fusion69 : le voleur coincé derrière Shelf_A_EndA attendait 1,4 s de plus) : en terrain ouvert
+	-- (la ligne entre eux ne touche rien), le vigile n'est bloqué que si, sur les dernières StuckCatchTime s (fenêtre
+	-- glissante), il a parcouru au plus StuckMoveMax studs et au plus StuckProgressShare de ce que sa marche (au moins
+	-- ApproachMinClosing) lui ferait parcourir ; derrière un panneau de rayon (StuckThinPrefix), StuckMoveMax studs
+	-- suffisent (il longe le rayon). 0 : seulement StuckMoveMax depuis son dernier mouvement (la règle d'avant).
 	StuckProgressShare = 0.25, -- V0 proposé, absent du doc
 	-- a250 (Play de fusion68, Supérette : voleur coincé derrière Shelf_A_EndA attrapé 3,3 à 3,4 s après l'arrivée du
 	-- vigile, qui contournait le rayon à 3-10 studs/s) : quand le vigile suit un chemin, le plafond d'arrivée
 	-- (ApproachBrake) mesure d sur la longueur du chemin qui reste, jamais moins que la ligne droite : il ne freine plus
 	-- dans le détour comme s'il était déjà arrivé. false : d en ligne droite (la règle d'avant).
 	ApproachAlongPath = true, -- V0
+	-- a250b (Play de fusion69, Supérette : le même voleur attrapé 4,2 s après les 14 studs, le vigile freinant à
+	-- ApproachBrake tout le détour) : voleur arrêté (StuckMoveMax en StuckCatchTime s) et hors de vue du vigile (son
+	-- dernier pas de pilotage passait par un chemin) : il ne voit pas arriver le vigile, le plafond d'arrivée freine à
+	-- ApproachBrakeHidden (studs/s² réels) au lieu d'ApproachBrake, sauf s'il l'a vu arrêté depuis son dernier
+	-- mouvement ; et sur un voleur arrêté, le plafond ne remonte plus (chemin recalculé). 0 : ApproachBrake partout
+	-- et plafond libre (la règle d'avant).
+	ApproachBrakeHidden = 20, -- V0 proposé, absent du doc (studs/s²)
+	-- a250b (même Play : sauté 4,5 studs avant la table Promo_A, retombé à son pied, 0,7 s à s'y hisser) : au point de
+	-- saut d'un chemin, le vigile saute quand l'obstacle à hauteur de genou est à moins de WalkSpeed × PathJumpLead
+	-- + 1 stud devant lui, ou à 2 studs du point. 0 : dès qu'il vise le point (la règle d'avant).
+	PathJumpLead = 0.3, -- V0 proposé, absent du doc (s)
 	-- a249 : diagnostic de la poursuite dans la sortie (aussi hors Studio) : chaque seconde, la distance, la phase,
 	-- la distance prévue et les parts de la vitesse du vigile ; à chaque capture, la distance, le temps depuis
 	-- l'apparition et dedans/dehors. En Studio, workspace:SetAttribute("ChaseDebug", true) fait de même.

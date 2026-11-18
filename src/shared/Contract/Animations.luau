@@ -22,8 +22,8 @@ local Animations = {}
 Animations.FolderName = "Animations"
 Animations.PlayerFolder = { "Assets", "Animations", "Player" }
 
--- 14 animations du joueur (15 avant le retrait d'Unbox et de Celebrate, vague 52 ; BenchLift et BenchIdle
--- retirés en v2 ; HoldItem ajoutée en vague 56).
+-- 23 animations du joueur (15 avant le retrait d'Unbox et de Celebrate, vague 52 ; BenchLift et BenchIdle
+-- retirés en v2 ; HoldItem ajoutée en vague 56 ; TrapStuck et TrapNetted en vague 72 ; les 7 Unbox_* de L-237).
 Animations.Player = {
 	{ Name = "HitWindow", Loop = false, Priority = "Action", Marker = "Impact" },
 	{ Name = "HitWindowHeavy", Loop = false, Priority = "Action", Marker = "Impact" },
@@ -51,6 +51,15 @@ Animations.Player = {
 	-- en boucle tant que l'effet dure. Pas encore livrées : orange au ContractChecker, Stunned se joue à leur place.
 	{ Name = "TrapStuck", Loop = true, Priority = "Action" },
 	{ Name = "TrapNetted", Loop = true, Priority = "Action" },
+	-- L-237 (Clément, livrées pour la nouvelle ouverture du colis, L-236) : corps entier, sans boucle, marqueur Impact à
+	-- chaque moment fort (Unbox_Hammer : Top, masse en l'air, puis Impact). Pas encore jouées par le code.
+	{ Name = "Unbox_Hammer", Loop = false, Priority = "Action", Marker = "Impact" },
+	{ Name = "Unbox_Saw", Loop = false, Priority = "Action", Marker = "Impact" },
+	{ Name = "Unbox_Crowbar", Loop = false, Priority = "Action", Marker = "Impact" },
+	{ Name = "Unbox_Drill", Loop = false, Priority = "Action", Marker = "Impact" },
+	{ Name = "Unbox_Kick", Loop = false, Priority = "Action", Marker = "Impact" },
+	{ Name = "Unbox_Search", Loop = false, Priority = "Action", Marker = "Impact" },
+	{ Name = "Unbox_Inspect", Loop = false, Priority = "Action", Marker = "Impact" },
 } :: { Anim }
 
 -- 5 animations dans chaque modèle de vigile, de jour comme de nuit (mêmes noms).
