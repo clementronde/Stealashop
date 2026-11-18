@@ -1106,6 +1106,7 @@ Chaque étape est envoyée une seule fois par joueur avec `AnalyticsService:LogO
 
 | Date | Décision | Par |
 | --- | --- | --- |
+| 2026-11-18 | Le sol du hub passe en grandes dalles à tenons d'après la vidéo de référence E : dalles de 8 × 8 (quelques-unes de 16 de long), teinte de chaque dalle à ±6 %, quelques dalles usées plus pâles, joints sombres fins, rangs décalés. Essai validé par Clément sur un morceau avant tout le sol. | Clément |
 | 2026-11-18 | Ouverture du colis : le nombre d'actions du perso dépend du résultat (peu d'actions sans amélioration ni bon objet), le colis n'a pas à atteindre la rareté de l'objet (un colis Commun peut donner un Légendaire, révélé par les silhouettes), et plus aucun mot au-dessus des coups. Liaison L-253. | Clément |
 | 2026-11-18 | UI plus grande, d'après un jeu de référence filmé par Clément (fiches `2026-11-18_Reference_E_analyse_*` dans StealAShop-Art/References/Videos_Jeux) : fenêtres d'environ 61-73 % × 78-83 % de l'écran, titres à 5,5 % et prix à 3,8 % de la hauteur, boutons du HUD carrés à environ 10 % de la hauteur (au moins 44 px sur téléphone). Remplace les 51-53 % pris de Throw a Seed ; le style de la boutique Robux reste la référence. | Clément |
 | 2026-11-18 | Les étiquettes des objets exposés (`BB_Item`) se voient de loin, depuis le hub, avec le revenu par seconde en plus gros, pour donner envie de braquer la boutique. Liaison L-251 (L-250 annulée). | Clément |
