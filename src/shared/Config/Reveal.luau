@@ -53,6 +53,17 @@ local Reveal = {
 		FarBack = 26, -- studs devant la vitrine, plus 1,2 × la hauteur de l'objet
 		FarUp = 14, -- studs au-dessus du sol, plus 0,6 × la hauteur de l'objet
 	},
+	-- f70c4 (Cantin, 18/11 : « retour au jeu fluide car fin anim trop brusque ») : à Land, l'ouvreur reprend la main
+	-- tout de suite (caméra du jeu rendue, HUD rendu, RevealDone au serveur qui le libère), mais ce qu'il voit glisse en
+	-- Time s du dernier plan vers la caméra du jeu, tournée derrière le perso (son inclinaison et son zoom d'avant la
+	-- cinématique) ; champ de vision et bords d'UI_Unbox en fondu en même temps. Mort, départ, nouvelle cinématique,
+	-- autre caméra scriptée : fin immédiate. 0 = d'un coup, comme avant.
+	Return = {
+		Time = 0.8, -- V0 : s
+		Margin = 0.6, -- V0 : studs gardés devant un mur entre la tête du perso et la caméra (L-234)
+		PitchMin = -1.1, -- V0 : radians (−63°) : inclinaison d'avant la cinématique bornée à cela…
+		PitchMax = 0.2, -- V0 : … et à cela (+11°)
+	},
 	-- HUD masqué chez l'ouvreur (Controllers/UI/HudMask) : seuls ces écrans restent (UI_Escape : le flash de la
 	-- révélation, UiFeelController.RevealFlash, Épique et plus). Jamais touchés : HeistFeel.NeverMask.
 	MaskKey = "Reveal",
