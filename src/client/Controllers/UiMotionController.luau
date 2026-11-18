@@ -21,6 +21,9 @@
 --   - Cartes au défilement (vague 66, a222, Config/UiMotion.ScrollReveal) : un écran qui s'allume arme
 --     Controllers/UI/ScrollReveal (les cartes de ses listes hors de la zone visible entrent en défilant) ; éteint, il
 --     est désarmé.
+--   - Vague 73 (a256, L-230, Config/UiMotion.WindowTas) : flou sous la caméra (Blur.UnderCamera), sortie Blur.OutDelay s
+--     après le clic ; tout le HUD (HudHide.Hide) éteint à l'image où une grande fenêtre (HudHide.Screens, ou l'attribut
+--     HudHide.Attribute = true) s'allume, rendu à l'image où elle s'éteint (HudMask, masque HudHide.MaskKey).
 -- Connexions : une par écran pour Enabled, DescendantAdded et AncestryChanged, et une ou deux par élément qui porte
 -- un attribut d'animation ; toutes coupées quand l'élément quitte l'écran ou que l'écran quitte le PlayerGui.
 -- Aucun script dans l'UI ; aucune valeur de Clément changée durablement.
@@ -43,7 +46,11 @@ local Motion = require(UI:WaitForChild("Motion"))
 
 type ChaseApi = { IsChased: () -> boolean }
 -- HudMask (vague 64) : lu s'il est là (un banc qui ne monte que Motion et Appear : pas de barre qui s'écarte).
-type HudMaskApi = { SetAway: (boolean, boolean?) -> () }
+type HudMaskApi = {
+	SetAway: (boolean, boolean?) -> (),
+	Push: (string, { HideScreens: { string }? }) -> (),
+	Pop: (string) -> (),
+}
 local hudMask: HudMaskApi? = (function(): HudMaskApi?
 	local module = UI:FindFirstChild("HudMask")
 	if module == nil or not module:IsA("ModuleScript") then
@@ -71,6 +78,14 @@ local scrollReveal: ScrollRevealApi? = (function(): ScrollRevealApi?
 end)()
 
 local awayScreens: { [ScreenGui]: boolean } = {}
+-- Vague 73 (a256, L-230 point 1, Config/UiMotion.HudHide) : grandes fenêtres qui cachent tout le HUD.
+local HIDE = UiMotion.HudHide
+local HIDE_SCREENS: { [string]: boolean } = {}
+for _, name in HIDE.Screens do
+	HIDE_SCREENS[name] = true
+end
+local hideScreens: { [ScreenGui]: boolean } = {}
+local hideWanted = false
 local awayWanted = false
 local awayRecheck = 0
 
@@ -78,7 +93,7 @@ local SCREEN_PREFIX = "UI_"
 local TEMPLATE = "Template"
 local BLUR = UiMotion.Blur
 local BLUR_IN_INFO = TweenInfo.new(BLUR.InTime, BLUR.Style, BLUR.Direction)
-local BLUR_OUT_INFO = TweenInfo.new(BLUR.OutTime, BLUR.Style, BLUR.Direction)
+local BLUR_OUT_INFO = TweenInfo.new(BLUR.OutTime, BLUR.Style, BLUR.Direction, 0, false, BLUR.OutDelay)
 local IS_STUDIO = RunService:IsStudio()
 
 local BLUR_SCREENS: { [string]: boolean } = {}
@@ -187,7 +202,15 @@ local function setBlur(wanted: boolean)
 	end
 	local effect = blur
 	if wanted and (effect == nil or effect.Parent == nil) then
-		local parent = lighting()
+		-- Vague 73 (L-230) : sous la caméra (rien dans Lighting, qui est à Clément) ; Lighting si elle manque.
+		local camera: Instance? = nil
+		if BLUR.UnderCamera then
+			local ok, found = pcall(function(): any
+				return game:GetService("Workspace").CurrentCamera
+			end)
+			camera = if ok and typeof(found) == "Instance" then found else nil
+		end
+		local parent = if camera ~= nil then camera else lighting()
 		if parent == nil then
 			return
 		end
@@ -252,9 +275,46 @@ local function updateAway(dt: number)
 	end
 end
 
+-- Vague 73 (a256, L-230 point 1, Config/UiMotion.HudHide) : tout le HUD (HudHide.Hide) éteint tant qu'une grande
+-- fenêtre est allumée, à l'image même où elle s'allume et jusqu'à l'image où elle s'éteint (Controllers/UI/HudMask,
+-- masque inverse HideScreens). Jamais en poursuite.
+local function wantsHide(): boolean
+	if not HIDE.Enabled then
+		return false
+	end
+	local api = chase
+	if api ~= nil and api.IsChased() then
+		return false
+	end
+	for gui in hideScreens do
+		if gui.Enabled and gui.Parent ~= nil then
+			return true
+		end
+	end
+	return false
+end
+
+local function updateHide()
+	local wanted = wantsHide()
+	if wanted == hideWanted then
+		return
+	end
+	local api = hudMask
+	if api == nil or type((api :: any).Push) ~= "function" then
+		return
+	end
+	hideWanted = wanted
+	if wanted then
+		api.Push(HIDE.MaskKey, { HideScreens = table.clone(HIDE.Hide) })
+	else
+		api.Pop(HIDE.MaskKey)
+	end
+end
+
 local function updateBlur(dt: number?)
 	setBlur(wantsBlur())
 	updateAway(dt or 0)
+	updateHide()
 	local anyOpen = false
 	for gui in blurScreens do
 		if gui.Enabled then
@@ -263,6 +323,12 @@ local function updateBlur(dt: number?)
 		end
 	end
 	for gui in awayScreens do
+		if gui.Enabled then
+			anyOpen = true
+			break
+		end
+	end
+	for gui in hideScreens do
 		if gui.Enabled then
 			anyOpen = true
 			break
@@ -375,6 +441,7 @@ local function unwatchScreen(screen: Instance)
 	if screen:IsA("ScreenGui") then
 		blurScreens[screen :: ScreenGui] = nil
 		awayScreens[screen :: ScreenGui] = nil
+		hideScreens[screen :: ScreenGui] = nil
 	end
 	updateBlur()
 end
@@ -392,6 +459,9 @@ local function watchScreen(screen: Instance)
 	if AWAY.Enabled and (AWAY_SCREENS[gui.Name] or gui:GetAttribute(AWAY.Attribute) == true) then
 		awayScreens[gui] = true
 	end
+	if HIDE.Enabled and (HIDE_SCREENS[gui.Name] or gui:GetAttribute(HIDE.Attribute) == true) then
+		hideScreens[gui] = true
+	end
 	table.insert(list, gui:GetPropertyChangedSignal("Enabled"):Connect(function()
 		if gui.Enabled then
 			Appear.Open(gui)
@@ -406,7 +476,7 @@ local function watchScreen(screen: Instance)
 				reveal.Disarm(gui)
 			end
 		end
-		if blurScreens[gui] or awayScreens[gui] then
+		if blurScreens[gui] or awayScreens[gui] or hideScreens[gui] then
 			updateBlur()
 		end
 	end))
@@ -422,7 +492,7 @@ local function watchScreen(screen: Instance)
 	for _, descendant in gui:GetDescendants() do
 		watchObject(descendant, gui)
 	end
-	if blurScreens[gui] or awayScreens[gui] then
+	if blurScreens[gui] or awayScreens[gui] or hideScreens[gui] then
 		updateBlur()
 	end
 end
