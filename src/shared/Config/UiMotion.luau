@@ -663,6 +663,10 @@ local UiMotion = {
 		Attribute = "HideHud", -- V0 proposé, absent du doc
 		Hide = { "UI_HUD", "UI_Hotbar" }, -- V0 proposé, absent du doc : le HUD (stats, argent, boutons de côté, barre du bas)
 		MaskKey = "WindowHud", -- V0 proposé, absent du doc : clé du masque
+		-- Correctif f70 (B2 ; décision de Cantin du 18/11, L-241 : UI_Hotbar.Bar.InventoryButton ouvre ET ferme
+		-- UI_Displayed) : écrans de Hide qu'une grande fenêtre laisse allumés, par fenêtre. Un écran de Hide n'est gardé
+		-- que si TOUTES les grandes fenêtres allumées le gardent. Flou et ouverture de ces fenêtres : inchangés.
+		Keep = { UI_Displayed = { "UI_Hotbar" } } :: { [string]: { string } }, -- V0 proposé, absent du doc
 	},
 	HoverFit = {
 		Enabled = true,

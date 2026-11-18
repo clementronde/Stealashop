@@ -22,7 +22,9 @@ local HelpInvite = {
 	MaxWait = 8, -- V0 : s au plus à attendre la fin de la scène
 	Duration = 10, -- V0 : la carte s'éteint seule après ces secondes (0 = jamais)
 	Cooldown = 60, -- V0 : s au moins entre deux cartes
-	Night = false, -- V0 : pas de conseil après une arrestation de nuit (un ami n'y change rien)
+	-- Décision de Cantin du 18/11 (B5, « la nuit devrait mettre le message quand meme ») : le conseil aussi après une
+	-- arrestation de nuit (avant : false, V0).
+	Night = true,
 }
 
 export type HelpInvite = typeof(HelpInvite)

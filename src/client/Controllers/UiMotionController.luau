@@ -23,7 +23,8 @@
 --     est désarmé.
 --   - Vague 73 (a256, L-230, Config/UiMotion.WindowTas) : flou sous la caméra (Blur.UnderCamera), sortie Blur.OutDelay s
 --     après le clic ; tout le HUD (HudHide.Hide) éteint à l'image où une grande fenêtre (HudHide.Screens, ou l'attribut
---     HudHide.Attribute = true) s'allume, rendu à l'image où elle s'éteint (HudMask, masque HudHide.MaskKey).
+--     HudHide.Attribute = true) s'allume, rendu à l'image où elle s'éteint (HudMask, masque HudHide.MaskKey) ; sauf
+--     les écrans que toutes les fenêtres allumées gardent (HudHide.Keep, correctif f70 : UI_Displayed garde UI_Hotbar).
 -- Connexions : une par écran pour Enabled, DescendantAdded et AncestryChanged, et une ou deux par élément qui porte
 -- un attribut d'animation ; toutes coupées quand l'élément quitte l'écran ou que l'écran quitte le PlayerGui.
 -- Aucun script dans l'UI ; aucune valeur de Clément changée durablement.
@@ -84,8 +85,17 @@ local HIDE_SCREENS: { [string]: boolean } = {}
 for _, name in HIDE.Screens do
 	HIDE_SCREENS[name] = true
 end
+-- Correctif f70 (B2, Config/UiMotion.HudHide.Keep) : par grande fenêtre, les écrans de Hide qu'elle laisse allumés.
+local HIDE_KEEP: { [string]: { [string]: boolean } } = {}
+for window, kept in HIDE.Keep do
+	local set: { [string]: boolean } = {}
+	for _, name in kept do
+		set[name] = true
+	end
+	HIDE_KEEP[window] = set
+end
 local hideScreens: { [ScreenGui]: boolean } = {}
-local hideWanted = false
+local hideKey = "" -- écrans de Hide masqués en ce moment, joints par des virgules ("" : masque retiré)
 local awayWanted = false
 local awayRecheck = 0
 
@@ -278,34 +288,51 @@ end
 -- Vague 73 (a256, L-230 point 1, Config/UiMotion.HudHide) : tout le HUD (HudHide.Hide) éteint tant qu'une grande
 -- fenêtre est allumée, à l'image même où elle s'allume et jusqu'à l'image où elle s'éteint (Controllers/UI/HudMask,
 -- masque inverse HideScreens). Jamais en poursuite.
-local function wantsHide(): boolean
+-- Correctif f70 (B2) : les écrans de Hide à éteindre sont ceux qu'au moins une grande fenêtre allumée ne garde pas
+-- (HudHide.Keep : UI_Displayed garde UI_Hotbar, dont l'InventoryButton le referme). Liste vide : rien à cacher.
+local function wantedHide(): { string }
+	local list: { string } = {}
 	if not HIDE.Enabled then
-		return false
+		return list
 	end
 	local api = chase
 	if api ~= nil and api.IsChased() then
-		return false
+		return list
 	end
+	local open: { ScreenGui } = {}
 	for gui in hideScreens do
 		if gui.Enabled and gui.Parent ~= nil then
-			return true
+			table.insert(open, gui)
 		end
 	end
-	return false
+	if #open == 0 then
+		return list
+	end
+	for _, name in HIDE.Hide do
+		for _, gui in open do
+			local kept = HIDE_KEEP[gui.Name]
+			if kept == nil or not kept[name] then
+				table.insert(list, name)
+				break
+			end
+		end
+	end
+	return list
 end
 
 local function updateHide()
-	local wanted = wantsHide()
-	if wanted == hideWanted then
+	local list = wantedHide()
+	local key = table.concat(list, ",")
+	if key == hideKey then
 		return
 	end
 	local api = hudMask
 	if api == nil or type((api :: any).Push) ~= "function" then
 		return
 	end
-	hideWanted = wanted
-	if wanted then
-		api.Push(HIDE.MaskKey, { HideScreens = table.clone(HIDE.Hide) })
+	hideKey = key
+	if #list > 0 then
+		api.Push(HIDE.MaskKey, { HideScreens = list }) -- remplace le masque d'avant (même clé) si la liste change
 	else
 		api.Pop(HIDE.MaskKey)
 	end

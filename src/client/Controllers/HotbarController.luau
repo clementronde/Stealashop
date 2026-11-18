@@ -1131,11 +1131,36 @@ local function fullScreenOpen(): boolean
 	return false
 end
 
+-- Correctif f70 (B2) : Controllers/UI/HudMask, lu au premier besoin s'il est là (un banc qui ne le monte pas : comme
+-- avant). Tant qu'il masque la barre (grande fenêtre allumée, Config/UiMotion.HudHide), elle n'est pas rallumée ici :
+-- le masque la rend lui-même quand la fenêtre s'éteint.
+type HudMaskApi = { IsMasked: (ScreenGui) -> boolean }
+local hudMask: HudMaskApi? = nil
+
+local function maskedByHud(gui: ScreenGui): boolean
+	local api = hudMask
+	if api == nil then
+		local folder = script.Parent:FindFirstChild("UI")
+		local module = if folder then folder:FindFirstChild("HudMask") else nil
+		if module == nil or not module:IsA("ModuleScript") then
+			return false
+		end
+		local ok, result = pcall(require, module)
+		if not ok or type(result) ~= "table" or type((result :: any).IsMasked) ~= "function" then
+			return false
+		end
+		api = result :: any
+		hudMask = api
+	end
+	local found: HudMaskApi = api :: HudMaskApi
+	return found.IsMasked(gui)
+end
+
 -- Enabled = branché, pas en poursuite (jamais rallumé pendant une poursuite : ChaseFeelController) et pas
--- sous un écran plein (FULL_SCREENS).
+-- sous un écran plein (FULL_SCREENS) ; rien n'est écrit tant que HudMask la masque (correctif f70).
 local function updateEnabled()
 	local current = screen
-	if current == nil or current.gui.Parent == nil then
+	if current == nil or current.gui.Parent == nil or maskedByHud(current.gui) then
 		return
 	end
 	local wanted = not isChased() and not fullScreenOpen()

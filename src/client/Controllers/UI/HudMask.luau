@@ -20,6 +20,7 @@
 -- API (client) :
 --   HudMask.Push(key, spec)    spec = { KeepScreens = { string }?, Partial = { [string]: { string } }? }
 --   HudMask.Pop(key)           retire ce masque (rien s'il n'y est pas) ; plus aucun masque : tout est rendu
+--   HudMask.IsMasked(screen) -> boolean   (correctif f70) cet écran est masqué en ce moment : son code ne le rallume pas
 --   HudMask.IsActive(key?) -> boolean
 --   HudMask.Refresh()          revoit les écrans tout de suite (fait aussi à chaque Push et Pop)
 --   HudMask.GetHidden() -> (écrans masqués, éléments masqués)   pour un banc
@@ -316,6 +317,12 @@ function HudMask.IsActive(key: string?): boolean
 		return masks[key] ~= nil
 	end
 	return anyMask()
+end
+
+-- Correctif f70 (B2) : HotbarController le lit pour ne plus rallumer UI_Hotbar sous une grande fenêtre (il se battait
+-- avec le masque toutes les 0,25 s : clignotement possible).
+function HudMask.IsMasked(screen: ScreenGui): boolean
+	return screens[screen] ~= nil
 end
 
 ------------------------------------------------------------------------------
