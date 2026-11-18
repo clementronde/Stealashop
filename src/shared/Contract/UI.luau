@@ -1280,6 +1280,10 @@ for _, screenDef in UI.Screens do
 			{ Path = "Crate.Odds.Odd_1", Optional = true, Note = "les cases entrent dans l'ordre commun de la Cascade" },
 			{ Path = "Crate.NewBadge", Optional = true, Note = "pas de badge NEW! qui saute" },
 			{ Path = "Decor", Optional = true, Note = "pas de décor suspendu (caché sur téléphone)" },
+			-- Vague 73 (a253, L-242 point 3, L-247) : RobuxShopController.
+			{ Path = "Crate.Icon.Preview", Class = "ViewportFrame", Optional = true, Note = "pas de caisse 3D (l'image d'Icon reste)" },
+			{ Path = "Featured.OldPrice", Optional = true, Note = "pas d'ancien prix du pack de départ" },
+			{ Path = "Featured.DiscountTag.DiscountLabel", Optional = true, Note = "pas d'étiquette de remise du pack de départ" },
 		} :: { Element } do
 			table.insert(screenDef.Elements, element)
 		end
