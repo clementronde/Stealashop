@@ -612,6 +612,14 @@ GuardService._CatchShow = (function(): any
 	end)
 	return if ok and type(result) == "table" then result else nil
 end)() :: any
+-- f70c3 (Chase.PathAvoid) : présentoirs bas (Promo_*) contournés par le chemin, saut à la hauteur de la marche
+-- (Guard/PathAvoid). Absent : la règle d'avant. Champ et non locale, comme _CatchShow.
+GuardService._PathAvoid = (function(): any
+	local ok, result = pcall(function(): any
+		return require((script.Parent :: any).Guard.PathAvoid)
+	end)
+	return if ok and type(result) == "table" then result else nil
+end)() :: any
 
 local guards: { Guard } = {} -- vigiles de jour
 -- Heure (os.clock) où le dernier vigile de jour d'un magasin est parti (rentré, effacé…) : la vitrine
@@ -955,6 +963,7 @@ local function agentFor(model: Model): AgentParams
 		AgentCanJump = true,
 		AgentCanClimb = false,
 		WaypointSpacing = WAYPOINT_SPACING,
+		Costs = if GuardService._PathAvoid then GuardService._PathAvoid.Costs() else nil, -- f70c3
 	}
 end
 
@@ -1100,6 +1109,8 @@ local function farthestReachable(guard: Guard, waypoints: { PathWaypoint }, inde
 	local feet = from.Y - guard.rootHeight
 	local knee = Vector3.new(0, guard.rootHeight - KNEE_HEIGHT, 0)
 	local side = 0.75 * guard.agentRadius
+	-- f70c3 (Chase.PathAvoid) : flancs aussi à hauteur des genoux, pour ne pas couper le coin d'une table basse.
+	local kneeSides = GuardService._PathAvoid ~= nil and GuardService._PathAvoid.Enabled()
 	local best = index
 	for i = index + 1, math.min(#waypoints, index + math.floor(lookahead) - 1) do
 		local waypoint = waypoints[i]
@@ -1113,7 +1124,9 @@ local function farthestReachable(guard: Guard, waypoints: { PathWaypoint }, inde
 		if length > 1e-3 then
 			local across = Vector3.new(-offset.Z, 0, offset.X) / length * side
 			if not (clearLine(from, to) and clearLine(from - knee, to - knee)
-				and clearLine(from + across, to + across) and clearLine(from - across, to - across))
+				and clearLine(from + across, to + across) and clearLine(from - across, to - across)
+				and (not kneeSides or (clearLine(from + across - knee, to + across - knee)
+					and clearLine(from - across - knee, to - across - knee))))
 			then
 				break
 			end
@@ -1175,6 +1188,9 @@ local function followPath(guard: Guard, goal: Vector3, lookahead: boolean?)
 			jump = not clearLine(knee, knee + offset * (math.min(length, ahead + 1) / length))
 		end
 		if jump then
+			if GuardService._PathAvoid then
+				GuardService._PathAvoid.BeforeJump(guard.humanoid, waypoints, index, guard.root.Position.Y - guard.rootHeight) -- f70c3 : à la hauteur de la marche
+			end
 			guard.humanoid.Jump = true
 		end
 	end
@@ -3220,6 +3236,9 @@ local function walkHome(guard: Guard, goal: Vector3, now: number): boolean
 	end
 	local waypoint = waypoints[index]
 	if waypoint.Action == Enum.PathWaypointAction.Jump then
+		if GuardService._PathAvoid then
+			GuardService._PathAvoid.BeforeJump(guard.humanoid, waypoints, index, guard.root.Position.Y - guard.rootHeight) -- f70c3
+		end
 		guard.humanoid.Jump = true
 	end
 	moveTo(guard, waypoint.Position) -- jamais par la zone safe
@@ -4432,6 +4451,9 @@ function GuardService.Start()
 			end
 			return GuardService.StoreReadyToReopen(model)
 		end)
+	end
+	if GuardService._PathAvoid then
+		GuardService._PathAvoid.Start() -- f70c3 : modificateurs sur les présentoirs bas des magasins PNJ
 	end
 	CarryService.OnCarryStarted(onCarryStarted)
 	CarryService.OnCarryEnded(onCarryEnded)
