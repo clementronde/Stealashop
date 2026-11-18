@@ -402,6 +402,7 @@ type Guard = {
 	standingStill: boolean?, -- a249 : elle n'avance plus depuis Chase.StuckCatchTime s (stuckCatchable) : approachCap la traite comme arrêtée
 	blockedFrom: Vector3?, -- a249b : position du vigile quand il a bougé pour la dernière fois (même règle, pour lui)
 	blockedSince: number?, -- a249b : depuis quand il n'a pas bougé de Chase.StuckMoveMax studs à l'horizontale
+	blockedTrail: { { at: number, position: Vector3 } }?, -- a250 (Chase.StuckProgressShare) : ses positions des dernières StuckCatchTime s
 	target: Player?, -- joueur poursuivi, nil hors poursuite
 	state: GuardState,
 	spawnedAt: number,
@@ -973,6 +974,12 @@ local function refreshRayFilter()
 		if character then
 			table.insert(list, character)
 		end
+	end
+	-- a250 (Play de fusion68, Confiserie) : l'aperçu des panneaux de Clément (_PREVIEW_StoreReqSigns, retiré chez le
+	-- client par StoreReqSignController) est CanCollide = false mais CanQuery = true : il coupait la vue du vigile.
+	local preview = Workspace:FindFirstChild("_PREVIEW_StoreReqSigns")
+	if preview then
+		table.insert(list, preview)
 	end
 	rayParams.FilterDescendantsInstances = list
 end
@@ -1730,8 +1737,24 @@ local function approachCap(guard: Guard, targetAt: Vector3, targetRoot: BasePart
 	local distance = offset.Magnitude
 	local away = 0
 	local walk = targetHumanoid.WalkSpeed
-	if distance > 1e-3 and isPositiveNumber(walk) then
-		away = math.clamp(flat(targetRoot.AssemblyLinearVelocity):Dot(offset / distance), 0, walk)
+	local waypoints = guard.waypoints
+	if Chase.ApproachAlongPath == true and waypoints ~= nil and guard.waypointIndex <= #waypoints then
+		-- a250 (Play de fusion68, Supérette : un voleur coincé derrière Shelf_A_EndA attrapé 3,4 s après les 14 studs,
+		-- le vigile rampant à 3-10 studs/s dans le détour) : derrière un obstacle, d est la longueur du chemin qui
+		-- reste (jusqu'au point suivi, puis de point en point jusqu'au bout) moins l'écart entre le bout du chemin (le
+		-- point d'interception, parfois devant la cible) et `targetAt` : jamais plus que le trajet jusqu'à la cible
+		-- (il n'arrive pas plus vite qu'en ligne droite), jamais moins que la ligne droite.
+		local along = 0
+		local from = guard.root.Position
+		for i = guard.waypointIndex, #waypoints do
+			local point = waypoints[i].Position
+			along += flat(point - from).Magnitude
+			from = point
+		end
+		distance = math.max(distance, along - flat(targetAt - from).Magnitude)
+	end
+	if offset.Magnitude > 1e-3 and isPositiveNumber(walk) then
+		away = math.clamp(flat(targetRoot.AssemblyLinearVelocity):Dot(offset.Unit), 0, walk)
 		if away ~= away then
 			away = 0
 		end
@@ -1834,6 +1857,7 @@ local function startChase(guard: Guard, now: number)
 	guard.standingStill = nil
 	guard.blockedFrom = nil
 	guard.blockedSince = nil
+	guard.blockedTrail = nil
 	if player and targetHumanoid and followsDistanceRule(guard, player) then
 		guard.chasePhase = "Rush"
 		guard.rushStepAt = nil
@@ -2598,7 +2622,24 @@ local function stuckCatchable(guard: Guard, targetRoot: BasePart, catchDistance:
 	guard.standingStill = still
 	local blocked = false
 	anchor, since = guard.blockedFrom, guard.blockedSince
-	if anchor == nil or since == nil or flat(from - anchor).Magnitude > moveMax then
+	local share = Chase.StuckProgressShare
+	if isPositiveNumber(share) then
+		-- a250 (Play de fusion68 : un vigile qui marchait encore à 3 studs/s passait pour bloqué) : sur les dernières
+		-- Chase.StuckCatchTime s (fenêtre glissante, une position par pas), il a parcouru au plus StuckMoveMax studs et
+		-- au plus Chase.StuckProgressShare de ce que sa marche (au moins ApproachMinClosing) lui ferait parcourir.
+		local trail = guard.blockedTrail or {}
+		guard.blockedTrail = trail
+		table.insert(trail, { at = now, position = from })
+		while #trail >= 2 and trail[2].at <= now - wait do
+			table.remove(trail, 1)
+		end
+		local oldest = trail[1]
+		local elapsed = now - oldest.at
+		if elapsed >= wait then
+			local allowed = share * math.max(guard.humanoid.WalkSpeed, Chase.ApproachMinClosing) * elapsed
+			blocked = flat(from - oldest.position).Magnitude <= math.min(moveMax, allowed)
+		end
+	elseif anchor == nil or since == nil or flat(from - anchor).Magnitude > moveMax then
 		guard.blockedFrom, guard.blockedSince = from, now
 	else
 		blocked = now - since >= wait
@@ -2613,7 +2654,28 @@ local function stuckCatchable(guard: Guard, targetRoot: BasePart, catchDistance:
 		return true
 	end
 	local backward = Workspace:Raycast(to, -direction, rayParams)
-	return backward ~= nil and (backward.Position - forward.Position):Dot(direction / length) <= Chase.StuckWallMax
+	if backward == nil or (backward.Position - forward.Position):Dot(direction / length) > Chase.StuckWallMax then
+		return false
+	end
+	-- a250 (Play de fusion68, Confiserie : attrapé à travers la porte vitrée DoorGlass_L, 0,3 stud) : le panneau mince
+	-- doit être un rayon des deux côtés (la pièce touchée ou un de ses parents a un nom qui commence par
+	-- Chase.StuckThinPrefix) ; une porte, une vitrine, un mur, un frigo ou un comptoir reste un mur, quelle que soit
+	-- son épaisseur.
+	-- Chase.StuckThinPrefix = "" : tout panneau mince, la règle d'avant.
+	local prefix = Chase.StuckThinPrefix
+	if #prefix == 0 then
+		return true
+	end
+	for _, hit in { forward.Instance, backward.Instance } do
+		local node: Instance? = hit
+		while node ~= nil and node ~= Workspace and string.sub(node.Name, 1, #prefix) ~= prefix do
+			node = node.Parent
+		end
+		if node == nil or node == Workspace then
+			return false
+		end
+	end
+	return true
 end
 
 local function chaseStep(guard: Guard, now: number)
@@ -3121,6 +3183,10 @@ local function update(guard: Guard, now: number)
 	if (state == "Wait" or state == "Chase") and frozenFor and RevealState.IsProtected(frozenFor) then
 		if guard.revealFrozenAt == nil then
 			guard.revealFrozenAt = now
+			-- a250 (Play de fusion68 : il glissait encore de 4 à 5 studs sur son élan, puis revenait au point du
+			-- MoveTo) : son élan à l'horizontale est coupé avant l'arrêt, il s'arrête net.
+			local velocity = guard.root.AssemblyLinearVelocity
+			guard.root.AssemblyLinearVelocity = Vector3.new(0, velocity.Y, 0)
 			stop(guard)
 			guard.anims:Stop("Run")
 			guard.anims:Stop("Walk")
@@ -3134,6 +3200,7 @@ local function update(guard: Guard, now: number)
 		guard.stuckFrom = nil -- a249 : figé dans la cinématique, ce n'est pas « coincé »
 		guard.standingStill = nil
 		guard.blockedFrom = nil
+		guard.blockedTrail = nil
 		local paused = now - frozenAt
 		guard.stateEndsAt += paused
 		local until_ = guard.intruderUntil

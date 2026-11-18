@@ -174,6 +174,21 @@ local Chase = {
 	StuckMoveMax = 1, -- V0 proposé, absent du doc (studs)
 	StuckWallMax = 0.75, -- V0 proposé, absent du doc (studs)
 	StuckHeightMax = 3, -- V0 proposé, absent du doc (studs, entre les deux HumanoidRootPart)
+	-- a250 (Play de fusion68, Confiserie : attrapé « coincé » à travers la porte vitrée DoorGlass_L, 0,3 stud) : le
+	-- panneau mince doit être un rayon des deux côtés, c.-à-d. la pièce touchée par chaque rayon (ou un de ses parents)
+	-- a un nom qui commence par StuckThinPrefix ; une porte, une vitrine, un mur, un frigo ou un comptoir reste un mur,
+	-- quelle que soit son épaisseur. "" : tout panneau de StuckWallMax studs au plus (la règle d'avant).
+	StuckThinPrefix = "Shelf", -- V0 proposé, absent du doc (rayons des magasins : Shelf_A_EndA, Shelf_WallL_Back…)
+	-- a250 (Play de fusion68 : un vigile qui marchait encore à 3 studs/s vers un voleur arrêté passait pour bloqué) :
+	-- le vigile n'est bloqué que si, sur les dernières StuckCatchTime s (fenêtre glissante), il a parcouru au plus
+	-- StuckMoveMax studs et au plus StuckProgressShare de ce que sa marche (au moins ApproachMinClosing) lui ferait
+	-- parcourir. 0 : seulement StuckMoveMax depuis son dernier mouvement (la règle d'avant).
+	StuckProgressShare = 0.25, -- V0 proposé, absent du doc
+	-- a250 (Play de fusion68, Supérette : voleur coincé derrière Shelf_A_EndA attrapé 3,3 à 3,4 s après l'arrivée du
+	-- vigile, qui contournait le rayon à 3-10 studs/s) : quand le vigile suit un chemin, le plafond d'arrivée
+	-- (ApproachBrake) mesure d sur la longueur du chemin qui reste, jamais moins que la ligne droite : il ne freine plus
+	-- dans le détour comme s'il était déjà arrivé. false : d en ligne droite (la règle d'avant).
+	ApproachAlongPath = true, -- V0
 	-- a249 : diagnostic de la poursuite dans la sortie (aussi hors Studio) : chaque seconde, la distance, la phase,
 	-- la distance prévue et les parts de la vitesse du vigile ; à chaque capture, la distance, le temps depuis
 	-- l'apparition et dedans/dehors. En Studio, workspace:SetAttribute("ChaseDebug", true) fait de même.
