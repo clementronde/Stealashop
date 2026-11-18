@@ -20,6 +20,22 @@ local DeepFreeze = require(script.Parent.DeepFreeze)
 -- Une durée qui dépend de la version : complète (Rare et plus) ou courte (Commun, Peu commun).
 export type ByVersion = { Full: number, Short: number }
 
+-- Une action de la nouvelle ouverture (New.Actions, vague 73).
+export type Action = {
+	Id: string,
+	Anim: string,
+	Tool: string?,
+	Fx: string?,
+	RunFx: string?,
+	Word: string?,
+	Sound: string?,
+	React: string,
+	Duration: number,
+	Impacts: { number },
+	Junk: boolean?,
+	Mark: boolean?,
+}
+
 local Unbox = {
 	-- 0. Amélioration du colis, tirée par le serveur à OpenBox -------------------------------
 	UpgradeMax = 2, -- spec : 2 crans au plus
@@ -144,6 +160,172 @@ local Unbox = {
 	-- la caméra : MaxDistance du billboard de Clément ignorée, quel que soit le zoom.
 	LockShowDistance = 40, -- V0 : studs
 	LockedText = "LOCKED", -- V0 (anglais) : TimeLabel d'un objet tenu sous antivol pas encore lancé (sans UnlockAt)
+
+	-- Vague 73 (a251 ; liaison L-236, L-237, L-246, validé par Clément le 2026-11-17 sur son prototype) : la nouvelle
+	-- ouverture du colis sur un magasin PNJ. Le colis saute du rayon au sol de l'allée (L-234), le perso s'acharne
+	-- dessus (ActionCount actions, la dernière est toujours FinalAction), la cote monte, le colis s'améliore, il éclate,
+	-- les silhouettes montent jusqu'à la rareté gagnée, puis l'objet se révèle. Le serveur tire tout d'avance
+	-- (StoreHeistService, Shared/UnboxPlan : actions, rareté montrée après chaque action, cote finale) et l'envoie dans
+	-- RevealStarted (argument plan) ; RevealController joue le plan (Controllers/Reveal/Unbox), puis sa croissance et sa
+	-- fin comme avant. Origine : L-236 = écrit dans la liaison ; V0 = proposé, absent de la liaison, à régler en jeu.
+	New = {
+		Enabled = true, -- interrupteur ; false = la cinématique d'avant (Open<Rareté>, Config/Reveal), rien d'autre ne change
+		ActionCount = 5, -- L-236 : actions du perso (2 au moins, 12 au plus)
+		ActionSpeed = 1, -- L-236, curseur « Vitesse des actions » : animations, durées de repli et pauses ÷ cette valeur
+		FinalAction = "Hammer", -- L-236 : la dernière action, celle qui casse le colis ; jamais tirée avant (V0)
+		-- Les 7 actions (L-237). Anim = animation du joueur (Contract/Animations) ; Tool = modèle tenu en main
+		-- (ToolFolder, facultatif) ; Fx = effet à chaque Impact (L-246) ; RunFx = effet pendant toute l'action jusqu'à son
+		-- moment fort (rythme : attribut EmitEvery du modèle) ; Word = mot de BB_UnboxWord à chaque Impact ; Sound = son
+		-- de chaque Impact (Assets/Sounds, nommé <Animation>_<Marqueur> comme les autres sons de marqueur ; sinon
+		-- ImpactSound, sinon muet) ; React = réaction du colis (React plus bas).
+		-- Duration et Impacts (parts de la durée) : repli codé seulement, quand l'animation manque et chez les spectateurs
+		-- (durées indicatives du prototype, L-237) ; avec l'animation, ce sont ses marqueurs Impact et sa fin qui comptent,
+		-- et le dernier Impact attendu (#Impacts) est le moment fort.
+		Actions = {
+			{ Id = "Hammer", Anim = "Unbox_Hammer", Tool = "TOOL_Unbox_Sledgehammer", Fx = "FX_Unbox_Hit", Word = "BONK!", Sound = "Unbox_Hammer_Impact", React = "Squash", Duration = 0.6, Impacts = { 0.7 } },
+			{ Id = "Saw", Anim = "Unbox_Saw", Tool = "TOOL_Unbox_Saw", Fx = "FX_Unbox_Sawdust", Word = "SCRITCH!", Sound = "Unbox_Saw_Impact", React = "Slide", Duration = 1.25, Impacts = { 0.25, 0.45, 0.65, 0.85 } },
+			{ Id = "Crowbar", Anim = "Unbox_Crowbar", Tool = "TOOL_Unbox_Crowbar", Fx = "FX_Unbox_Hit", Word = "CRACK!", Sound = "Unbox_Crowbar_Impact", React = "Lid", Duration = 1.25, Impacts = { 0.5, 0.85 } },
+			{ Id = "Drill", Anim = "Unbox_Drill", Tool = "TOOL_Unbox_Drill", Fx = "FX_Unbox_Hit", RunFx = "FX_Unbox_Chips", Word = "BZZZT!", Sound = "Unbox_Drill_Impact", React = "Spin", Duration = 1.2, Impacts = { 0.85 } },
+			{ Id = "Kick", Anim = "Unbox_Kick", Fx = "FX_Unbox_Hit", Word = "POW!", Sound = "Unbox_Kick_Impact", React = "Push", Duration = 0.8, Impacts = { 0.6 } },
+			{ Id = "Search", Anim = "Unbox_Search", Junk = true, Sound = "Unbox_Search_Impact", React = "Tilt", Duration = 1.4, Impacts = { 0.4, 0.75 } },
+			{ Id = "Inspect", Anim = "Unbox_Inspect", Tool = "TOOL_Unbox_Magnifier", Word = "HUH?", Mark = true, Sound = "Unbox_Inspect_Impact", React = "Jump", Duration = 1.35, Impacts = { 0.8 } },
+		} :: { Action },
+		ImpactSound = "Unbox_Impact", -- V0 : son d'un Impact sans son à lui
+		ActionMaxFactor = 1.5, -- V0 : une action est coupée à Duration × ce facteur (animation plus longue ou bloquée)
+		ActionGap = 0.25, -- V0 : pause entre deux actions (le colis tremble)
+
+		-- Temps (s). Objet révélé vers 7,9 s (Commun) et 8,8 s (Rare) avec des actions moyennes : les « 8 à 9 s » de L-236.
+		Intro = 0.6, -- V0 : le colis saute du rayon au sol de l'allée, le perso se place, la caméra arrive
+		BurstHold = 0.35, -- V0 : du coup de masse final (le colis éclate, le perso recule) à la première silhouette
+		SilhouetteStep = 0.45, -- V0 : une silhouette (0,4 à 0,5 s chez Throw a Seed)
+		Suspense = 0.6, -- V0 : la dernière silhouette (le vrai objet en noir) tremble (0,4 à 0,7 s)
+		Overexpose = 0.1, -- V0 : l'objet tout blanc avant ses couleurs
+		AfterReveal = 0.3, -- V0 : de la révélation au début de la croissance (Config/Reveal, étape Grow)
+		ClientMargin = 1.5, -- V0 : le client coupe sa scène à la durée la plus longue possible + cette marge
+		ServerMargin = 3, -- V0 : le serveur finit la phase (sans RevealDone) à la durée la plus longue possible + cette marge
+
+		-- Place du colis, du perso et de la caméra (L-234 : au sol dans l'allée, caméra côté allée, jamais dans un mur).
+		BoxOut = 4.5, -- V0 : studs entre l'emplacement du rayon et le colis posé au sol, vers l'allée
+		BoxOutMin = 2, -- V0 : allée bouchée plus près que cela dans toutes les directions essayées : on prend la plus dégagée
+		BoxClear = 1.2, -- V0 : marge (studs) entre le colis et ce qui bouche l'allée
+		BoxHop = 2, -- V0 : hauteur (studs) du saut du rayon au sol
+		FloorProbe = 8, -- V0 : le sol est cherché jusqu'à cette distance sous l'emplacement du rayon
+		StandSide = 3.2, -- V0 : le perso se tient à cette distance du colis, sur le côté (le long du rayon), face à lui
+		Recoil = 2, -- V0 : recul (studs) du perso quand le colis éclate
+		RecoilTime = 0.25, -- V0
+		Camera = {
+			Distance = 11, -- V0 : studs entre le colis et la caméra, côté allée
+			Height = 4.5, -- V0 : au-dessus du sol
+			LookHeight = 2, -- V0 : hauteur du point visé (entre le colis et le perso)
+			MinDistance = 5, -- V0 : un mur plus près que cela ne rapproche plus la caméra : il devient transparent
+			Margin = 0.6, -- V0 : écart gardé devant un mur
+			MaxHidden = 12, -- V0 : pièces rendues transparentes au plus entre la caméra et le colis
+		},
+
+		-- Réactions du colis à chaque Impact : aller et retour en Time s (un coup de pied le pousse, puis il revient).
+		React = {
+			Time = 0.28, -- V0
+			Before = 0.5, -- V0 : force d'un Impact avant le moment fort de l'action
+			Jump = 0.6, -- V0 : saut (studs)
+			Tilt = 0.22, -- V0 : inclinaison (radians)
+			Squash = 0.14, -- V0 : écrasement (part de la taille)
+			Spin = 0.5, -- V0 : rotation (radians)
+			Slide = 0.35, -- V0 : glissement (studs)
+			Push = 1.6, -- V0 : poussée du coup de pied (studs)
+			LidLift = 0.3, -- V0 : le couvercle (Lid) se soulève (studs)…
+			LidTilt = 0.35, -- V0 : … et bascule (radians)
+			Tremble = 0.02, -- V0 : tremblement entre deux actions (studs)…
+			TrembleStep = 0.03, -- V0 : … plus fort à chaque action
+		},
+
+		-- Cote « 1 IN N » de BB_UnboxOdds.Odds (L-236, plages proposées par rareté ; Divine : V0). Au moment fort de
+		-- chaque action, elle défile jusqu'à un nombre de la plage de la rareté montrée, toujours plus haut ; la cote
+		-- finale (tirée par le serveur dans la plage de la rareté gagnée, V0) s'affiche à la révélation.
+		OddsRanges = {
+			Common = { 2, 4 },
+			Uncommon = { 5, 12 },
+			Rare = { 15, 45 },
+			Epic = { 60, 190 },
+			Legendary = { 300, 950 },
+			Mythic = { 1200, 4800 },
+			Secret = { 12000, 60000 },
+			Divine = { 150000, 900000 },
+		} :: { [string]: { number } },
+		OddsText = "1 IN %s", -- L-236 (anglais)
+		OddsRoll = 0.35, -- V0 : durée du défilement d'une cote à la suivante
+		OddsTick = 0.07, -- V0 : un changement de chiffre toutes les 67 à 100 ms (Throw a Seed)
+		OddsTickSound = "UI_Click", -- L-229 : les tics du compteur, de plus en plus aigus
+		OddsTickPitch = 0.06, -- V0 : + 6 % par tic
+		OddsPop = 1.25, -- V0 : le texte gonfle à cette échelle au moment fort (créé : UIScale « UnboxPop »)
+		FinalOddsAbove = 1.6, -- V0 : à la révélation, la cote finale se place à cette hauteur (studs) au-dessus de BB_Reveal
+		FinalOddsHold = 1.6, -- V0 : … et y reste ce temps
+
+		-- Améliorations (L-236 : au moment fort, sauf à la première et à la dernière action). V0 : la rareté montrée part
+		-- de StartRarity et finit sur la rareté gagnée, en autant de crans qu'il y a d'actions libres (un cran peut sauter
+		-- plusieurs raretés) ; purement visuel, la rareté gagnée est déjà tirée par les règles de la caisse.
+		StartRarity = "Common",
+		UpgradeGrow = 1.16, -- L-236 : le colis grossit à chaque amélioration
+		UpgradeShow = 0.9, -- V0 : durée d'affichage de BB_UnboxOdds.Upgrade (« UPGRADE! »)
+		UpgradeSound = "Unbox_Tier", -- L-229
+		TapeNames = { "Tape", "Tint" }, -- V0 : pièces du colis qui prennent la couleur de la rareté (le scotch)
+
+		-- Zoom (FieldOfView × (1 − valeur)) et fondu des bords UI_Unbox.EdgeGlow (ImageTransparency), chez l'ouvreur.
+		ZoomStep = 0.06, -- L-236 : amélioration et silhouette, × (1 + ZoomRank × rang de la rareté)
+		ZoomRank = 0.3, -- L-236
+		ZoomReveal = 0.12, -- L-236, × (1 + ZoomRank × rang) aussi (V0 : toujours plus fort que la silhouette)
+		ZoomMax = 0.35, -- V0 : jamais plus de 35 % de zoom
+		ZoomIn = 0.12, -- V0 : s
+		ZoomHold = 0.25, -- V0
+		ZoomOut = 0.5, -- V0
+		EdgeStep = 0.45, -- V0 : ImageTransparency au plus fort d'une amélioration ou d'une silhouette
+		EdgeReveal = 0.15, -- V0 : … à la révélation (plus marqué, L-236)
+		EdgeIn = 0.1, -- V0
+		EdgeHold = 0.25, -- V0
+		EdgeOut = 0.6, -- V0
+		EdgeScreen = "UI_Unbox", -- L-246
+		EdgeGlow = "EdgeGlow",
+
+		-- Silhouettes (L-236) : un objet de la zone par rareté, en noir, du plus petit au plus gros ; la dernière est le
+		-- vrai objet. Sans modèle : un bloc noir.
+		SilhouetteFit = 2.4, -- V0 : plus grand côté (studs) de la première silhouette
+		SilhouetteGrow = 0.12, -- V0 : + 12 % par silhouette
+		SilhouetteShake = 0.07, -- V0 : tremblement (studs) de la dernière pendant le suspense
+		SilhouetteSound = "Unbox_Silhouette", -- L-229
+		SuspenseSound = "Unbox_Suspense", -- L-229
+
+		-- Modèles et effets de Clément, tous facultatifs (absent : rien, ou le repli du code).
+		ToolFolder = { "Assets", "Unbox" }, -- L-237 : TOOL_Unbox_* (poignée Handle) et ENV_Unbox_Junk_*
+		ToolHand = "RightHand",
+		ToolGrip = "RightGripAttachment",
+		ToolGripAngles = { -90, 0, 0 }, -- V0 : degrés, comme la prise d'un Tool de Roblox (Handle sur la prise de la main)
+		JunkPrefix = "ENV_Unbox_Junk_",
+		JunkSpeedUp = 16, -- V0 : studs/s
+		JunkSpeedBack = 9, -- V0 : studs/s, par-dessus l'épaule du perso
+		JunkGravity = 60, -- V0
+		JunkSpin = 8, -- V0 : radians/s
+		JunkLife = 1.2, -- V0 : s
+		Fx = {
+			Burst = "FX_Unbox_Burst", -- L-246 : colis de taille normale
+			GiantBurst = "FX_RevealSmash", -- L-236 : objet géant (classe Large ou Colossal, L-220)
+			Tier = "FX_Unbox_Tier",
+			Silhouette = "FX_Unbox_Silhouette",
+			Puff = "FX_Unbox_Puff",
+			Overexpose = "FX_Unbox_Overexpose",
+			Reveal = "FX_Unbox_Reveal",
+		},
+		FxTopAttachments = { "Top", "Contact" }, -- L-246 : Attachments posés au point touché (les autres restent au pied)
+		FxEmit = 12, -- V0 : particules d'un émetteur sans attribut EmitCount
+		FxLife = 2, -- V0 : s, effet sans attribut Duration
+		OddsBoard = "BB_UnboxOdds", -- L-246 : Odds, Rarity, Upgrade (absent : billboard du code, mêmes noms)
+		OddsBelowTop = 0.8, -- V0 : le billboard s'accroche à cette distance sous le haut du colis ou de la silhouette
+		WordBoard = "BB_UnboxWord", -- L-246 : Word
+		WordTime = 0.55, -- L-246
+		WordRise = 1.2, -- V0 : studs
+		WordPop = 1.4, -- V0 : échelle finale (UIScale créé)
+		MarkBoard = "BB_UnboxMark", -- L-246 : Mark (« ? » puis « ! »)
+		MarkStart = "?",
+		MarkImpact = "!",
+	},
 }
 
 export type Unbox = typeof(Unbox)

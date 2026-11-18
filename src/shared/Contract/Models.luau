@@ -44,6 +44,7 @@ export type ModelSpec = {
 	Category: string, -- catégorie du rapport
 	Tag: string?, -- tag qui désigne ces modèles
 	Prefix: string?, -- préfixe de nom (10.3) qui désigne ces modèles
+	ExceptPrefix: string?, -- noms au préfixe Prefix qui relèvent d'un autre contrat (vague 73 : TOOL_Unbox_*)
 	-- Noms exacts qui désignent ces modèles, quand ni un tag ni un préfixe ne suffisent (ENV_ et FX_
 	-- sont les préfixes de tout le décor et de tous les effets).
 	Names: { string }?,
@@ -302,6 +303,7 @@ local Tool: ModelSpec = {
 	Label = "outils",
 	Category = "Objets",
 	Prefix = "TOOL_",
+	ExceptPrefix = "TOOL_Unbox_", -- outils de l'ouverture du colis (UnboxTool, plus bas) : ni HitPoint, ni icône
 	Parts = {
 		{ Name = "Handle", Class = "MeshPart" },
 		{ Name = "HitPoint", Class = "Attachment" },
@@ -831,5 +833,62 @@ local Trap: ModelSpec = {
 }
 Models.Trap = Trap
 table.insert(Models.List, Trap)
+
+-- Nouvelle ouverture du colis (vague 73, a251 ; Clément, L-236, L-237, L-246 ; Config/Unbox.New ; Controllers/Reveal/
+-- Unbox). Tout est facultatif : un modèle absent, rien ne se joue à sa place.
+--   Outils tenus en main pendant une action : ReplicatedStorage/Assets/Unbox/TOOL_Unbox_<Nom>, modèle sans script, sa
+--   poignée Handle à l'endroit de la main (posée sur RightGripAttachment de la main droite).
+--   Objets jetés pendant la fouille : ReplicatedStorage/Assets/Unbox/ENV_Unbox_Junk_<Nom> (aucun élément imposé).
+--   Effets : ReplicatedStorage/Assets/FX/FX_Unbox_<Nom> et FX_RevealSmash, construits comme FX_ShelfReveal (Root
+--   invisible et ancré, Attachments, émetteurs à Rate 0 avec l'attribut EmitCount, Duration sur le modèle ; un émetteur
+--   qui porte l'attribut RarityColor prend la couleur de la rareté ; les Attachments Top et Contact sont posés au point
+--   touché ; EmitEvery sur FX_Unbox_Chips).
+local UnboxTool: ModelSpec = {
+	Key = "UnboxTool",
+	Label = "outils de l'ouverture du colis",
+	Category = "Objets",
+	Prefix = "TOOL_Unbox_",
+	Parts = {
+		{ Name = "Handle", Class = "BasePart", Note = "la poignée, à l'endroit de la main, L-237" },
+	},
+	Expected = { "TOOL_Unbox_Sledgehammer", "TOOL_Unbox_Saw", "TOOL_Unbox_Crowbar", "TOOL_Unbox_Drill", "TOOL_Unbox_Magnifier" },
+}
+Models.UnboxTool = UnboxTool
+table.insert(Models.List, table.find(Models.List, WeaponShopCounter) or #Models.List + 1, UnboxTool) -- avant les comptoirs, comme WitnessFlash
+
+local UnboxFx: ModelSpec = {
+	Key = "UnboxFx",
+	Label = "effets de l'ouverture du colis",
+	Category = "Magasins PNJ",
+	Names = {
+		"FX_Unbox_Hit",
+		"FX_Unbox_Sawdust",
+		"FX_Unbox_Chips",
+		"FX_Unbox_Burst",
+		"FX_Unbox_Tier",
+		"FX_Unbox_Silhouette",
+		"FX_Unbox_Puff",
+		"FX_Unbox_Overexpose",
+		"FX_Unbox_Reveal",
+		"FX_RevealSmash",
+	},
+	Parts = {
+		{ Name = "Root", Class = "BasePart", Optional = true, Silent = true, Note = "pièce invisible et ancrée qui porte les Attachments, L-246" },
+	},
+	Expected = {
+		"FX_Unbox_Hit",
+		"FX_Unbox_Sawdust",
+		"FX_Unbox_Chips",
+		"FX_Unbox_Burst",
+		"FX_Unbox_Tier",
+		"FX_Unbox_Silhouette",
+		"FX_Unbox_Puff",
+		"FX_Unbox_Overexpose",
+		"FX_Unbox_Reveal",
+		"FX_RevealSmash",
+	},
+}
+Models.UnboxFx = UnboxFx
+table.insert(Models.List, table.find(Models.List, WeaponShopCounter) or #Models.List + 1, UnboxFx)
 
 return Models

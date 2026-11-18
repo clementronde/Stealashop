@@ -56,7 +56,7 @@ local Reveal = {
 	-- HUD masqué chez l'ouvreur (Controllers/UI/HudMask) : seuls ces écrans restent (UI_Escape : le flash de la
 	-- révélation, UiFeelController.RevealFlash, Épique et plus). Jamais touchés : HeistFeel.NeverMask.
 	MaskKey = "Reveal",
-	KeepScreens = { "UI_Escape" },
+	KeepScreens = { "UI_Escape", "UI_Unbox" }, -- UI_Unbox : le fondu des bords de la nouvelle ouverture (vague 73, L-246)
 	FlashMinRarity = "Epic", -- flash et zoom d'UI_Escape chez l'ouvreur au Reveal, à partir de cette rareté
 
 	-- Spectateurs : la scène se joue dans le monde (sans toucher leur caméra) s'ils sont à moins de cette distance.
