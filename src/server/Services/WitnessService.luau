@@ -68,6 +68,9 @@
 --      plein : il range l'appareil et appelle (point 4), puis filme (7b). La casse le fait toujours fuir (point 3) tant
 --      que son « ? » n'est pas plein. Avant, le premier flash venait 12 s après le premier coup (« ? » de 8 s, appel de
 --      4 s) : un joueur seul casse en 6,5 s, le témoin fuyait avant d'avoir photographié (ce que Clément n'a jamais vu).
+--   9. f70c2 (Cantin, 18/11 : passage course → pose pas fluide) : sur ses Photo.BrakeDistance derniers studs il freine (à chaque
+--      image, sa course ralentit avec lui), il est arrivé à Photo.ArriveDistance studs ; la course s'efface en Photo.StopFade s
+--      pendant que TakePhoto (ou Look) arrive en Photo.PoseFade s, et il se tourne vers la vitrine en Photo.TurnTime s.
 --   La vitre se répare comme avant (chrono de police de WindowService, Balance.Window.BreakTimer, inchangé).
 --
 -- Un témoin sans WatchedStore, ou dont le magasin est introuvable parmi les modèles taggés NPCStore de la
@@ -186,6 +189,13 @@ type WitnessNpc = {
 	-- Vague 66 (a221, L-210 point 4, Photo.Rush) : la course de l'approche, et les photos dès l'arrivée (« ? » qui monte)
 	rushAnim: string?, -- l'animation de course qui joue pendant l'approche ; nil : Walk
 	snapping: boolean, -- il photographie à son poste pendant que son « ? » monte
+	-- f70c2 : le pas de croisière de l'approche (setApproachSpeed), le freinage appliqué (1 = aucun), la rotation en cours
+	approachSpeed: number,
+	paceRatio: number,
+	turning: boolean,
+	turnAt: number,
+	turnFrom: number, -- cap de départ (radians)
+	turnBy: number, -- angle à tourner (radians, de −π à π)
 }
 
 -- Noms du contrat lus ici.
@@ -289,16 +299,17 @@ end
 
 -- Balade -----------------------------------------------------------------------------------------
 
-local function stopWalking(w: WitnessNpc)
+-- `fade` (f70c2) : fondu de sortie de la marche et de la course (nil : celui de Roblox).
+local function stopWalking(w: WitnessNpc, fade: number?)
 	w.humanoid:MoveTo(w.root.Position)
 	if w.walking then
 		w.walking = false
-		w.anims:Stop("Walk")
+		w.anims:Stop("Walk", fade)
 	end
 	local rush = w.rushAnim
 	if rush then
 		w.rushAnim = nil -- a221 : la course de l'approche
-		w.anims:Stop(rush)
+		w.anims:Stop(rush, fade)
 	end
 end
 
@@ -374,6 +385,7 @@ local function toStroll(w: WitnessNpc, now: number)
 		w.anims:Stop("TakePhoto")
 	end
 	stopSnapping(w) -- a221
+	w.turning = false -- f70c2 : la balade (ou la fuite) reprend la main sur son cap
 	w.pauseUntil = 0
 	w.nextMoveAt = now
 	w.progressPos = w.root.Position
@@ -391,15 +403,48 @@ local function windowPosition(store: Model): Vector3
 	return store:GetPivot().Position
 end
 
--- Il se tourne vers la vitrine de son magasin.
+-- f70c2 : le cap (radians) d'une direction à plat, celui de CFrame.Angles(0, cap, 0), et l'inverse.
+local function yawOf(v: Vector3): number
+	return math.atan2(-v.X, -v.Z)
+end
+local function yawDirection(yaw: number): Vector3
+	return Vector3.new(-math.sin(yaw), 0, -math.cos(yaw))
+end
+
+-- Il se tourne vers la vitrine de son magasin. f70c2 : avec la règle du témoin qui filme (Photo.Enabled), en douceur,
+-- en Photo.TurnTime s (turnStep, à chaque image) ; sinon (ou TurnTime = 0) d'un coup, comme avant.
 local function faceWindow(w: WitnessNpc)
 	local store = w.store
 	if store then
 		local position = w.root.Position
 		local look = flat(windowPosition(store) - position)
 		if look.Magnitude > 1e-3 then
-			w.root.CFrame = CFrame.lookAt(position, position + look.Unit)
+			if PHOTO.Enabled and PHOTO.TurnTime > 0 then
+				local from = flat(w.root.CFrame.LookVector)
+				local to = yawOf(look)
+				w.turnFrom = if from.Magnitude > 1e-3 then yawOf(from) else to
+				w.turnBy = (to - w.turnFrom + math.pi) % (2 * math.pi) - math.pi -- par le plus court
+				w.turnAt = os.clock()
+				w.turning = true
+			else
+				w.root.CFrame = CFrame.lookAt(position, position + look.Unit)
+			end
 		end
+	end
+end
+
+-- f70c2 : une image de la rotation vers la vitrine (courbe douce, smoothstep). Il ne tourne plus dès qu'il repart.
+local function turnStep(w: WitnessNpc, now: number)
+	if w.walking or w.approaching or w.fleeUntil > 0 then
+		w.turning = false
+		return
+	end
+	local t = math.clamp((now - w.turnAt) / PHOTO.TurnTime, 0, 1)
+	local yaw = w.turnFrom + w.turnBy * (t * t * (3 - 2 * t))
+	local position = w.root.Position
+	w.root.CFrame = CFrame.lookAt(position, position + yawDirection(yaw))
+	if t >= 1 then
+		w.turning = false
 	end
 end
 
@@ -438,6 +483,34 @@ local function photoSpot(w: WitnessNpc, store: Model): Vector3
 	return Vector3.new(spot.X, position.Y, spot.Z)
 end
 
+-- f70c2 (Cantin, 18/11) : le pas de l'approche, à chaque image. Loin de son poste, le pas de croisière (setApproachSpeed) ;
+-- à moins de Photo.BrakeDistance studs, il freine (vitesse proportionnelle à la distance restante, jamais sous
+-- Photo.BrakeMinSpeed), et sa course (ou sa marche) ralentit avec lui, au plus bas Photo.BrakeAnimMin.
+local function approachPace(w: WitnessNpc)
+	local cruise = w.approachSpeed
+	if cruise <= 0 then
+		return
+	end
+	local distance = flat(w.approachGoal - w.root.Position).Magnitude
+	local ratio = 1
+	if distance < PHOTO.BrakeDistance then
+		ratio = math.clamp(distance / PHOTO.BrakeDistance, math.min(PHOTO.BrakeMinSpeed / cruise, 1), 1)
+	end
+	local speed = cruise * ratio
+	w.humanoid.WalkSpeed = speed
+	if math.abs(ratio - w.paceRatio) < 0.05 and (ratio < 1) == (w.paceRatio < 1) then
+		return -- la vitesse de lecture suit par crans
+	end
+	w.paceRatio = ratio
+	local rush = w.rushAnim
+	if rush then
+		w.anims:Play(rush, nil, nil, math.max(ratio, PHOTO.BrakeAnimMin)) -- déjà jouée : seule sa vitesse change
+	else
+		local gait = math.clamp(w.gait * speed / Witness.WalkSpeed, Witness.WalkAnimMin, Witness.WalkAnimMax)
+		w.anims:Play("Walk", nil, nil, gait) -- déjà jouée : seule sa vitesse change (AnimPlayer)
+	end
+end
+
 -- a196 (Cantin, T-087) : vitesse de l'approche, pour être au poste Photo.ApproachLead s avant que le « ? » soit
 -- plein (`timeLeft` s), entre Photo.ApproachSpeed et Photo.ApproachMaxSpeed ; la marche (Walk) suit ce pas.
 local function setApproachSpeed(w: WitnessNpc, timeLeft: number)
@@ -447,29 +520,27 @@ local function setApproachSpeed(w: WitnessNpc, timeLeft: number)
 	-- a221 (Photo.Rush) : il fonce, à RushSpeed au moins.
 	local low = if PHOTO.Rush then math.max(PHOTO.ApproachSpeed, PHOTO.RushSpeed) else PHOTO.ApproachSpeed
 	local speed = math.clamp(wanted, low, math.max(PHOTO.ApproachMaxSpeed, low))
-	w.humanoid.WalkSpeed = speed
+	w.approachSpeed = speed -- f70c2 : le pas de croisière ; approachPace freine près du poste
 	if PHOTO.Rush and w.rushAnim == nil and w.anims:Play(PHOTO.RushAnim) ~= nil then
 		w.rushAnim = PHOTO.RushAnim -- a221 : la course de Clément à la place de la marche
 		w.anims:Stop("Walk")
 	end
-	if w.rushAnim == nil then
-		local gait = math.clamp(w.gait * speed / Witness.WalkSpeed, Witness.WalkAnimMin, Witness.WalkAnimMax)
-		w.anims:Play("Walk", nil, nil, gait) -- déjà jouée : seule sa vitesse change (AnimPlayer)
-	end
+	w.paceRatio = -1 -- la vitesse de lecture est réécrite
+	approachPace(w)
 end
 
 -- a221 (Photo.Rush, L-210 point 4) : à son poste, il photographie tout de suite (TakePhoto, flash à ses marqueurs Flash,
 -- sinon au rythme de Photo.Interval) pendant que son « ? » monte ; sans Rush, il regarde (Look) comme avant.
 local function lookOrSnap(w: WitnessNpc, now: number)
 	if not (PHOTO.Enabled and PHOTO.Rush and w.store) then
-		w.anims:Play("Look")
+		w.anims:Play("Look", PHOTO.PoseFade)
 		return
 	end
 	w.snapping = true
 	w.flashMarkerSeen = false
-	w.photoAnim = w.anims:Play("TakePhoto") ~= nil
+	w.photoAnim = w.anims:Play("TakePhoto", PHOTO.PoseFade) ~= nil -- f70c2 : la pose arrive en fondu
 	if not w.photoAnim then
-		w.anims:Play("Look") -- TakePhoto pas livrée : il regarde, le flash part quand même
+		w.anims:Play("Look", PHOTO.PoseFade) -- TakePhoto pas livrée : il regarde, le flash part quand même
 	end
 	-- Avec TakePhoto, son premier marqueur Flash donne le premier flash (grâce de deux intervalles) ; sans elle, tout de suite.
 	w.nextFlashAt = if w.photoAnim then now + PHOTO.Interval * 2 else now
@@ -501,7 +572,7 @@ end
 -- L-172 : arrivé à son poste (ou bloqué), il se tourne vers la vitrine.
 local function endApproach(w: WitnessNpc)
 	w.approaching = false
-	stopWalking(w)
+	stopWalking(w, PHOTO.StopFade) -- f70c2 : la course s'efface en fondu
 	faceWindow(w)
 end
 
@@ -511,7 +582,7 @@ local function approachStep(w: WitnessNpc, now: number)
 		w.progressPos = position
 		w.progressAt = now
 	end
-	if flat(w.approachGoal - position).Magnitude <= Witness.PointReached or now - w.progressAt >= Witness.StuckTime then
+	if flat(w.approachGoal - position).Magnitude <= PHOTO.ArriveDistance or now - w.progressAt >= Witness.StuckTime then
 		endApproach(w)
 		log(`{w.label} est à son poste devant la vitrine`)
 		lookOrSnap(w, now) -- a221
@@ -1080,8 +1151,30 @@ local function remove(w: WitnessNpc, reason: string)
 	log(`{w.label} retiré ({reason})`)
 end
 
+-- f70c2 : à chaque image (la boucle, elle, va au pas de Witness.StepInterval), le freinage de l'approche et la rotation
+-- vers la vitrine, pour qu'ils soient fluides.
+local function frameStep(now: number)
+	for _, w in witnesses do
+		if w.hiddenParent or not (w.approaching or w.turning) then
+			continue
+		end
+		local ok, err = pcall(function()
+			if w.approaching then
+				approachPace(w)
+			else
+				turnStep(w, now)
+			end
+		end)
+		if not ok then
+			w.turning = false
+			warnOnce(`frame:{w.label}`, `{w.label} : {err}`)
+		end
+	end
+end
+
 local function step()
 	local now = os.clock()
+	frameStep(now)
 	if now < nextStepAt then
 		return
 	end
@@ -1244,6 +1337,12 @@ local function add(model: Model)
 		policeSeen = false,
 		rushAnim = nil,
 		snapping = false,
+		approachSpeed = 0,
+		paceRatio = 1,
+		turning = false,
+		turnAt = 0,
+		turnFrom = 0,
+		turnBy = 0,
 	}
 	-- Il part du point du circuit le plus proche de lui.
 	local nearest = math.huge

@@ -72,6 +72,17 @@ local Witness = {
 		Rush = true, -- V0
 		RushSpeed = 24, -- V0 : WalkSpeed de la course (jamais plus qu'ApproachMaxSpeed)
 		RushAnim = "Flee", -- V0 : la course de Clément (Contract/Animations.Witness) ; absente : Walk accélérée
+		-- f70c2 (Cantin, 18/11 : il « passe de son animation de course à une animation posée devant la boutique sans que ce
+		-- soit fluide ») : il freine sur les derniers studs, la course s'efface en fondu pendant que la pose (TakePhoto, ou
+		-- Look) arrive en fondu, et il se tourne vers la vitrine en douceur. Avant : arrêt net vers 24 studs/s, quart de tour
+		-- en une image, fondus de 0,1 s (ceux de Roblox).
+		BrakeDistance = 6, -- V0 : studs avant son poste où il commence à freiner (vitesse proportionnelle à la distance)…
+		BrakeMinSpeed = 4, -- V0 : … sans descendre sous cette vitesse (studs/s)
+		BrakeAnimMin = 0.4, -- V0 : vitesse de lecture la plus basse de la course (RushAnim) pendant le freinage
+		ArriveDistance = 1, -- V0 : à ce nombre de studs de son poste, il est arrivé (avant : Witness.PointReached, 2)
+		StopFade = 0.35, -- V0 : s, fondu de sortie de la course (ou de la marche) à l'arrivée
+		PoseFade = 0.35, -- V0 : s, fondu d'entrée de TakePhoto (ou de Look) à l'arrivée
+		TurnTime = 0.4, -- V0 : s, il se tourne vers la vitrine en ce temps (0 : d'un coup, comme avant)
 		-- V0 (a196, T-087 : « le flash se voit mal ») : chaque flash émet Bursts fois, à BurstGap s d'écart (la lumière
 		-- reste allumée jusqu'au dernier) ; l'effet de Clément (EmitCount, LightTime) n'est pas touché.
 		Bursts = 2,
