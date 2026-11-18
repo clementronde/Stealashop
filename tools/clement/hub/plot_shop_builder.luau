@@ -81,6 +81,12 @@
 	Tout en verre (2026-11-17, glassAll) : murs des côtés et du fond, vitrines, murets, parapets et toit en verre
 	très clair (Transparency 0,88) ; plus de doublage intérieur, de montants, de colonnes ni d'ossature de verrière ;
 	deux poteaux d'angle fins à l'avant. La porte (PlotDoor) ne change pas. Après build() : relancer l'anti-clignotement.
+	Structure dès le niveau 1 (2026-11-17, frameFromLevel1) : socle (Plinth_*), corniche (Cornice_*), vitres (Pane_*,
+	sans collision) et colonnes d'angle (Column_*) en marbre. Stage_1/Frame = avant (z -40 à -16,4) avec son fond de
+	niveau 1 Back_L1 (HideFromStage 2) ; Stage_2/Frame = la suite, coupée sur les plans de L-190, fond fin qui avance.
+	Plus de rambardes ni de champs de force (Stage_1/Railings, Stage_1/ForceField, Stage_2/ForceField) ni de murets
+	(Stage_2/Murets_*). CeilingLights invisible (lumières gardées), plus de lustres. Stage_3/Walls (compétence Walls)
+	inchangé.
 ]]
 
 local CS = game:GetService("CollectionService")
@@ -1415,6 +1421,95 @@ local function glassAll(M)
 	return gone
 end
 
+-- Structure dès le niveau 1 (Clément, 2026-11-17 : « je veux au niveau 1 la même structure, c'est top ») : socle,
+-- colonnes d'angle, corniche en marbre et vitres entre les deux, montrés dès le départ et qui suivent la longueur
+-- débloquée. Stage_1/Frame couvre l'avant (z -40 à -16,4, toujours là) ; son fond de niveau 1 (Stage_1/Frame/Back_L1,
+-- HideFromStage = 2) part au niveau 2. Stage_2/Frame couvre la suite (côtés coupés sur les plans de L-190, fond fin
+-- qui avance avec le fond). Les vitres de la structure sont visuelles (sans collision) : la collision reste aux
+-- barrières invisibles (PlotBarrier, Stage_2/Barriers) et à la compétence Walls (Stage_3/Walls, inchangée).
+-- Remplace les rambardes et champs de force des niveaux 1 et 2 et les murets (Stage_1/Railings, Stage_1/ForceField,
+-- Stage_2/ForceField, Stage_2/Murets_*). Les lampes du plafond restent invisibles et les lustres retirés.
+local N1_MARBLE = Color3.fromRGB(236, 233, 226)
+local N1_GLASS = Color3.fromRGB(215, 238, 255)
+local N1_BACK = -16.4 -- fond du niveau 1 (SMALL_Z)
+local N1_SIDE_PLANES = { -16.4, -12, -4, 4, 8, 16, 24, 32, 38.7 }
+local N1_O, N1_I = 24.1, 23.1 -- faces extérieure et intérieure du socle et de la corniche
+local N1_BANDS = { { "Plinth", 0.3, 1.4 }, { "Cornice", 15.4, 16.25 } }
+local function n1Part(parent, name, x0, y0, z0, x1, y1, z1, glassy)
+	local p = Instance.new("Part")
+	p.Name = name
+	p.Size = Vector3.new(x1 - x0, y1 - y0, z1 - z0)
+	p.CFrame = CFrame.new((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2)
+	p.Anchored = true
+	p.TopSurface = Enum.SurfaceType.Smooth
+	p.BottomSurface = Enum.SurfaceType.Smooth
+	if glassy then
+		p.Material = Enum.Material.Glass
+		p.Color = N1_GLASS
+		p.Transparency = 0.88
+		p.Reflectance = 0.03
+		p.CastShadow = false
+		p.CanCollide = false; p.CanTouch = false; p.CanQuery = false
+	else
+		p.Material = Enum.Material.Marble
+		p.Color = N1_MARBLE
+	end
+	p.Parent = parent
+	return p
+end
+-- côtés entre z0 et z1 : socle, corniche et vitre de chaque côté
+local function n1Sides(F, z0, z1)
+	for _, b in N1_BANDS do
+		n1Part(F, b[1] .. "_L", -N1_O, b[2], z0, -N1_I, b[3], z1)
+		n1Part(F, b[1] .. "_R", N1_I, b[2], z0, N1_O, b[3], z1)
+	end
+	n1Part(F, "Pane_L", -23.75, 1.4, z0, -23.45, 15.4, z1, true)
+	n1Part(F, "Pane_R", 23.45, 1.4, z0, 23.75, 15.4, z1, true)
+end
+-- fond fin en z0..z1 (socle, corniche, vitre, 2 colonnes)
+local function n1Back(F, z0, z1, c0, c1)
+	for _, b in N1_BANDS do n1Part(F, b[1] .. "_B", -22.7, b[2], z0, 22.7, b[3], z1) end
+	n1Part(F, "Pane_B", -22.7, 1.4, (z0 + z1) / 2 - 0.15, 22.7, 15.4, (z0 + z1) / 2 + 0.15, true)
+	n1Part(F, "Column_BL", -24.1, 0.3, c0, -22.7, 17.1, c1)
+	n1Part(F, "Column_BR", 22.7, 0.3, c0, 24.1, 17.1, c1)
+end
+local function frameFromLevel1(M)
+	for _, path in { { "Stage_3", "Frame" }, { "Stage_1", "Railings" }, { "Stage_1", "ForceField" }, { "Stage_2", "ForceField" },
+		{ "Stage_2", "Murets_Front" }, { "Stage_2", "Murets_Sides" }, { "Stage_1", "Frame" }, { "Stage_2", "Frame" } } do
+		local s = M:FindFirstChild(path[1]); local x = s and s:FindFirstChild(path[2]); if x then x:Destroy() end
+	end
+	-- niveau 1 (toujours montré)
+	local F1 = Instance.new("Model"); F1.Name = "Frame"; F1.Parent = M.Stage_1
+	n1Sides(F1, -38.8, N1_BACK)
+	for _, b in N1_BANDS do
+		n1Part(F1, b[1] .. "_FL", -22.7, b[2], -40.1, -10, b[3], -39.0)
+		n1Part(F1, b[1] .. "_FR", 10, b[2], -40.1, 22.7, b[3], -39.0)
+	end
+	n1Part(F1, "Pane_FL", -22.7, 1.4, -39.7, -10, 15.4, -39.4, true)
+	n1Part(F1, "Pane_FR", 10, 1.4, -39.7, 22.7, 15.4, -39.4, true)
+	n1Part(F1, "Column_FL", -24.1, 0.3, -40.2, -22.7, 17.1, -38.8)
+	n1Part(F1, "Column_FR", 22.7, 0.3, -40.2, 24.1, 17.1, -38.8)
+	local B1 = Instance.new("Model"); B1.Name = "Back_L1"; B1:SetAttribute("HideFromStage", 2); B1.Parent = F1
+	n1Back(B1, N1_BACK - 1.1, N1_BACK, N1_BACK - 1.4, N1_BACK)
+	-- la suite (Stage_2, coupée rang par rang par le code)
+	local F2 = Instance.new("Model"); F2.Name = "Frame"; F2.Parent = M.Stage_2
+	for i = 1, #N1_SIDE_PLANES - 1 do n1Sides(F2, N1_SIDE_PLANES[i], N1_SIDE_PLANES[i + 1]) end
+	n1Back(F2, 39.0, 40.1, 38.7, 40.1)
+	-- lampes : invisibles, lumière gardée ; plus de lustres
+	local CL = M.Stage_4:FindFirstChild("CeilingLights")
+	if CL then
+		for _, p in CL:GetDescendants() do
+			if p:IsA("BasePart") then
+				p.Transparency = 1; p.CanCollide = false; p.CanTouch = false; p.CanQuery = false; p.CastShadow = false
+				p.Material = Enum.Material.SmoothPlastic
+			elseif p:IsA("PointLight") then p.Brightness = math.max(p.Brightness, 1) end
+		end
+	end
+	local ch = M.Stage_5:FindFirstChild("Chandeliers"); if ch then ch:Destroy() end
+	for _, p in M.Stage_3.Walls:GetChildren() do if p.Name:match("^FrontPier_Out_") then p:Destroy() end end
+	return #F1:GetDescendants(), #F2:GetChildren()
+end
+
 local function build()
 	P.setSeed(4242)
 	local folder = plotsFolder()
@@ -1457,6 +1552,7 @@ local function build()
 	glassShop(M) -- façade et toit de verre, FitSize, pièges, découpe L-190 (Clément, 2026-11-17)
 	-- widenShop(M, store) : boutique de 79,5 abandonnée le jour même, « beaucoup trop larges » (Clément, 2026-11-17)
 	glassAll(M) -- tout le tour en verre très clair, sauf la porte (Clément, 2026-11-17)
+	frameFromLevel1(M) -- socle, colonnes, corniche et vitres dès le niveau 1, rang par rang ; plus de lampes visibles (Clément, 2026-11-17)
 	local pad = M:FindFirstChild("CashPad")
 	CS:AddTag(pad, "CashPad")
 	M.WorldPivot = CFrame.identity
