@@ -3,8 +3,8 @@
 -- La boutique Robux (UI_RobuxShop_v2) passe de 57 % à 80 % de la hauteur de l'écran (leurs fenêtres font 78 à 83 %),
 -- centrée. Le rapport de la fenêtre (1,706) ne change pas : tout le contenu grandit d'autant, titres, cases et prix
 -- compris, sans rien déplacer à l'intérieur. Sur téléphone, au moins 512 × 300 px (environ 90 % de la hauteur).
--- Le bas de la fenêtre passe sur la barre du bas (UI_Hotbar, même DisplayOrder 5) : la boutique passe à 6 pour la
--- couvrir et prendre ses clics.
+-- Le bas de la fenêtre passe sur la barre du bas (UI_Hotbar, même DisplayOrder 5) : la boutique passe à 7 pour la
+-- couvrir et prendre ses clics, au-dessus du voile UI_Veil (6).
 -- Les 4 décors pendus (Decor.Hang1 à Hang4) étaient placés par rapport à l'écran : en 16:9 la caisse pendue mordait
 -- sur la fenêtre agrandie. Decor passe dans Root, et chaque décor est accroché au bord de la fenêtre (deux à gauche,
 -- deux à droite, comme sur la maquette) ; sa ficelle monte jusqu'au haut de l'écran quelle que soit sa taille.
@@ -31,7 +31,7 @@ local ok, err = pcall(function()
 	if not backups:FindFirstChild(gui.Name) then
 		gui:Clone().Parent = backups
 	end
-	gui.DisplayOrder = 6 -- au-dessus de UI_Hotbar (5)
+	gui.DisplayOrder = 7 -- au-dessus de UI_Hotbar (5) et du voile UI_Veil (6, ui_veil_build.luau)
 	local root = gui.Root
 	root.Size = UDim2.fromScale(WIDTH, HEIGHT)
 	root.Position = UDim2.fromScale(0.5, 0.5) -- le décalage de 30 px servait aux onglets, retirés
