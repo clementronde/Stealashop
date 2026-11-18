@@ -34,6 +34,13 @@
 --     la garde). CloseArrowButton (la flèche vers la droite, facultative) ferme comme CloseButton (la croix, repli).
 --     Les lignes ne sont refaites que si ce qu'elles montrent change : un clic n'est plus perdu sur une ligne refaite
 --     entre l'appui et le relâché.
+--   - vague 73 (a255, L-241 point 4, L-248 ; décision de Cantin du 18/11) : la réserve revient sous les objets exposés
+--     (ShowReserve = true ; Clément l'a titrée INVENTORY) et reste montrée même vide (L-213 point 4) : Panel.Reserve
+--     n'est plus caché, seul son texte Reserve.ReserveEmpty (facultatif) est montré quand elle est vide et caché sinon.
+--     UI_Hotbar.Bar.InventoryButton (la dernière case de la barre du bas, facultatif) ouvre et ferme l'écran comme le
+--     bouton du HUD ; sa pastille InventoryAlert (UI/AlertBadge) s'allume quand un objet est entré dans la réserve
+--     depuis la dernière ouverture (Config/Displayed.InventoryAlert). Toggle suit l'écran réel : un écran éteint par
+--     un autre code s'ouvre au clic au lieu de demander un second clic.
 -- Tout vient des attributs du Player posés par le serveur : InventoryState (Shared/InventoryState,
 -- InventoryService), DisplaySlotsUnlocked et DisplayReserve (DisplayService). Le client ne décide rien.
 -- Seuls sont touchés : Enabled de l'écran, Visible de Panel.Reserve, les lignes clonées (taille du Template
@@ -47,6 +54,7 @@
 --   DisplayedController.Remove(itemUid)        comme le RemoveButton d'une ligne
 --   DisplayedController.Display(itemUid)       comme le DisplayButton d'une ligne de la réserve (vague 63)
 --   DisplayedController.GetReserve() -> { string }   uids de la réserve, dans l'ordre du serveur (bancs)
+--   DisplayedController.IsAlertOn() -> boolean       pastille InventoryAlert de la barre du bas allumée (vague 73)
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -62,6 +70,7 @@ local Find = require(Contract:WaitForChild("Find"))
 local Icons = require(Contract:WaitForChild("Icons"))
 local Format = require(Shared:WaitForChild("Format"))
 local InventoryState = require(Shared:WaitForChild("InventoryState"))
+local AlertBadge = require(Shared:WaitForChild("AlertBadge"))
 
 type Entry = InventoryState.ItemEntry
 type RarityFxApi = { Apply: (target: GuiObject, rarityId: string?) -> string? }
@@ -75,6 +84,7 @@ type Screen = {
 	reserveCount: Instance?,
 	reserveTemplate: GuiObject?,
 	reserveRows: { GuiObject },
+	reserveEmpty: GuiObject?, -- vague 73 : Reserve.ReserveEmpty, montré seulement quand la réserve est vide
 	rowsKey: string?, -- vague 72 : ce que montrent les lignes (refaites seulement s'il change)
 	reserveKey: string?,
 	connections: { RBXScriptConnection },
@@ -88,6 +98,11 @@ local SLOTS_ATTRIBUTE = "DisplaySlotsUnlocked" -- DisplayService
 local RESERVE_ATTRIBUTE = DisplayedConfig.ReserveAttribute -- DisplayService (vague 63)
 local SHOW_RESERVE = DisplayedConfig.ShowReserve ~= false -- vague 72 (a242, L-231) : réserve montrée dans l'écran
 local CLOSE_ARROW = "CloseArrowButton" -- vague 72 (L-219 point 4) : la flèche vers la droite, nom proposé à Clément
+-- Vague 73 (a255, L-241 point 4) : la case Inventory de la barre du bas et sa pastille.
+local HOTBAR = "UI_Hotbar"
+local HOTBAR_BUTTON = "InventoryButton"
+local HOTBAR_ALERT = "InventoryAlert"
+local RESERVE_EMPTY = "ReserveEmpty"
 -- V0 proposé, absent du doc : attente minimale entre deux demandes (Net en accepte une par seconde pour
 -- EquipBest ; quatre par seconde pour UnplaceItem et PlaceFromReserve).
 local BEST_COOLDOWN = 1
@@ -104,6 +119,12 @@ local net: any = nil
 local lastBest = -math.huge
 local lastSend: { [string]: number } = {}
 local reported: { [string]: boolean } = {}
+-- Vague 73 : boutons Inventory de la barre du bas, leurs pastilles, et les objets de la réserve déjà vus (nil tant que
+-- l'inventaire et la réserve ne sont pas arrivés du serveur ; jusqu'à seenUntil, tout ce qui y entre est vu).
+local hotbarConnections: { RBXScriptConnection } = {}
+local hotbarAlerts: { GuiObject } = {}
+local seen: { [string]: boolean }? = nil
+local seenUntil = 0
 
 local function reportOnce(key: string, message: string)
 	if IS_STUDIO and not reported[key] then
@@ -397,19 +418,51 @@ local function buildReserve(current: Screen, list: { Entry })
 	end
 end
 
+-- Vague 73 : pastille InventoryAlert de la barre du bas. Allumée si un objet de `stock` n'a pas encore été vu ; tout
+-- est vu quand l'écran est ouvert (`open`), et pendant la grâce d'arrivée.
+local function updateAlert(stock: { Entry }, open: boolean)
+	if DisplayedConfig.InventoryAlert ~= true then
+		AlertBadge.SetAll(hotbarAlerts, false)
+		return
+	end
+	if seen == nil then
+		-- Rien n'est « nouveau » avant l'arrivée de l'inventaire et de la réserve (attributs posés par le serveur).
+		if localPlayer:GetAttribute(InventoryState.Attribute) == nil or localPlayer:GetAttribute(RESERVE_ATTRIBUTE) == nil then
+			AlertBadge.SetAll(hotbarAlerts, false)
+			return
+		end
+		seen = {}
+		seenUntil = os.clock() + (DisplayedConfig.InventoryAlertGrace or 0)
+	end
+	local known: { [string]: boolean } = seen or {}
+	local all = open or os.clock() < seenUntil
+	local fresh = false
+	for _, entry in stock do
+		if all then
+			known[entry.Uid] = true
+		elseif not known[entry.Uid] then
+			fresh = true
+		end
+	end
+	AlertBadge.SetAll(hotbarAlerts, fresh)
+end
+
 -- Compteurs (écran ouvert ou pas) et lignes (écran ouvert seulement).
 local function refresh()
 	local current = screen
+	local items = inventory()
+	local stock = reserved(items)
+	updateAlert(stock, isOpen and current ~= nil and current.gui.Enabled)
 	if current == nil then
 		return
 	end
-	local items = inventory()
 	local list = exposed(items)
-	local stock = reserved(items)
 	setText(current.countLabel, string.format(COUNT_TEXT, #list, unlockedSlots()))
 	setText(current.reserveCount, tostring(#stock))
-	if current.reserve then
-		current.reserve.Visible = #stock > 0
+	-- Vague 73 (L-213 point 4, L-241) : Panel.Reserve toujours montré ; seul son texte « vide » suit la réserve.
+	local empty = current.reserveEmpty
+	if empty and empty.Visible ~= (#stock == 0) then
+		empty.Visible = #stock == 0
 	end
 	if isOpen then
 		buildRows(current, list)
@@ -467,6 +520,7 @@ local function bind(gui: ScreenGui)
 		reserveCount = if reserve then Find.path(reserve, "ReserveCount.ReserveCountLabel") else nil,
 		reserveTemplate = reserveTemplate,
 		reserveRows = {},
+		reserveEmpty = if reserve then guiObject(reserve, RESERVE_EMPTY) else nil,
 		rowsKey = nil,
 		reserveKey = nil,
 		connections = {},
@@ -530,7 +584,9 @@ function DisplayedController.Close()
 end
 
 function DisplayedController.Toggle()
-	if isOpen then
+	-- Vague 73 : l'écran réel compte (éteint par un autre code : il s'ouvre au lieu d'attendre un second clic).
+	local current = screen
+	if isOpen and current ~= nil and current.gui.Parent ~= nil and current.gui.Enabled then
 		DisplayedController.Close()
 	else
 		DisplayedController.Open()
@@ -566,8 +622,43 @@ function DisplayedController.GetReserve(): { string }
 	return reserveUids()
 end
 
+-- Vague 73 : la pastille InventoryAlert de la barre du bas est allumée (bancs, barre de commande).
+function DisplayedController.IsAlertOn(): boolean
+	for _, badge in hotbarAlerts do
+		if AlertBadge.IsOn(badge) then
+			return true
+		end
+	end
+	return false
+end
+
 closePanel = DisplayedController.Close
 displayBest = DisplayedController.DisplayBest
+
+-- Vague 73 (a255, L-241 point 4) : UI_Hotbar.Bar.InventoryButton (facultatif) ouvre et ferme l'écran ; sa pastille
+-- InventoryAlert suit updateAlert. Écran recréé : rebranché, les anciennes connexions coupées.
+local function bindHotbar(gui: ScreenGui)
+	for _, connection in hotbarConnections do
+		connection:Disconnect()
+	end
+	table.clear(hotbarConnections)
+	AlertBadge.SetAll(hotbarAlerts, false)
+	hotbarAlerts = {}
+	for _, inst in Find.all(gui, HOTBAR_BUTTON) do
+		if inst:IsA("GuiButton") then
+			table.insert(hotbarConnections, (inst :: GuiButton).Activated:Connect(function()
+				DisplayedController.Toggle()
+			end))
+			for _, badge in AlertBadge.Find(inst, HOTBAR_ALERT) do
+				table.insert(hotbarAlerts, badge)
+			end
+		end
+	end
+	if #hotbarConnections == 0 then
+		reportOnce("hotbarButton", `[Displayed] {HOTBAR}.Bar.{HOTBAR_BUTTON} introuvable : l'écran s'ouvre par le HUD seulement`)
+	end
+	refresh()
+end
 
 function DisplayedController.Start()
 	localPlayer:GetAttributeChangedSignal(InventoryState.Attribute):Connect(refresh)
@@ -588,11 +679,17 @@ function DisplayedController.Start()
 	playerGui.ChildAdded:Connect(function(child: Instance)
 		if child.Name == SCREEN and child:IsA("ScreenGui") then
 			bind(child :: ScreenGui) -- écran recréé (ResetOnSpawn) : rebranché, fermé
+		elseif child.Name == HOTBAR and child:IsA("ScreenGui") then
+			bindHotbar(child :: ScreenGui) -- vague 73
 		end
 	end)
 	local existing = playerGui:FindFirstChild(SCREEN)
 	if existing and existing:IsA("ScreenGui") then
 		bind(existing :: ScreenGui)
+	end
+	local hotbar = playerGui:FindFirstChild(HOTBAR)
+	if hotbar and hotbar:IsA("ScreenGui") then
+		bindHotbar(hotbar :: ScreenGui)
 	end
 end
 

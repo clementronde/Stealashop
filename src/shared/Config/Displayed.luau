@@ -26,7 +26,14 @@ local Displayed = {
 	-- UI_Displayed.Panel.Reserve caché et jamais rempli (DisplayedController). Le serveur garde la réserve telle quelle
 	-- (ReserveCatchAll, SwapWhenFull, Exposer les meilleurs) : un objet en trop y reste, sans être montré, et
 	-- « Exposer les meilleurs » l'en sort dès qu'il rapporte plus qu'un exposé. true : la réserve de la vague 63.
-	ShowReserve = false,
+	-- Vague 73 (a255, L-241 point 4, L-248 ; décision de Cantin du 18/11 : « comme Clément ») : true, la réserve revient
+	-- sous les objets exposés, titrée INVENTORY par Clément, toujours montrée (vide : son texte ReserveEmpty).
+	ShowReserve = true,
+	-- Vague 73 (a255, L-241 point 4) : UI_Hotbar.Bar.InventoryButton (la dernière case de la barre du bas) ouvre cet
+	-- écran ; sa pastille InventoryAlert s'allume quand un objet est entré dans l'inventaire (la liste Panel.Reserve)
+	-- depuis la dernière fois que l'écran était ouvert, et s'éteint à l'ouverture. V0, proposition à Clément.
+	InventoryAlert = true,
+	InventoryAlertGrace = 3, -- V0 (s) : à l'arrivée, ce qui entre dans la réserve pendant ce temps n'est pas « nouveau »
 
 	-- « +$X/s » de l'objet qui vole de son présentoir jusqu'à l'argent du HUD (L-192 Q2), une fois par pose
 	-- (à la main, « Exposer les meilleurs », depuis la réserve), jamais pendant une poursuite (GainController).
