@@ -130,6 +130,24 @@ local Chase = {
 	SpringReturn = true,
 	SpringMaxFactor = 1.5, -- V0 proposé, absent du doc : au plus × la marche du voleur (ruée d'avant : 3,9)
 	SpringBrake = 20 * K * K, -- V0 proposé, absent du doc (studs/s², × k² : 80), bien sous ce que freine un Humanoid
+	-- a249 (Cantin, 2026-11-18 : « plus vite de loin ») : Play de fusion68, 10 à 11 s entre la prise et le vigile à
+	-- 14 studs (zone 1 : 11,15 s ; zone 5 : 10,11 s ; profil rapide, 76 studs/s avec l'objet), le vigile ne regagnant
+	-- que (SpringMaxFactor − 1) × la marche = 38 studs/s. SpringFar = true (en retour doux) : loin du voleur, au plus
+	-- SpringFarFactor × la marche, atteint à SpringFarDistance studs et au-delà ; en approchant, il redescend en continu
+	-- (au plus SpringFarBrake studs/s²) jusqu'à SpringMaxFactor × la marche, puis le freinage SpringBrake et la tenue à
+	-- HoldDistance d'avant : ni à-coup, ni longue approche au ralenti. Si un freinage plus doux que SpringFarBrake suffit
+	-- pour atteindre SpringFarFactor à SpringFarDistance, il le prend ; sinon il ne l'atteint qu'un peu plus loin (profil
+	-- rapide : ≈ 63 studs). false : au plus SpringMaxFactor × la marche, à toute distance.
+	SpringFar = true,
+	SpringFarFactor = 2.5, -- V0 (Cantin : ≈ 2,5 × la marche, de loin)
+	SpringFarDistance = 40, -- V0 (Cantin : au-delà d'≈ 40 studs)
+	SpringFarBrake = 40 * K * K, -- V0 proposé, absent du doc (studs/s², × k² : 160), toujours sous ce que freine un Humanoid
+	-- a249 (Plays du 18/11 : le vigile mettait ≈ 3,3 à 4 s à sortir du magasin, autour de Shelf_A_Spine ; il allait de
+	-- point en point du chemin, tous les 4 studs, à ≈ 40 studs/s réels pour 114 de WalkSpeed). Derrière un
+	-- obstacle, le vigile vise le plus loin des PathLookahead points suivants du chemin qu'il peut joindre tout droit
+	-- (rayons au centre, aux genoux et sur ses flancs, même hauteur de sol, jamais au-delà d'un saut ni par la zone
+	-- safe) : il coupe les coins au lieu de s'arrêter à chaque point. 0 : point par point, la règle d'avant.
+	PathLookahead = 8, -- V0 proposé, absent du doc
 	-- a249 (L-235 décision 2) : le vigile du magasin part StartDelay s après la prise (apparition, objet ramassé au
 	-- sol ; avant : 0,5 s, toujours le délai du vigile de nuit, du policier et du conducteur). WaitAfterReveal : après
 	-- la cinématique d'ouverture (RevealProtected), tout poursuivant figé repart StartDelay s plus tard, sans capture
@@ -140,6 +158,22 @@ local Chase = {
 	-- après) : un joueur attrapé (immobilisé par une capture, ou attrapé la nuit et pas encore renvoyé) n'est plus
 	-- poursuivi ; les autres poursuivants abandonnent. false : la règle d'avant (deux captures possibles).
 	OneCatchAtATime = true,
+	-- a249 (Play de fusion68 : à la Supérette, un voleur coincé contre un rayon n'a jamais été attrapé, plus de 40 s ;
+	-- le vigile était à 2,2 studs, à portée, mais le bout du rayon (Shelf_A_EndA, 0,3 stud) coupait chaque rayon de
+	-- CatchReach.CanTouch, et le chemin ne menait pas plus près). StuckCatch = true : un voleur à portée de capture
+	-- (CatchReach.InRange, sa position sur le serveur) qui n'a pas bougé de StuckMoveMax studs à l'horizontale depuis
+	-- StuckCatchTime s est attrapé même sans ligne de vue (« coincé ») ; il pousse contre l'obstacle mais n'avance pas,
+	-- il est approché et attrapé comme un voleur arrêté (le plafond d'arrivée compte sa vitesse lue pour 0). Sans ligne
+	-- de vue, seulement si le vigile est bloqué lui aussi (pas bougé de StuckMoveMax studs depuis StuckCatchTime s), au
+	-- même étage (StuckHeightMax studs d'écart au plus) et derrière un panneau mince : la ligne entre eux ne traverse pas
+	-- plus de StuckWallMax studs de pièces qui bloquent (bout de rayon 0,3, dos 0,45 ; jamais un mur de 1 stud ni un
+	-- plancher : banc a146). Vigile du magasin, policier, conducteur ; le vigile de nuit garde la ligne
+	-- de vue. false : la règle d'avant (ligne de vue exigée).
+	StuckCatch = true,
+	StuckCatchTime = 0.3, -- V0 proposé, absent du doc (s)
+	StuckMoveMax = 1, -- V0 proposé, absent du doc (studs)
+	StuckWallMax = 0.75, -- V0 proposé, absent du doc (studs)
+	StuckHeightMax = 3, -- V0 proposé, absent du doc (studs, entre les deux HumanoidRootPart)
 	-- a249 : diagnostic de la poursuite dans la sortie (aussi hors Studio) : chaque seconde, la distance, la phase,
 	-- la distance prévue et les parts de la vitesse du vigile ; à chaque capture, la distance, le temps depuis
 	-- l'apparition et dedans/dehors. En Studio, workspace:SetAttribute("ChaseDebug", true) fait de même.

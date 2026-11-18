@@ -397,6 +397,11 @@ type Guard = {
 	rushStepAt: number?, -- a168 : dernier pas de la ruée (durée d'image, pour anticiper sa fin)
 	holdTarget: number?, -- a173 : distance prévue de la poursuite à distance (studs), rappel vers elle
 	holdStepAt: number?, -- a173 : dernier pas de la poursuite à distance
+	stuckFrom: Vector3?, -- a249 (Chase.StuckCatch) : position de la cible sur le serveur quand elle a bougé pour la dernière fois
+	stuckSince: number?, -- a249 : depuis quand elle n'a pas bougé de Chase.StuckMoveMax studs à l'horizontale
+	standingStill: boolean?, -- a249 : elle n'avance plus depuis Chase.StuckCatchTime s (stuckCatchable) : approachCap la traite comme arrêtée
+	blockedFrom: Vector3?, -- a249b : position du vigile quand il a bougé pour la dernière fois (même règle, pour lui)
+	blockedSince: number?, -- a249b : depuis quand il n'a pas bougé de Chase.StuckMoveMax studs à l'horizontale
 	target: Player?, -- joueur poursuivi, nil hors poursuite
 	state: GuardState,
 	spawnedAt: number,
@@ -1060,8 +1065,56 @@ local function computePath(guard: Guard, goal: Vector3)
 	end)
 end
 
--- Suit le dernier chemin calculé ; sans chemin, ou au bout, va droit vers `goal`.
-local function followPath(guard: Guard, goal: Vector3)
+-- a249 (Chase.PathLookahead ; Plays du 18/11 : à 114 studs/s, le vigile dépassait le point visé entre deux pas
+-- de pilotage, revenait en arrière et ne sortait du magasin qu'en ≈ 3,3 à 4 s, à ≈ 40 studs/s réels) : le plus loin
+-- des Chase.PathLookahead points du chemin depuis `index` qu'il peut joindre tout droit. Rayons à hauteur de son
+-- centre, de ses genoux et de ses flancs (0,75 × son rayon d'agent), à plat ; chaque point au niveau de ses pieds
+-- (à KNEE_HEIGHT près) ; jamais un point de saut ni au-delà ; aucun bout du trajet en zone safe. Sinon : `index`.
+local function farthestReachable(guard: Guard, waypoints: { PathWaypoint }, index: number): number
+	local lookahead = Chase.PathLookahead
+	if not isPositiveNumber(lookahead) or index >= #waypoints then
+		return index
+	end
+	local from = guard.root.Position
+	local feet = from.Y - guard.rootHeight
+	local knee = Vector3.new(0, guard.rootHeight - KNEE_HEIGHT, 0)
+	local side = 0.75 * guard.agentRadius
+	local best = index
+	for i = index + 1, math.min(#waypoints, index + math.floor(lookahead) - 1) do
+		local waypoint = waypoints[i]
+		local point = waypoint.Position
+		if waypoint.Action == Enum.PathWaypointAction.Jump or math.abs(point.Y - feet) > KNEE_HEIGHT then
+			break
+		end
+		local to = Vector3.new(point.X, from.Y, point.Z)
+		local offset = to - from
+		local length = offset.Magnitude
+		if length > 1e-3 then
+			local across = Vector3.new(-offset.Z, 0, offset.X) / length * side
+			if not (clearLine(from, to) and clearLine(from - knee, to - knee)
+				and clearLine(from + across, to + across) and clearLine(from - across, to - across))
+			then
+				break
+			end
+			local inSafe = false
+			for step = WAYPOINT_SPACING, length, WAYPOINT_SPACING do
+				if isInSafeZone(from + offset * (step / length)) then
+					inSafe = true
+					break
+				end
+			end
+			if inSafe then
+				break
+			end
+		end
+		best = i
+	end
+	return best
+end
+
+-- Suit le dernier chemin calculé ; sans chemin, ou au bout, va droit vers `goal`. `lookahead` (poursuite derrière
+-- un obstacle) : vise le plus loin des points suivants qu'il joint tout droit (farthestReachable).
+local function followPath(guard: Guard, goal: Vector3, lookahead: boolean?)
 	local waypoints = guard.waypoints
 	if waypoints == nil then
 		moveTo(guard, goal)
@@ -1071,6 +1124,9 @@ local function followPath(guard: Guard, goal: Vector3)
 	local index = guard.waypointIndex
 	while index <= #waypoints and flat(waypoints[index].Position - position).Magnitude <= WAYPOINT_REACHED do
 		index += 1
+	end
+	if lookahead and index <= #waypoints then
+		index = farthestReachable(guard, waypoints, index)
 	end
 	guard.waypointIndex = index
 	if index > #waypoints then
@@ -1528,6 +1584,70 @@ end
 -- distance prévue suit le rapprochement, comme la poursuite à distance d'avant (holdRecall).
 local SPRING_ARRIVE = 1
 
+-- a249 : profil du surplus du retour doux pour une marche du voleur `walk` (springSurplus).
+--   linear = HoldRecallMax / HoldRecallGain (4 studs) ; capNear = max((SpringMaxFactor − 1) × marche, HoldRecallMax) ;
+--   joinGap = écart où le freinage SpringBrake atteint capNear ;
+--   capFar (Chase.SpringFar) = max((SpringFarFactor − 1) × marche, capNear), atteint à l'écart SpringFarDistance −
+--   HoldDistance avec le freinage qui y suffit, au plus SpringFarBrake (farBrake ; 0 : sans la part de loin).
+type SpringProfile = {
+	gain: number,
+	recallMax: number,
+	linear: number,
+	brake: number,
+	capNear: number,
+	joinGap: number,
+	capFar: number,
+	farBrake: number,
+}
+
+local function springProfile(walk: number): SpringProfile
+	local gain = if isPositiveNumber(Chase.HoldRecallGain) then Chase.HoldRecallGain else 0
+	local recallMax = if isPositiveNumber(Chase.HoldRecallMax) then Chase.HoldRecallMax else 0
+	local linear = if gain > 0 then recallMax / gain else 0
+	local brake = if isPositiveNumber(Chase.SpringBrake) then Chase.SpringBrake else 0
+	local capNear = math.max(math.max(Chase.SpringMaxFactor - 1, 0) * walk, recallMax)
+	local joinGap = if brake > 0 then linear + (capNear * capNear - recallMax * recallMax) / (2 * brake) else math.huge
+	local capFar = capNear
+	local farBrake = 0
+	if Chase.SpringFar == true and isPositiveNumber(Chase.SpringFarFactor) and joinGap < math.huge then
+		capFar = math.max((Chase.SpringFarFactor - 1) * walk, capNear)
+		if capFar > capNear then
+			local span = Chase.SpringFarDistance - Chase.HoldDistance - joinGap
+			local needed = if span > 0 then (capFar * capFar - capNear * capNear) / (2 * span) else math.huge
+			farBrake = math.min(needed, if isPositiveNumber(Chase.SpringFarBrake) then Chase.SpringFarBrake else brake)
+		end
+	end
+	return {
+		gain = gain,
+		recallMax = recallMax,
+		linear = linear,
+		brake = brake,
+		capNear = capNear,
+		joinGap = joinGap,
+		capFar = if farBrake > 0 then capFar else capNear,
+		farBrake = farBrake,
+	}
+end
+
+-- a249 : surplus du retour doux (studs/s) pour un écart `gap` = distance − prévue.
+--   écart ≤ 0 : HoldRecallGain × écart, au plus −HoldRecallMax ; jusqu'à linear : HoldRecallGain × écart ;
+--   jusqu'à joinGap : √(HoldRecallMax² + 2 × SpringBrake × (écart − linear)), au plus capNear ;
+--   au-delà (Chase.SpringFar) : √(capNear² + 2 × farBrake × (écart − joinGap)), au plus capFar.
+-- Continu en tout point : sa vitesse ne retombe jamais d'un coup, il freine au plus à farBrake puis à SpringBrake.
+local function springSurplus(profile: SpringProfile, gap: number): number
+	if gap <= 0 then
+		return math.max(profile.gain * gap, -profile.recallMax)
+	end
+	local surplus = math.min(profile.gain * gap, profile.recallMax)
+	if gap > profile.linear then
+		surplus = math.sqrt(profile.recallMax * profile.recallMax + 2 * profile.brake * (gap - profile.linear))
+	end
+	if profile.farBrake <= 0 or gap <= profile.joinGap then
+		return math.min(surplus, profile.capNear)
+	end
+	return math.min(math.sqrt(profile.capNear * profile.capNear + 2 * profile.farBrake * (gap - profile.joinGap)), profile.capFar)
+end
+
 -- a249 (Cantin, 2026-11-17, L-235 décision 1 ; Play du 17/11 : la ruée à 3,9 × la marche finissait à 8 à 9 studs
 -- au lieu de 14, le Humanoid ne freinant qu'à ≈ 700 studs/s² ; ensuite, à la marche du voleur, il paraissait
 -- « très lent ») : vitesse du vigile du magasin en retour doux (Chase.SpringReturn), à chaque image :
@@ -1538,7 +1658,9 @@ local SPRING_ARRIVE = 1
 -- Loin, il court au plus à SpringMaxFactor × la marche ; en arrivant, il freine à SpringBrake (80 studs/s²), bien sous
 -- ce que freine un Humanoid (≈ 700), puis le rappel des 4 derniers studs : ni dépassement, ni à-coup, ni longue
 -- approche au ralenti ; le rappel linéaire près de la distance prévue ne fait pas trembler sa vitesse quand la
--- position du voleur bouge d'un stud d'une image à l'autre. Distance prévue : Chase.HoldDistance jusqu'à
+-- position du voleur bouge d'un stud d'une image à l'autre. a249 (Cantin, 2026-11-18 : « plus vite de loin ») : avec
+-- Chase.SpringFar, au-delà de ce freinage, il court plus vite encore, jusqu'à SpringFarFactor × la marche à
+-- SpringFarDistance studs et au-delà (springProfile, springSurplus). Distance prévue : Chase.HoldDistance jusqu'à
 -- l'arrivée (écart ≤ SPRING_ARRIVE), puis elle baisse au rythme du rapprochement, jamais sous la capture. Le voleur
 -- qui s'éloigne de nouveau est rattrapé de la même façon : le vigile ne lâche jamais prise.
 local function springSpeed(guard: Guard, player: Player, targetAt: Vector3, targetHumanoid: Humanoid, now: number): number
@@ -1564,20 +1686,7 @@ local function springSpeed(guard: Guard, player: Player, targetAt: Vector3, targ
 		log(string.format("%s : à %.1f studs de %s, fin de la ruée, poursuite à distance (marche %.2f + rapprochement %.2f, retour doux)",
 			guard.label, distance, player.Name, walk, closing))
 	end
-	local gain = if isPositiveNumber(Chase.HoldRecallGain) then Chase.HoldRecallGain else 0
-	local recallMax = if isPositiveNumber(Chase.HoldRecallMax) then Chase.HoldRecallMax else 0
-	local recall = math.max(gain * gap, -recallMax)
-	if gap > 0 then
-		-- Rappel linéaire jusqu'à HoldRecallMax (écart ≤ HoldRecallMax / HoldRecallGain : 4 studs), puis freinage constant.
-		local linear = if gain > 0 then recallMax / gain else 0
-		recall = math.min(gain * gap, recallMax)
-		if gap > linear then
-			local brake = if isPositiveNumber(Chase.SpringBrake) then Chase.SpringBrake else 0
-			recall = math.sqrt(recallMax * recallMax + 2 * brake * (gap - linear))
-		end
-		recall = math.min(recall, math.max(math.max(Chase.SpringMaxFactor - 1, 0) * walk, recallMax))
-	end
-	return math.max(walk + closing + recall, Chase.HoldMinSpeed)
+	return math.max(walk + closing + springSurplus(springProfile(walk), gap), Chase.HoldMinSpeed)
 end
 
 -- a173 (2026-11-15, Play de fusion48) : la fin de ruée tombait vers 7,5 studs au lieu de 10 (image plus
@@ -1627,11 +1736,24 @@ local function approachCap(guard: Guard, targetAt: Vector3, targetRoot: BasePart
 			away = 0
 		end
 	end
+	if guard.standingStill == true then
+		away = 0 -- a249 (Chase.StuckCatch) : il pousse contre un obstacle sans avancer, comme un voleur arrêté
+	end
 	local catchDistance = if guard.kind == "Night" then Night.CatchDistance else Balance.Guard.CatchDistance
 	-- a249 : en retour doux, freinage à Chase.SpringBrake (RushBrake, 1 000 studs/s², dépasse ce que freine un Humanoid).
-	local brakeValue = if springReturn(guard) then Chase.SpringBrake else Chase.RushBrake
+	local spring = springReturn(guard)
+	local brakeValue = if spring then Chase.SpringBrake else Chase.RushBrake
 	local rushBrake = if isPositiveNumber(brakeValue) then brakeValue else 0
 	local room = 2 * rushBrake * math.max(distance - Chase.HoldDistance, 0) + 2 * brake * math.max(distance - catchDistance, 0)
+	if spring then
+		-- a249 (Chase.SpringFar) : loin, freinage farBrake au lieu de SpringBrake (springProfile) ; le plafond reste
+		-- au-dessus du retour doux pour un voleur qui court tout droit, et freine de même sur un voleur arrêté.
+		local profile = springProfile(if isPositiveNumber(walk) then walk else 0)
+		if profile.farBrake > rushBrake then
+			local hold = guard.holdTarget or Chase.HoldDistance
+			room += 2 * (profile.farBrake - rushBrake) * math.max(distance - hold - profile.joinGap, 0)
+		end
+	end
 	return away + math.max(math.sqrt(room), Chase.ApproachMinClosing)
 end
 
@@ -1707,15 +1829,23 @@ local function startChase(guard: Guard, now: number)
 	if player then
 		targetRoot, targetHumanoid = bodyOf(player)
 	end
+	guard.stuckFrom = nil
+	guard.stuckSince = nil
+	guard.standingStill = nil
+	guard.blockedFrom = nil
+	guard.blockedSince = nil
 	if player and targetHumanoid and followsDistanceRule(guard, player) then
 		guard.chasePhase = "Rush"
 		guard.rushStepAt = nil
 		if targetRoot and springReturn(guard) then
-			-- a249 : retour doux, au plus Chase.SpringMaxFactor × sa marche.
+			-- a249 : retour doux, au plus Chase.SpringMaxFactor × sa marche près de lui (Chase.SpringFar : SpringFarFactor de loin).
 			local targetAt = estimatedPosition(player, targetRoot, targetHumanoid)
 			local speed = math.min(springSpeed(guard, player, targetAt, targetHumanoid, now), approachCap(guard, targetAt, targetRoot, targetHumanoid))
 			setWalkSpeed(guard, speed)
-			log(`{guard.label} : ruée sur {player.Name} à {Format.short(guard.humanoid.WalkSpeed)} studs/s (retour doux, au plus {Chase.SpringMaxFactor} × sa marche)`)
+			local most = if Chase.SpringFar == true
+				then `au plus {Chase.SpringFarFactor} × sa marche de loin, {Chase.SpringMaxFactor} × près`
+				else `au plus {Chase.SpringMaxFactor} × sa marche`
+			log(`{guard.label} : ruée sur {player.Name} à {Format.short(guard.humanoid.WalkSpeed)} studs/s (retour doux, {most})`)
 		else
 			setWalkSpeed(guard, distanceRuleSpeed(guard, player, targetHumanoid, now))
 			log(`{guard.label} : ruée sur {player.Name} à {Format.short(guard.humanoid.WalkSpeed)} studs/s`)
@@ -2439,7 +2569,51 @@ local function chaseBehindObstacle(guard: Guard, goal: Vector3, now: number)
 		end
 		guard.lastSeen = nil -- atteint ou caché : le chemin prend le relais
 	end
-	followPath(guard, goal)
+	followPath(guard, goal, true)
+end
+
+-- a249 (Chase.StuckCatch ; Play de fusion68, Supérette : voleur coincé contre un rayon jamais attrapé, le vigile à
+-- 2,2 studs, Shelf_A_EndA coupant chaque rayon de CatchReach.CanTouch) : la cible n'a pas bougé de Chase.StuckMoveMax
+-- studs à l'horizontale (sa position sur le serveur, jamais une vitesse voulue) depuis Chase.StuckCatchTime s.
+-- Suivi à chaque pas de poursuite ; remis à zéro au départ de chaque poursuite (startChase). Une cible qui n'avance plus
+-- est aussi approchée comme une cible arrêtée (approachCap), même si sa vitesse se lit encore non nulle.
+-- a249b (banc a146 : « jamais à travers un mur ni un plancher ») : attrapable sans ligne de vue seulement si le vigile
+-- non plus n'a pas bougé de Chase.StuckMoveMax studs depuis Chase.StuckCatchTime s (un vigile qui passe derrière le
+-- mur ou en fait le tour bouge), à portée (CatchReach.InRange), au même étage (Chase.StuckHeightMax) et si la ligne
+-- entre eux ne traverse pas plus de Chase.StuckWallMax studs de pièces qui bloquent (du premier obstacle vu du vigile
+-- au premier vu de la cible : un panneau de rayon, son épaisseur ; un mur double, tout l'écart). Une seule fonction :
+-- GuardService est à la limite des 200 variables locales d'un bloc Luau.
+local function stuckCatchable(guard: Guard, targetRoot: BasePart, catchDistance: number, now: number): boolean
+	local moveMax = if isPositiveNumber(Chase.StuckMoveMax) then Chase.StuckMoveMax else 0
+	local wait = math.max(Chase.StuckCatchTime, 0)
+	local to = targetRoot.Position
+	local from = guard.root.Position
+	local still = false
+	local anchor, since = guard.stuckFrom, guard.stuckSince
+	if anchor == nil or since == nil or flat(to - anchor).Magnitude > moveMax then
+		guard.stuckFrom, guard.stuckSince = to, now
+	else
+		still = now - since >= wait
+	end
+	guard.standingStill = still
+	local blocked = false
+	anchor, since = guard.blockedFrom, guard.blockedSince
+	if anchor == nil or since == nil or flat(from - anchor).Magnitude > moveMax then
+		guard.blockedFrom, guard.blockedSince = from, now
+	else
+		blocked = now - since >= wait
+	end
+	if not (still and blocked and CatchReach.InRange(from, to, catchDistance) and math.abs(to.Y - from.Y) <= Chase.StuckHeightMax) then
+		return false
+	end
+	local direction = to - from
+	local length = direction.Magnitude
+	local forward = if length >= 1e-3 then Workspace:Raycast(from, direction, rayParams) else nil
+	if forward == nil then
+		return true
+	end
+	local backward = Workspace:Raycast(to, -direction, rayParams)
+	return backward ~= nil and (backward.Position - forward.Position):Dot(direction / length) <= Chase.StuckWallMax
 end
 
 local function chaseStep(guard: Guard, now: number)
@@ -2513,6 +2687,12 @@ local function chaseStep(guard: Guard, now: number)
 		or (targetAt ~= targetRoot.Position and CatchReach.InRange(guard.root.Position, targetRoot.Position, Chase.LagContactReach))
 	then
 		touch, how = CatchReach.CanTouch(guard.root.Position, targetRoot, rayParams)
+	end
+	-- a249 (Chase.StuckCatch) : un voleur qui pousse contre un obstacle sans avancer est attrapé comme un voleur
+	-- arrêté, même sans ligne de vue (le vigile de nuit garde la règle d'avant) ; a249b : seulement le vigile bloqué
+	-- lui aussi, au même étage, derrière un panneau mince (jamais à travers un mur ni un plancher).
+	if Chase.StuckCatch == true and not night and stuckCatchable(guard, targetRoot, catchDistance, now) and not touch then
+		touch, how = true, "coincé, il n'avance plus"
 	end
 	if touch then
 		if how ~= "vue" then
@@ -2951,6 +3131,9 @@ local function update(guard: Guard, now: number)
 	local frozenAt = guard.revealFrozenAt
 	if frozenAt then
 		guard.revealFrozenAt = nil
+		guard.stuckFrom = nil -- a249 : figé dans la cinématique, ce n'est pas « coincé »
+		guard.standingStill = nil
+		guard.blockedFrom = nil
 		local paused = now - frozenAt
 		guard.stateEndsAt += paused
 		local until_ = guard.intruderUntil
