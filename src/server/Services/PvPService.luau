@@ -197,6 +197,7 @@ local PvP = require(Shared.Config.PvP)
 local Find = require(Shared.Contract.Find)
 local Format = require(Shared.Format)
 local Net = require(Shared.Net.Net)
+local Announce = require(Shared.Announce) -- a254 (L-240 point 3)
 local CarryTypes = require(Shared.Types.Carry)
 
 local AntiCheatService = require(script.Parent.AntiCheatService)
@@ -1094,6 +1095,7 @@ local function deposit(theft: Theft, root: BasePart)
 	-- seul un arrêt brutal du serveur pendant ces deux écritures pourrait encore créer un écart.
 	if victim then
 		notify(victim, string.format(MESSAGES.Robbed, thief.DisplayName, name), "Alert")
+		Announce.steal(thief, victim, theft.ItemId, Format.income(theft.Payload.Income)) -- a254 : aux autres joueurs
 		DataService.Save(victim)
 	end
 	DataService.Save(thief)

@@ -1406,5 +1406,19 @@ for _, screenDef in UI.Screens do
 		table.insert(screenDef.Elements, { Path = "Reserve.ReserveEmpty", Class = "GuiObject", Optional = true, Note = "inventaire vide : rien ne le dit" })
 	end
 end
+-- Vague 73 (a254, L-240 point 3) : annonces à tout le serveur (AnnounceController, Config/Announce). Facultatif :
+-- absent, chaque annonce part en Notify (sans balises). Le code touche Enabled de l'écran, le texte de Message et de
+-- Detail et l'image d'Icon ; Banner entre par son Appear (Pop) de Clément.
+table.insert(UI.Screens, {
+	Name = "UI_Announce",
+	Class = "ScreenGui",
+	Optional = true,
+	Elements = {
+		{ Path = "Banner", Class = "GuiObject" },
+		{ Path = "Banner.Icon", Class = "ImageLabel", Optional = true, Note = "pas d'icône dans l'annonce" },
+		{ Path = "Banner.Message", Class = "TextLabel" },
+		{ Path = "Banner.Detail", Class = "TextLabel", Optional = true, Note = "pas de petite ligne sous le message" },
+	} :: { Element },
+})
 
 return UI

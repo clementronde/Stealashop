@@ -341,6 +341,7 @@ local ShelfOpen = require(Shared.Config.ShelfOpen)
 local Unbox = require(Shared.Config.Unbox)
 local Attributes = require(Shared.Contract.Attributes)
 local Net = require(Shared.Net.Net)
+local Announce = require(Shared.Announce) -- a254 (L-240 point 3)
 local ShelfOpenState = require(Shared.ShelfOpenState)
 local Features = require(Shared.Config.Features)
 -- a241 : Chase.ChaseOnEmptyExit ; Config/Chase absent (bancs à arbre partiel) : la règle d'avant.
@@ -1370,6 +1371,7 @@ end
 local NIGHT_PHASE_ATTRIBUTE = "NightPhase" -- NightCycleService (comme HudController et SkyController)
 type NightBox = { Store: Store, Rarity: Rarities.Rarity }
 local nightBoxes: { NightBox } = {}
+local nightBatch = false -- a254 : le paquet en cours est-il de nuit
 
 -- Nom anglais du magasin (Config/Zones.Stores, par son Id ou par le nom STORE_Z<n>_<Id> du modèle), sinon « Zone N ».
 local function storeDisplayName(store: Store): string
@@ -1391,6 +1393,7 @@ end
 local function flushNightBoxes()
 	local list = nightBoxes
 	nightBoxes = {}
+	local night = nightBatch
 	local best = list[1]
 	if best == nil then
 		return
@@ -1400,30 +1403,22 @@ local function flushNightBoxes()
 			best = entry
 		end
 	end
-	local values: { [string]: string } = {
-		rarity = best.Rarity.DisplayNameUpper,
-		store = storeDisplayName(best.Store),
-		count = tostring(#list),
-	}
-	local template = if #list == 1 then Unbox.NightBoxText else Unbox.NightBoxesText
-	local message = string.gsub(template, "{(%a+)}", function(key: string): string
-		return values[key] or `\{{key}\}`
-	end)
-	for _, player in Players:GetPlayers() do
-		Net.Server.Notify:Fire(player, message, Unbox.AnnounceKind)
-	end
-	log(`annonce de nuit : {message}`)
+	Announce.boxes(best.Rarity, storeDisplayName(best.Store), best.Store.Zone, #list, night) -- a254 : UI_Announce (repli Notify)
+	log(`annonce {if night then "de nuit" else "de jour"} : {#list} colis, {best.Rarity.Id} à {storeDisplayName(best.Store)}`)
 end
 
 local function noteNightBoxes(store: Store)
-	if Unbox.NightBoxAnnounce ~= true or store.Event or Workspace:GetAttribute(NIGHT_PHASE_ATTRIBUTE) ~= "Night" then
-		return
-	end
-	local minimum = Rarities.ById[Unbox.NightBoxMinRarity]
-	if minimum == nil then
+	-- a254 : de jour aussi, à partir de Config/Announce.DayBoxMinRarity (nil : coupée).
+	local night = Workspace:GetAttribute(NIGHT_PHASE_ATTRIBUTE) == "Night"
+	local minimumId = if not night then Announce.dayBoxMinRarity() elseif Unbox.NightBoxAnnounce == true then Unbox.NightBoxMinRarity else nil
+	local minimum = if minimumId then Rarities.ById[minimumId] else nil
+	if store.Event or minimum == nil then
 		return
 	end
 	local first = #nightBoxes == 0
+	if first then
+		nightBatch = night
+	end
 	for _, slot in store.Slots do
 		local box = slot.Box
 		local rarity = if box then Rarities.ById[box.Rarity] else nil
