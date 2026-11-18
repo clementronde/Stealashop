@@ -70,6 +70,8 @@ local ChaseController = {}
 local localPlayer = Players.LocalPlayer
 local heartbeatDistance = 10 -- remplacé au démarrage par Balance.Guard.HeartbeatDistance
 local stunDuration = 1.5 -- remplacé au démarrage par Balance.Guard.CatchStunDuration
+local PICKUP_ATTRIBUTE = "CatchPickUp" -- a252 : même nom dans server/Services/Guard/CatchPickUp
+local pickUpHoldMax = 1.6 -- a252 : remplacé au démarrage par Chase.CatchPickUp.MaxAfterImpact
 local animation: AnimationApi? = nil
 local active = false
 local guard: Model? = nil
@@ -375,6 +377,44 @@ end
 
 -- Coup du vigile ----------------------------------------------------------------------------
 
+-- a252 (L-244) : tant que le vigile ramasse l'objet (attribut PICKUP_ATTRIBUTE du Player, posé par le serveur,
+-- Guard/CatchPickUp), le joueur reste au sol : Knockdown s'arrête sur son marqueur Land (sinon juste avant sa fin) et
+-- repart quand l'attribut tombe, au plus tard pickUpHoldMax s après le coup ; GetUp suit comme avant.
+local function holdDown(fall: AnimationTrack)
+	if localPlayer:GetAttribute(PICKUP_ATTRIBUTE) ~= true then
+		return
+	end
+	local released = false
+	local connections: { RBXScriptConnection } = {}
+	local function release()
+		if released then
+			return
+		end
+		released = true
+		for _, connection in connections do
+			connection:Disconnect()
+		end
+		if fall.IsPlaying then
+			fall:AdjustSpeed(1)
+		end
+	end
+	local function freeze()
+		if not released and fall.IsPlaying and localPlayer:GetAttribute(PICKUP_ATTRIBUTE) == true then
+			fall:AdjustSpeed(0)
+		end
+	end
+	table.insert(connections, fall:GetMarkerReachedSignal("Land"):Connect(freeze))
+	table.insert(connections, localPlayer:GetAttributeChangedSignal(PICKUP_ATTRIBUTE):Connect(function()
+		if localPlayer:GetAttribute(PICKUP_ATTRIBUTE) ~= true then
+			release()
+		end
+	end))
+	if fall.Length > 0.1 then
+		task.delay(fall.Length - 0.08, freeze)
+	end
+	task.delay(pickUpHoldMax, release)
+end
+
 -- Chute (L-076, Clément) : Knockdown, puis GetUp ; elles remplissent l'étourdissement (2,4 s). Sans
 -- Knockdown livrée : Knockback, puis Stunned jusqu'à la fin de l'étourdissement, comme avant.
 local function onKnockback()
@@ -386,6 +426,7 @@ local function onKnockback()
 	local token = stunToken
 	local fall = anim.PlayPlayer("Knockdown")
 	if fall then
+		pcall(holdDown, fall) -- a252 (faux Roblox des bancs : sans attribut ni marqueur, rien)
 		fall.Stopped:Once(function()
 			if token == stunToken then
 				anim.PlayPlayer("GetUp")
@@ -441,6 +482,14 @@ function ChaseController.Start()
 	local balance = require(shared:WaitForChild("Config"):WaitForChild("Balance") :: ModuleScript) :: any
 	heartbeatDistance = balance.Guard.HeartbeatDistance
 	stunDuration = balance.Guard.CatchStunDuration
+	local chaseModule = shared:WaitForChild("Config"):FindFirstChild("Chase") -- a252 (bancs sans lui : défaut)
+	if chaseModule and chaseModule:IsA("ModuleScript") then
+		local ok, chase = pcall(require, chaseModule)
+		local pick = if ok and type(chase) == "table" then (chase :: any).CatchPickUp else nil
+		if type(pick) == "table" and type(pick.MaxAfterImpact) == "number" then
+			pickUpHoldMax = math.min(pick.MaxAfterImpact, stunDuration)
+		end
+	end
 	local feelModule = shared:WaitForChild("Config"):FindFirstChild("HeistFeel") -- vague 59 (bancs sans lui : défaut)
 	if feelModule and feelModule:IsA("ModuleScript") then
 		local ok, feel = pcall(require, feelModule)

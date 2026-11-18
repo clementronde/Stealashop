@@ -62,7 +62,8 @@ Animations.Player = {
 	{ Name = "Unbox_Inspect", Loop = false, Priority = "Action", Marker = "Impact" },
 } :: { Anim }
 
--- 5 animations dans chaque modèle de vigile, de jour comme de nuit (mêmes noms).
+-- 5 animations dans chaque modèle de vigile, de jour comme de nuit (mêmes noms) ; plus PickUp pour les vigiles de
+-- magasin (a252, plus bas).
 Animations.Guard = {
 	{ Name = "Idle", Loop = true, Priority = "Idle" },
 	{ Name = "Walk", Loop = true, Priority = "Movement" },
@@ -75,6 +76,11 @@ Animations.Guard = {
 -- pas encore jouée par le code).
 Animations.NightGuard = table.clone(Animations.Guard)
 table.insert(Animations.NightGuard, { Name = "Arrest", Loop = false, Priority = "Action", Marker = "Grab" })
+
+-- a252 (L-244, Clément, 2026-11-18) : vigiles de magasin seulement (pas les vigiles de nuit) : après la capture, il
+-- ramasse l'objet tombé au sol ; au marqueur Grab, l'objet passe dans sa main (Guard/CatchPickUp). Pas encore livrée :
+-- orange au ContractChecker, l'objet passe dans sa main Chase.CatchPickUp.GrabFallback s après le début du geste.
+table.insert(Animations.Guard, { Name = "PickUp", Loop = false, Priority = "Action", Marker = "Grab" })
 
 -- 2 animations dans chaque vendeur (Vendor_* des comptoirs du hub). Jouées par VendorService (vague 39) :
 -- Idle en boucle, Wave quand un joueur approche (Config/Vendors).

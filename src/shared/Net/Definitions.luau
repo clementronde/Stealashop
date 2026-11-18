@@ -709,6 +709,8 @@ local List: { RemoteDef } = {
 			{ Name = "outcome", Kind = "string", Max = 8 },
 			{ Name = "homeIn", Kind = "number", Min = 0, Max = 60 },
 			{ Name = "itemId", Kind = "string", Max = MAX_ID_LENGTH, Optional = true },
+			-- a252 (L-244) : le modèle de celui qui attrape (vigile, policier, conducteur), pour le plan large de la caméra.
+			{ Name = "by", Kind = "Instance", Optional = true },
 		},
 	},
 	{
