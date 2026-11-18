@@ -26,8 +26,10 @@
 --   2. l'ouvreur, en plus : caméra Scriptable qui suit CameraPart (écart à ItemAnchor × la taille montrée de l'objet ;
 --      repli : devant l'objet, côté allée, à Distance × taille, et pour un Colossal après Explode, vue de loin devant la
 --      vitrine), HUD masqué (Controllers/UI/HudMask, clé MaskKey ; seuls KeepScreens et HeistFeel.NeverMask restent).
---      À Land : RevealDone(revealId) au serveur (une fois), caméra et HUD rendus. Mort, personnage retiré, nouvelle
---      cinématique ou RevealEnded avant Land : caméra et HUD rendus aussi (sans RevealDone).
+--      À Land : RevealDone(revealId) au serveur (une fois), caméra et HUD rendus ; f70c4 : la caméra du jeu repart
+--      derrière le perso et l'image glisse du dernier plan vers elle en Return.Time s, champ de vision et bords
+--      d'UI_Unbox en fondu (Config/Reveal.Return). Mort, personnage retiré, nouvelle cinématique ou RevealEnded avant
+--      Land : caméra et HUD rendus d'un coup (sans RevealDone).
 --   3. après Land, l'objet local reste jusqu'à RevealEnded (l'objet passe sur la tête de l'ouvreur), au plus HoldMax s ;
 --      puis tout ce qui a été créé est détruit et tout ce qui a été caché est remis. Ouvreur parti : fin.
 -- Deux cinématiques en même temps (deux magasins) : deux scènes, chacune la sienne ; la caméra n'est prise que pour
@@ -115,6 +117,7 @@ type Scene = {
 	cameraTaken: boolean,
 	cameraType: Enum.CameraType?,
 	cameraSubject: Instance?,
+	playerLook: Vector3?, -- f70c4 : direction de la caméra du joueur avant la scène (son inclinaison au retour)
 	blend: number,
 	blendFrom: CFrame?,
 	masked: boolean,
@@ -461,6 +464,7 @@ local function takeCamera(scene: Scene)
 		scene.cameraType = camera.CameraType
 		scene.cameraSubject = camera.CameraSubject
 		scene.blendFrom = camera.CFrame
+		scene.playerLook = camera.CFrame.LookVector
 		camera.CameraType = Enum.CameraType.Scriptable
 	end)
 	scene.cameraTaken = ok
@@ -484,10 +488,188 @@ local function giveCamera(scene: Scene)
 	end)
 end
 
-local function releaseOpener(scene: Scene)
+-- Retour au jeu (f70c4, Config/Reveal.Return) -------------------------------------------------------------------
+-- La caméra du jeu est rendue tout de suite (le joueur bouge et tourne la caméra comme d'habitude), tournée derrière le
+-- perso ; pendant Return.Time s, ce qui est montré glisse du dernier plan vers ce qu'elle calcule. Pour qu'elle ne
+-- prenne pas le mélange pour sa propre direction, son CFrame à elle lui est remis juste avant qu'elle calcule
+-- (priorité Camera − 1) ; le mélange est écrit juste après (Camera + 1). Les pièces cachées par la scène restent cachées
+-- jusqu'à la fin du retour (la vue ne repasse pas derrière un rayon redevenu opaque).
+
+type Return = {
+	scene: Scene,
+	given: boolean, -- caméra du jeu rendue (première image du retour)
+	t: number,
+	time: number,
+	from: CFrame, -- dernier plan de la cinématique
+	own: CFrame?, -- CFrame calculé par la caméra du jeu à cette image (avant le mélange)
+	fade: any, -- Reveal/Unbox.ScreenFade (champ de vision, bords), ou nil
+	hidden: { [BasePart]: number },
+	connections: { RBXScriptConnection },
+}
+
+local RETURN_BEFORE = "RevealReturnBefore"
+local RETURN_AFTER = "RevealReturnAfter"
+local back: Return? = nil
+
+local function endReturn()
+	local current = back
+	if current == nil then
+		return
+	end
+	back = nil
+	pcall(RunService.UnbindFromRenderStep, RunService, RETURN_BEFORE)
+	pcall(RunService.UnbindFromRenderStep, RunService, RETURN_AFTER)
+	for _, connection in current.connections do
+		connection:Disconnect()
+	end
+	if not current.given then
+		giveCamera(current.scene) -- coupé avant sa première image
+	end
+	if current.fade and Unbox then
+		Unbox.ScreenFade(current.fade, 1)
+	end
+	for part, value in current.hidden do
+		if part.Parent ~= nil then
+			part.LocalTransparencyModifier = value
+		end
+	end
+end
+
+-- Point de vue `cf` rapproché devant ce qui le sépare de `focus` (la tête du perso) : jamais derrière un mur (L-234).
+local function clearView(current: Return, focus: Vector3, cf: CFrame): CFrame
+	local offset = cf.Position - focus
+	if offset.Magnitude < 1e-3 then
+		return cf
+	end
+	local exclude: { Instance } = { fxFolder() }
+	for _, player in Players:GetPlayers() do
+		if player.Character then
+			table.insert(exclude, player.Character)
+		end
+	end
+	for part in current.hidden do
+		table.insert(exclude, part)
+	end
+	for _ = 1, 6 do
+		local ok, hit = pcall(function(): RaycastResult?
+			local params = RaycastParams.new()
+			params.FilterType = Enum.RaycastFilterType.Exclude
+			params.FilterDescendantsInstances = exclude
+			params.RespectCanCollide = true
+			return Workspace:Raycast(focus, offset, params)
+		end)
+		if not ok or hit == nil then
+			return cf
+		end
+		local part = hit.Instance
+		if part:IsA("BasePart") and part.Transparency >= 0.95 then
+			table.insert(exclude, part) -- volume invisible
+			continue
+		end
+		local reach = math.max((hit.Position - focus).Magnitude - Reveal.Return.Margin, 0)
+		return cf.Rotation + (focus + offset.Unit * reach)
+	end
+	return cf
+end
+
+-- Première image du retour : la caméra du jeu est rendue (avant qu'elle calcule), tournée derrière le perso (sa
+-- direction en ce moment) à l'inclinaison de la caméra du joueur avant la scène ; le dernier plan est gardé.
+local function handOver(current: Return, camera: Camera)
+	current.given = true
+	current.from = camera.CFrame
+	local scene = current.scene
+	local character = localPlayer.Character
+	local root = if character then character:FindFirstChild("HumanoidRootPart") else nil
+	local look = scene.playerLook or current.from.LookVector
+	local pitch = math.clamp(math.asin(math.clamp(look.Y, -1, 1)), Reveal.Return.PitchMin, Reveal.Return.PitchMax)
+	local facing: Vector3 = (if root and root:IsA("BasePart") then flat(root.CFrame.LookVector) else nil)
+		or flat(current.from.LookVector)
+		or Vector3.new(0, 0, -1)
+	local direction = facing * math.cos(pitch) + UP * math.sin(pitch)
 	giveCamera(scene)
-	if scene.unbox then
-		Unbox.Release(scene.unbox)
+	pcall(function()
+		local at = current.from.Position
+		camera.CFrame = CFrame.lookAt(at, at + direction) -- la caméra du jeu part de cette direction
+	end)
+end
+
+local function returnBefore()
+	local current = back
+	local camera = Workspace.CurrentCamera
+	if current == nil or camera == nil then
+		return
+	end
+	if not current.given then
+		handOver(current, camera)
+	elseif current.own and camera.CameraType ~= Enum.CameraType.Scriptable then
+		camera.CFrame = current.own :: CFrame
+	end
+end
+
+local function returnAfter(dt: number)
+	local current = back
+	local camera = Workspace.CurrentCamera
+	if current == nil or not current.given then
+		return
+	end
+	if camera == nil or camera.CameraType == Enum.CameraType.Scriptable then
+		endReturn() -- une autre caméra scriptée a pris la main : elle décide
+		return
+	end
+	current.t += dt
+	local e = Logic.easeInOut(math.min(current.t / current.time, 1))
+	local own = camera.CFrame
+	current.own = own
+	if current.fade and Unbox then
+		Unbox.ScreenFade(current.fade, e)
+	end
+	if current.t >= current.time then
+		endReturn() -- l'image est déjà celle de la caméra du jeu
+		return
+	end
+	camera.CFrame = clearView(current, camera.Focus.Position, current.from:Lerp(own, e))
+end
+
+local function startReturn(scene: Scene, fade: any)
+	endReturn()
+	local character = localPlayer.Character
+	local humanoid = if character then character:FindFirstChildOfClass("Humanoid") else nil
+	if humanoid == nil or Reveal.Return.Time <= 0 then
+		giveCamera(scene)
+		if fade and Unbox then
+			Unbox.ScreenFade(fade, 1)
+		end
+		return
+	end
+	local current: Return = {
+		scene = scene,
+		given = false,
+		t = 0,
+		time = Reveal.Return.Time,
+		from = CFrame.identity, -- dernier plan, pris à la première image (handOver)
+		own = nil,
+		fade = fade,
+		hidden = scene.hidden,
+		connections = {},
+	}
+	scene.hidden = {}
+	back = current
+	table.insert(current.connections, humanoid.Died:Connect(endReturn))
+	table.insert(current.connections, localPlayer.CharacterRemoving:Connect(endReturn))
+	RunService:BindToRenderStep(RETURN_BEFORE, Enum.RenderPriority.Camera.Value - 1, returnBefore)
+	RunService:BindToRenderStep(RETURN_AFTER, Enum.RenderPriority.Camera.Value + 1, returnAfter)
+end
+
+-- soft (f70c4) : fin normale (Land), retour au jeu en douceur ; sinon (mort, départ, nouvelle cinématique) d'un coup.
+local function releaseOpener(scene: Scene, soft: boolean?)
+	local fade = if scene.unbox then Unbox.Release(scene.unbox, soft == true) else nil
+	if soft == true and scene.cameraTaken then
+		startReturn(scene, fade)
+	else
+		giveCamera(scene)
+		if fade then
+			Unbox.ScreenFade(fade, 1)
+		end
 	end
 	if scene.masked then
 		scene.masked = false
@@ -736,7 +918,7 @@ local function onLand(scene: Scene)
 			doneSent += 1
 			net.Client.RevealDone:Fire(scene.id)
 		end
-		releaseOpener(scene)
+		releaseOpener(scene, true) -- f70c4 : retour au jeu en douceur (Config/Reveal.Return)
 	end
 end
 
@@ -1135,6 +1317,7 @@ local function begin(payload: Payload)
 				finish(other, "nouvelle cinématique")
 			end
 		end
+		endReturn() -- f70c4 : un retour au jeu encore en cours finit d'un coup (caméra du jeu rendue avant d'être reprise)
 	end
 	local store = findStore(payload.ShopId)
 	local slot = Logic.slotAttachment(payload.SlotName)
@@ -1197,6 +1380,7 @@ local function begin(payload: Payload)
 		cameraTaken = false,
 		cameraType = nil,
 		cameraSubject = nil,
+		playerLook = nil,
 		blend = 0,
 		blendFrom = nil,
 		masked = false,
@@ -1307,7 +1491,15 @@ function RevealController.GetState(): { [string]: any }
 			})
 		end
 	end
-	return { Started = started, Finished = finished, Skipped = skipped, DoneSent = doneSent, Scenes = list }
+	local current = back
+	return {
+		Started = started,
+		Finished = finished,
+		Skipped = skipped,
+		DoneSent = doneSent,
+		Scenes = list,
+		Returning = if current then current.t else nil, -- f70c4 : secondes écoulées du retour au jeu en cours
+	}
 end
 
 local function watchStore(inst: Instance)

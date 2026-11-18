@@ -1543,6 +1543,17 @@ function Unbox.Step(state: State, dt: number): string?
 			state.t = 0
 		end
 	end
+	local track = state.track
+	if track and state.phase ~= "Action" and New.AnimEndFade > 0 then
+		-- f70c4 : la dernière action continue après son coup (le colis éclate) ; elle s'arrête en fondu juste avant sa
+		-- dernière image au lieu de s'y arrêter net (vitesse : ActionSpeed).
+		local ok, left = pcall(function(): number
+			return if track.IsPlaying and track.Length > 0 then (track.Length - track.TimePosition) / math.max(New.ActionSpeed, 0.1) else math.huge
+		end)
+		if ok and left <= New.AnimEndFade then
+			stopTrack(state, math.max(left, 0))
+		end
+	end
 	for _, inst in state.muted do
 		local gui: any = inst
 		if gui.Enabled then
@@ -1604,25 +1615,59 @@ function Unbox.Step(state: State, dt: number): string?
 	return table.remove(state.events, 1)
 end
 
--- L'ouvreur reprend la main (fin, mort, autre cinématique) : champ de vision et bords remis.
-function Unbox.Release(state: State)
+-- f70c4 : ce qu'il reste à remettre de l'écran de l'ouvreur (champ de vision, bords), de leur valeur en ce moment à
+-- celle d'avant la scène ; Unbox.ScreenFade le fait avancer (0 = en ce moment, 1 = remis).
+export type ScreenFade = {
+	fovFrom: number?,
+	fovTo: number?,
+	edgeFrom: number,
+	glow: ImageLabel?,
+	screen: ScreenGui?,
+	wasEnabled: boolean,
+}
+
+function Unbox.ScreenFade(fade: ScreenFade, e: number)
+	local f = math.clamp(e, 0, 1)
+	local camera = Workspace.CurrentCamera
+	local from, to = fade.fovFrom, fade.fovTo
+	if camera and from and to then
+		camera.FieldOfView = from + (to - from) * f
+	end
+	local glow = fade.glow
+	if glow then
+		glow.ImageTransparency = 1 - fade.edgeFrom * (1 - f)
+	end
+	local screen = fade.screen
+	if f >= 1 and screen then
+		screen.Enabled = fade.wasEnabled
+	end
+end
+
+-- L'ouvreur reprend la main (fin, mort, autre cinématique) : champ de vision et bords remis d'un coup ; soft (f70c4,
+-- fin normale) : rien n'est remis ici, le fondu est rendu à RevealController, qui le fait avancer (Unbox.ScreenFade)
+-- jusqu'à 1. La scène ne touche plus à l'écran ensuite (stepScreen), même détruite.
+function Unbox.Release(state: State, soft: boolean?): ScreenFade?
 	if state.released then
-		return
+		return nil
 	end
 	state.released = true
+	if not state.ctx.Opener then
+		return nil
+	end
 	local camera = Workspace.CurrentCamera
-	local fov = state.baseFov
-	if camera and fov then
-		camera.FieldOfView = fov
+	local fade: ScreenFade = {
+		fovFrom = if camera then camera.FieldOfView else nil,
+		fovTo = state.baseFov,
+		edgeFrom = state.edge.value,
+		glow = state.edgeLabel,
+		screen = state.edgeScreen,
+		wasEnabled = state.edgeWasEnabled,
+	}
+	if soft == true and not state.destroyed then
+		return fade
 	end
-	local glow = state.edgeLabel
-	if glow then
-		glow.ImageTransparency = 1
-	end
-	local screen = state.edgeScreen
-	if screen then
-		screen.Enabled = state.edgeWasEnabled
-	end
+	Unbox.ScreenFade(fade, 1)
+	return nil
 end
 
 function Unbox.Destroy(state: State)

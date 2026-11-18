@@ -213,6 +213,8 @@ local Unbox = {
 		StandSide = 3.2, -- V0 : le perso se tient à cette distance du colis, sur le côté (le long du rayon), face à lui
 		Recoil = 2, -- V0 : recul (studs) du perso quand le colis éclate
 		RecoilTime = 0.25, -- V0
+		AnimEndFade = 0.3, -- V0 (f70c4) : s ; la dernière action (la masse) n'est pas arrêtée à son coup : elle finit en
+		-- fondu vers la pose d'attente du perso au lieu de s'arrêter net à sa dernière image
 		Camera = {
 			Distance = 11, -- V0 : studs entre le colis et la caméra, côté allée
 			Height = 4.5, -- V0 : au-dessus du sol
