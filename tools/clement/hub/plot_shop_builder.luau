@@ -76,8 +76,8 @@
 	hauteur au-dessus du socle, vers l'allée) et sur RarestDisplay (9 x 10,5 x 10) ; TrapSlot_01..04 en rangée sur toute
 	la largeur de la porte (z -36) ; Stage_2..5 coupés pile sur les plans de L-190 (z -12, -4, 4, 8, 16, 24, 32) et
 	attribut RowCut = true sur PLOT_Shop.
-	Boutique large (widenShop, 79,5 de large) : essayée puis abandonnée le 2026-11-17 (« beaucoup trop larges ») ;
-	la fonction reste ici mais n'est plus appelée : la boutique garde 48 de large.
+	Boutique large (79,5) : essayée puis abandonnée le 2026-11-17 (« beaucoup trop larges ») ; code retiré, la
+	boutique garde 48 de large (version large : ServerStorage/MapBackups/2026-11-17_AvantRetour48).
 	Tout en verre (2026-11-17, glassAll) : murs des côtés et du fond, vitrines, murets, parapets et toit en verre
 	très clair (Transparency 0,88) ; plus de doublage intérieur, de montants, de colonnes ni d'ossature de verrière ;
 	deux poteaux d'angle fins à l'avant. La porte (PlotDoor) ne change pas. Après build() : relancer l'anti-clignotement.
@@ -1239,136 +1239,6 @@ local function glassShop(M)
 	return slots, cut
 end
 
--- Boutique plus large (Clément, 2026-11-17, 6 boutiques au hub) : murs à x = ±39,75 (79,5 de large au lieu de 48).
--- Ce qui est hors de la porte (|x| > 10) s'étire de façon continue jusqu'à |x| = 22, puis la bande du mur (22 à 24 :
--- murs, revêtements, montants d'angle, pilastres) glisse d'un bloc de 15,75 : x' = ±(10 + (|x| - 10) × 27,75 / 12)
--- jusqu'à 22, ±(|x| + 15,75) au-delà. Les pièces fines en X (montants, poteaux) et les petits décors gardent leur
--- largeur et suivent leur centre.
--- Les deux files de présentoirs (Rayon_0n, PLOT_Shop_Rayons, RayonSpots) glissent d'un bloc vers les murs (±15,75) :
--- même écart au mur qu'avant, allée centrale large. Devant : tapis à x -25, podium RarestDisplay à x +25.
--- Le damier du sol est refait en carreaux de 4 alignés sur la grille (x -40..40 coupé à ±39,75, z depuis la porte).
-local WIDE_IN, WIDE_HALF, OLD_HALF, WALL_BAND = 10, 39.75, 24, 22
-local FILE_DX = WIDE_HALF - OLD_HALF -- 15,75
-local WIDE_K = (WALL_BAND + FILE_DX - WIDE_IN) / (WALL_BAND - WIDE_IN)
-local FRONT_X = 25
-local KEEP_WIDTH = 1.4 -- en dessous, une pièce garde sa largeur en X
-local DECOR = { "^AC_", "^Cam_", "OpenSign", "Alarm", "Keypad", "Lamp", "Bulb", "Crystal", "^Ring_", "ChainRod", "^Neon_%d", "Fan" }
-local function wideX(x)
-	local a = math.abs(x)
-	if a <= WIDE_IN then return x end
-	if a >= WALL_BAND then return math.sign(x) * (a + FILE_DX) end
-	return math.sign(x) * (WIDE_IN + (a - WIDE_IN) * WIDE_K)
-end
-local function isDecor(n)
-	for _, pat in DECOR do if n:match(pat) then return true end end
-	return false
-end
-local function retile(M, tiles, iz0, iz1)
-	if not tiles then return 0 end
-	local proto = tiles:FindFirstChildWhichIsA("BasePart")
-	if not proto then return 0 end
-	proto = proto:Clone()
-	for _, c in tiles:GetChildren() do c:Destroy() end
-	local y, h, n = proto.Position.Y, proto.Size.Y, 0
-	for ix = -10, 9 do
-		for iz = iz0, iz1 do
-			if (ix + iz) % 2 == 0 then
-				local x0, x1 = math.max(4 * ix, -WIDE_HALF), math.min(4 * ix + 4, WIDE_HALF)
-				local z0 = -40 + 4 * iz
-				n += 1
-				local t = proto:Clone()
-				t.Name = "Tile_" .. n
-				t.Size = Vector3.new(x1 - x0, h, 4)
-				t.CFrame = CFrame.new((x0 + x1) / 2, y, z0 + 2)
-				t.Parent = tiles
-			end
-		end
-	end
-	proto:Destroy()
-	return n
-end
-local function shiftX(inst, dx)
-	if inst:IsA("Model") then inst:PivotTo(inst:GetPivot() + Vector3.new(dx, 0, 0))
-	elseif inst:IsA("BasePart") then inst.CFrame += Vector3.new(dx, 0, 0) end
-end
-local function widenShop(M, rayonStore)
-	if M:GetAttribute("WideShop") then return "déjà large" end
-	-- 1. groupes posés d'un bloc
-	local rigid = {}
-	for r = 1, 5 do
-		local R = M:FindFirstChild(string.format("Rayon_%02d", r))
-		if R then table.insert(rigid, R) end
-	end
-	local spots = M.Stage_2:FindFirstChild("RayonSpots")
-	if spots then table.insert(rigid, spots) end
-	local special = { M:FindFirstChild("Treadmill"), M:FindFirstChild("RarestDisplay"), M:FindFirstChild("RarestPedestal"),
-		M:FindFirstChild("FloorTiles"), M.Stage_2:FindFirstChild("FloorTilesExt") }
-	local function skip(p)
-		for _, g in rigid do if p:IsDescendantOf(g) then return true end end
-		for _, g in special do if g and p:IsDescendantOf(g) then return true end end
-		return false
-	end
-	-- 2. tout le reste s'étire
-	for _, p in M:GetDescendants() do
-		if p:IsA("BasePart") and not skip(p) then
-			local atts = {}
-			for _, a in p:GetChildren() do if a:IsA("Attachment") then atts[a] = a.WorldPosition end end
-			local cf, size = p.CFrame, p.Size
-			local axes = { cf.RightVector, cf.UpVector, cf.LookVector }
-			local k
-			for i, v in axes do if math.abs(math.abs(v.X) - 1) < 1e-3 then k = i end end
-			local c = cf.Position
-			local sz = { size.X, size.Y, size.Z }
-			if k and sz[k] >= KEEP_WIDTH and not isDecor(p.Name) then
-				local half = sz[k] / 2
-				local x0, x1 = wideX(c.X - half), wideX(c.X + half)
-				sz[k] = x1 - x0
-				p.Size = Vector3.new(sz[1], sz[2], sz[3])
-				p.CFrame = cf.Rotation + Vector3.new((x0 + x1) / 2, c.Y, c.Z)
-			else
-				p.CFrame = cf.Rotation + Vector3.new(wideX(c.X), c.Y, c.Z)
-			end
-			for a, wp in atts do a.WorldPosition = Vector3.new(wideX(wp.X), wp.Y, wp.Z) end
-		end
-	end
-	-- 3. files de présentoirs vers les murs (le magasin de visuels des rangs 2 à 5 suit)
-	local function slide(g)
-		for _, p in g:GetDescendants() do
-			if p:IsA("BasePart") then
-				local _, s = nil, nil
-				local x = p.Position.X
-				if math.abs(x) > 1e-3 then p.CFrame += Vector3.new(math.sign(x) * FILE_DX, 0, 0) end
-			end
-		end
-	end
-	for _, g in rigid do slide(g) end
-	if rayonStore then slide(rayonStore) end
-	-- les points des rayons posés sur un RayonAnchor central (x 0) : ils suivent leur file
-	for _, g in rigid do
-		for _, a in g:GetDescendants() do
-			if a:IsA("Attachment") and a.Parent:IsA("BasePart") and math.abs(a.Parent.Position.X) < 1e-3 then
-				local wp = a.WorldPosition
-				if math.abs(wp.X) > 1e-3 then a.WorldCFrame = a.WorldCFrame.Rotation + (wp + Vector3.new(math.sign(wp.X) * FILE_DX, 0, 0)) end
-			end
-		end
-	end
-	-- 4. devant la façade : tapis à gauche de la porte, podium à droite
-	local tm = M:FindFirstChild("Treadmill")
-	if tm then local pv = tm:GetPivot(); tm:PivotTo(pv.Rotation + Vector3.new(-FRONT_X, pv.Y, pv.Z)) end
-	local rd = M:FindFirstChild("RarestDisplay")
-	if rd then
-		local dx = FRONT_X - rd:GetPivot().X
-		shiftX(rd, dx)
-		local rp = M:FindFirstChild("RarestPedestal")
-		if rp then shiftX(rp, dx) end
-	end
-	-- 5. damier
-	local nt = retile(M, M:FindFirstChild("FloorTiles"), 0, 5)
-	local ne = retile(M, M.Stage_2:FindFirstChild("FloorTilesExt"), 6, 19)
-	M:SetAttribute("WideShop", WIDE_HALF * 2)
-	return string.format("damier %d + %d carreaux", nt, ne)
-end
-
 -- Tout le tour en verre (Clément, 2026-11-17 : « comme si rien n'était là, sauf la porte qui reste comme elle est
 -- et cassable ») : côtés, fond, façade, parapets et toit en verre très clair ; plus de doublage intérieur, de
 -- montants, d'ossature de verrière ni de colonnes ; seuls restent deux poteaux d'angle fins à l'avant. La porte
@@ -1550,7 +1420,6 @@ local function build()
 	end
 	narrowWidth(M) -- 48 de large (Clément, 2026-11-14), après le rangement de Stage_2
 	glassShop(M) -- façade et toit de verre, FitSize, pièges, découpe L-190 (Clément, 2026-11-17)
-	-- widenShop(M, store) : boutique de 79,5 abandonnée le jour même, « beaucoup trop larges » (Clément, 2026-11-17)
 	glassAll(M) -- tout le tour en verre très clair, sauf la porte (Clément, 2026-11-17)
 	frameFromLevel1(M) -- socle, colonnes, corniche et vitres dès le niveau 1, rang par rang ; plus de lampes visibles (Clément, 2026-11-17)
 	local pad = M:FindFirstChild("CashPad")
