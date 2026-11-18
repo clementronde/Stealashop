@@ -206,6 +206,24 @@ local Chase = {
 	-- = 4,3 studs) : l'avance WalkSpeed × PathJumpLead est plafonnée à PathJumpLeadMax studs (le « + 1 stud » reste).
 	-- 0 ou absent : sans plafond (la règle d'avant).
 	PathJumpLeadMax = 1.5, -- V0 proposé, absent du doc (studs)
+	-- f70c3 (Play de diagnostic de fusion70, Supérette : le chemin du vigile passait toujours par-dessus la table basse
+	-- Promo_A, 5,4 × 1,9 × 2,2 ; il y montait, sautait à +7 studs, et le voleur qui pousse derrière Shelf_A_EndA était
+	-- attrapé en 2,02 s pour 2) : server/Services/Guard/PathAvoid pose au démarrage un PathfindingModifier (Label) sur
+	-- chaque pièce d'un magasin PNJ (tag NPCStore) dont le nom, ou celui d'un parent, commence par un des Prefixes ;
+	-- l'agent des vigiles paie Cost fois plus cher chaque stud dessus : il contourne ces présentoirs bas et n'y monte
+	-- que s'il n'y a pas d'autre passage ; en coupant les coins d'un chemin, il teste aussi ses flancs à hauteur des
+	-- genoux (il ne rogne plus le coin d'une table basse). Enabled = false : rien de tout ça (la règle d'avant).
+	-- JumpMargin : un saut de chemin monte de la marche à franchir (point d'arrivée moins point de saut) + JumpMargin
+	-- studs, au moins JumpMin, jamais plus que le saut du rig ; saut sans marche à monter : le saut du rig.
+	-- 0 : toujours le saut du rig (7,2 studs, la règle d'avant).
+	PathAvoid = {
+		Enabled = true, -- V0 : contournement des présentoirs bas
+		Prefixes = { "Promo_" }, -- V0 proposé, absent du doc (question à Clément : d'autres présentoirs bas ?)
+		Label = "GuardAvoid", -- nom de la zone pour PathfindingService (Costs de l'agent)
+		Cost = 25, -- V0 proposé, absent du doc (× le coût d'un stud de sol)
+		JumpMargin = 2, -- V0 proposé, absent du doc (studs)
+		JumpMin = 3, -- V0 proposé, absent du doc (studs)
+	},
 	-- a252 (L-244, Clément, 2026-11-18 : « on voit notre personnage tomber, et après le vigile récupère l'objet ») : quand
 	-- l'objet porté revole sur son rayon après une capture par le vigile d'un magasin PNJ (capture dans son magasin, ou
 	-- Chase.ReturnToShelfAfterCatches-ième capture), il passe d'abord par la main du vigile (server/Services/Guard/
