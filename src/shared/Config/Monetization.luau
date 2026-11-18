@@ -170,10 +170,11 @@ local Products: { Product } = {
 	{ Key = "Shield30", Id = 0, Tab = "Boosts", Order = 7, Price = 99, Ready = false, DisplayName = "30 Min Shield", Effect = "Nobody can rob your shop", Icon = "UI_Icon_DP_Shield30" },
 	-- Vague 72 (a247, L-216 point 8) : chance du serveur (comme le ×2, ×4, ×8 de Steal a Brainrot). V0 proposé,
 	-- absent du doc : 15 min chacune ; 149, 399 et 999 R$ (le plus cher du jeu après le pack de 12 h) ; couleurs,
-	-- icônes (UI_Icon_DP_ServerLuck2, 4, 8 : à rendre par Clément ; sans elles, l'image du Template) et textes.
-	{ Key = "ServerLuck2", Id = 0, Tab = "Boosts", Order = 8, Price = 149, Ready = SERVER_LUCK, CardColor = Color3.fromHex("3FC1FF"), Luck = 2, LuckMinutes = 15, DisplayName = "×2 Server Luck", Effect = "×2 luck for the whole server, 15 min", Icon = "UI_Icon_DP_ServerLuck2" },
-	{ Key = "ServerLuck4", Id = 0, Tab = "Boosts", Order = 9, Price = 399, Ready = SERVER_LUCK, CardColor = Color3.fromHex("B15CFF"), Luck = 4, LuckMinutes = 15, DisplayName = "×4 Server Luck", Effect = "×4 luck for the whole server, 15 min", Icon = "UI_Icon_DP_ServerLuck4" },
-	{ Key = "ServerLuck8", Id = 0, Tab = "Boosts", Order = 10, Price = 999, Ready = SERVER_LUCK, CardColor = Color3.fromHex("FFB21A"), Luck = 8, LuckMinutes = 15, DisplayName = "×8 Server Luck", Effect = "×8 luck for the whole server, 15 min", Icon = "UI_Icon_DP_ServerLuck8" },
+	-- et textes. Vague 73 (a253, L-240 point 2) : icône UI_Icon_DP_Luck3, celle de la carte SERVER LUCK de Clément
+	-- (Luck3 n'est pas en vente, Ready = false : pas deux offres à la même icône tant qu'il le reste).
+	{ Key = "ServerLuck2", Id = 0, Tab = "Boosts", Order = 8, Price = 149, Ready = SERVER_LUCK, CardColor = Color3.fromHex("3FC1FF"), Luck = 2, LuckMinutes = 15, DisplayName = "×2 Server Luck", Effect = "×2 luck for the whole server, 15 min", Icon = "UI_Icon_DP_Luck3" },
+	{ Key = "ServerLuck4", Id = 0, Tab = "Boosts", Order = 9, Price = 399, Ready = SERVER_LUCK, CardColor = Color3.fromHex("B15CFF"), Luck = 4, LuckMinutes = 15, DisplayName = "×4 Server Luck", Effect = "×4 luck for the whole server, 15 min", Icon = "UI_Icon_DP_Luck3" },
+	{ Key = "ServerLuck8", Id = 0, Tab = "Boosts", Order = 10, Price = 999, Ready = SERVER_LUCK, CardColor = Color3.fromHex("FFB21A"), Luck = 8, LuckMinutes = 15, DisplayName = "×8 Server Luck", Effect = "×8 luck for the whole server, 15 min", Icon = "UI_Icon_DP_Luck3" },
 }
 
 -- Vague 63 (L-196 point 3, L-204) : les boutons en situation du HUD (Config/Boosts) aussi dans l'onglet Boosts.
@@ -244,6 +245,15 @@ local Monetization = {
 	-- section d'un onglet.
 	Shop = {
 		ScrollTime = 0.35,
+		-- Vague 73 (a253, L-242 point 3, L-243) : rayons des cartes, des cases de la caisse et du pack de départ (tout
+		-- Rays de l'écran hors Crate.Backdrop, que tourne CrateLoop) : RaysTurn degrés toutes les RaysPeriod s, leur
+		-- UIGradient Fade à l'inverse. V0 proposé, absent du doc : comme les rayons de la caisse (Config/ShopFx.Crate).
+		RaysTurn = -45,
+		RaysPeriod = 4,
+		-- Vague 73 (a253, L-247 point 1b) : la caméra de Crate.Icon.Preview (caisse 3D) se balance de ± PreviewSway
+		-- degrés autour de la caisse, un aller-retour en PreviewSwayPeriod s (fiche Throw a Seed reprise par Clément).
+		PreviewSway = 12,
+		PreviewSwayPeriod = 3.5,
 	},
 
 	-- Achats de produits (9.6).
@@ -284,6 +294,10 @@ local Monetization = {
 		BoostSeconds = 3600, -- ×2 argent 1 h
 		Tool = "Hammer", -- Config/Tools
 		Cash = 50_000,
+		-- Vague 73 (a253, L-242 point 3) : ancien prix (Robux) écrit dans Featured.OldPrice ; la remise de
+		-- Featured.DiscountTag.DiscountLabel (« 75% OFF ») en est tirée avec le prix affiché. V0 proposé, absent du doc,
+		-- à valider par Clément ; nil (ou pas plus cher que le prix) = ni ancien prix ni étiquette.
+		OldPrice = 399 :: number?,
 	},
 
 	-- Packs d'argent (4.2) : V0 proposé, absent du doc : au moins 50 $ par minute, la proposition V0

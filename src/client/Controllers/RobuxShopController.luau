@@ -102,6 +102,18 @@
 -- fenêtre d'achat de Roblox se ferme sur un achat fait (PromptProductPurchaseFinished, PromptGamePassPurchaseFinished
 -- du joueur local), boutique ouverte seulement (Features.RobuxShop), quel que soit le bouton qui l'a ouverte. Les
 -- cartes de la chance du serveur (ServerLuck2, 4, 8) sont des produits comme les autres (onglet Boosts).
+--
+-- Vague 73 (a253 ; L-242 point 3, L-243, L-247) :
+--   - lots de la caisse : Count = « Buy x1 », « Buy x3 », « Buy x10 » ; Effect de nouveau écrit dans les cartes clonées
+--     de la v2 (effectOf) ;
+--   - Featured : OldPrice = Monetization.StarterPack.OldPrice, DiscountTag.DiscountLabel = « 75% OFF » (tiré du prix
+--     affiché) ; les deux cachés sans remise. OfferLabel garde le texte de Clément ;
+--   - écran allumé : chaque Rays (cartes, cases de la caisse, Featured ; hors Template et hors Crate.Backdrop, que tourne
+--     CrateLoop) tourne de Shop.RaysTurn par Shop.RaysPeriod, son UIGradient Fade à l'inverse ; tout revient à la
+--     valeur de Clément à l'extinction de l'écran et au réglage « animations réduites » ;
+--   - ViewportFrame Preview : CurrentCamera remis sur sa Camera après la copie dans le PlayerGui (L-247 a) ; celle de la
+--     caisse (Crate.Icon.Preview) se balance de ± Shop.PreviewSway° autour du pivot de son modèle (L-247 b).
+--   Onglets (Root.Tabs, cachés par Clément, L-243 c) : leur code reste, il ne touche jamais leur visibilité.
 
 local CollectionService = game:GetService("CollectionService")
 local MarketplaceService = game:GetService("MarketplaceService")
@@ -251,7 +263,17 @@ local CASH_PACK_TEXT = "+%s · %s" -- montant, effet
 -- Vague 63, V0 proposé, absent du doc (textes de la maquette de Clément, L-200) : minuteur du pack de départ,
 -- lot de la caisse, chance d'une case, avantages du pack de départ.
 local TIMER_TEXT = "Ends in %s"
-local CRATE_COUNT_TEXT = { One = "%d Crate", Many = "%d Crates" }
+-- Vague 73 (a253, L-243 a) : « Buy x1 », « Buy x3 », « Buy x10 » de la maquette de Clément.
+local CRATE_COUNT_TEXT = { One = "Buy x%d", Many = "Buy x%d" }
+-- Vague 73 (a253, L-242 point 3), V0 proposé, absent du doc : remise du pack de départ (Featured.DiscountTag).
+local DISCOUNT_TEXT = "%d%% OFF"
+-- Vague 73 (a253) : rayons qui tournent (Shop.RaysTurn) et caméra de la caisse 3D (Crate.Icon.Preview, L-247).
+local RAYS_NAME = "Rays"
+local FADE_NAME = "Fade"
+local BACKDROP_NAME = "Backdrop" -- Crate.Backdrop.Rays : tournés par CrateLoop, pas ici
+local TEMPLATE_NAME = "Template"
+local PREVIEW_NAME = "Preview"
+local REDUCED_CHECK = 0.5 -- s entre deux lectures du réglage « animations réduites »
 local PERK_TEXT = { Boost = "×%d Cash %s", Hours = "%dh", Minutes = "%d min" }
 -- V0 proposé, absent du doc : cadence (s) de la mise à jour des cartes, écran ouvert.
 local REFRESH_INTERVAL = 1
@@ -287,6 +309,15 @@ local reported: { [string]: boolean } = {}
 -- Règle Roblox des objets payants au hasard (caisse) : "unknown" tant que PolicyService n'a pas répondu.
 local cratePolicy: "unknown" | "allowed" | "restricted" = "unknown"
 local scrollTween: Tween? = nil
+-- Vague 73 (a253) : rayons qui tournent écran allumé, et caméra de la caisse 3D qui se balance.
+type Spin = { object: GuiObject, rotation: number, fade: UIGradient?, fadeRotation: number }
+type Sway = { camera: Camera, base: CFrame, focus: Vector3 }
+local spins: { Spin } = {}
+local sway: Sway? = nil
+local motionLoop: RBXScriptConnection? = nil
+local motionStart = 0
+local reducedAt = -math.huge
+local reducedNow = false
 
 -- Une ligne de sortie par sujet, en Studio seulement.
 local function reportOnce(key: string, message: string)
@@ -685,7 +716,8 @@ local function effectOf(offer: Offer): string
 end
 
 -- Vague 63 : textes propres à la v2 (lot de la caisse, minuteur et avantages du pack de départ).
-local function refreshExtras(card: Card)
+-- Vague 73 (a253, L-242 point 3) : `price` = prix affiché, pour l'ancien prix et la remise du pack de départ.
+local function refreshExtras(card: Card, price: number)
 	local offer = card.offer
 	local pack = offer.crate
 	if pack then
@@ -711,6 +743,15 @@ local function refreshExtras(card: Card)
 		setText(card.frame, "Perk1", string.format(PERK_TEXT.Boost, Monetization.CashBoost.Multiplier, length))
 		setText(card.frame, "Perk2", starter.Tool)
 		setText(card.frame, "Perk3", Format.money(starter.Cash))
+		-- Vague 73 (a253, L-242 point 3) : ancien prix et remise (Monetization.StarterPack.OldPrice) ; cachés sans remise.
+		local oldPrice = starter.OldPrice
+		local discounted = oldPrice ~= nil and oldPrice > price and price > 0
+		if oldPrice ~= nil and discounted then
+			setText(card.frame, "OldPrice", tostring(math.floor(oldPrice)))
+			setText(card.frame, "DiscountTag.DiscountLabel", string.format(DISCOUNT_TEXT, math.floor((1 - price / oldPrice) * 100 + 0.5)))
+		end
+		setVisible(guiObject(card.frame, "OldPrice"), discounted)
+		setVisible(guiObject(card.frame, "DiscountTag"), discounted)
 	end
 end
 
@@ -723,8 +764,10 @@ local function refreshCard(card: Card)
 	if offer.displayName ~= "" then
 		setText(card.frame, "ItemName", offer.displayName)
 	end
-	if not v2 then
-		setText(card.frame, "Effect", effectOf(offer)) -- v2 (L-204) : Effect gardé caché, jamais écrit
+	if not v2 or card.cloned then
+		-- Vague 73 (a253, L-243 b) : Effect de nouveau visible dans les cartes de la v2 (cartes clonées seulement :
+		-- Featured et les boutons de la caisse gardent leurs textes).
+		setText(card.frame, "Effect", effectOf(offer))
 	end
 	local soonUntil = card.soonUntil
 	local unsold = notForSale(offer, id) -- vague 66 (a218) : « Soon » en permanence
@@ -745,7 +788,7 @@ local function refreshCard(card: Card)
 		setVisible(card.buy, not owned and (id ~= nil or unsold or tiered))
 	end
 	if v2 then
-		refreshExtras(card)
+		refreshExtras(card, price)
 	end
 end
 
@@ -1126,6 +1169,162 @@ refreshCards = function()
 	end
 end
 
+-- Vague 73 (a253, L-242 point 3, L-243, L-247 point 1) : rayons et caisse 3D -------------------------------------
+
+-- Réglage « animations réduites » d'Appear (Controllers/UI/Appear), lu sans require statique (absent : non).
+local function reducedMotion(): boolean
+	local ui = script.Parent:FindFirstChild("UI")
+	local module = if ui then ui:FindFirstChild("Appear") else nil
+	if module == nil or not module:IsA("ModuleScript") then
+		return false
+	end
+	local ok, appear = pcall(require :: any, module)
+	local reduced = if ok and type(appear) == "table" then (appear :: any).Reduced else nil
+	if type(reduced) ~= "function" then
+		return false
+	end
+	local ran, value = pcall(reduced)
+	return ran and value == true
+end
+
+-- Tout revient à la valeur de Clément : Rotation des rayons et de leur Fade, CFrame de la caméra de la caisse.
+local function restoreMotion()
+	for _, spin in spins do
+		spin.object.Rotation = spin.rotation
+		local fade = spin.fade
+		if fade then
+			fade.Rotation = spin.fadeRotation
+		end
+	end
+	local current = sway
+	if current then
+		current.camera.CFrame = current.base
+	end
+end
+
+-- `inst` est dans un Template (jamais tourné : ses copies prendraient la rotation du moment).
+local function inTemplate(inst: Instance, gui: Instance): boolean
+	local node: Instance? = inst
+	while node ~= nil and node ~= gui do
+		if node.Name == TEMPLATE_NAME then
+			return true
+		end
+		node = node.Parent
+	end
+	return false
+end
+
+-- Rayons à faire tourner : tout Rays de l'écran, hors Template et hors Crate.Backdrop (CrateLoop).
+local function collectSpins(current: Shop)
+	restoreMotion()
+	table.clear(spins)
+	local crate = current.crate
+	local backdrop = if crate then crate:FindFirstChild(BACKDROP_NAME) else nil
+	for _, found in current.gui:GetDescendants() do
+		local rotation = if found.Name == RAYS_NAME and found:IsA("GuiObject") then (found :: any).Rotation else nil
+		if type(rotation) == "number" and not (backdrop and found:IsDescendantOf(backdrop)) and not inTemplate(found, current.gui) then
+			local fade = found:FindFirstChild(FADE_NAME)
+			local gradient = if fade and fade:IsA("UIGradient") and type((fade :: any).Rotation) == "number" then fade :: UIGradient else nil
+			table.insert(spins, {
+				object = found :: GuiObject,
+				rotation = rotation,
+				fade = gradient,
+				fadeRotation = if gradient then gradient.Rotation else 0,
+			})
+		end
+	end
+end
+
+local function stopMotion()
+	local loop = motionLoop
+	if loop then
+		loop:Disconnect()
+		motionLoop = nil
+	end
+	restoreMotion()
+end
+
+local function stepMotion()
+	local current = shop
+	if current == nil or current.gui.Parent == nil or not current.gui.Enabled then
+		stopMotion() -- écran fermé (fin de l'animation de fermeture) ou retiré
+		return
+	end
+	local now = os.clock()
+	if now - reducedAt >= REDUCED_CHECK then
+		reducedAt = now
+		local was = reducedNow
+		reducedNow = reducedMotion()
+		if reducedNow and not was then
+			restoreMotion()
+		end
+	end
+	if reducedNow then
+		return
+	end
+	local spec = Monetization.Shop
+	local t = now - motionStart
+	local turn = spec.RaysTurn * (t % spec.RaysPeriod) / spec.RaysPeriod
+	local stale = false
+	for _, spin in spins do
+		if spin.object.Parent ~= nil then
+			spin.object.Rotation = spin.rotation + turn
+			local fade = spin.fade
+			if fade then
+				fade.Rotation = spin.fadeRotation - turn -- le fondu ne tourne pas avec les rayons (L-203 a)
+			end
+		else
+			stale = true -- cartes refaites écran ouvert (buildV2) : rayons relus à l'image suivante
+		end
+	end
+	if stale then
+		collectSpins(current)
+	end
+	local swing = sway
+	if swing then
+		local angle = math.rad(spec.PreviewSway) * math.sin(2 * math.pi * t / spec.PreviewSwayPeriod)
+		swing.camera.CFrame = CFrame.new(swing.focus) * CFrame.Angles(0, angle, 0) * CFrame.new(-swing.focus) * swing.base
+	end
+end
+
+-- Écran ouvert : rayons relus (cartes refaites) et boucle lancée si elle ne tourne pas.
+local function startMotion(current: Shop)
+	collectSpins(current)
+	if motionLoop ~= nil then
+		return
+	end
+	local heartbeat = (RunService :: any).Heartbeat
+	if heartbeat == nil then
+		return -- faux Roblox des bancs
+	end
+	motionStart = os.clock()
+	reducedAt = -math.huge
+	reducedNow = false
+	motionLoop = heartbeat:Connect(stepMotion)
+end
+
+-- L-247 a : le lien CurrentCamera de chaque ViewportFrame Preview est perdu à la copie dans le PlayerGui ; on le remet
+-- sur sa Camera. Celle de la caisse (Crate.Icon.Preview) se balance autour du pivot de son modèle (L-247 b).
+local function bindPreviews(current: Shop)
+	sway = nil
+	for _, found in current.gui:GetDescendants() do
+		if found.Name == PREVIEW_NAME and found:IsA("ViewportFrame") then
+			local viewport = found :: ViewportFrame
+			local camera = viewport:FindFirstChildOfClass("Camera")
+			if camera then
+				if viewport.CurrentCamera ~= camera then
+					viewport.CurrentCamera = camera
+				end
+				local crate = current.crate
+				local model = viewport:FindFirstChildWhichIsA("Model", true)
+				if sway == nil and crate and viewport:IsDescendantOf(crate) and model then
+					sway = { camera = camera, base = camera.CFrame, focus = model:GetPivot().Position }
+				end
+			end
+		end
+	end
+end
+
 local function closeShop()
 	isOpen = false
 	local current = shop
@@ -1237,10 +1436,14 @@ local function bindV2(current: Shop, keep: (RBXScriptConnection?) -> ())
 	end
 	setVisible(crate, false)
 	setVisible(featured, false)
+	bindPreviews(current) -- vague 73 (a253, L-247 a et b)
 end
 
 local function bind(gui: ScreenGui)
 	local old = shop
+	stopMotion() -- vague 73 : rayons et caméra de l'ancien écran remis en place
+	table.clear(spins)
+	sway = nil
 	if old then
 		for _, connection in old.connections do
 			connection:Disconnect()
@@ -1347,6 +1550,7 @@ local function openShop()
 		list.CanvasPosition = Vector2.new(0, 0) -- la liste s'ouvre en haut (caisse ou pack de départ)
 	end
 	Motion.Open(current.gui)
+	startMotion(current) -- vague 73 (a253) : rayons qui tournent, caméra de la caisse 3D
 end
 
 local function toggleShop()
