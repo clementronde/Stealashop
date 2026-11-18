@@ -202,6 +202,59 @@ local Chase = {
 	-- saut d'un chemin, le vigile saute quand l'obstacle à hauteur de genou est à moins de WalkSpeed × PathJumpLead
 	-- + 1 stud devant lui, ou à 2 studs du point. 0 : dès qu'il vise le point (la règle d'avant).
 	PathJumpLead = 0.3, -- V0 proposé, absent du doc (s)
+	-- a252 (Play de fusion69 b, Supérette : sauté 3,9 à 4 studs avant Promo_A, 0,5 s en l'air, car WalkSpeed 14,4 × 0,3
+	-- = 4,3 studs) : l'avance WalkSpeed × PathJumpLead est plafonnée à PathJumpLeadMax studs (le « + 1 stud » reste).
+	-- 0 ou absent : sans plafond (la règle d'avant).
+	PathJumpLeadMax = 1.5, -- V0 proposé, absent du doc (studs)
+	-- a252 (L-244, Clément, 2026-11-18 : « on voit notre personnage tomber, et après le vigile récupère l'objet ») : quand
+	-- l'objet porté revole sur son rayon après une capture par le vigile d'un magasin PNJ (capture dans son magasin, ou
+	-- Chase.ReturnToShelfAfterCatches-ième capture), il passe d'abord par la main du vigile (server/Services/Guard/
+	-- CatchPickUp) : au coup (marqueur Impact de Catch), l'objet tombe au sol entre les deux, le vigile joue PickUp et le
+	-- prend en main au marqueur Grab, le tient, puis l'objet revole sur son rayon depuis sa main ; le joueur reste au sol
+	-- (Knockdown arrêtée sur son marqueur Land, ChaseController) jusque-là, puis joue GetUp. Rien ne change aux règles
+	-- (étourdissement, pertes) ; l'objet revient sur son rayon au plus MaxAfterImpact s plus tard qu'avant.
+	CatchPickUp = {
+		Enabled = true, -- V0 : interrupteur (false : l'objet revole dès la capture, comme avant)
+		-- V0 false (question à Clément) : true = le vigile ramasse à CHAQUE capture d'un objet de magasin PNJ, dans la rue
+		-- aussi, et l'objet revole toujours sur son rayon (aujourd'hui, dans la rue, il reste au sol, gardé par le
+		-- vigile, et n'importe qui peut le reprendre : décision de Cantin du 13/11).
+		Always = false,
+		Reach = 2.5, -- V0 : l'objet tombe à 2,5 studs devant le vigile, vers le joueur (studs)
+		FallTime = 0.3, -- V0 : durée de la chute (s)
+		FallArc = 1.5, -- V0 : hauteur de l'arc de la chute (studs)
+		PickUpDelay = 0.2, -- V0 : le vigile se baisse 0,2 s après le coup (s)
+		GrabFallback = 0.5, -- V0 : PickUp absente (ou sans marqueur Grab) : en main 0,5 s après le début du geste (s)
+		HoldTime = 0.4, -- V0 : il le tient 0,4 s, puis l'objet revole (s)
+		HandMaxSize = 3, -- V0 : un objet plus grand est réduit à 3 studs (plus grand côté) dans sa main
+		MaxAfterImpact = 1.6, -- V0 : l'objet revole au plus tard 1,6 s après le coup (étourdissement : 2,4 s)
+		MaxAfterCatch = 2.2, -- V0 : sans coup (joueur protégé par sa cinématique), au plus tard 2,2 s après la capture
+	},
+	-- a252 (L-244) : la caméra de la capture (CatchSceneController) : plan large de côté qui montre le joueur et celui qui
+	-- l'attrape en entier, puis retour. Toujours en deçà d'un mur s'il le peut ; sinon derrière, et tout ce qui reste
+	-- entre la caméra et les deux corps devient transparent pour ce joueur (LocalTransparencyModifier), puis revient.
+	-- Enabled = false : le plongeon d'avant (HeistFeel.Catch.Dive*).
+	CatchShot = {
+		Enabled = true, -- V0
+		MoveTime = 0.35, -- V0 : la caméra glisse vers le plan large (s)
+		Margin = 3, -- V0 : marge autour des deux corps (studs)
+		BodyHeight = 7, -- V0 : hauteur à cadrer (vigile jusqu'à 1,4 × un R15) (studs)
+		FocusRise = 0.5, -- V0 : point visé au-dessus du milieu des deux HumanoidRootPart (studs)
+		Rise = 1.5, -- V0 : caméra au-dessus du point visé (studs)
+		MinDistance = 9, -- V0 (studs)
+		MaxDistance = 30, -- V0 (studs)
+		SideAngle = 25, -- V0 : en plus du plein côté, essais à ± 25° (degrés)
+		WallPad = 0.6, -- V0 : distance gardée devant un mur (studs)
+		Fade = 0.8, -- V0 : LocalTransparencyModifier des pièces qui gênent
+		MaxHidden = 40, -- V0 : pièces cachées au plus
+		Recheck = 0.1, -- V0 : nouveau test des gêneurs toutes les 0,1 s
+	},
+	-- a252 (L-245 et L-238 c ; Clément, 2026-11-18 : « le vigile de nuit renvoie vers la base ») : le vigile de nuit renvoie
+	-- déjà à la boutique après Arrest (NightCycleService.SendHome). La reprise 5,9 s plus tard vue au Play du 17/11 suivait
+	-- une capture par le VIGILE DU MAGASIN, la nuit, qui laissait le joueur dans le couloir. V0 (question à Clément) : true =
+	-- une capture par le vigile d'un magasin la nuit, dans le couloir, renvoie aussi à la boutique, DayCatchAtNightDelay s
+	-- après le coup (pertes inchangées) ; false = relâché sur place (la règle d'avant).
+	DayCatchAtNightSendsHome = true,
+	DayCatchAtNightDelay = 2, -- V0 (s ; après le ramassage de l'objet, avant la fin de l'étourdissement, 2,4 s)
 	-- a249 : diagnostic de la poursuite dans la sortie (aussi hors Studio) : chaque seconde, la distance, la phase,
 	-- la distance prévue et les parts de la vitesse du vigile ; à chaque capture, la distance, le temps depuis
 	-- l'apparition et dedans/dehors. En Studio, workspace:SetAttribute("ChaseDebug", true) fait de même.

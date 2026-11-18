@@ -3230,7 +3230,10 @@ local function onCarryEnded(player: Player, payload: any, result: string, reason
 		if result == "Consumed" then
 			outItems[payload] = nil
 		elseif result == "Failed" then
-			local back = returnItem(payload, carrierPosition(player), reason == "Caught") -- a174 : autre rayon libre si le sien est pris
+			-- a252 (L-244) : l'objet passé par la main du vigile (Guard/CatchPickUp) revole depuis là (payload.ReturnFrom).
+			local from = if typeof(payload.ReturnFrom) == "Vector3" then payload.ReturnFrom else carrierPosition(player)
+			payload.ReturnFrom = nil
+			local back = returnItem(payload, from, reason == "Caught") -- a174 : autre rayon libre si le sien est pris
 			log(`objet {payload.ItemId} de {player.Name} ({reason}) : {if back then "revient" else "ne revient pas"} sur {payload.SlotId}`)
 		end
 	end

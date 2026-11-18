@@ -214,6 +214,9 @@
 -- coup (en même temps que la poussée ; arrestation de nuit : à son début), pour la mise en scène côté client
 -- (CatchSceneController). outcome = "Shelf" (l'objet revole sur son rayon), "Drop" (il tombe, ou est perdu) ou
 -- "None" ; homeIn = secondes avant le renvoi à la base (nuit, policier), 0 sinon. Aucune règle de jeu ne change.
+-- a252 (L-244, L-245) : 6e argument `by`, le modèle de celui qui attrape (plan large de la caméra). Capture par le vigile
+-- d'un magasin dont l'objet revole : il passe d'abord par la main du vigile (Guard/CatchPickUp, Chase.CatchPickUp) ; la
+-- nuit, dans le couloir, ce joueur est renvoyé à sa boutique (Chase.DayCatchAtNightSendsHome).
 --
 -- API (serveur) :
 --   GuardService.ChaseIntruder(player, store) -> boolean
@@ -600,6 +603,15 @@ type ChaseTrace = { sight: number, path: number, last: number, hits: { [string]:
 local guardDebug: { [any]: ChaseTrace } = setmetatable({}, { __mode = "k" }) :: any
 
 local GuardService = {}
+-- a252 (L-244, L-245) : la capture qui se voit (l'objet passe par la main du vigile) et le renvoi de nuit, dans un
+-- module d'aide (Guard/CatchPickUp). Absent (faux arbres des bancs plus anciens) : la capture d'avant. Champ et non
+-- locale : ce fichier est à la limite de 200 locales de haut niveau (registres).
+GuardService._CatchShow = (function(): any
+	local ok, result = pcall(function(): any
+		return require((script.Parent :: any).Guard.CatchPickUp)
+	end)
+	return if ok and type(result) == "table" then result else nil
+end)() :: any
 
 local guards: { Guard } = {} -- vigiles de jour
 -- Heure (os.clock) où le dernier vigile de jour d'un magasin est parti (rentré, effacé…) : la vitrine
@@ -1154,7 +1166,13 @@ local function followPath(guard: Guard, goal: Vector3, lookahead: boolean?)
 		local jump = not isPositiveNumber(lead) or length <= WAYPOINT_REACHED
 		if not jump then
 			local knee = position - Vector3.new(0, guard.rootHeight - KNEE_HEIGHT, 0)
-			jump = not clearLine(knee, knee + offset * (math.min(length, guard.humanoid.WalkSpeed * lead + 1) / length))
+			-- a252 : avance plafonnée à Chase.PathJumpLeadMax studs (+ 1), quelle que soit la vitesse.
+			local cap = Chase.PathJumpLeadMax
+			local ahead = guard.humanoid.WalkSpeed * lead
+			if isPositiveNumber(cap) then
+				ahead = math.min(ahead, cap)
+			end
+			jump = not clearLine(knee, knee + offset * (math.min(length, ahead + 1) / length))
 		end
 		if jump then
 			guard.humanoid.Jump = true
@@ -2250,12 +2268,13 @@ end
 
 -- Remote CatchScene, au coup (marqueur Impact de Catch, ou délai de secours) : rien de sensible, la capture est déjà
 -- décidée ; `homeIn` = secondes avant le renvoi à la base (nuit, policier), 0 sinon. Aucune règle de jeu ne change.
-local function sendCatchScene(player: Player, night: boolean, outcome: string, homeIn: number, itemId: string?)
+-- a252 (L-244) : `by` = le modèle de celui qui attrape, pour le plan large de côté de la caméra.
+local function sendCatchScene(player: Player, night: boolean, outcome: string, homeIn: number, itemId: string?, by: Model?)
 	if player.Parent ~= Players then
 		return
 	end
 	local ok, err = pcall(function()
-		Net.Server.CatchScene:Fire(player, night, outcome, homeIn, itemId)
+		Net.Server.CatchScene:Fire(player, night, outcome, homeIn, itemId, by)
 	end)
 	if not ok then
 		warn(`[GuardService] CatchScene vers {player.Name} : {err}`)
@@ -2307,6 +2326,24 @@ local function catch(guard: Guard, player: Player)
 	elseif catchSendsBack(player) then
 		backToShelf = true -- a174 : 3e capture de cet objet, même retour qu'une capture dans son magasin
 	end
+	-- a252 (L-244) : l'objet qui revole passe d'abord par la main du vigile du magasin (Guard/CatchPickUp ; avec
+	-- Chase.CatchPickUp.Always, à chaque capture d'un objet de magasin PNJ, qui revole alors toujours).
+	local pickUp = GuardService._CatchShow ~= nil and guard.kind == "Day" and driver == nil and GuardService._CatchShow.Wants(player, backToShelf, CarryService)
+	if pickUp then
+		backToShelf = true
+		GuardService._CatchShow.Begin(player, {
+			model = guard.model,
+			root = guard.root,
+			play = function(name: string): AnimationTrack?
+				return guard.anims:Play(name)
+			end,
+			extend = function(untilClock: number)
+				if guard.state == "Catch" then
+					guard.stateEndsAt = math.max(guard.stateEndsAt, untilClock)
+				end
+			end,
+		}, CarryService)
+	end
 	-- a114 : l'objet lié qui va tomber reste lié à ce vigile (demi-tour s'il est repris).
 	local store = guard.store
 	if guard.kind == "Day" and driver == nil and store and not backToShelf then
@@ -2326,12 +2363,18 @@ local function catch(guard: Guard, player: Player)
 	local sendHome = if driver then driver.SendHome else nil
 	local outcome, sceneItem = sceneOutcome(player, backToShelf)
 	local homeIn = if sendHome then Night.SendHomeDelay else 0
+	-- a252 (L-245) : vigile d'un magasin, la nuit, joueur dans le couloir : renvoyé à sa boutique (Chase.DayCatchAtNight*).
+	if GuardService._CatchShow ~= nil and sendHome == nil and driver == nil and guard.kind == "Day" then
+		local body = bodyOf(player)
+		sendHome = GuardService._CatchShow.NightSendHome(player, nightHooks, if body then body.Position else nil)
+		homeIn = if sendHome then GuardService._CatchShow.NightSendHomeDelay() else 0
+	end
 	local function sendHomeLater(caught: Player)
 		if sendHome == nil then
 			return
 		end
 		local send: (player: Player) -> boolean = sendHome
-		task.delay(Night.SendHomeDelay, function()
+		task.delay(homeIn, function()
 			if caught.Parent == Players then
 				local ok, err = pcall(send, caught)
 				if not ok then
@@ -2344,7 +2387,10 @@ local function catch(guard: Guard, player: Player)
 		guard.knockTarget = player
 		guard.onKnock = function(caught: Player)
 			stun(caught, Balance.Guard.CatchStunDuration)
-			sendCatchScene(caught, false, outcome, homeIn, sceneItem)
+			if pickUp then
+				GuardService._CatchShow.Impact(caught) -- a252
+			end
+			sendCatchScene(caught, false, outcome, homeIn, sceneItem, guard.model)
 			sendHomeLater(caught)
 		end
 		task.delay(impactMaxWait(track), function()
@@ -2354,15 +2400,21 @@ local function catch(guard: Guard, player: Player)
 		end)
 	else
 		knockback(player, guard.root.Position)
-		sendCatchScene(player, false, outcome, homeIn, sceneItem)
+		if pickUp then
+			GuardService._CatchShow.Impact(player) -- a252
+		end
+		sendCatchScene(player, false, outcome, homeIn, sceneItem, guard.model)
 		sendHomeLater(player)
 	end
 
 	task.spawn(function()
-		local fail = if backToShelf then CarryService.FailNoDrop else CarryService.Fail
-		local ok, err = pcall(fail :: any, player, "Caught")
-		if not ok then
-			warn(`[GuardService] CarryService.Fail({player.Name}, "Caught") : {err}`)
+		-- a252 : objet en route vers la main du vigile : CatchPickUp le rend lui-même (FailNoDrop) à la fin.
+		if not pickUp then
+			local fail = if backToShelf then CarryService.FailNoDrop else CarryService.Fail
+			local ok, err = pcall(fail :: any, player, "Caught")
+			if not ok then
+				warn(`[GuardService] CarryService.Fail({player.Name}, "Caught") : {err}`)
+			end
 		end
 		stun(player, Balance.Guard.CatchStunDuration)
 		if message and player.Parent == Players then
@@ -2439,7 +2491,7 @@ local function nightCatch(guard: Guard, player: Player)
 		local length = if arrest.Length > 0 then arrest.Length else ARREST_FALLBACK_LENGTH
 		guard.stateEndsAt = now + length
 		local wait = math.max(length - Night.SendHomeDelay, 0)
-		sendCatchScene(player, true, outcome, wait + Night.SendHomeDelay, sceneItem) -- vague 59 : pas de coup, tout de suite
+		sendCatchScene(player, true, outcome, wait + Night.SendHomeDelay, sceneItem, guard.model) -- vague 59 : pas de coup, tout de suite
 		task.delay(wait, sendHome, player)
 		return
 	end
@@ -2449,7 +2501,7 @@ local function nightCatch(guard: Guard, player: Player)
 	if track then
 		guard.knockTarget = player
 		guard.onKnock = function(caught: Player)
-			sendCatchScene(caught, true, outcome, Night.SendHomeDelay, sceneItem)
+			sendCatchScene(caught, true, outcome, Night.SendHomeDelay, sceneItem, guard.model)
 			sendHome(caught)
 		end
 		task.delay(impactMaxWait(track), function()
@@ -2459,7 +2511,7 @@ local function nightCatch(guard: Guard, player: Player)
 		end)
 	else
 		knockback(player, guard.root.Position)
-		sendCatchScene(player, true, outcome, Night.SendHomeDelay, sceneItem)
+		sendCatchScene(player, true, outcome, Night.SendHomeDelay, sceneItem, guard.model)
 		task.spawn(sendHome, player)
 	end
 end

@@ -29,9 +29,15 @@
 --    s avant ou après). Sans Card : rien. Vague 63 (a207) : ItemName et Rarity passent par Controllers/UI/RarityFx
 --    (dégradé de la rareté, reflet du Légendaire, arc-en-ciel du Mythique et du Secret).
 --
+-- 3. a252 (liaison L-244) : plan large de côté. Avec `by` (le modèle de celui qui attrape, 5e argument du remote) et
+--    Config/Chase.CatchShot.Enabled, la caméra glisse (MoveTime s) vers un plan de côté qui montre les deux corps en
+--    entier (Controllers/CatchScene/Shot : jamais dans un mur), suit leur milieu à chaque image, et ce qui gêne
+--    devient transparent (LocalTransparencyModifier, comme le recul de L-234 ; revu toutes les Recheck s), rendu à
+--    la fin. Sans `by`, sans modèle ou sans le module : l'ancien plongeon (phases Dive puis Low).
+--
 -- API (client, pour un banc ou la barre de commande) :
---   CatchSceneController.Play(night, outcome, homeIn, itemId?)   joue une capture (comme le remote)
---   CatchSceneController.GetState() -> { Scenes, Active, Phase, Outcome, HomeIn, Cards, LastNew }
+--   CatchSceneController.Play(night, outcome, homeIn, itemId?, by?)   joue une capture (comme le remote)
+--   CatchSceneController.GetState() -> { Scenes, Active, Phase, Outcome, HomeIn, Cards, LastNew, Shot, Hidden }
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -53,14 +59,35 @@ local RarityFx = require(script.Parent:WaitForChild("UI"):WaitForChild("RarityFx
 
 type MusicApi = { CutChase: () -> () }
 
+-- a252 : plan large (facultatif ; absent des faux arbres des bancs = l'ancien plongeon).
+local function optional(parent: Instance, name: string): any
+	local module = parent:FindFirstChild(name)
+	if module == nil or not module:IsA("ModuleScript") then
+		return nil
+	end
+	local ok, result = pcall(require, module)
+	return if ok and type(result) == "table" then result else nil
+end
+local ShotCfg: any = (function(): any
+	local chase = optional(Config, "Chase")
+	local cfg = if chase then chase.CatchShot else nil
+	return if type(cfg) == "table" then cfg else nil
+end)()
+local Shot: any = (function(): any
+	local folder = script.Parent:FindFirstChild("CatchScene")
+	return if folder then optional(folder, "Shot") else nil
+end)()
+
 export type State = {
 	Scenes: number,
 	Active: boolean,
-	Phase: string, -- "Idle", "Dive", "Low", "Bands", "Stamp"
+	Phase: string, -- "Idle", "Dive", "Low", "Shot", "Bands", "Stamp"
 	Outcome: string?,
 	HomeIn: number,
 	Cards: number,
 	LastNew: boolean?,
+	Shot: string?, -- a252 : dernier plan large ("Free", "Wall", "Through") ; nil = plongeon
+	Hidden: number, -- a252 : pièces rendues transparentes en ce moment
 }
 
 type Scene = {
@@ -76,6 +103,7 @@ type Scene = {
 	cameraSubject: Instance?,
 	cameraTaken: boolean,
 	connections: { RBXScriptConnection },
+	hidden: { [BasePart]: number }, -- a252 : gêneurs rendus transparents (valeur d'avant)
 }
 
 local CATCH = HeistFeel.Catch
@@ -94,6 +122,7 @@ local phase = "Idle"
 local lastOutcome: string? = nil
 local lastHomeIn = 0
 local lastNew: boolean? = nil
+local lastShot: string? = nil
 local said: { [string]: boolean } = {}
 local discovered: { [string]: boolean } = {}
 local discoveredAt: { [string]: number } = {}
@@ -319,7 +348,101 @@ local function takeCamera(current: Scene)
 	end
 end
 
+-- a252 (L-244) : plan large de côté ; false = pas possible ici (l'appelant garde le plongeon).
+local function takeShot(current: Scene, by: Instance?): boolean
+	local cfg = ShotCfg
+	if Shot == nil or cfg == nil or cfg.Enabled ~= true then
+		return false
+	end
+	if by == nil or not by:IsA("Model") or by.Parent == nil then
+		return false
+	end
+	local found = by:FindFirstChild("HumanoidRootPart")
+	local root = rootPart()
+	local camera = Workspace.CurrentCamera
+	if found == nil or not found:IsA("BasePart") or root == nil or camera == nil then
+		return false
+	end
+	local other = found :: BasePart
+	local mine = root :: BasePart
+	local cam = camera :: Camera
+	local ok = pcall(function()
+		local exclude: { Instance } = { by }
+		local character = localPlayer.Character
+		if character then
+			table.insert(exclude, character)
+		end
+		local viewport = cam.ViewportSize
+		local aspect = if viewport.Y > 0 then viewport.X / viewport.Y else 16 / 9
+		local position, focus, kind = Shot.Frame(
+			mine.Position,
+			other.Position,
+			cam.FieldOfView,
+			aspect,
+			cam.CFrame.Position,
+			Shot.WorldCast(exclude),
+			Shot.WorldInside(exclude),
+			cfg
+		)
+		current.cameraType = cam.CameraType
+		current.cameraSubject = cam.CameraSubject
+		cam.CameraType = Enum.CameraType.Scriptable
+		current.cameraTaken = true
+		phase = "Shot"
+		lastShot = kind
+		local function targets(): { Vector3 }
+			local out = { mine.Position, other.Position }
+			for _, model in exclude do
+				local head = model:FindFirstChild("Head")
+				if head and head:IsA("BasePart") then
+					table.insert(out, (head :: BasePart).Position)
+				end
+			end
+			return out
+		end
+		Shot.Occluders(position, targets(), exclude, current.hidden, cfg)
+		local move = TweenService:Create(cam, TweenInfo.new(cfg.MoveTime, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			CFrame = CFrame.lookAt(position, focus),
+		})
+		table.insert(current.tweens, move)
+		move:Play()
+		local since = 0
+		local moving = true
+		table.insert(current.connections, RunService.RenderStepped:Connect(function(dt: number)
+			if not current.cameraTaken then
+				return
+			end
+			if mine.Parent ~= nil and other.Parent ~= nil then
+				focus = (mine.Position + other.Position) / 2 + Vector3.new(0, cfg.FocusRise, 0)
+			end
+			if moving and move.PlaybackState ~= Enum.PlaybackState.Playing then
+				moving = false
+			end
+			if not moving then
+				cam.CFrame = CFrame.lookAt(position, focus)
+			end
+			since += dt
+			if since >= cfg.Recheck then
+				since = 0
+				Shot.Occluders(cam.CFrame.Position, targets(), exclude, current.hidden, cfg)
+			end
+		end))
+	end)
+	if not ok then
+		sayOnce("shot", "plan large impossible : plongeon")
+		if current.cameraTaken then
+			return true -- caméra déjà prise : rendue normalement à la fin
+		end
+		Shot.Restore(current.hidden)
+		return false
+	end
+	return true
+end
+
 local function giveCamera(current: Scene)
+	if Shot ~= nil then
+		pcall(Shot.Restore, current.hidden)
+	end
 	if not current.cameraTaken then
 		return
 	end
@@ -421,7 +544,7 @@ local function finish(current: Scene)
 	HudMask.Pop(MASK_KEY)
 end
 
-function CatchSceneController.Play(night: boolean, outcome: string, homeIn: number, itemId: string?)
+function CatchSceneController.Play(night: boolean, outcome: string, homeIn: number, itemId: string?, by: Instance?)
 	local previous = scene
 	if previous then
 		finish(previous)
@@ -443,8 +566,10 @@ function CatchSceneController.Play(night: boolean, outcome: string, homeIn: numb
 		cameraSubject = nil,
 		cameraTaken = false,
 		connections = {},
+		hidden = {},
 	}
 	scene = current
+	lastShot = nil
 	-- UI_Chase n'est pas masqué : ChaseController l'éteint lui-même à la fin de la poursuite (capture) ; masqué, il
 	-- serait rallumé au retour du HUD.
 	HudMask.Push(MASK_KEY, { KeepScreens = { CATCH.Screen, CATCH.V0Screen, "UI_Chase" } })
@@ -457,7 +582,9 @@ function CatchSceneController.Play(night: boolean, outcome: string, homeIn: numb
 		playSound(CATCH.SlamSound)
 	end)
 	pcall(dust)
-	takeCamera(current)
+	if not takeShot(current, by) then
+		takeCamera(current)
+	end
 
 	-- Écran de capture : celui de Clément, sinon le V0.
 	local playerGui = localPlayer:FindFirstChildOfClass("PlayerGui")
@@ -563,8 +690,8 @@ function CatchSceneController.Play(night: boolean, outcome: string, homeIn: numb
 			return Workspace:GetAttribute("NightPhase")
 		end)
 		local isNight = night or (okPhase and phase == "Night")
-		local by = if night then "vigile de nuit" else "vigile ou policier"
-		print(`[CatchScene] capture mise en scène ({if isNight then "nuit" else "jour"}, {by}, {outcome}, renvoi dans {homeIn} s)`)
+		local who = if night then "vigile de nuit" else "vigile ou policier"
+		print(`[CatchScene] capture mise en scène ({if isNight then "nuit" else "jour"}, {who}, {outcome}, renvoi dans {homeIn} s)`)
 	end
 end
 
@@ -663,6 +790,17 @@ function CatchSceneController.GetState(): State
 		HomeIn = lastHomeIn,
 		Cards = cards,
 		LastNew = lastNew,
+		Shot = lastShot,
+		Hidden = (function(): number
+			local count = 0
+			local current = scene
+			if current then
+				for _ in current.hidden do
+					count += 1
+				end
+			end
+			return count
+		end)(),
 	}
 end
 
@@ -680,8 +818,9 @@ function CatchSceneController.Start()
 	end
 	local ok, err = pcall(function()
 		local Net = require(Shared:WaitForChild("Net"):WaitForChild("Net")) :: any
-		Net.Client.CatchScene:Connect(function(night: boolean, outcome: string, homeIn: number, itemId: string?)
-			CatchSceneController.Play(night == true, tostring(outcome), if type(homeIn) == "number" then homeIn else 0, itemId)
+		Net.Client.CatchScene:Connect(function(night: boolean, outcome: string, homeIn: number, itemId: string?, by: Instance?)
+			local catcher = if typeof(by) == "Instance" then by else nil -- a252 : celui qui attrape (plan large)
+			CatchSceneController.Play(night == true, tostring(outcome), if type(homeIn) == "number" then homeIn else 0, itemId, catcher)
 		end)
 		Net.Client.ItemSecured:Connect(function(itemId: string)
 			if type(itemId) == "string" then
