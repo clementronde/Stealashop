@@ -750,8 +750,10 @@ local function checkModels(scanned: { Instance })
 		end
 		local prefix = spec.Prefix
 		if prefix then
+			-- Vague 73 (a251) : ExceptPrefix = noms au même préfixe qui relèvent d'un autre contrat (TOOL_Unbox_*).
+			local except: string? = (spec :: any).ExceptPrefix
 			for _, inst in scanned do
-				if isPrefixed(inst, prefix) then
+				if isPrefixed(inst, prefix) and not (except and startsWith(inst.Name, except)) then
 					push(inst)
 				end
 			end

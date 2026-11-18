@@ -2997,8 +2997,38 @@ local function startReveal(player: Player, slot: Slot, box: ShelfBox)
 	end
 	local effect = if final.Mutation and final.Mutation.Effect then final.Mutation.Effect else ""
 	-- Bornes du remote (Net/Definitions : poids 1 000 000 kg, taille 100 au plus).
-	fireReveal("RevealStarted", player, store.Id, slot.Name, final.ItemId, final.Rarity, effect, math.min(weight, 1_000_000), math.min(scale, 100), sizeClass, id)
-	local maxSeconds = config.RevealMaxSeconds[sizeClass] or config.DefaultMaxSeconds
+	-- Vague 73 (a251, L-236 ; Config/Unbox.New) : plan de la nouvelle ouverture (actions du perso, rareté montrée après
+	-- chacune, cote finale), tiré ici une fois l'objet tiré, envoyé à tous ; le plafond de la phase suit sa durée. Coupé,
+	-- module absent ou plan impossible : la cinématique et le plafond d'avant.
+	local plan: string? = nil
+	local maxSeconds: number = config.RevealMaxSeconds[sizeClass] or config.DefaultMaxSeconds
+	local newUnbox: any = (Unbox :: any).New
+	local planModule: any = Shared:FindFirstChild("UnboxPlan")
+	if newUnbox and newUnbox.Enabled == true and planModule then
+		local ok, text, seconds = pcall(function(): (any, any)
+			local UnboxPlan = require(planModule) :: any
+			local drawn = UnboxPlan.draw(final.Rarity, function(n: number): number
+				return 1 + math.floor(random:NextNumber() * n)
+			end)
+			return drawn, UnboxPlan.serverMaxSeconds(final.Rarity, sizeClass)
+		end)
+		if ok and type(text) == "string" and type(seconds) == "number" and seconds > 0 and seconds < math.huge then
+			plan = text
+			maxSeconds = math.max(maxSeconds, seconds)
+			-- L'outil de l'action va dans la main droite de l'ouvreur : son outil à lui est rangé (comme au portage,
+			-- CarryService.StartCarry, qui suit de toute façon à la fin).
+			pcall(function()
+				local character = player.Character
+				local humanoid = if character then character:FindFirstChildOfClass("Humanoid") else nil
+				if humanoid then
+					humanoid:UnequipTools()
+				end
+			end)
+		elseif not ok then
+			warnOnce("unbox.plan", `plan de la nouvelle ouverture impossible ({text}) : cinématique d'avant`)
+		end
+	end
+	fireReveal("RevealStarted", player, store.Id, slot.Name, final.ItemId, final.Rarity, effect, math.min(weight, 1_000_000), math.min(scale, 100), sizeClass, id, plan)
 	task.delay(maxSeconds, function()
 		finishReveal(session, "plafond de temps")
 	end)
@@ -3006,7 +3036,7 @@ local function startReveal(player: Player, slot: Slot, box: ShelfBox)
 		elseif drawnRarity ~= final.Rarity then ` (tirée : {drawnRarity}, aucun objet nulle part)`
 		else ""
 	local mutation = Mutations.Label(final.Mutation)
-	log(`{player.Name} ouvre la caisse {box.Rarity} ({box.Tier}) {slot.Name} de {store.Id} : cinématique {id}, chance ×{luck}, objet {final.Rarity} ({final.ItemId}){how}, {weight} kg, taille ×{scale}, classe {sizeClass}{if mutation then ", " .. mutation else ""}, {maxSeconds} s au plus`)
+	log(`{player.Name} ouvre la caisse {box.Rarity} ({box.Tier}) {slot.Name} de {store.Id} : cinématique {id}, chance ×{luck}, objet {final.Rarity} ({final.ItemId}){how}, {weight} kg, taille ×{scale}, classe {sizeClass}{if mutation then ", " .. mutation else ""}, {maxSeconds} s au plus{if plan then `, plan {plan}` else ""}`)
 end
 
 -- RevealDone(revealId) : l'ouvreur a fini de voir sa cinématique. Seule la sienne, en cours ; sinon ignoré.

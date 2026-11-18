@@ -907,7 +907,7 @@ end
 local BOX_GONE = "colis porté et ouvert en base retirés (2026-11-15)"
 UI.Retired = {
 	Screens = {
-		UI_Unbox = BOX_GONE,
+		-- Vague 73 (a251, L-246) : UI_Unbox revient au contrat (le fondu des bords de la nouvelle ouverture, plus bas).
 		["UI_Inventory.Tabs.BoxesTab"] = BOX_GONE,
 		["UI_Inventory.BoxesSection"] = BOX_GONE,
 		-- Vague 59 (a190, L-182 point 5, L-183) : inventaire archivé (InventoryController en sommeil).
@@ -1418,6 +1418,49 @@ table.insert(UI.Screens, {
 		{ Path = "Banner.Icon", Class = "ImageLabel", Optional = true, Note = "pas d'icône dans l'annonce" },
 		{ Path = "Banner.Message", Class = "TextLabel" },
 		{ Path = "Banner.Detail", Class = "TextLabel", Optional = true, Note = "pas de petite ligne sous le message" },
+	} :: { Element },
+})
+-- Nouvelle ouverture du colis (vague 73, a251 ; Clément, L-236 et L-246 ; Config/Unbox.New ; Controllers/Reveal/Unbox).
+-- Tout est facultatif.
+--   UI_Unbox.EdgeGlow : le fondu des bords de l'écran chez l'ouvreur (ImageLabel plein écran, ImageTransparency 1 au
+--   repos) ; le code allume l'écran pendant l'ouverture, règle ImageColor3 (couleur de la rareté) et ImageTransparency.
+--   BB_UnboxOdds : au-dessus du colis, puis des silhouettes. Odds = la cote « 1 IN 37 » ; Rarity = le nom de la rareté
+--   montrée, à sa couleur ; Upgrade (« UPGRADE! ») montré le temps d'une amélioration. Absent : un billboard du code.
+--   BB_UnboxWord : une copie par Impact, au point de l'action ; Word reçoit le mot, gonfle (UIScale « UnboxPop »
+--   créé), monte et s'efface en Config/Unbox.New.WordTime s. Absent : pas de mot.
+--   BB_UnboxMark : au-dessus de la tête de l'ouvreur pendant l'inspection à la loupe ; Mark = « ? » puis « ! ».
+table.insert(UI.Screens, {
+	Name = "UI_Unbox",
+	Class = "ScreenGui",
+	Optional = true,
+	Elements = {
+		{ Path = "EdgeGlow", Class = "ImageLabel", Optional = true, Note = "pas de fondu des bords pendant l'ouverture du colis, L-246" },
+	} :: { Element },
+})
+table.insert(UI.Billboards, {
+	Name = "BB_UnboxOdds",
+	Class = "BillboardGui",
+	Optional = true,
+	Elements = {
+		{ Path = "Odds", Class = "TextLabel" },
+		{ Path = "Rarity", Class = "TextLabel", Optional = true, Note = "le nom de la rareté n'est pas écrit sous la cote" },
+		{ Path = "Upgrade", Class = "GuiObject", Optional = true, Note = "« UPGRADE! » n'est pas montré" },
+	} :: { Element },
+})
+table.insert(UI.Billboards, {
+	Name = "BB_UnboxWord",
+	Class = "BillboardGui",
+	Optional = true,
+	Elements = {
+		{ Path = "Word", Class = "TextLabel" },
+	} :: { Element },
+})
+table.insert(UI.Billboards, {
+	Name = "BB_UnboxMark",
+	Class = "BillboardGui",
+	Optional = true,
+	Elements = {
+		{ Path = "Mark", Class = "TextLabel" },
 	} :: { Element },
 })
 

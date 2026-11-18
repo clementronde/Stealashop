@@ -60,6 +60,16 @@ local RevealFolder = script.Parent:WaitForChild("Reveal")
 local Logic = require(RevealFolder:WaitForChild("Logic"))
 local Ceiling = require(RevealFolder:WaitForChild("Ceiling"))
 local Shelf = require(RevealFolder:WaitForChild("Shelf")) -- a220 : le meuble casse sous un objet trop gros
+-- Vague 73 (a251, L-236) : la nouvelle ouverture du colis (Reveal/Unbox, Config/Unbox.New, Shared/UnboxPlan). Quand le
+-- serveur envoie un plan (RevealStarted.plan), l'étape Open<Rareté> est remplacée par l'étape « Unbox » : le colis au
+-- sol de l'allée, les actions du perso, les silhouettes ; son évènement « Burst » tire le marqueur Open, « Reveal » le
+-- marqueur Reveal, « Done » lance l'étape Grow<Classe> d'avant. Sans plan (interrupteur coupé) ou module absent
+-- (arbre d'un banc) : rien ne change.
+local UnboxConfig = require(Config:WaitForChild("Unbox"))
+local unboxModule = RevealFolder:FindFirstChild("Unbox")
+local planModule = Shared:FindFirstChild("UnboxPlan")
+local Unbox: any = if unboxModule and planModule then require(unboxModule) else nil
+local UnboxPlan: any = if unboxModule and planModule then require(planModule) else nil
 
 type Payload = Logic.Payload
 type SizeClass = Logic.SizeClass
@@ -111,6 +121,8 @@ type Scene = {
 	doneSent: boolean,
 	pending: boolean,
 	holdT: number,
+	unbox: any, -- vague 73 : état de Reveal/Unbox (nil : cinématique d'avant)
+	maxT: number, -- plafond client de la scène (s)
 }
 
 local RevealController = {}
@@ -474,6 +486,9 @@ end
 
 local function releaseOpener(scene: Scene)
 	giveCamera(scene)
+	if scene.unbox then
+		Unbox.Release(scene.unbox)
+	end
 	if scene.masked then
 		scene.masked = false
 		HudMask.Pop(Reveal.MaskKey)
@@ -490,6 +505,9 @@ local function anchorFrame(scene: Scene): CFrame
 end
 
 local function cameraTarget(scene: Scene): CFrame
+	if scene.unbox and scene.stage == "Unbox" then
+		return Unbox.CameraTarget(scene.unbox)
+	end
 	local s = math.max(if scene.fired.Reveal then scene.shownScale else scene.startScale, Reveal.Camera.MinScale)
 	local anchor = anchorFrame(scene)
 	local camPart = scene.camPart
@@ -509,6 +527,9 @@ local function cameraTarget(scene: Scene): CFrame
 	end
 	local look = base + UP * (height * CAM.LookHeight)
 	local from = base + scene.aisle * (CAM.Distance * s) + UP * (CAM.Height * s)
+	if scene.unbox then
+		from = Unbox.Clear(scene.unbox, from, look) -- L-234 : jamais dans un mur ni derrière un rayon
+	end
 	return CFrame.lookAt(from, look)
 end
 
@@ -678,7 +699,10 @@ local function onReveal(scene: Scene)
 	playSound(Reveal.Sounds.Reveal, soundAt(scene))
 	playSound(Reveal.Sounds.Confetti, soundAt(scene))
 	playSound(raritySound(scene.payload.Rarity), soundAt(scene)) -- vague 72 (a246, L-229 B)
-	if scene.opener and rarityOrder(scene.payload.Rarity) >= rarityOrder(Reveal.FlashMinRarity) then
+	if scene.unbox then
+		Unbox.OnReveal(scene.unbox) -- vague 73 : son zoom et son fondu des bords remplacent le flash d'UI_Escape
+		scene.revealT = scene.t - Reveal.Fallback.PopTime -- pas de sortie de 0,2 à 1 : la silhouette était déjà à cette taille
+	elseif scene.opener and rarityOrder(scene.payload.Rarity) >= rarityOrder(Reveal.FlashMinRarity) then
 		local feel = sibling("UiFeelController")
 		if feel and type(feel.RevealFlash) == "function" then
 			pcall(feel.RevealFlash)
@@ -845,6 +869,25 @@ end
 
 local function stepStage(scene: Scene, dt: number)
 	scene.stageT += dt
+	if scene.unbox then
+		-- Vague 73 : la nouvelle ouverture avance à chaque image (ses effets finissent pendant Grow et Hold) ; ses
+		-- évènements ne comptent que pendant son étape.
+		local event = Unbox.Step(scene.unbox, dt)
+		if event and scene.pending and scene.store then
+			-- Le plafond attend son Explode plus longtemps qu'avant (Ceiling.PendingWait) : l'attente repart à chaque étape.
+			Ceiling.SetPending(scene.store, true)
+		end
+		if scene.stage == "Unbox" then
+			if event == "Burst" then
+				fire(scene, "Open")
+			elseif event == "Reveal" then
+				fire(scene, "Reveal")
+			elseif event == "Done" then
+				startStage(scene, "Grow")
+			end
+			return
+		end
+	end
 	local stage = scene.stage
 	if stage == "Hold" then
 		return
@@ -966,6 +1009,9 @@ local function finish(scene: Scene, reason: string)
 	end
 	finished += 1
 	stopTrack(scene)
+	if scene.unbox then
+		Unbox.Destroy(scene.unbox)
+	end
 	Shelf.Forget(scene.id)
 	for _, connection in scene.connections do
 		connection:Disconnect()
@@ -1005,7 +1051,7 @@ local function step(dt: number)
 			continue
 		end
 		scene.t += dt
-		if scene.stage ~= "Hold" and scene.t >= maxSeconds(scene.payload.SizeClass) then
+		if scene.stage ~= "Hold" and scene.t >= scene.maxT then
 			sayOnce("max", "cinématique arrêtée par MaxSeconds (Land jamais atteint)")
 			fire(scene, "Land")
 		end
@@ -1024,6 +1070,58 @@ local function step(dt: number)
 end
 
 -- Début ---------------------------------------------------------------------------------------------------------
+
+-- Vague 73 (a251, L-236) : si le serveur a envoyé un plan, la scène passe par la nouvelle ouverture. Le pied de l'objet
+-- (scene.base) devient le point au sol de l'allée où le colis est posé : l'objet, le rig, le meuble qui casse et la
+-- caméra de la croissance partent de là.
+local function beginUnbox(scene: Scene, slotFrame: CFrame, aisleDir: Vector3)
+	local payload = scene.payload
+	if payload.Plan == nil or Unbox == nil or UnboxConfig.New.Enabled ~= true then
+		return
+	end
+	local plan = UnboxPlan.parse(payload.Plan)
+	if plan == nil then
+		sayOnce("badplan", `plan « {payload.Plan} » illisible : cinématique d'avant`)
+		return
+	end
+	local store = scene.store
+	local shelfBox = if store then taggedIn(SHELF_BOX_TAG, store, scene.slot, payload.SlotName) else nil
+	local ok, state = pcall(Unbox.Begin, {
+		Id = scene.id,
+		Opener = scene.opener,
+		Player = payload.Opener,
+		Store = store,
+		SlotFrame = slotFrame,
+		AisleHint = aisleDir,
+		ShelfBox = shelfBox,
+		Rarity = payload.Rarity,
+		SizeClass = payload.SizeClass,
+		ItemId = payload.ItemId,
+		ItemScale = scene.startScale,
+		Plan = plan,
+		LowEnd = lowEnd(),
+		Folder = fxFolder(),
+		Hide = function(part: BasePart)
+			hideLocal(scene, part)
+		end,
+		ItemTop = function(): number
+			local anchor = scene.anchorPart
+			local y = if anchor and anchor.Parent ~= nil then anchor.Position.Y else scene.base.Position.Y
+			return y + scene.itemHeight * math.max(scene.shownScale, 0)
+		end,
+	})
+	if not ok then
+		warn(`[Reveal] nouvelle ouverture impossible ({state}) : cinématique d'avant`)
+		return
+	end
+	if shelfBox then
+		hideLocal(scene, shelfBox) -- le vrai colis reste sur son rayon, caché : c'est sa copie locale qui saute dans l'allée
+	end
+	scene.unbox = state
+	scene.base = state.base
+	scene.aisle = state.base.LookVector
+	scene.maxT = UnboxPlan.clientMaxSeconds(payload.Rarity, payload.SizeClass)
+end
 
 local function begin(payload: Payload)
 	if scenes[payload.RevealId] then
@@ -1105,10 +1203,13 @@ local function begin(payload: Payload)
 		doneSent = false,
 		pending = false,
 		holdT = 0,
+		unbox = nil,
+		maxT = maxSeconds(payload.SizeClass),
 	}
 	scenes[scene.id] = scene
 	table.insert(order, scene.id)
 	started += 1
+	beginUnbox(scene, slotFrame or CFrame.new(at), aisleDir)
 
 	-- Objet (hors du jeu jusqu'au Reveal), à sa taille de départ.
 	local item = buildItem(payload)
@@ -1151,10 +1252,14 @@ local function begin(payload: Payload)
 			finish(scene, "personnage retiré")
 		end))
 	end
-	startStage(scene, "Open")
+	if scene.unbox then
+		scene.stage = "Unbox" -- vague 73 : pas d'Open<Rareté>, l'étape est menée par Reveal/Unbox (stepStage)
+	else
+		startStage(scene, "Open")
+	end
 	if IS_STUDIO then
 		print(
-			`[Reveal] {scene.id} : {payload.ItemId} ({payload.Rarity}, {Logic.formatWeight(payload.Weight)}, ×{payload.Scale}, {payload.SizeClass}), {if isOpener then "ouvreur" else "spectateur"}, {if scene.rig then "rig" else "repli"}`
+			`[Reveal] {scene.id} : {payload.ItemId} ({payload.Rarity}, {Logic.formatWeight(payload.Weight)}, ×{payload.Scale}, {payload.SizeClass}), {if isOpener then "ouvreur" else "spectateur"}, {if scene.rig then "rig" else "repli"}{if scene.unbox then `, plan {payload.Plan}` else ""}`
 		)
 	end
 end
@@ -1198,6 +1303,7 @@ function RevealController.GetState(): { [string]: any }
 				Item = scene.item,
 				Rig = scene.rig,
 				Board = scene.board,
+				Unbox = if scene.unbox then Unbox.GetState(scene.unbox) else nil,
 			})
 		end
 	end

@@ -734,6 +734,9 @@ local List: { RemoteDef } = {
 			{ Name = "scale", Kind = "number", Min = 0, Max = 100 },
 			{ Name = "sizeClass", Kind = "string", Max = 16 },
 			id("revealId"),
+			-- Vague 73 (a251, L-236) : plan de la nouvelle ouverture (Shared/UnboxPlan : actions, rareté montrée après chacune,
+			-- cote finale), tiré par le serveur ; absent : la cinématique d'avant.
+			{ Name = "plan", Kind = "string", Min = 0, Max = 256, Optional = true },
 		},
 	},
 	{
