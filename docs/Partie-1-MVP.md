@@ -1106,6 +1106,7 @@ Chaque étape est envoyée une seule fois par joueur avec `AnalyticsService:LogO
 
 | Date | Décision | Par |
 | --- | --- | --- |
+| 2026-11-19 | Ouverture du colis (L-258) : le perso change de place à chaque action (à gauche, à droite, puis sur le colis) en se téléportant comme dans un dessin animé, dans un nuage, sans marcher ni sauter ; le coup final tombe toujours d'en haut. Deux animations à faire : Unbox_Stomp et Unbox_Slam. | Clément |
 | 2026-11-18 | Ouverture du colis : les outils `TOOL_Unbox_*` se tiennent comme tous les outils du jeu (manche le long de +Y du `Handle`, à travers le poing, face qui frappe vers −Z ; la scie garde sa lame vers l'avant, la perceuse se tient comme un pistolet). Les 4 animations qui les tiennent sont republiées. Liaison L-257. | Clément |
 | 2026-11-18 | Le sol du hub passe en grandes dalles à tenons d'après la vidéo de référence E : dalles de 8 × 8 (quelques-unes de 16 de long), teinte de chaque dalle à ±6 %, quelques dalles usées plus pâles, joints sombres fins, rangs décalés. Essai validé par Clément sur un morceau avant tout le sol. Annulé le même jour : Clément garde l'ancien sol. | Clément |
 | 2026-11-18 | Ouverture du colis : le nombre d'actions du perso dépend du résultat (peu d'actions sans amélioration ni bon objet), le colis n'a pas à atteindre la rareté de l'objet (un colis Commun peut donner un Légendaire, révélé par les silhouettes), et plus aucun mot au-dessus des coups. Liaison L-253. | Clément |
