@@ -481,7 +481,10 @@ local function giveCamera(scene: Scene)
 		return
 	end
 	pcall(function()
-		camera.CameraType = scene.cameraType or Enum.CameraType.Custom
+		-- Vague 75 (a259) : jamais rendue en Scriptable (prise pendant une autre cinématique, la capture par exemple : la
+		-- caméra resterait figée une fois les deux finies).
+		local before = scene.cameraType
+		camera.CameraType = if before and before ~= Enum.CameraType.Scriptable then before else Enum.CameraType.Custom
 		local character = localPlayer.Character
 		local humanoid = if character then character:FindFirstChildOfClass("Humanoid") else nil
 		local subject = scene.cameraSubject
@@ -769,7 +772,12 @@ local function updateCamera(scene: Scene, dt: number)
 	local target = cameraTarget(scene)
 	scene.blend += dt
 	local result: CFrame
-	if scene.mode == "Anim" then
+	-- Vague 75 (a259, T-222) : à l'entrée dans l'ouverture du colis, fondu (départ et arrivée en douceur) depuis la caméra du
+	-- joueur ; le lissage du repli, qui part d'un coup, ne sert qu'ensuite.
+	local unboxBlend: number = if scene.unbox and scene.stage == "Unbox" then UnboxConfig.New.Camera.BlendIn or 0 else 0
+	if scene.mode ~= "Anim" and scene.blendFrom and scene.blend < unboxBlend then
+		result = (scene.blendFrom :: CFrame):Lerp(target, Logic.easeInOut(scene.blend / unboxBlend))
+	elseif scene.mode == "Anim" then
 		local from = scene.blendFrom
 		if from and scene.blend < Reveal.Camera.BlendIn then
 			result = from:Lerp(target, Logic.easeInOut(scene.blend / Reveal.Camera.BlendIn))

@@ -93,7 +93,9 @@ end
 -- serveur). Vague 74 : la rareté montrée part de `startRarity` (le colis du rayon ; StartRarity si absente ou
 -- inconnue) et monte d'un cran par amélioration (`upgrades`, UnboxPlan.upgrades), sans lien avec `finalRarity`.
 -- nil si la Config ne permet aucun plan (FinalAction inconnue, rareté inconnue, aucune autre action).
-function UnboxPlan.draw(finalRarity: string, pick: (n: number) -> number, startRarity: string?, upgrades: number?): string?
+-- Vague 75 (a259, L-262 point 1) : `odds` (la vraie chance de l'objet, Formulas.UnboxOdds, calculée par le serveur) est
+-- la cote finale ; absente ou illisible : tirée dans la plage de `finalRarity`, comme avant.
+function UnboxPlan.draw(finalRarity: string, pick: (n: number) -> number, startRarity: string?, upgrades: number?, odds: number?): string?
 	local final = Rarities.ById[finalRarity]
 	local finalAction = actionsById[New.FinalAction]
 	if final == nil or finalAction == nil then
@@ -149,10 +151,15 @@ function UnboxPlan.draw(finalRarity: string, pick: (n: number) -> number, startR
 		end
 		parts[index] = `{ids[index]}:{Rarities.List[startOrder + done].Id}`
 	end
-	local lo, hi = rangeOf(finalRarity)
-	lo, hi = math.floor(lo), math.floor(hi)
-	local odds = lo + choose(hi - lo + 1) - 1
-	return `{table.concat(parts, ",")}|{odds}`
+	local cote: number
+	if type(odds) == "number" and odds >= 1 and odds < 1e9 then
+		cote = math.floor(odds)
+	else
+		local lo, hi = rangeOf(finalRarity)
+		lo, hi = math.floor(lo), math.floor(hi)
+		cote = lo + choose(hi - lo + 1) - 1
+	end
+	return `{table.concat(parts, ",")}|{cote}`
 end
 
 -- Relit le texte d'un plan. nil s'il est inutilisable (action ou rareté inconnue, rareté qui redescend, trop long).

@@ -97,6 +97,29 @@ function Formulas.FenceValue(income: number): number
 	return Balance.Display.FenceIncomeMultiplier * income
 end
 
+-- Vague 75 (a259, L-262 point 1) : cote « 1 IN N » de l'ouverture d'un colis = la vraie chance d'avoir cet objet :
+-- N = (total des poids / poids de sa rareté) × nombre d'objets de cette rareté que le tirage peut donner (Items.Pick,
+-- tous équiprobables). `weights` : poids des raretés de la caisse, chance comprise. N arrondi à l'entier, entre 1 et
+-- 999 999 999 ; nil si la rareté n'a aucune chance ou si un nombre est illisible.
+function Formulas.UnboxOdds(weights: { [string]: number }, rarityId: string, poolSize: number): number?
+	local total = 0
+	for _, weight in weights do
+		if type(weight) == "number" and weight > 0 and weight < math.huge then
+			total += weight
+		end
+	end
+	local weight = weights[rarityId]
+	local pool = math.floor(poolSize)
+	if type(weight) ~= "number" or not (weight > 0 and weight < math.huge) or total <= 0 or not (pool >= 1) then
+		return nil
+	end
+	local n = total / weight * pool
+	if n ~= n then
+		return nil
+	end
+	return math.clamp(math.floor(n + 0.5), 1, 999_999_999)
+end
+
 export type Formulas = typeof(Formulas)
 
 return DeepFreeze(Formulas)

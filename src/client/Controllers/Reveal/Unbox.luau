@@ -9,7 +9,9 @@
 --                l'ouvreur, le perso se place à côté, face au colis, et la caméra se met côté allée (jamais dans un
 --                mur : rapprochée, et ce qui reste devant devient transparent) ; BB_UnboxOdds au-dessus du colis ;
 --   Action, Gap  une action du plan après l'autre : animation Unbox_* du perso (ouvreur ; ses marqueurs Impact), outil
---                TOOL_Unbox_* dans sa main, réaction du colis, effet et son à chaque Impact (plus de mot, L-253) ; au
+--                TOOL_Unbox_* dans sa main, réaction du colis, effet et son à chaque Impact (plus de mot, L-253 ;
+--                vague 75, L-261 : sons Assets/Sounds/Unbox de New.Sounds au lancement, au marqueur Top et aux Impacts,
+--                arrêtés en fondu, Unbox_Rattle quand le colis tremble, aucun son de téléportation) ; au
 --                dernier Impact attendu (le moment fort) la cote défile, et si la rareté montrée change : le colis
 --                grossit, son scotch prend la couleur, FX_Unbox_Tier, « UPGRADE! », zoom et fondu des bords ; entre
 --                deux actions, le colis tremble de plus en plus. Animation absente ou vide, et spectateurs : mêmes
@@ -45,6 +47,7 @@ local UnboxPlan = require(Shared:WaitForChild("UnboxPlan"))
 
 local New = UnboxConfig.New
 local REACT = New.React
+local SOUNDS = New.Sounds -- vague 75 (a259, L-261)
 local CAM = New.Camera
 local UP = Vector3.new(0, 1, 0)
 local BLACK = Color3.new(0, 0, 0)
@@ -74,6 +77,7 @@ export type Context = {
 type Pulse = { value: number, target: number, hold: number }
 type Junk = { model: PVInstance, position: Vector3, velocity: Vector3, spin: number, angle: number, t: number }
 type Timed = { inst: Instance, left: number }
+type Fading = { sound: Sound, left: number, volume: number }
 
 export type State = {
 	ctx: Context,
@@ -158,6 +162,14 @@ export type State = {
 	revealed: boolean,
 	released: boolean,
 	destroyed: boolean,
+	-- Vague 75 (a259, L-261) : sons en cours.
+	running: { [Sound]: string }, -- son à arrêter en fondu, et quand : « Impact », « End » (fin de l'action) ou « Gap »
+	fading: { Fading },
+	queue: { string }, -- sons de Start encore à jouer, l'un après l'autre
+	queueLeft: number,
+	queueStop: string?,
+	topDone: boolean, -- son du marqueur Top joué pour l'action en cours
+	smoked: boolean, -- Unbox_Smoke déjà joué une fois (la fumée est apparue)
 	created: { Instance },
 }
 
@@ -296,22 +308,112 @@ local function rootOf(state: State): BasePart?
 	return if root and root:IsA("BasePart") then root else nil
 end
 
--- Son de la scène : 2D chez l'ouvreur, sur l'ancre du colis chez un spectateur ; absent = muet.
-local function sound(state: State, name: string?, pitch: number?): boolean
+-- Son de la scène : 2D chez l'ouvreur, sur l'ancre du colis chez un spectateur ; absent = muet. Rend la copie jouée.
+local function sound(state: State, name: string?, pitch: number?): Sound?
 	if name == nil then
-		return false
+		return nil
 	end
 	local template = MarkerSounds.find(name)
 	if template == nil then
-		return false
+		return nil
 	end
 	local ok, played = pcall(MarkerSounds.playSound, template, if state.ctx.Opener then nil else state.anchor)
-	if ok and pitch and typeof(played) == "Instance" then
+	if not ok or typeof(played) ~= "Instance" then
+		return nil
+	end
+	if pitch then
 		pcall(function()
 			(played :: any).PlaybackSpeed = pitch
 		end)
 	end
-	return ok
+	return played :: Sound
+end
+
+-- Vague 75 (a259, L-261) : sons lancés, arrêtés en fondu, joués l'un après l'autre ----------------------------------
+
+-- Joue `name` ; `stop` : il sera arrêté en fondu à ce moment (« Impact », « End », « Gap »).
+local function startSound(state: State, name: string, stop: string?): Sound?
+	local played = sound(state, name)
+	if played and stop then
+		state.running[played] = stop
+	end
+	return played
+end
+
+-- Arrête en fondu (SOUNDS.StopFade) les sons lancés pour `when` (nil : tous) ; les sons de Start pas encore joués aussi.
+local function stopSounds(state: State, when: string?)
+	for played, stop in state.running do
+		if when == nil or stop == when then
+			state.running[played] = nil
+			local ok, volume = pcall(function(): number
+				return played.Volume
+			end)
+			table.insert(state.fading, { sound = played, left = SOUNDS.StopFade, volume = if ok then volume else 0 })
+		end
+	end
+	if when == nil or state.queueStop == when then
+		table.clear(state.queue)
+	end
+end
+
+-- Durée (s) d'un son joué, au plus ChainMax ; inconnue : 0.
+local function lengthOf(played: Sound?): number
+	if played == nil then
+		return 0
+	end
+	local ok, length = pcall(function(): number
+		local any: any = played
+		local speed = any.PlaybackSpeed
+		return any.TimeLength / (if type(speed) == "number" and speed > 0.01 then speed else 1)
+	end)
+	return if ok and type(length) == "number" and length > 0 then math.min(length, SOUNDS.ChainMax) else 0
+end
+
+-- PlaybackSpeed au hasard (objets jetés, L-261).
+local function junkPitch(): number
+	local range = SOUNDS.JunkPitch
+	return range[1] + math.random() * (range[2] - range[1])
+end
+
+-- Chaque image : le son de Start suivant, et les fondus.
+local function stepSounds(state: State, dt: number)
+	if #state.queue > 0 then
+		state.queueLeft -= dt
+		if state.queueLeft <= 0 then
+			local name = table.remove(state.queue, 1) :: string
+			state.queueLeft = lengthOf(startSound(state, name, state.queueStop))
+		end
+	end
+	for index = #state.fading, 1, -1 do
+		local fade = state.fading[index]
+		fade.left -= dt
+		local played = fade.sound
+		if fade.left <= 0 then
+			table.remove(state.fading, index)
+			pcall(function()
+				played:Stop()
+				played:Destroy()
+			end)
+		else
+			local volume = fade.volume * fade.left / math.max(SOUNDS.StopFade, 1e-3)
+			pcall(function()
+				played.Volume = volume
+			end)
+		end
+	end
+end
+
+-- Coupe tout d'un coup (fin de la scène).
+local function killSounds(state: State)
+	stopSounds(state, nil)
+	for _, fade in state.fading do
+		local played = fade.sound
+		pcall(function()
+			played:Stop()
+			played:Destroy()
+		end)
+	end
+	table.clear(state.fading)
 end
 
 local function raycast(origin: Vector3, direction: Vector3, exclude: { Instance }, respectCollide: boolean): RaycastResult?
@@ -396,6 +498,18 @@ local function spawnFx(state: State, name: string?, foot: CFrame, top: Vector3?,
 	local life = copy:GetAttribute("Duration")
 	table.insert(state.timed, { inst = copy, left = if type(life) == "number" and life > 0 then life else New.FxLife })
 	return copy
+end
+
+-- Vague 75 (L-261) : l'effet `name` fait-il de la fumée (un émetteur SOUNDS.SmokeEmitter, L-254) ? Lu sur le modèle,
+-- aussi en LowEnd où l'effet n'est pas posé.
+local function fxHasSmoke(name: string?): boolean
+	if name == nil then
+		return false
+	end
+	local assets = ReplicatedStorage:FindFirstChild("Assets")
+	local folder = if assets then assets:FindFirstChild("FX") else nil
+	local template = if folder then folder:FindFirstChild(name, true) else nil
+	return template ~= nil and template:FindFirstChild(SOUNDS.SmokeEmitter, true) ~= nil
 end
 
 local function pulse(p: Pulse, target: number, hold: number)
@@ -730,10 +844,11 @@ local function takeTool(state: State, name: string?)
 	copy.Parent = state.ctx.Folder
 end
 
-local function throwJunk(state: State)
+-- Vague 75 : rend le nom du modèle jeté (pour son son, aussi en LowEnd où rien n'est jeté), ou nil.
+local function throwJunk(state: State): string?
 	local folder = walk(New.ToolFolder)
-	if folder == nil or state.ctx.LowEnd then
-		return
+	if folder == nil then
+		return nil
 	end
 	local list: { Instance } = {}
 	for _, child in folder:GetChildren() do
@@ -742,15 +857,19 @@ local function throwJunk(state: State)
 		end
 	end
 	if #list == 0 then
-		return
+		return nil
 	end
 	table.sort(list, function(a: Instance, b: Instance): boolean
 		return a.Name < b.Name
 	end)
 	state.junkIndex += 1
-	local copy = list[(state.junkIndex + state.ctx.Plan.Odds) % #list + 1]:Clone()
+	local picked = list[(state.junkIndex + state.ctx.Plan.Odds) % #list + 1]
+	if state.ctx.LowEnd then
+		return picked.Name
+	end
+	local copy = picked:Clone()
 	if not copy:IsA("PVInstance") then
-		return
+		return picked.Name
 	end
 	inert(copy)
 	local from = boxTop(state)
@@ -764,6 +883,7 @@ local function throwJunk(state: State)
 		angle = 0,
 		t = 0,
 	})
+	return picked.Name
 end
 
 local function stepJunk(state: State, dt: number)
@@ -936,6 +1056,11 @@ local function burst(state: State)
 	end
 	state.oddsT = -1
 	state.recoilLeft = New.RecoilTime
+	stopSounds(state, nil) -- vague 75 (L-261) : la scie, la perceuse… s'arrêtent en fondu ; puis l'éclatement et la fumée
+	for _, name in SOUNDS.Burst do
+		sound(state, name)
+	end
+	state.smoked = true
 	state.phase = "Burst"
 	state.t = 0
 	table.insert(state.events, "Burst")
@@ -991,11 +1116,37 @@ local function onImpact(state: State)
 	local strong = state.impacts >= #action.Impacts and not state.strong
 	reactNow(state, action.React, if strong then 1 else REACT.Before)
 	spawnFx(state, action.Fx, CFrame.new(state.floor.Position), hitPoint(state) or boxTop(state), colorOf(state.tier), true)
-	if not sound(state, action.Sound) then
-		sound(state, New.ImpactSound)
+	-- Vague 75 (L-261) : les sons de Start arrêtés au 1er Impact, le son de cet Impact, la boîte qui glisse, l'objet
+	-- jeté (hauteur au hasard), la fumée de l'effet (moins fort après la 1re fois ; pas au coup qui fait éclater).
+	local cfg = SOUNDS.Actions[action.Id]
+	stopSounds(state, "Impact")
+	local hits = if cfg then cfg.Impacts else nil
+	if hits and #hits > 0 then
+		sound(state, hits[math.min(state.impacts, #hits)], if action.Junk then junkPitch() else nil)
+	end
+	if table.find(SOUNDS.SlideReacts, action.React) then
+		sound(state, SOUNDS.Slide)
 	end
 	if action.Junk then
-		throwJunk(state)
+		local thrown = throwJunk(state)
+		if thrown then
+			local squeak = false
+			for _, prefix in SOUNDS.SqueakJunk do
+				squeak = squeak or string.sub(thrown, 1, #prefix) == prefix
+			end
+			sound(state, if squeak then SOUNDS.JunkSqueak else SOUNDS.JunkBoing, junkPitch())
+		end
+	end
+	local final = strong and state.index >= #state.ctx.Plan.Steps
+	if not final and not (cfg and cfg.Smoke == false) and fxHasSmoke(action.Fx) then
+		local smoke = sound(state, SOUNDS.Smoke)
+		if smoke and state.smoked then
+			local quiet = SOUNDS.SmokeAgainVolume
+			pcall(function()
+				smoke.Volume = math.min(smoke.Volume, quiet)
+			end)
+		end
+		state.smoked = state.smoked or smoke ~= nil
 	end
 	if action.Mark and strong then
 		showMark(state, New.MarkImpact)
@@ -1027,6 +1178,19 @@ local function startAction(state: State, index: number)
 		state.runEvery = if type(every) == "number" and every > 0 then every else 0.06
 		state.runLeft = 0
 	end
+	-- Vague 75 (L-261) : le tremblement s'arrête ; sons de lancement, l'un après l'autre (stepSounds).
+	stopSounds(state, "Gap")
+	state.topDone = false
+	local cfg = SOUNDS.Actions[action.Id]
+	local starts = if cfg then cfg.Start else nil
+	table.clear(state.queue)
+	state.queueStop = if cfg then cfg.Stop else nil
+	if starts and #starts > 0 then
+		for at = 2, #starts do
+			table.insert(state.queue, starts[at])
+		end
+		state.queueLeft = lengthOf(startSound(state, starts[1], state.queueStop))
+	end
 	if not ctx.Opener then
 		return
 	end
@@ -1048,6 +1212,12 @@ local function startAction(state: State, index: number)
 	table.insert(state.connections, track:GetMarkerReachedSignal("Impact"):Connect(function()
 		if state.track == track and not state.destroyed then
 			onImpact(state)
+		end
+	end))
+	table.insert(state.connections, track:GetMarkerReachedSignal("Top"):Connect(function()
+		if state.track == track and not state.destroyed and state.phase == "Action" and not state.topDone then
+			state.topDone = true
+			sound(state, if cfg then cfg.Top else nil)
 		end
 	end))
 	table.insert(state.connections, track.Stopped:Connect(function()
@@ -1112,13 +1282,12 @@ local function feetHeight(state: State): number
 	return math.max(low - state.base.Position.Y, 0)
 end
 
--- Nuage FX_Unbox_Puff au torse, et son son.
-local function puff(state: State, soundName: string?)
+-- Nuage FX_Unbox_Puff au torse (sans son depuis la vague 75, L-261).
+local function puff(state: State)
 	local at = torsoOf(state)
 	if at then
 		spawnFx(state, New.Fx.Puff, CFrame.new(at), nil, nil, true)
 	end
-	sound(state, soundName)
 end
 
 -- Le perso disparaît en local, chez chaque joueur (LocalTransparencyModifier), puis revient comme avant.
@@ -1169,7 +1338,20 @@ local function startGap(state: State, nextIndex: number)
 	state.teleport = move ~= nil and move.Teleport
 	state.teleportStage = 0
 	if state.teleport then
-		puff(state, New.Places.VanishSound)
+		puff(state)
+	elseif nextIndex > 1 then
+		-- Vague 75 (L-261) : le colis tremble, Unbox_Rattle en boucle, plus fort et plus aigu à chaque pause.
+		local step = math.max(nextIndex - 2, 0)
+		local rattle = startSound(state, SOUNDS.Rattle, "Gap")
+		if rattle then
+			local volume = math.min(1 + SOUNDS.RattleVolumeStep * step, SOUNDS.RattleMax)
+			local pitch = 1 + SOUNDS.RattlePitchStep * step
+			pcall(function()
+				rattle.Looped = true
+				rattle.Volume *= volume
+				rattle.PlaybackSpeed = pitch
+			end)
+		end
 	end
 end
 
@@ -1187,7 +1369,7 @@ local function stepTeleport(state: State)
 		local move = state.moves[state.index + 1]
 		arrive(state, if move then move.Place else state.place)
 		showCharacter(state)
-		puff(state, places.AppearSound)
+		puff(state)
 	end
 end
 
@@ -1240,6 +1422,7 @@ local function endAction(state: State)
 	stopTrack(state, 0.1)
 	dropTool(state)
 	dropMark(state)
+	stopSounds(state, nil) -- vague 75 (L-261) : les sons de l'action s'arrêtent en fondu
 	startGap(state, state.index + 1)
 end
 
@@ -1274,6 +1457,11 @@ local function stepAction(state: State, dt: number)
 		return
 	end
 	local duration = UnboxPlan.actionTime(action)
+	local cfg = SOUNDS.Actions[action.Id]
+	if cfg and cfg.Top and cfg.TopAt and not state.topDone and state.t >= cfg.TopAt * duration then
+		state.topDone = true -- vague 75 (L-261) : instant de repli du marqueur Top
+		sound(state, cfg.Top)
+	end
 	for index, at in action.Impacts do
 		if state.phase == "Action" and index > state.impacts and state.t >= at * duration then
 			onImpact(state)
@@ -1542,6 +1730,13 @@ function Unbox.Begin(ctx: Context): State
 		revealed = false,
 		released = false,
 		destroyed = false,
+		running = {},
+		fading = {},
+		queue = {},
+		queueLeft = 0,
+		queueStop = nil,
+		topDone = false,
+		smoked = false,
 		created = { anchor },
 	}
 	buildBox(state)
@@ -1631,6 +1826,7 @@ function Unbox.OnReveal(state: State)
 	end
 	state.revealed = true
 	stopTrack(state, 0.2)
+	stopSounds(state, nil) -- vague 75 (L-261)
 	stopRunFx(state)
 	dropBox(state)
 	dropTool(state)
@@ -1669,6 +1865,7 @@ function Unbox.Step(state: State, dt: number): string?
 		return nil
 	end
 	state.t += dt
+	stepSounds(state, dt) -- vague 75 (L-261)
 	state.spin += RevealConfig.Fallback.Spin * dt
 	local phase = state.phase
 	if phase == "Intro" then
@@ -1880,6 +2077,7 @@ function Unbox.Destroy(state: State)
 	end
 	state.destroyed = true
 	Unbox.Release(state)
+	killSounds(state) -- vague 75 (L-261)
 	showCharacter(state)
 	stopTrack(state, 0.2)
 	dropBox(state)

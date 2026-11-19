@@ -3012,9 +3012,22 @@ local function startReveal(player: Player, slot: Slot, box: ShelfBox)
 			local upgrades = if imposed then 0 else UnboxPlan.upgrades(box.Rarity, luck, function(): number
 				return random:NextNumber()
 			end)
+			-- Vague 75 (a259, L-262 point 1) : la cote finale est la vraie chance d'avoir cet objet (Formulas.UnboxOdds) :
+			-- poids des raretés de cette caisse à cette chance (comme drawItemRarity), puis un objet parmi ceux de sa rareté
+			-- là où il a été tiré (Items.Pick : toutes zones pour Secret et Divine, sinon sa zone). Contenu imposé : la plage.
+			local odds: number? = nil
+			if not imposed and newUnbox.RealOdds ~= false then
+				local weights = itemRarityWeights(box.Rarity, luck)
+				local def = Items.ById[final.ItemId]
+				local byZone = Items.ByZone[if def and def.Zone then def.Zone else store.Zone]
+				local pool: { any }? = Items.AllZones[final.Rarity] or (if byZone then byZone[final.Rarity] else nil)
+				if weights and pool then
+					odds = Formulas.UnboxOdds(weights, final.Rarity, #pool)
+				end
+			end
 			local drawn = UnboxPlan.draw(final.Rarity, function(n: number): number
 				return 1 + math.floor(random:NextNumber() * n)
-			end, box.Rarity, upgrades)
+			end, box.Rarity, upgrades, odds)
 			local parsed = UnboxPlan.parse(drawn)
 			return drawn, UnboxPlan.serverMaxSeconds(final.Rarity, sizeClass, if parsed then #parsed.Steps else nil)
 		end)
