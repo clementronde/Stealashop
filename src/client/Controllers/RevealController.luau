@@ -1346,7 +1346,7 @@ local function beginUnbox(scene: Scene, slotFrame: CFrame, aisleDir: Vector3)
 	scene.unbox = state
 	scene.base = state.base
 	scene.aisle = state.base.LookVector
-	scene.maxT = UnboxPlan.clientMaxSeconds(payload.Rarity, payload.SizeClass)
+	scene.maxT = UnboxPlan.clientMaxSeconds(payload.Rarity, payload.SizeClass, #plan.Steps) -- vague 74 : selon le plan tiré
 end
 
 local function begin(payload: Payload)

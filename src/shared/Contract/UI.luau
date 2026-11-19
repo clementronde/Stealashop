@@ -921,6 +921,8 @@ UI.Retired = {
 	},
 	Billboards = {
 		BB_OpenTimer = BOX_GONE,
+		-- Vague 74 (a257, L-253 point 3, L-254 point 2) : plus de mot au-dessus des coups de l'ouverture du colis.
+		BB_UnboxWord = "plus de mot au-dessus des coups de l'ouverture du colis (L-253, L-254)",
 	},
 } :: { Screens: { [string]: string }, Billboards: { [string]: string } }
 
@@ -1426,8 +1428,7 @@ table.insert(UI.Screens, {
 --   repos) ; le code allume l'écran pendant l'ouverture, règle ImageColor3 (couleur de la rareté) et ImageTransparency.
 --   BB_UnboxOdds : au-dessus du colis, puis des silhouettes. Odds = la cote « 1 IN 37 » ; Rarity = le nom de la rareté
 --   montrée, à sa couleur ; Upgrade (« UPGRADE! ») montré le temps d'une amélioration. Absent : un billboard du code.
---   BB_UnboxWord : une copie par Impact, au point de l'action ; Word reçoit le mot, gonfle (UIScale « UnboxPop »
---   créé), monte et s'efface en Config/Unbox.New.WordTime s. Absent : pas de mot.
+--   BB_UnboxWord : retiré en vague 74 (a257, L-253, L-254 : plus de mot au-dessus des coups ; UI.Retired).
 --   BB_UnboxMark : au-dessus de la tête de l'ouvreur pendant l'inspection à la loupe ; Mark = « ? » puis « ! ».
 table.insert(UI.Screens, {
 	Name = "UI_Unbox",
@@ -1445,14 +1446,6 @@ table.insert(UI.Billboards, {
 		{ Path = "Odds", Class = "TextLabel" },
 		{ Path = "Rarity", Class = "TextLabel", Optional = true, Note = "le nom de la rareté n'est pas écrit sous la cote" },
 		{ Path = "Upgrade", Class = "GuiObject", Optional = true, Note = "« UPGRADE! » n'est pas montré" },
-	} :: { Element },
-})
-table.insert(UI.Billboards, {
-	Name = "BB_UnboxWord",
-	Class = "BillboardGui",
-	Optional = true,
-	Elements = {
-		{ Path = "Word", Class = "TextLabel" },
 	} :: { Element },
 })
 table.insert(UI.Billboards, {
