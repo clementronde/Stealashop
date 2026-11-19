@@ -837,7 +837,9 @@ table.insert(Models.List, Trap)
 -- Nouvelle ouverture du colis (vague 73, a251 ; Clément, L-236, L-237, L-246 ; Config/Unbox.New ; Controllers/Reveal/
 -- Unbox). Tout est facultatif : un modèle absent, rien ne se joue à sa place.
 --   Outils tenus en main pendant une action : ReplicatedStorage/Assets/Unbox/TOOL_Unbox_<Nom>, modèle sans script, sa
---   poignée Handle à l'endroit de la main (posée sur RightGripAttachment de la main droite).
+--   poignée Handle à l'endroit de la main (posée sur RightGripAttachment de la main droite, comme un Tool à Grip
+--   neutre, L-257) ; vague 74 : l'Attachment HitPoint de Handle, facultatif, est le point où les effets de l'Impact
+--   sont posés (L-255).
 --   Objets jetés pendant la fouille : ReplicatedStorage/Assets/Unbox/ENV_Unbox_Junk_<Nom> (aucun élément imposé).
 --   Effets : ReplicatedStorage/Assets/FX/FX_Unbox_<Nom> et FX_RevealSmash, construits comme FX_ShelfReveal (Root
 --   invisible et ancré, Attachments, émetteurs à Rate 0 avec l'attribut EmitCount, Duration sur le modèle ; un émetteur

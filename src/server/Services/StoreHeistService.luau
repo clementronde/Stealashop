@@ -3007,10 +3007,16 @@ local function startReveal(player: Player, slot: Slot, box: ShelfBox)
 	if newUnbox and newUnbox.Enabled == true and planModule then
 		local ok, text, seconds = pcall(function(): (any, any)
 			local UnboxPlan = require(planModule) :: any
+			-- Vague 74 (a257, L-253) : améliorations du colis tirées à part de l'objet (aucune pour un contenu imposé),
+			-- depuis la rareté du colis ; le nombre d'actions et le plafond suivent le plan tiré.
+			local upgrades = if imposed then 0 else UnboxPlan.upgrades(box.Rarity, luck, function(): number
+				return random:NextNumber()
+			end)
 			local drawn = UnboxPlan.draw(final.Rarity, function(n: number): number
 				return 1 + math.floor(random:NextNumber() * n)
-			end)
-			return drawn, UnboxPlan.serverMaxSeconds(final.Rarity, sizeClass)
+			end, box.Rarity, upgrades)
+			local parsed = UnboxPlan.parse(drawn)
+			return drawn, UnboxPlan.serverMaxSeconds(final.Rarity, sizeClass, if parsed then #parsed.Steps else nil)
 		end)
 		if ok and type(text) == "string" and type(seconds) == "number" and seconds > 0 and seconds < math.huge then
 			plan = text

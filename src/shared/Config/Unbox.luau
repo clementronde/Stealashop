@@ -27,7 +27,6 @@ export type Action = {
 	Tool: string?,
 	Fx: string?,
 	RunFx: string?,
-	Word: string?,
 	Sound: string?,
 	React: string,
 	Duration: number,
@@ -163,38 +162,68 @@ local Unbox = {
 
 	-- Vague 73 (a251 ; liaison L-236, L-237, L-246, validé par Clément le 2026-11-17 sur son prototype) : la nouvelle
 	-- ouverture du colis sur un magasin PNJ. Le colis saute du rayon au sol de l'allée (L-234), le perso s'acharne
-	-- dessus (ActionCount actions, la dernière est toujours FinalAction), la cote monte, le colis s'améliore, il éclate,
+	-- dessus (ActionsByRarity actions, la dernière est toujours FinalAction), la cote monte, le colis s'améliore, il éclate,
 	-- les silhouettes montent jusqu'à la rareté gagnée, puis l'objet se révèle. Le serveur tire tout d'avance
 	-- (StoreHeistService, Shared/UnboxPlan : actions, rareté montrée après chaque action, cote finale) et l'envoie dans
 	-- RevealStarted (argument plan) ; RevealController joue le plan (Controllers/Reveal/Unbox), puis sa croissance et sa
 	-- fin comme avant. Origine : L-236 = écrit dans la liaison ; V0 = proposé, absent de la liaison, à régler en jeu.
 	New = {
 		Enabled = true, -- interrupteur ; false = la cinématique d'avant (Open<Rareté>, Config/Reveal), rien d'autre ne change
-		ActionCount = 5, -- L-236 : actions du perso (2 au moins, 12 au plus)
+		-- Vague 74 (a257, L-253 point 1) : le nombre d'actions suit le résultat (la dernière comprise, 1 à 12) : la valeur de
+		-- la rareté gagnée, plus ActionsPerUpgrade par amélioration du colis ; une amélioration demande une action avant
+		-- et une après (au moins 2 + améliorations). Commun sans amélioration = la masse seule ; Peu commun = une action
+		-- puis la masse (L-253). Tout V0, à régler par Clément.
+		ActionsByRarity = { Common = 1, Uncommon = 2, Rare = 3, Epic = 4, Legendary = 5, Mythic = 6, Secret = 7, Divine = 8 } :: { [string]: number },
+		ActionsPerUpgrade = 1, -- V0
 		ActionSpeed = 1, -- L-236, curseur « Vitesse des actions » : animations, durées de repli et pauses ÷ cette valeur
 		FinalAction = "Hammer", -- L-236 : la dernière action, celle qui casse le colis ; jamais tirée avant (V0)
 		-- Les 7 actions (L-237). Anim = animation du joueur (Contract/Animations) ; Tool = modèle tenu en main
 		-- (ToolFolder, facultatif) ; Fx = effet à chaque Impact (L-246) ; RunFx = effet pendant toute l'action jusqu'à son
-		-- moment fort (rythme : attribut EmitEvery du modèle) ; Word = mot de BB_UnboxWord à chaque Impact ; Sound = son
+		-- moment fort (rythme : attribut EmitEvery du modèle) ; Sound = son
 		-- de chaque Impact (Assets/Sounds, nommé <Animation>_<Marqueur> comme les autres sons de marqueur ; sinon
 		-- ImpactSound, sinon muet) ; React = réaction du colis (React plus bas).
 		-- Duration et Impacts (parts de la durée) : repli codé seulement, quand l'animation manque et chez les spectateurs
 		-- (durées indicatives du prototype, L-237) ; avec l'animation, ce sont ses marqueurs Impact et sa fin qui comptent,
 		-- et le dernier Impact attendu (#Impacts) est le moment fort.
 		Actions = {
-			{ Id = "Hammer", Anim = "Unbox_Hammer", Tool = "TOOL_Unbox_Sledgehammer", Fx = "FX_Unbox_Hit", Word = "BONK!", Sound = "Unbox_Hammer_Impact", React = "Squash", Duration = 0.6, Impacts = { 0.7 } },
-			{ Id = "Saw", Anim = "Unbox_Saw", Tool = "TOOL_Unbox_Saw", Fx = "FX_Unbox_Sawdust", Word = "SCRITCH!", Sound = "Unbox_Saw_Impact", React = "Slide", Duration = 1.25, Impacts = { 0.25, 0.45, 0.65, 0.85 } },
-			{ Id = "Crowbar", Anim = "Unbox_Crowbar", Tool = "TOOL_Unbox_Crowbar", Fx = "FX_Unbox_Hit", Word = "CRACK!", Sound = "Unbox_Crowbar_Impact", React = "Lid", Duration = 1.25, Impacts = { 0.5, 0.85 } },
-			{ Id = "Drill", Anim = "Unbox_Drill", Tool = "TOOL_Unbox_Drill", Fx = "FX_Unbox_Hit", RunFx = "FX_Unbox_Chips", Word = "BZZZT!", Sound = "Unbox_Drill_Impact", React = "Spin", Duration = 1.2, Impacts = { 0.85 } },
-			{ Id = "Kick", Anim = "Unbox_Kick", Fx = "FX_Unbox_Hit", Word = "POW!", Sound = "Unbox_Kick_Impact", React = "Push", Duration = 0.8, Impacts = { 0.6 } },
+			{ Id = "Hammer", Anim = "Unbox_Hammer", Tool = "TOOL_Unbox_Sledgehammer", Fx = "FX_Unbox_Hit", Sound = "Unbox_Hammer_Impact", React = "Squash", Duration = 0.6, Impacts = { 0.7 } },
+			{ Id = "Saw", Anim = "Unbox_Saw", Tool = "TOOL_Unbox_Saw", Fx = "FX_Unbox_Sawdust", Sound = "Unbox_Saw_Impact", React = "Slide", Duration = 1.25, Impacts = { 0.25, 0.45, 0.65, 0.85 } },
+			{ Id = "Crowbar", Anim = "Unbox_Crowbar", Tool = "TOOL_Unbox_Crowbar", Fx = "FX_Unbox_Hit", Sound = "Unbox_Crowbar_Impact", React = "Lid", Duration = 1.25, Impacts = { 0.5, 0.85 } },
+			{ Id = "Drill", Anim = "Unbox_Drill", Tool = "TOOL_Unbox_Drill", Fx = "FX_Unbox_Hit", RunFx = "FX_Unbox_Chips", Sound = "Unbox_Drill_Impact", React = "Spin", Duration = 1.2, Impacts = { 0.85 } },
+			{ Id = "Kick", Anim = "Unbox_Kick", Fx = "FX_Unbox_Hit", Sound = "Unbox_Kick_Impact", React = "Push", Duration = 0.8, Impacts = { 0.6 } },
 			{ Id = "Search", Anim = "Unbox_Search", Junk = true, Sound = "Unbox_Search_Impact", React = "Tilt", Duration = 1.4, Impacts = { 0.4, 0.75 } },
-			{ Id = "Inspect", Anim = "Unbox_Inspect", Tool = "TOOL_Unbox_Magnifier", Word = "HUH?", Mark = true, Sound = "Unbox_Inspect_Impact", React = "Jump", Duration = 1.35, Impacts = { 0.8 } },
+			{ Id = "Inspect", Anim = "Unbox_Inspect", Tool = "TOOL_Unbox_Magnifier", Mark = true, Sound = "Unbox_Inspect_Impact", React = "Jump", Duration = 1.35, Impacts = { 0.8 } },
 		} :: { Action },
 		ImpactSound = "Unbox_Impact", -- V0 : son d'un Impact sans son à lui
 		ActionMaxFactor = 1.5, -- V0 : une action est coupée à Duration × ce facteur (animation plus longue ou bloquée)
-		ActionGap = 0.25, -- V0 : pause entre deux actions (le colis tremble)
+		ActionGap = 0.25, -- V0 : pause entre deux actions à la même place (le colis tremble)
 
-		-- Temps (s). Objet révélé vers 7,9 s (Commun) et 8,8 s (Rare) avec des actions moyennes : les « 8 à 9 s » de L-236.
+		-- Vague 74 (a257, L-258) : le perso change de place à chaque action, en se téléportant (ni marche ni saut) :
+		-- Cycle (Side = la place de L-236, à côté du colis ; Other = de l'autre côté, réactions du colis dans l'autre
+		-- sens ; Top = debout sur le couvercle), la dernière action toujours sur le colis (une seule action : il s'y
+		-- téléporte d'abord). Sur le colis : Stomp au lieu de l'action tirée, Slam au lieu de la masse finale ; leur
+		-- animation absente (Contract/Animations, facultatives) : l'action tirée et la masse, à la place du cycle à côté
+		-- du colis (Side ou Other). Enabled = false : toujours à la même place, comme en vague 73.
+		Places = {
+			Enabled = true, -- interrupteur
+			Cycle = { "Side", "Other", "Top" }, -- L-258
+			Teleport = 0.34, -- L-258 : durée d'une téléportation (au lieu d'ActionGap)
+			Vanish = 0.1, -- L-258 : disparition dans un nuage (FX_Unbox_Puff au torse) de 0 à cette valeur…
+			Appear = 0.19, -- L-258 : … réapparition d'un coup à la nouvelle place (second nuage), puis le rebond
+			Bounce = 0.35, -- V0 : studs, hauteur du petit rebond à la réapparition (de Appear à Teleport)
+			VanishSound = "Unbox_TeleportOut", -- V0 (« swish », session sound design ; absent : muet)
+			AppearSound = "Unbox_TeleportIn", -- V0 (« pop »)
+			CameraLift = 0.7, -- L-258 : la caméra monte de 0,7 × la hauteur des pieds au-dessus du sol
+			CameraLiftSpeed = 8, -- V0 : 1/s, la caméra rattrape cette hauteur sans à-coup
+			OddsSlide = 3.4, -- L-258 : studs, BB_UnboxOdds glisse sur le côté quand le perso est sur le colis…
+			OddsSlideSpeed = 8, -- V0 : 1/s, … puis revient
+			-- Les deux actions sur le colis (L-258 ; durées et marqueurs du prototype, repli codé seulement comme Actions).
+			Stomp = { Id = "Stomp", Anim = "Unbox_Stomp", Fx = "FX_Unbox_Hit", Sound = "Unbox_Stomp_Impact", React = "Stomp", Duration = 1.1, Impacts = { 0.45, 0.95 } } :: Action,
+			Slam = { Id = "Slam", Anim = "Unbox_Slam", Tool = "TOOL_Unbox_Sledgehammer", Fx = "FX_Unbox_Hit", Sound = "Unbox_Slam_Impact", React = "Squash", Duration = 1.35, Impacts = { 0.8 } } :: Action,
+		},
+
+		-- Temps (s). Vague 74 : objet révélé vers 2,1 s (Commun, la masse seule), 6,1 s (Rare) et 9,9 s (Légendaire), sans
+		-- amélioration, actions moyennes, en repli (UnboxPlan.typical) ; chaque amélioration ajoute une action.
 		Intro = 0.6, -- V0 : le colis saute du rayon au sol de l'allée, le perso se place, la caméra arrive
 		BurstHold = 0.35, -- V0 : du coup de masse final (le colis éclate, le perso recule) à la première silhouette
 		SilhouetteStep = 0.45, -- V0 : une silhouette (0,4 à 0,5 s chez Throw a Seed)
@@ -262,10 +291,12 @@ local Unbox = {
 		FinalOddsAbove = 1.6, -- V0 : à la révélation, la cote finale se place à cette hauteur (studs) au-dessus de BB_Reveal
 		FinalOddsHold = 1.6, -- V0 : … et y reste ce temps
 
-		-- Améliorations (L-236 : au moment fort, sauf à la première et à la dernière action). V0 : la rareté montrée part
-		-- de StartRarity et finit sur la rareté gagnée, en autant de crans qu'il y a d'actions libres (un cran peut sauter
-		-- plusieurs raretés) ; purement visuel, la rareté gagnée est déjà tirée par les règles de la caisse.
-		StartRarity = "Common",
+		-- Améliorations (L-236 : au moment fort, sauf à la première et à la dernière action). Vague 74 (a257, L-253 point 2) :
+		-- tirées à part de l'objet, avec les probabilités de l'ouverture v2 (UpgradeChance × chance du joueur par cran,
+		-- UpgradeMax crans, jamais jusqu'à Secret), en partant de la rareté du colis du rayon ; elles ne changent pas
+		-- l'objet (tiré par les règles de la caisse) : un colis resté Commun peut donner un Légendaire, et les silhouettes
+		-- montent jusqu'à la vraie rareté. Un cran = une rareté de plus.
+		StartRarity = "Common", -- V0 : rareté de départ d'un colis de rareté inconnue
 		UpgradeGrow = 1.16, -- L-236 : le colis grossit à chaque amélioration
 		UpgradeShow = 0.9, -- V0 : durée d'affichage de BB_UnboxOdds.Upgrade (« UPGRADE! »)
 		UpgradeSound = "Unbox_Tier", -- L-229
@@ -299,7 +330,10 @@ local Unbox = {
 		ToolFolder = { "Assets", "Unbox" }, -- L-237 : TOOL_Unbox_* (poignée Handle) et ENV_Unbox_Junk_*
 		ToolHand = "RightHand",
 		ToolGrip = "RightGripAttachment",
-		ToolGripAngles = { -90, 0, 0 }, -- V0 : degrés, comme la prise d'un Tool de Roblox (Handle sur la prise de la main)
+		-- L-255, L-257 : Handle posé sur RightGripAttachment comme un Tool à Grip neutre (manche le long de +Y du Handle).
+		-- Sans RightGripAttachment (rig sans prise) : la main, tournée de ces angles (degrés), comme la prise R6 de Roblox.
+		ToolGripAngles = { -90, 0, 0 },
+		HitPoint = "HitPoint", -- L-255 : Attachment de Handle, ce qui touche le colis : les effets de l'Impact y sont posés
 		JunkPrefix = "ENV_Unbox_Junk_",
 		JunkSpeedUp = 16, -- V0 : studs/s
 		JunkSpeedBack = 9, -- V0 : studs/s, par-dessus l'épaule du perso
@@ -320,10 +354,6 @@ local Unbox = {
 		FxLife = 2, -- V0 : s, effet sans attribut Duration
 		OddsBoard = "BB_UnboxOdds", -- L-246 : Odds, Rarity, Upgrade (absent : billboard du code, mêmes noms)
 		OddsBelowTop = 0.8, -- V0 : le billboard s'accroche à cette distance sous le haut du colis ou de la silhouette
-		WordBoard = "BB_UnboxWord", -- L-246 : Word
-		WordTime = 0.55, -- L-246
-		WordRise = 1.2, -- V0 : studs
-		WordPop = 1.4, -- V0 : échelle finale (UIScale créé)
 		MarkBoard = "BB_UnboxMark", -- L-246 : Mark (« ? » puis « ! »)
 		MarkStart = "?",
 		MarkImpact = "!",

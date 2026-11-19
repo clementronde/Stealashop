@@ -379,7 +379,10 @@ local function startChase()
 	-- VISUAL EFFECTS sur OFF (L-095, vague 24) : pas de ChaseFov, la caméra garde son champ de vision.
 	if camera and not Settings.VfxReduced(localPlayer) then
 		if fovBase == nil then
-			fovBase = camera.FieldOfView
+			-- Vague 74 (a257) : pendant le retour du champ de vision après l'ouverture du colis, sa valeur d'arrivée
+			-- (attribut posé par Reveal/Unbox), pas la valeur en cours de fondu.
+			local pending = camera:GetAttribute("UnboxFovBase")
+			fovBase = if type(pending) == "number" then pending else camera.FieldOfView
 		end
 		tweenFov((fovBase :: number) + FOV.Add, FOV_IN_INFO, nil)
 	end

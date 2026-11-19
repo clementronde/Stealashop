@@ -22,8 +22,9 @@ local Animations = {}
 Animations.FolderName = "Animations"
 Animations.PlayerFolder = { "Assets", "Animations", "Player" }
 
--- 23 animations du joueur (15 avant le retrait d'Unbox et de Celebrate, vague 52 ; BenchLift et BenchIdle
--- retirés en v2 ; HoldItem ajoutée en vague 56 ; TrapStuck et TrapNetted en vague 72 ; les 7 Unbox_* de L-237).
+-- 25 animations du joueur (15 avant le retrait d'Unbox et de Celebrate, vague 52 ; BenchLift et BenchIdle
+-- retirés en v2 ; HoldItem ajoutée en vague 56 ; TrapStuck et TrapNetted en vague 72 ; les 7 Unbox_* de L-237 ;
+-- Unbox_Stomp et Unbox_Slam en vague 74).
 Animations.Player = {
 	{ Name = "HitWindow", Loop = false, Priority = "Action", Marker = "Impact" },
 	{ Name = "HitWindowHeavy", Loop = false, Priority = "Action", Marker = "Impact" },
@@ -60,6 +61,11 @@ Animations.Player = {
 	{ Name = "Unbox_Kick", Loop = false, Priority = "Action", Marker = "Impact" },
 	{ Name = "Unbox_Search", Loop = false, Priority = "Action", Marker = "Impact" },
 	{ Name = "Unbox_Inspect", Loop = false, Priority = "Action", Marker = "Impact" },
+	-- Vague 74 (a257, L-258, noms proposés par Clément) : debout sur le colis. Unbox_Stomp : deux sauts à pieds joints,
+	-- Impact à chaque atterrissage ; Unbox_Slam, le coup final : Top en haut du bond, Impact au coup qui casse le colis.
+	-- Pas encore livrées : orange au ContractChecker, l'action tirée et Unbox_Hammer se jouent à côté du colis.
+	{ Name = "Unbox_Stomp", Loop = false, Priority = "Action", Marker = "Impact" },
+	{ Name = "Unbox_Slam", Loop = false, Priority = "Action", Marker = "Impact" },
 } :: { Anim }
 
 -- 5 animations dans chaque modèle de vigile, de jour comme de nuit (mêmes noms) ; plus PickUp pour les vigiles de

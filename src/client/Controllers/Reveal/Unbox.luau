@@ -9,11 +9,13 @@
 --                l'ouvreur, le perso se place à côté, face au colis, et la caméra se met côté allée (jamais dans un
 --                mur : rapprochée, et ce qui reste devant devient transparent) ; BB_UnboxOdds au-dessus du colis ;
 --   Action, Gap  une action du plan après l'autre : animation Unbox_* du perso (ouvreur ; ses marqueurs Impact), outil
---                TOOL_Unbox_* dans sa main, réaction du colis, effet, mot BB_UnboxWord et son à chaque Impact ; au
+--                TOOL_Unbox_* dans sa main, réaction du colis, effet et son à chaque Impact (plus de mot, L-253) ; au
 --                dernier Impact attendu (le moment fort) la cote défile, et si la rareté montrée change : le colis
 --                grossit, son scotch prend la couleur, FX_Unbox_Tier, « UPGRADE! », zoom et fondu des bords ; entre
 --                deux actions, le colis tremble de plus en plus. Animation absente ou vide, et spectateurs : mêmes
 --                Impacts aux instants de repli de la Config ;
+--                vague 74 (L-258) : à côté, de l'autre côté puis debout sur le colis (Stomp, Slam au coup final), en
+--                se téléportant entre deux places (nuage, disparition, réapparition, rebond) ;
 --   Burst        moment fort de la dernière action : le colis éclate (FX_Unbox_Burst, FX_RevealSmash pour un objet
 --                géant), le perso recule ; évènement « Burst » ;
 --   Silhouettes  une silhouette noire par rareté, de la plus basse à la rareté gagnée (objets de la zone, la dernière
@@ -48,6 +50,7 @@ local UP = Vector3.new(0, 1, 0)
 local BLACK = Color3.new(0, 0, 0)
 local WHITE = Color3.new(1, 1, 1)
 local KRAFT = Color3.fromRGB(176, 132, 84)
+local FOV_BASE_ATTRIBUTE = "UnboxFovBase" -- vague 74 : lu par UiFeelController (début d'une poursuite)
 
 export type Context = {
 	Id: string,
@@ -69,7 +72,6 @@ export type Context = {
 }
 
 type Pulse = { value: number, target: number, hold: number }
-type Word = { board: BillboardGui, label: TextLabel?, scale: UIScale?, t: number, from: Vector3, drift: Vector3 }
 type Junk = { model: PVInstance, position: Vector3, velocity: Vector3, spin: number, angle: number, t: number }
 type Timed = { inst: Instance, left: number }
 
@@ -81,6 +83,18 @@ export type State = {
 	base: CFrame, -- pied du colis au sol de l'allée, LookVector vers l'allée (là où l'objet sortira)
 	side: Vector3, -- du colis vers le perso
 	stand: CFrame?, -- où se tient le perso de l'ouvreur
+	-- Vague 74 (a257, L-258) : places du perso et téléportations.
+	side0: Vector3, -- du colis vers la place Side (la caméra reste de ce côté)
+	stands: { [string]: CFrame }, -- Side et Other (Top : calculée à chaque image, le colis grossit)
+	standHeight: number, -- du sol au HumanoidRootPart
+	moves: { UnboxPlan.Move },
+	place: string, -- place du perso en ce moment
+	teleport: boolean, -- la pause en cours est une téléportation
+	teleportStage: number, -- 0 : rien encore, 1 : disparu, 2 : réapparu
+	hiddenChar: { [Instance]: number }, -- pièces du perso cachées en local, et leur LocalTransparencyModifier d'avant
+	camLift: number, -- montée de la caméra (studs)
+	slide: number, -- glissement de BB_UnboxOdds (studs)
+	boardFrom: Vector3, -- StudsOffsetWorldSpace d'origine de BB_UnboxOdds
 	home: CFrame, -- pivot du colis sur son rayon
 	floor: CFrame, -- pivot du colis posé au sol
 	box: Model?,
@@ -122,7 +136,6 @@ export type State = {
 	react: string?,
 	reactT: number,
 	reactForce: number,
-	words: { Word },
 	junk: { Junk },
 	junkIndex: number,
 	timed: { Timed },
@@ -452,6 +465,13 @@ local function poseBox(state: State, dt: number)
 				tilt = REACT.Tilt * wave
 			elseif kind == "Squash" then
 				squash = REACT.Squash * wave
+			elseif kind == "Stomp" then
+				-- Vague 74 (L-258) : sous les pieds, le colis s'écrase puis saute.
+				if f < 0.5 then
+					squash = REACT.Squash * math.sin(2 * math.pi * f) * state.reactForce
+				else
+					offset = UP * (REACT.Jump * math.sin(2 * math.pi * (f - 0.5)) * state.reactForce)
+				end
 			elseif kind == "Spin" then
 				yaw = REACT.Spin * wave
 			elseif kind == "Slide" then
@@ -602,6 +622,7 @@ local function buildBoard(state: State)
 	board.Adornee = state.anchor
 	state.board = board
 	state.boardOffset = board.StudsOffsetWorldSpace.Y
+	state.boardFrom = board.StudsOffsetWorldSpace
 	state.oddsLabel = label(board, "Odds")
 	state.rarityLabel = label(board, "Rarity")
 	local upgrade = Find.path(board, "Upgrade")
@@ -616,52 +637,6 @@ local function buildBoard(state: State)
 	showOdds(state, UnboxPlan.oddsAt(state.ctx.Plan, 0))
 	board.Parent = state.ctx.Folder
 	table.insert(state.created, board)
-end
-
-local function showWord(state: State, word: string?)
-	if word == nil then
-		return
-	end
-	local board = billboard(New.WordBoard)
-	if board == nil then
-		return
-	end
-	local text = label(board, "Word")
-	if text then
-		text.Text = word
-	end
-	board.Adornee = state.anchor
-	local from = board.StudsOffsetWorldSpace
-	local drift = Vector3.new((math.random() - 0.5) * 1.6, 0, (math.random() - 0.5) * 1.6)
-	board.Parent = state.ctx.Folder
-	table.insert(state.words, { board = board, label = text, scale = if text then popScale(text) else nil, t = 0, from = from, drift = drift })
-end
-
-local function stepWords(state: State, dt: number)
-	for index = #state.words, 1, -1 do
-		local word = state.words[index]
-		word.t += dt
-		local f = word.t / New.WordTime
-		if f >= 1 then
-			word.board:Destroy()
-			table.remove(state.words, index)
-			continue
-		end
-		word.board.StudsOffsetWorldSpace = word.from + word.drift * f + UP * (New.WordRise * f)
-		if word.scale then
-			word.scale.Scale = 0.6 + (New.WordPop - 0.6) * math.min(f * 3, 1)
-		end
-		local fade = math.clamp((f - 0.6) / 0.4, 0, 1)
-		local text = word.label
-		if text then
-			text.TextTransparency = fade
-			for _, d in text:GetDescendants() do
-				if d:IsA("UIStroke") then
-					d.Transparency = fade
-				end
-			end
-		end
-	end
 end
 
 local function dropMark(state: State)
@@ -712,13 +687,31 @@ local function poseTool(state: State)
 	if tool == nil or hand == nil or not hand:IsA("BasePart") then
 		return
 	end
+	-- Vague 74 (L-255, L-257) : comme un Tool à Grip neutre, le Handle est posé tel quel sur RightGripAttachment ; sans
+	-- elle, sur la main tournée de ToolGripAngles (la prise R6).
 	local grip = hand:FindFirstChild(New.ToolGrip)
-	local frame = if grip and grip:IsA("Attachment") then grip.WorldCFrame else hand.CFrame
-	local angles = New.ToolGripAngles
-	local target = frame * CFrame.Angles(math.rad(angles[1]), math.rad(angles[2]), math.rad(angles[3])) * state.toolOffset
+	local frame: CFrame
+	if grip and grip:IsA("Attachment") then
+		frame = grip.WorldCFrame
+	else
+		local angles = New.ToolGripAngles
+		frame = hand.CFrame * CFrame.Angles(math.rad(angles[1]), math.rad(angles[2]), math.rad(angles[3]))
+	end
+	local target = frame * state.toolOffset
 	pcall(function()
 		tool:PivotTo(target)
 	end)
+end
+
+-- L-255 (vague 74) : le point de l'outil qui touche le colis (Attachment HitPoint), quand l'animation joue (en repli,
+-- la main ne bouge pas : le haut du colis).
+local function hitPoint(state: State): Vector3?
+	local tool = state.tool
+	if tool == nil or state.mode ~= "Anim" then
+		return nil
+	end
+	local found = tool:FindFirstChild(New.HitPoint, true)
+	return if found and found:IsA("Attachment") then found.WorldPosition else nil
 end
 
 local function takeTool(state: State, name: string?)
@@ -989,16 +982,15 @@ local function onImpact(state: State)
 	if state.phase ~= "Action" then
 		return
 	end
-	local step = state.ctx.Plan.Steps[state.index]
-	if step == nil then
+	local move = state.moves[state.index]
+	if move == nil then
 		return
 	end
-	local action = step.Action
+	local action = move.Action
 	state.impacts += 1
 	local strong = state.impacts >= #action.Impacts and not state.strong
 	reactNow(state, action.React, if strong then 1 else REACT.Before)
-	spawnFx(state, action.Fx, CFrame.new(state.floor.Position), boxTop(state), colorOf(state.tier), true)
-	showWord(state, action.Word)
+	spawnFx(state, action.Fx, CFrame.new(state.floor.Position), hitPoint(state) or boxTop(state), colorOf(state.tier), true)
 	if not sound(state, action.Sound) then
 		sound(state, New.ImpactSound)
 	end
@@ -1015,7 +1007,6 @@ end
 
 local function startAction(state: State, index: number)
 	local ctx = state.ctx
-	local step = ctx.Plan.Steps[index]
 	state.index = index
 	state.phase = "Action"
 	state.t = 0
@@ -1023,7 +1014,7 @@ local function startAction(state: State, index: number)
 	state.strong = false
 	state.mode = "Fallback"
 	state.trackStopped = false
-	local action = step.Action
+	local action = state.moves[index].Action
 	takeTool(state, action.Tool)
 	dropMark(state)
 	if action.Mark then
@@ -1072,6 +1063,172 @@ local function startAction(state: State, index: number)
 	end)
 end
 
+-- Places (vague 74, a257, L-258) : à gauche, à droite puis sur le colis, en se téléportant ----------------------------
+
+local function hasAnim(name: string): boolean
+	local ok, found = pcall(function(): Animation?
+		return (AnimPlayer.findAnimation(AnimPlayer.playerFolder(), name))
+	end)
+	return ok and found ~= nil
+end
+
+-- Où se tient le perso (HumanoidRootPart) à la place `place` : face au colis ; sur le couvercle, face à la caméra
+-- (le haut du colis suit son grossissement).
+local function standAt(state: State, place: string): CFrame?
+	if place == "Top" then
+		local at = boxTop(state) + UP * state.standHeight
+		return CFrame.lookAt(at, at + state.base.LookVector)
+	end
+	return state.stands[place]
+end
+
+local function torsoOf(state: State): Vector3?
+	local character = characterOf(state)
+	local part = if character then character:FindFirstChild("UpperTorso") or character:FindFirstChild("Torso") else nil
+	if part and part:IsA("BasePart") then
+		return part.Position
+	end
+	local root = rootOf(state)
+	return if root then root.Position else nil
+end
+
+-- Hauteur (studs) des pieds au-dessus du sol de l'allée : le plus bas des deux pieds (un coup de pied ne compte pas).
+local function feetHeight(state: State): number
+	local character = characterOf(state)
+	local low = math.huge
+	for _, name in { "LeftFoot", "RightFoot" } do
+		local foot = if character then character:FindFirstChild(name) else nil
+		if foot and foot:IsA("BasePart") then
+			low = math.min(low, foot.Position.Y - foot.Size.Y / 2)
+		end
+	end
+	if low == math.huge then
+		local root = rootOf(state)
+		if root == nil then
+			return 0
+		end
+		low = root.Position.Y - state.standHeight
+	end
+	return math.max(low - state.base.Position.Y, 0)
+end
+
+-- Nuage FX_Unbox_Puff au torse, et son son.
+local function puff(state: State, soundName: string?)
+	local at = torsoOf(state)
+	if at then
+		spawnFx(state, New.Fx.Puff, CFrame.new(at), nil, nil, true)
+	end
+	sound(state, soundName)
+end
+
+-- Le perso disparaît en local, chez chaque joueur (LocalTransparencyModifier), puis revient comme avant.
+local function hideCharacter(state: State)
+	local character = characterOf(state)
+	if character == nil then
+		return
+	end
+	for _, d in character:GetDescendants() do
+		if (d:IsA("BasePart") or d:IsA("Decal")) and state.hiddenChar[d] == nil then
+			pcall(function()
+				local any: any = d
+				state.hiddenChar[d] = any.LocalTransparencyModifier
+				any.LocalTransparencyModifier = 1
+			end)
+		end
+	end
+end
+
+local function showCharacter(state: State)
+	for inst, before in state.hiddenChar do
+		pcall(function()
+			(inst :: any).LocalTransparencyModifier = before
+		end)
+	end
+	table.clear(state.hiddenChar)
+end
+
+-- Le perso arrive à `place` : les réactions du colis prennent son sens ; l'ouvreur y est posé.
+local function arrive(state: State, place: string)
+	state.place = place
+	state.side = if place == "Other" then -state.side0 else state.side0
+	local stand = standAt(state, place)
+	local root = rootOf(state)
+	if state.ctx.Opener and stand and root then
+		pcall(function()
+			root.AssemblyLinearVelocity = Vector3.zero
+			root.CFrame = stand
+		end)
+	end
+end
+
+-- Pause avant l'action `nextIndex` : à la même place (le colis tremble), ou téléportation (nuage, « swish »).
+local function startGap(state: State, nextIndex: number)
+	local move = state.moves[nextIndex]
+	state.phase = "Gap"
+	state.t = 0
+	state.teleport = move ~= nil and move.Teleport
+	state.teleportStage = 0
+	if state.teleport then
+		puff(state, New.Places.VanishSound)
+	end
+end
+
+-- Téléportation : disparu à Vanish, réapparu d'un coup à la nouvelle place à Appear (second nuage, « pop »), puis le
+-- rebond jusqu'à la fin (Step).
+local function stepTeleport(state: State)
+	local places = New.Places
+	local speed = math.max(New.ActionSpeed, 0.1)
+	if state.teleportStage == 0 and state.t >= places.Vanish / speed then
+		state.teleportStage = 1
+		hideCharacter(state)
+	end
+	if state.teleportStage == 1 and state.t >= places.Appear / speed then
+		state.teleportStage = 2
+		local move = state.moves[state.index + 1]
+		arrive(state, if move then move.Place else state.place)
+		showCharacter(state)
+		puff(state, places.AppearSound)
+	end
+end
+
+-- Chaque image : l'ouvreur reste debout sur le couvercle (le colis local n'a pas de collision) et rebondit à sa
+-- réapparition ; la caméra monte avec ses pieds ; BB_UnboxOdds glisse sur le côté quand il est sur le colis.
+local function stepPlaces(state: State, dt: number)
+	local places = New.Places
+	local busy = state.phase == "Action" or state.phase == "Gap"
+	if state.ctx.Opener and busy then
+		local hold = if state.place == "Top" then standAt(state, "Top") else nil
+		if state.phase == "Gap" and state.teleport and state.teleportStage == 2 then
+			local speed = math.max(New.ActionSpeed, 0.1)
+			local span = math.max((places.Teleport - places.Appear) / speed, 1e-3)
+			local f = math.clamp((state.t - places.Appear / speed) / span, 0, 1)
+			local base = hold or standAt(state, state.place)
+			hold = if base then base + UP * (places.Bounce * math.sin(math.pi * f)) else nil
+		end
+		local root = rootOf(state)
+		if hold and root then
+			local frame = hold
+			pcall(function()
+				root.AssemblyLinearVelocity = Vector3.zero
+				root.CFrame = frame
+			end)
+		end
+	end
+	if places.Enabled ~= true then
+		return
+	end
+	if state.ctx.Opener then
+		local target = math.clamp(places.CameraLift * feetHeight(state), 0, 10)
+		state.camLift += (target - state.camLift) * math.min(1, dt * places.CameraLiftSpeed)
+	end
+	local slide = if state.place == "Top" and busy then places.OddsSlide else 0
+	state.slide += (slide - state.slide) * math.min(1, dt * places.OddsSlideSpeed)
+	local board = state.board
+	if board and not state.revealed then
+		board.StudsOffsetWorldSpace = state.boardFrom + state.side0 * state.slide
+	end
+end
+
 local function endAction(state: State)
 	if state.phase ~= "Action" then
 		return
@@ -1083,13 +1240,11 @@ local function endAction(state: State)
 	stopTrack(state, 0.1)
 	dropTool(state)
 	dropMark(state)
-	state.phase = "Gap"
-	state.t = 0
+	startGap(state, state.index + 1)
 end
 
 local function stepAction(state: State, dt: number)
-	local step = state.ctx.Plan.Steps[state.index]
-	local action = step.Action
+	local action = state.moves[state.index].Action
 	local fx = state.runFx
 	if fx then
 		state.runLeft -= dt
@@ -1236,7 +1391,8 @@ end
 function Unbox.CameraTarget(state: State): CFrame
 	local aisle = state.base.LookVector
 	local foot = state.base.Position
-	local focus = foot + state.side * (New.StandSide * 0.5) + UP * CAM.LookHeight
+	-- Vague 74 : la caméra reste du côté de la première place, et monte avec les pieds du perso (L-258).
+	local focus = foot + state.side0 * (New.StandSide * 0.5) + UP * (CAM.LookHeight + state.camLift)
 	local from = focus + aisle * CAM.Distance + UP * (CAM.Height - CAM.LookHeight)
 	return CFrame.lookAt(Unbox.Clear(state, from, focus), focus)
 end
@@ -1254,12 +1410,13 @@ local function placeCharacter(state: State)
 	local hitLeft = raycast(probe, -right * reach, exclude, true)
 	local freeRight = if hitRight then (hitRight.Position - probe).Magnitude else reach
 	local freeLeft = if hitLeft then (hitLeft.Position - probe).Magnitude else reach
-	local free = freeRight
+	local free, other = freeRight, freeLeft
 	if freeLeft > freeRight + 0.25 then
 		side = -right
-		free = freeLeft
+		free, other = freeLeft, freeRight
 	end
 	state.side = side
+	state.side0 = side
 	local root = rootOf(state)
 	if root == nil then
 		return
@@ -1267,9 +1424,14 @@ local function placeCharacter(state: State)
 	local character = characterOf(state)
 	local humanoid = if character then character:FindFirstChildOfClass("Humanoid") else nil
 	local height = if humanoid then humanoid.HipHeight + root.Size.Y / 2 else 3
-	local at = foot + side * math.min(New.StandSide, math.max(free, 1.5) - 0.5) + UP * height
-	local stand = CFrame.lookAt(at, Vector3.new(foot.X, at.Y, foot.Z))
+	state.standHeight = height
+	local function standOn(direction: Vector3, room: number): CFrame
+		local at = foot + direction * math.min(New.StandSide, math.max(room, 1.5) - 0.5) + UP * height
+		return CFrame.lookAt(at, Vector3.new(foot.X, at.Y, foot.Z))
+	end
+	local stand = standOn(side, free)
 	state.stand = stand
+	state.stands = { Side = stand, Other = standOn(-side, other) } -- vague 74 (L-258) : de l'autre côté du colis
 	if ctx.Opener then
 		pcall(function()
 			root.AssemblyLinearVelocity = Vector3.zero
@@ -1306,6 +1468,17 @@ function Unbox.Begin(ctx: Context): State
 		base = CFrame.lookAt(point, point + aisle),
 		side = aisle:Cross(UP),
 		stand = nil,
+		side0 = aisle:Cross(UP),
+		stands = {},
+		standHeight = 3,
+		moves = UnboxPlan.moves(ctx.Plan, hasAnim(New.Places.Stomp.Anim), hasAnim(New.Places.Slam.Anim)),
+		place = "Side",
+		teleport = false,
+		teleportStage = 0,
+		hiddenChar = {},
+		camLift = 0,
+		slide = 0,
+		boardFrom = Vector3.zero,
 		home = home,
 		floor = CFrame.new(point) * home.Rotation,
 		box = nil,
@@ -1347,7 +1520,6 @@ function Unbox.Begin(ctx: Context): State
 		react = nil,
 		reactT = 0,
 		reactForce = 1,
-		words = {},
 		junk = {},
 		junkIndex = 0,
 		timed = {},
@@ -1501,12 +1673,20 @@ function Unbox.Step(state: State, dt: number): string?
 	local phase = state.phase
 	if phase == "Intro" then
 		if state.t >= New.Intro then
-			startAction(state, 1)
+			local first = state.moves[1]
+			if first and first.Teleport then
+				startGap(state, 1) -- vague 74 : une seule action, sur le colis : il s'y téléporte d'abord
+			else
+				startAction(state, 1)
+			end
 		end
 	elseif phase == "Action" then
 		stepAction(state, dt)
 	elseif phase == "Gap" then
-		if state.t >= UnboxPlan.gap() then
+		if state.teleport then
+			stepTeleport(state)
+		end
+		if state.t >= UnboxPlan.transition(state.teleport) then
 			startAction(state, state.index + 1)
 		end
 	elseif phase == "Burst" then
@@ -1560,10 +1740,10 @@ function Unbox.Step(state: State, dt: number): string?
 			gui.Enabled = false
 		end
 	end
+	stepPlaces(state, dt)
 	poseBox(state, dt)
 	poseTool(state)
 	stepOdds(state, dt)
-	stepWords(state, dt)
 	stepJunk(state, dt)
 	stepScreen(state, dt)
 	local silhouette = state.silhouette
@@ -1634,6 +1814,7 @@ function Unbox.ScreenFade(fade: ScreenFade, e: number, eFov: number?)
 	local f = math.clamp(e, 0, 1)
 	local camera = Workspace.CurrentCamera
 	local from, to = fade.fovFrom, fade.fovTo
+	local fading = false
 	if camera and from and to then
 		local last = fade.fovLast
 		if last and math.abs(camera.FieldOfView - last) > 1e-3 then
@@ -1641,7 +1822,19 @@ function Unbox.ScreenFade(fade: ScreenFade, e: number, eFov: number?)
 		else
 			camera.FieldOfView = from + (to - from) * math.clamp(eFov or e, 0, 1)
 			fade.fovLast = camera.FieldOfView
+			fading = math.clamp(eFov or e, 0, 1) < 1
 		end
+	end
+	-- Vague 74 (a257, reste de f70c4) : tant que le champ de vision revient, sa valeur d'arrivée est publiée sur la
+	-- caméra (FOV_BASE_ATTRIBUTE) : une poursuite qui démarre pendant ce retour (UiFeelController) la prend pour base,
+	-- au lieu de la valeur en cours de fondu (1° trop bas).
+	if camera then
+		local value = if fading then to else nil
+		pcall(function()
+			if camera:GetAttribute(FOV_BASE_ATTRIBUTE) ~= value then
+				camera:SetAttribute(FOV_BASE_ATTRIBUTE, value)
+			end
+		end)
 	end
 	local glow = fade.glow
 	if glow then
@@ -1687,15 +1880,12 @@ function Unbox.Destroy(state: State)
 	end
 	state.destroyed = true
 	Unbox.Release(state)
+	showCharacter(state)
 	stopTrack(state, 0.2)
 	dropBox(state)
 	dropTool(state)
 	dropMark(state)
 	dropSilhouette(state)
-	for _, word in state.words do
-		word.board:Destroy()
-	end
-	table.clear(state.words)
 	for _, junk in state.junk do
 		junk.model:Destroy()
 	end
@@ -1733,11 +1923,15 @@ function Unbox.GetState(state: State): { [string]: any }
 		SilhouetteIndex = state.silhouetteIndex,
 		Base = state.base,
 		Stand = state.stand,
+		Place = state.place,
+		Moves = state.moves,
+		Hidden = next(state.hiddenChar) ~= nil,
+		CamLift = state.camLift,
+		Slide = state.slide,
 		Zoom = state.zoom.value,
 		Edge = state.edge.value,
 		SeeThrough = #state.seeThrough,
 		Muted = #state.muted,
-		Words = #state.words,
 		Junk = #state.junk,
 		Board = state.board,
 	}

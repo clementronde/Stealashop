@@ -20,6 +20,7 @@ local UnboxPlan = {}
 export type Action = Unbox.Action
 export type Step = { Action: Action, Rarity: string }
 export type Plan = { Steps: { Step }, Odds: number }
+export type Move = { Action: Action, Place: string, Teleport: boolean } -- vague 74 (a257, L-258)
 
 UnboxPlan.MaxSteps = 12
 UnboxPlan.MaxLength = 256 -- longueur du texte (Net/Definitions, RevealStarted.plan)
@@ -50,14 +51,49 @@ function UnboxPlan.action(id: string): Action?
 	return actionsById[id]
 end
 
--- Nombre d'actions du plan (Config : 2 à MaxSteps).
-function UnboxPlan.count(): number
-	return math.clamp(math.floor(New.ActionCount), 2, UnboxPlan.MaxSteps)
+-- Vague 74 (a257, L-253) : nombre d'actions selon le résultat (la dernière comprise, 1 à MaxSteps) : ActionsByRarity
+-- de la rareté gagnée, plus ActionsPerUpgrade par amélioration ; une amélioration tombe au moment fort d'une action
+-- qui n'est ni la première ni la dernière, d'où 2 + améliorations au moins.
+function UnboxPlan.count(finalRarity: string, upgrades: number?): number
+	local u = math.max(math.floor(upgrades or 0), 0)
+	local base = New.ActionsByRarity[finalRarity]
+	if type(base) ~= "number" then
+		base = math.max(orderOf(finalRarity), 1)
+	end
+	local n = math.floor(base) + u * math.max(New.ActionsPerUpgrade, 0)
+	if u > 0 then
+		n = math.max(n, u + 2)
+	end
+	return math.clamp(n, 1, UnboxPlan.MaxSteps)
+end
+
+-- Vague 74 (a257, L-253 point 2) : améliorations du colis, tirées à part de l'objet avec les probabilités de l'ouverture
+-- v2 (Config/Unbox : UpgradeChance × `luck` par cran, UpgradeMax crans), depuis la rareté du colis `startRarity`,
+-- jamais jusqu'à Secret (comme UnboxService). `roll()` rend un nombre de [0, 1[ (le Random du serveur).
+local SECRET_ORDER = orderOf("Secret")
+function UnboxPlan.upgrades(startRarity: string, luck: number, roll: () -> number): number
+	local chance = Unbox.UpgradeChance * luck
+	chance = if chance == chance then math.clamp(chance, 0, 1) else 0
+	local order = orderOf(startRarity)
+	if chance <= 0 or order < 1 then
+		return 0
+	end
+	local done = 0
+	for _ = 1, Unbox.UpgradeMax do
+		local nextRarity = Rarities.List[order + done + 1]
+		if nextRarity == nil or (SECRET_ORDER > 0 and nextRarity.Order >= SECRET_ORDER) or roll() >= chance then
+			break
+		end
+		done += 1
+	end
+	return done
 end
 
 -- Tire le plan d'un colis dont l'objet est de rareté `finalRarity`. `pick(n)` rend un entier de 1 à n (le Random du
--- serveur). nil si la Config ne permet aucun plan (FinalAction inconnue, rareté inconnue, aucune autre action).
-function UnboxPlan.draw(finalRarity: string, pick: (n: number) -> number): string?
+-- serveur). Vague 74 : la rareté montrée part de `startRarity` (le colis du rayon ; StartRarity si absente ou
+-- inconnue) et monte d'un cran par amélioration (`upgrades`, UnboxPlan.upgrades), sans lien avec `finalRarity`.
+-- nil si la Config ne permet aucun plan (FinalAction inconnue, rareté inconnue, aucune autre action).
+function UnboxPlan.draw(finalRarity: string, pick: (n: number) -> number, startRarity: string?, upgrades: number?): string?
 	local final = Rarities.ById[finalRarity]
 	local finalAction = actionsById[New.FinalAction]
 	if final == nil or finalAction == nil then
@@ -75,8 +111,14 @@ function UnboxPlan.draw(finalRarity: string, pick: (n: number) -> number): strin
 	local function choose(n: number): number
 		return math.clamp(math.floor(pick(n)), 1, n)
 	end
+	local startOrder = orderOf(startRarity or "")
+	if startOrder < 1 then
+		startOrder = math.max(orderOf(New.StartRarity), 1)
+	end
+	local u = math.clamp(math.floor(upgrades or 0), 0, #Rarities.List - startOrder)
 	-- Actions : au hasard, jamais deux fois la même de suite, la dernière imposée.
-	local count = UnboxPlan.count()
+	local count = UnboxPlan.count(finalRarity, u)
+	u = math.min(u, math.max(count - 2, 0))
 	local ids: { string } = {}
 	local previous: Action? = nil
 	for index = 1, count - 1 do
@@ -91,25 +133,21 @@ function UnboxPlan.draw(finalRarity: string, pick: (n: number) -> number): strin
 		previous = chosen
 	end
 	ids[count] = finalAction.Id
-	-- Améliorations : aux moments forts des actions 2 à count − 1, de StartRarity jusqu'à la rareté gagnée.
-	local startOrder = math.clamp(orderOf(New.StartRarity), 1, final.Order)
+	-- Améliorations : aux moments forts de `u` actions tirées parmi 2 à count − 1, un cran chacune.
 	local slots: { number } = {}
 	for index = 2, count - 1 do
 		table.insert(slots, index)
 	end
-	local upgrades = math.min(#slots, final.Order - startOrder)
-	while #slots > upgrades do
+	while #slots > u do
 		table.remove(slots, choose(#slots))
 	end
 	local parts: { string } = {}
 	local done = 0
-	local current = startOrder
 	for index = 1, count do
 		if slots[done + 1] == index then
 			done += 1
-			current = startOrder + math.floor(done * (final.Order - startOrder) / upgrades + 0.5)
 		end
-		parts[index] = `{ids[index]}:{Rarities.List[current].Id}`
+		parts[index] = `{ids[index]}:{Rarities.List[startOrder + done].Id}`
 	end
 	local lo, hi = rangeOf(finalRarity)
 	lo, hi = math.floor(lo), math.floor(hi)
@@ -213,19 +251,73 @@ local function afterBurst(rarity: string): number
 	return New.BurstHold + (silhouettes - 1) * New.SilhouetteStep + New.Suspense + New.Overexpose
 end
 
--- Instant de la révélation (s depuis RevealStarted) d'un plan joué aux durées de repli.
-function UnboxPlan.revealAt(plan: Plan, rarity: string): number
-	local t = New.Intro
-	for index, step in plan.Steps do
-		local duration = UnboxPlan.actionTime(step.Action)
-		if index < #plan.Steps then
-			t += duration + UnboxPlan.gap()
+-- Vague 74 (a257, L-258) : place de chaque action ("Side" = celle de L-236, "Other" = de l'autre côté du colis,
+-- "Top" = debout sur le couvercle), d'après New.Places.Cycle, la dernière toujours sur le colis. `stomp`, `slam` :
+-- les animations Unbox_Stomp et Unbox_Slam existent ; sans elles, le tour du dessus se fait à côté (Side ou Other
+-- selon l'action). Places coupées : toujours Side.
+function UnboxPlan.places(count: number, stomp: boolean, slam: boolean): { string }
+	local config = New.Places
+	local cycle = config.Cycle
+	local out: { string } = {}
+	for index = 1, count do
+		local place = "Side"
+		if config.Enabled == true and #cycle > 0 then
+			place = if index == count then "Top" else cycle[(index - 1) % #cycle + 1]
+			if place == "Top" and not (if index == count then slam else stomp) then
+				place = if index % 2 == 1 then "Side" else "Other"
+			end
+		end
+		out[index] = place
+	end
+	return out
+end
+
+-- Ce que le perso joue à chaque action : sa place, l'action (Stomp ou Slam sur le colis, sinon celle du plan) et s'il
+-- se téléporte avant (place différente de la précédente ; le perso commence à la place Side).
+function UnboxPlan.moves(plan: Plan, stomp: boolean, slam: boolean): { Move }
+	local steps = plan.Steps
+	local places = UnboxPlan.places(#steps, stomp, slam)
+	local out: { Move } = {}
+	local previous = "Side"
+	for index, step in steps do
+		local place = places[index]
+		local action = step.Action
+		if place == "Top" then
+			action = if index == #steps then New.Places.Slam else New.Places.Stomp
+		end
+		out[index] = { Action = action, Place = place, Teleport = place ~= previous }
+		previous = place
+	end
+	return out
+end
+
+-- Temps avant une action : téléportation (L-258) ou pause à la même place.
+function UnboxPlan.transition(teleport: boolean): number
+	return if teleport then New.Places.Teleport / speed() else UnboxPlan.gap()
+end
+
+-- De la fin de l'intro au moment fort de la dernière action, aux durées de repli.
+local function actionsTime(moves: { Move }): number
+	local t = 0
+	for index, move in moves do
+		if move.Teleport or index > 1 then
+			t += UnboxPlan.transition(move.Teleport)
+		end
+		local duration = UnboxPlan.actionTime(move.Action)
+		if index < #moves then
+			t += duration
 		else
-			local impacts = step.Action.Impacts
+			local impacts = move.Action.Impacts
 			t += duration * (impacts[#impacts] or 1)
 		end
 	end
-	return t + afterBurst(rarity)
+	return t
+end
+
+-- Instant de la révélation (s depuis RevealStarted) d'un plan joué aux durées de repli ; `top` : Unbox_Stomp et
+-- Unbox_Slam livrées.
+function UnboxPlan.revealAt(plan: Plan, rarity: string, top: boolean?): number
+	return New.Intro + actionsTime(UnboxPlan.moves(plan, top == true, top == true)) + afterBurst(rarity)
 end
 
 -- De la révélation à la fin (Land), en repli codé : croissance et tenue de Config/Reveal.
@@ -236,60 +328,58 @@ function UnboxPlan.tailTime(sizeClass: string): number
 	return New.AfterReveal + grow + land
 end
 
--- Durée la plus longue possible d'une scène, sans marge : les actions les plus longues, chacune coupée à
--- ActionMaxFactor, puis la fin au budget qu'avait déjà la croissance (Reveal.MaxSeconds − Fallback.OpenEnd : une
--- animation Grow<Classe> du rig de Clément peut durer plus que le repli).
-function UnboxPlan.longest(rarity: string, sizeClass: string): number
+-- Durée la plus longue possible d'une scène de `count` actions (par défaut : la plus longue pour `rarity`, toutes
+-- les améliorations comprises), sans marge : chaque action à la plus longue (Stomp compris), coupée à
+-- ActionMaxFactor, chaque transition à la plus longue (téléportation comprise), puis la fin au budget qu'avait déjà la
+-- croissance (Reveal.MaxSeconds − Fallback.OpenEnd : une animation Grow<Classe> du rig de Clément peut durer plus
+-- que le repli).
+function UnboxPlan.longest(rarity: string, sizeClass: string, count: number?): number
 	local finalAction = actionsById[New.FinalAction]
-	local first, second = 0, 0
+	local places = New.Places.Enabled == true
+	local step = if places then UnboxPlan.actionLimit(New.Places.Stomp) else 0
 	for _, action in New.Actions do
 		if action ~= finalAction then
-			local limit = UnboxPlan.actionLimit(action)
-			if limit > first then
-				first, second = limit, first
-			elseif limit > second then
-				second = limit
-			end
+			step = math.max(step, UnboxPlan.actionLimit(action))
 		end
 	end
-	if second == 0 then
-		second = first
-	end
-	local count = UnboxPlan.count() - 1
-	local actions = math.ceil(count / 2) * first + math.floor(count / 2) * second + count * UnboxPlan.gap()
-	local final = if finalAction then UnboxPlan.actionLimit(finalAction) else 0
+	local move = math.max(UnboxPlan.gap(), if places then UnboxPlan.transition(true) else 0)
+	local n = math.clamp(math.floor(count or UnboxPlan.count(rarity, Unbox.UpgradeMax)), 1, UnboxPlan.MaxSteps)
+	local final = math.max(if finalAction then UnboxPlan.actionLimit(finalAction) else 0, if places then UnboxPlan.actionLimit(New.Places.Slam) else 0)
 	local maxSeconds: any = Reveal.MaxSeconds
 	local budget: number = (maxSeconds[sizeClass] or maxSeconds.Small) - Reveal.Fallback.OpenEnd
 	local tail = New.AfterReveal + math.max(budget, UnboxPlan.tailTime(sizeClass) - New.AfterReveal)
-	return New.Intro + actions + final + afterBurst(rarity) + tail
+	return New.Intro + (n - 1) * (step + move) + move + final + afterBurst(rarity) + tail
 end
 
--- Plafond du serveur (fin de la phase sans RevealDone) et plafond du client (la scène saute à sa fin).
-function UnboxPlan.serverMaxSeconds(rarity: string, sizeClass: string): number
-	return UnboxPlan.longest(rarity, sizeClass) + New.ServerMargin
+-- Plafond du serveur (fin de la phase sans RevealDone) et plafond du client (la scène saute à sa fin), pour une
+-- scène de `count` actions (le plan tiré ; par défaut la plus longue possible pour `rarity`).
+function UnboxPlan.serverMaxSeconds(rarity: string, sizeClass: string, count: number?): number
+	return UnboxPlan.longest(rarity, sizeClass, count) + New.ServerMargin
 end
 
-function UnboxPlan.clientMaxSeconds(rarity: string, sizeClass: string): number
-	return UnboxPlan.longest(rarity, sizeClass) + New.ClientMargin
+function UnboxPlan.clientMaxSeconds(rarity: string, sizeClass: string, count: number?): number
+	return UnboxPlan.longest(rarity, sizeClass, count) + New.ClientMargin
 end
 
--- Durées typiques (actions de durée moyenne, repli codé) : instant de la révélation, puis durée totale jusqu'à Land.
-function UnboxPlan.typical(rarity: string, sizeClass: string): (number, number)
+-- Durées typiques (actions de durée moyenne, repli codé) d'un objet `rarity` sorti d'un colis amélioré `upgrades`
+-- fois (0 par défaut), `top` : Unbox_Stomp et Unbox_Slam livrées. Rend l'instant de la révélation, puis la durée
+-- totale jusqu'à Land.
+function UnboxPlan.typical(rarity: string, sizeClass: string, upgrades: number?, top: boolean?): (number, number)
 	local finalAction = actionsById[New.FinalAction]
 	local sum, n = 0, 0
 	for _, action in New.Actions do
 		if action ~= finalAction then
-			sum += UnboxPlan.actionTime(action)
+			sum += action.Duration
 			n += 1
 		end
 	end
-	local count = UnboxPlan.count() - 1
-	local t = New.Intro + count * ((if n > 0 then sum / n else 0) + UnboxPlan.gap())
-	if finalAction then
-		local impacts = finalAction.Impacts
-		t += UnboxPlan.actionTime(finalAction) * (impacts[#impacts] or 1)
+	local mean: Action = { Id = "Mean", Anim = "", React = "Jump", Duration = if n > 0 then sum / n else 0, Impacts = { 1 } }
+	local count = UnboxPlan.count(rarity, upgrades)
+	local steps: { Step } = {}
+	for index = 1, count do
+		steps[index] = { Action = if index == count and finalAction then finalAction else mean, Rarity = rarity }
 	end
-	local reveal = t + afterBurst(rarity)
+	local reveal = UnboxPlan.revealAt({ Steps = steps, Odds = 1 }, rarity, top)
 	return reveal, reveal + UnboxPlan.tailTime(sizeClass)
 end
 
