@@ -13,6 +13,10 @@
 -- Gabarit commun du 2026-11-07 (tout faisait la taille d'un personnage) : échelle ×1.5 (SCALE), magasins à
 -- (STORE_X, 0, ±66) avec spec.scale, couloir de 60 entre les façades (|z| 30), décor ×1.5, quartier jusqu'à |z| 140.
 -- Zones allongées de ×1,25 (2026-11-08, pour courir plus longtemps) : x' = 30 + (x - 30) × 1,25 dans tout le couloir.
+-- Ce script dessine le couloir de 60 ; il est suivi de deux passes, à relancer après lui et dans cet ordre :
+-- tools/clement/zones/corridor_widen.luau (couloir de 120 : chaque côté glisse de ±30 en z) puis
+-- tools/clement/store_stretch.luau (_G.ClaudeStoreStretch.apply sur chaque STORE_* : magasins de 78 × 108 depuis le
+-- 2026-11-17). Le décor de la rue et du quartier tient déjà compte de l'emprise agrandie.
 
 local rgb = Color3.fromRGB
 local Store = _G.ClaudeStore
@@ -327,7 +331,7 @@ do
 	end
 	local g = gz.Ground
 	local x0, x1 = ZONE_X0, ZONE_X1
-	local w0, w1 = STORE_X - 30, STORE_X + 30   -- emprise des magasins, sans muret
+	local w0, w1 = STORE_X - 39.6, STORE_X + 39.6   -- emprise des magasins agrandis (2026-11-17 : 78 de large), sans muret
 	g.Street.Size = Vector3.new(x1 - x0, 2, 45); g.Street.Position = Vector3.new((x0 + x1) / 2, -1, 0)
 	g.Street.Color = snowy(rgb(104, 108, 118), rgb(92, 90, 96)); g.Street.Material = Enum.Material.Plastic; g.Street.MaterialVariant = "Studs"
 	for _, s in { 1, -1 } do
@@ -670,14 +674,14 @@ do
 	Bx(G, W, "ChampDeMars", XA, -2 / K, ZD, XB, 0, ZM, yard, { studs = true })
 	for i = 0, 9 do
 		local z0 = -14 + i * (26.6 / 9)
-		Bx(G, W, "Crossing_" .. (i + 1), 526, 0, z0, 532, 0.04, z0 + 1.4, whiteL, { decor = true, noShadow = true })
+		Bx(G, W, "Crossing_" .. (i + 1), 530, 0, z0, 536, 0.04, z0 + 1.4, whiteL, { decor = true, noShadow = true })
 	end
 	if SNOWY then
 		Bx(G, W, "RoadSnow_Entry", XA, 0, -14.3, XA + 8, 0.02, 14.3, SNOW, { decor = true, noShadow = true, studs = true })
 		for i, band in { { -5, 5 }, { 6.6, 9.4 }, { -9.4, -6.6 }, { 11, 14.3 }, { -14.3, -11 } } do
 			Bx(G, W, "RoadSnow_" .. i, XA + 8, 0, band[1], XB, 0.02, band[2], SNOW, { decor = true, noShadow = true, studs = true })
 		end
-		for i, bank in { { 476.5, 479.5, 1 }, { 520.5, 524, 1 }, { 561.5, 564.5, 1 }, { 476, 479.5, -1 }, { 520.5, 524, -1 }, { 561.5, 564.5, -1 } } do
+		for i, bank in { { 470, 473.2, 1 }, { 526.8, 530, 1 }, { 561.5, 564.5, 1 }, { 470, 473.2, -1 }, { 526.8, 530, -1 }, { 561.5, 564.5, -1 } } do
 			P(G, "SnowBank_" .. i, CFrame.new((bank[1] + bank[2]) / 2, 0.3, bank[3] * 19.1), Vector3.new(bank[2] - bank[1], 1.4, 1.4), SNOW, { shape = Enum.PartType.Cylinder, decor = true, noShadow = true })
 		end
 	end
@@ -746,13 +750,15 @@ do
 		Bx(m, frame, "ChimneyBackCap", 0.4, 31.2, D - 4.5, 2.2, 31.5, D - 2.9, snowy(SNOW, rgb(190, 95, 60)), dk)
 	end
 	local doors = { SAPIN, BORDEAUX, rgb(30, 42, 80), rgb(28, 28, 32) }
-	local houses = {   -- trois immeubles de chaque côté des magasins, sur chaque trottoir
-		{ "N", XH, 455 }, { "N", 455, 467.5, { "BAKERY", rgb(120, 70, 40), rgb(236, 220, 186) } }, { "N", 467.5, 480 },
-		{ "N", 520, 535.2, { "FLORIST", rgb(46, 92, 64), rgb(236, 130, 160) } }, { "N", 535.2, 550.4, { "CAFÉ", rgb(120, 28, 36), rgb(178, 34, 44) } },
-		{ "N", 550.4, XE, { "CHOCOLATES", rgb(84, 50, 34), rgb(232, 196, 170) } },
-		{ "S", XH, 455 }, { "S", 455, 467.5, { "BOOKSHOP", rgb(30, 50, 96), rgb(70, 110, 170) } }, { "S", 467.5, 480 },
-		{ "S", 520, 535.2, { "CHEESE SHOP", rgb(150, 112, 40), rgb(60, 110, 70) } }, { "S", 535.2, 550.4, { "PASTRY SHOP", rgb(170, 70, 100), rgb(250, 214, 226) } },
-		{ "S", 550.4, XE },
+	-- Magasins agrandis (2026-11-17) : emprise en u x 473,6..526,4 et z 20..88 (puis glissée de ±30 par corridor_widen) ;
+	-- deux immeubles à l'ouest et trois à l'est de chaque trottoir, le quartier dégagé autour.
+	local houses = {
+		{ "N", XH, 458 }, { "N", 458, 473.4, { "BAKERY", rgb(120, 70, 40), rgb(236, 220, 186) } },
+		{ "N", 526.6, 539.45, { "FLORIST", rgb(46, 92, 64), rgb(236, 130, 160) } }, { "N", 539.45, 552.5, { "CAFÉ", rgb(120, 28, 36), rgb(178, 34, 44) } },
+		{ "N", 552.5, XE, { "CHOCOLATES", rgb(84, 50, 34), rgb(232, 196, 170) } },
+		{ "S", XH, 458 }, { "S", 458, 473.4, { "BOOKSHOP", rgb(30, 50, 96), rgb(70, 110, 170) } },
+		{ "S", 526.6, 539.45, { "CHEESE SHOP", rgb(150, 112, 40), rgb(60, 110, 70) } }, { "S", 539.45, 552.5, { "PASTRY SHOP", rgb(170, 70, 100), rgb(250, 214, 226) } },
+		{ "S", 552.5, XE },
 	}
 	for i, h in houses do
 		local side, x0, x1, shop = h[1], h[2], h[3], h[4]
@@ -766,7 +772,7 @@ do
 	-- 5c) Terrasse du café (tables et chaises sans collision, sur le trottoir nord, devant le café)
 	local T = folder("CafeTerrace")
 	local rattan, bistro = rgb(196, 160, 104), rgb(40, 40, 44)
-	for i, tx in { 539.4, 543.4, 547.4 } do
+	for i, tx in { 542.5, 546, 549.5 } do
 		local tz = 17.9
 		vcyl(T, "TableTop_" .. i, tx, 2.45, 2.57, tz, 1.5, snowy(SNOW, rgb(236, 232, 222)), { decor = true })
 		vcyl(T, "TableLeg_" .. i, tx, 0.3, 2.45, tz, 0.2, bistro, { decor = true })
@@ -794,7 +800,7 @@ do
 		Bx(m, W, "LanternRoof", x - 0.55, 10.1, z - 0.55, x + 0.55, 10.4, z + 0.55, snowy(SNOW, green), { decor = true })
 		Bx(m, W, "Finial", x - 0.1, 10.4, z - 0.1, x + 0.1, 10.9, z + 0.1, GOLD, { decor = true })
 	end
-	for tag, xs in { N = { 461.2, 536.2, 557.9 }, S = { 461.2, 537.5 } } do
+	for tag, xs in { N = { [1] = 461.2, [3] = 557.9 }, S = { [1] = 461.2, [2] = 541 } } do
 		local s = (tag == "N") and 1 or -1
 		for i, x in xs do lamp("Lamp_" .. tag .. i, x, s * 16.2) end
 	end
@@ -812,7 +818,7 @@ do
 			label(pp, Enum.NormalId.Front, p[3], p[4], 60, rgb(20, 20, 20), SERIF)
 		end
 	end
-	morris("MorrisColumn_N", 473.7, 17.4, {
+	morris("MorrisColumn_N", 466.5, 16.25, {
 		{ Vector3.new(0, 0, -1), rgb(176, 40, 44), "THEATRE\nTONIGHT", rgb(250, 240, 210) },
 		{ Vector3.new(1, 0, 0), rgb(240, 200, 70), "GRAND\nBALL", rgb(30, 30, 34) },
 	})
@@ -822,7 +828,7 @@ do
 	})
 	do
 		local m = Instance.new("Model"); m.Name = "Fountain"; m.Parent = D
-		local x, z = 473.7, -16.4
+		local x, z = 466.5, -16.4
 		vcyl(m, "Base", x, 0.3, 0.9, z, 1.7, green)
 		vcyl(m, "Column", x, 0.9, 3.4, z, 0.6, green)
 		for k, c in { { 0.42, 0.42 }, { -0.42, 0.42 }, { 0.42, -0.42 }, { -0.42, -0.42 } } do
@@ -834,7 +840,7 @@ do
 	end
 	for _, s in { 1, -1 } do
 		local tag = s > 0 and "N" or "S"
-		for k, x in { 523.8, 525.2, 532.8, 534.2 } do
+		for k, x in { 528.3, 529.5, 536.5, 537.7 } do
 			local nm = "Bollard_" .. tag .. k
 			vcyl(D, nm, x, 0.3, 2.3, s * 15.9, 0.34, rgb(74, 56, 40))
 			ball(D, nm .. "_Top", x, 2.35, s * 15.9, 0.42, snowy(SNOW, rgb(74, 56, 40)), { decor = true })
@@ -894,29 +900,33 @@ do
 	end
 	-- à côté des magasins (cours de 7 u entre les immeubles sur rue et ceux-ci), le dôme doré tient le coin sud-ouest
 	block("Building_NW1", XH, 460.2, 40, 66, { h = 24.2, stone = stones[2], faces = { "W", "N" } })
-	block("Building_NW2", 461.2, 479, 40, 66, { h = 22.8, stone = stones[5], faces = { "N" } })
-	block("Building_NE1", 521, 542.3, 40, 66, { h = 23.2, stone = stones[4], faces = { "N" } })
+	block("Building_NW2", 461.2, 473.0, 40, 66, { h = 22.8, stone = stones[5], faces = { "N" } })
+	block("Building_NE1", 527.0, 542.3, 40, 66, { h = 23.2, stone = stones[4], faces = { "N" } })
 	block("Building_NE2", 543.3, XB - 1.5, 40, 66, { h = 24.6, stone = stones[6], faces = { "E", "N" } })
-	block("Building_SE1", 521, 542.3, -66, -40, { h = 23.8, stone = stones[1], faces = { "S" } })
+	block("Building_SE1", 527.0, 542.3, -66, -40, { h = 23.8, stone = stones[1], faces = { "S" } })
 	block("Building_SE2", 543.3, XB - 1.5, -66, -40, { h = 22.4, stone = stones[3], faces = { "E", "S" } })
-	for i, t in { { 450.5, 36.6 }, { 470.5, 36.6 }, { 532, 36.6 }, { 555, 36.6 }, { 532, -36.6 }, { 555, -36.6 }, { 476.8, -36.4 }, { 444.5, -36.6 } } do
+	for i, t in { { 450.5, 36.6 }, { 468.5, 36.6 }, { 532, 36.6 }, { 555, 36.6 }, { 532, -36.6 }, { 555, -36.6 }, { 470, -36.4 }, { 444.5, -36.6 } } do
 		treeS(Q, "YardTree_" .. i, t[1], t[2], 0.85)
 	end
 	-- boulevard arrière au sud (trottoirs, chaussée enneigée, arbres, réverbères), puis une rangée d'immeubles
-	Bx(Q, W, "Boulevard_SidewalkA", XA, 0, -71, XB, 0.3, -68.5, pave, { studs = true })
-	Bx(Q, W, "Boulevard_KerbA", XA, 0, -71.4, XB, 0.3, -71, rgb(188, 186, 180), { studs = true })
-	Bx(Q, W, "Boulevard_Roadway", XA, 0, -76.6, XB, 0.03, -71.4, rgb(104, 108, 118), { studs = true, decor = true, noShadow = true })
-	Bx(Q, W, "Boulevard_KerbB", XA, 0, -77, XB, 0.3, -76.6, rgb(188, 186, 180), { studs = true })
-	Bx(Q, W, "Boulevard_SidewalkB", XA, 0, -79.5, XB, 0.3, -77, pave, { studs = true })
-	if SNOWY then
-		for i, band in { { -72.6, -72.0 }, { -74.6, -73.4 }, { -76.0, -75.4 } } do
-			Bx(Q, W, "Boulevard_Snow" .. i, XA, 0.03, band[1], XB, 0.05, band[2], SNOW, { decor = true, noShadow = true, studs = true })
+	-- (coupé en deux tronçons par l'antiquaire allongé, qui va jusqu'à z -88)
+	for _, seg in { { XA, 473.4, "" }, { 526.6, XB, "_E" } } do
+		local a, b, sfx = seg[1], seg[2], seg[3]
+		Bx(Q, W, "Boulevard_SidewalkA" .. sfx, a, 0, -71, b, 0.3, -68.5, pave, { studs = true })
+		Bx(Q, W, "Boulevard_KerbA" .. sfx, a, 0, -71.4, b, 0.3, -71, rgb(188, 186, 180), { studs = true })
+		Bx(Q, W, "Boulevard_Roadway" .. sfx, a, 0, -76.6, b, 0.03, -71.4, rgb(104, 108, 118), { studs = true, decor = true, noShadow = true })
+		Bx(Q, W, "Boulevard_KerbB" .. sfx, a, 0, -77, b, 0.3, -76.6, rgb(188, 186, 180), { studs = true })
+		Bx(Q, W, "Boulevard_SidewalkB" .. sfx, a, 0, -79.5, b, 0.3, -77, pave, { studs = true })
+		if SNOWY then
+			for i, band in { { -72.6, -72.0 }, { -74.6, -73.4 }, { -76.0, -75.4 } } do
+				Bx(Q, W, "Boulevard_Snow" .. i .. sfx, a, 0.03, band[1], b, 0.05, band[2], SNOW, { decor = true, noShadow = true, studs = true })
+			end
 		end
 	end
-	for k, x in { 450, 470.5, 491, 511.5, 532, 552.5 } do treeS(Q, "BoulevardTree_A" .. k, x, -70.3, 0.8) end
-	for k, x in { 460, 480.5, 501, 521.5, 542, 562.5 } do treeS(Q, "BoulevardTree_B" .. k, x, -78.2, 0.8) end
-	for k, x in { 450.2, 491.2, 532.2 } do lampS(Q, "BoulevardLamp_" .. k, x, -78.4) end
-	for i, b in { { XA + 0.5, 462.2, 23.2 }, { 462.2, 483, 21.8 }, { 483, 503.8, 24.4 }, { 503.8, 524.6, 22.6 }, { 524.6, 545.4, 23.6 }, { 545.4, XB - 0.5, 22.2 } } do
+	for k, x in { [1] = 450, [2] = 468.5, [5] = 532, [6] = 552.5 } do treeS(Q, "BoulevardTree_A" .. k, x, -70.3, 0.8) end
+	for k, x in { [1] = 460, [5] = 542, [6] = 562.5 } do treeS(Q, "BoulevardTree_B" .. k, x, -78.2, 0.8) end
+	for k, x in { [1] = 450.2, [3] = 532.2 } do lampS(Q, "BoulevardLamp_" .. k, x, -78.4) end
+	for i, b in { [1] = { XA + 0.5, 462.2, 23.2 }, [2] = { 462.2, 473.0, 21.8 }, [5] = { 527.0, 545.4, 23.6 }, [6] = { 545.4, XB - 0.5, 22.2 } } do
 		block("BackRow_" .. i, b[1], b[2], -ZD + 0.5, -79.5, { h = b[3], stone = stones[i % #stones + 1], faces = { "N" } })
 	end
 
@@ -925,22 +935,24 @@ do
 	local Gd = folder("Garden")
 	local gravel = rgb(198, 186, 162)
 	local ax2 = XC + ((ZONE_X0 + ZONE_X1) / 2 - XW) / K   -- axe du jardin et de la tour : le milieu de la zone (monde x 624)
-	Bx(Gd, W, "Alley", ax2 - 5.3, 0, 68.5, ax2 + 5.3, 0.03, 97.3, gravel, { decor = true, noShadow = true })
+	-- (la galerie allongée va jusqu'à z 88 : le jardin commence derrière elle)
+	Bx(Gd, W, "Alley", ax2 - 5.3, 0, 88.3, ax2 + 5.3, 0.03, 97.3, gravel, { decor = true, noShadow = true })
 	Bx(Gd, W, "TowerPlaza", ax2 - 41, 0, 97.3, ax2 + 41, 0.03, 175.5, gravel, { decor = true, noShadow = true })
 	for i, s in { -1, 1 } do
 		local hx = ax2 + s * 6.6
-		for k, zz in { { 71, 81.5 }, { 84.5, 95 } } do
+		for k, zz in { [2] = { 88.6, 95 } } do
 			local nm = "Hedge_" .. i .. k
 			Bx(Gd, W, nm, hx - 0.9, 0, zz[1], hx + 0.9, 1.5, zz[2], rgb(36, 78, 54), { decor = true })
 			if SNOWY then Bx(Gd, W, nm .. "_Snow", hx - 0.85, 1.5, zz[1] + 0.05, hx + 0.85, 1.72, zz[2] - 0.05, SNOW, { decor = true }) end
 		end
 	end
-	for k, t in { { 447, 72 }, { 447, 81 }, { 447, 90 }, { 561.5, 72 }, { 561.5, 81 }, { 561.5, 90 }, { ax2 - 11, 75 }, { ax2 - 11, 91 },
-		{ ax2 + 11, 75 }, { ax2 + 11, 91 }, { 447, 108 }, { 447, 130 }, { 447, 152 }, { 561.5, 108 }, { 561.5, 130 }, { 561.5, 152 } } do
+	for k, t in { [1] = { 447, 72 }, [2] = { 447, 81 }, [3] = { 447, 90 }, [4] = { 561.5, 72 }, [5] = { 561.5, 81 }, [6] = { 561.5, 90 },
+		[8] = { ax2 - 11, 92.5 }, [10] = { ax2 + 11, 92.5 }, [11] = { 447, 108 }, [12] = { 447, 130 }, [13] = { 447, 152 },
+		[14] = { 561.5, 108 }, [15] = { 561.5, 130 }, [16] = { 561.5, 152 } } do
 		treeS(Gd, "Tree_" .. k, t[1], t[2])
 	end
-	for k, l in { { ax2 - 4.6, 75 }, { ax2 + 4.6, 75 }, { ax2 - 4.6, 91 }, { ax2 + 4.6, 91 } } do lampS(Gd, "Lamp_" .. k, l[1], l[2]) end
-	for k, b in { { ax2 - 4.3, 83, 1 }, { ax2 + 4.3, 83, -1 }, { ax2 - 4.3, 95.6, 1 }, { ax2 + 4.3, 95.6, -1 } } do
+	for k, l in { [3] = { ax2 - 4.6, 91 }, [4] = { ax2 + 4.6, 91 } } do lampS(Gd, "Lamp_" .. k, l[1], l[2]) end
+	for k, b in { [3] = { ax2 - 4.3, 95.6, 1 }, [4] = { ax2 + 4.3, 95.6, -1 } } do
 		local m = Instance.new("Model"); m.Name = "Bench_" .. k; m.Parent = Gd
 		local x, z, dir = b[1], b[2], b[3]
 		Bx(m, W, "Seat", x - 0.5, 1.0, z - 1.6, x + 0.5, 1.2, z + 1.6, snowy(SNOW, rgb(110, 80, 50)), { decor = true })
@@ -1119,7 +1131,7 @@ do
 		local stoneC, goldC = rgb(222, 212, 190), rgb(214, 172, 70)
 		local o = { decor = true, noShadow = true, studs = true }
 		local oS = { decor = true, noShadow = true }
-		vcyl(m, "Plaza", x, 0, 0.04, z, 25.5, rgb(214, 206, 188), oS)
+		vcyl(m, "Plaza", x, 0, 0.04, z, 24.8, rgb(214, 206, 188), oS)
 		vcyl(m, "Drum", x, 0, 34, z, 18, stoneC, o)
 		vcyl(m, "Stylobate", x, 33, 34.5, z, 21, rgb(232, 224, 204), o)
 		vcyl(m, "InnerDrum", x, 34.5, 46.6, z, 17.5, stoneC, o)
@@ -1169,7 +1181,7 @@ do
 		end
 		ball(m, "Tip", x, y + 0.55, z, 0.7, snowy(SNOW, rgb(30, 70, 50)), { decor = true })
 	end
-	local porch = (XH + 455) / 2   -- porte cochère du premier immeuble de chaque trottoir
+	local porch = (XH + 458) / 2   -- porte cochère du premier immeuble de chaque trottoir
 	for _, s in { 1, -1 } do
 		local tag = s > 0 and "N" or "S"
 		candelabra("Candelabra_" .. tag, XA + 3.87, s * 17.6)
