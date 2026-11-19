@@ -35,6 +35,19 @@ export type Action = {
 	Mark: boolean?,
 }
 
+-- Vague 75 (a259, L-261) : les sons d'une action (New.Sounds.Actions). Start : joués au lancement, l'un après l'autre
+-- (le suivant à la fin du précédent) ; Top : au marqueur Top (en repli : à TopAt × la durée) ; Impacts : au 1er Impact,
+-- au 2e…, le dernier pour les suivants ; Stop : les sons de Start arrêtés en fondu au 1er Impact (« Impact ») ou à la fin
+-- de l'action (« End » ; sans Stop : ils finissent seuls) ; Smoke = false : pas de Unbox_Smoke aux Impacts.
+export type ActionSounds = {
+	Start: { string }?,
+	Top: string?,
+	TopAt: number?,
+	Impacts: { string }?,
+	Stop: string?,
+	Smoke: boolean?,
+}
+
 local Unbox = {
 	-- 0. Amélioration du colis, tirée par le serveur à OpenBox -------------------------------
 	UpgradeMax = 2, -- spec : 2 crans au plus
@@ -179,24 +192,55 @@ local Unbox = {
 		FinalAction = "Hammer", -- L-236 : la dernière action, celle qui casse le colis ; jamais tirée avant (V0)
 		-- Les 7 actions (L-237). Anim = animation du joueur (Contract/Animations) ; Tool = modèle tenu en main
 		-- (ToolFolder, facultatif) ; Fx = effet à chaque Impact (L-246) ; RunFx = effet pendant toute l'action jusqu'à son
-		-- moment fort (rythme : attribut EmitEvery du modèle) ; Sound = son
-		-- de chaque Impact (Assets/Sounds, nommé <Animation>_<Marqueur> comme les autres sons de marqueur ; sinon
-		-- ImpactSound, sinon muet) ; React = réaction du colis (React plus bas).
+		-- moment fort (rythme : attribut EmitEvery du modèle) ; sons : Sounds.Actions plus bas (vague 75, L-261) ;
+		-- React = réaction du colis (React plus bas).
 		-- Duration et Impacts (parts de la durée) : repli codé seulement, quand l'animation manque et chez les spectateurs
 		-- (durées indicatives du prototype, L-237) ; avec l'animation, ce sont ses marqueurs Impact et sa fin qui comptent,
 		-- et le dernier Impact attendu (#Impacts) est le moment fort.
 		Actions = {
-			{ Id = "Hammer", Anim = "Unbox_Hammer", Tool = "TOOL_Unbox_Sledgehammer", Fx = "FX_Unbox_Hit", Sound = "Unbox_Hammer_Impact", React = "Squash", Duration = 0.6, Impacts = { 0.7 } },
-			{ Id = "Saw", Anim = "Unbox_Saw", Tool = "TOOL_Unbox_Saw", Fx = "FX_Unbox_Sawdust", Sound = "Unbox_Saw_Impact", React = "Slide", Duration = 1.25, Impacts = { 0.25, 0.45, 0.65, 0.85 } },
-			{ Id = "Crowbar", Anim = "Unbox_Crowbar", Tool = "TOOL_Unbox_Crowbar", Fx = "FX_Unbox_Hit", Sound = "Unbox_Crowbar_Impact", React = "Lid", Duration = 1.25, Impacts = { 0.5, 0.85 } },
-			{ Id = "Drill", Anim = "Unbox_Drill", Tool = "TOOL_Unbox_Drill", Fx = "FX_Unbox_Hit", RunFx = "FX_Unbox_Chips", Sound = "Unbox_Drill_Impact", React = "Spin", Duration = 1.2, Impacts = { 0.85 } },
-			{ Id = "Kick", Anim = "Unbox_Kick", Fx = "FX_Unbox_Hit", Sound = "Unbox_Kick_Impact", React = "Push", Duration = 0.8, Impacts = { 0.6 } },
-			{ Id = "Search", Anim = "Unbox_Search", Junk = true, Sound = "Unbox_Search_Impact", React = "Tilt", Duration = 1.4, Impacts = { 0.4, 0.75 } },
-			{ Id = "Inspect", Anim = "Unbox_Inspect", Tool = "TOOL_Unbox_Magnifier", Mark = true, Sound = "Unbox_Inspect_Impact", React = "Jump", Duration = 1.35, Impacts = { 0.8 } },
+			{ Id = "Hammer", Anim = "Unbox_Hammer", Tool = "TOOL_Unbox_Sledgehammer", Fx = "FX_Unbox_Hit", React = "Squash", Duration = 0.6, Impacts = { 0.7 } },
+			{ Id = "Saw", Anim = "Unbox_Saw", Tool = "TOOL_Unbox_Saw", Fx = "FX_Unbox_Sawdust", React = "Slide", Duration = 1.25, Impacts = { 0.25, 0.45, 0.65, 0.85 } },
+			{ Id = "Crowbar", Anim = "Unbox_Crowbar", Tool = "TOOL_Unbox_Crowbar", Fx = "FX_Unbox_Hit", React = "Lid", Duration = 1.25, Impacts = { 0.5, 0.85 } },
+			{ Id = "Drill", Anim = "Unbox_Drill", Tool = "TOOL_Unbox_Drill", Fx = "FX_Unbox_Hit", RunFx = "FX_Unbox_Chips", React = "Spin", Duration = 1.2, Impacts = { 0.85 } },
+			{ Id = "Kick", Anim = "Unbox_Kick", Fx = "FX_Unbox_Hit", React = "Push", Duration = 0.8, Impacts = { 0.6 } },
+			{ Id = "Search", Anim = "Unbox_Search", Junk = true, React = "Tilt", Duration = 1.4, Impacts = { 0.4, 0.75 } },
+			{ Id = "Inspect", Anim = "Unbox_Inspect", Tool = "TOOL_Unbox_Magnifier", Mark = true, React = "Jump", Duration = 1.35, Impacts = { 0.8 } },
 		} :: { Action },
-		ImpactSound = "Unbox_Impact", -- V0 : son d'un Impact sans son à lui
 		ActionMaxFactor = 1.5, -- V0 : une action est coupée à Duration × ce facteur (animation plus longue ou bloquée)
 		ActionGap = 0.25, -- V0 : pause entre deux actions à la même place (le colis tremble)
+
+		-- Vague 75 (a259, L-261 ; sons de Clément dans Assets/Sounds/Unbox, trouvés par MarkerSounds.find, absent = muet) :
+		-- les sons de l'ouverture, du lancement de chaque action à l'éclatement. Aucun son de téléportation (Clément,
+		-- 19/11 : seuls les nuages FX_Unbox_Puff la marquent). Chez l'ouvreur en 2D, chez les autres sur le colis.
+		Sounds = {
+			Actions = {
+				Hammer = { Start = { "Unbox_Windup" }, Top = "Unbox_Swing", TopAt = 0.52, Impacts = { "Unbox_HammerHit" } }, -- L-261 ; TopAt : V0 (Top 0,37 s pour l'Impact à 0,50 s)
+				Saw = { Start = { "Unbox_Saw" }, Stop = "End", Smoke = false }, -- L-261 : aux Impacts, rien de plus
+				Crowbar = { Start = { "Unbox_CrowbarWedge" }, Impacts = { "Unbox_CrowbarCreak", "Unbox_CrowbarCrack" } }, -- L-261
+				Drill = { Start = { "Unbox_Drill" }, Stop = "Impact", Impacts = { "Unbox_DrillThrough" } }, -- L-261
+				Kick = { Start = { "Unbox_KickWhoosh" }, Impacts = { "Unbox_Kick" } }, -- L-261 (+ Unbox_BoxSlide : Slide plus bas)
+				Search = { Start = { "Unbox_Rummage" }, Stop = "End", Impacts = { "Unbox_Toss" } }, -- L-261 (+ son de l'objet jeté)
+				Inspect = { Start = { "Unbox_InspectHmm", "Unbox_InspectScan" }, Stop = "Impact", Impacts = { "Unbox_InspectDing" } }, -- L-261
+				Stomp = { Impacts = { "Unbox_Kick" } }, -- V0 (absent de L-261) : le pied qui frappe le couvercle
+				Slam = { Start = { "Unbox_Windup" }, Top = "Unbox_Swing", TopAt = 0.6, Impacts = { "Unbox_HammerHit" } }, -- V0 : comme la masse
+			} :: { [string]: ActionSounds },
+			StopFade = 0.1, -- L-261 : un son arrêté baisse à 0 en ce temps (s)
+			ChainMax = 1, -- V0 : s ; un son de Start part au plus tard ce temps après le précédent (longueur inconnue : tout de suite)
+			Burst = { "Unbox_Burst", "Unbox_Smoke" }, -- L-261 : au coup final qui casse le colis, en plus de son coup
+			Smoke = "Unbox_Smoke", -- L-261 : quand la fumée (émetteur SmokeEmitter de l'effet de l'Impact) apparaît…
+			SmokeEmitter = "Smoke", -- L-254
+			SmokeAgainVolume = 0.3, -- L-261 : … puis à chaque Impact où elle revient, à ce Volume au plus (sauf à l'éclatement)
+			Slide = "Unbox_BoxSlide", -- L-261 : quand le colis est poussé…
+			SlideReacts = { "Push" }, -- V0 : … réactions du colis qui le font glisser (« Slide », la scie : rien de plus, L-261)
+			JunkSqueak = "Unbox_JunkSqueak", -- L-261 : objet jeté dont le nom commence par un de SqueakJunk…
+			SqueakJunk = { "ENV_Unbox_Junk_Duck" },
+			JunkBoing = "Unbox_JunkBoing", -- L-261 : … les autres
+			JunkPitch = { 0.9, 1.15 }, -- L-261 : PlaybackSpeed au hasard du son de l'Impact et de l'objet jeté
+			Rattle = "Unbox_Rattle", -- L-261 : entre deux actions (le colis tremble), en boucle, arrêté en fondu…
+			RattleVolumeStep = 0.15, -- V0 : … Volume × (1 + ceci × (actions faites − 1))…
+			RattlePitchStep = 0.04, -- V0 : … PlaybackSpeed 1 + ceci × (actions faites − 1)…
+			RattleMax = 2, -- V0 : … facteur de Volume au plus
+		},
 
 		-- Vague 74 (a257, L-258) : le perso change de place à chaque action, en se téléportant (ni marche ni saut) :
 		-- Cycle (Side = la place de L-236, à côté du colis ; Other = de l'autre côté, réactions du colis dans l'autre
@@ -211,15 +255,13 @@ local Unbox = {
 			Vanish = 0.1, -- L-258 : disparition dans un nuage (FX_Unbox_Puff au torse) de 0 à cette valeur…
 			Appear = 0.19, -- L-258 : … réapparition d'un coup à la nouvelle place (second nuage), puis le rebond
 			Bounce = 0.35, -- V0 : studs, hauteur du petit rebond à la réapparition (de Appear à Teleport)
-			VanishSound = "Unbox_TeleportOut", -- V0 (« swish », session sound design ; absent : muet)
-			AppearSound = "Unbox_TeleportIn", -- V0 (« pop »)
 			CameraLift = 0.7, -- L-258 : la caméra monte de 0,7 × la hauteur des pieds au-dessus du sol
 			CameraLiftSpeed = 8, -- V0 : 1/s, la caméra rattrape cette hauteur sans à-coup
 			OddsSlide = 3.4, -- L-258 : studs, BB_UnboxOdds glisse sur le côté quand le perso est sur le colis…
 			OddsSlideSpeed = 8, -- V0 : 1/s, … puis revient
 			-- Les deux actions sur le colis (L-258 ; durées et marqueurs du prototype, repli codé seulement comme Actions).
-			Stomp = { Id = "Stomp", Anim = "Unbox_Stomp", Fx = "FX_Unbox_Hit", Sound = "Unbox_Stomp_Impact", React = "Stomp", Duration = 1.1, Impacts = { 0.45, 0.95 } } :: Action,
-			Slam = { Id = "Slam", Anim = "Unbox_Slam", Tool = "TOOL_Unbox_Sledgehammer", Fx = "FX_Unbox_Hit", Sound = "Unbox_Slam_Impact", React = "Squash", Duration = 1.35, Impacts = { 0.8 } } :: Action,
+			Stomp = { Id = "Stomp", Anim = "Unbox_Stomp", Fx = "FX_Unbox_Hit", React = "Stomp", Duration = 1.1, Impacts = { 0.45, 0.95 } } :: Action,
+			Slam = { Id = "Slam", Anim = "Unbox_Slam", Tool = "TOOL_Unbox_Sledgehammer", Fx = "FX_Unbox_Hit", React = "Squash", Duration = 1.35, Impacts = { 0.8 } } :: Action,
 		},
 
 		-- Temps (s). Vague 74 : objet révélé vers 2,1 s (Commun, la masse seule), 6,1 s (Rare) et 9,9 s (Légendaire), sans
@@ -251,6 +293,9 @@ local Unbox = {
 			MinDistance = 5, -- V0 : un mur plus près que cela ne rapproche plus la caméra : il devient transparent
 			Margin = 0.6, -- V0 : écart gardé devant un mur
 			MaxHidden = 12, -- V0 : pièces rendues transparentes au plus entre la caméra et le colis
+			-- Vague 75 (a259, T-222) : de la caméra du joueur à celle de l'ouverture en fondu (départ et arrivée en douceur)
+			-- en ce temps (s), au lieu du lissage du repli qui partait d'un coup (3 images de 3,4 à 2,2 studs à 15 images/s).
+			BlendIn = 0.6, -- V0 : la durée de l'Intro
 		},
 
 		-- Réactions du colis à chaque Impact : aller et retour en Time s (un coup de pied le pousse, puis il revient).
@@ -271,7 +316,11 @@ local Unbox = {
 
 		-- Cote « 1 IN N » de BB_UnboxOdds.Odds (L-236, plages proposées par rareté ; Divine : V0). Au moment fort de
 		-- chaque action, elle défile jusqu'à un nombre de la plage de la rareté montrée, toujours plus haut ; la cote
-		-- finale (tirée par le serveur dans la plage de la rareté gagnée, V0) s'affiche à la révélation.
+		-- finale s'affiche à la révélation. Vague 75 (a259, L-262 point 1, Clément : « la vraie probabilité ») : la cote
+		-- finale est la vraie chance d'avoir cet objet, calculée par le serveur (Formulas.UnboxOdds : table de la caisse
+		-- ShelfOpen.BoxRarityOdds, chance comprise, puis un objet parmi ceux de sa rareté dans la zone) ; RealOdds = false
+		-- (ou contenu imposé du tuto) : tirée dans la plage de la rareté gagnée, comme avant.
+		RealOdds = true, -- interrupteur
 		OddsRanges = {
 			Common = { 2, 4 },
 			Uncommon = { 5, 12 },

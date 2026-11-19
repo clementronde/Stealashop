@@ -452,7 +452,8 @@ local function giveCamera(current: Scene)
 		return
 	end
 	pcall(function()
-		camera.CameraType = current.cameraType or Enum.CameraType.Custom
+		local before = current.cameraType -- vague 75 (a259) : jamais rendue en Scriptable (prise pendant l'ouverture d'un colis)
+		camera.CameraType = if before and before ~= Enum.CameraType.Scriptable then before else Enum.CameraType.Custom
 		local character = localPlayer.Character
 		local humanoid = if character then character:FindFirstChildOfClass("Humanoid") else nil
 		local subject = current.cameraSubject
