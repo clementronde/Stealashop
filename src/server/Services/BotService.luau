@@ -25,7 +25,9 @@
 --     <Bot.AvatarName>, proposé, absent du contrat), sinon l'avatar R15 par défaut de Roblox
 --     (Players:CreateHumanoidModelFromDescriptionAsync, préparé une fois), debout au point d'apparition
 --     du propriétaire (PlotService.GetSpawnSpot), HumanoidRootPart ancré, aucune collision ni requête,
---     scripts retirés, nom Bot.DisplayName au-dessus de lui, animation Animations/Idle en boucle (celle
+--     scripts retirés, groupe de collision BotDefender qui traverse les pièces de sa porte PlotDoor/Window
+--     (groupe BotDoor, rendu au départ ; vague 75, a261, T-084 : la porte refaite à la sortie du voleur ne le
+--     bloque plus ; elle reste solide pour les autres), nom Bot.DisplayName au-dessus de lui, animation Animations/Idle en boucle (celle
 --     de Clément, ou l'idle par défaut de Roblox gardée du script Animate) ;
 --   - défense (vague 37, a124, L-117 point 7, Config/Bot.Defense, V0 proposés). Vague 42 (Cantin, 2026-11-14 :
 --     « il est censé nous courir après une fois qu'on a volé l'objet, pas quand on est dans sa base ») : porte
@@ -177,6 +179,8 @@ type State = {
 	-- Vague 54 (a175, Cantin, 2026-11-15) : objets pris (uid) dont le voleur n'est pas encore sorti de la boutique
 	-- avec : pas de poursuite ni de coup pour eux tant qu'il est dedans (exitStep).
 	Pending: { [string]: boolean },
+	-- Vague 75 (a261) : groupe de collision d'avant de chaque pièce de sa porte, rendu au départ du bot.
+	DoorGroups: { [BasePart]: string },
 }
 
 -- Mêmes noms que DisplayService (dossier des objets exposés) et PvPController (valeur exposée du bot).
@@ -198,6 +202,12 @@ local DEFAULT_ANIMATIONS: { { Name: string, From: { string } } } = {
 local BOUNDS = "Bounds" -- contrat 10.4
 local DOOR_WINDOW = "PlotDoor.Window" -- PLOT_Shop (L-050), comme TutorialService
 local ROOT_NAME = "HumanoidRootPart"
+-- Vague 75 (a261, T-084) : groupes de collision qui ne se touchent pas : l'avatar du bot (BOT_GROUP) traverse
+-- les pièces de sa porte PlotDoor/Window (BOT_DOOR_GROUP), cassée ou refaite ; elle reste solide pour tous les
+-- autres (joueurs, vigiles). Avant, la vitre refaite dès la sortie du voleur (PvPService.rebuildGate)
+-- bloquait le bot dans sa boutique (Roblox remet CanCollide sur le torse d'un Humanoid).
+local BOT_GROUP = "BotDefender"
+local BOT_DOOR_GROUP = "BotDoor"
 local IS_STUDIO = RunService:IsStudio()
 -- V0 proposé, absent du doc : marge entre les pieds et le sol, comme PlotService.
 local SPAWN_LIFT = 0.1
@@ -243,6 +253,42 @@ local function warnOnce(key: string, message: string)
 		warned[key] = true
 		warn(`[BotService] {message}`)
 	end
+end
+
+-- Vague 75 (a261, T-084) : BOT_GROUP et BOT_DOOR_GROUP enregistrés au premier besoin, sans collision entre eux ;
+-- false s'ils sont indisponibles (le bot peut alors rester bloqué par sa porte refaite).
+local doorGroupsReady: boolean? = nil
+local function doorGroups(): boolean
+	if doorGroupsReady == nil then
+		local ok, why = pcall(function()
+			local physics = game:GetService("PhysicsService")
+			for _, name in { BOT_GROUP, BOT_DOOR_GROUP } do
+				if not physics:IsCollisionGroupRegistered(name) then
+					physics:RegisterCollisionGroup(name)
+				end
+			end
+			physics:CollisionGroupSetCollidable(BOT_GROUP, BOT_DOOR_GROUP, false)
+		end)
+		doorGroupsReady = ok
+		if not ok then
+			warnOnce("groups", `groupes de collision {BOT_GROUP}/{BOT_DOOR_GROUP} indisponibles ({why}) : le bot ne traverse pas sa porte refaite`)
+		end
+	end
+	return doorGroupsReady == true
+end
+
+-- Groupe de collision de `part`, lu et écrit sous pcall (faux Roblox des bancs sans la propriété).
+local function setGroup(part: BasePart, group: string)
+	pcall(function()
+		part.CollisionGroup = group
+	end)
+end
+
+local function groupOf(part: BasePart): string?
+	local ok, group = pcall(function(): string
+		return part.CollisionGroup
+	end)
+	return if ok and type(group) == "string" then group else nil
 end
 
 local function emitTheft(thief: Player, itemId: string, stage: TheftStage)
@@ -389,6 +435,7 @@ local function prepare(model: Model): Model?
 			copy.Parent = folder
 		end
 	end
+	local grouped = doorGroups()
 	for _, descendant in model:GetDescendants() do
 		if descendant:IsA("LuaSourceContainer") then
 			descendant:Destroy()
@@ -398,6 +445,9 @@ local function prepare(model: Model): Model?
 			part.CanCollide = false
 			part.CanTouch = false
 			part.CanQuery = false
+			if grouped then
+				setGroup(part, BOT_GROUP) -- a261 : traverse sa porte (voir BOT_GROUP)
+			end
 		end
 	end
 	local humanoid = model:FindFirstChildOfClass("Humanoid")
@@ -543,8 +593,25 @@ local function arrive()
 		Bat = nil,
 		Chase = nil,
 		Pending = {},
+		DoorGroups = {},
 	}
 	state = current
+	-- Vague 75 (a261, T-084) : les pièces de sa porte passent dans BOT_DOOR_GROUP (son avatar les traverse).
+	local door = Find.path(plot, DOOR_WINDOW)
+	if door and doorGroups() then
+		local parts: { Instance } = door:GetDescendants()
+		table.insert(parts, door)
+		for _, instance in parts do
+			if instance:IsA("BasePart") then
+				local part = instance :: BasePart
+				local group = groupOf(part)
+				if group then
+					current.DoorGroups[part] = group
+					setGroup(part, BOT_DOOR_GROUP)
+				end
+			end
+		end
+	end
 	for slot = 1, Bot.ItemCount do
 		newItem(current, slot)
 	end
@@ -576,6 +643,12 @@ local function leave(reason: string)
 	local windowId = WindowService.GetWindowId(plot)
 	if windowId and WindowService.IsBroken(windowId) then
 		WindowService.Rebuild(windowId)
+	end
+	-- Vague 75 (a261) : sa porte reprend ses groupes de collision (solide pour tous).
+	for part, group in current.DoorGroups do
+		if groupOf(part) == BOT_DOOR_GROUP then
+			setGroup(part, group)
+		end
 	end
 	PlotService.ReleaseBot(plot) -- peut la donner tout de suite au joueur qui attend
 	print(`[BotService] le bot quitte {plot.Name} ({reason})`)
