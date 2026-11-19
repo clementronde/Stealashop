@@ -27,7 +27,7 @@
 --     les écrans que toutes les fenêtres allumées gardent (HudHide.Keep, correctif f70 : UI_Displayed garde UI_Hotbar).
 --   - Vague 74 (a258, L-259 b, Config/UiMotion.Veil) : voile noir de Clément (UI_Veil.Veil) allumé sous la fenêtre à
 --     flou la plus haute (DisplayOrder − 1), fondu à sa transparence de Studio, retiré à la fermeture ; un clic dessus
---     ferme la fenêtre (Motion.Dismiss, V0). Sans UI_Veil : flou seul.
+--     ferme la fenêtre (Motion.Dismiss, V0), seulement hors de ses cadres (correctif f73c1, T-422). Sans UI_Veil : flou seul.
 -- Connexions : une par écran pour Enabled, DescendantAdded et AncestryChanged, et une ou deux par élément qui porte
 -- un attribut d'animation ; toutes coupées quand l'élément quitte l'écran ou que l'écran quitte le PlayerGui.
 -- Aucun script dans l'UI ; aucune valeur de Clément changée durablement.
@@ -293,6 +293,30 @@ local function topWindow(): ScreenGui?
 	return best
 end
 
+-- Correctif f73c1 (T-422) : le point (x, y) de l'InputObject (mêmes coordonnées qu'AbsolutePosition) tombe dans un cadre
+-- visible de la fenêtre `gui`. Un cadre taillé à tout l'écran (conteneur) ne compte pas lui-même : ses enfants comptent.
+-- Les cadres de Clément ne sont pas Active : sans ce test, un clic dans la fenêtre passait au voile et la fermait.
+local function insideWindow(parent: Instance, x: number, y: number): boolean
+	for _, child in parent:GetChildren() do
+		if not child:IsA("GuiObject") or not (child :: GuiObject).Visible then
+			continue
+		end
+		local frame = child :: GuiObject
+		local size = frame.Size
+		if size.X.Scale >= 1 and size.Y.Scale >= 1 then
+			if insideWindow(frame, x, y) then
+				return true
+			end
+			continue
+		end
+		local corner, extent = frame.AbsolutePosition, frame.AbsoluteSize
+		if x >= corner.X and x <= corner.X + extent.X and y >= corner.Y and y <= corner.Y + extent.Y then
+			return true
+		end
+	end
+	return false
+end
+
 local function findVeil(): VeilState?
 	local current = veil
 	if current ~= nil and current.gui.Parent ~= nil and current.frame:IsDescendantOf(current.gui) then
@@ -329,6 +353,10 @@ local function findVeil(): VeilState?
 			end
 			local top = veilTop
 			if state.wanted and top ~= nil and top.Enabled and Motion.GetState(top) ~= "Closing" then
+				local point = input.Position
+				if insideWindow(top, point.X, point.Y) then
+					return -- correctif f73c1 (T-422) : clic dans la fenêtre, pas sur le voile
+				end
 				Motion.Dismiss(top)
 			end
 		end)

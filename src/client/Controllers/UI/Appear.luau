@@ -5,7 +5,8 @@
 -- qu'un élément Appear devient visible ; Motion.Close et Motion.Hide jouent sa fermeture et l'attendent ; Motion ne
 -- met à l'échelle ni un cadre qui porte Appear, ni les cartes d'une Cascade (Covers).
 --
---   Pop         l'élément passe de Pop.From à 1 ; fermeture : de 1 à Pop.CloseTo
+--   Pop         l'élément passe de Pop.From à 1 ; fermeture : de 1 à Pop.CloseTo (correctif f73c1 : avec WindowE, le
+--               cadre racine Pop d'une fenêtre centrale suit Config/UiMotion Open et Close, comme Motion)
 --   Cascade     l'élément (le fond) est là tout de suite, puis ses enfants visibles (sauf Template) entrent l'un après
 --               l'autre (Gap s d'écart, dans l'ordre LayoutOrder puis de lecture) ; un enfant cloné dans les Late s
 --               qui suivent entre aussi, à la suite ; fermeture : tous ensemble
@@ -86,6 +87,20 @@ local SLIDE_IN = TweenInfo.new(SLIDE.Time, SLIDE.Style, SLIDE.Direction)
 local SLIDE_OUT = TweenInfo.new(SLIDE.CloseTime, SLIDE.CloseStyle, SLIDE.CloseDirection)
 local DROP = SPEC.DropIn
 local DROP_IN = TweenInfo.new(DROP.Time, DROP.Style, DROP.Direction)
+-- Correctif f73c1 (T-420, L-259) : avec WindowE, le cadre racine Pop d'une fenêtre centrale (écran de Blur.Screens, ou
+-- ScreenGui qui porte l'attribut Blur.Attribute = true) s'ouvre et se ferme comme Motion.Open et Motion.Close (Config/
+-- UiMotion Open et Close, deux tweens par Peak) au lieu de Pop. Motion ne met pas à l'échelle un cadre qui porte Appear :
+-- sans ce correctif, la Root de UI_WeaponShop gardait Pop (fermeture Back In 1 → 1,094 → 0 en 0,2 s).
+local WINDOW_E = UiMotion.WindowE
+local WINDOW = { open = UiMotion.Open, close = UiMotion.Close }
+local WINDOW_OPEN = TweenInfo.new(WINDOW.open.Time, WINDOW.open.Style, WINDOW.open.Direction)
+local WINDOW_OPEN_PEAK = TweenInfo.new(WINDOW.open.PeakTime, WINDOW.open.PeakStyle, WINDOW.open.PeakDirection)
+local WINDOW_CLOSE = TweenInfo.new(WINDOW.close.Time, WINDOW.close.Style, WINDOW.close.Direction)
+local WINDOW_CLOSE_PEAK = TweenInfo.new(WINDOW.close.PeakTime, WINDOW.close.PeakStyle, WINDOW.close.PeakDirection)
+local CENTRAL: { [string]: boolean } = {}
+for _, name in UiMotion.Blur.Screens do
+	CENTRAL[name] = true
+end
 -- Balancement : d'abord de la Rotation de Clément à +Sway (un quart de cycle), puis de +Sway à −Sway et retour, sans fin.
 local SWAY_START = TweenInfo.new(DROP.SwayPeriod / 4, Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
 local SWAY_LOOP = TweenInfo.new(DROP.SwayPeriod / 2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true)
@@ -144,6 +159,18 @@ function Appear.Covers(item: Instance): boolean
 		parent = parent.Parent
 	end
 	return false
+end
+
+-- Correctif f73c1 (T-420) : `object` est le cadre racine Pop d'une fenêtre centrale et WindowE est allumé.
+local function windowRoot(object: GuiObject): boolean
+	if not WINDOW_E or Appear.KindOf(object) ~= "Pop" then
+		return false
+	end
+	local parent = object.Parent
+	if parent == nil or not parent:IsA("ScreenGui") then
+		return false
+	end
+	return CENTRAL[parent.Name] == true or parent:GetAttribute(UiMotion.Blur.Attribute) == true
 end
 
 function Appear.Reduced(): boolean
@@ -322,12 +349,22 @@ end
 -- Pop et Stamp : l'élément lui-même
 ------------------------------------------------------------------------------
 
-local function scaleIn(object: GuiObject, state: State, from: number, info: TweenInfo, extra: { [string]: any }?)
+-- `peak` (correctif f73c1, fenêtre centrale) : d'abord jusqu'à peak en peakInfo, puis jusqu'à 1 en info.
+local function scaleIn(object: GuiObject, state: State, from: number, info: TweenInfo, extra: { [string]: any }?, peak: number?, peakInfo: TweenInfo?)
 	local fresh = state.phase == nil
 	begin(state, "In")
 	local scale = scaleOn(state, object, from)
 	if scale and fresh then
 		scale.Scale = from
+	end
+	if scale ~= nil and peak ~= nil and peakInfo ~= nil then
+		local current: UIScale = scale
+		run(state, { TweenService:Create(current, peakInfo, { Scale = peak }) }, function()
+			run(state, { TweenService:Create(current, info, { Scale = 1 }) }, function()
+				restore(object, state)
+			end)
+		end)
+		return
 	end
 	local tweens: { Tween } = {}
 	if scale then
@@ -341,11 +378,18 @@ local function scaleIn(object: GuiObject, state: State, from: number, info: Twee
 	end)
 end
 
-local function scaleOut(object: GuiObject, state: State, to: number, info: TweenInfo): number
+local function scaleOut(object: GuiObject, state: State, to: number, info: TweenInfo, peak: number?, peakInfo: TweenInfo?): number
 	begin(state, "Out")
 	local scale = scaleOn(state, object, 1)
 	if scale == nil then
 		return 0
+	end
+	if peak ~= nil and peakInfo ~= nil then
+		local current: UIScale = scale
+		run(state, { TweenService:Create(current, peakInfo, { Scale = peak }) }, function()
+			run(state, { TweenService:Create(current, info, { Scale = to }) }, function() end)
+		end)
+		return peakInfo.Time + info.Time
 	end
 	run(state, { TweenService:Create(scale, info, { Scale = to }) }, function() end)
 	return info.Time
@@ -667,7 +711,9 @@ function Appear.Play(object: GuiObject)
 		return
 	end
 	local state = stateOf(object, kind)
-	if kind == "Pop" then
+	if kind == "Pop" and windowRoot(object) then
+		scaleIn(object, state, WINDOW.open.From, WINDOW_OPEN, nil, WINDOW.open.Peak, WINDOW_OPEN_PEAK)
+	elseif kind == "Pop" then
 		scaleIn(object, state, POP.From, POP_IN, nil)
 	elseif kind == "Stamp" then
 		stampIn(object, state)
@@ -810,7 +856,9 @@ function Appear.Close(root: Instance): number
 		local kind = Appear.KindOf(object) :: string
 		local state = stateOf(object, kind)
 		local time = 0
-		if kind == "Pop" then
+		if kind == "Pop" and windowRoot(object) then
+			time = scaleOut(object, state, WINDOW.close.To, WINDOW_CLOSE, WINDOW.close.Peak, WINDOW_CLOSE_PEAK)
+		elseif kind == "Pop" then
 			time = scaleOut(object, state, POP.CloseTo, POP_OUT)
 		elseif kind == "Stamp" then
 			time = scaleOut(object, state, STAMP.CloseTo, STAMP_OUT)
