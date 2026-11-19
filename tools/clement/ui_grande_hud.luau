@@ -6,7 +6,8 @@
 --     la référence en a 1,6 %, mais notre mot posé sur le contour du bas mange déjà 1,3 % de l'écart).
 --   - LeftRailTouch (colonne du téléphone) : même écart, en proportion du bouton.
 --   - LeftRail et LeftRailTouch : icône centrée sur le bouton, mot à cheval sur le contour noir du bas (retour de
---     Clément du 18/11). RightRail.DisplayedButton : l'icône grandit et dépasse un peu du haut.
+--     Clément du 18/11). RightRail.DisplayedButton : l'icône grandit et dépasse un peu du haut ; son mot est placé
+--     comme à gauche, sur le contour du bas (Clément, 19/11).
 --   - Rien d'autre : l'argent, la vitesse, la force, le minuteur de nuit et la barre du bas sont déjà aussi grands
 --     ou plus grands que chez eux (mesuré, voir la liaison).
 -- Aucun nom changé, aucun script. Sauvegarde : ServerStorage/MapBackups/2026-11-18_UIGrande/UI_HUD. Annulable.
@@ -38,15 +39,18 @@ end
 
 -- Dessin carré : icône qui dépasse en haut et mot dessous (DisplayedButton), ou icône centrée et mot sur le contour
 -- du bas (boutons de gauche) ; pastille en débord sur le coin haut droit.
-local function squareInside(button, left)
+local function squareInside(button, left, edgeLabel)
+	if edgeLabel == nil then
+		edgeLabel = left
+	end
 	local icon, label = button:FindFirstChild("Icon"), button:FindFirstChild("Label")
 	if icon then
 		icon.AnchorPoint = Vector2.zero
 		icon.Size, icon.Position = if left then LEFT_ICON_SIZE else ICON_SIZE, if left then LEFT_ICON_POS else ICON_POS
 	end
 	if label then
-		label.AnchorPoint = if left then Vector2.new(0.5, 0.5) else Vector2.zero
-		label.Size, label.Position = if left then LEFT_LABEL_SIZE else LABEL_SIZE, if left then LEFT_LABEL_POS else LABEL_POS
+		label.AnchorPoint = if edgeLabel then Vector2.new(0.5, 0.5) else Vector2.zero
+		label.Size, label.Position = if edgeLabel then LEFT_LABEL_SIZE else LABEL_SIZE, if edgeLabel then LEFT_LABEL_POS else LABEL_POS
 		label.TextXAlignment = Enum.TextXAlignment.Center -- les pilules de LeftRail étaient alignées à gauche
 	end
 	for _, c in button:GetChildren() do
@@ -113,8 +117,9 @@ local ok, err = pcall(function()
 		c.Size = UDim2.fromScale(1, 1 / units)
 		squareInside(c, true)
 	end
-	squareInside(hud.RightRail.DisplayedButton, false)
-	table.insert(report, "LeftRailTouch pareil ; DisplayedButton : icône qui dépasse")
+	-- DisplayedButton : l'icône dépasse du haut ; le mot est placé comme à gauche, sur le contour du bas (Clément, 19/11).
+	squareInside(hud.RightRail.DisplayedButton, false, true)
+	table.insert(report, "LeftRailTouch pareil ; DisplayedButton : icône qui dépasse, mot sur le contour du bas")
 end)
 if rec then
 	CHS:FinishRecording(rec, if ok then Enum.FinishRecordingOperation.Commit else Enum.FinishRecordingOperation.Cancel)

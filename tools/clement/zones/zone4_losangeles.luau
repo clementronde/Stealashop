@@ -9,6 +9,10 @@
 -- la zone 4 va de x 368 (arche 4) à x 530 (arche 5), magasins en x = 442 ; rien n'en sort.
 -- Arbres : ce script pose des palmiers en pièces, que tools/clement/env/trees_replace.luau remplace par les arbres
 -- du pack (règle de Clément : plus d'arbres en pièces) ; relancer trees_replace après ce script.
+-- Ambiance de la ville (chaleur sur le bitume, palmes qui tombent, son d'ambiance, 2026-11-17) : relancer
+-- tools/clement/zones/zone4_ambience.luau après ce script et corridor_widen.luau.
+-- Magasins agrandis à 78 × 108 (2026-11-17) : ne plus relancer ce script sans relancer ensuite
+-- tools/clement/store_stretch.luau sur chaque STORE_*, puis tools/clement/zones/zone4_store_stretch_fit.luau.
 -- Bâti sur le modèle de tools/clement/zones/zone2_londres.luau : une fonction « facade » pour le style,
 -- une spec par magasin (couleurs, enseigne, rayons, produits), puis le décor dans Map/Zone_4.
 -- Règles : aucun script laissé dans la map ; noms du contrat (10.4) jamais réutilisés pour le décor ;
