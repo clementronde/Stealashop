@@ -35,19 +35,40 @@ local WINDOWS: { string } = {
 	"UI_Settings", "UI_Rewards", "UI_SkillTree", "UI_Wheel",
 }
 
+-- Vague 74 (a258, L-259, Clément : ouverture et fermeture comme la vidéo de référence E, voile noir UI_Veil et flou
+-- derrière les fenêtres centrales). true : ouverture 0,5 → 1,055 (0,17 s Quad Out) → 1 (0,16 s Quad InOut), fermeture
+-- 1 → 1,04 (0,06 s Quad Out) → 0,5 (0,1 s Quad In) puis l'écran s'éteint ; flou ≈ 10 (entrée 0,2 s Quad Out, sortie
+-- 0,13 s) et voile (Veil) seulement derrière CENTRAL. false : le rythme de la vague 73 exactement. Ne joue que si
+-- WINDOW_TAS est allumé (les deux s'empilent).
+local WINDOW_E = WINDOW_TAS and true
+-- L-259 (b) : boutiques Robux, armes, auras, diamants, prêteur, index, arbre de compétences, réglages, renaissance,
+-- récompenses, gains hors ligne ; pas UI_Displayed (panneau de côté), ni alertes, notifications, bannières.
+-- V0 proposé : l'inventaire (L-259, « index et inventaire d'abord ») et la roue (UI_Wheel, grande fenêtre de L-230).
+local CENTRAL: { string } = {
+	"UI_WeaponShop", "UI_AuraShop", "UI_RobuxShop", "UI_RobuxShop_v2", "UI_DiamondShop", "UI_PawnShop",
+	"UI_Index", "UI_Index_v2", "UI_Index_v3", "UI_Index_v4", "UI_Inventory", "UI_Rebirth",
+	"UI_Settings", "UI_Rewards", "UI_SkillTree", "UI_Wheel", "UI_Offline",
+}
+
 local UiMotion = {
 	VideoRhythm = VIDEO_RHYTHM,
 	WindowTas = WINDOW_TAS,
+	WindowE = WINDOW_E,
 	Windows = WINDOWS,
 	-- Écran qui s'ouvre (Motion.Open) : ses cadres racine (Root) passent de From à 1. Valeurs validées par
 	-- Clément sur les prototypes (L-094 ; tableau « Étendues à tout le jeu » de
 	-- docs/claude/notes/ui-motion-skilltree.md, ligne « Fenêtre qui s'ouvre », qui remplace l'ancien V0
 	-- 0,9 → 1 en 0,25 ; tools/clement/inventory_proto.luau, OpenFrom et OpenTime).
 	Open = {
-		From = if WINDOW_TAS then 0.84 else 0.55, -- vague 73 : 0,84 (L-230) ; tableau : « Root 0,55 → 1 en 0,14 », Back Out
-		Time = if WINDOW_TAS then 0.26 elseif VIDEO_RHYTHM then 0.38 else 0.14, -- vague 73 : 0,26 (mesure : 0,2 à 0,33) ; vague 64 : 0,38 s (vidéo : 0,55 → 1,055 → 1)
-		Style = Enum.EasingStyle.Back, -- le Back Out dépasse un peu 1 (environ 1,04), puis revient à 1
-		Direction = Enum.EasingDirection.Out,
+		From = if WINDOW_E then 0.5 elseif WINDOW_TAS then 0.84 else 0.55, -- vague 74 : 0,5 (L-259) ; vague 73 : 0,84 (L-230) ; tableau : « Root 0,55 → 1 en 0,14 », Back Out
+		-- Vague 74 (L-259) : d'abord From → Peak en PeakTime (PeakStyle, PeakDirection), puis Peak → 1 en Time ; Peak nil : un seul tween.
+		Peak = (if WINDOW_E then 1.055 else nil) :: number?,
+		PeakTime = 0.17,
+		PeakStyle = Enum.EasingStyle.Quad,
+		PeakDirection = Enum.EasingDirection.Out,
+		Time = if WINDOW_E then 0.16 elseif WINDOW_TAS then 0.26 elseif VIDEO_RHYTHM then 0.38 else 0.14, -- vague 74 : 0,16 s ; vague 73 : 0,26 (mesure : 0,2 à 0,33) ; vague 64 : 0,38 s (vidéo : 0,55 → 1,055 → 1)
+		Style = if WINDOW_E then Enum.EasingStyle.Quad else Enum.EasingStyle.Back, -- le Back Out dépasse un peu 1 (environ 1,04), puis revient à 1
+		Direction = if WINDOW_E then Enum.EasingDirection.InOut else Enum.EasingDirection.Out,
 	},
 	-- Contenu qui arrive après la fenêtre (Motion.Open, puis chaque carte ou rangée) : de From à 1 en
 	-- Time, la première Start s après l'ouverture, puis Gap s entre deux, Max cartes au plus (les
@@ -72,8 +93,13 @@ local UiMotion = {
 	-- « Fenêtre qui se ferme : 1 → 0 en 0,09 », Quad In (L-094). Vague 64 : Back In en 0,2 s (vidéo : elle gonfle
 	-- de ~11 % puis rétrécit jusqu'à 0, en 0,17 à 0,22 s).
 	Close = {
-		To = if WINDOW_TAS then 0.9 else 0, -- vague 73 : « vers 89 à 92 % en 0,13 s, puis disparition d'un coup »
-		Time = if WINDOW_TAS then 0.13 elseif VIDEO_RHYTHM then 0.2 else 0.09,
+		To = if WINDOW_E then 0.5 elseif WINDOW_TAS then 0.9 else 0, -- vague 74 : 0,5 (L-259) ; vague 73 : « vers 89 à 92 % en 0,13 s, puis disparition d'un coup »
+		-- Vague 74 (L-259) : d'abord 1 → Peak en PeakTime, puis Peak → To en Time ; Peak nil : un seul tween. Sans fondu.
+		Peak = (if WINDOW_E then 1.04 else nil) :: number?,
+		PeakTime = 0.06,
+		PeakStyle = Enum.EasingStyle.Quad,
+		PeakDirection = Enum.EasingDirection.Out,
+		Time = if WINDOW_E then 0.1 elseif WINDOW_TAS then 0.13 elseif VIDEO_RHYTHM then 0.2 else 0.09,
 		Style = if WINDOW_TAS then Enum.EasingStyle.Quad elseif VIDEO_RHYTHM then Enum.EasingStyle.Back else Enum.EasingStyle.Quad,
 		Direction = Enum.EasingDirection.In,
 	},
@@ -594,19 +620,35 @@ local UiMotion = {
 	-- (local au joueur), jamais pendant une poursuite (ChaseController.IsChased) ; détruit une fois parti.
 	Blur = {
 		Name = "UiBlur", -- V0 proposé, absent du doc
-		Size = if WINDOW_TAS then 16 else 12, -- vague 73 (L-230) : « ≈ 16, à étalonner entre 12 et 24 »
-		InTime = if WINDOW_TAS then 0.2 else 0.17, -- vague 73 : TweenInfo(0.2, Quad, InOut)
-		OutTime = if WINDOW_TAS then 0.15 else 0.17, -- vague 73 : TweenInfo(0.15, Quad, InOut) ; avant : 0,17 s
-		OutDelay = if WINDOW_TAS then 0.07 else 0, -- vague 73 : « sortie 70 ms après le clic »
+		Size = if WINDOW_E then 10 elseif WINDOW_TAS then 16 else 12, -- vague 74 (L-259) : « environ 10, à régler à l'œil » ; vague 73 (L-230) : « ≈ 16 »
+		InTime = if WINDOW_TAS then 0.2 else 0.17, -- vague 74 (L-259) : 0,2 s Quad Out ; vague 73 : TweenInfo(0.2, Quad, InOut)
+		OutTime = if WINDOW_E then 0.13 elseif WINDOW_TAS then 0.15 else 0.17, -- vague 74 : « à 0 en 0,13 s » ; vague 73 : 0,15 s ; avant : 0,17 s
+		OutDelay = if WINDOW_E then 0 elseif WINDOW_TAS then 0.07 else 0, -- vague 73 : « sortie 70 ms après le clic »
 		Style = if WINDOW_TAS then Enum.EasingStyle.Quad else Enum.EasingStyle.Quint,
-		Direction = if WINDOW_TAS then Enum.EasingDirection.InOut else Enum.EasingDirection.Out,
+		Direction = if WINDOW_E then Enum.EasingDirection.Out elseif WINDOW_TAS then Enum.EasingDirection.InOut else Enum.EasingDirection.Out,
 		-- Vague 73 (L-230 : « sous la caméra, pour ne rien laisser dans Lighting ») : true = sous Workspace.CurrentCamera
 		-- (Lighting si la caméra manque) ; false = dans Lighting, comme avant.
 		UnderCamera = WINDOW_TAS,
 		-- Écrans qui floutent le jeu derrière eux (V0 proposé : les boutiques d'achat et l'index, toutes versions) ;
 		-- un autre ScreenGui aussi s'il porte l'attribut Attribute = true (posé par Clément).
-		Screens = (if WINDOW_TAS then WINDOWS else { "UI_WeaponShop", "UI_AuraShop", "UI_RobuxShop", "UI_RobuxShop_v2", "UI_DiamondShop", "UI_Index", "UI_Index_v2", "UI_Index_v3" }) :: { string },
+		Screens = (if WINDOW_E then CENTRAL elseif WINDOW_TAS then WINDOWS else { "UI_WeaponShop", "UI_AuraShop", "UI_RobuxShop", "UI_RobuxShop_v2", "UI_DiamondShop", "UI_Index", "UI_Index_v2", "UI_Index_v3" }) :: { string },
 		Attribute = "Blur",
+	},
+	-- Vague 74 (a258, L-259 b) : voile noir de Clément (écran Screen, cadre Frame) derrière la fenêtre de Blur.Screens
+	-- allumée la plus haute (UiMotionController, en même temps que le flou, jamais en poursuite) : écran allumé à
+	-- DisplayOrder de la fenêtre + Offset, cadre de transparence 1 à celle posée par Clément (0,62) en InTime, retour à 1
+	-- en OutTime à la fermeture, puis écran éteint et valeurs de Clément remises. Une fenêtre qui en remplace une autre :
+	-- le voile reste. Écran absent : pas de voile (flou seul). Enabled = false : jamais de voile.
+	Veil = {
+		Enabled = WINDOW_E,
+		Screen = "UI_Veil",
+		Frame = "Veil",
+		Offset = -1, -- L-259 : « DisplayOrder égal à celui de la fenêtre moins 1 »
+		InTime = 0.2, -- L-259 : 1 → 0,62 en 0,2 s, Quad Out
+		OutTime = 0.13, -- L-259 : « à 0 en 0,13 s »
+		Style = Enum.EasingStyle.Quad,
+		Direction = Enum.EasingDirection.Out,
+		CloseOnClick = true, -- V0 proposé (L-259 : « à toi de voir ») : un clic sur le voile ferme la fenêtre
 	},
 	-- Vague 64 (a212 ; L-188 B : « le HUD se cache derrière les fenêtres de boutique » ; vidéo, section 3 : la barre du
 	-- bas descend hors de l'écran en ~150 ms à l'ouverture et revient en ~170 ms à la fermeture). Tant qu'un écran plein
