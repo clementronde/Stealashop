@@ -441,6 +441,18 @@ table.insert(UI.Screens, {
 	},
 })
 
+-- Vague 74 (a258, L-259 b ; UiMotionController, Config/UiMotion.Veil) : voile noir derrière les fenêtres centrales.
+-- Écran éteint en Studio ; le code l'allume sous la fenêtre (DisplayOrder − 1), fond Veil de 1 à sa transparence de
+-- Studio (0,62), puis l'éteint et remet les valeurs de Clément. Un clic sur Veil ferme la fenêtre. Absent : flou seul.
+table.insert(UI.Screens, {
+	Name = "UI_Veil",
+	Class = "ScreenGui",
+	Optional = true,
+	Elements = {
+		{ Path = "Veil", Class = "GuiObject" },
+	},
+})
+
 -- Index v3 (L-095 point 1 ; noms de docs/claude/notes/ui-index-v3.md, prototype tools/clement/index_v3.luau,
 -- relevé de Studio du 2026-11-11) : remplace UI_Index_v2. Une liste, une section par zone (cartes dans
 -- Content.Cards, ZoneArt.ZoneName, Content.ZoneBar avec Fill, ZoneCount et ZoneItem), la fiche Detail de

@@ -99,7 +99,8 @@ local UiMotion = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("
 export type Phase = "Opening" | "Open" | "Closing" | "Closed"
 
 -- Une animation d'entrée ou de sortie : échelle de départ (entrée) ou d'arrivée (sortie), tween.
-type Transition = { scale: number, info: TweenInfo }
+-- Vague 74 (L-259) : `peak` = échelle de passage (premier tween en `peakInfo`, puis `info` jusqu'au but) ; nil : un seul tween.
+type Transition = { scale: number, info: TweenInfo, peak: number?, peakInfo: TweenInfo? }
 
 -- Un écran ou un élément animé par Motion.
 type Entry = {
@@ -123,10 +124,14 @@ type Rolling = {
 local OPEN: Transition = {
 	scale = UiMotion.Open.From,
 	info = TweenInfo.new(UiMotion.Open.Time, UiMotion.Open.Style, UiMotion.Open.Direction),
+	peak = UiMotion.Open.Peak,
+	peakInfo = TweenInfo.new(UiMotion.Open.PeakTime, UiMotion.Open.PeakStyle, UiMotion.Open.PeakDirection),
 }
 local CLOSE: Transition = {
 	scale = UiMotion.Close.To,
 	info = TweenInfo.new(UiMotion.Close.Time, UiMotion.Close.Style, UiMotion.Close.Direction),
+	peak = UiMotion.Close.Peak,
+	peakInfo = TweenInfo.new(UiMotion.Close.PeakTime, UiMotion.Close.PeakStyle, UiMotion.Close.PeakDirection),
 }
 local SHOW: Transition = {
 	scale = UiMotion.Show.From,
@@ -465,6 +470,20 @@ local function run(entry: Entry, targets: { GuiObject }, start: number?, fresh: 
 	end
 end
 
+-- Vague 74 (L-259) : comme run, en deux tweens si la transition a un `peak` (départ → peak en peakInfo, puis
+-- peak → goal en info). Une autre animation lancée entre les deux (jeton changé) arrête la suite.
+local function runTwo(entry: Entry, inst: Instance, start: number?, fresh: number, goal: number, transition: Transition, finish: () -> ())
+	local peak, peakInfo = transition.peak, transition.peakInfo
+	if peak == nil or peakInfo == nil then
+		run(entry, targetsOf(inst), start, fresh, goal, transition.info, finish)
+		return
+	end
+	local second: number = peak
+	run(entry, targetsOf(inst), start, fresh, second, peakInfo, function()
+		run(entry, targetsOf(inst), nil, second, goal, transition.info, finish)
+	end)
+end
+
 ------------------------------------------------------------------------------
 -- Contenu qui arrive après la fenêtre (OpenStagger) et changement d'onglet (Swap), L-094
 ------------------------------------------------------------------------------
@@ -766,7 +785,7 @@ local function enter(inst: Instance, transition: Transition)
 	end
 	current.phase = "Opening"
 	setShown(inst, true)
-	run(current, targetsOf(inst), transition.scale, transition.scale, 1, transition.info, function()
+	runTwo(current, inst, transition.scale, transition.scale, 1, transition, function()
 		current.phase = "Open"
 		release(current)
 	end)
@@ -825,7 +844,7 @@ local function leave(inst: Instance, transition: Transition, after: (() -> ())?)
 		table.clear(entry.after)
 		runAfter(callbacks)
 	end
-	run(entry, targetsOf(inst), nil, 1, transition.scale, transition.info, function()
+	runTwo(entry, inst, nil, 1, transition.scale, transition, function()
 		local left = hold - (os.clock() - started)
 		if left <= 0 then
 			closed()
@@ -918,6 +937,16 @@ function Motion.SetCloser(gui: ScreenGui, close: (() -> ())?)
 		closers[gui] = close
 	else
 		closers[gui] = nil
+	end
+end
+
+-- Vague 74 (L-259, clic sur le voile) : ferme `gui` comme son contrôleur (Motion.SetCloser), sinon Motion.Close.
+function Motion.Dismiss(gui: ScreenGui)
+	local closer = closers[gui]
+	if closer then
+		closer()
+	else
+		Motion.Close(gui)
 	end
 end
 

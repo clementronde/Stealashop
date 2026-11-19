@@ -25,6 +25,9 @@
 --     après le clic ; tout le HUD (HudHide.Hide) éteint à l'image où une grande fenêtre (HudHide.Screens, ou l'attribut
 --     HudHide.Attribute = true) s'allume, rendu à l'image où elle s'éteint (HudMask, masque HudHide.MaskKey) ; sauf
 --     les écrans que toutes les fenêtres allumées gardent (HudHide.Keep, correctif f70 : UI_Displayed garde UI_Hotbar).
+--   - Vague 74 (a258, L-259 b, Config/UiMotion.Veil) : voile noir de Clément (UI_Veil.Veil) allumé sous la fenêtre à
+--     flou la plus haute (DisplayOrder − 1), fondu à sa transparence de Studio, retiré à la fermeture ; un clic dessus
+--     ferme la fenêtre (Motion.Dismiss, V0). Sans UI_Veil : flou seul.
 -- Connexions : une par écran pour Enabled, DescendantAdded et AncestryChanged, et une ou deux par élément qui porte
 -- un attribut d'animation ; toutes coupées quand l'élément quitte l'écran ou que l'écran quitte le PlayerGui.
 -- Aucun script dans l'UI ; aucune valeur de Clément changée durablement.
@@ -252,6 +255,142 @@ local function setBlur(wanted: boolean)
 	tween:Play()
 end
 
+------------------------------------------------------------------------------
+-- Voile (vague 74, a258, L-259 b, Config/UiMotion.Veil)
+------------------------------------------------------------------------------
+
+-- Le voile de Clément (UI_Veil.Veil) et ses valeurs posées en Studio, remises quand il s'éteint.
+type VeilState = {
+	gui: ScreenGui,
+	frame: GuiObject,
+	order: number,
+	alpha: number,
+	wanted: boolean,
+	tween: Tween?,
+	click: RBXScriptConnection?,
+}
+local VEIL = UiMotion.Veil
+local VEIL_IN_INFO = TweenInfo.new(VEIL.InTime, VEIL.Style, VEIL.Direction)
+local VEIL_OUT_INFO = TweenInfo.new(VEIL.OutTime, VEIL.Style, VEIL.Direction)
+local veil: VeilState? = nil
+local veilTop: ScreenGui? = nil
+
+-- La fenêtre à flou allumée la plus haute (DisplayOrder), sauf celles qui se ferment ; nil en poursuite.
+local function topWindow(): ScreenGui?
+	local api = chase
+	if not VEIL.Enabled or (api ~= nil and api.IsChased()) then
+		return nil
+	end
+	local best: ScreenGui? = nil
+	for gui in blurScreens do
+		if gui.Enabled and gui.Parent ~= nil and Motion.GetState(gui) ~= "Closing" then
+			local current = best
+			if current == nil or gui.DisplayOrder > current.DisplayOrder then
+				best = gui
+			end
+		end
+	end
+	return best
+end
+
+local function findVeil(): VeilState?
+	local current = veil
+	if current ~= nil and current.gui.Parent ~= nil and current.frame:IsDescendantOf(current.gui) then
+		return current
+	end
+	if current ~= nil and current.click ~= nil then
+		current.click:Disconnect()
+	end
+	veil = nil
+	local playerGui = localPlayer:FindFirstChildOfClass("PlayerGui")
+	local gui = if playerGui ~= nil then playerGui:FindFirstChild(VEIL.Screen) else nil
+	if gui == nil or not gui:IsA("ScreenGui") then
+		return nil -- repli : pas de voile, le flou seul
+	end
+	local frame = gui:FindFirstChild(VEIL.Frame)
+	if frame == nil or not frame:IsA("GuiObject") then
+		return nil
+	end
+	local screen = gui :: ScreenGui
+	local object = frame :: GuiObject
+	local state: VeilState = {
+		gui = screen,
+		frame = object,
+		order = screen.DisplayOrder,
+		alpha = object.BackgroundTransparency,
+		wanted = false,
+	}
+	if VEIL.CloseOnClick then
+		-- V0 (L-259 : « à toi de voir ») : un clic ou un toucher sur le voile ferme la fenêtre du dessus.
+		state.click = object.InputBegan:Connect(function(input: InputObject)
+			local kind = input.UserInputType
+			if kind ~= Enum.UserInputType.MouseButton1 and kind ~= Enum.UserInputType.Touch then
+				return
+			end
+			local top = veilTop
+			if state.wanted and top ~= nil and top.Enabled and Motion.GetState(top) ~= "Closing" then
+				Motion.Dismiss(top)
+			end
+		end)
+	end
+	veil = state
+	return state
+end
+
+local function updateVeil()
+	local state = findVeil()
+	if state == nil then
+		veilTop = nil
+		return
+	end
+	local top = topWindow()
+	veilTop = top
+	if top ~= nil then
+		state.gui.DisplayOrder = top.DisplayOrder + VEIL.Offset -- une fenêtre qui en remplace une autre : il suit
+	end
+	local wanted = top ~= nil
+	if wanted == state.wanted then
+		return
+	end
+	state.wanted = wanted
+	local previous = state.tween
+	state.tween = nil
+	if previous ~= nil then
+		previous:Cancel()
+	end
+	local function off()
+		state.gui.Enabled = false
+		state.frame.BackgroundTransparency = state.alpha -- valeurs de Clément remises
+		state.gui.DisplayOrder = state.order
+	end
+	if wanted and not state.gui.Enabled then
+		state.frame.BackgroundTransparency = 1
+		state.gui.Enabled = true
+	end
+	if Appear.Reduced() then
+		if wanted then
+			state.frame.BackgroundTransparency = state.alpha
+		else
+			off()
+		end
+		return
+	end
+	local tween = TweenService:Create(state.frame, if wanted then VEIL_IN_INFO else VEIL_OUT_INFO, {
+		BackgroundTransparency = if wanted then state.alpha else 1,
+	})
+	state.tween = tween
+	tween.Completed:Connect(function(playback: Enum.PlaybackState)
+		if playback ~= Enum.PlaybackState.Completed or state.tween ~= tween then
+			return
+		end
+		state.tween = nil
+		if not state.wanted then
+			off()
+		end
+	end)
+	tween:Play()
+end
+
 -- Vague 64 (a212, Config/UiMotion.HudAway) : la barre du bas s'écarte tant qu'un écran plein est allumé (elle part à
 -- l'ouverture et revient quand l'écran s'est éteint, comme dans la vidéo), jamais pendant une poursuite.
 local function wantsAway(): boolean
@@ -340,6 +479,7 @@ end
 
 local function updateBlur(dt: number?)
 	setBlur(wantsBlur())
+	updateVeil()
 	updateAway(dt or 0)
 	updateHide()
 	local anyOpen = false
