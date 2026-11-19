@@ -63,6 +63,7 @@
 --   Motion.StopRoll(label)      arrête un défilement ; le texte reste tel quel.
 --   Motion.GetState(inst)       "Opening", "Open", "Closing", "Closed", ou nil (jamais animé) :
 --                               pour un test (banc, barre de commande en Studio).
+--   Motion.CloseGroup(gui)      (vague 75) ferme les autres écrans allumés du groupe de gui, comme Open.
 --   Motion.SetCloser(gui, close?)
 --                               la fonction de fermeture du contrôleur de cet écran (son propre
 --                               chemin : état « ouvert », lignes à retirer…), appelée quand un
@@ -938,6 +939,14 @@ function Motion.SetCloser(gui: ScreenGui, close: (() -> ())?)
 	else
 		closers[gui] = nil
 	end
+end
+
+-- Vague 75 (a260, L-262 point 3) : ferme les autres écrans allumés du groupe de `gui`, comme Motion.Open, pour un
+-- écran que son contrôleur allume lui-même (UI_Displayed, Enabled). Sans attribut ScreenGroup : rien.
+function Motion.CloseGroup(gui: ScreenGui)
+	groupClosing = true
+	closeGroup(gui)
+	groupClosing = false
 end
 
 -- Vague 74 (L-259, clic sur le voile) : ferme `gui` comme son contrôleur (Motion.SetCloser), sinon Motion.Close.

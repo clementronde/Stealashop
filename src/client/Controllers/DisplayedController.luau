@@ -41,11 +41,13 @@
 --     bouton du HUD ; sa pastille InventoryAlert (UI/AlertBadge) s'allume quand un objet est entré dans la réserve
 --     depuis la dernière ouverture (Config/Displayed.InventoryAlert). Toggle suit l'écran réel : un écran éteint par
 --     un autre code s'ouvre au clic au lieu de demander un second clic.
+--   - vague 75 (a260, L-262 point 3) : l'écran est du groupe « Menu » (attribut ScreenGroup, posé ici si Clément n'en a
+--     pas mis ; Config/Displayed.ScreenGroup) : un autre menu qui s'ouvre le ferme, et il ferme les autres menus.
 -- Tout vient des attributs du Player posés par le serveur : InventoryState (Shared/InventoryState,
 -- InventoryService), DisplaySlotsUnlocked et DisplayReserve (DisplayService). Le client ne décide rien.
--- Seuls sont touchés : Enabled de l'écran, Visible de Panel.Reserve, les lignes clonées (taille du Template
--- gardée), leurs textes, la couleur de leurs textes ItemName et RarityLabel, l'image de leur icône et la couleur de
--- fond d'IconBack.
+-- Seuls sont touchés : Enabled de l'écran, son attribut ScreenGroup s'il n'en a pas (vague 75), Visible de
+-- Panel.Reserve, les lignes clonées (taille du Template gardée), leurs textes, la couleur de leurs textes
+-- ItemName et RarityLabel, l'image de leur icône et la couleur de fond d'IconBack.
 --
 -- API (client) :
 --   DisplayedController.Open() / Close() / Toggle()
@@ -71,6 +73,7 @@ local Icons = require(Contract:WaitForChild("Icons"))
 local Format = require(Shared:WaitForChild("Format"))
 local InventoryState = require(Shared:WaitForChild("InventoryState"))
 local AlertBadge = require(Shared:WaitForChild("AlertBadge"))
+local Motion = require(script.Parent:WaitForChild("UI"):WaitForChild("Motion")) -- vague 75 : groupe « Menu »
 
 type Entry = InventoryState.ItemEntry
 type RarityFxApi = { Apply: (target: GuiObject, rarityId: string?) -> string? }
@@ -100,6 +103,7 @@ local SHOW_RESERVE = DisplayedConfig.ShowReserve ~= false -- vague 72 (a242, L-2
 local CLOSE_ARROW = "CloseArrowButton" -- vague 72 (L-219 point 4) : la flèche vers la droite, nom proposé à Clément
 -- Vague 73 (a255, L-241 point 4) : la case Inventory de la barre du bas et sa pastille.
 local HOTBAR = "UI_Hotbar"
+local GROUP_ATTRIBUTE = "ScreenGroup" -- vague 75 : même nom que Controllers/UI/Motion
 local HOTBAR_BUTTON = "InventoryButton"
 local HOTBAR_ALERT = "InventoryAlert"
 local RESERVE_EMPTY = "ReserveEmpty"
@@ -525,6 +529,15 @@ local function bind(gui: ScreenGui)
 		reserveKey = nil,
 		connections = {},
 	}
+	-- Vague 75 (a260, L-262 point 3) : l'écran entre dans le groupe DisplayedConfig.ScreenGroup (« Menu ») si Clément ne
+	-- lui en a pas donné : un autre menu qui s'ouvre le ferme (Motion.SetCloser), et il ferme les autres à l'ouverture.
+	local group = DisplayedConfig.ScreenGroup
+	if type(group) == "string" and group ~= "" and gui:GetAttribute(GROUP_ATTRIBUTE) == nil then
+		gui:SetAttribute(GROUP_ATTRIBUTE, group)
+	end
+	Motion.SetCloser(gui, function()
+		closePanel()
+	end)
 	screen = current
 	local function keep(connection: RBXScriptConnection?)
 		if connection then
@@ -569,6 +582,7 @@ function DisplayedController.Open()
 		reportOnce("screen", `[Displayed] écran {SCREEN} absent de PlayerGui : le panneau ne s'ouvre pas`)
 		return
 	end
+	Motion.CloseGroup(current.gui) -- vague 75 : les autres menus du groupe se ferment
 	isOpen = true
 	apply(current)
 	refresh()

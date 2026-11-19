@@ -270,13 +270,16 @@ local Tutorial = {
 
 	-- Vague 73 (a256, L-242 point 5, UI_TutorialFocus de Clément ; Throw a Seed, section 6 de
 	-- docs/claude/notes/2026-11-17_throw-a-seed-a-reprendre.md) : à l'étape où il faut cliquer un bouton d'une
-	-- boutique, l'écran s'assombrit sauf ce bouton (Focus posé sur lui, Margin px autour ; son UIStroke Veil fait le
-	-- voile), Ring l'entoure, et Pointer arrive après HesitateTime s sans clic. Écran absent ou bouton introuvable
+	-- boutique, ce bouton est mis en avant (Focus posé sur lui, Margin px autour ; son UIStroke Veil, l'ancien voile, suit
+	-- Veil), Ring l'entoure, et Pointer arrive après HesitateTime s sans clic. Écran absent ou bouton introuvable
 	-- (carte pas visible, autre onglet) : rien. Enabled = false : jamais.
 	Focus = {
 		Enabled = true,
 		Screen = "UI_TutorialFocus",
 		HesitateTime = 1.2, -- note de Clément (L-242) : « 1,2 s dans la note »
+		-- Vague 75 (L-262 point 2, Clément : « on ne grise pas les autres boutons », un encadré met en avant le bouton) :
+		-- false = le UIStroke Focus.Veil de Clément est éteint, rien n'assombrit le reste. true : le voile de la vague 73.
+		Veil = false,
 		Margin = 6, -- V0 proposé, absent du doc : px entre le bouton et le bord de Focus
 		-- Étape → écran, fin du nom de la carte (Tool_02_Wrench, Item_Spark) et bouton visé dans la carte. V0.
 		Targets = {

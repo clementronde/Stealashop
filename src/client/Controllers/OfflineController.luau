@@ -178,6 +178,17 @@ local function button(root: Instance, name: string): GuiButton?
 	return nil
 end
 
+-- Vague 75 (a260, bug : UI_Offline restait ouvert sur « $0 » sans gain).
+-- Allumé par ailleurs (copie de StarterGui allumée, masque de HudMask qui rend une valeur gardée) alors qu'il n'est pas
+-- ouvert ici ni en train de se fermer, sans rien en attente : éteint aussitôt, sans son. Avec un gain en attente, check()
+-- le reprend comme avant.
+local function shutStray(current: Screen)
+	local gui = current.gui
+	if gui.Enabled and not isOpen and pending() < 1 and Motion.GetState(gui) ~= "Closing" then
+		gui.Enabled = false
+	end
+end
+
 local function bind(gui: ScreenGui)
 	local old = screen
 	if old then
@@ -196,6 +207,9 @@ local function bind(gui: ScreenGui)
 		connections = {},
 	}
 	screen = current
+	table.insert(current.connections, gui:GetPropertyChangedSignal("Enabled"):Connect(function()
+		shutStray(current) -- vague 75
+	end))
 	local claimButton = button(gui, "ClaimButton")
 	if claimButton then
 		table.insert(current.connections, claimButton.Activated:Connect(onClaim))
@@ -255,6 +269,7 @@ local function check()
 	if isOpen and not current.gui.Enabled then
 		isOpen = false -- éteint par ailleurs
 	end
+	shutStray(current) -- vague 75 : jamais allumé sans que ce contrôleur l'ait ouvert (« $0 » sans gain)
 	if wanted and not isOpen and not groupBusy(current.gui) then
 		open(current)
 	elseif isOpen and pending() < 1 and not claiming then

@@ -67,6 +67,7 @@ local Features = require(Shared.Config.Features)
 local Formulas = require(Shared.Config.Formulas)
 local Items = require(Shared.Config.Items)
 local Mutations = require(Shared.Config.Mutations)
+local Offline = require(Shared.Config.Offline) -- vague 75
 local Rebirths = require(Shared.Config.Rebirths)
 local Format = require(Shared.Format)
 local Net = require(Shared.Net.Net)
@@ -373,6 +374,7 @@ local function commit(player: Player, data: Data, level: number, remitted: strin
 	data.Cosmetics.EquippedAura = nil
 	data.Cosmetics.EquippedTrail = nil
 	data.Offline.Pending = nil
+	player:SetAttribute(Offline.PendingAttribute, 0) -- vague 75 (T-216) : sinon UI_Offline reste sur l'ancien gain
 
 	-- Le compteur, puis l'argent en dernier (DataService.SpendCash : attribut Cash et écouteurs).
 	;(data :: any).Rebirths = level
