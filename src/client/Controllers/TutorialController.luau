@@ -43,8 +43,9 @@
 -- Vague 73 (a256, L-242 point 5) : le repère de Clément rebondit (Tutorial.MarkerBob, MarkerPeriod) ; aux étapes de
 -- Tutorial.Focus.Targets (7 : la clé à molette, 8 : la première aura), quand la boutique est ouverte et la carte
 -- visible, UI_TutorialFocus de Clément s'allume : Focus posé sur le BuyButton (Margin px autour, barre de Roblox
--- comprise), son voile assombrit le reste ; Pointer se montre après HesitateTime s. Seuls Enabled de l'écran,
--- Position et Size de Focus et Visible de Pointer sont touchés. Écran absent : rien.
+-- comprise), sans voile sur le reste (vague 75, L-262 point 2 : Focus.Veil) ; Pointer se montre après HesitateTime s.
+-- Seuls Enabled de l'écran, Position et Size de Focus, Enabled de son UIStroke Veil et Visible de Pointer sont
+-- touchés. Écran absent : rien.
 --
 -- API (client) :
 --   TutorialController.GetState() -> { Step, Hint, Text, Target, Shown, Fallback, Arrow, Have, Need, Tasks }
@@ -106,6 +107,7 @@ local MARKER_PERIOD = Tutorial.MarkerPeriod -- s
 local FOCUS = Tutorial.Focus
 local FOCUS_FRAME = "Focus"
 local FOCUS_POINTER = "Pointer"
+local FOCUS_VEIL = "Veil" -- vague 75 : UIStroke de Focus qui assombrissait le reste de l'écran (L-242 point 5)
 
 type View = {
 	gui: ScreenGui,
@@ -680,6 +682,11 @@ local function placeFocus()
 	local anchored = topLeft + focus.AnchorPoint * size
 	focus.Position = UDim2.fromOffset(anchored.X, anchored.Y)
 	focus.Size = UDim2.fromOffset(size.X, size.Y)
+	-- Vague 75 (a260, L-262 point 2 : « on ne grise pas les autres boutons ») : le UIStroke Veil de Clément suit FOCUS.Veil.
+	local veil = focus:FindFirstChild(FOCUS_VEIL)
+	if veil and veil:IsA("UIStroke") and (veil :: UIStroke).Enabled ~= FOCUS.Veil then
+		(veil :: UIStroke).Enabled = FOCUS.Veil
+	end
 	if not screen.Enabled then
 		screen.Enabled = true
 	end

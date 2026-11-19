@@ -34,6 +34,9 @@ local Displayed = {
 	-- depuis la dernière fois que l'écran était ouvert, et s'éteint à l'ouverture. V0, proposition à Clément.
 	InventoryAlert = true,
 	InventoryAlertGrace = 3, -- V0 (s) : à l'arrivée, ce qui entre dans la réserve pendant ce temps n'est pas « nouveau »
+	-- Vague 75 (a260, L-262 point 3, Clément : « Oui ») : UI_Displayed entre dans ce ScreenGroup (attribut posé par le code
+	-- si Clément n'en a pas mis) : un autre menu qui s'ouvre le ferme, et il ferme les autres menus. "" : hors groupe.
+	ScreenGroup = "Menu",
 
 	-- « +$X/s » de l'objet qui vole de son présentoir jusqu'à l'argent du HUD (L-192 Q2), une fois par pose
 	-- (à la main, « Exposer les meilleurs », depuis la réserve), jamais pendant une poursuite (GainController).
