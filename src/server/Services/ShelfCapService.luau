@@ -26,7 +26,12 @@
 --      studs, est à au moins FurnitureMinHeight studs au-dessus du sol (bas de Bounds) et à plus de
 --      FurnitureCeilingMargin studs du haut de Bounds. Sont donc laissés de côté : le sol et les marches, les
 --      murs, piliers et montants (trop fins), le plafond et ce qui touche le haut de Bounds, et tout ce qui
---      est dans Window, WindowFractured, Shutter ou Door (vitrine, rideau, portes). Bloc : le dessus de la
+--      est dans Window, WindowFractured, Shutter ou Door (vitrine, rideau, portes). Meuble haut et étroit
+--      (T-061, Play du 19/11 : la `Comtoise_Case` de l'Antiquaire, dessus 1,8 × 2,25 à 8,2 studs du sol,
+--      atteinte d'un seul saut) : un dessus d'au moins FurnitureNarrowMinTop × FurnitureNarrowMinTop studs
+--      suffit quand il est entre FurnitureNarrowMinHeight et FurnitureNarrowMaxHeight studs au-dessus du sol
+--      (plus haut qu'un perso, encore à portée de saut) ; le petit meuble plus bas garde la règle 2 × 2.
+--      Bloc : le dessus de la
 --      pièce (coupé au bord de Bounds), bas = dessus + Gap. Les pièces sont prises de la plus haute à la plus
 --      basse ; une pièce dont le dessus tient entièrement sous un bloc déjà posé (un rayon déjà couvert par
 --      ses ShelfSlot, le corps d'un comptoir sous son plateau) n'en reçoit pas un deuxième.
@@ -262,9 +267,15 @@ local function furnitureCaps(placed: { Cap }, solids: { Box }, floor: number, ce
 		then
 			local low = box.Min:Max(area.Min)
 			local high = box.Max:Min(area.Max)
+			local narrow = math.min(high.X - low.X, high.Z - low.Z)
+			local above = top - floor
 			if
-				high.X - low.X >= ShelfCaps.FurnitureMinTop - EPSILON
-				and high.Z - low.Z >= ShelfCaps.FurnitureMinTop - EPSILON
+				narrow >= ShelfCaps.FurnitureMinTop - EPSILON
+				or (
+					narrow >= ShelfCaps.FurnitureNarrowMinTop - EPSILON
+					and above >= ShelfCaps.FurnitureNarrowMinHeight - EPSILON
+					and above <= ShelfCaps.FurnitureNarrowMaxHeight + EPSILON
+				)
 			then
 				table.insert(candidates, { Min = low, Max = high, NoCap = false, Furniture = true })
 			end

@@ -32,6 +32,15 @@ local ShelfCaps = {
 	-- Dessus d'au moins FurnitureMinTop × FurnitureMinTop studs (la partie dans Bounds) : en dessous, une
 	-- pièce fine (mur, pilier, montant, cadre de porte) n'en reçoit pas.
 	FurnitureMinTop = 2, -- V0
+	-- Meuble haut et étroit (T-061, Play du 19/11 : la comtoise de l'Antiquaire, dessus 1,8 × 2,25 à 8,2 studs
+	-- du sol, atteinte d'un seul saut) : un dessus d'au moins FurnitureNarrowMinTop × FurnitureNarrowMinTop
+	-- reçoit aussi un bloc quand il est à au moins FurnitureNarrowMinHeight studs au-dessus du sol (plus haut
+	-- qu'un perso R15 de 5 studs : un petit meuble plus bas reste libre) et à au plus FurnitureNarrowMaxHeight
+	-- (un saut lève les pieds d'environ 7,3 studs, plus la marche que Roblox monte seul ; au-dessus, un
+	-- linteau ou un cadre sous un mur, hors de portée).
+	FurnitureNarrowMinTop = 1, -- V0
+	FurnitureNarrowMinHeight = 5, -- V0
+	FurnitureNarrowMaxHeight = 10, -- V0
 	-- Dessus à au moins FurnitureMinHeight studs au-dessus du sol du magasin (bas de Bounds) : plus bas,
 	-- c'est une marche, on peut y monter sans risque.
 	FurnitureMinHeight = 3, -- V0
