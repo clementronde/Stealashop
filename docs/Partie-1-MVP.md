@@ -499,14 +499,15 @@ Toutes les valeurs vivent dans `ReplicatedStorage/Shared/Config` et se règlent 
 ```
 
 ```latex
-\text{Revenu d'un objet (\$/s)} = R_{\text{zone}} \times M_{\text{rareté}} \times M_{\text{global}}
+\text{Revenu d'un objet (\$/s)} = R_{\text{rareté}} \times \left(1 + 0{,}25 \times z\right) \times 1{,}1^{\,\text{rang} - 1} \times M_{\text{global}}
 ```
 
 ```latex
-\text{Coût du niveau } n = C_0 \times g^{\,n}
+\text{Coût du niveau } n = \text{Costs}[n + 1] \quad (\text{liste de prix de Config/Upgrades ; sinon } C_0 \times g^{\,n})
 ```
 
-- R zone : table de la section 4. M global : bonus cumulés, qui arrivent en Partie 2 (renaissances, gamepasses, groupe, amis).
+- R rareté : revenu de base de la rareté (table 7.3). z : nombre de zones au-dessus de la première zone où la rareté existe (+25 % par zone, ajoutés). Rang : place de l'objet dans sa rareté et sa zone, dans l'ordre de l'index (1 = le moins rentable ; +10 % par rang, composés). M global : bonus cumulés (renaissances, gamepasses, groupe, amis ; Partie 2). Décision de Cantin et Clément, 19/11 (vague 76).
+- Prix en argent du jeu remis à l'échelle de ces revenus le 2026-11-20 (Cantin, V0 proposé ; valeur d'avant notée « avant : X » dans `Config`) : outils, auras et trails, tapis et présentoirs (listes `Costs`), arbre, renaissances, pack de départ (2 600 $). Exemples : pied-de-biche 3 100 $, marteau 88 K$, masse 1,2 M$, hache 9,9 M$, disqueuse 69 M$ (clé 300 $ gardée). Prix en Robux, receleur, gains hors ligne et récompenses inchangés (ils suivent le $/s).
 - Exemple zone 3 : Marteau (20) × Force 100 (×2) × aura Flamme (×2) = 80 dégâts, soit exactement les dégâts conseillés.
 
 ### 7.2 Outils de casse
@@ -525,17 +526,30 @@ Un outil coûte environ 3 à 7 min de revenus de la zone précédente. Le Martea
 
 ### 7.3 Raretés, colis et attente d'ouverture
 
-Sur le rayon, la boîte ne montre que son type : Standard = carton brun, Premium = carton bleu scellé, Luxe = caisse en bois cerclée d'or. Dès qu'on la soulève, elle prend la couleur et le halo de sa rareté (5.6). L'attente d'ouverture ne concerne que les colis volés aux PNJ.
+Depuis la vague 76 (Cantin et Clément, 19-20/11), il n'y a plus de types de colis (Standard, Premium, Luxe : l'attribut `Tier` est sorti du contrat). Chaque colis du rayon a une rareté (`BoxRarity`, modèle `BOX_<Rareté>`), tirée selon la zone du magasin ; l'objet qui en sort est tiré dans les raretés de la zone, et ne monte au-dessus de celle du colis que rarement (`ShelfOpen.ShelfStepUp` = 0,05 par cran). La cote finale « 1 IN N » est la vraie chance d'avoir cet objet, avec sa mutation et sa taille (`Shared/ItemOdds`). Les raretés des objets suivent l'ordre de l'index (du moins au plus rentable). L'attente d'ouverture ne concerne que les colis volés aux PNJ.
 
-| Rareté | Couleur | Multiplicateur de revenu | Attente d'ouverture | Colis Standard | Colis Premium | Colis Luxe |
-| --- | --- | --- | --- | --- | --- | --- |
-| Commun | Gris | ×1 | 10 s | 70 % | 35 % | 0 % |
-| Peu commun | Vert | ×2 | 20 s | 22 % | 35 % | 25 % |
-| Rare | Bleu | ×5 | 45 s | 7 % | 20 % | 40 % |
-| Épique | Violet | ×15 | 1 min 30 | 1 % | 8 % | 25 % |
-| Légendaire | Or | ×50 | 3 min | 0 % | 1,8 % | 8 % |
-| Mythique | Rouge | ×200 | 8 min | 0 % | 0,2 % | 1,8 % |
-| Secret | Arc-en-ciel animé | ×1 000 | 15 min | 0 % | 0 % | 0,2 % |
+| Rareté | Couleur | Revenu de base ($/s) | Temps de prise | Attente d'ouverture | Zones |
+| --- | --- | --- | --- | --- | --- |
+| Commun | Gris | 1 | 0,3 s | 10 s | 1 à 4 |
+| Peu commun | Vert | 8 | 0,3 s | 20 s | 2 à 5 |
+| Rare | Bleu | 60 | 0,6 s | 45 s | 3 à 6 |
+| Épique | Violet | 450 | 0,6 s | 1 min 30 | 4 à 6 |
+| Légendaire | Or | 3 500 | 1 s | 3 min | 5 et 6 |
+| Mythique | Rouge | 25 000 | 1 s | 8 min | 6 |
+| Secret | Arc-en-ciel animé | 150 000 | 1 s | 15 min | 6 |
+
+Chances d'un colis du rayon par zone (`Rarities.ZoneOdds`, V0 proposé par Cantin le 20/11 pour que la vraie part des objets suive les repères), puis vraie part des objets (chance moyenne) :
+
+| Zone | Colis | Vraie part des objets |
+| --- | --- | --- |
+| 1 | C 100 % | C 100 % |
+| 2 | C 98,4 %, U 1,6 % | C 98 %, U 2 % |
+| 3 | C 33 %, U 65 %, R 2 % | C 49,9 %, U 48,2 %, R 1,95 % |
+| 4 | C 38,5 %, U 37,5 %, R 21,2 %, É 2,8 % | C 50 %, U 32,9 %, R 15 %, É 2 % |
+| 5 | U 38,7 %, R 37,5 %, É 21 %, L 2,8 % | U 50 %, R 33 %, É 15 %, L 2 % |
+| 6 | R 38,9 %, É 36,4 %, L 24,235 %, M 0,42 %, S 0,045 % | R 50 %, É 33 %, L 16,5 %, M 0,5 %, S 0,034 % |
+
+Camion, tour de la fortune, cadeaux et colis d'événement gardent leurs propres tables (non limitées à la zone). Divine : 0 partout tant qu'aucun objet Divine n'existe.
 
 ### 7.4 Auras et trails
 
@@ -1107,6 +1121,7 @@ Chaque étape est envoyée une seule fois par joueur avec `AnalyticsService:LogO
 
 | Date | Décision | Par |
 | --- | --- | --- |
+| 2026-11-20 | Raretés par zone et revenus par rareté (vague 76, L-266). Raretés : Z1 Commun ; Z2 Commun et Peu commun ; Z3 Commun à Rare ; Z4 Commun à Épique ; Z5 Peu commun à Légendaire ; Z6 Rare à Mythique + Secret. Plus de colis Standard, Premium ni Luxe : seuls les colis `BOX_<Rareté>` comptent (`Tier` sort du contrat). Raretés des objets dans l'ordre de l'index. Revenus : 1 / 8 / 60 / 450 / 3 500 / 25 000 $/s, Secret 150 000, +25 % par zone (ajoutés), +10 % par rang d'index. Cote « 1 IN N » = vraie chance (objet, mutation, taille). Le 20/11 (Cantin, V0) : chances des colis visées sur la vraie part des objets (`ShelfStepUp` = 0,05) et prix en argent du jeu remis à l'échelle. Détail en 7.1 et 7.3. | Cantin et Clément |
 | 2026-11-19 | Barre de gauche : rectangles sur PC, carrés seulement sur téléphone. Sur PC, les grands rectangles `LeftRail` d'avant L-256 (copie dans `ServerStorage/MapBackups/2026-11-18_UIGrande`) ; les petits carrés `LeftRailTouch` seulement sur téléphone ; noms des boutons et des `*Alert` de LeftRail inchangés, rien à changer dans le code. | Cantin et Clément |
 | 2026-11-19 | Réponses aux questions de L-260 : la cote finale de l'ouverture affiche la vraie probabilité d'avoir l'objet ; le tutoriel ne grise pas les autres boutons mais encadre le bouton à cliquer ; `UI_Displayed` se ferme quand un autre menu s'ouvre ; la pastille d'inventaire est gardée. Liaison L-262. | Clément |
 | 2026-11-19 | Fenêtres centrales : ouverture et fermeture comme la vidéo de référence E (0,5 → 1,055 → 1 en 0,33 s ; fermeture en 0,17 s, +4 % puis la fenêtre rétrécit), et voile noir derrière elles (le monde et le HUD à 62 % de luminosité, écran `UI_Veil`) avec un flou du monde, en 0,2 s ; pas de voile pour les panneaux de côté (objets exposés). Remplace l'ouverture 0,55 → 1 en 0,14 s et la fermeture en 0,09 s (L-094). Liaison L-259. | Clément |
