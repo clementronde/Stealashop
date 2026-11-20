@@ -107,6 +107,9 @@ local UNLOCK_SOUND = "UI_Success"
 local TAKE_TEXT = "Take" -- vague 44 (a152) : l'objet débloqué se reprend (en main ou dans l'inventaire), « Display » avant
 local STEAL_TEXT = "Steal"
 local STEAL_DISTANCE_MARGIN = 0.5
+-- a265 (vague 79), V0 proposé, absent du doc : relâché plus de 0,1 s avant la fin du maintien = annulé ("Cancel"
+-- envoyé au serveur, qui vide le maintien). La marge évite d'annuler un maintien conclu si le relâché arrive avant Triggered.
+local HOLD_CANCEL_MARGIN = 0.1
 local FLOOR_TICK = 0.1
 
 local UnboxController = {}
@@ -403,18 +406,37 @@ local function addFloorView(inst: Instance)
 		prompt.MaxActivationDistance = math.max(PvP.StealMaxDistance - STEAL_DISTANCE_MARGIN, 1)
 		prompt.RequiresLineOfSight = false
 		prompt.Enabled = false
-		local function fire()
+		-- a265 (vague 79) : étape envoyée avec chaque appel ; relâché avant la fin = "Cancel" (le serveur vide le maintien).
+		local function fire(phase: string)
 			local plotModel = model.Parent
 			local plotIndex = if plotModel then plotModel:GetAttribute(PLOT_INDEX_ATTRIBUTE) else nil
 			if net and type(plotIndex) == "number" then
-				net.Client.StealFloorItem:Fire(plotIndex, itemUid)
+				net.Client.StealFloorItem:Fire(plotIndex, itemUid, phase)
 			end
 		end
-		table.insert(view.connections, prompt.PromptButtonHoldBegan:Connect(fire)) -- début du maintien
+		local holdBegan: number? = nil
+		table.insert(
+			view.connections,
+			prompt.PromptButtonHoldBegan:Connect(function()
+				holdBegan = os.clock()
+				fire("Begin") -- début du maintien
+			end)
+		)
+		table.insert(
+			view.connections,
+			prompt.PromptButtonHoldEnded:Connect(function()
+				local began = holdBegan
+				holdBegan = nil
+				if began and os.clock() - began < prompt.HoldDuration - HOLD_CANCEL_MARGIN then
+					fire("Cancel")
+				end
+			end)
+		)
 		table.insert(
 			view.connections,
 			prompt.Triggered:Connect(function()
-				fire() -- fin du maintien
+				holdBegan = nil
+				fire("End") -- fin du maintien
 				playAnimation("Grab")
 			end)
 		)

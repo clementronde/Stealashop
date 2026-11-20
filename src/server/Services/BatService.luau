@@ -71,7 +71,10 @@
 -- déclenche. Vérifié : colis encore au sol (CarryService.GetDrop), mains vides, joueur vivant, pas
 -- étourdi, hors zone safe, à Bat.DroppedGrabMaxDistance (8) studs au plus du colis, maintien de
 -- Bat.DroppedGrabTime (0,5 s, quel que soit le type) à GRAB_TIME_TOLERANCE près ; tout revérifié
--- 10 fois par seconde pendant le maintien, qui expire HOLD_EXPIRY s après sa durée. N'importe qui
+-- 10 fois par seconde pendant le maintien, qui expire HOLD_EXPIRY s après sa durée. a265 (vague 79) :
+-- étape du maintien en 2e argument (phase "Begin" | "End" | "Cancel", comme GrabItem, voir l'en-tête de
+-- StoreHeistService) : un "Begin" rouvre toujours le maintien à zéro, un "End" ne conclut qu'un maintien ouvert,
+-- un "Cancel" le vide ; sans phase, l'ancien déroulé en deux appels. N'importe qui
 -- peut le prendre, le frappeur n'a aucune priorité. Alors CarryService.PickUpDrop : même payload,
 -- même contenu ; le vigile qui suivait le colis poursuit le nouveau porteur (GuardService). Pas
 -- ramassé en Bat.DroppedLifetime (15) s : CarryService le retire et StoreHeistService le renvoie
@@ -177,6 +180,8 @@ local COOLDOWN_TOLERANCE = 0.1
 local GRAB_TIME_TOLERANCE = 0.1
 -- V0 proposé, absent du doc : un maintien non conclu expire 1 s après sa durée (comme GrabItem).
 local HOLD_EXPIRY = 1
+-- a265 (vague 79) : étapes du maintien acceptées en 2e argument de GrabDropped.
+local HOLD_PHASES = { Begin = true, End = true, Cancel = true }
 -- V0 proposé, absent du doc : maintiens revérifiés 10 fois par seconde.
 local TICK = 0.1
 -- V0 proposé, absent du doc : sol cherché jusqu'à 50 studs sous le HumanoidRootPart de la cible.
@@ -680,20 +685,32 @@ local function grant(player: Player, dropId: string)
 	log(`{player.Name} ramasse le colis tombé {dropId}`)
 end
 
--- GrabDropped(dropId) : premier appel = début du maintien, second = fin (comme GrabItem).
-local function onGrabDropped(player: Player, dropId: string)
+-- GrabDropped(dropId, phase?) : début, fin ou annulation du maintien ; sans phase, premier appel = début,
+-- second = fin (comme GrabItem).
+local function onGrabDropped(player: Player, dropId: string, phase: string?)
 	-- L-112 : l'objet lâché par un joueur attrapé (CarryService.Fail « Caught ») se ramasse comme un colis
 	-- tombé d'un coup de batte, par les mêmes règles.
 	if not batDrops[dropId] and not CarryService.IsFallenDrop(dropId) then
 		return -- pas un colis tombé des mains d'un porteur : laissé au service qui l'a posé (camion)
 	end
+	if phase ~= nil and not HOLD_PHASES[phase] then
+		refuse(player, `GrabDropped sur « {dropId} » refusé : étape de maintien inconnue « {phase} »`)
+		return
+	end
+	local hold = holds[player]
+	if phase == "Cancel" then -- a265 : relâché avant la fin, maintien vidé tout de suite
+		if hold and hold.DropId == dropId then
+			holds[player] = nil
+		end
+		return
+	end
 	if not AntiCheatService.Verify(player) then
 		refuse(player, `GrabDropped sur « {dropId} » refusé : déplacement sanctionné par l'anti-triche (audit 9.8)`)
 		return
 	end
-	local hold = holds[player]
 	-- Portée souple au début du maintien, stricte à la fin (règle de StoreHeistService, « Portée »).
-	local starting = not (hold ~= nil and hold.DropId == dropId) and Bat.DroppedGrabTime > 0
+	local matching = hold ~= nil and hold.DropId == dropId
+	local starting = (if phase == nil then not matching else phase == "Begin") and Bat.DroppedGrabTime > 0
 	local reason = grabRefusal(player, dropId, starting)
 	if reason then
 		if hold and hold.DropId == dropId then
@@ -703,7 +720,8 @@ local function onGrabDropped(player: Player, dropId: string)
 		return
 	end
 	local now = os.clock()
-	if hold and hold.DropId == dropId then
+	-- a265 : un "Begin" n'est jamais une fin, il rouvre le maintien à zéro (plus bas).
+	if phase ~= "Begin" and hold and hold.DropId == dropId then
 		local elapsed = now - hold.StartedAt
 		if elapsed + GRAB_TIME_TOLERANCE >= Bat.DroppedGrabTime then
 			holds[player] = nil
@@ -716,6 +734,11 @@ local function onGrabDropped(player: Player, dropId: string)
 	if Bat.DroppedGrabTime <= 0 then
 		holds[player] = nil
 		grant(player, dropId)
+		return
+	end
+	if phase == "End" then
+		-- a265 : fin sans début ouvert sur ce colis (relâché, puis maintien vidé ou expiré) : rien n'est donné.
+		refuse(player, `GrabDropped sur « {dropId} » refusé : fin de maintien sans début ouvert`)
 		return
 	end
 	holds[player] = { DropId = dropId, StartedAt = now }

@@ -25,7 +25,10 @@
 --      au plus tôt). Les magasins PNJ ne changent pas. Prise par StealItem(plotIndex, slotIndex), en deux
 --      appels comme GrabItem : le premier ouvre un maintien (heure serveur), le second n'est accepté
 --      qu'après PvP.StealGrabTime − GRAB_TIME_TOLERANCE s ; le maintien est revérifié 10 fois par
---      seconde et expire GrabTime + HOLD_EXPIRY s après son début. Le serveur vérifie : boutique
+--      seconde et expire GrabTime + HOLD_EXPIRY s après son début. a265 (vague 79) : étape du maintien en dernier argument
+--      (phase "Begin" | "End" | "Cancel", comme GrabItem, voir l'en-tête de StoreHeistService) : un "Begin" rouvre
+--      toujours le maintien à zéro, un "End" ne conclut qu'un maintien ouvert, un "Cancel" le vide ; sans phase,
+--      l'ancien déroulé en deux appels. Le serveur vérifie : boutique
 --      ouverte, pas la sienne, les deux profils chargés, mains vides (un objet à la fois), pas
 --      d'interdiction sur cette boutique (voir 2), le voleur a une boutique et de la place (DisplayService.HasRoom), il est
 --      vivant, dans Bounds de la boutique et à PvP.StealMaxDistance (8 studs) au plus du présentoir,
@@ -279,6 +282,8 @@ local PRIORITY = 120
 -- maintien non conclu (comme GrabItem).
 local GRAB_TIME_TOLERANCE = 0.1
 local HOLD_EXPIRY = 1
+-- a265 (vague 79) : étapes du maintien acceptées en dernier argument de StealItem et de StealFloorItem.
+local HOLD_PHASES = { Begin = true, End = true, Cancel = true }
 -- V0 proposé, absent du doc : au plus un message de refus par raison toutes les 3 s.
 local NOTICE_INTERVAL = 3
 -- V0 proposé, absent du doc : marge du contrôle du dépôt (voir l'en-tête), en secondes.
@@ -1383,21 +1388,35 @@ beginTheft = function(
 	end
 end
 
--- StealItem(plotIndex, slotIndex) : premier appel = début du maintien, second = fin (voir l'en-tête).
-local function onStealItem(player: Player, plotIndex: number, slotIndex: number)
+-- StealItem(plotIndex, slotIndex, phase?) : début, fin ou annulation du maintien ; sans phase, premier appel =
+-- début, second = fin (voir l'en-tête).
+local function onStealItem(player: Player, plotIndex: number, slotIndex: number, phase: string?)
 	local what = `StealItem({plotIndex}, {slotIndex})`
 	local plot = PlotService.GetPlotByIndex(plotIndex)
 	if plot == nil then
 		refuse(player, what, "boutique inconnue")
 		return
 	end
+	if phase ~= nil and not HOLD_PHASES[phase] then
+		refuse(player, what, `étape de maintien inconnue « {phase} »`)
+		return
+	end
+	local hold = holds[player]
+	local matching = hold ~= nil and not hold.Floor and hold.Plot == plot and hold.Slot == slotIndex
+	if phase == "Cancel" then -- a265 : relâché avant la fin, maintien vidé tout de suite
+		if matching then
+			holds[player] = nil
+		end
+		return
+	end
 	if not AntiCheatService.Verify(player) then
 		refuse(player, what, "déplacement sanctionné par l'anti-triche (audit 9.8)")
 		return
 	end
-	local hold = holds[player]
 	-- Vague 51 : souple au premier appel (début du maintien), stricte au second (fin du maintien).
-	local starting = not (hold and hold.Plot == plot and hold.Slot == slotIndex)
+	local starting = if phase == nil
+		then not (hold and hold.Plot == plot and hold.Slot == slotIndex)
+		else phase == "Begin"
 	local reason, key, message = stealRefusal(player, plot, slotIndex, starting)
 	if reason then
 		if hold and hold.Plot == plot and hold.Slot == slotIndex then
@@ -1412,7 +1431,8 @@ local function onStealItem(player: Player, plotIndex: number, slotIndex: number)
 	local victim = PlotService.GetOwner(plot) -- nil : le bot (stealRefusal l'a vérifié)
 	local uid = exposedOf(plot, victim)[slotIndex].Uid
 	local now = os.clock()
-	if hold and hold.Plot == plot and hold.Slot == slotIndex and hold.Uid == uid then
+	-- a265 : un "Begin" n'est jamais une fin, il rouvre le maintien à zéro (plus bas).
+	if phase ~= "Begin" and hold and hold.Plot == plot and hold.Slot == slotIndex and hold.Uid == uid then
 		local elapsed = now - hold.StartedAt
 		if elapsed + GRAB_TIME_TOLERANCE >= PvP.StealGrabTime then
 			holds[player] = nil
@@ -1422,22 +1442,36 @@ local function onStealItem(player: Player, plotIndex: number, slotIndex: number)
 		end
 		return
 	end
+	if phase == "End" then
+		refuse(player, what, "fin de maintien sans début ouvert sur cet objet") -- a265 : rien n'est donné
+		return
+	end
 	holds[player] = { Plot = plot, Victim = victim, Slot = slotIndex, Uid = uid, StartedAt = now, Floor = false }
 end
 
--- Vague 31 (L-112) : StealFloorItem(plotIndex, itemUid), objet sous antivol au sol ; deux appels comme StealItem.
-local function onStealFloorItem(player: Player, plotIndex: number, itemUid: string)
+-- Vague 31 (L-112) : StealFloorItem(plotIndex, itemUid, phase?), objet sous antivol au sol ; comme StealItem.
+local function onStealFloorItem(player: Player, plotIndex: number, itemUid: string, phase: string?)
 	local what = `StealFloorItem({plotIndex}, {itemUid})`
 	local plot = PlotService.GetPlotByIndex(plotIndex)
 	if plot == nil then
 		refuse(player, what, "boutique inconnue")
 		return
 	end
+	if phase ~= nil and not HOLD_PHASES[phase] then
+		refuse(player, what, `étape de maintien inconnue « {phase} »`)
+		return
+	end
+	local hold = holds[player]
+	if phase == "Cancel" then -- a265 : relâché avant la fin, maintien vidé tout de suite
+		if hold and hold.Plot == plot and hold.Floor and hold.Uid == itemUid then
+			holds[player] = nil
+		end
+		return
+	end
 	if not AntiCheatService.Verify(player) then
 		refuse(player, what, "déplacement sanctionné par l'anti-triche (audit 9.8)")
 		return
 	end
-	local hold = holds[player]
 	local reason, key, message = floorRefusal(player, plot, itemUid)
 	if reason then
 		if hold and hold.Plot == plot and hold.Floor and hold.Uid == itemUid then
@@ -1451,7 +1485,8 @@ local function onStealFloorItem(player: Player, plotIndex: number, itemUid: stri
 	end
 	local victim = PlotService.GetOwner(plot) :: Player -- floorRefusal : un vrai joueur
 	local now = os.clock()
-	if hold and hold.Plot == plot and hold.Floor and hold.Uid == itemUid then
+	-- a265 : un "Begin" n'est jamais une fin, il rouvre le maintien à zéro (plus bas).
+	if phase ~= "Begin" and hold and hold.Plot == plot and hold.Floor and hold.Uid == itemUid then
 		local elapsed = now - hold.StartedAt
 		if elapsed + GRAB_TIME_TOLERANCE >= PvP.StealGrabTime then
 			holds[player] = nil
@@ -1459,6 +1494,10 @@ local function onStealFloorItem(player: Player, plotIndex: number, itemUid: stri
 		else
 			refuse(player, what, `maintien trop court ({math.round(elapsed * 100) / 100} s sur {PvP.StealGrabTime} s)`)
 		end
+		return
+	end
+	if phase == "End" then
+		refuse(player, what, "fin de maintien sans début ouvert sur cet objet") -- a265 : rien n'est donné
 		return
 	end
 	holds[player] = { Plot = plot, Victim = victim, Slot = 0, Uid = itemUid, StartedAt = now, Floor = true }
