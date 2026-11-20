@@ -985,10 +985,13 @@ local function drawContent(tier: string, zone: number): (string?, string?)
 		if candidate.Order < order then
 			local fallback = Items.Pick(zone, candidate.Id, random)
 			if fallback then
-				warnOnce(
+				-- Vague 76 : une rareté absente de la zone (Rarities.ZoneOdds) n'y a aucun objet, sans incohérence : pas d'avertissement.
+				if Rarities.Allows(zone, rarity) then
+					warnOnce(
 					`empty.{zone}.{rarity}`,
 					`aucun objet {rarity} tirable en zone {zone} (Config/Items) : ces colis du camion reçoivent un objet {candidate.Id}`
 				)
+				end
 				return fallback.Rarity, fallback.Id
 			end
 		end

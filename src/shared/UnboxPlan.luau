@@ -70,8 +70,10 @@ end
 -- Vague 74 (a257, L-253 point 2) : améliorations du colis, tirées à part de l'objet avec les probabilités de l'ouverture
 -- v2 (Config/Unbox : UpgradeChance × `luck` par cran, UpgradeMax crans), depuis la rareté du colis `startRarity`,
 -- jamais jusqu'à Secret (comme UnboxService). `roll()` rend un nombre de [0, 1[ (le Random du serveur).
+-- Vague 76 : `maxRarity` (la plus haute rareté de la zone, ShelfBoxes.ZoneRarities) : jamais au-dessus.
 local SECRET_ORDER = orderOf("Secret")
-function UnboxPlan.upgrades(startRarity: string, luck: number, roll: () -> number): number
+function UnboxPlan.upgrades(startRarity: string, luck: number, roll: () -> number, maxRarity: string?): number
+	local cap = if maxRarity then orderOf(maxRarity) else 0
 	local chance = Unbox.UpgradeChance * luck
 	chance = if chance == chance then math.clamp(chance, 0, 1) else 0
 	local order = orderOf(startRarity)
@@ -81,7 +83,7 @@ function UnboxPlan.upgrades(startRarity: string, luck: number, roll: () -> numbe
 	local done = 0
 	for _ = 1, Unbox.UpgradeMax do
 		local nextRarity = Rarities.List[order + done + 1]
-		if nextRarity == nil or (SECRET_ORDER > 0 and nextRarity.Order >= SECRET_ORDER) or roll() >= chance then
+		if nextRarity == nil or (SECRET_ORDER > 0 and nextRarity.Order >= SECRET_ORDER) or (cap > 0 and nextRarity.Order > cap) or roll() >= chance then
 			break
 		end
 		done += 1
@@ -152,7 +154,7 @@ function UnboxPlan.draw(finalRarity: string, pick: (n: number) -> number, startR
 		parts[index] = `{ids[index]}:{Rarities.List[startOrder + done].Id}`
 	end
 	local cote: number
-	if type(odds) == "number" and odds >= 1 and odds < 1e9 then
+	if type(odds) == "number" and odds >= 1 and odds < 1e15 then -- vague 76 : 1e15 (au lieu de 1e9), cotes réelles des mutations rares
 		cote = math.floor(odds)
 	else
 		local lo, hi = rangeOf(finalRarity)
@@ -220,9 +222,11 @@ local function trim(text: string): string
 	return (string.gsub(text, "%.0$", ""))
 end
 
--- « 2.4 », « 37 », « 1.2K », « 60K », « 1.5M ».
+-- « 2.4 », « 37 », « 1.2K », « 60K », « 1.5M ». Vague 76 : « 23B » au-delà du milliard.
 function UnboxPlan.formatOdds(value: number): string
-	if value >= 999_500 then
+	if value >= 999_500_000 then
+		return trim(string.format("%.1f", value / 1_000_000_000)) .. "B"
+	elseif value >= 999_500 then
 		return trim(string.format("%.1f", value / 1_000_000)) .. "M"
 	elseif value >= 9_950 then
 		return string.format("%d", math.floor(value / 1000 + 0.5)) .. "K"

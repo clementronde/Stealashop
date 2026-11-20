@@ -13,9 +13,9 @@
 --   - objet « tenu en main » : seulement l'objet dans la main (Clément, L-117 point 1). Depuis L-079, un objet
 --     ne se tient jamais en main (un clic sur sa case le pose) : il n'y en a donc aucun, PawnOffer l'envoie
 --     vide, le vendeur répond Lines.NothingHeld et PawnSellHeld est toujours refusé ; « tout vendre » reste ;
---   - prix d'un objet : math.floor(Pawn.PriceFactor × $/s), $/s = Formulas.ItemIncome(zone, rareté) ×
---     Mutations.IncomeMultiplier (même règle que l'inventaire et DisplayService ; zone : celle du catalogue,
---     sinon celle de l'objet, sinon 1), sans les bonus du joueur.
+--   - prix d'un objet : math.floor(Pawn.PriceFactor × $/s), $/s = Formulas.ItemIncome(objet) ×
+--     Mutations.IncomeMultiplier (même règle que l'inventaire et DisplayService ; vague 76 : rareté, zone et
+--     rang de l'objet), sans les bonus du joueur.
 --
 -- Remotes (Net/Definitions, vague 29, absents du tableau 9.4) :
 --   PawnAsk()                  → PawnOffer(heldUid, heldItemId, heldPrice, allCount, allPrice)
@@ -43,7 +43,6 @@ local Formulas = require(Shared.Config.Formulas)
 local Items = require(Shared.Config.Items)
 local Mutations = require(Shared.Config.Mutations)
 local Pawn = require(Shared.Config.Pawn)
-local Zones = require(Shared.Config.Zones)
 local Find = require(Shared.Contract.Find)
 local Net = require(Shared.Net.Net)
 local ProfileTypes = require(Shared.Types.Profile)
@@ -131,21 +130,14 @@ end
 -- Prix et offre
 ------------------------------------------------------------------------------
 
-local function validZone(value: any): number?
-	if type(value) == "number" and value % 1 == 0 and Zones[value] ~= nil then
-		return value
-	end
-	return nil
-end
-
 -- Prix de rachat d'un objet du profil (nil : objet inconnu).
 local function priceOfEntry(entry: any): number?
 	local def = if type(entry) == "table" then Items.ById[entry.Id] else nil
 	if def == nil then
 		return nil
 	end
-	local zone = def.Zone or validZone(entry.Zone) or 1
-	local income = Formulas.ItemIncome(zone, def.Rarity) * Mutations.IncomeMultiplier(entry.Mutation, entry.Weight) -- vague 62 : poids compris
+	local income = Formulas.ItemIncome(def.Id) -- vague 76 : rareté, zone et rang de l'objet
+		* Mutations.IncomeMultiplier(entry.Mutation, entry.Weight) -- vague 62 : poids compris
 	local price = math.floor(Pawn.PriceFactor * income)
 	if price ~= price or price < 0 or price == math.huge then
 		return nil

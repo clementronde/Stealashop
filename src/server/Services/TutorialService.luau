@@ -112,7 +112,7 @@
 -- seulement pendant son tuto :
 --   - 1er objet : StoreHeistService.SetContentOverride, appelée à la SORTIE de l'objet (pour l'ouvreur) d'un
 --     colis d'un magasin de la zone du tuto, aux étapes 1 à 3 : l'objet sorti est GuaranteedItemId (le Pot de
---     nouilles, Rare, TutorialOnly ; Tier FirstBoxTier), sans cran de rareté (contenu imposé), une seule fois par
+--     nouilles, Rare, TutorialOnly ; vague 76 : plus de type de colis), sans cran de rareté (contenu imposé), une seule fois par
 --     braquage (Session.guaranteed, remis à false au retour à l'étape 2 : rattrapé, le suivant est garanti) ;
 --   - chance : StoreHeistService.SetLuckOverride impose Tutorial.ShelfLuck (×1,5, V0) aux ouvertures du tuto
 --     tant que l'objet garanti n'est pas sorti ;
@@ -1614,7 +1614,6 @@ local function installHooks()
 		end
 		session.guaranteed = true
 		local result: StoreHeistService.OverrideResult = {
-			Tier = Tutorial.FirstBoxTier :: string,
 			ItemId = Tutorial.GuaranteedItemId,
 		}
 		return result

@@ -9,7 +9,6 @@
 -- proposé, absent du doc, à régler en playtest.
 
 local DeepFreeze = require(script.Parent.DeepFreeze)
-local Balance = require(script.Parent.Balance)
 local PvP = require(script.Parent.PvP) -- AnyoneCanRob lit le nombre de coups de la porte (PvP.DoorHits)
 local Tools = require(script.Parent.Tools) -- vague 61 : prix de la clé à molette (don de l'étape 7)
 local Cosmetics = require(script.Parent.Cosmetics) -- vague 61 : prix de l'aura la moins chère (don de l'étape 8)
@@ -168,7 +167,8 @@ local Tutorial = {
 	FirstStoreDistance = 60, -- flèche vers la Supérette, à 60 studs
 
 	-- 5.11 : résultats garantis
-	FirstBoxTier = "Premium" :: Balance.BoxTier, -- Tier passé avec l'objet imposé (StoreHeistService.SetContentOverride)
+	-- Vague 76 : plus de FirstBoxTier (les colis des rayons n'ont plus de type ; zone 1 : colis Communs, l'objet
+	-- imposé reste le Pot de nouilles, Rare).
 	GuardSpeed = 12, -- vigile lent du tuto
 	-- Objet du premier colis (catalogue v2, L-045) : le Pot de nouilles, Rare de la zone 1, marqué
 	-- TutorialOnly dans Config/Items : il ne sort d'aucun tirage, Items.Pick(1, "Rare") ne le donne

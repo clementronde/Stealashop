@@ -174,7 +174,7 @@ local function incomeOf(id: string, zone: number?, mutation: Mutation?, weight: 
 	if def == nil then
 		return 0
 	end
-	local ok, value = pcall(Formulas.ItemIncome, zone or def.Zone or 1, def.Rarity, nil)
+	local ok, value = pcall(Formulas.ItemIncome, def.Id, nil) -- vague 76 : rareté, zone et rang de l'objet
 	if not ok or type(value) ~= "number" or value ~= value then
 		return 0
 	end

@@ -307,7 +307,6 @@ end
 
 local function checkAttributes(scanned: { Instance })
 	local zone = Attributes.Zone
-	local tierValues = Attributes.Tier.Values
 	for _, inst in scanned do
 		local zoneValue = inst:GetAttribute(zone.Name)
 		if zoneValue ~= nil then
@@ -319,13 +318,6 @@ local function checkAttributes(scanned: { Instance })
 			elseif zoneValue % 1 ~= 0 or zoneValue < zone.Min or zoneValue > zone.Max then
 				problem("Tags", `{inst:GetFullName()} : Zone = {zoneValue}, attendu un entier de {zone.Min} à {zone.Max}`)
 			end
-		end
-		local tierValue = inst:GetAttribute(Attributes.Tier.Name)
-		if tierValue ~= nil and (type(tierValue) ~= "string" or table.find(tierValues, tierValue) == nil) then
-			problem(
-				"Tags",
-				`{inst:GetFullName()} : Tier = « {tostring(tierValue)} », attendu {table.concat(tierValues, ", ")}`
-			)
 		end
 		local itemId = inst:GetAttribute(Attributes.ItemId.Name)
 		if itemId ~= nil and (type(itemId) ~= "string" or itemId == "") then
@@ -473,14 +465,6 @@ local function hasAnyPart(root: Instance, parts: { Part }): boolean
 	return false
 end
 
-local function describeTiers(byTier: { [string]: number }): string
-	local parts: { string } = {}
-	for _, value in Attributes.Tier.Values do
-		table.insert(parts, `{byTier[value] or 0} {value}`)
-	end
-	return table.concat(parts, ", ")
-end
-
 local checkParts: (category: string, root: Instance, label: string, parts: { Part }) -> ()
 
 -- Vague 42 (InBounds) : position de l'élément, et s'il est dans la boîte englobante de `root`.
@@ -513,9 +497,6 @@ local function checkFound(category: string, inst: Instance, shown: string, part:
 	if class and not inst:IsA(class) then
 		problem(category, `{shown} doit être un {class} (trouvé : {inst.ClassName})`)
 	end
-	if part.Tier and inst:GetAttribute(Attributes.Tier.Name) == nil then
-		problem(category, `{shown} : attribut Tier manquant ({table.concat(Attributes.Tier.Values, ", ")})`)
-	end
 	if part.Invisible and inst:IsA("BasePart") and (inst :: BasePart).Transparency < 1 then
 		problem(category, `{shown} doit être invisible (Transparency = 1)`)
 	end
@@ -540,8 +521,6 @@ local function checkSeries(category: string, root: Instance, label: string, part
 		min = from - 1 -- L-086 : aucun numéro obligatoire, rien d'écrit s'ils manquent
 	end
 	local missing: { string } = {}
-	local byTier: { [string]: number } = {}
-	local tiersComplete = true
 	for i = from, to do
 		local name = seriesName(part, i)
 		local found = index[name]
@@ -549,18 +528,11 @@ local function checkSeries(category: string, root: Instance, label: string, part
 			if i <= min then
 				table.insert(missing, name)
 			end
-			tiersComplete = false
 		else
 			if #found > 1 then
 				problem(category, `{label} : {#found} éléments nommés {name}, un seul attendu`)
 			end
 			checkFound(category, found[1], `{label}.{name}`, part, root)
-			local tier = found[1]:GetAttribute(Attributes.Tier.Name)
-			if type(tier) == "string" then
-				byTier[tier] = (byTier[tier] or 0) + 1
-			else
-				tiersComplete = false
-			end
 		end
 	end
 
@@ -576,18 +548,6 @@ local function checkSeries(category: string, root: Instance, label: string, part
 		problem(category, `{label} : {listNames(missing)} introuvable(s){noteText}`)
 	end
 
-	local expected = part.TierCounts
-	if expected and tiersComplete then
-		for _, value in Attributes.Tier.Values do
-			if (byTier[value] or 0) ~= (expected[value] or 0) then
-				problem(
-					category,
-					`{label} : {seriesBase(part)} en {describeTiers(byTier)}, attendu {describeTiers(expected)} (5.3)`
-				)
-				break
-			end
-		end
-	end
 	return nil
 end
 

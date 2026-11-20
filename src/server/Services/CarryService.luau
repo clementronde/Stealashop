@@ -585,11 +585,11 @@ local function boxLabel(rarity: Rarity): BillboardGui
 	return gui
 end
 
--- $/s d'un objet sorti d'un colis (L-112), comme une fois exposé (DisplayService) : revenu de sa zone
--- (celle du magasin pour un Secret, qui n'a pas de zone) et de sa rareté, mutation comprise.
+-- $/s d'un objet sorti d'un colis (L-112), comme une fois exposé (DisplayService) : Formulas.ItemIncome (vague 76 :
+-- rareté, zone et rang de l'objet), mutation comprise.
 local function npcItemIncome(payload: NPCItemPayload): number
-	local item = Items.ById[payload.ItemId]
-	return Formulas.ItemIncome(item.Zone or payload.Zone, payload.Rarity) * Mutations.IncomeMultiplier(payload.Mutation, payload.Weight) -- vague 62 : poids compris
+	return Formulas.ItemIncome(payload.ItemId) -- vague 76 : rareté, zone et rang de l'objet
+		* Mutations.IncomeMultiplier(payload.Mutation, payload.Weight) -- vague 62 : poids compris
 end
 
 -- Étiquette BB_Carry d'un objet porté (objet volé à un joueur, 6.1 ; objet sorti d'un colis, L-112) :

@@ -473,8 +473,8 @@ local function itemIncomeOf(entry: any): number
 	if def == nil then
 		return 0
 	end
-	local zone = def.Zone or (if type(entry.Zone) == "number" and Zones[entry.Zone] ~= nil then entry.Zone else nil) or 1
-	return Formulas.ItemIncome(zone, def.Rarity) * Mutations.IncomeMultiplier(entry.Mutation, entry.Weight) -- vague 62 : poids compris (mutation brute : repli de l'ancienne taille)
+	return Formulas.ItemIncome(def.Id) * -- vague 76 : rareté, zone et rang de l'objet
+		Mutations.IncomeMultiplier(entry.Mutation, entry.Weight) -- vague 62 : poids compris (mutation brute : repli de l'ancienne taille)
 end
 
 local function emitItem(list: { ItemListener }, player: Player, itemUid: string, itemId: string)
@@ -1336,7 +1336,10 @@ local function drawGiftRarity(zone: number, tier: string, minOrder: number): str
 	for _, rarity in Rarities.List do
 		local weight = oddsOf(zone, tier, rarity.Id)
 		local allZones = Items.AllZones[rarity.Id]
-		local possible = if allZones ~= nil then #allZones > 0 else hasItem(zone, rarity.Id)
+		-- Vague 76 : un Secret seulement dans les zones qui l'ont (Items.Pick ; zone 6).
+		local possible = if allZones ~= nil
+			then #allZones > 0 and (Rarities.FirstZone[rarity.Id] == nil or Rarities.Allows(zone, rarity.Id))
+			else hasItem(zone, rarity.Id)
 		if rarity.Order >= minOrder and weight > 0 and possible then
 			weights[rarity.Id] = weight
 			total += weight
@@ -1394,6 +1397,12 @@ function UnboxService.GiveItem(player: Player, tier: string, zone: number, minRa
 	end
 	if not validGift(player, "GiveItem", tier, zone, minRarity) then
 		return nil, "Invalid", nil
+	end
+	-- Vague 76 (V0 proposé, a262) : chaque zone n'a que certaines raretés (ShelfBoxes.ZoneOdds) ; une rareté minimale
+	-- absente de la zone (Épique en zone 2) fait passer le don à la première zone où elle existe (zone 4).
+	local firstZone = if minRarity then ShelfBoxes.FirstZone[minRarity] else nil
+	if firstZone and firstZone > zone then
+		zone = firstZone
 	end
 	local roomOk, room = pcall(DisplayService.HasInventoryRoom, player)
 	if not (roomOk and room == true) then
