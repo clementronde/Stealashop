@@ -29,7 +29,7 @@ C'est **la seule liste des tests en jeu**, pour les deux Claude. Elle remplace l
 
 Avant de commencer, relance le Play : un Play déjà lancé garde l'ancien code. À deux joueurs : dans Studio, onglet Test > Clients and Servers, 2 joueurs (Clément peut être le 2e). Sur téléphone : Test > Device, un téléphone, puis Play ; ensuite, sur un vrai téléphone.
 
-Prochain numéro : **T-244**.
+Prochain numéro : **T-246**.
 
 - T-003 | Ironix, à deux | Vigile qui garde l'objet : le 2e joueur reprend l'objet tombé → le vigile poursuit celui qui l'a pris. Pas joué par Claude (14/11) : il faut deux vrais joueurs. Vu seul : quand le voleur reprend lui-même le colis tombé, le vigile change de cible et le poursuit aussitôt ; reste à toi : le même cas avec le 2e joueur.
 - T-004 | Ironix, seul | HEIST et RUN! : casse une vitrine → « HEIST: 13s » en haut au centre. Prends un objet → « RUN! » s'affiche et « HEIST » disparaît : jamais les deux en même temps. Vu par Claude (14/11) : « HEIST: 13s » à la casse, « RUN! » à la prise, « HEIST » caché ensuite pour tout le vol ; mais « HEIST » reste affiché pendant son fondu de sortie, 0,1 à 0,17 s en même temps que « RUN! ». Reste à toi : dire si on voit les deux ensemble à ce moment.
@@ -206,6 +206,8 @@ Prochain numéro : **T-244**.
 - T-241 | Ironix, seul | Prix ressentis en zones 2 à 4 (L-266) : avec un profil qui débute, joue de la zone 1 à la zone 4 → chaque achat (tapis, présentoirs, pied-de-biche 3,1K, marteau 88K, auras) paraît à sa place, ni trop tôt ni trop tard. Vu par Claude : tous les prix affichés suivent `Config`.
 - T-242 | Ironix, seul | Rythme en zones 2 à 4 (L-266) : même partie → passer d'une zone à la suivante prend un temps qui va (cible : 6 à 8 h pour atteindre la zone 6) ; note le temps passé dans chaque zone. Pas joué par Claude.
 - T-243 | Ironix, seul | Prix de l'arbre (L-266) : ouvre l'arbre et choisis une tuile → `NodePrice` et `NeedButton` montrent le nouveau prix (plus de « $250K » ni de « Need $4M »). Pas vu par Claude le 20/11 : `UI_Offline` restait ouvert et l'arbre ne s'ouvrait pas derrière.
+- T-244 | Ironix, téléphone | Relâcher une invite de maintien (vague 79, a265) : sur téléphone, commence à ouvrir un colis ou à prendre un objet, laisse glisser le doigt hors de l'invite à la moitié, puis rappuie → rien ne s'ouvre ni n'est pris au 2e appui avant sa fin, et un maintien complet réussit du premier coup ; dis si le relâché se sent bien au doigt. Vérifié par Claude dans Studio le 20/11 pour l'ouverture, la prise, le vol d'un objet exposé et le ramassage au sol (étapes « Begin », « Cancel » et « End » reçues par le serveur, rien donné au 2e début).
+- T-245 | Ironix, à deux | Vol d'un objet posé au sol d'une boutique (vague 79, a265) : le 2e joueur pose un objet au sol de sa boutique ; casse sa porte, relâche « Steal » sur l'objet à la moitié et rappuie 1 à 2 s après le 1er appui → rien n'est pris avant la fin du 2e maintien ; un maintien complet prend l'objet du premier coup. Pas joué par Claude (20/11) : il faut un vrai 2e joueur ; seuls les refus du serveur (appel sans étape, étape inconnue) sont vérifiés.
 
 ## 1. Attentes ouvertes
 

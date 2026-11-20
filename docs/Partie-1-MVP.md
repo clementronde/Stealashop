@@ -652,13 +652,13 @@ Contrôleurs client : Input, Hit, Shatter, Carry, Unbox (caméra de révélation
 | Remote (client vers serveur) | Données | Le serveur vérifie |
 | --- | --- | --- |
 | HitWindow | windowId | Outil équipé, distance ≤ 10 studs, ≤ 10 coups/s, vitrine cassable (pas de bouclier ni d'immunité) |
-| GrabItem | slotId | Magasin ouvert, joueur dans le volume `Bounds`, mains vides, distance ≤ 8 studs, durée de maintien respectée |
-| StealItem | plotIndex, slotIndex | Porte de la boutique cassée depuis moins de 10 s, pas la sienne, mains vides, aucune protection (bouclier débutant, immunité de 120 s, anti-racket), une boutique à soi avec de la place, joueur dans `Bounds` à ≤ 8 studs du présentoir, objet exposé et pas à l'abri (coffre-fort), maintien de 1 s (deux appels), ≤ 5 appels/s (ajouté le 2026-11-08, vol entre joueurs) |
+| GrabItem | slotId, phase | Magasin ouvert, joueur dans le volume `Bounds`, mains vides, distance ≤ 8 studs, durée de maintien respectée. Vague 79 (a265, 2026-11-20) : `phase` obligatoire en dernier argument des 5 maintiens (GrabItem, `OpenShelfBox(slotId, phase)`, StealItem, `StealFloorItem(plotIndex, itemUid, phase)`, GrabDropped) : « Begin » au début de l'appui (remet le maintien à zéro), « End » à la fin (refusé sans début ouvert), « Cancel » au relâché avant la fin (vide le maintien) ; un appel sans étape ou avec une autre valeur est refusé. Le client envoie « Cancel » s'il relâche avant HoldDuration − 0,1 s. |
+| StealItem | plotIndex, slotIndex, phase | Porte de la boutique cassée depuis moins de 10 s, pas la sienne, mains vides, aucune protection (bouclier débutant, immunité de 120 s, anti-racket), une boutique à soi avec de la place, joueur dans `Bounds` à ≤ 8 studs du présentoir, objet exposé et pas à l'abri (coffre-fort), maintien de 1 s (appels « Begin » puis « End », voir GrabItem), ≤ 5 appels/s (ajouté le 2026-11-08, vol entre joueurs) |
 | PlaceBox | benchIndex | Sur sa parcelle, porte un colis, établi libre |
 | OpenBox | benchIndex | Attente écoulée (horodatage serveur), joueur sur sa parcelle ; le serveur renvoie alors l'objet révélé |
 | PlaceItem | itemUid, slotIndex | Possède l'objet, présentoir débloqué et libre |
 | SwingBat | — | Recharge 0,8 s, cible à ≤ 7 studs : soit le voleur de SON objet, soit un porteur de colis PNJ hors zone safe (sans bouclier débutant ni immunité de 3 s) |
-| GrabDropped | dropId | Colis au sol, mains vides, distance ≤ 8 studs, durée de maintien respectée, hors zone safe |
+| GrabDropped | dropId, phase | Colis au sol, mains vides, distance ≤ 8 studs, durée de maintien respectée, hors zone safe |
 | BuyItem | catalogId | Prix lu dans `Config` (outils, auras, trails, améliorations), argent suffisant, prérequis remplis |
 | EquipCosmetic | cosmeticId | Possédé, bon type (aura ou trail) |
 | TrainTap | — | Joueur sur une machine, ≤ 3 taps/s au banc, ≤ 6 taps/s au tapis |
