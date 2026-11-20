@@ -1469,4 +1469,74 @@ table.insert(UI.Billboards, {
 	} :: { Element },
 })
 
+-- Vague 80 (a266) : quêtes quotidiennes (DEV-132, UI-130 ; QuestController, Config/Quests) et roue de la fortune (DEV-141 ;
+-- WheelController, Config/Wheel). Tout est facultatif : écran ou élément absent, rien ne s'affiche, aucune erreur.
+-- UI_Quests (noms proposés à Clément, version grise d'abord) : une ligne par quête du jour, clonée depuis List.Template
+-- (nommée Quest_<place>). Le code touche Enabled de l'écran, les textes, Visible des lignes, de ClaimButton et de
+-- Claimed, la taille X (Scale) de Bar.Fill et l'image d'Icon (Decal ICON_QUEST_<Id> livré par Clément, sinon celle du
+-- Template).
+table.insert(UI.Screens, {
+	Name = "UI_Quests",
+	Class = "ScreenGui",
+	Optional = true,
+	Elements = {
+		{ Path = "CloseButton", Class = BUTTON },
+		{ Path = "List" },
+		{ Path = "List.Template", Template = true },
+		{ Path = "List.Template.QuestName", Class = "TextLabel" },
+		{ Path = "List.Template.ProgressLabel", Class = "TextLabel", Optional = true, Note = "la progression « 2/3 » n'est pas écrite" },
+		{ Path = "List.Template.Bar", Optional = true, Note = "pas de barre de progression" },
+		{ Path = "List.Template.Bar.Fill", Optional = true, Note = "pas de barre de progression" },
+		{ Path = "List.Template.RewardLabel", Class = "TextLabel", Optional = true, Note = "la récompense n'est pas écrite" },
+		{ Path = "List.Template.Icon", Class = "ImageLabel", Optional = true, Note = "pas d'icône de quête" },
+		{ Path = "List.Template.ClaimButton", Class = BUTTON },
+		{ Path = "List.Template.ClaimButton.ClaimLabel", Class = "TextLabel", Optional = true, Note = "texte de ClaimButton laissé tel quel" },
+		{ Path = "List.Template.Claimed", Optional = true, Note = "rien ne montre une quête réclamée, sauf ClaimLabel « DONE »" },
+		{ Path = "Timer", Class = "TextLabel", Optional = true, Note = "le temps avant les nouvelles quêtes n'est pas écrit" },
+	} :: { Element },
+})
+-- UI_Wheel (L-165 (d), version grise et habillée de Clément du 2026-11-14 ; WheelController) : Wheel tourne (sa Rotation),
+-- Pointer et Rim restent fixes. Segment_01 à Segment_08 dans l'ordre de Config/Wheel.Sectors : Amount reçoit le texte du
+-- lot, Icon l'image du Decal ICON_<Sectors[n].Icon> s'il est livré. Chance (pourcentage), BuySpinButton et PriceLabel
+-- (tours en plus en Robux, « Soon » tant qu'aucun produit n'existe) : noms proposés à Clément, facultatifs.
+local wheelElements = {
+	{ Path = "CloseButton", Class = BUTTON },
+	{ Path = "Wheel", Class = "GuiObject" },
+	{ Path = "Pointer", Class = "GuiObject", Optional = true, Note = "le secteur gagnant est amené en haut de la roue" },
+	{ Path = "Result", Optional = true, Note = "le lot gagné part en notification" },
+	{ Path = "SpinButton", Class = BUTTON },
+	{ Path = "SpinButton.SpinLabel", Optional = true, Note = "texte de SpinButton laissé tel quel" },
+	{ Path = "Timer", Optional = true, Note = "le temps avant le prochain tour gratuit n'est pas écrit" },
+	{ Path = "BuySpinButton", Class = BUTTON, Optional = true, Note = "pas de tour en plus en Robux (pas encore en vente)" },
+	{ Path = "BuySpinButton.PriceLabel", Class = "TextLabel", Optional = true, Note = "prix du tour en plus pas écrit" },
+} :: { Element }
+for n = 1, 8 do
+	local segment = string.format("Wheel.Segment_%02d", n)
+	table.insert(wheelElements, { Path = segment, Class = "GuiObject" })
+	table.insert(wheelElements, { Path = `{segment}.Amount` })
+	table.insert(wheelElements, { Path = `{segment}.Icon`, Class = "ImageLabel", Optional = true, Note = "l'icône d'exemple de Clément reste" })
+	table.insert(wheelElements, { Path = `{segment}.Chance`, Class = "TextLabel", Optional = true, Note = "la chance du lot n'est pas écrite" })
+end
+table.insert(UI.Screens, {
+	Name = "UI_Wheel",
+	Class = "ScreenGui",
+	Optional = true,
+	Elements = wheelElements,
+})
+-- Boutons du HUD (noms proposés à Clément, facultatifs ; dans LeftRail et LeftRailTouch s'il y a deux exemplaires, tous
+-- branchés) : QuestsButton ouvre UI_Quests, sa pastille QuestsAlert s'allume quand une quête finie attend d'être
+-- réclamée ; WheelButton ouvre UI_Wheel, WheelAlert s'allume quand le tour gratuit du jour attend. Cachés par
+-- HudController quand Features.Quests ou Features.Wheel est coupé.
+table.insert(UI.Screens, {
+	Name = "UI_HUD",
+	Class = "ScreenGui",
+	Optional = true,
+	Elements = {
+		{ Path = "QuestsButton", Class = BUTTON, Optional = true, Note = "les quêtes ne s'ouvrent pas depuis le HUD" },
+		{ Path = "QuestsButton.QuestsAlert", Optional = true, Note = "pas de pastille pour une quête finie" },
+		{ Path = "WheelButton", Class = BUTTON, Optional = true, Note = "la roue ne s'ouvre que par sa zone du hub (WheelZone)" },
+		{ Path = "WheelButton.WheelAlert", Optional = true, Note = "pas de pastille pour le tour gratuit" },
+	} :: { Element },
+})
+
 return UI

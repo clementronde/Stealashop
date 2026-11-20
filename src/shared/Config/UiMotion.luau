@@ -32,7 +32,7 @@ local WINDOW_TAS = true
 local WINDOWS: { string } = {
 	"UI_WeaponShop", "UI_AuraShop", "UI_RobuxShop", "UI_RobuxShop_v2", "UI_DiamondShop", "UI_PawnShop",
 	"UI_Index", "UI_Index_v2", "UI_Index_v3", "UI_Index_v4", "UI_Inventory", "UI_Displayed", "UI_Rebirth",
-	"UI_Settings", "UI_Rewards", "UI_SkillTree", "UI_Wheel",
+	"UI_Settings", "UI_Rewards", "UI_SkillTree", "UI_Wheel", "UI_Quests",
 }
 
 -- Vague 74 (a258, L-259, Clément : ouverture et fermeture comme la vidéo de référence E, voile noir UI_Veil et flou
@@ -43,11 +43,11 @@ local WINDOWS: { string } = {
 local WINDOW_E = WINDOW_TAS and true
 -- L-259 (b) : boutiques Robux, armes, auras, diamants, prêteur, index, arbre de compétences, réglages, renaissance,
 -- récompenses, gains hors ligne ; pas UI_Displayed (panneau de côté), ni alertes, notifications, bannières.
--- V0 proposé : l'inventaire (L-259, « index et inventaire d'abord ») et la roue (UI_Wheel, grande fenêtre de L-230).
+-- V0 proposé : l'inventaire (L-259, « index et inventaire d'abord ») et la roue (UI_Wheel, grande fenêtre de L-230) ; vague 80 (a266) : UI_Quests, V0 proposé (Cantin, 20/11).
 local CENTRAL: { string } = {
 	"UI_WeaponShop", "UI_AuraShop", "UI_RobuxShop", "UI_RobuxShop_v2", "UI_DiamondShop", "UI_PawnShop",
 	"UI_Index", "UI_Index_v2", "UI_Index_v3", "UI_Index_v4", "UI_Inventory", "UI_Rebirth",
-	"UI_Settings", "UI_Rewards", "UI_SkillTree", "UI_Wheel", "UI_Offline",
+	"UI_Settings", "UI_Rewards", "UI_SkillTree", "UI_Wheel", "UI_Offline", "UI_Quests",
 }
 
 local UiMotion = {
