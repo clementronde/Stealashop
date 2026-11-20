@@ -30,7 +30,8 @@
 --          MinZone ; Notify « Rare Item: <nom> » ; inventaire d'objets plein (DisplayService.HasInventoryRoom) :
 --          rien n'est donné ni noté, la récompense reste à réclamer (Notify ItemsFull). Ce service ne retire
 --          ni ne convertit aucun colis déjà dans un profil (DataService, convertBoxes, le fait au chargement,
---          sans condition) ;
+--          sans condition) ; vague 80 (a267) : avec BoxRarity, UnboxService.GiveBoxRarityItem (colis de rayon
+--          de cette rareté, vague 76), mêmes règles ;
 --   Boost  MonetizationService.AddCashBoost (×2 argent, compté seulement en jeu, un 2e prolonge le 1er ;
 --          marche aussi boutique Robux coupée).
 -- Idempotence : la vérification, le don et la note de la réclamation (Streak et LastDay, ou
@@ -44,7 +45,7 @@
 -- ClaimWeekly ignoré. Allumé : chaque jour UTC où le joueur est présent (profil chargé) compte une fois pour
 -- la semaine (lundi 00:00 UTC à dimanche, Config/Rewards.Weekly ; Rewards.Weekly du profil, facultatif) ;
 -- une autre semaine remet le compte à zéro. À Weekly.DaysNeeded jours (5), ClaimWeekly() donne une fois par
--- semaine l'objet Weekly.Reward (comme un colis Luxe, refusé sans rien noter si l'inventaire est plein) puis
+-- semaine l'objet Weekly.Reward (vague 80 : comme un colis Épique de rayon, refusé sans rien noter si l'inventaire est plein) puis
 -- l'aura ou le trail exclusif de la semaine (Weekly.Exclusives[date du lundi], vide en V0 : rien) ;
 -- télémétrie : RewardClaim, Source Weekly, Sku Week<numéro>.
 --
@@ -366,7 +367,13 @@ local function give(player: Player, data: Data, reward: Reward): (boolean, strin
 	elseif kind == "Box" then
 		local tier = reward.Tier or "Standard"
 		local zone = math.max(bestZone(data), reward.MinZone or 1)
-		local itemUid, reason, itemId = UnboxService.GiveItem(player, tier, zone, reward.MinRarity)
+		local boxRarity = reward.BoxRarity
+		local itemUid: string?, reason: string?, itemId: string? = nil, nil, nil
+		if boxRarity then
+			itemUid, reason, itemId = UnboxService.GiveBoxRarityItem(player, boxRarity, zone) -- vague 80 (a267)
+		else
+			itemUid, reason, itemId = UnboxService.GiveItem(player, tier, zone, reward.MinRarity)
+		end
 		if itemUid == nil then
 			return false, if reason == "InventoryFull" then MESSAGES.ItemsFull else MESSAGES.Unavailable, 0
 		end
