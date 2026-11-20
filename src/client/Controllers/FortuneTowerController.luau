@@ -82,6 +82,9 @@ local BOX_SUFFIX = "Box" -- « Luxury Box » (L-036, comme le camion)
 
 -- V0 proposé, absent du doc : invite visible un demi-stud avant la portée du serveur (comme la batte).
 local PROMPT_DISTANCE_MARGIN = 0.5
+-- a265 (vague 79), V0 proposé, absent du doc : relâché plus de 0,1 s avant la fin du maintien = annulé ("Cancel"
+-- envoyé au serveur, qui vide le maintien). La marge évite d'annuler un maintien conclu si le relâché arrive avant Triggered.
+local HOLD_CANCEL_MARGIN = 0.1
 
 local IS_STUDIO = RunService:IsStudio()
 
@@ -311,11 +314,22 @@ local function trackDrop(instance: Instance)
 	prompt.HoldDuration = if info then info.GrabTime else 0
 	prompt.MaxActivationDistance = math.max(Bat.DroppedGrabMaxDistance - PROMPT_DISTANCE_MARGIN, 1)
 	prompt.RequiresLineOfSight = false
+	-- a265 (vague 79) : étape envoyée avec chaque appel ; relâché avant la fin = "Cancel" (le serveur vide le maintien).
+	local holdBegan: number? = nil
 	prompt.PromptButtonHoldBegan:Connect(function()
-		Net.Client.GrabDropped:Fire(dropId) -- début du maintien
+		holdBegan = os.clock()
+		Net.Client.GrabDropped:Fire(dropId, "Begin") -- début du maintien
+	end)
+	prompt.PromptButtonHoldEnded:Connect(function()
+		local began = holdBegan
+		holdBegan = nil
+		if began and os.clock() - began < prompt.HoldDuration - HOLD_CANCEL_MARGIN then
+			Net.Client.GrabDropped:Fire(dropId, "Cancel")
+		end
 	end)
 	prompt.Triggered:Connect(function()
-		Net.Client.GrabDropped:Fire(dropId) -- fin du maintien
+		holdBegan = nil
+		Net.Client.GrabDropped:Fire(dropId, "End") -- fin du maintien
 		play(GRAB_ANIMATION)
 	end)
 	prompt.Enabled = promptEnabled()

@@ -127,10 +127,18 @@
 -- déjà un colis, si le colis du rayon change ou si le magasin ferme, le maintien est annulé. Un
 -- maintien non conclu expire GrabTime + HOLD_EXPIRY s après son début. Un seul maintien par
 -- joueur : un appel sur un autre rayon remplace le précédent. Le client ne peut donc pas prendre
--- plus vite que GrabTime − 0,1 s, ni sans rester à portée pendant ce temps. Comme il n'existe
--- pas de remote d'annulation, relâcher l'invite ne prévient pas le serveur : un nouvel appui sur
--- le même rayon dans la seconde qui suit, sans s'être éloigné, conclut tout de suite (le joueur
--- est bien resté à portée tout ce temps).
+-- plus vite que GrabTime − 0,1 s, ni sans rester à portée pendant ce temps.
+-- a265 (vague 79, Cantin le 20/11) : étape du maintien en 2e argument, GrabItem(slotId, phase) et
+-- OpenShelfBox(slotId, phase), phase = "Begin" | "End" | "Cancel" (HOLD_PHASES ; toute autre valeur est
+-- refusée, comme un appel sans étape). "Begin" ouvre TOUJOURS un nouveau maintien (StartedAt = maintenant),
+-- même si un maintien du même rayon est déjà ouvert : une fin ne compte qu'à partir du dernier début, quoi
+-- que dise le client
+-- (avant, un relâché trop tôt ne prévenait pas le serveur et un 2e appui 1 à 2 s après le 1er passait
+-- pour une fin : objet donné au début de l'appui, sans maintien). "End" ne conclut qu'un maintien ouvert
+-- sur ce rayon et cet objet (sinon refus, rien n'est ouvert). "Cancel" (le client l'envoie au relâché
+-- avant la fin) vide le maintien de ce rayon, sans autre contrôle. L'étape n'est jamais déduite de l'état
+-- du serveur : sans elle (nil), un client modifié retrouvait l'ancien défaut (relâché, puis 2e appel compté
+-- comme une fin).
 --
 -- Portée (Cantin, 2026-11-14 ; GrabItem et OpenShelfBox) : le serveur voit le perso en retard d'environ
 -- vitesse × latence (vu en Play : 12,6 studs au lieu de 7,5 en appuyant sur E en courant). Souple au début
@@ -593,6 +601,8 @@ local TIMER_REACH = 25
 local GRAB_TIME_TOLERANCE = 0.1
 -- V0 proposé, absent du doc : un maintien non conclu expire 1 s après sa durée.
 local HOLD_EXPIRY = 1
+-- a265 (vague 79) : étapes du maintien acceptées en 2e argument de GrabItem et d'OpenShelfBox (voir « Maintien »).
+local HOLD_PHASES = { Begin = true, End = true, Cancel = true }
 -- V0 proposé, absent du doc : rideau. Il tombe en 0,4 s, remonte en 0,8 s, et devient solide dès
 -- qu'il est en bas. Il ne tombe qu'une fois le magasin vide de porteurs et de vigiles (L-064) : plus
 -- besoin des 3 s où il restait franchissable (Cantin, 2026-11-10 : on passait à travers puis on était
@@ -3023,24 +3033,33 @@ local function stepReveals()
 	end
 end
 
--- OpenShelfBox(slotId) : premier appel = début du maintien, second = fin (voir l'en-tête).
-local function onOpenShelfBox(player: Player, slotId: string)
+-- OpenShelfBox(slotId, phase) : début, fin ou annulation du maintien ; sans phase : refusé (voir « Maintien »
+-- dans l'en-tête).
+local function onOpenShelfBox(player: Player, slotId: string, phase: string?)
 	local slot = slotsById[slotId]
 	if slot == nil then
 		refuse(player, slotId, "emplacement inconnu", "OpenShelfBox")
+		return
+	end
+	if phase == nil or not HOLD_PHASES[phase] then
+		refuse(player, slotId, `étape de maintien absente ou inconnue « {phase or "aucune"} »`, "OpenShelfBox")
+		return
+	end
+	local hold = openHolds[player]
+	if phase == "Cancel" then -- a265 : relâché avant la fin, maintien vidé tout de suite
+		if hold and hold.Slot == slot then
+			openHolds[player] = nil
+		end
 		return
 	end
 	if not AntiCheatService.Verify(player) then
 		refuse(player, slotId, "déplacement sanctionné par l'anti-triche (audit 9.8)", "OpenShelfBox")
 		return
 	end
-	local hold = openHolds[player]
 	-- Début du maintien (pas de maintien en cours sur ce colis, colis à GrabTime > 0) : portée souple ;
 	-- fin du maintien ou colis sans maintien : stricte (voir « Portée » dans l'en-tête).
 	local current = slot.Box
-	local starting = current ~= nil
-		and not (hold ~= nil and hold.Slot == slot and hold.Target == current)
-		and grabTime(current.Rarity) > 0
+	local starting = current ~= nil and phase == "Begin" and grabTime(current.Rarity) > 0
 	local reason = openRefusal(player, slot, starting)
 	if reason then
 		if hold and hold.Slot == slot then
@@ -3052,8 +3071,14 @@ local function onOpenShelfBox(player: Player, slotId: string)
 	local box = slot.Box :: ShelfBox -- openRefusal a vérifié qu'il est posé et fermé
 	local required = grabTime(box.Rarity)
 	local now = os.clock()
-	local finishing = hold ~= nil and hold.Slot == slot and hold.Target == box
+	-- a265 : un "Begin" n'est jamais une fin, il rouvre le maintien à zéro.
+	local finishing = phase ~= "Begin" and hold ~= nil and hold.Slot == slot and hold.Target == box
 	if not finishing and required > 0 then
+		if phase == "End" then
+			-- a265 : fin sans début ouvert sur ce colis (relâché, puis maintien vidé ou expiré) : rien n'est lancé.
+			refuse(player, slotId, "fin de maintien sans début ouvert sur ce colis", "OpenShelfBox")
+			return
+		end
 		openHolds[player] = { Slot = slot, Target = box, BoxRarity = box.Rarity, StartedAt = now } -- début du maintien
 		return
 	end
@@ -3093,18 +3118,29 @@ local function onOpenShelfBox(player: Player, slotId: string)
 	end
 end
 
--- GrabItem(slotId) : premier appel = début du maintien, second = fin (voir l'en-tête).
-local function onGrabItem(player: Player, slotId: string)
+-- GrabItem(slotId, phase) : début, fin ou annulation du maintien ; sans phase : refusé (voir « Maintien » dans
+-- l'en-tête).
+local function onGrabItem(player: Player, slotId: string, phase: string?)
 	local slot = slotsById[slotId]
 	if slot == nil then
 		refuse(player, slotId, "emplacement inconnu")
+		return
+	end
+	if phase == nil or not HOLD_PHASES[phase] then
+		refuse(player, slotId, `étape de maintien absente ou inconnue « {phase or "aucune"} »`)
+		return
+	end
+	local hold = holds[player]
+	if phase == "Cancel" then -- a265 : relâché avant la fin, maintien vidé tout de suite
+		if hold and hold.Slot == slot then
+			holds[player] = nil
+		end
 		return
 	end
 	if not AntiCheatService.Verify(player) then
 		refuse(player, slotId, "déplacement sanctionné par l'anti-triche (audit 9.8)")
 		return
 	end
-	local hold = holds[player]
 	-- Début du maintien : portée souple ; fin du maintien ou prise sans maintien : stricte (« Portée »).
 	-- Vague 50 (a158) : le colis fermé ne se porte plus ; seul l'objet sorti de son colis se prend (L-112).
 	local current: any, currentRarity: string? = nil, nil
@@ -3112,10 +3148,7 @@ local function onGrabItem(player: Player, slotId: string)
 	if shown then
 		current, currentRarity = shown, shown.Info.BoxRarity
 	end
-	local starting = current ~= nil
-		and currentRarity ~= nil
-		and not (hold ~= nil and hold.Slot == slot and hold.Target == current)
-		and grabTime(currentRarity) > 0
+	local starting = current ~= nil and currentRarity ~= nil and phase == "Begin" and grabTime(currentRarity) > 0
 	local reason = grabRefusal(player, slot, starting)
 	if reason then
 		if hold and hold.Slot == slot then
@@ -3130,7 +3163,8 @@ local function onGrabItem(player: Player, slotId: string)
 	local target: any, boxRarity: string = item, item.Info.BoxRarity
 	local required = grabTime(boxRarity)
 	local now = os.clock()
-	if hold and hold.Slot == slot and hold.Target == target then
+	-- a265 : un "Begin" n'est jamais une fin, il rouvre le maintien à zéro (plus bas).
+	if phase ~= "Begin" and hold and hold.Slot == slot and hold.Target == target then
 		local elapsed = now - hold.StartedAt
 		if elapsed + GRAB_TIME_TOLERANCE >= required then
 			holds[player] = nil
@@ -3145,6 +3179,11 @@ local function onGrabItem(player: Player, slotId: string)
 	if required <= 0 then
 		holds[player] = nil
 		give(player, slot)
+		return
+	end
+	if phase == "End" then
+		-- a265 : fin sans début ouvert sur cet objet (relâché, puis maintien vidé ou expiré) : rien n'est donné.
+		refuse(player, slotId, "fin de maintien sans début ouvert sur cet objet")
 		return
 	end
 	holds[player] = { Slot = slot, Target = target, BoxRarity = boxRarity, StartedAt = now }

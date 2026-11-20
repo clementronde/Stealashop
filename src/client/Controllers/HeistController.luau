@@ -90,6 +90,9 @@ local REFRESH_INTERVAL = 0.2
 -- V0 proposé, absent du doc : invite visible un demi-stud avant la portée du serveur, pour qu'un
 -- léger retard de la position côté serveur ne fasse pas refuser la prise.
 local PROMPT_DISTANCE_MARGIN = 0.5
+-- a265 (vague 79), V0 proposé, absent du doc : relâché plus de 0,1 s avant la fin du maintien = annulé ("Cancel"
+-- envoyé au serveur, qui vide le maintien). La marge évite d'annuler un maintien conclu si le relâché arrive avant Triggered.
+local HOLD_CANCEL_MARGIN = 0.1
 -- V0 proposé, absent du doc : sous le texte de l'invite, la rareté du colis, en anglais (L-036) :
 -- « Common Box », « Rare Box »… (vague 76 : Rarities DisplayName + BOX_SUFFIX).
 local BOX_SUFFIX = "Box"
@@ -314,17 +317,28 @@ local function addItemPrompt(instance: Instance)
 	local function flying(): boolean
 		return item:GetAttribute(LANDED_ATTRIBUTE) == false
 	end
+	-- a265 (vague 79) : étape envoyée avec chaque appel ; relâché avant la fin = "Cancel" (le serveur vide le maintien).
+	local holdBegan: number? = nil
 	prompt.PromptButtonHoldBegan:Connect(function()
 		if flying() then
 			return
 		end
-		Net.Client.GrabItem:Fire(slotId) -- début du maintien
+		holdBegan = os.clock()
+		Net.Client.GrabItem:Fire(slotId, "Begin") -- début du maintien
+	end)
+	prompt.PromptButtonHoldEnded:Connect(function()
+		local began = holdBegan
+		holdBegan = nil
+		if began and os.clock() - began < prompt.HoldDuration - HOLD_CANCEL_MARGIN then
+			Net.Client.GrabItem:Fire(slotId, "Cancel")
+		end
 	end)
 	prompt.Triggered:Connect(function()
+		holdBegan = nil
 		if flying() then
 			return
 		end
-		Net.Client.GrabItem:Fire(slotId) -- fin du maintien
+		Net.Client.GrabItem:Fire(slotId, "End") -- fin du maintien
 		playGrab()
 	end)
 	prompt.Parent = anchor
@@ -363,13 +377,24 @@ local function addPrompt(watch: StoreWatch, box: Instance)
 	prompt.MaxActivationDistance = math.max(Balance.Heist.GrabMaxDistance - PROMPT_DISTANCE_MARGIN, 1)
 	prompt.RequiresLineOfSight = false -- les rayons cachent parfois le colis
 	prompt.Enabled = false
+	-- a265 (vague 79) : étape envoyée avec chaque appel ; relâché avant la fin = "Cancel" (le serveur vide le maintien).
+	local holdBegan: number? = nil
 	prompt.PromptButtonHoldBegan:Connect(function()
-		Net.Client.OpenShelfBox:Fire(slotId) -- début du maintien
+		holdBegan = os.clock()
+		Net.Client.OpenShelfBox:Fire(slotId, "Begin") -- début du maintien
+	end)
+	prompt.PromptButtonHoldEnded:Connect(function()
+		local began = holdBegan
+		holdBegan = nil
+		if began and os.clock() - began < prompt.HoldDuration - HOLD_CANCEL_MARGIN then
+			Net.Client.OpenShelfBox:Fire(slotId, "Cancel")
+		end
 	end)
 	prompt.Triggered:Connect(function()
+		holdBegan = nil
 		openPending[box] = os.clock()
 		prompt.Enabled = false
-		Net.Client.OpenShelfBox:Fire(slotId) -- fin du maintien
+		Net.Client.OpenShelfBox:Fire(slotId, "End") -- fin du maintien
 	end)
 	prompt.Parent = anchor
 	watch.Prompts[box] = prompt

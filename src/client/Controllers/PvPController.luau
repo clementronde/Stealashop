@@ -148,6 +148,9 @@ local LOCKED_UNTIL_ATTRIBUTE = "LockedUntil" -- Config/SkillTree.Lock.UntilAttri
 local REFRESH_INTERVAL = 0.2
 -- V0 proposé, absent du doc : invite visible un demi-stud avant la portée du serveur.
 local PROMPT_DISTANCE_MARGIN = 0.5
+-- a265 (vague 79), V0 proposé, absent du doc : relâché plus de 0,1 s avant la fin du maintien = annulé ("Cancel"
+-- envoyé au serveur, qui vide le maintien). La marge évite d'annuler un maintien conclu si le relâché arrive avant Triggered.
+local HOLD_CANCEL_MARGIN = 0.1
 -- V0 proposé, absent du doc : panneau gris en attendant BB_ShopInfo (taille en studs), posé
 -- PANEL_LIFT studs au-dessus du haut de la porte, au-dessus de la barre de PV BB_WindowHP.
 local PANEL_SIZE = UDim2.fromScale(7, 3.2)
@@ -348,11 +351,22 @@ local function makePrompt(watch: ItemWatch, plot: Model)
 	prompt.MaxActivationDistance = math.max(PvP.StealMaxDistance - PROMPT_DISTANCE_MARGIN, 1)
 	prompt.RequiresLineOfSight = false
 	prompt.Enabled = false
+	-- a265 (vague 79) : étape envoyée avec chaque appel ; relâché avant la fin = "Cancel" (le serveur vide le maintien).
+	local holdBegan: number? = nil
 	prompt.PromptButtonHoldBegan:Connect(function()
-		Net.Client.StealItem:Fire(plotIndex, slot) -- début du maintien
+		holdBegan = os.clock()
+		Net.Client.StealItem:Fire(plotIndex, slot, "Begin") -- début du maintien
+	end)
+	prompt.PromptButtonHoldEnded:Connect(function()
+		local began = holdBegan
+		holdBegan = nil
+		if began and os.clock() - began < prompt.HoldDuration - HOLD_CANCEL_MARGIN then
+			Net.Client.StealItem:Fire(plotIndex, slot, "Cancel")
+		end
 	end)
 	prompt.Triggered:Connect(function()
-		Net.Client.StealItem:Fire(plotIndex, slot) -- fin du maintien
+		holdBegan = nil
+		Net.Client.StealItem:Fire(plotIndex, slot, "End") -- fin du maintien
 		playGrab()
 	end)
 	prompt.Parent = part

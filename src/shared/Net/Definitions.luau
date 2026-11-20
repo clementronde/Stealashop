@@ -65,6 +65,14 @@ local function index(name: string): ArgSpec
 	return { Name = name, Kind = "int", Min = 1, Max = MAX_INDEX }
 end
 
+-- a265 (vague 79) : étape OBLIGATOIRE d'un maintien d'invite, en dernier argument (GrabItem, OpenShelfBox, StealItem,
+-- StealFloorItem, GrabDropped) : "Begin" au début de l'appui, "End" à la fin, "Cancel" au relâché avant la fin. Le
+-- service refuse toute autre valeur ; un "Begin" rouvre toujours le maintien à zéro. Un appel sans étape est refusé
+-- (le serveur ne déduit jamais l'étape de son état : un client qui l'omettait retrouvait l'ancien défaut).
+local function holdPhase(): ArgSpec
+	return { Name = "phase", Kind = "string", Max = 8 }
+end
+
 local List: { RemoteDef } = {
 	-- Client vers serveur (tableau 9.4). Débits : doc quand il en donne, sinon V0.
 	{
@@ -85,7 +93,7 @@ local List: { RemoteDef } = {
 		Name = "GrabItem",
 		Direction = "ClientToServer",
 		Reliable = true,
-		Args = { id("slotId") },
+		Args = { id("slotId"), holdPhase() },
 		RatePerSecond = 5, -- V0 proposé, absent du doc ; maintien vérifié par le service
 	},
 	{
@@ -97,7 +105,7 @@ local List: { RemoteDef } = {
 		Name = "StealItem",
 		Direction = "ClientToServer",
 		Reliable = true,
-		Args = { index("plotIndex"), index("slotIndex") },
+		Args = { index("plotIndex"), index("slotIndex"), holdPhase() },
 		RatePerSecond = 5, -- V0 proposé, absent du doc ; maintien vérifié par le service
 	},
 	{
@@ -171,7 +179,7 @@ local List: { RemoteDef } = {
 		Name = "GrabDropped",
 		Direction = "ClientToServer",
 		Reliable = true,
-		Args = { id("dropId") },
+		Args = { id("dropId"), holdPhase() },
 		RatePerSecond = 5, -- V0 proposé, absent du doc
 	},
 	{
@@ -555,7 +563,7 @@ local List: { RemoteDef } = {
 		Name = "OpenShelfBox",
 		Direction = "ClientToServer",
 		Reliable = true,
-		Args = { id("slotId") },
+		Args = { id("slotId"), holdPhase() },
 		RatePerSecond = 5, -- V0 proposé, absent du doc (comme GrabItem)
 	},
 	{
@@ -566,7 +574,7 @@ local List: { RemoteDef } = {
 		Name = "StealFloorItem",
 		Direction = "ClientToServer",
 		Reliable = true,
-		Args = { index("plotIndex"), id("itemUid") },
+		Args = { index("plotIndex"), id("itemUid"), holdPhase() },
 		RatePerSecond = 5, -- V0 proposé, absent du doc ; maintien vérifié par le service
 	},
 	{

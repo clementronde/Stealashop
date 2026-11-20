@@ -237,6 +237,9 @@ local TruckHit = HitFeedback.Truck
 local REFRESH_INTERVAL = 0.2
 -- V0 proposé, absent du doc : invite visible un demi-stud avant la portée du serveur (comme les rayons).
 local PROMPT_DISTANCE_MARGIN = 0.5
+-- a265 (vague 79), V0 proposé, absent du doc : relâché plus de 0,1 s avant la fin du maintien = annulé ("Cancel"
+-- envoyé au serveur, qui vide le maintien). La marge évite d'annuler un maintien conclu si le relâché arrive avant Triggered.
+local HOLD_CANCEL_MARGIN = 0.1
 -- V0 proposé, absent du doc : explosion jouée seulement si on la voit dans la demi-seconde.
 local FX_MAX_AGE = 0.5
 -- V0 proposé, absent du doc : une pièce qui retombe à moins de 4 studs/s se pose et ne tourne plus.
@@ -1404,20 +1407,29 @@ local function addPrompt(watch: BoxWatch, part: BasePart)
 	prompt.MaxActivationDistance = math.max(Bat.DroppedGrabMaxDistance - PROMPT_DISTANCE_MARGIN, 1)
 	prompt.RequiresLineOfSight = false
 	prompt.Enabled = false
+	-- a265 (vague 79) : étape envoyée avec chaque appel ; relâché avant la fin = "Cancel" (le serveur vide le maintien).
+	local holdBegan: number? = nil
 	prompt.PromptButtonHoldBegan:Connect(function()
 		holding = watch -- cette invite garde la main pendant le maintien
-		Net.Client.GrabDropped:Fire(watch.DropId) -- début du maintien
+		holdBegan = os.clock()
+		Net.Client.GrabDropped:Fire(watch.DropId, "Begin") -- début du maintien
 	end)
 	prompt.PromptButtonHoldEnded:Connect(function()
 		if holding == watch then
 			holding = nil
+		end
+		local began = holdBegan
+		holdBegan = nil
+		if began and os.clock() - began < prompt.HoldDuration - HOLD_CANCEL_MARGIN then
+			Net.Client.GrabDropped:Fire(watch.DropId, "Cancel")
 		end
 	end)
 	prompt.Triggered:Connect(function()
 		if holding == watch then
 			holding = nil
 		end
-		Net.Client.GrabDropped:Fire(watch.DropId) -- fin du maintien
+		holdBegan = nil
+		Net.Client.GrabDropped:Fire(watch.DropId, "End") -- fin du maintien
 		playGrab()
 	end)
 	prompt.Parent = part
