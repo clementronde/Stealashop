@@ -71,6 +71,10 @@
 --   9. f70c2 (Cantin, 18/11 : passage course → pose pas fluide) : sur ses Photo.BrakeDistance derniers studs il freine (à chaque
 --      image, sa course ralentit avec lui), il est arrivé à Photo.ArriveDistance studs ; la course s'efface en Photo.StopFade s
 --      pendant que TakePhoto (ou Look) arrive en Photo.PoseFade s, et il se tourne vers la vitrine en Photo.TurnTime s.
+--  10. a269 (Cantin, 20/11 ; Witness.Avoid, Npc/NpcAvoid) : en balade, un PNJ qui vient en face sur sa ligne (l'autre
+--      témoin du circuit, un vigile, un témoin arrêté) : il s'écarte sur sa droite (Avoid.Gap studs), passe à côté sans
+--      s'arrêter, puis revise son point du circuit (atteint à Avoid.PointReach studs pendant l'écart, sans pause). Ses
+--      pièces passent dans le groupe de collision Avoid.Group (aucun choc avec un témoin ou un vigile ; joueurs inchangés).
 --   La vitre se répare comme avant (chrono de police de WindowService, Balance.Window.BreakTimer, inchangé).
 --
 -- Un témoin sans WatchedStore, ou dont le magasin est introuvable parmi les modèles taggés NPCStore de la
@@ -120,6 +124,14 @@ local WitnessGauge = require(Shared.WitnessGauge)
 
 local GuardService = require(script.Parent.GuardService)
 local WindowService = require(script.Parent.WindowService)
+-- a269 (Cantin, 20/11 ; Witness.Avoid) : deux PNJ qui se croisent s'écartent chacun sur leur droite (Npc/NpcAvoid), et
+-- les témoins ne se poussent plus (groupe de collision). Absent (faux arbres des bancs plus anciens) : la balade d'avant.
+local NpcAvoid = (function(): any
+	local ok, result = pcall(function(): any
+		return require((script.Parent :: any).Npc.NpcAvoid)
+	end)
+	return if ok and type(result) == "table" then result else nil
+end)() :: any
 
 type AnimPlayerT = AnimPlayer.AnimPlayer
 type GaugeState = WitnessGauge.State
@@ -196,6 +208,7 @@ type WitnessNpc = {
 	turnAt: number,
 	turnFrom: number, -- cap de départ (radians)
 	turnBy: number, -- angle à tourner (radians, de −π à π)
+	avoiding: boolean, -- a269 : en balade, il s'écarte d'un autre PNJ (NpcAvoid)
 }
 
 -- Noms du contrat lus ici.
@@ -223,6 +236,7 @@ for _, spec in Animations.Witness do
 	end
 end
 local PHOTO = Witness.Photo
+local AVOID: any = (Witness :: any).Avoid -- a269
 
 -- États du Humanoid inutiles à un témoin (comme les vigiles, 9.7) : il ne tombe pas quand on le bouscule.
 local DISABLED_STATES = {
@@ -302,6 +316,12 @@ end
 -- `fade` (f70c2) : fondu de sortie de la marche et de la course (nil : celui de Roblox).
 local function stopWalking(w: WitnessNpc, fade: number?)
 	w.humanoid:MoveTo(w.root.Position)
+	if w.avoiding then
+		w.avoiding = false -- a269 : arrêté, il ne s'écarte plus
+		if NpcAvoid then
+			NpcAvoid.Clear(w.root)
+		end
+	end
 	if w.walking then
 		w.walking = false
 		w.anims:Stop("Walk", fade)
@@ -333,14 +353,19 @@ local function strollStep(w: WitnessNpc, now: number)
 	end
 	local position = w.root.Position
 	local goal = w.path[w.pathIndex]
-	if flat(goal - position).Magnitude <= Witness.PointReached then
+	-- a269 : pendant un écart, le point est atteint plus loin (un autre PNJ peut s'y tenir) et il ne s'y arrête pas.
+	local reach = Witness.PointReached
+	if w.avoiding and AVOID and type(AVOID.PointReach) == "number" then
+		reach = math.max(reach, AVOID.PointReach)
+	end
+	if flat(goal - position).Magnitude <= reach then
 		if count == 1 then
 			stopWalking(w)
 			return
 		end
 		w.pathIndex = nextIndex(w)
 		w.nextMoveAt = now
-		if rng:NextNumber() < Witness.PauseChance then
+		if not w.avoiding and rng:NextNumber() < Witness.PauseChance then
 			w.pauseUntil = now + rng:NextNumber(Witness.PauseMin, Witness.PauseMax)
 			w.progressAt = w.pauseUntil
 			stopWalking(w)
@@ -358,10 +383,17 @@ local function strollStep(w: WitnessNpc, now: number)
 		w.nextMoveAt = now
 		goal = w.path[w.pathIndex]
 	end
-	if now >= w.nextMoveAt then
+	-- a269 (Witness.Avoid) : un PNJ devant lui sur sa ligne : il vise un point à sa droite, redonné à chaque pas, puis
+	-- revise son point du circuit dès que l'autre est passé.
+	local aim, avoiding = goal, false
+	if NpcAvoid then
+		aim, avoiding = NpcAvoid.Aim(w.root, goal, Witness.WalkSpeed)
+	end
+	if avoiding or w.avoiding or now >= w.nextMoveAt then
+		w.avoiding = avoiding
 		w.nextMoveAt = now + Witness.MoveRefresh
 		w.humanoid.WalkSpeed = Witness.WalkSpeed
-		w.humanoid:MoveTo(goal)
+		w.humanoid:MoveTo(aim)
 		if not w.walking then
 			w.walking = true
 			w.anims:Play("Walk", nil, nil, w.gait)
@@ -1148,6 +1180,9 @@ local function remove(w: WitnessNpc, reason: string)
 		table.remove(list, at)
 	end
 	w.anims:Destroy()
+	if NpcAvoid then
+		NpcAvoid.Untrack(w.root) -- a269
+	end
 	log(`{w.label} retiré ({reason})`)
 end
 
@@ -1343,7 +1378,12 @@ local function add(model: Model)
 		turnAt = 0,
 		turnFrom = 0,
 		turnBy = 0,
+		avoiding = false,
 	}
+	if NpcAvoid then
+		NpcAvoid.Track(root) -- a269 : un obstacle pour les autres PNJ qui marchent
+		NpcAvoid.Collide(model) -- a269 : ne pousse ni un autre témoin ni un vigile (Witness.Avoid.NoCollide)
+	end
 	-- Il part du point du circuit le plus proche de lui.
 	local nearest = math.huge
 	for index, point in path do
