@@ -1,28 +1,31 @@
 --!strict
 -- ItemOdds (vague 50, a161 ; L-165 point 5) : la chance d'un objet, écrite « 1 in 5,300,000,000 » sur le
--- grand socle de l'objet le plus rare (BB_RarestDisplay.Odds, VfxController). Commun au serveur et au client.
+-- grand socle de l'objet le plus rare (BB_RarestDisplay.Odds, VfxController) et « 1 IN N » à l'ouverture d'un colis
+-- (Formulas.UnboxOdds, StoreHeistService). Commun au serveur et au client.
 --
--- Le jeu ne garde pas la chance du tirage avec l'objet (ni la caisse, ni la chance du joueur) : ce module
--- calcule une chance de référence, la même pour tous les exemplaires d'un même objet et d'une même mutation
--- (V0 proposé, absent du doc, à valider par Clément) :
---   chance = P(rareté) × 1 / (objets tirables de cette rareté) × P(taille) × P(effet)
---   - P(rareté) : poids de la rareté dans la caisse de référence `box` (ShelfOpen.BoxRarityOdds[box],
---     poids ramenés à 1), sans chance du joueur ; le VfxController passe Vfx.RarestDisplay.OddsBox ;
---   - objets tirables : Items.ByZone[zone de l'objet][rareté] (Items.AllZones pour Secret et Divine),
---     comme Items.Pick ; un objet hors de cette liste (TutorialOnly) n'a pas de chance : nil ;
---   - P(taille), P(effet) : Chance de la mutation (Config/Mutations, pour cent) ; sans mutation dans une
---     famille, cette famille ne compte pas (la chance est celle d'un objet « au moins » de cette mutation).
---     Vague 62 (a203) : sous Features.SingleBoxReveal, P(taille) = chance du palier de poids (ItemWeight.SizeChance, ×1).
+-- Vague 76 (Cantin et Clément, 19/11) : la VRAIE chance d'avoir cet objet, avec sa mutation et sa classe de taille,
+-- en ouvrant le colis d'un emplacement de rayon de sa zone (un Secret, sans zone : la première zone où sa rareté
+-- existe, la 6) ; la même pour tous les exemplaires d'un même objet et d'une même mutation :
+--   chance = Σ sur la chance du joueur (ShelfOpen.LuckTable, poids relatifs ; ×1 seul sans Reveal.TableLuck)
+--              [ Σ sur la rareté du colis (ShelfBoxes.ZoneOdds[zone])
+--                  P(colis) × P(rareté de l'objet | colis, chance) (ShelfBoxes.ContentWeights, limitée à la zone, montée réduite par cran) ]
+--              × P(classe de taille | chance) (Huge, Colossal : ItemWeight.SizeChance ; sans taille : le reste)
+--            × part de l'objet dans sa rareté et sa zone (DrawWeight / total, comme Items.Pick)
+--            × P(effet) (Config/Mutations ; sans effet : 1 − la somme des effets).
+-- Ni le bonus de chance du serveur (ServerLuck, Robux) ni un contenu imposé (tuto) n'y entrent. Un objet TutorialOnly
+-- (que nul tirage ne donne) ou d'une rareté sans zone (Divine) n'a pas de chance : nil.
 --
 -- API :
---   ItemOdds.Chance(itemId, mutation?, box) -> number?   probabilité entre 0 et 1, nil si inconnue ou nulle
---   ItemOdds.OneIn(itemId, mutation?, box) -> number?    1 / Chance, arrondi à l'entier, nil sinon
---   ItemOdds.Format(oneIn) -> string                      « 1 in 5,300,000,000 » (au-delà de 1e15 : « 1 in 5.3Qa »)
+--   ItemOdds.Chance(itemId, mutation?) -> number?   probabilité entre 0 et 1, nil si inconnue ou nulle
+--   ItemOdds.OneIn(itemId, mutation?) -> number?    1 / Chance, arrondi lisible (Formulas.UnboxOdds), nil sinon
+--   ItemOdds.Format(oneIn) -> string                 « 1 in 5,300,000,000 » (au-delà de 1e15 : « 1 in 5.3Qa »)
 
 local Config = script.Parent:WaitForChild("Config")
 local Items = require(Config:WaitForChild("Items"))
 local Mutations = require(Config:WaitForChild("Mutations"))
 local ShelfOpen = require(Config:WaitForChild("ShelfOpen"))
+local ShelfBoxes = require(Config:WaitForChild("ShelfBoxes"))
+local Formulas = require(Config:WaitForChild("Formulas"))
 local Format = require(script.Parent:WaitForChild("Format"))
 local ItemWeight = require(script.Parent:WaitForChild("ItemWeight"))
 
@@ -31,58 +34,96 @@ local GROUPED_UNTIL = 1e15
 
 local ItemOdds = {}
 
-local function poolOf(item: Items.Item): { Items.Item }?
+local function poolOf(item: Items.Item, zone: number): { Items.Item }?
 	local all = Items.AllZones[item.Rarity]
 	if all then
 		return all
 	end
-	local zone = item.Zone
-	local byRarity = if zone then Items.ByZone[zone] else nil
+	local byRarity = Items.ByZone[zone]
 	return if byRarity then byRarity[item.Rarity] else nil
 end
 
-function ItemOdds.Chance(itemId: string, mutation: any, box: string): number?
-	local item = Items.ById[itemId]
-	local odds = ShelfOpen.BoxRarityOdds[box]
-	if item == nil or odds == nil then
-		return nil
-	end
+-- Somme des chances (pour cent) d'une famille de mutations.
+local function familyTotal(list: { any }): number
 	local total = 0
-	for _, weight in odds do
-		if type(weight) == "number" and weight > 0 then
-			total += weight
-		end
+	for _, entry in list do
+		total += math.max(entry.Chance, 0)
 	end
-	local weight = odds[item.Rarity]
-	if total <= 0 or type(weight) ~= "number" or weight <= 0 then
+	return total
+end
+
+-- Probabilité (0 à 1) de la classe de taille `sizeId` (nil : ni Huge ni Colossal) à la chance `luck`.
+local function sizeChance(sizeId: string?, luck: number): number
+	if ItemWeight.Enabled() then
+		if sizeId then
+			return ItemWeight.SizeChance(sizeId, luck) / 100
+		end
+		return 1 - (ItemWeight.SizeChance("Huge", luck) + ItemWeight.SizeChance("Colossal", luck)) / 100
+	end
+	local size = if sizeId then Mutations.SizeById[sizeId] else nil
+	if size then
+		return size.Chance / 100
+	end
+	return 1 - familyTotal(Mutations.Sizes) / 100
+end
+
+function ItemOdds.Chance(itemId: string, mutation: any): number?
+	local item = Items.ById[itemId]
+	if item == nil or item.TutorialOnly then
 		return nil
 	end
-	local pool = poolOf(item)
+	local zone = item.Zone or ShelfBoxes.FirstZone[item.Rarity]
+	local boxOdds = if zone then ShelfBoxes.ZoneOdds[zone] else nil
+	if zone == nil or boxOdds == nil then
+		return nil
+	end
+	local pool = poolOf(item, zone)
 	if pool == nil or table.find(pool, item) == nil then
 		return nil
 	end
-	local chance = weight / total / #pool
+	local poolWeight = 0
+	for _, other in pool do
+		poolWeight += other.DrawWeight
+	end
 	local clean = Mutations.Sanitize(mutation)
-	if clean then
-		local size = if clean.Size then Mutations.SizeById[clean.Size] else nil
-		local effect = if clean.Effect then Mutations.EffectById[clean.Effect] else nil
-		if size then
-			-- Vague 62 (a203) : Huge et Colossal sont des paliers de poids (Shared/ItemWeight, sans chance de la boîte).
-			chance *= (if ItemWeight.Enabled() then ItemWeight.SizeChance(size.Id, 1) else size.Chance) / 100
+	local sizeId = if clean then clean.Size else nil
+	local effect = if clean and clean.Effect then Mutations.EffectById[clean.Effect] else nil
+	local effectChance = if effect then effect.Chance / 100 else 1 - familyTotal(Mutations.Effects) / 100
+	local lucks: { ShelfOpen.LuckEntry } = if ShelfOpen.Reveal.TableLuck then ShelfOpen.LuckTable else { { Luck = 1, Weight = 1 } }
+	local luckTotal, sum = 0, 0
+	for _, entry in lucks do
+		local luckWeight = math.max(entry.Weight, 0)
+		local luck = math.max(entry.Luck, 1)
+		local boxTotal, rarityChance = 0, 0
+		for boxRarity, percent in boxOdds do
+			boxTotal += percent
+			local weights = ShelfBoxes.ContentWeights(boxRarity, luck, zone)
+			if weights and (weights[item.Rarity] or 0) > 0 then
+				local total = 0
+				for _, weight in weights do
+					total += weight
+				end
+				rarityChance += percent * weights[item.Rarity] / total
+			end
 		end
-		if effect then
-			chance *= effect.Chance / 100
+		luckTotal += luckWeight
+		if boxTotal > 0 then
+			sum += luckWeight * rarityChance / boxTotal * sizeChance(sizeId, luck)
 		end
 	end
+	if luckTotal <= 0 or poolWeight <= 0 then
+		return nil
+	end
+	local chance = sum / luckTotal * item.DrawWeight / poolWeight * effectChance
 	return if chance > 0 and chance == chance then chance else nil
 end
 
-function ItemOdds.OneIn(itemId: string, mutation: any, box: string): number?
-	local chance = ItemOdds.Chance(itemId, mutation, box)
+function ItemOdds.OneIn(itemId: string, mutation: any): number?
+	local chance = ItemOdds.Chance(itemId, mutation)
 	if chance == nil then
 		return nil
 	end
-	return math.max(1, math.round(1 / chance))
+	return Formulas.UnboxOdds(chance)
 end
 
 -- 5300000000 -> « 5,300,000,000 ».

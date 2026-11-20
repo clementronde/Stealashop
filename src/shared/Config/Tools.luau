@@ -32,11 +32,11 @@ export type Tool = {
 local List: { Tool } = {
 	{ Id = "Fists", Order = 1, DisplayName = "Fists", Power = 1, Price = 0, TargetZones = { 1, 1 }, HitAnimation = "HitWindow", Asset = nil },
 	{ Id = "Wrench", Order = 2, DisplayName = "Wrench", Power = 5, Price = 300, TargetZones = { 2, 2 }, HitAnimation = "HitWindow", Asset = "TOOL_CleAMolette" },
-	{ Id = "Crowbar", Order = 3, DisplayName = "Crowbar", Power = 100, Price = 80_000, TargetZones = { 3, 3 }, HitAnimation = "HitWindow", Asset = "TOOL_PiedDeBiche" },
-	{ Id = "Hammer", Order = 4, DisplayName = "Hammer", Power = 2_000, Price = 4_000_000, TargetZones = { 4, 4 }, HitAnimation = "HitWindowHeavy", Asset = "TOOL_Marteau" },
-	{ Id = "Sledgehammer", Order = 5, DisplayName = "Sledgehammer", Power = 40_000, Price = 120_000_000, TargetZones = { 5, 5 }, HitAnimation = "HitWindowHeavy", Asset = "TOOL_Masse" },
-	{ Id = "FireAxe", Order = 6, DisplayName = "Fire Axe", Power = 60_000, Price = 1_000_000_000, TargetZones = { 5, 5 }, HitAnimation = "HitWindowHeavy", Asset = "TOOL_HacheDIncendie" },
-	{ Id = "AngleGrinder", Order = 7, DisplayName = "Angle Grinder", Power = 100_000, Price = 7_000_000_000, TargetZones = { 6, 6 }, HitAnimation = "HitWindowHeavy", Asset = "TOOL_Disqueuse" },
+	{ Id = "Crowbar", Order = 3, DisplayName = "Crowbar", Power = 100, Price = 3_100, TargetZones = { 3, 3 }, HitAnimation = "HitWindow", Asset = "TOOL_PiedDeBiche" }, -- V0 proposé (Cantin, 20/11), avant : 80_000
+	{ Id = "Hammer", Order = 4, DisplayName = "Hammer", Power = 2_000, Price = 88_000, TargetZones = { 4, 4 }, HitAnimation = "HitWindowHeavy", Asset = "TOOL_Marteau" }, -- V0 proposé (Cantin, 20/11), avant : 4_000_000
+	{ Id = "Sledgehammer", Order = 5, DisplayName = "Sledgehammer", Power = 40_000, Price = 1_200_000, TargetZones = { 5, 5 }, HitAnimation = "HitWindowHeavy", Asset = "TOOL_Masse" }, -- V0 proposé (Cantin, 20/11), avant : 120_000_000
+	{ Id = "FireAxe", Order = 6, DisplayName = "Fire Axe", Power = 60_000, Price = 9_900_000, TargetZones = { 5, 5 }, HitAnimation = "HitWindowHeavy", Asset = "TOOL_HacheDIncendie" }, -- V0 proposé (Cantin, 20/11), avant : 1_000_000_000
+	{ Id = "AngleGrinder", Order = 7, DisplayName = "Angle Grinder", Power = 100_000, Price = 69_000_000, TargetZones = { 6, 6 }, HitAnimation = "HitWindowHeavy", Asset = "TOOL_Disqueuse" }, -- V0 proposé (Cantin, 20/11), avant : 7_000_000_000
 }
 
 local ById: { [string]: Tool } = {}

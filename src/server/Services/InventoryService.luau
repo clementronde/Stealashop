@@ -70,7 +70,6 @@ local Formulas = require(Shared.Config.Formulas)
 local Items = require(Shared.Config.Items)
 local Mutations = require(Shared.Config.Mutations)
 local Unbox = require(Shared.Config.Unbox) -- vague 44 : portée de l'invite « Take »
-local Zones = require(Shared.Config.Zones)
 local InventoryState = require(Shared.InventoryState)
 local ItemWeight = require(Shared.ItemWeight) -- vague 62 : poids montré dans la barre d'objets
 local Net = require(Shared.Net.Net)
@@ -202,17 +201,10 @@ end
 -- État de l'écran, tiré du profil
 ------------------------------------------------------------------------------
 
-local function validZone(value: any): number?
-	if type(value) == "number" and value % 1 == 0 and Zones[value] ~= nil then
-		return value
-	end
-	return nil
-end
-
 -- Revenu d'un objet ($/s, sans bonus), même règle que DisplayService (7.1).
 local function incomeOf(entry: ProfileTypes.Item, def: Items.Item): number
-	local zone = def.Zone or validZone((entry :: any).Zone) or 1
-	return Formulas.ItemIncome(zone, def.Rarity) * Mutations.IncomeMultiplier(entry.Mutation, entry.Weight) -- vague 62 : poids compris
+	return Formulas.ItemIncome(def.Id) * -- vague 76 : rareté, zone et rang de l'objet
+		Mutations.IncomeMultiplier(entry.Mutation, entry.Weight) -- vague 62 : poids compris
 end
 
 -- Vague 31 (L-112) : objet sous antivol (Types/Profile : AntiTheft, UnlockAt, Spot).

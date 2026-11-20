@@ -729,7 +729,7 @@ local function refreshRarest()
 				odds.Text = Format.income(chosen.Income)
 				odds.Visible = true
 			elseif odds then
-				local oneIn = if current.Large then ItemOdds.OneIn(chosen.ItemId, mutation, Vfx.RarestDisplay.OddsBox) else nil
+				local oneIn = if current.Large then ItemOdds.OneIn(chosen.ItemId, mutation) else nil
 				odds.Visible = oneIn ~= nil
 				if oneIn then
 					odds.Text = ItemOdds.Format(oneIn)

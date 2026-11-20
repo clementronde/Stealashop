@@ -77,6 +77,13 @@ local ShelfOpen = {
 		Secret = { Common = 0.5, Uncommon = 1, Rare = 2, Epic = 3.5, Legendary = 8.5, Mythic = 22, Secret = 62.5, Divine = 0 },
 		Divine = { Common = 0.5, Uncommon = 1, Rare = 2, Epic = 3, Legendary = 3.5, Mythic = 8, Secret = 22, Divine = 60 },
 	} :: { [string]: { [string]: number } },
+	-- Vague 76 (Cantin, 20/11 : « Viser l'objet ») : sur un rayon de magasin (contenu limité à la zone,
+	-- ShelfBoxes.ContentWeights avec une zone), le poids d'une rareté AU-DESSUS de la caisse est aussi multiplié par
+	-- ShelfStepUp à la puissance du nombre de crans au-dessus (1 cran : × 0,05 ; 2 crans : × 0,0025…), avant la
+	-- chance : le contenu peut toujours monter, rarement, et la vraie part de chaque rareté par zone suit les repères
+	-- de Cantin (plus basse ≈ moitié, rareté qui apparaît de 1 à 3 %, Mythique ≈ 0,5 %, Secret de 0,02 à 0,05 %).
+	-- Camion, tour, cadeaux et rayons d'événement (sans zone) : inchangés (× 1).
+	ShelfStepUp = 0.05, -- V0 proposé (Cantin, 20/11), avant : 1 (aucune réduction)
 	-- Proposé par l'équilibrage (a108 : « AboveLowest » ne change presque rien au-dessus d'une caisse), en
 	-- attente de la validation de Clément. "AboveBox" ou "AboveLowest" (voir plus haut).
 	LuckBoost = "AboveBox" :: string,

@@ -133,7 +133,7 @@ local Passes: { Pass } = {
 
 -- Produits développeur (4.2). Noms et lignes d'effet : V0 proposés, absents de la maquette.
 local Products: { Product } = {
-	{ Key = "StarterPack", Id = 0, Tab = "Offers", Order = 1, Price = 99, Ready = true, DisplayName = "Starter Pack", Effect = "×2 Cash 1h + Hammer + $50K", Icon = "UI_Icon_DP_StarterPack" },
+	{ Key = "StarterPack", Id = 0, Tab = "Offers", Order = 1, Price = 99, Ready = true, DisplayName = "Starter Pack", Effect = "×2 Cash 1h + Hammer + $2.6K", Icon = "UI_Icon_DP_StarterPack" },
 	-- 6 packs d'argent (L-196 point 1), du plus petit au plus gros. 10 min, 1 h et 5 h : doc 4.2 ; 30 min,
 	-- 3 h et 12 h : V0 proposé, absent du doc (prix par minute qui baisse avec la taille du pack : 4,9 ; 4,3 ;
 	-- 3,3 ; 2,8 ; 2,7 ; 2,2 R$). Couleurs du vert à l'or (L-204 ; 2, 4 et 6 : V0 entre celles de Clément).
@@ -293,7 +293,7 @@ local Monetization = {
 		Window = 3600, -- 1re heure, comptée en temps de jeu (Lifetime.PlaySeconds + session : V0, le doc ne précise pas)
 		BoostSeconds = 3600, -- ×2 argent 1 h
 		Tool = "Hammer", -- Config/Tools
-		Cash = 50_000,
+		Cash = 2_600, -- V0 proposé (Cantin, 20/11), avant : 50_000 (vague 76 : revenus remis à l'échelle ; texte Effect du produit suivi)
 		-- Vague 73 (a253, L-242 point 3) : ancien prix (Robux) écrit dans Featured.OldPrice ; la remise de
 		-- Featured.DiscountTag.DiscountLabel (« 75% OFF ») en est tirée avec le prix affiché. V0 proposé, absent du doc,
 		-- à valider par Clément ; nil (ou pas plus cher que le prix) = ni ancien prix ni étiquette.

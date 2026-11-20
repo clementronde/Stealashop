@@ -2,9 +2,13 @@
 -- Colis des rayons des magasins PNJ (DEV-015, DEV-017) : tirage à la mise en rayon, étiquette
 -- BB_Box et contour des colis (liaison L-031 et L-033, décisions de Clément acceptées par Ironix
 -- le 2026-11-07). Lu par StoreHeistService, CarryService et UnboxService (serveur) et par
--- ShelfBoxController et le rouleau d'UnboxController (client). Le nombre de colis de chaque type,
--- leur temps de prise et leurs probabilités de rareté restent dans Balance.Heist.BoxTiers et
--- Rarities.BoxOdds.
+-- ShelfBoxController, HeistController et le rouleau d'UnboxController (client).
+--
+-- Vague 76 (Cantin et Clément, 19/11) : plus de types de colis Standard, Premium, Luxe sur les rayons. Chaque zone
+-- n'a que certaines raretés (objets ET colis : ZoneOdds) ; chaque emplacement tire la rareté de son colis dans
+-- ZoneOdds[zone] ; le contenu (rareté de l'objet) garde ShelfOpen.BoxRarityOdds, limité aux raretés de la zone et
+-- ramené à 100 (ContentOdds) ; le temps de prise suit la rareté du colis (GrabTimes). Le camion, la tour de la
+-- fortune et les colis offerts gardent leur type et leur table (Rarities.BoxOdds, OddsFor ; zone 1 : Commun seul).
 --
 -- Origine de chaque valeur, notée en commentaire :
 --   L-031, L-033  décision écrite dans la liaison ;
@@ -14,38 +18,119 @@
 local DeepFreeze = require(script.Parent.DeepFreeze)
 local Rarities = require(script.Parent.Rarities)
 
--- ZoneOdds[zone][BoxTier][RarityId] = pourcentage (chaque type fait 100).
-export type ZoneOdds = { [number]: { [string]: { [string]: number } } }
+-- Raretés de chaque zone et chances des colis du rayon : Rarities.ZoneOdds (vague 76 ; dans Rarities pour que
+-- Config/Items et Formulas.ItemIncome les lisent sans autre module). Repris ici sous leurs noms d'avant.
+local ZONE_ODDS = Rarities.ZoneOdds
+local ZONE_RARITIES = Rarities.ZoneRarities
+local ALLOWED = Rarities.ZoneAllowed
+local FIRST_ZONE = Rarities.FirstZone
 
-local ZONE_ODDS: ZoneOdds = {
-	-- L-033 : la zone 1 est la zone tuto. Elle ne tire que des objets Communs, pour les trois
-	-- types de colis (6 Standard, 3 Premium et 1 Luxe, placés au hasard comme ailleurs).
-	-- Exception : le premier colis du tuto garde son objet Rare garanti (5.11, Tutorial.FirstBoxTier
-	-- et Tutorial.GuaranteedItemId). Il est imposé à la sortie de l'objet par l'accroche
-	-- StoreHeistService.SetContentOverride, que pose TutorialService.
-	[1] = {
-		Standard = { Common = 100 },
-		Premium = { Common = 100 },
-		Luxe = { Common = 100 },
-	},
-}
+
+-- `odds` limitée aux raretés de la zone `zone`, ramenée à 100 ; nil si rien n'y reste (ou zone inconnue).
+local function limited(odds: { [string]: number }, zone: number): { [string]: number }?
+	local allowed = ALLOWED[zone]
+	if allowed == nil then
+		return nil
+	end
+	local total = 0
+	for rarityId, value in odds do
+		if allowed[rarityId] and type(value) == "number" and value > 0 then
+			total += value
+		end
+	end
+	if total <= 0 then
+		return nil
+	end
+	local out: { [string]: number } = {}
+	for rarityId, value in odds do
+		if allowed[rarityId] and type(value) == "number" and value > 0 then
+			out[rarityId] = value / total * 100
+		end
+	end
+	return out
+end
 
 local ShelfBoxes = {
 	-- Serveur (StoreHeistService) ------------------------------------------------------------
 
-	-- Probabilités de rareté propres à une zone : remplacent Rarities.BoxOdds[Tier] dans cette
-	-- zone. Une zone absente tire avec Rarities.BoxOdds (7.3).
+	-- Rareté du colis d'un emplacement, par zone (voir plus haut).
 	ZoneOdds = ZONE_ODDS,
+	-- [zone] = raretés de la zone, de la plus basse à la plus haute.
+	ZoneRarities = ZONE_RARITIES,
+	-- [RarityId] = première zone où elle existe.
+	FirstZone = FIRST_ZONE,
+	GrabTimes = Rarities.GrabTimes, -- temps de prise selon la rareté du colis (Rarities)
 
-	-- Probabilités d'un type de colis dans une zone : ZoneOdds[zone][tier] s'il existe, sinon
-	-- Rarities.BoxOdds[tier] (7.3) ; nil pour un type inconnu. [RarityId] = pourcentage, une
-	-- rareté absente vaut 0. Fonction pure, sans tirage : lue par UnboxService (amélioration du
-	-- colis) et par le rouleau d'UnboxController (DEV-050). StoreHeistService garde pour l'instant
-	-- sa fonction locale, qui fait la même chose.
+	-- La rareté `rarityId` existe-t-elle dans la zone `zone` (colis et objets) ? (Rarities.Allows)
+	Allows = Rarities.Allows,
+
+	-- Temps de prise d'un colis de rareté `rarityId` (ou de l'objet sorti d'un tel colis).
+	GrabTime = Rarities.GrabTime,
+
+	-- Colis qui gardent un type (camion, tour de la fortune, colis offerts) : leur propre table, Rarities.BoxOdds[tier]
+	-- (vague 76, décision 3 : inchangée) ; en zone 1 (zone du tuto, L-033), Commun seulement, comme avant. nil pour un
+	-- type inconnu. [RarityId] = pourcentage, une rareté absente vaut 0. Une rareté sans objet dans la zone : repli de
+	-- chaque appelant (TruckEventService : la plus proche en dessous ; UnboxService : rareté écartée). Fonction pure,
+	-- sans tirage : lue par UnboxService (colis offerts, amélioration), TruckEventService et la tour de la fortune.
 	OddsFor = function(zone: number, tier: string): { [string]: number }?
-		local byZone = ZONE_ODDS[zone]
-		local odds = if byZone then byZone[tier] else nil
-		return odds or Rarities.BoxOdds[tier]
+		local odds = Rarities.BoxOdds[tier]
+		if odds == nil then
+			return nil
+		end
+		if zone == 1 then
+			return limited(odds, zone) or ZONE_ODDS[zone]
+		end
+		return odds
+	end,
+
+	-- Poids de la rareté de l'OBJET d'une caisse de rareté `boxRarity` à la chance `luck` (règle de Cantin du
+	-- 2026-11-13, vague 32 ; sortie de StoreHeistService par la vague 76 pour que le tirage du serveur et la cote
+	-- « 1 IN N » (Shared/ItemOdds) lisent la même règle) : ShelfOpen.BoxRarityOdds[boxRarity], limitée aux raretés
+	-- de la zone `zone` quand elle est donnée (rayons des magasins ; rien pour un rayon d'événement), puis les poids
+	-- des raretés au-dessus du seuil de ShelfOpen.LuckBoost multipliés par la chance ("AboveBox" : au-dessus de la
+	-- caisse ; "AboveLowest" : au-dessus de la plus basse qui reste ; autre valeur : la chance ne compte pas, le
+	-- serveur avertit) ; sur un rayon (zone donnée), chaque poids au-dessus de la caisse est aussi multiplié par
+	-- ShelfOpen.ShelfStepUp par cran (vague 76, Cantin 20/11). Poids relatifs (le tirage les ramène à 100). nil si
+	-- la caisse n'a pas de table ou si rien ne reste. Config/ShelfOpen n'est chargé qu'ici, au premier appel :
+	-- ShelfBoxes reste lisible sans lui.
+	ContentWeights = function(boxRarity: string, luck: number, zone: number?): { [string]: number }?
+		local ShelfOpen = require(script.Parent.ShelfOpen)
+		local odds = ShelfOpen.BoxRarityOdds[boxRarity]
+		local allowed = if zone then ALLOWED[zone] else nil
+		if odds == nil or (zone ~= nil and allowed == nil) then
+			return nil
+		end
+		local lowest: number? = nil
+		for _, rarity in Rarities.List do
+			if (odds[rarity.Id] or 0) > 0 and (allowed == nil or allowed[rarity.Id]) then
+				lowest = rarity.Order
+				break
+			end
+		end
+		if lowest == nil then
+			return nil
+		end
+		local boost = if luck > 1 and luck < math.huge then luck else 1
+		local mode = ShelfOpen.LuckBoost
+		local box = Rarities.ById[boxRarity]
+		local threshold: number = lowest
+		if mode == "AboveBox" and box then
+			threshold = box.Order
+		elseif mode ~= "AboveLowest" then
+			boost = 1
+		end
+		-- Rayon de magasin (zone donnée) : montée au-dessus de la caisse réduite par cran (ShelfOpen.ShelfStepUp, vague 76).
+		local stepUp = if zone ~= nil and box and type(ShelfOpen.ShelfStepUp) == "number" then ShelfOpen.ShelfStepUp else 1
+		local weights: { [string]: number } = {}
+		for _, rarity in Rarities.List do
+			local weight = odds[rarity.Id] or 0
+			if weight > 0 and (allowed == nil or allowed[rarity.Id]) then
+				local above = if box then rarity.Order - box.Order else 0
+				local scale = if above > 0 then stepUp ^ above else 1
+				weights[rarity.Id] = (if rarity.Order > threshold then weight * boost else weight) * scale
+			end
+		end
+		return weights
 	end,
 
 	-- Client (ShelfBoxController) ------------------------------------------------------------

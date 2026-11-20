@@ -12,15 +12,15 @@
 --
 -- Règles :
 --   - Rayons : à chaque remplissage (démarrage, RefillAll à la tombée de la nuit), le
---     serveur répartit au hasard sur les ShelfSlot du magasin un jeu neuf de colis :
---     Balance.Heist.BoxTiers[Tier].Count de chaque type (6 Standard, 3 Premium, 1 Luxe, L-033).
---     Le type appartient au colis, plus à l'emplacement : le temps de prise est celui du colis
---     (attribut Tier du colis, lu par HeistController). Magasin à moins de 10 rayons (contrat
+--     serveur pose un colis neuf sur chaque ShelfSlot du magasin. Vague 76 (Cantin et Clément, 19/11) : plus de
+--     types de colis (Standard, Premium, Luxe) : la rareté de chaque colis est tirée dans celles de la zone
+--     (ShelfBoxes.ZoneOdds) et donne son temps de prise (ShelfBoxes.GrabTime ; attribut BoxRarity du colis et de
+--     l'objet sorti, lu par HeistController). Magasin à moins de 10 rayons (contrat
 --     incomplet) : le Luxe est posé d'abord, puis les Premium, les Standard en trop manquent.
 --     Les colis sont créés par le code dans un dossier `ShelfBoxes` du magasin (`ShelfBox_01`…,
 --     numéro de l'emplacement, tag ShelfBox) : le modèle du magasin n'en contient pas. Aspect :
 --     modèle `BOX_<Rareté>` de Clément (rareté de la caisse, tirée à la mise en rayon ; L-097 point 3)
---     s'il existe dans ReplicatedStorage/Assets (ou ServerStorage/Assets), sinon `BOX_<Tier>`, sinon
+--     s'il existe dans ReplicatedStorage/Assets (ou ServerStorage/Assets), sinon l'ancien `BOX_<Standard|Premium|Luxe>` de même temps de prise (vague 76), sinon
 --     un bloc V0 (carton brun, carton bleu scellé, caisse en bois cerclée d'or, 7.3). Sur le rayon,
 --     le colis n'est pas teint (BOX_<Rareté> est déjà à la couleur de sa rareté).
 --     Vague 32 (règle de Cantin du 2026-11-13) : seule la rareté de la CAISSE
@@ -42,13 +42,13 @@
 --   - Prise : GrabItem(slotId), en deux appels (voir « Maintien » plus bas). Le serveur vérifie :
 --     magasin ouvert (et pas fermé pour lui), colis posé sur le rayon, avance du casseur, mains vides
 --     (CarryService.IsCarrying), joueur vivant dans le volume Bounds et à GrabMaxDistance
---     (8 studs) au plus de l'emplacement (tolérance au début du maintien, voir « Portée »), maintien du type du colis (Balance.Heist.BoxTiers). Le
+--     (8 studs) au plus de l'emplacement (tolérance au début du maintien, voir « Portée »), maintien selon la rareté du colis (ShelfBoxes.GrabTime). Le
 --     rayon se vide, CarryService.StartCarry reçoit le payload avec le contenu tiré à la mise en
 --     rayon (ou celui de l'accroche du tuto, plus bas), et le chrono est masqué pour ce joueur
 --     (« le chrono ne compte plus pour lui », 5.3 point 5).
 --   - Accroche du tuto (5.11) : StoreHeistService.SetContentOverride(fn), appelée à chaque prise
---     avant StartCarry. fn peut remplacer, pour ce joueur, le type, la rareté et l'objet du colis
---     qu'il soulève (1er colis Premium, objet Rare garanti : Tutorial.FirstBoxTier et
+--     avant StartCarry. fn peut remplacer, pour ce joueur, la rareté et l'objet du colis
+--     qu'il soulève (1er colis, objet Rare garanti : Tutorial.
 --     GuaranteedItemId, le Pot de nouilles, qu'aucun tirage ne donne) ;
 --     le BB_Box du colis porté, construit par CarryService d'après le payload, montre alors le
 --     contenu remplacé. Le colis du rayon, lui, garde le sien : s'il revient (porteur rattrapé),
@@ -173,7 +173,7 @@
 --     reconstruit de toute façon au bout de son attente maximale, en sortant ceux qui y seraient encore).
 --     Les témoins ne montent plus pendant l'ouverture (ils fuient à la casse, L-118 point 10).
 --   - Lancement : OpenShelfBox(slotId), deux appels comme GrabItem (Cantin, 2026-11-13 : rester appuyé sur
---     E) : début puis fin du maintien, maintien = GrabTime du type du colis (Balance.Heist.BoxTiers),
+--     E) : début puis fin du maintien, maintien = ShelfBoxes.GrabTime de la rareté du colis,
 --     temps écoulé vérifié ici avec la même tolérance (GRAB_TIME_TOLERANCE) ; un seul appel ne lance rien.
 --     Maintien d'ouverture à part (openHolds), revérifié 10 fois par seconde comme celui de la prise
 --     (colis changé, refus d'ouverture, expiration GrabTime + HOLD_EXPIRY). Vérifié à chaque appel (9.4) : magasin
@@ -214,13 +214,13 @@
 --     Le colis disparaît (ShelfOpenState = "Revealed" juste avant) et l'objet sort à sa place : copie du
 --     modèle ITM_<ItemId> de Clément (cherché comme les BOX_*), sinon un bloc V0 à la couleur de la
 --     rareté ; à l'échelle de sa mutation de taille ; pivot posé sur le ShelfSlot et tourné comme lui ;
---     dans le dossier ShelfBoxes, nommé ShelfItem_NN, tag ShelfItem, attributs SlotId, Slot, Tier (le
+--     dans le dossier ShelfBoxes, nommé ShelfItem_NN, tag ShelfItem, attributs SlotId, Slot, BoxRarity (vague 76 ; le
 --     type du colis d'origine : son temps de prise), Landed, ItemId, Rarity, MutationSize,
 --     MutationEffect, Income, ShelfLuck, ShelfReservedBy, ShelfReservedUntil (= sortie +
 --     ShelfOpen.ReserveTime). BB_Item, halo et effets de la révélation sont posés par le client
 --     (ShelfOpenController) d'après ces attributs. Annonce : Notify (Unbox.AnnounceKind) aux autres
 --     joueurs à partir de ShelfOpen.AnnounceMinRarity.
---   - Prise de l'objet : GrabItem(slotId), deux appels comme avant (maintien du Tier du colis d'origine).
+--   - Prise de l'objet : GrabItem(slotId), deux appels comme avant (maintien selon la rareté du colis d'origine, vague 76).
 --     Avant ShelfReservedUntil, seul l'ouvreur ; ensuite tout joueur dans le magasin. Mêmes contrôles
 --     que pour un colis (Bounds, distance, mains vides, magasin pas fermé pour lui). Le portage est un
 --     NPCItemPayload (CarryService : l'objet visible sur la tête, halo, BB_Carry) ; le vigile part à la
@@ -252,7 +252,7 @@
 --     HeistBreakerId (UserId du casseur) ;
 --   sur le Player : ClosedStores (texte, StoreId séparés par des virgules, triés ; absent = aucun) ;
 --   sur chaque colis du rayon : tag ShelfBox ; SlotId (à renvoyer dans GrabItem, « <StoreId>/03 »),
---     Slot (nom de l'Attachment, « ShelfSlot_03 »), Tier (type du colis), Landed (false tant
+--     Slot (nom de l'Attachment, « ShelfSlot_03 »), BoxRarity (rareté du colis, vague 76 : plus de Tier), Landed (false tant
 --     qu'un colis rendu vole) ; son étiquette BB_Box ; BoxRarity (rareté de la
 --     caisse, vague 32 ; Shared/ShelfOpenState) et les attributs ShelfOpen* de l'ouverture.
 --
@@ -269,10 +269,10 @@
 --       restes de l'ancien déroulé sont partis (GrabItem ne prend plus que l'objet sorti).
 --   StoreHeistService.SetContentOverride(fn?)
 --       Accroche du tuto (voir plus haut). fn(player, drawn) -> override?, appelée à chaque prise,
---       ne doit pas yield. drawn = { StoreId, SlotId, Zone, Tier, Rarity, ItemId } (contenu du
+--       ne doit pas yield. drawn = { StoreId, SlotId, Zone, Rarity, ItemId } (contenu du
 --       colis du rayon). Un contenu remplacé n'a jamais de mutation (DEV-131 : jamais pour le colis
---       du tuto). override = nil (rien ne change) ou { Tier?, Rarity?, ItemId? } : Tier =
---       type du colis porté (clé de Balance.Heist.BoxTiers) ; ItemId = objet (de la zone du
+--       du tuto). override = nil (rien ne change) ou { Rarity?, ItemId? } (vague 76 : plus de Tier) :
+--       ItemId = objet (de la zone du
 --       magasin, ou un Secret) ; Rarity seule = un objet de cette rareté est tiré dans la zone
 --       (Items.Pick : jamais un objet TutorialOnly, sans le repli de la mise en rayon).
 --       Un remplacement invalide est ignoré, avec un avertissement. nil retire l'accroche.
@@ -372,14 +372,12 @@ export type OverrideInfo = {
 	StoreId: string,
 	SlotId: string,
 	Zone: number,
-	Tier: string,
-	Rarity: string,
+	Rarity: string, -- rareté du colis (vague 76 : plus de type de colis)
 	ItemId: string,
 }
 
 -- Ce que l'accroche du tuto remplace (champs absents = inchangés).
 export type OverrideResult = {
-	Tier: string?,
 	Rarity: string?,
 	ItemId: string?,
 }
@@ -423,7 +421,6 @@ type Opening = {
 
 -- Colis posé sur un rayon, ou en vol vers lui.
 type ShelfBox = {
-	Tier: string,
 	Rarity: string, -- rareté de la caisse (BOX_<Rareté>, BB_Box) ; le contenu n'est tiré qu'à la sortie (reveal, vague 32)
 	Model: Model,
 	Landed: boolean, -- false tant que le colis rendu vole vers le rayon
@@ -433,7 +430,7 @@ type ShelfBox = {
 
 -- Ce qui décrit un objet sorti d'un colis (L-112), sur son rayon comme une fois porté ou au sol.
 type ItemInfo = {
-	Tier: string, -- type du colis d'origine : son temps de prise
+	BoxRarity: string, -- vague 76 : rareté du colis d'origine : son temps de prise (ShelfBoxes.GrabTime)
 	Content: Content, -- contenu tiré à la sortie (vague 32), ou imposé par l'accroche du tuto
 	Luck: number, -- chance de l'ouverture
 	OpenerId: number, -- UserId de l'ouvreur
@@ -531,7 +528,7 @@ type Ceiling = { Count: number, Token: number }
 type LockState = "Leaving" | "Closed"
 
 -- Target : le colis (ShelfBox) ou l'objet sorti (ShelfItem, L-112) visé par le maintien.
-type Hold = { Slot: Slot, Target: any, Tier: string, StartedAt: number }
+type Hold = { Slot: Slot, Target: any, BoxRarity: string, StartedAt: number }
 
 
 type BoxLook = {
@@ -550,7 +547,7 @@ local SHUTTER_NAME = "Shutter"
 local GUARDS_FOLDER = "ActiveGuards" -- vigiles en jeu, posés par GuardService dans le Workspace
 local WINDOW_NAME = "Window"
 local ASSETS_NAME = "Assets" -- ReplicatedStorage/Assets et ServerStorage/Assets (Clément, 9.2)
-local BOX_PREFIX = "BOX_" -- BOX_<Rareté> (L-097 point 3), sinon BOX_<Tier> (10.3, Contract/Models)
+local BOX_PREFIX = "BOX_" -- BOX_<Rareté> (L-097 point 3), sinon l'ancien BOX_<Standard|Premium|Luxe> (vague 76 : lookOf)
 
 -- Noms posés par ce service, lus par HeistController et ShelfBoxController (mêmes noms là-bas).
 local BOXES_FOLDER = "ShelfBoxes"
@@ -563,7 +560,6 @@ local EXCLUSIVE_ATTRIBUTE = "HeistExclusiveUntil"
 local BREAKER_ATTRIBUTE = "HeistBreakerId"
 local SLOT_ID_ATTRIBUTE = "SlotId"
 local SLOT_ATTRIBUTE = "Slot"
-local TIER_ATTRIBUTE = "Tier"
 local LANDED_ATTRIBUTE = "Landed"
 -- Objet sorti d'un colis (L-112) : nom du modèle et attributs lus par le client (ShelfOpenController,
 -- HeistController), en plus de ceux de Shared/ShelfOpenState.
@@ -868,17 +864,10 @@ end
 
 -- Tirage (serveur seulement) -----------------------------------------------------------------
 
--- Probabilités d'un type de colis dans une zone : celles de la zone (ShelfBoxes.ZoneOdds, zone 1
--- = Communs seulement, L-033), sinon celles du type (Rarities.BoxOdds, 7.3).
-local function oddsFor(tier: string, zone: number): { [string]: number }?
-	local byZone = ShelfBoxes.ZoneOdds[zone]
-	local odds = if byZone then byZone[tier] else nil
-	return odds or Rarities.BoxOdds[tier]
-end
-
--- Rareté tirée selon oddsFor(tier, zone) (pourcentages).
-local function drawRarity(tier: string, zone: number): string?
-	local odds = oddsFor(tier, zone)
+-- Vague 76 (Cantin et Clément, 19/11) : rareté du colis d'un emplacement de rayon de la zone `zone`, tirée dans
+-- ShelfBoxes.ZoneOdds[zone] (pourcentages) : plus de type de colis (Standard, Premium, Luxe) sur les rayons.
+local function drawRarity(zone: number): string?
+	local odds = ShelfBoxes.ZoneOdds[zone]
 	if odds == nil then
 		return nil
 	end
@@ -922,20 +911,11 @@ local function drawMutation(itemId: string): Mutations.Mutation?
 	return Mutations.Roll(random)
 end
 
--- Types des colis d'un remplissage, du plus rare au plus courant (1 Luxe, 3 Premium, 6 Standard) :
--- si un magasin a moins de rayons que de colis, ce sont des Standard qui manquent.
-local function layoutTiers(): { string }
-	local list: { string } = {}
-	local order = Balance.Heist.TierOrder
-	for index = #order, 1, -1 do
-		local tier = order[index]
-		local info = Balance.Heist.BoxTiers[tier]
-		local count = if info then info.Count else 0
-		for _ = 1, count do
-			table.insert(list, tier)
-		end
-	end
-	return list
+-- Vague 76 : apparence d'un colis de rareté `rarity` sans modèle BOX_<Rareté> : l'ancien type de même temps de prise
+-- (0,3 s Standard, 0,6 s Premium, 1 s Luxe), pour le modèle BOX_<Type> de Clément ou le bloc V0. Apparence seule.
+local function lookOf(rarity: string): string
+	local grab = ShelfBoxes.GrabTime(rarity)
+	return if grab >= 1 then "Luxe" elseif grab >= 0.6 then "Premium" else "Standard"
 end
 
 -- Colis des rayons -----------------------------------------------------------------------------
@@ -962,8 +942,8 @@ local function boxTemplate(name: string): Instance?
 end
 
 -- Bloc V0 : pivot en bas au centre (10.1), comme un BOX_* livré.
-local function makeV0Box(tier: string): Model
-	local look = V0_LOOKS[tier] or V0_LOOKS.Standard
+local function makeV0Box(rarity: string): Model
+	local look = V0_LOOKS[lookOf(rarity)] or V0_LOOKS.Standard
 	local size = look.Size
 	local model = Instance.new("Model")
 	local body = Instance.new("Part")
@@ -1006,14 +986,14 @@ local function makeV0Box(tier: string): Model
 	return model
 end
 
--- Modèle d'un colis de type `tier` pour l'emplacement `slot`, avec son étiquette BB_Box : celui de la
--- rareté `rarity` de la caisse, tirée à la mise en rayon (BOX_<Rareté>, L-097 point 3), sinon BOX_<Tier>,
--- sinon le bloc V0. Seul le modèle change : le type reste la règle de jeu (prise, chances, ShelfSlot).
+-- Modèle d'un colis pour l'emplacement `slot`, avec son étiquette BB_Box : celui de la rareté `rarity` de la caisse,
+-- tirée à la mise en rayon (BOX_<Rareté>, L-097 point 3), sinon l'ancien BOX_<Type> de même temps de prise (lookOf,
+-- vague 76), sinon le bloc V0. Seul le modèle change : la rareté est la règle de jeu (prise, contenu).
 -- Vague 32 : étiquette à la rareté seule, attribut BoxRarity ; jamais d'ItemId, de Rarity d'objet ni de
 -- mutation sur le colis.
-local function makeBoxModel(slot: Slot, tier: string, rarity: string): Model
+local function makeBoxModel(slot: Slot, rarity: string): Model
 	local model: Model? = nil
-	local template = boxTemplate(BOX_PREFIX .. rarity) or boxTemplate(BOX_PREFIX .. tier)
+	local template = boxTemplate(BOX_PREFIX .. rarity) or boxTemplate(BOX_PREFIX .. lookOf(rarity))
 	if template then
 		local clone = template:Clone() -- nil si le modèle n'est pas Archivable
 		if clone then
@@ -1032,7 +1012,7 @@ local function makeBoxModel(slot: Slot, tier: string, rarity: string): Model
 			end
 		end
 	end
-	local box = model or makeV0Box(tier)
+	local box = model or makeV0Box(rarity)
 	for _, descendant in box:GetDescendants() do
 		if descendant:IsA("BasePart") then
 			-- petit décor posé sur un rayon : ni collision, ni contact, ni requête (les rayons
@@ -1048,14 +1028,13 @@ local function makeBoxModel(slot: Slot, tier: string, rarity: string): Model
 	box.ModelStreamingMode = Enum.ModelStreamingMode.Atomic -- le colis et son étiquette arrivent ensemble
 	box:SetAttribute(SLOT_ID_ATTRIBUTE, slot.Id)
 	box:SetAttribute(SLOT_ATTRIBUTE, slot.Name)
-	box:SetAttribute(TIER_ATTRIBUTE, tier)
 	box:SetAttribute(ShelfOpenState.BoxRarityAttribute, rarity)
 	CollectionService:AddTag(box, SHELF_BOX_TAG)
 	local ok, label = pcall(CarryService.AttachBoxLabel, box, rarity, nil, nil)
 	if not ok then
 		warnOnce("label.error", `CarryService.AttachBoxLabel : {label}`)
 	elseif label == nil then
-		warnOnce(`label.{tier}`, `colis {tier} de {slot.Id} : aucune étiquette BB_Box posée (colis sans pièce ?)`)
+		warnOnce(`label.{rarity}`, `colis {rarity} de {slot.Id} : aucune étiquette BB_Box posée (colis sans pièce ?)`)
 	end
 	return box
 end
@@ -1077,9 +1056,9 @@ end
 
 -- Pose un colis sur le rayon vide `slot`, en vol depuis `from` s'il est donné. `rarity` : rareté de la
 -- caisse (le contenu est tiré à la sortie, vague 32).
-local function placeBox(slot: Slot, tier: string, rarity: string, from: Vector3?)
-	local model = makeBoxModel(slot, tier, rarity)
-	local box: ShelfBox = { Tier = tier, Rarity = rarity, Model = model, Landed = false, StopFlight = nil }
+local function placeBox(slot: Slot, rarity: string, from: Vector3?)
+	local model = makeBoxModel(slot, rarity)
+	local box: ShelfBox = { Rarity = rarity, Model = model, Landed = false, StopFlight = nil }
 	local target = slot.Attachment.WorldCFrame
 	slot.Box = box
 	if from == nil then
@@ -1135,14 +1114,12 @@ local function flightPath(start: Vector3, target: CFrame): ((alpha: number) -> C
 		duration
 end
 
--- $/s de l'objet (attribut Income, pour BB_Item), comme une fois exposé (DisplayService) : revenu de sa
--- zone (celle du magasin pour un Secret, qui n'en a pas) et de sa rareté, mutation comprise.
+-- $/s de l'objet (attribut Income, pour BB_Item), comme une fois exposé (DisplayService) : Formulas.ItemIncome
+-- (vague 76 : rareté, zone et rang de l'objet), mutation comprise.
 -- Vague 62 : avec un poids (Content.Weight), le poids remplace la mutation de taille dans le revenu
 -- (ItemWeight.IncomeFactor ; seule la mutation d'effet compte en plus).
 local function itemIncome(zone: number, content: Content): number
-	local def = Items.ById[content.ItemId]
-	local itemZone: number = if def and def.Zone then def.Zone else zone
-	local base = Formulas.ItemIncome(itemZone, content.Rarity)
+	local base = if Items.ById[content.ItemId] then Formulas.ItemIncome(content.ItemId) else 0 -- vague 76 : rareté, zone, rang
 	local weight = content.Weight
 	if weight == nil then
 		return base * Mutations.IncomeMultiplier(content.Mutation)
@@ -1228,7 +1205,7 @@ local function makeItemModel(slot: Slot, info: ItemInfo): Model
 	local mutation = content.Mutation
 	object:SetAttribute(SLOT_ID_ATTRIBUTE, slot.Id)
 	object:SetAttribute(SLOT_ATTRIBUTE, slot.Name)
-	object:SetAttribute(TIER_ATTRIBUTE, info.Tier)
+	object:SetAttribute(ShelfOpenState.BoxRarityAttribute, info.BoxRarity) -- vague 76 : temps de prise (HeistController)
 	object:SetAttribute(ITEM_ID_ATTRIBUTE, content.ItemId)
 	object:SetAttribute(RARITY_ATTRIBUTE, content.Rarity)
 	object:SetAttribute(MUTATION_SIZE_ATTRIBUTE, if mutation then mutation.Size else nil)
@@ -1446,22 +1423,18 @@ local function fillStore(store: Store): number
 		removeBox(slot)
 		removeItem(slot)
 	end
-	local tiers = layoutTiers()
 	local count = 0
-	for index, slot in shuffled(store.Slots) do
-		local tier = tiers[index]
-		if tier == nil then
-			break -- plus de rayons que de colis : le reste reste vide
-		end
-		-- Vague 32 : la rareté de la caisse seule ; le contenu est tiré à la sortie.
-		local rarity = drawRarity(tier, store.Zone)
+	for _, slot in store.Slots do
+		-- Vague 32 : la rareté de la caisse seule ; le contenu est tiré à la sortie. Vague 76 : un colis par
+		-- emplacement, sa rareté tirée dans celles de la zone (ShelfBoxes.ZoneOdds).
+		local rarity = drawRarity(store.Zone)
 		if rarity then
-			placeBox(slot, tier, rarity, nil)
+			placeBox(slot, rarity, nil)
 			count += 1
 		else
 			warnOnce(
-				`draw.{tier}.{store.Zone}`,
-				`aucun objet ne peut sortir d'un colis {tier} en zone {store.Zone} (Config : ShelfBoxes, Rarities, Items) : rayon laissé vide`
+				`draw.{store.Zone}`,
+				`aucun colis ne peut être tiré en zone {store.Zone} (Config : ShelfBoxes, Rarities, Items) : rayon laissé vide`
 			)
 		end
 	end
@@ -2089,10 +2062,10 @@ end
 
 -- Prise ----------------------------------------------------------------------------------------------
 
--- Temps de prise d'un colis de type `tier` (ou de l'objet sorti d'un tel colis, L-112).
-local function grabTime(tier: string): number
-	local info = Balance.Heist.BoxTiers[tier]
-	return if info then info.GrabTime else 0
+-- Temps de prise d'un colis de rareté `rarity` (ou de l'objet sorti d'un tel colis, L-112). Vague 76 : selon la rareté
+-- du colis (ShelfBoxes.GrabTime), plus selon son type.
+local function grabTime(rarity: string): number
+	return ShelfBoxes.GrabTime(rarity)
 end
 
 -- Raison pour laquelle `player` ne peut ni prendre ni ouvrir sur `slot`, quoi qui s'y trouve (magasin
@@ -2157,42 +2130,37 @@ function grabRefusal(player: Player, slot: Slot, lenient: boolean): string?
 	return reachRefusal(player, slot, lenient)
 end
 
--- Contenu remis au porteur : `base` (celui du colis, de type `baseTier`), ou celui de l'accroche du tuto
+-- Contenu remis au porteur : `base` (celui du colis), ou celui de l'accroche du tuto
 -- s'il est valide. Renvoie la table `base` elle-même quand rien ne change. Vague 32 :
 -- appelée à la sortie avec base = { Rarity = rareté de la caisse, ItemId = "" } (contenu pas encore tiré) ;
 -- une Rarity imposée seule tire alors un objet de cette rareté (itemId == "").
-local function contentFor(player: Player, slot: Slot, baseTier: string, base: Content): (string, Content)
+local function contentFor(player: Player, slot: Slot, base: Content): Content
 	local override = contentOverride
 	if override == nil then
-		return baseTier, base
+		return base
 	end
 	local store = slot.Store
 	local drawn: OverrideInfo = {
 		StoreId = store.Id,
 		SlotId = slot.Id,
 		Zone = store.Zone,
-		Tier = baseTier,
 		Rarity = base.Rarity,
 		ItemId = base.ItemId,
 	}
 	local ok, result = pcall(override, player, drawn)
 	if not ok then
 		warn(`[StoreHeistService] accroche SetContentOverride : {result}`)
-		return baseTier, base
+		return base
 	end
 	if result == nil then
-		return baseTier, base
+		return base
 	end
-	local function invalid(reason: string): (string, Content)
+	local function invalid(reason: string): Content
 		warn(`[StoreHeistService] accroche SetContentOverride pour {player.Name} ignorée : {reason}`)
-		return baseTier, base
+		return base
 	end
 	if type(result) ~= "table" then
 		return invalid(`elle renvoie un {type(result)}, pas une table`)
-	end
-	local tier = result.Tier or baseTier
-	if type(tier) ~= "string" or Balance.Heist.BoxTiers[tier] == nil then
-		return invalid(`type de colis inconnu ({tier})`)
 	end
 	local rarity: string = base.Rarity
 	local itemId: string = base.ItemId
@@ -2220,13 +2188,13 @@ local function contentFor(player: Player, slot: Slot, baseTier: string, base: Co
 		end
 		rarity, itemId = wantedRarity, drawnItem
 	end
-	if tier == baseTier and itemId == base.ItemId then
-		return baseTier, base
+	if itemId == base.ItemId then
+		return base
 	end
-	log(`accroche du tuto : {player.Name} reçoit un colis {tier} {rarity} ({itemId}) au lieu de {baseTier} {base.Rarity}`)
+	log(`accroche du tuto : {player.Name} reçoit un objet {rarity} ({itemId}) au lieu d'un colis {base.Rarity}`)
 	-- Jamais de mutation pour le colis du tuto (DEV-131) : un contenu remplacé n'en a aucune.
 	local content: Content = { Rarity = rarity, ItemId = itemId, Mutation = nil }
-	return tier, content
+	return content
 end
 
 -- Ouverture sur le rayon (L-112 ; voir l'en-tête) -------------------------------------------------
@@ -2333,47 +2301,21 @@ end
 -- poids des raretés au-dessus d'un seuil sont multipliés par la chance (ShelfOpen.LuckBoost) : "AboveBox",
 -- au-dessus de la rareté de la caisse ; "AboveLowest", au-dessus de la plus basse de la table (plus basse
 -- de poids > 0). Le tirage les ramène ensuite à 100 % (roll × total). nil si la caisse n'a pas de table ou
--- si sa table est vide.
-local function itemRarityWeights(boxRarity: string, luck: number): { [string]: number }?
-	local odds = ShelfOpen.BoxRarityOdds[boxRarity]
-	if odds == nil then
-		return nil
-	end
-	local lowest: number? = nil
-	for _, rarity in Rarities.List do
-		if (odds[rarity.Id] or 0) > 0 then
-			lowest = rarity.Order
-			break
-		end
-	end
-	if lowest == nil then
-		return nil
-	end
-	local boost = if luck > 1 and luck < math.huge then luck else 1
+-- si sa table est vide. Vague 76 : règle déplacée dans ShelfBoxes.ContentWeights (lue aussi par Shared/ItemOdds) ;
+-- `zone` (rayons des magasins) : seulement les raretés de cette zone (ShelfBoxes.ZoneOdds).
+local function itemRarityWeights(boxRarity: string, luck: number, zone: number?): { [string]: number }?
 	local mode = ShelfOpen.LuckBoost
-	local box = Rarities.ById[boxRarity]
-	local threshold: number = lowest
-	if mode == "AboveBox" and box then
-		threshold = box.Order
-	elseif mode ~= "AboveLowest" then
+	if (mode ~= "AboveBox" and mode ~= "AboveLowest") or (mode == "AboveBox" and Rarities.ById[boxRarity] == nil) then
 		warnOnce(`luckboost.{mode}`, `ShelfOpen.LuckBoost « {mode} » inconnu (ou caisse {boxRarity} inconnue) : la chance ne change pas la rareté de l'objet`)
-		boost = 1
 	end
-	local weights: { [string]: number } = {}
-	for _, rarity in Rarities.List do
-		local weight = odds[rarity.Id] or 0
-		if weight > 0 then
-			weights[rarity.Id] = if rarity.Order > threshold then weight * boost else weight
-		end
-	end
-	return weights
+	return ShelfBoxes.ContentWeights(boxRarity, luck, zone)
 end
 
 -- Rareté de l'objet tirée selon itemRarityWeights ; table absente : la rareté de la caisse (avertissement).
 -- Vague 42 (a148, L-145 (a)) : `floor` (rayon d'événement) : la rareté de la caisse est un minimum, les raretés
--- en dessous ne sortent jamais ; la chance ne peut que monter.
-local function drawItemRarity(boxRarity: string, luck: number, floor: boolean?): string
-	local weights = itemRarityWeights(boxRarity, luck)
+-- en dessous ne sortent jamais ; la chance ne peut que monter. Vague 76 : `zone` : seulement les raretés de cette zone.
+local function drawItemRarity(boxRarity: string, luck: number, floor: boolean?, zone: number?): string
+	local weights = itemRarityWeights(boxRarity, luck, zone)
 	if weights == nil then
 		warnOnce(`boxodds.{boxRarity}`, `aucune table ShelfOpen.BoxRarityOdds.{boxRarity} : l'objet est de la rareté de sa caisse`)
 		return boxRarity
@@ -2446,7 +2388,9 @@ local function drawShelfContent(
 	sizeOdds: { [string]: number }?,
 	zonesOnly: boolean? -- vague 56 (a181) : rareté absente de `zones` (hors Secret, Divine) : la rareté en dessous
 ): (Content?, string)
-	local wanted = drawItemRarity(boxRarity, luck, floor)
+	-- Vague 76 (Cantin et Clément, 19/11) : sur un rayon de magasin (pas d'événement, `floor` absent), l'objet n'est
+	-- jamais d'une rareté absente de la zone (ShelfBoxes.ContentWeights limitée à `zone`).
+	local wanted = drawItemRarity(boxRarity, luck, floor, if floor then nil else zone)
 	local info = Rarities.ById[wanted]
 	if info == nil then
 		return nil, wanted
@@ -2538,7 +2482,7 @@ local function reveal(slot: Slot, box: ShelfBox, luck: number)
 	local pending: Content = { Rarity = box.Rarity, ItemId = "", Mutation = nil }
 	local imposed: Content? = nil
 	if opener and not store.Event then -- vague 42 : pas d'accroche du tuto sur un rayon d'événement
-		local _, given = contentFor(opener, slot, box.Tier, pending)
+		local given = contentFor(opener, slot, pending)
 		if given ~= pending then
 			imposed = given
 		end
@@ -2564,7 +2508,7 @@ local function reveal(slot: Slot, box: ShelfBox, luck: number)
 		return
 	end
 	local info: ItemInfo = {
-		Tier = box.Tier,
+		BoxRarity = box.Rarity,
 		Content = final,
 		Luck = luck,
 		OpenerId = opening.ByUserId,
@@ -2594,7 +2538,7 @@ local function startOpening(player: Player, slot: Slot, box: ShelfBox)
 	if forced and not store.Event then -- vague 42 : pas d'accroche du tuto sur un rayon d'événement
 		-- Accroche du tuto (a107, SetLuckOverride) : une chance finie ≥ 1, sinon le tirage normal.
 		-- Vague 32 : le contenu n'est pas encore tiré ; Rarity = rareté de la caisse, ItemId = "".
-		local drawn: OverrideInfo = { StoreId = store.Id, SlotId = slot.Id, Zone = store.Zone, Tier = box.Tier, Rarity = box.Rarity, ItemId = "" }
+		local drawn: OverrideInfo = { StoreId = store.Id, SlotId = slot.Id, Zone = store.Zone, Rarity = box.Rarity, ItemId = "" }
 		local ok, value = pcall(forced, player, drawn)
 		if ok and type(value) == "number" and value >= 1 and value < math.huge then
 			luck = value
@@ -2618,7 +2562,7 @@ local function startOpening(player: Player, slot: Slot, box: ShelfBox)
 			reveal(slot, box, luck)
 		end
 	end)
-	log(`{player.Name} ouvre la caisse {box.Rarity} ({box.Tier}) {slot.Name} de {store.Id} : chance ×{luck}, sortie dans {math.round(delay * 10) / 10} s`)
+	log(`{player.Name} ouvre la caisse {box.Rarity} {slot.Name} de {store.Id} : chance ×{luck}, sortie dans {math.round(delay * 10) / 10} s`)
 end
 
 -- La police est appelée pour ce magasin (WitnessService.OnCall) : chaque ouverture en cours s'arrête là,
@@ -2917,7 +2861,7 @@ local function startReveal(player: Player, slot: Slot, box: ShelfBox)
 	luck *= finiteOr(Workspace:GetAttribute("ServerLuck"), 1, 1) -- a247 : chance du serveur achetée en Robux (MonetizationService), toujours comptée
 	local forced = luckOverride
 	if forced then
-		local drawn: OverrideInfo = { StoreId = store.Id, SlotId = slot.Id, Zone = store.Zone, Tier = box.Tier, Rarity = box.Rarity, ItemId = "" }
+		local drawn: OverrideInfo = { StoreId = store.Id, SlotId = slot.Id, Zone = store.Zone, Rarity = box.Rarity, ItemId = "" }
 		local ok, value = pcall(forced, player, drawn)
 		if ok and type(value) == "number" and value >= 1 and value < math.huge then
 			luck = value
@@ -2926,7 +2870,7 @@ local function startReveal(player: Player, slot: Slot, box: ShelfBox)
 		end
 	end
 	local pending: Content = { Rarity = box.Rarity, ItemId = "", Mutation = nil }
-	local _, given = contentFor(player, slot, box.Tier, pending)
+	local given = contentFor(player, slot, pending)
 	local imposed = given ~= pending
 	local content: Content? = nil
 	local drawnRarity = box.Rarity
@@ -2973,7 +2917,7 @@ local function startReveal(player: Player, slot: Slot, box: ShelfBox)
 		Box = box,
 		Opening = opening,
 		Info = {
-			Tier = box.Tier,
+			BoxRarity = box.Rarity,
 			Content = final,
 			Luck = luck,
 			OpenerId = player.UserId,
@@ -3009,21 +2953,18 @@ local function startReveal(player: Player, slot: Slot, box: ShelfBox)
 			local UnboxPlan = require(planModule) :: any
 			-- Vague 74 (a257, L-253) : améliorations du colis tirées à part de l'objet (aucune pour un contenu imposé),
 			-- depuis la rareté du colis ; le nombre d'actions et le plafond suivent le plan tiré.
+			local zoneRarities = ShelfBoxes.ZoneRarities[store.Zone]
 			local upgrades = if imposed then 0 else UnboxPlan.upgrades(box.Rarity, luck, function(): number
 				return random:NextNumber()
-			end)
-			-- Vague 75 (a259, L-262 point 1) : la cote finale est la vraie chance d'avoir cet objet (Formulas.UnboxOdds) :
-			-- poids des raretés de cette caisse à cette chance (comme drawItemRarity), puis un objet parmi ceux de sa rareté
-			-- là où il a été tiré (Items.Pick : toutes zones pour Secret et Divine, sinon sa zone). Contenu imposé : la plage.
+			end, if zoneRarities then zoneRarities[#zoneRarities] else nil) -- vague 76 : jamais au-dessus de la zone
+			-- Vague 75 (a259, L-262 point 1), vague 76 : la cote finale est 1 / la vraie chance d'avoir cet objet, avec sa
+			-- mutation et sa taille, sur un emplacement de rayon de sa zone (Shared/ItemOdds, arrondi Formulas.UnboxOdds),
+			-- sans lien avec la caisse trouvée. Contenu imposé : la plage.
 			local odds: number? = nil
 			if not imposed and newUnbox.RealOdds ~= false then
-				local weights = itemRarityWeights(box.Rarity, luck)
-				local def = Items.ById[final.ItemId]
-				local byZone = Items.ByZone[if def and def.Zone then def.Zone else store.Zone]
-				local pool: { any }? = Items.AllZones[final.Rarity] or (if byZone then byZone[final.Rarity] else nil)
-				if weights and pool then
-					odds = Formulas.UnboxOdds(weights, final.Rarity, #pool)
-				end
+				local ItemOdds = require(Shared.ItemOdds) :: any
+				local chance = ItemOdds.Chance(final.ItemId, final.Mutation)
+				odds = if chance then Formulas.UnboxOdds(chance) else nil
 			end
 			local drawn = UnboxPlan.draw(final.Rarity, function(n: number): number
 				return 1 + math.floor(random:NextNumber() * n)
@@ -3055,7 +2996,7 @@ local function startReveal(player: Player, slot: Slot, box: ShelfBox)
 		elseif drawnRarity ~= final.Rarity then ` (tirée : {drawnRarity}, aucun objet nulle part)`
 		else ""
 	local mutation = Mutations.Label(final.Mutation)
-	log(`{player.Name} ouvre la caisse {box.Rarity} ({box.Tier}) {slot.Name} de {store.Id} : cinématique {id}, chance ×{luck}, objet {final.Rarity} ({final.ItemId}){how}, {weight} kg, taille ×{scale}, classe {sizeClass}{if mutation then ", " .. mutation else ""}, {maxSeconds} s au plus{if plan then `, plan {plan}` else ""}`)
+	log(`{player.Name} ouvre la caisse {box.Rarity} {slot.Name} de {store.Id} : cinématique {id}, chance ×{luck}, objet {final.Rarity} ({final.ItemId}){how}, {weight} kg, taille ×{scale}, classe {sizeClass}{if mutation then ", " .. mutation else ""}, {maxSeconds} s au plus{if plan then `, plan {plan}` else ""}`)
 end
 
 -- RevealDone(revealId) : l'ouvreur a fini de voir sa cinématique. Seule la sienne, en cours ; sinon ignoré.
@@ -3099,7 +3040,7 @@ local function onOpenShelfBox(player: Player, slotId: string)
 	local current = slot.Box
 	local starting = current ~= nil
 		and not (hold ~= nil and hold.Slot == slot and hold.Target == current)
-		and grabTime(current.Tier) > 0
+		and grabTime(current.Rarity) > 0
 	local reason = openRefusal(player, slot, starting)
 	if reason then
 		if hold and hold.Slot == slot then
@@ -3109,11 +3050,11 @@ local function onOpenShelfBox(player: Player, slotId: string)
 		return
 	end
 	local box = slot.Box :: ShelfBox -- openRefusal a vérifié qu'il est posé et fermé
-	local required = grabTime(box.Tier)
+	local required = grabTime(box.Rarity)
 	local now = os.clock()
 	local finishing = hold ~= nil and hold.Slot == slot and hold.Target == box
 	if not finishing and required > 0 then
-		openHolds[player] = { Slot = slot, Target = box, Tier = box.Tier, StartedAt = now } -- début du maintien
+		openHolds[player] = { Slot = slot, Target = box, BoxRarity = box.Rarity, StartedAt = now } -- début du maintien
 		return
 	end
 	if finishing then
@@ -3164,15 +3105,15 @@ local function onGrabItem(player: Player, slotId: string)
 	local hold = holds[player]
 	-- Début du maintien : portée souple ; fin du maintien ou prise sans maintien : stricte (« Portée »).
 	-- Vague 50 (a158) : le colis fermé ne se porte plus ; seul l'objet sorti de son colis se prend (L-112).
-	local current: any, currentTier: string? = nil, nil
+	local current: any, currentRarity: string? = nil, nil
 	local shown = slot.Item
 	if shown then
-		current, currentTier = shown, shown.Info.Tier
+		current, currentRarity = shown, shown.Info.BoxRarity
 	end
 	local starting = current ~= nil
-		and currentTier ~= nil
+		and currentRarity ~= nil
 		and not (hold ~= nil and hold.Slot == slot and hold.Target == current)
-		and grabTime(currentTier) > 0
+		and grabTime(currentRarity) > 0
 	local reason = grabRefusal(player, slot, starting)
 	if reason then
 		if hold and hold.Slot == slot then
@@ -3184,8 +3125,8 @@ local function onGrabItem(player: Player, slotId: string)
 	-- grabRefusal a vérifié qu'il est posé : l'objet sorti (L-112).
 	local give = grantItem
 	local item = slot.Item :: ShelfItem
-	local target: any, tier: string = item, item.Info.Tier
-	local required = grabTime(tier)
+	local target: any, boxRarity: string = item, item.Info.BoxRarity
+	local required = grabTime(boxRarity)
 	local now = os.clock()
 	if hold and hold.Slot == slot and hold.Target == target then
 		local elapsed = now - hold.StartedAt
@@ -3202,7 +3143,7 @@ local function onGrabItem(player: Player, slotId: string)
 		give(player, slot)
 		return
 	end
-	holds[player] = { Slot = slot, Target = target, Tier = tier, StartedAt = now }
+	holds[player] = { Slot = slot, Target = target, BoxRarity = boxRarity, StartedAt = now }
 end
 
 -- Retour d'un colis ------------------------------------------------------------------------------
@@ -3411,10 +3352,10 @@ local function register(instance: Instance)
 		}
 		table.insert(store.Slots, slot)
 	end
-	local boxTotal = #layoutTiers()
+	local boxTotal = Balance.Heist.ShelfSlots -- vague 76 : un colis par emplacement
 	if #store.Slots < boxTotal then
 		warn(
-			`[StoreHeistService] {model:GetFullName()} : {#store.Slots} rayon(s) pour {boxTotal} colis, {boxTotal - #store.Slots} colis Standard en moins`
+			`[StoreHeistService] {model:GetFullName()} : {#store.Slots} rayon(s) pour {boxTotal} colis, {boxTotal - #store.Slots} colis en moins`
 		)
 	end
 
@@ -3470,7 +3411,7 @@ local function step()
 		local current: any = slot.Item
 		if
 			current ~= hold.Target
-			or now - hold.StartedAt > grabTime(hold.Tier) + HOLD_EXPIRY
+			or now - hold.StartedAt > grabTime(hold.BoxRarity) + HOLD_EXPIRY
 			or grabRefusal(player, slot, true) ~= nil
 		then
 			holds[player] = nil
@@ -3479,7 +3420,7 @@ local function step()
 	for player, hold in openHolds do
 		if
 			hold.Slot.Box ~= hold.Target
-			or now - hold.StartedAt > grabTime(hold.Tier) + HOLD_EXPIRY
+			or now - hold.StartedAt > grabTime(hold.BoxRarity) + HOLD_EXPIRY
 			or openRefusal(player, hold.Slot, true) ~= nil
 		then
 			openHolds[player] = nil
@@ -3591,7 +3532,7 @@ local EVENT_NAME_PREFIX = "EventShelf_"
 
 export type EventSpot = {
 	CFrame: CFrame, -- pivot du colis (en bas au centre), posé sur le sol
-	Tier: string, -- type du colis (Balance.Heist.BoxTiers) : son temps de maintien
+	Tier: string?, -- vague 76 : ignoré (le temps de maintien suit la rareté du colis, ShelfBoxes.GrabTime)
 	Rarity: string, -- rareté de la caisse (BOX_<Rareté>), tirée par l'appelant
 	From: Vector3?, -- départ d'un vol jusqu'au point (placeBox), sinon posé tout de suite
 }
@@ -3714,7 +3655,7 @@ local function addEventShelf(options: EventShelfOptions): Model?
 	model.Parent = Workspace
 	for index, slot in store.Slots do
 		local spot = options.Spots[index]
-		placeBox(slot, spot.Tier, spot.Rarity, spot.From)
+		placeBox(slot, spot.Rarity, spot.From)
 	end
 	task.delay(options.Lifetime, function()
 		removeEventStore(store, `fin de sa durée de vie ({options.Lifetime} s)`)
@@ -3823,15 +3764,10 @@ function StoreHeistService.GetStoreModel(storeId: string): Model?
 end
 
 -- Vague 58 (a188, pluie d'objets, ItemRainService) : un objet tiré comme sur un rayon d'un magasin de la zone `zone`,
--- sans rayon ni caisse : type de caisse au hasard dans un remplissage (layoutTiers), rareté de la caisse selon la
--- zone (drawRarity), chance (drawLuck), puis la sortie (drawShelfContent : rareté, objet, mutation). Renvoie le
+-- sans rayon ni caisse : rareté de la caisse selon la zone (drawRarity, ShelfBoxes.ZoneOdds, vague 76), chance (drawLuck), puis la sortie (drawShelfContent : rareté, objet, mutation). Renvoie le
 -- contenu (nil si rien ne peut sortir) et la chance tirée.
 function StoreHeistService.DrawForZone(zone: number): (Content?, number)
-	local tiers = layoutTiers()
-	if #tiers == 0 then
-		return nil, 1
-	end
-	local boxRarity = drawRarity(tiers[random:NextInteger(1, #tiers)], zone)
+	local boxRarity = drawRarity(zone)
 	if boxRarity then
 		local luck = drawLuck()
 		local content = drawShelfContent(boxRarity, zone, luck)
@@ -4006,9 +3942,9 @@ function StoreHeistService.Init()
 			table.insert(delivered, BOX_PREFIX .. rarity.Id)
 		end
 	end
-	for _, tier in Balance.Heist.TierOrder do
-		if boxTemplate(BOX_PREFIX .. tier) then
-			table.insert(delivered, BOX_PREFIX .. tier)
+	for _, look in { "Standard", "Premium", "Luxe" } do -- vague 76 : anciens modèles, repli d'apparence (lookOf)
+		if boxTemplate(BOX_PREFIX .. look) then
+			table.insert(delivered, BOX_PREFIX .. look)
 		end
 	end
 	local looks = if #delivered > 0 then `modèles {table.concat(delivered, ", ")}` else "blocs V0 (aucun BOX_* livré)"

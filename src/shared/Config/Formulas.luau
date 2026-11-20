@@ -47,14 +47,25 @@ function Formulas.MaxWalkSpeed(): number
 	return Balance.Stats.MaxWalkSpeed * Balance.Stats.RealSpeedScale
 end
 
--- Revenu d'un objet ($/s) = R zone × M rareté × M global.
--- M global (renaissances, gamepasses, groupe, amis) arrive en Partie 2 : 1 par défaut.
-function Formulas.ItemIncome(zone: number, rarityId: string, globalMultiplier: number?): number
-	local zoneInfo = Zones[zone]
-	assert(zoneInfo, `Formulas.ItemIncome : zone inconnue {zone}`)
-	local rarity = Rarities.ById[rarityId]
-	assert(rarity, `Formulas.ItemIncome : rareté inconnue {rarityId}`)
-	return zoneInfo.BaseIncome * rarity.IncomeMultiplier * (globalMultiplier or 1)
+-- Revenu d'un objet ($/s), vague 76 (Cantin et Clément, 19/11), avant mutation et poids (qui multiplient le résultat,
+-- Mutations.IncomeMultiplier) :
+--   Income de sa rareté (Config/Rarities)
+--   × (1 + ZoneStep × zones au-dessus de la première zone où cette rareté existe, Rarities.FirstZone ; 0 au moins)
+--   × (1 + RankStep)^(rang − 1), rang dans sa rareté et sa zone (Items : ordre de l'index)
+--   × M global (renaissances, gamepasses, groupe, amis : 1 par défaut).
+-- Ex. : Canette de soda 1 $/s ; un Peu commun de zone 3 au rang 1 : 8 × 1,25 = 10 $/s. Un Secret (sans zone) : Income
+-- de sa rareté au rang 1. Objet inconnu : erreur (les appelants vérifient Items.ById avant).
+function Formulas.ItemIncome(itemId: string, globalMultiplier: number?): number
+	-- Config/Items chargé au premier appel seulement : Formulas reste lisible sans le catalogue (bancs).
+	local Items = require(script.Parent.Items)
+	local item = Items.ById[itemId]
+	assert(item, `Formulas.ItemIncome : objet inconnu {itemId}`)
+	local rarity = Rarities.ById[item.Rarity]
+	assert(rarity, `Formulas.ItemIncome : rareté inconnue {item.Rarity}`)
+	local rules = Rarities.IncomeRules
+	local first = Rarities.FirstZone[item.Rarity]
+	local above = if item.Zone and first then math.max(item.Zone - first, 0) else 0
+	return rarity.Income * (1 + rules.ZoneStep * above) * (1 + rules.RankStep) ^ (item.Rank - 1) * (globalMultiplier or 1)
 end
 
 -- Coût du niveau n = C0 × g^n, avec n = niveau déjà possédé (0 pour le premier achat,
@@ -66,6 +77,10 @@ function Formulas.UpgradeCost(upgradeId: string, currentLevel: number): number?
 	assert(upgrade, `Formulas.UpgradeCost : amélioration inconnue {upgradeId}`)
 	if currentLevel >= upgrade.MaxLevel then
 		return nil
+	end
+	if upgrade.Costs ~= nil then
+		-- Vague 76 : liste de prix (Config/Upgrades, Costs), remise à l'échelle des nouveaux revenus.
+		return upgrade.Costs[math.floor(currentLevel) + 1]
 	end
 	return math.round(upgrade.BaseCost * upgrade.Growth ^ currentLevel)
 end
@@ -97,27 +112,21 @@ function Formulas.FenceValue(income: number): number
 	return Balance.Display.FenceIncomeMultiplier * income
 end
 
--- Vague 75 (a259, L-262 point 1) : cote « 1 IN N » de l'ouverture d'un colis = la vraie chance d'avoir cet objet :
--- N = (total des poids / poids de sa rareté) × nombre d'objets de cette rareté que le tirage peut donner (Items.Pick,
--- tous équiprobables). `weights` : poids des raretés de la caisse, chance comprise. N arrondi à l'entier, entre 1 et
--- 999 999 999 ; nil si la rareté n'a aucune chance ou si un nombre est illisible.
-function Formulas.UnboxOdds(weights: { [string]: number }, rarityId: string, poolSize: number): number?
-	local total = 0
-	for _, weight in weights do
-		if type(weight) == "number" and weight > 0 and weight < math.huge then
-			total += weight
-		end
-	end
-	local weight = weights[rarityId]
-	local pool = math.floor(poolSize)
-	if type(weight) ~= "number" or not (weight > 0 and weight < math.huge) or total <= 0 or not (pool >= 1) then
+-- Vague 76 (Cantin et Clément, 19/11) : cote « 1 IN N » de l'ouverture d'un colis = 1 / la vraie chance d'avoir cet
+-- objet avec sa mutation et sa taille sur un emplacement de rayon de sa zone (`chance`, de 0 à 1 : Shared/ItemOdds,
+-- calculée par le serveur ; elle ne dépend plus de la caisse déjà trouvée). Arrondi lisible : à l'entier sous 100,
+-- à 2 chiffres significatifs au-delà (12 000, 23 000 000). nil si la chance est nulle ou illisible.
+function Formulas.UnboxOdds(chance: number): number?
+	if type(chance) ~= "number" or not (chance > 0 and chance <= 1) then
 		return nil
 	end
-	local n = total / weight * pool
-	if n ~= n then
-		return nil
+	local n = 1 / chance
+	if n < 100 then
+		return math.max(math.floor(n + 0.5), 1)
 	end
-	return math.clamp(math.floor(n + 0.5), 1, 999_999_999)
+	local step = 10 ^ (math.floor(math.log10(n)) - 1)
+	local rounded = math.floor(n / step + 0.5) * step
+	return if rounded < math.huge then rounded else nil
 end
 
 export type Formulas = typeof(Formulas)

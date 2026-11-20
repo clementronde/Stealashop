@@ -53,7 +53,7 @@ export type Zone = {
 	AdvisedSpeed: number, -- WalkSpeed que donne SpeedRequired (calculé)
 	GuardSpeed: number, -- WalkSpeed du vigile de jour (calculé, sauf la zone 1)
 	ReturnDistance: number, -- studs jusqu'à la zone safe (zones ×1,25 de Clément, 2026-11-08, liaison L-071)
-	BaseIncome: number, -- $/s d'un objet Commun de la zone (R zone, section 7.1)
+	BaseIncome: number, -- $/s d'un objet Commun de la zone (R zone, section 7.1) ; vague 76 : plus lu par Formulas.ItemIncome (Rarities.Income)
 }
 
 -- Ce que chaque zone fixe ; les champs calculés sont ajoutés plus bas.

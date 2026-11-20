@@ -575,15 +575,10 @@ local function isFound(current: Screen, item: Item): boolean
 	return discovered[item.Id] == true
 end
 
--- Revenu affiché dans la fiche : « $X/s » dans la zone de l'objet ; un Secret, de la zone 1 à la 6.
+-- Revenu affiché dans la fiche : « $X/s » (vague 76 : Formulas.ItemIncome, rareté, zone et rang de l'objet ;
+-- un Secret a un seul revenu).
 local function incomeText(item: Item): string
-	local zone = item.Zone
-	if zone ~= nil and Zones[zone] ~= nil then
-		return `{Format.money(Formulas.ItemIncome(zone, item.Rarity))}/s`
-	end
-	local low = Formulas.ItemIncome(1, item.Rarity)
-	local high = Formulas.ItemIncome(#Zones, item.Rarity)
-	return `{Format.money(low)}-{Format.money(high)}/s`
+	return `{Format.money(Formulas.ItemIncome(item.Id))}/s`
 end
 
 ------------------------------------------------------------------------------

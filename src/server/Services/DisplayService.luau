@@ -14,8 +14,8 @@
 --     (ReplicatedStorage/Assets/UI, contrat 2.2 : ItemName, Rarity, Income), adossé au pied de
 --     l'objet (son StudsOffset part de là, liaison L-027), sinon un billboard V0 adossé à son
 --     sommet. Tout est créé par le serveur dans la parcelle : visible par tous les joueurs ;
---   - revenus : chaque objet exposé rapporte Formulas.ItemIncome(zone, rareté) $/s (7.1), zone
---     et rareté lues dans Config.Items, × le multiplicateur de sa mutation (DEV-131, champ Mutation
+--   - revenus : chaque objet exposé rapporte Formulas.ItemIncome(objet) $/s (7.1 ; vague 76 :
+--     rareté, zone et rang de l'objet dans Config.Items), × le multiplicateur de sa mutation (DEV-131, champ Mutation
 --     de Items[uid] : taille × effet, Config/Mutations). Le total des objets (la « valeur exposée », 6.4)
 --     est multiplié par le M global du joueur (7.1 : (1 + GetIncomeBonus) ×
 --     GetIncomeMultiplier, plus bas ; 1 au MVP). Ramassage par plaque (L-082 point 4, L-091 points 4
@@ -248,7 +248,6 @@ local Mutations = require(ReplicatedStorage.Shared.Config.Mutations)
 local WeightConfig = require(ReplicatedStorage.Shared.Config.Weight)
 local ItemWeight = require(ReplicatedStorage.Shared.ItemWeight)
 local Rarities = require(ReplicatedStorage.Shared.Config.Rarities)
-local Zones = require(ReplicatedStorage.Shared.Config.Zones)
 local DisplayedConfig = require(ReplicatedStorage.Shared.Config.Displayed) -- vague 63 (a206) : réserve
 local HeldItemConfig = require(ReplicatedStorage.Shared.Config.HeldItem) -- vague 66 (a219) : objet en main, hors réserve
 local InventoryState = require(ReplicatedStorage.Shared.InventoryState) -- vague 63 : IsSafeId (attribut de la réserve)
@@ -350,8 +349,6 @@ local PAD_EXIT_ABOVE = 12
 local PAD_EXIT_DELAY = 0.3
 -- L-106 point 12 (Clément, 2026-11-12) : délai d'1 s par plaque entre deux ramassages de la même plaque.
 local PAD_COOLDOWN = 1
--- V0 proposé, absent du doc : zone de revenu d'un Secret sans zone enregistrée (voir l'en-tête).
-local SECRET_FALLBACK_ZONE = 1
 -- V0 proposé, absent du doc : borne de la recherche des présentoirs bonus (DisplaySlot_21 et
 -- suivants, DEV-100) ; pas une règle de jeu, le gamepass en donne 4 (Config/Monetization).
 local BONUS_SLOT_LIMIT = 10
@@ -653,36 +650,11 @@ local function lookup(data: Data, uid: string): (ItemEntry?, ItemDef?)
 	return entry, def
 end
 
-local function validZone(value: any): number?
-	if type(value) == "number" and value % 1 == 0 and Zones[value] ~= nil then
-		return value
-	end
-	return nil
-end
-
--- Zone du revenu : celle du catalogue ; pour un Secret (aucune zone au catalogue), le champ Zone
--- de Items[uid] s'il existe, sinon SECRET_FALLBACK_ZONE.
-local function itemZone(def: ItemDef, entry: ItemEntry, uid: string): number
-	local zone = def.Zone
-	if zone then
-		return zone
-	end
-	local stored = validZone((entry :: any).Zone)
-	if stored then
-		return stored
-	end
-	reportOnce(
-		`zone:{uid}`,
-		`[DisplayService] objet {uid} ({def.Id}) sans zone : revenu calculé en zone {SECRET_FALLBACK_ZONE} (V0). Pour un Secret, enregistrer Zone dans Items[uid]`,
-		"warn"
-	)
-	return SECRET_FALLBACK_ZONE
-end
-
 -- Revenu d'un objet ($/s), formule 7.1, mutation comprise (DEV-131 : taille × effet du champ
 -- Mutation de Items[uid], 1 sans champ) ; le M global s'applique au total (Account.multiplier).
 local function itemIncome(def: ItemDef, entry: ItemEntry, uid: string): number
-	return Formulas.ItemIncome(itemZone(def, entry, uid), def.Rarity) * Mutations.IncomeMultiplier(entry.Mutation, entry.Weight) -- vague 62 : poids compris
+	return Formulas.ItemIncome(def.Id) * -- vague 76 : rareté, zone et rang de l'objet
+		Mutations.IncomeMultiplier(entry.Mutation, entry.Weight) -- vague 62 : poids compris
 end
 
 ------------------------------------------------------------------------------

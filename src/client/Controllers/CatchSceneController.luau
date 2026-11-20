@@ -762,17 +762,10 @@ local function fillCard(itemId: string)
 	end
 	local income = element(escape, "Card.Income", "TextLabel") :: TextLabel?
 	if income then
-		local zone = def.Zone
-		if zone ~= nil then
-			local zoneNumber: number = zone
-			local ok, value = pcall(function(): number
-				return Formulas.ItemIncome(zoneNumber, def.Rarity)
-			end)
-			income.Text = if ok then `+{Format.money(value)}/s` else ""
-			income.Visible = ok
-		else
-			income.Visible = false -- Secret : toutes zones, pas de revenu de base unique
-		end
+		-- Vague 76 : Formulas.ItemIncome (rareté, zone et rang de l'objet) ; un Secret a aussi un revenu unique.
+		local ok, value = pcall(Formulas.ItemIncome, def.Id, nil)
+		income.Text = if ok then `+{Format.money(value)}/s` else ""
+		income.Visible = ok
 	end
 	local badge = element(escape, "Card.NewBadge", "GuiObject") :: GuiObject?
 	if badge then

@@ -116,7 +116,6 @@ local Vfx = {
 		ItemPoint = "ItemPoint", -- Attachment où l'objet est posé, à sa taille réelle (pivot en bas au centre)
 		LabelPoint = "LabelPoint", -- Attachment du billboard
 		Billboard = "BB_RarestDisplay", -- Clément (Assets/UI) ; absent : BB_Rarest sur LabelPoint
-		OddsBox = "Common", -- V0 : caisse de référence de la chance écrite dans Odds (Shared/ItemOdds)
 	},
 }
 

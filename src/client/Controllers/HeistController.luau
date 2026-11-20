@@ -5,9 +5,9 @@
 -- Rôle :
 --   - Sur chaque colis d'un rayon (dossier `ShelfBoxes` d'un magasin taggé NPCStore, rempli par
 --     StoreHeistService), une invite ProximityPrompt créée ici, sur l'Attachment ShelfSlot_xx du
---     colis : maintien = temps de prise du type du colis (attribut Tier du colis, plus de
---     l'emplacement : les colis sont placés au hasard, L-033 ; Balance.Heist.BoxTiers[Tier].GrabTime),
---     portée = Balance.Heist.GrabMaxDistance. Textes en anglais (L-036) : « Steal », « Premium Box ».
+--     colis : maintien = temps de prise de la rareté du colis (vague 76 : attribut BoxRarity du colis,
+--     Rarities.GrabTime ; plus de types Standard, Premium, Luxe),
+--     portée = Balance.Heist.GrabMaxDistance. Textes en anglais (L-036) : « Steal », « Rare Box ».
 --     L'étiquette BB_Box et le contour du colis sont gérés par ShelfBoxController. L'invite n'est
 --     active que si le magasin est ouvert
 --     (HeistOpen), le colis posé (Landed), les mains vides (attribut Carrying du joueur, posé par
@@ -25,7 +25,7 @@
 --     ce colis pendant son ouverture (attribut ShelfOpenState,
 --     Shared/ShelfOpenState ; l'animation est à ShelfOpenController). Sur l'objet sorti (tag ShelfItem),
 --     l'invite « Steal » demande GrabItem(slotId) au début et à la fin du maintien, comme un colis
---     (maintien : Tier de l'objet, sinon celui du colis qui était à cet emplacement) ; cachée chez les
+--     (maintien : BoxRarity de l'objet, sinon celle du colis qui était à cet emplacement) ; cachée chez les
 --     autres joueurs tant que ShelfReservedUntil n'est pas passé (le serveur revérifie).
 --
 -- API (client) :
@@ -42,6 +42,7 @@ local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Balance = require(Shared:WaitForChild("Config"):WaitForChild("Balance"))
+local Rarities = require(Shared:WaitForChild("Config"):WaitForChild("Rarities"))
 local Items = require(Shared:WaitForChild("Config"):WaitForChild("Items"))
 local Mutations = require(Shared:WaitForChild("Config"):WaitForChild("Mutations"))
 local ShelfOpenState = require(Shared:WaitForChild("ShelfOpenState"))
@@ -74,7 +75,6 @@ local EXCLUSIVE_ATTRIBUTE = "HeistExclusiveUntil"
 local BREAKER_ATTRIBUTE = "HeistBreakerId"
 local SLOT_ID_ATTRIBUTE = "SlotId"
 local SLOT_ATTRIBUTE = "Slot"
-local TIER_ATTRIBUTE = "Tier"
 local LANDED_ATTRIBUTE = "Landed"
 -- Posé par CarryService sur le Player tant qu'il porte (Id de rareté).
 local CARRYING_ATTRIBUTE = "Carrying"
@@ -86,8 +86,8 @@ local REFRESH_INTERVAL = 0.2
 -- V0 proposé, absent du doc : invite visible un demi-stud avant la portée du serveur, pour qu'un
 -- léger retard de la position côté serveur ne fasse pas refuser la prise.
 local PROMPT_DISTANCE_MARGIN = 0.5
--- V0 proposé, absent du doc : sous le texte de l'invite, le type du colis, en anglais (L-036) :
--- « Standard Box », « Premium Box », « Luxury Box » (BoxTiers[Tier].DisplayName + BOX_SUFFIX).
+-- V0 proposé, absent du doc : sous le texte de l'invite, la rareté du colis, en anglais (L-036) :
+-- « Common Box », « Rare Box »… (vague 76 : Rarities DisplayName + BOX_SUFFIX).
 local BOX_SUFFIX = "Box"
 
 -- Ouverture sur le rayon (L-112). V0 proposé, absent du doc : textes en anglais (L-036) ; après un appui
@@ -110,7 +110,7 @@ local timers: { [string]: number } = {}
 local policeTimers: { [string]: boolean } = {} -- storeId → le chrono affiché est celui de la police (vague 40)
 local timerListeners: { TimerListener } = {}
 local openPending: { [Instance]: number } = {} -- colis → os.clock() de l'appui sur « Open »
-local tierBySlot: { [string]: string } = {} -- SlotId → Tier du dernier colis vu à cet emplacement
+local rarityBySlot: { [string]: string } = {} -- SlotId → rareté du dernier colis vu à cet emplacement (vague 76)
 local itemPrompts: { [Model]: ProximityPrompt } = {} -- objets sortis (tag ShelfItem) → leur invite
 local saidItemSlot = false
 
@@ -275,9 +275,8 @@ local function addItemPrompt(instance: Instance)
 		end
 		return
 	end
-	local tierAttribute = item:GetAttribute(TIER_ATTRIBUTE)
-	local tier = if type(tierAttribute) == "string" then tierAttribute else tierBySlot[slotId]
-	local info = if tier then Balance.Heist.BoxTiers[tier] else nil
+	local rarityAttribute = item:GetAttribute(ShelfOpenState.BoxRarityAttribute)
+	local boxRarity = if type(rarityAttribute) == "string" then rarityAttribute else rarityBySlot[slotId]
 	local itemId = item:GetAttribute("ItemId")
 	local def = if type(itemId) == "string" then Items.ById[itemId] else nil
 	local mutation = {
@@ -288,7 +287,7 @@ local function addItemPrompt(instance: Instance)
 	prompt.Name = ITEM_PROMPT_NAME
 	prompt.ActionText = ITEM_ACTION_TEXT
 	prompt.ObjectText = if def then Mutations.ItemName(def.DisplayName, mutation) else ""
-	prompt.HoldDuration = if info then info.GrabTime else 0
+	prompt.HoldDuration = if boxRarity then Rarities.GrabTime(boxRarity) else 0
 	local distance = math.max(Balance.Heist.GrabMaxDistance - PROMPT_DISTANCE_MARGIN, 1)
 	prompt.MaxActivationDistance = distance
 	-- Model:ScaleTo agrandit aussi les invites du modèle : l'objet sort à 0,2 de sa taille (ShelfOpenController),
@@ -321,12 +320,12 @@ local function addPrompt(watch: StoreWatch, box: Instance)
 	end
 	local slotId = box:GetAttribute(SLOT_ID_ATTRIBUTE)
 	local slotName = box:GetAttribute(SLOT_ATTRIBUTE)
-	local tier = box:GetAttribute(TIER_ATTRIBUTE)
-	if type(slotId) ~= "string" or type(slotName) ~= "string" or type(tier) ~= "string" then
+	local boxRarity = box:GetAttribute(ShelfOpenState.BoxRarityAttribute)
+	if type(slotId) ~= "string" or type(slotName) ~= "string" or type(boxRarity) ~= "string" then
 		return
 	end
-	tierBySlot[slotId] = tier
-	local info = Balance.Heist.BoxTiers[tier]
+	rarityBySlot[slotId] = boxRarity
+	local info = Rarities.ById[boxRarity]
 	local anchor = watch.Model:FindFirstChild(slotName, true)
 	if info == nil or anchor == nil or not anchor:IsA("Attachment") then
 		return
@@ -334,10 +333,10 @@ local function addPrompt(watch: StoreWatch, box: Instance)
 	local prompt = Instance.new("ProximityPrompt")
 	prompt.Name = PROMPT_NAME
 	-- L-112 : rester appuyé ouvre le colis sur place (Cantin, 2026-11-13 : même maintien que la prise,
-	-- GrabTime du type) ; le serveur vérifie la durée, tire la chance et décide de tout.
+	-- vague 76 : temps de prise de la rareté du colis) ; le serveur vérifie la durée, tire la chance et décide de tout.
 	prompt.ActionText = OPEN_ACTION_TEXT
 	prompt.ObjectText = `{info.DisplayName} {BOX_SUFFIX}`
-	prompt.HoldDuration = info.GrabTime
+	prompt.HoldDuration = Rarities.GrabTime(boxRarity)
 	prompt.MaxActivationDistance = math.max(Balance.Heist.GrabMaxDistance - PROMPT_DISTANCE_MARGIN, 1)
 	prompt.RequiresLineOfSight = false -- les rayons cachent parfois le colis
 	prompt.Enabled = false

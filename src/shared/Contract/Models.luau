@@ -19,8 +19,6 @@ export type Part = {
 	To: number?,
 	Min: number?,
 	Class: string?, -- classe attendue (IsA), seulement quand le doc la donne
-	Tier: boolean?, -- attribut Tier obligatoire (Standard, Premium ou Luxe)
-	TierCounts: { [string]: number }?, -- répartition attendue des Tier dans la série
 	Invisible: boolean?, -- Transparency = 1
 	Tag: string?, -- tag porté par l'élément ou un de ses descendants
 	Inside: { Part }?, -- enfants obligatoires de cet élément
@@ -90,9 +88,8 @@ local Store: ModelSpec = {
 		{ Name = "Shutter" },
 		{ Name = "Door" },
 		{ Name = "Bounds", Class = "BasePart", Invisible = true },
-		-- Plus d'attribut Tier exigé ni de contrôle 6/3/1 (L-033, accepté par Ironix le
-		-- 2026-11-07) : le code répartit au hasard 6 Standard, 3 Premium et 1 Luxe sur les 10
-		-- emplacements à chaque remplissage. Un Tier laissé sur un emplacement est ignoré.
+		-- Plus d'attribut Tier exigé (L-033) ; vague 76 : plus de types de colis, chaque emplacement reçoit un colis
+		-- dont la rareté est tirée dans celles de la zone (ShelfBoxes.ZoneOdds). Un Tier laissé sur un emplacement est ignoré.
 		{ Name = "ShelfSlot_%02d", From = 1, To = 10, Class = "Attachment" },
 		{ Name = "GuardSpawn", Class = "Attachment" },
 		{ Name = "SignPart" },
@@ -292,10 +289,11 @@ local Box: ModelSpec = {
 		-- garde que 25 actifs à la fois (Roblox en affiche 31 au plus).
 		{ Name = "OutlineHighlight", Class = "Highlight" },
 	},
-	-- Un colis par type (MOD-013), nommés comme l'exemple BOX_Luxe du 10.3. Les colis par rareté
-	-- (BOX_<Rareté>, L-049, L-097 point 3, a79) sont pris en premier par le code, avec repli sur BOX_<Tier> :
-	-- facultatifs, contrôlés par le préfixe quand ils sont là (BOX_Divine aussi, rareté pas encore au jeu).
-	Expected = { "BOX_Standard", "BOX_Premium", "BOX_Luxe" },
+	-- Vague 76 (Cantin et Clément, 19/11) : plus de types de colis au contrat. Les colis par rareté (BOX_<Rareté>,
+	-- L-049, L-097 point 3, a79) sont pris en premier par le code ; les anciens BOX_Standard, BOX_Premium et BOX_Luxe
+	-- (MOD-013) restent des replis facultatifs (rayons : selon le temps de prise du colis ; camion, tour de la
+	-- fortune, colis offerts, qui gardent leur type). Tous contrôlés par le préfixe quand ils sont là.
+	Expected = {},
 }
 
 local Tool: ModelSpec = {
