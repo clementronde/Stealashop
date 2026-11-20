@@ -104,7 +104,9 @@
 --       Vague 80 (a267, coffre hebdomadaire) : pareil, pour un colis de RAYON de rareté boxRarity (vague 76) :
 --       zone portée à la première où cette rareté existe ; rareté de l'objet tirée dans
 --       ShelfBoxes.ContentWeights(boxRarity, 1, zone) (comme ce colis ouvert sur un rayon de cette zone, chance ×1),
---       sans cran d'amélioration. Mêmes retours.
+--       sans cran d'amélioration ; vague 81 (a268) : plancher à boxRarity (les poids sous le plancher sont retirés :
+--       boxRarity ou mieux, jamais en dessous). Sert aussi aux lots « colis d'une rareté » des quêtes et de la roue
+--       (Prize/Grant). Mêmes retours.
 --   Pour PvPService (vol d'un objet sous antivol au sol), sans yield : GetFloorItem(owner, uid) -> FloorItem?,
 --       GetFloorItems(owner), IsStealable(owner, uid), HoldFloorItem (le modèle sort du monde, plus de
 --       reprise), ReleaseFloorItem (vol raté : il revient), TakeFloorItem (dépôt : le modèle part ; PvPService
@@ -1460,9 +1462,17 @@ function UnboxService.GiveBoxRarityItem(player: Player, boxRarity: string, zone:
 		log(`{player.Name} : inventaire plein, objet offert (colis {boxRarity}) pas donné`)
 		return nil, "InventoryFull", nil
 	end
+	-- Vague 81 (a268) : plancher à la rareté du colis (« un colis Épique » = Épique ou mieux) : les poids du colis
+	-- au-dessus du plancher seulement ; sous le plancher, rien.
+	local floorOrder = (Rarities.ById[boxRarity] :: Rarities.Rarity).Order
 	local weights = ShelfBoxes.ContentWeights(boxRarity, 1, zone)
 	local total = 0
 	if weights then
+		for _, rarity in Rarities.List do
+			if rarity.Order < floorOrder then
+				weights[rarity.Id] = nil
+			end
+		end
 		for _, weight in weights do
 			total += weight
 		end

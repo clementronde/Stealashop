@@ -14,7 +14,8 @@
 -- chargement du profil et toutes les Traps.SyncInterval s (étages de la boutique reconstruits, emplacement
 -- déplacé) ; tout est retiré quand la boutique est libérée. Pas de piège dans la boutique du bot.
 -- Déclenchement, Traps.CheckInterval fois par seconde : un piège armé se déclenche quand le HumanoidRootPart d'un
--- joueur vivant est dans son TriggerZone (boîte orientée), sauf le propriétaire (Traps.SpareFriends : aucune règle
+-- joueur vivant est dans son TriggerZone (boîte orientée) ou l'a traversé depuis le contrôle d'avant (vague 81 :
+-- trajet testé, au plus Traps.SweepMax studs), sauf le propriétaire (Traps.SpareFriends : aucune règle
 -- d'amis au vol, les amis sont pris), et sauf un joueur pris par un piège de cette boutique il y a moins de
 -- Traps.Immunity s. Le piège passe en « Triggered » (le client montre Triggered, son 3D) pendant Traps.Recharge s,
 -- puis se réarme. Effet sur le joueur (StatsService, clé « Trap ») : vitesse 0 pendant StopTime s, puis
@@ -73,6 +74,8 @@ local placed: { [Model]: { [number]: Placed } } = {}
 local immuneUntil: { [Player]: { [Model]: number } } = {}
 local effectTokens: { [Player]: number } = {}
 local tokenCounter = 0
+-- Vague 81 (a268) : position du HumanoidRootPart au contrôle d'avant (trajet testé contre les TriggerZone).
+local lastPositions: { [Player]: { Root: BasePart, Position: Vector3 } } = {}
 
 local function log(message: string)
 	if IS_STUDIO then
@@ -395,6 +398,38 @@ local function isInside(zone: BasePart, position: Vector3): boolean
 	return math.abs(localPos.X) <= half.X and math.abs(localPos.Y) <= half.Y and math.abs(localPos.Z) <= half.Z
 end
 
+-- Vague 81 (a268) : le segment from → to touche-t-il la boîte orientée `zone` ? (méthode des tranches, dans le
+-- repère de la boîte). Sans `from` : la position `to` seule.
+local function crosses(zone: BasePart, from: Vector3?, to: Vector3): boolean
+	if from == nil then
+		return isInside(zone, to)
+	end
+	local a = zone.CFrame:PointToObjectSpace(from)
+	local b = zone.CFrame:PointToObjectSpace(to)
+	local half = zone.Size / 2
+	local tMin, tMax = 0, 1
+	for _, slab in { { a.X, b.X - a.X, half.X }, { a.Y, b.Y - a.Y, half.Y }, { a.Z, b.Z - a.Z, half.Z } } do
+		local start, delta, h = slab[1], slab[2], slab[3]
+		if math.abs(delta) < 1e-9 then
+			if math.abs(start) > h then
+				return false
+			end
+		else
+			local t1 = (-h - start) / delta
+			local t2 = (h - start) / delta
+			if t1 > t2 then
+				t1, t2 = t2, t1
+			end
+			tMin = math.max(tMin, t1)
+			tMax = math.min(tMax, t2)
+			if tMin > tMax then
+				return false
+			end
+		end
+	end
+	return true
+end
+
 local function rootOf(player: Player): BasePart?
 	local character = player.Character
 	if character == nil then
@@ -410,15 +445,30 @@ end
 
 function TrapService.Step()
 	if next(placed) == nil then
+		table.clear(lastPositions)
 		return
 	end
 	local now = os.clock()
 	local selfTest = ownerCanTrigger()
-	local candidates: { { Player: Player, Root: BasePart } } = {}
+	local candidates: { { Player: Player, Root: BasePart, From: Vector3?, To: Vector3 } } = {}
+	local seen: { [Player]: boolean } = {}
 	for _, player in Players:GetPlayers() do
 		local root = rootOf(player)
 		if root then
-			table.insert(candidates, { Player = player, Root = root })
+			-- Trajet depuis le contrôle d'avant, du même HumanoidRootPart et pas plus long que SweepMax.
+			local to = root.Position
+			local last = lastPositions[player]
+			local from = if last and last.Root == root and (to - last.Position).Magnitude <= Traps.SweepMax
+				then last.Position
+				else nil
+			table.insert(candidates, { Player = player, Root = root, From = from, To = to })
+			lastPositions[player] = { Root = root, Position = to }
+			seen[player] = true
+		end
+	end
+	for player in lastPositions do
+		if not seen[player] then
+			lastPositions[player] = nil
 		end
 	end
 	for plot, list in placed do
@@ -438,7 +488,7 @@ function TrapService.Step()
 				if byPlot and (byPlot[plot] or 0) > now then
 					continue
 				end
-				if isInside(zone, candidate.Root.Position) then
+				if crosses(zone, candidate.From, candidate.To) then
 					trigger(plot, entry, player, owner)
 					break
 				end

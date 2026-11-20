@@ -99,6 +99,10 @@ local Traps = {
 	Recharge = 15, -- s en Triggered avant de se réarmer
 	Immunity = 8, -- s : un joueur pris ne l'est plus par les pièges de cette boutique pendant ce temps
 	CheckInterval = 0.1, -- s entre deux contrôles des volumes
+	-- Vague 81 (a268) : chaque contrôle teste le TRAJET du HumanoidRootPart depuis le contrôle d'avant (segment contre
+	-- le TriggerZone), pas seulement sa position : à 40 studs/s, 3,2 studs se traversent en 0,08 s. Un trajet plus
+	-- long que SweepMax studs (téléportation, réapparition) n'est pas testé, seule la position du moment compte.
+	SweepMax = 30, -- V0 proposé (a268, 20/11) : 300 studs/s à 0,1 s par contrôle, au-dessus de toute course du jeu
 	SyncInterval = 2, -- s entre deux remises à jour des pièges posés (niveau de la boutique, emplacements)
 	SpareFriends = false, -- aucune règle d'amis au vol (PvPService) : les amis du propriétaire sont pris aussi
 	-- Messages (Notify), en anglais.
