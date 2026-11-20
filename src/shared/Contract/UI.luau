@@ -900,7 +900,8 @@ for _, screen in UI.Screens do
 end
 
 -- Coffre hebdomadaire de UI_Rewards (agent a166, MAJ 1 ; noms proposés à Clément, tous facultatifs) :
--- RewardsController cache WeeklyChest tant que Features.WeeklyChest est coupé.
+-- RewardsController cache WeeklyChest tant que Features.WeeklyChest est coupé. Vague 80 (a267) : allumé en DEV ; sans
+-- WeeklyChest.WeeklyClaimButton, les jours se comptent mais rien ne se montre ni ne se réclame (aucune pastille).
 for _, screenDef in UI.Screens do
 	if screenDef.Name == "UI_Rewards" then
 		table.insert(screenDef.Elements, { Path = "WeeklyChest", Optional = true, Note = "pas de coffre hebdomadaire dans UI_Rewards (MAJ 1)" })

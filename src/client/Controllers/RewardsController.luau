@@ -34,7 +34,8 @@
 --     l'a posé ; WeeklyChest.Progress « 3/5 » ; WeeklyChest.WeekDays.Day1 à Day5, leur Done visible pour
 --     chaque jour compté ; WeeklyChest.WeeklyClaimButton (et son ClaimLabel) : envoie ClaimWeekly quand
 --     le coffre est prêt, texte de Clément (« CLAIM »), « LOCKED » avant 5 jours, « CLAIMED » après.
---     RewardsAlert s'allume aussi quand le coffre est prêt.
+--     RewardsAlert s'allume aussi quand le coffre est prêt, seulement si l'écran a un WeeklyClaimButton (vague 80,
+--     a267 : coffre allumé avant la livraison de Clément, pas de pastille qu'aucun bouton n'éteint).
 -- État lu sur les attributs du Player posés par RewardService (Config/Rewards.Attributes) : jour du
 -- calendrier, réclamé aujourd'hui, heure serveur du temps de jeu à 0 (le client compte
 -- GetServerTimeNow() − RewardPlayStart), paliers réclamés. Le client ne décide rien : il demande.
@@ -96,6 +97,7 @@ type Screen = {
 	weeklyDays: { GuiObject? }, -- Done de WeekDays.Day1 à Day5
 	weeklyLabel: Instance?,
 	weeklyClaimText: string,
+	weeklyButton: Instance?, -- WeeklyChest.WeeklyClaimButton (vague 80 : sans lui, pas de pastille du coffre)
 }
 
 local SCREEN = "UI_Rewards"
@@ -282,9 +284,12 @@ local function weeklyPending(status: Status): boolean
 	return days ~= nil and days >= WEEKLY.DaysNeeded and not status.weeklyClaimed
 end
 
--- Une récompense attend : le jour pas réclamé, un palier atteint et pas réclamé, ou le coffre prêt.
+-- Une récompense attend : le jour pas réclamé, un palier atteint et pas réclamé, ou le coffre prêt (vague 80 :
+-- seulement si l'écran a de quoi le réclamer).
 local function hasPending(status: Status): boolean
-	return dailyPending(status) or playtimePending(status) or weeklyPending(status)
+	local current = screen
+	local weeklyClaimable = current ~= nil and current.weeklyButton ~= nil
+	return dailyPending(status) or playtimePending(status) or (weeklyClaimable and weeklyPending(status))
 end
 
 ------------------------------------------------------------------------------
@@ -481,6 +486,7 @@ local function bind(gui: ScreenGui)
 		weeklyDays = {},
 		weeklyLabel = weeklyLabel or weeklyButton,
 		weeklyClaimText = textOf(weeklyLabel or weeklyButton) or CLAIM_TEXT,
+		weeklyButton = weeklyButton,
 	}
 	for index = 1, WEEKLY.DaysNeeded do
 		current.weeklyDays[index] = if weekly then guiObject(weekly, `WeekDays.Day{index}.Done`) else nil

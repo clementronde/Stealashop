@@ -100,6 +100,11 @@
 --       sans antivol), IndexService.Discover, inventaire remis à jour. Inventaire plein
 --       (DisplayService.HasInventoryRoom) : rien n'est écrit. Renvoie (uid de l'objet, nil, ItemId), ou nil et
 --       la raison : "NoProfile", "InventoryFull", "Invalid", "NoContent". Sans yield.
+--   UnboxService.GiveBoxRarityItem(player, boxRarity, zone) -> (string?, string?, string?)
+--       Vague 80 (a267, coffre hebdomadaire) : pareil, pour un colis de RAYON de rareté boxRarity (vague 76) :
+--       zone portée à la première où cette rareté existe ; rareté de l'objet tirée dans
+--       ShelfBoxes.ContentWeights(boxRarity, 1, zone) (comme ce colis ouvert sur un rayon de cette zone, chance ×1),
+--       sans cran d'amélioration. Mêmes retours.
 --   Pour PvPService (vol d'un objet sous antivol au sol), sans yield : GetFloorItem(owner, uid) -> FloorItem?,
 --       GetFloorItems(owner), IsStealable(owner, uid), HoldFloorItem (le modèle sort du monde, plus de
 --       reprise), ReleaseFloorItem (vol raté : il revient), TakeFloorItem (dépôt : le modèle part ; PvPService
@@ -1433,6 +1438,63 @@ function UnboxService.GiveItem(player: Player, tier: string, zone: number, minRa
 	local mutated = Mutations.Label(mutation)
 	local upgraded = if #steps > 0 then `, {#steps} cran(s) : {table.concat(steps, " → ")}` else ""
 	log(`{player.Name} : objet offert {item.Id} ({rarityId}, colis {tier} zone {zone}{upgraded}{if mutated then ", mutation " .. mutated else ""}) mis dans l'inventaire ({itemUid})`)
+	discover(player, item.Id)
+	refreshInventory(player)
+	return itemUid, nil, item.Id
+end
+
+-- Vague 80 (a267) : objet d'un colis de rayon de rareté `boxRarity`, donné tout de suite (voir l'en-tête).
+function UnboxService.GiveBoxRarityItem(player: Player, boxRarity: string, zone: number): (string?, string?, string?)
+	local data = DataService.Get(player)
+	if data == nil or type(data.Items) ~= "table" then
+		return nil, "NoProfile", nil
+	end
+	local firstZone = ShelfBoxes.FirstZone[boxRarity]
+	if Rarities.ById[boxRarity] == nil or firstZone == nil or Zones[zone] == nil then
+		warn(`[UnboxService] GiveBoxRarityItem ({player.Name}) : colis {tostring(boxRarity)} zone {tostring(zone)} inconnu`)
+		return nil, "Invalid", nil
+	end
+	zone = math.max(zone, firstZone)
+	local roomOk, room = pcall(DisplayService.HasInventoryRoom, player)
+	if not (roomOk and room == true) then
+		log(`{player.Name} : inventaire plein, objet offert (colis {boxRarity}) pas donné`)
+		return nil, "InventoryFull", nil
+	end
+	local weights = ShelfBoxes.ContentWeights(boxRarity, 1, zone)
+	local total = 0
+	if weights then
+		for _, weight in weights do
+			total += weight
+		end
+	end
+	local rarityId = boxRarity
+	if weights and total > 0 then
+		local roll = random:NextNumber() * total
+		for _, rarity in Rarities.List do
+			local weight = weights[rarity.Id]
+			if weight and weight > 0 then
+				rarityId = rarity.Id
+				if roll < weight then
+					break
+				end
+				roll -= weight
+			end
+		end
+	end
+	local item = Items.Pick(zone, rarityId :: Rarities.RarityId, random)
+	if item == nil then
+		rarityId = boxRarity -- rareté tirée sans objet dans la zone : celle du colis, qui y existe
+		item = Items.Pick(zone, rarityId :: Rarities.RarityId, random)
+	end
+	if item == nil then
+		warnOnce(`giftRarity.{boxRarity}.{zone}`, `colis offert {boxRarity} zone {zone} : aucun objet possible (Config)`)
+		return nil, "NoContent", nil
+	end
+	local mutation = if item.TutorialOnly then nil else Mutations.Roll(random)
+	local itemUid = newUid(data.Items)
+	data.Items[itemUid] = { Id = item.Id, Source = "NPC", At = os.time(), Zone = zone, Mutation = mutation }
+	local mutated = Mutations.Label(mutation)
+	log(`{player.Name} : objet offert {item.Id} ({rarityId}, colis {boxRarity} zone {zone}{if mutated then ", mutation " .. mutated else ""}) mis dans l'inventaire ({itemUid})`)
 	discover(player, item.Id)
 	refreshInventory(player)
 	return itemUid, nil, item.Id
