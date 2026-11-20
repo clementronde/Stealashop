@@ -97,7 +97,7 @@ end
 local TIERS: { Tier } = {
 	{ -- 1 | 20B | Diamant géant (Légendaire, zone 6) | 8 h 14
 		Level = 1,
-		Cash = 20e9,
+		Cash = 170e6, -- V0 proposé (Cantin, 20/11), avant : 20e9
 		ItemId = "Z6_DiamantGeant",
 		Rarity = "Legendary",
 		Zone = 6,
@@ -106,7 +106,7 @@ local TIERS: { Tier } = {
 	},
 	{ -- 2 | 500B | Trône en or (Légendaire, zone 6) | 15 h 56
 		Level = 2,
-		Cash = 500e9,
+		Cash = 4.2e9, -- V0 proposé (Cantin, 20/11), avant : 500e9
 		ItemId = "Z6_TroneEnOr",
 		Rarity = "Legendary",
 		Zone = 6,
@@ -115,7 +115,7 @@ local TIERS: { Tier } = {
 	},
 	{ -- 3 | 1.3T | Statue de la Liberté (Mythique, zone 6) | 22 h 49
 		Level = 3,
-		Cash = 1.3e12,
+		Cash = 11e9, -- V0 proposé (Cantin, 20/11), avant : 1.3e12
 		ItemId = "Z6_StatueDeLaLiberte",
 		Rarity = "Mythic",
 		Zone = 6,
@@ -124,7 +124,7 @@ local TIERS: { Tier } = {
 	},
 	{ -- 4 | 2T | Peluche géante (Peu commun, zone 2) | 30 h 08
 		Level = 4,
-		Cash = 2e12,
+		Cash = 17e9, -- V0 proposé (Cantin, 20/11), avant : 2e12
 		ItemId = "Z2_PelucheGeante",
 		Rarity = "Uncommon",
 		Zone = 2,
@@ -133,7 +133,7 @@ local TIERS: { Tier } = {
 	},
 	{ -- 5 | 2.6T | PC gamer (Rare, zone 3) | 36 h 35
 		Level = 5,
-		Cash = 2.6e12,
+		Cash = 22e9, -- V0 proposé (Cantin, 20/11), avant : 2.6e12
 		ItemId = "Z3_PcGamer",
 		Rarity = "Rare",
 		Zone = 3,
@@ -142,7 +142,7 @@ local TIERS: { Tier } = {
 	},
 	{ -- 6 | 3.2T | Couronne (Épique, zone 4) | 42 h 10
 		Level = 6,
-		Cash = 3.2e12,
+		Cash = 27e9, -- V0 proposé (Cantin, 20/11), avant : 3.2e12
 		ItemId = "Z4_Couronne",
 		Rarity = "Epic",
 		Zone = 4,
@@ -151,7 +151,7 @@ local TIERS: { Tier } = {
 	},
 	{ -- 7 | 5T | Masque ancien (Légendaire, zone 5) | 49 h 51
 		Level = 7,
-		Cash = 5e12,
+		Cash = 42e9, -- V0 proposé (Cantin, 20/11), avant : 5e12
 		ItemId = "Z5_MasqueAncien",
 		Rarity = "Legendary",
 		Zone = 5,
@@ -160,7 +160,7 @@ local TIERS: { Tier } = {
 	},
 	{ -- 8 | 7T | Coffre de diamants (Mythique, zone 6) | 55 h 59
 		Level = 8,
-		Cash = 7e12,
+		Cash = 59e9, -- V0 proposé (Cantin, 20/11), avant : 7e12
 		ItemId = "Z6_CoffreDeDiamants",
 		Rarity = "Mythic",
 		Zone = 6,
@@ -169,7 +169,7 @@ local TIERS: { Tier } = {
 	},
 	{ -- 9 | 7.5T | Clé du coffre ultime (Mythique, zone 6) | 64 h 06
 		Level = 9,
-		Cash = 7.5e12,
+		Cash = 63e9, -- V0 proposé (Cantin, 20/11), avant : 7.5e12
 		ItemId = "Z6_CleDuCoffreUltime",
 		Rarity = "Mythic",
 		Zone = 6,
@@ -178,7 +178,7 @@ local TIERS: { Tier } = {
 	},
 	{ -- 10 et suivantes | 9T, puis ×1,3 | Clé du coffre ultime (Mythique, zone 6) | 70 h 07
 		Level = 10,
-		Cash = 9e12,
+		Cash = 76e9, -- V0 proposé (Cantin, 20/11), avant : 9e12
 		ItemId = "Z6_CleDuCoffreUltime",
 		Rarity = "Mythic",
 		Zone = 6,

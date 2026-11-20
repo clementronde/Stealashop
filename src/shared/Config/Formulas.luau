@@ -78,6 +78,10 @@ function Formulas.UpgradeCost(upgradeId: string, currentLevel: number): number?
 	if currentLevel >= upgrade.MaxLevel then
 		return nil
 	end
+	if upgrade.Costs ~= nil then
+		-- Vague 76 : liste de prix (Config/Upgrades, Costs), remise à l'échelle des nouveaux revenus.
+		return upgrade.Costs[math.floor(currentLevel) + 1]
+	end
 	return math.round(upgrade.BaseCost * upgrade.Growth ^ currentLevel)
 end
 

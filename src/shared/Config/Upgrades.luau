@@ -20,6 +20,9 @@ export type Upgrade = {
 	MaxLevel: number,
 	BaseCost: number, -- C0, prix du 1er niveau
 	Growth: number, -- g
+	-- Vague 76 (Cantin, 20/11 : prix remis à l'échelle des nouveaux revenus) : Costs[n + 1] = prix du niveau n, à la place
+	-- de C0 × g^n quand la liste est là (Formulas.UpgradeCost) ; #Costs = MaxLevel.
+	Costs: { number }?,
 }
 
 local List: { Upgrade } = {
@@ -28,13 +31,35 @@ local List: { Upgrade } = {
 	-- Gain = 2^(niveau affiché − 1) par seconde (Cantin ; Formulas.TreadmillGain, Config/Training) : EffectPerLevel
 	-- ne sert plus au tapis (0). Prix du passage du niveau affiché L au suivant = 150 × 3,8^(L − 1) (V0 proposés,
 	-- réglés au simulateur pour la zone 6 en 7 h 30).
-	{ Id = "Treadmill", DisplayName = "Treadmill", EffectPerLevel = 0, MaxLevel = 19, BaseCost = 150, Growth = 3.8 },
+	-- Vague 76 : Costs, V0 proposé (Cantin, 20/11), avant : 150 × 3,8^n (150, 570, 2 166, 8 231, 31 277, 118 853,
+	-- 451 640, 1,72 M, 6,52 M, 24,8 M, 94,2 M, 358 M, 1,36 B, 5,17 B, 19,6 B, 74,6 B, 284 B, 1,08 T, 4,09 T) : chaque
+	-- niveau × le facteur des revenus de la zone où le joueur moyen l'achète (simulateur), sans jamais baisser.
+	{
+		Id = "Treadmill",
+		DisplayName = "Treadmill",
+		EffectPerLevel = 0,
+		MaxLevel = 19,
+		BaseCost = 150,
+		Growth = 3.8,
+		Costs = { 150, 570, 2_200, 2_800, 3_600, 4_600, 15_000, 46_000, 140_000, 430_000, 1_300_000, 3_700_000, 14_000_000, 51_000_000, 190_000_000, 700_000_000, 2_600_000_000, 9_600_000_000, 35_000_000_000 },
+	},
 	-- +1 présentoir, de 4 à 20 (Balance.Display)
-	{ Id = "DisplaySlots", DisplayName = "Display Stands", EffectPerLevel = 1, MaxLevel = 16, BaseCost = 500, Growth = 2.5 },
+	-- Vague 76 : Costs, V0 proposé (Cantin, 20/11), avant : 500 × 2,5^n (500, 1 250, 3 125, 7 813, 19 531, 48 828,
+	-- 122 070, 305 176, 762 939, 1,91 M, 4,77 M, 11,9 M, 29,8 M, 74,5 M, 186 M, 466 M), même règle que le tapis.
+	{
+		Id = "DisplaySlots",
+		DisplayName = "Display Stands",
+		EffectPerLevel = 1,
+		MaxLevel = 16,
+		BaseCost = 500,
+		Growth = 2.5,
+		Costs = { 500, 1_300, 1_600, 2_100, 2_800, 3_600, 4_800, 9_800, 20_000, 42_000, 72_000, 120_000, 300_000, 750_000, 1_800_000, 4_300_000 },
+	},
 }
 
 local ById: { [string]: Upgrade } = {}
 for _, upgrade in List do
+	assert(upgrade.Costs == nil or #upgrade.Costs == upgrade.MaxLevel, `Config.Upgrades : {upgrade.Id}, Costs doit avoir MaxLevel prix`)
 	ById[upgrade.Id] = upgrade
 end
 

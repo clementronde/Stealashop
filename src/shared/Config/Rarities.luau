@@ -197,22 +197,22 @@ local BoxOdds: { [string]: { [string]: number } } = {
 -- ZoneOdds[zone][RarityId] = pourcentage (chaque zone fait 100) : rareté du colis d'un emplacement du rayon
 -- (StoreHeistService, via ShelfBoxes). Une rareté absente (ou à 0) n'existe pas dans la zone : ni colis, ni objet
 -- (ZoneRarities ; Config/Items le vérifie).
--- Raretés de chaque zone : décision de Cantin et Clément (19/11) ; pourcentages : V0 proposé (a262) d'après les
--- repères de la consigne (la plus basse ≈ la moitié, chaque rareté au-dessus nettement plus rare, celle qui
--- apparaît dans la zone ≈ 3 %, Mythique de la zone 6 ≈ 0,5 %, Secret ≈ 0,03 %). Ce sont les chances des COLIS :
--- la chance réelle de chaque rareté d'OBJET en découle (contenu des caisses, chance du joueur), plus haute pour les
--- raretés rares (Shared/ItemOdds ; tables du rapport d'a262).
+-- Raretés de chaque zone : décision de Cantin et Clément (19/11). Pourcentages des COLIS : V0 proposé (Cantin, 20/11 :
+-- « Viser l'objet »), calculés pour que la VRAIE part de chaque rareté d'OBJET (colis × contenu limité à la zone et
+-- réduit par cran, ShelfOpen.ShelfStepUp, × chance moyenne de LuckTable ; Shared/ItemOdds) suive les repères : la
+-- plus basse ≈ la moitié (zone 2 : Peu commun de 1 à 3 %, le reste Commun), celle qui apparaît dans la zone de 1 à
+-- 3 %, Mythique de la zone 6 ≈ 0,5 %, Secret de 0,02 à 0,05 % (vérifié par le banc a262).
 -- Zone 1 (zone du tuto) : le premier colis du tuto garde son objet Rare garanti (Pot de nouilles, TutorialOnly),
 -- imposé à la sortie par l'accroche StoreHeistService.SetContentOverride, que pose TutorialService.
 export type ZoneOdds = { [number]: { [string]: number } }
 
 local ZONE_ODDS: ZoneOdds = {
 	[1] = { Common = 100 },
-	[2] = { Common = 97, Uncommon = 3 },
-	[3] = { Common = 62, Uncommon = 35, Rare = 3 },
-	[4] = { Common = 55, Uncommon = 30, Rare = 12, Epic = 3 },
-	[5] = { Uncommon = 55, Rare = 30, Epic = 12, Legendary = 3 },
-	[6] = { Rare = 55, Epic = 30, Legendary = 14.47, Mythic = 0.5, Secret = 0.03 },
+	[2] = { Common = 98.4, Uncommon = 1.6 }, -- V0 proposé (Cantin, 20/11), avant : C 97, U 3
+	[3] = { Common = 33, Uncommon = 65, Rare = 2 }, -- V0 proposé (Cantin, 20/11), avant : C 62, U 35, R 3
+	[4] = { Common = 38.5, Uncommon = 37.5, Rare = 21.2, Epic = 2.8 }, -- V0 proposé (Cantin, 20/11), avant : C 55, U 30, R 12, E 3
+	[5] = { Uncommon = 38.7, Rare = 37.5, Epic = 21, Legendary = 2.8 }, -- V0 proposé (Cantin, 20/11), avant : U 55, R 30, E 12, L 3
+	[6] = { Rare = 38.9, Epic = 36.4, Legendary = 24.235, Mythic = 0.42, Secret = 0.045 }, -- V0 proposé (Cantin, 20/11), avant : R 55, E 30, L 14,47, M 0,5, S 0,03
 }
 
 -- [zone] = raretés de la zone, de la plus basse à la plus haute (List) ; [zone][RarityId] = true.

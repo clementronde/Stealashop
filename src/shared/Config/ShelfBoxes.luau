@@ -89,8 +89,10 @@ local ShelfBoxes = {
 	-- de la zone `zone` quand elle est donnée (rayons des magasins ; rien pour un rayon d'événement), puis les poids
 	-- des raretés au-dessus du seuil de ShelfOpen.LuckBoost multipliés par la chance ("AboveBox" : au-dessus de la
 	-- caisse ; "AboveLowest" : au-dessus de la plus basse qui reste ; autre valeur : la chance ne compte pas, le
-	-- serveur avertit). Poids relatifs (le tirage les ramène à 100). nil si la caisse n'a pas de table ou si rien
-	-- ne reste. Config/ShelfOpen n'est chargé qu'ici, au premier appel : ShelfBoxes reste lisible sans lui.
+	-- serveur avertit) ; sur un rayon (zone donnée), chaque poids au-dessus de la caisse est aussi multiplié par
+	-- ShelfOpen.ShelfStepUp par cran (vague 76, Cantin 20/11). Poids relatifs (le tirage les ramène à 100). nil si
+	-- la caisse n'a pas de table ou si rien ne reste. Config/ShelfOpen n'est chargé qu'ici, au premier appel :
+	-- ShelfBoxes reste lisible sans lui.
 	ContentWeights = function(boxRarity: string, luck: number, zone: number?): { [string]: number }?
 		local ShelfOpen = require(script.Parent.ShelfOpen)
 		local odds = ShelfOpen.BoxRarityOdds[boxRarity]
@@ -117,11 +119,15 @@ local ShelfBoxes = {
 		elseif mode ~= "AboveLowest" then
 			boost = 1
 		end
+		-- Rayon de magasin (zone donnée) : montée au-dessus de la caisse réduite par cran (ShelfOpen.ShelfStepUp, vague 76).
+		local stepUp = if zone ~= nil and box and type(ShelfOpen.ShelfStepUp) == "number" then ShelfOpen.ShelfStepUp else 1
 		local weights: { [string]: number } = {}
 		for _, rarity in Rarities.List do
 			local weight = odds[rarity.Id] or 0
 			if weight > 0 and (allowed == nil or allowed[rarity.Id]) then
-				weights[rarity.Id] = if rarity.Order > threshold then weight * boost else weight
+				local above = if box then rarity.Order - box.Order else 0
+				local scale = if above > 0 then stepUp ^ above else 1
+				weights[rarity.Id] = (if rarity.Order > threshold then weight * boost else weight) * scale
 			end
 		end
 		return weights

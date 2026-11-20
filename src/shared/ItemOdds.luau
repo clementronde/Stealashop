@@ -8,7 +8,7 @@
 -- existe, la 6) ; la même pour tous les exemplaires d'un même objet et d'une même mutation :
 --   chance = Σ sur la chance du joueur (ShelfOpen.LuckTable, poids relatifs ; ×1 seul sans Reveal.TableLuck)
 --              [ Σ sur la rareté du colis (ShelfBoxes.ZoneOdds[zone])
---                  P(colis) × P(rareté de l'objet | colis, chance) (ShelfBoxes.ContentWeights, limitée à la zone) ]
+--                  P(colis) × P(rareté de l'objet | colis, chance) (ShelfBoxes.ContentWeights, limitée à la zone, montée réduite par cran) ]
 --              × P(classe de taille | chance) (Huge, Colossal : ItemWeight.SizeChance ; sans taille : le reste)
 --            × part de l'objet dans sa rareté et sa zone (DrawWeight / total, comme Items.Pick)
 --            × P(effet) (Config/Mutations ; sans effet : 1 − la somme des effets).
