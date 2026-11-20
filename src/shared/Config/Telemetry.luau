@@ -54,6 +54,10 @@ local Economy: { [string]: EconomyKind } = {
 	-- Vague 51 (a164) : argent requis remis à la renaissance (RebirthService, Features.Rebirth) ; SKU Rebirth1,
 	-- Rebirth2… Type V0 proposé : Gameplay.
 	Rebirth = { Flow = "Sink", Transaction = "Gameplay" },
+	-- Vague 80 (a266) : argent des récompenses des quêtes du jour (QuestService), SKU Quest_<Id>, et des lots de la roue
+	-- (WheelService), SKU Wheel_<secteur>. Types V0 proposés (Cantin, 20/11) : Gameplay et TimedReward.
+	QuestReward = { Flow = "Source", Transaction = "Gameplay" },
+	WheelReward = { Flow = "Source", Transaction = "TimedReward" },
 }
 
 -- Événements custom (LogCustomEvent) : clé lue par le code = nom envoyé à Roblox.
@@ -77,6 +81,10 @@ local Events: { [string]: string } = {
 	-- Vague 58 (a188, ItemRainService) : pluie d'objets ; champs Zone, Rarity de l'objet
 	ItemRainPickup = "ItemRainPickup", -- 1re prise d'un objet tombé de la pluie ; joueur = celui qui le ramasse
 	ItemRainBanked = "ItemRainBanked", -- objet de la pluie rangé en base (entrée de la zone safe) ; joueur = le porteur
+	-- Vague 80 (a266) : quête du jour réclamée (QuestService ; champs Quest, Gift) et tour de roue (WheelService ; champs
+	-- Sector, Gift, Spin = Free ou Extra)
+	QuestClaim = "QuestClaimed",
+	WheelSpin = "WheelSpin",
 }
 
 local Telemetry = {

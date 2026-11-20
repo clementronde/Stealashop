@@ -48,6 +48,12 @@ local Features = {
 	-- Traps de Config/SkillTree achetable) ; false = aucun piège posé, tuile « Soon » ; en Studio,
 	-- workspace:SetAttribute("TrapsTest", true) les allume sans toucher à cette ligne.
 	Traps = false,
+	-- Vague 80 (a266, DEV-132, UI-130) : quêtes quotidiennes (Config/Quests, QuestService, QuestController ; écran UI_Quests et
+	-- bouton UI_HUD.QuestsButton de Clément, facultatifs) ; false = rien n'est compté, aucun attribut, bouton caché.
+	Quests = true,
+	-- Vague 80 (a266, DEV-141) : roue de la fortune du hub, un tour gratuit par jour (Config/Wheel, WheelService,
+	-- WheelController ; écran UI_Wheel, zone WheelZone de ENV_Hub_Wheel) ; false = rien ne s'ouvre, SpinWheel ignoré.
+	Wheel = true,
 }
 
 export type Features = typeof(Features)

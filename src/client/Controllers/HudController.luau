@@ -192,6 +192,9 @@ local GATED: { { Element: string, Enabled: boolean } } = {
 	{ Element = "SettingsButton", Enabled = Features.Settings },
 	{ Element = "RebirthButton", Enabled = Features.Rebirth or Features.RebirthPreview },
 	{ Element = "NightCountdown", Enabled = Features.NightCycle },
+	-- Vague 80 (a266) : boutons des quêtes et de la roue (facultatifs ; QuestController, WheelController).
+	{ Element = "QuestsButton", Enabled = Features.Quests },
+	{ Element = "WheelButton", Enabled = Features.Wheel },
 }
 
 -- V0 proposé, absent du doc : nom du son des battements de cœur (DEV-051), cherché comme les sons

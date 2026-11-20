@@ -16,6 +16,7 @@ local Hub = {
 	-- Tags de Clément (L-165) : la pièce Zone (invisible, sans collision) de chaque modèle du hub.
 	RewardsZoneTag = "RewardsZone", -- ENV_Hub_FreeGift : entrer ouvre UI_Rewards
 	InviteZoneTag = "InviteZone", -- ENV_Hub_InviteNoob : entrer ouvre l'invitation de Roblox
+	WheelZoneTag = "WheelZone", -- vague 80 (a266) : ENV_Hub_Wheel : entrer ouvre UI_Wheel (Features.Wheel)
 	-- Enfants des modèles (L-165) : le cadeau qui flotte, le rig du noob.
 	GiftName = "Gift",
 	NoobName = "Noob",

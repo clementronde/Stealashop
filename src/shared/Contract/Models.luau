@@ -758,6 +758,28 @@ Models.HubInviteNoob = HubInviteNoob
 for _, spec in { HubFreeGift, HubInviteNoob } do
 	table.insert(Models.List, table.find(Models.List, WeaponShopCounter) or #Models.List + 1, spec)
 end
+-- Vague 80 (a266, L-165 point 3) : roue de la fortune du hub, posée par Clément le 2026-11-14. Tout est facultatif :
+-- WheelController ne lit que la zone (UI_Wheel tourne à l'écran) ; la roue 3D (Wheel) n'est pas encore animée par le code.
+local HubWheel: ModelSpec = {
+	Key = "HubWheel",
+	Label = "roue de la fortune du hub",
+	Category = "Hub",
+	Names = { "ENV_Hub_Wheel" },
+	Class = "Model",
+	Parts = {
+		{ Name = "Wheel", Class = "Model", Optional = true, Note = "facultative : la roue 3D, pivot au centre, tourne autour du Z local, L-165" },
+		{
+			Name = "Zone",
+			Class = "BasePart",
+			Tag = "WheelZone",
+			Optional = true,
+			Note = "facultative : pièce invisible sans collision ; y entrer ouvre UI_Wheel, L-165",
+		},
+	},
+	Expected = { "ENV_Hub_Wheel" },
+}
+Models.HubWheel = HubWheel
+table.insert(Models.List, table.find(Models.List, WeaponShopCounter) or #Models.List + 1, HubWheel)
 
 -- Flash des photos du témoin (Clément, L-172, posé et validé le 2026-11-15) : ReplicatedStorage/Assets/FX/
 -- FX_Witness_Flash : son Attachment Flash (PointLight Light, ParticleEmitter Glare, Glint, Specks à Rate 0 avec leur

@@ -6,6 +6,8 @@
 --     RewardsButton (RewardsController.Open), une fois par entrée ;
 --   - zone du noob (pièce taggée InviteZone, dans ENV_Hub_InviteNoob) : y entrer ouvre l'invitation de Roblox
 --     (InviteController.Prompt), une fois par entrée. Idle et Wave du noob : HubService (serveur) ;
+--   - zone de la roue (pièce taggée WheelZone, dans ENV_Hub_Wheel ; vague 80, a266) : y entrer ouvre UI_Wheel
+--     (WheelController.Open), une fois par entrée ;
 --   - entrée et sortie : HubZone.step sur le HumanoidRootPart du joueur, toutes les Hub.Tick s. Un personnage
 --     qui apparaît déjà dans une zone (réapparition) n'ouvre rien : il doit en sortir puis y revenir ;
 --   - cadeau (Gift, Model ou pièce, du modèle de la zone RewardsZone) : flotte et tourne sur l'axe Y de son
@@ -71,6 +73,10 @@ local function onEnter(tag: string)
 	elseif tag == Hub.InviteZoneTag then
 		local InviteController = require(script.Parent:WaitForChild("InviteController")) :: any
 		InviteController.Prompt()
+	elseif tag == Hub.WheelZoneTag then
+		-- Vague 80 (a266, L-165 point 3) : la roue du hub ouvre UI_Wheel (rien si la roue est coupée ou l'écran absent).
+		local WheelController = require(script.Parent:WaitForChild("WheelController")) :: any
+		WheelController.Open()
 	end
 end
 
@@ -94,7 +100,7 @@ local function stepZones()
 	local prime = root ~= nil and root ~= stateRoot
 	stateRoot = root
 	local seen: { [BasePart]: boolean } = {}
-	for _, tag in { Hub.RewardsZoneTag, Hub.InviteZoneTag } do
+	for _, tag in { Hub.RewardsZoneTag, Hub.InviteZoneTag, Hub.WheelZoneTag } do
 		for _, tagged in CollectionService:GetTagged(tag) do
 			if not tagged:IsA("BasePart") or seen[tagged :: BasePart] then
 				continue

@@ -823,6 +823,36 @@ local List: { RemoteDef } = {
 			{ Name = "plain", Kind = "string", Max = MAX_MESSAGE_LENGTH },
 		},
 	},
+	{
+		-- Vague 80 (a266, DEV-132), absent du tableau 9.4 : bouton ClaimButton d'une ligne de UI_Quests. slot = place de la
+		-- quête (1 à Config/Quests.PerDay) ; QuestService vérifie qu'elle est finie et pas réclamée, puis donne la récompense.
+		-- Aucune progression ne vient du client.
+		Name = "ClaimQuest",
+		Direction = "ClientToServer",
+		Reliable = true,
+		Args = { { Name = "slot", Kind = "int", Min = 1, Max = 3 } },
+		RatePerSecond = 2, -- V0 proposé (Cantin, 20/11), comme ClaimDaily
+	},
+	{
+		-- Vague 80 (a266, DEV-141), absent du tableau 9.4 : SpinButton de UI_Wheel. Aucun argument : WheelService vérifie
+		-- qu'un tour est permis (gratuit du jour, sinon un tour en plus), tire le secteur et donne le lot.
+		Name = "SpinWheel",
+		Direction = "ClientToServer",
+		Reliable = true,
+		Args = {},
+		RatePerSecond = 1, -- V0 proposé (Cantin, 20/11)
+	},
+	{
+		-- Vague 80 (a266, DEV-141) : résultat d'un tour, au seul joueur qui a tourné, déjà donné. sector = secteur tiré
+		-- (1 à 8, Config/Wheel.Sectors) ; message = le lot (anglais). Le client anime la roue jusqu'à ce secteur.
+		Name = "WheelResult",
+		Direction = "ServerToClient",
+		Reliable = true,
+		Args = {
+			{ Name = "sector", Kind = "int", Min = 1, Max = 8 },
+			{ Name = "message", Kind = "string", Min = 0, Max = MAX_MESSAGE_LENGTH },
+		},
+	},
 }
 
 return {

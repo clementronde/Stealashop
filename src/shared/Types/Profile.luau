@@ -179,6 +179,26 @@ export type Rewards = {
 
 -- Réglages du joueur (L-095 point 2, écran UI_Settings ; Config/Settings). Écrit par SettingsService
 -- seulement, après contrôle de chaque valeur.
+-- Une quête du jour (vague 80, a266 ; QuestService, Config/Quests).
+export type QuestEntry = {
+	Id: string, -- Id de Config/Quests
+	Progress: number, -- progression comptée par le serveur (bornée à Goal)
+	Goal: number, -- objectif fixé au tirage
+	Claimed: number, -- os.time() de la réclamation (0 = pas réclamée)
+}
+
+-- Quêtes du jour (vague 80, a266). Écrit par QuestService seulement.
+export type Quests = {
+	Day: number, -- jour UTC du tirage (un autre jour tire de nouvelles quêtes)
+	List: { QuestEntry }, -- dans l'ordre des places 1 à Config/Quests.PerDay
+}
+
+-- Roue de la fortune (vague 80, a266). Écrit par WheelService seulement.
+export type Wheel = {
+	FreeDay: number, -- jour UTC du dernier tour gratuit (0 = jamais)
+	Extra: number, -- tours en plus gardés (Robux, pas encore en vente)
+}
+
 export type Settings = {
 	Music: number, -- volume de la musique, de 0 à 1
 	Sfx: number, -- volume des effets sonores, de 0 à 1
@@ -251,6 +271,10 @@ export type Data = {
 	-- facultatif, sans changement de version, absent du gabarit : absent = profil d'avant la réserve, que
 	-- DisplayService migre au chargement (ses objets ni exposés, ni au coffre-fort, ni sous antivol y vont, les plus
 	-- rentables d'abord, au plus Config/Displayed.ReserveMax ; rien n'est retiré de Items). Nettoyé à chaque usage.
+	Quests: Quests?, -- vague 80 (a266, DEV-132) : quêtes du jour (QuestService, Config/Quests). Champ facultatif, sans
+	-- changement de version, absent du gabarit : créé et réparé par QuestService au premier passage du jour.
+	Wheel: Wheel?, -- vague 80 (a266, DEV-141) : roue de la fortune (WheelService, Config/Wheel). Champ facultatif, sans
+	-- changement de version, absent du gabarit : créé et réparé par WheelService.
 	-- Partie 2 : Defenses, Rebirths, ajoutés par migration (Version = 9 et suivantes : la v2 est prise
 	-- par le catalogue d'objets v2, la v3 par la boutique Robux, la v4 par l'index, la v5 par les colis
 	-- sur les présentoirs, la v6 par les gains hors ligne, la v7 par les colis dans l'inventaire, la v8
