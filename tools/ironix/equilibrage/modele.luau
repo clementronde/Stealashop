@@ -110,7 +110,7 @@ function Modele.EcoActuelle()
 		return Formulas.TreadmillGain(level)
 	end
 	eco.UpgradeCost = Formulas.UpgradeCost
-	eco.ItemIncome = Formulas.ItemIncome
+	eco.ItemIncome = if Modele.NouveauRevenu then Modele.ItemIncome else Formulas.ItemIncome -- vague 77 (a263)
 	eco.Tools = Tools.List
 	eco.Auras = Cosmetics.Auras
 	eco.Trails = Cosmetics.Trails
@@ -231,8 +231,69 @@ function Modele.MutationMean()
 	return (if poids then poids.Moyenne else family(Mutations.Sizes)) * family(Mutations.Effects)
 end
 
--- Espérance du multiplicateur de rareté d'un colis de ce type dans cette zone.
+-- Vague 77 (a263) : depuis la vague 76 (a262 : raretés par zone, revenu propre à chaque objet, Formulas.ItemIncome(itemId)),
+-- un objet du simulateur rapporte le revenu MOYEN d'un objet sorti d'un colis du rayon de sa zone, calculé comme la
+-- vraie cote (Shared/ItemOdds) : chance du joueur (ShelfOpen.LuckTable), rareté du colis (ShelfBoxes.ZoneOdds), rareté
+-- de l'objet (ShelfBoxes.ContentWeights), objet dans sa rareté (DrawWeight), sans les mutations (mutationOf à part).
+-- La rareté tirée par le simulateur ne compte plus pour le revenu (même espérance, moins d'écart entre parties).
+-- Arbre d'avant la vague 76 (pas de Rarities.ZoneOdds) : nil, l'ancien calcul reste.
+Modele.NouveauRevenu = Rarities.ZoneOdds ~= nil
+local zoneIncome = {}
+function Modele.ZoneIncome(zone)
+	if zoneIncome[zone] ~= nil then
+		return zoneIncome[zone]
+	end
+	local Items = Config.Items
+	local ShelfOpen = Config.ShelfOpen
+	local boxOdds = ShelfBoxes.ZoneOdds[zone]
+	local lucks = if ShelfOpen.Reveal.TableLuck then ShelfOpen.LuckTable else { { Luck = 1, Weight = 1 } }
+	local share = {}
+	local boxTotal = 0
+	for _, percent in boxOdds do
+		boxTotal += percent
+	end
+	for _, entry in lucks do
+		local luckWeight, luck = math.max(entry.Weight, 0), math.max(entry.Luck, 1)
+		for boxRarity, percent in boxOdds do
+			local weights = ShelfBoxes.ContentWeights(boxRarity, luck, zone)
+			if weights then
+				local total = 0
+				for _, weight in weights do
+					total += weight
+				end
+				for rarityId, weight in weights do
+					share[rarityId] = (share[rarityId] or 0) + luckWeight * percent / boxTotal * weight / total
+				end
+			end
+		end
+	end
+	local mean, total = 0, 0
+	for rarityId, chance in share do
+		local pool = Items.AllZones[rarityId] or (Items.ByZone[zone] or {})[rarityId]
+		if pool and #pool > 0 then
+			local weightSum, incomeSum = 0, 0
+			for _, item in pool do
+				weightSum += item.DrawWeight
+				incomeSum += item.DrawWeight * Formulas.ItemIncome(item.Id)
+			end
+			mean += chance * incomeSum / weightSum
+			total += chance
+		end
+	end
+	zoneIncome[zone] = mean / total
+	return zoneIncome[zone]
+end
+-- eco.ItemIncome(zone, rareté) de l'arbre actuel (rareté sans effet, voir plus haut).
+function Modele.ItemIncome(zone, _rarityId)
+	return Modele.ZoneIncome(zone)
+end
+
+-- Espérance du multiplicateur de rareté d'un colis de ce type dans cette zone (vague 76 et après : 1, le revenu
+-- moyen de la zone est déjà dans Modele.ItemIncome).
 function Modele.RarityMean(zone, tier)
+	if Modele.NouveauRevenu then
+		return 1
+	end
 	local mean = 0
 	for rarityId, chance in ShelfBoxes.OddsFor(zone, tier) do
 		mean += chance / 100 * Rarities.ById[rarityId].IncomeMultiplier

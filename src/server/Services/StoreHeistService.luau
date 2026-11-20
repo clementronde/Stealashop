@@ -3060,6 +3060,8 @@ local function onOpenShelfBox(player: Player, slotId: string)
 	if finishing then
 		local elapsed = now - (hold :: Hold).StartedAt
 		if elapsed + GRAB_TIME_TOLERANCE < required then
+			-- a263 (vague 77) : maintien vidé, sinon l'appui suivant passait pour une fin et lançait l'ouverture.
+			openHolds[player] = nil
 			refuse(
 				player,
 				slotId,
