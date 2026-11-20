@@ -74,7 +74,7 @@
 -- 10 fois par seconde pendant le maintien, qui expire HOLD_EXPIRY s après sa durée. a265 (vague 79) :
 -- étape du maintien en 2e argument (phase "Begin" | "End" | "Cancel", comme GrabItem, voir l'en-tête de
 -- StoreHeistService) : un "Begin" rouvre toujours le maintien à zéro, un "End" ne conclut qu'un maintien ouvert,
--- un "Cancel" le vide ; sans phase, l'ancien déroulé en deux appels. N'importe qui
+-- un "Cancel" le vide ; sans phase, refusé. N'importe qui
 -- peut le prendre, le frappeur n'a aucune priorité. Alors CarryService.PickUpDrop : même payload,
 -- même contenu ; le vigile qui suivait le colis poursuit le nouveau porteur (GuardService). Pas
 -- ramassé en Bat.DroppedLifetime (15) s : CarryService le retire et StoreHeistService le renvoie
@@ -685,16 +685,15 @@ local function grant(player: Player, dropId: string)
 	log(`{player.Name} ramasse le colis tombé {dropId}`)
 end
 
--- GrabDropped(dropId, phase?) : début, fin ou annulation du maintien ; sans phase, premier appel = début,
--- second = fin (comme GrabItem).
+-- GrabDropped(dropId, phase) : début, fin ou annulation du maintien (sans phase : refusé, comme GrabItem).
 local function onGrabDropped(player: Player, dropId: string, phase: string?)
 	-- L-112 : l'objet lâché par un joueur attrapé (CarryService.Fail « Caught ») se ramasse comme un colis
 	-- tombé d'un coup de batte, par les mêmes règles.
 	if not batDrops[dropId] and not CarryService.IsFallenDrop(dropId) then
 		return -- pas un colis tombé des mains d'un porteur : laissé au service qui l'a posé (camion)
 	end
-	if phase ~= nil and not HOLD_PHASES[phase] then
-		refuse(player, `GrabDropped sur « {dropId} » refusé : étape de maintien inconnue « {phase} »`)
+	if phase == nil or not HOLD_PHASES[phase] then
+		refuse(player, `GrabDropped sur « {dropId} » refusé : étape de maintien absente ou inconnue « {phase or "aucune"} »`)
 		return
 	end
 	local hold = holds[player]
@@ -709,8 +708,7 @@ local function onGrabDropped(player: Player, dropId: string, phase: string?)
 		return
 	end
 	-- Portée souple au début du maintien, stricte à la fin (règle de StoreHeistService, « Portée »).
-	local matching = hold ~= nil and hold.DropId == dropId
-	local starting = (if phase == nil then not matching else phase == "Begin") and Bat.DroppedGrabTime > 0
+	local starting = phase == "Begin" and Bat.DroppedGrabTime > 0
 	local reason = grabRefusal(player, dropId, starting)
 	if reason then
 		if hold and hold.DropId == dropId then

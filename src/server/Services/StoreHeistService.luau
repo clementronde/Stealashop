@@ -130,14 +130,15 @@
 -- plus vite que GrabTime − 0,1 s, ni sans rester à portée pendant ce temps.
 -- a265 (vague 79, Cantin le 20/11) : étape du maintien en 2e argument, GrabItem(slotId, phase) et
 -- OpenShelfBox(slotId, phase), phase = "Begin" | "End" | "Cancel" (HOLD_PHASES ; toute autre valeur est
--- refusée). "Begin" ouvre TOUJOURS un nouveau maintien (StartedAt = maintenant), même si un maintien du
--- même rayon est déjà ouvert : une fin ne compte qu'à partir du dernier début, quoi que dise le client
+-- refusée, comme un appel sans étape). "Begin" ouvre TOUJOURS un nouveau maintien (StartedAt = maintenant),
+-- même si un maintien du même rayon est déjà ouvert : une fin ne compte qu'à partir du dernier début, quoi
+-- que dise le client
 -- (avant, un relâché trop tôt ne prévenait pas le serveur et un 2e appui 1 à 2 s après le 1er passait
 -- pour une fin : objet donné au début de l'appui, sans maintien). "End" ne conclut qu'un maintien ouvert
 -- sur ce rayon et cet objet (sinon refus, rien n'est ouvert). "Cancel" (le client l'envoie au relâché
--- avant la fin) vide le maintien de ce rayon, sans autre contrôle. Sans phase (nil) : l'ancien déroulé en
--- deux appels déduits de l'état du serveur, gardé pour les vieux appels ; il ne donne pas plus qu'un
--- Begin puis un End (GrabTime depuis le premier appel, à portée).
+-- avant la fin) vide le maintien de ce rayon, sans autre contrôle. L'étape n'est jamais déduite de l'état
+-- du serveur : sans elle (nil), un client modifié retrouvait l'ancien défaut (relâché, puis 2e appel compté
+-- comme une fin).
 --
 -- Portée (Cantin, 2026-11-14 ; GrabItem et OpenShelfBox) : le serveur voit le perso en retard d'environ
 -- vitesse × latence (vu en Play : 12,6 studs au lieu de 7,5 en appuyant sur E en courant). Souple au début
@@ -3032,16 +3033,16 @@ local function stepReveals()
 	end
 end
 
--- OpenShelfBox(slotId, phase?) : début, fin ou annulation du maintien ; sans phase, premier appel = début,
--- second = fin (voir « Maintien » dans l'en-tête).
+-- OpenShelfBox(slotId, phase) : début, fin ou annulation du maintien ; sans phase : refusé (voir « Maintien »
+-- dans l'en-tête).
 local function onOpenShelfBox(player: Player, slotId: string, phase: string?)
 	local slot = slotsById[slotId]
 	if slot == nil then
 		refuse(player, slotId, "emplacement inconnu", "OpenShelfBox")
 		return
 	end
-	if phase ~= nil and not HOLD_PHASES[phase] then
-		refuse(player, slotId, `étape de maintien inconnue « {phase} »`, "OpenShelfBox")
+	if phase == nil or not HOLD_PHASES[phase] then
+		refuse(player, slotId, `étape de maintien absente ou inconnue « {phase or "aucune"} »`, "OpenShelfBox")
 		return
 	end
 	local hold = openHolds[player]
@@ -3058,10 +3059,7 @@ local function onOpenShelfBox(player: Player, slotId: string, phase: string?)
 	-- Début du maintien (pas de maintien en cours sur ce colis, colis à GrabTime > 0) : portée souple ;
 	-- fin du maintien ou colis sans maintien : stricte (voir « Portée » dans l'en-tête).
 	local current = slot.Box
-	local matching = hold ~= nil and hold.Slot == slot and hold.Target == current
-	local starting = current ~= nil
-		and (if phase == nil then not matching else phase == "Begin")
-		and grabTime(current.Rarity) > 0
+	local starting = current ~= nil and phase == "Begin" and grabTime(current.Rarity) > 0
 	local reason = openRefusal(player, slot, starting)
 	if reason then
 		if hold and hold.Slot == slot then
@@ -3120,16 +3118,16 @@ local function onOpenShelfBox(player: Player, slotId: string, phase: string?)
 	end
 end
 
--- GrabItem(slotId, phase?) : début, fin ou annulation du maintien ; sans phase, premier appel = début,
--- second = fin (voir « Maintien » dans l'en-tête).
+-- GrabItem(slotId, phase) : début, fin ou annulation du maintien ; sans phase : refusé (voir « Maintien » dans
+-- l'en-tête).
 local function onGrabItem(player: Player, slotId: string, phase: string?)
 	local slot = slotsById[slotId]
 	if slot == nil then
 		refuse(player, slotId, "emplacement inconnu")
 		return
 	end
-	if phase ~= nil and not HOLD_PHASES[phase] then
-		refuse(player, slotId, `étape de maintien inconnue « {phase} »`)
+	if phase == nil or not HOLD_PHASES[phase] then
+		refuse(player, slotId, `étape de maintien absente ou inconnue « {phase or "aucune"} »`)
 		return
 	end
 	local hold = holds[player]
@@ -3150,11 +3148,7 @@ local function onGrabItem(player: Player, slotId: string, phase: string?)
 	if shown then
 		current, currentRarity = shown, shown.Info.BoxRarity
 	end
-	local matching = hold ~= nil and hold.Slot == slot and hold.Target == current
-	local starting = current ~= nil
-		and currentRarity ~= nil
-		and (if phase == nil then not matching else phase == "Begin")
-		and grabTime(currentRarity) > 0
+	local starting = current ~= nil and currentRarity ~= nil and phase == "Begin" and grabTime(currentRarity) > 0
 	local reason = grabRefusal(player, slot, starting)
 	if reason then
 		if hold and hold.Slot == slot then

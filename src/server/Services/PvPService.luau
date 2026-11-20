@@ -28,7 +28,7 @@
 --      seconde et expire GrabTime + HOLD_EXPIRY s après son début. a265 (vague 79) : étape du maintien en dernier argument
 --      (phase "Begin" | "End" | "Cancel", comme GrabItem, voir l'en-tête de StoreHeistService) : un "Begin" rouvre
 --      toujours le maintien à zéro, un "End" ne conclut qu'un maintien ouvert, un "Cancel" le vide ; sans phase,
---      l'ancien déroulé en deux appels. Le serveur vérifie : boutique
+--      refusé. Le serveur vérifie : boutique
 --      ouverte, pas la sienne, les deux profils chargés, mains vides (un objet à la fois), pas
 --      d'interdiction sur cette boutique (voir 2), le voleur a une boutique et de la place (DisplayService.HasRoom), il est
 --      vivant, dans Bounds de la boutique et à PvP.StealMaxDistance (8 studs) au plus du présentoir,
@@ -1388,8 +1388,8 @@ beginTheft = function(
 	end
 end
 
--- StealItem(plotIndex, slotIndex, phase?) : début, fin ou annulation du maintien ; sans phase, premier appel =
--- début, second = fin (voir l'en-tête).
+-- StealItem(plotIndex, slotIndex, phase) : début, fin ou annulation du maintien ; sans phase : refusé (voir
+-- l'en-tête).
 local function onStealItem(player: Player, plotIndex: number, slotIndex: number, phase: string?)
 	local what = `StealItem({plotIndex}, {slotIndex})`
 	local plot = PlotService.GetPlotByIndex(plotIndex)
@@ -1397,8 +1397,8 @@ local function onStealItem(player: Player, plotIndex: number, slotIndex: number,
 		refuse(player, what, "boutique inconnue")
 		return
 	end
-	if phase ~= nil and not HOLD_PHASES[phase] then
-		refuse(player, what, `étape de maintien inconnue « {phase} »`)
+	if phase == nil or not HOLD_PHASES[phase] then
+		refuse(player, what, `étape de maintien absente ou inconnue « {phase or "aucune"} »`)
 		return
 	end
 	local hold = holds[player]
@@ -1414,9 +1414,7 @@ local function onStealItem(player: Player, plotIndex: number, slotIndex: number,
 		return
 	end
 	-- Vague 51 : souple au premier appel (début du maintien), stricte au second (fin du maintien).
-	local starting = if phase == nil
-		then not (hold and hold.Plot == plot and hold.Slot == slotIndex)
-		else phase == "Begin"
+	local starting = phase == "Begin"
 	local reason, key, message = stealRefusal(player, plot, slotIndex, starting)
 	if reason then
 		if hold and hold.Plot == plot and hold.Slot == slotIndex then
@@ -1449,7 +1447,7 @@ local function onStealItem(player: Player, plotIndex: number, slotIndex: number,
 	holds[player] = { Plot = plot, Victim = victim, Slot = slotIndex, Uid = uid, StartedAt = now, Floor = false }
 end
 
--- Vague 31 (L-112) : StealFloorItem(plotIndex, itemUid, phase?), objet sous antivol au sol ; comme StealItem.
+-- Vague 31 (L-112) : StealFloorItem(plotIndex, itemUid, phase), objet sous antivol au sol ; comme StealItem.
 local function onStealFloorItem(player: Player, plotIndex: number, itemUid: string, phase: string?)
 	local what = `StealFloorItem({plotIndex}, {itemUid})`
 	local plot = PlotService.GetPlotByIndex(plotIndex)
@@ -1457,8 +1455,8 @@ local function onStealFloorItem(player: Player, plotIndex: number, itemUid: stri
 		refuse(player, what, "boutique inconnue")
 		return
 	end
-	if phase ~= nil and not HOLD_PHASES[phase] then
-		refuse(player, what, `étape de maintien inconnue « {phase} »`)
+	if phase == nil or not HOLD_PHASES[phase] then
+		refuse(player, what, `étape de maintien absente ou inconnue « {phase or "aucune"} »`)
 		return
 	end
 	local hold = holds[player]

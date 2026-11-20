@@ -65,12 +65,12 @@ local function index(name: string): ArgSpec
 	return { Name = name, Kind = "int", Min = 1, Max = MAX_INDEX }
 end
 
--- a265 (vague 79) : étape facultative d'un maintien d'invite, en dernier argument (GrabItem, OpenShelfBox, StealItem,
+-- a265 (vague 79) : étape OBLIGATOIRE d'un maintien d'invite, en dernier argument (GrabItem, OpenShelfBox, StealItem,
 -- StealFloorItem, GrabDropped) : "Begin" au début de l'appui, "End" à la fin, "Cancel" au relâché avant la fin. Le
--- service refuse toute autre valeur ; un "Begin" rouvre toujours le maintien à zéro. Sans elle : l'ancien déroulé
--- en deux appels, déduit de l'état du serveur.
+-- service refuse toute autre valeur ; un "Begin" rouvre toujours le maintien à zéro. Un appel sans étape est refusé
+-- (le serveur ne déduit jamais l'étape de son état : un client qui l'omettait retrouvait l'ancien défaut).
 local function holdPhase(): ArgSpec
-	return { Name = "phase", Kind = "string", Max = 8, Optional = true }
+	return { Name = "phase", Kind = "string", Max = 8 }
 end
 
 local List: { RemoteDef } = {
