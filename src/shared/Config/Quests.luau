@@ -60,8 +60,8 @@ local Quests = {
 			Event = "OpenBox",
 			Goal = 3, -- V0 proposé (Cantin, 20/11)
 			Text = "Open %s boxes",
-			Reward = { Kind = "Box", Tier = "Standard" }, -- V0 proposé (Cantin, 20/11)
-			RewardText = "Standard item",
+			Reward = { Kind = "Box", Rank = 2 }, -- V0 proposé (Cantin, 20/11) : 2e rareté de la zone
+			RewardText = "Rare box",
 			Weight = 3, -- V0 proposé (Cantin, 20/11)
 			Icon = "QUEST_OpenBoxes",
 		},
@@ -90,8 +90,8 @@ local Quests = {
 			Event = "StealPlayer",
 			Goal = 1, -- V0 proposé (Cantin, 20/11)
 			Text = "Steal %s item from a player",
-			Reward = { Kind = "Box", Tier = "Premium" }, -- V0 proposé (Cantin, 20/11)
-			RewardText = "Premium item",
+			Reward = { Kind = "Box", Rank = "Top" }, -- V0 proposé (Cantin, 20/11) : plus haute rareté de la zone
+			RewardText = "Best box",
 			Weight = 1, -- V0 proposé (Cantin, 20/11)
 			Icon = "QUEST_StealPlayer",
 		},
