@@ -27,6 +27,10 @@
 --     l'invite « Steal » demande GrabItem(slotId) au début et à la fin du maintien, comme un colis
 --     (maintien : BoxRarity de l'objet, sinon celle du colis qui était à cet emplacement) ; cachée chez les
 --     autres joueurs tant que ShelfReservedUntil n'est pas passé (le serveur revérifie).
+--     a264 (vague 78) : comme celle d'un colis, coupée tant que l'objet vole vers son rayon (Landed = false,
+--     retour après « Caught ») et rallumée dès Landed ; un appui pendant le vol n'envoie rien. Avant, elle
+--     s'allumait ≈ 0,34 s avant la pose : le serveur refusait le début (« objet en vol »), prenait la fin pour
+--     un début, et l'appui suivant donnait l'objet tout de suite.
 --
 -- API (client) :
 --   HeistController.OnTimer(fn(storeId, endsAt, police)) -> déconnexion   (endsAt = 0 : chrono masqué ;
@@ -112,6 +116,7 @@ local timerListeners: { TimerListener } = {}
 local openPending: { [Instance]: number } = {} -- colis → os.clock() de l'appui sur « Open »
 local rarityBySlot: { [string]: string } = {} -- SlotId → rareté du dernier colis vu à cet emplacement (vague 76)
 local itemPrompts: { [Model]: ProximityPrompt } = {} -- objets sortis (tag ShelfItem) → leur invite
+local itemLandedConnections: { [Model]: RBXScriptConnection } = {} -- a264 : objet sorti → suivi de Landed
 local saidItemSlot = false
 
 local function inside(part: BasePart, point: Vector3): boolean
@@ -214,7 +219,8 @@ local function refreshItems()
 	local now = Workspace:GetServerTimeNow()
 	for item, prompt in itemPrompts do
 		local watch = storeOfItem(item)
-		local enabled = watch ~= nil and canGrabHere(watch)
+		-- a264 : pas tant que l'objet vole vers son rayon (le serveur refuserait le début du maintien).
+		local enabled = watch ~= nil and item:GetAttribute(LANDED_ATTRIBUTE) ~= false and canGrabHere(watch)
 		if enabled then
 			local reservedUntil = item:GetAttribute(ShelfOpenState.ReservedUntilAttribute)
 			if type(reservedUntil) == "number" and now < reservedUntil then
@@ -259,6 +265,11 @@ local function removeItemPrompt(instance: Instance)
 		itemPrompts[instance :: Model] = nil
 		prompt:Destroy()
 	end
+	local landed = itemLandedConnections[instance :: Model]
+	if landed then
+		itemLandedConnections[instance :: Model] = nil
+		landed:Disconnect()
+	end
 end
 
 local function addItemPrompt(instance: Instance)
@@ -299,15 +310,27 @@ local function addItemPrompt(instance: Instance)
 	end)
 	prompt.RequiresLineOfSight = false
 	prompt.Enabled = false
+	-- a264 : un appui n'est accepté qu'objet posé (Landed), comme l'invite.
+	local function flying(): boolean
+		return item:GetAttribute(LANDED_ATTRIBUTE) == false
+	end
 	prompt.PromptButtonHoldBegan:Connect(function()
+		if flying() then
+			return
+		end
 		Net.Client.GrabItem:Fire(slotId) -- début du maintien
 	end)
 	prompt.Triggered:Connect(function()
+		if flying() then
+			return
+		end
 		Net.Client.GrabItem:Fire(slotId) -- fin du maintien
 		playGrab()
 	end)
 	prompt.Parent = anchor
 	itemPrompts[item] = prompt
+	-- a264 : invite rallumée dès la pose, sans attendre le prochain tour de REFRESH_INTERVAL.
+	itemLandedConnections[item] = item:GetAttributeChangedSignal(LANDED_ATTRIBUTE):Connect(refreshItems)
 	refreshItems()
 end
 
