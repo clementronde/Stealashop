@@ -12,6 +12,7 @@ local Config = script.Parent:WaitForChild("Config")
 local Unbox = require(Config:WaitForChild("Unbox"))
 local Rarities = require(Config:WaitForChild("Rarities"))
 local Reveal = require(Config:WaitForChild("Reveal"))
+local Formulas = require(Config:WaitForChild("Formulas"))
 
 local New = Unbox.New
 
@@ -238,9 +239,11 @@ function UnboxPlan.formatOdds(value: number): string
 	return trim(string.format("%.1f", value))
 end
 
--- Texte de BB_UnboxOdds.Odds : « 1 IN 37 ».
+-- Texte de BB_UnboxOdds.Odds : « 1 IN 37 ». Vague 77 (a263) : la cote qui défile passe par le même arrondi que la
+-- cote finale (Formulas.UnboxOdds : entier sous 100, 2 chiffres significatifs au-delà), jamais « 1 IN 8.4 ».
 function UnboxPlan.oddsText(value: number): string
-	return string.format(New.OddsText, UnboxPlan.formatOdds(value))
+	local rounded = if value >= 1 then Formulas.UnboxOdds(1 / value) else nil
+	return string.format(New.OddsText, UnboxPlan.formatOdds(rounded or value))
 end
 
 -- Durée d'une action en repli codé, et la pause entre deux actions.

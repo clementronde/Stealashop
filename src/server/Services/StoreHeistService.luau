@@ -3060,6 +3060,8 @@ local function onOpenShelfBox(player: Player, slotId: string)
 	if finishing then
 		local elapsed = now - (hold :: Hold).StartedAt
 		if elapsed + GRAB_TIME_TOLERANCE < required then
+			-- a263 (vague 77) : maintien vidé, sinon l'appui suivant passait pour une fin et lançait l'ouverture.
+			openHolds[player] = nil
 			refuse(
 				player,
 				slotId,
@@ -3134,6 +3136,8 @@ local function onGrabItem(player: Player, slotId: string)
 			holds[player] = nil
 			give(player, slot)
 		else
+			-- a263 (vague 77) : maintien vidé, sinon l'appui suivant passait pour une fin et donnait l'objet.
+			holds[player] = nil
 			refuse(player, slotId, `maintien trop court ({math.round(elapsed * 100) / 100} s sur {required} s)`)
 		end
 		return

@@ -142,6 +142,10 @@ function V2.Construire()
 	-- Vague 61 (a198) : vitesse réelle × Balance.Stats.RealSpeedScale (marche, vigiles), comme le jeu.
 	local K = Balance.Stats.RealSpeedScale or 1
 
+	-- Vague 77 (a263) : arbre de la vague 76 et après (prix remis à l'échelle des nouveaux revenus, Cantin 20/11 :
+	-- Upgrades.Treadmill.Costs) : prix des armes, auras, traînées et du tapis lus dans Config, revenu d'un objet =
+	-- revenu moyen de sa zone (Modele.ItemIncome) ; avant : les valeurs proposées ci-dessus, comme avant.
+	local actuel = Config.Rarities.ZoneOdds ~= nil and Config.Upgrades.ById.Treadmill.Costs ~= nil
 	local eco = { Nom = "V2", SansBanc = true, MaxHits = V2.MaxHitsPerSecond, HeistDuration = V2.HeistDuration }
 	-- Tous les profils frappent au plafond et acceptent la casse du panneau (11 s) ; marge jusqu'à 12 s.
 	eco.CasseMax = V2.BreakSeconds + 1
@@ -165,7 +169,7 @@ function V2.Construire()
 			local copy = table.clone(source[index])
 			assert(copy.Id == value.Id, `proposition_v2 : {value.Id} n'est pas à sa place`)
 			copy[field] = value[field]
-			copy.Price = value.Price
+			copy.Price = if actuel then source[index].Price else value.Price
 			copy.TargetZones = value.Zones
 			list[index] = copy
 		end
@@ -203,6 +207,9 @@ function V2.Construire()
 		return V2.Treadmill.BaseGain * V2.Treadmill.GainGrowth ^ level
 	end
 	function eco.UpgradeCost(upgradeId, level)
+		if actuel then
+			return Formulas.UpgradeCost(upgradeId, level)
+		end
 		if upgradeId ~= "Treadmill" then
 			return Formulas.UpgradeCost(upgradeId, level) -- présentoirs : inchangés
 		end
@@ -212,6 +219,9 @@ function V2.Construire()
 		return math.round(V2.Treadmill.BaseCost * V2.Treadmill.CostGrowth ^ level)
 	end
 	function eco.ItemIncome(zone, rarityId)
+		if actuel then
+			return charge("Outil/modele").ItemIncome(zone, rarityId)
+		end
 		return eco.Zones[zone].BaseIncome * Rarities.ById[rarityId].IncomeMultiplier
 	end
 
