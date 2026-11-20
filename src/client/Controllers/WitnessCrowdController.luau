@@ -36,13 +36,18 @@
 --      au marqueur Shout, un son de Roles[].Sounds ; à chaque flash d'un photographe, Sounds.Photo (parfois
 --      Sounds.Burst) ; à la casse d'une vitrine de magasin PNJ (WindowController.OnBroken), Sounds.Gasp sur la vitrine.
 --      Au plus Sounds.Voices cris et Sounds.PhotoVoices photos à la fois ; rien sur une personne dont le son joue encore.
+--   8. Écart (a269, Cantin, 20/11 ; Crowd.Spacing, V0) : deux personnes jamais plus proches que la largeur réelle des
+--      modèles tirés (empreinte au sol de GetExtentsSize) + Spacing.Margin. Une place trop proche d'une personne de
+--      cette foule ou d'une foule voisine, d'un témoin vu chez ce joueur ou du circuit WitnessPaths de la zone recule
+--      vers la rue (ou un rang derrière) par pas de Spacing.Step, au plus Spacing.MaxPush studs ; sinon elle reste vide.
 --
 -- API (client, pour un test dans Studio) :
 --   WitnessCrowdController.GetCrowds() -> { { Store: Model, Thief: Player, Members: { Model } } }
 --   WitnessCrowdController.GetCount() -> number      foules formées chez ce joueur depuis le début
---   WitnessCrowdController.GetStats() -> { Members, Parts, Tracks, Shouts, Pending, FrameMax, FrameMs, Voices, Sounds }
+--   WitnessCrowdController.GetStats() -> { Members, Parts, Tracks, Shouts, Pending, FrameMax, FrameMs, Voices, Sounds, Gap }
 --     Pending : personnes encore à créer ; FrameMax et FrameMs : le plus de personnes et de millisecondes passées à en
---     créer en une image ; Voices : sons de foule en cours ; Sounds : sons de foule lancés depuis le début
+--     créer en une image ; Voices : sons de foule en cours ; Sounds : sons de foule lancés depuis le début ;
+--     Gap : écart (studs) entre deux personnes de la dernière foule (a269, 0 sans Crowd.Spacing)
 --   WitnessCrowdController.OnShout(callback: (model: Model, role: string) -> ())   à chaque marqueur Shout
 
 local CollectionService = game:GetService("CollectionService")
@@ -72,6 +77,7 @@ export type CrowdStats = {
 	FrameMs: number,
 	Voices: number,
 	Sounds: number,
+	Gap: number,
 }
 
 type Role = Witness.CrowdRole
@@ -122,6 +128,8 @@ local WATCHED = "WatchedStore"
 local FLASH_MARKER = "Flash"
 local ANIMATIONS = "Animations"
 local NIGHT_PHASE = "NightPhase" -- attribut du Workspace (NightCycleService)
+local PATHS_NAME = "WitnessPaths" -- a269 : les circuits des témoins (Clément), comme WitnessService
+local PATH_POINT_PATTERN = "^WitnessPath_(%d+)$"
 local GAUGE_ATTRIBUTES = {
 	WitnessGauge.StateAttribute,
 	WitnessGauge.FillAttribute,
@@ -148,6 +156,7 @@ local frameMs = 0 -- a240 : le plus de ms passées à en créer en une image
 local cries: { Sound } = {} -- a240 : cris de foule en cours
 local photos: { Sound } = {} -- a240 : sons de photo en cours
 local soundsPlayed = 0
+local lastGap = 0 -- a269 : écart (studs) de la dernière foule formée avec Crowd.Spacing
 
 local function sayOnce(key: string, message: string)
 	if IS_STUDIO and not said[key] then
@@ -704,8 +713,122 @@ local function addMember(crowd: Crowd, template: Model, index: number, at: Vecto
 	end
 end
 
--- Les places : Crowd.PerSide de chaque côté du passage, plus serrées en s'éloignant de la vitrine.
-local function spots(center: Vector3, out: Vector3, width: number, perSide: number): { Vector3 }
+-- a269 : l'écart entre deux personnes (Crowd.Spacing) ------------------------------------------------------------
+-- Ce qu'une place doit éviter, au sol : les personnes déjà placées, les témoins et le circuit de la zone.
+type Keep = { gap: number, points: { Vector3 }, circuit: { Vector3 } }
+
+local function spacing(): any
+	local value: any = (CROWD :: any).Spacing
+	return if type(value) == "table" and value.Enabled == true then value else nil
+end
+
+-- La largeur réelle d'une personne : la plus grande empreinte au sol (X ou Z de GetExtentsSize) des modèles tirés,
+-- au plus Spacing.WidthMax ; aucune mesure : Spacing.WidthFallback. L'écart = cette largeur + Spacing.Margin.
+local function gapOf(templates: { Model }, settings: any): number
+	local widest = 0
+	for _, template in templates do
+		local ok, size = pcall(function(): any
+			return template:GetExtentsSize()
+		end)
+		local x = if ok and size ~= nil then (size :: any).X else nil
+		local z = if ok and size ~= nil then (size :: any).Z else nil
+		if type(x) == "number" and type(z) == "number" then
+			widest = math.max(widest, x, z)
+		end
+	end
+	if widest <= 0 then
+		widest = settings.WidthFallback
+	end
+	return math.min(widest, settings.WidthMax) + settings.Margin
+end
+
+-- Les points du circuit WitnessPaths le plus proche au-dessus du magasin (comme WitnessService.pathOf), en ordre.
+local function circuitOf(store: Model): { Vector3 }
+	local parent = store.Parent
+	local paths: Instance? = nil
+	while parent and parent ~= Workspace and paths == nil do
+		paths = parent:FindFirstChild(PATHS_NAME)
+		parent = parent.Parent
+	end
+	type Point = { number: number, position: Vector3 }
+	local points: { Point } = {}
+	if paths then
+		for _, inst in paths:GetDescendants() do
+			local digits = string.match(inst.Name, PATH_POINT_PATTERN)
+			local number = if digits then tonumber(digits) else nil
+			if number and inst:IsA("Attachment") then
+				table.insert(points, { number = number, position = (inst :: Attachment).WorldPosition })
+			end
+		end
+	end
+	table.sort(points, function(a: Point, b: Point): boolean
+		return a.number < b.number
+	end)
+	local list: { Vector3 } = {}
+	for _, point in points do
+		table.insert(list, point.position)
+	end
+	return list
+end
+
+-- Ce que la foule de `store` doit éviter : les personnes des autres foules (créées ou à créer) et, avec
+-- Spacing.Witnesses, les témoins vus chez ce joueur et le circuit de la zone du magasin.
+local function keepOf(store: Model, gap: number, settings: any): Keep
+	local keep: Keep = { gap = gap, points = {}, circuit = {} }
+	for _, crowd in crowds do
+		for _, member in crowd.members do
+			table.insert(keep.points, member.root.Position)
+		end
+		for index = crowd.nextPending, #crowd.pending do
+			table.insert(keep.points, crowd.pending[index].at)
+		end
+	end
+	if settings.Witnesses == true then
+		for _, inst in CollectionService:GetTagged(WitnessGauge.Tag) do
+			local root = if inst:IsA("Model") then inst:FindFirstChild("HumanoidRootPart") else nil
+			if root and root:IsA("BasePart") and inst:IsDescendantOf(Workspace) then
+				table.insert(keep.points, (root :: BasePart).Position)
+			end
+		end
+		keep.circuit = circuitOf(store)
+	end
+	return keep
+end
+
+-- Distance au sol de `p` au segment `a`–`b`.
+local function toSegment(p: Vector3, a: Vector3, b: Vector3): number
+	local abx, abz = b.X - a.X, b.Z - a.Z
+	local apx, apz = p.X - a.X, p.Z - a.Z
+	local length2 = abx * abx + abz * abz
+	local t = if length2 > 1e-9 then math.clamp((apx * abx + apz * abz) / length2, 0, 1) else 0
+	local dx, dz = apx - abx * t, apz - abz * t
+	return math.sqrt(dx * dx + dz * dz)
+end
+
+local function free(p: Vector3, placed: { Vector3 }, keep: Keep): boolean
+	for _, list in { placed, keep.points } do
+		for _, q in list do
+			local dx, dz = p.X - q.X, p.Z - q.Z
+			if dx * dx + dz * dz < keep.gap * keep.gap then
+				return false
+			end
+		end
+	end
+	local circuit = keep.circuit
+	if #circuit >= 2 then
+		for index = 1, #circuit do
+			if toSegment(p, circuit[index], circuit[index % #circuit + 1]) < keep.gap then
+				return false -- le circuit tourne en boucle
+			end
+		end
+	end
+	return true
+end
+
+-- Les places : Crowd.PerSide de chaque côté du passage, plus serrées en s'éloignant de la vitrine. a269 : avec
+-- `keep`, une place trop proche recule par pas de Spacing.Step (vers la rue, sinon un rang derrière) jusqu'à
+-- Spacing.MaxPush studs ; au-delà, elle reste vide.
+local function spots(center: Vector3, out: Vector3, width: number, perSide: number, keep: Keep?, settings: any?): { Vector3 }
 	local list: { Vector3 } = {}
 	local half = math.clamp(width / 2 + CROWD.PassageMargin, CROWD.PassageMin / 2, CROWD.PassageMax / 2)
 	local across = Vector3.new(-out.Z, 0, out.X)
@@ -715,7 +838,25 @@ local function spots(center: Vector3, out: Vector3, width: number, perSide: numb
 			local lateral = half + (if index % 2 == 0 then CROWD.RowGap else 0)
 			local jitterAlong = rng:NextNumber(-1, 1) * CROWD.Jitter
 			local jitterAcross = rng:NextNumber(0, 1) * CROWD.Jitter -- jamais vers le passage
-			table.insert(list, center + out * (along + jitterAlong) + across * (sideSign * (lateral + jitterAcross)))
+			local a, l = along + jitterAlong, lateral + jitterAcross
+			if keep == nil or settings == nil then
+				table.insert(list, center + out * a + across * (sideSign * l))
+				continue
+			end
+			local push = 0
+			while push <= settings.MaxPush do
+				local further = center + out * (a + push) + across * (sideSign * l)
+				if free(further, list, keep) then
+					table.insert(list, further)
+					break
+				end
+				local behind = center + out * a + across * (sideSign * (l + push))
+				if push > 0 and free(behind, list, keep) then
+					table.insert(list, behind)
+					break
+				end
+				push += settings.Step
+			end
 		end
 	end
 	return list
@@ -790,7 +931,13 @@ local function form(store: Model, thief: Player, now: number)
 	crowd.ignore = ignore
 	-- a240 : places et rôles tirés tout de suite (même foule qu'avant) ; les personnes, créées par build.
 	local perSide = math.max(math.floor(if low then CROWD.PerSideLow else CROWD.PerSide), 0)
-	for index, at in spots(center, out, width, perSide) do
+	local settings = spacing()
+	local keep: Keep? = nil
+	if settings then
+		keep = keepOf(store, gapOf(templates, settings), settings)
+		lastGap = (keep :: Keep).gap
+	end
+	for index, at in spots(center, out, width, perSide, keep, settings) do
 		table.insert(crowd.pending, { template = order[(index - 1) % #order + 1], index = index, at = at, role = drawRole() })
 	end
 end
@@ -990,6 +1137,7 @@ function WitnessCrowdController.GetStats(): CrowdStats
 		FrameMs = frameMs,
 		Voices = busy(cries) + busy(photos),
 		Sounds = soundsPlayed,
+		Gap = lastGap,
 	}
 	for _, crowd in crowds do
 		if #crowd.pending > 0 then

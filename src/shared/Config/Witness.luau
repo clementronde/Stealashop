@@ -41,6 +41,25 @@ local Witness = {
 	MoveRefresh = 2, -- V0 : MoveTo redonné à ce rythme (Humanoid.MoveTo lâche au bout de 8 s)
 	StepInterval = 0.1, -- V0 : cadence de la boucle serveur des témoins
 
+	-- a269 (Cantin, 20/11 : « les PNJ dans les zones arrêtent de se rentrer dedans ») : deux PNJ qui marchent et se
+	-- croisent (témoins en balade ; vigiles en ronde, en retour ou qui gardent un objet tombé, jamais en poursuite)
+	-- s'écartent chacun sur leur droite, passent côte à côte et reviennent sur leur circuit (Services/Npc/NpcAvoid) ; en
+	-- filet, les témoins ne heurtent plus ni un autre témoin ni un vigile (groupe de collision). Les joueurs restent
+	-- bloqués par les PNJ comme avant. Enabled = false : comme avant (ni écart ni groupe).
+	Avoid = {
+		Enabled = true, -- V0 proposé (a269, 20/11)
+		Detect = 8, -- V0 proposé (a269, 20/11) : un PNJ devant lui à ce nombre de studs ou moins (à plat)…
+		Gap = 3, -- V0 proposé (a269, 20/11) : … à moins de Gap studs de sa ligne : il passe avec lui à Gap studs sur sa gauche
+		Look = 3, -- V0 proposé (a269, 20/11) : pendant l'écart, il vise ce nombre de studs devant lui (plus petit : écart plus vif)
+		PassBehind = 1.5, -- V0 proposé (a269, 20/11) : l'écart finit quand l'autre est ce nombre de studs derrière lui
+		MinClosing = 1, -- V0 proposé (a269, 20/11) : studs/s ; un PNJ dont il ne se rapproche pas (même sens, même pas) n'est pas évité
+		MaxRise = 6, -- V0 proposé (a269, 20/11) : au plus ce nombre de studs d'écart en hauteur (un autre étage n'est pas évité)
+		PointReach = 5, -- V0 proposé (a269, 20/11) : témoin qui s'écarte : point du circuit atteint à ce nombre de studs (au lieu de PointReached)
+		Guards = true, -- V0 proposé (a269, 20/11) : les vigiles s'écartent aussi (ronde, retour, Follow)
+		NoCollide = true, -- V0 proposé (a269, 20/11) : les témoins ne heurtent ni un autre témoin ni un vigile (groupe Guards)
+		Group = "Witnesses", -- V0 proposé (a269, 20/11) : groupe de collision des témoins, créé par le code en jeu (pas un nom du contrat)
+	},
+
 	-- La fuite à la casse (Clément, L-118 point 10 : il a peur, court à l'opposé de la vitrine, puis reprend
 	-- sa balade plus loin ; animation Flee, sinon Walk accélérée) -----------------------------------------
 	FleeSpeed = 16, -- V0 : WalkSpeed pendant la fuite
@@ -145,6 +164,20 @@ local Witness = {
 		PassageMargin = 1, -- V0 : studs
 		RowGap = 2.5, -- V0 : une personne sur deux un rang derrière (studs), en quinconce
 		Jitter = 0.6, -- V0 : studs de hasard sur chaque place
+		-- a269 (Cantin, 20/11 : « les PNJ arrêtent de se rentrer dedans ») : deux personnes de la foule jamais plus proches
+		-- que leur largeur réelle (la plus grande empreinte au sol, X ou Z de GetExtentsSize, des modèles tirés) + Margin.
+		-- Une place trop proche d'une autre personne (de cette foule ou d'une foule voisine), d'un témoin ou du circuit
+		-- WitnessPaths de sa zone recule par pas de Step studs vers la rue, ou un rang derrière, jusqu'à MaxPush studs ;
+		-- au-delà, elle reste vide. Enabled = false : les places d'avant (WitnessCrowdController.spots).
+		Spacing = {
+			Enabled = true, -- V0 proposé (a269, 20/11)
+			Margin = 0.5, -- V0 proposé (a269, 20/11) : studs libres entre deux personnes, en plus de leur largeur
+			WidthFallback = 4, -- V0 proposé (a269, 20/11) : largeur d'une personne (R15, bras compris) si le modèle ne la donne pas
+			WidthMax = 6, -- V0 proposé (a269, 20/11) : largeur comptée au plus (un accessoire très large ne vide pas la rue)
+			Step = 0.5, -- V0 proposé (a269, 20/11) : recul d'une place trop proche (studs)
+			MaxPush = 20, -- V0 proposé (a269, 20/11) : recul au plus (studs) ; au-delà, la place reste vide
+			Witnesses = true, -- V0 proposé (a269, 20/11) : places loin des témoins et de leur circuit, vus chez ce joueur
+		},
 		Duration = 6, -- V0 : s, puis ils s'effacent
 		FadeTime = 0.3, -- V0 : s, apparition et disparition (LocalTransparencyModifier) ; animations réduites : d'un coup
 		FlashMin = 0.7, -- V0 : rythme des flashs sans marqueur Flash (s, au hasard entre les deux)…

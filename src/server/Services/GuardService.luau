@@ -628,6 +628,15 @@ GuardService._Sidestep = (function(): any
 	end)
 	return if ok and type(result) == "table" then result else nil
 end)() :: any
+-- a269 (Cantin, 20/11 ; Witness.Avoid) : en ronde, en retour et en Follow, il s'écarte sur sa droite d'un PNJ qui vient en
+-- face (témoin, vigile ; Npc/NpcAvoid) ; en poursuite, il est seulement suivi (un obstacle pour les autres). Absent :
+-- la marche d'avant. Champ et non locale, comme _CatchShow.
+GuardService._NpcAvoid = (function(): any
+	local ok, result = pcall(function(): any
+		return require((script.Parent :: any).Npc.NpcAvoid)
+	end)
+	return if ok and type(result) == "table" then result else nil
+end)() :: any
 
 local guards: { Guard } = {} -- vigiles de jour
 -- Heure (os.clock) où le dernier vigile de jour d'un magasin est parti (rentré, effacé…) : la vitrine
@@ -1044,6 +1053,12 @@ end
 -- Avance vers `position`, sauf si elle est en zone safe : alors il s'arrête. Pas de marge : un
 -- joueur juste avant la ligne reste attrapable.
 local function moveTo(guard: Guard, position: Vector3)
+	if GuardService._NpcAvoid then
+		local aimed = GuardService._NpcAvoid.GuardAim(guard, position) -- a269 : écart d'un PNJ qui vient en face
+		if aimed ~= position and not isInSafeZone(aimed) then
+			position = aimed
+		end
+	end
 	if isInSafeZone(position) then
 		stop(guard)
 	else
