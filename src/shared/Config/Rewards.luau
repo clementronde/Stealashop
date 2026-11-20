@@ -24,7 +24,8 @@ local DeepFreeze = require(script.Parent.DeepFreeze)
 --          Vague 80 (a267) : avec BoxRarity au lieu de Tier, c'est un colis de RAYON de cette rareté (vague 76 :
 --          les colis des rayons n'ont plus de type) : zone = la plus haute parmi les objets du joueur, au moins
 --          MinZone et au moins la première zone où cette rareté existe ; rareté de l'objet tirée comme à
---          l'ouverture de ce colis sur un rayon de cette zone (ShelfBoxes.ContentWeights, chance ×1) ;
+--          l'ouverture de ce colis sur un rayon de cette zone (ShelfBoxes.ContentWeights, chance ×1), jamais
+--          sous BoxRarity (plancher, vague 81) ;
 --          UnboxService.GiveBoxRarityItem ;
 --   Boost  boost ×2 argent pendant Minutes minutes (MonetizationService.AddCashBoost : compté seulement
 --          en jeu, un 2e boost prolonge le 1er).
@@ -86,7 +87,8 @@ local Rewards = {
 		-- 3.3 : « 1 colis Luxe » ; depuis le 14/11 (Cantin, vague 43) un objet tiré comme un colis Luxe
 		-- (UnboxService.GiveItem). Vague 80 (a267) : plus de colis Luxe sur les rayons (vague 76) : un colis Épique
 		-- de rayon, ouvert dans la meilleure zone du joueur (zone 4 au moins, la première qui a des Épiques).
-		Reward = { Kind = "Box", BoxRarity = "Epic" } :: Reward, -- V0 proposé (Cantin, 20/11) ; avant : colis Luxe, zone 2 au moins
+		-- Vague 81 (a268) : plancher à Épique (3.3 « Épique ») : Épique ou mieux, jamais un Rare.
+		Reward = { Kind = "Box", BoxRarity = "Epic" } :: Reward, -- V0 proposé (Cantin, 20/11) : un objet Épique ou mieux (poids du colis Épique au-dessus du plancher) ; avant : colis Luxe, zone 2 au moins
 		-- 3.3 : « l'aura ou le trail exclusif de la semaine ». [date du lundi en UTC, « AAAA-MM-JJ »] = Id de
 		-- Config/Cosmetics (aura ou trail). Vide en V0 : seulement l'objet tant que Clément n'a rien livré.
 		Exclusives = {} :: { [string]: string },

@@ -18,8 +18,8 @@ local DeepFreeze = require(script.Parent.DeepFreeze)
 -- Un lot, partagé avec Config/Quests (serveur : Services/Prize/Grant) :
 --   Cash    Minutes minutes de revenus (comme Config/Rewards : revenu par seconde bonus compris, au moins
 --           Rewards.MinCashPerMinute $ par minute) ;
---   Box     l'objet d'un colis d'une rareté, donné tout de suite dans l'inventaire (UnboxService.GiveItem, comme les
---           récompenses, avec cette rareté pour minimum) ; zone = la plus haute parmi les objets du joueur ; rareté =
+--   Box     l'objet d'un colis d'une rareté, donné tout de suite dans l'inventaire (vague 81 : comme le coffre de la
+--           semaine, UnboxService.GiveBoxRarityItem, cette rareté ou mieux) ; zone = la plus haute parmi les objets du joueur ; rareté =
 --           la Rank-ième de Rarities.ZoneRarities[zone] (1 = la plus basse ; "Top" ou au-delà de la liste = la plus haute) ;
 --   Boost   boost ×2 argent pendant Minutes minutes (MonetizationService.AddCashBoost) ;
 --   Potion  Count potions Potion (Id de Config/Potions) dans l'inventaire de potions (PotionService.AddStock).

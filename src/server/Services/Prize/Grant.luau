@@ -6,9 +6,10 @@
 -- Mêmes règles que les récompenses (RewardService, Config/Rewards) :
 --   Cash    minutes × 60 × revenu par seconde du joueur (DisplayService.GetIncome × GetGlobalMultiplier, bonus
 --           compris), au moins Rewards.MinCashPerMinute $ par minute ; DataService.AddCash ;
---   Box     UnboxService.GiveItem : objet d'un colis d'une rareté, zone = la plus haute parmi les objets du joueur
---           (zone 1 sans objet), rareté = la Rank-ième de Rarities.ZoneRarities[zone], donnée comme minimum (comme
---           MinRarity des récompenses : l'amélioration du colis peut monter) ; inventaire plein : refusé (« InventoryFull ») ;
+--   Box     UnboxService.GiveBoxRarityItem (vague 81, a268) : objet d'un colis de rayon d'une rareté, zone = la plus
+--           haute parmi les objets du joueur (zone 1 sans objet), rareté = la Rank-ième de Rarities.ZoneRarities[zone],
+--           plancher (cette rareté ou mieux, poids du colis au-dessus), dans toutes les zones, Secret compris ;
+--           inventaire plein : refusé (« InventoryFull »), rien n'est noté (la quête reste à réclamer) ;
 --   Boost   MonetizationService.AddCashBoost ;
 --   Potion  PotionService.AddStock ; stock plein : refusé (« PotionFull »).
 --
@@ -103,9 +104,10 @@ function Grant.Give(player: Player, prize: Prize): (boolean, string, number, str
 		end
 		local rank = if prize.Rank == "Top" then #list elseif type(prize.Rank) == "number" then prize.Rank else 1
 		local rarityId: string = list[math.clamp(math.floor(rank), 1, #list)]
-		-- Depuis la vague 76, plus de types de colis : GiveItem demande encore un BoxTier (poids des raretés) ;
-		-- Standard sert seulement de base au tirage, la rareté minimale fait le lot.
-		local itemUid, reason, itemId = UnboxService.GiveItem(player, "Standard", zone, rarityId)
+		-- Vague 81 (a268) : un colis de RAYON de cette rareté, avec plancher (UnboxService.GiveBoxRarityItem, comme le
+		-- coffre de la semaine). Avant : GiveItem(player, "Standard", zone, rareté), refusé dès que la table Standard
+		-- valait 0 pour cette rareté (Légendaire, Mythique, Secret : zones 5 et 6).
+		local itemUid, reason, itemId = UnboxService.GiveBoxRarityItem(player, rarityId, zone)
 		if itemUid == nil then
 			if reason == "InventoryFull" then
 				return false, MESSAGES.ItemsFull, 0, "InventoryFull"
