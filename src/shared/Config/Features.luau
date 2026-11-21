@@ -62,8 +62,11 @@ local Features = {
 	-- a286 (L-218, L-231, L-268) : les deux pièges de plus de Clément, peau de banane (TRAP_BananaPeel) et trappe
 	-- (TRAP_TrapDoor) ; true = disposition Traps.SlotLayoutNew (a293 : colle, banane, portique, trappe, la colle
 	-- gardée) ; false = l'ancienne disposition Traps.SlotLayout (colle, filet, portique, colle).
-	-- a293 : true, validé par Cantin, 21/11 (en DEV comme en PROD : Features ne distingue pas les deux jeux).
-	NewTraps = true,
+	-- a296 : interrupteur PROD (partout) ; false, validé par Cantin, 21/11 : coupé en PROD, allumé en DEV par NewTrapsDev.
+	NewTraps = false,
+	-- a296 (validé par Cantin, 21/11) : la disposition Traps.SlotLayoutNew allumée dans le jeu DEV seulement
+	-- (Config/ProductIds.IsDev, TrapService) ; PROD (ou ProductIds absent) : NewTraps seul (false = l'ancienne).
+	NewTrapsDev = true,
 	-- a286 (L-216 point 10, L-235 « 60 s du revenu de l'objet pour chaque ami entré dans le magasin ») : prime au
 	-- complice d'un braquage à deux (Config/Balance.Heist.PartnerBonusSeconds, StoreHeistService) ; false = rien ne
 	-- change. a293 : true, validé par Cantin, 21/11 (en DEV comme en PROD).
