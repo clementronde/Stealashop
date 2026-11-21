@@ -69,8 +69,9 @@
 --        qui compte n'en dépend). La copie est retirée RemoveDelay s plus tard.
 --      - Colis : Boxes (12 : 6 Standard, 4 Premium, 2 Luxe), types répartis au hasard sur
 --        BoxSpawn_01 à _12 (BlastPoint pour un point qui manque), tirés à l'apparition : rareté selon
---        ShelfBoxes.OddsFor de la zone du camion (zone 1 : Communs seulement, L-033), limitée aux raretés qui ont
---        un objet dans la zone et ramenée à 100 (truckOdds, a295 : plus aucun colis vide). Chaque colis a son point d'arrivée au
+--        ShelfBoxes.OddsFor de la zone du camion (zone 1 : Communs seulement, L-033), sans les raretés qui
+--        finissaient en colis vide, ramenée à 100 (truckOdds, a295), repli sur la rareté tirable la plus proche en
+--        dessous (comme StoreHeistService). Chaque colis a son point d'arrivée au
 --        sol, de ScatterMinRadius à ScatterRadius studs du centre du camion, du côté de son point de sortie
 --        (ScatterSpread), et jamais sur un autre : au moins BoxGap studs bord à bord entre deux colis, d'après
 --        la largeur des modèles BOX_<Rareté>, sinon BOX_<Tier> (cône élargi, puis cercles plus grands si la
@@ -954,34 +955,35 @@ local function drawable(zone: number, rarityId: string): boolean
 	return list ~= nil and next(list) ~= nil
 end
 
--- Table du camion pour un colis `tier` en zone `zone` : ShelfBoxes.OddsFor limitée aux raretés qui ont un objet dans
--- la zone (drawable), ramenée à 100 ; les rapports entre raretés gardées sont ceux de Rarities.BoxOdds. nil si rien ne
--- reste (Config incohérente). a295 (vague 84, 21/11, accord du grand chef ; V0 proposé, la doc 7.3 dit les tables
--- du camion non limitées à la zone) : avant, une rareté sans objet retombait sur la plus proche en dessous, ou ne
--- donnait aucun colis s'il n'y avait rien en dessous (5,6 colis vides sur 12 en zone 5, 8,8 en zone 6).
+-- Table du camion pour un colis `tier` en zone `zone` : ShelfBoxes.OddsFor sans les raretés qui finissaient en colis
+-- vide (aucun objet tirable à leur niveau ni en dessous dans la zone, drawable), ramenée à 100 ; une rareté gardée sans
+-- objet retombe toujours, comme avant, sur la plus proche en dessous qui en a (drawContent). nil si rien ne reste
+-- (Config incohérente). a295 (vague 84) : V0, choisie par le grand chef le 21/11 (la doc 7.3 dit les tables du camion
+-- non limitées à la zone). Zones 1 à 4 inchangées (aucun colis vide avant) ; zones 5 et 6 : la même distribution
+-- qu'avant parmi les colis non vides (avant : 5,6 colis vides sur 12 en zone 5, 8,8 en zone 6).
 local function truckOdds(tier: string, zone: number): { [string]: number }?
 	local odds = ShelfBoxes.OddsFor(zone, tier)
 	if odds == nil then
 		return nil
 	end
+	local kept: { [string]: number } = {}
 	local total = 0
+	local below = false -- un objet tirable à ce niveau ou en dessous (Rarities.List va de Commun à Divine)
 	for _, rarity in Rarities.List do
+		below = below or drawable(zone, rarity.Id)
 		local weight = odds[rarity.Id] or 0
-		if weight > 0 and drawable(zone, rarity.Id) then
+		if weight > 0 and below then
+			kept[rarity.Id] = weight
 			total += weight
 		end
 	end
 	if total <= 0 then
 		return nil
 	end
-	local out: { [string]: number } = {}
-	for _, rarity in Rarities.List do
-		local weight = odds[rarity.Id] or 0
-		if weight > 0 and drawable(zone, rarity.Id) then
-			out[rarity.Id] = weight / total * 100
-		end
+	for rarityId, weight in kept do
+		kept[rarityId] = weight / total * 100
 	end
-	return out
+	return kept
 end
 
 local function drawRarity(tier: string, zone: number): string?
@@ -1014,18 +1016,21 @@ local function drawContent(tier: string, zone: number): (string?, string?)
 	if item then
 		return item.Rarity, item.Id
 	end
-	-- Filet seulement (a295 : truckOdds ne garde que des raretés tirables, Items.Pick ne rend donc jamais nil ici) :
-	-- la rareté tirable la plus proche en dessous (Rarities.List va de Commun à Secret).
+	-- Case vide : la rareté tirable la plus proche en dessous (Rarities.List va de Commun à Secret ; truckOdds garantit
+	-- qu'il y en a une).
 	local order = Rarities.ById[rarity].Order
 	for index = #Rarities.List, 1, -1 do
 		local candidate = Rarities.List[index]
 		if candidate.Order < order then
 			local fallback = Items.Pick(zone, candidate.Id, random)
 			if fallback then
-				warnOnce(
-					`empty.{zone}.{rarity}`,
-					`aucun objet {rarity} tirable en zone {zone} (Config/Items) : ces colis du camion reçoivent un objet {candidate.Id}`
-				)
+				-- Vague 76 : une rareté absente de la zone (Rarities.ZoneOdds) n'y a aucun objet, sans incohérence : pas d'avertissement.
+				if Rarities.Allows(zone, rarity) then
+					warnOnce(
+						`empty.{zone}.{rarity}`,
+						`aucun objet {rarity} tirable en zone {zone} (Config/Items) : ces colis du camion reçoivent un objet {candidate.Id}`
+					)
+				end
 				return fallback.Rarity, fallback.Id
 			end
 		end

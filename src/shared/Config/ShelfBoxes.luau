@@ -70,7 +70,7 @@ local ShelfBoxes = {
 	-- Colis qui gardent un type (camion, tour de la fortune, colis offerts) : leur propre table, Rarities.BoxOdds[tier]
 	-- (vague 76, décision 3 : inchangée) ; en zone 1 (zone du tuto, L-033), Commun seulement, comme avant. nil pour un
 	-- type inconnu. [RarityId] = pourcentage, une rareté absente vaut 0. Une rareté sans objet dans la zone : repli de
-	-- chaque appelant (TruckEventService et UnboxService : rareté écartée, le reste ramené à 100). Fonction pure,
+	-- chaque appelant (TruckEventService : la plus proche en dessous, rareté écartée s'il n'y a rien ; UnboxService : rareté écartée). Fonction pure,
 	-- sans tirage : lue par UnboxService (colis offerts, amélioration), TruckEventService et la tour de la fortune.
 	OddsFor = function(zone: number, tier: string): { [string]: number }?
 		local odds = Rarities.BoxOdds[tier]
