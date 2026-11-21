@@ -123,11 +123,14 @@ local Traps = {
 	ById = ById,
 	-- Genre du piège de chaque emplacement : SlotLayout[n] pour TrapSlot_0n (V0 ; le propriétaire ne choisit pas).
 	SlotLayout = { "GlueMat", "NetBox", "AlarmGate", "GlueMat" } :: { TrapId },
-	-- a286 (Features.NewTraps) : disposition avec les deux pièges de plus, V0 du 2026-11-21 à valider par Cantin : la
-	-- peau de banane et la trappe prennent les deux places de la colle en double (1 et 4), la trappe, la plus forte,
-	-- au dernier niveau ; la colle ne se pose plus. Même nombre d'emplacements que SlotLayout. TrapService choisit
-	-- l'une ou l'autre (Features.NewTraps ; en Studio, workspace:SetAttribute("NewTrapsTest", true)).
-	SlotLayoutNew = { "BananaPeel", "NetBox", "AlarmGate", "TrapDoor" } :: { TrapId },
+	-- a286 (Features.NewTraps) : disposition avec les deux pièges de plus. TrapService choisit l'une ou l'autre
+	-- (Features.NewTraps, allumé et validé par Cantin, 21/11 ; en Studio, workspace:SetAttribute("NewTrapsTest", true)).
+	-- a293 (Cantin, 21/11 : la colle est gardée) : une boutique n'a que 4 emplacements (TrapSlot_01 à _04, Partie 1
+	-- 10.4 ; tuile Traps de 4 niveaux), donc pas les 5 pièges à la fois. V0 proposé (a293, 21/11), au plus près
+	-- de SlotLayout : la colle reste au 1er niveau et le portique au 3e ; la peau de banane prend la place du filet
+	-- (2e, un arrêt sur place comme lui, plus court) ; la trappe, la plus forte, prend celle de la colle en double (4e).
+	-- Le filet (TRAP_NetBox) ne se pose plus. Même nombre d'emplacements que SlotLayout.
+	SlotLayoutNew = { "GlueMat", "BananaPeel", "AlarmGate", "TrapDoor" } :: { TrapId },
 	SlotName = "TrapSlot_%02d", -- emplacements de la boutique (Contract/Models, Plot)
 	PlacedName = "Trap_%02d", -- copie posée par le serveur
 	Folder = "PlacedTraps", -- dossier des copies dans la boutique
