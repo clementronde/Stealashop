@@ -81,6 +81,8 @@ local Features = {
 	-- LocalScripts, et le reflet du bouton entier (Config/UiMotion.AttrFx.ButtonSheen). Sous Features.UiAttrFx (éteint :
 	-- rien). V0 proposé (2026-11-21) : true ; false = rien de cela en jeu.
 	FramewispFx = true,
+	-- a301 (21/11, demande de Cantin) : près de la boutique d'un autre joueur, dehors, les étiquettes BB_Item de ses objets exposés se voient à travers la façade (ShopSpyController, Config/ShopSpy) ; V0 proposé (2026-11-21) : true ; false = comme avant.
+	ShopSpy = true,
 }
 
 export type Features = typeof(Features)
