@@ -54,7 +54,7 @@ local Witness = {
 		PassBehind = 1.5, -- V0 proposé (a269, 20/11) : l'écart finit quand l'autre est ce nombre de studs derrière lui
 		MinClosing = 1, -- V0 proposé (a269, 20/11) : studs/s ; un PNJ dont il ne se rapproche pas (même sens, même pas) n'est pas évité
 		MaxRise = 6, -- V0 proposé (a269, 20/11) : au plus ce nombre de studs d'écart en hauteur (un autre étage n'est pas évité)
-		PointReach = 5, -- V0 proposé (a269, 20/11) : témoin qui s'écarte : point du circuit atteint à ce nombre de studs (au lieu de PointReached)
+		PointReach = 5, -- V0 proposé (a269, 20/11) : témoin qui s'écarte : point atteint à ce nombre de studs (plus utilisé depuis a269c : témoins sans écart)
 		Guards = true, -- V0 proposé (a269, 20/11) : les vigiles s'écartent aussi (ronde, retour, Follow)
 		NoCollide = true, -- V0 proposé (a269, 20/11) : les témoins ne heurtent ni un autre témoin ni un vigile (groupe Guards)
 		Group = "Witnesses", -- V0 proposé (a269, 20/11) : groupe de collision des témoins, créé par le code en jeu (pas un nom du contrat)
@@ -65,9 +65,21 @@ local Witness = {
 		StuckTime = 0.5, -- V0 proposé (a269, 21/11) : s ; pendant un écart, sans avancer de StuckMove studs : il l'abandonne et vise son point…
 		StuckMove = 1, -- V0 proposé (a269, 21/11) : … (studs)
 		RetryAfter = 2, -- V0 proposé (a269, 21/11) : s sans s'écarter à nouveau du même PNJ après un écart abandonné
-		Players = true, -- V0 proposé (a269, 21/11) : un témoin s'arrête devant un joueur qui vient sur sa ligne (arrêté, il le bloque)…
+		Players = false, -- V0 proposé (a269, 22/11 ; true au 21/11) : true, un témoin s'arrête devant un joueur qui vient sur sa ligne (Play f81b : il attendait sans fin derrière un joueur immobile)…
 		PlayerStop = 10, -- V0 proposé (a269, 21/11) : … à ce nombre de studs devant lui ou moins…
 		PlayerLane = 2.5, -- V0 proposé (a269, 21/11) : … et à moins de ce nombre de studs de sa ligne
+		-- a269c (Play f81b, 22/11) : plus d'écart dynamique pour les témoins (gardé pour les vigiles) ; chaque témoin marche
+		-- sur SA voie, son circuit décalé sur sa droite (Services/Npc/WitnessLanes), et se dégage s'il est bloqué.
+		Lanes = true, -- V0 proposé (a269, 22/11) : false, les témoins marchent sur le circuit même (sans écart)
+		Lane = 1.5, -- V0 proposé (a269, 22/11) : décalage (studs) de sa voie sur sa droite : deux témoins à 2 × Lane l'un de l'autre
+		LaneClearance = 1.2, -- V0 proposé (a269, 22/11) : rayon (studs) du corps balayé le long de chaque segment de voie
+		LaneLowDrop = 0.8, -- V0 proposé (a269, 22/11) : second balayage ce nombre de studs plus bas (bornes basses)
+		LaneStep = 0.25, -- V0 proposé (a269, 22/11) : pas (studs) des décalages essayés quand un segment est bouché…
+		LaneMax = 4, -- V0 proposé (a269, 22/11) : … jusqu'à ce décalage (studs), d'un côté ou de l'autre
+		LaneReach = 1, -- V0 proposé (a269, 22/11) : point de la voie atteint à ce nombre de studs (au lieu de PointReached : il coupe moins les virages)
+		UnstickTime = 1, -- V0 proposé (a269, 22/11) : s ; sans avancer de UnstickMove studs : il va à un point libre à côté de lui…
+		UnstickMove = 1, -- V0 proposé (a269, 22/11) : … (studs)…
+		UnstickSide = 2.5, -- V0 proposé (a269, 22/11) : … à ce nombre de studs sur sa droite, sinon sur sa gauche, puis vise le point suivant
 	},
 
 	-- La fuite à la casse (Clément, L-118 point 10 : il a peur, court à l'opposé de la vitrine, puis reprend

@@ -71,12 +71,15 @@
 --   9. f70c2 (Cantin, 18/11 : passage course → pose pas fluide) : sur ses Photo.BrakeDistance derniers studs il freine (à chaque
 --      image, sa course ralentit avec lui), il est arrivé à Photo.ArriveDistance studs ; la course s'efface en Photo.StopFade s
 --      pendant que TakePhoto (ou Look) arrive en Photo.PoseFade s, et il se tourne vers la vitrine en Photo.TurnTime s.
---  10. a269 (Cantin, 20/11 ; Witness.Avoid, Npc/NpcAvoid) : en balade, un PNJ qui vient en face sur sa ligne (l'autre
---      témoin du circuit, un vigile, un témoin arrêté) : il s'écarte sur sa droite (Avoid.Gap studs), passe à côté sans
---      s'arrêter, puis revise son point du circuit (atteint à Avoid.PointReach studs pendant l'écart, sans pause). Ses
---      pièces passent dans le groupe de collision Avoid.Group (aucun choc avec un témoin ou un vigile ; joueurs inchangés).
---      a269b (Play fusion81) : il ne s'écarte que si la place est libre (poteau, borne : voir NpcAvoid), et il s'arrête
---      devant un joueur qui vient sur sa ligne (Avoid.Players : arrêté, il le bloque).
+--  10. a269 (Cantin, 20/11 ; Witness.Avoid) : ses pièces passent dans le groupe de collision Avoid.Group (aucun choc
+--      avec un témoin ou un vigile ; joueurs inchangés), et les vigiles l'évitent (Npc/NpcAvoid). a269c (Play f81b,
+--      22/11 : l'écart dynamique d'a269 et a269b ratait près des poteaux) : il n'a plus d'écart dynamique. Il marche sur
+--      SA voie (Npc/WitnessLanes, Avoid.Lanes) : son circuit décalé de Avoid.Lane studs sur sa droite, dans son sens de
+--      marche, corrigé une fois au départ segment par segment devant les poteaux et les bornes ; les deux témoins d'une
+--      zone sont donc toujours à 2 × Lane studs l'un de l'autre, pauses comprises. Point de la voie atteint à
+--      Avoid.LaneReach studs. Filet : sans avancer de Avoid.UnstickMove studs en Avoid.UnstickTime s, il va à un point
+--      libre à côté de lui (Avoid.UnstickSide studs à droite, sinon à gauche ; au plus UnstickTime s), puis vise le point
+--      suivant. Avoid.Players (V0 false) : s'il est vrai, il s'arrête devant un joueur qui vient sur sa ligne.
 --   La vitre se répare comme avant (chrono de police de WindowService, Balance.Window.BreakTimer, inchangé).
 --
 -- Un témoin sans WatchedStore, ou dont le magasin est introuvable parmi les modèles taggés NPCStore de la
@@ -131,6 +134,13 @@ local WindowService = require(script.Parent.WindowService)
 local NpcAvoid = (function(): any
 	local ok, result = pcall(function(): any
 		return require((script.Parent :: any).Npc.NpcAvoid)
+	end)
+	return if ok and type(result) == "table" then result else nil
+end)() :: any
+-- a269c (Witness.Avoid.Lanes) : chaque témoin marche sur sa voie, le circuit décalé sur sa droite. Absent : le circuit.
+local WitnessLanes = (function(): any
+	local ok, result = pcall(function(): any
+		return require((script.Parent :: any).Npc.WitnessLanes)
 	end)
 	return if ok and type(result) == "table" then result else nil
 end)() :: any
@@ -210,7 +220,13 @@ type WitnessNpc = {
 	turnAt: number,
 	turnFrom: number, -- cap de départ (radians)
 	turnBy: number, -- angle à tourner (radians, de −π à π)
-	avoiding: boolean, -- a269 : en balade, il s'écarte d'un autre PNJ (NpcAvoid)
+	avoiding: boolean, -- a269 : en balade, il s'écarte d'un autre PNJ (NpcAvoid ; plus utilisé par la balade depuis a269c)
+	-- a269c : sa voie (Npc/WitnessLanes), calculée à sa première balade ; nil : le circuit même
+	pathsFolder: Instance?, -- le dossier WitnessPaths de son circuit (les deux témoins de la zone partagent les voies)
+	lane: { Vector3 }?,
+	laneReady: boolean,
+	unstickUntil: number, -- a269c (filet) : il va à unstickGoal jusqu'à cette heure (os.clock) ; 0 : non
+	unstickGoal: Vector3,
 }
 
 -- Noms du contrat lus ici.
@@ -348,18 +364,101 @@ local function nextIndex(w: WitnessNpc): number
 	return (w.pathIndex - 1 + w.pathStep) % count + 1
 end
 
+-- a269c : un réglage numérique de Witness.Avoid, ou `default`.
+local function avoidNumber(key: string, default: number): number
+	local value = if type(AVOID) == "table" then AVOID[key] else nil
+	return if type(value) == "number" and value == value then value else default
+end
+
+-- a269c : ce que les balayages des voies et du filet ignorent : les témoins (leurs dossiers) et les joueurs.
+local function laneIgnore(): { Instance }
+	local ignore: { Instance } = {}
+	for _, w in witnesses do
+		local parent = w.model.Parent
+		table.insert(ignore, if parent and parent ~= Workspace then parent else w.model)
+	end
+	for _, player in Players:GetPlayers() do
+		local character = player.Character
+		if character then
+			table.insert(ignore, character)
+		end
+	end
+	return ignore
+end
+
+-- a269c : les voies d'un circuit (sens +1 et −1), calculées une fois pour ses deux témoins.
+local laneCache: { [Instance]: { forward: { Vector3 }, backward: { Vector3 } } } = {}
+local function laneOf(w: WitnessNpc): { Vector3 }?
+	local folder = w.pathsFolder
+	if WitnessLanes == nil or folder == nil or #w.path < 2 or WitnessLanes.Settings() == nil then
+		return nil
+	end
+	local found = laneCache[folder]
+	if found == nil then
+		local position = w.root.Position
+		local nearest, height = math.huge, 0
+		for _, point in w.path do
+			local distance = flat(point - position).Magnitude
+			if distance < nearest then
+				nearest = distance
+				height = position.Y - point.Y -- sa racine au-dessus des points du circuit
+			end
+		end
+		local ok, forward, backward, fixes = pcall(WitnessLanes.Build, w.path, height, laneIgnore())
+		if not ok or type(forward) ~= "table" or type(backward) ~= "table" then
+			warnOnce(`lane:{w.zone}`, `{w.label} : voies des témoins incalculables ({forward}) : il marche sur le circuit`)
+			return nil
+		end
+		found = { forward = forward, backward = backward }
+		laneCache[folder] = found
+		if type(fixes) == "table" and #fixes > 0 then
+			print(`[WitnessService] voies des témoins de la zone {w.zone}, segments corrigés : {table.concat(fixes, " ; ")}`)
+		end
+	end
+	local lanes = found :: { forward: { Vector3 }, backward: { Vector3 } }
+	return if w.pathStep < 0 then lanes.backward else lanes.forward
+end
+
+local function walkTo(w: WitnessNpc, goal: Vector3, now: number)
+	w.nextMoveAt = now + Witness.MoveRefresh
+	w.humanoid.WalkSpeed = Witness.WalkSpeed
+	w.humanoid:MoveTo(goal)
+	if not w.walking then
+		w.walking = true
+		w.anims:Play("Walk", nil, nil, w.gait)
+	end
+end
+
 local function strollStep(w: WitnessNpc, now: number)
 	local count = #w.path
 	if count == 0 or now < w.pauseUntil then
 		return
 	end
-	local position = w.root.Position
-	local goal = w.path[w.pathIndex]
-	-- a269 : pendant un écart, le point est atteint plus loin (un autre PNJ peut s'y tenir) et il ne s'y arrête pas.
-	local reach = Witness.PointReached
-	if w.avoiding and AVOID and type(AVOID.PointReach) == "number" then
-		reach = math.max(reach, AVOID.PointReach)
+	if not w.laneReady then
+		w.laneReady = true
+		w.lane = laneOf(w) -- a269c ; nil : le circuit même, comme avant a269
 	end
+	local lane = w.lane
+	local points = lane or w.path
+	local position = w.root.Position
+	local reach = if lane then avoidNumber("LaneReach", Witness.PointReached) else Witness.PointReached
+	-- a269c (filet) : il se dégage vers un point libre à côté de lui, puis vise le point suivant.
+	if w.unstickUntil > 0 then
+		if now < w.unstickUntil and flat(w.unstickGoal - position).Magnitude > reach then
+			if now >= w.nextMoveAt then
+				walkTo(w, w.unstickGoal, now)
+			end
+			return
+		end
+		w.unstickUntil = 0
+		if count > 1 then
+			w.pathIndex = nextIndex(w)
+		end
+		w.progressPos = position
+		w.progressAt = now
+		w.nextMoveAt = now
+	end
+	local goal = points[w.pathIndex]
 	if flat(goal - position).Magnitude <= reach then
 		if count == 1 then
 			stopWalking(w)
@@ -367,27 +466,44 @@ local function strollStep(w: WitnessNpc, now: number)
 		end
 		w.pathIndex = nextIndex(w)
 		w.nextMoveAt = now
-		if not w.avoiding and rng:NextNumber() < Witness.PauseChance then
+		if rng:NextNumber() < Witness.PauseChance then
 			w.pauseUntil = now + rng:NextNumber(Witness.PauseMin, Witness.PauseMax)
 			w.progressAt = w.pauseUntil
 			stopWalking(w)
 			return
 		end
-		goal = w.path[w.pathIndex]
+		goal = points[w.pathIndex]
 	end
-	-- Bloqué (un joueur devant lui, un obstacle) : il vise le point suivant.
-	if flat(position - w.progressPos).Magnitude >= 1 then
+	-- Bloqué (un joueur devant lui, un obstacle) : il vise le point suivant (a269c, sur sa voie : il se dégage d'abord à
+	-- côté de lui, au bout de Avoid.UnstickTime s).
+	local moved = if lane then avoidNumber("UnstickMove", 1) else 1
+	local unstickTime = if lane then avoidNumber("UnstickTime", 0) else 0
+	if flat(position - w.progressPos).Magnitude >= moved then
 		w.progressPos = position
 		w.progressAt = now
+	elseif unstickTime > 0 and now - w.progressAt >= unstickTime then
+		w.progressPos = position
+		w.progressAt = now
+		local side = WitnessLanes.Sidestep(position, goal - position, laneIgnore())
+		if side then
+			w.unstickGoal = side
+			w.unstickUntil = now + unstickTime
+			walkTo(w, side, now)
+			return
+		end
+		if count > 1 then
+			w.pathIndex = nextIndex(w)
+			goal = points[w.pathIndex]
+		end
+		w.nextMoveAt = now
 	elseif now - w.progressAt >= Witness.StuckTime and count > 1 then
 		w.pathIndex = nextIndex(w)
 		w.progressAt = now
 		w.nextMoveAt = now
-		goal = w.path[w.pathIndex]
+		goal = points[w.pathIndex]
 	end
-	-- a269b (Avoid.Players ; Play fusion81 : un joueur traversait de face un témoin qui marche, jamais un témoin arrêté) :
-	-- un joueur vient sur sa ligne, tout près : il s'arrête là. S'il reste bloqué, le contrôle ci-dessus lui fait viser
-	-- le point suivant au bout de Witness.StuckTime s.
+	-- a269b (Avoid.Players, V0 false depuis a269c : un témoin attendait sans fin derrière un joueur immobile) : un
+	-- joueur vient sur sa ligne, tout près : il s'arrête là.
 	if NpcAvoid and NpcAvoid.PlayerAhead(w.root, goal, Witness.WalkSpeed) then
 		if w.walking then
 			stopWalking(w)
@@ -395,21 +511,8 @@ local function strollStep(w: WitnessNpc, now: number)
 		w.nextMoveAt = now -- il repart dès que la ligne est libre
 		return
 	end
-	-- a269 (Witness.Avoid) : un PNJ devant lui sur sa ligne : il vise un point à sa droite, redonné à chaque pas, puis
-	-- revise son point du circuit dès que l'autre est passé.
-	local aim, avoiding = goal, false
-	if NpcAvoid then
-		aim, avoiding = NpcAvoid.Aim(w.root, goal, Witness.WalkSpeed)
-	end
-	if avoiding or w.avoiding or now >= w.nextMoveAt then
-		w.avoiding = avoiding
-		w.nextMoveAt = now + Witness.MoveRefresh
-		w.humanoid.WalkSpeed = Witness.WalkSpeed
-		w.humanoid:MoveTo(aim)
-		if not w.walking then
-			w.walking = true
-			w.anims:Play("Walk", nil, nil, w.gait)
-		end
+	if now >= w.nextMoveAt then
+		walkTo(w, goal, now)
 	end
 end
 
@@ -431,6 +534,7 @@ local function toStroll(w: WitnessNpc, now: number)
 	stopSnapping(w) -- a221
 	w.turning = false -- f70c2 : la balade (ou la fuite) reprend la main sur son cap
 	w.pauseUntil = 0
+	w.unstickUntil = 0 -- a269c
 	w.nextMoveAt = now
 	w.progressPos = w.root.Position
 	w.progressAt = now
@@ -1254,8 +1358,8 @@ local function findStore(name: string): Model?
 end
 
 -- Les points du circuit du témoin : Attachments WitnessPath_NN du WitnessPaths le plus proche au-dessus
--- de lui, dans l'ordre des numéros.
-local function pathOf(model: Model): { Vector3 }
+-- de lui, dans l'ordre des numéros (et ce dossier WitnessPaths, a269c).
+local function pathOf(model: Model): ({ Vector3 }, Instance?)
 	local parent = model.Parent
 	local paths: Instance? = nil
 	while parent and parent ~= Workspace and paths == nil do
@@ -1280,7 +1384,7 @@ local function pathOf(model: Model): { Vector3 }
 	for _, point in points do
 		table.insert(list, point.position)
 	end
-	return list
+	return list, paths
 end
 
 -- Zone du témoin : celle de son magasin, sinon celle de son nom (NPC_Witness_Z<n>_…), sinon 1.
@@ -1339,7 +1443,7 @@ local function add(model: Model)
 		return model:GetScale()
 	end)
 	local size = if okScale and isPositiveNumber(scale) then scale else 1
-	local path = pathOf(model)
+	local path, pathsFolder = pathOf(model)
 	local now = os.clock()
 	local digits = string.match(label, "_(%d+)$")
 	local number = (if digits then tonumber(digits) else nil) or 1
@@ -1391,6 +1495,11 @@ local function add(model: Model)
 		turnFrom = 0,
 		turnBy = 0,
 		avoiding = false,
+		pathsFolder = pathsFolder,
+		lane = nil,
+		laneReady = false,
+		unstickUntil = 0,
+		unstickGoal = root.Position,
 	}
 	if NpcAvoid then
 		NpcAvoid.Track(root) -- a269 : un obstacle pour les autres PNJ qui marchent
