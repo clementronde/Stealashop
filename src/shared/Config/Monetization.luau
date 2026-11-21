@@ -30,11 +30,16 @@
 -- ceux de DEV (tous à 0 tant que les offres n'y sont pas créées) avant le gel du module. Caisse exclusive : contenu
 -- (Crate.Items, objets Exclusive_* de Config/Items) et don codés (MonetizationService), toujours derrière
 -- Features.RobuxCrate.
+-- a294 (21/11, Cantin ; L-276) : chances validées (Épique au moins), caisse allumée dans le jeu DEV seulement
+-- (Features.RobuxCrateDev et Config/ProductIds.IsDev : Crate.Live), toujours coupée en PROD (Features.RobuxCrate) ;
+-- ouverture des colis réutilisée (Crate.Reveal, MonetizationService).
 
 local DeepFreeze = require(script.Parent.DeepFreeze)
 local Boosts = require(script.Parent.Boosts)
+local Features = require(script.Parent.Features)
 -- a285 : Config/ProductIds chargé s'il est là (bancs d'essai à liste de modules fixe) ; sans lui, les Ids de PROD.
-local ProductIds: { Pick: (key: string, prodId: number) -> number } = (function(): any
+-- a294 : IsDev lu aussi (sans le module : faux, comme en PROD).
+local ProductIds: { Pick: (key: string, prodId: number) -> number, IsDev: boolean? } = (function(): any
 	local module = script.Parent:FindFirstChild("ProductIds")
 	if module ~= nil then
 		local ok, result = pcall(require, module :: any)
@@ -243,11 +248,16 @@ local Monetization = {
 	-- Features.RobuxCrate, des chances pour chaque case (Odds) et là où Roblox permet les objets payants au
 	-- hasard (PolicyService : ArePaidRandomItemsRestricted faux) ; sinon la section est cachée. Sans Ready, ses
 	-- boutons montrent « Soon » (rien n'est vendu).
-	-- Prix : décision de Clément du 2026-11-16 (repris de Steal an Egg). Contenu et chances : pas décidés.
+	-- Prix : décision de Clément du 2026-11-16 (repris de Steal an Egg).
 	-- a285 (21/11) : contenu (Items) et don codés (MonetizationService : Count tirages selon Odds, un objet par
-	-- tirage dans l'inventaire, achat idempotent). Reste caché et invendu tant que Features.RobuxCrate est false.
+	-- tirage dans l'inventaire, achat idempotent).
+	-- a294 (21/11, Cantin) : montrée seulement si Live (calculé plus bas, avant le gel) :
+	-- Features.RobuxCrate (partout, PROD comprise : false) ou Features.RobuxCrateDev dans le jeu DEV
+	-- (Config/ProductIds.IsDev) ; vendue si Live et Ready, même boutique coupée (Features.RobuxShop = false) ; sans Ready, ou sans Id (0) dans ce jeu,
+	-- ses boutons restent « Soon ».
 	Crate = {
-		Ready = true, -- a285 : contenu et don codés ; Features.RobuxCrate décide seul de l'afficher et de le vendre
+		Ready = true, -- a285 : contenu et don codés (vendue seulement avec Live : Features.RobuxCrate, RobuxCrateDev en DEV)
+		Live = false, -- a294 : posé plus bas (l'interrupteur de ce jeu), ne pas l'écrire ici
 		UnitPrice = 99, -- prix d'une caisse seule : OldPrice d'un lot = UnitPrice × Count (caché sans remise)
 		Packs = {
 			{ Count = 1, Price = 99, Id = 0 },
@@ -255,12 +265,11 @@ local Monetization = {
 			{ Count = 10, Price = 799, Id = 0 },
 		} :: { CratePack },
 		-- Chances (en %) des cases Odd_1 à Odd_6, de la plus commune à la plus rare ; vide = pas décidées
-		-- (caisse cachée : règle Roblox, chances affichées avant l'achat).
-		-- Vague 66 (a218, L-210 précision (b)) : V0 proposé, à valider par Clément (la caisse reste cachée :
-		-- Features.RobuxCrate = false). Dans l'esprit de Break and Steal an Egg, le plus rare à 1 % ; total 100.
-		-- Cases de UI_RobuxShop_v2 : Boule disco (Rare) 45, Gramophone doré (Épique) 28, Fusée en or (Légendaire) 15,
-		-- Crâne de cristal (Mythique) 7, Jukebox néon (Secret) 4, Planète dorée (Divine) 1.
-		Odds = { 45, 28, 15, 7, 4, 1 } :: { number },
+		-- (caisse cachée : règle Roblox, chances affichées avant l'achat). Écrites telles quelles dans Odd_n.Chance.
+		-- a294 (L-276) : jamais sous Épique, total 100. Cases de UI_RobuxShop_v2 : Disco Ball (Épique) 30, Golden
+		-- Gramophone (Épique) 30, Golden Rocket (Légendaire) 25, Crystal Skull (Mythique) 10, Neon Jukebox (Secret) 4,
+		-- Golden Planet (Divine) 1.
+		Odds = { 30, 30, 25, 10, 4, 1 } :: { number }, -- validé par Cantin, 21/11
 		-- a285 (21/11) : ItemId de chaque case, dans l'ordre d'Odds (Odd_1 à Odd_6 ; noms des icônes ICON_Exclusive_*
 		-- de Clément, L-247 et L-252). Objets de Config/Items.Exclusives, jamais tirés d'un colis.
 		Items = {
@@ -276,6 +285,19 @@ local Monetization = {
 		IgnoreInventoryMax = true,
 		-- a285 : clé du crochet de Studio et préfixe des clés de Config/ProductIds (Crate1, Crate3, Crate10).
 		KeyPrefix = "Crate",
+		-- a294 (21/11, V0 de Cantin « en attendant mieux ») : après le don, l'ouverture des colis (RevealStarted avec un
+		-- plan Shared/UnboxPlan, RevealController et Reveal/Unbox chez le client) se joue devant l'acheteur pour l'objet
+		-- tiré : nombre de coups (Unbox.New.ActionsByRarity) et cote finale (« 1 IN N », N = 100 / sa chance) selon sa
+		-- rareté ; tout est tiré par le serveur. Un lot de plusieurs caisses joue l'objet le plus rare du lot (les
+		-- autres sont nommés par leur message). L'acheteur est immobilisé et protégé (comme l'ouvreur d'un colis) jusqu'à
+		-- RevealDone, ou au plus la durée la plus longue du plan (UnboxPlan.serverMaxSeconds).
+		Reveal = {
+			Enabled = true, -- V0 de Cantin, 21/11 ; false = objets donnés sans ouverture (comme a285)
+			SafeZoneOnly = true, -- V0 proposé le 2026-11-21 (a294) : hors zone safe (braquage, poursuite), pas d'ouverture
+			ShopId = "ExclusiveCrate", -- V0 (a294) : ShopId du remote, aucun magasin : le colis sort devant l'acheteur
+			SlotName = "Crate", -- V0 (a294)
+			StartRarity = "Epic", -- V0 proposé le 2026-11-21 (a294) : rareté montrée sur le colis, la plus basse de la caisse
+		},
 	},
 
 	-- Vague 63 (L-200) : UI_RobuxShop_v2. V0 proposé, absent du doc : durée (s) du défilement de List jusqu'à la
@@ -394,6 +416,10 @@ end
 for _, pack in Monetization.Crate.Packs do
 	pack.Id = ProductIds.Pick(`{Monetization.Crate.KeyPrefix}{pack.Count}`, pack.Id)
 end
+-- a294 (21/11, Cantin) : caisse allumée partout avec Features.RobuxCrate, sinon dans le jeu DEV seulement avec
+-- Features.RobuxCrateDev (montrée ; vendue avec Ready aussi : don codé).
+Monetization.Crate.Live = Features.RobuxCrate == true
+	or ((Features :: any).RobuxCrateDev == true and ProductIds.IsDev == true)
 
 -- Palier d'« Ouvrir maintenant » pour un colis qui attend encore `remaining` secondes : le plus petit
 -- palier dont Skip couvre l'attente (le dernier au-delà) ; nil sous OpenNow.MinRemaining (pas proposé).
