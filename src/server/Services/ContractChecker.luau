@@ -836,7 +836,12 @@ local function checkItems(scanned: { Instance })
 	local spec = Models.Item
 	local prefix = spec.Prefix or "ITM_"
 	local movers = { spec.SpinPrefix or "Spin_", spec.WavePrefix or "Wave_" }
-	local known = spec.Known or {}
+	-- a285 : les objets de la caisse exclusive (Items.Exclusives, hors du catalogue des colis) sont des noms
+	-- reconnus ; leur livraison est suivie par checkIcons (« pas encore livré »).
+	local known: { [string]: boolean } = table.clone(spec.Known or {})
+	for _, item in Items.Exclusives do
+		known[item.Asset] = true
+	end
 	local renamed = spec.Renamed or {}
 	local retired = spec.Retired or {}
 	local idleSpec = Attributes.Idle
@@ -942,6 +947,24 @@ local function checkIcons(scanned: { Instance })
 		if Icons.find(item.Id) == nil then
 			table.insert(missing, name)
 		end
+	end
+	-- a285 (21/11) : objets de la caisse exclusive (Items.Exclusives) : icône ICON_Exclusive_<Nom> et modèle
+	-- ITM_Exclusive_<Nom> ; tant qu'ils manquent, la caisse montre l'image de la maquette et l'objet exposé est un
+	-- bloc à la couleur de sa rareté : une ligne « pas encore livré », jamais un problème.
+	local exclusiveMissing: { string } = {}
+	local assets = ReplicatedStorage:FindFirstChild("Assets")
+	for _, item in Items.Exclusives do
+		local name = Icons.name(item.Id)
+		names[name] = true
+		if Icons.find(item.Id) == nil then
+			table.insert(exclusiveMissing, name)
+		end
+		if assets == nil or assets:FindFirstChild(item.Asset, true) == nil then
+			table.insert(exclusiveMissing, item.Asset)
+		end
+	end
+	if #exclusiveMissing > 0 then
+		pending("Objets", `caisse exclusive (boutique Robux) : pas encore livré : {listNames(exclusiveMissing)}`)
 	end
 	-- Icônes d'outils et de colis : reconnues, mais facultatives (jamais « pas encore livrées »).
 	for _, tool in Tools.List do

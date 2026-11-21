@@ -314,6 +314,10 @@ type Spin = { object: GuiObject, rotation: number, fade: UIGradient?, fadeRotati
 type Sway = { camera: Camera, base: CFrame, focus: Vector3 }
 local spins: { Spin } = {}
 local sway: Sway? = nil
+-- a285 (21/11, L-247 c) : modèle 3D de la caisse (Crate.Icon.Preview), tagué CarryRainbow tant que la caisse se voit
+-- (CarryController colore ses pièces Tint aux RainbowColors du Secret, comme un colis Secret porté).
+local crateModel: Model? = nil
+local CRATE_RAINBOW_TAG = "CarryRainbow"
 local motionLoop: RBXScriptConnection? = nil
 local motionStart = 0
 local reducedAt = -math.huge
@@ -1305,28 +1309,71 @@ end
 
 -- L-247 a : le lien CurrentCamera de chaque ViewportFrame Preview est perdu à la copie dans le PlayerGui ; on le remet
 -- sur sa Camera. Celle de la caisse (Crate.Icon.Preview) se balance autour du pivot de son modèle (L-247 b).
+-- a285 (21/11) : la caisse 3D sans Camera (L-252, L-260 d : pas encore livrée par Clément) : une Camera créée ici dans
+-- la copie du joueur, face avant de la caisse (−Z, L-252), à une distance qui la montre en entier ; une ligne en Studio.
+local function fallbackCamera(viewport: ViewportFrame, model: Model): Camera
+	local center, size = model:GetBoundingBox()
+	local camera = Instance.new("Camera")
+	camera.Name = "PreviewCamera"
+	camera.FieldOfView = 40 -- V0 proposé le 2026-11-21 (a285), absent du doc
+	local radius = size.Magnitude / 2
+	local distance = radius / math.tan(math.rad(camera.FieldOfView / 2)) * 1.1
+	local focus = center.Position
+	-- LookVector = −Z du cadre de la caisse : sa face avant, la caméra se met devant et la regarde.
+	local eye = focus + center.LookVector * distance + Vector3.new(0, size.Y * 0.15, 0)
+	camera.CFrame = CFrame.lookAt(eye, focus)
+	camera.Parent = viewport
+	reportOnce("previewCamera", `[RobuxShop] {viewport:GetFullName()} sans Camera (L-260 d) : caméra de repli face à la caisse`)
+	return camera
+end
+
 local function bindPreviews(current: Shop)
 	sway = nil
+	crateModel = nil
 	for _, found in current.gui:GetDescendants() do
 		if found.Name == PREVIEW_NAME and found:IsA("ViewportFrame") then
 			local viewport = found :: ViewportFrame
 			local camera = viewport:FindFirstChildOfClass("Camera")
+			local crate = current.crate
+			local inCrate = crate ~= nil and viewport:IsDescendantOf(crate)
+			local crateBox = if inCrate then viewport:FindFirstChildWhichIsA("Model", true) else nil
+			if crateBox and crateModel == nil then
+				crateModel = crateBox
+			end
+			if camera == nil and crateBox then
+				camera = fallbackCamera(viewport, crateBox)
+			end
 			if camera then
 				if viewport.CurrentCamera ~= camera then
 					viewport.CurrentCamera = camera
 				end
-				local crate = current.crate
-				local model = viewport:FindFirstChildWhichIsA("Model", true)
-				if sway == nil and crate and viewport:IsDescendantOf(crate) and model then
-					sway = { camera = camera, base = camera.CFrame, focus = model:GetPivot().Position }
+				if sway == nil and crateBox then
+					sway = { camera = camera, base = camera.CFrame, focus = crateBox:GetPivot().Position }
 				end
 			end
 		end
 	end
 end
 
+-- a285 (L-247 c) : arc-en-ciel du Tint de la caisse 3D tant que la boutique est ouverte et la caisse montrée.
+local function setCrateRainbow(on: boolean)
+	local model = crateModel
+	if model == nil or model.Parent == nil then
+		return
+	end
+	pcall(function() -- pcall : faux CollectionService des bancs
+		local tagged = CollectionService:HasTag(model, CRATE_RAINBOW_TAG)
+		if on and not tagged then
+			CollectionService:AddTag(model, CRATE_RAINBOW_TAG)
+		elseif not on and tagged then
+			CollectionService:RemoveTag(model, CRATE_RAINBOW_TAG)
+		end
+	end)
+end
+
 local function closeShop()
 	isOpen = false
+	setCrateRainbow(false)
 	local current = shop
 	if current then
 		-- Vague 65 (a216) : cartes gardées écran fermé (avant : retirées puis toutes reclonées à chaque ouverture) ;
@@ -1551,6 +1598,7 @@ local function openShop()
 	end
 	Motion.Open(current.gui)
 	startMotion(current) -- vague 73 (a253) : rayons qui tournent, caméra de la caisse 3D
+	setCrateRainbow(crateShown()) -- a285 (L-247 c)
 end
 
 local function toggleShop()

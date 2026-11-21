@@ -721,6 +721,71 @@ local UiMotion = {
 		Enabled = true,
 		Inset = 2, -- V0 proposé, absent du doc : px gardés entre le bouton grossi et le bord de la carte
 	},
+	-- a285 (21/11) : effets posés en attribut par Clément sur ses écrans, joués par Controllers/UI/UiAttrFx
+	-- (Features.UiAttrFx). Valeurs des deux fiches de L-272, mesurées image par image (V0 proposés le 2026-11-21, à
+	-- régler en jeu) : docs/claude/notes/ui-reference-tiktok-2026-11-21.md section 8 (« fiche HUD ») et
+	-- ui-reference-shop-tiktok-2026-11-21.md section 5 (« fiche shop »). Une valeur que ni l'une ni l'autre ne donne
+	-- est marquée « V0 a285, absent des fiches ».
+	AttrFx = {
+		-- Gleam = "Loop" | "Hover" (ItemName des cartes, de Crate et de Featured ; fiche shop, effet 3, aspect validé par
+		-- Clément sur frames/apercu_reflet_titre.gif) : une copie blanche du texte par-dessus, à 0,92 sur les lettres et
+		-- 0,35 sur le contour, avec une bande douce (cosinus) penchée qui défile.
+		Gleam = {
+			Name = "GleamFx", -- copie créée sur l'élément, détruite avec lui
+			TextPeak = 0.92, -- opacité au cœur du reflet, sur les lettres
+			StrokePeak = 0.35, -- opacité au cœur du reflet, sur le contour
+			Rotation = 15, -- degrés
+			Loop = { Pass = 3, Pause = 2, Width = 0.22, Style = Enum.EasingStyle.Sine }, -- Width : largeur de la bande
+			Hover = { Pass = 0.8, Width = 0.12, Style = Enum.EasingStyle.Linear }, -- un passage au survol de la carte
+		},
+		-- UIGradient nommé Gleam, enfant d'un UIStroke ou d'un TextLabel (boutons du HUD, posés par Clément ; fiche HUD,
+		-- demande 4) : Offset.X défile de From à To en Sweep s (Linear), puis Pause s, en boucle ; tous ceux d'un écran
+		-- partent ensemble à son ouverture ; écran fermé ou caché : Offset remis à (From ; 0).
+		GleamGradient = {
+			Name = "Gleam",
+			Sweep = 0.8,
+			Pause = 1.9,
+			From = -0.7,
+			To = 0.7,
+		},
+		-- IconHover (fiche HUD, demandes 2 et 3 ; un seul contrat pour les deux fiches, tranché par a285 : valeurs de la
+		-- fiche HUD, où Clément a déjà posé Jump) : au survol de l'élément (bouton ou carte), son enfant Icon…
+		IconHover = {
+			Icon = "Icon",
+			-- … "Jump" : monte de Height × sa hauteur en Up s, redescend en Down s (Sine InOut), retrouve sa Position ;
+			-- un saut par entrée, pas interrompu si la souris part, pas de nouveau saut avant la fin du précédent.
+			Jump = { Height = 0.13, Up = 0.18, Down = 0.2 },
+			-- … "Lean" : Rotation de la sienne à Tilt degrés en Time s (Quad Out), tenue au survol, retour en BackTime s.
+			Lean = { Tilt = -3.5, Time = 0.07, BackTime = 0.07 },
+			-- "Spring" (sur Crate, fiche shop effet 4 : la caméra de Icon.Preview suit le pointeur) : pas encore codé,
+			-- rien ne bouge (une ligne en Studio).
+		},
+		-- Idle = "Wiggle" (Featured.Icon.Hammer, Decor.Hang1 à Hang4 ; fiche shop, effet 5) : toutes les Every s, un
+		-- balancement de ± Angle degrés autour de sa Rotation en Time s ; les éléments d'un même écran décalés de
+		-- Stagger s ; le premier Every s après l'affichage (après le DropIn d'Appear).
+		Wiggle = {
+			Angle = 12,
+			Time = 0.8,
+			Every = 4,
+			Stagger = 0.7,
+		},
+		-- Idle = "Fall" (FallLayer des cartes d'argent ; fiche shop, effet 6) : des copies de son FallItem tombent du
+		-- haut au bas du calque, avec un fondu ; le FallItem posé est caché le temps de l'effet et revient ensuite.
+		Fall = {
+			Layer = "FallLayer",
+			Item = "FallItem",
+			CopyName = "FallItemFx",
+			Count = 12, -- copies en l'air au plus, par calque
+			Time = 6, -- s de chute
+			Transparency = 0.75, -- des copies
+			MinScale = 0.7, -- taille des copies, en part du FallItem
+			MaxScale = 1.1,
+			SpeedSpread = 0.15, -- ± part de la vitesse de chute
+			Spin = 40, -- V0 a285, absent des fiches : degrés de rotation au plus pendant la chute
+			FadeIn = 0.15, -- V0 a285, absent des fiches : part de la chute
+			FadeOut = 0.3, -- V0 a285, absent des fiches
+		},
+	},
 }
 
 export type UiMotion = typeof(UiMotion)

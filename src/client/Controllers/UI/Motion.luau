@@ -943,6 +943,11 @@ function Motion.KeepScale(object: GuiObject)
 	apart[object] = true
 end
 
+-- a285 (21/11) : réglage « animations réduites » (Appear.Reduced), pour les effets d'UiAttrFx.
+function Motion.IsReduced(): boolean
+	return appear.Reduced()
+end
+
 function Motion.SetCloser(gui: ScreenGui, close: (() -> ())?)
 	if close then
 		closers[gui] = close
@@ -1468,6 +1473,18 @@ local CARD_POP_INFO = TweenInfo.new(UiMotion.HoverPop.Time, UiMotion.HoverPop.St
 local CARD_INFO = TweenInfo.new(UiMotion.HoverCard.Time, UiMotion.HoverCard.Style, UiMotion.HoverCard.Direction)
 local CARD_BACK_INFO = TweenInfo.new(UiMotion.HoverCard.BackTime, UiMotion.HoverCard.BackStyle, Enum.EasingDirection.Out)
 local cards: { [GuiObject]: CardState } = setmetatable({}, { __mode = "k" }) :: any
+-- a285 (21/11) : Position et Rotation de repos d'un Icon qu'un autre effet fait bouger (UiAttrFx : IconHover, Idle) ;
+-- la carte s'y fie plutôt qu'à la valeur du moment, pour ne jamais garder un état en plein mouvement.
+type Rest = { position: UDim2, rotation: number }
+local rests: { [GuiObject]: Rest } = setmetatable({}, { __mode = "k" }) :: any
+
+function Motion.SetRest(object: GuiObject, position: UDim2, rotation: number)
+	rests[object] = { position = position, rotation = rotation }
+end
+
+function Motion.IsHoverCard(object: GuiObject): boolean
+	return cards[object] ~= nil
+end
 
 local function cardTweens(state: CardState, list: { Tween }, finish: (() -> ())?)
 	for _, tween in state.tweens do
@@ -1536,9 +1553,10 @@ function Motion.HoverCard(card: GuiObject)
 		local list: { Tween } = {}
 		if icon then
 			if state.basePosition == nil or state.icon ~= icon then
+				local rest = rests[icon]
 				state.icon = icon
-				state.basePosition = icon.Position
-				state.baseRotation = icon.Rotation
+				state.basePosition = if rest then rest.position else icon.Position
+				state.baseRotation = if rest then rest.rotation else icon.Rotation
 			end
 			local basePosition = state.basePosition :: UDim2
 			local scale = state.scale
@@ -1559,6 +1577,8 @@ function Motion.HoverCard(card: GuiObject)
 				-- Vague 59 : l'Icon reste à sa place (sa rotation et sa position de Clément).
 				icon.Rotation = state.baseRotation
 				icon.Position = basePosition
+			elseif card:GetAttribute("IconHover") ~= nil then
+				-- a285 : l'Icon saute (IconHover, UiAttrFx) : ni penché ni décalé ici.
 			else
 				table.insert(list, TweenService:Create(icon, CARD_INFO, {
 					Rotation = state.baseRotation + spec.Tilt,

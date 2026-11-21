@@ -111,16 +111,27 @@
 -- nom ou UserId). Une clé de gamepass le donne pour la session, comme un achat ; une clé de produit
 -- (OpenNow1 à OpenNow4 pour un palier d'Ouvrir maintenant) passe par le même don qu'un reçu, avec un
 -- faux PurchaseId « STUDIO-n ». Hors de Studio, l'attribut n'est pas écouté.
+-- a285 (21/11) : Crate1, Crate3 et Crate10 pour un lot de la caisse exclusive, avec Features.RobuxCrate, même
+-- quand la boutique est coupée (seules ces clés sont alors acceptées).
+--
+-- Caisse exclusive (a285, L-247, L-252) : un produit par lot (Monetization.Crate.Packs, x1, x3, x10), vendu avec
+-- Crate.Ready et Features.RobuxCrate. Le reçu fait Count tirages selon Crate.Odds parmi Crate.Items (objets
+-- Exclusive_* de Config/Items, hors colis et hors index) ; chaque objet entre dans l'inventaire (Items du profil,
+-- même au-delà de sa place : Crate.IgnoreInventoryMax) et un message le nomme. Même chemin idempotent que les
+-- autres produits (PurchaseId noté avec le don, sauvegarde attendue). Pas de scène d'ouverture : pas encore décidée.
 
 local MarketplaceService = game:GetService("MarketplaceService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
+local HttpService = game:GetService("HttpService")
 
 local Shared = ReplicatedStorage.Shared
 local Features = require(Shared.Config.Features)
+local Items = require(Shared.Config.Items)
 local Monetization = require(Shared.Config.Monetization)
+local Rarities = require(Shared.Config.Rarities)
 local Tools = require(Shared.Config.Tools)
 local Format = require(Shared.Format)
 local Net = require(Shared.Net.Net)
@@ -140,9 +151,11 @@ type MonetizationData = ProfileTypes.Monetization
 type Pass = Monetization.Pass
 type Product = Monetization.Product
 type Tier = Monetization.OpenNowTier
+type CratePack = Monetization.CratePack
 
--- Un produit développeur en vente : le produit, et son palier pour Ouvrir maintenant.
-type Sale = { product: Product, tier: Tier? }
+-- Un produit développeur en vente : le produit, et son palier pour Ouvrir maintenant ; a285 : le lot de la
+-- caisse exclusive (product = CRATE_PRODUCT).
+type Sale = { product: Product, tier: Tier?, pack: CratePack? }
 
 -- Ce que ce service sait d'un joueur présent.
 type State = {
@@ -182,6 +195,8 @@ local MESSAGES = {
 	OpenNowShorterItem = "Your item's anti-theft is %s shorter!",
 	OpenNowCreditUsedItem = "Open Now: your new item's anti-theft is %s shorter!",
 	StarterPack = "Starter Pack: +%s, a Hammer and ×2 Cash for 1 hour!",
+	-- a285 (21/11) : un message par objet sorti de la caisse exclusive (rareté, nom). V0 proposé, absent du doc.
+	CrateItem = "Exclusive Crate: you got a %s %s!",
 }
 
 local MonetizationService = {}
@@ -194,6 +209,22 @@ local states: { [Player]: State } = {}
 local passesById: { [number]: Pass } = {}
 local salesById: { [number]: Sale } = {}
 local testCount = 0
+
+-- a285 (21/11) : la caisse exclusive, vendue comme un produit (un Id par lot, Monetization.Crate.Packs). En vente
+-- seulement si son don est codé (Crate.Ready) et Features.RobuxCrate.
+local CRATE = Monetization.Crate
+local CRATE_PRODUCT: Product = {
+	Key = "Crate",
+	Tab = "Offers",
+	Order = 0,
+	DisplayName = "Exclusive Crate",
+	Effect = "",
+	Icon = "",
+	Price = CRATE.UnitPrice,
+	Id = 0, -- inutilisé : un Id par lot
+	Ready = CRATE.Ready and Features.RobuxCrate == true,
+}
+local crateRandom = Random.new()
 -- Vague 72 (a247) : file des tranches de chance du serveur (voir Monetization.ServerLuck).
 type LuckSlice = { multiplier: number, remaining: number, by: string }
 local luckQueue: { LuckSlice } = {}
@@ -466,9 +497,104 @@ end
 -- Dons des produits (reçus)
 ------------------------------------------------------------------------------
 
+-- a285 (21/11) : caisse exclusive --------------------------------------------------------------------
+
+-- Ce qui empêche de tirer la caisse (Config mal réglée), ou nil.
+local function crateProblem(): string?
+	if #CRATE.Items == 0 or #CRATE.Items ~= #CRATE.Odds then
+		return `caisse exclusive mal réglée ({#CRATE.Items} objet(s) pour {#CRATE.Odds} chance(s))`
+	end
+	local total = 0
+	for index, id in CRATE.Items do
+		if Items.ById[id] == nil then
+			return `objet {id} de la caisse exclusive inconnu de Config/Items`
+		end
+		local odds = finite(CRATE.Odds[index])
+		if odds < 0 then
+			return `chance négative pour {id}`
+		end
+		total += odds
+	end
+	if total <= 0 then
+		return "caisse exclusive sans chance"
+	end
+	return nil
+end
+
+-- Un tirage de la caisse : un ItemId, chacun avec sa chance (Odds, en %, total quelconque).
+local function drawCrate(): string
+	local total = 0
+	for index in CRATE.Items do
+		total += math.max(finite(CRATE.Odds[index]), 0)
+	end
+	local roll = crateRandom:NextNumber() * total
+	for index, id in CRATE.Items do
+		local odds = math.max(finite(CRATE.Odds[index]), 0)
+		if roll < odds then
+			return id
+		end
+		roll -= odds
+	end
+	return CRATE.Items[#CRATE.Items] -- arrondi des nombres à virgule
+end
+
+-- a285 : barre d'inventaire remise à jour tout de suite après la caisse, si InventoryService est là (chargé au
+-- premier don, comme DisplayService le fait : pas de require croisé au chargement ; sans lui, sa boucle suit).
+type InventoryApi = { Refresh: (player: Player) -> () }
+local inventoryApi: InventoryApi? = nil
+local inventoryTried = false
+local function refreshInventory(player: Player)
+	if not inventoryTried then
+		inventoryTried = true
+		local inventoryModule = script.Parent:FindFirstChild("InventoryService")
+		if inventoryModule and inventoryModule:IsA("ModuleScript") then
+			local ok, result = pcall(require, inventoryModule)
+			if ok and type(result) == "table" then
+				inventoryApi = result :: any
+			end
+		end
+	end
+	local api = inventoryApi
+	if api then
+		local ok, err = pcall(api.Refresh :: any, player) -- :: any : comme DisplayService (ancien solveur et pcall)
+		if not ok then
+			warn(`[MonetizationService] {player.Name} : inventaire pas rafraîchi après la caisse ({err})`)
+		end
+	end
+end
+
+local function newItemUid(list: { [string]: any }): string
+	local uid = HttpService:GenerateGUID(false)
+	while list[uid] ~= nil do
+		uid = HttpService:GenerateGUID(false)
+	end
+	return uid
+end
+
+-- Count tirages, un objet par tirage dans l'inventaire (sans mutation ni zone ; poids rempli au chargement par
+-- DataService, comme un objet ancien). Sans yield. Au-delà de la place de l'inventaire : donnés quand même (le
+-- joueur a payé, Crate.IgnoreInventoryMax ; la ligne « donné » de processSale liste les objets).
+local function grantCrate(player: Player, data: Data, pack: CratePack): string
+	local items = (data :: any).Items :: { [string]: any }
+	local now = os.time()
+	local got: { string } = {}
+	for _ = 1, pack.Count do
+		local id = drawCrate()
+		items[newItemUid(items)] = { Id = id, Source = "NPC", At = now }
+		table.insert(got, id)
+	end
+	refreshInventory(player)
+	for _, id in got do
+		local def = Items.ById[id]
+		local rarity = if def then Rarities.ById[def.Rarity] else nil
+		notify(player, string.format(MESSAGES.CrateItem, if rarity then rarity.DisplayNameUpper else "?", if def then def.DisplayName else id))
+	end
+	return `caisse ×{pack.Count} : {table.concat(got, ", ")}`
+end
+
 -- Raison pour laquelle le profil ne peut pas recevoir ce produit maintenant (rien n'est alors noté),
 -- ou nil.
-local function cannotGrant(data: Data, sale: Sale): string?
+local function cannotGrant(player: Player, data: Data, sale: Sale): string?
 	local key = sale.product.Key
 	if key == "StarterPack" then
 		if monetizationOf(data) == nil or boostsOf(data) == nil then
@@ -483,6 +609,21 @@ local function cannotGrant(data: Data, sale: Sale): string?
 		end
 		if monetizationOf(data) == nil then
 			return "profil sans Monetization"
+		end
+	elseif key == "Crate" then
+		local pack = sale.pack
+		if pack == nil or type(pack.Count) ~= "number" or pack.Count < 1 or pack.Count ~= math.floor(pack.Count) then
+			return "lot de la caisse exclusive inconnu"
+		end
+		if type((data :: any).Items) ~= "table" then
+			return "profil sans Items"
+		end
+		local problem = crateProblem()
+		if problem then
+			return problem
+		end
+		if not CRATE.IgnoreInventoryMax and not DisplayService.HasInventoryRoom(player) then
+			return "inventaire plein"
 		end
 	elseif sale.product.Luck ~= nil then
 		local minutes = finite(sale.product.LuckMinutes)
@@ -662,6 +803,8 @@ local function grant(player: Player, data: Data, sale: Sale): string
 		return grantStarterPack(player, data)
 	elseif key == "OpenNow" then
 		return grantOpenNow(player, data, sale.tier :: Tier)
+	elseif key == "Crate" then
+		return grantCrate(player, data, sale.pack :: CratePack)
 	elseif sale.product.Luck ~= nil then
 		return grantServerLuck(player, sale.product)
 	end
@@ -702,7 +845,7 @@ local function processSale(player: Player, data: Data, sale: Sale, purchaseId: s
 	end
 	local key = sale.product.Key
 	if purchases[purchaseId] == nil then
-		local problem = cannotGrant(data, sale)
+		local problem = cannotGrant(player, data, sale)
 		if problem then
 			warn(`[MonetizationService] {player.Name} : {key} pas donné ({problem}), reçu {purchaseId} laissé pour plus tard`)
 			return Enum.ProductPurchaseDecision.NotProcessedYet
@@ -910,6 +1053,12 @@ local function onTestAttribute()
 		warn(`[MonetizationService] test : « {tostring(value)} » : attendu « <joueur> <Clé> » avec un joueur présent`)
 		return
 	end
+	local crateDigits: string? = string.match(key, `^{CRATE.KeyPrefix}(%d+)$`)
+	local crateCount = if crateDigits then tonumber(crateDigits) else nil
+	if not enabled and crateCount == nil then
+		warn(`[MonetizationService] test : boutique coupée (Features.RobuxShop = false) : seule la caisse exclusive se teste (Crate1, Crate3, Crate10)`)
+		return
+	end
 	local pass = Monetization.PassByKey[key]
 	if pass then
 		acquirePass(player, pass, "test Studio")
@@ -918,7 +1067,14 @@ local function onTestAttribute()
 	end
 	local sale: Sale? = nil
 	local tierIndex = tonumber(string.match(key, "^OpenNow(%d)$"))
-	if tierIndex then
+	if crateCount then
+		-- a285 : un lot de la caisse exclusive (Crate1, Crate3, Crate10), même don qu'un reçu.
+		for _, pack in CRATE.Packs do
+			if pack.Count == crateCount then
+				sale = { product = CRATE_PRODUCT, tier = nil, pack = pack }
+			end
+		end
+	elseif tierIndex then
 		local openNow = Monetization.ProductByKey.OpenNow
 		local tier = if openNow.Tiers then openNow.Tiers[tierIndex] else nil
 		if tier then
@@ -931,7 +1087,7 @@ local function onTestAttribute()
 		end
 	end
 	if sale == nil or not sale.product.Ready then
-		warn(`[MonetizationService] test : « {key} » n'est ni un gamepass ni un produit codé (OpenNow1 à OpenNow4 pour Ouvrir maintenant)`)
+		warn(`[MonetizationService] test : « {key} » n'est ni un gamepass ni un produit codé (OpenNow1 à OpenNow4 pour Ouvrir maintenant ; Crate1, Crate3, Crate10 avec Features.RobuxCrate)`)
 		return
 	end
 	local data = DataService.Get(player)
@@ -1012,6 +1168,10 @@ local function buildSales(): (number, number)
 		else
 			add(product.Id, { product = product, tier = nil })
 		end
+	end
+	-- a285 : un produit par lot de la caisse exclusive (vendu seulement avec CRATE_PRODUCT.Ready).
+	for _, pack in CRATE.Packs do
+		add(pack.Id, { product = CRATE_PRODUCT, tier = nil, pack = pack })
 	end
 	return passes, products
 end
@@ -1109,6 +1269,11 @@ function MonetizationService.Init()
 
 	if not enabled then
 		print("[MonetizationService] Features.RobuxShop = false : boutique Robux coupée (ni reçu, ni gamepass, ni bonus de revenus) ; seul le boost ×2 argent des récompenses reste")
+		if IS_STUDIO and CRATE_PRODUCT.Ready then
+			-- a285 : la caisse exclusive se teste en Studio sans la boutique (aucun achat réel, aucun reçu).
+			Workspace:GetAttributeChangedSignal(TEST_ATTRIBUTE):Connect(onTestAttribute)
+			print("[MonetizationService] Studio : caisse exclusive testable (MonetizationTest « <joueur> Crate1|Crate3|Crate10 »)")
+		end
 		return
 	end
 	local passes, products = buildSales()

@@ -26,9 +26,28 @@
 -- Vague 72 (a247 ; L-216 point 8, décision de Clément) : chance du serveur en Robux, 3 produits (×2, ×4, ×8)
 -- dans l'onglet Boosts, derrière ServerLuck.Enabled (réglages et règle du cumul : ServerLuck plus bas). Prix,
 -- durées, couleurs, icônes et textes : V0 proposés, absents du doc, à valider par Clément.
+-- a285 (21/11, L-067) : les Id écrits ici sont ceux de PROD ; dans le jeu DEV, Config/ProductIds les remplace par
+-- ceux de DEV (tous à 0 tant que les offres n'y sont pas créées) avant le gel du module. Caisse exclusive : contenu
+-- (Crate.Items, objets Exclusive_* de Config/Items) et don codés (MonetizationService), toujours derrière
+-- Features.RobuxCrate.
 
 local DeepFreeze = require(script.Parent.DeepFreeze)
 local Boosts = require(script.Parent.Boosts)
+-- a285 : Config/ProductIds chargé s'il est là (bancs d'essai à liste de modules fixe) ; sans lui, les Ids de PROD.
+local ProductIds: { Pick: (key: string, prodId: number) -> number } = (function(): any
+	local module = script.Parent:FindFirstChild("ProductIds")
+	if module ~= nil then
+		local ok, result = pcall(require, module :: any)
+		if ok and type(result) == "table" then
+			return result
+		end
+	end
+	return {
+		Pick = function(_: string, prodId: number): number
+			return prodId
+		end,
+	}
+end)()
 
 -- Vague 72 (a247) : interrupteur de la chance du serveur (Ready des 3 produits ServerLuck*). false = cartes
 -- cachées et reçus refusés (NotProcessedYet), comme toute offre pas codée. Éteint en V0 tant que Clément n'a pas
@@ -55,6 +74,7 @@ export type ProductKey =
 	| "ServerLuck2"
 	| "ServerLuck4"
 	| "ServerLuck8"
+	| "Crate" -- a285 : la caisse exclusive (Crate plus bas, pas dans Products : un produit par lot, Crate.Packs)
 
 -- Un gamepass (achat unique, 4.1).
 export type Pass = {
@@ -224,8 +244,10 @@ local Monetization = {
 	-- hasard (PolicyService : ArePaidRandomItemsRestricted faux) ; sinon la section est cachée. Sans Ready, ses
 	-- boutons montrent « Soon » (rien n'est vendu).
 	-- Prix : décision de Clément du 2026-11-16 (repris de Steal an Egg). Contenu et chances : pas décidés.
+	-- a285 (21/11) : contenu (Items) et don codés (MonetizationService : Count tirages selon Odds, un objet par
+	-- tirage dans l'inventaire, achat idempotent). Reste caché et invendu tant que Features.RobuxCrate est false.
 	Crate = {
-		Ready = false, -- contenu et don pas codés : rien n'est vendu (un reçu serait refusé, NotProcessedYet)
+		Ready = true, -- a285 : contenu et don codés ; Features.RobuxCrate décide seul de l'afficher et de le vendre
 		UnitPrice = 99, -- prix d'une caisse seule : OldPrice d'un lot = UnitPrice × Count (caché sans remise)
 		Packs = {
 			{ Count = 1, Price = 99, Id = 0 },
@@ -239,6 +261,21 @@ local Monetization = {
 		-- Cases de UI_RobuxShop_v2 : Boule disco (Rare) 45, Gramophone doré (Épique) 28, Fusée en or (Légendaire) 15,
 		-- Crâne de cristal (Mythique) 7, Jukebox néon (Secret) 4, Planète dorée (Divine) 1.
 		Odds = { 45, 28, 15, 7, 4, 1 } :: { number },
+		-- a285 (21/11) : ItemId de chaque case, dans l'ordre d'Odds (Odd_1 à Odd_6 ; noms des icônes ICON_Exclusive_*
+		-- de Clément, L-247 et L-252). Objets de Config/Items.Exclusives, jamais tirés d'un colis.
+		Items = {
+			"Exclusive_DiscoBall",
+			"Exclusive_GoldenGramophone",
+			"Exclusive_GoldenRocket",
+			"Exclusive_CrystalSkull",
+			"Exclusive_NeonJukebox",
+			"Exclusive_GoldenPlanet",
+		} :: { string },
+		-- a285 : objets reçus même au-delà de la place de l'inventaire (Balance.Display.InventoryMax) : le joueur a
+		-- payé. V0 proposé le 2026-11-21, absent du doc.
+		IgnoreInventoryMax = true,
+		-- a285 : clé du crochet de Studio et préfixe des clés de Config/ProductIds (Crate1, Crate3, Crate10).
+		KeyPrefix = "Crate",
 	},
 
 	-- Vague 63 (L-200) : UI_RobuxShop_v2. V0 proposé, absent du doc : durée (s) du défilement de List jusqu'à la
@@ -332,8 +369,31 @@ local Monetization = {
 			Started = "%s gave the whole server %s LUCK for %s!",
 			Queued = "%s gave the whole server %s LUCK for %s! It starts after the current %s.",
 		},
+		-- a285 (21/11, L-240 point 3) : la chance en cours dans UI_EventBanner (Banner.Card.Title, Effect, Timer),
+		-- quand aucun événement live n'y est déjà (EventBannerController). Textes de L-240 (« SERVER LUCK ×2 »,
+		-- « Rarer boxes for everyone », « 14:59 ») ; %s = le facteur (« ×2 »).
+		Banner = {
+			Title = "SERVER LUCK %s",
+			Effect = "Rarer boxes for everyone",
+		},
 	},
 }
+
+-- a285 (21/11, L-067) : Ids du jeu en cours (DEV ou PROD, Config/ProductIds), posés avant le gel.
+for _, pass in Passes do
+	pass.Id = ProductIds.Pick(pass.Key, pass.Id)
+end
+for _, product in Products do
+	product.Id = ProductIds.Pick(product.Key, product.Id)
+	if product.Tiers then
+		for index, tier in product.Tiers do
+			tier.Id = ProductIds.Pick(`{product.Key}{index}`, tier.Id)
+		end
+	end
+end
+for _, pack in Monetization.Crate.Packs do
+	pack.Id = ProductIds.Pick(`{Monetization.Crate.KeyPrefix}{pack.Count}`, pack.Id)
+end
 
 -- Palier d'« Ouvrir maintenant » pour un colis qui attend encore `remaining` secondes : le plus petit
 -- palier dont Skip couvre l'attente (le dernier au-delà) ; nil sous OpenNow.MinRemaining (pas proposé).

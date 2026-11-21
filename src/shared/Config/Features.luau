@@ -66,6 +66,10 @@ local Features = {
 	-- encore validée par Clément) : prime au complice d'un braquage à deux (Config/Balance.Heist.PartnerBonusSeconds,
 	-- StoreHeistService) ; false = rien ne change.
 	HeistPartnerBonus = false,
+	-- a285 (21/11, retour de Cantin en jeu : « les glims, les effets de texte, les effets des over ») : les effets d'UI que
+	-- Clément pose en attribut et qu'aucun code ne jouait (Gleam, IconHover, Idle = Wiggle ou Fall ; Controllers/UI/
+	-- UiAttrFx, valeurs V0 dans Config/UiMotion.AttrFx) ; false = rien ne change en jeu.
+	UiAttrFx = true,
 }
 
 export type Features = typeof(Features)

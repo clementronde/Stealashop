@@ -35,6 +35,8 @@
 --       Tirés quand la rareté est Secret, quelle que soit la zone.
 --   Items.Divines: { Item }
 --       Tirés quand la rareté est Divine, quelle que soit la zone (L-106 ; aucun objet encore).
+--   Items.Exclusives: { Item }
+--       a285 : objets de la caisse exclusive de la boutique Robux (dans ById, jamais dans List ni tirés).
 --   Items.AllZones[rarity]: { Item }?
 --       Secrets ou Divines pour ces deux raretés, nil pour une rareté rangée par zone.
 --   Items.Pick(zone, rarity, rng?) -> Item?
@@ -373,6 +375,22 @@ local DIVINES: { Entry } = {}
 local DIVINE_CATEGORY = "???" -- V0 proposé, absent du doc : comme le Secret
 local DIVINE_CATEGORY_ID = "Divine" -- V0 proposé, absent du doc
 
+-- a285 (21/11) : objets de la caisse exclusive de la boutique Robux (Monetization.Crate.Items), un par case de
+-- `UI_RobuxShop_v2.Crate.Odds`, de Odd_1 à Odd_6 (L-247, L-216 point 9, L-252 ; icônes ICON_Exclusive_* de
+-- tools/clement/ui_v5_robuxshop_v3_build.luau, EXCLUSIVE_IDS ; raretés des cases ICON_BOX_*). Jamais tirés
+-- d'un colis, absents de l'index et d'Items.List : on ne les a qu'en achetant la caisse (MonetizationService).
+-- Modèle ITM_Exclusive_<Nom> (repli : bloc à la couleur de la rareté, DisplayService), icône ICON_Exclusive_<Nom>.
+local EXCLUSIVES: { Entry } = {
+	{ Id = "Exclusive_DiscoBall", Name = "Disco Ball", Rarity = "Rare" },
+	{ Id = "Exclusive_GoldenGramophone", Name = "Golden Gramophone", Rarity = "Epic" },
+	{ Id = "Exclusive_GoldenRocket", Name = "Golden Rocket", Rarity = "Legendary" },
+	{ Id = "Exclusive_CrystalSkull", Name = "Crystal Skull", Rarity = "Mythic" },
+	{ Id = "Exclusive_NeonJukebox", Name = "Neon Jukebox", Rarity = "Secret" },
+	{ Id = "Exclusive_GoldenPlanet", Name = "Golden Planet", Rarity = "Divine" },
+}
+local EXCLUSIVE_CATEGORY = "Exclusive" -- V0 proposé le 2026-11-21 (a285), absent du doc
+local EXCLUSIVE_CATEGORY_ID = "Exclusive" -- V0 proposé le 2026-11-21 (a285), absent du doc
+
 -- Anciens ItemId du catalogue v1 (doc 10.5), absents de la v2. Lus par la migration v1 → v2 des
 -- profils (DataService, MIGRATIONS[2]) et par le ContractChecker (Contract/Models : un modèle
 -- ITM_ qui porte encore un de ces noms est signalé).
@@ -400,11 +418,14 @@ local ById: { [string]: Item } = {}
 local ByZone: { [number]: { [string]: { Item } } } = {} -- [zone][RarityId] = objets tirables
 local Secrets: { Item } = {}
 local Divines: { Item } = {}
+local Exclusives: { Item } = {}
 
-local function add(item: Item)
+local function add(item: Item, listed: boolean?)
 	assert(ById[item.Id] == nil, `Config.Items : ItemId en double {item.Id}`)
 	assert(Rarities.ById[item.Rarity] ~= nil, `Config.Items : {item.Id} a une rareté inconnue ({item.Rarity})`)
-	table.insert(List, item)
+	if listed ~= false then
+		table.insert(List, item)
+	end
 	ById[item.Id] = item
 end
 
@@ -486,6 +507,24 @@ end
 addAllZones(SECRETS, Secrets, "Secret", SECRET_CATEGORY, SECRET_CATEGORY_ID)
 addAllZones(DIVINES, Divines, "Divine", DIVINE_CATEGORY, DIVINE_CATEGORY_ID)
 
+-- a285 : objets exclusifs, dans Items.ById et Items.Exclusives seulement (ni List, ni ByZone, ni AllZones).
+for _, entry in EXCLUSIVES do
+	local item: Item = {
+		Id = entry.Id,
+		DisplayName = entry.Name,
+		Zone = nil,
+		Rarity = entry.Rarity,
+		Asset = `ITM_{entry.Id}`,
+		Category = EXCLUSIVE_CATEGORY,
+		CategoryId = EXCLUSIVE_CATEGORY_ID,
+		TutorialOnly = false,
+		Rank = 1, -- seul de sa rareté dans la caisse : revenu de base de la rareté (Formulas.ItemIncome)
+		DrawWeight = 0, -- jamais tiré par Items.Pick ; la caisse tire par Monetization.Crate.Odds
+	}
+	add(item, false)
+	table.insert(Exclusives, item)
+end
+
 -- [RarityId] = objets tirés quelle que soit la zone (Secret, Divine) ; les autres raretés : ByZone.
 local AllZones: { [string]: { Item } } = {
 	Secret = Secrets,
@@ -544,6 +583,7 @@ local Items = {
 	Secrets = Secrets, -- tirés quand la rareté est Secret, quelle que soit la zone
 	Divines = Divines, -- tirés quand la rareté est Divine, quelle que soit la zone (vide pour l'instant)
 	AllZones = AllZones, -- [RarityId] = Secrets ou Divines ; nil pour une rareté rangée par zone
+	Exclusives = Exclusives, -- a285 : objets de la caisse exclusive (boutique Robux), hors List et hors tirage
 	Pick = pick,
 	RenamedV1 = RENAMED_V1,
 	RetiredV1 = RETIRED_V1,
