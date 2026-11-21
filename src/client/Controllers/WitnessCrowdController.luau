@@ -10,6 +10,16 @@
 --      en sort en portant toujours, la foule de ce magasin se forme (au plus une par magasin toutes les Crowd.Cooldown s,
 --      au plus Crowd.MaxCrowds à la fois, seulement si le voleur est à moins de Crowd.ViewDistance studs de la caméra,
 --      et pas la nuit sauf Crowd.AtNight).
+--      a288 (Cantin, 21/11 : « elle va apparaître dès qu'on rentre dans le magasin ») : avec Crowd.Trigger = "Enter"
+--      (V0), le point 1 devient : pour chaque joueur, avec ou sans objet, dès qu'il est dans le volume Bounds d'un
+--      magasin ouvert (attribut HeistOpen du magasin pas à false : vitrine cassée), la foule de ce magasin se forme
+--      (mêmes refus qu'au point 1, et une seule foule par magasin). Elle est rangée du côté de la rue (opposé au centre
+--      de Bounds) et regarde le dernier joueur entré dans ce magasin ou sorti de lui. Elle reste tant qu'un joueur est
+--      dans Bounds (au plus Crowd.MaxStay s), puis Crowd.Duration s après la sortie du dernier (le voleur qui sort avec
+--      l'objet passe entre les deux rangs, suivi des regards), et s'efface ; la nuit (sans Crowd.AtNight), elle
+--      s'efface tout de suite. Crowd.Cooldown compte depuis sa fin. Si elle n'a pas pu se former à l'entrée (caméra
+--      trop loin, Crowd.MaxCrowds atteint), elle se forme à la sortie avec l'objet, comme avant. Crowd.Trigger =
+--      "Exit" : l'ancien moment, inchangé.
 --   2. Les personnes : des copies des modèles ReplicatedStorage/Assets/Crowd/Models/NPC_Crowd_* de Clément (L-223),
 --      mélangées ; sans eux, des copies des témoins NPC_Witness_* présents chez ce joueur (tag WitnessGauge.Tag ; d'abord
 --      ceux qui regardent ce magasin, attribut WatchedStore), comme avant. Rangées dans Workspace/Crowd.Folder.
@@ -112,6 +122,7 @@ type Crowd = {
 	nextTurnAt: number,
 	turnInterval: number,
 	opaque: boolean, -- fondu d'entrée fini et appliqué : plus rien à écrire jusqu'à la sortie
+	holdUntil: number?, -- a288 ("Enter") : formée à l'entrée, elle reste tant qu'un joueur est dans Bounds, au plus jusque-là
 }
 
 local CROWD = Witness.Crowd
@@ -128,6 +139,7 @@ local WATCHED = "WatchedStore"
 local FLASH_MARKER = "Flash"
 local ANIMATIONS = "Animations"
 local NIGHT_PHASE = "NightPhase" -- attribut du Workspace (NightCycleService)
+local HEIST_OPEN = "HeistOpen" -- a288 : attribut du magasin (StoreHeistService), true de la casse à la fermeture
 local PATHS_NAME = "WitnessPaths" -- a269 : les circuits des témoins (Clément), comme WitnessService
 local PATH_POINT_PATTERN = "^WitnessPath_(%d+)$"
 local GAUGE_ATTRIBUTES = {
@@ -144,6 +156,7 @@ local localPlayer = Players.LocalPlayer
 local crowds: { Crowd } = {}
 local lastAt: { [Model]: number } = {} -- dernière foule de chaque magasin (os.clock)
 local insideOf: { [Player]: Model } = {} -- le magasin où le porteur se trouvait au dernier contrôle
+local enteredOf: { [Player]: Model } = {} -- a288 ("Enter") : le magasin dont l'entrée de ce joueur est déjà traitée
 local boundsCache: { [Model]: BasePart } = {}
 local shoutListeners: { (Model, string) -> () } = {}
 local nextCheckAt = 0
@@ -862,10 +875,24 @@ local function spots(center: Vector3, out: Vector3, width: number, perSide: numb
 	return list
 end
 
--- La foule de `store`, pour `thief` qui vient d'en sortir avec l'objet.
-local function form(store: Model, thief: Player, now: number)
+-- a288 : la foule en cours devant `store`, s'il y en a une.
+local function crowdOf(store: Model): Crowd?
+	for _, crowd in crowds do
+		if crowd.store == store then
+			return crowd
+		end
+	end
+	return nil
+end
+
+-- La foule de `store`, pour `thief` qui vient d'en sortir avec l'objet. a288 : `hold` = formée à l'entrée de `thief`
+-- (Crowd.Trigger "Enter") : rangée du côté opposé au centre de Bounds, elle reste tant qu'un joueur est dans Bounds.
+local function form(store: Model, thief: Player, now: number, hold: boolean)
 	local last = lastAt[store]
 	if last and now - last < CROWD.Cooldown then
+		return
+	end
+	if crowdOf(store) then
 		return
 	end
 	local low = lowEnd()
@@ -890,7 +917,16 @@ local function form(store: Model, thief: Player, now: number)
 		sayOnce("templates", "aucun témoin NPC_Witness_* chez ce joueur (nuit ou streaming) : pas de foule")
 		return
 	end
-	local center, out, width = windowFrame(store, thiefRoot.Position)
+	local center: Vector3, out: Vector3?, width: number = Vector3.zero, nil, 0
+	local bounds = if hold then boundsOf(store) else nil
+	if bounds then
+		-- a288 : le voleur est encore dedans ; la rue est du côté de la vitrine opposé au centre de Bounds.
+		center, out, width = windowFrame(store, bounds.Position)
+		out = if out then -out else nil
+	end
+	if out == nil then
+		center, out, width = windowFrame(store, thiefRoot.Position)
+	end
 	if out == nil then
 		return
 	end
@@ -904,10 +940,11 @@ local function form(store: Model, thief: Player, now: number)
 		nextPending = 1,
 		ignore = {},
 		startedAt = now,
-		endsAt = now + CROWD.Duration,
+		endsAt = if hold then now + CROWD.MaxStay else now + CROWD.Duration,
 		nextTurnAt = now,
 		turnInterval = if low then CROWD.TurnIntervalLow else CROWD.TurnInterval,
 		opaque = false,
+		holdUntil = if hold then now + CROWD.MaxStay else nil,
 	}
 	table.insert(crowds, crowd)
 	-- Tenues mélangées : chaque modèle une fois avant d'en revoir un.
@@ -965,7 +1002,61 @@ end
 
 -- Boucle -----------------------------------------------------------------------------------------------
 
+-- a288 (Crowd.Trigger "Enter") : la foule se forme à l'entrée d'un joueur dans un magasin ouvert, reste tant qu'un
+-- joueur est dans Bounds (au plus Crowd.MaxStay s), puis Crowd.Duration s après la sortie du dernier.
+local function checkVisitors(now: number)
+	local occupied: { [Model]: boolean } = {}
+	for _, player in Players:GetPlayers() do
+		local root = rootOf(player)
+		local store = if root then storeAt(root.Position) else nil
+		local before = insideOf[player]
+		if store then
+			insideOf[player] = store
+			occupied[store] = true
+		else
+			insideOf[player] = nil
+		end
+		if before and before ~= store then
+			local crowd = crowdOf(before)
+			if crowd then
+				crowd.thief = player -- les regards suivent celui qui sort
+			elseif player:GetAttribute(CARRYING) ~= nil then
+				form(before, player, now, true) -- pas formée à l'entrée (caméra, plafond) : à la sortie, comme avant
+			end
+		end
+		if store == nil then
+			enteredOf[player] = nil
+		elseif enteredOf[player] ~= store and store:GetAttribute(HEIST_OPEN) ~= false then
+			enteredOf[player] = store
+			local crowd = crowdOf(store)
+			if crowd then
+				crowd.thief = player
+			else
+				form(store, player, now, true)
+			end
+		end
+	end
+	local night = not CROWD.AtNight and Workspace:GetAttribute(NIGHT_PHASE) == "Night"
+	for _, crowd in crowds do
+		local hold = crowd.holdUntil
+		if hold == nil or now >= crowd.endsAt then
+			continue -- foule de l'ancien moment, ou déjà en train de s'effacer
+		end
+		if night then
+			crowd.endsAt = now
+		elseif occupied[crowd.store] then
+			crowd.endsAt = hold
+		else
+			crowd.endsAt = math.min(crowd.endsAt, now + CROWD.Duration)
+		end
+	end
+end
+
 local function checkCarriers(now: number)
+	if CROWD.Trigger ~= "Exit" then
+		checkVisitors(now)
+		return
+	end
 	for _, player in Players:GetPlayers() do
 		local root = rootOf(player)
 		if player:GetAttribute(CARRYING) == nil or root == nil then
@@ -979,7 +1070,7 @@ local function checkCarriers(now: number)
 			local left = insideOf[player]
 			if left then
 				insideOf[player] = nil
-				form(left, player, now)
+				form(left, player, now, false)
 			end
 		end
 	end
@@ -1079,6 +1170,9 @@ local function step()
 					pcall(destroyMember, member)
 				end
 			end
+			if crowd.holdUntil then
+				lastAt[crowd.store] = now -- a288 : Crowd.Cooldown compte depuis la fin d'une foule formée à l'entrée
+			end
 			table.remove(crowds, index)
 		end
 	end
@@ -1169,6 +1263,7 @@ function WitnessCrowdController.Start()
 	end
 	Players.PlayerRemoving:Connect(function(player: Player)
 		insideOf[player] = nil
+		enteredOf[player] = nil
 	end)
 	RunService.Heartbeat:Connect(step)
 	-- a240 (L-229) : Crowd_Gasp une fois à la casse d'une vitrine de magasin PNJ (WindowController, chargé à la demande).
