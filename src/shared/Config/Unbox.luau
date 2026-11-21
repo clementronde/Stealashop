@@ -186,7 +186,10 @@ local Unbox = {
 		-- la rareté gagnée, plus ActionsPerUpgrade par amélioration du colis ; une amélioration demande une action avant
 		-- et une après (au moins 2 + améliorations). Commun sans amélioration = la masse seule ; Peu commun = une action
 		-- puis la masse (L-253). Tout V0, à régler par Clément.
-		ActionsByRarity = { Common = 1, Uncommon = 2, Rare = 3, Epic = 4, Legendary = 5, Mythic = 6, Secret = 7, Divine = 8 } :: { [string]: number },
+		-- a287 (2026-11-21, Cantin en jeu : « on tombe tout de suite sur l'objet, on n'a pas cet effet de casser
+		-- plusieurs fois la boîte ») : un Commun aussi se casse en plusieurs coups. V0 proposée le 2026-11-21 : la table
+		-- d'avant + 2 (Commun 3 = deux actions puis la masse), l'ordre de L-253 gardé (plus rare = plus de coups).
+		ActionsByRarity = { Common = 3, Uncommon = 4, Rare = 5, Epic = 6, Legendary = 7, Mythic = 8, Secret = 9, Divine = 10 } :: { [string]: number },
 		ActionsPerUpgrade = 1, -- V0
 		ActionSpeed = 1, -- L-236, curseur « Vitesse des actions » : animations, durées de repli et pauses ÷ cette valeur
 		FinalAction = "Hammer", -- L-236 : la dernière action, celle qui casse le colis ; jamais tirée avant (V0)
@@ -264,7 +267,8 @@ local Unbox = {
 			Slam = { Id = "Slam", Anim = "Unbox_Slam", Tool = "TOOL_Unbox_Sledgehammer", Fx = "FX_Unbox_Hit", React = "Squash", Duration = 1.35, Impacts = { 0.8 } } :: Action,
 		},
 
-		-- Temps (s). Vague 74 : objet révélé vers 2,1 s (Commun, la masse seule), 6,1 s (Rare) et 9,9 s (Légendaire), sans
+		-- Temps (s). Vague 74 : objet révélé vers 2,1 s (Commun, la masse seule), 6,1 s (Rare) et 9,9 s (Légendaire) ;
+		-- a287 (ActionsByRarity de 3 à 10) : 5,2 s (Commun), 9,0 s (Rare) et 13,0 s (Légendaire) ; sans
 		-- amélioration, actions moyennes, en repli (UnboxPlan.typical) ; chaque amélioration ajoute une action.
 		Intro = 0.6, -- V0 : le colis saute du rayon au sol de l'allée, le perso se place, la caméra arrive
 		BurstHold = 0.35, -- V0 : du coup de masse final (le colis éclate, le perso recule) à la première silhouette
@@ -339,6 +343,21 @@ local Unbox = {
 		OddsPop = 1.25, -- V0 : le texte gonfle à cette échelle au moment fort (créé : UIScale « UnboxPop »)
 		FinalOddsAbove = 1.6, -- V0 : à la révélation, la cote finale se place à cette hauteur (studs) au-dessus de BB_Reveal
 		FinalOddsHold = 1.6, -- V0 : … et y reste ce temps
+		-- a287 (2026-11-21, Cantin en jeu : la chance qui augmente au-dessus de la boîte à chaque coup, puis pendant le
+		-- défilement des silhouettes « 1 sur 2, 1 sur 5, 8… », jamais une cote qui redescend) : la cote de
+		-- BB_UnboxOdds.Odds monte d'un bout à l'autre, de Start à la vraie cote du plan (UnboxPlan.climb, Offset plus bas) :
+		-- un pas à chaque Impact des actions (HitsShare de la montée à l'éclatement du colis), puis un pas par silhouette
+		-- (le reste), la vraie cote à la révélation (celle aussi écrite dans BB_Reveal.Odds). Les plages OddsRanges ne
+		-- servent plus que si Enabled = false (la cote d'avant : plage de la rareté montrée, cachée pendant les
+		-- silhouettes) et pour la cote finale tirée sans vraie cote (RealOdds = false, contenu imposé du tuto).
+		OddsClimb = {
+			Enabled = true, -- interrupteur
+			Start = 2, -- Cantin, 21/11 : « une chance sur 2 » au départ (la vraie cote si elle est plus basse)
+			HitsShare = 0.5, -- V0 (2026-11-21) : part de la montée faite par les coups (le reste : les silhouettes)
+			-- V0 (2026-11-21) : la courbe monte d'un facteur égal sur (cote + Offset) : une petite vraie cote monte de pas
+			-- presque égaux (2, 3, 4… 6 à l'éclatement, 8 à la silhouette, 10), une grande d'un facteur égal ; 0 = géométrique
+			Offset = 20,
+		},
 
 		-- Améliorations (L-236 : au moment fort, sauf à la première et à la dernière action). Vague 74 (a257, L-253 point 2) :
 		-- tirées à part de l'objet, avec les probabilités de l'ouverture v2 (UpgradeChance × chance du joueur par cran,

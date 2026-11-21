@@ -53,6 +53,9 @@ local Features = require(Config:WaitForChild("Features"))
 local Reveal = require(Config:WaitForChild("Reveal"))
 local Items = require(Config:WaitForChild("Items"))
 local Rarities = require(Config:WaitForChild("Rarities"))
+local Formulas = require(Config:WaitForChild("Formulas")) -- a287 : revenu de BB_Reveal.Income
+local Mutations = require(Config:WaitForChild("Mutations")) -- a287
+local Format = require(Shared:WaitForChild("Format")) -- a287
 local Find = require(Shared:WaitForChild("Contract"):WaitForChild("Find"))
 local UI = require(Shared:WaitForChild("Contract"):WaitForChild("UI"))
 local AnimPlayer = require(Shared:WaitForChild("Anim"):WaitForChild("AnimPlayer"))
@@ -812,12 +815,13 @@ local function v0Board(): BillboardGui
 	board.Size = UDim2.fromOffset(Reveal.BoardV0Size.X, Reveal.BoardV0Size.Y)
 	board.AlwaysOnTop = true
 	board.LightInfluence = 0
-	for index, name in { "ItemName", "Rarity", "Weight", "Mutation" } do
+	local names = { "ItemName", "Rarity", "Weight", "Mutation", "Odds", "Income" } -- a287 : Odds et Income en plus
+	for index, name in names do
 		local label = Instance.new("TextLabel")
 		label.Name = name
 		label.BackgroundTransparency = 1
-		label.Size = UDim2.fromScale(1, 0.25)
-		label.Position = UDim2.fromScale(0, (index - 1) * 0.25)
+		label.Size = UDim2.fromScale(1, 1 / #names)
+		label.Position = UDim2.fromScale(0, (index - 1) / #names)
 		label.TextScaled = true
 		label.Font = Enum.Font.GothamBold
 		label.TextColor3 = Color3.new(1, 1, 1)
@@ -842,6 +846,20 @@ local function setText(board: Instance, name: string, text: string?, color: Colo
 	end
 end
 
+-- a287 (2026-11-21, Cantin : « tous les objets ont une chance sur 112 », le texte d'exemple de Clément) : revenu de
+-- l'objet révélé, « +$3/s », comme une fois exposé (DisplayService : Formulas.ItemIncome × Mutations.IncomeMultiplier,
+-- l'effet de la mutation et le poids compris, sans le multiplicateur du joueur) ; nil si illisible (ligne cachée).
+local function incomeText(payload: Payload): string?
+	local ok, base = pcall(Formulas.ItemIncome, payload.ItemId, nil)
+	if not ok or type(base) ~= "number" or base ~= base or base < 0 or base >= math.huge then
+		return nil
+	end
+	local mutation = if payload.Mutation then { Effect = payload.Mutation } else nil
+	local okFactor, factor = pcall(Mutations.IncomeMultiplier, mutation, if payload.Weight > 0 then payload.Weight else nil)
+	local safe = if okFactor and type(factor) == "number" and factor == factor and factor >= 0 and factor < math.huge then factor else 1
+	return `+{Format.money(base * safe)}/s`
+end
+
 local function showBoard(scene: Scene)
 	local item = scene.item
 	local adornee = if item then (item.PrimaryPart or item:FindFirstChildWhichIsA("BasePart", true)) else nil
@@ -857,6 +875,9 @@ local function showBoard(scene: Scene)
 	setText(board, "Rarity", if rarity then rarity.DisplayNameUpper else string.upper(payload.Rarity), if rarity then rarity.Color else nil)
 	setText(board, "Weight", if payload.Weight > 0 then Logic.formatWeight(payload.Weight) else nil, nil)
 	setText(board, "Mutation", if payload.Mutation then string.upper(payload.Mutation) else nil, nil)
+	-- a287 : la vraie cote du plan du serveur (la même que la dernière de BB_UnboxOdds), cachée sans plan ; le revenu.
+	setText(board, "Odds", if UnboxPlan then UnboxPlan.finalOddsText(payload.Plan) else nil, nil)
+	setText(board, "Income", incomeText(payload), nil)
 	board.Name = "RevealBoard"
 	board.Adornee = adornee
 	board.Parent = fxFolder()

@@ -1188,6 +1188,9 @@ table.insert(UI.Billboards, {
 		{ Path = "Rarity", Class = "TextLabel" },
 		{ Path = "Weight", Class = "TextLabel", Optional = true, Note = "le poids n'est pas écrit" },
 		{ Path = "Mutation", Class = "TextLabel", Optional = true, Note = "la mutation n'est pas écrite" },
+		-- a287 (2026-11-21) : la vraie cote « 1 IN N » (cachée sans plan) et le revenu « +$X/s » de l'objet révélé.
+		{ Path = "Odds", Class = "TextLabel", Optional = true, Note = "la cote finale n'est pas écrite sous l'objet" },
+		{ Path = "Income", Class = "TextLabel", Optional = true, Note = "le revenu de l'objet n'est pas écrit" },
 	} :: { Element },
 })
 
