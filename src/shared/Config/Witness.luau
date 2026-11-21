@@ -77,6 +77,7 @@ local Witness = {
 		LaneStep = 0.25, -- V0 proposé (a269, 22/11) : pas (studs) des décalages essayés quand un segment est bouché…
 		LaneMax = 4, -- V0 proposé (a269, 22/11) : … jusqu'à ce décalage (studs), d'un côté ou de l'autre
 		LaneReach = 0.5, -- V0 proposé (a269, 22/11 ; 1 à a269c) : point de la voie atteint à ce nombre de studs (au lieu de PointReached : il coupe moins les virages ; a269d : à 1 stud, le raccourci frôlait encore les poteaux)
+		LaneOvershoot = 1, -- V0 proposé (a269, 22/11) : il vise ce nombre de studs au-delà du point de voie (a269e, Play f81d : Humanoid.MoveTo s'arrête vers 0,9 stud avant son but ; il passe donc sur le point et enchaîne sans arrêt)
 		UnstickTime = 1, -- V0 proposé (a269, 22/11) : s ; sans avancer de UnstickMove studs : il va à un point libre à côté de lui…
 		UnstickMove = 1, -- V0 proposé (a269, 22/11) : … (studs)…
 		UnstickSide = 2.5, -- V0 proposé (a269, 22/11) : … à ce nombre de studs sur sa droite, sinon sur sa gauche (a269d : d'où il voit son point visé, sinon son point d'avant), puis reprend le même point (le suivant au second échec)
@@ -84,6 +85,9 @@ local Witness = {
 		LaneVisibleMax = 0.5, -- V0 proposé (a269, 22/11) : une pièce de la map sans collision compte comme obstacle des voies si sa Transparency est au plus ceci
 		LaneLeash = 2, -- V0 proposé (a269, 22/11) : à plus de LaneMax + ceci studs de sa voie, il revient au point le plus proche de sa voie
 		NarrowWait = 8, -- V0 proposé (a269, 22/11) : s au plus d'attente à l'entrée d'un passage étroit (voies à moins de 2 × Lane − LaneStep studs) où est l'autre témoin
+		-- a269e (Play f81d, 22/11) : point jamais atteint, passage gardé sans fin.
+		LaneGoalSlack = 4, -- V0 proposé (a269, 22/11) : s ; sur un même point de voie plus de (segment / WalkSpeed + ceci) s, quoi qu'il arrive : il passe au suivant
+		NarrowHold = 6, -- V0 proposé (a269, 22/11) : s ; un témoin garde un passage étroit au plus (longueur / WalkSpeed + ceci) s, puis le libère
 	},
 
 	-- La fuite à la casse (Clément, L-118 point 10 : il a peur, court à l'opposé de la vitrine, puis reprend
