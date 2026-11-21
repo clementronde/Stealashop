@@ -1,5 +1,5 @@
 --!strict
--- StoreHeistService (DEV-015) : braquage des magasins PNJ, chrono HEIST (Balance.Heist.Duration, 6 s), rideau, rayons et
+-- StoreHeistService (DEV-015) : braquage des magasins PNJ, chrono HEIST (Balance.Heist.Duration, 10 s depuis le 2026-11-21), rideau, rayons et
 -- tirage des colis (Partie 1, sections 5.3, 5.5, 5.6, 5.7, 5.11, 5.12, 7.3 et 9.4 ; question
 -- « Vitrine PNJ partagée » de la section 15 ; règles des colis de Clément, liaison L-031 et L-033,
 -- acceptées par Ironix le 2026-11-07).
@@ -34,7 +34,7 @@
 --     seule. ShelfBoxController (client) ne montre que celles des
 --     colis en vue et ne garde que 25 contours.
 --   - Casse (WindowService.OnBroken, vitrine d'un magasin PNJ) : le magasin ouvre pour
---     Balance.Heist.Duration (6 s depuis le 2026-11-14). Vitrine partagée (proposition de 5.3 point 8 et de la
+--     Balance.Heist.Duration (10 s depuis le 2026-11-21). Vitrine partagée (proposition de 5.3 point 8 et de la
 --     section 15) : tout le monde peut entrer ; le casseur a Balance.Heist.BreakerHeadStart
 --     (1 s) d'avance exclusive pour prendre un colis. HeistTimer(storeId, endsAt) part au
 --     casseur et aux joueurs à TIMER_REACH studs ou moins du volume Bounds (a241), puis à ceux qui
@@ -159,7 +159,7 @@
 --   - Règle du braquage (Clément, L-118 points 8 et 9, 2026-11-13 ; remplace le chrono de 10 s après la
 --     casse) : (a) pendant la casse, vitrine pas cassée avant que le « ? » des témoins soit plein : la
 --     police vient (WitnessService), et elle renvoie à la base. (b) Le chrono du vigile (« HEIST ») part à
---     la casse et dure Balance.Heist.Duration (Cantin, 2026-11-14 : 6 s ; avant, il reprenait la fin du chrono
+--     la casse et dure Balance.Heist.Duration (Cantin, 2026-11-21 : 10 s, 6 s depuis le 14/11 ; avant, il reprenait la fin du chrono
 --     lancé au premier coup, qui est maintenant le chrono de police de WindowService) ; il est montré à chaque intrus (entré dans Bounds pendant cette ouverture : Entered),
 --     dedans ou dehors, objet ou non. Entre la casse et la fin du chrono, tout le monde peut entrer. À la
 --     fin du chrono (chronoEnd) : GuardService.ChaseIntruder pour chaque intrus ENCORE DANS le magasin (a114,

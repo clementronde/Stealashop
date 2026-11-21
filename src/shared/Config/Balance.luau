@@ -99,9 +99,9 @@ local Balance = {
 
 	-- 5.3 et 9.4 : braquage d'un magasin PNJ
 	Heist = {
-		-- Chrono « HEIST » après la casse (Cantin, 2026-11-14, rééquilibrage v2 : 10 → 6 s). Il part à la casse
+		-- Chrono « HEIST » après la casse (Cantin, 2026-11-21 : 6 → 10 s ; avant, 2026-11-14, rééquilibrage v2 : 10 → 6 s). Il part à la casse
 		-- (il ne reprend plus la fin du chrono de police, Balance.Window.BreakTimer) ; le rideau tombe à la fin.
-		Duration = 6,
+		Duration = 10,
 		BreakerHeadStart = 1, -- avance exclusive du casseur (5.3, point 8 : proposition à valider en section 15)
 		MaxCarried = 1, -- un seul colis porté à la fois
 		GrabMaxDistance = 8, -- GrabItem (9.4)
