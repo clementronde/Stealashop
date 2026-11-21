@@ -155,6 +155,13 @@ local UiMotion = {
 		CloseNames = { "CloseButton", "CloseArrowButton" },
 		CardTo = 1.03,
 		SizedTime = 0.133,
+		-- a299 (Cantin, 21/11 : « l'objet grossit vers un coin au lieu de grossir autour de son centre ») : un élément
+		-- grossi par le survol (bouton, Icon d'une carte, carte) dont l'AnchorPoint n'est pas (0,5 ; 0,5) passe, le
+		-- temps de l'effet, à l'AnchorPoint (0,5 ; 0,5) avec la Position qui garde sa place : le UIScale grossit
+		-- alors autour du centre. Au repos (UIScale détruit) : AnchorPoint et Position de Clément exactement. Un
+		-- élément rangé par un layout (UIListLayout, UIGridLayout, UIPageLayout, UITableLayout) n'est pas recentré
+		-- (le layout le place lui-même). false : comme avant (grossit autour de l'AnchorPoint de Clément).
+		Centered = true, -- validé par Cantin, 21/11
 	},
 	-- Bouton appuyé (Motion.Button).
 	Press = {

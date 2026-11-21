@@ -1062,6 +1062,129 @@ end
 -- Boutons : survol, appui, relâché, réussite (L-091 point 7)
 ------------------------------------------------------------------------------
 
+------------------------------------------------------------------------------
+-- a299 (Cantin, 21/11) : le survol grossit autour du centre (Config/UiMotion.Hover.Centered)
+------------------------------------------------------------------------------
+
+-- Un UIScale grossit l'élément autour de son AnchorPoint : à (0 ; 0), il grossit depuis son coin haut gauche. Le temps
+-- que le UIScale de survol existe (bouton, Icon d'une carte, carte), l'élément passe à l'AnchorPoint (0,5 ; 0,5) et sa
+-- Position avance d'autant (même place à l'écran) ; à la destruction du UIScale, AnchorPoint et Position de Clément
+-- reviennent exactement. Rien pour un élément déjà centré, rangé par un layout (le layout le place), ou réglage coupé.
+-- Un autre effet qui écrit la Position d'un élément recentré passe par Motion.Placed (UiAttrFx : IconHover Jump).
+type Centering = { anchor: Vector2, rest: UDim2, shift: UDim2, placed: UDim2 }
+local centerings: { [GuiObject]: Centering } = setmetatable({}, { __mode = "k" }) :: any
+-- (Vector2.new(0,5 ; 0,5) écrit au survol, pas au chargement : les faux Roblox des anciens bancs n'ont pas tous Vector2.)
+local LAYOUTS = { "UIListLayout", "UIGridLayout", "UIPageLayout", "UITableLayout" }
+local CONSTRAINTS = { "UIAspectRatioConstraint", "UISizeConstraint" }
+
+local function laidOut(object: GuiObject): boolean
+	local parent = object.Parent
+	if parent == nil then
+		return true
+	end
+	for _, class in LAYOUTS do
+		if parent:FindFirstChildOfClass(class) ~= nil then
+			return true
+		end
+	end
+	return false
+end
+
+-- Décalage du coin d'ancrage au centre, en unités de Position. Size suffit, sauf si une contrainte change la taille
+-- dessinée : alors la taille réelle (AbsoluteSize, sans le UIScale `scale` de l'élément) en part du parent.
+local function centerShift(object: GuiObject, scale: number): UDim2
+	local a = object.AnchorPoint
+	local dx, dy = 0.5 - a.X, 0.5 - a.Y
+	local constrained = false
+	for _, class in CONSTRAINTS do
+		if object:FindFirstChildOfClass(class) ~= nil then
+			constrained = true
+			break
+		end
+	end
+	if constrained then
+		local ok, shift = pcall(function(): UDim2?
+			local parent = object.Parent :: any
+			local own: Vector2 = object.AbsoluteSize
+			local room: Vector2 = parent.AbsoluteSize
+			if scale <= 0 or own.X <= 0 or own.Y <= 0 or room.X <= 0 or room.Y <= 0 then
+				return nil
+			end
+			return UDim2.fromScale(dx * own.X / scale / room.X, dy * own.Y / scale / room.Y)
+		end)
+		if ok and shift ~= nil then
+			return shift
+		end
+	end
+	local size = object.Size
+	return UDim2.new(dx * size.X.Scale, dx * size.X.Offset, dy * size.Y.Scale, dy * size.Y.Offset)
+end
+
+-- `object` grossit autour de son centre à partir de maintenant (son UIScale vaut `scale`). Sans effet la deuxième fois.
+local function centerOn(object: GuiObject, scale: number)
+	if centerings[object] ~= nil or not UiMotion.Hover.Centered then
+		return
+	end
+	-- Lu sous pcall : un objet sans AnchorPoint (faux Roblox d'un ancien banc) n'est pas recentré.
+	local read, anchor = pcall(function(): Vector2?
+		return object.AnchorPoint
+	end)
+	if not read or anchor == nil then
+		return
+	end
+	local a: Vector2 = anchor
+	if math.abs(a.X - 0.5) < 1e-6 and math.abs(a.Y - 0.5) < 1e-6 then
+		return
+	end
+	if laidOut(object) then
+		return
+	end
+	local rest = object.Position
+	local shift = centerShift(object, scale)
+	local placed = UDim2.new(
+		rest.X.Scale + shift.X.Scale,
+		rest.X.Offset + shift.X.Offset,
+		rest.Y.Scale + shift.Y.Scale,
+		rest.Y.Offset + shift.Y.Offset
+	)
+	centerings[object] = { anchor = a, rest = rest, shift = shift, placed = placed }
+	object.AnchorPoint = Vector2.new(0.5, 0.5)
+	object.Position = placed
+end
+
+-- Fin du recentrage : AnchorPoint de Clément, et sa Position exacte (ou la Position du moment moins le décalage, si un
+-- autre effet l'a déplacé entre-temps).
+local function centerOff(object: GuiObject)
+	local entry = centerings[object]
+	if entry == nil then
+		return
+	end
+	centerings[object] = nil
+	local now = object.Position
+	object.AnchorPoint = entry.anchor
+	if now == entry.placed then
+		object.Position = entry.rest
+	else
+		local s = entry.shift
+		object.Position = UDim2.new(now.X.Scale - s.X.Scale, now.X.Offset - s.X.Offset, now.Y.Scale - s.Y.Scale, now.Y.Offset - s.Y.Offset)
+	end
+end
+
+-- Position à écrire pour mettre `object` à `position` (comptée avec l'AnchorPoint de Clément), recentré ou non.
+function Motion.Placed(object: GuiObject, position: UDim2): UDim2
+	local entry = centerings[object]
+	if entry == nil then
+		return position
+	end
+	local s = entry.shift
+	return UDim2.new(position.X.Scale + s.X.Scale, position.X.Offset + s.X.Offset, position.Y.Scale + s.Y.Scale, position.Y.Offset + s.Y.Offset)
+end
+
+-- L'élément est recentré en ce moment (banc, barre de commande en Studio).
+function Motion.IsCentered(object: GuiObject): boolean
+	return centerings[object] ~= nil
+end
+
 -- Un bouton branché par Motion.Button. L'échelle passe par un UIScale Hover.ScaleName, créé au
 -- premier effet et détruit dès que le bouton est revenu à 1 (souris sortie, bouton relâché).
 type ButtonState = {
@@ -1097,7 +1220,7 @@ type Hold = {
 	maxY: number,
 	point: Vector2, -- dernier point connu du pointeur (repère d'AbsolutePosition)
 	start: Vector2, -- point de l'appui (même repère)
-	pivotX: number, -- point d'ancrage du bouton à l'appui (le UIScale ne le déplace pas ; une liste qui défile, si)
+	pivotX: number, -- a299 : centre de la taille réelle du bouton à l'appui (ni le UIScale ni le recentrage ne le déplacent ; une liste qui défile, si)
 	pivotY: number,
 	scrolls: boolean, -- le bouton est dans une ScrollingFrame
 	fired: boolean, -- Activated de Roblox reçu pour cet appui
@@ -1170,6 +1293,7 @@ local function buttonScale(button: GuiButton, state: ButtonState): UIScale?
 		return own
 	end
 	state.scale = nil
+	centerOff(button) -- a299 : son UIScale a disparu (retiré par un autre), il retrouve son AnchorPoint
 	if button:FindFirstChildOfClass("UIScale") ~= nil then
 		return nil
 	end
@@ -1177,6 +1301,7 @@ local function buttonScale(button: GuiButton, state: ButtonState): UIScale?
 	scale.Name = UiMotion.Hover.ScaleName
 	scale.Parent = button
 	state.scale = scale
+	centerOn(button, 1) -- a299 : grossit autour de son centre tant que ce UIScale existe
 	return scale
 end
 
@@ -1303,6 +1428,9 @@ local function scaleButton(button: GuiButton, state: ButtonState, goal: number, 
 				state.scale = nil
 			end
 			current:Destroy() -- revenu à 1 : rien n'est laissé
+			if state.scale == nil then
+				centerOff(button) -- a299 : AnchorPoint et Position de Clément
+			end
 		end
 	end)
 	tween:Play()
@@ -1491,7 +1619,8 @@ local function settle(button: GuiButton, state: ButtonState, hold: Hold, input: 
 	if input.UserInputState == Enum.UserInputState.Cancel then
 		return
 	end
-	local px, py = pivotOf(button)
+	local rx, ry, rw, rh = realRect(button, state)
+	local px, py = rx + rw / 2, ry + rh / 2 -- a299 : même point qu'à l'appui (centre de la taille réelle)
 	if math.abs(px - hold.pivotX) > ZONE.StillPixels or math.abs(py - hold.pivotY) > ZONE.StillPixels then
 		return -- la liste a défilé pendant l'appui
 	end
@@ -1728,7 +1857,7 @@ local function track(button: GuiButton, state: ButtonState)
 		end
 		local position, size = button.AbsolutePosition, button.AbsoluteSize
 		local x, y, w, h = realRect(button, state)
-		local px, py = pivotOf(button)
+		local px, py = x + w / 2, y + h / 2 -- a299 : centre de la taille réelle, qui ne bouge ni au UIScale ni au recentrage
 		local at = shifted(point, offset)
 		state.hold = {
 			kind = kind,
@@ -2127,18 +2256,19 @@ function Motion.HoverCard(card: GuiObject)
 				state.scale = scale
 			end
 			if scale then
+				centerOn(icon, scale.Scale) -- a299 : l'Icon grossit autour de son centre (rien sous un UIScale de Clément)
 				table.insert(list, TweenService:Create(scale, info, { Scale = if pop then UiMotion.HoverPop.IconScale else spec.IconScale }))
 			end
 			if pop then
 				-- Vague 59 : l'Icon reste à sa place (sa rotation et sa position de Clément).
 				icon.Rotation = state.baseRotation
-				icon.Position = basePosition
+				icon.Position = Motion.Placed(icon, basePosition) -- a299 : recentrée, même place
 			elseif card:GetAttribute("IconHover") ~= nil then
 				-- a285 : l'Icon saute (IconHover, UiAttrFx) : ni penché ni décalé ici.
 			else
 				table.insert(list, TweenService:Create(icon, CARD_INFO, {
 					Rotation = state.baseRotation + spec.Tilt,
-					Position = basePosition + UDim2.fromScale(spec.ShiftX, spec.ShiftY),
+					Position = Motion.Placed(icon, basePosition + UDim2.fromScale(spec.ShiftX, spec.ShiftY)),
 				}))
 			end
 		end
@@ -2157,6 +2287,7 @@ function Motion.HoverCard(card: GuiObject)
 				state.cardScale = cardScale
 			end
 			if cardScale then
+				centerOn(card, cardScale.Scale) -- a299 : la carte grossit autour de son centre (hors layout)
 				table.insert(list, TweenService:Create(cardScale, SIZED_INFO, { Scale = UiMotion.Hover.CardTo }))
 			end
 		end
@@ -2189,7 +2320,7 @@ function Motion.HoverCard(card: GuiObject)
 				table.insert(list, TweenService:Create(scale, CARD_BACK_INFO, { Scale = 1 }))
 			end
 			if not state.pop then
-				table.insert(list, TweenService:Create(icon, CARD_BACK_INFO, { Rotation = state.baseRotation, Position = basePosition }))
+				table.insert(list, TweenService:Create(icon, CARD_BACK_INFO, { Rotation = state.baseRotation, Position = Motion.Placed(icon, basePosition) }))
 			end
 		end
 		local cardScale = state.cardScale -- a286
@@ -2205,6 +2336,7 @@ function Motion.HoverCard(card: GuiObject)
 				state.cardRotation = nil
 			end
 			if icon ~= nil and basePosition ~= nil then
+				centerOff(icon) -- a299 : AnchorPoint de Clément, puis sa Position
 				icon.Position = basePosition
 				icon.Rotation = state.baseRotation
 				state.basePosition = nil
@@ -2219,6 +2351,7 @@ function Motion.HoverCard(card: GuiObject)
 			if ownCard then
 				ownCard:Destroy()
 			end
+			centerOff(card) -- a299
 		end)
 	end
 	-- Vague 25 : survol seulement pour la carte du dessus (voir onTop), comme Motion.Button.
