@@ -75,6 +75,12 @@ local Features = {
 	-- Clément pose en attribut et qu'aucun code ne jouait (Gleam, IconHover, Idle = Wiggle ou Fall ; Controllers/UI/
 	-- UiAttrFx, valeurs V0 dans Config/UiMotion.AttrFx) ; false = rien ne change en jeu.
 	UiAttrFx = true,
+	-- a298 (21/11, demande de Cantin : « Tous », validé par Cantin, 21/11) : les effets des boutons de Clément faits avec le
+	-- plugin Figma Framewisp (reflet, soleil qui tourne, balancement, bascule au survol, éclats au clic, assombrissement,
+	-- contour animé), rejoués par Controllers/UI/FramewispFx depuis les attributs Figma* du plugin, à la place de ses 6
+	-- LocalScripts, et le reflet du bouton entier (Config/UiMotion.AttrFx.ButtonSheen). Sous Features.UiAttrFx (éteint :
+	-- rien). V0 proposé (2026-11-21) : true ; false = rien de cela en jeu.
+	FramewispFx = true,
 }
 
 export type Features = typeof(Features)
