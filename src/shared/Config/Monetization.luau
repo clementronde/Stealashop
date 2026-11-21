@@ -293,7 +293,7 @@ local Monetization = {
 		-- RevealDone, ou au plus la durée la plus longue du plan (UnboxPlan.serverMaxSeconds).
 		Reveal = {
 			Enabled = true, -- V0 de Cantin, 21/11 ; false = objets donnés sans ouverture (comme a285)
-			SafeZoneOnly = true, -- V0 proposé le 2026-11-21 (a294) : hors zone safe (braquage, poursuite), pas d'ouverture
+			SafeZoneOnly = true, -- validé par Cantin, 21/11 (V0 d'a294) : hors zone safe (braquage, poursuite), pas d'ouverture
 			ShopId = "ExclusiveCrate", -- V0 (a294) : ShopId du remote, aucun magasin : le colis sort devant l'acheteur
 			SlotName = "Crate", -- V0 (a294)
 			StartRarity = "Epic", -- V0 proposé le 2026-11-21 (a294) : rareté montrée sur le colis, la plus basse de la caisse
