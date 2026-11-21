@@ -18,7 +18,8 @@
 --    qui gardent les deux voies à 2 × Lane studs l'une de l'autre, du plus proche de (Lane, Lane) au plus loin (pas de
 --    Avoid.LaneStep, au plus Avoid.LaneMax studs), puis ceux qui les rapprochent (le plus large d'abord : une seule
 --    ligne libre pour les deux). Un point de voie doit aussi se voir depuis son point du circuit : un point collé à
---    un mur passe devant le mur, jamais derrière ni dans un renfoncement.
+--    un mur passe devant le mur, jamais derrière ni dans un renfoncement. a269e (Play f81d) : un point de voie
+--    resté dans une pièce (aucun couple libre) est déplacé au point libre le plus proche, sinon retiré.
 -- 3. Lissage (a269d) : un segment de voie qui revient en arrière (bosse serrée du circuit, voie intérieure) : son
 --    point est remplacé par le milieu de ses deux voisins, si c'est libre.
 -- 4. Passages étroits (a269d) : un segment où les deux voies sont à moins de 2 × Lane − LaneStep studs l'une de
@@ -441,10 +442,45 @@ function WitnessLanes.Build(
 		forward[k] = spotOf(k, p.a)
 		backward[k] = spotOf(k, -p.b)
 	end
-	local blocked: { [number]: boolean } = {}
-	for k = 1, count do
-		if not segmentFree(k, choice[k], choice[nextOf(k)]) then
-			blocked[k] = true
+	-- a269e (Play f81d : le point 13 de la zone 6 dans Column_4_Shaft) : un point de voie dans une pièce (aucun couple
+	-- libre à ce point) est déplacé au point libre le plus proche, vu depuis son point du circuit (au plus LaneMax
+	-- studs, pas de LaneStep, 16 directions) ; sinon remplacé par le milieu de ses voisins s'il est libre.
+	local moved: { string } = {}
+	for side, points in { forward, backward } do
+		local label = if side == 1 then "aller" else "retour"
+		for k = 1, count do
+			local p = points[k]
+			local free, hit = clearPoint(p)
+			if not free then
+				local best: Vector3? = nil
+				local up = Vector3.new(0, height, 0)
+				for i = 1, n do
+					local d = i * step
+					for j = 0, 15 do
+						local angle = j * math.pi / 8
+						local c = Vector3.new(p.X + math.cos(angle) * d, p.Y, p.Z + math.sin(angle) * d)
+						if (clearPoint(c)) and (sweep(probe, path[k] + up, c + up, 0.25)) then
+							best = c
+							break
+						end
+					end
+					if best then
+						break
+					end
+				end
+				if best then
+					points[k] = best
+					table.insert(moved, `P{k} {label} dans {nameOf(hit)} : déplacé de {round((best - p).Magnitude)}`)
+				else
+					local mid = lerp(points[prevOf(k)], points[nextOf(k)], 0.5)
+					if clearPoint(mid) then
+						points[k] = mid
+						table.insert(moved, `P{k} {label} dans {nameOf(hit)} : retiré`)
+					else
+						table.insert(moved, `P{k} {label} dans {nameOf(hit)} : aucun point libre`)
+					end
+				end
+			end
 		end
 	end
 	-- Lissage : un segment de voie qui revient en arrière par rapport au circuit.
@@ -477,6 +513,18 @@ function WitnessLanes.Build(
 		end
 		if not changed then
 			break
+		end
+	end
+	-- Segments encore bouchés (sur les points finaux : déplacés et lissés compris).
+	local blocked: { [number]: boolean } = {}
+	local blockedBy: { [number]: Instance? } = {}
+	for k = 1, count do
+		local k2 = nextOf(k)
+		local free1, h1 = clearLine(forward[k], forward[k2])
+		local free2, h2 = clearLine(backward[k], backward[k2])
+		if not (free1 and free2) then
+			blocked[k] = true
+			blockedBy[k] = h1 or h2
 		end
 	end
 	-- Passages étroits : segments où les deux voies sont à moins de 2 × Lane − LaneStep l'une de l'autre, ou encore
@@ -521,12 +569,13 @@ function WitnessLanes.Build(
 			table.insert(fixes, `P{k} lissé`)
 		end
 	end
+	for _, line in moved do
+		table.insert(fixes, line)
+	end
 	for k = 1, count do
 		local k2 = nextOf(k)
 		if blocked[k] then
-			local _, h1 = segFree(k, couples[choice[k]].a, couples[choice[k2]].a)
-			local _, h2 = segFree(k, -couples[choice[k]].b, -couples[choice[k2]].b)
-			table.insert(fixes, `{k}→{k2} {nameOf(h1 or h2)} : encore bouché`)
+			table.insert(fixes, `{k}→{k2} {nameOf(blockedBy[k])} : encore bouché`)
 		end
 		if narrow[k] then
 			table.insert(fixes, `{k}→{k2} {nameOf(segHit[k])} : passage étroit {narrow[k]} ({round(tight[k])})`)
