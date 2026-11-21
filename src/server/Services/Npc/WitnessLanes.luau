@@ -1,5 +1,5 @@
 --!strict
--- Npc/WitnessLanes (serveur, a269c, refait a269d, a269f ; Plays f81b à f81e, 22/11) : module d'aide de WitnessService
+-- Npc/WitnessLanes (serveur, a269c, refait a269d, a269f, a269g ; Plays f81b à f81f, 22/11) : module d'aide de WitnessService
 -- (sous-dossier : le Loader ne le démarre pas). Valeurs : Config/Witness.Avoid (Enabled, Lanes et suivants). Absent ou
 -- coupé : la balade d'avant a269, sur le circuit même.
 --
@@ -21,9 +21,13 @@
 --    un mur passe devant le mur, jamais derrière ni dans un renfoncement. a269e (Play f81d) : un point de voie
 --    resté dans une pièce (aucun couple libre) est déplacé au point libre le plus proche, sinon retiré. a269f (Play
 --    f81e) : un segment encore bouché est contourné : un de ses points, ou les deux, déplacés jusqu'à
---    Avoid.LaneDetourMax studs, ou un point retiré ; la sortie dit de combien.
+--    Avoid.LaneDetourMax studs, ou un point retiré ; la sortie dit de combien. a269g (Play f81f) : un détour qui crée
+--    un virage de plus de Avoid.LaneTurnMax degrés compte comme un retour en arrière ; à Avoid.LaneCurbSlack studs
+--    près (et sans rapprocher les deux voies), on préfère celui qui ne va pas plus vers la rue (l'intérieur du
+--    circuit) que le point de voie d'avant.
 -- 3. Lissage (a269d) : un segment de voie qui revient en arrière (bosse serrée du circuit, voie intérieure) : son
---    point est remplacé par le milieu de ses deux voisins, si c'est libre.
+--    point est remplacé par le milieu de ses deux voisins, si c'est libre. a269g : un virage serré (plus de LaneTurnMax
+--    degrés, pas sur le circuit) à un point déplacé ou voisin d'un point déplacé est lissé de même (ou au plus près).
 -- 4. Passages étroits (a269d) : un segment où les deux voies sont à moins de 2 × Lane − LaneStep studs l'une de
 --    l'autre (à un pas de décalage près), ou encore bouché. Les segments étroits qui se suivent forment un passage ;
 --    WitnessService n'y laisse qu'un témoin à la fois.
@@ -31,9 +35,12 @@
 --    point qu'il vise (pas un renfoncement), sinon son point de voie d'avant.
 --
 -- API :
---   WitnessLanes.Build(path, height, ignore) -> (forward, backward, fixes, narrow)
+--   WitnessLanes.Build(path, height, ignore, pause?) -> (forward, backward, fixes, narrow)
 --       voies des sens +1 et −1 (mêmes numéros que path) ; fixes : corrections lisibles ; narrow : [segment k (du
 --       point k au suivant)] = numéro de passage étroit
+--       a269g (Play f81f : « Script timeout ») : pause (WitnessService : task.wait) est appelée au moins toutes les
+--       Avoid.LaneStepQueries requêtes ou toutes les Avoid.LaneStepBudget s ; WitnessLanes.LastQueries et LastPauses
+--       : les requêtes et les pauses du dernier Build.
 --   WitnessLanes.Sidestep(position, heading, goal, back, ignore) -> Vector3?   point libre à côté, ou nil
 --   WitnessLanes.Free(from, to, radius, ignore) -> (boolean, Instance?)   balayage (sans Spherecast : libre)
 -- height : hauteur de la racine du témoin au-dessus des points du circuit ; ignore : modèles et dossiers ignorés.
@@ -44,6 +51,9 @@ local Workspace = game:GetService("Workspace")
 local Witness = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"):WaitForChild("Witness")) :: any
 
 local WitnessLanes = {}
+-- a269g : les requêtes (Spherecast et GetPartBoundsInRadius) et les pauses du dernier Build, pour la sortie et le banc.
+WitnessLanes.LastQueries = 0
+WitnessLanes.LastPauses = 0
 
 local MAP_NAME = "Map"
 
@@ -81,7 +91,36 @@ local function counts(part: Instance): boolean
 	return type(transparency) == "number" and transparency <= number(avoid().LaneVisibleMax, 0.5)
 end
 
-type Probe = { ray: RaycastParams?, over: OverlapParams?, exclude: { Instance } }
+-- a269g (Play f81f : « Script timeout » au démarrage) : les requêtes d'un calcul de voies, et sa pause. Avec `pause`
+-- (WitnessService : task.wait), le calcul rend la main au moins toutes les Avoid.LaneStepQueries requêtes (un
+-- essai de détour ou de lissage compte pour un dixième de requête) ou toutes les Avoid.LaneStepBudget s.
+type Probe = {
+	ray: RaycastParams?,
+	over: OverlapParams?,
+	exclude: { Instance },
+	queries: number,
+	load: number,
+	since: number,
+	pause: (() -> ())?,
+	pauses: number,
+}
+
+local function work(probe: Probe, amount: number)
+	local pause = probe.pause
+	if pause == nil then
+		return
+	end
+	local cfg = avoid()
+	if probe.load + amount > math.max(number(cfg.LaneStepQueries, 200), 1)
+		or os.clock() - probe.since >= number(cfg.LaneStepBudget, 0.004)
+	then
+		pause()
+		probe.pauses += 1
+		probe.load = 0
+		probe.since = os.clock()
+	end
+	probe.load += amount
+end
 
 -- Les filtres des requêtes : hors de Workspace/Map (s'il existe), `ignore`, et les pièces sautées en chemin.
 local function newProbe(ignore: { Instance }): Probe
@@ -94,7 +133,7 @@ local function newProbe(ignore: { Instance }): Probe
 			end
 		end
 	end
-	local probe: Probe = { ray = nil, over = nil, exclude = exclude }
+	local probe: Probe = { ray = nil, over = nil, exclude = exclude, queries = 0, load = 0, since = os.clock(), pause = nil, pauses = 0 }
 	local cfg = avoid()
 	local group = if cfg.NoCollide == true and type(cfg.Group) == "string" then cfg.Group else nil
 	pcall(function()
@@ -129,6 +168,8 @@ local function sweep(probe: Probe, from: Vector3, to: Vector3, radius: number): 
 		return true, nil
 	end
 	for _ = 1, 8 do
+		probe.queries += 1
+		work(probe, 1)
 		local ok, result = pcall(function(): RaycastResult?
 			return Workspace:Spherecast(from, radius, direction, params)
 		end)
@@ -155,6 +196,8 @@ local function overlap(probe: Probe, point: Vector3, radius: number): (boolean, 
 	if params == nil then
 		return true, nil
 	end
+	probe.queries += 1
+	work(probe, 1)
 	local ok, parts = pcall(function(): { BasePart }
 		return Workspace:GetPartBoundsInRadius(point, radius, params)
 	end)
@@ -216,10 +259,12 @@ type Pair = { a: number, b: number, score: number, wide: boolean }
 function WitnessLanes.Build(
 	path: { Vector3 },
 	height: number,
-	ignore: { Instance }
+	ignore: { Instance },
+	pause: (() -> ())?
 ): ({ Vector3 }, { Vector3 }, { string }, { [number]: number })
 	local count = #path
 	local cfg = WitnessLanes.Settings()
+	WitnessLanes.LastQueries, WitnessLanes.LastPauses = 0, 0
 	if cfg == nil or count < 2 then
 		return table.clone(path), table.clone(path), {}, {}
 	end
@@ -229,6 +274,8 @@ function WitnessLanes.Build(
 	local radius = number(cfg.LaneClearance, 1.2)
 	local drops = { 0, number(cfg.LaneLowDrop, 0) }
 	local probe = newProbe(ignore)
+	probe.pause = pause
+	probe.since = os.clock()
 	local function nextOf(k: number): number
 		return k % count + 1
 	end
@@ -542,6 +589,43 @@ function WitnessLanes.Build(
 		local pa, pb = path[k], path[nextOf(k)]
 		return (b.X - a.X) * (pb.X - pa.X) + (b.Z - a.Z) * (pb.Z - pa.Z) <= 0
 	end
+	-- a269g (Play f81f : épingle au coin de la zone 1, P2 retiré) : le virage (degrés, à plat) en b de a→b→c ; un
+	-- virage de plus de Avoid.LaneTurnMax degrés est « serré » s'il ne l'est pas sur le circuit même.
+	local turnMax = number(cfg.LaneTurnMax, 120)
+	local function turnOf(a: Vector3, b: Vector3, c: Vector3): number
+		local ux, uz, vx, vz = b.X - a.X, b.Z - a.Z, c.X - b.X, c.Z - b.Z
+		local lu, lv = math.sqrt(ux * ux + uz * uz), math.sqrt(vx * vx + vz * vz)
+		if lu < 1e-3 or lv < 1e-3 then
+			return 0
+		end
+		return math.deg(math.acos(math.clamp((ux * vx + uz * vz) / (lu * lv), -1, 1)))
+	end
+	local pathSharp: { [number]: boolean } = {}
+	for k = 1, count do
+		pathSharp[k] = turnOf(path[prevOf(k)], path[k], path[nextOf(k)]) > turnMax
+	end
+	local function sharpAt(k: number, a: Vector3, b: Vector3, c: Vector3): boolean
+		return not pathSharp[k] and turnOf(a, b, c) > turnMax
+	end
+	-- a269g (Play f81f : détours sur la chaussée en zones 1, 4 et 6) : de combien un point est vers l'intérieur du
+	-- circuit (la rue : le circuit fait le tour de la chaussée par les deux trottoirs), le long de la normale du point.
+	local area = 0
+	for k = 1, count do
+		local a, b = path[k], path[nextOf(k)]
+		area += a.X * b.Z - b.X * a.Z
+	end
+	local inward = if area > 0 then 1 else -1 -- aire > 0 : l'intérieur est sur la droite du sens +1
+	local function streetward(c: Vector3, k: number): number
+		local p = path[k]
+		local nx, nz = vnx[k], vnz[k]
+		local length = math.sqrt(nx * nx + nz * nz)
+		if length < 1e-6 then
+			return 0
+		end
+		return ((c.X - p.X) * nx + (c.Z - p.Z) * nz) / length * inward
+	end
+	local curbSlack = number(cfg.LaneCurbSlack, 2)
+	type Detour = { c1: Vector3, c2: Vector3, tier: number, added: number, removed: number, curb: boolean }
 	for side, points in { forward, backward } do
 		local other = if side == 1 then backward else forward
 		local label = if side == 1 then "aller" else "retour"
@@ -556,12 +640,19 @@ function WitnessLanes.Build(
 				if not free or reversed then
 					local k0, k3 = prevOf(k), nextOf(k2)
 					local before, p1, p2, after = points[k0], points[k], points[k2], points[k3]
+					local before0, after3 = points[prevOf(k0)], points[nextOf(k3)]
 					local length0 = flatLength(before, p1) + flatLength(p1, p2) + flatLength(p2, after)
-					local best: { c1: Vector3, c2: Vector3, tier: number, added: number, removed: number }? = nil
+					local curb1, curb2 = streetward(p1, k) + step, streetward(p2, k2) + step
+					local best: Detour? = nil
+					local bestCurb: Detour? = nil
 					local function try(c1: Vector3, c2: Vector3, removed: number)
+						work(probe, 0.1)
 						local added = flatLength(before, c1) + flatLength(c1, c2) + flatLength(c2, after) - length0
 						local moved1, moved2 = c1 ~= p1, c2 ~= p2
+						-- a269g : un virage serré créé par le détour compte comme un retour en arrière
 						local back = goesBack(c1, c2, k) or (moved1 and goesBack(before, c1, k0)) or (moved2 and goesBack(c2, after, k2))
+							or sharpAt(k0, before0, before, c1) or sharpAt(k, before, c1, c2) or sharpAt(k2, c1, c2, after)
+							or sharpAt(k3, c2, after, after3)
 						if reversed and back then
 							return
 						end
@@ -569,7 +660,14 @@ function WitnessLanes.Build(
 							and gap(c1, c2, other[k], other[k2]) >= 2 * lane - step - 1e-6
 							and gap(c2, after, other[k2], other[k3]) >= 2 * lane - step - 1e-6
 						local tier = (if back then 2 else 0) + (if apart then 0 else 1)
-						if best and (tier > best.tier or (tier == best.tier and added >= best.added - 1e-6)) then
+						-- a269g : sur le trottoir (pas plus vers la rue que le point de voie d'avant), sans retour en arrière
+						local curb = not back and (not moved1 or streetward(c1, k) <= curb1)
+							and (not moved2 or streetward(c2, k2) <= curb2)
+						local current, currentCurb = best, bestCurb
+						local better = current == nil or tier < current.tier
+							or (tier == current.tier and added < current.added - 1e-6)
+						local betterCurb = curb and (currentCurb == nil or added < currentCurb.added - 1e-6)
+						if not better and not betterCurb then
 							return
 						end
 						if (moved1 and not (clearPoint(c1))) or (moved2 and not (clearPoint(c2))) or not (clearLine(c1, c2))
@@ -577,7 +675,13 @@ function WitnessLanes.Build(
 						then
 							return
 						end
-						best = { c1 = c1, c2 = c2, tier = tier, added = added, removed = removed }
+						local entry: Detour = { c1 = c1, c2 = c2, tier = tier, added = added, removed = removed, curb = curb }
+						if better then
+							best = entry
+						end
+						if betterCurb then
+							bestCurb = entry
+						end
 					end
 					try(lerp(before, p2, 0.5), p2, k) -- un point retiré
 					try(p1, lerp(p1, after, 0.5), k2)
@@ -587,6 +691,10 @@ function WitnessLanes.Build(
 						try(p1 + offset, p2 + offset, 0)
 					end
 					local found = best
+					local onCurb = bestCurb
+					if found and onCurb and not found.curb and onCurb.tier <= found.tier and onCurb.added <= found.added + curbSlack + 1e-6 then
+						found = onCurb -- à longueur proche (et sans rapprocher les deux voies), le détour qui reste sur le trottoir
+					end
 					local why = if reversed then "revenait en arrière" else nameOf(hit)
 					if found then
 						points[k], points[k2] = found.c1, found.c2
@@ -605,12 +713,68 @@ function WitnessLanes.Build(
 								shifted[k2] = true
 							end
 						end
-						table.insert(detoured, `{k}→{k2} {label} {why} : détour de {round(found.added)} ({table.concat(what, ", ")})`)
+						local where = if found.curb then "" else ", vers la rue"
+						table.insert(detoured, `{k}→{k2} {label} {why} : détour de {round(found.added)} ({table.concat(what, ", ")}{where})`)
 					elseif not reversed and not stuck[k] then
 						stuck[k] = true
 						table.insert(detoured, `{k}→{k2} {label} {why} : aucun détour libre à {round(detourMax)} studs`)
 					end
 				end
+			end
+		end
+	end
+	-- a269g (Play f81f : au coin de la zone 1, retour P3 → P2 → P1 qui monte et redescend) : un virage serré (plus de
+	-- LaneTurnMax degrés, pas sur le circuit) à un point de voie déplacé (choix, déplacement, lissage, détour) ou voisin
+	-- d'un point déplacé : le point va au milieu de ses voisins, sinon au plus près de ce milieu (16 directions, pas de
+	-- 2 × LaneStep, jusqu'à LaneDetourMax studs), libre, sans retour en arrière ni nouveau virage serré.
+	local turned: { string } = {}
+	for side, points in { forward, backward } do
+		local label = if side == 1 then "aller" else "retour"
+		local sign = if side == 1 then 1 else -1
+		local function displaced(k: number): boolean
+			return flatLength(points[k], spotOf(k, sign * lane)) > step + 1e-6
+		end
+		local failed: { [number]: boolean } = {}
+		for _ = 1, if count >= 4 then 3 else 0 do
+			local changed = false
+			for k = 1, count do
+				local k0, k2 = prevOf(k), nextOf(k)
+				local before, p, after = points[k0], points[k], points[k2]
+				if sharpAt(k, before, p, after) and (displaced(k) or displaced(k0) or displaced(k2)) then
+					local angle = turnOf(before, p, after)
+					local before0, after3 = points[prevOf(k0)], points[nextOf(k2)]
+					local mid = lerp(before, after, 0.5)
+					local function fits(c: Vector3): boolean
+						work(probe, 0.1)
+						if goesBack(before, c, k0) or goesBack(c, after, k) or sharpAt(k, before, c, after)
+							or sharpAt(k0, before0, before, c) or sharpAt(k2, c, after, after3)
+						then
+							return false
+						end
+						return (clearPoint(c)) and (clearLine(before, c)) and (clearLine(c, after))
+					end
+					local chosen: Vector3? = if fits(mid) then mid else nil
+					if chosen == nil then
+						for _, offset in offsets do
+							if fits(mid + offset) then
+								chosen = mid + offset
+								break
+							end
+						end
+					end
+					if chosen then
+						points[k] = chosen
+						changed = true
+						failed[k] = nil
+						table.insert(turned, `P{k} {label} virage de {math.floor(angle + 0.5)}° lissé`)
+					elseif not failed[k] then
+						failed[k] = true
+						table.insert(turned, `P{k} {label} virage de {math.floor(angle + 0.5)}° : non lissé`)
+					end
+				end
+			end
+			if not changed then
+				break
 			end
 		end
 	end
@@ -674,6 +838,9 @@ function WitnessLanes.Build(
 	for _, line in detoured do
 		table.insert(fixes, line)
 	end
+	for _, line in turned do
+		table.insert(fixes, line)
+	end
 	for k = 1, count do
 		local k2 = nextOf(k)
 		if blocked[k] then
@@ -683,6 +850,7 @@ function WitnessLanes.Build(
 			table.insert(fixes, `{k}→{k2} {nameOf(segHit[k])} : passage étroit {narrow[k]} ({round(tight[k])})`)
 		end
 	end
+	WitnessLanes.LastQueries, WitnessLanes.LastPauses = probe.queries, probe.pauses
 	return forward, backward, fixes, narrow
 end
 
