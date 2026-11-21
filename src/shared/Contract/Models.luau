@@ -653,7 +653,7 @@ local FortuneVault: ModelSpec = {
 			Optional = true,
 			Note = "facultatif : contour éteint à la casse, L-108",
 		},
-		-- Vague 42 (L-145 (c) et (d), 2026-11-14 : on entre dans le coffre) : points du butin (8 colis), à
+		-- Vague 42 (L-145 (c) et (d), 2026-11-14 : on entre dans le coffre) : points du butin (LootCount colis de Config/FortuneTower : 6 depuis a286 ; 07 et 08 restent permis, inutilisés), à
 		-- l'intérieur, chacun posé sur le sol du coffre sous lui ; Attachment ou pièce. Facultatifs (orange) :
 		-- sans eux, une rangée devant la face avant. InBounds : un point hors de la boîte du modèle = orange.
 		{
@@ -849,7 +849,7 @@ local Trap: ModelSpec = {
 		{ Name = "Armed", Class = "Model" },
 		{ Name = "Triggered", Class = "Model", Note = "livré caché, montré au déclenchement, L-218" },
 	},
-	Expected = { "TRAP_GlueMat", "TRAP_NetBox", "TRAP_AlarmGate" },
+	Expected = { "TRAP_GlueMat", "TRAP_NetBox", "TRAP_AlarmGate", "TRAP_BananaPeel", "TRAP_TrapDoor" }, -- a286 : les deux derniers, L-268
 }
 Models.Trap = Trap
 table.insert(Models.List, Trap)

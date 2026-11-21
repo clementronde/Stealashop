@@ -6,7 +6,7 @@
 -- Achat : la tuile Traps de l'arbre (Config/SkillTree, SkillTreeService : prix, renaissance, OpensWhen). Son
 -- Effects[niveau] = nombre de pièges posés. Rien d'autre ne s'achète ici, aucun remote : le client ne demande rien.
 -- Pose : pour la boutique de chaque joueur, un piège par emplacement TrapSlot_01 à _0n (n = ce nombre, et
--- seulement les emplacements présents dans la boutique), du genre Traps.SlotLayout[i] : copie de
+-- seulement les emplacements présents dans la boutique), du genre Traps.SlotLayout[i] (a286 : Traps.SlotLayoutNew si Features.NewTraps) : copie de
 -- ReplicatedStorage/Assets/Traps/TRAP_<Id> (sans script, pièces ancrées, TriggerZone sans collision ni requête),
 -- sinon un modèle de repli construit ici ; pivot posé sur l'emplacement (WorldCFrame d'un Attachment, bas d'une
 -- pièce). Copie nommée Trap_0i, dans le dossier Traps.Folder de la boutique, tag Traps.Tag, attributs TrapId et
@@ -23,6 +23,9 @@
 -- son client) ; un nouveau piège remplace l'effet en cours. Notify au voleur (« Warning ») et au propriétaire
 -- (« Alert ») ; Spot > 0 (portique) : CameraSpotted au propriétaire, le voleur est surligné Spot s
 -- (CameraAlertController). Effet retiré à la réapparition et au départ.
+-- a286 : Eject (trappe) : le voleur sort devant la porte (PlotService.PutOutside) avant l'arrêt ; l'objet qu'il volait à
+-- cette boutique revient sur son présentoir (CarryService.FailNoDrop, raison « Trap »). Sans repère de sortie : il reste
+-- sur place, sonné, une ligne dans la sortie.
 --
 -- API (serveur, pour les tests) :
 --   TrapService.Sync(plot)               remet à jour les pièges posés de cette boutique
@@ -34,6 +37,7 @@
 --   workspace:SetAttribute("TrapsTest", true)     allume les pièges sans toucher Features.Traps
 --   workspace:SetAttribute("TrapsTest", "self")   pareil, et le propriétaire est pris par ses propres pièges
 --   workspace:SetAttribute("SkillTest", "<joueur> Traps 4")   4 pièges posés dans sa boutique (SkillTreeService)
+--   workspace:SetAttribute("NewTrapsTest", true)  a286 : disposition Traps.SlotLayoutNew (banane, filet, portique, trappe)
 
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
@@ -66,6 +70,7 @@ type Placed = {
 local SKILL_ID = "Traps"
 local SPEED_KEY = "Trap"
 local TEST_ATTRIBUTE = "TrapsTest"
+local NEW_TEST_ATTRIBUTE = "NewTrapsTest" -- a286 : disposition Traps.SlotLayoutNew en Studio sans toucher Features.NewTraps
 local IS_STUDIO = RunService:IsStudio()
 
 local TrapService = {}
@@ -98,6 +103,40 @@ end
 
 local function ownerCanTrigger(): boolean
 	return IS_STUDIO and Workspace:GetAttribute(TEST_ATTRIBUTE) == "self"
+end
+
+-- a286 : genre de piège de chaque emplacement (Traps.SlotLayoutNew avec les deux pièges de plus, ou la disposition
+-- d'avant). Les deux ont #Traps.SlotLayout emplacements.
+local function slotLayout(): { Traps.TrapId }
+	local new = Features.NewTraps == true or (IS_STUDIO and Workspace:GetAttribute(NEW_TEST_ATTRIBUTE) == true)
+	return if new then Traps.SlotLayoutNew else Traps.SlotLayout
+end
+
+-- a286 : CarryService chargé à la demande (trappe : l'objet volé à cette boutique revient). Absent : rien.
+local function carryApi(): any
+	local module = script.Parent:FindFirstChild("CarryService")
+	if module == nil or not module:IsA("ModuleScript") then
+		return nil
+	end
+	local ok, api = pcall(require, module)
+	return if ok then api else nil
+end
+
+-- a286 (trappe, Traps.Eject) : `thief` sort devant la porte de `plot` (PlotService.PutOutside) ; s'il portait un
+-- objet volé à cette boutique, l'objet revient sur son présentoir d'abord (FailNoDrop « Trap », PvPService le rend).
+local function eject(plot: Model, thief: Player, owner: Player?)
+	local carry = carryApi()
+	if carry then
+		local ok, payload = pcall(carry.GetPayload, thief)
+		local victim = if ok and type(payload) == "table" and payload.Kind == "PlayerItem" then payload.VictimUserId else nil
+		if victim ~= nil and (owner == nil or victim == owner.UserId) then
+			pcall(carry.FailNoDrop, thief, "Trap")
+		end
+	end
+	local ok, out = pcall(PlotService.PutOutside, thief, plot)
+	if not ok or out ~= true then
+		log(`{thief.Name} : trappe de {plot.Name} sans sortie ({if ok then "personnage absent ou boutique sans repère" else out})`)
+	end
 end
 
 ------------------------------------------------------------------------------
@@ -273,7 +312,7 @@ function TrapService.Sync(plot: Model)
 	placed[plot] = list
 	for index = 1, #Traps.SlotLayout do
 		local entry = list[index]
-		local trap = if index <= count then Traps.ById[Traps.SlotLayout[index]] else nil
+		local trap = if index <= count then Traps.ById[slotLayout()[index]] else nil
 		local slot = if trap then findSlot(plot, index) else nil
 		local keep = entry ~= nil
 			and trap ~= nil
@@ -375,6 +414,9 @@ local function trigger(plot: Model, entry: Placed, thief: Player, owner: Player?
 	local byPlot = immuneUntil[thief] or {}
 	immuneUntil[thief] = byPlot
 	byPlot[plot] = os.clock() + Traps.Immunity
+	if trap.Eject then
+		eject(plot, thief, owner) -- a286 : trappe, sortie devant la porte avant l'arrêt
+	end
 	applyEffect(thief, trap)
 
 	notify(thief, string.format(Traps.Messages.Thief, trap.DisplayName), "Warning")
@@ -531,11 +573,13 @@ function TrapService.Init()
 		immuneUntil[player] = nil
 	end)
 	if IS_STUDIO then
-		Workspace:GetAttributeChangedSignal(TEST_ATTRIBUTE):Connect(function()
+		local function syncAll()
 			for _, plot in PlotService.GetPlots() do
 				TrapService.Sync(plot)
 			end
-		end)
+		end
+		Workspace:GetAttributeChangedSignal(TEST_ATTRIBUTE):Connect(syncAll)
+		Workspace:GetAttributeChangedSignal(NEW_TEST_ATTRIBUTE):Connect(syncAll) -- a286
 	end
 	local sinceCheck = 0
 	local sinceSync = 0
@@ -553,7 +597,7 @@ function TrapService.Init()
 			TrapService.Step()
 		end
 	end)
-	log(`pièges {if TrapService.IsEnabled() then "allumés" else "coupés (Features.Traps)"}, {#Traps.List} genres`)
+	log(`pièges {if TrapService.IsEnabled() then "allumés" else "coupés (Features.Traps)"}, {#Traps.List} genres, disposition {table.concat(slotLayout(), ", ")}`)
 end
 
 return TrapService

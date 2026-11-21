@@ -148,6 +148,13 @@ local UiMotion = {
 		ShadeTransparency = 0.78, -- tableau : « calque Shade de transparence 1 → 0,78 »
 		Sound = "UI_Hover", -- tableau : « son UI_Hover »
 		ScaleName = "HoverScale", -- V0 proposé, absent du doc : UIScale à part, retiré quand le bouton est revenu à 1
+		-- a286 (Clément, L-224 point 2 : « survol d'une carte +3 %, d'une croix +7 % en 133 ms ») : une croix de
+		-- fermeture (bouton nommé CloseNames) grossit à CloseTo, une carte (Motion.HoverCard, sans Hover = Pop) à
+		-- CardTo, toutes deux en SizedTime s (même courbe que To) ; les autres boutons gardent To en Time.
+		CloseTo = 1.07,
+		CloseNames = { "CloseButton", "CloseArrowButton" },
+		CardTo = 1.03,
+		SizedTime = 0.133,
 	},
 	-- Bouton appuyé (Motion.Button).
 	Press = {

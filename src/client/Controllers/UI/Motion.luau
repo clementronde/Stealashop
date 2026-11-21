@@ -29,12 +29,16 @@
 --                               survol) ; UIScale Hover.ScaleName, retiré dès que le bouton est revenu
 --                               à 1 ; Shade remis à sa transparence d'origine. Toucher fini (tactile,
 --                               sans MouseLeave) : retour à 1 (L-092 3g). Hover = ancien nom.
+--                               a286 (L-224 point 2) : une croix (Hover.CloseNames) grossit à Hover.CloseTo
+--                               (+7 %) en Hover.SizedTime (133 ms).
 --   Motion.Success(button)      le bouton saute à Success.From et revient ; son Success.Sound.
 --                               Vague 66 (a222, L-210 point 9, HoverFit) : un bouton dans une carte de liste
 --                               (sous une ScrollingFrame) grossit au plus jusqu'au bord de sa carte (survol,
 --                               rebond de Squash, réussite) ; ailleurs, comme avant.
 --   Motion.HoverCard(card)      carte survolée : HoverOutline visible, Icon grossi, penché, décalé ;
 --                               tout revient à la sortie (L-091 point 7).
+--                               a286 (L-224 point 2) : la carte elle-même grossit à Hover.CardTo (+3 %) en
+--                               Hover.SizedTime, par un UIScale passager (aucun si elle en a déjà un).
 --                               Vague 59 (L-182) : attribut Hover = Pop sur un bouton : × HoverPop.To en
 --                               HoverPop.Time ; sur une carte : elle penche de CardTilt et son Icon grossit
 --                               (IconScale) sans bouger. Press = Squash : × PressSquash.To tant que le
@@ -147,6 +151,12 @@ local STAGGER_INFO = TweenInfo.new(STAGGER.Time, STAGGER.Style, STAGGER.Directio
 local SWAP_OUT_INFO = TweenInfo.new(UiMotion.Swap.OutTime, UiMotion.Swap.Style, UiMotion.Swap.Direction)
 local ROLL_INFO = TweenInfo.new(UiMotion.Roll.Time, UiMotion.Roll.Style, UiMotion.Roll.Direction)
 local HOVER_INFO = TweenInfo.new(UiMotion.Hover.Time, UiMotion.Hover.Style, UiMotion.Hover.Direction)
+-- a286 (L-224 point 2) : survol d'une croix (Hover.CloseTo) et d'une carte (Hover.CardTo), en Hover.SizedTime.
+local SIZED_INFO = TweenInfo.new(UiMotion.Hover.SizedTime, UiMotion.Hover.Style, UiMotion.Hover.Direction)
+local CLOSE_NAMES: { [string]: boolean } = {}
+for _, name in UiMotion.Hover.CloseNames do
+	CLOSE_NAMES[name] = true
+end
 
 local IS_STUDIO = RunService:IsStudio()
 
@@ -1272,11 +1282,12 @@ function Motion.Button(button: GuiButton)
 	state.wired = true
 	-- Vague 59 : Hover = Pop (× HoverPop.To en HoverPop.Time) à la place du survol validé (Hover).
 	-- Vague 66 : dans une carte de liste, au plus jusqu'au bord de la carte (HoverFit).
+	-- a286 (L-224 point 2) : une croix de fermeture grossit à Hover.CloseTo en Hover.SizedTime.
 	local function hoverTo(): number
-		return fitted(button, state, if hoverPop(button) then POP.To else UiMotion.Hover.To)
+		return fitted(button, state, if hoverPop(button) then POP.To elseif CLOSE_NAMES[button.Name] then UiMotion.Hover.CloseTo else UiMotion.Hover.To)
 	end
 	local function hoverInfo(): TweenInfo
-		return if hoverPop(button) then POP_INFO else HOVER_INFO
+		return if hoverPop(button) then POP_INFO elseif CLOSE_NAMES[button.Name] then SIZED_INFO else HOVER_INFO
 	end
 	-- Press = Squash : au relâché, 1,1 puis retour au repos (survol ou 1) ; un survol quitté pendant le rebond est
 	-- pris en compte à la fin du rebond.
@@ -1449,6 +1460,7 @@ type CardState = {
 	outlineBase: boolean?, -- Visible de HoverOutline avant le survol
 	pop: boolean, -- vague 59 : survol Hover = Pop en cours (la carte penche, l'Icon grossit sans bouger)
 	cardRotation: number?, -- Rotation de la carte posée par Clément, remise au retour (Pop)
+	cardScale: UIScale?, -- a286 (L-224 point 2) : UIScale passager de la carte elle-même (Hover.CardTo), détruit au retour
 }
 
 local CARD_POP_INFO = TweenInfo.new(UiMotion.HoverPop.Time, UiMotion.HoverPop.Style, UiMotion.HoverPop.Direction)
@@ -1505,6 +1517,7 @@ function Motion.HoverCard(card: GuiObject)
 		outlineBase = nil,
 		pop = false,
 		cardRotation = nil,
+		cardScale = nil,
 	}
 	cards[card] = state
 	local function cardIn()
@@ -1553,6 +1566,24 @@ function Motion.HoverCard(card: GuiObject)
 				}))
 			end
 		end
+		if not pop then
+			-- a286 (L-224 point 2) : la carte grossit de 3 % (Hover.CardTo) en Hover.SizedTime, par un UIScale à elle
+			-- (aucun si Clément lui en a déjà mis un).
+			local cardScale = state.cardScale
+			if cardScale == nil or cardScale.Parent ~= card then
+				cardScale = nil
+				if card:FindFirstChildOfClass("UIScale") == nil then
+					local created = Instance.new("UIScale")
+					created.Name = UiMotion.Hover.ScaleName
+					created.Parent = card
+					cardScale = created
+				end
+				state.cardScale = cardScale
+			end
+			if cardScale then
+				table.insert(list, TweenService:Create(cardScale, SIZED_INFO, { Scale = UiMotion.Hover.CardTo }))
+			end
+		end
 		if pop then
 			if state.cardRotation == nil then
 				state.cardRotation = card.Rotation
@@ -1584,6 +1615,10 @@ function Motion.HoverCard(card: GuiObject)
 				table.insert(list, TweenService:Create(icon, CARD_BACK_INFO, { Rotation = state.baseRotation, Position = basePosition }))
 			end
 		end
+		local cardScale = state.cardScale -- a286
+		if cardScale and cardScale.Parent == card then
+			table.insert(list, TweenService:Create(cardScale, CARD_BACK_INFO, { Scale = 1 }))
+		end
 		if #list == 0 then
 			return
 		end
@@ -1601,6 +1636,11 @@ function Motion.HoverCard(card: GuiObject)
 			state.scale = nil
 			if own then
 				own:Destroy()
+			end
+			local ownCard = state.cardScale -- a286
+			state.cardScale = nil
+			if ownCard then
+				ownCard:Destroy()
 			end
 		end)
 	end

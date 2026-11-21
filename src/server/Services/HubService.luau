@@ -19,6 +19,7 @@
 -- API (serveur) :
 --   HubService.GetFriendCount(player) -> number   amis présents (sans plafond)
 --   HubService.GetFriendBonus(player) -> number   fraction du bonus (plafond compris)
+--   HubService.AreFriends(a, b) -> boolean         a286 : amis Roblox, pour la prime au complice (StoreHeistService)
 
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
@@ -120,6 +121,12 @@ end
 
 function HubService.GetFriendCount(player: Player): number
 	return counts[player] or 0
+end
+
+-- a286 (prime au complice, StoreHeistService) : `a` et `b` sont-ils amis Roblox (paires lues à l'arrivée) ?
+function HubService.AreFriends(a: Player, b: Player): boolean
+	local mine = friends[a]
+	return mine ~= nil and mine[b] == true
 end
 
 function HubService.GetFriendBonus(player: Player): number

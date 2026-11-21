@@ -1148,6 +1148,13 @@ table.insert(UI.Screens, {
 		{ Path = "Reserve.ReserveList.Template.DisplayButton", Class = BUTTON, Optional = true, Note = "un objet de la réserve ne se remet pas sur un présentoir" },
 		-- Vague 66 (a219) : texte « PLACE » (Config/Displayed.LockedButtonText) sur un objet sous antivol à poser au sol.
 		{ Path = "Reserve.ReserveList.Template.DisplayButton.DisplayLabel", Class = "TextLabel", Optional = true, Note = "un objet sous antivol garde « DISPLAY » sur son bouton" },
+		-- a286 (Clément, 19/11, tools/clement/ui_displayed_une_liste.luau) : une seule liste. Panel.Reserve retiré,
+		-- List.Template porte aussi DisplayButton (caché, montré par le code sur un objet de la réserve, RemoveButton
+		-- sur un objet exposé) ; les objets exposés d'abord, la réserve en dessous ; Panel.ListEmpty montré quand il
+		-- n'y a aucun objet. Les deux formes marchent : avec Panel.Reserve, la réserve reste à part.
+		{ Path = "List.Template.DisplayButton", Class = BUTTON, Optional = true, Note = "liste unique pas encore là : la réserve reste dans Panel.Reserve" },
+		{ Path = "List.Template.DisplayButton.DisplayLabel", Class = "TextLabel", Optional = true, Note = "liste unique : un objet sous antivol garde « DISPLAY » sur son bouton" },
+		{ Path = "ListEmpty", Class = "GuiObject", Optional = true, Note = "liste unique : pas de texte quand il n'y a aucun objet" },
 	} :: { Element },
 })
 

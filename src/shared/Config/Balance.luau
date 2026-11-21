@@ -124,6 +124,12 @@ local Balance = {
 		-- envois au même joueur (s).
 		OneAtATimeMessage = "Easy there, greedy! Finish your heist first.",
 		OneAtATimeCooldown = 3,
+		-- a286 (L-216 point 10 ; Features.HeistPartnerBonus) : prime au complice. Quand le porteur range en base
+		-- l'objet d'un magasin PNJ, chaque ami (HubService) entré dans ce magasin pendant la même ouverture reçoit
+		-- PartnerBonusSeconds s du revenu de l'objet (V0 de L-235 du 2026-11-17, à valider par Clément ; rien n'est
+		-- versé au porteur en plus). PartnerBonusMessage : V0 du 2026-11-21 (anglais, L-036).
+		PartnerBonusSeconds = 60,
+		PartnerBonusMessage = "Partner bonus! +%s",
 	},
 
 	-- 9.5 : DataStore des profils joueurs (DataService), choisie selon le jeu Roblox (game.GameId).
