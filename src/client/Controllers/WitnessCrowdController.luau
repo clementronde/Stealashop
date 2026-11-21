@@ -20,6 +20,13 @@
 --      s'efface tout de suite. Crowd.Cooldown compte depuis sa fin. Si elle n'a pas pu se former à l'entrée (caméra
 --      trop loin, Crowd.MaxCrowds atteint), elle se forme à la sortie avec l'objet, comme avant. Crowd.Trigger =
 --      "Exit" : l'ancien moment, inchangé.
+--      a289 (Cantin, 21/11 : « elle disparaît quand le vol est fini cad quand l'item est ramené ») : avec "Enter", un
+--      joueur qui prend un objet dans ce magasin (Carrying du Player absent à son entrée dans Bounds, présent pendant
+--      qu'il y est ou à sa sortie) en est le voleur. La foule reste tant qu'un voleur porte, même loin du magasin, et
+--      tant qu'un autre joueur est dans Bounds ; quand plus rien ne la retient, elle s'efface tout de suite si un vol a
+--      eu lieu (Carrying disparu : objet déposé ou rangé, capture, chute, vol par un autre, mort ; ou voleur parti du
+--      jeu), sinon Crowd.Duration s après la sortie du dernier (entré et ressorti sans objet). Crowd.MaxStay (300 s)
+--      n'est plus qu'un filet. Le signal est l'attribut Carrying, répliqué à tous : chaque client voit la même fin.
 --   2. Les personnes : des copies des modèles ReplicatedStorage/Assets/Crowd/Models/NPC_Crowd_* de Clément (L-223),
 --      mélangées ; sans eux, des copies des témoins NPC_Witness_* présents chez ce joueur (tag WitnessGauge.Tag ; d'abord
 --      ceux qui regardent ce magasin, attribut WatchedStore), comme avant. Rangées dans Workspace/Crowd.Folder.
@@ -123,6 +130,9 @@ type Crowd = {
 	turnInterval: number,
 	opaque: boolean, -- fondu d'entrée fini et appliqué : plus rien à écrire jusqu'à la sortie
 	holdUntil: number?, -- a288 ("Enter") : formée à l'entrée, elle reste tant qu'un joueur est dans Bounds, au plus jusque-là
+	robbers: { [Player]: boolean }, -- a289 ("Enter") : les voleurs de ce magasin qui portent encore leur objet
+	finished: { [Player]: boolean }, -- a289 : vol fini ici, encore dans Bounds : ne retiennent plus la foule
+	robbed: boolean, -- a289 : un vol a commencé ici ; fini, la foule part sans attendre Duration
 }
 
 local CROWD = Witness.Crowd
@@ -157,6 +167,7 @@ local crowds: { Crowd } = {}
 local lastAt: { [Model]: number } = {} -- dernière foule de chaque magasin (os.clock)
 local insideOf: { [Player]: Model } = {} -- le magasin où le porteur se trouvait au dernier contrôle
 local enteredOf: { [Player]: Model } = {} -- a288 ("Enter") : le magasin dont l'entrée de ce joueur est déjà traitée
+local carriedIn: { [Player]: boolean } = {} -- a289 ("Enter") : ce joueur portait déjà à son entrée dans le magasin où il est
 local boundsCache: { [Model]: BasePart } = {}
 local shoutListeners: { (Model, string) -> () } = {}
 local nextCheckAt = 0
@@ -945,6 +956,9 @@ local function form(store: Model, thief: Player, now: number, hold: boolean)
 		turnInterval = if low then CROWD.TurnIntervalLow else CROWD.TurnInterval,
 		opaque = false,
 		holdUntil = if hold then now + CROWD.MaxStay else nil,
+		robbers = {},
+		finished = {},
+		robbed = false,
 	}
 	table.insert(crowds, crowd)
 	-- Tenues mélangées : chaque modèle une fois avant d'en revoir un.
@@ -1004,29 +1018,45 @@ end
 
 -- a288 (Crowd.Trigger "Enter") : la foule se forme à l'entrée d'un joueur dans un magasin ouvert, reste tant qu'un
 -- joueur est dans Bounds (au plus Crowd.MaxStay s), puis Crowd.Duration s après la sortie du dernier.
+-- a289 : et tant qu'un voleur de ce magasin porte son objet ; vol fini (Carrying disparu), elle part tout de suite.
+local function robbedBy(crowd: Crowd?, player: Player)
+	if crowd then
+		crowd.robbers[player] = true
+		crowd.finished[player] = nil
+		crowd.robbed = true
+	end
+end
+
 local function checkVisitors(now: number)
-	local occupied: { [Model]: boolean } = {}
+	local present: { [Player]: boolean } = {}
 	for _, player in Players:GetPlayers() do
+		present[player] = true
 		local root = rootOf(player)
 		local store = if root then storeAt(root.Position) else nil
 		local before = insideOf[player]
-		if store then
-			insideOf[player] = store
-			occupied[store] = true
-		else
-			insideOf[player] = nil
-		end
+		local carrying = player:GetAttribute(CARRYING) ~= nil
+		insideOf[player] = store
 		if before and before ~= store then
 			local crowd = crowdOf(before)
 			if crowd then
 				crowd.thief = player -- les regards suivent celui qui sort
-			elseif player:GetAttribute(CARRYING) ~= nil then
+				crowd.finished[player] = nil
+			elseif carrying then
 				form(before, player, now, true) -- pas formée à l'entrée (caméra, plafond) : à la sortie, comme avant
+				crowd = crowdOf(before)
 			end
+			if carrying and not carriedIn[player] then
+				robbedBy(crowd, player) -- a289 : objet pris dans ce magasin, vu seulement à la sortie
+			end
+		end
+		if store ~= before then
+			carriedIn[player] = if store then carrying else nil
 		end
 		if store == nil then
 			enteredOf[player] = nil
-		elseif enteredOf[player] ~= store and store:GetAttribute(HEIST_OPEN) ~= false then
+			continue
+		end
+		if enteredOf[player] ~= store and store:GetAttribute(HEIST_OPEN) ~= false then
 			enteredOf[player] = store
 			local crowd = crowdOf(store)
 			if crowd then
@@ -1035,6 +1065,9 @@ local function checkVisitors(now: number)
 				form(store, player, now, true)
 			end
 		end
+		if carrying and not carriedIn[player] then
+			robbedBy(crowdOf(store), player) -- a289 : il vient de prendre un objet dans ce magasin
+		end
 	end
 	local night = not CROWD.AtNight and Workspace:GetAttribute(NIGHT_PHASE) == "Night"
 	for _, crowd in crowds do
@@ -1042,10 +1075,31 @@ local function checkVisitors(now: number)
 		if hold == nil or now >= crowd.endsAt then
 			continue -- foule de l'ancien moment, ou déjà en train de s'effacer
 		end
+		-- a289 : vol fini (Carrying disparu, ou voleur parti du jeu) : il ne retient plus la foule.
+		local carrying = false
+		for robber in crowd.robbers do
+			if present[robber] and robber:GetAttribute(CARRYING) ~= nil then
+				carrying = true
+			else
+				crowd.robbers[robber] = nil
+				if present[robber] and insideOf[robber] == crowd.store then
+					crowd.finished[robber] = true
+				end
+			end
+		end
+		local occupied = false
+		for player, store in insideOf do
+			if store == crowd.store and present[player] and not crowd.finished[player] then
+				occupied = true
+				break
+			end
+		end
 		if night then
 			crowd.endsAt = now
-		elseif occupied[crowd.store] then
+		elseif carrying or occupied then
 			crowd.endsAt = hold
+		elseif crowd.robbed then
+			crowd.endsAt = math.min(crowd.endsAt, now) -- le vol est fini : elle s'efface
 		else
 			crowd.endsAt = math.min(crowd.endsAt, now + CROWD.Duration)
 		end
@@ -1264,6 +1318,7 @@ function WitnessCrowdController.Start()
 	Players.PlayerRemoving:Connect(function(player: Player)
 		insideOf[player] = nil
 		enteredOf[player] = nil
+		carriedIn[player] = nil
 	end)
 	RunService.Heartbeat:Connect(step)
 	-- a240 (L-229) : Crowd_Gasp une fois à la casse d'une vitrine de magasin PNJ (WindowController, chargé à la demande).

@@ -226,14 +226,27 @@ local Witness = {
 		-- cassée : attribut HeistOpen du magasin, posé par StoreHeistService), avec ou sans objet ; elle reste tant
 		-- qu'un joueur est dans Bounds (au plus MaxStay s), puis Duration s après la sortie du dernier, et s'efface.
 		-- "Exit" = l'ancien moment (L-210 point 4) : à la sortie de Bounds avec l'objet (Carrying), pour Duration s.
+		-- a289 (Cantin, 21/11 : « elle disparaît quand le vol est fini cad quand l'item est ramené ») : avec "Enter", un
+		-- joueur qui prend un objet dans ce magasin (attribut Carrying du Player, posé par CarryService et vu par tous les
+		-- clients, absent à son entrée dans Bounds, présent pendant qu'il y est ou à sa sortie) en est le voleur : la
+		-- foule reste, même voleur loin du magasin, tant qu'il porte, puis s'efface dès que Carrying disparaît, c'est-à-
+		-- dire quand le vol se termine : objet déposé chez lui (rangé à l'entrée de la zone safe ou exposé), ou vol raté
+		-- (attrapé, objet tombé ou lâché, volé par un autre joueur, mort, départ du jeu) : validé par Cantin, 21/11.
+		-- À la sortie, la foule suit le voleur des yeux, comme a288 : validé par Cantin, 21/11.
+		-- V0 proposé (a289, 21/11) : un joueur entré et ressorti sans prendre d'objet (ou entré en portant déjà un objet
+		-- venu d'ailleurs) n'est pas un voleur de ce magasin : sans vol, la foule part Duration s après la sortie du
+		-- dernier joueur, comme a288 ; après un vol fini, elle part dès que plus personne ne la retient (voleur qui
+		-- porte encore, autre joueur dans Bounds), sans attendre Duration.
 		Trigger = "Enter", -- Cantin (21/11)
-		MaxStay = 60, -- V0 proposé (a288, 21/11) : s, la foule formée à l'entrée part au plus tard après ce temps
-		Duration = 6, -- V0 : s, puis ils s'effacent ("Enter" : après la sortie du dernier joueur ; "Exit" : après la formation)
+		-- s : filet seulement, une foule formée à l'entrée part au plus tard ce temps après sa formation, même vol en
+		-- cours (a288 : 60) : validé par Cantin, 21/11
+		MaxStay = 300,
+		Duration = 6, -- V0 : s, puis ils s'effacent ("Enter" : après la sortie du dernier joueur, sans vol ; "Exit" : après la formation)
 		FadeTime = 0.3, -- V0 : s, apparition et disparition (LocalTransparencyModifier) ; animations réduites : d'un coup
 		FlashMin = 0.7, -- V0 : rythme des flashs sans marqueur Flash (s, au hasard entre les deux)…
 		FlashMax = 1.5, -- V0 : … ; avec TakePhoto, ses marqueurs Flash donnent le rythme
 		Cooldown = 15, -- V0 : s, pas deux foules pour un même magasin dans ce temps (a288, "Enter" : compté depuis la fin de la foule)
-		MaxCrowds = 2, -- V0 : foules à la fois chez un joueur…
+		MaxCrowds = 2, -- foules à la fois chez un joueur (validé par Cantin, 21/11)…
 		MaxCrowdsLow = 1, -- V0 : … sur appareil faible
 		AtNight = false, -- V0 : comme avant (la nuit, plus de témoins, donc plus de foule) ; à valider par Clément
 		ViewDistance = 220, -- V0 : studs ; voleur plus loin de la caméra : pas de foule
