@@ -1,5 +1,5 @@
 --!strict
--- Npc/WitnessLanes (serveur, a269c, refait a269d, a269f, a269g ; Plays f81b à f81f, 22/11) : module d'aide de WitnessService
+-- Npc/WitnessLanes (serveur, a269c, refait a269d, a269f, a269g, a269h ; Plays f81b à f81g, 22/11) : module d'aide de WitnessService
 -- (sous-dossier : le Loader ne le démarre pas). Valeurs : Config/Witness.Avoid (Enabled, Lanes et suivants). Absent ou
 -- coupé : la balade d'avant a269, sur le circuit même.
 --
@@ -27,7 +27,8 @@
 --    circuit) que le point de voie d'avant.
 -- 3. Lissage (a269d) : un segment de voie qui revient en arrière (bosse serrée du circuit, voie intérieure) : son
 --    point est remplacé par le milieu de ses deux voisins, si c'est libre. a269g : un virage serré (plus de LaneTurnMax
---    degrés, pas sur le circuit) à un point déplacé ou voisin d'un point déplacé est lissé de même (ou au plus près).
+--    degrés, pas sur le circuit) à un point déplacé ou voisin d'un point déplacé est lissé de même (ou au plus près). a269h
+--    (Play f81g, coin de la zone 1) : sinon, le point et un voisin sont alignés entre leurs deux autres voisins.
 -- 4. Passages étroits (a269d) : un segment où les deux voies sont à moins de 2 × Lane − LaneStep studs l'une de
 --    l'autre (à un pas de décalage près), ou encore bouché. Les segments étroits qui se suivent forment un passage ;
 --    WitnessService n'y laisse qu'un témoin à la fois.
@@ -728,6 +729,77 @@ function WitnessLanes.Build(
 	-- d'un point déplacé : le point va au milieu de ses voisins, sinon au plus près de ce milieu (16 directions, pas de
 	-- 2 × LaneStep, jusqu'à LaneDetourMax studs), libre, sans retour en arrière ni nouveau virage serré.
 	local turned: { string } = {}
+	-- a269h (Play f81g : « P2 retour virage de 162° : non lissé » au coin de la zone 1 : P3 retour, déplacé par un
+	-- détour, est passé de l'autre côté de P2 et de P1, et aucun point seul ne lisse le virage sans en créer un au
+	-- voisin) : sinon, le point et l'un de ses voisins (puis les trois) vont sur la droite qui joint les deux points
+	-- autour d'eux, au plus près de leur place (projetés, dans l'ordre, à 2 × LaneReach studs au moins l'un de l'autre
+	-- et des bouts), libres, sans nouveau virage serré ; le moins déplacé des essais. Puis, en dernier, le point seul
+	-- comme plus haut. Pour ces essais, un segment ne revient en arrière que s'il est à plus de LaneTurnMax degrés de
+	-- son segment du circuit (de côté, il passe).
+	local backCos = math.cos(math.rad(turnMax))
+	local function roughBack(a: Vector3, b: Vector3, k: number): boolean
+		local pa, pb = path[k], path[nextOf(k)]
+		local ux, uz, vx, vz = b.X - a.X, b.Z - a.Z, pb.X - pa.X, pb.Z - pa.Z
+		local lu, lv = math.sqrt(ux * ux + uz * uz), math.sqrt(vx * vx + vz * vz)
+		if lu < 1e-3 or lv < 1e-3 then
+			return false
+		end
+		return (ux * vx + uz * vz) / (lu * lv) < backCos - 1e-9
+	end
+	local spacing = 2 * number(cfg.LaneReach, 0.5)
+	type Run = { first: number, spots: { Vector3 }, moved: number }
+	-- Les n points qui suivent first - 1 (first compris) alignés entre points[prevOf(first)] et le point qui suit le
+	-- dernier ; nil : impossible ou pas libre.
+	local function alignRun(points: { Vector3 }, first: number, n: number): Run?
+		if count < n + 3 then
+			return nil
+		end
+		local ia = prevOf(first)
+		local indices: { number } = {}
+		local k = first
+		for _ = 1, n do
+			table.insert(indices, k)
+			k = nextOf(k)
+		end
+		local jb = k
+		local a, b = points[ia], points[jb]
+		local length = flatLength(a, b)
+		if length < (n + 1) * spacing then
+			return nil
+		end
+		work(probe, 0.1)
+		local ux, uz = (b.X - a.X) / length, (b.Z - a.Z) / length
+		local spots: { Vector3 } = {}
+		local s, moved = 0, 0
+		for m, index in indices do
+			local p = points[index]
+			local along = (p.X - a.X) * ux + (p.Z - a.Z) * uz
+			s = math.clamp(along, s + spacing, length - (n - m + 1) * spacing)
+			local c = lerp(a, b, s / length)
+			spots[m] = c
+			moved += flatLength(p, c)
+		end
+		local last = spots[n]
+		if roughBack(a, spots[1], ia) or roughBack(last, b, indices[n])
+			or sharpAt(ia, points[prevOf(ia)], a, spots[1]) or sharpAt(jb, last, b, points[nextOf(jb)])
+		then
+			return nil
+		end
+		for m = 1, n - 1 do
+			if roughBack(spots[m], spots[m + 1], indices[m]) then
+				return nil
+			end
+		end
+		if not (clearLine(a, spots[1])) or not (clearLine(last, b)) then
+			return nil
+		end
+		for m = 1, n do
+			if not (clearPoint(spots[m])) or (m < n and not (clearLine(spots[m], spots[m + 1]))) then
+				return nil
+			end
+		end
+		return { first = first, spots = spots, moved = moved }
+	end
 	for side, points in { forward, backward } do
 		local label = if side == 1 then "aller" else "retour"
 		local sign = if side == 1 then 1 else -1
@@ -762,11 +834,56 @@ function WitnessLanes.Build(
 							end
 						end
 					end
+					local run: Run? = nil
+					if chosen == nil then
+						-- a269h : le point et l'un de ses voisins, puis les trois, alignés (le moins déplacé)
+						for _, try in { { k0, 2 }, { k, 2 }, { k0, 3 } } do
+							local found = alignRun(points, try[1], try[2])
+							local best = run
+							if found and (best == nil or found.moved < best.moved - 1e-6) then
+								run = found
+							end
+						end
+					end
+					if chosen == nil and run == nil then
+						-- a269h : en dernier, le point seul, un segment ne revenant en arrière que s'il est à plus de
+						-- LaneTurnMax degrés du circuit
+						local function loose(c: Vector3): boolean
+							work(probe, 0.1)
+							if roughBack(before, c, k0) or roughBack(c, after, k) or sharpAt(k, before, c, after)
+								or sharpAt(k0, before0, before, c) or sharpAt(k2, c, after, after3)
+							then
+								return false
+							end
+							return (clearPoint(c)) and (clearLine(before, c)) and (clearLine(c, after))
+						end
+						if loose(mid) then
+							chosen = mid
+						else
+							for _, offset in offsets do
+								if loose(mid + offset) then
+									chosen = mid + offset
+									break
+								end
+							end
+						end
+					end
 					if chosen then
 						points[k] = chosen
 						changed = true
 						failed[k] = nil
 						table.insert(turned, `P{k} {label} virage de {math.floor(angle + 0.5)}° lissé`)
+					elseif run then
+						local names: { string } = {}
+						local index = run.first
+						for _, spot in run.spots do
+							points[index] = spot
+							table.insert(names, `P{index}`)
+							index = nextOf(index)
+						end
+						changed = true
+						failed[k] = nil
+						table.insert(turned, `P{k} {label} virage de {math.floor(angle + 0.5)}° lissé ({table.concat(names, ", ")} alignés)`)
 					elseif not failed[k] then
 						failed[k] = true
 						table.insert(turned, `P{k} {label} virage de {math.floor(angle + 0.5)}° : non lissé`)

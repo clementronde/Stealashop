@@ -94,7 +94,8 @@
 --      a269g (Play f81f) : les voies se calculent hors du démarrage, dans un seul fil, un circuit après l'autre, en
 --      rendant la main au moins toutes les Avoid.LaneStepQueries requêtes ; le témoin attend les siennes (Idle). Pas de
 --      pause sur un point au bout d'un passage étroit, ni à moins de Witness.PauseClearance studs de l'autre témoin :
---      elle est reportée au point suivant.
+--      elle est reportée au point suivant. a269h (Play f81g) : en attendant ses voies, il marche sur le circuit et passe
+--      sur sa voie au point suivant ; en marche sans bouger depuis Avoid.WalkRetry s, il redonne son MoveTo.
 --   La vitre se répare comme avant (chrono de police de WindowService, Balance.Window.BreakTimer, inchangé).
 --
 -- Un témoin sans WatchedStore, ou dont le magasin est introuvable parmi les modèles taggés NPCStore de la
@@ -241,6 +242,11 @@ type WitnessNpc = {
 	pathsFolder: Instance?, -- le dossier WitnessPaths de son circuit (les deux témoins de la zone partagent les voies)
 	lane: { Vector3 }?,
 	laneReady: boolean,
+	laneFrom: number, -- a269h : le point visé sur le circuit quand ses voies n'étaient pas prêtes (0 : aucun)
+	-- a269h (rattrapage) : le dernier but donné à MoveTo, où et depuis quand il n'a pas bougé en marche
+	moveGoal: Vector3,
+	stillPos: Vector3,
+	stillAt: number,
 	unstickUntil: number, -- a269c (filet) : il va à unstickGoal jusqu'à cette heure (os.clock) ; 0 : non
 	unstickGoal: Vector3,
 	fails: number, -- a269d : échecs du filet de suite sur le point visé (le suivant au second)
@@ -428,7 +434,7 @@ type Lanes = {
 -- a269g (Play f81f : « Script timeout » au démarrage du Loader) : les voies ne se calculent jamais dans Init ni
 -- Start, ni d'un trait. Le premier témoin d'un circuit le met en file ; un seul fil (task.defer) calcule les circuits
 -- l'un après l'autre et rend la main (task.wait) entre deux circuits et au moins toutes les Avoid.LaneStepQueries
--- requêtes ou Avoid.LaneStepBudget s de calcul. Les témoins attendent leurs voies (Idle) avant de marcher.
+-- requêtes ou Avoid.LaneStepBudget s de calcul. a269h : en attendant, le témoin marche sur le circuit.
 -- laneCache : false = voies incalculables (il marche sur le circuit).
 local laneCache: { [Instance]: Lanes | false } = {}
 type LaneJob = { folder: Instance, path: { Vector3 }, height: number, zone: number, label: string }
@@ -436,8 +442,14 @@ local laneQueue: { LaneJob } = {}
 local laneQueued: { [Instance]: boolean } = {}
 local laneWorking = false
 local function lanesOf(folder: Instance?): Lanes?
-	local found = if folder then laneCache[folder] else nil
-	return if found then found else nil
+	if folder == nil then
+		return nil
+	end
+	local found = laneCache[folder]
+	if found == nil or found == false then
+		return nil -- pas encore calculées (nil) ou incalculables (false)
+	end
+	return found :: Lanes
 end
 local function buildLanes(job: LaneJob)
 	local started = os.clock()
@@ -484,7 +496,7 @@ end
 local function laneWorker()
 	while #laneQueue > 0 do
 		local job = table.remove(laneQueue, 1) :: LaneJob
-		local ok, err = pcall(buildLanes, job)
+		local ok, err = pcall(buildLanes :: any, job)
 		if not ok then
 			laneCache[job.folder] = false
 			warnOnce(`lane:{job.zone}`, `{job.label} : voies des témoins incalculables ({err}) : il marche sur le circuit`)
@@ -535,7 +547,10 @@ local function walkTo(w: WitnessNpc, goal: Vector3, now: number)
 	w.nextMoveAt = now + Witness.MoveRefresh
 	w.humanoid.WalkSpeed = Witness.WalkSpeed
 	w.humanoid:MoveTo(goal)
+	w.moveGoal = goal -- a269h : le but redonné par le rattrapage
 	if not w.walking then
+		w.stillPos = w.root.Position
+		w.stillAt = now
 		w.walking = true
 		w.anims:Play("Walk", nil, nil, w.gait)
 	end
@@ -685,31 +700,72 @@ local function narrowWait(w: WitnessNpc, now: number, entrance: Vector3, goal: V
 	return waitAtPassage(w, now, id)
 end
 
+-- a269h : les rattrapages d'un même épisode (moins de 2 × Avoid.WalkRetry s entre deux) ; au troisième témoin, une
+-- seule ligne par épisode, avec la cadence de la physique du serveur, pour trouver la cause au prochain Play.
+local retryLastAt, retryLabels, retryLogged = -math.huge, {} :: { string }, false
+local function noteRetry(w: WitnessNpc, now: number)
+	if now - retryLastAt > 2 * avoidNumber("WalkRetry", 2) then
+		retryLogged = false
+		table.clear(retryLabels)
+	end
+	retryLastAt = now
+	if not table.find(retryLabels, w.label) then
+		table.insert(retryLabels, w.label)
+	end
+	if not retryLogged and #retryLabels >= 3 then
+		retryLogged = true
+		local okFps, fps = pcall(function(): number
+			return Workspace:GetRealPhysicsFPS()
+		end)
+		local physics = if okFps and type(fps) == "number" then `{math.floor(fps + 0.5)}` else "?"
+		log(`rattrapage : {table.concat(retryLabels, ", ")} en marche sans bouger depuis {avoidNumber("WalkRetry", 2)} s, MoveTo redonné (physique du serveur : {physics} images/s)`)
+	end
+end
+
 local function strollStep(w: WitnessNpc, now: number)
 	local count = #w.path
 	if count == 0 or now < w.pauseUntil then
 		return
 	end
 	if not w.laneReady then
-		local ready, lane = laneOf(w) -- a269c ; nil : le circuit même, comme avant a269
-		if not ready then
-			-- a269g : ses voies sont en calcul : il attend sur place (Idle), sans que l'attente compte comme bloqué
-			if w.walking then
-				stopWalking(w)
-			end
+		-- a269c ; nil : le circuit même, comme avant a269. a269h (Play f81g : 22 à 35 s plantés en Idle au lancement
+		-- dans Studio) : pendant que ses voies se calculent, il marche sur le circuit, comme avant a269 ; il passe sur
+		-- sa voie au point suivant (au premier changement de point visé une fois ses voies prêtes : près d'un point).
+		local ready, lane = laneOf(w)
+		if ready and (w.laneFrom == 0 or w.pathIndex ~= w.laneFrom) then
+			w.laneReady = true
+			w.lane = lane
+			w.laneFrom = 0
+			w.fails = 0
+			w.goalSince = now
 			w.progressPos = w.root.Position
 			w.progressAt = now
-			w.goalSince = now
 			w.nextMoveAt = now
-			return
+		elseif not ready then
+			w.laneFrom = w.pathIndex -- le point visé au dernier pas sans voies : il change quand il en atteint un
 		end
-		w.laneReady = true
-		w.lane = lane
-		w.goalSince = now
 	end
 	local lane = w.lane
 	local points = lane or w.path
 	local position = w.root.Position
+	-- a269h (Play f81g : les 12 témoins figés 4,7 à 11,4 s en Walk d'un coup, cause inconnue) : en marche sans bouger
+	-- de Avoid.WalkRetryMove studs depuis Avoid.WalkRetry s, il redonne son MoveTo (le même but) et le note. Avoid.Enabled
+	-- coupé : rien (comme avant a269).
+	if w.walking and type(AVOID) == "table" and AVOID.Enabled == true then
+		if flat(position - w.stillPos).Magnitude >= avoidNumber("WalkRetryMove", 0.25) then
+			w.stillPos = position
+			w.stillAt = now
+		elseif now - w.stillAt >= avoidNumber("WalkRetry", 2) then
+			w.stillPos = position
+			w.stillAt = now
+			w.humanoid.WalkSpeed = Witness.WalkSpeed
+			w.humanoid:MoveTo(w.moveGoal)
+			noteRetry(w, now)
+		end
+	else
+		w.stillPos = position
+		w.stillAt = now
+	end
 	local reach = if lane then avoidNumber("LaneReach", Witness.PointReached) else Witness.PointReached
 	-- a269c (filet) : il se dégage vers un point libre à côté de lui ; a269d : puis il reprend le même point visé.
 	if w.unstickUntil > 0 then
@@ -880,6 +936,8 @@ local function toStroll(w: WitnessNpc, now: number)
 	w.nextMoveAt = now
 	w.progressPos = w.root.Position
 	w.progressAt = now
+	w.stillPos = w.root.Position -- a269h
+	w.stillAt = now
 end
 
 -- Regard -----------------------------------------------------------------------------------------
@@ -1846,6 +1904,10 @@ local function add(model: Model)
 		pathsFolder = pathsFolder,
 		lane = nil,
 		laneReady = false,
+		laneFrom = 0,
+		moveGoal = root.Position,
+		stillPos = root.Position,
+		stillAt = now,
 		unstickUntil = 0,
 		unstickGoal = root.Position,
 		fails = 0,
