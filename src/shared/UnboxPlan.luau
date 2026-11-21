@@ -219,6 +219,52 @@ function UnboxPlan.oddsAt(plan: Plan, index: number): number
 	return lo * (hi / lo) ^ ((rank - 0.5) / size)
 end
 
+-- a287 (2026-11-21, Cantin ; Config/Unbox.New.OddsClimb) : la cote monte d'un bout à l'autre, jamais vers le bas. Une
+-- seule courbe de Start (la vraie cote si elle est plus basse) à la vraie cote du plan, géométrique selon `f` (0 à 1) :
+-- les coups des actions en font HitsShare (climbHit), les silhouettes le reste (climbSilhouette), la révélation finit
+-- sur plan.Odds.
+function UnboxPlan.climbs(): boolean
+	return New.OddsClimb.Enabled == true
+end
+
+local function share(): number
+	local value = New.OddsClimb.HitsShare
+	return if value == value then math.clamp(value, 0, 1) else 0.5
+end
+
+-- Courbe géométrique décalée de Offset : une petite vraie cote monte presque d'un pas égal à chaque fois (2, 5, 8…
+-- vers 10, comme Cantin l'a décrit), une grande monte d'un facteur égal (1 IN 2 à 1 IN 4,8M).
+function UnboxPlan.climb(plan: Plan, f: number): number
+	local final = math.max(plan.Odds, 1)
+	local start = New.OddsClimb.Start
+	start = if start == start then math.clamp(start, 1, final) else 1
+	local offset = New.OddsClimb.Offset
+	offset = if offset == offset then math.max(offset, 0) else 0
+	local x = if f == f then math.clamp(f, 0, 1) else 0
+	return (start + offset) * ((final + offset) / (start + offset)) ^ x - offset
+end
+
+-- Cote après le coup `hit` (sur `hits` attendus) de l'action `index` : l'action entière (hit = hits) de la dernière
+-- action (l'éclatement) = HitsShare de la montée.
+function UnboxPlan.climbHit(plan: Plan, index: number, hit: number, hits: number): number
+	local n = math.max(#plan.Steps, 1)
+	local part = if hits > 0 then math.clamp(hit / hits, 0, 1) else 1
+	local done = (math.clamp(index, 1, n) - 1 + part) / n
+	return UnboxPlan.climb(plan, share() * done)
+end
+
+-- Cote de la silhouette `index` sur `count` : entre HitsShare et la vraie cote, qui reste pour la révélation.
+function UnboxPlan.climbSilhouette(plan: Plan, index: number, count: number): number
+	local c = math.max(count, 1)
+	local s = share()
+	return UnboxPlan.climb(plan, s + (1 - s) * math.clamp(index, 0, c) / (c + 1))
+end
+
+-- Cote montrée au départ (avant la première action).
+function UnboxPlan.startOdds(plan: Plan): number
+	return if UnboxPlan.climbs() then UnboxPlan.climb(plan, 0) else UnboxPlan.oddsAt(plan, 0)
+end
+
 local function trim(text: string): string
 	return (string.gsub(text, "%.0$", ""))
 end
@@ -244,6 +290,13 @@ end
 function UnboxPlan.oddsText(value: number): string
 	local rounded = if value >= 1 then Formulas.UnboxOdds(1 / value) else nil
 	return string.format(New.OddsText, UnboxPlan.formatOdds(rounded or value))
+end
+
+-- a287 (2026-11-21) : texte de BB_Reveal.Odds, la cote finale du plan envoyé par le serveur (« 1 IN 37 ») ; nil sans
+-- plan lisible (la ligne est cachée).
+function UnboxPlan.finalOddsText(text: any): string?
+	local plan = UnboxPlan.parse(text)
+	return if plan then UnboxPlan.oddsText(plan.Odds) else nil
 end
 
 -- Durée d'une action en repli codé, et la pause entre deux actions.

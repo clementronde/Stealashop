@@ -25,6 +25,9 @@
 --   Overexpose   la dernière silhouette toute blanche, puis évènement « Reveal » (RevealController montre l'objet,
 --                BB_Reveal, ses sons) ; Unbox.OnReveal : FX_Unbox_Reveal, zoom et bords plus forts, cote finale ;
 --   After        évènement « Done » après AfterReveal : RevealController enchaîne sur sa croissance (Grow<Classe>).
+-- a287 (2026-11-21, Cantin ; New.OddsClimb) : la cote de BB_UnboxOdds monte à chaque Impact, reste visible à
+-- l'éclatement et pendant les silhouettes (un pas à chacune), puis finit sur la vraie cote à la révélation : jamais
+-- vers le bas (UnboxPlan.climb). Coupé : la cote d'avant (plage de la rareté montrée, cachée pendant les silhouettes).
 -- Tout élément de Clément est facultatif : effet, outil, objet jeté ou billboard absent = rien (BB_UnboxOdds : un
 -- billboard du code aux mêmes noms).
 
@@ -730,6 +733,14 @@ local function showOdds(state: State, value: number)
 	end
 end
 
+-- La cote défile (stepOdds) de celle montrée jusqu'à `target`, jamais plus bas.
+local function rollOdds(state: State, target: number)
+	state.oddsFrom = math.max(state.odds, 1)
+	state.oddsTo = math.max(target, state.odds)
+	state.oddsT = 0
+	state.oddsTicks = 0
+end
+
 local function buildBoard(state: State)
 	local board = billboard(New.OddsBoard) or v0Board()
 	board.Name = "UnboxOdds"
@@ -748,7 +759,7 @@ local function buildBoard(state: State)
 		state.oddsScale = popScale(state.oddsLabel)
 	end
 	showRarity(state, state.tier)
-	showOdds(state, UnboxPlan.oddsAt(state.ctx.Plan, 0))
+	showOdds(state, UnboxPlan.startOdds(state.ctx.Plan)) -- a287 : Start de New.OddsClimb, sinon la plage d'avant
 	board.Parent = state.ctx.Folder
 	table.insert(state.created, board)
 end
@@ -1003,6 +1014,14 @@ local function showSilhouette(state: State, index: number)
 	local center = state.base.Position:Lerp(top, 0.5)
 	state.anchor.CFrame = CFrame.new(top - UP * New.OddsBelowTop)
 	showRarity(state, rarity)
+	if UnboxPlan.climbs() then
+		-- a287 (Cantin, 21/11) : la cote reste au-dessus des silhouettes et monte à chacune, vers la vraie cote.
+		local text = state.oddsLabel
+		if text then
+			text.Visible = true
+		end
+		rollOdds(state, UnboxPlan.climbSilhouette(ctx.Plan, index, state.silhouetteCount))
+	end
 	local color = colorOf(rarity)
 	spawnFx(state, New.Fx.Silhouette, CFrame.new(center), nil, color, true)
 	spawnFx(state, New.Fx.Puff, CFrame.new(center), nil, color, true)
@@ -1042,8 +1061,9 @@ local function burst(state: State)
 		spawnFx(state, New.Fx.Burst, foot, boxTop(state), color, true)
 	end
 	dropBox(state)
+	local climbs = UnboxPlan.climbs()
 	local text = state.oddsLabel
-	if text then
+	if text and not climbs then
 		text.Visible = false
 	end
 	local rarityText = state.rarityLabel
@@ -1054,7 +1074,11 @@ local function burst(state: State)
 	if upgrade then
 		upgrade.Visible = false
 	end
-	state.oddsT = -1
+	if climbs then
+		rollOdds(state, UnboxPlan.climbHit(state.ctx.Plan, state.index, 1, 1)) -- a287 : le coup qui casse compte aussi
+	else
+		state.oddsT = -1
+	end
 	state.recoilLeft = New.RecoilTime
 	stopSounds(state, nil) -- vague 75 (L-261) : la scie, la perceuse… s'arrêtent en fondu ; puis l'éclatement et la fumée
 	for _, name in SOUNDS.Burst do
@@ -1079,10 +1103,8 @@ local function momentFort(state: State)
 		burst(state)
 		return
 	end
-	state.oddsFrom = state.odds
-	state.oddsTo = math.max(UnboxPlan.oddsAt(plan, state.index), state.odds)
-	state.oddsT = 0
-	state.oddsTicks = 0
+	-- a287 : New.OddsClimb, l'action entière sur la courbe qui finit à la vraie cote ; sinon la plage de la rareté.
+	rollOdds(state, if UnboxPlan.climbs() then UnboxPlan.climbHit(plan, state.index, 1, 1) else UnboxPlan.oddsAt(plan, state.index))
 	local rarity = plan.Steps[state.index].Rarity
 	if rarity ~= state.tier then
 		state.tier = rarity
@@ -1153,6 +1175,10 @@ local function onImpact(state: State)
 	end
 	if strong then
 		momentFort(state)
+	elseif not state.strong and UnboxPlan.climbs() then
+		-- a287 (Cantin, 21/11 : « casser plusieurs fois la boîte pour augmenter la chance ») : chaque coup fait monter
+		-- la cote d'un pas ; le moment fort finit l'action.
+		rollOdds(state, UnboxPlan.climbHit(state.ctx.Plan, state.index, state.impacts, #action.Impacts))
 	end
 end
 
@@ -2111,6 +2137,7 @@ function Unbox.GetState(state: State): { [string]: any }
 		Tier = state.tier,
 		Odds = state.odds,
 		OddsText = if text then text.Text else nil,
+		OddsVisible = text ~= nil and text.Visible, -- a287
 		RarityText = if rarityText and rarityText.Visible then rarityText.Text else nil,
 		Upgrade = upgrade ~= nil and upgrade.Visible,
 		BoxScale = state.tierScale,
