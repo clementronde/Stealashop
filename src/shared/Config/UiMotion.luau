@@ -785,6 +785,65 @@ local UiMotion = {
 			FadeIn = 0.15, -- V0 a285, absent des fiches : part de la chute
 			FadeOut = 0.3, -- V0 a285, absent des fiches
 		},
+		-- a298 (21/11, « Tous », validé par Cantin, 21/11) : effets des boutons faits par Clément avec le plugin Figma
+		-- Framewisp, rejoués par Controllers/UI/FramewispFx (Features.FramewispFx) depuis les attributs que le plugin pose
+		-- (FigmaSpin, FigmaWiggle, FigmaLean, FigmaBurst, FigmaGleam, FigmaStroke, FW_Owned). Valeurs par défaut lues dans les
+		-- sources des 6 scripts du plugin (même vitesse, même courbe) ; un attribut posé par Clément gagne toujours, d'abord
+		-- sans préfixe (SpinSpeed, WiggleEvery, LeanAngle, BurstCount, GleamWidth, HoverDim, StrokeRotate…), puis Figma*.
+		Framewisp = {
+			ScriptPrefix = "Framewisp", -- un LocalScript ou Script de ce nom dans l'écran : ses effets Figma* ne sont pas rejoués (pas de double effet)
+			-- Effets du plugin que les 4 boutons n'utilisent pas : pas refaits, une ligne en Studio s'ils apparaissent.
+			Unsupported = {
+				"Pulse", "Jelly", "Rays", "Shake", "Glow", "Pixels", "Pop", "Cascade", "Reveal", "Swing", "Drop", "Timeline",
+				"Magnet", "Squish", "Ripple", "Turn", "HoverColor", "Jump", "Lift",
+			},
+			Spin = { Speed = 120 }, -- FramewispSpin : degrés par seconde (SpinSpeed)
+			-- FramewispJuice _wiggle : toutes les Every s, Shakes allers-retours de ± Angle degrés en Time s, amortis.
+			Wiggle = { Every = 4, Angle = 12, Time = 0.7, Shakes = 3 },
+			-- FramewispButtonFX _lean : au survol du bouton qui le contient, Rotation + Angle degrés en Time s (Back Out).
+			Lean = { Angle = -8, Time = 0.14, Style = Enum.EasingStyle.Back },
+			-- FramewispJuice _gleam : copies blanches (halo HaloWidth fois plus large à HaloPeak, puis cœur) du texte, de
+			-- l'image (sa silhouette <nom>_Sheen) ou du fond ; un passage de Speed s puis Cooldown s ; bande de Width,
+			-- penchée de Tilt degrés (droite sous TiltMinAspect de rapport hauteur / largeur).
+			Gleam = {
+				Speed = 0.8, Cooldown = 2, Width = 0.22, Tilt = -14, TiltMinAspect = 0.25, HaloWidth = 1.6, HaloPeak = 0.4,
+				PartMin = 0.05, PartMax = 0.6, -- largeur de la bande sur chaque pièce d'un groupe
+				GroupWait = 2, -- s sans pièce avant de faire briller le fond du groupe lui-même
+				CopyName = "FW_GleamShine",
+			},
+			-- FramewispBurst : au clic, Count éclats qui partent du bord en Time s, jusqu'à Dist × le petit côté ; Size à
+			-- SizeMax px de maquette ; au plus MaxLive éclats à l'écran ; calque <nom><LayerSuffix> sous le bouton.
+			Burst = {
+				Count = 12, Time = 0.6, Dist = 0.6, Alpha = 0, Size = 12, SizeMax = 12, Shrink = 1, Spin = 0, SpinSpeed = 360,
+				Color = 16777215, Random = 0, MaxLive = 240, LayerSuffix = "_Burst", BitName = "BurstBit",
+			},
+			-- FramewispButtonFX : images (sinon textes) d'un bouton du plugin sans FigmaSmooth, couleur × Hover au survol,
+			-- × Press à l'appui, en Time s ; un calque FigmaNoDim (ou dont le nom finit par NoDimSuffix) garde sa couleur.
+			Dim = { Hover = 0.8, Press = 0.62, Time = 0.08, NoDimSuffix = "_nodim" },
+			-- FramewispStroke (mode 0) : le UIGradient du UIStroke tourne de Rotate degrés par seconde.
+			Stroke = { Rotate = 45, GradientName = "FW_StrokeGradient" },
+		},
+		-- a298 (« HUD et boutons d'achat », validé par Cantin, 21/11) : le reflet quitte les textes (un Gleam posé sur un
+		-- TextLabel, ou sur un TextButton sans fond, est ignoré) et passe sur le bouton entier : une copie blanche du fond
+		-- (SheenFx, avec son UICorner) où une bande douce passe en boucle, chaque bouton à son moment. Boutons des cadres
+		-- Containers de UI_HUD, boutons qui ont un UIGradient Gleam de Clément, boutons d'achat (BuyPattern) des écrans
+		-- Shops. Un bouton Framewisp (silhouette *_Sheen) ou qui a déjà sa copie GleamFx n'en prend pas de deuxième. Les
+		-- UIGradient Gleam du HUD sont gardés (V0, validé par Cantin, 21/11 : gardés, plus le reflet entier).
+		ButtonSheen = {
+			Enabled = true, -- validé par Cantin, 21/11
+			Name = "SheenFx", -- copie créée sur le bouton, détruite avec lui
+			Hud = "UI_HUD",
+			Containers = { "LeftRail", "LeftRailTouch", "RightRail", "TopLeftRow" },
+			Shops = { "UI_RobuxShop_v2", "UI_RobuxShop" },
+			BuyPattern = "^BuyButton%d*$", -- BuyButton des cartes et de Featured, BuyButton1 à 3 de la caisse
+			Pass = 0.8, -- V0 proposé (2026-11-21) : s de passage de la bande (comme le reflet de Framewisp)
+			Pause = 3.2, -- V0 proposé (2026-11-21) : s entre deux passages
+			Width = 0.3, -- V0 proposé (2026-11-21) : largeur de la bande, en part du bouton
+			Opacity = 0.45, -- V0 proposé (2026-11-21) : opacité du blanc au cœur de la bande
+			Tilt = -14, -- comme Framewisp (droite sous TiltMinAspect de rapport hauteur / largeur)
+			TiltMinAspect = 0.25,
+			CoverMin = 0.8, -- V0 proposé (2026-11-21) : bouton sans fond : un cadre enfant d'au moins cette part (Scale) sert de fond
+		},
 	},
 	-- a290 (L-270, Clément, 21/11 : « il faut cliquer sur la zone rétrécie pour que le clic marche ») : l'écrasement
 	-- (Press = Squash, 0,75) et l'appui (Press.To) passent par un UIScale sur le bouton, qui rétrécit aussi la zone où

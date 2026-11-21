@@ -8,10 +8,13 @@
 --
 --   UIGradient « Gleam »       enfant d'un UIStroke ou de l'élément (boutons du HUD) : son Offset.X défile en boucle
 --                               (fiche HUD) ; tous ceux d'un écran ensemble, depuis son ouverture.
---   Gleam = "Loop" | "Hover"   attribut (ItemName du shop) : une copie blanche du texte (ou de l'image) par-dessus,
---                               lettres et contour, avec une bande douce qui défile : en boucle (Loop, chaque élément
---                               à son moment) ou au survol du bouton ou de la carte qui le contient (Hover). Rien de
---                               plus sur un élément qui a déjà un UIGradient Gleam de Clément.
+--   Gleam = "Loop" | "Hover"   attribut : une copie blanche de l'image (ou du fond peint) par-dessus, avec une bande
+--                               douce qui défile : en boucle (Loop, chaque élément à son moment) ou au survol du bouton
+--                               ou de la carte qui le contient (Hover). Rien de plus sur un élément qui a déjà un
+--                               UIGradient Gleam de Clément. Sur un texte (ItemName du shop) : ignoré depuis a298
+--                               (« HUD et boutons d'achat », validé par Cantin, 21/11), l'attribut reste.
+--   Framewisp (a298)           les attributs Figma* du plugin Framewisp et le reflet du bouton entier : module frère
+--                               FramewispFx (Features.FramewispFx), appelé ici par Wire et par la même boucle.
 --   IconHover = "Jump" | "Lean" au survol de l'élément (bouton ou carte), son enfant Icon saute une fois (Jump) ou
 --                               s'incline tant que la souris reste (Lean). Un élément nommé Icon le fait lui-même au
 --                               survol de son parent. "Spring" (caméra de la caisse qui suit le pointeur) : pas codé.
@@ -39,6 +42,32 @@ local Config = ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config")
 local UiMotion = require(Config:WaitForChild("UiMotion"))
 local Features = require(Config:WaitForChild("Features"))
 local Motion = require(script.Parent:WaitForChild("Motion"))
+
+-- a298 : les effets du plugin Framewisp et le reflet du bouton entier, module frère (absent : rien, comme avant).
+type FramewispApi = {
+	Wire: (GuiObject) -> (),
+	Step: (number, boolean) -> (),
+	Count: () -> number,
+	SetChanged: (() -> ()) -> (),
+}
+local NO_FRAMEWISP: FramewispApi = {
+	Wire = function(_: GuiObject) end,
+	Step = function(_: number, _: boolean) end,
+	Count = function(): number
+		return 0
+	end,
+	SetChanged = function(_: () -> ()) end,
+}
+local FramewispFx: FramewispApi = NO_FRAMEWISP
+do
+	local module = script.Parent:FindFirstChild("FramewispFx")
+	if module and module:IsA("ModuleScript") then
+		local ok, loaded = pcall(require, module)
+		if ok and type(loaded) == "table" then
+			FramewispFx = loaded :: any
+		end
+	end
+end
 
 local SPEC = UiMotion.AttrFx
 local GLEAM = SPEC.Gleam
@@ -350,10 +379,11 @@ local function step()
 	stepGleams(now, still)
 	stepWiggles(now, still)
 	stepFalls(now, still)
+	FramewispFx.Step(now, still)
 end
 
 local function sync()
-	local count = #gleams + #gradients + #wiggles + #falls
+	local count = #gleams + #gradients + #wiggles + #falls + FramewispFx.Count()
 	if count > 0 and heartbeat == nil then
 		local signal = (RunService :: any).Heartbeat
 		if signal ~= nil then -- faux Roblox des bancs
@@ -364,6 +394,7 @@ local function sync()
 		heartbeat = nil
 	end
 end
+FramewispFx.SetChanged(sync)
 
 local function forget<T>(list: { T }, matches: (T) -> boolean, cleanup: ((T) -> ())?)
 	for index = #list, 1, -1 do
@@ -435,15 +466,10 @@ local function copy(from: Instance, to: Instance, properties: { string })
 	end
 end
 
-local TEXT_PROPERTIES = {
-	"Text", "FontFace", "TextSize", "TextScaled", "TextWrapped", "TextXAlignment", "TextYAlignment", "RichText",
-	"LineHeight", "TextTruncate", "MaxVisibleGraphemes", "TextTransparency",
-}
 local IMAGE_PROPERTIES = {
 	"Image", "ScaleType", "SliceCenter", "SliceScale", "TileSize", "ImageRectOffset", "ImageRectSize", "ResampleMode",
 	"ImageTransparency",
 }
-local STROKE_PROPERTIES = { "Thickness", "LineJoinMode", "ApplyStrokeMode" }
 
 -- Bande douce (cosinus) de largeur width, d'opacité peak en son cœur, au milieu d'un dégradé transparent.
 local function band(width: number, peak: number): NumberSequence
@@ -470,33 +496,8 @@ end
 local function makeOverlay(object: GuiObject, width: number): (GuiObject?, { UIGradient })
 	local overlay: GuiObject
 	local list: { UIGradient } = {}
-	if object:IsA("TextLabel") or object:IsA("TextButton") or object:IsA("TextBox") then
-		local label = Instance.new("TextLabel")
-		copy(object, label, TEXT_PROPERTIES)
-		label.TextColor3 = WHITE
-		label.TextStrokeTransparency = 1
-		local constraint = object:FindFirstChildOfClass("UITextSizeConstraint")
-		if constraint then
-			constraint:Clone().Parent = label
-		end
-		for _, property in { "Text", "TextTransparency", "TextSize", "TextScaled", "RichText" } do
-			object:GetPropertyChangedSignal(property):Connect(function()
-				copy(object, label, { property })
-			end)
-		end
-		table.insert(list, addGradient(label, width, GLEAM.TextPeak))
-		-- Le contour : un UIStroke blanc sur la copie, avec son propre dégradé (fiche shop : 0,35 sur le contour).
-		local stroke = object:FindFirstChildOfClass("UIStroke")
-		if stroke then
-			local white = Instance.new("UIStroke")
-			copy(stroke, white, STROKE_PROPERTIES)
-			white.Color = WHITE
-			white.Transparency = 0
-			table.insert(list, addGradient(white, width, GLEAM.StrokePeak))
-			white.Parent = label
-		end
-		overlay = label
-	elseif object:IsA("ImageLabel") or object:IsA("ImageButton") then
+	-- a298 : plus de copie de texte (les textes sont ignorés par wireGleam) ; un TextButton à fond peint prend le fond.
+	if object:IsA("ImageLabel") or object:IsA("ImageButton") then
 		local image = Instance.new("ImageLabel")
 		copy(object, image, IMAGE_PROPERTIES)
 		image.ImageColor3 = WHITE
@@ -540,6 +541,12 @@ local function wireGleam(object: GuiObject, mode: string)
 	end
 	if hasGleamGradientInside(object) then
 		report(`Gleam:gradient:{object.Name}`, `Gleam = {mode} sur {object:GetFullName()} : déjà un UIGradient {GRADIENT.Name} de Clément, c'est lui qui brille`)
+		return
+	end
+	-- a298 (« HUD et boutons d'achat », validé par Cantin, 21/11) : plus de reflet sur un texte (ItemName du shop) ;
+	-- l'attribut reste posé. Un TextButton à fond peint garde le reflet de son fond.
+	if object:IsA("TextLabel") or object:IsA("TextBox") or (object:IsA("TextButton") and object.BackgroundTransparency >= 1) then
+		report("Gleam:text", `Gleam = {mode} sur un texte ({object:GetFullName()}, et les suivants) : ignoré, le reflet est sur les boutons entiers`)
 		return
 	end
 	local spec: GleamSpec = if mode == "Loop" then GLEAM.Loop else GLEAM.Hover
@@ -742,6 +749,7 @@ function UiAttrFx.Wire(object: Instance)
 	local iconHover = gui:GetAttribute("IconHover")
 	local idle = gui:GetAttribute("Idle")
 	if #found == 0 and gleam == nil and iconHover == nil and idle == nil then
+		FramewispFx.Wire(gui) -- a298 : attributs Figma* et reflet du bouton entier
 		return
 	end
 	wired[object] = true
@@ -761,6 +769,7 @@ function UiAttrFx.Wire(object: Instance)
 	elseif idle ~= nil then
 		report(`Idle:{tostring(idle)}`, `Idle = « {tostring(idle)} » inconnu dans l'UI (Wiggle ou Fall attendu) : {gui:GetFullName()}`)
 	end
+	FramewispFx.Wire(gui) -- après le Gleam d'attribut : une copie GleamFx déjà posée évite un deuxième reflet
 end
 
 function UiAttrFx.GetState(): {
@@ -789,6 +798,7 @@ function UiAttrFx.Step(now: number?)
 	stepGleams(clock, still)
 	stepWiggles(clock, still)
 	stepFalls(clock, still)
+	FramewispFx.Step(clock, still)
 end
 
 return UiAttrFx
