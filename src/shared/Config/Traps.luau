@@ -124,7 +124,8 @@ local Traps = {
 	-- Genre du piège de chaque emplacement : SlotLayout[n] pour TrapSlot_0n (V0 ; le propriétaire ne choisit pas).
 	SlotLayout = { "GlueMat", "NetBox", "AlarmGate", "GlueMat" } :: { TrapId },
 	-- a286 (Features.NewTraps) : disposition avec les deux pièges de plus. TrapService choisit l'une ou l'autre
-	-- (Features.NewTraps, allumé et validé par Cantin, 21/11 ; en Studio, workspace:SetAttribute("NewTrapsTest", true)).
+	-- (a296, validé par Cantin, 21/11 : allumée dans le jeu DEV seulement, Features.NewTrapsDev et Config/ProductIds.IsDev ;
+	-- coupée en PROD, Features.NewTraps = false ; en Studio, workspace:SetAttribute("NewTrapsTest", true)).
 	-- a293 (Cantin, 21/11 : la colle est gardée) : une boutique n'a que 4 emplacements (TrapSlot_01 à _04, Partie 1
 	-- 10.4 ; tuile Traps de 4 niveaux), donc pas les 5 pièges à la fois. V0 proposé (a293, 21/11), au plus près
 	-- de SlotLayout : la colle reste au 1er niveau et le portique au 3e ; la peau de banane prend la place du filet

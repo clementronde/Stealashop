@@ -6,7 +6,8 @@
 -- Achat : la tuile Traps de l'arbre (Config/SkillTree, SkillTreeService : prix, renaissance, OpensWhen). Son
 -- Effects[niveau] = nombre de pièges posés. Rien d'autre ne s'achète ici, aucun remote : le client ne demande rien.
 -- Pose : pour la boutique de chaque joueur, un piège par emplacement TrapSlot_01 à _0n (n = ce nombre, et
--- seulement les emplacements présents dans la boutique), du genre Traps.SlotLayout[i] (a286 : Traps.SlotLayoutNew si Features.NewTraps) : copie de
+-- seulement les emplacements présents dans la boutique), du genre Traps.SlotLayout[i] (a286 : Traps.SlotLayoutNew si Features.NewTraps ; a296 : ou
+-- Features.NewTrapsDev dans le jeu DEV, Config/ProductIds.IsDev ; donc allumée en DEV, coupée en PROD) : copie de
 -- ReplicatedStorage/Assets/Traps/TRAP_<Id> (sans script, pièces ancrées, TriggerZone sans collision ni requête),
 -- sinon un modèle de repli construit ici ; pivot posé sur l'emplacement (WorldCFrame d'un Attachment, bas d'une
 -- pièce). Copie nommée Trap_0i, dans le dossier Traps.Folder de la boutique, tag Traps.Tag, attributs TrapId et
@@ -37,7 +38,7 @@
 --   workspace:SetAttribute("TrapsTest", true)     allume les pièges sans toucher Features.Traps
 --   workspace:SetAttribute("TrapsTest", "self")   pareil, et le propriétaire est pris par ses propres pièges
 --   workspace:SetAttribute("SkillTest", "<joueur> Traps 4")   4 pièges posés dans sa boutique (SkillTreeService)
---   workspace:SetAttribute("NewTrapsTest", true)  a286 : disposition Traps.SlotLayoutNew (a293 : colle, banane, portique, trappe ; sert à tester sans Features.NewTraps)
+--   workspace:SetAttribute("NewTrapsTest", true)  a286 : disposition Traps.SlotLayoutNew (a293 : colle, banane, portique, trappe ; sert à tester sans Features.NewTraps ni le jeu DEV)
 
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
@@ -49,6 +50,17 @@ local Shared = ReplicatedStorage.Shared
 local Features = require(Shared.Config.Features)
 local Traps = require(Shared.Config.Traps)
 local Net = require(Shared.Net.Net)
+-- a296 : Config/ProductIds chargé s'il est là, comme dans Config/Monetization (a294) ; sans lui, IsDev faux (PROD).
+local ProductIds: { IsDev: boolean? } = (function(): any
+	local module = Shared.Config:FindFirstChild("ProductIds")
+	if module ~= nil then
+		local ok, result = pcall(require, module :: any)
+		if ok and type(result) == "table" then
+			return result
+		end
+	end
+	return {}
+end)()
 
 local DataService = require(script.Parent.DataService)
 local PlotService = require(script.Parent.PlotService)
@@ -106,9 +118,12 @@ local function ownerCanTrigger(): boolean
 end
 
 -- a286 : genre de piège de chaque emplacement (Traps.SlotLayoutNew avec les deux pièges de plus, ou la disposition
--- d'avant). Les deux ont #Traps.SlotLayout emplacements.
+-- d'avant). Les deux ont #Traps.SlotLayout emplacements. a296 : la nouvelle partout si Features.NewTraps, dans le jeu
+-- DEV si Features.NewTrapsDev (Config/ProductIds.IsDev), en Studio avec l'attribut NewTrapsTest.
 local function slotLayout(): { Traps.TrapId }
-	local new = Features.NewTraps == true or (IS_STUDIO and Workspace:GetAttribute(NEW_TEST_ATTRIBUTE) == true)
+	local new = Features.NewTraps == true
+		or (Features.NewTrapsDev == true and ProductIds.IsDev == true)
+		or (IS_STUDIO and Workspace:GetAttribute(NEW_TEST_ATTRIBUTE) == true)
 	return if new then Traps.SlotLayoutNew else Traps.SlotLayout
 end
 
