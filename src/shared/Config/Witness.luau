@@ -37,6 +37,7 @@ local Witness = {
 	PauseChance = 0.25, -- V0 : à chaque point atteint, chance de s'arrêter (Idle)…
 	PauseMin = 2, -- V0 : … entre PauseMin…
 	PauseMax = 6, -- V0 : … et PauseMax s
+	PauseClearance = 10, -- V0 proposé (a269, 22/11 ; a269g, Play f81f : pauses au bout d'un passage étroit ou devant l'autre témoin) : pas de pause sur un point qui touche un passage étroit (Avoid.Lanes) ni à moins de ce nombre de studs de l'autre témoin du circuit ; la pause est reportée au point suivant
 	StuckTime = 3, -- V0 : sans avancer d'un stud pendant ce temps, il vise le point suivant
 	MoveRefresh = 2, -- V0 : MoveTo redonné à ce rythme (Humanoid.MoveTo lâche au bout de 8 s)
 	StepInterval = 0.1, -- V0 : cadence de la boucle serveur des témoins
@@ -91,6 +92,11 @@ local Witness = {
 		-- a269f (Play f81e, 22/11) : segment encore bouché (zone 6), attente trop près de celui qui passe (zone 1).
 		LaneDetourMax = 8, -- V0 proposé (a269, 22/11) : studs ; un segment de voie encore bouché est contourné en déplaçant ses points jusqu'à ce nombre de studs (au-delà de LaneMax), ou en retirant l'un d'eux
 		NarrowStandOff = 2, -- V0 proposé (a269, 22/11) : studs ; passage étroit occupé par l'autre témoin : il attend à ce nombre de studs avant l'entrée (au lieu de l'entrée même), loin de la voie de celui qui sort
+		-- a269g (Play f81f, 22/11) : « Script timeout » au démarrage, épingle au coin de la zone 1, détours sur la chaussée.
+		LaneStepQueries = 200, -- V0 proposé (a269, 22/11) : le calcul des voies (hors du démarrage, une zone après l'autre) rend la main (task.wait) au moins toutes les ce nombre de requêtes…
+		LaneStepBudget = 0.004, -- V0 proposé (a269, 22/11) : … ou toutes les ce nombre de secondes de calcul
+		LaneTurnMax = 120, -- V0 proposé (a269, 22/11) : degrés ; un virage de voie plus serré (pas sur le circuit même) est refusé pour un détour et lissé ailleurs
+		LaneCurbSlack = 2, -- V0 proposé (a269, 22/11) : studs ; un détour qui ne va pas plus vers la rue que le point de voie d'avant est préféré s'il n'est pas plus long que le plus court de plus de ceci (et ne rapproche pas les deux voies)
 	},
 
 	-- La fuite à la casse (Clément, L-118 point 10 : il a peur, court à l'opposé de la vitrine, puis reprend

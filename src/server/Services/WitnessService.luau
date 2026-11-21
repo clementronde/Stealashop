@@ -84,13 +84,17 @@
 --      le filet choisit un point d'où il voit son point visé (sinon son point d'avant), puis reprend le même point (le
 --      suivant au second échec de suite) ; à plus de Avoid.LaneMax + Avoid.LaneLeash studs de sa voie, il revient au
 --      point le plus proche ; un passage étroit (voies à moins de 2 × Lane − LaneStep studs) ne prend qu'un témoin à
---      la fois : l'autre attend à l'entrée, arrêté, au plus Avoid.NarrowWait s ; pas de pause dedans. Une seule zone
---      calcule ses voies par pas. a269e (Play f81d) : il vise Avoid.LaneOvershoot studs au-delà du point de voie
---      (MoveTo s'arrête vers 0,9 stud avant son but) : il passe dessus et enchaîne sans arrêt ; jamais plus de
---      (segment / WalkSpeed + Avoid.LaneGoalSlack) s sur un même point visé : il passe au suivant ; un témoin garde un
+--      la fois : l'autre attend à l'entrée, arrêté, au plus Avoid.NarrowWait s ; pas de pause dedans. a269e
+--      (Play f81d) : il vise Avoid.LaneOvershoot studs au-delà du point de voie (MoveTo s'arrête vers 0,9 stud avant
+--      son but) : il passe dessus et enchaîne sans arrêt ; jamais plus de (segment / WalkSpeed + Avoid.LaneGoalSlack) s
+--      sur un même point visé : il passe au suivant ; un témoin garde un
 --      passage étroit au plus (longueur / WalkSpeed + Avoid.NarrowHold) s ; celui qui a attendu NarrowWait s passe sans
 --      attendre de nouveau. a269f (Play f81e) : un segment de voie encore bouché est contourné (WitnessLanes, jusqu'à
 --      Avoid.LaneDetourMax studs) ; un passage occupé vu en arrivant : il attend Avoid.NarrowStandOff studs avant l'entrée.
+--      a269g (Play f81f) : les voies se calculent hors du démarrage, dans un seul fil, un circuit après l'autre, en
+--      rendant la main au moins toutes les Avoid.LaneStepQueries requêtes ; le témoin attend les siennes (Idle). Pas de
+--      pause sur un point au bout d'un passage étroit, ni à moins de Witness.PauseClearance studs de l'autre témoin :
+--      elle est reportée au point suivant.
 --   La vitre se répare comme avant (chrono de police de WindowService, Balance.Window.BreakTimer, inchangé).
 --
 -- Un témoin sans WatchedStore, ou dont le magasin est introuvable parmi les modèles taggés NPCStore de la
@@ -190,6 +194,7 @@ type WitnessNpc = {
 	pathIndex: number, -- point visé
 	pathStep: number, -- +1 ou −1 : sens du tour
 	pauseUntil: number,
+	pauseOwed: boolean, -- a269g : pause tirée mais refusée (bout de passage étroit, autre témoin trop près) : au point suivant
 	nextMoveAt: number,
 	progressPos: Vector3,
 	progressAt: number,
@@ -420,54 +425,110 @@ type Lanes = {
 	claims: { [number]: Claim },
 	lengths: { [number]: number },
 }
-local laneCache: { [Instance]: Lanes } = {}
-local lanesBuiltAt = -1 -- a269d : une seule zone calculée par pas (os.clock du pas)
-local function laneOf(w: WitnessNpc, now: number): { Vector3 }?
+-- a269g (Play f81f : « Script timeout » au démarrage du Loader) : les voies ne se calculent jamais dans Init ni
+-- Start, ni d'un trait. Le premier témoin d'un circuit le met en file ; un seul fil (task.defer) calcule les circuits
+-- l'un après l'autre et rend la main (task.wait) entre deux circuits et au moins toutes les Avoid.LaneStepQueries
+-- requêtes ou Avoid.LaneStepBudget s de calcul. Les témoins attendent leurs voies (Idle) avant de marcher.
+-- laneCache : false = voies incalculables (il marche sur le circuit).
+local laneCache: { [Instance]: Lanes | false } = {}
+type LaneJob = { folder: Instance, path: { Vector3 }, height: number, zone: number, label: string }
+local laneQueue: { LaneJob } = {}
+local laneQueued: { [Instance]: boolean } = {}
+local laneWorking = false
+local function lanesOf(folder: Instance?): Lanes?
+	local found = if folder then laneCache[folder] else nil
+	return if found then found else nil
+end
+local function buildLanes(job: LaneJob)
+	local started = os.clock()
+	local busy, since = 0, os.clock()
+	local function pause()
+		busy += os.clock() - since
+		if coroutine.isyieldable() and type(task.wait) == "function" then
+			task.wait()
+		end
+		since = os.clock()
+	end
+	local ok, forward, backward, fixes, narrow = pcall(WitnessLanes.Build, job.path, job.height, laneIgnore(), pause)
+	busy += os.clock() - since
+	if not ok or type(forward) ~= "table" or type(backward) ~= "table" then
+		laneCache[job.folder] = false
+		warnOnce(`lane:{job.zone}`, `{job.label} : voies des témoins incalculables ({forward}) : il marche sur le circuit`)
+		return
+	end
+	local forwardLane = forward :: { Vector3 }
+	local passages: { [number]: number } = if type(narrow) == "table" then narrow else {}
+	local lengths: { [number]: number } = {}
+	local count = #forwardLane
+	for k, id in passages do
+		local a, b = forwardLane[k], forwardLane[k % count + 1]
+		if a and b then
+			lengths[id] = (lengths[id] or 0) + flat(b - a).Magnitude
+		end
+	end
+	laneCache[job.folder] = {
+		forward = forwardLane,
+		backward = backward :: { Vector3 },
+		narrow = passages,
+		claims = {},
+		lengths = lengths,
+	}
+	local queries, pauses = WitnessLanes.LastQueries, WitnessLanes.LastPauses
+	print(
+		`[WitnessService] voies des témoins de la zone {job.zone} ({job.label}) : {queries} requêtes, {math.floor(busy * 1000 + 0.5)} ms de calcul en {pauses + 1} morceau(x), {math.floor((os.clock() - started) * 1000 + 0.5)} ms en tout`
+	)
+	if type(fixes) == "table" and #fixes > 0 then
+		print(`[WitnessService] voies des témoins de la zone {job.zone}, segments corrigés : {table.concat(fixes, " ; ")}`)
+	end
+end
+local function laneWorker()
+	while #laneQueue > 0 do
+		local job = table.remove(laneQueue, 1) :: LaneJob
+		local ok, err = pcall(buildLanes, job)
+		if not ok then
+			laneCache[job.folder] = false
+			warnOnce(`lane:{job.zone}`, `{job.label} : voies des témoins incalculables ({err}) : il marche sur le circuit`)
+		end
+		laneQueued[job.folder] = nil
+		if #laneQueue > 0 and coroutine.isyieldable() and type(task.wait) == "function" then
+			task.wait() -- un circuit par pas au plus
+		end
+	end
+	laneWorking = false
+end
+-- Prêt (et sa voie, nil : le circuit même, comme avant a269), ou pas encore (voies en calcul).
+local function laneOf(w: WitnessNpc): (boolean, { Vector3 }?)
 	local folder = w.pathsFolder
 	if WitnessLanes == nil or folder == nil or #w.path < 2 or WitnessLanes.Settings() == nil then
-		return nil
+		return true, nil
 	end
-	local found = laneCache[folder]
-	if found == nil then
-		lanesBuiltAt = now
-		local position = w.root.Position
-		local nearest, height = math.huge, 0
-		for _, point in w.path do
-			local distance = flat(point - position).Magnitude
-			if distance < nearest then
-				nearest = distance
-				height = position.Y - point.Y -- sa racine au-dessus des points du circuit
+	if laneCache[folder] == nil then
+		if not laneQueued[folder] then
+			local position = w.root.Position
+			local nearest, height = math.huge, 0
+			for _, point in w.path do
+				local distance = flat(point - position).Magnitude
+				if distance < nearest then
+					nearest = distance
+					height = position.Y - point.Y -- sa racine au-dessus des points du circuit
+				end
+			end
+			laneQueued[folder] = true
+			table.insert(laneQueue, { folder = folder, path = table.clone(w.path), height = height, zone = w.zone, label = w.label })
+			if not laneWorking then
+				laneWorking = true
+				task.defer(laneWorker)
 			end
 		end
-		local ok, forward, backward, fixes, narrow = pcall(WitnessLanes.Build, w.path, height, laneIgnore())
-		if not ok or type(forward) ~= "table" or type(backward) ~= "table" then
-			warnOnce(`lane:{w.zone}`, `{w.label} : voies des témoins incalculables ({forward}) : il marche sur le circuit`)
-			return nil
-		end
-		local forwardLane = forward :: { Vector3 }
-		local passages: { [number]: number } = if type(narrow) == "table" then narrow else {}
-		local lengths: { [number]: number } = {}
-		local count = #forwardLane
-		for k, id in passages do
-			local a, b = forwardLane[k], forwardLane[k % count + 1]
-			if a and b then
-				lengths[id] = (lengths[id] or 0) + flat(b - a).Magnitude
-			end
-		end
-		found = {
-			forward = forwardLane,
-			backward = backward :: { Vector3 },
-			narrow = passages,
-			claims = {},
-			lengths = lengths,
-		}
-		laneCache[folder] = found
-		if type(fixes) == "table" and #fixes > 0 then
-			print(`[WitnessService] voies des témoins de la zone {w.zone}, segments corrigés : {table.concat(fixes, " ; ")}`)
+		if laneCache[folder] == nil then
+			return false, nil
 		end
 	end
-	local lanes = found :: Lanes
-	return if w.pathStep < 0 then lanes.backward else lanes.forward
+	local lanes = lanesOf(folder)
+	if lanes == nil then
+		return true, nil
+	end
+	return true, if w.pathStep < 0 then lanes.backward else lanes.forward
 end
 
 local function walkTo(w: WitnessNpc, goal: Vector3, now: number)
@@ -558,8 +619,7 @@ local function waitAtPassage(w: WitnessNpc, now: number, id: number): boolean
 	return true
 end
 local function narrowWait(w: WitnessNpc, now: number, entrance: Vector3, goal: Vector3, reach: number): boolean
-	local folder = w.pathsFolder
-	local lanes = if folder then laneCache[folder] else nil
+	local lanes = lanesOf(w.pathsFolder)
 	if lanes == nil or next(lanes.narrow) == nil then
 		return false
 	end
@@ -631,12 +691,20 @@ local function strollStep(w: WitnessNpc, now: number)
 		return
 	end
 	if not w.laneReady then
-		local folder = w.pathsFolder
-		if folder and laneCache[folder] == nil and lanesBuiltAt == now then
-			return -- a269d : une autre zone vient d'être calculée à ce pas
+		local ready, lane = laneOf(w) -- a269c ; nil : le circuit même, comme avant a269
+		if not ready then
+			-- a269g : ses voies sont en calcul : il attend sur place (Idle), sans que l'attente compte comme bloqué
+			if w.walking then
+				stopWalking(w)
+			end
+			w.progressPos = w.root.Position
+			w.progressAt = now
+			w.goalSince = now
+			w.nextMoveAt = now
+			return
 		end
 		w.laneReady = true
-		w.lane = laneOf(w, now) -- a269c ; nil : le circuit même, comme avant a269
+		w.lane = lane
 		w.goalSince = now
 	end
 	local lane = w.lane
@@ -698,15 +766,33 @@ local function strollStep(w: WitnessNpc, now: number)
 		w.skipped = 0
 		w.goalSince = now
 		w.nextMoveAt = now -- a269e : il enchaîne sur le point suivant sans s'arrêter
-		local folder = w.pathsFolder
-		local lanes = if lane and folder then laneCache[folder] else nil
-		local narrow = lanes ~= nil and lanes.narrow[segmentOf(w)] ~= nil -- a269d : jamais de pause dans un passage étroit
-		if not narrow and rng:NextNumber() < Witness.PauseChance then
-			w.pauseUntil = now + rng:NextNumber(Witness.PauseMin, Witness.PauseMax)
-			w.progressAt = w.pauseUntil
-			w.goalSince = w.pauseUntil
-			stopWalking(w)
-			return
+		-- a269d : jamais de pause dans un passage étroit ; a269g (Play f81f : croisements à 0,77 et 0,88 en zone 1) : ni
+		-- sur un point au bout d'un passage étroit, ni à moins de Witness.PauseClearance studs de l'autre témoin du
+		-- circuit. La pause tirée est alors reportée au point suivant (sans nouveau tirage).
+		local reached = previousIndex(w)
+		local lanes = if lane then lanesOf(w.pathsFolder) else nil
+		local blocked = lanes ~= nil
+			and (lanes.narrow[reached] ~= nil or lanes.narrow[(reached - 2) % count + 1] ~= nil)
+		if not blocked then
+			local clearance = if type(Witness.PauseClearance) == "number" then Witness.PauseClearance else 10
+			for _, other in witnesses do
+				if other ~= w and other.pathsFolder == w.pathsFolder and other.hiddenParent == nil
+					and other.model.Parent ~= nil and flat(other.root.Position - position).Magnitude < clearance
+				then
+					blocked = true
+					break
+				end
+			end
+		end
+		if w.pauseOwed or rng:NextNumber() < Witness.PauseChance then
+			w.pauseOwed = blocked
+			if not blocked then
+				w.pauseUntil = now + rng:NextNumber(Witness.PauseMin, Witness.PauseMax)
+				w.progressAt = w.pauseUntil
+				w.goalSince = w.pauseUntil
+				stopWalking(w)
+				return
+			end
 		end
 		goal = points[w.pathIndex]
 	end
@@ -784,6 +870,7 @@ local function toStroll(w: WitnessNpc, now: number)
 	stopSnapping(w) -- a221
 	w.turning = false -- f70c2 : la balade (ou la fuite) reprend la main sur son cap
 	w.pauseUntil = 0
+	w.pauseOwed = false
 	w.unstickUntil = 0 -- a269c
 	w.fails = 0 -- a269d
 	w.narrowWaitUntil = 0
@@ -1449,6 +1536,7 @@ end
 -- La nuit, les témoins ne sont pas là (Clément) : retirés du jeu, remis à leur place à l'aube.
 local function setNight(night: boolean)
 	local now = os.clock()
+	local changed = 0 -- a269g (Play f81f) : la ligne seulement au vrai passage (pas à chaque phase Warning)
 	for _, w in witnesses do
 		if night and w.hiddenParent == nil and w.model.Parent ~= nil then
 			if w.state ~= "Call" then
@@ -1458,16 +1546,20 @@ local function setNight(night: boolean)
 			stopWalking(w)
 			w.hiddenParent = w.model.Parent
 			w.model.Parent = nil
+			changed += 1
 		elseif not night and w.hiddenParent then
 			w.model.Parent = w.hiddenParent
 			w.hiddenParent = nil
+			changed += 1
 			toStroll(w, now)
 			pcall(function()
 				w.root:SetNetworkOwner(nil)
 			end)
 		end
 	end
-	log(if night then `nuit : {#witnesses} témoin(s) retirés` else `jour : {#witnesses} témoin(s) remis`)
+	if changed > 0 then
+		log(if night then `nuit : {changed} témoin(s) retirés` else `jour : {changed} témoin(s) remis`)
+	end
 end
 
 -- Boucle -----------------------------------------------------------------------------------------
@@ -1715,6 +1807,7 @@ local function add(model: Model)
 		pathIndex = 1,
 		pathStep = if number % 2 == 0 then -1 else 1,
 		pauseUntil = 0,
+		pauseOwed = false,
 		nextMoveAt = now,
 		progressPos = root.Position,
 		progressAt = now,
