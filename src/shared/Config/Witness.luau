@@ -76,10 +76,14 @@ local Witness = {
 		LaneLowDrop = 0.8, -- V0 proposé (a269, 22/11) : second balayage ce nombre de studs plus bas (bornes basses)
 		LaneStep = 0.25, -- V0 proposé (a269, 22/11) : pas (studs) des décalages essayés quand un segment est bouché…
 		LaneMax = 4, -- V0 proposé (a269, 22/11) : … jusqu'à ce décalage (studs), d'un côté ou de l'autre
-		LaneReach = 1, -- V0 proposé (a269, 22/11) : point de la voie atteint à ce nombre de studs (au lieu de PointReached : il coupe moins les virages)
+		LaneReach = 0.5, -- V0 proposé (a269, 22/11 ; 1 à a269c) : point de la voie atteint à ce nombre de studs (au lieu de PointReached : il coupe moins les virages ; a269d : à 1 stud, le raccourci frôlait encore les poteaux)
 		UnstickTime = 1, -- V0 proposé (a269, 22/11) : s ; sans avancer de UnstickMove studs : il va à un point libre à côté de lui…
 		UnstickMove = 1, -- V0 proposé (a269, 22/11) : … (studs)…
-		UnstickSide = 2.5, -- V0 proposé (a269, 22/11) : … à ce nombre de studs sur sa droite, sinon sur sa gauche, puis vise le point suivant
+		UnstickSide = 2.5, -- V0 proposé (a269, 22/11) : … à ce nombre de studs sur sa droite, sinon sur sa gauche (a269d : d'où il voit son point visé, sinon son point d'avant), puis reprend le même point (le suivant au second échec)
+		-- a269d (Play f81c, 22/11) : poteaux sans collision, renfoncements, passages étroits.
+		LaneVisibleMax = 0.5, -- V0 proposé (a269, 22/11) : une pièce de la map sans collision compte comme obstacle des voies si sa Transparency est au plus ceci
+		LaneLeash = 2, -- V0 proposé (a269, 22/11) : à plus de LaneMax + ceci studs de sa voie, il revient au point le plus proche de sa voie
+		NarrowWait = 8, -- V0 proposé (a269, 22/11) : s au plus d'attente à l'entrée d'un passage étroit (voies à moins de 2 × Lane − LaneStep studs) où est l'autre témoin
 	},
 
 	-- La fuite à la casse (Clément, L-118 point 10 : il a peur, court à l'opposé de la vitrine, puis reprend
