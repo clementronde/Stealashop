@@ -1285,7 +1285,9 @@ local function sheenHost(button: GuiButton): GuiObject?
 		return button
 	end
 	for _, child in button:GetChildren() do
-		if child:IsA("GuiObject") and not child:IsA("GuiButton") and child.BackgroundTransparency < 1
+		-- Pas un calque de texte (le Cooldown de SleepButton, caché hors recharge : play f86b).
+		if child:IsA("GuiObject") and not child:IsA("GuiButton") and not child:IsA("TextLabel")
+			and not child:IsA("TextBox") and child.BackgroundTransparency < 1
 			and child.Size.X.Scale >= SHEEN.CoverMin and child.Size.Y.Scale >= SHEEN.CoverMin then
 			return child
 		end
