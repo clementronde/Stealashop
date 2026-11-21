@@ -170,7 +170,8 @@ local Witness = {
 
 	-- La foule qui filme (vague 66, a221, Clément, L-210 point 4 ; proposition à valider par Clément, tout en V0) : quand un
 	-- voleur sort d'un magasin PNJ avec l'objet sur la tête (attribut Carrying, il quitte le volume Bounds), une petite
-	-- foule apparaît devant la vitrine, tournée vers lui, créée et jouée par chaque client seul (WitnessCrowdController) :
+	-- foule apparaît devant la vitrine, tournée vers lui (a288 : dès l'entrée dans le magasin, Crowd.Trigger), créée et
+	-- jouée par chaque client seul (WitnessCrowdController) :
 	-- aucun remote, rien sur le serveur. Interrupteur : Features.WitnessCrowd.
 	--
 	-- Vague 71 (a236 ; Clément, L-219 point 1, L-220 point 2, L-223) : les personnes viennent de
@@ -220,11 +221,18 @@ local Witness = {
 			MaxPush = 20, -- V0 proposé (a269, 20/11) : recul au plus (studs) ; au-delà, la place reste vide
 			Witnesses = true, -- V0 proposé (a269, 20/11) : places loin des témoins et de leur circuit, vus chez ce joueur
 		},
-		Duration = 6, -- V0 : s, puis ils s'effacent
+		-- a288 (Cantin, 21/11 : « la foule apparaît trop tard, elle va apparaître dès qu'on rentre dans le magasin ») :
+		-- "Enter" = la foule se forme dès qu'un joueur entre dans le volume Bounds d'un magasin PNJ ouvert (vitrine
+		-- cassée : attribut HeistOpen du magasin, posé par StoreHeistService), avec ou sans objet ; elle reste tant
+		-- qu'un joueur est dans Bounds (au plus MaxStay s), puis Duration s après la sortie du dernier, et s'efface.
+		-- "Exit" = l'ancien moment (L-210 point 4) : à la sortie de Bounds avec l'objet (Carrying), pour Duration s.
+		Trigger = "Enter", -- Cantin (21/11)
+		MaxStay = 60, -- V0 proposé (a288, 21/11) : s, la foule formée à l'entrée part au plus tard après ce temps
+		Duration = 6, -- V0 : s, puis ils s'effacent ("Enter" : après la sortie du dernier joueur ; "Exit" : après la formation)
 		FadeTime = 0.3, -- V0 : s, apparition et disparition (LocalTransparencyModifier) ; animations réduites : d'un coup
 		FlashMin = 0.7, -- V0 : rythme des flashs sans marqueur Flash (s, au hasard entre les deux)…
 		FlashMax = 1.5, -- V0 : … ; avec TakePhoto, ses marqueurs Flash donnent le rythme
-		Cooldown = 15, -- V0 : s, pas deux foules pour un même magasin dans ce temps
+		Cooldown = 15, -- V0 : s, pas deux foules pour un même magasin dans ce temps (a288, "Enter" : compté depuis la fin de la foule)
 		MaxCrowds = 2, -- V0 : foules à la fois chez un joueur…
 		MaxCrowdsLow = 1, -- V0 : … sur appareil faible
 		AtNight = false, -- V0 : comme avant (la nuit, plus de témoins, donc plus de foule) ; à valider par Clément
