@@ -1035,7 +1035,11 @@ local function checkVisitors(now: number)
 		local store = if root then storeAt(root.Position) else nil
 		local before = insideOf[player]
 		local carrying = player:GetAttribute(CARRYING) ~= nil
-		insideOf[player] = store
+		if store then -- a291 : ancien solveur, pas de Model? écrit dans { [Player]: Model }
+			insideOf[player] = store
+		else
+			insideOf[player] = nil
+		end
 		if before and before ~= store then
 			local crowd = crowdOf(before)
 			if crowd then
@@ -1050,7 +1054,11 @@ local function checkVisitors(now: number)
 			end
 		end
 		if store ~= before then
-			carriedIn[player] = if store then carrying else nil
+			if store then -- a291 : ancien solveur, pas de boolean? écrit dans { [Player]: boolean }
+				carriedIn[player] = carrying
+			else
+				carriedIn[player] = nil
+			end
 		end
 		if store == nil then
 			enteredOf[player] = nil

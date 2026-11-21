@@ -359,8 +359,8 @@ local function sync()
 		if signal ~= nil then -- faux Roblox des bancs
 			heartbeat = signal:Connect(step)
 		end
-	elseif count == 0 and heartbeat ~= nil then
-		(heartbeat :: RBXScriptConnection):Disconnect()
+	elseif count == 0 and heartbeat then -- a291 : test de vérité, l'ancien solveur refuse ~= nil ici
+		heartbeat:Disconnect()
 		heartbeat = nil
 	end
 end

@@ -345,7 +345,8 @@ local ShelfBoxes = require(Shared.Config.ShelfBoxes)
 local Mutations = require(Shared.Config.Mutations)
 local Zones = require(Shared.Config.Zones)
 local Formulas = require(Shared.Config.Formulas)
-local Format = require(Shared.Format) -- a286 : montant de la prime au complice
+-- a286 : Shared.Format (montant de la prime au complice) est demandé dans payPartners, à la première prime (a291 :
+-- les bancs à arbre partiel n'ont pas Shared/Format).
 local ShelfOpen = require(Shared.Config.ShelfOpen)
 local Unbox = require(Shared.Config.Unbox)
 local Attributes = require(Shared.Contract.Attributes)
@@ -1190,6 +1191,7 @@ local function payPartners(carrier: Player, out: OutItem)
 			continue
 		end
 		if (data :: any).AddCash(partner, amount) ~= nil then
+			local Format = require(Shared.Format) -- a291 : chargé ici, pas au démarrage
 			Net.Server.Notify:Fire(partner, string.format(Balance.Heist.PartnerBonusMessage, Format.money(amount)), "Success")
 			log(`prime au complice : {partner.Name} reçoit {amount} (objet {out.Info.Content.ItemId} de {carrier.Name}, {out.Slot.Store.Id})`)
 		end
