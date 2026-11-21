@@ -115,7 +115,7 @@ local GIFT_TEXT = "Gift at %d min"
 local READY_TEXT = "Ready!"
 local CLAIMED_TEXT = "CLAIMED"
 local CLAIM_TEXT = "CLAIM" -- si ClaimLabel n'a pas de texte
-local LOCKED_TEXT = "LOCKED" -- a166 : coffre hebdomadaire pas encore prêt
+local LOCKED_TEXT = "LOCKED" -- a166 : coffre hebdomadaire pas encore prêt ; a286 : jour bloqué avant la fin du tuto
 local PROGRESS_FORMAT = "%d/%d" -- a166 : jours de connexion de la semaine
 local WEEKLY = Rewards.Weekly
 -- V0 proposé, absent du doc : cadence (s) des minuteurs et de la pastille.
@@ -228,6 +228,7 @@ type Status = {
 	known: boolean, -- attributs posés (profil chargé)
 	day: number,
 	dailyClaimed: boolean,
+	dailyLocked: boolean, -- a286 (L-224 point 3) : tuto pas fini, le jour ne se réclame pas encore
 	playSeconds: number,
 	playClaimed: { [number]: boolean },
 	weeklyDays: number?, -- nil : coffre hebdomadaire coupé (aucun attribut)
@@ -253,6 +254,7 @@ local function readStatus(): Status
 		known = known,
 		day = if type(day) == "number" then day else 1,
 		dailyClaimed = localPlayer:GetAttribute(ATTRIBUTES.DailyClaimed) == true,
+		dailyLocked = localPlayer:GetAttribute(ATTRIBUTES.DailyLocked) == true,
 		playSeconds = if type(start) == "number" then math.max(0, Workspace:GetServerTimeNow() - start) else 0,
 		playClaimed = claimed,
 		weeklyDays = if type(weeklyDays) == "number" then weeklyDays else nil,
@@ -262,7 +264,7 @@ end
 
 -- Le jour d'aujourd'hui attend d'être réclamé.
 local function dailyPending(status: Status): boolean
-	return status.known and not status.dailyClaimed
+	return status.known and not status.dailyClaimed and not status.dailyLocked -- a286 : pas de pastille avant la fin du tuto
 end
 
 -- Un palier de temps de jeu est atteint et pas réclamé.
@@ -308,7 +310,8 @@ local function paintDaily(current: Screen, status: Status)
 		setVisible(dayFrame.today, index == status.day)
 		setVisible(dayFrame.claimed, index < status.day or (index == status.day and status.dailyClaimed))
 	end
-	setText(current.claimLabel, if status.dailyClaimed then CLAIMED_TEXT else current.claimText)
+	-- a286 : « LOCKED » tant que le tuto n'est pas fini (le clic part quand même : le serveur répond par un Notify).
+	setText(current.claimLabel, if status.dailyClaimed then CLAIMED_TEXT elseif status.dailyLocked then LOCKED_TEXT else current.claimText)
 end
 
 local function paintRows(current: Screen, status: Status)
@@ -630,7 +633,7 @@ function RewardsController.Start()
 	-- Peut attendre que le serveur ait créé les remotes.
 	net = require(Shared:WaitForChild("Net"):WaitForChild("Net") :: ModuleScript) :: any
 
-	for _, name in { ATTRIBUTES.Day, ATTRIBUTES.DailyClaimed, ATTRIBUTES.PlayStart, ATTRIBUTES.PlayClaimed, ATTRIBUTES.WeeklyDays, ATTRIBUTES.WeeklyClaimed } do
+	for _, name in { ATTRIBUTES.Day, ATTRIBUTES.DailyClaimed, ATTRIBUTES.DailyLocked, ATTRIBUTES.PlayStart, ATTRIBUTES.PlayClaimed, ATTRIBUTES.WeeklyDays, ATTRIBUTES.WeeklyClaimed } do
 		localPlayer:GetAttributeChangedSignal(name):Connect(refresh)
 	end
 	local playerGui = localPlayer:WaitForChild("PlayerGui")

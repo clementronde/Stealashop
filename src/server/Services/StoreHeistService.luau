@@ -345,6 +345,7 @@ local ShelfBoxes = require(Shared.Config.ShelfBoxes)
 local Mutations = require(Shared.Config.Mutations)
 local Zones = require(Shared.Config.Zones)
 local Formulas = require(Shared.Config.Formulas)
+local Format = require(Shared.Format) -- a286 : montant de la prime au complice
 local ShelfOpen = require(Shared.Config.ShelfOpen)
 local Unbox = require(Shared.Config.Unbox)
 local Attributes = require(Shared.Contract.Attributes)
@@ -468,6 +469,8 @@ type Slot = {
 type OutItem = {
 	Slot: Slot,
 	Info: ItemInfo,
+	-- a286 (Features.HeistPartnerBonus) : joueurs entrés dans le magasin pendant l'ouverture de la prise (store.Helpers).
+	Partners: { Player }?,
 }
 
 
@@ -499,6 +502,8 @@ type Store = {
 	CurtainHeld: boolean, -- un vigile y est (ou va y entrer) : rideaux locaux levés (voir l'en-tête)
 	-- Règle du braquage de Clément (L-118 points 8 et 9 ; voir l'en-tête) :
 	Entered: { [Player]: boolean }, -- entrés dans Bounds pendant cette ouverture (les intrus)
+	-- a286 (prime au complice) : tous les joueurs entrés pendant cette ouverture, même sortis depuis sans rien.
+	Helpers: { [Player]: boolean },
 	ChronoOver: boolean, -- chrono du vigile fini : les vigiles sont sortis
 	ClosedAt: number, -- os.clock() de la dernière fermeture (reconstruction RebuildDelay s après au plus tôt)
 	KickAfter: { [Player]: number }, -- attrapé dans Bounds : fermé pour lui, sorti à cet os.clock() (après le coup)
@@ -1139,6 +1144,56 @@ local function itemIncome(zone: number, content: Content): number
 	local ok, factor = pcall(ItemWeight.IncomeFactor, weight)
 	local safe = if ok and type(factor) == "number" and factor >= 0 and factor < math.huge then factor else 1
 	return base * effect * safe
+end
+
+-- a286 (L-216 point 10, Features.HeistPartnerBonus) : prime au complice ------------------------------------
+-- Joueurs entrés dans `store` pendant cette ouverture, sauf le porteur (relevés à la prise de l'objet).
+local function partnersOf(store: Store, carrier: Player): { Player }?
+	local list: { Player } = {}
+	for other in store.Helpers do
+		if other ~= carrier then
+			table.insert(list, other)
+		end
+	end
+	return if #list > 0 then list else nil
+end
+
+-- HubService (amis) et DataService (argent), chargés à la demande : ce service ne les demande pas au
+-- démarrage (bancs à arbre partiel, ordre de chargement) ; absent = pas de prime.
+local function partnerApi(name: string): any
+	local module = script.Parent:FindFirstChild(name)
+	if module == nil or not module:IsA("ModuleScript") then
+		return nil
+	end
+	local ok, api = pcall(require, module)
+	return if ok then api else nil
+end
+
+-- Objet `out` rangé en base par `carrier` : chaque ami du porteur entré dans le magasin pendant la même
+-- ouverture reçoit Balance.Heist.PartnerBonusSeconds s du revenu de l'objet (une seule fois par objet).
+local function payPartners(carrier: Player, out: OutItem)
+	local partners = out.Partners
+	if Features.HeistPartnerBonus ~= true or partners == nil then
+		return
+	end
+	local amount = math.floor(itemIncome(out.Slot.Store.Zone, out.Info.Content) * Balance.Heist.PartnerBonusSeconds)
+	if amount <= 0 then
+		return
+	end
+	local hub = partnerApi("HubService")
+	local data = partnerApi("DataService")
+	if hub == nil or data == nil or hub.AreFriends == nil then
+		return
+	end
+	for _, partner in partners do
+		if partner.Parent ~= Players or not (hub :: any).AreFriends(carrier, partner) then
+			continue
+		end
+		if (data :: any).AddCash(partner, amount) ~= nil then
+			Net.Server.Notify:Fire(partner, string.format(Balance.Heist.PartnerBonusMessage, Format.money(amount)), "Success")
+			log(`prime au complice : {partner.Name} reçoit {amount} (objet {out.Info.Content.ItemId} de {carrier.Name}, {out.Slot.Store.Id})`)
+		end
+	end
 end
 
 -- Bloc V0 d'un objet : pivot en bas au centre (10.1), comme un ITM_* livré.
@@ -1980,6 +2035,7 @@ local function stepEntries(store: Store)
 			end
 			if not store.ChronoOver then
 				store.Entered[player] = true
+				store.Helpers[player] = true
 				log(`{player.Name} entre dans {store.Id}`)
 			elseif humanoid then
 				moveOut(store, player, root, humanoid)
@@ -2046,6 +2102,7 @@ local function openStore(store: Store, breaker: Player?)
 	store.ExclusiveUntil = os.clock() + Balance.Heist.BreakerHeadStart
 	store.EndsAt = now + duration
 	store.Entered = {}
+	store.Helpers = {}
 	store.ChronoOver = false
 	store.ShutterPending = false
 	for player, paused in pausedChronos do
@@ -2240,7 +2297,7 @@ local function grantItem(player: Player, slot: Slot)
 	local payload = payloadFor(slot, info)
 	-- Rayon réservé pendant l'appel : une autre prise ne peut pas passer si StartCarry attend.
 	slot.Item = nil
-	outItems[payload] = { Slot = slot, Info = info }
+	outItems[payload] = { Slot = slot, Info = info, Partners = partnersOf(slot.Store, player) }
 	local ok, started = pcall(CarryService.StartCarry, player, payload)
 	if not ok or started ~= true then
 		outItems[payload] = nil
@@ -2829,7 +2886,7 @@ local function finishReveal(session: Reveal, why: string, gone: boolean?)
 	local carried = false
 	if present and rootOf(player) ~= nil then
 		local payload = payloadFor(slot, info)
-		outItems[payload] = { Slot = slot, Info = info }
+		outItems[payload] = { Slot = slot, Info = info, Partners = partnersOf(slot.Store, player) }
 		local ok, started = pcall(CarryService.StartCarry, player, payload)
 		if ok and started == true then
 			carried = true
@@ -3256,7 +3313,11 @@ local function onCarryEnded(player: Player, payload: any, result: string, reason
 		-- de batte) : rien, il revient par onDropExpired s'il n'est pas ramassé. Autre échec (mort,
 		-- départ, anomalie…) : il revole vers son rayon.
 		if result == "Consumed" then
+			local out = outItems[payload]
 			outItems[payload] = nil
+			if out then
+				payPartners(player, out) -- a286 : prime au complice (Features.HeistPartnerBonus)
+			end
 		elseif result == "Failed" then
 			-- a252 (L-244) : l'objet passé par la main du vigile (Guard/CatchPickUp) revole depuis là (payload.ReturnFrom).
 			local from = if typeof(payload.ReturnFrom) == "Vector3" then payload.ReturnFrom else carrierPosition(player)
@@ -3357,6 +3418,7 @@ local function register(instance: Instance)
 		Locked = {},
 		CurtainHeld = false,
 		Entered = {},
+		Helpers = {},
 		ChronoOver = false,
 		KickAfter = {},
 		ClosedAt = 0,
@@ -3664,6 +3726,7 @@ local function addEventShelf(options: EventShelfOptions): Model?
 		Locked = {},
 		CurtainHeld = false,
 		Entered = {},
+		Helpers = {},
 		ChronoOver = false,
 		KickAfter = {},
 		ClosedAt = 0,

@@ -100,6 +100,11 @@ local Rewards = {
 	-- V0 : cadence (s) du compte du temps de jeu et de la remise à zéro de minuit (serveur).
 	Tick = 1,
 
+	-- a286 (Clément, L-224 point 3 : « récompense quotidienne seulement après le tuto ») : tant que le tuto du joueur
+	-- n'est pas fini (profil Tutorial.Done, TutorialService), ClaimDaily est refusé (Messages.TutorialFirst) et le
+	-- client montre le jour bloqué (attribut DailyLocked). Le temps de jeu et le coffre ne changent pas.
+	DailyAfterTutorial = true,
+
 	-- Attributs du Player, écrits par RewardService seulement, lus par RewardsController :
 	Attributes = {
 		Day = "RewardDay", -- jour du calendrier d'aujourd'hui (1 à 7)
@@ -111,6 +116,8 @@ local Rewards = {
 		WeeklyDays = "RewardWeeklyDays", -- jours de connexion comptés cette semaine (0 à 7)
 		WeeklyClaimed = "RewardWeeklyClaimed", -- true : le coffre de cette semaine est réclamé
 		WeekEndsAt = "RewardWeekEndsAt", -- heure serveur (GetServerTimeNow) du prochain lundi 00:00 UTC
+		-- a286 (L-224 point 3, DailyAfterTutorial) : true tant que le tuto n'est pas fini (récompense du jour bloquée).
+		DailyLocked = "RewardDailyLocked",
 	},
 
 	-- Studio seulement (RewardService) : workspace:SetAttribute(TestAttribute, …), barre de commande serveur :
@@ -130,6 +137,7 @@ local Rewards = {
 		AlreadyClaimed = "Already claimed today. Come back tomorrow!",
 		NotYet = "Keep playing to unlock this gift.",
 		BoxesFull = "Too many boxes in your inventory: open some, then claim your gift.",
+		TutorialFirst = "Finish the tutorial to claim your daily reward!", -- a286 : V0 du 2026-11-21 (L-224 point 3)
 		Unavailable = "This gift can't be given right now. Try again later.",
 		-- Coffre hebdomadaire (a166), V0 :
 		WeeklyNotYet = "Play on %d different days this week to open the chest.", -- %d = Weekly.DaysNeeded

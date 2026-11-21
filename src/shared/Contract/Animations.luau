@@ -22,9 +22,9 @@ local Animations = {}
 Animations.FolderName = "Animations"
 Animations.PlayerFolder = { "Assets", "Animations", "Player" }
 
--- 25 animations du joueur (15 avant le retrait d'Unbox et de Celebrate, vague 52 ; BenchLift et BenchIdle
+-- 26 animations du joueur (15 avant le retrait d'Unbox et de Celebrate, vague 52 ; BenchLift et BenchIdle
 -- retirés en v2 ; HoldItem ajoutée en vague 56 ; TrapStuck et TrapNetted en vague 72 ; les 7 Unbox_* de L-237 ;
--- Unbox_Stomp et Unbox_Slam en vague 74).
+-- Unbox_Stomp et Unbox_Slam en vague 74 ; TrapSlip, a286).
 Animations.Player = {
 	{ Name = "HitWindow", Loop = false, Priority = "Action", Marker = "Impact" },
 	{ Name = "HitWindowHeavy", Loop = false, Priority = "Action", Marker = "Impact" },
@@ -41,7 +41,7 @@ Animations.Player = {
 	{ Name = "Stunned", Loop = true, Priority = "Action" },
 	{ Name = "Knockback", Loop = false, Priority = "Action", Marker = "Land" },
 	-- Chute et arrestation (Clément, liaison L-076, livrées le 2026-11-10 ; réglages relevés dans Studio) :
-	-- pas encore jouées par le code.
+	-- jouées par ChaseController (Knockdown puis GetUp à la chute, Arrested à l'arrestation).
 	{ Name = "Knockdown", Loop = false, Priority = "Action", Marker = "Land" },
 	{ Name = "GetUp", Loop = false, Priority = "Action" },
 	{ Name = "Arrested", Loop = false, Priority = "Action", Marker = "Grab" },
@@ -52,8 +52,13 @@ Animations.Player = {
 	-- en boucle tant que l'effet dure. Pas encore livrées : orange au ContractChecker, Stunned se joue à leur place.
 	{ Name = "TrapStuck", Loop = true, Priority = "Action" },
 	{ Name = "TrapNetted", Loop = true, Priority = "Action" },
+	-- a286 (L-268 point 4, nom de Clément) : glissade sur la peau de banane (TRAP_BananaPeel, Features.NewTraps).
+	-- Facultative : pas encore livrée, orange au ContractChecker, Stunned se joue à sa place. Sans boucle (V0 du 21/11 :
+	-- une glissade, une fois, sur les 1,5 s de l'effet).
+	{ Name = "TrapSlip", Loop = false, Priority = "Action" },
 	-- L-237 (Clément, livrées pour la nouvelle ouverture du colis, L-236) : corps entier, sans boucle, marqueur Impact à
-	-- chaque moment fort (Unbox_Hammer : Top, masse en l'air, puis Impact). Pas encore jouées par le code.
+	-- chaque moment fort (Unbox_Hammer : Top, masse en l'air, puis Impact). Jouées par la nouvelle ouverture du
+	-- colis (Controllers/Reveal/Unbox, plan de Shared/UnboxPlan et Config/Unbox).
 	{ Name = "Unbox_Hammer", Loop = false, Priority = "Action", Marker = "Impact" },
 	{ Name = "Unbox_Saw", Loop = false, Priority = "Action", Marker = "Impact" },
 	{ Name = "Unbox_Crowbar", Loop = false, Priority = "Action", Marker = "Impact" },

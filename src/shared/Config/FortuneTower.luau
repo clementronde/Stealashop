@@ -30,11 +30,11 @@ local RARER_THAN_TRUCK = 5
 local LIFETIME = TruckEvent.Lifetime
 -- … et BREAKERS joueurs au niveau conseillé de la zone 6 la cassent en la moitié de ce temps, au rythme
 -- du plafond de coups (Balance.Hit.MaxHitsPerSecond : 5 coups/s depuis le rééquilibrage v2 ; avant : 7).
-local BREAKERS = 4 -- V0 proposé, absent du doc : la moitié d'un serveur de 8 joueurs
+local BREAKERS = 3 -- V0 proposé (a286, 2026-11-21 ; L-228 c, proposition « 3 et 6 » de L-232) : la moitié d'un serveur de 6 joueurs (4 du temps des serveurs de 8)
 local HITS_PER_SECOND = Balance.Hit.MaxHitsPerSecond
 local BREAK_TIME = LIFETIME / 2 -- V0 proposé, absent du doc : 90 s
--- MaxHP = 4 × 2 000 000 × 5 × 90 = 3 600 000 000 PV (3.6B), soit 33 vitrines de la zone 6 (108.8M).
--- Seul au niveau conseillé : 360 s, le double de sa vie (impossible) ; à 2 : 180 s (juste) ; à 3 : 120 s.
+-- MaxHP = 3 × 2 000 000 × 5 × 90 = 2 700 000 000 PV (2.7B), soit environ 25 vitrines de la zone 6 (108.8M) (a286 ; 3.6B à 4).
+-- Seul au niveau conseillé : 270 s, une fois et demie sa vie (impossible) ; à 2 : 135 s ; à 3 : 90 s.
 local MAX_HP = BREAKERS * Zones[ZONE].AdvisedDamage * HITS_PER_SECOND * BREAK_TIME
 
 -- Butin -----------------------------------------------------------------------------------------------
@@ -94,14 +94,14 @@ local FortuneTower = {
 	MinPlayers = 2,
 
 	-- Vie ---------------------------------------------------------------------------------------------
-	MaxHP = MAX_HP, -- 3.6B PV partagés, sans régénération (calcul plus haut)
+	MaxHP = MAX_HP, -- 2.7B PV partagés (a286 ; 3.6B avant), sans régénération (calcul plus haut)
 	Lifetime = LIFETIME, -- 180 s : pas cassée à temps, elle se referme sans rien lâcher
 
 	-- Butin -------------------------------------------------------------------------------------------
 	-- Un colis Luxe (la caisse cerclée d'or, temps de prise 1 s de Balance.Heist.BoxTiers) par joueur d'un
-	-- serveur plein (8, doc section 1), posé à la casse sur les points LootSpawn_NN à l'intérieur du coffre
+	-- serveur plein (6 depuis L-228 ; 8 avant), posé à la casse sur les points LootSpawn_NN à l'intérieur du coffre
 	-- (L-145 réponse (c) de Clément, 2026-11-14 : on entre dans le coffre), ramassable par tous.
-	LootCount = 8, -- V0 validé par Clément (L-145 réponse (a), 2026-11-14)
+	LootCount = 6, -- V0 proposé (a286, 2026-11-21 ; L-228 c, L-232) : un par joueur d'un serveur de 6 (8, validé par Clément en L-145 réponse (a), pour des serveurs de 8)
 	LootTier = "Luxe", -- V0 validé par Clément (L-145 réponse (a))
 	-- Zones dont les objets Mythiques (et toute rareté rangée par zone) peuvent sortir d'un colis : 2 à 6
 	-- (L-145 réponse (b) de Clément, 2026-11-14 : la zone 6 n'a qu'un Mythique). Lu dans le catalogue
@@ -136,9 +136,9 @@ local FortuneTower = {
 	-- referme ou est retirée, posé à 3 studs devant elle (jamais enfermé).
 	PushMargin = 3,
 
-	-- Bloc V0 (Studio seulement, tant qu'ENV_Event_FortuneVault n'est pas livré) : vitre de 24 × 16 studs
-	-- (8 joueurs de front, 3 studs d'épaule chacun) dans un cadre doré de 8 studs de profondeur.
-	V0Width = 24,
+	-- Bloc V0 (Studio seulement, tant qu'ENV_Event_FortuneVault n'est pas livré) : vitre de 18 × 16 studs
+	-- (6 joueurs de front, 3 studs d'épaule chacun ; a286 : 24 et 8 joueurs avant L-228) dans un cadre doré de 8 studs de profondeur.
+	V0Width = 18,
 	V0Height = 16,
 	V0Depth = 8,
 

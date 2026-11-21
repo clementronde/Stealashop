@@ -58,6 +58,14 @@ local Features = {
 	-- Vague 80 (a266, DEV-141) : roue de la fortune du hub, un tour gratuit par jour (Config/Wheel, WheelService,
 	-- WheelController ; écran UI_Wheel, zone WheelZone de ENV_Hub_Wheel) ; false = rien ne s'ouvre, SpinWheel ignoré.
 	Wheel = true,
+	-- a286 (L-218, L-231, L-268) : les deux pièges de plus de Clément, peau de banane (TRAP_BananaPeel) et trappe
+	-- (TRAP_TrapDoor) ; true = disposition Traps.SlotLayoutNew (banane, filet, portique, trappe : V0 du 21/11 à
+	-- valider par Cantin) ; false = la disposition d'aujourd'hui (colle, filet, portique, colle), rien ne change.
+	NewTraps = false,
+	-- a286 (L-216 point 10, V0 de L-235 « 60 s du revenu de l'objet pour chaque ami entré dans le magasin », pas
+	-- encore validée par Clément) : prime au complice d'un braquage à deux (Config/Balance.Heist.PartnerBonusSeconds,
+	-- StoreHeistService) ; false = rien ne change.
+	HeistPartnerBonus = false,
 }
 
 export type Features = typeof(Features)

@@ -3,7 +3,7 @@
 -- absent du doc, à valider par Clément ; interrupteur Features.Traps (false : aucun piège posé, tuile « Soon »).
 --
 -- Contrat partagé entre le serveur (TrapService) et le client (TrapController) :
---   - modèles de Clément : ReplicatedStorage/Assets/Traps/TRAP_<Id> (Id = GlueMat, NetBox, AlarmGate ; L-218) :
+--   - modèles de Clément : ReplicatedStorage/Assets/Traps/TRAP_<Id> (Id = GlueMat, NetBox, AlarmGate ; L-218 ; a286 : BananaPeel, TrapDoor, L-268) :
 --     PrimaryPart Base, pivot en bas au centre, TriggerZone (volume invisible), Armed (visible), Triggered (caché :
 --     pièces en Transparency 1, attribut ShownTransparency facultatif ; ParticleEmitter, Beam et lumières éteints ;
 --     attribut EmitCount sur les gerbes). Absent : un modèle de repli construit par le code (TrapService) ;
@@ -17,7 +17,7 @@
 
 local DeepFreeze = require(script.Parent.DeepFreeze)
 
-export type TrapId = "GlueMat" | "NetBox" | "AlarmGate"
+export type TrapId = "GlueMat" | "NetBox" | "AlarmGate" | "BananaPeel" | "TrapDoor"
 
 export type Trap = {
 	Id: TrapId,
@@ -30,6 +30,9 @@ export type Trap = {
 	SlowMultiplier: number, -- × la vitesse pendant SlowTime
 	Spot: number, -- s de surlignage du voleur chez le propriétaire (CameraSpotted ; 0 : aucun)
 	FallbackColor: Color3, -- couleur du modèle de repli
+	-- a286 : true = le voleur est sorti devant la porte de la boutique au déclenchement (PlotService.PutOutside) ;
+	-- l'objet qu'il volait à cette boutique revient sur son présentoir (CarryService.FailNoDrop, raison « Trap »).
+	Eject: boolean,
 }
 
 local List: { Trap } = {
@@ -46,6 +49,7 @@ local List: { Trap } = {
 		SlowMultiplier = 0.5,
 		Spot = 0,
 		FallbackColor = Color3.fromRGB(240, 200, 60),
+		Eject = false,
 	},
 	{
 		-- Filet : immobile sous le filet.
@@ -59,6 +63,7 @@ local List: { Trap } = {
 		SlowMultiplier = 1,
 		Spot = 0,
 		FallbackColor = Color3.fromRGB(150, 110, 70),
+		Eject = false,
 	},
 	{
 		-- Portique : arrêt net au passage, et le voleur est surligné chez le propriétaire (comme Cameras 2).
@@ -72,6 +77,39 @@ local List: { Trap } = {
 		SlowMultiplier = 1,
 		Spot = 15,
 		FallbackColor = Color3.fromRGB(220, 50, 50),
+		Eject = false,
+	},
+	-- a286 (L-218, L-231, L-268 ; Features.NewTraps) : les deux pièges de plus de Clément. Effets de la Partie 2
+	-- (ligne Pièges : « peau de banane (glissade 1,5 s) », « trappe (éjecte dehors) ») ; le reste est V0 du
+	-- 2026-11-21 (nom affiché, son, durée de l'arrêt de la trappe, couleur du repli).
+	{
+		-- Peau de banane : glissade de 1,5 s sur place (Partie 2), animation TrapSlip de Clément (L-268, facultative).
+		Id = "BananaPeel",
+		Model = "TRAP_BananaPeel",
+		DisplayName = "Banana Peel", -- V0 (21/11)
+		Sound = "Trap_Slip", -- V0 (21/11) : son facultatif d'Assets/Sounds/Traps, absent = muet
+		Animation = "TrapSlip",
+		StopTime = 1.5, -- Partie 2
+		SlowTime = 0,
+		SlowMultiplier = 1,
+		Spot = 0,
+		FallbackColor = Color3.fromRGB(255, 225, 53), -- V0 (21/11)
+		Eject = false,
+	},
+	{
+		-- Trappe : le voleur tombe et ressort devant la porte de la boutique (Partie 2 : « éjecte dehors »), sonné
+		-- un instant ; l'objet qu'il volait à cette boutique revient sur son présentoir.
+		Id = "TrapDoor",
+		Model = "TRAP_TrapDoor",
+		DisplayName = "Trap Door", -- V0 (21/11)
+		Sound = "Trap_Door", -- V0 (21/11) : son facultatif d'Assets/Sounds/Traps, absent = muet
+		Animation = "Stunned", -- V0 (21/11) : aucune animation propre proposée par Clément
+		StopTime = 1, -- V0 (21/11) : sonné 1 s devant la porte
+		SlowTime = 0,
+		SlowMultiplier = 1,
+		Spot = 0,
+		FallbackColor = Color3.fromRGB(90, 60, 40), -- V0 (21/11)
+		Eject = true,
 	},
 }
 
@@ -85,6 +123,11 @@ local Traps = {
 	ById = ById,
 	-- Genre du piège de chaque emplacement : SlotLayout[n] pour TrapSlot_0n (V0 ; le propriétaire ne choisit pas).
 	SlotLayout = { "GlueMat", "NetBox", "AlarmGate", "GlueMat" } :: { TrapId },
+	-- a286 (Features.NewTraps) : disposition avec les deux pièges de plus, V0 du 2026-11-21 à valider par Cantin : la
+	-- peau de banane et la trappe prennent les deux places de la colle en double (1 et 4), la trappe, la plus forte,
+	-- au dernier niveau ; la colle ne se pose plus. Même nombre d'emplacements que SlotLayout. TrapService choisit
+	-- l'une ou l'autre (Features.NewTraps ; en Studio, workspace:SetAttribute("NewTrapsTest", true)).
+	SlotLayoutNew = { "BananaPeel", "NetBox", "AlarmGate", "TrapDoor" } :: { TrapId },
 	SlotName = "TrapSlot_%02d", -- emplacements de la boutique (Contract/Models, Plot)
 	PlacedName = "Trap_%02d", -- copie posée par le serveur
 	Folder = "PlacedTraps", -- dossier des copies dans la boutique

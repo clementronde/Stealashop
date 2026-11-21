@@ -43,10 +43,16 @@
 --     un autre code s'ouvre au clic au lieu de demander un second clic.
 --   - vague 75 (a260, L-262 point 3) : l'écran est du groupe « Menu » (attribut ScreenGroup, posé ici si Clément n'en a
 --     pas mis ; Config/Displayed.ScreenGroup) : un autre menu qui s'ouvre le ferme, et il ferme les autres menus.
+--   - a286 (Clément, 19/11 : « on fait tout à la ligne ») : liste unique, quand Panel.Reserve n'existe plus et que
+--     List.Template porte un DisplayButton (tools/clement/ui_displayed_une_liste.luau) : les objets exposés d'abord
+--     (Row_<nn>_<uid>, RemoveButton montré, DisplayButton caché), puis ceux de la réserve dans la même Panel.List
+--     (Reserve_<nn>_<uid>, LayoutOrder à la suite, DisplayButton montré, RemoveButton caché, mêmes clics qu'avant) ;
+--     Panel.ListEmpty (facultatif) montré quand il n'y a aucun objet. Avec Panel.Reserve, rien ne change.
 -- Tout vient des attributs du Player posés par le serveur : InventoryState (Shared/InventoryState,
 -- InventoryService), DisplaySlotsUnlocked et DisplayReserve (DisplayService). Le client ne décide rien.
 -- Seuls sont touchés : Enabled de l'écran, son attribut ScreenGroup s'il n'en a pas (vague 75), Visible de
--- Panel.Reserve, les lignes clonées (taille du Template gardée), leurs textes, la couleur de leurs textes
+-- Panel.Reserve, les lignes clonées (taille du Template gardée), leurs textes (a286 : et, en liste unique, Visible de
+-- leurs RemoveButton et DisplayButton et de Panel.ListEmpty), la couleur de leurs textes
 -- ItemName et RarityLabel, l'image de leur icône et la couleur de fond d'IconBack.
 --
 -- API (client) :
@@ -88,6 +94,10 @@ type Screen = {
 	reserveTemplate: GuiObject?,
 	reserveRows: { GuiObject },
 	reserveEmpty: GuiObject?, -- vague 73 : Reserve.ReserveEmpty, montré seulement quand la réserve est vide
+	-- a286 : liste unique (script de Clément du 19/11) : pas de Panel.Reserve, List.Template porte DisplayButton ; la
+	-- réserve suit les objets exposés dans Panel.List, Panel.ListEmpty montré quand il n'y a aucun objet.
+	single: boolean,
+	listEmpty: GuiObject?,
 	rowsKey: string?, -- vague 72 : ce que montrent les lignes (refaites seulement s'il change)
 	reserveKey: string?,
 	connections: { RBXScriptConnection },
@@ -107,6 +117,7 @@ local GROUP_ATTRIBUTE = "ScreenGroup" -- vague 75 : même nom que Controllers/UI
 local HOTBAR_BUTTON = "InventoryButton"
 local HOTBAR_ALERT = "InventoryAlert"
 local RESERVE_EMPTY = "ReserveEmpty"
+local LIST_EMPTY = "ListEmpty" -- a286 : texte de la liste unique vide
 -- V0 proposé, absent du doc : attente minimale entre deux demandes (Net en accepte une par seconde pour
 -- EquipBest ; quatre par seconde pour UnplaceItem et PlaceFromReserve).
 local BEST_COOLDOWN = 1
@@ -341,6 +352,18 @@ local function cloneRow(template: GuiObject, format: string, rank: number, entry
 	return row
 end
 
+-- a286 (liste unique) : une ligne montre RemoveButton (objet exposé, `exposedRow`) ou DisplayButton (réserve).
+local function showButtons(row: GuiObject, exposedRow: boolean)
+	local remove = guiObject(row, "RemoveButton")
+	if remove then
+		remove.Visible = exposedRow
+	end
+	local display = guiObject(row, "DisplayButton")
+	if display then
+		display.Visible = not exposedRow
+	end
+end
+
 local function buildRows(current: Screen, list: { Entry })
 	local key = keyOf(list)
 	if key == current.rowsKey then
@@ -356,6 +379,9 @@ local function buildRows(current: Screen, list: { Entry })
 		local row = cloneRow(template, ROW_FORMAT, rank, entry)
 		if row == nil then
 			continue
+		end
+		if current.single then
+			showButtons(row, true) -- a286 : objet exposé, RemoveButton seul
 		end
 		local uid = entry.Uid
 		local _ = onClick(Find.path(row, "RemoveButton"), function()
@@ -387,8 +413,9 @@ local function placeOnFloor(uid: string)
 	end
 end
 
-local function buildReserve(current: Screen, list: { Entry })
-	local key = keyOf(list)
+-- `offset` (a286, liste unique) : nombre de lignes d'objets exposés au-dessus, ajouté au LayoutOrder (0 sinon).
+local function buildReserve(current: Screen, list: { Entry }, offset: number)
+	local key = `{offset}|{keyOf(list)}`
 	if key == current.reserveKey then
 		return
 	end
@@ -402,6 +429,10 @@ local function buildReserve(current: Screen, list: { Entry })
 		local row = cloneRow(template, RESERVE_ROW_FORMAT, rank, entry)
 		if row == nil then
 			continue
+		end
+		if current.single then
+			row.LayoutOrder = offset + rank -- a286 : sous les objets exposés
+			showButtons(row, false)
 		end
 		local uid = entry.Uid
 		local locked = entry.AntiTheft == true
@@ -468,9 +499,15 @@ local function refresh()
 	if empty and empty.Visible ~= (#stock == 0) then
 		empty.Visible = #stock == 0
 	end
+	-- a286 (liste unique) : Panel.ListEmpty quand il n'y a ni objet exposé ni objet en réserve.
+	local listEmpty = current.listEmpty
+	local nothing = #list == 0 and #stock == 0
+	if listEmpty and listEmpty.Visible ~= nothing then
+		listEmpty.Visible = nothing
+	end
 	if isOpen then
 		buildRows(current, list)
-		buildReserve(current, stock)
+		buildReserve(current, stock, if current.single then #list else 0)
 	end
 end
 
@@ -506,7 +543,12 @@ local function bind(gui: ScreenGui)
 		reserve = nil
 	end
 	local reserveTemplate = if reserve then guiObject(reserve, "ReserveList.Template") else nil
-	if reserve == nil then
+	-- a286 : liste unique (script de Clément du 19/11) : pas de Panel.Reserve et un DisplayButton dans List.Template ;
+	-- le même gabarit sert aux deux, la réserve sous les objets exposés.
+	local single = reserve == nil and SHOW_RESERVE and template ~= nil and guiObject(template, "DisplayButton") ~= nil
+	if single then
+		reserveTemplate = template -- rien à signaler : la réserve est dans Panel.List
+	elseif reserve == nil then
 		if SHOW_RESERVE then -- sinon rien à signaler : la réserve n'est pas montrée (Config/Displayed.ShowReserve)
 			reportOnce("reserve", `[Displayed] {SCREEN}.Panel.Reserve introuvable : la réserve n'est pas montrée`)
 		end
@@ -525,6 +567,8 @@ local function bind(gui: ScreenGui)
 		reserveTemplate = reserveTemplate,
 		reserveRows = {},
 		reserveEmpty = if reserve then guiObject(reserve, RESERVE_EMPTY) else nil,
+		single = single,
+		listEmpty = if single then guiObject(gui, LIST_EMPTY) else nil,
 		rowsKey = nil,
 		reserveKey = nil,
 		connections = {},

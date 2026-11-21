@@ -59,6 +59,8 @@
 -- GetServerTimeNow() − RewardPlayStart), RewardPlayClaimed (« 5,15 ») ; coffre allumé seulement :
 -- RewardWeeklyDays, RewardWeeklyClaimed, RewardWeekEndsAt (prochain lundi 00:00 UTC). Remis à jour à chaque réclamation
 -- et chaque seconde s'ils changent.
+-- a286 (L-224 point 3, Rewards.DailyAfterTutorial) : RewardDailyLocked = true tant que le tuto n'est pas fini (profil
+-- Tutorial.Done) ; ClaimDaily est alors refusé (Notify Messages.TutorialFirst), rien n'est versé.
 --
 -- API (côté serveur) :
 --   RewardService.GetDay() -> number
@@ -108,6 +110,7 @@ type Source = "Daily" | "Playtime" | "Weekly"
 export type State = {
 	Day: number, -- jour du calendrier d'aujourd'hui (1 à 7)
 	DailyClaimed: boolean,
+	DailyLocked: boolean, -- a286 : tuto pas fini, le jour ne se réclame pas (Rewards.DailyAfterTutorial)
 	PlaySeconds: number,
 	PlayClaimed: { number }, -- minutes des paliers réclamés aujourd'hui, dans l'ordre de Config/Rewards
 	WeeklyOn: boolean, -- coffre hebdomadaire allumé
@@ -293,6 +296,16 @@ local function setTime(player: Player, name: string, value: number)
 	end
 end
 
+-- a286 (L-224 point 3, Rewards.DailyAfterTutorial) : récompense du jour bloquée tant que le tuto n'est pas fini. Profil
+-- sans tuto (ancien format) : pas bloqué.
+local function dailyLocked(data: Data?): boolean
+	if Rewards.DailyAfterTutorial ~= true or data == nil then
+		return false
+	end
+	local tutorial = data.Tutorial
+	return type(tutorial) == "table" and tutorial.Done ~= true
+end
+
 -- Remet les attributs du joueur d'accord avec son profil.
 local function publish(player: Player)
 	local rewards = rewardsOf(player, DataService.Get(player))
@@ -305,6 +318,7 @@ local function publish(player: Player)
 	local serverNow = Workspace:GetServerTimeNow()
 	setAttribute(player, ATTRIBUTES.Day, calendarDay)
 	setAttribute(player, ATTRIBUTES.DailyClaimed, claimed)
+	setAttribute(player, ATTRIBUTES.DailyLocked, if dailyLocked(DataService.Get(player)) then true else nil) -- a286
 	setTime(player, ATTRIBUTES.DayEndsAt, serverNow + (DAY - now() % DAY))
 	setTime(player, ATTRIBUTES.PlayStart, serverNow - finite(rewards.Playtime.Seconds))
 	local list: { string } = {}
@@ -431,6 +445,11 @@ local function onClaimDaily(player: Player)
 	local calendarDay, claimed = dailyStatus(rewards.Daily, day)
 	if claimed then
 		notify(player, MESSAGES.AlreadyClaimed, "Warning")
+		publish(player)
+		return
+	end
+	if dailyLocked(data) then
+		notify(player, MESSAGES.TutorialFirst, "Warning") -- a286 (L-224 point 3) : tuto pas fini
 		publish(player)
 		return
 	end
@@ -643,6 +662,7 @@ function RewardService.GetState(player: Player): State?
 	return {
 		Day = calendarDay,
 		DailyClaimed = claimed,
+		DailyLocked = dailyLocked(DataService.Get(player)),
 		PlaySeconds = finite(rewards.Playtime.Seconds),
 		PlayClaimed = claimedList(rewards.Playtime),
 		WeeklyOn = on,
