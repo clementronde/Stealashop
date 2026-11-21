@@ -30,7 +30,7 @@ local RARER_THAN_TRUCK = 5
 local LIFETIME = TruckEvent.Lifetime
 -- … et BREAKERS joueurs au niveau conseillé de la zone 6 la cassent en la moitié de ce temps, au rythme
 -- du plafond de coups (Balance.Hit.MaxHitsPerSecond : 5 coups/s depuis le rééquilibrage v2 ; avant : 7).
-local BREAKERS = 3 -- V0 proposé (a286, 2026-11-21 ; L-228 c, proposition « 3 et 6 » de L-232) : la moitié d'un serveur de 6 joueurs (4 du temps des serveurs de 8)
+local BREAKERS = 3 -- validé par Cantin, 21/11 (a286 ; L-228 c, proposition « 3 et 6 » de L-232) : la moitié d'un serveur de 6 joueurs (4 du temps des serveurs de 8)
 local HITS_PER_SECOND = Balance.Hit.MaxHitsPerSecond
 local BREAK_TIME = LIFETIME / 2 -- V0 proposé, absent du doc : 90 s
 -- MaxHP = 3 × 2 000 000 × 5 × 90 = 2 700 000 000 PV (2.7B), soit environ 25 vitrines de la zone 6 (108.8M) (a286 ; 3.6B à 4).
@@ -101,7 +101,7 @@ local FortuneTower = {
 	-- Un colis Luxe (la caisse cerclée d'or, temps de prise 1 s de Balance.Heist.BoxTiers) par joueur d'un
 	-- serveur plein (6 depuis L-228 ; 8 avant), posé à la casse sur les points LootSpawn_NN à l'intérieur du coffre
 	-- (L-145 réponse (c) de Clément, 2026-11-14 : on entre dans le coffre), ramassable par tous.
-	LootCount = 6, -- V0 proposé (a286, 2026-11-21 ; L-228 c, L-232) : un par joueur d'un serveur de 6 (8, validé par Clément en L-145 réponse (a), pour des serveurs de 8)
+	LootCount = 6, -- validé par Cantin, 21/11 (a286 ; L-228 c, L-232) : un par joueur d'un serveur de 6 (8, validé par Clément en L-145 réponse (a), pour des serveurs de 8)
 	LootTier = "Luxe", -- V0 validé par Clément (L-145 réponse (a))
 	-- Zones dont les objets Mythiques (et toute rareté rangée par zone) peuvent sortir d'un colis : 2 à 6
 	-- (L-145 réponse (b) de Clément, 2026-11-14 : la zone 6 n'a qu'un Mythique). Lu dans le catalogue

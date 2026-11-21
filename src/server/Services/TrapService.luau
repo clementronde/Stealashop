@@ -37,7 +37,7 @@
 --   workspace:SetAttribute("TrapsTest", true)     allume les pièges sans toucher Features.Traps
 --   workspace:SetAttribute("TrapsTest", "self")   pareil, et le propriétaire est pris par ses propres pièges
 --   workspace:SetAttribute("SkillTest", "<joueur> Traps 4")   4 pièges posés dans sa boutique (SkillTreeService)
---   workspace:SetAttribute("NewTrapsTest", true)  a286 : disposition Traps.SlotLayoutNew (banane, filet, portique, trappe)
+--   workspace:SetAttribute("NewTrapsTest", true)  a286 : disposition Traps.SlotLayoutNew (a293 : colle, banane, portique, trappe ; sert à tester sans Features.NewTraps)
 
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")

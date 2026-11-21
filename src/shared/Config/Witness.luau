@@ -245,7 +245,11 @@ local Witness = {
 		FadeTime = 0.3, -- V0 : s, apparition et disparition (LocalTransparencyModifier) ; animations réduites : d'un coup
 		FlashMin = 0.7, -- V0 : rythme des flashs sans marqueur Flash (s, au hasard entre les deux)…
 		FlashMax = 1.5, -- V0 : … ; avec TakePhoto, ses marqueurs Flash donnent le rythme
-		Cooldown = 15, -- V0 : s, pas deux foules pour un même magasin dans ce temps (a288, "Enter" : compté depuis la fin de la foule)
+		-- a293 (Cantin, 21/11) : voleur attrapé dans la rue, la foule part tout de suite et ne revient pas ; attrapé
+		-- dans le magasin, elle part tout de suite aussi, et une nouvelle foule de ce magasin ne se forme qu'une fois
+		-- Cooldown passé depuis sa fin, à la prochaine entrée d'un joueur dans Bounds (le voleur attrapé qui ressort
+		-- les mains vides n'en forme pas : seule une sortie en portant un objet en forme une) : validé par Cantin, 21/11.
+		Cooldown = 15, -- s, pas deux foules pour un même magasin dans ce temps (a288, "Enter" : compté depuis la fin de la foule) : validé par Cantin, 21/11
 		MaxCrowds = 2, -- foules à la fois chez un joueur (validé par Cantin, 21/11)…
 		MaxCrowdsLow = 1, -- V0 : … sur appareil faible
 		AtNight = false, -- V0 : comme avant (la nuit, plus de témoins, donc plus de foule) ; à valider par Clément

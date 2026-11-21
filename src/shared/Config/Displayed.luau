@@ -32,6 +32,9 @@ local Displayed = {
 	-- Vague 73 (a255, L-241 point 4) : UI_Hotbar.Bar.InventoryButton (la dernière case de la barre du bas) ouvre cet
 	-- écran ; sa pastille InventoryAlert s'allume quand un objet est entré dans l'inventaire (la liste Panel.Reserve)
 	-- depuis la dernière fois que l'écran était ouvert, et s'éteint à l'ouverture. V0, proposition à Clément.
+	-- a293 : ce bouton du sac ouvre UI_Displayed en un seul panneau (liste unique d'a286, DisplayedController : les
+	-- objets exposés puis ceux de l'inventaire dans Panel.List, dès que l'écran de Clément n'a plus Panel.Reserve) :
+	-- validé par Cantin, 21/11.
 	InventoryAlert = true,
 	InventoryAlertGrace = 3, -- V0 (s) : à l'arrivée, ce qui entre dans la réserve pendant ce temps n'est pas « nouveau »
 	-- Vague 75 (a260, L-262 point 3, Clément : « Oui ») : UI_Displayed entre dans ce ScreenGroup (attribut posé par le code

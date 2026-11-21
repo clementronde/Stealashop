@@ -59,13 +59,14 @@ local Features = {
 	-- WheelController ; écran UI_Wheel, zone WheelZone de ENV_Hub_Wheel) ; false = rien ne s'ouvre, SpinWheel ignoré.
 	Wheel = true,
 	-- a286 (L-218, L-231, L-268) : les deux pièges de plus de Clément, peau de banane (TRAP_BananaPeel) et trappe
-	-- (TRAP_TrapDoor) ; true = disposition Traps.SlotLayoutNew (banane, filet, portique, trappe : V0 du 21/11 à
-	-- valider par Cantin) ; false = la disposition d'aujourd'hui (colle, filet, portique, colle), rien ne change.
-	NewTraps = false,
-	-- a286 (L-216 point 10, V0 de L-235 « 60 s du revenu de l'objet pour chaque ami entré dans le magasin », pas
-	-- encore validée par Clément) : prime au complice d'un braquage à deux (Config/Balance.Heist.PartnerBonusSeconds,
-	-- StoreHeistService) ; false = rien ne change.
-	HeistPartnerBonus = false,
+	-- (TRAP_TrapDoor) ; true = disposition Traps.SlotLayoutNew (a293 : colle, banane, portique, trappe, la colle
+	-- gardée) ; false = l'ancienne disposition Traps.SlotLayout (colle, filet, portique, colle).
+	-- a293 : true, validé par Cantin, 21/11 (en DEV comme en PROD : Features ne distingue pas les deux jeux).
+	NewTraps = true,
+	-- a286 (L-216 point 10, L-235 « 60 s du revenu de l'objet pour chaque ami entré dans le magasin ») : prime au
+	-- complice d'un braquage à deux (Config/Balance.Heist.PartnerBonusSeconds, StoreHeistService) ; false = rien ne
+	-- change. a293 : true, validé par Cantin, 21/11 (en DEV comme en PROD).
+	HeistPartnerBonus = true,
 	-- a285 (21/11, retour de Cantin en jeu : « les glims, les effets de texte, les effets des over ») : les effets d'UI que
 	-- Clément pose en attribut et qu'aucun code ne jouait (Gleam, IconHover, Idle = Wiggle ou Fall ; Controllers/UI/
 	-- UiAttrFx, valeurs V0 dans Config/UiMotion.AttrFx) ; false = rien ne change en jeu.
