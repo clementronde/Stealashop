@@ -30,8 +30,8 @@ local Bubbles = {
 	-- Cantin : une bulle toutes les SpawnMin à SpawnMax s (tiré au hasard à chaque fois), MaxAtOnce au plus à la fois ;
 	-- une bulle que personne ne prend disparaît après Lifetime s. Bulle due alors qu'il y en a déjà MaxAtOnce : elle
 	-- est sautée (V0), la suivante est tirée de nouveau dans SpawnMin à SpawnMax s.
-	SpawnMin = 2,
-	SpawnMax = 3,
+	SpawnMin = 4, -- validé par Cantin, 21/11 : bulles deux fois moins souvent (avant 2)
+	SpawnMax = 6, -- validé par Cantin, 21/11 (avant 3)
 	MaxAtOnce = 2,
 	Lifetime = 6,
 	-- V0 : écart minimal (s) entre deux ClaimBubble d'un même joueur (en plus du débit de Net/Definitions).
