@@ -75,6 +75,8 @@
 --      témoin du circuit, un vigile, un témoin arrêté) : il s'écarte sur sa droite (Avoid.Gap studs), passe à côté sans
 --      s'arrêter, puis revise son point du circuit (atteint à Avoid.PointReach studs pendant l'écart, sans pause). Ses
 --      pièces passent dans le groupe de collision Avoid.Group (aucun choc avec un témoin ou un vigile ; joueurs inchangés).
+--      a269b (Play fusion81) : il ne s'écarte que si la place est libre (poteau, borne : voir NpcAvoid), et il s'arrête
+--      devant un joueur qui vient sur sa ligne (Avoid.Players : arrêté, il le bloque).
 --   La vitre se répare comme avant (chrono de police de WindowService, Balance.Window.BreakTimer, inchangé).
 --
 -- Un témoin sans WatchedStore, ou dont le magasin est introuvable parmi les modèles taggés NPCStore de la
@@ -382,6 +384,16 @@ local function strollStep(w: WitnessNpc, now: number)
 		w.progressAt = now
 		w.nextMoveAt = now
 		goal = w.path[w.pathIndex]
+	end
+	-- a269b (Avoid.Players ; Play fusion81 : un joueur traversait de face un témoin qui marche, jamais un témoin arrêté) :
+	-- un joueur vient sur sa ligne, tout près : il s'arrête là. S'il reste bloqué, le contrôle ci-dessus lui fait viser
+	-- le point suivant au bout de Witness.StuckTime s.
+	if NpcAvoid and NpcAvoid.PlayerAhead(w.root, goal, Witness.WalkSpeed) then
+		if w.walking then
+			stopWalking(w)
+		end
+		w.nextMoveAt = now -- il repart dès que la ligne est libre
+		return
 	end
 	-- a269 (Witness.Avoid) : un PNJ devant lui sur sa ligne : il vise un point à sa droite, redonné à chaque pas, puis
 	-- revise son point du circuit dès que l'autre est passé.
