@@ -476,7 +476,7 @@ local function onClick(element: Instance?, handler: () -> ()): RBXScriptConnecti
 		return nil
 	end
 	if element:IsA("GuiButton") then
-		return (element :: GuiButton).Activated:Connect(function()
+		return Motion.Activated(element :: GuiButton):Connect(function()
 			if not dragJustEnded() then
 				handler()
 			end
@@ -1624,7 +1624,7 @@ local function bindHudButton(inst: Instance)
 		return
 	end
 	hudButtons[inst] = true
-	(inst :: GuiButton).Activated:Connect(toggle)
+	Motion.Activated(inst :: GuiButton):Connect(toggle)
 end
 
 -- Chaque InventoryButton de UI_HUD : LeftRail (PC) et LeftRailTouch (téléphone) ont chacun le leur

@@ -68,6 +68,21 @@ local IS_STUDIO = RunService:IsStudio()
 
 local HudMenuController = {}
 
+-- a290 (L-270) : signal de clic de Controllers/UI/Motion.Activated (relâché dans le bord du bouton écrasé par
+-- Press = Squash compris, un seul clic par appui) ; sans Motion (banc), l'Activated de Roblox.
+local function clicked(button: GuiButton): RBXScriptSignal
+	local ui = script.Parent:FindFirstChild("UI")
+	local module = if ui then ui:FindFirstChild("Motion") else nil
+	if module and module:IsA("ModuleScript") then
+		local ok, motion = pcall(require, module)
+		if ok and type(motion) == "table" and type((motion :: any).Activated) == "function" then
+			return (motion :: any).Activated(button)
+		end
+	end
+	return button.Activated
+end
+
+
 local localPlayer = Players.LocalPlayer
 local zones: ZoneApi? = nil
 local notify: NotifyApi? = nil
@@ -370,7 +385,7 @@ local function bind(gui: ScreenGui)
 	refreshRebirth()
 
 	for _, button in buttonsNamed(gui, "DisplayedButton") do
-		connect(button.Activated, openDisplayed)
+		connect(clicked(button), openDisplayed)
 	end
 
 	boostButtons = {}
@@ -393,7 +408,7 @@ local function bind(gui: ScreenGui)
 				cooldown.Visible = false
 				table.insert(labels, cooldown :: TextLabel)
 			end
-			connect(button.Activated, function()
+			connect(clicked(button), function()
 				onBoost(boost)
 			end)
 		end

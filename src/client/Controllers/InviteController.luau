@@ -31,6 +31,21 @@ local localPlayer = Players.LocalPlayer
 
 local InviteController = {}
 
+-- a290 (L-270) : signal de clic de Controllers/UI/Motion.Activated (relâché dans le bord du bouton écrasé par
+-- Press = Squash compris, un seul clic par appui) ; sans Motion (banc), l'Activated de Roblox.
+local function clicked(button: GuiButton): RBXScriptSignal
+	local ui = script.Parent:FindFirstChild("UI")
+	local module = if ui then ui:FindFirstChild("Motion") else nil
+	if module and module:IsA("ModuleScript") then
+		local ok, motion = pcall(require, module)
+		if ok and type(motion) == "table" and type((motion :: any).Activated) == "function" then
+			return (motion :: any).Activated(button)
+		end
+	end
+	return button.Activated
+end
+
+
 local bound: { [Instance]: boolean } = setmetatable({}, { __mode = "k" }) :: any
 local pending = false -- une demande à Roblox est en cours
 local said: { [string]: boolean } = {}
@@ -86,7 +101,7 @@ local function bind(gui: Instance)
 	end
 	local button = found :: GuiButton
 	bound[gui] = true
-	button.Activated:Connect(function()
+	clicked(button):Connect(function()
 		task.spawn(invite)
 	end)
 end

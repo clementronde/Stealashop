@@ -207,7 +207,7 @@ local function fill(current: Screen, list: List?, entries: { Entry }, isChosen: 
 		copy:SetAttribute("EntryId", entry.Id)
 		copy.Visible = true
 		copy.Parent = list.template.Parent
-		table.insert(current.connections, copy.Activated:Connect(function()
+		table.insert(current.connections, Motion.Activated(copy):Connect(function()
 			onClick(entry.Id)
 		end))
 		table.insert(list.copies, copy)
@@ -309,7 +309,7 @@ local function onActivated(current: Screen, path: string, handler: () -> ())
 		reportOnce(`button:{path}`, `[Admin] {SCREEN}.{path} introuvable ou pas un bouton : pas branché`)
 		return
 	end
-	table.insert(current.connections, (found :: GuiButton).Activated:Connect(function()
+	table.insert(current.connections, Motion.Activated(found :: GuiButton):Connect(function()
 		handler()
 	end))
 end
@@ -372,7 +372,7 @@ local function bind(gui: ScreenGui)
 		local found = Find.path(gui, info.button)
 		if found and found:IsA("GuiButton") then
 			current.kindButtons[info.button] = found :: GuiButton
-			table.insert(current.connections, (found :: GuiButton).Activated:Connect(function()
+			table.insert(current.connections, Motion.Activated(found :: GuiButton):Connect(function()
 				if kindIndex ~= index then
 					kindIndex = index
 					choiceId = nil
@@ -523,7 +523,7 @@ local function bindHud(gui: Instance)
 		return
 	end
 	hudButton = button
-	button.Activated:Connect(toggleScreen)
+	Motion.Activated(button):Connect(toggleScreen)
 	showButton()
 end
 

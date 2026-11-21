@@ -34,6 +34,21 @@ local SEND_INTERVAL = 0.5
 
 local DropController = {}
 
+-- a290 (L-270) : signal de clic de Controllers/UI/Motion.Activated (relâché dans le bord du bouton écrasé par
+-- Press = Squash compris, un seul clic par appui) ; sans Motion (banc), l'Activated de Roblox.
+local function clicked(button: GuiButton): RBXScriptSignal
+	local ui = script.Parent:FindFirstChild("UI")
+	local module = if ui then ui:FindFirstChild("Motion") else nil
+	if module and module:IsA("ModuleScript") then
+		local ok, motion = pcall(require, module)
+		if ok and type(motion) == "table" and type((motion :: any).Activated) == "function" then
+			return (motion :: any).Activated(button)
+		end
+	end
+	return button.Activated
+end
+
+
 local localPlayer = Players.LocalPlayer
 local net: any = nil
 local hudButton: GuiButton? = nil
@@ -97,7 +112,7 @@ local function bindHud(gui: Instance)
 		return
 	end
 	hudButton = button
-	button.Activated:Connect(send)
+	clicked(button):Connect(send)
 	button.Destroying:Connect(function()
 		if hudButton == button then
 			hudButton = nil

@@ -25,6 +25,20 @@ local bound: { [Instance]: boolean } = {}
 local countdowns: { TextLabel } = {}
 local statuses: { TextLabel } = {}
 
+-- a290 (L-270) : signal de clic de Controllers/UI/Motion.Activated (relâché dans le bord du bouton écrasé par
+-- Press = Squash compris, un seul clic par appui) ; sans Motion (banc), l'Activated de Roblox.
+local function clicked(button: GuiButton): RBXScriptSignal
+	local ui = script.Parent:FindFirstChild("UI")
+	local module = if ui then ui:FindFirstChild("Motion") else nil
+	if module and module:IsA("ModuleScript") then
+		local ok, motion = pcall(require, module)
+		if ok and type(motion) == "table" and type((motion :: any).Activated) == "function" then
+			return (motion :: any).Activated(button)
+		end
+	end
+	return button.Activated
+end
+
 local function first(gui: Instance, name: string, class: string): Instance?
 	for _, found in Find.all(gui, name) do
 		if found:IsA(class) then
@@ -60,7 +74,7 @@ local function bind(gui: Instance)
 		end
 	end
 	if button then
-		button.Activated:Connect(send)
+		clicked(button):Connect(send)
 	end
 	field.FocusLost:Connect(function(enter: boolean)
 		if enter then
@@ -81,6 +95,7 @@ local function refresh()
 end
 
 local CodeController = {}
+
 
 function CodeController.Start()
 	net = require(Shared:WaitForChild("Net"):WaitForChild("Net") :: ModuleScript) :: any

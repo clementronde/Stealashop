@@ -212,11 +212,11 @@ local function bind(gui: ScreenGui)
 	end))
 	local claimButton = button(gui, "ClaimButton")
 	if claimButton then
-		table.insert(current.connections, claimButton.Activated:Connect(onClaim))
+		table.insert(current.connections, Motion.Activated(claimButton):Connect(onClaim))
 	end
 	local doubleButton = button(gui, "DoubleButton")
 	if doubleButton then
-		table.insert(current.connections, doubleButton.Activated:Connect(onDouble))
+		table.insert(current.connections, Motion.Activated(doubleButton):Connect(onDouble))
 	end
 end
 

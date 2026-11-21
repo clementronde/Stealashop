@@ -570,7 +570,7 @@ local function onClick(element: Instance?, handler: () -> ()): RBXScriptConnecti
 		return nil
 	end
 	if element:IsA("GuiButton") then
-		return (element :: GuiButton).Activated:Connect(function()
+		return Motion.Activated(element :: GuiButton):Connect(function()
 			handler()
 		end)
 	end
@@ -1609,7 +1609,7 @@ local function bindHud(gui: Instance)
 	local bound = 0
 	for _, found in Find.all(gui, HUD_BUTTON) do
 		if found:IsA("GuiButton") then
-			(found :: GuiButton).Activated:Connect(toggleShop)
+			Motion.Activated(found :: GuiButton):Connect(toggleShop)
 			bound += 1
 		end
 	end
