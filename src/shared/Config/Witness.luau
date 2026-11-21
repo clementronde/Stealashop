@@ -93,10 +93,13 @@ local Witness = {
 		LaneDetourMax = 8, -- V0 proposé (a269, 22/11) : studs ; un segment de voie encore bouché est contourné en déplaçant ses points jusqu'à ce nombre de studs (au-delà de LaneMax), ou en retirant l'un d'eux
 		NarrowStandOff = 2, -- V0 proposé (a269, 22/11) : studs ; passage étroit occupé par l'autre témoin : il attend à ce nombre de studs avant l'entrée (au lieu de l'entrée même), loin de la voie de celui qui sort
 		-- a269g (Play f81f, 22/11) : « Script timeout » au démarrage, épingle au coin de la zone 1, détours sur la chaussée.
-		LaneStepQueries = 200, -- V0 proposé (a269, 22/11) : le calcul des voies (hors du démarrage, une zone après l'autre) rend la main (task.wait) au moins toutes les ce nombre de requêtes…
-		LaneStepBudget = 0.004, -- V0 proposé (a269, 22/11) : … ou toutes les ce nombre de secondes de calcul
+		LaneStepQueries = 1500, -- V0 proposé (a269, 22/11 ; 200 à a269g) : plafond de sûreté ; le calcul des voies (hors du démarrage, une zone après l'autre) rend la main (task.wait) au moins toutes les ce nombre de requêtes…
+		LaneStepBudget = 0.01, -- V0 proposé (a269, 22/11 ; 0,004 à a269g) : … ou toutes les ce nombre de secondes de calcul (a269h, Play f81g : la vraie coupe ; moins de morceaux, chacun attend une image)
 		LaneTurnMax = 120, -- V0 proposé (a269, 22/11) : degrés ; un virage de voie plus serré (pas sur le circuit même) est refusé pour un détour et lissé ailleurs
 		LaneCurbSlack = 2, -- V0 proposé (a269, 22/11) : studs ; un détour qui ne va pas plus vers la rue que le point de voie d'avant est préféré s'il n'est pas plus long que le plus court de plus de ceci (et ne rapproche pas les deux voies)
+		-- a269h (Play f81g : les 12 témoins figés 4,7 à 11,4 s en Walk, une fois, cause inconnue) : rattrapage.
+		WalkRetry = 2, -- V0 proposé (a269, 22/11) : s ; en marche sans bouger de WalkRetryMove studs depuis ce temps, il redonne son MoveTo (une ligne dans la sortie au 3e témoin du même épisode ; rien si Enabled est coupé)
+		WalkRetryMove = 0.25, -- V0 proposé (a269, 22/11) : … (studs)
 	},
 
 	-- La fuite à la casse (Clément, L-118 point 10 : il a peur, court à l'opposé de la vitrine, puis reprend
