@@ -144,6 +144,32 @@ local Rewards = {
 		WeeklyAlreadyClaimed = "Weekly chest already opened. Come back on Monday!",
 		WeeklyExclusive = "Weekly exclusive: %s!", -- %s = le nom de l'aura ou du trail (Config/Cosmetics)
 	},
+
+	-- a303 (21/11, demande de Cantin : dire ce qu'on gagne à chaque palier) : texte du gain de chaque ligne de palier
+	-- de UI_Rewards (PlaytimePage), en anglais (L-036), écrit par RewardsController d'après Playtime ci-dessus, dans
+	-- RewardDesc (élément facultatif de Clément), sinon dans RewardName (Row). V0 proposés (2026-11-21), absents du doc.
+	Texts = {
+		Row = "%d min: %s", -- RewardName sans RewardDesc : %d = minutes du palier, %s = le gain
+		Cash = "%s cash", -- %s = la somme (Format.money) : revenu répliqué (attribut Income du Player) × minutes, au moins MinCashPerMinute
+		CashMinutes = "%d min of cash", -- revenu pas encore connu du client (attribut Income absent)
+		Boost = "×2 Cash for %d min", -- %d = minutes du boost
+		-- Box : l'objet donné tout de suite (UnboxService.GiveItem), tiré avec la table de ce type (Rarities.BoxOdds) dans
+		-- la meilleure zone du joueur ; « up to » = la plus haute rareté de la table (améliorations comprises : jamais
+		-- au-dessus d'une rareté à 0 dans la table). Un type absent : BoxDefault.
+		Box = {
+			Standard = "Item up to Epic", -- Rarities.BoxOdds.Standard : Épique 1 %, Légendaire 0
+			Premium = "Item up to Mythic", -- Rarities.BoxOdds.Premium : Mythique 0,2 %, Secret 0
+		} :: { [string]: string },
+		BoxFloor = "%s+ item", -- BoxRarity ou MinRarity : %s = la rareté plancher (Rarities DisplayName), « Epic+ item »
+		BoxDefault = "Random item",
+		-- Icône facultative : ImageLabel RewardIcon du Template, image prise dans le Decal de ce nom sous
+		-- ReplicatedStorage/Assets (Texture non vide). Montrée seulement si les deux existent, sinon RewardIcon caché.
+		Icons = {
+			Cash = "UI_Icon_Reward_Cash",
+			Box = "UI_Icon_Reward_Box",
+			Boost = "UI_Icon_Reward_Boost",
+		} :: { [string]: string },
+	},
 }
 
 export type Rewards = typeof(Rewards)
