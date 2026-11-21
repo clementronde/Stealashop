@@ -29,6 +29,13 @@
 --     (« 12:34 », « 1:02:03 »), ClaimButton et Claimed cachés ; atteint → Timer « Ready! », ClaimButton
 --     visible (envoie ClaimPlaytime(minutes)) ; réclamé → Timer « CLAIMED », Claimed visible, ClaimButton
 --     caché.
+--     a303 (21/11, demande de Cantin) : chaque ligne dit son gain, d'après Config/Rewards.Playtime et les textes de
+--     Rewards.Texts : RewardDesc (TextLabel facultatif du Template) « $1.2K cash » (argent : revenu répliqué, attribut
+--     Income du Player, × minutes, au moins MinCashPerMinute, comme RewardService ; sans Income : « 2 min of cash »),
+--     « Item up to Epic », « ×2 Cash for 10 min » ; sans RewardDesc, le gain va dans RewardName : « 5 min: $1.2K cash »
+--     (le texte d'une Preview n'est alors pas repris). RewardIcon (ImageLabel facultatif) : image du Decal
+--     Rewards.Texts.Icons[Kind] (UI_Icon_Reward_Cash, _Box, _Boost) sous ReplicatedStorage/Assets, montrée seulement si
+--     les deux existent (sinon RewardIcon caché). Le montant se met à jour écran ouvert ; le serveur reste maître.
 --   - coffre hebdomadaire (a166, noms proposés à Clément, tous facultatifs) : cadre WeeklyChest, caché tant
 --     que le serveur n'envoie pas l'état du coffre (Features.WeeklyChest coupé), sinon laissé comme Clément
 --     l'a posé ; WeeklyChest.Progress « 3/5 » ; WeeklyChest.WeekDays.Day1 à Day5, leur Done visible pour
@@ -40,7 +47,7 @@
 -- calendrier, réclamé aujourd'hui, heure serveur du temps de jeu à 0 (le client compte
 -- GetServerTimeNow() − RewardPlayStart), paliers réclamés. Le client ne décide rien : il demande.
 -- Seuls sont touchés (2.2, « Libre pour Ironix ») : Enabled de l'écran, les textes, la visibilité, les
--- lignes clonées (nom, ordre) et l'image de leur Icon reprise d'une Preview ; jamais une couleur, une
+-- lignes clonées (nom, ordre) et l'image de leur Icon reprise d'une Preview (a303 : et celle de RewardIcon) ; jamais une couleur, une
 -- taille ni une position de Clément. Écran recréé (ResetOnSpawn) : rebranché, fermé.
 --
 -- API (client) :
@@ -59,6 +66,8 @@ local Rewards = require(Config:WaitForChild("Rewards"))
 local Find = require(Shared:WaitForChild("Contract"):WaitForChild("Find"))
 local Motion = require(script.Parent:WaitForChild("UI"):WaitForChild("Motion"))
 local AlertBadge = require(Shared:WaitForChild("AlertBadge"))
+local Format = require(Shared:WaitForChild("Format"))
+local Rarities = require(Config:WaitForChild("Rarities"))
 
 type Tab = "Daily" | "Playtime"
 
@@ -69,6 +78,10 @@ type Row = {
 	timer: Instance?,
 	claimButton: GuiObject?,
 	claimed: GuiObject?,
+	name: Instance?, -- RewardName
+	desc: Instance?, -- RewardDesc (a303, facultatif)
+	reward: Rewards.Reward, -- a303 : ce que donne le palier
+	label: string, -- a303 : texte de RewardName quand RewardDesc existe (Preview ou « Gift at 5 min »)
 }
 
 -- Un jour du calendrier.
@@ -118,6 +131,9 @@ local CLAIM_TEXT = "CLAIM" -- si ClaimLabel n'a pas de texte
 local LOCKED_TEXT = "LOCKED" -- a166 : coffre hebdomadaire pas encore prêt ; a286 : jour bloqué avant la fin du tuto
 local PROGRESS_FORMAT = "%d/%d" -- a166 : jours de connexion de la semaine
 local WEEKLY = Rewards.Weekly
+local TEXTS = Rewards.Texts -- a303 : gain de chaque palier
+local INCOME_ATTRIBUTE = "Income" -- a303 : revenu par seconde bonus compris, posé par DisplayService (comme le HUD)
+local ASSETS_FOLDER = "Assets" -- a303 : Decals des icônes de récompense, dans ReplicatedStorage
 -- V0 proposé, absent du doc : cadence (s) des minuteurs et de la pastille.
 local REFRESH = 0.25
 
@@ -220,6 +236,40 @@ local function clock(seconds: number): string
 	return string.format("%d:%02d", whole // 60, whole % 60)
 end
 
+-- a303 : revenu par seconde répliqué (attribut Income du Player), ou nil s'il n'est pas encore posé ou illisible.
+local function incomeNow(): number?
+	local value = localPlayer:GetAttribute(INCOME_ATTRIBUTE)
+	if type(value) == "number" and value == value and value < math.huge then
+		return value
+	end
+	return nil
+end
+
+-- a303 : gain d'une récompense, en anglais (Rewards.Texts). Argent : le même calcul que RewardService (cashAmount) au
+-- revenu d'aujourd'hui ; le serveur recalcule au moment de la réclamation.
+local function describe(reward: Rewards.Reward): string
+	local kind = reward.Kind
+	if kind == "Cash" then
+		local minutes = reward.Minutes or 0
+		local income = incomeNow()
+		if income == nil then
+			return string.format(TEXTS.CashMinutes, minutes)
+		end
+		local amount = math.floor(math.max(math.max(income, 0) * 60 * minutes, Rewards.MinCashPerMinute * minutes))
+		return string.format(TEXTS.Cash, Format.money(amount))
+	elseif kind == "Boost" then
+		return string.format(TEXTS.Boost, reward.Minutes or 0)
+	elseif kind == "Box" then
+		local floorId = reward.BoxRarity or reward.MinRarity
+		local floor = if floorId then Rarities.ById[floorId] else nil
+		if floor then
+			return string.format(TEXTS.BoxFloor, floor.DisplayName)
+		end
+		return TEXTS.Box[reward.Tier or "Standard"] or TEXTS.BoxDefault
+	end
+	return ""
+end
+
 ------------------------------------------------------------------------------
 -- État lu sur les attributs de RewardService
 ------------------------------------------------------------------------------
@@ -314,8 +364,20 @@ local function paintDaily(current: Screen, status: Status)
 	setText(current.claimLabel, if status.dailyClaimed then CLAIMED_TEXT elseif status.dailyLocked then LOCKED_TEXT else current.claimText)
 end
 
+-- a303 : gain du palier dans RewardDesc, sinon dans RewardName (« 5 min: $1.2K cash ») ; setText n'écrit que s'il change.
+local function paintGain(row: Row)
+	local gain = describe(row.reward)
+	if row.desc then
+		setText(row.desc, gain)
+		setText(row.name, row.label)
+	else
+		setText(row.name, string.format(TEXTS.Row, row.minutes, gain))
+	end
+end
+
 local function paintRows(current: Screen, status: Status)
 	for _, row in current.rows do
+		paintGain(row)
 		local claimed = status.playClaimed[row.minutes] == true
 		local left = row.minutes * 60 - status.playSeconds
 		local ready = not claimed and left <= 0
@@ -411,9 +473,30 @@ local function selectTab(current: Screen, wanted: Tab)
 	end
 end
 
+-- a303 : images des icônes de récompense (Rewards.Texts.Icons) : [nom du Decal] = Texture, le premier Decal de ce nom à
+-- Texture non vide sous ReplicatedStorage/Assets (comme les icônes de la boutique Robux). Une passe par branchement.
+local function rewardIcons(): { [string]: string }
+	local wanted: { [string]: boolean } = {}
+	for _, name in TEXTS.Icons do
+		wanted[name] = true
+	end
+	local found: { [string]: string } = {}
+	local assets = ReplicatedStorage:FindFirstChild(ASSETS_FOLDER)
+	if assets == nil then
+		return found
+	end
+	for _, descendant in assets:GetDescendants() do
+		if wanted[descendant.Name] and found[descendant.Name] == nil and descendant:IsA("Decal") and (descendant :: Decal).Texture ~= "" then
+			found[descendant.Name] = (descendant :: Decal).Texture
+		end
+	end
+	return found
+end
+
 -- Lignes des paliers, clonées une fois par écran depuis List.Template.
 local function buildRows(current: Screen, template: GuiObject, previews: { [number]: Instance })
 	local parent = template.Parent
+	local icons = rewardIcons()
 	for rank, tier in Rewards.Playtime do
 		local clone: Instance? = template:Clone()
 		if clone == nil then
@@ -423,12 +506,20 @@ local function buildRows(current: Screen, template: GuiObject, previews: { [numb
 		frame.Name = string.format(ROW_FORMAT, tier.Minutes)
 		frame.LayoutOrder = rank
 		local preview = previews[rank]
-		local name = Find.path(frame, "RewardName")
-		setText(name, (if preview then textOf(Find.path(preview, "RewardName")) else nil) or string.format(GIFT_TEXT, tier.Minutes))
 		local icon = Find.path(frame, "Icon")
 		local previewIcon = if preview then Find.path(preview, "Icon") else nil
 		if isImage(icon) and isImage(previewIcon) then
 			(icon :: any).Image = (previewIcon :: any).Image
+		end
+		-- a303 : icône du type de récompense, seulement si RewardIcon et le Decal existent tous les deux.
+		local rewardIcon = Find.path(frame, "RewardIcon")
+		if isImage(rewardIcon) then
+			local iconName = TEXTS.Icons[tier.Reward.Kind]
+			local image = if iconName then icons[iconName] else nil
+			if image then
+				(rewardIcon :: any).Image = image
+			end
+			setVisible(rewardIcon :: any, image ~= nil)
 		end
 		local row: Row = {
 			minutes = tier.Minutes,
@@ -436,7 +527,12 @@ local function buildRows(current: Screen, template: GuiObject, previews: { [numb
 			timer = Find.path(frame, "Timer"),
 			claimButton = guiObject(frame, "ClaimButton"),
 			claimed = guiObject(frame, "Claimed"),
+			name = Find.path(frame, "RewardName"),
+			desc = Find.path(frame, "RewardDesc"),
+			reward = tier.Reward,
+			label = (if preview then textOf(Find.path(preview, "RewardName")) else nil) or string.format(GIFT_TEXT, tier.Minutes),
 		}
+		paintGain(row)
 		local minutes = tier.Minutes
 		local connection = onClick(row.claimButton, function()
 			claimPlaytime(minutes)
