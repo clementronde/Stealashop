@@ -88,6 +88,9 @@ local Witness = {
 		-- a269e (Play f81d, 22/11) : point jamais atteint, passage gardé sans fin.
 		LaneGoalSlack = 4, -- V0 proposé (a269, 22/11) : s ; sur un même point de voie plus de (segment / WalkSpeed + ceci) s, quoi qu'il arrive : il passe au suivant
 		NarrowHold = 6, -- V0 proposé (a269, 22/11) : s ; un témoin garde un passage étroit au plus (longueur / WalkSpeed + ceci) s, puis le libère
+		-- a269f (Play f81e, 22/11) : segment encore bouché (zone 6), attente trop près de celui qui passe (zone 1).
+		LaneDetourMax = 8, -- V0 proposé (a269, 22/11) : studs ; un segment de voie encore bouché est contourné en déplaçant ses points jusqu'à ce nombre de studs (au-delà de LaneMax), ou en retirant l'un d'eux
+		NarrowStandOff = 2, -- V0 proposé (a269, 22/11) : studs ; passage étroit occupé par l'autre témoin : il attend à ce nombre de studs avant l'entrée (au lieu de l'entrée même), loin de la voie de celui qui sort
 	},
 
 	-- La fuite à la casse (Clément, L-118 point 10 : il a peur, court à l'opposé de la vitrine, puis reprend
