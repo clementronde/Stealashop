@@ -58,6 +58,16 @@ local Witness = {
 		Guards = true, -- V0 proposé (a269, 20/11) : les vigiles s'écartent aussi (ronde, retour, Follow)
 		NoCollide = true, -- V0 proposé (a269, 20/11) : les témoins ne heurtent ni un autre témoin ni un vigile (groupe Guards)
 		Group = "Witnesses", -- V0 proposé (a269, 20/11) : groupe de collision des témoins, créé par le code en jeu (pas un nom du contrat)
+		-- a269b (Play fusion81, 21/11) : poteaux près du circuit, témoin en pause frôlé, joueur qui traverse un témoin.
+		StillSpeed = 0.5, -- V0 proposé (a269, 21/11) : studs/s ; plus lent : PNJ arrêté, évité du côté où il n'est pas, même à côté de soi
+		Clearance = 1.1, -- V0 proposé (a269, 21/11) : rayon (studs) du corps balayé vers le point visé : un poteau dedans réduit l'écart
+		LowDrop = 1.2, -- V0 proposé (a269, 21/11) : second balayage ce nombre de studs plus bas (bornes, bancs bas)
+		StuckTime = 0.5, -- V0 proposé (a269, 21/11) : s ; pendant un écart, sans avancer de StuckMove studs : il l'abandonne et vise son point…
+		StuckMove = 1, -- V0 proposé (a269, 21/11) : … (studs)
+		RetryAfter = 2, -- V0 proposé (a269, 21/11) : s sans s'écarter à nouveau du même PNJ après un écart abandonné
+		Players = true, -- V0 proposé (a269, 21/11) : un témoin s'arrête devant un joueur qui vient sur sa ligne (arrêté, il le bloque)…
+		PlayerStop = 10, -- V0 proposé (a269, 21/11) : … à ce nombre de studs devant lui ou moins…
+		PlayerLane = 2.5, -- V0 proposé (a269, 21/11) : … et à moins de ce nombre de studs de sa ligne
 	},
 
 	-- La fuite à la casse (Clément, L-118 point 10 : il a peur, court à l'opposé de la vitrine, puis reprend
