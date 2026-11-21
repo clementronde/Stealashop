@@ -19,6 +19,17 @@
 -- vitre est entamée, ou quand le joueur est à moins de Config.Shatter.HPBar.ShowDistance studs
 -- de la vitre ; cachée quand elle est cassée ou incassable (parcelle libre). Le modèle absent :
 -- pas de barre (une ligne en Studio).
+-- Où elle est accrochée : sur un magasin PNJ, à la vitre (pièce Window, ou une pièce du Model Window).
+-- Sur une boutique de joueur (PlayerPlot, a300, demande de Cantin du 21/11), à un point fixe, car sa
+-- vitre est une porte (PlotDoor/Window, vantaux Leaf_L et Leaf_R) qui coulisse quand on entre :
+--   1. l'Attachment `HealthBarPoint` de la parcelle, s'il est livré (même nom que le camion et la
+--      Fortune Tower ; le décalage du modèle BB_WindowHP s'y ajoute) ;
+--   2. sinon, un Attachment à nous dans Workspace.Terrain (local, rien dans le modèle de Clément), posé
+--      une fois pour toutes au centre de la façade : milieu de `Bounds` en largeur, hauteur et
+--      profondeur du centre de la vitre (que le coulissement des vantaux ne change pas). Même place à
+--      l'écran qu'avant, la vitre fermée ;
+--   3. tant que `Bounds` ou la vitre manquent (streaming) : à la vitre, comme avant, puis raccrochée.
+-- La distance d'affichage se mesure toujours à la vitre.
 --
 -- API (client) :
 --   WindowController.GetHP(windowId) -> (hp: number?, maxHp: number?)
@@ -64,6 +75,10 @@ type Entry = {
 	Label: TextLabel?,
 	FillHeight: UDim, -- hauteur d'origine de Fill, gardée
 	Fraction: number?, -- largeur affichée de Fill
+	IsPlot: boolean, -- boutique d'un joueur (PlayerPlot) : barre à un point fixe
+	Point: Instance?, -- HealthBarPoint de Clément, trouvé dans la parcelle
+	PointDirty: boolean, -- HealthBarPoint à chercher (au début, puis quand une pièce de ce nom arrive)
+	Anchor: Attachment?, -- notre point fixe dans Workspace.Terrain (sans HealthBarPoint)
 	Connections: { RBXScriptConnection },
 }
 
@@ -73,6 +88,9 @@ local WINDOW_ID_ATTRIBUTE = "WindowId" -- posés par WindowService sur la vitrin
 local MAX_HP_ATTRIBUTE = "MaxHP"
 local BROKEN_ATTRIBUTE = "Broken"
 local BILLBOARD_NAME = "BB_WindowHP" -- contrat 2.2
+local PLOT_TAG = "PlayerPlot"
+local HEALTH_BAR_POINT = "HealthBarPoint" -- Attachment fixe de la parcelle (pas encore livré, a300)
+local BOUNDS_NAME = "Bounds" -- enfant obligatoire de la parcelle (10.4)
 local HPBar = Shatter.HPBar
 
 local IS_STUDIO = RunService:IsStudio()
@@ -183,6 +201,59 @@ local function distanceTo(window: Instance, position: Vector3): number
 	return (p - closest).Magnitude
 end
 
+-- HealthBarPoint de Clément dans la parcelle (Attachment, ou une pièce), cherché seulement quand il le faut.
+local function plotPoint(entry: Entry): Instance?
+	local point = entry.Point
+	if point and not point:IsDescendantOf(Workspace) then
+		entry.Point = nil
+		entry.PointDirty = true
+	end
+	if entry.Point == nil and entry.PointDirty then
+		entry.PointDirty = false
+		local found = Find.path(entry.Model, HEALTH_BAR_POINT)
+		if found and (found:IsA("Attachment") or found:IsA("BasePart")) and found:IsDescendantOf(Workspace) then
+			entry.Point = found
+		end
+	end
+	return entry.Point
+end
+
+-- Notre point fixe, posé une fois : centre de la façade (milieu de Bounds en largeur), à la hauteur et à la
+-- profondeur du centre de la vitre. Les vantaux coulissent en largeur seulement (PlotDoorController) : même
+-- la vitre ouverte, ou un seul vantail arrivé, donne la bonne hauteur. nil tant que Bounds ou la vitre manquent.
+local function plotAnchor(entry: Entry): Attachment?
+	if entry.Anchor then
+		return entry.Anchor
+	end
+	local bounds = Find.path(entry.Model, BOUNDS_NAME)
+	if bounds == nil or not bounds:IsA("BasePart") or adorneeOf(entry.Window) == nil then
+		return nil
+	end
+	local cf = windowBox(entry.Window)
+	if cf == nil then
+		return nil
+	end
+	local frame = bounds.CFrame
+	local center = frame:PointToObjectSpace(cf.Position)
+	local anchor = Instance.new("Attachment")
+	anchor.Name = `{BILLBOARD_NAME}_{entry.Id}`
+	anchor.Position = frame:PointToWorldSpace(Vector3.new(0, center.Y, center.Z)) -- Terrain au centre du monde
+	anchor.Parent = Workspace.Terrain
+	entry.Anchor = anchor
+	return anchor
+end
+
+-- Où accrocher la barre : point fixe pour une boutique de joueur, sinon (ou en attendant) la vitre.
+local function billboardAdornee(entry: Entry): Instance?
+	if entry.IsPlot then
+		local fixed: Instance? = plotPoint(entry) or plotAnchor(entry)
+		if fixed then
+			return fixed
+		end
+	end
+	return adorneeOf(entry.Window)
+end
+
 local function rootPosition(): Vector3?
 	local character = player.Character
 	local root = if character then character:FindFirstChild("HumanoidRootPart") else nil
@@ -197,8 +268,11 @@ local function makeBillboard(entry: Entry)
 		return
 	end
 	local template = billboardTemplate()
-	local adornee = adorneeOf(entry.Window)
-	if template == nil or adornee == nil then
+	if template == nil then
+		return
+	end
+	local adornee = billboardAdornee(entry)
+	if adornee == nil then
 		return
 	end
 	local gui = template:Clone()
@@ -223,6 +297,7 @@ end
 local function refresh(entry: Entry, position: Vector3?)
 	-- Vitre en Model (parcelles de Clément, PlotDoor.Window) : avec le streaming, le Model arrive avant ses
 	-- pièces, donc pas d'Adornee au premier essai ; on recrée ou raccroche la barre dès qu'une pièce est là.
+	-- Boutique de joueur : revue à chaque tour, pour passer de la vitre (en attendant) au point fixe.
 	if entry.Billboard == nil then
 		makeBillboard(entry)
 	end
@@ -231,10 +306,10 @@ local function refresh(entry: Entry, position: Vector3?)
 		return
 	end
 	local adornee: Instance? = gui.Adornee
-	if adornee == nil or not adornee:IsDescendantOf(Workspace) then
-		local part = adorneeOf(entry.Window)
-		if part then
-			gui.Adornee = part
+	if entry.IsPlot or adornee == nil or not adornee:IsDescendantOf(Workspace) then
+		local wanted = billboardAdornee(entry)
+		if wanted and wanted ~= adornee then
+			gui.Adornee = wanted
 		end
 	end
 	local maxHp = maxHpOf(entry)
@@ -303,6 +378,12 @@ local function removeEntry(entry: Entry)
 	if gui then
 		gui:Destroy()
 	end
+	local anchor = entry.Anchor
+	entry.Anchor = nil
+	entry.Point = nil
+	if anchor then
+		anchor:Destroy()
+	end
 	emitId(removedListeners, entry.Id)
 end
 
@@ -321,10 +402,25 @@ local function addEntry(id: string, window: Instance, model: Model)
 		Label = nil,
 		FillHeight = UDim.new(1, 0),
 		Fraction = nil,
+		IsPlot = CollectionService:HasTag(model, PLOT_TAG),
+		Point = nil,
+		PointDirty = true,
+		Anchor = nil,
 		Connections = {},
 	}
 	entries[id] = entry
 	entryByModel[model] = entry
+	if entry.IsPlot then
+		-- HealthBarPoint qui arrive avec le streaming (ou livré plus tard) : à chercher au prochain tour.
+		table.insert(
+			entry.Connections,
+			model.DescendantAdded:Connect(function(descendant: Instance)
+				if descendant.Name == HEALTH_BAR_POINT then
+					entry.PointDirty = true
+				end
+			end)
+		)
+	end
 	table.insert(
 		entry.Connections,
 		window:GetAttributeChangedSignal(BROKEN_ATTRIBUTE):Connect(function()
