@@ -380,8 +380,9 @@ local DIVINE_CATEGORY_ID = "Divine" -- V0 proposé, absent du doc
 -- tools/clement/ui_v5_robuxshop_v3_build.luau, EXCLUSIVE_IDS ; raretés des cases ICON_BOX_*). Jamais tirés
 -- d'un colis, absents de l'index et d'Items.List : on ne les a qu'en achetant la caisse (MonetizationService).
 -- Modèle ITM_Exclusive_<Nom> (repli : bloc à la couleur de la rareté, DisplayService), icône ICON_Exclusive_<Nom>.
+-- a294 (L-276) : la Disco Ball passe de Rare à Épique, la caisse payante donne toujours au moins un Épique.
 local EXCLUSIVES: { Entry } = {
-	{ Id = "Exclusive_DiscoBall", Name = "Disco Ball", Rarity = "Rare" },
+	{ Id = "Exclusive_DiscoBall", Name = "Disco Ball", Rarity = "Epic" }, -- validé par Cantin, 21/11 (a294 ; avant : Rare)
 	{ Id = "Exclusive_GoldenGramophone", Name = "Golden Gramophone", Rarity = "Epic" },
 	{ Id = "Exclusive_GoldenRocket", Name = "Golden Rocket", Rarity = "Legendary" },
 	{ Id = "Exclusive_CrystalSkull", Name = "Crystal Skull", Rarity = "Mythic" },

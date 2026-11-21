@@ -74,7 +74,7 @@
 --                   en gardant les mêmes écarts (plus clair, plus foncé) ;
 --       Featured    pack de départ tant qu'il est proposé (caché sinon) : ItemName, Perks.Perk1 à 3 (Label,
 --                   d'après la Config), Timer.Label (« Ends in 42:10 »), BuyButton (Price) ;
---       Crate       caisse exclusive (Monetization.Crate) : cachée sauf Features.RobuxCrate, chances
+--       Crate       caisse exclusive (Monetization.Crate) : cachée sauf Monetization.Crate.Live (a294), chances
 --                   décidées (Odds) et PolicyService:GetPolicyInfoForPlayerAsync qui permet les objets
 --                   payants au hasard (ArePaidRandomItemsRestricted faux ; erreur = cachée). Odd_n.Chance =
 --                   chance réelle, BuyRow.BuyButton1 à 3 : Price, Count (« 3 CRATES ») et OldPrice
@@ -289,7 +289,14 @@ local IS_STUDIO = RunService:IsStudio()
 -- MarketplaceService.
 local LIVE = Features.RobuxShop
 local ACTIVE = Features.RobuxShop or Features.RobuxShopPreview
-local CRATE_FEATURE = Features.RobuxCrate
+-- a294 (L-276, Cantin 21/11) : caisse allumée = Monetization.Crate.Live (jeu DEV avec Features.RobuxCrateDev, ou
+-- Features.RobuxCrate partout) ; ses lots se vendent même boutique coupée (vitrine), les autres offres restent « Soon ».
+local CRATE_FEATURE = Monetization.Crate.Live == true
+
+-- Achat réel permis pour cette offre : boutique ouverte, ou lot de la caisse allumée.
+local function liveFor(offer: Offer): boolean
+	return LIVE or (CRATE_FEATURE and offer.crate ~= nil)
+end
 
 local RobuxShopController = {}
 
@@ -763,7 +770,7 @@ local function refreshCard(card: Card)
 	local offer = card.offer
 	local id, isPass, configPrice = purchaseOf(offer)
 	-- Vitrine : jamais de lecture chez Roblox, le prix de la Config.
-	local price = if LIVE and id and id ~= 0 then robloxPrice(id, isPass) or configPrice else configPrice
+	local price = if liveFor(offer) and id and id ~= 0 then robloxPrice(id, isPass) or configPrice else configPrice
 	local v2 = shop ~= nil and (shop :: Shop).v2
 	if offer.displayName ~= "" then
 		setText(card.frame, "ItemName", offer.displayName)
@@ -847,7 +854,7 @@ local function buy(card: Card)
 	if id == nil or owns(offer) then
 		return -- rien à acheter (Ouvrir maintenant sans colis, gamepass possédé) : bouton caché, clic tardif ignoré
 	end
-	if not LIVE then
+	if not liveFor(offer) then
 		reportOnce("preview", `[RobuxShop] vitrine (Features.RobuxShop = false, RobuxShopPreview = true) : pas d'achat, « {SOON_TEXT} » à la place du prix`)
 		showSoon(card)
 		return
@@ -1751,7 +1758,7 @@ function RobuxShopController.Start()
 	started = true
 	buildOffers()
 	readCratePolicy()
-	if LIVE then
+	if LIVE or CRATE_FEATURE then -- a294 : aussi pour un lot de la caisse allumée, boutique coupée
 		-- Vague 72 (a247) : Shop_Buy à la fin d'un achat fait (pcall : signaux absents d'un faux Roblox de banc).
 		pcall(function()
 			MarketplaceService.PromptProductPurchaseFinished:Connect(function(userId: number, _productId: number, isPurchased: boolean)

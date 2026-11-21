@@ -118,7 +118,15 @@
 -- Crate.Ready et Features.RobuxCrate. Le reçu fait Count tirages selon Crate.Odds parmi Crate.Items (objets
 -- Exclusive_* de Config/Items, hors colis et hors index) ; chaque objet entre dans l'inventaire (Items du profil,
 -- même au-delà de sa place : Crate.IgnoreInventoryMax) et un message le nomme. Même chemin idempotent que les
--- autres produits (PurchaseId noté avec le don, sauvegarde attendue). Pas de scène d'ouverture : pas encore décidée.
+-- autres produits (PurchaseId noté avec le don, sauvegarde attendue).
+-- a294 (21/11, Cantin) : vendue quand Monetization.Crate.Live et Ready (Features.RobuxCrate partout, ou RobuxCrateDev
+-- dans le jeu DEV), même boutique coupée : ProcessReceipt est alors branché pour les seuls lots de la caisse (tout
+-- autre reçu : NotProcessedYet). Ouverture (Crate.Reveal, V0 de Cantin) : après le don, RevealStarted à tous avec un
+-- plan tiré ici (Shared/UnboxPlan : nombre de coups de la rareté tirée, cote finale = 100 / sa chance), pour l'objet le
+-- plus rare du lot, colis posé devant l'acheteur (ShopId Crate.Reveal.ShopId : aucun magasin) ; acheteur immobilisé
+-- (StatsService, clé CrateReveal) et protégé (attribut RevealProtected) jusqu'à son RevealDone, sa mort, son départ
+-- ou le plafond UnboxPlan.serverMaxSeconds, puis RevealEnded à tous. Hors zone safe (Crate.Reveal.SafeZoneOnly), ou
+-- pendant une autre cinématique : objets donnés sans ouverture.
 
 local MarketplaceService = game:GetService("MarketplaceService")
 local Players = game:GetService("Players")
@@ -211,7 +219,7 @@ local salesById: { [number]: Sale } = {}
 local testCount = 0
 
 -- a285 (21/11) : la caisse exclusive, vendue comme un produit (un Id par lot, Monetization.Crate.Packs). En vente
--- seulement si son don est codé (Crate.Ready) et Features.RobuxCrate.
+-- seulement si son don est codé (Crate.Ready) et Features.RobuxCrate. a294 : et Crate.Live (DEV : RobuxCrateDev).
 local CRATE = Monetization.Crate
 local CRATE_PRODUCT: Product = {
 	Key = "Crate",
@@ -222,7 +230,7 @@ local CRATE_PRODUCT: Product = {
 	Icon = "",
 	Price = CRATE.UnitPrice,
 	Id = 0, -- inutilisé : un Id par lot
-	Ready = CRATE.Ready and Features.RobuxCrate == true,
+	Ready = CRATE.Ready == true and CRATE.Live == true, -- a294 : don codé et caisse allumée dans ce jeu
 }
 local crateRandom = Random.new()
 -- Vague 72 (a247) : file des tranches de chance du serveur (voir Monetization.ServerLuck).
@@ -563,6 +571,206 @@ local function refreshInventory(player: Player)
 	end
 end
 
+-- a294 (21/11, V0 de Cantin) : ouverture de la caisse (Crate.Reveal ; voir l'en-tête) ---------------------------
+
+type CrateReveal = { id: string, player: Player, ended: boolean, died: RBXScriptConnection? }
+local crateReveals: { [string]: CrateReveal } = {} -- [RevealId]
+local crateRevealOf: { [Player]: CrateReveal } = {}
+local crateRevealCount = 0
+local CRATE_SPEED_KEY = "CrateReveal" -- clé de StatsService.SetSpeedModifier (StoreHeistService : « Reveal »)
+-- Shared/ShelfOpenState.ProtectedAttribute, lu sans require comme GuardService et BatService (vigiles figés, ni batte ni
+-- capture pour lui).
+local PROTECTED_ATTRIBUTE = "RevealProtected"
+
+-- Module chargé à la première ouverture (pas de require croisé au chargement ; absent d'un arbre de banc : nil).
+local lazyModules: { [string]: any } = {}
+local function lazy(key: string, parent: Instance?, name: string): any
+	if lazyModules[key] == nil then
+		local module = if parent then parent:FindFirstChild(name) else nil
+		local loaded: any = false
+		if module and module:IsA("ModuleScript") then
+			local ok, result = pcall(require, module)
+			if ok and type(result) == "table" then
+				loaded = result
+			end
+		end
+		lazyModules[key] = loaded
+	end
+	local value = lazyModules[key]
+	return if value == false then nil else value
+end
+
+local function fireRevealRemote(name: string, ...: any)
+	local ok, err = pcall(function(...: any)
+		(Net.Server :: any)[name]:FireAll(...)
+	end, ...)
+	if not ok then
+		warn(`[MonetizationService] Net.Server.{name}:FireAll : {err}`)
+	end
+end
+
+local function setRevealHold(player: Player, on: boolean)
+	pcall(function()
+		player:SetAttribute(PROTECTED_ATTRIBUTE, if on then true else nil)
+	end)
+	local stats = lazy("StatsService", script.Parent, "StatsService")
+	if stats and type(stats.SetSpeedModifier) == "function" then
+		local ok, err = pcall(stats.SetSpeedModifier, player, CRATE_SPEED_KEY, if on then 0 else nil)
+		if not ok then
+			warn(`[MonetizationService] StatsService.SetSpeedModifier({player.Name}, {CRATE_SPEED_KEY}) : {err}`)
+		end
+	end
+end
+
+local function finishCrateReveal(reveal: CrateReveal, why: string)
+	if reveal.ended then
+		return
+	end
+	reveal.ended = true
+	crateReveals[reveal.id] = nil
+	if crateRevealOf[reveal.player] == reveal then
+		crateRevealOf[reveal.player] = nil
+	end
+	local died = reveal.died
+	if died then
+		died:Disconnect()
+	end
+	setRevealHold(reveal.player, false)
+	fireRevealRemote("RevealEnded", reveal.id)
+	log(`{reveal.player.Name} : ouverture {reveal.id} de la caisse finie ({why})`)
+end
+
+-- L'objet joué d'un lot : le plus rare (le premier à rareté égale) ; et sa case (index dans Crate.Items).
+local function crateRevealPick(got: { string }): (string?, number?)
+	local best: string? = nil
+	local bestOrder = -1
+	for _, id in got do
+		local def = Items.ById[id]
+		local rarity = if def then Rarities.ById[def.Rarity] else nil
+		local order = if rarity then rarity.Order else 0
+		if order > bestOrder then
+			best, bestOrder = id, order
+		end
+	end
+	return best, if best then table.find(CRATE.Items, best) else nil
+end
+
+-- Cote finale « 1 IN N » de la case `index` : 1 / sa chance (Odds sur leur total), arrondie comme celle d'un colis.
+local function crateOdds(index: number): number?
+	local total = 0
+	for slot in CRATE.Items do
+		total += math.max(finite(CRATE.Odds[slot]), 0)
+	end
+	local odds = math.max(finite(CRATE.Odds[index]), 0)
+	if total <= 0 or odds <= 0 then
+		return nil
+	end
+	local formulas = lazy("Formulas", Shared.Config, "Formulas")
+	if formulas and type(formulas.UnboxOdds) == "function" then
+		return (formulas.UnboxOdds :: any)(odds / total)
+	end
+	return math.max(math.floor(total / odds + 0.5), 1)
+end
+
+-- Rend la raison pour laquelle rien n'est joué, ou nil quand l'ouverture est lancée.
+local function startCrateReveal(player: Player, got: { string }): string?
+	local config = CRATE.Reveal
+	if config.Enabled ~= true or Features.SingleBoxReveal ~= true then
+		return "ouverture coupée"
+	end
+	if player.Parent ~= Players then
+		return "joueur parti"
+	end
+	local itemId, index = crateRevealPick(got)
+	local def = if itemId then Items.ById[itemId] else nil
+	if itemId == nil or index == nil or def == nil then
+		return "aucun objet de la caisse"
+	end
+	local why: string? = nil
+	local character = player.Character
+	local humanoid = if character then character:FindFirstChildOfClass("Humanoid") else nil
+	if humanoid == nil or humanoid.Health <= 0 then
+		why = "personnage absent ou mort"
+	elseif player:GetAttribute(PROTECTED_ATTRIBUTE) == true and crateRevealOf[player] == nil then
+		why = "autre cinématique en cours"
+	elseif config.SafeZoneOnly == true then
+		local safeZone = lazy("SafeZone", Shared, "SafeZone")
+		if safeZone == nil or not safeZone.ContainsPlayer(player) then
+			why = "hors zone safe"
+		end
+	end
+	local plans = lazy("UnboxPlan", Shared, "UnboxPlan")
+	if why == nil and plans == nil then
+		why = "Shared/UnboxPlan absent"
+	end
+	local plan: string? = nil
+	local maxSeconds = 0
+	if why == nil then
+		local odds = crateOdds(index)
+		plan = plans.draw(def.Rarity, function(n: number): number
+			return 1 + math.floor(crateRandom:NextNumber() * n)
+		end, config.StartRarity, 0, odds)
+		local parsed = plans.parse(plan)
+		if parsed == nil then
+			why = "plan impossible"
+		else
+			maxSeconds = plans.serverMaxSeconds(def.Rarity, "Small", #parsed.Steps)
+		end
+	end
+	if why then
+		log(`{player.Name} : caisse sans ouverture ({why}) : {itemId}`)
+		return why
+	end
+	local previous = crateRevealOf[player]
+	if previous then
+		finishCrateReveal(previous, "nouvelle caisse")
+	end
+	local weightModule = lazy("ItemWeight", Shared, "ItemWeight")
+	local weight = if weightModule then weightModule.Effective(nil, nil) else 10
+	local scale = if weightModule then weightModule.ScaleFor(weight) else 1
+	crateRevealCount += 1
+	local reveal: CrateReveal = { id = `Crate{crateRevealCount}`, player = player, ended = false, died = nil }
+	crateReveals[reveal.id] = reveal
+	crateRevealOf[player] = reveal
+	setRevealHold(player, true)
+	if humanoid then
+		reveal.died = humanoid.Died:Connect(function()
+			finishCrateReveal(reveal, "mort")
+		end)
+		-- L'outil de l'action va dans la main droite (comme pour un colis de rayon).
+		pcall(function()
+			(humanoid :: Humanoid):UnequipTools()
+		end)
+	end
+	fireRevealRemote(
+		"RevealStarted",
+		player,
+		config.ShopId,
+		config.SlotName,
+		itemId,
+		def.Rarity,
+		"",
+		math.clamp(weight, 0, 1_000_000),
+		math.clamp(scale, 0, 100),
+		"Small",
+		reveal.id,
+		plan
+	)
+	task.delay(maxSeconds, function()
+		finishCrateReveal(reveal, "plafond de temps")
+	end)
+	log(`{player.Name} : ouverture {reveal.id} de la caisse : {itemId} ({def.Rarity}), plan {plan}, {maxSeconds} s au plus`)
+	return nil
+end
+
+-- RevealDone(revealId) de l'acheteur : la fin de son ouverture (celles des colis de rayon : StoreHeistService).
+local function onCrateRevealDone(player: Player, revealId: any)
+	local reveal = if type(revealId) == "string" then crateReveals[revealId] else nil
+	if reveal and reveal.player == player then
+		finishCrateReveal(reveal, "RevealDone")
+	end
+end
+
 local function newItemUid(list: { [string]: any }): string
 	local uid = HttpService:GenerateGUID(false)
 	while list[uid] ~= nil do
@@ -589,6 +797,13 @@ local function grantCrate(player: Player, data: Data, pack: CratePack): string
 		local rarity = if def then Rarities.ById[def.Rarity] else nil
 		notify(player, string.format(MESSAGES.CrateItem, if rarity then rarity.DisplayNameUpper else "?", if def then def.DisplayName else id))
 	end
+	-- a294 : l'ouverture, après le don (hors de son exécution sans yield ; une erreur n'enlève rien au don).
+	task.defer(function()
+		local ok, err = pcall(startCrateReveal, player, got)
+		if not ok then
+			warn(`[MonetizationService] {player.Name} : ouverture de la caisse impossible ({err}), objets donnés quand même`)
+		end
+	end)
 	return `caisse ×{pack.Count} : {table.concat(got, ", ")}`
 end
 
@@ -1087,7 +1302,7 @@ local function onTestAttribute()
 		end
 	end
 	if sale == nil or not sale.product.Ready then
-		warn(`[MonetizationService] test : « {key} » n'est ni un gamepass ni un produit codé (OpenNow1 à OpenNow4 pour Ouvrir maintenant ; Crate1, Crate3, Crate10 avec Features.RobuxCrate)`)
+		warn(`[MonetizationService] test : « {key} » n'est ni un gamepass ni un produit codé (OpenNow1 à OpenNow4 pour Ouvrir maintenant ; Crate1, Crate3, Crate10 avec Monetization.Crate.Live : Features.RobuxCrate, ou RobuxCrateDev dans le jeu DEV)`)
 		return
 	end
 	local data = DataService.Get(player)
@@ -1135,10 +1350,11 @@ end
 -- Démarrage
 ------------------------------------------------------------------------------
 
--- Offres créées (Id ≠ 0) : gamepasses et produits par Id Roblox. Un Id en double est ignoré.
-local function buildSales(): (number, number)
+-- Offres créées (Id ≠ 0) : gamepasses et produits par Id Roblox. Un Id en double est ignoré. a294 : crateOnly =
+-- les seuls lots de la caisse exclusive (boutique coupée, caisse allumée : Monetization.Crate.Live).
+local function buildSales(crateOnly: boolean?): (number, number)
 	local passes, products = 0, 0
-	for _, pass in Monetization.Passes do
+	for _, pass in (if crateOnly then {} else Monetization.Passes) :: { Pass } do
 		if pass.Id ~= 0 then
 			if passesById[pass.Id] then
 				warn(`[MonetizationService] gamepass {pass.Id} en double dans Config/Monetization ({passesById[pass.Id].Key} et {pass.Key}) : {pass.Key} ignoré`)
@@ -1159,7 +1375,7 @@ local function buildSales(): (number, number)
 		salesById[id] = sale
 		products += 1
 	end
-	for _, product in Monetization.Products do
+	for _, product in (if crateOnly then {} else Monetization.Products) :: { any } do
 		local tiers = product.Tiers
 		if tiers then
 			for _, tier in tiers do
@@ -1228,7 +1444,18 @@ function MonetizationService.Init()
 		task.defer(function()
 			states[player] = nil
 		end)
+		local reveal = crateRevealOf[player] -- a294 : son ouverture de caisse en cours, finie (RevealEnded pour les autres)
+		if reveal then
+			finishCrateReveal(reveal, "joueur parti")
+		end
 	end)
+	-- a294 : RevealDone de l'acheteur d'une caisse (Net garde plusieurs gestionnaires : celui de StoreHeistService reste).
+	local revealOk, revealErr = pcall(function()
+		(Net.Server :: any).RevealDone:Connect(onCrateRevealDone)
+	end)
+	if not revealOk then
+		warn(`[MonetizationService] Net.Server.RevealDone : {revealErr}`)
+	end
 	for _, player in Players:GetPlayers() do
 		onPlayerAdded(player)
 	end
@@ -1269,6 +1496,13 @@ function MonetizationService.Init()
 
 	if not enabled then
 		print("[MonetizationService] Features.RobuxShop = false : boutique Robux coupée (ni reçu, ni gamepass, ni bonus de revenus) ; seul le boost ×2 argent des récompenses reste")
+		if CRATE_PRODUCT.Ready then
+			-- a294 : caisse allumée (Monetization.Crate.Live : jeu DEV avec Features.RobuxCrateDev, ou Features.RobuxCrate)
+			-- et boutique coupée : ProcessReceipt branché pour ses seuls lots (reçus idempotents comme les autres).
+			local _, crateProducts = buildSales(true)
+			MarketplaceService.ProcessReceipt = processReceipt
+			print(`[MonetizationService] caisse exclusive allumée sans la boutique : {crateProducts} lot(s) en vente (Ids à 0 = « Soon »)`)
+		end
 		if IS_STUDIO and CRATE_PRODUCT.Ready then
 			-- a285 : la caisse exclusive se teste en Studio sans la boutique (aucun achat réel, aucun reçu).
 			Workspace:GetAttributeChangedSignal(TEST_ATTRIBUTE):Connect(onTestAttribute)
