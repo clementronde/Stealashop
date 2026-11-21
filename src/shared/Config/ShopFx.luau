@@ -25,7 +25,8 @@ local ShopFx = {
 		GlowFrom = 0.45, -- L-204
 		GlowTo = 0, -- L-204
 		-- Icon (la caisse) : ± Bob px en Y, un aller-retour toutes les BobPeriod s (elle monte d'abord).
-		Bob = 7, -- L-204 : « ± 7 px en Y toutes les 2 s »
+		-- Bob = 0 : la caisse ne monte ni ne descend (la secousse reste) et Shadow ne respire plus avec elle (a299).
+		Bob = 7, -- L-204 : « ± 7 px en Y toutes les 2 s » ; a299 : gardé (seules les cases sont figées, V0)
 		BobPeriod = 2, -- L-204
 		-- puis une secousse centrée sur ShakeAt : ± ShakeAngle° (ShakeTurns allers-retours qui s'amortissent) et
 		-- × ShakePop au milieu.
@@ -37,8 +38,10 @@ local ShopFx = {
 		-- Backdrop.Shadow : se serre quand la caisse monte, s'élargit quand elle descend (largeur seulement).
 		ShadowSpread = 0.12, -- V0 proposé, absent du doc : ± 12 % de largeur au bout du mouvement
 		-- Odds.Odd_n : ± OddBob px en Y autour de leur place (jamais Size), décalées de OddPhase rad l'une de l'autre ;
-		-- RarityGlow et Star suivent la case qu'ils entourent.
-		OddBob = 4, -- L-204
+		-- RarityGlow et Star suivent la case qu'ils entourent. OddBob = 0 (a299) : cases, RarityGlow et Star restent à
+		-- leur place ; la boucle n'écrit plus la Position des cases ; RarityGlow pulse et les Star clignotent toujours,
+		-- grossis autour de leur centre.
+		OddBob = 0, -- a299 : validé par Cantin, 21/11 (« objets de la caisse fixes ») ; L-204 donnait ± 4 px
 		OddPeriod = 2, -- V0 proposé, absent du doc (comme la caisse ; 4 s doit en être un multiple)
 		OddPhase = 0.9, -- L-204 : « décalées de 0,9 rad »
 		-- Odds.Star : × StarMin → StarMax → StarMin en StarTime s, l'une après l'autre (de la plus commune à la plus

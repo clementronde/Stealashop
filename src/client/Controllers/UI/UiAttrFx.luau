@@ -630,12 +630,20 @@ local function wireIconHover(object: GuiObject, mode: string)
 				return
 			end
 			jumping = true
-			local up = rest + UDim2.fromOffset(0, -target.AbsoluteSize.Y * HOVER.Jump.Height)
-			local rise = TweenService:Create(target, JUMP_UP, { Position = up })
+			-- a299 : la hauteur du saut passe par un NumberValue (0 → 1 → 0) et chaque pas écrit Motion.Placed(rest
+			-- + saut) : juste même si le survol recentre l'Icon pendant le saut (Config/UiMotion.Hover.Centered).
+			local height = target.AbsoluteSize.Y * HOVER.Jump.Height
+			local lift = Instance.new("NumberValue")
+			lift.Value = 0
+			lift:GetPropertyChangedSignal("Value"):Connect(function()
+				target.Position = Motion.Placed(target, rest + UDim2.fromOffset(0, -height * lift.Value))
+			end)
+			local rise = TweenService:Create(lift, JUMP_UP, { Value = 1 })
 			rise.Completed:Connect(function()
-				local fall = TweenService:Create(target, JUMP_DOWN, { Position = rest })
+				local fall = TweenService:Create(lift, JUMP_DOWN, { Value = 0 })
 				fall.Completed:Connect(function()
-					target.Position = rest
+					target.Position = Motion.Placed(target, rest)
+					lift:Destroy()
 					jumping = false
 				end)
 				fall:Play()

@@ -10,6 +10,9 @@
 --   Icon monte et descend, puis se secoue et grossit vers ShakeAt ; Backdrop.Shadow se serre et s'élargit avec elle ;
 --   Odds.Odd_n bougent en Y en décalage (jamais leur Size) ; RarityGlow pulse et Star clignotent l'une après
 --   l'autre, en suivant la case qu'ils entourent ; BuyRow.BuyButton3 grossit deux fois ; NewBadge saute une fois.
+--   a299 (Cantin, 21/11 : « objets de la caisse fixes ») : ShopFx.Crate.OddBob = 0, les cases, leurs RarityGlow et
+--   leurs Star ne bougent plus en Y (pulse et clignotement gardés, autour de leur centre) ; Bob = 0 figerait de même
+--   la caisse (Icon) et son ombre (Shadow), la secousse restant.
 -- À l'ouverture, les cases de Odds (Appear = Cascade de Clément) entrent une à une toutes les CellGap s, de Odd_1
 -- (la plus commune) à la plus rare, avec leur RarityGlow et leurs Star (règle donnée à Appear.SetCascade).
 -- Decor (Hang1 à Hang4) est caché sur téléphone (tactile sans clavier) ; sur PC, Appear le fait tomber une fois par
@@ -153,7 +156,7 @@ function CrateLoop.Sample(time: number): Pose
 		IconY = SPEC.Bob * bob,
 		IconRotation = iconRotation,
 		IconScale = iconScale,
-		ShadowWidth = 1 + SPEC.ShadowSpread * bob,
+		ShadowWidth = if SPEC.Bob == 0 then 1 else 1 + SPEC.ShadowSpread * bob, -- a299 : caisse figée, ombre aussi
 		OddY = odd,
 		Stars = stars,
 		RarityScale = 1 + (SPEC.GlowPulseScale - 1) * pulse,
@@ -385,8 +388,10 @@ local function applyRig(rig: Rig, pose: Pose)
 	if shadow then
 		place(shadow, 0, pose.ShadowWidth, 1)
 	end
-	for n, cell in rig.cells do
-		place(cell, pose.OddY[n] * px, 1, 1)
+	if SPEC.OddBob ~= 0 then -- a299 : OddBob = 0, les cases restent à la place de Clément (rien d'écrit)
+		for n, cell in rig.cells do
+			place(cell, pose.OddY[n] * px, 1, 1)
+		end
 	end
 	for k, deco in rig.stars do
 		local scale = pose.Stars[math.min(k, MAX_CELLS)]
