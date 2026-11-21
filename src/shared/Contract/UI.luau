@@ -1296,7 +1296,9 @@ for _, screenDef in UI.Screens do
 			{ Path = "Crate.NewBadge", Optional = true, Note = "pas de badge NEW! qui saute" },
 			{ Path = "Decor", Optional = true, Note = "pas de décor suspendu (caché sur téléphone)" },
 			-- Vague 73 (a253, L-242 point 3, L-247) : RobuxShopController.
-			{ Path = "Crate.Icon.Preview", Class = "ViewportFrame", Optional = true, Note = "pas de caisse 3D (l'image d'Icon reste)" },
+			-- a285 (21/11) : « Crate.Preview » (dans Crate.Icon) et non « Crate.Icon.Preview » : chaque segment se cherche
+			-- dans tous les descendants, et « Icon » sous Crate désigne aussi les 6 Odds.Odd_n.Icon (doublon signalé).
+			{ Path = "Crate.Preview", Class = "ViewportFrame", Optional = true, Note = "pas de caisse 3D (l'image d'Icon reste)" },
 			{ Path = "Featured.OldPrice", Optional = true, Note = "pas d'ancien prix du pack de départ" },
 			{ Path = "Featured.DiscountTag.DiscountLabel", Optional = true, Note = "pas d'étiquette de remise du pack de départ" },
 		} :: { Element } do

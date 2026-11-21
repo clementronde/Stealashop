@@ -14,6 +14,8 @@
 --     met déjà la racine à l'échelle) et un bouton aussi grand que son parent (calque de glisser).
 --   - Cartes : un cadre avec un enfant HoverOutline (Index, inventaire, boutiques…) reçoit
 --     Motion.HoverCard (et pas l'effet de bouton) ; ses boutons à lui (PLACE…) gardent le leur.
+--   - a285 (21/11) : effets posés en attribut par Clément (Gleam, IconHover, Idle = Wiggle ou Fall) : chaque GuiObject
+--     branché passe aussi par Controllers/UI/UiAttrFx (Features.UiAttrFx, Config/UiMotion.AttrFx).
 --   - Sons d'UI : donne à Motion le moyen de les jouer (Shared/Anim/MarkerSounds, son 2D, rien s'il
 --     manque dans ReplicatedStorage/Assets/Sounds : une ligne par son, en Studio).
 --   - Poursuite (ChaseController.IsChased) : ChasePulse (la transparence des bords rouges de UI_Chase,
@@ -58,6 +60,20 @@ local UiMotion = require(Shared:WaitForChild("Config"):WaitForChild("UiMotion"))
 local Settings = require(Shared:WaitForChild("Config"):WaitForChild("Settings"))
 local Find = require(Shared:WaitForChild("Contract"):WaitForChild("Find"))
 local Motion = require(script.Parent:WaitForChild("UI"):WaitForChild("Motion"))
+-- a285 (21/11) : Gleam, IconHover et Idle (Wiggle, Fall) posés par Clément sur ses écrans (Features.UiAttrFx). Chargé
+-- s'il est là (comme Appear dans Motion) : sans lui (bancs d'essai), aucun de ces effets, rien d'autre ne change.
+type AttrFxApi = { Wire: (object: Instance) -> () }
+local UiAttrFx: AttrFxApi = (function(): AttrFxApi
+	local folder = script.Parent:FindFirstChild("UI")
+	local module = if folder then folder:FindFirstChild("UiAttrFx") else nil
+	if module ~= nil and module:IsA("ModuleScript") then
+		local ok, result = pcall(require, module)
+		if ok and type(result) == "table" then
+			return result :: any
+		end
+	end
+	return { Wire = function(_: Instance) end }
+end)()
 
 type ChaseApi = { IsChased: () -> boolean }
 type Pulse = { object: Instance, property: string, base: number }
@@ -171,6 +187,7 @@ local function wire(inst: Instance)
 		return
 	end
 	local object = inst :: GuiObject
+	UiAttrFx.Wire(object) -- a285 : sans attribut Gleam, IconHover ni Idle, rien
 	-- Vague 59 (L-182) : un cadre qui n'est pas un bouton et porte Hover = Pop est aussi une carte.
 	if object:FindFirstChild(UiMotion.HoverCard.Outline) ~= nil
 		or (not object:IsA("GuiButton") and object:GetAttribute("Hover") == "Pop") then

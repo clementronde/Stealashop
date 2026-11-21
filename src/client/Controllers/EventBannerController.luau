@@ -8,9 +8,15 @@
 -- Timer = temps restant (LiveEvents.FormatTimer : « 29:59 », « 1:05:00 »), refait chaque seconde. Hors événement
 -- (ou Id inconnu du client) : écran éteint. Seuls Enabled et les trois textes sont touchés : ni taille, ni
 -- position, ni style de Clément (la bannière est en bas ou au milieu de l'écran, jamais en haut).
+-- a285 (21/11, L-240 point 3) : la chance du serveur en cours (attributs ServerLuck et ServerLuckEndsAt du Workspace,
+-- MonetizationService) se montre dans la même bannière quand aucun événement live n'y est (l'événement passe
+-- devant), seulement avec Monetization.ServerLuck.Enabled (SERVER_LUCK) : Title = « SERVER LUCK ×2 », Effect =
+-- « Rarer boxes for everyone » (ServerLuck.Banner), Timer = temps restant. Un élément absent : son texte n'est pas
+-- écrit, sans erreur ; écran absent : rien.
 --
 -- API (client) :
 --   EventBannerController.GetState() -> { Id: string?, Shown: boolean, Timer: string? }
+--       Id = Id du format live, ou « ServerLuck » pour la chance du serveur.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -18,6 +24,7 @@ local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local LiveEvents = require(Shared:WaitForChild("Config"):WaitForChild("LiveEvents"))
+local Monetization = require(Shared:WaitForChild("Config"):WaitForChild("Monetization"))
 local Find = require(Shared:WaitForChild("Contract"):WaitForChild("Find"))
 
 export type BannerState = {
@@ -26,8 +33,12 @@ export type BannerState = {
 	Timer: string?,
 }
 
+type Content = { Id: string, Title: string, Effect: string, Remaining: number }
+
 local SCREEN_NAME: string = LiveEvents.BannerScreen
 local REFRESH = 1 -- s entre deux chronos
+local LUCK = Monetization.ServerLuck
+local LUCK_ID = "ServerLuck"
 
 local EventBannerController = {}
 
@@ -49,33 +60,56 @@ local function setText(gui: Instance, path: string, text: string)
 	end
 end
 
-local function currentFormat(): LiveEvents.Format?
-	local id = Workspace:GetAttribute(LiveEvents.IdAttribute)
-	return if type(id) == "string" then LiveEvents.ById[id] else nil
-end
-
-local function remaining(): number
-	local endsAt = Workspace:GetAttribute(LiveEvents.EndsAtAttribute)
+local function untilAttribute(name: string): number
+	local endsAt = Workspace:GetAttribute(name)
 	return if type(endsAt) == "number" then endsAt - Workspace:GetServerTimeNow() else 0
 end
 
--- Écran à jour (allumé, textes) ; renvoie vrai tant qu'un événement tourne.
+-- « ×2 », « ×1.5 ».
+local function factorLabel(factor: number): string
+	return if factor == math.floor(factor) then string.format("×%d", factor) else string.format("×%.1f", factor)
+end
+
+-- Ce que la bannière montre : l'événement live, sinon la chance du serveur ; nil = rien.
+local function currentContent(): Content?
+	local id = Workspace:GetAttribute(LiveEvents.IdAttribute)
+	local format = if type(id) == "string" then LiveEvents.ById[id] else nil
+	if format then
+		return { Id = format.Id, Title = format.DisplayName, Effect = format.Effect, Remaining = untilAttribute(LiveEvents.EndsAtAttribute) }
+	end
+	if not LUCK.Enabled then
+		return nil
+	end
+	local factor = Workspace:GetAttribute(LUCK.Attribute)
+	local left = untilAttribute(LUCK.EndsAtAttribute)
+	if type(factor) ~= "number" or factor ~= factor or factor <= 1 or left <= 0 then
+		return nil
+	end
+	return {
+		Id = LUCK_ID,
+		Title = string.format(LUCK.Banner.Title, factorLabel(factor)),
+		Effect = LUCK.Banner.Effect,
+		Remaining = left,
+	}
+end
+
+-- Écran à jour (allumé, textes) ; renvoie vrai tant qu'il y a quelque chose à montrer.
 local function refresh(): boolean
-	local format = currentFormat()
+	local content = currentContent()
 	local gui = screen()
-	if format == nil then
+	if content == nil then
 		shownId, timerText, shown = nil, nil, false
 		if gui then
 			gui.Enabled = false
 		end
 		return false
 	end
-	shownId = format.Id
-	timerText = LiveEvents.FormatTimer(remaining())
+	shownId = content.Id
+	timerText = LiveEvents.FormatTimer(content.Remaining)
 	shown = gui ~= nil
 	if gui then
-		setText(gui, "Title", format.DisplayName)
-		setText(gui, "Effect", format.Effect)
+		setText(gui, "Title", content.Title)
+		setText(gui, "Effect", content.Effect)
 		setText(gui, "Timer", timerText :: string)
 		gui.Enabled = true
 	end
@@ -101,6 +135,10 @@ end
 function EventBannerController.Start()
 	Workspace:GetAttributeChangedSignal(LiveEvents.IdAttribute):Connect(onChanged)
 	Workspace:GetAttributeChangedSignal(LiveEvents.EndsAtAttribute):Connect(onChanged)
+	if LUCK.Enabled then
+		Workspace:GetAttributeChangedSignal(LUCK.Attribute):Connect(onChanged)
+		Workspace:GetAttributeChangedSignal(LUCK.EndsAtAttribute):Connect(onChanged)
+	end
 	onChanged()
 end
 

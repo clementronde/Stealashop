@@ -15,8 +15,25 @@
 -- CooldownAttribute : heure serveur (workspace:GetServerTimeNow) de fin de recharge, posée par le serveur sur
 -- CooldownHolder (« Workspace » pour une recharge de tout le serveur, « Player » pour celle du joueur). Rien ne la
 -- pose encore : Cooldown reste caché.
+-- a285 (21/11, L-067) : Id = produit de PROD ; dans le jeu DEV, Config/ProductIds le remplace par celui de DEV
+-- (clé = Key ; 0 tant qu'il n'y est pas créé), avant le gel du module.
 
 local DeepFreeze = require(script.Parent.DeepFreeze)
+-- a285 : Config/ProductIds chargé s'il est là (bancs d'essai à liste de modules fixe) ; sans lui, les Ids de PROD.
+local ProductIds: { Pick: (key: string, prodId: number) -> number } = (function(): any
+	local module = script.Parent:FindFirstChild("ProductIds")
+	if module ~= nil then
+		local ok, result = pcall(require, module :: any)
+		if ok and type(result) == "table" then
+			return result
+		end
+	end
+	return {
+		Pick = function(_: string, prodId: number): number
+			return prodId
+		end,
+	}
+end)()
 
 export type Boost = {
 	Key: string,
@@ -70,6 +87,10 @@ local Boosts = {
 		},
 	} :: { Boost },
 }
+
+for _, boost in Boosts.List do
+	boost.Id = ProductIds.Pick(boost.Key, boost.Id)
+end
 
 export type Boosts = typeof(Boosts)
 
