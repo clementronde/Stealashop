@@ -205,7 +205,7 @@ local function wire(inst: Instance)
 	Motion.Button(button)
 	if SUCCESS[button.Name] and not successWired[button] and not successSkipped(button) then
 		successWired[button] = true
-		button.Activated:Connect(function()
+		Motion.Activated(button):Connect(function()
 			Motion.Success(button)
 		end)
 	end

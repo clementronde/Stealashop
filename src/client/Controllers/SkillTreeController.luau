@@ -807,15 +807,15 @@ local function bind(gui: ScreenGui)
 
 	local closeButton = button(gui, "CloseButton")
 	if closeButton then
-		table.insert(current.connections, closeButton.Activated:Connect(close))
+		table.insert(current.connections, Motion.Activated(closeButton):Connect(close))
 	end
 	local buy = current.panel.buy
 	if buy then
-		table.insert(current.connections, buy.Activated:Connect(onBuy))
+		table.insert(current.connections, Motion.Activated(buy):Connect(onBuy))
 	end
 	local need = current.panel.need
 	if need then
-		table.insert(current.connections, need.Activated:Connect(onNeed))
+		table.insert(current.connections, Motion.Activated(need):Connect(onNeed))
 	end
 	refreshAll(current)
 	writeCash(current, false)
@@ -895,7 +895,7 @@ local function bindHud(gui: Instance)
 		if found:IsA("GuiButton") then
 			local hudButton = found :: GuiButton
 			hudButton.Visible = true
-			hudButton.Activated:Connect(toggle)
+			Motion.Activated(hudButton):Connect(toggle)
 			bound += 1
 		end
 	end

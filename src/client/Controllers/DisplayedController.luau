@@ -193,7 +193,7 @@ end
 
 local function onClick(element: Instance?, handler: () -> ()): RBXScriptConnection?
 	if element and element:IsA("GuiButton") then
-		return (element :: GuiButton).Activated:Connect(function()
+		return Motion.Activated(element :: GuiButton):Connect(function()
 			handler()
 		end)
 	end
@@ -704,7 +704,7 @@ local function bindHotbar(gui: ScreenGui)
 	hotbarAlerts = {}
 	for _, inst in Find.all(gui, HOTBAR_BUTTON) do
 		if inst:IsA("GuiButton") then
-			table.insert(hotbarConnections, (inst :: GuiButton).Activated:Connect(function()
+			table.insert(hotbarConnections, Motion.Activated(inst :: GuiButton):Connect(function()
 				DisplayedController.Toggle()
 			end))
 			for _, badge in AlertBadge.Find(inst, HOTBAR_ALERT) do

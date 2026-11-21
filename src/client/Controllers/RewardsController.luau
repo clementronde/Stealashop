@@ -195,7 +195,7 @@ local function onClick(element: Instance?, handler: () -> ()): RBXScriptConnecti
 		return nil
 	end
 	if element:IsA("GuiButton") then
-		return (element :: GuiButton).Activated:Connect(function()
+		return Motion.Activated(element :: GuiButton):Connect(function()
 			handler()
 		end)
 	end
@@ -603,7 +603,7 @@ local function bindHud(gui: Instance)
 	else
 		reportOnce("alert", `{HUD}.{HUD_BUTTON}.{HUD_ALERT} introuvable : pas de pastille`)
 	end
-	(found :: GuiButton).Activated:Connect(toggle)
+	Motion.Activated(found :: GuiButton):Connect(toggle)
 	refresh()
 end
 

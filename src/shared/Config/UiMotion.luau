@@ -786,6 +786,30 @@ local UiMotion = {
 			FadeOut = 0.3, -- V0 a285, absent des fiches
 		},
 	},
+	-- a290 (L-270, Clément, 21/11 : « il faut cliquer sur la zone rétrécie pour que le clic marche ») : l'écrasement
+	-- (Press = Squash, 0,75) et l'appui (Press.To) passent par un UIScale sur le bouton, qui rétrécit aussi la zone où
+	-- Roblox prend le relâché. Le visuel ne change pas ; le clic compte sur la zone appuyée : la taille réelle du bouton
+	-- (sans le UIScale de Motion), ou plus grande si le bouton était grossi par le survol au moment de l'appui. Un
+	-- relâché dans cette zone que Roblox n'a pas pris (bord du bouton écrasé) est donné par Motion.Activated, une seule
+	-- fois par appui ; un relâché hors de la zone ne clique pas (glissé loin du bouton), une liste qui a défilé pendant
+	-- l'appui non plus. Pendant l'appui, la souris qui sort du bouton rétréci sans sortir de la zone le laisse écrasé.
+	-- Enabled = false : comme avant (Motion.Activated = Activated de Roblox).
+	ClickZone = {
+		Enabled = true,
+		SettleTime = 0.05, -- V0 proposé, absent du doc : s laissées à Roblox pour donner son propre clic avant le rattrapage
+		Guard = 0.3, -- V0 proposé, absent du doc : s pendant lesquelles un Activated de Roblox après un clic rattrapé est ignoré
+		StillPixels = 2, -- V0 proposé, absent du doc : px dont le bouton peut bouger pendant l'appui (au-delà : liste défilée, pas de clic)
+		TouchSlop = 8, -- V0 proposé, absent du doc : px qu'un doigt peut glisser dans une liste (au-delà : un défilement, pas de clic rattrapé)
+	},
+	-- a290 (L-275, Clément, 21/11 : « des fois le bouton reste en mode hover alors qu'il n'est plus hover », vu sur le
+	-- bouton Displays) : Roblox n'envoie pas toujours MouseLeave (souris sortie vite, bouton qui change de taille sous
+	-- elle). Pendant le survol d'un bouton (Motion.Button) ou d'une carte (Motion.HoverCard), le code suit la souris :
+	-- sortie du rectangle dessiné du bouton (taille de l'écran, survol compris), bouton caché ou écran fermé, fenêtre
+	-- qui perd le focus : fin du survol, comme MouseLeave. Enabled = false : MouseLeave seul, comme avant.
+	HoverWatch = {
+		Enabled = true,
+		Slack = 1, -- V0 proposé, absent du doc : px de marge autour du bouton (arrondis des tailles) avant de finir le survol
+	},
 }
 
 export type UiMotion = typeof(UiMotion)

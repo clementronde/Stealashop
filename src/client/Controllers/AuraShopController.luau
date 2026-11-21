@@ -222,7 +222,7 @@ local function onClick(element: Instance?, handler: () -> ()): RBXScriptConnecti
 		return nil
 	end
 	if element:IsA("GuiButton") then
-		return (element :: GuiButton).Activated:Connect(function()
+		return Motion.Activated(element :: GuiButton):Connect(function()
 			handler()
 		end)
 	end

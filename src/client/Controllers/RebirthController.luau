@@ -366,11 +366,11 @@ local function bind(gui: ScreenGui)
 	armedUntil = 0
 	local closeButton = Find.path(gui, "CloseButton")
 	if closeButton and closeButton:IsA("GuiButton") then
-		table.insert(current.connections, (closeButton :: GuiButton).Activated:Connect(close))
+		table.insert(current.connections, Motion.Activated(closeButton :: GuiButton):Connect(close))
 	end
 	local confirmButton = Find.path(gui, "ConfirmButton")
 	if confirmButton and confirmButton:IsA("GuiButton") then
-		table.insert(current.connections, (confirmButton :: GuiButton).Activated:Connect(onConfirm))
+		table.insert(current.connections, Motion.Activated(confirmButton :: GuiButton):Connect(onConfirm))
 	end
 	refresh(current)
 end
@@ -447,7 +447,7 @@ local function bindHud(gui: Instance)
 	local bound = 0
 	for _, found in Find.all(gui, HUD_BUTTON) do
 		if found:IsA("GuiButton") then
-			(found :: GuiButton).Activated:Connect(toggle)
+			Motion.Activated(found :: GuiButton):Connect(toggle)
 			bound += 1
 		end
 	end

@@ -43,6 +43,12 @@
 --                               HoverPop.Time ; sur une carte : elle penche de CardTilt et son Icon grossit
 --                               (IconScale) sans bouger. Press = Squash : × PressSquash.To tant que le
 --                               bouton est tenu, puis 1,1 et retour au relâché.
+--   Motion.Activated(button)    a290 (L-270, Config/UiMotion.ClickZone) : le signal de clic d'un bouton, à brancher à
+--                               la place de button.Activated : l'Activated de Roblox, plus le relâché sur la taille
+--                               réelle du bouton (ou sa taille survolée au moment de l'appui) que Roblox n'a pas pris
+--                               parce que le UIScale de l'appui (Press, Squash) rétrécit aussi sa zone de clic. Un seul
+--                               clic par appui ; glissé hors de la zone ou liste défilée : pas de clic. Rien ne change
+--                               à l'écran ; la souris qui sort du bouton écrasé sans sortir de la zone le laisse écrasé.
 --   Motion.Click(button, play)  joue le clic (play) à la fin de l'image, sauf si l'action a déjà son son
 --                               (bouton de réussite, ou UI_Open / UI_Close… au même moment) : un son par action.
 --   Close et Hide attendent la fermeture des éléments Appear (Controllers/UI/Appear) ; Open et Close ne
@@ -1069,7 +1075,40 @@ type ButtonState = {
 	shadeBase: number, -- sa transparence posée par Clément, remise à la sortie
 	shadeTween: Tween?,
 	bouncing: boolean, -- Press = Squash : rebond du relâché en cours (1,1 puis retour)
+	-- a290 (L-270, Config/UiMotion.ClickZone) : appui en cours ou dernier appui, clics donnés par Motion.Activated.
+	hold: Hold?,
+	tracked: boolean, -- InputBegan du bouton écouté (appuis suivis)
+	clicks: Clicks?,
+	phantom: Hold?, -- souris relâchée dans le bord du bouton écrasé : survol gardé tant qu'elle reste dans cette zone
+	onLeave: (() -> ())?, -- Motion.Button : la souris est sortie de la zone appuyée (comme MouseLeave)
+	onRelease: (() -> ())?, -- Motion.Button : relâché de la souris hors du bouton rétréci (comme MouseButton1Up)
 }
+
+-- a290 (L-270) : un appui sur le bouton (clic gauche ou doigt). Zone appuyée (minX…maxY) : la taille réelle du bouton
+-- (sans le UIScale de Motion) et le rectangle appuyé (grossi par le survol), dans le repère d'AbsolutePosition ;
+-- offset passe du repère de l'InputObject à celui d'AbsolutePosition (GetGuiInset ou rien, réglé sur l'appui).
+type Hold = {
+	kind: Enum.UserInputType,
+	input: InputObject,
+	offset: Vector2,
+	minX: number,
+	minY: number,
+	maxX: number,
+	maxY: number,
+	point: Vector2, -- dernier point connu du pointeur (repère d'AbsolutePosition)
+	start: Vector2, -- point de l'appui (même repère)
+	pivotX: number, -- point d'ancrage du bouton à l'appui (le UIScale ne le déplace pas ; une liste qui défile, si)
+	pivotY: number,
+	scrolls: boolean, -- le bouton est dans une ScrollingFrame
+	fired: boolean, -- Activated de Roblox reçu pour cet appui
+	rescued: boolean, -- clic donné par le rattrapage
+	rescuedAt: number,
+	left: boolean, -- la souris est sortie du bouton dessiné (écrasé) pendant l'appui : Roblox peut ne plus donner son clic
+}
+
+-- a290 (L-270) : signal de clic d'un bouton (Motion.Activated), en Luau : Connect, Once, Disconnect, Connected.
+type Listener = { fn: (...any) -> (), connected: boolean, once: boolean }
+type Clicks = { listeners: { Listener }, signal: any }
 
 -- Vague 59 (L-182 point 1) : Hover = Pop et Press = Squash.
 local POP = UiMotion.HoverPop
@@ -1112,6 +1151,12 @@ local function buttonState(button: GuiButton): ButtonState
 		shadeBase = if shadeObject then shadeObject.BackgroundTransparency else 1,
 		shadeTween = nil,
 		bouncing = false,
+		hold = nil,
+		tracked = false,
+		clicks = nil,
+		phantom = nil,
+		onLeave = nil,
+		onRelease = nil,
 	}
 	buttons[button] = created
 	return created
@@ -1277,6 +1322,480 @@ local function shadeTo(state: ButtonState, transparency: number, info: TweenInfo
 	tween:Play()
 end
 
+------------------------------------------------------------------------------
+-- a290 (L-270) : le clic compte sur toute la zone appuyée (Config/UiMotion.ClickZone)
+------------------------------------------------------------------------------
+-- Roblox ne donne Activated que si le relâché tombe sur le bouton tel qu'il est dessiné ; écrasé à 0,75 par son
+-- UIScale, le bouton perd le quart extérieur de sa zone de clic. Le visuel ne change pas : l'appui est suivi
+-- (InputBegan du bouton, puis InputChanged et InputEnded de UserInputService) et un relâché dans la zone appuyée,
+-- hors du bouton rétréci, que Roblox n'a pas pris est donné par Motion.Activated(button), une seule fois.
+local ZONE = UiMotion.ClickZone
+local MOUSE1 = Enum.UserInputType.MouseButton1
+local TOUCH = Enum.UserInputType.Touch
+local MOVE = Enum.UserInputType.MouseMovement
+local held: { [GuiButton]: boolean } = setmetatable({}, { __mode = "k" }) :: any -- appuis pas encore relâchés
+local phantoms: { [GuiButton]: boolean } = setmetatable({}, { __mode = "k" }) :: any -- survols gardés (ButtonState.phantom)
+local inputWired: boolean? = nil -- nil : pas encore essayé ; false : pas de UserInputService (banc)
+
+local function vec(x: number, y: number): Vector2
+	return Vector2.new(x, y)
+end
+
+local function shifted(point: Vector2, offset: Vector2): Vector2
+	return vec(point.X + offset.X, point.Y + offset.Y)
+end
+
+-- Point de l'InputObject (souris ou doigt), ou nil.
+local function pointOf(input: InputObject): Vector2?
+	local ok, point = pcall(function(): Vector2?
+		local position = (input :: any).Position
+		if position == nil or type(position.X) ~= "number" or type(position.Y) ~= "number" then
+			return nil
+		end
+		return vec(position.X, position.Y)
+	end)
+	return if ok then point else nil
+end
+
+local function insetOf(): Vector2
+	local ok, inset = pcall(function(): Vector2
+		local value = (game:GetService("GuiService") :: any):GetGuiInset()
+		return vec(value.X, value.Y)
+	end)
+	return if ok and inset then inset else vec(0, 0)
+end
+
+local function inButton(button: GuiButton, point: Vector2): boolean
+	local position, size = button.AbsolutePosition, button.AbsoluteSize
+	return point.X >= position.X and point.X <= position.X + size.X and point.Y >= position.Y and point.Y <= position.Y + size.Y
+end
+
+local function inZone(hold: Hold, point: Vector2): boolean
+	return point.X >= hold.minX and point.X <= hold.maxX and point.Y >= hold.minY and point.Y <= hold.maxY
+end
+
+-- Point d'ancrage du bouton (AnchorPoint) : le UIScale de Motion met le bouton à l'échelle autour de lui.
+local function pivotOf(button: GuiButton): (number, number)
+	local size, position, anchor = button.AbsoluteSize, button.AbsolutePosition, button.AnchorPoint
+	return position.X + size.X * anchor.X, position.Y + size.Y * anchor.Y
+end
+
+-- Taille réelle du bouton (sans le UIScale de Motion : appui, survol, rebond, réussite) : x, y, largeur, hauteur.
+local function realRect(button: GuiButton, state: ButtonState): (number, number, number, number)
+	local size, anchor = button.AbsoluteSize, button.AnchorPoint
+	local own = state.scale
+	local s = if own and own.Parent == button then own.Scale else 1
+	if s <= 0 then
+		s = 1
+	end
+	local px, py = pivotOf(button)
+	local w, h = size.X / s, size.Y / s
+	return px - w * anchor.X, py - h * anchor.Y, w, h
+end
+
+-- Le bouton peut encore être cliqué : dans un écran allumé, visible jusqu'à lui, pas coupé (Interactable).
+local function usable(button: GuiObject): boolean
+	if button.Parent == nil then
+		return false
+	end
+	local ok, interactable = pcall(function(): any
+		return (button :: any).Interactable
+	end)
+	if ok and interactable == false then
+		return false
+	end
+	local current: Instance? = button
+	while current ~= nil do
+		if current:IsA("LayerCollector") then
+			return (current :: any).Enabled ~= false
+		end
+		if current:IsA("GuiObject") and not (current :: GuiObject).Visible then
+			return false
+		end
+		current = current.Parent
+	end
+	return false -- hors d'un écran : Roblox ne l'aurait pas cliqué non plus
+end
+
+local function newClicks(): Clicks
+	local listeners: { Listener } = {}
+	local function connect(fn: (...any) -> (), once: boolean): any
+		local listener: Listener = { fn = fn, connected = true, once = once }
+		table.insert(listeners, listener)
+		local connection: any
+		connection = {
+			Connected = true,
+			Disconnect = function(_self: any)
+				connection.Connected = false
+				listener.connected = false
+				local index = table.find(listeners, listener)
+				if index then
+					table.remove(listeners, index)
+				end
+			end,
+		}
+		return connection
+	end
+	local signal = {
+		Connect = function(_self: any, fn: (...any) -> ()): any
+			return connect(fn, false)
+		end,
+		Once = function(_self: any, fn: (...any) -> ()): any
+			return connect(fn, true)
+		end,
+	}
+	return { listeners = listeners, signal = signal }
+end
+
+-- Chaque fonction branchée reçoit le clic dans son propre fil (une erreur n'arrête pas les autres), comme Roblox.
+local function fireClicks(clicks: Clicks, ...: any)
+	for _, listener in table.clone(clicks.listeners) do
+		if listener.connected then
+			if listener.once then
+				listener.connected = false
+				local index = table.find(clicks.listeners, listener)
+				if index then
+					table.remove(clicks.listeners, index)
+				end
+			end
+			task.spawn(listener.fn, ...)
+		end
+	end
+end
+
+-- Relâché d'un appui suivi : visuel de la souris (relâché hors du bouton rétréci), puis clic rattrapé.
+local function settle(button: GuiButton, state: ButtonState, hold: Hold, input: InputObject)
+	local point = pointOf(input)
+	if point then
+		hold.point = shifted(point, hold.offset)
+	end
+	local inside = inZone(hold, hold.point)
+	local onButton = inButton(button, hold.point)
+	-- À la souris, Roblox n'envoie pas MouseButton1Up hors du bouton rétréci : le même relâché qu'au centre, et le
+	-- survol gardé tant que la souris reste dans la zone (le bouton regrossit sous elle).
+	if hold.kind == MOUSE1 and state.down and inside and not onButton then
+		local release = state.onRelease
+		if release then
+			release()
+			if state.over then
+				state.phantom = hold
+				phantoms[button] = true
+			end
+		end
+	end
+	local clicks = state.clicks
+	if clicks == nil or not inside or (onButton and not hold.left) or hold.fired then
+		return -- sur le bouton dessiné, Roblox décide seul (sauf si la souris en est sortie pendant l'appui :
+		-- rattrapé seulement si Roblox ne donne pas son clic) ; hors de la zone : glissé loin, pas de clic
+	end
+	if input.UserInputState == Enum.UserInputState.Cancel then
+		return
+	end
+	local px, py = pivotOf(button)
+	if math.abs(px - hold.pivotX) > ZONE.StillPixels or math.abs(py - hold.pivotY) > ZONE.StillPixels then
+		return -- la liste a défilé pendant l'appui
+	end
+	if hold.kind == TOUCH and hold.scrolls
+		and (math.abs(hold.point.X - hold.start.X) > ZONE.TouchSlop or math.abs(hold.point.Y - hold.start.Y) > ZONE.TouchSlop) then
+		return -- doigt glissé dans une liste : un défilement, pas un clic
+	end
+	local found: Clicks = clicks
+	task.delay(ZONE.SettleTime, function()
+		if hold.fired or hold.rescued or not usable(button) then
+			return
+		end
+		hold.rescued = true
+		hold.rescuedAt = os.clock()
+		fireClicks(found, input, 1)
+	end)
+end
+
+-- a290 (L-275) : fin du survol sans MouseLeave (voir Config/UiMotion.HoverWatch). Un survol suivi : sa fin (comme
+-- MouseLeave), « occupé » (appui tenu, survol gardé après un relâché dans le bord : la zone appuyée décide) et le
+-- décalage du repère de la souris, appris quand elle est sur le bouton (0, ou celui du haut de l'écran).
+local HOVER = UiMotion.HoverWatch
+type Watch = { out: () -> (), busy: () -> boolean, offset: Vector2? }
+local watched: { [GuiObject]: Watch } = setmetatable({}, { __mode = "k" }) :: any
+local mousePoint: Vector2? = nil -- dernier point de la souris (InputChanged, repère d'InputObject.Position)
+
+local function inRect(object: GuiObject, point: Vector2, slack: number): boolean
+	local position, size = object.AbsolutePosition, object.AbsoluteSize
+	return point.X >= position.X - slack and point.X <= position.X + size.X + slack
+		and point.Y >= position.Y - slack and point.Y <= position.Y + size.Y + slack
+end
+
+local function learn(object: GuiObject, watch: Watch, point: Vector2)
+	local inset = insetOf()
+	for _, candidate in { vec(0, 0), inset, vec(-inset.X, -inset.Y) } do
+		if inRect(object, shifted(point, candidate), 0) then
+			watch.offset = candidate
+			return
+		end
+	end
+end
+
+local function unwatch(object: GuiObject)
+	watched[object] = nil
+end
+
+-- moved : la souris vient de bouger (sinon : contrôle de chaque image, écran fermé ou bouton déplacé sous elle).
+local function checkWatch(object: GuiObject, watch: Watch, moved: boolean)
+	if watched[object] ~= watch then
+		return
+	end
+	if not usable(object) then
+		watched[object] = nil
+		watch.out()
+		return
+	end
+	local point = mousePoint
+	if point == nil or watch.busy() then
+		return
+	end
+	local offset = watch.offset
+	if offset == nil then
+		if moved then
+			learn(object, watch, point) -- premier mouvement sur le bouton après MouseEnter
+		end
+		return
+	end
+	if not inRect(object, shifted(point, offset), HOVER.Slack) then
+		watched[object] = nil
+		watch.out()
+	end
+end
+
+local function checkAll(moved: boolean)
+	local list: { GuiObject } = {}
+	for object in watched do
+		table.insert(list, object)
+	end
+	for _, object in list do
+		local watch = watched[object]
+		if watch then
+			if not pcall(checkWatch, object, watch, moved) then
+				watched[object] = nil -- objet sans tailles absolues (faux Roblox d'un banc) : MouseLeave seul
+			end
+		end
+	end
+end
+
+local function onFocusLost()
+	local list: { Watch } = {}
+	for object, watch in watched do
+		table.insert(list, watch)
+		watched[object] = nil
+	end
+	for _, watch in list do
+		watch.out()
+	end
+end
+
+local function onInputChanged(input: InputObject)
+	local kind = input.UserInputType
+	if kind ~= MOVE and kind ~= TOUCH then
+		return
+	end
+	local point = pointOf(input)
+	if point == nil then
+		return
+	end
+	if kind == MOVE then
+		mousePoint = point
+	end
+	for button in held do
+		local state = buttons[button]
+		local hold = if state then state.hold else nil
+		if state and hold and ((kind == MOVE and hold.kind == MOUSE1) or (kind == TOUCH and hold.input == input)) then
+			hold.point = shifted(point, hold.offset)
+			-- Souris sortie de la zone appuyée en tenant le bouton : comme MouseLeave avant (il revient à 1).
+			if kind == MOVE and state.down and not inZone(hold, hold.point) then
+				local leave = state.onLeave
+				if leave then
+					leave()
+				end
+			end
+		end
+	end
+	if kind ~= MOVE then
+		return
+	end
+	for button in phantoms do
+		local state = buttons[button]
+		local hold = if state then state.phantom else nil
+		if state == nil or hold == nil then
+			phantoms[button] = nil
+		elseif not inZone(hold, shifted(point, hold.offset)) then
+			phantoms[button] = nil
+			state.phantom = nil
+			local leave = state.onLeave
+			if leave then
+				leave()
+			end
+		end
+	end
+	if HOVER.Enabled then
+		checkAll(true)
+	end
+end
+
+local function onInputEnded(input: InputObject)
+	local kind = input.UserInputType
+	if kind ~= MOUSE1 and kind ~= TOUCH then
+		return
+	end
+	for button in held do
+		local state = buttons[button]
+		local hold = if state then state.hold else nil
+		if state == nil or hold == nil then
+			held[button] = nil
+		elseif (kind == MOUSE1 and hold.kind == MOUSE1) or (kind == TOUCH and hold.input == input) then
+			held[button] = nil
+			settle(button, state, hold, input)
+		end
+	end
+end
+
+-- InputChanged et InputEnded de UserInputService, branchés une fois ; false sans eux (banc).
+local function wireInput(): boolean
+	if inputWired == nil then
+		inputWired = pcall(function()
+			local service = game:GetService("UserInputService") :: any
+			service.InputChanged:Connect(onInputChanged)
+			service.InputEnded:Connect(onInputEnded)
+		end)
+		if inputWired and HOVER.Enabled then
+			-- a290 (L-275) : chaque image (écran fermé, bouton caché ou déplacé sous la souris) et fenêtre sans focus.
+			pcall(function()
+				RunService.Heartbeat:Connect(function()
+					if next(watched) ~= nil then
+						checkAll(false)
+					end
+				end)
+			end)
+			pcall(function()
+				(game:GetService("UserInputService") :: any).WindowFocusReleased:Connect(onFocusLost)
+			end)
+		end
+	end
+	return inputWired == true
+end
+
+-- a290 (L-275) : suit le survol d'un bouton ou d'une carte jusqu'à sa fin (out) ; sans effet sans InputChanged (banc).
+local function watchHover(object: GuiObject, out: () -> (), busy: () -> boolean)
+	if not HOVER.Enabled or not wireInput() then
+		return
+	end
+	local watch: Watch = { out = out, busy = busy, offset = nil }
+	watched[object] = watch
+	local point = mousePoint
+	if point then
+		pcall(learn, object, watch, point)
+	end
+end
+
+local function inScroll(button: GuiButton): boolean
+	return ancestorOf(button, "ScrollingFrame") ~= nil
+end
+
+-- Suit les appuis du bouton (sans effet la deuxième fois, ni avec ClickZone.Enabled = false, ni sans InputChanged et InputEnded
+-- de UserInputService : faux Roblox des bancs ; l'Activated de Roblox reste alors seul).
+local function track(button: GuiButton, state: ButtonState)
+	if state.tracked or not ZONE.Enabled then
+		return
+	end
+	state.tracked = true
+	if not wireInput() then
+		return
+	end
+	local function onBegan(input: InputObject)
+		local kind = input.UserInputType
+		if kind ~= MOUSE1 and kind ~= TOUCH then
+			return
+		end
+		local point = pointOf(input)
+		if point == nil or not wireInput() then
+			return
+		end
+		-- Repère : le point de l'appui est sur le bouton ; décalage du haut de l'écran (GetGuiInset), ou aucun.
+		local inset = insetOf()
+		local offset = vec(0, 0)
+		for _, candidate in { vec(0, 0), inset, vec(-inset.X, -inset.Y) } do
+			if inButton(button, shifted(point, candidate)) then
+				offset = candidate
+				break
+			end
+		end
+		local position, size = button.AbsolutePosition, button.AbsoluteSize
+		local x, y, w, h = realRect(button, state)
+		local px, py = pivotOf(button)
+		local at = shifted(point, offset)
+		state.hold = {
+			kind = kind,
+			input = input,
+			offset = offset,
+			minX = math.min(position.X, x),
+			minY = math.min(position.Y, y),
+			maxX = math.max(position.X + size.X, x + w),
+			maxY = math.max(position.Y + size.Y, y + h),
+			point = at,
+			start = at,
+			pivotX = px,
+			pivotY = py,
+			scrolls = inScroll(button),
+			fired = false,
+			rescued = false,
+			rescuedAt = -math.huge,
+			left = false,
+		}
+		held[button] = true
+		state.phantom = nil
+		phantoms[button] = nil
+	end
+	pcall(function()
+		button.InputBegan:Connect(function(input: InputObject)
+			pcall(onBegan, input) -- bouton sans tailles absolues (faux Roblox d'un banc) : pas de suivi, pas d'erreur
+		end)
+	end)
+end
+
+-- Signal de clic du bouton, à brancher à la place de button.Activated (a290, L-270) : l'Activated de Roblox, plus
+-- le relâché dans le bord du bouton écrasé (zone appuyée, voir ClickZone), une seule fois par appui. Mêmes
+-- arguments qu'Activated (InputObject, nombre de clics). Connect et Once rendent une connexion (Disconnect,
+-- Connected). Toujours le même signal pour un bouton.
+function Motion.Activated(button: GuiButton): RBXScriptSignal
+	local state = buttonState(button)
+	local clicks = state.clicks
+	if clicks == nil then
+		local created = newClicks()
+		clicks = created
+		state.clicks = created
+		button.Activated:Connect(function(...: any)
+			local hold = state.hold
+			if hold then
+				if hold.rescued and os.clock() - hold.rescuedAt < ZONE.Guard then
+					return -- Roblox après le clic rattrapé : un seul clic par appui
+				end
+				hold.fired = true
+			end
+			fireClicks(created, ...)
+		end)
+		track(button, state)
+	end
+	return (clicks :: Clicks).signal :: any
+end
+
+-- Zone de clic de l'appui en cours du bouton (x, y, largeur, hauteur, repère d'AbsolutePosition), ou nil sans appui
+-- tenu : pour un test (banc, barre de commande en Studio).
+function Motion.GetClickZone(button: GuiButton): (number?, number?, number?, number?)
+	local state = buttons[button]
+	local hold = if state then state.hold else nil
+	if hold == nil or not held[button] then
+		return nil, nil, nil, nil
+	end
+	return hold.minX, hold.minY, hold.maxX - hold.minX, hold.maxY - hold.minY
+end
+
 -- Survol (Hover), appui (Press) et relâché (Release) d'un bouton ; calque Shade s'il existe ; son
 -- Hover.Sound au survol. Sans effet la deuxième fois.
 function Motion.Button(button: GuiButton)
@@ -1315,6 +1834,7 @@ function Motion.Button(button: GuiButton)
 		Motion.PlaySound(UiMotion.Hover.Sound)
 	end
 	local function hoverOut()
+		unwatch(button)
 		state.over = false
 		state.down = false
 		local info = hoverInfo()
@@ -1325,11 +1845,44 @@ function Motion.Button(button: GuiButton)
 	end
 	-- Vague 25 : survol seulement si le bouton est l'élément du dessus (voir onTop).
 	button.MouseEnter:Connect(function()
+		-- a290 (L-270) : la souris retrouve le bouton qui regrossit sous elle (appui gardé dans la zone, ou relâché
+		-- dans le bord) : il est déjà survolé, ni second survol ni second son.
+		if state.phantom ~= nil then
+			state.phantom = nil
+			phantoms[button] = nil
+			return
+		end
+		if state.down and state.over then
+			return
+		end
 		if onTop(button) then
 			hoverIn()
+			-- a290 (L-275) : fin du survol aussi sans MouseLeave (souris sortie du bouton, écran fermé, focus perdu).
+			watchHover(button, function()
+				state.phantom = nil
+				phantoms[button] = nil
+				hoverOut()
+			end, function(): boolean
+				return state.down or held[button] == true or state.phantom ~= nil
+			end)
 		end
 	end)
-	button.MouseLeave:Connect(hoverOut)
+	button.MouseLeave:Connect(function()
+		-- a290 (L-270) : en tenant le bouton, la souris sort du bouton écrasé sans sortir de la zone appuyée : il
+		-- reste écrasé (comme au centre) ; il revient à 1 quand elle sort de la zone (onLeave).
+		local hold = state.hold
+		if hold and held[button] then
+			hold.left = true
+		end
+		if state.down and hold and held[button] and inZone(hold, hold.point) then
+			return
+		end
+		state.phantom = nil
+		phantoms[button] = nil
+		hoverOut()
+	end)
+	state.onLeave = hoverOut
+	track(button, state)
 	button.MouseButton1Down:Connect(function()
 		state.down = true
 		if squashes(button) then
@@ -1339,7 +1892,7 @@ function Motion.Button(button: GuiButton)
 		end
 		shadeTo(state, UiMotion.Press.ShadeTransparency, PRESS_INFO)
 	end)
-	button.MouseButton1Up:Connect(function()
+	local function released()
 		if not state.down then
 			return
 		end
@@ -1350,7 +1903,10 @@ function Motion.Button(button: GuiButton)
 			scaleButton(button, state, if state.over then hoverTo() else 1, RELEASE_INFO)
 		end
 		shadeTo(state, if state.over then UiMotion.Hover.ShadeTransparency else state.shadeBase, RELEASE_INFO)
-	end)
+	end
+	button.MouseButton1Up:Connect(released)
+	-- a290 (L-270) : relâché de la souris dans le bord du bouton écrasé (pas de MouseButton1Up) : le même relâché.
+	state.onRelease = released
 	-- L-092 3g : sur un écran tactile, pas de MouseLeave ; à la fin du toucher (doigt levé, ou
 	-- glissé hors du bouton), le bouton revient à 1 et Shade à sa transparence d'origine.
 	local function touchEnded()
@@ -1614,6 +2170,7 @@ function Motion.HoverCard(card: GuiObject)
 		Motion.PlaySound(UiMotion.Hover.Sound)
 	end
 	local function cardOut()
+		unwatch(card)
 		local outline = card:FindFirstChild(spec.Outline)
 		if outline and outline:IsA("GuiObject") and state.outlineBase ~= nil then
 			outline.Visible = state.outlineBase :: boolean
@@ -1668,6 +2225,9 @@ function Motion.HoverCard(card: GuiObject)
 	card.MouseEnter:Connect(function()
 		if onTop(card) then
 			cardIn()
+			watchHover(card, cardOut, function(): boolean
+				return false
+			end) -- a290 (L-275)
 		end
 	end)
 	card.MouseLeave:Connect(cardOut)

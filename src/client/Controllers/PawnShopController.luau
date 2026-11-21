@@ -599,7 +599,7 @@ local function bind(gui: ScreenGui)
 		local choiceName: ChoiceName = name
 		local target = button :: GuiObject
 		if target:IsA("GuiButton") then
-			table.insert(current.connections, (target :: GuiButton).Activated:Connect(function()
+			table.insert(current.connections, Motion.Activated(target :: GuiButton):Connect(function()
 				choose(choiceName)
 			end))
 		end

@@ -305,12 +305,12 @@ local function buildRow(template: GuiObject, tool: ToolDef, connections: { RBXSc
 		equipText = (equip :: TextButton).Text
 	end
 	if buy then
-		table.insert(connections, buy.Activated:Connect(function()
+		table.insert(connections, Motion.Activated(buy):Connect(function()
 			onBuy(tool)
 		end))
 	end
 	if equip then
-		table.insert(connections, equip.Activated:Connect(function()
+		table.insert(connections, Motion.Activated(equip):Connect(function()
 			onEquip(tool)
 		end))
 	end
@@ -382,7 +382,7 @@ local function bind(gui: ScreenGui)
 	end
 	local closeButton = buttonIn(gui, "CloseButton")
 	if closeButton then
-		table.insert(connections, closeButton.Activated:Connect(close))
+		table.insert(connections, Motion.Activated(closeButton):Connect(close))
 	end
 	table.insert(connections, gui.AncestryChanged:Connect(function()
 		if not gui:IsDescendantOf(localPlayer) then

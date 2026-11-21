@@ -245,7 +245,7 @@ local function wireClick(inst: Instance)
 	end
 	clickWired[inst] = true
 	local button = inst :: GuiButton
-	button.Activated:Connect(function()
+	Motion.Activated(button):Connect(function()
 		-- Vague 59 (L-182) : un seul son par action, le clic se tait si l'action a déjà le sien (Motion.Click).
 		local click: ((GuiButton, () -> ()) -> ())? = (Motion :: any).Click
 		if click == nil then
@@ -563,7 +563,7 @@ local function bind(gui: ScreenGui)
 	local function onActivated(path: string, handler: () -> ())
 		local button = Find.path(gui, path)
 		if button and button:IsA("GuiButton") then
-			table.insert(connections, (button :: GuiButton).Activated:Connect(function()
+			table.insert(connections, Motion.Activated(button :: GuiButton):Connect(function()
 				handler()
 			end))
 		else
@@ -644,7 +644,7 @@ local function bindHud(gui: Instance)
 		if found:IsA("GuiButton") then
 			local button = found :: GuiButton
 			button.Visible = true
-			button.Activated:Connect(toggleScreen)
+			Motion.Activated(button):Connect(toggleScreen)
 			bound += 1
 		end
 	end
