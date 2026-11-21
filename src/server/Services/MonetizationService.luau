@@ -110,7 +110,8 @@
 -- workspace:SetAttribute("MonetizationTest", "<joueur> <Clé>") (barre de commande serveur ; joueur =
 -- nom ou UserId). Une clé de gamepass le donne pour la session, comme un achat ; une clé de produit
 -- (OpenNow1 à OpenNow4 pour un palier d'Ouvrir maintenant) passe par le même don qu'un reçu, avec un
--- faux PurchaseId « STUDIO-n ». Hors de Studio, l'attribut n'est pas écouté.
+-- faux PurchaseId « STUDIO-<GUID du Play>-n » (a297 : unique d'un Play à l'autre, le profil DEV garde ses
+-- Purchases). Hors de Studio, l'attribut n'est pas écouté.
 -- a285 (21/11) : Crate1, Crate3 et Crate10 pour un lot de la caisse exclusive, avec Features.RobuxCrate, même
 -- quand la boutique est coupée (seules ces clés sont alors acceptées).
 --
@@ -127,6 +128,8 @@
 -- (StatsService, clé CrateReveal) et protégé (attribut RevealProtected) jusqu'à son RevealDone, sa mort, son départ
 -- ou le plafond UnboxPlan.serverMaxSeconds, puis RevealEnded à tous. Hors zone safe (Crate.Reveal.SafeZoneOnly), ou
 -- pendant une autre cinématique : objets donnés sans ouverture.
+-- a297 (21/11) : avec une ouverture, les messages « you got … » partent à sa fin (avec RevealEnded, quelle qu'en soit la
+-- cause ; joueur parti : aucun), sans celui de l'objet montré ; sans ouverture, tous tout de suite. Le don ne bouge pas.
 
 local MarketplaceService = game:GetService("MarketplaceService")
 local Players = game:GetService("Players")
@@ -217,6 +220,9 @@ local states: { [Player]: State } = {}
 local passesById: { [number]: Pass } = {}
 local salesById: { [number]: Sale } = {}
 local testCount = 0
+-- a297 (21/11) : un GUID par Play pour le faux PurchaseId du crochet de test (« STUDIO-<GUID>-n ») : le profil DEV garde
+-- ses Purchases d'un Play à l'autre, un compteur seul retombait sur un ancien reçu (déjà donné, rien de plus).
+local testSession: string? = nil
 
 -- a285 (21/11) : la caisse exclusive, vendue comme un produit (un Id par lot, Monetization.Crate.Packs). En vente
 -- seulement si son don est codé (Crate.Ready) et Features.RobuxCrate. a294 : et Crate.Live (DEV : RobuxCrateDev).
@@ -573,7 +579,16 @@ end
 
 -- a294 (21/11, V0 de Cantin) : ouverture de la caisse (Crate.Reveal ; voir l'en-tête) ---------------------------
 
-type CrateReveal = { id: string, player: Player, ended: boolean, died: RBXScriptConnection? }
+-- a297 : pending = objets du lot sans l'objet montré, dont les messages partent à la fin de l'ouverture (avec RevealEnded) ;
+-- got = la liste du don (pour savoir, après une erreur, si l'ouverture a bien démarré).
+type CrateReveal = {
+	id: string,
+	player: Player,
+	ended: boolean,
+	died: RBXScriptConnection?,
+	pending: { string },
+	got: { string },
+}
 local crateReveals: { [string]: CrateReveal } = {} -- [RevealId]
 local crateRevealOf: { [Player]: CrateReveal } = {}
 local crateRevealCount = 0
@@ -622,6 +637,18 @@ local function setRevealHold(player: Player, on: boolean)
 	end
 end
 
+-- a297 : un message « you got … » par objet de `ids`, seulement si le joueur est encore là.
+local function notifyCrateItems(player: Player, ids: { string })
+	if player.Parent ~= Players then
+		return
+	end
+	for _, id in ids do
+		local def = Items.ById[id]
+		local rarity = if def then Rarities.ById[def.Rarity] else nil
+		notify(player, string.format(MESSAGES.CrateItem, if rarity then rarity.DisplayNameUpper else "?", if def then def.DisplayName else id))
+	end
+end
+
 local function finishCrateReveal(reveal: CrateReveal, why: string)
 	if reveal.ended then
 		return
@@ -637,7 +664,11 @@ local function finishCrateReveal(reveal: CrateReveal, why: string)
 	end
 	setRevealHold(reveal.player, false)
 	fireRevealRemote("RevealEnded", reveal.id)
-	log(`{reveal.player.Name} : ouverture {reveal.id} de la caisse finie ({why})`)
+	-- a297 : les messages des objets non montrés, au même moment (joueur parti : aucun, voir notifyCrateItems).
+	local pending = reveal.pending
+	reveal.pending = {}
+	notifyCrateItems(reveal.player, pending)
+	log(`{reveal.player.Name} : ouverture {reveal.id} de la caisse finie ({why}), {#pending} message(s)`)
 end
 
 -- L'objet joué d'un lot : le plus rare (le premier à rareté égale) ; et sa case (index dans Crate.Items).
@@ -729,7 +760,20 @@ local function startCrateReveal(player: Player, got: { string }): string?
 	local weight = if weightModule then weightModule.Effective(nil, nil) else 10
 	local scale = if weightModule then weightModule.ScaleFor(weight) else 1
 	crateRevealCount += 1
-	local reveal: CrateReveal = { id = `Crate{crateRevealCount}`, player = player, ended = false, died = nil }
+	-- a297 : l'objet montré n'a pas de message (une seule occurrence retirée : un doublon du lot garde le sien).
+	local pending = table.clone(got)
+	local shownAt = table.find(pending, itemId)
+	if shownAt then
+		table.remove(pending, shownAt)
+	end
+	local reveal: CrateReveal = {
+		id = `Crate{crateRevealCount}`,
+		player = player,
+		ended = false,
+		died = nil,
+		pending = pending,
+		got = got,
+	}
 	crateReveals[reveal.id] = reveal
 	crateRevealOf[player] = reveal
 	setRevealHold(player, true)
@@ -792,16 +836,18 @@ local function grantCrate(player: Player, data: Data, pack: CratePack): string
 		table.insert(got, id)
 	end
 	refreshInventory(player)
-	for _, id in got do
-		local def = Items.ById[id]
-		local rarity = if def then Rarities.ById[def.Rarity] else nil
-		notify(player, string.format(MESSAGES.CrateItem, if rarity then rarity.DisplayNameUpper else "?", if def then def.DisplayName else id))
-	end
 	-- a294 : l'ouverture, après le don (hors de son exécution sans yield ; une erreur n'enlève rien au don).
+	-- a297 : avec une ouverture, les messages attendent sa fin (finishCrateReveal), sans celui de l'objet montré ; sans
+	-- ouverture (hors zone safe, coupée, erreur), tous les messages tout de suite.
 	task.defer(function()
-		local ok, err = pcall(startCrateReveal, player, got)
+		local ok, result = pcall(startCrateReveal, player, got)
 		if not ok then
-			warn(`[MonetizationService] {player.Name} : ouverture de la caisse impossible ({err}), objets donnés quand même`)
+			warn(`[MonetizationService] {player.Name} : ouverture de la caisse impossible ({result}), objets donnés quand même`)
+		end
+		local current = crateRevealOf[player]
+		local started = current ~= nil and current.got == got
+		if not started then
+			notifyCrateItems(player, got)
 		end
 	end)
 	return `caisse ×{pack.Count} : {table.concat(got, ", ")}`
@@ -1311,7 +1357,10 @@ local function onTestAttribute()
 		return
 	end
 	testCount += 1
-	local purchaseId = `STUDIO-{testCount}`
+	if testSession == nil then
+		testSession = HttpService:GenerateGUID(false) -- a297 : tiré au premier essai de ce Play
+	end
+	local purchaseId = `STUDIO-{testSession}-{testCount}`
 	local testSale = sale :: Sale
 	task.spawn(function()
 		local decision = processSale(player, data, testSale, purchaseId)
@@ -1446,6 +1495,7 @@ function MonetizationService.Init()
 		end)
 		local reveal = crateRevealOf[player] -- a294 : son ouverture de caisse en cours, finie (RevealEnded pour les autres)
 		if reveal then
+			reveal.pending = {} -- a297 : joueur parti, aucun message (Parent vaut encore Players pendant PlayerRemoving)
 			finishCrateReveal(reveal, "joueur parti")
 		end
 	end)
