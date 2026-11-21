@@ -89,7 +89,8 @@
 --      (MoveTo s'arrête vers 0,9 stud avant son but) : il passe dessus et enchaîne sans arrêt ; jamais plus de
 --      (segment / WalkSpeed + Avoid.LaneGoalSlack) s sur un même point visé : il passe au suivant ; un témoin garde un
 --      passage étroit au plus (longueur / WalkSpeed + Avoid.NarrowHold) s ; celui qui a attendu NarrowWait s passe sans
---      attendre de nouveau.
+--      attendre de nouveau. a269f (Play f81e) : un segment de voie encore bouché est contourné (WitnessLanes, jusqu'à
+--      Avoid.LaneDetourMax studs) ; un passage occupé vu en arrivant : il attend Avoid.NarrowStandOff studs avant l'entrée.
 --   La vitre se répare comme avant (chrono de police de WindowService, Balance.Window.BreakTimer, inchangé).
 --
 -- Un témoin sans WatchedStore, ou dont le magasin est introuvable parmi les modèles taggés NPCStore de la
@@ -535,51 +536,10 @@ end
 -- L'autre attend à l'entrée, arrêté (Idle), au plus Avoid.NarrowWait s, puis passe. a269e (Play f81d) : un témoin
 -- garde le passage au plus (sa longueur / WalkSpeed + Avoid.NarrowHold) s, puis le libère (bloqué dedans) ; celui
 -- qui a attendu assez, ou dont l'occupation a expiré, le traverse sans plus attendre ni le prendre (narrowPass).
+-- a269f (Play f81e, zone 1 : l'attente à l'entrée à 2,07 de celui qui sortait) : s'il voit le passage occupé en
+-- arrivant, il attend Avoid.NarrowStandOff studs avant l'entrée, sur sa voie encore large.
 -- true : il attend.
-local function narrowWait(w: WitnessNpc, now: number, entrance: Vector3, reach: number): boolean
-	local folder = w.pathsFolder
-	local lanes = if folder then laneCache[folder] else nil
-	if lanes == nil or next(lanes.narrow) == nil then
-		return false
-	end
-	local id = lanes.narrow[segmentOf(w)]
-	local claims = lanes.claims
-	for passage, claim in claims do
-		if claim.owner == w and passage ~= id then
-			claims[passage] = nil -- sorti du passage
-		end
-	end
-	if id == nil then
-		w.narrowWaitUntil = 0
-		w.narrowPass = 0
-		return false
-	end
-	if w.narrowPass == id then
-		return false
-	end
-	local hold = (lanes.lengths[id] or 0) / math.max(Witness.WalkSpeed, 1) + avoidNumber("NarrowHold", 6)
-	local claim = claims[id]
-	if claim and claim.owner == w then
-		if now - claim.since > hold then
-			claims[id] = nil -- a269e : bloqué dedans trop longtemps : il le libère
-			w.narrowPass = id
-		end
-		return false
-	end
-	local owner = if claim then claim.owner else nil
-	if owner == nil or owner.state ~= "Stroll" or owner.hiddenParent ~= nil or owner.model.Parent == nil
-		or lanes.narrow[segmentOf(owner)] ~= id or (claim ~= nil and now - claim.since > hold)
-	then
-		if owner and owner ~= w then
-			owner.narrowPass = id -- son occupation est finie : il sort sans le reprendre
-		end
-		claims[id] = { owner = w, since = now }
-		w.narrowWaitUntil = 0
-		return false
-	end
-	if flat(entrance - w.root.Position).Magnitude > reach + 1.5 then
-		return false -- déjà dedans (reprise de balade) : il continue
-	end
+local function waitAtPassage(w: WitnessNpc, now: number, id: number): boolean
 	if w.narrowWaitUntil == 0 then
 		w.narrowWaitUntil = now + avoidNumber("NarrowWait", 8)
 	end
@@ -596,6 +556,73 @@ local function narrowWait(w: WitnessNpc, now: number, entrance: Vector3, reach: 
 	w.goalSince = now -- l'attente ne compte pas dans le plafond du point visé
 	w.nextMoveAt = now
 	return true
+end
+local function narrowWait(w: WitnessNpc, now: number, entrance: Vector3, goal: Vector3, reach: number): boolean
+	local folder = w.pathsFolder
+	local lanes = if folder then laneCache[folder] else nil
+	if lanes == nil or next(lanes.narrow) == nil then
+		return false
+	end
+	local id = lanes.narrow[segmentOf(w)]
+	local claims = lanes.claims
+	for passage, claim in claims do
+		if claim.owner == w and passage ~= id then
+			claims[passage] = nil -- sorti du passage
+		end
+	end
+	local function holdOf(passage: number): number
+		return (lanes.lengths[passage] or 0) / math.max(Witness.WalkSpeed, 1) + avoidNumber("NarrowHold", 6)
+	end
+	local function heldBy(passage: number): WitnessNpc?
+		local claim = claims[passage]
+		local owner = if claim then claim.owner else nil
+		if owner == nil or claim == nil or owner.state ~= "Stroll" or owner.hiddenParent ~= nil or owner.model.Parent == nil
+			or lanes.narrow[segmentOf(owner)] ~= passage or now - claim.since > holdOf(passage)
+		then
+			return nil
+		end
+		return owner
+	end
+	if id == nil then
+		-- a269f : le passage où il entre au point visé, occupé par l'autre : il attend NarrowStandOff studs avant.
+		local ahead = lanes.narrow[if w.pathStep > 0 then w.pathIndex else nextIndex(w)]
+		if ahead ~= nil and w.narrowPass ~= ahead then
+			local owner = heldBy(ahead)
+			if owner ~= nil and owner ~= w and flat(goal - w.root.Position).Magnitude <= avoidNumber("NarrowStandOff", 2) then
+				return waitAtPassage(w, now, ahead)
+			end
+		end
+		if ahead == nil or w.narrowPass ~= ahead then
+			w.narrowPass = 0
+		end
+		w.narrowWaitUntil = 0
+		return false
+	end
+	if w.narrowPass == id then
+		return false
+	end
+	local claim = claims[id]
+	if claim and claim.owner == w then
+		if now - claim.since > holdOf(id) then
+			claims[id] = nil -- a269e : bloqué dedans trop longtemps : il le libère
+			w.narrowPass = id
+		end
+		return false
+	end
+	local owner = heldBy(id)
+	if owner == nil then
+		local previous = if claim then claim.owner else nil
+		if previous and previous ~= w then
+			previous.narrowPass = id -- son occupation est finie : il sort sans le reprendre
+		end
+		claims[id] = { owner = w, since = now }
+		w.narrowWaitUntil = 0
+		return false
+	end
+	if flat(entrance - w.root.Position).Magnitude > reach + 1.5 then
+		return false -- déjà dedans (reprise de balade) : il continue
+	end
+	return waitAtPassage(w, now, id)
 end
 
 local function strollStep(w: WitnessNpc, now: number)
@@ -684,7 +711,7 @@ local function strollStep(w: WitnessNpc, now: number)
 		goal = points[w.pathIndex]
 	end
 	-- a269d : passage étroit occupé par l'autre témoin : il attend à l'entrée.
-	if lane and count > 1 and narrowWait(w, now, points[previousIndex(w)], reach) then
+	if lane and count > 1 and narrowWait(w, now, points[previousIndex(w)], points[w.pathIndex], reach) then
 		return
 	end
 	-- Bloqué (un joueur devant lui, un obstacle) : il vise le point suivant (a269c, sur sa voie : il se dégage d'abord à

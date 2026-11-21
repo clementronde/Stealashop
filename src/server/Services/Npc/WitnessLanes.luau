@@ -1,5 +1,5 @@
 --!strict
--- Npc/WitnessLanes (serveur, a269c, refait a269d ; Plays f81b et f81c, 22/11) : module d'aide de WitnessService
+-- Npc/WitnessLanes (serveur, a269c, refait a269d, a269f ; Plays f81b à f81e, 22/11) : module d'aide de WitnessService
 -- (sous-dossier : le Loader ne le démarre pas). Valeurs : Config/Witness.Avoid (Enabled, Lanes et suivants). Absent ou
 -- coupé : la balade d'avant a269, sur le circuit même.
 --
@@ -19,7 +19,9 @@
 --    Avoid.LaneStep, au plus Avoid.LaneMax studs), puis ceux qui les rapprochent (le plus large d'abord : une seule
 --    ligne libre pour les deux). Un point de voie doit aussi se voir depuis son point du circuit : un point collé à
 --    un mur passe devant le mur, jamais derrière ni dans un renfoncement. a269e (Play f81d) : un point de voie
---    resté dans une pièce (aucun couple libre) est déplacé au point libre le plus proche, sinon retiré.
+--    resté dans une pièce (aucun couple libre) est déplacé au point libre le plus proche, sinon retiré. a269f (Play
+--    f81e) : un segment encore bouché est contourné : un de ses points, ou les deux, déplacés jusqu'à
+--    Avoid.LaneDetourMax studs, ou un point retiré ; la sortie dit de combien.
 -- 3. Lissage (a269d) : un segment de voie qui revient en arrière (bosse serrée du circuit, voie intérieure) : son
 --    point est remplacé par le milieu de ses deux voisins, si c'est libre.
 -- 4. Passages étroits (a269d) : un segment où les deux voies sont à moins de 2 × Lane − LaneStep studs l'une de
@@ -515,6 +517,103 @@ function WitnessLanes.Build(
 			break
 		end
 	end
+	-- a269f (Play f81e : 13→14 de la zone 6 contre Column_4_Shaft, 32→33 sur Bollard_4) : un segment de voie encore
+	-- bouché est contourné. On déplace l'un de ses deux points, ou les deux du même vecteur, jusqu'à Avoid.LaneDetourMax
+	-- studs dans 16 directions (au-delà de LaneMax, des deux côtés, pas de 2 × LaneStep), ou on retire l'un des deux
+	-- (remplacé par le milieu de ses voisins). Un point déplacé doit être libre, et chaque segment qui le touche aussi.
+	-- On garde d'abord un détour qui ne revient pas en arrière, puis un qui reste à 2 × Lane − LaneStep studs de
+	-- l'autre voie, puis le plus court ; s'il n'y en a qu'un pour les deux voies, elles le partagent (passage étroit).
+	local detoured: { string } = {}
+	local detourMax = math.max(number(cfg.LaneDetourMax, 8), max)
+	local detourStep = 2 * step
+	local offsets: { Vector3 } = {}
+	for i = 1, math.max(math.floor(detourMax / detourStep + 1e-6), 1) do
+		local d = i * detourStep
+		for j = 0, 15 do
+			local angle = j * math.pi / 8
+			table.insert(offsets, Vector3.new(math.cos(angle) * d, 0, math.sin(angle) * d))
+		end
+	end
+	local function flatLength(a: Vector3, b: Vector3): number
+		local dx, dz = b.X - a.X, b.Z - a.Z
+		return math.sqrt(dx * dx + dz * dz)
+	end
+	local function goesBack(a: Vector3, b: Vector3, k: number): boolean
+		local pa, pb = path[k], path[nextOf(k)]
+		return (b.X - a.X) * (pb.X - pa.X) + (b.Z - a.Z) * (pb.Z - pa.Z) <= 0
+	end
+	for side, points in { forward, backward } do
+		local other = if side == 1 then backward else forward
+		local label = if side == 1 then "aller" else "retour"
+		local shifted: { [number]: boolean } = {} -- points déplacés par un détour
+		local stuck: { [number]: boolean } = {} -- « aucun détour » déjà écrit
+		for _ = 1, 2 do
+			for k = 1, if count >= 3 then count else 0 do
+				local k2 = nextOf(k)
+				local free, hit = clearLine(points[k], points[k2])
+				-- un segment qui revient en arrière à cause d'un détour est repris aussi (jamais celui d'avant a269f)
+				local reversed = free and (shifted[k] or shifted[k2]) and goesBack(points[k], points[k2], k)
+				if not free or reversed then
+					local k0, k3 = prevOf(k), nextOf(k2)
+					local before, p1, p2, after = points[k0], points[k], points[k2], points[k3]
+					local length0 = flatLength(before, p1) + flatLength(p1, p2) + flatLength(p2, after)
+					local best: { c1: Vector3, c2: Vector3, tier: number, added: number, removed: number }? = nil
+					local function try(c1: Vector3, c2: Vector3, removed: number)
+						local added = flatLength(before, c1) + flatLength(c1, c2) + flatLength(c2, after) - length0
+						local moved1, moved2 = c1 ~= p1, c2 ~= p2
+						local back = goesBack(c1, c2, k) or (moved1 and goesBack(before, c1, k0)) or (moved2 and goesBack(c2, after, k2))
+						if reversed and back then
+							return
+						end
+						local apart = gap(before, c1, other[k0], other[k]) >= 2 * lane - step - 1e-6
+							and gap(c1, c2, other[k], other[k2]) >= 2 * lane - step - 1e-6
+							and gap(c2, after, other[k2], other[k3]) >= 2 * lane - step - 1e-6
+						local tier = (if back then 2 else 0) + (if apart then 0 else 1)
+						if best and (tier > best.tier or (tier == best.tier and added >= best.added - 1e-6)) then
+							return
+						end
+						if (moved1 and not (clearPoint(c1))) or (moved2 and not (clearPoint(c2))) or not (clearLine(c1, c2))
+							or (moved1 and not (clearLine(before, c1))) or (moved2 and not (clearLine(c2, after)))
+						then
+							return
+						end
+						best = { c1 = c1, c2 = c2, tier = tier, added = added, removed = removed }
+					end
+					try(lerp(before, p2, 0.5), p2, k) -- un point retiré
+					try(p1, lerp(p1, after, 0.5), k2)
+					for _, offset in offsets do
+						try(p1 + offset, p2, 0)
+						try(p1, p2 + offset, 0)
+						try(p1 + offset, p2 + offset, 0)
+					end
+					local found = best
+					local why = if reversed then "revenait en arrière" else nameOf(hit)
+					if found then
+						points[k], points[k2] = found.c1, found.c2
+						local what: { string } = {}
+						if found.removed ~= 0 then
+							table.insert(what, `P{found.removed} retiré`)
+							shifted[found.removed] = true
+						else
+							local d1, d2 = flatLength(p1, found.c1), flatLength(p2, found.c2)
+							if d1 > 1e-6 then
+								table.insert(what, `P{k} déplacé de {round(d1)}`)
+								shifted[k] = true
+							end
+							if d2 > 1e-6 then
+								table.insert(what, `P{k2} déplacé de {round(d2)}`)
+								shifted[k2] = true
+							end
+						end
+						table.insert(detoured, `{k}→{k2} {label} {why} : détour de {round(found.added)} ({table.concat(what, ", ")})`)
+					elseif not reversed and not stuck[k] then
+						stuck[k] = true
+						table.insert(detoured, `{k}→{k2} {label} {why} : aucun détour libre à {round(detourMax)} studs`)
+					end
+				end
+			end
+		end
+	end
 	-- Segments encore bouchés (sur les points finaux : déplacés et lissés compris).
 	local blocked: { [number]: boolean } = {}
 	local blockedBy: { [number]: Instance? } = {}
@@ -570,6 +669,9 @@ function WitnessLanes.Build(
 		end
 	end
 	for _, line in moved do
+		table.insert(fixes, line)
+	end
+	for _, line in detoured do
 		table.insert(fixes, line)
 	end
 	for k = 1, count do
