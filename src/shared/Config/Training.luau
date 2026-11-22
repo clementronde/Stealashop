@@ -19,6 +19,12 @@ local Training = {
 		-- devant ou derrière ne déclenche rien ; Shared/TrainingZone.track). Interrupteur : false = règle
 		-- d'avant (on monte dès l'entrée dans la zone), gardée pour les bancs qui la vérifient.
 		SideEntryOnly = true,
+		-- a310 : V0, demande de Cantin, 22/11 (« il suffit d'arriver contre un grand côté ») : marge (studs) dont
+		-- l'emprise d'entrée déborde de la bande, en travers seulement (les deux grands côtés ; les bouts avant
+		-- et arrière restent stricts). Un perso R15 collé au côté a le centre de son HumanoidRootPart à environ
+		-- 1 stud du bord de la bande : 1,5 le couvre, avec une demi-stud pour le rebord du châssis et une
+		-- arrivée un peu en biais. 0 = règle d'a180 (au-dessus de la bande elle-même).
+		SideEntryMargin = 1.5,
 		-- a200 (Cantin, 2026-11-15 : « quand on l'améliore, parfois ça nous arrête […] il faudrait que ça
 		-- continue ») : quand MachineVariantService remplace le tapis (nouveau palier), la séance passe sur le
 		-- nouveau tapis de la même parcelle sans s'arrêter. V0 proposé, absent du doc : délai (s) pendant
