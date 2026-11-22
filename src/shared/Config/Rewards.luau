@@ -59,7 +59,8 @@ local Rewards = {
 		{ Kind = "Box", Tier = "Luxe", MinRarity = "Epic", MinZone = 2 },
 	} :: { Reward },
 
-	-- Paliers de temps de jeu dans la journée UTC (V0 3.3), du plus court au plus long.
+	-- Paliers de temps de jeu dans la journée UTC (V0 3.3), du plus court au plus long. Les objets offerts (Box) sont
+	-- tirés dans Rarities.BoxOdds, plus généreux que les rayons en zones 2 et 3 : voulu (Cantin, 22/11).
 	Playtime = {
 		{ Minutes = 5, Reward = { Kind = "Cash", Minutes = 2 } }, -- V0 3.3 : 2 min de revenus (100 $ au moins)
 		{ Minutes = 15, Reward = { Kind = "Box", Tier = "Standard" } }, -- V0 3.3 : colis Standard
@@ -157,8 +158,8 @@ local Rewards = {
 		-- la meilleure zone du joueur ; « up to » = la plus haute rareté de la table (améliorations comprises : jamais
 		-- au-dessus d'une rareté à 0 dans la table). Un type absent : BoxDefault.
 		Box = {
-			Standard = "Item up to Epic", -- Rarities.BoxOdds.Standard : Épique 1 %, Légendaire 0
-			Premium = "Item up to Mythic", -- Rarities.BoxOdds.Premium : Mythique 0,2 %, Secret 0
+			Standard = "Item up to Epic", -- Rarities.BoxOdds.Standard : Épique 1 %, Légendaire 0 ; validé par Cantin, 22/11
+			Premium = "Item up to Mythic", -- Rarities.BoxOdds.Premium : Mythique 0,2 %, Secret 0 ; validé par Cantin, 22/11
 		} :: { [string]: string },
 		BoxFloor = "%s+ item", -- BoxRarity ou MinRarity : %s = la rareté plancher (Rarities DisplayName), « Epic+ item »
 		BoxDefault = "Random item",
