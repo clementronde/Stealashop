@@ -1481,7 +1481,20 @@ end
 
 -- Vérification complète ----------------------------------------------------------
 
+-- a306 (L-284, « Script timeout ») : plus de 2 s d'un trait en Play (Workspace de 90 000 instances) ; entre deux
+-- étapes, la vérification rend la main dès qu'elle a calculé SLICE_SECONDS sans yield, pour ne jamais approcher
+-- ScriptTimeoutLength (10 s en Studio). Une vérification rapide (bancs) ne cède pas.
+local SLICE_SECONDS = 1
+local sliceStartedAt = 0
+local function breathe()
+	if os.clock() - sliceStartedAt >= SLICE_SECONDS then
+		task.wait()
+		sliceStartedAt = os.clock()
+	end
+end
+
 local function run()
+	sliceStartedAt = os.clock()
 	lines = {}
 	counts = { problem = 0, warning = 0, pending = 0, note = 0 }
 	indexCache = {}
@@ -1508,12 +1521,16 @@ local function run()
 		end
 	end
 
+	breathe()
 	checkAttributes(scanned)
 	checkTags()
 	checkPlotIndex()
+	breathe()
 	checkModels(scanned)
+	breathe()
 	checkItems(scanned)
 	checkIcons(scanned)
+	breathe()
 	checkGuiSet("UI", UI.Screens, StarterGui, "StarterGui", "écran", false)
 	local billboardPath = `ReplicatedStorage.{table.concat(UI.BillboardFolder, ".")}`
 	checkGuiSet("Billboards", UI.Billboards, walk(ReplicatedStorage, UI.BillboardFolder), billboardPath, "billboard", true)
@@ -1523,8 +1540,10 @@ local function run()
 		checkRetiredUi("Billboards", retired.Billboards, walk(ReplicatedStorage, UI.BillboardFolder), billboardPath)
 	end
 	local jobs: { Job } = {}
+	breathe()
 	checkPlayerAnimations(jobs)
 	checkAnimatedModels(scanned, jobs)
+	breathe()
 	checkScripts(scanned)
 	checkClips(jobs) -- seule étape qui attend
 	printReport()
