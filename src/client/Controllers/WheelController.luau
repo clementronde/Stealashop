@@ -244,15 +244,20 @@ end
 -- Tour
 ------------------------------------------------------------------------------
 
--- Angle (degrés, 0 = droite, sens des aiguilles d'une montre) de chaque segment dans la mise en page de Clément.
+-- Angle (degrés, 0 = droite, sens des aiguilles d'une montre) de chaque segment dans la mise en page de Clément,
+-- roue à Rotation 0. a312 (Play f92) : l'AbsolutePosition d'un segment suit la rotation de la roue (à partir du 2e
+-- tour d'une session, l'arrêt était faux de la rotation de départ) ; on la retire, pour que les trois sources
+-- d'angle (position, Rotation d'un cadre plein, repli) parlent de la même roue non tournée.
 local function segmentAngles(current: Screen): { number }
 	local count = #Wheel.Sectors
 	local angles: { number } = {}
 	local wheel = current.wheel
 	local cx, cy
+	local wheelRotation = 0
 	if wheel then
 		local x, y = centerOf(wheel)
 		cx, cy = x, y
+		wheelRotation = number(wheel.Rotation)
 	end
 	local distinct: { [number]: boolean } = {}
 	local distinctCount = 0
@@ -265,7 +270,7 @@ local function segmentAngles(current: Screen): { number }
 				local dx, dy = sx - cx, sy - cy
 				local radius = if wheel then number(wheel.AbsoluteSize.X) * 0.05 else 0
 				if math.sqrt(dx * dx + dy * dy) > math.max(4, radius) then
-					angle = math.deg(math.atan2(dy, dx))
+					angle = math.deg(math.atan2(dy, dx)) - wheelRotation
 				else
 					angle = -90 + number(segment.Rotation) -- cadre plein tourné par Clément
 				end

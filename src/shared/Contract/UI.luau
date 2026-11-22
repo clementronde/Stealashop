@@ -199,7 +199,15 @@ UI.Billboards = {
 	{
 		Name = "BB_Item",
 		Class = "BillboardGui",
-		Elements = { { Path = "ItemName" }, { Path = "Rarity" }, { Path = "Income" } },
+		Elements = {
+			{ Path = "ItemName" },
+			{ Path = "Rarity" },
+			{ Path = "Income" },
+			-- Ligne Mutation (vague 34, L-127 point 5, a119) : « BIG GOLD », cachée sans mutation ; texte blanc sous le
+			-- dégradé TextGradient du style (Assets/UI/MutationStyles/<Id>, contrat 10.4 : Contract/Models.MutationStyles),
+			-- posé par MutationFxController. a312 : venue de la 2e entrée BB_Item (fusionnée ici, rien de plus ni moins strict).
+			{ Path = "Mutation", Class = "TextLabel" },
+		},
 	},
 	{
 		Name = "BB_Carry",
@@ -733,17 +741,9 @@ table.insert(UI.Billboards, {
 		{ Path = "Row.LuckIcon" },
 	} :: { Element },
 })
--- Ligne Mutation de BB_Item (vague 34, L-127 point 5, a119) : « BIG GOLD », cachée sans mutation ; texte blanc sous
--- le dégradé TextGradient du style (Assets/UI/MutationStyles/<Id>, contrat 10.4 : Contract/Models.MutationStyles),
--- posé par MutationFxController. Entrée à part, facultative, pour ne pas changer la liste de BB_Item.
-table.insert(UI.Billboards, {
-	Name = "BB_Item",
-	Class = "BillboardGui",
-	Optional = true,
-	Elements = {
-		{ Path = "Mutation", Class = "TextLabel" },
-	} :: { Element },
-})
+-- Ligne Mutation de BB_Item (vague 34, a119) : a312, dans la liste de BB_Item en tête de fichier (avant : une 2e entrée
+-- BB_Item, où les boucles du poids mettaient Weight une 2e fois, d'où des avertissements comptés deux fois).
+
 -- Claim All et pastilles « ! » (vague 34, L-127 points 2 et 3 ; script de Clément tools/clement/alerts_claimall_build.luau).
 -- Pastilles cachées par Clément, montrées par le code quand le joueur a quelque chose à faire (UI/AlertBadge) ; leur
 -- UIScale Pulse bat tant qu'elles sont visibles. Entrées à part, à la fin, pour ne pas changer les listes existantes.
@@ -751,7 +751,10 @@ table.insert(UI.Billboards, {
 local hudAlerts = {} :: { Element }
 -- Vague 59 : InventoryButton.InventoryAlert sorti avec l'inventaire (UI.Retired).
 for _, pair in { { "IndexButton", "IndexAlert" }, { "RebirthButton", "RebirthAlert" }, { "SkillTreeButton", "SkillTreeAlert" }, { "RewardsButton", "RewardsAlert" } } do
-	table.insert(hudAlerts, { Path = `{pair[1]}.{pair[2]}` })
+	-- a312 : RewardsButton.RewardsAlert est déjà dans la liste principale d'UI_HUD (exigée pareil) : pas une 2e fois.
+	if pair[1] ~= "RewardsButton" then
+		table.insert(hudAlerts, { Path = `{pair[1]}.{pair[2]}` })
+	end
 	table.insert(hudAlerts, { Path = `{pair[1]}.{pair[2]}.Pulse`, Class = "UIScale" })
 end
 table.insert(UI.Screens, {
@@ -773,24 +776,22 @@ for _, section in { "Zone1Section", "Zone2Section", "Zone3Section", "Zone4Sectio
 	table.insert(indexAlerts, { Path = `{section}.ZoneArt.ZoneAlert` })
 	table.insert(indexAlerts, { Path = `{section}.ZoneArt.ZoneAlert.Pulse`, Class = "UIScale" })
 end
-table.insert(UI.Screens, {
-	Name = "UI_Index_v3",
-	Class = "ScreenGui",
-	Optional = true,
-	Elements = indexAlerts,
-})
+-- a312 : ajoutées à la seule définition d'UI_Index_v3 (indexV3Elements, plus haut) ; avant, une 2e entrée UI_Index_v3
+-- (écran facultatif) où la boucle des nouveautés a207 remettait ses 16 éléments, comptés deux fois par le ContractChecker.
+for _, element in indexAlerts do
+	table.insert(indexV3Elements, element)
+end
 -- UI_Rewards (RewardsController) : TabAlert de chaque onglet (le jour à réclamer ; un palier atteint à réclamer).
-table.insert(UI.Screens, {
-	Name = "UI_Rewards",
-	Class = "ScreenGui",
-	Optional = true,
-	Elements = {
-		{ Path = "Tabs.DailyTab.TabAlert" },
-		{ Path = "Tabs.DailyTab.TabAlert.Pulse", Class = "UIScale" },
-		{ Path = "Tabs.PlaytimeTab.TabAlert" },
-		{ Path = "Tabs.PlaytimeTab.TabAlert.Pulse", Class = "UIScale" },
-	} :: { Element },
-})
+-- a312 : dans la seule définition d'UI_Rewards (rewardsElements, plus haut) ; avant, une 2e entrée où la boucle du
+-- coffre hebdomadaire remettait WeeklyChest et ses 8 éléments.
+for _, element in {
+	{ Path = "Tabs.DailyTab.TabAlert" },
+	{ Path = "Tabs.DailyTab.TabAlert.Pulse", Class = "UIScale" },
+	{ Path = "Tabs.PlaytimeTab.TabAlert" },
+	{ Path = "Tabs.PlaytimeTab.TabAlert.Pulse", Class = "UIScale" },
+} :: { Element } do
+	table.insert(rewardsElements, element)
+end
 -- Barre de PV de la vitrine de la Fortune Tower (L-108 point 8, vague 37, a123 ; nom proposé à Clément) :
 -- mêmes éléments que BB_TruckHP. Facultative : sans elle, FortuneTowerController prend BB_TruckHP telle quelle.
 table.insert(UI.Billboards, {
@@ -859,18 +860,16 @@ table.insert(UI.Billboards, {
 })
 
 -- Code cadeau et compte à rebours de MAJ (MAJ 0, a162 ; noms proposés à Clément) : CodeController. Tous
--- facultatifs ; le code les cherche aussi dans UI_Rewards.
-table.insert(UI.Screens, {
-	Name = "UI_Settings",
-	Class = "ScreenGui",
-	Optional = true,
-	Elements = {
-		{ Path = "CodeBox", Class = "TextBox", Optional = true, Note = "pas de champ de code cadeau" },
-		{ Path = "RedeemButton", Class = BUTTON, Optional = true, Note = "le code s'envoie avec Entrée seulement" },
-		{ Path = "CodeStatus", Class = "TextLabel", Optional = true, Note = "la réponse arrive en Notify seulement" },
-		{ Path = "UpdateCountdown", Class = "TextLabel", Optional = true, Note = "pas de compte à rebours de MAJ" },
-	} :: { Element },
-})
+-- facultatifs ; le code les cherche aussi dans UI_Rewards. a312 : dans la seule définition d'UI_Settings
+-- (settingsElements, plus haut), au lieu d'une 2e entrée UI_Settings.
+for _, element in {
+	{ Path = "CodeBox", Class = "TextBox", Optional = true, Note = "pas de champ de code cadeau" },
+	{ Path = "RedeemButton", Class = BUTTON, Optional = true, Note = "le code s'envoie avec Entrée seulement" },
+	{ Path = "CodeStatus", Class = "TextLabel", Optional = true, Note = "la réponse arrive en Notify seulement" },
+	{ Path = "UpdateCountdown", Class = "TextLabel", Optional = true, Note = "pas de compte à rebours de MAJ" },
+} :: { Element } do
+	table.insert(settingsElements, element)
+end
 
 -- Étiquette des stands et des zones du hub (L-165 point 6, vague 50, a160 ; nom proposé par Clément, V0) : posée
 -- par Clément au-dessus de chaque stand et de chaque zone (dans la map, pas seulement ici), avec l'attribut texte
@@ -887,15 +886,18 @@ table.insert(UI.Billboards, {
 -- Chrono de police (vague 51, a165 ; L-157, posé par Clément) : UIGradient éteint de HeistTimer.Box, allumé par
 -- HudController pendant « POLICE IN » à la place de Box.UIGradient. Facultatif : sans lui, seul le texte change de
 -- couleur (attribut HeistTimer@PoliceTextColor, sinon UiMotion.TimerTick.PoliceColor).
--- Rangé juste après HeistTimer (la fin de la liste du HUD reste SkillTreeButton).
+-- Rangé juste après HeistTimer (la fin de la liste du HUD reste SkillTreeButton). a312 : seulement dans l'entrée
+-- UI_HUD qui a HeistTimer (avant : aussi au bout des entrées à part d'UI_Admin et des pastilles, compté 3 fois).
 for _, screen in UI.Screens do
+	local after: number? = nil
 	if screen.Name == "UI_HUD" then
-		local after = #screen.Elements
 		for rank, element in screen.Elements do
 			if element.Path == "HeistTimer" then
 				after = rank
 			end
 		end
+	end
+	if after ~= nil then
 		table.insert(screen.Elements, after + 1, {
 			Path = "HeistTimer.Box.PoliceGradient",
 			Class = "UIGradient",
@@ -961,15 +963,18 @@ table.insert(UI.Screens, {
 })
 
 -- Vague 56 (a181, L-166 Q4) : icône de Damage dans UI_HUD, montrée avec Damage pendant la potion de force (HudController).
--- Rangée juste après Damage (SkillTreeButton reste le dernier élément du HUD).
+-- Rangée juste après Damage (SkillTreeButton reste le dernier élément du HUD). a312 : seulement dans l'entrée UI_HUD
+-- qui a Damage (avant : aussi au bout des entrées à part, compté 3 fois).
 for _, screenDef in UI.Screens do
+	local after: number? = nil
 	if screenDef.Name == "UI_HUD" then
-		local after = #screenDef.Elements
 		for rank, element in screenDef.Elements do
 			if element.Path == "Damage" then
 				after = rank
 			end
 		end
+	end
+	if after ~= nil then
 		table.insert(screenDef.Elements, after + 1, { Path = "DamageIcon", Optional = true, Note = "Damage se montre sans son icône pendant la potion" })
 	end
 end
