@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 520" font-family="Segoe UI, Arial, sans-serif" font-size="13">
+  <rect width="760" height="520" fill="#ffffff"/>
+  <text x="20" y="28" font-size="17" font-weight="bold" fill="#222">Boutique du joueur vue de dessus (repère du gabarit PLOT_Shop, 1 case = 4 studs)</text>
+  <!-- Actuel -->
+  <g transform="translate(40,60)">
+    <text x="0" y="0" font-weight="bold" fill="#222">Aujourd'hui, 4 présentoirs</text>
+    <rect x="0" y="12" width="144" height="240" fill="none" stroke="#bbb" stroke-dasharray="4 3"/>
+    <text x="150" y="250" fill="#999" font-size="11">Bounds 48 × 80</text>
+    <rect x="0" y="12" width="144" height="72" fill="#d9d2f5" stroke="#6b4fd1" stroke-width="2"/>
+    <text x="72" y="54" text-anchor="middle" fill="#3b2a8f" font-weight="bold">48 × 24</text>
+    <rect x="18" y="30" width="12" height="12" fill="#6b4fd1"/><rect x="114" y="30" width="12" height="12" fill="#6b4fd1"/>
+    <rect x="18" y="51" width="12" height="12" fill="#6b4fd1"/><rect x="114" y="51" width="12" height="12" fill="#6b4fd1"/>
+    <line x1="40" y1="12" x2="104" y2="12" stroke="#222" stroke-width="4"/>
+    <text x="72" y="6" text-anchor="middle" font-size="11" fill="#222">porte (z −40)</text>
+    <text x="0" y="275" fill="#555" font-size="12">rectangle 2 : 1 en largeur</text>
+  </g>
+  <!-- Proposition A -->
+  <g transform="translate(300,60)">
+    <text x="0" y="0" font-weight="bold" fill="#0a6b3a">Proposition A, 4 présentoirs</text>
+    <rect x="0" y="12" width="144" height="240" fill="none" stroke="#bbb" stroke-dasharray="4 3"/>
+    <rect x="0" y="12" width="144" height="144" fill="#cfeedd" stroke="#0a8a4a" stroke-width="2"/>
+    <text x="72" y="120" text-anchor="middle" fill="#0a6b3a" font-weight="bold">48 × 48</text>
+    <text x="72" y="138" text-anchor="middle" fill="#0a6b3a" font-size="11">fond en z 8</text>
+    <rect x="18" y="30" width="12" height="12" fill="#0a8a4a"/><rect x="114" y="30" width="12" height="12" fill="#0a8a4a"/>
+    <rect x="18" y="51" width="12" height="12" fill="#0a8a4a"/><rect x="114" y="51" width="12" height="12" fill="#0a8a4a"/>
+    <g fill="none" stroke="#0a8a4a" stroke-dasharray="2 2"><rect x="18" y="72" width="12" height="12"/><rect x="114" y="72" width="12" height="12"/><rect x="18" y="93" width="12" height="12"/><rect x="114" y="93" width="12" height="12"/><rect x="18" y="114" width="12" height="12"/><rect x="114" y="114" width="12" height="12"/><rect x="18" y="135" width="12" height="12"/><rect x="114" y="135" width="12" height="12"/></g>
+    <line x1="40" y1="12" x2="104" y2="12" stroke="#222" stroke-width="4"/>
+    <text x="0" y="275" fill="#555" font-size="12">places 5 à 12 vides (socles cachés)</text>
+  </g>
+  <!-- Croissance -->
+  <g transform="translate(540,60)">
+    <text x="0" y="0" font-weight="bold" fill="#222">Puis, rang par rang</text>
+    <rect x="0" y="12" width="144" height="144" fill="#cfeedd" stroke="#0a8a4a" stroke-width="2"/>
+    <rect x="0" y="156" width="144" height="24" fill="#e7f6ee" stroke="#0a8a4a"/>
+    <rect x="0" y="180" width="144" height="24" fill="#eff9f3" stroke="#0a8a4a"/>
+    <rect x="0" y="204" width="144" height="24" fill="#f5fbf8" stroke="#0a8a4a"/>
+    <rect x="0" y="228" width="144" height="24" fill="#fafdfb" stroke="#0a8a4a"/>
+    <text x="150" y="172" font-size="11" fill="#333">13-14 → 48 × 56</text>
+    <text x="150" y="196" font-size="11" fill="#333">15-16 → 48 × 64</text>
+    <text x="150" y="220" font-size="11" fill="#333">17-18 → 48 × 72</text>
+    <text x="150" y="244" font-size="11" fill="#333">19-20 → 48 × 80</text>
+    <line x1="40" y1="12" x2="104" y2="12" stroke="#222" stroke-width="4"/>
+    <text x="0" y="275" fill="#555" font-size="12">même taille finale qu'aujourd'hui</text>
+  </g>
+  <text x="20" y="380" fill="#333">Plans de coupe figés (L-190) : z −16 (fin de Stage_1), −12, −4, 4, 8, 16, 24, 32, 40. Le fond carré, z 8, est déjà un de ces plans.</text>
+  <text x="20" y="402" fill="#333">Rangs : z −32, −25, −18, −11, −4, 3, 10, 17, 24, 31 (2 présentoirs par rang, x ±16). Fond = dernier rang + 5, arrondi au plan suivant.</text>
+  <text x="20" y="424" fill="#333">L'empreinte maximale (Bounds 48 × 80) ne change pas : rien ne bouge dans le hub, aucune voisine n'est touchée.</text>
+</svg>
