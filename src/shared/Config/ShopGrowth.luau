@@ -27,6 +27,11 @@ local ShopGrowth = {
 	RowMargin = 5, -- figé (L-190) : au moins 2 studs entre le dos d'un socle et le revêtement du mur du fond
 	Step = 4, -- figé (L-190)
 	StepOrigin = -40, -- figé (L-190) : z de la porte dans le gabarit
+	-- L-285 (demande de Clément, 21/11) : la boutique démarre en carré de 48 × 48 (niveau 1 du gabarit de la porte
+	-- en z −40 au fond en z 8, Stage_1/Frame/Back_L1 et PlotBarrier/Barrier_B1). Le fond coupé ne se pose jamais
+	-- devant ce z : fond = max(fond calculé, MinBack), StageDepth compris. 8 = StepOrigin + 12 × Step, un plan de
+	-- L-190 (fond à 11-12 présentoirs). nil : pas de minimum, comme avant.
+	MinBack = 8 :: number?, -- V0 proposé, 2026-11-22, L-285
 	-- Pièces « du fond » : leur bord arrière est à moins de BackZone du fond du gabarit. Une pièce fine
 	-- (profondeur ≤ BackThickness : mur du fond, parapet, caméras du fond) avance avec le fond ; une longue pièce
 	-- (sol, murs des côtés, toit) est raccourcie en gardant son écart au fond.
