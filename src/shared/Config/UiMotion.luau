@@ -164,6 +164,11 @@ local UiMotion = {
 		-- élément rangé par un layout (UIListLayout, UIGridLayout, UIPageLayout, UITableLayout) n'est pas recentré
 		-- (le layout le place lui-même). false : comme avant (grossit autour de l'AnchorPoint de Clément).
 		Centered = true, -- validé par Cantin, 21/11
+		-- a308 (Cantin, 22/11 : « EquipButton de la boutique d'armes n'a ni survol ni clic ») : un bouton aussi grand que son
+		-- parent (Size en Scale ≥ 1 sur les deux axes) est d'habitude laissé de côté par UiFeelController (calque de glisser
+		-- plein cadre) ; dans les écrans listés ici, il reçoit quand même Motion.Button (survol, appui, relâché, et Success
+		-- s'il est nommé dans Success.Buttons). Un écran de plus = une ligne. Liste vide : comme avant (aucune exception).
+		FillParentScreens = { "UI_WeaponShop", "UI_AuraShop" }, -- validé par Cantin, 22/11
 	},
 	-- Bouton appuyé (Motion.Button).
 	Press = {
