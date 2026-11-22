@@ -75,10 +75,12 @@ local UiMotion = {
 	-- suivantes partent avec la Max-ième). Tableau : ligne « Contenu qui arrive après la fenêtre ».
 	-- Vague 64 : les cartes comme dans la vidéo (« 5 cartes de gauche à droite, 22 ms de décalage, à partir de +230 ms ;
 	-- chacune de 0,2 à 1 en 0,13 s, Quad Out ») ; Max 8 : décalage total plafonné à ~0,15 s (fiche, section 3).
+	-- a304 (validé par Cantin, 21/11 : « une case est à taille 0 dès l'ouverture, puis elle poppe tout de suite ») :
+	-- From = 0 et Start = 0 (avant : 0,2 et 0,23 s, des cartes vues figées à 5-10 % de leur taille avant le pop).
 	OpenStagger = {
-		From = if VIDEO_RHYTHM then 0.2 else 0, -- tableau : « chaque carte ou rangée 0 → 1 en 0,14 ; départ à 0,08 ; 0,035 entre deux, 14 au plus »
+		From = 0, -- validé par Cantin, 21/11 (tableau : « chaque carte ou rangée 0 → 1 en 0,14 ; départ à 0,08 ; 0,035 entre deux, 14 au plus »)
 		Time = if VIDEO_RHYTHM then 0.13 else 0.14,
-		Start = if VIDEO_RHYTHM then 0.23 else 0.08,
+		Start = if VIDEO_RHYTHM then 0 else 0.08, -- validé par Cantin, 21/11 : le pop part dès l'ouverture (avant : 0,23 s)
 		Gap = if VIDEO_RHYTHM then 0.022 else 0.035,
 		Max = if VIDEO_RHYTHM then 8 else 14,
 		Style = if VIDEO_RHYTHM then Enum.EasingStyle.Quad else Enum.EasingStyle.Back,
@@ -512,8 +514,8 @@ local UiMotion = {
 		-- ~0,15 s de décalage total) ; fermeture : tout part avec le cadre (CloseTo, CloseTime et la courbe de Pop).
 		Cascade = {
 			Gap = if VIDEO_RHYTHM then 0.022 else 0.05,
-			Start = if VIDEO_RHYTHM then 0.23 else 0.05, -- L-188 : le contenu « une ou deux images après » le fond (0,05 s : entre les deux, à 30 images/s)
-			From = if VIDEO_RHYTHM then 0.2 else 0, -- V0 proposé, absent du doc
+			Start = if VIDEO_RHYTHM then 0 else 0.05, -- validé par Cantin, 21/11 (a304) : le pop part dès l'ouverture (avant : 0,23 s) ; L-188 sans VIDEO_RHYTHM : 0,05 s
+			From = 0, -- validé par Cantin, 21/11 (a304) : caché (échelle 0) tant qu'il attend (avant : 0,2) ; ScrollReveal le lit aussi
 			Time = if VIDEO_RHYTHM then 0.13 else 0.15, -- V0 proposé, absent du doc : comme Pop
 			Style = if VIDEO_RHYTHM then Enum.EasingStyle.Quad else Enum.EasingStyle.Quint, -- V0 proposé, absent du doc : comme Pop
 			Direction = Enum.EasingDirection.Out,
@@ -700,7 +702,7 @@ local UiMotion = {
 			"UI_Index", "UI_Index_v2", "UI_Index_v3", "UI_Index_v4", "UI_Displayed", "UI_Inventory", "UI_Rewards",
 		},
 		Attribute = "ScrollReveal", -- V0 proposé, absent du doc
-		ArmDelay = 0.6, -- V0 proposé, absent du doc : s après l'ouverture (la cascade d'ouverture a fini, ~0,55 s)
+		ArmDelay = 0.6, -- V0 proposé, absent du doc : s après l'ouverture (la cascade d'ouverture a fini, ~0,3 s depuis le pop immédiat du 21/11)
 		Split = 0.5, -- V0 proposé, absent du doc : un enfant plus long que la moitié de la zone visible est une section (zone de l'index) : ses enfants entrent un par un
 		Depth = 3, -- V0 proposé, absent du doc : niveaux de sections au plus
 		ScaleName = "RevealScale", -- V0 proposé, absent du doc : UIScale passager, détruit à la fin
