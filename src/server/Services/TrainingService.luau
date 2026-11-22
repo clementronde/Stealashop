@@ -29,7 +29,8 @@
 --   - pas de remontée en boucle : une séance finie (descendu, Stop, état…) ou un refus bloque ce tapis
 --     pour ce joueur. Débloqué s'il sort de la zone (son emprise au sol, à n'importe quelle hauteur :
 --     sauter sur place ne débloque rien), ou (a115, la zone de Clément couvre tout le modèle) s'il quitte
---     le cœur de la machine (TrainingZone.inCore : la bande du tapis) puis y revient : il remonte aussitôt ;
+--     le cœur de la machine (TrainingZone.inCore : la bande du tapis, élargie en travers de
+--     Training.Treadmill.SideEntryMargin depuis a310) puis y revient : il remonte aussitôt ;
 --   - seul le propriétaire de la parcelle qui contient le tapis s'y entraîne (attribut OwnerUserId de la
 --     parcelle, posé par PlotService) ; un autre joueur est refusé et reçoit NOT_OWNER_MESSAGE, au plus
 --     une fois toutes les NOT_OWNER_COOLDOWN s (on passe souvent à côté des machines des autres). Porter
