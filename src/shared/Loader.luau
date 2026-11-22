@@ -4,7 +4,8 @@
 -- Charge les ModuleScripts enfants directs d'un dossier (services serveur ou
 -- contrôleurs client) en deux temps :
 --   1. Init() de chaque module, dans l'ordre de Priority (sans yield) ;
---   2. Start() de chaque module, chacun dans sa propre tâche (peut yield).
+--   2. Start() de chaque module, chacun dans sa propre tâche (peut yield), lancée par task.defer dans le même
+--      ordre : chaque Start a sa propre reprise, donc son propre temps avant « Script timeout » (L-284).
 -- Une erreur dans un module est signalée avec son nom et n'arrête pas les autres.
 --
 -- Contrat d'un module chargé :
@@ -60,6 +61,7 @@ function Loader.start(folder: Instance?, label: string): number
 		print(`[Loader {label}] aucun dossier de modules, rien à charger`)
 		return 0
 	end
+	local startedAt = os.clock()
 	local list = collect(folder, label)
 
 	for _, entry in list do
@@ -72,10 +74,15 @@ function Loader.start(folder: Instance?, label: string): number
 		end
 	end
 
+	-- a306 (L-284, « Script timeout: exhausted allowed execution time » dans ce Loader, Main:8) : Roblox compte le
+	-- temps sans yield par reprise, et un task.spawn tourne dans la reprise de celui qui l'appelle. Avec task.spawn,
+	-- require, tous les Init et le début de chaque Start (jusqu'à son premier yield) s'additionnaient dans la seule
+	-- reprise de Main ; passé ScriptTimeoutLength (10 s en Studio), le Start en cours tombait, puis tous les suivants
+	-- (RayonService : boutique pas posée). task.defer : chaque Start repart dans sa propre reprise, même ordre.
 	for _, entry in list do
 		local start = entry.mod.Start
 		if start then
-			task.spawn(function()
+			task.defer(function()
 				local ok, err = xpcall(start :: any, function(message: any): string
 					return debug.traceback(tostring(message), 2)
 				end)
@@ -86,7 +93,7 @@ function Loader.start(folder: Instance?, label: string): number
 		end
 	end
 
-	print(`[Loader {label}] {#list} module(s) démarré(s)`)
+	print(`[Loader {label}] {#list} module(s) démarré(s) (require et Init en {string.format("%.2f", os.clock() - startedAt)} s)`)
 	return #list
 end
 
