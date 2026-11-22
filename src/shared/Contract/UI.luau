@@ -345,7 +345,7 @@ local rewardsElements = {
 	{ Path = "PlaytimePage.List.Template.Timer" },
 	{ Path = "PlaytimePage.List.Template.ClaimButton" }, -- classe pas relevée : bouton ou cadre, le code accepte les deux
 	{ Path = "PlaytimePage.List.Template.Claimed" },
-	-- a303 (21/11, demande de Cantin) : le gain du palier (« $1.2K cash », « Item up to Epic », « ×2 Cash for 10 min »),
+	-- a303 (21/11, demande de Cantin) : le gain du palier (« $1.2K cash », « Box from your best zone », « ×2 Cash for 10 min »),
 	-- écrit par le code (Config/Rewards.Texts) ; sans lui, le gain va dans RewardName (« 5 min: 2 min of cash »).
 	{ Path = "PlaytimePage.List.Template.RewardDesc", Optional = true, Note = "le gain du palier est écrit dans RewardName (a303)" },
 	-- a303 : icône du type de récompense, image prise dans le Decal UI_Icon_Reward_Cash, _Box ou _Boost de

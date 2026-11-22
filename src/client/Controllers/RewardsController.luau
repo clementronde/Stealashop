@@ -32,7 +32,8 @@
 --     a303 (21/11, demande de Cantin) : chaque ligne dit son gain, d'après Config/Rewards.Playtime et les textes de
 --     Rewards.Texts : RewardDesc (TextLabel facultatif du Template) « $1.2K cash » (argent : revenu répliqué, attribut
 --     Income du Player, × minutes, au moins MinCashPerMinute, comme RewardService ; sans Income : « 2 min of cash »),
---     « Item up to Epic », « ×2 Cash for 10 min » ; sans RewardDesc, le gain va dans RewardName : « 5 min: $1.2K cash »
+--     « ×2 Cash for 10 min », a309 : « Box from your best zone », « Rare box from the next zone » (Texts.ZoneBox) ;
+--     sans RewardDesc, le gain va dans RewardName : « 5 min: $1.2K cash »
 --     (le texte d'une Preview n'est alors pas repris). RewardIcon (ImageLabel facultatif) : image du Decal
 --     Rewards.Texts.Icons[Kind] (UI_Icon_Reward_Cash, _Box, _Boost) sous ReplicatedStorage/Assets, montrée seulement si
 --     les deux existent (sinon RewardIcon caché). Le montant se met à jour écran ouvert ; le serveur reste maître.
@@ -266,6 +267,8 @@ local function describe(reward: Rewards.Reward): string
 			return string.format(TEXTS.BoxFloor, floor.DisplayName)
 		end
 		return TEXTS.Box[reward.Tier or "Standard"] or TEXTS.BoxDefault
+	elseif kind == "ZoneBox" then
+		return TEXTS.ZoneBox[reward.Rule or ""] or TEXTS.BoxDefault -- a309 : colis de zone
 	end
 	return ""
 end

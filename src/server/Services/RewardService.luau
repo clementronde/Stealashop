@@ -33,7 +33,12 @@
 --          sans condition) ; vague 80 (a267) : avec BoxRarity, UnboxService.GiveBoxRarityItem (colis de rayon
 --          de cette rareté, vague 76), mêmes règles ;
 --   Boost  MonetizationService.AddCashBoost (×2 argent, compté seulement en jeu, un 2e prolonge le 1er ;
---          marche aussi boutique Robux coupée).
+--          marche aussi boutique Robux coupée) ;
+--   ZoneBox a309 (Cantin, 22/11 ; paliers de 15 et 60 min) : UnboxService.GiveZoneBoxItem, colis de zone selon la
+--          règle Rewards.ZoneBox[Rule] depuis la zone de référence (bestZone, plus bas), objet dans l'inventaire
+--          (inventaire plein : refusé, rien de noté, Notify ItemsFull) ; puis, après la note, la scène d'ouverture de la
+--          caisse exclusive (MonetizationService.StartGiftReveal, zone safe seulement). Scène lancée : pas de message
+--          pour l'objet montré ; sinon le message « <Rareté> Item: <nom> » tout de suite.
 -- Idempotence : la vérification, le don et la note de la réclamation (Streak et LastDay, ou
 -- Claimed[minutes]) se font dans la même exécution, sans yield : un double clic trouve la réclamation
 -- déjà notée. ProfileStore n'ouvre un profil que sur un seul serveur à la fois (verrou de session) : un
@@ -368,16 +373,19 @@ end
 -- Réclamations
 ------------------------------------------------------------------------------
 
--- Donne `reward`. Renvoie (true, message, somme d'argent ou 0) si c'est donné, (false, raison) si rien
--- n'est donné (la réclamation n'est alors pas notée). Sans yield.
-local function give(player: Player, data: Data, reward: Reward): (boolean, string, number)
+-- a309 : l'ouverture d'un colis de zone offert, lancée après la note de la réclamation (claim).
+type Reveal = { itemId: string, startRarity: string, chance: number, effect: string? }
+
+-- Donne `reward`. Renvoie (true, message, somme d'argent ou 0, ouverture à lancer ou nil) si c'est donné, (false,
+-- raison) si rien n'est donné (la réclamation n'est alors pas notée). Sans yield.
+local function give(player: Player, data: Data, reward: Reward): (boolean, string, number, Reveal?)
 	local kind = reward.Kind
 	if kind == "Cash" then
 		local amount = cashAmount(player, reward.Minutes or 0)
 		if DataService.AddCash(player, amount) == nil then
-			return false, MESSAGES.Unavailable, 0
+			return false, MESSAGES.Unavailable, 0, nil
 		end
-		return true, string.format(MESSAGES.Cash, Format.money(amount)), amount
+		return true, string.format(MESSAGES.Cash, Format.money(amount)), amount, nil
 	elseif kind == "Box" then
 		local tier = reward.Tier or "Standard"
 		local zone = math.max(bestZone(data), reward.MinZone or 1)
@@ -389,28 +397,46 @@ local function give(player: Player, data: Data, reward: Reward): (boolean, strin
 			itemUid, reason, itemId = UnboxService.GiveItem(player, tier, zone, reward.MinRarity)
 		end
 		if itemUid == nil then
-			return false, if reason == "InventoryFull" then MESSAGES.ItemsFull else MESSAGES.Unavailable, 0
+			return false, if reason == "InventoryFull" then MESSAGES.ItemsFull else MESSAGES.Unavailable, 0, nil
 		end
 		local entry = (data :: any).Items[itemUid]
 		local def = if itemId then Items.ById[itemId] else nil
 		local rarity = if def then Rarities.ById[def.Rarity] else nil
 		local name = if def then Mutations.ItemName(def.DisplayName, if entry then entry.Mutation else nil) else tostring(itemId)
-		return true, string.format(MESSAGES.Item, if rarity then rarity.DisplayName else "", name), 0
+		return true, string.format(MESSAGES.Item, if rarity then rarity.DisplayName else "", name), 0, nil
+	elseif kind == "ZoneBox" then
+		-- a309 (Cantin, 22/11) : colis de zone (règle Rewards.ZoneBox[Rule]) depuis la meilleure zone du joueur.
+		local rule = Rewards.ZoneBox[reward.Rule or ""]
+		if rule == nil then
+			warnOnce(`zoneBoxRule:{tostring(reward.Rule)}`, `règle de colis de zone {tostring(reward.Rule)} absente de Config/Rewards.ZoneBox`)
+			return false, MESSAGES.Unavailable, 0, nil
+		end
+		local itemUid, reason, itemId, gift = UnboxService.GiveZoneBoxItem(player, rule, bestZone(data))
+		if itemUid == nil or itemId == nil or gift == nil then
+			return false, if reason == "InventoryFull" then MESSAGES.ItemsFull else MESSAGES.Unavailable, 0, nil
+		end
+		local entry = (data :: any).Items[itemUid]
+		local mutation = if entry then entry.Mutation else nil
+		local def = Items.ById[itemId]
+		local rarity = if def then Rarities.ById[def.Rarity] else nil
+		local name = if def then Mutations.ItemName(def.DisplayName, mutation) else tostring(itemId)
+		local reveal: Reveal = { itemId = itemId, startRarity = gift.StartRarity, chance = gift.Chance, effect = gift.Effect }
+		return true, string.format(MESSAGES.Item, if rarity then rarity.DisplayName else "", name), 0, reveal
 	elseif kind == "Boost" then
 		local minutes = reward.Minutes or 0
 		if not MonetizationService.AddCashBoost(player, minutes * 60) then
-			return false, MESSAGES.Unavailable, 0
+			return false, MESSAGES.Unavailable, 0, nil
 		end
-		return true, string.format(MESSAGES.Boost, minutes), 0
+		return true, string.format(MESSAGES.Boost, minutes), 0, nil
 	end
-	return false, MESSAGES.Unavailable, 0
+	return false, MESSAGES.Unavailable, 0, nil
 end
 
 -- Donne `reward`, puis appelle mark() (note la réclamation dans le profil), dans la même exécution.
 -- Refus propre (inventaire plein…) : rien n'est noté, le joueur reçoit la raison. Erreur pendant le don :
 -- noté quand même (jamais deux fois le même don), avertissement. Sans yield.
 local function claim(player: Player, data: Data, reward: Reward, source: Source, sku: string, mark: () -> ()): boolean
-	local ok, given, message, amount = pcall(give, player, data, reward)
+	local ok, given, message, amount, reveal = pcall(give, player, data, reward)
 	if not ok then
 		warn(`[RewardService] {player.Name} : erreur pendant le don de {sku} ({given}) : réclamation notée quand même, à compenser à la main si rien n'est arrivé`)
 		mark()
@@ -430,7 +456,20 @@ local function claim(player: Player, data: Data, reward: Reward, source: Source,
 	end
 	TelemetryService.LogEvent(player, "RewardClaim", { `Source - {source}`, `Sku - {sku}`, `Gift - {reward.Kind}` })
 	log(`{player.Name} : {sku} réclamé ({message})`)
-	notify(player, message, "Info")
+	if reveal then
+		-- a309 : colis de zone ouvert tout de suite, scène de la caisse exclusive (MonetizationService.StartGiftReveal),
+		-- après le don et hors de son exécution sans yield, comme la caisse. Scène lancée : l'objet montré n'a pas de
+		-- message (a297) ; pas de scène (hors zone safe, coupée…) : le message tout de suite.
+		local shown: Reveal = reveal
+		task.defer(function()
+			local ok2, started = pcall(MonetizationService.StartGiftReveal, player, shown.itemId, shown.startRarity, shown.chance, shown.effect)
+			if not (ok2 and started == true) then
+				notify(player, message, "Info")
+			end
+		end)
+	else
+		notify(player, message, "Info")
+	end
 	publish(player)
 	return true
 end

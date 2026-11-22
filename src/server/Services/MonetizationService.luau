@@ -100,6 +100,9 @@
 --   MonetizationService.AddCashBoost(player, seconds) -> boolean
 --       Boost ×2 argent : prolonge celui en cours de `seconds` (pour les récompenses, DEV-101) ; false
 --       si le profil n'est pas chargé ou la durée invalide. Sans yield.
+--   MonetizationService.StartGiftReveal(player, itemId, startRarity?, chance?, effect?) -> boolean
+--       a309 (Cantin, 22/11) : la scène d'ouverture de la caisse exclusive (Crate.Reveal, mêmes règles) pour un
+--       colis offert déjà donné (paliers de temps de jeu, RewardService) ; true si elle est lancée. Sans yield.
 --
 -- Boutique coupée (Features.RobuxShop = false) : ni reçu, ni gamepass, ni bonus Premium, ni pack de
 -- départ, ni Ouvrir maintenant, ni crochet de test. Seul le boost ×2 argent reste branché (DEV-101, les
@@ -588,6 +591,7 @@ type CrateReveal = {
 	died: RBXScriptConnection?,
 	pending: { string },
 	got: { string },
+	of: string, -- a309 : « de la caisse » ou « du colis offert » (sortie)
 }
 local crateReveals: { [string]: CrateReveal } = {} -- [RevealId]
 local crateRevealOf: { [Player]: CrateReveal } = {}
@@ -668,7 +672,7 @@ local function finishCrateReveal(reveal: CrateReveal, why: string)
 	local pending = reveal.pending
 	reveal.pending = {}
 	notifyCrateItems(reveal.player, pending)
-	log(`{reveal.player.Name} : ouverture {reveal.id} de la caisse finie ({why}), {#pending} message(s)`)
+	log(`{reveal.player.Name} : ouverture {reveal.id} {reveal.of} finie ({why}), {#pending} message(s)`)
 end
 
 -- L'objet joué d'un lot : le plus rare (le premier à rareté égale) ; et sa case (index dans Crate.Items).
@@ -703,8 +707,19 @@ local function crateOdds(index: number): number?
 	return math.max(math.floor(total / odds + 0.5), 1)
 end
 
--- Rend la raison pour laquelle rien n'est joué, ou nil quand l'ouverture est lancée.
-local function startCrateReveal(player: Player, got: { string }): string?
+-- Ouverture de l'objet `itemId` devant `player` (règles de Crate.Reveal) : `got` = les objets du don (messages des
+-- autres à la fin, a297), `startRarity` = rareté montrée sur le colis au départ, `odds` = cote finale « 1 IN N » (nil :
+-- tirée dans la plage de la rareté), `effect` = l'effet de l'objet (mutation), `kind` = « Crate » (la caisse) ou « Gift »
+-- (a309 : colis offert), début du RevealId. Rend la raison pour laquelle rien n'est joué, ou nil quand elle est lancée.
+local function startReveal(
+	player: Player,
+	got: { string },
+	itemId: string,
+	startRarity: string?,
+	odds: number?,
+	effect: string?,
+	kind: string -- "Crate" ou "Gift"
+): string?
 	local config = CRATE.Reveal
 	if config.Enabled ~= true or Features.SingleBoxReveal ~= true then
 		return "ouverture coupée"
@@ -712,10 +727,9 @@ local function startCrateReveal(player: Player, got: { string }): string?
 	if player.Parent ~= Players then
 		return "joueur parti"
 	end
-	local itemId, index = crateRevealPick(got)
-	local def = if itemId then Items.ById[itemId] else nil
-	if itemId == nil or index == nil or def == nil then
-		return "aucun objet de la caisse"
+	local def = Items.ById[itemId]
+	if def == nil then
+		return "objet inconnu"
 	end
 	local why: string? = nil
 	local character = player.Character
@@ -737,10 +751,9 @@ local function startCrateReveal(player: Player, got: { string }): string?
 	local plan: string? = nil
 	local maxSeconds = 0
 	if why == nil then
-		local odds = crateOdds(index)
 		plan = plans.draw(def.Rarity, function(n: number): number
 			return 1 + math.floor(crateRandom:NextNumber() * n)
-		end, config.StartRarity, 0, odds)
+		end, startRarity or config.StartRarity, 0, odds)
 		local parsed = plans.parse(plan)
 		if parsed == nil then
 			why = "plan impossible"
@@ -749,12 +762,12 @@ local function startCrateReveal(player: Player, got: { string }): string?
 		end
 	end
 	if why then
-		log(`{player.Name} : caisse sans ouverture ({why}) : {itemId}`)
+		log(`{player.Name} : {if kind == "Crate" then "caisse" else "colis offert"} sans ouverture ({why}) : {itemId}`)
 		return why
 	end
 	local previous = crateRevealOf[player]
 	if previous then
-		finishCrateReveal(previous, "nouvelle caisse")
+		finishCrateReveal(previous, if kind == "Crate" then "nouvelle caisse" else "nouveau colis offert")
 	end
 	local weightModule = lazy("ItemWeight", Shared, "ItemWeight")
 	local weight = if weightModule then weightModule.Effective(nil, nil) else 10
@@ -767,12 +780,13 @@ local function startCrateReveal(player: Player, got: { string }): string?
 		table.remove(pending, shownAt)
 	end
 	local reveal: CrateReveal = {
-		id = `Crate{crateRevealCount}`,
+		id = `{kind}{crateRevealCount}`,
 		player = player,
 		ended = false,
 		died = nil,
 		pending = pending,
 		got = got,
+		of = if kind == "Crate" then "de la caisse" else "du colis offert",
 	}
 	crateReveals[reveal.id] = reveal
 	crateRevealOf[player] = reveal
@@ -793,7 +807,7 @@ local function startCrateReveal(player: Player, got: { string }): string?
 		config.SlotName,
 		itemId,
 		def.Rarity,
-		"",
+		string.sub(effect or "", 1, 32),
 		math.clamp(weight, 0, 1_000_000),
 		math.clamp(scale, 0, 100),
 		"Small",
@@ -803,8 +817,24 @@ local function startCrateReveal(player: Player, got: { string }): string?
 	task.delay(maxSeconds, function()
 		finishCrateReveal(reveal, "plafond de temps")
 	end)
-	log(`{player.Name} : ouverture {reveal.id} de la caisse : {itemId} ({def.Rarity}), plan {plan}, {maxSeconds} s au plus`)
+	log(`{player.Name} : ouverture {reveal.id} : {itemId} ({def.Rarity}), plan {plan}, {maxSeconds} s au plus`)
 	return nil
+end
+
+-- L'ouverture d'un lot de la caisse : l'objet le plus rare, sa cote dans la caisse, la rareté de départ de Crate.Reveal.
+local function startCrateReveal(player: Player, got: { string }): string?
+	local config = CRATE.Reveal
+	if config.Enabled ~= true or Features.SingleBoxReveal ~= true then
+		return "ouverture coupée"
+	end
+	if player.Parent ~= Players then
+		return "joueur parti"
+	end
+	local itemId, index = crateRevealPick(got)
+	if itemId == nil or index == nil or Items.ById[itemId] == nil then
+		return "aucun objet de la caisse"
+	end
+	return startReveal(player, got, itemId, config.StartRarity, crateOdds(index), nil, "Crate")
 end
 
 -- RevealDone(revealId) de l'acheteur : la fin de son ouverture (celles des colis de rayon : StoreHeistService).
@@ -1393,6 +1423,25 @@ end
 
 function MonetizationService.AddCashBoost(player: Player, seconds: number): boolean
 	return addBoost(player, seconds) -- boutique coupée comprise (DEV-101, voir l'en-tête)
+end
+
+-- a309 (Cantin, 22/11) : ouverture d'un colis offert (paliers de temps de jeu, RewardService), objet déjà donné. Mêmes
+-- règles que la caisse exclusive (Crate.Reveal : coupée, zone safe seulement, autre cinématique, personnage mort ;
+-- boutique coupée comprise) ; colis montré en `startRarity`, cote finale 1 / `chance` (pour cent, Formulas.UnboxOdds).
+-- true si l'ouverture est lancée (l'objet montré n'a alors pas de message), false sinon (rien n'est joué). Sans yield.
+function MonetizationService.StartGiftReveal(player: Player, itemId: string, startRarity: string?, chance: number?, effect: string?): boolean
+	local odds: number? = nil
+	local formulas = lazy("Formulas", Shared.Config, "Formulas")
+	local value = finite(chance)
+	if formulas and type(formulas.UnboxOdds) == "function" and value > 0 then
+		odds = (formulas.UnboxOdds :: any)(math.min(value / 100, 1))
+	end
+	local ok, why = pcall(startReveal, player, { itemId }, itemId, startRarity, odds, effect, "Gift")
+	if not ok then
+		warn(`[MonetizationService] {player.Name} : ouverture du colis offert impossible ({why}), objet donné quand même`)
+		return false
+	end
+	return why == nil
 end
 
 ------------------------------------------------------------------------------
