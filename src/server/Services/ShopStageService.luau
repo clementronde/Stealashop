@@ -50,6 +50,8 @@
 -- coupé chaque pièce aux plans des fonds ; rien n'est plus raccourci : une pièce dont le bord arrière dépasse le
 -- fond de moins de ShopGrowth.RowCutTolerance est gardée telle quelle, une pièce fine du fond avance encore, le
 -- reste est retiré de la copie.
+-- Fond minimum (L-285, ShopGrowth.MinBack) : le fond coupé n'est jamais posé devant MinBack (fond du carré de
+-- 48 × 48 du niveau 1, z 8) ; s'il atteint le fond du gabarit, la boutique est entière.
 --
 -- API (serveur) :
 --   ShopStageService.Apply(plot, k, unlocked?) -> number
@@ -286,6 +288,10 @@ local function depthFor(plot: Model, state: PlotState, unlocked: number?, back: 
 	local step = ShopGrowth.Step
 	if step > 0 then
 		depth = ShopGrowth.StepOrigin + math.ceil((depth - ShopGrowth.StepOrigin) / step - EPS) * step
+	end
+	local minBack = ShopGrowth.MinBack -- L-285 : jamais devant le fond du carré de départ
+	if minBack ~= nil and depth < minBack then
+		depth = minBack
 	end
 	return if depth < back - EPS then depth else nil
 end
