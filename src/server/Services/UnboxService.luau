@@ -107,6 +107,12 @@
 --       sans cran d'amélioration ; vague 81 (a268) : plancher à boxRarity (les poids sous le plancher sont retirés :
 --       boxRarity ou mieux, jamais en dessous). Sert aussi aux lots « colis d'une rareté » des quêtes et de la roue
 --       (Prize/Grant). Mêmes retours.
+--   UnboxService.GiveZoneBoxItem(player, rule, bestZone) -> (string?, string?, string?, ZoneBoxGift?)
+--       a309 (Cantin, 22/11 ; paliers de 15 et 60 min, RewardService) : l'objet d'un colis de zone (règle de
+--       Config/Rewards.ZoneBox) : zone et chances par Shared/ZoneBoxOdds, qui lit Config/Zones, Rarities.ZoneOdds et
+--       ZoneRarities au moment du tirage ; objet Items.Pick(zone, rareté), mutation comme à la mise en rayon, sans cran
+--       d'amélioration ; mêmes retours que GiveItem, plus { Zone, Rarity, Chance (%), StartRarity, Effect } pour l'ouverture
+--       (MonetizationService.StartGiftReveal). Sans yield.
 --   Pour PvPService (vol d'un objet sous antivol au sol), sans yield : GetFloorItem(owner, uid) -> FloorItem?,
 --       GetFloorItems(owner), IsStealable(owner, uid), HoldFloorItem (le modèle sort du monde, plus de
 --       reprise), ReleaseFloorItem (vol raté : il revient), TakeFloorItem (dépôt : le modèle part ; PvPService
@@ -139,6 +145,7 @@ local ShelfBoxes = require(Shared.Config.ShelfBoxes)
 local ShelfOpen = require(Shared.Config.ShelfOpen)
 local Unbox = require(Shared.Config.Unbox)
 local Zones = require(Shared.Config.Zones)
+local ZoneBoxOdds = require(Shared.ZoneBoxOdds) -- a309
 local Find = require(Shared.Contract.Find)
 
 local Net = require(Shared.Net.Net)
@@ -1508,6 +1515,50 @@ function UnboxService.GiveBoxRarityItem(player: Player, boxRarity: string, zone:
 	discover(player, item.Id)
 	refreshInventory(player)
 	return itemUid, nil, item.Id
+end
+
+-- a309 (Cantin, 22/11) : ce que l'ouverture du colis de zone offert doit montrer (MonetizationService.StartGiftReveal).
+export type ZoneBoxGift = {
+	Zone: number,
+	Rarity: string, -- rareté tirée (celle de l'objet)
+	Chance: number, -- sa chance dans ce colis, en pour cent
+	StartRarity: string, -- la plus basse rareté possible de ce colis (montrée sur le colis au début de l'ouverture)
+	Effect: string?, -- effet de la mutation de l'objet (Mutations), montré pendant l'ouverture
+}
+
+-- a309 : objet d'un colis de zone offert (paliers de temps de jeu, voir l'en-tête), donné tout de suite.
+function UnboxService.GiveZoneBoxItem(player: Player, rule: ZoneBoxOdds.Rule, bestZone: number): (string?, string?, string?, ZoneBoxGift?)
+	local data = DataService.Get(player)
+	if data == nil or type(data.Items) ~= "table" then
+		return nil, "NoProfile", nil, nil
+	end
+	-- Tout est lu maintenant (Config/Zones, Rarities.ZoneOdds et ZoneRarities), jamais recopié (Shared/ZoneBoxOdds).
+	local zone = if type(rule) == "table" then ZoneBoxOdds.Zone(rule, bestZone) else nil
+	if zone == nil then
+		warn(`[UnboxService] GiveZoneBoxItem ({player.Name}) : règle ou zone {tostring(bestZone)} inconnue`)
+		return nil, "Invalid", nil, nil
+	end
+	local roomOk, room = pcall(DisplayService.HasInventoryRoom, player)
+	if not (roomOk and room == true) then
+		log(`{player.Name} : inventaire plein, colis de zone offert (zone {zone}) pas donné`)
+		return nil, "InventoryFull", nil, nil
+	end
+	local chances = ZoneBoxOdds.Chances(rule, zone)
+	local drawn = ZoneBoxOdds.Draw(chances, random:NextNumber())
+	local item = if drawn then Items.Pick(zone, drawn.Id :: Rarities.RarityId, random) else nil
+	if drawn == nil or item == nil then
+		warnOnce(`zoneBox.{zone}.{if drawn then drawn.Id else "none"}`, `colis de zone offert, zone {zone} : aucun objet possible (Config)`)
+		return nil, "NoContent", nil, nil
+	end
+	local mutation = if item.TutorialOnly then nil else Mutations.Roll(random)
+	local itemUid = newUid(data.Items)
+	-- Zone gardée pour le revenu du Secret, qui n'a pas de zone au catalogue (DisplayService la lit).
+	data.Items[itemUid] = { Id = item.Id, Source = "NPC", At = os.time(), Zone = zone, Mutation = mutation }
+	local mutated = Mutations.Label(mutation)
+	log(`{player.Name} : colis de zone offert, zone {zone} : {item.Id} ({drawn.Id}, {string.format("%.3f", drawn.Chance)} %{if mutated then ", mutation " .. mutated else ""}) mis dans l'inventaire ({itemUid})`)
+	discover(player, item.Id)
+	refreshInventory(player)
+	return itemUid, nil, item.Id, { Zone = zone, Rarity = drawn.Id, Chance = drawn.Chance, StartRarity = chances[1].Id, Effect = if mutation then mutation.Effect else nil }
 end
 
 function UnboxService.GetWaiting(player: Player): { [string]: number }

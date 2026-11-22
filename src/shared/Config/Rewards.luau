@@ -28,8 +28,14 @@ local DeepFreeze = require(script.Parent.DeepFreeze)
 --          sous BoxRarity (plancher, vague 81) ;
 --          UnboxService.GiveBoxRarityItem ;
 --   Boost  boost ×2 argent pendant Minutes minutes (MonetizationService.AddCashBoost : compté seulement
---          en jeu, un 2e boost prolonge le 1er).
-export type RewardKind = "Cash" | "Box" | "Boost"
+--          en jeu, un 2e boost prolonge le 1er) ;
+--   ZoneBox a309 (Cantin, 22/11) : un colis de zone, ouvert TOUT DE SUITE avec la scène d'ouverture de la caisse
+--          exclusive (mêmes règles : Monetization.Crate.Reveal, zone safe seulement ; ailleurs, objet donné sans scène),
+--          puis l'objet est dans l'inventaire (inventaire plein : refusé, comme Box). Zone et chances : la règle
+--          ZoneBox[Rule] plus bas (Shared/ZoneBoxOdds lit Config/Zones et Rarities.ZoneOdds / ZoneRarities au moment
+--          du tirage, rien n'est recopié ici) ; objet par Items.Pick(zone, rareté), comme les rayons ;
+--          UnboxService.GiveZoneBoxItem.
+export type RewardKind = "Cash" | "Box" | "Boost" | "ZoneBox"
 export type Reward = {
 	Kind: RewardKind,
 	Minutes: number?, -- Cash, Boost
@@ -37,6 +43,17 @@ export type Reward = {
 	BoxRarity: string?, -- Box (vague 80) : rareté du colis de rayon (Id de Config/Rarities) ; prime sur Tier
 	MinRarity: string?, -- Box : rareté la plus basse possible (Id de Config/Rarities)
 	MinZone: number?, -- Box : zone la plus basse possible
+	Rule: string?, -- ZoneBox (a309) : nom de la règle dans Rewards.ZoneBox
+}
+
+-- a309 : règle d'un colis de zone (ZoneBox ; détail dans Shared/ZoneBoxOdds). Seuls les réglages de la règle sont ici :
+-- zones, raretés de chaque zone et leurs chances se lisent dans Config/Zones et Config/Rarities, jamais recopiées.
+export type ZoneBoxRule = {
+	ZoneStep: number, -- zone de référence (la plus haute parmi les objets du joueur) + ZoneStep, au plus la dernière zone
+	Exclude: { string }?, -- raretés jamais tirées (Id de Config/Rarities)
+	TopCount: number?, -- seulement les TopCount meilleures raretés de la zone (Order), avec les poids TopWeights
+	TopWeights: { number }?, -- de la plus basse à la plus haute ; une zone qui a moins de raretés prend les premiers
+	TopBoost: number?, -- sans TopCount : chance de la plus haute rareté de la zone × TopBoost, l'écart pris sur la plus basse
 }
 
 -- Un palier de temps de jeu : Minutes de jeu dans la journée UTC.
@@ -59,14 +76,28 @@ local Rewards = {
 		{ Kind = "Box", Tier = "Luxe", MinRarity = "Epic", MinZone = 2 },
 	} :: { Reward },
 
-	-- Paliers de temps de jeu dans la journée UTC (V0 3.3), du plus court au plus long. Les objets offerts (Box) sont
-	-- tirés dans Rarities.BoxOdds, plus généreux que les rayons en zones 2 et 3 : voulu (Cantin, 22/11).
+	-- Paliers de temps de jeu dans la journée UTC (V0 3.3), du plus court au plus long. a309 (Cantin, 22/11 ; remplace les
+	-- objets des colis Standard et Premium tirés dans Rarities.BoxOdds) : 15 et 60 min donnent un colis de zone (ZoneBox).
 	Playtime = {
 		{ Minutes = 5, Reward = { Kind = "Cash", Minutes = 2 } }, -- V0 3.3 : 2 min de revenus (100 $ au moins)
-		{ Minutes = 15, Reward = { Kind = "Box", Tier = "Standard" } }, -- V0 3.3 : colis Standard
+		{ Minutes = 15, Reward = { Kind = "ZoneBox", Rule = "BestZone" } }, -- validé par Cantin, 22/11 : colis de la meilleure zone
 		{ Minutes = 30, Reward = { Kind = "Boost", Minutes = 10 } }, -- V0 3.3 : boost ×2 argent 10 min
-		{ Minutes = 60, Reward = { Kind = "Box", Tier = "Premium" } }, -- V0 3.3 : colis Premium
+		{ Minutes = 60, Reward = { Kind = "ZoneBox", Rule = "NextZone" } }, -- validé par Cantin, 22/11 : colis rare de la zone suivante
 	} :: { PlaytimeTier },
+
+	-- a309 (validé par Cantin, 22/11) : règles des colis de zone (Kind = "ZoneBox"), lues au moment du tirage par
+	-- Shared/ZoneBoxOdds. Zone de référence = la plus haute parmi les objets du joueur (zone 1 sans objet).
+	ZoneBox = {
+		-- 15 min : un colis de la zone de référence, aux chances des rayons de cette zone (Rarities.ZoneOdds) améliorées :
+		-- chance de la rareté la plus haute de la zone × 1,5, l'écart pris sur la plus basse (zone 3 : Rare 2 → 3 %,
+		-- Commun 33 → 32 %) ; zone à une seule rareté (zone 1) : rien ne change. Secret compris (zone 6), comme les rayons.
+		BestZone = { ZoneStep = 0, TopBoost = 1.5 },
+		-- 60 min : un colis de la zone de référence + 1 (au plus la dernière zone de Config/Zones), tiré seulement parmi
+		-- les 3 meilleures raretés de cette zone, sans Secret, à 60 / 30 / 10 % de la plus basse à la plus haute (zone 6 :
+		-- Épique 60, Légendaire 30, Mythique 10). V0 (a309) : une zone à 2 raretés garde le rapport 60/30 (zone 2 :
+		-- Commun 67, Peu commun 33).
+		NextZone = { ZoneStep = 1, TopCount = 3, TopWeights = { 60, 30, 10 }, Exclude = { "Secret" } },
+	} :: { [string]: ZoneBoxRule },
 
 	-- V0 3.3 : « X min de revenus » rapporte au moins 50 $ par minute (J1 : 250 $ au moins).
 	MinCashPerMinute = 50,
@@ -154,12 +185,13 @@ local Rewards = {
 		Cash = "%s cash", -- %s = la somme (Format.money) : revenu répliqué (attribut Income du Player) × minutes, au moins MinCashPerMinute
 		CashMinutes = "%d min of cash", -- revenu pas encore connu du client (attribut Income absent)
 		Boost = "×2 Cash for %d min", -- %d = minutes du boost
-		-- Box : l'objet donné tout de suite (UnboxService.GiveItem), tiré avec la table de ce type (Rarities.BoxOdds) dans
-		-- la meilleure zone du joueur ; « up to » = la plus haute rareté de la table (améliorations comprises : jamais
-		-- au-dessus d'une rareté à 0 dans la table). Un type absent : BoxDefault.
-		Box = {
-			Standard = "Item up to Epic", -- Rarities.BoxOdds.Standard : Épique 1 %, Légendaire 0 ; validé par Cantin, 22/11
-			Premium = "Item up to Mythic", -- Rarities.BoxOdds.Premium : Mythique 0,2 %, Secret 0 ; validé par Cantin, 22/11
+		-- Box : l'objet d'un colis d'un type (Tier), donné tout de suite (UnboxService.GiveItem). Plus aucun palier de temps
+		-- de jeu n'en donne depuis a309 (22/11 : « Item up to Epic / Mythic » abandonnés) ; un type absent : BoxDefault.
+		Box = {} :: { [string]: string },
+		-- a309 : colis de zone (Kind = "ZoneBox"), [Rule] = texte ; V0 (a309, 22/11). Une règle absente : BoxDefault.
+		ZoneBox = {
+			BestZone = "Box from your best zone",
+			NextZone = "Rare box from the next zone",
 		} :: { [string]: string },
 		BoxFloor = "%s+ item", -- BoxRarity ou MinRarity : %s = la rareté plancher (Rarities DisplayName), « Epic+ item »
 		BoxDefault = "Random item",
@@ -168,6 +200,7 @@ local Rewards = {
 		Icons = {
 			Cash = "UI_Icon_Reward_Cash",
 			Box = "UI_Icon_Reward_Box",
+			ZoneBox = "UI_Icon_Reward_Box", -- a309 : même icône que Box (V0)
 			Boost = "UI_Icon_Reward_Boost",
 		} :: { [string]: string },
 	},

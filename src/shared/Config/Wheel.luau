@@ -22,14 +22,19 @@ local DeepFreeze = require(script.Parent.DeepFreeze)
 --           semaine, UnboxService.GiveBoxRarityItem, cette rareté ou mieux) ; zone = la plus haute parmi les objets du joueur ; rareté =
 --           la Rank-ième de Rarities.ZoneRarities[zone] (1 = la plus basse ; "Top" ou au-delà de la liste = la plus haute) ;
 --   Boost   boost ×2 argent pendant Minutes minutes (MonetizationService.AddCashBoost) ;
---   Potion  Count potions Potion (Id de Config/Potions) dans l'inventaire de potions (PotionService.AddStock).
-export type PrizeKind = "Cash" | "Box" | "Boost" | "Potion"
+--   Potion  Count potions Potion (Id de Config/Potions) dans l'inventaire de potions (PotionService.AddStock) ;
+--   ZoneBox a309 (Cantin, 22/11 : « fais la roue de la chance aussi ») : un colis de zone, la règle Rule de
+--           Config/Rewards.ZoneBox (la même que les cadeaux de 15 et 60 min de jeu, tirée par la même fonction :
+--           UnboxService.GiveZoneBoxItem, Shared/ZoneBoxOdds) ; ouvert tout de suite par la scène de la caisse exclusive
+--           (zone safe seulement), après l'arrêt de la roue (WheelService) ; inventaire plein : refusé, comme Box.
+export type PrizeKind = "Cash" | "Box" | "Boost" | "Potion" | "ZoneBox"
 export type Prize = {
 	Kind: PrizeKind,
 	Minutes: number?, -- Cash, Boost
 	Rank: (number | string)?, -- Box : 1, 2… ou "Top" (1 par défaut)
 	Potion: string?, -- Potion : Money, Strength, Invisibility
 	Count: number?, -- Potion (1 par défaut)
+	Rule: string?, -- ZoneBox (a309) : nom de la règle dans Config/Rewards.ZoneBox (BestZone, NextZone)
 }
 
 -- Un secteur de la roue, dans l'ordre de Segment_01 à Segment_08 de UI_Wheel.
@@ -44,11 +49,11 @@ local Wheel = {
 	-- V0 proposé (Cantin, 20/11) : 8 secteurs (UI_Wheel en a 8), poids sur 100 pour lire la chance directement.
 	Sectors = {
 		{ Label = "5 MIN CASH", Icon = "WHEEL_Cash", Weight = 30, Prize = { Kind = "Cash", Minutes = 5 } }, -- V0 proposé (Cantin, 20/11)
-		{ Label = "BOX", Icon = "WHEEL_Box", Weight = 20, Prize = { Kind = "Box", Rank = 1 } }, -- V0 proposé (Cantin, 20/11)
+		{ Label = "BOX", Icon = "WHEEL_Box", Weight = 20, Prize = { Kind = "ZoneBox", Rule = "BestZone" } }, -- V0 proposé (Cantin, 20/11) ; lot : validé par Cantin, 22/11 (a309), la règle des 15 min (avant : Box Rank 1)
 		{ Label = "x2 CASH 10 MIN", Icon = "WHEEL_Boost", Weight = 15, Prize = { Kind = "Boost", Minutes = 10 } }, -- V0 proposé (Cantin, 20/11)
 		{ Label = "MONEY POTION", Icon = "WHEEL_PotionMoney", Weight = 5, Prize = { Kind = "Potion", Potion = "Money", Count = 1 } }, -- V0 proposé (Cantin, 20/11)
 		{ Label = "15 MIN CASH", Icon = "WHEEL_Cash", Weight = 15, Prize = { Kind = "Cash", Minutes = 15 } }, -- V0 proposé (Cantin, 20/11)
-		{ Label = "RARE BOX", Icon = "WHEEL_BoxRare", Weight = 7, Prize = { Kind = "Box", Rank = 2 } }, -- V0 proposé (Cantin, 20/11)
+		{ Label = "RARE BOX", Icon = "WHEEL_BoxRare", Weight = 7, Prize = { Kind = "ZoneBox", Rule = "NextZone" } }, -- V0 proposé (Cantin, 20/11) ; lot : validé par Cantin, 22/11 (a309), la règle des 60 min (avant : Box Rank 2)
 		{ Label = "STRENGTH POTION", Icon = "WHEEL_PotionStrength", Weight = 5, Prize = { Kind = "Potion", Potion = "Strength", Count = 1 } }, -- V0 proposé (Cantin, 20/11)
 		{ Label = "60 MIN CASH", Icon = "WHEEL_Jackpot", Weight = 3, Prize = { Kind = "Cash", Minutes = 60 } }, -- V0 proposé (Cantin, 20/11)
 	} :: { Sector },

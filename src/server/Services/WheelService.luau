@@ -11,6 +11,9 @@
 -- Lot refusé (inventaire d'objets plein, stock de potions plein) : Config/Wheel.Fallback est donné à la place et le
 -- message le dit ; si même le repli est refusé, le tour n'est pas pris (Notify). Un don qui lève une erreur prend le
 -- tour quand même (avertissement) : jamais deux fois le même don.
+-- a309 (Cantin, 22/11) : BOX et RARE BOX donnent un colis de zone (Prize ZoneBox, règles des cadeaux de 15 et 60 min,
+-- Config/Rewards.ZoneBox), ouvert par la scène de la caisse exclusive quand la roue s'arrête (SpinSeconds) : Result vide ;
+-- sans scène (hors zone safe…), le message en notification.
 --
 -- Profil (champ facultatif Wheel, sans nouvelle version, créé et réparé ici) :
 --   Wheel = { FreeDay = jour UTC du dernier tour gratuit (0 = jamais), Extra = tours en plus gardés }
@@ -48,6 +51,7 @@ local ProfileTypes = require(Shared.Types.Profile)
 local DataService = require(script.Parent.DataService)
 local TelemetryService = require(script.Parent.TelemetryService)
 local Grant = require(script.Parent.Prize.Grant)
+local MonetizationService = require(script.Parent.MonetizationService) -- a309 : ouverture des colis de zone
 
 type WheelData = ProfileTypes.Wheel
 
@@ -186,7 +190,7 @@ local function onSpinWheel(player: Player)
 	local index = forced or draw()
 	forced = nil
 	local sector = Wheel.Sectors[index]
-	local ok, given, message, amount = pcall(Grant.Give :: any, player, sector.Prize)
+	local ok, given, message, amount, _reason, reveal = pcall(Grant.Give :: any, player, sector.Prize)
 	local giftKind: string = sector.Prize.Kind
 	if ok and not given then
 		-- Lot refusé (inventaire ou stock plein) : le repli à la place.
@@ -199,11 +203,13 @@ local function onSpinWheel(player: Player)
 		end
 		message = string.format(MESSAGES.Fallback, messageFallback)
 		amount = amountFallback
+		reveal = nil
 		giftKind = Wheel.Fallback.Kind
 	elseif not ok then
 		warn(`[WheelService] {player.Name} : erreur pendant le don du secteur {index} ({given}) : tour pris quand même, à compenser à la main si rien n'est arrivé`)
 		message = ""
 		amount = 0
+		reveal = nil
 	end
 	if free then
 		wheel.FreeDay = day
@@ -215,9 +221,25 @@ local function onSpinWheel(player: Player)
 	end
 	TelemetryService.LogEvent(player, "WheelSpin", { `Sector - {index}`, `Gift - {giftKind}`, `Spin - {if free then "Free" else "Extra"}` })
 	log(`{player.Name} : secteur {index} ({message})`)
+	-- a309 (Cantin, 22/11) : un colis de zone (BOX, RARE BOX) s'ouvre tout de suite, avec la scène de la caisse exclusive
+	-- (MonetizationService.StartGiftReveal, zone safe seulement), quand la roue s'arrête (Config/Wheel.SpinSeconds,
+	-- l'animation du client) ; Result reste vide pour ne pas dire l'objet avant la scène. Pas de scène (hors zone safe,
+	-- coupée, joueur parti…) : le message en notification.
+	local shown: Grant.Reveal? = if ok and type(reveal) == "table" then reveal else nil
+	local resultMessage = if shown then "" else message
 	local fired, err = pcall(function()
-		Net.Server.WheelResult:Fire(player, index, message)
+		Net.Server.WheelResult:Fire(player, index, resultMessage)
 	end)
+	if shown then
+		local gift: Grant.Reveal = shown
+		local text: string = message
+		task.delay(Wheel.SpinSeconds, function()
+			local okReveal, started = pcall(MonetizationService.StartGiftReveal, player, gift.ItemId, gift.StartRarity, gift.Chance, gift.Effect)
+			if not (okReveal and started == true) and player.Parent == Players then
+				notify(player, text, "Info")
+			end
+		end)
+	end
 	if not fired then
 		warn(`[WheelService] WheelResult vers {player.Name} : {err}`)
 	end
