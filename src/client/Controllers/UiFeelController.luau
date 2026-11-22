@@ -11,7 +11,8 @@
 --     comme dans le prototype de Clément (tools/clement/ui_feel_proto.luau) : le serveur peut encore
 --     refuser l'achat, le bouton a déjà sauté. Laissés de côté : le Template caché d'une liste (et ce
 --     qu'il contient ; ses copies, elles, sont branchées), un bouton à la racine d'un écran (Motion.Open
---     met déjà la racine à l'échelle) et un bouton aussi grand que son parent (calque de glisser).
+--     met déjà la racine à l'échelle) et un bouton aussi grand que son parent (calque de glisser), sauf dans les
+--     écrans de UiMotion.Hover.FillParentScreens (a308, 22/11 : EquipButton des boutiques d'armes et d'auras).
 --   - Cartes : un cadre avec un enfant HoverOutline (Index, inventaire, boutiques…) reçoit
 --     Motion.HoverCard (et pas l'effet de bouton) ; ses boutons à lui (PLACE…) gardent le leur.
 --   - a285 (21/11) : effets posés en attribut par Clément (Gleam, IconHover, Idle = Wiggle ou Fall) : chaque GuiObject
@@ -182,6 +183,17 @@ local function fillsParent(object: GuiObject): boolean
 	return size.X.Scale >= 1 and size.Y.Scale >= 1
 end
 
+-- a308 (Cantin, 22/11) : un bouton aussi grand que son parent est branché quand même dans les écrans de
+-- Config/UiMotion.Hover.FillParentScreens (EquipButton des boutiques d'armes et d'auras).
+local function fillAllowed(object: GuiObject): boolean
+	for _, screen in UiMotion.Hover.FillParentScreens do
+		if object:FindFirstAncestor(screen) ~= nil then
+			return true
+		end
+	end
+	return false
+end
+
 local function wire(inst: Instance)
 	if inst.Parent == nil or not inst:IsA("GuiObject") or inTemplate(inst) then
 		return
@@ -198,7 +210,7 @@ local function wire(inst: Instance)
 		return
 	end
 	local parent = object.Parent
-	if parent == nil or parent:IsA("LayerCollector") or fillsParent(object) then
+	if parent == nil or parent:IsA("LayerCollector") or (fillsParent(object) and not fillAllowed(object)) then
 		return
 	end
 	local button = object :: GuiButton
