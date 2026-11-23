@@ -1191,6 +1191,10 @@ local function payPartners(carrier: Player, out: OutItem)
 			continue
 		end
 		if (data :: any).AddCash(partner, amount) ~= nil then
+			local telemetry = if Features.Analytics then partnerApi("TelemetryService") else nil -- a414 : prime comptée
+			if telemetry and telemetry.LogEconomy then
+				pcall(telemetry.LogEconomy, partner, "HeistBonus", amount, "Partner")
+			end
 			local Format = require(Shared.Format) -- a291 : chargé ici, pas au démarrage
 			Net.Server.Notify:Fire(partner, string.format(Balance.Heist.PartnerBonusMessage, Format.money(amount)), "Success")
 			log(`prime au complice : {partner.Name} reçoit {amount} (objet {out.Info.Content.ItemId} de {carrier.Name}, {out.Slot.Store.Id})`)

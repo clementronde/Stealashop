@@ -58,6 +58,13 @@ local Economy: { [string]: EconomyKind } = {
 	-- (WheelService), SKU Wheel_<secteur>. Types V0 proposés (Cantin, 20/11) : Gameplay et TimedReward.
 	QuestReward = { Flow = "Source", Transaction = "Gameplay" },
 	WheelReward = { Flow = "Source", Transaction = "TimedReward" },
+	-- a414 (vague GC7, Features.Analytics) : gains encore sans mesure. WeeklyReward : coffre hebdomadaire (RewardService l'envoyait
+	-- déjà, genre absent : rien ne partait), SKU Week… ; TutorialGift : dons d'argent du tuto (TutorialService), SKU Tool ou
+	-- Aura ; HeistBonus : prime au complice d'un braquage à deux (StoreHeistService), SKU Partner. Types V0 proposés
+	-- (Cantin, 23/11). Le receleur part en Fence (PawnShopService) et les codes en Code (CodeService), genres déjà là.
+	WeeklyReward = { Flow = "Source", Transaction = "TimedReward" },
+	TutorialGift = { Flow = "Source", Transaction = "Onboarding" },
+	HeistBonus = { Flow = "Source", Transaction = "Gameplay" },
 }
 
 -- Événements custom (LogCustomEvent) : clé lue par le code = nom envoyé à Roblox.
@@ -85,6 +92,11 @@ local Events: { [string]: string } = {
 	-- Sector, Gift, Spin = Free ou Extra)
 	QuestClaim = "QuestClaimed",
 	WheelSpin = "WheelSpin",
+	-- a414 (vague GC7, Features.Analytics), TelemetryService sauf mention :
+	WindowBroken = "WindowBroken", -- vitrine cassée (WindowService.OnBroken) ; joueur = le casseur ; champs Zone, Phase (magasin PNJ seulement)
+	HighRarityOpened = "HighRarityOpened", -- objet de rareté haute (HighRarities) sorti d'un colis et porté ; champs Rarity, Zone, Source
+	ItemSold = "ItemSold", -- vente au receleur ou depuis l'écran Display (PawnShopService) ; valeur = objets vendus ; champs Rarity (Bulk si plusieurs), Items
+	LoadingTime = "LoadingTime", -- fin de l'écran de chargement (FunnelService, une fois par session) ; valeur = secondes depuis le lancement du client
 }
 
 local Telemetry = {
@@ -101,6 +113,8 @@ local Telemetry = {
 	RefusalFlushInterval = 60,
 	-- V0 proposé, absent du doc (vague 41) : intervalle (s) du relevé de la zone de chaque joueur (ZoneReached).
 	ZoneCheckInterval = 0.5,
+	-- a414 (vague GC7) : raretés comptées par HighRarityOpened. V0 proposé (Cantin, 23/11) : Légendaire et au-dessus.
+	HighRarities = { "Legendary", "Mythic", "Secret", "Divine" },
 	Economy = Economy,
 	Events = Events,
 }

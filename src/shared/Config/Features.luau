@@ -83,6 +83,11 @@ local Features = {
 	FramewispFx = true,
 	-- a301 (21/11, demande de Cantin) : près de la boutique d'un autre joueur, dehors, les étiquettes BB_Item de ses objets exposés se voient à travers la façade (ShopSpyController, Config/ShopSpy) ; V0 proposé (2026-11-21) : true ; false = comme avant.
 	ShopSpy = true,
+	-- a414 (vague GC7, 23/11, demande de Cantin) : mesures du lancement dans le tableau de bord Roblox (AnalyticsService) :
+	-- entonnoirs de Config/Funnels (FunnelService, FunnelController ; le tutoriel garde l'onboarding), événements
+	-- WindowBroken, HighRarityOpened, ItemSold, LoadingTime, gains pas encore comptés (receleur, codes, dons du tuto,
+	-- prime au complice). Sous Config/Telemetry.Enabled. false = rien de cela.
+	Analytics = true,
 }
 
 export type Features = typeof(Features)

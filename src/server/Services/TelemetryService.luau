@@ -28,6 +28,9 @@
 --   argent (« X min de revenus »), SKU Day1 à Day7, Playtime5 à Playtime60.
 --   IndexReward (prime d'une zone complète de l'Index, L-083 point 7) : appelé par IndexService, SKU
 --   IndexZone1 à IndexZone6.
+--   a414 (vague GC7, avec Features.Analytics) : Fence (receleur et vente depuis l'écran Display, PawnShopService, SKU =
+--   rareté ou Bulk), Code (CodeService, SKU = le code), TutorialGift (dons du tuto, TutorialService), HeistBonus (prime
+--   au complice, StoreHeistService) ; WeeklyReward (coffre hebdomadaire, RewardService) a enfin son genre.
 --   Pas encore codés, genres déjà dans la config (points d'accroche : LogEconomy, plus bas) : Fence
 --   (receleur, DEV-034), Code (codes cadeaux), Defense (défenses, MAJ 2). Une défense achetée par
 --   ShopService (OnPurchase avec kind « Defense ») partirait aussi en DefenseBought.
@@ -84,6 +87,15 @@
 --       (une fois par zone et par profil) ; les zones sautées entre deux relevés comptent avec le même temps.
 --   Ces trois mesures n'envoient rien quand Telemetry.Enabled est false ; le compteur, les lignes de la sortie
 --   et l'avertissement des doublons restent ; ZoneReached ne note alors rien dans le profil.
+--   a414 (vague GC7), seulement avec Features.Analytics :
+--   WindowBroken  vitrine de magasin PNJ cassée (WindowService.OnBroken, Kind NPC ; ni porte de boutique ni cible
+--       d'événement) ; joueur = le casseur ; champs Zone (attribut Zone du magasin ou de ses parents), Phase (Day,
+--       Warning, Night).
+--   HighRarityOpened  objet d'une rareté de Telemetry.HighRarities sorti d'un colis PNJ et porté
+--       (CarryService.OnCarryStarted, NPCItem ; un objet ramassé après une chute ne compte pas deux fois : même
+--       payload) ; champs Rarity, Zone, Source (Store, Truck, Fortune, Rain, comme BatBoxKnock).
+--   ItemSold (PawnShopService) et LoadingTime (FunnelService) passent par LogEvent.
+--   Les entonnoirs sont dans FunnelService (Config/Funnels).
 --
 -- Noms et champs : texte sans virgule, guillemet ni apostrophe, droits ou typographiques (Roblox refuse
 -- l'événement sinon, « Event field … is invalid », vu en Studio le 2026-11-07 pour le funnel). Au
@@ -124,6 +136,7 @@ local Workspace = game:GetService("Workspace")
 local Shared = ReplicatedStorage.Shared
 local Net = require(Shared.Net.Net)
 local Cosmetics = require(Shared.Config.Cosmetics)
+local Features = require(Shared.Config.Features)
 local Items = require(Shared.Config.Items)
 local Telemetry = require(Shared.Config.Telemetry)
 local Tools = require(Shared.Config.Tools)
@@ -449,20 +462,60 @@ local function onTheftEnded(thief: Player, _victim: Player, itemId: string, resu
 	end
 end
 
+-- Origine d'un objet sorti d'un colis, d'après le StoreId de son payload.
+local function sourceOf(storeId: string): string
+	return if string.sub(storeId, 1, #FORTUNE_PREFIX) == FORTUNE_PREFIX
+		then "Fortune"
+		elseif storeId == "Truck_ItemRain" then "Rain" -- a188 : pluie d'objets (Config/ItemRain.StoreId)
+		elseif string.sub(storeId, 1, #TRUCK_PREFIX) == TRUCK_PREFIX then "Truck"
+		else "Store"
+end
+
 local function onBatHit(hitter: Player, _target: Player, usage: BatService.Usage, payload: Payload?)
 	if usage ~= "Box" or payload == nil then
 		return
 	end
 	-- Vague 50 (a158) : ce qui tombe est un objet sorti d'un colis (NPCItem) ; le colis porté n'existe plus.
 	if payload.Kind == "NPCItem" then
-		local storeId = payload.StoreId
-		local source = if string.sub(storeId, 1, #FORTUNE_PREFIX) == FORTUNE_PREFIX
-			then "Fortune"
-			elseif storeId == "Truck_ItemRain" then "Rain" -- a188 : pluie d'objets (Config/ItemRain.StoreId)
-			elseif string.sub(storeId, 1, #TRUCK_PREFIX) == TRUCK_PREFIX then "Truck"
-			else "Store"
-		logEvent(hitter, "BatBoxKnock", field("Zone", payload.Zone), field("Rarity", payload.Rarity), field("Source", source), nil)
+		logEvent(hitter, "BatBoxKnock", field("Zone", payload.Zone), field("Rarity", payload.Rarity), field("Source", sourceOf(payload.StoreId)), nil)
 	end
+end
+
+-- a414 : objets de rareté haute déjà comptés (le payload d'un objet tombé puis ramassé est le même).
+local countedPayloads: { [any]: boolean } = setmetatable({}, { __mode = "k" }) :: any
+
+local function onCarryStarted(player: Player, payload: Payload)
+	if payload.Kind ~= "NPCItem" or countedPayloads[payload] or not table.find(Telemetry.HighRarities, payload.Rarity) then
+		return
+	end
+	countedPayloads[payload] = true
+	logEvent(player, "HighRarityOpened", field("Rarity", payload.Rarity), field("Zone", payload.Zone), field("Source", sourceOf(payload.StoreId)), nil)
+end
+
+-- a414 : zone d'une vitrine, lue dans l'attribut Zone de son modèle ou d'un parent (nil : aucune).
+local function zoneOfModel(model: Instance): number?
+	local current: Instance? = model
+	while current and current ~= Workspace do
+		local zone = current:GetAttribute("Zone")
+		if type(zone) == "number" then
+			return zone
+		end
+		current = current.Parent
+	end
+	return nil
+end
+
+-- Ce que WindowBroken lit de WindowService.BreakInfo (WindowService chargé à l'Init, require protégé : des bancs
+-- montent ce service sans lui).
+type BreakInfo = { Kind: string, Model: Instance, Breaker: Player? }
+
+local function onWindowBroken(info: BreakInfo)
+	local breaker = info.Breaker
+	if breaker == nil or info.Kind ~= "NPC" then
+		return
+	end
+	local ok, phase = pcall(NightCycleService.GetPhase)
+	logEvent(breaker, "WindowBroken", field("Zone", zoneOfModel(info.Model)), field("Phase", if ok then phase else nil), nil, nil)
 end
 
 local function onCarryEnded(player: Player, payload: Payload, result: CarryTypes.EndResult, reason: string)
@@ -789,6 +842,13 @@ function TelemetryService.Init()
 	BatService.OnHit(onBatHit)
 	CarryService.OnCarryEnded(onCarryEnded)
 	GuardService.OnCatch(onGuardCatch)
+	if Features.Analytics == true then -- a414 (vague GC7)
+		local okWindow, windowApi = pcall(require, script.Parent:FindFirstChild("WindowService") :: any)
+		if okWindow and type(windowApi) == "table" and type(windowApi.OnBroken) == "function" then
+			(windowApi :: any).OnBroken(onWindowBroken)
+		end
+		pcall(CarryService.OnCarryStarted :: any, onCarryStarted) -- protégé : bouchon de banc sans OnCarryStarted
+	end
 	task.spawn(zoneLoop) -- vague 41 : ZoneReached
 	-- Départ : DisplayService a déjà encaissé les plaques (il s'abonne avant ce service).
 	DataService.OnProfileReleasing(flushPlayer)

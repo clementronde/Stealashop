@@ -896,6 +896,20 @@ local List: { RemoteDef } = {
 			{ Name = "message", Kind = "string", Min = 0, Max = MAX_MESSAGE_LENGTH },
 		},
 	},
+	{
+		-- a414 (vague GC7, Features.Analytics), absent du tableau 9.4 : étape d'un entonnoir que seul le client voit (écran de
+		-- chargement fermé, boutique ouverte, offre regardée, bouton d'achat ; FunnelController). step = clé de
+		-- Config/Funnels.ClientSteps (toute autre est ignorée) ; value = secondes de chargement (Loaded seulement).
+		-- FunnelService n'en tire que des mesures (AnalyticsService), jamais d'argent ni d'état de jeu.
+		Name = "FunnelStep",
+		Direction = "ClientToServer",
+		Reliable = true,
+		Args = {
+			{ Name = "step", Kind = "string", Max = 24 },
+			{ Name = "value", Kind = "number", Min = 0, Max = 100000, Optional = true },
+		},
+		RatePerSecond = 4, -- V0 proposé (Cantin, 23/11) ; FunnelService borne aussi à Funnels.ClientStepsPerMinute
+	},
 }
 
 return {
