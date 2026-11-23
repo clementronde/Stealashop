@@ -306,6 +306,22 @@ local Chase = {
 	-- la distance prévue et les parts de la vitesse du vigile ; à chaque capture, la distance, le temps depuis
 	-- l'apparition et dedans/dehors. En Studio, workspace:SetAttribute("ChaseDebug", true) fait de même.
 	Debug = false,
+	-- a277 (L-249, L-238 a, Clément : « Run est faite pour une course normale ») : course du vigile de magasin
+	-- (server/Services/Guard/Gait). Au-dessus de FromFactor × sa course normale (la vitesse de poursuite de sa zone), il
+	-- joue Sprint au lieu de Run ; il revient à Run sous BackFactor × (écart pour ne pas alterner sans cesse). Vitesse de
+	-- lecture de Sprint = WalkSpeed / (Reference × échelle du modèle), bornée de RateMin à RateMax (comme Run). Sprint
+	-- absente du modèle (pas encore livrée : orange au ContractChecker) ou Enabled = false : Run, comme avant.
+	Sprint = {
+		Enabled = true, -- V0
+		FromFactor = 1.3, -- V0 proposé (Cantin, 23/11), absent du doc
+		BackFactor = 1.15, -- V0 proposé (Cantin, 23/11), absent du doc
+		-- V0 proposé (Cantin, 23/11), à confirmer par Clément : la vitesse au sol (studs/s, échelle 1) pour laquelle Sprint
+		-- est faite (Run : ~20, Walk : ~10).
+		Reference = 30,
+		RateMin = 0.6, -- comme Run (GuardService GAIT_SPEED_MIN)
+		RateMax = 1.6 * K, -- comme Run (GuardService GAIT_SPEED_MAX)
+		Fade = 0.2, -- V0 proposé (Cantin, 23/11) : fondu entre Run et Sprint (s)
+	},
 	-- Qui suit cette règle (false : la vitesse d'avant, voir l'en-tête).
 	Apply = {
 		StoreGuard = true, -- vigile de jour d'un magasin PNJ

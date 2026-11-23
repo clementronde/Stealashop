@@ -628,6 +628,14 @@ GuardService._Sidestep = (function(): any
 	end)
 	return if ok and type(result) == "table" then result else nil
 end)() :: any
+-- a277 (L-249, Chase.Sprint) : Sprint au lieu de Run au-dessus d'un seuil (Guard/Gait). Absent : Run. Champ et non
+-- locale, comme _CatchShow.
+GuardService._Gait = (function(): any
+	local ok, result = pcall(function(): any
+		return require((script.Parent :: any).Guard.Gait)
+	end)
+	return if ok and type(result) == "table" then result else nil
+end)() :: any
 -- a269 (Cantin, 20/11 ; Witness.Avoid) : en ronde, en retour et en Follow, il s'écarte sur sa droite d'un PNJ qui vient en
 -- face (témoin, vigile ; Npc/NpcAvoid) ; en poursuite, il est seulement suivi (un obstacle pour les autres). Absent :
 -- la marche d'avant. Champ et non locale, comme _CatchShow.
@@ -1240,6 +1248,10 @@ end
 
 -- Joue Run ou Walk au pas du vigile ; déjà en cours, seule sa vitesse change.
 local function playGait(guard: Guard, name: string)
+	-- a277 (L-249) : Run devient Sprint au-dessus de Chase.Sprint.FromFactor × sa course (Guard/Gait) ; sinon Run.
+	if name == "Run" and GuardService._Gait and GuardService._Gait.Run(guard.anims, guard.humanoid.WalkSpeed, guard.speed, gaitSpeed(guard, name), guard.scale) then
+		return
+	end
 	guard.anims:Play(name, nil, nil, gaitSpeed(guard, name))
 end
 
@@ -1250,6 +1262,9 @@ local function setWalkSpeed(guard: Guard, value: number)
 	guard.humanoid.WalkSpeed = value
 	for name in GAIT_REFERENCE do
 		guard.anims:AdjustSpeed(name, gaitSpeed(guard, name))
+	end
+	if GuardService._Gait and guard.anims:IsPlaying("Run") then
+		playGait(guard, "Run") -- a277 : Run ou Sprint selon le nouveau pas
 	end
 end
 
