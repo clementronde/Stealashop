@@ -913,4 +913,22 @@ local UnboxFx: ModelSpec = {
 Models.UnboxFx = UnboxFx
 table.insert(Models.List, table.find(Models.List, WeaponShopCounter) or #Models.List + 1, UnboxFx)
 
+-- a408 (vague GC6, MAJ 5 « Défense de la boutique » ; noms proposés à Clément, facultatifs) : les agents des tuiles
+-- Bodyguards et DoorGuard de l'arbre, dans ReplicatedStorage/Assets/Guards, copiés en jeu par ShopDefenseService
+-- (Config/ShopDefense). Rig R15 sans script, avec Humanoid, HumanoidRootPart et Animations Idle, Run, Catch (marqueur
+-- Impact), comme les vigiles (Contract/Animations.Guard). Pas livrés : le vigile commun Guard, sinon un avatar R15.
+local ShopGuards: ModelSpec = {
+	Key = "ShopGuards",
+	Label = "agents de sécurité des boutiques",
+	Category = "Parcelles",
+	Names = { "NPC_Bodyguard", "NPC_DoorGuard" },
+	Class = "Model",
+	Parts = {
+		{ Name = "HumanoidRootPart", Class = "BasePart" },
+	},
+	Expected = { "NPC_Bodyguard", "NPC_DoorGuard" },
+}
+Models.ShopGuards = ShopGuards
+table.insert(Models.List, table.find(Models.List, WeaponShopCounter) or #Models.List + 1, ShopGuards)
+
 return Models

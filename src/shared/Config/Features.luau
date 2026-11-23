@@ -83,6 +83,12 @@ local Features = {
 	FramewispFx = true,
 	-- a301 (21/11, demande de Cantin) : près de la boutique d'un autre joueur, dehors, les étiquettes BB_Item de ses objets exposés se voient à travers la façade (ShopSpyController, Config/ShopSpy) ; V0 proposé (2026-11-21) : true ; false = comme avant.
 	ShopSpy = true,
+	-- a408 (vague GC6, MAJ 5 « Défense de la boutique », Cantin 23/11 : tout maintenant ; V0 à valider par Clément) :
+	-- tuiles de l'arbre devenues achetables (Config/SkillTree, Config/ShopDefense, ShopDefenseService) ; false = la
+	-- tuile reste « Soon » et rien n'est posé.
+	Bodyguards = true, -- agent de sécurité qui poursuit le voleur (Partie 2, section 2)
+	DoorGuard = true, -- garde à la porte qui repousse le voleur (L-163)
+	CameraRadar = true, -- Cameras niveau 3 : voleur en rouge vif et son de radar, sans flèche (L-163, L-175)
 }
 
 export type Features = typeof(Features)

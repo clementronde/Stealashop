@@ -104,7 +104,10 @@ local List: { Skill } = {
 	},
 	{
 		-- Partie 2 : N1 alerte dès le 1er coup sur la vitrine ; N2 voleur surligné à travers les murs 30 s ;
-		-- N3 flèche, distance et son jusqu'au voleur (pas encore codé). Effects[2] = durée du surlignage (s).
+		-- N3 flèche, distance et son jusqu'au voleur. Effects[n] = durée du surlignage (s). a408 (vague GC6, L-163, V0 de
+		-- L-175 : plus aucune flèche) : N3 = voleur surligné en rouge vif et son de radar qui accélère en approchant
+		-- (CameraAlertController, Config/ShopDefense.CameraRadar), relancé quand il prend un objet (ShopDefenseService) ;
+		-- achetable avec Features.CameraRadar (sinon 2 niveaux).
 		Id = "Cameras",
 		Tile = "Tile_Cameras",
 		DisplayName = "Cameras",
@@ -113,11 +116,12 @@ local List: { Skill } = {
 		Prices = { 980, 5_300, 100_000 }, -- V0 proposé (Cantin, 20/11), avant : { 5_000, 150_000, 5_000_000 }
 		Effects = { 0, 30, 30 },
 		Labels = { "I", "II", "III" },
-		Coded = 2,
+		Coded = if Features.CameraRadar then 3 else 2,
 		Icon = "rbxassetid://130895616275969",
 	},
 	{
-		-- Partie 2 (MAJ 3) : agent PNJ dans la boutique ; Effects[n] = sa vitesse. Pas encore codé.
+		-- Partie 2 (MAJ 3) : agent PNJ dans la boutique ; Effects[n] = sa vitesse (à l'échelle 1). a408 (vague GC6) :
+		-- ShopDefenseService, Config/ShopDefense.Bodyguard ; achetable avec Features.Bodyguards (sinon « Soon »).
 		Id = "Bodyguards",
 		Tile = "Tile_Guards",
 		DisplayName = "Guards",
@@ -126,7 +130,7 @@ local List: { Skill } = {
 		Prices = { 3_800, 49_000, 530_000, 7_900_000, 160_000_000 }, -- V0 proposé (Cantin, 20/11), avant : { 100_000, 2_000_000, 40_000_000, 800_000_000, 16_000_000_000 }
 		Effects = { 20, 28, 36, 44, 52 },
 		Labels = { "I", "II", "III", "IV", "V" },
-		Coded = 0,
+		Coded = if Features.Bodyguards then 5 else 0,
 		Icon = "rbxassetid://133701105676131",
 	},
 	{
@@ -161,15 +165,17 @@ local List: { Skill } = {
 		Icon = "rbxassetid://135129985966759",
 	},
 	{
+		-- L-163 : « un garde à la porte qui repousse le voleur toutes les X s ». a408 (vague GC6) : Effects[1] = X (s) ;
+		-- ShopDefenseService, Config/ShopDefense.DoorGuard ; achetable avec Features.DoorGuard (sinon « Soon »).
 		Id = "DoorGuard",
 		Tile = "Tile_DoorGuard",
 		DisplayName = "Door Guard",
-		Stat = "Door guard",
+		Stat = "Push every", -- V0 proposé (Cantin, 23/11)
 		MaxLevel = 1,
-		Prices = {},
-		Effects = {},
-		Labels = {},
-		Coded = 0,
+		Prices = { 530_000 }, -- V0 proposé (Cantin, 23/11) : le prix du niveau 3 de Guards
+		Effects = { 4 }, -- V0 proposé (Cantin, 23/11) : une poussée toutes les 4 s au plus
+		Labels = { "4s" },
+		Coded = if Features.DoorGuard then 1 else 0,
 		OpensWhen = { Id = "Bodyguards", Level = 1 },
 		RequiresRebirth = 3, -- V0 (L-173)
 		Icon = "rbxassetid://133701105676131",
