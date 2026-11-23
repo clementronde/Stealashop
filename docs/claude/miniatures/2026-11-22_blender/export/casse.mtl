@@ -1,0 +1,1616 @@
+newmtl Ringstone21Mtl
+Material Color
+Ka 0.722672 0.0169881 0.0581872
+Kd 0.722672 0.0169881 0.0581872
+Ks 0.286235 0.0067286 0.0230467 
+
+d 1
+
+Ns 0
+
+map_Ka Sparklev1_diff.png
+map_Kd Sparklev1_diff.png
+map_d Sparklev1_diff.png
+
+map_Bump Sparklev1_nmap.png
+
+newmtl Gemcrownl1Mtl
+Material Color
+Ka 0.190463 0.68002 0.923993
+Kd 0.190463 0.68002 0.923993
+Ks 0.0754382 0.269341 0.365974 
+
+d 1
+
+Ns 0
+
+map_Ka Sparklev1_diff.png
+map_Kd Sparklev1_diff.png
+map_d Sparklev1_diff.png
+
+map_Bump Sparklev1_nmap.png
+
+newmtl Cube901Mtl
+Material Color
+Ka 0.529523 0.796917 1
+Kd 0.529523 0.796917 1
+Ks 0.529523 0.796917 1 
+
+d 1
+
+Ns 0
+
+map_Ka Shelfalglass211_diff.png
+map_Kd Shelfalglass211_diff.png
+map_d Shelfalglass211_diff.png
+
+map_Bump Shelfalglass211_nmap.png
+
+map_Ns Shelfalglass211_spec.png
+
+newmtl Shelfwalllp3221Mtl
+Material Color
+Ka 0.84337 0.766744 0.625345
+Kd 0.84337 0.766744 0.625345
+Ks 0.334041 0.303691 0.247686 
+
+d 1
+
+Ns 0
+
+map_Ka Sparklev1_diff.png
+map_Kd Sparklev1_diff.png
+map_d Sparklev1_diff.png
+
+map_Bump Sparklev1_nmap.png
+
+newmtl Chandeliercrystal231Mtl
+Material Color
+Ka 0.7593 0.91575 1
+Kd 0.7593 0.91575 1
+Ks 0.7593 0.91575 1 
+
+d 0.752941
+
+Ns 0
+
+map_Ka Shelfalglass211_diff.png
+map_Kd Shelfalglass211_diff.png
+map_d Shelfalglass211_diff.png
+
+map_Bump Shelfalglass211_nmap.png
+
+map_Ns Shelfalglass211_spec.png
+
+newmtl Reservelight1Mtl
+Material Color
+Ka 1 0.812241 0.560499
+Kd 1 0.812241 0.560499
+Ks 0.396078 0.321711 0.222002 
+
+d 1
+
+Ns 0
+
+map_Ka Sparklev1_diff.png
+map_Kd Sparklev1_diff.png
+map_d Sparklev1_diff.png
+
+map_Bump Sparklev1_nmap.png
+
+newmtl Potleavestop21Mtl
+Material Color
+Ka 0.0169881 0.157281 0.0356144
+Kd 0.0169881 0.157281 0.0356144
+Ks 0.00153226 0.0141861 0.00321228 
+
+d 1
+
+Ns 0
+
+map_Ka Signpart1_diff.png
+map_Kd Signpart1_diff.png
+map_d Signpart1_diff.png
+
+newmtl Sparklev1Mtl
+Material Color
+Ka 1 1 1
+Kd 1 1 1
+Ks 0.396078 0.396078 0.396078 
+
+d 1
+
+Ns 0
+
+map_Ka Sparklev1_diff.png
+map_Kd Sparklev1_diff.png
+map_d Sparklev1_diff.png
+
+map_Bump Sparklev1_nmap.png
+
+newmtl Cornice1Mtl
+Material Color
+Ka 0.95737 0.948965 0.91575
+Kd 0.95737 0.948965 0.91575
+Ks 0.086351 0.0855929 0.0825971 
+
+d 1
+
+Ns 0
+
+map_Ka Signpart1_diff.png
+map_Kd Signpart1_diff.png
+map_d Signpart1_diff.png
+
+newmtl Gempavilionl1Mtl
+Material Color
+Ka 0.311181 0.766744 0.9743
+Kd 0.311181 0.766744 0.9743
+Ks 0.123252 0.303691 0.385899 
+
+d 1
+
+Ns 0
+
+map_Ka Sparklev1_diff.png
+map_Kd Sparklev1_diff.png
+map_d Sparklev1_diff.png
+
+map_Bump Sparklev1_nmap.png
+
+newmtl Gempavilionr1Mtl
+Material Color
+Ka 0.0915184 0.453456 0.84337
+Kd 0.0915184 0.453456 0.84337
+Ks 0.0362484 0.179604 0.334041 
+
+d 1
+
+Ns 0
+
+map_Ka Sparklev1_diff.png
+map_Kd Sparklev1_diff.png
+map_d Sparklev1_diff.png
+
+map_Bump Sparklev1_nmap.png
+
+newmtl Gemtable1Mtl
+Material Color
+Ka 0.523443 0.91575 1
+Kd 0.523443 0.91575 1
+Ks 0.207325 0.362709 0.396078 
+
+d 1
+
+Ns 0
+
+map_Ka Sparklev1_diff.png
+map_Kd Sparklev1_diff.png
+map_d Sparklev1_diff.png
+
+map_Bump Sparklev1_nmap.png
+
+newmtl Shelfalp761Mtl
+Material Color
+Ka 0.00552174 0.00658496 0.0477758
+Kd 0.00552174 0.00658496 0.0477758
+Ks 0.00218704 0.00260816 0.0189229 
+
+d 1
+
+Ns 0
+
+map_Ka Sparklev1_diff.png
+map_Kd Sparklev1_diff.png
+map_d Sparklev1_diff.png
+
+map_Bump Sparklev1_nmap.png
+
+newmtl Shelfbrp2701Mtl
+Material Color
+Ka 0.0169881 0.00658496 0.00902149
+Kd 0.0169881 0.00658496 0.00902149
+Ks 0.0067286 0.00260816 0.00357322 
+
+d 1
+
+Ns 0
+
+map_Ka Sparklev1_diff.png
+map_Kd Sparklev1_diff.png
+map_d Sparklev1_diff.png
+
+map_Bump Sparklev1_nmap.png
+
+newmtl Chevron21Mtl
+Material Color
+Ka 1 0.560499 0.0169881
+Kd 1 0.560499 0.0169881
+Ks 0.396078 0.222002 0.0067286 
+
+d 1
+
+Ns 0
+
+map_Ka Sparklev1_diff.png
+map_Kd Sparklev1_diff.png
+map_d Sparklev1_diff.png
+
+map_Bump Sparklev1_nmap.png
+
+newmtl Shelfwallrp3851Mtl
+Material Color
+Ka 0.197516 0.00455975 0.0209511
+Kd 0.197516 0.00455975 0.0209511
+Ks 0.078232 0.00180602 0.00829829 
+
+d 1
+
+Ns 0
+
+map_Ka Sparklev1_diff.png
+map_Kd Sparklev1_diff.png
+map_d Sparklev1_diff.png
+
+map_Bump Sparklev1_nmap.png
+
+newmtl Redcarpet1Mtl
+Material Color
+Ka 0.409826 0.00455975 0.0134734
+Kd 0.409826 0.00455975 0.0134734
+Ks 0.0144644 0.000160933 0.000475532 
+
+d 1
+
+Ns 0
+
+map_Ka Redcarpet1_diff.png
+map_Kd Redcarpet1_diff.png
+map_d Redcarpet1_diff.png
+
+map_Bump Redcarpet1_nmap.png
+
+map_Ns Redcarpet1_spec.png
+
+newmtl Mat1Mtl
+Material Color
+Ka 1 0.875138 0.523443
+Kd 1 0.875138 0.523443
+Ks 0.396078 0.346623 0.207325 
+
+d 1
+
+Ns 0
+
+map_Ka Sparklev1_diff.png
+map_Kd Sparklev1_diff.png
+map_d Sparklev1_diff.png
+
+map_Bump Sparklev1_nmap.png
+
+newmtl Countertop1Mtl
+Material Color
+Ka 0.875138 0.84337 0.781751
+Kd 0.875138 0.84337 0.781751
+Ks 0.102957 0.09922 0.0919707 
+
+d 1
+
+Ns 0
+
+map_Ka Countertop1_diff.png
+map_Kd Countertop1_diff.png
+map_d Countertop1_diff.png
+
+map_Bump Countertop1_nmap.png
+
+map_Ns Countertop1_spec.png
+
+newmtl Shelfalglass211Mtl
+Material Color
+Ka 0.766744 0.875138 0.940601
+Kd 0.766744 0.875138 0.940601
+Ks 0.766744 0.875138 0.940601 
+
+d 0.301961
+
+Ns 0
+
+map_Ka Shelfalglass211_diff.png
+map_Kd Shelfalglass211_diff.png
+map_d Shelfalglass211_diff.png
+
+map_Bump Shelfalglass211_nmap.png
+
+map_Ns Shelfalglass211_spec.png
+
+newmtl Shelfwallrheader1Mtl
+Material Color
+Ka 0.25084 0.0103978 0.0824142
+Kd 0.25084 0.0103978 0.0824142
+Ks 0.0993524 0.00411835 0.0326425 
+
+d 1
+
+Ns 0
+
+map_Ka Sparklev1_diff.png
+map_Kd Sparklev1_diff.png
+map_d Sparklev1_diff.png
+
+map_Bump Sparklev1_nmap.png
+
+newmtl Soclepied1Mtl
+Material Color
+Ka 0.0384727 0.0414519 0.0511221
+Kd 0.0384727 0.0414519 0.0511221
+Ks 0.0152382 0.0164182 0.0202483 
+
+d 1
+
+Ns 0
+
+map_Ka Sparklev1_diff.png
+map_Kd Sparklev1_diff.png
+map_d Sparklev1_diff.png
+
+map_Bump Sparklev1_nmap.png
+
+newmtl Stanchionbase31Mtl
+Material Color
+Ka 0.666117 0.436813 0.0342302
+Kd 0.666117 0.436813 0.0342302
+Ks 0.263835 0.173012 0.0135578 
+
+d 1
+
+Ns 0
+
+map_Ka Sparklev1_diff.png
+map_Kd Sparklev1_diff.png
+map_d Sparklev1_diff.png
+
+map_Bump Sparklev1_nmap.png
+
+newmtl Velvetrope21Mtl
+Material Color
+Ka 0.311181 0.00293232 0.0103978
+Kd 0.311181 0.00293232 0.0103978
+Ks 0.123252 0.00116143 0.00411835 
+
+d 1
+
+Ns 0
+
+map_Ka Sparklev1_diff.png
+map_Kd Sparklev1_diff.png
+map_d Sparklev1_diff.png
+
+map_Bump Sparklev1_nmap.png
+
+newmtl Necklace21Mtl
+Material Color
+Ka 0.940601 0.907547 0.812241
+Kd 0.940601 0.907547 0.812241
+Ks 0.372552 0.35946 0.321711 
+
+d 1
+
+Ns 0
+
+map_Ka Sparklev1_diff.png
+map_Kd Sparklev1_diff.png
+map_d Sparklev1_diff.png
+
+map_Bump Sparklev1_nmap.png
+
+newmtl Doorglassl1Mtl
+Material Color
+Ka 0.618686 0.812241 0.95737
+Kd 0.618686 0.812241 0.95737
+Ks 0.618686 0.812241 0.95737 
+
+d 0.501961
+
+Ns 0
+
+map_Ka Shelfalglass211_diff.png
+map_Kd Shelfalglass211_diff.png
+map_d Shelfalglass211_diff.png
+
+map_Bump Shelfalglass211_nmap.png
+
+map_Ns Shelfalglass211_spec.png
+
+newmtl Slat021Mtl
+Material Color
+Ka 0.306635 0.348865 0.409826
+Kd 0.306635 0.348865 0.409826
+Ks 0.0601245 0.0684049 0.080358 
+
+d 1
+
+Ns 255
+
+map_Bump Slat021_nmap.png
+
+map_Ns Slat021_spec.png
+
+newmtl Slat011Mtl
+Material Color
+Ka 0.394083 0.442323 0.511398
+Kd 0.394083 0.442323 0.511398
+Ks 0.0772712 0.08673 0.100274 
+
+d 1
+
+Ns 255
+
+map_Bump Slat021_nmap.png
+
+map_Ns Slat021_spec.png
+
+newmtl Roofpalm1frond3b1Mtl
+Material Color
+Ka 0.0915184 0.329729 0.0511221
+Kd 0.0915184 0.329729 0.0511221
+Ks 0.0362484 0.130599 0.0202483 
+
+d 1
+
+Ns 0
+
+map_Ka Sparklev1_diff.png
+map_Kd Sparklev1_diff.png
+map_d Sparklev1_diff.png
+
+map_Bump Sparklev1_nmap.png
+
+newmtl Bottombar1Mtl
+Material Color
+Ka 0.0103978 0.0103978 0.0134734
+Kd 0.0103978 0.0103978 0.0134734
+Ks 0.00411835 0.00411835 0.00533652 
+
+d 1
+
+Ns 0
+
+map_Ka Sparklev1_diff.png
+map_Kd Sparklev1_diff.png
+map_d Sparklev1_diff.png
+
+map_Bump Sparklev1_nmap.png
+
+newmtl Signpart1Mtl
+Material Color
+Ka 0.00455975 0.00455975 0.00658496
+Kd 0.00455975 0.00455975 0.00658496
+Ks 0.000411272 0.000411272 0.000593937 
+
+d 1
+
+Ns 0
+
+map_Ka Signpart1_diff.png
+map_Kd Signpart1_diff.png
+map_d Signpart1_diff.png
+
+newmtl Shelfalc11Mtl
+Material Color
+Ka 0.65237 0.875138 1
+Kd 0.65237 0.875138 1
+Ks 0.25839 0.346623 0.396078 
+
+d 1
+
+Ns 0
+
+map_Ka Sparklev1_diff.png
+map_Kd Sparklev1_diff.png
+map_d Sparklev1_diff.png
+
+map_Bump Sparklev1_nmap.png
+
+newmtl Roofslab1Mtl
+Material Color
+Ka 0.163641 0.176774 0.20471
+Kd 0.163641 0.176774 0.20471
+Ks 0.0147597 0.0159444 0.018464 
+
+d 1
+
+Ns 0
+
+map_Ka Signpart1_diff.png
+map_Kd Signpart1_diff.png
+map_d Signpart1_diff.png
+
+newmtl Pot11Mtl
+Material Color
+Ka 0.00552174 0.00552174 0.00775103
+Kd 0.00552174 0.00552174 0.00775103
+Ks 0.00049804 0.00049804 0.000699112 
+
+d 1
+
+Ns 0
+
+map_Ka Signpart1_diff.png
+map_Kd Signpart1_diff.png
+map_d Signpart1_diff.png
+
+newmtl Doorvalance031Mtl
+Material Color
+Ka 0.00369724 0.00369724 0.00552174
+Kd 0.00369724 0.00369724 0.00552174
+Ks 0.0014644 0.0014644 0.00218704 
+
+d 1
+
+Ns 0
+
+map_Ka Sparklev1_diff.png
+map_Kd Sparklev1_diff.png
+map_d Sparklev1_diff.png
+
+map_Bump Sparklev1_nmap.png
+
+newmtl Doorvalance021Mtl
+Material Color
+Ka 0.0118813 0.0118813 0.0151752
+Kd 0.0118813 0.0118813 0.0151752
+Ks 0.00470594 0.00470594 0.00601058 
+
+d 1
+
+Ns 0
+
+map_Ka Sparklev1_diff.png
+map_Kd Sparklev1_diff.png
+map_d Sparklev1_diff.png
+
+map_Bump Sparklev1_nmap.png
+
+newmtl Showlight1Mtl
+Material Color
+Ka 1 0.84337 0.585973
+Kd 1 0.84337 0.585973
+Ks 0.396078 0.334041 0.232091 
+
+d 1
+
+Ns 0
+
+map_Ka Sparklev1_diff.png
+map_Kd Sparklev1_diff.png
+map_d Sparklev1_diff.png
+
+map_Bump Sparklev1_nmap.png
+
+newmtl Doorhandler1Mtl
+Material Color
+Ka 0.394083 0.442323 0.511398
+Kd 0.394083 0.442323 0.511398
+Ks 0.156088 0.175195 0.202554 
+
+d 1
+
+Ns 0
+
+map_Ka Sparklev1_diff.png
+map_Kd Sparklev1_diff.png
+map_d Sparklev1_diff.png
+
+map_Bump Sparklev1_nmap.png
+
+newmtl Doorkickl1Mtl
+Material Color
+Ka 0.666117 0.436813 0.0342302
+Kd 0.666117 0.436813 0.0342302
+Ks 0.0600811 0.0393988 0.00308743 
+
+d 1
+
+Ns 0
+
+map_Ka Signpart1_diff.png
+map_Kd Signpart1_diff.png
+map_d Signpart1_diff.png
+
+newmtl Floor1Mtl
+Material Color
+Ka 0.592438 0.645555 0.708298
+Kd 0.592438 0.645555 0.708298
+Ks 0.0534356 0.0582266 0.0638857 
+
+d 1
+
+Ns 0
+
+map_Ka Signpart1_diff.png
+map_Kd Signpart1_diff.png
+map_d Signpart1_diff.png
+
+newmtl Shelfespine1Mtl
+Material Color
+Ka 0.116576 0.00369724 0.0134734
+Kd 0.116576 0.00369724 0.0134734
+Ks 0.0461732 0.0014644 0.00533652 
+
+d 1
+
+Ns 0
+
+map_Ka Sparklev1_diff.png
+map_Kd Sparklev1_diff.png
+map_d Sparklev1_diff.png
+
+map_Bump Sparklev1_nmap.png
+
+newmtl Parapetl1Mtl
+Material Color
+Ka 0.84337 0.827726 0.781751
+Kd 0.84337 0.827726 0.781751
+Ks 0.0760686 0.0746576 0.0705108 
+
+d 1
+
+Ns 0
+
+map_Ka Signpart1_diff.png
+map_Kd Signpart1_diff.png
+map_d Signpart1_diff.png
+
+newmtl Ac3fan1Mtl
+Material Color
+Ka 0.00455975 0.00455975 0.00658496
+Kd 0.00455975 0.00455975 0.00658496
+Ks 0.00180602 0.00180602 0.00260816 
+
+d 1
+
+Ns 0
+
+map_Ka Sparklev1_diff.png
+map_Kd Sparklev1_diff.png
+map_d Sparklev1_diff.png
+
+map_Bump Sparklev1_nmap.png
+
+newmtl Ac11Mtl
+Material Color
+Ka 0.394083 0.442323 0.511398
+Kd 0.394083 0.442323 0.511398
+Ks 0.0355448 0.0398958 0.0461261 
+
+d 1
+
+Ns 0
+
+map_Ka Signpart1_diff.png
+map_Kd Signpart1_diff.png
+map_d Signpart1_diff.png
+
+newmtl Stripcurtain061Mtl
+Material Color
+Ka 0.722672 0.835528 0.91575
+Kd 0.722672 0.835528 0.91575
+Ks 0.286235 0.330935 0.362709 
+
+d 0.45098
+
+Ns 0
+
+map_Ka Sparklev1_diff.png
+map_Kd Sparklev1_diff.png
+map_d Sparklev1_diff.png
+
+map_Bump Sparklev1_nmap.png
+
+newmtl Shelfreservetrim1Mtl
+Material Color
+Ka 0.796917 0.523443 0.0581872
+Kd 0.796917 0.523443 0.0581872
+Ks 0.315641 0.207325 0.0230467 
+
+d 1
+
+Ns 0
+
+map_Ka Sparklev1_diff.png
+map_Kd Sparklev1_diff.png
+map_d Sparklev1_diff.png
+
+map_Bump Sparklev1_nmap.png
+
+newmtl Carton11Mtl
+Material Color
+Ka 0.409826 0.21952 0.0869013
+Kd 0.409826 0.21952 0.0869013
+Ks 0.162323 0.086947 0.0344197 
+
+d 1
+
+Ns 0
+
+map_Ka Sparklev1_diff.png
+map_Kd Sparklev1_diff.png
+map_d Sparklev1_diff.png
+
+map_Bump Sparklev1_nmap.png
+
+newmtl Roofpalm1trunk21Mtl
+Material Color
+Ka 0.151058 0.0915184 0.0477758
+Kd 0.151058 0.0915184 0.0477758
+Ks 0.0598308 0.0362484 0.0189229 
+
+d 1
+
+Ns 0
+
+map_Ka Sparklev1_diff.png
+map_Kd Sparklev1_diff.png
+map_d Sparklev1_diff.png
+
+map_Bump Sparklev1_nmap.png
+
+newmtl Shelfreserve1Mtl
+Material Color
+Ka 0.0328759 0.0134734 0.00658496
+Kd 0.0328759 0.0134734 0.00658496
+Ks 0.00296528 0.00121525 0.000593937 
+
+d 1
+
+Ns 0
+
+map_Ka Signpart1_diff.png
+map_Kd Signpart1_diff.png
+map_d Signpart1_diff.png
+
+newmtl Framer1Mtl
+Material Color
+Ka 1 0.812241 0.311181
+Kd 1 0.812241 0.311181
+Ks 0.396078 0.321711 0.123252 
+
+d 1
+
+Ns 0
+
+map_Ka Sparklev1_diff.png
+map_Kd Sparklev1_diff.png
+map_d Sparklev1_diff.png
+
+map_Bump Sparklev1_nmap.png
+
+newmtl Sconceglow21Mtl
+Material Color
+Ka 1 0.766744 0.464741
+Kd 1 0.766744 0.464741
+Ks 0.396078 0.303691 0.184074 
+
+d 1
+
+Ns 0
+
+map_Ka Sparklev1_diff.png
+map_Kd Sparklev1_diff.png
+map_d Sparklev1_diff.png
+
+map_Bump Sparklev1_nmap.png
+
+newmtl Velvet1Mtl
+Material Color
+Ka 0.45908 0.00293232 0.0231036
+Kd 0.45908 0.00293232 0.0231036
+Ks 0.181832 0.00116143 0.00915082 
+
+d 1
+
+Ns 0
+
+map_Ka Sparklev1_diff.png
+map_Kd Sparklev1_diff.png
+map_d Sparklev1_diff.png
+
+map_Bump Sparklev1_nmap.png
+
+newmtl Reservewallfl1Mtl
+Material Color
+Ka 0.157281 0.170138 0.20471
+Kd 0.157281 0.170138 0.20471
+Ks 0.0141861 0.0153458 0.018464 
+
+d 1
+
+Ns 0
+
+map_Ka Signpart1_diff.png
+map_Kd Signpart1_diff.png
+map_d Signpart1_diff.png
+
+newmtl Ringbox21Mtl
+Material Color
+Ka 0.157281 0.00369724 0.0169881
+Kd 0.157281 0.00369724 0.0169881
+Ks 0.0622955 0.0014644 0.0067286 
+
+d 1
+
+Ns 0
+
+map_Ka Sparklev1_diff.png
+map_Kd Sparklev1_diff.png
+map_d Sparklev1_diff.png
+
+map_Bump Sparklev1_nmap.png
+
+newmtl Pendant31Mtl
+Material Color
+Ka 0.0169881 0.409826 0.12753
+Kd 0.0169881 0.409826 0.12753
+Ks 0.0067286 0.162323 0.0505118 
+
+d 1
+
+Ns 0
+
+map_Ka Sparklev1_diff.png
+map_Kd Sparklev1_diff.png
+map_d Sparklev1_diff.png
+
+map_Bump Sparklev1_nmap.png
+
+newmtl Necklace31Mtl
+Material Color
+Ka 0.68002 0.708298 0.766744
+Kd 0.68002 0.708298 0.766744
+Ks 0.269341 0.280542 0.303691 
+
+d 1
+
+Ns 0
+
+map_Ka Sparklev1_diff.png
+map_Kd Sparklev1_diff.png
+map_d Sparklev1_diff.png
+
+map_Bump Sparklev1_nmap.png
+
+newmtl Showglass1Mtl
+Material Color
+Ka 0.687031 0.835528 0.91575
+Kd 0.687031 0.835528 0.91575
+Ks 0.687031 0.835528 0.91575 
+
+d 0.352941
+
+Ns 0
+
+map_Ka Shelfalglass211_diff.png
+map_Kd Shelfalglass211_diff.png
+map_d Shelfalglass211_diff.png
+
+map_Bump Shelfalglass211_nmap.png
+
+map_Ns Shelfalglass211_spec.png
+
+newmtl Ringstone11Mtl
+Material Color
+Ka 0.585973 0.875138 1
+Kd 0.585973 0.875138 1
+Ks 0.232091 0.346623 0.396078 
+
+d 1
+
+Ns 0
+
+map_Ka Sparklev1_diff.png
+map_Kd Sparklev1_diff.png
+map_d Sparklev1_diff.png
+
+map_Bump Sparklev1_nmap.png
+
+newmtl Bust31Mtl
+Material Color
+Ka 0.00658496 0.00552174 0.00902149
+Kd 0.00658496 0.00552174 0.00902149
+Ks 0.00260816 0.00218704 0.00357322 
+
+d 1
+
+Ns 0
+
+map_Ka Sparklev1_diff.png
+map_Kd Sparklev1_diff.png
+map_d Sparklev1_diff.png
+
+map_Bump Sparklev1_nmap.png
+
+newmtl Shelfarp1071Mtl
+Material Color
+Ka 0.923993 0.891262 0.84337
+Kd 0.923993 0.891262 0.84337
+Ks 0.365974 0.35301 0.334041 
+
+d 1
+
+Ns 0
+
+map_Ka Sparklev1_diff.png
+map_Kd Sparklev1_diff.png
+map_d Sparklev1_diff.png
+
+map_Bump Sparklev1_nmap.png
+
+newmtl Pilasterr1Mtl
+Material Color
+Ka 0.796917 0.766744 0.68002
+Kd 0.796917 0.766744 0.68002
+Ks 0.0718787 0.0691573 0.0613352 
+
+d 1
+
+Ns 0
+
+map_Ka Signpart1_diff.png
+map_Kd Signpart1_diff.png
+map_d Signpart1_diff.png
+
+newmtl Frontwalll1Mtl
+Material Color
+Ka 0.907547 0.891262 0.84337
+Kd 0.907547 0.891262 0.84337
+Ks 0.0818572 0.0803883 0.0760686 
+
+d 1
+
+Ns 0
+
+map_Ka Signpart1_diff.png
+map_Kd Signpart1_diff.png
+map_d Signpart1_diff.png
+
+newmtl Head1Mtl
+Material Color
+Ka 0.0384727 0.0477758 0.0677246
+Kd 0.0384727 0.0477758 0.0677246
+Ks 0.0256485 0.0318505 0.0451497 
+
+d 1
+
+Ns 255
+
+map_Ka Faces1_diff.png
+map_Kd Faces1_diff.png
+map_d Faces1_diff.png
+
+map_Bump Faces1_nmap.png
+
+map_Ns Faces1_spec.png
+
+newmtl Pearls1Mtl
+Material Color
+Ka 0.923993 0.88318 0.804559
+Kd 0.923993 0.88318 0.804559
+Ks 0.365974 0.349808 0.318669 
+
+d 1
+
+Ns 0
+
+map_Ka Sparklev1_diff.png
+map_Kd Sparklev1_diff.png
+map_d Sparklev1_diff.png
+
+map_Bump Sparklev1_nmap.png
+
+newmtl Plinth31Mtl
+Material Color
+Ka 0.0103978 0.0103978 0.0134734
+Kd 0.0103978 0.0103978 0.0134734
+Ks 0.000937841 0.000937841 0.00121525 
+
+d 1
+
+Ns 0
+
+map_Ka Signpart1_diff.png
+map_Kd Signpart1_diff.png
+map_d Signpart1_diff.png
+
+newmtl Roofpalm1frond4b1Mtl
+Material Color
+Ka 0.0356144 0.212044 0.0384727
+Kd 0.0356144 0.212044 0.0384727
+Ks 0.0141061 0.0839862 0.0152382 
+
+d 1
+
+Ns 0
+
+map_Ka Sparklev1_diff.png
+map_Kd Sparklev1_diff.png
+map_d Sparklev1_diff.png
+
+map_Bump Sparklev1_nmap.png
+
+newmtl Roofpalm2trunk11Mtl
+Material Color
+Ka 0.21952 0.133209 0.0697271
+Kd 0.21952 0.133209 0.0697271
+Ks 0.086947 0.052761 0.0276174 
+
+d 1
+
+Ns 0
+
+map_Ka Sparklev1_diff.png
+map_Kd Sparklev1_diff.png
+map_d Sparklev1_diff.png
+
+map_Bump Sparklev1_nmap.png
+
+newmtl Curtainglass1Mtl
+Material Color
+Ka 0.0581872 0.106156 0.183549
+Kd 0.0581872 0.106156 0.183549
+Ks 0.0581872 0.106156 0.183549 
+
+d 1
+
+Ns 0
+
+map_Ka Shelfalglass211_diff.png
+map_Kd Shelfalglass211_diff.png
+map_d Shelfalglass211_diff.png
+
+map_Bump Shelfalglass211_nmap.png
+
+map_Ns Shelfalglass211_spec.png
+
+newmtl Shelferboard31Mtl
+Material Color
+Ka 0.00658496 0.00552174 0.00775103
+Kd 0.00658496 0.00552174 0.00775103
+Ks 0.00260816 0.00218704 0.00307001 
+
+d 1
+
+Ns 0
+
+map_Ka Sparklev1_diff.png
+map_Kd Sparklev1_diff.png
+map_d Sparklev1_diff.png
+
+map_Bump Sparklev1_nmap.png
+
+newmtl Shelfarkick1Mtl
+Material Color
+Ka 0.442323 0.267358 0.0302565
+Kd 0.442323 0.267358 0.0302565
+Ks 0.175195 0.105895 0.011984 
+
+d 1
+
+Ns 0
+
+map_Ka Sparklev1_diff.png
+map_Kd Sparklev1_diff.png
+map_d Sparklev1_diff.png
+
+map_Bump Sparklev1_nmap.png
+
+newmtl Fridgeitem331Mtl
+Material Color
+Ka 0.0169881 0.101145 0.722672
+Kd 0.0169881 0.101145 0.722672
+Ks 0.0067286 0.0400614 0.286235 
+
+d 1
+
+Ns 0
+
+map_Ka Sparklev1_diff.png
+map_Kd Sparklev1_diff.png
+map_d Sparklev1_diff.png
+
+map_Bump Sparklev1_nmap.png
+
+newmtl Counter1Mtl
+Material Color
+Ka 0.00658496 0.00552174 0.00775103
+Kd 0.00658496 0.00552174 0.00775103
+Ks 0.000593937 0.00049804 0.000699112 
+
+d 1
+
+Ns 0
+
+map_Ka Signpart1_diff.png
+map_Kd Signpart1_diff.png
+map_d Signpart1_diff.png
+
+newmtl Registerscreen1Mtl
+Material Color
+Ka 0.00902149 0.00902149 0.00902149
+Kd 0.00902149 0.00902149 0.00902149
+Ks 0.00357322 0.00357322 0.00357322 
+
+d 1
+
+Ns 0
+
+map_Ka Sparklev1_diff.png
+map_Kd Sparklev1_diff.png
+map_d Sparklev1_diff.png
+
+map_Bump Sparklev1_nmap.png
+
+newmtl Entrancemat1Mtl
+Material Color
+Ka 0.176774 0.00369724 0.0151752
+Kd 0.176774 0.00369724 0.0151752
+Ks 0.0700165 0.0014644 0.00601058 
+
+d 1
+
+Ns 0
+
+map_Ka Sparklev1_diff.png
+map_Kd Sparklev1_diff.png
+map_d Sparklev1_diff.png
+
+map_Bump Sparklev1_nmap.png
+
+newmtl Fridgebase1Mtl
+Material Color
+Ka 0.00552174 0.00455975 0.00658496
+Kd 0.00552174 0.00455975 0.00658496
+Ks 0.00049804 0.000411272 0.000593937 
+
+d 1
+
+Ns 0
+
+map_Ka Signpart1_diff.png
+map_Kd Signpart1_diff.png
+map_d Signpart1_diff.png
+
+newmtl Shelfwalll3header1Mtl
+Material Color
+Ka 0.00455975 0.106156 0.0619075
+Kd 0.00455975 0.106156 0.0619075
+Ks 0.00180602 0.0420461 0.0245202 
+
+d 1
+
+Ns 0
+
+map_Ka Sparklev1_diff.png
+map_Kd Sparklev1_diff.png
+map_d Sparklev1_diff.png
+
+map_Bump Sparklev1_nmap.png
+
+newmtl Ceilinglight21Mtl
+Material Color
+Ka 1 0.812241 0.560499
+Kd 1 0.812241 0.560499
+Ks 0.0901961 0.073261 0.0505548 
+
+d 1
+
+Ns 0
+
+newmtl Chandeliercore21Mtl
+Material Color
+Ka 1 0.859174 0.618686
+Kd 1 0.859174 0.618686
+Ks 0.396078 0.3403 0.245048 
+
+d 1
+
+Ns 0
+
+map_Ka Sparklev1_diff.png
+map_Kd Sparklev1_diff.png
+map_d Sparklev1_diff.png
+
+map_Bump Sparklev1_nmap.png
+
+newmtl Innerwallr1Mtl
+Material Color
+Ka 0.923993 0.875138 0.781751
+Kd 0.923993 0.875138 0.781751
+Ks 0.0833406 0.078934 0.0705108 
+
+d 1
+
+Ns 0
+
+map_Ka Signpart1_diff.png
+map_Kd Signpart1_diff.png
+map_d Signpart1_diff.png
+
+newmtl Floorshop1Mtl
+Material Color
+Ka 0.812241 0.766744 0.694081
+Kd 0.812241 0.766744 0.694081
+Ks 0.073261 0.0691573 0.0626033 
+
+d 1
+
+Ns 0
+
+map_Ka Signpart1_diff.png
+map_Kd Signpart1_diff.png
+map_d Signpart1_diff.png
+
+newmtl Ceiling1Mtl
+Material Color
+Ka 0.95737 0.923993 0.859174
+Kd 0.95737 0.923993 0.859174
+Ks 0.086351 0.0833406 0.0774941 
+
+d 1
+
+Ns 0
+
+map_Ka Signpart1_diff.png
+map_Kd Signpart1_diff.png
+map_d Signpart1_diff.png
+
+newmtl Shelffheader1Mtl
+Material Color
+Ka 0.00658496 0.0151752 0.106156
+Kd 0.00658496 0.0151752 0.106156
+Ks 0.00260816 0.00601058 0.0420461 
+
+d 1
+
+Ns 0
+
+map_Ka Sparklev1_diff.png
+map_Kd Sparklev1_diff.png
+map_d Sparklev1_diff.png
+
+map_Bump Sparklev1_nmap.png
+
+newmtl Promoa1Mtl
+Material Color
+Ka 0.00552174 0.00455975 0.00658496
+Kd 0.00552174 0.00455975 0.00658496
+Ks 0.00218704 0.00180602 0.00260816 
+
+d 1
+
+Ns 0
+
+map_Ka Sparklev1_diff.png
+map_Kd Sparklev1_diff.png
+map_d Sparklev1_diff.png
+
+map_Bump Sparklev1_nmap.png
+
+newmtl Stock01Mtl
+Material Color
+Ka 0.0581872 0.0657539 0.0824142
+Kd 0.0581872 0.0657539 0.0824142
+Ks 0.0230467 0.0260437 0.0326425 
+
+d 1
+
+Ns 0
+
+map_Ka Sparklev1_diff.png
+map_Kd Sparklev1_diff.png
+map_d Sparklev1_diff.png
+
+map_Bump Sparklev1_nmap.png
+
+newmtl Pallet1Mtl
+Material Color
+Ka 0.0328759 0.0134734 0.00658496
+Kd 0.0328759 0.0134734 0.00658496
+Ks 0.0130214 0.00533652 0.00260816 
+
+d 1
+
+Ns 0
+
+map_Ka Sparklev1_diff.png
+map_Kd Sparklev1_diff.png
+map_d Sparklev1_diff.png
+
+map_Bump Sparklev1_nmap.png
+
+newmtl Shelfbrc2601Mtl
+Material Color
+Ka 0.95737 0.722672 0.766744
+Kd 0.95737 0.722672 0.766744
+Ks 0.379193 0.286235 0.303691 
+
+d 1
+
+Ns 0
+
+map_Ka Sparklev1_diff.png
+map_Kd Sparklev1_diff.png
+map_d Sparklev1_diff.png
+
+map_Bump Sparklev1_nmap.png
+
+newmtl Carpetmain1Mtl
+Material Color
+Ka 0.176774 0.00369724 0.0151752
+Kd 0.176774 0.00369724 0.0151752
+Ks 0.00623909 0.000130491 0.000535597 
+
+d 1
+
+Ns 0
+
+map_Ka Redcarpet1_diff.png
+map_Kd Redcarpet1_diff.png
+map_d Redcarpet1_diff.png
+
+map_Bump Redcarpet1_nmap.png
+
+map_Ns Redcarpet1_spec.png
+
+newmtl Shelfbrc2471Mtl
+Material Color
+Ka 0.9743 0.95737 0.907547
+Kd 0.9743 0.95737 0.907547
+Ks 0.385899 0.379193 0.35946 
+
+d 1
+
+Ns 0
+
+map_Ka Sparklev1_diff.png
+map_Kd Sparklev1_diff.png
+map_d Sparklev1_diff.png
+
+map_Bump Sparklev1_nmap.png
+
+newmtl Shelfaheader1Mtl
+Material Color
+Ka 0.190463 0.00455975 0.0209511
+Kd 0.190463 0.00455975 0.0209511
+Ks 0.0754382 0.00180602 0.00829829 
+
+d 1
+
+Ns 0
+
+map_Ka Sparklev1_diff.png
+map_Kd Sparklev1_diff.png
+map_d Sparklev1_diff.png
+
+map_Bump Sparklev1_nmap.png
+
+newmtl Fridgeglass1Mtl
+Material Color
+Ka 0.618686 0.812241 0.95737
+Kd 0.618686 0.812241 0.95737
+Ks 0.618686 0.812241 0.95737 
+
+d 0.4
+
+Ns 0
+
+map_Ka Shelfalglass211_diff.png
+map_Kd Shelfalglass211_diff.png
+map_d Shelfalglass211_diff.png
+
+map_Bump Shelfalglass211_nmap.png
+
+map_Ns Shelfalglass211_spec.png
+
+newmtl Tile1Mtl
+Material Color
+Ka 0.666117 0.612066 0.535642
+Kd 0.666117 0.612066 0.535642
+Ks 0.0600811 0.0552059 0.0483128 
+
+d 1
+
+Ns 0
+
+map_Ka Signpart1_diff.png
+map_Kd Signpart1_diff.png
+map_d Signpart1_diff.png
+
+newmtl Gemsblue1Mtl
+Material Color
+Ka 0.0242229 0.147998 1
+Kd 0.0242229 0.147998 1
+Ks 0.0242229 0.147998 1 
+
+d 0.803922
+
+Ns 0
+
+map_Ka Shelfalglass211_diff.png
+map_Kd Shelfalglass211_diff.png
+map_d Shelfalglass211_diff.png
+
+map_Bump Shelfalglass211_nmap.png
+
+map_Ns Shelfalglass211_spec.png
+
+newmtl Handle2Mtl
+Material Color
+Ka 0.373615 0.368591 0.383775
+Kd 0.373615 0.368591 0.383775
+Ks 0.0234425 0.0231273 0.02408 
+
+d 1
+
+Ns 0
+
+map_Ka Handle2_diff.png
+map_Kd Handle2_diff.png
+map_d Handle2_diff.png
+
+newmtl Gemsred1Mtl
+Material Color
+Ka 0.751895 0.00258583 0.113921
+Kd 0.751895 0.00258583 0.113921
+Ks 0.751895 0.00258583 0.113921 
+
+d 0.803922
+
+Ns 0
+
+map_Ka Shelfalglass211_diff.png
+map_Kd Shelfalglass211_diff.png
+map_d Shelfalglass211_diff.png
+
+map_Bump Shelfalglass211_nmap.png
+
+map_Ns Shelfalglass211_spec.png
+
+newmtl Gold1Mtl
+Material Color
+Ka 1 0.547994 0.00658496
+Kd 1 0.547994 0.00658496
+Ks 0.396078 0.217048 0.00260816 
+
+d 1
+
+Ns 255
+
+map_Bump Gold1_nmap.png
+
+map_Ns Gold1_spec.png
+
+newmtl Soclevitre1Mtl
+Material Color
+Ka 0.722672 0.875138 1
+Kd 0.722672 0.875138 1
+Ks 0.722672 0.875138 1 
+
+d 1
+
+Ns 0
+
+map_Ka Shelfalglass211_diff.png
+map_Kd Shelfalglass211_diff.png
+map_d Shelfalglass211_diff.png
+
+map_Bump Shelfalglass211_nmap.png
+
+map_Ns Shelfalglass211_spec.png
+
+newmtl Soclecoussin1Mtl
+Material Color
+Ka 0.442323 0.00455975 0.0151752
+Kd 0.442323 0.00455975 0.0151752
+Ks 0.0121422 0.00012517 0.000416575 
+
+d 1
+
+Ns 0
+
+map_Ka Soclecoussin1_diff.png
+map_Kd Soclecoussin1_diff.png
+map_d Soclecoussin1_diff.png
+
+map_Bump Soclecoussin1_nmap.png
+
+map_Ns Soclecoussin1_spec.png
+
+newmtl Handle1Mtl
+Material Color
+Ka 0.0697271 0.00837312 0.306635
+Kd 0.0697271 0.00837312 0.306635
+Ks 0.0276174 0.00331641 0.121451 
+
+d 1
+
+Ns 0
+
+map_Ka Sparklev1_diff.png
+map_Kd Sparklev1_diff.png
+map_d Sparklev1_diff.png
+
+map_Bump Sparklev1_nmap.png
+
+newmtl Glow1Mtl
+Material Color
+Ka 0.399293 0.0891935 0.932277
+Kd 0.399293 0.0891935 0.932277
+Ks 0.0360147 0.00804491 0.0840877 
+
+d 1
+
+Ns 0
+
+newmtl Faces1Mtl
+Material Color
+Ka 0.774227 0.812241 0.867136
+Kd 0.774227 0.812241 0.867136
+Ks 0.516152 0.541494 0.57809 
+
+d 1
+
+Ns 255
+
+map_Ka Faces1_diff.png
+map_Kd Faces1_diff.png
+map_d Faces1_diff.png
+
+map_Bump Faces1_nmap.png
+
+map_Ns Faces1_spec.png
+
+newmtl Shaft1Mtl
+Material Color
+Ka 0.399293 0.0891935 0.932277
+Kd 0.399293 0.0891935 0.932277
+Ks 0.158151 0.0353276 0.369255 
+
+d 1
+
+Ns 0
+
+map_Ka Sparklev1_diff.png
+map_Kd Sparklev1_diff.png
+map_d Sparklev1_diff.png
+
+map_Bump Sparklev1_nmap.png
+
+newmtl Minicagouletete1Mtl
+Material Color
+Ka 0.373615 0.368591 0.383775
+Kd 0.373615 0.368591 0.383775
+Ks 0.0146516 0.0144545 0.01505 
+
+d 1
+
+Ns 0
+
+map_Ka Minicagouletete1_diff.png
+map_Kd Minicagouletete1_diff.png
+map_d Minicagouletete1_diff.png
+
+newmtl R15BaconHair1Mtl
+Material Color
+Ka 0.940601 0.940601 0.940601
+Kd 0.940601 0.940601 0.940601
+Ks 0.0590181 0.0590181 0.0590181 
+
+d 1
+
+Ns 0
+
+map_Ka R15BaconHair1_diff.png
+map_Kd R15BaconHair1_diff.png
+map_d R15BaconHair1_diff.png
+

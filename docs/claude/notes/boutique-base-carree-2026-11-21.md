@@ -110,3 +110,35 @@ Captures :
 ![20 présentoirs (Play)](img/boutique-carree_play_20presentoirs.jpg)
 
 Pour revenir en arrière : remettre les 7 modèles de la sauvegarde à leur `OrigPath` et leur rendre leurs tags (`OrigTags`).
+
+## 6. Panneau de la boutique au fond, tapis écarté (proposition, 2026-11-21)
+
+Demande de Clément : « Mets le panneau d'amélioration de la boutique au fond de la boutique, écarter le treadmill de la boutique avec son panneau d'amélioration car là c'est trop près. » **Validé par Clément (« Oui, 10 studs », 2026-11-22) et fait dans Studio : voir 6.1.**
+
+### Ce que le code fait déjà (lecture seule, `UpgradeController`, `ShopStageService`)
+
+- Le panneau « Display Stands » (agrandir la boutique) se pose sur `StageUpgradePoint_n`, avec n le plus grand sans dépasser le niveau de la boutique (`StageLevel`), sinon sur `StageUpgradePoint`. `DisplayUpgradePoint` ne sert que s'il n'y a ni l'un ni l'autre.
+- **Niveaux 2 à 5 : c'est déjà au fond.** `StageUpgradePoint_2` est en z 37,6 dans le gabarit (2,4 studs devant le fond) et le serveur l'avance avec le fond (`StageDepth`). Avec `MinBack = 8`, il ne passera jamais devant z 5,6.
+- **Niveau 1 : il est au milieu.** `StageUpgradePoint` est en (0 ; 0,3 ; −18,6), au milieu du nouveau carré. C'est un point de Clément : il suffit de le reculer, **sans code**.
+- Le tapis est retrouvé par son tag `Treadmill` dans la boutique, et son panneau par l'Attachment `Treadmill/Frame/UpgradePoint`. Le déplacer avec la boutique comme parent ne demande **pas de code**.
+
+### Proposition
+
+![Schéma](img/boutique-carree_panneaux_schema.svg)
+![Le tapis aujourd'hui (PLOT_Shop_03)](img/boutique-carree_tapis_actuel.jpg)
+
+1. **Panneau de la boutique** : `PlotFloor/StageUpgradePoint` passe de z −18,6 à **z 5,6**, contre le mur du fond du carré (même écart au fond que `StageUpgradePoint_2`), toujours tourné vers la porte. L'aperçu `Preview_ShopUpgrade` suit. `DisplayUpgradePoint` ne bouge pas (il ne sert qu'en secours).
+2. **Tapis et son panneau** : le modèle `Treadmill` entier (zone d'usage et `UpgradePoint` compris) avance de **10 studs** vers la place, sans tourner ni changer de x : il passe de 1,7 à 11,7 studs de la façade, et son panneau de z −50 à z −60. L'aperçu `Preview_Treadmill` suit. Testé dans les 6 boutiques : à cette place, la zone d'usage et le panneau ne touchent ni les voisines, ni les stands, ni rien d'autre du hub. `DepositZone` est dans la boutique, loin derrière.
+
+**Question pour Clément** : 10 studs de plus, ça te va, ou tu veux plus près (6) ou plus loin ?
+
+### 6.1 Fait dans Studio (2026-11-22)
+
+- **Sauvegarde** : `ServerStorage/MapBackups/2026-11-22_PanneauxTapis` (gabarit, 6 boutiques et `_PREVIEW_UpgradeSigns`, état d'après la 1re partie ; tags retirés des copies et gardés dans `OrigTags`).
+- **Script** : 2e partie de `tools/clement/zones/boutique_base_carree.luau` (rejouable). J'ai aussi retiré le `return` qui terminait la 1re partie, pour qu'on puisse coller le fichier en entier.
+- **Gabarit et 6 boutiques** : `PlotFloor/StageUpgradePoint` est en (0 ; 0,3 ; 5,6) et garde son orientation vers la porte. Le modèle `Treadmill` entier est avancé de 10 studs : sa structure est en z −56 et son `Frame/UpgradePoint` en (−15,6 ; −60). Les aperçus `Preview_ShopUpgrade` et `Preview_Treadmill` ont suivi. Aucun nom n'a changé et je n'ai laissé aucun script.
+- **Vérifié** : à sa nouvelle place, la zone d'usage du tapis (avec son panneau) ne touche rien dans les 6 boutiques. En Play, ce Play-là, le serveur a démarré sans « Script timeout » (le code a été mis à jour entre-temps) et le contrat est OK. Le panneau du tapis se pose en (−15,6 ; −60), et le joueur monte bien sur le tapis (`TrainingService`). Le panneau « Display Stands » se pose en z 37,6 quand la boutique est entière (niveau 5), puis en **z 5,6** après `ShopStageService.Apply(plot, 1, 4)`, qui la remet au niveau 1.
+- **Pas vu par Claude** : le rendu, c'est-à-dire si le panneau du fond se lit bien depuis la porte (45 studs) et si le tapis plus loin est agréable à utiliser. C'est à juger en jeu par Clément.
+
+![Le tapis après (Edit)](img/boutique-carree_tapis_apres.jpg)
+![En Play](img/boutique-carree_play_panneaux.jpg)

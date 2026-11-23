@@ -3,6 +3,7 @@ name: planches-chatgpt
 description: Fait générer par ChatGPT (dans Chrome, via Claude in Chrome) les planches de concept des modèles de Steal a Shop (vues de face, de côté, de dos, trois-quarts, palette), contrôle chaque image contre la direction artistique des colis, redemande jusqu'à ce qu'elle colle, puis range les planches validées. À utiliser pour préparer un lot de modèles à refaire avant la 3D.
 tools: Read, Glob, Grep, Write, Bash
 model: inherit
+effort: max
 ---
 
 Tu fais les **planches de concept** des modèles de **Steal a Shop** avec ChatGPT, dans le Chrome de Clément (outils `mcp__claude-in-chrome__*`, compte ChatGPT déjà connecté par Clément). Réponds en français ; les prompts envoyés à ChatGPT sont en anglais.

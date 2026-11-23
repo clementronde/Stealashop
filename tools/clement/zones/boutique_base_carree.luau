@@ -147,3 +147,72 @@ for _, root in { tmpl, table.unpack(shops:GetChildren()) } do
 end
 print(table.concat(log, "\n"))
 return table.concat(log, "\n")
+
+-- =====================================================================================================
+-- 2e partie (Clément, 2026-11-22 : « Mets le panneau d'amélioration de la boutique au fond de la boutique,
+-- écarter le treadmill de la boutique avec son panneau d'amélioration car là c'est trop près »).
+-- À lancer après la 1re partie. Rejouable : ne refait rien si c'est déjà fait.
+--  a. Sauvegarde : ServerStorage/MapBackups/2026-11-22_PanneauxTapis (gabarit, 6 boutiques, aperçus).
+--  b. PlotFloor/StageUpgradePoint (panneau « Display Stands » au niveau 1) : z −18,6 → z 5,6 (au fond du
+--     carré, même écart au fond que StageUpgradePoint_2), même orientation (vers la porte).
+--  c. Treadmill entier (zone d'usage et Frame/UpgradePoint compris) : 10 studs vers l'avant (−Z).
+--  d. Aperçus Edit Workspace/_PREVIEW_UpgradeSigns/PLOT_Shop_0n : Preview_ShopUpgrade et Preview_Treadmill suivent.
+do
+	local STAGE_POINT_Z = 5.6
+	local TREADMILL_SHIFT = -10
+	local log2 = {}
+	local previews = workspace:FindFirstChild("_PREVIEW_UpgradeSigns")
+	local backups2 = game:GetService("ServerStorage"):FindFirstChild("MapBackups")
+	if backups2 and not backups2:FindFirstChild("2026-11-22_PanneauxTapis") then
+		local f = Instance.new("Folder")
+		f.Name = "2026-11-22_PanneauxTapis"
+		local list = { tmpl }
+		for _, m in shops:GetChildren() do if m.Name:match("^PLOT_Shop_0%d$") then table.insert(list, m) end end
+		if previews then table.insert(list, previews) end
+		for _, m in list do
+			local c = m:Clone()
+			c:SetAttribute("OrigPath", m:GetFullName())
+			local tags = CS:GetTags(c)
+			if #tags > 0 then c:SetAttribute("OrigTags", table.concat(tags, ",")) end
+			for _, d in { c, table.unpack(c:GetDescendants()) } do
+				for _, tg in CS:GetTags(d) do CS:RemoveTag(d, tg) end
+			end
+			c.Parent = f
+		end
+		f.Parent = backups2
+		table.insert(log2, "sauvegarde : " .. #list .. " modèles")
+	end
+	local function apply(plot: Model)
+		local piv = plot:GetPivot()
+		local floor = plot:FindFirstChild("PlotFloor")
+		local point = floor and floor:FindFirstChild("StageUpgradePoint")
+		local pv = previews and previews:FindFirstChild(plot.Name)
+		if point and point:IsA("Attachment") then
+			local here = piv:PointToObjectSpace(point.WorldPosition)
+			if math.abs(here.Z - STAGE_POINT_Z) > 0.05 then
+				local delta = piv:VectorToWorldSpace(Vector3.new(0, 0, STAGE_POINT_Z - here.Z))
+				point.WorldPosition += delta
+				local p = pv and pv:FindFirstChild("Preview_ShopUpgrade")
+				if p then p:PivotTo(p:GetPivot() + delta) end
+				table.insert(log2, plot.Name .. " : StageUpgradePoint au fond")
+			end
+		end
+		local tm = plot:FindFirstChild("Treadmill")
+		local frame = tm and tm:FindFirstChild("Frame")
+		if frame then
+			local z = piv:PointToObjectSpace(frame.Position).Z
+			if z > -50 then -- avant : −46 ; après : −56
+				local delta = piv:VectorToWorldSpace(Vector3.new(0, 0, TREADMILL_SHIFT))
+				tm:PivotTo(tm:GetPivot() + delta)
+				local p = pv and pv:FindFirstChild("Preview_Treadmill")
+				if p then p:PivotTo(p:GetPivot() + delta) end
+				table.insert(log2, plot.Name .. " : tapis avancé de 10")
+			end
+		end
+	end
+	apply(tmpl)
+	for _, plot in shops:GetChildren() do
+		if plot.Name:match("^PLOT_Shop_0%d$") then apply(plot) end
+	end
+	print(table.concat(log2, "\n"))
+end
