@@ -17,7 +17,8 @@
 --     OwnerUserId ≠ 0, posé par PlotService, propriétaire présent) : L-163 (a159, décision de Clément du
 --     2026-11-14) : ses PV sont des COUPS, GetPlotDoorHits(propriétaire) (PvP.DoorHits = 40 de base, plus
 --     Reinforced Door), recalculés à chaque tick, à fraction de PV égale. Chaque coup validé sur une porte
---     de boutique (bot compris) retire 1, quelle que soit la force (ni GetHitDamage ni potion), et la porte
+--     de boutique (bot compris) retire 1 (a407 : ToolService.GetDoorHits, 3 avec le Bélier de renaissance), quelle
+--     que soit la force (ni GetHitDamage ni potion), et la porte
 --     compte au plus PvP.DoorMaxHitsPerSecond (8) coups par seconde, tous voleurs confondus (un coup trop
 --     tôt est ignoré, sans rien envoyer). Parcelle libre : incassable. Sur une parcelle,
 --     cette vitrine est la vitre de la porte (PlotDoor/Window) : la porte n'a pas d'autres PV.
@@ -615,6 +616,7 @@ local function onHitWindow(player: Player, windowId: string)
 		local doorHitters: { [Player]: number } = window.DoorHitters or setmetatable({}, { __mode = "k" }) :: any
 		window.DoorHitters = doorHitters -- clés faibles : un joueur parti s'en va
 		doorHitters[player] = now -- a177 : casseur de la porte (IsBreaking)
+		damage = modifier("GetDoorHits", ToolService.GetDoorHits, player, 1, true) -- a407 : Bélier, 3 coups par frappe
 	else
 		damage = ToolService.GetHitDamage(player)
 			* modifier("GetHitDamageMultiplier", WindowService.GetHitDamageMultiplier, player, 1, true)

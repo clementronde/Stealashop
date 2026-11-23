@@ -8,7 +8,8 @@
 -- d'Id (un Id présent dans deux catalogues est refusé, avec un avertissement au démarrage) :
 --   - outil (Config/Tools) : prix Tools[..].Price ; refusé s'il est déjà possédé ou si le joueur
 --     est à plus de SHOP_REACH studs de tout comptoir taggé WeaponShop de la map (hors
---     _INBOX_CLEMENT ; 5.9 : on revient en zone safe pour dépenser son argent).
+--     _INBOX_CLEMENT ; 5.9 : on revient en zone safe pour dépenser son argent), ou (a407) si c'est un outil de
+--     renaissance pas encore ouvert (Tools.NeedsRebirth : « Reach Rebirth n… »).
 --     DataService.SpendCash, puis ToolService.Grant, puis
 --     ToolService.Equip si l'outil acheté est plus puissant que l'outil équipé (choix V0 : on
 --     achète presque toujours le palier suivant, plus fort, et l'équiper tout de suite évite un
@@ -127,6 +128,7 @@ local SIGN_POINTS: { [string]: boolean } = { UpgradePoint = true, DisplayUpgrade
 local MESSAGES = {
 	NotEnoughCash = "Not enough cash: %s needed.",
 	ToolOwned = "You already own the %s.",
+	ToolRebirthLocked = "Reach Rebirth %d to buy the %s.", -- a407 (outils de renaissance, Config/Tools.RequiresRebirth)
 	CosmeticOwned = "You already own %s.",
 	MachineMax = "Your %s is already at max level.",
 	StandsMax = "All your stands are unlocked.",
@@ -329,6 +331,12 @@ local function buyTool(player: Player, tool: ToolDef)
 		notify(player, string.format(MESSAGES.ToolOwned, tool.DisplayName), "Warning")
 		return
 	end
+	-- a407 : outil de renaissance pas encore ouvert (renaissances faites = attribut Rebirths, posé par le serveur).
+	local rebirthNeeded = Tools.NeedsRebirth(tool, player:GetAttribute(Tools.RebirthsAttribute))
+	if rebirthNeeded ~= nil then
+		notify(player, string.format(MESSAGES.ToolRebirthLocked, rebirthNeeded, tool.DisplayName), "Warning")
+		return
+	end
 	if not isNearShop(player, WEAPON_SHOP_TAG) then
 		notify(player, MESSAGES.FarFromWeaponShop, "Warning")
 		return
@@ -344,7 +352,10 @@ local function buyTool(player: Player, tool: ToolDef)
 	end
 	local equippedId = ToolService.GetEquippedId(player)
 	local equipped = if equippedId then Tools.ById[equippedId] else nil
-	local stronger = equipped == nil or tool.Power > equipped.Power
+	-- a407 : à puissance égale, le palier plus haut de la boutique (outils de renaissance, puissance de l'Angle Grinder).
+	local stronger = equipped == nil
+		or tool.Power > equipped.Power
+		or (tool.Power == equipped.Power and tool.Order > equipped.Order)
 	if stronger then
 		guarded("ToolService.Equip", function(p: Player)
 			ToolService.Equip(p, tool.Id)

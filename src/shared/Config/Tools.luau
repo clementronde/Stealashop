@@ -1,7 +1,18 @@
 --!strict
 -- Outils de casse de la boutique d'armes (Partie 1, sections 5.2, 7.2 et 2.4).
--- On garde tous les outils achetés et on en équipe un (slot 1). Le Marteau-piqueur
--- et le Bélier sont réservés aux renaissances (Partie 2) : absents ici.
+-- On garde tous les outils achetés et on en équipe un (slot 1).
+--
+-- Outils de renaissance (a407, vague GC6, MAJ 3 ; Features.RebirthTools ; L-158 Q8 et L-173) : le Marteau-piqueur
+-- (Jackhammer) et le Bélier (BatteringRam). L-173 (Clément) : une renaissance ne DONNE plus d'outil ; ils sont donc
+-- vendus à la boutique d'armes, ouverts par la renaissance (RequiresRebirth, même règle que les tuiles de l'arbre :
+-- attribut `Rebirths` du Player ; absent = fermés). V0 proposé (Cantin, 23/11), d'après docs/claude/notes/
+-- renaissance-proposition.md (section 4, oui de Clément en L-158 Q8) :
+--   - puissance de l'Angle Grinder (100K), jamais plus : la zone 6 reste à deux joueurs (règle « 1,12 × Angle
+--     Grinder × Royal ») ; les PV des vitrines ne suivent pas ces outils (Config/Zones lit le Kit de chaque zone) ;
+--   - KeepOnRebirth : gardés à la renaissance (RebirthService), c'est leur intérêt : plus besoin de racheter les
+--     outils de chaque zone après une renaissance ;
+--   - DoorHits : coups comptés par frappe sur la porte d'une boutique de joueur (1 sans le champ ; Bélier ×3,
+--     WindowService par ToolService.GetDoorHits).
 --
 -- `Id` est la clé utilisée dans la sauvegarde (Tools.Owned, Tools.Equipped, 9.5) et
 -- dans BuyItem (9.4). `Asset` est le nom du modèle de Clément dans
@@ -9,8 +20,18 @@
 -- 2026-11-07, MOD-027).
 
 local DeepFreeze = require(script.Parent.DeepFreeze)
+local Features = require(script.Parent.Features)
 
-export type ToolId = "Fists" | "Wrench" | "Crowbar" | "Hammer" | "Sledgehammer" | "FireAxe" | "AngleGrinder"
+export type ToolId =
+	"Fists"
+	| "Wrench"
+	| "Crowbar"
+	| "Hammer"
+	| "Sledgehammer"
+	| "FireAxe"
+	| "AngleGrinder"
+	| "Jackhammer"
+	| "BatteringRam"
 
 export type Tool = {
 	Id: ToolId,
@@ -21,6 +42,9 @@ export type Tool = {
 	TargetZones: { number }, -- { première, dernière } zone visée
 	HitAnimation: "HitWindow" | "HitWindowHeavy", -- animation joueur jouée à chaque coup (2.4)
 	Asset: string?, -- nil pour les poings
+	RequiresRebirth: number?, -- a407 : renaissances faites pour l'acheter (nil : aucune)
+	KeepOnRebirth: boolean?, -- a407 : gardé à la renaissance (RebirthService)
+	DoorHits: number?, -- a407 : coups comptés par frappe sur une porte de boutique de joueur (nil : 1)
 }
 
 -- Vague 68 (a226, Cantin : « de 20 000 à 2 millions d'un coup, c'est pas normal ») : marche des dégâts du panneau
@@ -39,15 +63,54 @@ local List: { Tool } = {
 	{ Id = "AngleGrinder", Order = 7, DisplayName = "Angle Grinder", Power = 100_000, Price = 69_000_000, TargetZones = { 6, 6 }, HitAnimation = "HitWindowHeavy", Asset = "TOOL_Disqueuse" }, -- V0 proposé (Cantin, 20/11), avant : 7_000_000_000
 }
 
+-- a407 (Features.RebirthTools) : prix V0 proposés (Cantin, 23/11), absents du doc : ×10 et ×30 l'Angle Grinder (un achat
+-- qui se garde d'un cycle à l'autre ; la 5e renaissance coûte 22B). Modèles TOOL_Jackhammer et TOOL_BatteringRam de
+-- Clément facultatifs (poignée grise V0 de ToolService) ; frappe HitWindowHeavy comme l'Angle Grinder.
+local REBIRTH_TOOLS: { Tool } = {
+	{ Id = "Jackhammer", Order = 8, DisplayName = "Jackhammer", Power = 100_000, Price = 690_000_000, TargetZones = { 6, 6 }, HitAnimation = "HitWindowHeavy", Asset = "TOOL_Jackhammer", RequiresRebirth = 5, KeepOnRebirth = true },
+	{ Id = "BatteringRam", Order = 9, DisplayName = "Battering Ram", Power = 100_000, Price = 2_100_000_000, TargetZones = { 6, 6 }, HitAnimation = "HitWindowHeavy", Asset = "TOOL_BatteringRam", RequiresRebirth = 7, KeepOnRebirth = true, DoorHits = 3 },
+}
+if Features.RebirthTools then
+	for _, tool in REBIRTH_TOOLS do
+		table.insert(List, tool)
+	end
+end
+
 local ById: { [string]: Tool } = {}
 for _, tool in List do
 	ById[tool.Id] = tool
+end
+
+-- a407 : la renaissance qui ferme encore l'achat de `tool`, ou nil s'il est ouvert. `rebirths` = renaissances faites
+-- (la valeur de l'attribut `Rebirths` du Player, posé par RebirthService, telle quelle) ; absente ou illisible =
+-- renaissance coupée : tout outil à renaissance reste fermé (même règle que SkillTree.NeedsRebirth).
+local function needsRebirth(tool: Tool, rebirths: any): number?
+	local needed = tool.RequiresRebirth
+	local done = if type(rebirths) == "number" and rebirths == rebirths and rebirths >= 0 then rebirths else nil
+	if needed == nil or (done ~= nil and done >= needed) then
+		return nil
+	end
+	return needed
+end
+
+-- a407 : les outils que la renaissance numéro `rebirth` ouvre, dans l'ordre de la boutique.
+local function unlockedBy(rebirth: number): { Tool }
+	local list: { Tool } = {}
+	for _, tool in List do
+		if tool.RequiresRebirth == rebirth then
+			table.insert(list, tool)
+		end
+	end
+	return list
 end
 
 local Tools = {
 	DefaultId = "Fists" :: ToolId, -- possédé et équipé à la création du profil (9.5)
 	List = List,
 	ById = ById, -- clé = Id ; indexer avec une chaîne venue du client renvoie nil si inconnue
+	NeedsRebirth = needsRebirth,
+	UnlockedBy = unlockedBy,
+	RebirthsAttribute = "Rebirths", -- a407 : attribut du Player (RebirthService), même nom que SkillTree.RebirthsAttribute
 }
 
 export type Tools = typeof(Tools)

@@ -17,6 +17,8 @@
 --     par son nom dans ReplicatedStorage/Assets/Icons par Contract/Icons, comme les icônes d'objets
 --     de L-055 ; icône pas encore livrée : l'image du Template reste, une seule ligne dans la sortie
 --     en Studio par icône manquante) ;
+--   - a407 (outils de renaissance, Config/Tools.RequiresRebirth) : tant que l'attribut Rebirths du Player est sous
+--     le palier, Price montre « Rebirth n » ; BuyButton reste (le serveur refuse avec « Reach Rebirth n… ») ;
 --   - BuyButton envoie BuyItem(toolId), EquipButton envoie EquipTool(toolId) ; le serveur
 --     (ShopService) vérifie tout et prévient le joueur (Notify). La liste suit les attributs
 --     OwnedTools et EquippedTool du Player (ShopService) : elle se met à jour après chaque achat
@@ -67,6 +69,7 @@ type Row = {
 	buy: GuiButton?,
 	equip: GuiButton?,
 	equipText: string?, -- texte d'origine de l'EquipButton s'il porte son propre texte
+	price: TextLabel?, -- a407 : Price, réécrit « Rebirth n » tant qu'un outil de renaissance est fermé
 }
 
 type Screen = {
@@ -99,6 +102,7 @@ local OBJECT_TEXT = "Weapon Shop"
 local FREE_TEXT = "Free"
 local POWER_FORMAT = "Power: %s"
 local EQUIPPED_TEXT = "Equipped"
+local REBIRTH_LOCKED_TEXT = "Rebirth %d" -- a407 : prix d'un outil de renaissance fermé (V0 ; Buy reste, le serveur dit pourquoi)
 local PROMPT_DISTANCE = 10
 local CLOSE_DISTANCE = PROMPT_DISTANCE + 4
 local MISSING_SCREEN_DELAY = 10
@@ -197,8 +201,16 @@ local function refreshRows()
 	end
 	local owned = ownedSet()
 	local equipped = localPlayer:GetAttribute(EQUIPPED_ATTRIBUTE)
+	local rebirths = localPlayer:GetAttribute(Tools.RebirthsAttribute)
 	for _, row in current.rows do
 		local has = owned[row.tool.Id] == true
+		local price = row.price
+		if price and row.tool.RequiresRebirth ~= nil then
+			local needed = Tools.NeedsRebirth(row.tool, rebirths)
+			price.Text = if needed ~= nil and not has
+				then string.format(REBIRTH_LOCKED_TEXT, needed)
+				else Format.money(row.tool.Price)
+		end
 		local buy = row.buy
 		if buy then
 			buy.Visible = not has
@@ -317,7 +329,9 @@ local function buildRow(template: GuiObject, tool: ToolDef, connections: { RBXSc
 	frame.Visible = true
 	frame.Parent = template.Parent
 	ShopCardTier.Apply(frame, tool.Order) -- L-176 (a186) : fond, bordure, ombre et décor du palier (rang Order)
-	return { tool = tool, frame = frame, buy = buy, equip = equip, equipText = equipText }
+	local priceFound = Find.path(frame, "Price")
+	local price: TextLabel? = if priceFound and priceFound:IsA("TextLabel") then priceFound :: TextLabel else nil
+	return { tool = tool, frame = frame, buy = buy, equip = equip, equipText = equipText, price = price }
 end
 
 local function setPromptsEnabled()
@@ -494,6 +508,7 @@ function WeaponShopController.Start()
 	localPlayer:GetAttributeChangedSignal(OWNED_ATTRIBUTE):Connect(refreshRows)
 	localPlayer:GetAttributeChangedSignal(OWNED_ATTRIBUTE):Connect(onOwnedForSound)
 	localPlayer:GetAttributeChangedSignal(EQUIPPED_ATTRIBUTE):Connect(refreshRows)
+	localPlayer:GetAttributeChangedSignal(Tools.RebirthsAttribute):Connect(refreshRows) -- a407 : outils de renaissance
 	RunService.Heartbeat:Connect(onHeartbeat)
 
 	CollectionService:GetInstanceAddedSignal(SHOP_TAG):Connect(attach)
