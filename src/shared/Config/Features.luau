@@ -83,6 +83,11 @@ local Features = {
 	FramewispFx = true,
 	-- a301 (21/11, demande de Cantin) : près de la boutique d'un autre joueur, dehors, les étiquettes BB_Item de ses objets exposés se voient à travers la façade (ShopSpyController, Config/ShopSpy) ; V0 proposé (2026-11-21) : true ; false = comme avant.
 	ShopSpy = true,
+	-- a400 (vague GC3, décision de Cantin du 23/11 ; audit a272, faille M1, option (a)) : contre le « fling », les
+	-- personnages des joueurs sont dans le groupe de collision « Players », qui ne se touche pas lui-même
+	-- (PlayerCollisionService) ; ils touchent toujours le décor, les vigiles, le bot, les PNJ, le mur de nuit, les
+	-- vitrines et les portes. false = les joueurs se traversent ; true = le contact entre joueurs d'avant.
+	PlayerCollision = false,
 }
 
 export type Features = typeof(Features)
