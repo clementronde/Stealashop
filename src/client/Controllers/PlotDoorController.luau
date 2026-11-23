@@ -181,11 +181,29 @@ local function consider(plot: Instance)
 	end
 end
 
+-- a318 (L-300) : une boutique qui revient du streaming est le même objet, annoncé de nouveau : une seule écoute du
+-- propriétaire par boutique, retirée à sa sortie (avant, une de plus à chaque retour).
+local ownerLinks: { [Instance]: RBXScriptConnection } = {}
+
 local function track(plot: Instance)
 	consider(plot)
-	plot:GetAttributeChangedSignal(OWNER_ATTRIBUTE):Connect(function()
-		consider(plot)
-	end)
+	if not ownerLinks[plot] then
+		ownerLinks[plot] = plot:GetAttributeChangedSignal(OWNER_ATTRIBUTE):Connect(function()
+			consider(plot)
+		end)
+	end
+end
+
+local function untrack(plot: Instance)
+	local link = ownerLinks[plot]
+	if link then
+		link:Disconnect()
+		ownerLinks[plot] = nil
+	end
+	local state = mine
+	if state and (state.plot :: Instance) == plot then
+		release()
+	end
 end
 
 -- Vantaux : ouverts quand je suis à moins d'OPEN_DISTANCE de ma porte, fermés sinon.
@@ -225,12 +243,7 @@ function PlotDoorController.Start()
 		track(plot)
 	end
 	CollectionService:GetInstanceAddedSignal(PLOT_TAG):Connect(track)
-	CollectionService:GetInstanceRemovedSignal(PLOT_TAG):Connect(function(plot: Instance)
-		local state = mine
-		if state and (state.plot :: Instance) == plot then
-			release()
-		end
-	end)
+	CollectionService:GetInstanceRemovedSignal(PLOT_TAG):Connect(untrack)
 	RunService.RenderStepped:Connect(step)
 end
 

@@ -233,8 +233,23 @@ local function refreshOwnPlot()
 end
 
 -- Une parcelle arrive (début, ou streaming) : on suit ses changements de propriétaire.
+-- a318 (L-300) : une parcelle qui revient du streaming est le même objet : une seule écoute par parcelle (retirée
+-- à sa sortie), au lieu d'une de plus à chaque retour.
+local plotLinks: { [Instance]: RBXScriptConnection } = {}
+
 local function watchPlot(plot: Instance)
-	plot:GetAttributeChangedSignal(OWNER_ATTRIBUTE):Connect(refreshOwnPlot)
+	if not plotLinks[plot] then
+		plotLinks[plot] = plot:GetAttributeChangedSignal(OWNER_ATTRIBUTE):Connect(refreshOwnPlot)
+	end
+	refreshOwnPlot()
+end
+
+local function unwatchPlot(plot: Instance)
+	local link = plotLinks[plot]
+	if link then
+		link:Disconnect()
+		plotLinks[plot] = nil
+	end
 	refreshOwnPlot()
 end
 
@@ -783,9 +798,7 @@ function DisplayController.Start()
 	localPlayer:GetAttributeChangedSignal(PLOT_INDEX_ATTRIBUTE):Connect(refreshOwnPlot)
 
 	CollectionService:GetInstanceAddedSignal(plotTag):Connect(watchPlot)
-	CollectionService:GetInstanceRemovedSignal(plotTag):Connect(function()
-		refreshOwnPlot()
-	end)
+	CollectionService:GetInstanceRemovedSignal(plotTag):Connect(unwatchPlot)
 	for _, plot in CollectionService:GetTagged(plotTag) do
 		watchPlot(plot)
 	end

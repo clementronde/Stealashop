@@ -165,6 +165,13 @@ local function setLamps(on: boolean)
 			setLamp(instance :: BasePart, on)
 		end
 	end
+	-- a318 (L-300) : un lampadaire allumé puis sorti du streaming n'est plus tagué dans le Workspace : éteint quand même,
+	-- pour qu'il ne revienne pas allumé en plein jour.
+	if not on then
+		for part in table.clone(lamps) do
+			setLamp(part, false)
+		end
+	end
 end
 
 -- Vague 72 (a246) : son 2D par Shared/Anim/MarkerSounds, s'il est là (absent : rien).
@@ -242,8 +249,10 @@ function SkyController.Start()
 	onPhaseChanged()
 	started = true
 	CollectionService:GetInstanceAddedSignal(LAMP_TAG):Connect(function(instance: Instance)
-		if lampsOn and instance:IsA("BasePart") then
-			setLamp(instance :: BasePart, true) -- pièce arrivée en pleine nuit (streaming)
+		-- Pièce arrivée (streaming) : allumée en pleine nuit, remise de jour (a318 : un lampadaire qui revient peut avoir
+		-- perdu, ou gardé, ce que ce client y avait changé).
+		if instance:IsA("BasePart") then
+			setLamp(instance :: BasePart, lampsOn)
 		end
 	end)
 	RunService.Heartbeat:Connect(update)
