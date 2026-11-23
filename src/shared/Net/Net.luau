@@ -39,6 +39,10 @@
 --     refusé est ignoré sans erreur, signalé à Net.OnViolation et, en Studio,
 --     écrit dans la sortie. Les refus de débit sont signalés au plus une fois
 --     par seconde par joueur et par remote, avec le nombre d'appels ignorés.
+--   - a276 : un remote qui a un Budget (Definitions.Budgets) prend ensuite un
+--     jeton dans ce budget du joueur, partagé avec les autres remotes du même
+--     budget ; budget vide : refus « Budget », signalé au plus une fois par
+--     seconde par joueur et par budget.
 --   - Un client qui appelle un remote serveur → client est signalé en
 --     « WrongDirection », avec la même limite de signalement.
 --   - En Studio, un envoi dont les arguments ne respectent pas Definitions
@@ -57,7 +61,7 @@ local Validate = require(script.Parent.Validate)
 type RemoteDef = Definitions.RemoteDef
 type Window = RateLimiter.Window
 
-export type ViolationReason = "RateLimit" | "ArgCount" | "ArgType" | "ArgValue" | "WrongDirection"
+export type ViolationReason = "RateLimit" | "ArgCount" | "ArgType" | "ArgValue" | "WrongDirection" | "Budget"
 
 export type Connection = {
 	Disconnect: (self: Connection) -> (),
@@ -104,6 +108,17 @@ local function checkDefinitions()
 		end
 		for _, spec in def.Args do
 			assert(spec.Kind ~= "string" or spec.Max ~= nil, `Net : {def.Name}.{spec.Name} : chaîne sans Max`)
+		end
+		if def.Budget ~= nil then
+			local budget = Definitions.Budgets[def.Budget]
+			assert(budget ~= nil, `Net : {def.Name} : budget {def.Budget} absent de Definitions.Budgets`)
+			assert(def.Direction == "ClientToServer", `Net : {def.Name} : un budget ne va qu'aux remotes client → serveur`)
+			assert(
+				budget.RatePerSecond >= 1
+					and math.floor(budget.RatePerSecond) == budget.RatePerSecond
+					and budget.Burst >= 1,
+				`Net : budget {def.Budget} : RatePerSecond entier ≥ 1 et Burst ≥ 1 attendus`
+			)
 		end
 	end
 end
@@ -175,6 +190,24 @@ local function getWindow(player: Player, def: RemoteDef): Window
 	return window
 end
 
+-- a276 : seau à jetons du budget `budgetName` pour ce joueur (RateLimiter en débit régulier : Burst - 1 de marge).
+local budgetWindows: { [Player]: { [string]: Window } } = {}
+
+local function getBudget(player: Player, budgetName: string): Window
+	local perPlayer = budgetWindows[player]
+	if perPlayer == nil then
+		perPlayer = {}
+		budgetWindows[player] = perPlayer
+	end
+	local window = perPlayer[budgetName]
+	if window == nil then
+		local budget = Definitions.Budgets[budgetName]
+		window = RateLimiter.new(budget.RatePerSecond, budget.Burst - 1)
+		perPlayer[budgetName] = window
+	end
+	return window
+end
+
 local function makeServerRemote(def: RemoteDef, instance: any): ServerRemote
 	local name = def.Name
 	local fromClient = def.Direction == "ClientToServer"
@@ -200,6 +233,15 @@ local function makeServerRemote(def: RemoteDef, instance: any): ServerRemote
 		if reason then
 			report(player, name, reason, detail or "")
 			return
+		end
+		-- a276 : budget partagé, compté seulement pour un appel bien formé et dans le débit de son remote.
+		local budgetName = def.Budget
+		if budgetName ~= nil then
+			local budget = getBudget(player, budgetName)
+			if not RateLimiter.allow(budget, now) then
+				reportFlood(player, name, budget, now, "Budget")
+				return
+			end
 		end
 		for _, handler in handlers do
 			task.spawn(handler, player, ...)
@@ -266,6 +308,7 @@ local function buildServer(): { [string]: ServerRemote }
 
 	Players.PlayerRemoving:Connect(function(player: Player)
 		windows[player] = nil
+		budgetWindows[player] = nil
 	end)
 
 	-- Hors partie lancée (mode édition de Studio), on ne touche pas à la place.
