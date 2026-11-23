@@ -79,8 +79,12 @@
 --     IndexAlert du HUD est allumée par RailAlertController ;
 --   - Categories : NormalButton (les zones), SecretsButton (SecretsSection seule), MutationsButton (les
 --     zones, MutationTabs et MutationCaption montrés) ; Selected allumé sur la catégorie choisie ; Rewards
---     caché hors de NORMAL. Un index par mutation n'existe pas côté serveur : en MUTATIONS, toutes les
---     cartes sont des silhouettes et les compteurs à 0. MutationTabs.<Effet>Tab (Config/Mutations.Effects)
+--     caché hors de NORMAL. Vague GC6 (a410, MAJ 7, Features.IndexMutations) : en MUTATIONS, une carte est
+--     trouvée si l'objet a été obtenu avec l'effet de l'onglet choisi, ou, sans onglets, avec au moins un effet
+--     (attribut IndexMutations d'IndexService, Shared/IndexMutations) ; compteurs d'après ces cartes. Effets
+--     obtenus : Template.MutationRow (facultatif, Clément) dans toutes les catégories, sinon « 2/7 » construit par
+--     le code sur la carte en MUTATIONS ; fiche : Detail.DetailMutations (facultatif), sinon DetailIncome en
+--     MUTATIONS. Avant (ou Features.IndexMutations à false) : toutes silhouettes, compteurs à 0. MutationTabs.<Effet>Tab (Config/Mutations.Effects)
 --     : Selected sur l'onglet choisi, MutationCaption « Collect every item in SHINY! ». Changement de
 --     catégorie ou d'onglet : la liste remonte, les cartes entrent une par une (T.29, View.CardsIn) ; les
 --     onglets de mutation entrent à leur tour (View.TabsIn) ;
@@ -112,6 +116,7 @@ local Formulas = require(Config:WaitForChild("Formulas"))
 local Index = require(Config:WaitForChild("Index"))
 local Items = require(Config:WaitForChild("Items"))
 local Mutations = require(Config:WaitForChild("Mutations"))
+local IndexMutations = require(Shared:WaitForChild("IndexMutations"))
 local Rarities = require(Config:WaitForChild("Rarities"))
 local Zones = require(Config:WaitForChild("Zones"))
 local Contract = Shared:WaitForChild("Contract")
@@ -136,6 +141,7 @@ type Card = {
 	name: Instance?,
 	clip: GuiObject?,
 	found: boolean?, -- état peint (nil : pas encore peint)
+	mutationsPainted: string?, -- vague GC6 (a410) : colonnes de mutations peintes (clé « catégorie|effets »)
 }
 
 -- Un en-tête et ses cartes : une section de UI_Index_v2 / v3, ou l'unique ZoneReward de UI_Index (sa
@@ -306,6 +312,7 @@ local category = NORMAL -- v3 : catégorie choisie
 local mutation: string? = nil -- v3 : Id de l'onglet de mutation choisi
 local selected: Item? = nil -- v3 : objet montré dans Detail
 local discovered: { [string]: boolean } = {}
+local mutationBook: IndexMutations.Decoded = {} -- vague GC6 (a410) : effets obtenus par objet (attribut IndexMutations)
 local claimed: { [number]: boolean } = {} -- zones dont la prime est réclamée (attribut IndexClaimed)
 -- Réclamation envoyée, en attente de la réponse du serveur : le bouton qui sautera (T.33) et l'heure.
 local pendingClaim: { button: GuiObject, at: number }? = nil
@@ -567,12 +574,113 @@ local function anyClaimable(): boolean
 	return #Index.ClaimableZones(discovered, claimed) > 0
 end
 
--- Objet trouvé, tel que l'écran le montre : en MUTATIONS (v3), aucun (pas d'index par mutation).
+local function readMutations()
+	mutationBook = IndexMutations.Decode(localPlayer:GetAttribute(IndexMutations.Attribute))
+end
+
+-- Vague GC6 (a410, MAJ 7) : colonnes de mutations allumées (Features.IndexMutations).
+local function mutationsOn(): boolean
+	return Features.IndexMutations == true
+end
+
+-- Objet trouvé, tel que l'écran le montre. En MUTATIONS (v3) : avant la vague GC6, aucun ; depuis (a410), l'objet
+-- obtenu avec l'effet de l'onglet choisi (MutationTabs de Clément), ou, sans onglets (retirés en L-213), avec au moins
+-- un effet.
 local function isFound(current: Screen, item: Item): boolean
 	if current.v3 and category == MUTATIONS then
-		return false
+		if not mutationsOn() then
+			return false
+		end
+		local row = mutationBook[item.Id]
+		if row == nil then
+			return false
+		end
+		if next(current.mutationTabButtons) ~= nil and mutation ~= nil then
+			return row[mutation :: string] == true
+		end
+		return next(row) ~= nil
 	end
 	return discovered[item.Id] == true
+end
+
+-- Effets obtenus pour `item`, dans l'ordre de Config/Mutations, en capitales (« GOLD · NEON »).
+local MUTATION_SEPARATOR = " · " -- V0, comme Mutations.Label
+local NO_MUTATION_TEXT = "No mutation yet" -- V0 proposé (Cantin, 23/11), anglais (L-036)
+local MUTATION_COUNT_TEXT = "%d/%d" -- V0 : repli sur la carte, effets obtenus / colonnes
+local MUTATION_FALLBACK = "MutationsFallback" -- étiquette de repli construite par le code (pas au contrat)
+local function mutationNames(item: Item): { string }
+	local names: { string } = {}
+	local row = mutationBook[item.Id]
+	if row then
+		for _, effect in Mutations.Effects do
+			if row[effect.Id] then
+				table.insert(names, effect.DisplayNameUpper)
+			end
+		end
+	end
+	return names
+end
+
+-- Colonnes de mutations d'une carte (v3). Élément facultatif de Clément Template.MutationRow (Frame) avec son
+-- Template (invisible, cloné par effet obtenu, nommé par l'Id de l'effet, texte MutationLabel), montré dans toutes les
+-- catégories. Sans lui (repli lisible), en MUTATIONS seulement : une étiquette « 2/7 » construite par le code en haut
+-- de la carte ; la liste complète va dans la fiche Detail.
+local function paintMutations(current: Screen, card: Card)
+	if not current.v3 or not mutationsOn() then
+		return
+	end
+	local names = mutationNames(card.item)
+	local key = `{category}|{table.concat(names, ",")}`
+	if card.mutationsPainted == key then
+		return
+	end
+	card.mutationsPainted = key
+	local row = guiObject(card.frame, "MutationRow")
+	if row then
+		local template = guiObject(row, "Template")
+		for _, child in row:GetChildren() do
+			if child ~= template and child:IsA("GuiObject") and Mutations.EffectById[child.Name] ~= nil then
+				child:Destroy()
+			end
+		end
+		local owned = mutationBook[card.item.Id]
+		if template and owned then
+			for order, effect in Mutations.Effects do
+				if owned[effect.Id] then
+					local clone = template:Clone()
+					clone.Name = effect.Id
+					clone.LayoutOrder = order
+					setText(Find.path(clone, "MutationLabel"), effect.DisplayNameUpper)
+					clone.Visible = true
+					clone.Parent = row
+				end
+			end
+		end
+		return
+	end
+	local label = card.frame:FindFirstChild(MUTATION_FALLBACK)
+	local shown = category == MUTATIONS and #names > 0 and IndexMutations.Counts(card.item)
+	if label == nil and shown then
+		local built = Instance.new("TextLabel")
+		built.Name = MUTATION_FALLBACK
+		built.BackgroundTransparency = 1
+		built.AnchorPoint = Vector2.new(0.5, 0)
+		built.Position = UDim2.fromScale(0.5, 0.03)
+		built.Size = UDim2.fromScale(0.9, 0.16)
+		built.Font = Enum.Font.GothamBlack
+		built.TextScaled = true
+		built.TextColor3 = WHITE
+		built.ZIndex = 50
+		local stroke = Instance.new("UIStroke")
+		stroke.Thickness = 1.5
+		stroke.Parent = built
+		built.Parent = card.frame
+		label = built
+	end
+	if label and label:IsA("TextLabel") then
+		label.Text = string.format(MUTATION_COUNT_TEXT, #names, IndexMutations.PerItem)
+		label.Visible = shown
+	end
 end
 
 -- Revenu affiché dans la fiche : « $X/s » (vague 76 : Formulas.ItemIncome, rareté, zone et rang de l'objet ;
@@ -586,6 +694,7 @@ end
 ------------------------------------------------------------------------------
 
 local function paint(current: Screen, card: Card)
+	paintMutations(current, card)
 	local found = isFound(current, card.item)
 	if card.found == found then
 		return
@@ -639,6 +748,18 @@ local function showDetail(current: Screen, item: Item)
 		(rarityLabel :: any).TextColor3 = color:Lerp(WHITE, VIEW.RarityLighten)
 	end
 	setText(current.detailIncome, if found then incomeText(item) else UNKNOWN_INCOME)
+	-- Vague GC6 (a410) : effets obtenus. DetailMutations (facultatif, Clément) dans toutes les catégories ; sans lui,
+	-- en MUTATIONS, DetailIncome les montre à la place du revenu (repli lisible).
+	if current.v3 and mutationsOn() and IndexMutations.Counts(item) then
+		local names = mutationNames(item)
+		local text = if #names > 0 then table.concat(names, MUTATION_SEPARATOR) else NO_MUTATION_TEXT
+		local own = Find.path(detail, "DetailMutations")
+		if own then
+			setText(own, text)
+		elseif category == MUTATIONS then
+			setText(current.detailIncome, text)
+		end
+	end
 end
 
 -- Cartes de chaque section (v2, v3 : toutes les zones ; repli : l'onglet ouvert), clonées depuis
@@ -1040,6 +1161,7 @@ local function setMutation(current: Screen, id: string)
 	select(current.mutationTabButtons, id)
 	paintCaption(current)
 	scrollTop(current)
+	refresh() -- vague GC6 (a410) : les cartes trouvées dépendent de l'onglet choisi
 	cardsIn(current)
 end
 
@@ -1477,6 +1599,7 @@ local function open()
 		return
 	end
 	readDiscovered()
+	readMutations()
 	isOpen = true
 	if current.v3 then
 		applyCategory(current)
@@ -1951,6 +2074,7 @@ function IndexController.Start()
 		return -- MAJ 2 : rien n'est branché, l'écran reste fermé
 	end
 	readDiscovered()
+	readMutations()
 	readClaimed()
 	-- Pastilles « ! » de l'écran branché, ouvert ou pas (L-127).
 	local function alerts()
@@ -1974,6 +2098,11 @@ function IndexController.Start()
 		readDiscovered()
 		refresh()
 		alerts()
+	end)
+	-- Vague GC6 (a410) : colonnes de mutations.
+	localPlayer:GetAttributeChangedSignal(IndexMutations.Attribute):Connect(function()
+		readMutations()
+		refresh()
 	end)
 	localPlayer:GetAttributeChangedSignal(Index.ClaimedAttribute):Connect(function()
 		onClaimedChanged()
