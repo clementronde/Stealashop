@@ -58,8 +58,8 @@
 --       GuardService (Cantin, 2026-11-13) : porteur attrapé dans le magasin d'où vient l'objet ("Caught").
 --   CarryService.SetBackToShelfCheck(check)
 --       L-135 point 5 (Clément, 2026-11-14) : `check(player) -> boolean`, posé par GuardService (porteur d'un
---       objet NPCItem dans le volume Bounds du magasin d'où il vient). Vrai au moment d'une chute (Drop : G, coup
---       de batte… ; Fail "Caught" d'un objet NPCItem) : rien ne tombe, l'objet revole tout de suite vers son
+--       objet NPCItem dans le volume Bounds du magasin d'où il vient). Vrai au moment d'une chute (Drop : coup
+--       de batte ; Fail "Caught" d'un objet NPCItem) : rien ne tombe, l'objet revole tout de suite vers son
 --       rayon, comme FailNoDrop (OnCarryEnded(…, "Failed", raison), Drop renvoie nil). Sans check, ou s'il
 --       échoue : la chute habituelle. Dans la rue, rien ne change.
 --   CarryService.ReportAnomaly(player, detail) -> boolean
@@ -81,10 +81,6 @@
 --       au pied du porteur. Un objet volé à un joueur ne tombe jamais : Fail(player, "Bat"), il
 --       revole chez son propriétaire (6.2, remis par PvPService), et Drop renvoie nil. Un objet
 --       NPCItem (L-112) tombe comme un colis (sans attribut Tier).
---       a113 (Cantin, 2026-11-13) : Drop(player, position?, reason?). `position` nil = le point du sol sous
---       le porteur ; `reason` (défaut "Bat") est la raison passée à OnCarryEnded (et à Fail pour un objet
---       volé). DropService passe nil et "Released" quand le joueur lâche lui-même (remote DropCarried) :
---       même colis au sol, même délai, même vigile qui le suit qu'après un coup de batte.
 --   CarryService.PickUpDrop(player, dropId) -> boolean
 --       Ramassage d'un colis au sol (GrabDropped, 9.4) : le nouveau porteur reçoit le même payload
 --       (même table : même rareté, même objet caché, 6.2), par StartCarry ; le colis quitte le sol
@@ -908,7 +904,7 @@ function CarryService.AttachBoxLabel(model: Model, rarityId: string, itemId: str
 	return gui
 end
 
--- Objet au sol (DEV-048, L-112 : coup de batte, capture, lâcher) ---------------------
+-- Objet au sol (DEV-048, L-112 : coup de batte, capture) ---------------------
 
 -- Attribut posé sur un objet tombé au sol, lu par BatController (même nom là-bas).
 local BAT_DROP_ATTRIBUTE = "BatDrop"
@@ -1043,35 +1039,30 @@ function fall(player: Player, carry: Carry, position: Vector3, reason: string): 
 	return dropId
 end
 
-function CarryService.Drop(player: Player, position: Vector3?, reason: string?): string?
+function CarryService.Drop(player: Player, position: Vector3): string?
 	local carry = carries[player]
 	if carry == nil then
 		return nil
 	end
-	local why = if type(reason) == "string" and reason ~= "" then reason else "Bat"
 	local payload = carry.payload
 	if payload.Kind == "PlayerItem" then
-		CarryService.Fail(player, why) -- 6.2 : l'objet revole vers le présentoir de son propriétaire
+		CarryService.Fail(player, "Bat") -- 6.2 : l'objet revole vers le présentoir de son propriétaire
 		return nil
 	end
 	if backToShelf(player, carry) then
-		-- L-135 point 5 (Clément, 2026-11-14) : lâché ou tombé dans son propre magasin, il revole sur son rayon.
+		-- L-135 point 5 (Clément, 2026-11-14) : tombé dans son propre magasin, il revole sur son rayon.
 		if IS_STUDIO then
-			print(`[CarryService] {player.Name} lâche ({why}) dans le magasin de l'objet : {describe(payload)} revole sur son rayon`)
+			print(`[CarryService] {player.Name} lâche (Bat) dans le magasin de l'objet : {describe(payload)} revole sur son rayon`)
 		end
-		finish(player, "Failed", why)
+		finish(player, "Failed", "Bat")
 		return nil
 	end
-	local at: Vector3
-	if position == nil then
-		at = groundBelow(player, carry.humanoid) -- a113 : lâché par le joueur, au sol sous lui
-	elseif isValidPosition(position) then
-		at = position
-	else
+	local at = position
+	if not isValidPosition(at) then
 		warn(debug.traceback(`[CarryService] Drop({player.Name}) : position invalide ({position}), colis posé au pied du porteur`, 2))
 		at = feetOf(player, carry.humanoid)
 	end
-	return fall(player, carry, at, why)
+	return fall(player, carry, at, "Bat")
 end
 
 function CarryService.PickUpDrop(player: Player, dropId: string): boolean

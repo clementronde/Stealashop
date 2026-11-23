@@ -66,7 +66,7 @@
 -- la force (arme, aura, potion) ni du temps de jeu. Ne rien brancher ici qui en dépende.
 --
 -- Objet tombé au sol (6.2, L-112) : GrabDropped(dropId) (9.4), pour ce qui est tombé des mains d'un porteur
--- (coup de batte, capture, lâcher ; vague 50 : plus de colis du camion ni de la Fortune Tower au sol). En deux appels,
+-- (coup de batte, capture ; vague 50 : plus de colis du camion ni de la Fortune Tower au sol). En deux appels,
 -- comme GrabItem : le client l'envoie au début du maintien de l'invite, puis quand elle se
 -- déclenche. Vérifié : colis encore au sol (CarryService.GetDrop), mains vides, joueur vivant, pas
 -- étourdi, hors zone safe, à Bat.DroppedGrabMaxDistance (8) studs au plus du colis, maintien de

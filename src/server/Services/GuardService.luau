@@ -123,9 +123,9 @@
 -- vigile de jour sorti à sa prise sur le rayon (ou, si le preneur était déjà poursuivi par un vigile de
 -- jour, à celui-là), puis au vigile de jour qui poursuit son porteur. Ce vigile s'en occupe jusqu'à ce que
 -- l'objet revole vers son rayon (OnDropExpired, ou échec sans chute) ou soit rangé en base (Consumed) :
---   - lâché (touche G) ou tombé (batte) : Follow, comme plus haut ;
+--   - tombé (batte) : Follow, comme plus haut ;
 --   - porteur attrapé (l'objet tombe, CarryService.Fail « Caught ») : à la fin de Catch, le vigile garde
---     l'objet tombé comme après un lâcher (Follow, à l'endroit de la capture ; Cantin, 2026-11-13 : « à chaque
+--     l'objet tombé comme après un coup de batte (Follow, à l'endroit de la capture ; Cantin, 2026-11-13 : « à chaque
 --     fois qu'un objet est posé au sol, le vigile doit être à côté de lui pour le garder » jusqu'à ce qu'il
 --     revole vers son rayon, puis il rentre). Repris pendant qu'il est au sol, par n'importe qui (celui qu'il
 --     vient d'attraper compris, une fois son étourdissement fini) : ce vigile repart (retarget :
@@ -137,7 +137,7 @@
 --     l'objet ne tombe pas, il revole tout de suite vers son rayon (CarryService.FailNoDrop « Caught » :
 --     échec sans chute) ; le lien finit, le vigile rentre au GuardSpawn à la fin de Catch et le
 --     magasin se referme comme d'habitude ;
---   - objet lâché ou tombé dans ce même volume (touche G, coup de batte, capture par un autre ; Clément,
+--   - objet tombé dans ce même volume (coup de batte, capture par un autre ; Clément,
 --     2026-11-14, L-135 point 5) : pareil, il revole tout de suite vers son rayon (CarryService
 --     .SetBackToShelfCheck, posé au Start avec la même règle) ; le vigile abandonne (portage « Failed »).
 --     Dans la rue, rien ne change : l'objet tombe et le vigile le garde ;
@@ -226,7 +226,6 @@
 --       plafond atteint ou magasin sans Zone.
 --   GuardService.GetLinkedGuard(payload) -> Model?   a114 : le vigile lié à cet objet (NPCItem), s'il est en jeu
 --   GuardService.IsChased(player) -> boolean
---   GuardService.IsStunned(player) -> boolean   étourdi par une capture (vigile, police, conducteur, nuit) ; a113
 --   GuardService.GetGuard(player) -> Model?    le vigile qui poursuit ce joueur
 --   GuardService.GetReturningGuards(store) -> { BasePart }
 --       HumanoidRootPart des vigiles de jour de ce magasin (Model) qui rentrent vers sa réserve, à
@@ -4182,7 +4181,7 @@ end
 local function onCarryStarted(player: Player, payload: any)
 	-- L-112 : un objet sorti d'un colis ouvert sur le rayon (NPCItem) fait partir le vigile du magasin à
 	-- sa prise, comme un colis (Cantin, 2026-11-13, a114 : rétabli, lié à l'objet) ; tombé au sol (coup de
-	-- batte, lâché, ou porteur attrapé : CarryService.Fail « Caught » le lâche, résultat « Dropped »), il
+	-- batte, ou porteur attrapé : CarryService.Fail « Caught » le lâche, résultat « Dropped »), il
 	-- suit les mêmes règles qu'un colis tombé, plus celles de l'objet lié.
 	if type(payload) ~= "table" or payload.Kind ~= "NPCItem" then
 		return -- seuls les objets sortis d'un colis PNJ ont un vigile (5.5 ; vague 50 : plus de colis porté fermé, NPCBox)
@@ -4317,11 +4316,6 @@ end
 
 function GuardService.IsChased(player: Player): boolean
 	return chasedBy[player] ~= nil
-end
-
--- a113 (Cantin, 2026-11-13) : DropService refuse de lâcher le portage pendant cet étourdissement.
-function GuardService.IsStunned(player: Player): boolean
-	return stunTokens[player] ~= nil
 end
 
 function GuardService.GetGuard(player: Player): Model?
@@ -4511,7 +4505,7 @@ function GuardService.Start()
 	CarryService.OnCarryStarted(onCarryStarted)
 	CarryService.OnCarryEnded(onCarryEnded)
 	CarryService.OnDropExpired(onDropExpired)
-	-- L-135 point 5 (Clément, 2026-11-14) : lâché ou tombé dans le magasin d'où vient l'objet (G, coup de
+	-- L-135 point 5 (Clément, 2026-11-14) : tombé dans le magasin d'où vient l'objet (coup de
 	-- batte, capture…), il revole sur son rayon au lieu de tomber (même règle que la capture, inItsStore).
 	local setCheck = CarryService.SetBackToShelfCheck
 	if setCheck then

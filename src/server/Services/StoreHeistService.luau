@@ -3330,7 +3330,7 @@ local function onCarryEnded(player: Player, payload: any, result: string, reason
 	end
 end
 
--- Objet tombé au sol (coup de batte, capture, lâcher), jamais ramassé (6.2 : Bat.DroppedLifetime s) : il
+-- Objet tombé au sol (coup de batte, capture), jamais ramassé (6.2 : Bat.DroppedLifetime s) : il
 -- revole vers son emplacement depuis l'endroit où il était.
 local function onDropExpired(dropId: string, payload: any, position: Vector3?)
 	if type(payload) == "table" and payload.Kind == "NPCItem" then

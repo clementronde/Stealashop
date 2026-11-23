@@ -16,7 +16,7 @@
 --      Guard_Radio une phrase sur RadioEvery. Vigile pas encore là (streaming) : la bulle arrive avec
 --      lui ; vigile disparu : la bulle s'en va et revient avec lui ;
 --   3. vague 59 (a192, L-182 point 9) : tout le HUD masqué pendant la poursuite sauf UI_Chase (« RUN! », les bords),
---      UI_HUD.HeistTimer et UI_HUD.DropButton (Config/HeistFeel.ChaseMask, par Controllers/UI/HudMask : écrans
+--      UI_HUD.HeistTimer (Config/HeistFeel.ChaseMask, par Controllers/UI/HudMask : écrans
 --      Enabled, éléments Visible, revus toutes les HeistFeel.MaskRefresh s), puis rendu tel qu'il était. Avant :
 --      seulement LeftRail, LeftRailTouch et UI_Hotbar (ChaseFeel.Rails, Hotbar et BarsRefresh ne sont plus lus) ;
 --   4. vague 59 : le vigile qui poursuit le joueur passe en rouge, un Highlight (HeistFeel.Highlight) posé par ce

@@ -231,7 +231,7 @@ local Witness = {
 		-- clients, absent à son entrée dans Bounds, présent pendant qu'il y est ou à sa sortie) en est le voleur : la
 		-- foule reste, même voleur loin du magasin, tant qu'il porte, puis s'efface dès que Carrying disparaît, c'est-à-
 		-- dire quand le vol se termine : objet déposé chez lui (rangé à l'entrée de la zone safe ou exposé), ou vol raté
-		-- (attrapé, objet tombé ou lâché, volé par un autre joueur, mort, départ du jeu) : validé par Cantin, 21/11.
+		-- (attrapé, objet tombé, volé par un autre joueur, mort, départ du jeu) : validé par Cantin, 21/11.
 		-- À la sortie, la foule suit le voleur des yeux, comme a288 : validé par Cantin, 21/11.
 		-- V0 proposé (a289, 21/11) : un joueur entré et ressorti sans prendre d'objet (ou entré en portant déjà un objet
 		-- venu d'ailleurs) n'est pas un voleur de ce magasin : sans vol, la foule part Duration s après la sortie du

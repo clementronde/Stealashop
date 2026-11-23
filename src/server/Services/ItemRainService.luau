@@ -20,7 +20,7 @@
 --   - zone du point : celle du magasin PNJ (tag NPCStore, attribut Zone) le plus proche, à plat ;
 --   - objet : tiré comme sur un rayon d'un magasin de cette zone (StoreHeistService.DrawForZone : type de caisse,
 --     rareté de la caisse selon la zone, chance, puis rareté, objet et mutation de la sortie) ;
---   - au sol : CarryService.PlaceItemDrop, le même objet au sol qu'après un lâcher (Workspace/CarryDrops, halo,
+--   - au sol : CarryService.PlaceItemDrop, le même objet au sol qu'après un coup de batte (Workspace/CarryDrops, halo,
 --     étiquette, invite « Grab » de BatController, ramassage GrabDropped de BatService : mains vides, vivant, pas
 --     étourdi, hors zone safe, à 8 studs, maintien de 0,5 s). Il tombe de FallHeight studs en FallTime s (chute
 --     jouée ici, à chaque image, pour un objet à la fois) ;
@@ -29,7 +29,7 @@
 --   - la nuit (ItemRain.PauseAtNight) : rien ne tombe, le couloir est fermé ; l'événement continue de tourner.
 --
 -- Ramassé, c'est un objet porté comme les autres (NPCItem, origine ItemRain.StoreId) : malus de portage, rangé dans
--- l'inventaire à l'entrée de la zone safe (UnboxService), il tombe au sol sur un coup de batte, un lâcher (G) ou une
+-- l'inventaire à l'entrée de la zone safe (UnboxService), il tombe au sol sur un coup de batte ou une
 -- capture, où n'importe qui le reprend ; resté au sol Bat.DroppedLifetime s, il disparaît (il n'a pas de rayon où
 -- revenir) ; perdu aussi si le porteur meurt ou part. Sans vigile de jour : son origine a le préfixe « Truck_ » des
 -- événements (GuardService : pas de magasin, pas de vigile), ce sont des cadeaux d'événement. Les vigiles de nuit et

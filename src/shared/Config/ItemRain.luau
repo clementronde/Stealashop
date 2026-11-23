@@ -18,8 +18,8 @@ local ItemRain = {
 	DropEvery = 5,
 	-- Plafond d'objets de la pluie encore au sol (jamais ramassés) : au plafond, rien ne tombe.
 	MaxOnGround = 10,
-	-- Un objet pas ramassé disparaît au bout de Lifetime s (chute comprise). Ramassé puis lâché ou tombé (touche G,
-	-- coup de batte), il suit la règle de tout objet au sol : Bat.DroppedLifetime s, puis il disparaît.
+	-- Un objet pas ramassé disparaît au bout de Lifetime s (chute comprise). Ramassé puis tombé (coup de batte),
+	-- il suit la règle de tout objet au sol : Bat.DroppedLifetime s, puis il disparaît.
 	Lifetime = 60,
 	-- Zones du couloir où la pluie tombe. L'objet est tiré comme sur un rayon d'un magasin de la zone où il tombe.
 	Zones = { 1, 2, 3, 4, 5, 6 },
