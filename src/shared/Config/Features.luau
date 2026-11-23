@@ -133,6 +133,13 @@ local Features = {
 	-- premier bouton d'un menu, ButtonB pour fermer, L1 / R1 pour la barre du bas, aides au bon bouton ; V0 proposé
 	-- (Cantin, 23/11) : true ; false = rien ne change (clavier, souris et tactile ne changent jamais).
 	Gamepad = true,
+	-- a315 (L-291, règle de Cantin du 23/11) : l'intrus frappé par le propriétaire dans sa boutique part en ragdoll à
+	-- travers la vitre la plus proche dans le sens du coup, la troue (givre, éclats), atterrit dehors et se relève ;
+	-- le trou se répare (GlassThrowService, GlassThrowController, Config/GlassThrow, remote GlassThrow). Interrupteur
+	-- PROD (partout) : false, V0 proposé (2026-11-23) ; false = le coup pose l'intrus devant la porte, comme avant.
+	ShopGlassThrow = false,
+	-- a315 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	ShopGlassThrowDev = true,
 }
 
 export type Features = typeof(Features)

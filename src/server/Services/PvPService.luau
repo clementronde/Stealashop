@@ -370,6 +370,27 @@ local Floor: FloorApi? = if floorLoaded and type(floorResult) == "table" and typ
 	then floorResult :: any
 	else nil
 
+-- a315 (L-291, Cantin 23/11) : l'intrus frappé par le propriétaire dans sa boutique est projeté à travers une vitre
+-- (GlassThrowService, sous Features.ShopGlassThrow) au lieu d'être posé devant la porte. require protégé : sans
+-- GlassThrowService (anciens bancs), la sortie devant la porte d'avant.
+type GlassApi = {
+	Throw: (hitter: Player, target: Player, plot: Model, bounds: BasePart, onDone: ((outside: boolean) -> ())?) -> boolean,
+	IsThrown: (player: Player) -> boolean,
+}
+local glassModule = script.Parent:FindFirstChild("GlassThrowService")
+local glassLoaded: boolean, glassResult: any = false, nil
+if glassModule and glassModule:IsA("ModuleScript") then
+	glassLoaded, glassResult = pcall(require, glassModule)
+end
+local Glass: GlassApi? = if glassLoaded and type(glassResult) == "table" and type(glassResult.Throw) == "function"
+	then glassResult :: any
+	else nil
+
+local function isThrown(player: Player): boolean
+	local api = Glass
+	return api ~= nil and api.IsThrown(player)
+end
+
 -- Messages lus par les joueurs (Notify), en anglais (L-036) ; nombres par Shared/Format.
 local MESSAGES: { [string]: string } = {
 	DoorSmashed = "%s smashed your shop door! Defend your shop!",
@@ -886,7 +907,8 @@ local function ejectFrom(plot: Model, owner: Player?, only: ((Player) -> boolean
 	end
 	for _, player in Players:GetPlayers() do
 		-- Un joueur qui part (profil déjà libéré) reste où il est : c'est souvent l'ancien propriétaire.
-		if player ~= owner and present(player) and DataService.Get(player) ~= nil and (only == nil or only(player)) then
+		-- a315 : un joueur projeté à travers une vitre (GlassThrowService) n'est pas reposé devant la porte en plein vol.
+		if player ~= owner and present(player) and DataService.Get(player) ~= nil and (only == nil or only(player)) and not isThrown(player) then
 			if putOut(player, plot, bounds) then
 				table.insert(moved, player)
 			end
@@ -1577,12 +1599,43 @@ end
 -- devant la porte s'il est dedans, et le message à la cible. true s'il a été sorti ; porte cassée : elle se
 -- répare dès qu'il ne reste plus d'intrus (vague 43), qu'il ait été sorti ou qu'il soit déjà dehors
 -- (décision de Cantin, 2026-11-14 : « Oui, réparer »).
-local function kickOut(plot: Model, target: Player, why: string, duration: number?): boolean
+-- a315 (L-291) : frappé par le propriétaire (`hitter`) alors qu'il est dans Bounds, l'intrus est projeté à travers une
+-- vitre (GlassThrowService, s'il est allumé) au lieu d'être posé devant la porte ; resté dedans à son relevé (vol
+-- bloqué), il est posé devant la porte comme avant. Le bot ne projette pas (pas de `hitter`).
+local function throwThrough(hitter: Player, target: Player, plot: Model, bounds: BasePart): boolean
+	local api = Glass
+	if api == nil then
+		return false
+	end
+	local ok, thrown = pcall(api.Throw, hitter, target, plot, bounds, function(outside: boolean)
+		if not present(target) then
+			return
+		end
+		if not outside and putOut(target, plot, bounds) then
+			return
+		end
+		local theft = thefts[target]
+		local landed = rootOf(target)
+		if theft and landed then
+			-- Déplacement fait par le serveur : le contrôle du dépôt repart d'ici (comme putOut).
+			theft.From = landed.Position
+			theft.StartedAt = os.clock()
+		end
+	end)
+	if not ok then
+		warn(`[PvPService] GlassThrowService.Throw : {thrown}`)
+		return false
+	end
+	return thrown == true
+end
+
+local function kickOut(plot: Model, target: Player, why: string, duration: number?, hitter: Player?): boolean
 	local seconds = duration or PvP.KickRobCooldown
 	local breaker = breaking(plot, target) -- a177 : frappé pendant qu'il casse la porte
 	ban(target, plot, if breaker then `{why}, en cassant la porte` else why, seconds)
 	local bounds = refsFor(plot).Bounds
-	local moved = bounds ~= nil and putOut(target, plot, bounds)
+	local thrown = hitter ~= nil and bounds ~= nil and throwThrough(hitter, target, plot, bounds)
+	local moved = thrown or (bounds ~= nil and putOut(target, plot, bounds))
 	local windowId = WindowService.GetWindowId(plot)
 	if windowId and WindowService.IsBroken(windowId) then
 		repairWhenEmpty[plot] = true
@@ -1606,7 +1659,7 @@ local function onBatHit(hitter: Player, target: Player, usage: string, _payload:
 	if plot == nil or not present(target) then
 		return
 	end
-	if kickOut(plot, target, if usage == "Intruder" then `frappé dans la boutique par {hitter.Name}` else `frappé par {hitter.Name} avec son objet`) then
+	if kickOut(plot, target, if usage == "Intruder" then `frappé dans la boutique par {hitter.Name}` else `frappé par {hitter.Name} avec son objet`, nil, hitter) then
 		notify(hitter, string.format(MESSAGES.IntruderOut, target.DisplayName), "Success")
 		log(`{target.Name} sorti de {plot.Name} par son propriétaire {hitter.Name}`)
 	end
