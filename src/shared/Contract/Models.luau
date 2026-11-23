@@ -913,4 +913,19 @@ local UnboxFx: ModelSpec = {
 Models.UnboxFx = UnboxFx
 table.insert(Models.List, table.find(Models.List, WeaponShopCounter) or #Models.List + 1, UnboxFx)
 
+-- Vitres des boutiques de joueurs (a315, L-291 ; posées par Clément dans Studio, L-298, pas encore publiées) : chaque
+-- vitre est une Part de la parcelle PLOT_*, taguée ShopGlass, avec l'attribut GlassSide (Front, Left, Right, Back) et
+-- un nom unique : Stage_1/Frame/Pane_FL et Pane_FR (façade), Pane_L_01… et Pane_R_01… (côtés, de l'avant vers le
+-- fond : _01 à _05 dans Stage_1/Frame, _06 à _09 dans Stage_2/Frame), Pane_B (fond : Stage_1/Frame/Back_L1, puis
+-- Stage_2/Frame).
+-- Lues par GlassThrowService (Shared/ShopGlass) : l'intrus frappé dans la boutique est projeté à travers l'une
+-- d'elles. Pas un ModelSpec (hors de Models.List) : ContractChecker les vérifie à part (catégorie Parcelles), en orange
+-- seulement tant qu'elles ne sont pas livrées ; sans tag, repli par nom (toute BasePart Pane_* de la boutique).
+Models.ShopGlass = {
+	Tag = "ShopGlass",
+	SideAttribute = "GlassSide",
+	Sides = { "Front", "Left", "Right", "Back" },
+	NamePrefix = "Pane_",
+}
+
 return Models

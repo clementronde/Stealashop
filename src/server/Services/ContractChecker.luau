@@ -366,6 +366,59 @@ local function checkPlotIndex()
 	end
 end
 
+-- a315 (L-291) : vitres des boutiques de joueurs (Contract/Models.ShopGlass), lues par GlassThrowService. Contrat voulu,
+-- pas encore livré : tout est en orange (jamais un problème). Sans aucune vitre taguée dans une boutique, le code se
+-- rabat sur les noms Pane_* (une ligne « pas encore livré ») ; vitre taguée sans GlassSide : idem (côté déduit) ;
+-- GlassSide faux ou tag sur autre chose qu'une pièce : avertissement.
+local function checkShopGlass()
+	local spec = (Models :: any).ShopGlass
+	local side = (Attributes :: any).GlassSide
+	if type(spec) ~= "table" or type(side) ~= "table" then
+		return -- ancien Contract (bancs)
+	end
+	local untagged: { string } = {}
+	local noSide = 0
+	for _, plot in CollectionService:GetTagged("PlayerPlot") do
+		if isInside(plot, sandbox) or isInside(plot, inbox) or not plot:IsDescendantOf(Workspace) then
+			continue
+		end
+		local tagged = 0
+		for _, inst in CollectionService:GetTagged(spec.Tag) do
+			if not inst:IsDescendantOf(plot) then
+				continue
+			end
+			if not inst:IsA("BasePart") then
+				warning("Parcelles", `{inst:GetFullName()} : tag {spec.Tag} sur un {inst.ClassName}, attendu sur la pièce de verre (L-291)`)
+				continue
+			end
+			tagged += 1
+			local value = inst:GetAttribute(side.Name)
+			if value == nil then
+				noSide += 1
+			elseif type(value) ~= "string" or table.find(side.Values, value) == nil then
+				warning("Parcelles", `{inst:GetFullName()} : {side.Name} = {tostring(value)}, attendu {table.concat(side.Values, ", ")}`)
+			end
+		end
+		if tagged == 0 then
+			local named = 0
+			for _, inst in plot:GetDescendants() do
+				if inst:IsA("BasePart") and startsWith(inst.Name, spec.NamePrefix) then
+					named += 1
+				end
+			end
+			if named > 0 then
+				table.insert(untagged, plot.Name)
+			end
+		end
+	end
+	if #untagged > 0 then
+		pending("Parcelles", `Vitres pas encore taguées {spec.Tag} (repli par nom {spec.NamePrefix}*, L-291) : {listNames(untagged)}`)
+	end
+	if noSide > 0 then
+		pending("Parcelles", `{noSide} vitre(s) {spec.Tag} sans attribut {side.Name} (côté déduit du nom ou de la place, L-291)`)
+	end
+end
+
 local function checkTags()
 	local zone = Attributes.Zone
 	local known: { [string]: string } = {}
@@ -1525,6 +1578,7 @@ local function run()
 	checkAttributes(scanned)
 	checkTags()
 	checkPlotIndex()
+	checkShopGlass() -- a315 (L-291)
 	breathe()
 	checkModels(scanned)
 	breathe()

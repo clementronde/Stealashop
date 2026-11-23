@@ -301,6 +301,24 @@ local List: { RemoteDef } = {
 		},
 	},
 	{
+		-- a315 (L-291) : intrus projeté à travers une vitre de boutique (GlassThrowService → GlassThrowController), à
+		-- tous. kind = "Throw" (le coup : sons, traînée, secousse), "Hole" (le corps passe la vitre ; fresh = false :
+		-- trou déjà ouvert), "Land" (relevé : Knockback), "Repair" (le trou se referme) ; pane = la vitre (une BasePart
+		-- de la boutique) ; point = centre du trou ; direction = sens du vol, à plat ; victim et hitter absents de Repair.
+		Name = "GlassThrow",
+		Direction = "ServerToClient",
+		Reliable = true,
+		Args = {
+			{ Name = "kind", Kind = "string", Max = 8 },
+			{ Name = "pane", Kind = "Instance" },
+			{ Name = "point", Kind = "Vector3" },
+			{ Name = "direction", Kind = "Vector3" },
+			{ Name = "victim", Kind = "Player", Optional = true },
+			{ Name = "hitter", Kind = "Player", Optional = true },
+			{ Name = "fresh", Kind = "boolean", Optional = true },
+		},
+	},
+	{
 		-- endsAt = workspace:GetServerTimeNow() de fin du chrono ; 0 = masquer le chrono.
 		-- Ajout de la vague 40 (Cantin, 2026-11-14) : police = true pour le chrono de police (lancé au premier
 		-- coup sur une vitrine de magasin PNJ, WindowService, « POLICE IN 8s ») ; absent = chrono « HEIST »

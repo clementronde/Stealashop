@@ -48,6 +48,10 @@ local Attributes = {
 	-- jour (alerte comprise), « Night » = joue la nuit, avec un fondu (Config/Night.AmbienceFade). Facultatif : sans lui, le
 	-- son joue comme il est livré.
 	PlayAt = { Name = "PlayAt", Values = { "Day", "Night" } },
+	-- Côté d'une vitre de boutique taguée ShopGlass (a315, L-291) : Front (la rue), Left, Right ou Back, dans le repère de la
+	-- boutique. Facultatif : sans lui, GlassThrowService le déduit du nom (Pane_L…, Pane_R…, Pane_F…, Pane_B…) ou de la
+	-- place de la vitre dans Bounds ; absent ou faux, ContractChecker le signale en orange.
+	GlassSide = { Name = "GlassSide", Values = { "Front", "Left", "Right", "Back" } },
 }
 
 return Attributes

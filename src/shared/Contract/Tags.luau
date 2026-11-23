@@ -56,6 +56,11 @@ Tags.List = {
 	{ Tag = "InviteZone", For = "zone du noob « invite un ami » du hub (facultatif)" },
 	-- Vague 80 (a266, L-165 point 3) : pièce Zone de la roue ENV_Hub_Wheel (y entrer ouvre UI_Wheel, HubController). Facultatif.
 	{ Tag = "WheelZone", For = "zone de la roue de la fortune du hub (facultatif)" },
+	-- a315 (L-291) : vitres des boutiques de joueurs (Pane_L_01…, Pane_R_01…, Pane_FL, Pane_FR, Pane_B), avec l'attribut
+	-- GlassSide ; lues par GlassThrowService (intrus projeté à travers la vitre). Facultatif tant que Clément ne les a pas
+	-- posés : sans lui, repli par nom (Pane_* de la boutique) ; pas encore posé, il est dans la ligne « Tags pas encore
+	-- posés » (jamais un problème) et ContractChecker le rappelle en orange (catégorie Parcelles).
+	{ Tag = "ShopGlass", For = "vitres Pane_* des boutiques de joueurs (facultatif, L-291, L-298 : repli par nom)" },
 } :: { TagSpec }
 
 return Tags
