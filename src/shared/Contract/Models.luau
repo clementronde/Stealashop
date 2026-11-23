@@ -972,5 +972,21 @@ local ShopBuildFx: ModelSpec = {
 }
 Models.ShopBuildFx = ShopBuildFx
 table.insert(Models.List, table.find(Models.List, WeaponShopCounter) or #Models.List + 1, ShopBuildFx) -- avant les comptoirs, comme UnboxFx
+-- GC6 (a409, MAJ 6, MOD-132) : fourgon blindé de la casse du siècle, nom proposé à Clément. ArmoredVanService en pose
+-- une copie qui traverse le couloir (renommée ArmoredVan) ; absent : un fourgon en blocs construit par le code.
+-- Contrôlé quand il est là, pas attendu.
+local ArmoredVanModel: ModelSpec = {
+	Key = "ArmoredVan",
+	Label = "fourgons blindés de la casse du siècle",
+	Category = "Événements",
+	Names = { "ENV_Event_ArmoredVan" },
+	Class = "Model",
+	Parts = {
+		{ Name = "Root", Class = "BasePart", Optional = true, Note = "pivot en bas au centre, avant vers −Z (sens du trajet)" },
+		{ Name = "HealthBarPoint", Class = "Attachment", Optional = true, Note = "point de la barre de vie BB_ArmoredVanHP" },
+	},
+}
+Models.ArmoredVan = ArmoredVanModel
+table.insert(Models.List, table.find(Models.List, WeaponShopCounter) or #Models.List + 1, ArmoredVanModel) -- avant les comptoirs, comme UnboxFx
 
 return Models

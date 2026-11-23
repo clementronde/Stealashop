@@ -199,6 +199,15 @@ export type Wheel = {
 	Extra: number, -- tours en plus gardés (Robux, pas encore en vente)
 }
 
+-- GC6 (a409, MAJ 6, DEV-140) : classements hebdomadaires. Écrit par WeeklyLeaderboardService seulement.
+export type WeeklyBoard = {
+	Week: number, -- semaine (lundi 00:00 UTC, Config/WeeklyLeaderboard.WeekOf) de ces compteurs ; 0 = jamais
+	BestIncome: number, -- meilleur revenu par seconde de la semaine, sans les boosts du moment (comme Lifetime.BestIncome)
+	HeistsAt: number, -- Lifetime.Heists au début de la semaine (vols de la semaine = écart)
+	StealsAt: number, -- Lifetime.Steals au début de la semaine
+	Rewarded: { [string]: number }, -- [classement] = dernière semaine réglée (récompense donnée, ou rien à donner)
+}
+
 export type Settings = {
 	Music: number, -- volume de la musique, de 0 à 1
 	Sfx: number, -- volume des effets sonores, de 0 à 1
@@ -282,6 +291,8 @@ export type Data = {
 	-- au rez-de-chaussée (avant L-294), 1 = 8 en bas puis l'étage acheté et ses places. Champ facultatif, sans changement de
 	-- version : 0 dans le gabarit de DataService (absent = 0) ; passé à 1 au chargement par ShopFloor.Migrate dès que le
 	-- Floor_2 du gabarit est là, jamais dans l'autre sens.
+	WeeklyBoard: WeeklyBoard?, -- GC6 (a409, DEV-140) : classements hebdomadaires (WeeklyLeaderboardService). Champ
+	-- facultatif, sans changement de version, absent du gabarit : créé et remis à zéro chaque lundi par ce service.
 	-- Partie 2 : Defenses, Rebirths, ajoutés par migration (Version = 9 et suivantes : la v2 est prise
 	-- par le catalogue d'objets v2, la v3 par la boutique Robux, la v4 par l'index, la v5 par les colis
 	-- sur les présentoirs, la v6 par les gains hors ligne, la v7 par les colis dans l'inventaire, la v8

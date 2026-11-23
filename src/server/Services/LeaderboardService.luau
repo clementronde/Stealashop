@@ -25,6 +25,10 @@
 --   LeaderboardService.TrackBest(player)                  monte Lifetime.BestIncome au revenu du moment
 --   LeaderboardService.Rows(stat) -> { Row }              lignes affichées (banc, barre de commande)
 --   LeaderboardService.Step(now)                          écrit, lit et affiche ce qui est dû (boucle, bancs)
+--   LeaderboardService.RecordIncome(player) -> number     GC6 (a409) : revenu par seconde du record, sans les boosts du moment
+--   LeaderboardService.AddBoard(stat, board)              GC6 (a409) : classement d'un autre service (WeeklyLeaderboardService)
+--       board = { Title, Rows: () -> { Row }, Text: (value) -> string, MaxRows } ; ses panneaux (Stat = stat) sont remplis
+--       comme les autres, au même rythme : MaxRows lignes si List est un ScrollingFrame, sinon Leaderboard.Rows.
 
 local CollectionService = game:GetService("CollectionService")
 local DataStoreService = game:GetService("DataStoreService")
@@ -41,6 +45,14 @@ export type Row = { UserId: number, Value: number, Rank: number }
 
 type Entry = { UserId: number, Value: number }
 
+-- GC6 (a409) : classement ajouté par un autre service (voir AddBoard).
+export type ExtraBoard = {
+	Title: string,
+	Rows: () -> { Row },
+	Text: (value: number) -> string,
+	MaxRows: number,
+}
+
 local INCOME_ATTRIBUTE = "Income" -- attribut du Player posé par DisplayService
 local ROW_ATTRIBUTE = "LeaderboardRow" -- V0 : marque les copies de Template posées ici
 
@@ -52,6 +64,7 @@ local stored: { [string]: { Entry } } = {} -- [stat] = lignes lues
 local names: { [number]: string } = {}
 local thumbs: { [number]: string } = {}
 local said: { [string]: boolean } = {}
+local extras: { [string]: ExtraBoard } = {} -- GC6 (a409) : [stat] = classement d'un autre service
 local nextWrite = 0 -- Start les repousse à FirstReadDelay
 local nextRead = 0
 
@@ -96,6 +109,14 @@ end
 -- Revenu par seconde qui compte pour le record « Most money/s » (sans les boosts du moment).
 local function recordIncome(player: Player): number
 	return finite(player:GetAttribute(INCOME_ATTRIBUTE)) / momentaryFactor(player)
+end
+
+function LeaderboardService.RecordIncome(player: Player): number
+	return recordIncome(player)
+end
+
+function LeaderboardService.AddBoard(stat: string, board: ExtraBoard)
+	extras[stat] = board
 end
 
 function LeaderboardService.TrackBest(player: Player)
@@ -323,7 +344,8 @@ end
 local function renderBoard(board: Instance)
 	local stat = board:GetAttribute(Leaderboard.StatAttribute)
 	local spec = if type(stat) == "string" then Leaderboard.Stats[stat] else nil
-	if spec == nil then
+	local extra = if spec == nil and type(stat) == "string" then extras[stat] else nil
+	if spec == nil and extra == nil then
 		sayOnce(`stat:{board:GetFullName()}`, `{board:GetFullName()} : attribut {Leaderboard.StatAttribute} absent ou inconnu ({tostring(stat)}), panneau ignoré`)
 		return
 	end
@@ -334,7 +356,7 @@ local function renderBoard(board: Instance)
 		sayOnce(`parts:{board:GetFullName()}`, `{board:GetFullName()} : {Leaderboard.Gui}, {Leaderboard.List} ou {Leaderboard.List}.{Leaderboard.Template} introuvable, panneau ignoré`)
 		return
 	end
-	setText(gui, Leaderboard.TitleLabel, spec.Title)
+	setText(gui, Leaderboard.TitleLabel, if extra then extra.Title elseif spec then spec.Title else "")
 	local base = template :: GuiObject
 	base.Visible = false
 	for _, child in list:GetChildren() do
@@ -342,14 +364,24 @@ local function renderBoard(board: Instance)
 			child:Destroy()
 		end
 	end
-	for _, row in LeaderboardService.Rows(stat :: string) do
+	local rows: { Row }
+	if extra then
+		rows = extra.Rows()
+	else
+		rows = LeaderboardService.Rows(stat :: string)
+	end
+	local shown = if extra and list:IsA("ScrollingFrame") then extra.MaxRows else Leaderboard.Rows
+	for _, row in rows do
+		if row.Rank > shown then
+			break
+		end
 		local copy = base:Clone()
 		copy.Name = string.format(Leaderboard.RowName, row.Rank)
 		copy.LayoutOrder = row.Rank
 		copy:SetAttribute(ROW_ATTRIBUTE, true)
 		setText(copy, "Rank", `#{row.Rank}`)
 		setText(copy, "PlayerName", nameOf(row.UserId))
-		setText(copy, "Value", valueText(stat :: string, row.Value))
+		setText(copy, "Value", if extra then extra.Text(row.Value) else valueText(stat :: string, row.Value))
 		local avatar = copy:FindFirstChild("Avatar", true)
 		if avatar and (avatar:IsA("ImageLabel") or avatar:IsA("ImageButton")) then
 			(avatar :: any).Image = thumbOf(row.UserId)
