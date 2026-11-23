@@ -912,7 +912,7 @@ local UiMotion = {
 	-- sections 3, 5, 7 et 8 ; CollectFeelController, GainController). Toutes les valeurs : V0 (fiche vidéo de Cantin, 23/11).
 	-- Enabled = false : comme avant (le chiffre défile au contact, CashRow sursaute, Cash_Collect au contact).
 	CollectFeel = {
-		Enabled = true, -- a401 : interrupteur (false = comme avant)
+		Enabled = false, -- a401 : interrupteur (false = comme avant) ; lot98 : coupé, L-299 est fait par a317 (Config/CashFlash : pas de Cash_Collect ni de note qui monte sur une plaque, « +$X » comme aujourd'hui)
 		-- Chiffre Cash retenu au contact (HudController.HoldCash), relâché à la 1re arrivée de billet (VfxController).
 		FallbackDelay = 0.2, -- s : aucun billet annoncé dans ce délai (effets coupés, encaissement automatique) : comme avant
 		MaxWait = 1.5, -- s : billets annoncés mais aucun arrivé : chiffre relâché quand même
@@ -948,7 +948,7 @@ local UiMotion = {
 		-- SettleTime s (Sine InOut), tenue Hold s, puis rétrécit jusqu'à 0 en OutTime s (Sine In) en montant de OutRise
 		-- studs, sans fondu. Text.Enabled = false : la montée et le fondu de FloatGain, comme avant.
 		Text = {
-			Enabled = true, -- a401 : interrupteur (false = comme avant)
+			Enabled = false, -- a401 : interrupteur (false = comme avant) ; lot98 : coupé, L-299 est fait par a317 (Config/CashFlash : pas de Cash_Collect ni de note qui monte sur une plaque, « +$X » comme aujourd'hui)
 			From = 0.45,
 			Over = 1.1,
 			InTime = 0.14,
