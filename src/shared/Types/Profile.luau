@@ -293,6 +293,9 @@ export type Data = {
 	-- Floor_2 du gabarit est là, jamais dans l'autre sens.
 	WeeklyBoard: WeeklyBoard?, -- GC6 (a409, DEV-140) : classements hebdomadaires (WeeklyLeaderboardService). Champ
 	-- facultatif, sans changement de version, absent du gabarit : créé et remis à zéro chaque lundi par ce service.
+	Funnels: { [string]: boolean }?, -- a414 (vague GC7) : entonnoirs une fois par profil (FunnelService, Config/Funnels) :
+	-- [« New »] = true pour un profil nouveau à son 1er passage, [« <entonnoir>/<n° d'étape> »] = true pour une étape
+	-- envoyée. Champ facultatif, sans changement de version, absent du gabarit : créé par FunnelService au chargement.
 	-- Partie 2 : Defenses, Rebirths, ajoutés par migration (Version = 9 et suivantes : la v2 est prise
 	-- par le catalogue d'objets v2, la v3 par la boutique Robux, la v4 par l'index, la v5 par les colis
 	-- sur les présentoirs, la v6 par les gains hors ligne, la v7 par les colis dans l'inventaire, la v8

@@ -114,6 +114,11 @@ local Features = {
 	-- 5e, Bélier à la 7e ; RequiresRebirth), vendus à la boutique d'armes, gardés à la renaissance, le Bélier ×3 sur les
 	-- portes de boutique (Tools.DoorHits). V0 proposé (Cantin, 23/11) : true ; false = ni l'un ni l'autre en jeu.
 	RebirthTools = true,
+	-- a414 (vague GC7, 23/11, demande de Cantin) : mesures du lancement dans le tableau de bord Roblox (AnalyticsService) :
+	-- entonnoirs de Config/Funnels (FunnelService, FunnelController ; le tutoriel garde l'onboarding), événements
+	-- WindowBroken, HighRarityOpened, ItemSold, LoadingTime, gains pas encore comptés (receleur, codes, dons du tuto,
+	-- prime au complice). Sous Config/Telemetry.Enabled. false = rien de cela.
+	Analytics = true,
 }
 
 export type Features = typeof(Features)

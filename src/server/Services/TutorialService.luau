@@ -219,6 +219,7 @@ local Balance = require(Shared.Config.Balance)
 local Cosmetics = require(Shared.Config.Cosmetics)
 local ShelfOpenState = require(Shared.ShelfOpenState)
 local Telemetry = require(Shared.Config.Telemetry)
+local Features = require(Shared.Config.Features) -- a414 : Analytics (dons du tuto comptés)
 local Tools = require(Shared.Config.Tools)
 local Tutorial = require(Shared.Config.Tutorial)
 local PvP = require(Shared.Config.PvP) -- vague 60 : BeginnerShieldDuration (progression de l'étape 10)
@@ -800,6 +801,15 @@ local function giveGift(player: Player, data: Data, id: string, amount: number, 
 	marks[id] = true -- avant le versement : jamais deux fois, même si la suite échoue
 	if DataService.AddCash(player, amount) == nil then
 		return false
+	end
+	-- a414 (vague GC7, Features.Analytics) : don compté (genre TutorialGift, SKU Tool ou Aura), juste après AddCash.
+	-- require au premier don, protégé : TelemetryService n'est pas chargé par tous les bancs.
+	if Features.Analytics == true then
+		local module = script.Parent:FindFirstChild("TelemetryService")
+		local okRequire, telemetry = pcall(require, module :: any)
+		if okRequire and type(telemetry) == "table" then
+			pcall((telemetry :: any).LogEconomy, player, "TutorialGift", amount, id)
+		end
 	end
 	return true
 end

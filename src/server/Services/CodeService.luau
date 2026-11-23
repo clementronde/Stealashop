@@ -119,6 +119,14 @@ function CodeService.Redeem(player: Player, text: string): Status
 	elseif not given then
 		return "Unavailable"
 	end
+	-- a414 (vague GC7, Features.Analytics) : argent d'un code compté (genre Code, SKU = le code), juste après le don.
+	local features = require(Shared.Config.Features) :: any
+	if ok and features.Analytics == true and entry.Reward.Kind == "Cash" then
+		local okRequire, telemetry = pcall(require, script.Parent:FindFirstChild("TelemetryService") :: any)
+		if okRequire and type(telemetry) == "table" then
+			pcall((telemetry :: any).LogEconomy, player, "Code", entry.Reward.Amount or 0, key)
+		end
+	end
 	local list = data.Codes or {}
 	list[key] = os.time()
 	data.Codes = list

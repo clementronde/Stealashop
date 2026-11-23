@@ -58,6 +58,7 @@ local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage.Shared
+local Features = require(Shared.Config.Features) -- a414 : Analytics (ventes comptées)
 local Formulas = require(Shared.Config.Formulas)
 local Items = require(Shared.Config.Items)
 local Mutations = require(Shared.Config.Mutations)
@@ -222,17 +223,42 @@ local function sendOffer(player: Player, offer: Offer)
 end
 
 -- Retire les objets du profil et verse leur prix. Sans yield. Renvoie le total versé.
+-- a414 (vague GC7, Features.Analytics) : vente comptée juste après AddCash, gain Fence (SKU = rareté de l'objet, Bulk
+-- si plusieurs) et événement ItemSold (valeur = objets vendus). require protégé au premier usage : TelemetryService
+-- n'est pas chargé par tous les bancs du receleur.
+local function logSale(player: Player, total: number, count: number, rarity: string?)
+	if not Features.Analytics then
+		return
+	end
+	local module = script.Parent:FindFirstChild("TelemetryService")
+	local ok, telemetry = pcall(require, module :: any)
+	if not ok or type(telemetry) ~= "table" then
+		return
+	end
+	local sku = if count == 1 and rarity then rarity else "Bulk"
+	pcall((telemetry :: any).LogEconomy, player, "Fence", total, sku, { `Items - {count}` })
+	pcall((telemetry :: any).LogEvent, player, "ItemSold", { `Rarity - {sku}`, `Items - {count}` }, count)
+end
+
 local function sell(player: Player, data: Data, uids: { string }): number
 	local total = 0
+	local count = 0
+	local rarity: string? = nil
 	for _, uid in uids do
-		local price = priceOfEntry(data.Items[uid])
+		local entry = data.Items[uid]
+		local price = priceOfEntry(entry)
 		if price then
+			local def = Items.ById[(entry :: any).Id]
+			rarity = if def then def.Rarity else nil
 			data.Items[uid] = nil
 			total += price
+			count += 1
 		end
 	end
 	if total > 0 then
-		DataService.AddCash(player, total)
+		if DataService.AddCash(player, total) ~= nil then
+			logSale(player, total, count, rarity)
+		end
 	end
 	InventoryService.Refresh(player)
 	return total
