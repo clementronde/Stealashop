@@ -83,6 +83,14 @@ local Features = {
 	FramewispFx = true,
 	-- a301 (21/11, demande de Cantin) : près de la boutique d'un autre joueur, dehors, les étiquettes BB_Item de ses objets exposés se voient à travers la façade (ShopSpyController, Config/ShopSpy) ; V0 proposé (2026-11-21) : true ; false = comme avant.
 	ShopSpy = true,
+	-- GC6 (a409, MAJ 6, DEV-133 ; Cantin, 23/11 : « tu fais tout maintenant ») : casse du siècle, un fourgon blindé toutes
+	-- les 30 min à heure fixe dans le couloir, PV partagés, un colis de zone selon ses dégâts (Config/ArmoredVan,
+	-- ArmoredVanService) ; modèle ENV_Event_ArmoredVan de Clément facultatif (repli en blocs). true en DEV ; false = aucun fourgon.
+	ArmoredVan = true,
+	-- GC6 (a409, MAJ 6, DEV-140) : classements hebdomadaires, top 100 en $/s et en vols, remis à zéro le lundi 00:00 UTC,
+	-- récompense la semaine suivante (Config/WeeklyLeaderboard, WeeklyLeaderboardService ; panneaux de Clément
+	-- facultatifs). true en DEV ; false = rien n'est compté ni écrit.
+	WeeklyLeaderboards = true,
 }
 
 export type Features = typeof(Features)
