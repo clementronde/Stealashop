@@ -200,9 +200,10 @@ local function wire(inst: Instance)
 	end
 	local object = inst :: GuiObject
 	UiAttrFx.Wire(object) -- a285 : sans attribut Gleam, IconHover ni Idle, rien
-	-- Vague 59 (L-182) : un cadre qui n'est pas un bouton et porte Hover = Pop est aussi une carte.
+	-- Vague 59 (L-182) : un cadre qui n'est pas un bouton et porte Hover = Pop est aussi une carte ; a278 (L-272) : Grow aussi.
+	local hover = object:GetAttribute("Hover")
 	if object:FindFirstChild(UiMotion.HoverCard.Outline) ~= nil
-		or (not object:IsA("GuiButton") and object:GetAttribute("Hover") == "Pop") then
+		or (not object:IsA("GuiButton") and (hover == "Pop" or hover == "Grow")) then
 		Motion.HoverCard(object)
 		return
 	end

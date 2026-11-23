@@ -43,6 +43,8 @@
 --                               HoverPop.Time ; sur une carte : elle penche de CardTilt et son Icon grossit
 --                               (IconScale) sans bouger. Press = Squash : × PressSquash.To tant que le
 --                               bouton est tenu, puis 1,1 et retour au relâché.
+--                               a278 (L-272) : Hover = Grow sur une carte : elle seule grossit (HoverGrow,
+--                               ≈ 8 px par bord) sans pencher, au-dessus de ses voisines ; son Icon n'est pas touché.
 --   Motion.Activated(button)    a290 (L-270, Config/UiMotion.ClickZone) : le signal de clic d'un bouton, à brancher à
 --                               la place de button.Activated : l'Activated de Roblox, plus le relâché sur la taille
 --                               réelle du bouton (ou sa taille survolée au moment de l'appui) que Roblox n'a pas pris
@@ -1245,6 +1247,12 @@ local function hoverPop(object: Instance): boolean
 	return object:GetAttribute(HOVER_ATTRIBUTE) == HOVER_POP
 end
 
+-- a278 (L-272) : Hover = Grow sur une carte (Config/UiMotion.HoverGrow).
+local HOVER_GROW = "Grow"
+local GROW = UiMotion.HoverGrow
+local GROW_INFO = TweenInfo.new(GROW.Time, GROW.Style, GROW.Direction)
+local GROW_BACK_INFO = TweenInfo.new(GROW.BackTime, GROW.Style, GROW.Direction)
+
 local function squashes(object: Instance): boolean
 	return object:GetAttribute(PRESS_ATTRIBUTE) == PRESS_SQUASH
 end
@@ -2151,7 +2159,49 @@ type CardState = {
 	pop: boolean, -- vague 59 : survol Hover = Pop en cours (la carte penche, l'Icon grossit sans bouger)
 	cardRotation: number?, -- Rotation de la carte posée par Clément, remise au retour (Pop)
 	cardScale: UIScale?, -- a286 (L-224 point 2) : UIScale passager de la carte elle-même (Hover.CardTo), détruit au retour
+	grow: boolean, -- a278 : survol Hover = Grow en cours (la carte seule grossit, HoverGrow)
+	zIndex: number?, -- a278 : ZIndex de la carte posé par Clément, relevé pendant un survol Grow, remis au retour
 }
+
+-- a278 (L-272) : échelle d'une carte Grow : HoverGrow.To si son plus grand côté (sans son UIScale) fait moins de
+-- SmallBelow px, sinon celle qui ajoute EdgePx px par bord.
+local function growTo(card: GuiObject, scale: number): number
+	local ok, size = pcall(function(): number
+		local absolute = card.AbsoluteSize
+		return math.max(absolute.X, absolute.Y) / math.max(scale, 1e-3)
+	end)
+	if not ok or type(size) ~= "number" or size < GROW.SmallBelow then
+		return GROW.To
+	end
+	return math.min(GROW.To, 1 + 2 * GROW.EdgePx / size)
+end
+
+-- a278 : la carte passe au-dessus de ses voisines (ZIndex), le temps du survol Grow.
+local function liftCard(card: GuiObject, state: CardState)
+	if state.zIndex ~= nil then
+		return
+	end
+	local base = card.ZIndex
+	local top = base
+	local parent = card.Parent
+	if parent then
+		for _, sibling in parent:GetChildren() do
+			if sibling ~= card and sibling:IsA("GuiObject") then
+				top = math.max(top, (sibling :: GuiObject).ZIndex)
+			end
+		end
+	end
+	state.zIndex = base
+	card.ZIndex = top + 1
+end
+
+local function dropCard(card: GuiObject, state: CardState)
+	local base = state.zIndex
+	if base ~= nil then
+		state.zIndex = nil
+		card.ZIndex = base
+	end
+end
 
 local CARD_POP_INFO = TweenInfo.new(UiMotion.HoverPop.Time, UiMotion.HoverPop.Style, UiMotion.HoverPop.Direction)
 
@@ -2220,11 +2270,15 @@ function Motion.HoverCard(card: GuiObject)
 		pop = false,
 		cardRotation = nil,
 		cardScale = nil,
+		grow = false,
+		zIndex = nil,
 	}
 	cards[card] = state
 	local function cardIn()
 		local pop = hoverPop(card)
+		local grow = not pop and card:GetAttribute(HOVER_ATTRIBUTE) == HOVER_GROW -- a278
 		state.pop = pop
+		state.grow = grow
 		local info = if pop then CARD_POP_INFO else CARD_INFO
 		local outline = card:FindFirstChild(spec.Outline)
 		if outline and outline:IsA("GuiObject") then
@@ -2236,7 +2290,8 @@ function Motion.HoverCard(card: GuiObject)
 		local found = card:FindFirstChild(spec.Icon)
 		local icon: GuiObject? = if found and found:IsA("GuiObject") then found :: GuiObject else nil
 		local list: { Tween } = {}
-		if icon then
+		-- a278 : Grow : l'Icon n'est pas touché ici (il grossit avec la carte ; IconHover peut le faire sauter).
+		if icon and not grow then
 			if state.basePosition == nil or state.icon ~= icon then
 				local rest = rests[icon]
 				state.icon = icon
@@ -2288,7 +2343,13 @@ function Motion.HoverCard(card: GuiObject)
 			end
 			if cardScale then
 				centerOn(card, cardScale.Scale) -- a299 : la carte grossit autour de son centre (hors layout)
-				table.insert(list, TweenService:Create(cardScale, SIZED_INFO, { Scale = UiMotion.Hover.CardTo }))
+				if grow then
+					-- a278 (L-272) : × HoverGrow (≈ 8 px par bord), au-dessus de ses voisines.
+					liftCard(card, state)
+					table.insert(list, TweenService:Create(cardScale, GROW_INFO, { Scale = growTo(card, cardScale.Scale) }))
+				else
+					table.insert(list, TweenService:Create(cardScale, SIZED_INFO, { Scale = UiMotion.Hover.CardTo }))
+				end
 			end
 		end
 		if pop then
@@ -2325,9 +2386,10 @@ function Motion.HoverCard(card: GuiObject)
 		end
 		local cardScale = state.cardScale -- a286
 		if cardScale and cardScale.Parent == card then
-			table.insert(list, TweenService:Create(cardScale, CARD_BACK_INFO, { Scale = 1 }))
+			table.insert(list, TweenService:Create(cardScale, if state.grow then GROW_BACK_INFO else CARD_BACK_INFO, { Scale = 1 }))
 		end
 		if #list == 0 then
+			dropCard(card, state) -- a278
 			return
 		end
 		cardTweens(state, list, function()
@@ -2352,6 +2414,7 @@ function Motion.HoverCard(card: GuiObject)
 				ownCard:Destroy()
 			end
 			centerOff(card) -- a299
+			dropCard(card, state) -- a278 : ZIndex de Clément
 		end)
 	end
 	-- Vague 25 : survol seulement pour la carte du dessus (voir onTop), comme Motion.Button.

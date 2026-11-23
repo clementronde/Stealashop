@@ -17,7 +17,12 @@
 --                               FramewispFx (Features.FramewispFx), appelé ici par Wire et par la même boucle.
 --   IconHover = "Jump" | "Lean" au survol de l'élément (bouton ou carte), son enfant Icon saute une fois (Jump) ou
 --                               s'incline tant que la souris reste (Lean). Un élément nommé Icon le fait lui-même au
---                               survol de son parent. "Spring" (caméra de la caisse qui suit le pointeur) : pas codé.
+--                               survol de son parent.
+--   IconHover = "Spring"        a278 (L-272, Crate de la boutique Robux) : pendant le survol (ou le toucher), le pointeur
+--                               est suivi par un ressort amorti, en degrés (AttrFx.IconHover.Spring.Angle au bord de
+--                               l'élément), avec un poids qui passe de 0 à 1 en Enter s et revient à 0 en Back s (Back
+--                               Out). Rien n'est touché ici : RobuxShopController le lit (UiAttrFx.Spring) pour tourner
+--                               la caméra de la caisse 3D à la place de son balancement.
 --   Idle = "Wiggle"             l'élément se balance par moments autour de sa Rotation ; ceux d'un même écran décalés.
 --   Idle = "Fall"               des copies du FallItem de son FallLayer (l'élément lui-même ou un de ses descendants)
 --                               tombent du haut au bas du calque ; le FallItem posé est caché le temps de l'effet.
@@ -31,7 +36,9 @@
 --
 -- API (client) :
 --   UiAttrFx.Wire(object)          branche les effets de cet élément (une fois ; sans effet sans réglage)
---   UiAttrFx.GetState() -> { Gleams, Gradients, IconHovers, Wiggles, Falls, Running }   (bancs)
+--   UiAttrFx.Spring(object) -> (x, y, poids)   a278 : pointeur suivi sur un élément IconHover = Spring, en degrés
+--                                  (x vers la droite, y vers le bas) ; poids 0 au repos (et sans effet), 1 au survol
+--   UiAttrFx.GetState() -> { Gleams, Gradients, IconHovers, Wiggles, Falls, Springs, Running }   (bancs)
 --   UiAttrFx.Step(now?)            une image de la boucle (bancs)
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -73,6 +80,7 @@ local SPEC = UiMotion.AttrFx
 local GLEAM = SPEC.Gleam
 local GRADIENT = SPEC.GleamGradient
 local HOVER = SPEC.IconHover
+local SPRING = HOVER.Spring -- a278
 local WIGGLE = SPEC.Wiggle
 local FALL = SPEC.Fall
 local WHITE = Color3.new(1, 1, 1)
@@ -104,6 +112,25 @@ type Wiggle = {
 
 type Falling = { item: GuiObject, born: number, life: number, x: number, spin: number, base: { [string]: number } }
 
+-- a278 : IconHover = Spring. x, y : position du ressort (de −1 à 1 sur chaque axe, 0 au centre), vx, vy sa vitesse,
+-- tx, ty le pointeur visé ; weight : 0 au repos, 1 au survol, passage de from à sa cible depuis since.
+type Spring = {
+	object: GuiObject,
+	hovered: boolean,
+	touch: InputObject?, -- toucher en cours (téléphone)
+	offset: Vector2?, -- décalage du repère du pointeur (0, ou celui du haut de l'écran), appris au premier point
+	x: number,
+	y: number,
+	vx: number,
+	vy: number,
+	tx: number,
+	ty: number,
+	weight: number,
+	from: number,
+	since: number?,
+	last: number?,
+}
+
 type Fall = {
 	layer: GuiObject,
 	template: GuiObject,
@@ -122,6 +149,7 @@ local gradientSince: { [Instance]: number } = {} -- os.clock() d'ouverture de ch
 local wiggles: { Wiggle } = {}
 local wigglesPerScreen: { [Instance]: number } = setmetatable({}, { __mode = "k" }) :: any
 local falls: { Fall } = {}
+local springs: { Spring } = {} -- a278
 local iconHovers = 0
 local reported: { [string]: boolean } = {}
 local heartbeat: RBXScriptConnection? = nil
@@ -372,6 +400,54 @@ local function stepFalls(now: number, still: boolean)
 	end
 end
 
+-- a278 : un passage du poids (entrée en Enter s Quad Out, retour en Back s Back Out), puis le ressort vers le pointeur.
+local SPRING_STEP = 1 / 120 -- s : pas du ressort, pour qu'il reste stable même sur une image lente
+local function stepSprings(now: number, still: boolean)
+	for _, entry in springs do
+		local last = entry.last or now
+		entry.last = now
+		if entry.hovered and (still or not shown(entry.object)) then
+			entry.hovered = false
+			entry.touch = nil
+			entry.from = entry.weight
+			entry.since = now
+		end
+		if still then
+			entry.weight = 0
+			entry.since = nil
+			continue
+		end
+		local since = entry.since
+		if since ~= nil then
+			local time = if entry.hovered then SPRING.Enter else SPRING.Back
+			local t = if time > 0 then math.min((now - since) / time, 1) else 1
+			if entry.hovered then
+				entry.weight = entry.from + (1 - entry.from) * TweenService:GetValue(t, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+			else
+				entry.weight = entry.from * (1 - TweenService:GetValue(t, Enum.EasingStyle.Back, Enum.EasingDirection.Out))
+			end
+			if t >= 1 then
+				entry.since = nil
+				entry.weight = if entry.hovered then 1 else 0
+			end
+		end
+		if entry.weight == 0 then
+			continue
+		end
+		local omega = 2 * math.pi * SPRING.Frequency
+		local damping = 2 * SPRING.Damping * omega
+		local left = math.clamp(now - last, 0, 0.25)
+		while left > 1e-9 do
+			local dt = math.min(left, SPRING_STEP)
+			left -= dt
+			entry.vx += (omega * omega * (entry.tx - entry.x) - damping * entry.vx) * dt
+			entry.vy += (omega * omega * (entry.ty - entry.y) - damping * entry.vy) * dt
+			entry.x += entry.vx * dt
+			entry.y += entry.vy * dt
+		end
+	end
+end
+
 local function step()
 	local now = os.clock()
 	local still = reduced()
@@ -379,11 +455,12 @@ local function step()
 	stepGleams(now, still)
 	stepWiggles(now, still)
 	stepFalls(now, still)
+	stepSprings(now, still) -- a278
 	FramewispFx.Step(now, still)
 end
 
 local function sync()
-	local count = #gleams + #gradients + #wiggles + #falls + FramewispFx.Count()
+	local count = #gleams + #gradients + #wiggles + #falls + #springs + FramewispFx.Count()
 	if count > 0 and heartbeat == nil then
 		local signal = (RunService :: any).Heartbeat
 		if signal ~= nil then -- faux Roblox des bancs
@@ -602,13 +679,137 @@ local JUMP_DOWN = TweenInfo.new(HOVER.Jump.Down, Enum.EasingStyle.Sine, Enum.Eas
 local LEAN_IN = TweenInfo.new(HOVER.Lean.Time, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 local LEAN_OUT = TweenInfo.new(HOVER.Lean.BackTime, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 
+-- a278 (L-272) : IconHover = Spring. Le pointeur (repère d'InputObject.Position) en part de l'élément, de −1 à 1 depuis
+-- son centre ; le décalage du repère (0, ou la barre du haut de l'écran) est appris au premier point, comme Motion.
+local function insetOf(): Vector2?
+	local ok, inset = pcall(function(): any
+		return (game:GetService("GuiService") :: any):GetGuiInset()
+	end)
+	return if ok then inset else nil
+end
+
+local function aim(entry: Spring, point: Vector3)
+	local object = entry.object
+	local position, size = object.AbsolutePosition, object.AbsoluteSize
+	if size.X <= 0 or size.Y <= 0 then
+		return
+	end
+	local px, py = point.X, point.Y
+	local offset = entry.offset
+	if offset == nil then
+		local inset = insetOf()
+		local candidates = { Vector2.new(0, 0) }
+		if inset ~= nil then
+			table.insert(candidates, Vector2.new(inset.X, inset.Y))
+			table.insert(candidates, Vector2.new(-inset.X, -inset.Y))
+		end
+		for _, candidate in candidates do
+			local x, y = px + candidate.X, py + candidate.Y
+			if x >= position.X and x <= position.X + size.X and y >= position.Y and y <= position.Y + size.Y then
+				offset = candidate
+				break
+			end
+		end
+		if offset == nil then
+			return
+		end
+		entry.offset = offset
+	end
+	local found = offset :: Vector2
+	entry.tx = math.clamp((px + found.X - position.X - size.X / 2) / (size.X / 2), -1, 1)
+	entry.ty = math.clamp((py + found.Y - position.Y - size.Y / 2) / (size.Y / 2), -1, 1)
+end
+
+local function engage(entry: Spring, on: boolean)
+	if entry.hovered == on then
+		return
+	end
+	if on and (reduced() or not shown(entry.object)) then
+		return
+	end
+	if on and entry.weight == 0 then
+		-- Repos : le ressort repart du centre, sans élan.
+		entry.x, entry.y, entry.vx, entry.vy, entry.tx, entry.ty = 0, 0, 0, 0, 0, 0
+		entry.offset = nil
+	end
+	entry.hovered = on
+	entry.from = entry.weight
+	entry.since = os.clock()
+	if not on then
+		entry.touch = nil
+	end
+end
+
+local MOUSE_MOVE = Enum.UserInputType.MouseMovement
+local TOUCH = Enum.UserInputType.Touch
+
+local function wireSpring(object: GuiObject)
+	local entry: Spring = {
+		object = object,
+		hovered = false,
+		touch = nil,
+		offset = nil,
+		x = 0,
+		y = 0,
+		vx = 0,
+		vy = 0,
+		tx = 0,
+		ty = 0,
+		weight = 0,
+		from = 0,
+		since = nil,
+		last = nil,
+	}
+	table.insert(springs, entry)
+	object.MouseEnter:Connect(function()
+		if Motion.IsOnTop(object) then
+			engage(entry, true)
+		end
+	end)
+	object.MouseLeave:Connect(function()
+		if entry.touch == nil then
+			engage(entry, false)
+		end
+	end)
+	-- Le pointeur sur l'élément (souris), et le toucher sur téléphone : suivi seulement pendant le toucher.
+	pcall(function() -- pcall : faux Roblox des anciens bancs, sans ces signaux
+		local any = object :: any
+		any.InputBegan:Connect(function(input: InputObject)
+			if input.UserInputType == TOUCH and entry.touch == nil then
+				engage(entry, true)
+				if entry.hovered then
+					entry.touch = input
+					aim(entry, input.Position)
+				end
+			end
+		end)
+		any.InputChanged:Connect(function(input: InputObject)
+			local kind = input.UserInputType
+			if entry.hovered and ((kind == MOUSE_MOVE and entry.touch == nil) or (kind == TOUCH and input == entry.touch)) then
+				aim(entry, input.Position)
+			end
+		end)
+		any.InputEnded:Connect(function(input: InputObject)
+			if input == entry.touch then
+				engage(entry, false)
+			end
+		end)
+	end)
+	object.Destroying:Connect(function()
+		forget(springs, function(other: Spring): boolean
+			return other == entry
+		end, nil)
+	end)
+	sync()
+end
+
 local function wireIconHover(object: GuiObject, mode: string)
 	if mode == "Spring" then
-		report(`IconHover:Spring:{object.Name}`, `IconHover = Spring sur {object:GetFullName()} : la caméra qui suit le pointeur n'est pas encore codée, rien ne bouge`)
+		wireSpring(object) -- a278
 		return
 	end
 	if mode ~= "Jump" and mode ~= "Lean" then
-		report(`IconHover:{mode}`, `IconHover = « {mode} » inconnu (Jump ou Lean attendu) : {object:GetFullName()}`)
+		report(`IconHover:{mode}`, `IconHover = « {mode} » inconnu (Jump, Lean ou Spring attendu) : {object:GetFullName()}`)
 		return
 	end
 	local icon = iconOf(object)
@@ -786,6 +987,7 @@ function UiAttrFx.GetState(): {
 	IconHovers: number,
 	Wiggles: number,
 	Falls: number,
+	Springs: number,
 	Running: boolean,
 }
 	return {
@@ -794,8 +996,21 @@ function UiAttrFx.GetState(): {
 		IconHovers = iconHovers,
 		Wiggles = #wiggles,
 		Falls = #falls,
+		Springs = #springs, -- a278
 		Running = heartbeat ~= nil,
 	}
+end
+
+-- a278 (L-272) : pointeur suivi sur un élément IconHover = Spring, en degrés (x vers la droite, y vers le bas, au plus
+-- AttrFx.IconHover.Spring.Angle au bord de l'élément, un peu plus pendant le dépassement du ressort) et son poids (0 au
+-- repos : rien à faire ; 1 au survol ; un peu moins que 0 pendant le retour Back Out). 0, 0, 0 pour un autre élément.
+function UiAttrFx.Spring(object: Instance): (number, number, number)
+	for _, entry in springs do
+		if entry.object == object then
+			return entry.x * SPRING.Angle, entry.y * SPRING.Angle, entry.weight
+		end
+	end
+	return 0, 0, 0
 end
 
 -- Bancs : une image de la boucle, à l'heure `now`.
@@ -806,6 +1021,7 @@ function UiAttrFx.Step(now: number?)
 	stepGleams(clock, still)
 	stepWiggles(clock, still)
 	stepFalls(clock, still)
+	stepSprings(clock, still) -- a278
 	FramewispFx.Step(clock, still)
 end
 
