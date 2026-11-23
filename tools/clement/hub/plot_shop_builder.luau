@@ -87,6 +87,15 @@
 	Plus de rambardes ni de champs de force (Stage_1/Railings, Stage_1/ForceField, Stage_2/ForceField) ni de murets
 	(Stage_2/Murets_*). CeilingLights invisible (lumières gardées), plus de lustres. Stage_3/Walls (compétence Walls)
 	inchangé.
+	Vitrine de luxe (2026-11-23, luxeFacade) : Stage_1/Luxe = liserés dorés (socle, corniche), bases et chapiteaux dorés
+	des colonnes de façade, auvent rayé à la couleur de la boutique accroché sous la corniche (barre et tirants dorés),
+	cadre doré et néon de couleur autour de NameSign, marche en marbre devant la porte ; SurfaceLight LuxeLight sous la
+	corniche de façade. Plus d'auvent au niveau 4 (Stage_4/Awnings).
+	Socles de musée (2026-11-23, museumStands) : DisplayStand_xx = fût en velours marron 3 x 1,8 x 3 + SocleDecor
+	(marbre, liserés et arêtes dorés, plaque dorée côté allée) ; DisplaySlot_xx et UnboxBench_xx à y 2,75, FitSize
+	(6,5 ; 12,5 ; 6).
+	Vitres cassables (2026-11-23, tagShopGlass) : Pane_FL, Pane_FR, Pane_L_01.., Pane_R_01.. (de l'avant vers le fond),
+	Pane_B ; tag ShopGlass et attribut GlassSide (Front, Left, Right, Back) ; collision inchangée.
 ]]
 
 local CS = game:GetService("CollectionService")
@@ -1380,6 +1389,226 @@ local function frameFromLevel1(M)
 	return #F1:GetDescendants(), #F2:GetChildren()
 end
 
+-- Vitrine de luxe (Clément, 2026-11-23 : refonte du design de la boutique, direction « vitrine de luxe ») :
+-- au niveau 1, autour du verre et du cadre en marbre (Stage_1/Frame) : liserés dorés, chapiteaux et bases dorés aux
+-- colonnes, auvent rayé à la couleur de la boutique (Accent), enseigne encadrée d'or avec un néon de couleur, marche
+-- en marbre devant la porte, lumière sous la corniche. Tout est rangé dans Stage_1/Luxe (décor sans collision, sauf la
+-- marche) ; la porte et les noms du contrat ne changent pas.
+local LX_GOLD = Color3.fromRGB(240, 186, 52)
+local LX_MARBLE = Color3.fromRGB(236, 233, 226)
+local LX_WHITE = Color3.fromRGB(250, 248, 242)
+local function lxPart(parent, name, x0, y0, z0, x1, y1, z1, color, opt)
+	opt = opt or {}
+	local p = Instance.new("Part")
+	p.Name = name
+	p.Size = Vector3.new(math.abs(x1 - x0), math.abs(y1 - y0), math.abs(z1 - z0))
+	p.CFrame = CFrame.new((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2) * (opt.rot or CFrame.identity)
+	p.Anchored = true
+	p.Color = color
+	p.Material = opt.mat or Enum.Material.SmoothPlastic
+	p.Reflectance = opt.refl or 0
+	p.TopSurface = Enum.SurfaceType.Smooth
+	p.BottomSurface = Enum.SurfaceType.Smooth
+	if not opt.solid then p.CanCollide = false; p.CanTouch = false; p.CanQuery = false end
+	if opt.noShadow then p.CastShadow = false end
+	if opt.accent then p:SetAttribute("Accent", true) end
+	p.Parent = parent
+	return p
+end
+local function gold(parent, name, x0, y0, z0, x1, y1, z1)
+	return lxPart(parent, name, x0, y0, z0, x1, y1, z1, LX_GOLD, { mat = Enum.Material.Metal, refl = 0.15 })
+end
+local function luxeFacade(M, depth)
+	depth = depth or 8 -- fond du carré de départ (L-285)
+	local S1 = M.Stage_1
+	local old = S1:FindFirstChild("Luxe"); if old then old:Destroy() end
+	local L = Instance.new("Model"); L.Name = "Luxe"; L.Parent = S1
+	-- 1. liserés dorés : dessus du socle et dessous de la corniche, façade et côtés
+	for _, y in { { 1.4, 1.62 }, { 15.18, 15.4 } } do
+		gold(L, "GoldTrim_FL", -22.7, y[1], -40.28, -10, y[2], -40.08)
+		gold(L, "GoldTrim_FR", 10, y[1], -40.28, 22.7, y[2], -40.08)
+		gold(L, "GoldTrim_L", -24.28, y[1], -38.8, -24.08, y[2], depth - 1.4)
+		gold(L, "GoldTrim_R", 24.08, y[1], -38.8, 24.28, y[2], depth - 1.4)
+	end
+	-- 2. bases et chapiteaux dorés des colonnes de façade
+	for _, s in { -1, 1 } do
+		local x0, x1 = math.min(s * 22.45, s * 24.35), math.max(s * 22.45, s * 24.35)
+		gold(L, "ColumnBase_" .. (s < 0 and "FL" or "FR"), x0, 0.3, -40.45, x1, 0.9, -38.55)
+		gold(L, "ColumnCap_" .. (s < 0 and "FL" or "FR"), x0, 16.5, -40.45, x1, 17.3, -38.55)
+	end
+	-- 3. auvent rayé au-dessus de chaque vitrine (bandes couleur de la boutique / blanc), accroché à la façade :
+	-- bord haut sur une barre dorée fixée sous la corniche, bord bas tenu par 3 tirants dorés qui montent à la corniche
+	-- (Clément, 2026-11-23 : « le cache soleil ne tient sur rien »)
+	local TILT, HALF = math.rad(28), 1.5 -- pente vers la rue, demi-profondeur de la toile
+	local wallY, wallZ = 15.1, -40.15 -- bord haut, contre la barre
+	local cy, cz = wallY - math.sin(TILT) * HALF, wallZ - math.cos(TILT) * HALF
+	local frontY, frontZ = wallY - 2 * math.sin(TILT) * HALF, wallZ - 2 * math.cos(TILT) * HALF
+	local function rod(parent, name, a, b, d)
+		local p = Instance.new("Part")
+		p.Name = name
+		p.Size = Vector3.new(d, d, (b - a).Magnitude)
+		p.CFrame = CFrame.lookAt((a + b) / 2, b)
+		p.Anchored = true; p.CanCollide = false; p.CanTouch = false; p.CanQuery = false
+		p.Color = LX_GOLD; p.Material = Enum.Material.Metal; p.Reflectance = 0.15
+		p.Parent = parent
+		return p
+	end
+	for _, side in { { "L", -22.4, -10.3 }, { "R", 10.3, 22.4 } } do
+		local x0, x1 = side[2], side[3]
+		local n = 8
+		local w = (x1 - x0) / n
+		for i = 0, n - 1 do
+			local accent = i % 2 == 0
+			local p = lxPart(L, "Awning_" .. side[1] .. string.format("%02d", i + 1), x0 + i * w, 0, 0, x0 + (i + 1) * w, 0.2, 2 * HALF,
+				accent and Color3.fromRGB(46, 166, 242) or LX_WHITE, { accent = accent })
+			p.CFrame = CFrame.new(x0 + (i + 0.5) * w, cy, cz) * CFrame.Angles(-TILT, 0, 0)
+		end
+		gold(L, "AwningRail_" .. side[1], x0, wallY - 0.25, -40.4, x1, wallY + 0.12, -40.1) -- barre contre la corniche
+		gold(L, "AwningValance_" .. side[1], x0, frontY - 0.45, frontZ - 0.2, x1, frontY + 0.05, frontZ) -- lambrequin
+		for k, x in { x0 + 0.4, (x0 + x1) / 2, x1 - 0.4 } do -- tirants : du bord bas à la face avant de la corniche
+			rod(L, "AwningRod_" .. side[1] .. k, Vector3.new(x, frontY + 0.1, frontZ + 0.05), Vector3.new(x, 16.0, -40.12), 0.12)
+		end
+	end
+	-- 4. enseigne : cadre doré et néon à la couleur de la boutique autour de NameSign, lumière douce devant
+	local sign = M.PlotDoor:FindFirstChild("NameSign")
+	if sign then
+		local c = sign.Position
+		local hx, hy = sign.Size.X / 2, sign.Size.Y / 2
+		local zf = c.Z - sign.Size.Z / 2 -- face avant de l'enseigne
+		gold(L, "SignFrame_T", c.X - hx - 0.35, c.Y + hy, zf - 0.25, c.X + hx + 0.35, c.Y + hy + 0.35, zf + 0.1)
+		gold(L, "SignFrame_B", c.X - hx - 0.35, c.Y - hy - 0.35, zf - 0.25, c.X + hx + 0.35, c.Y - hy, zf + 0.1)
+		gold(L, "SignFrame_L", c.X - hx - 0.35, c.Y - hy, zf - 0.25, c.X - hx, c.Y + hy, zf + 0.1)
+		gold(L, "SignFrame_R", c.X + hx, c.Y - hy, zf - 0.25, c.X + hx + 0.35, c.Y + hy, zf + 0.1)
+		local glow = lxPart(L, "SignGlow", c.X - hx - 0.6, c.Y - hy - 0.6, -40.62, c.X + hx + 0.6, c.Y + hy + 0.6, -40.54,
+			Color3.fromRGB(46, 166, 242), { mat = Enum.Material.Neon, accent = true, noShadow = true })
+		local l = Instance.new("PointLight"); l.Range = 14; l.Brightness = 1.2; l.Color = Color3.fromRGB(255, 236, 200); l.Shadows = false
+		local a = Instance.new("Attachment"); a.Parent = glow; a.WorldPosition = Vector3.new(c.X, c.Y, zf - 3)
+		l.Parent = a
+	end
+	-- 5. marche en marbre devant la porte, nez doré
+	lxPart(L, "EntryStep", -9.5, 0, -41.6, 9.5, 0.3, -40.1, LX_MARBLE, { mat = Enum.Material.Marble, solid = true })
+	gold(L, "EntryStepNose", -9.5, 0.3, -41.7, 9.5, 0.36, -41.45)
+	-- 6. lumière sous la corniche de façade (chaude, sans luminaire visible)
+	for _, n in { "Cornice_FL", "Cornice_FR" } do
+		local cor = M.Stage_1.Frame:FindFirstChild(n)
+		if cor and not cor:FindFirstChild("LuxeLight") then
+			local sl = Instance.new("SurfaceLight"); sl.Face = Enum.NormalId.Bottom; sl.Range = 14; sl.Brightness = 1.4
+			sl.Angle = 110; sl.Color = Color3.fromRGB(255, 232, 196); sl.Shadows = false; sl.Name = "LuxeLight"
+			sl.Parent = cor
+		end
+	end
+	local aw = M:FindFirstChild("Stage_4") and M.Stage_4:FindFirstChild("Awnings"); if aw then aw:Destroy() end -- doublon
+	return #L:GetChildren()
+end
+
+-- Socles de musée (Clément, 2026-11-23 : piédestal à moulures + plaque, fût plus haut, texture musée, marron) :
+-- DisplayStand_xx (la pièce lue par le code) devient le fût en velours marron, 3 x 1,8 x 3 ; son décor (SocleDecor :
+-- pied et marches en marbre, liserés et arêtes dorés, dessus en marbre, plaque dorée côté allée) lui est rattaché.
+-- DisplaySlot_xx et UnboxBench_xx montent sur le nouveau dessus (y 2,75) ; FitSize Y passe à 12,5.
+local SM_GOLD = Color3.fromRGB(240, 186, 52)
+local SM_MARBLE = Color3.fromRGB(236, 233, 226)
+local SM_BROWN = Color3.fromRGB(112, 64, 38)
+local SM_SHAFT, SM_Y0 = 1.8, 0.66
+local SM_Y1 = SM_Y0 + SM_SHAFT
+local SM_TOP = SM_Y1 + 0.285
+local SM_FIT = Vector3.new(6.5, 12.5, 6)
+local function smDeco(parent, name, pv, lx, ly, lz, size, color, mat, solid, look)
+	local p = Instance.new("Part")
+	p.Name = name; p.Size = size; p.Anchored = true; p.Color = color; p.Material = mat
+	p.TopSurface = Enum.SurfaceType.Smooth; p.BottomSurface = Enum.SurfaceType.Smooth
+	if mat == Enum.Material.Metal then p.Reflectance = 0.15 end
+	local c = pv * Vector3.new(lx, ly, lz)
+	p.CFrame = look and CFrame.lookAt(c, c + pv:VectorToWorldSpace(look)) or (pv.Rotation + c)
+	p.CanCollide = solid == true; p.CanQuery = false; p.CanTouch = false
+	p.Parent = parent
+	return p
+end
+local function smStand(stand, pv)
+	if stand:FindFirstChild("SocleDecor") then return false end
+	local l = pv:PointToObjectSpace(stand.Position)
+	local x, z = l.X, l.Z
+	local aisle = Vector3.new(-math.sign(x), 0, 0)
+	local atts = {}
+	for _, a in stand:GetChildren() do if a:IsA("Attachment") then atts[a] = a.WorldCFrame end end
+	stand.Size = Vector3.new(3, SM_SHAFT, 3)
+	stand.CFrame = pv.Rotation + pv * Vector3.new(x, SM_Y0 + SM_SHAFT / 2, z)
+	stand.Material = Enum.Material.Fabric; stand.Color = SM_BROWN
+	stand:SetAttribute("Accent", nil)
+	for a, wcf in atts do
+		local p = pv:PointToObjectSpace(wcf.Position)
+		a.WorldCFrame = wcf.Rotation + pv * Vector3.new(p.X, SM_TOP, p.Z)
+	end
+	local D = Instance.new("Model"); D.Name = "SocleDecor"; D.Parent = stand
+	smDeco(D, "Foot", pv, x, 0.42, z, Vector3.new(4, 0.24, 4), SM_MARBLE, Enum.Material.Marble, true)
+	smDeco(D, "FootStep", pv, x, 0.6, z, Vector3.new(3.6, 0.12, 3.6), SM_MARBLE, Enum.Material.Marble, true)
+	smDeco(D, "GoldBand_Low", pv, x, SM_Y0 + 0.04, z, Vector3.new(3.08, 0.08, 3.08), SM_GOLD, Enum.Material.Metal)
+	smDeco(D, "GoldBand_High", pv, x, SM_Y1 - 0.04, z, Vector3.new(3.08, 0.08, 3.08), SM_GOLD, Enum.Material.Metal)
+	for _, c in { { -1, -1 }, { -1, 1 }, { 1, -1 }, { 1, 1 } } do
+		smDeco(D, "GoldEdge", pv, x + c[1] * 1.5, SM_Y0 + SM_SHAFT / 2, z + c[2] * 1.5, Vector3.new(0.12, SM_SHAFT, 0.12), SM_GOLD, Enum.Material.Metal)
+	end
+	smDeco(D, "HeadStep", pv, x, SM_Y1 + 0.06, z, Vector3.new(3.6, 0.12, 3.6), SM_MARBLE, Enum.Material.Marble, true)
+	smDeco(D, "Head", pv, x, SM_Y1 + 0.19, z, Vector3.new(4, 0.14, 4), SM_MARBLE, Enum.Material.Marble, true)
+	smDeco(D, "GoldLip", pv, x, SM_Y1 + 0.27, z, Vector3.new(4.04, 0.03, 4.04), SM_GOLD, Enum.Material.Metal)
+	smDeco(D, "Plaque", pv, x + aisle.X * 1.53, SM_Y0 + SM_SHAFT * 0.55, z, Vector3.new(1.8, 0.5, 0.06), SM_GOLD, Enum.Material.Metal, false, aisle)
+	return true
+end
+local function museumStands(M, store)
+	local pv = M:GetPivot()
+	for _, root in { M, store } do
+		if root then
+			for _, d in root:GetDescendants() do
+				if d:IsA("BasePart") and d.Name:match("^DisplayStand_%d+$") then smStand(d, pv) end
+			end
+		end
+	end
+	for _, a in M:GetDescendants() do -- places sur le nouveau dessus (celles des RayonAnchor comprises)
+		if a:IsA("Attachment") and (a.Name:match("^DisplaySlot_%d+$") or a.Name:match("^UnboxBench_%d+$")) then
+			local p = pv:PointToObjectSpace(a.WorldPosition)
+			if math.abs(p.Y - SM_TOP) > 0.01 and p.Y < 5 then a.WorldCFrame = a.WorldCFrame.Rotation + pv * Vector3.new(p.X, SM_TOP, p.Z) end
+			if a.Name:match("^DisplaySlot_") then a:SetAttribute("FitSize", SM_FIT) end
+		end
+	end
+end
+
+-- Vitres cassables de la boutique (Clément, 2026-11-23 : « pouvoir casser la boutique sur les vitres de côté ou de
+-- derrière »). Chaque vitre de la structure (Stage_1/Frame, Stage_2/Frame) reçoit un nom unique, le tag ShopGlass et
+-- l'attribut GlassSide ("Front", "Left", "Right", "Back") : Pane_FL, Pane_FR (façade, de part et d'autre de la porte),
+-- Pane_L_01.. et Pane_R_01.. (côtés, numérotés de l'avant vers le fond, Stage_1 puis Stage_2), Pane_B (fond : celui
+-- du niveau 1 dans Stage_1/Frame/Back_L1, celui qui avance avec le fond dans Stage_2/Frame). Parts simples en Glass
+-- (FragmentAsync possible). La collision ne change pas ici (voir la ligne de liaison).
+local function tagShopGlass(M)
+	local CSg = game:GetService("CollectionService")
+	local pv = M:GetPivot()
+	local sides = { L = {}, R = {} }
+	local count = 0
+	for _, st in { M:FindFirstChild("Stage_1"), M:FindFirstChild("Stage_2") } do
+		local F = st and st:FindFirstChild("Frame")
+		if F then
+			for _, p in F:GetDescendants() do
+				if p:IsA("BasePart") and p.Name:match("^Pane") then
+					local base = p.Name:match("^(Pane_%a+)") or p.Name
+					local side
+					if base == "Pane_L" then side = "Left" elseif base == "Pane_R" then side = "Right"
+					elseif base == "Pane_FL" or base == "Pane_FR" then side = "Front" elseif base == "Pane_B" then side = "Back" end
+					if side then
+						p:SetAttribute("GlassSide", side)
+						CSg:AddTag(p, "ShopGlass")
+						count += 1
+						if side == "Left" or side == "Right" then
+							table.insert(sides[side == "Left" and "L" or "R"], { p = p, z = pv:PointToObjectSpace(p.Position).Z, stage = st.Name })
+						end
+					end
+				end
+			end
+		end
+	end
+	for key, list in sides do
+		table.sort(list, function(a, b) return a.z < b.z end)
+		for i, e in list do e.p.Name = string.format("Pane_%s_%02d", key, i) end
+	end
+	return count, #sides.L, #sides.R
+end
+
 local function build()
 	P.setSeed(4242)
 	local folder = plotsFolder()
@@ -1422,6 +1651,9 @@ local function build()
 	glassShop(M) -- façade et toit de verre, FitSize, pièges, découpe L-190 (Clément, 2026-11-17)
 	glassAll(M) -- tout le tour en verre très clair, sauf la porte (Clément, 2026-11-17)
 	frameFromLevel1(M) -- socle, colonnes, corniche et vitres dès le niveau 1, rang par rang ; plus de lampes visibles (Clément, 2026-11-17)
+	luxeFacade(M, 8) -- vitrine de luxe au niveau 1 : or, auvent accroché, enseigne, marche (Clément, 2026-11-23)
+	museumStands(M, store) -- socles de musée : velours marron, marbre et or, places à y 2,75 (Clément, 2026-11-23)
+	tagShopGlass(M) -- vitres cassables : noms uniques, tag ShopGlass, attribut GlassSide (Clément, 2026-11-23)
 	local pad = M:FindFirstChild("CashPad")
 	CS:AddTag(pad, "CashPad")
 	M.WorldPivot = CFrame.identity
