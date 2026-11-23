@@ -186,15 +186,40 @@ local function slotCFrame(slot: Instance): CFrame?
 	return nil
 end
 
+-- a282 (audit a271, point 3) : l'emplacement trouvé est gardé par boutique et par numéro ; le parcours complet de la
+-- boutique ne se refait que si l'emplacement n'y est plus (niveau refait par ShopStageService), a changé de nom, est
+-- passé dans PlacedTraps, ou si le niveau ou le fond de la boutique a changé (attributs de ShopStageService : un
+-- niveau ajouté peut apporter un autre TrapSlot du même nom). Même choix qu'avant au premier parcours.
+local STAGE_LEVEL_ATTRIBUTE = "StageLevel" -- ShopStageService
+local STAGE_DEPTH_ATTRIBUTE = "StageDepth" -- ShopStageService
+type SlotCacheEntry = { slot: Instance?, level: any, depth: any }
+local slotCache: { [Model]: { [number]: SlotCacheEntry } } = setmetatable({}, { __mode = "k" }) :: any
+
 local function findSlot(plot: Model, index: number): Instance?
 	local name = string.format(Traps.SlotName, index)
 	local folder = plot:FindFirstChild(Traps.Folder)
-	for _, inst in plot:GetDescendants() do
-		if inst.Name == name and not (folder and inst:IsDescendantOf(folder)) then
-			return inst
+	local level = plot:GetAttribute(STAGE_LEVEL_ATTRIBUTE)
+	local depth = plot:GetAttribute(STAGE_DEPTH_ATTRIBUTE)
+	local byPlot = slotCache[plot]
+	local cached = if byPlot then byPlot[index] else nil
+	if cached and cached.level == level and cached.depth == depth then
+		local slot = cached.slot
+		if slot and slot.Name == name and slot:IsDescendantOf(plot) and not (folder and slot:IsDescendantOf(folder)) then
+			return slot
 		end
 	end
-	return nil
+	local found: Instance? = nil
+	for _, inst in plot:GetDescendants() do
+		if inst.Name == name and not (folder and inst:IsDescendantOf(folder)) then
+			found = inst
+			break
+		end
+	end
+	local entries = byPlot or {}
+	slotCache[plot] = entries
+	-- Emplacement absent : pas gardé (cherché de nouveau au prochain Sync, comme avant).
+	entries[index] = if found then { slot = found, level = level, depth = depth } else nil
+	return found
 end
 
 local function makePart(name: string, size: Vector3, cf: CFrame, color: Color3, transparency: number): Part
