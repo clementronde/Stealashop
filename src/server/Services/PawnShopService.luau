@@ -29,9 +29,28 @@
 -- Vente : chaque objet est retiré de Items du profil, puis l'argent est versé par DataService.AddCash, dans la
 -- même exécution, sans yield (pas de vente en double). Puis InventoryService.Refresh (écran et barre du bas).
 --
+--
+-- a314 (L-292, L-271 : bouton SellButton d'une ligne de UI_Displayed, confirmation YES / NO ; DisplayedController) :
+-- vente d'UN objet depuis l'écran Display, au même prix et par la même vente qu'au comptoir (priceOfEntry, sell),
+-- SANS la règle de distance (on vend depuis l'écran), avec toutes les autres :
+--   - objet de la réserve ou de l'inventaire : il doit être vendable au comptoir (sellableUids : à lui, connu du
+--     catalogue, révélé, ni au coffre-fort, ni posé au sol sous antivol). Un objet sous antivol PAS encore posé
+--     (« PLACE ») est vendable au comptoir, donc ici aussi (V0 : la règle du receleur) ;
+--   - objet exposé (Display) : il est d'abord retiré de son présentoir (DisplayService.Unplace, dans la même
+--     exécution) ; refusé s'il est tenu par un voleur (vol en cours).
+-- Remotes (Net/Definitions, absents du tableau 9.4) :
+--   DisplayedSellAsk(itemUid)  → DisplayedSellPrice(itemUid, prix, vendable)   prix montré dans Confirm.SellPrice
+--   DisplayedSell(itemUid)     → DisplayedSold(itemUid, argent versé, vendu)    le prix est recalculé ici ; refus :
+--                                vendu = false, rien ne change (Notify « Warning » si le joueur doit savoir pourquoi)
+-- Pas de vente en double : l'objet quitte Items et l'argent est versé dans la même exécution, sans yield ; une
+-- seconde demande ne trouve plus l'objet (refusée, sans message).
+--
 -- API (côté serveur) :
 --   PawnShopService.GetOffer(player) -> Offer?    l'offre du moment (nil : profil pas chargé) ; bancs d'essai
 --   PawnShopService.PriceOf(player, itemUid) -> number?   prix de rachat d'un objet du joueur, nil s'il n'en a pas
+--   PawnShopService.SellPrice(player, itemUid) -> (number?, string?)   a314 : prix de vente depuis l'écran Display,
+--       ou nil et la raison du refus ("NoProfile", "NotOwned", "Unknown", "Held", "NotSellable")
+--   PawnShopService.SellOne(player, itemUid) -> (number?, string?)     a314 : vend l'objet (argent versé), mêmes refus
 
 local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -44,6 +63,7 @@ local Items = require(Shared.Config.Items)
 local Mutations = require(Shared.Config.Mutations)
 local Pawn = require(Shared.Config.Pawn)
 local Find = require(Shared.Contract.Find)
+local Format = require(Shared.Format)
 local Net = require(Shared.Net.Net)
 local ProfileTypes = require(Shared.Types.Profile)
 
@@ -51,6 +71,13 @@ local DataService = require(script.Parent.DataService)
 local InventoryService = require(script.Parent.InventoryService)
 
 type Data = ProfileTypes.Data
+
+-- a314 : ce que la vente depuis l'écran Display utilise de DisplayService (chargé au premier appel : DisplayService
+-- charge InventoryService, et les bancs d'essai du receleur n'ont pas toujours DisplayService).
+type DisplayApi = {
+	Unplace: (player: Player, itemUid: string) -> number?,
+	IsHeld: (player: Player, itemUid: string) -> boolean,
+}
 
 export type Offer = {
 	HeldUid: string?,
@@ -67,6 +94,14 @@ local IGNORED_FOLDERS = { "_INBOX_CLEMENT", "_SHOWROOM_CLEMENT" } -- livraisons,
 local ROOT_PART = "HumanoidRootPart"
 
 local IS_STUDIO = RunService:IsStudio()
+
+-- a314 : messages de la vente depuis l'écran Display (anglais, L-036). Held reprend celui d'InventoryService ;
+-- NotSellable et Sold : V0 proposés, absents du doc.
+local SELL_MESSAGES = {
+	Held = "This item is being stolen: hit the thief to get it back!",
+	NotSellable = "This item can't be sold right now.",
+	Sold = "%s sold for %s!", -- nom de l'objet, prix (Format.money)
+}
 
 local PawnShopService = {}
 
@@ -204,6 +239,126 @@ local function sell(player: Player, data: Data, uids: { string }): number
 end
 
 ------------------------------------------------------------------------------
+-- a314 : vente d'un objet depuis l'écran Display (sans la règle de distance)
+------------------------------------------------------------------------------
+
+local displayApi: DisplayApi? = nil
+local function displayService(): DisplayApi?
+	if displayApi == nil then
+		local module = script.Parent:FindFirstChild("DisplayService")
+		if module and module:IsA("ModuleScript") then
+			local ok, result = pcall(require, module)
+			if ok and type(result) == "table" then
+				displayApi = result :: any
+			end
+		end
+	end
+	return displayApi
+end
+
+local function isExposed(data: Data, uid: string): boolean
+	for _, stored in data.Display do
+		if stored == uid then
+			return true
+		end
+	end
+	return false
+end
+
+-- Objet exposé montré dans l'état de l'inventaire (révélé, connu du catalogue, pas au coffre-fort). Après Refresh.
+local function shownExposed(player: Player, uid: string): boolean
+	for _, entry in InventoryService.GetState(player).Items do
+		if entry.Uid == uid then
+			return entry.Slot ~= nil
+		end
+	end
+	return false
+end
+
+-- Prix de vente de l'objet `uid` et s'il est exposé, ou nil et la raison du refus. Sans yield.
+local function checkOne(player: Player, data: Data, uid: string): (number?, boolean, string?)
+	local entry = data.Items[uid]
+	if entry == nil then
+		return nil, false, "NotOwned"
+	end
+	local price = priceOfEntry(entry)
+	if price == nil then
+		return nil, false, "Unknown"
+	end
+	if table.find(sellableUids(player, data), uid) ~= nil then -- règles du comptoir (Refresh compris)
+		return price, false, nil
+	end
+	if isExposed(data, uid) and shownExposed(player, uid) then
+		local display = displayService()
+		if display == nil or display.IsHeld(player, uid) then
+			return nil, true, "Held"
+		end
+		return price, true, nil
+	end
+	return nil, false, "NotSellable"
+end
+
+-- Vend l'objet : retiré de son présentoir s'il est exposé, puis de Items, argent versé. Sans yield.
+local function sellOne(player: Player, data: Data, uid: string): (number?, string?)
+	local price, exposed, reason = checkOne(player, data, uid)
+	if price == nil then
+		return nil, reason
+	end
+	if exposed then
+		local display = displayService()
+		if display == nil or display.Unplace(player, uid) == nil then
+			return nil, "Held"
+		end
+	end
+	return sell(player, data, { uid }), nil
+end
+
+local function notify(player: Player, message: string, kind: string)
+	local ok, err = pcall(function()
+		Net.Server.Notify:Fire(player, message, kind)
+	end)
+	if not ok then
+		warn(`[PawnShopService] Notify vers {player.Name} : {err}`)
+	end
+end
+
+local function onDisplayedAsk(player: Player, itemUid: string)
+	local data = DataService.Get(player)
+	if data == nil then
+		return
+	end
+	local price, _, reason = checkOne(player, data, itemUid)
+	if price == nil then
+		log(`{player.Name} : DisplayedSellAsk({itemUid}) refusé ({reason})`)
+	end
+	Net.Server.DisplayedSellPrice:Fire(player, itemUid, price or 0, price ~= nil)
+end
+
+local function onDisplayedSell(player: Player, itemUid: string)
+	local data = DataService.Get(player)
+	if data == nil then
+		return
+	end
+	local entry = data.Items[itemUid]
+	local def = if type(entry) == "table" then Items.ById[entry.Id] else nil
+	local amount, reason = sellOne(player, data, itemUid)
+	if amount == nil then
+		log(`{player.Name} : DisplayedSell({itemUid}) refusé ({reason})`)
+		Net.Server.DisplayedSold:Fire(player, itemUid, 0, false)
+		-- Rien à dire pour un objet qui n'est plus à lui (seconde demande d'un double clic, envoi malhonnête).
+		if reason == "Held" then
+			notify(player, SELL_MESSAGES.Held, "Warning")
+		elseif reason ~= "NotOwned" then
+			notify(player, SELL_MESSAGES.NotSellable, "Warning")
+		end
+		return
+	end
+	log(`{player.Name} a vendu {if def then def.Id else "?"} ({itemUid}) depuis l'écran Display pour ${amount}`)
+	Net.Server.DisplayedSold:Fire(player, itemUid, amount, true)
+	notify(player, string.format(SELL_MESSAGES.Sold, if def then def.DisplayName else "Item", Format.money(amount)), "Success")
+end
+
+------------------------------------------------------------------------------
 -- Remotes
 ------------------------------------------------------------------------------
 
@@ -277,10 +432,30 @@ function PawnShopService.PriceOf(player: Player, itemUid: string): number?
 	return if data then priceOfEntry(data.Items[itemUid]) else nil
 end
 
+function PawnShopService.SellPrice(player: Player, itemUid: string): (number?, string?)
+	local data = DataService.Get(player)
+	if data == nil then
+		return nil, "NoProfile"
+	end
+	local price, _, reason = checkOne(player, data, itemUid)
+	return price, reason
+end
+
+function PawnShopService.SellOne(player: Player, itemUid: string): (number?, string?)
+	local data = DataService.Get(player)
+	if data == nil then
+		return nil, "NoProfile"
+	end
+	return sellOne(player, data, itemUid)
+end
+
 function PawnShopService.Init()
 	Net.Server.PawnAsk:Connect(onAsk)
 	Net.Server.PawnSellHeld:Connect(onSellHeld)
 	Net.Server.PawnSellAll:Connect(onSellAll)
+	-- a314 : vente depuis l'écran Display.
+	Net.Server.DisplayedSellAsk:Connect(onDisplayedAsk)
+	Net.Server.DisplayedSell:Connect(onDisplayedSell)
 end
 
 return PawnShopService

@@ -1444,6 +1444,29 @@ for _, screenDef in UI.Screens do
 		table.insert(screenDef.Elements, { Path = "Reserve.ReserveEmpty", Class = "GuiObject", Optional = true, Note = "inventaire vide : rien ne le dit" })
 	end
 end
+-- a314 (L-292, L-271 ; maquette de Clément, tools/clement/ui_displayed_v2.luau) : vendre un objet depuis sa ligne, avec
+-- une confirmation YES / NO (DisplayedController ; prix du serveur, PawnShopService). Tous facultatifs. SellButton est
+-- rangé dans Template.Buttons chez Clément (les noms sont cherchés parmi les descendants).
+for _, screenDef in UI.Screens do
+	if screenDef.Name == "UI_Displayed" then
+		local function add(path: string, class: string?, note: string)
+			table.insert(screenDef.Elements, { Path = path, Class = class, Optional = true, Note = note })
+		end
+		add("List.Template.SellButton", BUTTON, "un objet ne se vend pas depuis le panneau")
+		add("List.Template.SellButton.SellLabel", "TextLabel", "le bouton de vente garde le texte de Clément")
+		add("Confirm", "GuiObject", "un objet ne se vend pas depuis le panneau (pas de confirmation)")
+		add("Confirm.Header.Title", "TextLabel", "texte de Clément, le code ne l'écrit pas")
+		add("Confirm.ItemIcon", "ImageLabel", "pas d'icône dans la confirmation de vente")
+		add("Confirm.ItemRarity", "TextLabel", "la rareté n'est pas écrite dans la confirmation de vente")
+		add("Confirm.ItemName", "TextLabel", "le nom n'est pas écrit dans la confirmation de vente")
+		add("Confirm.SellPrice", "TextLabel", "le prix de vente n'est pas écrit dans la confirmation")
+		add("Confirm.YesButton", BUTTON, "la confirmation de vente ne vend pas")
+		add("Confirm.YesButton.YesLabel", "TextLabel", "YES garde le texte de Clément")
+		add("Confirm.NoButton", BUTTON, "la confirmation ne se ferme que par la croix")
+		add("Confirm.NoButton.NoLabel", "TextLabel", "NO garde le texte de Clément")
+		break
+	end
+end
 -- Vague 73 (a254, L-240 point 3) : annonces à tout le serveur (AnnounceController, Config/Announce). Facultatif :
 -- absent, chaque annonce part en Notify (sans balises). Le code touche Enabled de l'écran, le texte de Message et de
 -- Detail et l'image d'Icon ; Banner entre par son Appear (Pop) de Clément.
