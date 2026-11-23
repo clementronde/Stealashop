@@ -148,7 +148,13 @@ local function skillTreePending(): boolean
 			local level = levelOf(skill.Id)
 			local price = skill.Prices[level + 1]
 			if level < skill.MaxLevel and level + 1 <= skill.Coded and price ~= nil and cash >= price then
-				return true
+				-- a411 : une compétence dont la tuile est facultative (TileOptional : Tile_FittingRoom, pas encore livrée)
+				-- n'allume la pastille que si sa tuile est dans UI_SkillTree (sinon rien à acheter dans l'arbre).
+				local gui = if skill.TileOptional then localPlayer:FindFirstChildOfClass("PlayerGui") else nil
+				local tree = if gui then gui:FindFirstChild("UI_SkillTree") else nil
+				if not skill.TileOptional or (tree ~= nil and tree:FindFirstChild(skill.Tile, true) ~= nil) then
+					return true
+				end
 			end
 		end
 	end

@@ -125,6 +125,10 @@ local Features = {
 	Bodyguards = true, -- agent de sécurité qui poursuit le voleur (Partie 2, section 2)
 	DoorGuard = true, -- garde à la porte qui repousse le voleur (L-163)
 	CameraRadar = true, -- Cameras niveau 3 : voleur en rouge vif et son de radar, sans flèche (L-163, L-175)
+	-- a411 (vague GC6, L-113, feuille de route MAJ 4) : cabine d'essayage (Config/Disguise, DisguiseService, DisguiseController ;
+	-- tuile FittingRoom de Config/SkillTree achetable) : se déguiser en passant d'une zone, dénoncer un magasin, être démasqué
+	-- d'un coup de batte. V0 proposé (Cantin, 23/11) : true en DEV ; false = tuile « Soon », remotes Disguise et Denounce ignorés.
+	FittingRoom = true,
 }
 
 export type Features = typeof(Features)

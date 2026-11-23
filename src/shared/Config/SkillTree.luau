@@ -33,6 +33,7 @@ export type SkillId =
 	| "DoorGuard"
 	| "PotionTime"
 	| "Traps"
+	| "FittingRoom"
 
 export type Opens = { Id: SkillId, Level: number }
 
@@ -50,6 +51,9 @@ export type Skill = {
 	OpensWhen: Opens?,
 	RequiresRebirth: number?, -- renaissances faites pour ouvrir la tuile (L-173, V0) ; nil : aucune
 	Icon: string?, -- rbxassetid de la note de Clément (l'image est déjà posée sur la tuile dans Studio)
+	-- a411 : tuile pas encore livrée par Clément ; tant qu'elle manque dans UI_SkillTree, la pastille SkillTreeAlert ne
+	-- s'allume pas pour cette compétence (RailAlertController).
+	TileOptional: boolean?,
 }
 
 local List: { Skill } = {
@@ -211,6 +215,23 @@ local List: { Skill } = {
 		Coded = if Features.Traps then 4 else 0,
 		OpensWhen = { Id = "Walls", Level = 2 },
 		RequiresRebirth = 4, -- V0 (L-173)
+	},
+	{
+		-- a411 (vague GC6, L-113, feuille de route MAJ 4) : cabine d'essayage. Niveau 1 = la cabine de sa boutique est
+		-- débloquée (Config/Disguise, DisguiseService) ; les zones s'ouvrent ensuite avec les renaissances (zone n avec
+		-- n − 1 renaissances), la tuile elle-même n'en demande aucune. Tuile Tile_FittingRoom proposée à Clément,
+		-- facultative : sans elle, l'achat passe par l'écran de la cabine (DisguiseController, remote BuySkill).
+		-- Achetable seulement avec Features.FittingRoom (sinon « Soon »).
+		Id = "FittingRoom",
+		Tile = "Tile_FittingRoom",
+		TileOptional = true,
+		DisplayName = "Fitting Room",
+		Stat = "Disguise", -- V0 proposé (Cantin, 23/11)
+		MaxLevel = 1,
+		Prices = { 50_000 }, -- V0 proposé (Cantin, 23/11), absent du doc
+		Effects = { 60 }, -- s de déguisement (Config/Disguise.Duration fait foi)
+		Labels = { "60s" },
+		Coded = if Features.FittingRoom then 1 else 0,
 	},
 }
 

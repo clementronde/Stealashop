@@ -941,6 +941,26 @@ local List: { RemoteDef } = {
 		},
 		RatePerSecond = 4, -- V0 proposé (Cantin, 23/11) ; FunnelService borne aussi à Funnels.ClientStepsPerMinute
 	},
+	{
+		-- a411 (vague GC6, L-113), absent du tableau 9.4 : choix d'une zone dans l'écran de la cabine d'essayage.
+		-- zone = 1 à 6 ; DisguiseService vérifie tout (compétence FittingRoom, cabine de SA boutique, zone ouverte par
+		-- ses renaissances, recharge, un déguisé par zone, jour) puis déguise et déplace le joueur.
+		Name = "Disguise",
+		Direction = "ClientToServer",
+		Reliable = true,
+		Args = { { Name = "zone", Kind = "int", Min = 1, Max = 6 } },
+		RatePerSecond = 1, -- V0 proposé (Cantin, 23/11)
+	},
+	{
+		-- a411 (vague GC6, L-113 point 3), absent du tableau 9.4 : maintien de l'invite « Call the police » d'un magasin
+		-- PNJ par un joueur déguisé. storeName = nom du modèle du magasin (STORE_Z<n>_<Id>) ; étape obligatoire comme
+		-- les autres maintiens. DisguiseService vérifie le déguisement, la zone, la distance, le regard et la durée.
+		Name = "Denounce",
+		Direction = "ClientToServer",
+		Reliable = true,
+		Args = { id("storeName"), holdPhase() },
+		RatePerSecond = 4, -- V0 proposé (Cantin, 23/11)
+	},
 }
 
 return {
