@@ -1,7 +1,8 @@
 --!strict
 -- CodeService (MAJ 0, docs/claude/notes/feuille-de-route-maj.md ; agent a162, vague 50) : codes cadeaux.
 -- Le client envoie RedeemCode(code) (texte court, débit limité par Net) ; le serveur compare le code à
--- Config/Codes (insensible à la casse), vérifie la date de fin (os.time() UTC) et qu'il n'est pas déjà pris
+-- la liste du serveur Code/GiftCodes (insensible à la casse ; a274 : plus dans Config/Codes, lisible par les
+-- clients), vérifie les dates de début et de fin (os.time() UTC) et qu'il n'est pas déjà pris
 -- par ce profil (Data.Codes, champ facultatif sans changement de version), donne la récompense et note le
 -- code dans la même exécution, sans yield (un double envoi trouve le code déjà noté). Réponse : remote
 -- CodeResult(status, message) au seul joueur (status = Redeemed, Invalid, AlreadyUsed, Expired, Unavailable),
@@ -21,6 +22,7 @@ local Zones = require(Shared.Config.Zones)
 local Net = require(Shared.Net.Net)
 local ProfileTypes = require(Shared.Types.Profile)
 
+local GiftCodes = require(script.Parent.Code.GiftCodes)
 local DataService = require(script.Parent.DataService)
 local MonetizationService = require(script.Parent.MonetizationService)
 local PotionService = require(script.Parent.PotionService)
@@ -38,7 +40,7 @@ local CodeService = {}
 CodeService.Priority = 225
 
 local byCode: { [string]: Codes.GiftCode } = {}
-for _, entry in Codes.List do
+for _, entry in GiftCodes do
 	byCode[Codes.Normalize(entry.Code)] = entry
 end
 
@@ -96,6 +98,11 @@ function CodeService.Redeem(player: Player, text: string): Status
 	local key = Codes.Normalize(text)
 	local entry = byCode[key]
 	if entry == nil then
+		return "Invalid"
+	end
+	-- a274 : pas encore commencé = comme un code inconnu (rien n'indique qu'il existe).
+	local startsAt = entry.StartsAt
+	if startsAt ~= nil and os.time() < startsAt then
 		return "Invalid"
 	end
 	local used = data.Codes
