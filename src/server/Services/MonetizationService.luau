@@ -35,6 +35,8 @@
 -- Effets codés, par les points d'accroche des services (chacun garde l'accroche d'avant) :
 --   ×2 Argent          DisplayService.GetIncomeMultiplier × 2
 --   ×2 Entraînement    TrainingService.GetGainMultiplier × 2 (tapis et banc)
+--   ×2 Vitesse         a319 (L-303) : même accroche, × 2 de plus (× 4 avec ×2 Entraînement) ; à la place du boost de
+--                      10 min SpeedBoost de Config/Boosts, jamais vendu (aucun reçu, aucun temps de boost à garder)
 --   Encaissement auto  DisplayService.HasAutoCollect : la caisse se vide chaque seconde, où que soit
 --                      le joueur
 --   Ouverture rapide   vague 52 (a170) : plus de colis posé (a158) ; Fast Open ne raccourcit plus que
@@ -84,6 +86,8 @@
 --
 -- Attributs du Player, lus par l'écran (heures serveur = Workspace:GetServerTimeNow()) :
 --   Pass<Clé>          true si le gamepass est possédé (PassDoubleCash…), absent sinon
+--   PassKnown<Clé>     a319 : true dès que Roblox a répondu pour ce gamepass (ou achat de la session), absent avant ;
+--                      le bouton du HUD qui le vend (Pass.HudButton) reste caché tant qu'il manque
 --   StarterPackEndsAt  fin de l'offre du pack de départ ; absent : pas proposée (achetée, 1re heure passée)
 --   CashBoostEndsAt    fin du boost ×2 argent en cours ; absent : pas de boost
 --   OpenNowReadyAt     heure où le colis qui attend le plus sera prêt ; absent : aucun colis en attente
@@ -187,6 +191,7 @@ local IS_STUDIO = RunService:IsStudio()
 
 -- Attributs du Player (voir l'en-tête ; mêmes noms dans RobuxShopController).
 local PASS_ATTRIBUTE_PREFIX = "Pass"
+local PASS_KNOWN_PREFIX = "PassKnown" -- a319 : réponse de Roblox reçue (HudMenuController)
 local STARTER_ATTRIBUTE = "StarterPackEndsAt"
 local BOOST_ATTRIBUTE = "CashBoostEndsAt"
 local OPEN_NOW_ATTRIBUTE = "OpenNowReadyAt"
@@ -350,6 +355,7 @@ local function setOwned(player: Player, pass: Pass, owned: boolean, why: string)
 	state.owned[pass.Key] = owned
 	writeCache(player, pass.Key, owned)
 	publishPass(player, pass.Key)
+	setAttribute(player, PASS_KNOWN_PREFIX .. pass.Key, true)
 	if before ~= owned then
 		log(`{player.Name} : gamepass {pass.Key} {if owned then "possédé" else "pas possédé"} ({why})`)
 	end
@@ -1557,6 +1563,10 @@ local function installHooks()
 	local baseGain = TrainingService.GetGainMultiplier
 	TrainingService.GetGainMultiplier = function(player: Player, kind: any): number
 		local multiplier = if hasPass(player, "DoubleTraining") then passValue("DoubleTraining", "Multiplier", 1) else 1
+		-- a319 (L-303) : ×2 Speed, permanent, multiplié avec ×2 Training (comme le boost SpeedBoost qu'il remplace).
+		if hasPass(player, "DoubleSpeed") then
+			multiplier *= passValue("DoubleSpeed", "Multiplier", 1)
+		end
 		return baseGain(player, kind) * multiplier
 	end
 	-- Vague 31 (L-112, Cantin 2026-11-12) : Fast Open raccourcit l'antivol d'un objet posé au sol. Vague 52 (a170) :

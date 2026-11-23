@@ -1053,7 +1053,9 @@ table.insert(UI.Screens, {
 	Optional = true,
 	Elements = {
 		{ Path = "DisplayedButton", Class = BUTTON, Optional = true, Note = "UI_Displayed ne s'ouvre que par son propre bouton" },
-		{ Path = "SpeedBoostButton", Class = BUTTON, Optional = true, Note = "pas de bouton « x2 » sur le tapis" },
+		-- a319 (L-303) : SpeedBoostButton vend le gamepass ×2 Speed (DoubleSpeed) ; OnlyLabel, RobuxIcon et son Fill sont
+		-- décoratifs, Hint n'est plus lu (retiré par Clément).
+		{ Path = "SpeedBoostButton", Class = BUTTON, Optional = true, Note = "pas de bouton « x2 SPEED » (gamepass)" },
 		{ Path = "SpeedBoostButton.Price.Amount", Class = "TextLabel", Optional = true, Note = "le prix Robux n'est pas écrit" },
 		{ Path = "SleepButton", Class = BUTTON, Optional = true, Note = "pas de bouton « zZz » dans le couloir" },
 		{ Path = "SleepButton.Price.Amount", Class = "TextLabel", Optional = true, Note = "le prix Robux n'est pas écrit" },

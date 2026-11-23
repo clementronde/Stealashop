@@ -114,7 +114,8 @@ local Hud = {
 	--   VipBoost      : VipText, montré avec le pass VIP (attribut PassVIP, pas encore vendu) ;
 	--   CashBoost     : « x2 » avec le pass ×2 Cash (PassDoubleCash) ou le boost ×2 argent (CashBoostEndsAt), « x4 » avec
 	--                   les deux (même produit que MonetizationService) ; Timer = temps restant du boost ;
-	--   TrainingBoost : « x2 » avec le pass ×2 Training (PassDoubleTraining).
+	--   TrainingBoost : « x2 » avec le pass ×2 Training (PassDoubleTraining) ou ×2 Speed (PassDoubleSpeed, a319), « x4 »
+	--                   avec les deux (mêmes gains du tapis, MonetizationService).
 	-- Les trois derniers sont cachés sans leur bonus ; seuls Visible et les textes sont écrits.
 	BottomRow = {
 		Friend = "FriendBoost",

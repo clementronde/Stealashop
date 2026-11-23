@@ -18,11 +18,17 @@
 --     ici (a273). Un bouton laissé visible par Clément n'est jamais caché (l'aperçu L-071 de l'ancien HUD tient).
 --   - DisplayedButton ouvre « Mes objets exposés » (UI_Displayed) : DisplayedController (agent a191) fait tout,
 --     Toggle() s'il existe, sinon Open() ; sans lui, rien (une ligne en Studio).
---   - Boutons en situation de Config/Boosts (SpeedBoostButton « x2 », SleepButton « zZz ») : cachés au départ,
+--   - Boutons en situation de Config/Boosts (SleepButton « zZz ») : cachés au départ,
 --     montrés seulement quand leur règle (ShowWhen) est vraie ; Price.Amount = le prix Robux de la Config ;
 --     Cooldown = la recharge restante (« 4:12 », attribut serveur CooldownAttribute), caché sans recharge. Aucun
 --     achat : l'effet n'est pas codé (Ready = false) et Features.RobuxShop = false ; un clic montre « Soon ».
 --     Visible n'est écrit que quand la règle change : un masquage par un autre contrôleur (poursuite) tient.
+--   - a319 (23/11, L-303, décision de Cantin) : SpeedBoostButton « x2 SPEED » vend le gamepass permanent DoubleSpeed
+--     (Config/Monetization, champ HudButton ; plus le boost de 10 min). Price.Amount = son prix ; montré partout (plus
+--     seulement sur le tapis) quand la boutique est ouverte (Features.RobuxShop), le pass codé (Ready), créé (Id ≠ 0)
+--     et que le serveur a eu la réponse de Roblox (PassKnown<Clé>) sans possession (Pass<Clé>) ; caché sinon. Un clic
+--     ouvre la fenêtre d'achat du gamepass (PromptGamePassPurchase) ; à la fin d'un achat, le serveur revérifie
+--     (a274) et pose Pass<Clé> : le bouton se cache. Id à 0 : jamais montré, aucun appel à MarketplaceService.
 --   - Vague 70 (a230, L-189 point 6) : les 4 bonus de BottomRow (FriendBoost, VipBoost, CashBoost, TrainingBoost),
 --     règles et textes dans Config/Hud.BottomRow, lus dans les attributs que le serveur publie déjà (FriendBonus,
 --     Pass<Clé>, CashBoostEndsAt). Visible et textes écrits seulement quand ils changent.
@@ -32,7 +38,8 @@
 -- HUD recréé (ResetOnSpawn) : rebranché, les connexions de l'ancien écran sont coupées.
 --
 -- API (client ; bancs, barre de commande en Studio) :
---   HudMenuController.GetShown() -> { [string]: boolean }   bouton en situation (Config/Boosts.Key) → montré
+--   HudMenuController.GetShown() -> { [string]: boolean }   bouton en situation (Config/Boosts.Key, ou clé du gamepass
+--                                                            d'un Pass.HudButton, a319) → montré
 --   HudMenuController.Refresh()                              recalcule les règles tout de suite
 --   HudMenuController.PlaceTopLeftRow()                      recale TopLeftRow tout de suite
 --   HudMenuController.GetBonuses() -> { [nom]: { Shown, Amount, Timer } }   vague 70 : pastilles de BottomRow
@@ -54,6 +61,7 @@ local Find = require(Shared:WaitForChild("Contract"):WaitForChild("Find"))
 local Format = require(Shared:WaitForChild("Format"))
 
 type Boost = Boosts.Boost
+type Pass = Monetization.Pass
 type ZoneApi = { GetZone: () -> number }
 type NotifyApi = { Show: (message: string, kind: string?) -> () }
 
@@ -89,6 +97,7 @@ local zones: ZoneApi? = nil
 local notify: NotifyApi? = nil
 local connections: { RBXScriptConnection } = {}
 local boostButtons: { [string]: { GuiButton } } = {}
+local passButtons: { [string]: { GuiButton } } = {} -- a319 : boutons qui vendent un gamepass (Pass.HudButton)
 local cooldownLabels: { [string]: { TextLabel } } = {}
 local shown: { [string]: boolean } = {}
 local cooldownTexts: { [string]: string } = {}
@@ -101,6 +110,7 @@ local warned: { [string]: boolean } = {}
 local BONUS = HudConfig.BottomRow
 local BONUS_KEYS = { BONUS.Friend, BONUS.Vip, BONUS.Cash, BONUS.Training }
 local PASS_PREFIX = "Pass" -- MonetizationService : attribut Pass<Clé> du Player
+local PASS_KNOWN_PREFIX = "PassKnown" -- a319, MonetizationService : réponse de Roblox reçue pour ce gamepass
 local CASH_BOOST_ATTRIBUTE = "CashBoostEndsAt" -- MonetizationService : fin du boost ×2 argent (heure serveur)
 type Pill = { frame: GuiObject, amount: TextLabel?, timer: TextLabel? }
 local pills: { [string]: { Pill } } = {}
@@ -245,7 +255,26 @@ local function bonusState(key: string, now: number): (boolean, string, string)
 		return multiplier > 1, string.format(BONUS.MultiplierText, multiplier), if left > 0 then clockText(left) else ""
 	end
 	local multiplier = if hasPass("DoubleTraining") then passMultiplier("DoubleTraining") else 1
+	if hasPass("DoubleSpeed") then
+		multiplier *= passMultiplier("DoubleSpeed") -- a319 : mêmes gains du tapis (× 4 avec les deux)
+	end
 	return multiplier > 1, string.format(BONUS.MultiplierText, multiplier), ""
+end
+
+-- a319 (L-303) : le bouton du HUD de `pass` peut le proposer : boutique ouverte, pass codé et créé dans ce jeu,
+-- réponse de Roblox reçue par le serveur, pas possédé.
+local function passOnSale(pass: Pass): boolean
+	return Features.RobuxShop == true
+		and pass.Ready
+		and pass.Id > 0
+		and localPlayer:GetAttribute(PASS_KNOWN_PREFIX .. pass.Key) == true
+		and not hasPass(pass.Key)
+end
+
+local function onPass(pass: Pass)
+	if passOnSale(pass) then
+		game:GetService("MarketplaceService"):PromptGamePassPurchase(localPlayer, pass.Id)
+	end
 end
 
 local function refreshBonuses(now: number)
@@ -310,6 +339,16 @@ local function refresh()
 			for _, label in labels do
 				label.Text = text
 				label.Visible = text ~= ""
+			end
+		end
+	end
+	for key, buttons in passButtons do
+		local pass = Monetization.PassByKey[key]
+		local on = pass ~= nil and passOnSale(pass)
+		if shown[key] ~= on then
+			shown[key] = on
+			for _, button in buttons do
+				button.Visible = on
 			end
 		end
 	end
@@ -419,6 +458,25 @@ local function bind(gui: ScreenGui)
 			end)
 		end
 	end
+	-- a319 : boutons qui vendent un gamepass (SpeedBoostButton → DoubleSpeed), cachés jusqu'à refresh.
+	passButtons = {}
+	for _, pass in Monetization.Passes do
+		local name = pass.HudButton
+		if name then
+			local buttons = buttonsNamed(gui, name)
+			passButtons[pass.Key] = buttons
+			for _, button in buttons do
+				button.Visible = false
+				local price = Find.path(button, PRICE_PATH)
+				if price and price:IsA("TextLabel") then
+					price.Text = Format.short(pass.Price)
+				end
+				connect(clicked(button), function()
+					onPass(pass)
+				end)
+			end
+		end
+	end
 
 	-- Vague 70 (L-189 point 6) : pastilles de BottomRow (absentes : rien).
 	pills = {}
@@ -473,6 +531,13 @@ function HudMenuController.Start()
 		end
 	end)
 	localPlayer:GetAttributeChangedSignal(REBIRTHS_ATTRIBUTE):Connect(refreshRebirth)
+	-- a319 : bouton d'un gamepass recalculé dès que le serveur publie la réponse de Roblox ou un achat.
+	for _, pass in Monetization.Passes do
+		if pass.HudButton then
+			localPlayer:GetAttributeChangedSignal(PASS_PREFIX .. pass.Key):Connect(refresh)
+			localPlayer:GetAttributeChangedSignal(PASS_KNOWN_PREFIX .. pass.Key):Connect(refresh)
+		end
+	end
 	local playerGui = localPlayer:WaitForChild("PlayerGui")
 	playerGui.ChildAdded:Connect(function(child: Instance)
 		if child.Name == SCREEN and child:IsA("ScreenGui") then

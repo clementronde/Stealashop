@@ -26,6 +26,7 @@ local Dev: { [string]: number } = {
 	-- Gamepasses
 	DoubleCash = 0,
 	DoubleTraining = 0,
+	DoubleSpeed = 0, -- a319 (L-303) : x2 SPEED, gamepass permanent (149 R$)
 	VIP = 0,
 	AutoCollect = 0,
 	FastOpen = 0,
@@ -54,8 +55,7 @@ local Dev: { [string]: number } = {
 	Crate1 = 0,
 	Crate3 = 0,
 	Crate10 = 0,
-	-- Boosts du HUD (Config/Boosts)
-	SpeedBoost = 0,
+	-- Boosts du HUD (Config/Boosts) ; a319 : SpeedBoost retiré (devenu le gamepass DoubleSpeed, jamais créé)
 	SleepGuards = 0,
 }
 
