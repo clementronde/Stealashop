@@ -60,7 +60,10 @@
 --     MutationSize et MutationEffect (DEV-131 : Id de Config/Mutations, absents sans mutation ; les
 --     effets visuels sont à Clément, MOD-131 ; une taille met le modèle à l'échelle, Model:ScaleTo) ;
 --     la copie du modèle ITM_ garde aussi l'attribut Idle de Clément et ses pièces Spin_ (L-045),
---     qu'ItemIdleController anime côté client (le halo RarityHalo et le billboard restent fixes)
+--     qu'ItemIdleController anime côté client (le halo RarityHalo et le billboard restent fixes) ;
+--     a317 (L-304 point 3) : avec Config/DisplayMotion, tout objet exposé y flotte, halo et billboard compris (le
+--     serveur ne le bouge pas ; il garde seulement la hauteur du flottement libre sous le FitSize et accroche BB_Item
+--     au sommet de la boîte)
 --
 -- API (côté serveur) :
 --   DisplayService.PlaceAuto(player, itemUid, near?) -> number?
@@ -255,6 +258,13 @@ local Format = require(ReplicatedStorage.Shared.Format)
 local RarityHalo = require(ReplicatedStorage.Shared.RarityHalo)
 local Find = require(ReplicatedStorage.Shared.Contract.Find)
 local Attributes = require(ReplicatedStorage.Shared.Contract.Attributes) -- a234 : FitSize, Idle
+-- a317 (L-304 point 3) : hauteur gardée libre pour le flottement (Headroom) et accroche de BB_Item au sommet ; Bob de
+-- l'attribut Idle (ItemIdle.BobHeight). Facultatifs : bancs plus anciens (sans eux, comme avant).
+local motionModule = ReplicatedStorage.Shared.Config:FindFirstChild("DisplayMotion")
+local DisplayMotion: any = if motionModule and motionModule:IsA("ModuleScript") then require(motionModule) :: any else nil
+local FLOAT: boolean = DisplayMotion ~= nil and DisplayMotion.Enabled == true
+local idleModule = ReplicatedStorage.Shared.Config:FindFirstChild("ItemIdle")
+local ItemIdleConfig: any = if idleModule and idleModule:IsA("ModuleScript") then require(idleModule) :: any else nil
 local UI = require(ReplicatedStorage.Shared.Contract.UI)
 local Net = require(ReplicatedStorage.Shared.Net.Net)
 local ProfileTypes = require(ReplicatedStorage.Shared.Types.Profile)
@@ -1298,9 +1308,18 @@ local function addBillboard(
 	-- hauteur, pour garder le même écart au-dessus de lui (V0 proposé). Le V0 suit déjà le sommet.
 	local scale = Mutations.Scale(mutation, weight) * fit
 	local lift = boxSize.Y - boxSize.Y / scale
-	point.WorldPosition = if gui
-		then (model:GetPivot() * CFrame.new(0, lift, 0)).Position
-		else boxCFrame.Position + Vector3.new(0, boxSize.Y / 2, 0)
+	local top = boxCFrame.Position + Vector3.new(0, boxSize.Y / 2, 0)
+	-- a317 (L-304 point 3, validé par Clément) : BB_Item de Clément accroché au sommet de la boîte de l'objet,
+	-- DisplayMotion.BillboardTopOffset plus bas (le bas de l'étiquette touche presque l'objet), StudsOffset posé plus
+	-- bas ; ItemIdleController le fait suivre le flottement. Sans DisplayMotion : au pied, comme avant (L-027).
+	local atTop = gui ~= nil and FLOAT and DisplayMotion.BillboardAtTop == true
+	point.WorldPosition = if atTop
+		then top + Vector3.new(0, DisplayMotion.BillboardTopOffset, 0)
+		elseif gui then (model:GetPivot() * CFrame.new(0, lift, 0)).Position
+		else top
+	if atTop and gui then
+		gui.StudsOffset = Vector3.new(0, DisplayMotion.BillboardStudsOffset, 0)
+	end
 
 	if gui == nil then
 		reportOnce(
@@ -1329,8 +1348,17 @@ local function addBillboard(
 	end
 	setText(billboard, "Income", Format.income(income))
 	-- Vague 62 (a203) : poids « 1,250 kg » dans l'élément facultatif Weight de BB_Item (nom proposé à Clément) ; rien sans lui.
-	if ItemWeight.Enabled() then
-		setText(billboard, WeightConfig.Field, ItemWeight.Format(weight or WeightConfig.Reference))
+	-- a317 (L-304 Q1, décision de Cantin du 23/11, « Oui, afficher ») : Clément cache Weight par défaut ; il est montré
+	-- avec le vrai poids, en capitales comme sur son étiquette (« 20 KG », ItemWeight.Format sans autre formule), et
+	-- reste caché sans poids (ou sans ItemWeight).
+	local weightField = Find.path(billboard, WeightConfig.Field)
+	if ItemWeight.Enabled() and type(weight) == "number" then
+		setText(billboard, WeightConfig.Field, string.upper(ItemWeight.Format(weight)))
+		if weightField ~= nil and weightField:IsA("GuiObject") then
+			(weightField :: GuiObject).Visible = true
+		end
+	elseif weightField ~= nil and weightField:IsA("GuiObject") then
+		(weightField :: GuiObject).Visible = false
 	end
 	local rarityLabel = setText(billboard, "Rarity", rarity.DisplayNameUpper, if rarity.Rainbow then TEXT_COLOR else rarity.Color)
 	-- Secret : arc-en-ciel (DisplayController le fait tourner). Un dégradé déjà posé par Clément
@@ -1390,7 +1418,19 @@ local function buildItemModel(
 	-- pour que l'objet y tienne (jamais grossi) ; poids, revenu et étiquette inchangés. Le halo et le billboard, posés
 	-- ensuite, suivent la taille montrée ; les lumières du modèle aussi (portée au plus proportionnelle à la taille).
 	-- Attribut FitScale (Config/Weight.FitScaleAttribute) : la réduction, lue par le socle « BEST ITEM » (vraie taille).
-	local fit = if fitSize then fitFactor(display, pivot, fitSize) else 1
+	-- a317 (L-304 Q2, validé par Cantin le 23/11) : la hauteur du flottement et du saut (DisplayMotion.Headroom, plus
+	-- ItemIdle.BobHeight pour un Idle Bob ou SpinBob) est retirée de la hauteur du FitSize lu sur le présentoir, quelle
+	-- que soit la courbe d'échelle : l'objet le plus haut ne touche jamais le plancher de l'étage. Rien sans FitSize.
+	local fitBox = fitSize
+	if fitBox and FLOAT then
+		local idle = display:GetAttribute(Attributes.Idle.Name)
+		local bob = if (idle == "Bob" or idle == "SpinBob") and ItemIdleConfig then ItemIdleConfig.BobHeight else 0
+		local room = fitBox.Y - DisplayMotion.Headroom - bob
+		if room > 0 then
+			fitBox = Vector3.new(fitBox.X, room, fitBox.Z)
+		end
+	end
+	local fit = if fitBox then fitFactor(display, pivot, fitBox) else 1
 	if fit < 1 then
 		local shown = display:GetScale() * fit
 		local ok, problem = pcall(display.ScaleTo, display, shown)

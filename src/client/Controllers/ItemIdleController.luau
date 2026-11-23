@@ -59,6 +59,29 @@
 --       départ (radians, de −WaveAmplitude à +WaveAmplitude ; 0 à t = 0).
 --   ItemIdleController.GetStats() -> { Tracked: number, Animated: number }
 --       Objets suivis et objets animés en ce moment (à portée de la caméra et à l'écran), pour les tests.
+--
+-- a317 (liaison L-304 point 3, Clément, 2026-11-23 ; prototype tools/clement/collect_motion_proto.luau ; valeurs :
+-- Config/DisplayMotion, Enabled = true) : TOUS les objets exposés flottent, plus seulement ceux qui ont Idle ou des
+-- pièces Spin_ / Wave_. Le mouvement est fait ici, où les pièces des objets exposés étaient déjà déplacées : deux
+-- contrôleurs qui écriraient les mêmes pièces se battraient. Par objet :
+--   - au repos, le bas de sa boîte (pièces visibles hors halo) à FloatGap au-dessus de son DisplaySlot_xx (son pivot
+--     de repos), ±BobHeight en sinus de BobPeriod s, décalé de (DisplaySlot − 1) × PhaseStep rad ;
+--   - ItemIdleController.Hop(model), appelé par DisplayController à l'encaissement de sa plaque (remote CashCollect,
+--     chez tous les joueurs) : un tour autour de l'axe vertical au centre de sa boîte en SpinTime s (Quad Out) et Hops
+--     sauts (HopHeight, puis × HopDecay) ;
+--   - le halo de rareté (RarityHalo) et le point du billboard (BillboardPoint, donc BB_Item) suivent la hauteur, sans
+--     tourner ; l'Idle et les pièces Spin_ / Wave_ de Clément se font par-dessus, comme avant ;
+--   - plus loin que DisplayMotion.MaxDistance (au lieu d'ItemIdle.MaxDistance pour un objet qui flotte) : posé à
+--     FloatGap, immobile ; hors de l'écran : figé, comme avant.
+-- Tout reste local : le serveur ne déplace jamais l'objet (aucune physique, aucune propriété de collision changée).
+-- En plus :
+--   ItemIdleController.FloatMotion(t, phase, since?) -> (hauteur, angle)
+--       Hauteur au-dessus de la pose flottante (flottement + saut, studs) et angle du tour (radians, 0 à 2π) à
+--       l'instant t, `since` secondes après l'encaissement (nil : aucun).
+--   ItemIdleController.Hop(model) -> boolean   tour et sauts de l'objet exposé `model` (false s'il n'est pas suivi).
+--   ItemIdleController.WithRest(model, fn)     appelle fn() avec les pièces de `model` à leur place de repos (copie
+--       de l'objet pour le socle « BEST ITEM », VfxController), puis les replace aussitôt.
+--   ItemIdleController.GetPose(model) -> { Lift: number, Phase: number, Spinning: boolean }?   pour les tests.
 
 local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -67,6 +90,10 @@ local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local ItemIdle = require(Shared:WaitForChild("Config"):WaitForChild("ItemIdle"))
+-- a317 : facultatif (bancs plus anciens : sans lui, comme avant).
+local motionModule = Shared:WaitForChild("Config"):FindFirstChild("DisplayMotion")
+local DisplayMotion: any = if motionModule and motionModule:IsA("ModuleScript") then require(motionModule) :: any else nil
+local FLOAT: boolean = DisplayMotion ~= nil and DisplayMotion.Enabled == true
 local Attributes = require(Shared:WaitForChild("Contract"):WaitForChild("Attributes"))
 local Models = require(Shared:WaitForChild("Contract"):WaitForChild("Models"))
 
@@ -76,6 +103,7 @@ local HALO_PART = "RarityHalo"
 local BILLBOARD_POINT = "BillboardPoint"
 
 local IDLE_ATTRIBUTE: string = Attributes.Idle.Name
+local SLOT_ATTRIBUTE = "DisplaySlot" -- a317 : numéro du présentoir (DisplayService)
 local SPIN_PREFIX: string = Models.Item.SpinPrefix or "Spin_"
 local WAVE_PREFIX: string = Models.Item.WavePrefix or "Wave_"
 local TAU = 2 * math.pi
@@ -102,6 +130,7 @@ type PartEntry = {
 	part: BasePart,
 	rest: CFrame,
 	piece: Piece?, -- pièce mobile la plus proche qui la contient (ou elle-même)
+	halo: boolean, -- a317 : pièce du halo (RarityHalo) : suit seulement la hauteur du flottement
 }
 
 -- Point d'accroche du billboard de DisplayService, gardé à sa place de repos.
@@ -132,6 +161,14 @@ type Entry = {
 	moved: boolean, -- des pièces sont hors de leur position de repos
 	dirty: boolean, -- pièces ajoutées ou retirées : à reconstruire
 	connections: { RBXScriptConnection },
+	-- a317 (L-304 point 3) : flottement de tous les objets exposés (Config/DisplayMotion).
+	float: boolean,
+	lift: number, -- hauteur ajoutée au repos : bas de la boîte à FloatGap au-dessus du présentoir
+	axis: CFrame, -- axe du tour : centre de la boîte en X et Z, à la hauteur du pivot
+	axisInverse: CFrame,
+	floatPhase: number, -- (DisplaySlot − 1) × PhaseStep
+	collectAt: number?, -- clock de l'encaissement de sa plaque (tour et sauts en cours)
+	parked: boolean, -- posé à la hauteur du flottement, immobile (au loin)
 }
 
 local ItemIdleController = {}
@@ -165,6 +202,27 @@ end
 -- d'avant, et reste précis même après des heures (t grandit, la fraction de période non).
 function ItemIdleController.WaveAngle(t: number): number
 	return WAVE_AMPLITUDE * math.sin((t / ItemIdle.WavePeriod % 1) * TAU)
+end
+
+-- a317 : flottement (sinus de BobPeriod, décalé de `phase` rad) et, `since` s après l'encaissement de la plaque, saut
+-- (une parabole par saut, chacun HopDecay × le précédent) et tour (Quad Out) pendant SpinTime s : formules de
+-- collect_motion_proto.luau. Sans Config/DisplayMotion : (0, 0).
+function ItemIdleController.FloatMotion(t: number, phase: number, since: number?): (number, number)
+	local spec = DisplayMotion
+	if spec == nil then
+		return 0, 0
+	end
+	local height = spec.BobHeight * math.sin((t / spec.BobPeriod % 1) * TAU + phase)
+	local angle = 0
+	if since ~= nil and since >= 0 and since < spec.SpinTime then
+		local a = since / spec.SpinTime
+		angle = (1 - (1 - a) * (1 - a)) * TAU
+		local k = a * spec.Hops
+		local which = math.floor(k)
+		local f = k - which
+		height += spec.HopHeight * (spec.HopDecay ^ which) * 4 * f * (1 - f)
+	end
+	return height, angle
 end
 
 ------------------------------------------------------------------------------
@@ -243,7 +301,8 @@ local function build(model: Model): Entry?
 			depths[descendant] = pieceDepth(descendant, model)
 		end
 	end
-	if mode == nil and #movers == 0 then
+	local float = FLOAT -- a317 : tous les objets exposés flottent
+	if mode == nil and #movers == 0 and not float then
 		return nil
 	end
 	table.sort(movers, function(a: Instance, b: Instance): boolean
@@ -273,11 +332,29 @@ local function build(model: Model): Entry?
 	local partList: { BasePart } = {}
 	local restList: { CFrame } = {}
 	local points: { PointEntry } = {}
+	-- a317 : avec le flottement, toutes les pièces bougent, halo compris (il suit seulement la hauteur).
+	local pivot = model:GetPivot()
+	local minY: number, minX: number, maxX: number, minZ: number, maxZ: number = math.huge, math.huge, -math.huge, math.huge, -math.huge
 	for _, descendant in descendants do
 		local piece = pieceOf(descendant, model, piecesOf)
-		if descendant:IsA("BasePart") and not inHalo(descendant, model) and (mode ~= nil or piece ~= nil) then
+		local halo = inHalo(descendant, model)
+		if descendant:IsA("BasePart") and (if halo then float else (float or mode ~= nil or piece ~= nil)) then
 			local part = descendant :: BasePart
-			table.insert(parts, { part = part, rest = part.CFrame, piece = piece })
+			if float and not halo and part.Transparency < 1 then
+				-- Boîte des pièces visibles dans le repère du pivot (comme DisplayService.fitFactor).
+				local half = part.Size / 2
+				for sx = -1, 1, 2 do
+					for sy = -1, 1, 2 do
+						for sz = -1, 1, 2 do
+							local p = pivot:PointToObjectSpace(part.CFrame * Vector3.new(half.X * sx, half.Y * sy, half.Z * sz))
+							minY = math.min(minY, p.Y)
+							minX, maxX = math.min(minX, p.X), math.max(maxX, p.X)
+							minZ, maxZ = math.min(minZ, p.Z), math.max(maxZ, p.Z)
+						end
+					end
+				end
+			end
+			table.insert(parts, { part = part, rest = part.CFrame, piece = if halo then nil else piece, halo = halo })
 			table.insert(partList, part)
 			table.insert(restList, part.CFrame)
 			for _, child in part:GetChildren() do
@@ -294,14 +371,20 @@ local function build(model: Model): Entry?
 		end
 	end
 
-	local pivot = model:GetPivot()
 	local position = pivot.Position
 	-- Rayon des pièces animées autour du pivot (une pièce Spin_ ou Wave_ tourne autour d'un pivot du
-	-- modèle : elle reste dans cette sphère, à BobHeight près).
-	local radius = ItemIdle.BobHeight
+	-- modèle : elle reste dans cette sphère, à BobHeight près ; a317 : et au flottement près).
+	local extra = ItemIdle.BobHeight + (if float then DisplayMotion.Headroom else 0)
+	local radius = extra
 	for _, part in partList do
-		radius = math.max(radius, (part.Position - position).Magnitude + part.Size.Magnitude / 2 + ItemIdle.BobHeight)
+		radius = math.max(radius, (part.Position - position).Magnitude + part.Size.Magnitude / 2 + extra)
 	end
+	-- a317 : pose flottante (aucune pièce visible : le pivot sert de bas de boîte et d'axe).
+	local seenBox = minY < math.huge
+	local lift = if float then DisplayMotion.FloatGap - (if seenBox then minY else 0) else 0
+	local axis = if seenBox then pivot * CFrame.new(((minX :: number) + (maxX :: number)) / 2, 0, ((minZ :: number) + (maxZ :: number)) / 2) else pivot
+	local slot = model:GetAttribute(SLOT_ATTRIBUTE)
+	local floatPhase = if float and type(slot) == "number" and slot == slot then (slot - 1) * DisplayMotion.PhaseStep else 0
 	local targets: { CFrame } = table.clone(restList) -- même taille, réécrite à chaque pose
 	return {
 		model = model,
@@ -323,20 +406,50 @@ local function build(model: Model): Entry?
 		moved = false,
 		dirty = false,
 		connections = {},
+		float = float,
+		lift = lift,
+		axis = axis,
+		axisInverse = axis:Inverse(),
+		floatPhase = floatPhase,
+		collectAt = nil,
+		parked = false,
 	}
 end
 
--- Replace toutes les pièces à l'instant t.
-local function apply(entry: Entry, t: number)
+-- Replace toutes les pièces à l'instant t. a317 : `still` : pose immobile (flottement à sa hauteur de repos, Idle et
+-- pièces Spin_ / Wave_ à leur pose de départ), pour un objet au loin.
+local function apply(entry: Entry, t: number, still: boolean?)
 	local time = t + entry.phase
-	local angle, height = ItemIdleController.ModelMotion(entry.mode, time)
+	local angle, height = 0, 0
+	if not still then
+		angle, height = ItemIdleController.ModelMotion(entry.mode, time)
+	end
 	local whole = CFrame.identity
 	if angle ~= 0 or height ~= 0 then
 		whole = entry.pivot * CFrame.new(0, height, 0) * CFrame.Angles(0, angle, 0) * entry.pivotInverse
 	end
+	-- a317 : flottement, tour et sauts, par-dessus l'Idle ; `shift` (hauteur seule) pour le halo et le billboard.
+	local shift = CFrame.identity
+	if entry.float then
+		local rise, spin = entry.lift, 0
+		if not still then
+			local at = entry.collectAt
+			local since = if at then t - at else nil
+			if since and since >= DisplayMotion.SpinTime then
+				entry.collectAt = nil
+				since = nil
+			end
+			local h, a = ItemIdleController.FloatMotion(t, entry.floatPhase, since)
+			rise += h
+			spin = a
+		end
+		shift = CFrame.new(0, rise, 0)
+		local floated = if spin ~= 0 then shift * entry.axis * CFrame.Angles(0, spin, 0) * entry.axisInverse else shift
+		whole = floated * whole
+	end
 	-- Même angle pour toutes les pièces d'une sorte : celles de la patte bougent d'un bloc.
-	local spinTurn = CFrame.Angles(0, ItemIdleController.PieceAngle(time), 0)
-	local waveTurn = CFrame.Angles(0, ItemIdleController.WaveAngle(time), 0)
+	local spinTurn = if still then CFrame.identity else CFrame.Angles(0, ItemIdleController.PieceAngle(time), 0)
+	local waveTurn = if still then CFrame.identity else CFrame.Angles(0, ItemIdleController.WaveAngle(time), 0)
 	for _, piece in entry.pieces do
 		local base = if piece.parent then piece.parent.current else whole
 		local turn = if piece.wave then waveTurn else spinTurn
@@ -345,15 +458,16 @@ local function apply(entry: Entry, t: number)
 	local targets = entry.targets
 	for index, entryPart in entry.parts do
 		local piece = entryPart.piece
-		local move = if piece then piece.current else whole
+		local move = if entryPart.halo then shift elseif piece then piece.current else whole
 		targets[index] = move * entryPart.rest
 	end
 	-- Vague 39 : toutes les pièces d'un coup (une écriture de CFrame par pièce coûtait le plus cher).
 	Workspace:BulkMoveTo(entry.partList, targets, Enum.BulkMoveMode.FireCFrameChanged)
 	for _, point in entry.points do
-		point.attachment.CFrame = targets[point.holder]:ToObjectSpace(point.restWorld)
+		point.attachment.CFrame = targets[point.holder]:ToObjectSpace(shift * point.restWorld)
 	end
 	entry.moved = true
+	entry.parked = still == true
 end
 
 local function restore(entry: Entry)
@@ -362,6 +476,7 @@ local function restore(entry: Entry)
 		point.attachment.CFrame = point.restLocal
 	end
 	entry.moved = false
+	entry.parked = false
 end
 
 -- Vague 39 : la sphère de l'objet (center, radius + ScreenMargin) coupe le champ de la caméra.
@@ -390,9 +505,18 @@ end
 -- Distance et écran : `active` (animé), `far` (cadence réduite) ; repos au-delà de MaxDistance.
 local function evaluate(entry: Entry, camera: Camera?)
 	local distance = if camera then (entry.center - camera.CFrame.Position).Magnitude else math.huge
-	local near = distance <= ItemIdle.MaxDistance
-	if not near and entry.moved then
-		restore(entry)
+	-- a317 : un objet qui flotte est animé jusqu'à DisplayMotion.MaxDistance (au moins ItemIdle.MaxDistance), puis
+	-- posé à la hauteur de son flottement, immobile (pas redescendu sur le présentoir).
+	local limit = if entry.float then math.max(ItemIdle.MaxDistance, DisplayMotion.MaxDistance) else ItemIdle.MaxDistance
+	local near = distance <= limit
+	if not near then
+		if entry.float then
+			if not entry.parked then
+				apply(entry, clock, true)
+			end
+		elseif entry.moved then
+			restore(entry)
+		end
 	end
 	local far = distance > ItemIdle.NearDistance
 	if far and not entry.far then
@@ -492,6 +616,41 @@ local function onHeartbeat(dt: number)
 			apply(entry, clock)
 		end
 	end
+end
+
+-- a317 : tour et sauts de l'objet exposé `model` à l'encaissement de sa plaque (DisplayController).
+function ItemIdleController.Hop(model: Instance): boolean
+	local entry = if model:IsA("Model") then entries[model :: Model] else nil
+	if entry == nil or not entry.float then
+		return false
+	end
+	entry.collectAt = clock
+	return true
+end
+
+-- a317 : `fn` voit les pièces de `model` à leur place de repos (une copie faite là n'emporte ni le flottement ni le
+-- tour) ; elles sont replacées aussitôt, dans la même image.
+function ItemIdleController.WithRest(model: Instance, fn: () -> ())
+	local entry = if model:IsA("Model") then entries[model :: Model] else nil
+	if entry == nil or not entry.moved then
+		fn()
+		return
+	end
+	local parked = entry.parked
+	restore(entry)
+	local ok, err = pcall(fn :: any)
+	apply(entry, clock, parked)
+	if not ok then
+		error(err, 0)
+	end
+end
+
+function ItemIdleController.GetPose(model: Instance): { Lift: number, Phase: number, Spinning: boolean }?
+	local entry = if model:IsA("Model") then entries[model :: Model] else nil
+	if entry == nil then
+		return nil
+	end
+	return { Lift = entry.lift, Phase = entry.floatPhase, Spinning = entry.collectAt ~= nil }
 end
 
 function ItemIdleController.GetStats(): { Tracked: number, Animated: number }

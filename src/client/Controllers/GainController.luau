@@ -78,6 +78,11 @@
 --       jusqu'au compteur du HUD de `kind` ("Speed"), qui pulse à l'arrivée (sans retenir son nombre : l'appelant ne
 --       dit pas ce qu'il ajoute) ; false s'il n'a pas pu voler (animations réduites, rien à l'écran…).
 --   GainController.NoteBubble(gain)   vague 65 : la prochaine hausse de Speed contient `gain` venu d'une bulle (BubbleGone).
+--   a317 (L-299, Config/CashFlash ; détail dans la section « jus » d'une plaque) : voile UI_CashFlash, compteur retenu
+--   jusqu'au premier billet 3D, CashRow qui grossit et son Cash_Pad à chaque plaque vidée par le joueur local.
+--   GainController.FlashRank(précédent, depuis) -> number   rang de la plaque dans la tournée
+--   GainController.FlashGoal(posée, rang) -> number         transparence d'une bande du voile au plus fort
+--   GainController.GetPadState() -> { Rank, Notes, Waiting, FlashToken }   pour les bancs
 -- Pour un test dans Studio (barre de commande côté client) :
 --   GainController.GetActive() -> { Gains: number, Flyers: number, Pops: number, Bills: number, IncomeFlies: number, TrainFlies: number }
 --   GainController.Superscript(text) -> string   « ×2 » en exposant Unicode (a178)
@@ -1055,6 +1060,311 @@ local function onInventory()
 	end
 end
 
+------------------------------------------------------------------------------
+-- a317 (L-299) : le « jus » d'une plaque vidée par le joueur local (Config/CashFlash)
+------------------------------------------------------------------------------
+-- À chaque plaque CollectPad_xx vidée par le joueur local (DisplayController.OnCollect) :
+--   1. voile UI_CashFlash (EdgeGlow.Top, Bottom, Left, Right de Clément) : chaque bande va de sa transparence du moment
+--      à FlashGoal(posée, n) en InTime, tient HoldTime, revient à 1 en OutTime, puis l'écran s'éteint ; n = FlashRank ;
+--      pas de voile avec les animations réduites (VISUAL EFFECTS sur OFF ou « Réduire les mouvements » de Roblox) ;
+--   2. la hausse de Cash (retenue par onCash, comme toute hausse) n'est relâchée qu'à l'arrivée du premier billet 3D au
+--      compteur (VfxController.OnCollectLanded) : elle défile en RollTime (HudController.SetNextCashRoll), CashRow grossit
+--      (PopScale en PopUpTime, retour en PopDownTime) et Sound (Cash_Pad) part, PlaybackSpeed × (1 ± PitchJitter) ;
+--      Cash_Collect n'est plus joué ; « +$X » au-dessus du joueur comme avant. Sans billets : tout de suite.
+-- La hausse de Cash et le remote de la plaque arrivent dans un ordre non garanti : une hausse de CashCollected attend
+-- au plus MatchWindow s une plaque vue ; sans elle (encaissement automatique, gains hors ligne) : comme avant.
+
+local cashFlashModule = Shared:WaitForChild("Config"):FindFirstChild("CashFlash")
+local CashFlash: any = if cashFlashModule and cashFlashModule:IsA("ModuleScript") then require(cashFlashModule) :: any else nil
+local FLASH_ON: boolean = CashFlash ~= nil and CashFlash.Enabled == true
+local FLASH_IN_INFO: TweenInfo = TweenInfo.new(if CashFlash then CashFlash.InTime else 0, Enum.EasingStyle.Quad, Enum.EasingDirection.Out) -- sans Config/CashFlash : jamais joué
+local FLASH_OUT_INFO: TweenInfo = TweenInfo.new(if CashFlash then CashFlash.OutTime else 0, Enum.EasingStyle.Quad, Enum.EasingDirection.In) -- sans Config/CashFlash : jamais joué
+local PAD_ROLL_INFO: TweenInfo = TweenInfo.new(if CashFlash then CashFlash.RollTime else 0, Enum.EasingStyle.Quad, Enum.EasingDirection.Out) -- sans Config/CashFlash : jamais joué
+local PAD_POP_UP_INFO: TweenInfo = TweenInfo.new(if CashFlash then CashFlash.PopUpTime else 0, Enum.EasingStyle.Quad, Enum.EasingDirection.Out) -- sans Config/CashFlash : jamais joué
+local PAD_POP_DOWN_INFO: TweenInfo = TweenInfo.new(if CashFlash then CashFlash.PopDownTime else 0, Enum.EasingStyle.Quad, Enum.EasingDirection.Out) -- sans Config/CashFlash : jamais joué
+local PAD_SCALE = "CashPadScale" -- V0 proposé : UIScale passager posé sur CashRow (détruit à la fin)
+
+-- Plaque vue (remote CashCollect du joueur local) : `landed` à l'arrivée de son premier billet, `claimed` quand une
+-- hausse de Cash lui est attribuée, `onLand` appelé à l'arrivée.
+type PadNote = { at: number, landed: boolean, claimed: boolean, onLand: (() -> ())? }
+-- Hausse de CashCollected qui attend sa plaque (au plus MatchWindow s).
+type PadWait = { total: number, releases: { () -> () }, done: boolean }
+
+local padNotes: { PadNote } = {}
+local padWaits: { PadWait } = {}
+local vfxLands = false -- VfxController.OnCollectLanded branché (sinon les billets ne retiennent rien)
+local flashRank = 0
+local flashLastAt = -math.huge
+local flashToken = 0
+local flashPeaks: { [GuiObject]: number } = setmetatable({}, { __mode = "k" }) :: any -- transparence posée par Clément
+local padPopToken = 0
+local markerSounds: any = nil -- Shared/Anim/MarkerSounds (son Cash_Pad, hauteur au hasard)
+local classic: (total: number, releases: { () -> () }, fromPad: boolean) -> () -- après classify (plus bas)
+
+-- Rang de la plaque dans la tournée : 1 à la première, +1 si la précédente date de moins de RankWindow s.
+function GainController.FlashRank(previous: number, sinceLast: number): number
+	local window = if CashFlash then CashFlash.RankWindow else 2
+	if previous >= 1 and sinceLast >= 0 and sinceLast < window then
+		return previous + 1
+	end
+	return 1
+end
+
+-- Transparence d'une bande au plus fort du voile : posée + (1 − posée) × Strength × (1 − clamp((n − 1)/RankSpan, 0, 1)).
+function GainController.FlashGoal(peak: number, rank: number): number
+	local strength = if CashFlash then CashFlash.Strength else 0.45
+	local span = if CashFlash then CashFlash.RankSpan else 7
+	local k = math.clamp((rank - 1) / span, 0, 1)
+	return peak + (1 - peak) * strength * (1 - k)
+end
+
+local function flashReduced(): boolean
+	local settings = SettingsConfig
+	if settings and type(settings.VfxReduced) == "function" then
+		local ok, reduced = pcall(settings.VfxReduced, localPlayer)
+		if ok and reduced == true then
+			return true
+		end
+	end
+	local ok, value = pcall(function(): any
+		return (game:GetService("GuiService") :: any).ReducedMotionEnabled
+	end)
+	return ok and value == true
+end
+
+-- Bandes du voile et leur transparence posée (lue une fois par bande, puis la bande est mise à 1).
+local function flashBands(): (ScreenGui?, { [GuiObject]: number })
+	local gui = playerGui()
+	local screen = if gui then gui:FindFirstChild(CashFlash.Screen) else nil
+	if screen == nil or not screen:IsA("ScreenGui") then
+		warnOnce("cashFlash", `[Gains] {CashFlash.Screen} absent : pas de voile à l'encaissement d'une plaque`)
+		return nil, {}
+	end
+	local container = screen:FindFirstChild(CashFlash.Container)
+	local bands: { [GuiObject]: number } = {}
+	for _, name in CashFlash.Bands do
+		local band = if container then container:FindFirstChild(name) else nil
+		if band and band:IsA("GuiObject") then
+			local object = band :: GuiObject
+			local peak = flashPeaks[object]
+			if peak == nil then
+				peak = object.BackgroundTransparency
+				flashPeaks[object] = peak
+				object.BackgroundTransparency = 1
+			end
+			bands[object] = peak :: number
+		end
+	end
+	return screen :: ScreenGui, bands
+end
+
+local function flashVeil(rank: number)
+	if flashReduced() then
+		return
+	end
+	local screen, bands = flashBands()
+	if screen == nil or next(bands) == nil then
+		return
+	end
+	flashToken += 1
+	local mine = flashToken
+	screen.Enabled = true
+	for band, peak in bands do
+		TweenService:Create(band, FLASH_IN_INFO, { BackgroundTransparency = GainController.FlashGoal(peak, rank) }):Play()
+	end
+	task.delay(CashFlash.InTime + CashFlash.HoldTime, function()
+		if mine ~= flashToken then
+			return -- une autre plaque a relancé le voile
+		end
+		for band in bands do
+			TweenService:Create(band, FLASH_OUT_INFO, { BackgroundTransparency = 1 }):Play()
+		end
+		task.delay(CashFlash.OutTime + CashFlash.OffDelay, function()
+			if mine == flashToken and screen.Parent ~= nil then
+				screen.Enabled = false
+			end
+		end)
+	end)
+end
+
+-- CashRow grossit (PopScale en PopUpTime) puis revient à 1 (PopDownTime) ; un autre UIScale déjà là (celui de
+-- Clément, ou un sursaut de Motion.Pop en cours) : le sursaut habituel à la place.
+local function padPop(refs: HudRefs?)
+	if refs == nil then
+		return
+	end
+	local row = refs.row
+	local scale = row:FindFirstChild(PAD_SCALE)
+	if scale == nil or not scale:IsA("UIScale") then
+		if row:FindFirstChildOfClass("UIScale") ~= nil then
+			bump(refs)
+			return
+		end
+		local created = Instance.new("UIScale")
+		created.Name = PAD_SCALE
+		created.Parent = row
+		scale = created
+	end
+	local uiScale = scale :: UIScale
+	padPopToken += 1
+	local mine = padPopToken
+	local up = TweenService:Create(uiScale, PAD_POP_UP_INFO, { Scale = CashFlash.PopScale })
+	up.Completed:Connect(function()
+		if mine ~= padPopToken then
+			return
+		end
+		local down = TweenService:Create(uiScale, PAD_POP_DOWN_INFO, { Scale = 1 })
+		down.Completed:Connect(function(state: Enum.PlaybackState)
+			if mine == padPopToken and state == Enum.PlaybackState.Completed then
+				uiScale:Destroy()
+			end
+		end)
+		down:Play()
+	end)
+	up:Play()
+end
+
+local function padSound()
+	local name: string = CashFlash.Sound
+	local sounds: any = markerSounds
+	local find: any = if sounds then sounds.find else nil
+	local playSound: any = if sounds then sounds.playSound else nil
+	if find ~= nil and playSound ~= nil then
+		local ok, found = pcall(find :: any, name)
+		local template: any = if ok then found else nil
+		if template ~= nil then
+			local played: any = (playSound :: any)(template, nil)
+			if played then
+				local jitter: number = CashFlash.PitchJitter
+				local base: number = template.PlaybackSpeed
+				played.PlaybackSpeed = base * (1 + (random:NextNumber() * 2 - 1) * jitter)
+			end
+			return
+		end
+		warnOnce("padSound", `[Gains] son {name} absent d'Assets/Sounds : plaque muette`)
+		return
+	end
+	Motion.PlaySound(name) -- sans MarkerSounds : même son, sans hauteur au hasard
+end
+
+-- La hausse d'une plaque : « +$X » au-dessus du joueur tout de suite, compteur, sursaut et son à l'arrivée du premier
+-- billet d'une des plaques `notes` (ou au bout de LandTimeout s).
+local function padJuice(total: number, releases: { () -> () }, notes: { PadNote })
+	showGain(CASH, total)
+	local fired = false
+	local function go()
+		if fired then
+			return
+		end
+		fired = true
+		local api: any = hud
+		if api and type(api.SetNextCashRoll) == "function" then
+			pcall(api.SetNextCashRoll, PAD_ROLL_INFO)
+		end
+		releaseAll(releases)
+		local refs = hudRefs()
+		padPop(refs)
+		padSound()
+	end
+	for _, note in notes do
+		note.claimed = true
+		if note.landed then
+			go()
+			return
+		end
+		note.onLand = go
+	end
+	task.delay(CashFlash.LandTimeout, go)
+end
+
+-- Plaques vues depuis moins de MatchWindow s, pas encore attribuées.
+local function claimNotes(): { PadNote }
+	local now = os.clock()
+	local found: { PadNote } = {}
+	for _, note in padNotes do
+		if not note.claimed and now - note.at <= CashFlash.MatchWindow then
+			note.claimed = true
+			table.insert(found, note)
+		end
+	end
+	return found
+end
+
+local function pruneNotes()
+	local now = os.clock()
+	local keep = CashFlash.MatchWindow + CashFlash.LandTimeout + 1
+	for index = #padNotes, 1, -1 do
+		local note = padNotes[index]
+		if (note.claimed and note.landed) or now - note.at > keep then
+			table.remove(padNotes, index)
+		end
+	end
+end
+
+-- Hausse de CashCollected (plaque, encaissement automatique ou gains hors ligne) : à une plaque vue, ou elle l'attend.
+local function padOrClassic(total: number, releases: { () -> () })
+	local notes = claimNotes()
+	if #notes > 0 then
+		padJuice(total, releases, notes)
+		return
+	end
+	local waiting: PadWait = { total = total, releases = releases, done = false }
+	table.insert(padWaits, waiting)
+	task.delay(CashFlash.MatchWindow, function()
+		if waiting.done then
+			return
+		end
+		waiting.done = true
+		local index = table.find(padWaits, waiting)
+		if index then
+			table.remove(padWaits, index)
+		end
+		classic(waiting.total, waiting.releases, true) -- aucune plaque : encaissement automatique, comme avant
+	end)
+end
+
+-- DisplayController.OnCollect : une de ses plaques vidée par le joueur local.
+local function onPadCollect()
+	local now = os.clock()
+	local rank = GainController.FlashRank(flashRank, now - flashLastAt)
+	flashRank = rank
+	flashLastAt = now
+	local ok, err = pcall(flashVeil :: any, rank)
+	if not ok then
+		warnOnce("cashFlashError", `[Gains] voile de la plaque : {err}`)
+	end
+	local note: PadNote = { at = now, landed = not vfxLands, claimed = false, onLand = nil }
+	pruneNotes()
+	table.insert(padNotes, note)
+	local waiting = padWaits[1]
+	if waiting then
+		table.remove(padWaits, 1)
+		waiting.done = true
+		padJuice(waiting.total, waiting.releases, { note })
+	end
+end
+
+-- VfxController.OnCollectLanded : premier billet d'une plaque arrivé (dans l'ordre des plaques).
+local function onPadLanded()
+	for _, note in padNotes do
+		if not note.landed then
+			note.landed = true
+			local callback = note.onLand
+			if callback then
+				note.onLand = nil
+				callback()
+			end
+			break
+		end
+	end
+	pruneNotes()
+end
+
+-- Pour les bancs : état du « jus » des plaques.
+function GainController.GetPadState(): { Rank: number, Notes: number, Waiting: number, FlashToken: number }
+	return { Rank = flashRank, Notes = #padNotes, Waiting = #padWaits, FlashToken = flashToken }
+end
+
 -- Fin d'image : les montées de Cash de l'image sont classées ensemble (voir l'en-tête).
 local function classify()
 	classifyQueued = false
@@ -1073,6 +1383,16 @@ local function classify()
 			table.insert(releases, rise.release)
 		end
 	end
+	-- a317 (L-299) : une hausse de CashCollected (hors gains hors ligne) va d'abord voir si c'est une plaque vidée.
+	if fromPad and FLASH_ON and not screenOpen(offline) then
+		padOrClassic(total, releases)
+		return
+	end
+	classic(total, releases, fromPad)
+end
+
+-- Classement d'avant a317 (toujours celui de l'encaissement automatique, des gains hors ligne, des récompenses…).
+function classic(total: number, releases: { () -> () }, fromPad: boolean)
 	-- Vague 59 (L-184 point 3) : récompense ou prime de l'index, jamais un revenu de la base (plaque, encaissement
 	-- automatique : CashCollected monte aussi ; gains hors ligne) : billets qui volent, avec ou sans FLY.Enabled.
 	if not fromPad and not screenOpen(offline) and (screenOpen(rewards) or indexOpen()) then
@@ -1515,6 +1835,26 @@ function GainController.Start()
 	rewards = sibling("RewardsController")
 	offline = sibling("OfflineController")
 	chase = sibling("ChaseController") -- vague 63 : aucun « +$/s » qui vole pendant une poursuite
+	-- a317 (L-299) : plaques vidées par le joueur local, et arrivée de leur premier billet au compteur.
+	if FLASH_ON then
+		local okSounds, sounds = pcall(function(): any
+			local anim = Shared:FindFirstChild("Anim")
+			local module = if anim then anim:FindFirstChild("MarkerSounds") else nil
+			return if module and module:IsA("ModuleScript") then require(module) :: any else nil
+		end)
+		markerSounds = if okSounds then sounds else nil
+		local vfx: any = sibling("VfxController")
+		local onLanded: any = if vfx then vfx.OnCollectLanded else nil
+		if type(onLanded) == "function" then
+			(onLanded :: any)(onPadLanded)
+			vfxLands = true
+		end
+		local display: any = sibling("DisplayController")
+		local onCollect: any = if display then display.OnCollect else nil
+		if type(onCollect) == "function" then
+			(onCollect :: any)(onPadCollect)
+		end
+	end
 	onInventory() -- première lecture : rien ne vole
 	localPlayer:GetAttributeChangedSignal(InventoryState.Attribute):Connect(onInventory)
 	for _, kind in { SPEED } do -- v2 : plus de banc, plus de « +X Power »

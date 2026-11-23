@@ -1589,5 +1589,20 @@ table.insert(UI.Screens, {
 		{ Path = "WheelButton.WheelAlert", Optional = true, Note = "pas de pastille pour le tour gratuit" },
 	} :: { Element },
 })
+-- a317 (L-299, Clément, 2026-11-23 ; tools/clement/cash_flash_build.luau) : voile vert sur les bords de l'écran à chaque
+-- plaque CollectPad_xx vidée par le joueur local (GainController, Config/CashFlash). Enabled = false au repos ; la
+-- BackgroundTransparency posée de chaque bande est le voile à son plus fort. Facultatif : sans lui, pas de voile.
+table.insert(UI.Screens, {
+	Name = "UI_CashFlash",
+	Class = "ScreenGui",
+	Optional = true,
+	Elements = {
+		{ Path = "EdgeGlow", Class = "GuiObject", Optional = true, Note = "pas de voile à l'encaissement d'une plaque" },
+		{ Path = "EdgeGlow.Top", Class = "GuiObject", Optional = true, Note = "pas de voile en haut de l'écran" },
+		{ Path = "EdgeGlow.Bottom", Class = "GuiObject", Optional = true, Note = "pas de voile en bas de l'écran" },
+		{ Path = "EdgeGlow.Left", Class = "GuiObject", Optional = true, Note = "pas de voile à gauche de l'écran" },
+		{ Path = "EdgeGlow.Right", Class = "GuiObject", Optional = true, Note = "pas de voile à droite de l'écran" },
+	} :: { Element },
+})
 
 return UI

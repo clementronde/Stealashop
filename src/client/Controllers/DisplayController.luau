@@ -15,6 +15,9 @@
 --     plaque enfoncée de son attribut SinkDepth, chez tous les joueurs qui ont la parcelle chargée ;
 --     chez le propriétaire, prévient aussi les écouteurs d'OnCollect. Le montant écrit sur la plaque
 --     (AmountGui/Amount) vient du serveur, visible par tous ;
+--     a317 (L-304 point 3, Q3 validée par Cantin le 23/11) : chez tous ces joueurs aussi, les objets exposés dont
+--     l'argent va sur cette plaque font un tour et deux sauts (ItemIdleController.Hop, Config/DisplayMotion) ; le voile,
+--     le compteur et le son (L-299, CashFlashController et GainController) restent au propriétaire, par OnCollect ;
 --   - anime en local les halos créés par le serveur : les rayons des objets Légendaire, Mythique
 --     et Secret tournent, l'arc-en-ciel du Secret défile. Rien n'est envoyé au serveur ;
 --   - téléphone (vague 39, a129 ; audit perf-telephone.md, correction 2 ; valeurs : Config/DisplayHalo) :
@@ -48,6 +51,7 @@
 --       d'inventaire de Clément). Le serveur vérifie tout et répond par Notify en cas de refus.
 --   DisplayController.FormatMoney(amount) -> string  Shared/Format.money : « $300 », « $12.4K », « $2M »
 --   DisplayController.GetOwnerPrompts() -> { Take = { [uid]: allumée }, Display = { [présentoir]: allumée } }
+--   DisplayController.ItemsOnPad(plot, padSlot) -> { Model }   a317 : objets exposés dont l'argent va sur cette plaque
 
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
@@ -86,6 +90,8 @@ local PLOT_INDEX_ATTRIBUTE = "PlotIndex"
 local OWNER_ATTRIBUTE = "OwnerUserId"
 -- Plaque de ramassage (contrat 10.4, L-091 point 5) et ses effets, posés par Clément.
 local PAD_FORMAT = "CollectPad_%02d"
+local PAD_PATTERN = "^CollectPad_(%d+)$" -- a317
+local DISPLAY_SLOT_ATTRIBUTE = "DisplaySlot" -- a317 : numéro du présentoir d'un objet exposé (DisplayService)
 local PLATE = "Plate"
 local BURST_POINT = "BurstPoint"
 local GLOW = "Glow"
@@ -170,6 +176,7 @@ local slotPrompts: { [Attachment]: SlotPrompt } = {}
 local slotPlot: Instance? = nil -- parcelle dont les présentoirs ont leur invite « Display »
 local slotConnection: RBXScriptConnection? = nil
 local promptClock = 0
+local itemIdle: any = nil -- a317 : ItemIdleController (Hop), cherché au premier encaissement
 
 local function subscribe<T>(list: { T }, listener: T): () -> ()
 	table.insert(list, listener)
@@ -319,6 +326,86 @@ local function burst(pad: Instance): Vector3
 	return position
 end
 
+-- a317 (L-304 point 3) : numéros des plaques CollectPad_xx d'une parcelle, relus au plus toutes les PAD_CACHE_TIME s.
+type PadCache = { at: number, pads: { [number]: boolean }, lowest: number? }
+local padCache: { [Instance]: PadCache } = setmetatable({}, { __mode = "k" }) :: any
+local PAD_CACHE_TIME = 10 -- V0 proposé, absent du doc : secondes
+
+local function padsOf(plot: Instance): PadCache
+	local cached = padCache[plot]
+	local now = os.clock()
+	if cached and now - cached.at < PAD_CACHE_TIME then
+		return cached
+	end
+	local pads: { [number]: boolean } = {}
+	local lowest: number? = nil
+	for _, descendant in plot:GetDescendants() do
+		local digits = string.match(descendant.Name, PAD_PATTERN)
+		local n = if digits then tonumber(digits) else nil
+		if n then
+			pads[n] = true
+			if lowest == nil or n < lowest then
+				lowest = n
+			end
+		end
+	end
+	local fresh: PadCache = { at = now, pads = pads, lowest = lowest }
+	padCache[plot] = fresh
+	return fresh
+end
+
+-- a317 : objets exposés de `plot` dont l'argent va sur la plaque `padSlot` : celle de leur présentoir, sinon celle au
+-- plus petit numéro (comme DisplayService.padSlotFor).
+function DisplayController.ItemsOnPad(plot: Instance, padSlot: number): { Model }
+	local result: { Model } = {}
+	local cache: PadCache? = nil
+	for _, model in CollectionService:GetTagged(DISPLAY_TAG) do
+		if not model:IsA("Model") or not model:IsDescendantOf(plot) then
+			continue
+		end
+		local slot = model:GetAttribute(DISPLAY_SLOT_ATTRIBUTE)
+		if type(slot) ~= "number" then
+			continue
+		end
+		local target = slot
+		if slot ~= padSlot then
+			local pads = cache or padsOf(plot)
+			cache = pads
+			if not pads.pads[slot] then
+				target = pads.lowest or slot
+			end
+		end
+		if target == padSlot then
+			table.insert(result, model :: Model)
+		end
+	end
+	return result
+end
+
+-- a317 : tour et sauts des objets de la plaque vidée (ItemIdleController.Hop), chez tous les joueurs (L-304 Q3,
+-- validé par Cantin le 23/11).
+local function hopItems(plot: Instance, padSlot: number)
+	local idle: any = itemIdle
+	if idle == nil then
+		local module = script.Parent:FindFirstChild("ItemIdleController")
+		if module == nil or not module:IsA("ModuleScript") then
+			return
+		end
+		local ok, result = pcall(require, module)
+		if not ok or type(result) ~= "table" then
+			return
+		end
+		idle = result
+		itemIdle = result
+	end
+	if type(idle.Hop) ~= "function" then
+		return
+	end
+	for _, model in DisplayController.ItemsOnPad(plot, padSlot) do
+		(idle.Hop :: any)(model)
+	end
+end
+
 local function onCashCollect(plotIndex: number, slotIndex: number, amount: number)
 	local plot = plotByIndex(plotIndex)
 	local pad = if plot then plot:FindFirstChild(string.format(PAD_FORMAT, slotIndex), true) else nil
@@ -329,6 +416,12 @@ local function onCashCollect(plotIndex: number, slotIndex: number, amount: numbe
 			position = result
 		elseif IS_STUDIO then
 			warn(`[DisplayController] gerbe de {pad:GetFullName()} : {result}`)
+		end
+	end
+	if plot then
+		local ok, err = pcall(hopItems :: any, plot, slotIndex) -- :: any : sans lui, l'ancien solveur croit que pcall ne renvoie qu'une valeur
+		if not ok and IS_STUDIO then
+			warn(`[DisplayController] tour des objets de la plaque {slotIndex} : {err}`)
 		end
 	end
 	if plot and plot:GetAttribute(OWNER_ATTRIBUTE) == localPlayer.UserId then

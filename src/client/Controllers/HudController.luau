@@ -64,6 +64,9 @@
 -- API (client) :
 --   HudController.HoldCash(base) -> relâcher
 --       Cash montre `base` jusqu'à l'appel de `relâcher` (voir plus bas, L-091 point 3).
+--   HudController.SetNextCashRoll(info)
+--       a317 (L-299) : à la prochaine écriture de Cash (dans la seconde qui suit, au relâchement), la hausse défile en `info`
+--       (plaque vidée : ~0,3 s, Config/CashFlash.RollTime) au lieu d'UiMotion.Roll. Une seule fois.
 --   HudController.HoldSpeed(base) -> relâcher
 --       Vague 64 (a213) : pareil pour le nombre Speed (le « +X » du tapis qui vole jusqu'à lui, GainController).
 --   HudController.IsHeistTimerShown() -> boolean
@@ -258,6 +261,8 @@ local incomeSeen: any = nil -- dernière valeur d'Income traitée par ce contrô
 local incomeTracked = false -- incomeSeen suit l'attribut (Start est passé)
 -- Retenues de l'argent (HoldCash) : chacune garde l'argent d'avant un gain qui vole vers le compteur.
 local cashHolds: { IncomeHold } = {}
+-- a317 (L-299) : défilement du prochain relâchement de l'argent (SetNextCashRoll), valable jusqu'à expiresAt.
+local nextCashRoll: { info: TweenInfo, expiresAt: number }? = nil
 -- Vague 64 (a213) : retenues du nombre Speed (HoldSpeed), comme celles de l'argent.
 local speedHolds: { IncomeHold } = {}
 
@@ -365,6 +370,14 @@ local function writeStat(stat: Stat)
 			info = SPENT_INFO
 			showSpent(current, previous - value)
 		end
+		-- a317 (L-299) : hausse de l'argent au relâchement d'une plaque vidée : défilement de SetNextCashRoll.
+		local roll = nextCashRoll
+		if stat == CASH_STAT and roll ~= nil then
+			nextCashRoll = nil
+			if os.clock() <= roll.expiresAt and previous ~= nil and value > previous then
+				info = roll.info
+			end
+		end
 		Motion.Roll(label, previous, value, stat.Write, info)
 		current.written[stat] = value
 	else
@@ -424,6 +437,10 @@ function HudController.HoldCash(base: number): () -> ()
 			writeStat(CASH_STAT)
 		end
 	end
+end
+
+function HudController.SetNextCashRoll(info: TweenInfo)
+	nextCashRoll = { info = info, expiresAt = os.clock() + 1 }
 end
 
 -- Vague 64 (a213) : comme HoldCash, pour le nombre Speed : il montre `base` (la Speed affichée d'avant un gain du tapis)
