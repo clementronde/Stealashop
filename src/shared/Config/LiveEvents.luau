@@ -75,19 +75,19 @@ local EffectIds = { "Income", "ShelfLuck", "TruckDelay", "PotionDelay", "WindowH
 local Formats: { Format } = {
 	-- Le rendez-vous du samedi 16 h : ×2 revenus pour tous, camion toutes les 2 à 3 min (8 à 12 min × 0,25).
 	-- Un admin distribue des colis dans le hub avec le panel (GiveBox), rien d'automatique.
-	{ Id = "AdminAbuse", DisplayName = "ADMIN ABUSE", Effect = "x2 cash for everyone, trucks every 2-3 min", Duration = 30 * 60, Effects = { Income = 2, TruckDelay = 0.25 } },
+	{ Id = "AdminAbuse", DisplayName = "ADMIN ABUSE", Effect = "×2 cash for everyone, trucks every 2-3 min", Duration = 30 * 60, Effects = { Income = 2, TruckDelay = 0.25 } },
 	-- Chance ×3 : la chance tirée à chaque ouverture de colis de rayon est triplée.
-	{ Id = "LuckRush", DisplayName = "LUCK x3", Effect = "x3 luck on every shelf box", Duration = 15 * 60, Effects = { ShelfLuck = 3 } },
+	{ Id = "LuckRush", DisplayName = "LUCK ×3", Effect = "×3 luck on every shelf box", Duration = 15 * 60, Effects = { ShelfLuck = 3 } },
 	-- Nuit des soldes (Partie 2, section 5) : vitrines PNJ à −50 % de PV.
 	{ Id = "SaleNight", DisplayName = "SALE NIGHT", Effect = "Store windows at half health", Duration = 10 * 60, Effects = { WindowHealth = 0.5 } },
 	-- Pluie de potions : 5 fois plus fréquentes.
-	{ Id = "PotionRain", DisplayName = "POTION RAIN", Effect = "Potions spawn 5x more often", Duration = 10 * 60, Effects = { PotionDelay = 0.2 } },
+	{ Id = "PotionRain", DisplayName = "POTION RAIN", Effect = "Potions spawn 5× more often", Duration = 10 * 60, Effects = { PotionDelay = 0.2 } },
 	-- Pluie d'objets (vague 58, a188 ; L-170 Q7, Clément : à la place de la pluie de colis) : aucun facteur, des objets
 	-- tombent dans la rue du couloir. ItemRainService lit l'attribut LiveEvent ; valeurs : Config/ItemRain. Lancée
 	-- par un admin (StartEvent), jamais au planning.
 	{ Id = "ItemRain", DisplayName = "ITEM RAIN", Effect = "Items fall from the sky in the street: grab them!", Duration = 15 * 60, Effects = {} },
 	-- Week-end ×2 entraînement : samedi et dimanche.
-	{ Id = "TrainingWeekend", DisplayName = "TRAINING WEEKEND", Effect = "x2 treadmill gains", Duration = 48 * 3600, Effects = { TrainingGain = 2 } },
+	{ Id = "TrainingWeekend", DisplayName = "TRAINING WEEKEND", Effect = "×2 treadmill gains", Duration = 48 * 3600, Effects = { TrainingGain = 2 } },
 }
 
 -- Le rendez-vous du samedi, 16 h à Paris (L-216 point 6), 30 min (V0), chaque semaine ; c'est aussi l'heure de la MAJ.

@@ -76,7 +76,7 @@ local IS_STUDIO = RunService:IsStudio()
 -- Messages lus par le joueur (Notify), en anglais (L-036). V0 proposé, absent du doc : %d = numéro de
 -- la zone (celui des arches, « ZONE 3 »), %s = la récompense à réclamer (Index.ZoneRewardText).
 local MESSAGES = {
-	ZoneComplete = "Index: Zone %d complete! Claim %s in the Index!",
+	ZoneComplete = "Zone %d complete! Claim %s in the Index!",
 }
 -- Catégorie de ce Notify : une bonne nouvelle, rien n'est refusé.
 local NOTIFY_KIND = "Info"

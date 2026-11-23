@@ -162,13 +162,11 @@ local Rewards = {
 	-- Messages au joueur (Notify), en anglais (L-036). V0 proposés, absents du doc.
 	Messages = {
 		Cash = "+%s cash!", -- %s = la somme (Format.money)
-		Box = "%s Box added to your inventory!", -- %s = le type (« Standard ») ; plus utilisé depuis la vague 43
 		Item = "%s Item: %s", -- vague 43 : %s = la rareté (« Rare »), puis le nom de l'objet, mutation comprise
-		ItemsFull = "Your inventory is full: display or sell an item, then claim your gift.", -- vague 43
+		ItemsFull = "Your inventory is full: display or sell an item first.", -- vague 43 ; a412 : même phrase que InventoryService (moins de 65 signes)
 		Boost = "×2 Cash for %d min!",
 		AlreadyClaimed = "Already claimed today. Come back tomorrow!",
 		NotYet = "Keep playing to unlock this gift.",
-		BoxesFull = "Too many boxes in your inventory: open some, then claim your gift.",
 		TutorialFirst = "Finish the tutorial to claim your daily reward!", -- a286 : V0 du 2026-11-21 (L-224 point 3)
 		Unavailable = "This gift can't be given right now. Try again later.",
 		-- Coffre hebdomadaire (a166), V0 :

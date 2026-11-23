@@ -47,12 +47,12 @@ local LoadingConfig: LoadingConfig = {
 	-- Astuces de Clément (L-177), corrigées pour le jeu d'aujourd'hui (rééquilibrage v2 : plus de banc ni de
 	-- coffre-fort ; vague 58, a187) : 115 caractères au plus.
 	Tips = {
-		"At night a wall closes the street. Rob the shops before it rises!",
+		"At night a wall closes the street. Rob the stores before it rises!",
 		"Run on your treadmill to get faster. Buy better tools to smash windows faster!",
-		"Shops further down the street hold rarer items.",
+		"Stores further down the street hold rarer items.",
 		"Display stolen items in your shop to earn cash every second.",
 		"Guards never enter the safe zone. Reach it before they catch you!",
-		"Auras boost your power, trails boost your speed.",
+		"Auras boost your strength, trails boost your speed.",
 		"Other players can rob your shop too. Lock it and hit thieves with your bat!",
 	},
 }

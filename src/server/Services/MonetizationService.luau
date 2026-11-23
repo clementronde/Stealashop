@@ -210,7 +210,7 @@ local MESSAGES = {
 	OpenNowCreditUsedItem = "Open Now: your new item's anti-theft is %s shorter!",
 	StarterPack = "Starter Pack: +%s, a Hammer and ×2 Cash for 1 hour!",
 	-- a285 (21/11) : un message par objet sorti de la caisse exclusive (rareté, nom). V0 proposé, absent du doc.
-	CrateItem = "Exclusive Crate: you got a %s %s!",
+	CrateItem = "Exclusive Crate: you got %s %s %s!", -- a412 : article, rareté (DisplayName), objet
 }
 
 local MonetizationService = {}
@@ -649,7 +649,7 @@ local function notifyCrateItems(player: Player, ids: { string })
 	for _, id in ids do
 		local def = Items.ById[id]
 		local rarity = if def then Rarities.ById[def.Rarity] else nil
-		notify(player, string.format(MESSAGES.CrateItem, if rarity then rarity.DisplayNameUpper else "?", if def then def.DisplayName else id))
+		notify(player, string.format(MESSAGES.CrateItem, if rarity and string.find(rarity.DisplayName, "^[AEIOU]") then "an" else "a", if rarity then rarity.DisplayName else "?", if def then def.DisplayName else id))
 	end
 end
 

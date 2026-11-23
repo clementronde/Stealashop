@@ -50,8 +50,8 @@ local Codes = {
 	-- Réponses au joueur (remote CodeResult et Notify), en anglais. V0.
 	Messages = {
 		Redeemed = "Code redeemed!",
-		Invalid = "Invalid code",
-		AlreadyUsed = "Already used",
+		Invalid = "Invalid code.",
+		AlreadyUsed = "Code already used.",
 		Expired = "Expired",
 		Unavailable = "This code can't be redeemed right now. Try again later.",
 	},

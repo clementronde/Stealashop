@@ -129,7 +129,7 @@ local MESSAGES = {
 	ToolOwned = "You already own the %s.",
 	CosmeticOwned = "You already own %s.",
 	MachineMax = "Your %s is already at max level.",
-	StandsMax = "All your stands are unlocked.",
+	StandsMax = "All your displays are unlocked.",
 	FarFromWeaponShop = "Go to the Weapon Shop to buy tools.",
 	FarFromAuraShop = "Go to the Aura Shop to buy auras and trails.",
 	NotOnPlot = "Go back to your shop to buy upgrades.",
@@ -138,7 +138,7 @@ local MESSAGES = {
 	ToolBoughtEquipped = "%s bought and equipped!",
 	CosmeticBought = "%s bought!",
 	MachineUpgraded = "%s upgraded to level %d!",
-	StandUnlocked = "New stand unlocked! (%d/%d)",
+	StandUnlocked = "New display unlocked! (%d/%d)",
 }
 
 local ShopService = {}

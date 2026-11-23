@@ -377,9 +377,9 @@ local MESSAGES: { [string]: string } = {
 	NotOnPlot = "Go back to your shop to display an item.",
 	InVault = "This item is in your safe.",
 	Held = "This item is being stolen: hit the thief to get it back!",
-	NoSlot = "This stand doesn't exist.",
-	Locked = "This stand is locked: upgrade your Display Stands.",
-	Taken = "This stand is already taken.",
+	NoSlot = "This display doesn't exist.",
+	Locked = "This display is locked: upgrade your Display Stands.",
+	Taken = "This display is already taken.",
 	-- Vague 31 (L-112), V0 proposé, absent du doc : objet sous antivol (au sol de la boutique, ou à y poser).
 	AntiTheft = "This item is still under anti-theft: wait until it's UNLOCKED!",
 	-- Equip Best (L-089), catégorie « Info » : V0 proposés, absents du doc.
@@ -390,7 +390,7 @@ local MESSAGES: { [string]: string } = {
 	NoFreeDisplay = "No free display",
 	ReservePlaced = "%s placed on a display!",
 	-- Vague 66 (a219), V0 : présentoirs tous pris, échange (Config/Displayed.SwapWhenFull).
-	ReserveSwapped = "%s placed on a display, %s moved to your reserve",
+	ReserveSwapped = "%s placed on a display, %s moved to your inventory",
 }
 
 local SOURCE_LABELS: { [string]: string } = {

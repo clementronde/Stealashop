@@ -176,9 +176,9 @@ local MOVE_LIFT = 0.1
 -- Messages lus par le joueur (Notify), en anglais (L-036).
 local MESSAGES = {
 	NightfallCorridor = "Night guards are out: get back to the safe zone!",
-	NightfallSafe = "Night has fallen: the corridor is closed.",
-	Dawn = "Dawn: the corridor is open and the stores are full!",
-	Closed = "The corridor is closed at night.",
+	NightfallSafe = "Night has fallen: the street is closed.",
+	Dawn = "Dawn: the street is open and the stores are full!",
+	Closed = "The street is closed at night.",
 }
 
 local IS_STUDIO = RunService:IsStudio()

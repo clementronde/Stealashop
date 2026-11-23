@@ -11,7 +11,7 @@
 --     écrit « PV / PV max » (Format.hp), `Fill` prend la largeur des PV. Lue sur les attributs HP et MaxHP
 --     (WindowService) : juste aussi pour un joueur qui arrive en cours de route. Cachée à la casse (Broken).
 --   - Colis de la vitrine au sol (modèles de Workspace/CarryDrops portant l'attribut FortuneBox) :
---     ProximityPrompt GrabActionText (« Grab ») / « Luxury Box », maintien = temps de prise du type
+--     ProximityPrompt GrabActionText (« Grab ») / « Epic Box » (a412), maintien = temps de prise du type
 --     (Balance.Heist.BoxTiers[Tier].GrabTime), portée Bat.DroppedGrabMaxDistance − 0,5, active mains
 --     vides (attribut Carrying) et pas étourdi (BatStun). Début du maintien : GrabDropped(dropId) ;
 --     invite déclenchée : GrabDropped(dropId) une seconde fois et animation Grab. Le serveur vérifie tout.
@@ -78,7 +78,10 @@ local STUN_ATTRIBUTE = "BatStun"
 local DROPS_FOLDER = "CarryDrops"
 local GRAB_ANIMATION = "Grab" -- contrat 2.4
 local PROMPT_NAME = "GrabPrompt"
-local BOX_SUFFIX = "Box" -- « Luxury Box » (L-036, comme le camion)
+local BOX_SUFFIX = "Box" -- « Epic Box » (L-036, comme le camion)
+-- a412 : « Epic Box » d'après la rareté du colis (attribut BoxRarity, comme les rayons), sinon « Box » ; plus de
+-- type Standard / Premium / Luxe à l'écran. Id de rareté = son DisplayName anglais (Config/Rarities).
+local BOX_RARITY_ATTRIBUTE = "BoxRarity"
 
 -- V0 proposé, absent du doc : invite visible un demi-stud avant la portée du serveur (comme la batte).
 local PROMPT_DISTANCE_MARGIN = 0.5
@@ -310,7 +313,8 @@ local function trackDrop(instance: Instance)
 	local prompt = Instance.new("ProximityPrompt")
 	prompt.Name = PROMPT_NAME
 	prompt.ActionText = FortuneTower.GrabActionText
-	prompt.ObjectText = if info then `{info.DisplayName} {BOX_SUFFIX}` else BOX_SUFFIX
+	local rarity = model:GetAttribute(BOX_RARITY_ATTRIBUTE)
+	prompt.ObjectText = if type(rarity) == "string" then `{rarity} {BOX_SUFFIX}` else BOX_SUFFIX
 	prompt.HoldDuration = if info then info.GrabTime else 0
 	prompt.MaxActivationDistance = math.max(Bat.DroppedGrabMaxDistance - PROMPT_DISTANCE_MARGIN, 1)
 	prompt.RequiresLineOfSight = false

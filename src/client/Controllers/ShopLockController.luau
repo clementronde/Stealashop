@@ -27,7 +27,7 @@ local TEXT = {
 	Object = "Shop Lock",
 	Ready = "Lock (%ds)",
 	Locked = "Locked %ds",
-	Cooldown = "Lock in %d:%02d",
+	Cooldown = "Ready in %d:%02d",
 }
 
 local player = Players.LocalPlayer

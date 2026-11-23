@@ -154,8 +154,8 @@ local TruckEvent = {
 		Exploded = "The truck exploded: grab the items!", -- V0
 		Left = "The truck drove away.", -- V0 : pas cassé à temps
 		LeftNight = "Night is coming: the truck drove away.", -- V0 : parti à l'alerte de la nuit
-		DriversChase = "The truck drivers are after your box! Run to the safe zone!", -- V0 proposé, absent du doc : au porteur poursuivi
-		DriverCaught = "Caught by a truck driver! The box is lost.", -- V0 proposé, absent du doc : au porteur attrapé
+		DriversChase = "The truck drivers are after you! Run to the safe zone!", -- V0 proposé, absent du doc : au porteur poursuivi
+		DriverCaught = "Caught by a truck driver! You lost the loot.", -- V0 proposé, absent du doc : au porteur attrapé
 	},
 	GrabActionText = "Grab", -- V0 : invite d'un colis du camion au sol, au-dessus de « Premium Box »
 }

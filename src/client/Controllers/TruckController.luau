@@ -28,7 +28,7 @@
 --     (ReplicatedStorage/Assets), posée sur la pièce principale du colis ; traînée V0 blanche si
 --     FX_BoxTrail n'est pas livré.
 --   - Invite sur chaque colis du camion atterri, mains vides (attribut Carrying du joueur) :
---     ProximityPrompt GrabActionText (« Grab ») / « Premium Box », maintien = temps de prise du type
+--     ProximityPrompt GrabActionText (« Grab ») / « Epic Box » (a412), maintien = temps de prise du type
 --     (Balance.Heist.BoxTiers[Tier].GrabTime), portée Bat.DroppedGrabMaxDistance − 0,5. Début du
 --     maintien : GrabDropped(dropId) ; invite déclenchée : GrabDropped(dropId) une seconde fois et
 --     animation Grab (AnimationController s'il est là). Le serveur vérifie tout.
@@ -221,7 +221,10 @@ local FLIGHT_DURATION_ATTRIBUTE = "FlightDuration"
 local CARRYING_ATTRIBUTE = "Carrying" -- posé par CarryService sur le Player tant qu'il porte
 local WINDOW_ID_ATTRIBUTE = "WindowId" -- posé par WindowService (cible d'événement), renvoyé par WindowHit
 local PROMPT_NAME = "GrabPrompt"
-local BOX_SUFFIX = "Box" -- « Premium Box » (L-036)
+local BOX_SUFFIX = "Box" -- « Epic Box » (L-036)
+-- a412 : « Epic Box » d'après la rareté du colis (attribut BoxRarity, comme les rayons), sinon « Box » ; plus de
+-- type Standard / Premium / Luxe à l'écran. Id de rareté = son DisplayName anglais (Config/Rarities).
+local BOX_RARITY_ATTRIBUTE = "BoxRarity"
 local SOUND_HOLDER = "TruckHitSound" -- Attachment local du Terrain qui porte un son de coup
 local EXPLOSION_HOLDER = "TruckExplosionSound" -- Attachment local du Terrain qui porte le son de l'explosion
 local ALARM_NAME = "TruckAlarm" -- copie locale de l'alarme
@@ -1402,7 +1405,8 @@ local function addPrompt(watch: BoxWatch, part: BasePart)
 	local prompt = Instance.new("ProximityPrompt")
 	prompt.Name = PROMPT_NAME
 	prompt.ActionText = TruckEvent.GrabActionText
-	prompt.ObjectText = `{info.DisplayName} {BOX_SUFFIX}`
+	local rarity = watch.Model:GetAttribute(BOX_RARITY_ATTRIBUTE)
+	prompt.ObjectText = if type(rarity) == "string" then `{rarity} {BOX_SUFFIX}` else BOX_SUFFIX
 	prompt.HoldDuration = info.GrabTime
 	prompt.MaxActivationDistance = math.max(Bat.DroppedGrabMaxDistance - PROMPT_DISTANCE_MARGIN, 1)
 	prompt.RequiresLineOfSight = false

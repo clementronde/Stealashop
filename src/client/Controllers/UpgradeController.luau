@@ -123,11 +123,11 @@ local PRICE_NAME = "Price"
 -- machine, délai d'attente de la réponse du serveur après un achat, nom du dossier local des panneaux.
 local TEXT = {
 	Upgrade = "Upgrade (%s)",
-	UnlockStand = "Unlock stand (%s)",
+	UnlockStand = "Unlock display (%s)",
 	MachineLevel = "%s Lv %d/%d",
-	Stands = "Stands %d/%d",
-	SignLevel = "Level %d > Level %d",
-	SignMax = "Max level",
+	Stands = "Displays %d/%d",
+	SignLevel = "Lv %d → %d",
+	SignMax = "MAX LEVEL",
 	SignGain = "+%s/s", -- vague 42 (L-157 point 2) : « +16/s > +32/s » sur UpgradeSign.Gain
 }
 local PROMPT_DISTANCE = 8
