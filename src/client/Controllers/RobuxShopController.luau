@@ -113,6 +113,8 @@
 --     valeur de Clément à l'extinction de l'écran et au réglage « animations réduites » ;
 --   - ViewportFrame Preview : CurrentCamera remis sur sa Camera après la copie dans le PlayerGui (L-247 a) ; celle de la
 --     caisse (Crate.Icon.Preview) se balance de ± Shop.PreviewSway° autour du pivot de son modèle (L-247 b).
+--     a278 (L-272) : Crate en IconHover = Spring : au survol (ou au toucher), la caisse se tourne vers le pointeur à la
+--     place du balancement (UI/UiAttrFx.Spring, Config/UiMotion.AttrFx.IconHover.Spring), puis le balancement reprend.
 --   Onglets (Root.Tabs, cachés par Clément, L-243 c) : leur code reste, il ne touche jamais leur visibilité.
 
 local CollectionService = game:GetService("CollectionService")
@@ -129,6 +131,21 @@ local Monetization = require(Config:WaitForChild("Monetization"))
 local Find = require(Shared:WaitForChild("Contract"):WaitForChild("Find"))
 local Format = require(Shared:WaitForChild("Format"))
 local Motion = require(script.Parent:WaitForChild("UI"):WaitForChild("Motion"))
+-- a278 (L-272) : IconHover = Spring sur Crate : UI/UiAttrFx suit le pointeur (UiAttrFx.Spring) ; module absent ou
+-- Features.UiAttrFx coupé : poids 0, la caméra de la caisse se balance comme avant.
+local springOf = function(_: Instance): (number, number, number)
+	return 0, 0, 0
+end
+do
+	local folder = script.Parent:FindFirstChild("UI")
+	local module = if folder then folder:FindFirstChild("UiAttrFx") else nil
+	if module and module:IsA("ModuleScript") then
+		local ok, loaded = pcall(require, module)
+		if ok and type(loaded) == "table" and type((loaded :: any).Spring) == "function" then
+			springOf = (loaded :: any).Spring
+		end
+	end
+end
 
 -- Onglet (Monetization.Tab), en texte : l'ancien solveur élargit ses valeurs d'un module à l'autre.
 type Tab = string
@@ -1294,7 +1311,21 @@ local function stepMotion()
 	local swing = sway
 	if swing then
 		local angle = math.rad(spec.PreviewSway) * math.sin(2 * math.pi * t / spec.PreviewSwayPeriod)
-		swing.camera.CFrame = CFrame.new(swing.focus) * CFrame.Angles(0, angle, 0) * CFrame.new(-swing.focus) * swing.base
+		-- a278 (L-272, IconHover = Spring) : au survol de Crate, la caisse se tourne vers le pointeur (la caméra tourne
+		-- autour d'elle dans l'autre sens) à la place du balancement, mélangés par le poids du ressort.
+		local x, y, weight = 0, 0, 0
+		local crate = current.crate
+		if crate then
+			x, y, weight = springOf(crate)
+		end
+		if weight ~= 0 then
+			local yaw = angle + weight * (math.rad(-x) - angle)
+			local pitch = weight * math.rad(y)
+			swing.camera.CFrame = CFrame.new(swing.focus) * CFrame.Angles(0, yaw, 0)
+				* CFrame.fromAxisAngle(swing.base.RightVector, pitch) * CFrame.new(-swing.focus) * swing.base
+		else
+			swing.camera.CFrame = CFrame.new(swing.focus) * CFrame.Angles(0, angle, 0) * CFrame.new(-swing.focus) * swing.base
+		end
 	end
 end
 

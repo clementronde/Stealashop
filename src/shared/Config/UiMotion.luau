@@ -593,6 +593,21 @@ local UiMotion = {
 		CardTilt = 3, -- degrés, ajoutés à la Rotation de la carte posée par Clément
 		IconScale = 1.15, -- son Icon (pas de décalage ni de rotation de l'Icon, contrairement à HoverCard)
 	},
+	-- a278 (L-272, fiche HUD docs/claude/notes/ui-reference-tiktok-2026-11-21.md section 8, demande 1) : Hover = "Grow"
+	-- sur une carte (Motion.HoverCard : cadre avec HoverOutline, ou cadre qui n'est pas un bouton) : la carte entière
+	-- grossit (UIScale passager) en Time s, revient en BackTime s, sans pencher ; son Icon n'est ni grossi, ni penché, ni
+	-- décalé (il grossit avec la carte ; IconHover le fait sauter). Échelle : To pour une carte de moins de SmallBelow px
+	-- (son plus grand côté), sinon celle qui l'élargit d'EdgePx px par bord. ZIndex de la carte relevé au-dessus de ses
+	-- voisines le temps du survol, pour qu'elle déborde sur elles. HoverOutline et UI_Hover comme les autres cartes.
+	HoverGrow = {
+		To = 1.08, -- fiche : « × 1,08 »
+		SmallBelow = 250, -- fiche : « pour une carte de moins de ≈ 250 px »
+		EdgePx = 8, -- fiche : « ≈ 8 px par bord »
+		Time = 0.1, -- fiche : « 0,1 s Quad Out »
+		BackTime = 0.1, -- fiche : « retour 0,1 s Quad Out »
+		Style = Enum.EasingStyle.Quad,
+		Direction = Enum.EasingDirection.Out,
+	},
 	-- Press = Squash : « 0,75 en 0,033 s puis 1,1 et retour en 0,1 s » : 0,75 tant que le bouton est tenu, puis au
 	-- relâché 1,1 et retour (à 1, ou au survol si la souris est dessus ; le pic est alors 1,1 fois le survol).
 	PressSquash = {
@@ -771,8 +786,18 @@ local UiMotion = {
 			Jump = { Height = 0.13, Up = 0.18, Down = 0.2 },
 			-- … "Lean" : Rotation de la sienne à Tilt degrés en Time s (Quad Out), tenue au survol, retour en BackTime s.
 			Lean = { Tilt = -3.5, Time = 0.07, BackTime = 0.07 },
-			-- "Spring" (sur Crate, fiche shop effet 4 : la caméra de Icon.Preview suit le pointeur) : pas encore codé,
-			-- rien ne bouge (une ligne en Studio).
+			-- a278 (L-272) : "Spring" (sur Crate, fiche shop effet 4) : au survol (ou au toucher), la caméra de la caisse 3D
+			-- (Crate.Icon.Preview, RobuxShopController) suit le pointeur à la place du balancement PreviewSway : la caisse
+			-- tourne vers lui de Angle degrés au plus (bord de l'élément), sur les deux axes, par un ressort amorti ; le
+			-- passage du balancement au pointeur se fait en Enter s (Quad Out), le retour au balancement en Back s
+			-- (Back Out). Sans Preview balancé, rien ne bouge (UiAttrFx suit seulement le pointeur).
+			Spring = {
+				Angle = 10, -- fiche shop : « 10° au plus »
+				Back = 0.35, -- fiche shop : « retour en 0,35 s (Back Out) »
+				Enter = 0.15, -- V0 proposé (Cantin, 23/11), absent des fiches
+				Frequency = 3, -- V0 proposé (Cantin, 23/11), absent des fiches : Hz du ressort qui suit le pointeur
+				Damping = 0.6, -- V0 proposé (Cantin, 23/11), absent des fiches : < 1, il dépasse un peu puis se pose
+			},
 		},
 		-- Idle = "Wiggle" (Featured.Icon.Hammer, Decor.Hang1 à Hang4 ; fiche shop, effet 5) : toutes les Every s, un
 		-- balancement de ± Angle degrés autour de sa Rotation en Time s ; les éléments d'un même écran décalés de
