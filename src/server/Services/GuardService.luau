@@ -226,6 +226,7 @@
 --       plafond atteint ou magasin sans Zone.
 --   GuardService.GetLinkedGuard(payload) -> Model?   a114 : le vigile lié à cet objet (NPCItem), s'il est en jeu
 --   GuardService.IsChased(player) -> boolean
+--   GuardService.IsStunned(player) -> boolean   étourdi par une capture (vigile, police, conducteur, nuit) ; a113, pour a411
 --   GuardService.GetGuard(player) -> Model?    le vigile qui poursuit ce joueur
 --   GuardService.GetReturningGuards(store) -> { BasePart }
 --       HumanoidRootPart des vigiles de jour de ce magasin (Model) qui rentrent vers sa réserve, à
@@ -4387,6 +4388,12 @@ end
 
 function GuardService.IsChased(player: Player): boolean
 	return chasedBy[player] ~= nil
+end
+
+-- a113, retiré par a415 avec DropService, remis au lot98 pour a411 : DisguiseService refuse le déguisement pendant cet
+-- étourdissement (capture par un vigile, la police, un conducteur ou la nuit).
+function GuardService.IsStunned(player: Player): boolean
+	return stunTokens[player] ~= nil
 end
 
 function GuardService.GetGuard(player: Player): Model?
