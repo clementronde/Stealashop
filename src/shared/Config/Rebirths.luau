@@ -12,7 +12,9 @@
 --   2. l'ouverture de tuiles de l'arbre de compétences : RequiresRebirth de Config/SkillTree (V0 : Lock à la
 --      1re, Potion Time à la 2e, Door Guard à la 3e, Traps à la 4e), écrite dans UI_Rebirth par RewardText ;
 --   3. le titre au-dessus du joueur (Title, L-168 Q2), dès la 1re (V0).
--- Retirés : aura, trail, Marteau-piqueur, Bélier, 2e agent, et « Tapis ×1,5 » des 3e et 6e (ni multiplicateur
+-- a407 (vague GC6, MAJ 3) : les renaissances 5 et 7 ouvrent aussi l'achat d'un outil de la boutique d'armes
+-- (Config/Tools.RequiresRebirth : Marteau-piqueur, Bélier ; rien n'est donné), écrit dans RewardText.
+-- Retirés : aura, trail, Marteau-piqueur et Bélier offerts, 2e agent, et « Tapis ×1,5 » des 3e et 6e (ni multiplicateur
 -- d'argent ni tuile de l'arbre ; à confirmer par Clément).
 --
 -- Vague 51 (a164, 2026-11-14) : TOUT LE TABLEAU EST V0, pris dans la proposition du simulateur
@@ -49,6 +51,7 @@ local DeepFreeze = require(script.Parent.DeepFreeze)
 local Items = require(script.Parent.Items)
 local Rarities = require(script.Parent.Rarities)
 local SkillTree = require(script.Parent.SkillTree)
+local Tools = require(script.Parent.Tools)
 
 export type Tier = {
 	Level: number, -- numéro de la renaissance (1 = la première)
@@ -80,16 +83,30 @@ local TITLE = {
 	FromLevel = 1, -- V0 : dès la 1re renaissance (la proposition d'a164 le donnait à la 10e)
 }
 
--- Tuiles de l'arbre ouvertes par la renaissance `level` (Config/SkillTree, RequiresRebirth), en une ligne.
+-- a407 (MAJ 3) : outils de la boutique d'armes ouverts par le palier (Config/Tools, RequiresRebirth), V0.
+local REWARD_TOOL_ONE = "New tool in the Weapon Shop: %s"
+local REWARD_TOOL_MANY = "New tools in the Weapon Shop: %s"
+local REWARD_JOIN = " · "
+
+-- Tuiles de l'arbre (Config/SkillTree) et outils de la boutique d'armes (Config/Tools, a407) ouverts par la
+-- renaissance `level` (RequiresRebirth), en une ligne.
 local function rewardText(level: number): string
+	local parts: { string } = {}
 	local names: { string } = {}
 	for _, skill in SkillTree.UnlockedBy(level) do
 		table.insert(names, skill.DisplayName)
 	end
-	if #names == 0 then
-		return ""
+	if #names > 0 then
+		table.insert(parts, string.format(if #names == 1 then REWARD_ONE else REWARD_MANY, table.concat(names, ", ")))
 	end
-	return string.format(if #names == 1 then REWARD_ONE else REWARD_MANY, table.concat(names, ", "))
+	local tools: { string } = {}
+	for _, tool in Tools.UnlockedBy(level) do
+		table.insert(tools, tool.DisplayName)
+	end
+	if #tools > 0 then
+		table.insert(parts, string.format(if #tools == 1 then REWARD_TOOL_ONE else REWARD_TOOL_MANY, table.concat(tools, ", ")))
+	end
+	return table.concat(parts, REWARD_JOIN)
 end
 
 -- Le tableau de la section 2 de la proposition, ligne par ligne (en commentaire : argent, objet, temps de

@@ -110,6 +110,10 @@ local Features = {
 	-- récompense la semaine suivante (Config/WeeklyLeaderboard, WeeklyLeaderboardService ; panneaux de Clément
 	-- facultatifs). true en DEV ; false = rien n'est compté ni écrit.
 	WeeklyLeaderboards = true,
+	-- a407 (vague GC6, 23/11, MAJ 3 : renaissances 5 à 10) : outils de renaissance de Config/Tools (Marteau-piqueur à la
+	-- 5e, Bélier à la 7e ; RequiresRebirth), vendus à la boutique d'armes, gardés à la renaissance, le Bélier ×3 sur les
+	-- portes de boutique (Tools.DoorHits). V0 proposé (Cantin, 23/11) : true ; false = ni l'un ni l'autre en jeu.
+	RebirthTools = true,
 }
 
 export type Features = typeof(Features)
