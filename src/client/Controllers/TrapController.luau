@@ -109,21 +109,41 @@ local function apply(model: Model, fromChange: boolean)
 	end
 end
 
+-- a318 (L-300) : un piège qui sort du streaming (boutique loin du joueur) puis revient est le même objet, annoncé de
+-- nouveau. Une seule écoute par piège, retirée à sa sortie ; à la sortie, les effets de Armed reprennent l'état
+-- d'origine gardé ici (sinon, revenu éteint, ils auraient été relus éteints et seraient restés éteints au réarmement).
+local stateLinks: { [Model]: RBXScriptConnection } = {}
+
 local function onTrapAdded(inst: Instance)
 	if not inst:IsA("Model") then
 		return
 	end
 	local model = inst :: Model
 	apply(model, false)
-	model:GetAttributeChangedSignal(Traps.StateAttribute):Connect(function()
-		apply(model, true)
-	end)
+	if not stateLinks[model] then
+		stateLinks[model] = model:GetAttributeChangedSignal(Traps.StateAttribute):Connect(function()
+			apply(model, true)
+		end)
+	end
 end
 
 local function onTrapRemoved(inst: Instance)
-	if inst:IsA("Model") then
-		savedArmed[inst :: Model] = nil
+	if not inst:IsA("Model") then
+		return
 	end
+	local model = inst :: Model
+	local link = stateLinks[model]
+	if link then
+		link:Disconnect()
+		stateLinks[model] = nil
+	end
+	local saved = savedArmed[model]
+	if saved then
+		for effect, enabled in saved do
+			setEnabled(effect, enabled)
+		end
+	end
+	savedArmed[model] = nil
 end
 
 -- L'animation du joueur `name` est-elle livrée (objet Animation avec un AnimationId) ?

@@ -271,9 +271,9 @@ local function attach(lock: Lock)
 		return
 	end
 	if lock.clone then
-		if lock.real ~= real then
-			hideReal(lock, real) -- revenu du streaming : un nouvel objet à cacher
-		end
+		-- Revenu du streaming : recaché, que ce soit un nouvel objet ou le même (a318, L-300 : un objet qui revient
+		-- peut avoir perdu le LocalTransparencyModifier posé ici). hideReal garde la valeur d'avant la première fois.
+		hideReal(lock, real)
 		return
 	end
 	local closed = store:GetAttribute(SHUTTER_PIVOT_ATTRIBUTE)

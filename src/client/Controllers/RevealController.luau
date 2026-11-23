@@ -1579,16 +1579,28 @@ function RevealController.GetState(): { [string]: any }
 	}
 end
 
+-- a318 (L-300) : un magasin qui sort du streaming puis revient est le même objet, annoncé de nouveau : une seule
+-- écoute par magasin, retirée à sa sortie (avant, une écoute de plus à chaque retour).
+local storeLinks: { [Instance]: RBXScriptConnection } = {}
+
 local function watchStore(inst: Instance)
-	if not inst:IsA("Model") then
+	if not inst:IsA("Model") or storeLinks[inst] then
 		return
 	end
 	local store = inst :: Model
-	store:GetAttributeChangedSignal(Reveal.Ceiling.Attribute):Connect(function()
+	storeLinks[inst] = store:GetAttributeChangedSignal(Reveal.Ceiling.Attribute):Connect(function()
 		Ceiling.Refresh(store)
 	end)
 	if store:GetAttribute(Reveal.Ceiling.Attribute) == true then
 		Ceiling.Refresh(store)
+	end
+end
+
+local function unwatchStore(inst: Instance)
+	local link = storeLinks[inst]
+	if link then
+		link:Disconnect()
+		storeLinks[inst] = nil
 	end
 end
 
@@ -1629,6 +1641,7 @@ function RevealController.Start()
 		watchStore(store)
 	end
 	CollectionService:GetInstanceAddedSignal(STORE_TAG):Connect(watchStore)
+	CollectionService:GetInstanceRemovedSignal(STORE_TAG):Connect(unwatchStore)
 	RunService.RenderStepped:Connect(step)
 end
 
