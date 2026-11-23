@@ -44,6 +44,8 @@
 --   - Navigation (SkillTree/Nav) : glisser, molette, pincement, zoom borné, zoom à l'ouverture, couche NavLayer
 --     posée par le code (T.67 à T.74). Ouverture : Motion.Open (panneau, argent, Close…) et « bop bop bop »
 --     des tuiles, de la tuile centrale vers les anneaux (T.54, SkillTree/Fx) ; fermeture T.28.
+--   - a419 (Features.Gamepad) : à la manette, une tuile sélectionnée (GamepadController, croix ou stick) est choisie comme
+--     d'un clic (SelectionGained) ; BUY se prend ensuite par la sélection (bouton A). NavLayer n'est pas sélectionnable.
 -- Éléments cherchés par leur nom parmi les descendants (Contract/Find) ; un élément absent est sauté (le
 -- ContractChecker le signale). Jamais d'image, de couleur ni de taille de Clément changée : seuls Visible,
 -- Text, NodeIcon.Image (icône de la tuile choisie), Position de SelectionGlow et de Tree (glisser), et les
@@ -66,6 +68,7 @@ local SkillTree = require(Config:WaitForChild("SkillTree"))
 local UiMotion = require(Config:WaitForChild("UiMotion"))
 local Find = require(Shared:WaitForChild("Contract"):WaitForChild("Find"))
 local Format = require(Shared:WaitForChild("Format"))
+local GAMEPAD = require(Shared:WaitForChild("Gamepad")).Config() -- a419 : tuile choisie par la sélection à la manette
 local Motion = require(script.Parent:WaitForChild("UI"):WaitForChild("Motion"))
 local Helpers = script.Parent:WaitForChild("SkillTree")
 local Fx = require(Helpers:WaitForChild("Fx"))
@@ -773,6 +776,13 @@ local function bind(gui: ScreenGui)
 		end)
 		for _, tile in current.tiles do
 			table.insert(current.hexes, tile.button)
+			-- a419 (Features.Gamepad) : à la manette, la tuile sélectionnée (croix, stick) est choisie comme d'un clic ;
+			-- la souris et le doigt passent par NavLayer, au-dessus des tuiles (SelectionGained ne vient que de la sélection).
+			if GAMEPAD and tile.button:IsA("GuiButton") then
+				table.insert(current.connections, (tile.button :: GuiButton).SelectionGained:Connect(function()
+					choose(current, tile, true)
+				end))
+			end
 		end
 		-- Tree s'anime à part (zoom, « bop » des tuiles) : Motion.Open ne le met pas à l'échelle.
 		Motion.KeepScale(treeFrame)

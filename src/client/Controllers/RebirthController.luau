@@ -41,7 +41,8 @@
 --       ConfirmButton  confirmation en 2 temps (L-047) : Disabled tant qu'il manque l'argent (attribut Cash)
 --                      ou l'objet ; Ready sinon ; un appui → Confirm pendant CONFIRM_WINDOW s ; un 2e appui
 --                      envoie Rebirth(n+1) au serveur, qui décide tout (refus : un Notify)
---       Hint           texte de Clément en Ready, HINT_CONFIRM en Confirm, HINT_LOCKED en Disabled
+--       Hint           texte de Clément en Ready, HINT_CONFIRM en Confirm (a419, à la manette : Config/Gamepad.Texts.
+--                      RebirthConfirm, « Press A again to rebirth », Cross sur PlayStation), HINT_LOCKED en Disabled
 --       KeepList.Row1  KEEP_TEXT (les 3 objets qui rapportent le plus sont gardés : le choix de Clément est
 --                      retiré, L-158) ; les autres lignes des colonnes gardent leurs textes
 --     L'écran se ferme quand Rebirths monte (renaissance faite) ; vague 72 (a244, L-229) : le son « Rebirth »
@@ -70,6 +71,7 @@ local Contract = Shared:WaitForChild("Contract")
 local Find = require(Contract:WaitForChild("Find"))
 local Icons = require(Contract:WaitForChild("Icons"))
 local Format = require(Shared:WaitForChild("Format"))
+local Gamepad = require(Shared:WaitForChild("Gamepad")) -- a419 : aide de la confirmation au bouton de la manette
 local Motion = require(script.Parent:WaitForChild("UI"):WaitForChild("Motion"))
 
 -- Écran branché.
@@ -280,7 +282,8 @@ local function refresh(current: Screen)
 			armedUntil = 0
 			hint = HINT_LOCKED
 		elseif isArmed() then
-			shown, hint = "Confirm", HINT_CONFIRM
+			local pad = if Gamepad.IsActive() then Gamepad.Config() else nil -- a419 : « Press A again to rebirth »
+			shown, hint = "Confirm", if pad then string.format(pad.Texts.RebirthConfirm, Gamepad.KeyText(Enum.KeyCode.ButtonA)) else HINT_CONFIRM
 		else
 			armedUntil = 0
 			shown, hint = "Ready", current.hintText or HINT_TEXT

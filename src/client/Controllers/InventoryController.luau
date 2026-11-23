@@ -62,6 +62,8 @@
 --     de PLACE_MOVE studs du point déjà envoyé, moins de PLACE_GUARD s après, est ignoré (une seule
 --     demande PlaceBox par double clic ; visée ailleurs, le nouvel essai part). Fin du mode : objet posé (il quitte
 --     l'inventaire), touche Q (V0), écran rouvert, outil pris (1, 2, écran), portage, mort ;
+--     a419 (Features.Gamepad) : à la manette, le point visé est le centre de l'écran (la caméra vise), Config/Gamepad.Place
+--     (R2) pose, ButtonB quitte le mode comme Q ;
 --   - outil de casse mis en main tout seul près d'une vitrine (L-092 point 2c, réponse de Clément du
 --     2026-11-11 : sur téléphone, sans barre Roblox, on ne le sortait que par l'écran). Toutes les TICK s,
 --     si le HumanoidRootPart arrive à Balance.Hit.Range (portée d'un coup) ou moins de la boîte d'une
@@ -141,6 +143,7 @@ local ShelfOpen = require(Config:WaitForChild("ShelfOpen"))
 local AlertBadge = require(Shared:WaitForChild("AlertBadge"))
 local Format = require(Shared:WaitForChild("Format"))
 local InventoryState = require(Shared:WaitForChild("InventoryState"))
+local Gamepad = require(Shared:WaitForChild("Gamepad")) -- a419 : pose au sol à la manette
 local Contract = Shared:WaitForChild("Contract")
 local Find = require(Contract:WaitForChild("Find"))
 local Icons = require(Contract:WaitForChild("Icons"))
@@ -746,7 +749,11 @@ local function aim(x: number?, y: number?): (Vector3?, Vector3?)
 		return nil, nil
 	end
 	local screenX, screenY = x, y
-	if screenX == nil or screenY == nil then
+	local center = (screenX == nil or screenY == nil) and Gamepad.IsActive() -- a419 : à la manette, le centre de l'écran
+	if center then
+		local size = camera.ViewportSize
+		screenX, screenY = size.X / 2, size.Y / 2
+	elseif screenX == nil or screenY == nil then
 		local ok, mouse = pcall(function()
 			return localPlayer:GetMouse()
 		end)
@@ -755,7 +762,9 @@ local function aim(x: number?, y: number?): (Vector3?, Vector3?)
 		end
 		screenX, screenY = mouse.X, mouse.Y
 	end
-	local ray = camera:ScreenPointToRay(screenX :: number, screenY :: number)
+	local ray = if center
+		then camera:ViewportPointToRay(screenX :: number, screenY :: number)
+		else camera:ScreenPointToRay(screenX :: number, screenY :: number)
 	local params = RaycastParams.new()
 	params.FilterType = Enum.RaycastFilterType.Exclude
 	local ignore: { Instance } = {}
@@ -905,10 +914,13 @@ local function startPlacing(uid: string)
 			if processed then
 				return
 			end
+			local pad = Gamepad.Config() -- a419 : R2 pose au centre de l'écran, ButtonB quitte (nil sans Features.Gamepad)
 			if input.UserInputType == Enum.UserInputType.MouseButton1 then
 				placeAt(current, input.Position.X, input.Position.Y)
-			elseif input.KeyCode == CANCEL_KEY then
+			elseif input.KeyCode == CANCEL_KEY or (pad ~= nil and input.KeyCode == pad.Back) then
 				stopPlacing()
+			elseif pad ~= nil and input.KeyCode == pad.Place then
+				placeAt(current, nil, nil)
 			end
 		end)
 	)

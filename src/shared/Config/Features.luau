@@ -83,6 +83,10 @@ local Features = {
 	FramewispFx = true,
 	-- a301 (21/11, demande de Cantin) : près de la boutique d'un autre joueur, dehors, les étiquettes BB_Item de ses objets exposés se voient à travers la façade (ShopSpyController, Config/ShopSpy) ; V0 proposé (2026-11-21) : true ; false = comme avant.
 	ShopSpy = true,
+	-- a419 (23/11, demande de Cantin : jouable à la manette Xbox, PlayStation ou sur PC ; Config/Gamepad) : sélection du
+	-- premier bouton d'un menu, ButtonB pour fermer, L1 / R1 pour la barre du bas, aides au bon bouton ; V0 proposé
+	-- (Cantin, 23/11) : true ; false = rien ne change (clavier, souris et tactile ne changent jamais).
+	Gamepad = true,
 }
 
 export type Features = typeof(Features)
