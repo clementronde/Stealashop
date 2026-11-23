@@ -31,7 +31,8 @@
 --     Copie du billboard BB_ShopInfo de Clément (ReplicatedStorage/Assets/UI, mêmes 4 éléments, livré
 --     le 2026-11-15, L-169 Q6 ; tailles et SizeOffset gardés tels quels) dès qu'il existe, sinon un
 --     panneau V0 gris. Status peut être une pastille (cadre + texte) : le cadre est caché ou montré.
---     Vague 72 (a245, L-216 point 3) : OwnerAvatar et BestItem, facultatifs (voir AVATAR_FIELD et BEST_FIELD).
+--     Vague 72 (a245, L-216 point 3) : OwnerAvatar et BestItem, facultatifs (voir AVATAR_FIELD et BEST_FIELD) ;
+--     a316 (L-296) : BestIcon, l'icône ICON_ du meilleur objet (voir BEST_ICON_FIELD).
 --   - Vague 54 (a176) : plus de coffre-fort, donc plus d'étiquette « SAFE » ni d'objet sans invite.
 --   - Bot joueur (L-105, BotService) : sa boutique (attribut BotName de la parcelle, OwnerUserId = 0) a
 --     les mêmes invites et le même panneau (« Bot's Shop », valeur exposée = attribut BotIncome).
@@ -44,7 +45,7 @@
 -- REFRESH_INTERVAL, une invite s'allume donc au même tour qu'avant. Panneau : textes écrits s'ils changent.
 --
 -- API (client), pour les tests dans Studio :
---   PvPController.GetPanelText(plot) -> { OwnerName, Income, HP, Status }?   panneau affiché, ou nil
+--   PvPController.GetPanelText(plot) -> { OwnerName, Income, HP, Status, BestItem, BestIcon }?   panneau affiché, ou nil
 --   PvPController.GetPrompt(itemModel) -> ProximityPrompt?                    invite d'un objet exposé
 
 local CollectionService = game:GetService("CollectionService")
@@ -60,6 +61,7 @@ local Items = require(Config:WaitForChild("Items"))
 local PvP = require(Config:WaitForChild("PvP"))
 local Rarities = require(Config:WaitForChild("Rarities"))
 local Find = require(Contract:WaitForChild("Find"))
+local Icons = require(Contract:WaitForChild("Icons"))
 local UI = require(Contract:WaitForChild("UI"))
 local Format = require(Shared:WaitForChild("Format"))
 
@@ -77,6 +79,7 @@ export type PanelText = {
 	HP: string,
 	Status: string?,
 	BestItem: string?, -- vague 72 (a245) : nom du meilleur objet exposé, nil sans objet
+	BestIcon: string?, -- a316 (L-296) : image ICON_ de ce même objet, nil sans objet ou sans icône livrée
 }
 
 type ItemWatch = {
@@ -111,6 +114,10 @@ local FIELDS = { "OwnerName", "Income", "HP", "Status" }
 -- le socle « BEST ITEM » (Config/Vfx, Rarest.Pick = "Income") : le plus gros revenu, puis la plus haute rareté.
 local AVATAR_FIELD = "OwnerAvatar"
 local BEST_FIELD = "BestItem"
+-- a316 (L-296, Clément, 2026-11-23) : BestIcon (ImageLabel, enfant de BestItem, caché dans le gabarit) reçoit l'image
+-- ICON_<ItemId> du meilleur objet (Contract/Icons, comme l'inventaire et l'index), montrée seulement si elle est
+-- livrée ; sans objet exposé, vidée et cachée (BestItem la cache aussi). BestLabel (« BEST ITEM ») : décor.
+local BEST_ICON_FIELD = "BestIcon"
 local RARITY_ATTRIBUTE = "Rarity" -- posé par DisplayService sur l'objet exposé
 local GRAB_ANIMATION = "Grab" -- contrat 2.4
 -- Posés par PlotService, DisplayService, WindowService, CarryService et PvPService (mêmes noms là-bas).
@@ -171,6 +178,7 @@ local playerGui: Instance? = nil
 local itemWatches: { [Instance]: ItemWatch } = {}
 local plotWatches: { [Instance]: PlotWatch } = {}
 local avatars: { [number]: string } = {} -- miniature par UserId ; "" = demandée, pas (encore) reçue
+local icons: { [string]: string } = {} -- a316 (L-296) : image ICON_ par ItemId ; "" = pas livrée (cherchée une fois)
 
 -- Outils ----------------------------------------------------------------------------------------
 
@@ -557,9 +565,20 @@ local function avatarOf(userId: number): string?
 	return nil
 end
 
--- Meilleur objet exposé de la boutique (règle du socle « BEST ITEM », voir BEST_FIELD) : son nom et sa rareté.
-local function bestItemOf(plot: Model): (string?, Rarities.Rarity?)
-	local bestName: string?, bestRarity: Rarities.Rarity?, bestIncome = nil, nil, -math.huge
+-- a316 (L-296) : image ICON_<itemId> (Contract/Icons), cherchée une fois par objet ; nil si elle n'est pas livrée.
+local function iconOf(itemId: string): string?
+	local known = icons[itemId]
+	if known == nil then
+		known = Icons.get(itemId) or ""
+		icons[itemId] = known
+	end
+	return if known ~= "" then known else nil
+end
+
+-- Meilleur objet exposé de la boutique (règle du socle « BEST ITEM », voir BEST_FIELD) : son nom, sa rareté et
+-- son ItemId (a316 : pour BestIcon).
+local function bestItemOf(plot: Model): (string?, Rarities.Rarity?, string?)
+	local bestName: string?, bestRarity: Rarities.Rarity?, bestId: string?, bestIncome = nil, nil, nil, -math.huge
 	for _, watch in itemWatches do
 		if watch.Plot ~= plot or watch.Model.Parent == nil then
 			continue
@@ -574,10 +593,10 @@ local function bestItemOf(plot: Model): (string?, Rarities.Rarity?)
 		local income = number(watch.Model, INCOME_ATTRIBUTE) or 0
 		local current = bestRarity
 		if current == nil or income > bestIncome or (income == bestIncome and rarity.Order > current.Order) then
-			bestName, bestRarity, bestIncome = item.DisplayName, rarity, income
+			bestName, bestRarity, bestId, bestIncome = item.DisplayName, rarity, item.Id, income
 		end
 	end
-	return bestName, bestRarity
+	return bestName, bestRarity, bestId
 end
 
 -- OwnerAvatar et BestItem (facultatifs) : montrés ou cachés, écrits seulement s'ils changent.
@@ -594,8 +613,22 @@ local function refreshExtras(gui: BillboardGui, plot: Model, text: PanelText)
 			image.Image = url
 		end
 	end
-	local name, rarity = bestItemOf(plot)
+	local name, rarity, itemId = bestItemOf(plot)
 	text.BestItem = name
+	-- a316 (L-296) : BestIcon, l'image ICON_ du même objet ; vidée et cachée sans objet ou sans icône livrée.
+	local texture = if name and itemId then iconOf(itemId) else nil
+	text.BestIcon = texture
+	local iconElement = Find.path(gui, BEST_ICON_FIELD)
+	if iconElement and iconElement:IsA("ImageLabel") then
+		local icon = iconElement :: ImageLabel
+		local shown: string = if texture then texture else ""
+		if icon.Image ~= shown then
+			icon.Image = shown
+		end
+		if icon.Visible ~= (texture ~= nil) then
+			icon.Visible = texture ~= nil
+		end
+	end
 	local element, label = panelField(gui, BEST_FIELD)
 	if element and label then
 		if element.Visible ~= (name ~= nil) then
