@@ -132,7 +132,7 @@ Animations.Driver = {
 -- ReplicatedStorage/Assets/Crowd/Models/NPC_Crowd_01 à _12, <Modèle>/Animations/<Nom>. Toutes en boucle, priorité
 -- Action. Marqueur Shout : le cri (son de foule) ; TakePhoto : celle des témoins (même ID, marqueur Flash). Rôles :
 -- pour le voleur Cheer, ou HoldSign avec une pancarte Side = "For" ; contre Boo, ou HoldSign avec une pancarte
--- "Against" ; crieur Shout ; photographe TakePhoto. Pas encore jouées par le code (WitnessCrowdController).
+-- "Against" ; crieur Shout ; photographe TakePhoto. Jouées par WitnessCrowdController (Config/Witness.Crowd).
 Animations.Crowd = {
 	{ Name = "Cheer", Loop = true, Priority = "Action", Marker = "Shout" },
 	{ Name = "Boo", Loop = true, Priority = "Action", Marker = "Shout" },

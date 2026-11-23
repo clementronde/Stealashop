@@ -104,6 +104,10 @@ local Reveal = {
 		RarityHigh = "Reveal_RarityHigh",
 		RarityMidFrom = "Epic",
 		RarityHighFrom = "Legendary",
+		-- Vague GC2 (a279, L-229 « boutons de fin qui montent ») : fin de l'ouverture chez l'ouvreur (Land), quand le
+		-- HUD masqué revient à l'écran ; 2D. V0 proposé (Cantin, 2026-11-23) : l'ouverture n'a pas d'écran de boutons
+		-- à elle, le retour du HUD en tient lieu.
+		HudBack = "UI_Whoosh",
 	},
 	RevealFx = "FX_ShelfReveal", -- Assets/FX : émetteurs lancés au Reveal, aux couleurs de la rareté
 	RevealEmit = 30, -- particules par émetteur (attribut EmitCount d'un émetteur, s'il y en a un, passe avant)
