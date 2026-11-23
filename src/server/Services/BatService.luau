@@ -654,7 +654,7 @@ end
 local function grabRefusal(player: Player, dropId: string, lenient: boolean): string?
 	local payload, position = CarryService.GetDrop(dropId)
 	if payload == nil or position == nil then
-		return "colis plus au sol"
+		return "objet plus au sol"
 	end
 	if CarryService.IsCarrying(player) then
 		return "mains pleines"
@@ -682,7 +682,7 @@ local function grant(player: Player, dropId: string)
 		return
 	end
 	batDrops[dropId] = nil
-	log(`{player.Name} ramasse le colis tombé {dropId}`)
+	log(`{player.Name} ramasse l'objet tombé {dropId}`)
 end
 
 -- GrabDropped(dropId, phase) : début, fin ou annulation du maintien (sans phase : refusé, comme GrabItem).
@@ -745,7 +745,7 @@ end
 local function onDropExpired(dropId: string, _payload: any, _position: Vector3)
 	if batDrops[dropId] then
 		batDrops[dropId] = nil
-		log(`colis tombé {dropId} jamais ramassé : retiré du sol (StoreHeistService le renvoie sur son rayon)`)
+		log(`objet tombé {dropId} jamais ramassé : retiré du sol (StoreHeistService le renvoie sur son rayon)`)
 	end
 end
 
@@ -781,7 +781,7 @@ end
 
 function BatService.Start()
 	print(
-		`[BatService] batte : portée {Bat.Range} studs, recharge {Bat.Cooldown} s, étourdissement {Bat.StunDuration} s, colis au sol {Bat.DroppedLifetime} s`
+		`[BatService] batte : portée {Bat.Range} studs, recharge {Bat.Cooldown} s, étourdissement {Bat.StunDuration} s, objet au sol {Bat.DroppedLifetime} s`
 	)
 	while true do
 		task.wait(TICK)

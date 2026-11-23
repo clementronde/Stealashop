@@ -2878,7 +2878,7 @@ local function chaseStep(guard: Guard, now: number)
 		end
 	elseif driver then
 		if not driverKeeps(driver, player) then
-			giveUp(guard, driver.GiveUpReason or "ne porte plus le colis du camion")
+			giveUp(guard, driver.GiveUpReason or "ne porte plus l'objet du camion")
 			return
 		end
 	elseif guard.intruder then
@@ -3423,7 +3423,7 @@ local function update(guard: Guard, now: number)
 		elseif guard.driver then
 			local driver = guard.driver :: DriverChase
 			if player == nil or root == nil or not driverKeeps(driver, player) then
-				giveUp(guard, if driver.GiveUpReason then `{driver.GiveUpReason}, avant le départ` else "plus de colis du camion avant le départ")
+				giveUp(guard, if driver.GiveUpReason then `{driver.GiveUpReason}, avant le départ` else "plus d'objet du camion avant le départ")
 			elseif now >= guard.stateEndsAt then
 				startChase(guard, now)
 			end

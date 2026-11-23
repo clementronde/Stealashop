@@ -272,14 +272,16 @@ local function parseMutation(text: string?): (Mutations.Mutation?, boolean)
 	return Mutations.Sanitize(mutation), true
 end
 
--- Vague 66 (a219, dette de la vague 62) : poids d'un objet donné (GiveItem, GiveBox), celui de sa taille d'avant
--- (ItemWeight.Effective : 10 kg sans taille, Huge 1 250 kg, Colossal 10 000 kg), comme un ancien profil migré ; sans
--- poids si le poids est coupé (Features.SingleBoxReveal) ou pour l'objet du tuto.
-local function weightFor(item: Items.Item, mutation: Mutations.Mutation?): number?
+-- Poids d'un objet donné (GiveItem, GiveBox). a273 (dette) : tiré comme un objet sorti d'un rayon (ItemWeight.Roll,
+-- chance ×1, V0 proposé (Cantin, 23/11)), et la mutation de taille suit le poids (ItemWeight.SizeMutationFor) ; une
+-- taille demandée (Huge, Colossal) tire le poids dans son palier (RollForSize). Avant (a219) : 10 kg fixes sans
+-- taille. Sans poids si le poids est coupé (Features.SingleBoxReveal) ou pour l'objet du tuto : mutation inchangée.
+local function weighed(item: Items.Item, mutation: Mutations.Mutation?): (number?, Mutations.Mutation?)
 	if item.TutorialOnly or not ItemWeight.Enabled() then
-		return nil
+		return nil, mutation
 	end
-	return ItemWeight.Effective(nil, if mutation then mutation.Size else nil)
+	local kg = ItemWeight.RollForSize(random, 1, if mutation then mutation.Size else nil)
+	return kg, Mutations.Sanitize({ Size = ItemWeight.SizeMutationFor(kg), Effect = if mutation then mutation.Effect else nil })
 end
 
 local function newUid(list: { [string]: any }): string
@@ -408,8 +410,10 @@ handlers.GiveItem = function(call: Call): (boolean, string)
 	if item.TutorialOnly then
 		mutation = nil
 	end
+	local weight: number?
+	weight, mutation = weighed(item, mutation)
 	local uid = newUid(data.Items)
-	data.Items[uid] = { Id = item.Id, Source = "NPC", At = os.time(), Zone = item.Zone or call.value or 1, Mutation = mutation, Weight = weightFor(item, mutation) }
+	data.Items[uid] = { Id = item.Id, Source = "NPC", At = os.time(), Zone = item.Zone or call.value or 1, Mutation = mutation, Weight = weight }
 	IndexService.Discover(call.target, item.Id)
 	InventoryService.Refresh(call.target)
 	return true, `Gave {Mutations.ItemName(item.DisplayName, mutation)} to {call.target.Name}`
@@ -454,9 +458,9 @@ handlers.GiveBox = function(call: Call): (boolean, string)
 	end
 	-- Vague 50 (a158, Cantin 2026-11-14 : le colis porté ou rangé n'existe plus) : l'objet entre tout de suite
 	-- dans l'inventaire, libre (sans antivol), comme GiveItem ; rien n'est écrit dans Boxes.
-	local mutation = Mutations.Roll(random)
+	local weight, mutation = weighed(item, Mutations.Roll(random))
 	local uid = newUid(data.Items)
-	data.Items[uid] = { Id = item.Id, Source = "NPC", At = os.time(), Zone = zone, Mutation = mutation, Weight = weightFor(item, mutation) }
+	data.Items[uid] = { Id = item.Id, Source = "NPC", At = os.time(), Zone = zone, Mutation = mutation, Weight = weight }
 	IndexService.Discover(call.target, item.Id)
 	InventoryService.Refresh(call.target)
 	return true, `Gave {rarity.DisplayName} item ({Mutations.ItemName(item.DisplayName, mutation)}) to {call.target.Name}`

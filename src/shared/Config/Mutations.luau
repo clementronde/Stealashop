@@ -231,19 +231,27 @@ function Mutations.Label(mutation: any): string?
 	return table.concat(parts, LABEL_SEPARATOR)
 end
 
+-- Le premier mot de `name` est-il `word` (sans tenir compte des majuscules) ?
+local function startsWithWord(name: string, word: string): boolean
+	local first = string.match(name, "^%S+")
+	return first ~= nil and string.lower(first) == string.lower(word)
+end
+
 -- Nom de l'objet précédé de sa mutation (V0 : BB_Item, BB_Carry et écran d'ouverture n'ont pas de
 -- champ à eux) : « Big Gold Soda Can », « Rainbow Soda Can » ; le nom seul sans mutation.
+-- a273 : un mot de mutation déjà en tête du nom n'est pas répété (« Gold Bar Pyramid » muté Gold, pas « Gold Gold… ») ;
+-- mot entier seulement (« Gold Golden Throne » reste).
 function Mutations.ItemName(name: string, mutation: any): string
 	local size = sizeOf(mutation)
 	local effect = effectOf(mutation)
-	local prefix = ""
-	if size then
-		prefix ..= size.DisplayName .. " "
+	local result = name
+	if effect and not startsWithWord(result, effect.DisplayName) then
+		result = effect.DisplayName .. " " .. result
 	end
-	if effect then
-		prefix ..= effect.DisplayName .. " "
+	if size and not startsWithWord(result, size.DisplayName) then
+		result = size.DisplayName .. " " .. result
 	end
-	return prefix .. name
+	return result
 end
 
 export type Mutations = typeof(Mutations)
