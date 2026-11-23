@@ -1609,6 +1609,62 @@ local function tagShopGlass(M)
 	return count, #sides.L, #sides.R
 end
 
+-- Vitres visibles (Clément, 2026-11-23 : « des trous dans les vitres au premier étage ») : en Glass à 88 %, une vitre
+-- devant le ciel disparaissait et une vitre derrière une autre ne se dessinait pas. Toutes les vitres de la structure
+-- (ShopGlass, Pane_*, murs Walls, vitrines, toit, parapets) passent en SmoothPlastic à 65 %, bleu clair, léger reflet.
+-- La porte (PlotDoor) garde son verre en Glass : le code la reconnaît ainsi (L-185).
+local VG_COLOR = Color3.fromRGB(175, 220, 255)
+local function visibleGlass(M)
+	local CSv = game:GetService("CollectionService")
+	local door = M:FindFirstChild("PlotDoor")
+	for _, p in M:GetDescendants() do
+		if p:IsA("BasePart") and not (door and p:IsDescendantOf(door)) then
+			local n = p.Name
+			local glassy = CSv:HasTag(p, "ShopGlass") or n:match("^Pane")
+				or (p.Material == Enum.Material.Glass and (n:match("^Wall_") or n:match("^Vitrine_") or n == "RoofSlab" or n:match("^Parapet_")))
+			if glassy then
+				p.Material = Enum.Material.SmoothPlastic
+				p.MaterialVariant = ""
+				p.Transparency = 0.65
+				p.Color = VG_COLOR
+				p.Reflectance = 0.15
+				p.CastShadow = false
+			end
+		end
+	end
+end
+
+-- Sol « musée » (Clément, 2026-11-23 : le damier « fait éteint » sous l'étage) : sol gris clair en deux tons très
+-- proches (PlotFloor, PlotFloorExt et les carreaux FloorTiles / FloorTilesExt), qui ne prend plus la couleur du
+-- propriétaire (attribut Accent retiré). La couleur passe sur un tapis central (Runner/Carpet, Accent, velours) bordé
+-- d'or, de la porte au fond : Stage_1/Runner (z -37,5 à 7,6, bord du fond HideFromStage 2) et Stage_2/RunnerExt
+-- (z 7,6 à 38,4). Le tapis (x -7 à 7) laisse libres les plaques CollectPad, le CashPad et les socles.
+local MF_FLOOR, MF_TILE = rgb(205, 208, 214), rgb(222, 224, 228)
+local function museumFloor(M)
+	for _, d in M:GetDescendants() do
+		if d:IsA("BasePart") then
+			if d.Name == "PlotFloor" or d.Name == "PlotFloorExt" then
+				d:SetAttribute("Accent", nil); d.Color = MF_FLOOR
+			elseif d.Parent and (d.Parent.Name == "FloorTiles" or d.Parent.Name == "FloorTilesExt") then
+				d.Color = MF_TILE
+			end
+		end
+	end
+	local function runner(parent, name, z0, z1, backEdgeHide)
+		local old = parent:FindFirstChild(name)
+		if old then old:Destroy() end
+		local R = group(parent, name)
+		B(R, "Carpet", -7, 0.32, z0, 7, 0.4, z1, C.accent, { mat = Enum.Material.Fabric, decor = true, noShadow = true, accent = true })
+		B(R, "Edge_L", -7.35, 0.32, z0, -7, 0.44, z1, SM_GOLD, { mat = Enum.Material.Metal, decor = true, noShadow = true })
+		B(R, "Edge_R", 7, 0.32, z0, 7.35, 0.44, z1, SM_GOLD, { mat = Enum.Material.Metal, decor = true, noShadow = true })
+		local e = B(R, "Edge_B", -7.35, 0.32, z1, 7.35, 0.44, z1 + 0.35, SM_GOLD, { mat = Enum.Material.Metal, decor = true, noShadow = true })
+		if backEdgeHide then e:SetAttribute("HideFromStage", backEdgeHide) end
+	end
+	local s1, s2 = M:FindFirstChild("Stage_1"), M:FindFirstChild("Stage_2")
+	if s1 then runner(s1, "Runner", -37.5, 7.6, 2) end
+	if s2 then runner(s2, "RunnerExt", 7.6, 38.4) end
+end
+
 local function build()
 	P.setSeed(4242)
 	local folder = plotsFolder()
@@ -1654,6 +1710,8 @@ local function build()
 	luxeFacade(M, 8) -- vitrine de luxe au niveau 1 : or, auvent accroché, enseigne, marche (Clément, 2026-11-23)
 	museumStands(M, store) -- socles de musée : velours marron, marbre et or, places à y 2,75 (Clément, 2026-11-23)
 	tagShopGlass(M) -- vitres cassables : noms uniques, tag ShopGlass, attribut GlassSide (Clément, 2026-11-23)
+	visibleGlass(M) -- vitres en plastique transparent à 65 % : plus de « trous » devant le ciel (Clément, 2026-11-23)
+	museumFloor(M) -- sol gris clair deux tons + tapis central à la couleur du propriétaire, bordé d'or (Clément, 2026-11-23)
 	local pad = M:FindFirstChild("CashPad")
 	CS:AddTag(pad, "CashPad")
 	M.WorldPivot = CFrame.identity

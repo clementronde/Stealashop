@@ -41,7 +41,10 @@
 --
 -- API (client) :
 --   VfxController.Escape()                          victoire en zone safe aux pieds du joueur local
---   VfxController.Collect(amount, position)         billets et pièces depuis `position`
+--   VfxController.Collect(amount, position, onLanded?) -> number   billets et pièces depuis `position` (leur nombre)
+--   VfxController.OnCollectLanded(fn(amount)) -> déconnexion   a317 (L-299) : une fois par Collect, à l'arrivée du
+--       premier billet au compteur (ou en finissant de monter si le compteur a quitté l'écran), ou à la fin de l'image
+--       s'il n'en vole aucun (VISUAL EFFECTS sur OFF, modèles absents, compteur hors écran) ; `onLanded` aussi.
 --   VfxController.TruckDust(model)                  poussière au pivot du camion
 --   VfxController.CollectCount(amount) -> number    billets et pièces pour ce montant (0 si effets coupés)
 --   VfxController.OnCollectStart(fn(total, wave)) -> déconnexion
@@ -88,10 +91,14 @@ type Flyer = {
 	Fountain: boolean,
 	Shown: boolean,
 	Drift: Vector3,
+	Group: LandGroup?, -- a317 : billets d'un même Collect (premier arrivé)
 }
 
 -- a401 : billets d'un ramassage encore en vol (rang de la prochaine arrivée).
 type Wave = { total: number, arrived: number }
+
+-- a317 (L-299) : un appel de Collect ; `done` dès que son premier billet est arrivé.
+type LandGroup = { amount: number, done: boolean, onLanded: (() -> ())? }
 
 type RarestEntry = {
 	Gui: BillboardGui,
@@ -125,6 +132,8 @@ local bursts = 0 -- copies de FX_Escape et FX_TruckDust encore là
 local chase: any = nil
 local shelf: any = nil
 local mutationFx: any = nil -- a178 : ClonePristine (copie de l'objet du socle)
+local itemIdle: any = nil -- a317 : WithRest (copie de l'objet du socle sans son flottement)
+local landedListeners: { (amount: number) -> () } = {} -- a317 : OnCollectLanded
 local chaseGuard: Model? = nil
 local chaseCopy: Highlight? = nil
 local rarest: { [Instance]: RarestEntry } = {} -- [parcelle] = billboard posé
@@ -351,15 +360,43 @@ local function cashTarget(): Vector3?
 	return ray.Origin + ray.Direction.Unit * Vfx.Collect.TargetDepth
 end
 
-function VfxController.Collect(amount: number, position: Vector3): number
+-- a317 (L-299) : premier billet d'un Collect arrivé (une seule fois par groupe).
+local function land(group: LandGroup)
+	if group.done then
+		return
+	end
+	group.done = true
+	local callback = group.onLanded
+	if callback then
+		task.spawn(callback)
+	end
+	for _, listener in table.clone(landedListeners) do
+		task.spawn(listener, group.amount)
+	end
+end
+
+function VfxController.OnCollectLanded(listener: (amount: number) -> ()): () -> ()
+	table.insert(landedListeners, listener)
+	return function()
+		local index = table.find(landedListeners, listener)
+		if index then
+			table.remove(landedListeners, index)
+		end
+	end
+end
+
+function VfxController.Collect(amount: number, position: Vector3, onLanded: (() -> ())?): number
 	local spec = Vfx.Collect
+	local group: LandGroup = { amount = if type(amount) == "number" then amount else 0, done = false, onLanded = onLanded }
 	local count = VfxController.CollectCount(amount)
 	if count == 0 then
+		task.defer(land, group) -- a317 : aucun billet : le compteur part tout de suite
 		return 0
 	end
 	local bill = template(Vfx.FxFolder, spec.Bill, "Model")
 	local coin = template(Vfx.FxFolder, spec.Coin, "Model")
 	if bill == nil and coin == nil then
+		task.defer(land, group)
 		return 0
 	end
 	local rise = cashTarget() == nil
@@ -367,6 +404,9 @@ function VfxController.Collect(amount: number, position: Vector3): number
 	waveCount += 1
 	local wave = waveCount
 	local made = 0
+	if rise then
+		task.defer(land, group) -- a317 : compteur hors écran : les billets montent sur place, le compteur part tout de suite
+	end
 	for index = 1, count do
 		local isCoin = (index % 2 == 0 and spec.CoinShare > 0) or bill == nil
 		local source = if isCoin and coin then coin else bill
@@ -406,6 +446,7 @@ function VfxController.Collect(amount: number, position: Vector3): number
 			Fountain = fountain,
 			Shown = not fountain,
 			Drift = drift,
+			Group = group,
 		})
 	end
 	if made > 0 then
@@ -479,6 +520,10 @@ local function stepFlyer(flyer: Flyer, dt: number): boolean
 	end
 	if flyer.Model.Parent == nil then
 		arrived(flyer.Wave) -- détruit ailleurs : compté quand même (le HUD n'attend pas un billet perdu)
+		local group = flyer.Group
+		if group then
+			land(group) -- a317 : billet retiré en route : le compteur n'attend pas
+		end
 		return false
 	end
 	local spin = math.rad(spec.Spin) * t
@@ -501,6 +546,10 @@ local function stepFlyer(flyer: Flyer, dt: number): boolean
 	if f >= 1 then
 		flyer.Model:Destroy()
 		arrived(flyer.Wave)
+		local group = flyer.Group
+		if group then
+			land(group) -- a317 (L-299) : le premier billet arrivé relâche le compteur
+		end
 		return false
 	end
 	local eased = f * f -- Quad In
@@ -681,9 +730,22 @@ local function placeRarestItem(entry: RarestEntry, best: Best)
 	-- a178 : copie aux couleurs d'origine (MutationFxController.ClonePristine, sans l'effet déjà posé sur
 	-- l'objet exposé), taggée CopyTag : MutationFxController y pose l'effet de la mutation et
 	-- DisplayController anime son halo de rareté (RarityHalo, copié avec l'objet), comme sur un présentoir.
-	local copy: Model = if mutationFx and type(mutationFx.ClonePristine) == "function"
-		then (mutationFx.ClonePristine :: any)(source)
-		else source:Clone()
+	-- a317 (L-304 point 3) : copiée à sa place de repos (ItemIdleController.WithRest), sans son flottement ni son tour.
+	local function cloneSource(): Model
+		return if mutationFx and type(mutationFx.ClonePristine) == "function"
+			then (mutationFx.ClonePristine :: any)(source)
+			else source:Clone()
+	end
+	local copy: Model
+	if itemIdle and type(itemIdle.WithRest) == "function" then
+		local made: Model? = nil
+		(itemIdle.WithRest :: any)(source, function()
+			made = cloneSource()
+		end)
+		copy = made or cloneSource()
+	else
+		copy = cloneSource()
+	end
 	for _, inst in copy:GetDescendants() do
 		if inst:IsA("BillboardGui") or inst:IsA("ProximityPrompt") or inst:IsA("LuaSourceContainer") or inst:IsA("ClickDetector") then
 			inst:Destroy()
@@ -923,6 +985,7 @@ function VfxController.Start()
 	chase = sibling("ChaseController")
 	shelf = sibling("ShelfBoxController")
 	mutationFx = sibling("MutationFxController")
+	itemIdle = sibling("ItemIdleController")
 	local display = sibling("DisplayController")
 	if display and type(display.OnCollect) == "function" then
 		(display.OnCollect :: any)(function(amount: number, _slotIndex: number, position: Vector3)

@@ -66,6 +66,12 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = Shared:WaitForChild("Config")
 local MutationFx = require(Config:WaitForChild("MutationFx"))
 local Mutations = require(Config:WaitForChild("Mutations"))
+-- a317 (L-304 point 3) : avec Config/DisplayMotion.Enabled, tout objet exposé flotte (ItemIdleController) : il compte
+-- comme animé (saut de Glitch sur une copie, doubles replacés à chaque image). Facultatif : bancs plus anciens.
+local motionModule = Config:FindFirstChild("DisplayMotion")
+local DISPLAY_FLOATS: boolean = if motionModule and motionModule:IsA("ModuleScript")
+	then (require(motionModule) :: any).Enabled == true
+	else false
 
 -- Tags posés par le serveur (mêmes noms là-bas : DisplayService, UnboxService, ShelfOpenState.ItemTag,
 -- CarryService).
@@ -695,7 +701,7 @@ local function cleanCopy(model: Model, sources: { BasePart }): (Model, { [BasePa
 end
 
 local function hasMovingPieces(model: Model): boolean
-	if model:GetAttribute(IDLE_ATTRIBUTE) ~= nil then
+	if model:GetAttribute(IDLE_ATTRIBUTE) ~= nil or (DISPLAY_FLOATS and CollectionService:HasTag(model, "DisplayItem")) then
 		return true
 	end
 	for _, d in model:GetDescendants() do
