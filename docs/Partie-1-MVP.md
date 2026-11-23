@@ -1122,6 +1122,7 @@ Chaque étape est envoyée une seule fois par joueur avec `AnalyticsService:LogO
 
 | Date | Décision | Par |
 | --- | --- | --- |
+| 2026-11-23 | On peut casser la boutique d'un joueur par ses vitres de côté et du fond, pas seulement par la porte. Chaque vitre porte le nouveau tag `ShopGlass` et l'attribut `GlassSide` (Front, Left, Right, Back) ; la casse passe par `FragmentAsync`, comme L-291. Liaison L-298, en attente des réponses d'Ironix. | Clément |
 | 2026-11-23 | L'amélioration de la boutique du joueur se joue « en mode Lego » : une fontaine de billets, puis la nouvelle partie s'assemble pièce par pièce, de bas en haut, chaque pièce tombant un peu de travers et s'emboîtant avec un petit rebond, puis des étincelles. Même effet pour un présentoir, un niveau de résistance et l'étage (`FX_ShopUpgrade_Build`). Validé sur prototype. Liaison L-297. | Clément |
 | 2026-11-23 | **Panneau de repérage `BB_ShopInfo` sans fond, en trois colonnes**, d'après une référence d'un autre jeu du genre : au milieu la tête du propriétaire dans un rond, son nom et son revenu en grand ; à gauche la porte (logo de vitre, « DOOR », coups restants) ; à droite le meilleur objet (icône, « BEST ITEM », nom à la couleur de la rareté) ; le verrou en pastille au-dessus. Aucun nom lu par le code changé, un nom nouveau (`BestIcon`). Liaison L-296. | Clément |
 | 2026-11-23 | La boutique du joueur prend une vitrine de luxe en façade et des socles de musée (velours marron, marbre et or). Les présentoirs et l'établi d'ouverture montent à y 2,75. Liaison L-295. | Clément |
