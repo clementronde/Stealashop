@@ -62,7 +62,7 @@ local SERVER_LUCK = false
 -- Onglets de l'écran (3.1 : Offres, Gamepasses, Argent, Boosts ; Tabs.OffersTab… de L-047).
 export type Tab = "Offers" | "Gamepasses" | "Cash" | "Boosts"
 
-export type PassKey = "DoubleCash" | "DoubleTraining" | "VIP" | "AutoCollect" | "FastOpen" | "ExtraStands" | "HydraulicGloves"
+export type PassKey = "DoubleCash" | "DoubleTraining" | "DoubleSpeed" | "VIP" | "AutoCollect" | "FastOpen" | "ExtraStands" | "HydraulicGloves"
 export type ProductKey =
 	"OpenNow"
 	| "Cash10"
@@ -92,9 +92,13 @@ export type Pass = {
 	Id: number, -- gamepass du Creator Hub ; 0 = pas encore créé
 	Ready: boolean,
 	CardColor: Color3?, -- couleur de sa carte dans UI_RobuxShop_v2 (L-204) ; nil = celle du Template
-	Multiplier: number?, -- ×2 Argent (revenus), ×2 Entraînement (gains du tapis ; plus de banc, v2)
+	Multiplier: number?, -- ×2 Argent (revenus), ×2 Entraînement et ×2 Vitesse (gains du tapis ; plus de banc, v2)
 	DelayFactor: number?, -- Ouverture rapide : facteur des attentes d'ouverture des colis PNJ
 	Stands: number?, -- +4 présentoirs : présentoirs au-delà du maximum
+	-- a319 (L-303) : bouton de UI_HUD qui vend aussi ce gamepass (HudMenuController) : Price.Amount = Price ; caché
+	-- s'il est possédé, si l'Id vaut 0, si la boutique est coupée ou tant que le serveur n'a pas eu la réponse de
+	-- Roblox (attribut PassKnown<Key>).
+	HudButton: string?,
 }
 
 -- Un palier de prix d'« Ouvrir maintenant » : un produit développeur par palier (un produit Roblox a
@@ -144,16 +148,23 @@ export type CratePack = {
 }
 
 -- Gamepasses (4.1), dans l'ordre de la maquette (×2 CASH, ×2 TRAINING, VIP, AUTO COLLECT, FAST OPEN,
--- +4 DISPLAYS), puis les Gants hydrauliques.
+-- +4 DISPLAYS), puis les Gants hydrauliques. a319 (L-303) : ×2 Speed en 3e, juste après ×2 Training (même famille,
+-- gains du tapis), les suivants décalés d'un rang.
 local Passes: { Pass } = {
 	{ Key = "DoubleCash", Id = 0, Order = 1, Price = 449, Ready = true, CardColor = Color3.fromHex("45D63A"), Multiplier = 2, DisplayName = "×2 Cash", Effect = "Doubles all your income", Icon = "UI_Icon_GP_x2Cash" },
 	{ Key = "DoubleTraining", Id = 0, Order = 2, Price = 299, Ready = true, CardColor = Color3.fromHex("FF9A2E"), Multiplier = 2, DisplayName = "×2 Training", Effect = "×2 treadmill gains", Icon = "UI_Icon_GP_x2Training" },
-	{ Key = "VIP", Id = 0, Order = 3, Price = 249, Ready = false, CardColor = Color3.fromHex("8A5CF0"), DisplayName = "VIP", Effect = "+10% income, aura, chat tag", Icon = "UI_Icon_GP_VIP" },
-	{ Key = "AutoCollect", Id = 0, Order = 4, Price = 199, Ready = true, CardColor = Color3.fromHex("FFC928"), DisplayName = "Auto Collect", Effect = "Cash collects itself, anywhere", Icon = "UI_Icon_GP_AutoCollect" },
-	{ Key = "FastOpen", Id = 0, Order = 5, Price = 299, Ready = true, CardColor = Color3.fromHex("2FA8F0"), DelayFactor = 0.5, DisplayName = "Fast Open", Effect = "Anti-theft 2× shorter", Icon = "UI_Icon_GP_FastOpen" },
-	{ Key = "ExtraStands", Id = 0, Order = 6, Price = 349, Ready = true, CardColor = Color3.fromHex("E05AD8"), Stands = 4, DisplayName = "+4 Displays", Effect = "4 extra displays", Icon = "UI_Icon_GP_Displays" },
+	-- a319 (23/11, L-303, décision de Cantin) : « x2 SPEED » du HUD, gamepass permanent à 149 R$ (prix V0 validé par
+	-- Cantin), à la place du boost de 10 min à 29 R$ (Config/Boosts, retiré). Même effet que ce boost : × 2 sur les
+	-- gains du tapis, multiplié par ×2 Training (× 4 avec les deux) et par les événements ; les trails n'y changent
+	-- rien (ils multiplient la Speed affichée, pas le gain). Id à créer par Cantin au nom du groupe (0 = rien en vente).
+	-- Nom, effet, icône et couleur : ceux de l'ancienne carte « ×2 Speed » de l'onglet Boosts (L-204).
+	{ Key = "DoubleSpeed", Id = 0, Order = 3, Price = 149, Ready = true, CardColor = Color3.fromHex("F2553A"), Multiplier = 2, DisplayName = "×2 Speed", Effect = "×2 speed on the treadmill", Icon = "UI_Icon_SpeedBoost", HudButton = "SpeedBoostButton" },
+	{ Key = "VIP", Id = 0, Order = 4, Price = 249, Ready = false, CardColor = Color3.fromHex("8A5CF0"), DisplayName = "VIP", Effect = "+10% income, aura, chat tag", Icon = "UI_Icon_GP_VIP" },
+	{ Key = "AutoCollect", Id = 0, Order = 5, Price = 199, Ready = true, CardColor = Color3.fromHex("FFC928"), DisplayName = "Auto Collect", Effect = "Cash collects itself, anywhere", Icon = "UI_Icon_GP_AutoCollect" },
+	{ Key = "FastOpen", Id = 0, Order = 6, Price = 299, Ready = true, CardColor = Color3.fromHex("2FA8F0"), DelayFactor = 0.5, DisplayName = "Fast Open", Effect = "Anti-theft 2× shorter", Icon = "UI_Icon_GP_FastOpen" },
+	{ Key = "ExtraStands", Id = 0, Order = 7, Price = 349, Ready = true, CardColor = Color3.fromHex("E05AD8"), Stands = 4, DisplayName = "+4 Displays", Effect = "4 extra displays", Icon = "UI_Icon_GP_Displays" },
 	-- Texte V0 proposé, absent de la maquette.
-	{ Key = "HydraulicGloves", Id = 0, Order = 7, Price = 499, Ready = false, DisplayName = "Hydraulic Gloves", Effect = "Exclusive tool: 2.5× your best tool", Icon = "UI_Icon_GP_HydraulicGloves" },
+	{ Key = "HydraulicGloves", Id = 0, Order = 8, Price = 499, Ready = false, DisplayName = "Hydraulic Gloves", Effect = "Exclusive tool: 2.5× your best tool", Icon = "UI_Icon_GP_HydraulicGloves" },
 }
 
 -- Produits développeur (4.2). Noms et lignes d'effet : V0 proposés, absents de la maquette.
@@ -172,7 +183,7 @@ local Products: { Product } = {
 		Key = "OpenNow",
 		Id = 0, -- inutilisé : un Id par palier, plus bas
 		Tab = "Boosts",
-		Order = 3, -- après ×2 Speed et zZz (ShopBoosts), comme la maquette de Clément
+		Order = 3, -- après zZz (ShopBoosts), comme la maquette de Clément (a319 : ×2 Speed est devenu un gamepass)
 		CardColor = Color3.fromHex("18B894"),
 		Price = 19,
 		Ready = true,
@@ -203,11 +214,11 @@ local Products: { Product } = {
 }
 
 -- Vague 63 (L-196 point 3, L-204) : les boutons en situation du HUD (Config/Boosts) aussi dans l'onglet Boosts.
--- Noms, effets, icônes (UI_Icon_SpeedBoost, UI_Icon_Sleep) et couleurs : maquette de Clément (L-204).
+-- Noms, effets, icônes (UI_Icon_Sleep) et couleurs : maquette de Clément (L-204). a319 (L-303) : la carte « ×2 Speed »
+-- quitte l'onglet Boosts (le boost de 10 min est retiré) : c'est le gamepass DoubleSpeed de l'onglet Gamepasses.
 local ShopBoosts: { ShopBoost } = {}
 for _, entry in
 	{
-		{ Key = "SpeedBoost", Order = 1, DisplayName = "×2 Speed", Effect = "×2 speed on the treadmill", Icon = "UI_Icon_SpeedBoost", CardColor = Color3.fromHex("F2553A") },
 		-- Vague 71 (a238, L-213 point 1d) : nom de la carte V0 proposé (Clément voulait un texte, pas « zZz ») ;
 		-- le bouton du HUD garde « zZz ».
 		{ Key = "SleepGuards", Order = 2, DisplayName = "Sleeping Guards 60s", Effect = "Guards & police sleep 60s", Icon = "UI_Icon_Sleep", CardColor = Color3.fromHex("5B4BE0") },

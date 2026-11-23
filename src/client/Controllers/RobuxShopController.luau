@@ -57,7 +57,7 @@
 -- fenêtre d'achat de Roblox et affiche.
 --
 -- Vague 63 (a208 ; L-196, L-200, L-204) :
---   - 6 packs d'argent ; les boosts du HUD « ×2 Speed » et « zZz » (Monetization.ShopBoosts, prix, Id et Ready
+--   - 6 packs d'argent ; le boost du HUD « zZz » (a319 : « ×2 Speed » est devenu un gamepass) (Monetization.ShopBoosts, prix, Id et Ready
 --     de Config/Boosts : même produit que les boutons du HUD) dans l'onglet Boosts, avant Ouvrir maintenant.
 --     Pas encore codés côté serveur (Ready = false) : la carte montre le prix et « Soon » au clic, rien n'est
 --     vendu, même boutique ouverte ;

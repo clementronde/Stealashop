@@ -1,7 +1,11 @@
 --!strict
--- Boutons Robux en situation du HUD (vague 59, a190 ; liaison L-182 point 7, L-183 `RightRail`) : « x2 vitesse »
--- sur un tapis et « zZz » dans le couloir. TOUT EST UNE PROPOSITION (V0 proposé, absent du doc) : règles, prix,
--- durées et recharge sont à valider par Clément avant d'être codés côté serveur.
+-- Boutons Robux en situation du HUD (vague 59, a190 ; liaison L-182 point 7, L-183 `RightRail`) : « zZz » dans le
+-- couloir. TOUT EST UNE PROPOSITION (V0 proposé, absent du doc) : règles, prix, durées et recharge sont à valider par
+-- Clément avant d'être codés côté serveur.
+-- a319 (23/11, L-303, décision de Cantin) : le boost « x2 vitesse » de 10 min à 29 R$ (SpeedBoost) est retiré. Le
+-- bouton SpeedBoostButton vend maintenant le gamepass permanent DoubleSpeed (Config/Monetization, HudButton). Ce
+-- produit n'a jamais été vendu (Id = 0 et Ready = false en DEV comme en PROD, jamais créé sur le Creator Hub) :
+-- aucun reçu ni aucun temps de boost à garder.
 --
 -- État aujourd'hui : les boutons se montrent selon leur règle (HudMenuController), écrivent leur prix dans
 -- Price.Amount, mais n'achètent rien : Ready = false (l'effet n'est pas codé côté serveur) et Features.RobuxShop
@@ -52,20 +56,7 @@ export type Boost = {
 local Boosts = {
 	SoonText = "Soon",
 	List = {
-		-- « x2 vitesse » : × 2 sur les gains du tapis pendant 10 min (s'ajoute au gamepass ×2 Training : × 4) ;
-		-- racheté pendant l'effet, la durée s'allonge (60 min au plus). Pas de recharge.
-		{
-			Key = "SpeedBoost",
-			Button = "SpeedBoostButton",
-			ShowWhen = "OnTreadmill",
-			Id = 0,
-			Price = 29,
-			Ready = false,
-			Multiplier = 2,
-			Duration = 600,
-			MaxDuration = 3600,
-			StacksWithGamepass = true,
-		},
+		-- a319 : « x2 vitesse » (SpeedBoost) retiré, devenu le gamepass DoubleSpeed (Config/Monetization).
 		-- « zZz » : endort tous les vigiles et policiers du serveur pendant 60 s (les « Zzz » existent déjà) ;
 		-- tout le serveur en profite (moment partagé, « X a endormi les vigiles ! »), puis 5 min de recharge pour
 		-- tout le serveur, qui part de l'achat. Autre règle possible, à choisir par Clément : le joueur seul
