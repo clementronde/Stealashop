@@ -1007,6 +1007,10 @@ table.insert(UI.Billboards, {
 		-- Vague 72 (a245, L-216 point 3) : PvPController.
 		{ Path = "OwnerAvatar", Class = "ImageLabel", Optional = true, Note = "pas de miniature du propriétaire" },
 		{ Path = "BestItem", Class = "TextLabel", Optional = true, Note = "pas de nom du meilleur objet exposé" },
+		-- a316 (L-296, Clément, 2026-11-23) : enfants de BestItem, cachés avec lui. BestIcon reçoit l'image ICON_ du
+		-- meilleur objet (PvPController) ; BestLabel (« BEST ITEM ») est du décor, jamais écrit par le code.
+		{ Path = "BestItem.BestIcon", Class = "ImageLabel", Optional = true, Note = "pas d'icône du meilleur objet exposé" },
+		{ Path = "BestItem.BestLabel", Class = "TextLabel", Optional = true, Note = "pas de légende « BEST ITEM »" },
 	} :: { Element },
 })
 
