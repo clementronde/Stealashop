@@ -913,4 +913,13 @@ local UnboxFx: ModelSpec = {
 Models.UnboxFx = UnboxFx
 table.insert(Models.List, table.find(Models.List, WeaponShopCounter) or #Models.List + 1, UnboxFx)
 
+-- Cabine d'essayage (a411, vague GC6, L-113 ; noms proposés à Clément, pas encore livrés) : tout est facultatif, rien
+-- n'est contrôlé tant que le modèle n'existe pas.
+--   Cabine : un Model (ou une pièce) nommé FittingRoom (Config/Disguise.Cabin.ModelName), n'importe où dans la parcelle
+--   PLOT_Shop. Le joueur s'y déguise à Config/Disguise.Cabin.Range studs au plus de son pivot ; l'invite « Fitting
+--   Room » est posée sur sa première pièce. Pour ne la montrer qu'une fois la tuile achetée : attribut ShowFromSkill =
+--   "FittingRoom" sur le modèle (Config/SkillTree.PlotVisuals, ShopWallsService). Sans modèle : invite sur la porte.
+--   Effet de démasquage : pas encore branché (nom proposé : ReplicatedStorage/Assets/FX/FX_Disguise_Unmask).
+Models.FittingRoomName = "FittingRoom"
+
 return Models

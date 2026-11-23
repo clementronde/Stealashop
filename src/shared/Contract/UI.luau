@@ -1586,4 +1586,42 @@ table.insert(UI.Screens, {
 	} :: { Element },
 })
 
+-- Cabine d'essayage (a411, vague GC6, L-113 ; noms proposés à Clément, pas encore livrés) : tout est facultatif.
+-- UI_FittingRoom : choix de la zone du déguisement, ouvert par l'invite de la cabine (DisguiseController). ZoneList.Template
+-- (bouton caché) est copié une fois par zone (Zone_1 à Zone_6) : ZoneName reçoit « ZONE n · Thème », Locked est montré
+-- tant que la zone demande une renaissance de plus (LockedLabel = « REBIRTH n »). UnlockButton (tuile FittingRoom pas
+-- encore achetée) achète la compétence (remote BuySkill), UnlockButton.PriceLabel reçoit son prix. Absent : liste de
+-- repli construite par le code. UI_Disguise : chrono du déguisement (Timer = « UNDERCOVER 0:42 ») ; absent : texte de
+-- repli en bas de l'écran. Tile_FittingRoom : la tuile de l'arbre (mêmes calques que les autres tuiles) ; absente,
+-- l'achat passe par UnlockButton ou par l'écran de repli.
+table.insert(UI.Screens, {
+	Name = "UI_FittingRoom",
+	Class = "ScreenGui",
+	Optional = true,
+	Elements = {
+		{ Path = "CloseButton", Class = BUTTON },
+		{ Path = "ZoneList", Class = "GuiObject" },
+		{ Path = "ZoneList.Template", Class = BUTTON, Template = true },
+		{ Path = "ZoneList.Template.ZoneName", Class = "TextLabel" },
+		{ Path = "ZoneList.Template.Locked", Class = "GuiObject", Optional = true, Note = "une zone fermée garde l'aspect d'une zone ouverte" },
+		{ Path = "ZoneList.Template.Locked.LockedLabel", Class = "TextLabel", Optional = true, Note = "« REBIRTH n » n'est pas écrit" },
+		{ Path = "UnlockButton", Class = BUTTON, Optional = true, Note = "la cabine ne s'achète que par la tuile de l'arbre" },
+		{ Path = "UnlockButton.PriceLabel", Class = "TextLabel", Optional = true, Note = "le prix de la cabine n'est pas écrit" },
+	} :: { Element },
+})
+table.insert(UI.Screens, {
+	Name = "UI_Disguise",
+	Class = "ScreenGui",
+	Optional = true,
+	Elements = {
+		{ Path = "Timer", Class = "TextLabel" },
+	} :: { Element },
+})
+-- La tuile va dans l'entrée UI_SkillTree qui existe (a312 : une seule entrée par écran).
+for _, screenDef in UI.Screens do
+	if screenDef.Name == "UI_SkillTree" then
+		table.insert(screenDef.Elements, { Path = "Tree.Tile_FittingRoom", Class = BUTTON, Optional = true, Note = "la cabine d'essayage s'achète par l'écran de la cabine" })
+	end
+end
+
 return UI

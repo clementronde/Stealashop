@@ -2060,6 +2060,57 @@ function WitnessService.GetState(store: Model): { State }
 	return list
 end
 
+-- a411 (L-113, cabine d'essayage, DisguiseService) : les témoins de la zone `zone` (leurs modèles, pour l'apparence du
+-- faux passant) et les points de leur circuit (où il apparaît) ; listes vides sans témoin dans cette zone.
+function WitnessService.GetZone(zone: number): ({ Model }, { Vector3 })
+	local models: { Model } = {}
+	local points: { Vector3 } = {}
+	for _, w in witnesses do
+		if w.zone == zone then
+			table.insert(models, w.model)
+			if #points == 0 then
+				points = table.clone(w.path)
+			end
+		end
+	end
+	return models, points
+end
+
+-- a411 (L-113 point 3) : un faux passant dénonce `store`. La police part sur `players` (du premier au dernier), comme
+-- à l'appel d'un témoin (launchPolice : un policier par joueur encore poursuivable, plafond Police.MaxPerStore, mêmes
+-- vitesse, durée et renvoi à la base). Le point d'arrivée est celui d'un témoin du magasin, sinon de la zone ; sans
+-- témoin, personne ne part. Les suspects du témoin ne changent pas. Renvoie les policiers lancés.
+function WitnessService.Denounce(store: Model, players: { Player }): { PoliceChase }
+	local w: WitnessNpc? = witnessesOf(store)[1]
+	if w == nil then
+		local zone = store:GetAttribute("Zone")
+		for _, other in witnesses do
+			if other.zone == zone then
+				w = other
+				break
+			end
+		end
+	end
+	if w == nil then
+		return {}
+	end
+	local caller = w :: WitnessNpc
+	local now = os.clock()
+	local kept = caller.suspects
+	local suspects: { [Player]: number } = {}
+	for index, player in players do
+		suspects[player] = now - index
+	end
+	caller.suspects = suspects
+	local ok, launched = pcall(launchPolice, caller, store, now)
+	caller.suspects = kept
+	if not ok then
+		warn(`[WitnessService] Denounce({store.Name}) : {launched}`)
+		return {}
+	end
+	return launched
+end
+
 function WitnessService.Start()
 	for _, descendant in Workspace:GetDescendants() do
 		if

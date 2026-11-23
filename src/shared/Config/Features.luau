@@ -83,6 +83,10 @@ local Features = {
 	FramewispFx = true,
 	-- a301 (21/11, demande de Cantin) : près de la boutique d'un autre joueur, dehors, les étiquettes BB_Item de ses objets exposés se voient à travers la façade (ShopSpyController, Config/ShopSpy) ; V0 proposé (2026-11-21) : true ; false = comme avant.
 	ShopSpy = true,
+	-- a411 (vague GC6, L-113, feuille de route MAJ 4) : cabine d'essayage (Config/Disguise, DisguiseService, DisguiseController ;
+	-- tuile FittingRoom de Config/SkillTree achetable) : se déguiser en passant d'une zone, dénoncer un magasin, être démasqué
+	-- d'un coup de batte. V0 proposé (Cantin, 23/11) : true en DEV ; false = tuile « Soon », remotes Disguise et Denounce ignorés.
+	FittingRoom = true,
 }
 
 export type Features = typeof(Features)

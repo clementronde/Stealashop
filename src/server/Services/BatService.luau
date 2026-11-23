@@ -143,7 +143,7 @@ local ToolService = require(script.Parent.ToolService)
 
 type Payload = CarryTypes.Payload
 
-export type Usage = "Defend" | "Box" | "Intruder" | "Thief"
+export type Usage = "Defend" | "Box" | "Intruder" | "Thief" | "Unmask"
 export type HitListener = (hitter: Player, target: Player, usage: Usage, payload: Payload?) -> ()
 export type BotHitListener = (plot: Model, target: Player, usage: Usage, payload: Payload?) -> ()
 
@@ -351,6 +351,13 @@ local function isBotIntruder(plot: Model, target: Player): boolean
 	return value == true
 end
 
+-- a411 (L-113 point 5, cabine d'essayage) : point d'accroche, `target` est-il déguisé en passant ? false par défaut ;
+-- DisguiseService le remplace. Un coup de batte sur lui, hors zone safe, même mains vides, le démasque (usage
+-- « Unmask » : rien ne tombe, étourdi comme un intrus ; DisguiseService écoute OnHit). Appelé à chaque coup, sans yield.
+function BatService.IsDisguised(_target: Player): boolean
+	return false
+end
+
 function BatService.IsStunned(player: Player): boolean
 	return stunTokens[player] ~= nil
 end
@@ -426,6 +433,8 @@ local function candidateFor(
 		usage = "Defend" -- usage 1 : même en zone safe
 	elseif isIntruder(hitter, other) then
 		usage = "Intruder" -- dans la boutique du frappeur : même en zone safe, même mains vides
+	elseif payload == nil and not hitterSafe and not isInSafeZone(root.Position) and select(2, pcall(BatService.IsDisguised, other)) == true then
+		usage = "Unmask" -- a411 (L-113 point 5) : faux passant démasqué
 	elseif payload == nil then
 		return nil, "ne porte rien"
 	elseif hitterSafe or isInSafeZone(root.Position) then
@@ -524,7 +533,7 @@ local function applyHit(who: string, hitterRoot: BasePart, target: Candidate, no
 		stun(player, "Knockback")
 		Net.Server.Notify:Fire(player, Bat.Messages.BoxKnockedDown, "Alert") -- avertissement, pas un refus : sans UI_Deny (L-106 point 6)
 		log(`{who} frappe {player.Name} : objet {payload.Rarity} au sol ({dropId or "?"})`)
-	elseif target.usage == "Intruder" then
+	elseif target.usage == "Intruder" or target.usage == "Unmask" then
 		-- Rien ne tombe : PvPService le sort de la boutique (OnHit).
 		stun(player, "Stun")
 		log(`{who} frappe l'intrus {player.Name} dans sa boutique`)
