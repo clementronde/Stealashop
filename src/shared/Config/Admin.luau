@@ -72,9 +72,16 @@ local Admin = {
 	-- Groupe du studio : 0 = le groupe propriétaire du jeu (game.CreatorId) ; pas de contrôle par groupe si le jeu
 	-- n'appartient pas à un groupe.
 	GroupId = 0,
-	-- Rang minimal dans ce groupe (V0 : 254, juste sous le propriétaire à 255 ; à régler sur le rang du rôle
-	-- « Dev » d'Ironix).
-	MinGroupRank = 254,
+	-- Rang minimal dans ce groupe. V0 proposé (Cantin, 23/11, audit a272 F2, à confirmer) : 255, le propriétaire seul
+	-- (avant 254 : tout futur rôle ≥ 254 du groupe, qui servira aux jeux suivants, aurait été admin en PROD). Les
+	-- autres admins en ligne passent par UserIds.
+	MinGroupRank = 255,
+	-- V0 proposé (Cantin, 23/11, audit a272 F2) : le rang est relu toutes les RankRefreshSeconds s pour chaque joueur
+	-- (attribut IsAdmin à jour), et juste avant une commande s'il a été lu il y a plus de RankMaxAge s : un membre
+	-- rétrogradé perd ses droits sans se reconnecter. Lu par GroupService:GetGroupsAsync (Player:GetRankInGroup garde
+	-- sa première réponse toute la session côté serveur).
+	RankRefreshSeconds = 300,
+	RankMaxAge = 60,
 	-- En Studio, tout le monde est admin.
 	StudioEveryone = true,
 	-- Borne des montants donnés (l'échelle des stats va vers les milliards, L-108 point 1).

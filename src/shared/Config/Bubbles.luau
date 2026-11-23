@@ -36,6 +36,10 @@ local Bubbles = {
 	Lifetime = 6,
 	-- V0 : écart minimal (s) entre deux ClaimBubble d'un même joueur (en plus du débit de Net/Definitions).
 	ClaimMinGap = 0.1,
+	-- V0 proposé (Cantin, 23/11, audit a272 F3) : âge minimal (s) d'une bulle, compté par le serveur depuis son
+	-- apparition, pour être prise (temps de réaction humain, ping compris : un script qui la prend dès BubbleSpawn est
+	-- refusé, « TooSoon », et la bulle reste à prendre).
+	ClaimMinAge = 0.4,
 
 	-- Client (BubbleController).
 	Client = {
