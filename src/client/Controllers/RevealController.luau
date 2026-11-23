@@ -723,6 +723,9 @@ local function releaseOpener(scene: Scene, soft: boolean?)
 	if scene.masked then
 		scene.masked = false
 		HudMask.Pop(Reveal.MaskKey)
+		if soft == true then
+			playSound(Reveal.Sounds.HudBack) -- a279 (L-229) : UI_Whoosh, les boutons du HUD reviennent
+		end
 	end
 end
 
