@@ -14,7 +14,8 @@
 --     recalculé quand TopbarInset, sa taille ou la place de son parent changent. Seul Position est écrit (en px).
 --     Barre de hauteur nulle (barre de Roblox coupée) ou attribut absent : la place de Clément est gardée.
 --   - RebirthButton : caché par Clément tant que la renaissance est coupée ; montré quand elle est ouverte
---     (attribut Rebirths du Player, posé par RebirthService). Jamais caché ici (l'aperçu L-071 de l'ancien HUD tient).
+--     (attribut Rebirths du Player, posé par RebirthService) ; recaché quand l'attribut disparaît, s'il a été montré
+--     ici (a273). Un bouton laissé visible par Clément n'est jamais caché (l'aperçu L-071 de l'ancien HUD tient).
 --   - DisplayedButton ouvre « Mes objets exposés » (UI_Displayed) : DisplayedController (agent a191) fait tout,
 --     Toggle() s'il existe, sinon Open() ; sans lui, rien (une ligne en Studio).
 --   - Boutons en situation de Config/Boosts (SpeedBoostButton « x2 », SleepButton « zZz ») : cachés au départ,
@@ -93,6 +94,7 @@ local shown: { [string]: boolean } = {}
 local cooldownTexts: { [string]: string } = {}
 local rows: { GuiObject } = {}
 local rebirthButtons: { GuiObject } = {}
+local rebirthShownHere: { [GuiObject]: boolean } = {} -- a273 : boutons que refreshRebirth a montrés (cachés par Clément)
 local warned: { [string]: boolean } = {}
 
 -- Vague 70 (a230) : pastilles de BottomRow, par nom (Config/Hud.BottomRow), et ce qui y est écrit.
@@ -176,14 +178,17 @@ function HudMenuController.PlaceTopLeftRow()
 	end
 end
 
--- RebirthButton : montré quand la renaissance est ouverte (attribut Rebirths), jamais caché ici.
+-- RebirthButton : montré quand la renaissance est ouverte (attribut Rebirths). a273 : recaché quand elle se referme,
+-- seulement s'il a été montré ici (un bouton laissé visible par Clément, aperçu L-071, n'est jamais caché).
 local function refreshRebirth()
-	if type(localPlayer:GetAttribute(REBIRTHS_ATTRIBUTE)) ~= "number" then
-		return
-	end
+	local open = type(localPlayer:GetAttribute(REBIRTHS_ATTRIBUTE)) == "number"
 	for _, button in rebirthButtons do
-		if not button.Visible then
+		if open and not button.Visible then
 			button.Visible = true
+			rebirthShownHere[button] = true
+		elseif not open and rebirthShownHere[button] then
+			button.Visible = false
+			rebirthShownHere[button] = nil
 		end
 	end
 end
@@ -377,6 +382,7 @@ local function bind(gui: ScreenGui)
 		HudMenuController.PlaceTopLeftRow()
 	end
 	rebirthButtons = {}
+	rebirthShownHere = {}
 	for _, inst in Find.all(gui, REBIRTH_BUTTON) do
 		if inst:IsA("GuiObject") then
 			table.insert(rebirthButtons, inst :: GuiObject)

@@ -90,7 +90,8 @@ local Rewards = {
 	ZoneBox = {
 		-- 15 min : un colis de la zone de référence, aux chances des rayons de cette zone (Rarities.ZoneOdds) améliorées :
 		-- chance de la rareté la plus haute de la zone × 1,5, l'écart pris sur la plus basse (zone 3 : Rare 2 → 3 %,
-		-- Commun 33 → 32 %) ; zone à une seule rareté (zone 1) : rien ne change. Secret compris (zone 6), comme les rayons.
+		-- Commun 33 → 32 %) ; zone à une seule rareté (zone 1) : rien ne change. Secret compris (zone 6), comme les rayons
+		-- (validé par Cantin, 22/11).
 		BestZone = { ZoneStep = 0, TopBoost = 1.5 },
 		-- 60 min : un colis de la zone de référence + 1 (au plus la dernière zone de Config/Zones), tiré seulement parmi
 		-- les 3 meilleures raretés de cette zone, sans Secret, à 60 / 30 / 10 % de la plus basse à la plus haute (zone 6 :
@@ -188,7 +189,7 @@ local Rewards = {
 		-- Box : l'objet d'un colis d'un type (Tier), donné tout de suite (UnboxService.GiveItem). Plus aucun palier de temps
 		-- de jeu n'en donne depuis a309 (22/11 : « Item up to Epic / Mythic » abandonnés) ; un type absent : BoxDefault.
 		Box = {} :: { [string]: string },
-		-- a309 : colis de zone (Kind = "ZoneBox"), [Rule] = texte ; V0 (a309, 22/11). Une règle absente : BoxDefault.
+		-- a309 : colis de zone (Kind = "ZoneBox"), [Rule] = texte ; validé par Cantin, 22/11. Une règle absente : BoxDefault.
 		ZoneBox = {
 			BestZone = "Box from your best zone",
 			NextZone = "Rare box from the next zone",
@@ -200,7 +201,7 @@ local Rewards = {
 		Icons = {
 			Cash = "UI_Icon_Reward_Cash",
 			Box = "UI_Icon_Reward_Box",
-			ZoneBox = "UI_Icon_Reward_Box", -- a309 : même icône que Box (V0)
+			ZoneBox = "UI_Icon_Reward_Box", -- a309 : même icône que Box (validé par Cantin, 22/11)
 			Boost = "UI_Icon_Reward_Boost",
 		} :: { [string]: string },
 	},

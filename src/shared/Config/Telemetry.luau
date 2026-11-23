@@ -45,6 +45,9 @@ local Economy: { [string]: EconomyKind } = {
 	Fence = { Flow = "Source", Transaction = "Shop" }, -- receleur (DEV-034) ; SKU proposé : rareté de l'objet vendu
 	DailyReward = { Flow = "Source", Transaction = "TimedReward" }, -- quotidien (DEV-101, RewardService) ; SKU : Day1 à Day7
 	PlaytimeReward = { Flow = "Source", Transaction = "TimedReward" }, -- temps de jeu (DEV-101, RewardService) ; SKU : Playtime5 à Playtime60
+	-- a273 : coffre de la semaine (a166, RewardService, source « Weekly ») ; il donne un objet aujourd'hui, ce genre ne
+	-- sert que s'il donne un jour de l'argent. Type V0 proposé (Cantin, 23/11) : TimedReward, comme DailyReward.
+	WeeklyReward = { Flow = "Source", Transaction = "TimedReward" },
 	-- Gain codé : prime d'une zone complète de l'Index (IndexService, L-083 point 7), SKU IndexZone1 à
 	-- IndexZone6. Type V0 proposé : Gameplay (gagnée en jouant, pas au temps).
 	IndexReward = { Flow = "Source", Transaction = "Gameplay" },
