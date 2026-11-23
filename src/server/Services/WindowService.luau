@@ -60,7 +60,8 @@
 --     cassée tant qu'un intrus est dedans) ; les vitrines PNJ gardent GATE_MAX_WAIT. Le chrono de casse
 --     reste aux magasins PNJ.
 --   - WindowHP(windowId, hp, maxHp), non fiable : au plus 10 fois par seconde par vitrine
---     (Balance.Window.HPSyncHz), et seulement si les PV ou les PV max ont changé.
+--     (Balance.Window.HPSyncHz), et seulement si les PV ou les PV max ont changé ; a284 : pendant la seule
+--     régénération, au plus Balance.Window.RegenSyncHz fois par seconde, et toujours au retour aux PV pleins.
 --
 -- Cible d'événement (Kind = "Event" ; camion de l'événement, liaison L-049, TruckEventService) : un
 -- modèle ajouté par le code avec AddTarget, frappé par la même chaîne que les vitrines : HitWindow,
@@ -187,6 +188,7 @@ type Window = {
 	DoorTokensAt: number?, -- os.clock() de leur dernier calcul
 	LastDoorHitAt: number?, -- os.clock() du dernier coup compté sur la porte (réparation après PvP.DoorRepairDelay)
 	DoorHitters: { [Player]: number }?, -- a177 : os.clock() du dernier coup compté de chaque frappeur (IsBreaking)
+	SentAt: number?, -- a284 : os.clock() du dernier WindowHP envoyé (régénération à Balance.Window.RegenSyncHz)
 }
 
 -- Modèles qui portent une vitrine (contrat 2.1, Contract/Tags).
@@ -211,6 +213,10 @@ local HIT_TARGET_TAG = "HitTarget"
 local MAX_ID_LENGTH = 64
 
 local SYNC_INTERVAL = 1 / Balance.Window.HPSyncHz
+-- a284 (audit a271 point 7) : régénération seule envoyée au plus RegenSyncHz fois par seconde.
+-- Absent (faux arbres des bancs plus anciens) : HPSyncHz, comme avant.
+-- Moins un demi-tick : les ticks (task.wait) ne tombent pas pile, un envoi ne saute jamais un tick de trop.
+local REGEN_SYNC_INTERVAL = 1 / ((Balance.Window :: any).RegenSyncHz or Balance.Window.HPSyncHz) - SYNC_INTERVAL / 2
 -- Porte de boutique (L-163) : jetons au plus du plafond de coups par seconde (V0 : 2, un coup d'avance au plus).
 local DOOR_BURST = 2
 local IS_STUDIO = RunService:IsStudio()
@@ -697,11 +703,18 @@ local function step(dt: number)
 		local hitAt = window.LastDoorHitAt
 		local repairing = window.Kind ~= "Plot" or hitAt == nil or os.clock() - hitAt >= PvP.DoorRepairDelay
 		if repairing and not window.Broken and window.HP < window.MaxHP then
-			window.HP = math.min(window.MaxHP, window.HP + regenRate(window) * dt * window.MaxHP)
-			window.Dirty = true
+			local hp = math.min(window.MaxHP, window.HP + regenRate(window) * dt * window.MaxHP)
+			if hp ~= window.HP then
+				window.HP = hp
+				-- a284 : la régénération seule part au plus REGEN_SYNC_INTERVAL ; toujours au retour aux PV pleins.
+				if hp >= window.MaxHP or os.clock() - (window.SentAt or -math.huge) >= REGEN_SYNC_INTERVAL then
+					window.Dirty = true
+				end
+			end
 		end
 		if window.Dirty then
 			window.Dirty = false
+			window.SentAt = os.clock()
 			Net.Server.WindowHP:FireAll(window.Id, window.HP, window.MaxHP)
 		end
 	end

@@ -72,6 +72,10 @@ local Balance = {
 		CrackThresholds = { 0.75, 0.5, 0.25 }, -- fissures visibles à ces fractions des PV
 		RebuildDelay = 20, -- reconstruction après la fermeture du rideau
 		HPSyncHz = 10, -- WindowHP envoyé en non fiable, 10 fois par seconde au plus
+		-- V0 proposé (Cantin, 23/11 ; audit a271 point 7) : pendant la seule régénération (aucun coup ni autre changement
+		-- depuis le dernier envoi), WindowHP part au plus RegenSyncHz fois par seconde, et toujours au retour aux PV
+		-- pleins. Les coups restent à HPSyncHz.
+		RegenSyncHz = 2,
 	},
 
 	-- PV des vitrines des magasins PNJ (rééquilibrage v2, passe 3 du 2026-11-14 : chrono de police de 8 s ;

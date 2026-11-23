@@ -39,6 +39,9 @@ local ItemRain = {
 	Clearance = 4,
 	MinSpacing = 10,
 	SpawnTries = 12,
+	-- V0 proposé (Cantin, 23/11 ; audit a271 point 13) : sans rue StreetName dans la map, ItemRainService arrête de
+	-- parcourir le Workspace après ce nombre de recherches vaines d'affilée (une toutes les 10 s).
+	StreetScanTries = 3,
 
 	-- Relevé de l'événement et du rythme.
 	TickInterval = 0.5,
