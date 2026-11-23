@@ -65,7 +65,7 @@ local Economy: { [string]: EconomyKind } = {
 	-- déjà, genre absent : rien ne partait), SKU Week… ; TutorialGift : dons d'argent du tuto (TutorialService), SKU Tool ou
 	-- Aura ; HeistBonus : prime au complice d'un braquage à deux (StoreHeistService), SKU Partner. Types V0 proposés
 	-- (Cantin, 23/11). Le receleur part en Fence (PawnShopService) et les codes en Code (CodeService), genres déjà là.
-	WeeklyReward = { Flow = "Source", Transaction = "TimedReward" },
+	-- WeeklyReward est déjà plus haut (a273, même valeur).
 	TutorialGift = { Flow = "Source", Transaction = "Onboarding" },
 	HeistBonus = { Flow = "Source", Transaction = "Gameplay" },
 }
