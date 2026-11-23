@@ -117,6 +117,54 @@ local Chase = {
 	-- cette règle qui attrape en ligne droite : la capture se fait 1 stud plus près qu'avant, pas plus (le
 	-- vigile ne peut pas doubler la copie du serveur).
 	LagContactReach = 3,
+	-- a416 (Cantin, 2026-11-23 : « le vigile attrape de hyper loin le joueur », « surtout dans les zones rapides ») :
+	-- la capture vue par le joueur (server/Services/Guard/ClientView). Cause : le serveur mesure entre SON vigile et la
+	-- COPIE du voleur, qu'il reçoit en retard (réseau + tampon de réplication de la physique, même à ping 0) ; l'écran du
+	-- joueur montre son personnage à sa vraie place et le vigile en retard lui aussi. À la capture, le joueur voyait donc
+	-- le vigile à 3 studs + sa vitesse × retard montant + celle du vigile × retard descendant. Banc a416 (retard simulé :
+	-- 0,25 s de tampons + 67 ms de ping), avec l'objet : 12,5 studs en zone 1 (29 studs/s), 16,1, 19,7, 23,2, 26,7, puis
+	-- 30,2 en zone 6 (83 studs/s) et 44,1 au plafond de la marche (126) ; avec cette règle : 3,5 à toutes les vitesses.
+	-- La compensation d'a193 n'y changeait presque rien : elle ne compte que le ping (≈ 0 en Studio), plafonne l'avance à
+	-- LagMaxStuds, et le vigile butait sur la copie (LagContactReach : capture à 3 studs de la copie).
+	-- Avec Enabled, pour un voleur que les vigiles traversent (groupes de collision, plus bas), tous les poursuivants :
+	--   1. retard = min(BaseSeconds + GetNetworkPing × LagPingFactor, MaxSeconds) : BaseSeconds = les deux tampons de
+	--      réplication (personnage vers le serveur, vigile vers le client), qui restent à ping 0 ;
+	--   2. position estimée du voleur = position reçue + vitesse au sol (bornée à sa WalkSpeed) × retard, sans plafond en
+	--      studs, arrêtée WallMargin studs avant un mur : distance gardée et point visé s'y mesurent (comme a193). Le
+	--      vigile se tient donc là où ce joueur le verra à la bonne distance, souvent DEVANT la copie du serveur ;
+	--   3. capture seulement quand ce joueur a VU le vigile le toucher : distance entre la position reçue du voleur et la
+	--      place du vigile `retard` s plus tôt (son relevé de positions, côté serveur) ≤ la portée, sans mur entre ces
+	--      deux points (CatchReach). Rien ne vient du client ; une position estimée ne déclenche jamais une capture
+	--      (demi-tour, départ arrêté : pas de capture de loin). Plus de capture au contact de la copie ;
+	--   4. le vigile ne heurte plus les joueurs : groupe « Guards » sans collision avec « Players » (PlayerCollisionService)
+	--      et « NightPass » (mur de nuit) ; un personnage poursuivi encore en « Default » passe en « Players ». Sans cela
+	--      il bute sur la copie et ne peut pas se tenir devant elle. Tant qu'un voleur heurte encore les vigiles (groupes
+	--      indisponibles), la règle d'avant s'applique pour lui (LagCompensation, LagContactReach) : jamais inoffensif ;
+	--   5. sur un voleur à l'arrêt, il s'arrête net à StandOff studs (son élan le porterait dans le joueur), puis la
+	--      capture vient dès que le serveur sait que le joueur l'a vu arriver (≈ un aller-retour plus tard) ;
+	--   6. autour de la capture : dès qu'elle est attendue dans DisplaySeconds s (même mesure, avancée d'autant), le
+	--      vigile s'arrête net : le joueur le voit s'arrêter au moment où il est immobilisé, sans le dépasser. Ensuite,
+	--      pendant SettleSeconds s, il rejoint à SettleSpeed le joueur qui glisse encore sur son élan, jusqu'à StandOff.
+	-- Un retard mal estimé décale seulement le vigile à l'écran, de vitesse × erreur (0,05 s : 4 studs à 83 studs/s) ; le
+	-- moment de la capture ne change pas (distance prévue du serveur) : gonfler son ping ne fait rien gagner.
+	-- Enabled = false : la règle d'avant (a193) pour tous.
+	ClientView = {
+		Enabled = true, -- V0 proposé (Cantin, 23/11), à confirmer
+		-- V0 proposé (Cantin, 23/11), à confirmer en Play (recette T-1560 : distance vue en ligne droite − distance prévue,
+		-- divisée par la vitesse, à ajouter ici). Vu en Play le 14/11 pour le seul trajet montant : 0,12 à 0,37 s à ping 0
+		-- (Balance.Heist.ReachLatencyPad).
+		BaseSeconds = 0.25,
+		-- V0 proposé (Cantin, 23/11), à confirmer en Play : la part de BaseSeconds due à l'affichage du vigile chez le
+		-- client (le reste : le trajet du personnage vers le serveur). Le vigile dépasse le joueur à la capture : plus ;
+		-- il s'arrête trop tôt, puis fait un pas : moins. Jamais plus que la moitié du retard.
+		DisplaySeconds = 0.12,
+		MaxSeconds = 0.6, -- V0 proposé (Cantin, 23/11), à confirmer : plafond du retard compensé (s), ping compris
+		WallMargin = 1, -- V0 proposé (Cantin, 23/11), à confirmer (studs)
+		StandOff = 3, -- V0 proposé (Cantin, 23/11), à confirmer (studs ; sous la portée de capture, 4)
+		StillSpeed = 2, -- V0 proposé (Cantin, 23/11), à confirmer : voleur « à l'arrêt » sous cette vitesse reçue (studs/s)
+		SettleSeconds = 0.4, -- V0 proposé (Cantin, 23/11), à confirmer (s)
+		SettleSpeed = 16 * K, -- V0 proposé (Cantin, 23/11), à confirmer (studs/s : la marche d'un joueur neuf, × k)
+	},
 	-- Vague 72 (a241, L-219 point 2, Clément : « je casse la boutique, je rentre, je ressors : pas de poursuite ») :
 	-- un intrus (entré dans Bounds après la casse) qui en ressort SANS objet avant la fin du chrono « HEIST » est
 	-- poursuivi tout de suite par le vigile du magasin (GuardService.ChaseIntruder, depuis le GuardSpawn), comme

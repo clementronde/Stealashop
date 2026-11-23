@@ -637,6 +637,16 @@ GuardService._NpcAvoid = (function(): any
 	end)
 	return if ok and type(result) == "table" then result else nil
 end)() :: any
+-- a416 (Cantin, 23/11 : « le vigile attrape de hyper loin ») : la capture vue par le joueur (Guard/ClientView,
+-- Chase.ClientView) : retard complet du réseau, position estimée sans plafond, capture mesurée sur la place du vigile
+-- telle que ce joueur la voyait, vigile qui traverse les joueurs. Absent : la règle d'avant (a193). Champ et non
+-- locale, comme _CatchShow.
+GuardService._ClientView = (function(): any
+	local ok, result = pcall(function(): any
+		return require((script.Parent :: any).Guard.ClientView)
+	end)
+	return if ok and type(result) == "table" then result else nil
+end)() :: any
 
 local guards: { Guard } = {} -- vigiles de jour
 -- Heure (os.clock) où le dernier vigile de jour d'un magasin est parti (rentré, effacé…) : la vitrine
@@ -1574,6 +1584,11 @@ local function lagSeconds(player: Player): number
 end
 
 local function estimatedPosition(player: Player, targetRoot: BasePart, targetHumanoid: Humanoid): Vector3
+	-- a416 (Chase.ClientView) : voleur que les vigiles traversent : retard complet (tampons de réplication + ping), sans
+	-- plafond en studs, arrêté avant un mur (Guard/ClientView). Sinon la règle d'a193, ci-dessous.
+	if GuardService._ClientView and GuardService._ClientView.Active(targetRoot) then
+		return GuardService._ClientView.Estimate(player, targetRoot, targetHumanoid, rayParams)
+	end
 	local position = targetRoot.Position
 	local lag = lagSeconds(player)
 	if lag <= 0 then
@@ -2728,6 +2743,10 @@ local function chaseInSight(guard: Guard, targetRoot: BasePart, targetHumanoid: 
 		-- f70c3b (T-217) : un poteau fin sur un de ses flancs : d'abord à côté de lui.
 		fresh = GuardService._Sidestep.Aim(guard.root.Position, fresh, 0.75 * guard.agentRadius, guard.rootHeight - KNEE_HEIGHT, rayParams, isInSafeZone)
 	end
+	if GuardService._ClientView and targetAt then
+		-- a416 (Chase.ClientView) : il traverse le joueur ; droit sur un voleur à l'arrêt, il s'arrête StandOff studs avant.
+		fresh = GuardService._ClientView.StandOff(guard.root, targetRoot, fresh, targetAt)
+	end
 	if aim == nil or reached or flat(fresh - aim).Magnitude >= AIM_MIN_CHANGE or now >= (guard.chaseAimAt or 0) + AIM_REFRESH then
 		guard.chaseAim = fresh
 		guard.chaseAimAt = now
@@ -2918,7 +2937,18 @@ local function chaseStep(guard: Guard, now: number)
 	-- de sa copie sur le serveur (Chase.LagContactReach : un vigile qui bute contre elle).
 	local targetAt = estimatedPosition(player, targetRoot, targetHumanoid)
 	local touch, how = false, ""
-	if CatchReach.InRange(guard.root.Position, targetAt, catchDistance)
+	-- a416 (Chase.ClientView) : voleur que les vigiles traversent : capture seulement quand ce joueur a VU le vigile le
+	-- toucher, c.-à-d. entre la position reçue du voleur et la place du vigile un retard plus tôt (son relevé, tenu
+	-- par le serveur : Guard/ClientView.Seen), sans mur entre ces deux points. Une position estimée ne déclenche plus
+	-- de capture, et plus de capture au contact de la copie. Sinon la règle d'a193, ci-dessous.
+	local seenAt: Vector3? = if GuardService._ClientView and GuardService._ClientView.Active(targetRoot)
+		then GuardService._ClientView.Seen(guard.root, player, now)
+		else nil
+	if seenAt then
+		if CatchReach.InRange(seenAt, targetRoot.Position, catchDistance) then
+			touch, how = CatchReach.CanTouch(seenAt, targetRoot, rayParams)
+		end
+	elseif CatchReach.InRange(guard.root.Position, targetAt, catchDistance)
 		or (targetAt ~= targetRoot.Position and CatchReach.InRange(guard.root.Position, targetRoot.Position, Chase.LagContactReach))
 	then
 		touch, how = CatchReach.CanTouch(guard.root.Position, targetRoot, rayParams)
@@ -2933,11 +2963,25 @@ local function chaseStep(guard: Guard, now: number)
 		if how ~= "vue" then
 			log(`{guard.label} : {player.Name} attrapé ({how})`)
 		end
+		if seenAt and chaseDebugOn() then
+			-- a416 : ce que le serveur croit que le joueur voyait, à comparer à la mesure du client (recette T-1560).
+			print(string.format("[ChaseDebug] %s : %s attrapé, vigile vu à %.1f studs par le joueur (retard compensé %.0f ms)",
+				guard.model.Name, player.Name, flat(targetRoot.Position - seenAt).Magnitude, GuardService._ClientView.Lag(player) * 1000))
+		end
+		if seenAt then
+			GuardService._ClientView.Caught(guard.root, targetRoot, now) -- a416 : il rejoindra le joueur qui glisse (update)
+		end
 		if night then
 			nightCatch(guard, player)
 		else
 			catch(guard, player)
 		end
+		return
+	end
+	if seenAt and GuardService._ClientView.Imminent(guard.root, player, targetRoot, targetHumanoid, targetAt, now, catchDistance, rayParams) then
+		-- a416 : capture attendue dans un instant si le voleur continue tout droit : le vigile s'arrête déjà (élan coupé
+		-- par Guard/ClientView), pour que ce joueur le voie s'arrêter quand il est immobilisé, pas le dépasser.
+		stop(guard)
 		return
 	end
 	-- Nouvelle poursuite (vague 45) : la fin de la ruée se teste à chaque image, pas au rythme du pilotage.
@@ -2994,7 +3038,8 @@ local function chaseStep(guard: Guard, now: number)
 			end
 			print(string.format("[ChaseDebug] %s : distance %.1f, joueur %.1f studs/s (WalkSpeed %.0f), vigile WalkSpeed %.0f, estimée à %.1f (retard %.0f ms), en vue %d, au chemin %d%s",
 				guard.model.Name, (targetRoot.Position - guard.root.Position).Magnitude, flat(targetRoot.AssemblyLinearVelocity).Magnitude,
-				targetHumanoid.WalkSpeed, guard.humanoid.WalkSpeed, flat(targetAt - guard.root.Position).Magnitude, lagSeconds(player) * 1000,
+				targetHumanoid.WalkSpeed, guard.humanoid.WalkSpeed, flat(targetAt - guard.root.Position).Magnitude,
+				(if seenAt then GuardService._ClientView.Lag(player) else lagSeconds(player)) * 1000, -- a416 : le retard de la règle suivie
 				trace.sight, trace.path,
 				if #hits > 0 then " ; vue bloquée par " .. table.concat(hits, ", ") else ""))
 			if guard.chasePhase ~= nil then
@@ -3437,6 +3482,17 @@ local function update(guard: Guard, now: number)
 	elseif state == "Follow" then
 		followStep(guard, now)
 	elseif state == "Catch" or state == "Tired" then
+		if state == "Catch" and GuardService._ClientView then
+			-- a416 (Chase.ClientView) : le joueur immobilisé glisse encore sur son élan : le vigile le rejoint à
+			-- SettleSpeed jusqu'à StandOff studs, pendant SettleSeconds s au plus (jamais par la zone safe).
+			local to, speed = GuardService._ClientView.Settle(guard.root, now)
+			if to and speed then
+				if math.abs(speed - guard.humanoid.WalkSpeed) > 0.05 then
+					setWalkSpeed(guard, speed)
+				end
+				moveTo(guard, to)
+			end
+		end
 		if now >= guard.stateEndsAt then
 			-- a114 : son objet lié a été repris pendant Catch : il repart vers le porteur au lieu de rentrer.
 			local carrier = if state == "Catch" then linkedCarrier(guard) else nil
