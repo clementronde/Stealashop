@@ -53,6 +53,9 @@
 -- (« Stands 4/20 ») ; cachées au niveau max. Le tapis peut changer de modèle (variante posée par
 -- MachineVariantService, L-093) : le panneau suit, la parcelle étant suivie (DescendantAdded / Removing).
 --
+-- a406 (L-297) : le panneau des présentoirs est caché pendant la construction « en mode Lego » de la partie neuve
+-- (ShopBuildController, attribut local ShopBuild.BusyAttribute de la parcelle) et revient avec un pop.
+--
 -- API (client) : aucune.
 
 local CollectionService = game:GetService("CollectionService")
@@ -71,6 +74,7 @@ local Find = require(Contract:WaitForChild("Find"))
 local UI = require(Contract:WaitForChild("UI"))
 local Format = require(Shared:WaitForChild("Format"))
 local SignPose = require(Shared:WaitForChild("SignPose"))
+local ShopBuild = require(Config:WaitForChild("ShopBuild")) -- a406 : panneau caché pendant la construction
 
 type Kind = "Machine" | "Stand"
 
@@ -394,6 +398,65 @@ local function onBuy(offer: Offer, entry: Entry)
 	task.delay(PENDING_TIMEOUT, scheduleRefresh)
 end
 
+-- a406 (L-297 ; fiche vidéo de Cantin, section 3) : le panneau des présentoirs est caché pendant que la partie neuve
+-- de la boutique se construit (attribut LOCAL ShopBuild.BusyAttribute de la parcelle, posé par ShopBuildController),
+-- puis revient avec un pop : échelle ShopBuild.SignPopFrom → 1 en ShopBuild.SignPopTime s (Back Out, comme
+-- UiMotion.Appear.Pop), le bas du panneau reste à sa place. Copie locale : rien de répliqué.
+type SignHidden = { modifiers: { [Instance]: number }, guiEnabled: boolean }
+local hiddenSigns: { [Model]: SignHidden } = setmetatable({}, { __mode = "k" }) :: any
+
+local function popSign(sign: Model)
+	local RunService = game:GetService("RunService")
+	local TweenService = game:GetService("TweenService")
+	local box, size = sign:GetBoundingBox()
+	local pivot = sign:GetPivot()
+	local lever = (box * CFrame.new(0, -size.Y / 2, 0)).Position - pivot.Position -- pivot → bas du panneau
+	local base = sign:GetScale()
+	local started = os.clock()
+	local connection: RBXScriptConnection? = nil
+	local function step()
+		local t = math.min(1, (os.clock() - started) / ShopBuild.SignPopTime)
+		local scale = ShopBuild.SignPopFrom + (1 - ShopBuild.SignPopFrom) * TweenService:GetValue(t, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+		if sign.Parent == nil or hiddenSigns[sign] ~= nil or t >= 1 then
+			scale = 1
+		end
+		if sign.Parent ~= nil then
+			sign:ScaleTo(base * scale)
+			sign:PivotTo(pivot + lever * (1 - scale))
+		end
+		if scale == 1 and connection then
+			connection:Disconnect()
+			connection = nil
+		end
+	end
+	connection = RunService.RenderStepped:Connect(step)
+	step()
+end
+
+local function setSignHidden(sign: Model, gui: SurfaceGui, hidden: boolean)
+	local saved = hiddenSigns[sign]
+	if hidden then
+		if saved == nil then
+			local modifiers: { [Instance]: number } = {}
+			for _, inst in sign:GetDescendants() do
+				if inst:IsA("BasePart") or inst:IsA("Decal") then
+					modifiers[inst] = (inst :: any).LocalTransparencyModifier;
+					(inst :: any).LocalTransparencyModifier = 1
+				end
+			end
+			hiddenSigns[sign] = { modifiers = modifiers, guiEnabled = gui.Enabled }
+		end
+		gui.Enabled = false
+	elseif saved then
+		hiddenSigns[sign] = nil
+		for inst, before in saved.modifiers do
+			(inst :: any).LocalTransparencyModifier = before
+		end
+		gui.Enabled = saved.guiEnabled
+		popSign(sign)
+	end
+end
+
 local function showSign(offer: Offer, entry: Entry, template: Model, plotModel: Instance, owner: Player, level: number, cost: number?)
 	local target = signTarget(offer, plotModel, level)
 	if target == nil then
@@ -459,6 +522,9 @@ local function showSign(offer: Offer, entry: Entry, template: Model, plotModel: 
 		robux.Visible = false -- aucun produit Robux pour ces améliorations (V0)
 	end
 	entry.shownLevel = level
+	if offer.kind == "Stand" then -- a406 : caché pendant la construction (ShopBuildController), puis pop
+		setSignHidden(currentSign, currentGui, plotModel:GetAttribute(ShopBuild.BusyAttribute) == true)
+	end
 end
 
 -- Clic rattrapé (voir l'en-tête) : le point de l'écran `screen` (coordonnées d'un InputObject) touche-t-il
@@ -681,6 +747,7 @@ local function watchPlot(inst: Instance)
 		inst:GetAttributeChangedSignal(OWNER_ATTRIBUTE):Connect(onChange),
 		inst:GetAttributeChangedSignal(STAGE_ATTRIBUTE):Connect(onChange),
 		inst:GetAttributeChangedSignal(DEPTH_ATTRIBUTE):Connect(onChange),
+		inst:GetAttributeChangedSignal(ShopBuild.BusyAttribute):Connect(onChange), -- a406 : panneau caché, puis pop
 		inst.DescendantAdded:Connect(onChange),
 		inst.DescendantRemoving:Connect(onChange),
 	}
