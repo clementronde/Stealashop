@@ -94,6 +94,8 @@
 	Socles de musée (2026-11-23, museumStands) : DisplayStand_xx = fût en velours marron 3 x 1,8 x 3 + SocleDecor
 	(marbre, liserés et arêtes dorés, plaque dorée côté allée) ; DisplaySlot_xx et UnboxBench_xx à y 2,75, FitSize
 	(6,5 ; 12,5 ; 6).
+	Vitres cassables (2026-11-23, tagShopGlass) : Pane_FL, Pane_FR, Pane_L_01.., Pane_R_01.. (de l'avant vers le fond),
+	Pane_B ; tag ShopGlass et attribut GlassSide (Front, Left, Right, Back) ; collision inchangée.
 ]]
 
 local CS = game:GetService("CollectionService")
@@ -1568,6 +1570,45 @@ local function museumStands(M, store)
 	end
 end
 
+-- Vitres cassables de la boutique (Clément, 2026-11-23 : « pouvoir casser la boutique sur les vitres de côté ou de
+-- derrière »). Chaque vitre de la structure (Stage_1/Frame, Stage_2/Frame) reçoit un nom unique, le tag ShopGlass et
+-- l'attribut GlassSide ("Front", "Left", "Right", "Back") : Pane_FL, Pane_FR (façade, de part et d'autre de la porte),
+-- Pane_L_01.. et Pane_R_01.. (côtés, numérotés de l'avant vers le fond, Stage_1 puis Stage_2), Pane_B (fond : celui
+-- du niveau 1 dans Stage_1/Frame/Back_L1, celui qui avance avec le fond dans Stage_2/Frame). Parts simples en Glass
+-- (FragmentAsync possible). La collision ne change pas ici (voir la ligne de liaison).
+local function tagShopGlass(M)
+	local CSg = game:GetService("CollectionService")
+	local pv = M:GetPivot()
+	local sides = { L = {}, R = {} }
+	local count = 0
+	for _, st in { M:FindFirstChild("Stage_1"), M:FindFirstChild("Stage_2") } do
+		local F = st and st:FindFirstChild("Frame")
+		if F then
+			for _, p in F:GetDescendants() do
+				if p:IsA("BasePart") and p.Name:match("^Pane") then
+					local base = p.Name:match("^(Pane_%a+)") or p.Name
+					local side
+					if base == "Pane_L" then side = "Left" elseif base == "Pane_R" then side = "Right"
+					elseif base == "Pane_FL" or base == "Pane_FR" then side = "Front" elseif base == "Pane_B" then side = "Back" end
+					if side then
+						p:SetAttribute("GlassSide", side)
+						CSg:AddTag(p, "ShopGlass")
+						count += 1
+						if side == "Left" or side == "Right" then
+							table.insert(sides[side == "Left" and "L" or "R"], { p = p, z = pv:PointToObjectSpace(p.Position).Z, stage = st.Name })
+						end
+					end
+				end
+			end
+		end
+	end
+	for key, list in sides do
+		table.sort(list, function(a, b) return a.z < b.z end)
+		for i, e in list do e.p.Name = string.format("Pane_%s_%02d", key, i) end
+	end
+	return count, #sides.L, #sides.R
+end
+
 local function build()
 	P.setSeed(4242)
 	local folder = plotsFolder()
@@ -1612,6 +1653,7 @@ local function build()
 	frameFromLevel1(M) -- socle, colonnes, corniche et vitres dès le niveau 1, rang par rang ; plus de lampes visibles (Clément, 2026-11-17)
 	luxeFacade(M, 8) -- vitrine de luxe au niveau 1 : or, auvent accroché, enseigne, marche (Clément, 2026-11-23)
 	museumStands(M, store) -- socles de musée : velours marron, marbre et or, places à y 2,75 (Clément, 2026-11-23)
+	tagShopGlass(M) -- vitres cassables : noms uniques, tag ShopGlass, attribut GlassSide (Clément, 2026-11-23)
 	local pad = M:FindFirstChild("CashPad")
 	CS:AddTag(pad, "CashPad")
 	M.WorldPivot = CFrame.identity
