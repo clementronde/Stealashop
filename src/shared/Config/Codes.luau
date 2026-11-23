@@ -3,9 +3,13 @@
 -- agent a162, vague 50). Lu par CodeService (serveur : codes) et CodeController (client : compte à rebours,
 -- messages). Tout est V0 proposé, absent du doc, sauf le 1er code (MAJ 0 : boost ×2 argent 15 min).
 --
--- Un code : Code (insensible à la casse et aux espaces autour), Reward, EndsAt facultatif (os.time() UTC
--- après lequel le code est expiré ; absent = sans fin). Chaque code ne se prend qu'une fois par profil
--- (Data.Codes). Récompenses :
+-- a274 (audit a272, M2) : la liste des codes n'est plus ici (ReplicatedStorage, lisible par tout client) mais côté
+-- serveur, dans ServerScriptService/Server/Services/Code/GiftCodes (src/server/Services/Code/GiftCodes.luau).
+-- Restent ici les types, MaxLength, les messages et le compte à rebours.
+--
+-- Un code : Code (insensible à la casse et aux espaces autour), Reward, StartsAt facultatif (os.time() UTC avant
+-- lequel le code répond « Invalid »), EndsAt facultatif (os.time() UTC après lequel le code est expiré ; absent =
+-- sans fin). Chaque code ne se prend qu'une fois par profil (Data.Codes). Récompenses :
 --   Boost   ×2 argent pendant Minutes minutes (MonetizationService.AddCashBoost, comme le J5 du calendrier) ;
 --   Cash    Amount $ (DataService.AddCash) ;
 --   Potion  Count potion(s) PotionId dans l'inventaire des potions (PotionService.AddStock, plafond MaxStock) ;
@@ -29,15 +33,11 @@ export type CodeReward = {
 export type GiftCode = {
 	Code: string,
 	Reward: CodeReward,
+	StartsAt: number?, -- os.time() UTC de début (facultatif, a274) : avant, « Invalid »
 	EndsAt: number?, -- os.time() UTC de fin (facultatif)
 }
 
 local Codes = {
-	List = {
-		-- MAJ 0 : boost ×2 argent 15 min. Le nom du code et l'absence de date de fin : V0.
-		{ Code = "LAUNCH", Reward = { Kind = "Boost", Minutes = 15 } },
-	} :: { GiftCode },
-
 	-- V0 : longueur maximale d'un code saisi (au-delà : refusé par Net et par CodeService).
 	MaxLength = 20,
 

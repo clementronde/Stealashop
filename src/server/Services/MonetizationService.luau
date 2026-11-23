@@ -25,7 +25,8 @@
 --
 -- Gamepasses : possession lue à l'arrivée (UserOwnsGamePassAsync, dans un pcall : PassCheck.Attempts
 -- essais espacés de PassCheck.RetryDelay s, puis un essai toutes les PassCheck.SlowRetry s tant que
--- Roblox ne répond pas) et à la fin d'un achat (PromptGamePassPurchaseFinished, wasPurchased = true).
+-- Roblox ne répond pas) et à la fin d'un achat (PromptGamePassPurchaseFinished, wasPurchased = true : donné
+-- seulement si UserOwnsGamePassAsync le confirme, a274 / H1 ; le signal seul ne donne rien).
 -- Tant que Roblox n'a pas répondu, la possession vue à la dernière session compte
 -- (Monetization.Passes du profil, mis à jour à chaque réponse) : les objets des présentoirs bonus ne
 -- retournent pas dans l'inventaire pendant les premières secondes. Un gamepass remboursé s'arrête à la
@@ -1236,12 +1237,56 @@ local function acquirePass(player: Player, pass: Pass, why: string)
 	end
 end
 
+-- a274 (audit a272, H1) : PromptGamePassPurchaseFinished peut être déclenché par un client tricheur sans payer.
+-- Le pass n'est donné que si Roblox confirme la possession (UserOwnsGamePassAsync, PassCheck.Attempts essais
+-- espacés de PassCheck.RetryDelay s) ; sans réponse vraie, rien n'est donné ni écrit dans le cache du profil (la
+-- vérification de l'arrivée suivante le donnera s'il a vraiment été acheté). Yield.
+local verifying: { [Player]: { [number]: boolean } } = {}
+
+local function verifyPurchase(player: Player, pass: Pass)
+	local mine = verifying[player]
+	if mine == nil then
+		mine = {}
+		verifying[player] = mine
+	end
+	if mine[pass.Id] then
+		return -- une vérification est déjà en cours pour ce pass
+	end
+	mine[pass.Id] = true
+	local check = Monetization.PassCheck
+	for attempt = 1, check.Attempts do
+		local ok, owns = pcall(function(): boolean
+			return MarketplaceService:UserOwnsGamePassAsync(player.UserId, pass.Id)
+		end)
+		if player.Parent ~= Players then
+			break
+		end
+		if ok then
+			if owns == true then
+				acquirePass(player, pass, "acheté, confirmé par Roblox")
+			else
+				warn(`[MonetizationService] {player.Name} : fin d'achat du gamepass {pass.Key} sans possession confirmée par Roblox : rien donné`)
+			end
+			break
+		end
+		if attempt == check.Attempts then
+			warn(`[MonetizationService] {player.Name} : Roblox ne répond pas pour le gamepass {pass.Key} acheté : donné à la prochaine arrivée s'il est possédé`)
+		else
+			task.wait(check.RetryDelay)
+		end
+	end
+	mine[pass.Id] = nil
+	if next(mine) == nil and verifying[player] == mine then
+		verifying[player] = nil
+	end
+end
+
 local function onGamePassPurchaseFinished(player: Player, passId: number, wasPurchased: boolean)
 	local pass = passesById[passId]
-	if not wasPurchased or pass == nil then
+	if not wasPurchased or pass == nil or states[player] == nil then
 		return
 	end
-	acquirePass(player, pass, "acheté")
+	task.spawn(verifyPurchase, player, pass)
 end
 
 local function onPlayerAdded(player: Player)
