@@ -12,6 +12,9 @@
 --   Jitter        facultatif (vague 40) : débit régulier. Le remote passe RatePerSecond appels par seconde sur
 --                 la durée, et un appel peut arriver jusqu'à Jitter / RatePerSecond s en avance sur ce rythme
 --                 sans être perdu (seau à jetons de RateLimiter, au lieu de la fenêtre glissante)
+--   Budget        facultatif (a276) : nom d'un budget de Budgets (plus bas), partagé avec d'autres remotes. Un
+--                 appel qui passe son débit et la forme des arguments prend aussi un jeton dans ce budget du
+--                 joueur ; budget vide : appel ignoré (refus « Budget »)
 --
 -- Net ne contrôle que la forme des appels (nombre, types, bornes, débit). Les
 -- règles de jeu de la colonne « Le serveur vérifie » (distance, outil équipé,
@@ -43,6 +46,23 @@ export type RemoteDef = {
 	Args: { ArgSpec },
 	RatePerSecond: number?,
 	Jitter: number?,
+	Budget: string?,
+}
+
+-- a276 (vague GC2, faille F1 de l'audit a272) : budget partagé par plusieurs remotes client → serveur (champ
+-- Budget d'une entrée). Seau à jetons par joueur : RatePerSecond jetons rendus par seconde, Burst au plus en réserve.
+export type BudgetDef = {
+	RatePerSecond: number,
+	Burst: number,
+}
+
+local Budgets: { [string]: BudgetDef } = {
+	-- Remotes qui créent, déplacent ou détruisent un modèle répliqué aux autres clients (Tool en main, objet sur un
+	-- présentoir ou au sol, outil, émetteurs d'aura). Chacun a son propre débit (1 à 5 par seconde), mais en les
+	-- mêlant un client en faisait ~20 par seconde. V0 proposé (Cantin, 23/11) : 3 par seconde sur la durée, 6 d'un
+	-- coup après un temps calme. Un joueur normal fait un ou deux gestes par seconde ; la réserve de 6 laisse passer
+	-- une rafale de touches 1 à 6 de la barre ou six objets posés à la suite. Equip Best compte pour un seul appel.
+	Models = { RatePerSecond = 3, Burst = 6 },
 }
 
 -- V0 proposé, absent du doc : longueur maximale d'un identifiant envoyé par le
@@ -118,6 +138,7 @@ local List: { RemoteDef } = {
 		Reliable = true,
 		Args = { id("boxUid"), { Name = "point", Kind = "Vector3" } },
 		RatePerSecond = 4, -- V0 proposé, absent du doc
+		Budget = "Models", -- a276 : budget « modèles » partagé (Budgets plus haut)
 	},
 	{
 		-- Vague 52 (a170) : boxUid = uid d'un objet posé au sol de sa boutique, débloqué (attribut ItemUid du
@@ -127,6 +148,7 @@ local List: { RemoteDef } = {
 		Reliable = true,
 		Args = { id("boxUid") },
 		RatePerSecond = 4, -- V0 proposé, absent du doc
+		Budget = "Models", -- a276 : budget « modèles » partagé (Budgets plus haut)
 	},
 	{
 		-- L-089 : itemUid = un objet de l'inventaire, posé sur ce présentoir libre (depuis la vague 21, plus
@@ -136,6 +158,7 @@ local List: { RemoteDef } = {
 		Reliable = true,
 		Args = { id("itemUid"), index("slotIndex") },
 		RatePerSecond = 5, -- V0 proposé, absent du doc
+		Budget = "Models", -- a276 : budget « modèles » partagé (Budgets plus haut)
 	},
 	{
 		-- Ajout de la vague 18 (L-089, L-079 : bouton Equip Best de l'écran d'inventaire de Clément, à
@@ -146,6 +169,7 @@ local List: { RemoteDef } = {
 		Reliable = true,
 		Args = {},
 		RatePerSecond = 1, -- V0 proposé, absent du doc
+		Budget = "Models", -- a276 : budget « modèles » partagé (Budgets plus haut)
 	},
 	{
 		-- Ajout de la vague 21 (L-079, L-091 point 6 : écran UI_Inventory, bouton PlaceButton d'un objet),
@@ -157,6 +181,7 @@ local List: { RemoteDef } = {
 		Reliable = true,
 		Args = { id("itemUid") },
 		RatePerSecond = 4, -- V0 proposé, absent du doc
+		Budget = "Models", -- a276 : budget « modèles » partagé (Budgets plus haut)
 	},
 	{
 		-- Ajout de la vague 21 (bouton UnequipButton d'un objet exposé de UI_Inventory), absent du tableau
@@ -167,6 +192,7 @@ local List: { RemoteDef } = {
 		Reliable = true,
 		Args = { id("itemUid") },
 		RatePerSecond = 4, -- V0 proposé, absent du doc
+		Budget = "Models", -- a276 : budget « modèles » partagé (Budgets plus haut)
 	},
 	{
 		Name = "SwingBat",
@@ -195,6 +221,7 @@ local List: { RemoteDef } = {
 		Reliable = true,
 		Args = { id("cosmeticId") },
 		RatePerSecond = 4, -- V0 proposé, absent du doc
+		Budget = "Models", -- a276 : budget « modèles » partagé (Budgets plus haut)
 	},
 	{
 		-- Ajout du 2026-11-07 (DEV-031), absent du tableau 9.4 : bouton EquipButton de
@@ -204,6 +231,7 @@ local List: { RemoteDef } = {
 		Reliable = true,
 		Args = { id("toolId") },
 		RatePerSecond = 4, -- V0 proposé, absent du doc
+		Budget = "Models", -- a276 : budget « modèles » partagé (Budgets plus haut)
 	},
 	{
 		Name = "TrainTap",
@@ -630,6 +658,7 @@ local List: { RemoteDef } = {
 		Reliable = true,
 		Args = { id("itemUid") },
 		RatePerSecond = 4, -- V0 proposé, absent du doc
+		Budget = "Models", -- a276 : budget « modèles » partagé (Budgets plus haut)
 	},
 	{
 		-- Vague 46 (Cantin, 2026-11-14, agent a154), absent du tableau 9.4 : l'objet sorti d'un colis que portait le
@@ -651,6 +680,7 @@ local List: { RemoteDef } = {
 		Reliable = true,
 		Args = { id("itemUid") },
 		RatePerSecond = 4, -- V0 proposé, absent du doc
+		Budget = "Models", -- a276 : budget « modèles » partagé (Budgets plus haut)
 	},
 	{
 		-- a162 (MAJ 0), absent du tableau 9.4 : champ de saisie d'un code cadeau (UI_Settings ou UI_Rewards,
@@ -774,6 +804,7 @@ local List: { RemoteDef } = {
 		Reliable = true,
 		Args = { id("itemUid") },
 		RatePerSecond = 4, -- V0 proposé, absent du doc (comme PlaceItemAuto)
+		Budget = "Models", -- a276 : budget « modèles » partagé (Budgets plus haut)
 	},
 	{
 		-- a314 (L-292, L-271), absent du tableau 9.4 : SellButton d'une ligne de UI_Displayed (objet exposé ou de la
@@ -900,4 +931,5 @@ local List: { RemoteDef } = {
 
 return {
 	List = List,
+	Budgets = Budgets,
 }
