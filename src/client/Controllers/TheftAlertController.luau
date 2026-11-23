@@ -656,13 +656,14 @@ function TheftAlertController.Start()
 	local Net = require(Shared:WaitForChild("Net"):WaitForChild("Net")) :: any
 	Net.Client.TheftAlert:Connect(onTheftAlert)
 	hideScreens()
+	local function onError(err: any) -- a283 (audit a271 point 12) : définie une fois, pas une fermeture par image
+		if os.clock() - lastError >= ERROR_INTERVAL then
+			lastError = os.clock()
+			warn(`[TheftAlertController] {err}`)
+		end
+	end
 	RunService.Heartbeat:Connect(function(deltaTime: number)
-		xpcall(step, function(err: any)
-			if os.clock() - lastError >= ERROR_INTERVAL then
-				lastError = os.clock()
-				warn(`[TheftAlertController] {err}`)
-			end
-		end, deltaTime)
+		xpcall(step, onError, deltaTime)
 	end)
 end
 

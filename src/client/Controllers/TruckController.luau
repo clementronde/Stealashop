@@ -1563,10 +1563,11 @@ function TruckController.Start()
 		end
 	end
 
+	local function onError(err: any) -- a283 (audit a271 point 12) : définie une fois, pas une fermeture par image
+		warn(`[TruckController] {err}`)
+	end
 	RunService.Heartbeat:Connect(function(dt: number)
-		xpcall(onFrame, function(err: any)
-			warn(`[TruckController] {err}`)
-		end, dt)
+		xpcall(onFrame, onError, dt)
 	end)
 	Net.Client.WindowHit:Connect(function(targetId: string, point: Vector3, hitter: Player?)
 		xpcall(onWindowHit, function(err: any)

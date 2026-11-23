@@ -655,10 +655,11 @@ end
 function NotifyController.Start()
 	local Net = require(Shared:WaitForChild("Net"):WaitForChild("Net")) :: any
 
+	local function onError(err: any) -- a283 (audit a271 point 12) : définie une fois, pas une fermeture par image
+		once(`error:{err}`, tostring(err), true)
+	end
 	RunService.Heartbeat:Connect(function()
-		xpcall(step, function(err: any)
-			once(`error:{err}`, tostring(err), true)
-		end)
+		xpcall(step, onError)
 	end)
 	Net.Client.Notify:Connect(NotifyController.Show)
 end

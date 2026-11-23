@@ -169,6 +169,12 @@ local Cosmetics = {
 	-- Period ; CosmeticController), une seule boucle côté client pour tous les porteurs.
 	PieceMotion = {
 		MaxDistance = 120, -- V0 : au-delà (studs, de la caméra à la pièce d'accroche), les pièces restent figées
+		-- Vague GC3 (a283, audit a271 point 5) : sur appareil faible (ShatterController.IsLowEnd), distance plus courte ;
+		-- et une pièce hors de l'écran reste figée (sphère autour de la pièce d'accroche : écart de la pièce + sa taille
+		-- + ScreenMargin).
+		MaxDistanceLow = 60, -- V0 proposé (Cantin, 23/11)
+		OnScreenOnly = true, -- V0 proposé (Cantin, 23/11)
+		ScreenMargin = 2, -- V0 proposé (Cantin, 23/11) : studs ajoutés à la sphère (bulles qui partent sur la flaque)
 		-- Bulles (Period) : prototype de Clément (L-206) : gonfle de 0 à sa taille sur 86 % du cycle, enfle d'un coup,
 		-- disparaît, puis repart ailleurs sur la flaque.
 		BubbleGrowShare = 0.86, -- Clément (note du 2026-11-16)

@@ -833,10 +833,11 @@ function VfxController.Start()
 	for _, truck in CollectionService:GetTagged(truckTag) do
 		watchTruck(truck)
 	end
+	local function onError(err: any) -- a283 (audit a271 point 12) : définie une fois, pas une fermeture par image
+		sayOnce(`error:{err}`, tostring(err))
+	end
 	RunService.Heartbeat:Connect(function(dt: number)
-		xpcall(step, function(err: any)
-			sayOnce(`error:{err}`, tostring(err))
-		end, dt)
+		xpcall(step, onError, dt)
 	end)
 end
 

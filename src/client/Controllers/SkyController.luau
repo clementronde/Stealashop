@@ -106,12 +106,24 @@ local function sameLook(a: Look, b: Look): boolean
 	return a.Clock == b.Clock and a.Brightness == b.Brightness and a.Ambient == b.Ambient and a.Outdoor == b.Outdoor
 end
 
-local function apply(look: Look)
+local appliedAt = 0 -- os.clock() de la dernière écriture (a283)
+
+-- Vague GC3 (a283, audit a271 point 6) : un état en cours de fondu (`final` faux) n'est écrit que si l'heure a bougé
+-- d'au moins Sky.ClockStep ou Sky.ApplyInterval s après la dernière écriture ; l'état final l'est toujours.
+local function apply(look: Look, final: boolean?)
 	local last = applied
 	if last and sameLook(last, look) then
 		return
 	end
+	local now = os.clock()
+	if not final and last ~= nil and now - appliedAt < Sky.ApplyInterval then
+		local moved = math.abs(look.Clock - last.Clock)
+		if math.min(moved, 24 - moved) < Sky.ClockStep then
+			return
+		end
+	end
 	applied = look
+	appliedAt = now
 	Lighting.ClockTime = look.Clock
 	Lighting.Brightness = look.Brightness
 	Lighting.Ambient = look.Ambient
@@ -204,12 +216,12 @@ local function update()
 		local length = math.max(Night.WarningDuration, 1e-3)
 		local left = if type(endsAt) == "number" then endsAt - Workspace:GetServerTimeNow() else length
 		local progress = math.clamp(1 - left / length, 0, 1)
-		apply(lerpLook(day, duskLook(day), progress, false))
+		apply(lerpLook(day, duskLook(day), progress, false), progress >= 1)
 	elseif phase == "Night" then
-		apply(lerpLook(from, NIGHT_LOOK, t, true))
+		apply(if t >= 1 then NIGHT_LOOK else lerpLook(from, NIGHT_LOOK, t, true), t >= 1)
 	else
 		-- Day (ou phase inconnue) : retour aux réglages de Clément, par le matin s'il faisait nuit.
-		apply(if t >= 1 then day else lerpLook(from, day, t, true))
+		apply(if t >= 1 then day else lerpLook(from, day, t, true), t >= 1)
 	end
 end
 

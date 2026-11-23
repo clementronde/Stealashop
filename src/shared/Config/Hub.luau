@@ -41,6 +41,10 @@ local Hub = {
 		FloatHeight = 0.75,
 		FloatPeriod = 2.5,
 		SpinSpeed = 60,
+		-- Vague GC3 (a283, audit a271 point 10) : le cadeau ne bouge qu'à moins de AnimDistance studs de la caméra et
+		-- à l'écran (sphère de sa boîte, plus FloatHeight) ; sinon il reste où il est.
+		AnimDistance = 120, -- V0 proposé (Cantin, 23/11)
+		OnScreenOnly = true, -- V0 proposé (Cantin, 23/11)
 	},
 
 	-- Noob (V0 proposé) : Wave au plus une fois toutes les WaveCooldown s, quand un joueur entre dans sa zone.
