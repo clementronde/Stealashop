@@ -16,7 +16,7 @@
 --   - points de pose (Attachment) : UpgradePoint du tapis (tag Treadmill) et du banc (tag Bench), à
 --     défaut un point créé ici au-dessus de la machine ; DisplayUpgradePoint de la parcelle pour les
 --     présentoirs (le plus proche du prochain présentoir verrouillé s'il y en a plusieurs), à défaut
---     le prochain DisplaySlot_xx verrouillé (n° départ + niveau + 1, Balance.Display, comme côté
+--     le prochain DisplaySlot_xx verrouillé (n° départ + niveau + 1, Shared/ShopFloor, comme côté
 --     serveur). Panneau du niveau suivant (L-096 point 1) : la boutique grandit avec ses rayons, donc
 --     avec les présentoirs ; le panneau des présentoirs va sur `StageUpgradePoint_n`, n le plus grand sans
 --     dépasser le niveau de la boutique (attribut StageLevel de la parcelle, ShopStageService), sinon sur
@@ -53,6 +53,11 @@
 -- (« Stands 4/20 ») ; cachées au niveau max. Le tapis peut changer de modèle (variante posée par
 -- MachineVariantService, L-093) : le panneau suit, la parcelle étant suivie (DescendantAdded / Removing).
 --
+-- 2e étage (a280, vague GC2, lot C ; L-217, L-277, règle de L-294) : avec l'étage (attribut FloorStands du Player,
+-- DisplayService), le panneau des présentoirs s'arrête à 8 en bas, propose l'étage (« Build 2nd floor », invite au
+-- DisplaySlot_08), puis ses places DisplaySlot_31 à _38 : prix, prochain présentoir et « Stands 9/16 » par
+-- Shared/ShopFloor, comme le serveur.
+--
 -- API (client) : aucune.
 
 local CollectionService = game:GetService("CollectionService")
@@ -63,7 +68,6 @@ local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = Shared:WaitForChild("Config")
-local Balance = require(Config:WaitForChild("Balance"))
 local Formulas = require(Config:WaitForChild("Formulas"))
 local Upgrades = require(Config:WaitForChild("Upgrades"))
 local Contract = Shared:WaitForChild("Contract")
@@ -71,6 +75,7 @@ local Find = require(Contract:WaitForChild("Find"))
 local UI = require(Contract:WaitForChild("UI"))
 local Format = require(Shared:WaitForChild("Format"))
 local SignPose = require(Shared:WaitForChild("SignPose"))
+local ShopFloor = require(Shared:WaitForChild("ShopFloor")) -- a280 : 2e étage
 
 type Kind = "Machine" | "Stand"
 
@@ -124,6 +129,7 @@ local PRICE_NAME = "Price"
 local TEXT = {
 	Upgrade = "Upgrade (%s)",
 	UnlockStand = "Unlock stand (%s)",
+	BuildFloor = "Build 2nd floor (%s)", -- a280 (L-294) : achat de l'étage
 	MachineLevel = "%s Lv %d/%d",
 	Stands = "Stands %d/%d",
 	SignLevel = "Level %d > Level %d",
@@ -166,6 +172,21 @@ local offers: { Offer } = {
 local function levelOf(player: Player, id: string): number?
 	local value = player:GetAttribute(string.format(LEVEL_FORMAT, id))
 	return if type(value) == "number" then value else nil
+end
+
+-- a280 : places du 2e étage ouvertes à `player` (DisplayService), 0 sans l'attribut.
+local FLOOR_STANDS_ATTRIBUTE = "FloorStands"
+local function floorStandsOf(player: Player?): number
+	local value = if player then player:GetAttribute(FLOOR_STANDS_ATTRIBUTE) else nil
+	return if type(value) == "number" and value == value then value else 0
+end
+
+-- a280 : prix du niveau suivant (présentoirs : étage compris, Shared/ShopFloor), nil au maximum. Affichage seulement.
+local function costOf(offer: Offer, owner: Player?, level: number): number?
+	if offer.kind == "Stand" then
+		return ShopFloor.StandCost(level, floorStandsOf(owner))
+	end
+	return Formulas.UpgradeCost(offer.id, level)
 end
 
 local function isPending(offer: Offer, level: number): boolean
@@ -250,10 +271,16 @@ local function machineOf(offer: Offer, plotModel: Instance): Instance?
 	return nil
 end
 
--- Prochain présentoir verrouillé, ou nil (tous débloqués, ou pas encore chargé).
+-- Prochain présentoir verrouillé, ou nil (tous débloqués, ou pas encore chargé). a280 : avec l'étage, pour le
+-- propriétaire de la parcelle, le 8e du bas pour l'achat de l'étage, puis ses places (Shared/ShopFloor.NextSlot).
 local function nextSlot(plotModel: Instance, level: number): Attachment?
-	local index = Balance.Display.StartSlots + level + 1
-	return if index <= Balance.Display.MaxSlots then attachmentIn(plotModel, string.format(SLOT_FORMAT, index)) else nil
+	local owner: Player? = nil
+	local id = plotModel:GetAttribute(OWNER_ATTRIBUTE)
+	if type(id) == "number" and id > 0 then
+		owner = Players:GetPlayerByUserId(id)
+	end
+	local index = ShopFloor.NextSlot(level, floorStandsOf(owner))
+	return if index then attachmentIn(plotModel, string.format(SLOT_FORMAT, index)) else nil
 end
 
 -- Point de l'invite de repli (comme avant L-082).
@@ -385,7 +412,7 @@ local function onBuy(offer: Offer, entry: Entry)
 	if level == nil or level ~= entry.shownLevel or isPending(offer, level) then
 		return -- prix affiché périmé, ou achat déjà demandé à ce niveau
 	end
-	if Formulas.UpgradeCost(offer.id, level) == nil then
+	if costOf(offer, localPlayer, level) == nil then
 		return
 	end
 	offer.pendingLevel = level
@@ -598,9 +625,9 @@ local function showPrompt(offer: Offer, entry: Entry, plotModel: Instance, level
 		current.ActionText = string.format(TEXT.Upgrade, price)
 		current.ObjectText = string.format(TEXT.MachineLevel, upgrade.DisplayName, level + 1, upgrade.MaxLevel + 1)
 	else
-		local display = Balance.Display
-		current.ActionText = string.format(TEXT.UnlockStand, price)
-		current.ObjectText = string.format(TEXT.Stands, math.min(display.StartSlots + level, display.MaxSlots), display.MaxSlots)
+		local stands = floorStandsOf(localPlayer)
+		current.ActionText = string.format(if ShopFloor.IsFloorStep(level, stands) then TEXT.BuildFloor else TEXT.UnlockStand, price)
+		current.ObjectText = string.format(TEXT.Stands, ShopFloor.Total(level, stands)) -- a280 : étage compris
 	end
 	current.Enabled = not isPending(offer, level)
 end
@@ -649,11 +676,11 @@ local function refreshAll()
 				clearEntry(entry) -- profil pas encore chargé
 			elseif template then
 				clearPrompt(entry)
-				showSign(offer, entry, template, plotModel, owner, level, Formulas.UpgradeCost(offer.id, level))
+				showSign(offer, entry, template, plotModel, owner, level, costOf(offer, owner, level))
 			else
 				clearSign(entry)
 				if owner == localPlayer then
-					showPrompt(offer, entry, plotModel, level, Formulas.UpgradeCost(offer.id, level))
+					showPrompt(offer, entry, plotModel, level, costOf(offer, owner, level))
 				else
 					clearPrompt(entry)
 				end
@@ -738,6 +765,9 @@ end
 local function watchPlayer(player: Player)
 	for _, offer in offers do
 		player:GetAttributeChangedSignal(string.format(LEVEL_FORMAT, offer.id)):Connect(scheduleRefresh)
+		if offer.kind == "Stand" then
+			player:GetAttributeChangedSignal(FLOOR_STANDS_ATTRIBUTE):Connect(scheduleRefresh) -- a280 : étage ouvert ou fermé
+		end
 		if player == localPlayer and offer.id == UNLOCK_OFFER then
 			player:GetAttributeChangedSignal(string.format(LEVEL_FORMAT, offer.id)):Connect(onUnlockLevel)
 		end

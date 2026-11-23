@@ -49,6 +49,22 @@ local ShopGrowth = {
 	-- Sans l'attribut, la coupe ci-dessus reste (filet).
 	RowCutAttribute = "RowCut", -- nom convenu avec Clément (L-190)
 	RowCutTolerance = 0.05, -- V0 : un tronçon coupé pile sur le plan reste devant le fond
+	-- a280 (vague GC2, lot C ; L-217, L-277 ; règle de L-294 décidée par Cantin le 2026-11-23 ; interrupteur
+	-- Features.ShopFloor2) : 2e étage de la boutique, un Model `Floor_2` dans le gabarit Assets/Plots/PLOT_Shop
+	-- (ShopStageService en pose une copie dans la boutique), ou déjà posé dans la boutique. Avec lui, le bas s'arrête à
+	-- GroundSlots présentoirs ; une fois ceux-ci achetés, on achète l'étage (Cost), qui apparaît d'un coup, puis ses places
+	-- DisplaySlot_31 à _38 une à une (Costs), dans la suite de l'amélioration Display Stands (règles : Shared/ShopFloor).
+	-- Les présentoirs bonus du gamepass (DisplaySlot_21 à _24, posés dans Floor_2 par Clément) s'ouvrent avec l'étage.
+	Floor2 = {
+		ModelName = "Floor_2", -- L-217
+		GroundSlots = 8, -- L-294 : DisplaySlot_01 à _08 au rez-de-chaussée, carré de 48 × 48
+		FirstSlot = 31, -- L-277 : DisplaySlot_31… (_21 à _30 : présentoirs bonus du gamepass)
+		Slots = 8, -- L-294 : DisplaySlot_31 à _38
+		-- V0 proposé (Cantin, 23/11) : la suite des prix du bas (Config/Upgrades, DisplaySlots, Costs[5] à [13]) : l'étage
+		-- au prix de l'ancien 9e présentoir, ses 8 places à ceux des anciens 10e à 17e.
+		Cost = 2_800,
+		Costs = { 3_600, 4_800, 9_800, 20_000, 42_000, 72_000, 120_000, 300_000 },
+	},
 }
 
 return DeepFreeze(ShopGrowth)

@@ -196,6 +196,7 @@ local TEMPLATE: Data = {
 	Rebirths = 0, -- vague 51 (a164) : renaissances faites (RebirthService), sans changement de version
 	Diamonds = 0, -- vague 59 (a191, L-182 point 10) : diamants (DataService.GetDiamonds), sans changement de version
 	IndexMutations = {}, -- vague GC6 (a410) : [ItemId] = { [Effet] = os.time() } (IndexService), sans changement de version
+	ShopLayout = 0, -- a280 (L-294) : échelle de la boutique (Shared/ShopFloor), passée à 1 au chargement par ShopFloor.Migrate
 }
 
 -- Journal d'une migration : chaque ligne part dans la sortie, préfixée du joueur et de sa clé.
@@ -795,6 +796,20 @@ local function loadProfile(player: Player)
 	end)
 	if not weighed then
 		warn(`[DataService] {player.Name} ({key}) : poids des objets impossible ({weightProblem}), objets gardés tels quels`)
+	end
+	-- a280 (L-294, Cantin le 2026-11-23) : passage à la boutique à 8 présentoirs en bas puis l'étage acheté, une fois, dès que
+	-- le Floor_2 du gabarit est là (ShopFloor.Migrate : même nombre de places, objets des présentoirs 9 à 20 montés à l'étage
+	-- ou rendus à l'inventaire) ; champ ShopLayout, sans changement de version.
+	local laidOut, layoutProblem = pcall(function()
+		local ShopFloor = require(ReplicatedStorage.Shared.ShopFloor) :: any -- lu ici seulement, comme ItemWeight
+		local floor = ShopFloor.TemplateFloor()
+		local note = if floor then ShopFloor.Migrate(profile.Data, ShopFloor.Capacity(floor)) else nil
+		if note then
+			migrationLog(note)
+		end
+	end)
+	if not laidOut then
+		warn(`[DataService] {player.Name} ({key}) : passage à la boutique à étage impossible ({layoutProblem}), boutique gardée telle quelle`)
 	end
 	profile:AddUserId(player.UserId)
 

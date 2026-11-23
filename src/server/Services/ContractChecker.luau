@@ -366,6 +366,62 @@ local function checkPlotIndex()
 	end
 end
 
+-- a280 (vague GC2, lot C ; L-277, règle de L-294) : chaque Model Floor_2 (2e étage, Contract/Models.Floor2 pour ses
+-- places) : DisplaySlot_39 et _40 plus lus (8 places depuis L-294, orange) ; rangé dans le gabarit PLOT_Shop ou dans une
+-- boutique PlayerPlot, sinon le code ne le lit pas (orange). Gabarit PLOT_Shop : looks Look_0 à Look_5 facultatifs
+-- (orange s'ils manquent, L-294 Q3). Attribut HideFromSkill (Contract/Attributes, ShopWallsService) sur toute pièce :
+-- "<Id>" ou "<Id> <niveau>" d'une compétence de Config/SkillTree, sinon orange (la pièce est laissée telle quelle).
+local function checkFloor2(scanned: { Instance })
+	local floorSpec = (Models :: any).Floor2
+	local hideSpec = (Attributes :: any).HideFromSkill
+	if floorSpec == nil or hideSpec == nil then
+		return -- contrat d'avant a280
+	end
+	local names: { string } = floorSpec.Names
+	local skills = require(Shared:WaitForChild("Config"):WaitForChild("SkillTree")) :: any
+	for _, inst in scanned do
+		local hide = inst:GetAttribute(hideSpec.Name)
+		if hide ~= nil then
+			local id = string.match(if type(hide) == "string" then hide else "", "^%s*(%w+)%s*%d*%s*$")
+			if id == nil or skills.ById[id] == nil then
+				warning("Parcelles", `{inst:GetFullName()} : {hideSpec.Name} = « {tostring(hide)} », attendu "<Id>" ou "<Id> <niveau>" d'une compétence (ex. "GlassThickness 2", L-294)`)
+			end
+		end
+		if inst.Name == "PLOT_Shop" and inst:IsA("Model") then
+			local missing: { string } = {}
+			for n = 0, 5 do
+				if inst:FindFirstChild(`Look_{n}`, true) == nil then
+					table.insert(missing, `Look_{n}`)
+				end
+			end
+			if #missing > 0 then
+				warning("Parcelles", `{inst:GetFullName()} : {table.concat(missing, ", ")} introuvable(s) (facultatifs : looks de résistance, L-294)`)
+			end
+		end
+		if not (inst:IsA("PVInstance") or inst:IsA("Folder")) or not table.find(names, inst.Name) then
+			continue
+		end
+		local label = inst:GetFullName()
+		for _, index in { 39, 40 } do
+			if inst:FindFirstChild(string.format("DisplaySlot_%02d", index), true) then
+				warning("Parcelles", `{label} : DisplaySlot_{index} n'est plus lu (8 places à l'étage, DisplaySlot_31 à _38, L-294)`)
+			end
+		end
+		local parent = inst.Parent
+		local inPlot = false
+		while parent and parent ~= game do
+			if parent.Name == "PLOT_Shop" or parent:HasTag("PlayerPlot") then
+				inPlot = true
+				break
+			end
+			parent = parent.Parent
+		end
+		if not inPlot then
+			warning("Parcelles", `{label} : ni dans le gabarit PLOT_Shop ni dans une boutique PlayerPlot : le code ne le lit pas (L-277)`)
+		end
+	end
+end
+
 local function checkTags()
 	local zone = Attributes.Zone
 	local known: { [string]: string } = {}
@@ -1527,6 +1583,7 @@ local function run()
 	checkPlotIndex()
 	breathe()
 	checkModels(scanned)
+	checkFloor2(scanned) -- a280
 	breathe()
 	checkItems(scanned)
 	checkIcons(scanned)

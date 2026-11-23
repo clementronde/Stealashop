@@ -33,6 +33,11 @@
 -- niveau 3 de la boutique (plus de copie dans SkillVisuals aux niveaux 1 et 2, PlotVisuals.EveryStage retiré) ;
 -- Walls compte en jeu dès le niveau 1 (PV de la porte, WindowService). L-150 point 6 : une pièce avec
 -- `HideFromWalls` = 1 (Stage_2/Murets_Sides de Clément) est cachée dès Walls 1 (règle « Visuel » plus haut).
+-- a280 (L-294 Q3, Cantin le 2026-11-23) : attribut `HideFromSkill`, même écriture que `ShowFromSkill`, borne haute exclue :
+-- la pièce est cachée dès que la compétence atteint ce niveau. Les looks de résistance de Clément (Look_0 à Look_5, dans
+-- la boutique et dans Floor_2 ; facultatifs) : Look_n porte ShowFromSkill = "GlassThickness n" (sauf Look_0) et
+-- HideFromSkill = "GlassThickness n+1" (sauf Look_5) : un seul est visible. Id inconnu : une ligne, pièce laissée telle
+-- quelle, comme pour ShowFromSkill.
 --
 -- API (serveur) :
 --   ShopWallsService.GetLevel(plot) -> number   WallsLevel de la parcelle (0 s'il manque)
@@ -52,6 +57,7 @@ local LEVEL_ATTRIBUTE = SkillTree.WallsLevelAttribute
 local SHOW_FROM = SkillTree.ShowFromWalls
 local HIDE_FROM = SkillTree.HideFromWalls
 local SHOW_FROM_SKILL = SkillTree.ShowFromSkill
+local HIDE_FROM_SKILL = SkillTree.HideFromSkill -- a280 (L-294 Q3)
 local SKILL_PREFIX = SkillTree.AttributePrefix
 
 -- Propriétés changées pour cacher, par famille de classes (les mêmes que ShopStageService).
@@ -153,23 +159,35 @@ function ShopWallsService.GetLevel(plot: Instance): number
 	return if type(value) == "number" and value == value then value else 0
 end
 
--- Règle « compétence » d'une pièce (voir l'en-tête) : attribut ShowFromSkill, sinon son nom dans PlotVisuals.
-local function skillRuleOf(instance: Instance): SkillTree.PlotVisual?
-	local value = instance:GetAttribute(SHOW_FROM_SKILL)
+-- Règle lue dans l'attribut `name` d'une pièce ("<Id>" ou "<Id> <niveau>") : (true, nil) sans l'attribut, (false, nil)
+-- s'il ne nomme aucune compétence (une ligne), sinon (true, règle).
+local function parseSkill(instance: Instance, name: string): (boolean, SkillTree.PlotVisual?)
+	local value = instance:GetAttribute(name)
 	if value == nil then
-		return SkillTree.PlotVisuals[instance.Name]
+		return true, nil
 	end
 	local id, digits = string.match(if type(value) == "string" then value else "", "^%s*(%w+)%s*(%d*)%s*$")
 	local skill = if id then SkillTree.ById[id] else nil
 	if skill == nil then
-		local key = instance:GetFullName()
+		local key = instance:GetFullName() .. name
 		if not warned[key] then
 			warned[key] = true
-			warn(`[ShopWallsService] {key} : {SHOW_FROM_SKILL} = « {tostring(value)} » ne nomme aucune compétence de Config/SkillTree : pièce laissée telle quelle`)
+			warn(`[ShopWallsService] {instance:GetFullName()} : {name} = « {tostring(value)} » ne nomme aucune compétence de Config/SkillTree : pièce laissée telle quelle`)
 		end
-		return nil
+		return false, nil
 	end
-	return { Id = skill.Id, Level = if digits and digits ~= "" then tonumber(digits) :: number else 1 }
+	return true, { Id = skill.Id, Level = if digits and digits ~= "" then tonumber(digits) :: number else 1 }
+end
+
+-- Règles « compétence » d'une pièce (voir l'en-tête) : montrée dès `show` (attribut ShowFromSkill, sinon son nom dans
+-- PlotVisuals), cachée dès `hide` (attribut HideFromSkill, a280). `known` false : un attribut illisible, pièce laissée.
+local function skillRulesOf(instance: Instance): (boolean, SkillTree.PlotVisual?, SkillTree.PlotVisual?)
+	local okHide, hide = parseSkill(instance, HIDE_FROM_SKILL)
+	if instance:GetAttribute(SHOW_FROM_SKILL) == nil then
+		return okHide, SkillTree.PlotVisuals[instance.Name], hide
+	end
+	local okShow, show = parseSkill(instance, SHOW_FROM_SKILL)
+	return okShow and okHide, show, hide
 end
 
 -- Niveau de la compétence `id` pour la parcelle : Walls = WallsLevel ; les autres, l'attribut Skill_<Id> du
@@ -191,9 +209,10 @@ local function applyPiece(plot: Instance, piece: Instance)
 		setVisible(piece, level >= bound(piece, SHOW_FROM, -math.huge) and level < bound(piece, HIDE_FROM, math.huge))
 		return
 	end
-	local rule = skillRuleOf(piece)
-	if rule then
-		setVisible(piece, skillLevel(plot, rule.Id) >= rule.Level)
+	local known, show, hide = skillRulesOf(piece)
+	if known and (show or hide) then
+		local shown = show == nil or skillLevel(plot, show.Id) >= show.Level
+		setVisible(piece, shown and (hide == nil or skillLevel(plot, hide.Id) < hide.Level))
 	end
 end
 

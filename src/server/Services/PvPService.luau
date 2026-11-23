@@ -197,6 +197,7 @@ local HeldItem = require(Shared.Config.HeldItem) -- vague 44 (a152) : DepositToH
 local Items = require(Shared.Config.Items)
 local Mutations = require(Shared.Config.Mutations)
 local PvP = require(Shared.Config.PvP)
+local ShopGrowth = require(Shared.Config.ShopGrowth) -- a280 : places du 2e étage (Floor_2)
 local Find = require(Shared.Contract.Find)
 local Format = require(Shared.Format)
 local Net = require(Shared.Net.Net)
@@ -260,6 +261,7 @@ type PlotRefs = {
 	Bounds: BasePart?,
 	Deposit: BasePart?,
 	Slots: { [number]: Attachment? },
+	Floor: Instance?, -- a280 : Floor_2 de la parcelle quand ses places ont été cherchées
 }
 
 -- Noms du contrat (10.4).
@@ -519,7 +521,8 @@ end
 
 local function refsFor(plot: Model): PlotRefs
 	local cached = refsOf[plot]
-	if cached then
+	local floor = plot:FindFirstChild(ShopGrowth.Floor2.ModelName) -- a280 : copié par ShopStageService au besoin
+	if cached and cached.Floor == floor then
 		return cached
 	end
 	local bounds = Find.path(plot, BOUNDS)
@@ -541,10 +544,23 @@ local function refsFor(plot: Model): PlotRefs
 		end
 		slots[index] = found :: Attachment
 	end
+	-- a280 (vague GC2, lot C ; L-277) : places du 2e étage, DisplaySlot_31 et suivantes dans Floor_2, à la suite : leurs
+	-- objets se volent comme les autres.
+	if floor then
+		local spec = ShopGrowth.Floor2
+		for index = spec.FirstSlot, spec.FirstSlot + spec.Slots - 1 do
+			local found = floor:FindFirstChild(string.format(SLOT_FORMAT, index), true)
+			if found == nil or not found:IsA("Attachment") then
+				break
+			end
+			slots[index] = found :: Attachment
+		end
+	end
 	local refs: PlotRefs = {
 		Bounds = if bounds and bounds:IsA("BasePart") then bounds :: BasePart else nil,
 		Deposit = if deposit and deposit:IsA("BasePart") then deposit :: BasePart else nil,
 		Slots = slots,
+		Floor = floor,
 	}
 	refsOf[plot] = refs
 	return refs

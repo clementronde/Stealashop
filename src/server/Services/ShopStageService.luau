@@ -53,10 +53,26 @@
 -- Fond minimum (L-285, ShopGrowth.MinBack) : le fond coupé n'est jamais posé devant MinBack (fond du carré de
 -- 48 × 48 du niveau 1, z 8) ; s'il atteint le fond du gabarit, la boutique est entière.
 --
+-- 2e étage (a280, vague GC2, lot C ; L-217, L-277, règle de L-294 ; Config/ShopGrowth.Floor2, Shared/ShopFloor) : le
+-- Model `Floor_2` de la boutique, ou à défaut une copie de celui du gabarit (posée comme les Stage_j, sans script,
+-- recolorée, jamais coupée), créée au premier besoin et jamais détruite ensuite. Montré quand Apply le demande
+-- (4e argument) : il est alors dans la boutique ; sinon il est rangé hors du monde, dans ServerStorage/ShopFloorParking
+-- (pas caché pièce par pièce : ses Look_n restent à ShopWallsService seul, L-294 Q3). Ses DisplaySlot_31… restent
+-- trouvables par DisplayService (EnsureFloor). Sans Floor_2 nulle part : rien ne change, aucune place d'étage.
+--
 -- API (serveur) :
---   ShopStageService.Apply(plot, k, unlocked?) -> number
+--   ShopStageService.Apply(plot, k, unlocked?, floorShown?) -> number
 --       Met la boutique au niveau k (ramené à 1 au moins), coupée au fond du présentoir `unlocked` (nombre de
---       présentoirs débloqués ; nil : pas de coupe) ; renvoie le niveau posé. Sans yield.
+--       présentoirs débloqués ; nil : pas de coupe), l'étage Floor_2 montré si floorShown (rangé sinon) ; renvoie le
+--       niveau posé. Sans yield.
+--   ShopStageService.EnsureFloor(plot) -> Instance?
+--       Floor_2 de la boutique (copié du gabarit s'il manque ; rangé tant qu'Apply ne l'a pas montré) ; nil s'il n'y en
+--       a nulle part. Sans yield.
+--   ShopStageService.FloorSlots(floor) -> ({ [number]: Attachment }, number)
+--       Places DisplaySlot_31… de `floor`, à la suite (la première qui manque arrête la série), et leur nombre.
+--   ShopStageService.FloorStands(plot, layout?) -> number
+--       Places d'étage ouvertes à un profil de champ ShopLayout `layout` (ShopFloor.Stands : places posées dans le
+--       Floor_2 de la boutique, sinon dans celui du gabarit). 0 sans Floor_2 ou avec l'ancienne échelle. Sans yield.
 --   ShopStageService.GetLevel(plot) -> number
 --       Niveau posé par le dernier Apply (1 si aucun).
 --   ShopStageService.IsBeyond(plot, inst) -> boolean
@@ -64,10 +80,13 @@
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local ServerStorage = game:GetService("ServerStorage")
 
 local Balance = require(ReplicatedStorage.Shared.Config.Balance)
 local ShopGrowth = require(ReplicatedStorage.Shared.Config.ShopGrowth)
 local SkillTree = require(ReplicatedStorage.Shared.Config.SkillTree)
+local Features = require(ReplicatedStorage.Shared.Config.Features)
+local ShopFloor = require(ReplicatedStorage.Shared.ShopFloor) -- a280 : 2e étage
 
 -- Noms de Clément (L-096, plot_shop_builder) ; StageLevel et StageDepth : V0 proposés, absents du doc.
 local TEMPLATE_NAME = "PLOT_Shop"
@@ -89,7 +108,8 @@ local ENABLED_CLASSES = { "SurfaceGui", "BillboardGui", "Light", "ParticleEmitte
 
 type Saved = { [Instance]: { [string]: any } }
 -- depth : fond posé (nil = entier) ; slots : z de chaque DisplaySlot_xx ; points : CFrame d'origine des StageUpgradePoint_n.
-type PlotState = { level: number, saved: Saved, depth: number?, slots: { [number]: number }?, points: { [Attachment]: CFrame } }
+-- floorShown (a280) : Floor_2 montré par le dernier Apply ; floor : ce Floor_2 (dans la boutique ou rangé), nil s'il n'y en a pas.
+type PlotState = { level: number, saved: Saved, depth: number?, slots: { [number]: number }?, points: { [Attachment]: CFrame }, floorShown: boolean, floor: Instance? }
 -- Coupe d'une copie : fond posé, fond du gabarit, repère de la boutique, gabarit découpé par Clément (L-190).
 type Cut = { depth: number, back: number, pivot: CFrame, rowCut: boolean }
 
@@ -324,7 +344,7 @@ end
 
 -- Copie de `source` (Stage_j du gabarit, ou une de ses pièces), recolorée, sans script, posée dans la boutique
 -- (rangée dans `parent`, la boutique elle-même par défaut), coupée au fond posé s'il y en a un.
-local function placeCopy(plot: Model, template: Model, source: Instance, parent: Instance?, cut: Cut?)
+local function placeCopy(plot: Model, template: Model, source: Instance, parent: Instance?, cut: Cut?): Instance?
 	local copy = source:Clone()
 	local all = copy:GetDescendants()
 	table.insert(all, copy)
@@ -353,9 +373,10 @@ local function placeCopy(plot: Model, template: Model, source: Instance, parent:
 	end
 	copy.Name = source.Name
 	if cut and not cutCopy(copy, cut) then
-		return -- pièce entière au-delà du fond
+		return nil -- pièce entière au-delà du fond
 	end
 	copy.Parent = parent or plot
+	return copy -- a280 : la copie posée (Floor_2)
 end
 
 -- Visuels EveryStage (voir l'en-tête) : copie à part tant que la boutique est sous le Stage_j qui les contient.
@@ -392,6 +413,16 @@ local function applyEveryStage(plot: Model, template: Model?, k: number, cut: Cu
 	end
 end
 
+-- a280 : état d'une boutique, créé au premier usage (Apply ou EnsureFloor).
+local function stateOf(plot: Model): PlotState
+	local state = states[plot]
+	if state == nil then
+		state = { level = 1, saved = {}, depth = nil, slots = nil, points = {}, floorShown = false, floor = nil } :: PlotState
+		states[plot] = state
+	end
+	return state :: PlotState
+end
+
 -- HideFromStage ≤ k caché (avec les descendants), le reste rendu à ses valeurs d'origine.
 local function applyHide(plot: Model, state: PlotState, k: number)
 	local wanted: { [Instance]: boolean } = {}
@@ -417,18 +448,93 @@ local function applyHide(plot: Model, state: PlotState, k: number)
 	end
 end
 
+-- a280 (L-294) : dossier où attendent les étages pas montrés, hors du monde (créé au premier besoin).
+local PARKING_NAME = "ShopFloorParking"
+
+local function parking(): Instance
+	local folder = ServerStorage:FindFirstChild(PARKING_NAME)
+	if folder == nil then
+		folder = Instance.new("Folder")
+		folder.Name = PARKING_NAME
+		folder.Parent = ServerStorage
+	end
+	return folder :: Instance
+end
+
+-- a280 : Floor_2 de la boutique (voir l'en-tête), copié du gabarit s'il manque (pas avec l'interrupteur coupé), mis dans
+-- la boutique s'il est montré et rangé sinon ; nil sans Floor_2.
+local function ensureFloor(plot: Model): Instance?
+	local state = stateOf(plot)
+	local floor = state.floor
+	if floor == nil or floor.Parent == nil then
+		floor = plot:FindFirstChild(ShopGrowth.Floor2.ModelName)
+		if floor == nil and Features.ShopFloor2 then
+			local source = ShopFloor.TemplateFloor()
+			local template = if source then templateOf() else nil
+			if source and template then
+				floor = placeCopy(plot, template, source, parking(), nil) -- jamais coupé ; posé rangé, montré par Apply
+			end
+		end
+		state.floor = floor
+	end
+	if floor then
+		local wanted = if state.floorShown then plot else parking()
+		if floor.Parent ~= wanted then
+			floor.Parent = wanted
+		end
+	end
+	return floor
+end
+
+-- a280 : places posées dans un Floor_2 (cache, clés faibles : un modèle retiré s'en va seul).
+local capacityOf: { [Instance]: number } = setmetatable({}, { __mode = "k" }) :: any
+
+local function floorSlots(floor: Instance): ({ [number]: Attachment }, number)
+	local out: { [number]: Attachment } = {}
+	local count = 0
+	for n = 1, ShopGrowth.Floor2.Slots do
+		local index = ShopFloor.Slot(n)
+		local found = floor:FindFirstChild(string.format("DisplaySlot_%02d", index), true)
+		if found == nil or not found:IsA("Attachment") then
+			break
+		end
+		out[index] = found :: Attachment
+		count = n
+	end
+	return out, count
+end
+
 ------------------------------------------------------------------------------
 -- API
 ------------------------------------------------------------------------------
 
-function ShopStageService.Apply(plot: Model, level: number, unlocked: number?): number
-	local k = if level == level then math.max(1, math.floor(level)) else 1
+function ShopStageService.EnsureFloor(plot: Model): Instance?
+	return ensureFloor(plot)
+end
+
+function ShopStageService.FloorSlots(floor: Instance): ({ [number]: Attachment }, number)
+	return floorSlots(floor)
+end
+
+function ShopStageService.FloorStands(plot: Model, layout: number?): number
 	local state = states[plot]
-	if state == nil then
-		state = { level = 1, saved = {}, depth = nil, slots = nil, points = {} } :: PlotState
-		states[plot] = state
+	local own = if state and state.floor and state.floor.Parent ~= nil then state.floor else nil
+	local source = own or plot:FindFirstChild(ShopGrowth.Floor2.ModelName) or ShopFloor.TemplateFloor()
+	if source == nil then
+		return 0
 	end
-	local current = state :: PlotState
+	local capacity = capacityOf[source]
+	if capacity == nil then
+		local _, count = floorSlots(source)
+		capacity = count
+		capacityOf[source] = count
+	end
+	return ShopFloor.Stands(capacity :: number, layout)
+end
+
+function ShopStageService.Apply(plot: Model, level: number, unlocked: number?, floorShown: boolean?): number
+	local k = if level == level then math.max(1, math.floor(level)) else 1
+	local current = stateOf(plot)
 	local template = templateOf()
 	local back = if template then templateBack(template) else nil
 	local depth = if back and k >= 2 then depthFor(plot, current, unlocked, back) else nil
@@ -456,7 +562,15 @@ function ShopStageService.Apply(plot: Model, level: number, unlocked: number?): 
 		end
 	end
 	applyEveryStage(plot, template, k, cut)
+	-- a280 : 2e étage, copié au premier besoin, mis dans la boutique s'il est montré, rangé sinon.
+	local showFloor = floorShown == true
+	local floorChanged = showFloor ~= current.floorShown
+	current.floorShown = showFloor
+	local floor = ensureFloor(plot)
 	applyHide(plot, current, k)
+	if floorChanged and IS_STUDIO then
+		print(`[ShopStageService] {plot.Name} : 2e étage {if showFloor then (if floor then "montré" else "demandé, mais aucun Floor_2 (L-277)") else "rangé"}`)
+	end
 	placePoints(plot, current, cut)
 	if (current.level ~= k or depthChanged) and IS_STUDIO then
 		print(`[ShopStageService] {plot.Name} : boutique niveau {current.level} → {k}, fond {if depth then string.format("%.1f", depth) else "entier"}`)
