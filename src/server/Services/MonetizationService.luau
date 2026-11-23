@@ -21,7 +21,7 @@
 --     PurchaseId (DataService.SaveAsync, Profile.LastSavedData : la façon de faire de ProfileStore) ;
 --     profil fermé avant (joueur parti) : NotProcessedYet, et le reçu rappelé au retour trouvera le
 --     PurchaseId dans la sauvegarde de fin de session.
---   Purchases garde au plus Receipts.History (V0 : 100) achats : les plus anciens partent.
+--   Purchases garde au plus Receipts.History (V0 : 500) achats : les plus anciens partent.
 --
 -- Gamepasses : possession lue à l'arrivée (UserOwnsGamePassAsync, dans un pcall : PassCheck.Attempts
 -- essais espacés de PassCheck.RetryDelay s, puis un essai toutes les PassCheck.SlowRetry s tant que

@@ -95,7 +95,7 @@ local Rewards = {
 		BestZone = { ZoneStep = 0, TopBoost = 1.5 },
 		-- 60 min : un colis de la zone de référence + 1 (au plus la dernière zone de Config/Zones), tiré seulement parmi
 		-- les 3 meilleures raretés de cette zone, sans Secret, à 60 / 30 / 10 % de la plus basse à la plus haute (zone 6 :
-		-- Épique 60, Légendaire 30, Mythique 10). V0 (a309) : une zone à 2 raretés garde le rapport 60/30 (zone 2 :
+		-- Épique 60, Légendaire 30, Mythique 10). Validé par Cantin (22/11) : une zone à 2 raretés garde le rapport 60/30 (zone 2 :
 		-- Commun 67, Peu commun 33).
 		NextZone = { ZoneStep = 1, TopCount = 3, TopWeights = { 60, 30, 10 }, Exclude = { "Secret" } },
 	} :: { [string]: ZoneBoxRule },

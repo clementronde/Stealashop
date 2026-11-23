@@ -154,7 +154,7 @@ local Traps = {
 	SpareFriends = false, -- aucune règle d'amis au vol (PvPService) : les amis du propriétaire sont pris aussi
 	-- Messages (Notify), en anglais.
 	Messages = {
-		Thief = "You walked into a %s!",
+		Thief = "You walked into %s!", -- %s : le piège avec son article (« a Glue Trap », « an Alarm Gate »)
 		Owner = "%s walked into your %s!",
 	},
 }

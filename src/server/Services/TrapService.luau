@@ -434,7 +434,8 @@ local function trigger(plot: Model, entry: Placed, thief: Player, owner: Player?
 	end
 	applyEffect(thief, trap)
 
-	notify(thief, string.format(Traps.Messages.Thief, trap.DisplayName), "Warning")
+	local article = if string.match(trap.DisplayName, "^[AEIOUaeiou]") then "an " else "a "
+	notify(thief, string.format(Traps.Messages.Thief, article .. trap.DisplayName), "Warning")
 	if owner and owner ~= thief then
 		notify(owner, string.format(Traps.Messages.Owner, thief.DisplayName, trap.DisplayName), "Alert")
 		if trap.Spot > 0 then
