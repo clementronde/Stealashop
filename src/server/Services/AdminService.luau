@@ -5,9 +5,12 @@
 -- service décide tout et revalide tout.
 --
 -- Qui est admin (Config/Admin) : tout le monde en Studio ; un UserId de Admin.UserIds ; un membre du groupe du
--- studio de rang Admin.MinGroupRank ou plus (rang lu une fois à l'arrivée, GetRankInGroup ; GroupId = 0 : le groupe
--- propriétaire du jeu). Attribut du Player posé ici : IsAdmin = true pour un admin (le client montre AdminButton ;
--- il n'en décide rien), absent sinon.
+-- studio de rang Admin.MinGroupRank ou plus (GroupId = 0 : le groupe propriétaire du jeu). Rang lu à l'arrivée
+-- (GetRankInGroup), puis relu (a275, audit a272 F2) toutes les Admin.RankRefreshSeconds s et juste avant une commande
+-- s'il date de plus de Admin.RankMaxAge s, par GroupService:GetGroupsAsync (GetRankInGroup garde sa première réponse
+-- côté serveur) : un membre rétrogradé perd ses droits sans se reconnecter. Relecture ratée : le rang d'avant reste.
+-- Attribut du Player posé ici : IsAdmin = true pour un admin (le client montre AdminButton ; il n'en décide rien),
+-- absent sinon.
 --
 -- Remote AdminCommand(commandId, target?, value?, text?, text2?) (Net a contrôlé forme et débit). Dans l'ordre :
 --   1. appelant pas admin : ignoré, une ligne dans la sortie, aucune réponse ;
@@ -141,6 +144,7 @@ local AdminService = {}
 AdminService.Priority = 1000 -- en dernier : son OnProfileReleasing passe après celui des autres services
 
 local groupRanks: { [Player]: number } = {}
+local rankReadAt: { [Player]: number } = {} -- os.clock() de la dernière lecture réussie du rang
 local pendingReset: { [Player]: boolean } = {}
 local random = Random.new()
 
@@ -190,11 +194,53 @@ local function onPlayerAdded(player: Player)
 		end
 		if ok and type(rank) == "number" then
 			groupRanks[player] = rank
+			rankReadAt[player] = os.clock()
 		else
 			warn(`[AdminService] rang de {player.Name} dans le groupe {group} illisible : {rank}`)
 		end
 		publishAdmin(player)
 	end)
+end
+
+-- a275 (audit a272 F2) : relit le rang par GroupService:GetGroupsAsync (yield, appel web ; le service est pris dans le
+-- pcall). Relecture ratée : le rang d'avant reste (un souci du web ne retire pas les droits du propriétaire).
+local function rereadRank(player: Player, group: number)
+	local ok, groups: any = pcall(function(): any
+		return game:GetService("GroupService"):GetGroupsAsync(player.UserId)
+	end)
+	if player.Parent ~= Players then
+		return
+	end
+	if not ok or type(groups) ~= "table" then
+		warn(`[AdminService] rang de {player.Name} dans le groupe {group} pas relu : {groups}`)
+		return
+	end
+	local rank = 0 -- absent de la liste : plus membre du groupe
+	for _, info in groups do
+		if type(info) == "table" and info.Id == group and type(info.Rank) == "number" then
+			rank = info.Rank
+			break
+		end
+	end
+	local was = AdminService.IsAdmin(player)
+	groupRanks[player] = rank
+	rankReadAt[player] = os.clock()
+	publishAdmin(player)
+	if was ~= AdminService.IsAdmin(player) then
+		log(`{player.Name} ({player.UserId}) : rang {rank} relu, {if was then "n'est plus admin" else "devient admin"}`)
+	end
+end
+
+-- Relecture de tous les joueurs toutes les Admin.RankRefreshSeconds s (se reprogramme elle-même).
+local function refreshRanks()
+	task.delay(Admin.RankRefreshSeconds, refreshRanks)
+	local group = groupId()
+	if group == 0 or (IS_STUDIO and Admin.StudioEveryone) then
+		return
+	end
+	for _, player in Players:GetPlayers() do
+		task.spawn(rereadRank, player, group)
+	end
 end
 
 ------------------------------------------------------------------------------
@@ -654,6 +700,19 @@ end
 
 function AdminService.Run(admin: Player, commandId: string, target: Player?, value: number?, text: string?, text2: string?): (boolean, string)
 	local who = `{admin.Name} ({admin.UserId})`
+	-- a275 (F2) : admin par son seul rang, lu il y a plus de RankMaxAge s : relu avant d'agir (yield).
+	local group = groupId()
+	local rank = groupRanks[admin]
+	if
+		group ~= 0
+		and not (IS_STUDIO and Admin.StudioEveryone)
+		and table.find(Admin.UserIds, admin.UserId) == nil
+		and rank ~= nil
+		and rank >= Admin.MinGroupRank
+		and os.clock() - (rankReadAt[admin] or 0) > Admin.RankMaxAge
+	then
+		rereadRank(admin, group)
+	end
 	if not AdminService.IsAdmin(admin) then
 		warn(`[AdminService] refusé : {who} n'est pas admin ({commandId})`)
 		return false, "Not an admin."
@@ -702,6 +761,7 @@ function AdminService.Init()
 	Players.PlayerAdded:Connect(onPlayerAdded)
 	Players.PlayerRemoving:Connect(function(player: Player)
 		groupRanks[player] = nil
+		rankReadAt[player] = nil
 		-- pendingReset est vidé par onProfileReleasing (avant ou après ce signal) ; sans profil, au tour suivant.
 		task.defer(function()
 			pendingReset[player] = nil
@@ -710,6 +770,7 @@ function AdminService.Init()
 	for _, player in Players:GetPlayers() do
 		onPlayerAdded(player)
 	end
+	task.delay(Admin.RankRefreshSeconds, refreshRanks)
 end
 
 function AdminService.Start()

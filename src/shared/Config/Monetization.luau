@@ -319,8 +319,10 @@ local Monetization = {
 	Receipts = {
 		-- V0 proposé, absent du doc : PurchaseId gardés dans Purchases du profil (les plus anciens
 		-- partent au-delà) ; 100 comme l'exemple de ProfileStore. Roblox ne rappelle un reçu que tant
-		-- qu'il n'est pas accepté : seuls les derniers comptent.
-		History = 100,
+		-- qu'il n'est pas accepté : seuls les derniers comptent. a275 (audit a272 F5, V0 proposé, Cantin, 23/11) :
+		-- 500 (avant 100), pour qu'un reçu rappelé tard ne soit jamais redonné si des produits bon marché arrivent ;
+		-- une entrée pèse environ 50 octets : 25 Ko au plus, et seulement après 500 achats Robux.
+		History = 500,
 		-- V0 proposé, absent du doc : attente (s) du profil d'un joueur qui vient d'arriver avant de
 		-- répondre NotProcessedYet (Roblox rappelle le reçu plus tard).
 		ProfileWait = 30,

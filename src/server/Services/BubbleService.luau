@@ -21,7 +21,8 @@
 --   BubbleService.Claim(player, id) -> (boolean, string | number)
 --                                                ce que fait ClaimBubble : (true, gain) ou (false, raison) ; raisons :
 --                                                « NotTraining », « Rate », « Unknown » (pas à lui, déjà prise,
---                                                inconnue), « Expired »
+--                                                inconnue), « TooSoon » (a275 : apparue il y a moins de
+--                                                Bubbles.ClaimMinAge s, elle reste à prendre), « Expired »
 --   BubbleService.GetBubbles(player) -> { { id, multiplier, expiresAt } }   copie des bulles en cours
 --   BubbleService.Step(now)                     un passage de la boucle (Heartbeat), pour les bancs
 
@@ -146,6 +147,11 @@ function BubbleService.Claim(player: Player, id: string): (boolean, string | num
 	end
 	if found == nil then
 		return false, "Unknown"
+	end
+	-- a275 (audit a272 F3) : bulle trop jeune pour un clic humain : refusée, elle reste à prendre.
+	local fresh = state.bubbles[found] :: Bubble
+	if now < fresh.expiresAt - Bubbles.Lifetime + Bubbles.ClaimMinAge then
+		return false, "TooSoon"
 	end
 	local bubble = table.remove(state.bubbles, found) :: Bubble
 	if now >= bubble.expiresAt then
