@@ -265,12 +265,12 @@ local function onClientStep(player: Player, key: string, value: number?)
 	if not enabled then
 		return
 	end
-	local entry = FunnelConfig.ClientSteps[key]
-	if entry == nil then
-		warnOnce(`client:{key}`, `étape « {key} » inconnue, ignorée`)
+	if not withinBudget(player) then -- avant tout le reste : une clé inconnue compte aussi
 		return
 	end
-	if not withinBudget(player) then
+	local entry = FunnelConfig.ClientSteps[key]
+	if entry == nil then
+		warnOnce("client:unknown", `étape « {key} » inconnue, ignorée (avertissement unique : la clé vient du client)`)
 		return
 	end
 	if entry.Funnel == "FirstSteps" then
