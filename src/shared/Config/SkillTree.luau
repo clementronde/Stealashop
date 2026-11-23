@@ -291,6 +291,8 @@ local SkillTree = {
 	ShowFromWalls = "ShowFromWalls",
 	HideFromWalls = "HideFromWalls",
 	ShowFromSkill = "ShowFromSkill", -- attribut d'une pièce de la parcelle (voir PlotVisuals)
+	-- a280 (L-294 Q3) : borne haute, même écriture, exclue (« GlassThickness 2 » : cachée dès le niveau 2) ; Look_0 à Look_5.
+	HideFromSkill = "HideFromSkill",
 	PlotVisuals = PlotVisuals,
 	SkillVisualsFolder = "SkillVisuals", -- dossier de la boutique : copies EveryStage (V0 proposé, absent du doc)
 	AttributePrefix = "Skill_", -- attribut Skill_<Id> du joueur, posé par le serveur

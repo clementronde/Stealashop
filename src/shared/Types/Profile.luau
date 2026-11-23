@@ -275,6 +275,10 @@ export type Data = {
 	-- changement de version, absent du gabarit : créé et réparé par QuestService au premier passage du jour.
 	Wheel: Wheel?, -- vague 80 (a266, DEV-141) : roue de la fortune (WheelService, Config/Wheel). Champ facultatif, sans
 	-- changement de version, absent du gabarit : créé et réparé par WheelService.
+	ShopLayout: number?, -- a280 (L-294, Cantin le 2026-11-23) : échelle de la boutique (Shared/ShopFloor) : 0 = 20 présentoirs
+	-- au rez-de-chaussée (avant L-294), 1 = 8 en bas puis l'étage acheté et ses places. Champ facultatif, sans changement de
+	-- version : 0 dans le gabarit de DataService (absent = 0) ; passé à 1 au chargement par ShopFloor.Migrate dès que le
+	-- Floor_2 du gabarit est là, jamais dans l'autre sens.
 	-- Partie 2 : Defenses, Rebirths, ajoutés par migration (Version = 9 et suivantes : la v2 est prise
 	-- par le catalogue d'objets v2, la v3 par la boutique Robux, la v4 par l'index, la v5 par les colis
 	-- sur les présentoirs, la v6 par les gains hors ligne, la v7 par les colis dans l'inventaire, la v8

@@ -26,8 +26,8 @@
 -- des présentoirs débloqués : cachée comme un rayon, rendue à l'achat (ShopGrowth.HideLockedStands). Son invite
 -- « Display » reste éteinte par DisplayService (présentoir « Locked »), son contour RayonSpot part avec le rayon.
 -- Rayon_01 (dans la boutique, toujours débloqué avec StartSlots 4) n'est pas concerné.
--- a280 (vague GC2, lot C) : Apply reçoit aussi « 2e étage montré » (floorShownFor, plus bas) ; le contrôle d'une seconde
--- refait la boutique quand cette réponse change (renaissances changées sans achat de présentoir).
+-- a280 (vague GC2, lot C ; L-294) : Apply reçoit aussi « 2e étage montré » (floorShownFor, plus bas : étage acheté) ;
+-- le contrôle d'une seconde refait la boutique quand cette réponse change. Avec l'étage, le bas s'arrête à 8 présentoirs.
 --
 -- Quand : à l'attribution d'une parcelle et au départ du joueur (PlotService), à chaque achat de
 -- présentoir (attribut DisplaySlotsLevel du Player, écrit par ShopService), et une fois par seconde
@@ -200,21 +200,22 @@ local function rayonsFor(plot: Model): { Rayon }
 	return list
 end
 
--- Présentoirs de base débloqués pour la parcelle : StartSlots sans propriétaire ou sans profil.
+-- Présentoirs de base débloqués pour la parcelle : StartSlots sans propriétaire ou sans profil. a280 (L-294) : au plus
+-- les 8 du bas avec l'étage (Shared/ShopFloor.BaseSlots).
 local function unlockedFor(plot: Model): number
-	local display = Balance.Display
 	local owner = PlotService.GetOwner(plot)
 	local data = if owner then DataService.Get(owner) else nil
-	local level = if data then data.Upgrades.DisplaySlots else 0
-	if type(level) ~= "number" or level ~= level or level < 0 then
-		level = 0
+	if data == nil then
+		return Balance.Display.StartSlots
 	end
-	return math.clamp(display.StartSlots + math.floor(level), 0, display.MaxSlots)
+	local level = data.Upgrades.DisplaySlots
+	local stands = ShopStageService.FloorStands(plot, data.ShopLayout)
+	return ShopFloor.BaseSlots(if type(level) == "number" then level else 0, stands)
 end
 
--- a280 (vague GC2, lot C ; L-217, L-231, L-277) : le 2e étage `Floor_2` est-il montré ? Places d'étage ouvertes au
--- propriétaire (ShopStageService.FloorStands, renaissances du profil) et 20 présentoirs du bas débloqués
--- (Shared/ShopFloor.IsShown) ; false sans propriétaire ou sans profil.
+-- a280 (vague GC2, lot C ; L-217, L-277, règle de L-294) : le 2e étage `Floor_2` est-il montré ? Étage acheté
+-- (Shared/ShopFloor.Bought, places ouvertes au profil : ShopStageService.FloorStands) ; false sans propriétaire ou sans
+-- profil.
 local function floorShownFor(plot: Model): boolean
 	local owner = PlotService.GetOwner(plot)
 	local data = if owner then DataService.Get(owner) else nil
@@ -222,7 +223,7 @@ local function floorShownFor(plot: Model): boolean
 		return false
 	end
 	local level = data.Upgrades.DisplaySlots
-	return ShopFloor.IsShown(if type(level) == "number" then level else 0, ShopStageService.FloorStands(plot, data.Rebirths))
+	return ShopFloor.Bought(if type(level) == "number" then level else 0, ShopStageService.FloorStands(plot, data.ShopLayout))
 end
 
 -- Étagères des rayons 2 à 5 (structure de Clément du 2026-11-08, `tools/clement/hub/plot_shop_builder`) :

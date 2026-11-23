@@ -52,7 +52,7 @@
 --                                    encaissement automatique, gains hors ligne (il ne fait que monter :
 --                                    chaque hausse = un encaissement)
 --     DisplaySlotsUnlocked (number)  présentoirs débloqués (4 à 20, plus les présentoirs bonus et ceux de l'étage)
---     FloorStands (number)           a280 : places du 2e étage ouvertes au joueur (0 à 10 ; plus bas), lu par
+--     FloorStands (number)           a280 : places du 2e étage ouvertes au joueur (0 à 8 ; plus bas), lu par
 --                                    UpgradeController (prix et prochain présentoir) et ShopService (achat)
 --   sur la parcelle :
 --     CashRegister (number)          total des plaques, en dollars entiers ; 0 si libre
@@ -176,12 +176,13 @@
 --       Présentoirs bonus, au-delà de Balance.Display.MaxSlots : DisplaySlot_21 et suivants, optionnels
 --       dans la parcelle (aucun avertissement s'ils manquent ; seuls ceux posés comptent) ; 0 par défaut.
 --       Un objet posé sur un présentoir bonus qui n'est plus débloqué retourne dans l'inventaire.
--- 2e étage (a280, vague GC2, lot C ; L-217, L-231, L-277 ; Shared/ShopFloor, Config/ShopGrowth.Floor2) : les places
--- DisplaySlot_31 à _40 du Model Floor_2 de la parcelle (ShopStageService.EnsureFloor le copie du gabarit au besoin,
--- caché) sont débloquées une à une après les 20 du bas, par les niveaux 17 à 26 de Upgrades.DisplaySlots, pour un
--- propriétaire à qui l'étage est ouvert (ShopStageService.FloorStands : renaissances ≥ ShowFromRebirth). Elles comptent
--- comme les autres (Equip Best, réserve, plaques CollectPad_31 à _40, sinon la plaque au plus petit numéro). Sans
--- Floor_2 ni ShopStageService : aucune place d'étage, comme avant.
+-- 2e étage (a280, vague GC2, lot C ; L-217, L-277, règle de L-294 ; Shared/ShopFloor, Config/ShopGrowth.Floor2) : avec
+-- un Floor_2 et un profil passé à la nouvelle échelle (ShopLayout 1 ; ShopStageService.FloorStands), le bas s'arrête à
+-- 8 présentoirs, puis l'étage s'achète et ses places DisplaySlot_31 à _38 (Model Floor_2 de la parcelle, que
+-- ShopStageService.EnsureFloor copie du gabarit au besoin) se débloquent une à une (Shared/ShopFloor). Elles comptent
+-- comme les autres (Equip Best, réserve, plaques CollectPad_31 à _38, sinon la plaque au plus petit numéro). Les
+-- présentoirs bonus (DisplaySlot_21 et suivants, posés dans Floor_2 par Clément) ne s'ouvrent qu'avec l'étage acheté.
+-- Les présentoirs 9 à 20 ne sont plus attendus dans la parcelle. Sans Floor_2 ni ShopStageService : comme avant.
 --   DisplayService.HasAutoCollect(player) -> boolean
 --       true : les plaques se vident toutes seules dans l'argent du joueur à chaque mise à jour (une fois par
 --       seconde), où qu'il soit (source « Auto », sans ligne dans la sortie) ; false par défaut.
@@ -538,13 +539,6 @@ end
 -- Profil et catalogue
 ------------------------------------------------------------------------------
 
--- Présentoirs de base débloqués (7.5) : StartSlots + niveau Upgrades.DisplaySlots, au plus MaxSlots.
-local function baseSlots(data: Data): number
-	local level = data.Upgrades.DisplaySlots
-	local bought = if type(level) == "number" and level == level then math.max(0, math.floor(level)) else 0
-	return math.min(Balance.Display.StartSlots + bought, Balance.Display.MaxSlots)
-end
-
 -- Points d'accroche de la boutique Robux et de l'index (voir l'en-tête), lus sans laisser une erreur
 -- casser la boucle : une valeur invalide compte pour la valeur par défaut.
 local function incomeFactor(player: Player): number
@@ -570,9 +564,56 @@ local function incomeMultiplier(player: Player): number
 	return (1 + incomeBonus(player)) * incomeFactor(player)
 end
 
--- Présentoirs bonus débloqués : GetExtraSlots(player), au plus ceux posés dans la parcelle (`refs`).
-local function extraSlots(player: Player, refs: PlotRefs?): number
+local function autoCollect(player: Player): boolean
+	local ok, value = pcall(DisplayService.HasAutoCollect, player)
+	if ok then
+		return value == true
+	end
+	reportOnce("hook:HasAutoCollect", `[DisplayService] HasAutoCollect : {value}, pas d'encaissement automatique`, "warn")
+	return false
+end
+
+-- a280 : places du 2e étage ouvertes au propriétaire (0 sans étage dans la parcelle, sans ShopStageService ou avec
+-- l'ancienne échelle de boutique, ShopLayout 0).
+local function floorStands(data: Data, refs: PlotRefs?): number
+	local api = ShopStageService
+	if refs == nil or refs.floorCount <= 0 or api == nil then
+		return 0
+	end
+	local ok, value = pcall(api.FloorStands :: any, refs.plot, data.ShopLayout)
+	if not ok or type(value) ~= "number" or value ~= value then
+		reportOnce("stage:FloorStands", `[DisplayService] ShopStageService.FloorStands : {value}, aucune place d'étage`, "warn")
+		return 0
+	end
+	return math.clamp(math.floor(value), 0, refs.floorCount)
+end
+
+-- a280 : niveau Upgrades.DisplaySlots du profil (0 s'il est douteux ; Shared/ShopFloor le borne).
+local function standsLevel(data: Data): number
+	local level = data.Upgrades.DisplaySlots
+	return if type(level) == "number" then level else 0
+end
+
+-- Présentoirs de base débloqués (7.5) : StartSlots + niveau Upgrades.DisplaySlots, au plus MaxSlots ; a280 (L-294) : au
+-- plus les 8 du bas avec l'étage (Shared/ShopFloor.BaseSlots).
+local function baseSlots(data: Data, refs: PlotRefs?): number
+	return ShopFloor.BaseSlots(standsLevel(data), floorStands(data, refs))
+end
+
+-- a280 : places du 2e étage débloquées (Shared/ShopFloor.Unlocked).
+local function floorSlots(data: Data, refs: PlotRefs?): number
+	local stands = floorStands(data, refs)
+	return if stands > 0 then ShopFloor.Unlocked(standsLevel(data), stands) else 0
+end
+
+-- Présentoirs bonus débloqués : GetExtraSlots(player), au plus ceux posés dans la parcelle (`refs`). a280 (L-294
+-- point 3) : avec l'étage, seulement une fois l'étage acheté (ils y sont posés).
+local function extraSlots(player: Player, data: Data, refs: PlotRefs?): number
 	if refs == nil or refs.extra <= 0 then
+		return 0
+	end
+	local stands = floorStands(data, refs)
+	if stands > 0 and not ShopFloor.Bought(standsLevel(data), stands) then
 		return 0
 	end
 	local ok, value = pcall(DisplayService.GetExtraSlots, player)
@@ -583,43 +624,10 @@ local function extraSlots(player: Player, refs: PlotRefs?): number
 	return math.clamp(math.floor(value), 0, refs.extra)
 end
 
-local function autoCollect(player: Player): boolean
-	local ok, value = pcall(DisplayService.HasAutoCollect, player)
-	if ok then
-		return value == true
-	end
-	reportOnce("hook:HasAutoCollect", `[DisplayService] HasAutoCollect : {value}, pas d'encaissement automatique`, "warn")
-	return false
-end
-
--- a280 : places du 2e étage ouvertes au propriétaire (0 sans étage dans la parcelle ou sans ShopStageService).
-local function floorStands(data: Data, refs: PlotRefs?): number
-	local api = ShopStageService
-	if refs == nil or refs.floorCount <= 0 or api == nil then
-		return 0
-	end
-	local ok, value = pcall(api.FloorStands :: any, refs.plot, data.Rebirths)
-	if not ok or type(value) ~= "number" or value ~= value then
-		reportOnce("stage:FloorStands", `[DisplayService] ShopStageService.FloorStands : {value}, aucune place d'étage`, "warn")
-		return 0
-	end
-	return math.clamp(math.floor(value), 0, refs.floorCount)
-end
-
--- a280 : places du 2e étage débloquées (niveaux de Upgrades.DisplaySlots au-delà des 20 du bas, Shared/ShopFloor).
-local function floorSlots(data: Data, refs: PlotRefs?): number
-	local stands = floorStands(data, refs)
-	if stands <= 0 then
-		return 0
-	end
-	local level = data.Upgrades.DisplaySlots
-	return ShopFloor.Unlocked(if type(level) == "number" then level else 0, stands)
-end
-
 -- Le présentoir `index` est-il débloqué ? Ceux de base (1 à baseSlots), puis les présentoirs bonus
 -- (MaxSlots + 1 à MaxSlots + extraSlots), puis ceux de l'étage (a280 : 31 à 30 + floorSlots).
 local function isUnlocked(player: Player, data: Data, refs: PlotRefs?, index: number): boolean
-	if index >= 1 and index <= baseSlots(data) then
+	if index >= 1 and index <= baseSlots(data, refs) then
 		return true
 	end
 	local first = ShopFloor.Slot(1)
@@ -627,21 +635,21 @@ local function isUnlocked(player: Player, data: Data, refs: PlotRefs?, index: nu
 		return index < first + floorSlots(data, refs)
 	end
 	local max = Balance.Display.MaxSlots
-	return index > max and index <= max + extraSlots(player, refs)
+	return index > max and index <= max + extraSlots(player, data, refs)
 end
 
 local function unlockedCount(player: Player, data: Data, refs: PlotRefs?): number
-	return baseSlots(data) + extraSlots(player, refs) + floorSlots(data, refs)
+	return baseSlots(data, refs) + extraSlots(player, data, refs) + floorSlots(data, refs)
 end
 
 -- Présentoirs débloqués, dans l'ordre : ceux de base, puis les bonus, puis ceux de l'étage (a280).
 local function unlockedList(player: Player, data: Data, refs: PlotRefs?): { number }
 	local list: { number } = {}
-	for index = 1, baseSlots(data) do
+	for index = 1, baseSlots(data, refs) do
 		table.insert(list, index)
 	end
 	local max = Balance.Display.MaxSlots
-	for index = max + 1, max + extraSlots(player, refs) do
+	for index = max + 1, max + extraSlots(player, data, refs) do
 		table.insert(list, index)
 	end
 	for n = 1, floorSlots(data, refs) do
@@ -901,8 +909,34 @@ end
 
 -- Présentoirs et volume de la parcelle. Cherchés une seule fois, avant que ce
 -- service y pose des objets (dont les pièces pourraient porter les mêmes noms).
+-- Présentoirs bonus (gamepass « +4 présentoirs », DEV-100) : DisplaySlot_21 et suivants, à la suite, optionnels (aucun
+-- avertissement s'ils manquent). a280 (L-294 point 3) : cherchés aussi dans le Floor_2 (rangé hors de la parcelle tant
+-- que l'étage n'est pas montré), de nouveau quand il change.
+local function scanBonus(plot: Model, refs: PlotRefs)
+	local max = Balance.Display.MaxSlots
+	for index = max + 1, max + BONUS_SLOT_LIMIT do
+		refs.slots[index] = nil
+	end
+	local extra = 0
+	while extra < BONUS_SLOT_LIMIT do
+		local index = max + extra + 1
+		local name = string.format(SLOT_FORMAT, index)
+		local found = Find.path(plot, name)
+		local floor = refs.floor
+		if (found == nil or not found:IsA("Attachment")) and floor then
+			found = floor:FindFirstChild(name, true)
+		end
+		if found == nil or not found:IsA("Attachment") then
+			break
+		end
+		refs.slots[index] = found :: Attachment
+		extra += 1
+	end
+	refs.extra = extra
+end
+
 -- a280 : places du 2e étage cherchées dans le Floor_2 de la parcelle (copié du gabarit au besoin), de nouveau tant
--- qu'il manque ou s'il a changé (un Floor_2 retiré : ses places partent avec lui).
+-- qu'il manque ou s'il a changé (un Floor_2 retiré : ses places partent avec lui), et les présentoirs bonus avec elles.
 local function syncFloor(plot: Model, refs: PlotRefs)
 	local api = ShopStageService
 	local floor = if api then api.EnsureFloor(plot) else nil
@@ -920,6 +954,7 @@ local function syncFloor(plot: Model, refs: PlotRefs)
 		end
 		refs.floorCount = count
 	end
+	scanBonus(plot, refs)
 end
 
 local function refsFor(plot: Model): PlotRefs
@@ -930,44 +965,42 @@ local function refsFor(plot: Model): PlotRefs
 	end
 
 	local slots: { [number]: Attachment? } = {}
-	local missing: { string } = {}
+	local missing: { number } = {}
 	for index = 1, Balance.Display.MaxSlots do
-		local name = string.format(SLOT_FORMAT, index)
-		local found = Find.path(plot, name)
+		local found = Find.path(plot, string.format(SLOT_FORMAT, index))
 		if found ~= nil and found:IsA("Attachment") then
 			slots[index] = found :: Attachment
 		else
-			table.insert(missing, name)
+			table.insert(missing, index)
 		end
-	end
-	if #missing > 0 then
-		warn(
-			`[DisplayService] {plot:GetFullName()} : {#missing} présentoir(s) absent(s) ou qui ne sont pas des Attachments (contrat 10.4) : {table.concat(missing, ", ")}`
-		)
-	end
-	-- Présentoirs bonus (gamepass « +4 présentoirs », DEV-100) : DisplaySlot_21 et suivants, à la
-	-- suite, optionnels (aucun avertissement s'ils manquent).
-	local extra = 0
-	while extra < BONUS_SLOT_LIMIT do
-		local index = Balance.Display.MaxSlots + extra + 1
-		local found = Find.path(plot, string.format(SLOT_FORMAT, index))
-		if found == nil or not found:IsA("Attachment") then
-			break
-		end
-		slots[index] = found :: Attachment
-		extra += 1
 	end
 
 	local bounds = Find.path(plot, BOUNDS)
 	local refs: PlotRefs = {
 		slots = slots,
-		extra = extra,
+		extra = 0,
 		bounds = if bounds ~= nil and bounds:IsA("BasePart") then bounds :: BasePart else nil,
 		plot = plot,
 		floor = nil,
 		floorCount = 0,
 	}
 	syncFloor(plot, refs)
+	if refs.floor == nil then
+		scanBonus(plot, refs) -- sans étage : syncFloor n'a rien cherché
+	end
+	-- a280 (L-294) : avec un étage, seuls les 8 présentoirs du bas sont attendus (9 à 20 : ancien gabarit, facultatifs).
+	local expected = if refs.floorCount > 0 then ShopGrowth.Floor2.GroundSlots else Balance.Display.MaxSlots
+	local names: { string } = {}
+	for _, index in missing do
+		if index <= expected then
+			table.insert(names, string.format(SLOT_FORMAT, index))
+		end
+	end
+	if #names > 0 then
+		warn(
+			`[DisplayService] {plot:GetFullName()} : {#names} présentoir(s) absent(s) ou qui ne sont pas des Attachments (contrat 10.4) : {table.concat(names, ", ")}`
+		)
+	end
 	refsOf[plot] = refs
 	return refs
 end

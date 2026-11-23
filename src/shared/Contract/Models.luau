@@ -167,7 +167,9 @@ local Plot: ModelSpec = {
 		WINDOW_FRACTURED, -- même vitre que les magasins (WindowService commun, 9.3)
 		{ Name = "Shutter" }, -- Partie 2, placé dès le MVP
 		{ Name = "ShutterButton" }, -- Partie 2, placé dès le MVP
-		{ Name = "DisplaySlot_%02d", From = 1, To = 20 },
+		-- a280 (L-294, Cantin le 2026-11-23) : 8 présentoirs au rez-de-chaussée, puis l'étage Floor_2 (Models.Floor2) ; _09 à
+		-- _20 facultatifs le temps que Clément retire l'ancien gabarit.
+		{ Name = "DisplaySlot_%02d", From = 1, To = 20, Min = 8, Note = "_09 à _20 : ancien gabarit, facultatifs depuis L-294" },
 		-- L-086 (2026-11-08) : plus de coffre ni d'établis dans la boutique, le code ne lit plus ces noms
 		-- (colis posés et ouverts sur les présentoirs). Facultatifs et muets en attendant que Clément les
 		-- retire du modèle et des 6 boutiques du hub (L-086, point 4).
@@ -913,13 +915,13 @@ local UnboxFx: ModelSpec = {
 Models.UnboxFx = UnboxFx
 table.insert(Models.List, table.find(Models.List, WeaponShopCounter) or #Models.List + 1, UnboxFx)
 
--- 2e étage de la boutique (a280, vague GC2, lot C ; L-217, L-231, L-277) : un Model `Floor_2` dans le gabarit
--- ReplicatedStorage/Assets/Plots/PLOT_Shop (à côté de Stage_1 à Stage_5 ; ShopStageService en pose une copie dans la
--- boutique), ou déjà dans une boutique. Facultatif : sans lui, pas d'étage (pas encore livré). Dedans : ses places
--- DisplaySlot_31 à _40 (Attachments, FitSize comme en bas ; une place qui manque arrête la série), et leurs plaques
--- CollectPad_31 à _40 (facultatives : sans elles, l'argent va sur la plaque au plus petit numéro). Attribut
--- ShowFromRebirth (Contract/Attributes) et numéros _21 à _30 réservés aux présentoirs bonus : contrôlés à part par le
--- ContractChecker (checkFloor2).
+-- 2e étage de la boutique (a280, vague GC2, lot C ; L-217, L-277, règle de L-294) : un Model `Floor_2` dans le gabarit
+-- ReplicatedStorage/Assets/Plots/PLOT_Shop (ShopStageService en pose une copie dans la boutique), ou déjà dans une
+-- boutique. Facultatif : sans lui, pas d'étage (pas encore livré). Dedans : ses places DisplaySlot_31 à _38 (Attachments,
+-- FitSize comme en bas ; une place qui manque arrête la série), leurs plaques CollectPad_31 à _38 (facultatives : sans
+-- elles, l'argent va sur la plaque au plus petit numéro), les présentoirs bonus du gamepass DisplaySlot_21 à _24
+-- (facultatifs, L-294 point 3) et les looks Look_0 à Look_5 de l'étage (facultatifs). _39 et _40 ne sont plus lus :
+-- contrôlés à part par le ContractChecker (checkFloor2), avec l'attribut HideFromSkill.
 local Floor2: ModelSpec = {
 	Key = "Floor2",
 	Label = "2e étage de la boutique",
@@ -927,16 +929,25 @@ local Floor2: ModelSpec = {
 	Names = { "Floor_2" },
 	Class = "Model",
 	Parts = {
-		{ Name = "DisplaySlot_%02d", From = 31, To = 40, Class = "Attachment", Note = "places de l'étage, L-277" },
+		{ Name = "DisplaySlot_%02d", From = 31, To = 38, Class = "Attachment", Note = "places de l'étage, L-294" },
 		{
 			Name = "CollectPad_%02d",
 			From = 31,
-			To = 40,
+			To = 38,
 			Class = "BasePart",
 			Optional = true,
 			Note = "facultatives : sans elles, l'argent va sur la plaque au plus petit numéro, L-277",
 			Inside = COLLECT_PAD_INSIDE,
 		},
+		{
+			Name = "DisplaySlot_%02d",
+			From = 21,
+			To = 24,
+			Class = "Attachment",
+			Optional = true,
+			Note = "facultatifs : présentoirs bonus du gamepass, ouverts avec l'étage, L-294",
+		},
+		{ Name = "Look_%d", From = 0, To = 5, Optional = true, Note = "facultatifs : looks de résistance de l'étage, L-294" },
 	},
 	Expected = { "Floor_2" },
 }

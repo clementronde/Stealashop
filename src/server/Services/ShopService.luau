@@ -22,8 +22,8 @@
 --     qui republie DisplaySlotsUnlocked chaque seconde), et UnboxService.Refresh remet tout de suite
 --     à jour leur attribut UnboxState (un colis peut s'y poser, L-086). L'ancienne amélioration
 --     « Workbenches » (UnboxBenches) n'est plus au catalogue depuis L-086 : BuyItem("UnboxBenches")
---     est refusé comme un Id inconnu. a280 (vague GC2, lot C) : après les 20 présentoirs du bas, DisplaySlots continue
---     avec les places du 2e étage ouvertes au joueur (attribut FloorStands du Player, posé par DisplayService ; prix et
+--     est refusé comme un Id inconnu. a280 (vague GC2, lot C ; L-294) : avec l'étage (attribut FloorStands du Player,
+--     posé par DisplayService), DisplaySlots s'arrête à 8 présentoirs en bas, puis achète l'étage et ses places (prix et
 --     maximum : Shared/ShopFloor.StandCost) ;
 --   - aura ou trail (Config/Cosmetics) : prix et argent gérés ici, au comptoir taggé AuraShop
 --     (même portée), puis CosmeticService.Grant(player, id) (agent a20). Sans CosmeticService
@@ -141,6 +141,7 @@ local MESSAGES = {
 	CosmeticBought = "%s bought!",
 	MachineUpgraded = "%s upgraded to level %d!",
 	StandUnlocked = "New stand unlocked! (%d/%d)",
+	FloorBuilt = "2nd floor built! New stands to unlock upstairs.", -- a280 (L-294), V0 proposé (Cantin, 23/11)
 }
 
 local ShopService = {}
@@ -400,7 +401,7 @@ local function buyUpgrade(player: Player, data: Data, upgrade: UpgradeDef)
 	local message: string
 	if upgrade.Id == "DisplaySlots" then
 		local unlocked, max = ShopFloor.Total(newLevel, stands)
-		message = string.format(MESSAGES.StandUnlocked, unlocked, max)
+		message = if ShopFloor.IsFloorStep(level, stands) then MESSAGES.FloorBuilt else string.format(MESSAGES.StandUnlocked, unlocked, max)
 	else
 		-- Tapis (v2) : niveau affiché = niveau enregistré + 1 (le joueur commence au niveau 1).
 		message = string.format(MESSAGES.MachineUpgraded, upgrade.DisplayName, Formulas.TreadmillShownLevel(newLevel))

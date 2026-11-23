@@ -53,9 +53,10 @@
 -- (« Stands 4/20 ») ; cachées au niveau max. Le tapis peut changer de modèle (variante posée par
 -- MachineVariantService, L-093) : le panneau suit, la parcelle étant suivie (DescendantAdded / Removing).
 --
--- 2e étage (a280, vague GC2, lot C ; L-217, L-231, L-277) : après les 20 présentoirs du bas, le panneau des présentoirs
--- continue avec les places de l'étage (DisplaySlot_31 et suivantes) ouvertes au propriétaire, attribut FloorStands du
--- Player (DisplayService) : prix, prochain présentoir et « Stands 21/30 » par Shared/ShopFloor, comme le serveur.
+-- 2e étage (a280, vague GC2, lot C ; L-217, L-277, règle de L-294) : avec l'étage (attribut FloorStands du Player,
+-- DisplayService), le panneau des présentoirs s'arrête à 8 en bas, propose l'étage (« Build 2nd floor », invite au
+-- DisplaySlot_08), puis ses places DisplaySlot_31 à _38 : prix, prochain présentoir et « Stands 9/16 » par
+-- Shared/ShopFloor, comme le serveur.
 --
 -- API (client) : aucune.
 
@@ -128,6 +129,7 @@ local PRICE_NAME = "Price"
 local TEXT = {
 	Upgrade = "Upgrade (%s)",
 	UnlockStand = "Unlock stand (%s)",
+	BuildFloor = "Build 2nd floor (%s)", -- a280 (L-294) : achat de l'étage
 	MachineLevel = "%s Lv %d/%d",
 	Stands = "Stands %d/%d",
 	SignLevel = "Level %d > Level %d",
@@ -269,8 +271,8 @@ local function machineOf(offer: Offer, plotModel: Instance): Instance?
 	return nil
 end
 
--- Prochain présentoir verrouillé, ou nil (tous débloqués, ou pas encore chargé). a280 : places de l'étage après les 20
--- du bas, pour le propriétaire de la parcelle.
+-- Prochain présentoir verrouillé, ou nil (tous débloqués, ou pas encore chargé). a280 : avec l'étage, pour le
+-- propriétaire de la parcelle, le 8e du bas pour l'achat de l'étage, puis ses places (Shared/ShopFloor.NextSlot).
 local function nextSlot(plotModel: Instance, level: number): Attachment?
 	local owner: Player? = nil
 	local id = plotModel:GetAttribute(OWNER_ATTRIBUTE)
@@ -623,8 +625,9 @@ local function showPrompt(offer: Offer, entry: Entry, plotModel: Instance, level
 		current.ActionText = string.format(TEXT.Upgrade, price)
 		current.ObjectText = string.format(TEXT.MachineLevel, upgrade.DisplayName, level + 1, upgrade.MaxLevel + 1)
 	else
-		current.ActionText = string.format(TEXT.UnlockStand, price)
-		current.ObjectText = string.format(TEXT.Stands, ShopFloor.Total(level, floorStandsOf(localPlayer))) -- a280 : étage compris
+		local stands = floorStandsOf(localPlayer)
+		current.ActionText = string.format(if ShopFloor.IsFloorStep(level, stands) then TEXT.BuildFloor else TEXT.UnlockStand, price)
+		current.ObjectText = string.format(TEXT.Stands, ShopFloor.Total(level, stands)) -- a280 : étage compris
 	end
 	current.Enabled = not isPending(offer, level)
 end
