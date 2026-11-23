@@ -129,6 +129,10 @@ local Features = {
 	-- tuile FittingRoom de Config/SkillTree achetable) : se déguiser en passant d'une zone, dénoncer un magasin, être démasqué
 	-- d'un coup de batte. V0 proposé (Cantin, 23/11) : true en DEV ; false = tuile « Soon », remotes Disguise et Denounce ignorés.
 	FittingRoom = true,
+	-- a419 (23/11, demande de Cantin : jouable à la manette Xbox, PlayStation ou sur PC ; Config/Gamepad) : sélection du
+	-- premier bouton d'un menu, ButtonB pour fermer, L1 / R1 pour la barre du bas, aides au bon bouton ; V0 proposé
+	-- (Cantin, 23/11) : true ; false = rien ne change (clavier, souris et tactile ne changent jamais).
+	Gamepad = true,
 }
 
 export type Features = typeof(Features)

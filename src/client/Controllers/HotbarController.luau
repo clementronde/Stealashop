@@ -79,6 +79,8 @@
 --
 -- API (client) :
 --   HotbarController.Use(index)        l'action de la case `index` (barre de commande, bancs)
+--   HotbarController.Cycle(step)       a419 (Features.Gamepad) : R1 (1) ou L1 (-1) à la manette, la case remplie suivante
+--                                      ou précédente en main, les mains vides après la dernière ; KeyLabel caché à la manette
 --   HotbarController.GetState() -> { Bound, Enabled, Count, Phone, Ready, Dragging, Layout = { 6 ids },
 --                                     Slots = { { Key, Kind, Id, Uid, Name, Income, Equipped, AntiTheft, Alert } } }
 --
@@ -105,6 +107,7 @@ local Format = require(Shared:WaitForChild("Format"))
 local HotbarLayout = require(Shared:WaitForChild("HotbarLayout"))
 local InventoryState = require(Shared:WaitForChild("InventoryState"))
 local ItemWeight = require(Shared:WaitForChild("ItemWeight")) -- vague 62 : poids (« 1,250 kg ») dans Weight
+local Gamepad = require(Shared:WaitForChild("Gamepad")) -- a419 : manette (L1 / R1, KeyLabel caché)
 local Contract = Shared:WaitForChild("Contract")
 local Find = require(Contract:WaitForChild("Find"))
 local Icons = require(Contract:WaitForChild("Icons"))
@@ -651,6 +654,35 @@ local function onSlotKey(index: number): boolean
 	return true
 end
 
+-- a419 (Config/Gamepad.HotbarNext / HotbarPrev, R1 / L1) : la case remplie suivante (step 1) ou précédente (-1) en main,
+-- comme sa touche ; après la dernière (ou avant la première), les mains vides, puis on recommence. Barre éteinte : rien.
+local function cycle(step: number)
+	local current = screen
+	if current == nil or not current.gui.Enabled then
+		return
+	end
+	local filled: { number } = {}
+	local at = 0 -- rang dans filled de la case en main, 0 : mains vides
+	for rank = 1, math.min(count, #slots) do
+		local slot = slots[rank]
+		if slot.kind ~= "Empty" then
+			table.insert(filled, rank)
+			if slot.equipped and at == 0 then
+				at = #filled
+			end
+		end
+	end
+	if #filled == 0 then
+		return
+	end
+	local goal = (at + step) % (#filled + 1)
+	if goal > 0 then
+		use(slots[filled[goal]])
+	elseif at > 0 then
+		use(slots[filled[at]]) -- re-choisie : rangée
+	end
+end
+
 -- Le clic qui termine un glisser (ou qui arrive pendant) ne compte pas.
 local function suppressed(): boolean
 	local current = press
@@ -1019,7 +1051,7 @@ local function paint(current: Screen, view: View, slot: Slot, rank: number)
 	local refs = view.refs
 	view.frame.LayoutOrder = rank
 	setText(refs.KeyLabel, tostring(rank))
-	setVisible(refs.KeyLabel, not phone)
+	setVisible(refs.KeyLabel, not phone and not Gamepad.IsActive()) -- a419 : à la manette, L1 / R1 (pas de chiffre)
 	setText(refs.ItemName, slot.name)
 	local icon = slot.icon
 	local texture = if icon then textureOf(icon) else nil
@@ -1290,6 +1322,11 @@ function HotbarController.Use(index: number)
 	end
 end
 
+-- a419 : comme R1 (step 1) ou L1 (-1) à la manette (bancs, barre de commande).
+function HotbarController.Cycle(step: number)
+	cycle(step)
+end
+
 function HotbarController.GetState(): { [string]: any }
 	local current = screen
 	local list = {}
@@ -1341,6 +1378,20 @@ function HotbarController.Start()
 
 	localPlayer.CharacterAdded:Connect(watchCharacter)
 	watchCharacter(localPlayer.Character)
+	local pad = Gamepad.Config()
+	if pad then
+		-- a419 : L1 / R1 à la manette (la croix reste à la navigation des menus, le stick droit à la caméra).
+		Gamepad.OnChanged(function()
+			queueRefresh() -- KeyLabel caché ou remontré
+		end)
+		UserInputService.InputBegan:Connect(function(input: InputObject, processed: boolean)
+			if not processed and input.KeyCode == pad.HotbarNext then
+				cycle(1)
+			elseif not processed and input.KeyCode == pad.HotbarPrev then
+				cycle(-1)
+			end
+		end)
+	end
 
 	local playerGui = localPlayer:WaitForChild("PlayerGui")
 	playerGui.ChildAdded:Connect(function(child: Instance)

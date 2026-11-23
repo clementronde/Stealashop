@@ -29,7 +29,9 @@
 --     valeur (seule la largeur en Scale change), Knob se place à la valeur (seul Position.X.Scale
 --     change), ValueLabel « 80% ». Pendant le glisser, le bouton rond grossit (KnobGrab, T.47) par un
 --     UIScale Settings.Motion.KnobGrab.ScaleName posé à 1 à la liaison (Motion.Button ne le met donc
---     pas à l'échelle au survol) ; aucun UIScale si Clément en a déjà posé un.
+--     pas à l'échelle au survol) ; aucun UIScale si Clément en a déjà posé un. a419 (Features.Gamepad) : à la
+--     manette, Track ou Knob sélectionné, la croix gauche / droite règle le volume (Config/Gamepad.SliderStep) ;
+--     NextSelectionLeft / Right de Track et de Knob posés sur eux-mêmes à la liaison (la sélection y reste).
 --   - VfxRow.Toggle : bascule VfxEnabled. OnFill ou OffFill visible, ToggleLabel « ON » / « OFF »,
 --     ToggleKnob glisse d'un bout à l'autre (ToggleSlide, T.48). Les deux places de ToggleKnob et de
 --     ToggleLabel sont celles de Clément (relevées à la liaison, état montré par OnFill) et leur
@@ -60,6 +62,7 @@ local Settings = require(Config:WaitForChild("Settings"))
 local Find = require(Shared:WaitForChild("Contract"):WaitForChild("Find"))
 local MarkerSounds = require(Shared:WaitForChild("Anim"):WaitForChild("MarkerSounds"))
 local Motion = require(script.Parent:WaitForChild("UI"):WaitForChild("Motion"))
+local GAMEPAD = require(Shared:WaitForChild("Gamepad")).Config() -- a419 : curseurs réglés à la croix à la manette
 
 type Values = Settings.Values
 
@@ -435,6 +438,34 @@ local function stopDrag()
 	end
 end
 
+-- a419 (Features.Gamepad) : croix gauche ou droite (Config/Gamepad.SliderLess / SliderMore) sur le Track ou le Knob
+-- sélectionné d'un curseur : le volume baisse ou monte de SliderStep, comme un glisser (attribut, sauvegarde).
+local function padSlide(input: InputObject)
+	local current = screen
+	local pad = GAMEPAD
+	if pad == nil or current == nil or not isOpen then
+		return
+	end
+	local step = if input.KeyCode == pad.SliderMore then pad.SliderStep elseif input.KeyCode == pad.SliderLess then -pad.SliderStep else 0
+	if step == 0 then
+		return
+	end
+	local selected = game:GetService("GuiService").SelectedObject
+	if selected == nil then
+		return
+	end
+	for _, slider in current.sliders do
+		if selected == slider.knob or selected == slider.track then
+			local values = readValues()
+			local now = if slider.attribute == Settings.MusicAttribute then values.Music else values.Sfx
+			local value = math.clamp(math.floor((now + step) * 100 + 0.5) / 100, 0, 1)
+			paintSlider(slider, value)
+			change(slider.attribute, value)
+			return
+		end
+	end
+end
+
 local function isPress(input: InputObject): boolean
 	local kind = input.UserInputType
 	return kind == Enum.UserInputType.MouseButton1 or kind == Enum.UserInputType.Touch
@@ -522,6 +553,16 @@ local function bind(gui: ScreenGui)
 		end
 		if knob then
 			grip(knob)
+		end
+		if GAMEPAD then
+			-- a419 : à la manette, la croix gauche / droite règle ce curseur (padSlide) : la sélection reste sur lui.
+			for _, object in { track, knob } :: { GuiObject? } do
+				local target = object
+				if target then
+					target.NextSelectionLeft = target
+					target.NextSelectionRight = target
+				end
+			end
 		end
 		if track == nil or knob == nil then
 			reportOnce(`slider:{rowName}`, `[Settings] {SCREEN}.{rowName}.Slider : Track ou Knob introuvable`)
@@ -691,6 +732,9 @@ function SettingsController.Start()
 		end
 	end)
 
+	if GAMEPAD then
+		UserInputService.InputBegan:Connect(padSlide) -- a419 : la croix passe par la navigation (processed) : lue quand même
+	end
 	UserInputService.InputChanged:Connect(function(input: InputObject)
 		if dragging == nil then
 			return

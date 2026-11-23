@@ -105,6 +105,7 @@ function Nav.new(gui: ScreenGui, tree: GuiObject, handlers: Handlers): Nav
 	layer.Size = UDim2.fromScale(1, 1)
 	layer.ZIndex = M.NavLayerZIndex
 	layer.Active = true
+	layer.Selectable = false -- a419 : la sélection de la manette va aux tuiles et aux boutons, jamais à la couche
 	layer.Parent = gui
 
 	local zoom = 1

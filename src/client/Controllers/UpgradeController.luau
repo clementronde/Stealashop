@@ -45,6 +45,9 @@
 --   - les maquettes de Clément `Workspace/_PREVIEW_UpgradeSigns` (panneaux posés au même endroit pour
 --     voir la pose en édition) sont retirées ici, en jeu, côté client seulement : sinon elles se
 --     superposent aux vrais panneaux et prennent le clic. Rien n'est touché en édition.
+--   - a419 (Features.Gamepad) : à la manette (pas de curseur pour viser BuyButton), une invite UpgradePrompt sur Board,
+--     chez le propriétaire (bouton Y, maintien HOLD_DURATION s, mêmes textes que le repli), fait le même achat que
+--     BuyButton ; éteinte dès qu'on repasse au clavier, à la souris ou au doigt, et au niveau max.
 --
 -- Repli (UpgradeSign absent des Assets, ou sans Board, SignGui ou BuyButton) : une ligne dans la
 -- sortie, et les invites d'avant, chez le propriétaire seulement (ProximityPrompt « UpgradePrompt »,
@@ -79,6 +82,7 @@ local Format = require(Shared:WaitForChild("Format"))
 local SignPose = require(Shared:WaitForChild("SignPose"))
 local ShopFloor = require(Shared:WaitForChild("ShopFloor")) -- a280 : 2e étage
 local ShopBuild = require(Config:WaitForChild("ShopBuild")) -- a406 : panneau caché pendant la construction
+local Gamepad = require(Shared:WaitForChild("Gamepad")) -- a419 : invite du panneau à la manette
 
 type Kind = "Machine" | "Stand"
 
@@ -483,6 +487,38 @@ local function setSignHidden(sign: Model, gui: SurfaceGui, hidden: boolean)
 	end
 end
 
+-- a419 (Features.Gamepad) : à la manette, le BuyButton du panneau ne se vise pas (pas de curseur) ; une invite sur Board
+-- (même nom, touches et maintien que l'invite de repli : bouton Y) fait le même achat (onBuy, même garde), chez le
+-- propriétaire seulement. Éteinte au clavier, à la souris, au doigt ou au niveau max ; détruite avec le panneau.
+local function padPrompt(offer: Offer, entry: Entry, board: BasePart, wanted: boolean, cost: number?)
+	local found = board:FindFirstChild(PROMPT_NAME)
+	local prompt = if found and found:IsA("ProximityPrompt") then found :: ProximityPrompt else nil
+	if not wanted or cost == nil then
+		if prompt then
+			prompt.Enabled = false
+		end
+		return
+	end
+	if prompt == nil then
+		local fresh = Instance.new("ProximityPrompt")
+		fresh.Name = PROMPT_NAME
+		fresh.MaxActivationDistance = PROMPT_DISTANCE
+		fresh.HoldDuration = HOLD_DURATION
+		fresh.KeyboardKeyCode = KEYBOARD_KEY
+		fresh.GamepadKeyCode = GAMEPAD_KEY
+		fresh.RequiresLineOfSight = false
+		fresh.Triggered:Connect(function()
+			onBuy(offer, entry)
+		end)
+		fresh.Parent = board
+		prompt = fresh
+	end
+	local current = prompt :: ProximityPrompt
+	current.ActionText = string.format(if offer.kind == "Machine" then TEXT.Upgrade else TEXT.UnlockStand, Format.money(cost :: number))
+	current.ObjectText = Upgrades.ById[offer.id].DisplayName
+	current.Enabled = true
+end
+
 local function showSign(offer: Offer, entry: Entry, template: Model, plotModel: Instance, owner: Player, level: number, cost: number?)
 	local target = signTarget(offer, plotModel, level)
 	if target == nil then
@@ -547,6 +583,7 @@ local function showSign(offer: Offer, entry: Entry, template: Model, plotModel: 
 	if robux and robux:IsA("GuiObject") then
 		robux.Visible = false -- aucun produit Robux pour ces améliorations (V0)
 	end
+	padPrompt(offer, entry, board, owner == localPlayer and Gamepad.IsActive() and not isPending(offer, level), cost) -- a419
 	entry.shownLevel = level
 	if offer.kind == "Stand" then -- a406 : caché pendant la construction (ShopBuildController), puis pop
 		setSignHidden(currentSign, currentGui, plotModel:GetAttribute(ShopBuild.BusyAttribute) == true)
@@ -851,6 +888,11 @@ function UpgradeController.Start()
 	Workspace.ChildAdded:Connect(dropPreview)
 	UserInputService.InputBegan:Connect(onWorldClick)
 	UserInputService.InputChanged:Connect(onMouseMove)
+	if Gamepad.Config() then
+		Gamepad.OnChanged(function()
+			scheduleRefresh() -- a419 : invite des panneaux allumée ou éteinte
+		end)
+	end
 
 	Players.PlayerAdded:Connect(watchPlayer)
 	Players.PlayerRemoving:Connect(function()

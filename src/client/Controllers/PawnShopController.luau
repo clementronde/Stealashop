@@ -26,9 +26,12 @@
 --     relâché, T.31 et T.32, viennent d'UiFeelController, comme pour tous les boutons) ;
 --   - touches 1, 2 et 3 sur PC (ContextActionService, priorité haute, tant que l'écran est ouvert : la barre
 --     du bas ne les reçoit pas pendant ce temps).
+--   - a419 (Features.Gamepad, Config/Gamepad) : à la manette, les choix se font par la sélection de GamepadController
+--     (bouton A) ; ButtonB (même liaison, priorité haute) = NoDeal pendant une confirmation, sinon Leave ; les KeyLabel
+--     (« 1. ») sont cachés tant qu'on joue à la manette, puis remis.
 --   - vague 38 (L-135 point 3, Clément le 2026-11-14) : pendant le dialogue (ouvert → fermé), UI_HUD.AdminButton est
 --     caché (AdminController.SetHidden("PawnShop", …), s'il est là) : Dialog passait dessus ; remontré à la fermeture.
--- Seuls sont touchés : Enabled de l'écran, Visible des 5 choix, le texte des Price, la couleur du texte des
+-- Seuls sont touchés : Enabled de l'écran, Visible des 5 choix (a419 : et de leur KeyLabel à la manette), le texte des Price, la couleur du texte des
 -- KeyLabel, ChoiceLabel et Price (survol et grisé demandés par Clément, remise à sa couleur ensuite), la Position
 -- de Choices pendant la secousse (remise ensuite), et la copie de la bulle. Rien ne se décide ici.
 --
@@ -53,6 +56,7 @@ local UiMotion = require(Config:WaitForChild("UiMotion"))
 local Find = require(Shared:WaitForChild("Contract"):WaitForChild("Find"))
 local Format = require(Shared:WaitForChild("Format"))
 local InventoryState = require(Shared:WaitForChild("InventoryState"))
+local Gamepad = require(Shared:WaitForChild("Gamepad")) -- a419 : ButtonB, KeyLabel caché à la manette
 local Motion = require(script.Parent:WaitForChild("UI"):WaitForChild("Motion"))
 
 -- Mode : "Closed", "Choices", "ConfirmHeld", "ConfirmAll" ou "Waiting" ; ChoiceName : "SellHeld", "SellAll",
@@ -117,6 +121,12 @@ local KEY_CODES = {
 	Enum.KeyCode.KeypadTwo,
 	Enum.KeyCode.KeypadThree,
 }
+-- a419 (Config/Gamepad.Back) : à la manette, ButtonB = NoDeal pendant une confirmation, sinon Leave ; les choix se font
+-- par la sélection de GamepadController (bouton A).
+local GAMEPAD = Gamepad.Config()
+if GAMEPAD then
+	table.insert(KEY_CODES, GAMEPAD.Back)
+end
 
 local IS_STUDIO = RunService:IsStudio()
 local LINES = Pawn.Lines
@@ -283,14 +293,28 @@ local function hasHeld(): boolean
 end
 
 -- Choix montrés, prix et grisés, selon le mode et l'offre.
+local padHidden: { [GuiObject]: boolean } = setmetatable({}, { __mode = "k" }) :: any -- a419 : KeyLabel cachés ici
+
 local function render()
 	local current = screen
 	if current == nil then
 		return
 	end
+	local pad = Gamepad.IsActive() -- a419 : à la manette, pas de « 1. » (le choix se fait par la sélection, bouton A)
 	for name, choice in current.choices do
 		local isConfirm = name == "Deal" or name == "NoDeal"
 		choice.button.Visible = isConfirm == confirmShown
+		local key = Find.path(choice.button, "KeyLabel")
+		if key and key:IsA("GuiObject") then
+			local label = key :: GuiObject
+			if pad and label.Visible then
+				label.Visible = false
+				padHidden[label] = true
+			elseif not pad and padHidden[label] then
+				label.Visible = true -- remis comme Clément l'avait posé
+				padHidden[label] = nil
+			end
+		end
 	end
 	local data = offer
 	setPrice(current.choices.SellHeld, if data then data.heldPrice else 0)
@@ -524,11 +548,15 @@ local function onKey(_action: string, state: Enum.UserInputState, input: InputOb
 		return Enum.ContextActionResult.Sink
 	end
 	local key = input.KeyCode
+	local confirming = mode == "ConfirmHeld" or mode == "ConfirmAll"
+	if GAMEPAD and key == GAMEPAD.Back then
+		choose(if confirming then "NoDeal" else "Leave") -- a419
+		return Enum.ContextActionResult.Sink
+	end
 	local index = if key == Enum.KeyCode.One or key == Enum.KeyCode.KeypadOne
 		then 1
 		elseif key == Enum.KeyCode.Two or key == Enum.KeyCode.KeypadTwo then 2
 		else 3
-	local confirming = mode == "ConfirmHeld" or mode == "ConfirmAll"
 	if confirming then
 		if index == 1 then
 			choose("Deal")
@@ -710,6 +738,13 @@ function PawnShopController.Start()
 	end
 
 	RunService.Heartbeat:Connect(checkOpen)
+	if GAMEPAD then
+		Gamepad.OnChanged(function()
+			if mode ~= "Closed" then
+				render() -- a419 : KeyLabel caché ou remis
+			end
+		end)
+	end
 end
 
 return PawnShopController
