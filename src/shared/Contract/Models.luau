@@ -953,5 +953,24 @@ local Floor2: ModelSpec = {
 }
 Models.Floor2 = Floor2
 table.insert(Models.List, table.find(Models.List, WeaponShopCounter) or #Models.List + 1, Floor2)
+-- a406 (L-297, Clément, 2026-11-23) : effet de la construction « en mode Lego » de la boutique, joué par
+-- ShopBuildController (client). Tout est facultatif : sans lui, la construction a lieu sans particules et avec les
+-- réglages de repli de Config/ShopBuild (attributs StartDelay, PieceDelay… du modèle).
+local ShopBuildFx: ModelSpec = {
+	Key = "ShopBuildFx",
+	Label = "effet de construction de la boutique",
+	Category = "Parcelles",
+	Names = { "FX_ShopUpgrade_Build" },
+	Parts = {
+		{ Name = "Root", Class = "BasePart", Optional = true, Note = "PrimaryPart invisible, L-297" },
+		{ Name = "Burst", Class = "Attachment", Optional = true, Note = "porte Bills, Puff et Sparks, L-297" },
+		{ Name = "Bills", Class = "ParticleEmitter", Optional = true, Note = "fontaine de billets au pied, L-297" },
+		{ Name = "Puff", Class = "ParticleEmitter", Optional = true, Note = "bouffée sous chaque pièce posée, L-297" },
+		{ Name = "Sparks", Class = "ParticleEmitter", Optional = true, Note = "étincelles à la dernière pièce, L-297" },
+	},
+	Expected = { "FX_ShopUpgrade_Build" },
+}
+Models.ShopBuildFx = ShopBuildFx
+table.insert(Models.List, table.find(Models.List, WeaponShopCounter) or #Models.List + 1, ShopBuildFx) -- avant les comptoirs, comme UnboxFx
 
 return Models
