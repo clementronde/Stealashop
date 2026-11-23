@@ -40,6 +40,11 @@
 --     à chaque réclamation ; le client en tire les pastilles « ! ».
 --     Notify (MESSAGES.ZoneComplete, « Info ») au moment où la zone se complète : la récompense attend
 --     d'être réclamée.
+-- Vague GC6 (a410, MAJ 7, Partie 2 section 3.4) : colonnes de mutations (Shared/IndexMutations). Chaque effet de
+--   mutation obtenu pour un objet est noté dans le profil (IndexMutations[ItemId][Effet] = os.time()), jamais retiré :
+--   à chaque Discover (même d'un objet déjà découvert : une 2e copie peut porter un autre effet) et au chargement, les
+--   objets possédés (Items) sont relus. Attribut IndexMutations.Attribute (« IndexMutations ») du Player, posé au
+--   chargement puis à chaque effet nouveau. Aucune récompense (V0), noté même à Features.Index = false.
 -- Features.Index à false (MAJ 2 pas ouverte) : les découvertes sont notées et l'attribut posé quand
 -- même (rien n'est perdu à l'ouverture), mais ni récompense (réclamation refusée, rien donné au
 -- chargement), ni message.
@@ -63,6 +68,7 @@ local Shared = ReplicatedStorage.Shared
 local Features = require(Shared.Config.Features)
 local Index = require(Shared.Config.Index)
 local Items = require(Shared.Config.Items)
+local IndexMutations = require(Shared.IndexMutations)
 local Net = require(Shared.Net.Net)
 local ProfileTypes = require(Shared.Types.Profile)
 
@@ -111,6 +117,45 @@ local function indexOf(player: Player, data: Data): { [string]: number }
 		data.Index = index
 	end
 	return index
+end
+
+-- Colonnes de mutations du profil (champ du gabarit ; absent d'un vieux profil : créé). Illisible : repart vide.
+local function mutationsOf(player: Player, data: Data): IndexMutations.Book
+	local book: any = (data :: any).IndexMutations
+	if type(book) ~= "table" then
+		if book ~= nil then
+			warn(`[IndexService] {player.Name} : IndexMutations du profil illisible ({typeof(book)}), repart vide`)
+		end
+		book = {}
+		;(data :: any).IndexMutations = book
+	end
+	return book
+end
+
+-- Relit les objets possédés (Items) : chaque effet de mutation pas encore noté l'est, à la date d'obtention de
+-- l'objet. Attribut reposé si quelque chose change (ou si `force`). Sans yield.
+local function noteMutations(player: Player, data: Data, force: boolean?)
+	local book = mutationsOf(player, data)
+	local now = os.time()
+	local added = 0
+	local items: any = data.Items
+	if type(items) == "table" then
+		for _, entry in items do
+			if type(entry) == "table" and type(entry.Id) == "string" then
+				local at = entry.At
+				local when = if type(at) == "number" and at == at and at > 0 then at else now
+				if IndexMutations.Note(book, entry.Id, entry.Mutation, when) then
+					added += 1
+				end
+			end
+		end
+	end
+	if added > 0 or force then
+		player:SetAttribute(IndexMutations.Attribute, IndexMutations.Encode(book))
+	end
+	if added > 0 then
+		log(`{player.Name} : {added} mutation(s) nouvelle(s) dans l'index`)
+	end
 end
 
 -- Attribut du joueur, d'après son Index.
@@ -276,6 +321,7 @@ local function discover(player: Player, itemId: string, delay: number?): boolean
 	if data == nil or item == nil then
 		return false
 	end
+	noteMutations(player, data)
 	local index = indexOf(player, data)
 	if index[itemId] ~= nil then
 		return false
@@ -319,6 +365,7 @@ local function onProfileLoaded(player: Player)
 		end
 	end
 	publish(player, index)
+	noteMutations(player, data, true)
 	local extra = if added > 0 then `, dont {added} objet(s) possédé(s) ajouté(s) au chargement` else ""
 	log(`{player.Name} : {Index.CountAll(index)} / {Index.Total} objet(s) découvert(s){extra} ; zone(s) complète(s) : {zonesText(index)}`)
 	-- Zones réclamées (pastilles du client) ; les récompenses dues attendent d'être réclamées.

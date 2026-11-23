@@ -195,6 +195,7 @@ local TEMPLATE: Data = {
 	},
 	Rebirths = 0, -- vague 51 (a164) : renaissances faites (RebirthService), sans changement de version
 	Diamonds = 0, -- vague 59 (a191, L-182 point 10) : diamants (DataService.GetDiamonds), sans changement de version
+	IndexMutations = {}, -- vague GC6 (a410) : [ItemId] = { [Effet] = os.time() } (IndexService), sans changement de version
 }
 
 -- Journal d'une migration : chaque ligne part dans la sortie, préfixée du joueur et de sa clé.
