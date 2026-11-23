@@ -1589,6 +1589,17 @@ table.insert(UI.Screens, {
 		{ Path = "WheelButton.WheelAlert", Optional = true, Note = "pas de pastille pour le tour gratuit" },
 	} :: { Element },
 })
+-- a401 (vague GC4, encaissement de la vidéo de Cantin, nom proposé à Clément) : vignette verte plein écran à chaque
+-- ramassage sur une plaque (CollectFeelController) : ImageLabel blanc teinté par ImageColor3, Size 1 × 1 en Scale,
+-- au-dessus de tout le HUD, Active = false, Visible = false et ImageTransparency = 1 au repos, sans UIAspectRatioConstraint.
+table.insert(UI.Screens, {
+	Name = "UI_HUD",
+	Class = "ScreenGui",
+	Optional = true,
+	Elements = {
+		{ Path = "CollectGlow", Class = "ImageLabel", Optional = true, Note = "pas de vignette verte au ramassage" },
+	} :: { Element },
+})
 
 -- Vague GC6 (a410, MAJ 7, Partie 2 section 3.4) : colonnes de mutations de l'index, noms proposés à Clément, facultatifs
 -- (IndexController ; sans eux : « 2/7 » construit par le code sur la carte et la liste dans DetailIncome, en MUTATIONS).

@@ -24,6 +24,9 @@
 --       * récompense : l'écran UI_Rewards est ouvert (RewardsController.GetState().Open) → la case
 --         part du centre de l'écran (UiMotion.CashFly.From) ;
 --       * autre gain (camion…) : pas de case, le compteur sursaute seulement (CashBump).
+--       * a401 (vague GC4, vidéo de Cantin ; UiMotion.CollectFeel) : sans case (CashFly.Enabled = false), un revenu de
+--         la base est confié à CollectFeelController.Hold : chiffre relâché à la 1re arrivée des billets de la plaque ;
+--         le « +$X » d'argent entre en dépassant (0,45 → 1,1 → 1) et sort en rétrécissant (CollectFeel.Text).
 --       * vague 59 (a192, L-184 point 3) : récompense (UI_Rewards ouvert) ou prime de l'index (un écran UI_Index*
 --         allumé), jamais un ramassage, l'encaissement automatique ni les gains hors ligne : « +$X » qui monte au
 --         centre, pause, billets qui volent vers Cash, qui ne défile qu'à leur arrivée (billFly, Config/HeistFeel
@@ -228,6 +231,13 @@ local counterPop: GuiObject? = nil
 -- Bills : gains ponctuels en vol (vague 59) ; IncomeFlies : « +$X/s » d'une pose en vol (vague 63)
 local active = { Gains = 0, Flyers = 0, Pops = 0, Bills = 0, IncomeFlies = 0, TrainFlies = 0 }
 local chase: ChaseApi? = nil
+-- a401 (vague GC4, vidéo de Cantin) : CollectFeelController (Hold) et l'entrée et la sortie du « +$X » d'argent
+-- (UiMotion.CollectFeel.Text ; absent ou coupé : la montée et le fondu de FloatGain, comme avant).
+local collectFeel: any = nil
+local COLLECT_TEXT: any = (UiMotion :: any).CollectFeel and (UiMotion :: any).CollectFeel.Text
+if COLLECT_TEXT and COLLECT_TEXT.Enabled ~= true then
+	COLLECT_TEXT = nil
+end
 local placed: { [string]: boolean }? = nil -- vague 63 : uids exposés à la dernière lecture (nil : pas encore lu)
 -- Vague 65 (a215) : Vitesse de bulle annoncée (NoteBubble) et pas encore vue monter, et l'heure de l'annonce.
 local bubblePending = 0
@@ -531,6 +541,38 @@ local function floatGain(kind: Kind, amount: number, info: TweenInfo?, text: str
 
 	billboard.Parent = gui
 	active.Gains += 1
+	local look = COLLECT_TEXT
+	if kind == CASH and look and row then
+		-- a401 (vague GC4, vidéo de Cantin) : Row dépasse (From → Over → 1), tient, puis rétrécit jusqu'à 0 en montant un
+		-- peu, sans fondu ; la copie est détruite à la fin (≈ 1,15 s).
+		local scale = Instance.new("UIScale")
+		scale.Name = COPY_SCALE
+		scale.Scale = look.From
+		scale.Parent = row
+		local grow = TweenService:Create(scale, TweenInfo.new(look.InTime, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Scale = look.Over })
+		grow.Completed:Connect(function(state: Enum.PlaybackState)
+			if state == Enum.PlaybackState.Completed then
+				TweenService:Create(scale, TweenInfo.new(look.SettleTime, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), { Scale = 1 }):Play()
+			end
+		end)
+		grow:Play()
+		task.delay(look.InTime + look.SettleTime + look.Hold, function()
+			local outInfo = TweenInfo.new(look.OutTime, Enum.EasingStyle.Sine, Enum.EasingDirection.In)
+			local progress = Instance.new("NumberValue")
+			progress:GetPropertyChangedSignal("Value"):Connect(function()
+				billboard.StudsOffset = base + Vector3.new(spread, look.OutRise * progress.Value, 0)
+			end)
+			TweenService:Create(progress, outInfo, { Value = 1 }):Play()
+			local shrink = TweenService:Create(scale, outInfo, { Scale = 0 })
+			shrink.Completed:Connect(function()
+				active.Gains -= 1
+				billboard:Destroy()
+				progress:Destroy()
+			end)
+			shrink:Play()
+		end)
+		return
+	end
 	if row then
 		local scale = Instance.new("UIScale")
 		scale.Name = COPY_SCALE
@@ -1080,6 +1122,17 @@ local function classify()
 		return
 	end
 	if not FLY.Enabled then
+		-- a401 (vague GC4, vidéo de Cantin) : un revenu de la base (hors gains hors ligne) est confié à
+		-- CollectFeelController : le chiffre reste retenu jusqu'à la 1re arrivée des billets (sursaut, Cash_Collect et
+		-- tics là-bas), ou défile comme ci-dessous s'il n'y a pas de billets ; le « +$X » part tout de suite.
+		local feel = collectFeel
+		if fromPad and feel and not screenOpen(offline) then
+			local ok, held = pcall(feel.Hold, total, releases)
+			if ok and held == true then
+				showGain(CASH, total)
+				return
+			end
+		end
 		-- Sans case qui vole (L-091, retour de Clément) : l'argent défile tout de suite, le compteur sursaute,
 		-- et un ramassage, des gains hors ligne réclamés ou une récompense montrent « +$X » au-dessus du joueur.
 		releaseAll(releases)
@@ -1515,6 +1568,7 @@ function GainController.Start()
 	rewards = sibling("RewardsController")
 	offline = sibling("OfflineController")
 	chase = sibling("ChaseController") -- vague 63 : aucun « +$/s » qui vole pendant une poursuite
+	collectFeel = sibling("CollectFeelController") -- a401 : chiffre relâché à l'arrivée des billets d'une plaque
 	onInventory() -- première lecture : rien ne vole
 	localPlayer:GetAttributeChangedSignal(InventoryState.Attribute):Connect(onInventory)
 	for _, kind in { SPEED } do -- v2 : plus de banc, plus de « +X Power »

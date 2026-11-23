@@ -2506,4 +2506,42 @@ function Motion.Roll(label: TextLabel, from: number?, to: number, format: (numbe
 	tween:Play()
 end
 
+-- a401 (vague GC4, encaissement de la vidéo de Cantin) : l'objet passe de son échelle du moment à `to` (`info`) et y
+-- reste, par le même UIScale passager que Motion.Pop (un sursaut CashBump et ce maintien se reprennent l'un l'autre
+-- sans s'empiler). `to` = 1 : le UIScale est détruit à la fin. false sur un objet qui a déjà un autre UIScale.
+function Motion.ScaleTo(object: GuiObject, to: number, info: TweenInfo): boolean
+	local state = pops[object]
+	if state == nil or state.scale.Parent ~= object then
+		if object:FindFirstChildOfClass("UIScale") ~= nil then
+			return false
+		end
+		local scale = Instance.new("UIScale")
+		scale.Name = UiMotion.PopScaleName
+		scale.Parent = object
+		local created: PopState = { scale = scale, token = 0, tween = nil }
+		state = created
+		pops[object] = created
+	end
+	local current: PopState = state :: PopState
+	local previous = current.tween
+	if previous then
+		previous:Cancel()
+	end
+	current.token += 1
+	local token = current.token
+	local tween = TweenService:Create(current.scale, info, { Scale = to })
+	current.tween = tween
+	tween.Completed:Connect(function(playback: Enum.PlaybackState)
+		if playback ~= Enum.PlaybackState.Completed or current.token ~= token or to ~= 1 then
+			return
+		end
+		if pops[object] == current then
+			pops[object] = nil
+		end
+		current.scale:Destroy()
+	end)
+	tween:Play()
+	return true
+end
+
 return Motion

@@ -908,6 +908,52 @@ local UiMotion = {
 		Enabled = true,
 		Slack = 1, -- V0 proposé, absent du doc : px de marge autour du bouton (arrondis des tailles) avant de finir le survol
 	},
+	-- a401 (vague GC4) : encaissement sur une plaque comme dans la vidéo de Cantin (fiche docs/references/Encaissement-Base.md,
+	-- sections 3, 5, 7 et 8 ; CollectFeelController, GainController). Toutes les valeurs : V0 (fiche vidéo de Cantin, 23/11).
+	-- Enabled = false : comme avant (le chiffre défile au contact, CashRow sursaute, Cash_Collect au contact).
+	CollectFeel = {
+		Enabled = true, -- a401 : interrupteur (false = comme avant)
+		-- Chiffre Cash retenu au contact (HudController.HoldCash), relâché à la 1re arrivée de billet (VfxController).
+		FallbackDelay = 0.2, -- s : aucun billet annoncé dans ce délai (effets coupés, encaissement automatique) : comme avant
+		MaxWait = 1.5, -- s : billets annoncés mais aucun arrivé : chiffre relâché quand même
+		PopTo = 1.16, -- groupe argent (CashRow) à la 1re arrivée, en PopTime s (Quad Out)
+		PopTime = 0.05,
+		BounceTo = 1.17, -- ressaut d'environ 1 % à chaque arrivée suivante : monte en BounceUp s, revient en BounceDown s
+		BounceUp = 0.03,
+		BounceDown = 0.06,
+		EndDelay = 0.1, -- s après la dernière arrivée : retour à 1 en EndTime s (Quad Out)
+		EndTime = 0.06,
+		TickSemitones = 3, -- tic de chaque arrivée : de 0 (1re) à + TickSemitones demi-tons (dernière), PlaybackSpeed sur une copie
+		-- Sons (ReplicatedStorage/Assets/Sounds, sous-dossiers compris, par MarkerSounds.find) : Pad, Whoosh et Tick sont
+		-- facultatifs (absents : muets) ; Arrive est le Cash_Collect d'avant, joué à la 1re arrivée au lieu du contact.
+		Sounds = {
+			Pad = "Cash_Pad", -- nom proposé : contact avec la plaque
+			Whoosh = "Cash_Whoosh", -- nom proposé : départ des billets
+			Arrive = "Cash_Collect", -- existant : 1re arrivée au compteur
+			Tick = "Cash_Tick", -- nom proposé : chaque arrivée suivante, de plus en plus aigu
+		},
+		-- Vignette plein écran UI_HUD.CollectGlow (ImageLabel facultatif de Clément) à chaque ramassage sur une plaque :
+		-- ImageTransparency de son état d'origine à GlowPeak en GlowIn s (Cubic Out), tenue GlowHold s, puis vers 1 en
+		-- GlowOut s (Sine In) ; Visible et ImageTransparency d'origine remis à la fin. Coupée par VISUAL EFFECTS sur OFF.
+		Glow = "CollectGlow",
+		GlowPeak = 0,
+		GlowIn = 0.14,
+		GlowHold = 0.15,
+		GlowOut = 0.45,
+		-- « +$X » au-dessus du joueur (BB_Gain, argent seulement) : Row de From à Over en InTime s (Quad Out), puis à 1 en
+		-- SettleTime s (Sine InOut), tenue Hold s, puis rétrécit jusqu'à 0 en OutTime s (Sine In) en montant de OutRise
+		-- studs, sans fondu. Text.Enabled = false : la montée et le fondu de FloatGain, comme avant.
+		Text = {
+			Enabled = true, -- a401 : interrupteur (false = comme avant)
+			From = 0.45,
+			Over = 1.1,
+			InTime = 0.14,
+			SettleTime = 0.11,
+			Hold = 0.7,
+			OutTime = 0.2,
+			OutRise = 0.4,
+		},
+	},
 }
 
 export type UiMotion = typeof(UiMotion)
