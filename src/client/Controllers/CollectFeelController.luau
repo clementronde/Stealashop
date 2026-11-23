@@ -364,7 +364,9 @@ end
 
 local function onCollect()
 	playOptional(FEEL.Sounds.Pad, 1)
-	glow()
+	if FEEL.Glow ~= "" then -- L-299 : Glow = "" (vignette coupée)
+		glow()
+	end
 end
 
 ------------------------------------------------------------------------------

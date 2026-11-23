@@ -923,7 +923,9 @@ local UiMotion = {
 		BounceDown = 0.06,
 		EndDelay = 0.1, -- s après la dernière arrivée : retour à 1 en EndTime s (Quad Out)
 		EndTime = 0.06,
-		TickSemitones = 3, -- tic de chaque arrivée : de 0 (1re) à + TickSemitones demi-tons (dernière), PlaybackSpeed sur une copie
+		-- Tic de chaque arrivée : de 0 (1re) à + TickSemitones demi-tons (dernière), PlaybackSpeed sur une copie. L-299 point 3
+		-- (Clément, 23/11 : pas de note qui monte, essayée, trop agressive) : 0 (a401 proposait 3).
+		TickSemitones = 0,
 		-- Sons (ReplicatedStorage/Assets/Sounds, sous-dossiers compris, par MarkerSounds.find) : Pad, Whoosh et Tick sont
 		-- facultatifs (absents : muets) ; Arrive est le Cash_Collect d'avant, joué à la 1re arrivée au lieu du contact.
 		Sounds = {
@@ -935,7 +937,9 @@ local UiMotion = {
 		-- Vignette plein écran UI_HUD.CollectGlow (ImageLabel facultatif de Clément) à chaque ramassage sur une plaque :
 		-- ImageTransparency de son état d'origine à GlowPeak en GlowIn s (Cubic Out), tenue GlowHold s, puis vers 1 en
 		-- GlowOut s (Sine In) ; Visible et ImageTransparency d'origine remis à la fin. Coupée par VISUAL EFFECTS sur OFF.
-		Glow = "CollectGlow",
+		-- L-299 (Clément, 23/11) : pas de vignette CollectGlow, c'est le voile UI_CashFlash de Clément (à brancher à part) ;
+		-- "" = vignette coupée (a401 proposait "CollectGlow").
+		Glow = "",
 		GlowPeak = 0,
 		GlowIn = 0.14,
 		GlowHold = 0.15,
