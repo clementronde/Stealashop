@@ -82,6 +82,10 @@ local Night = {
 		NightAmbient = Color3.fromRGB(45, 50, 80),
 		NightBrightness = 1,
 		TransitionTime = 3, -- tombée de la nuit et lever du jour (s)
+		-- Vague GC3 (a283, audit a271 point 6) : pendant l'alerte et les bascules, Lighting n'est réécrit que si l'heure a
+		-- bougé d'au moins ClockStep heures, ou ApplyInterval s après la dernière écriture ; l'état final toujours écrit.
+		ClockStep = 0.02, -- V0 proposé (Cantin, 23/11)
+		ApplyInterval = 0.1, -- V0 proposé (Cantin, 23/11)
 	},
 
 	-- Sons d'ambiance des zones (AmbienceController, liaison L-221) : tout Sound du Workspace avec l'attribut

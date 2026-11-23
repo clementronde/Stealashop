@@ -42,6 +42,7 @@ type Gift = {
 	target: Instance, -- Model ou BasePart
 	base: CFrame, -- place posée par Clément
 	phase: number,
+	radius: number, -- a283 : diagonale de sa boîte (pivot pas forcément au centre) + FloatHeight, test d'écran
 }
 
 local HubController = {}
@@ -152,17 +153,48 @@ considerGift = function(zone: Instance)
 		sayOnce(`gift:{target:GetFullName()}`, `{target:GetFullName()} n'est ni un Model ni une pièce : le cadeau ne flotte pas`)
 		return
 	end
-	gifts[target] = { target = target, base = base, phase = 0 }
+	local size = if target:IsA("Model") then (target :: Model):GetExtentsSize() else (target :: BasePart).Size
+	gifts[target] = { target = target, base = base, phase = 0, radius = size.Magnitude + Hub.Gift.FloatHeight }
 end
 
+-- a283 : la sphère (center, radius) coupe le champ de la caméra (même test que ItemIdleController.isOnScreen).
+-- Caméra sans taille d'écran (pas encore prête) : à l'écran.
+local function sphereOnScreen(camera: Camera, center: Vector3, radius: number): boolean
+	local viewport = camera.ViewportSize
+	if viewport.X <= 0 or viewport.Y <= 0 then
+		return true
+	end
+	local tanV = math.tan(math.rad(camera.FieldOfView) / 2)
+	local tanH = tanV * viewport.X / viewport.Y
+	local inCamera = camera.CFrame:PointToObjectSpace(center)
+	local depth = -inCamera.Z
+	if depth < -radius then
+		return false -- derrière la caméra
+	end
+	return math.abs(inCamera.X) <= depth * tanH + radius * math.sqrt(1 + tanH * tanH)
+		and math.abs(inCamera.Y) <= depth * tanV + radius * math.sqrt(1 + tanV * tanV)
+end
+
+-- Vague GC3 (a283, audit a271 point 10) : sur Heartbeat (plus RenderStepped) ; un cadeau loin de la caméra
+-- (Hub.Gift.AnimDistance) ou hors de l'écran (Hub.Gift.OnScreenOnly) n'est pas déplacé, sa phase avance quand même.
 local function stepGifts(dt: number)
 	local period = math.max(Hub.Gift.FloatPeriod, 0.1)
+	local camera = Workspace.CurrentCamera
 	for target, gift in gifts do
 		if target.Parent == nil then
 			gifts[target] = nil
 			continue
 		end
 		gift.phase += dt
+		if camera ~= nil then
+			local center = gift.base.Position
+			if (center - camera.CFrame.Position).Magnitude > Hub.Gift.AnimDistance + gift.radius then
+				continue
+			end
+			if Hub.Gift.OnScreenOnly and not sphereOnScreen(camera, center, gift.radius) then
+				continue
+			end
+		end
 		local lift = Hub.Gift.FloatHeight * math.sin(gift.phase * 2 * math.pi / period)
 		local angle = math.rad(Hub.Gift.SpinSpeed * gift.phase)
 		local cframe = gift.base * CFrame.new(0, lift, 0) * CFrame.Angles(0, angle, 0)
@@ -224,8 +256,21 @@ local function considerLabel(instance: Instance)
 		return
 	end
 	labels[gui] = true
-	gui:GetAttributeChangedSignal(Hub.LabelKeyAttribute):Connect(function()
+	local keyChanged = gui:GetAttributeChangedSignal(Hub.LabelKeyAttribute):Connect(function()
 		paintLabel(gui)
+	end)
+	-- Vague GC3 (a283, audit a271 point 12) : étiquette sortie du Workspace (streaming, destruction) : oubliée et
+	-- débranchée ; si elle revient, DescendantAdded la reprend.
+	local ancestry: RBXScriptConnection? = nil
+	ancestry = gui.AncestryChanged:Connect(function()
+		if gui:IsDescendantOf(Workspace) then
+			return
+		end
+		labels[gui] = nil
+		keyChanged:Disconnect()
+		if ancestry then
+			ancestry:Disconnect()
+		end
 	end)
 	paintLabel(gui)
 end
@@ -255,7 +300,7 @@ function HubController.Start()
 		considerGift(zone)
 	end
 
-	RunService.RenderStepped:Connect(stepGifts)
+	RunService.Heartbeat:Connect(stepGifts) -- a283 : plus RenderStepped (ne bloque plus le rendu)
 	local elapsed = 0
 	RunService.Heartbeat:Connect(function(dt: number)
 		elapsed += dt

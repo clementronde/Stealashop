@@ -22,7 +22,9 @@
 -- tiré par pièce), Period (s, cycle d'une bulle : gonfle, enfle, disparaît, repart ailleurs sur la flaque). Une seule
 -- boucle Heartbeat pour tous les porteurs, branchée tant qu'il y a des pièces, débranchée sans pièce ; elle change en
 -- local le C0 de la Weld (et la taille d'une bulle), jamais au-delà de Cosmetics.PieceMotion.MaxDistance de la caméra.
--- Pièce retirée (aura changée, porteur parti, streaming) : oubliée. VISUAL EFFECTS OFF : pièces cachées en local
+-- Vague GC3 (a283, audit a271 point 5) : une pièce hors de l'écran reste figée (PieceMotion.OnScreenOnly), et sur
+-- appareil faible (ShatterController.IsLowEnd, relu toutes les RemoteParticleCheckInterval s) la distance est
+-- PieceMotion.MaxDistanceLow. Pièce retirée (aura changée, porteur parti, streaming) : oubliée. VISUAL EFFECTS OFF : pièces cachées en local
 -- (LocalTransparencyModifier), mouvement arrêté ; leurs émetteurs, lumières et Beams s'éteignent comme le reste.
 --
 -- API (client) : CosmeticController.CutCount() -> number (effets natifs éteints, pour un banc).
@@ -193,6 +195,47 @@ local pieces: { [Instance]: Piece } = {}
 local motionConnection: RBXScriptConnection? = nil
 local motionClock = 0
 local pieceCount = 0
+local pieceMaxDistance: number = MOTION.MaxDistance -- a283 : MaxDistanceLow sur appareil faible (relu dans Start)
+
+-- Appareil faible : la règle des éclats de vitrine (ShatterController.IsLowEnd), chargée à la demande (même repli
+-- que WitnessCrowdController : absente, appareil normal).
+local shatter: any = nil
+local function lowEnd(): boolean
+	if shatter == nil then
+		shatter = false
+		local parent = script.Parent
+		local found = if parent then parent:FindFirstChild("ShatterController") else nil
+		if found and found:IsA("ModuleScript") then
+			local ok, loaded = pcall(require, found :: any)
+			if ok and type(loaded) == "table" and type((loaded :: any).IsLowEnd) == "function" then
+				shatter = loaded
+			end
+		end
+	end
+	if not shatter then
+		return false
+	end
+	local ok, result = pcall(shatter.IsLowEnd)
+	return ok and result == true
+end
+
+-- a283 : la sphère (center, radius) coupe le champ de la caméra (même test que ItemIdleController.isOnScreen).
+-- Caméra sans taille d'écran (pas encore prête) : à l'écran.
+local function sphereOnScreen(camera: Camera, center: Vector3, radius: number): boolean
+	local viewport = camera.ViewportSize
+	if viewport.X <= 0 or viewport.Y <= 0 then
+		return true
+	end
+	local tanV = math.tan(math.rad(camera.FieldOfView) / 2)
+	local tanH = tanV * viewport.X / viewport.Y
+	local inCamera = camera.CFrame:PointToObjectSpace(center)
+	local depth = -inCamera.Z
+	if depth < -radius then
+		return false -- derrière la caméra
+	end
+	return math.abs(inCamera.X) <= depth * tanH + radius * math.sqrt(1 + tanH * tanH)
+		and math.abs(inCamera.Y) <= depth * tanV + radius * math.sqrt(1 + tanV * tanV)
+end
 
 -- Nombre pseudo-aléatoire dans [0, 1[ tiré de n (même suite à chaque partie, sans Random).
 local function hash01(n: number): number
@@ -274,6 +317,7 @@ end
 local function stepPieces(dt: number)
 	motionClock += dt
 	local from = viewPoint()
+	local camera = if MOTION.OnScreenOnly then Workspace.CurrentCamera else nil
 	for inst, piece in pieces do
 		if inst.Parent == nil then
 			pieces[inst] = nil
@@ -287,7 +331,12 @@ local function stepPieces(dt: number)
 		if weld == nil or anchor == nil then
 			continue
 		end
-		if from ~= nil and (anchor.Position - from).Magnitude > MOTION.MaxDistance then
+		if from ~= nil and (anchor.Position - from).Magnitude > pieceMaxDistance then
+			continue
+		end
+		-- a283 : hors de l'écran, figée (sphère : écart de la pièce à son accroche, sa taille, la marge).
+		local reach = piece.base.Position.Magnitude + piece.size.Magnitude + MOTION.ScreenMargin
+		if camera ~= nil and not sphereOnScreen(camera, anchor.Position, reach) then
 			continue
 		end
 		local t = motionClock
@@ -427,6 +476,9 @@ function CosmeticController.Start()
 		if elapsed >= CHECK_INTERVAL then
 			elapsed = 0
 			update()
+			if motionConnection ~= nil then
+				pieceMaxDistance = if lowEnd() then MOTION.MaxDistanceLow else MOTION.MaxDistance -- a283
+			end
 		end
 	end)
 end

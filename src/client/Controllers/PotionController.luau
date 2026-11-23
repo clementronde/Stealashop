@@ -705,13 +705,14 @@ function PotionController.Start()
 			applyVfx(entry, off)
 		end
 	end)
+	local function onError(err: any) -- a283 (audit a271 point 12) : définie une fois, pas une fermeture par image
+		if not said.step then
+			said.step = true
+			warn(`[PotionController] {err}`)
+		end
+	end
 	RunService.Heartbeat:Connect(function(dt: number)
-		xpcall(step, function(err: any)
-			if not said.step then
-				said.step = true
-				warn(`[PotionController] {err}`)
-			end
-		end, dt)
+		xpcall(step, onError, dt)
 	end)
 	local ok, result = pcall(function(): any
 		return require(Shared:WaitForChild("Net"):WaitForChild("Net"))
