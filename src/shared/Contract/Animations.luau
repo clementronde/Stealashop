@@ -181,4 +181,15 @@ Animations.Reveal = {
 	{ Name = "GrowColossal", Loop = false, Priority = "Action", Marker = "Explode" },
 } :: { Anim }
 
+-- a408 (vague GC6, MAJ 5) : agents de sécurité des boutiques (modèles NPC_Bodyguard et NPC_DoorGuard de
+-- ReplicatedStorage/Assets/Guards, Contract/Models.ShopGuards). Mêmes noms que les vigiles, jouées par
+-- ShopDefenseService : Idle au poste, Run pendant la poursuite (agent), Catch pour la capture ou la poussée (garde de
+-- la porte), dont l'effet part au marqueur Impact. Absentes : animations de l'avatar par défaut (Idle, Run), et l'effet
+-- part au plus tard Config/ShopDefense.Bodyguard.ImpactMaxWait (ou DoorGuard.ImpactMaxWait) s après le début du geste.
+Animations.ShopGuard = {
+	{ Name = "Idle", Loop = true, Priority = "Idle" },
+	{ Name = "Run", Loop = true, Priority = "Movement" },
+	{ Name = "Catch", Loop = false, Priority = "Action", Marker = "Impact" },
+} :: { Anim }
+
 return Animations

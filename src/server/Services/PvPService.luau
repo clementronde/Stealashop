@@ -163,6 +163,8 @@
 --   PvPService.GetIntruders(victim) -> { Player }
 --       Vague 33 : intrus annoncés à `victim` (voir « Alerte d'intrusion »), dans l'ordre d'arrivée ; une
 --       copie, vide sans intrus. Pour la réannonce de TheftAlertService.
+--   PvPService.KickOut(plot, target, why) -> boolean
+--       a408 : sortie et interdiction sur `plot` comme après un coup du propriétaire (agent de sécurité de l'arbre).
 --   PvPService.OnTheftStarted(listener) -> déconnexion     listener(thief, victim, itemId)
 --   PvPService.OnTheftEnded(listener) -> déconnexion
 --       listener(thief, victim, itemId, result, reason) ; result = "Stolen" (dépôt) ou "Returned"
@@ -1844,6 +1846,12 @@ end
 function PvPService.GetIntruders(victim: Player): { Player }
 	local list = intruders[victim]
 	return if list then table.clone(list) else {}
+end
+
+-- a408 (vague GC6, MAJ 5) : sortie et interdiction de PvP.KickRobCooldown s sur `plot`, comme après un coup du
+-- propriétaire (kickOut), pour son agent de sécurité (ShopDefenseService). true s'il a été sorti. Sans yield.
+function PvPService.KickOut(plot: Model, target: Player, why: string): boolean
+	return present(target) and kickOut(plot, target, why)
 end
 
 function PvPService.OnTheftStarted(listener: StartedListener): () -> ()

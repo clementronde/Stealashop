@@ -119,6 +119,12 @@ local Features = {
 	-- WindowBroken, HighRarityOpened, ItemSold, LoadingTime, gains pas encore comptés (receleur, codes, dons du tuto,
 	-- prime au complice). Sous Config/Telemetry.Enabled. false = rien de cela.
 	Analytics = true,
+	-- a408 (vague GC6, MAJ 5 « Défense de la boutique », Cantin 23/11 : tout maintenant ; V0 à valider par Clément) :
+	-- tuiles de l'arbre devenues achetables (Config/SkillTree, Config/ShopDefense, ShopDefenseService) ; false = la
+	-- tuile reste « Soon » et rien n'est posé.
+	Bodyguards = true, -- agent de sécurité qui poursuit le voleur (Partie 2, section 2)
+	DoorGuard = true, -- garde à la porte qui repousse le voleur (L-163)
+	CameraRadar = true, -- Cameras niveau 3 : voleur en rouge vif et son de radar, sans flèche (L-163, L-175)
 }
 
 export type Features = typeof(Features)

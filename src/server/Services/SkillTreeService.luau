@@ -47,7 +47,9 @@
 --                   attaque = les coups d'un même joueur sur cette vitrine à moins de ATTACK_GAP s d'écart.
 --                   Niveau 2 et plus : à la même alerte, CameraSpotted(attaquant, fin) au seul propriétaire,
 --                   fin = heure serveur + Effects[niveau] s (30) : CameraAlertController (client) le surligne
---                   à travers les murs. Le niveau 3 (flèche, distance, son) n'est pas codé (Coded = 2).
+--                   à travers les murs. Niveau 3 (a408, Features.CameraRadar) : rouge vif et radar chez le client
+--                   (CameraAlertController), CameraSpotted relancé à la prise d'un objet (ShopDefenseService).
+--   Bodyguards et DoorGuard (a408) : agents de la boutique, ShopDefenseService (Config/ShopDefense).
 --   PotionLuck et PotionTime (vague 28) : lus par PotionService avec GetEffect (délai entre deux potions
 --                   × Effects[niveau], durée d'un effet × Effects[niveau]) ; rien à brancher ici.
 -- Les compétences « Soon » (Coded = 0) n'ont aucun effet.
