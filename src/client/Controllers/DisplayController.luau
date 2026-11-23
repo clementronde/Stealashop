@@ -15,6 +15,8 @@
 --     plaque enfoncée de son attribut SinkDepth, chez tous les joueurs qui ont la parcelle chargée ;
 --     chez le propriétaire, prévient aussi les écouteurs d'OnCollect. Le montant écrit sur la plaque
 --     (AmountGui/Amount) vient du serveur, visible par tous ;
+--     a401 (vague GC4, vidéo de Cantin ; Config/Vfx.CollectPad) : Plate flashe en blanc, Glow en fondu, enfoncement animé
+--     (descente Quad Out en s'élargissant, remontée Back Out), retour exact à l'état d'origine ;
 --   - anime en local les halos créés par le serveur : les rayons des objets Légendaire, Mythique
 --     et Secret tournent, l'arc-en-ciel du Secret défile. Rien n'est envoyé au serveur ;
 --   - téléphone (vague 39, a129 ; audit perf-telephone.md, correction 2 ; valeurs : Config/DisplayHalo) :
@@ -63,6 +65,14 @@ local ItemsConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChil
 local Mutations = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"):WaitForChild("Mutations"))
 local UnboxConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"):WaitForChild("Unbox"))
 local InventoryState = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("InventoryState"))
+-- a401 (vague GC4, vidéo de Cantin) : flash, Glow en fondu et enfoncement animé de la plaque (Config/Vfx.CollectPad ;
+-- absent, comme dans un arbre de banc plus ancien : Glow allumé un instant et enfoncement sec, comme avant).
+local vfxModule = ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"):FindFirstChild("Vfx")
+local VfxConfig: any = if vfxModule and vfxModule:IsA("ModuleScript") then require(vfxModule) :: any else nil
+local PAD_FX: any = if VfxConfig and type(VfxConfig.CollectPad) == "table" and VfxConfig.CollectPad.Enabled == true
+	then VfxConfig.CollectPad
+	else nil
+local TweenService: TweenService? = if PAD_FX then game:GetService("TweenService") else nil -- seulement pour l'animation
 
 type Listener = (value: number) -> ()
 
@@ -159,6 +169,13 @@ local cashOutListeners: { Listener } = {}
 type CollectListener = (amount: number, slotIndex: number, position: Vector3) -> ()
 local collectListeners: { CollectListener } = {}
 local plateRest: { [BasePart]: CFrame } = {} -- position de repos d'une plaque enfoncée
+-- a401 : état d'origine d'une plaque et de son Glow pendant l'animation (remis à la fin), et numéro de l'animation en
+-- cours (un nouveau ramassage reprend du point où en est la plaque, sans empiler).
+local plateSize: { [BasePart]: Vector3 } = {}
+local plateColor: { [BasePart]: Color3 } = {}
+local plateToken: { [BasePart]: number } = {}
+local plateTweens: { [BasePart]: { Tween } } = {}
+local glowBrightness: { [Light]: number } = {}
 local animated: { [Instance]: Animated } = {}
 local lit: { [Instance]: Lit } = {}
 local rainbowSequences: { ColorSequence } = {} -- Config/DisplayHalo.RainbowSteps teintes, calculées au démarrage
@@ -268,6 +285,93 @@ local function plotByIndex(plotIndex: number): Instance?
 	return nil
 end
 
+-- a401 : la taille élargie de `factor` sur les deux grands côtés (la plaque est plate sur Y ou sur Z).
+local function squashed(size: Vector3, factor: number): Vector3
+	local x, y, z = size.X, size.Y, size.Z
+	if y <= x and y <= z then
+		return Vector3.new(x * factor, y, z * factor)
+	elseif z <= x then
+		return Vector3.new(x * factor, y * factor, z)
+	end
+	return Vector3.new(x, y * factor, z * factor)
+end
+
+-- a401 (vague GC4, Config/Vfx.CollectPad, V0 fiche vidéo de Cantin, 23/11) : Plate flashe en blanc, Glow monte puis
+-- s'éteint en fondu, la plaque s'enfonce de SinkDepth en s'élargissant puis remonte en Back Out. Tout part de l'état
+-- d'origine gardé (couleur, taille, position, Brightness) et y revient à la fin ; un nouveau ramassage pendant
+-- l'animation annule la précédente et repart de là où en est la plaque (rien ne s'empile).
+local function animatePlate(part: BasePart, tweenService: TweenService)
+	local fx = PAD_FX
+	local token = (plateToken[part] or 0) + 1
+	plateToken[part] = token
+	local running = plateTweens[part]
+	if running then
+		for _, tween in running do
+			tween:Cancel()
+		end
+	end
+	local tweens: { Tween } = {}
+	plateTweens[part] = tweens
+	local function play(instance: Instance, info: TweenInfo, goal: { [string]: any }, after: () -> ())
+		local tween = tweenService:Create(instance, info, goal)
+		table.insert(tweens, tween)
+		tween.Completed:Connect(function(state: Enum.PlaybackState)
+			if state == Enum.PlaybackState.Completed and plateToken[part] == token then
+				after()
+			end
+		end)
+		tween:Play()
+	end
+	local flashIn = TweenInfo.new(fx.FlashIn, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	local flashOut = TweenInfo.new(fx.FlashOut, Enum.EasingStyle.Linear)
+
+	local color = plateColor[part] or part.Color
+	plateColor[part] = color
+	play(part, flashIn, { Color = fx.FlashColor }, function()
+		play(part, flashOut, { Color = color }, function()
+			part.Color = color
+			plateColor[part] = nil
+			plateTweens[part] = nil
+		end)
+	end)
+
+	local glowFound = part:FindFirstChild(GLOW)
+	if glowFound ~= nil and glowFound:IsA("Light") then
+		local light = glowFound :: Light
+		local brightness = glowBrightness[light] or light.Brightness
+		glowBrightness[light] = brightness
+		if not light.Enabled then
+			light.Brightness = 0
+		end
+		light.Enabled = true
+		play(light, flashIn, { Brightness = brightness }, function()
+			play(light, flashOut, { Brightness = 0 }, function()
+				light.Enabled = false
+				light.Brightness = brightness
+				glowBrightness[light] = nil
+			end)
+		end)
+	end
+
+	local rest = plateRest[part] or part.CFrame
+	plateRest[part] = rest
+	local size = plateSize[part] or part.Size
+	plateSize[part] = size
+	local sink = part:GetAttribute(SINK_ATTRIBUTE)
+	local depth = if type(sink) == "number" and sink == sink and sink > 0 then sink else 0
+	-- Vers le bas du monde, quelle que soit la rotation de la plaque (comme l'enfoncement d'avant).
+	local down = TweenInfo.new(fx.SinkDown, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	local up = TweenInfo.new(fx.SinkUp, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+	play(part, down, { CFrame = CFrame.new(0, -depth, 0) * rest, Size = squashed(size, fx.Squash) }, function()
+		play(part, up, { CFrame = rest, Size = size }, function()
+			part.CFrame = rest
+			part.Size = size
+			plateRest[part] = nil
+			plateSize[part] = nil
+		end)
+	end)
+end
+
 -- Gerbe de BurstPoint, Glow un instant, plaque enfoncée de SinkDepth puis remise en place.
 local function burst(pad: Instance): Vector3
 	local plateFound = pad:FindFirstChild(PLATE, true)
@@ -294,6 +398,11 @@ local function burst(pad: Instance): Vector3
 		return position
 	end
 	local part = plate :: BasePart
+	local tweenService = TweenService
+	if PAD_FX and tweenService then
+		animatePlate(part, tweenService)
+		return position
+	end
 	local glow = part:FindFirstChild(GLOW)
 	if glow ~= nil and glow:IsA("Light") then
 		local light = glow :: Light

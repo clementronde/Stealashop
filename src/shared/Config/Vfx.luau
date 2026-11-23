@@ -59,6 +59,36 @@ local Vfx = {
 		-- Sans compteur Cash à l'écran : le billet monte de RiseHeight et s'efface.
 		RiseHeight = 4, -- V0
 		Spin = 720, -- V0 : degrés par seconde de rotation en vol
+		-- a401 (vague GC4), V0 (fiche vidéo de Cantin, 23/11 : docs/references/Encaissement-Base.md, section 6) : billets
+		-- en fontaine. Le billet n sort à (n - 1) × Stagger s, jaillit en PopTime s (Quad Out), flotte HoverTime s en
+		-- dérivant de Drift studs vers le haut et l'extérieur (Sine Out), puis vole FlyTime ± FlyJitter s (Quad In) vers
+		-- le compteur : un billet arrive toutes les Stagger s, dans l'ordre ; chaque arrivée est signalée
+		-- (VfxController.OnCollectArrive). Enabled = false : jaillissement de tous ensemble, comme avant (PopTime, FlyTime
+		-- de Clément plus haut).
+		Fountain = {
+			Enabled = true, -- a401 : interrupteur (false = comme avant)
+			PopTime = 0.13,
+			HoverTime = 0.2,
+			Drift = { 0.3, 0.5 },
+			FlyTime = 0.35,
+			FlyJitter = 0.02,
+		},
+	},
+
+	-- a401 (vague GC4), V0 (fiche vidéo de Cantin, 23/11, section 4 ; note de Clément case-ramassage.md pour
+	-- l'enfoncement) : la plaque CollectPad_xx au ramassage (DisplayController, chez tous les joueurs). Plate passe au
+	-- blanc (FlashColor) en FlashIn s (Quad Out) puis revient à sa couleur en FlashOut s (Linear) ; Glow monte à sa
+	-- Brightness en FlashIn s puis descend à 0 en FlashOut s ; la plaque descend de SinkDepth (attribut de Clément) en
+	-- SinkDown s (Quad Out) en s'élargissant de Squash sur ses deux grands côtés, puis remonte en SinkUp s (Back Out).
+	-- Tout revient à l'état d'origine à la fin. Enabled = false : Glow allumé 0,35 s et enfoncement sec, comme avant.
+	CollectPad = {
+		Enabled = true, -- a401 : interrupteur (false = comme avant)
+		FlashColor = Color3.new(1, 1, 1),
+		FlashIn = 0.05,
+		FlashOut = 0.3,
+		SinkDown = 0.06,
+		SinkUp = 0.25,
+		Squash = 1.08,
 	},
 
 	-- 3. Arrivée en zone safe avec un colis (remote BoxSecured, UiFeelController.Escape).

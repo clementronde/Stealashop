@@ -44,6 +44,11 @@
 --   VfxController.Collect(amount, position)         billets et pièces depuis `position`
 --   VfxController.TruckDust(model)                  poussière au pivot du camion
 --   VfxController.CollectCount(amount) -> number    billets et pièces pour ce montant (0 si effets coupés)
+--   VfxController.OnCollectStart(fn(total, wave)) -> déconnexion
+--   VfxController.OnCollectArrive(fn(rank, total, wave)) -> déconnexion
+--       a401 (vague GC4, vidéo de Cantin) : départ des `total` billets d'un ramassage (`wave` : numéro de la vague),
+--       puis chaque billet arrivé au compteur (ou fini de monter sans compteur) : rang 1 à `total`, dans l'ordre
+--       d'arrivée. Billets en fontaine (Vfx.Collect.Fountain) : un par Stagger s, dérive, vol presque fixe.
 --   VfxController.GetState() -> { Flyers, Bursts, ChaseGuard, Rarest }   (banc, barre de commande)
 
 local CollectionService = game:GetService("CollectionService")
@@ -78,7 +83,15 @@ type Flyer = {
 	Age: number,
 	Spin: Vector3,
 	Rise: boolean,
+	-- a401 : vague de billets (un ramassage) et fontaine (Vfx.Collect.Fountain) : sortie à Delay s, dérive Drift.
+	Wave: number,
+	Fountain: boolean,
+	Shown: boolean,
+	Drift: Vector3,
 }
+
+-- a401 : billets d'un ramassage encore en vol (rang de la prochaine arrivée).
+type Wave = { total: number, arrived: number }
 
 type RarestEntry = {
 	Gui: BillboardGui,
@@ -117,6 +130,13 @@ local chaseCopy: Highlight? = nil
 local rarest: { [Instance]: RarestEntry } = {} -- [parcelle] = billboard posé
 local sinceRarest = math.huge
 local clock = 0
+-- a401 : vagues de billets en vol et écouteurs du départ et de chaque arrivée.
+local waves: { [number]: Wave } = {}
+local waveCount = 0
+type StartListener = (total: number, wave: number) -> ()
+type ArriveListener = (rank: number, total: number, wave: number) -> ()
+local startListeners: { StartListener } = {}
+local arriveListeners: { ArriveListener } = {}
 
 local function sayOnce(key: string, message: string)
 	if IS_STUDIO and not said[key] then
@@ -343,6 +363,10 @@ function VfxController.Collect(amount: number, position: Vector3): number
 		return 0
 	end
 	local rise = cashTarget() == nil
+	local fountain = spec.Fountain.Enabled
+	waveCount += 1
+	local wave = waveCount
+	local made = 0
 	for index = 1, count do
 		local isCoin = (index % 2 == 0 and spec.CoinShare > 0) or bill == nil
 		local source = if isCoin and coin then coin else bill
@@ -353,23 +377,84 @@ function VfxController.Collect(amount: number, position: Vector3): number
 		local parts = prepare(copy)
 		local angle = rng:NextNumber(0, 2 * math.pi)
 		local spread = rng:NextNumber(0, spec.PopSpread)
-		local pop = position
-			+ Vector3.new(math.cos(angle) * spread, rng:NextNumber(spec.PopHeight[1], spec.PopHeight[2]), math.sin(angle) * spread)
+		local outward = Vector3.new(math.cos(angle), 0, math.sin(angle))
+		local pop = position + outward * spread + Vector3.new(0, rng:NextNumber(spec.PopHeight[1], spec.PopHeight[2]), 0)
+		local drift = Vector3.new(0, 0, 0)
+		local fly = rng:NextNumber(spec.FlyTime[1], spec.FlyTime[2])
+		if fountain then
+			-- a401 : dérive vers le haut et l'extérieur, vol presque fixe (arrivées dans l'ordre)
+			local f = spec.Fountain
+			drift = (outward + Vector3.new(0, 1, 0)).Unit * rng:NextNumber(f.Drift[1], f.Drift[2])
+			fly = f.FlyTime + rng:NextNumber(-f.FlyJitter, f.FlyJitter)
+		end
 		copy:PivotTo(CFrame.new(position))
-		copy.Parent = Workspace
+		if not fountain then
+			copy.Parent = Workspace -- fontaine : posé à sa sortie (stepFlyer), un par Stagger s
+		end
+		made += 1
 		table.insert(flyers, {
 			Model = copy,
 			Parts = parts,
 			Start = position,
 			Pop = pop,
 			Delay = (index - 1) * spec.Stagger,
-			Fly = rng:NextNumber(spec.FlyTime[1], spec.FlyTime[2]),
+			Fly = fly,
 			Age = 0,
 			Spin = Vector3.new(rng:NextNumber(-1, 1), rng:NextNumber(-1, 1), rng:NextNumber(-1, 1)),
 			Rise = rise,
+			Wave = wave,
+			Fountain = fountain,
+			Shown = not fountain,
+			Drift = drift,
 		})
 	end
-	return count
+	if made > 0 then
+		waves[wave] = { total = made, arrived = 0 }
+		for _, listener in table.clone(startListeners) do
+			task.spawn(listener, made, wave)
+		end
+	end
+	return made
+end
+
+function VfxController.OnCollectStart(listener: StartListener): () -> ()
+	table.insert(startListeners, listener)
+	return function()
+		local index = table.find(startListeners, listener)
+		if index then
+			table.remove(startListeners, index)
+		end
+	end
+end
+
+function VfxController.OnCollectArrive(listener: ArriveListener): () -> ()
+	table.insert(arriveListeners, listener)
+	return function()
+		local index = table.find(arriveListeners, listener)
+		if index then
+			table.remove(arriveListeners, index)
+		end
+	end
+end
+
+-- a401 : un billet de la vague `id` est arrivé (ou a disparu) : rang dans l'ordre d'arrivée, signalé aux écouteurs.
+local function arrived(id: number)
+	local wave = waves[id]
+	if wave == nil then
+		return
+	end
+	wave.arrived += 1
+	local rank, total = wave.arrived, wave.total
+	if rank >= total then
+		waves[id] = nil
+	end
+	for _, listener in table.clone(arriveListeners) do
+		task.spawn(listener, rank, total, id)
+	end
+end
+
+local function sineOut(t: number): number
+	return math.sin(t * math.pi / 2)
 end
 
 local function quadOut(t: number): number
@@ -381,34 +466,52 @@ local function stepFlyer(flyer: Flyer, dt: number): boolean
 	local spec = Vfx.Collect
 	flyer.Age += dt
 	local t = flyer.Age
+	if flyer.Fountain then
+		-- a401 : fontaine, le billet sort à son tour (Delay) ; ensuite le temps part de sa sortie.
+		t -= flyer.Delay
+		if t < 0 then
+			return true
+		end
+		if not flyer.Shown then
+			flyer.Shown = true
+			flyer.Model.Parent = Workspace
+		end
+	end
 	if flyer.Model.Parent == nil then
+		arrived(flyer.Wave) -- détruit ailleurs : compté quand même (le HUD n'attend pas un billet perdu)
 		return false
 	end
 	local spin = math.rad(spec.Spin) * t
 	local rotation = CFrame.Angles(flyer.Spin.X * spin, flyer.Spin.Y * spin, flyer.Spin.Z * spin)
-	if t < spec.PopTime then
-		local p = flyer.Start:Lerp(flyer.Pop, quadOut(t / spec.PopTime))
+	local popTime = if flyer.Fountain then spec.Fountain.PopTime else spec.PopTime
+	if t < popTime then
+		local p = flyer.Start:Lerp(flyer.Pop, quadOut(t / popTime))
 		flyer.Model:PivotTo(CFrame.new(p) * rotation)
 		return true
 	end
-	if t < spec.PopTime + flyer.Delay then
-		flyer.Model:PivotTo(CFrame.new(flyer.Pop) * rotation)
+	-- Attente au point haut : fontaine, HoverTime s en dérivant ; sinon immobile, Delay s (départs décalés).
+	local wait = if flyer.Fountain then spec.Fountain.HoverTime else flyer.Delay
+	if t < popTime + wait then
+		local p = flyer.Pop + flyer.Drift * sineOut((t - popTime) / math.max(wait, 1e-3))
+		flyer.Model:PivotTo(CFrame.new(p) * rotation)
 		return true
 	end
-	local f = (t - spec.PopTime - flyer.Delay) / flyer.Fly
+	local from = flyer.Pop + flyer.Drift
+	local f = (t - popTime - wait) / flyer.Fly
 	if f >= 1 then
 		flyer.Model:Destroy()
+		arrived(flyer.Wave)
 		return false
 	end
 	local eased = f * f -- Quad In
 	local target = if flyer.Rise then nil else cashTarget()
 	if target == nil then
-		target = flyer.Pop + Vector3.new(0, spec.RiseHeight, 0)
+		target = from + Vector3.new(0, spec.RiseHeight, 0)
 		for _, part in flyer.Parts do
 			part.LocalTransparencyModifier = eased
 		end
 	end
-	flyer.Model:PivotTo(CFrame.new(flyer.Pop:Lerp(target :: Vector3, eased)) * rotation)
+	flyer.Model:PivotTo(CFrame.new(from:Lerp(target :: Vector3, eased)) * rotation)
 	pcall(function()
 		flyer.Model:ScaleTo(1 + (spec.EndScale - 1) * eased)
 	end)
