@@ -38,11 +38,16 @@ local Reveal = {
 	-- Après Land, l'objet local reste en place jusqu'au RevealEnded du serveur (l'objet passe alors sur la tête de
 	-- l'ouvreur), au plus HoldMax s.
 	HoldMax = 2,
-	StartScale = 1, -- taille de départ de la croissance (Scale du serveur = taille finale) ; plus petit si Scale l'est
+	-- Taille de départ de la croissance (Scale du serveur = taille finale) ; plus petit si Scale l'est. a418, V0 (décision de
+	-- Cantin 23/11, variante A2) : 2 (avant 1) = la taille de 10 kg (Weight.Reference) : comme avant, un objet de 10 kg ou
+	-- moins ne grandit pas, la dernière silhouette de l'ouverture est déjà à sa taille, et la caméra ne fait pas 7 → 14 studs.
+	StartScale = 2,
 	PopFrom = 0.2,
 
 	-- Caméra de l'ouvreur (repli codé ; avec l'animation, elle suit CameraPart, écart à ItemAnchor × taille).
 	Camera = {
+		-- a418 (variante A2) : Distance, Height et MinScale inchangés ; l'objet de base (×2) met la caméra à 14 studs, près de
+		-- celle de l'ouverture (Config/Unbox.New.Camera : 11 studs) ; un mur ou un rayon la rapproche (Unbox.Clear, L-234).
 		Distance = 7, -- devant l'objet, côté allée, pour une taille 1
 		Height = 2.2, -- au-dessus du bas de l'objet, pour une taille 1
 		LookHeight = 0.55, -- point visé : en part de la hauteur de l'objet
@@ -157,7 +162,9 @@ local Reveal = {
 		MaxPieceHeight = 9,
 		Lift = 0.15, -- studs : bas de la boîte de l'objet au-dessus de l'emplacement (la planche qui le porte ne casse pas)
 		Margin = 0.05, -- studs : jeu de contact
-		MinScale = 1.05, -- en dessous de cette taille finale, rien ne casse (l'objet tient dans son rayon)
+		-- En dessous de cette taille finale, rien ne casse (l'objet tient dans son rayon). a418, V0 (décision de Cantin 23/11,
+		-- variante A2) : 2,1 (avant 1,05) garde les mêmes objets qu'avant (rien ne casse sous ≈ 11,6 kg ; avant ≈ 11,2 kg).
+		MinScale = 2.1,
 		MaxPieces = 24, -- morceaux qui volent au plus (les autres pièces touchées sont seulement cachées)
 		LowEndPieces = 6, -- appareil faible (ShatterController.IsLowEnd)
 		SpeedUp = { 8, 18 }, -- studs/s vers le haut, au départ
