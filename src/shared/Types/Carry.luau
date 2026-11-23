@@ -66,7 +66,7 @@ export type Payload = PlayerItemPayload | NPCItemPayload
 --               raison « Deposited », après le transfert entre les deux profils) ;
 --   "Failed"    échec : l'objet retourne d'où il vient, remis par le service
 --               d'origine (StoreHeistService le remet sur son rayon) ;
---   "Dropped"   coup de batte (DEV-048, raison « Bat »), lâcher (« Released »), ou porteur d'un objet
+--   "Dropped"   coup de batte (DEV-048, raison « Bat ») ou porteur d'un objet
 --               NPCItem attrapé (L-112, raison « Caught ») : l'objet est tombé au sol. Il n'est pas
 --               perdu : CarryService le garde (voir CarryService.Drop et CarryService.Fail).
 export type EndResult = "Consumed" | "Failed" | "Dropped"

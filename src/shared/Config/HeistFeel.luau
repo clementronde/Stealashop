@@ -52,7 +52,7 @@ local HeistFeel = {
 	ChaseMask = {
 		KeepScreens = { "UI_Chase" }, -- RUN!, les bords
 		Hud = "UI_HUD",
-		KeepHud = { "HeistTimer", "DropButton" }, -- le chrono et « Lâcher » (V0 : GuardMeter est caché depuis le 13/11)
+		KeepHud = { "HeistTimer" }, -- le chrono (V0 : GuardMeter est caché depuis le 13/11)
 	},
 	-- Écrans jamais masqués (messages et alertes du serveur, tutoriel, admin) : V0.
 	NeverMask = { "UI_Notify", "UI_Toast", "UI_TheftAlert", "UI_Tutorial", "UI_Admin", "UI_Loading" },

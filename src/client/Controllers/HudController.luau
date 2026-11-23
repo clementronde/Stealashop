@@ -466,7 +466,7 @@ local function updateHeistTimer(current: Hud)
 	local now = Workspace:GetServerTimeNow()
 	-- Cantin, 2026-11-13 : jamais « HEIST » pendant « RUN! » (UI_Chase.RunBanner est au même endroit, en haut
 	-- au centre), et plus jamais pour ce vol une fois RUN! apparu : un chrono vu pendant une poursuite reste
-	-- masqué jusqu'à sa fin, même après la poursuite (capture, objet lâché).
+	-- masqué jusqu'à sa fin, même après la poursuite (capture, objet tombé).
 	local api = chase
 	local hidden = api ~= nil and api.IsChased()
 	local endsAt: number? = nil
