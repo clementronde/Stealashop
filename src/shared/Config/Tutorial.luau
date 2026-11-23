@@ -65,7 +65,7 @@ local Steps: { Step } = {
 	{ Index = 5, Id = "DisplayItem", At = 29, Goal = "Antivol de 5 s, reprendre l'objet (en main), le poser sur un présentoir (5 $/s), premier encaissement", Bubble = "Display your item to earn cash!" },
 	{ Index = 6, Id = "Train", At = 49, Goal = "Le tapis s'allume, TrainDuration (10 s, vague 61) d'entraînement guidé (plus de banc, v2)", Bubble = "Train on the treadmill" },
 	{ Index = 7, Id = "BuyTool", At = 62, Goal = "Le jeu donne le prix de la clé à molette (ToolGift, vague 61), flèche vers la boutique d'armes, l'acheter", Bubble = "Buy the Wrench!" },
-	{ Index = 8, Id = "BuyAura", At = 72, Goal = "Le jeu donne le prix de la première aura (AuraGift, vague 61), flèche vers la boutique d'auras, l'acheter", Bubble = "An aura multiplies your damage!" },
+	{ Index = 8, Id = "BuyAura", At = 72, Goal = "Le jeu donne le prix de la première aura (AuraGift, vague 61), flèche vers la boutique d'auras, l'acheter", Bubble = "An aura multiplies your strength!" },
 	{ Index = 9, Id = "GoToZone2", At = 82, Goal = "Objectif affiché : la zone 2 (Speed 3K, Strength 10), passer son arche", Bubble = "Next goal: Zone 2!" },
 	-- Étape 10 : message de fin du bouclier débutant (texte du doc, voir ShieldEndMessage). Vague 61 : sans
 	-- WaitShieldEnd, elle ne se joue plus (passage immédiat à l'étape 11, ou fin sans bot) ; gardée pour Tutorial.Step.
@@ -112,7 +112,7 @@ local Todos: { [number]: Todo } = {
 	[3] = { Do = "Open a box on the shelf, grab the item" },
 	[4] = { Do = "Run back to your shop with it" },
 	[5] = { Do = "Display it, then step on the green pad" },
-	[6] = { Do = "Stand on the treadmill", Need = "Train: {have} / {need} to get faster", NeedFormat = "Seconds" },
+	[6] = { Do = "Stand on the treadmill", Need = "Train {have} / {need}", NeedFormat = "Seconds" },
 	[7] = { Do = "Go to the Weapon Shop and buy it", Need = "Earn cash: {have} / {need} to buy the " .. TOOL_NAME, NeedFormat = "Money" },
 	[8] = { Do = "Go to the Aura Shop and buy one", Need = "Earn cash: {have} / {need} to buy an Aura", NeedFormat = "Money" },
 	-- Vague 61 (a199) : plus de « Speed: 12 / 3K » à l'étape 9, lu comme une Speed à atteindre avant d'y aller (l'arche ne
@@ -130,15 +130,15 @@ local Tasks: { Task } = {
 	{ Id = "Display", Steps = { 5 }, Goal = "Display your item", Why = "Displayed items earn cash every second" },
 	{ Id = "Train", Steps = { 6 }, Goal = "Train your Speed", Why = "Speed helps you escape the guards" },
 	{ Id = "BuyTool", Steps = { 7 }, Goal = "Buy the " .. TOOL_NAME, Why = "A better tool breaks windows faster" },
-	{ Id = "BuyAura", Steps = { 8 }, Goal = "Buy an Aura", Why = "An aura multiplies your damage" },
-	{ Id = "Zone2", Steps = { 9 }, Goal = "Reach Zone 2", Why = "Zone 2 shops have better items" },
+	{ Id = "BuyAura", Steps = { 8 }, Goal = "Buy an Aura", Why = "An aura multiplies your strength" },
+	{ Id = "Zone2", Steps = { 9 }, Goal = "Reach Zone 2", Why = "Zone 2 stores have better items" },
 }
 -- Vague 61 (a199) : sans attente du bouclier, l'étape 10 ne se joue plus : pas de tâche « Get ready for PvP ».
 if WAIT_SHIELD_END then
 	table.insert(Tasks, { Id = "Shield", Steps = { 10 }, Goal = "Get ready for PvP", Why = "Soon other players can bonk you" })
 end
 table.insert(Tasks, { Id = "RobBot", Steps = { 11, 12, 14 }, Goal = "Rob another shop", Why = "Anyone can rob anyone" })
-table.insert(Tasks, { Id = "BringStolen", Steps = { 13 }, Goal = "Bring the stolen item home", Why = "Then it is yours" })
+table.insert(Tasks, { Id = "BringStolen", Steps = { 13 }, Goal = "Bring the stolen item home", Why = "Then it's yours!" })
 
 local Tutorial = {
 	-- V0 : interrupteur. false = aucun tutoriel : TutorialService ne pose aucune accroche, ne

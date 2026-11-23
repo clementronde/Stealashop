@@ -71,7 +71,7 @@ local Quests = {
 			GoalMinutes = 15, -- V0 proposé (Cantin, 20/11) : 15 min de revenus
 			Text = "Earn %s",
 			Reward = { Kind = "Boost", Minutes = 10 }, -- V0 proposé (Cantin, 20/11)
-			RewardText = "x2 cash 10 min",
+			RewardText = "×2 Cash for 10 min",
 			Weight = 3, -- V0 proposé (Cantin, 20/11)
 			Icon = "QUEST_EarnCash",
 		},
@@ -89,7 +89,7 @@ local Quests = {
 			Id = "StealPlayer",
 			Event = "StealPlayer",
 			Goal = 1, -- V0 proposé (Cantin, 20/11)
-			Text = "Steal %s item from a player",
+			Text = "Steal an item from a player", -- a412 : Goal = 1 (sinon remettre « Steal %s items… »)
 			Reward = { Kind = "Box", Rank = "Top" }, -- V0 proposé (Cantin, 20/11) : plus haute rareté de la zone
 			RewardText = "Best box",
 			Weight = 1, -- V0 proposé (Cantin, 20/11)

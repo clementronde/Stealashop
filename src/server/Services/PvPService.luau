@@ -376,9 +376,9 @@ local MESSAGES: { [string]: string } = {
 	Stealing = "%s is stealing your %s! Hit them with your bat!",
 	Grabbed = "You grabbed the %s: run back to your shop!",
 	Stolen = "You stole the %s: %s!",
-	StolenToInventory = "You stole the %s: it went to your inventory (your stands are full).",
+	StolenToInventory = "You stole the %s: it's in your inventory (displays full).",
 	Robbed = "%s stole your %s!",
-	Returned = "Your %s is back on its stand!",
+	Returned = "Your %s is back on its display!",
 	Lost = "The %s went back to its owner.",
 	-- Défense par le propriétaire (V0, à valider par Clément) :
 	KickedOut = "Kicked out! You can rob this shop again in %ds.", -- à l'intrus frappé par le propriétaire
@@ -391,7 +391,7 @@ local MESSAGES: { [string]: string } = {
 	DoorBack = "The door is fixed: you were moved outside.",
 	NotYourShop = "Only the owner can be inside this shop.",
 	-- Vague 31 (L-112), objet sous antivol volé au sol, V0 proposés, absents du doc :
-	StolenLocked = "You stole the %s! Put it down in your shop: its anti-theft starts there.",
+	StolenLocked = "You stole the %s! Put it down in your shop to secure it.",
 	FloorReturned = "Your %s is back in your shop!",
 	FullInventory = "Your inventory is full: make room before stealing.",
 	-- Vague 44 (a152, HeldItem.DepositToHand), V0 proposés, absents du doc :

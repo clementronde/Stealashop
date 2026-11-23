@@ -138,7 +138,7 @@ local BODY = "Body" -- corps de l'hexagone dans chaque calque (copié pour l'éc
 -- V0 proposés, absents du doc : textes de l'écran, en anglais (L-036), repris du prototype de Clément
 -- (tools/clement/skilltree_proto.luau) et de sa note.
 local LEVEL_TEXT = "Lv %d/%d" -- Info.Level
-local NODE_LEVEL_TEXT = "Level %d / %d" -- InfoPanel.NodeLevel
+local NODE_LEVEL_TEXT = "Lv %d/%d" -- InfoPanel.NodeLevel
 local EFFECT_TEXT = "%s  ▶  %s" -- NodeEffect : actuel, suivant
 local EFFECT_MAX_TEXT = "%s  (MAX)"
 local NO_LABEL = "—" -- rien de décidé (note de Clément)

@@ -121,9 +121,9 @@ local MESSAGES = {
 	NoShop = "You don't have a shop yet: wait for one to free up.",
 	Held = "This item is being stolen: hit the thief to get it back!",
 	-- Vague 31 (L-112), V0 proposé, absent du doc : objet sous antivol, à poser au sol avant un présentoir.
-	AntiTheft = "Put this item down in your shop first: it can go on a display once UNLOCKED!",
+	AntiTheft = "Put it down in your shop first: display it once UNLOCKED!",
 	-- Vague 63 (a206), V0 proposé, absent du doc : objet retiré d'un présentoir sans main libre, rangé dans la réserve.
-	ToReserve = "%s removed from its display: moved to your reserve", -- vague 63 : mains prises
+	ToReserve = "%s removed from its display: moved to your inventory", -- vague 63 : mains prises
 }
 
 local IS_STUDIO = RunService:IsStudio()

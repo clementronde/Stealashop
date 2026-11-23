@@ -260,7 +260,7 @@ local GHOST_NAME = "BoxGhost"
 -- puissance : sa carte dit son étourdissement (Config/Bat).
 local COUNTER_TEXT = "%d / %d items"
 local DISPLAYS_TEXT = "%d / %d displays"
-local TOOL_STAT = "Power %s"
+local TOOL_STAT = "Strength %s"
 local BAT_STAT = "Stun %ss"
 local TIMER_TEXT = "%d:%02d"
 -- Vague 33, V0 proposés, absents du doc : textes des cartes de potion.

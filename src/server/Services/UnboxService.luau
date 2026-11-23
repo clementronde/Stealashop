@@ -291,7 +291,7 @@ local MESSAGES = {
 	-- Vague 44 (a152), V0 proposés, absents du doc : l'objet repris après l'antivol (jamais posé tout seul).
 	ItemToHand = "%s is in your hand: put it on a display!",
 	ItemToInventory = "%s is in your inventory.",
-	ItemBackToInventory = "An item of yours didn't fit in this shop: it's back in your inventory.",
+	ItemBackToInventory = "An item didn't fit in your shop: it's in your inventory.",
 }
 -- Catégorie des Notify d'information (objet gardé…) ; les refus partent en « Warning ».
 local INFO_KIND = "Info"

@@ -150,7 +150,7 @@ local FortuneTower = {
 	-- Annonces à tout le serveur (Notify, UI_Toast), en anglais (L-036) ---------------------------------
 	NotifyKind = "Announce", -- comme l'annonce d'un objet Légendaire et plus (Config/Unbox.AnnounceKind)
 	Messages = {
-		Spawned = "A giant vault appeared at the Fortune Tower (Zone 6)! Break it together!",
+		Spawned = "A giant vault appeared at the Fortune Tower! Break it together!",
 		Opened = "The Fortune vault is open: grab the loot!",
 		Sealed = "The Fortune vault sealed itself. Too slow!",
 		SealedNight = "Night is coming: the Fortune vault sealed itself.",

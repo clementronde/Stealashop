@@ -151,7 +151,7 @@ local Passes: { Pass } = {
 	{ Key = "VIP", Id = 0, Order = 3, Price = 249, Ready = false, CardColor = Color3.fromHex("8A5CF0"), DisplayName = "VIP", Effect = "+10% income, aura, chat tag", Icon = "UI_Icon_GP_VIP" },
 	{ Key = "AutoCollect", Id = 0, Order = 4, Price = 199, Ready = true, CardColor = Color3.fromHex("FFC928"), DisplayName = "Auto Collect", Effect = "Cash collects itself, anywhere", Icon = "UI_Icon_GP_AutoCollect" },
 	{ Key = "FastOpen", Id = 0, Order = 5, Price = 299, Ready = true, CardColor = Color3.fromHex("2FA8F0"), DelayFactor = 0.5, DisplayName = "Fast Open", Effect = "Anti-theft 2× shorter", Icon = "UI_Icon_GP_FastOpen" },
-	{ Key = "ExtraStands", Id = 0, Order = 6, Price = 349, Ready = true, CardColor = Color3.fromHex("E05AD8"), Stands = 4, DisplayName = "+4 Displays", Effect = "4 extra display stands", Icon = "UI_Icon_GP_Displays" },
+	{ Key = "ExtraStands", Id = 0, Order = 6, Price = 349, Ready = true, CardColor = Color3.fromHex("E05AD8"), Stands = 4, DisplayName = "+4 Displays", Effect = "4 extra displays", Icon = "UI_Icon_GP_Displays" },
 	-- Texte V0 proposé, absent de la maquette.
 	{ Key = "HydraulicGloves", Id = 0, Order = 7, Price = 499, Ready = false, DisplayName = "Hydraulic Gloves", Effect = "Exclusive tool: 2.5× your best tool", Icon = "UI_Icon_GP_HydraulicGloves" },
 }
@@ -210,7 +210,7 @@ for _, entry in
 		{ Key = "SpeedBoost", Order = 1, DisplayName = "×2 Speed", Effect = "×2 speed on the treadmill", Icon = "UI_Icon_SpeedBoost", CardColor = Color3.fromHex("F2553A") },
 		-- Vague 71 (a238, L-213 point 1d) : nom de la carte V0 proposé (Clément voulait un texte, pas « zZz ») ;
 		-- le bouton du HUD garde « zZz ».
-		{ Key = "SleepGuards", Order = 2, DisplayName = "Sleeping Guards 60s", Effect = "Guards & police sleep 60 s", Icon = "UI_Icon_Sleep", CardColor = Color3.fromHex("5B4BE0") },
+		{ Key = "SleepGuards", Order = 2, DisplayName = "Sleeping Guards 60s", Effect = "Guards & police sleep 60s", Icon = "UI_Icon_Sleep", CardColor = Color3.fromHex("5B4BE0") },
 	}
 do
 	for _, boost in Boosts.List do
@@ -391,7 +391,7 @@ local Monetization = {
 		-- Textes V0 (anglais) : acheteur, « ×8 », durée ; Queued ajoute le facteur en cours.
 		Messages = {
 			Started = "%s gave the whole server %s LUCK for %s!",
-			Queued = "%s gave the whole server %s LUCK for %s! It starts after the current %s.",
+			Queued = "%s gave the server %s LUCK for %s! Starts after the current one.",
 		},
 		-- a285 (21/11, L-240 point 3) : la chance en cours dans UI_EventBanner (Banner.Card.Title, Effect, Timer),
 		-- quand aucun événement live n'y est déjà (EventBannerController). Textes de L-240 (« SERVER LUCK ×2 »,

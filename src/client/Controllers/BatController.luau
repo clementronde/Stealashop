@@ -28,7 +28,7 @@
 --     PvP.AutoEquipBatOnAlert) : la batte s'équipe toute seule, si le joueur ne porte rien.
 --
 -- Lu sur les objets (rien n'est cherché par chemin) : attributs BatTool (Tool, ToolService),
--- Carrying (Player, CarryService), BatStun (Player, BatService), DropId, Tier et BatDrop (colis au
+-- Carrying (Player, CarryService), BatStun (Player, BatService), DropId, BoxRarity et BatDrop (colis au
 -- sol, CarryService) ; ItemId, MutationSize, MutationEffect (objet NPCItem au sol, L-112 : son nom sur l'invite). API (client) : aucune.
 
 local Players = game:GetService("Players")
@@ -37,7 +37,6 @@ local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = Shared:WaitForChild("Config")
-local Balance = require(Config:WaitForChild("Balance"))
 local Bat = require(Config:WaitForChild("Bat"))
 local Items = require(Config:WaitForChild("Items"))
 local Mutations = require(Config:WaitForChild("Mutations"))
@@ -70,7 +69,6 @@ local STUN_ATTRIBUTE = "BatStun"
 local CARRYING_ATTRIBUTE = "Carrying"
 local DROPS_FOLDER = "CarryDrops"
 local DROP_ID_ATTRIBUTE = "DropId"
-local TIER_ATTRIBUTE = "Tier"
 local BAT_DROP_ATTRIBUTE = "BatDrop"
 -- Contrat 2.4.
 local SWING_ANIMATION = "SwingBat"
@@ -79,7 +77,10 @@ local KNOCKBACK_ANIMATION = "Knockback"
 local GRAB_ANIMATION = "Grab"
 local IMPACT_MARKER = "Impact"
 local PROMPT_NAME = "GrabPrompt"
-local BOX_SUFFIX = "Box" -- « Premium Box » (L-036, comme le camion)
+local BOX_SUFFIX = "Box" -- « Epic Box » (L-036, comme le camion)
+-- a412 : « Epic Box » d'après la rareté du colis (attribut BoxRarity, comme les rayons), sinon « Box » ; plus de
+-- type Standard / Premium / Luxe à l'écran. Id de rareté = son DisplayName anglais (Config/Rarities).
+local BOX_RARITY_ATTRIBUTE = "BoxRarity"
 
 -- V0 proposé, absent du doc : invite visible un demi-stud avant la portée du serveur (comme les rayons).
 local PROMPT_DISTANCE_MARGIN = 0.5
@@ -300,12 +301,10 @@ local function trackDrop(instance: Instance)
 	end
 	local model = instance :: Model
 	local dropId = model:GetAttribute(DROP_ID_ATTRIBUTE)
-	local tier = model:GetAttribute(TIER_ATTRIBUTE)
 	local part = anchorOf(model)
 	if type(dropId) ~= "string" or part == nil then
 		return
 	end
-	local info = if type(tier) == "string" then Balance.Heist.BoxTiers[tier] else nil
 	local watch: DropWatch = { Model = model, DropId = dropId, Prompt = nil }
 	drops[instance] = watch
 	local prompt = Instance.new("ProximityPrompt")
@@ -318,7 +317,8 @@ local function trackDrop(instance: Instance)
 		local mutation = { Size = model:GetAttribute("MutationSize"), Effect = model:GetAttribute("MutationEffect") }
 		prompt.ObjectText = Mutations.ItemName(item.DisplayName, mutation)
 	else
-		prompt.ObjectText = if info then `{info.DisplayName} {BOX_SUFFIX}` else BOX_SUFFIX
+		local rarity = model:GetAttribute(BOX_RARITY_ATTRIBUTE)
+		prompt.ObjectText = if type(rarity) == "string" then `{rarity} {BOX_SUFFIX}` else BOX_SUFFIX
 	end
 	prompt.HoldDuration = Bat.DroppedGrabTime
 	prompt.MaxActivationDistance = math.max(Bat.DroppedGrabMaxDistance - PROMPT_DISTANCE_MARGIN, 1)

@@ -222,7 +222,7 @@ local REGEN_SYNC_INTERVAL = 1 / ((Balance.Window :: any).RegenSyncHz or Balance.
 local DOOR_BURST = 2
 local IS_STUDIO = RunService:IsStudio()
 -- Chrono de casse (L-074) : message quand la vitre se répare faute d'être cassée à temps. V0, en anglais (L-036).
-local BREAK_TOO_SLOW = "Too slow! The glass repaired itself. Hit harder, or bring friends!"
+local BREAK_TOO_SLOW = "Too slow! The glass repaired itself. Hit harder!"
 
 local WindowService = {}
 

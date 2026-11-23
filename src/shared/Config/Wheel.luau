@@ -50,7 +50,7 @@ local Wheel = {
 	Sectors = {
 		{ Label = "5 MIN CASH", Icon = "WHEEL_Cash", Weight = 30, Prize = { Kind = "Cash", Minutes = 5 } }, -- V0 proposé (Cantin, 20/11)
 		{ Label = "BOX", Icon = "WHEEL_Box", Weight = 20, Prize = { Kind = "ZoneBox", Rule = "BestZone" } }, -- V0 proposé (Cantin, 20/11) ; lot : validé par Cantin, 22/11 (a309), la règle des 15 min (avant : Box Rank 1)
-		{ Label = "x2 CASH 10 MIN", Icon = "WHEEL_Boost", Weight = 15, Prize = { Kind = "Boost", Minutes = 10 } }, -- V0 proposé (Cantin, 20/11)
+		{ Label = "×2 CASH 10 MIN", Icon = "WHEEL_Boost", Weight = 15, Prize = { Kind = "Boost", Minutes = 10 } }, -- V0 proposé (Cantin, 20/11)
 		{ Label = "MONEY POTION", Icon = "WHEEL_PotionMoney", Weight = 5, Prize = { Kind = "Potion", Potion = "Money", Count = 1 } }, -- V0 proposé (Cantin, 20/11)
 		{ Label = "15 MIN CASH", Icon = "WHEEL_Cash", Weight = 15, Prize = { Kind = "Cash", Minutes = 15 } }, -- V0 proposé (Cantin, 20/11)
 		{ Label = "RARE BOX", Icon = "WHEEL_BoxRare", Weight = 7, Prize = { Kind = "ZoneBox", Rule = "NextZone" } }, -- V0 proposé (Cantin, 20/11) ; lot : validé par Cantin, 22/11 (a309), la règle des 60 min (avant : Box Rank 2)

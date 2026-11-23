@@ -20,7 +20,7 @@
 -- API (client et serveur : rien n'y dépend du joueur local) :
 --   AdvicePanel.template(name) -> BillboardGui?     billboard modèle de Clément, dans
 --                                                   ReplicatedStorage/Assets/UI ou un sous-dossier (2.2)
---   AdvicePanel.damageText(zone), speedText(zone)   « Damage 120 », « Speed 100K » (Format.short ; SpeedRequired)
+--   AdvicePanel.speedText(zone)                     « Speed 100K » (Format.short ; SpeedRequired)
 --   AdvicePanel.strengthText(zone)                  « Strength 120 » : AdvisedDamage, BB_StoreInfo et StoreReqSign (L-108)
 --   AdvicePanel.levelOf(value, advised) -> Level    "Green", "Orange" ou "Red"
 --   AdvicePanel.levels(player, zone) -> (Level, Level)  dégâts puis vitesse de `player` face à `zone`
@@ -45,10 +45,9 @@ AdvicePanel.DamageAttribute = "Damage"
 AdvicePanel.SpeedAttribute = "ShownSpeed"
 
 -- Textes de L-044 (exemples de Clément sur BB_StoreInfo : « Damage 1 », « Speed 16 »).
-local DAMAGE_TEXT = "Damage %s"
 local SPEED_TEXT = "Speed %s"
 -- L-108 point 5 (Clément, 2026-11-12) : sur BB_StoreInfo et StoreReqSign, la même valeur se lit
--- « Strength 1 » (la force requise), et sur UI_ZoneBanner aussi (L-110). damageText ne sert plus qu'aux bancs.
+-- « Strength 1 » (la force requise), et sur UI_ZoneBanner aussi (L-110). (a412 : damageText retiré, plus personne ne dit « Damage »).
 local STRENGTH_TEXT = "Strength %s"
 
 -- V0 proposé, absent du doc : couleurs prises dans la planche de style (10.6), à valider par Clément.
@@ -87,10 +86,6 @@ function AdvicePanel.template(name: string): BillboardGui?
 		return found
 	end
 	return nil
-end
-
-function AdvicePanel.damageText(zone: Zones.Zone): string
-	return string.format(DAMAGE_TEXT, Format.short(zone.AdvisedDamage)) .. teamSuffix(zone)
 end
 
 function AdvicePanel.strengthText(zone: Zones.Zone): string
