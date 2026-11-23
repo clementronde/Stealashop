@@ -73,6 +73,11 @@ local NpcAvoid = {}
 
 local walkers: { [BasePart]: Walker } = {}
 local groupsReady: boolean? = nil
+-- a284 (audit a271 point 13) : paramètres des rayons partagés, refaits seulement quand la liste des PNJ suivis change
+-- (Track d'un nouveau, Untrack) ou qu'un PNJ suivi n'avait pas encore de modèle au dernier calcul.
+local ignoreDirty = true
+local rayParams: RaycastParams? = nil -- blocked : rayon simple
+local sweepParams: RaycastParams? = nil -- swept : RespectCanCollide
 
 local function positive(value: any): boolean
 	return type(value) == "number" and value > 0 and value < math.huge
@@ -101,6 +106,7 @@ local function walkerOf(root: BasePart): Walker
 	end
 	local w: Walker = { root = root, other = nil, side = 0, checkAt = 0, checkX = 0, checkZ = 0, skip = nil, skipUntil = 0 }
 	walkers[root] = w
+	ignoreDirty = true
 	return w
 end
 
@@ -124,19 +130,37 @@ local function velocityOf(root: BasePart): (number, number)
 	return 0, 0
 end
 
--- Un mur entre `from` et `to` ? Rayon qui ignore les PNJ suivis ; sans Raycast (faux Roblox) : non.
-local function blocked(from: Vector3, to: Vector3): boolean
-	local ok, hit = pcall(function(): boolean
-		local params = RaycastParams.new()
-		params.FilterType = Enum.RaycastFilterType.Exclude
+-- a284 : les deux RaycastParams (Exclude, modèles des PNJ suivis), refaits si la liste a changé. À appeler dans un
+-- pcall (sans RaycastParams, faux Roblox : erreur rattrapée par l'appelant, comme avant).
+local function sharedParams(sweep: boolean): RaycastParams
+	if ignoreDirty or rayParams == nil or sweepParams == nil then
 		local ignore: { Instance } = {}
+		local complete = true
 		for root in walkers do
 			local model = root.Parent
 			if model then
 				table.insert(ignore, model)
+			else
+				complete = false
 			end
 		end
-		params.FilterDescendantsInstances = ignore
+		local ray = RaycastParams.new()
+		ray.FilterType = Enum.RaycastFilterType.Exclude
+		ray.FilterDescendantsInstances = ignore
+		local sweepRay = RaycastParams.new()
+		sweepRay.FilterType = Enum.RaycastFilterType.Exclude
+		sweepRay.FilterDescendantsInstances = ignore
+		sweepRay.RespectCanCollide = true
+		rayParams, sweepParams = ray, sweepRay
+		ignoreDirty = not complete
+	end
+	return (if sweep then sweepParams else rayParams) :: RaycastParams
+end
+
+-- Un mur entre `from` et `to` ? Rayon qui ignore les PNJ suivis ; sans Raycast (faux Roblox) : non.
+local function blocked(from: Vector3, to: Vector3): boolean
+	local ok, hit = pcall(function(): boolean
+		local params = sharedParams(false)
 		local result = Workspace:Raycast(from, to - from, params)
 		return result ~= nil and result.Instance.CanCollide
 	end)
@@ -148,6 +172,9 @@ function NpcAvoid.Track(root: BasePart)
 end
 
 function NpcAvoid.Untrack(root: BasePart)
+	if walkers[root] ~= nil then
+		ignoreDirty = true
+	end
 	walkers[root] = nil
 	for _, w in walkers do
 		if w.other == root then
@@ -226,17 +253,6 @@ local function conflict(cfg: any, f: Frame, w: Walker, now: number): BasePart?
 	return best
 end
 
-local function ignoreList(): { Instance }
-	local ignore: { Instance } = {}
-	for root in walkers do
-		local model = root.Parent
-		if model then
-			table.insert(ignore, model)
-		end
-	end
-	return ignore
-end
-
 -- a269b : une sphère de `radius` studs balayée de `from` à `to` touche-t-elle une pièce qui heurte (poteau, borne) ?
 -- PNJ suivis ignorés ; sans Spherecast (faux Roblox des bancs plus anciens) : non.
 local function swept(from: Vector3, to: Vector3, radius: number): boolean
@@ -245,10 +261,7 @@ local function swept(from: Vector3, to: Vector3, radius: number): boolean
 		if direction.Magnitude < 1e-3 then
 			return false
 		end
-		local params = RaycastParams.new()
-		params.FilterType = Enum.RaycastFilterType.Exclude
-		params.FilterDescendantsInstances = ignoreList()
-		params.RespectCanCollide = true
+		local params = sharedParams(true)
 		local result = Workspace:Spherecast(from, radius, direction, params)
 		return result ~= nil and result.Instance.CanCollide
 	end)

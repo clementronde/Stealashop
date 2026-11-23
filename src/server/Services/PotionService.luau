@@ -121,6 +121,8 @@ local MIN_SPACING = 8 -- studs entre deux potions d'un même joueur
 local SPAWN_TRIES = 12 -- tirages par apparition
 local RETRY_DELAY = 5 -- s avant un nouvel essai si aucun point n'a été trouvé
 local STREET_RESCAN = 10 -- s au moins entre deux recherches des rues
+-- a284 (audit a271 point 13) : recherches vaines d affilée avant d arrêter (Config/Potions.StreetScanTries ; absent : sans fin).
+local STREET_SCAN_TRIES: number = if type(Potions.StreetScanTries) == "number" then Potions.StreetScanTries else math.huge
 local HUMANOID_WAIT = 10 -- s d'attente du Humanoid d'un personnage qui apparaît
 local NOTIFY_KIND = "Success"
 local FULL_KIND = "Warning" -- vague 33 : plafond de l'inventaire atteint (refus, son UI_Deny)
@@ -135,6 +137,7 @@ local PotionService = {}
 local states: { [Player]: State } = {}
 local streets: { BasePart } = {}
 local streetsScannedAt = -math.huge
+local streetScanFails = 0 -- a284 : recherches vaines d affilée
 local nextUid = 0
 local accumulated = 0
 local rng = Random.new()
@@ -423,7 +426,7 @@ local function currentStreets(t: number): { BasePart }
 		end
 	end
 	streets = alive
-	if #streets == 0 and t - streetsScannedAt >= STREET_RESCAN then
+	if #streets == 0 and streetScanFails < STREET_SCAN_TRIES and t - streetsScannedAt >= STREET_RESCAN then
 		streetsScannedAt = t
 		for _, descendant in Workspace:GetDescendants() do
 			if descendant.Name == STREET_NAME and descendant:IsA("BasePart") then
@@ -431,8 +434,10 @@ local function currentStreets(t: number): { BasePart }
 			end
 		end
 		if #streets == 0 then
+			streetScanFails += 1 -- a284 : au bout de STREET_SCAN_TRIES, plus de parcours du Workspace
 			warnOnce("streets", `aucune BasePart « {STREET_NAME} » dans le Workspace : pas de potion`)
 		else
+			streetScanFails = 0
 			log(`{#streets} rue(s) « {STREET_NAME} » trouvée(s)`)
 		end
 	end

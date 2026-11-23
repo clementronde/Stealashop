@@ -59,6 +59,9 @@ local Potions = {
 	-- Vague 33 (inventaire des potions) :
 	StockAttributePrefix = "PotionStock_", -- attribut du Player : potions de ce type dans l'inventaire
 	MaxStock = 5, -- V0 : potions d'un même type dans l'inventaire ; au plafond, la potion reste par terre
+	-- V0 proposé (Cantin, 23/11 ; audit a271 point 13) : sans rue « Street » dans la map, PotionService arrête de
+	-- parcourir le Workspace après ce nombre de recherches vaines d'affilée (une toutes les 10 s).
+	StreetScanTries = 3,
 }
 
 export type Potions = typeof(Potions)
