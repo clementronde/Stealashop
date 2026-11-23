@@ -45,7 +45,12 @@
 --   5. Apparition et disparition en Crowd.FadeTime s (LocalTransparencyModifier), au bout de Crowd.Duration s ;
 --      « animations réduites » (Settings.VfxReduced ou ReducedMotionEnabled de Roblox) : ni fondu, ni flash.
 --   6. Coût : appareil faible (ShatterController.IsLowEnd : effets coupés, moins de 40 i/s ou qualité graphique ≤ 3) :
---      Crowd.PerSideLow par côté, Crowd.MaxCrowdsLow foule à la fois, regard revu toutes les Crowd.TurnIntervalLow s.
+--      Crowd.PerSideLow par côté, Crowd.MaxCrowdsLow foule à la fois, regard revu toutes les Crowd.TurnIntervalLow s,
+--      foule refusée au-delà de Crowd.ViewDistanceLow studs (vague GC3, a281).
+--      Vague GC3 (a281, audit a271 points 1a et 1b ; Crowd.Cull) : à chaque passage du regard, une personne hors de
+--      l'écran (sphère de Cull.Radius studs hors du champ de la caméra) ou à plus de Cull.AnimDistance studs de la
+--      caméra a son animation en pause (AdjustSpeed(0) : pose et phase gardées, ni marqueur ni cri) et repart à son
+--      rythme dès qu'elle revient en vue ; seules les personnes à l'écran se tournent vers le voleur.
 --      Vague 72 (a240) : les places et les rôles sont tirés d'un coup, mais les personnes sont créées sur plusieurs
 --      images (au plus Crowd.BuildPerFrame par image, arrêt dès Crowd.BuildBudget s dépensées, au moins une) ; chacune
 --      fait son fondu d'entrée depuis sa création. La plus longue image de création : GetStats().FrameMs.
@@ -61,7 +66,8 @@
 -- API (client, pour un test dans Studio) :
 --   WitnessCrowdController.GetCrowds() -> { { Store: Model, Thief: Player, Members: { Model } } }
 --   WitnessCrowdController.GetCount() -> number      foules formées chez ce joueur depuis le début
---   WitnessCrowdController.GetStats() -> { Members, Parts, Tracks, Shouts, Pending, FrameMax, FrameMs, Voices, Sounds, Gap }
+--   WitnessCrowdController.GetStats() -> { Members, Parts, Tracks, Shouts, Pending, FrameMax, FrameMs, Voices, Sounds, Gap, Paused }
+--     Paused : personnes dont l'animation est en pause (hors écran ou loin, Crowd.Cull ; a281)
 --     Pending : personnes encore à créer ; FrameMax et FrameMs : le plus de personnes et de millisecondes passées à en
 --     créer en une image ; Voices : sons de foule en cours ; Sounds : sons de foule lancés depuis le début ;
 --     Gap : écart (studs) entre deux personnes de la dernière foule (a269, 0 sans Crowd.Spacing)
@@ -95,6 +101,7 @@ export type CrowdStats = {
 	Voices: number,
 	Sounds: number,
 	Gap: number,
+	Paused: number,
 }
 
 type Role = Witness.CrowdRole
@@ -108,6 +115,8 @@ type Member = {
 	voice: Sound?, -- a240 : son dernier son lancé
 	bornAt: number, -- a240 : créée à cette heure (son fondu d'entrée)
 	track: AnimationTrack?,
+	speed: number, -- a281 : son rythme (reprise après une pause)
+	paused: boolean, -- a281 : animation en pause (hors écran ou loin, Crowd.Cull)
 	photographer: boolean,
 	markerSeen: boolean,
 	nextFlashAt: number,
@@ -667,7 +676,8 @@ local function startTrack(member: Member, animation: Animation)
 	end
 	local track = result :: AnimationTrack
 	member.track = track
-	track:Play(0, 1, rng:NextNumber(0.9, 1.1)) -- chacun à son rythme
+	member.speed = rng:NextNumber(0.9, 1.1)
+	track:Play(0, 1, member.speed) -- chacun à son rythme
 	track.TimePosition = rng:NextNumber(0, 0.4) -- pas tous en même temps
 	if member.photographer then
 		table.insert(
@@ -723,6 +733,8 @@ local function addMember(crowd: Crowd, template: Model, index: number, at: Vecto
 		voice = nil,
 		bornAt = now,
 		track = nil,
+		speed = 1,
+		paused = false,
 		photographer = role ~= nil and role.Phone == true,
 		markerSeen = false,
 		nextFlashAt = now + rng:NextNumber(CROWD.FlashMin, CROWD.FlashMax),
@@ -915,7 +927,8 @@ local function form(store: Model, thief: Player, now: number, hold: boolean)
 	end
 	local thiefRoot = rootOf(thief)
 	local camera = Workspace.CurrentCamera
-	if thiefRoot == nil or camera == nil or (camera.CFrame.Position - thiefRoot.Position).Magnitude > CROWD.ViewDistance then
+	local viewDistance = if low then CROWD.ViewDistanceLow else CROWD.ViewDistance -- a281 : plus courte sur appareil faible
+	if thiefRoot == nil or camera == nil or (camera.CFrame.Position - thiefRoot.Position).Magnitude > viewDistance then
 		return
 	end
 	local templates = crowdModels()
@@ -1138,6 +1151,55 @@ local function checkCarriers(now: number)
 	end
 end
 
+-- a281 (Crowd.Cull) : ce que la caméra voit, lu une fois par passage du regard. Sans champ lisible (FieldOfView,
+-- ViewportSize), tout compte comme à l'écran ; sans caméra, rien n'est mis en pause.
+type View = { cframe: CFrame, position: Vector3, tanX: number, tanY: number, secX: number, secY: number, frustum: boolean }
+
+local CULL = CROWD.Cull
+
+local function viewOf(): View?
+	local camera = Workspace.CurrentCamera
+	if camera == nil then
+		return nil
+	end
+	local cframe = camera.CFrame
+	local view: View = { cframe = cframe, position = cframe.Position, tanX = 0, tanY = 0, secX = 1, secY = 1, frustum = false }
+	local fov: any = (camera :: any).FieldOfView
+	local size: any = (camera :: any).ViewportSize
+	if type(fov) == "number" and typeof(size) == "Vector2" and size.Y > 1 then
+		view.tanY = math.tan(math.rad(fov) / 2)
+		view.tanX = view.tanY * size.X / size.Y
+		view.secX = math.sqrt(1 + view.tanX * view.tanX)
+		view.secY = math.sqrt(1 + view.tanY * view.tanY)
+		view.frustum = true
+	end
+	return view
+end
+
+-- La sphère de Cull.Radius studs autour de `position` touche le champ de la caméra.
+local function onScreen(view: View, position: Vector3): boolean
+	if not view.frustum then
+		return true
+	end
+	local rel = view.cframe:PointToObjectSpace(position)
+	local depth = -rel.Z
+	local radius = CULL.Radius
+	if depth < -radius then
+		return false
+	end
+	return math.abs(rel.X) <= depth * view.tanX + radius * view.secX and math.abs(rel.Y) <= depth * view.tanY + radius * view.secY
+end
+
+-- Animation de `member` en pause ou à son rythme (rien si déjà dans cet état).
+local function setPaused(member: Member, paused: boolean)
+	local track = member.track
+	if track == nil or member.paused == paused then
+		return
+	end
+	member.paused = paused
+	track:AdjustSpeed(if paused then 0 else member.speed)
+end
+
 -- Renvoie true quand la foule est finie (copies détruites).
 local function updateCrowd(crowd: Crowd, now: number): boolean
 	local fadeTime = if reduced() then 0 else CROWD.FadeTime
@@ -1159,6 +1221,7 @@ local function updateCrowd(crowd: Crowd, now: number): boolean
 	local allIn = #crowd.pending == 0
 	local thiefRoot = rootOf(crowd.thief)
 	local quiet = reduced()
+	local view = if turn and CULL.Enabled then viewOf() else nil
 	for _, member in crowd.members do
 		if fading then
 			local fade = outFade
@@ -1170,11 +1233,19 @@ local function updateCrowd(crowd: Crowd, now: number): boolean
 			end
 			setFade(member, fade)
 		end
-		if turn and thiefRoot and member.root.Parent ~= nil then
+		if turn and member.root.Parent ~= nil then
 			local position = member.root.Position
-			local look = flat(thiefRoot.Position - position)
-			if look.Magnitude > 1e-3 then
-				member.root.CFrame = CFrame.lookAt(position, position + look.Unit)
+			local seen = true
+			if view then
+				-- a281 (Crowd.Cull) : hors écran ou loin, l'animation en pause ; hors écran, pas de regard.
+				seen = onScreen(view, position)
+				setPaused(member, not seen or (position - view.position).Magnitude > CULL.AnimDistance)
+			end
+			if seen and thiefRoot then
+				local look = flat(thiefRoot.Position - position)
+				if look.Magnitude > 1e-3 then
+					member.root.CFrame = CFrame.lookAt(position, position + look.Unit)
+				end
 			end
 		end
 		if member.photographer and not member.markerSeen and now >= member.nextFlashAt and now < crowd.endsAt then
@@ -1294,6 +1365,7 @@ function WitnessCrowdController.GetStats(): CrowdStats
 		Voices = busy(cries) + busy(photos),
 		Sounds = soundsPlayed,
 		Gap = lastGap,
+		Paused = 0,
 	}
 	for _, crowd in crowds do
 		if #crowd.pending > 0 then
@@ -1308,6 +1380,9 @@ function WitnessCrowdController.GetStats(): CrowdStats
 			end
 			if member.track then
 				stats.Tracks += 1
+			end
+			if member.paused then
+				stats.Paused += 1
 			end
 		end
 	end

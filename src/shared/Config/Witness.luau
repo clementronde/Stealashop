@@ -253,7 +253,18 @@ local Witness = {
 		MaxCrowds = 2, -- foules à la fois chez un joueur (validé par Cantin, 21/11)…
 		MaxCrowdsLow = 1, -- V0 : … sur appareil faible
 		AtNight = false, -- V0 : comme avant (la nuit, plus de témoins, donc plus de foule) ; à valider par Clément
-		ViewDistance = 220, -- V0 : studs ; voleur plus loin de la caméra : pas de foule
+		ViewDistance = 220, -- V0 : studs ; voleur plus loin de la caméra : pas de foule…
+		ViewDistanceLow = 120, -- V0 proposé (Cantin, 23/11) : … sur appareil faible (audit a271 point 1c)
+		-- Vague GC3 (a281, audit a271 points 1a et 1b) : le coût des personnes qu'on ne voit pas. Revu au pas de
+		-- TurnInterval : une personne hors de l'écran (sphère de Radius studs autour de sa racine hors du champ de la
+		-- caméra) ou à plus de AnimDistance studs de la caméra a son animation en pause (elle garde sa pose et sa phase)
+		-- et repart à son rythme dès qu'elle revient en vue ; seules les personnes à l'écran se tournent vers le voleur.
+		-- Enabled = false : comme avant (toutes animées et tournées).
+		Cull = {
+			Enabled = true, -- V0 proposé (Cantin, 23/11)
+			AnimDistance = 80, -- V0 proposé (Cantin, 23/11) : studs ; plus loin de la caméra, animation en pause
+			Radius = 5, -- V0 proposé (Cantin, 23/11) : studs autour de la racine (une personne R15, pancarte levée comprise)
+		},
 		CheckInterval = 0.2, -- V0 : s, contrôle des porteurs
 		TurnInterval = 0.1, -- V0 : s, la foule se tourne vers le voleur…
 		TurnIntervalLow = 0.3, -- V0 : … sur appareil faible
