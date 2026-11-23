@@ -48,12 +48,24 @@
 --     (Row_<nn>_<uid>, RemoveButton montré, DisplayButton caché), puis ceux de la réserve dans la même Panel.List
 --     (Reserve_<nn>_<uid>, LayoutOrder à la suite, DisplayButton montré, RemoveButton caché, mêmes clics qu'avant) ;
 --     Panel.ListEmpty (facultatif) montré quand il n'y a aucun objet. Avec Panel.Reserve, rien ne change.
+--   - a314 (L-292, L-271 ; maquette de Clément du 23/11) : vendre depuis la ligne. SellButton (facultatif, dans
+--     Template.Buttons comme RemoveButton et DisplayButton : les noms sont cherchés parmi les descendants, l'ancien
+--     emplacement marche aussi) est montré sur CHAQUE ligne, objet exposé comme objet de la réserve (sous antivol
+--     compris : le serveur applique la règle du receleur). Un clic remplit Dock.Confirm (facultatif, caché) :
+--     ItemSlot.ItemIcon = icône de l'objet, ItemRarity et ItemName à la couleur de la rareté (comme la ligne),
+--     SellPrice = « for ... » puis « for $X » quand le serveur a donné le prix (remote DisplayedSellAsk →
+--     DisplayedSellPrice, PawnShopService : le prix du comptoir du receleur), et le montre. YesButton (seulement une
+--     fois le prix reçu) → remote DisplayedSell ; à la réponse DisplayedSold, Confirm se cache et, vendu, la ligne
+--     disparaît (puis la liste suit l'état de l'inventaire). NoButton, CloseButton, la fermeture de l'écran ou un
+--     refus du serveur : Confirm se cache, rien ne change. Survol et clic : UiFeelController et Motion, comme les
+--     autres boutons.
 -- Tout vient des attributs du Player posés par le serveur : InventoryState (Shared/InventoryState,
 -- InventoryService), DisplaySlotsUnlocked et DisplayReserve (DisplayService). Le client ne décide rien.
 -- Seuls sont touchés : Enabled de l'écran, son attribut ScreenGroup s'il n'en a pas (vague 75), Visible de
 -- Panel.Reserve, les lignes clonées (taille du Template gardée), leurs textes (a286 : et, en liste unique, Visible de
 -- leurs RemoveButton et DisplayButton et de Panel.ListEmpty), la couleur de leurs textes
--- ItemName et RarityLabel, l'image de leur icône et la couleur de fond d'IconBack.
+-- ItemName et RarityLabel, l'image de leur icône et la couleur de fond d'IconBack ; a314 : Visible de leur SellButton et
+-- de Confirm, l'image de Confirm.ItemIcon, le texte et la couleur de Confirm.ItemRarity, ItemName et SellPrice.
 --
 -- API (client) :
 --   DisplayedController.Open() / Close() / Toggle()
@@ -63,6 +75,9 @@
 --   DisplayedController.Display(itemUid)       comme le DisplayButton d'une ligne de la réserve (vague 63)
 --   DisplayedController.GetReserve() -> { string }   uids de la réserve, dans l'ordre du serveur (bancs)
 --   DisplayedController.IsAlertOn() -> boolean       pastille InventoryAlert de la barre du bas allumée (vague 73)
+--   DisplayedController.Sell(itemUid)          a314 : comme le SellButton d'une ligne (ouvre la confirmation)
+--   DisplayedController.ConfirmSell()          a314 : comme YesButton ; CancelSell() : comme NoButton
+--   DisplayedController.GetSellState() -> { Uid: string?, Price: number?, Sending: boolean, Shown: boolean }   (bancs)
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -100,7 +115,15 @@ type Screen = {
 	listEmpty: GuiObject?,
 	rowsKey: string?, -- vague 72 : ce que montrent les lignes (refaites seulement s'il change)
 	reserveKey: string?,
+	confirm: GuiObject?, -- a314 : Dock.Confirm, la confirmation de vente (facultative)
 	connections: { RBXScriptConnection },
+}
+
+-- a314 : vente en cours de confirmation (uid de l'objet, prix donné par le serveur, demande de vente partie).
+type SellState = {
+	uid: string,
+	price: number?,
+	sending: boolean,
 }
 
 local SCREEN = "UI_Displayed"
@@ -118,6 +141,10 @@ local HOTBAR_BUTTON = "InventoryButton"
 local HOTBAR_ALERT = "InventoryAlert"
 local RESERVE_EMPTY = "ReserveEmpty"
 local LIST_EMPTY = "ListEmpty" -- a286 : texte de la liste unique vide
+-- a314 (L-292) : noms de la maquette de Clément.
+local SELL_BUTTON = "SellButton"
+local CONFIRM = "Confirm"
+local SELL_TEXTS = DisplayedConfig.Sell or { PriceText = "for %s", WaitText = "for ..." }
 -- V0 proposé, absent du doc : attente minimale entre deux demandes (Net en accepte une par seconde pour
 -- EquipBest ; quatre par seconde pour UnplaceItem et PlaceFromReserve).
 local BEST_COOLDOWN = 1
@@ -140,6 +167,7 @@ local hotbarConnections: { RBXScriptConnection } = {}
 local hotbarAlerts: { GuiObject } = {}
 local seen: { [string]: boolean }? = nil
 local seenUntil = 0
+local selling: SellState? = nil -- a314
 
 local function reportOnce(key: string, message: string)
 	if IS_STUDIO and not reported[key] then
@@ -364,6 +392,138 @@ local function showButtons(row: GuiObject, exposedRow: boolean)
 	end
 end
 
+------------------------------------------------------------------------------
+-- a314 : vente depuis la ligne, avec la confirmation Confirm (YES / NO)
+------------------------------------------------------------------------------
+
+local function confirmShown(): boolean
+	local current = screen
+	local confirm = if current then current.confirm else nil
+	return confirm ~= nil and confirm.Visible
+end
+
+-- Confirm se cache, la vente en cours est oubliée (rien n'est demandé au serveur).
+local function hideConfirm()
+	selling = nil
+	local current = screen
+	local confirm = if current then current.confirm else nil
+	if confirm and confirm.Visible then
+		confirm.Visible = false
+	end
+end
+
+local function writePrice(price: number?)
+	local current = screen
+	local confirm = if current then current.confirm else nil
+	if confirm == nil then
+		return
+	end
+	local text = if price then string.format(SELL_TEXTS.PriceText, Format.money(price)) else SELL_TEXTS.WaitText
+	setText(Find.path(confirm, "SellPrice"), text)
+end
+
+-- SellButton d'une ligne : Confirm rempli pour `entry` et montré ; le prix est demandé au serveur.
+local function openConfirm(entry: Entry)
+	local current = screen
+	local found = Items.ById[entry.ItemId]
+	if current == nil or found == nil then
+		return
+	end
+	local confirm = current.confirm
+	if confirm == nil then
+		reportOnce("confirm", `[Displayed] {SCREEN}.Confirm introuvable : un objet ne se vend pas depuis le panneau`)
+		return
+	end
+	if net == nil then
+		reportOnce("net", "[Displayed] Net pas prêt : demande pas envoyée")
+		return
+	end
+	local item: Items.Item = found
+	local rarity = Rarities.ById[item.Rarity]
+	local color = if rarity then rarity.Color else Color3.new(1, 1, 1)
+	local icon = Find.path(confirm, "ItemIcon")
+	local texture = Icons.get(item.Id)
+	if icon and (icon:IsA("ImageLabel") or icon:IsA("ImageButton")) and texture then
+		(icon :: any).Image = texture
+	end
+	local rarityLabel = Find.path(confirm, "ItemRarity")
+	local nameLabel = Find.path(confirm, "ItemName")
+	setText(rarityLabel, if rarity then rarity.DisplayNameUpper else item.Rarity)
+	setText(nameLabel, item.DisplayName)
+	paintText(rarityLabel, item.Rarity, color)
+	paintText(nameLabel, item.Rarity, color)
+	selling = { uid = entry.Uid, price = nil, sending = false }
+	writePrice(nil)
+	if not confirm.Visible then
+		confirm.Visible = true
+		pcall(Motion.Show, confirm)
+	end
+	net.Client.DisplayedSellAsk:Fire(entry.Uid)
+end
+
+-- YesButton : la vente part, une fois le prix du serveur reçu (et une seule fois).
+local function confirmSell()
+	local state = selling
+	if state == nil or state.price == nil or state.sending or net == nil then
+		return
+	end
+	state.sending = true
+	net.Client.DisplayedSell:Fire(state.uid)
+end
+
+-- Réponse à DisplayedSellAsk : le prix s'écrit ; objet invendable : Confirm se cache.
+local function onSellPrice(uid: string, price: number, sellable: boolean)
+	local state = selling
+	if state == nil or state.uid ~= uid then
+		return
+	end
+	if not sellable then
+		hideConfirm()
+		return
+	end
+	state.price = price
+	writePrice(price)
+end
+
+-- La ligne de l'objet `uid` (exposé ou de la réserve), cachée tout de suite ; la liste suit ensuite l'inventaire.
+local function hideRow(uid: string)
+	local current = screen
+	if current == nil then
+		return
+	end
+	for _, rows in { current.rows, current.reserveRows } do
+		for _, row in rows do
+			local name = row.Name
+			if string.sub(name, -#uid - 1) == "_" .. uid then
+				row.Visible = false
+			end
+		end
+	end
+end
+
+-- Réponse à DisplayedSell : Confirm se cache ; vendu, la ligne disparaît.
+local function onSold(uid: string, _amount: number, sold: boolean)
+	local state = selling
+	if state == nil or state.uid ~= uid then
+		return
+	end
+	hideConfirm()
+	if sold then
+		hideRow(uid)
+	end
+end
+
+local function wireSell(row: GuiObject, entry: Entry)
+	local button = guiObject(row, SELL_BUTTON)
+	if button == nil then
+		return
+	end
+	button.Visible = true
+	local _ = onClick(button, function()
+		openConfirm(entry) -- détruite avec la ligne
+	end)
+end
+
 local function buildRows(current: Screen, list: { Entry })
 	local key = keyOf(list)
 	if key == current.rowsKey then
@@ -387,6 +547,7 @@ local function buildRows(current: Screen, list: { Entry })
 		local _ = onClick(Find.path(row, "RemoveButton"), function()
 			send("UnplaceItem", uid) -- détruite avec la ligne
 		end)
+		wireSell(row, entry) -- a314
 		row.Visible = true
 		row.Parent = template.Parent
 		table.insert(current.rows, row)
@@ -447,6 +608,7 @@ local function buildReserve(current: Screen, list: { Entry }, offset: number)
 				send("PlaceFromReserve", uid) -- détruite avec la ligne
 			end
 		end)
+		wireSell(row, entry) -- a314
 		row.Visible = true
 		row.Parent = template.Parent
 		table.insert(current.reserveRows, row)
@@ -571,8 +733,15 @@ local function bind(gui: ScreenGui)
 		listEmpty = if single then guiObject(gui, LIST_EMPTY) else nil,
 		rowsKey = nil,
 		reserveKey = nil,
+		confirm = guiObject(gui, CONFIRM),
 		connections = {},
 	}
+	-- a314 : la confirmation de vente reste cachée tant qu'aucun SellButton n'est cliqué.
+	selling = nil
+	local confirm = current.confirm
+	if confirm then
+		confirm.Visible = false
+	end
 	-- Vague 75 (a260, L-262 point 3) : l'écran entre dans le groupe DisplayedConfig.ScreenGroup (« Menu ») si Clément ne
 	-- lui en a pas donné : un autre menu qui s'ouvre le ferme (Motion.SetCloser), et il ferme les autres à l'ouverture.
 	local group = DisplayedConfig.ScreenGroup
@@ -597,6 +766,14 @@ local function bind(gui: ScreenGui)
 	keep(onClick(best, function()
 		displayBest()
 	end))
+	if confirm then -- a314
+		keep(onClick(Find.path(confirm, "YesButton"), function()
+			confirmSell()
+		end))
+		keep(onClick(Find.path(confirm, "NoButton"), function()
+			hideConfirm()
+		end))
+	end
 	apply(current)
 	refresh()
 end
@@ -634,6 +811,7 @@ end
 
 function DisplayedController.Close()
 	isOpen = false
+	hideConfirm() -- a314 : fermer l'écran annule la vente en attente
 	local current = screen
 	if current and current.gui.Parent ~= nil then
 		apply(current)
@@ -690,6 +868,37 @@ function DisplayedController.IsAlertOn(): boolean
 	return false
 end
 
+-- a314 : vente depuis l'écran (bancs, barre de commande en Studio).
+function DisplayedController.Sell(itemUid: string)
+	if type(itemUid) ~= "string" then
+		return
+	end
+	for _, entry in inventory() do
+		if entry.Uid == itemUid then
+			openConfirm(entry)
+			return
+		end
+	end
+end
+
+function DisplayedController.ConfirmSell()
+	confirmSell()
+end
+
+function DisplayedController.CancelSell()
+	hideConfirm()
+end
+
+function DisplayedController.GetSellState(): { Uid: string?, Price: number?, Sending: boolean, Shown: boolean }
+	local state = selling
+	return {
+		Uid = if state then state.uid else nil,
+		Price = if state then state.price else nil,
+		Sending = state ~= nil and state.sending,
+		Shown = confirmShown(),
+	}
+end
+
 closePanel = DisplayedController.Close
 displayBest = DisplayedController.DisplayBest
 
@@ -729,6 +938,14 @@ function DisplayedController.Start()
 		end)
 		if ok then
 			net = result
+			-- a314 : réponses du serveur à la vente depuis l'écran.
+			local connected, err = pcall(function()
+				result.Client.DisplayedSellPrice:Connect(onSellPrice)
+				result.Client.DisplayedSold:Connect(onSold)
+			end)
+			if not connected then
+				reportOnce("sellRemotes", `[Displayed] remotes de vente absents : un objet ne se vend pas depuis le panneau ({err})`)
+			end
 		else
 			reportOnce("netRequire", `[Displayed] Net introuvable : les demandes ne partent pas ({result})`)
 		end

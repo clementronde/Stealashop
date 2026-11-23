@@ -776,6 +776,49 @@ local List: { RemoteDef } = {
 		RatePerSecond = 4, -- V0 proposé, absent du doc (comme PlaceItemAuto)
 	},
 	{
+		-- a314 (L-292, L-271), absent du tableau 9.4 : SellButton d'une ligne de UI_Displayed (objet exposé ou de la
+		-- réserve) : le client demande le prix de vente à montrer dans la confirmation. PawnShopService le calcule
+		-- (même prix qu'au comptoir du receleur) et répond par DisplayedSellPrice.
+		Name = "DisplayedSellAsk",
+		Direction = "ClientToServer",
+		Reliable = true,
+		Args = { id("itemUid") },
+		RatePerSecond = 4, -- V0 proposé, absent du doc
+	},
+	{
+		-- a314 : réponse à DisplayedSellAsk. sellable = false : l'objet ne peut pas se vendre (price = 0).
+		Name = "DisplayedSellPrice",
+		Direction = "ServerToClient",
+		Reliable = true,
+		Args = {
+			id("itemUid"),
+			{ Name = "price", Kind = "number", Min = 0 },
+			{ Name = "sellable", Kind = "boolean" },
+		},
+	},
+	{
+		-- a314 : YesButton de la confirmation : vendre cet objet. PawnShopService vérifie tout (objet à lui, règles du
+		-- receleur sauf la distance ; exposé : retiré de son présentoir, pas tenu par un voleur), recalcule le prix,
+		-- retire l'objet et verse l'argent dans la même exécution (une seule vente par objet), puis répond par
+		-- DisplayedSold.
+		Name = "DisplayedSell",
+		Direction = "ClientToServer",
+		Reliable = true,
+		Args = { id("itemUid") },
+		RatePerSecond = 4, -- V0 proposé, absent du doc
+	},
+	{
+		-- a314 : résultat de DisplayedSell. sold = false : refusée, rien n'a changé (amount = 0).
+		Name = "DisplayedSold",
+		Direction = "ServerToClient",
+		Reliable = true,
+		Args = {
+			id("itemUid"),
+			{ Name = "amount", Kind = "number", Min = 0 },
+			{ Name = "sold", Kind = "boolean" },
+		},
+	},
+	{
 		-- Vague 64 (a214, bulles ×N du tapis ; Config/Bubbles), absent du tableau 9.4 : une bulle apparaît pour le seul
 		-- joueur en séance sur le tapis. Rien de sensible : la valeur est tirée par le serveur, qui seul verse le gain.
 		-- lifetime = secondes avant qu'elle disparaisse (Bubbles.Lifetime).

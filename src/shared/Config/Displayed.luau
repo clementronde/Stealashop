@@ -40,6 +40,13 @@ local Displayed = {
 	-- Vague 75 (a260, L-262 point 3, Clément : « Oui ») : UI_Displayed entre dans ce ScreenGroup (attribut posé par le code
 	-- si Clément n'en a pas mis) : un autre menu qui s'ouvre le ferme, et il ferme les autres menus. "" : hors groupe.
 	ScreenGroup = "Menu",
+	-- a314 (L-292, L-271) : bouton SellButton de chaque ligne et confirmation Confirm (YES / NO). Le prix vient du serveur
+	-- (PawnShopService, même prix qu'au comptoir du receleur), écrit dans Confirm.SellPrice. Textes en anglais, comme la
+	-- maquette de Clément (« for $0 »).
+	Sell = {
+		PriceText = "for %s", -- prix en Format.money (« for $1.2K »)
+		WaitText = "for ...", -- V0 : en attendant le prix du serveur (YesButton ne vend pas encore)
+	},
 
 	-- « +$X/s » de l'objet qui vole de son présentoir jusqu'à l'argent du HUD (L-192 Q2), une fois par pose
 	-- (à la main, « Exposer les meilleurs », depuis la réserve), jamais pendant une poursuite (GainController).
