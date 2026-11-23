@@ -19,7 +19,9 @@ local ItemIdle = {
 	WavePeriod = 1.2, -- V0 : secondes pour un aller-retour complet
 	-- Idle = "Bob" ou "SpinBob" : le modèle monte puis redescend, sans jamais passer sous sa
 	-- position de repos (il ne s'enfonce pas dans le présentoir).
-	BobHeight = 0.25, -- V0 : studs au plus haut
+	-- a418, V0 (décision de Cantin 23/11, variante A2) : 0,5 (avant 0,25), le même flottement en proportion de l'objet
+	-- de base, deux fois plus grand.
+	BobHeight = 0.5, -- V0 : studs au plus haut
 	BobPeriod = 2.5, -- V0 : secondes pour une montée et une descente
 	-- Plus loin de la caméra, l'objet reprend sa position de repos et n'est plus animé (9.7, pour le
 	-- mobile), comme les halos de DisplayController (120 studs) et les auras (CosmeticController, 60).

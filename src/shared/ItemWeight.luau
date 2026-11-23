@@ -8,7 +8,7 @@
 --   ItemWeight.Roll(rng, luck) -> number               poids tiré (kg), `luck` = multiplicateur de chance de la
 --                                                      boîte (×1 à ×8, celui de la rareté) : il multiplie les
 --                                                      chances des paliers lourds, sans rien garantir
---   ItemWeight.ScaleFor(kg) -> number                  échelle du modèle (10 kg = ×1, racine cubique du poids)
+--   ItemWeight.ScaleFor(kg) -> number                  échelle du modèle (courbe Config/Weight.ScaleCurve ; 10 kg = ×2, a418)
 --   ItemWeight.IncomeFactor(kg) -> number              multiplicateur du revenu (10 kg = ×1)
 --   ItemWeight.SizeMutationFor(kg) -> string?          "Huge", "Colossal" ou nil (Id de Config/Mutations)
 --   ItemWeight.SizeClassFor(kg, freeHeight, modelHeight) -> "Small" | "Large" | "Colossal"

@@ -22,7 +22,9 @@ local DeepFreeze = require(script.Parent.DeepFreeze)
 
 local HeldItem = {
 	Forward = 0.1, -- V0 proposé, absent du doc : studs entre la main et la face arrière de l'objet
-	LargeSize = 2.5, -- V0 proposé, absent du doc : plus grand côté (studs) au-delà duquel l'objet est « gros »
+	-- V0 proposé, absent du doc : plus grand côté (studs) au-delà duquel l'objet est « gros ». a418 (décision de Cantin
+	-- 23/11, variante A2) : 5 (avant 2,5), sinon l'objet de base (3,2 studs) serait tenu par-dessous devant le torse.
+	LargeSize = 5,
 	LargeBelowHand = 0.6, -- V0 proposé, absent du doc : studs entre le bas d'un gros objet et la main
 	LargeCenterShift = 1.5, -- V0 proposé, absent du doc : studs vers la gauche (gros objet centré devant le corps)
 	Yaw = 0, -- V0 proposé, absent du doc : degrés

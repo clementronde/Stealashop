@@ -25,10 +25,12 @@ export type ScalePoint = {
 }
 
 -- a234 (V0) : courbe poids → taille (voir ScaleCurve dans la table).
+-- a418 (décision de Cantin 23/11, variante A2, docs/references/Taille-Objet-De-Base.md) : petits objets × 2, gros
+-- inchangés ; seuls les points de 1, 10 et 100 kg bougent (avant : 0.1 ^ (1/3), 1 et 2.6).
 local SCALE_CURVE: { ScalePoint } = {
-	{ Kg = 1, Scale = 0.1 ^ (1 / 3) },
-	{ Kg = 10, Scale = 1 },
-	{ Kg = 100, Scale = 2.6 },
+	{ Kg = 1, Scale = 2 * 0.1 ^ (1 / 3) }, -- décision de Cantin 23/11, variante A2 (≈ ×0,93)
+	{ Kg = 10, Scale = 2 }, -- décision de Cantin 23/11, variante A2
+	{ Kg = 100, Scale = 4.2 }, -- décision de Cantin 23/11, variante A2 (sur la droite de 10 à 500 kg)
 	{ Kg = 500, Scale = 7 },
 	{ Kg = 10000, Scale = 16 },
 }
@@ -43,7 +45,7 @@ local function scaleAt(kg: number): number
 	end
 	local a, b = SCALE_CURVE[index], SCALE_CURVE[index + 1]
 	if kg == a.Kg or kg == b.Kg then
-		return if kg == a.Kg then a.Scale else b.Scale -- valeur exacte sur un point (10 kg = ×1 tout juste)
+		return if kg == a.Kg then a.Scale else b.Scale -- valeur exacte sur un point (10 kg = ×2 tout juste)
 	end
 	local slope = math.log(b.Scale / a.Scale) / math.log(b.Kg / a.Kg)
 	return a.Scale * (math.max(kg, 1e-6) / a.Kg) ^ slope
@@ -79,11 +81,13 @@ local Weight = {
 	-- légers. V0 : « lourd » = un palier qui commence à LuckFrom kg ou plus.
 	LuckFrom = 50,
 
-	-- Taille du modèle (échelle ×, 10 kg = ×1) : courbe par points (ScaleAt, plus bas), droite entre deux points en
-	-- échelle logarithmique (kg et taille). a234 (V0, Clément L-219 point 6 et L-220 : « un objet de 500 kg, c'est la
-	-- taille d'une voiture ») : sous 10 kg, la racine cubique d'avant (1 kg ≈ ×0,46) ; puis 50 kg ≈ ×1,95, 100 kg = ×2,6,
-	-- 250 kg ≈ ×4,6, 500 kg = ×7 (un objet de 1,6 à 2 studs : 11 à 14 studs, une voiture), 2 500 kg ≈ ×10,9,
-	-- 10 000 kg = ×16. Avant a234 : (kg / 10) ^ (1/3), soit 500 kg ≈ ×3,7 et 10 000 kg = ×10.
+	-- Taille du modèle (échelle ×, 10 kg = ×2 depuis a418) : courbe par points (ScaleAt, plus bas), droite entre deux
+	-- points en échelle logarithmique (kg et taille). a418 (décision de Cantin 23/11, variante A2 : l'objet de base à
+	-- environ deux tiers du perso, comme le jeu de référence ; « 500 kg = une voiture » gardé) : sous 10 kg, la racine
+	-- cubique × 2 (1 kg ≈ ×0,93) ; puis 10 kg = ×2 (canette de 1,6 stud : 3,2 studs), 20 kg ≈ ×2,5, 50 kg ≈ ×3,36,
+	-- 100 kg = ×4,2, 250 kg ≈ ×5,6, 500 kg = ×7 (un objet de 1,6 à 2 studs : 11 à 14 studs, une voiture), 2 500 kg ≈ ×10,9,
+	-- 10 000 kg = ×16 (de 500 kg à 10 000 kg : comme a234). a234 (V0, Clément L-219 point 6 et L-220) : 1 kg ≈ ×0,46,
+	-- 10 kg = ×1, 50 kg ≈ ×1,95, 100 kg = ×2,6, 250 kg ≈ ×4,6. Avant a234 : (kg / 10) ^ (1/3), soit 10 000 kg = ×10.
 	-- Ouverture du colis et objet porté : cette taille (au plus CarryMaxScale) ; présentoir : réduite pour tenir dans
 	-- FitSize (DisplayService) ; socle « BEST ITEM » : au plus RarestMaxScale. Points rangés par poids croissant.
 	ScaleCurve = SCALE_CURVE,
@@ -119,14 +123,19 @@ local Weight = {
 	-- garde sa taille de l'ouverture ; sur un présentoir qui a FitSize, l'objet est en plus réduit pour y tenir.
 	-- RarestMaxScale (a234, L-220 : vraie taille sur le socle, sans FitSize, avec une limite pour ne pas couvrir le hub) :
 	-- ×6, soit 9,6 à 12 studs pour un objet de 1,6 à 2 studs, sous LabelPoint (11 studs au-dessus du plateau) ; avant ×3.
+	-- a418 (variante A2) : DisplayMaxScale, CarryMaxScale et RarestMaxScale inchangés (le haut de la courbe ne bouge pas).
 	DisplayMaxScale = 16,
-	HeldMaxScale = 2,
+	-- a418, V0 (décision de Cantin 23/11, variante A2) : 3,4 plafonne les mêmes objets qu'avant (≥ 52 kg ; ×2 avant, ≥ 53 kg) ;
+	-- au plus 5,4 studs en main pour un objet de 1,6 stud.
+	HeldMaxScale = 3.4,
 	RarestMaxScale = 6,
 	CarryMaxScale = 16,
 	-- a220 (V0) : chez le porteur seulement (CarryController), un objet porté à partir de cette échelle devient
 	-- translucide (LocalTransparencyModifier CarryFade) pour qu'il voie encore son perso et la rue ; les autres le voient
 	-- plein. CarryFade = 0 : jamais.
-	CarryFadeFromScale = 2.5,
+	-- a418, V0 (décision de Cantin 23/11, variante A2) : 4 garde à peu près les mêmes objets translucides qu'avant (≥ 86 kg,
+	-- 7,5 % des tirages à ×1 ; avant 2,5, ≥ 91 kg, 6,8 %) ; 2,5 rendrait translucides tous ceux de 20 kg et plus.
+	CarryFadeFromScale = 4,
 	CarryFade = 0.55,
 	-- V0 : objet tenu à deux mains (AnimationController, HoldItem) à partir de ce poids (l'ancien Big = 80 kg).
 	TwoHandsFrom = 50,
