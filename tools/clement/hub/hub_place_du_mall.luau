@@ -79,7 +79,8 @@ local MALL = false
 -- (z = 0) qui mène tout droit à la sortie (x = 30). Au nord, de la sortie vers l'ouest : 1, 2, 3 ; au sud : 6, 5, 4. Les 4
 -- stands se font face entre la sortie et les premières boutiques, la fontaine est au milieu de l'allée. Hub ramené à
 -- la taille des rangées. ROWS = false : l'ancien demi-cercle autour de l'entrée (et MALL possible).
--- LAYOUT : "line" (en vigueur, 2026-11-08), "rows" (3 face à 3) ou "arc" (demi-cercle, avec MALL possible)
+-- LAYOUT : "line" (en vigueur, 2026-11-08 ; boutiques en éventail depuis le 2026-11-23, voir FAN), "rows" (3 face à 3) ou
+-- "arc" (demi-cercle, avec MALL possible)
 local LAYOUT = "line"
 local ROWS, LINE = LAYOUT == "rows", LAYOUT == "line"
 -- Clément, 2026-11-08 (après un Play) : boutiques plus écartées et plus loin de l'allée, pour qu'un vol chez un autre
@@ -199,6 +200,27 @@ if LINE then -- rangée du fond, avant vers l'entrée (+X) ; boutiques des côt�
 		SITES[k] = { k = k, angle = 0, side = s, sideShop = true, front = center + n * (SHOP_D / 2), center = center, n = n, cf = frameAt(center, n) }
 	end
 	FC = Vector3.new(-35, 0, 0) -- au milieu de la place, dans l'axe de l'entrée
+end
+-- Clément, 2026-11-23 (« revoir le hub : quelque chose de plus aéré, plus écarté entre les joueurs », choisi parmi 3 aperçus
+-- vus d'en haut ; puis « écarte les murs autour ») : FAN = les 6 boutiques en éventail autour de la place, toutes tournées
+-- vers le centre FAN_C, façades à FAN_R du centre, tous les 32° (80, 48, 16, -16, -48, -80 du nord au sud : PlotIndex 1 à
+-- 6, ordre AssignOrder inchangé). Environ 20 entre les plaques de deux voisines, plus vers l'arrière ; portes à 176..209 de
+-- l'arche 1 (101..162 avant). Hub agrandi à x -305..30, |z| <= 285 (40 de marge derrière les boutiques à leur taille
+-- maximale). Murs, sol, zones, stands, rue de sortie et SafeZone suivent les réglages en ligne (LINE reste vrai pour eux).
+-- FAN = false : la rangée de 4 et les 2 boutiques des côtés (x -149..30, |z| <= 232). Ancien placement :
+-- ServerStorage/MapBackups/2026-11-23_HubAvantEventail.
+local FAN = LINE and true
+local FAN_C, FAN_R, FAN_A = Vector3.new(-20, 0, 0), 160, { 80, 48, 16, -16, -48, -80 }
+if FAN then
+	for k, deg in FAN_A do
+		local a = math.rad(deg)
+		local dir = Vector3.new(-math.cos(a), 0, math.sin(a)) -- du centre de l'éventail vers la boutique
+		local n = -dir -- avant de la boutique, vers le centre
+		local front = FAN_C + dir * FAN_R
+		local center = front - n * (SHOP_D / 2)
+		SITES[k] = { k = k, angle = deg, side = 1, front = front, center = center, n = n, cf = frameAt(center, n) }
+	end
+	HUB = { x0 = -305, x1 = 30, z0 = -285, z1 = 285 }
 end
 
 local report = {}
