@@ -266,6 +266,9 @@ export type Data = {
 	Diamonds: number?, -- vague 59 (a191, L-182 point 10) : diamants, 2e monnaie pour personnaliser sa boutique.
 	-- Champ facultatif, sans changement de version : 0 dans le gabarit de DataService (absent = 0). Lu par
 	-- DataService.GetDiamonds ; aucun gain ni achat encore (règles à venir), affiché seulement dans UI_DiamondShop.
+	IndexMutations: { [string]: { [string]: number } }?, -- vague GC6 (a410, MAJ 7) : colonnes de mutations de l'index,
+	-- [ItemId] = { [Id d'effet de Config/Mutations] = os.time() de la 1re obtention } (IndexService, Shared/IndexMutations).
+	-- Champ facultatif, sans changement de version : {} dans le gabarit ; jamais retiré.
 	Reserve: { string }?, -- vague 63 (a206, L-192 Q3) : uids des objets en réserve, dans l'ordre (DisplayService,
 	-- Config/Displayed) : remplacés par « Exposer les meilleurs », ou retirés d'un présentoir sans main libre. Champ
 	-- facultatif, sans changement de version, absent du gabarit : absent = profil d'avant la réserve, que

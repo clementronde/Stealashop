@@ -88,6 +88,8 @@ local RAY_HEIGHT = 40 -- studs au-dessus de la rue d'où partent les rayons
 local RAY_LENGTH = 80 -- studs vers le bas
 local INVISIBLE_SKIPS = 4 -- pièces invisibles (Transparency 1) traversées au plus par un rayon
 local STREET_RESCAN = 10 -- s au moins entre deux recherches des rues
+-- a284 (audit a271 point 13) : recherches vaines d affilée avant d arrêter (Config/ItemRain.StreetScanTries ; absent : sans fin).
+local STREET_SCAN_TRIES: number = if type(ItemRain.StreetScanTries) == "number" then ItemRain.StreetScanTries else math.huge
 local STANDING_HEIGHT = 3 -- studs : centre d'un joueur debout sur le point (contrôle de la zone safe)
 local NOTIFY_KIND = "Info"
 
@@ -105,6 +107,7 @@ local onGround: { [string]: Vector3 } = {}
 local rainPayloads: { [any]: boolean } = setmetatable({}, { __mode = "k" }) :: any
 local streets: { BasePart } = {}
 local streetsScannedAt = -math.huge
+local streetScanFails = 0 -- a284 : recherches vaines d affilée
 local warned: { [string]: boolean } = {}
 local loopStarted = false
 
@@ -147,7 +150,7 @@ local function currentStreets(): { BasePart }
 	end
 	streets = alive
 	local t = os.clock()
-	if #streets == 0 and t - streetsScannedAt >= STREET_RESCAN then
+	if #streets == 0 and streetScanFails < STREET_SCAN_TRIES and t - streetsScannedAt >= STREET_RESCAN then
 		streetsScannedAt = t
 		for _, descendant in Workspace:GetDescendants() do
 			if descendant.Name == ItemRain.StreetName and descendant:IsA("BasePart") and inMap(descendant) then
@@ -155,8 +158,10 @@ local function currentStreets(): { BasePart }
 			end
 		end
 		if #streets == 0 then
+			streetScanFails += 1 -- a284 : au bout de STREET_SCAN_TRIES, plus de parcours du Workspace
 			warnOnce("streets", `aucune BasePart « {ItemRain.StreetName} » dans le Workspace : rien ne tombe`)
 		else
+			streetScanFails = 0
 			log(`{#streets} rue(s) « {ItemRain.StreetName} » trouvée(s)`)
 		end
 	end

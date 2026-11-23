@@ -88,6 +88,15 @@ local Features = {
 	-- (PlayerCollisionService) ; ils touchent toujours le décor, les vigiles, le bot, les PNJ, le mur de nuit, les
 	-- vitrines et les portes. false = les joueurs se traversent ; true = le contact entre joueurs d'avant.
 	PlayerCollision = false,
+	-- a413 (vague GC7, 23/11) : badges du jeu (BadgeService, Config/Badges ; Id à 0 = badge sauté) ; V0 proposé (Cantin, 23/11) : true ; false = aucun badge donné.
+	Badges = true,
+	-- Vague GC6 (a410, MAJ 7) : notifications Roblox hors du jeu (Config/Notifications, NotificationService, demande de
+	-- consentement de NotificationController) ; rien ne part tant que les MessageId et le secret ne sont pas posés dans le
+	-- Creator Hub. V0 proposé (Cantin, 23/11) : true ; false = ni demande de consentement ni envoi.
+	ExperienceNotifications = true,
+	-- Vague GC6 (a410, MAJ 7, Partie 2 section 3.4) : mutations déjà obtenues de chaque objet dans l'index (catégorie
+	-- MUTATIONS d'UI_Index_v3, IndexController ; notées par IndexService même à false). V0 proposé (Cantin, 23/11) : true.
+	IndexMutations = true,
 }
 
 export type Features = typeof(Features)

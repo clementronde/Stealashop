@@ -1590,4 +1590,15 @@ table.insert(UI.Screens, {
 	} :: { Element },
 })
 
+-- Vague GC6 (a410, MAJ 7, Partie 2 section 3.4) : colonnes de mutations de l'index, noms proposés à Clément, facultatifs
+-- (IndexController ; sans eux : « 2/7 » construit par le code sur la carte et la liste dans DetailIncome, en MUTATIONS).
+for _, screenDef in UI.Screens do
+	if screenDef.Name == "UI_Index_v3" then
+		table.insert(screenDef.Elements, { Path = "List.Template.MutationRow", Optional = true, Note = "repli : « 2/7 » sur la carte en MUTATIONS" })
+		table.insert(screenDef.Elements, { Path = "List.Template.MutationRow.Template", Template = true, Optional = true, Note = "repli : « 2/7 » sur la carte en MUTATIONS" })
+		table.insert(screenDef.Elements, { Path = "List.Template.MutationRow.Template.MutationLabel", Class = "TextLabel", Optional = true, Note = "le nom de l'effet n'est pas écrit" })
+		table.insert(screenDef.Elements, { Path = "Detail.DetailMutations", Class = "TextLabel", Optional = true, Note = "repli : les effets obtenus dans DetailIncome, en MUTATIONS" })
+	end
+end
+
 return UI

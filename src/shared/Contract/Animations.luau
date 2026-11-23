@@ -93,6 +93,11 @@ table.insert(Animations.NightGuard, { Name = "Arrest", Loop = false, Priority = 
 -- orange au ContractChecker, l'objet passe dans sa main Chase.CatchPickUp.GrabFallback s après le début du geste.
 table.insert(Animations.Guard, { Name = "PickUp", Loop = false, Priority = "Action", Marker = "Grab" })
 
+-- a277 (L-249, L-238 a, Clément) : vigiles de magasin seulement (pas les vigiles de nuit) : course rapide, jouée au lieu
+-- de Run au-dessus de Chase.Sprint.FromFactor × sa course normale (Guard/Gait). Pas encore livrée : orange au
+-- ContractChecker, Run se joue à sa place. Boucle et priorité comme Run.
+table.insert(Animations.Guard, { Name = "Sprint", Loop = true, Priority = "Movement" })
+
 -- 2 animations dans chaque vendeur (Vendor_* des comptoirs du hub). Jouées par VendorService (vague 39) :
 -- Idle en boucle, Wave quand un joueur approche (Config/Vendors).
 Animations.Vendor = {
@@ -132,7 +137,7 @@ Animations.Driver = {
 -- ReplicatedStorage/Assets/Crowd/Models/NPC_Crowd_01 à _12, <Modèle>/Animations/<Nom>. Toutes en boucle, priorité
 -- Action. Marqueur Shout : le cri (son de foule) ; TakePhoto : celle des témoins (même ID, marqueur Flash). Rôles :
 -- pour le voleur Cheer, ou HoldSign avec une pancarte Side = "For" ; contre Boo, ou HoldSign avec une pancarte
--- "Against" ; crieur Shout ; photographe TakePhoto. Pas encore jouées par le code (WitnessCrowdController).
+-- "Against" ; crieur Shout ; photographe TakePhoto. Jouées par WitnessCrowdController (Config/Witness.Crowd).
 Animations.Crowd = {
 	{ Name = "Cheer", Loop = true, Priority = "Action", Marker = "Shout" },
 	{ Name = "Boo", Loop = true, Priority = "Action", Marker = "Shout" },

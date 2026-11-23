@@ -927,6 +927,16 @@ local List: { RemoteDef } = {
 			{ Name = "message", Kind = "string", Min = 0, Max = MAX_MESSAGE_LENGTH },
 		},
 	},
+	{
+		-- Vague GC6 (a410, MAJ 7), absent du tableau 9.4 : la fenêtre du jeu passe au premier plan (true) ou le quitte
+		-- (false) (NotificationController). NotificationService n'en tire qu'une chose : un objet volé dans la boutique
+		-- d'un joueur hors du premier plan lui est signalé par une notification Roblox. Rien d'autre ne le lit.
+		Name = "ReportFocus",
+		Direction = "ClientToServer",
+		Reliable = true,
+		Args = { { Name = "focused", Kind = "boolean" } },
+		RatePerSecond = 2, -- V0 proposé (Cantin, 23/11)
+	},
 }
 
 return {
