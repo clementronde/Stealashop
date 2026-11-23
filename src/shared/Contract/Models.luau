@@ -913,4 +913,34 @@ local UnboxFx: ModelSpec = {
 Models.UnboxFx = UnboxFx
 table.insert(Models.List, table.find(Models.List, WeaponShopCounter) or #Models.List + 1, UnboxFx)
 
+-- 2e étage de la boutique (a280, vague GC2, lot C ; L-217, L-231, L-277) : un Model `Floor_2` dans le gabarit
+-- ReplicatedStorage/Assets/Plots/PLOT_Shop (à côté de Stage_1 à Stage_5 ; ShopStageService en pose une copie dans la
+-- boutique), ou déjà dans une boutique. Facultatif : sans lui, pas d'étage (pas encore livré). Dedans : ses places
+-- DisplaySlot_31 à _40 (Attachments, FitSize comme en bas ; une place qui manque arrête la série), et leurs plaques
+-- CollectPad_31 à _40 (facultatives : sans elles, l'argent va sur la plaque au plus petit numéro). Attribut
+-- ShowFromRebirth (Contract/Attributes) et numéros _21 à _30 réservés aux présentoirs bonus : contrôlés à part par le
+-- ContractChecker (checkFloor2).
+local Floor2: ModelSpec = {
+	Key = "Floor2",
+	Label = "2e étage de la boutique",
+	Category = "Parcelles",
+	Names = { "Floor_2" },
+	Class = "Model",
+	Parts = {
+		{ Name = "DisplaySlot_%02d", From = 31, To = 40, Class = "Attachment", Note = "places de l'étage, L-277" },
+		{
+			Name = "CollectPad_%02d",
+			From = 31,
+			To = 40,
+			Class = "BasePart",
+			Optional = true,
+			Note = "facultatives : sans elles, l'argent va sur la plaque au plus petit numéro, L-277",
+			Inside = COLLECT_PAD_INSIDE,
+		},
+	},
+	Expected = { "Floor_2" },
+}
+Models.Floor2 = Floor2
+table.insert(Models.List, table.find(Models.List, WeaponShopCounter) or #Models.List + 1, Floor2)
+
 return Models

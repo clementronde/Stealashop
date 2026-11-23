@@ -22,7 +22,9 @@
 --     qui republie DisplaySlotsUnlocked chaque seconde), et UnboxService.Refresh remet tout de suite
 --     à jour leur attribut UnboxState (un colis peut s'y poser, L-086). L'ancienne amélioration
 --     « Workbenches » (UnboxBenches) n'est plus au catalogue depuis L-086 : BuyItem("UnboxBenches")
---     est refusé comme un Id inconnu ;
+--     est refusé comme un Id inconnu. a280 (vague GC2, lot C) : après les 20 présentoirs du bas, DisplaySlots continue
+--     avec les places du 2e étage ouvertes au joueur (attribut FloorStands du Player, posé par DisplayService ; prix et
+--     maximum : Shared/ShopFloor.StandCost) ;
 --   - aura ou trail (Config/Cosmetics) : prix et argent gérés ici, au comptoir taggé AuraShop
 --     (même portée), puis CosmeticService.Grant(player, id) (agent a20). Sans CosmeticService
 --     (module absent ou sans Owns et Grant), ces achats sont refusés (« This item isn't available
@@ -70,13 +72,13 @@ local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage.Shared
-local Balance = require(Shared.Config.Balance)
 local Cosmetics = require(Shared.Config.Cosmetics)
 local Formulas = require(Shared.Config.Formulas)
 local Tools = require(Shared.Config.Tools)
 local Upgrades = require(Shared.Config.Upgrades)
 local Find = require(Shared.Contract.Find)
 local Format = require(Shared.Format)
+local ShopFloor = require(Shared.ShopFloor) -- a280 : 2e étage
 local Net = require(Shared.Net.Net)
 local ProfileTypes = require(Shared.Types.Profile)
 
@@ -356,9 +358,16 @@ local function buyTool(player: Player, tool: ToolDef)
 	emitPurchase(player, "Tool", tool.Id, tool.Price, nil)
 end
 
+-- a280 : places du 2e étage ouvertes au joueur, publiées par DisplayService (attribut FloorStands, écrit par le serveur).
+local function floorStandsOf(player: Player): number
+	local value = player:GetAttribute("FloorStands")
+	return if type(value) == "number" and value == value then value else 0
+end
+
 local function buyUpgrade(player: Player, data: Data, upgrade: UpgradeDef)
 	local level = levelOf(data, upgrade.Id)
-	local cost = Formulas.UpgradeCost(upgrade.Id, level)
+	local stands = if upgrade.Id == "DisplaySlots" then floorStandsOf(player) else 0
+	local cost = if upgrade.Id == "DisplaySlots" then ShopFloor.StandCost(level, stands) else Formulas.UpgradeCost(upgrade.Id, level)
 	if cost == nil then
 		local message = if upgrade.Id == "DisplaySlots"
 			then MESSAGES.StandsMax
@@ -387,11 +396,11 @@ local function buyUpgrade(player: Player, data: Data, upgrade: UpgradeDef)
 	end
 	publish(player)
 
-	-- Présentoirs débloqués = départ + niveau, au plus le maximum (7.5 : 4 à 20).
+	-- Présentoirs débloqués = départ + niveau, au plus le maximum (7.5 : 4 à 20 ; a280 : plus les places de l'étage).
 	local message: string
 	if upgrade.Id == "DisplaySlots" then
-		local display = Balance.Display
-		message = string.format(MESSAGES.StandUnlocked, math.min(display.StartSlots + newLevel, display.MaxSlots), display.MaxSlots)
+		local unlocked, max = ShopFloor.Total(newLevel, stands)
+		message = string.format(MESSAGES.StandUnlocked, unlocked, max)
 	else
 		-- Tapis (v2) : niveau affiché = niveau enregistré + 1 (le joueur commence au niveau 1).
 		message = string.format(MESSAGES.MachineUpgraded, upgrade.DisplayName, Formulas.TreadmillShownLevel(newLevel))

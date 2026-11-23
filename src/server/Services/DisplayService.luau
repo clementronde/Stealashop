@@ -51,7 +51,9 @@
 --     CashCollected (number)         argent encaissé depuis l'arrivée sur le serveur : plaques,
 --                                    encaissement automatique, gains hors ligne (il ne fait que monter :
 --                                    chaque hausse = un encaissement)
---     DisplaySlotsUnlocked (number)  présentoirs débloqués (4 à 20, plus les présentoirs bonus)
+--     DisplaySlotsUnlocked (number)  présentoirs débloqués (4 à 20, plus les présentoirs bonus et ceux de l'étage)
+--     FloorStands (number)           a280 : places du 2e étage ouvertes au joueur (0 à 10 ; plus bas), lu par
+--                                    UpgradeController (prix et prochain présentoir) et ShopService (achat)
 --   sur la parcelle :
 --     CashRegister (number)          total des plaques, en dollars entiers ; 0 si libre
 --   sur chaque objet exposé (Model `DisplayItem_<nn>`, tag de code `DisplayItem`, rangé dans le
@@ -174,6 +176,12 @@
 --       Présentoirs bonus, au-delà de Balance.Display.MaxSlots : DisplaySlot_21 et suivants, optionnels
 --       dans la parcelle (aucun avertissement s'ils manquent ; seuls ceux posés comptent) ; 0 par défaut.
 --       Un objet posé sur un présentoir bonus qui n'est plus débloqué retourne dans l'inventaire.
+-- 2e étage (a280, vague GC2, lot C ; L-217, L-231, L-277 ; Shared/ShopFloor, Config/ShopGrowth.Floor2) : les places
+-- DisplaySlot_31 à _40 du Model Floor_2 de la parcelle (ShopStageService.EnsureFloor le copie du gabarit au besoin,
+-- caché) sont débloquées une à une après les 20 du bas, par les niveaux 17 à 26 de Upgrades.DisplaySlots, pour un
+-- propriétaire à qui l'étage est ouvert (ShopStageService.FloorStands : renaissances ≥ ShowFromRebirth). Elles comptent
+-- comme les autres (Equip Best, réserve, plaques CollectPad_31 à _40, sinon la plaque au plus petit numéro). Sans
+-- Floor_2 ni ShopStageService : aucune place d'étage, comme avant.
 --   DisplayService.HasAutoCollect(player) -> boolean
 --       true : les plaques se vident toutes seules dans l'argent du joueur à chaque mise à jour (une fois par
 --       seconde), où qu'il soit (source « Auto », sans ligne dans la sortie) ; false par défaut.
@@ -260,6 +268,8 @@ local Net = require(ReplicatedStorage.Shared.Net.Net)
 local ProfileTypes = require(ReplicatedStorage.Shared.Types.Profile)
 local DataService = require(script.Parent.DataService)
 local PlotService = require(script.Parent.PlotService)
+local ShopGrowth = require(ReplicatedStorage.Shared.Config.ShopGrowth) -- a280 : 2e étage
+local ShopFloor = require(ReplicatedStorage.Shared.ShopFloor) -- a280
 
 type Data = ProfileTypes.Data
 type ItemEntry = ProfileTypes.Item
@@ -281,6 +291,19 @@ if inventoryModule and inventoryModule:IsA("ModuleScript") then
 	inventoryLoaded, inventoryResult = pcall(require, inventoryModule)
 end
 local InventoryService: InventoryApi? = if inventoryLoaded and type(inventoryResult) == "table" then inventoryResult :: any else nil
+
+-- a280 : 2e étage (ShopStageService), chargé s'il est là (banc d'essai sans lui : aucune place d'étage).
+type StageApi = {
+	EnsureFloor: (plot: Model) -> Instance?,
+	FloorSlots: (floor: Instance) -> ({ [number]: Attachment }, number),
+	FloorStands: (plot: Model, rebirths: number?) -> number,
+}
+local stageModule = script.Parent:FindFirstChild("ShopStageService")
+local stageLoaded: boolean, stageResult: any = false, nil
+if stageModule and stageModule:IsA("ModuleScript") then
+	stageLoaded, stageResult = pcall(require, stageModule)
+end
+local ShopStageService: StageApi? = if stageLoaded and type(stageResult) == "table" then stageResult :: any else nil
 
 -- Objet exposé en ce moment (GetExposed).
 export type ExposedItem = { Uid: string, ItemId: string, Income: number }
@@ -313,6 +336,7 @@ local INCOME_ATTRIBUTE = "Income"
 local EXPOSED_INCOME_ATTRIBUTE = "ExposedIncome"
 local COLLECTED_ATTRIBUTE = "CashCollected"
 local SLOTS_ATTRIBUTE = "DisplaySlotsUnlocked"
+local FLOOR_STANDS_ATTRIBUTE = "FloorStands" -- a280, nom V0 (absent du doc) : places d'étage ouvertes
 local REGISTER_ATTRIBUTE = "CashRegister"
 -- Posé par PlotService sur la parcelle : son numéro, envoyé avec CashCollect.
 local PLOT_INDEX_ATTRIBUTE = "PlotIndex"
@@ -352,7 +376,8 @@ local PAD_COOLDOWN = 1
 -- V0 proposé, absent du doc : borne de la recherche des présentoirs bonus (DisplaySlot_21 et
 -- suivants, DEV-100) ; pas une règle de jeu, le gamepass en donne 4 (Config/Monetization).
 local BONUS_SLOT_LIMIT = 10
-local MAX_SLOT_INDEX = Balance.Display.MaxSlots + BONUS_SLOT_LIMIT
+-- a280 : jusqu'à la dernière place du 2e étage (DisplaySlot_40, L-277).
+local MAX_SLOT_INDEX = math.max(Balance.Display.MaxSlots + BONUS_SLOT_LIMIT, ShopFloor.Slot(ShopGrowth.Floor2.Slots))
 
 -- V0 proposé, absent du doc : bloc de remplacement d'un objet pas encore livré, à la taille d'un
 -- objet exposé (environ 1,5 à 2 studs de haut, planche 10.6).
@@ -420,6 +445,9 @@ type PlotRefs = {
 	slots: { [number]: Attachment? }, -- nil : présentoir absent de la parcelle
 	extra: number, -- présentoirs bonus posés : DisplaySlot_21 à 20 + extra (DEV-100)
 	bounds: BasePart?,
+	plot: Model, -- a280
+	floor: Instance?, -- a280 : Floor_2 où les places d'étage ont été cherchées (nil : pas d'étage)
+	floorCount: number, -- a280 : places d'étage posées, DisplaySlot_31 à 30 + floorCount
 }
 
 -- Plaque de ramassage CollectPad_xx d'une parcelle (voir l'en-tête).
@@ -451,6 +479,7 @@ type Account = {
 	padWaiting: boolean, -- arrivé sur onSlot pendant son délai : ramassée dès la fin du délai
 	shownRegister: number?,
 	shownSlots: number?,
+	shownFloor: number?, -- a280 : dernier FloorStands écrit
 }
 
 local DisplayService = {}
@@ -563,21 +592,49 @@ local function autoCollect(player: Player): boolean
 	return false
 end
 
+-- a280 : places du 2e étage ouvertes au propriétaire (0 sans étage dans la parcelle ou sans ShopStageService).
+local function floorStands(data: Data, refs: PlotRefs?): number
+	local api = ShopStageService
+	if refs == nil or refs.floorCount <= 0 or api == nil then
+		return 0
+	end
+	local ok, value = pcall(api.FloorStands :: any, refs.plot, data.Rebirths)
+	if not ok or type(value) ~= "number" or value ~= value then
+		reportOnce("stage:FloorStands", `[DisplayService] ShopStageService.FloorStands : {value}, aucune place d'étage`, "warn")
+		return 0
+	end
+	return math.clamp(math.floor(value), 0, refs.floorCount)
+end
+
+-- a280 : places du 2e étage débloquées (niveaux de Upgrades.DisplaySlots au-delà des 20 du bas, Shared/ShopFloor).
+local function floorSlots(data: Data, refs: PlotRefs?): number
+	local stands = floorStands(data, refs)
+	if stands <= 0 then
+		return 0
+	end
+	local level = data.Upgrades.DisplaySlots
+	return ShopFloor.Unlocked(if type(level) == "number" then level else 0, stands)
+end
+
 -- Le présentoir `index` est-il débloqué ? Ceux de base (1 à baseSlots), puis les présentoirs bonus
--- (MaxSlots + 1 à MaxSlots + extraSlots).
+-- (MaxSlots + 1 à MaxSlots + extraSlots), puis ceux de l'étage (a280 : 31 à 30 + floorSlots).
 local function isUnlocked(player: Player, data: Data, refs: PlotRefs?, index: number): boolean
 	if index >= 1 and index <= baseSlots(data) then
 		return true
+	end
+	local first = ShopFloor.Slot(1)
+	if index >= first then
+		return index < first + floorSlots(data, refs)
 	end
 	local max = Balance.Display.MaxSlots
 	return index > max and index <= max + extraSlots(player, refs)
 end
 
 local function unlockedCount(player: Player, data: Data, refs: PlotRefs?): number
-	return baseSlots(data) + extraSlots(player, refs)
+	return baseSlots(data) + extraSlots(player, refs) + floorSlots(data, refs)
 end
 
--- Présentoirs débloqués, dans l'ordre : ceux de base, puis les bonus.
+-- Présentoirs débloqués, dans l'ordre : ceux de base, puis les bonus, puis ceux de l'étage (a280).
 local function unlockedList(player: Player, data: Data, refs: PlotRefs?): { number }
 	local list: { number } = {}
 	for index = 1, baseSlots(data) do
@@ -586,6 +643,9 @@ local function unlockedList(player: Player, data: Data, refs: PlotRefs?): { numb
 	local max = Balance.Display.MaxSlots
 	for index = max + 1, max + extraSlots(player, refs) do
 		table.insert(list, index)
+	end
+	for n = 1, floorSlots(data, refs) do
+		table.insert(list, ShopFloor.Slot(n))
 	end
 	return list
 end
@@ -841,9 +901,31 @@ end
 
 -- Présentoirs et volume de la parcelle. Cherchés une seule fois, avant que ce
 -- service y pose des objets (dont les pièces pourraient porter les mêmes noms).
+-- a280 : places du 2e étage cherchées dans le Floor_2 de la parcelle (copié du gabarit au besoin), de nouveau tant
+-- qu'il manque ou s'il a changé (un Floor_2 retiré : ses places partent avec lui).
+local function syncFloor(plot: Model, refs: PlotRefs)
+	local api = ShopStageService
+	local floor = if api then api.EnsureFloor(plot) else nil
+	if floor == refs.floor and (floor == nil or floor.Parent ~= nil) then
+		return
+	end
+	for n = 1, ShopGrowth.Floor2.Slots do
+		refs.slots[ShopFloor.Slot(n)] = nil
+	end
+	refs.floor, refs.floorCount = floor, 0
+	if floor and api then
+		local found, count = api.FloorSlots(floor)
+		for index, slot in found do
+			refs.slots[index] = slot
+		end
+		refs.floorCount = count
+	end
+end
+
 local function refsFor(plot: Model): PlotRefs
 	local cached = refsOf[plot]
 	if cached then
+		syncFloor(plot, cached)
 		return cached
 	end
 
@@ -881,7 +963,11 @@ local function refsFor(plot: Model): PlotRefs
 		slots = slots,
 		extra = extra,
 		bounds = if bounds ~= nil and bounds:IsA("BasePart") then bounds :: BasePart else nil,
+		plot = plot,
+		floor = nil,
+		floorCount = 0,
 	}
+	syncFloor(plot, refs)
 	refsOf[plot] = refs
 	return refs
 end
@@ -1524,6 +1610,12 @@ local function publish(player: Player, account: Account, data: Data?)
 			account.shownRegister = shown
 			plot:SetAttribute(REGISTER_ATTRIBUTE, shown)
 		end
+	end
+	-- a280 : places du 2e étage ouvertes (UpgradeController, ShopService).
+	local stands = if data and plot then floorStands(data, refsFor(plot)) else nil
+	if stands and stands ~= account.shownFloor then
+		account.shownFloor = stands
+		player:SetAttribute(FLOOR_STANDS_ATTRIBUTE, stands)
 	end
 	if slots and slots ~= account.shownSlots then
 		account.shownSlots = slots

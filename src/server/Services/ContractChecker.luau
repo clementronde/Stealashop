@@ -366,6 +366,48 @@ local function checkPlotIndex()
 	end
 end
 
+-- a280 (vague GC2, lot C ; L-231 Q3, L-277) : chaque Model Floor_2 (2e étage, Contract/Models.Floor2 pour ses places) :
+-- attribut ShowFromRebirth facultatif (absent : orange, V0 de Config/ShopGrowth.Floor2), entier ≥ 0 sinon un problème ;
+-- aucune place DisplaySlot_21 à _30 dedans (réservées aux présentoirs bonus du gamepass, L-277) ; rangé dans le gabarit
+-- PLOT_Shop ou dans une boutique PlayerPlot, sinon le code ne le lit pas (orange).
+local function checkFloor2(scanned: { Instance })
+	local spec = (Attributes :: any).ShowFromRebirth
+	local floorSpec = (Models :: any).Floor2
+	if spec == nil or floorSpec == nil then
+		return -- contrat d'avant a280
+	end
+	local names: { string } = floorSpec.Names
+	for _, inst in scanned do
+		if not (inst:IsA("PVInstance") or inst:IsA("Folder")) or not table.find(names, inst.Name) then
+			continue
+		end
+		local label = inst:GetFullName()
+		local value = inst:GetAttribute(spec.Name)
+		if value == nil then
+			warning("Parcelles", `{label} : attribut {spec.Name} absent (facultatif : 1re renaissance par défaut, L-231)`)
+		elseif type(value) ~= "number" or value % 1 ~= 0 or value < spec.Min then
+			problem("Parcelles", `{label} : {spec.Name} = {tostring(value)}, attendu un entier ≥ {spec.Min} (renaissances, L-231)`)
+		end
+		for index = 21, 30 do
+			if inst:FindFirstChild(string.format("DisplaySlot_%02d", index), true) then
+				problem("Parcelles", `{label} : DisplaySlot_{index} réservé aux présentoirs bonus ; les places de l'étage sont DisplaySlot_31 à _40 (L-277)`)
+			end
+		end
+		local parent = inst.Parent
+		local inPlot = false
+		while parent and parent ~= game do
+			if parent.Name == "PLOT_Shop" or parent:HasTag("PlayerPlot") then
+				inPlot = true
+				break
+			end
+			parent = parent.Parent
+		end
+		if not inPlot then
+			warning("Parcelles", `{label} : ni dans le gabarit PLOT_Shop ni dans une boutique PlayerPlot : le code ne le lit pas (L-277)`)
+		end
+	end
+end
+
 local function checkTags()
 	local zone = Attributes.Zone
 	local known: { [string]: string } = {}
@@ -1527,6 +1569,7 @@ local function run()
 	checkPlotIndex()
 	breathe()
 	checkModels(scanned)
+	checkFloor2(scanned) -- a280
 	breathe()
 	checkItems(scanned)
 	checkIcons(scanned)

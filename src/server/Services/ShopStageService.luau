@@ -53,10 +53,26 @@
 -- Fond minimum (L-285, ShopGrowth.MinBack) : le fond coupé n'est jamais posé devant MinBack (fond du carré de
 -- 48 × 48 du niveau 1, z 8) ; s'il atteint le fond du gabarit, la boutique est entière.
 --
+-- 2e étage (a280, vague GC2, lot C ; L-217, L-231, L-277 ; Config/ShopGrowth.Floor2, Shared/ShopFloor) : le Model
+-- `Floor_2` de la boutique, ou à défaut une copie de celui du gabarit (posée comme les Stage_j, sans script, recolorée,
+-- jamais coupée), créée au premier besoin et jamais retirée ensuite : ses DisplaySlot_31 à _40 restent trouvables par
+-- DisplayService et PvPService. Montré quand Apply le demande (4e argument), sinon caché comme un HideFromStage (mêmes
+-- propriétés mémorisées et rendues). Sans Floor_2 nulle part : rien ne change, aucune place d'étage.
+--
 -- API (serveur) :
---   ShopStageService.Apply(plot, k, unlocked?) -> number
+--   ShopStageService.Apply(plot, k, unlocked?, floorShown?) -> number
 --       Met la boutique au niveau k (ramené à 1 au moins), coupée au fond du présentoir `unlocked` (nombre de
---       présentoirs débloqués ; nil : pas de coupe) ; renvoie le niveau posé. Sans yield.
+--       présentoirs débloqués ; nil : pas de coupe), l'étage Floor_2 montré si floorShown (caché sinon) ; renvoie le
+--       niveau posé. Sans yield.
+--   ShopStageService.EnsureFloor(plot) -> Instance?
+--       Floor_2 de la boutique (copié du gabarit s'il manque, caché tant qu'Apply ne l'a pas montré) ; nil s'il n'y en a
+--       nulle part. Sans yield.
+--   ShopStageService.FloorSlots(floor) -> ({ [number]: Attachment }, number)
+--       Places DisplaySlot_31… de `floor`, à la suite (la première qui manque arrête la série), et leur nombre.
+--   ShopStageService.FloorStands(plot, rebirths?) -> number
+--       Places d'étage ouvertes au propriétaire qui a fait `rebirths` renaissances (ShopFloor.Stands : places posées
+--       dans le Floor_2 de la boutique, sinon dans celui du gabarit ; attribut ShowFromRebirth du Floor_2, sinon
+--       ShopGrowth.Floor2.ShowFromRebirth). 0 sans Floor_2. Sans yield.
 --   ShopStageService.GetLevel(plot) -> number
 --       Niveau posé par le dernier Apply (1 si aucun).
 --   ShopStageService.IsBeyond(plot, inst) -> boolean
@@ -68,6 +84,8 @@ local RunService = game:GetService("RunService")
 local Balance = require(ReplicatedStorage.Shared.Config.Balance)
 local ShopGrowth = require(ReplicatedStorage.Shared.Config.ShopGrowth)
 local SkillTree = require(ReplicatedStorage.Shared.Config.SkillTree)
+local Features = require(ReplicatedStorage.Shared.Config.Features)
+local ShopFloor = require(ReplicatedStorage.Shared.ShopFloor) -- a280 : 2e étage
 
 -- Noms de Clément (L-096, plot_shop_builder) ; StageLevel et StageDepth : V0 proposés, absents du doc.
 local TEMPLATE_NAME = "PLOT_Shop"
@@ -89,7 +107,8 @@ local ENABLED_CLASSES = { "SurfaceGui", "BillboardGui", "Light", "ParticleEmitte
 
 type Saved = { [Instance]: { [string]: any } }
 -- depth : fond posé (nil = entier) ; slots : z de chaque DisplaySlot_xx ; points : CFrame d'origine des StageUpgradePoint_n.
-type PlotState = { level: number, saved: Saved, depth: number?, slots: { [number]: number }?, points: { [Attachment]: CFrame } }
+-- floorShown (a280) : Floor_2 montré par le dernier Apply.
+type PlotState = { level: number, saved: Saved, depth: number?, slots: { [number]: number }?, points: { [Attachment]: CFrame }, floorShown: boolean }
 -- Coupe d'une copie : fond posé, fond du gabarit, repère de la boutique, gabarit découpé par Clément (L-190).
 type Cut = { depth: number, back: number, pivot: CFrame, rowCut: boolean }
 
@@ -392,9 +411,42 @@ local function applyEveryStage(plot: Model, template: Model?, k: number, cut: Cu
 	end
 end
 
--- HideFromStage ≤ k caché (avec les descendants), le reste rendu à ses valeurs d'origine.
-local function applyHide(plot: Model, state: PlotState, k: number)
+-- a280 : état d'une boutique, créé au premier usage (Apply ou EnsureFloor).
+local function stateOf(plot: Model): PlotState
+	local state = states[plot]
+	if state == nil then
+		state = { level = 1, saved = {}, depth = nil, slots = nil, points = {}, floorShown = false } :: PlotState
+		states[plot] = state
+	end
+	return state :: PlotState
+end
+
+-- a280 : `inst` et ses descendants cachés (valeurs d'origine mémorisées dans `saved`).
+local function hideTree(inst: Instance, saved: Saved)
+	hideOne(inst, saved)
+	for _, sub in inst:GetDescendants() do
+		hideOne(sub, saved)
+	end
+end
+
+-- a280 : Floor_2 du gabarit, ou nil.
+local function templateFloor(): Instance?
+	local assets = ReplicatedStorage:FindFirstChild("Assets")
+	local plots = if assets then assets:FindFirstChild("Plots") else nil
+	local template = if plots then plots:FindFirstChild(TEMPLATE_NAME) else nil
+	return if template then template:FindFirstChild(ShopGrowth.Floor2.ModelName) else nil
+end
+
+-- HideFromStage ≤ k caché (avec les descendants), le reste rendu à ses valeurs d'origine. a280 : `hiddenFloor` (Floor_2
+-- pas montré) caché aussi, avec ses descendants.
+local function applyHide(plot: Model, state: PlotState, k: number, hiddenFloor: Instance?)
 	local wanted: { [Instance]: boolean } = {}
+	if hiddenFloor then
+		wanted[hiddenFloor] = true
+		for _, sub in hiddenFloor:GetDescendants() do
+			wanted[sub] = true
+		end
+	end
 	for _, inst in plot:GetDescendants() do
 		local from = inst:GetAttribute(HIDE_FROM)
 		if type(from) == "number" and from <= k and not wanted[inst] then
@@ -417,18 +469,77 @@ local function applyHide(plot: Model, state: PlotState, k: number)
 	end
 end
 
+-- a280 : Floor_2 de la boutique, copié du gabarit s'il manque (voir l'en-tête) ; nil sans Floor_2 ou interrupteur coupé.
+local function ensureFloor(plot: Model): Instance?
+	local name = ShopGrowth.Floor2.ModelName
+	local existing = plot:FindFirstChild(name)
+	if existing or not Features.ShopFloor2 then
+		return existing
+	end
+	local source = templateFloor()
+	local template = if source then templateOf() else nil
+	if source == nil or template == nil then
+		return nil
+	end
+	placeCopy(plot, template, source, nil, nil) -- jamais coupé : montré seulement quand la boutique est entière
+	local copy = plot:FindFirstChild(name)
+	local state = stateOf(plot)
+	if copy and not state.floorShown then
+		hideTree(copy, state.saved) -- même image que sa pose : jamais vu avant Apply
+	end
+	return copy
+end
+
+-- a280 : places posées dans un Floor_2 (cache, clés faibles : un modèle retiré s'en va seul).
+local capacityOf: { [Instance]: number } = setmetatable({}, { __mode = "k" }) :: any
+
+local function floorSlots(floor: Instance): ({ [number]: Attachment }, number)
+	local out: { [number]: Attachment } = {}
+	local count = 0
+	for n = 1, ShopGrowth.Floor2.Slots do
+		local index = ShopFloor.Slot(n)
+		local found = floor:FindFirstChild(string.format("DisplaySlot_%02d", index), true)
+		if found == nil or not found:IsA("Attachment") then
+			break
+		end
+		out[index] = found :: Attachment
+		count = n
+	end
+	return out, count
+end
+
 ------------------------------------------------------------------------------
 -- API
 ------------------------------------------------------------------------------
 
-function ShopStageService.Apply(plot: Model, level: number, unlocked: number?): number
-	local k = if level == level then math.max(1, math.floor(level)) else 1
-	local state = states[plot]
-	if state == nil then
-		state = { level = 1, saved = {}, depth = nil, slots = nil, points = {} } :: PlotState
-		states[plot] = state
+function ShopStageService.EnsureFloor(plot: Model): Instance?
+	return ensureFloor(plot)
+end
+
+function ShopStageService.FloorSlots(floor: Instance): ({ [number]: Attachment }, number)
+	return floorSlots(floor)
+end
+
+function ShopStageService.FloorStands(plot: Model, rebirths: number?): number
+	local spec = ShopGrowth.Floor2
+	local source = plot:FindFirstChild(spec.ModelName) or templateFloor()
+	if source == nil then
+		return 0
 	end
-	local current = state :: PlotState
+	local capacity = capacityOf[source]
+	if capacity == nil then
+		local _, count = floorSlots(source)
+		capacity = count
+		capacityOf[source] = count
+	end
+	local from = source:GetAttribute(spec.ShowFromRebirthAttribute)
+	local showFrom = if type(from) == "number" and from == from and from >= 0 then from else spec.ShowFromRebirth
+	return ShopFloor.Stands(capacity :: number, if type(rebirths) == "number" then rebirths else 0, showFrom)
+end
+
+function ShopStageService.Apply(plot: Model, level: number, unlocked: number?, floorShown: boolean?): number
+	local k = if level == level then math.max(1, math.floor(level)) else 1
+	local current = stateOf(plot)
 	local template = templateOf()
 	local back = if template then templateBack(template) else nil
 	local depth = if back and k >= 2 then depthFor(plot, current, unlocked, back) else nil
@@ -456,7 +567,15 @@ function ShopStageService.Apply(plot: Model, level: number, unlocked: number?): 
 		end
 	end
 	applyEveryStage(plot, template, k, cut)
-	applyHide(plot, current, k)
+	-- a280 : 2e étage, copié au premier besoin (montré), caché sinon.
+	local showFloor = floorShown == true
+	local floorChanged = showFloor ~= current.floorShown
+	current.floorShown = showFloor
+	local floor = if showFloor then ensureFloor(plot) else plot:FindFirstChild(ShopGrowth.Floor2.ModelName)
+	applyHide(plot, current, k, if floor and not showFloor then floor else nil)
+	if floorChanged and IS_STUDIO then
+		print(`[ShopStageService] {plot.Name} : 2e étage {if showFloor then (if floor then "montré" else "demandé, mais aucun Floor_2 (L-277)") else "caché"}`)
+	end
 	placePoints(plot, current, cut)
 	if (current.level ~= k or depthChanged) and IS_STUDIO then
 		print(`[ShopStageService] {plot.Name} : boutique niveau {current.level} → {k}, fond {if depth then string.format("%.1f", depth) else "entier"}`)

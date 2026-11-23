@@ -49,6 +49,32 @@ local ShopGrowth = {
 	-- Sans l'attribut, la coupe ci-dessus reste (filet).
 	RowCutAttribute = "RowCut", -- nom convenu avec Clément (L-190)
 	RowCutTolerance = 0.05, -- V0 : un tronçon coupé pile sur le plan reste devant le fond
+	-- a280 (vague GC2, lot C ; L-217, L-231, L-277 ; interrupteur Features.ShopFloor2) : 2e étage de la boutique, un Model
+	-- `Floor_2` dans le gabarit Assets/Plots/PLOT_Shop (à côté de Stage_1 à Stage_5 ; ShopStageService en pose une copie
+	-- dans la boutique), ou déjà posé dans la boutique. Il apparaît d'un coup (L-231 Q4) pour un propriétaire qui a fait au
+	-- moins ShowFromRebirth renaissances, une fois ses 20 présentoirs du bas débloqués ; ses places DisplaySlot_31 à _40
+	-- se débloquent ensuite une à une, dans la suite de l'amélioration Display Stands (règles : Shared/ShopFloor).
+	Floor2 = {
+		ModelName = "Floor_2", -- L-217
+		ShowFromRebirthAttribute = "ShowFromRebirth", -- sur Floor_2, entier ≥ 0 (L-231 Q3)
+		ShowFromRebirth = 1, -- V0 (L-231 Q3, à confirmer par Clément) : lu quand Floor_2 n'a pas l'attribut
+		FirstSlot = 31, -- L-277 : DisplaySlot_31 à _40 (_21 à _30 : présentoirs bonus du gamepass)
+		Slots = 10, -- L-231 Q2
+		-- Prix des places 1 à 10 de l'étage. V0 proposé (Cantin, 23/11) : la suite des prix du bas (Config/Upgrades,
+		-- DisplaySlots : 750K, 1,8M, 4,3M…) avec la même pente, × 2,4 par place, arrondie à 2 chiffres.
+		Costs = {
+			10_000_000,
+			25_000_000,
+			59_000_000,
+			140_000_000,
+			340_000_000,
+			820_000_000,
+			2_000_000_000,
+			4_700_000_000,
+			11_000_000_000,
+			27_000_000_000,
+		},
+	},
 }
 
 return DeepFreeze(ShopGrowth)

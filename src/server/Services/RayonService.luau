@@ -26,6 +26,8 @@
 -- des présentoirs débloqués : cachée comme un rayon, rendue à l'achat (ShopGrowth.HideLockedStands). Son invite
 -- « Display » reste éteinte par DisplayService (présentoir « Locked »), son contour RayonSpot part avec le rayon.
 -- Rayon_01 (dans la boutique, toujours débloqué avec StartSlots 4) n'est pas concerné.
+-- a280 (vague GC2, lot C) : Apply reçoit aussi « 2e étage montré » (floorShownFor, plus bas) ; le contrôle d'une seconde
+-- refait la boutique quand cette réponse change (renaissances changées sans achat de présentoir).
 --
 -- Quand : à l'attribution d'une parcelle et au départ du joueur (PlotService), à chaque achat de
 -- présentoir (attribut DisplaySlotsLevel du Player, écrit par ShopService), et une fois par seconde
@@ -61,6 +63,7 @@ local ShopGrowth = require(ReplicatedStorage.Shared.Config.ShopGrowth)
 local DataService = require(script.Parent.DataService)
 local PlotService = require(script.Parent.PlotService)
 local ShopStageService = require(script.Parent.ShopStageService)
+local ShopFloor = require(ReplicatedStorage.Shared.ShopFloor) -- a280 : 2e étage
 
 -- Noms convenus (L-082 point 2, contrat 10.4) et attribut de ShopService.
 local RAYON_PATTERN = "^Rayon_(%d+)$"
@@ -88,6 +91,7 @@ RayonService.Priority = 120 -- après PlotService (10), DataService (1) et ShopS
 
 local rayonsOf: { [Model]: { Rayon } } = {}
 local countOf: { [Model]: number } = {} -- présentoirs débloqués lors de la dernière mise à jour
+local floorOf: { [Model]: boolean } = {} -- a280 : 2e étage montré lors de la dernière mise à jour
 local hiddenOf: { [Instance]: Hidden } = {}
 local levelConnections: { [Player]: RBXScriptConnection } = {}
 
@@ -208,6 +212,19 @@ local function unlockedFor(plot: Model): number
 	return math.clamp(display.StartSlots + math.floor(level), 0, display.MaxSlots)
 end
 
+-- a280 (vague GC2, lot C ; L-217, L-231, L-277) : le 2e étage `Floor_2` est-il montré ? Places d'étage ouvertes au
+-- propriétaire (ShopStageService.FloorStands, renaissances du profil) et 20 présentoirs du bas débloqués
+-- (Shared/ShopFloor.IsShown) ; false sans propriétaire ou sans profil.
+local function floorShownFor(plot: Model): boolean
+	local owner = PlotService.GetOwner(plot)
+	local data = if owner then DataService.Get(owner) else nil
+	if data == nil then
+		return false
+	end
+	local level = data.Upgrades.DisplaySlots
+	return ShopFloor.IsShown(if type(level) == "number" then level else 0, ShopStageService.FloorStands(plot, data.Rebirths))
+end
+
 -- Étagères des rayons 2 à 5 (structure de Clément du 2026-11-08, `tools/clement/hub/plot_shop_builder`) :
 -- dans la boutique, `Rayon_0n` n'a plus qu'une RayonAnchor invisible qui porte ses DisplaySlot ; ses
 -- visuels (présentoirs, CollectPad, produits) sont rangés dans Assets/Plots/PLOT_Shop_Rayons/Rayon_0n,
@@ -320,7 +337,9 @@ local function apply(plot: Model)
 			level += 1
 		end
 	end
-	ShopStageService.Apply(plot, level, count) -- vague 55 : coupée au fond du dernier présentoir débloqué
+	local floorShown = floorShownFor(plot) -- a280 : 2e étage
+	floorOf[plot] = floorShown
+	ShopStageService.Apply(plot, level, count, floorShown) -- vague 55 : coupée au fond du dernier présentoir débloqué
 	-- Contours retirés avec leur Stage_j (niveau redescendu) : plus rien à rendre.
 	for inst, hidden in hiddenOf do
 		if inst.Parent == nil then
@@ -423,7 +442,7 @@ function RayonService.Start()
 	while true do
 		task.wait(RECONCILE_PERIOD)
 		for _, plot in PlotService.GetPlots() do
-			if countOf[plot] ~= unlockedFor(plot) then
+			if countOf[plot] ~= unlockedFor(plot) or (floorOf[plot] == true) ~= floorShownFor(plot) then -- a280 : étage compris
 				apply(plot)
 			end
 		end

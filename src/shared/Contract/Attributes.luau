@@ -48,6 +48,10 @@ local Attributes = {
 	-- jour (alerte comprise), « Night » = joue la nuit, avec un fondu (Config/Night.AmbienceFade). Facultatif : sans lui, le
 	-- son joue comme il est livré.
 	PlayAt = { Name = "PlayAt", Values = { "Day", "Night" } },
+	-- 2e étage de la boutique (a280, vague GC2 ; L-231 Q3, L-277 ; ShopStageService, Shared/ShopFloor) : sur le Model Floor_2,
+	-- entier ≥ 0 = renaissances qu'il faut avoir faites pour voir l'étage et acheter ses places. Facultatif : sans lui,
+	-- Config/ShopGrowth.Floor2.ShowFromRebirth (V0 1).
+	ShowFromRebirth = { Name = "ShowFromRebirth", Min = 0 },
 }
 
 return Attributes

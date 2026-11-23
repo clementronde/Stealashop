@@ -83,6 +83,10 @@ local Features = {
 	FramewispFx = true,
 	-- a301 (21/11, demande de Cantin) : près de la boutique d'un autre joueur, dehors, les étiquettes BB_Item de ses objets exposés se voient à travers la façade (ShopSpyController, Config/ShopSpy) ; V0 proposé (2026-11-21) : true ; false = comme avant.
 	ShopSpy = true,
+	-- a280 (vague GC2, lot C de l'audit a270 ; L-217, L-231, L-277) : 2e étage de la boutique, Model `Floor_2` de Clément
+	-- (Config/ShopGrowth.Floor2, Shared/ShopFloor, ShopStageService) ; true : sans Floor_2 livré, rien ne change ; false =
+	-- pas d'étage, l'amélioration Display Stands s'arrête aux 20 présentoirs du bas comme avant. V0 proposé (Cantin, 23/11).
+	ShopFloor2 = true,
 }
 
 export type Features = typeof(Features)
