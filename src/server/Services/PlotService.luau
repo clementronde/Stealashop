@@ -37,8 +37,8 @@
 --       des PlayerRemoving) : ce qui s'écrit dans le profil au départ va dans
 --       OnProfileReleasing, pas ici.
 --   PlotService.TeleportHome(player, canMove?) -> boolean
---       Ramène le personnage sur sa parcelle, au point d'apparition (retour base DEV-045,
---       vigile de nuit 5.12). Peut yield (2 s au plus) ; false si le joueur n'a pas de
+--       Ramène le personnage sur sa parcelle, au point d'apparition (vigile de nuit 5.12,
+--       commande Teleport d'AdminService). Peut yield (2 s au plus) ; false si le joueur n'a pas de
 --       parcelle ou pas de personnage. Les règles (recharge, mains vides) restent à
 --       l'appelant ; `canMove`, s'il est donné, est rappelé juste avant le déplacement, après
 --       l'attente : false = on ne bouge pas (le joueur a pris un colis entre-temps, par exemple).

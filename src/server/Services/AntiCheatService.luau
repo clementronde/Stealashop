@@ -43,7 +43,7 @@
 --     sont ignorées (le client envoie encore ses positions d'avant). Ensuite, tout est contrôlé : un
 --     client resté loin du point (retour refusé, nouveau téléport) est de nouveau détecté.
 -- Déplacements autorisés (DEV-060) : PlotService (placement sur sa parcelle à chaque apparition et
--- TeleportHome, donc ReturnBaseService et le renvoi de nuit ; PutOutside, sortie d'une boutique du hub
+-- TeleportHome, donc le renvoi de nuit et la commande Teleport d'AdminService ; PutOutside, sortie d'une boutique du hub
 -- par PvPService), StoreHeistService (sortie d'un magasin fermé ou reconstruit), NightCycleService
 -- (renvoi derrière le mur, quand le joueur n'a pas de parcelle), TrainingService (placement sur le
 -- tapis ou le banc), BatService et GuardService (poussées : coup de batte, capture).

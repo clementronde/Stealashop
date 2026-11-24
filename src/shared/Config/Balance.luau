@@ -227,12 +227,6 @@ local Balance = {
 		FenceIncomeMultiplier = 120, -- le receleur rachète un objet 120 × son $/s
 	},
 
-	-- 6.2 et 9.4 : bouton Retour base
-	ReturnToBase = {
-		Cooldown = 90,
-		AllowedWhileCarrying = false,
-	},
-
 	-- 9.6 : contrôle des déplacements (AntiCheatService)
 	AntiCheat = {
 		CheckInterval = 0.25,
