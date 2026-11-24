@@ -1122,6 +1122,7 @@ Chaque étape est envoyée une seule fois par joueur avec `AnalyticsService:LogO
 
 | Date | Décision | Par |
 | --- | --- | --- |
+| 2026-11-24 | **Tension pendant un braquage** (d'après les meilleurs jeux du moment) : « RUN! » plus grand, tout le HUD caché sauf le chrono et DROP, vigile qui poursuit en rouge (`Highlight`), file de chevrons jaunes au sol jusqu'à sa boutique, flash jaune à l'arrivée. Le bandeau du compte à rebours de la nuit va jusqu'au bord de l'écran. Liaison L-340. | Clément |
 | 2026-11-24 | **Achats** : à chaque achat réussi, des billets jaillissent du bouton et « −$X » rouge s'affiche près du compteur d'argent ; même chose avec des Robux pour les achats en Robux, plus tard. Liaison L-338. | Clément |
 | 2026-11-24 | **Boutique Robux** : le rayon derrière la caisse exclusive tourne en continu, sans retour visible au début ; les titres (EXCLUSIVE CRATE, STARTER PACK, ×2 CASH, ×2 TRAINING…) brillent en boucle au lieu de seulement au survol. Liaison L-337. | Clément |
 | 2026-11-24 | **Caisse exclusive de la boutique Robux** : au survol (ou au toucher) d'un objet de la caisse, une bulle de la largeur de sa case, juste au-dessus de l'objet, donne son nom et son revenu par seconde. Liaison L-336. | Clément |
