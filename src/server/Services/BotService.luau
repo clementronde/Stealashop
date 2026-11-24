@@ -211,6 +211,18 @@ local BOT_DOOR_GROUP = "BotDoor"
 local IS_STUDIO = RunService:IsStudio()
 -- V0 proposé, absent du doc : marge entre les pieds et le sol, comme PlotService.
 local SPAWN_LIFT = 0.1
+-- a423 (24/11) : un Humanoid posé avec son HumanoidRootPart ancré passe en FallingDown à l'image suivante (relevé en
+-- Play) ; désancré à sa première poursuite, il resterait par terre et immobile environ 3 s, puis GettingUp. États
+-- coupés à la pose, comme les vigiles (9.7) et l'agent de la boutique (ShopDefenseService).
+local DISABLED_STATES = {
+	Enum.HumanoidStateType.Swimming,
+	Enum.HumanoidStateType.Climbing,
+	Enum.HumanoidStateType.Seated,
+	Enum.HumanoidStateType.FallingDown,
+	Enum.HumanoidStateType.Ragdoll,
+	Enum.HumanoidStateType.GettingUp,
+	Enum.HumanoidStateType.PlatformStanding,
+}
 -- V0 proposé, absent du doc : attente au plus de l'avatar préparé par un autre appel.
 local TEMPLATE_WAIT = 10
 
@@ -564,6 +576,10 @@ local function spawnAvatar(current: State)
 	local position = ground + Vector3.new(0, hip + rootPart.Size.Y / 2 + SPAWN_LIFT, 0)
 	avatar:PivotTo(CFrame.lookAt(position, position + facing) * rootPart.CFrame:ToObjectSpace(avatar:GetPivot()))
 	avatar.Parent = current.Plot
+	-- a423 : avant la première image dans le Workspace (ancré, il passerait en FallingDown et tomberait au départ).
+	for _, humanoidState in DISABLED_STATES do
+		humanoid:SetStateEnabled(humanoidState, false)
+	end
 	current.Avatar = avatar
 	current.Home = avatar:GetPivot()
 	playLooped(current, IDLE)
