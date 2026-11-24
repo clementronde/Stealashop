@@ -301,6 +301,9 @@ local Unbox = {
 			MinDistance = 5, -- V0 : un mur plus près que cela ne rapproche plus la caméra : il devient transparent
 			Margin = 0.6, -- V0 : écart gardé devant un mur
 			MaxHidden = 12, -- V0 : pièces rendues transparentes au plus entre la caméra et le colis
+			-- a449 (testeur 1, 24/11) : rayon (studs) de la sphère qui suit aussi le trajet du point visé à la caméra (ouverture
+			-- et révélation) : la caméra s'arrête devant un meuble au lieu d'entrer dedans. 0 : le rayon seul, comme avant.
+			Room = 1.2, -- V0
 			-- Vague 75 (a259, T-222) : de la caméra du joueur à celle de l'ouverture en fondu (départ et arrivée en douceur)
 			-- en ce temps (s), au lieu du lissage du repli qui partait d'un coup (3 images de 3,4 à 2,2 studs à 15 images/s).
 			BlendIn = 0.6, -- V0 : la durée de l'Intro

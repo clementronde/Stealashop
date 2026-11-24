@@ -1568,12 +1568,51 @@ local function place(ctx: Context): (Vector3, Vector3)
 	return Vector3.new(point.X, y, point.Z), direction
 end
 
--- Vue dégagée du point `focus` vers `from` (ouvreur) : un obstacle assez loin rapproche la caméra devant lui ; plus
--- près que MinDistance, il devient transparent pour ce joueur jusqu'à la fin de la scène (L-234).
-function Unbox.Clear(state: State, from: Vector3, focus: Vector3): Vector3
-	if not state.ctx.Opener or state.destroyed then
-		return from
+-- Sphère lancée de `origin` le long de `direction` (Workspace:Spherecast), sans tenir compte de CanCollide ; nil sans
+-- contact (ou dans un faux Workspace de banc qui ne la connaît pas).
+local function spherecast(origin: Vector3, radius: number, direction: Vector3, exclude: { Instance }): RaycastResult?
+	local ok, result = pcall(function(): RaycastResult?
+		local params = RaycastParams.new()
+		params.FilterType = Enum.RaycastFilterType.Exclude
+		params.FilterDescendantsInstances = exclude
+		return Workspace:Spherecast(origin, radius, direction, params)
+	end)
+	return if ok then result else nil
+end
+
+-- a449 (testeur 1, 24/11, bande grise en haut de l'écran) : le rayon de Clear ne suit que l'axe de la vue ; il passait
+-- entre deux planches du rayon d'en face et la caméra de la révélation (14 studs pour l'objet de base ×2) finissait
+-- DANS ce rayon, sous sa planche du haut. Une sphère de rayon CAM.Room suit le même trajet : touchée assez loin, la
+-- caméra s'arrête devant (Margin) ; plus près que MinDistance, elle reste où le rayon l'a mise (rien de plus caché).
+local function roomy(state: State, cam: Vector3, focus: Vector3): Vector3
+	local radius = CAM.Room
+	local offset = cam - focus
+	if type(radius) ~= "number" or radius <= 0 or offset.Magnitude < 1e-3 then
+		return cam
 	end
+	local exclude = excluded(state, state.ctx)
+	for _ = 1, 6 do
+		local hit = spherecast(focus, radius, offset, exclude)
+		if hit == nil then
+			return cam
+		end
+		local part = hit.Instance
+		if part:IsA("BasePart") and part.Transparency >= 0.95 then
+			table.insert(exclude, part) -- volume invisible : ne gêne pas la vue
+			continue
+		end
+		if hit.Distance - CAM.Margin >= CAM.MinDistance then
+			return focus + offset.Unit * (hit.Distance - CAM.Margin)
+		end
+		return cam
+	end
+	return cam
+end
+
+-- Vue dégagée du point `focus` vers `from` (ouvreur) : un obstacle assez loin rapproche la caméra devant lui ; plus
+-- près que MinDistance, il devient transparent pour ce joueur jusqu'à la fin de la scène (L-234). Puis (a449) la
+-- caméra n'entre dans aucun meuble (roomy).
+local function clearLine(state: State, from: Vector3, focus: Vector3): Vector3
 	local offset = from - focus
 	local distance = offset.Magnitude
 	if distance < 1e-3 then
@@ -1603,6 +1642,13 @@ function Unbox.Clear(state: State, from: Vector3, focus: Vector3): Vector3
 		state.ctx.Hide(part)
 	end
 	return from
+end
+
+function Unbox.Clear(state: State, from: Vector3, focus: Vector3): Vector3
+	if not state.ctx.Opener or state.destroyed then
+		return from
+	end
+	return roomy(state, clearLine(state, from, focus), focus)
 end
 
 -- Caméra de l'ouvreur pendant l'ouverture : côté allée, le colis et le perso de profil.
