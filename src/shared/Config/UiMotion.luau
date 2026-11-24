@@ -911,6 +911,8 @@ local UiMotion = {
 	-- a401 (vague GC4) : encaissement sur une plaque comme dans la vidéo de Cantin (fiche docs/references/Encaissement-Base.md,
 	-- sections 3, 5, 7 et 8 ; CollectFeelController, GainController). Toutes les valeurs : V0 (fiche vidéo de Cantin, 23/11).
 	-- Enabled = false : comme avant (le chiffre défile au contact, CashRow sursaute, Cash_Collect au contact).
+	-- a422 (Cantin, 24/11) : en veille ; rallumé, il rejouerait Cash_Collect à la 1re arrivée en plus de Cash_Pad au
+	-- contact, contraire à la décision de Cantin (un seul son, au contact : Config/CashFlash.SoundOnContact).
 	CollectFeel = {
 		Enabled = false, -- a401 : interrupteur (false = comme avant) ; lot98 : coupé, L-299 est fait par a317 (Config/CashFlash : pas de Cash_Collect ni de note qui monte sur une plaque, « +$X » comme aujourd'hui)
 		-- Chiffre Cash retenu au contact (HudController.HoldCash), relâché à la 1re arrivée de billet (VfxController).

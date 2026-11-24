@@ -33,16 +33,23 @@ local CashFlash = {
 
 	-- 2. Compteur et son : Cash (UI_HUD) est retenu (HudController.HoldCash) jusqu'à l'arrivée du premier billet 3D au
 	-- compteur (VfxController.Collect) ; alors il défile en RollTime, CashRow grossit à PopScale en PopUpTime (Quad
-	-- Out) puis revient à 1 en PopDownTime (Quad Out), et Sound part (cherché par son nom dans Assets/Sounds : il est
-	-- rangé dans Assets/Sounds/Cash), PlaybackSpeed × (1 ± PitchJitter) au hasard. Cash_Collect n'est plus joué sur les
-	-- plaques (il reste pour les autres gains). Sans billets (VISUAL EFFECTS sur OFF, compteur hors écran) : tout de
-	-- suite.
+	-- Out) puis revient à 1 en PopDownTime (Quad Out). Sound (cherché par son nom dans Assets/Sounds : il est rangé dans
+	-- Assets/Sounds/Cash), PlaybackSpeed × (1 ± PitchJitter) au hasard, part au contact depuis a422 (SoundOnContact,
+	-- plus bas). Cash_Collect n'est plus joué sur les plaques (il reste pour les autres gains, et en secours si Sound
+	-- manque). Sans billets (VISUAL EFFECTS sur OFF, compteur hors écran) : tout de suite.
 	RollTime = 0.3, -- V0 (L-299, « ~0,3 s »)
 	PopScale = 1.15, -- V0 (L-299)
 	PopUpTime = 0.08, -- V0 (L-299, « ~0,08 s »)
 	PopDownTime = 0.3, -- V0 (L-299, « ~0,3 s »)
 	Sound = "Cash_Pad", -- son de Clément (L-299)
 	PitchJitter = 0.03, -- V0 (L-299, « ± 3 % »)
+	-- a422 (Cantin, 24/11 : « le son doit partir dès le contact avec la plaque », ce qui remplace le moment de L-299) :
+	-- Sound part au contact (remote CashCollect du joueur local, DisplayController.OnCollect : la plaque flashe et
+	-- s'enfonce), plus à l'arrivée du premier billet, qui garde le compteur et CashRow ; un seul son par plaque. Sound
+	-- absent d'Assets/Sounds : FallbackSound à sa place, au même moment. false : le son à l'arrivée du premier billet
+	-- (L-299).
+	SoundOnContact = true, -- V0 proposé (Cantin, 24/11)
+	FallbackSound = "Cash_Collect", -- V0 proposé (Cantin, 24/11) : un son part toujours au contact, même sans Cash_Pad
 
 	-- Appariement (V0 proposé, absent du doc) : la hausse de Cash et le remote CashCollect de la plaque arrivent presque
 	-- ensemble, dans un ordre qui n'est pas garanti. Une hausse de CashCollected sans plaque vue attend le remote au plus
