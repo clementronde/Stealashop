@@ -1,2 +1,10 @@
 # Worktrees des agents Claude (voir docs/Liaison-Code-Visuel.md, section 3.4)
 /agents/
+
+# Bancs hors Studio (tools/ironix/bancs, check-up a417 M3) : jamais les fichiers assemblés ni les sorties
+/tools/ironix/bancs/notes/**/run*.luau
+/tools/ironix/bancs/notes/**/*.txt
+/tools/ironix/bancs/notes/**/*.out
+/tools/ironix/bancs/notes/**/*.errs
+/tools/ironix/bancs/notes/**/*.norm
+/tools/ironix/bancs/notes/**/arbres/
