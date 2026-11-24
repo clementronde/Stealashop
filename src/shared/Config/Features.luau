@@ -113,7 +113,9 @@ local Features = {
 	-- a407 (vague GC6, 23/11, MAJ 3 : renaissances 5 à 10) : outils de renaissance de Config/Tools (Marteau-piqueur à la
 	-- 5e, Bélier à la 7e ; RequiresRebirth), vendus à la boutique d'armes, gardés à la renaissance, le Bélier ×3 sur les
 	-- portes de boutique (Tools.DoorHits). V0 proposé (Cantin, 23/11) : true ; false = ni l'un ni l'autre en jeu.
-	RebirthTools = true,
+	-- Fusion98 (24/11, accord du grand chef) : COUPÉ, la décision de Clément du 15/11 (L-173 : plus d'outil à la
+	-- renaissance) gagne sur la table de la Partie 2 ; question posée à Clément (liaison). Code en veille.
+	RebirthTools = false,
 	-- a414 (vague GC7, 23/11, demande de Cantin) : mesures du lancement dans le tableau de bord Roblox (AnalyticsService) :
 	-- entonnoirs de Config/Funnels (FunnelService, FunnelController ; le tutoriel garde l'onboarding), événements
 	-- WindowBroken, HighRarityOpened, ItemSold, LoadingTime, gains pas encore comptés (receleur, codes, dons du tuto,
