@@ -30,6 +30,8 @@ local SCALE = {
 -- (1,4 -> 1,2) et champignons (1,6 -> 1,2 ; touffe 1,25 -> 1) réduits, ils montaient au genou ; le reste tient.
 local SWAY_ANGLE = { ENV_Nature_Bush_TallGrass = 6, ENV_Nature_Flower_Tulip = 4, ENV_Nature_Flower_Daisy = 4,
 	ENV_Nature_Flower_Sunflower = 3, ENV_Nature_Tree_Oak = 1.5 }
+-- tronc agrandi (pièce, facteur de hauteur, facteur d'épaisseur)
+local FOOT = { ENV_Nature_Bush_Cone = { part = "Stem", h = 2.6, w = 1.7 } }
 -- rochers un peu plus foncés que dans les GLB (presque blancs sous la lumière du hub)
 local ROCK = { Rock = "959CA7", RockTop = "AEB4BE", RockDark = "7A818C" }
 -- pièces pleines (le reste en décor)
@@ -73,6 +75,13 @@ for _, name in names do
 	end
 	local solid = SOLID[name]
 	local nParts = 0
+	-- Clément, 2026-11-24 (« agrandis le pied des sapins, le sapin paraît minuscule ») : le sapin (buisson en cône) a un
+	-- vrai tronc, 2,6 fois plus haut et 1,7 fois plus épais ; tout le feuillage monte d'autant
+	local foot = FOOT[name]
+	local lift = 0
+	if foot then
+		for _, r in rows do if r[1] == "" and r[2] == foot.part then lift = r[7] * k * (foot.h - 1) end end
+	end
 	-- Clément, 2026-11-24 (« je veux que les tiges qui sortent, pas la base carrée ») : les fleurs (pâquerette, tulipe,
 	-- tournesol) perdent leur dalle verte carrée au sol, la plus large de leurs pièces Base ; tiges et feuilles restent
 	local pad = nil
@@ -89,6 +98,15 @@ for _, name in names do
 		-- touffes livrées comme pièces Sway_* directement sous la racine (haie, hautes herbes) : groupe Sway_* à leur nom
 		if grp == "" and pname:sub(1, 5) == "Sway_" then grp, pname = pname, "Tuft" end
 		local cx, cy, cz, sx, sy, sz, col = r[3] * k, r[4] * k, r[5] * k, r[6] * k, r[7] * k, r[8] * k, r[9]
+		if foot then
+			if grp == "" and pname == foot.part then
+				local bottom = cy - sy / 2
+				sx, sy, sz = sx * foot.w, sy * foot.h, sz * foot.w
+				cy = bottom + sy / 2
+			else
+				cy += lift
+			end
+		end
 		local p = Instance.new("Part"); p.Name = pname; p.Anchored = true
 		p.Size = Vector3.new(math.max(sx, 0.05), math.max(sy, 0.05), math.max(sz, 0.05))
 		if r[10] then

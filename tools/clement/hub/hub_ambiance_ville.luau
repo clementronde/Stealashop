@@ -355,7 +355,8 @@ add("ville : " .. nBuildings .. " immeubles (" .. nClash .. " sautés, place pri
 
 -- 2) Sol du hub : dallage 2 tons, partout ---------------------------------------------------------------------------
 -- Clément, 2026-11-24 (jardin du hub) : pelouse en damier de deux verts à tenons au lieu du bleu (la référence « mode
--- studs » de la Partie 1, section 2.3) ; avant : rgb(88, 178, 245) et rgb(66, 152, 230)
+-- studs » de la Partie 1, section 2.3) ; avant : rgb(88, 178, 245) et rgb(66, 152, 230). Le damier est refait ensuite
+-- d'un seul tenant par hub_sol_damier.luau (après hub_jardin.luau) : relancer celui-ci après ce script.
 local TILE_A, TILE_B, CELL = rgb(106, 186, 88), rgb(94, 172, 78), 8
 local ground = hub:FindFirstChild("Ground")
 local grass = {}

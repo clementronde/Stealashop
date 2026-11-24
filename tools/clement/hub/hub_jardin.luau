@@ -2,8 +2,10 @@
 -- les allées »). À lancer dans Studio (MCP execute_luau, mode Edit), APRÈS tools/clement/hub/hub_place_du_mall.luau
 -- (qui refait Map/Hub/Walls et effacerait les murs de terre). Relancer refait ce que ce script pose, à l'identique.
 -- Ce qu'il fait :
---  1) murs de terre (Map/Hub/Walls/EarthWalls) : blocs de 10 à 18 de long, 20 à 38 de haut (pas de 6), damier de deux
---     bruns par rangs de 4, dessus d'herbe qui déborde, herbe qui pend, marches basses côté place ; 10 à 16 d'épaisseur
+--  1) murs de terre (Map/Hub/Walls/EarthWalls) : blocs de 10 à 18 de long, 30 à 42 de haut (pas de 4 ; 20 à 38 avant
+--     le 2026-11-24, Clément : « augmente la hauteur minimale des murs sur le côté »), damier de deux bruns par rangs de
+--     4, dessus d'herbe qui déborde en lèvre irrégulière, coulées d'herbe de 1 à 9 sur la face côté place et sur les
+--     bouts plus hauts que le voisin (« plus de débordement d'herbe sur les murs »), marches basses côté place ; 10 à 16 d'épaisseur
 --     vers l'extérieur à l'ouest, au nord et au sud, 2,5 seulement à l'est (contre la zone 1). Terre, dessus et marches
 --     pleins : ce sont les limites du hub. _G.ClaudeWallTops garde le milieu du dessus de chaque bloc (arbres, buissons) ;
 --  2) jardin (Map/Hub/Garden/{Paths, Beds}) : anneau d'allée devant les 6 portes (rayon 91, pavés de sable deux tons
@@ -12,11 +14,13 @@
 --     coins, talus le long des murs, quatre massifs ronds sur la place. Allées et bordures en décor (ni collision ni
 --     requête) ; massifs, terrasses et talus pleins (on monte dessus) ;
 --  3) vérifie qu'aucune pièce pleine du jardin n'entre dans une boutique, un stand ou une zone.
--- Gabarit : éventail de hub_place_du_mall.luau (centre x -45, façades à 125, angles 90, 54, 18, -18, -54, -90), intérieur
--- du hub x -276..27,5, |z| <= 232. Aucun script dans la map. Déco voxel (buissons, fleurs, chênes, rochers) : plus tard.
+-- Gabarit : depuis le 2026-11-24, hub en demi-octogone (hub_octogone.luau, L-323) : façades des 6 boutiques tangentes à un
+-- cercle de 177 centré en (16 ; 0), hub agrandi de 40 au nord et au sud ; intérieur x -276..27,5, |z| <= 272 (232
+-- avant). Massifs dans les triangles libres derrière deux boutiques voisines, talus et terrasses contre les nouveaux murs.
+-- Aucun script dans la map. Déco voxel : hub_jardin_deco.luau.
 local rgb = Color3.fromRGB
 local hub = workspace.Map.Hub
-local X0, X1, Z1 = -276, 27.5, 232
+local X0, X1, Z1 = -276, 27.5, 272
 local CEN = Vector3.new(-45, 0, 0)
 local R = 125
 local FAN_A = { 90, 54, 18, -18, -54, -90 }
@@ -59,12 +63,39 @@ do
 	local TOP, TOP_D = rgb(124, 200, 98), rgb(106, 186, 88)
 	local mods = 0
 	local tops = {}
+	-- herbe qui déborde : graine à part, pour que les blocs (longueurs, épaisseurs, marches) ne bougent pas
+	local rngG = Random.new(2316)
+	local function overhang(sd, s, L, h)
+		-- lèvre : le bord du dessus avance par morceaux de 1,5 à 4 vers la place, parfois un peu plus bas
+		local a = -0.3
+		while a < L + 0.3 - 0.8 do
+			local w = math.min(rngG:NextNumber(1.5, 4), L + 0.3 - a)
+			if rngG:NextNumber() < 0.6 then
+				Wp(sd, "GrassLip", s + a, s + a + w, 0.8, 0.8 + rngG:NextNumber(0.3, 0.9), h + rngG:NextNumber(-0.6, 0.4), h + 1.2, TOP, false)
+			end
+			a += w
+		end
+		-- coulées sur la face côté place : une tous les 1 à 3,5 studs, de 1 à 7 de long, parfois une pointe plus fine dessous
+		a = rngG:NextNumber(0, 1)
+		while a < L - 0.6 do
+			local w = math.min(rngG:NextNumber(0.8, 2.4), L - a)
+			local len = rngG:NextNumber() < 0.2 and rngG:NextNumber(4, 7) or rngG:NextNumber(1, 3.5)
+			local col = rngG:NextNumber() < 0.3 and TOP_D or TOP
+			Wp(sd, "GrassDrip", s + a, s + a + w, 0, rngG:NextNumber(0.5, 0.8), h - len, h, col, false)
+			if w > 1.2 and rngG:NextNumber() < 0.45 then
+				local c = a + w / 2 + rngG:NextNumber(-0.25, 0.25)
+				Wp(sd, "GrassDrip", s + c - w / 4, s + c + w / 4, 0, 0.45, h - len - rngG:NextNumber(0.8, 2), h - len + 0.01, col, false)
+			end
+			a += w + rngG:NextNumber(0.2, 1.2)
+		end
+	end
 	for _, sd in SIDES do
-		local s, h = 0, 26
+		local s, h = 0, 34
+		local blocks = {}
 		while s < sd[5] - 0.5 do
 			local L = math.min(rng:NextNumber(10, 18), sd[5] - s)
 			if sd[5] - s - L < 6 then L = sd[5] - s end
-			h = math.clamp(h + rng:NextInteger(-1, 1) * 6, 20, 38)
+			h = math.clamp(h + rng:NextInteger(-1, 1) * 4, 30, 42)
 			local depth = sd[7] == 16 and rng:NextNumber(10, 16) or sd[7]
 			mods += 1
 			local row, y = 0, 0
@@ -89,10 +120,29 @@ do
 				Wp(sd, "Ledge", s + 1, s + L - 1, 0, 4, 0, lh, BROWN_B, true)
 				Wp(sd, "LedgeTop", s + 0.7, s + L - 0.7, 0, 4.5, lh, lh + 0.6, TOP, true)
 			end
+			overhang(sd, s, L, h)
+			table.insert(blocks, { s = s, L = L, h = h, depth = depth })
 			local top = sd[2] + sd[3] * (s + L / 2) + sd[4] * (-depth / 2)
 			table.insert(tops, { x = top.X, z = top.Z, y = h + 1.2, side = sd[1] })
 			s += L
 			if mods % 10 == 0 then task.wait() end
+		end
+		-- bouts plus hauts que le voisin : l'herbe coule aussi sur la marche de terre visible
+		for k, b in blocks do
+			for _, e in { { blocks[k - 1], b.s, -1 }, { blocks[k + 1], b.s + b.L, 1 } } do
+				local nb, at, sg = e[1], e[2], e[3]
+				local free = nb and (b.h - nb.h - 1.4) or 0
+				if free > 0.8 then
+					local d = -b.depth + rngG:NextNumber(0, 1)
+					while d < -0.6 do
+						local w = math.min(rngG:NextNumber(0.8, 2.2), -d)
+						local len = math.min(free, rngG:NextNumber(1, 4.5))
+						local s0, s1 = at, at + sg * rngG:NextNumber(0.45, 0.7)
+						Wp(sd, "GrassDrip", math.min(s0, s1), math.max(s0, s1), d, d + w, b.h - len, b.h, TOP, false)
+						d += w + rngG:NextNumber(0.3, 1.5)
+					end
+				end
+			end
 		end
 	end
 	m:SetAttribute("TopSpots", #tops)
@@ -223,10 +273,14 @@ local function bed(x, z, dir, w, l, h)
 	OB(beds, "BedDirtBand", x, z, dir, w + 0.1, h * 0.35, h * 0.45, l + 0.1, DIRT_D, false)
 	OB(beds, "BedTop", x, z, dir, w + 0.6, h, h + 0.5, l + 0.6, GTOP, true)
 end
-for _, deg in { 72, 36, 0, -36, -72 } do -- entre deux boutiques, derrière l'anneau
-	local a = math.rad(deg)
-	local dir = Vector3.new(-math.cos(a), 0, math.sin(a))
-	local c = CEN + dir * (R + 65)
+-- un massif dans le triangle libre derrière les boutiques 1-2, 2-3, 4-5 et 5-6 (sur la bissectrice vue de (16 ; 0), à 12
+-- studs au moins des boutiques) ; rien entre 3 et 4, le passage n'y fait que 16 studs
+local OCT = Vector3.new(16, 0, 0)
+local BEDS = { { 122.9, 248 }, { 152.4, 236 }, { -152.4, 236 }, { -122.9, 248 } }
+for _, b in BEDS do
+	local a = math.rad(b[1])
+	local dir = Vector3.new(math.cos(a), 0, math.sin(a))
+	local c = OCT + dir * b[2]
 	bed(c.X, c.Z, dir, 22, 40, 1.8)
 end
 local function slab(a0, b0, a1, b1, y0, y1)
@@ -235,17 +289,19 @@ local function slab(a0, b0, a1, b1, y0, y1)
 	B(beds, "TerraceTop", a0 - 0.3, y1, b0 - 0.3, a1 + 0.3, y1 + 0.5, b1 + 0.3, GTOP, true)
 end
 local function terrace(x0, z0, x1, z1, x2, z2, x3, z3) slab(x0, z0, x1, z1, 0, 2.2); slab(x2, z2, x3, z3, 2.2, 4.4) end
-terrace(X0, 168, -204, Z1, X0, 198, -236, Z1)
-terrace(X0, -Z1, -204, -168, X0, -Z1, -236, -198)
-terrace(-12, 206, 22, Z1, 2, 216, 22, Z1)
-terrace(-12, -Z1, 22, -206, 2, -Z1, 22, -216)
+-- coins (L-323 : 40 plus loin) ; la petite terrasse contre la sortie commence à x -4, la boutique 1 s'arrête à -9,6
+terrace(X0, Z1 - 64, -204, Z1, X0, Z1 - 34, -236, Z1)
+terrace(X0, -Z1, -204, -Z1 + 64, X0, -Z1, -236, -Z1 + 34)
+terrace(-4, Z1 - 26, 22, Z1, 6, Z1 - 16, 22, Z1)
+terrace(-4, -Z1, 22, -Z1 + 26, 6, -Z1, 22, -Z1 + 16)
 local function berm(x0, z0, x1, z1)
 	B(beds, "BermDirt", x0, -0.05, z0, x1, 2.4, z1, DIRT, true)
 	B(beds, "BermTop", x0 - 0.3, 2.4, z0 - 0.3, x1 + 0.3, 2.9, z1 + 0.3, GTOP, true)
 end
-berm(X0, -168, X0 + 11, 168)
-berm(-204, Z1 - 11, -16, Z1)
-berm(-204, -Z1, -16, -Z1 + 11)
+berm(X0, -(Z1 - 64), X0 + 11, Z1 - 64)
+-- talus nord et sud arrêtés avant les boutiques 1 et 6 (x -74..-10) : 15 studs de pelouse entre leur dos et le mur
+berm(-204, Z1 - 11, -80, Z1)
+berm(-204, -Z1, -80, -Z1 + 11)
 if ROUND_BEDS then
 	for _, c in { { -62, 40 }, { -62, -40 }, { -102, 46 }, { -102, -46 } } do
 		cyl(beds, "RoundBedRim", c[1], c[2], 10.6, -0.05, 1.1, DIRT, true)
