@@ -1,6 +1,6 @@
 # Throw a Seed : ce qu'on reprend (2026-11-17)
 
-Vidéo de Clément (`StealAShop-Art/References/Analyses_Jeux/2026-11-17_ThrowASeed_D.mp4`, 219 s), découpée image par image en trois fiches (`…_D_analyse_0-80.md`, `_75-150.md`, `_145-219.md`, même dossier, avec les images). Clément : « inspire-toi un maximum, c'est vraiment top ». On reprend les techniques, le rythme et la construction, jamais leurs dessins, sons ni leur identité. Les cotes, prix et gains restent ceux de `Config` et de la Partie 1.
+Vidéo de Clément (`StealAShop-Art/References/Analyses_Jeux/ThrowASeed_D.mp4`, 219 s), découpée image par image en trois fiches (`…_D_analyse_0-80.md`, `_75-150.md`, `_145-219.md`, même dossier, avec les images). Clément : « inspire-toi un maximum, c'est vraiment top ». On reprend les techniques, le rythme et la construction, jamais leurs dessins, sons ni leur identité. Les cotes, prix et gains restent ceux de `Config` et de la Partie 1.
 
 ## 1. Ouverture du colis (décision de Clément)
 

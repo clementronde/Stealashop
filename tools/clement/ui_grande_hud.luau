@@ -1,6 +1,6 @@
 --!nonstrict
 -- ui_grande_hud.luau (Clément, 2026-11-18 : « UI plus grande », d'après la vidéo de référence E, fiches
--- StealAShop-Art/References/Analyses_Jeux/2026-11-18_Reference_E_analyse_*) : à lancer en Edit.
+-- StealAShop-Art/References/Analyses_Jeux/Reference_E_analyse_*) : à lancer en Edit.
 --   - LeftRail (colonne de gauche sur PC) : boutons carrés de 9,9 % de la hauteur de l'écran (leur mesure), au lieu
 --     des pilules de 8,8 %, au moins 44 px sur un petit écran. Écart de 3,5 % (Clément, 18/11 : « plus écartés » ;
 --     la référence en a 1,6 %, mais notre mot posé sur le contour du bas mange déjà 1,3 % de l'écart).
