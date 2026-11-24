@@ -8,7 +8,7 @@
 --    talus (Berms), haut des murs de terre (WallTops) ;
 --  - derrière les boutiques et dans les coins : bosquets serrés, arbres compris (Back) ;
 --  - chênes et sapins de tailles et de troncs variés ; brins d'herbe semés partout sur la pelouse (Grass).
--- Ordre : hub_jardin.luau, hub_sol_damier.luau, garden_voxel_build.luau, puis ce script.
+-- Ordre : hub_jardin.luau, hub_sol_damier.luau, garden_voxel_build.luau, hub_leaderboards_semaine.luau, puis ce script.
 -- Rien dans une boutique (à sa taille maximale), un stand ou une zone. Aucun script ; les modèles qui bougent au vent
 -- gardent le tag WindSway (L-322).
 local CS = game:GetService("CollectionService")
@@ -311,6 +311,24 @@ while nGroups < 340 and triesB < 6000 do
 						rngB:NextNumber(0.2, 0.26), hMain * rngB:NextNumber(0.45, 0.75), BLADE[rngB:NextInteger(1, 3)])
 				end
 				nTufts += 1
+			end
+		end
+	end
+end
+-- 2i) Clément, 2026-11-24 (« dans le fond de la map ») : les panneaux des classements de la semaine sont sur le haut du
+-- mur ouest (Map/Hub/Zones, hub_leaderboards_semaine.luau) ; ce qui pousse sur le mur à leur place est retiré, en
+-- dernier, pour que la graine du reste ne bouge pas
+local nCleared = 0
+for _, lb in hub.Zones:GetChildren() do
+	if lb.Name == "ENV_Hub_Leaderboard" and lb:GetPivot().Y > 10 then
+		local bcf, bs = lb:GetBoundingBox()
+		for _, m in cat("WallTops"):GetChildren() do
+			local mcf, ms = m:GetBoundingBox()
+			local l = bcf:PointToObjectSpace(Vector3.new(mcf.X, bcf.Y, mcf.Z))
+			local r = math.max(ms.X, ms.Z) / 2 + 1
+			if math.abs(l.X) <= bs.X / 2 + r and math.abs(l.Z) <= bs.Z / 2 + r then
+				for _, d in m:GetDescendants() do if d:IsA("BasePart") then nParts -= 1 end end
+				m:Destroy(); nCleared += 1
 			end
 		end
 	end
