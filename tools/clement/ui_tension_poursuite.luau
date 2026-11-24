@@ -1,7 +1,7 @@
 --!nonstrict
 -- ui_tension_poursuite.luau (Clément, 2026-11-24 : « il faut qu'on ait un peu d'UI de tension pendant un braquage, à
 -- toi de voir comment ça se passe sur les autres jeux » ; pistes du rapport
--- StealAShop-Art/References/2026-11-24_Top20_Roblox_analyse.md, section 3.2) : à lancer en Edit.
+-- StealAShop-Art/References/Analyses_Jeux/2026-11-24_Top20_Roblox_analyse.md, section 3.2) : à lancer en Edit.
 -- La partie visuelle, que le code d'Ironix déclenche :
 --   - UI_Chase.RunBanner : « RUN! » plus grand (≈ 30 % de plus), toujours en haut au centre, sous la barre de Roblox.
 --   - ReplicatedStorage/Assets/FX/FX_ChaseChevron : un chevron « > » en deux barres néon jaunes à contour sombre, à

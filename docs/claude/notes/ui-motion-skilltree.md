@@ -57,7 +57,7 @@ Elles remplacent, pour les fenêtres et les boutons, les lignes « Écran qui s'
 
 ## Boutiques sur le modèle de la vidéo de Clément (2026-11-13, prototype validé par Clément)
 
-Mesuré image par image sur `StealAShop-Art/References/2026-11-13_Boutiques/boutique_reference.mp4` (1866 × 950, 30 images/s). Prototype : `tools/clement/shop_ref_proto.luau` (Edit, CoreGui). Ces valeurs ne valent que pour les boutiques (auras, trails, armes, Robux) ; elles sont plus vives que celles du reste du jeu (tableau du dessus).
+Mesuré image par image sur `StealAShop-Art/References/UI/Boutiques_Robux/boutique_reference.mp4` (1866 × 950, 30 images/s). Prototype : `tools/clement/shop_ref_proto.luau` (Edit, CoreGui). Ces valeurs ne valent que pour les boutiques (auras, trails, armes, Robux) ; elles sont plus vives que celles du reste du jeu (tableau du dessus).
 
 | Moment | Valeur | Courbe | Nom proposé dans `UiMotion` |
 | --- | --- | --- | --- |

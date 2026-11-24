@@ -287,7 +287,7 @@ Spectres : images `11` à `14`.
 - aucun effet gratuit ;
 - l'achat suivant se présente tout de suite.
 
-**Chez nous**, d'après le code. Aucune capture de notre jeu sur cette machine : le dossier `StealAShop-Art/References/2026-11-15_Revue_UI/` est absent.
+**Chez nous**, d'après le code. Aucune capture de notre jeu sur cette machine : le dossier `StealAShop-Art/References/UI/_Notre_jeu/2026-11-15_Revue_UI/` est absent.
 - La partie neuve arrive en une image, comme leur toit.
 - Un seul son pour tout.
 - Le panneau saute à sa nouvelle place pendant que la base apparaît.

@@ -7,7 +7,7 @@ description: Savoir-faire pour concevoir, construire et juger les auras, trails 
 
 Tout ce qui suit a été vérifié le 2026-11-14 (14 versions d'aura Éclair refusées, 39 packs du Creator Store démontés, 5 vidéos d'artistes VFX analysées). Ce qui n'est pas vérifié est marqué « à vérifier ».
 
-Références : `StealAShop-Art/References/Auras_VFX/` (`images/` de Clément, `videos/liens.md`, `benchmark/` avec les planches et les notes). **Ouvrir les images avant de construire.**
+Références : `StealAShop-Art/References/VFX/Auras/` (`images/` de Clément, `videos/liens.md`, `benchmark/` avec les planches et les notes). **Ouvrir les images avant de construire.**
 
 ## 1. Les règles de Clément (non négociables)
 
@@ -144,7 +144,7 @@ Sauf l'Éclair (validé), ce sont des points de départ tirés des références,
   - Ces aperçus ne s'affichent pas chez Ironix ni dans le jeu : **rien n'est fini tant que ce n'est pas importé au nom du groupe**.
 - **Meshes animés (vent, course, coups)** : la technique des artistes (vidéo 3) n'est pas du Blender : c'est un plugin Studio qui anime des meshes de vent tout faits d'un état `Start` à un état `End` (durée environ 1,1 s, transparence 0,4 à 0,7), **par script**. Sans script dans l'aura, ça ne marche pas : passer par des Beams ou des particules, ou décrire l'animation pour Ironix. Un « slash » (vidéo 4) est un seul ParticleEmitter à texture de trait étirée, déplacé par un tween scripté.
 - **Flammes toon** (vidéo 1, image 09) : une planche animée dessinée en 3 tons (contour foncé, corps coloré, cœur clair), en grosses particules de 2 à 3 studs accrochées aux mains et aux hanches, qui change de forme d'une image à l'autre ; plus des traits noirs verticaux brefs. Le toon vient du dessin, pas d'un réglage.
-- **Analyser une vidéo** : `yt-dlp` et `ffmpeg` sont dans `%LOCALAPPDATA%\Microsoft\WinGet\Links\` (les appeler par le chemin complet). Extraire une image toutes les 2 s, composer des planches de survol avec `References/Auras_VFX/videos/make_survol.py`, supprimer la vidéo. Demander l'accord de Clément avant tout téléchargement. La transcription, quand elle existe, se lit par le navigateur intégré (panneau « Afficher la transcription ») ; la capture d'images par le navigateur ne marche pas (publicités).
+- **Analyser une vidéo** : `yt-dlp` et `ffmpeg` sont dans `%LOCALAPPDATA%\Microsoft\WinGet\Links\` (les appeler par le chemin complet). Extraire une image toutes les 2 s, composer des planches de survol avec `References/VFX/Auras/videos/make_survol.py`, supprimer la vidéo. Demander l'accord de Clément avant tout téléchargement. La transcription, quand elle existe, se lit par le navigateur intégré (panneau « Afficher la transcription ») ; la capture d'images par le navigateur ne marche pas (publicités).
 
 ## 7. Budget
 

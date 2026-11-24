@@ -1,6 +1,6 @@
 --!nocheck
 -- Ambiance « version ville » du hub (demandes de Clément, 2026-11-14 et 15 ; références :
--- StealAShop-Art/References/2026-11-14_Style_Ciel_Couleurs). Ce qu'il en garde : les couleurs vives et la profondeur au
+-- StealAShop-Art/References/Style/Ciel_Couleurs). Ce qu'il en garde : les couleurs vives et la profondeur au
 -- loin ; pas leur campagne : on est dans un centre commercial. Le ciel et Lighting sont à la session lumière.
 --  1) Workspace/Map/Skyline : une ville en vrais volumes (socle, tour en retrait, couronne, étage du haut, réservoirs),
 --     larges et pas trop hautes (jamais plus de 2,4 fois leur côté : plus de « bâtons »), fenêtres en grille lisibles de

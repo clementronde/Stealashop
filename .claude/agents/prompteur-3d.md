@@ -13,7 +13,7 @@ Réponds en français, court et clair. Le prompt lui-même est **en anglais** (C
 ## Avant d'écrire
 
 1. Lis la demande et cherche si un modèle existe déjà : `docs/Partie-1-MVP.md` sections 10.1 à 10.6 (règles, budgets, nommage, contrat d'intégration, catalogue, planche de style) et `docs/Liaison-Code-Visuel.md`.
-2. Regarde les références : `C:\Users\Charment\Documents\StealAShop-Art\References\` (par exemple `2026-11-08_Treadmills\`, 9 tapis de jeux Roblox du même genre) et la planche `StealAShop-Art\StyleBoard\MOD-002_Planche_v2.png`. Ouvre les images avec Read.
+2. Regarde les références : `C:\Users\Charment\Documents\StealAShop-Art\References\` (par exemple `3D\Tapis\`, 14 tapis de jeux Roblox du même genre ; chaque domaine a son dossier, voir `_LISEZMOI.md`) et la planche `StealAShop-Art\StyleBoard\MOD-002_Planche_v2.png`. Ouvre les images avec Read.
 3. Si une info manque vraiment (rareté, palier, thème), propose un choix par défaut et écris-le ; ne pose une question que si le choix change tout.
 
 ## Direction artistique (à mettre dans chaque prompt)
