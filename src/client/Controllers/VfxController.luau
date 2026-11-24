@@ -5,8 +5,9 @@
 --
 --   1. FX_ChaseHighlight : une copie dans le vigile qui poursuit le joueur local (ChaseController.GetGuard),
 --      vue de lui seul, retirée à la fin de la poursuite (et reposée si le vigile revient par le streaming).
---      Roblox n'affiche que 31 Highlight : tant qu'elle est là, ShelfBoxController garde Vfx.Chase.Reserve
---      contour(s) de colis en moins (ShelfBoxController.Reserve), pour qu'elle passe toujours.
+--      Tant qu'elle est là, ShelfBoxController garde Vfx.Chase.Reserve contour(s) de colis en moins
+--      (ShelfBoxController.Reserve) : fait du temps où l'on croyait Roblox limité à 31 Highlight ; la limite est de 255
+--      par client (L-305), ce n'est plus nécessaire, mais sans danger.
 --   2. FX_Collect_Bill et FX_Collect_Coin : à chaque ramassage du joueur local sur une de ses plaques
 --      (DisplayController.OnCollect, remote CashCollect), de MinCount à MaxCount billets et pièces selon
 --      le montant (case-ramassage.md) jaillissent de la plaque (PopTime, vers le haut, au hasard), puis

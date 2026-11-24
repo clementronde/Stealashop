@@ -135,15 +135,16 @@ local ShelfBoxes = {
 
 	-- Client (ShelfBoxController) ------------------------------------------------------------
 
-	-- Contour noir des colis : Highlight `OutlineHighlight` des modèles BOX_* de Clément (L-031).
-	-- Roblox n'affiche que 31 Highlight à la fois et la map compte 120 colis : seuls les colis les
-	-- plus proches de la caméra gardent le leur. Les arêtes noires `Outline` (SelectionBox) restent
-	-- toujours visibles, en secours.
+	-- Contour des colis : Highlight `OutlineHighlight` des modèles BOX_* de Clément (L-031 ; #040435 depuis le 24/11,
+	-- L-344). Seuls les colis les plus proches de la caméra gardent le leur allumé. Les arêtes `Outline` (SelectionBox)
+	-- ne sont plus dans les colis depuis le 24/11 (L-344) : plus de contour « en secours » sur les autres.
+	-- a446 (Config/Outlines.Enabled) : allumé, les colis passent aux contours « façon BD » d'OutlineController
+	-- (Config/Outlines) ; ces réglages ne servent plus qu'au camion, au coffre et au fourgon.
 	OutlineName = "OutlineHighlight", -- L-031 : nom du Highlight dans BOX_*
-	-- Vague 39 (audit perf-telephone.md, correction 5) : 20 au lieu des 25 de L-031. Avec 25, les
-	-- 6 porteurs (StolenOutline) et les 3 alertes de vol passaient à 34, au-delà des 31 de Roblox (les
-	-- derniers ne s'affichent pas, sans erreur) ; 20 + 6 + 3 = 29. V0 proposé, à faire valider par Clément.
-	MaxOutlines = 20, -- V0 (L-031 : 25) : contours de colis, la marge sert aux autres Highlight du jeu
+	-- Vague 39 (audit perf-telephone.md, correction 5) : 20 au lieu des 25 de L-031, du temps où l'on croyait Roblox
+	-- limité à 31 Highlight. La limite est de 255 par client (L-305, vérifié par Clément le 23/11) ; 20 reste la valeur
+	-- jouée tant que les contours « façon BD » sont coupés. V0 proposé.
+	MaxOutlines = 20, -- V0 (L-031 : 25) : contours de colis allumés à la fois
 	OutlineMaxDistance = 100, -- V0 : au-delà, aucun contour, même parmi les 25 plus proches
 	RefreshInterval = 0.25, -- V0 : tri des colis par distance (contours, étiquettes à revoir)
 

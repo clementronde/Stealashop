@@ -831,8 +831,13 @@ local function checkModels(scanned: { Instance })
 		-- ou une image qui porterait le même nom.
 		local exactNames = spec.Names
 		if exactNames then
+			-- a446 : ou de la classe du contrat (FX_Outline, FX_OutlineFocus : des Highlight, Models.Outline).
+			local namedClass = spec.Class
 			for _, inst in scanned do
-				if (inst:IsA("PVInstance") or inst:IsA("Folder")) and table.find(exactNames, inst.Name) then
+				if
+					(inst:IsA("PVInstance") or inst:IsA("Folder") or (namedClass ~= nil and inst:IsA(namedClass)))
+					and table.find(exactNames, inst.Name)
+				then
 					push(inst)
 				end
 			end

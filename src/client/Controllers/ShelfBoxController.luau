@@ -3,14 +3,17 @@
 -- (liaison L-031, décisions de Clément acceptées par Ironix le 2026-11-07). Réglages :
 -- Config/ShelfBoxes. Tout est local : rien n'est envoyé au serveur, aucune UI créée.
 --
--- Contours. Les modèles BOX_* de Clément portent un Highlight `OutlineHighlight` (contour noir,
--- DepthMode Occluded), mais Roblox n'affiche que 31 Highlight à la fois et la map compte 120
--- colis. Ce contrôleur suit tous les Highlight `OutlineHighlight` du Workspace : colis des rayons,
--- colis portés, colis sur les établis, colis au sol. Seuls les ShelfBoxes.MaxOutlines (20) plus
--- proches de la caméra, à OutlineMaxDistance studs au plus, restent actifs ; les autres sont
--- coupés en local. Les arêtes noires `Outline` (SelectionBox) restent toujours visibles, en
--- secours. Les autres Highlight du jeu (contour rouge d'un objet volé, StolenOutline) ne sont pas
--- touchés : la marge de 11 leur sert.
+-- Contours. Les modèles BOX_* de Clément portent un Highlight `OutlineHighlight` (contour #040435 depuis le 24/11,
+-- DepthMode Occluded, L-344). Roblox compte 255 Highlight au plus par client (L-305 : la limite de 31 n'est plus
+-- vraie), et un Highlight éteint garde sa place : la map compte 120 colis. Ce contrôleur suit tous les Highlight
+-- `OutlineHighlight` du Workspace : colis des rayons, colis portés, colis au sol, et aussi le camion, le coffre de la
+-- Fortune Tower et le fourgon. Seuls les ShelfBoxes.MaxOutlines (20) plus proches de la caméra, à OutlineMaxDistance
+-- studs au plus, restent actifs ; les autres sont coupés en local. Les arêtes `Outline` (SelectionBox) ne sont plus
+-- dans les colis depuis le 24/11 (L-344) : un colis hors des 20 n'a plus aucun contour. Les autres Highlight du jeu
+-- (contour rouge d'un objet volé, StolenOutline) ne sont pas touchés.
+-- a446 (L-305, L-344 ; Config/Outlines.Enabled, Features.BdOutlines / BdOutlinesDev) : allumé, les colis passent aux
+-- contours « façon BD » d'OutlineController, qui retire leur OutlineHighlight en local ; ce contrôleur ne suit plus que
+-- les OutlineHighlight qui ne sont pas dans un BOX_* (camion, coffre, fourgon), comme avant. Coupé : rien ne change.
 --
 -- Étiquettes. Chaque colis d'un rayon (tag ShelfBox, posé par StoreHeistService) porte BB_Box,
 -- en AlwaysOnTop chez Clément : on la verrait à travers les rayons voisins. Elle n'est active que
@@ -36,7 +39,8 @@
 --   ShelfBoxController.Reserve(key, count)
 --       Garde `count` places de Highlight pour un autre contrôleur (vague 26 : contour rouge du vigile en
 --       poursuite, VfxController) : MaxOutlines moins la somme des réservations restent aux colis. 0 rend
---       la place. Le tri suivant est fait à l'image suivante.
+--       la place. Le tri suivant est fait à l'image suivante. (Fait du temps de la limite de 31 ; avec 255, ces
+--       réservations ne sont plus nécessaires, mais restent sans danger.)
 
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
@@ -46,6 +50,19 @@ local Workspace = game:GetService("Workspace")
 
 local Config = ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config")
 local ShelfBoxes = require(Config:WaitForChild("ShelfBoxes"))
+
+-- a446 (L-305, L-344) : contours « façon BD » allumés (Config/Outlines.Enabled) : les colis sont à OutlineController.
+-- Module absent (banc d'avant) : coupé, comme avant.
+local function bdOutlines(): boolean
+	local module = Config:FindFirstChild("Outlines")
+	if module == nil or not module:IsA("ModuleScript") then
+		return false
+	end
+	local ok, result = pcall(require, module)
+	return ok and type(result) == "table" and (result :: any).Enabled == true
+end
+local BD_OUTLINES = bdOutlines()
+local BOX_PREFIX = "BOX_" -- Contract/Models.Box.Prefix
 
 -- Posés par StoreHeistService et CarryService (mêmes noms là-bas).
 local SHELF_BOX_TAG = "ShelfBox"
@@ -139,8 +156,23 @@ end
 
 -- Contours -------------------------------------------------------------------------------------
 
+-- a446 : le Highlight est dans un colis (premier Model au-dessus de lui nommé BOX_*).
+local function inBox(instance: Instance): boolean
+	local current = instance.Parent
+	while current ~= nil and current ~= Workspace do
+		if current:IsA("Model") then
+			return string.sub(current.Name, 1, #BOX_PREFIX) == BOX_PREFIX
+		end
+		current = current.Parent
+	end
+	return false
+end
+
 local function trackOutline(instance: Instance)
 	if instance:IsA("Highlight") and instance.Name == ShelfBoxes.OutlineName and not outlines[instance] then
+		if BD_OUTLINES and inBox(instance) then
+			return -- a446 : colis d'OutlineController
+		end
 		outlines[instance] = true
 		instance.Enabled = false -- jusqu'au prochain tri : jamais plus de MaxOutlines actifs
 	end

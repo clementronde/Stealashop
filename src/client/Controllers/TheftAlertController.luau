@@ -34,8 +34,8 @@
 --     (streaming). L-175 (Clément, 2026-11-15) : l'alerte n'est plus qu'un bandeau de texte ; ThiefName,
 --     ItemName et Arrow sont facultatifs et, sans Arrow, plus aucune flèche (le Beam V0 au sol est retiré) ;
 --   - voleur surligné à travers les murs : un Highlight AlwaysOnTop dans son personnage, créé par ce
---     client (vu de lui seul), pour MAX_HIGHLIGHTS voleurs au plus. Roblox n'affiche que 31 Highlight
---     à la fois (ShelfBoxController en garde 25 pour les colis, la marge de 6 sert aux autres) : le
+--     client (vu de lui seul), pour MAX_HIGHLIGHTS voleurs au plus. Roblox compte 255 Highlight au
+--     plus par client (L-305 ; on le croyait limité à 31, d'où l'ancienne marge laissée par ShelfBoxController) : le
 --     voleur porte déjà le contour rouge StolenOutline de CarryService (sur l'objet volé, vu de tous) ;
 --     ce client le coupe tant que sa surbrillance est là (elle couvre tout le personnage, objet
 --     compris) et le rallume après. Le nombre de Highlight affichés ne bouge donc pas.

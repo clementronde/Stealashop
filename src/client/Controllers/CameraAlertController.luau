@@ -7,8 +7,9 @@
 -- Surlignage : un Highlight AlwaysOnTop, créé par ce client (vu de lui seul), dans le personnage de
 -- l'attaquant, jusqu'à `fin` (heure serveur, Workspace:GetServerTimeNow), puis retiré ; repris sur son
 -- nouveau personnage s'il réapparaît avant la fin ; retiré à son départ. Au plus MAX_HIGHLIGHTS
--- attaquants à la fois (les plus récents). Roblox n'affiche que 31 Highlight à la fois : tant qu'il y en a,
--- ShelfBoxController.Reserve(RESERVE_KEY, nombre) rend autant de places de contours de colis. Un attaquant
+-- attaquants à la fois (les plus récents). Tant qu'il y en a, ShelfBoxController.Reserve(RESERVE_KEY,
+-- nombre) rend autant de places de contours de colis (fait du temps où l'on croyait Roblox limité à 31 Highlight ; la
+-- limite est de 255 par client, L-305 : ce n'est plus nécessaire, mais sans danger). Un attaquant
 -- déjà surligné par l'alerte de vol (TheftAlertHighlight de TheftAlertController) ne l'est pas deux fois.
 --
 -- a408 (vague GC6, Cameras niveau 3, L-163 ; V0 de L-175 : sans flèche ; Config/ShopDefense.CameraRadar,
