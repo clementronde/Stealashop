@@ -196,14 +196,16 @@ local Chase = {
 		-- poursuivi affiche son vigile freiné (client/Controllers/GuardViewController, calcul : shared/GuardView) :
 		--   1. l'image suit la vraie place du vigile (celle que Roblox réplique) : en ligne droite, aucun écart ;
 		--   2. elle n'entre jamais, par son propre mouvement, à moins de MinGap studs du joueur (à plat, même étage :
-		--      HeightMax) : elle s'arrête net au bord, du côté d'où elle vient, tournée vers le joueur ;
-		--   3. le vrai vigile revient près du joueur, souvent de l'autre côté : après SlideDelay s de blocage, s'il est à
-		--      SlideRange studs au plus du joueur (ou après HoldMax s, ou dès que la poursuite est finie), l'image
-		--      contourne le joueur à MinGap studs (SlideSpeed studs/s) pour le rejoindre : elle ne le traverse jamais ;
-		--   4. libre, elle rejoint la vraie place sans saut : l'écart fond de max(ReturnSpeed, écart × ReturnRate) studs/s ;
-		--   5. arrêtée au bord pendant que le vrai vigile court encore, elle joue Idle (celle de Clément, lue dans le
-		--      modèle, jouée chez ce seul joueur) par-dessus Run après IdleAfter s (HoldIdle) ; coupée dès qu'elle bouge,
-		--      à la capture et à la fin de la poursuite.
+		--      HeightMax) : elle s'arrête net au bord, du côté d'où elle vient, tournée vers le joueur ; et à moins de
+		--      SideRange studs du joueur elle ne passe jamais devant lui, ni à travers, ni à côté ;
+		--   3. Cantin, 24/11 : jamais de contournement, « il doit rester bien derrière lui ». Tant que le vrai vigile est
+		--      devant le joueur (il l'a dépassé), l'image se tient à MinGap studs derrière lui ; s'il repart, elle le suit,
+		--      toujours derrière (au plus max(ReturnSpeed, distance × ReturnRate) studs/s) ;
+		--   4. elle ne rejoint la vraie place que quand le vrai vigile est revenu derrière le joueur, ou quand le joueur a
+		--      traversé l'image (poussé par la capture, ou de lui-même) : sans saut, l'écart fond de
+		--      max(ReturnSpeed, écart × ReturnRate) studs/s, sans passer devant le joueur ;
+		--   5. Cantin, 24/11 : l'image qui attend garde l'animation qui vient du serveur (Run) ; aucune animation n'est
+		--      jouée par le client.
 		-- Ce n'est que de l'affichage : seul le corps du vigile est décalé chez ce joueur (le joint de son
 		-- HumanoidRootPart, qui reste à la vraie place) ; le serveur ne reçoit rien et juge comme avant (a416, a420). Les
 		-- autres joueurs voient le vigile comme avant. Aucune instance créée ; rien à chaque image hors poursuite.
@@ -213,17 +215,11 @@ local Chase = {
 			Enabled = true, -- V0 proposé (Cantin, 24/11)
 			MinGap = 3, -- V0 proposé (Cantin, 24/11) : studs, à plat (= StandOff ; la capture se voit entre 3 et 5 studs)
 			HeightMax = 6, -- V0 proposé (Cantin, 24/11) : studs d'écart de hauteur au plus (au-delà : un autre étage, image libre)
-			SlideDelay = 0.25, -- V0 proposé (Cantin, 24/11) : s de blocage avant de contourner
-			SlideRange = 8, -- V0 proposé (Cantin, 24/11) : studs entre le vrai vigile et le joueur, au plus, pour contourner
-			HoldMax = 1.2, -- V0 proposé (Cantin, 24/11) : s de blocage après lesquelles elle contourne de toute façon
-			SlideSpeed = 24, -- V0 proposé (Cantin, 24/11) : studs/s réels le long du cercle (demi-tour autour du joueur ≈ 0,4 s)
+			SideRange = 8, -- V0 proposé (Cantin, 24/11) : studs ; plus près du joueur, l'image ne passe pas devant lui
 			ReturnSpeed = 24, -- V0 proposé (Cantin, 24/11) : studs/s réels, en plus du mouvement du vigile
 			ReturnRate = 6, -- V0 proposé (Cantin, 24/11) : par seconde (un grand écart fond plus vite)
 			FaceBlend = 2, -- V0 proposé (Cantin, 24/11) : studs d'écart à partir desquels elle est tournée vers le joueur
-			ActiveRange = 80, -- V0 proposé (Cantin, 24/11) : studs ; plus loin, aucun calcul (image = vraie place)
-			HoldIdle = true, -- V0 proposé (Cantin, 24/11) : Idle par-dessus Run quand l'image est arrêtée au bord
-			IdleAfter = 0.1, -- V0 proposé (Cantin, 24/11) : s d'arrêt avant Idle
-			IdleFade = 0.1, -- V0 proposé (Cantin, 24/11) : s de fondu d'Idle (entrée et sortie)
+			ActiveRange = 80, -- V0 proposé (Cantin, 24/11) : studs ; plus loin, aucune règle (image = vraie place)
 		},
 	},
 	-- Vague 72 (a241, L-219 point 2, Clément : « je casse la boutique, je rentre, je ressors : pas de poursuite ») :

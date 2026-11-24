@@ -1,7 +1,7 @@
 --!strict
 -- GuardViewController (a433, client ; Cantin, 2026-11-24 : « freiner l'image du vigile côté client ») : chez le joueur
--- poursuivi, son vigile ne le traverse jamais et ne le dépasse plus quand il pile. Règle et valeurs :
--- Config/Chase.ClientView.Display (interrupteur Enabled : false = l'état d'a420) ; calcul : Shared/GuardView.
+-- poursuivi, son vigile ne le traverse jamais, ne le dépasse plus quand il pile et reste derrière lui. Règle et
+-- valeurs : Config/Chase.ClientView.Display (interrupteur Enabled : false = l'état d'a420) ; calcul : Shared/GuardView.
 --
 -- Ce n'est que de l'affichage. Rien n'est envoyé au serveur, qui reste seul juge de la capture (a416, a420).
 --
@@ -10,17 +10,16 @@
 -- (Motor6D « Root » d'un R15 : C0, ou C1 s'il est monté à l'envers) est décalé, chez ce joueur seulement (un changement
 -- fait par un client ne part pas au serveur) : le corps s'affiche à la place freinée, tourné vers le joueur, et le
 -- HumanoidRootPart reste à la vraie place (tout ce qui la lit, ici comme ailleurs, lit toujours la vérité). Les
--- animations de Clément, jouées par le serveur, continuent sur le corps décalé. Aucune instance créée, aucun script
--- dans le modèle ; écart nul : le joint retrouve sa valeur d'origine.
+-- animations de Clément, jouées par le serveur, continuent telles quelles sur le corps décalé (Cantin, 24/11 : l'image
+-- qui attend garde l'animation du serveur, aucune animation jouée ici). Aucune instance créée, aucun script dans le
+-- modèle ; écart nul : le joint retrouve sa valeur d'origine.
 -- Pas d'écriture du CFrame du HumanoidRootPart (la réplication la réécrit, et un vigile immobile ne la réécrit plus :
 -- on ne saurait plus lire sa vraie place), pas de copie locale (un second modèle à animer et à nettoyer).
 --
 -- Suivi : les modèles de Workspace/ActiveGuards dont l'attribut TargetUserId est ce joueur (posé par GuardService).
--- Hors poursuite : aucun calcul par image (RenderStepped débranché). Cible perdue (capture, abandon) : l'image rejoint
--- la vraie place sans attendre, puis le suivi s'arrête (RELEASE_MAX s, puis 1 s sans cercle). Modèle détruit : suivi oublié.
--- Idle de maintien (Display.HoldIdle) : image arrêtée au bord pendant que le vrai vigile court encore : l'animation
--- Idle du modèle (objet de Clément, lu par son nom, jamais modifié) est jouée ici, chez ce seul joueur, par-dessus Run
--- (la piste locale passe en priorité Action4 ; l'objet Animation n'est pas touché).
+-- Hors poursuite : aucun calcul par image (RenderStepped débranché). Cible perdue (capture, abandon) : le suivi
+-- continue tant qu'un écart reste (même règle : l'image ne rejoint que sans passer devant le joueur), puis s'arrête.
+-- Modèle détruit ou sorti du dossier : suivi oublié.
 --
 -- API (client) :
 --   GuardViewController.GetOffset(model) -> Vector3   écart place affichée − vraie place (0 si aucun)
@@ -36,11 +35,6 @@ local GuardView = require(Shared:WaitForChild("GuardView"))
 -- Mêmes noms que dans GuardService (serveur) et ChaseController : les changer dans les trois fichiers.
 local ACTIVE_FOLDER = "ActiveGuards"
 local TARGET_ATTRIBUTE = "TargetUserId"
-local ANIMATIONS_FOLDER = "Animations"
-local IDLE_NAME = "Idle"
-
-local RELEASE_MAX = 3 -- cible perdue : après ce temps, l'image rejoint la vraie place sans cercle ; 1 s plus tard, suivi arrêté (s)
-local STILL_SPEED = 2 -- image « arrêtée » sous cette vitesse (studs/s)
 
 local IS_STUDIO = RunService:IsStudio()
 
@@ -51,14 +45,8 @@ type Entry = {
 	root: BasePart,
 	joints: { Joint },
 	state: GuardView.State,
-	releasing: boolean,
-	releasedFor: number,
+	releasing: boolean, -- cible perdue : suivi arrêté dès que l'écart est nul
 	applied: boolean,
-	shownX: number,
-	shownZ: number,
-	still: number,
-	idle: AnimationTrack?,
-	idleSearched: boolean,
 	offset: Vector3,
 }
 
@@ -115,56 +103,13 @@ local function restore(entry: Entry)
 	end
 end
 
-local function stopIdle(entry: Entry)
-	entry.still = 0
-	local track = entry.idle
-	if track and track.IsPlaying then
-		track:Stop(number(display.IdleFade, 0.1))
-	end
-end
-
--- La piste Idle du modèle, chargée ici au premier besoin (nil : pas livrée, ou pas d'Animator).
-local function idleTrack(entry: Entry): AnimationTrack?
-	if entry.idleSearched then
-		return entry.idle
-	end
-	entry.idleSearched = true
-	local folder = entry.model:FindFirstChild(ANIMATIONS_FOLDER)
-	local animation = if folder then folder:FindFirstChild(IDLE_NAME) else nil
-	local humanoid = entry.model:FindFirstChildOfClass("Humanoid")
-	local animator = if humanoid then humanoid:FindFirstChildOfClass("Animator") else nil
-	if animation == nil or not animation:IsA("Animation") or (animation :: Animation).AnimationId == "" or animator == nil then
-		return nil
-	end
-	local ok, track = pcall(function(): AnimationTrack
-		local loaded = (animator :: Animator):LoadAnimation(animation :: Animation)
-		loaded.Priority = Enum.AnimationPriority.Action4 -- la piste locale seulement : elle doit couvrir Run
-		loaded.Looped = true
-		return loaded
-	end)
-	if ok then
-		entry.idle = track
-	else
-		note("idle", `Idle de maintien impossible sur {entry.model.Name} ({track})`)
-	end
-	return entry.idle
-end
-
 local function forget(model: Model)
 	local entry = entries[model]
 	if entry == nil then
 		return
 	end
 	entries[model] = nil
-	pcall(stopIdle, entry)
 	pcall(restore, entry)
-	local track = entry.idle
-	if track then
-		entry.idle = nil
-		pcall(function()
-			track:Destroy()
-		end)
-	end
 end
 
 local function localRoot(): BasePart?
@@ -186,12 +131,14 @@ local function stepEntry(entry: Entry, dt: number, mine: BasePart?): boolean
 	if mine then
 		local at = mine.Position
 		px, pz = at.X, at.Z
-		local dx, dz = real.X - px, real.Z - pz
-		local range = number(display.ActiveRange, math.huge)
-		constrained = math.abs(real.Y - at.Y) <= number(display.HeightMax, math.huge) and dx * dx + dz * dz <= range * range
-	end
-	if entry.releasing and entry.releasedFor >= RELEASE_MAX then
-		constrained = false -- cible perdue depuis longtemps et image toujours retenue : elle rejoint sans cercle, en douceur
+		-- Écart en cours : la règle tient jusqu'au retour. Sinon : même étage et assez près seulement.
+		if entry.applied then
+			constrained = true
+		else
+			local dx, dz = real.X - px, real.Z - pz
+			local range = number(display.ActiveRange, math.huge)
+			constrained = math.abs(real.Y - at.Y) <= number(display.HeightMax, math.huge) and dx * dx + dz * dz <= range * range
+		end
 	end
 	-- Le HumanoidRootPart doit porter l'assemblage (sinon décaler son joint le déplacerait, lui, au lieu du corps).
 	if root.AssemblyRootPart ~= root then
@@ -200,24 +147,8 @@ local function stepEntry(entry: Entry, dt: number, mine: BasePart?): boolean
 		restore(entry)
 		return true
 	end
-	local x, z, blocked = GuardView.Step(entry.state, display, real.X, real.Z, px, pz, dt, constrained, entry.releasing)
+	local x, z = GuardView.Step(entry.state, display, real.X, real.Z, px, pz, dt, constrained)
 	local ox, oz = GuardView.Offset(entry.state)
-
-	-- Idle de maintien : image arrêtée au bord, vrai vigile encore en course.
-	local moved = math.sqrt((x - entry.shownX) ^ 2 + (z - entry.shownZ) ^ 2)
-	entry.shownX, entry.shownZ = x, z
-	if display.HoldIdle == true and blocked and not entry.releasing and moved <= STILL_SPEED * dt then
-		entry.still += dt
-		if entry.still >= number(display.IdleAfter, 0) then
-			local track = idleTrack(entry)
-			if track and not track.IsPlaying then
-				track:Play(number(display.IdleFade, 0.1))
-			end
-		end
-	elseif entry.still > 0 or (entry.idle ~= nil and (entry.idle :: AnimationTrack).IsPlaying) then
-		stopIdle(entry)
-	end
-
 	if ox == 0 and oz == 0 then
 		restore(entry)
 		return true
@@ -227,7 +158,7 @@ local function stepEntry(entry: Entry, dt: number, mine: BasePart?): boolean
 	local place = Vector3.new(x, real.Y, z)
 	local shown = frame.Rotation + place
 	local blend = number(display.FaceBlend, 0)
-	if mine and constrained and (px - x) ^ 2 + (pz - z) ^ 2 > 0.01 then
+	if mine and (px - x) ^ 2 + (pz - z) ^ 2 > 0.01 then
 		local gap = math.sqrt(ox * ox + oz * oz)
 		local weight = if blend > 0 then math.min(gap / blend, 1) else 1
 		shown = shown:Lerp(CFrame.lookAt(place, Vector3.new(px, real.Y, pz)), weight)
@@ -256,13 +187,8 @@ local function step(dt: number)
 		if not ok then
 			note("step", `image du vigile non freinée ({err})`)
 			forget(model)
-			continue
-		end
-		if entry.releasing then
-			entry.releasedFor += dt
-			if not entry.applied or entry.releasedFor >= RELEASE_MAX + 1 then
-				forget(model)
-			end
+		elseif entry.releasing and not entry.applied then
+			forget(model)
 		end
 	end
 	if next(entries) == nil and stepConnection then
@@ -275,7 +201,6 @@ local function follow(model: Model)
 	local entry = entries[model]
 	if entry then
 		entry.releasing = false
-		entry.releasedFor = 0
 		return
 	end
 	local root = model:FindFirstChild("HumanoidRootPart")
@@ -287,20 +212,13 @@ local function follow(model: Model)
 		note(`joints:{model.Name}`, `{model.Name} : aucun joint entre son HumanoidRootPart et son corps, image non freinée`)
 		return
 	end
-	local at = (root :: BasePart).Position
 	entries[model] = {
 		model = model,
 		root = root :: BasePart,
 		joints = joints,
 		state = GuardView.new(),
 		releasing = false,
-		releasedFor = 0,
 		applied = false,
-		shownX = at.X,
-		shownZ = at.Z,
-		still = 0,
-		idle = nil,
-		idleSearched = false,
 		offset = Vector3.zero,
 	}
 	if stepConnection == nil then
@@ -308,19 +226,17 @@ local function follow(model: Model)
 	end
 end
 
--- Cible perdue (capture, abandon) : retour sans attendre, puis oubli.
+-- Cible perdue (capture, abandon) : oubli tout de suite sans écart, sinon dès que l'image a rejoint la vraie place.
 local function release(model: Model)
 	local entry = entries[model]
 	if entry == nil then
 		return
 	end
-	stopIdle(entry)
 	if not entry.applied then
 		forget(model)
 		return
 	end
 	entry.releasing = true
-	entry.releasedFor = 0
 end
 
 local function refresh(model: Model)
