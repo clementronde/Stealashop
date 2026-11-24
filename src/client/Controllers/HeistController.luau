@@ -23,7 +23,9 @@
 --     Features.ShelfOpen est parti) : sur un colis fermé, l'invite « Open » (maintien = GrabTime du type du colis,
 --     comme la prise) demande OpenShelfBox(slotId) au début et à la fin du maintien ; plus d'invite sur
 --     ce colis pendant son ouverture (attribut ShelfOpenState,
---     Shared/ShelfOpenState ; l'animation est à ShelfOpenController). Sur l'objet sorti (tag ShelfItem),
+--     Shared/ShelfOpenState ; l'animation est à ShelfOpenController) ni pendant sa cinématique (a421, L-316 : attribut
+--     RevealId du colis), et aucune invite pour l'ouvreur tant que la sienne tourne (RevealProtected du Player, comme
+--     le refus du serveur). Sur l'objet sorti (tag ShelfItem),
 --     l'invite « Steal » demande GrabItem(slotId) au début et à la fin du maintien, comme un colis
 --     (maintien : BoxRarity de l'objet, sinon celle du colis qui était à cet emplacement) ; cachée chez les
 --     autres joueurs tant que ShelfReservedUntil n'est pas passé (le serveur revérifie).
@@ -156,6 +158,9 @@ local function canGrabHere(watch: StoreWatch): boolean
 	if localPlayer:GetAttribute(CARRYING_ATTRIBUTE) ~= nil then
 		return false
 	end
+	if localPlayer:GetAttribute(ShelfOpenState.ProtectedAttribute) == true then
+		return false -- a421 (L-316) : sa cinématique d'ouverture tourne, le serveur refuse tout (reachRefusal)
+	end
 	local exclusiveUntil = model:GetAttribute(EXCLUSIVE_ATTRIBUTE)
 	if
 		type(exclusiveUntil) == "number"
@@ -181,13 +186,15 @@ local function refreshStore(watch: StoreWatch)
 	for box, prompt in watch.Prompts do
 		local enabled = allowed and box:GetAttribute(LANDED_ATTRIBUTE) ~= false
 		if enabled then
-			-- Colis fermé seulement, et pas juste après un appui.
+			-- Colis fermé seulement (ni ouverture d'avant, ni cinématique : a421, L-316), et pas juste après un appui.
 			local pendingAt: number? = openPending[box]
 			if pendingAt and clock - pendingAt >= OPEN_PENDING_TIME then
 				openPending[box] = nil
 				pendingAt = nil
 			end
-			enabled = box:GetAttribute(ShelfOpenState.StateAttribute) == nil and pendingAt == nil
+			enabled = box:GetAttribute(ShelfOpenState.StateAttribute) == nil
+				and box:GetAttribute(ShelfOpenState.RevealIdAttribute) == nil
+				and pendingAt == nil
 		end
 		prompt.Enabled = enabled
 	end
@@ -553,6 +560,7 @@ function HeistController.Start()
 		CollectionService:GetInstanceRemovedSignal(tag):Connect(unwatchStore)
 	end
 	localPlayer:GetAttributeChangedSignal(CARRYING_ATTRIBUTE):Connect(refreshAll)
+	localPlayer:GetAttributeChangedSignal(ShelfOpenState.ProtectedAttribute):Connect(refreshAll) -- a421 : coupé et rendu tout de suite
 	for _, item in CollectionService:GetTagged(ShelfOpenState.ItemTag) do
 		addItemPrompt(item)
 	end

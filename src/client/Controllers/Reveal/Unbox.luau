@@ -78,6 +78,7 @@ export type Context = {
 }
 
 type Pulse = { value: number, target: number, hold: number }
+type Muted = { property: string, off: any, was: any } -- a421 : propriété éteinte, sa valeur éteinte, celle d'avant
 type Junk = { model: PVInstance, position: Vector3, velocity: Vector3, spin: number, angle: number, t: number }
 type Timed = { inst: Instance, left: number }
 type Fading = { sound: Sound, left: number, volume: number }
@@ -160,7 +161,10 @@ export type State = {
 	baseFov: number?,
 	seeThrough: { Instance }, -- pièces rendues transparentes devant la caméra
 	ignored: { Instance }, -- pièces invisibles que la caméra traverse
-	muted: { Instance }, -- étiquette BB_Box et contour du vrai colis, éteints tant que la scène dure
+	-- Étiquette, contour, arêtes… du vrai colis, éteints tant que la scène dure (a421 : tout ce que muteRule connaît,
+	-- valeur d'avant gardée et remise à la fin) ; shelfAdded : ce qui y arrive pendant la scène.
+	muted: { [Instance]: Muted },
+	shelfAdded: RBXScriptConnection?,
 	recoilLeft: number,
 	revealed: boolean,
 	released: boolean,
@@ -1654,6 +1658,40 @@ local function placeCharacter(state: State)
 	end
 end
 
+-- a421 (L-316) : ce qui dessine le vrai colis hors de ses pièces (cachées par ctx.Hide), quel qu'en soit le nom ou la
+-- forme : contour (Highlight), arêtes (SelectionBox, ou tout autre adornement GuiBase3d), étiquette (BB_Box, ou tout
+-- autre Gui), effets, décalques. Propriété qui l'éteint et sa valeur éteinte ; nil : rien à éteindre.
+local function muteRule(inst: Instance): (string?, any)
+	if
+		inst:IsA("Highlight")
+		or inst:IsA("LayerCollector")
+		or inst:IsA("ParticleEmitter")
+		or inst:IsA("Beam")
+		or inst:IsA("Trail")
+		or inst:IsA("Light")
+	then
+		return "Enabled", false
+	elseif inst:IsA("GuiBase3d") then
+		return "Visible", false
+	elseif inst:IsA("Decal") then -- Texture compris
+		return "LocalTransparencyModifier", 1
+	end
+	return nil, nil
+end
+
+local function mute(state: State, inst: Instance)
+	if state.muted[inst] ~= nil or state.destroyed then
+		return
+	end
+	local property, off = muteRule(inst)
+	if property == nil then
+		return
+	end
+	local target: any = inst
+	state.muted[inst] = { property = property, off = off, was = target[property] }
+	target[property] = off
+end
+
 -- API --------------------------------------------------------------------------------------------------------------
 
 function Unbox.Begin(ctx: Context): State
@@ -1752,6 +1790,7 @@ function Unbox.Begin(ctx: Context): State
 		seeThrough = {},
 		ignored = {},
 		muted = {},
+		shelfAdded = nil,
 		recoilLeft = 0,
 		revealed = false,
 		released = false,
@@ -1771,11 +1810,15 @@ function Unbox.Begin(ctx: Context): State
 	if shelfBox then
 		-- Le vrai colis est caché en local, mais son étiquette et son contour se verraient encore sur le rayon.
 		-- ShelfBoxController les rallume selon la distance : ils sont rééteints à chaque image (Unbox.Step).
+		-- a421 (L-316) : tout ce qui le dessine hors de ses pièces, quel qu'en soit le nom ou la forme (muteRule), même
+		-- ajouté pendant la scène ; remis à la fin (Unbox.Destroy).
+		mute(state, shelfBox)
 		for _, d in shelfBox:GetDescendants() do
-			if d:IsA("BillboardGui") or d:IsA("Highlight") then
-				table.insert(state.muted, d)
-			end
+			mute(state, d)
 		end
+		state.shelfAdded = shelfBox.DescendantAdded:Connect(function(d: Instance)
+			mute(state, d)
+		end)
 	end
 	if ctx.Opener then
 		local camera = Workspace.CurrentCamera
@@ -1957,10 +2000,10 @@ function Unbox.Step(state: State, dt: number): string?
 			stopTrack(state, math.max(left, 0))
 		end
 	end
-	for _, inst in state.muted do
-		local gui: any = inst
-		if gui.Enabled then
-			gui.Enabled = false
+	for inst, entry in state.muted do
+		local target: any = inst
+		if target[entry.property] ~= entry.off then
+			target[entry.property] = entry.off
 		end
 	end
 	stepPlaces(state, dt)
@@ -2122,6 +2165,26 @@ function Unbox.Destroy(state: State)
 		inst:Destroy()
 	end
 	table.clear(state.created)
+	-- a421 : ce qui a été éteint sur le vrai colis est remis (ShelfBoxController reprend ensuite la main sur les siens).
+	local added = state.shelfAdded
+	if added then
+		state.shelfAdded = nil
+		added:Disconnect()
+	end
+	for inst, entry in state.muted do
+		if inst.Parent ~= nil then
+			(inst :: any)[entry.property] = entry.was
+		end
+	end
+	table.clear(state.muted)
+end
+
+local function countOf(map: { [any]: any }): number
+	local n = 0
+	for _ in map do
+		n += 1
+	end
+	return n
 end
 
 -- État pour un banc ou la barre de commande.
@@ -2156,7 +2219,7 @@ function Unbox.GetState(state: State): { [string]: any }
 		Zoom = state.zoom.value,
 		Edge = state.edge.value,
 		SeeThrough = #state.seeThrough,
-		Muted = #state.muted,
+		Muted = countOf(state.muted), -- a421 : éteints sur le vrai colis
 		Junk = #state.junk,
 		Board = state.board,
 	}
