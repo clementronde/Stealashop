@@ -153,7 +153,9 @@ local Chase = {
 		-- V0 proposé (Cantin, 23/11), à confirmer en Play (recette T-1560 : distance vue en ligne droite − distance prévue,
 		-- divisée par la vitesse, à ajouter ici). Vu en Play le 14/11 pour le seul trajet montant : 0,12 à 0,37 s à ping 0
 		-- (Balance.Heist.ReachLatencyPad).
-		BaseSeconds = 0.25,
+		-- Fusion98 (24/11, accord du grand chef) : 0,25 → 0,34, mesuré en Studio le 24/11 (ping ≈ 0, 46 studs/s : vigile vu
+		-- à 18 studs au lieu de 14) ; à confirmer avec un vrai ping (T-1564).
+		BaseSeconds = 0.34,
 		-- V0 proposé (Cantin, 23/11), à confirmer en Play : la part de BaseSeconds due à l'affichage du vigile chez le
 		-- client (le reste : le trajet du personnage vers le serveur). Le vigile dépasse le joueur à la capture : plus ;
 		-- il s'arrête trop tôt, puis fait un pas : moins. Jamais plus que la moitié du retard.
