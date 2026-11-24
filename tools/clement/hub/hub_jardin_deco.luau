@@ -315,12 +315,12 @@ while nGroups < 340 and triesB < 6000 do
 		end
 	end
 end
--- 2i) Clément, 2026-11-24 (« dans le fond de la map ») : les panneaux des classements de la semaine sont sur le haut du
--- mur ouest (Map/Hub/Zones, hub_leaderboards_semaine.luau) ; ce qui pousse sur le mur à leur place est retiré, en
--- dernier, pour que la graine du reste ne bouge pas
+-- 2i) Clément, 2026-11-24 (« dans le fond de la map ») : les panneaux des classements de la semaine et les statues de leur
+-- n° 1 sont sur le haut du mur ouest (Map/Hub/Zones, hub_leaderboards_semaine.luau et hub_leaderboard_statues.luau) ; ce
+-- qui pousse sur le mur à leur place est retiré, en dernier, pour que la graine du reste ne bouge pas
 local nCleared = 0
 for _, lb in hub.Zones:GetChildren() do
-	if lb.Name == "ENV_Hub_Leaderboard" and lb:GetPivot().Y > 10 then
+	if lb:IsA("Model") and lb:GetPivot().Y > 10 then
 		local bcf, bs = lb:GetBoundingBox()
 		for _, m in cat("WallTops"):GetChildren() do
 			local mcf, ms = m:GetBoundingBox()
