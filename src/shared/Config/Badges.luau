@@ -49,8 +49,8 @@ local Badges = {
 	List = {
 		{
 			Key = "Welcome",
-			Id = 0,
-			DevId = 0,
+			Id = 734742039332229,
+			DevId = 1421862584260439,
 			Rule = "Join",
 			Name = "Welcome to the Street",
 			Description = "Join Steal a Shop for the first time.",
@@ -58,8 +58,8 @@ local Badges = {
 		},
 		{
 			Key = "FirstHeist",
-			Id = 0,
-			DevId = 0,
+			Id = 1996896044857741,
+			DevId = 1899748846610750,
 			Rule = "Heists",
 			Min = 1,
 			Name = "First Heist",
@@ -68,8 +68,8 @@ local Badges = {
 		},
 		{
 			Key = "FirstSteal",
-			Id = 0,
-			DevId = 0,
+			Id = 3089515347599975,
+			DevId = 853103740412758,
 			Rule = "Steals",
 			Min = 1,
 			Name = "Sneaky Thief",
@@ -78,8 +78,8 @@ local Badges = {
 		},
 		{
 			Key = "Legendary",
-			Id = 0,
-			DevId = 0,
+			Id = 2192011030479327,
+			DevId = 3461348261333770,
 			Rule = "Rarity",
 			Rarity = "Legendary",
 			Name = "Legendary Loot",
@@ -88,8 +88,8 @@ local Badges = {
 		},
 		{
 			Key = "Mythic",
-			Id = 0,
-			DevId = 0,
+			Id = 4412861862965984,
+			DevId = 3741634080661251,
 			Rule = "Rarity",
 			Rarity = "Mythic",
 			Name = "Mythic Find",
