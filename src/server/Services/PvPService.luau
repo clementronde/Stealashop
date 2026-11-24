@@ -294,7 +294,23 @@ local NOTICE_INTERVAL = 3
 local ESCAPE_MARGIN = 0.5
 -- Filet contre les téléportations : la vitesse fixe du voleur, poussé compris (audit du 2026-11-14, voir
 -- l'en-tête ; AntiCheatService.Verify suit déjà sa vitesse réelle).
-local MAX_ESCAPE_SPEED = Balance.Carry.StolenItemWalkSpeed * AntiCheat.CarrierPushFactor
+-- a426 (L-319) : ou sa vitesse dans la zone safe (Balance.SafeZoneSpeed) si elle est plus haute, Features.SafeZoneSpeed
+-- allumé (require protégé : faux arbres des bancs).
+local SAFE_ZONE_SPEED = (Balance :: any).SafeZoneSpeed
+local safeZoneSpeedOn = false
+do
+	local ok, features = pcall(function(): any
+		local featuresModule = Shared.Config:FindFirstChild("Features")
+		return if featuresModule then (require :: any)(featuresModule) else nil
+	end)
+	safeZoneSpeedOn = ok and type(features) == "table" and features.SafeZoneSpeed == true
+end
+local MAX_ESCAPE_SPEED = math.max(
+	Balance.Carry.StolenItemWalkSpeed,
+	if safeZoneSpeedOn and type(SAFE_ZONE_SPEED) == "table"
+		then SAFE_ZONE_SPEED.WalkSpeed * SAFE_ZONE_SPEED.StolenItemMultiplier
+		else 0
+) * AntiCheat.CarrierPushFactor
 
 -- Bot joueur (voir l'en-tête) : ce que ce service lit et appelle chez BotService. require protégé : sans
 -- BotService (anciens bancs), aucune boutique de bot.

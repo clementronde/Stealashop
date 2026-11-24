@@ -311,9 +311,15 @@ end
 
 -- Objet volé à un joueur : vitesse fixe (Cantin, 2026-11-13) ; sinon −10 % (5.6) : objet sorti d'un colis
 -- (L-112 ; Balance.Carry.NPCBoxSpeedMultiplier garde son nom).
+-- a426 (L-319) : dans une zone safe, l'objet volé donne Balance.SafeZoneSpeed.WalkSpeed × StolenItemMultiplier
+-- (StatsService ne s'en sert que si Features.SafeZoneSpeed est allumé).
+local SAFE_ZONE_SPEED = (Balance :: any).SafeZoneSpeed
+local STOLEN_SAFE_ZONE_SPEED: number? = if type(SAFE_ZONE_SPEED) == "table"
+	then SAFE_ZONE_SPEED.WalkSpeed * SAFE_ZONE_SPEED.StolenItemMultiplier
+	else nil
 local function applySpeed(player: Player, payload: Payload)
 	if payload.Kind == "PlayerItem" then
-		StatsService.SetFixedSpeed(player, Balance.Carry.StolenItemWalkSpeed)
+		StatsService.SetFixedSpeed(player, Balance.Carry.StolenItemWalkSpeed, STOLEN_SAFE_ZONE_SPEED)
 	else
 		StatsService.SetSpeedModifier(player, SPEED_KEY, Balance.Carry.NPCBoxSpeedMultiplier)
 	end

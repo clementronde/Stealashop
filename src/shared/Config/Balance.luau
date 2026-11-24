@@ -241,6 +241,20 @@ local Balance = {
 		AnomalyWindow = 5, -- … en 5 s : retour à la dernière position valide, colis rendu
 		TeleportDistance = 30, -- saut entre deux contrôles qui rend le colis ou l'objet
 	},
+
+	-- a426 (L-319, décision de Clément du 23/11) : vitesse dans une zone `SafeZone` (StatsService ; interrupteur
+	-- Features.SafeZoneSpeed). Dehors, chacun garde la sienne (formule, trail) et le voleur la vitesse fixe de Carry.
+	SafeZoneSpeed = {
+		-- V0 proposé (Cantin, 24/11) : vitesse commune à tous dans la zone, à la place de la formule (Vitesse et
+		-- trail) : 20 à l'échelle 1 (40 à × 2), un peu plus qu'un joueur neuf (16). Les modificateurs (Adrénaline,
+		-- colis PNJ, étourdi) s'appliquent ensuite.
+		WalkSpeed = 20 * REAL_SPEED_SCALE,
+		-- V0 proposé (Cantin, 24/11) : objet pris chez un joueur (ou au bot), porté dans la zone : WalkSpeed × 0,85
+		-- (34), à la place de Carry.StolenItemWalkSpeed ; la victime (40, 50 avec l'Adrénaline) le rattrape.
+		StolenItemMultiplier = 0.85,
+		-- V0 proposé (Cantin, 24/11) : le serveur regarde qui est dans la zone toutes les 0,2 s.
+		CheckInterval = 0.2,
+	},
 }
 
 export type Balance = typeof(Balance)
