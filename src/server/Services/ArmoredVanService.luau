@@ -7,6 +7,13 @@
 --      demie en V0), annoncé WarnBefore s avant (Shared/Announce). Il ne part que de jour (phase Day de
 --      NightCycleService) avec au moins TravelTime s avant l'alerte ; sinon il attend le jour suivant (DawnDelay s après
 --      l'aube) ; un départ en attente est remplacé par celui de l'heure suivante.
+--      a425 (L-318 Q1) : jamais en même temps que le camion (TruckEventService, modèle taggé EventTruck) : un départ dû
+--      pendant un camion, ou moins de TruckGap s après lui, attend (annonce DelayedTruck) et part dès que la voie est
+--      libre ; dans l'autre sens, TruckEventService demande HoldsTruck() avant chaque camion (pas pendant un fourgon,
+--      en jeu ou en attente, ni TruckGap s après lui, ni dans les TruckLead s avant un départ à l'horaire).
+--      a425 (L-318 Q2) : attributs du Workspace StateAttribute ("Soon" de l'annonce au départ, "Road" pendant le
+--      trajet, absent sinon) et EndsAtAttribute (heure serveur du départ, puis de la fuite) : EventBannerController
+--      montre le fourgon et son minuteur dans UI_EventBanner quand aucun événement live n'y est.
 --   2. Trajet : de l'arche ZoneGate de la plus petite zone à celle de la plus grande, en TravelTime s à vitesse
 --      constante, posé au sol (rayon), l'avant (−Z) dans le sens du trajet. Collisions, contacts et requêtes coupés :
 --      il ne pousse ni ne bloque personne. Moins de deux arches dans la map : pas de fourgon (une ligne).
@@ -19,8 +26,12 @@
 --      Dégâts de chacun comptés par WindowService.OnHit.
 --   5. Casse (OnBroken) : classement par dégâts (Ranking) ; chaque casseur avec au moins MinShare des PV reçoit un colis
 --      de zone (Rewards : top 3 le meilleur, puis selon sa part), UnboxService.GiveZoneBoxItem depuis sa meilleure zone,
---      objet mis dans l'inventaire tout de suite ; Notify à chacun, annonce du top 3 à tous ; petite explosion
---      (Explosion native sans force), retrait RemoveDelay s plus tard.
+--      objet mis dans l'inventaire tout de suite ; Notify à chacun, annonce du top 3 à tous ; retrait RemoveDelay s
+--      plus tard. a425 (L-324) : le fourgon s'arrête, sa barre et son contour s'éteignent, attribut ExplodedAt (heure
+--      serveur) : ArmoredVanController reprend l'explosion du camion (pièces depuis BlastPoint, Cargo visible, jet de
+--      billets à CashPoint). a425 (L-325 réponse 2) : inventaire plein, le colis tombe derrière le fourgon (rayon
+--      d'événement StoreHeistService.AddEventShelf, StoreId « Truck_ArmoredVan_<n>_<UserId> », DropLifetime s), à
+--      ouvrir par n'importe qui ; rareté tirée ici par la même règle (Shared/ZoneBoxOdds). Sans rayon : perdu (Lost).
 --   6. Échappé (fin du trajet ou alerte de la nuit) : annonce, retrait, rien n'est donné.
 --
 -- Crochet de test, STUDIO SEULEMENT (barre de commande serveur) :
@@ -33,6 +44,10 @@
 --   ArmoredVanService.Ranking(damage, maxHP) -> { Place }   classement pur des casseurs (bancs)
 --   ArmoredVanService.MaxHP(damages) -> number        PV du fourgon pour ces dégâts par coup (bancs)
 --   ArmoredVanService.IsActive() -> boolean
+--   ArmoredVanService.HoldsTruck() -> boolean         a425 : vrai si un camion ne doit pas apparaître maintenant
+--   ArmoredVanService.BlocksTruck(untilDeparture, active, waiting, sinceVan) -> boolean   règle pure (bancs)
+--   ArmoredVanService.TruckAllowsVan(truckInPlay, sinceTruck) -> boolean                  règle pure (bancs)
+--   ArmoredVanService.DropOffsets(count) -> { number }   écarts latéraux des colis tombés (bancs)
 
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
@@ -51,6 +66,7 @@ local Zones = require(Shared.Config.Zones)
 local Announce = require(Shared.Announce)
 local Format = require(Shared.Format)
 local Net = require(Shared.Net.Net)
+local ZoneBoxOdds = require(Shared.ZoneBoxOdds)
 
 local DataService = require(script.Parent.DataService)
 local NightCycleService = require(script.Parent.NightCycleService)
@@ -91,6 +107,13 @@ local TEST_ATTRIBUTE = "ArmoredVanNow" -- Studio seulement
 local HP_ATTRIBUTE = "HP" -- posé par WindowService sur la cible
 local ENDS_AT_ATTRIBUTE = "EndsAt" -- heure serveur de la fin du trajet (lisible par une UI)
 local TICK = 0.5 -- V0 : horaire revu 2 fois par seconde
+-- a425 : camion de l'événement (posé par TruckEventService), casse vue par les clients, colis tombés.
+local TRUCK_TAG = "EventTruck"
+local EXPLODED_AT_ATTRIBUTE = "ExplodedAt" -- heure serveur de la casse, lue par ArmoredVanController
+local OUTLINE_NAME = "OutlineHighlight"
+local BAR_NAME = "VanHP"
+local BLAST_POINT = "BlastPoint"
+local DROP_PREFIX = "Truck_ArmoredVan_" -- préfixe Truck_ : ni vigile ni témoin (GuardService), comme la Fortune Tower
 local GROUND_RAY_UP = 30 -- V0 : sol cherché de 30 studs au-dessus…
 local GROUND_RAY_DOWN = 60 -- … à 60 en dessous du point
 local IS_STUDIO = RunService:IsStudio()
@@ -105,6 +128,14 @@ local startedSlot = -1 -- départ déjà fait (ou mis en attente)
 local pending = false -- un départ attend le jour
 local dayStartedAt = -math.huge -- os.clock() de la dernière aube
 local warned: { [string]: boolean } = {}
+local truckSeenAt = -math.huge -- a425 : os.clock() du dernier camion vu en jeu
+local vanEndedAt = -math.huge -- a425 : os.clock() de la fin du dernier fourgon (cassé ou échappé)
+local vanCount = 0
+-- a425 : StoreHeistService (AddEventShelf), chargé dans Init, protégé (absent d'un banc : colis perdu).
+local heistApi: { AddEventShelf: (options: any) -> Model? }? = nil
+
+-- Un colis gagné qui n'entre pas dans l'inventaire (a425, L-325 réponse 2).
+type Drop = { Player: Player, Label: string, Zone: number, Rarity: string }
 
 local function log(message: string)
 	if IS_STUDIO then
@@ -179,6 +210,27 @@ function ArmoredVanService.Ranking(damage: { [number]: number }, maxHP: number):
 		end
 	end
 	return places
+end
+
+-- a425 (L-318 Q1) : un camion peut-il apparaître ? Non pendant un fourgon (active), ni pendant un départ en attente
+-- (waiting), ni moins de TruckGap s après la fin du dernier (sinceVan), ni dans les TruckLead s avant un départ.
+function ArmoredVanService.BlocksTruck(untilDeparture: number, active: boolean, waiting: boolean, sinceVan: number): boolean
+	return active or waiting or sinceVan < ArmoredVan.TruckGap or untilDeparture <= ArmoredVan.TruckLead
+end
+
+-- a425 (L-318 Q1) : le fourgon peut-il partir ? Aucun camion en jeu, et le dernier parti depuis TruckGap s au moins.
+function ArmoredVanService.TruckAllowsVan(truckInPlay: boolean, sinceTruck: number): boolean
+	return not truckInPlay and sinceTruck >= ArmoredVan.TruckGap
+end
+
+-- a425 (L-325) : écarts latéraux (studs) de `count` colis côte à côte, centrés derrière le fourgon.
+function ArmoredVanService.DropOffsets(count: number): { number }
+	local offsets: { number } = {}
+	local n = math.max(math.floor(count), 0)
+	for index = 1, n do
+		table.insert(offsets, (index - (n + 1) / 2) * ArmoredVan.DropSpacing)
+	end
+	return offsets
 end
 
 -- Carte ---------------------------------------------------------------------------------------------------------
@@ -418,9 +470,19 @@ end
 
 -- Fourgon ---------------------------------------------------------------------------------------------------------
 
+-- a425 (L-318 Q2) : état lu par la bannière (EventBannerController) ; nil efface.
+local function setState(state: string?, endsAt: number?)
+	Workspace:SetAttribute(ArmoredVan.StateAttribute, state)
+	Workspace:SetAttribute(ArmoredVan.EndsAtAttribute, endsAt)
+end
+
 local function removeVan(current: Van, delay: number)
 	if van == current then
 		van = nil
+		setState(nil, nil)
+	end
+	if not current.Done then
+		vanEndedAt = os.clock()
 	end
 	current.Done = true
 	if current.Heartbeat then
@@ -464,7 +526,8 @@ local function spawnVan(): boolean
 	end
 	local maxHP = ArmoredVanService.MaxHP(damages)
 	model:PivotTo(frameAt(points, 0))
-	model:SetAttribute(ENDS_AT_ATTRIBUTE, Workspace:GetServerTimeNow() + ArmoredVan.TravelTime)
+	local endsAt = Workspace:GetServerTimeNow() + ArmoredVan.TravelTime
+	model:SetAttribute(ENDS_AT_ATTRIBUTE, endsAt)
 	model.Parent = Workspace
 	CollectionService:AddTag(model, TAG)
 	local windowId = WindowService.AddTarget(model, maxHP)
@@ -486,6 +549,8 @@ local function spawnVan(): boolean
 		Heartbeat = nil,
 	}
 	van = current
+	vanCount += 1
+	setState("Road", endsAt)
 	current.Heartbeat = RunService.Heartbeat:Connect(function()
 		if current.Done then
 			return
@@ -521,7 +586,24 @@ local function bestZone(data: any): number
 	return best
 end
 
-local function reward(player: Player, place: Place): boolean
+-- a425 (L-325 réponse 2) : zone et rareté du colis qui tombe, par la règle du colis gagné (comme GiveZoneBoxItem).
+local function dropFor(player: Player, tier: ArmoredVan.RewardTier, best: number): Drop?
+	local ok, zone, rarity = pcall(function(): (number?, string?)
+		local z = ZoneBoxOdds.Zone(tier.Rule :: any, best)
+		if z == nil then
+			return nil, nil
+		end
+		local drawn = ZoneBoxOdds.Draw(ZoneBoxOdds.Chances(tier.Rule :: any, z), math.random())
+		return z, if drawn then drawn.Id else nil
+	end)
+	if not ok or zone == nil or rarity == nil then
+		warnOnce("drop", `colis tombé du fourgon : aucune rareté pour {player.Name} (zone {tostring(best)})`)
+		return nil
+	end
+	return { Player = player, Label = tier.Label, Zone = zone, Rarity = rarity }
+end
+
+local function reward(player: Player, place: Place, drops: { Drop }): boolean
 	local tier = place.Tier
 	local percent = math.round(place.Share * 100)
 	if tier == nil then
@@ -538,7 +620,12 @@ local function reward(player: Player, place: Place): boolean
 	end)
 	if not ok or itemUid == nil or itemId == nil then
 		if ok and reason == "InventoryFull" then
-			notify(player, ArmoredVan.Messages.Full, "Warning")
+			local drop = dropFor(player, tier, bestZone(data))
+			if drop then
+				table.insert(drops, drop) -- posé et annoncé après la boucle (placeDrops)
+			else
+				notify(player, ArmoredVan.Messages.Lost, "Warning")
+			end
 		else
 			warnOnce(`give:{tostring(if ok then reason else itemUid)}`, `colis du fourgon pas donné à {player.Name} ({tostring(if ok then reason else itemUid)})`)
 		end
@@ -553,31 +640,77 @@ local function reward(player: Player, place: Place): boolean
 	return true
 end
 
+-- a425 (L-325 réponse 2) : chaque colis qui n'est pas entré dans l'inventaire tombe derrière le fourgon arrêté, côte à
+-- côte, sur un rayon d'événement à lui (n'importe qui l'ouvre et prend l'objet). Renvoie le nombre de colis posés.
+local function placeDrops(current: Van, drops: { Drop }): number
+	if #drops == 0 then
+		return 0
+	end
+	local model = current.Model
+	local pivot = model:GetPivot()
+	local _, size = model:GetBoundingBox()
+	local blast = model:FindFirstChild(BLAST_POINT, true)
+	local from: Vector3? = if blast and blast:IsA("Attachment") then (blast :: Attachment).WorldPosition else nil
+	-- Avant vers −Z (LookVector) : l'arrière est de l'autre côté.
+	local behind = pivot.Position - pivot.LookVector * (size.Z / 2 + ArmoredVan.DropBehind)
+	local offsets = ArmoredVanService.DropOffsets(#drops)
+	local addShelf = if heistApi then heistApi.AddEventShelf else nil
+	local placed = 0
+	for index, drop in drops do
+		local point = behind + pivot.RightVector * offsets[index]
+		local ground = Vector3.new(point.X, groundY(point, { model }), point.Z)
+		local shelf: Model? = nil
+		if addShelf then
+			local ok, result = pcall(addShelf, {
+				Id = `{DROP_PREFIX}{vanCount}_{drop.Player.UserId}`,
+				Zone = drop.Zone,
+				Spots = { { CFrame = CFrame.new(ground), Rarity = drop.Rarity, From = from } },
+				Lifetime = ArmoredVan.DropLifetime,
+			})
+			shelf = if ok then result else nil
+		end
+		if shelf then
+			placed += 1
+			notify(drop.Player, string.format(ArmoredVan.Messages.Full, drop.Label), "Warning")
+			log(`{drop.Player.Name} : inventaire plein, {drop.Label} ({drop.Rarity}, zone {drop.Zone}) tombé derrière le fourgon`)
+		else
+			notify(drop.Player, ArmoredVan.Messages.Lost, "Warning")
+			warnOnce("noshelf", "StoreHeistService.AddEventShelf indisponible ou refusé : colis du fourgon perdu (inventaire plein)")
+		end
+	end
+	return placed
+end
+
 local function breakVan(current: Van)
 	if current.Done then
 		return
 	end
 	removeVan(current, ArmoredVan.RemoveDelay)
-	local root = current.Model.PrimaryPart
-	local center = if root then root.Position else current.Model:GetPivot().Position
-	local blast = Instance.new("Explosion")
-	blast.Position = center + Vector3.new(0, ArmoredVan.VanSize.Y / 2, 0)
-	blast.BlastPressure = 0
-	blast.DestroyJointRadiusPercent = 0
-	blast.BlastRadius = 12
-	blast.Parent = Workspace
+	-- a425 (L-324) : l'explosion se joue chez les clients (ArmoredVanController, comme le camion) ; ici le fourgon est
+	-- arrêté (removeVan), sa barre et son contour s'éteignent.
+	local model = current.Model
+	for _, descendant in model:GetDescendants() do
+		if descendant:IsA("BillboardGui") and descendant.Name == BAR_NAME then
+			(descendant :: BillboardGui).Enabled = false
+		elseif descendant:IsA("Highlight") and descendant.Name == OUTLINE_NAME then
+			(descendant :: Highlight).Enabled = false
+		end
+	end
+	model:SetAttribute(EXPLODED_AT_ATTRIBUTE, Workspace:GetServerTimeNow())
 	local places = ArmoredVanService.Ranking(current.Damage, current.MaxHP)
 	local top: { string } = {}
 	local rewarded = 0
+	local drops: { Drop } = {}
 	for _, place in places do
 		local player = Players:GetPlayerByUserId(place.UserId)
 		if #top < 3 then
 			table.insert(top, current.Names[place.UserId] or "?")
 		end
-		if player and reward(player, place) then
+		if player and reward(player, place, drops) then
 			rewarded += 1
 		end
 	end
+	rewarded += placeDrops(current, drops)
 	announce(string.format(ArmoredVan.Messages.Broken, table.concat(top, ", ")), string.format(ArmoredVan.Messages.BrokenDetail, rewarded))
 	log(`fourgon cassé : {#places} casseur(s), {rewarded} colis donné(s)`)
 end
@@ -594,26 +727,44 @@ local function dayAllows(): boolean
 	return NightCycleService.GetPhaseEndsAt() - Workspace:GetServerTimeNow() >= ArmoredVan.TravelTime
 end
 
+-- a425 (L-318 Q1) : un camion de l'événement est-il en jeu ? Note l'heure du dernier vu (pause TruckGap).
+local function truckInPlay(): boolean
+	for _, truck in CollectionService:GetTagged(TRUCK_TAG) do
+		if truck:IsDescendantOf(Workspace) then
+			truckSeenAt = os.clock()
+			return true
+		end
+	end
+	return false
+end
+
 local function step()
 	local now = os.time()
 	local slot = ArmoredVanService.NextDeparture(now)
 	local last = slot - ArmoredVan.Period -- dernier départ à l'horaire, déjà passé
+	local roadFree = ArmoredVanService.TruckAllowsVan(truckInPlay(), os.clock() - truckSeenAt)
 	if slot - now <= ArmoredVan.WarnBefore and announcedSlot ~= slot then
 		announcedSlot = slot
 		announce(string.format(ArmoredVan.Messages.Soon, math.max(0, slot - now)), ArmoredVan.Messages.SoonDetail)
+		if van == nil and roadFree and NightCycleService.GetPhase() == "Day" then
+			setState("Soon", Workspace:GetServerTimeNow() + math.max(0, slot - now))
+		end
 	end
 	if startedSlot ~= last then
 		startedSlot = last
 		if van == nil then
-			if dayAllows() then
+			if dayAllows() and roadFree then
 				pending = false
-				spawnVan()
+				if not spawnVan() then
+					setState(nil, nil) -- pas de fourgon (pas de trajet) : la bannière s'éteint
+				end
 			else
 				pending = true
-				announce(ArmoredVan.Messages.Delayed)
+				setState(nil, nil)
+				announce(if roadFree then ArmoredVan.Messages.Delayed else ArmoredVan.Messages.DelayedTruck)
 			end
 		end
-	elseif pending and van == nil and dayAllows() then
+	elseif pending and van == nil and dayAllows() and roadFree then
 		pending = false
 		spawnVan()
 	end
@@ -668,12 +819,28 @@ function ArmoredVanService.IsActive(): boolean
 	return van ~= nil
 end
 
+function ArmoredVanService.HoldsTruck(): boolean
+	if not ENABLED then
+		return false
+	end
+	local now = os.time()
+	return ArmoredVanService.BlocksTruck(ArmoredVanService.NextDeparture(now) - now, van ~= nil, pending, os.clock() - vanEndedAt)
+end
+
 function ArmoredVanService.Init()
 	if not ENABLED then
 		return
 	end
 	WindowService.OnHit(onHit :: any)
 	WindowService.OnBroken(onBroken)
+	-- a425 (L-325) : rayons d'événement de StoreHeistService (colis tombés), protégé comme dans TruckEventService.
+	local module = script.Parent:FindFirstChild("StoreHeistService")
+	if module and module:IsA("ModuleScript") then
+		local ok, api = pcall(require, module)
+		if ok and type(api) == "table" and type((api :: any).AddEventShelf) == "function" then
+			heistApi = api :: any
+		end
+	end
 	NightCycleService.OnPhaseChanged(onPhaseChanged :: any)
 end
 

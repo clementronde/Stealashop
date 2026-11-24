@@ -9,6 +9,8 @@
 --      l'alerte ou la nuit attend que ces conditions reviennent. Zone tirée au hasard dans SpawnZones.
 --      Vague 39 : pas de camion tant qu'une vitrine de la Fortune Tower est en jeu (tag FortuneVault posé
 --      par FortuneTowerService, fermée ou ouverte) ; le camion dû attend qu'elle soit retirée.
+--      a425 (L-318 Q1) : de même tant que ArmoredVanService.HoldsTruck() (fourgon blindé en jeu ou en attente, juste
+--      après lui, ou départ à l'horaire proche) : jamais les deux véhicules en même temps.
 --      Où :
 --        - sur un point taggé `TruckSpawn` (Attachment, pièce ou Model, attribut Zone ; nom proposé à
 --          Clément, hors contrat) s'il y en a dans la zone, au hasard : le pivot du camion (en bas au
@@ -236,6 +238,9 @@ local nextSpawnAt = math.huge -- os.clock() ; posé au Start
 local dayStartedAt = -math.huge -- os.clock() de la dernière aube
 -- Vague 42 : StoreHeistService (AddEventShelf), chargé dans Init, protégé.
 local heistApi: { AddEventShelf: (options: any) -> Model? }? = nil
+-- a425 (L-318 Q1) : ArmoredVanService.HoldsTruck, chargé dans Init, protégé : pas de camion pendant le fourgon blindé,
+-- ni juste avant ni juste après (règle et valeurs : ArmoredVanService, Config/ArmoredVan). Absent : aucun écart.
+local vanApi: { HoldsTruck: () -> boolean }? = nil
 local warned: { [string]: boolean } = {}
 local boxCache: { [Instance]: { cframe: CFrame, size: Vector3 } } = {}
 local random = Random.new()
@@ -1542,6 +1547,16 @@ local function fortuneInPlay(): boolean
 	return false
 end
 
+-- a425 : le fourgon blindé retient-il le camion ?
+local function vanHolds(): boolean
+	local api = vanApi
+	if api == nil then
+		return false
+	end
+	local ok, held = pcall(api.HoldsTruck)
+	return ok and held == true
+end
+
 local function randomZone(): number?
 	local list = TruckEvent.SpawnZones
 	if #list == 0 then
@@ -1564,7 +1579,7 @@ local function step()
 		return
 	end
 	nextSpawnAt = math.min(nextSpawnAt, now + math.max(TruckEvent.SpawnIntervalMax, 0) * (Workspace:GetAttribute("LiveEventTruckDelay") :: number? or 1)) -- a167 : attente raccourcie dès le début
-	if now < nextSpawnAt or not daySpawnAllowed() or fortuneInPlay() then
+	if now < nextSpawnAt or not daySpawnAllowed() or fortuneInPlay() or vanHolds() then
 		return
 	end
 	nextSpawnAt = now + randomInterval()
@@ -1661,6 +1676,13 @@ function TruckEventService.Init()
 	end
 	if heistApi == nil then
 		log("StoreHeistService.AddEventShelf indisponible : le camion explosera sans colis (plus de colis porté)")
+	end
+	local vanModule = script.Parent:FindFirstChild("ArmoredVanService") -- a425 (L-318 Q1)
+	if vanModule and vanModule:IsA("ModuleScript") then
+		local ok, api = pcall(require, vanModule)
+		if ok and type(api) == "table" and type((api :: any).HoldsTruck) == "function" then
+			vanApi = api :: any
+		end
 	end
 	WindowService.OnBroken(onBroken)
 	-- Accès protégé : les faux WindowService des bancs n'ont pas tous AddHitGate.

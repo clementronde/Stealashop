@@ -13,6 +13,10 @@
 -- devant), seulement avec Monetization.ServerLuck.Enabled (SERVER_LUCK) : Title = « SERVER LUCK ×2 », Effect =
 -- « Rarer boxes for everyone » (ServerLuck.Banner), Timer = temps restant. Un élément absent : son texte n'est pas
 -- écrit, sans erreur ; écran absent : rien.
+-- a425 (24/11, L-318 Q2) : le fourgon blindé de la casse du siècle (attributs du Workspace de Config/ArmoredVan,
+-- StateAttribute « Soon » ou « Road » et EndsAtAttribute, posés par ArmoredVanService) passe après l'événement live et
+-- avant la chance du serveur : Title et Effect de ArmoredVan.Banner[état], Timer = temps jusqu'au départ (Soon) ou
+-- jusqu'à sa fuite (Road). Config/ArmoredVan absente (bancs) : rien de plus.
 --
 -- API (client) :
 --   EventBannerController.GetState() -> { Id: string?, Shown: boolean, Timer: string? }
@@ -39,6 +43,24 @@ local SCREEN_NAME: string = LiveEvents.BannerScreen
 local REFRESH = 1 -- s entre deux chronos
 local LUCK = Monetization.ServerLuck
 local LUCK_ID = "ServerLuck"
+local VAN_ID = "ArmoredVan" -- a425
+
+-- a425 : Config/ArmoredVan, protégée (absente d'un faux arbre de banc : pas de fourgon dans la bannière).
+type VanBanner = { StateAttribute: string, EndsAtAttribute: string, Banner: { [string]: { Title: string, Effect: string } } }
+local function loadVan(): VanBanner?
+	local ok, value = pcall(function(): any
+		local config = Shared:FindFirstChild("Config")
+		if config == nil or config:FindFirstChild("ArmoredVan") == nil then
+			return nil
+		end
+		return require(Shared:WaitForChild("Config"):WaitForChild("ArmoredVan")) :: any
+	end)
+	if ok and type(value) == "table" and type(value.Banner) == "table" and type(value.StateAttribute) == "string" then
+		return value
+	end
+	return nil
+end
+local VAN: VanBanner? = loadVan()
 
 local EventBannerController = {}
 
@@ -76,6 +98,15 @@ local function currentContent(): Content?
 	local format = if type(id) == "string" then LiveEvents.ById[id] else nil
 	if format then
 		return { Id = format.Id, Title = format.DisplayName, Effect = format.Effect, Remaining = untilAttribute(LiveEvents.EndsAtAttribute) }
+	end
+	local van = VAN -- a425 : le fourgon blindé, annoncé ou en route
+	if van then
+		local state = Workspace:GetAttribute(van.StateAttribute)
+		local text = if type(state) == "string" then van.Banner[state] else nil
+		local left = untilAttribute(van.EndsAtAttribute)
+		if text and left > 0 then
+			return { Id = VAN_ID, Title = text.Title, Effect = text.Effect, Remaining = left }
+		end
 	end
 	if not LUCK.Enabled then
 		return nil
@@ -135,6 +166,10 @@ end
 function EventBannerController.Start()
 	Workspace:GetAttributeChangedSignal(LiveEvents.IdAttribute):Connect(onChanged)
 	Workspace:GetAttributeChangedSignal(LiveEvents.EndsAtAttribute):Connect(onChanged)
+	if VAN then
+		Workspace:GetAttributeChangedSignal((VAN :: VanBanner).StateAttribute):Connect(onChanged)
+		Workspace:GetAttributeChangedSignal((VAN :: VanBanner).EndsAtAttribute):Connect(onChanged)
+	end
 	if LUCK.Enabled then
 		Workspace:GetAttributeChangedSignal(LUCK.Attribute):Connect(onChanged)
 		Workspace:GetAttributeChangedSignal(LUCK.EndsAtAttribute):Connect(onChanged)
