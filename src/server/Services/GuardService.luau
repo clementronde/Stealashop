@@ -396,8 +396,8 @@ type Guard = {
 	-- (Chase.V3, Guard/ChaseLaw : une seule loi, sans phase) ; nil : vitesse fixe (tutoriel, Apply coupé), ou hors
 	-- poursuite. Décidé à chaque départ de poursuite (startChase).
 	chasePhase: ("Rush" | "Hold" | "Law")?,
-	lawNearSince: number?, -- a443 (Chase.V3.CatchDwell) : depuis quand le joueur le voit à portée de capture
-	lawNearLast: number?, -- a443 : dernière image où il l'a vu à portée
+	lawCrossOffset: Vector3?, -- a443 (capture au croisement) : écart joueur − vigile vu, au pas d'avant (GuardService._LawCross)
+	lawCrossAt: number?, -- a443 : heure de ce pas
 	ejectFrom: Vector3?, -- a443 (Chase.V3.Eject) : où le joueur voyait le vigile à la capture (il est éjecté à l'opposé)
 	ejected: boolean?, -- a443 : le joueur a déjà été éjecté à la capture, pas de seconde poussée au marqueur Impact
 	holdSince: number?, -- fin de la ruée (conducteur du camion : sa vitesse grandit depuis)
@@ -1311,9 +1311,13 @@ local function setState(guard: Guard, state: GuardState)
 	guard.chaseAimAt = nil
 	guard.chaseVelocity = nil
 	guard.chaseVelocityAt = nil
+	if guard.chasePhase == "Law" then
+		-- a443 : plus en poursuite V3 ; même nom dans GuardViewController (Chase.V3.ContactHold, côté client).
+		guard.model:SetAttribute("ChaseLaw", nil)
+	end
 	guard.chasePhase = nil
-	guard.lawNearSince = nil
-	guard.lawNearLast = nil
+	guard.lawCrossOffset = nil
+	guard.lawCrossAt = nil
 	guard.holdSince = nil
 	guard.holdTarget = nil
 	guard.holdStepAt = nil
@@ -2090,7 +2094,7 @@ local function startChase(guard: Guard, now: number)
 	if player and targetRoot and targetHumanoid and followsDistanceRule(guard, player) and GuardService._V3Kind(guard) then
 		-- a443 (Chase.V3) : une seule loi dès le départ (retour vers la distance de croisière, sans ruée).
 		guard.chasePhase = "Law"
-		guard.lawNearSince = nil
+		guard.model:SetAttribute("ChaseLaw", true) -- a443 : lu par GuardViewController (Chase.V3.ContactHold)
 		local targetAt = estimatedPosition(player, targetRoot, targetHumanoid)
 		setWalkSpeed(guard, GuardService._LawSpeed(guard, player, targetAt, targetRoot, targetHumanoid))
 		log(string.format("%s : poursuite V3 de %s à %.1f studs/s (écart %.1f studs, distance de croisière %.1f, sa marche %.1f)",
@@ -3012,6 +3016,36 @@ local function stuckCatchable(guard: Guard, targetRoot: BasePart, catchDistance:
 	return true
 end
 
+-- a443 (Cantin, 24/11 : « quand tu fais un demi-tour vers le vigile, t'es censé être attrapé ») : capture au croisement de
+-- la poursuite V3, quelle que soit la vitesse relative. Test balayé : seenAt est la place où ce joueur voyait le vigile
+-- quand il était à la position que le serveur reçoit maintenant (Guard/ClientView.Seen) ; écart = position reçue −
+-- seenAt, à plat. Entre l'écart du pas d'avant (au plus 0,25 s plus tôt) et celui-ci, en ligne droite, le point le plus
+-- proche de zéro : à reach studs au plus, ils se sont croisés sur l'écran du joueur, même si aucun relevé ne tombe à
+-- portée (à 165 studs/s de vitesse relative, un pas de 1/20 s fait 8 studs). Rien n'est estimé : seulement des positions
+-- reçues et le relevé du vigile ; une erreur sur le retard déplace le moment du croisement, pas l'écart de côté : pas
+-- de capture à distance. Même étage (CatchReach.InRange) et ligne libre (CatchReach.CanTouch) exigés. À appeler à chaque
+-- pas de poursuite V3 (il garde l'écart). Le serveur l'apprend un retard après le joueur : chez lui, le client retient
+-- sa marche dès le contact (Chase.V3.ContactHold, GuardViewController), pour que la capture arrive au contact.
+-- Champ et non locale (limite des 200 locales).
+GuardService._LawCross = function(guard: Guard, seenAt: Vector3, targetRoot: BasePart, reach: number, now: number): boolean
+	local offset = flat(targetRoot.Position - seenAt)
+	local before, beforeAt = guard.lawCrossOffset, guard.lawCrossAt
+	guard.lawCrossOffset, guard.lawCrossAt = offset, now
+	if before == nil or beforeAt == nil or now - beforeAt > 0.25 or now < beforeAt then
+		return false -- premier pas : le relevé seul (la règle d'avant)
+	end
+	local move = offset - before
+	local length2 = move:Dot(move)
+	if length2 <= 1e-9 then
+		return false
+	end
+	local t = math.clamp(-before:Dot(move) / length2, 0, 1)
+	if (before + move * t).Magnitude > reach or not CatchReach.InRange(seenAt, targetRoot.Position, math.huge) then
+		return false
+	end
+	return (CatchReach.CanTouch(seenAt, targetRoot, rayParams))
+end
+
 local function chaseStep(guard: Guard, now: number)
 	local player = guard.target
 	if player == nil then
@@ -3106,25 +3140,16 @@ local function chaseStep(guard: Guard, now: number)
 	end
 	-- a420 (Chase.ClientView.Contact) : et quand la capture lui arrivera, ce joueur verra encore le vigile à AnnounceMax
 	-- studs au plus (pas de capture au passage d'un vigile qui le traverse vite).
-	-- a443 (Chase.V3.CatchDwell) : en poursuite V3, le vigile doit être resté vu à portée ce temps : un vigile qui croise
-	-- le joueur à grande vitesse (demi-tour pendant le retour) n'attrape pas au passage. Un trou de moins de CatchDwell s
-	-- entre deux images « à portée » ne remet pas le compte à zéro (vigile qui piétine à StandOff studs d'un voleur qui
-	-- avance encore : banc a443, « ralentir »).
-	if guard.chasePhase == "Law" and touch then
-		local dwell = Chase.V3.CatchDwell
-		if isPositiveNumber(dwell) then
-			local last = guard.lawNearLast
-			local since: number = guard.lawNearSince or now
-			if last == nil or now - last > dwell then
-				since = now
-			end
-			guard.lawNearSince = since
-			guard.lawNearLast = now
-			touch = now - since >= dwell
-		end
+	-- a443 (Cantin, 24/11 : « quand tu fais un demi-tour vers le vigile, t'es censé être attrapé ») : en poursuite V3, capture
+	-- aussi quand ils se sont croisés à portée depuis le pas d'avant (test balayé, GuardService._LawCross), quelle que soit
+	-- leur vitesse ; et la règle Announced d'a420 (pas de capture au passage) ne s'applique plus : un voleur qui croise le
+	-- vigile est attrapé. Chez lui, le client retient sa marche dès le contact (Chase.V3.ContactHold).
+	local law = guard.chasePhase == "Law"
+	if law and seenAt and GuardService._LawCross(guard, seenAt, targetRoot, catchDistance, now) and not touch then
+		touch, how = true, "croisé"
 	end
 	local announced = 0
-	if touch and seenAt then
+	if touch and seenAt and not law then
 		local near: boolean
 		near, announced = GuardService._ClientView.Announced(guard.root, player, targetRoot, targetHumanoid, now, rayParams)
 		touch = near
@@ -3142,7 +3167,13 @@ local function chaseStep(guard: Guard, now: number)
 		-- a443 (Chase.V3.Eject) : en poursuite V3, le joueur est éjecté à la capture, à l'opposé de là où il voyait le
 		-- vigile ; le vigile reste où il est (il ne rejoint pas le joueur qui s'envole).
 		local eject = guard.chasePhase == "Law" and Chase.V3.Eject.Enabled == true
-		guard.ejectFrom = if eject then (seenAt or guard.root.Position) else nil
+		local from = seenAt or guard.root.Position
+		if eject and flat(targetRoot.Position - from).Magnitude < 1 then
+			-- Croisé de face, le vigile vu est sur lui : éjecté vers l'arrière (il regardait le vigile).
+			local look = flat(targetRoot.CFrame.LookVector)
+			from = targetRoot.Position + (if look.Magnitude > 1e-3 then look.Unit else Vector3.new(0, 0, 1))
+		end
+		guard.ejectFrom = if eject then from else nil
 		if seenAt and not eject then
 			GuardService._ClientView.Caught(guard.root, targetRoot, now) -- a416 : il rejoindra le joueur qui glisse (update)
 		end
@@ -3155,7 +3186,7 @@ local function chaseStep(guard: Guard, now: number)
 	end
 	-- a443 (Chase.V3) : en poursuite V3, sur un voleur qui avance encore (vigile plus rapide, voleur qui ralentit), le
 	-- vigile ne s'arrête ni avant la capture ni à StandOff studs : il piétinait à 4,4 à 4,7 studs à l'écran, hors de
-	-- portée, 16 s durant (banc a443, « rapide »). Il garde sa vitesse jusqu'au contact ; la capture (CatchDwell) puis
+	-- portée, 16 s durant (banc a443, « rapide »). Il garde sa vitesse jusqu'au contact ; la capture puis
 	-- l'éjection viennent avant qu'il passe le joueur. Voleur arrêté : rien ne change (arrêt à StandOff studs).
 	local lawMoving = GuardService._LawMoving(guard, targetRoot)
 	if seenAt and not lawMoving and GuardService._ClientView.Imminent(guard.root, player, targetRoot, targetHumanoid, targetAt, now, catchDistance, rayParams) then

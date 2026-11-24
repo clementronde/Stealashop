@@ -232,6 +232,8 @@ local Chase = {
 	-- Une seule loi de vitesse, à chaque image (server/Services/Guard/ChaseLaw, calcul pur) :
 	--   D      = max(HoldDistance, HoldSeconds × marche du voleur)                      (règles 1 et 2)
 	--   retour = marche du voleur + ReturnGain × (écart − D)                            (règle 4, sans palier)
+	--            (le surplus d'un écart en trop s'efface à mesure que le voleur revient vers le vigile : face à face, il
+	--            court à la marche du voleur, pas à 3,5 × ; ils se croisent à 2 × la marche au plus)
 	--   v      = clamp(max(plancher, retour), 0, max(base, marche × (1 + ReturnSurplusFactor)))
 	--   plancher = base si le voleur fuit (la part de sa vitesse reçue qui l'éloigne ≥ FleeHigh × sa marche) : un vigile
 	--              plus lent retombe à sa vitesse et l'écart perdu dans un virage revient (règle 6) ;
@@ -245,9 +247,17 @@ local Chase = {
 	-- « écart » = distance à plat jusqu'à la position estimée du voleur (ClientView.Estimate : là où il se voit). Le
 	-- vigile vise le voleur tout droit (pas un point devant lui) : il reste derrière lui et coupe les virages.
 	-- Pas pour le conducteur du camion (sa règle d'avant), ni pour la vitesse imposée par le tutoriel.
-	-- Capture : toujours décidée par le serveur, au contact vu par le joueur (ClientView), et seulement si le vigile est
-	-- resté vu à portée CatchDwell s (un vigile qui croise le joueur à grande vitesse n'attrape pas au passage :
-	-- cause des captures annoncées à 10 et 14 studs du Play de fusion99). Le joueur attrapé est éjecté tout de suite
+	-- Capture : toujours décidée par le serveur, au contact vu par le joueur (ClientView.Seen : positions reçues et relevé
+	-- du vigile, rien d'estimé).
+	-- Croisement (Cantin, 24/11 : « quand tu fais un demi-tour vers le vigile, t'es censé être attrapé ») : un voleur qui
+	-- croise le vigile est attrapé, quelle que soit leur vitesse. Test balayé (GuardService._LawCross) : l'approche la plus
+	-- proche entre le pas d'avant et celui-ci, à la portée de capture, et non le seul relevé du moment ; la règle
+	-- « Announced » d'a420 (pas de capture au passage) ne s'applique plus en V3. Une erreur sur le retard déplace le moment
+	-- du croisement, jamais l'écart de côté : pas de capture à distance (défaut du Play de fusion99 : capture annoncée à 10
+	-- et 14 studs). Le serveur n'apprend le croisement qu'un retard après le joueur (0,2 s à 67 ms de ping, 0,33 s à
+	-- 200 ms), et un demi-tour à D se croise en 0,25 s : pour que la capture arrive au contact et non 20 à 30 studs plus
+	-- loin, le client du joueur poursuivi retient sa marche dès qu'il touche l'image du vigile (ContactHold, plus bas).
+	-- Le joueur attrapé est éjecté tout de suite
 	-- (Eject), sans attendre le marqueur Impact de Catch, pour cacher le retard du réseau ; le vigile s'arrête derrière
 	-- lui, il ne le traverse pas. Chez le joueur poursuivi, l'image du vigile reste derrière lui (ClientView.Display, a433).
 	V3 = {
@@ -259,7 +269,18 @@ local Chase = {
 		ReturnSurplusFactor = 2.5,
 		FleeLow = 0.5, -- V0 proposé (Cantin, 24/11) : part de sa marche sous laquelle le voleur « ne fuit plus »
 		FleeHigh = 0.9, -- V0 proposé (Cantin, 24/11) : part de sa marche au-dessus de laquelle il « fuit »
-		CatchDwell = 0.1, -- V0 proposé (Cantin, 24/11) : vu à portée ce temps avant la capture (s) ; 0 = sans
+		-- Le client du joueur poursuivi retient sa marche au contact de l'image du vigile en poursuite V3 (attribut ChaseLaw
+		-- du modèle ; client/Controllers/GuardViewController) : à Reach studs au plus à plat, même étage (ClientView.Display.
+		-- HeightMax), sa direction de marche est mise à zéro (Humanoid:Move après le pas du ControlModule) pendant Seconds s au
+		-- plus, le temps que la capture du serveur arrive ; sans capture, il repart, et rien ne le retient de nouveau avant
+		-- Cooldown s. Ce n'est que de l'affichage : le serveur ne reçoit rien et décide seul ; un client qui l'enlève est
+		-- attrapé quand même (au croisement), il voit seulement la capture arriver plus loin.
+		ContactHold = {
+			Enabled = true, -- V0 proposé (Cantin, 24/11) ; false : rien n'est retenu
+			Reach = 3.25, -- V0 proposé (Cantin, 24/11) : studs (l'image s'arrête à Display.MinGap = 3 du joueur)
+			Seconds = 0.6, -- V0 proposé (Cantin, 24/11) : retenue au plus (s ; le retard compensé est plafonné à 0,6 s)
+			Cooldown = 1, -- V0 proposé (Cantin, 24/11) : s avant une nouvelle retenue quand la capture n'est pas venue
+		},
 		-- Éjection du joueur attrapé, à la capture : LinearVelocity posée par le serveur (comme le coup d'avant), à
 		-- l'opposé du vigile. Environ 0,5 s en l'air (0,2 s de poussée, puis la chute).
 		Eject = {

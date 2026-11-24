@@ -12,7 +12,9 @@
 --   ChaseLaw.Speed(cfg, base, walk, gap, away) -> (number, number)
 --       Vitesse du poursuivant (studs/s) et D, pour sa vitesse propre `base`, la marche du voleur `walk` (donnée par le
 --       serveur) et l'écart `gap` (studs, à plat, jusqu'à la position estimée du voleur) :
---         retour   = walk + ReturnGain × (gap − D)
+--         retour   = walk + ReturnGain × (gap − D) ; l'écart en trop est compté × (1 − part de sa marche avec laquelle
+--                    le voleur revient vers le vigile) : face à face, pas de surplus (ils se croisent à 2 × la marche
+--                    au plus, la capture au croisement reste précise)
 --         plancher = base quand il fuit ; max(base, walk) quand il ne fuit plus ; entre les deux selon Flee
 --         v        = clamp(max(plancher, retour), 0, max(base, walk × (1 + ReturnSurplusFactor)))
 --       Ce que cela donne :
@@ -63,7 +65,12 @@ function ChaseLaw.Speed(cfg: Config, base: number, walk: number, gap: number, aw
 	local theirs = if positive(walk) then walk else 0
 	local distance = ChaseLaw.Distance(cfg, theirs)
 	local gain = if positive(cfg.ReturnGain) then cfg.ReturnGain else 0
-	local back = theirs + gain * (gap - distance)
+	local excess = gap - distance
+	if excess > 0 and theirs > 0 and away == away and away < 0 then
+		-- Le voleur revient vers lui : le surplus du retour s'efface (face à face, plus de surplus du tout).
+		excess *= 1 - math.clamp(-away / theirs, 0, 1)
+	end
+	local back = theirs + gain * excess
 	local floor = own
 	if theirs > own then
 		floor = theirs + (own - theirs) * ChaseLaw.Flee(cfg, theirs, away)

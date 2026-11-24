@@ -22,8 +22,18 @@
 -- continue tant qu'un écart reste (même règle : l'image ne rejoint que sans passer devant le joueur), puis s'arrête.
 -- Modèle détruit ou sorti du dossier : suivi oublié.
 --
+-- a443 (Chase.V3.ContactHold ; Cantin, 24/11 : « quand tu fais un demi-tour vers le vigile, t'es censé être attrapé ») : le
+-- serveur attrape le joueur qui croise le vigile, mais il ne l'apprend qu'un retard plus tard (0,2 à 0,35 s) : le joueur
+-- serait déjà 20 à 30 studs plus loin. Ici, dès que ce joueur touche l'image de son vigile en poursuite V3 (attribut
+-- ChaseLaw du modèle, posé par GuardService ; Reach studs à plat, même étage), sa direction de marche est mise à zéro
+-- (Humanoid:Move(0) après le pas du ControlModule : BindToRenderStep, priorité Input + 2) pendant Seconds s au plus : la
+-- capture du serveur arrive alors au contact. Dès que la capture arrive (sa WalkSpeed passe à 0) ou à la fin du délai,
+-- la marche est rendue ; sans capture, pas de nouvelle retenue avant Cooldown s. Rien n'est envoyé au serveur, qui
+-- décide seul : un client sans cette retenue est attrapé quand même, il voit seulement la capture arriver plus loin.
+--
 -- API (client) :
 --   GuardViewController.GetOffset(model) -> Vector3   écart place affichée − vraie place (0 si aucun)
+--   GuardViewController.IsHeld() -> boolean           la marche du joueur est-elle retenue (contact) ?
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -37,6 +47,8 @@ local ChaseV3 = require(Shared:WaitForChild("ChaseV3")) -- a443 : seulement avec
 -- Mêmes noms que dans GuardService (serveur) et ChaseController : les changer dans les trois fichiers.
 local ACTIVE_FOLDER = "ActiveGuards"
 local TARGET_ATTRIBUTE = "TargetUserId"
+local LAW_ATTRIBUTE = "ChaseLaw" -- a443 : poursuivant en poursuite V3, en course (même nom dans GuardService)
+local HOLD_STEP = "GuardContactHold"
 
 local IS_STUDIO = RunService:IsStudio()
 
@@ -60,6 +72,11 @@ local entries: { [Model]: Entry } = {}
 local watched: { [Model]: { RBXScriptConnection } } = {}
 local stepConnection: RBXScriptConnection? = nil
 local warned: { [string]: boolean } = {}
+-- a443 (Chase.V3.ContactHold) : retenue de la marche au contact de l'image.
+local hold: any = nil -- Config/Chase.V3.ContactHold, allumé
+local holdUntil = 0 -- fin de la retenue en cours (os.clock)
+local holdAgainAt = 0 -- pas de nouvelle retenue avant
+local holdBound = false
 
 local function note(key: string, message: string)
 	if IS_STUDIO and not warned[key] then
@@ -125,6 +142,59 @@ local function localRoot(): BasePart?
 end
 
 -- Rend toujours true (pour pcall : une seule valeur rendue en plus de ok).
+local function localHumanoid(): Humanoid?
+	local character = localPlayer.Character
+	return if character then character:FindFirstChildOfClass("Humanoid") else nil
+end
+
+local function releaseHold()
+	holdUntil = 0
+	if holdBound then
+		holdBound = false
+		pcall(function()
+			RunService:UnbindFromRenderStep(HOLD_STEP)
+		end)
+	end
+end
+
+-- a443 (Chase.V3.ContactHold) : l'image du vigile (x, z, hauteur y) touche-t-elle ce joueur ? Alors sa marche est retenue.
+local function checkContact(x: number, z: number, y: number, mine: BasePart)
+	local now = os.clock()
+	if hold == nil or now < holdUntil or now < holdAgainAt then
+		return
+	end
+	local at = mine.Position
+	local reach = number(hold.Reach, 0)
+	if math.abs(y - at.Y) > number(display.HeightMax, math.huge) or (x - at.X) ^ 2 + (z - at.Z) ^ 2 > reach * reach then
+		return
+	end
+	local humanoid = localHumanoid()
+	if humanoid == nil or humanoid.WalkSpeed <= 0 then
+		return -- déjà immobilisé (capture en cours)
+	end
+	local seconds = number(hold.Seconds, 0)
+	if seconds <= 0 then
+		return
+	end
+	holdUntil = now + seconds
+	holdAgainAt = holdUntil + math.max(number(hold.Cooldown, 0), 0)
+	if not holdBound then
+		holdBound = true
+		RunService:BindToRenderStep(HOLD_STEP, Enum.RenderPriority.Input.Value + 2, function()
+			local current = localHumanoid()
+			if current == nil or os.clock() >= holdUntil then
+				releaseHold()
+			elseif current.WalkSpeed <= 0 then
+				-- La capture est arrivée : marche rendue (le serveur l'immobilise), une autre retenue redevient possible.
+				holdAgainAt = 0
+				releaseHold()
+			else
+				current:Move(Vector3.zero, false)
+			end
+		end)
+	end
+end
+
 local function stepEntry(entry: Entry, dt: number, mine: BasePart?): boolean
 	local root = entry.root
 	local real = root.Position
@@ -150,6 +220,9 @@ local function stepEntry(entry: Entry, dt: number, mine: BasePart?): boolean
 		return true
 	end
 	local x, z = GuardView.Step(entry.state, display, real.X, real.Z, px, pz, dt, constrained)
+	if mine and hold ~= nil and not entry.releasing and entry.model:GetAttribute(LAW_ATTRIBUTE) == true then
+		checkContact(x, z, real.Y, mine) -- a443 (Chase.V3.ContactHold)
+	end
 	local ox, oz = GuardView.Offset(entry.state)
 	if ox == 0 and oz == 0 then
 		restore(entry)
@@ -290,6 +363,10 @@ function GuardViewController.GetOffset(model: Model?): Vector3
 	return if entry then entry.offset else Vector3.zero
 end
 
+function GuardViewController.IsHeld(): boolean
+	return holdBound and os.clock() < holdUntil
+end
+
 function GuardViewController.Start()
 	local chase = require(Shared:WaitForChild("Config"):WaitForChild("Chase") :: ModuleScript) :: any
 	local view = chase.ClientView
@@ -298,6 +375,9 @@ function GuardViewController.Start()
 		return -- interrupteur coupé : l'état d'a420, rien n'est branché
 	end
 	display = cfg
+	local v3 = chase.V3
+	local contact = if type(v3) == "table" then v3.ContactHold else nil
+	hold = if type(contact) == "table" and contact.Enabled == true then contact else nil -- a443
 	local ok, err = pcall(function(): boolean
 		local folder = Workspace:FindFirstChild(ACTIVE_FOLDER)
 		if folder then
