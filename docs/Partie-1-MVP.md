@@ -1124,6 +1124,7 @@ Chaque étape est envoyée une seule fois par joueur avec `AnalyticsService:LogO
 
 | Date | Décision | Par |
 | --- | --- | --- |
+| 2026-11-24 | **Colis sans arêtes de boîte** : la `SelectionBox` qui traçait les 12 arêtes de chaque colis (vues à travers lui) est retirée des 11 `BOX_*`. Les colis n'ont plus que le contour qui épouse leur forme, en `#040435`, et passeront à la règle des contours de L-305 (blanc sur celui qu'on vise). Liaison L-344 | Clément |
 | 2026-11-24 | C1. Le camion, la Fortune Tower et les cadeaux du jour ne donnent plus de colis Standard, Premium ou Luxe : partout, ce sont des colis de zone, comme les paliers de 15 et 60 min. | Cantin (check-up a417, 6.2) |
 | 2026-11-24 | C2. **Remplace la règle « tout allumé au lancement » du 23/11.** En PROD, à la sortie, seul ce qui a passé un test humain est allumé. Le reste est codé mais éteint en PROD, et se rallume sans republier (coupe-circuit à coder : P5). `RobuxShopPreview` reste à `false` tant que rien ne s'achète. | Cantin (check-up a417, 6.2) |
 | 2026-11-24 | C3. Le profil des joueurs est remis à neuf avant la sortie, juste avant le gel (schéma v1 propre, anciennes migrations retirées). | Cantin (check-up a417, 6.2) |
