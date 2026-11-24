@@ -18,6 +18,11 @@
 --     PotionTime 2, DoorGuard 3, Traps 4.
 -- Labels[n] = texte de l'effet au niveau n (n = 0 possible : effet offert sans achat), pour Info.TileName
 -- (« Glass ×2 ») et StatBox.NodeEffect (« ×2 ▶ ×3 »). Textes du jeu en anglais.
+-- a431 (L-332, Cantin, 24/11) : chaque compétence a des Labels chiffrés à chaque niveau, tirés des vraies valeurs (Effects
+-- et Config cités sur chaque ligne ; plus de « I, II » ni de « — »), et une Description (une phrase : à quoi elle sert,
+-- d'après le vrai effet en jeu), écrite dans InfoPanel.NodeDesc (facultatif). Un Label n'est jamais un mot en
+-- capitale (sinon il remplacerait le nom de la tuile, voir SkillTreeController.isWord). Niveau 0 sans Labels[0] :
+-- « None » dans NodeEffect, le nom seul sur la tuile.
 
 local DeepFreeze = require(script.Parent.DeepFreeze)
 local Features = require(script.Parent.Features)
@@ -43,6 +48,7 @@ export type Skill = {
 	OldTiles: { string }?, -- anciens noms de la même tuile, acceptés pendant un renommage annoncé (contrat 2.2)
 	DisplayName: string, -- début de Info.TileName et de InfoPanel.Header.NodeName (en majuscules)
 	Stat: string, -- InfoPanel.StatBox.NodeStat (V0 proposé, absent du doc)
+	Description: string, -- InfoPanel.NodeDesc (a431, L-332 ; V0 proposé, Cantin, 24/11)
 	MaxLevel: number,
 	Prices: { number }, -- Prices[n] = prix du niveau n ; vide = pas encore décidé
 	Effects: { number }, -- Effects[n] = valeur au niveau n (voir chaque ligne)
@@ -69,10 +75,12 @@ local List: { Skill } = {
 		OldTiles = { "Tile_ShopLevel" },
 		DisplayName = "Walls",
 		Stat = "Shop walls", -- V0 (L-163)
+		-- a431 (L-332), V0 proposé (Cantin, 24/11) : décor seul (ShopWallsService), le mur n sur 4.
+		Description = "Builds walls around your shop. Each level shows a new wall. Looks only.",
 		MaxLevel = 4,
 		Prices = { 1_300, 8_300, 120_000, 1_600_000 }, -- V0 proposé (Cantin, 20/11), avant : { 10_000, 250_000, 6_250_000, 156_000_000 }
 		Effects = {},
-		Labels = { "I", "II", "III", "IV" },
+		Labels = { "wall 1/4", "wall 2/4", "wall 3/4", "wall 4/4" }, -- a431 : avant « I » à « IV »
 		Coded = 4,
 		Icon = "rbxassetid://89598496809365",
 	},
@@ -84,10 +92,12 @@ local List: { Skill } = {
 		Tile = "Tile_Glass",
 		DisplayName = "Reinforced Door",
 		Stat = "Door hits",
+		-- a431 (L-332), V0 proposé (Cantin, 24/11) : PvP.DoorHits (40) + Effects[n].
+		Description = "Your shop door takes more hits before it breaks.",
 		MaxLevel = 5,
 		Prices = { 1_900, 9_600, 88_000, 630_000, 6_000_000 }, -- V0 proposé (Cantin, 20/11), avant : { 25_000, 300_000, 4_000_000, 50_000_000, 600_000_000 }
 		Effects = { 8, 16, 24, 32, 40 },
-		Labels = { [0] = "40", "48", "56", "64", "72", "80" },
+		Labels = { [0] = "40 hits", "48 hits", "56 hits", "64 hits", "72 hits", "80 hits" }, -- a431 : unité ajoutée
 		Coded = 5,
 		Icon = "rbxassetid://101463818389249",
 	},
@@ -99,6 +109,8 @@ local List: { Skill } = {
 		Tile = "Tile_GlassRegen",
 		DisplayName = "Door Repair", -- V0 (L-163)
 		Stat = "Door repair",
+		-- a431 (L-332), V0 proposé (Cantin, 24/11) : Effects[n] du maximum par seconde, après PvP.DoorRepairDelay (3) s.
+		Description = "Your door repairs itself faster once nobody has hit it for 3s.",
 		MaxLevel = 5,
 		Prices = { 2_600, 15_000, 100_000, 630_000, 5_000_000 }, -- V0 proposé (Cantin, 20/11), avant : { 50_000, 500_000, 5_000_000, 50_000_000, 500_000_000 }
 		Effects = { 0.04, 0.05, 0.06, 0.07, 0.08 },
@@ -116,10 +128,13 @@ local List: { Skill } = {
 		Tile = "Tile_Cameras",
 		DisplayName = "Cameras",
 		Stat = "Security",
+		-- a431 (L-332), V0 proposé (Cantin, 24/11) : N1 alerte au 1er coup, N2 voleur surligné Effects[2] s, N3 surligné
+		-- en rouge et radar (CameraAlertController).
+		Description = "Warns you when someone hits your door. Level 2 shows the thief through walls, level 3 adds a radar.",
 		MaxLevel = 3,
 		Prices = { 980, 5_300, 100_000 }, -- V0 proposé (Cantin, 20/11), avant : { 5_000, 150_000, 5_000_000 }
 		Effects = { 0, 30, 30 },
-		Labels = { "I", "II", "III" },
+		Labels = { "hit alert", "30s x-ray", "30s radar" }, -- a431 : avant « I » à « III »
 		Coded = if Features.CameraRadar then 3 else 2,
 		Icon = "rbxassetid://130895616275969",
 	},
@@ -130,10 +145,12 @@ local List: { Skill } = {
 		Tile = "Tile_Guards",
 		DisplayName = "Guards",
 		Stat = "Bodyguard speed",
+		-- a431 (L-332), V0 proposé (Cantin, 24/11) : un agent (ShopDefense.Bodyguard), vitesse Effects[n].
+		Description = "A guard stands in your shop and chases anyone who steals from it. Each level makes him faster.",
 		MaxLevel = 5,
 		Prices = { 3_800, 49_000, 530_000, 7_900_000, 160_000_000 }, -- V0 proposé (Cantin, 20/11), avant : { 100_000, 2_000_000, 40_000_000, 800_000_000, 16_000_000_000 }
 		Effects = { 20, 28, 36, 44, 52 },
-		Labels = { "I", "II", "III", "IV", "V" },
+		Labels = { "speed 20", "speed 28", "speed 36", "speed 44", "speed 52" }, -- a431 : Effects ; avant « I » à « V »
 		Coded = if Features.Bodyguards then 5 else 0,
 		Icon = "rbxassetid://133701105676131",
 	},
@@ -144,10 +161,13 @@ local List: { Skill } = {
 		Tile = "Tile_PotionLuck",
 		DisplayName = "Potion Luck",
 		Stat = "Potion luck",
+		-- a431 (L-332), V0 proposé (Cantin, 24/11) : potions 1 / Effects[n] fois plus souvent (1/0,8 = +25 %,
+		-- 1/0,65 = +54 %, 1/0,5 = +100 %), arrondi à l'unité.
+		Description = "Potions show up more often for you on the street.",
 		MaxLevel = 3,
 		Prices = { 1_700, 12_000, 150_000 }, -- V0 proposé (Cantin, 20/11), avant : { 20_000, 400_000, 8_000_000 }
 		Effects = { 0.8, 0.65, 0.5 },
-		Labels = { "I", "II", "III" },
+		Labels = { "+25% potions", "+54% potions", "+100% potions" }, -- a431 : avant « I » à « III »
 		Coded = 3,
 		Icon = "rbxassetid://82423065290603",
 	},
@@ -159,6 +179,8 @@ local List: { Skill } = {
 		Tile = "Tile_Curtain",
 		DisplayName = "Lock",
 		Stat = "Lock time",
+		-- a431 (L-332), V0 proposé (Cantin, 24/11) : Lock.BaseDuration puis Effects[n] s, Lock.Cooldown (120) s de recharge.
+		Description = "Lock your shop door so nobody can hit it. Recharges in 120s.",
 		MaxLevel = 2,
 		Prices = { 2_600, 27_000 }, -- V0 proposé (Cantin, 20/11), avant : { 50_000, 1_000_000 }
 		Effects = { 45, 60 },
@@ -175,10 +197,12 @@ local List: { Skill } = {
 		Tile = "Tile_DoorGuard",
 		DisplayName = "Door Guard",
 		Stat = "Push every", -- V0 proposé (Cantin, 23/11)
+		-- a431 (L-332), V0 proposé (Cantin, 24/11) : ShopDefense.DoorGuard, une poussée toutes les Effects[1] s au plus.
+		Description = "A guard outside your door pushes back anyone who attacks it.",
 		MaxLevel = 1,
 		Prices = { 530_000 }, -- V0 proposé (Cantin, 23/11) : le prix du niveau 3 de Guards
 		Effects = { 4 }, -- V0 proposé (Cantin, 23/11) : une poussée toutes les 4 s au plus
-		Labels = { "4s" },
+		Labels = { "push/4s" }, -- a431 : avant « 4s »
 		Coded = if Features.DoorGuard then 1 else 0,
 		OpensWhen = { Id = "Bodyguards", Level = 1 },
 		RequiresRebirth = 3, -- V0 (L-173)
@@ -191,10 +215,12 @@ local List: { Skill } = {
 		Tile = "Tile_PotionTime",
 		DisplayName = "Potion Time",
 		Stat = "Potion time",
+		-- a431 (L-332), V0 proposé (Cantin, 24/11) : Duration × Effects[n] (PotionService).
+		Description = "Your potion effects last longer.",
 		MaxLevel = 2,
 		Prices = { 3_800, 49_000 }, -- V0 proposé (Cantin, 20/11), avant : { 100_000, 2_000_000 }
 		Effects = { 1.25, 1.5 },
-		Labels = { "×1.25", "×1.5" },
+		Labels = { [0] = "×1", "×1.25", "×1.5" }, -- a431 : ×1 sans achat (PotionService)
 		Coded = 2,
 		OpensWhen = { Id = "PotionLuck", Level = 1 },
 		RequiresRebirth = 2, -- V0 (L-173)
@@ -208,10 +234,12 @@ local List: { Skill } = {
 		Tile = "Tile_Next1",
 		DisplayName = "Traps",
 		Stat = "Trap slots",
+		-- a431 (L-332), V0 proposé (Cantin, 24/11) : Effects[n] pièges posés (TrapService).
+		Description = "Sets traps in your shop that stop thieves. One more trap each level.",
 		MaxLevel = 4,
 		Prices = { 27_000, 180_000, 1_100_000, 9_900_000 }, -- V0 proposé (Cantin, 20/11), avant : { 1_000_000, 10_000_000, 100_000_000, 1_000_000_000 }
 		Effects = { 1, 2, 3, 4 },
-		Labels = { [0] = "0", "1", "2", "3", "4" },
+		Labels = { [0] = "0 traps", "1 trap", "2 traps", "3 traps", "4 traps" }, -- a431 : unité ajoutée
 		Coded = if Features.Traps then 4 else 0,
 		OpensWhen = { Id = "Walls", Level = 2 },
 		RequiresRebirth = 4, -- V0 (L-173)
@@ -227,10 +255,12 @@ local List: { Skill } = {
 		TileOptional = true,
 		DisplayName = "Fitting Room",
 		Stat = "Disguise", -- V0 proposé (Cantin, 23/11)
+		-- a431 (L-332), V0 proposé (Cantin, 24/11) : Config/Disguise (Duration 60 s, dénonciation).
+		Description = "Unlocks your fitting room: go undercover in a zone and report a store to the police.",
 		MaxLevel = 1,
 		Prices = { 50_000 }, -- V0 proposé (Cantin, 23/11), absent du doc
 		Effects = { 60 }, -- s de déguisement (Config/Disguise.Duration fait foi)
-		Labels = { "60s" },
+		Labels = { "60s disguise" }, -- a431 : avant « 60s »
 		Coded = if Features.FittingRoom then 1 else 0,
 	},
 }

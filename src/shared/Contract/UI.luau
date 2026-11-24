@@ -1654,5 +1654,12 @@ for _, screenDef in UI.Screens do
 		table.insert(screenDef.Elements, { Path = "Tree.Tile_FittingRoom", Class = BUTTON, Optional = true, Note = "la cabine d'essayage s'achète par l'écran de la cabine" })
 	end
 end
+-- a431 (L-332, Cantin, 24/11) : phrase de la compétence choisie (Description de Config/SkillTree), sous Header ; nom
+-- proposé à Clément, pas encore livré : facultatif.
+for _, screenDef in UI.Screens do
+	if screenDef.Name == "UI_SkillTree" then
+		table.insert(screenDef.Elements, { Path = "InfoPanel.NodeDesc", Class = "TextLabel", Optional = true, Note = "la phrase de la compétence n'est pas écrite" })
+	end
+end
 
 return UI

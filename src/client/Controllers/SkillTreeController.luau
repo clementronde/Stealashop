@@ -29,7 +29,9 @@
 --     quand le niveau suivant n'est pas codé (Coded) ou n'a pas de prix.
 --   - InfoPanel, tuile choisie (clic sur une tuile ouverte) : NodeName (DisplayName en capitales), NodeIcon
 --     (l'icône de la tuile, sinon celle de Config/SkillTree), NodeLevel « Level 1 / 4 », NodeStat = Stat,
---     NodeEffect « ×2  ▶  ×3 » (« ×8  (MAX) » au dernier niveau, « — » sans Label), NodePrice ; BuyButton
+--     NodeEffect « ×2  ▶  ×3 » (« ×8  (MAX) » au dernier niveau ; a431 : « None » au niveau 0 sans Labels[0],
+--     « — » seulement si un Label manque), NodeDesc (a431, L-332, facultatif : Description de Config/SkillTree ;
+--     absent, sauté), NodePrice ; BuyButton
 --     (envoie BuySkill) quand l'achat est possible, sinon NeedButton : « Need $4M », « MAX LEVEL » ou
 --     « Coming soon ». NeedButton refuse (T.18 : secousse, son UI_Deny). Changement de tuile : SelectionGlow
 --     se pose sous elle (T.55), le panneau sursaute (T.56).
@@ -105,6 +107,7 @@ type Panel = {
 	nodeLevel: Instance?,
 	nodeStat: Instance?,
 	nodeEffect: Instance?,
+	nodeDesc: Instance?, -- a431 (L-332) : facultatif
 	nodePrice: Instance?,
 	buy: GuiButton?,
 	need: GuiButton?,
@@ -145,6 +148,7 @@ local NODE_LEVEL_TEXT = "Lv %d/%d" -- InfoPanel.NodeLevel
 local EFFECT_TEXT = "%s  ▶  %s" -- NodeEffect : actuel, suivant
 local EFFECT_MAX_TEXT = "%s  (MAX)"
 local NO_LABEL = "—" -- rien de décidé (note de Clément)
+local NONE_LABEL = "None" -- a431 (L-332), V0 proposé (Cantin, 24/11) : niveau 0 sans Labels[0] (rien d'acheté)
 local MAX_TEXT = "MAX"
 local SOON_TEXT = "SOON"
 local NEED_TEXT = "Need %s"
@@ -258,7 +262,7 @@ local function tileNameOf(skill: Skill, level: number): string
 end
 
 local function effectOf(skill: Skill, level: number): string
-	local current = skill.Labels[level] or NO_LABEL
+	local current = skill.Labels[level] or (if level <= 0 then NONE_LABEL else NO_LABEL)
 	if level >= skill.MaxLevel then
 		return string.format(EFFECT_MAX_TEXT, current)
 	end
@@ -374,6 +378,7 @@ local function refreshPanel(current: Screen)
 	setText(panel.nodeLevel, string.format(NODE_LEVEL_TEXT, level, skill.MaxLevel))
 	setText(panel.nodeStat, skill.Stat)
 	setText(panel.nodeEffect, effectOf(skill, level))
+	setText(panel.nodeDesc, skill.Description) -- a431 : NodeDesc absent, setText ne fait rien
 	local offer = offerOf(skill, level, cashOf())
 	local priceText = if offer.kind == "Max" then MAX_TEXT
 		elseif offer.kind == "Soon" then SOON_TEXT
@@ -711,6 +716,7 @@ local function bind(gui: ScreenGui)
 			nodeLevel = Find.path(panelBase, "NodeLevel"),
 			nodeStat = Find.path(panelBase, "NodeStat"),
 			nodeEffect = Find.path(panelBase, "NodeEffect"),
+			nodeDesc = Find.path(panelBase, "NodeDesc"),
 			nodePrice = Find.path(panelBase, "NodePrice"),
 			buy = button(panelBase, "BuyButton"),
 			need = button(panelBase, "NeedButton"),
