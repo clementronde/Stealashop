@@ -2971,8 +2971,19 @@ local function chaseStep(guard: Guard, now: number)
 	-- a249 (Chase.StuckCatch) : un voleur qui pousse contre un obstacle sans avancer est attrapé comme un voleur
 	-- arrêté, même sans ligne de vue (le vigile de nuit garde la règle d'avant) ; a249b : seulement le vigile bloqué
 	-- lui aussi, au même étage, derrière un panneau mince (jamais à travers un mur ni un plancher).
-	if Chase.StuckCatch == true and not night and stuckCatchable(guard, targetRoot, catchDistance, now) and not touch then
+	-- a420 (Chase.ClientView.Contact) : voleur que les vigiles traversent : seulement si ce joueur a vu le vigile à portée.
+	if Chase.StuckCatch == true and not night and stuckCatchable(guard, targetRoot, catchDistance, now) and not touch
+		and (seenAt == nil or GuardService._ClientView.StuckSeen(seenAt, targetRoot, catchDistance))
+	then
 		touch, how = true, "coincé, il n'avance plus"
+	end
+	-- a420 (Chase.ClientView.Contact) : et quand la capture lui arrivera, ce joueur verra encore le vigile à AnnounceMax
+	-- studs au plus (pas de capture au passage d'un vigile qui le traverse vite).
+	local announced = 0
+	if touch and seenAt then
+		local near: boolean
+		near, announced = GuardService._ClientView.Announced(guard.root, player, targetRoot, targetHumanoid, now, rayParams)
+		touch = near
 	end
 	if touch then
 		if how ~= "vue" then
@@ -2980,8 +2991,9 @@ local function chaseStep(guard: Guard, now: number)
 		end
 		if seenAt and chaseDebugOn() then
 			-- a416 : ce que le serveur croit que le joueur voyait, à comparer à la mesure du client (recette T-1560).
-			print(string.format("[ChaseDebug] %s : %s attrapé, vigile vu à %.1f studs par le joueur (retard compensé %.0f ms)",
-				guard.model.Name, player.Name, flat(targetRoot.Position - seenAt).Magnitude, GuardService._ClientView.Lag(player) * 1000))
+			print(string.format("[ChaseDebug] %s : %s attrapé, vigile vu à %.1f studs par le joueur (retard compensé %.0f ms), à %.1f à l'annonce prévue (%s)",
+				guard.model.Name, player.Name, flat(targetRoot.Position - seenAt).Magnitude, GuardService._ClientView.Lag(player) * 1000,
+				announced, how)) -- a420 : distance prévue à l'annonce et règle (« vue », « coincé… »)
 		end
 		if seenAt then
 			GuardService._ClientView.Caught(guard.root, targetRoot, now) -- a416 : il rejoindra le joueur qui glisse (update)
@@ -2996,6 +3008,12 @@ local function chaseStep(guard: Guard, now: number)
 	if seenAt and GuardService._ClientView.Imminent(guard.root, player, targetRoot, targetHumanoid, targetAt, now, catchDistance, rayParams) then
 		-- a416 : capture attendue dans un instant si le voleur continue tout droit : le vigile s'arrête déjà (élan coupé
 		-- par Guard/ClientView), pour que ce joueur le voie s'arrêter quand il est immobilisé, pas le dépasser.
+		stop(guard)
+		return
+	end
+	if seenAt and GuardService._ClientView.Brake(guard.root, targetRoot, targetAt, rayParams) then
+		-- a420 (Chase.ClientView.Contact) : à StandOff studs de là où ce joueur le verra, ou il a dépassé un voleur arrêté :
+		-- il s'arrête net (élan coupé par Guard/ClientView), son image ne vient pas plus près du joueur.
 		stop(guard)
 		return
 	end

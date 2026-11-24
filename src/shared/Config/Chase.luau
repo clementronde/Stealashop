@@ -166,6 +166,30 @@ local Chase = {
 		StillSpeed = 2, -- V0 proposé (Cantin, 23/11), à confirmer : voleur « à l'arrêt » sous cette vitesse reçue (studs/s)
 		SettleSeconds = 0.4, -- V0 proposé (Cantin, 23/11), à confirmer (s)
 		SettleSpeed = 16 * K, -- V0 proposé (Cantin, 23/11), à confirmer (studs/s : la marche d'un joueur neuf, × k)
+		-- a420 (Cantin, 24/11 : à l'écran du joueur, le vigile ne traverse jamais le joueur, n'attrape jamais de loin, et la
+		-- capture ressemble à un contact, à 3 à 5 studs ; Play du lot 98, petit chef 2, trois défauts) :
+		--   1. arrêt net : le serveur n'apprend l'arrêt qu'un retard plus tard ; le vigile continuait vers son point
+		--      d'interception (encore devant le joueur) et finissait de l'autre côté. Maintenant, à chaque pas, un vigile à
+		--      StandOff studs au plus de la position estimée du voleur, ou qui s'éloigne d'un voleur arrêté qu'il a dépassé,
+		--      s'arrête net, et sur un voleur arrêté il vise StandOff studs avant lui (Guard/ClientView.Brake, StandOff).
+		--      Reste ce que le retard impose : pendant ce retard, l'image du vigile avance encore de vitesse × retard ; au
+		--      delà de HoldDistance (14) studs, elle passe le joueur quoi que fasse le serveur (Studio, retard 0,34 s : au-
+		--      dessus d'environ 41 studs/s ; avec 100 ms de ping, d'environ 26). Seul un affichage du vigile par le client
+		--      (son image freinée quand le joueur freine) l'empêcherait : refonte, pas faite ici ;
+		--   2. voleur immobile : la capture « coincé » (StuckCatch) se mesurait sur la vraie place du vigile, 0,3 s après
+		--      son arrêt, avant que le joueur le voie arriver (serveur 5,6 à 6,1 studs, client 3,6 à 3,9). Elle attend
+		--      maintenant, elle aussi, que le joueur ait vu le vigile à portée (Guard/ClientView.StuckSeen) ;
+		--   3. capture au passage : un vigile vu à portée pendant qu'il traverse vite le joueur (demi-tour raté, joueur qui
+		--      fonce sur lui, arrêt net à grande vitesse) attrapait, et la capture arrivait chez le joueur quand le vigile
+		--      était déjà 7 à 14 studs plus loin. Maintenant, capture seulement si le joueur verra encore le vigile à
+		--      AnnounceMax studs au plus quand elle lui arrivera (Guard/ClientView.Announced) : le vigile revient et
+		--      attrape au contact. Un joueur qui fonce sur un vigile à grande vitesse le traverse (il n'y a plus de
+		--      collision depuis a416) sans être attrapé au passage ; le vigile se retourne et le poursuit.
+		-- Enabled = false : la règle d'a416 telle quelle.
+		Contact = {
+			Enabled = true, -- V0 proposé (Cantin, 24/11)
+			AnnounceMax = 5, -- V0 proposé (Cantin, 24/11) : studs à l'écran du joueur quand la capture lui arrive, au plus
+		},
 	},
 	-- Vague 72 (a241, L-219 point 2, Clément : « je casse la boutique, je rentre, je ressors : pas de poursuite ») :
 	-- un intrus (entré dans Bounds après la casse) qui en ressort SANS objet avant la fin du chrono « HEIST » est

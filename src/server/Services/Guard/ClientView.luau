@@ -33,6 +33,24 @@
 --       Le vigile allait droit sur le voleur (à l'arrêt, ou rejoint) : il vise StandOff studs avant lui ; arrivé, il
 --       reste là, et sur un voleur à l'arrêt son élan est coupé (il ne bute plus sur le joueur, il le traverserait).
 --   GetState() -> { Ready: boolean, Ghosted: number }   pour les bancs
+-- a420 (Cantin, 2026-11-24 : à l'écran du joueur, le vigile ne traverse jamais le joueur, n'attrape jamais de loin, la
+-- capture ressemble à un contact, 3 à 5 studs ; Config/Chase.ClientView.Contact, interrupteur Enabled) :
+--   Brake(guardRoot, targetRoot, targetAt, params) -> boolean
+--       À chaque pas de poursuite : le vigile s'arrête net (élan coupé ; GuardService arrête sa marche) s'il est à
+--       StandOff studs au plus de `targetAt` (là où ce joueur sera quand cette place du vigile s'affichera chez lui), ou
+--       si le voleur est arrêté et que le vigile s'éloigne de lui (il l'a dépassé : il ne va pas plus loin). Seulement
+--       s'il n'y a rien entre eux. Son image ne vient donc pas plus près du joueur que StandOff, sauf ce que le retard
+--       impose (arrêt net ou course vers lui que le serveur n'apprend qu'un retard plus tard).
+--   Announced(guardRoot, player, targetRoot, targetHumanoid, now, params) -> (boolean, number)
+--       Quand une capture décidée maintenant arrivera chez ce joueur (un aller simple plus tard), le verra-t-il à
+--       AnnounceMax studs au plus ? Son écran montrera le vigile là où il était DisplaySeconds s plus tôt (relevé) et lui
+--       à sa position reçue + vitesse au sol × (retard − DisplaySeconds), arrêtée avant un mur. Rend aussi cette
+--       distance. Un vigile qui le traverse vite (arrêt net à grande vitesse, joueur qui fonce sur lui) n'attrape plus
+--       au passage : il revient et attrape au contact.
+--   StuckSeen(seenAt, targetRoot, reach) -> boolean
+--       La capture « coincé » (Chase.StuckCatch) attend, elle aussi, que ce joueur ait vu le vigile à portée.
+--   StandOff (plus haut) : sur un voleur arrêté, il vise StandOff studs avant lui même quand le point d'interception
+--   (calculé sur sa vitesse lissée, encore devant lui) est au-delà.
 -- Rien ne vient du client : positions et vitesses répliquées par Roblox, ping mesuré par Roblox, relevé tenu ici.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -74,6 +92,18 @@ end
 
 local function flat(v: Vector3): Vector3
 	return Vector3.new(v.X, 0, v.Z)
+end
+
+-- a420 : la table Chase.ClientView.Contact si elle est allumée, sinon nil (la règle d'a416 telle quelle).
+local function contact(): any?
+	local cfg = Chase.ClientView.Contact
+	return if type(cfg) == "table" and cfg.Enabled == true then cfg else nil
+end
+
+-- Voleur « à l'arrêt » : vitesse au sol reçue sous StillSpeed.
+local function still(targetRoot: BasePart): boolean
+	local limit = Chase.ClientView.StillSpeed
+	return flat(targetRoot.AssemblyLinearVelocity).Magnitude < (if positive(limit) then limit else 0)
 end
 
 -- Les groupes de collision, posés au premier besoin ; false s'ils sont indisponibles.
@@ -202,9 +232,10 @@ function ClientView.Lag(player: Player): number
 	return math.min(base + network, if positive(cfg.MaxSeconds) then cfg.MaxSeconds else math.huge)
 end
 
-function ClientView.Estimate(player: Player, targetRoot: BasePart, targetHumanoid: Humanoid, params: RaycastParams): Vector3
+-- Position reçue du voleur + sa vitesse au sol × `seconds`, arrêtée WallMargin studs avant un mur.
+local function project(targetRoot: BasePart, targetHumanoid: Humanoid, seconds: number, params: RaycastParams): Vector3
 	local position = targetRoot.Position
-	local lead = groundVelocity(targetRoot, targetHumanoid) * ClientView.Lag(player)
+	local lead = groundVelocity(targetRoot, targetHumanoid) * seconds
 	local ahead = lead.Magnitude
 	if ahead < 1e-3 then
 		return position
@@ -217,6 +248,10 @@ function ClientView.Estimate(player: Player, targetRoot: BasePart, targetHumanoi
 		return position + lead * (free / ahead)
 	end
 	return position + lead
+end
+
+function ClientView.Estimate(player: Player, targetRoot: BasePart, targetHumanoid: Humanoid, params: RaycastParams): Vector3
+	return project(targetRoot, targetHumanoid, ClientView.Lag(player), params)
 end
 
 function ClientView.Seen(guardRoot: BasePart, player: Player, now: number): Vector3
@@ -310,18 +345,78 @@ function ClientView.StandOff(guardRoot: BasePart, targetRoot: BasePart, aim: Vec
 		return aim
 	end
 	local keep = cfg.StandOff
-	if not positive(keep) or flat(aim - targetAt).Magnitude > keep then
-		return aim -- interrupteur coupé, ou il vise un point devant le voleur (interception, poteau contourné)
+	if not positive(keep) then
+		return aim -- interrupteur coupé
 	end
 	local from = guardRoot.Position
 	local offset = flat(targetAt - from)
+	local stopped = still(targetRoot)
+	if flat(aim - targetAt).Magnitude > keep then
+		-- Il vise un point devant le voleur (interception, poteau contourné) : inchangé. a420 (Contact) : sauf sur un
+		-- voleur arrêté, quand ce point est au-delà de StandOff studs avant lui (l'interception, sur sa vitesse lissée,
+		-- le place encore devant lui) : il le dépasserait.
+		local beyond = offset.Magnitude > 1e-3 and flat(aim - from):Dot(offset.Unit) > offset.Magnitude - keep
+		if not (stopped and beyond and contact() ~= nil) then
+			return aim
+		end
+	end
 	if offset.Magnitude > keep then
 		return Vector3.new(targetAt.X, aim.Y, targetAt.Z) - offset.Unit * keep
 	end
-	if flat(targetRoot.AssemblyLinearVelocity).Magnitude < (if positive(cfg.StillSpeed) then cfg.StillSpeed else 0) then
+	if stopped then
 		halt(guardRoot)
 	end
 	return from
+end
+
+function ClientView.Brake(guardRoot: BasePart, targetRoot: BasePart, targetAt: Vector3, params: RaycastParams): boolean
+	local keep = Chase.ClientView.StandOff
+	if contact() == nil or not positive(keep) or not ClientView.Active(targetRoot) then
+		return false
+	end
+	local from = guardRoot.Position
+	local offset = flat(targetAt - from)
+	local close = offset.Magnitude <= keep
+	if not close then
+		-- Voleur arrêté que le vigile a dépassé (le serveur apprend l'arrêt un retard plus tard) : il ne s'éloigne plus.
+		local moving = flat(guardRoot.AssemblyLinearVelocity)
+		local limit = Chase.ClientView.StillSpeed
+		if not (still(targetRoot) and moving.Magnitude >= (if positive(limit) then limit else 0) and moving:Dot(offset) < 0) then
+			return false
+		end
+	end
+	local direction = targetAt - from
+	if direction.Magnitude > 1e-3 and Workspace:Raycast(from, direction, params) ~= nil then
+		return false -- quelque chose entre eux : il suit son chemin
+	end
+	halt(guardRoot)
+	return true
+end
+
+function ClientView.Announced(
+	guardRoot: BasePart,
+	player: Player,
+	targetRoot: BasePart,
+	targetHumanoid: Humanoid,
+	now: number,
+	params: RaycastParams
+): (boolean, number)
+	local cfg = contact()
+	local trail = trails[guardRoot]
+	if cfg == nil or not positive(cfg.AnnounceMax) or trail == nil or #trail == 0 then
+		return true, 0
+	end
+	local lag = ClientView.Lag(player)
+	local shown = Chase.ClientView.DisplaySeconds
+	local display = if positive(shown) then math.min(shown, lag) else 0
+	local guardThen = placeAt(trail, now - display)
+	local playerThen = project(targetRoot, targetHumanoid, lag - display, params)
+	local distance = flat(playerThen - guardThen).Magnitude
+	return distance <= cfg.AnnounceMax, distance
+end
+
+function ClientView.StuckSeen(seenAt: Vector3, targetRoot: BasePart, reach: number): boolean
+	return contact() == nil or CatchReach.InRange(seenAt, targetRoot.Position, reach)
 end
 
 function ClientView.GetState(): { Ready: boolean, Ghosted: number }
