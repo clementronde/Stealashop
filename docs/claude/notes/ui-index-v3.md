@@ -1,5 +1,7 @@
 # UI_Index_v3 : l'Index du jeu de référence (2026-11-10, demande de Clément)
 
+> **Archive (24/11) : dépassée.** L'écran garde le nom `UI_Index_v3`, mais Clément l'a refait depuis en « v4 » (L-201, attribut `RefonteV4 = true`). Le contrat `src/shared/Contract/UI.luau` et le code font foi.
+
 Demande de Clément : « affiche l'index exactement comme dans la vidéo ». Copie de l'Index de sa vidéo de référence (36 s à 58 s), sans script dans l'UI. Rien n'est commité.
 
 ## Où en est l'Index v3

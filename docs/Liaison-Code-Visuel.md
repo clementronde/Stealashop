@@ -6,7 +6,7 @@ Il est lu par les deux Claude, à chaque session (voir [CLAUDE.md](../CLAUDE.md)
 
 ## Mode d'emploi (pour les deux Claude)
 
-1. **Début de session** : `git pull`, puis `bash tools/liaison-sommaire.sh` (une ligne par demande : ID, pour qui, statut, titre ; `bash tools/liaison-sommaire.sh Clément` pour les siennes), et lire seulement les lignes utiles en entier (`grep '^| L-0NN ' docs/Liaison-Code-Visuel.md`), plus les sections 2 et 3 si la tâche les touche. Ne pas lire tout le fichier : il fait plus de 200 Ko. Dire à la personne ce qui l'attend (lignes « Pour » à son nom et statut « À faire ») et ce qui a changé depuis son dernier commit (`git log -p <son dernier commit>..HEAD -- docs/Liaison-Code-Visuel.md`).
+1. **Début de session** : `git pull`, puis `bash tools/liaison-sommaire.sh` (une ligne par demande : ID, pour qui, statut, titre ; `bash tools/liaison-sommaire.sh Clément` pour les siennes), et lire seulement les lignes utiles en entier (`grep '^| L-0NN ' docs/Liaison-Code-Visuel.md`), plus les sections 2 et 3 si la tâche les touche. Ne pas lire tout le fichier : il fait plus de 500 Ko. Dire à la personne ce qui l'attend (lignes « Pour » à son nom et statut « À faire ») et ce qui a changé depuis son dernier commit (`git log -p <son dernier commit>..HEAD -- docs/Liaison-Code-Visuel.md`).
 2. **Qui est qui** : `git config user.name` = `Ironix` → Ironix ; `Clement` → Clément.
 3. **Pendant la session** : dès qu'une conversation produit quelque chose que l'autre doit faire, livrer ou savoir (un objet, une animation publiée et son ID, un nom à poser, un renommage, une règle qui touche les deux), ajouter ou mettre à jour une ligne ici et pousser sur `main` dans le même tour, avec un commit `Docs : liaison …`. **Numéro d'une nouvelle ligne** : `git pull` juste avant de l'écrire, puis prendre le numéro libre suivant. Si deux lignes ont quand même le même numéro après une fusion (les deux Claude écrivent souvent en même temps), celui qui fusionne en second renumérote la sienne, jamais celle de l'autre, qui est peut-être déjà citée dans le doc partagé.
 4. **Fermer une ligne** : seulement quand c'est vérifié dans Studio. On passe le statut à « Fait » avec la date, puis la ligne part **tout de suite** dans [Liaison-Historique.md](Liaison-Historique.md) (même tableau, rien n'est perdu : on peut y chercher un ID).
@@ -402,6 +402,7 @@ C'est **la liste d'attente de Clément** (lignes « Pour : Clément ») et celle
 | L-340 | Ironix | **Tension pendant un braquage : « RUN! » plus grand, chevrons au sol jusqu'à sa boutique, vigile en rouge, HUD vidé, chrono visible, flash d'arrivée ; et le bandeau de la nuit jusqu'au bord de l'écran** (retours de Clément après sa session de jeu, points 7 et 8 : « il faut qu'on ait un peu d'UI de tension, à toi de voir comment ça se passe sur les autres jeux » ; pistes du rapport `StealAShop-Art/References/2026-11-24_Top20_Roblox_analyse.md`, section 3.2 ; aperçu : `StealAShop-Art/Captures/2026-11-24_Tension/tension_poursuite.jpg`) | Place DEV, changé dans Studio et enregistré, pas joué en Play. Scripts : `tools/clement/ui_tension_poursuite.luau`, `tools/clement/ui_bandeau_nuit.luau` ; sauvegardes : `ServerStorage/MapBackups/2026-11-24_Tension` et `2026-11-24_BandeauNuit`. **Aucun nom existant n'a changé.**<br>**Fait dans Studio** : (a) `UI_Chase.RunBanner` ≈ 30 % plus grand (0,26 × 0,13 de l'écran, au moins 240 × 83 px), toujours en haut au centre ; (b) **nouveau** `ReplicatedStorage/Assets/FX/FX_ChaseChevron` : un chevron au sol, deux barres néon jaunes `Left` et `Right` sur un contour sombre (`EdgeLeft`, `EdgeRight`), `PrimaryPart` `Root` au sol, la pointe vers −Z, sans collision ni requête ; (c) **nouveau** `ReplicatedStorage/Assets/FX/HL_ChaseGuard` : le `Highlight` rouge du vigile (remplissage #FF2A2A à 0,55, contour clair, `AlwaysOnTop`) ; (d) `UI_HUD.NightCountdown.Band` va maintenant au-delà du bord droit de l'écran sur PC, avec un fondu aux deux bouts (point 7 : plus de coupure nette ; sur téléphone, ta place centrée en bas reste bonne).<br>**À toi** (V0 proposés, à régler en jeu avec Clément) : (1) dès que le joueur porte un objet volé (magasin PNJ ou boutique d'un joueur), pose une file de `FX_ChaseChevron` au sol tous les ~6 studs, du joueur à la porte de **sa** boutique (pointe vers la boutique, collés au sol par un rayon), refaite quand il s'éloigne du chemin, et allume-les en vague vers la boutique (transparence de `Left` et `Right` de 0,45 à 0 puis 0,45, ~0,08 s de décalage d'un chevron au suivant) ; retire-les au dépôt, à la perte de l'objet ou à la capture ; (2) pendant la poursuite seulement, une copie de `HL_ChaseGuard` sur chaque vigile qui te poursuit (attention : Roblox n'affiche que 31 `Highlight` à la fois, la place en compte déjà 14 dans `Workspace`) ; (3) **tout le HUD caché** pendant la poursuite (pas seulement `LeftRail`, `LeftRailTouch` et `UI_Hotbar`), sauf `UI_Chase`, `HeistTimer` et `DropButton` ; (4) `HeistTimer` visible pendant toute la phase discrète ; (5) à l'arrivée en zone sûre avec l'objet : `UI_Escape.Flash` en jaune (0 → 0,6 → 1 en 0,35 s) avec le son d'arrivée, puis la carte « ITEM SECURED! ». Test : T-303. | L-184, L-175, L-095 | 2026-11-24 | À faire |
 | L-341 | Clément | **Pour info : ce que fait le lot fusion99, avec les choix gardés en V0** (Ironix, 2026-11-24) | Rien à livrer. Dis seulement si une V0 ne te va pas.<br>1. **Son d'encaissement au contact de la plaque** (demande de Cantin, 24/11) : un seul son, `Cash_Collect` si `Cash_Pad` manque ; le compteur et les billets ne changent pas. Trois questions, avec la V0 gardée : a) le son part au contact de la plaque, et non plus à l'arrivée du premier billet comme dans L-299 (V0 : au contact, demande de Cantin) ; b) si `Cash_Pad` manque, on joue `Cash_Collect` (V0 : oui) ; c) `Cash_Pad` commence par un court blanc (V0 : on le joue tel quel ; si tu veux un départ net, raccourcis le son). Test T-305.<br>2. **Agent de la boutique et bot** : l'agent de défense (Bodyguard), le gardien de porte et le bot ne tombent plus quand ils apparaissent ; ils partent tout de suite en courant.<br>3. **Poursuite vue par le joueur** (suite de L-314 point 3) : à l'écran du joueur, un joueur immobile est attrapé au contact, sans écart visible, et le coup part entre 3 et 5 studs. Ce qui reste à corriger : à grande vitesse, l'image du vigile dépasse encore un joueur qui s'arrête net, et un demi-tour pendant la ruée du vigile peut encore donner une capture vue de loin. **SPI**, V0 gardées : a) un joueur qui fonce droit sur le vigile peut le traverser sans être attrapé (V0 : on garde) ; b) au-delà d'environ 41 studs/s, l'image du vigile peut encore dépasser le joueur : la refonte qui freine l'image du vigile, acceptée par Cantin, arrive au lot suivant ; c) capture à 5 studs au plus (V0 : 5). Test T-306.<br>4. **Ouverture d'un colis** : voir la réponse dans L-316. | L-299, L-314, L-316 | 2026-11-24 | À faire (lire, puis fermer) |
 | L-342 | Clément | **Check-up du projet : 8 questions et 3 tâches de ménage** (Ironix, 2026-11-24, décisions validées par Cantin) | Cantin a validé ces propositions le 24/11. Réponds point par point, par exemple « Q1 oui, Q3 non : … ». Une V0 que tu ne contredis pas est gardée.<br>**Questions** (V0 proposée entre parenthèses) :<br>Q1. Ton index « v4 » vit sous le nom `UI_Index_v3`. Comptes-tu livrer un jour un écran `UI_Index_v4` (une zone à la fois, 4 × 2 cartes, des pages) ? (V0 : non. On retire environ 500 lignes de code, et tu peux supprimer `UI_Index` et `UI_Index_v2`.)<br>Q2. Peux-tu vider `MapBackups` dans des fichiers .rbxm (en gardant 3 jours), et dire si `ServerStorage/Assets/Stores` sert encore ? (V0 : oui pour `MapBackups` ; `Stores` reste seulement si `store_builder` le lit.)<br>Q3. Sur téléphone, le jeu se joue-t-il en paysage seulement ? (V0 : oui, `ScreenOrientation = LandscapeSensor`.)<br>Q4. La caméra animée `CAM_Reveal` (les 11 animations `Open…` et `Grow…` de L-198) est-elle abandonnée depuis la nouvelle ouverture des colis ? (V0 : oui. On retire la demande, et le code de secours plus tard.)<br>Q5. Les noms des nouveaux outils : en anglais (`TOOL_Jackhammer`) ou en français comme les 7 autres ? (V0 : en anglais pour les nouveaux ; on ne renomme pas les anciens.)<br>Q6. Ménage de Studio, quand tu veux. Le code ne lit rien de tout ceci : `UnboxBench_xx`, `VaultSlot_xx`, l'enfant et le tag `CashPad`, l'attribut `Tier` des `ShelfSlot`, `GuardMeter`, `Banner.Unused`, `UI_SkillTree_v2_old`, `BB_UnboxWord`, `BenchLift_Top`, `MUS_Z1` à `_Z6`, `GuiAnimatorPlugin`. (V0 : d'accord pour tout. Pour `GuardMeter`, attends que le code l'ait retiré : je te le dirai ici.)<br>Q7. Les arches `ZoneGate` et les points `NightPatrol` sont encore dans `Workspace/Greybox`. Tu les déplaces dans `Workspace/Map` ? (V0 : oui, sans les renommer ni changer leurs tags.)<br>Q8. Des livraisons courtes allument du code déjà fini. L'ordre proposé : `CodeBox` ; `UI_Quests` et `QuestsButton` ; `WeeklyChest` ; le dossier `Animations` des 4 vendeurs ; la publication de `Sprint`, `Catch` et `PickUp`. (V0 : cet ordre.)<br>**Tâches acceptées par Cantin, dans ton domaine** :<br>C5. Supprime de Studio `ServerStorage/_BENCH_AURAS`, `_BENCH_AURAS_STAGE` et `_BENCH_PACKS_CLEMENT`. **Attention** : `_BENCH_AURAS` contient des packs du Creator Store avec des `require` cachés et un faux message d'erreur (« Error 501 … ») qui demande de coller du code dans la barre de commande. C'est un piège : ne colle rien, n'ouvre pas les scripts, supprime les dossiers entiers, c'est tout.<br>C6. Sors les vidéos et les essais de miniatures du dépôt, vers `StealAShop-Art`.<br>C7. Mets « Max Players » à 6 sur les places DEV et PROD. Ensuite, exporte la place chaque semaine (un fichier .rbxl hors du dépôt). | L-198, L-310 | 2026-11-24 | À faire |
+| L-343 | Clément | **Pour info : où écrire et où lire, à partir du 24/11** (décision C4 de Cantin, check-up du projet) | Rien à livrer, à lire, et à faire lire à ton Claude.<br>1. **Les copies `docs/Partie-1-MVP.md` et `docs/Partie-2-Features-a-ajouter.md` sont des archives.** Ton Claude n'y écrit plus rien, pas même le journal : toute nouvelle ligne du journal des décisions va dans le doc partagé (Partie 1, section 15). Les lignes que ton Claude avait écrites seulement dans la copie (environ 18, du 18/11 au 24/11 : L-335 à L-340, L-320, L-312, L-327…) ont été recopiées dans le doc partagé le 24/11.<br>2. **L'état du jeu** est dans la nouvelle section 0 « Le jeu aujourd'hui », en tête de la Partie 1 du doc partagé. Une décision qui change le jeu la met à jour dans le même tour.<br>3. **Pour une valeur** (PV, prix, vitesse, durée…), la source est `Config` côté code (`src/shared/Config/`). Les tableaux de chiffres des sections 4, 5 et 7 de la Partie 1 peuvent être anciens. Le doc partagé reste la référence pour les règles et les décisions.<br>4. **Animations** : la liste des noms, boucles, priorités et marqueurs est `src/shared/Contract/Animations.luau` ; le tableau de la section 3.2 est retiré. Le **registre des ID** (section 2 de ce fichier) reste ici : chaque animation publiée y va toujours.<br>5. Il y a maintenant 4 dossiers synchronisés : `ReplicatedFirst/First` (écran de chargement) s'ajoute aux 3 autres (3.1 et 3.5). | L-342 | 2026-11-24 | À faire (lire, puis fermer) |
 
 ## 2. Registre des animations
 
@@ -443,11 +444,11 @@ Clément remplit une ligne dès qu'une animation est publiée ; Ironix coche « 
 
 ## 3. Contrats en vigueur
 
-### 3.1 Les 3 dossiers synchronisés (code d'Ironix)
+### 3.1 Les 4 dossiers synchronisés (code d'Ironix)
 
-Seuls ces 3 dossiers sont reliés au disque d'Ironix, par **Script Sync** de Studio (décidé le 2026-11-06, à la place de Rojo). La synchro marche dans les deux sens : un script créé ou modifié dedans depuis Studio part sur le disque d'Ironix, donc personne d'autre n'y touche. Tout ce qui est ailleurs n'est jamais touché par elle.
+Seuls ces 4 dossiers sont reliés au disque d'Ironix, par **Script Sync** de Studio (décidé le 2026-11-06, à la place de Rojo). La synchro marche dans les deux sens : un script créé ou modifié dedans depuis Studio part sur le disque d'Ironix, donc personne d'autre n'y touche. Tout ce qui est ailleurs n'est jamais touché par elle.
 
-**Mise en place** (une fois, dans le Studio d'Ironix) : clic droit sur chacun des 3 dossiers dans l'explorateur → synchroniser vers `F:\StealAShop\src`. Studio relie le dossier `Shared` à `src\shared` (Windows ne distingue pas les majuscules), et ainsi de suite. Si Studio demande quel côté garder, choisir le disque.
+**Mise en place** (une fois, dans le Studio d'Ironix) : clic droit sur chacun des 4 dossiers dans l'explorateur → synchroniser vers `F:\StealAShop\src`. Studio relie le dossier `Shared` à `src\shared` (Windows ne distingue pas les majuscules), et ainsi de suite. Si Studio demande quel côté garder, choisir le disque.
 
 **Noms des fichiers** imposés par Script Sync : `.legacy.luau` = `Script`, `.local.luau` = `LocalScript`, `.luau` = `ModuleScript`. Les points d'entrée sont `src/server/Main.legacy.luau` et `src/client/Main.local.luau`.
 
@@ -456,6 +457,7 @@ Seuls ces 3 dossiers sont reliés au disque d'Ironix, par **Script Sync** de Stu
 | `src/shared` | `ReplicatedStorage/Shared` |
 | `src/server` | `ServerScriptService/Server` |
 | `src/client` | `StarterPlayer/StarterPlayerScripts/Client` |
+| `src/first` | `ReplicatedFirst/First` (écran de chargement : `LoadingScreen`, `LoadingConfig`) |
 
 Une seule personne synchronise : Ironix. Clément ne lance aucune synchro ; il teste en appuyant sur Play dans la place DEV, qui contient toujours le dernier code synchronisé.
 
@@ -464,60 +466,22 @@ Une seule personne synchronise : Ironix. Clément ne lance aucune synchro ; il t
 **Le principe** : Clément décide à quoi ressemble une animation, Ironix décide quand elle se joue. Ils se retrouvent sur un nom.
 
 - **Où** : un dossier `Animations` contenant des objets `Animation`.
-  - Animations d'un modèle animé (vigile, vigile de nuit, vendeur) : dans le modèle lui-même, `<Modèle>/Animations/<Nom>`. Le modèle contient un Humanoid avec un `Animator`, et aucun script : c'est le code d'Ironix qui joue les animations.
+  - Animations d'un modèle animé (vigile, vigile de nuit, vendeur, témoin, foule, noob du hub) : dans le modèle lui-même, `<Modèle>/Animations/<Nom>`. Le modèle contient un Humanoid avec un `Animator`, et aucun script : c'est le code d'Ironix qui joue les animations.
   - Animations du personnage joueur : `ReplicatedStorage/Assets/Animations/Player/<Nom>`.
+  - Animation d'un objet exposé : `ITM_<ItemId>/Animations/Boucle`, jouée par `ITM_<ItemId>/AnimationController/Animator` (L-339).
 - **Publication** : le jeu appartient au groupe Roblox du studio (décidé le 2026-11-06, L-001), donc **toutes les animations sont publiées au nom du groupe**, par Clément ou par Ironix. Une animation publiée sur un compte perso ne se joue pas dans le jeu (personnage figé, « Failed to load animation » dans la sortie).
 - **Tester** : dans l'Animation Editor (aucune dépendance au code), puis en Play une fois que le code joue ce nom.
 - **Mettre à jour** : remplacer l'`AnimationId` de l'objet existant. **Ne jamais supprimer ni renommer l'objet** : le code ne le retrouverait plus.
-- **Réglé par Clément dans l'éditeur** : priorité, boucle et marqueurs du tableau ci-dessous, posés sur l'image clé concernée. Ironix accroche sons et effets aux marqueurs. `CarryIdle` et `CarryRun` n'animent que le haut du corps, en priorité Action.
-- **Noms validés** (L-002, 2026-11-06), complétés par Clément ; même contrat que la section 2.4 du doc partagé :
-
-| Pour | Nom | Quand | Boucle | Priorité | Marqueur |
-| --- | --- | --- | --- | --- | --- |
-| Joueur | `HitWindow` | Coup sur une vitrine, des poings au pied-de-biche | Non | Action | `Impact` |
-| Joueur | `HitWindowHeavy` | Coup sur une vitrine, du marteau à la disqueuse (ajout) | Non | Action | `Impact` |
-| Joueur | `Grab` | Prise d'un colis sur un rayon ou au sol (ajout) | Non | Action | `Grab` |
-| Joueur | `CarryIdle` | Colis au-dessus de la tête, à l'arrêt, bras seuls | Oui | Action | — |
-| Joueur | `CarryRun` | Colis au-dessus de la tête, en courant, bras seuls | Oui | Action | — |
-| Joueur | `Place` | Poser un colis sur l'établi (ajout) | Non | Action | `Release` |
-| Joueur | `TreadmillRun` | Course sur le tapis | Oui | Movement | — |
-| Joueur | `BenchLift` | Une répétition au banc | Non | Action | `Top` |
-| Joueur | `BenchIdle` | Assis au banc entre deux répétitions (ajout, L-020) ; `BenchLift` passe par-dessus | Oui | Idle | — |
-| Joueur | `Unbox` | Ouvrir un colis (ajout) | Non | Action | `Open` |
-| Joueur | `Celebrate` | Objet Légendaire ou mieux révélé (ajout) | Non | Action | — |
-| Joueur | `SwingBat` | Coup de batte | Non | Action | `Impact` |
-| Joueur | `Stunned` | Étourdi pendant 2 s | Oui | Action | — |
-| Joueur | `Knockback` | Projeté par un coup | Non | Action | `Land` |
-| Vigile, jour et nuit | `Idle` | En attente | Oui | Idle | — |
-| Vigile, jour et nuit | `Walk` | Ronde ; le vigile de nuit tient sa lampe torche | Oui | Movement | — |
-| Vigile, jour et nuit | `Run` | Poursuite | Oui | Movement | — |
-| Vigile, jour et nuit | `Catch` | Le coup qui projette le joueur ; raccourci (L-249) : il touche à 3,7 studs, 1,3 s en tout | Non | Action | `Impact` |
-| Vigile, jour et nuit | `Tired` | Retour essoufflé | Non | Action | — |
-| Vigile (L-249) | `Sprint` | Poursuite de loin, jusqu'à 2,5 fois la marche du voleur (L-238) | Oui | Movement | — |
-| Vigile (L-249) | `PickUp` | Après la capture, il ramasse l'objet tombé au sol et se redresse en le tenant | Non | Action | `Grab` quand ses mains le prennent |
-| Vendeur | `Idle` | Derrière son comptoir (ajout) | Oui | Idle | — |
-| Vendeur | `Wave` | Salue quand on approche (ajout) | Non | Action | — |
-| Joueur | `HoldItem` | Gros objet (Big, Huge, Colossal) tenu à deux mains devant soi, haut du corps (L-162, 2026-11-15) | Oui | Action | — |
-| Noob du hub | `Idle`, `Wave` | Mêmes noms et réglages que le vendeur (L-165, 2026-11-15) | Oui / Non | Idle / Action | — |
-| Témoin | `TakePhoto` | Photos au flash après l'appel, jusqu'à l'arrivée de la police (L-172, 2026-11-15) | Oui | Action | `Flash` (nouveau marqueur, à chaque déclic, deux par boucle) |
-| Foule (L-223) | `Cheer` | Pour le voleur : saute, bras en l'air, poings levés (publié le 2026-11-17) | Oui | Action | `Shout` (nouveau marqueur, le cri, une fois par boucle) |
-| Foule (L-223) | `Boo` | Contre le voleur : mains en porte-voix, penché en avant, secoue la tête | Oui | Action | `Shout` (deux par boucle) |
-| Foule (L-223) | `Shout` | Crie, poing droit levé qui s'agite, bras gauche qui montre le voleur | Oui | Action | `Shout` (deux par boucle) |
-| Foule (L-223) | `HoldSign` | Tient une pancarte des deux mains, la planche au-dessus de la tête, se balance | Oui | Action | — |
-| Foule (L-223) | `TakePhoto` | Celle des témoins, reprise avec le même ID | Oui | Action | `Flash` |
-| Joueur (L-249) | `Unbox_Hammer` | Ouverture du colis : masse levée au-dessus de la tête puis abattue sur le colis ; toujours la dernière action, elle le casse | Non | Action | `Top`, puis `Impact` |
-| Joueur (L-249) | `Unbox_Saw` | Ouverture du colis : penché, il scie le dessus, la main gauche appuyée | Non | Action | `Impact` à chaque aller (trois) |
-| Joueur (L-249) | `Unbox_Crowbar` | Ouverture du colis : barre sous le couvercle, il tire en se penchant en arrière | Non | Action | `Impact` quand ça ripe, puis quand ça cède |
-| Joueur (L-249) | `Unbox_Drill` | Ouverture du colis : il perce le dessus, la tête vibre | Non | Action | `Impact` quand la mèche traverse |
-| Joueur (L-249) | `Unbox_Kick` | Ouverture du colis : élan puis coup de pied dans la face avant | Non | Action | `Impact` |
-| Joueur (L-249) | `Unbox_Search` | Ouverture du colis : à genoux, il fouille à deux mains et jette un truc par-dessus l'épaule | Non | Action | `Impact` à chaque jet (trois) |
-| Joueur (L-249) | `Unbox_Inspect` | Ouverture du colis : il passe la loupe sur le dessus puis se redresse d'un coup | Non | Action | `Impact` au « ! » |
+- **Réglé par Clément dans l'éditeur** : priorité, boucle et marqueurs, posés sur l'image clé concernée. Ironix accroche sons et effets aux marqueurs. `CarryIdle` et `CarryRun` n'animent que le haut du corps, en priorité Action.
+- **Noms, boucles, priorités et marqueurs** : la seule liste qui fait foi est `src/shared/Contract/Animations.luau` (décision du 24/11, check-up du 23/11, point I10). Clément la lit, ou la fait lire par son Claude, sans jamais la modifier. Une animation du contrat absente de Studio sort en orange dans le ContractChecker à chaque Play. Le doc partagé (section 2.4) renvoie à ce fichier.
+- **Nouveau nom ou changement** : Clément l'écrit d'abord comme demande en section 1 (« Pour : Ironix »), avec le nom, la boucle, la priorité et les marqueurs ; Ironix l'ajoute au fichier du contrat. Une animation publiée va ensuite dans le registre (section 2), avec son ID.
+- L'ancien tableau des noms (L-002, 2026-11-06, complété jusqu'à L-249) est retiré de cette section le 24/11 : il était devenu une troisième copie, différente du code et du doc. Il reste dans l'historique git de ce fichier.
 
 ### 3.3 Scripts FX de Clément (proposition d'Ironix, validée par Clément le 2026-11-06 avec une limite : L-003)
 
 Clément peut écrire de petits scripts d'effets visuels, à ces conditions :
 
-1. **Jamais dans les 3 dossiers synchronisés** (3.1) : rien n'y est créé, modifié ni supprimé.
+1. **Jamais dans les 4 dossiers synchronisés** (3.1) : rien n'y est créé, modifié ni supprimé.
 2. **Visuel uniquement** : particules, lumière, mouvements décoratifs. Jamais de RemoteEvent, de sauvegarde, d'argent, de stats, de vitesse, de dégâts, de collisions, d'ancrage ni de Humanoid.
 3. **Côté client** : un `Script` avec `RunContext = Client` (un `LocalScript` ne tourne pas dans un modèle du Workspace), et pas un script serveur par exemplaire de modèle.
 4. **Nommé `FX_<Nom>`**, pour qu'on les retrouve tous d'une recherche dans l'explorateur.
@@ -530,12 +494,12 @@ Ces scripts vivent dans la place (pas dans Git) : leur seul historique est celui
 ### 3.4 Méthode de travail
 
 - **Synchro** : toujours et uniquement sur le PC d'Ironix. Le dossier `F:\StealAShop` d'Ironix est relié à la place DEV : mettre à jour ce dossier, c'est mettre à jour Studio. Personne d'autre ne synchronise, même pour tester.
-- **Team Create d'abord** (leçon du 2026-11-06) : un Studio ouvert hors session collaborative travaille sur une copie locale, et rien n'est enregistré dans la place partagée. Avant de construire, de synchroniser ou de tester, chaque Claude vérifie la session par un `execute_luau` en mode Edit : `game:FindService("NetworkClient") ~= nil`. Si la synchro est perdue (nouvelle session), Ironix relie à nouveau les 3 dossiers à `F:\StealAShop\src` en gardant la version du disque ; le disque doit être propre dans Git avant, pour pouvoir tout restaurer.
+- **Team Create d'abord** (leçon du 2026-11-06) : un Studio ouvert hors session collaborative travaille sur une copie locale, et rien n'est enregistré dans la place partagée. Avant de construire, de synchroniser ou de tester, chaque Claude vérifie la session par un `execute_luau` en mode Edit : `game:FindService("NetworkClient") ~= nil`. Si la synchro est perdue (nouvelle session), Ironix relie à nouveau les 4 dossiers à `F:\StealAShop\src` en gardant la version du disque ; le disque doit être propre dans Git avant, pour pouvoir tout restaurer.
 - **« Pull »** (Ironix dit « pull » ou « récupère le GitHub ») : Claude fait toute la routine sans demander. `git fetch`, mise à jour de `main` en avance rapide (jamais de force), contrôle du code (les vérifications ajoutées au fil du projet), puis dans Studio : le nombre de scripts correspond au disque, et un court test en Play sans erreur dans la sortie. Il dit ce qui est arrivé (commits, fichiers) et ce qui casse.
 - **Agents** : chaque session d'agent travaille dans son propre worktree Git, dans le dossier `agents\` à la racine du projet, `F:\StealAShop\agents\<id>` (par exemple `a01`), jamais directement dans `F:\StealAShop` ni à la racine du disque. Le dossier `agents/` est ignoré par Git (`.gitignore`) et la synchro ne lit que `src/`, donc le travail des agents n'arrive jamais dans la place DEV avant d'être fusionné. Une branche fusionnée l'est d'abord dans un worktree temporaire, puis `main` avance en `--ff-only` : jamais de fichier à moitié fusionné dans Studio. Toujours `git fetch` avant (l'autre pousse souvent), jamais de `push --force`.
 - **Places Roblox** (L-001, 2026-11-06) : toutes deux dans le groupe **RoundStone Studio** (ID 207192094, propriétaire Clément, compte `charmentvideo` ; Ironix y a le rôle « Dev »), privées, Team Create actif. DEV = « Steal a Shop [DEV] » (GameId 10774974820, place 131580149465482), reliée à Script Sync. PROD = « Steal a Shop » (GameId 10774998269, place 121215476173365) : seul Ironix y publie, après un playtest (3.5, règle 11).
 - **Pousser** : un changement validé à deux part directement sur `main`, sans branche ni PR.
-- **Doc de suivi** : le doc partagé sur claude.ai fait foi, `docs/Partie-*.md` n'en sont que des copies. Les deux Claude modifient eux-mêmes le doc partagé pour ce qui concerne leur personne (une fois le droit donné à Ironix : L-007), et notent la décision dans le journal (section 15). On ne demande jamais à l'autre de reporter un changement à sa place.
+- **Doc de suivi** : le doc partagé sur claude.ai fait foi pour les règles et les décisions, et sa section 0 « Le jeu aujourd'hui » (Partie 1) dit l'état du jeu ; `docs/Partie-*.md` n'en sont plus que des archives (décision C4 de Cantin, 24/11). Pour une valeur, `Config` côté code fait foi. Les deux Claude modifient eux-mêmes le doc partagé pour ce qui concerne leur personne (une fois le droit donné à Ironix : L-007), et notent la décision dans le journal (section 15). On ne demande jamais à l'autre de reporter un changement à sa place.
 
 ### 3.5 Ce que le Claude de Clément ne touche jamais (code d'Ironix)
 
@@ -545,20 +509,20 @@ Le Claude de Clément peut **lire** le code pour comprendre comment son travail 
 
 **Dans Studio**
 
-1. Les 3 dossiers synchronisés et tout ce qu'ils contiennent : `ReplicatedStorage/Shared`, `ServerScriptService/Server`, `StarterPlayer/StarterPlayerScripts/Client`. Ni créer, ni modifier, ni supprimer, ni renommer, ni déplacer. Ils sont reliés au disque d'Ironix : la moindre modification part chez lui.
+1. Les 4 dossiers synchronisés et tout ce qu'ils contiennent : `ReplicatedStorage/Shared`, `ServerScriptService/Server`, `StarterPlayer/StarterPlayerScripts/Client`, `ReplicatedFirst/First`. Ni créer, ni modifier, ni supprimer, ni renommer, ni déplacer. Ils sont reliés au disque d'Ironix : la moindre modification part chez lui.
 2. Les scripts d'Ironix, où qu'ils soient : ne pas les dupliquer, les sortir de leur dossier, les désactiver (`Enabled`) ni changer leur `RunContext`.
 3. Les objets créés par le code pendant le jeu (RemoteEvents, dossiers générés) : ne pas en créer à la main pour « aider ».
 4. Le `execute_luau` du MCP Studio : jamais pour écrire dans ces dossiers ni dans une DataStore (les sauvegardes des joueurs).
 
 **Sur le disque et dans Git**
 
-5. Le dossier `src/` (`src/shared`, `src/server`, `src/client`) : jamais modifié, même dans son propre clone.
+5. Le dossier `src/` (`src/shared`, `src/server`, `src/client`, `src/first`) : jamais modifié, même dans son propre clone.
 6. Aucune synchro lancée chez Clément (ni Script Sync, ni Rojo) : seul Ironix synchronise (3.1).
 7. Les worktrees des agents d'Ironix (`agents/`) et le `.gitignore`.
 
 **Ce dont le code dépend : ne pas changer sans l'annoncer ici d'abord**
 
-8. Les noms du contrat : tags et attributs, enfants obligatoires des modèles (doc, 10.4), éléments d'UI (doc, 2.2), objets `Animation` et marqueurs (3.2). Renommer ou supprimer = annoncer dans la liaison, attendre qu'Ironix adapte le code, puis seulement changer.
+8. Les noms du contrat : tags et attributs, enfants obligatoires des modèles (doc, 10.4), éléments d'UI (doc, 2.2), objets `Animation` et marqueurs (3.2) ; la liste qui fait foi est dans `src/shared/Contract/`. Renommer ou supprimer = annoncer dans la liaison, attendre qu'Ironix adapte le code, puis seulement changer.
 9. Les produits Robux (gamepasses, produits développeur) une fois leur ID dans `Config` : ne jamais les supprimer ni les recréer.
 10. Les paramètres du jeu qui changent le comportement du code : `StreamingEnabled` et réglages du `Workspace`, accès aux API et HTTP, type d'avatar (R15).
 11. La publication en PROD : uniquement Ironix, après un playtest (doc, 2.1).

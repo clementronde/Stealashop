@@ -1,5 +1,7 @@
 # Ouverture des colis v2 · pour Ironix (UI-004, DEV-050, DEV-052)
 
+> **Archive (24/11) : remplacée.** Cette note décrit l'ouverture v2 au rouleau (7/11). Elle a été remplacée par la nouvelle ouverture du 17/11, où le perso s'acharne sur le colis (L-236, L-237, L-258 ; `Config/Unbox`, `Controllers/Reveal/Unbox`). Le code fait foi.
+
 **Statut : validé par Clément le 2026-11-07** (« c'est juste parfait »), prototype v5 avec ses réglages par défaut.
 
 - Prototype : https://claude.ai/artifact/Cjekv4Jxow7Dkeonb1xio1 (privé : Clément doit le partager au compte d'Ironix, comme L-034). « Copier les réglages » donne toutes les valeurs en JSON.

@@ -1,5 +1,7 @@
 # Partie 2 · Features à ajouter
 
+> **Archive, plus mise à jour depuis le 24/11/2026** (dernière retouche le 15/11). L'ordre des MAJ a été abandonné le 23/11 : tout ce contenu se code maintenant, et en PROD seul ce qui a passé un test humain est allumé à la sortie (décision C2, 24/11). Plusieurs règles ont changé depuis (coffre-fort retiré, pièges, cadeaux, renaissance). L'état du jeu est dans la section 0 « Le jeu aujourd'hui » (en tête de la Partie 1) du [doc de suivi partagé](https://claude.ai/artifact/QKsqfJ3YEjFn41GERuTGUx) (décision C4 de Cantin, 24/11).
+
 Tout ce qui sort après le lancement du MVP, à raison d'une mise à jour par samedi. Les MAJ sont numérotées dans leur ordre de sortie, sans date fixe. Le cœur du jeu, l'équipe, la tech et la bible assets sont dans la [Partie 1 · MVP](Partie-1-MVP.md).
 
 ## 1. Ordre de sortie
