@@ -153,6 +153,10 @@ local Unbox = {
 	EdgeMargin = 1, -- V0 : marge (studs) entre le colis et le bord de Bounds
 	MaxPlacedBoxes = 8, -- V0 : colis posés au sol en même temps, au plus
 	BoxInventoryMax = 50, -- V0 : colis dans l'inventaire, au plus (au-delà, le colis porté revole vers son rayon)
+	-- a432 (Cantin, 24/11 : « plus de carré ») : pendant la pose d'un objet sous antivol, aucun aperçu au sol (le
+	-- fantôme BoxGhost d'InventoryController) ; un clic, un appui ou R2 pose au point visé, le serveur revérifie tout
+	-- (PlaceBox) et répond par un Notify « Warning » (toast et son UI_Deny) en cas de refus.
+	PlaceGhost = false, -- V0 proposé (Cantin, 24/11) : interrupteur ; true = l'aperçu vert ou rouge d'avant
 
 	-- Annonce à tout le serveur (5.7, étape 6 : Légendaire et plus, Rarities.Announce) -----------
 	AnnounceKind = "Announce", -- V0 : catégorie du Notify envoyé aux autres joueurs

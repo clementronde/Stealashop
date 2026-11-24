@@ -58,7 +58,10 @@
 --     le doigt : vert si la pose a des chances de passer (dans le volume Bounds de SA boutique, sol assez
 --     plat au niveau du bas de Bounds, à portée), rouge sinon. Un clic ou un appui sur le monde envoie
 --     PlaceBox(uid, point visé) et joue Place (contrat 2.4) ; le serveur revérifie tout et répond par
---     un Notify en cas de refus (le mode reste, pour réessayer). Clics répétés (vague 25) : un clic à moins
+--     un Notify en cas de refus (le mode reste, pour réessayer). a432 (Cantin, 24/11 : « plus de carré ») : avec
+--     Config/Unbox.PlaceGhost = false (V0), l'aperçu n'est plus montré (aucune pièce BoxGhost) ; la visée (Aim,
+--     AimValid de GetState) est toujours calculée, le clic pose au point visé et un refus du serveur reste un Notify
+--     « Warning » (toast et son UI_Deny). true : l'aperçu d'avant. Clics répétés (vague 25) : un clic à moins
 --     de PLACE_MOVE studs du point déjà envoyé, moins de PLACE_GUARD s après, est ignoré (une seule
 --     demande PlaceBox par double clic ; visée ailleurs, le nouvel essai part). Fin du mode : objet posé (il quitte
 --     l'inventaire), touche Q (V0), écran rouvert, outil pris (1, 2, écran), portage, mort ;
@@ -848,7 +851,11 @@ local function updateAim()
 		return
 	end
 	lastAimValid = looksValid(point, normal)
-	showGhost(point, lastAimValid)
+	if Unbox.PlaceGhost == true then
+		showGhost(point, lastAimValid)
+	else
+		hideGhost() -- a432 (Cantin, 24/11) : plus de carré au sol ; Aim et AimValid restent lus (GetState)
+	end
 end
 
 ------------------------------------------------------------------------------
