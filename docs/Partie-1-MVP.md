@@ -1122,6 +1122,7 @@ Chaque étape est envoyée une seule fois par joueur avec `AnalyticsService:LogO
 
 | Date | Décision | Par |
 | --- | --- | --- |
+| 2026-11-24 | **Caisse exclusive de la boutique Robux** : au survol (ou au toucher) d'un objet de la caisse, une bulle de la largeur de sa case, juste au-dessus de l'objet, donne son nom et son revenu par seconde. Liaison L-336. | Clément |
 | 2026-11-24 | **Annonce des caisses rares** : une seule phrase en texte blanc, la rareté en couleur, sans fond ni image (« A LEGENDARY box is in Zone 6! »), affichée 5 s au lever du jour au lieu de la nuit. **Panneaux au-dessus des boutiques** (`BB_ShopInfo` : nom, revenu, PV de la vitre) visibles dès qu'on est dans la zone safe, plus seulement à 15 studs. Liaison L-335. | Clément |
 | 2026-11-24 | Le propriétaire d'une boutique est arrêté par ses propres vitres, comme les autres joueurs : il entre et sort seulement par la porte. Il ne traverse plus ses murs invisibles. Liaison L-334. | Clément |
 | 2026-11-24 | **Index : en MUTATIONS, un onglet par effet** (Shiny, Gold, Neon, Diamond, Glitch, Hacked, Rainbow), en colonne à gauche de la fenêtre (version B, lisible sur téléphone), et la phrase « Collect every item in … » à la place de la récompense. La taille et le centrage de l'Index sont ceux de L-320 ; le reste de la v4 ne change pas. Liaison L-333. | Clément |
