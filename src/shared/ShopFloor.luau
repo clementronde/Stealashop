@@ -27,6 +27,8 @@
 --   ShopFloor.Unlocked(level, stands) -> number          places de l'étage débloquées (0 à stands)
 --   ShopFloor.Slot(n) -> number                          numéro du présentoir de la n-ième place (31, 32…)
 --   ShopFloor.NextSlot(level, stands) -> number?         présentoir du prochain achat (pour l'étage : le dernier du bas)
+--   ShopFloor.StandAt(level, stands) -> number?          a427 : présentoir débloqué en arrivant au niveau `level`
+--                                                        (5 à 8, puis 31… avec l'étage) ; nil : l'étage lui-même, ou rien
 --   ShopFloor.StandCost(level, stands) -> number?        prix du prochain achat ; nil : tout est acheté
 --   ShopFloor.Total(level, stands) -> (number, number)   présentoirs débloqués et maximum, bas et étage (bonus non compris)
 --   ShopFloor.Capacity(floor) -> number                  places DisplaySlot_31… posées à la suite dans `floor`
@@ -111,6 +113,16 @@ function ShopFloor.NextSlot(level: number, stands: number): number?
 	end
 	local n = bought - FLOOR_LEVEL + 1
 	return if n <= open then ShopFloor.Slot(n) else nil
+end
+
+-- a427 (L-321, Floor_2 livré) : le présentoir que l'achat du niveau `level` vient de débloquer (ShopBuildController le
+-- construit « en mode Lego ») : celui que NextSlot annonçait au niveau d'avant, sauf l'achat de l'étage (nil).
+function ShopFloor.StandAt(level: number, stands: number): number?
+	local bought = stored(level)
+	if bought < 1 or ShopFloor.IsFloorStep(bought - 1, stands) then
+		return nil
+	end
+	return ShopFloor.NextSlot(bought - 1, stands)
 end
 
 function ShopFloor.StandCost(level: number, stands: number): number?

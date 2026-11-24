@@ -25,7 +25,8 @@
 -- défaut au DisplaySlot du rayon le plus proche au sol (Config/ShopGrowth.LockedStandRadius) ; numéro au-dessus
 -- des présentoirs débloqués : cachée comme un rayon, rendue à l'achat (ShopGrowth.HideLockedStands). Son invite
 -- « Display » reste éteinte par DisplayService (présentoir « Locked »), son contour RayonSpot part avec le rayon.
--- Rayon_01 (dans la boutique, toujours débloqué avec StartSlots 4) n'est pas concerné.
+-- Rayon_01 (dans la boutique, toujours débloqué avec StartSlots 4) n'est pas concerné. a427 (L-321) : même règle pour
+-- les socles et plaques de Floor_2 (places 31… et bonus 21…), voir applyFloorStands.
 -- a280 (vague GC2, lot C ; L-294) : Apply reçoit aussi « 2e étage montré » (floorShownFor, plus bas : étage acheté) ;
 -- le contrôle d'une seconde refait la boutique quand cette réponse change. Avec l'étage, le bas s'arrête à 8 présentoirs.
 --
@@ -328,6 +329,67 @@ local function standOf(slots: { [number]: Attachment }, piece: Instance): number
 	return best
 end
 
+-- a427 (L-321, Floor_2 livré avec ses socles et plaques) : comme au rez-de-chaussée (ShopGrowth.HideLockedStands), les
+-- présentoirs de l'étage pas encore débloqués sont cachés : `DisplayStand_xx` et `CollectPad_xx` de Floor_2, xx = 31…
+-- au-delà des places achetées (Shared/ShopFloor.Unlocked), xx = 21… (bonus du gamepass) au-delà de
+-- DisplayService.GetExtraSlots. Ils réapparaissent à l'achat (ShopBuildController les construit). Clé : places de
+-- l'étage débloquées × 100 + bonus, revue chaque seconde (un gamepass acheté ne change pas le niveau).
+local FLOOR_PIECE_PATTERNS = { "^DisplayStand_(%d+)$", "^CollectPad_(%d+)$" }
+local floorKeyOf: { [Model]: number } = {}
+local displayService: any = nil -- chargé au premier besoin (absent des bancs : aucun bonus)
+
+local function extraFor(owner: Player): number
+	if displayService == nil then
+		local module = script.Parent:FindFirstChild("DisplayService")
+		local ok, loaded = false, nil
+		if module and module:IsA("ModuleScript") then
+			ok, loaded = pcall(require, module)
+		end
+		displayService = if ok and type(loaded) == "table" then loaded else false
+	end
+	if not displayService then
+		return 0
+	end
+	local ok, value = pcall(displayService.GetExtraSlots, owner)
+	return if ok and type(value) == "number" and value == value then math.clamp(math.floor(value), 0, 99) else 0
+end
+
+local function floorKeyFor(plot: Model): number
+	local owner = PlotService.GetOwner(plot)
+	local data = if owner then DataService.Get(owner) else nil
+	if owner == nil or data == nil then
+		return 0
+	end
+	local level = data.Upgrades.DisplaySlots
+	local open = ShopFloor.Unlocked(if type(level) == "number" then level else 0, ShopStageService.FloorStands(plot, data.ShopLayout))
+	return open * 100 + extraFor(owner)
+end
+
+local function applyFloorStands(plot: Model, key: number)
+	floorKeyOf[plot] = key
+	local floor = ShopStageService.EnsureFloor(plot)
+	if floor == nil or not ShopGrowth.HideLockedStands then
+		return
+	end
+	local open, extra = key // 100, key % 100
+	local first, bonus = ShopFloor.Slot(1), Balance.Display.MaxSlots
+	for _, piece in floor:GetDescendants() do
+		local n: number? = nil
+		for _, pattern in FLOOR_PIECE_PATTERNS do
+			local digits = string.match(piece.Name, pattern)
+			n = n or (if digits then tonumber(digits) else nil)
+		end
+		if n then
+			local locked = if n >= first then n >= first + open elseif n > bonus then n > bonus + extra else false
+			if locked then
+				hideRayon(piece)
+			else
+				showRayon(piece)
+			end
+		end
+	end
+end
+
 local function apply(plot: Model)
 	local count = unlockedFor(plot)
 	-- Bâtiment d'abord (L-096 point 1) : niveau de la boutique = nombre de rayons montrés ; Stage_2 apporte
@@ -341,6 +403,7 @@ local function apply(plot: Model)
 	local floorShown = floorShownFor(plot) -- a280 : 2e étage
 	floorOf[plot] = floorShown
 	ShopStageService.Apply(plot, level, count, floorShown) -- vague 55 : coupée au fond du dernier présentoir débloqué
+	applyFloorStands(plot, floorKeyFor(plot)) -- a427 : présentoirs de l'étage pas encore débloqués cachés
 	-- Contours retirés avec leur Stage_j (niveau redescendu) : plus rien à rendre.
 	for inst, hidden in hiddenOf do
 		if inst.Parent == nil then
@@ -443,7 +506,7 @@ function RayonService.Start()
 	while true do
 		task.wait(RECONCILE_PERIOD)
 		for _, plot in PlotService.GetPlots() do
-			if countOf[plot] ~= unlockedFor(plot) or (floorOf[plot] == true) ~= floorShownFor(plot) then -- a280 : étage compris
+			if countOf[plot] ~= unlockedFor(plot) or (floorOf[plot] == true) ~= floorShownFor(plot) or floorKeyOf[plot] ~= floorKeyFor(plot) then -- a280 : étage compris ; a427 : ses places
 				apply(plot)
 			end
 		end

@@ -7,7 +7,7 @@
 --
 -- Toutes les valeurs sont des V0 proposés, absents du doc. Unités : studs, mesurés dans le repère de la boutique
 -- (avant vers −Z, fond vers +Z ; gabarit de Clément : porte en z −40, fond en z 40, rangs de présentoirs
--- tous les 7 studs, L-141).
+-- tous les 7 studs, L-141 ; a427, L-321 du 24/11 : 64 de large, rangs du bas tous les 10 studs, z −33 à −3).
 
 local DeepFreeze = require(script.Parent.DeepFreeze)
 
@@ -19,7 +19,7 @@ local ShopGrowth = {
 	-- Une pièce des visuels d'un rayon sans numéro dans son nom (`…_07`) suit le DisplaySlot le plus proche à moins
 	-- de LockedStandRadius (au sol) ; plus loin, c'est le décor du rang, montré avec lui.
 	HideLockedStands = true, -- V0
-	LockedStandRadius = 6, -- V0 : la plaque est à 5 studs de son socle, le socle voisin du même côté à 8,6
+	LockedStandRadius = 6, -- V0 : la plaque est à 5 studs de son socle, le socle voisin du même côté à 10 (L-321)
 	-- Fond de la boutique = rang du dernier présentoir débloqué + RowMargin (un socle fait 4 de profondeur),
 	-- arrondi au-dessus sur la grille du damier : StepOrigin + n × Step (carreaux de 4 depuis la porte).
 	-- RowMargin, Step et StepOrigin sont FIGÉS (L-190 Q3) : Clément coupe les pièces du gabarit à ces fonds, plans
@@ -57,7 +57,7 @@ local ShopGrowth = {
 	-- Les présentoirs bonus du gamepass (DisplaySlot_21 à _24, posés dans Floor_2 par Clément) s'ouvrent avec l'étage.
 	Floor2 = {
 		ModelName = "Floor_2", -- L-217
-		GroundSlots = 8, -- L-294 : DisplaySlot_01 à _08 au rez-de-chaussée, carré de 48 × 48
+		GroundSlots = 8, -- L-294 : DisplaySlot_01 à _08 au rez-de-chaussée (64 × 48 depuis L-321)
 		FirstSlot = 31, -- L-277 : DisplaySlot_31… (_21 à _30 : présentoirs bonus du gamepass)
 		Slots = 8, -- L-294 : DisplaySlot_31 à _38
 		-- V0 proposé (Cantin, 23/11) : la suite des prix du bas (Config/Upgrades, DisplaySlots, Costs[5] à [13]) : l'étage

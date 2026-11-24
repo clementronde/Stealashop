@@ -13,8 +13,10 @@
 --       PlaybackSpeed du rank-ième clic (1 pour le premier) : step ^ (rank − 1), au plus max.
 --   ShopBuildPlan.isPurchase(old, new, maxStep) -> boolean
 --       Un niveau qui passe de old à new est-il un achat (monte de 1 à maxStep, ancien niveau connu) ?
---   ShopBuildPlan.newStands(startSlots, old, new) -> { number }
+--   ShopBuildPlan.newStands(startSlots, old, new, standAt?) -> { number }
 --       Numéros des présentoirs débloqués par le passage du niveau old à new (débloqués = startSlots + niveau).
+--       a427 (L-321) : avec `standAt(niveau) -> number?` (Shared/ShopFloor.StandAt), le présentoir de chaque niveau est
+--       le sien (31… à l'étage) ; nil (achat de l'étage) : aucun présentoir pour ce niveau.
 
 export type Item = { bottom: number, volume: number }
 
@@ -78,10 +80,13 @@ function ShopBuildPlan.isPurchase(old: any, new: any, maxStep: number): boolean
 	return type(old) == "number" and type(new) == "number" and new > old and new - old <= maxStep
 end
 
-function ShopBuildPlan.newStands(startSlots: number, old: number, new: number): { number }
+function ShopBuildPlan.newStands(startSlots: number, old: number, new: number, standAt: ((level: number) -> number?)?): { number }
 	local out: { number } = {}
 	for level = math.floor(old) + 1, math.floor(new) do
-		table.insert(out, startSlots + level)
+		local number = if standAt then standAt(level) else startSlots + level
+		if number then
+			table.insert(out, number)
+		end
 	end
 	return out
 end

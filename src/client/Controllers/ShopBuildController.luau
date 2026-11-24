@@ -6,7 +6,9 @@
 --
 -- Les trois moments de L-297, vus chez tous les joueurs (attributs du propriétaire, répliqués à tous) :
 --   - présentoir acheté : l'attribut DisplaySlotsLevel du propriétaire monte (achat, ShopService) ; le présentoir
---     débloqué `DisplayStand_xx` (xx = Balance.Display.StartSlots + niveau) et son `SocleDecor`, que RayonService
+--     débloqué `DisplayStand_xx` (xx = Balance.Display.StartSlots + niveau ; a427, L-321 : avec l'étage, attribut
+--     FloorStands du propriétaire, Shared/ShopFloor.StandAt : 5 à 8, rien pour l'achat de l'étage, puis 31 à 38 dans
+--     Floor_2) et son `SocleDecor`, que RayonService
 --     rend au même moment. Pas encore arrivé (réplication) : attendu ShopBuild.FindTimeout s ;
 --   - niveau de résistance : l'attribut Skill_GlassThickness du propriétaire monte ; chaque `Look_n` de la
 --     parcelle (dans la boutique et dans Floor_2). Facultatif : sans Look_n, rien ;
@@ -61,6 +63,7 @@ local Settings = require(Config:WaitForChild("Settings"))
 local ShopBuild = require(Config:WaitForChild("ShopBuild"))
 local SkillTree = require(Config:WaitForChild("SkillTree"))
 local ShopBuildPlan = require(Shared:WaitForChild("ShopBuildPlan"))
+local ShopFloor = require(Shared:WaitForChild("ShopFloor")) -- a427 (L-321) : présentoirs de l'étage
 local MarkerSounds = require(Shared:WaitForChild("Anim"):WaitForChild("MarkerSounds"))
 
 type Kind = "Stand" | "Look" | "Floor"
@@ -107,6 +110,7 @@ type Build = {
 
 local PLOT_TAG = "PlayerPlot"
 local OWNER_ATTRIBUTE = "OwnerUserId" -- PlotService
+local FLOOR_STANDS_ATTRIBUTE = "FloorStands" -- a427 : DisplayService (comme UpgradeController)
 local FX_FOLDER_NAME = "_ShopBuildFx" -- dossier local du Workspace (fantômes et copies de l'effet)
 local GHOST_NAME = "ShopBuildPiece"
 local SHAKE_STEP = "ShopBuildShake"
@@ -659,7 +663,12 @@ local function onLevel(player: Player, attribute: string)
 	end
 	local from, to = old :: number, new :: number -- nombres : vérifié par isPurchase
 	if attribute == ShopBuild.SlotsAttribute then
-		for _, number in ShopBuildPlan.newStands(Balance.Display.StartSlots, from, to) do
+		local value = player:GetAttribute(FLOOR_STANDS_ATTRIBUTE) -- a427 : places de l'étage ouvertes (DisplayService)
+		local stands = if type(value) == "number" then value else 0
+		local function standAt(level: number): number?
+			return ShopFloor.StandAt(level, stands)
+		end
+		for _, number in ShopBuildPlan.newStands(Balance.Display.StartSlots, from, to, standAt) do
 			wantStand(plot, string.format(ShopBuild.StandFormat, number))
 		end
 	else
