@@ -17,12 +17,13 @@ local Disguise = {
 	SkillId = "FittingRoom", -- compétence de Config/SkillTree (niveau 1 = cabine débloquée)
 
 	Duration = 60, -- L-113 point 2 : s de déguisement au plus
-	-- L-113 point 1 (« à confirmer ») : zone n ouverte avec n − ZoneRebirthOffset renaissances (zone 1 sans renaissance).
+	-- L-113 point 1, L-328 point 2 (Clément, 24/11 : zone 1 à 0 renaissance, zone 2 à 1) : zone n ouverte avec
+	-- n − ZoneRebirthOffset renaissances ; la suite (zone N à N − 1) : V0 proposé (Cantin, 24/11).
 	ZoneRebirthOffset = 1,
-	-- (a) V0 proposé (Cantin, 23/11) : s de recharge entre deux déguisements, comptées de la fin du déguisement.
+	-- (a) Clément, 24/11 (L-328 point 1) : s de recharge entre deux déguisements, comptées de la fin du déguisement.
 	Cooldown = 120,
-	-- (b) V0 proposé (Cantin, 23/11) : un seul déguisé par zone à la fois.
-	OnePerZone = true,
+	-- (b) Clément, 24/11 (L-328 point 2) : autant de déguisés qu'on veut par zone (true : un seul à la fois, l'ancienne V0).
+	OnePerZone = false,
 	-- (c) V0 proposé (Cantin, 23/11) : déguisé, aucun outil en main (ni casse de vitrine, ni batte) ; prendre un objet,
 	-- avant comme après la dénonciation, le démasque (point 4 de L-113) au lieu d'être refusé.
 	NoTools = true,
@@ -37,6 +38,12 @@ local Disguise = {
 	-- (f) V0 proposé (Cantin, 23/11) : une dénonciation par déguisement ; si personne ne braque le magasin, elle ne fait
 	-- rien et elle est quand même dépensée (la recharge (a) court de toute façon à la fin du déguisement).
 	CallsPerDisguise = 1,
+	-- L-328 point 7 (Clément, 24/11), derrière Features.DenounceRecover : le voleur attrapé par un policier de la
+	-- dénonciation (renvoyé à sa base, la « prison ») donne l'objet qu'il portait au joueur qui l'a dénoncé, au lieu de
+	-- le lâcher ou de le renvoyer au rayon. V0 proposé (Cantin, 24/11) : dans la main (sur la tête, comme un objet
+	-- ramassé au sol ; sa réserve à l'entrée de la zone safe), où que soit le dénonciateur, tant que ce policier court.
+	-- RecoverCatchRange : studs au plus entre le policier et le voleur à la capture (pour reconnaître ce policier).
+	RecoverCatchRange = 12,
 	-- (e) le petit défaut visible : aucun code. Le faux passant garde la silhouette et les animations du joueur et ne
 	-- suit pas le circuit des témoins.
 
@@ -63,6 +70,8 @@ local Disguise = {
 	-- elle n'a pas de Bounds. V0 proposé (Cantin, 23/11).
 	Cabin = {
 		ModelName = "FittingRoom",
+		-- L-326 : pièce de la cabine qui porte l'invite (invisible, au milieu de l'ouverture) ; absente : sa 1re pièce.
+		PromptPart = "PromptPart",
 		Range = 14,
 		BoundsMargin = 12,
 		FallbackRange = 60,
@@ -109,6 +118,7 @@ local Disguise = {
 		NobodyThere = "Nobody is robbing this store. Your call is wasted.",
 		AlreadyChased = "The police are already after them.",
 		Denounced = "A passer-by called the police on you! Run!",
+		Recovered = "The police caught %s. The item is yours: bring it home!", -- L-328 point 7, V0
 	},
 
 	-- Client (DisguiseController). Écrans de Clément facultatifs (Contract/UI) ; sans eux, le repli construit par le code.
