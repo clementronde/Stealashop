@@ -190,6 +190,41 @@ local Chase = {
 			Enabled = true, -- V0 proposé (Cantin, 24/11)
 			AnnounceMax = 5, -- V0 proposé (Cantin, 24/11) : studs à l'écran du joueur quand la capture lui arrive, au plus
 		},
+		-- a433 (Cantin, 24/11 : oui à la refonte, « freiner l'image du vigile côté client ») : ce qui restait du défaut 1
+		-- d'a420. Le serveur n'apprend l'arrêt net qu'un retard plus tard ; à l'écran du joueur, le vigile le dépassait de
+		-- vitesse × retard − HoldDistance studs (≈ 2 à 46 studs/s, 13 à 80, 29 à 126). Maintenant le client du joueur
+		-- poursuivi affiche son vigile freiné (client/Controllers/GuardViewController, calcul : shared/GuardView) :
+		--   1. l'image suit la vraie place du vigile (celle que Roblox réplique) : en ligne droite, aucun écart ;
+		--   2. elle n'entre jamais, par son propre mouvement, à moins de MinGap studs du joueur (à plat, même étage :
+		--      HeightMax) : elle s'arrête net au bord, du côté d'où elle vient, tournée vers le joueur ;
+		--   3. le vrai vigile revient près du joueur, souvent de l'autre côté : après SlideDelay s de blocage, s'il est à
+		--      SlideRange studs au plus du joueur (ou après HoldMax s, ou dès que la poursuite est finie), l'image
+		--      contourne le joueur à MinGap studs (SlideSpeed studs/s) pour le rejoindre : elle ne le traverse jamais ;
+		--   4. libre, elle rejoint la vraie place sans saut : l'écart fond de max(ReturnSpeed, écart × ReturnRate) studs/s ;
+		--   5. arrêtée au bord pendant que le vrai vigile court encore, elle joue Idle (celle de Clément, lue dans le
+		--      modèle, jouée chez ce seul joueur) par-dessus Run après IdleAfter s (HoldIdle) ; coupée dès qu'elle bouge,
+		--      à la capture et à la fin de la poursuite.
+		-- Ce n'est que de l'affichage : seul le corps du vigile est décalé chez ce joueur (le joint de son
+		-- HumanoidRootPart, qui reste à la vraie place) ; le serveur ne reçoit rien et juge comme avant (a416, a420). Les
+		-- autres joueurs voient le vigile comme avant. Aucune instance créée ; rien à chaque image hors poursuite.
+		-- Un joueur qui fonce lui-même sur le vigile le traverse encore (a420) : l'image ne recule pas devant lui.
+		-- Enabled = false : l'état d'a420 (le vigile affiché à sa place répliquée).
+		Display = {
+			Enabled = true, -- V0 proposé (Cantin, 24/11)
+			MinGap = 3, -- V0 proposé (Cantin, 24/11) : studs, à plat (= StandOff ; la capture se voit entre 3 et 5 studs)
+			HeightMax = 6, -- V0 proposé (Cantin, 24/11) : studs d'écart de hauteur au plus (au-delà : un autre étage, image libre)
+			SlideDelay = 0.25, -- V0 proposé (Cantin, 24/11) : s de blocage avant de contourner
+			SlideRange = 8, -- V0 proposé (Cantin, 24/11) : studs entre le vrai vigile et le joueur, au plus, pour contourner
+			HoldMax = 1.2, -- V0 proposé (Cantin, 24/11) : s de blocage après lesquelles elle contourne de toute façon
+			SlideSpeed = 24, -- V0 proposé (Cantin, 24/11) : studs/s réels le long du cercle (demi-tour autour du joueur ≈ 0,4 s)
+			ReturnSpeed = 24, -- V0 proposé (Cantin, 24/11) : studs/s réels, en plus du mouvement du vigile
+			ReturnRate = 6, -- V0 proposé (Cantin, 24/11) : par seconde (un grand écart fond plus vite)
+			FaceBlend = 2, -- V0 proposé (Cantin, 24/11) : studs d'écart à partir desquels elle est tournée vers le joueur
+			ActiveRange = 80, -- V0 proposé (Cantin, 24/11) : studs ; plus loin, aucun calcul (image = vraie place)
+			HoldIdle = true, -- V0 proposé (Cantin, 24/11) : Idle par-dessus Run quand l'image est arrêtée au bord
+			IdleAfter = 0.1, -- V0 proposé (Cantin, 24/11) : s d'arrêt avant Idle
+			IdleFade = 0.1, -- V0 proposé (Cantin, 24/11) : s de fondu d'Idle (entrée et sortie)
+		},
 	},
 	-- Vague 72 (a241, L-219 point 2, Clément : « je casse la boutique, je rentre, je ressors : pas de poursuite ») :
 	-- un intrus (entré dans Bounds après la casse) qui en ressort SANS objet avant la fin du chrono « HEIST » est

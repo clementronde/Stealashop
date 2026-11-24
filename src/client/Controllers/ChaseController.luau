@@ -5,7 +5,8 @@
 -- la distance entre son HumanoidRootPart et celui du vigile (la même mesure que la capture,
 -- vérifiée par le serveur). Le vigile peut arriver à nil (pas encore répliqué) ou disparaître un
 -- moment (streaming) : il est alors retrouvé dans Workspace/ActiveGuards par l'attribut de cible
--- que GuardService pose sur son modèle. HudController lit GetDistance et IsClose : jauge GuardMeter
+-- que GuardService pose sur son modèle (a433 : distance jusqu'à l'image freinée du vigile, celle que le joueur
+-- voit ; GuardViewController, Chase.ClientView.Display). HudController lit GetDistance et IsClose : jauge GuardMeter
 -- de UI_HUD et battements de cœur (DEV-021). En Studio, la sortie note le début et la fin de la
 -- poursuite, et un repère « ♥ » quand la distance passe sous Balance.Guard.HeartbeatDistance (puis
 -- quand elle en ressort).
@@ -93,6 +94,10 @@ local heist: HeistApi? = nil
 local heistSearched = false
 local hintName = "HeistHint" -- remplacé au démarrage par Config/HeistFeel.Alert.Hint
 local hintSaved: { [GuiObject]: boolean } = {} -- Visible d'origine de ce que le palier 1 a changé
+-- a433 : image freinée du vigile (GuardViewController), si elle est là.
+type ViewApi = { GetOffset: (model: Model?) -> Vector3 }
+local view: ViewApi? = nil
+local viewSearched = false
 
 -- 12.34 → « 12,3 ».
 local function format(n: number): string
@@ -123,6 +128,26 @@ local function loadAnimationController(): AnimationApi?
 		return result :: any
 	end
 	return nil
+end
+
+-- a433 : écart entre l'image du vigile chez ce joueur et sa vraie place (Chase.ClientView.Display), 0 sans GuardViewController.
+local function viewOffset(model: Model?): Vector3
+	if not viewSearched then
+		viewSearched = true
+		local module = script.Parent:FindFirstChild("GuardViewController")
+		if module and module:IsA("ModuleScript") then
+			local ok, result = pcall(require, module)
+			if ok and type(result) == "table" and type((result :: any).GetOffset) == "function" then
+				view = result :: any
+			end
+		end
+	end
+	local api = view
+	if api == nil or model == nil then
+		return Vector3.zero
+	end
+	local ok, offset = pcall(api.GetOffset, model)
+	return if ok and typeof(offset) == "Vector3" then offset else Vector3.zero
 end
 
 function ChaseController.IsChased(): boolean
@@ -213,7 +238,8 @@ local function update()
 		close = false
 		return
 	end
-	local d = (theirs.Position - mine.Position).Magnitude
+	-- a433 : la distance à l'écran, jusqu'à l'image freinée du vigile (écart nul sans GuardViewController).
+	local d = (theirs.Position + viewOffset(model) - mine.Position).Magnitude
 	distance = d
 	local wasClose = close
 	close = d < heartbeatDistance
