@@ -200,6 +200,9 @@ local TEMPLATE: Data = {
 	-- a430 (L-325 (3)) : classements de la semaine (WeeklyLeaderboardService) ; Week = 0 : compteurs posés à la première
 	-- lecture ; Pending = semaines finies dont la récompense attend le joueur. Sans changement de version.
 	WeeklyBoard = { Week = 0, BestIncome = 0, StealsAt = 0, Rewarded = {}, Pending = {} },
+	-- a429 (L-327 point 2) : catalogue d'objets des ItemId du profil (2 ou 3), passé à celui de Config/Items au
+	-- chargement (switchCatalog) ; 2 pour tout profil d'avant. Sans changement de version.
+	ItemCatalog = 2,
 }
 
 -- Journal d'une migration : chaque ligne part dans la sortie, préfixée du joueur et de sa clé.
@@ -214,7 +217,7 @@ local function itemIdV2(id: any): (any, ItemIdChange)
 	if type(id) ~= "string" then
 		return id, "Invalid"
 	end
-	if Catalog.ById[id] ~= nil then
+	if Catalog.Resolve(id) ~= nil then -- a429 : un ItemId v2 reste « Same » avec la v3 allumée (renommé après, switchCatalog)
 		return id, "Same"
 	end
 	local renamed = Catalog.RenamedV1[id]
@@ -285,7 +288,7 @@ local function migrateToV2(data: any, log: MigrationLog)
 				box.ItemId = new
 			end
 			logItemId(log, what, old, new, change)
-			local item = if change == "Unknown" or change == "Invalid" then nil else Catalog.ById[new]
+			local item = if change == "Unknown" or change == "Invalid" then nil else Catalog.Resolve(new) -- a429 : même rareté en v2 et en v3
 			if item and box.Rarity ~= item.Rarity then
 				log(`{what} : rareté {tostring(box.Rarity)} remise à {item.Rarity}, celle de {item.Id} au catalogue v2`)
 				box.Rarity = item.Rarity
@@ -334,7 +337,7 @@ local function migrateToV4(data: any, log: MigrationLog)
 	local old = data.Index
 	if type(old) == "table" then
 		for itemId, at in old do
-			if type(itemId) == "string" and Catalog.ById[itemId] ~= nil and type(at) == "number" and at == at then
+			if type(itemId) == "string" and Catalog.Resolve(itemId) ~= nil and type(at) == "number" and at == at then
 				index[itemId] = at
 			end
 		end
@@ -346,7 +349,7 @@ local function migrateToV4(data: any, log: MigrationLog)
 	if type(items) == "table" then
 		for _, entry in items do
 			local itemId = if type(entry) == "table" then entry.Id else nil
-			if type(itemId) == "string" and Catalog.ById[itemId] ~= nil then
+			if type(itemId) == "string" and Catalog.Resolve(itemId) ~= nil then
 				local obtained = entry.At
 				local at = if type(obtained) == "number" and obtained == obtained and obtained > 0 then obtained else now
 				local known = index[itemId]
@@ -641,6 +644,72 @@ local function convertBoxes(data: any, log: MigrationLog)
 	end
 end
 
+-- a429 (L-327 point 2, L-339) : les ItemId du profil passent au catalogue actif (Config/Items.Version), au chargement,
+-- sans changement de version : V0 proposé (Cantin, 24/11) : table de renommage Items.V2ToV3 (objet de même zone, même
+-- rareté et même rang dans l'index ; rien n'est perdu ni remis à zéro), et Items.V3ToV2 si l'interrupteur est recoupé.
+-- Champ ItemCatalog du profil (2 par défaut) : un profil déjà passé n'est jamais renommé deux fois (Z4_LunettesDeStar
+-- est dans les deux catalogues, à deux raretés). Renomme Items[uid].Id, Boxes[uid].ItemId, les clés d'Index (date
+-- la plus ancienne gardée) et d'IndexMutations (effets réunis). Un ItemId hors des tables (objet exclusif, inconnu)
+-- reste tel quel.
+local function switchCatalog(data: any, log: MigrationLog)
+	local want = Catalog.Version
+	local have = if type(data.ItemCatalog) == "number" then data.ItemCatalog else 2
+	if have == want then
+		return
+	end
+	local map: { [string]: string } = if want == 3 then Catalog.V2ToV3 else Catalog.V3ToV2
+	local renamed = 0
+	local indexed = 0
+	if type(data.Items) == "table" then
+		for _, entry in data.Items do
+			if type(entry) == "table" and type(entry.Id) == "string" and map[entry.Id] ~= nil then
+				entry.Id = map[entry.Id]
+				renamed += 1
+			end
+		end
+	end
+	if type(data.Boxes) == "table" then
+		for _, box in data.Boxes do
+			if type(box) == "table" and type(box.ItemId) == "string" and map[box.ItemId] ~= nil then
+				box.ItemId = map[box.ItemId]
+				renamed += 1
+			end
+		end
+	end
+	if type(data.Index) == "table" then
+		local index: { [any]: any } = {}
+		for id, at in data.Index do
+			local key = if type(id) == "string" then map[id] or id else id
+			if key ~= id then
+				indexed += 1
+			end
+			local known = index[key]
+			index[key] = if type(known) == "number" and type(at) == "number" then math.min(known, at) else known or at
+		end
+		data.Index = index
+	end
+	if type(data.IndexMutations) == "table" then
+		local columns: { [any]: any } = {}
+		for id, effects in data.IndexMutations do
+			local key = if type(id) == "string" then map[id] or id else id
+			local known = columns[key]
+			if type(known) == "table" and type(effects) == "table" then
+				for effect, at in effects do
+					local before = known[effect]
+					known[effect] = if type(before) == "number" and type(at) == "number" then math.min(before, at) else before or at
+				end
+			else
+				columns[key] = known or effects
+			end
+		end
+		data.IndexMutations = columns
+	end
+	data.ItemCatalog = want
+	if renamed > 0 or indexed > 0 then
+		log(`catalogue d'objets v{have} → v{want} (L-327) : {renamed} objet(s) ou colis et {indexed} entrée(s) de l'index renommé(s)`)
+	end
+end
+
 -- Messages d'expulsion, lus par le joueur : en anglais (L-036).
 local MESSAGES = {
 	LoadFailed = "Your save couldn't be loaded. Please come back in a moment.",
@@ -782,6 +851,11 @@ local function loadProfile(player: Player)
 	end
 	profile.Data = migrated
 	profile:Reconcile()
+	-- a429 (L-327) : ItemId au catalogue actif (v2 ou v3), avant convertBoxes qui lit Config/Items.
+	local switched, switchProblem = pcall(switchCatalog :: any, profile.Data, migrationLog)
+	if not switched then
+		warn(`[DataService] {player.Name} ({key}) : passage au catalogue v{Catalog.Version} impossible ({switchProblem}), objets gardés tels quels`)
+	end
 	-- Vague 31 (L-112) : colis déjà rangés → objets de l'inventaire (convertBoxes), avant tout écouteur.
 	-- Vague 50 (a158) : sans condition (plus aucun colis rangé ni ouvert en base, quel que soit Features.ShelfOpen).
 	local converted, problem = pcall(convertBoxes :: any, profile.Data, migrationLog) -- :: any : sinon l'ancien solveur croit que pcall ne renvoie qu'une valeur

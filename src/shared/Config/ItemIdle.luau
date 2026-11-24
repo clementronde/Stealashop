@@ -39,6 +39,11 @@ local ItemIdle = {
 	-- comme avant.
 	OnScreenOnly = true, -- V0 proposé, absent du doc
 	ScreenMargin = 2, -- V0 proposé, absent du doc : studs
+	-- a429 (L-339) : boucle Animations/Boucle des objets v3 (ItemLoopController), jouée sur l'objet exposé ou porté par
+	-- l'Animator de son AnimationController, seulement près de la caméra (le reste du temps, arrêtée).
+	LoopEnabled = true, -- V0 proposé (Cantin, 24/11) ; false : aucune boucle jouée
+	LoopMaxDistance = 100, -- V0 proposé (Cantin, 24/11) : studs entre la caméra et l'objet (comme les halos : 120)
+	LoopCheckInterval = 0.5, -- V0 proposé (Cantin, 24/11) : secondes entre deux contrôles de distance
 }
 
 export type ItemIdle = typeof(ItemIdle)

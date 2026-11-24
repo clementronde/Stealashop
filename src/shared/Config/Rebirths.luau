@@ -205,6 +205,11 @@ local TIERS: { Tier } = {
 }
 
 for index, tier in TIERS do
+	-- a429 (L-327) : catalogue v3 allumé (Items.Version = 3) : l'objet v3 de même zone, même rareté et même rang
+	-- (Items.V2ToV3, V0 proposé (Cantin, 24/11)) ; le tableau garde les ItemId v2.
+	if Items.Version == 3 then
+		tier.ItemId = Items.V2ToV3[tier.ItemId] or tier.ItemId
+	end
 	assert(tier.Level == index, `Config.Rebirths : la ligne {index} porte le niveau {tier.Level}`)
 	local item = Items.ById[tier.ItemId]
 	assert(item ~= nil, `Config.Rebirths : renaissance {index}, objet inconnu de Config/Items ({tier.ItemId})`)

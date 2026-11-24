@@ -13,6 +13,16 @@ local PvP = require(script.Parent.PvP) -- AnyoneCanRob lit le nombre de coups de
 local Tools = require(script.Parent.Tools) -- vague 61 : prix de la clé à molette (don de l'étape 7)
 local Cosmetics = require(script.Parent.Cosmetics) -- vague 61 : prix de l'aura la moins chère (don de l'étape 8)
 
+-- a429 (L-327 point 3) : objet du tuto du catalogue actif (Config/Items.TutorialItemId : Pot de nouilles en v2, Ramen
+-- de feu en v3) ; Config/Items lu s'il est là (bancs à liste de modules fixe : le Pot de nouilles, comme avant).
+local TUTORIAL_ITEM_ID: string = (function(): string
+	local ok, id = pcall(function(): any
+		local module = script.Parent:FindFirstChild("Items")
+		return if module ~= nil then (require(module :: any) :: any).TutorialItemId else nil
+	end)
+	return if ok and type(id) == "string" then id else "Z1_PotDeNouilles"
+end)()
+
 -- Vague 61 (a199 ; Cantin : « le tuto, il est trop long […] Quitte à leur donner l'argent […] maximum dans son
 -- entièreté 2 à 3 minutes ») : le tuto entier en 3 min au plus (cible 2 à 2 min 30, durées des étapes dans les At
 -- plus bas). Trois leviers, V0 :
@@ -174,7 +184,8 @@ local Tutorial = {
 	-- TutorialOnly dans Config/Items : il ne sort d'aucun tirage, Items.Pick(1, "Rare") ne le donne
 	-- pas. TutorialService le passe en ItemId à StoreHeistService.SetContentOverride (une Rarity
 	-- seule tirerait dans la zone, où aucun Rare n'est tirable).
-	GuaranteedItemId = "Z1_PotDeNouilles",
+	-- a429 : Z1_RamenDeFeu avec le catalogue v3 (Features.ItemsV3, ItemsV3Dev).
+	GuaranteedItemId = TUTORIAL_ITEM_ID,
 	-- Vague 31 (L-112 ; a107). Le Pot de nouilles est l'objet SORTI du premier colis ouvert
 	-- sur le rayon (SetContentOverride, appliqué à la sortie ; contenu imposé : aucun cran de rareté).
 	-- V0 : chance imposée à l'ouverture du tuto (StoreHeistService.SetLuckOverride). ×1,5 plutôt que ×1 :
