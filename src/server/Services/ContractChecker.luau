@@ -550,10 +550,6 @@ local function seriesName(part: Part, i: number): string
 	return string.format(part.Name, i)
 end
 
-local function seriesBase(part: Part): string
-	return (string.gsub(part.Name, "_%%%d*d$", ""))
-end
-
 local function hasAnyPart(root: Instance, parts: { Part }): boolean
 	local index = indexOf(root)
 	for _, part in parts do

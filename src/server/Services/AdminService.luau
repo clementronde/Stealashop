@@ -6,9 +6,9 @@
 --
 -- Qui est admin (Config/Admin) : tout le monde en Studio ; un UserId de Admin.UserIds ; un membre du groupe du
 -- studio de rang Admin.MinGroupRank ou plus (GroupId = 0 : le groupe propriétaire du jeu). Rang lu à l'arrivée
--- (GetRankInGroup), puis relu (a275, audit a272 F2) toutes les Admin.RankRefreshSeconds s et juste avant une commande
--- s'il date de plus de Admin.RankMaxAge s, par GroupService:GetGroupsAsync (GetRankInGroup garde sa première réponse
--- côté serveur) : un membre rétrogradé perd ses droits sans se reconnecter. Relecture ratée : le rang d'avant reste.
+-- (GetRankInGroupAsync), puis relu (a275, audit a272 F2) toutes les Admin.RankRefreshSeconds s et juste avant une commande
+-- s'il date de plus de Admin.RankMaxAge s, par GroupService:GetGroupsAsync (l'ancien GetRankInGroup gardait sa
+-- première réponse côté serveur) : un membre rétrogradé perd ses droits sans se reconnecter. Relecture ratée : le rang d'avant reste.
 -- Attribut du Player posé ici : IsAdmin = true pour un admin (le client montre AdminButton ; il n'en décide rien),
 -- absent sinon.
 --
@@ -188,7 +188,7 @@ local function onPlayerAdded(player: Player)
 		return
 	end
 	task.spawn(function()
-		local ok, rank = pcall(player.GetRankInGroup, player, group)
+		local ok, rank = pcall(player.GetRankInGroupAsync, player, group)
 		if player.Parent ~= Players then
 			return
 		end

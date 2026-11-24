@@ -1,10 +1,8 @@
 --!strict
 -- TrainingService (DEV-012) : tapis de course (Vitesse)
 -- (Partie 1, sections 5.1, 7.5 et 9.4 ; tapis sans invite : liaison L-071, point 3 ; par zone : L-093, point 1).
--- Rééquilibrage v2 (Cantin, 2026-11-14) : PLUS DE BANC. Un banc resté dans une parcelle est du décor (on n'y
--- monte pas, il ne rapporte rien, sa barre ne bouge pas) ; son tag Bench ne sert plus qu'à couper l'invite
--- « Lift » que son modèle porterait. La Force n'existe
--- plus : les dégâts d'un coup sont arme × aura (Formulas.HitDamage).
+-- Rééquilibrage v2 (Cantin, 2026-11-14) : PLUS DE BANC (a437 : plus rien ne lit son ancien tag Bench). La Force
+-- n'existe plus : les dégâts d'un coup sont arme × aura (Formulas.HitDamage).
 --
 -- Rôle :
 --   - entrée par zone, sans invite ni clic (L-093, point 1). Zone du tapis, bande et place du joueur :
@@ -118,8 +116,6 @@ local IS_STUDIO = RunService:IsStudio()
 -- Contrat (sections 2.1 et 10.4) : tags des machines et de la parcelle (UsePoint, Belt et UseZone :
 -- Shared/TrainingZone).
 local TREADMILL_TAG = "Treadmill"
--- Ancien tag du banc (retiré du jeu le 2026-11-14) : lu seulement pour couper l'invite de son modèle.
-local RETIRED_BENCH_TAG = "Bench"
 local PLOT_TAG = "PlayerPlot"
 -- Attribut de la parcelle posé par PlotService : UserId du propriétaire, 0 = libre.
 local OWNER_ATTRIBUTE = "OwnerUserId"
@@ -661,20 +657,6 @@ local function watchTag(tag: string, kind: MachineKind)
 	end
 end
 
--- Banc resté dans une parcelle (du décor depuis le rééquilibrage v2) : l'invite que son modèle porte
--- (« Lift » de Clément) est coupée, pour ne pas proposer une machine qui ne fait plus rien.
-local function muteRetiredBench(model: Instance)
-	if not model:IsDescendantOf(workspace) then
-		return
-	end
-	for _, descendant in model:GetDescendants() do
-		if descendant:IsA("ProximityPrompt") and descendant.Enabled then
-			descendant.Enabled = false
-			log(`{descendant:GetFullName()} : invite désactivée (plus de banc depuis le rééquilibrage v2)`)
-		end
-	end
-end
-
 function TrainingService.Stop(player: Player)
 	-- Même pas encore monté (dans une zone, avant START_DWELL) : il en sort avant la prochaine fois.
 	local root = bodyOf(player)
@@ -703,12 +685,6 @@ end
 
 function TrainingService.Init()
 	watchTag(TREADMILL_TAG, "Treadmill")
-	-- v2 : plus de banc. Son tag ne sert plus qu'à couper l'invite du modèle resté en place.
-	CollectionService:GetInstanceAddedSignal(RETIRED_BENCH_TAG):Connect(muteRetiredBench)
-	for _, model in CollectionService:GetTagged(RETIRED_BENCH_TAG) do
-		muteRetiredBench(model)
-	end
-
 	Net.Server.TrainTap:Connect(onTap)
 	Net.Server.TrainLeave:Connect(onLeave)
 	RunService.Heartbeat:Connect(update)

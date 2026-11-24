@@ -157,8 +157,6 @@ local Cosmetics = {
 	Current = current,
 	-- doc 7.1 : sans aura ou sans trail équipé, le multiplicateur vaut 1.
 	NoneMultiplier = 1,
-	-- doc 7.4 : acheter le palier suivant ne demande pas d'avoir le précédent.
-	RequiresPreviousTier = false,
 	-- doc 5.10 : les auras des autres joueurs perdent la moitié de leurs particules au-delà de
 	-- 60 studs (distance à la caméra du joueur local ; CosmeticController).
 	RemoteParticleCutDistance = 60,

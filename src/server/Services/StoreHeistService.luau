@@ -840,16 +840,6 @@ local function isCarrying(player: Player): boolean
 	return ok and carrying == true
 end
 
--- Copie mélangée de `list` (Fisher-Yates).
-local function shuffled<T>(list: { T }): { T }
-	local copy = table.clone(list)
-	for index = #copy, 2, -1 do
-		local other = random:NextInteger(1, index)
-		copy[index], copy[other] = copy[other], copy[index]
-	end
-	return copy
-end
-
 -- Déplace `target` sur la trajectoire path(alpha), alpha de 0 à 1 en `duration` s, à chaque
 -- Heartbeat. Renvoie une fonction qui arrête le mouvement. `done` est appelé à l'arrivée.
 local function animate(target: PVInstance, path: (alpha: number) -> CFrame, duration: number, done: (() -> ())?): () -> ()

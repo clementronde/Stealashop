@@ -69,7 +69,6 @@ local Balance = {
 		-- Chrono de casse (Clément, liaison L-074, 2026-11-10 ; V0 à tester) : au premier coup sur une
 		-- vitrine de magasin PNJ, il faut la casser en BreakTimer s, sinon elle revient à ses PV max.
 		BreakTimer = 8, -- chrono de police (Cantin, 2026-11-14, passe 3 du rééquilibrage v2 ; avant : 13)
-		CrackThresholds = { 0.75, 0.5, 0.25 }, -- fissures visibles à ces fractions des PV
 		RebuildDelay = 20, -- reconstruction après la fermeture du rideau
 		HPSyncHz = 10, -- WindowHP envoyé en non fiable, 10 fois par seconde au plus
 		-- V0 proposé (Cantin, 23/11 ; audit a271 point 7) : pendant la seule régénération (aucun coup ni autre changement
@@ -107,7 +106,6 @@ local Balance = {
 		-- (il ne reprend plus la fin du chrono de police, Balance.Window.BreakTimer) ; le rideau tombe à la fin.
 		Duration = 10,
 		BreakerHeadStart = 1, -- avance exclusive du casseur (5.3, point 8 : proposition à valider en section 15)
-		MaxCarried = 1, -- un seul colis porté à la fois
 		GrabMaxDistance = 8, -- GrabItem (9.4)
 		-- Portée tolérée pendant un maintien (début et revérifications, pas la fin ; Cantin, 2026-11-14) : le serveur
 		-- voit le perso en retard d'environ vitesse × latence. Tolérance = min(WalkSpeed × (ping + ReachLatencyPad), plafond),
@@ -154,7 +152,6 @@ local Balance = {
 		CameraShakeDuration = 0.25,
 		ShardFadeDelay = 1.5, -- les éclats restent au sol avant de s'effacer
 		ShardFadeDuration = 1.2,
-		MaxShards = 40, -- version pré-fracturée : 30 à 40 éclats
 		LowEndShards = 10, -- mobile faible, ou au-delà de MaxFullShattersAtOnce
 		MaxFullShattersAtOnce = 2,
 		SoundPitchVariation = 0.1, -- ±10 %
@@ -203,20 +200,6 @@ local Balance = {
 		-- dessous du colis ou de l'objet porté (CarryAttachment), soudé à la tête. À régler sur la
 		-- hauteur des mains de CarryIdle et CarryRun (bras levés), quand Clément les livre.
 		HeadGap = 0.25,
-	},
-
-	-- 5.7 et 7.5 : établis et révélation. Attente par rareté : Rarities.
-	Unbox = {
-		-- Plus lus par le code depuis L-086 (2026-11-08) : les colis s'ouvrent sur les présentoirs, sans
-		-- établi. Gardés pour la trace des anciens profils (Upgrades.UnboxBenches).
-		StartBenches = 1,
-		MaxBenches = 4,
-		FullRevealDuration = 4, -- version complète (Rare et plus), jusqu'à l'objet
-		TensionEnd = 1.5, -- étape 2 : de 0 à 1,5 s
-		ExplosionAt = 2.2, -- étape 3 : de 1,5 à 2,2 s, puis explosion
-		FlashDuration = 0.1,
-		ShortRevealDuration = 2, -- version courte (Commun, Peu commun)
-		SecretSlowMotionDuration = 0.5,
 	},
 
 	-- 5.8 : présentoirs, inventaire, receleur. Améliorations : Upgrades.

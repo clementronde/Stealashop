@@ -53,7 +53,6 @@ local TruckEvent = {
 	FlightTime = 1.1, -- V0 : durée du vol d'un colis
 	FlightHeight = 9, -- V0 : hauteur de la cloche du vol, au-dessus de la ligne droite
 	FlightSpins = 1.5, -- V0 : tours sur lui-même pendant le vol
-	LaunchStagger = 0.04, -- V0 : écart entre deux départs de colis (12 colis : 0,44 s en tout)
 	-- Colis qui ne se chevauchent pas au sol (demande d'Ironix du 2026-11-08, a42) : entre deux colis,
 	-- au moins BoxGap studs bord à bord, d'après la largeur du modèle BOX_<Tier> de Clément. Sans place
 	-- dans le cône de ScatterSpread, le point s'écarte de son côté, puis tout autour, puis plus loin.
