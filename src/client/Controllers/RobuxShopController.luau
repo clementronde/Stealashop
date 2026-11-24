@@ -1,5 +1,5 @@
 --!strict
--- RobuxShopController (DEV-100, client) : boutique Robux, écran UI_RobuxShop de Clément (UI-100, noms
+-- RobuxShopController (DEV-100, client) : boutique Robux, écran UI_RobuxShop_v2 de Clément (UI-100, noms
 -- validés en L-047 ; Partie 2, sections 3.1 et 4 ; offres : Config/Monetization). Seulement si
 -- Features.RobuxShop ou Features.RobuxShopPreview : les deux à false, rien n'est branché et l'écran
 -- reste fermé.
@@ -61,8 +61,8 @@
 --     de Config/Boosts : même produit que les boutons du HUD) dans l'onglet Boosts, avant Ouvrir maintenant.
 --     Pas encore codés côté serveur (Ready = false) : la carte montre le prix et « Soon » au clic, rien n'est
 --     vendu, même boutique ouverte ;
---   - UI_RobuxShop_v2 (L-200, noms v3 de L-204) passe avant UI_RobuxShop quand il est dans PlayerGui (l'ancien
---     reste éteint) ; sans lui, UI_RobuxShop marche comme avant. Une seule liste List qui défile :
+--   - UI_RobuxShop_v2 (L-200, noms v3 de L-204 ; a438 : le seul écran, l'ancien UI_RobuxShop est retiré et
+--     gardé éteint s'il est encore livré). Une seule liste List qui défile :
 --       Tabs.*Tab   ne filtrent plus : ils font défiler List jusqu'à leur section (Shop.ScrollTime) :
 --                   OffersTab = Crate, ou Featured si la caisse est cachée, sinon GamepassesSection ;
 --       GamepassesSection, BoostsSection, CashSection : Grid remplie depuis son Template (mêmes champs que
@@ -214,8 +214,6 @@ type ContentFit = {
 -- Écran branché.
 type Shop = {
 	gui: ScreenGui,
-	v2: boolean,
-	template: GuiObject?,
 	icons: { [string]: string }, -- [IconAsset] = image, lues dans les cartes de la maquette
 	connections: { RBXScriptConnection },
 	cards: { Card },
@@ -230,8 +228,8 @@ type Shop = {
 	state: string?, -- pack de départ et caisse montrés à la dernière construction
 }
 
-local SCREEN = "UI_RobuxShop"
-local SCREEN_V2 = "UI_RobuxShop_v2" -- vague 63 (L-200) : passe avant SCREEN quand il est là
+local SCREEN = "UI_RobuxShop_v2" -- vague 63 (L-200) ; a438 : le seul écran (l'ancien UI_RobuxShop est retiré)
+local RETIRED_SCREEN = "UI_RobuxShop" -- a438 : ancien écran, plus lu ; s'il est encore livré, gardé éteint
 local HUD = "UI_HUD"
 local HUD_BUTTON = "RobuxShopButton"
 local SHOP_TAG = "RobuxShop"
@@ -323,8 +321,6 @@ local offers: { Offer } = {}
 local crateOffers: { Offer } = {}
 local shop: Shop? = nil
 local isOpen = false
-local chosenTab: Tab? = nil -- dernier onglet choisi par le joueur
-local tab: Tab = "Gamepasses"
 local prices: { [number]: number } = {} -- [Id Roblox] = prix lu chez Roblox
 local fetching: { [number]: boolean } = {}
 local prompts: { [Instance]: ProximityPrompt } = {}
@@ -788,11 +784,10 @@ local function refreshCard(card: Card)
 	local id, isPass, configPrice = purchaseOf(offer)
 	-- Vitrine : jamais de lecture chez Roblox, le prix de la Config.
 	local price = if liveFor(offer) and id and id ~= 0 then robloxPrice(id, isPass) or configPrice else configPrice
-	local v2 = shop ~= nil and (shop :: Shop).v2
 	if offer.displayName ~= "" then
 		setText(card.frame, "ItemName", offer.displayName)
 	end
-	if not v2 or card.cloned then
+	if card.cloned then
 		-- Vague 73 (a253, L-243 b) : Effect de nouveau visible dans les cartes de la v2 (cartes clonées seulement :
 		-- Featured et les boutons de la caisse gardent leurs textes).
 		setText(card.frame, "Effect", effectOf(offer))
@@ -815,9 +810,7 @@ local function refreshCard(card: Card)
 		setVisible(card.owned, owned)
 		setVisible(card.buy, not owned and (id ~= nil or unsold or tiered))
 	end
-	if v2 then
-		refreshExtras(card, price)
-	end
+	refreshExtras(card, price)
 end
 
 local function clearCards(current: Shop)
@@ -1144,52 +1137,14 @@ local function buildV2(current: Shop)
 	fitContent(current)
 end
 
--- Cartes de l'onglet ouvert, clonées depuis List.Template (v2 : toute la liste).
-local function buildCards()
-	local current = shop
-	if current == nil then
-		return
-	end
-	if current.v2 then
-		buildV2(current)
-		return
-	end
-	clearCards(current)
-	local template = current.template
-	if template == nil then
-		return
-	end
-	for _, offer in offersOf(tab) do
-		cloneCard(current, template, offer)
-	end
-end
-
 -- Met à jour les cartes ; refait la liste si les offres de l'onglet ont changé (pack de départ).
 refreshCards = function()
 	local current = shop
 	if current == nil or not isOpen then
 		return
 	end
-	if current.v2 then
-		if current.state ~= v2State() then
-			buildV2(current)
-			return
-		end
-		for _, card in current.cards do
-			refreshCard(card)
-		end
-		return
-	end
-	local wanted = offersOf(tab)
-	local same = #wanted == #current.cards
-	for index, offer in wanted do
-		if not same or current.cards[index].offer ~= offer then
-			same = false
-			break
-		end
-	end
-	if not same then
-		buildCards()
+	if current.state ~= v2State() then
+		buildV2(current)
 		return
 	end
 	for _, card in current.cards do
@@ -1421,17 +1376,9 @@ local function closeShop()
 end
 
 local function setTab(chosen: Tab)
-	chosenTab = chosen
-	tab = chosen
 	local current = shop
-	if current and current.v2 then
-		if isOpen then
-			scrollTo(current, sectionOf(current, chosen))
-		end
-		return
-	end
-	if isOpen then
-		buildCards()
+	if current and isOpen then
+		scrollTo(current, sectionOf(current, chosen))
 	end
 end
 
@@ -1466,12 +1413,12 @@ local function bindV2(current: Shop, keep: (RBXScriptConnection?) -> ())
 	local list = Find.path(gui, "List")
 	current.list = if list and list:IsA("ScrollingFrame") then list :: ScrollingFrame else nil
 	if current.list == nil then
-		reportOnce("v2list", `[RobuxShop] {SCREEN_V2}.List introuvable ou pas un ScrollingFrame : pas de défilement`)
+		reportOnce("v2list", `[RobuxShop] {SCREEN}.List introuvable ou pas un ScrollingFrame : pas de défilement`)
 	end
 	for _, entry in SECTIONS do
 		local frame = guiObject(gui, entry.Name)
 		if frame == nil then
-			reportOnce(`v2:{entry.Name}`, `[RobuxShop] {SCREEN_V2}.{entry.Name} introuvable : ses offres ne sont pas montrées`)
+			reportOnce(`v2:{entry.Name}`, `[RobuxShop] {SCREEN}.{entry.Name} introuvable : ses offres ne sont pas montrées`)
 		else
 			local grid = guiObject(frame, "Grid")
 			local template = if grid then guiObject(grid, "Template") else nil
@@ -1534,32 +1481,15 @@ local function bind(gui: ScreenGui)
 			connection:Disconnect()
 		end
 		clearCards(old)
-		if old.gui ~= gui and gui.Name == SCREEN_V2 then
-			old.gui.Enabled = false -- vague 63 : la v2 remplace l'ancien écran
-		end
 	end
 	isOpen = false
 	decalTextures = nil -- vague 65 (a216) : images relues pour ce nouvel écran
 	gui.Enabled = false -- fermé jusqu'au bouton du HUD ou à l'invite
 	Motion.SetCloser(gui, closeShop) -- un autre écran du groupe ScreenGroup s'ouvre (L-089)
 
-	local v2 = gui.Name == SCREEN_V2
-	local template = if v2 then nil else guiObject(gui, "List.Template")
-	local icons: { [string]: string } = {}
-	if v2 then
-		icons = readIcons(gui)
-	elseif template == nil then
-		reportOnce("template", `[RobuxShop] {SCREEN}.List.Template introuvable : la boutique restera vide`)
-	else
-		local list = template.Parent :: Instance
-		icons = readIcons(list)
-		removePreviews(list)
-	end
 	local current: Shop = {
 		gui = gui,
-		v2 = v2,
-		template = template,
-		icons = icons,
+		icons = readIcons(gui),
 		connections = {},
 		cards = {},
 		list = nil,
@@ -1577,9 +1507,7 @@ local function bind(gui: ScreenGui)
 			table.insert(current.connections, connection)
 		end
 	end
-	if v2 then
-		bindV2(current, keep)
-	end
+	bindV2(current, keep)
 	keep(onClick(Find.path(gui, "CloseButton"), closeShop))
 	for _, entry in TABS do
 		local chosen = entry.Tab
@@ -1589,18 +1517,13 @@ local function bind(gui: ScreenGui)
 	end
 end
 
--- Écran à brancher dans PlayerGui : UI_RobuxShop_v2 s'il est là, sinon UI_RobuxShop.
+-- Écran à brancher dans PlayerGui : UI_RobuxShop_v2 (a438 : le seul).
 local function findScreen(playerGui: Instance): ScreenGui?
-	for _, name in { SCREEN_V2, SCREEN } do
-		local gui = playerGui:FindFirstChild(name)
-		if gui and gui:IsA("ScreenGui") then
-			return gui :: ScreenGui
-		end
-	end
-	return nil
+	local gui = playerGui:FindFirstChild(SCREEN)
+	return if gui and gui:IsA("ScreenGui") then gui :: ScreenGui else nil
 end
 
--- Écran branché encore présent (l'ancien seulement si la v2 n'est pas là), ou celui de PlayerGui
+-- Écran branché encore présent, ou celui de PlayerGui
 -- (branché au passage), ou nil.
 local function currentShop(): Shop?
 	local playerGui = localPlayer:FindFirstChildOfClass("PlayerGui")
@@ -1622,11 +1545,10 @@ local function openShop()
 		reportOnce("screen", `[RobuxShop] écran {SCREEN} absent de PlayerGui : la boutique ne s'ouvre pas`)
 		return
 	end
-	tab = chosenTab or (if starterOffered() then "Offers" else "Gamepasses")
 	isOpen = true
 	refreshCards() -- vague 65 (a216) : cartes gardées mises à jour ; refaites seulement si les offres ont changé
 	local list = current.list
-	if current.v2 and list then
+	if list then
 		local previous = scrollTween
 		if previous then
 			previous:Cancel()
@@ -1820,15 +1742,10 @@ function RobuxShopController.Start()
 		if not child:IsA("ScreenGui") then
 			return
 		end
-		if child.Name == SCREEN_V2 then
-			bind(child :: ScreenGui) -- vague 63 : la v2 passe avant l'ancien écran (bind l'éteint)
-		elseif child.Name == SCREEN then
-			local current = shop
-			if current and current.v2 and current.gui.Parent ~= nil then
-				(child :: ScreenGui).Enabled = false -- la v2 est là : l'ancien écran reste éteint
-			else
-				bind(child :: ScreenGui)
-			end
+		if child.Name == SCREEN then
+			bind(child :: ScreenGui)
+		elseif child.Name == RETIRED_SCREEN then
+			(child :: ScreenGui).Enabled = false -- a438 : l'ancien écran reste éteint
 		elseif child.Name == HUD then
 			bindHud(child)
 		end
@@ -1836,10 +1753,10 @@ function RobuxShopController.Start()
 	local existing = findScreen(playerGui)
 	if existing then
 		bind(existing)
-		local legacy = playerGui:FindFirstChild(SCREEN)
-		if existing.Name == SCREEN_V2 and legacy and legacy:IsA("ScreenGui") then
-			(legacy :: ScreenGui).Enabled = false
-		end
+	end
+	local retired = playerGui:FindFirstChild(RETIRED_SCREEN)
+	if retired and retired:IsA("ScreenGui") then
+		(retired :: ScreenGui).Enabled = false -- a438 : l'ancien écran reste éteint
 	end
 	local hud = playerGui:FindFirstChild(HUD)
 	if hud and hud:IsA("ScreenGui") then

@@ -771,9 +771,7 @@ local function placeRarestItem(entry: RarestEntry, best: Best)
 	local shown = copy:GetScale()
 	local fit = source:GetAttribute(WeightConfig.FitScaleAttribute)
 	local wanted = if type(fit) == "number" and fit > 0 and fit < 1 then shown / fit else shown
-	if ItemWeight.Enabled() then
-		wanted = math.min(wanted, WeightConfig.RarestMaxScale)
-	end
+	wanted = math.min(wanted, WeightConfig.RarestMaxScale)
 	if math.abs(wanted - shown) > 1e-3 then
 		pcall(copy.ScaleTo, copy, wanted)
 	end
@@ -903,7 +901,7 @@ local function refreshRarest()
 			-- Vague 62 (a203) : poids de l'objet (« 1,250 kg ») dans l'élément facultatif Weight, caché sans poids.
 			local weightLabel = textOf(current.Gui, WeightConfig.Field)
 			if weightLabel then
-				local kg = if ItemWeight.Enabled() then ItemWeight.Sanitize(chosen.Source:GetAttribute(WeightConfig.Attribute)) else nil
+				local kg = ItemWeight.Sanitize(chosen.Source:GetAttribute(WeightConfig.Attribute))
 				weightLabel.Text = if kg then ItemWeight.Format(kg) else ""
 				weightLabel.Visible = kg ~= nil
 			end

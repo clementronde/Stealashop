@@ -321,9 +321,9 @@ end
 -- Poids d'un objet donné (GiveItem, GiveBox). a273 (dette) : tiré comme un objet sorti d'un rayon (ItemWeight.Roll,
 -- chance ×1, V0 proposé (Cantin, 23/11)), et la mutation de taille suit le poids (ItemWeight.SizeMutationFor) ; une
 -- taille demandée (Huge, Colossal) tire le poids dans son palier (RollForSize). Avant (a219) : 10 kg fixes sans
--- taille. Sans poids si le poids est coupé (Features.SingleBoxReveal) ou pour l'objet du tuto : mutation inchangée.
+-- taille. Sans poids pour l'objet du tuto : mutation inchangée.
 local function weighed(item: Items.Item, mutation: Mutations.Mutation?): (number?, Mutations.Mutation?)
-	if item.TutorialOnly or not ItemWeight.Enabled() then
+	if item.TutorialOnly then
 		return nil, mutation
 	end
 	local kg = ItemWeight.RollForSize(random, 1, if mutation then mutation.Size else nil)

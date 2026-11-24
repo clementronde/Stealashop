@@ -92,7 +92,7 @@ local ShelfOpen = {
 	RevealTintMinRarity = "Epic", -- L-112 : voile plein écran UI_HUD.RevealTint pour Épique et plus
 	AnnounceMinRarity = "Legendary", -- V0 : un objet sorti de cette rareté ou plus est annoncé à tout le serveur
 
-	-- Vague 62 (Features.SingleBoxReveal, liaison L-198), valeurs V0 : un seul colis par braquage, contenu tiré à
+	-- Vague 62 (liaison L-198), valeurs V0 : un seul colis par braquage, contenu tiré à
 	-- l'ouverture, cinématique, objet porté d'office (StoreHeistService ; voir son en-tête).
 	Reveal = {
 		-- Chance de la boîte : la chance tirée dans LuckTable au lancement (comme avant), seule source ; elle agit

@@ -3,8 +3,8 @@
 -- 3.2 ; noms validés par Ironix en L-047 ; décision de Clément du 2026-11-08 : les boutons Shop, Index
 -- et Rebirth du HUD sont visibles dès maintenant, L-071). La renaissance elle-même (DEV-120, MAJ 3)
 -- n'est pas codée : l'écran montre la prochaine renaissance du tableau (Config/Rebirths), sans rien
--- pouvoir confirmer. Seulement si Features.RebirthPreview (ou Features.Rebirth) : sinon rien n'est
--- branché et HudController cache le bouton.
+-- pouvoir confirmer. Seulement si Features.Rebirth (a438 : Features.RebirthPreview retiré, inutile depuis
+-- Rebirth = true) : sinon rien n'est branché et HudController cache le bouton.
 --
 -- Rôle :
 --   - UI_HUD.RebirthButton ouvre l'écran (un 2e appui le ferme) ; CloseButton le ferme. Ouverture et
@@ -462,8 +462,8 @@ local function bindHud(gui: Instance)
 end
 
 function RebirthController.Start()
-	if not (Features.RebirthPreview or Features.Rebirth) then
-		return -- ni aperçu ni renaissance : rien n'est branché
+	if not Features.Rebirth then
+		return -- renaissance coupée : rien n'est branché
 	end
 	localPlayer:GetAttributeChangedSignal(CASH_ATTRIBUTE):Connect(function()
 		local current = screen

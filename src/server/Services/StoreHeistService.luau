@@ -303,7 +303,7 @@
 -- Payload d'un objet sorti, transmis à CarryService : { Kind = "NPCItem", ItemId, Rarity, Mutation?, Zone,
 -- StoreId, SlotId, Luck, Weight? } (Shared/Types/Carry ; Weight : vague 62).
 --
--- Vague 62 (décision de Cantin et Clément, liaison L-198 ; Features.SingleBoxReveal, valeurs V0 de
+-- Vague 62 (décision de Cantin et Clément, liaison L-198 ; valeurs V0 de
 -- Config/ShelfOpen.Reveal) : un seul colis par braquage, la cinématique, l'objet porté d'office. Sur un magasin
 -- PNJ (jamais un rayon d'événement, qui garde l'ouverture d'avant), à la fin du maintien d'OpenShelfBox :
 --   - tirage complet tout de suite, sur le serveur : chance de la boîte = le tirage de ShelfOpen.LuckTable
@@ -418,7 +418,7 @@ type WitnessApi = {
 }
 
 -- Mutation (DEV-131) : nil = aucune ; jamais pour l'accroche du tuto.
--- Vague 62 : Weight = poids tiré à l'ouverture (kg) ; nil dans l'ancien déroulé (Features.SingleBoxReveal = false).
+-- Vague 62 : Weight = poids tiré à l'ouverture (kg) ; nil dans l'ouverture d'avant d'un rayon d'événement, sauf taille garantie.
 type Content = { Rarity: string, ItemId: string, Mutation: Mutations.Mutation?, Weight: number? }
 
 -- Ouverture en cours d'un colis sur son rayon (L-112).
@@ -516,7 +516,7 @@ type Store = {
 	NextZoneChance: number?, -- vague 56 (a181, L-166 Q5) : voir EventShelfOptions
 }
 
--- Vague 62 (Features.SingleBoxReveal) : cinématique d'ouverture en cours d'un joueur (voir l'en-tête).
+-- Vague 62 : cinématique d'ouverture en cours d'un joueur (voir l'en-tête).
 type Reveal = {
 	Id: string, -- RevealId des remotes RevealStarted, RevealEnded et RevealDone
 	Player: Player,
@@ -712,7 +712,7 @@ local templates: { [string]: Instance } = {} -- BOX_<Rareté> ou BOX_<Tier> trou
 local templateSearched: { [string]: boolean } = {} -- cherché une fois par nom, trouvé ou non
 local noticed: { [string]: boolean } = {}
 local random = Random.new()
--- Vague 62 (Features.SingleBoxReveal) : cinématiques en cours, par joueur et par RevealId ; chronos repris
+-- Vague 62 : cinématiques en cours, par joueur et par RevealId ; chronos repris
 -- d'un ouvreur sans objet ; plafonds cassés ; StatsService.SetSpeedModifier (require protégé dans Init).
 local reveals: { [Player]: Reveal } = {}
 local revealsById: { [string]: Reveal } = {}
@@ -2496,7 +2496,7 @@ local function drawShelfContent(
 				mutation = Mutations.Sanitize({ Size = size, Effect = if mutation then mutation.Effect else nil })
 			end
 			local content: Content = { Rarity = rarityId, ItemId = itemId, Mutation = mutation }
-			if sizeOdds and Features.SingleBoxReveal == true then
+			if sizeOdds then
 				-- Vague 62 (a203) : la taille garantie devient un poids tiré dans son palier (ItemWeight.RollForSize ;
 				-- sans taille, tout le poids). Absent ou en erreur : pas de poids, la taille d'avant.
 				local roller = (ItemWeight :: any).RollForSize
@@ -2677,12 +2677,12 @@ local function openRefusal(player: Player, slot: Slot, lenient: boolean): string
 	return reachRefusal(player, slot, lenient)
 end
 
--- Cinématique d'ouverture (vague 62, Features.SingleBoxReveal ; voir l'en-tête) ------------------------------
+-- Cinématique d'ouverture (vague 62 ; voir l'en-tête) ------------------------------
 
 -- Le nouveau déroulé s'applique-t-il à ce magasin ? Jamais sur un rayon d'événement (camion, Fortune Tower) :
 -- ils gardent l'ouverture d'avant.
 local function singleBoxReveal(store: Store): boolean
-	return Features.SingleBoxReveal == true and not store.Event
+	return not store.Event
 end
 
 -- Appels protégés de Shared/ItemWeight (a203) : une valeur absurde ou une erreur donne le repli (10 kg, taille 1,

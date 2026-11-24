@@ -10,10 +10,10 @@
 local DeepFreeze = require(script.Parent.DeepFreeze)
 
 local ShopFx = {
-	-- 1. Caisse exclusive (`Crate` de UI_RobuxShop_v2, et de UI_RobuxShop si elle y est) : boucle de Period s tant
+	-- 1. Caisse exclusive (`Crate` de UI_RobuxShop_v2) : boucle de Period s tant
 	-- que l'écran est allumé et la caisse à l'écran ; tout revient à la place de Clément à la fermeture.
 	Crate = {
-		Screens = { "UI_RobuxShop_v2", "UI_RobuxShop" },
+		Screens = { "UI_RobuxShop_v2" }, -- a438 : l'ancien UI_RobuxShop est retiré
 		Element = "Crate",
 		Period = 4, -- L-204 : « boucle de 4 s »
 		DesignHeight = 372, -- hauteur de Crate dans la maquette (px)

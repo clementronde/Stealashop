@@ -2,7 +2,7 @@
 -- ShopPadController (L-071, client) : les plaques ShopPad des comptoirs du hub. Une BasePart nommée
 -- ShopPad dans un comptoir taggé WeaponShop, AuraShop ou RobuxShop (nom proposé par Clément le
 -- 2026-11-08 ; enfant facultatif de ces comptoirs au contrat 10.4, Contract/Models) : quand le joueur
--- local monte dessus, l'écran du comptoir s'ouvre (UI_WeaponShop, UI_AuraShop, ou UI_RobuxShop, en
+-- local monte dessus, l'écran du comptoir s'ouvre (UI_WeaponShop, UI_AuraShop, ou UI_RobuxShop_v2, en
 -- vitrine tant que la boutique Robux est coupée), par l'API Open du contrôleur de la boutique. Vague 29
 -- (receleur, DEV-034) : le stand taggé PawnShop ouvre UI_PawnShop (PawnShopController) ; un contrôleur qui a
 -- aussi une API Leave est appelé quand le joueur descend de la plaque (le receleur se ferme alors).

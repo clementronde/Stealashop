@@ -2,7 +2,7 @@
 -- ItemWeight (vague 62, a203 ; décision de Cantin et Clément du 2026-11-15, liaison L-198) : le poids d'un objet,
 -- de 1 à 10 000 kg, et ce qu'il change : la taille du modèle, le revenu, la mutation de taille (Huge, Colossal) et
 -- la classe de taille de la cinématique d'ouverture. Commun au serveur et au client. Valeurs : Config/Weight.
--- Interrupteur : Features.SingleBoxReveal (lu par Config/Mutations : false = les mutations de taille d'avant).
+-- Toujours actif (a438 : plus de Features.SingleBoxReveal ni de mutations de taille d'avant le poids).
 --
 -- Contrat de la vague 62 (a202 tire, a204 montre, a203 calcule ; ne pas changer sans le dire) :
 --   ItemWeight.Roll(rng, luck) -> number               poids tiré (kg), `luck` = multiplicateur de chance de la
@@ -15,7 +15,6 @@
 --        Colossal : palier Colossal (la caméra sort du magasin) ; Large : l'objet grandi (modelHeight, hauteur du
 --        modèle à l'échelle 1, × ScaleFor) atteint freeHeight (hauteur libre sous le plafond, studs) ; Small sinon.
 -- En plus :
---   ItemWeight.Enabled() -> boolean                    Features.SingleBoxReveal (bancs : SetEnabledForTest)
 --   ItemWeight.RollForSize(rng, luck, sizeId) -> number   poids tiré dans le palier de sizeId ("Huge" ou
 --                                                      "Colossal" : Fortune Tower, tailles garanties) ; autre : Roll
 --   ItemWeight.TierChances(luck) -> { number }         chance de chaque palier de Config/Weight.Tiers, pour cent
@@ -29,13 +28,10 @@
 
 local Config = script.Parent.Config
 local Weight = require(Config.Weight)
-local Features = require(Config.Features)
 
 export type SizeClass = "Small" | "Large" | "Colossal"
 
 local ItemWeight = {}
-
-local enabledOverride: boolean? = nil
 
 local function finite(value: any): boolean
 	return type(value) == "number" and value == value and value > -math.huge and value < math.huge
@@ -58,18 +54,6 @@ local function rounded(kg: number): number
 		return math.max(Weight.Min, math.floor(kg * 10 + 1e-6) / 10)
 	end
 	return math.floor(kg + 1e-6)
-end
-
-function ItemWeight.Enabled(): boolean
-	if enabledOverride ~= nil then
-		return enabledOverride
-	end
-	return Features.SingleBoxReveal == true
-end
-
--- Bancs seulement : force l'interrupteur (nil = celui de Features).
-function ItemWeight.SetEnabledForTest(value: boolean?)
-	enabledOverride = value
 end
 
 -- Chances relatives de chaque palier pour cette chance (paliers lourds × luck), et leur total.
@@ -265,7 +249,7 @@ function ItemWeight.Migrate(items: any): number
 			entry.Weight = clean
 			touched = true
 		end
-		if ItemWeight.Enabled() and type(mutation) == "table" and mutation.Size ~= nil and not WEIGHT_SIZES[mutation.Size] then
+		if type(mutation) == "table" and mutation.Size ~= nil and not WEIGHT_SIZES[mutation.Size] then
 			mutation.Size = nil -- après le poids, qui l'a lue
 			if next(mutation) == nil then
 				entry.Mutation = nil

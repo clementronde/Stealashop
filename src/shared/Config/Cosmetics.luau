@@ -27,7 +27,6 @@
 -- Clément (MOD-045, L-042).
 
 local DeepFreeze = require(script.Parent.DeepFreeze)
-local Features = require(script.Parent.Features)
 
 export type CosmeticKind = "Aura" | "Trail"
 
@@ -41,7 +40,7 @@ export type Cosmetic = {
 	TargetZones: { number }, -- { première, dernière } zone visée
 	Texture: string,
 	Color: Color3,
-	-- Vague 63 (a210) : ancienne aura retirée de la boutique (Features.NewAuras) ; gardée dans ById pour les
+	-- Vague 63 (a210) : ancienne aura retirée de la boutique (vague 63) ; gardée dans ById pour les
 	-- sauvegardes, les kits de Config/Zones et les récompenses de Config/Index.
 	Retired: boolean?,
 }
@@ -50,7 +49,8 @@ export type Cosmetic = {
 -- multiplicateur de force (dégâts d'un coup = P arme × M aura) ; un kit par zone (arme, aura, trail), mêmes paliers
 -- pour les auras et les trails (×2, ×3, ×5, ×8, ×12), plus Royal ×20. Galaxy : palier du milieu de la zone 5.
 -- Color : couleurs de Clément (MOD-045, liaison L-042, 2026-11-07).
--- Vague 63 (a210) : la boutique d'aujourd'hui, tant que Features.NewAuras est false.
+-- Vague 63 (a210) : les 6 anciennes auras, retirées de la boutique (a438 : plus de Features.NewAuras) ; gardées pour
+-- les sauvegardes (migration), les kits de Config/Zones et les récompenses de Config/Index.
 -- Vague 68 (a226, V0 proposés) : prix revus avec ceux des armes (Config/Tools, temps entre zones qui s'allonge) ;
 -- la première aura et la première traînée à 100 $ (L-210 (a), Clément : achetables dès le tuto, où l'objet Rare
 -- exposé rapporte 5 $/s ; la clé à molette reste donnée). Multiplicateurs inchangés. Avant : 500, 60 K, 1,5 M, 30 M,
@@ -64,8 +64,8 @@ local LegacyAuras: { Cosmetic } = {
 	{ Id = "Royal", Kind = "Aura", Order = 6, DisplayName = "Royal", Multiplier = 20, Price = 110_000_000, TargetZones = { 6, 6 }, Texture = "FX_Aura_Royale", Color = Color3.fromRGB(255, 194, 26) }, -- V0 proposé (Cantin, 20/11), avant : 11_000_000_000
 }
 
--- Vague 63 (a210, L-205 et L-206) : PROPOSITION pour les 8 auras de Clément, à valider par lui (rien en jeu tant que
--- Features.NewAuras est false). Ordre de Clément (L-205), du plus simple au plus fort. Les 6 paliers d'aujourd'hui
+-- Vague 63 (a210, L-205 et L-206) : les 8 auras de Clément (prix validés par lui en L-210, vague 66).
+-- Ordre de Clément (L-205), du plus simple au plus fort. Les 6 paliers d'aujourd'hui
 -- gardent leur multiplicateur, leur prix et leurs zones (×2, ×3, ×5, ×8, ×12, ×20 : mêmes PV de vitrine, même kit
 -- par zone dans Config/Zones) ; deux paliers s'intercalent : Storm ×4 (fin de zone 3) et Demon ×16 (fin de zone 5).
 -- Id = clé de sauvegarde, en anglais (L-036) ; « Lightning » est pris par l'ancienne aura, d'où Storm pour Éclair
@@ -83,7 +83,7 @@ local NewAuras: { Cosmetic } = {
 }
 
 -- Proposition a210 : chaque ancienne aura achetée devient la nouvelle de même multiplicateur (personne ne perd
--- rien). Appliquée au chargement du profil par CosmeticService, seulement avec Features.NewAuras.
+-- rien). Appliquée au chargement du profil par CosmeticService, toujours (a438).
 local Migration: { [string]: string } = {
 	Spark = "Shine",
 	Flame = "Fire",
@@ -93,7 +93,7 @@ local Migration: { [string]: string } = {
 	Royal = "Chained",
 }
 
-local Auras: { Cosmetic } = if Features.NewAuras then NewAuras else LegacyAuras
+local Auras: { Cosmetic } = NewAuras
 
 -- Rééquilibrage v2 (note 4.4, V0 proposés) : le trail multiplie la Speed affichée (Vitesse × M trail), d'où sort
 -- la marche (Formulas.WalkSpeed, en log) : un trail ×2 vaut un niveau de tapis.
@@ -107,15 +107,13 @@ local Trails: { Cosmetic } = {
 }
 
 -- Auras et trails partagent le même espace d'Id (un seul catalogId pour BuyItem).
--- Avec Features.NewAuras, les anciennes auras restent dans ById, marquées Retired (pas dans Auras : ni boutique ni
+-- Les anciennes auras restent dans ById, marquées Retired (pas dans Auras : ni boutique ni
 -- achat) : un Id d'ancienne aura (sauvegarde, kit de Config/Zones, récompense de Config/Index) se lit toujours.
 local ById: { [string]: Cosmetic } = {}
 local retired: { Cosmetic } = {}
-if Features.NewAuras then
-	for _, cosmetic in LegacyAuras do
-		cosmetic.Retired = true
-		table.insert(retired, cosmetic)
-	end
+for _, cosmetic in LegacyAuras do
+	cosmetic.Retired = true
+	table.insert(retired, cosmetic)
 end
 for _, list in { Auras, Trails, retired } do
 	for _, cosmetic in list do
@@ -140,17 +138,17 @@ for old, new in Migration do
 	assert(before ~= nil and before == after, `Config.Cosmetics : migration {old} → {new} sans le même multiplicateur`)
 end
 
--- Id à jour : avec Features.NewAuras, une ancienne aura donne sa remplaçante (Migration) ; sinon l'Id tel quel.
+-- Id à jour : une ancienne aura donne sa remplaçante (Migration) ; sinon l'Id tel quel.
 local function current(id: string): string
-	return if Features.NewAuras then Migration[id] or id else id
+	return Migration[id] or id
 end
 
 local Cosmetics = {
 	Auras = Auras,
 	Trails = Trails,
 	ById = ById,
-	-- Vague 63 (a210) : proposition des 8 auras de Clément (L-205) et migration des 6 anciennes, en jeu seulement
-	-- avec Features.NewAuras. Current(id) : Id à jour (Grant, Equip, Owns de CosmeticService).
+	-- Vague 63 (a210) : proposition des 8 auras de Clément (L-205) et migration des 6 anciennes, en jeu depuis la
+	-- vague 66. Current(id) : Id à jour (Grant, Equip, Owns de CosmeticService).
 	NewAuras = NewAuras,
 	LegacyAuras = LegacyAuras,
 	Migration = Migration,

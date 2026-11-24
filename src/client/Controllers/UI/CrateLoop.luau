@@ -1,6 +1,6 @@
 --!strict
 -- CrateLoop (vague 63, a209 ; liaison L-204 point 1, L-203 a, c, d ; client) : la boucle de la caisse exclusive
--- (`Crate` de UI_RobuxShop_v2, et de UI_RobuxShop si elle y est). Module d'aide rangé dans Controllers/UI : le Loader
+-- (`Crate` de UI_RobuxShop_v2). Module d'aide rangé dans Controllers/UI : le Loader
 -- ne le démarre pas, ShopFxController appelle CrateLoop.Start(). Il trouve l'écran par son nom (Config/ShopFx.Crate),
 -- jamais par RobuxShopController.
 --
