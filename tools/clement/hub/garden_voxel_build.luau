@@ -20,12 +20,14 @@ assert(DATA, "envoyer garden_voxel_data.luau d'abord")
 
 local SCALE = {
 	ENV_Nature_Bush_Berry = 1.5, ENV_Nature_Bush_Cone = 1.5, ENV_Nature_Bush_Flower = 1.5, ENV_Nature_Bush_Hedge = 1.5,
-	ENV_Nature_Bush_Round = 1.5, ENV_Nature_Bush_TallGrass = 1.5, ENV_Nature_Flower_Daisy = 1.4, ENV_Nature_Flower_Tulip = 1.4,
-	ENV_Nature_Flower_Sunflower = 1.2, ENV_Nature_Mushroom = 1.6, ENV_Nature_Tree_Oak = 1.4, ENV_Prop_LampPost = 1.4,
+	ENV_Nature_Bush_Round = 1.5, ENV_Nature_Bush_TallGrass = 1.5, ENV_Nature_Flower_Daisy = 1.4, ENV_Nature_Flower_Tulip = 1.2,
+	ENV_Nature_Flower_Sunflower = 1.2, ENV_Nature_Mushroom = 1.2, ENV_Nature_Tree_Oak = 1.4, ENV_Prop_LampPost = 1.4,
 	ENV_Prop_Fence = 1.2, ENV_Prop_Bench = 1, ENV_Prop_Planter_Marble = 1.25, ENV_Prop_Statue_Trophy = 1.15,
-	ENV_Nature_Mushroom_Cluster = 1.25, ENV_Nature_Rock_Boulder = 1, ENV_Nature_Rock_Cluster = 1.2,
+	ENV_Nature_Mushroom_Cluster = 1, ENV_Nature_Rock_Boulder = 1, ENV_Nature_Rock_Cluster = 1.2,
 	ENV_Nature_Rock_SteppingStones = 1.2,
 }
+-- Clément, 2026-11-24 (« tu as revu la proportionnalité des tailles ? ») : comparé à un perso R15 de 5,5 studs, tulipes
+-- (1,4 -> 1,2) et champignons (1,6 -> 1,2 ; touffe 1,25 -> 1) réduits, ils montaient au genou ; le reste tient.
 local SWAY_ANGLE = { ENV_Nature_Bush_TallGrass = 6, ENV_Nature_Flower_Tulip = 4, ENV_Nature_Flower_Daisy = 4,
 	ENV_Nature_Flower_Sunflower = 3, ENV_Nature_Tree_Oak = 1.5 }
 -- rochers un peu plus foncés que dans les GLB (presque blancs sous la lumière du hub)

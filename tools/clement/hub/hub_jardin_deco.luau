@@ -182,7 +182,7 @@ for k, p in tops do
 	elseif k % 3 == 1 then put("WallTops", rng:NextNumber() < 0.5 and "ENV_Nature_Bush_Cone" or "ENV_Nature_Bush_Round", p.Position.X + J(2), p.Position.Z + J(2), nil, 1.3, "none", y) end
 end
 -- 2e) devant les boutiques : seulement 3 touffes de pâquerettes (sans collision, elles ne gênent pas le passage)
-for _, p in { { -11, 57 }, { -11, -57 }, { -74, 0 } } do put("Front", "ENV_Nature_Flower_Daisy", p[1], p[2], nil, 1.3, "front") end
+for _, p in { { -11, 57 }, { -11, -57 }, { -74, 0 } } do put("Front", "ENV_Nature_Flower_Daisy", p[1], p[2], nil, 1, "front") end
 -- 2f) derrière les boutiques et dans les coins : bosquets serrés
 local THEMES = {
 	{ "ENV_Nature_Tree_Oak", "ENV_Nature_Bush_Round", "ENV_Nature_Bush_Berry", "ENV_Nature_Mushroom" },
@@ -208,6 +208,21 @@ for k, c in centers do
 		local a, d = rng:NextNumber(0, 2 * math.pi), (j == 1) and 0 or rng:NextNumber(3.5, 6.5)
 		local s = (n:match("Rock") and rng:NextNumber(0.8, 1.3)) or (n:match("Oak") and rng:NextNumber(1.05, 1.3)) or rng:NextNumber(1, 1.3)
 		put("Back", n, c.X + math.cos(a) * d, c.Z + math.sin(a) * d, nil, s, "back")
+	end
+end
+-- 2g) petites fleurs semées au hasard sur la place, entre la sortie et les boutiques (Clément : « des petites fleurs
+-- aléatoirement devant, afin d'habiller un peu ») : pâquerettes et tulipes, sans collision ; graine à part, pour que
+-- le reste de la déco ne bouge pas
+local rngF = Random.new(2412)
+local nF, triesF = 0, 0
+while nF < 45 and triesF < 3000 do
+	triesF += 1
+	local x, z = rngF:NextNumber(X0 + 8, 18), rngF:NextNumber(-Z1 + 8, Z1 - 8)
+	local n = rngF:NextNumber() < 0.6 and "ENV_Nature_Flower_Daisy" or "ENV_Nature_Flower_Tulip"
+	local s, yaw = rngF:NextNumber(0.75, 0.95), rngF:NextNumber(0, 2 * math.pi)
+	if inFront(x, z, -4) and not inBoxes(x, z, 1.5) and inHub(x, z, 1) and free(x, z, 4) then
+		put("Front", n, x, z, yaw, s, "none")
+		nF += 1
 	end
 end
 decor.Parent = hub.Garden
