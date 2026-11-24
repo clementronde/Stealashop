@@ -187,17 +187,33 @@ jour du lancement.
 - [ ] Dans la place DEV (Team Create), Fichier > **Enregistrer dans un fichier** (`StealAShop-PROD-AAAAMMJJ.rbxl`),
       fermer, puis ouvrir ce fichier (son `PlaceId` est 0 : le retrait y est permis).
 - [ ] Coller `tools/prod-check.luau` dans la barre de commande avec `RETIRER = false` : lire le rapport.
-- [ ] Il doit lister, et le retrait enlève : `Workspace/_SHOWROOM_CLEMENT` (L-032), `Workspace/_INBOX_CLEMENT`,
-      `Workspace/_SANDBOX_IRONIX`, `ServerStorage/_GREYBOX_REMPLACE`, les deux **packs piégés de L-143**
-      (« Aura Pack Premium By Sanzzzzz », « THE ULTRA VFX AND PARTICLES PACK », où qu'ils soient) et les scripts
-      `Runtime` / `ScreenBuilder` du piège.
+- [ ] Il doit lister, et le retrait enlève (règles du check-up a417, M1, R16 à R18, R22, R23) :
+      1. **tout enfant du Workspace dont le nom commence par `_`** : `_SHOWROOM_CLEMENT` (L-032), `_INBOX_CLEMENT`,
+         `_SANDBOX_IRONIX`, les `_PROTO_*`, `_BENCH_*`, `_PREVIEW_*`, `_APERCU_*`, `_EXEMPLE_STUDS`… ;
+      2. **tout enfant de `ServerStorage` dont le nom commence par `_`** : `_GREYBOX_REMPLACE`, `_BENCH_AURAS`
+         (packs piégés, R17), `_UI_RETIREE`, `_HUB_RETIRE`, `_ARBRES_REMPLACES`… ;
+      3. `ServerStorage/MapBackups` (sauvegardes de la map, R18 : les exporter en .rbxm avant si on veut les garder) ;
+      4. `ServerStorage/Assets/MapBackup_*` et `ServerStorage/Assets/_Sauvegarde_*` ;
+      5. `FX_Auras_Import` et `FX_Eclair_Cloud` (imports bruts d'effets, cherchés à la racine de `ServerStorage`, de
+         `ServerStorage/Assets`, de `ReplicatedStorage` et du Workspace) ;
+      6. `ReplicatedStorage/GuiAnimatorPlugin` (restes d'un plugin envoyés à chaque joueur, R22) ;
+      7. tout enfant de `TestService` (`LuauLSP_Settings`, R23) ;
+      8. les deux **packs piégés de L-143** (« Aura Pack Premium By Sanzzzzz », « THE ULTRA VFX AND PARTICLES PACK »,
+         où qu'ils soient) et les scripts `Runtime` / `ScreenBuilder` du piège ;
+      9. les **attributs de test du Workspace** : tout nom qui finit par `Test`, `Debug`, `Now`, `SkipTo` ou `Reset`
+         (`SkillTest`, `PotionTest`, `ChaseDebug`, `TruckSpawnNow`, `ArmoredVanNow`, `NightSkipTo`, `TutorialReset`…),
+         plus `AntiCheatStrict`. Aucun attribut de jeu ne finit ainsi : un attribut de jeu nouveau ne doit pas prendre
+         un de ces suffixes.
+- [ ] Le rapport finit par un **bilan par règle** : nombre de dossiers et d'objets à retirer (avec `RETIRER = false`)
+      ou retirés (avec `RETIRER = true`), nombre d'attributs de test, et un total.
 - [ ] Il signale sans supprimer : sources avec `require(<numéro>)`, `loadstring`, `getfenv`, `HttpService` hors des
-      dossiers de code ; tout script hors des dossiers de code (ex. `ReplicatedStorage.GuiAnimatorPlugin`, L-143 : à
-      retirer s'il ne sert pas) ; les effets `FX_` admis ; `HttpEnabled` (doit être `false`) ; les attributs de test
-      (`AntiCheatStrict`, `NightSkipTo`, `TruckSpawnNow`, `TutorialReset`, `FortuneTest`).
+      dossiers de code ; tout script hors des dossiers de code qui ne tombe sous aucune règle ; les effets `FX_`
+      admis ; `HttpEnabled` (doit être `false`).
+- [ ] `ServerStorage/Assets/Stores` n'est pas retiré (question Q2 du check-up : sert-il encore ?).
 - [ ] Mettre `RETIRER = true`, relancer, puis relancer avec `RETIRER = false` : rapport propre attendu (aucun dossier,
-      aucun pack, aucun script suspect, `HttpEnabled = false`).
-- [ ] `ServerStorage/AnimRigs` et `ServerStorage/RBX_ANIMSAVES` restent (jamais retirés, invisibles des joueurs).
+      aucun pack, aucun script suspect, aucun attribut de test, `HttpEnabled = false`, total à 0).
+- [ ] `ServerStorage/AnimRigs`, `ServerStorage/RBX_ANIMSAVES` et les dossiers de code restent (jamais retirés,
+      même s'ils tombaient sous une règle ; le rapport l'écrit « Gardé (protégé) »).
 
 ### Étape 5 : droits des assets (animations, sons, images, maillages)
 
@@ -282,3 +298,4 @@ générales (violence cartoon, pas de techniques criminelles détaillées).
   - `Workspace._PROTO_AURA_ECLAIR.Mannequin.Animate` (LocalScript) : prototype d'aura de Clément, posé à la racine du Workspace et pas dans un dossier de développement, il partirait en PROD ; à ranger dans `_SHOWROOM_CLEMENT` ou à ajouter à la liste du prod-check ;
   - `ReplicatedStorage.GuiAnimatorPlugin` (3 ModuleScripts sains, restes d'un plugin, déjà cités en L-143) : à retirer s'ils ne servent pas ;
   - `TestService.LuauLSP_Settings` (ModuleScript, réglages de l'extension Luau LSP) : à retirer de la copie PROD.
+- Depuis le lot101 (a434), ces trois cas sont retirés par le prod-check (règles 1, 6 et 7 de l'étape 4).
