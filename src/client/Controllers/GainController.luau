@@ -83,6 +83,7 @@
 --   GainController.NoteBubble(gain)   vague 65 : la prochaine hausse de Speed contient `gain` venu d'une bulle (BubbleGone).
 --   a317 (L-299, Config/CashFlash ; détail dans la section « jus » d'une plaque) : voile UI_CashFlash, compteur retenu
 --   jusqu'au premier billet 3D, CashRow qui grossit et son Cash_Pad à chaque plaque vidée par le joueur local.
+--   a422 (Cantin, 24/11) : ce son part au contact de la plaque, une fois (Cash_Collect s'il manque).
 --   GainController.FlashRank(précédent, depuis) -> number   rang de la plaque dans la tournée
 --   GainController.FlashGoal(posée, rang) -> number         transparence d'une bande du voile au plus fort
 --   GainController.GetPadState() -> { Rank, Notes, Waiting, FlashToken }   pour les bancs
@@ -1113,6 +1114,10 @@ end
 --      compteur (VfxController.OnCollectLanded) : elle défile en RollTime (HudController.SetNextCashRoll), CashRow grossit
 --      (PopScale en PopUpTime, retour en PopDownTime) et Sound (Cash_Pad) part, PlaybackSpeed × (1 ± PitchJitter) ;
 --      Cash_Collect n'est plus joué ; « +$X » au-dessus du joueur comme avant. Sans billets : tout de suite.
+--   a422 (Cantin, 24/11, CashFlash.SoundOnContact) : le son ne part plus à l'arrivée du premier billet (≈ 0,7 s après
+--      le contact avec la fontaine, jusqu'à LandTimeout = 2 s si l'arrivée n'est pas vue) mais au contact, dans
+--      onPadCollect, une fois par plaque (PadNote.sounded) : Sound, sinon FallbackSound (Cash_Collect) s'il manque.
+--      Écran des gains hors ligne ouvert : pas de son ici, l'encaissement d'avant joue Cash_Collect (classic).
 -- La hausse de Cash et le remote de la plaque arrivent dans un ordre non garanti : une hausse de CashCollected attend
 -- au plus MatchWindow s une plaque vue ; sans elle (encaissement automatique, gains hors ligne) : comme avant.
 
@@ -1125,10 +1130,11 @@ local PAD_ROLL_INFO: TweenInfo = TweenInfo.new(if CashFlash then CashFlash.RollT
 local PAD_POP_UP_INFO: TweenInfo = TweenInfo.new(if CashFlash then CashFlash.PopUpTime else 0, Enum.EasingStyle.Quad, Enum.EasingDirection.Out) -- sans Config/CashFlash : jamais joué
 local PAD_POP_DOWN_INFO: TweenInfo = TweenInfo.new(if CashFlash then CashFlash.PopDownTime else 0, Enum.EasingStyle.Quad, Enum.EasingDirection.Out) -- sans Config/CashFlash : jamais joué
 local PAD_SCALE = "CashPadScale" -- V0 proposé : UIScale passager posé sur CashRow (détruit à la fin)
+local CONTACT_SOUND: boolean = CashFlash ~= nil and CashFlash.SoundOnContact == true -- a422 : son au contact
 
 -- Plaque vue (remote CashCollect du joueur local) : `landed` à l'arrivée de son premier billet, `claimed` quand une
--- hausse de Cash lui est attribuée, `onLand` appelé à l'arrivée.
-type PadNote = { at: number, landed: boolean, claimed: boolean, onLand: (() -> ())? }
+-- hausse de Cash lui est attribuée, `onLand` appelé à l'arrivée, `sounded` quand son son est parti (a422).
+type PadNote = { at: number, landed: boolean, claimed: boolean, sounded: boolean, onLand: (() -> ())? }
 -- Hausse de CashCollected qui attend sa plaque (au plus MatchWindow s).
 type PadWait = { total: number, releases: { () -> () }, done: boolean }
 
@@ -1266,8 +1272,11 @@ local function padPop(refs: HudRefs?)
 	up:Play()
 end
 
+-- Le son d'une plaque : Sound (Cash_Pad), PlaybackSpeed × (1 ± PitchJitter) ; a422 : absent, FallbackSound
+-- (Cash_Collect) tel quel, pour qu'un son parte toujours.
 local function padSound()
 	local name: string = CashFlash.Sound
+	local fallback: string? = CashFlash.FallbackSound
 	local sounds: any = markerSounds
 	local find: any = if sounds then sounds.find else nil
 	local playSound: any = if sounds then sounds.playSound else nil
@@ -1283,16 +1292,36 @@ local function padSound()
 			end
 			return
 		end
+		local okFallback, foundFallback = pcall(find :: any, fallback)
+		local spare: any = if okFallback and fallback then foundFallback else nil
+		if spare ~= nil then
+			warnOnce("padSound", `[Gains] son {name} absent d'Assets/Sounds : {fallback} à la place`)
+			local play: any = playSound
+			play(spare, nil)
+			return
+		end
 		warnOnce("padSound", `[Gains] son {name} absent d'Assets/Sounds : plaque muette`)
 		return
 	end
 	Motion.PlaySound(name) -- sans MarkerSounds : même son, sans hauteur au hasard
 end
 
--- La hausse d'une plaque : « +$X » au-dessus du joueur tout de suite, compteur, sursaut et son à l'arrivée du premier
--- billet d'une des plaques `notes` (ou au bout de LandTimeout s).
+-- La hausse d'une plaque : « +$X » au-dessus du joueur tout de suite, compteur et sursaut à l'arrivée du premier billet
+-- d'une des plaques `notes` (ou au bout de LandTimeout s) ; le son au contact (a422), ou à cette arrivée sans
+-- SoundOnContact.
 local function padJuice(total: number, releases: { () -> () }, notes: { PadNote })
 	showGain(CASH, total)
+	if CONTACT_SOUND then
+		-- Plaque restée muette au contact (écran des gains hors ligne fermé entre le remote et la hausse) : son tout de suite.
+		local sounded = false
+		for _, note in notes do
+			sounded = sounded or note.sounded
+		end
+		if not sounded and notes[1] then
+			notes[1].sounded = true
+			padSound()
+		end
+	end
 	local fired = false
 	local function go()
 		if fired then
@@ -1306,7 +1335,9 @@ local function padJuice(total: number, releases: { () -> () }, notes: { PadNote 
 		releaseAll(releases)
 		local refs = hudRefs()
 		padPop(refs)
-		padSound()
+		if not CONTACT_SOUND then
+			padSound()
+		end
 	end
 	for _, note in notes do
 		note.claimed = true
@@ -1330,6 +1361,22 @@ local function claimNotes(): { PadNote }
 		end
 	end
 	return found
+end
+
+-- a422 : une plaque déjà sonnée au contact et pas appariée (hausse arrivée plus de MatchWindow s après le remote) est
+-- prise ici, pour que l'encaissement d'avant ne rejoue pas Cash_Collect : un seul son par plaque.
+local function takeSounded(): boolean
+	if not FLASH_ON then
+		return false
+	end
+	local now = os.clock()
+	for _, note in padNotes do
+		if note.sounded and not note.claimed and now - note.at <= CashFlash.MatchWindow + CashFlash.LandTimeout then
+			note.claimed = true
+			return true
+		end
+	end
+	return false
 end
 
 local function pruneNotes()
@@ -1368,6 +1415,11 @@ end
 -- DisplayController.OnCollect : une de ses plaques vidée par le joueur local.
 local function onPadCollect()
 	local now = os.clock()
+	-- a422 (Cantin, 24/11) : le son part au contact, avant tout le reste ; gains hors ligne ouverts : classic le joue.
+	local sounded = CONTACT_SOUND and not screenOpen(offline)
+	if sounded then
+		padSound()
+	end
 	local rank = GainController.FlashRank(flashRank, now - flashLastAt)
 	flashRank = rank
 	flashLastAt = now
@@ -1375,7 +1427,7 @@ local function onPadCollect()
 	if not ok then
 		warnOnce("cashFlashError", `[Gains] voile de la plaque : {err}`)
 	end
-	local note: PadNote = { at = now, landed = not vfxLands, claimed = false, onLand = nil }
+	local note: PadNote = { at = now, landed = not vfxLands, claimed = false, sounded = sounded, onLand = nil }
 	pruneNotes()
 	table.insert(padNotes, note)
 	local waiting = padWaits[1]
@@ -1457,7 +1509,7 @@ function classic(total: number, releases: { () -> () }, fromPad: boolean)
 		-- et un ramassage, des gains hors ligne réclamés ou une récompense montrent « +$X » au-dessus du joueur.
 		releaseAll(releases)
 		bump(hudRefs())
-		if fromPad then
+		if fromPad and not takeSounded() then -- a422 : pas un 2e son pour une plaque déjà sonnée au contact
 			Motion.PlaySound(FLY.Sound) -- L-117 point 4 : Cash_Collect à chaque ramassage, même sans case
 		end
 		if fromPad or screenOpen(offline) or screenOpen(rewards) then
@@ -1897,6 +1949,22 @@ function GainController.Start()
 			return if module and module:IsA("ModuleScript") then require(module) :: any else nil
 		end)
 		markerSounds = if okSounds then sounds else nil
+		-- a422 : le son de la plaque est préchargé, pour que même la première plaque sonne au contact (sinon le premier
+		-- Play attend le téléchargement du son).
+		task.spawn(function()
+			pcall(function()
+				local list: { Instance } = {}
+				for _, name in { CashFlash.Sound, CashFlash.FallbackSound } do
+					local found: any = if markerSounds and name then markerSounds.find(name) else nil
+					if found ~= nil then
+						table.insert(list, found)
+					end
+				end
+				if #list > 0 then
+					game:GetService("ContentProvider"):PreloadAsync(list)
+				end
+			end)
+		end)
 		local vfx: any = sibling("VfxController")
 		local onLanded: any = if vfx then vfx.OnCollectLanded else nil
 		if type(onLanded) == "function" then
