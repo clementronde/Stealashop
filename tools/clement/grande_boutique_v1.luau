@@ -253,9 +253,16 @@ local function buildFloor2(T: Model, rayons: Model): string
 	end
 	local all = F:GetDescendants()
 	table.insert(all, F)
+	-- les règles d'affichage du rez-de-chaussée ne valent pas pour l'étage : Frame_Etage/Back_L1 venait de
+	-- Stage_1/Frame/Back_L1 avec HideFromStage = 2, et le fond de l'étage disparaissait au niveau 2 (rien ne le
+	-- remplace là-haut). Floor_2 garde seulement ses propres règles, posées sur Floor_2 lui-même.
+	local GROUND_RULES = { "HideFromStage", "ShowFromWalls", "HideFromWalls", "ShowFromSkill" }
 	for _, d in all do
 		for _, tg in CS:GetTags(d) do CS:RemoveTag(d, tg) end
 		if d:IsA("LuaSourceContainer") then d:Destroy() end
+		if d ~= F then
+			for _, at in GROUND_RULES do d:SetAttribute(at, nil) end
+		end
 	end
 	F.Parent = T
 	return "Floor_2 : " .. #F:GetDescendants() .. " éléments"
