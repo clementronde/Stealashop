@@ -23,6 +23,13 @@
 --   Balance.Stats.RealSpeedScale (16 → 32, 70 → 140 à × 2 ; Formulas.WalkSpeed et Formulas.MaxWalkSpeed).
 --   Vitesse fixe (SetFixedSpeed, objet volé à un joueur, Cantin 2026-11-13) : remplace les étapes 1 à 4 ;
 --   seul un modificateur à 0 (étourdi, entraînement) compte encore et immobilise.
+--   Zone safe (a426, L-319, Clément 23/11 ; Features.SafeZoneSpeed, Balance.SafeZoneSpeed) : quand le HumanoidRootPart
+--   est dans une zone `SafeZone` (Shared/SafeZone, regardé toutes les CheckInterval s), l'étape 1 donne
+--   Balance.SafeZoneSpeed.WalkSpeed (la même pour tous) au lieu de la formule ; les étapes 2 à 4 suivent. La vitesse
+--   fixe y devient sa valeur « zone safe » (SetFixedSpeed, 3e argument : objet volé = WalkSpeed × StolenItemMultiplier).
+--   Ordre : zone safe (étape 1), modificateurs et plafond, puis vitesse fixe du porteur, puis un modificateur à 0.
+--   L'attribut WalkSpeed garde la formule (vitesse conseillée des zones). AntiCheatService suit Humanoid.WalkSpeed
+--   et garde la plus haute des SpeedMemory dernières s : entrer ou sortir de la zone n'est jamais pris pour de la triche.
 --
 -- Attributs du Player (écrits seulement ici, posés quand le profil est chargé) :
 --   Speed      Vitesse (stat entraînée au tapis)
@@ -46,9 +53,10 @@
 --       "BatStun" (0, étourdi Bat.StunDuration s par un coup de batte, BatService). Le service
 --       qui pose une clé la retire lui-même, à la mort comme au départ : un modificateur survit
 --       à la réapparition. Plus aucune clé n'est posée avec aboveCap (potion de vitesse retirée).
---   StatsService.SetFixedSpeed(player, walkSpeed?)
+--   StatsService.SetFixedSpeed(player, walkSpeed?, safeZoneWalkSpeed?)
 --       Pose une vitesse fixe (nombre fini ≥ 0) qui remplace tout le calcul, sauf un modificateur à 0, ou la
 --       retire avec nil, puis recalcule. Posée et retirée par CarryService (objet volé à un joueur).
+--       safeZoneWalkSpeed (a426) : la valeur utilisée à sa place dans une zone safe (sans elle : walkSpeed).
 --   StatsService.GetSpeedBoost(player) -> number
 --       Produit des modificateurs posés au-dessus du plafond, 1 sans eux.
 --   StatsService.Refresh(player)
@@ -86,12 +94,41 @@ local tracked: { [Player]: boolean } = {}
 local modifiers: { [Player]: { [string]: number } } = {}
 local aboveCapKeys: { [Player]: { [string]: boolean } } = {} -- clés appliquées après le plafond (aucune aujourd'hui)
 local fixedSpeeds: { [Player]: number? } = {} -- vitesse fixe (SetFixedSpeed)
+local fixedSafeSpeeds: { [Player]: number? } = {} -- a426 : sa valeur dans une zone safe
 local applied: { [Player]: number } = {} -- dernière vitesse calculée pour le Humanoid
 local guards: { [Player]: RBXScriptConnection } = {}
+local inSafeZone: { [Player]: boolean } = {} -- a426 : dans une zone safe au dernier contrôle
 
 local function isFiniteNonNegative(n: any): boolean
 	return type(n) == "number" and n == n and n >= 0 and n < math.huge
 end
+
+-- a426 (L-319) : réglages de la zone safe, ou nil si la règle est coupée (Features.SafeZoneSpeed) ou si
+-- Shared/SafeZone, Config/Features ou Balance.SafeZoneSpeed manquent (require protégés : faux arbres des bancs).
+type SafeZoneRule = { walkSpeed: number, interval: number, contains: (Player) -> boolean }
+local function loadSafeZoneRule(): SafeZoneRule?
+	local ok, rule = pcall(function(): SafeZoneRule?
+		local Shared = ReplicatedStorage:FindFirstChild("Shared")
+		local config = if Shared then Shared:FindFirstChild("Config") else nil
+		local featuresModule = if config then config:FindFirstChild("Features") else nil
+		local zoneModule = if Shared then Shared:FindFirstChild("SafeZone") else nil
+		if featuresModule == nil or zoneModule == nil then
+			return nil
+		end
+		local features = (require :: any)(featuresModule)
+		local settings = (Balance :: any).SafeZoneSpeed
+		if features.SafeZoneSpeed ~= true or type(settings) ~= "table" then
+			return nil
+		end
+		if not isFiniteNonNegative(settings.WalkSpeed) or not isFiniteNonNegative(settings.CheckInterval) then
+			return nil
+		end
+		local zone = (require :: any)(zoneModule)
+		return { walkSpeed = settings.WalkSpeed, interval = settings.CheckInterval, contains = zone.ContainsPlayer }
+	end)
+	return if ok then rule else nil
+end
+local safeRule: SafeZoneRule? = nil -- posé par Init
 
 function StatsService.GetTrailMultiplier(_player: Player): number
 	return 1
@@ -138,8 +175,10 @@ function StatsService.Refresh(player: Player)
 	-- Étape 1 : formule v2 (déjà plafonnée à 70).
 	local trail = trailMultiplier(player)
 	local base = Formulas.WalkSpeed(if data then data.Stats.Speed else 0, trail)
+	-- a426 : dans une zone safe, la même vitesse pour tous à la place de la formule.
+	local safe = safeRule ~= nil and inSafeZone[player] == true
 	-- Étapes 2 et 3 : modificateurs, puis plafond ; étape 4 : modificateurs posés au-dessus du plafond.
-	local value = base
+	local value = if safe and safeRule then safeRule.walkSpeed else base
 	local list = modifiers[player]
 	local above = aboveCapKeys[player]
 	if list then
@@ -153,7 +192,7 @@ function StatsService.Refresh(player: Player)
 	value *= StatsService.GetSpeedBoost(player)
 	local fixed = fixedSpeeds[player]
 	if fixed ~= nil then
-		value = fixed
+		value = if safe then fixedSafeSpeeds[player] or fixed else fixed
 		if list then
 			for _, multiplier in list do
 				if multiplier == 0 then
@@ -229,16 +268,42 @@ function StatsService.SetSpeedModifier(player: Player, key: string, multiplier: 
 	StatsService.Refresh(player)
 end
 
-function StatsService.SetFixedSpeed(player: Player, walkSpeed: number?)
+function StatsService.SetFixedSpeed(player: Player, walkSpeed: number?, safeZoneWalkSpeed: number?)
 	if walkSpeed ~= nil and not isFiniteNonNegative(walkSpeed) then
 		warn(debug.traceback(`[StatsService] SetFixedSpeed : vitesse invalide ({walkSpeed})`, 2))
 		return
 	end
-	if not tracked[player] or fixedSpeeds[player] == walkSpeed then
+	if safeZoneWalkSpeed ~= nil and not isFiniteNonNegative(safeZoneWalkSpeed) then
+		warn(debug.traceback(`[StatsService] SetFixedSpeed : vitesse de zone safe invalide ({safeZoneWalkSpeed})`, 2))
+		safeZoneWalkSpeed = nil
+	end
+	local safeValue = if walkSpeed == nil then nil else safeZoneWalkSpeed
+	if not tracked[player] or (fixedSpeeds[player] == walkSpeed and fixedSafeSpeeds[player] == safeValue) then
 		return -- joueur parti, ou rien ne change
 	end
 	fixedSpeeds[player] = walkSpeed
+	fixedSafeSpeeds[player] = safeValue
 	StatsService.Refresh(player)
+end
+
+-- a426 : qui est dans une zone safe ? Recalcule ceux qui y entrent ou en sortent (mort = dehors).
+local function checkSafeZones()
+	local rule = safeRule
+	if rule == nil then
+		return
+	end
+	for player in tracked do
+		local ok, inside = pcall(rule.contains, player)
+		local now = ok and inside == true
+		if (inSafeZone[player] == true) ~= now then
+			if now then
+				inSafeZone[player] = true
+			else
+				inSafeZone[player] = nil
+			end
+			StatsService.Refresh(player)
+		end
+	end
 end
 
 -- À chaque apparition : applique la vitesse et annule toute écriture de Humanoid.WalkSpeed
@@ -287,6 +352,8 @@ local function onPlayerRemoving(player: Player)
 	modifiers[player] = nil
 	aboveCapKeys[player] = nil
 	fixedSpeeds[player] = nil
+	fixedSafeSpeeds[player] = nil
+	inSafeZone[player] = nil
 	applied[player] = nil
 	local guard = guards[player]
 	if guard then
@@ -300,6 +367,22 @@ function StatsService.Init()
 	Players.PlayerRemoving:Connect(onPlayerRemoving)
 	for _, player in Players:GetPlayers() do
 		onPlayerAdded(player)
+	end
+
+	-- a426 (L-319) : vitesse de la zone safe, contrôlée toutes les CheckInterval s (protégé : faux RunService des bancs).
+	safeRule = loadSafeZoneRule()
+	local rule = safeRule
+	if rule then
+		local elapsed = 0
+		pcall(function()
+			RunService.Heartbeat:Connect(function(dt: number)
+				elapsed += dt
+				if elapsed >= rule.interval then
+					elapsed = 0
+					checkSafeZones()
+				end
+			end)
+		end)
 	end
 
 	DataService.OnProfileLoaded(function(player: Player)
