@@ -142,6 +142,10 @@ local Features = {
 	ShopGlassThrow = false,
 	-- a315 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
 	ShopGlassThrowDev = true,
+	-- a428 (L-328 point 7, Clément 24/11) : le voleur attrapé par la police d'une dénonciation donne son objet au
+	-- dénonciateur (Config/Disguise.RecoverCatchRange, DisguiseService, CarryService.Transfer). V0 proposé (Cantin, 24/11) :
+	-- true ; false = l'objet tombe au sol, ou revole sur son rayon si le voleur est attrapé dans le magasin (comme avant).
+	DenounceRecover = true,
 }
 
 export type Features = typeof(Features)

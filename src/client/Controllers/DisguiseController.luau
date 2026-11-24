@@ -340,7 +340,9 @@ local function cabinAnchor(): (BasePart?, boolean)
 	if plot == nil then
 		return nil, false
 	end
-	local cabin = partOf(plot:FindFirstChild(Disguise.Cabin.ModelName, true))
+	local model = plot:FindFirstChild(Disguise.Cabin.ModelName, true)
+	-- L-326 : la pièce PromptPart de la cabine livrée, sinon sa première pièce.
+	local cabin = partOf(if model then model:FindFirstChild(Disguise.Cabin.PromptPart) or model else nil)
 	if cabin then
 		return cabin, false
 	end

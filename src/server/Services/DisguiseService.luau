@@ -22,6 +22,13 @@
 --      l'affiche comme pour un témoin), puis le « ! » CallShowTime s. À la fin : la police (WitnessService.Denounce,
 --      NPC_Police, mêmes règles que l'appel d'un témoin) part sur les voleurs du magasin (voir thievesOf). Personne :
 --      rien ne se passe et la dénonciation est dépensée quand même (f). CallsPerDisguise dénonciation(s).
+--      a428 (L-328 point 7, Features.DenounceRecover) : le voleur attrapé par un policier de SA dénonciation est
+--      renvoyé à sa base (la « prison », renvoi de la police) et l'objet NPCItem qu'il portait passe aussitôt sur la
+--      tête du dénonciateur (CarryService.Transfer, à l'écoute de GuardService.OnCatch, avant que GuardService ne le
+--      fasse tomber ou revoler au rayon), où qu'il soit et déguisé ou non ; il le ramène chez lui comme un objet
+--      ramassé (réserve à l'entrée de la zone safe). Ce policier est reconnu à la capture : encore en jeu, à
+--      RecoverCatchRange studs au plus du voleur, et son attribut TargetUserId (posé par GuardService sur chaque
+--      poursuivant) remis à 0 par la fin de sa poursuite. Dénonciateur parti, mort ou mains pleines : comme avant.
 --   4. Voler : rien n'est changé aux règles du vol. Le voleur attrapé par la police hors du magasin lâche son objet
 --      au sol (CarryService, « Caught »), que le faux passant ramasse comme tout le monde (GrabDropped) ; attrapé
 --      dans le magasin, l'objet revole sur son rayon (règle de Cantin du 2026-11-13), et le faux passant peut ouvrir
@@ -97,6 +104,8 @@ local SPAWN_LIFT = 0.5 -- studs au-dessus du sol à l'apparition (V0, comme Plot
 local SPAWN_OUT = 12 -- repli sans circuit : studs devant la vitrine (V0)
 local CHASE_DELAY = 0.5 -- s laissées au vol normal pour sortir son vigile avant d'en demander un (V0)
 local NOTICE_INTERVAL = 3 -- s entre deux « No tools while undercover. »
+local POLICE_TARGET = "TargetUserId" -- attribut de GuardService sur chaque poursuivant (0 : plus de cible)
+local RECOVER_REASON = "Denounced" -- raison du portage fini chez le voleur (CarryService.Transfer)
 local ACCESSORY_FIELDS = { "BackAccessory", "FaceAccessory", "FrontAccessory", "HairAccessory", "HatAccessory", "NeckAccessory", "ShouldersAccessory", "WaistAccessory" }
 local COLOR_FIELDS = { "HeadColor", "LeftArmColor", "RightArmColor", "LeftLegColor", "RightLegColor", "TorsoColor" }
 -- Sans HumanoidDescription ni BodyColors : la pièce R15 du témoin qui donne chaque couleur.
@@ -115,6 +124,8 @@ local noticeAt: { [Player]: number } = {}
 local storeHits: { [Model]: { [Player]: number } } = {} -- derniers coups comptés sur la vitrine de chaque magasin PNJ
 local savedLooks: { [Model]: HumanoidDescription } = {} -- description d'avant, par personnage déguisé
 local lookJobs: { [Model]: { () -> () } } = {} -- file des changements d'apparence d'un personnage
+-- L-328 point 7 : par voleur, le policier lancé par une dénonciation et le joueur qui l'a dénoncé.
+local recovers: { [Player]: { snitch: Player, police: Model } } = {}
 local rng = Random.new()
 
 local function log(message: string)
@@ -615,6 +626,7 @@ local function denounce(session: Session, store: Model)
 	if ok and type(launched) == "table" then
 		for _, entry in launched :: { WitnessService.PoliceChase } do
 			count += 1
+			recovers[entry.Player] = { snitch = player, police = entry.Police }
 			notify(entry.Player, MESSAGES.Denounced, "Alert")
 		end
 	elseif not ok then
@@ -716,6 +728,39 @@ local function step()
 	end
 end
 
+-- L-328 point 7 : `thief` vient d'être attrapé (GuardService.OnCatch, appelé avant que son objet ne tombe). Si c'est
+-- le policier de sa dénonciation, l'objet passe au dénonciateur. Appelé sans attendre (avant la suite de la capture).
+local function recover(thief: Player, night: boolean)
+	local entry = recovers[thief]
+	if entry == nil then
+		return
+	end
+	local police = entry.police
+	if police.Parent == nil then
+		recovers[thief] = nil -- ce policier est reparti
+		return
+	end
+	if night or police:GetAttribute(POLICE_TARGET) == thief.UserId then
+		return -- attrapé par un autre (vigile, nuit) : son policier court encore
+	end
+	local root = bodyOf(thief)
+	if root == nil or flat(police:GetPivot().Position - root.Position).Magnitude > Disguise.RecoverCatchRange then
+		return
+	end
+	recovers[thief] = nil
+	local payload = CarryService.GetPayload(thief)
+	local snitch = entry.snitch
+	if not Features.DenounceRecover or payload == nil or payload.Kind ~= "NPCItem" or snitch.Parent ~= Players then
+		return
+	end
+	if CarryService.Transfer(thief, snitch, RECOVER_REASON) then
+		notify(snitch, string.format(MESSAGES.Recovered, thief.DisplayName), "Success")
+		log(`{thief.Name} attrapé par la police de {snitch.Name} : l'objet {payload.ItemId} passe à {snitch.Name}`)
+	else
+		log(`{thief.Name} attrapé par la police de {snitch.Name} : objet pas transmis (mains pleines ou personnage absent)`)
+	end
+end
+
 -- Il porte quelque chose : il redevient joueur ; sans vigile à ses trousses, un vigile du magasin de l'objet sort.
 local function onCarryStarted(player: Player, payload: any)
 	local session = sessions[player]
@@ -791,7 +836,8 @@ function DisguiseService.Init()
 		end
 	end)
 	CarryService.OnCarryStarted(onCarryStarted)
-	GuardService.OnCatch(function(player: Player, _zone: number, _night: boolean, _carrying: boolean)
+	GuardService.OnCatch(function(player: Player, _zone: number, night: boolean, _carrying: boolean)
+		recover(player, night) -- a428 : d'abord, avant toute attente (l'objet est encore sur sa tête)
 		local session = sessions[player]
 		if session then
 			finish(session, "Caught")
@@ -804,6 +850,12 @@ function DisguiseService.Init()
 		end
 		readyAt[player] = nil
 		noticeAt[player] = nil
+		recovers[player] = nil
+		for thief, entry in recovers do
+			if entry.snitch == player then
+				recovers[thief] = nil
+			end
+		end
 		for _, hits in storeHits do
 			hits[player] = nil
 		end

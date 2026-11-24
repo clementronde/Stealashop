@@ -103,6 +103,12 @@
 --       listener(dropId, payload, position) quand un colis reste au sol sans être ramassé :
 --       Bat.DroppedLifetime secondes (6.2 : 15 s). Le modèle est déjà retiré et GetDrop(dropId) vaut nil.
 --       StoreHeistService remet alors sur son rayon un objet de magasin (vol depuis `position`).
+--   CarryService.Transfer(from, to, reason) -> boolean
+--       a428 (L-328 point 7, DisguiseService : la police d'une dénonciation attrape le voleur) : l'objet NPCItem porté
+--       par `from` passe tel quel (même table) sur la tête de `to`, comme une chute suivie d'un ramassage immédiat :
+--       OnCarryEnded(from, …, "Dropped", reason) puis OnCarryStarted(to, …) (les vigiles suivent l'objet comme après
+--       une chute). Jamais de retour au rayon. false, et rien ne change, si `from` ne porte pas d'objet NPCItem, ou
+--       si `to` porte déjà, est parti ou n'a pas de personnage vivant avec une tête.
 --   Étiquette des colis du rayon (L-031) :
 --   CarryService.AttachBoxLabel(model, rarityId, itemId?, mutation?) -> BillboardGui?
 --       Pose sur `model`, un colis qui n'est pas porté (StoreHeistService : chaque colis du rayon),
@@ -1128,6 +1134,29 @@ function CarryService.PlaceItemDrop(payload: Payload, position: Vector3, lifetim
 		print(`[CarryService] {dropId} : {describe(payload)} posé au sol sans porteur pour {lifetime} s`)
 	end
 	return dropId, drop.visual.model
+end
+
+function CarryService.Transfer(from: Player, to: Player, reason: string): boolean
+	local carry = carries[from]
+	if carry == nil or carry.payload.Kind ~= "NPCItem" or from == to or carries[to] ~= nil or to.Parent ~= Players then
+		return false
+	end
+	local character = to.Character
+	local humanoid = if character then character:FindFirstChildOfClass("Humanoid") else nil
+	local head = if character then character:FindFirstChild("Head") else nil
+	if character == nil or not character:IsDescendantOf(Workspace) or humanoid == nil or humanoid.Health <= 0 or head == nil or not head:IsA("BasePart") then
+		return false
+	end
+	local text = if type(reason) == "string" and reason ~= "" then reason else "Transfer"
+	local feet = feetOf(from, carry.humanoid)
+	local payload = finish(from, "Dropped", text) :: Payload
+	held[keyOf(payload)] = nil -- « Dropped » le laisse tenu : il ne touche pas le sol
+	if CarryService.StartCarry(to, payload) then
+		return true
+	end
+	-- Secours (tout est vérifié plus haut) : l'objet tombe aux pieds de `from`, à reprendre comme après une chute.
+	CarryService.PlaceItemDrop(payload, feet, Bat.DroppedLifetime)
+	return false
 end
 
 function CarryService.OnDropExpired(listener: DropExpiredListener): () -> ()
