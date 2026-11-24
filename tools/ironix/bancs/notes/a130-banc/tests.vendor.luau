@@ -1,0 +1,96 @@
+--!nocheck
+-- Banc a130 (vague 39, L-011) : VendorService, vendeurs Vendor_* des comptoirs du hub. Idle en boucle, Wave quand un
+-- joueur approche ; sans animations, rien et aucune erreur ; hors map (_INBOX_CLEMENT) ignoré.
+local Vendors = vendorsConfigValue()
+
+section("V0. Valeurs V0")
+check(Vendors.WaveDistance == 12 and Vendors.WaveHysteresis == 3 and Vendors.WaveCooldown == 6 and Vendors.Tick == 0.25, "V0a 12 studs, 3 de marge, 6 s, 0,25 s")
+
+-- Décor : un comptoir avec vendeur livré, un sans dossier, un sans Animator, un dans _INBOX_CLEMENT.
+local stall = new("Model", "ENV_Hub_WeaponStall", Workspace)
+local weapon = newVendor("Vendor_Weapon", Vector3.new(0, 0, 0), stall, true)
+local aura = newVendor("Vendor_Aura", Vector3.new(100, 0, 0), nil, false)
+local robux = newVendor("Vendor_Robux", Vector3.new(200, 0, 0), nil, true, false)
+local inbox = new("Folder", "_INBOX_CLEMENT", Workspace)
+local boxed = newVendor("Vendor_Pawn", Vector3.new(300, 0, 0), inbox, true)
+local guard = newVendor("Guard_Z1", Vector3.new(400, 0, 0), nil, true)
+local alice = newPlayer("Alice", Vector3.new(0, 3, 40))
+local bob = newPlayer("Bob", Vector3.new(0, 3, 60))
+
+startVendors()
+advance(0.3)
+
+section("V1. Démarrage")
+check(hasLog("[VendorService] 3 vendeur(s) Vendor_*"), "V1a 3 vendeurs dans la map (pas celui de _INBOX_CLEMENT, pas un vigile)")
+check(playing(weapon, "Idle"), "V1b Vendor_Weapon livré : Idle en boucle")
+check(not playing(weapon, "Wave"), "V1c personne près : pas de Wave")
+check(playsOf(aura, "Idle") == 0 and playsOf(robux, "Idle") == 0, "V1d sans dossier ou sans Animator : rien")
+check(playsOf(boxed, "Idle") == 0 and playsOf(guard, "Idle") == 0, "V1e _INBOX_CLEMENT et Guard_Z1 : rien")
+check(warnCount() == 0, `V1f aucun avertissement ({warnCount()})`)
+
+section("V2. Wave à l'approche")
+moveTo(alice, Vector3.new(0, 3, 13)) -- 13,1 studs de la tête : trop loin
+advance(0.5)
+check(playsOf(weapon, "Wave") == 0, "V2a à 13 studs : pas de Wave")
+moveTo(alice, Vector3.new(0, 3, 10))
+advance(0.3)
+check(playsOf(weapon, "Wave") == 1 and playing(weapon, "Wave"), "V2b à 10 studs : Wave une fois")
+check(playing(weapon, "Idle"), "V2c Idle continue sous Wave")
+advance(3)
+check(playsOf(weapon, "Wave") == 1, "V2d reste près : pas de nouveau Wave")
+moveTo(alice, Vector3.new(0, 3, 14)) -- entre 12 et 15 : toujours « près »
+advance(0.5)
+moveTo(alice, Vector3.new(0, 3, 10))
+advance(0.5)
+check(playsOf(weapon, "Wave") == 1, "V2e recule de moins de 3 studs puis revient : pas de Wave (marge)")
+
+section("V3. Délai entre deux Wave")
+moveTo(alice, Vector3.new(0, 3, 40))
+advance(0.5)
+moveTo(bob, Vector3.new(0, 3, 9))
+advance(0.3)
+local early = playsOf(weapon, "Wave")
+check(early == 1, `V3a Bob arrive moins de 6 s après : pas de Wave ({early})`)
+moveTo(bob, Vector3.new(0, 3, 60))
+advance(Vendors.WaveCooldown)
+moveTo(alice, Vector3.new(0, 3, 10))
+advance(0.3)
+check(playsOf(weapon, "Wave") == 2, "V3b après 6 s, Alice revenue : Wave")
+
+section("V4. Joueur mort")
+moveTo(alice, Vector3.new(0, 3, 40))
+advance(Vendors.WaveCooldown + 0.5)
+alice.Character.Humanoid.Health = 0
+moveTo(alice, Vector3.new(0, 3, 5))
+advance(0.5)
+check(playsOf(weapon, "Wave") == 2, "V4a un joueur mort ne fait pas saluer")
+alice.Character.Humanoid.Health = 100
+advance(0.3)
+check(playsOf(weapon, "Wave") == 3, "V4b revenu à la vie, à portée : Wave")
+
+section("V5. Livraison en cours de partie")
+addFolder(aura)
+advance(0.3)
+check(playing(aura, "Idle"), "V5a dossier Animations ajouté : Idle tout de suite")
+moveTo(bob, Vector3.new(100, 3, 8))
+advance(0.3)
+check(playsOf(aura, "Wave") == 1, "V5b puis Wave à l'approche")
+local late = newVendor("Vendor_Late", Vector3.new(500, 0, 0), nil, true)
+advance(0.3)
+check(playing(late, "Idle"), "V5c vendeur ajouté à la map en cours de partie : Idle")
+
+section("V6. Dossier sans Wave, vendeur retiré")
+local partial = newVendor("Vendor_Partial", Vector3.new(600, 0, 0), nil, false)
+addFolder(partial, true)
+advance(0.3)
+check(playing(partial, "Idle"), "V6a Idle seule livrée : Idle joue")
+moveTo(bob, Vector3.new(600, 3, 8))
+advance(0.3)
+check(playsOf(partial, "Wave") == 0, "V6b Wave absente : rien")
+check(hasLog("Wave") and warnCount() == 1, `V6c un avertissement en Studio pour Wave manquante ({warnCount()})`)
+weapon:Destroy()
+advance(0.5)
+check(not playing(weapon, "Idle"), "V6d vendeur retiré : ses pistes s'arrêtent")
+check(warnCount() == 1, "V6e aucune erreur après le retrait")
+
+print(`banc a130-vendor : {CHECKS} vérification(s), {FAILS} échec(s)`)

@@ -1,0 +1,6 @@
+# a251 (vague 73, L-246) : UI_Unbox revient au contrat, en écran facultatif (UI_Unbox.EdgeGlow, le fondu des bords de la
+# nouvelle ouverture du colis) : il n'est plus dans UI.Retired, et l'écran livré avec EdgeGlow ne donne ni note ni avertissement.
+s/check\(screen\.Name ~= "UI_Unbox", `\{screen\.Name\} : pas UI_Unbox`\)/check(screen.Name ~= "UI_Unbox" or screen.Optional == true, `{screen.Name} : UI_Unbox seulement en écran facultatif (a251, EdgeGlow)`)/
+s/UI\.Retired\.Screens\.UI_Unbox ~= nil and UI\.Retired\.Billboards\.BB_OpenTimer ~= nil, "UI\.Retired : UI_Unbox et BB_OpenTimer"/UI.Retired.Screens.UI_Unbox == nil and UI.Retired.Billboards.BB_OpenTimer ~= nil, "UI.Retired : BB_OpenTimer, plus UI_Unbox (a251 : revenu au contrat)"/
+s/^make\("TextButton", \{ Name = "ContinueButton", Text = "" \}, unbox\)(\r?)$/make("TextButton", { Name = "ContinueButton", Text = "" }, unbox)\1\nmake("ImageLabel", { Name = "EdgeGlow" }, unbox) -- a251\1/
+s/check\(logHas\("StarterGui\.UI_Unbox : colis porté et ouvert en base retirés", "PRINT", "server"\), "UI_Unbox : une note « peut être retiré »"\)/check(not logHas("StarterGui.UI_Unbox : colis porté et ouvert en base retirés", "PRINT", "server"), "UI_Unbox : plus de note « peut être retiré » (a251 : revenu au contrat)")/

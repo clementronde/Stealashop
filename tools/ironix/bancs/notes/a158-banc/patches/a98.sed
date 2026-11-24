@@ -1,0 +1,4 @@
+# a158, banc a98 (panel admin) : la commande GiveBox donne un objet de la rareté demandée (plus de colis dans Boxes).
+s/check\("2 GiveBox Epic exacte", box ~= nil and box\.Rarity == "Epic" and Items\.ById\[box\.ItemId\]\.Rarity == "Epic" and box\.Spot == nil, lastReply\(\)\[3\]\)/check("2 GiveBox Epic (a158) : un objet Épique dans l inventaire, aucun colis", box == nil and lastReply()[2] == true and string.find(lastReply()[3], "Gave Epic item", 1, true) ~= nil, lastReply()[3])/
+/check\("2 GiveBox : Tier Premium \(V0\)", box ~= nil and box\.Tier == "Premium"\)/d
+s/check\("2 GiveBox zone 3 demandée", b2 ~= nil and b2\.Zone == 3 and b2\.Tier == "Standard"\)/check("2 GiveBox zone 3 demandée (a158) : un objet Commun de la zone 3, aucun colis", b2 == nil and lastReply()[2] == true and (function() for _, it in DATA[bob].Items do if it.Zone == 3 and Items.ById[it.Id].Rarity == "Common" then return true end end return false end)())/

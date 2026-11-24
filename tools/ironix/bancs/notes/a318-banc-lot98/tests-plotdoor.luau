@@ -1,0 +1,52 @@
+--!nocheck
+-- Banc a318, PlotDoorController : sa boutique sort du streaming et revient (5 fois, puis 5 fois en perdant les
+-- changements locaux) : une seule écoute du propriétaire, murs et porte toujours traversables chez lui, vantaux à leur
+-- place ; une autre boutique qui revient reste solide.
+local function buildPlot(name, owner, x)
+	local plot = model({ Name = name }, map())
+	plot:SetAttribute("OwnerUserId", owner)
+	local barrier = part({ Name = "PlotBarrier", Position = Vector3.new(x, 2, 0) }, plot)
+	local door = model({ Name = "PlotDoor" }, plot)
+	local window = model({ Name = "Window" }, door)
+	local glass = part({ Name = "Glass", Position = Vector3.new(x, 3, 10) }, window)
+	local leafL = model({ Name = "Leaf_L" }, window)
+	part({ Name = "LeafPart", Position = Vector3.new(x - 3, 3, 10) }, leafL)
+	local leafR = model({ Name = "Leaf_R" }, window)
+	part({ Name = "LeafPart", Position = Vector3.new(x + 3, 3, 10) }, leafR)
+	plot:AddTag("PlayerPlot")
+	snapshot(plot)
+	return plot, barrier, glass, leafL
+end
+
+scenario("plotdoor")
+local mine, barrier, glass, leafL = buildPlot("Plot_1", LocalPlayer.UserId, 0)
+local other, otherBarrier = buildPlot("Plot_2", 999, 100)
+startClientPhase()
+startController("PlotDoorController")
+local ownerSignal = mine:GetAttributeChangedSignal("OwnerUserId")
+local otherSignal = other:GetAttributeChangedSignal("OwnerUserId")
+check(barrier.CanCollide == false and glass.CanCollide == false, "au départ : murs et porte de sa boutique traversables")
+check(otherBarrier.CanCollide == true, "au départ : la boutique d'un autre reste solide")
+local before = liveConnections(ownerSignal)
+local leafBase = leafL:GetPivot().Position
+cycles(mine, 5, false)
+cycles(other, 5, false)
+check(liveConnections(ownerSignal) == before, `5 sorties et retours : écoutes du propriétaire inchangées ({before} → {liveConnections(ownerSignal)})`)
+check(liveConnections(otherSignal) == 1, `boutique d'un autre : une seule écoute du propriétaire ({liveConnections(otherSignal)})`)
+check(barrier.CanCollide == false and glass.CanCollide == false, "après les retours : murs et porte toujours traversables")
+check(otherBarrier.CanCollide == true, "après les retours : la boutique d'un autre reste solide")
+cycles(mine, 5, true)
+check(liveConnections(ownerSignal) == before, `5 retours en perdant les changements locaux : écoutes inchangées ({liveConnections(ownerSignal)})`)
+check(barrier.CanCollide == false and glass.CanCollide == false, "retour sans les changements locaux : murs et porte rendus traversables")
+check(leafL:GetPivot().Position == leafBase, "vantail à sa place (perso loin de la porte)")
+-- La boutique change de propriétaire pendant qu'elle est sortie : au retour, elle n'est plus la sienne.
+streamOut(mine)
+mine:SetAttribute("OwnerUserId", 999)
+streamIn(mine, false)
+advance(0.2)
+check(barrier.CanCollide == true, "boutique revenue à un autre propriétaire : redevenue solide")
+mine:SetAttribute("OwnerUserId", LocalPlayer.UserId)
+advance(0.2)
+check(barrier.CanCollide == false, "rendue au joueur : de nouveau traversable")
+noErrors("plotdoor")
+summary("plotdoor")

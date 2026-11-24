@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# a158 (2026-11-14, vague 50, Cantin : le colis porté n'existe plus) : lanceur du banc a23.
+# Avant a158 (NPCBoxPayload encore dans Types/Carry) : le banc d'origine, tel quel.
+H="$(cd "$(dirname "$0")/../../.." && pwd)"
+ARG="${1:-/f/StealAShop}"
+REPO="${ARG%/src}"
+if grep -q "NPCBoxPayload = {" "$REPO/src/shared/Types/Carry.luau" 2>/dev/null; then
+	exec bash "$H/a90-banc/autres-bancs/a23-banc/run.sh" "$@"
+fi
+# Depuis a158 : banc retiré (ouverture en base v2, UnboxReveal : retirée ; les crans d'amélioration restent vérifiés par le banc a53 des récompenses).
+echo "banc a23 : SAUTÉ depuis a158 (le colis porté n'existe plus ; ouverture en base v2, UnboxReveal : retirée ; les crans d'amélioration restent vérifiés par le banc a53 des récompenses) : 0 vérification(s), 0 échec(s)"
+exit 0

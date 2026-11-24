@@ -1,0 +1,30 @@
+--!nocheck
+-- K. Barres déjà cachées avant la poursuite : elles restent cachées après ; sans UI_Hotbar, LeftRail seul.
+buildFeelAssets()
+local alice = newPlayer("Alice")
+spawnCharacter(alice, Vector3.new(zoneMiddle(1), 3, 0))
+copyScreen(alice, STARTER_CHASE)
+local rail, hotbar = buildScreens(alice, false, false)
+startClient(alice)
+local guard = buildGuard(alice, zoneMiddle(1) + 20)
+
+section("K. Barres cachées avant")
+advance(0.5)
+serverFire("ChaseState", alice, true, guard)
+advance(0.5)
+check(rail.Visible == false and hotbar.Enabled == false, "K1 cachées pendant")
+serverFire("ChaseState", alice, false)
+advance(0.5)
+check(rail.Visible == false and hotbar.Enabled == false, "K2 toujours cachées après (état d'origine)")
+
+section("K1. Pas de UI_Hotbar")
+hotbar:Destroy()
+rail.Visible = true
+serverFire("ChaseState", alice, true, guard)
+advance(0.5)
+check(rail.Visible == false, "K3 LeftRail caché sans UI_Hotbar")
+serverFire("ChaseState", alice, false)
+advance(0.5)
+check(rail.Visible == true, "K4 LeftRail revenu")
+check(not logHas("[ChaseFeel]", nil, "client"), "K5 aucune ligne ni erreur")
+summary("scénario keep")

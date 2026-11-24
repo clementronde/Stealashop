@@ -1,0 +1,3 @@
+# a291 : a286 (L-224 point 2, « survol d'une carte +3 % ») fait grossir la carte elle-même par un UIScale passager
+# (Hover.CardTo, 1,03) : F2b vérifie que c'est ce survol de carte, et pas l'effet de bouton (Hover.To, 1,06).
+s/^check\(countClass\(copy, "UIScale"\) == 0, "F2b la carte elle-même ne prend pas l'effet de bouton"\)/do local cs = copy:FindFirstChildOfClass("UIScale"); check(countClass(copy, "UIScale") == 1 and cs ~= nil and cs.Scale > 1 and cs.Scale < H.To - 0.01, `F2b (a291) la carte prend son survol +3 % (Hover.CardTo, L-224), pas l'effet de bouton (Hover.To) : {if cs then cs.Scale else "aucun UIScale"}`) end/

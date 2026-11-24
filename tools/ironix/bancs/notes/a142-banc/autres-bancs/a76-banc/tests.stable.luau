@@ -1,0 +1,86 @@
+--!nocheck
+-- a142 (2026-11-14) : la case de l objet « high » n est plus utilisée pour l exposer (elle le met en main) : PlaceItem.
+-- Scénario « stable » (vague 25) : chaque chose garde sa case ; colis posé ou objet exposé = case vide,
+-- rien ne se décale (mêmes copies, même LayoutOrder) ; une chose nouvelle prend la première case vide ;
+-- barre pleine : elle reste seulement dans l'inventaire ; objet revenu d'un présentoir = nouveau ;
+-- chaque changement envoyé au serveur (SetHotbar, regroupé) et gardé dans le profil.
+
+advance(1000)
+startServer()
+local data = newProfile()
+addItem(data, "high", "Z3_Smartphone", nil, 3, 1)
+local ada = join("Ada", data)
+advance(1.5)
+local loadedLayout = ada:GetAttribute("HotbarLayout")
+buildInventoryUi(ada)
+buildHotbarUi(ada)
+startClient(ada)
+advance(0.5)
+local Hotbar = clientModule("HotbarController")
+
+section("disposition de départ (rien de sauvegardé)")
+check(loadedLayout == "", `attribut HotbarLayout vide au chargement : « {loadedLayout} »`)
+
+check(Hotbar.GetState().Ready and layoutText(Hotbar.GetState().Layout) == "Tool,Bat,high,,,", `outil, batte, l'objet : {layoutText(Hotbar.GetState().Layout)}`)
+advance(1)
+check(#hotbarSent() == 1 and dataOf(ada).Hotbar and layoutText(dataOf(ada).Hotbar) == "Tool,Bat,high,,,", "disposition de départ envoyée une fois et gardée dans le profil")
+
+section("colis rapportés : première case vide")
+local a = bringBox(ada, "Rare", "Z3_Smartphone", "Premium", 3)
+advance(0.2)
+local b = bringBox(ada, "Common", "Z1_Banane", "Standard", 1)
+advance(0.3)
+check(layoutText(Hotbar.GetState().Layout) == `Tool,Bat,high,{a},{b},`, `A en 4, B en 5 : {layoutText(Hotbar.GetState().Layout)}`)
+local boxB = slotsOf()["Slot_Box_" .. b]
+check(boxB and boxB.LayoutOrder == 5, "case de B : rang 5")
+
+section("colis posé : sa case est vide, rien ne bouge")
+placeAt(ada, a, 6, 20)
+advance(0.5)
+check(dataOf(ada).Boxes[a].Spot ~= nil, "A posé au sol")
+check(layoutText(Hotbar.GetState().Layout) == `Tool,Bat,high,,{b},`, `case 4 vide : {layoutText(Hotbar.GetState().Layout)}`)
+check(slotsOf()["Slot_Box_" .. b] == boxB and boxB.LayoutOrder == 5 and slotPart(boxB, "KeyLabel").Text == "5", "B garde sa case (même copie, rang 5, touche 5)")
+local empty = slotsOf().Slot_Empty_4
+check(empty and empty.LayoutOrder == 4 and slotPart(empty, "ItemName").Text == "" and slotPart(empty, "Icon").Image == "" and not slotPart(empty, "Income").Visible, "case 4 vide : pas de nom, pas d'image, pas d'Income")
+check(slotPart(empty, "KeyLabel").Text == "4", "case vide : son numéro reste")
+local sent = #serverCalls("PlaceItemAuto") + #serverCalls("PlaceBox") + #serverCalls("HoldItem")
+click(empty)
+pressKey("Four")
+advance(0.3)
+check(#serverCalls("PlaceItemAuto") + #serverCalls("PlaceBox") + #serverCalls("HoldItem") == sent and clientModule("InventoryController").GetState().Placing == nil, "clic et touche sur la case vide : rien (pas le colis suivant)")
+
+section("chose nouvelle : première case vide")
+local c = bringBox(ada, "Epic", "Z3_PcGamer", "Luxe", 3)
+advance(0.3)
+check(layoutText(Hotbar.GetState().Layout) == `Tool,Bat,high,{c},{b},`, `C prend la case 4 : {layoutText(Hotbar.GetState().Layout)}`)
+local d = bringBox(ada, "Common", "Z1_Banane", "Standard", 1)
+advance(0.3)
+check(layoutText(Hotbar.GetState().Layout) == `Tool,Bat,high,{c},{b},{d}`, `D prend la case 6 : {layoutText(Hotbar.GetState().Layout)}`)
+local e = bringBox(ada, "Common", "Z1_Banane", "Standard", 1)
+advance(0.3)
+check(layoutText(Hotbar.GetState().Layout) == `Tool,Bat,high,{c},{b},{d}` and slotsOf()["Slot_Box_" .. e] == nil, "barre pleine : E reste seulement dans l'inventaire")
+clientModule("InventoryController").Open()
+check(cardsOf("Boxes")["Box_" .. e] ~= nil, "E a sa carte dans l'écran d'inventaire")
+clientModule("InventoryController").Close()
+
+section("objet exposé puis repris : case vide, puis nouveau")
+clientModule("InventoryController").PlaceItem("high") -- a142 : une case d'objet met en main ; exposé par l'écran
+advance(0.5)
+check(invItem(ada, "high").Slot ~= nil, "l'objet est exposé (PlaceItemAuto)")
+check(layoutText(Hotbar.GetState().Layout) == `Tool,Bat,,{c},{b},{d}`, `case 3 vide : {layoutText(Hotbar.GetState().Layout)}`)
+advance(0.2)
+check(layoutText(Hotbar.GetState().Layout) == `Tool,Bat,,{c},{b},{d}`, "E n'entre pas dans la case libérée (il était déjà là)")
+fireAs(ada, "UnplaceItem", "high")
+flush()
+advance(0.3)
+check(invItem(ada, "high").Slot == nil and layoutText(Hotbar.GetState().Layout) == `Tool,Bat,high,{c},{b},{d}`, `repris : nouveau, dans la 1re case vide : {layoutText(Hotbar.GetState().Layout)}`)
+
+section("sauvegarde regroupée")
+advance(1)
+check(layoutText(dataOf(ada).Hotbar) == layoutText(Hotbar.GetState().Layout), `profil = disposition affichée : {layoutText(dataOf(ada).Hotbar)}`)
+check(ada:GetAttribute("HotbarLayout") == layoutText(Hotbar.GetState().Layout), "attribut HotbarLayout remis")
+local before = #hotbarSent()
+advance(2)
+check(#hotbarSent() == before, "rien de plus tant que rien ne change")
+
+summary("scénario stable")

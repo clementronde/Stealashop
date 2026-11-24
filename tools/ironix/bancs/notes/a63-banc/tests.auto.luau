@@ -1,0 +1,136 @@
+--!nocheck
+-- Scénario « auto » (L-092 point 2c, réponse de Clément du 2026-11-11) : l'outil de casse passe en main tout
+-- seul quand le joueur arrive à Balance.Hit.Range (8) d'une vitrine cassable (Window d'un magasin NPCStore,
+-- ou d'une parcelle PlayerPlot d'un autre joueur), sans rien en main, sans portage ni mode pose ; une fois par
+-- approche (rangé exprès : pas remis avant d'être reparti au-delà de Hit.ServerMaxDistance, 10, puis revenu) ;
+-- jamais rien retiré de la main ; vitrine cassée, sans PV max ou de sa propre boutique : rien. Plus l'icône
+-- ICON_TOOL_Bat sur la carte de la batte quand elle est livrée (L-092 2a).
+
+make("Decal", { Name = "ICON_TOOL_Bat", Texture = "rbxassetid://9203" }, ICONS)
+advance(1000)
+startServer()
+local data = newProfile()
+data.Tools = { Owned = { "Fists" }, Equipped = "Fists" }
+local ada = join("Ada", data)
+local bob = join("Bob", newProfile())
+advance(1.5)
+buildInventoryUi(ada)
+startClient(ada)
+advance(0.5)
+local function held()
+	return ada.Character:FindFirstChildWhichIsA("Tool")
+end
+local function heldIsBreaking()
+	local t = held()
+	return t ~= nil and t:GetAttribute("ToolId") == "Fists"
+end
+
+section("carte de la batte : ICON_TOOL_Bat")
+click(INV.invButton)
+click(INV.tabs.Tools.button)
+local cards = cardsOf("Tools")
+check(cards.Tool_Bat and cardPart(cards.Tool_Bat, "Icon").Image == "rbxassetid://9203", "icône ICON_TOOL_Bat livrée : sur la carte de la batte")
+click(INV.close)
+advance(0.6)
+
+-- Magasin PNJ dans le couloir : vitre de 12 × 8 × 1 centrée en (1000, 4, 0).
+local store = make("Model", { Name = "STORE_Z1_Test" }, Workspace)
+local window = make("Part", { Name = "Window", Anchored = true, Size = Vector3.new(12, 8, 1), CFrame = CFrame.new(1000, 4, 0) }, store)
+window:SetAttribute("WindowId", "Store_1")
+window:SetAttribute("MaxHP", 100)
+window:SetAttribute("Broken", false)
+addTag(store, "NPCStore")
+local function at(dz)
+	moveTo(ada, Vector3.new(1000, 3, 0.5 + dz))
+	advance(0.6)
+end
+
+section("approche d'une vitrine")
+at(30)
+check(held() == nil, "loin (30 studs) : rien en main")
+at(9.5)
+check(held() == nil, "à 9,5 studs (au-delà de la portée d'un coup, 8) : rien")
+at(6)
+check(heldIsBreaking(), "à 6 studs : l'outil de casse en main")
+check(#serverCalls("EquipTool") == 0, "aucun remote envoyé")
+
+section("rangé exprès : pas remis pendant la même approche")
+pressKey("One")
+check(held() == nil, "1 : rangé")
+advance(2)
+at(3)
+check(held() == nil, "toujours près de la vitrine : il reste rangé")
+at(9.5)
+check(held() == nil, "recul à 9,5 studs (pas encore reparti) : rien")
+at(6)
+check(held() == nil, "revenu sans être reparti au-delà de 10 : rien")
+at(20)
+at(6)
+check(heldIsBreaking(), "reparti (20 studs) puis revenu : de nouveau en main")
+
+section("déjà en main : on n'y touche pas")
+pressKey("Two")
+check(held() and held():GetAttribute("BatTool") == true, "2 : la batte en main")
+at(20)
+at(6)
+check(held() and held():GetAttribute("BatTool") == true, "batte en main à l'arrivée : elle reste, l'outil n'est pas mis")
+pressKey("Two")
+advance(1)
+check(held() == nil, "batte rangée près de la vitrine : rien ne la remplace pendant cette approche")
+at(20)
+pressKey("One")
+at(6)
+check(heldIsBreaking(), "outil déjà en main à l'arrivée : il y reste")
+pressKey("One")
+at(20)
+
+section("portage : jamais pendant un colis porté")
+ada:SetAttribute("Carrying", "Rare")
+at(6)
+check(held() == nil, "colis porté : rien en main")
+ada:SetAttribute("Carrying", nil)
+advance(0.6)
+check(heldIsBreaking(), "colis lâché, toujours près de la vitrine : l'outil vient")
+pressKey("One")
+at(20)
+
+section("vitrines qui ne comptent pas")
+window:SetAttribute("Broken", true)
+at(6)
+check(held() == nil, "vitrine cassée : rien")
+window:SetAttribute("Broken", false)
+window:SetAttribute("MaxHP", 0)
+at(20)
+at(6)
+check(held() == nil, "MaxHP 0 (incassable) : rien")
+window:SetAttribute("MaxHP", 100)
+at(20)
+
+section("parcelles : celle d'un autre oui, la sienne non")
+local function plotWindow(plot, id)
+	local cf = plot:GetPivot()
+	local w = make("Part", { Name = "Window", Anchored = true, Size = Vector3.new(12, 8, 1), CFrame = cf * CFrame.new(0, 4, 40) }, plot)
+	w:SetAttribute("WindowId", id)
+	w:SetAttribute("MaxHP", 100)
+	w:SetAttribute("Broken", false)
+	return w
+end
+local mine = plotWindow(shopOf(ada), "Plot_Ada")
+local theirs = plotWindow(shopOf(bob), "Plot_Bob")
+moveTo(ada, (mine.CFrame * CFrame.new(0, -1, 5)).Position)
+advance(0.6)
+check(held() == nil, "devant sa propre vitrine : rien")
+moveTo(ada, (theirs.CFrame * CFrame.new(0, -1, 5)).Position)
+advance(0.6)
+check(heldIsBreaking(), "devant la vitrine de Bob : l'outil en main")
+pressKey("One")
+at(20)
+
+section("réapparition")
+spawnCharacter(ada, Vector3.new(1000, 3, 30))
+advance(0.6)
+check(held() == nil, "réapparu loin : rien en main")
+at(6)
+check(heldIsBreaking(), "après la réapparition, première approche : l'outil en main")
+
+summary("scénario auto")

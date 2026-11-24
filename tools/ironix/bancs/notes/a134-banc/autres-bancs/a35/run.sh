@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+# Copie a134 (2026-11-14, vague 40, rééquilibrage v2 appliqué dans src/) : prix des armes v2, plus d'amélioration Bench ; faux arbre : levier-force.luau et coups-en-rafale.luau.
+# Arbre sans le rééquilibrage (Balance.Stats.WalkPerDecade absent) : le banc d'avant tourne tel quel.
+_A134_R="${1:-/f/StealAShop}"; _A134_F="$_A134_R/src/shared/Config/Balance.luau"; [ -f "$_A134_F" ] || _A134_F="$_A134_R/shared/Config/Balance.luau"
+if ! grep -q "WalkPerDecade" "$_A134_F" 2>/dev/null; then exec bash "$(cd "$(dirname "$0")" && pwd)/../../../a126-banc/autres-bancs/a35-banc/run.sh" "$@"; fi
+# Copie d'a126 (vague 38, 2026-11-14) de la copie a121 du banc a35 : tests.names attend 14 étapes de funnel (14 « Bot semé
+# avec son objet »). Sur un arbre sans EscapeBot (avant a126), relance la copie d'a121 : bonne avant et après la fusion.
+if ! grep -q "EscapeBot" "${1:-/f/StealAShop}/src/shared/Config/Tutorial.luau" 2>/dev/null; then exec bash "$(cd "$(dirname "$0")/../../.." && pwd)/a121-banc/autres-bancs/a35-banc/run.sh" "$@"; fi
+# Copie d'a121 (vague 36, 2026-11-13, L-085 point 4) du banc a35 (copie active : a91-banc/autres-bancs/a35-banc) : tests.names
+# attend 13 étapes de funnel (11 à 13 : vol sur la boutique du bot). Rien d'autre ne change.
+# Sur un arbre sans BotShopRadius dans Config/Tutorial (avant a121), relance la copie d'a91 : bonne avant et après la fusion.
+if ! grep -q "BotShopRadius" "${1:-/f/StealAShop}/src/shared/Config/Tutorial.luau" 2>/dev/null; then exec bash "$(cd "$(dirname "$0")/../../.." && pwd)/a91-banc/autres-bancs/a35-banc/run.sh" "$@"; fi
+# Copie d'a36 (vague 12, DEV-060) : bouchon d'AntiCheatService (../stub-anticheat.luau), requis par les services qui déplacent un joueur.
+# Banc hors Studio d'a35 (vague 12, DEV-054) : la télémétrie (TelemetryService, Config/Telemetry,
+# événement OnPurchase de ShopService, interrupteur du funnel de TutorialService).
+# Vrais : TelemetryService, ShopService, TutorialService, PvPService, BatService, StatsService,
+# DisplayService, PlotService, WindowService, CarryService, Loader, Net, Config, Contract, Anim, Format,
+# Types. Bouchons : DataService, NightCycleService, ToolService, CosmeticService, UnboxService,
+# GuardService, StoreHeistService (setup.luau). Faux Roblox : celui d'a30 (stubs.luau), complété par
+# ext29.luau (a29), ext32.luau (a32) et ext35.luau (énumérations de l'Analytics, faux AnalyticsService
+# qui note et vérifie chaque appel, serveur « prod »).
+# Chaque scénario tourne dans son propre luau (état neuf) : pre.<nom>.luau s'il existe, setup.luau,
+# puis tests.<nom>.luau.
+#   bash run.sh [racine du dépôt] [scénarios…]   (défaut : le worktree a35 ; après fusion : /f/StealAShop)
+#   VERBOSE=1 bash run.sh                         écrit aussi les lignes ok et la sortie des modules
+set -u
+H="$(cd "$(dirname "$0")" && pwd)"
+ROOT="${1:-/f/StealAShop}"
+shift || true
+SRC="$ROOT/src"
+LUAU="$HOME/.rokit/bin/luau.exe"
+SCENARIOS="${*:-economy custom refusal prod switch hooks funnel names badnames}"
+FILES="shared server/Services/TelemetryService.luau server/Services/ShopService.luau server/Services/TutorialService.luau server/Services/PvPService.luau server/Services/BatService.luau server/Services/StatsService.luau server/Services/DisplayService.luau server/Services/PlotService.luau server/Services/WindowService.luau server/Services/CarryService.luau"
+
+sources() {
+	(cd "$SRC" && find $FILES -name '*.luau' | sort) | awk -v root="$SRC" '{ f = $0; p = root "/" f; rs = RS; RS = "^$"; c = ""; getline c < p; close(p); RS = rs; gsub(/\r/, "", c); printf "SOURCES[\"%s\"] = [==========[\n%s\n]==========]\n", f, c }'
+}
+
+total_checks=0
+total_fails=0
+for name in $SCENARIOS; do
+	: "${R1_D:=$(d="${R1_RUN:-${TMPDIR:-/tmp}/r1-bancs}"; mkdir -p "$d" && mktemp -d "$d/b.XXXXXX")}" "${R1_D:?r1 : dossier du banc introuvable}"; OUT="$R1_D/run.$name.luau"
+	{
+		if [ "${VERBOSE:-}" = "1" ]; then echo "VERBOSE = true"; fi
+		cat "$H/stubs.luau" "$H/ext29.luau" "$H/ext32.luau" "$H/ext35.luau"
+		cat "$H/../../../a126-banc/../a59-banc/autres-bancs/stub-anticheat.luau" # a36 (DEV-060) : bouchon d'AntiCheatService
+		sources
+		cat "$H/../../levier-force.luau" # a134 : faux arbre, voir ce fichier
+		cat "$H/../../coups-en-rafale.luau" # a134 : faux arbre, voir ce fichier
+		if [ -f "$H/pre.$name.luau" ]; then cat "$H/pre.$name.luau"; fi
+		cat "$H/setup.luau"
+		cat "$H/tests.$name.luau"
+	} > "$OUT"
+	out=$("$LUAU" "$(cygpath -w "$OUT")" 2>&1)
+	line=$(printf '%s\n' "$out" | grep -E "^scénario .* : [0-9]+ vérification\(s\), [0-9]+ échec\(s\)$" | tail -1)
+	if [ -z "$line" ]; then
+		printf '%s\n' "$out" | tail -25
+		echo "scénario $name : arrêté avant la fin (erreur ci-dessus)"
+		total_fails=$((total_fails + 1))
+		continue
+	fi
+	if [ "${VERBOSE:-}" = "1" ]; then
+		printf '%s\n' "$out"
+	else
+		printf '%s\n' "$out" | grep -E "^---|ÉCHEC|ERREUR|^    " | grep -vE "^--- " || true
+	fi
+	c=$(printf '%s' "$line" | sed -E 's/.* : ([0-9]+) vérification.*/\1/')
+	f=$(printf '%s' "$line" | sed -E 's/.*, ([0-9]+) échec.*/\1/')
+	echo "  $name : $c contrôles, $f raté(s)"
+	total_checks=$((total_checks + c))
+	total_fails=$((total_fails + f))
+done
+echo "banc a35 (télémétrie) : $total_checks vérification(s), $total_fails échec(s)"
+exit $((total_fails > 0))

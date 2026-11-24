@@ -1,0 +1,46 @@
+--!nocheck
+-- Banc a318, SkyController : un lampadaire (tag NightLight) allumé la nuit sort du streaming. Revenu de jour : éteint
+-- (avant a318 : il gardait le Neon et sa lumière, allumé en plein jour). Revenu de nuit en ayant perdu les changements
+-- locaux : rallumé.
+local NEON = Enum.Material.Neon
+local PLASTIC = Enum.Material.Plastic
+local post = model({ Name = "Lamppost" }, map())
+local lamp = part({ Name = "NightLight", Material = PLASTIC }, post)
+local light = newInstance("PointLight", { Name = "Light", Enabled = false }, lamp)
+lamp:AddTag("NightLight")
+snapshot(post)
+
+scenario("sky")
+startClientPhase()
+startController("SkyController")
+local function setPhase(name)
+	Workspace:SetAttribute("NightPhase", name)
+	advance(0.2)
+end
+check(lamp.Material == PLASTIC and light.Enabled == false, "de jour au départ : lampadaire éteint")
+setPhase("Night")
+check(lamp.Material == NEON and light.Enabled == true, "la nuit : lampadaire allumé")
+streamOut(post)
+advance(0.2)
+setPhase("Day")
+streamIn(post, false)
+advance(0.2)
+check(lamp.Material == PLASTIC and light.Enabled == false, "sorti allumé, revenu de jour (changements gardés) : éteint")
+setPhase("Night")
+check(lamp.Material == NEON and light.Enabled == true, "nuit suivante : rallumé")
+streamOut(post)
+advance(0.2)
+streamIn(post, true)
+advance(0.2)
+check(lamp.Material == NEON and light.Enabled == true, "revenu de nuit en perdant les changements locaux : rallumé")
+streamOut(post)
+advance(0.2)
+setPhase("Day")
+streamIn(post, true)
+advance(0.2)
+check(lamp.Material == PLASTIC and light.Enabled == false, "revenu de jour en perdant les changements locaux : éteint")
+setPhase("Night")
+setPhase("Day")
+check(lamp.Material == PLASTIC and light.Enabled == false, "nuit puis jour sans sortie : éteint comme livré")
+noErrors("sky")
+summary("sky")

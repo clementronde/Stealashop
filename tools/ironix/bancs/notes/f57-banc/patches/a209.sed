@@ -1,0 +1,2 @@
+# fusion57 : DataService publie Diamonds au chargement (0 pour P1) ; vérifié, puis retiré pour garder le scénario « premier solde » d'a209.
+s/^local dshop = new\("ScreenGui", \{ Name = "UI_DiamondShop", Enabled = true \}\)$/check(P1:GetAttribute("Diamonds") == 0, "(fusion57) Diamonds publié par DataService au chargement : " .. tostring(P1:GetAttribute("Diamonds")))\nP1:SetAttribute("Diamonds", nil)\n&/

@@ -1,0 +1,3 @@
+# a158, banc a48 (gains hors ligne) : après la migration v7, les colis du profil deviennent des objets au chargement
+# (convertBoxes sans condition) : la Banane du présentoir 3 et le Donut de la file sont dans Items, Boxes est vide.
+s/^check\(kept\[99999\] and kept\[5\] and d\.BoxQueue == nil, "colis gardés dans l.inventaire \(v7 : celui du présentoir 3 et celui de la file\), heures promises gardées"\)$/check(next(d.Boxes) == nil and d.BoxQueue == nil and (function() local seen = {} for _, it in d.Items do seen[it.Id] = true end return seen.Z1_Banane and seen.Z1_Donut end)(), "a158 : colis du présentoir 3 et de la file devenus des objets de l inventaire (convertBoxes), Boxes vide")/

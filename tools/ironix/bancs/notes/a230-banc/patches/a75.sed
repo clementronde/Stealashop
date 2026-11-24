@@ -1,0 +1,3 @@
+# a230 (vague 70, L-189) : InventoryButton sorti de UI.Twins.UI_HUD (le bouton Inventory n'est plus en double).
+# Appliqué après les correctifs d'avant (f53 : « ,SkillTreeButton,MenuButton » accepté) : toute la condition est remplacée.
+s/check\(namesSeen == table\.concat\(RAIL_BUTTONS, ","\) or .*"les 4 boutons de la colonne \(5 avec SkillTreeButton, vague 27 : a85\)"\)/check(namesSeen == "RobuxShopButton,IndexButton,RebirthButton,SkillTreeButton" or namesSeen == "RobuxShopButton,IndexButton,RebirthButton,SkillTreeButton,MenuButton", "les doublons de la colonne, sans InventoryButton (vague 70 : a230, L-189)")/

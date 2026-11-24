@@ -1,0 +1,21 @@
+---------------------------------------------------------------- scénario « reduced » : animations réduites = l'ancien « +X » sur place
+local hud = startBanc(10, nil)
+print("\n== R1. VISUAL EFFECTS sur OFF (VfxEnabled = false)")
+P1:SetAttribute("VfxEnabled", false)
+P1:SetAttribute("TrainingMachine", "Treadmill")
+credit(12)
+local list = childrenNamed(PLAYER_GUI, "BB_Gain")
+check(#flyers(hud) == 0, "R1a rien ne vole")
+check(#list == 1 and el(list[1], "Amount").Text == "+2 Speed/s", `R1b l'ancien « +2 Speed/s » sur place ({list[1] and el(list[1], "Amount").Text})`)
+check(speedText(hud) == "12" and #SPEED_POPS == 1, `R1c nombre et pulsation tout de suite ({speedText(hud)}, {#SPEED_POPS})`)
+step(1.3)
+print("\n== R2. « Réduire les mouvements » de Roblox (GuiService.ReducedMotionEnabled)")
+P1:SetAttribute("VfxEnabled", true)
+GUI_SERVICE.ReducedMotionEnabled = true
+credit(14)
+check(#flyers(hud) == 0 and #childrenNamed(PLAYER_GUI, "BB_Gain") == 1 and speedText(hud) == "14", `R2a l'ancien « +X », nombre tout de suite ({speedText(hud)})`)
+step(1.3)
+GUI_SERVICE.ReducedMotionEnabled = false
+credit(16)
+check(#flyers(hud) == 1 and speedText(hud) == "14", `R2b réglage rendu : le gain vole de nouveau ({speedText(hud)})`)
+summary()

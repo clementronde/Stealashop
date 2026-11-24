@@ -1,0 +1,5 @@
+# a176 (vague 54), banc a96 (bot) : plus de coffre-fort chez le bot, toutes ses invites actives.
+s/check\(plot:GetAttribute\("SafeSlots"\) == "1" and plot:GetAttribute\("Protection"\) == nil, "PvPService publie le coffre-fort du bot \(présentoir 1\), aucune protection"\)/check(plot:GetAttribute("SafeSlots") == nil and plot:GetAttribute("Protection") == nil, "(a176) aucun coffre-fort ni protection sur la boutique du bot")/
+s/^check\(prompt1 ~= nil and not prompt1\.Enabled, "pas d'invite active sur l'objet à l'abri \(présentoir 1\)"\)$/check(prompt1 ~= nil and prompt1.Enabled, "(a176) invite active aussi sur le présentoir 1 (plus d'abri)")/
+s/^check\(not steal\(bob, plot, 1\), "objet à l'abri : le serveur refuse la prise"\)$/check(plot:GetAttribute("SafeSlots") == nil, "(a176) aucun SafeSlots publié chez le bot")/
+s/^check\(#notifies\(bob, "This item is in the safe"\) >= 1, "message du coffre-fort"\)$/check(#notifies(bob, "This item is in the safe") == 0, "(a176) aucun message de coffre-fort")/
