@@ -9,7 +9,7 @@
 --     ville sous elles (plus de mer du ciel), un dirigeable et un panneau géant sans texte. Hors du hub, du couloir des
 --     zones et de la vitrine de Clément ; les tours restent sous les bancs d'essai en l'air. ModelStreamingMode
 --     Persistent : la ville reste visible de loin même avec le streaming.
---  2) Sol du hub : dallage de galerie marchande en 2 tons (cases de 8), partout.
+--  2) Sol du hub : pelouse en damier de deux verts (cases de 8), partout (dallage bleu avant le 2026-11-24).
 --  Plus de mobilier (Clément, 2026-11-15 : « trop d'info tue l'info ») : ni lampadaires, ni bancs, ni fanions, ni
 --  jardinières ; le hub garde ses boutiques, ses stands, ses zones et son sol.
 -- Tout le décor ajouté est sans collision (ni toucher ni requête). Aucun script, aucun tag ni attribut du contrat.
@@ -354,7 +354,9 @@ sky.Parent = map
 add("ville : " .. nBuildings .. " immeubles (" .. nClash .. " sautés, place prise), " .. nParts .. " pièces (Map/Skyline), " .. #PLATES .. " plaques")
 
 -- 2) Sol du hub : dallage 2 tons, partout ---------------------------------------------------------------------------
-local TILE_A, TILE_B, CELL = rgb(88, 178, 245), rgb(66, 152, 230), 8
+-- Clément, 2026-11-24 (jardin du hub) : pelouse en damier de deux verts à tenons au lieu du bleu (la référence « mode
+-- studs » de la Partie 1, section 2.3) ; avant : rgb(88, 178, 245) et rgb(66, 152, 230)
+local TILE_A, TILE_B, CELL = rgb(106, 186, 88), rgb(94, 172, 78), 8
 local ground = hub:FindFirstChild("Ground")
 local grass = {}
 for _, n in { "Ground_Plaza", "Ground_Flank_N", "Ground_Flank_S" } do

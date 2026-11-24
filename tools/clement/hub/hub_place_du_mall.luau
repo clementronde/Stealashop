@@ -209,8 +209,12 @@ end
 -- maximale). Murs, sol, zones, stands, rue de sortie et SafeZone suivent les réglages en ligne (LINE reste vrai pour eux).
 -- FAN = false : la rangée de 4 et les 2 boutiques des côtés (x -149..30, |z| <= 232). Ancien placement :
 -- ServerStorage/MapBackups/2026-11-23_HubAvantEventail.
+-- Clément, 2026-11-24 (« resserrer l'éventail », jardin du hub) : centre en x -45, façades à 125 du centre, tous les 36°
+-- (90, 54, 18, -18, -54, -90) ; portes à 146, 180 et 198 de l'arche 1 ; hub ramené à x -279..30, |z| <= 235. Le jardin
+-- (allées, massifs, terrasses) et les murs de terre sont posés par tools/clement/hub/hub_jardin.luau, à relancer après
+-- ce script. Éventail à 160 d'avant : ServerStorage/MapBackups/2026-11-24_HubAvantJardin.
 local FAN = LINE and true
-local FAN_C, FAN_R, FAN_A = Vector3.new(-20, 0, 0), 160, { 80, 48, 16, -16, -48, -80 }
+local FAN_C, FAN_R, FAN_A = Vector3.new(-45, 0, 0), 125, { 90, 54, 18, -18, -54, -90 }
 if FAN then
 	for k, deg in FAN_A do
 		local a = math.rad(deg)
@@ -220,8 +224,11 @@ if FAN then
 		local center = front - n * (SHOP_D / 2)
 		SITES[k] = { k = k, angle = deg, side = 1, front = front, center = center, n = n, cf = frameAt(center, n) }
 	end
-	HUB = { x0 = -305, x1 = 30, z0 = -285, z1 = 285 }
+	HUB = { x0 = -279, x1 = 30, z0 = -235, z1 = 235 }
 end
+-- Clément, 2026-11-24 : murs de terre à la place du grand mur en damier (hub_jardin.luau, dans Walls/EarthWalls) et plus
+-- de disques lumineux au sol sous les stands et les zones. false remet le grand mur ou les disques.
+local BIG_WALL, GROUND_DISCS = false, false
 
 local report = {}
 local function add(s) table.insert(report, s) end
@@ -367,7 +374,7 @@ local function txt(gui, text, color, x, y, w, h, opt)
 	local t = Instance.new("TextLabel"); t.Name = opt.name or "Label"; t.BackgroundTransparency = 1
 	t.AnchorPoint = opt.anchor or Vector2.zero
 	t.Position = UDim2.fromScale(x, y); t.Size = opt.size or UDim2.fromScale(w, h)
-	t.Text = text; t.TextScaled = true; t.TextWrapped = true; t.TextColor3 = color; t.FontFace = opt.font or MONT
+	t.Text = text; t.TextScaled = true; t.TextWrapped = opt.wrap ~= false; t.TextColor3 = color; t.FontFace = opt.font or MONT
 	if opt.rotation then t.Rotation = opt.rotation end
 	if opt.strokeT ~= 0 then
 		local s = Instance.new("UIStroke"); s.Color = opt.strokeC or rgb(24, 24, 32); s.Thickness = opt.strokeT or 3
@@ -618,7 +625,8 @@ local map = workspace:FindFirstChild("Map")
 assert(map, "Workspace/Map introuvable")
 local hub = map:FindFirstChild("Hub")
 if not hub then hub = Instance.new("Folder"); hub.Name = "Hub"; hub.Parent = map end
-local OWN = { "Ground", "Plaza", "Mall", "Trucks", "Stalls", "Zones", "Parking", "Garden", "Walls", "PlotSites", "SafeZone", "Spawn" }
+-- 2026-11-24 : "Garden" n'y est plus, c'est le jardin de hub_jardin.luau (Map/Hub/Garden), que ce script garde
+local OWN = { "Ground", "Plaza", "Mall", "Trucks", "Stalls", "Zones", "Parking", "Walls", "PlotSites", "SafeZone", "Spawn" }
 -- _G.HUB_ONLY = { Ground = true, … } : ne refait que ces sections (plus Shops : boutiques recollées à leur emplacement, et
 -- Previews : aperçus des panneaux) ; le reste du hub n'est pas touché (2026-11-15 : stands et zones gardent l'UI posée dessus)
 local ONLY = _G.HUB_ONLY
@@ -683,9 +691,11 @@ if want("Ground") then
 		Bx(g, W, "SafeLine_" .. tag, 21.4, 0.44, z0, 22.6, 0.5, z1, SAFE_C, { decor = true, noShadow = true })
 	end
 	Bx(g, W, "SafeLine", 21.4, -0.01, -EXIT_ROAD, 22.6, 0.05, EXIT_ROAD, SAFE_C, { decor = true, noShadow = true })
-	local plate = P(g, "SafeZoneText", CFrame.lookAt(Vector3.new(16, 0.03, 0), Vector3.new(15, 0.03, 0)), Vector3.new(32, 0.05, 7), SAFE_C,
+	-- Clément, 2026-11-24 : lisible quand on regarde vers le couloir (bas du texte vers la place), sur une seule ligne. Sur
+	-- la face du dessus, la largeur du texte suit le Z de la pièce : 32 en Z (en travers de la rue), tournée de 180°.
+	local plate = P(g, "SafeZoneText", CFrame.new(16, 0.03, 0) * CFrame.Angles(0, math.pi, 0), Vector3.new(7, 0.05, 32), SAFE_C,
 		{ T = 1, decor = true, noShadow = true })
-	txt(surface(plate, TOP, 20), "SAFE ZONE", SAFE_C, 0, 0, 1, 1, { font = LUCKY, strokeT = 4 })
+	txt(surface(plate, TOP, 20), "SAFE ZONE", SAFE_C, 0, 0, 1, 1, { font = LUCKY, strokeT = 4, wrap = false })
 	-- (2026-11-14 : hub_ambiance_ville.luau, à relancer après ce script, remplace l'herbe et ces taches par un dallage
 	-- 2 tons, et pose la ville au loin, les jardinières et le mobilier)
 	-- pelouse habillée (Clément, 2026-11-08 : « des petits carrés vert foncé ») : taches de cases de 4 studs sur la place,
@@ -1262,6 +1272,7 @@ end
 local function gdSeq(list) local k = {} for _, v in list do table.insert(k, NumberSequenceKeypoint.new(v[1], v[2])) end return NumberSequence.new(k) end
 -- center : point au sol ; R : rayon ; theme : "spark", "bills" ou "coins"
 local function groundDisc(parent, center, R, color, theme)
+	if not GROUND_DISCS then return end
 	local p = Instance.new("Part"); p.Name = "GroundDisc"
 	p.Anchored = true; p.CanCollide = false; p.CanTouch = false; p.CanQuery = false; p.CastShadow = false
 	p.Transparency = 1; p.Material = SMOOTH
@@ -1656,7 +1667,7 @@ if want("Walls") then
 	end
 	-- sans le centre commercial : bordure basse (haie) au bord ouest, nord et sud du hub, et mur invisible au-dessus pour
 	-- qu'on ne saute pas dehors
-	if LINE then
+	if LINE and BIG_WALL then
 		-- grand mur en damier (cases de 16, deux tons de brique) et faîte vert, tout autour du hub sauf l'entrée (|z| < 34,5)
 		local WALL_A, WALL_B = rgb(206, 140, 116), rgb(184, 116, 94)
 		local function bigWall(name, x0, z0, x1, z1)
