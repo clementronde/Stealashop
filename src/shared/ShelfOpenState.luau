@@ -56,6 +56,10 @@ ShelfOpenState.ReservedUntilAttribute = "ShelfReservedUntil"
 -- remis à false après Config/ShelfOpen.Reveal.CeilingRepairSeconds s ; visuel côté client (a204).
 ShelfOpenState.CeilingAttribute = "CeilingBroken"
 ShelfOpenState.ProtectedAttribute = "RevealProtected"
+-- a421 (L-316) : sur le Model du colis, de RevealStarted à RevealEnded : RevealId (texte) = id de la cinématique (celui
+-- des remotes). Il ne lance rien chez le client (ShelfOpenController ne le lit pas) : colis occupé, pas d'invite « Open »
+-- (HeistController) ; tout contour ou étiquette posé hors du colis doit s'éteindre aussi tant qu'il est là.
+ShelfOpenState.RevealIdAttribute = "RevealId"
 
 export type State = "Opening" | "Revealed"
 

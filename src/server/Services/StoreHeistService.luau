@@ -313,8 +313,8 @@
 --     (ItemWeight.Roll avec la même chance), mutation de taille par le poids (ItemWeight.SizeMutationFor, à la
 --     place de celle tirée), taille (ScaleFor) et classe (SizeClassFor : hauteur libre jusqu'au haut de Bounds,
 --     hauteur de ITM_<ItemId> ou du bloc V0) ;
---   - cinématique : aucun attribut ShelfOpen* sur le colis (l'ouverture d'avant ne joue pas chez le client),
---     RevealStarted à tous les clients ;
+--   - cinématique : aucun attribut ShelfOpen* sur le colis (l'ouverture d'avant ne joue pas chez le client), seulement
+--     RevealId (a421, L-316 : colis occupé, plus d'invite « Open » chez les clients), RevealStarted à tous les clients ;
 --     l'ouvreur est protégé (attribut RevealProtected du Player, Shared/ShelfOpenState.ProtectedAttribute : GuardService fige ses
 --     vigiles, BatService refuse la batte, ChaseIntruder et les vigiles de nuit l'ignorent) et immobile
 --     (StatsService, modificateur « Reveal » à 0) ; son chrono est en pause (masqué, le vigile de fin de chrono
@@ -2872,6 +2872,9 @@ local function finishReveal(session: Reveal, why: string, gone: boolean?)
 	setProtected(player, false)
 	fireReveal("RevealEnded", session.Id)
 	local slot, box = session.Slot, session.Box
+	if box.Model:GetAttribute(ShelfOpenState.RevealIdAttribute) == session.Id then
+		box.Model:SetAttribute(ShelfOpenState.RevealIdAttribute, nil) -- a421 : jamais un colis marqué pour toujours
+	end
 	local store = slot.Store
 	if session.Ceiling then
 		repairCeilingLater(store)
@@ -2983,6 +2986,9 @@ local function startReveal(player: Player, slot: Slot, box: ShelfBox)
 	-- cinématique ; l'état est sur le serveur seul (box.Opening, Cinematic).
 	revealCount += 1
 	local id = `R{revealCount}`
+	-- a421 (L-316) : seule marque du colis pendant la cinématique (ShelfOpenState.RevealIdAttribute) : son invite s'éteint
+	-- chez tous les clients, l'ouvreur compris. Le refus d'une 2e ouverture reste ici (box.Opening : openRefusal).
+	box.Model:SetAttribute(ShelfOpenState.RevealIdAttribute, id)
 	local session: Reveal = {
 		Id = id,
 		Player = player,
