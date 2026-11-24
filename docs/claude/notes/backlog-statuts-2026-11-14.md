@@ -1,5 +1,7 @@
 # Statuts du backlog MVP à cliquer dans le doc partagé (2026-11-14)
 
+> **Archive (24/11) : photo du 14/11.** Les statuts du backlog ne sont plus tenus. Ce qui reste à faire est dans la liaison (`bash tools/liaison-sommaire.sh`) et dans la section 0 « Le jeu aujourd'hui » (Partie 1) du doc partagé.
+
 Pour Cantin. Le statut de chaque tâche du backlog (doc partagé, onglet « Partie 1 · MVP ») est une puce à choix que Claude ne peut pas changer depuis ton compte : il faut la cliquer à la main. Voici le bon statut de chacune des 84 tâches, vérifié par Claude le 14/11 dans le code, Studio et la liaison (agent a137 ; trois lignes revérifiées au hasard : DEV-045, MOD-011, DEV-033). Aujourd'hui, la copie `docs/Partie-1-MVP.md` les donne presque toutes « À faire » : c'est elle qui est en retard.
 
 Bilan : 61 faites, 9 en cours, 4 à faire, 4 remplacées, 6 à vérifier.

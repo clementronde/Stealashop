@@ -1,5 +1,7 @@
 # Rééquilibrage : proposition chiffrée (liaison L-108, point 1)
 
+> **Archive (24/11) : remplacée.** Proposition v1 du 12/11, remplacée par le rééquilibrage v2 du 14/11 (`reequilibrage-v2-decisions.md`, L-149 à L-153) et les réglages qui ont suivi. Les valeurs à jour sont dans `src/shared/Config`.
+
 Note de l'agent a102 (vague 30, 2026-11-12), pour Cantin et Clément. **Rien n'est changé dans le jeu** : aucune valeur de `src/` n'a bougé. Cette note propose une nouvelle échelle et donne l'outil qui la vérifie.
 
 - Outil : `bash tools/ironix/equilibrage/run.sh` (hors Studio, 10 s). Il lit les vraies tables de `src/shared/Config`, fait jouer 3 profils de joueurs, 25 parties chacun, dans l'économie actuelle puis dans la proposition, et sort les tableaux de cette note.

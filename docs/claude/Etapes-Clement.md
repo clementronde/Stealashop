@@ -4,6 +4,8 @@ Les 43 tâches MVP de Clément : les 36 de modèles et d'UI (backlog, Partie 1 s
 
 Claude lit [CLAUDE.md](../../CLAUDE.md) au démarrage : il connaît déjà les noms, tags, budgets et règles. Les consignes ci-dessous restent courtes pour cette raison.
 
+**Depuis le 24/11**, ce que tu as à faire se lit d'abord dans la [liaison](../Liaison-Code-Visuel.md) (`bash tools/liaison-sommaire.sh Clément`) et dans les lignes orange du ContractChecker ; les statuts du backlog (section 13) ne sont plus tenus. L'état du jeu est dans la section 0 « Le jeu aujourd'hui » (en tête de la Partie 1) du doc partagé ; la copie `docs/Partie-1-MVP.md` est une archive.
+
 ## Avant de commencer (une seule fois)
 
 1. Crée le groupe Roblox du studio, avec un nom de studio et pas le nom du jeu. Ajoute un rôle « Dev » qui peut modifier les jeux du groupe et publier des assets, et mets-y Ironix (L-001 dans la [liaison](../Liaison-Code-Visuel.md)).
@@ -33,7 +35,7 @@ Claude lit [CLAUDE.md](../../CLAUDE.md) au démarrage : il connaît déjà les n
    > Vérifie `<NOM DU MODÈLE>` dans `_INBOX_CLEMENT` avec le contrat de CLAUDE.md : nom, enfants obligatoires (section 10.4), tags, attributs, triangles, pivot, taille à côté d'un perso R15, aucun script (sauf un script d'effet `FX_` autorisé par la liaison, section 3.3). Corrige ce qui est purement technique (collisions, ancrage) et liste le reste sans le modifier.
 
 3. Lance un test dans Studio : le ContractChecker ne doit afficher aucune ligne rouge.
-4. Passe la tâche en « En revue » dans le doc partagé ; Ironix valide et range le modèle.
+4. Passe la ligne de la liaison en « À vérifier » (ou, pour une ancienne tâche du backlog, la tâche en « En revue » dans le doc partagé) ; Ironix valide et range le modèle.
 
 Les étapes 1 à 17 (M0 à M3) et A1 à A3 sont livrées : retirées le 2026-11-13 pour alléger ce parcours (elles restent dans l'historique git).
 
@@ -43,7 +45,7 @@ Les étapes 1 à 17 (M0 à M3) et A1 à A3 sont livrées : retirées le 2026-11-
 
 - **Consigne** :
 
-  > Habille tous les écrans MVP avec le style de la planche MOD-002, sans renommer ni déplacer aucun élément du contrat. Soigne particulièrement `UI_Unbox` en suivant le storyboard de la section 5.7 et nos vidéos de référence. Puis les billboards finaux, lisibles à 40 studs. Vérifie le rendu sur un écran de téléphone et lance le ContractChecker.
+  > Habille tous les écrans avec le style de référence (boutique Robux refaite d'après ma maquette du 18/11), sans renommer ni déplacer aucun élément du contrat. Soigne particulièrement l'ouverture du colis (L-236, L-237, L-258 ; `UI_Unbox` n'en garde que le fondu des bords `EdgeGlow`) et nos vidéos de référence. Puis les billboards finaux, lisibles à 40 studs. Vérifie le rendu sur un écran de téléphone et lance le ContractChecker.
 
 ### Étape 19 · MOD-040 · Icônes des objets du catalogue
 
@@ -61,24 +63,24 @@ Les étapes 1 à 17 (M0 à M3) et A1 à A3 sont livrées : retirées le 2026-11-
 
 ## Piste « Animations » (en parallèle)
 
-Toutes les animations suivent le contrat de la section 2.4 du doc partagé (le même que la section 3.2 de la [liaison](../Liaison-Code-Visuel.md)) : 20 animations, avec leur boucle, leur priorité et leurs marqueurs. **C'est toi qui animes dans l'éditeur d'animation de Studio** ; Claude prépare, découpe et vérifie, mais ne peut pas animer à ta place.
+Toutes les animations suivent le contrat du code, `src/shared/Contract/Animations.luau` : c'est la seule liste à jour des noms, avec leur boucle, leur priorité et leurs marqueurs (Claude la lit pour toi ; les règles sont en section 3.2 de la [liaison](../Liaison-Code-Visuel.md)). Une animation attendue mais pas encore livrée sort en orange dans le ContractChecker. **C'est toi qui animes dans l'éditeur d'animation de Studio** ; Claude prépare, découpe et vérifie, mais ne peut pas animer à ta place.
 
 - **Joueur** : objets `Animation` dans `ReplicatedStorage/Assets/Animations/Player/`.
 - **Vigiles et vendeurs** : dans le modèle lui-même, `<Modèle>/Animations/`. Le modèle n'a besoin d'aucun script : un Humanoid avec un `Animator`, plus son dossier `Animations`, suffit. C'est le code d'Ironix qui fait marcher, courir et attraper le vigile en jouant ces animations.
 - **Publication** : au nom du groupe du studio, jamais depuis ton compte perso, sinon l'animation ne se joue pas dans le jeu. Chaque animation publiée va dans le registre de la liaison (nom, emplacement, ID).
 
-### Étape A4 · ANI-030 · Célébration et finition (M4)
+### Étape A4 · ANI-030 · Animations manquantes et finition (M4)
 
 - **Consigne** :
 
-  > Pendant un test, joue toutes les animations l'une après l'autre sur mon personnage, sur un vigile et sur un vendeur, et signale celles qui glissent, qui se coupent mal ou dont la boucle saute.
+  > Liste les animations du contrat (`src/shared/Contract/Animations.luau`) qui manquent encore dans Studio ou ne sont pas publiées au nom du groupe, d'après le ContractChecker et la liaison. Puis, pendant un test, joue toutes les animations l'une après l'autre sur mon personnage, sur un vigile et sur un vendeur, et signale celles qui glissent, qui se coupent mal ou dont la boucle saute.
 
-- **Toi** : tu animes `Celebrate`, puis tu corriges ce qui a été signalé.
+- **Toi** : tu animes celles qui manquent (`Celebrate` n'est plus au contrat depuis le 15/11), puis tu corriges ce qui a été signalé.
 - **Fini quand** : validé en playtest à deux.
 
 ## Consignes utiles à tout moment
 
-> Quelles tâches du backlog de Clément (Partie 1, section 13) n'attendent plus rien ?
+> Quelles lignes de la liaison à mon nom, au statut « À faire », n'attendent plus rien ?
 
 > Fais l'état des lieux de `_INBOX_CLEMENT` par rapport au contrat.
 

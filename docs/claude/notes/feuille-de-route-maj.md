@@ -1,5 +1,7 @@
 # Feuille de route des mises à jour : les 8 premières MAJ, une par samedi après la sortie
 
+> **Archive (24/11) : remplacée.** L'ordre des MAJ a été abandonné le 23/11 : tout le contenu des MAJ 1 à 7 se code maintenant. En PROD, à la sortie, seul ce qui a passé un test humain est allumé ; le reste est codé et éteint (décision C2 de Cantin, 24/11). L'état du jeu : section 0 « Le jeu aujourd'hui » (Partie 1) du doc partagé.
+
 *Mise à jour du 2026-11-15 (Cantin) : aucune date d'échéance, seulement l'ordre des MAJ (MAJ 0, puis MAJ 1…) ;
 le rythme d'une MAJ chaque samedi à 16 h reste.*
 

@@ -1,5 +1,7 @@
 # STEAL A SHOP — Doc de suivi
 
+> **Archive, plus mise à jour depuis le 24/11/2026.** Ce fichier était une copie du doc partagé, souvent en retard sur lui ; il ne dit plus ce qu'est le jeu (banc, établi, colis Standard / Premium / Luxe, coffre-fort, 8 joueurs… ont changé). L'état du jeu est dans la section 0 « Le jeu aujourd'hui » (en tête de la Partie 1) du [doc de suivi partagé](https://claude.ai/artifact/QKsqfJ3YEjFn41GERuTGUx), les décisions dans son journal (section 15), où s'écrit désormais toute nouvelle ligne, et les valeurs dans `src/shared/Config` (décision C4 de Cantin, 24/11).
+
 Nov 6, 2026 · @Clément RONDEPIERRE
 
 Ce doc a deux parties. **Partie 1 · MVP** (ce fichier) : tout ce qui sort au lancement du MVP, plus l'équipe, la tech et la bible assets. **Partie 2 · Features à ajouter** ([Partie 2 · Features à ajouter](Partie-2-Features-a-ajouter.md)) : défenses avancées, écrans d'UI et rétention, une mise à jour par samedi après le lancement.
