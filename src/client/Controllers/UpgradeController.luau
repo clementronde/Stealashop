@@ -63,7 +63,11 @@
 -- a406 (L-297) : le panneau des présentoirs est caché pendant la construction « en mode Lego » de la partie neuve
 -- (ShopBuildController, attribut local ShopBuild.BusyAttribute de la parcelle) et revient avec un pop.
 --
--- API (client) : aucune.
+-- API (client) :
+--   UpgradeController.GetBuyableStand() -> Instance?
+--       a446 (L-305, contours « façon BD », OutlineController) : la pièce qui porte le prochain présentoir verrouillé
+--       (DisplaySlot_xx, même règle que l'invite de repli : nextSlot) de la boutique du joueur local ; nil sans
+--       boutique, au niveau max ou tant que ce présentoir n'est pas chargé. Lecture seule, rien n'est posé.
 
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
@@ -876,6 +880,22 @@ local function watchPlayer(player: Player)
 		end
 	end
 	scheduleRefresh()
+end
+
+-- a446 (L-305) : voir l'en-tête (API).
+function UpgradeController.GetBuyableStand(): Instance?
+	local level = levelOf(localPlayer, "DisplaySlots")
+	if level == nil then
+		return nil
+	end
+	for _, plotModel in CollectionService:GetTagged(PLOT_TAG) do
+		if plotModel:GetAttribute(OWNER_ATTRIBUTE) == localPlayer.UserId and plotModel:IsDescendantOf(Workspace) then
+			local slot = nextSlot(plotModel, level)
+			local holder = if slot then slot.Parent else nil
+			return if holder and holder:IsA("BasePart") then holder else nil
+		end
+	end
+	return nil
 end
 
 function UpgradeController.Start()

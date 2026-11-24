@@ -32,8 +32,9 @@ local Vfx = {
 	Chase = {
 		Highlight = "FX_ChaseHighlight", -- Clément
 		CopyName = "ChaseHighlight", -- V0 : nom de la copie posée dans le vigile
-		-- Roblox n'affiche que 31 Highlight : ShelfBoxController garde autant de places en moins pour les
-		-- contours des colis tant que le contour du vigile est là (ShelfBoxController.Reserve).
+		-- ShelfBoxController garde autant de places en moins pour les contours des colis tant que le contour du
+		-- vigile est là (ShelfBoxController.Reserve). Fait du temps où l'on croyait Roblox limité à 31 Highlight ; la
+		-- limite est de 255 par client (L-305) : plus nécessaire, mais sans danger.
 		ReserveKey = "ChaseHighlight",
 		Reserve = 1,
 	},

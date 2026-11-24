@@ -157,6 +157,13 @@ local Features = {
 	ItemsV3 = false,
 	-- a429 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
 	ItemsV3Dev = true,
+	-- a446 (L-305, L-344, Clément 23/11 et 24/11) : contours « façon BD » sur ce qui est interactif (Config/Outlines,
+	-- OutlineController) : FX_Outline de Clément sur les éléments proches, FX_OutlineFocus (blanc) sur celui dont l'invite
+	-- est affichée ; les colis y entrent (leur OutlineHighlight est retiré côté client). Interrupteur PROD (partout) :
+	-- false (règle C2 : pas encore de test humain) ; false = contours des colis de ShelfBoxController, comme avant.
+	BdOutlines = false,
+	-- a446 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	BdOutlinesDev = true,
 }
 
 export type Features = typeof(Features)

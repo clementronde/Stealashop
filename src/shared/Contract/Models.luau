@@ -291,8 +291,9 @@ local Box: ModelSpec = {
 		{ Name = "Tint", Class = "BasePart" },
 		-- Où s'accroche l'étiquette du colis (L-023, livré par Clément le 2026-11-07, L-031).
 		{ Name = "LabelPoint", Class = "Attachment" },
-		-- Contour noir du colis (L-031) : ShelfBoxController le retrouve par ce nom et n'en
-		-- garde que 25 actifs à la fois (Roblox en affiche 31 au plus).
+		-- Contour du colis (L-031 ; #040435 depuis le 24/11, L-344) : ShelfBoxController le retrouve par ce nom et
+		-- n'en garde que Config/ShelfBoxes.MaxOutlines actifs à la fois. a446 : avec les contours « façon BD »
+		-- (Config/Outlines.Enabled), OutlineController le retire côté client et pose FX_Outline (Models.Outline).
 		{ Name = "OutlineHighlight", Class = "Highlight" },
 	},
 	-- Vague 76 (Cantin et Clément, 19/11) : plus de types de colis au contrat. Les colis par rareté (BOX_<Rareté>,
@@ -807,6 +808,23 @@ local WitnessFlash: ModelSpec = {
 }
 Models.WitnessFlash = WitnessFlash
 table.insert(Models.List, table.find(Models.List, WeaponShopCounter) or #Models.List + 1, WitnessFlash)
+
+-- a446 (L-305 point 2, livrés par Clément le 2026-11-23) : contours « façon BD », ReplicatedStorage/Assets/FX/FX_Outline
+-- (contour #040435) et FX_OutlineFocus (blanc), deux Highlight sans Adornee. OutlineController (Config/Outlines) en copie
+-- l'aspect (OutlineColor, OutlineTransparency, FillColor, FillTransparency, DepthMode) sur sa réserve fixe. Absents :
+-- l'aspect de secours de Config/Outlines (« pas encore livré », jamais un problème) ; un autre objet que Highlight sous
+-- ce nom : un problème (le code ne le lirait pas).
+local Outline: ModelSpec = {
+	Key = "Outline",
+	Label = "contours « façon BD » (FX_Outline)",
+	Category = "Objets", -- les colis et les objets en premier (CATEGORIES du ContractChecker)
+	Names = { "FX_Outline", "FX_OutlineFocus" },
+	Class = "Highlight",
+	Parts = {},
+	Expected = { "FX_Outline", "FX_OutlineFocus" },
+}
+Models.Outline = Outline
+table.insert(Models.List, table.find(Models.List, WeaponShopCounter) or #Models.List + 1, Outline)
 
 -- Fonds des cartes des boutiques par palier (vague 58, a186, L-176 ; Shared/ShopCardTier) : ReplicatedStorage/Assets/UI/
 -- ShopCardBg/<Rareté> (Frame ; attributs RarityColor, BorderColor, BorderThickness, IconScale, IconGrey, StudsTransparency,
