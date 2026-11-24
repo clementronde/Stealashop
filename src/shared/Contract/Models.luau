@@ -1027,5 +1027,24 @@ Models.ShopGlass = {
 	Sides = { "Front", "Left", "Right", "Back" },
 	NamePrefix = "Pane_",
 }
+-- a425 (L-324, 24/11) : ENV_Event_ArmoredVan livré par Clément (DEV, version 1030), découpé comme le camion. Éléments lus
+-- par le code (ArmoredVanService, ArmoredVanController), tous facultatifs (repli ou effet coupé) : Root en PrimaryPart ;
+-- Pieces/Piece_01 à _20 volent depuis BlastPoint à la casse (Piece_12 : la porte du coffre ; Piece_15 à _20 : les
+-- roues) ; Cargo (le trésor) reste visible ; CashPoint : jet de billets vers l'arrière ; gyrophares en Neon qui
+-- clignotent (gauche et droite en alternance) ; OutlineHighlight éteint à la casse.
+ArmoredVanModel.PrimaryPart = "Root"
+for _, part: Part in {
+	{ Name = "Pieces", Optional = true, Inside = { { Name = "Piece_%02d", From = 1, To = 20, Note = "Model ou pièce, volent à la casse" } } },
+	{ Name = "BlastPoint", Class = "Attachment", Optional = true, Note = "centre de l'explosion (dans l'arrière du coffre)" },
+	{ Name = "CashPoint", Class = "Attachment", Optional = true, Note = "jet de billets vers l'arrière à la casse" },
+	{ Name = "Cargo", Optional = true, Note = "trésor visible après la casse, hors de Pieces" },
+	{ Name = "OutlineHighlight", Class = "Highlight", Optional = true },
+	{ Name = "Beacon_L", Optional = true, Note = "gyrophare (Neon), clignote" },
+	{ Name = "Beacon_R", Optional = true, Note = "gyrophare (Neon), clignote" },
+	{ Name = "LightBar_L", Optional = true, Note = "rampe (Neon), clignote" },
+	{ Name = "LightBar_R", Optional = true, Note = "rampe (Neon), clignote" },
+} :: { Part } do
+	table.insert(ArmoredVanModel.Parts, part)
+end
 
 return Models

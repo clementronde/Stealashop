@@ -26,6 +26,11 @@ local ArmoredVan = {
 	-- mur) ; un départ dû à un autre moment attend le jour suivant, DawnDelay s après l'aube, puis part (annoncé).
 	-- Un départ en attente est remplacé par le suivant à l'heure (jamais deux d'affilée).
 	DawnDelay = 20, -- V0 proposé (Cantin, 23/11)
+	-- a425 (L-318 Q1) : jamais en même temps que le camion de l'événement (L-049). Pas de camion pendant un fourgon (en
+	-- jeu ou en attente), ni TruckGap s après lui, ni dans les TruckLead s avant un départ à l'horaire ; un départ dû
+	-- pendant un camion, ou moins de TruckGap s après lui, attend (annoncé) et part dès que la voie est libre.
+	TruckGap = 60, -- V0 proposé (Cantin, 24/11) : 1 min de pause entre les deux véhicules
+	TruckLead = 4 * 60, -- V0 proposé (Cantin, 24/11) : la vie d'un camion (TruckEvent.Lifetime, 3 min) + TruckGap
 
 	-- Trajet -------------------------------------------------------------------------------------------------------
 	-- De l'arche (ZoneGate) de la zone la plus basse à celle de la plus haute, à vitesse constante, au milieu de la
@@ -55,19 +60,60 @@ local ArmoredVan = {
 	-- Modèle -------------------------------------------------------------------------------------------------------
 	-- ENV_Event_ArmoredVan de Clément (ReplicatedStorage/Assets, sinon ServerStorage/Assets ; facultatif) : pivot en bas
 	-- au centre, avant vers −Z ; HealthBarPoint (Attachment) facultatif. Absent : un fourgon en blocs construit par le
-	-- code (VanSize).
+	-- code (VanSize). a425 (L-324 Q3) : VanSize ne sert plus qu'à ce repli ; l'explosion part de BlastPoint (sans lui :
+	-- du centre de la boîte englobante du modèle).
 	Asset = "ENV_Event_ArmoredVan",
 	VanSize = Vector3.new(14, 12, 30), -- V0 proposé (Cantin, 23/11) : repli « géant » (le camion fait 34 studs de long)
 	BillboardAsset = "BB_ArmoredVanHP", -- barre de vie de Clément (Assets/UI), facultative : Fill (GuiObject), HPText (TextLabel)
 	BillboardSize = Vector2.new(16, 3), -- V0 : repli, en studs
 	BillboardMaxDistance = 400, -- V0 : repli
-	RemoveDelay = 3, -- V0 : le fourgon cassé reste 3 s (explosion), puis disparaît
+	-- a425 (L-324) : le fourgon cassé reste RemoveDelay s, porte et pièces envolées, le trésor (Cargo) à l'air, puis
+	-- disparaît. Avant : 3 s ; garder ≥ TruckEvent.DebrisLifetime + DebrisFadeTime (4 s, les pièces s'effacent avant).
+	RemoveDelay = 6, -- V0 proposé (Cantin, 24/11)
+
+	-- Casse vue par les clients (a425, L-324 ; ArmoredVanController) : l'explosion du camion (TruckController) reprise :
+	-- les pièces Pieces/Piece_xx volent depuis BlastPoint (vitesses, chute et effacement : Config/TruckEvent Debris*).
+	ExplosionSound = "SFX_TruckExplosion", -- V0 proposé (Cantin, 24/11) : le son du camion, en attendant un son à lui
+	ExplosionRadius = 16, -- V0 proposé (Cantin, 24/11) : explosion native, sans force ni dégât, à BlastPoint
+	-- Gyrophares de Clément (Neon) : la gauche et la droite clignotent en alternance pendant le trajet (local).
+	Beacons = {
+		Left = { "Beacon_L", "LightBar_L" },
+		Right = { "Beacon_R", "LightBar_R" },
+		Period = 0.4, -- V0 proposé (Cantin, 24/11) : s par côté
+		Dim = 0.75, -- V0 proposé (Cantin, 24/11) : LocalTransparencyModifier du côté éteint
+	},
+	-- Jet de billets à la casse : copies de FX_Collect_Bill (Assets, l'effet du ramassage) qui jaillissent de CashPoint
+	-- vers l'arrière, retombent et s'effacent avec les pièces. Absent : pas de jet.
+	CashJet = {
+		Asset = "FX_Collect_Bill",
+		Count = 16, -- V0 proposé (Cantin, 24/11)
+		Speed = { 14, 26 }, -- V0 proposé (Cantin, 24/11) : studs/s vers l'arrière…
+		Up = { 18, 30 }, -- V0 proposé (Cantin, 24/11) : … et vers le haut
+		Spread = math.rad(40), -- V0 proposé (Cantin, 24/11) : écart au hasard autour de l'arrière
+	},
+	-- Inventaire plein à la casse (a425, L-325 réponse 2 de Clément) : le colis n'est pas perdu, il tombe par terre
+	-- derrière le fourgon (rayon d'événement de StoreHeistService, comme les colis du camion) et n'importe qui peut
+	-- l'ouvrir et prendre l'objet. Remplace l'ancien « box is lost ».
+	DropLifetime = 60, -- V0 proposé (Cantin, 24/11) : comme TruckEvent.BoxLifetime, puis il disparaît
+	DropBehind = 5, -- V0 proposé (Cantin, 24/11) : studs derrière l'arrière du fourgon
+	DropSpacing = 4, -- V0 proposé (Cantin, 24/11) : studs entre deux colis côte à côte
+
+	-- Bannière d'événement (a425, L-318 Q2 ; UI_EventBanner de Clément, EventBannerController) : quand aucun événement
+	-- live n'y est, le fourgon s'y montre avec un minuteur : StateAttribute du Workspace = "Soon" (départ annoncé,
+	-- minuteur jusqu'au départ) ou "Road" (en route, minuteur jusqu'à sa fuite), EndsAtAttribute = heure serveur.
+	StateAttribute = "ArmoredVanState",
+	EndsAtAttribute = "ArmoredVanEndsAt",
+	Banner = {
+		Soon = { Title = "HEIST OF THE CENTURY", Effect = "An armored van is coming: break it together!" }, -- V0
+		Road = { Title = "HEIST OF THE CENTURY", Effect = "Break the armored van before it escapes!" }, -- V0
+	},
 
 	-- Textes (anglais) -----------------------------------------------------------------------------------------------
 	Messages = {
 		Soon = "The armored van drives through the corridor in %d s!", -- annonce, %d = secondes
 		SoonDetail = "Heist of the century · hit it together", -- petite ligne de l'annonce
 		Delayed = "The armored van waits for daylight.", -- départ dû la nuit
+		DelayedTruck = "The armored van waits for the truck to leave.", -- a425 : départ dû pendant le camion (V0)
 		Started = "HEIST OF THE CENTURY! The armored van is in the corridor!",
 		StartedDetail = "Break it together · top 3 get the best box",
 		Broken = "The armored van is open! Top: %s", -- %s = noms du top 3
@@ -75,7 +121,9 @@ local ArmoredVan = {
 		Escaped = "The armored van escaped!",
 		Reward = "Heist of the century: #%d (%d%% of the damage), %s: %s %s!", -- rang, part, colis, rareté, objet
 		TooLittle = "Heist of the century: hit harder next time to get a box!",
-		Full = "Heist of the century: inventory full, your box is lost!",
+		-- a425 (L-325 réponse 2) : %s = nom du colis (Label). V0 proposé (Cantin, 24/11).
+		Full = "Heist of the century: inventory full! Your %s fell behind the van, anyone can grab it!",
+		Lost = "Heist of the century: inventory full, your box is lost!", -- a425 : seulement si le colis n'a pas pu tomber
 	},
 	AnnounceIcon = "ICON_Event_ArmoredVan", -- V0 : icône de l'annonce (Decal de Clément), facultative
 }
