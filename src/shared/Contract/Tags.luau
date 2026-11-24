@@ -61,6 +61,9 @@ Tags.List = {
 	-- posés : sans lui, repli par nom (Pane_* de la boutique) ; pas encore posé, il est dans la ligne « Tags pas encore
 	-- posés » (jamais un problème) et ContractChecker le rappelle en orange (catégorie Parcelles).
 	{ Tag = "ShopGlass", For = "vitres Pane_* des boutiques de joueurs (facultatif, L-291, L-298 : repli par nom)" },
+	-- a430 (L-331) : statues ENV_Hub_LeaderboardStatue du n° 1 des classements de la semaine (attribut Stat), habillées
+	-- par LeaderboardStatueService. Facultatif.
+	{ Tag = "LeaderboardStatue", For = "statues du n° 1 des classements de la semaine ENV_Hub_LeaderboardStatue (facultatif)" },
 } :: { TagSpec }
 
 return Tags

@@ -3,11 +3,12 @@
 -- de la semaine en $/s et en vols. Valeurs : Config/WeeklyLeaderboard ; interrupteur Features.WeeklyLeaderboards.
 -- S'appuie sur LeaderboardService (record de revenu sans les boosts du moment, panneaux du hub). Aucun remote.
 --
---   - Compteurs de la semaine dans le profil (WeeklyBoard, Types/Profile ; créé ici, absent du gabarit) : à la première
---     lecture d'une nouvelle semaine (lundi 00:00 UTC), BestIncome repart de 0 et HeistsAt / StealsAt prennent
---     Lifetime.Heists / Lifetime.Steals. Revenu = meilleur revenu par seconde de la semaine
---     (LeaderboardService.RecordIncome, suivi à chaque changement de l'attribut Income et à chaque écriture) ; vols =
---     (Heists − HeistsAt) + (Steals − StealsAt).
+--   - Compteurs de la semaine dans le profil (WeeklyBoard, Types/Profile ; dans le gabarit de DataService depuis a430,
+--     réparé ici) : à la première lecture d'une nouvelle semaine (lundi 00:00 UTC), la semaine finie va dans Pending si
+--     le joueur y a joué, BestIncome repart de 0 et StealsAt prend Lifetime.Steals. Revenu = meilleur revenu par
+--     seconde de la semaine (LeaderboardService.RecordIncome, suivi à chaque changement de l'attribut Income et à
+--     chaque écriture) ; vols = Steals − StealsAt : seulement les vols chez un autre joueur (a430, L-325 réponse (1) de
+--     Clément : les braquages de magasins, Lifetime.Heists, ne comptent plus ; HeistsAt n'est plus lu).
 --   - Écriture : toutes les WriteInterval s et au départ du joueur, SetAsync(UserId, valeur codée) dans
 --     l'OrderedDataStore de la semaine (WeeklyLeaderboard.StoreName : nouveau nom chaque semaine = remise à zéro), si
 --     la valeur a changé.
@@ -15,12 +16,16 @@
 --     (leur valeur du moment) ; attributs du Player WeeklyIncomeRank / WeeklyStealsRank (0 = hors du top 100) et
 --     WeeklyBoardEndsAt (os.time de la remise à zéro). Panneaux du hub dont Stat = WeeklyIncome ou WeeklySteals :
 --     remplis par LeaderboardService (AddBoard), facultatifs.
---   - Récompense : le top 100 de la semaine PRÉCÉDENTE (lu une fois, relu tant que la lecture rate) ; chaque joueur
---     présent dont WeeklyBoard.Rewarded[classement] est plus ancien reçoit le colis de son rang
+--   - Récompense (a430, L-325 réponse (3) de Clément : elle attend le joueur, jamais perdue) : chaque semaine finie où
+--     le joueur a joué reste dans WeeklyBoard.Pending jusqu'à ce qu'elle soit réglée, même s'il revient des semaines
+--     plus tard. Le top 100 de chaque semaine attendue (et toujours de la semaine précédente) est lu une fois par
+--     serveur, relu tant que la lecture rate. Les semaines sont réglées de la plus ancienne à la plus récente ; pour
+--     chacune, chaque classement dont WeeklyBoard.Rewarded[classement] est plus ancien donne le colis du rang
 --     (WeeklyLeaderboard.Rewards, UnboxService.GiveZoneBoxItem, zone de référence = sa meilleure zone, comme les
---     paliers de temps de jeu), une fois par classement ; hors du top : rien, réglé aussi. Inventaire plein : rien
---     n'est noté, un Notify par session, nouvel essai à la lecture suivante. Seule la semaine qui vient de finir est
---     récompensée (un joueur absent toute la semaine suivante perd la sienne, V0).
+--     paliers de temps de jeu) ; hors du top : rien, réglé aussi. Inventaire plein : rien n'est noté, un Notify par
+--     session, nouvel essai à la lecture suivante ou à la prochaine connexion (la semaine reste dans Pending).
+--   - Statues du n° 1 (a430, L-331) : à chaque lecture, le n° 1 de chaque classement est donné à
+--     LeaderboardStatueService (avatar sur la statue, seulement quand il change).
 --   - Protégé : chaque appel DataStore dans un pcall, budget vérifié ; Studio sans accès aux API : rien n'est lu ni
 --     écrit (une ligne), le classement de la semaine montre les joueurs présents.
 --
@@ -53,6 +58,7 @@ local Net = require(Shared.Net.Net)
 
 local DataService = require(script.Parent.DataService)
 local LeaderboardService = require(script.Parent.LeaderboardService)
+local LeaderboardStatueService = require(script.Parent.LeaderboardStatueService)
 local UnboxService = require(script.Parent.UnboxService)
 
 type Row = LeaderboardService.Row
@@ -69,7 +75,7 @@ WeeklyLeaderboardService.Priority = 240 -- V0 : après LeaderboardService (100) 
 local stores: { [string]: any } = {} -- [nom] = OrderedDataStore
 local written: { [number]: { [string]: string } } = {} -- [UserId][stat] = « semaine:valeur codée » écrite
 local current: { [string]: { Week: number, Rows: { Row } } } = {} -- top lu de la semaine en cours
-local previous: { [string]: { Week: number, Ranks: { [number]: number } } } = {} -- top de la semaine finie
+local ended: { [string]: { [number]: { [number]: number } } } = {} -- a430 : [classement][semaine finie] = { [UserId] = rang }, lu une fois
 local fullSaid: { [Player]: boolean } = {}
 local said: { [string]: boolean } = {}
 local offset = 0 -- décalage de l'horloge (crochet de test, Studio)
@@ -99,25 +105,32 @@ local function weekNow(): number
 	return Weekly.WeekOf(WeeklyLeaderboardService.Now())
 end
 
--- Compteurs de la semaine `week` du profil, créés, réparés et remis à zéro au changement de semaine.
+-- Compteurs de la semaine `week` du profil, créés, réparés et remis à zéro au changement de semaine. a430 (L-325 (3)) :
+-- la semaine qui se ferme va dans Pending si le joueur y a un revenu ou un vol (elle attend sa récompense).
 local function boardOf(data: Data, week: number): any
 	local lifetime: any = if type(data.Lifetime) == "table" then data.Lifetime else {}
-	local heists, steals = count(lifetime.Heists), count(lifetime.Steals)
+	local steals = count(lifetime.Steals)
 	local board: any = data.WeeklyBoard
 	if type(board) ~= "table" then
-		board = { Week = 0, BestIncome = 0, HeistsAt = heists, StealsAt = steals, Rewarded = {} }
+		board = { Week = 0, BestIncome = 0, StealsAt = steals, Rewarded = {}, Pending = {} }
 		data.WeeklyBoard = board
 	end
 	if type(board.Rewarded) ~= "table" then
 		board.Rewarded = {}
 	end
+	if type(board.Pending) ~= "table" then
+		board.Pending = {}
+	end
 	board.BestIncome = count(board.BestIncome)
-	board.HeistsAt = math.min(count(board.HeistsAt), heists)
 	board.StealsAt = math.min(count(board.StealsAt), steals)
 	if board.Week ~= week then
+		local old = board.Week
+		local played = board.BestIncome > 0 or steals > board.StealsAt
+		if type(old) == "number" and old >= 1 and old < week and played and table.find(board.Pending, old) == nil then
+			table.insert(board.Pending, old)
+		end
 		board.Week = week
 		board.BestIncome = 0
-		board.HeistsAt = heists
 		board.StealsAt = steals
 	end
 	return board
@@ -137,7 +150,7 @@ function WeeklyLeaderboardService.ValueOf(player: Player, stat: string): number
 		return board.BestIncome
 	elseif stat == "WeeklySteals" then
 		local lifetime: any = if type((data :: any).Lifetime) == "table" then (data :: any).Lifetime else {}
-		return (count(lifetime.Heists) - board.HeistsAt) + (count(lifetime.Steals) - board.StealsAt)
+		return count(lifetime.Steals) - board.StealsAt -- a430 (L-325 (1)) : vols chez un autre joueur seulement
 	end
 	return 0
 end
@@ -317,52 +330,79 @@ local function grantAura(player: Player, rank: number)
 	end
 end
 
--- Récompenses de la semaine finie pour `player` (voir l'en-tête). Sans yield.
+-- Règle le classement `stat` de la semaine finie `w` pour `player` (voir l'en-tête). Renvoie true si c'est réglé
+-- (colis donné, hors du top, ou déjà fait), false s'il faut réessayer (top pas encore lu, inventaire plein). Sans yield.
+local function settle(player: Player, data: Data, board: any, stat: string, w: number): boolean
+	local before = board.Rewarded[stat]
+	local done = if type(before) == "number" then before else 0
+	if done >= w then
+		return true
+	end
+	local byWeek = ended[stat]
+	local ranks = if byWeek then byWeek[w] else nil
+	if ranks == nil then
+		return false -- top de cette semaine pas encore lu : à la prochaine lecture
+	end
+	local rank = ranks[player.UserId]
+	local tier = if rank then Weekly.RewardFor(rank) else nil
+	board.Rewarded[stat] = w -- noté avant le don : jamais deux fois (une erreur pendant le don le perd)
+	if tier == nil or rank == nil then
+		return true
+	end
+	local ok, itemUid, reason, itemId = pcall(function(): (string?, string?, string?)
+		local uid, why, id = UnboxService.GiveZoneBoxItem(player, tier.Rule, bestZone(data))
+		return uid, why, id
+	end)
+	if ok and itemUid == nil and reason == "InventoryFull" then
+		board.Rewarded[stat] = before -- rien de donné : nouvel essai à la prochaine lecture ou connexion
+		if not fullSaid[player] then
+			fullSaid[player] = true
+			notify(player, Weekly.Messages.Full, "Warning")
+		end
+		return false
+	end
+	if not ok or itemUid == nil or itemId == nil then
+		sayOnce(`give:{stat}:{tostring(reason)}`, `récompense {stat} de {player.Name} (#{rank}) pas donnée ({tostring(if ok then reason else itemUid)})`)
+		return true
+	end
+	local def = Items.ById[itemId]
+	local entry = (data :: any).Items[itemUid]
+	local rarity = if def then Rarities.ById[def.Rarity] else nil
+	local name = if def then Mutations.ItemName(def.DisplayName, if entry then entry.Mutation else nil) else tostring(itemId)
+	local boardName = (Weekly.BoardNames :: any)[stat] or stat
+	notify(player, string.format(Weekly.Messages.Reward, boardName, rank, tier.Label, if rarity then rarity.DisplayName else "", name), "Success")
+	grantAura(player, rank)
+	print(`[WeeklyLeaderboardService] {player.Name} : #{rank} {stat} semaine {w} : {tier.Label}, {itemId}`)
+	return true
+end
+
+-- Récompenses des semaines finies qui attendent `player` (WeeklyBoard.Pending), de la plus ancienne à la plus récente ;
+-- une semaine sort de Pending quand ses deux classements sont réglés (a430, L-325 (3) : jamais perdue). Sans yield.
 local function rewardPlayer(player: Player)
 	local data = DataService.Get(player)
 	if data == nil or type((data :: any).Items) ~= "table" then
 		return
 	end
-	local week = weekNow()
-	local ended = week - 1
-	local board = boardOf(data, week)
-	for _, stat in Weekly.Order do
-		local before = board.Rewarded[stat]
-		local done = if type(before) == "number" then before else 0
-		local prev = previous[stat]
-		if done >= ended or prev == nil or prev.Week ~= ended then
-			continue
+	local board = boardOf(data, weekNow())
+	local pending: { any } = board.Pending
+	for index = #pending, 1, -1 do
+		if type(pending[index]) ~= "number" then
+			table.remove(pending, index) -- réparé : une entrée illisible
 		end
-		local rank = prev.Ranks[player.UserId]
-		local tier = if rank then Weekly.RewardFor(rank) else nil
-		board.Rewarded[stat] = ended -- noté avant le don : jamais deux fois (une erreur pendant le don le perd)
-		if tier == nil or rank == nil then
-			continue
-		end
-		local ok, itemUid, reason, itemId = pcall(function(): (string?, string?, string?)
-			local uid, why, id = UnboxService.GiveZoneBoxItem(player, tier.Rule, bestZone(data))
-			return uid, why, id
-		end)
-		if ok and itemUid == nil and reason == "InventoryFull" then
-			board.Rewarded[stat] = before -- rien de donné : nouvel essai à la prochaine lecture
-			if not fullSaid[player] then
-				fullSaid[player] = true
-				notify(player, Weekly.Messages.Full, "Warning")
+	end
+	table.sort(pending)
+	while #pending > 0 do
+		local w: number = pending[1]
+		local settled = true
+		for _, stat in Weekly.Order do
+			if not settle(player, data, board, stat, w) then
+				settled = false
 			end
-			continue
 		end
-		if not ok or itemUid == nil or itemId == nil then
-			sayOnce(`give:{stat}:{tostring(reason)}`, `récompense {stat} de {player.Name} (#{rank}) pas donnée ({tostring(if ok then reason else itemUid)})`)
-			continue
+		if not settled then
+			break -- l'ordre des semaines est gardé : les suivantes attendent celle-ci
 		end
-		local def = Items.ById[itemId]
-		local entry = (data :: any).Items[itemUid]
-		local rarity = if def then Rarities.ById[def.Rarity] else nil
-		local name = if def then Mutations.ItemName(def.DisplayName, if entry then entry.Mutation else nil) else tostring(itemId)
-		local boardName = (Weekly.BoardNames :: any)[stat] or stat
-		notify(player, string.format(Weekly.Messages.Reward, boardName, rank, tier.Label, if rarity then rarity.DisplayName else "", name), "Success")
-		grantAura(player, rank)
-		print(`[WeeklyLeaderboardService] {player.Name} : #{rank} {stat} semaine {ended} : {tier.Label}, {itemId}`)
+		table.remove(pending, 1)
 	end
 end
 
@@ -374,7 +414,39 @@ local function writeAll(week: number)
 	end
 end
 
+-- Top d'une semaine finie, lu une fois par serveur (relu tant que la lecture rate).
+local function readEnded(stat: string, w: number)
+	local byWeek = ended[stat]
+	if byWeek == nil then
+		byWeek = {}
+		ended[stat] = byWeek
+	end
+	if byWeek[w] ~= nil then
+		return
+	end
+	local list = readTop(stat, w)
+	if list then
+		local ranks: { [number]: number } = {}
+		for index, item in list do
+			ranks[item.UserId] = index
+		end
+		byWeek[w] = ranks
+	end
+end
+
 local function readAll(week: number)
+	-- Semaines finies à lire : la précédente (pour qui arrive), et chaque semaine qui attend un joueur présent.
+	local wanted: { [number]: boolean } = { [week - 1] = true }
+	for _, player in Players:GetPlayers() do
+		local data = DataService.Get(player)
+		if data ~= nil then
+			for _, w in boardOf(data, week).Pending do
+				if type(w) == "number" and w < week then
+					wanted[w] = true
+				end
+			end
+		end
+	end
 	for _, stat in Weekly.Order do
 		local list = readTop(stat, week)
 		if list then
@@ -384,26 +456,26 @@ local function readAll(week: number)
 			end
 			current[stat] = { Week = week, Rows = rows }
 		end
-		local prev = previous[stat]
-		if prev == nil or prev.Week ~= week - 1 then
-			local ended = readTop(stat, week - 1)
-			if ended then
-				local ranks: { [number]: number } = {}
-				for index, item in ended do
-					ranks[item.UserId] = index
-				end
-				previous[stat] = { Week = week - 1, Ranks = ranks }
-			end
+		for w in wanted do
+			readEnded(stat, w)
 		end
 	end
 	local endsAt = Weekly.WeekStart(week + 1)
 	local ranks: { [string]: { [number]: number } } = {}
 	for _, stat in Weekly.Order do
 		local map: { [number]: number } = {}
-		for _, row in WeeklyLeaderboardService.Rows(stat) do
+		local rows = WeeklyLeaderboardService.Rows(stat)
+		for _, row in rows do
 			map[row.UserId] = row.Rank
 		end
 		ranks[stat] = map
+		local first = rows[1]
+		local shown, problem = pcall(function() -- a430 (L-331) : statue du n° 1
+			LeaderboardStatueService.Show(stat, if first then first.UserId else 0)
+		end)
+		if not shown then
+			sayOnce(`statue:{stat}`, `statue du n° 1 {stat} : {tostring(problem)}`)
+		end
 	end
 	for _, player in Players:GetPlayers() do
 		if DataService.Get(player) ~= nil then

@@ -197,6 +197,9 @@ local TEMPLATE: Data = {
 	Diamonds = 0, -- vague 59 (a191, L-182 point 10) : diamants (DataService.GetDiamonds), sans changement de version
 	IndexMutations = {}, -- vague GC6 (a410) : [ItemId] = { [Effet] = os.time() } (IndexService), sans changement de version
 	ShopLayout = 0, -- a280 (L-294) : échelle de la boutique (Shared/ShopFloor), passée à 1 au chargement par ShopFloor.Migrate
+	-- a430 (L-325 (3)) : classements de la semaine (WeeklyLeaderboardService) ; Week = 0 : compteurs posés à la première
+	-- lecture ; Pending = semaines finies dont la récompense attend le joueur. Sans changement de version.
+	WeeklyBoard = { Week = 0, BestIncome = 0, StealsAt = 0, Rewarded = {}, Pending = {} },
 }
 
 -- Journal d'une migration : chaque ligne part dans la sortie, préfixée du joueur et de sa clé.

@@ -8,7 +8,9 @@
 -- OrderedDataStore (nom + « _W<semaine> ») : la remise à zéro, c'est le nouveau nom, rien n'est effacé.
 --
 -- Panneaux : ceux du hub (tag Leaderboard, Config/Leaderboard) dont l'attribut Stat vaut une clé de Stats plus bas
--- (WeeklyIncome ou WeeklySteals), remplis par LeaderboardService (AddBoard). Aucun n'est livré : facultatif.
+-- (WeeklyIncome ou WeeklySteals), remplis par LeaderboardService (AddBoard). Livrés en L-330 (fond du hub), List en
+-- ScrollingFrame : LeaderboardScrollController en fait une copie dans le PlayerGui pour qu'on puisse la faire défiler.
+-- Statues du n° 1 (L-331) : Statue plus bas, LeaderboardStatueService.
 
 local DeepFreeze = require(script.Parent.DeepFreeze)
 
@@ -33,8 +35,8 @@ local WeeklyLeaderboard = {
 	Stats = {
 		-- Meilleur revenu par seconde atteint dans la semaine (sans les boosts du moment, comme « Most money/s »).
 		WeeklyIncome = { Title = "Money/s this week", Store = "LeaderboardWeek_Income", Log = true, RankAttribute = "WeeklyIncomeRank" },
-		-- Vols de la semaine : braquages réussis (Lifetime.Heists) + vols entre joueurs (Lifetime.Steals). V0 proposé
-		-- (Cantin, 23/11) : les deux comptent comme un « vol ».
+		-- Vols de la semaine : seulement les vols chez un autre joueur (Lifetime.Steals). a430 : réponse (1) de Clément
+		-- en L-325, les braquages de magasins (Lifetime.Heists) ne comptent plus.
 		WeeklySteals = { Title = "Steals this week", Store = "LeaderboardWeek_Steals", Log = false, RankAttribute = "WeeklyStealsRank" },
 	} :: { [string]: StatSpec },
 	Order = { "WeeklyIncome", "WeeklySteals" }, -- ordre de traitement (écritures, récompenses)
@@ -48,8 +50,8 @@ local WeeklyLeaderboard = {
 	MinBudget = 5, -- V0 proposé (Cantin, 23/11) : sous ce budget DataStore, on attend le tour suivant
 	WeekEndsAttribute = "WeeklyBoardEndsAt", -- attribut du Player : heure UTC (os.time) de la remise à zéro
 
-	-- Récompense de la semaine finie, donnée la semaine suivante à la première connexion (ou tout de suite si le
-	-- joueur est là au changement de semaine), une fois par classement. V0 proposé (Cantin, 23/11) ; la Partie 2 dit
+	-- Récompense de la semaine finie, donnée à la première connexion qui suit (ou tout de suite si le joueur est là au
+	-- changement de semaine), une fois par classement ; elle attend le joueur, même des semaines après (a430, L-325 (3)). V0 proposé (Cantin, 23/11) ; la Partie 2 dit
 	-- « aura du classement », pas encore livrée (AuraId plus bas).
 	Rewards = {
 		{ MaxRank = 3, Label = "Top 3 Box", Rule = { ZoneStep = 1, TopCount = 2, TopWeights = { 70, 30 }, Exclude = { "Secret" } } },
@@ -67,6 +69,20 @@ local WeeklyLeaderboard = {
 	},
 	BoardNames = { WeeklyIncome = "Money/s", WeeklySteals = "Steals" }, -- nom du classement dans Messages.Reward
 	LogScale = LOG_SCALE,
+
+	-- a430 (L-331, noms proposés par Clément) : statues ENV_Hub_LeaderboardStatue du n° 1 de chaque classement,
+	-- habillées par LeaderboardStatueService (serveur) avec l'avatar du n° 1. Facultatives.
+	Statue = {
+		Tag = "LeaderboardStatue",
+		StatAttribute = "Stat", -- WeeklyIncome ou WeeklySteals, comme les panneaux
+		Rig = "Rig", -- mannequin R15 (Humanoid, HumanoidRootPart seul ancré)
+		NameLabel = "PlayerName", -- TextLabel de Pedestal/Body/Plate
+		Height = 18, -- L-331 (Clément) : hauteur de chaque avatar, en studs, pieds sur le socle
+		EmptyName = "???", -- L-331 : semaine vide, statue dorée
+		BuildDepth = 60, -- V0 proposé (Cantin, 24/11) : studs sous la statue où l'avatar est habillé, hors de vue
+		TestAttribute = "WeeklyStatueTest", -- Studio seulement : attribut du Workspace, UserId à montrer (0 = doré)
+	},
+	ScrollRefresh = 1, -- V0 proposé (Cantin, 24/11) : client, secondes entre deux contrôles des panneaux à défilement
 }
 
 -- Semaine (lundi 00:00 UTC) de l'heure `unix` (os.time()).
