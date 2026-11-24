@@ -29,7 +29,14 @@ local Features = {
 	ReturnToBase = false, -- DEV-045, retour base : ReturnBaseService (remote ReturnToBase) ; plus de bouton UI_HUD.ReturnBaseButton depuis le 2026-11-14 (L-135 point 3, vague 38) ; false depuis la vague 41 (audit de sécurité du 14/11) : le remote, que plus aucun client n'envoie, est refusé sans effet par le serveur
 	TruckEvent = true, -- L-049, événement camion (Config/TruckEvent) : TruckEventService, TruckController
 	Settings = true, -- L-095 point 2, réglages : UI_HUD.SettingsButton (montré par SettingsController) et écran UI_Settings ; à false, les réglages sauvegardés s'appliquent quand même (sons, effets)
-	GuardChaseV2 = true, -- vague 45 (Cantin, 2026-11-14), poursuite du vigile de magasin (Config/Chase) : ruée jusqu'à 10 studs, puis distance gardée selon la Speed du voleur ; false = l'ancienne vitesse (Zones[zone].GuardSpeed)
+	-- a443 (Cantin, 24/11 : refonte de la poursuite, fiche docs/references/Poursuite.md) : poursuite « V3 » (Config/Chase.V3,
+	-- server/Services/Guard/ChaseLaw, Shared/ChaseV3) : distance de croisière, retour en une seule loi, vigile plus rapide
+	-- à vitesse constante, éjection à la capture, image du vigile toujours derrière le joueur. Interrupteur PROD
+	-- (partout) : false tant qu'un test humain ne l'a pas validée (décision C2) ; false = la poursuite d'avant, intacte.
+	-- GuardChaseV2 (vague 45) est retiré : toujours à true depuis le 14/11, son chemin est la règle (check-up, R9).
+	ChaseV3 = false,
+	-- a443 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	ChaseV3Dev = true,
 	FortuneTower = true, -- L-108 point 8 (vague 37, a123), événement de la Fortune Tower (Config/FortuneTower) : FortuneTowerService, FortuneTowerController ; true depuis la validation de Clément (L-145 réponse (a), vague 42) ; sans ENV_Event_FortuneVault, rien en jeu publié (bloc V0 en Studio seulement) ; en Studio, workspace:SetAttribute("FortuneTest", true) la fait apparaître tout de suite
 	-- Vague 80 (a267, Cantin 20/11 « Pièges et coffre ») : true en DEV ; sans UI_Rewards.WeeklyChest de Clément, les jours
 	-- se comptent mais rien ne se montre (ni cadre ni pastille : RewardsController).

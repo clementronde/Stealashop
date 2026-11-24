@@ -2,6 +2,7 @@
 -- GuardViewController (a433, client ; Cantin, 2026-11-24 : « freiner l'image du vigile côté client ») : chez le joueur
 -- poursuivi, son vigile ne le traverse jamais, ne le dépasse plus quand il pile et reste derrière lui. Règle et
 -- valeurs : Config/Chase.ClientView.Display (interrupteur Enabled : false = l'état d'a420) ; calcul : Shared/GuardView.
+-- a443 : seulement quand la poursuite V3 est allumée (Shared/ChaseV3) ; éteinte : rien n'est suivi, l'état d'a420.
 --
 -- Ce n'est que de l'affichage. Rien n'est envoyé au serveur, qui reste seul juge de la capture (a416, a420).
 --
@@ -31,6 +32,7 @@ local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local GuardView = require(Shared:WaitForChild("GuardView"))
+local ChaseV3 = require(Shared:WaitForChild("ChaseV3")) -- a443 : seulement avec la poursuite V3 (Features.ChaseV3, ChaseV3Dev)
 
 -- Mêmes noms que dans GuardService (serveur) et ChaseController : les changer dans les trois fichiers.
 local ACTIVE_FOLDER = "ActiveGuards"
@@ -240,7 +242,7 @@ local function release(model: Model)
 end
 
 local function refresh(model: Model)
-	if model.Parent ~= nil and model:GetAttribute(TARGET_ATTRIBUTE) == localPlayer.UserId then
+	if model.Parent ~= nil and model:GetAttribute(TARGET_ATTRIBUTE) == localPlayer.UserId and ChaseV3.Enabled() then
 		follow(model)
 	else
 		release(model)

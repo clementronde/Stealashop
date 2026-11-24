@@ -1,5 +1,6 @@
 --!strict
--- Nouvelle poursuite du vigile (Cantin, 2026-11-14, vague 45, a153 ; Config/Features.GuardChaseV2).
+-- Poursuite du vigile (Cantin, 2026-11-14, vague 45, a153). a443 (24/11) : l'interrupteur Features.GuardChaseV2 est
+-- retiré (toujours allumé depuis le 14/11) ; la poursuite « V3 » de la refonte est dans le bloc V3 (Features.ChaseV3).
 -- Lu par GuardService. Toutes les valeurs : V0 proposé, absent du doc.
 --
 -- Déroulé, pour un poursuivant qui suit cette règle (Apply) :
@@ -27,7 +28,7 @@
 -- Speed effective = Speed du profil × multiplicateur du trail (StatsService.GetTrailMultiplier), celle du
 -- HUD et de Formulas.WalkSpeed (Cantin : un trail ×2 double la Speed).
 -- Vitesse imposée par le tutoriel (GuardService.GetSpeedOverride) : l'ancienne règle, sans ruée.
--- Features.GuardChaseV2 = false, ou Apply.<X> = false : la vitesse d'avant (Zones[zone].GuardSpeed,
+-- Apply.<X> = false : la vitesse d'avant (Zones[zone].GuardSpeed,
 -- Night.ChaseSpeed, vitesse fixe du policier, × la marche de sa cible pour le conducteur).
 
 -- Vague 61 (a198, Cantin : vitesse réelle × Balance.Stats.RealSpeedScale, k) : les vitesses (studs/s) sont écrites à
@@ -211,6 +212,8 @@ local Chase = {
 		-- autres joueurs voient le vigile comme avant. Aucune instance créée ; rien à chaque image hors poursuite.
 		-- Un joueur qui fonce lui-même sur le vigile le traverse encore (a420) : l'image ne recule pas devant lui.
 		-- Enabled = false : l'état d'a420 (le vigile affiché à sa place répliquée).
+		-- a443 : ne s'applique qu'avec la poursuite V3 (Features.ChaseV3 ou ChaseV3Dev ; Shared/ChaseV3). Jamais joué en
+		-- Play avant a443.
 		Display = {
 			Enabled = true, -- V0 proposé (Cantin, 24/11)
 			MinGap = 3, -- V0 proposé (Cantin, 24/11) : studs, à plat (= StandOff ; la capture se voit entre 3 et 5 studs)
@@ -220,6 +223,56 @@ local Chase = {
 			ReturnRate = 6, -- V0 proposé (Cantin, 24/11) : par seconde (un grand écart fond plus vite)
 			FaceBlend = 2, -- V0 proposé (Cantin, 24/11) : studs d'écart à partir desquels elle est tournée vers le joueur
 			ActiveRange = 80, -- V0 proposé (Cantin, 24/11) : studs ; plus loin, aucune règle (image = vraie place)
+		},
+	},
+	-- a443 (Cantin, 2026-11-24 : « sur la poursuite, on a un énorme problème, on repart de zéro » ; fiche
+	-- docs/references/Poursuite.md, mécanique mesurée dans un autre jeu, jamais son look) : poursuite « V3 », allumée par
+	-- Features.ChaseV3 (partout) ou Features.ChaseV3Dev (jeu DEV seulement ; Shared/ChaseV3). Éteinte : tout ce fichier
+	-- s'applique comme avant (retour doux, ruée, rappel) et rien de ce bloc n'est lu.
+	-- Une seule loi de vitesse, à chaque image (server/Services/Guard/ChaseLaw, calcul pur) :
+	--   D      = max(HoldDistance, HoldSeconds × marche du voleur)                      (règles 1 et 2)
+	--   retour = marche du voleur + ReturnGain × (écart − D)                            (règle 4, sans palier)
+	--   v      = clamp(max(plancher, retour), 0, max(base, marche × (1 + ReturnSurplusFactor)))
+	--   plancher = base si le voleur fuit (la part de sa vitesse reçue qui l'éloigne ≥ FleeHigh × sa marche) : un vigile
+	--              plus lent retombe à sa vitesse et l'écart perdu dans un virage revient (règle 6) ;
+	--              max(base, marche) s'il ne fuit plus (part ≤ FleeLow × sa marche : arrêté, demi-tour, il ralentit) :
+	--              le vigile ne freine pas et l'attrape (règle 5) ; entre les deux, en continu.
+	-- « marche » = Humanoid.WalkSpeed du voleur, posée par le serveur (objet porté compris) : jamais une vitesse du client.
+	-- « base » = la vitesse du poursuivant : vigile de magasin, Zones[zone].GuardSpeed sans autre multiplicateur
+	-- (règle 3 : plus rapide que le voleur, il se rapproche à base − marche, constant, sans ruée) ; vigile de nuit et
+	-- policier : marche du voleur + leur rapprochement d'avant (ClosingSpeedMax × (1 − 1 / facteur) : ils attrapent
+	-- toujours, décision de Cantin du 14/11).
+	-- « écart » = distance à plat jusqu'à la position estimée du voleur (ClientView.Estimate : là où il se voit). Le
+	-- vigile vise le voleur tout droit (pas un point devant lui) : il reste derrière lui et coupe les virages.
+	-- Pas pour le conducteur du camion (sa règle d'avant), ni pour la vitesse imposée par le tutoriel.
+	-- Capture : toujours décidée par le serveur, au contact vu par le joueur (ClientView), et seulement si le vigile est
+	-- resté vu à portée CatchDwell s (un vigile qui croise le joueur à grande vitesse n'attrape pas au passage :
+	-- cause des captures annoncées à 10 et 14 studs du Play de fusion99). Le joueur attrapé est éjecté tout de suite
+	-- (Eject), sans attendre le marqueur Impact de Catch, pour cacher le retard du réseau ; le vigile s'arrête derrière
+	-- lui, il ne le traverse pas. Chez le joueur poursuivi, l'image du vigile reste derrière lui (ClientView.Display, a433).
+	V3 = {
+		HoldDistance = 24, -- V0 proposé (Cantin, 24/11) : distance de croisière (studs), à toutes les zones
+		HoldSeconds = 0.5, -- V0 proposé (Cantin, 24/11) : jamais moins que ce temps de course du voleur (s)
+		ReturnGain = 1.5, -- V0 proposé (Cantin, 24/11) : par seconde (mesuré à 1,55 : l'écart en trop fond de moitié en 0,46 s)
+		-- V0 proposé (Cantin, 24/11) : le surplus du retour vaut au plus 2,5 × la marche du voleur (vigile à 3,5 × au plus ;
+		-- chez eux, 3,5 à 3,7 × sans plafond visible).
+		ReturnSurplusFactor = 2.5,
+		FleeLow = 0.5, -- V0 proposé (Cantin, 24/11) : part de sa marche sous laquelle le voleur « ne fuit plus »
+		FleeHigh = 0.9, -- V0 proposé (Cantin, 24/11) : part de sa marche au-dessus de laquelle il « fuit »
+		CatchDwell = 0.1, -- V0 proposé (Cantin, 24/11) : vu à portée ce temps avant la capture (s) ; 0 = sans
+		-- Éjection du joueur attrapé, à la capture : LinearVelocity posée par le serveur (comme le coup d'avant), à
+		-- l'opposé du vigile. Environ 0,5 s en l'air (0,2 s de poussée, puis la chute).
+		Eject = {
+			Enabled = true, -- V0 proposé (Cantin, 24/11) ; false : le coup d'avant, au marqueur Impact
+			Speed = 40, -- V0 proposé (Cantin, 24/11) : studs/s à l'horizontale (le coup d'avant : 40)
+			Up = 22, -- V0 proposé (Cantin, 24/11) : studs/s vers le haut
+			Seconds = 0.2, -- V0 proposé (Cantin, 24/11) : durée de la poussée (s)
+		},
+		-- Qui suit la V3 (false : sa règle d'avant, Apply plus bas).
+		Apply = {
+			StoreGuard = true, -- vigile de jour d'un magasin PNJ
+			NightGuard = true, -- vigile de nuit
+			Police = true, -- policier appelé par un témoin
 		},
 	},
 	-- Vague 72 (a241, L-219 point 2, Clément : « je casse la boutique, je rentre, je ressors : pas de poursuite ») :
