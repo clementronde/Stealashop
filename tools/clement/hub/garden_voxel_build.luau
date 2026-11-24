@@ -73,7 +73,18 @@ for _, name in names do
 	end
 	local solid = SOLID[name]
 	local nParts = 0
+	-- Clément, 2026-11-24 (« je veux que les tiges qui sortent, pas la base carrée ») : les fleurs (pâquerette, tulipe,
+	-- tournesol) perdent leur dalle verte carrée au sol, la plus large de leurs pièces Base ; tiges et feuilles restent
+	local pad = nil
+	if name:match("^ENV_Nature_Flower_") then
+		local best = 0
+		for _, r in rows do
+			if r[1] == "" and r[2] == "Base" and r[6] * r[8] > best then best = r[6] * r[8]; pad = r end
+		end
+		if pad and pad[7] >= pad[6] / 2 then pad = nil end -- pas une dalle plate
+	end
 	for _, r in rows do
+		if r == pad then continue end
 		local grp, pname = r[1], r[2]
 		-- touffes livrées comme pièces Sway_* directement sous la racine (haie, hautes herbes) : groupe Sway_* à leur nom
 		if grp == "" and pname:sub(1, 5) == "Sway_" then grp, pname = pname, "Tuft" end
