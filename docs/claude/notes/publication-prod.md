@@ -15,68 +15,108 @@ DEV = « Steal a Shop [DEV] » (GameId 10774974820, place 131580149465482). PROD
 
 ## 1. Page du jeu
 
+**Refaite le 2026-11-24 d'après le jeu d'aujourd'hui** (section 0 « Le jeu aujourd'hui » du doc partagé et
+`Config/Features`, main 52944638). Le texte du 14/11 parlait encore du banc et de la Force, retirés depuis.
+
 ### Titre : 3 propositions
 
 | # | Titre | Pour | Contre |
 | --- | --- | --- | --- |
-| 1 | **Steal a Shop** (recommandé) | Suit la convention du genre (« Steal a … »), se cherche bien, nom déjà prévu pour la place PROD | Vérifier avant qu'aucun jeu connu ne porte exactement ce nom (Partie 1, règle de propriété intellectuelle) |
+| 1 | **Steal a Shop** (recommandé, gardé) | Suit la convention du genre (« Steal a … »), se cherche bien, nom déjà donné à la place PROD | Recherche web du 24/11 : aucun jeu Roblox trouvé sous ce nom exact (seulement des noms proches : Steal a Thing, Steal a Buddy…). **Pas vérifié dans la recherche de Roblox elle-même** : Cantin tape le nom dans la recherche de Roblox avant la sortie |
 | 2 | Steal a Shop: Heist Street | Dit le braquage et le couloir, se distingue d'un éventuel homonyme | Plus long, coupé sur les petites cartes de la page d'accueil |
-| 3 | Steal a Shop [Heist] | Court, le mot « Heist » aide la recherche | Roblox déconseille les décorations ; on peut y ajouter `[UPDATE]` les samedis, mais jamais de répétitions ni d'émojis en série (risque de rétrogradation) |
+| 3 | Steal a Shop [Heist] | Court, le mot « Heist » aide la recherche | Roblox demande peu de décorations ; jamais de mots répétés ni d'émojis en série (risque de rétrogradation) |
 
-Garder le même titre dans la durée : Roblox prévient qu'un nom qui change souvent se retrouve moins bien.
-Pour les samedis, mieux vaut annoncer la mise à jour dans la description et les miniatures que dans le titre.
+Garder le même titre dans la durée : Roblox prévient qu'un nom qui change souvent se retrouve moins bien. Pour les
+samedis, annoncer la mise à jour dans la description et les miniatures plutôt que dans le titre.
 
 ### Description (anglais, à coller)
 
-La première phrase résume le jeu (conseil de Roblox) ; mots-clés utiles sans répétition.
+Règles de Roblox (relues le 24/11) : la première phrase résume le jeu ; des mots-clés utiles, sans répétition ni mot
+sans rapport (sinon rétrogradation) ; le jeu doit respecter les Community Standards. Règles à nous : rien de trompeur,
+aucune promesse de Robux gratuits, aucun prix, pas d'émojis en série.
+
+**Texte de base**, vrai quelle que soit la liste des fonctions allumées à la sortie :
 
 ```text
-Smash the window, grab the loot, outrun the guard, and build the richest shop on the street!
+Smash a window, grab rare loot and outrun the guard in this heist tycoon where you build the richest shop on the street!
 
 HOW TO PLAY
-- Train on the treadmill for Speed and on the bench for Strength.
-- Break into NPC stores along the street: smash the window before the witnesses call the police.
-- Open the boxes on the shelves and grab what's inside, from Common to Secret.
-- Run back to your shop before the guard catches you, then display your loot to earn cash every second.
-- Upgrade your tools, buy auras and trails, and heist stores in harder zones.
-- Defend your shop with your bat, or sneak into another player's shop and steal their best item.
+- Run on the treadmill to gain Speed.
+- Buy weapons and auras to hit harder.
+- Smash the window of an NPC store before the witnesses call the police.
+- Open a box right there in the store and watch its rarity climb, from Common up to Secret.
+- Grab the item and outrun the guard back to your base.
+- Display your loot to earn cash every second, then upgrade your base.
+- Break into another player's shop to steal their best item, or defend yours with your bat.
 
-6 zones from easy to legendary. When night falls, the street closes and night guards patrol.
-
-NEW UPDATE EVERY SATURDAY!
-Like and favorite the game to get notified of new zones, items and events.
+6 zones along the street, each one harder and richer than the last.
+When night falls, a wall closes the street, night guards patrol and the shelves refill.
 ```
 
-Variante courte (une ligne, pour le champ de résumé des campagnes ou un partage) :
-`Smash, grab, run! Heist NPC stores, display your loot and steal from other players. Updates every Saturday.`
+**Lignes facultatives**, à coller sous « HOW TO PLAY » (une par ligne, dans cet ordre). Cantin enlève celles dont
+l'interrupteur sera éteint en PROD à la sortie (décision C2 : seul ce qui a passé un test humain est allumé). Le texte
+de base ne dépend d'aucune d'elles.
 
-À éviter dans la description : les promesses non vérifiables (« #1 game », « 50% off »), les noms d'autres jeux,
-les mots-clés répétés.
+| Ligne (anglais) | Garder si… |
+| --- | --- |
+| `- Rebirth to earn more cash forever.` | `Features.Rebirth` allumé |
+| `- Complete the index to unlock rewards.` | `Features.Index` allumé |
+| `- Protect your shop with traps, guards and cameras.` | `Features.Traps` et au moins un de `Bodyguards`, `DoorGuard`, `CameraRadar` allumés (sinon : `- Protect your shop with traps.` avec `Traps` seul) |
+| `- Sneak around in disguise from the fitting room.` | `Features.FittingRoom` allumé |
+| `- Spin the wheel for a free prize every day.` | `Features.Wheel` allumé |
+| `- Finish daily quests for extra rewards.` | `Features.Quests` allumé **et** l'écran `UI_Quests` livré par Clément |
 
-### Genre et tags
+Lignes d'événements, à coller sous la phrase « 6 zones… » :
 
-- **Genre proposé** : Simulation, sous-genre Tycoon (la boucle « exposer, encaisser, améliorer » est celle d'un
-  tycoon, comme les autres « Steal a … »). Alternative : Action. À choisir dans la liste du Creator Hub
-  (Configurer > Informations de base), qui fait foi.
-- **Mots-clés à placer dans la description** (Roblox n'a plus de champ de tags libres pour la recherche) :
-  steal, heist, shop, loot, tycoon, robbery, guard.
-- **Joueurs par serveur** : 8 (CLAUDE.md). La décision du 2026-11-12 parle de 8 à 10 : la valeur réglée dans le
-  Creator Hub doit être celle du code (nombre de parcelles `PlayerPlot`). À vérifier par Cantin.
-- **Appareils** : ordinateur, téléphone, tablette, console (la console affiche la page sans vidéo).
+| Ligne (anglais) | Garder si… |
+| --- | --- |
+| `Team up to smash the delivery truck and grab the boxes it drops.` | `Features.TruckEvent` allumé |
+| `Every 30 minutes, an armored van crosses the street: hit it together for a box.` | `Features.ArmoredVan` allumé |
+| `Sometimes the giant Fortune Tower appears in the last zone: break it as a team for huge, rare items.` | `Features.FortuneTower` allumé **et** le modèle `ENV_Event_FortuneVault` dans la place (sans lui, rien en jeu publié) |
+| `Climb the weekly leaderboards.` | `Features.WeeklyLeaderboards` allumé et les panneaux en place |
+| `Play on computer, phone, tablet or console with a controller.` | `Features.Gamepad` allumé |
+
+Ligne de fin, facultative :
+
+| Ligne (anglais) | Garder si… |
+| --- | --- |
+| `New update every Saturday! Like and favorite the game to get notified.` | Le rythme d'une mise à jour par samedi est tenu (pas d'interrupteur) |
+
+Pas de ligne pour la boutique Robux, les gamepasses ni la caisse : la description ne pousse pas les achats.
+
+Variante courte (une ligne, pour le résumé des campagnes ou un partage) :
+`Smash, grab, run! Heist NPC stores, display your loot and steal from other players.`
+
+À éviter dans la description : les promesses non vérifiables (« #1 game », « 50% off », « free Robux »), les noms
+d'autres jeux, les mots-clés répétés, une fonction éteinte en PROD.
+
+### Genre et mots-clés
+
+- **Genre proposé** : **Simulation**, sous-genre **Tycoon** (liste des genres de Roblox relue le 24/11 ; la boucle
+  « exposer, encaisser, améliorer » est celle d'un tycoon, comme les autres « Steal a … »). Autre choix possible dans la
+  même liste : Simulation > Incremental Simulator. Il n'y a pas de sous-genre « Heist ». Le choix se fait sur le Creator
+  Hub, dont la liste fait foi.
+- **Mots-clés déjà placés dans la description**, une fois chacun : heist, tycoon, store, loot, guard, steal, shop.
+- **Joueurs par serveur** : **6**, une boutique chacun (section 0 du doc partagé ; tag `PlayerPlot` × 6 ; page PROD
+  réglée à 6 le 23/11).
+- **Appareils** : ordinateur, téléphone, tablette, console (la manette est gérée, `Features.Gamepad = true` ; la console
+  affiche la page sans vidéo).
+- **Langue de la page** : anglais (textes du jeu en anglais). Traductions : à remplir par Cantin.
+- **Promotional text** (champ facultatif, encore en bêta chez Roblox) : à remplir par Cantin, ou laisser vide.
 
 ### Textes courts pour les miniatures (anglais)
 
 Peu de texte, qui décrit le jeu, en haut ou au milieu : le bas de la miniature est caché par le nombre de joueurs.
-Pas de prix ni de promesse.
+Pas de prix ni de promesse. Chaque scène existe dans le jeu de base (aucune ne dépend d'une fonction facultative).
 
 | Miniature | Scène à montrer (vraie scène du jeu) | Texte |
 | --- | --- | --- |
-| 1 (principale) | Le joueur fracasse une vitrine, éclats en l'air, objet brillant derrière | **SMASH & GRAB!** |
+| 1 (principale) | Le joueur fracasse une vitrine, éclats en l'air, rayon et colis derrière | **SMASH & GRAB!** |
 | 2 | Le joueur court avec un objet Légendaire, le vigile juste derrière | **OUTRUN THE GUARD** |
 | 3 | Sa boutique pleine d'objets exposés, $/s au-dessus | **BUILD THE RICHEST SHOP** |
 | 4 | Un joueur vole l'objet d'un autre, la victime arrive avec sa batte | **STEAL FROM PLAYERS** |
 | 5 | Le couloir de nuit, mur fermé, vigiles de nuit | **NIGHT HEISTS** |
-| 6 | Colis qui s'ouvre sur un objet Secret | **FIND SECRET ITEMS** |
+| 6 | Colis ouvert sur place, la rareté qui monte jusqu'à un objet Secret | **FIND SECRET ITEMS** |
 | Samedi | Nouveauté de la semaine | **NEW UPDATE!** (seulement le jour de la mise à jour) |
 
 ---
@@ -328,7 +368,8 @@ avant la sortie.
   https://create.roblox.com/docs/production/promotion/content-maturity
 - Objets aléatoires payants (relue le 2026-11-24) :
   https://create.roblox.com/docs/production/monetization/randomized-virtual-items-policy
-- Rendre un jeu public, conditions, frais, titre et description :
+- Genres et sous-genres (relue le 2026-11-24) : https://create.roblox.com/docs/production/publishing/experience-genres
+- Rendre un jeu public, conditions, frais, titre et description (relue le 2026-11-24) :
   https://create.roblox.com/docs/production/publishing/publish-experiences-and-places
 - Miniatures et vidéos : https://create.roblox.com/docs/production/publishing/thumbnails
 - Icône : https://create.roblox.com/docs/production/publishing/experience-icons
