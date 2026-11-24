@@ -1,0 +1,21 @@
+--!nocheck
+-- Point 1 : le bouton BASE n'existe plus (vague 38) ; Features.ReturnToBase = false, le remote ReturnToBase est
+-- refusé sans effet par ReturnBaseService (le joueur ne bouge pas).
+startServer()
+local Features = sharedModule("Config/Features")
+section("interrupteur")
+check(Features.ReturnToBase == false, "Features.ReturnToBase = false")
+local ada = join("Ada", plainProfile("a"))
+local spot = Vector3.new(420, 3, 0)
+moveTo(ada, spot)
+advance(1)
+fireAs(ada, "ReturnToBase")
+flush()
+advance(0.5)
+check((rootOf(ada).Position - spot).Magnitude < 0.5, "Ada n'a pas été ramenée chez elle")
+check(logHas("ReturnToBase de Ada ignoré : Features.ReturnToBase = false", nil, "server"), "Studio : une ligne de ReturnBaseService")
+check(#remotes("Notify", function(e) return e.to == ada end) == 0, "aucun message (refus muet)")
+check(ada.Parent == Players, "Ada est toujours là")
+section("fin")
+check(not logHas("ERREUR"), "aucune erreur dans les tâches")
+summary("scénario returnbase")

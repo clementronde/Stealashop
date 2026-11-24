@@ -1,0 +1,48 @@
+--!nocheck
+-- Scénario « late » : seul l'ancien UI_RobuxShop au départ (il marche comme avant), puis UI_RobuxShop_v2
+-- arrive dans PlayerGui (ChildAdded) : il est branché, l'ancien est éteint et n'est plus ouvert.
+
+local HUD = buildHud(PLAYER_GUI)
+local OLD = buildRobuxShopGui(PLAYER_GUI)
+P1:SetAttribute("Income", 100)
+startClient()
+
+section("ancien écran seul")
+click(hudButton(HUD, "RobuxShopButton"))
+advance(0.5)
+check(OLD.Enabled == true, "bouton Shop : UI_RobuxShop ouvert")
+check(offerKeys(OLD) == "DoubleCash,DoubleTraining,AutoCollect,FastOpen,ExtraStands", `gamepasses : {offerKeys(OLD)}`)
+click(OLD.Root.Tabs.CashTab)
+check(offerKeys(OLD) == "Cash10,Cash30,Cash60,Cash180,Cash300,Cash720", `onglet Cash : {offerKeys(OLD)}`)
+check(textOf(cardNamed(OLD, "Cash30"), "Effect") ~= nil and string.find(textOf(cardNamed(OLD, "Cash30"), "Effect"), "30 min of income", 1, true) ~= nil, `Effect écrit dans l'ancien écran ({textOf(cardNamed(OLD, "Cash30"), "Effect")})`)
+click(OLD.Root.Tabs.BoostsTab)
+check(offerKeys(OLD) == "SpeedBoost,SleepGuards,OpenNow", `onglet Boosts : {offerKeys(OLD)}`)
+click(OLD.Root.Tabs.OffersTab)
+check(offerKeys(OLD) == "", "onglet Offers sans pack de départ : vide (comme avant)")
+click(OLD.Root.Window.CloseButton)
+advance(1)
+check(OLD.Enabled == false, "fermé")
+
+section("la v2 arrive")
+local V2 = buildRobuxShopV2(PLAYER_GUI)
+flush()
+check(previewsLeft(V2) == 0, "v2 branchée : Preview_* retirées")
+click(hudButton(HUD, "RobuxShopButton"))
+advance(0.5)
+check(V2.Enabled == true and OLD.Enabled == false, "bouton Shop : la v2 s'ouvre, l'ancien reste fermé")
+check(#cardsOf(OLD) == 0, "aucune carte dans l'ancien écran")
+check(v2Keys(V2, "CashSection") == "Cash10,Cash30,Cash60,Cash180,Cash300,Cash720", "sections de la v2 remplies")
+
+section("la v2 retirée : retour à l'ancien")
+click(v2El(V2, "CloseButton"))
+advance(1)
+V2:Destroy()
+flush()
+click(hudButton(HUD, "RobuxShopButton"))
+advance(0.5)
+click(OLD.Root.Tabs.GamepassesTab)
+check(OLD.Enabled == true and offerKeys(OLD) == "DoubleCash,DoubleTraining,AutoCollect,FastOpen,ExtraStands", `l'ancien écran reprend ({offerKeys(OLD)})`)
+
+check(not logHas("[Loader", "WARN", "client"), "aucun contrôleur en échec au chargement")
+check(not logHas("[RobuxShop]", "WARN", "client"), "aucun avertissement de RobuxShop")
+summary("scénario late")

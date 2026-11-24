@@ -1,0 +1,60 @@
+---------------------------------------------------------------- scénario « gain » (a71, vague 24) : attributs de Clément sur BB_Gain
+local F = UiMotionC.FloatGain
+local Motion = requireModule(MOTION_MODULE, "client")
+Motion.SetSoundPlayer(function() end)
+P1:SetAttribute("Cash", 100)
+P1:SetAttribute("Income", 10)
+P1:SetAttribute("Speed", 10)
+P1:SetAttribute("Strength", 5)
+P1:SetAttribute("WalkSpeed", 16)
+P1:SetAttribute("Damage", 1)
+P1:SetAttribute("CashCollected", 0)
+local hud = makeHud()
+-- Speed : couleur et icône posées ; Power : couleur seule ; Cash : rien (repli Config/UiMotion et icône du HUD).
+local speedColor = Color3.new(0.1, 0.2, 0.3)
+local powerColor = Color3.new(0.9, 0.8, 0.7)
+BB_GAIN:SetAttribute("SpeedColor", speedColor)
+BB_GAIN:SetAttribute("SpeedIcon", "rbxassetid://attr-speed")
+BB_GAIN:SetAttribute("PowerColor", powerColor)
+BB_GAIN:SetAttribute("PowerIcon", "")
+BB_GAIN:SetAttribute("CashColor", "pas une couleur")
+local gainSnap = snapshot(BB_GAIN)
+local Hud = requireModule(HUD_MODULE, "client")
+local Rewards = requireModule(REWARDS_MODULE, "client")
+local Gain = requireModule(GAIN_MODULE, "client")
+taskLib.spawn(Hud.Start)
+taskLib.spawn(Gain.Start)
+step(0.1)
+local function gains()
+	return childrenNamed(PLAYER_GUI, "BB_Gain")
+end
+
+print("\n== G1. Tapis : couleur et icône de BB_Gain")
+P1:SetAttribute("TrainingMachine", "Treadmill")
+P1:SetAttribute("Speed", 12)
+local bb = gains()[1]
+check(bb and sameColor(el(bb, "Amount").TextColor3, speedColor), "G1a Amount à la couleur SpeedColor")
+check(bb and el(bb, "Icon").Image == "rbxassetid://attr-speed", `G1b Icon = SpeedIcon ({bb and el(bb, "Icon").Image})`)
+step(F.Time + 0.5)
+
+print("\n== G2. Banc : couleur posée, icône vide → icône du HUD")
+P1:SetAttribute("TrainingMachine", "Bench")
+P1:SetAttribute("Strength", 9)
+bb = gains()[1]
+check(bb and sameColor(el(bb, "Amount").TextColor3, powerColor), "G2a Amount à la couleur PowerColor")
+check(bb and el(bb, "Icon").Image == "rbxassetid://strength-icon", `G2b PowerIcon vide : icône du HUD ({bb and el(bb, "Icon").Image})`)
+P1:SetAttribute("TrainingMachine", nil)
+step(F.Time + 0.5)
+
+print("\n== G3. Ramassage : attribut invalide ou absent → repli")
+P1:SetAttribute("Cash", 1300)
+P1:SetAttribute("CashCollected", 1200)
+step(1 / 30)
+bb = gains()[1]
+check(bb and sameColor(el(bb, "Amount").TextColor3, F.Colors.Cash), "G3a CashColor pas un Color3 : couleur de Config/UiMotion")
+check(bb and el(bb, "Icon").Image == "rbxassetid://cash-icon", `G3b pas de CashIcon : icône du HUD ({bb and el(bb, "Icon").Image})`)
+step(3)
+
+local same, why = sameAs(gainSnap, BB_GAIN)
+check(same, `G4 le modèle BB_Gain de Clément n'est pas touché ({why})`)
+summary()

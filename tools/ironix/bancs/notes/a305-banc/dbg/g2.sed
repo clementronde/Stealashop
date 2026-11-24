@@ -1,0 +1,4 @@
+s/^\ttable\.insert\(catches, p\)$/\ttable.insert(catches, p) print("DBG CATCH", p.Name, string.format("%.2f", now()), "protégé", tostring(protected(p)), "RevealProtected", tostring(p:GetAttribute("RevealProtected")), "nb reveals", #revealsOf(p), "fin dernière", tostring(endedFor(lastReveal(p) and lastReveal(p).args[10]) ~= nil), "HeistOpen", tostring(STORE_A:GetAttribute("HeistOpen")), "porte", tostring(Carry.IsCarrying(p)))/
+s/^section\("G2 (.*)$/print("DBG avant G2", #catches, string.format("%.2f", now()))\nsection("G2 \1/
+s/^local beforeReveal = #revealsOf\(A\)$/print("DBG avant fireOpen", #catches, string.format("%.2f", now()), STORE_A:GetAttribute("HeistOpen"))\nlocal beforeReveal = #revealsOf(A)/
+s/^check\(#catches == 0, "G2 aucune capture/print("DBG après 3 s", #catches, string.format("%.2f", now())) check(#catches == 0, "G2 aucune capture/

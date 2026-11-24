@@ -1,0 +1,8 @@
+# a218 (vague 66, L-210 point 1) : une offre à l'Id 0 (ou pas codée) dit « Soon » en permanence, bouton visible.
+s/check\(textOf\(cash, "Price"\) == "449", "prix de la Config"\)/check(textOf(cash, "Price") == "Soon", "a218 : Id à 0, « Soon » à la place du prix")/
+s/check\(textOf\(cash, "Price"\) == "449", "toujours le prix de la Config \(aucune lecture chez Roblox\)"\)/check(textOf(cash, "Price") == "Soon", "a218 : toujours « Soon » (aucune lecture chez Roblox)")/
+s/check\(textOf\(cash, "Price"\) == "449", `le prix revient après 2 s : /check(textOf(cash, "Price") == "Soon", `a218 : Id à 0, toujours « Soon » après 2 s : /
+s/check\(textOf\(pack, "Price"\) == "49" and textOf\(cardNamed\(ROBUX, "Cash300"\), "Price"\) == "799", "prix de la Config"\)/check(textOf(pack, "Price") == "Soon" and textOf(cardNamed(ROBUX, "Cash300"), "Price") == "Soon", "a218 : packs à l'Id 0 : « Soon »")/
+s/check\(textOf\(cardNamed\(ROBUX, "Cash60"\), "Price"\) == "199", "les autres cartes gardent leur prix"\)/check(textOf(cardNamed(ROBUX, "Cash60"), "Price") == "Soon", "a218 : les autres cartes (Id 0) disent aussi « Soon »")/
+s/and textOf\(openNow, "Effect"\) == "No (box|item) is waiting" and not shown\(openNow, "BuyButton"\), "Ouvrir maintenant : « No box is waiting », pas de bouton"\)/and textOf(openNow, "Effect") == "No \1 is waiting" and shown(openNow, "BuyButton") and textOf(openNow, "Price") == "Soon", "a218 : Ouvrir maintenant sans palier créé : « No \1 is waiting », bouton « Soon »")/
+s/check\(textOf\(big, "Price"\) == "799", "puis le prix de la Config"\)/check(textOf(big, "Price") == "Soon", "a218 : Id à 0 : « Soon » reste")/

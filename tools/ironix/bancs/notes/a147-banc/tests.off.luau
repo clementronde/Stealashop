@@ -1,0 +1,21 @@
+--!nocheck
+-- Telemetry.Enabled = false : rien n'est envoyé ; le compteur de refus, sa ligne et l'avertissement des doublons
+-- restent ; ZoneReached ne note rien dans le profil.
+makeGates(320, 100, 5)
+startServer()
+local data = plainProfile("x", 1)
+local ada = join("Ada", data)
+fireAs(ada, "BuyItem", 42)
+flush()
+check(TelemetryService.GetRefusalCount(ada) == 1, "refus compté")
+check(logHas("[TelemetryService] Ada : demande refusée n° 1 de la session (BuyItem, ArgType)", "PRINT", "server"), "ligne du refus")
+local bob = join("Bob", plainProfile("x", 1))
+advance(0.5)
+check(logHas("objet en double : uid x-1", "WARN", "server"), "avertissement du doublon")
+moveTo(ada, Vector3.new(345, 3, 0))
+advance(62)
+check(data.ZonesReached == nil, "rien noté dans le profil")
+check(#ANALYTICS.custom == 0, "aucun événement envoyé")
+check(bob.Parent == Players, "personne n'est expulsé")
+check(not logHas("ERREUR"), "aucune erreur dans les tâches")
+summary("scénario off")

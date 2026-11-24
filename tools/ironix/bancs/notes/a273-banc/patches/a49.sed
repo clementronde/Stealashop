@@ -1,0 +1,4 @@
+# a273 : Mutations.ItemName ne répète pas un mot de mutation déjà en tête du nom (« Gold Gold Bar Pyramid »).
+/nom seul sans mutation"\)/a\
+check(Mutations.ItemName("Gold Bar Pyramid", { Effect = "Gold" }) == "Gold Bar Pyramid" and Mutations.ItemName("Gold Bar Pyramid", { Size = "Big", Effect = "Gold" }) == "Big Gold Bar Pyramid" and Mutations.ItemName("Diamond Egg", { Effect = "Diamond" }) == "Diamond Egg" and Mutations.ItemName("gold chain", { Effect = "Gold" }) == "gold chain", "a273 nom : mot de mutation déjà en tête pas répété (« Gold Bar Pyramid », « Big Gold Bar Pyramid »)")\
+check(Mutations.ItemName("Golden Throne", { Effect = "Gold" }) == "Gold Golden Throne" and Mutations.ItemName("Soda Can", { Size = "Big", Effect = "Gold" }) == "Big Gold Soda Can", "a273 nom : mot entier seulement (« Gold Golden Throne »), ordre taille puis effet gardé")

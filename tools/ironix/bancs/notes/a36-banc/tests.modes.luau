@@ -1,0 +1,107 @@
+--!nocheck
+-- M. Studio (le côté « serveur » du banc : RunService:IsStudio() vrai) : par défaut, détection et
+-- ligne seulement, ni retour en arrière ni portage rendu, et le contrôle repart de la nouvelle position
+-- (le Claude principal téléporte souvent son personnage) ; workspace:SetAttribute("AntiCheatStrict",
+-- true) active les sanctions, à chaud. Allow et Verify : arguments invalides, joueur pas suivi.
+
+startServer()
+local strong = newProfile()
+strong.Stats.Strength = 10000
+local A = join("Alice", strong)
+advance(1)
+
+section("M0 Démarrage en Studio")
+check(logHas("[AntiCheatService] contrôle des déplacements toutes les 0.25 s ; Studio : détection et ligne seulement", "PRINT", "server"), "M0a ligne de démarrage : mode Studio")
+check(Workspace:GetAttribute("AntiCheatStrict") == nil, "M0b pas d'attribut AntiCheatStrict")
+
+section("M1 Studio sans AntiCheatStrict : téléport en portant → ligne seulement")
+local box = heist(A, STORE_A, Vector3.new(130, 3, 0))
+settle()
+cheatTeleport(A, Vector3.new(-100, 3, 50))
+advance(0.4)
+local d = lastDetection()
+check(strikes(A) == 1 and d.Kind == "Teleport" and d.Sanctioned == false, "M1a détection non sanctionnée")
+check(Carry.IsCarrying(A) and Carry.GetPayload(A) == box, "M1b le colis n'est pas rendu")
+check(horizontal(rootOf(A).Position, Vector3.new(-100, 3, 50)) < 1, "M1c pas de retour en arrière")
+check(logHas("Studio, détection seule (workspace:SetAttribute(\"AntiCheatStrict\", true) pour sanctionner)", "WARN", "server"), "M1d la ligne dit comment activer les sanctions")
+check(not logHas("anomalie anti-triche de Alice", "WARN", "server"), "M1e ReportAnomaly pas appelé")
+advance(2)
+check(strikes(A) == 1, "M1f une seule ligne : le contrôle repart de la nouvelle position")
+check(AC.Verify(A) == true, "M1g Verify rend true (pas de sanction en Studio)")
+cheatTeleport(A, Vector3.new(300, 3, 0))
+advance(0.4)
+check(strikes(A) == 2 and AC.Verify(A) == true and Carry.IsCarrying(A), "M1h un 2e téléport : 2e ligne, toujours rien de rendu")
+Carry.Fail(A, "banc")
+advance(2)
+
+section("M2 AntiCheatStrict = true, à chaud : sanctions")
+setStrict(true)
+flush()
+check(logHas("[AntiCheatService] Studio : sanctions actives (AntiCheatStrict)", "PRINT", "server"), "M2a ligne « sanctions actives »")
+box = heist(A, STORE_A, Vector3.new(130, 3, 0))
+settle()
+local from = rootOf(A).Position
+cheatTeleport(A, Vector3.new(-100, 3, 50))
+advance(0.4)
+d = lastDetection()
+check(d.Kind == "Teleport" and d.Sanctioned == true, "M2b détection sanctionnée")
+check(not Carry.IsCarrying(A), "M2c colis rendu")
+check(horizontal(rootOf(A).Position, from) < 2, "M2d retour en arrière")
+setStrict(false)
+flush()
+check(logHas("[AntiCheatService] Studio : détection et ligne seulement", "PRINT", "server"), "M2e retour au mode Studio annoncé")
+advance(3)
+
+section("M3 Verify pendant un Allow, et pour un joueur pas suivi")
+place(A, Vector3.new(100, 3, 0))
+settle()
+AC.Allow(A, 0, "banc")
+cheatTeleport(A, Vector3.new(400, 3, 0))
+advance(FRAME)
+local s0 = strikes(A)
+check(AC.Verify(A) == true and strikes(A) == s0, "M3a pendant un Allow : true, rien de détecté")
+advance(3)
+check(strikes(A) == s0, "M3b ni après (le contrôle repart de là où le code l'a laissé)")
+local ghost = newPlayer("Ghost") -- sans personnage
+check(AC.Verify(ghost) == true and AC.GetStrikes(ghost) == 0, "M3c joueur sans personnage : true, 0 détection")
+
+section("M4 Allow : arguments invalides")
+clearLog()
+AC.Allow(A, -1, "banc")
+AC.Allow(A, 0 / 0, "banc")
+AC.Allow(A, math.huge, "banc")
+AC.Allow(nil, 1, "banc")
+check(logCount("[AntiCheatService] Allow", "WARN", "server") == 4, `M4a 4 avertissements ({logCount("[AntiCheatService] Allow", "WARN", "server")})`)
+place(A, Vector3.new(100, 3, 0))
+settle()
+AC.Allow(A, -1, "banc")
+s0 = strikes(A)
+cheatTeleport(A, Vector3.new(400, 3, 0))
+advance(0.4)
+check(strikes(A) == s0 + 1, "M4b un Allow refusé n'ouvre aucune fenêtre : le téléport est vu")
+AC.Allow(A, 0) -- raison oubliée : acceptée
+cheatTeleport(A, Vector3.new(100, 3, 0))
+advance(0.4)
+check(strikes(A) == s0 + 1, "M4c Allow sans raison : accepté")
+
+section("M5 OnDetection : déconnexion")
+local calls = 0
+local disconnect = AC.OnDetection(function()
+	calls += 1
+end)
+settle()
+cheatTeleport(A, Vector3.new(400, 3, 0))
+advance(0.4)
+check(calls == 1, "M5a appelé")
+disconnect()
+cheatTeleport(A, Vector3.new(100, 3, 0))
+advance(0.4)
+check(calls == 1, "M5b plus appelé après la déconnexion")
+
+section("M6 Départ et retour : les récidives restent comptées (par UserId)")
+local strikesBefore = strikes(A)
+Players.PlayerRemoving:Fire(A)
+flush()
+check(AC.GetStrikes(A) == strikesBefore, "M6a gardées après le départ")
+
+summary("scénario modes")

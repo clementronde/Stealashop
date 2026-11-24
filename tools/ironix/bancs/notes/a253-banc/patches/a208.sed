@@ -1,0 +1,3 @@
+# a253 (vague 73, L-243 a et b) : Effect écrit dans les cartes clonées de la v2 ; lots de la caisse « Buy x1 / x3 / x10 ».
+s/check\(textOf\(v2Card\(V2, "Cash10"\), "Effect"\) == "SAMPLE EFFECT" and textOf\(speed, "Effect"\) == "SAMPLE EFFECT", "Effect jamais écrit dans la v2"\)/check(textOf(v2Card(V2, "Cash10"), "Effect") ~= "SAMPLE EFFECT" and string.find(textOf(speed, "Effect"), "TREADMILL", 1, true) ~= nil, `a253 : Effect écrit dans la v2 ({textOf(speed, "Effect")})`)/
+s/textOf\(b1, "Count"\) == "1 Crate" and textOf\(b2, "Count"\) == "3 Crates" and textOf\(b3, "Count"\) == "10 Crates"/textOf(b1, "Count") == "Buy x1" and textOf(b2, "Count") == "Buy x3" and textOf(b3, "Count") == "Buy x10"/

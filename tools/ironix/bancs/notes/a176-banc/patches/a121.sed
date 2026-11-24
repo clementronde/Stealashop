@@ -1,0 +1,4 @@
+# a176 (vague 54), banc a121 (tuto, vol sur le bot) : SafeSlots n'est plus lu, la flèche vise l'objet le plus proche (présentoir 4).
+s/check\(stateOk\(zoe, 12, nil, botSlot\(3\)\), "porte cassée : flèche vers l'objet volable le plus proche \(présentoir 4 à l'abri exclu\) "/check(stateOk(zoe, 12, nil, botSlot(4)), "(a176) porte cassée : flèche vers l'objet le plus proche, le présentoir 4 (SafeSlots ignoré) "/
+s/check\(stateOk\(zoe, 12, nil, botSlot\(3\)\), "dans la boutique du bot \(porte refaite\) : flèche vers l'objet "/check(stateOk(zoe, 12, nil, botSlot(4)), "(a176) dans la boutique du bot (porte refaite) : flèche vers le présentoir 4 "/
+s/check\(stateOk\(zoe, 12, nil, botSlot\(3\)\), "retour à 12 : flèche vers l'objet "/check(stateOk(zoe, 12, nil, botSlot(4)), "(a176) retour à 12 : flèche vers le présentoir 4 "/

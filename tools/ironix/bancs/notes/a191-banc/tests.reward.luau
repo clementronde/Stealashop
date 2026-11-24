@@ -1,0 +1,100 @@
+--!nocheck
+-- Scénario « reward » (a191, L-183) : la récompense fixe d'une zone complète, réclamée une seule fois.
+advance(1000)
+startServer()
+local function speedOf(player)
+	return dataOf(player).Stats.Speed
+end
+
+section("démarrage")
+check(not logHas("[Loader", "WARN"), "aucun module en échec au chargement")
+check(Features.Index == true, "Features.Index = true (pre.on)")
+
+section("zone complétée : un message, rien de donné")
+local ada = join("Ada", profileWith({ 1 }, "Z1_Carotte"))
+advance(1.5)
+local cash0, speed0 = dataOf(ada).Cash, speedOf(ada)
+check(DisplayService.GetIncomeBonus(ada) == 0, "aucun bonus de revenus de l'index")
+check(IndexService.Discover(ada, "Z1_Carotte"), "la Carotte complète la zone 1")
+flush()
+check(#notifies(ada, "Index: Zone 1 complete! Claim +$10K +300 SPEED +WRENCH in the Index!") == 1, "Notify « Index: Zone 1 complete! Claim +$10K +300 SPEED +WRENCH in the Index! »")
+check(dataOf(ada).Cash == cash0 and speedOf(ada) == speed0 and dataOf(ada).IndexRewards == nil and dataOf(ada).IndexGifts == nil, "rien de versé avant la réclamation")
+check(DisplayService.GetIncomeBonus(ada) == 0, "zone complète : toujours aucun bonus de revenus (plus de +5 %)")
+
+section("réclamée (remote) : prime, Vitesse, arme")
+fireAs(ada, "ClaimIndexReward", 1)
+flush()
+local d = dataOf(ada)
+check(d.Cash == cash0 + 10000, `prime de 10 000 $ (trouvé +{d.Cash - cash0})`)
+check(speedOf(ada) == speed0 + 300, `+300 de Vitesse (trouvé +{speedOf(ada) - speed0})`)
+check(countOf(d.Tools.Owned, "Wrench") == 1 and d.Tools.Equipped == "Fists", "Wrench possédée, pas équipée")
+check(d.IndexRewards ~= nil and type(d.IndexRewards["1"]) == "number" and d.IndexGifts ~= nil and type(d.IndexGifts["1"]) == "number", "IndexRewards et IndexGifts notés")
+local tel = indexTelemetry(ada)
+check(#tel == 1 and tel[1].amount == 10000 and tel[1].sku == "IndexZone1", "télémétrie IndexReward 10 000, IndexZone1")
+check(ada:GetAttribute("IndexClaimed") == "1", "IndexClaimed « 1 »")
+
+section("une seule fois")
+advance(1)
+fireAs(ada, "ClaimIndexReward", 1)
+fireAs(ada, "ClaimIndexReward")
+flush()
+check(IndexService.Claim(ada, 1) == 0 and IndexService.Claim(ada, nil) == 0, "2e réclamation : 0")
+check(d.Cash == cash0 + 10000 and speedOf(ada) == speed0 + 300 and countOf(d.Tools.Owned, "Wrench") == 1 and #indexTelemetry(ada) == 1, "ni 2e prime, ni 2e Vitesse, ni 2e arme")
+advance(1)
+fireAs(ada, "ClaimIndexReward", 2)
+flush()
+check(d.Cash == cash0 + 10000, "zone 2 pas complète : rien")
+local userAda = ada.UserId
+leave(ada)
+local back = join("Ada", nil, userAda)
+advance(1.5)
+check(speedOf(back) == speed0 + 300 and countOf(dataOf(back).Tools.Owned, "Wrench") == 1 and dataOf(back).Cash == cash0 + 10000, "retour : rien de plus au chargement")
+leave(back)
+
+section("Claim All : deux zones, arme et aura")
+local bob = join("Bob", profileWith({ 1, 2 }))
+advance(1.5)
+local b0, bs0 = dataOf(bob).Cash, speedOf(bob)
+check(bob:GetAttribute("IndexClaimed") == "" and #notifies(bob, "complete") == 0, "rien au chargement, ni message")
+check(IndexService.Claim(bob, nil) == 2, "Claim All : 2 récompenses")
+check(dataOf(bob).Cash == b0 + 10000 + 1500000 and speedOf(bob) == bs0 + 300 + 10000, "10 K$ + 1,5 M$, +10 300 de Vitesse")
+check(countOf(dataOf(bob).Tools.Owned, "Wrench") == 1 and countOf(dataOf(bob).Cosmetics.Auras, "Flame") == 1 and dataOf(bob).Cosmetics.EquippedAura == nil, "Wrench et l'aura Flame possédées, rien d'équipé")
+check(bob:GetAttribute("IndexClaimed") == "1,2", "IndexClaimed « 1,2 »")
+leave(bob)
+
+section("arme déjà possédée : pas de doublon")
+local cyData = profileWith({ 1 })
+cyData.Tools.Owned = { "Fists", "Wrench" }
+local cy = join("Cy", cyData)
+advance(1.5)
+local c0 = dataOf(cy).Cash
+check(IndexService.Claim(cy, 1) == 1 and dataOf(cy).Cash == c0 + 10000, "prime versée")
+check(countOf(dataOf(cy).Tools.Owned, "Wrench") == 1, "une seule Wrench")
+leave(cy)
+
+section("zone réclamée avant la vague 59 : Vitesse et objet au chargement, sans prime")
+local oldData = profileWith({ 1 })
+oldData.IndexRewards = { ["1"] = 123 }
+local dan = join("Dan", oldData)
+advance(1.5)
+check(dataOf(dan).Cash == 1000 and #indexTelemetry(dan) == 0, "pas de 2e prime")
+check(speedOf(dan) == 300 and countOf(dataOf(dan).Tools.Owned, "Wrench") == 1, `+300 de Vitesse et la Wrench ({speedOf(dan)})`)
+check(dataOf(dan).IndexGifts ~= nil and type(dataOf(dan).IndexGifts["1"]) == "number" and dataOf(dan).IndexRewards["1"] == 123, "IndexGifts noté, IndexRewards gardé")
+check(IndexService.Claim(dan, 1) == 0, "rien à réclamer")
+local userDan = dan.UserId
+leave(dan)
+local dan2 = join("Dan", nil, userDan)
+advance(1.5)
+check(speedOf(dan2) == 300 and countOf(dataOf(dan2).Tools.Owned, "Wrench") == 1, "retour : une seule fois")
+leave(dan2)
+
+section("IndexGifts abîmé : rien de versé")
+local broken = profileWith({ 1 })
+broken.IndexGifts = "oups"
+local eve = join("Eve", broken)
+advance(1.5)
+check(IndexService.Claim(eve, nil) == 0 and dataOf(eve).Cash == 1000 and speedOf(eve) == 0, "réclamation refusée, rien de versé")
+check(logHas("[IndexService] Eve : IndexGifts illisible", "WARN", "server"), "avertissement")
+leave(eve)
+
+summary("scénario reward")

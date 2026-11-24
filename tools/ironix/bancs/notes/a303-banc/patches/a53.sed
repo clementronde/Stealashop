@@ -1,0 +1,4 @@
+# a303 (21/11) : sans RewardDesc dans le Template, RewardName dit le gain du palier (« 5 min: 2 min of cash », ou
+# « 5 min: $100 cash » quand le revenu 0 est répliqué) au lieu du texte de Preview_1 ou de « Gift at 60 min ».
+s/check\(r5 and r5\.name\.Text == "Preview gift 1" and r5\.icon\.Image == "rbxassetid:\/\/611", "palier 1 : texte et icône de Preview_1"\)/check(r5 and (r5.name.Text == "5 min: 2 min of cash" or r5.name.Text == "5 min: $100 cash") and r5.icon.Image == "rbxassetid:\/\/611", "palier 1 : gain dans RewardName (a303), icône de Preview_1")/
+s/check\(r60 and r60\.name\.Text == "Gift at 60 min" and r60\.icon\.Image == "rbxassetid:\/\/600", "palier 4 \(sans Preview_4\) : « Gift at 60 min », icône du Template"\)/check(r60 and r60.name.Text == "60 min: Item up to Mythic" and r60.icon.Image == "rbxassetid:\/\/600", "palier 4 (sans Preview_4) : « 60 min: Item up to Mythic » (a303), icône du Template")/

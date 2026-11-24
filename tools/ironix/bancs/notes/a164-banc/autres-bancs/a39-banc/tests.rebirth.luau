@@ -1,0 +1,154 @@
+--!nocheck
+-- Copie a164 (2026-11-14, vague 51) : Config/Rebirths = tableau V0 de la proposition (renaissance-proposition.md,
+-- section 2 : 20B et Diamant géant pour la 1re, 9T puis ×1,3) ; l'aperçu (renaissance coupée, sans attribut
+-- Rebirths) se comporte comme avant avec ces valeurs (Giant Diamond, $20B). Écrans et aperçu : comme a39.
+-- Scénario « rebirth » : Config/Rebirths et l'écran UI_Rebirth de Clément en aperçu (RebirthController) :
+-- rempli avec la 1re renaissance, ouvert et fermé par le bouton du HUD et CloseButton, l'argent qui suit
+-- l'attribut Cash, le bouton qui reste Disabled, « Coming soon », aucun style touché, écran recréé rebranché,
+-- écran absent.
+
+local HUD = buildHud(PLAYER_GUI)
+local REBIRTH = buildRebirth(PLAYER_GUI)
+P1:SetAttribute("Cash", 6.4e9)
+local snap = snapshot(REBIRTH)
+startClient()
+
+local function el(path)
+	return rebirthEl(REBIRTH, path)
+end
+
+section("Config/Rebirths : le tableau V0 de la proposition")
+local expected = {
+	{ 20e9, "Z6_DiamantGeant", "Rare", 6, "Aura", 494 },
+	{ 500e9, "Z6_TroneEnOr", "Epic", 6, "Safe", 956 },
+	{ 1.3e12, "Z6_StatueDeLaLiberte", "Epic", 6, "Treadmill", 1369 },
+	{ 2e12, "Z2_PelucheGeante", "Legendary", 2, "Trail", 1808 },
+	{ 2.6e12, "Z3_PcGamer", "Legendary", 3, "Tool", 2195 },
+	{ 3.2e12, "Z4_Couronne", "Legendary", 4, "Treadmill", 2530 },
+	{ 5e12, "Z5_MasqueAncien", "Legendary", 5, "Tool", 2991 },
+	{ 7e12, "Z6_CoffreDeDiamants", "Legendary", 6, "Guard", 3359 },
+	{ 7.5e12, "Z6_CleDuCoffreUltime", "Mythic", 6, "Aura", 3846 },
+	{ 9e12, "Z6_CleDuCoffreUltime", "Mythic", 6, "Title", 4207 },
+}
+check(#Rebirths.Tiers == 10, "10 lignes (la 10e = « 10 et suivantes »)")
+for level, row in expected do
+	local tier = Rebirths.Tiers[level]
+	local item = Items.ById[row[2]]
+	check(
+		tier.Level == level and tier.Cash == row[1] and tier.ItemId == row[2] and tier.Rarity == row[3] and tier.Zone == row[4] and tier.Effect == row[5] and tier.PlayTimeMinutes == row[6],
+		`renaissance {level} : {Format.money(row[1])}, {row[2]} ({row[3]}, zone {row[4]}), {row[5]}`
+	)
+	check(item ~= nil and item.Rarity == row[3] and item.Zone == row[4], `{row[2]} : même rareté et même zone dans Config/Items`)
+	check(type(tier.RewardText) == "string" and tier.RewardText ~= "" and type(tier.Reward) == "string", `renaissance {level} : texte affiché « {tier.RewardText} »`)
+end
+check(Rebirths.Tiers[1].RewardText == "Rebirth Aura", "renaissance 1 : « Rebirth Aura », le texte de la maquette de Clément")
+check(Rebirths.IncomeBonus == 0.5 and Rebirths.CashGrowth == 1.3 and Rebirths.KeepItems == 3, "+50 % par renaissance, ×1,3 au-delà, 3 objets gardés")
+check(Rebirths.Get(1) == Rebirths.Tiers[1] and Rebirths.Get(10) == Rebirths.Tiers[10], "Get(1), Get(10) : les lignes du tableau")
+local eleventh = Rebirths.Get(11)
+check(eleventh ~= nil and eleventh.Level == 11 and eleventh.Cash == 11.7e12 and eleventh.ItemId == "Z6_CleDuCoffreUltime" and eleventh.PlayTimeMinutes == nil, `Get(11) : ×1,3 de la 10e (11.7T), Clé du coffre ultime ({eleventh and eleventh.Cash})`)
+check(Rebirths.Get(12).Cash == 15.21e12, `Get(12) : ×1,3 encore, arrondi au milliard ({Rebirths.Get(12).Cash})`)
+check(Rebirths.Get(0) == nil and Rebirths.Get(-1) == nil and Rebirths.Get(1.5) == nil and Rebirths.Get(0 / 0) == nil and Rebirths.Get(math.huge) == nil, "Get : nil pour 0, -1, 1.5, NaN, l'infini")
+check(table.isfrozen(Rebirths) and table.isfrozen(Rebirths.Tiers) and table.isfrozen(Rebirths.Tiers[3]) and table.isfrozen(eleventh), "tout est gelé (DeepFreeze), même une ligne au-delà du tableau")
+check(not pcall(function()
+	Rebirths.Tiers[1].Cash = 1
+end), "écrire une valeur lève une erreur")
+check(Rebirths.IncomeMultiplier(0) == 1 and Rebirths.IncomeMultiplier(1) == 1.5 and Rebirths.IncomeMultiplier(4) == 3 and Rebirths.IncomeMultiplier(0 / 0) == 1, "revenus ×1, ×1,5, ×3 après la 4e ; NaN = ×1")
+check(Rebirths.TreadmillMultiplier(2) == 1 and Rebirths.TreadmillMultiplier(3) == 1.5 and Rebirths.TreadmillMultiplier(6) == 2.25 and Rebirths.TreadmillMultiplier(20) == 2.25, "tapis ×1,5 à la 3e, ×2,25 à la 6e")
+check(Rebirths.ExtraSafes(1) == 0 and Rebirths.ExtraSafes(2) == 1 and Rebirths.ExtraSafes(15) == 1, "+1 coffre-fort à la 2e")
+check(Rebirths.HasReward(4, "Trail") and not Rebirths.HasReward(3, "Trail") and Rebirths.HasReward(10, "Title"), "HasReward : trail à la 4e, titre à la 10e")
+
+section("écran rempli au branchement, fermé")
+check(REBIRTH.Enabled == false, "fermé au départ")
+check(el("Level").Text == "Level 0 → 1", `Level : {el("Level").Text}`)
+check(el("CashRequirement.CashAmount").Text == "$20B", `CashAmount : {el("CashRequirement.CashAmount").Text}`)
+check(el("CashRequirement.CashLabel").Text == "$6.4B / $20B", `CashLabel : {el("CashRequirement.CashLabel").Text}`)
+local fill = el("CashBar.Fill")
+check(near(fill.Size.X.Scale, 0.32) and fill.Size.X.Offset == 2 and fill.Size.Y.Scale == 1 and fill.Size.Y.Offset == -4, `Fill à 32 %, Offset et hauteur de Clément gardés ({tostring(fill.Size)})`)
+check(el("ItemRequirement.ItemName").Text == "GIANT DIAMOND", "ItemName : GIANT DIAMOND (en capitales, comme l'exemple)")
+check(el("ItemRequirement.Rarity").Text == "RARE", "Rarity : RARE")
+check(el("ItemRequirement.Rarity").TextColor3 == REBIRTH_RARITY_COLOR, "couleur de Rarity : celle de Clément")
+check(el("ItemRequirement.Icon").Image == DIAMOND_ICON, "Icon : ICON_Z6_DiamantGeant (Assets/Icons)")
+check(el("ItemRequirement.Status").Text == "Not owned yet", "Status : texte de Clément gardé (aperçu)")
+check(el("ItemRequirement.Lock").Visible == true, "Lock pas touché")
+check(el("GainList.Row2.RowLabel").Text == "Rebirth Aura", "GainList : la récompense du palier (Rebirth Aura)")
+check(el("GainList.Row1.RowLabel").Text == "+50% income forever" and el("GainList.Row3.RowLabel").Text == '"Rebirth 1" title', "les autres lignes de GainList gardées")
+check(el("LoseList.Row1.RowLabel").Text == "Cash" and el("KeepList.Row1.RowLabel").Text == "3 items you pick" and el("KeepList.Row4.RowLabel").Text == "Robux purchases", "colonnes Lose et Keep gardées (aperçu)")
+check(el("ConfirmButton.Disabled").Visible == true and el("ConfirmButton.Ready").Visible == false and el("ConfirmButton.Confirm").Visible == false, "ConfirmButton : Disabled seul visible")
+check(el("Hint").Text == "Coming soon", `Hint : {el("Hint").Text}`)
+
+section("ouverture et fermeture")
+local button = hudButton(HUD, "RebirthButton")
+check(button.Visible == true, "bouton Rebirth du HUD visible")
+click(button)
+check(REBIRTH.Enabled == true, "le bouton du HUD ouvre l'écran")
+click(button)
+check(REBIRTH.Enabled == false, "un 2e appui le ferme")
+click(button)
+click(el("CloseButton"))
+check(REBIRTH.Enabled == false, "CloseButton le ferme")
+
+section("l'argent suit l'attribut Cash")
+click(button)
+P1:SetAttribute("Cash", 24e9)
+flush()
+check(el("CashRequirement.CashLabel").Text == "$24B / $20B" and near(fill.Size.X.Scale, 1), "24B $ : « $24B / $20B », barre pleine (au plus 1)")
+P1:SetAttribute("Cash", 5e9)
+flush()
+check(el("CashRequirement.CashLabel").Text == "$5B / $20B" and near(fill.Size.X.Scale, 0.25), "5B $ : barre au quart")
+P1:SetAttribute("Cash", nil)
+flush()
+check(el("CashRequirement.CashLabel").Text == "… / $20B" and near(fill.Size.X.Scale, 0), "argent pas encore posé : « … », barre vide")
+P1:SetAttribute("Cash", 6.4e9)
+flush()
+
+section("ConfirmButton : rien")
+local calls = #SERVER_CALLS
+click(el("ConfirmButton"))
+click(el("ConfirmButton"))
+check(el("ConfirmButton.Disabled").Visible == true and el("ConfirmButton.Ready").Visible == false and el("ConfirmButton.Confirm").Visible == false, "deux appuis : toujours Disabled")
+check(#SERVER_CALLS == calls, "aucun envoi au serveur")
+check(REBIRTH.Enabled == true, "l'écran reste ouvert")
+
+section("aucun style touché")
+local allowed = {
+	[REBIRTH] = { Enabled = true },
+	[fill] = { Size = true },
+	[el("CashRequirement.CashLabel")] = { Text = true },
+	[el("CashRequirement.CashAmount")] = { Text = true },
+	[el("ItemRequirement.ItemName")] = { Text = true },
+	[el("ItemRequirement.Icon")] = { Image = true },
+	[el("Hint")] = { Text = true },
+}
+local changes = diffSnapshot(snap, REBIRTH, allowed)
+check(#changes == 0, `seuls Enabled, les textes de CashAmount, CashLabel, ItemName et Hint, l'image de Icon et la largeur de Fill ont changé ({table.concat(changes, " ; ")})`)
+check(fill.BackgroundColor3 == Color3.fromRGB(47, 224, 143) and el("ItemRequirement.Icon").ImageColor3 == Color3.fromRGB(80, 80, 80), "couleurs de Fill et de Icon (grisée) : celles de Clément")
+check(REBIRTH:FindFirstChildWhichIsA("UIScale", true) == nil, "aucun UIScale laissé par Motion")
+
+section("écran recréé (ResetOnSpawn)")
+REBIRTH:Destroy()
+flush()
+local again = buildRebirth(PLAYER_GUI)
+flush()
+check(again.Enabled == false and rebirthEl(again, "Hint").Text == "Coming soon" and rebirthEl(again, "Level").Text == "Level 0 → 1", "nouvel écran rebranché : rempli, fermé")
+click(button)
+check(again.Enabled == true, "le bouton du HUD ouvre le nouvel écran")
+click(button)
+check(again.Enabled == false, "et le referme")
+
+section("écran absent")
+again:Destroy()
+flush()
+clearLog()
+click(button)
+check(logHas("[Rebirth] écran UI_Rebirth absent de PlayerGui", "PRINT", "client"), "une ligne dans la sortie (Studio), aucune erreur")
+
+section("textes de l'exemple en minuscules : écrits tels quels")
+local lower = buildRebirth(PLAYER_GUI)
+flush()
+local name = rebirthEl(lower, "ItemRequirement.ItemName")
+name.Text = "Instant noodles"
+rebirthEl(lower, "ItemRequirement.Rarity").Text = "Rare item"
+click(button)
+check(name.Text == "Giant Diamond" and rebirthEl(lower, "ItemRequirement.Rarity").Text == "Rare", "Giant Diamond, Rare")
+
+summary("scénario rebirth")

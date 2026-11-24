@@ -1,0 +1,2 @@
+# a299 : la carte survolée recentre son Icon (Hover.Centered) ; M4d lit la Position décalée par Motion.Placed.
+s/check\(sameUDim2\(icon\.Position, UDim2\.fromScale\(0\.5 \+ C\.ShiftX, 0\.4 \+ C\.ShiftY\)\), "M4d Icon décalé de \(ShiftX ; ShiftY\)"\)/check(sameUDim2(icon.Position, Motion.Placed(icon, UDim2.fromScale(0.5 + C.ShiftX, 0.4 + C.ShiftY))), "M4d Icon décalé de (ShiftX ; ShiftY) (a299 : compté dans l'AnchorPoint de Clément, Motion.Placed)")/
