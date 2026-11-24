@@ -895,7 +895,7 @@ local function buildRarest(M)
 end
 
 -- Plateau sombre bordé de blanc sur un socle gris à studs, 4 lumières aux coins, plaque « RAREST PULL »
--- sur le bord avant (référence Clément : References/2026-11-14_Hub_Zones/03_Objet_le_plus_rare_plateforme).
+-- sur le bord avant (référence Clément : References/Map/Hub/03_Objet_le_plus_rare_plateforme).
 -- 9 x 10 studs (x 9,75..18,75, z -51,5..-41,5) : entre le montant droit de la porte (x 10) et la place
 -- laissée vide du banc (x 18,75), devant la façade (z -40) et avant l'allée du hub (z -52). Le plateau
 -- (7,6 x 8,6) prend un objet Colossal (2,2 x 3 = 6,6 studs). Pas de couleur d'accent : identique partout.

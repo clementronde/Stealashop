@@ -1,7 +1,7 @@
 --!nonstrict
 -- ui_tas_transparence.luau (Clément, 2026-11-17, relayé par la session chef : « le fond de la boutique a une transparence
 -- qui permet de nous voir derrière : si le sol était bleu, on verrait un flou bleu ») ; mesures de Throw a Seed :
--- StealAShop-Art/References/Videos_Jeux/2026-11-17_ThrowASeed_D_analyse_0-80.md, section 13.
+-- StealAShop-Art/References/Analyses_Jeux/2026-11-17_ThrowASeed_D_analyse_0-80.md, section 13.
 -- Sur chaque fenêtre, sans changer aucun nom :
 --   - corps (Window, Dock.Panel, ou Root pour les boutiques d'armes et d'auras) : presque noir (#0E1016, la teinte la
 --     plus sombre de nos fenêtres), BackgroundTransparency 0,5, sans dégradé ;

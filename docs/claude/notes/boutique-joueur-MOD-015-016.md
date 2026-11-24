@@ -178,7 +178,7 @@ Session « boutique du joueur », 2026-11-07, mode Edit seulement (pas de Play, 
 
 ## 2026-11-14 : disposition « Steal a … » (allée centrale et deux files)
 
-Référence : `StealAShop-Art/References/2026-11-13_Boutiques/boutique_joueur_reference.webp`. Sauvegarde : `ServerStorage/Assets/MapBackup_Shops_2026-11-14_09h31` (gabarit, `PLOT_Shop_Rayons` et les 8 boutiques, sans tags). Fait sur le gabarit et sur `PLOT_Shop_Rayons`. Aperçu validé par Clément, puis files écartées de 2 studs de l'allée. Les 8 boutiques du hub sont réinstallées (même pivot, mêmes attributs), l'aperçu est retiré, et le ContractChecker est OK.
+Référence : `StealAShop-Art/References/Map/Base_joueur/boutique_joueur_reference.webp`. Sauvegarde : `ServerStorage/Assets/MapBackup_Shops_2026-11-14_09h31` (gabarit, `PLOT_Shop_Rayons` et les 8 boutiques, sans tags). Fait sur le gabarit et sur `PLOT_Shop_Rayons`. Aperçu validé par Clément, puis files écartées de 2 studs de l'allée. Les 8 boutiques du hub sont réinstallées (même pivot, mêmes attributs), l'aperçu est retiré, et le ContractChecker est OK.
 
 Repère du gabarit : avant vers −Z, porte en z −40.
 

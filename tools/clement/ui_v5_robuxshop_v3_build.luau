@@ -414,7 +414,7 @@ local EXCLUSIVE_IDS: { [string]: string } = {
 	ICON_Exclusive_GoldenPlanet = "rbxassetid://102640872323532",
 }
 local exclusives = {
-	{ "ICON_Exclusive_DiscoBall", "ICON_BOX_Rare" },
+	{ "ICON_Exclusive_DiscoBall", "ICON_BOX_Epic" }, -- Disco Ball Épique depuis L-276 (L-281 point 1)
 	{ "ICON_Exclusive_GoldenGramophone", "ICON_BOX_Epic" },
 	{ "ICON_Exclusive_GoldenRocket", "ICON_BOX_Legendary" },
 	{ "ICON_Exclusive_CrystalSkull", "ICON_BOX_Mythic" },
@@ -422,7 +422,7 @@ local exclusives = {
 	{ "ICON_Exclusive_GoldenPlanet", "ICON_BOX_Divine" },
 }
 local oddColors: { { string } } = {
-	{ "97d0ff", "1c63cf" },
+	{ "d7aeff", "7426c9" }, -- Épique, comme Odd_2 (L-281 point 1 ; avant : Rare 97d0ff → 1c63cf)
 	{ "d7aeff", "7426c9" },
 	{ "ffe68a", "e08c00" },
 	{ "ff9aae", "c9183e" },

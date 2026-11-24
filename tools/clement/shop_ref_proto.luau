@@ -1,6 +1,6 @@
 --[[
 	Prototype de la boutique d'auras sur le modèle de la vidéo de référence de Clément
-	(StealAShop-Art/References/2026-11-13_Boutiques/boutique_reference.mp4, 1866 × 950, 30 images/s).
+	(StealAShop-Art/References/UI/Boutiques_Robux/boutique_reference.mp4, 1866 × 950, 30 images/s).
 	À lancer en Edit : copie dans CoreGui (_PROTO_AuraShop_CLAUDE), rien n'est répliqué ni sauvegardé.
 	Jouable à la souris dans le viewport : survol et clic des boutons, molette ou glisser pour faire
 	défiler, X pour fermer (réouverture 1 s après), onglets Auras / Trails, achat et équipement simulés.
