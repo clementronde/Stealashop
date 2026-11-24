@@ -799,8 +799,23 @@ local function checkModel(spec: ModelSpec, inst: Instance): boolean
 	return true
 end
 
+-- a306 (L-284, « Script timeout ») : plus de 2 s d'un trait en Play (Workspace de 90 000 instances) ; entre deux
+-- étapes, la vérification rend la main dès qu'elle a calculé SLICE_SECONDS sans yield, pour ne jamais approcher
+-- ScriptTimeoutLength (10 s en Studio). Une vérification rapide (bancs) ne cède pas.
+-- a448 : aussi entre deux modèles de checkModels (24/11 : 182 000 instances lues, 0,5 s par modèle, environ 15 s d'un
+-- trait pour les 30 modèles : Start coupé, plus de ligne « Contrat : »).
+local SLICE_SECONDS = 1
+local sliceStartedAt = 0
+local function breathe()
+	if os.clock() - sliceStartedAt >= SLICE_SECONDS then
+		task.wait()
+		sliceStartedAt = os.clock()
+	end
+end
+
 local function checkModels(scanned: { Instance })
 	for _, spec in Models.List do
+		breathe() -- a448
 		local seen: { [Instance]: boolean } = {}
 		local list: { Instance } = {}
 		local function push(inst: Instance)
@@ -1607,18 +1622,6 @@ local function checkScripts(scanned: { Instance })
 end
 
 -- Vérification complète ----------------------------------------------------------
-
--- a306 (L-284, « Script timeout ») : plus de 2 s d'un trait en Play (Workspace de 90 000 instances) ; entre deux
--- étapes, la vérification rend la main dès qu'elle a calculé SLICE_SECONDS sans yield, pour ne jamais approcher
--- ScriptTimeoutLength (10 s en Studio). Une vérification rapide (bancs) ne cède pas.
-local SLICE_SECONDS = 1
-local sliceStartedAt = 0
-local function breathe()
-	if os.clock() - sliceStartedAt >= SLICE_SECONDS then
-		task.wait()
-		sliceStartedAt = os.clock()
-	end
-end
 
 local function run()
 	sliceStartedAt = os.clock()
