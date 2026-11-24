@@ -1,6 +1,6 @@
 --[[
 	collect_pad_v3.luau (Clément, 2026-11-23) : plaques d'argent CollectPad_xx refaites « comme dans les exemples »
-	(StealAShop-Art/References/Analyses_Jeux/2026-11-23_Concurrent_*), validées sur le prototype de
+	(StealAShop-Art/References/Analyses_Jeux/Concurrent_*), validées sur le prototype de
 	Workspace/_APERCU_SolLumiere/Sol_3_Musee/_Proto, sans le rebord doré.
 
 	Pour chaque CollectPad_xx du gabarit PLOT_Shop, de PLOT_Shop_Rayons et des boutiques du hub :

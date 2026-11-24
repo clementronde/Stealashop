@@ -217,7 +217,7 @@ Pro chez eux :
 - **Tout gain a un trajet** (du joueur vers le chiffre) et **tout chiffre bouge quand il change**.
 - **La fermeture est plus rapide que l'ouverture.**
 
-Ce qui ferait « fait vite » chez nous, en comparaison (d'après `Config/UiMotion`, pas d'après des captures : les captures de revue de `2026-11-15_Revue_UI` ne sont pas sur ce poste) :
+Ce qui ferait « fait vite » chez nous, en comparaison (d'après `Config/UiMotion`, pas d'après des captures : les captures de revue de `Revue_UI` ne sont pas sur ce poste) :
 - l'ouverture sans dépassement (0,15 s `Quint`) : on la voit à peine ;
 - la fermeture qui coupe à 0,4 en 0,07 s, sans élan ;
 - les gains d'entraînement qui montent et s'effacent sur place, sans rejoindre le compteur ;

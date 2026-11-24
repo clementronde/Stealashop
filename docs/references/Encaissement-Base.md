@@ -365,7 +365,7 @@ Environ **1 s de retours sans trou**, à une vingtaine par seconde, puis le calm
 - Le texte sort en rétrécissant, pas en s'effaçant.
 - Le son est fait de couches, avec une hauteur qui monte.
 
-**Générique chez nous**, comparé au code. Les captures de notre jeu (`2026-11-15_Revue_UI`) ne sont pas sur cette machine, je n'ai donc pas pu comparer à l'image.
+**Générique chez nous**, comparé au code. Les captures de notre jeu (`Revue_UI`) ne sont pas sur cette machine, je n'ai donc pas pu comparer à l'image.
 - Tout part au contact : sursaut, défilement et son. Les billets arrivent ensuite **sans réponse du HUD**.
 - `Glow` s'allume puis s'éteint d'un coup, et la plaque descend puis remonte sans tween : c'est mécanique.
 - Les billets **attendent immobiles** en l'air, en file, avant de partir. Chez eux, ils sont toujours en mouvement.

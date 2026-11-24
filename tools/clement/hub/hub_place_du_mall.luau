@@ -1254,7 +1254,7 @@ local function groundLoop(parent, f, name, pts, color)
 	return m
 end
 -- Disque doux au sol (Clément, 2026-11-15 et 2026-11-17 : « les rectangles de lignes font cheap », références
--- References/Analyses_Jeux/2026-11-15_BreakStealEgg_B_frames/b_zone_sol_*.jpg) : remplace les anneaux de néon. Une pièce plate
+-- References/Analyses_Jeux/BreakStealEgg_B_frames/b_zone_sol_*.jpg) : remplace les anneaux de néon. Une pièce plate
 -- invisible `GroundDisc` (ni collision, ni toucher, ni requête) porte une SurfaceGui sur sa face du dessus : anneaux
 -- concentriques (UIStroke) plus opaques vers le bord, qui s'effacent vers le centre, à pleine lumière ; puis 2 émetteurs :
 -- fins traits de lumière qui montent du bord (strie de la pluie de FX_Aura_Eclair) et particules à thème (étincelles

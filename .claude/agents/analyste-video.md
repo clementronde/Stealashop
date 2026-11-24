@@ -16,7 +16,7 @@ On reprend les **techniques** : durées, courbes, rebonds, enchaînements, hiér
 
 ## Où ranger
 
-- Vidéos : `C:\Users\Charment\Documents\StealAShop-Art\References\Analyses_Jeux\<date>_<Jeu>_<Lettre>.mp4`.
+- Vidéos : `C:\Users\Charment\Documents\StealAShop-Art\References\Analyses_Jeux\<Jeu>_<Lettre>.mp4`.
 - Images extraites : `Analyses_Jeux\<nom de la vidéo>_frames\`. Garde seulement les images utiles (planches et images clés), supprime le reste.
 - Fiche : `Analyses_Jeux\<nom de la vidéo>_analyse.md`. Si on te donne une plage de temps, `<nom>_analyse_<début>-<fin>.md`.
 
@@ -43,7 +43,7 @@ Lance ffmpeg depuis le dossier de la vidéo, avec des noms de fichiers sans acce
 
 1. Catalogue des moments (temps, écran, action).
 2. Une section par écran ou effet : **chez eux** (mesures : tailles, couleurs, durées, courbes, sons) ; **pourquoi ça marche** ; **chez nous** (comment le refaire dans Steal a Shop, élément par élément, avec les noms Roblox et les valeurs de tween) ; images clés à l'appui (chemins).
-3. Ce qui fait « pro » et pas « IA » chez eux, et ce qui fait « IA » chez nous en comparaison (captures de notre jeu : `StealAShop-Art/References/UI/_Notre_jeu/2026-11-15_Revue_UI/`).
+3. Ce qui fait « pro » et pas « IA » chez eux, et ce qui fait « IA » chez nous en comparaison (captures de notre jeu : `StealAShop-Art/References/UI/_Notre_jeu/Revue_UI/`).
 4. Les questions à poser à Clément (choix de jeu, pas de technique).
 
 ## Règles
