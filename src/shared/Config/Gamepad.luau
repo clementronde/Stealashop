@@ -30,6 +30,13 @@ local Gamepad = {
 	SliderMore = Enum.KeyCode.DPadRight,
 	SliderStep = 0.1, -- part du volume par appui (Music, Sound)
 	-- Textes (en anglais) ; %s = le nom du bouton A de la manette (« A » sur Xbox, « Cross » sur PlayStation).
+	-- a443 (Cantin, 24/11 : « qu'on ne puisse pas être ralenti », pareil sur PC, téléphone et manette ; Shared/FullStick,
+	-- FullStickController ; interrupteur Features.FullSpeedStick ou FullSpeedStickDev, et non Features.Gamepad) : une
+	-- direction de marche plus longue que DeadZone est remise à longueur 1 (pleine WalkSpeed), sinon à 0 (arrêt). Vaut pour
+	-- la manette et pour le stick virtuel du téléphone ; le clavier ne change pas.
+	FullStick = {
+		DeadZone = 0.2, -- V0 proposé (Cantin, 24/11) : part de la course du stick (la zone morte de la manette chez Roblox : 0,2)
+	},
 	Texts = {
 		RebirthConfirm = "Press %s again to rebirth", -- au lieu de « Tap again to rebirth »
 	},

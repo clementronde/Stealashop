@@ -37,6 +37,13 @@ local Features = {
 	ChaseV3 = false,
 	-- a443 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
 	ChaseV3Dev = true,
+	-- a443 (Cantin, 24/11 : « qu'on ne puisse pas être ralenti ») : dès que le stick (manette, stick virtuel du téléphone)
+	-- sort de la zone morte, le personnage marche à sa pleine vitesse, comme au clavier (Shared/FullStick,
+	-- FullStickController, Config/Gamepad.FullStick). Interrupteur PROD (partout) : false tant qu'un test humain ne l'a pas
+	-- validé (décision C2) ; false = la marche de Roblox (stick à moitié = moitié de la vitesse).
+	FullSpeedStick = false,
+	-- a443 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev).
+	FullSpeedStickDev = true,
 	FortuneTower = true, -- L-108 point 8 (vague 37, a123), événement de la Fortune Tower (Config/FortuneTower) : FortuneTowerService, FortuneTowerController ; true depuis la validation de Clément (L-145 réponse (a), vague 42) ; sans ENV_Event_FortuneVault, rien en jeu publié (bloc V0 en Studio seulement) ; en Studio, workspace:SetAttribute("FortuneTest", true) la fait apparaître tout de suite
 	-- Vague 80 (a267, Cantin 20/11 « Pièges et coffre ») : true en DEV ; sans UI_Rewards.WeeklyChest de Clément, les jours
 	-- se comptent mais rien ne se montre (ni cadre ni pastille : RewardsController).
