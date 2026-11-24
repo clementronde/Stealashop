@@ -151,34 +151,34 @@ export type CratePack = {
 -- +4 DISPLAYS), puis les Gants hydrauliques. a319 (L-303) : ×2 Speed en 3e, juste après ×2 Training (même famille,
 -- gains du tapis), les suivants décalés d'un rang.
 local Passes: { Pass } = {
-	{ Key = "DoubleCash", Id = 0, Order = 1, Price = 449, Ready = true, CardColor = Color3.fromHex("45D63A"), Multiplier = 2, DisplayName = "×2 Cash", Effect = "Doubles all your income", Icon = "UI_Icon_GP_x2Cash" },
-	{ Key = "DoubleTraining", Id = 0, Order = 2, Price = 299, Ready = true, CardColor = Color3.fromHex("FF9A2E"), Multiplier = 2, DisplayName = "×2 Training", Effect = "×2 treadmill gains", Icon = "UI_Icon_GP_x2Training" },
+	{ Key = "DoubleCash", Id = 2098559046, Order = 1, Price = 449, Ready = true, CardColor = Color3.fromHex("45D63A"), Multiplier = 2, DisplayName = "×2 Cash", Effect = "Doubles all your income", Icon = "UI_Icon_GP_x2Cash" },
+	{ Key = "DoubleTraining", Id = 2099849032, Order = 2, Price = 299, Ready = true, CardColor = Color3.fromHex("FF9A2E"), Multiplier = 2, DisplayName = "×2 Training", Effect = "×2 treadmill gains", Icon = "UI_Icon_GP_x2Training" },
 	-- a319 (23/11, L-303, décision de Cantin) : « x2 SPEED » du HUD, gamepass permanent à 149 R$ (prix V0 validé par
 	-- Cantin), à la place du boost de 10 min à 29 R$ (Config/Boosts, retiré). Même effet que ce boost : × 2 sur les
 	-- gains du tapis, multiplié par ×2 Training (× 4 avec les deux) et par les événements ; les trails n'y changent
 	-- rien (ils multiplient la Speed affichée, pas le gain). Id à créer par Cantin au nom du groupe (0 = rien en vente).
 	-- Nom, effet, icône et couleur : ceux de l'ancienne carte « ×2 Speed » de l'onglet Boosts (L-204).
-	{ Key = "DoubleSpeed", Id = 0, Order = 3, Price = 149, Ready = true, CardColor = Color3.fromHex("F2553A"), Multiplier = 2, DisplayName = "×2 Speed", Effect = "×2 speed on the treadmill", Icon = "UI_Icon_SpeedBoost", HudButton = "SpeedBoostButton" },
+	{ Key = "DoubleSpeed", Id = 2101984255, Order = 3, Price = 149, Ready = true, CardColor = Color3.fromHex("F2553A"), Multiplier = 2, DisplayName = "×2 Speed", Effect = "×2 speed on the treadmill", Icon = "UI_Icon_SpeedBoost", HudButton = "SpeedBoostButton" },
 	{ Key = "VIP", Id = 0, Order = 4, Price = 249, Ready = false, CardColor = Color3.fromHex("8A5CF0"), DisplayName = "VIP", Effect = "+10% income, aura, chat tag", Icon = "UI_Icon_GP_VIP" },
-	{ Key = "AutoCollect", Id = 0, Order = 5, Price = 199, Ready = true, CardColor = Color3.fromHex("FFC928"), DisplayName = "Auto Collect", Effect = "Cash collects itself, anywhere", Icon = "UI_Icon_GP_AutoCollect" },
-	{ Key = "FastOpen", Id = 0, Order = 6, Price = 299, Ready = true, CardColor = Color3.fromHex("2FA8F0"), DelayFactor = 0.5, DisplayName = "Fast Open", Effect = "Anti-theft 2× shorter", Icon = "UI_Icon_GP_FastOpen" },
-	{ Key = "ExtraStands", Id = 0, Order = 7, Price = 349, Ready = true, CardColor = Color3.fromHex("E05AD8"), Stands = 4, DisplayName = "+4 Displays", Effect = "4 extra displays", Icon = "UI_Icon_GP_Displays" },
+	{ Key = "AutoCollect", Id = 2099027027, Order = 5, Price = 199, Ready = true, CardColor = Color3.fromHex("FFC928"), DisplayName = "Auto Collect", Effect = "Cash collects itself, anywhere", Icon = "UI_Icon_GP_AutoCollect" },
+	{ Key = "FastOpen", Id = 2099039016, Order = 6, Price = 299, Ready = true, CardColor = Color3.fromHex("2FA8F0"), DelayFactor = 0.5, DisplayName = "Fast Open", Effect = "Anti-theft 2× shorter", Icon = "UI_Icon_GP_FastOpen" },
+	{ Key = "ExtraStands", Id = 2099033063, Order = 7, Price = 349, Ready = true, CardColor = Color3.fromHex("E05AD8"), Stands = 4, DisplayName = "+4 Displays", Effect = "4 extra displays", Icon = "UI_Icon_GP_Displays" },
 	-- Texte V0 proposé, absent de la maquette.
 	{ Key = "HydraulicGloves", Id = 0, Order = 8, Price = 499, Ready = false, DisplayName = "Hydraulic Gloves", Effect = "Exclusive tool: 2.5× your best tool", Icon = "UI_Icon_GP_HydraulicGloves" },
 }
 
 -- Produits développeur (4.2). Noms et lignes d'effet : V0 proposés, absents de la maquette.
 local Products: { Product } = {
-	{ Key = "StarterPack", Id = 0, Tab = "Offers", Order = 1, Price = 99, Ready = true, DisplayName = "Starter Pack", Effect = "×2 Cash 1h + Hammer + $2.6K", Icon = "UI_Icon_DP_StarterPack" },
+	{ Key = "StarterPack", Id = 3735788614, Tab = "Offers", Order = 1, Price = 99, Ready = true, DisplayName = "Starter Pack", Effect = "×2 Cash 1h + Hammer + $2.6K", Icon = "UI_Icon_DP_StarterPack" },
 	-- 6 packs d'argent (L-196 point 1), du plus petit au plus gros. 10 min, 1 h et 5 h : doc 4.2 ; 30 min,
 	-- 3 h et 12 h : V0 proposé, absent du doc (prix par minute qui baisse avec la taille du pack : 4,9 ; 4,3 ;
 	-- 3,3 ; 2,8 ; 2,7 ; 2,2 R$). Couleurs du vert à l'or (L-204 ; 2, 4 et 6 : V0 entre celles de Clément).
-	{ Key = "Cash10", Id = 0, Tab = "Cash", Order = 1, Price = 49, Ready = true, CardColor = Color3.fromHex("5BCB3A"), Minutes = 10, DisplayName = "10 Minutes of Cash", Effect = "10 min of income", Icon = "UI_Icon_DP_Cash_1" },
-	{ Key = "Cash30", Id = 0, Tab = "Cash", Order = 2, Price = 129, Ready = true, CardColor = Color3.fromHex("3EBA4A"), Minutes = 30, DisplayName = "30 Minutes of Cash", Effect = "30 min of income", Icon = "UI_Icon_DP_Cash_2" },
-	{ Key = "Cash60", Id = 0, Tab = "Cash", Order = 3, Price = 199, Ready = true, CardColor = Color3.fromHex("22A85A"), Minutes = 60, DisplayName = "1 Hour of Cash", Effect = "1 hour of income", Icon = "UI_Icon_DP_Cash_3" },
-	{ Key = "Cash180", Id = 0, Tab = "Cash", Order = 4, Price = 499, Ready = true, CardColor = Color3.fromHex("85A739"), Minutes = 180, DisplayName = "3 Hours of Cash", Effect = "3 hours of income", Icon = "UI_Icon_DP_Cash_4" },
-	{ Key = "Cash300", Id = 0, Tab = "Cash", Order = 5, Price = 799, Ready = true, CardColor = Color3.fromHex("E8A618"), Minutes = 300, DisplayName = "5 Hours of Cash", Effect = "5 hours of income", Icon = "UI_Icon_DP_Cash_5" },
-	{ Key = "Cash720", Id = 0, Tab = "Cash", Order = 6, Price = 1599, Ready = true, CardColor = Color3.fromHex("FFC21A"), Minutes = 720, DisplayName = "12 Hours of Cash", Effect = "12 hours of income", Icon = "UI_Icon_DP_Cash_6" },
+	{ Key = "Cash10", Id = 3735788763, Tab = "Cash", Order = 1, Price = 49, Ready = true, CardColor = Color3.fromHex("5BCB3A"), Minutes = 10, DisplayName = "10 Minutes of Cash", Effect = "10 min of income", Icon = "UI_Icon_DP_Cash_1" },
+	{ Key = "Cash30", Id = 3735788830, Tab = "Cash", Order = 2, Price = 129, Ready = true, CardColor = Color3.fromHex("3EBA4A"), Minutes = 30, DisplayName = "30 Minutes of Cash", Effect = "30 min of income", Icon = "UI_Icon_DP_Cash_2" },
+	{ Key = "Cash60", Id = 3735788938, Tab = "Cash", Order = 3, Price = 199, Ready = true, CardColor = Color3.fromHex("22A85A"), Minutes = 60, DisplayName = "1 Hour of Cash", Effect = "1 hour of income", Icon = "UI_Icon_DP_Cash_3" },
+	{ Key = "Cash180", Id = 3735789144, Tab = "Cash", Order = 4, Price = 499, Ready = true, CardColor = Color3.fromHex("85A739"), Minutes = 180, DisplayName = "3 Hours of Cash", Effect = "3 hours of income", Icon = "UI_Icon_DP_Cash_4" },
+	{ Key = "Cash300", Id = 3735789195, Tab = "Cash", Order = 5, Price = 799, Ready = true, CardColor = Color3.fromHex("E8A618"), Minutes = 300, DisplayName = "5 Hours of Cash", Effect = "5 hours of income", Icon = "UI_Icon_DP_Cash_5" },
+	{ Key = "Cash720", Id = 3735789566, Tab = "Cash", Order = 6, Price = 1599, Ready = true, CardColor = Color3.fromHex("FFC21A"), Minutes = 720, DisplayName = "12 Hours of Cash", Effect = "12 hours of income", Icon = "UI_Icon_DP_Cash_6" },
 	{
 		Key = "OpenNow",
 		Id = 0, -- inutilisé : un Id par palier, plus bas
@@ -193,10 +193,10 @@ local Products: { Product } = {
 		-- V0 proposé, absent du doc : 4 paliers, de l'attente d'un Rare (45 s) à celle d'un Secret
 		-- (15 min, table 7.3), au prix du doc (19 à 99).
 		Tiers = {
-			{ Id = 0, Price = 19, Skip = 60 }, -- jusqu'à 1 min (Commun à Rare)
-			{ Id = 0, Price = 39, Skip = 180 }, -- jusqu'à 3 min (Épique, Légendaire)
-			{ Id = 0, Price = 59, Skip = 480 }, -- jusqu'à 8 min (Mythique)
-			{ Id = 0, Price = 99, Skip = 900 }, -- jusqu'à 15 min (Secret)
+			{ Id = 3735789930, Price = 19, Skip = 60 }, -- jusqu'à 1 min (Commun à Rare)
+			{ Id = 3735790062, Price = 39, Skip = 180 }, -- jusqu'à 3 min (Épique, Légendaire)
+			{ Id = 3735790266, Price = 59, Skip = 480 }, -- jusqu'à 8 min (Mythique)
+			{ Id = 3735790374, Price = 99, Skip = 900 }, -- jusqu'à 15 min (Secret)
 		},
 	},
 	-- Pas codés (Ready = false) : voir l'en-tête de MonetizationService.

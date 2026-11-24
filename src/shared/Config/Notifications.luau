@@ -42,19 +42,19 @@ local Moments: { [string]: Moment } = {
 	-- Gains hors ligne au plafond (Config/Offline.MaxHours après le départ) : {amount} = Format.money de ce qui attend.
 	OfflineFull = {
 		Id = "OfflineFull",
-		MessageId = "",
+		MessageId = "2570fd6f-f8e7-bd42-b125-d583ce7d2617",
 		Text = "Your shop is full! {amount} is waiting for you in {experienceName}.",
 	},
 	-- Rendez-vous du samedi (Config/LiveEvents.Weekly), LeadSeconds avant le début : {event} = nom du format.
 	SaturdayEvent = {
 		Id = "SaturdayEvent",
-		MessageId = "",
+		MessageId = "fe884906-d991-874c-a510-4b42e58b5fa3",
 		Text = "{event} starts soon in {experienceName}! Come join the fun.",
 	},
 	-- Objet volé dans la boutique pendant que la fenêtre du jeu n'est pas au premier plan : {item} = nom de l'objet.
 	ShopStolen = {
 		Id = "ShopStolen",
-		MessageId = "",
+		MessageId = "5998c456-91d0-694c-923e-5e194b499651",
 		Text = "Someone stole your {item}! Come back and take it back.",
 	},
 }
