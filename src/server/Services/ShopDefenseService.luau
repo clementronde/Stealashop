@@ -105,6 +105,18 @@ local DEFAULT_ANIMATIONS: { { Name: string, From: { string } } } = {
 	{ Name = RUN, From = { "run", "walk" } },
 }
 local SPAWN_LIFT = 0.1 -- comme PlotService et BotService
+-- a423 (Cantin, 24/11 : « le vigile tombe par terre dès qu'il commence à courir, puis se relève ») : un Humanoid
+-- posé avec son HumanoidRootPart ancré passe en FallingDown à l'image suivante (relevé en Play) ; désancré au départ,
+-- il reste par terre et immobile environ 3 s, puis GettingUp. États coupés à la pose, comme les vigiles (9.7).
+local DISABLED_STATES = {
+	Enum.HumanoidStateType.Swimming,
+	Enum.HumanoidStateType.Climbing,
+	Enum.HumanoidStateType.Seated,
+	Enum.HumanoidStateType.FallingDown,
+	Enum.HumanoidStateType.Ragdoll,
+	Enum.HumanoidStateType.GettingUp,
+	Enum.HumanoidStateType.PlatformStanding,
+}
 local GROUND_RAY_UP = 3
 local GROUND_RAY_DOWN = 20
 local TEMPLATE_WAIT = 10
@@ -512,6 +524,13 @@ local function spawnAvatar(guard: Guard)
 	end
 	avatar:PivotTo(home)
 	avatar.Parent = folderOf(guard.Plot)
+	-- a423 : avant la première image dans le Workspace (ancré, il passerait en FallingDown et tomberait au départ).
+	local humanoid = avatar:FindFirstChildOfClass("Humanoid")
+	if humanoid then
+		for _, humanoidState in DISABLED_STATES do
+			humanoid:SetStateEnabled(humanoidState, false)
+		end
+	end
 	guard.Avatar = avatar
 	guard.Home = home
 	playLooped(guard, IDLE)
