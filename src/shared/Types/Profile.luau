@@ -203,9 +203,10 @@ export type Wheel = {
 export type WeeklyBoard = {
 	Week: number, -- semaine (lundi 00:00 UTC, Config/WeeklyLeaderboard.WeekOf) de ces compteurs ; 0 = jamais
 	BestIncome: number, -- meilleur revenu par seconde de la semaine, sans les boosts du moment (comme Lifetime.BestIncome)
-	HeistsAt: number, -- Lifetime.Heists au début de la semaine (vols de la semaine = écart)
-	StealsAt: number, -- Lifetime.Steals au début de la semaine
+	HeistsAt: number?, -- a409 : Lifetime.Heists au début de la semaine ; plus lu depuis a430 (L-325 (1) : les braquages ne comptent plus)
+	StealsAt: number, -- Lifetime.Steals au début de la semaine (vols de la semaine = écart)
 	Rewarded: { [string]: number }, -- [classement] = dernière semaine réglée (récompense donnée, ou rien à donner)
+	Pending: { number }, -- a430 (L-325 (3)) : semaines finies jouées dont la récompense attend encore d'être réglée
 }
 
 export type Settings = {
@@ -292,7 +293,8 @@ export type Data = {
 	-- version : 0 dans le gabarit de DataService (absent = 0) ; passé à 1 au chargement par ShopFloor.Migrate dès que le
 	-- Floor_2 du gabarit est là, jamais dans l'autre sens.
 	WeeklyBoard: WeeklyBoard?, -- GC6 (a409, DEV-140) : classements hebdomadaires (WeeklyLeaderboardService). Champ
-	-- facultatif, sans changement de version, absent du gabarit : créé et remis à zéro chaque lundi par ce service.
+	-- facultatif, sans changement de version ; dans le gabarit de DataService depuis a430 (Week = 0 : remis à zéro par ce
+	-- service à la première lecture), réparé et remis à zéro chaque lundi par ce service.
 	Funnels: { [string]: boolean }?, -- a414 (vague GC7) : entonnoirs une fois par profil (FunnelService, Config/Funnels) :
 	-- [« New »] = true pour un profil nouveau à son 1er passage, [« <entonnoir>/<n° d'étape> »] = true pour une étape
 	-- envoyée. Champ facultatif, sans changement de version, absent du gabarit : créé par FunnelService au chargement.

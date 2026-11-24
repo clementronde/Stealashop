@@ -1047,4 +1047,33 @@ for _, part: Part in {
 	table.insert(ArmoredVanModel.Parts, part)
 end
 
+-- Statues du n° 1 des classements de la semaine (a430, L-331 ; noms proposés par Clément) : deux Models
+-- ENV_Hub_LeaderboardStatue dans Map/Hub/Zones, taggés LeaderboardStatue, attribut texte Stat = WeeklyIncome ou
+-- WeeklySteals (comme les panneaux). Rig : mannequin R15 doré (Humanoid avec Animator, HumanoidRootPart seul ancré),
+-- habillé par LeaderboardStatueService avec l'avatar du n° 1 ; PlayerName : TextLabel de Pedestal/Body/Plate, nom du
+-- n° 1 (« ??? » sans n° 1). Tout est facultatif : sans eux, aucune statue (Config/WeeklyLeaderboard.Statue).
+local LeaderboardStatue: ModelSpec = {
+	Key = "LeaderboardStatue",
+	Label = "statues du n° 1 des classements de la semaine",
+	Category = "Hub",
+	Tag = "LeaderboardStatue",
+	Attributes = { "Stat" },
+	Parts = {
+		{
+			Name = "Rig",
+			Class = "Model",
+			Optional = true,
+			Note = "facultatif : sans lui, pas d'avatar du n° 1, L-331",
+			Inside = {
+				{ Name = "Humanoid", Class = "Humanoid" },
+				{ Name = "HumanoidRootPart", Class = "BasePart" },
+			},
+		},
+		{ Name = "PlayerName", Class = "TextLabel", Optional = true, Note = "facultatif : nom du n° 1 sur la plaque du socle, L-331" },
+	},
+	WarnWhenEmpty = true,
+}
+Models.LeaderboardStatue = LeaderboardStatue
+table.insert(Models.List, table.find(Models.List, WeaponShopCounter) or #Models.List + 1, LeaderboardStatue)
+
 return Models

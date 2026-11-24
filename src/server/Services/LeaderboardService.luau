@@ -35,6 +35,7 @@ local DataStoreService = game:GetService("DataStoreService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
 
 local Leaderboard = require(ReplicatedStorage.Shared.Config.Leaderboard)
 local Balance = require(ReplicatedStorage.Shared.Config.Balance)
@@ -393,6 +394,9 @@ end
 
 local function renderAll()
 	for _, board in CollectionService:GetTagged(Leaderboard.Tag) do
+		if not board:IsDescendantOf(Workspace) then
+			continue -- a430 (L-330) : copies de ServerStorage/MapBackups, qui gardent le tag
+		end
 		local ok, problem = pcall(function()
 			renderBoard(board)
 		end)
@@ -432,7 +436,9 @@ function LeaderboardService.Init()
 		end)
 	end)
 	CollectionService:GetInstanceAddedSignal(Leaderboard.Tag):Connect(function(board: Instance)
-		task.spawn(renderBoard, board)
+		if board:IsDescendantOf(Workspace) then -- a430 (L-330) : pas les copies de ServerStorage/MapBackups
+			task.spawn(renderBoard, board)
+		end
 	end)
 end
 
