@@ -8,7 +8,7 @@
 -- Pose : pour la boutique de chaque joueur, un piège par emplacement TrapSlot_01 à _0n (n = ce nombre, et
 -- seulement les emplacements présents dans la boutique), du genre Traps.SlotLayout[i] (a286 : Traps.SlotLayoutNew si Features.NewTraps ; a296 : ou
 -- Features.NewTrapsDev dans le jeu DEV, Config/ProductIds.IsDev ; donc allumée en DEV, coupée en PROD) : copie de
--- ReplicatedStorage/Assets/Traps/TRAP_<Id> (sans script, pièces ancrées, TriggerZone sans collision ni requête),
+-- ReplicatedStorage/Assets/Traps/TRAP_<Id> (sans script, pièces ancrées et sans collision (a449), TriggerZone sans requête),
 -- sinon un modèle de repli construit ici ; pivot posé sur l'emplacement (WorldCFrame d'un Attachment, bas d'une
 -- pièce). Copie nommée Trap_0i, dans le dossier Traps.Folder de la boutique, tag Traps.Tag, attributs TrapId et
 -- TrapState (« Armed »). Remise à jour à l'achat (SkillTreeService.OnChanged), à l'attribution de la boutique, au
@@ -276,8 +276,11 @@ local function makeTrapModel(trap: Trap): Model
 			inst:Destroy()
 		elseif inst:IsA("BasePart") then
 			inst.Anchored = true
+			-- a449 (testeur 1, 24/11) : un piège ne bloque personne, propriétaire compris (les poteaux du portique,
+			-- CanCollide vrai dans TRAP_AlarmGate, arrêtaient net le propriétaire juste derrière la porte de sa
+			-- boutique). L'effet passe par TriggerZone, jamais par la collision.
+			inst.CanCollide = false
 			if inst.Name == "TriggerZone" then
-				inst.CanCollide = false
 				inst.CanQuery = false
 				inst.CanTouch = false
 			end

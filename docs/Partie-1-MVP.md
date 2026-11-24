@@ -1124,6 +1124,7 @@ Chaque étape est envoyée une seule fois par joueur avec `AnalyticsService:LogO
 
 | Date | Décision | Par |
 | --- | --- | --- |
+| 2026-11-24 | Les textures d'auras et de trails venues de packs d'autres créateurs sont toutes redessinées avec nos propres textures (5 textures de trails, 6 auras), dès maintenant et pas seulement celles qui ratent : le compromis qui gardait le reste des packs pour le lancement est écarté. | Clément |
 | 2026-11-24 | Les 5 trails validés le 14/11 (Poussière, Vent, Turbo, Comète, Hyperespace) remplacent les anciens dans le jeu. Un trail s'arrête quand le joueur est immobile et reprend quand il bouge ; c'est à coder par Ironix. Liaison L-355. | Clément |
 | 2026-11-24 | **Roue de la fortune** : l'EPIC BOX (2 %) remplace STRENGTH POTION, car la potion de force n'existe pas dans le jeu ; les 3 points libérés iraient à « 5 MIN CASH » (proposé, à confirmer). La roue passe en 8 parts de couleur, sur l'exemple d'une roue en parts que Clément a montré ; les boîtes prennent la couleur de leur rareté (Rare bleu, Épique violet). Liaison L-350. | Clément |
 | 2026-11-24 | **Colis sans arêtes de boîte** : la `SelectionBox` qui traçait les 12 arêtes de chaque colis (vues à travers lui) est retirée des 11 `BOX_*`. Les colis n'ont plus que le contour qui épouse leur forme, en `#040435`, et passeront à la règle des contours de L-305 (blanc sur celui qu'on vise). Liaison L-344 | Clément |
