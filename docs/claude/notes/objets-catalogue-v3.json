@@ -1,0 +1,993 @@
+{
+ "source": "docs/claude/notes/objets-catalogue-v3.md (Clément, 2026-11-24 ; a429)",
+ "zones": [
+  {
+   "zone": 1,
+   "stores": "Supérette, Kiosque",
+   "categories": [
+    {
+     "name": "Snack",
+     "nameEn": "Snack",
+     "id": "Snack",
+     "items": [
+      {
+       "itemId": "Z1_ChocolatDeDubai",
+       "asset": "ITM_Z1_ChocolatDeDubai",
+       "nameEn": "Dubai Chocolate",
+       "rarity": "Common",
+       "origin": "new",
+       "creature": false,
+       "tutorialOnly": false
+      },
+      {
+       "itemId": "Z1_BananeScotchee",
+       "asset": "ITM_Z1_BananeScotchee",
+       "nameEn": "Taped Banana",
+       "rarity": "Common",
+       "origin": "retouche",
+       "creature": false,
+       "tutorialOnly": false
+      },
+      {
+       "itemId": "Z1_ChipsMystere",
+       "asset": "ITM_Z1_ChipsMystere",
+       "nameEn": "Mystery Chips",
+       "rarity": "Common",
+       "origin": "retouche",
+       "creature": false,
+       "tutorialOnly": false
+      },
+      {
+       "itemId": "Z1_PouletALunettes",
+       "asset": "ITM_Z1_PouletALunettes",
+       "nameEn": "Cool Fried Chicken",
+       "rarity": "Common",
+       "origin": "new",
+       "creature": false,
+       "tutorialOnly": false
+      },
+      {
+       "itemId": "Z1_PastequeMewing",
+       "asset": "ITM_Z1_PastequeMewing",
+       "nameEn": "Mewing Watermelon",
+       "rarity": "Common",
+       "origin": "retouche",
+       "creature": false,
+       "tutorialOnly": false
+      },
+      {
+       "itemId": "Z1_OeufBoudeur",
+       "asset": "ITM_Z1_OeufBoudeur",
+       "nameEn": "Grumpy Fried Egg",
+       "rarity": "Common",
+       "origin": "new",
+       "creature": false,
+       "tutorialOnly": false
+      },
+      {
+       "itemId": "Z1_RamenDeFeu",
+       "asset": "ITM_Z1_RamenDeFeu",
+       "nameEn": "Fire Ramen",
+       "rarity": "Rare",
+       "origin": "meshy",
+       "creature": false,
+       "tutorialOnly": true
+      }
+     ]
+    },
+    {
+     "name": "Drink",
+     "nameEn": "Drink",
+     "id": "Drink",
+     "items": [
+      {
+       "itemId": "Z1_BoissonSigma",
+       "asset": "ITM_Z1_BoissonSigma",
+       "nameEn": "Sigma Drink",
+       "rarity": "Common",
+       "origin": "retouche",
+       "creature": false,
+       "tutorialOnly": false
+      },
+      {
+       "itemId": "Z1_Canette67",
+       "asset": "ITM_Z1_Canette67",
+       "nameEn": "\"67\" Can",
+       "rarity": "Common",
+       "origin": "retouche",
+       "creature": false,
+       "tutorialOnly": false
+      },
+      {
+       "itemId": "Z1_SlushieArcEnCiel",
+       "asset": "ITM_Z1_SlushieArcEnCiel",
+       "nameEn": "Rainbow Slushie",
+       "rarity": "Common",
+       "origin": "meshy",
+       "creature": false,
+       "tutorialOnly": false
+      }
+     ]
+    },
+    {
+     "name": "Sweet",
+     "nameEn": "Sweet",
+     "id": "Sweet",
+     "items": [
+      {
+       "itemId": "Z1_GlaceArcEnCiel",
+       "asset": "ITM_Z1_GlaceArcEnCiel",
+       "nameEn": "Rainbow Ice Cream",
+       "rarity": "Common",
+       "origin": "meshy",
+       "creature": false,
+       "tutorialOnly": false
+      },
+      {
+       "itemId": "Z1_SachetSurprise",
+       "asset": "ITM_Z1_SachetSurprise",
+       "nameEn": "Mystery Bag",
+       "rarity": "Common",
+       "origin": "meshy",
+       "creature": false,
+       "tutorialOnly": false
+      }
+     ]
+    },
+    {
+     "name": "Kiosk",
+     "nameEn": "Kiosk",
+     "id": "Kiosk",
+     "items": [
+      {
+       "itemId": "Z1_TicketGagnant",
+       "asset": "ITM_Z1_TicketGagnant",
+       "nameEn": "Winning Scratch Card",
+       "rarity": "Common",
+       "origin": "new",
+       "creature": false,
+       "tutorialOnly": false
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "zone": 2,
+   "stores": "Jouets et bonbons, Londres",
+   "categories": [
+    {
+     "name": "Toy",
+     "nameEn": "Toy",
+     "id": "Toy",
+     "items": [
+      {
+       "itemId": "Z2_CanardRoyal",
+       "asset": "ITM_Z2_CanardRoyal",
+       "nameEn": "Royal Rubber Duck",
+       "rarity": "Common",
+       "origin": "retouche",
+       "creature": false,
+       "tutorialOnly": false
+      },
+      {
+       "itemId": "Z2_PopIt",
+       "asset": "ITM_Z2_PopIt",
+       "nameEn": "Giant Pop-It",
+       "rarity": "Common",
+       "origin": "meshy",
+       "creature": false,
+       "tutorialOnly": false
+      },
+      {
+       "itemId": "Z2_Squishy",
+       "asset": "ITM_Z2_Squishy",
+       "nameEn": "Squishy",
+       "rarity": "Common",
+       "origin": "meshy",
+       "creature": false,
+       "tutorialOnly": false
+      },
+      {
+       "itemId": "Z2_Slime",
+       "asset": "ITM_Z2_Slime",
+       "nameEn": "Slime",
+       "rarity": "Common",
+       "origin": "meshy",
+       "creature": false,
+       "tutorialOnly": false
+      },
+      {
+       "itemId": "Z2_FigurineSurprise",
+       "asset": "ITM_Z2_FigurineSurprise",
+       "nameEn": "Surprise Figure",
+       "rarity": "Common",
+       "origin": "meshy",
+       "creature": false,
+       "tutorialOnly": false
+      },
+      {
+       "itemId": "Z2_BlasterAMousse",
+       "asset": "ITM_Z2_BlasterAMousse",
+       "nameEn": "Foam Blaster",
+       "rarity": "Uncommon",
+       "origin": "meshy",
+       "creature": false,
+       "tutorialOnly": false
+      }
+     ]
+    },
+    {
+     "name": "Candy",
+     "nameEn": "Candy",
+     "id": "Candy",
+     "items": [
+      {
+       "itemId": "Z2_SucetteTourbillon",
+       "asset": "ITM_Z2_SucetteTourbillon",
+       "nameEn": "Swirl Lollipop",
+       "rarity": "Common",
+       "origin": "retouche",
+       "creature": false,
+       "tutorialOnly": false
+      },
+      {
+       "itemId": "Z2_BarbeAPapaNuage",
+       "asset": "ITM_Z2_BarbeAPapaNuage",
+       "nameEn": "Cloud Cotton Candy",
+       "rarity": "Common",
+       "origin": "meshy",
+       "creature": false,
+       "tutorialOnly": false
+      },
+      {
+       "itemId": "Z2_BonbonPiquant",
+       "asset": "ITM_Z2_BonbonPiquant",
+       "nameEn": "Super Sour Candy",
+       "rarity": "Common",
+       "origin": "new",
+       "creature": false,
+       "tutorialOnly": false
+      },
+      {
+       "itemId": "Z2_OursGelifieGeant",
+       "asset": "ITM_Z2_OursGelifieGeant",
+       "nameEn": "Giant Gummy Bear",
+       "rarity": "Uncommon",
+       "origin": "meshy",
+       "creature": false,
+       "tutorialOnly": false
+      },
+      {
+       "itemId": "Z2_MachineABonbons",
+       "asset": "ITM_Z2_MachineABonbons",
+       "nameEn": "Candy Machine",
+       "rarity": "Uncommon",
+       "origin": "meshy",
+       "creature": false,
+       "tutorialOnly": false
+      },
+      {
+       "itemId": "Z2_BusEnGelatine",
+       "asset": "ITM_Z2_BusEnGelatine",
+       "nameEn": "Jelly Double-Decker",
+       "rarity": "Uncommon",
+       "origin": "retouche",
+       "creature": false,
+       "tutorialOnly": false
+      }
+     ]
+    },
+    {
+     "name": "Plush",
+     "nameEn": "Plush",
+     "id": "Plush",
+     "items": [
+      {
+       "itemId": "Z2_CapybaraOrange",
+       "asset": "ITM_Z2_CapybaraOrange",
+       "nameEn": "Orange Capybara",
+       "rarity": "Uncommon",
+       "origin": "new",
+       "creature": false,
+       "tutorialOnly": false
+      },
+      {
+       "itemId": "Z2_AxolotlEnPeluche",
+       "asset": "ITM_Z2_AxolotlEnPeluche",
+       "nameEn": "Axolotl Plush",
+       "rarity": "Uncommon",
+       "origin": "meshy",
+       "creature": false,
+       "tutorialOnly": false
+      },
+      {
+       "itemId": "Z2_PelucheMonstre",
+       "asset": "ITM_Z2_PelucheMonstre",
+       "nameEn": "Laughing Monster Plush",
+       "rarity": "Uncommon",
+       "origin": "meshy",
+       "creature": false,
+       "tutorialOnly": false
+      }
+     ]
+    },
+    {
+     "name": "Creature",
+     "nameEn": "Creature",
+     "id": "Creature",
+     "items": [
+      {
+       "itemId": "Z2_TheiereDansante",
+       "asset": "ITM_Z2_TheiereDansante",
+       "nameEn": "Dancing Teapot",
+       "rarity": "Uncommon",
+       "origin": "new",
+       "creature": true,
+       "tutorialOnly": false
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "zone": 3,
+   "stores": "Électronique et jeux vidéo, Tokyo",
+   "categories": [
+    {
+     "name": "Meme",
+     "nameEn": "Meme",
+     "id": "Meme",
+     "items": [
+      {
+       "itemId": "Z3_ChatQuiTourne",
+       "asset": "ITM_Z3_ChatQuiTourne",
+       "nameEn": "Spinning Cat",
+       "rarity": "Common",
+       "origin": "new",
+       "creature": false,
+       "tutorialOnly": false
+      }
+     ]
+    },
+    {
+     "name": "Gaming",
+     "nameEn": "Gaming",
+     "id": "Gaming",
+     "items": [
+      {
+       "itemId": "Z3_ManetteQuiTranspire",
+       "asset": "ITM_Z3_ManetteQuiTranspire",
+       "nameEn": "Sweaty Controller",
+       "rarity": "Common",
+       "origin": "retouche",
+       "creature": false,
+       "tutorialOnly": false
+      },
+      {
+       "itemId": "Z3_CasqueOreillesDeChat",
+       "asset": "ITM_Z3_CasqueOreillesDeChat",
+       "nameEn": "Cat Ear Headset",
+       "rarity": "Common",
+       "origin": "meshy",
+       "creature": false,
+       "tutorialOnly": false
+      },
+      {
+       "itemId": "Z3_ClavierRgb",
+       "asset": "ITM_Z3_ClavierRgb",
+       "nameEn": "RGB Keyboard",
+       "rarity": "Common",
+       "origin": "new",
+       "creature": false,
+       "tutorialOnly": false
+      },
+      {
+       "itemId": "Z3_MicroDeStreamer",
+       "asset": "ITM_Z3_MicroDeStreamer",
+       "nameEn": "Streamer Mic",
+       "rarity": "Uncommon",
+       "origin": "new",
+       "creature": false,
+       "tutorialOnly": false
+      },
+      {
+       "itemId": "Z3_PcGamerQuiFume",
+       "asset": "ITM_Z3_PcGamerQuiFume",
+       "nameEn": "Overheating Gaming PC",
+       "rarity": "Rare",
+       "origin": "retouche",
+       "creature": false,
+       "tutorialOnly": false
+      }
+     ]
+    },
+    {
+     "name": "Phone",
+     "nameEn": "Phone",
+     "id": "Phone",
+     "items": [
+      {
+       "itemId": "Z3_TelephonePliant",
+       "asset": "ITM_Z3_TelephonePliant",
+       "nameEn": "Folding Phone",
+       "rarity": "Common",
+       "origin": "retouche",
+       "creature": false,
+       "tutorialOnly": false
+      }
+     ]
+    },
+    {
+     "name": "Gadget",
+     "nameEn": "Gadget",
+     "id": "Gadget",
+     "items": [
+      {
+       "itemId": "Z3_RobotChien",
+       "asset": "ITM_Z3_RobotChien",
+       "nameEn": "Robot Dog",
+       "rarity": "Uncommon",
+       "origin": "meshy",
+       "creature": false,
+       "tutorialOnly": false
+      },
+      {
+       "itemId": "Z3_LampeALave",
+       "asset": "ITM_Z3_LampeALave",
+       "nameEn": "Lava Lamp",
+       "rarity": "Uncommon",
+       "origin": "meshy",
+       "creature": false,
+       "tutorialOnly": false
+      },
+      {
+       "itemId": "Z3_AppareilPhotoInstantane",
+       "asset": "ITM_Z3_AppareilPhotoInstantane",
+       "nameEn": "Instant Camera",
+       "rarity": "Uncommon",
+       "origin": "meshy",
+       "creature": false,
+       "tutorialOnly": false
+      },
+      {
+       "itemId": "Z3_EnseigneNeon",
+       "asset": "ITM_Z3_EnseigneNeon",
+       "nameEn": "Neon Sign",
+       "rarity": "Uncommon",
+       "origin": "meshy",
+       "creature": false,
+       "tutorialOnly": false
+      },
+      {
+       "itemId": "Z3_Hoverboard",
+       "asset": "ITM_Z3_Hoverboard",
+       "nameEn": "Hoverboard",
+       "rarity": "Rare",
+       "origin": "meshy",
+       "creature": false,
+       "tutorialOnly": false
+      },
+      {
+       "itemId": "Z3_ProjecteurGalaxie",
+       "asset": "ITM_Z3_ProjecteurGalaxie",
+       "nameEn": "Galaxy Projector",
+       "rarity": "Rare",
+       "origin": "meshy",
+       "creature": false,
+       "tutorialOnly": false
+      }
+     ]
+    },
+    {
+     "name": "Creature",
+     "nameEn": "Creature",
+     "id": "Creature",
+     "items": [
+      {
+       "itemId": "Z3_SushiNinja",
+       "asset": "ITM_Z3_SushiNinja",
+       "nameEn": "Ninja Sushi",
+       "rarity": "Rare",
+       "origin": "new",
+       "creature": true,
+       "tutorialOnly": false
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "zone": 4,
+   "stores": "Bijoux et montres, Los Angeles",
+   "categories": [
+    {
+     "name": "Fashion",
+     "nameEn": "Fashion",
+     "id": "Fashion",
+     "items": [
+      {
+       "itemId": "Z4_LunettesDeStar",
+       "asset": "ITM_Z4_LunettesDeStar",
+       "nameEn": "Star Sunglasses",
+       "rarity": "Common",
+       "origin": "kept",
+       "creature": false,
+       "tutorialOnly": false
+      },
+      {
+       "itemId": "Z4_CasquetteAStrass",
+       "asset": "ITM_Z4_CasquetteAStrass",
+       "nameEn": "Bling Cap",
+       "rarity": "Common",
+       "origin": "meshy",
+       "creature": false,
+       "tutorialOnly": false
+      },
+      {
+       "itemId": "Z4_FauxOnglesEnOr",
+       "asset": "ITM_Z4_FauxOnglesEnOr",
+       "nameEn": "Golden Nails",
+       "rarity": "Common",
+       "origin": "new",
+       "creature": false,
+       "tutorialOnly": false
+      },
+      {
+       "itemId": "Z4_BasketsLumineuses",
+       "asset": "ITM_Z4_BasketsLumineuses",
+       "nameEn": "Light-Up Sneakers",
+       "rarity": "Uncommon",
+       "origin": "meshy",
+       "creature": false,
+       "tutorialOnly": false
+      },
+      {
+       "itemId": "Z4_BasketsEnOr",
+       "asset": "ITM_Z4_BasketsEnOr",
+       "nameEn": "Golden Sneakers",
+       "rarity": "Rare",
+       "origin": "meshy",
+       "creature": false,
+       "tutorialOnly": false
+      },
+      {
+       "itemId": "Z4_PerruquePresidentielle",
+       "asset": "ITM_Z4_PerruquePresidentielle",
+       "nameEn": "Presidential Wig",
+       "rarity": "Rare",
+       "origin": "new",
+       "creature": false,
+       "tutorialOnly": false
+      }
+     ]
+    },
+    {
+     "name": "Jewelry",
+     "nameEn": "Jewelry",
+     "id": "Jewelry",
+     "items": [
+      {
+       "itemId": "Z4_BraceletDAmitie",
+       "asset": "ITM_Z4_BraceletDAmitie",
+       "nameEn": "Friendship Bracelet",
+       "rarity": "Common",
+       "origin": "meshy",
+       "creature": false,
+       "tutorialOnly": false
+      },
+      {
+       "itemId": "Z4_ChaineDrip",
+       "asset": "ITM_Z4_ChaineDrip",
+       "nameEn": "Drip Chain",
+       "rarity": "Uncommon",
+       "origin": "retouche",
+       "creature": false,
+       "tutorialOnly": false
+      },
+      {
+       "itemId": "Z4_GrillzEnDiamant",
+       "asset": "ITM_Z4_GrillzEnDiamant",
+       "nameEn": "Diamond Grillz",
+       "rarity": "Rare",
+       "origin": "new",
+       "creature": false,
+       "tutorialOnly": false
+      }
+     ]
+    },
+    {
+     "name": "Star",
+     "nameEn": "Star",
+     "id": "Star",
+     "items": [
+      {
+       "itemId": "Z4_MicroDePopStar",
+       "asset": "ITM_Z4_MicroDePopStar",
+       "nameEn": "Pop Star Mic",
+       "rarity": "Uncommon",
+       "origin": "meshy",
+       "creature": false,
+       "tutorialOnly": false
+      },
+      {
+       "itemId": "Z4_TropheeDeStar",
+       "asset": "ITM_Z4_TropheeDeStar",
+       "nameEn": "Star Trophy",
+       "rarity": "Rare",
+       "origin": "meshy",
+       "creature": false,
+       "tutorialOnly": false
+      },
+      {
+       "itemId": "Z4_GuitareNeon",
+       "asset": "ITM_Z4_GuitareNeon",
+       "nameEn": "Neon Guitar",
+       "rarity": "Epic",
+       "origin": "meshy",
+       "creature": false,
+       "tutorialOnly": false
+      }
+     ]
+    },
+    {
+     "name": "Watch",
+     "nameEn": "Watch",
+     "id": "Watch",
+     "items": [
+      {
+       "itemId": "Z4_MontreGlacee",
+       "asset": "ITM_Z4_MontreGlacee",
+       "nameEn": "Iced-Out Watch",
+       "rarity": "Uncommon",
+       "origin": "retouche",
+       "creature": false,
+       "tutorialOnly": false
+      },
+      {
+       "itemId": "Z4_MontreDiamant",
+       "asset": "ITM_Z4_MontreDiamant",
+       "nameEn": "Diamond Watch",
+       "rarity": "Epic",
+       "origin": "meshy",
+       "creature": false,
+       "tutorialOnly": false
+      }
+     ]
+    },
+    {
+     "name": "Creature",
+     "nameEn": "Creature",
+     "id": "Creature",
+     "items": [
+      {
+       "itemId": "Z4_ChihuahuaEnDiamants",
+       "asset": "ITM_Z4_ChihuahuaEnDiamants",
+       "nameEn": "Diamond Chihuahua",
+       "rarity": "Epic",
+       "origin": "new",
+       "creature": true,
+       "tutorialOnly": false
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "zone": 5,
+   "stores": "Galerie d'art, Antiquaire, Paris",
+   "categories": [
+    {
+     "name": "Paris",
+     "nameEn": "Paris",
+     "id": "Paris",
+     "items": [
+      {
+       "itemId": "Z5_BaguetteEnOr",
+       "asset": "ITM_Z5_BaguetteEnOr",
+       "nameEn": "Golden Baguette",
+       "rarity": "Uncommon",
+       "origin": "new",
+       "creature": false,
+       "tutorialOnly": false
+      },
+      {
+       "itemId": "Z5_BeretDeMime",
+       "asset": "ITM_Z5_BeretDeMime",
+       "nameEn": "Mime Beret",
+       "rarity": "Uncommon",
+       "origin": "new",
+       "creature": false,
+       "tutorialOnly": false
+      }
+     ]
+    },
+    {
+     "name": "Painting",
+     "nameEn": "Painting",
+     "id": "Painting",
+     "items": [
+      {
+       "itemId": "Z5_TableauPixelArt",
+       "asset": "ITM_Z5_TableauPixelArt",
+       "nameEn": "Pixel Art Painting",
+       "rarity": "Uncommon",
+       "origin": "meshy",
+       "creature": false,
+       "tutorialOnly": false
+      },
+      {
+       "itemId": "Z5_JocondeSelfie",
+       "asset": "ITM_Z5_JocondeSelfie",
+       "nameEn": "Selfie Mona Lisa",
+       "rarity": "Rare",
+       "origin": "retouche",
+       "creature": false,
+       "tutorialOnly": false
+      }
+     ]
+    },
+    {
+     "name": "Sculpture",
+     "nameEn": "Sculpture",
+     "id": "Sculpture",
+     "items": [
+      {
+       "itemId": "Z5_StatueMewing",
+       "asset": "ITM_Z5_StatueMewing",
+       "nameEn": "Mewing Statue",
+       "rarity": "Rare",
+       "origin": "retouche",
+       "creature": false,
+       "tutorialOnly": false
+      },
+      {
+       "itemId": "Z5_StatueDeChatGeant",
+       "asset": "ITM_Z5_StatueDeChatGeant",
+       "nameEn": "Giant Cat Statue",
+       "rarity": "Epic",
+       "origin": "meshy",
+       "creature": false,
+       "tutorialOnly": false
+      }
+     ]
+    },
+    {
+     "name": "Relic",
+     "nameEn": "Relic",
+     "id": "Relic",
+     "items": [
+      {
+       "itemId": "Z5_EpeeDansLaPierre",
+       "asset": "ITM_Z5_EpeeDansLaPierre",
+       "nameEn": "Sword in the Stone",
+       "rarity": "Rare",
+       "origin": "meshy",
+       "creature": false,
+       "tutorialOnly": false
+      },
+      {
+       "itemId": "Z5_OeufDeDinoFossile",
+       "asset": "ITM_Z5_OeufDeDinoFossile",
+       "nameEn": "Fossil Dino Egg",
+       "rarity": "Epic",
+       "origin": "meshy",
+       "creature": false,
+       "tutorialOnly": false
+      },
+      {
+       "itemId": "Z5_OeufDeDragon",
+       "asset": "ITM_Z5_OeufDeDragon",
+       "nameEn": "Dragon Egg",
+       "rarity": "Legendary",
+       "origin": "meshy",
+       "creature": false,
+       "tutorialOnly": false
+      }
+     ]
+    },
+    {
+     "name": "Sport",
+     "nameEn": "Sport",
+     "id": "Sport",
+     "items": [
+      {
+       "itemId": "Z5_CramponsDores",
+       "asset": "ITM_Z5_CramponsDores",
+       "nameEn": "Golden Cleats No. 10",
+       "rarity": "Epic",
+       "origin": "new",
+       "creature": false,
+       "tutorialOnly": false
+      },
+      {
+       "itemId": "Z5_GoldenBall",
+       "asset": "ITM_Z5_GoldenBall",
+       "nameEn": "Golden Ball",
+       "rarity": "Legendary",
+       "origin": "new",
+       "creature": false,
+       "tutorialOnly": false
+      }
+     ]
+    },
+    {
+     "name": "Creature",
+     "nameEn": "Creature",
+     "id": "Creature",
+     "items": [
+      {
+       "itemId": "Z5_CroissantRequin",
+       "asset": "ITM_Z5_CroissantRequin",
+       "nameEn": "Croissant Shark",
+       "rarity": "Legendary",
+       "origin": "new",
+       "creature": true,
+       "tutorialOnly": false
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "zone": 6,
+   "stores": "Banque, Salle des coffres, New York",
+   "categories": [
+    {
+     "name": "Gold",
+     "nameEn": "Gold",
+     "id": "Gold",
+     "items": [
+      {
+       "itemId": "Z6_LingotGeant",
+       "asset": "ITM_Z6_LingotGeant",
+       "nameEn": "Giant Gold Bar",
+       "rarity": "Rare",
+       "origin": "retouche",
+       "creature": false,
+       "tutorialOnly": false
+      },
+      {
+       "itemId": "Z6_LiberteEnOr",
+       "asset": "ITM_Z6_LiberteEnOr",
+       "nameEn": "Golden Liberty",
+       "rarity": "Epic",
+       "origin": "retouche",
+       "creature": false,
+       "tutorialOnly": false
+      },
+      {
+       "itemId": "Z6_TaxiEnOr",
+       "asset": "ITM_Z6_TaxiEnOr",
+       "nameEn": "Golden Taxi",
+       "rarity": "Epic",
+       "origin": "new",
+       "creature": false,
+       "tutorialOnly": false
+      },
+      {
+       "itemId": "Z6_CapybaraDore",
+       "asset": "ITM_Z6_CapybaraDore",
+       "nameEn": "Golden Capybara",
+       "rarity": "Epic",
+       "origin": "meshy",
+       "creature": false,
+       "tutorialOnly": false
+      }
+     ]
+    },
+    {
+     "name": "Cash",
+     "nameEn": "Cash",
+     "id": "Cash",
+     "items": [
+      {
+       "itemId": "Z6_ValiseDeBillets",
+       "asset": "ITM_Z6_ValiseDeBillets",
+       "nameEn": "Cash Briefcase",
+       "rarity": "Rare",
+       "origin": "new",
+       "creature": false,
+       "tutorialOnly": false
+      },
+      {
+       "itemId": "Z6_CarteNoireInfinie",
+       "asset": "ITM_Z6_CarteNoireInfinie",
+       "nameEn": "Infinite Black Card",
+       "rarity": "Rare",
+       "origin": "new",
+       "creature": false,
+       "tutorialOnly": false
+      }
+     ]
+    },
+    {
+     "name": "Treasure",
+     "nameEn": "Treasure",
+     "id": "Treasure",
+     "items": [
+      {
+       "itemId": "Z6_CouronneCosmique",
+       "asset": "ITM_Z6_CouronneCosmique",
+       "nameEn": "Cosmic Crown",
+       "rarity": "Legendary",
+       "origin": "meshy",
+       "creature": false,
+       "tutorialOnly": false
+      },
+      {
+       "itemId": "Z6_DragonDeDiamant",
+       "asset": "ITM_Z6_DragonDeDiamant",
+       "nameEn": "Diamond Dragon",
+       "rarity": "Mythic",
+       "origin": "meshy",
+       "creature": false,
+       "tutorialOnly": false
+      }
+     ]
+    },
+    {
+     "name": "Creature",
+     "nameEn": "Creature",
+     "id": "Creature",
+     "items": [
+      {
+       "itemId": "Z6_CoffreADents",
+       "asset": "ITM_Z6_CoffreADents",
+       "nameEn": "Toothy Safe",
+       "rarity": "Legendary",
+       "origin": "retouche",
+       "creature": true,
+       "tutorialOnly": false
+      },
+      {
+       "itemId": "Z6_BilletQuiCourt",
+       "asset": "ITM_Z6_BilletQuiCourt",
+       "nameEn": "Running Million Bill",
+       "rarity": "Legendary",
+       "origin": "new",
+       "creature": true,
+       "tutorialOnly": false
+      },
+      {
+       "itemId": "Z6_PigeonEnOr",
+       "asset": "ITM_Z6_PigeonEnOr",
+       "nameEn": "Golden Pigeon",
+       "rarity": "Mythic",
+       "origin": "new",
+       "creature": true,
+       "tutorialOnly": false
+      },
+      {
+       "itemId": "Z6_CerveauDore",
+       "asset": "ITM_Z6_CerveauDore",
+       "nameEn": "Golden Brain",
+       "rarity": "Mythic",
+       "origin": "new",
+       "creature": true,
+       "tutorialOnly": false
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "secret":  {
+  "itemId": "Secret_ToilettesEnOr",
+  "asset": "ITM_Secret_ToilettesEnOr",
+  "nameEn": "Solid Gold Toilet",
+  "rarity": "Secret",
+  "origin": "new",
+  "creature": false,
+  "tutorialOnly": false,
+  "categoryEn": "???"
+ },
+ "indexOrder": [
+  ["Z1_ChocolatDeDubai", "Z1_BoissonSigma", "Z1_Canette67", "Z1_BananeScotchee", "Z1_ChipsMystere", "Z1_PouletALunettes", "Z1_GlaceArcEnCiel", "Z1_SlushieArcEnCiel", "Z1_SachetSurprise", "Z1_PastequeMewing", "Z1_OeufBoudeur", "Z1_TicketGagnant", "Z1_RamenDeFeu"],
+  ["Z2_CanardRoyal", "Z2_PopIt", "Z2_Squishy", "Z2_Slime", "Z2_SucetteTourbillon", "Z2_BarbeAPapaNuage", "Z2_BonbonPiquant", "Z2_FigurineSurprise", "Z2_CapybaraOrange", "Z2_AxolotlEnPeluche", "Z2_OursGelifieGeant", "Z2_PelucheMonstre", "Z2_BlasterAMousse", "Z2_MachineABonbons", "Z2_BusEnGelatine", "Z2_TheiereDansante"],
+  ["Z3_ChatQuiTourne", "Z3_ManetteQuiTranspire", "Z3_CasqueOreillesDeChat", "Z3_TelephonePliant", "Z3_ClavierRgb", "Z3_MicroDeStreamer", "Z3_RobotChien", "Z3_LampeALave", "Z3_AppareilPhotoInstantane", "Z3_EnseigneNeon", "Z3_PcGamerQuiFume", "Z3_Hoverboard", "Z3_ProjecteurGalaxie", "Z3_SushiNinja"],
+  ["Z4_LunettesDeStar", "Z4_BraceletDAmitie", "Z4_CasquetteAStrass", "Z4_FauxOnglesEnOr", "Z4_ChaineDrip", "Z4_BasketsLumineuses", "Z4_MicroDePopStar", "Z4_MontreGlacee", "Z4_GrillzEnDiamant", "Z4_BasketsEnOr", "Z4_PerruquePresidentielle", "Z4_TropheeDeStar", "Z4_MontreDiamant", "Z4_GuitareNeon", "Z4_ChihuahuaEnDiamants"],
+  ["Z5_BaguetteEnOr", "Z5_BeretDeMime", "Z5_TableauPixelArt", "Z5_JocondeSelfie", "Z5_StatueMewing", "Z5_EpeeDansLaPierre", "Z5_CramponsDores", "Z5_OeufDeDinoFossile", "Z5_StatueDeChatGeant", "Z5_GoldenBall", "Z5_OeufDeDragon", "Z5_CroissantRequin"],
+  ["Z6_LingotGeant", "Z6_ValiseDeBillets", "Z6_CarteNoireInfinie", "Z6_LiberteEnOr", "Z6_TaxiEnOr", "Z6_CapybaraDore", "Z6_CouronneCosmique", "Z6_CoffreADents", "Z6_BilletQuiCourt", "Z6_DragonDeDiamant", "Z6_PigeonEnOr", "Z6_CerveauDore"]
+ ]
+}
