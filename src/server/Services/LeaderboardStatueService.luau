@@ -179,6 +179,14 @@ local function dress(statue: Statue, userId: number): boolean
 		return false
 	end
 	RunService.Heartbeat:Wait()
+	-- a447 : tout ancré. Membres libres sur des AnimationConstraint cinématiques : ScaleTo n'agrandit que les pièces,
+	-- la physique ne replace les membres qu'à l'image suivante (5,8 studs plus bas, après la mesure et la pose), et
+	-- repose() déplaçait tout l'assemblage au lieu du membre. Ancrés, ScaleTo et repose() les placent tout de suite.
+	for _, item in rig:GetDescendants() do
+		if item:IsA("BasePart") then
+			item.Anchored = true
+		end
+	end
 	repose(rig, root)
 	local low, high = bounds(rig, root)
 	if high - low > 0.1 and high - low < math.huge then
