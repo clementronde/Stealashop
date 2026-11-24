@@ -47,9 +47,44 @@
 --   Items.RenamedV1, Items.RetiredV1: { [ancien ItemId]: ItemId v2 }
 --       ItemId du catalogue v1 absents de la v2 (voir plus bas) : migration des profils
 --       (DataService) et noms de modèles refusés par le ContractChecker.
+--
+-- a429 (lot100, L-327 et L-339, Clément 24/11 ; liste : docs/claude/notes/objets-catalogue-v3.md) : catalogue v3,
+-- des objets drôles et « trendy », même structure que la v2 (mêmes nombres par zone et par rareté, un Rare du tuto en
+-- zone 1 : Z1_RamenDeFeu, un Secret : Secret_ToilettesEnOr). Interrupteur (décision C2 de Cantin, 24/11) :
+-- Features.ItemsV3 (partout, false) ou Features.ItemsV3Dev dans le jeu DEV (Config/ProductIds.IsDev, true). Coupé, tout
+-- reste en v2. Un seul catalogue actif à la fois : List, ById, ByZone, Secrets sont ceux du catalogue actif.
+--   Items.Version: number            2 ou 3, le catalogue actif
+--   Items.V2ToV3, Items.V3ToV2: { [ItemId]: ItemId }
+--       Renommage des objets des profils (DataService, au chargement, sans changement de version ; champ ItemCatalog
+--       du profil) : V0 proposé (Cantin, 24/11) : l'objet de même zone, même rareté et même rang dans l'ordre de
+--       l'index (le Pot de nouilles devient le Ramen de feu, le Chat porte-bonheur doré les Toilettes en or).
+--       Une bijection : l'interrupteur recoupé, les objets reviennent en v2.
+--   Items.Resolve(id) -> Item?       l'objet actif pour un ItemId de la v2 ou de la v3 (même rareté, même zone)
+--   Items.TutorialItemId: string     l'objet du tuto du catalogue actif (Config/Tutorial.GuaranteedItemId)
+--   Items.OtherAssets: { [string]: boolean }
+--       Modèles ITM_ de l'autre catalogue : encore rangés dans Assets/Items, ni attendus ni signalés « pas au catalogue »
+--       (ContractChecker) ; leurs icônes ICON_ non plus.
 
 local DeepFreeze = require(script.Parent.DeepFreeze)
 local Rarities = require(script.Parent.Rarities)
+
+-- a429 : module de Config chargé s'il est là (bancs à liste de modules fixe, comme ProductIds dans Config/Monetization).
+local function optional(name: string): any
+	local found, module = pcall(function(): any
+		return script.Parent:FindFirstChild(name)
+	end)
+	if found and module ~= nil then
+		local ok, result = pcall(require, module :: any)
+		if ok and type(result) == "table" then
+			return result
+		end
+	end
+	return {}
+end
+local Features: any = optional("Features")
+local ProductIds: any = optional("ProductIds")
+-- a429 : catalogue v3 allumé partout (ItemsV3) ou dans le jeu DEV seulement (ItemsV3Dev et ProductIds.IsDev).
+local V3: boolean = Features.ItemsV3 == true or (Features.ItemsV3Dev == true and ProductIds.IsDev == true)
 
 export type Item = {
 	Id: string, -- ItemId
@@ -72,7 +107,7 @@ local ZONE_RARITIES: { Rarities.RarityId } = { "Common", "Uncommon", "Rare", "Ep
 
 -- [zone] = catégories dans l'ordre du catalogue : Id (sans accent), Name (affiché, en anglais) et
 -- objets { ItemId, nom affiché en anglais, rareté } ; en commentaire, le nom français du doc.
-local CATALOG: { { CategoryEntry } } = {
+local CATALOG_V2: { { CategoryEntry } } = {
 	{ -- Zone 1 : Supérette, Kiosque
 		{
 			Id = "Boisson",
@@ -324,7 +359,7 @@ local CATALOG: { { CategoryEntry } } = {
 -- et sa chance au tirage (inverse de son revenu relatif, DrawWeight). Raretés réattribuées V0 (a262) dans l'ordre de
 -- l'index d'avant (rareté puis catalogue), parts égales entre les raretés de la zone, le reste aux plus basses ; le
 -- Pot de nouilles (TutorialOnly, Rare) ferme la zone 1. Chaque objet d'une zone y figure une fois (vérifié plus bas).
-local INDEX_ORDER: { { string } } = {
+local INDEX_ORDER_V2: { { string } } = {
 	{ -- Zone 1 : 12 Communs, puis le Pot de nouilles
 		"Z1_CanetteDeSoda", "Z1_BoissonEnergisante", "Z1_BriqueDeLait", "Z1_PaquetDeChips", "Z1_Donut", "Z1_HotDog",
 		"Z1_Banane", "Z1_Ananas", "Z1_Pasteque", "Z1_Carotte", "Z1_Brocoli", "Z1_EpiDeMais", "Z1_PotDeNouilles",
@@ -361,7 +396,7 @@ local INDEX_ORDER: { { string } } = {
 }
 
 -- Secrets, toutes zones ; vague 76 : tirés seulement en zone 6 (Rarities.ZoneOdds).
-local SECRETS: { Entry } = {
+local SECRETS_V2: { Entry } = {
 	{ Id = "Secret_ChatPorteBonheurDore", Name = "Golden Lucky Cat", Rarity = "Secret" }, -- Chat porte-bonheur doré
 }
 local SECRET_CATEGORY = "???" -- catégorie affichée d'un Secret (catalogue v2)
@@ -413,6 +448,379 @@ local RETIRED_V1: { [string]: string } = {
 	Z6_SacDePieces = "Z6_PyramideDeLingots", -- Peu commun
 	Z6_MalletteDeBillets = "Z6_TroneEnOr", -- Épique
 }
+
+-- a429 (L-327, L-339 ; docs/claude/notes/objets-catalogue-v3.md, Clément 24/11, base validée, noms encore modifiables) :
+-- catalogue v3. Catégories (Id = Name, en anglais, sans accent) dans l'ordre où la note les cite ; noms affichés de la
+-- note, sans l'étoile ★ des créatures (V0 proposé (Cantin, 24/11) : l'étoile marque la direction « créature absurde »
+-- dans la note, pas le nom). Modèles : ITM_<ItemId> livrés dans Assets/Items (L-339).
+local CATALOG_V3: { { CategoryEntry } } = {
+	{ -- Zone 1 : Supérette, Kiosque (12 Communs + le Rare du tuto)
+		{
+			Id = "Snack",
+			Name = "Snack",
+			Items = {
+				{ Id = "Z1_ChocolatDeDubai", Name = "Dubai Chocolate", Rarity = "Common" },
+				{ Id = "Z1_BananeScotchee", Name = "Taped Banana", Rarity = "Common" },
+				{ Id = "Z1_ChipsMystere", Name = "Mystery Chips", Rarity = "Common" },
+				{ Id = "Z1_PouletALunettes", Name = "Cool Fried Chicken", Rarity = "Common" },
+				{ Id = "Z1_PastequeMewing", Name = "Mewing Watermelon", Rarity = "Common" },
+				{ Id = "Z1_OeufBoudeur", Name = "Grumpy Fried Egg", Rarity = "Common" },
+				{ Id = "Z1_RamenDeFeu", Name = "Fire Ramen", Rarity = "Rare", TutorialOnly = true }, -- tuto seulement
+			},
+		},
+		{
+			Id = "Drink",
+			Name = "Drink",
+			Items = {
+				{ Id = "Z1_BoissonSigma", Name = "Sigma Drink", Rarity = "Common" },
+				{ Id = "Z1_Canette67", Name = '"67" Can', Rarity = "Common" },
+				{ Id = "Z1_SlushieArcEnCiel", Name = "Rainbow Slushie", Rarity = "Common" },
+			},
+		},
+		{
+			Id = "Sweet",
+			Name = "Sweet",
+			Items = {
+				{ Id = "Z1_GlaceArcEnCiel", Name = "Rainbow Ice Cream", Rarity = "Common" },
+				{ Id = "Z1_SachetSurprise", Name = "Mystery Bag", Rarity = "Common" },
+			},
+		},
+		{
+			Id = "Kiosk",
+			Name = "Kiosk",
+			Items = {
+				{ Id = "Z1_TicketGagnant", Name = "Winning Scratch Card", Rarity = "Common" },
+			},
+		},
+	},
+	{ -- Zone 2 : Jouets et bonbons, Londres (8 Communs, 8 Peu communs)
+		{
+			Id = "Toy",
+			Name = "Toy",
+			Items = {
+				{ Id = "Z2_CanardRoyal", Name = "Royal Rubber Duck", Rarity = "Common" },
+				{ Id = "Z2_PopIt", Name = "Giant Pop-It", Rarity = "Common" },
+				{ Id = "Z2_Squishy", Name = "Squishy", Rarity = "Common" },
+				{ Id = "Z2_Slime", Name = "Slime", Rarity = "Common" },
+				{ Id = "Z2_FigurineSurprise", Name = "Surprise Figure", Rarity = "Common" },
+				{ Id = "Z2_BlasterAMousse", Name = "Foam Blaster", Rarity = "Uncommon" },
+			},
+		},
+		{
+			Id = "Candy",
+			Name = "Candy",
+			Items = {
+				{ Id = "Z2_SucetteTourbillon", Name = "Swirl Lollipop", Rarity = "Common" },
+				{ Id = "Z2_BarbeAPapaNuage", Name = "Cloud Cotton Candy", Rarity = "Common" },
+				{ Id = "Z2_BonbonPiquant", Name = "Super Sour Candy", Rarity = "Common" },
+				{ Id = "Z2_OursGelifieGeant", Name = "Giant Gummy Bear", Rarity = "Uncommon" },
+				{ Id = "Z2_MachineABonbons", Name = "Candy Machine", Rarity = "Uncommon" },
+				{ Id = "Z2_BusEnGelatine", Name = "Jelly Double-Decker", Rarity = "Uncommon" },
+			},
+		},
+		{
+			Id = "Plush",
+			Name = "Plush",
+			Items = {
+				{ Id = "Z2_CapybaraOrange", Name = "Orange Capybara", Rarity = "Uncommon" },
+				{ Id = "Z2_AxolotlEnPeluche", Name = "Axolotl Plush", Rarity = "Uncommon" },
+				{ Id = "Z2_PelucheMonstre", Name = "Laughing Monster Plush", Rarity = "Uncommon" },
+			},
+		},
+		{
+			Id = "Creature",
+			Name = "Creature",
+			Items = {
+				{ Id = "Z2_TheiereDansante", Name = "Dancing Teapot", Rarity = "Uncommon" }, -- ★
+			},
+		},
+	},
+	{ -- Zone 3 : Électronique et jeux vidéo, Tokyo (5 Communs, 5 Peu communs, 4 Rares)
+		{
+			Id = "Meme",
+			Name = "Meme",
+			Items = {
+				{ Id = "Z3_ChatQuiTourne", Name = "Spinning Cat", Rarity = "Common" },
+			},
+		},
+		{
+			Id = "Gaming",
+			Name = "Gaming",
+			Items = {
+				{ Id = "Z3_ManetteQuiTranspire", Name = "Sweaty Controller", Rarity = "Common" },
+				{ Id = "Z3_CasqueOreillesDeChat", Name = "Cat Ear Headset", Rarity = "Common" },
+				{ Id = "Z3_ClavierRgb", Name = "RGB Keyboard", Rarity = "Common" },
+				{ Id = "Z3_MicroDeStreamer", Name = "Streamer Mic", Rarity = "Uncommon" },
+				{ Id = "Z3_PcGamerQuiFume", Name = "Overheating Gaming PC", Rarity = "Rare" },
+			},
+		},
+		{
+			Id = "Phone",
+			Name = "Phone",
+			Items = {
+				{ Id = "Z3_TelephonePliant", Name = "Folding Phone", Rarity = "Common" },
+			},
+		},
+		{
+			Id = "Gadget",
+			Name = "Gadget",
+			Items = {
+				{ Id = "Z3_RobotChien", Name = "Robot Dog", Rarity = "Uncommon" },
+				{ Id = "Z3_LampeALave", Name = "Lava Lamp", Rarity = "Uncommon" },
+				{ Id = "Z3_AppareilPhotoInstantane", Name = "Instant Camera", Rarity = "Uncommon" },
+				{ Id = "Z3_EnseigneNeon", Name = "Neon Sign", Rarity = "Uncommon" },
+				{ Id = "Z3_Hoverboard", Name = "Hoverboard", Rarity = "Rare" },
+				{ Id = "Z3_ProjecteurGalaxie", Name = "Galaxy Projector", Rarity = "Rare" },
+			},
+		},
+		{
+			Id = "Creature",
+			Name = "Creature",
+			Items = {
+				{ Id = "Z3_SushiNinja", Name = "Ninja Sushi", Rarity = "Rare" }, -- ★
+			},
+		},
+	},
+	{ -- Zone 4 : Bijoux et montres, Los Angeles (4 Communs, 4 Peu communs, 4 Rares, 3 Épiques)
+		{
+			Id = "Fashion",
+			Name = "Fashion",
+			Items = {
+				{ Id = "Z4_LunettesDeStar", Name = "Star Sunglasses", Rarity = "Common" }, -- gardé de la v2 (Peu commun en v2)
+				{ Id = "Z4_CasquetteAStrass", Name = "Bling Cap", Rarity = "Common" },
+				{ Id = "Z4_FauxOnglesEnOr", Name = "Golden Nails", Rarity = "Common" },
+				{ Id = "Z4_BasketsLumineuses", Name = "Light-Up Sneakers", Rarity = "Uncommon" },
+				{ Id = "Z4_BasketsEnOr", Name = "Golden Sneakers", Rarity = "Rare" },
+				{ Id = "Z4_PerruquePresidentielle", Name = "Presidential Wig", Rarity = "Rare" },
+			},
+		},
+		{
+			Id = "Jewelry",
+			Name = "Jewelry",
+			Items = {
+				{ Id = "Z4_BraceletDAmitie", Name = "Friendship Bracelet", Rarity = "Common" },
+				{ Id = "Z4_ChaineDrip", Name = "Drip Chain", Rarity = "Uncommon" },
+				{ Id = "Z4_GrillzEnDiamant", Name = "Diamond Grillz", Rarity = "Rare" },
+			},
+		},
+		{
+			Id = "Star",
+			Name = "Star",
+			Items = {
+				{ Id = "Z4_MicroDePopStar", Name = "Pop Star Mic", Rarity = "Uncommon" },
+				{ Id = "Z4_TropheeDeStar", Name = "Star Trophy", Rarity = "Rare" },
+				{ Id = "Z4_GuitareNeon", Name = "Neon Guitar", Rarity = "Epic" },
+			},
+		},
+		{
+			Id = "Watch",
+			Name = "Watch",
+			Items = {
+				{ Id = "Z4_MontreGlacee", Name = "Iced-Out Watch", Rarity = "Uncommon" },
+				{ Id = "Z4_MontreDiamant", Name = "Diamond Watch", Rarity = "Epic" },
+			},
+		},
+		{
+			Id = "Creature",
+			Name = "Creature",
+			Items = {
+				{ Id = "Z4_ChihuahuaEnDiamants", Name = "Diamond Chihuahua", Rarity = "Epic" }, -- ★
+			},
+		},
+	},
+	{ -- Zone 5 : Galerie d'art, Antiquaire, Paris (3 Peu communs, 3 Rares, 3 Épiques, 3 Légendaires)
+		{
+			Id = "Paris",
+			Name = "Paris",
+			Items = {
+				{ Id = "Z5_BaguetteEnOr", Name = "Golden Baguette", Rarity = "Uncommon" },
+				{ Id = "Z5_BeretDeMime", Name = "Mime Beret", Rarity = "Uncommon" },
+			},
+		},
+		{
+			Id = "Painting",
+			Name = "Painting",
+			Items = {
+				{ Id = "Z5_TableauPixelArt", Name = "Pixel Art Painting", Rarity = "Uncommon" },
+				{ Id = "Z5_JocondeSelfie", Name = "Selfie Mona Lisa", Rarity = "Rare" },
+			},
+		},
+		{
+			Id = "Sculpture",
+			Name = "Sculpture",
+			Items = {
+				{ Id = "Z5_StatueMewing", Name = "Mewing Statue", Rarity = "Rare" },
+				{ Id = "Z5_StatueDeChatGeant", Name = "Giant Cat Statue", Rarity = "Epic" },
+			},
+		},
+		{
+			Id = "Relic",
+			Name = "Relic",
+			Items = {
+				{ Id = "Z5_EpeeDansLaPierre", Name = "Sword in the Stone", Rarity = "Rare" },
+				{ Id = "Z5_OeufDeDinoFossile", Name = "Fossil Dino Egg", Rarity = "Epic" },
+				{ Id = "Z5_OeufDeDragon", Name = "Dragon Egg", Rarity = "Legendary" },
+			},
+		},
+		{
+			Id = "Sport",
+			Name = "Sport",
+			Items = {
+				{ Id = "Z5_CramponsDores", Name = "Golden Cleats No. 10", Rarity = "Epic" },
+				{ Id = "Z5_GoldenBall", Name = "Golden Ball", Rarity = "Legendary" },
+			},
+		},
+		{
+			Id = "Creature",
+			Name = "Creature",
+			Items = {
+				{ Id = "Z5_CroissantRequin", Name = "Croissant Shark", Rarity = "Legendary" }, -- ★
+			},
+		},
+	},
+	{ -- Zone 6 : Banque, Salle des coffres, New York (3 Rares, 3 Épiques, 3 Légendaires, 3 Mythiques)
+		{
+			Id = "Gold",
+			Name = "Gold",
+			Items = {
+				{ Id = "Z6_LingotGeant", Name = "Giant Gold Bar", Rarity = "Rare" },
+				{ Id = "Z6_LiberteEnOr", Name = "Golden Liberty", Rarity = "Epic" },
+				{ Id = "Z6_TaxiEnOr", Name = "Golden Taxi", Rarity = "Epic" },
+				{ Id = "Z6_CapybaraDore", Name = "Golden Capybara", Rarity = "Epic" },
+			},
+		},
+		{
+			Id = "Cash",
+			Name = "Cash",
+			Items = {
+				{ Id = "Z6_ValiseDeBillets", Name = "Cash Briefcase", Rarity = "Rare" },
+				{ Id = "Z6_CarteNoireInfinie", Name = "Infinite Black Card", Rarity = "Rare" },
+			},
+		},
+		{
+			Id = "Treasure",
+			Name = "Treasure",
+			Items = {
+				{ Id = "Z6_CouronneCosmique", Name = "Cosmic Crown", Rarity = "Legendary" },
+				{ Id = "Z6_DragonDeDiamant", Name = "Diamond Dragon", Rarity = "Mythic" },
+			},
+		},
+		{
+			Id = "Creature",
+			Name = "Creature",
+			Items = {
+				{ Id = "Z6_CoffreADents", Name = "Toothy Safe", Rarity = "Legendary" }, -- ★
+				{ Id = "Z6_BilletQuiCourt", Name = "Running Million Bill", Rarity = "Legendary" }, -- ★
+				{ Id = "Z6_PigeonEnOr", Name = "Golden Pigeon", Rarity = "Mythic" }, -- ★
+				{ Id = "Z6_CerveauDore", Name = "Golden Brain", Rarity = "Mythic" }, -- ★
+			},
+		},
+	},
+}
+
+-- a429 : ordre de l'index v3, celui des tableaux de la note (rareté, puis ligne) ; même règle que INDEX_ORDER_V2 (rang
+-- dans la rareté = revenu +10 % par rang et poids au tirage). V0 proposé (Cantin, 24/11) : l'ordre des lignes de la note.
+local INDEX_ORDER_V3: { { string } } = {
+	{ -- Zone 1 : 12 Communs, puis le Ramen de feu (tuto)
+		"Z1_ChocolatDeDubai", "Z1_BoissonSigma", "Z1_Canette67", "Z1_BananeScotchee", "Z1_ChipsMystere",
+		"Z1_PouletALunettes", "Z1_GlaceArcEnCiel", "Z1_SlushieArcEnCiel", "Z1_SachetSurprise", "Z1_PastequeMewing",
+		"Z1_OeufBoudeur", "Z1_TicketGagnant", "Z1_RamenDeFeu",
+	},
+	{ -- Zone 2 : 8 Communs, 8 Peu communs
+		"Z2_CanardRoyal", "Z2_PopIt", "Z2_Squishy", "Z2_Slime", "Z2_SucetteTourbillon", "Z2_BarbeAPapaNuage",
+		"Z2_BonbonPiquant", "Z2_FigurineSurprise",
+		"Z2_CapybaraOrange", "Z2_AxolotlEnPeluche", "Z2_OursGelifieGeant", "Z2_PelucheMonstre", "Z2_BlasterAMousse",
+		"Z2_MachineABonbons", "Z2_BusEnGelatine", "Z2_TheiereDansante",
+	},
+	{ -- Zone 3 : 5 Communs, 5 Peu communs, 4 Rares
+		"Z3_ChatQuiTourne", "Z3_ManetteQuiTranspire", "Z3_CasqueOreillesDeChat", "Z3_TelephonePliant", "Z3_ClavierRgb",
+		"Z3_MicroDeStreamer", "Z3_RobotChien", "Z3_LampeALave", "Z3_AppareilPhotoInstantane", "Z3_EnseigneNeon",
+		"Z3_PcGamerQuiFume", "Z3_Hoverboard", "Z3_ProjecteurGalaxie", "Z3_SushiNinja",
+	},
+	{ -- Zone 4 : 4 Communs, 4 Peu communs, 4 Rares, 3 Épiques
+		"Z4_LunettesDeStar", "Z4_BraceletDAmitie", "Z4_CasquetteAStrass", "Z4_FauxOnglesEnOr",
+		"Z4_ChaineDrip", "Z4_BasketsLumineuses", "Z4_MicroDePopStar", "Z4_MontreGlacee",
+		"Z4_GrillzEnDiamant", "Z4_BasketsEnOr", "Z4_PerruquePresidentielle", "Z4_TropheeDeStar",
+		"Z4_MontreDiamant", "Z4_GuitareNeon", "Z4_ChihuahuaEnDiamants",
+	},
+	{ -- Zone 5 : 3 Peu communs, 3 Rares, 3 Épiques, 3 Légendaires
+		"Z5_BaguetteEnOr", "Z5_BeretDeMime", "Z5_TableauPixelArt",
+		"Z5_JocondeSelfie", "Z5_StatueMewing", "Z5_EpeeDansLaPierre",
+		"Z5_CramponsDores", "Z5_OeufDeDinoFossile", "Z5_StatueDeChatGeant",
+		"Z5_GoldenBall", "Z5_OeufDeDragon", "Z5_CroissantRequin",
+	},
+	{ -- Zone 6 : 3 Rares, 3 Épiques, 3 Légendaires, 3 Mythiques (plus le Secret, toutes zones)
+		"Z6_LingotGeant", "Z6_ValiseDeBillets", "Z6_CarteNoireInfinie",
+		"Z6_LiberteEnOr", "Z6_TaxiEnOr", "Z6_CapybaraDore",
+		"Z6_CouronneCosmique", "Z6_CoffreADents", "Z6_BilletQuiCourt",
+		"Z6_DragonDeDiamant", "Z6_PigeonEnOr", "Z6_CerveauDore",
+	},
+}
+
+local SECRETS_V3: { Entry } = {
+	{ Id = "Secret_ToilettesEnOr", Name = "Solid Gold Toilet", Rarity = "Secret" },
+}
+
+-- a429 : le catalogue actif (Features.ItemsV3, ItemsV3Dev).
+local CATALOG: { { CategoryEntry } } = if V3 then CATALOG_V3 else CATALOG_V2
+local INDEX_ORDER: { { string } } = if V3 then INDEX_ORDER_V3 else INDEX_ORDER_V2
+local SECRETS: { Entry } = if V3 then SECRETS_V3 else SECRETS_V2
+
+-- a429 : clé « zone:rareté:rang » de chaque objet d'un catalogue (rang dans l'ordre de l'index, comme Rank ; le
+-- Secret : « Secret:<rang> »), pour le renommage v2 ↔ v3 des profils (même zone, même rareté, même rang).
+local function rankKeys(catalog: { { CategoryEntry } }, order: { { string } }, secrets: { Entry }): { [string]: string }
+	local rarityOf: { [string]: string } = {}
+	for _, categories in catalog do
+		for _, category in categories do
+			for _, entry in category.Items do
+				rarityOf[entry.Id] = entry.Rarity
+			end
+		end
+	end
+	local keys: { [string]: string } = {}
+	for zone, ids in order do
+		local ranks: { [string]: number } = {}
+		for _, id in ids do
+			local rarity = rarityOf[id]
+			assert(rarity ~= nil, `Config.Items : {id} dans l'ordre de l'index sans être au catalogue`)
+			local rank = (ranks[rarity] or 0) + 1
+			ranks[rarity] = rank
+			keys[id] = `{zone}:{rarity}:{rank}`
+		end
+	end
+	for index, entry in secrets do
+		keys[entry.Id] = `Secret:{index}`
+	end
+	return keys
+end
+
+local V2_TO_V3: { [string]: string } = {}
+local V3_TO_V2: { [string]: string } = {}
+do
+	local byKeyV3: { [string]: string } = {}
+	for id, key in rankKeys(CATALOG_V3, INDEX_ORDER_V3, SECRETS_V3) do
+		byKeyV3[key] = id
+	end
+	local count = 0
+	for id, key in rankKeys(CATALOG_V2, INDEX_ORDER_V2, SECRETS_V2) do
+		local new = byKeyV3[key]
+		assert(new ~= nil, `Config.Items : {id} ({key}) sans objet v3 de même zone, rareté et rang`)
+		V2_TO_V3[id] = new
+		V3_TO_V2[new] = id
+		count += 1
+	end
+	for key, id in byKeyV3 do
+		assert(V3_TO_V2[id] ~= nil, `Config.Items : {id} ({key}) sans objet v2 de même zone, rareté et rang`)
+	end
+	assert(count == #INDEX_ORDER_V3[1] + #INDEX_ORDER_V3[2] + #INDEX_ORDER_V3[3] + #INDEX_ORDER_V3[4] + #INDEX_ORDER_V3[5] + #INDEX_ORDER_V3[6] + #SECRETS_V3, "Config.Items : v2 et v3 n'ont pas le même nombre d'objets")
+end
+
+-- a429 : modèles ITM_ de l'autre catalogue (ContractChecker : ni attendus ni « pas au catalogue »).
+local OTHER_ASSETS: { [string]: boolean } = {}
+local otherIds: { [string]: string } = if V3 then V2_TO_V3 else V3_TO_V2
+for id in otherIds do
+	OTHER_ASSETS[`ITM_{id}`] = true
+end
 
 local List: { Item } = {}
 local ById: { [string]: Item } = {}
@@ -532,11 +940,32 @@ local AllZones: { [string]: { Item } } = {
 	Divine = Divines,
 }
 
+-- a429 : les tables v1 donnent un ItemId v2 (DataService les applique avant le renommage v2 → v3).
 for old, new in RENAMED_V1 do
-	assert(ById[old] == nil and ById[new] ~= nil, `Config.Items : renommage v1 {old} → {new} incohérent`)
+	assert(ById[old] == nil and V2_TO_V3[old] == nil and V2_TO_V3[new] ~= nil, `Config.Items : renommage v1 {old} → {new} incohérent`)
 end
 for old, new in RETIRED_V1 do
-	assert(ById[old] == nil and ById[new] ~= nil, `Config.Items : remplacement v1 {old} → {new} incohérent`)
+	assert(ById[old] == nil and V2_TO_V3[old] == nil and V2_TO_V3[new] ~= nil, `Config.Items : remplacement v1 {old} → {new} incohérent`)
+end
+
+-- a429 : l'objet du tuto du catalogue actif (un seul TutorialOnly).
+local tutorialItemId: string? = nil
+for _, item in List do
+	if item.TutorialOnly then
+		assert(tutorialItemId == nil, `Config.Items : deux objets TutorialOnly ({tutorialItemId}, {item.Id})`)
+		tutorialItemId = item.Id
+	end
+end
+assert(tutorialItemId ~= nil, "Config.Items : aucun objet TutorialOnly (objet du tuto)")
+
+-- a429 : l'objet actif pour un ItemId de la v2 ou de la v3 (même zone, même rareté) ; nil s'il n'est dans aucun.
+local function resolve(id: string): Item?
+	local item = ById[id]
+	if item ~= nil then
+		return item
+	end
+	local other = if V3 then V2_TO_V3[id] else V3_TO_V2[id]
+	return if other ~= nil then ById[other] else nil
 end
 
 -- Tirage d'Items.Pick quand l'appelant ne donne pas son Random (créé au premier besoin).
@@ -588,6 +1017,13 @@ local Items = {
 	Pick = pick,
 	RenamedV1 = RENAMED_V1,
 	RetiredV1 = RETIRED_V1,
+	-- a429 (L-327, L-339) : catalogue v3 derrière Features.ItemsV3 / ItemsV3Dev.
+	Version = if V3 then 3 else 2,
+	V2ToV3 = V2_TO_V3,
+	V3ToV2 = V3_TO_V2,
+	Resolve = resolve,
+	TutorialItemId = tutorialItemId :: string,
+	OtherAssets = OTHER_ASSETS,
 }
 
 export type Items = typeof(Items)

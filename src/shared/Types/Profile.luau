@@ -298,6 +298,8 @@ export type Data = {
 	Funnels: { [string]: boolean }?, -- a414 (vague GC7) : entonnoirs une fois par profil (FunnelService, Config/Funnels) :
 	-- [« New »] = true pour un profil nouveau à son 1er passage, [« <entonnoir>/<n° d'étape> »] = true pour une étape
 	-- envoyée. Champ facultatif, sans changement de version, absent du gabarit : créé par FunnelService au chargement.
+	ItemCatalog: number?, -- a429 (L-327) : catalogue des ItemId du profil, 2 ou 3 (Config/Items.Version) ; 2 dans le gabarit
+	-- (absent = 2), passé au catalogue actif au chargement par DataService (switchCatalog). Sans changement de version.
 	-- Partie 2 : Defenses, Rebirths, ajoutés par migration (Version = 9 et suivantes : la v2 est prise
 	-- par le catalogue d'objets v2, la v3 par la boutique Robux, la v4 par l'index, la v5 par les colis
 	-- sur les présentoirs, la v6 par les gains hors ligne, la v7 par les colis dans l'inventaire, la v8

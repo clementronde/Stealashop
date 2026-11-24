@@ -61,6 +61,7 @@ export type ModelSpec = {
 	Known: { [string]: boolean }?, -- seuls noms acceptés ; un autre nom est signalé (objets ITM_)
 	Renamed: { [string]: string }?, -- ancien nom → nom à prendre
 	Retired: { [string]: boolean }?, -- anciens noms retirés du contrat
+	Tolerated: { [string]: boolean }?, -- a429 : noms acceptés sans être attendus (modèles de l'autre catalogue d'objets)
 	SpinPrefix: string?, -- préfixe des pièces qui tournent sans fin sur l'axe Y de leur pivot (objets ITM_)
 	WavePrefix: string?, -- préfixe des pièces qui font un va-et-vient sur l'axe Y de leur pivot (objets ITM_)
 }
@@ -261,6 +262,9 @@ local Item: ModelSpec = {
 	Known = itemNames,
 	Renamed = itemRenamed, -- Z4_Montre, Z5_Vase
 	Retired = itemRetired, -- les 6 objets retirés du catalogue v1
+	-- a429 (L-339) : les modèles de l'autre catalogue (v2 quand la v3 est allumée, et inversement), encore rangés dans
+	-- Assets/Items : ni comptés dans ExpectedCount ni signalés « pas au catalogue ».
+	Tolerated = Items.OtherAssets,
 	-- Animation idle (L-045, proposition de Clément validée par Ironix le 2026-11-07 ; Wave_ : L-055),
 	-- jouée côté client par ItemIdleController, aucun script dans le modèle :
 	--   - attribut Idle du modèle (Contract/Attributes : Spin, Bob, SpinBob) ;

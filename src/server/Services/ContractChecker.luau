@@ -953,6 +953,7 @@ local function checkItems(scanned: { Instance })
 	end
 	local renamed = spec.Renamed or {}
 	local retired = spec.Retired or {}
+	local tolerated = spec.Tolerated or {} -- a429 : modèles de l'autre catalogue d'objets (Items.OtherAssets)
 	local idleSpec = Attributes.Idle
 	local idleValues = `{table.concat(idleSpec.Values, ", ")} ou rien`
 	for _, inst in scanned do
@@ -976,7 +977,7 @@ local function checkItems(scanned: { Instance })
 
 		local label = inst:GetFullName()
 		local name = inst.Name
-		if not known[name] then
+		if not known[name] and not tolerated[name] then
 			local newName = renamed[name]
 			if newName then
 				problem("Objets", `{label} : objet renommé au catalogue v2 (L-045), le renommer {newName} (ItemId compris)`)
@@ -996,7 +997,15 @@ local function checkItems(scanned: { Instance })
 		end
 
 		local primary = spec.PrimaryPart or "Root"
-		local roots: { Instance } = indexOf(inst)[primary] or {}
+		-- a429 (L-339) : seules les pièces (BasePart) comptent ; l'os Root du squelette d'un objet animé (un Bone dans son
+		-- MeshPart) n'est pas un doublon.
+		local roots: { Instance } = {}
+		local named: { Instance } = indexOf(inst)[primary] or {}
+		for _, candidate in named do
+			if candidate:IsA("BasePart") then
+				table.insert(roots, candidate)
+			end
+		end
 		if #roots > 1 then
 			problem("Objets", `{label} : {#roots} éléments nommés {primary}, un seul attendu (la pièce PrimaryPart)`)
 		end
@@ -1081,6 +1090,10 @@ local function checkIcons(scanned: { Instance })
 	end
 	for _, id in OTHER_ICON_IDS do
 		names[Icons.name(id)] = true
+	end
+	-- a429 (L-339) : icônes de l'autre catalogue d'objets (v2 quand la v3 est allumée) : reconnues, jamais attendues.
+	for asset in Items.OtherAssets do
+		names[Icons.name(string.sub(asset, 5))] = true
 	end
 	for _, inst in scanned do
 		local name = inst.Name

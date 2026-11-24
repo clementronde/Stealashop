@@ -192,4 +192,10 @@ Animations.ShopGuard = {
 	{ Name = "Catch", Loop = false, Priority = "Action", Marker = "Impact" },
 } :: { Anim }
 
+-- a429 (L-339, Clément 24/11) : petite animation en boucle des objets du catalogue v3, ITM_<ItemId>/Animations/Boucle,
+-- jouée par l'Animator de l'AnimationController du modèle (ItemLoopController, client) sur l'objet exposé et l'objet
+-- porté. Elle ne bouge que des os : elle tourne en même temps que l'idle d'ItemIdleController. Facultative (un objet
+-- sans elle reste immobile, sans message). Ne jamais renommer le MeshPart d'un objet animé (la pose porte son nom).
+Animations.ItemLoop = { Name = "Boucle", Loop = true, Priority = "Idle" } :: Anim
+
 return Animations

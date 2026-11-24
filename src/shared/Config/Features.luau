@@ -150,6 +150,13 @@ local Features = {
 	-- dénonciateur (Config/Disguise.RecoverCatchRange, DisguiseService, CarryService.Transfer). V0 proposé (Cantin, 24/11) :
 	-- true ; false = l'objet tombe au sol, ou revole sur son rayon si le voleur est attrapé dans le magasin (comme avant).
 	DenounceRecover = true,
+	-- a429 (L-327, L-339, Clément 24/11 ; décision C2 de Cantin, 24/11 : en PROD, seul ce qu'un humain a testé est
+	-- allumé) : catalogue d'objets v3 (Config/Items : objets drôles, modèles de L-339, boucles Animations/Boucle jouées
+	-- par ItemLoopController) ; les objets des profils sont renommés au chargement (DataService, Items.V2ToV3), et
+	-- remis en v2 si l'interrupteur est recoupé. Interrupteur PROD (partout) : false ; false = catalogue v2, comme avant.
+	ItemsV3 = false,
+	-- a429 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	ItemsV3Dev = true,
 }
 
 export type Features = typeof(Features)
