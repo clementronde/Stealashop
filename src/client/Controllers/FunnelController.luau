@@ -21,6 +21,7 @@ local Config = Shared:WaitForChild("Config")
 local Features = require(Config:WaitForChild("Features"))
 local Funnels = require(Config:WaitForChild("Funnels"))
 local Telemetry = require(Config:WaitForChild("Telemetry"))
+local Motion = require(script.Parent:WaitForChild("UI"):WaitForChild("Motion"))
 
 local LOADING_SCREEN = "UI_Loading"
 local BUY_BUTTON = "BuyButton"
@@ -59,7 +60,8 @@ local function bindScreen(gui: ScreenGui, prefix: string)
 	end)
 	local function hook(descendant: Instance)
 		if descendant:IsA("GuiButton") and descendant.Name == BUY_BUTTON then
-			descendant.Activated:Connect(function()
+			-- Motion.Activated (règle d'a290) : compte aussi un clic rattrapé sur la taille réelle du bouton.
+			Motion.Activated(descendant :: GuiButton):Connect(function()
 				if gui.Enabled and (not robux or Features.RobuxShop) then
 					view()
 					fire(`{prefix}Buy`)
