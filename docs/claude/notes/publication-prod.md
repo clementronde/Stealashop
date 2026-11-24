@@ -81,66 +81,128 @@ Pas de prix ni de promesse.
 
 ---
 
-## 2. Questionnaire de maturité (Maturity & Compliance, devenu « Content Ratings Questionnaire »)
+## 2. Questionnaire de maturité (« Content Ratings Questionnaire »)
 
-Il se remplit sur le Creator Hub (Paramètres de l'expérience > Questionnaire), ou à la première publication
-publique. Quatre parties : type d'application, questions IARC, questions propres à Roblox, aperçu de la note.
-Sans note, Roblox restreint le jeu pour tout le monde ; une réponse inexacte peut valoir une modération.
+**Revu le 2026-11-24 d'après le code (main 52944638)**, avec le questionnaire de Roblox relu le même jour (page
+« Content maturity and compliance », lien en fin de note). Ces réponses remplacent celles du 14/11. Les libellés des
+questions sont ceux de Roblox, résumés en français.
 
-### Réponses proposées, d'après le contenu réel du MVP
+**Qui et où** : Clément le remplit avant la sortie (demande de Cantin du 24/11), sur le jeu **PROD** « Steal a Shop »
+(GameId 10774998269) : Creator Hub > le jeu > **Publish settings > Content ratings**. Le jeu DEV n'est pas concerné
+tant qu'il reste privé.
 
-| Rubrique | Question (résumée) | Réponse proposée | Pourquoi, dans le jeu |
+Le questionnaire a quatre parties : type d'application, questions IARC, questions propres à Roblox, aperçu de la note.
+Sans note, Roblox restreint le jeu. Une réponse inexacte peut valoir une modération, et Roblox ou l'IARC peuvent
+remplacer ou retirer la note.
+
+**Règle : répondre ce qui est vrai dans le jeu PROD publié. Ne jamais arranger une réponse pour baisser la note.**
+Une note un cran plus haute coûte moins cher qu'une note fausse.
+
+### Ce qui a changé depuis le 14/11
+
+- Le banc et la Force sont retirés ; on frappe avec des armes (outils de `Config/Tools`) et des auras.
+- Nouveau en jeu : la roue du hub (`Features.Wheel = true`), la Fortune Tower allumée (`Features.FortuneTower = true`),
+  le fourgon blindé (`ArmoredVan`), les pièges (`Traps` ; banane et trappe en DEV seulement, `NewTraps = false`),
+  l'agent de sécurité et le garde de porte (`Bodyguards`, `DoorGuard`), la cabine d'essayage où l'on démasque un
+  déguisé à la batte (`FittingRoom`), la foule de témoins qui filme et crie (`WitnessCrowd`), le camion et le fourgon qui
+  explosent sans faire de dégâts, l'intrus projeté à travers une vitre (`ShopGlassThrow = false`, DEV seulement).
+- Monétisation : la boutique Robux est codée mais coupée en PROD (`RobuxShop = false`). La caisse exclusive est codée,
+  allumée en DEV seulement. La chance du serveur est codée et coupée. Les tours de roue payants sont prévus sans produit.
+  Tous les Id d'offres valent 0 (`Config/Monetization`, `Config/ProductIds`).
+- Côté Roblox : la question des achats cite maintenant les **boosts de chance** (« chance-based boosts ») parmi les
+  objets aléatoires payants. Le questionnaire se trouve dans « Publish settings > Content ratings ».
+
+### Réponses proposées (V0)
+
+| Partie | Question | Réponse proposée | Pourquoi (fichier, interrupteur) |
 | --- | --- | --- | --- |
-| Première question | Contenu réservé aux adultes (restreint) ? | **Non, puis remplir le questionnaire complet** | Répondre « Non » sans tout remplir donne « Content May Vary », réservé aux 16 ans et plus contrôlés : il faut le questionnaire complet pour viser tous les âges |
-| Violence | Y a-t-il de la violence ? | **Oui** | Coups de batte entre joueurs (PvP), le vigile et la police attrapent le joueur, outils de casse sur les vitrines |
-| Violence | Contre qui ? | **Humains** (et non-humains) | La batte touche des avatars ; les vitrines (non-humains) sont la cible la plus fréquente |
-| Violence | Type de monde | **Fantastique** | Ville cartoon, 6 zones à thème, objets imaginaires |
-| Violence | Style | **Animé** | Style Roblox « studs », aucun rendu réaliste |
-| Violence | Réactions des personnages | **Irréalistes** | Le joueur frappé tombe, se relève, 3 s d'immunité ; aucune blessure, aucun cadavre |
-| Violence | Fréquence et caméra | **« Souvent et de loin » + « Rarement et de près »** | C'est la consigne de Roblox pour la caméra par défaut à la 3e personne |
+| Type | Type d'application | **Game** | Jeu à objectifs, ni réseau social ni appli de discussion |
+| Début | Le jeu contient-il du contenu restreint (18 ans et plus) ? | **Non, puis remplir le questionnaire complet** | Rien de réservé aux adultes. S'arrêter au « Non » donne « Content May Vary » (16 ans et plus contrôlés) ; pour tous les âges (Roblox Kids et Select), il faut le questionnaire complet et une note Minimal, Mild ou Moderate |
+| Violence | Y a-t-il de la violence ? | **Oui** | Coups de batte entre joueurs (`Config/Bat`, `BatService` : étourdi 2 s, poussé) ; vigiles, vigiles de nuit et police qui attrapent et arrêtent (animations `Catch`, `Arrest`, `Arrested`, `Knockdown` de `Contract/Animations`) ; pièges qui immobilisent (`Config/Traps`) ; agent de sécurité qui poursuit le voleur (`Bodyguards`) ; vitrines, portes, camion et fourgon cassés à coups d'outils (`Config/Tools`, `TruckEvent`, `ArmoredVan`) |
+| Violence | Contre qui ? | **Humains et non-humains** | La batte et les pièges touchent des avatars ; vitrines, portes et véhicules sont des objets |
+| Violence | Où (monde fantastique ou réaliste) ? | **Fantastique** | Ville cartoon en briques, 6 zones à thème ; aucune arme du monde réel (`Config/Tools` : poings, clé, pied-de-biche, marteau, masse, hache d'incendie, disqueuse ; aucune arme à feu) |
+| Violence | Style | **Animé** | Style Roblox à studs, aucun rendu réaliste |
+| Violence | Réactions des personnages | **Irréalistes** | Personne ne perd de PV : aucun service ne baisse la vie d'un Humanoid. Le joueur tombe, se relève, 3 s d'immunité (`Bat.HitImmunity`) ; pris par un vigile, il est étourdi et le vigile reprend l'objet |
+| Violence | Fréquence et caméra | **« Often and far away » + « Rarely and close up »** | Consigne de Roblox pour la caméra par défaut à la 3e personne (relue le 24/11) |
 | Violence | Comment le joueur le sait | **Violence directe** | Le coup de batte se voit |
-| Sang, gore | Sang, mutilation ? | **Non** | Aucun sang, aucune blessure ; éclats de verre seulement |
-| Armes | Armes réalistes ? | **Non** | Batte cartoon, outils de chantier (clé, pied-de-biche, marteau, masse, hache, disqueuse) qui ne frappent que les vitrines ; matraque cartoon du vigile ; pas d'arme à feu |
-| Peur | Éléments effrayants ? | **Non** (ou « effrayant, rarement » si Cantin trouve la nuit oppressante) | Nuit, vigiles de nuit, battements de cœur sous 10 studs : tension de poursuite, pas d'horreur |
-| Sexualité, rencontres | | **Non** | |
-| Jeux d'argent | Thème de jeu d'argent ? | **Non** | Les colis s'ouvrent avec l'argent du jeu, sans mise ni pari ; aucune machine à sous, roulette ni casino. La Fortune Tower est coupée (`Features.FortuneTower = false`) et n'est pas un jeu d'argent non plus |
+| Sang et gore | Sang, mutilation ? | **Non** | Aucun sang ; seulement des éclats de verre (`Config/Shatter`) et des débris de véhicule (`Config/TruckEvent`) |
+| Peur | Éléments effrayants ou horribles ? | **Non** (V0) | Poursuite, nuit avec vigiles de nuit, battements de cœur à moins de 10 studs du vigile (`Balance`, `HeartbeatDistance`), cris de la foule (`Config/Witness`, `Crowd_Scream`) : de la tension de poursuite, sans monstre, sans horreur, sans jumpscare. Si Clément trouve la nuit effrayante : « Scary », « Not often » |
+| Sexualité, rencontres | Contenu sexuel, suggestif, rencontres ? | **Non** | |
+| Jeux d'argent | Thème de jeu d'argent ? | **Non** | La roue donne un tour gratuit par jour, sans mise ni Robux ni argent du jeu, avec des lots du jeu (`Config/Wheel`, `Features.Wheel = true` ; tours payants : `ExtraSpin.ProductId = 0`). La Fortune Tower est une grande vitrine à casser à plusieurs (`Config/FortuneTower`) : « Fortune » est un nom, il n'y a ni mise ni casino. Les colis se prennent en braquant, ils ne s'achètent jamais. Aucune machine à sous, roulette, carte, dé ni pari |
 | Langage | Grossièretés ? | **Non** | Textes du jeu en anglais neutre |
-| Substances | Alcool, drogue, tabac ? | **Non** | Les « potions » sont des bonus magiques : vérifier qu'aucune icône ne ressemble à une bouteille d'alcool |
-| Humour grossier | | **Non** | |
-| Achats numériques | Le jeu vend-il des produits, passes, objets aléatoires payants ? | **Non au MVP** | `Features.RobuxShop = false` : aucun produit ni passe, aucun appel à MarketplaceService. **À refaire à la MAJ 1** : « Oui » aux achats ; « Non » aux objets aléatoires payants tant qu'on tient la règle de la Partie 2 (pas de colis contre Robux ; « Chance ×3 » affiche les cotes et se cache si `PolicyService` renvoie `ArePaidRandomItemsRestricted`) |
-| Divers | Communication entre joueurs ? | **Oui** | Chat Roblox (TextChatService) |
-| Divers | Blocage et signalement ? | **Oui / Oui** | Fournis par Roblox |
-| Divers | Modération du chat ? | **Oui** | Filtre de Roblox ; le jeu n'affiche aucun texte écrit par un joueur à part les noms |
-| Divers | Accès réservé aux amis invités ? | **Selon le réglage** | « Oui » seulement si les serveurs privés sont activés dans le Creator Hub (rien n'est prévu au MVP) |
-| Divers | Position physique précise ? | **Non** | Roblox ne la donne jamais au jeu |
-| IARC | Symboles nazis, terrorisme, **techniques criminelles détaillées** ? | **Non** | Le vol est un thème cartoon (casser une vitrine, courir) : aucune méthode réelle de vol ou d'effraction n'est montrée ni expliquée |
-| Roblox | Lieu social (hangout) ? | **Non** | Jeu à objectifs |
-| Roblox | Création libre par les joueurs ? | **Non** | Le joueur range ses objets sur des présentoirs prévus |
-| Roblox | Sujets sensibles (politique, religion…) ? | **Non** | |
-| Roblox | Contenu d'autres expériences ? | **Non** | |
-| Roblox | Interaction avec une IA ? | **Non** | |
-| Roblox | Partage de médias, fil de contenu continu ? | **Non / Non** | |
+| Substances | Alcool, tabac, drogue ? | **Non** | Les potions (`Config/Potions` : Money, Strength, Invisibility) sont des fioles magiques. Clément vérifie qu'aucune icône ne ressemble à une bouteille d'alcool |
+| Humour grossier | Fonctions du corps pour faire rire ? | **Non** | La peau de banane fait glisser, rien de plus (DEV seulement) |
+| Achats | Le jeu vend-il des produits développeur, des passes ou des récompenses aléatoires ? | **Oui** | Gamepasses et produits codés (`Config/Monetization`), boutique Robux prévue ; création des offres sur le Creator Hub après les réponses de Clément à L-351 (voir les points incertains) |
+| Achats | Objets aléatoires payants (caisses, clés, boosts de chance…) ? | **Non** | Aucune offre aléatoire ne se vend en PROD : les quatre trouvées sont coupées (tableau suivant). Rien d'aléatoire ne s'achète non plus avec l'argent du jeu (armes, auras, améliorations, arbre de compétences : prix fixes ; les colis ne se vendent jamais) |
+| Divers | Les joueurs communiquent-ils (voix, texte, images, sons) ? | **Oui** | Chat de Roblox par défaut : le code ne le coupe pas (aucun réglage de `TextChatService` dans `src/`) |
+| Divers | Bloquer des joueurs ? Signaler des joueurs ? | **Oui / Oui** | Fournis par Roblox |
+| Divers | Modération du chat ? | **Oui** | Filtre de Roblox. Le jeu ne montre aucun texte écrit par un joueur aux autres, à part les noms (les codes saisis dans `CodeController` partent au serveur seul) |
+| Divers | Échanges limités aux amis invités ? | **Non** | Pas de serveurs privés : aucun code n'en parle (ni `PrivateServerId` ni `PrivateServerOwnerId` dans `src/`), et leur ouverture attend la question 6 de L-351. Cantin vérifie qu'ils sont désactivés sur le Creator Hub |
+| Divers | Position physique précise partagée ? | **Non** | Roblox ne la donne jamais au jeu |
+| Divers | Symboles nazis, atteinte à l'identité coréenne, terrorisme ? | **Non / Non / Non** | |
+| Divers | Descriptions réalistes de crimes, **techniques détaillées utilisables pour un délit** ? | **Non** | Le vol est cartoon : casser une vitrine, ouvrir un colis, courir, se déguiser à la cabine. Aucune vraie méthode de vol ou d'effraction n'est montrée ni expliquée |
+| Roblox | Lieu social (hangout) ? Espaces privés ? | **Non / Non** | Jeu à objectifs ; les boutiques sont des parcelles de jeu que tout le monde peut braquer |
+| Roblox | Création libre visible des autres (dessin, texte, pixel art) ? | **Non** | Les objets se rangent sur des présentoirs prévus ; aucun texte libre |
+| Roblox | Thème sensible (politique, religion…) ? | **Non** | |
+| Roblox | Contenu capturé dans d'autres jeux Roblox ? | **Non** | Aucun `TeleportService` ni capture dans `src/` |
+| Roblox | Interaction avec une IA générative ? | **Non** | Le bot et les PNJ suivent des scripts (`BotService`, `WitnessService`) ; `NotificationService` appelle l'API de notifications de Roblox, pas une IA |
+| Roblox | Partage de médias pris en jeu ? | **Non** | Aucun `CaptureService` ; les « photos » des témoins sont des animations de PNJ |
+| Roblox | Fil de contenu continu, audio ou vidéo en lecture automatique ? | **Non** | Pas de fil de médias ; la musique d'ambiance du jeu n'en est pas un |
+
+### Offres aléatoires payantes trouvées dans le code (24/11)
+
+Toutes sont coupées en PROD. Les autres offres ne sont pas aléatoires : gamepasses, packs d'argent (montant fixe), pack
+de départ (contenu fixe), Ouvrir maintenant (retire l'attente de l'antivol), zZz, Vengeance, Rideau, Bouclier.
+
+| Offre | Ce qu'elle donne | Interrupteur | En PROD aujourd'hui |
+| --- | --- | --- | --- |
+| Caisse exclusive (`Monetization.Crate`, lots de 1, 3 et 10 à 99, 249 et 799 R$) | Un objet `Exclusive_*` tiré au hasard (30, 30, 25, 10, 4 et 1 %) | `Features.RobuxCrate = false` ; `Features.RobuxCrateDev = true` l'allume dans le jeu DEV seulement (`Crate.Live`) ; Id à 0 | Cachée, pas en vente |
+| Chance du serveur ×2, ×4, ×8 (`ServerLuck2`, `4`, `8` : 149, 399 et 999 R$) | Boost de chance des colis pour tout le serveur pendant 15 min | Constante `SERVER_LUCK = false` en tête de `Config/Monetization` (**pas dans `Features`**), puis `Features.RobuxShop = false` ; Id à 0 | Cachée, pas en vente |
+| Chance ×3 (`Luck3`, 79 R$) | Colis plus rares pendant 15 min | `Ready = false` (effet pas codé), `Features.RobuxShop = false` ; Id à 0 | Pas codée |
+| Tours de roue en plus (`Config/Wheel.ExtraSpin`, 25 R$) | Un tour de roue de plus, lot tiré au hasard (chances affichées en %) | `ExtraSpin.ProductId = 0` ; pas branché à `MonetizationService` (`WheelService.AddSpins` est prêt) ; **pas sous `RobuxShop`** | Bouton « Soon », pas en vente |
 
 ### Note attendue
 
-**Légère (Mild)**, descripteur « violence légère » (cartoon, répétée, réactions irréalistes, sans sang). Elle ouvre le
-jeu à tous les âges, Roblox Kids et Roblox Select compris (sous réserve de leur évaluation). Si l'aperçu affiche
-**Modérée** (souvent à cause de « Humains » + « Violence directe »), c'est encore jouable dès 9 ans (Select) et par les
-16 ans et plus. Ne jamais « arranger » une réponse pour baisser la note : une note inexacte est modérée.
+**Légère (Mild)**, avec le descripteur « violence légère » : violence cartoon, répétée, réactions irréalistes, sans sang.
+Minimal et Mild ouvrent Roblox Kids (5 à 8 ans) et Roblox Select (9 à 15 ans), sous réserve de leur évaluation. Si
+l'aperçu affiche **Modérée (Moderate)**, souvent à cause de « Humains » et « Violence directe », le jeu reste ouvert à
+Roblox Select (9 à 15 ans) et aux 16 ans et plus.
 
-### Points à vérifier par Cantin avant d'envoyer
+**Ne jamais arranger une réponse pour baisser la note.** Si l'aperçu affiche Moderate, on l'accepte.
 
-1. **Vérification du compte** : pour rendre un jeu public, le compte doit avoir plus de 2 jours, être en règle et
-   passer un contrôle d'âge (estimation faciale ou pièce d'identité). Pour tous les âges : vérification d'identité,
-   double authentification, et soit 2 mois de Roblox Plus/Premium, soit des frais remboursables de 1 000 Robux.
-   **À vérifier** : pour un jeu de groupe, la doc ne dit pas si c'est le compte qui publie (Cantin) ou le propriétaire
-   du groupe (Clément) qui doit remplir ces conditions. Le tester sur la place PROD **bien avant** la sortie, pas le jour même.
-2. La **police** et le **vigile** « attrapent » sans frapper (renvoi en zone safe ou en base) : le confirmer en Play ;
-   s'ils frappent, la réponse « Humains, violence directe » ne change pas.
-3. Les **potions** (icônes et noms) ne doivent rien évoquer d'alcool ; sinon, « Substances » change.
-4. **Réglage des serveurs privés** dans le Creator Hub, qui décide de la réponse « amis invités ».
-5. Refaire le questionnaire à chaque ajout qui change une réponse : boutique Robux (MAJ 1), Fortune Tower activée,
-   tout nouveau contenu effrayant.
+### À refaire quand…
+
+Roblox demande de remettre à jour le questionnaire après toute mise à jour qui change une réponse.
+
+1. **La boutique Robux s'allume** (`Features.RobuxShop = true` avec au moins un Id ≠ 0) : « Achats » reste « Oui » ;
+   relire la question des objets aléatoires payants.
+2. **Un objet aléatoire payant s'allume** : `Features.RobuxCrate = true`, `SERVER_LUCK = true`, `Luck3` prêt, ou
+   `Wheel.ExtraSpin.ProductId ≠ 0`. La réponse devient « Oui ». Avant d'allumer, la règle de Roblox (Randomized
+   Virtual Items Policy) demande : les chances en % avant l'achat, total 100 ; pour un boost de chance, son effet en
+   chiffres et les chances affichées mises à jour pendant le boost ; l'offre cachée là où `PolicyService` dit
+   `ArePaidRandomItemsRestricted`.
+3. **Les tours de roue deviennent payants** : relire aussi « Jeux d'argent ».
+4. **Les serveurs privés s'ouvrent** (L-351, question 6) : « Échanges limités aux amis invités » devient « Oui ».
+5. **L'intrus projeté à travers une vitre s'allume en PROD** (`ShopGlassThrow = true`) : relire « Réactions » et
+   « Fréquence » (V0 : rien ne change, il se relève).
+6. **Contenu vraiment effrayant** (monstre, événement d'horreur, Halloween) : « Peur » change.
+7. **Texte ou image d'un joueur montré aux autres** (nom de boutique, pancarte) : « Création libre » et « Partage de
+   médias » changent.
+8. **Arme à feu, sang ou alcool** ajoutés : les rubriques correspondantes changent.
+9. À chaque mise à jour du samedi, relire ce tableau.
+
+### Points à vérifier avant d'envoyer
+
+1. **Vérification du compte** : pour tous les âges, il faut un compte vérifié, la double authentification, et soit
+   2 mois de Roblox Plus ou Premium, soit les frais remboursables de 1 000 Robux, puis l'évaluation Kids et Select.
+   La doc ne dit toujours pas si c'est le compte qui publie (Cantin) ou le propriétaire du groupe (Clément) qui doit
+   remplir ces conditions : le tester sur la place PROD bien avant la sortie.
+2. **Vigiles et police** : le code le confirme, ils attrapent sans enlever de vie (aucune perte de PV).
+3. **Potions** : leurs icônes et modèles ne doivent rien évoquer d'alcool (Clément).
+4. **Serveurs privés** désactivés sur le Creator Hub (Cantin).
+5. **Chat** pas coupé dans les réglages de la place (sinon « communication » change).
+6. **Roue** : son écran `UI_Wheel` et ses icônes (dont `WHEEL_Jackpot`) ne doivent pas faire casino (jetons, machine à
+   sous). Sinon, « Jeux d'argent » devient « Oui, non jouable », ce qui limite le jeu aux 13 ans et plus.
 
 ---
 
@@ -262,7 +324,10 @@ avant la sortie.
 
 ## Sources (doc officielle Roblox, lue le 2026-11-14)
 
-- Questionnaire et notes : https://create.roblox.com/docs/production/promotion/content-maturity
+- Questionnaire et notes (relue le 2026-11-24 pour la section 2) :
+  https://create.roblox.com/docs/production/promotion/content-maturity
+- Objets aléatoires payants (relue le 2026-11-24) :
+  https://create.roblox.com/docs/production/monetization/randomized-virtual-items-policy
 - Rendre un jeu public, conditions, frais, titre et description :
   https://create.roblox.com/docs/production/publishing/publish-experiences-and-places
 - Miniatures et vidéos : https://create.roblox.com/docs/production/publishing/thumbnails
