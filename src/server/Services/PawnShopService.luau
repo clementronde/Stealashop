@@ -23,8 +23,8 @@
 --   PawnSellAll(count)         count doit être encore le nombre d'objets vendables ; tous vendus →
 --                              PawnSold(total, count), puis PawnOffer
 -- Chaque remote vérifie : profil chargé, personnage à Pawn.Reach studs au plus de la plaque ShopPad d'un stand
--- taggé PawnShop (sinon de son pivot ; stands rangés dans _INBOX_CLEMENT ou _SHOWROOM_CLEMENT ignorés). Loin du
--- stand ou profil pas chargé : ignoré (une ligne en Studio). Vente refusée parce que l'offre a changé :
+-- taggé PawnShop (sinon de son pivot ; stands rangés dans un dossier de travail en « _ » ignorés, Find.inMap).
+-- Loin du stand ou profil pas chargé : ignoré (une ligne en Studio). Vente refusée parce que l'offre a changé :
 -- PawnSold(0, 0) puis la nouvelle PawnOffer.
 -- Vente : chaque objet est retiré de Items du profil, puis l'argent est versé par DataService.AddCash, dans la
 -- même exécution, sans yield (pas de vente en double). Puis InventoryService.Refresh (écran et barre du bas).
@@ -55,7 +55,6 @@
 local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
-local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage.Shared
 local Features = require(Shared.Config.Features) -- a414 : Analytics (ventes comptées)
@@ -91,7 +90,6 @@ export type Offer = {
 -- Contrat (2.1 et 10.4, Contract/Tags et Contract/Models).
 local PAWN_TAG = "PawnShop"
 local PAD_NAME = "ShopPad"
-local IGNORED_FOLDERS = { "_INBOX_CLEMENT", "_SHOWROOM_CLEMENT" } -- livraisons, vitrine de Clément : pas en jeu
 local ROOT_PART = "HumanoidRootPart"
 
 local IS_STUDIO = RunService:IsStudio()
@@ -116,18 +114,8 @@ end
 -- Lieu
 ------------------------------------------------------------------------------
 
-local function inGame(inst: Instance): boolean
-	if not inst:IsDescendantOf(Workspace) then
-		return false
-	end
-	for _, name in IGNORED_FOLDERS do
-		local folder = Workspace:FindFirstChild(name)
-		if folder and inst:IsDescendantOf(folder) then
-			return false
-		end
-	end
-	return true
-end
+-- a436 : règle commune « dans la map jouée » (hors des dossiers de travail en « _ »).
+local inGame = Find.inMap
 
 -- Point du stand : sa plaque ShopPad, sinon son pivot (Model) ou sa position (pièce).
 local function standPoint(stand: Instance): Vector3?

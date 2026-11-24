@@ -46,7 +46,8 @@ Animations.Player = {
 	{ Name = "GetUp", Loop = false, Priority = "Action" },
 	{ Name = "Arrested", Loop = false, Priority = "Action", Marker = "Grab" },
 	-- Vague 56 (a181, L-162, Clément) : objet Big, Huge ou Colossal tenu à deux mains (HeldItemService), haut du
-	-- corps seulement. Pas encore livrée : orange au ContractChecker, la pose « outil » de Roblox reste.
+	-- corps seulement. Livrée par Clément (dans Studio au 23/11, check-up a417 R15) ; absente, orange au ContractChecker et
+	-- la pose « outil » de Roblox reste.
 	{ Name = "HoldItem", Loop = true, Priority = "Action", UpperBodyOnly = true },
 	-- Vague 72 (a243, L-218, noms proposés par Clément) : joueur pris par un piège de boutique (TrapController),
 	-- en boucle tant que l'effet dure. Pas encore livrées : orange au ContractChecker, Stunned se joue à leur place.
@@ -83,8 +84,8 @@ Animations.Guard = {
 	{ Name = "Tired", Loop = false, Priority = "Action" },
 } :: { Anim }
 
--- Vigile de nuit (modèle NightGuard) : celles des vigiles, plus Arrest (L-076, livrée le 2026-11-10 ;
--- pas encore jouée par le code).
+-- Vigile de nuit (modèle NightGuard) : celles des vigiles, plus Arrest (L-076, livrée le 2026-11-10 ; jouée par
+-- GuardService à l'arrestation de nuit).
 Animations.NightGuard = table.clone(Animations.Guard)
 table.insert(Animations.NightGuard, { Name = "Arrest", Loop = false, Priority = "Action", Marker = "Grab" })
 
@@ -106,15 +107,15 @@ Animations.Vendor = {
 } :: { Anim }
 
 -- Témoins NPC_Witness_Z<n>_0<k> (Clément, liaison L-111, publiées le 2026-11-12 ; réglages relevés dans Studio) :
--- pas encore jouées par le code. CallPolice revient en boucle, le code ne réagira qu'au premier marqueur Call.
+-- jouées par WitnessService. CallPolice revient en boucle, le code ne réagit qu'au premier marqueur Call.
 Animations.Witness = {
 	{ Name = "Idle", Loop = true, Priority = "Idle" },
 	{ Name = "Walk", Loop = true, Priority = "Movement" },
 	{ Name = "Look", Loop = true, Priority = "Action" },
 	{ Name = "CallPolice", Loop = true, Priority = "Action", Marker = "Call" },
-	-- L-118 point 10 (Clément, en cours) : course paniquée à la casse. Boucle et priorité V0, comme Run des vigiles.
+	-- L-118 point 10 (Clément, livrée : dans Studio au 23/11) : course paniquée à la casse. Boucle et priorité V0, comme Run des vigiles.
 	{ Name = "Flee", Loop = true, Priority = "Movement" },
-	-- L-172 (Clément, 2026-11-15, pas encore publiée : orange tant qu'elle manque) : photos au flash après l'appel ;
+	-- L-172 (Clément, 2026-11-15, livrée : dans Studio au 23/11 ; orange si elle manque) : photos au flash après l'appel ;
 	-- à chaque marqueur Flash, WitnessService fait partir le flash de FX_Witness_Flash. Sans elle, le témoin garde
 	-- sa pose et le flash part toutes les Witness.Photo.Interval s.
 	{ Name = "TakePhoto", Loop = true, Priority = "Action", Marker = "Flash" },

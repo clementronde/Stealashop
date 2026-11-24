@@ -25,6 +25,7 @@ local Shared = ReplicatedStorage.Shared
 local Vendors = require(Shared.Config.Vendors)
 local Animations = require(Shared.Contract.Animations)
 local AnimPlayer = require(Shared.Anim.AnimPlayer)
+local Find = require(Shared.Contract.Find) -- a436 : Find.inMap, « dans la map jouée »
 
 type Vendor = {
 	Model: Model,
@@ -42,17 +43,8 @@ VendorService.Priority = 230 -- V0 proposé, absent du doc : rien ne dépend de 
 
 local vendors: { [Model]: Vendor } = {}
 
--- Dans la map jouée : dans le Workspace, hors des dossiers de travail (nom commençant par « _ »).
-local function inMap(instance: Instance): boolean
-	if not instance:IsDescendantOf(Workspace) then
-		return false
-	end
-	local node: Instance? = instance
-	while node ~= nil and node.Parent ~= Workspace do
-		node = node.Parent
-	end
-	return node ~= nil and string.sub(node.Name, 1, 1) ~= "_"
-end
+-- Dans la map jouée : dans le Workspace, hors des dossiers de travail (règle commune, Find.inMap).
+local inMap = Find.inMap
 
 local function consider(instance: Instance)
 	if not instance:IsA("Model") or vendors[instance :: Model] ~= nil then

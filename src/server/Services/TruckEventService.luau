@@ -12,8 +12,8 @@
 --      a425 (L-318 Q1) : de même tant que ArmoredVanService.HoldsTruck() (fourgon blindé en jeu ou en attente, juste
 --      après lui, ou départ à l'horaire proche) : jamais les deux véhicules en même temps.
 --      Où :
---        - sur un point taggé `TruckSpawn` (Attachment, pièce ou Model, attribut Zone ; nom proposé à
---          Clément, hors contrat) s'il y en a dans la zone, au hasard : le pivot du camion (en bas au
+--        - sur un point taggé `TruckSpawn` (Attachment, pièce ou Model, attribut Zone ; posé par
+--          Clément, Contract/Tags) s'il y en a dans la zone, au hasard : le pivot du camion (en bas au
 --          centre) va sur le point, l'avant (−Z) du camion suit celui du point ;
 --        - sinon calculé : au milieu des deux magasins PNJ de la zone (ils se font face de part et
 --          d'autre de la chaussée), c'est-à-dire au milieu de la chaussée, en long dans le sens du
@@ -184,9 +184,7 @@ local STORE_TAG = "NPCStore"
 local SAFE_ZONE_TAG = "SafeZone"
 local BOUNDS_NAME = "Bounds"
 local ZONE_ATTRIBUTE = "Zone"
-local INBOX_NAME = "_INBOX_CLEMENT"
-local SANDBOX_NAME = "_SANDBOX_IRONIX"
--- Proposition de nom à Clément, hors contrat (pas encore posé) : points d'apparition du camion.
+-- Points d'apparition du camion, posés par Clément (Contract/Tags, attribut Zone ; a436).
 local TRUCK_SPAWN_TAG = "TruckSpawn"
 local DROPS_FOLDER = "CarryDrops" -- dossier des colis au sol de CarryService
 
@@ -270,18 +268,8 @@ local function flat(v: Vector3): Vector3
 	return Vector3.new(v.X, 0, v.Z)
 end
 
-local function inMap(instance: Instance): boolean
-	if not instance:IsDescendantOf(Workspace) then
-		return false
-	end
-	for _, name in { INBOX_NAME, SANDBOX_NAME } do
-		local folder = Workspace:FindFirstChild(name)
-		if folder and instance:IsDescendantOf(folder) then
-			return false
-		end
-	end
-	return true
-end
+-- a436 : règle commune « dans la map jouée » (hors des dossiers de travail en « _ »).
+local inMap = Find.inMap
 
 local function zoneOf(instance: Instance): number?
 	local value = instance:GetAttribute(ZONE_ATTRIBUTE)

@@ -5,8 +5,8 @@
 -- Lancer, dans la barre de commande de Studio (en Edit avant Play, ou pendant le test côté
 -- serveur) :
 --   workspace:SetAttribute("AnimTest", true)         -- animation « Test », marqueur « Test »
---   workspace:SetAttribute("AnimTest", "BenchLift")  -- ou une animation livrée du joueur, avec
---                                                    -- le marqueur du contrat 2.4
+--   workspace:SetAttribute("AnimTest", "HitWindow")  -- ou une animation livrée du joueur, avec
+--                                                    -- le marqueur du contrat 2.4 (plus de BenchLift : banc retiré)
 -- Arrêter et nettoyer (en Edit, après le test) : workspace:SetAttribute("AnimTest", nil)
 --
 -- Déroulé : 3 lectures sur le personnage local ; à chaque passage du marqueur, un son de test est

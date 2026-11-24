@@ -14,8 +14,8 @@
 --   - TargetSection : le joueur choisi est la cible de toutes les actions ; soi-même par défaut (TargetLabel
 --     « Target: you »). Joueur parti : retour à soi.
 --   - StatsSection et BaseSection : le nombre tapé dans la boîte (« 1.5M », « 2B », « 10,000 » acceptés) part
---     avec la commande du bouton (GiveCash, GiveSpeed, GiveStrength, SetTreadmill, SetBench, SetShopLevel,
---     SetRayons).
+--     avec la commande du bouton (GiveCash, GiveSpeed, SetTreadmill, SetShopLevel, SetRayons ; GiveStrength et SetBench
+--     retirés avec le banc, rééquilibrage v2).
 --   - GiveSection : KindRow choisit la sorte (Selected allumé), SearchBox filtre ChoiceList, MutationTitle et
 --     MutationList ne sont montrés que pour un objet ; GiveButton envoie GiveItem, GiveBox, GiveAura, GiveTrail,
 --     GivePotion ou GiveGamepass.

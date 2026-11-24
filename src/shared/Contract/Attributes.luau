@@ -16,11 +16,11 @@ local Attributes = {
 	Idle = { Name = "Idle", Values = { "Spin", "Bob", "SpinBob" } },
 	-- Numéro d'une parcelle taggée PlayerPlot : entier de 1 à 6, chaque numéro une seule
 	-- fois, égal au numéro écrit sur la parcelle (« Parcelle 2 » = 2). Ajouté le 2026-11-06
-	-- (liaison L-015 et L-017).
-	PlotIndex = { Name = "PlotIndex", Min = 1, Max = 8 },
-	-- Ordre d'attribution d'une parcelle PlayerPlot (L-174, 2026-11-15) : entier de 1 à 8, 1 = la
-	-- plus en face du point d'arrivée, donnée au premier joueur. Facultatif (sans lui : ordre des PlotIndex).
-	AssignOrder = { Name = "AssignOrder", Min = 1, Max = 8 },
+	-- (liaison L-015 et L-017). Max = 6 depuis a436 (6 boutiques, L-228 ; check-up a417 I6).
+	PlotIndex = { Name = "PlotIndex", Min = 1, Max = 6 },
+	-- Ordre d'attribution d'une parcelle PlayerPlot (L-174, 2026-11-15) : entier de 1 à 6 (8 avant a436 : 6 boutiques,
+	-- L-228), 1 = la plus en face du point d'arrivée, donnée au premier joueur. Facultatif (sans lui : ordre des PlotIndex).
+	AssignOrder = { Name = "AssignOrder", Min = 1, Max = 6 },
 	-- Animations d'UI (L-182 point 1, vague 59, a189 ; noms proposés par Clément, validés par Ironix) : posés par
 	-- Clément sur un GuiObject de ses écrans (ou sur un Template : ses copies les gardent), lus par le client
 	-- (Controllers/UI/Appear, Motion ; durées dans Config/UiMotion). Tous facultatifs ; une autre valeur est ignorée
@@ -56,6 +56,47 @@ local Attributes = {
 	-- boutique. Facultatif : sans lui, GlassThrowService le déduit du nom (Pane_L…, Pane_R…, Pane_F…, Pane_B…) ou de la
 	-- place de la vitre dans Bounds ; absent ou faux, ContractChecker le signale en orange.
 	GlassSide = { Name = "GlassSide", Values = { "Front", "Left", "Right", "Back" } },
+	-- a436 (lot101, check-up a417 P4) : attributs qui ne sont plus au contrat, avec ce qui les a retirés. Le
+	-- ContractChecker signale en orange ceux qui restent sur un objet de la map jouée (à retirer quand Clément veut).
+	Retired = {
+		Tier = "plus de type Standard, Premium ou Luxe sur les colis depuis la vague 76 (20/11) : une rareté (BoxRarity)",
+	} :: { [string]: string },
+	-- a436 (lot101, check-up a417 I6) : les autres attributs que Clément pose et que le code lit, relevés dans le code le
+	-- 24/11, pour qu'un nom ne se cherche plus dans 40 fichiers. Pas vérifiés par le ContractChecker (sauf ceux du haut) ;
+	-- leurs valeurs et leur effet sont dans le fichier cité. Un nouvel attribut lu va ici (ou plus haut s'il est vérifié).
+	Read = {
+		-- Map et modèles
+		{ Name = "AccentColor", On = "parcelle PlayerPlot (Color3)", By = "ShopStageService" },
+		{ Name = "RiseHeight", On = "mur de nuit NightWall (studs)", By = "NightCycleService" },
+		{ Name = "RowCut", On = "gabarit PLOT_Shop (booléen, L-190)", By = "Config/ShopGrowth, ShopStageService" },
+		{ Name = "LabelColor", On = "LabelPoint d'un comptoir du hub (Color3, L-165)", By = "Config/Hub, HubController" },
+		{ Name = "Stat", On = "panneaux et statues de classement du hub", By = "Config/Leaderboard, Config/WeeklyLeaderboard" },
+		{ Name = "Side", On = "pancartes (Accessory) de la foule, For ou Against", By = "Config/Witness, WitnessCrowdController" },
+		{ Name = "SinkDepth", On = "plaque d'un présentoir (enfoncement, studs)", By = "DisplayController" },
+		{ Name = "EmitCount", On = "ParticleEmitter d'un FX_", By = "Config/Vfx, VfxController, DisplayController, GlassThrowController" },
+		{ Name = "EmitEvery", On = "effet de l'ouverture d'un colis", By = "Reveal/Unbox" },
+		{ Name = "FadeTime", On = "lumière de FX_Escape", By = "Config/Vfx, GlassThrowController" },
+		{ Name = "Duration", On = "modèle FX_ (FX_Escape, FX_TruckDust…)", By = "Config/Vfx, GlassThrowController" },
+		{ Name = "WeldTo", On = "pièce d'un FX_ de cosmétique (nom d'une pièce R15, L-206)", By = "CosmeticService" },
+		{ Name = "ReferenceSize", On = "dossier des effets de mutation (Assets/FX)", By = "MutationFxController" },
+		{ Name = "KeepColor", On = "fantôme d'un style de mutation", By = "MutationFxController" },
+		{ Name = "Offset", On = "fantôme d'un style de mutation", By = "MutationFxController" },
+		{ Name = "StrokeColor", On = "style de mutation (Color3)", By = "MutationFxController" },
+		-- UI
+		{ Name = "ScreenGroup", On = "ScreenGui UI_* (une seule fenêtre ouverte par groupe)", By = "UI/Motion" },
+		{ Name = "Gleam", On = "GuiObject : Loop ou Hover (L-272)", By = "UI/UiAttrFx" },
+		{ Name = "IconHover", On = "bouton ou carte : Jump, Lean ou Spring (L-272)", By = "UI/UiAttrFx, UI/Motion" },
+		{ Name = "Idle", On = "GuiObject : Wiggle ou Fall (pas les valeurs d'un ITM_, plus haut)", By = "UI/UiAttrFx" },
+		{ Name = "Figma*", On = "attributs du plugin Framewisp (FigmaSpin, FigmaGleam, FigmaSmooth, FW_Owned…)", By = "UI/FramewispFx" },
+		{ Name = "CardColor", On = "carte de la boutique Robux v2 (L-204)", By = "RobuxShopController" },
+		{ Name = "Columns", On = "Grid de la boutique Robux v2 (L-204)", By = "RobuxShopController" },
+		{ Name = "IconAsset", On = "Icon de la boutique Robux v2", By = "RobuxShopController" },
+		{ Name = "OwnedColor", On = "ItemRequirement.Status de la renaissance (Color3, L-168)", By = "RebirthController" },
+		{ Name = "TrailIconRotation", On = "List.Template de la boutique d'auras (L-176)", By = "AuraShopController" },
+		{ Name = "SlotCount", On = "barre UI_Hotbar (TouchSlotCount sur téléphone)", By = "HotbarController" },
+		{ Name = "Q", On = "tuile de UI_SkillTree (avec R : coordonnées hexagonales)", By = "SkillTreeController" },
+		{ Name = "RarityColor", On = "palier Assets/UI/ShopCardBg/<Rareté> (avec BorderColor, IconScale…)", By = "Shared/ShopCardTier" },
+	} :: { { Name: string, On: string, By: string } },
 }
 
 return Attributes

@@ -89,6 +89,8 @@ local PREFIX = "[Contrat]"
 local CATEGORIES = { "Tags", "Magasins PNJ", "Parcelles", "Boutiques d'achat", "Hub", "UI", "Billboards", "Animations", "Objets", "Événements", "Scripts" }
 local INBOX_NAME = "_INBOX_CLEMENT" -- livraisons : vérifiées, mais pas comptées dans la map
 local SANDBOX_NAME = "_SANDBOX_IRONIX" -- tests d'Ironix : ignorés
+-- a436 (check-up a417 I12) : « dans la map jouée », règle commune à tout le code (hors des dossiers de travail en « _ »).
+local inMap = Find.inMap
 
 -- Lecture du contenu des animations (priorité, boucle, marqueur) par AnimationClipProvider.
 -- À passer à false si cette lecture ne marche pas côté serveur.
@@ -324,15 +326,37 @@ local function checkAttributes(scanned: { Instance })
 			problem("Objets", `{inst:GetFullName()} : attribut ItemId vide ou qui n'est pas un texte`)
 		end
 	end
+	-- a436 (check-up a417 P4) : attributs retirés du contrat (Contract/Attributes.Retired, ex. Tier) encore posés sur un
+	-- objet de la map jouée : orange, une ligne par attribut (le code ne les lit plus sur la map).
+	local retired = (Attributes :: any).Retired
+	if type(retired) ~= "table" then
+		return -- contrat d'avant a436 (bancs)
+	end
+	local names: { string } = {}
+	for name in retired do
+		table.insert(names, name)
+	end
+	table.sort(names)
+	for _, name in names do
+		local found: { string } = {}
+		for _, inst in scanned do
+			if inst:GetAttribute(name) ~= nil and inMap(inst) then
+				table.insert(found, inst:GetFullName())
+			end
+		end
+		if #found > 0 then
+			warning("Objets", `Attribut {name} encore posé sur {#found} objet(s) de la map, plus au contrat ({retired[name]}) : à retirer : {listNames(found)}`)
+		end
+	end
 end
 
 -- Parcelles : chacune porte un PlotIndex entier de 1 à 6, chaque numéro une seule fois
--- (liaison L-015 et L-017). Les parcelles rangées dans l'inbox ou hors de la map sont ignorées.
+-- (liaison L-015 et L-017). Les parcelles hors de la map jouée (inbox, dossiers de travail en « _ ») sont ignorées.
 local function checkPlotIndex()
 	local spec = Attributes.PlotIndex
 	local byIndex: { [number]: { string } } = {}
 	for _, plot in CollectionService:GetTagged("PlayerPlot") do
-		if isInside(plot, sandbox) or isInside(plot, inbox) or not plot:IsDescendantOf(Workspace) then
+		if not inMap(plot) then -- a436 : hors de la map jouée (dossiers de travail en « _ » compris)
 			continue
 		end
 		local value = plot:GetAttribute(spec.Name)
@@ -354,7 +378,7 @@ local function checkPlotIndex()
 	-- L-174 : AssignOrder facultatif (orange), l'ordre des PlotIndex sert de secours.
 	local order = Attributes.AssignOrder
 	for _, plot in CollectionService:GetTagged("PlayerPlot") do
-		if isInside(plot, sandbox) or isInside(plot, inbox) or not plot:IsDescendantOf(Workspace) then
+		if not inMap(plot) then -- a436 : hors de la map jouée (dossiers de travail en « _ » compris)
 			continue
 		end
 		local value = plot:GetAttribute(order.Name)
@@ -435,7 +459,7 @@ local function checkShopGlass()
 	local untagged: { string } = {}
 	local noSide = 0
 	for _, plot in CollectionService:GetTagged("PlayerPlot") do
-		if isInside(plot, sandbox) or isInside(plot, inbox) or not plot:IsDescendantOf(Workspace) then
+		if not inMap(plot) then -- a436 : hors de la map jouée (dossiers de travail en « _ » compris)
 			continue
 		end
 		local tagged = 0
@@ -483,14 +507,18 @@ local function checkTags()
 		known[normalize(spec.Tag)] = spec.Tag
 		local live: { Instance } = {}
 		local inInbox = 0
+		local inWork = 0 -- a436 : dans un autre dossier de travail en « _ » (vitrine, prototypes…), pas compté
 		for _, inst in CollectionService:GetTagged(spec.Tag) do
 			if isInside(inst, sandbox) or not inst:IsDescendantOf(Workspace) then
 				continue -- un modèle rangé dans Assets n'est pas dans la map
 			end
 			if isInside(inst, inbox) then
 				inInbox += 1
-			else
+			elseif inMap(inst) then
 				table.insert(live, inst)
+			else
+				inWork += 1
+				continue -- a436 : copie de travail, jamais lue par le jeu (pas d'erreur rouge)
 			end
 			if spec.NeedsZone and inst:GetAttribute(zone.Name) == nil then
 				problem(
@@ -503,7 +531,10 @@ local function checkTags()
 		local n = #live
 		local count = spec.Count
 		local inboxText = if inInbox > 0 then `, + {inInbox} dans {INBOX_NAME} (non compté)` else ""
-		if n == 0 and inInbox == 0 then
+		if inWork > 0 then
+			inboxText ..= `, + {inWork} dans un dossier de travail en « _ » (non compté)`
+		end
+		if n == 0 and inInbox == 0 and inWork == 0 then
 			table.insert(absent, if count then `{spec.Tag} ({count})` else spec.Tag)
 		elseif count and n > count then
 			problem("Tags", `Tag {spec.Tag} ({spec.For}) : {n} posés dans la map, {count} attendu(s)`)
@@ -541,6 +572,53 @@ local function checkTags()
 			local n = #CollectionService:GetTagged(tag)
 			problem("Tags", `Tag « {tag} » posé sur {n} objet(s) : le nom exact du contrat est {exact}`)
 		end
+	end
+
+	-- a436 (check-up a417 P4) : tags posés dans la map jouée qui ne sont ni au contrat ni posés par le code
+	-- (Contract/Tags.CodeTags). Un tag retiré du contrat (Tags.Retired : Bench, CashPad) : une ligne orange chacun, à
+	-- retirer quand Clément veut. Les autres : une ligne orange « inconnus » (à retirer, ou à annoncer dans la liaison
+	-- s'il doit servir). Un tag de travail dont le nom commence par « _ » : une note seulement. Jamais un problème ; ce
+	-- qui n'est posé que dans les dossiers de travail ou dans Assets est ignoré.
+	local codeTags = (Tags :: any).CodeTags
+	local retiredTags = (Tags :: any).Retired
+	if type(codeTags) ~= "table" or type(retiredTags) ~= "table" then
+		return -- contrat d'avant a436 (bancs)
+	end
+	local skip: { [string]: boolean } = {}
+	for _, tag in codeTags do
+		skip[tag] = true
+	end
+	local unknown: { string } = {}
+	local work: { string } = {}
+	local all = CollectionService:GetAllTags()
+	table.sort(all)
+	for _, tag in all do
+		if known[normalize(tag)] or skip[tag] then
+			continue -- au contrat (ou mal écrit, déjà signalé), ou posé par le code
+		end
+		local n = 0
+		for _, inst in CollectionService:GetTagged(tag) do
+			if inMap(inst) then
+				n += 1
+			end
+		end
+		if n == 0 then
+			continue
+		end
+		local why = retiredTags[tag]
+		if why then
+			warning("Tags", `Tag {tag} encore posé sur {n} objet(s) de la map, plus au contrat ({why}) : à retirer`)
+		elseif startsWith(tag, "_") then
+			table.insert(work, `{tag} ({n})`)
+		else
+			table.insert(unknown, `{tag} ({n})`)
+		end
+	end
+	if #unknown > 0 then
+		warning("Tags", `Tags inconnus du contrat posés dans la map (nombre d'objets), ni au contrat ni lus par le code : à retirer, ou à annoncer dans la liaison s'ils doivent servir : {listNames(unknown)}`)
+	end
+	if #work > 0 then
+		note("Tags", `Tags de travail en « _ » posés dans la map (pas lus par le jeu) : {listNames(work)}`)
 	end
 end
 
@@ -1403,8 +1481,8 @@ local function checkAnimatedModels(scanned: { Instance }, jobs: { Job })
 		end
 		local humanoid = inst:FindFirstChildOfClass("Humanoid")
 		local folder = inst:FindFirstChild(Animations.FolderName)
-		local inMap = inst:IsDescendantOf(Workspace) and not isInside(inst, inbox)
-		if humanoid == nil or (inMap and folder == nil) then
+		local placed = inst:IsDescendantOf(Workspace) and not isInside(inst, inbox)
+		if humanoid == nil or (placed and folder == nil) then
 			continue
 		end
 		models += 1

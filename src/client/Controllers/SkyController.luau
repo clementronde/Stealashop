@@ -48,7 +48,7 @@ type LampState = {
 -- Posés par NightCycleService (mêmes noms là-bas).
 local PHASE_ATTRIBUTE = "NightPhase"
 local ENDS_AT_ATTRIBUTE = "NightPhaseEndsAt"
--- V0 proposé, absent du contrat 2.1 : partie lumineuse des lampadaires (à valider par Clément).
+-- Partie lumineuse des lampadaires, posée par Clément (au contrat depuis a436 : Contract/Tags).
 local LAMP_TAG = "NightLight"
 
 local Sky = Night.Sky

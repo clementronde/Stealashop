@@ -11,8 +11,8 @@
 -- visibles dès maintenant) : RobuxShopPreview montre le bouton Shop et ouvre UI_RobuxShop en vitrine
 -- tant que RobuxShop est false (RobuxShopController : aucun achat, aucun appel à MarketplaceService ;
 -- le serveur reste coupé) ; RebirthPreview montre le bouton Rebirth et ouvre UI_Rebirth en aperçu
--- (RebirthController : la prochaine renaissance, sans confirmation) tant que la renaissance n'est pas
--- codée (Rebirth, DEV-120). Index passe à true (L-071) : l'index est codé par IndexController.
+-- (RebirthController : la prochaine renaissance, sans confirmation) quand Rebirth est false (DEV-120 ; la
+-- renaissance est codée et allumée depuis a244, vague 72). Index passe à true (L-071) : l'index est codé par IndexController.
 
 local DeepFreeze = require(script.Parent.DeepFreeze)
 
