@@ -8,6 +8,7 @@
 #   RAPPORT=v2 COURT=1 bash tools/ironix/equilibrage/run.sh   v2 : seulement les temps par zone (pour régler)
 #   RAPPORT=renaissance bash tools/ironix/equilibrage/run.sh   renaissances 1 à 10 dans l'économie v2 (renaissance.luau, rapport_renaissance.luau)
 #   RAPPORT=poids bash tools/ironix/equilibrage/run.sh        vague 62 : loi du poids, taille et revenu, parties avec et sans le poids (poids.luau)
+#   RAPPORT=bt bash tools/ironix/equilibrage/run.sh           a479 : économie « B/T » (valeurs_bt, economie_bt, simulateur_bt, rapport_bt) ; plus rapide : bt.sh
 #
 # Il ne modifie rien : il lit les vraies sources de src/shared/Config (et src/shared/Format.luau),
 # les assemble avec les modules de ce dossier en un seul fichier Luau temporaire, et l'exécute avec
@@ -41,7 +42,7 @@ emit() { # emit <clé> <fichier> : SOURCES[clé] = contenu du fichier
   done
   emit "Format" "$ROOT/src/shared/Format.luau"
   emit "ItemWeight" "$ROOT/src/shared/ItemWeight.luau" # vague 62 (a203) : lu par Config/Mutations
-  for m in proposition proposition_v2 modele chance caisses rapport rapport_v2 renaissance rapport_renaissance poids; do
+  for m in proposition proposition_v2 modele chance caisses rapport rapport_v2 renaissance rapport_renaissance poids valeurs_bt economie_bt simulateur_bt rapport_bt; do
     emit "Outil/$m" "$H/$m.luau"
   done
   tr -d '\r' < "$H/chargeur.luau"
