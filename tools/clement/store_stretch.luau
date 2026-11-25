@@ -21,6 +21,10 @@
 	- z : plan en −27 (+8, entrée plus grande) et en +14 (+28, nouvelle zone de rayons au fond) ;
 	- y : plan en 14 (+3,6) : plafond, toit, étages, enseigne montent ; le rideau `Shutter` ne bouge pas
 	  (le code le fait descendre de sa hauteur, il doit rester juste au-dessus de la vitrine) ;
+	- une pièce inclinée (auvent, avant-toit, pan de toit) s'allonge le long de son axe resté droit ;
+	- l'étage de la façade (au-dessus de la devanture) est réparti régulièrement sur la nouvelle largeur au lieu
+	  d'être coupé d'un seul côté (retour de Clément du 2026-11-25, « des vitres décalées ») : fenêtres et autres
+	  petits ensembles glissent d'un bloc, enseigne et bandeaux s'élargissent (CFG.facade) ;
 	- les produits d'un meuble coupé (frigo, rideau à lanières) sont recopiés dans le trou ;
 	- dalles du sol refaites en grille régulière sur le nouveau sol ;
 	- rayons en 2 colonnes × 2 rangées de même longueur (retour de Clément du 2026-11-17) : la rangée de devant
@@ -50,6 +54,10 @@ local CFG = {
 	row = { band = { 8.2, 14.2 }, front = -4, backAisle = 5, maxLots = 24 },
 	itemPatterns = { "^FridgeItem", "^Shelf_.+_[PC]%d*$" },
 	hostPattern = { "Fridge", "Shelf", "Reserve", "Counter" },
+	-- étage de la façade : pièces dont l'arrière est devant z −33,5 et le bas au-dessus de y 11,9 (au-dessus du
+	-- linteau de la devanture) ; centre en x multiplié par k (demi-largeur 30,6 → 39,6), largeur multipliée par k
+	-- à partir de 14 studs (enseigne, bandeaux), gardée en dessous (fenêtres, plaques, balustres)
+	facade = { frontZ = -33.5, minY = 11.9, k = (30.6 + 9) / 30.6, scaleWidth = 14 },
 }
 
 local function mapAxis(v, cuts)
@@ -121,23 +129,111 @@ local function stretchGeometry(model, piv0)
 	end
 
 	local hosts = {} -- pièces « meuble » coupées : { ax, cut, lo, hi (Vector3 d'origine) }
+	local upperParts = {}
 	local stretched, moved = 0, 0
+
+	-- Étage de la façade (au-dessus de la devanture, face rue) : réparti régulièrement sur la nouvelle largeur au
+	-- lieu d'être coupé d'un seul côté (retour de Clément du 2026-11-25 : « des vitres décalées »). Plan fait avant
+	-- de bouger quoi que ce soit :
+	--   - une bande pleine largeur qui traverse les deux coupes reste étirée comme le reste ;
+	--   - une grande pièce droite (≥ 14 studs : enseigne, bandeau) : centre × k, largeur × k ;
+	--   - les petites pièces qui se touchent (cadre, vitre et appui d'une fenêtre, cadran et aiguilles, rampants
+	--     d'un fronton) forment un ensemble qui glisse d'un bloc : centre de l'ensemble × k, tailles gardées ;
+	--   - un objet compact rangé dans son propre modèle (horloge de rue, emblème, enseigne en drapeau, moins de
+	--     14 studs de large) glisse avec son pied comme à l'étirement normal.
+	local F = CFG.facade
+	local compact = {}
+	for _, c in model:GetChildren() do
+		if c:IsA("Model") then
+			local mn, mx = math.huge, -math.huge
+			for _, d in c:GetDescendants() do
+				if d:IsA("BasePart") then
+					local r = piv0:ToObjectSpace(d.CFrame)
+					local ex = extents(r, d.Size)
+					mn = math.min(mn, r.X - ex.X); mx = math.max(mx, r.X + ex.X)
+				end
+			end
+			if mx - mn < F.scaleWidth then compact[c] = true end
+		end
+	end
+	local smalls = {}
+	for _, e in parts do
+		local p, rel = e.p, e.rel
+		local ext = extents(rel, e.size)
+		local top = p
+		while top.Parent ~= model do top = top.Parent end
+		if rel.Z + ext.Z < F.frontZ and rel.Y - ext.Y >= F.minY and not e.noY and not p.Name:match("^Pilaster") and not compact[top] then
+			local n = 0
+			for _, cut in CFG.cutsX do if rel.X - ext.X < cut.at and cut.at < rel.X + ext.X then n += 1 end end
+			local xa = nil
+			for i, v in { rel.RightVector, rel.UpVector, rel.LookVector } do if math.abs(v.X) > 0.999 then xa = i end end
+			if n == 2 and ext.X * 2 >= 40 then
+				-- bande pleine largeur : étirement normal
+			elseif xa and canResize(p) and ext.X * 2 >= F.scaleWidth then
+				e.upper = "big"
+			else
+				e.upper = "small"
+				e.lo, e.hi = rel.Position - ext, rel.Position + ext
+				table.insert(smalls, e)
+			end
+		end
+	end
+	local link = {}
+	for i = 1, #smalls do link[i] = i end
+	local function root(i) while link[i] ~= i do link[i] = link[link[i]]; i = link[i] end return i end
+	local M = 0.12
+	for i = 1, #smalls do
+		local a = smalls[i]
+		for j = i + 1, #smalls do
+			local b = smalls[j]
+			if a.lo.X - M <= b.hi.X and b.lo.X - M <= a.hi.X and a.lo.Y - M <= b.hi.Y and b.lo.Y - M <= a.hi.Y
+				and a.lo.Z - M <= b.hi.Z and b.lo.Z - M <= a.hi.Z then
+				link[root(i)] = root(j)
+			end
+		end
+	end
+	local spans = {}
+	for i, e in smalls do
+		local r = root(i)
+		spans[r] = spans[r] or { lo = math.huge, hi = -math.huge }
+		spans[r].lo = math.min(spans[r].lo, e.lo.X); spans[r].hi = math.max(spans[r].hi, e.hi.X)
+	end
+	for i, e in smalls do
+		local s = spans[root(i)]
+		e.dx = (F.k - 1) * (s.lo + s.hi) / 2
+	end
+
 	for _, e in parts do
 		local p, rel, size = e.p, e.rel, e.size
-		local amap = canResize(p) and axisMap(rel) or nil
 		local ext = extents(rel, size)
-		if amap then
-			local sz = { size.X, size.Y, size.Z }
-			local c = {}
-			local didStretch = false
-			for _, ax in AX do
-				local cuts = cutsFor(ax, e.noY)
-				local i = amap[ax]
-				local center, half = comp(rel.Position, ax), sz[i] / 2
-				local lo, hi = center - half, center + half
+		-- pour chaque axe du magasin, l'axe de la pièce qui lui est parallèle (une pièce inclinée, comme un
+		-- auvent, garde souvent un axe droit le long duquel elle peut s'allonger)
+		local amap = {}
+		if canResize(p) then
+			for i, v in { rel.RightVector, rel.UpVector, rel.LookVector } do
+				if math.abs(v.X) > 0.999 then amap.X = i elseif math.abs(v.Y) > 0.999 then amap.Y = i elseif math.abs(v.Z) > 0.999 then amap.Z = i end
+			end
+		end
+		local upper = e.upper
+		local sz = { size.X, size.Y, size.Z }
+		local c = {}
+		local didStretch = false
+		for _, ax in AX do
+			local cuts = cutsFor(ax, e.noY)
+			local i = amap[ax]
+			local center = comp(rel.Position, ax)
+			local half = i and sz[i] / 2 or comp(ext, ax)
+			local lo, hi = center - half, center + half
+			if ax == "X" and upper == "big" then
+				c.X = center * F.k
+				sz[i] *= F.k
+				didStretch = true
+			elseif ax == "X" and upper == "small" then
+				c.X = center + e.dx
+			else
 				local crossing = nil
 				for _, cut in cuts do if lo < cut.at and cut.at < hi then crossing = cut end end
-				local long = sz[i] >= CFG.minStretch or (ax == "Y" and p.Name:match("Chain"))
+				local long = i ~= nil and (sz[i] >= CFG.minStretch or (ax == "Y" and p.Name:match("Chain")))
 				if crossing and long then
 					local nlo, nhi = mapAxis(lo, cuts), mapAxis(hi, cuts)
 					c[ax] = (nlo + nhi) / 2
@@ -150,16 +246,17 @@ local function stretchGeometry(model, piv0)
 					c[ax] = mapAxis(center, cuts)
 				end
 			end
-			p.Size = Vector3.new(sz[1], sz[2], sz[3])
-			p.CFrame = piv0 * (CFrame.new(c.X, c.Y, c.Z) * rel.Rotation)
-			if didStretch then stretched += 1 else moved += 1 end
-		else
-			p.CFrame = piv0 * (CFrame.new(mapPoint(rel.Position, e.noY)) * rel.Rotation)
-			moved += 1
 		end
+		if didStretch then p.Size = Vector3.new(sz[1], sz[2], sz[3]) end
+		p.CFrame = piv0 * (CFrame.new(c.X, c.Y, c.Z) * rel.Rotation)
+		if upper then upperParts[p] = true end
+		if didStretch then stretched += 1 else moved += 1 end
 	end
 	for _, e in atts do
-		e.a.WorldCFrame = piv0 * (CFrame.new(mapPoint(e.rel.Position, e.noY)) * e.rel.Rotation)
+		-- un Attachment d'une pièce de l'étage suit sa pièce (InfoPoint de l'enseigne…)
+		if not upperParts[e.a.Parent] then
+			e.a.WorldCFrame = piv0 * (CFrame.new(mapPoint(e.rel.Position, e.noY)) * e.rel.Rotation)
+		end
 	end
 	for _, e in models do
 		e.m.WorldPivot = piv0 * (CFrame.new(mapPoint(e.rel.Position, e.noY)) * e.rel.Rotation)

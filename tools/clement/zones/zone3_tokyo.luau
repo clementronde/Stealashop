@@ -1,6 +1,9 @@
 --!nocheck
 -- Zone 3 — Tokyo (MOD-021) : magasin d'électronique, magasin de jeux vidéo et décor de rue.
 -- À lancer dans Studio (MCP execute_luau, mode Edit), APRÈS tools/clement/store_builder.luau.
+-- Il refait les magasins au gabarit 60 × 72 : relancer ensuite corridor_widen.luau, tools/clement/store_stretch.luau
+-- (_G.ClaudeStoreStretch.apply sur chaque STORE_* : 78 × 108, étage de la façade réparti régulièrement), puis
+-- zone3_tokyo_fit_stores.luau.
 -- Relançable : les modèles du même nom sont remplacés. Trois blocs, à envoyer ensemble ou un par un
 -- (le bloc 1 pose _G.ClaudeTokyo, lu par le bloc 2) :
 --   1) façade de temple et habillage intérieur ; 2) greybox et magasins ; 3) rue Map/Zone_3/Street_Tokyo.

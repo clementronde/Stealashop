@@ -5,6 +5,9 @@
 -- À lancer dans Studio (MCP execute_luau, mode Edit), APRÈS tools/clement/store_builder.luau (option scale), puis
 -- relancer tools/clement/env/trees_replace.luau (arbres du pack Yasu : ce script recrée ses anciens arbres en pièces).
 -- Relancer ce script reconstruit la zone à l'identique : les modèles du même nom sont remplacés.
+-- Il refait les magasins au gabarit 60 × 72 : relancer ensuite corridor_widen.luau, tools/clement/store_stretch.luau
+-- (_G.ClaudeStoreStretch.apply sur chaque STORE_* : 78 × 108, étage de la façade réparti régulièrement), puis
+-- zone1_store_stretch_fit.luau.
 -- Zones rallongées ×1,25 (L-071, 2026-11-08) : zone 1 = x 30..118, magasins en X = 74, arche ZoneGate_1 à x = 30.
 -- Ce qu'il fait :
 --  1) greybox de la zone 1 seulement : Street à x 30..118, z -22,5..22,5 (bleu ardoise), Side_N et Side_S à
