@@ -75,6 +75,9 @@ Tags.List = {
 	-- vent (attribut SwayAngle en degrés, parties mobiles Sway_*). Pas encore lu par le code : le balancement côté
 	-- client reste à coder (L-322 (b)). Facultatif.
 	{ Tag = "WindSway", For = "déco du hub qui balance au vent, SwayAngle et Sway_* (facultatif ; pas encore lu par le code, L-322)" },
+	-- a475 (L-371) : points des feux d'artifice aux coins de la zone safe (pièce, Attachment ou Model), lus par VfxController
+	-- (Config/Vfx.Fireworks, au plus MaxPoints). Posés par Clément le 25/11 : FireworksPoint_N et _S (Map/Hub/Zones). Facultatif.
+	{ Tag = "FireworksPoint", For = "points des feux d'artifice de la zone safe (facultatif, L-371)" },
 } :: { TagSpec }
 
 -- a436 (lot101, check-up a417 P4) : tags posés par le code lui-même sur ses copies, jamais par Clément. Le

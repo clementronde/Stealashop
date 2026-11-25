@@ -56,7 +56,9 @@
 --       a401 (vague GC4, vidéo de Cantin) : départ des `total` billets d'un ramassage (`wave` : numéro de la vague),
 --       puis chaque billet arrivé au compteur (ou fini de monter sans compteur) : rang 1 à `total`, dans l'ordre
 --       d'arrivée. Billets en fontaine (Vfx.Collect.Fountain) : un par Stagger s, dérive, vol presque fixe.
---   VfxController.GetState() -> { Flyers, Bursts, ChaseGuard, Rarest }   (banc, barre de commande)
+--   VfxController.Fireworks() -> number             a475 (L-371, remote Fireworks) : feux d'artifice aux points
+--       FireworksPoint de la map (Config/Vfx.Fireworks : FX_Fireworks, sinon FX_Escape ; un seul tir à la fois par point)
+--   VfxController.GetState() -> { Flyers, Bursts, ChaseGuard, Rarest, Fireworks }   (banc, barre de commande)
 
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
@@ -124,6 +126,7 @@ export type State = {
 	Bursts: number,
 	ChaseGuard: Model?,
 	Rarest: number,
+	Fireworks: number, -- a475 : points FireworksPoint dont le tir est encore là
 }
 
 local VfxController = {}
@@ -258,7 +261,15 @@ local function burst(name: string, frame: CFrame): Model?
 	bursts += 1
 	for _, emitter in emitters do
 		local count = math.floor(numberAttribute(emitter, Vfx.EmitCountAttribute, Vfx.DefaultEmitCount) * factor)
-		if count > 0 then
+		-- a475 (L-371) : attribut Delay de l'émetteur (fusée, puis gerbe) ; absent : tout de suite, comme avant.
+		local delay = if Vfx.DelayAttribute then numberAttribute(emitter, Vfx.DelayAttribute, 0) else 0
+		if count > 0 and delay > 0 then
+			task.delay(delay, function()
+				if emitter.Parent ~= nil then
+					emitter:Emit(count)
+				end
+			end)
+		elseif count > 0 then
 			emitter:Emit(count)
 		end
 	end
@@ -288,6 +299,71 @@ function VfxController.Escape(): Model?
 	end
 	local position = (root :: BasePart).Position - Vector3.new(0, Vfx.Escape.FootOffset, 0)
 	return burst(Vfx.Escape.Model, CFrame.new(position))
+end
+
+-- a475 (L-371) : points FireworksPoint de la map jouée (dans Workspace, aucun ancêtre en « _ »), triés par nom.
+local function fireworksPoints(): { Instance }
+	local list: { Instance } = {}
+	for _, point in CollectionService:GetTagged(Vfx.Fireworks.PointTag) do
+		local inMap = point:IsDescendantOf(Workspace)
+		local node: Instance? = point
+		while inMap and node ~= nil and node ~= Workspace do
+			inMap = string.sub(node.Name, 1, 1) ~= "_"
+			node = node.Parent
+		end
+		if inMap and (point:IsA("BasePart") or point:IsA("Attachment") or point:IsA("Model")) then
+			table.insert(list, point)
+		end
+	end
+	table.sort(list, function(a: Instance, b: Instance): boolean
+		return a.Name < b.Name
+	end)
+	return list
+end
+
+local function frameOf(point: Instance): CFrame
+	if point:IsA("Attachment") then
+		return (point :: Attachment).WorldCFrame
+	elseif point:IsA("Model") then
+		return (point :: Model):GetPivot()
+	end
+	return (point :: BasePart).CFrame
+end
+
+local fireworks: { [Instance]: Model } = {} -- [point] = copie encore là (un seul tir à la fois par point)
+
+-- a475 (L-371, remote Fireworks) : feux d'artifice sur chaque point FireworksPoint libre (Vfx.Fireworks.MaxPoints au
+-- plus) ; FX_Fireworks de Clément, sinon FX_Escape. Renvoie le nombre de tirs lancés.
+function VfxController.Fireworks(): number
+	local spec = Vfx.Fireworks
+	local folder = folderOf(Vfx.FxFolder)
+	local found = if folder then folder:FindFirstChild(spec.Model, true) else nil
+	local name = spec.Model
+	if found == nil or not found:IsA("Model") then
+		sayOnce("fireworks", `{spec.Model} pas encore livré : {spec.Fallback} aux points {spec.PointTag}`)
+		name = spec.Fallback
+	end
+	local points = fireworksPoints()
+	if #points == 0 then
+		sayOnce("fireworksPoints", `aucun point {spec.PointTag} dans la map : pas de feux d'artifice`)
+	end
+	local fired = 0
+	for index, point in points do
+		if index > spec.MaxPoints then
+			break
+		end
+		local current: Model? = fireworks[point]
+		if not (current and current.Parent ~= nil) then
+			local copy = burst(name, frameOf(point))
+			if copy then
+				fireworks[point] = copy
+				fired += 1
+			else
+				fireworks[point] = nil
+			end
+		end
+	end
+	return fired
 end
 
 function VfxController.TruckDust(model: Model): Model?
@@ -1007,7 +1083,13 @@ function VfxController.GetState(): State
 	for _ in rarest do
 		count += 1
 	end
-	return { Flyers = #flyers, Bursts = bursts, ChaseGuard = chaseGuard, Rarest = count }
+	local firing = 0
+	for _, copy in fireworks do
+		if copy.Parent ~= nil then
+			firing += 1
+		end
+	end
+	return { Flyers = #flyers, Bursts = bursts, ChaseGuard = chaseGuard, Rarest = count, Fireworks = firing }
 end
 
 local function sibling(name: string): any
@@ -1033,6 +1115,18 @@ function VfxController.Start()
 	else
 		sayOnce("display", "DisplayController.OnCollect absent : pas de billets au ramassage")
 	end
+	-- a475 (L-371) : objet ramené en zone safe par un joueur du serveur (CelebrationService). Sans le remote : rien.
+	task.spawn(function()
+		local ok, err = pcall(function()
+			local Net = require(Shared:WaitForChild("Net"):WaitForChild("Net")) :: any
+			Net.Client.Fireworks:Connect(function()
+				VfxController.Fireworks()
+			end)
+		end)
+		if not ok then
+			sayOnce("fireworksRemote", `remote Fireworks absent : pas de feux d'artifice ({err})`)
+		end
+	end)
 	local truckTag = Vfx.TruckDust.TruckTag
 	CollectionService:GetInstanceAddedSignal(truckTag):Connect(watchTruck)
 	for _, truck in CollectionService:GetTagged(truckTag) do
