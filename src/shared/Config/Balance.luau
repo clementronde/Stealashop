@@ -15,7 +15,7 @@ local ECO: any = (function(): any
 	end)
 	if found and module ~= nil then
 		local ok, result = pcall(require, module :: any)
-		if ok and type(result) == "table" then
+		if ok and type(result) == "table" and type(result.Override) == "table" and type(result.Override.Version) == "number" then
 			return result.Override
 		end
 	end
@@ -59,11 +59,8 @@ local Balance = {
 		RealSpeedScale = REAL_SPEED_SCALE, -- vague 61, voir plus haut (V0)
 		BaseWalkSpeed = 16, -- à l'échelle 1
 		MaxWalkSpeed = 70, -- à l'échelle 1 (plafond réel : 70 × RealSpeedScale) ; une sécurité : Speed 3,2Qa
-		-- a486 : ces deux nombres viennent de la table active de l'économie (Config/Economy) ; table 1 : 4 et 100 ;
-		-- table 2 : 2,95 et 140 (Speed des zones × 107 environ par zone : la marche aux panneaux des zones 2 à 5 reste
-		-- 22, 28, 34, 40 ; plafond de 70 atteint vers Speed 284Qi).
-		WalkPerDecade = (if ECO then ECO.WalkPerDecade else 4) :: number, -- V0 proposé (note v2) : WalkSpeed gagné chaque fois que la Speed affichée est multipliée par 10
-		SpeedScale = (if ECO then ECO.SpeedScale else 100) :: number, -- V0 proposé (note v2) : Speed affichée à partir de laquelle la marche commence à monter
+		WalkPerDecade = 4, -- V0 proposé (note v2) : WalkSpeed gagné chaque fois que la Speed affichée est multipliée par 10
+		SpeedScale = 100, -- V0 proposé (note v2) : Speed affichée à partir de laquelle la marche commence à monter
 	},
 
 	-- 5.2 : slot 1 = outil de casse équipé, slot 2 = batte
@@ -160,12 +157,8 @@ local Balance = {
 	-- revenir, DevStoreName = "PlayerData". Pour une nouvelle remise à zéro du DEV : un nouveau nom.
 	Profiles = {
 		StoreName = "PlayerData", -- PROD : ne jamais le changer (un autre nom = profils vides)
-		DevGameId = 10774974820, -- « Steal a Shop [DEV] » (liaison, L-001) ; le même nombre dans Config/Economy (DevGameId)
-		-- a486 (Cantin, 25/11 : profils DEV remis à zéro avec l'économie « B/T ») : le nom vient de la table active de
-		-- l'économie (Config/Economy, DevStoreName) : table 1, le store du 14/11 ; table 2, un store neuf. Rien n'est
-		-- effacé : revenir à la table 1 dans le jeu DEV relit les profils du 14/11, intacts. StoreName (PROD) ne
-		-- dépend jamais de la table.
-		DevStoreName = (if ECO then ECO.DevStoreName else "PlayerData_DEV_20261114") :: string,
+		DevGameId = 10774974820, -- « Steal a Shop [DEV] » (liaison, L-001)
+		DevStoreName = "PlayerData_DEV_20261114",
 	},
 
 	-- 5.4 : séquence de casse, simulée côté client
@@ -256,6 +249,23 @@ local Balance = {
 		CheckInterval = 0.2,
 	},
 }
+
+-- a486 (économie « B/T », Config/Economy) : avec la table 2, trois nombres sont remplacés ici, après coup (les lignes
+-- d'origine plus haut ne changent pas : ce sont la table 1, et d'anciens bancs les retouchent par leur texte) :
+--   Stats.WalkPerDecade et Stats.SpeedScale : 2,95 et 140 (Speed des zones × 107 environ par zone : la marche aux
+--     panneaux des zones 2 à 5 reste 22, 28, 34, 40 ; plafond de 70 atteint vers Speed 284Qi) ;
+--   Profiles.DevStoreName : un store neuf pour le jeu DEV (Cantin, 25/11 : profils DEV remis à zéro avec la table 2).
+--     Rien n'est effacé : revenir à la table 1 dans le jeu DEV relit le store du 14/11, intact. StoreName (PROD) ne
+--     dépend jamais de la table.
+if ECO ~= nil then
+	assert(
+		type(ECO.WalkPerDecade) == "number" and type(ECO.SpeedScale) == "number" and type(ECO.DevStoreName) == "string",
+		"Config/Balance : WalkPerDecade, SpeedScale ou DevStoreName absent de Config/Economy"
+	)
+	Balance.Stats.WalkPerDecade = ECO.WalkPerDecade
+	Balance.Stats.SpeedScale = ECO.SpeedScale
+	Balance.Profiles.DevStoreName = ECO.DevStoreName
+end
 
 export type Balance = typeof(Balance)
 

@@ -7,8 +7,7 @@
 -- Codage des valeurs dans l'OrderedDataStore (entiers seulement, 2^53 au plus sans perte) :
 --   Income : un revenu peut dépasser 2^53 (Format va jusqu'à Dc = 1e33) : on range
 --            round(log10(1 + revenu) × LogScale), croissant comme le revenu ; relu à 1e-12 près ;
---   Speed  : la Vitesse entraînée (Stats.Speed), arrondie vers le bas ; a486 : en logarithme comme Income avec la
---            table 2 de l'économie (Stats.Speed.Log, Config/Economy).
+--   Speed  : la Vitesse entraînée (Stats.Speed), arrondie vers le bas.
 
 local DeepFreeze = require(script.Parent.DeepFreeze)
 
@@ -21,7 +20,7 @@ local ECO: any = (function(): any
 	end)
 	if found and module ~= nil then
 		local ok, result = pcall(require, module :: any)
-		if ok and type(result) == "table" then
+		if ok and type(result) == "table" and type(result.Override) == "table" and type(result.Override.Version) == "number" then
 			return result.Override
 		end
 	end
@@ -38,14 +37,6 @@ export type StatSpec = {
 
 local LOG_SCALE = 1e13 -- V0 : log10(1e36) × 1e13 = 3,6e14 < 2^53
 
--- a486 (économie « B/T », Config/Economy) : les valeurs d'une table de l'économie ne se comparent pas à celles de
--- l'autre : chaque table a ses propres OrderedDataStore (EconomySuffix ajouté au nom ; table 1 : aucun suffixe, les
--- classements d'avant, qui restent en place ; table 2 : « _E2 », remplis à la première écriture). Avec la table 2, le
--- classement Speed est rangé en logarithme comme Income (SpeedLog) : une Speed peut dépasser 2^53 (9Qa), le dernier
--- entier exact, et tous les gros joueurs seraient à égalité.
-local ECONOMY_SUFFIX: string = if ECO then ECO.LeaderboardSuffix else ""
-local SPEED_LOG: boolean = if ECO then ECO.LeaderboardSpeedLog else false
-
 local Leaderboard = {
 	Tag = "Leaderboard", -- L-165 : tag des panneaux
 	StatAttribute = "Stat", -- L-165 : attribut texte du panneau, Income ou Speed
@@ -55,10 +46,9 @@ local Leaderboard = {
 	Template = "Template", -- L-165 : List.Template invisible (Rank, Avatar, PlayerName, Value)
 	RowName = "Row_%02d", -- V0 : nom des copies de Template
 	Stats = {
-		Income = { Title = "Most money/s", Store = "Leaderboard_Income" .. ECONOMY_SUFFIX, Log = true },
-		Speed = { Title = "Fastest", Store = "Leaderboard_Speed" .. ECONOMY_SUFFIX, Log = SPEED_LOG },
+		Income = { Title = "Most money/s", Store = "Leaderboard_Income", Log = true },
+		Speed = { Title = "Fastest", Store = "Leaderboard_Speed", Log = false },
 	} :: { [string]: StatSpec },
-	EconomySuffix = ECONOMY_SUFFIX, -- a486 : déjà dans Stats[…].Store (voir plus haut)
 	DevSuffix = "_DEV", -- V0 : ajouté au nom des stores quand les profils sont ceux du jeu DEV
 	Rows = 10, -- V0 : lignes affichées par panneau
 	WriteInterval = 120, -- V0 : secondes entre deux écritures des joueurs du serveur
@@ -67,7 +57,25 @@ local Leaderboard = {
 	MinBudget = 5, -- V0 : sous ce budget de requêtes DataStore, l'écriture ou la lecture attend le tour suivant
 	LogScale = LOG_SCALE,
 	ThumbnailSize = "Size150x150", -- Enum.ThumbnailSize (GetUserThumbnailAsync, HeadShot)
+	EconomySuffix = "", -- a486 : suffixe des stores de la table de l'économie en jeu (« _E2 » avec la table 2 ; posé plus bas)
 }
+
+-- a486 (économie « B/T », Config/Economy) : les valeurs d'une table de l'économie ne se comparent pas à celles de
+-- l'autre. Avec la table 2, remplacé ici, après coup (les lignes de Stats plus haut restent la table 1) :
+--   chaque classement a ses propres OrderedDataStore : EconomySuffix (« _E2 ») ajouté au nom ; les classements de la
+--   table 1 gardent leur nom et restent en place, ceux de la table 2 se remplissent à la première écriture ;
+--   le classement Speed est rangé en logarithme comme Income : une Speed peut dépasser 2^53 (9Qa), le dernier entier
+--   exact, et tous les gros joueurs seraient à égalité.
+if ECO ~= nil then
+	assert(type(ECO.LeaderboardSuffix) == "string" and type(ECO.LeaderboardSpeedLog) == "boolean", "Config/Leaderboard : LeaderboardSuffix ou LeaderboardSpeedLog absent de Config/Economy")
+	Leaderboard.EconomySuffix = ECO.LeaderboardSuffix
+	for id, spec in Leaderboard.Stats do
+		spec.Store ..= ECO.LeaderboardSuffix
+		if id == "Speed" then
+			spec.Log = ECO.LeaderboardSpeedLog
+		end
+	end
+end
 
 -- Valeur d'un joueur -> entier rangé dans l'OrderedDataStore (0 pour une valeur invalide ou négative).
 function Leaderboard.Encode(stat: string, value: number): number

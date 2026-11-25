@@ -15,7 +15,7 @@ local ECO: any = (function(): any
 	end)
 	if found and module ~= nil then
 		local ok, result = pcall(require, module :: any)
-		if ok and type(result) == "table" then
+		if ok and type(result) == "table" and type(result.Override) == "table" and type(result.Override.Version) == "number" then
 			return result.Override
 		end
 	end
@@ -103,8 +103,9 @@ end
 -- il faut monter MaxLevel ou baisser le pas).
 -- Palier du niveau AFFICHÉ n (v2 : niveau enregistré + 1) = TreadmillVariants[floor(n / TreadmillTierEvery) + 1],
 -- le dernier au-delà. Un palier toutes les 2 améliorations : Base au niveau 1, Silver aux niveaux 2 et 3…
--- Void au niveau 20, le dernier (note v2, 4.2). a486 : avec la table 2 de l'économie (25 niveaux), les niveaux 21 à
--- 25 gardent Void (MachineVariantService borne l'indice à la liste).
+-- Void au niveau 20, le dernier (note v2, 4.2).
+-- a486 : avec la table 2 de l'économie (25 niveaux), les niveaux 21 à 25 gardent Void (MachineVariantService borne
+-- l'indice à la liste).
 local TreadmillTierEvery = 2
 local TreadmillVariants: { string } = {
 	"Base",

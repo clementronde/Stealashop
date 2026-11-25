@@ -77,22 +77,6 @@ local MAX_INDEX = 100
 -- V0 proposé, absent du doc : longueur maximale d'un message Notify.
 local MAX_MESSAGE_LENGTH = 200
 
--- a486 : borne de `value` du remote AdminCommand = Config/Admin.MaxAmount, pris dans la table active de l'économie
--- (Config/Economy.Override, AdminMaxAmount : 1e30 avec la table 2). Avec la table 1, ou sans le module (bancs à
--- liste de modules fixe) : 1e15, écrit ici. Ce n'est que la forme de l'appel : AdminService revalide chaque montant.
-local ADMIN_MAX_VALUE: number = (function(): number
-	local found, module = pcall(function(): any
-		return (script.Parent :: any).Parent:FindFirstChild("Config"):FindFirstChild("Economy")
-	end)
-	if found and module ~= nil then
-		local ok, result = pcall(require, module :: any)
-		if ok and type(result) == "table" and type(result.Override) == "table" and type(result.Override.AdminMaxAmount) == "number" then
-			return result.Override.AdminMaxAmount
-		end
-	end
-	return 1e15
-end)()
-
 local function id(name: string): ArgSpec
 	return { Name = name, Kind = "string", Max = MAX_ID_LENGTH }
 end
@@ -593,7 +577,7 @@ local List: { RemoteDef } = {
 		Args = {
 			{ Name = "commandId", Kind = "string", Max = 32 },
 			{ Name = "target", Kind = "Player", Optional = true },
-			{ Name = "value", Kind = "number", Min = 0, Max = ADMIN_MAX_VALUE, Optional = true }, -- a486 : 1e15, ou 1e30 avec la table 2 de l'économie
+			{ Name = "value", Kind = "number", Min = 0, Max = 1e15, Optional = true },
 			{ Name = "text", Kind = "string", Min = 0, Max = MAX_ID_LENGTH, Optional = true },
 			{ Name = "text2", Kind = "string", Min = 0, Max = MAX_ID_LENGTH, Optional = true },
 		},
@@ -997,6 +981,31 @@ local List: { RemoteDef } = {
 		Args = {},
 	},
 }
+
+-- a486 (économie « B/T ») : avec la table 2 de l'économie, la borne de `value` du remote AdminCommand suit
+-- Config/Admin.MaxAmount (Config/Economy.Override, AdminMaxAmount : 1e30). Remplacée ici, après coup : la ligne
+-- Max = 1e15 plus haut reste la table 1. Module chargé s'il est là (bancs à liste de modules fixe) ; avec la table 1
+-- ou sans lui, rien ne change. Ce n'est que la forme de l'appel : AdminService revalide chaque montant.
+do
+	local found, module = pcall(function(): any
+		return (script.Parent :: any).Parent:FindFirstChild("Config"):FindFirstChild("Economy")
+	end)
+	if found and module ~= nil then
+		local ok, result = pcall(require, module :: any)
+		local override: any = if ok and type(result) == "table" then (result :: any).Override else nil
+		if type(override) == "table" and type(override.Version) == "number" and type(override.AdminMaxAmount) == "number" then
+			for _, def in List do
+				if def.Name == "AdminCommand" then
+					for _, arg in def.Args do
+						if arg.Name == "value" then
+							arg.Max = override.AdminMaxAmount
+						end
+					end
+				end
+			end
+		end
+	end
+end
 
 return {
 	List = List,

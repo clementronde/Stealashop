@@ -40,7 +40,7 @@ local ECO: any = (function(): any
 	end)
 	if found and module ~= nil then
 		local ok, result = pcall(require, module :: any)
-		if ok and type(result) == "table" then
+		if ok and type(result) == "table" and type(result.Override) == "table" and type(result.Override.Version) == "number" then
 			return result.Override
 		end
 	end
@@ -180,6 +180,17 @@ local LAST_HP_PER_DAMAGE = hpPerDamage(rule.LastZoneTeamSize, rule.LastZoneBreak
 -- Vigile de jour (note 4.1) : 0,9 × marche conseillée + 1, arrondi à 0,1.
 local GUARD_MARGIN = 1
 
+-- a486 (économie « B/T », Config/Economy) : avec la table 2, la Speed demandée de chaque zone est remplacée ici, avant
+-- le calcul (les lignes SpeedRequired de List plus haut restent la table 1) : 15K, 1,6M, 170M, 19B, 30T ; marche aux
+-- panneaux 22, 28, 34, 40 comme avant, 49,4 en zone 6 ; les PV des vitrines ne bougent pas, les armes non plus.
+if ECO ~= nil then
+	for index, base in List do
+		local speedRequired = ECO.SpeedRequired[index]
+		assert(type(speedRequired) == "number", `Config/Zones : SpeedRequired de la zone {index} absent de Config/Economy`)
+		base.SpeedRequired = speedRequired
+	end
+end
+
 local Zones: { Zone } = {}
 for index, base in List do
 	local tool = Tools.ById[base.Kit[1]]
@@ -192,21 +203,14 @@ for index, base in List do
 		auraMultiplier = aura.Multiplier
 	end
 	local damage = tool.Power * auraMultiplier
-	-- a486 : Speed demandée prise dans la table active de l'économie (table 2 : 15K, 1,6M, 170M, 19B, 30T ; marche aux
-	-- panneaux 22, 28, 34, 40 comme avant, 49,4 en zone 6 ; les PV des vitrines ne bougent pas, les armes non plus).
-	local speedRequired: number = base.SpeedRequired
-	if ECO ~= nil then
-		speedRequired = ECO.SpeedRequired[index]
-		assert(type(speedRequired) == "number", `Config/Zones : SpeedRequired de la zone {index} absent de Config/Economy`)
-	end
-	local walk = walkFor(speedRequired)
+	local walk = walkFor(base.SpeedRequired)
 	Zones[index] = {
 		Index = base.Index,
 		Theme = base.Theme,
 		City = base.City,
 		Stores = base.Stores,
 		StoreIds = base.StoreIds,
-		SpeedRequired = speedRequired,
+		SpeedRequired = base.SpeedRequired,
 		Kit = base.Kit,
 		WindowHP = base.WindowHP or math.round((if index == #List then LAST_HP_PER_DAMAGE else SOLO_HP_PER_DAMAGE) * damage),
 		AdvisedDamage = damage,

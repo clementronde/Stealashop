@@ -30,15 +30,6 @@ local function optional(name: string): any
 end
 local Features: any = optional("Features")
 local ProductIds: any = optional("ProductIds")
--- a486 : table de l'économie à appliquer par-dessus les nombres de ce fichier (Config/Economy.Override : la table 2
--- quand elle est active ; nil avec la table 1 ou sans le module : la part écrite ici, celle de la table 1).
-local ECO: any = optional("Economy").Override
-
--- a486 (Cantin, 25/11) : la part des revenus gagnée hors ligne est une valeur de la table de l'économie
--- (Config/Economy, OfflineRate), à côté des prix du tapis avec lesquels elle est réglée : table 1 = 1 (100 %), écrite ici,
--- table 2 = 1 aussi tant que Clément n'a pas répondu à L-413 (50 %). La changer : une valeur de Config/Economy.
-local RATE: number = if ECO then ECO.OfflineRate else 1
-assert(type(RATE) == "number", "Config/Offline : OfflineRate absent de Config/Economy")
 
 -- Plafond de base de l'absence comptée, en heures (doc, Partie 2 ; redit par Cantin le 25/11 : 4 h de base).
 local MAX_HOURS = 4
@@ -73,8 +64,7 @@ end
 
 local Offline = {
 	-- Part des revenus gagnée hors ligne : 1 = 100 % (Clément, L-084 ; validé par Ironix le 2026-11-09).
-	-- a486 : lue dans la table active de l'économie (voir RATE plus haut).
-	Rate = RATE,
+	Rate = 1,
 	-- Plafond de base de l'absence comptée, en heures (Cantin, 25/11 : 4 h de base) ; un joueur peut avoir plus avec
 	-- les nœuds de l'arbre : CapHours(profil.SkillTree) fait foi.
 	MaxHours = MAX_HOURS,
@@ -104,6 +94,20 @@ local Offline = {
 	-- de ce nombre de secondes (barre de commande serveur ; joueur = nom ou UserId). Voir OfflineService.
 	TestAttribute = "OfflineTest",
 }
+
+-- a486 (Cantin, 25/11) : la part des revenus gagnée hors ligne est une valeur de la table de l'économie
+-- (Config/Economy, OfflineRate), à côté des prix du tapis avec lesquels elle est réglée : table 1 = 1 (100 %, la ligne
+-- Rate plus haut), table 2 = 1 aussi tant que Clément n'a pas répondu à L-413 (50 %). Avec la table 2, Rate est
+-- remplacé ici, après coup, par la valeur de la table : la changer = une valeur de Config/Economy. MaxHours ne dépend
+-- pas de la table (4 h pour les deux).
+do
+	-- Config/Economy.Override : la table 2 quand elle est active ; nil avec la table 1 ou sans le module.
+	local ECO: any = optional("Economy").Override
+	if type(ECO) == "table" and type(ECO.Version) == "number" then
+		assert(type(ECO.OfflineRate) == "number", "Config/Offline : OfflineRate absent de Config/Economy")
+		Offline.Rate = ECO.OfflineRate
+	end
+end
 
 export type Offline = typeof(Offline)
 

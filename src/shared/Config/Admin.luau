@@ -29,7 +29,7 @@ local ECO: any = (function(): any
 	end)
 	if found and module ~= nil then
 		local ok, result = pcall(require, module :: any)
-		if ok and type(result) == "table" then
+		if ok and type(result) == "table" and type(result.Override) == "table" and type(result.Override.Version) == "number" then
 			return result.Override
 		end
 	end
@@ -102,10 +102,7 @@ local Admin = {
 	-- En Studio, tout le monde est admin.
 	StudioEveryone = true,
 	-- Borne des montants donnés (l'échelle des stats va vers les milliards, L-108 point 1).
-	-- a486 : pris dans la table active de l'économie (Config/Economy) : 1e15 (1Qa) avec la table 1 ; 1e30 avec la
-	-- table 2, au-dessus de tout montant possible (un gros joueur y atteint 33Qi en 30 jours). La même borne pour
-	-- `value` du remote AdminCommand (Net/Definitions) ; AdminService revalide toujours le montant.
-	MaxAmount = (if ECO then ECO.AdminMaxAmount else 1e15) :: number,
+	MaxAmount = 1e15,
 	-- Mot envoyé par le client au second clic de ResetProfileButton.
 	ResetConfirm = "RESET",
 	-- Événements de StartEvent (Rain plus tard). Vague 39 : Fortune (une vitrine de la Fortune Tower tout de suite,
@@ -127,6 +124,15 @@ local Admin = {
 	Commands = Commands,
 	ById = ById,
 }
+
+-- a486 (économie « B/T », Config/Economy) : avec la table 2, la borne des montants donnés vaut 1e30, au-dessus de tout
+-- montant possible (un gros joueur y atteint 33Qi en 30 jours). Remplacée ici, après coup : la ligne MaxAmount plus
+-- haut reste la table 1 (1e15). La même borne pour `value` du remote AdminCommand (Net/Definitions) ; AdminService
+-- revalide toujours le montant.
+if ECO ~= nil then
+	assert(type(ECO.AdminMaxAmount) == "number", "Config/Admin : AdminMaxAmount absent de Config/Economy")
+	Admin.MaxAmount = ECO.AdminMaxAmount
+end
 
 export type Admin = typeof(Admin)
 

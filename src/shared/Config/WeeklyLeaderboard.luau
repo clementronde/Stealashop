@@ -23,7 +23,7 @@ local ECO: any = (function(): any
 	end)
 	if found and module ~= nil then
 		local ok, result = pcall(require, module :: any)
-		if ok and type(result) == "table" then
+		if ok and type(result) == "table" and type(result.Override) == "table" and type(result.Override.Version) == "number" then
 			return result.Override
 		end
 	end
@@ -47,15 +47,10 @@ export type RewardTier = {
 
 local LOG_SCALE = 1e13 -- même codage que Config/Leaderboard (log10(1e36) × 1e13 < 2^53)
 
--- a486 (économie « B/T », Config/Economy) : comme Config/Leaderboard, le classement des revenus a ses propres
--- OrderedDataStore par table de l'économie (table 1 : aucun suffixe ; table 2 : « _E2 »). Le classement des vols
--- compte des vols, pas des dollars : il ne dépend pas de la table et garde son nom.
-local ECONOMY_SUFFIX: string = if ECO then ECO.LeaderboardSuffix else ""
-
 local WeeklyLeaderboard = {
 	Stats = {
 		-- Meilleur revenu par seconde atteint dans la semaine (sans les boosts du moment, comme « Most money/s »).
-		WeeklyIncome = { Title = "Money/s this week", Store = "LeaderboardWeek_Income" .. ECONOMY_SUFFIX, Log = true, RankAttribute = "WeeklyIncomeRank" },
+		WeeklyIncome = { Title = "Money/s this week", Store = "LeaderboardWeek_Income", Log = true, RankAttribute = "WeeklyIncomeRank" },
 		-- Vols de la semaine : seulement les vols chez un autre joueur (Lifetime.Steals). a430 : réponse (1) de Clément
 		-- en L-325, les braquages de magasins (Lifetime.Heists) ne comptent plus.
 		WeeklySteals = { Title = "Steals this week", Store = "LeaderboardWeek_Steals", Log = false, RankAttribute = "WeeklyStealsRank" },
@@ -105,6 +100,19 @@ local WeeklyLeaderboard = {
 	},
 	ScrollRefresh = 1, -- V0 proposé (Cantin, 24/11) : client, secondes entre deux contrôles des panneaux à défilement
 }
+
+-- a486 (économie « B/T », Config/Economy) : comme Config/Leaderboard, avec la table 2 le classement des revenus de la
+-- semaine a ses propres OrderedDataStore (suffixe « _E2 » ajouté ici, après coup ; la ligne WeeklyIncome plus haut
+-- reste la table 1). Le classement des vols compte des vols, pas des dollars : il ne dépend pas de la table et garde
+-- son nom.
+if ECO ~= nil then
+	assert(type(ECO.LeaderboardSuffix) == "string", "Config/WeeklyLeaderboard : LeaderboardSuffix absent de Config/Economy")
+	for id, spec in WeeklyLeaderboard.Stats do
+		if id == "WeeklyIncome" then
+			spec.Store ..= ECO.LeaderboardSuffix
+		end
+	end
+end
 
 -- Semaine (lundi 00:00 UTC) de l'heure `unix` (os.time()).
 function WeeklyLeaderboard.WeekOf(unix: number): number

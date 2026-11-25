@@ -20,7 +20,7 @@ local ECO: any = (function(): any
 	end)
 	if found and module ~= nil then
 		local ok, result = pcall(require, module :: any)
-		if ok and type(result) == "table" then
+		if ok and type(result) == "table" and type(result.Override) == "table" and type(result.Override.Version) == "number" then
 			return result.Override
 		end
 	end
@@ -78,10 +78,17 @@ local ShopGrowth = {
 		Slots = 8, -- L-294 : DisplaySlot_31 à _38
 		-- V0 proposé (Cantin, 23/11) : la suite des prix du bas (Config/Upgrades, DisplaySlots, Costs[5] à [13]) : l'étage
 		-- au prix de l'ancien 9e présentoir, ses 8 places à ceux des anciens 10e à 17e.
-		-- a486 : pris dans la table active de l'économie (Config/Economy ; table 2 : 140K, puis 230K à 18B).
-		Cost = (if ECO then ECO.Floor2Cost else 2_800) :: number,
-		Costs = (if ECO then ECO.Floor2Costs else { 3_600, 4_800, 9_800, 20_000, 42_000, 72_000, 120_000, 300_000 }) :: { number },
+		Cost = 2_800,
+		Costs = { 3_600, 4_800, 9_800, 20_000, 42_000, 72_000, 120_000, 300_000 },
 	},
 }
+
+-- a486 (économie « B/T », Config/Economy) : avec la table 2, prix de l'étage (140K) et de ses 8 places (230K à 18B),
+-- remplacés ici, après coup : les lignes Cost et Costs plus haut restent la table 1.
+if ECO ~= nil then
+	assert(type(ECO.Floor2Cost) == "number" and type(ECO.Floor2Costs) == "table", "Config/ShopGrowth : Floor2Cost ou Floor2Costs absent de Config/Economy")
+	ShopGrowth.Floor2.Cost = ECO.Floor2Cost
+	ShopGrowth.Floor2.Costs = ECO.Floor2Costs
+end
 
 return DeepFreeze(ShopGrowth)
