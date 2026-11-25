@@ -149,6 +149,15 @@ local Features = {
 	NoIntactDoorEject = false,
 	-- a468 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
 	NoIntactDoorEjectDev = true,
+	-- a468 (correctif du 25/11, petit chef et grand chef) : « dans la boutique » = dans son volume Bounds ET devant son
+	-- mur du fond posé (niveau 1 : ShopGrowth.MinBack ; sinon StageDepth ; boutique entière : Bounds seul), pour tous les
+	-- lecteurs de Bounds qui jugent « dedans » (Shared/ShopInside) : plus de vol à travers le mur du fond, ni de passant
+	-- frappé, interdit ou sorti derrière une boutique. Avec NoIntactDoorEject, la sortie « porte intacte » ne vise plus
+	-- que qui est vraiment dans les murs (boutique qui a grandi autour de lui). Interrupteur PROD (partout) : false
+	-- (règle C2) ; false = Bounds seul, la règle d'avant.
+	ShopInsideBackWall = false,
+	-- a468 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	ShopInsideBackWallDev = true,
 	-- a426 (L-319, décision de Clément du 23/11) : dans une zone `SafeZone`, la même vitesse pour tous et un léger
 	-- ralenti pour qui porte un objet pris chez un joueur (Balance.SafeZoneSpeed, StatsService). V0 proposé (Cantin,
 	-- 24/11) : true ; false = vitesse de la formule partout et vitesse fixe Carry.StolenItemWalkSpeed, comme avant.

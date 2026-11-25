@@ -134,6 +134,15 @@ function RevealState.IsProtected(player: any): boolean
 end
 local Net = require(Shared.Net.Net)
 local CarryTypes = require(Shared.Types.Carry)
+-- a468 : intrus du bot = Shared/ShopInside (dans Bounds et, sous Features.ShopInsideBackWall / …Dev, devant le mur du
+-- fond posé). require protégé : un faux arbre de banc sans ce module garde Bounds seul.
+local ShopInsideModule = Shared:FindFirstChild("ShopInside")
+local ShopInside: { Contains: (Instance, BasePart, Vector3, number?) -> boolean }? = if ShopInsideModule
+	then (function(): any
+		local ok, result = pcall(require, ShopInsideModule :: any)
+		return if ok and type(result) == "table" then result else nil
+	end)()
+	else nil
 
 local AntiCheatService = require(script.Parent.AntiCheatService)
 local CarryService = require(script.Parent.CarryService)
@@ -422,7 +431,7 @@ local function candidateFor(
 		if payload and payload.Kind == "PlayerItem" and payload.VictimUserId == BOT_VICTIM_USER_ID then
 			usage = "Defend"
 		elseif
-			(botBounds and insideBox(botBounds.CFrame, botBounds.Size, root.Position))
+			(botBounds and (if ShopInside and botPlot then ShopInside.Contains(botPlot, botBounds, root.Position) else insideBox(botBounds.CFrame, botBounds.Size, root.Position)))
 			or (botPlot and isBotIntruder(botPlot, other)) -- a177 : le casseur de sa porte
 		then
 			usage = "Intruder"
