@@ -166,4 +166,22 @@ local Features = {
 
 export type Features = typeof(Features)
 
-return DeepFreeze(Features)
+local frozen = DeepFreeze(Features)
+
+-- a442 (25/11, check-up a417 P5, décision C2 de Cantin) : dans un vrai jeu Roblox, la table vivante de Shared/LiveFeatures
+-- (surcharges sans republier : ConfigService, commande d'admin ; voir son en-tête) ; ailleurs (bancs hors Studio, outils,
+-- Edit) ou sans ce module : la table gelée du fichier, comme avant. Les lignes ci-dessus restent la valeur par défaut.
+if type(game) == "userdata" then
+	local module = script.Parent.Parent:FindFirstChild("LiveFeatures")
+	if module ~= nil and module:IsA("ModuleScript") then
+		local ok, wrapped = pcall(function(): any
+			return (require(module :: any) :: any).Wrap(frozen, script)
+		end)
+		if ok and type(wrapped) == "table" then
+			return wrapped :: Features
+		end
+		warn(`[Features] Shared/LiveFeatures en erreur, le fichier seul : {wrapped}`)
+	end
+end
+
+return frozen
