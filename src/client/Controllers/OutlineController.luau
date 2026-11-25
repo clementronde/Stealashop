@@ -45,12 +45,28 @@
 -- au nom : en jeu, le modèle BOX_<Rareté> de Clément est renommé ShelfBox_xx (« jamais BOX_… dans la map »). Depuis
 -- la vague 50 (a158), il n'y a plus de colis porté ni posé au sol : ce qui se porte ou tombe est un objet (ITM_).
 --
+--
+-- a473 (L-369, Clément 25/11) : contours toujours visibles (Outlines.PinnedEnabled : Features.BdOutlinesHub ou
+-- BdOutlinesHubDev, en plus de BdOutlines ou BdOutlinesDev), à toute distance et hors des MaxOutlines de près :
+--   - joueur local dans la zone safe (Shared/SafeZone.ContainsPlayer) : les comptoirs WeaponShop, AuraShop, RobuxShop,
+--     PawnShop, ENV_Hub_FreeGift et ENV_Hub_Wheel (pas le noob « invite », pas les vendeurs à part) ; les éléments de
+--     SA boutique : PlotDoor, tapis et objets exposés dont l'ancêtre le plus proche qui porte OwnerUserId (l'objet
+--     exposé lui-même, sinon la parcelle) est à lui, présentoir à acheter et panneaux UpgradeSign (à lui par nature) ;
+--   - partout : l'outil qu'il tient (Tool de son personnage) et l'objet porté sur sa tête (tag CarriedItem dans son
+--     personnage, hors d'un Tool : l'outil le couvre déjà). Les objets portés ou lâchés des autres (CarriedItem) suivent
+--     la règle de près. Un objet volé garde son contour rouge StolenOutline seul (règle « propre Highlight » ci-dessus).
+-- Les boutiques des autres joueurs gardent la règle de près. La réserve compte MaxOutlines + MaxPinned Highlight, tous
+-- créés au départ ; au plus MaxPinned contours « toujours » (outil et objet porté, puis stands, puis boutique par
+-- distance), au plus MaxOutlines contours de près (blanc compris), jamais plus que la réserve.
+--
 -- API (client) :
---   OutlineController.GetStats() -> { Enabled, Pool, Candidates, Active, Focused, Template }
+--   OutlineController.GetStats() -> { Enabled, Pool, Candidates, Active, Focused, Pinned, Template }
 --       Compteurs, pour un test dans Studio (barre de commande côté client) : Pool = Highlight de la réserve (fixe),
---       Candidates = éléments de la liste suivis, Active = contours allumés, Focused = contours blancs.
+--       Candidates = éléments de la liste suivis, Active = contours allumés, Focused = contours blancs, Pinned = contours
+--       « toujours » allumés (a473).
 
 local CollectionService = game:GetService("CollectionService")
+local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
@@ -89,6 +105,8 @@ type Candidate = {
 	Slot: Slot?,
 	Distance: number,
 	Focus: boolean,
+	Pinned: boolean, -- a473 : contour toujours visible (voir l'en-tête)
+	Rank: number, -- a473 : ordre des contours « toujours » (0 outil et objet porté, 1 stands, 2 boutique)
 }
 
 type Slot = {
@@ -103,6 +121,7 @@ export type Stats = {
 	Candidates: number,
 	Active: number,
 	Focused: number,
+	Pinned: number, -- a473
 	Template: string, -- "Clément" ou "secours"
 }
 
@@ -119,6 +138,14 @@ local sinceRefresh = math.huge
 local lastError = -math.huge
 local standApi: any = nil
 local standTarget: Instance? = nil
+-- a473 (L-369) : contours toujours visibles.
+local pinnedOn = false
+local safeZoneApi: any = nil
+local toolTarget: Instance? = nil
+local CARRIED_TAG = "CarriedItem" -- CarryService, HeldItemService (Config/HeldItem.CarriedTag)
+local OWNER_ATTRIBUTE = "OwnerUserId" -- PlotService (parcelle), DisplayService (objet exposé)
+local PINNED_HUB_NAMES: { [string]: boolean } = {} -- ENV_Hub_FreeGift et ENV_Hub_Wheel (Contract/Models)
+local OWN_KINDS: { [string]: boolean } = { PlotDoor = true, Treadmill = true, DisplayItem = true }
 
 -- Noms et tags du contrat (Contract/Models), lus au départ.
 local BOX_PREFIX = "BOX_" -- nom des modèles de Clément (pas celui d'un colis en jeu : ShelfBox_xx, a451)
@@ -149,6 +176,17 @@ local function loadNames()
 	end
 	if next(HUB_NAMES) == nil then
 		HUB_NAMES = { ENV_Hub_FreeGift = true, ENV_Hub_InviteNoob = true, ENV_Hub_Wheel = true }
+	end
+	-- a473 : les deux stands du hub parmi les 6 de L-369 (le noob « invite » n'en est pas).
+	for _, key in { "HubFreeGift", "HubWheel" } do
+		local spec = m[key]
+		local names = if type(spec) == "table" and type(spec.Names) == "table" then spec.Names else nil
+		for _, name in names or {} do
+			PINNED_HUB_NAMES[name] = true
+		end
+	end
+	if next(PINNED_HUB_NAMES) == nil then
+		PINNED_HUB_NAMES = { ENV_Hub_FreeGift = true, ENV_Hub_Wheel = true }
 	end
 	TAGS[tagOf(m.Treadmill, "Treadmill")] = "Treadmill"
 	TAGS[tagOf(m.WeaponShopCounter, "WeaponShop")] = "Stall"
@@ -262,7 +300,16 @@ local function register(target: Instance, kind: string)
 	if inWorkFolder(target) then
 		return
 	end
-	candidates[target] = { Target = target, Kind = kind, Probe = nil, Slot = nil, Distance = math.huge, Focus = false }
+	candidates[target] = {
+		Target = target,
+		Kind = kind,
+		Probe = nil,
+		Slot = nil,
+		Distance = math.huge,
+		Focus = false,
+		Pinned = false,
+		Rank = 0,
+	}
 	if kind == "Box" then
 		-- a451 : aussi ici, que le tag soit vu avant ou après l'arrivée de son Highlight.
 		for _, d in target:GetDescendants() do
@@ -391,6 +438,15 @@ local function isHidden(candidate: Candidate): boolean
 		if target:GetAttribute(BROKEN_ATTRIBUTE) == true then
 			return true
 		end
+	elseif candidate.Kind == "Carried" then
+		-- a473 : objet tenu en main sous antivol (HeldItemService, dans le Tool) : le contour de l'outil le couvre.
+		local current = target.Parent
+		while current ~= nil and current ~= Workspace and current ~= game do
+			if current:IsA("Tool") then
+				return true
+			end
+			current = current.Parent
+		end
 	end
 	local own = target:FindFirstChildOfClass("Highlight")
 	if own and own.Enabled then
@@ -448,11 +504,82 @@ end
 
 -- Tri ----------------------------------------------------------------------------------------------
 
+-- Blanc d'abord, puis les contours « toujours » (a473, par Rank), puis par distance.
 local function sortByFocusThenDistance(a: Candidate, b: Candidate): boolean
 	if a.Focus ~= b.Focus then
 		return a.Focus
 	end
+	if a.Pinned ~= b.Pinned then
+		return a.Pinned
+	end
+	if a.Pinned and a.Rank ~= b.Rank then
+		return a.Rank < b.Rank
+	end
 	return a.Distance < b.Distance
+end
+
+-- a473 : l'outil tenu par le joueur local (Tool de son personnage), suivi comme le présentoir à acheter. Un Tool est un
+-- Model chez Roblox (BackpackItem) : il prend le contour en entier.
+local function refreshTool()
+	local player = Players.LocalPlayer
+	local character = if player then player.Character else nil
+	local target: Instance? = if character then character:FindFirstChildOfClass("Tool") else nil
+	if target ~= toolTarget then
+		local old = toolTarget
+		if old and candidates[old] and candidates[old].Kind == "Tool" then
+			unregister(old)
+		end
+		toolTarget = target
+		if target then
+			register(target, "Tool")
+		end
+	end
+end
+
+-- a473 : la boutique de l'élément est-elle au joueur local ? L'ancêtre le plus proche (lui compris) qui porte
+-- OwnerUserId décide (objet exposé, sinon sa parcelle).
+local function ownedByMe(inst: Instance, userId: number): boolean
+	local current: Instance? = inst
+	while current ~= nil and current ~= Workspace and current ~= game do
+		local owner = current:GetAttribute(OWNER_ATTRIBUTE)
+		if type(owner) == "number" then
+			return owner == userId and userId ~= 0
+		end
+		current = current.Parent
+	end
+	return false
+end
+
+-- a473 : rang du contour « toujours » de `candidate`, ou nil s'il suit la règle de près.
+local function pinnedRank(candidate: Candidate, character: Instance?, inSafe: boolean, userId: number): number?
+	local kind = candidate.Kind
+	local target = candidate.Target
+	if kind == "Tool" then
+		return 0
+	elseif kind == "Carried" then
+		return if character ~= nil and target:IsDescendantOf(character) then 0 else nil
+	elseif not inSafe then
+		return nil
+	elseif kind == "Stall" then
+		return 1
+	elseif kind == "Hub" then
+		return if PINNED_HUB_NAMES[target.Name] then 1 else nil
+	elseif kind == "Stand" or kind == "UpgradeSign" then
+		return 2
+	elseif OWN_KINDS[kind] then
+		return if ownedByMe(target, userId) then 2 else nil
+	end
+	return nil
+end
+
+local function localInSafeZone(): boolean
+	local api = safeZoneApi
+	local player = Players.LocalPlayer
+	if api == nil or player == nil then
+		return false
+	end
+	local ok, inside = pcall(api.ContainsPlayer, player)
+	return ok and inside == true
 end
 
 local function refreshStand()
@@ -476,8 +603,19 @@ end
 
 local function refresh(cameraPosition: Vector3)
 	refreshStand()
+	local character: Instance? = nil
+	local inSafe = false
+	local userId = 0
+	if pinnedOn then
+		refreshTool()
+		local player = Players.LocalPlayer
+		character = if player then player.Character else nil
+		userId = if player and type(player.UserId) == "number" then player.UserId else 0
+		inSafe = localInSafeZone()
+	end
 	for _, candidate in candidates do
 		candidate.Focus = false
+		candidate.Pinned = false
 	end
 	for prompt in shownPrompts do
 		if prompt.Parent == nil then
@@ -501,7 +639,12 @@ local function refresh(cameraPosition: Vector3)
 			local position = positionOf(target)
 			local distance = if position then (position - cameraPosition).Magnitude else math.huge
 			candidate.Distance = distance
-			wanted = (candidate.Focus or distance <= maxDistance) and not isHidden(candidate)
+			local rank = if pinnedOn then pinnedRank(candidate, character, inSafe, userId) else nil
+			if rank ~= nil then
+				candidate.Pinned = true
+				candidate.Rank = rank
+			end
+			wanted = (candidate.Focus or candidate.Pinned or distance <= maxDistance) and not isHidden(candidate)
 		end
 		if wanted then
 			table.insert(list, candidate)
@@ -510,13 +653,35 @@ local function refresh(cameraPosition: Vector3)
 		end
 	end
 	table.sort(list, sortByFocusThenDistance)
-	local limit = math.min(#slots, #list)
-	for index = limit + 1, #list do
-		local candidate = list[index]
-		if candidate.Slot then
-			release(candidate)
+	-- a473 : au plus MaxPinned contours « toujours » et MaxOutlines de près (blanc compris) ; un élément « toujours »
+	-- au-delà de MaxPinned suit la règle de près. Jamais plus que la réserve.
+	local maxPinned = if pinnedOn then math.max(0, math.floor(Outlines.MaxPinned)) else 0
+	local maxNear = math.max(0, math.floor(Outlines.MaxOutlines))
+	local pinnedUsed, nearUsed = 0, 0
+	local kept: { Candidate } = {}
+	for _, candidate in list do
+		local keep = false
+		if #kept < #slots then
+			if candidate.Pinned and pinnedUsed < maxPinned then
+				pinnedUsed += 1
+				keep = true
+			elseif (candidate.Focus or candidate.Distance <= maxDistance) and nearUsed < maxNear then
+				nearUsed += 1
+				candidate.Pinned = false -- compté de près
+				keep = true
+			end
+		end
+		if keep then
+			table.insert(kept, candidate)
+		else
+			candidate.Pinned = false
+			if candidate.Slot then
+				release(candidate)
+			end
 		end
 	end
+	list = kept
+	local limit = #list
 	-- Places libres de la réserve, puis les éléments retenus sans place la prennent.
 	local free: { Slot } = {}
 	for _, slot in slots do
@@ -572,6 +737,7 @@ function OutlineController.GetStats(): Stats
 		Candidates = 0,
 		Active = 0,
 		Focused = 0,
+		Pinned = 0,
 		Template = if fromTemplate then "Clément" else "secours",
 	}
 	for _ in candidates do
@@ -582,6 +748,10 @@ function OutlineController.GetStats(): Stats
 			stats.Active += 1
 			if slot.Focus then
 				stats.Focused += 1
+			end
+			local candidate = slot.Candidate
+			if candidate and candidate.Pinned then
+				stats.Pinned += 1
 			end
 		end
 	end
@@ -599,10 +769,28 @@ function OutlineController.Start()
 	focusLook, okFocus = readLook(Outlines.FocusTemplate, Outlines.Fallback.Focus :: any)
 	fromTemplate = okNormal and okFocus
 
-	-- Réserve fixe : créée une fois, jamais agrandie ni détruite.
+	-- a473 (L-369) : contours toujours visibles ; la zone safe par Shared/SafeZone (absent : jamais dans la zone safe).
+	pinnedOn = Outlines.PinnedEnabled == true
+	if pinnedOn then
+		local module = Shared:FindFirstChild("SafeZone")
+		if module and module:IsA("ModuleScript") then
+			local ok, result = pcall(require, module)
+			if ok and type(result) == "table" and type((result :: any).ContainsPlayer) == "function" then
+				safeZoneApi = result
+			end
+		end
+		if safeZoneApi == nil then
+			print("[OutlineController] Shared/SafeZone introuvable : stands et boutique sans contour « toujours »")
+		end
+		TAGS[CARRIED_TAG] = "Carried"
+	end
+
+	-- Réserve fixe : créée une fois, jamais agrandie ni détruite (a473 : MaxPinned places de plus).
 	local folder = Instance.new("Folder")
 	folder.Name = OUTLINE_FOLDER
-	for index = 1, math.max(0, math.floor(Outlines.MaxOutlines)) do
+	local poolSize = math.max(0, math.floor(Outlines.MaxOutlines))
+		+ (if pinnedOn then math.max(0, math.floor(Outlines.MaxPinned)) else 0)
+	for index = 1, poolSize do
 		local highlight = Instance.new("Highlight")
 		highlight.Name = string.format(POOL_NAME, index)
 		highlight.Enabled = false

@@ -51,7 +51,8 @@
 --
 -- API (client) :
 --   TheftAlertController.GetState() -> { Active, Thefts, Thief, ItemId, ThiefName, ItemName,
---       Headline, Fallback, Arrow, ArrowRotation, Highlights, Siren }
+--       Headline, Fallback, Arrow, ArrowRotation, Highlights, ItemOutlines, Siren }
+--       (ItemOutlines, a483 : contours rouges d'objet volé posés par ce client, Shared/StolenOutline.VictimOnly())
 --       Ce qui est affiché, pour un test dans Studio (barre de commande côté client).
 --   TheftAlertController.IsShown() -> boolean
 --       L'alerte est à l'écran (pour ZoneBannerController, qui ne s'affiche pas par-dessus ; Cantin, 2026-11-13).
@@ -102,6 +103,25 @@ local ITEM_NAME = "ItemName"
 local ARROW = "Arrow"
 -- Posé par CarryService sur l'objet volé (même nom là-bas).
 local STOLEN_OUTLINE = "StolenOutline"
+-- a483 (Cantin, 25/11, remplace la règle 6.1) : avec Shared/StolenOutline.VictimOnly(), le serveur ne pose plus ce
+-- contour ; ce client (la victime : seul à recevoir TheftAlert) le pose lui-même sur l'objet porté par chacun de ses
+-- voleurs (modèle CARRY_VISUAL du personnage, CarryService), sans limite de nombre et sans le couper sous la
+-- surbrillance. Retiré dès que le vol n'est plus annoncé. Module cherché à chaque revue tant qu'il n'est pas chargé
+-- (absent : règle 6.1, rien ici).
+local CARRY_VISUAL = "CarryVisual" -- CarryService VISUAL_NAME
+local stolenOutlineApi: { VictimOnly: () -> boolean, LocalName: string, Color: Color3 }? = nil
+local function stolenOutline(): { VictimOnly: () -> boolean, LocalName: string, Color: Color3 }?
+	if stolenOutlineApi == nil then
+		local module = Shared:FindFirstChild("StolenOutline")
+		if module and module:IsA("ModuleScript") then
+			local ok, result = pcall(require, module :: any)
+			if ok and type(result) == "table" then
+				stolenOutlineApi = result :: any
+			end
+		end
+	end
+	return stolenOutlineApi
+end
 
 -- Textes lus par le joueur, en anglais (L-036), en capitales : la bannière crie (6.2).
 local HEADLINE = "%s IS STEALING YOUR %s!"
@@ -139,6 +159,7 @@ local shown = false
 local view: View? = nil
 local fallback: View? = nil
 local glows: { [Player]: Glow } = {}
+local itemMarks: { [Player]: Highlight } = {} -- a483 : contour rouge posé ici sur l'objet porté par le voleur
 local siren: Sound? = nil
 -- Rotation posée par Clément sur chaque copie de l'Arrow (relue sur une nouvelle copie).
 local arrowBase: { [Instance]: number } = setmetatable({}, { __mode = "k" }) :: any
@@ -476,6 +497,46 @@ local function syncGlows()
 	end
 end
 
+-- a483 : contour rouge de l'objet volé chez la victime seule (voir STOLEN_OUTLINE). Un voleur annoncé avec un objet
+-- (ItemId non vide) et l'objet dans son personnage : un Highlight local sur ce modèle ; sinon aucun.
+local function syncItemMarks()
+	local api = stolenOutline()
+	local on = api ~= nil and api.VictimOnly()
+	local wanted: { [Player]: Instance } = {}
+	if on then
+		for _, theft in thefts do
+			local character = theft.Thief.Character
+			local model = if theft.ItemId ~= "" and character then character:FindFirstChild(CARRY_VISUAL) else nil
+			if model and model:IsA("Model") then
+				wanted[theft.Thief] = model
+			end
+		end
+	end
+	for _, thief in keysOf(itemMarks) do
+		local mark = itemMarks[thief]
+		local model: Instance? = wanted[thief]
+		if not model or mark.Parent ~= model then
+			itemMarks[thief] = nil
+			mark:Destroy()
+		end
+	end
+	if api == nil then
+		return
+	end
+	for thief, model in wanted do
+		if not itemMarks[thief] then
+			local mark = Instance.new("Highlight")
+			mark.Name = api.LocalName
+			mark.FillTransparency = 1
+			mark.OutlineColor = api.Color
+			mark.OutlineTransparency = 0
+			mark.DepthMode = Enum.HighlightDepthMode.Occluded
+			mark.Parent = model
+			itemMarks[thief] = mark
+		end
+	end
+end
+
 ------------------------------------------------------------------------------
 -- Flèche
 ------------------------------------------------------------------------------
@@ -540,6 +601,7 @@ local function hideAll()
 	for _, thief in keysOf(glows) do
 		removeGlow(thief)
 	end
+	syncItemMarks() -- a483 : plus aucun vol annoncé, plus aucun contour d'objet
 	arrowShown = false
 	arrowRotation = nil
 	hideScreens()
@@ -571,6 +633,7 @@ local function apply()
 		startSiren()
 	end
 	syncGlows()
+	syncItemMarks()
 end
 
 local function pulse()
@@ -644,6 +707,7 @@ function TheftAlertController.GetState(): { [string]: any }
 		Arrow = arrowShown,
 		ArrowRotation = if arrowShown then arrowRotation else nil,
 		Highlights = count,
+		ItemOutlines = #keysOf(itemMarks), -- a483 : contours rouges d'objet posés ici (victime seule)
 		Siren = siren ~= nil,
 	}
 end
