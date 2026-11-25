@@ -57,7 +57,8 @@ end)()
 -- Vague 72 (a247) : interrupteur de la chance du serveur (Ready des 3 produits ServerLuck*). false = cartes
 -- cachées et reçus refusés (NotProcessedYet), comme toute offre pas codée. Éteint en V0 tant que Clément n'a pas
 -- validé prix, durées et cumul ; true = 3 cartes de plus dans Boosts (une 2e rangée, comme l'onglet Argent).
-local SERVER_LUCK = false
+-- a476 (L-375) : allumé partout avec Features.ServerLuck, ou dans le jeu DEV seulement avec ServerLuckDev (règle C2).
+local SERVER_LUCK = Features.ServerLuck == true or (Features.ServerLuckDev == true and ProductIds.IsDev == true)
 
 -- Onglets de l'écran (3.1 : Offres, Gamepasses, Argent, Boosts ; Tabs.OffersTab… de L-047).
 export type Tab = "Offers" | "Gamepasses" | "Cash" | "Boosts"
@@ -208,9 +209,10 @@ local Products: { Product } = {
 	-- absent du doc : 15 min chacune ; 149, 399 et 999 R$ (le plus cher du jeu après le pack de 12 h) ; couleurs,
 	-- et textes. Vague 73 (a253, L-240 point 2) : icône UI_Icon_DP_Luck3, celle de la carte SERVER LUCK de Clément
 	-- (Luck3 n'est pas en vente, Ready = false : pas deux offres à la même icône tant qu'il le reste).
-	{ Key = "ServerLuck2", Id = 0, Tab = "Boosts", Order = 8, Price = 149, Ready = SERVER_LUCK, CardColor = Color3.fromHex("3FC1FF"), Luck = 2, LuckMinutes = 15, DisplayName = "×2 Server Luck", Effect = "×2 luck for the whole server, 15 min", Icon = "UI_Icon_DP_Luck3" },
-	{ Key = "ServerLuck4", Id = 0, Tab = "Boosts", Order = 9, Price = 399, Ready = SERVER_LUCK, CardColor = Color3.fromHex("B15CFF"), Luck = 4, LuckMinutes = 15, DisplayName = "×4 Server Luck", Effect = "×4 luck for the whole server, 15 min", Icon = "UI_Icon_DP_Luck3" },
-	{ Key = "ServerLuck8", Id = 0, Tab = "Boosts", Order = 10, Price = 999, Ready = SERVER_LUCK, CardColor = Color3.fromHex("FFB21A"), Luck = 8, LuckMinutes = 15, DisplayName = "×8 Server Luck", Effect = "×8 luck for the whole server, 15 min", Icon = "UI_Icon_DP_Luck3" },
+	-- a476 (L-375, Clément 25/11 : « les chances durent 30 minutes ») : 30 min au lieu de 15 (LuckMinutes et Effect).
+	{ Key = "ServerLuck2", Id = 0, Tab = "Boosts", Order = 8, Price = 149, Ready = SERVER_LUCK, CardColor = Color3.fromHex("3FC1FF"), Luck = 2, LuckMinutes = 30, DisplayName = "×2 Server Luck", Effect = "×2 luck for the whole server, 30 min", Icon = "UI_Icon_DP_Luck3" },
+	{ Key = "ServerLuck4", Id = 0, Tab = "Boosts", Order = 9, Price = 399, Ready = SERVER_LUCK, CardColor = Color3.fromHex("B15CFF"), Luck = 4, LuckMinutes = 30, DisplayName = "×4 Server Luck", Effect = "×4 luck for the whole server, 30 min", Icon = "UI_Icon_DP_Luck3" },
+	{ Key = "ServerLuck8", Id = 0, Tab = "Boosts", Order = 10, Price = 999, Ready = SERVER_LUCK, CardColor = Color3.fromHex("FFB21A"), Luck = 8, LuckMinutes = 30, DisplayName = "×8 Server Luck", Effect = "×8 luck for the whole server, 30 min", Icon = "UI_Icon_DP_Luck3" },
 }
 
 -- Vague 63 (L-196 point 3, L-204) : les boutons en situation du HUD (Config/Boosts) aussi dans l'onglet Boosts.
@@ -389,7 +391,7 @@ local Monetization = {
 	-- multipliée par Luck (StoreHeistService lit l'attribut Attribute du Workspace ; absent = 1), en plus des
 	-- événements live. Cumul (V0 proposé) : chaque achat est une tranche (facteur, durée) mise en file ; seule la
 	-- tranche au plus fort facteur tourne (la plus ancienne à facteur égal), les autres attendent sans perdre de
-	-- temps : un ×2 acheté pendant un ×8 commence à la fin du ×8 ; deux ×4 font 30 min de ×4. Rien n'est sauvegardé :
+	-- temps : un ×2 acheté pendant un ×8 commence à la fin du ×8 ; deux ×4 font 1 h de ×4 (a476 : 30 min chacun). Rien n'est sauvegardé :
 	-- un serveur qui s'arrête perd la file (l'achat reste noté, comme tout produit).
 	-- Attributs du Workspace (lus par le client) : Attribute (facteur en cours, absent sans chance), EndsAtAttribute
 	-- (heure du serveur où ce facteur finit, tranches de même facteur comprises), ByAttribute (nom de l'acheteur).

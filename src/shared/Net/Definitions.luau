@@ -972,6 +972,14 @@ local List: { RemoteDef } = {
 		Args = { id("storeName"), holdPhase() },
 		RatePerSecond = 4, -- V0 proposé (Cantin, 23/11)
 	},
+	{
+		-- a475 (L-371), absent du tableau 9.4 : un objet vient d'être ramené en zone safe (CelebrationService, à tous les
+		-- joueurs) ; VfxController tire les feux d'artifice aux points FireworksPoint de la map. Visuel seulement.
+		Name = "Fireworks",
+		Direction = "ServerToClient",
+		Reliable = true,
+		Args = {},
+	},
 }
 
 return {

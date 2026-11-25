@@ -412,10 +412,35 @@ for _, section in { "ItemsSection", "ToolsSection" } do
 		table.insert(inventoryElements, { Path = `{section}.Cards.Template.{element.Path}`, Class = element.Class })
 	end
 end
+-- a478 (L-380, Clément 25/11) : l'inventaire revient (le bouton du sac UI_Hotbar.Bar.InventoryButton l'ouvre, avec
+-- Features.InventoryScreen ou InventoryScreenDev). Nouveaux éléments : tenir en main, objet tenu, vendre avec une
+-- confirmation (mêmes noms que Dock.Confirm d'UI_Displayed). Le nouvel écran est encore à dessiner : tous les éléments
+-- d'UI_Inventory deviennent facultatifs (InventoryController ne fait rien sans chacun d'eux, avertissement orange).
+for _, element in {
+	{ Path = "ItemsSection.Cards.Template.HoldButton", Class = BUTTON, Note = "pas de « tenir en main » depuis l'inventaire (la barre du bas le fait)" },
+	{ Path = "ItemsSection.Cards.Template.HeldPill", Note = "l'objet tenu en main n'est pas marqué" },
+	{ Path = "ItemsSection.Cards.Template.SellButton", Class = BUTTON, Note = "pas de vente depuis l'inventaire" },
+	{ Path = "Confirm", Class = "GuiObject", Note = "pas de vente depuis l'inventaire (SellButton caché)" },
+	{ Path = "Confirm.ItemIcon", Class = "GuiObject", Note = "confirmation sans icône" },
+	{ Path = "Confirm.ItemRarity", Note = "confirmation sans rareté" },
+	{ Path = "Confirm.ItemName", Note = "confirmation sans nom" },
+	{ Path = "Confirm.SellPrice", Note = "confirmation sans prix" },
+	{ Path = "Confirm.YesButton", Class = BUTTON, Note = "la vente ne se confirme pas" },
+	{ Path = "Confirm.NoButton", Class = BUTTON, Note = "la confirmation se ferme avec l'écran seulement" },
+} :: { Element } do
+	table.insert(inventoryElements, element)
+end
+for _, element in inventoryElements do
+	if not element.Optional then
+		element.Optional = true
+		element.Note = element.Note or "élément pas branché (écran à venir, L-380)"
+	end
+end
 table.insert(UI.Screens, {
 	Name = "UI_Inventory",
 	Class = "ScreenGui",
 	-- Vague 59 (L-182 point 5) : inventaire archivé, Clément range l'écran hors de StarterGui ; absent, rien à dire.
+	-- a478 (L-380) : l'écran revient (à dessiner) ; tant qu'il est absent, le bouton du sac ouvre UI_Displayed.
 	Optional = true,
 	Elements = inventoryElements,
 })
@@ -603,9 +628,19 @@ table.insert(UI.Screens, {
 -- Le code branche chaque exemplaire ; le ContractChecker accepte un exemplaire par cadre de Containers.
 UI.Twins = {
 	UI_HUD = {
-		Containers = { "LeftRail", "LeftRailTouch" },
+		-- a471 (L-364, Clément 24/11) : RightRail (PC) et RightRailTouch (téléphone), miroir de la colonne de gauche,
+		-- portent chacun DisplayedButton, SpeedBoostButton et SleepButton.
+		Containers = { "LeftRail", "LeftRailTouch", "RightRail", "RightRailTouch" },
 		-- Vague 70 (a230, L-189 point 8) : InventoryButton retiré (inventaire archivé, UI.Retired).
-		Names = { "RobuxShopButton", "IndexButton", "RebirthButton", "SkillTreeButton" },
+		Names = {
+			"RobuxShopButton",
+			"IndexButton",
+			"RebirthButton",
+			"SkillTreeButton",
+			"DisplayedButton",
+			"SpeedBoostButton",
+			"SleepButton",
+		},
 	},
 } :: { [string]: { Containers: { string }, Names: { string } } }
 
@@ -1042,6 +1077,8 @@ table.insert(UI.Screens, {
 		{ Path = "SleepButton.Price.Amount", Class = "TextLabel", Optional = true, Note = "le prix Robux n'est pas écrit" },
 		{ Path = "SleepButton.Cooldown", Class = "TextLabel", Optional = true, Note = "la recharge n'est pas affichée" },
 		{ Path = "CashSpent", Class = "TextLabel", Optional = true, Note = "l'argent décompte sans « -$X » à côté" },
+		-- a471 (L-364) : colonne de droite du téléphone (miroir de LeftRailTouch), montrée à la place de RightRail.
+		{ Path = "RightRailTouch", Optional = true, Note = "sur téléphone, la colonne de droite garde la taille du PC" },
 		-- Vague 63 (a205, L-202 point 1) : cadre des petites icônes, dans la barre de Roblox.
 		{ Path = "TopLeftRow", Optional = true, Note = "les petites icônes restent où Clément les a mises" },
 	} :: { Element },
@@ -1632,6 +1669,11 @@ table.insert(UI.Screens, {
 for _, screenDef in UI.Screens do
 	if screenDef.Name == "UI_SkillTree" then
 		table.insert(screenDef.Elements, { Path = "Tree.Tile_FittingRoom", Class = BUTTON, Optional = true, Note = "la cabine d'essayage s'achète par l'écran de la cabine" })
+		-- a481 (Cantin, 25/11) : tuiles des nœuds hors ligne (Config/SkillTree OfflineTime1 et OfflineTime2, +30 min chacun),
+		-- mêmes calques que les autres tuiles ; noms proposés à Clément, pas encore livrés : facultatives.
+		for _, tile in { "Tile_OfflineTime1", "Tile_OfflineTime2" } do
+			table.insert(screenDef.Elements, { Path = `Tree.{tile}`, Class = BUTTON, Optional = true, Note = "ce nœud hors ligne ne s'achète pas" })
+		end
 	end
 end
 -- a431 (L-332, Cantin, 24/11) : phrase de la compétence choisie (Description de Config/SkillTree), sous Header ; nom
@@ -1639,6 +1681,13 @@ end
 for _, screenDef in UI.Screens do
 	if screenDef.Name == "UI_SkillTree" then
 		table.insert(screenDef.Elements, { Path = "InfoPanel.NodeDesc", Class = "TextLabel", Optional = true, Note = "la phrase de la compétence n'est pas écrite" })
+	end
+end
+-- a476 (L-374, 25/11) : tuile de la compétence BoxLuck (Config/SkillTree, chance des colis ouverts), mêmes calques que les
+-- autres tuiles ; nom proposé à Clément, pas encore livré : facultatif (absente, la compétence ne s'achète pas).
+for _, screenDef in UI.Screens do
+	if screenDef.Name == "UI_SkillTree" then
+		table.insert(screenDef.Elements, { Path = "Tree.Tile_BoxLuck", Class = BUTTON, Optional = true, Note = "la compétence Box Luck ne s'achète pas" })
 	end
 end
 

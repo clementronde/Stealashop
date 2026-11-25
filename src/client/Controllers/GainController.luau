@@ -87,8 +87,20 @@
 --   GainController.FlashRank(précédent, depuis) -> number   rang de la plaque dans la tournée
 --   GainController.FlashGoal(posée, rang) -> number         transparence d'une bande du voile au plus fort
 --   GainController.GetPadState() -> { Rank, Notes, Waiting, FlashToken }   pour les bancs
+--   a472 (L-365, Config/CashFlash.SoundStart et Predict, Features.PadPredict / PadPredictDev) : Cash_Pad lu à partir de
+--   SoundStart s ; le client prévoit l'arrivée sur une de ses plaques (Shared/PadZone, la règle du serveur) et joue son
+--   et voile sans attendre le remote, qui ne les rejoue pas ; l'argent, le compteur et « +$X » restent ceux du serveur.
+--   GainController.GetPredictState() -> { On, Predicted, Confirmed, Pads, Waiting }   pour les bancs
 -- Pour un test dans Studio (barre de commande côté client) :
 --   GainController.GetActive() -> { Gains: number, Flyers: number, Pops: number, Bills: number, IncomeFlies: number, TrainFlies: number }
+--   GainController.GetPops() -> { Offsets: { Vector3 }, Voices: number }   a480 : apparitions autour du joueur encore
+--       visibles (décalages du monde depuis le HumanoidRootPart) et copies du son en cours.
+-- a480 (Clément via Cantin, 25/11 ; Features.TreadmillGainPops / TreadmillGainPopsDev, Config/TreadmillFX.GainPops) :
+--   allumé, le gain d'une seconde du tapis ne vole plus dans UI_HUD : il sort AUTOUR du joueur, dans le monde 3D, en
+--   GainPops.PerSecond copies de BB_Gain (angles et hauteurs variés, Shared/GainPops.Pick), chacune avec la Speed finale
+--   (Formulas.ShownSpeed, trail compris ; plus de « ×N ») et un son (GainPops.Sound, au plus MaxVoices à la fois). Le
+--   compteur Speed n'est plus retenu : il monte à la hausse de l'attribut et pulse à chaque apparition. Les bulles ×N
+--   (BubbleGain) gardent leur affichage.
 --   GainController.Superscript(text) -> string   « ×2 » en exposant Unicode (a178)
 
 local CollectionService = game:GetService("CollectionService")
@@ -195,6 +207,22 @@ local DisplayedConfig: any = if displayedModule and displayedModule:IsA("ModuleS
 local INCOME_FLY: any = if DisplayedConfig then DisplayedConfig.IncomeFly else nil
 local DISPLAY_TAG = "DisplayItem" -- tag de code des objets exposés (DisplayService)
 type ChaseApi = { IsChased: () -> boolean }
+
+-- a480 (Clément via Cantin, 25/11) : gains du tapis autour du joueur (Config/TreadmillFX.GainPops, Shared/GainPops ;
+-- facultatifs : bancs plus anciens). Coupé ou absent : l'affichage d'avant.
+local function optionalModule(parent: Instance?, name: string): any
+	local module = if parent then parent:FindFirstChild(name) else nil
+	if module == nil or not module:IsA("ModuleScript") then
+		return nil
+	end
+	local ok, result = pcall(require, module)
+	return if ok and type(result) == "table" then result else nil
+end
+local treadmillFx: any = optionalModule(Shared:FindFirstChild("Config"), "TreadmillFX")
+local GainPops: any = optionalModule(Shared, "GainPops")
+local POPS: any = if treadmillFx and GainPops and treadmillFx.GainPops and treadmillFx.GainPops.Enabled == true
+	then treadmillFx.GainPops
+	else nil
 
 -- Vague 59 (a192) : gains ponctuels qui volent (Config/HeistFeel.BillFly).
 local BILL = HeistFeel.BillFly
@@ -430,13 +458,14 @@ end
 -- Habille une copie (BB_Gain, sa Row, ou UI_HUD.TrainGainFly.Template de la vague 64) : texte, couleur, icône et « ×2 »
 -- du trail. `source` est le modèle qui porte les attributs <Sorte>Color et <Sorte>Icon de Clément.
 type Dressed = { amount: TextLabel?, icon: ImageLabel?, multiplier: TextLabel?, exponent: TextLabel? }
-local function dressGain(copy: Instance, source: Instance, kind: Kind, amount: number, text: string?): Dressed
+local function dressGain(copy: Instance, source: Instance, kind: Kind, amount: number, text: string?, plain: boolean?): Dressed
 	local amountLabel = typed(copy, "Amount", "TextLabel") :: TextLabel?
 	local icon = typed(copy, "Icon", "ImageLabel") :: ImageLabel?
 	local multiplierLabel = typed(copy, "Multiplier", "TextLabel") :: TextLabel?
 	-- Vague 47 (a155) : multiplicateur du trail (Speed seulement), même format que la boutique (« ×2 »).
+	-- a480 : `plain` (gains autour du joueur) : jamais de « ×N », le nombre affiché est déjà la Speed finale.
 	local trailText: string? = nil
-	if kind == SPEED then
+	if kind == SPEED and plain ~= true then
 		local trail = localPlayer:GetAttribute(TRAIL_ATTRIBUTE)
 		if type(trail) == "number" and trail == trail and trail > 1 and trail < math.huge then
 			trailText = `×{string.format("%g", trail)}`
@@ -603,6 +632,144 @@ local function floatGain(kind: Kind, amount: number, info: TweenInfo?, text: str
 		progress:Destroy()
 	end)
 	rise:Play()
+end
+
+------------------------------------------------------------------------------
+-- a480 : gains du tapis autour du joueur (Config/TreadmillFX.GainPops)
+------------------------------------------------------------------------------
+
+type Pop = { offset: Vector3, untilAt: number }
+local pops: { Pop } = {} -- apparitions encore visibles (écart minimal entre deux proches)
+local popVoices = 0 -- copies du son en cours (au plus GainPops.MaxVoices)
+local popTemplate: Sound? = nil
+local popTemplateLooked = false
+
+-- Décalages des apparitions encore visibles (les finies sont retirées).
+local function livePops(): { Vector3 }
+	local now = os.clock()
+	local offsets: { Vector3 } = {}
+	for index = #pops, 1, -1 do
+		if pops[index].untilAt <= now then
+			table.remove(pops, index)
+		else
+			table.insert(offsets, pops[index].offset)
+		end
+	end
+	return offsets
+end
+
+-- Le son d'une apparition : Assets/Sounds/<GainPops.Sound>, volume × VolumeScale, hauteur au hasard ; muet au-delà de
+-- MaxVoices copies en même temps (pas de saturation à 6 par seconde).
+local function popSound()
+	local spec = POPS
+	if spec == nil or popVoices >= spec.MaxVoices then
+		return
+	end
+	if not popTemplateLooked then
+		popTemplateLooked = true
+		local assets = ReplicatedStorage:FindFirstChild("Assets")
+		local folder = if assets then assets:FindFirstChild("Sounds") else nil
+		local found = if folder then folder:FindFirstChild(spec.Sound, true) else nil
+		popTemplate = if found and found:IsA("Sound") then found :: Sound else nil
+		if popTemplate == nil then
+			warnOnce("popSound", `[Gains] son {spec.Sound} absent d'Assets/Sounds : gains du tapis muets`)
+		end
+	end
+	local template = popTemplate
+	if template == nil then
+		return
+	end
+	local sound = template:Clone()
+	sound.Volume = template.Volume * spec.VolumeScale
+	sound.PlaybackSpeed = template.PlaybackSpeed * (1 + (random:NextNumber() * 2 - 1) * spec.PitchJitter)
+	sound.Parent = game:GetService("SoundService")
+	popVoices += 1
+	local done = false
+	local function finish()
+		if done then
+			return
+		end
+		done = true
+		popVoices -= 1
+		sound:Destroy()
+	end
+	sound.Ended:Once(finish)
+	task.delay(math.max(template.TimeLength, 0) + 2, finish) -- son jamais chargé : la voix est rendue quand même
+	sound:Play()
+end
+
+-- Une apparition « +X » (texte déjà fait, sans « ×N ») autour du joueur : copie de BB_Gain posée sur le
+-- HumanoidRootPart avec un décalage du monde (GainPops.Pick), qui grossit, monte de Rise et s'efface en Life s.
+-- false si rien n'a pu s'afficher (pas de BB_Gain ni de personnage).
+local function popWorld(text: string): boolean
+	local spec = POPS
+	local root = rootPart()
+	local gui = playerGui()
+	local assets = ReplicatedStorage:FindFirstChild("Assets")
+	local folder = if assets then assets:FindFirstChild("UI") else nil
+	local template = if folder then folder:FindFirstChild(GAIN_TEMPLATE) else nil
+	if spec == nil or root == nil or gui == nil or template == nil or not template:IsA("BillboardGui") then
+		if template == nil then
+			warnOnce("template", `[Gains] ReplicatedStorage/Assets/UI/{GAIN_TEMPLATE} absent : pas de gain autour du joueur`)
+		end
+		return false
+	end
+	local offset: Vector3 = GainPops.Pick(random, livePops(), spec)
+	table.insert(pops, { offset = offset, untilAt = os.clock() + spec.Life })
+	local billboard = (template :: BillboardGui):Clone()
+	local row = typed(billboard, "Row", "GuiObject") :: GuiObject?
+	local dressed = dressGain(billboard, template, SPEED, 0, text, true)
+	billboard.Adornee = root
+	billboard.StudsOffset = Vector3.zero
+	billboard.StudsOffsetWorldSpace = offset
+	if spec.Scale ~= 1 then
+		local s = billboard.Size
+		billboard.Size = UDim2.new(s.X.Scale * spec.Scale, s.X.Offset * spec.Scale, s.Y.Scale * spec.Scale, s.Y.Offset * spec.Scale)
+	end
+	local fades: { Fade } = {}
+	if dressed.amount then
+		table.insert(fades, { object = dressed.amount :: Instance, property = "TextTransparency", from = dressed.amount.TextTransparency })
+	end
+	if dressed.icon then
+		table.insert(fades, { object = dressed.icon :: Instance, property = "ImageTransparency", from = dressed.icon.ImageTransparency })
+	end
+	for _, descendant in billboard:GetDescendants() do
+		if descendant:IsA("UIStroke") then
+			table.insert(fades, { object = descendant :: Instance, property = "Transparency", from = (descendant :: UIStroke).Transparency })
+		end
+	end
+	billboard.Parent = gui
+	active.Gains += 1
+	if row then
+		local scale = Instance.new("UIScale")
+		scale.Name = COPY_SCALE
+		scale.Scale = FLOAT.PopFrom
+		scale.Parent = row
+		TweenService:Create(scale, GAIN_POP_INFO, { Scale = 1 }):Play()
+	end
+	local progress = Instance.new("NumberValue")
+	progress:GetPropertyChangedSignal("Value"):Connect(function()
+		local a = progress.Value
+		billboard.StudsOffsetWorldSpace = offset + Vector3.new(0, spec.Rise * a, 0)
+		local fade = math.clamp((a - FLOAT.FadeAt) / (1 - FLOAT.FadeAt), 0, 1)
+		for _, item in fades do
+			(item.object :: any)[item.property] = item.from + (1 - item.from) * fade
+		end
+	end)
+	local rise = TweenService:Create(progress, TweenInfo.new(spec.Life, FLOAT.Style, FLOAT.Direction), { Value = 1 })
+	rise.Completed:Connect(function()
+		active.Gains -= 1
+		billboard:Destroy()
+		progress:Destroy()
+	end)
+	rise:Play()
+	popSound()
+	return true
+end
+
+-- Pour les bancs : décalages des apparitions encore visibles et copies du son en cours.
+function GainController.GetPops(): { Offsets: { Vector3 }, Voices: number }
+	return { Offsets = livePops(), Voices = popVoices }
 end
 
 -- Un BB_Gain au plus par FloatGain.MinGap s et par sorte : les gains entre deux s'additionnent.
@@ -1289,6 +1456,14 @@ local function padSound()
 				local jitter: number = CashFlash.PitchJitter
 				local base: number = template.PlaybackSpeed
 				played.PlaybackSpeed = base * (1 + (random:NextNumber() * 2 - 1) * jitter)
+				-- a472 (L-365 point 1) : lu à partir de SoundStart s, pour sauter le « cha » du fichier (le fichier n'est
+				-- pas touché). pcall : un Sound qui refuserait la position joue du début, comme avant.
+				local start: any = CashFlash.SoundStart
+				if type(start) == "number" and start > 0 then
+					pcall(function()
+						played.TimePosition = start
+					end)
+				end
 			end
 			return
 		end
@@ -1412,9 +1587,8 @@ local function padOrClassic(total: number, releases: { () -> () })
 	end)
 end
 
--- DisplayController.OnCollect : une de ses plaques vidée par le joueur local.
-local function onPadCollect()
-	local now = os.clock()
+-- Au contact d'une plaque : son (a422) et voile ; renvoie true si le son est parti.
+local function contactFx(now: number): boolean
 	-- a422 (Cantin, 24/11) : le son part au contact, avant tout le reste ; gains hors ligne ouverts : classic le joue.
 	local sounded = CONTACT_SOUND and not screenOpen(offline)
 	if sounded then
@@ -1426,6 +1600,188 @@ local function onPadCollect()
 	local ok, err = pcall(flashVeil :: any, rank)
 	if not ok then
 		warnOnce("cashFlashError", `[Gains] voile de la plaque : {err}`)
+	end
+	return sounded
+end
+
+------------------------------------------------------------------------------
+-- a472 (L-365 point 5) : ramassage prévu par le client (Config/CashFlash.Predict, Shared/PadZone)
+------------------------------------------------------------------------------
+-- Chaque image, le HumanoidRootPart du joueur local est comparé aux plaques CollectPad_xx de SA parcelle avec la règle
+-- du serveur (PadZone.step, et PadZone.touched au Touched d'une plaque) : arrivée, délai de la plaque écoulé, plaque
+-- affichée (AmountGui allumé). Alors contactFx tout de suite (son et voile) et la plaque est notée `predicted` ; son
+-- remote CashCollect, arrivé moins de ConfirmWindow s après, ne rejoue ni l'un ni l'autre et fait le reste comme avant
+-- (compteur retenu jusqu'au premier billet, « +$X » à la hausse de Cash du serveur). Rien n'est prévu de l'argent.
+
+local PREDICT: any = if CashFlash and type(CashFlash.Predict) == "table" then CashFlash.Predict else nil
+local PREDICT_ON: boolean = FLASH_ON and CONTACT_SOUND and PREDICT ~= nil and PREDICT.Enabled == true
+local PLOT_TAG = "PlayerPlot" -- Contract/Models.Plot.Tag
+local OWNER_ATTRIBUTE = "OwnerUserId" -- posé par PlotService sur la parcelle
+local PAD_PATTERN = "^CollectPad_(%d+)$" -- comme DisplayService
+local AMOUNT_GUI = "AmountGui" -- comme DisplayService : allumé quand la plaque porte au moins 1 $
+local PLOT_RECHECK = 1 -- V0 proposé, absent du doc : s entre deux recherches de sa parcelle
+local padZone: any = nil -- Shared/PadZone
+local predictTracker: any = nil
+local predicted: { [number]: number } = {} -- [plaque] = os.clock() du son prévu, en attente de son remote
+local ownPlot: Instance? = nil
+local ownPads: { [number]: BasePart } = {}
+local padsDirty = true
+local plotCheckedAt = -math.huge
+local plotLinks: { RBXScriptConnection } = {}
+local predictCount = 0 -- pour les bancs : sons prévus
+local confirmCount = 0 -- pour les bancs : remotes qui ont confirmé une prévision
+
+local function padShown(slot: number): boolean
+	local pad = ownPads[slot]
+	local gui = if pad then Find.path(pad, AMOUNT_GUI) else nil
+	return gui ~= nil and gui:IsA("LayerCollector") and (gui :: LayerCollector).Enabled
+end
+
+local function predictPad(slot: number)
+	if screenOpen(offline) then
+		return -- gains hors ligne ouverts : l'encaissement d'avant (classic) joue Cash_Collect au remote
+	end
+	local now = os.clock()
+	predicted[slot] = now
+	predictCount += 1
+	contactFx(now)
+end
+
+local function localRoot(): BasePart?
+	local character = localPlayer.Character
+	local root = if character then character:FindFirstChild("HumanoidRootPart") else nil
+	return if root and root:IsA("BasePart") then root :: BasePart else nil
+end
+
+local function onOwnPadTouched(slot: number, hit: BasePart)
+	local character = localPlayer.Character
+	local root = localRoot()
+	if character == nil or root == nil or not hit:IsDescendantOf(character) or not ownPads[slot] then
+		return
+	end
+	local zone: any = padZone
+	local found = zone.touched(predictTracker, os.clock(), root.Position, ownPads, slot, padShown)
+	if found then
+		predictPad(found)
+	end
+end
+
+local touchLinked: { [BasePart]: boolean } = setmetatable({}, { __mode = "k" }) :: any
+
+local function scanOwnPads()
+	padsDirty = false
+	local pads: { [number]: BasePart } = {}
+	local plot = ownPlot
+	if plot then
+		for _, descendant in plot:GetDescendants() do
+			local digits = string.match(descendant.Name, PAD_PATTERN)
+			local slot = if digits then tonumber(digits) else nil
+			if slot and descendant:IsA("BasePart") and not pads[slot] then
+				local part = descendant :: BasePart
+				pads[slot] = part
+				if not touchLinked[part] then
+					touchLinked[part] = true
+					-- Contact d'un pied, comme le Touched du serveur (pcall : une plaque sans Touched compte à l'image).
+					pcall(function()
+						part.Touched:Connect(function(hit: BasePart)
+							if ownPads[slot] == part then
+								onOwnPadTouched(slot, hit)
+							end
+						end)
+					end)
+				end
+			end
+		end
+	end
+	ownPads = pads
+end
+
+local function setOwnPlot(plot: Instance?)
+	if plot == ownPlot then
+		return
+	end
+	for _, link in plotLinks do
+		link:Disconnect()
+	end
+	table.clear(plotLinks)
+	ownPlot = plot
+	padsDirty = true
+	if predictTracker then
+		predictTracker.onSlot = nil
+	end
+	if plot then
+		local function mark(inst: Instance)
+			if string.match(inst.Name, PAD_PATTERN) then
+				padsDirty = true
+			end
+		end
+		table.insert(plotLinks, plot.DescendantAdded:Connect(mark))
+		table.insert(plotLinks, plot.DescendantRemoving:Connect(mark))
+	end
+end
+
+local function predictTick()
+	local now = os.clock()
+	if now - plotCheckedAt >= PLOT_RECHECK then
+		plotCheckedAt = now
+		local mine: Instance? = nil
+		for _, plot in CollectionService:GetTagged(PLOT_TAG) do
+			if plot:GetAttribute(OWNER_ATTRIBUTE) == localPlayer.UserId then
+				mine = plot
+				break
+			end
+		end
+		setOwnPlot(mine)
+	end
+	if padsDirty then
+		scanOwnPads()
+	end
+	for slot, at in predicted do
+		if now - at > PREDICT.ConfirmWindow then
+			predicted[slot] = nil -- pas de remote : le serveur a refusé, rien d'autre ne bouge
+		end
+	end
+	if next(ownPads) == nil then
+		return
+	end
+	local root = localRoot()
+	local zone: any = padZone
+	local found = zone.step(predictTracker, now, if root then root.Position else nil, ownPads, padShown)
+	if found then
+		predictPad(found)
+	end
+end
+
+-- Pour les bancs : ramassages prévus par le client.
+function GainController.GetPredictState(): { On: boolean, Predicted: number, Confirmed: number, Pads: number, Waiting: number }
+	local pads = 0
+	for _ in ownPads do
+		pads += 1
+	end
+	local waiting = 0
+	for _ in predicted do
+		waiting += 1
+	end
+	return { On = PREDICT_ON and padZone ~= nil, Predicted = predictCount, Confirmed = confirmCount, Pads = pads, Waiting = waiting }
+end
+
+-- DisplayController.OnCollect : une de ses plaques vidée par le joueur local (remote CashCollect).
+local function onPadCollect(_amount: number?, slot: number?)
+	local now = os.clock()
+	local sounded: boolean
+	local at = if type(slot) == "number" then predicted[slot] else nil
+	if at and slot and now - at <= PREDICT.ConfirmWindow then
+		predicted[slot] = nil -- a472 : son et voile déjà partis à l'arrivée prévue
+		confirmCount += 1
+		sounded = true
+	else
+		if at and slot then
+			predicted[slot] = nil -- prévision trop vieille (le serveur l'avait refusée) : ce remote est un autre ramassage
+		end
+		sounded = contactFx(now)
+	end
+	if predictTracker and type(slot) == "number" then
+		padZone.confirm(predictTracker, slot, now) -- le délai de la plaque repart, comme au serveur
 	end
 	local note: PadNote = { at = now, landed = not vfxLands, claimed = false, sounded = sounded, onLand = nil }
 	pruneNotes()
@@ -1875,6 +2231,31 @@ function GainController.NoteBubble(gain: number)
 	bubbleAt = now
 end
 
+-- a480 : le gain d'une seconde du tapis, en Speed finale (Formulas.ShownSpeed, trail compris, comme le HUD), découpé en
+-- GainPops.PerSecond apparitions autour du joueur réparties sur Period s, même total ; le compteur pulse à chacune.
+-- false si la première n'a pas pu s'afficher (l'appelant fait l'affichage d'avant).
+local function showPops(amount: number): boolean
+	local spec = POPS
+	local pieces: { number } = GainPops.Split(shownSpeed(amount), spec.PerSecond, spec.MinPiece)
+	local count = #pieces
+	if count == 0 then
+		return true
+	end
+	if not popWorld(SPEED.Text(pieces[1])) then
+		return false
+	end
+	pulseSpeed(1, count)
+	local gap = spec.Period / count
+	for rank = 2, count do
+		task.delay(gap * (rank - 1), function()
+			if popWorld(SPEED.Text(pieces[rank])) then
+				pulseSpeed(rank, count)
+			end
+		end)
+	end
+	return true
+end
+
 local function onTraining(kind: Kind)
 	local amount, previous = riseOf(kind.Attribute)
 	if amount > 0 and localPlayer:GetAttribute(MACHINE_ATTRIBUTE) == kind.Machine then
@@ -1891,7 +2272,9 @@ local function onTraining(kind: Kind)
 				end
 			end
 		end
-		if kind == SPEED and TREAD ~= nil and CHUNKS > 1 then
+		if kind == SPEED and POPS ~= nil and showPops(amount) then
+			return -- a480 : autour du joueur, dans le monde 3D
+		elseif kind == SPEED and TREAD ~= nil and CHUNKS > 1 then
 			showPieces(amount, before)
 		elseif kind == SPEED and flyTreadmill(amount, before) then
 			return -- vague 64 : il vole ; le compteur pulse à son arrivée
@@ -1975,6 +2358,25 @@ function GainController.Start()
 		local onCollect: any = if display then display.OnCollect else nil
 		if type(onCollect) == "function" then
 			(onCollect :: any)(onPadCollect)
+			-- a472 (L-365 point 5) : ramassage prévu par le client (Features.PadPredict / PadPredictDev).
+			if PREDICT_ON then
+				local module = Shared:FindFirstChild("PadZone")
+				local okZone, zone = pcall(function(): any
+					return if module and module:IsA("ModuleScript") then require(module) :: any else nil
+				end)
+				if okZone and type(zone) == "table" then
+					padZone = zone
+					predictTracker = (zone :: any).newTracker()
+					RunService.Heartbeat:Connect(function()
+						local ok, err = pcall(predictTick :: any) -- :: any : sans lui, l'ancien solveur croit que pcall ne renvoie qu'une valeur
+						if not ok then
+							warnOnce("padPredict", `[Gains] ramassage prévu : {err}`)
+						end
+					end)
+				else
+					warnOnce("padPredict", "[Gains] Shared/PadZone absent : son et voile au remote CashCollect, comme avant")
+				end
+			end
 		end
 	end
 	onInventory() -- première lecture : rien ne vole

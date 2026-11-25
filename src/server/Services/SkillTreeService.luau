@@ -41,17 +41,20 @@
 --                   (WindowService.AddHitGate ; au voleur, un Notify au plus toutes les LOCK_NOTICE_INTERVAL s),
 --                   attribut LockedUntil de la parcelle = fin (heure serveur), puis Lock.Cooldown (120) s de
 --                   recharge après la fin (attribut LockReadyAt du Player). Verrou levé si la boutique est libérée.
---   Cameras         sur chaque coup compté sur la vitrine de sa boutique (WindowService.OnHit, coups refusés
+--   Cameras         (a467, L-373 : seulement avec SkillTree.DefenseOn("Cameras"), sinon aucun effet)
+--                   sur chaque coup compté sur la vitrine de sa boutique (WindowService.OnHit, coups refusés
 --                   par les protections exclus) : niveau 1, le propriétaire est alerté dès le 1er coup, une
 --                   fois par attaque (Notify « Warning », comme l'alarme de la casse de PvPService) ; une
 --                   attaque = les coups d'un même joueur sur cette vitrine à moins de ATTACK_GAP s d'écart.
 --                   Niveau 2 et plus : à la même alerte, CameraSpotted(attaquant, fin) au seul propriétaire,
 --                   fin = heure serveur + Effects[niveau] s (30) : CameraAlertController (client) le surligne
---                   à travers les murs. Niveau 3 (a408, Features.CameraRadar) : rouge vif et radar chez le client
---                   (CameraAlertController), CameraSpotted relancé à la prise d'un objet (ShopDefenseService).
+--                   à travers les murs. Niveau 3 (a408 ; SkillTree.DefenseOn("CameraRadar"), a467) : rouge vif et radar
+--                   chez le client (CameraAlertController), CameraSpotted relancé à la prise d'un objet (ShopDefenseService).
 --   Bodyguards et DoorGuard (a408) : agents de la boutique, ShopDefenseService (Config/ShopDefense).
 --   PotionLuck et PotionTime (vague 28) : lus par PotionService avec GetEffect (délai entre deux potions
 --                   × Effects[niveau], durée d'un effet × Effects[niveau]) ; rien à brancher ici.
+--   BoxLuck         (a476, L-374 ; Features.SkillBoxLuck / SkillBoxLuckDev) : chance de chaque colis que le joueur ouvre
+--                   × Effects[niveau], lue par StoreHeistService dans l'attribut Skill_BoxLuck (Shared/OpenLuck) ; rien ici.
 -- Les compétences « Soon » (Coded = 0) n'ont aucun effet.
 --
 -- API (serveur) :
@@ -326,7 +329,9 @@ local function onWindowHit(attacker: Player, _windowId: string, kind: string, mo
 		return
 	end
 	local level = SkillTreeService.GetLevel(owner, "Cameras")
-	if level < 1 then
+	-- a467 (L-373) : caméras coupées (Features.Cameras, ou CamerasDev dans le jeu DEV) : aucun effet, même à un
+	-- niveau posé.
+	if level < 1 or not SkillTree.DefenseOn("Cameras") then
 		return
 	end
 	local byAttacker = attacks[owner]

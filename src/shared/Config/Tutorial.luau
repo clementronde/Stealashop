@@ -256,9 +256,10 @@ local Tutorial = {
 		-- Vague 52 (a169, L-163 : n'importe qui peut braquer n'importe qui ; textes V0, Clément valide ; plus de
 		-- 8 mots, comme ShieldEndMessage). AnyoneCanRob : étape 12, porte du bot pas encore cassée (le nombre de
 		-- coups est celui de la porte d'une boutique de joueur, PvP.DoorHits d'a159 : 40). ProtectShop : à la fin
-		-- du tuto (bot volé et ramené, ou fin sans bot), affiché MessageDuration s avant de tout cacher.
+		-- du tuto (bot volé et ramené, ou fin sans bot), affiché MessageDuration s avant de tout cacher. Sans Cameras
+		-- depuis a467 (L-373 : caméras « Soon » en PROD ; texte tranché par Cantin le 25/11).
 		AnyoneCanRob = `Anyone can rob anyone: every shop door breaks in {PvP.DoorHits} hits!`,
-		ProtectShop = "Protect your shop: Reinforced Door, Lock, Cameras!",
+		ProtectShop = "Protect your shop: Reinforced Door and Lock!",
 		-- Vague 61 (a199, Cantin : « expliquer qu'on te donne de l'argent pour ce tuto ») : étapes 7 et 8, le don versé
 		-- (Tutorial.Gifts) et assez d'argent pour payer ; flèche vers la boutique. V0, 8 mots.
 		ToolGift = `Here's ${TOOL_GIFT} for the tutorial: buy the {TOOL_NAME}!`,

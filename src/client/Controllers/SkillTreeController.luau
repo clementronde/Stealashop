@@ -8,7 +8,7 @@
 -- Rôle :
 --   - UI_HUD.SkillTreeButton (visible dans Studio depuis le 2026-11-14, L-159) : montré dans tous ses exemplaires (LeftRail sur PC,
 --     LeftRailTouch sur téléphone), il ouvre l'écran (un 2e appui le ferme). Sur téléphone (écran tactile sans
---     clavier, même règle que la barre du bas), LeftRailTouch est montré et LeftRail caché (décision de Clément,
+--     clavier, même règle que la barre du bas), LeftRailTouch est montré et LeftRail caché, RightRailTouch à la place de RightRail (a471, L-364) (décision de Clément,
 --     L-096, version B : la colonne de 5 boutons déborde sur l'argent). CloseButton ferme l'écran. Groupe
 --     ScreenGroup « Menu » : un seul écran du groupe à la fois (Motion.SetCloser).
 --   - Tuiles (12, posées à la main dans Tree, pas de Template) : seuls les visibilités et les textes changent.
@@ -134,8 +134,8 @@ type Screen = {
 local SCREEN = "UI_SkillTree"
 local HUD = "UI_HUD"
 local HUD_BUTTON = "SkillTreeButton"
-local RAIL_PC = "LeftRail"
-local RAIL_TOUCH = "LeftRailTouch"
+-- Cadres du HUD, { PC, téléphone }. a471 (L-364) : RightRailTouch, miroir de LeftRailTouch, à la place de RightRail.
+local RAILS: { { string } } = { { "LeftRail", "LeftRailTouch" }, { "RightRail", "RightRailTouch" } }
 local CASH_ATTRIBUTE = "Cash" -- posé par DataService sur le Player
 local REMOTE = "BuySkill"
 local LAYERS: { LayerName } = { "Bought", "Available", "Locked", "RebirthLocked" }
@@ -921,11 +921,15 @@ local function bindHud(gui: Instance)
 	end
 	hudBound[gui] = true
 	-- Téléphone (L-096, version B) : la colonne en 2 colonnes à la place de la colonne du PC.
-	local pc = guiObject(gui, RAIL_PC)
-	local touch = guiObject(gui, RAIL_TOUCH)
-	if pc and touch and isPhone() then
-		touch.Visible = true
-		pc.Visible = false
+	-- a471 (L-364) : pareil pour la colonne de droite ; chaque paire seule (un cadre absent ne change rien à l'autre côté).
+	local phone = isPhone()
+	for _, pair in RAILS do
+		local pc = guiObject(gui, pair[1])
+		local touch = guiObject(gui, pair[2])
+		if pc and touch and phone then
+			touch.Visible = true
+			pc.Visible = false
+		end
 	end
 end
 

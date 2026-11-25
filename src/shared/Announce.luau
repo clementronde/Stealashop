@@ -14,6 +14,8 @@
 --   Announce.steal(thief, victim, itemId, income)             annonce 3, si la rareté atteint StealMinRarity
 --   Announce.serverLuck(buyer, multiplier, minutes, running?, icon?, plain)   annonce 4 ; plain = texte d'avant
 --   Announce.strip(text) -> string                             texte sans balises RichText
+--   Announce.valueOn() -> boolean                               a475 (L-372) : annonces de valeur allumées (Features)
+--   Announce.itemValue(template, detail, player, itemId, mutation, value, except?)   a475 : objet de grande valeur
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -91,14 +93,17 @@ function Announce.steal(thief: Player, victim: Player, itemId: string, income: s
 	if rarity.Order < minimum.Order then
 		return
 	end
-	local message = fill(Settings.StealText, {
+	-- a475 (L-372 point 3) : la valeur dans la phrase (StealValueText), Detail vide ; `income` vaut « +$5K/s » (Format.income).
+	local withValue = Announce.valueOn() and type((Settings :: any).StealValueText) == "string"
+	local message = fill(if withValue then (Settings :: any).StealValueText else Settings.StealText, {
 		thief = thief.DisplayName,
 		victim = victim.DisplayName,
 		item = item.DisplayName,
 		a = if string.find(rarity.DisplayNameUpper, "^[AEIOU]") then "an" else "a",
 		rarity = Announce.rarityText(rarity),
+		value = (string.gsub(income, "^%+", "")),
 	})
-	Announce.send(message, income, Settings.ItemIconPrefix .. itemId, nil, { thief, victim })
+	Announce.send(message, if withValue then "" else income, Settings.ItemIconPrefix .. itemId, nil, { thief, victim })
 end
 
 function Announce.serverLuck(buyer: Player, multiplier: number, minutes: number, running: number?, icon: string?, plain: string)
@@ -110,6 +115,54 @@ function Announce.serverLuck(buyer: Player, multiplier: number, minutes: number,
 		else fill(Settings.ServerLuckDetail, { length = length })
 	local icons = if icon then `{icon}|{Settings.ServerLuckIcon}` else Settings.ServerLuckIcon
 	Announce.send(message, detail, icons, plain)
+end
+
+-- a475 (L-372) : annonces de valeur allumées (Features.ValueAnnounce partout, ou ValueAnnounceDev dans le jeu DEV,
+-- Config/ProductIds.IsDev) et annonces allumées (Config/Announce.Enabled). Modules absents (bancs) : false.
+function Announce.valueOn(): boolean
+	if Settings.Enabled ~= true then
+		return false
+	end
+	local ok, on = pcall(function(): boolean
+		local features = require(Config:FindFirstChild("Features") :: ModuleScript) :: any
+		if features.ValueAnnounce == true then
+			return true
+		end
+		if features.ValueAnnounceDev ~= true then
+			return false
+		end
+		local ids = Config:FindFirstChild("ProductIds")
+		return ids ~= nil and (require(ids :: ModuleScript) :: any).IsDev == true
+	end)
+	return ok and on == true
+end
+
+-- a475 (L-372 points 1 et 2) : « Alice got a MYTHIC Gold Cat worth $225B/s! » (template = Config/Announce.SecuredText
+-- ou CarryText), icône de l'objet, à tous sauf ceux de `except`. La valeur et le seuil sont décidés par l'appelant
+-- (CelebrationService, serveur). Rien si l'objet ou sa rareté est inconnu.
+function Announce.itemValue(template: string, detail: string, player: Player, itemId: string, mutation: any, value: number, except: { Player }?)
+	local item = Items.ById[itemId]
+	local rarity = if item then Rarities.ById[item.Rarity] else nil
+	if item == nil or rarity == nil then
+		return
+	end
+	local name = item.DisplayName
+	local okName, named = pcall(function(): string
+		return (require(Config:FindFirstChild("Mutations") :: ModuleScript) :: any).ItemName(name, mutation)
+	end)
+	local okValue, money = pcall(function(): string
+		return (require(Shared:FindFirstChild("Format") :: ModuleScript) :: any).money(value)
+	end)
+	local values = {
+		player = player.DisplayName,
+		item = if okName and type(named) == "string" then named else name,
+		a = if string.find(rarity.DisplayNameUpper, "^[AEIOU]") then "an" else "a",
+		rarity = rarity.DisplayNameUpper,
+		value = (if okValue and type(money) == "string" then money else `${math.floor(value)}`) .. "/s",
+	}
+	local plain = fill(template, values)
+	values.rarity = Announce.rarityText(rarity)
+	Announce.send(fill(template, values), detail, Settings.ItemIconPrefix .. itemId, plain, except)
 end
 
 return Announce

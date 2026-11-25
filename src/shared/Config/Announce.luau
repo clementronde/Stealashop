@@ -50,6 +50,22 @@ local Announce = {
 	ServerLuckDetail = "Rarer boxes for everyone · {length}", -- V0 (exemple de Clément)
 	ServerLuckQueuedDetail = "Starts after the current {current} · {length}", -- V0
 	ServerLuckIcon = "UI_Icon_DP_Luck3", -- repli si l'icône du produit n'est pas livrée (L-240 point 2)
+
+	-- 5. a475 (L-372, Clément 25/11) : objets de grande valeur (Features.ValueAnnounce ou ValueAnnounceDev ;
+	-- CelebrationService). Valeur = $/s de l'objet, mutation et poids compris (celui de BB_Carry) ; {value} = « $225B/s ».
+	-- {player}, {item} (nom précédé de sa mutation), {rarity} = rareté en couleur, {a} = « a » ou « an ».
+	ValueMinIncome = 25_000, -- V0 : $/s à partir duquel un objet est annoncé (revenu d'un Mythique de base)
+	ValueGap = 10, -- V0 : s au moins entre deux annonces du même genre (ramené ; en fuite) : anti-spam
+	-- 5a. Objet ramené en zone safe (rangé par UnboxService, ou volé au bot et déposé) ; un objet volé à un joueur a déjà
+	-- l'annonce 3. Envoyée aux autres joueurs (lui a la carte ITEM SECURED) ; SecuredToSelf = true : à lui aussi.
+	SecuredText = "{player} got {a} {rarity} {item} worth {value}!", -- V0 (exemple de Clément)
+	SecuredDetail = "", -- V0 : sans petite ligne
+	SecuredToSelf = false,
+	-- 5b. Objet en fuite, dès qu'il est pris (une fois par objet). Envoyée à tous sauf le porteur et sa victime.
+	CarryText = "{player} is escaping with {a} {rarity} {item} worth {value}!", -- V0
+	CarryDetail = "Catch them before the safe zone!", -- V0
+	-- 5c. La valeur dans l'annonce 3 (vol chez un joueur) ; Detail vide (la valeur est dans la phrase).
+	StealValueText = "{thief} stole {a} {rarity} {item} worth {value} from {victim}!", -- V0
 }
 
 return Announce

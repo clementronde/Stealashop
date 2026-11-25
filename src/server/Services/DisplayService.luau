@@ -126,6 +126,10 @@
 --       soit le joueur, sans yield. Renvoie le nombre d'objets posés sur un présentoir (0 : rien à
 --       changer, ou pas de parcelle).
 --       Vague 63 (a206, L-192 Q3) : un exposé remplacé va aussi dans la RÉSERVE (au bout, du meilleur au moins bon).
+--       a484 (Cantin, 25/11 ; Features.EquipBestOrder, EquipBestOrderDev) : allumé, les mêmes meilleurs (même critère)
+--       prennent les présentoirs utilisables dans l'ordre de Shared/DisplayOrder, vu depuis l'entrée (rez-de-chaussée puis
+--       étage ; à chaque étage mur gauche, mur droit, puis les présentoirs du milieu ; du plus près de l'entrée au fond) : le meilleur sur le premier, déjà exposés
+--       compris (ils se réordonnent). Renvoie alors le nombre d'objets posés ou déplacés.
 --   Réserve (vague 63, a206 ; L-192 Q3, L-202 point 4 ; Config/Displayed) : champ Reserve du profil, liste d'uids
 --   d'objets ni exposés, ni au coffre-fort, ni sous antivol, au plus ReserveMax (V0 : 30 ; pleine, un objet remplacé
 --   reste hors liste, dans Items). Nettoyée à chaque usage ; publiée dans l'attribut DisplayReserve du Player (uids
@@ -225,7 +229,7 @@
 --     CanTouch). Une arrivée = un seul ramassage de tout ce que la plaque contient (vague 24, retour
 --     de Cantin du 2026-11-11 : ça ramassait plusieurs fois). Rester dessus ne ramasse pas davantage :
 --     les Touched répétés des pieds ne comptent pas, et le joueur ne quitte la plaque qu'une fois son
---     HumanoidRootPart hors d'une zone de sortie plus large (PAD_EXIT_MARGIN, PAD_EXIT_ABOVE) pendant
+--     HumanoidRootPart hors d'une zone de sortie plus large (PAD_EXIT_MARGIN, PAD_EXIT_ABOVE : Shared/PadZone) pendant
 --     PAD_EXIT_DELAY s : marcher ou sauter sur la plaque ne la fait pas « quitter ». Passer sur une
 --     autre plaque la ramasse tout de suite (plaques indépendantes). Délai par plaque (L-106 point 12,
 --     remplace L-091 : deux textes de gain se superposaient) : une même plaque attend PAD_COOLDOWN s
@@ -281,6 +285,8 @@ local DataService = require(script.Parent.DataService)
 local PlotService = require(script.Parent.PlotService)
 local ShopGrowth = require(ReplicatedStorage.Shared.Config.ShopGrowth) -- a280 : 2e étage
 local ShopFloor = require(ReplicatedStorage.Shared.ShopFloor) -- a280
+local PadZone = require(ReplicatedStorage.Shared.PadZone) -- a472 (L-365) : volume des plaques, partagé avec le client
+local DisplayOrder = require(ReplicatedStorage.Shared.DisplayOrder) -- a484 : ordre des présentoirs d'Equip Best
 
 type Data = ProfileTypes.Data
 type ItemEntry = ProfileTypes.Item
@@ -370,20 +376,12 @@ local PAD_CHECK_INTERVAL = 0.1
 -- V0 proposé, absent du doc : délai entre deux recherches des plaques d'une parcelle quand un
 -- présentoir débloqué n'a pas la sienne (voir l'en-tête).
 local PAD_RESCAN_INTERVAL = 5
--- V0 proposé, absent du doc : volume où l'on ramasse : l'emprise de la plaque élargie de PAD_MARGIN,
--- de PAD_BELOW sous son dessus à PAD_ABOVE au-dessus (le HumanoidRootPart d'un R15 debout est à
--- environ 3 studs du sol).
-local PAD_MARGIN = 0.5
-local PAD_BELOW = 1
-local PAD_ABOVE = 6
--- V0 proposés, absents du doc (vague 24) : zone de sortie, plus large que la zone d'arrivée, et
--- temps passé hors d'elle avant de pouvoir ramasser de nouveau la même plaque (un saut monte
--- d'environ 7 studs, le HumanoidRootPart d'un R15 qui marche oscille).
-local PAD_EXIT_MARGIN = 2
-local PAD_EXIT_ABOVE = 12
-local PAD_EXIT_DELAY = 0.3
--- L-106 point 12 (Clément, 2026-11-12) : délai d'1 s par plaque entre deux ramassages de la même plaque.
-local PAD_COOLDOWN = 1
+-- a472 (L-365 point 5) : volume où l'on ramasse (PadZone.Margin, Below, Above), zone de sortie (ExitMargin,
+-- ExitAbove, ExitDelay) et délai d'une plaque (Cooldown) dans Shared/PadZone, pour que le client prévoie le ramassage
+-- avec la même règle ; valeurs inchangées (V0 proposés, absents du doc ; vague 24 ; L-106 point 12 de Clément,
+-- 2026-11-12 : délai d'1 s par plaque entre deux ramassages de la même plaque).
+local PAD_EXIT_DELAY = PadZone.ExitDelay
+local PAD_COOLDOWN = PadZone.Cooldown
 -- V0 proposé, absent du doc : borne de la recherche des présentoirs bonus (DisplaySlot_21 et
 -- suivants, DEV-100) ; pas une règle de jeu, le gamepass en donne 4 (Config/Monetization).
 local BONUS_SLOT_LIMIT = 10
@@ -1050,38 +1048,9 @@ local function isOnPlot(player: Player, plot: Model, refs: PlotRefs): boolean
 	return math.abs(p.X) <= boxSize.X / 2 and math.abs(p.Z) <= boxSize.Z / 2
 end
 
--- `position` dans le volume de la plaque élargi de `margin` sur les côtés, jusqu'à `above` au-dessus.
--- La hauteur se lit sur l'axe de la plaque le plus tourné vers le ciel : Clément pose ses plaques à plat avec
--- l'épaisseur sur Y ou sur Z (plaques carrées tournées vers la porte, L-091), dans un sens ou dans l'autre.
-local function isOnPad(position: Vector3, pad: BasePart, margin: number?, above: number?): boolean
-	local side = margin or PAD_MARGIN
-	local cf = pad.CFrame
-	local p = cf:PointToObjectSpace(position)
-	local half = pad.Size / 2
-	-- Le haut du monde vu dans le repère de la plaque : composante verticale de ses axes X, Y et Z.
-	local up = cf:PointToObjectSpace(cf.Position + Vector3.new(0, 1, 0))
-	local ups = { up.X, up.Y, up.Z }
-	local coords = { p.X, p.Y, p.Z }
-	local halves = { half.X, half.Y, half.Z }
-	local axis = 1
-	for i = 2, 3 do
-		if math.abs(ups[i]) > math.abs(ups[axis]) then
-			axis = i
-		end
-	end
-	for i = 1, 3 do
-		if i ~= axis and math.abs(coords[i]) > halves[i] + side then
-			return false
-		end
-	end
-	local height = if ups[axis] >= 0 then coords[axis] else -coords[axis]
-	return height >= halves[axis] - PAD_BELOW and height <= halves[axis] + (above or PAD_ABOVE)
-end
-
--- `position` encore dans la zone de sortie de la plaque (voir l'en-tête).
-local function isNearPad(position: Vector3, pad: BasePart): boolean
-	return isOnPad(position, pad, PAD_EXIT_MARGIN, PAD_EXIT_ABOVE)
-end
+-- `position` dans le volume d'arrivée de la plaque, ou dans sa zone de sortie (voir l'en-tête) : Shared/PadZone (a472).
+local isOnPad = PadZone.isOnPad
+local isNearPad = PadZone.isNearPad
 
 ------------------------------------------------------------------------------
 -- Plaques de ramassage CollectPad_xx (voir l'en-tête)
@@ -2498,7 +2467,29 @@ function DisplayService.GetSlotStates(player: Player): { [number]: SlotState }
 	return states
 end
 
--- Equip Best (règle V0 dans l'en-tête). Sans yield.
+-- a484 : présentoirs `slots` dans l'ordre de présentation (Shared/DisplayOrder) : position de chacun dans le repère du
+-- pivot de la boutique, axe donné par sa porte PlotDoor, étage = dans le Floor_2.
+local DOOR_NAME = "PlotDoor"
+local function presentationOrder(plot: Model, refs: PlotRefs, slots: { number }): { number }
+	local stands: { DisplayOrder.Stand } = {}
+	local floor = refs.floor
+	for _, index in slots do
+		local attachment = refs.slots[index]
+		if attachment then
+			table.insert(stands, { index = index, position = attachment.WorldPosition, upper = floor ~= nil and attachment:IsDescendantOf(floor) })
+		end
+	end
+	local door = plot:FindFirstChild(DOOR_NAME)
+	local doorAt: Vector3? = nil
+	if door and door:IsA("BasePart") then
+		doorAt = (door :: BasePart).Position
+	elseif door and door:IsA("Model") then
+		doorAt = (door :: Model):GetPivot().Position
+	end
+	return DisplayOrder.Sort(plot:GetPivot(), doorAt, stands)
+end
+
+-- Equip Best (règle V0 dans l'en-tête ; a484 : ordre des présentoirs avec Features.EquipBestOrder). Sans yield.
 function DisplayService.EquipBest(player: Player): number
 	local data, account, plot = context(player)
 	if data == nil or account == nil or plot == nil then
@@ -2567,8 +2558,45 @@ function DisplayService.EquipBest(player: Player): number
 	for _, candidate in bumped do
 		addToReserve(data, candidate.uid, inHandOf(player))
 	end
-	-- … et les meilleurs pas encore exposés prennent les présentoirs libres, dans l'ordre.
 	local moved = 0
+	if DisplayOrder.Enabled() then
+		-- a484 (Cantin, 25/11 ; Features.EquipBestOrder) : les meilleurs, du meilleur au moins bon, prennent les
+		-- présentoirs dans l'ordre vu depuis l'entrée (Shared/DisplayOrder), déjà exposés compris. Tout est calculé
+		-- avant d'écrire, sans yield : chaque meilleur a un seul présentoir, aucun objet n'est perdu ni en double.
+		local order = presentationOrder(plot, refs, slots)
+		local target: { [string]: number } = {}
+		local rank = 0
+		for _, candidate in candidates do
+			if best[candidate.uid] and rank < #order then
+				rank += 1
+				target[candidate.uid] = order[rank]
+			end
+		end
+		local before: { [number]: string } = {}
+		for _, index in order do
+			local key = tostring(index)
+			before[index] = data.Display[key]
+			data.Display[key] = nil
+		end
+		for key, uid in table.clone(data.Display) do
+			if target[uid] ~= nil then
+				data.Display[key] = nil -- jamais le même objet sur deux présentoirs
+			end
+		end
+		for uid, index in target do
+			data.Display[tostring(index)] = uid
+			if before[index] ~= uid then
+				moved += 1
+			end
+		end
+		reconcile(player, account, data, plot)
+		refreshInventory(player)
+		if IS_STUDIO then
+			print(`[DisplayService] {player.Name} : Equip Best (ordre des présentoirs), {moved} objet(s) posé(s) ou déplacé(s), revenu {Format.money(account.income)}/s`)
+		end
+		return moved
+	end
+	-- … et les meilleurs pas encore exposés prennent les présentoirs libres, dans l'ordre.
 	local position = 1
 	for _, candidate in candidates do
 		if best[candidate.uid] and displayedAt[candidate.uid] == nil then

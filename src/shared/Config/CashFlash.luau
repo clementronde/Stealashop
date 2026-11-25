@@ -9,6 +9,22 @@
 
 local DeepFreeze = require(script.Parent.DeepFreeze)
 
+-- Module de Config chargé s'il est là (bancs à liste de modules fixe), comme Config/Outlines.
+local function optional(name: string): any
+	local found, module = pcall(function(): any
+		return script.Parent:FindFirstChild(name)
+	end)
+	if found and module ~= nil then
+		local ok, result = pcall(require, module :: any)
+		if ok and type(result) == "table" then
+			return result
+		end
+	end
+	return {}
+end
+local Features: any = optional("Features")
+local ProductIds: any = optional("ProductIds")
+
 local CashFlash = {
 	-- false : tout comme avant L-299 (compteur tout de suite, son Cash_Collect, pas de voile).
 	Enabled = true, -- V0
@@ -37,7 +53,7 @@ local CashFlash = {
 	-- Assets/Sounds/Cash), PlaybackSpeed × (1 ± PitchJitter) au hasard, part au contact depuis a422 (SoundOnContact,
 	-- plus bas). Cash_Collect n'est plus joué sur les plaques (il reste pour les autres gains, et en secours si Sound
 	-- manque). Sans billets (VISUAL EFFECTS sur OFF, compteur hors écran) : tout de suite.
-	RollTime = 0.3, -- V0 (L-299, « ~0,3 s »)
+	RollTime = 0.2, -- a472 (L-365 point 3, Clément 25/11) : 0,3 → 0,2 (L-299 : « ~0,3 s »)
 	PopScale = 1.15, -- V0 (L-299)
 	PopUpTime = 0.08, -- V0 (L-299, « ~0,08 s »)
 	PopDownTime = 0.3, -- V0 (L-299, « ~0,3 s »)
@@ -50,6 +66,10 @@ local CashFlash = {
 	-- (L-299).
 	SoundOnContact = true, -- V0 proposé (Cantin, 24/11)
 	FallbackSound = "Cash_Collect", -- V0 proposé (Cantin, 24/11) : un son part toujours au contact, même sans Cash_Pad
+	-- a472 (L-365 point 1, Clément 25/11) : Sound est lu à partir de SoundStart s (TimePosition de la copie jouée), pour
+	-- sauter le « cha » du fichier Cash_Pad et entendre son « ching » (vers 0,2 s dans le fichier) environ 0,1 s après le
+	-- contact. 0 : du début, comme avant. Pas FallbackSound (autre fichier), lu du début.
+	SoundStart = 0.12, -- V0 (L-365 : « environ 0,12 s »)
 
 	-- Appariement (V0 proposé, absent du doc) : la hausse de Cash et le remote CashCollect de la plaque arrivent presque
 	-- ensemble, dans un ordre qui n'est pas garanti. Une hausse de CashCollected sans plaque vue attend le remote au plus
@@ -57,6 +77,19 @@ local CashFlash = {
 	-- attend son premier billet au plus LandTimeout s (filet de sécurité), puis le compteur part quand même.
 	MatchWindow = 0.3, -- V0 proposé : secondes
 	LandTimeout = 2, -- V0 proposé : secondes
+
+	-- a472 (L-365 point 5, Clément 25/11) : le client prévoit le ramassage. Le HumanoidRootPart du joueur local entre dans
+	-- le volume d'une de SES plaques (Shared/PadZone : la même règle que DisplayService, délai d'1 s de la plaque écoulé),
+	-- plaque affichée (AmountGui allumé : au moins 1 $) : Sound et le voile partent tout de suite, sans attendre le remote
+	-- CashCollect (un ping de gagné en ligne). Le serveur reste seul à payer : le compteur, CashRow et « +$X » attendent
+	-- toujours la hausse de Cash du serveur, comme avant. Le remote de cette plaque arrivé moins de ConfirmWindow s après
+	-- ne rejoue ni le son ni le voile ; pas de remote (le serveur a refusé) : rien d'autre ne bouge.
+	-- Interrupteurs : Features.PadPredict (partout, PROD compris) et Features.PadPredictDev (jeu DEV seulement,
+	-- Config/ProductIds.IsDev). Coupé : son et voile au remote CashCollect, comme avant (a422).
+	Predict = {
+		Enabled = Features.PadPredict == true or (Features.PadPredictDev == true and ProductIds.IsDev == true),
+		ConfirmWindow = 1, -- V0 proposé, absent du doc : secondes (un ping lent et la cadence de 0,1 s du serveur y tiennent)
+	},
 }
 
 export type CashFlash = typeof(CashFlash)

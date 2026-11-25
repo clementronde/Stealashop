@@ -52,6 +52,18 @@ local Outlines = {
 	MaxOutlines = 60, -- L-305
 	RefreshInterval = 0.25, -- V0 : tri par distance 4 fois par seconde (comme Config/ShelfBoxes)
 
+	-- a473 (L-369, Clément 25/11) : contours toujours visibles, à toute distance et hors des MaxOutlines ci-dessus
+	-- (Features.BdOutlinesHub, ou BdOutlinesHubDev et jeu DEV ; seulement avec Enabled). Dans la zone safe
+	-- (Shared/SafeZone) : les comptoirs WeaponShop, AuraShop, RobuxShop, PawnShop, ENV_Hub_FreeGift et ENV_Hub_Wheel, et
+	-- les éléments de la boutique du joueur local (porte, tapis, objets exposés, présentoir à acheter, panneaux
+	-- UpgradeSign) ; partout : son outil en main et l'objet porté au-dessus de sa tête. MaxPinned Highlight de plus dans
+	-- la réserve, créés au départ avec les autres : MaxOutlines + MaxPinned = 100 Highlight au plus, sous les 255 de
+	-- Roblox (L-305 ; 40 vus à la fois par Clément). Plus d'éléments que MaxPinned : outil et objet porté d'abord, puis
+	-- les stands, puis la boutique par distance ; les autres suivent la règle de près.
+	PinnedEnabled = (Features.BdOutlines == true or (Features.BdOutlinesDev == true and ProductIds.IsDev == true))
+		and (Features.BdOutlinesHub == true or (Features.BdOutlinesHubDev == true and ProductIds.IsDev == true)),
+	MaxPinned = 40, -- V0 : 6 stands, outil, objet porté, porte, présentoir, panneau, tapis et jusqu'à 24 objets exposés
+
 	-- Invite affichée (ProximityPromptService.PromptShown) : l'élément de la liste qui la contient ; sinon (invite
 	-- posée à côté, comme celle d'un colis, sur le ShelfSlot_xx de son rayon) l'élément de la liste le plus proche de
 	-- l'invite, à FocusMatchDistance studs au plus.

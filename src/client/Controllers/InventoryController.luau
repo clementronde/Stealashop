@@ -88,6 +88,21 @@
 --     pastille CardAlert (cartes d'ItemsSection) est montrée quand la carte demande une
 --     action, avec le battement de son UIScale Pulse (1 → 1,15 → 1 en 0,8 s) : objet de l'inventaire sous
 --     antivol (à poser) ou libre avec un présentoir libre (à exposer). Éteinte (Scale remis à 1) dès que l'action est faite.
+--   - a478 (L-380, Clément 25/11 : « le bouton inventaire n'ouvre pas le display ») : l'inventaire revient. Avec
+--     Config/Displayed.InventoryScreen (Features.InventoryScreen, ou InventoryScreenDev dans le jeu DEV), le bouton du sac
+--     UI_Hotbar.Bar.InventoryButton ouvre et ferme cet écran (DisplayedController lui passe le clic, HasScreen) ; sans
+--     UI_Inventory dans PlayerGui, il ouvre encore les objets exposés. L'écran entre dans le groupe « Menu »
+--     (Config/Displayed.ScreenGroup, attribut ScreenGroup posé s'il n'en a pas). Nouveaux éléments, tous facultatifs
+--     (absents : rien ne change) :
+--       ItemsSection.Cards.Template.HoldButton  objet de l'inventaire pas exposé : en main (remote HoldItem,
+--              HeldItemService revérifie tout ; l'écran se ferme), ou rangé s'il y est déjà ;
+--       ItemsSection.Cards.Template.HeldPill    montré sur l'objet tenu en main ;
+--       ItemsSection.Cards.Template.SellButton  montré seulement si l'écran a Confirm : remplit Confirm (ItemIcon,
+--              ItemRarity, ItemName, SellPrice « for ... » puis « for $X », Config/Displayed.Sell) et demande le prix
+--              (DisplayedSellAsk → DisplayedSellPrice, PawnShopService : prix du comptoir du receleur) ;
+--       Confirm (caché) avec YesButton (une fois le prix reçu → DisplayedSell, réponse DisplayedSold) et NoButton.
+--     Objet invendable, refus, NoButton, fermeture de l'écran : Confirm se cache, rien ne change. Mêmes remotes et
+--     mêmes contrôles serveur que la vente depuis UI_Displayed (a314).
 -- Rien de ce qui compte ne se décide ici : chaque bouton envoie un uid ou un Id que le serveur revérifie.
 -- Seuls sont touchés (2.2, « Libre pour Ironix ») : Enabled de l'écran, les textes, la visibilité, les
 -- cartes clonées (nom, ordre), l'image de leur icône et la teinte (ImageColor3) de leurs rayons, le
@@ -102,6 +117,11 @@
 --   InventoryController.GetState() -> { Open, Tab, Placing, Aim, AimValid, Items, Tools, Potions, Loaded }
 --       Potions : nombre total de potions dans l'inventaire (vague 33)
 --   InventoryController.UsePotion(id)          UsePotion(id), comme le bouton d'une carte de potion
+--   InventoryController.HasScreen() -> boolean  a478 : UI_Inventory est dans PlayerGui (branché au passage)
+--   InventoryController.IsOpen() -> boolean     a478 : l'écran est ouvert
+--   InventoryController.Sell(itemUid)           a478 : comme SellButton (Confirm montré, prix demandé)
+--   InventoryController.ConfirmSell() / CancelSell()   a478 : comme YesButton / NoButton
+--   InventoryController.GetSellState() -> { Uid: string?, Price: number?, Sending: boolean, Shown: boolean }   (bancs)
 --       Loaded : l'état de l'inventaire lu vient du profil chargé (attribut InventoryState posé)
 -- Pour la barre du bas (HotbarController, L-095 point 6) : la même source et les mêmes actions.
 --   InventoryController.GetInventory() -> InventoryState.State   état lu dans l'attribut (à ne pas modifier)
@@ -135,6 +155,17 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = Shared:WaitForChild("Config")
 local Balance = require(Config:WaitForChild("Balance"))
 local Bat = require(Config:WaitForChild("Bat"))
+-- a478 : textes de vente, groupe « Menu » (facultatif : bancs à liste de modules fixe).
+local DisplayedConfig: any = (function(): any
+	local module = Config:FindFirstChild("Displayed")
+	if module and module:IsA("ModuleScript") then
+		local ok, result = pcall(require, module)
+		if ok and type(result) == "table" then
+			return result
+		end
+	end
+	return {}
+end)()
 local HeldItem = require(Config:WaitForChild("HeldItem"))
 local Items = require(Config:WaitForChild("Items"))
 local Mutations = require(Config:WaitForChild("Mutations"))
@@ -167,6 +198,8 @@ type Handlers = {
 	UnequipButton: (() -> ())?,
 	EquipButton: (() -> ())?,
 	UseButton: (() -> ())?,
+	HoldButton: (() -> ())?, -- a478
+	SellButton: (() -> ())?, -- a478
 }
 
 -- Une carte clonée.
@@ -199,6 +232,7 @@ type Screen = {
 	trackSize: UDim2,
 	counter: Instance?,
 	displays: Instance?,
+	confirm: GuiObject?, -- a478 : confirmation de vente (facultative)
 	sections: { [TabName]: Section },
 	connections: { RBXScriptConnection },
 }
@@ -234,13 +268,19 @@ local TAB_ORDER: { TabName } = { "Items", "Tools", "Potions" }
 local OLD_BOX_PARTS = { "Tabs.BoxesTab", "BoxesSection" }
 local CARD_PARTS: { [TabName]: { string } } = {
 	-- Vague 34 (L-127 points 3 et 4) : AntiTheft, AntiTheft.LockLabel, CardAlert et son UIScale Pulse en fin de liste.
-	Items = { "Icon", "ItemName", "RarityBar.Rarity", "Rays", "Glow", "MutationTag", "MutationTag.MutationLabel", "Income", "DisplayedBadge", "PlaceButton", "UnequipButton", "HoverOutline", "AntiTheft", "AntiTheft.LockLabel", "CardAlert", "CardAlert.Pulse" },
+	-- a478 (L-380) : HoldButton, HeldPill et SellButton, facultatifs.
+	Items = { "Icon", "ItemName", "RarityBar.Rarity", "Rays", "Glow", "MutationTag", "MutationTag.MutationLabel", "Income", "DisplayedBadge", "PlaceButton", "UnequipButton", "HoverOutline", "AntiTheft", "AntiTheft.LockLabel", "CardAlert", "CardAlert.Pulse", "HoldButton", "HeldPill", "SellButton" },
 	Tools = { "Icon", "ToolName", "ToolStat", "Rays", "Glow", "EquipButton", "EquippedPill", "HoverOutline" },
 	-- Vague 33 : noms demandés à Clément (Template de PotionsSection), puis ceux du Template de ToolsSection
 	-- pris en V0 tant qu'il n'existe pas.
 	Potions = { "Icon", "PotionName", "PotionStat", "Count", "UseButton", "ActivePill", "ActivePill.TimerLabel", "Rays", "Glow", "HoverOutline", "ToolName", "ToolStat", "EquipButton", "EquipButton.EquipLabel", "EquippedPill" },
 }
-local CARD_BUTTONS = { "PlaceButton", "UnequipButton", "EquipButton", "UseButton" }
+local CARD_BUTTONS = { "PlaceButton", "UnequipButton", "EquipButton", "UseButton", "HoldButton", "SellButton" }
+-- a478 (L-380) : confirmation de vente, groupe de menus, textes du prix (comme UI_Displayed, Config/Displayed).
+local CONFIRM = "Confirm"
+local GROUP_ATTRIBUTE = "ScreenGroup" -- même nom que Controllers/UI/Motion
+local SCREEN_GROUP: string = if type(DisplayedConfig.ScreenGroup) == "string" then DisplayedConfig.ScreenGroup else ""
+local SELL_TEXTS = DisplayedConfig.Sell or { PriceText = "for %s", WaitText = "for ..." }
 local PREVIEW_PREFIX = "Preview_"
 local TOOL_ICON_PREFIX = "TOOL_" -- « ICON_TOOL_Hammer » (L-090)
 local BAT_KEY = "Bat" -- carte Tool_Bat, icône ICON_TOOL_Bat (nom confirmé par Clément, L-092 2a)
@@ -1133,6 +1173,94 @@ local function placeItem(uid: string)
 	end
 end
 
+------------------------------------------------------------------------------
+-- a478 (L-380) : vente depuis une carte, avec la confirmation Confirm (YES / NO), comme UI_Displayed (a314)
+------------------------------------------------------------------------------
+
+local selling: { uid: string, price: number?, sending: boolean }? = nil
+
+local function confirmOf(): GuiObject?
+	local current = screen
+	return if current then current.confirm else nil
+end
+
+-- Confirm se cache, la vente en cours est oubliée (rien n'est demandé au serveur).
+local function hideConfirm()
+	selling = nil
+	setVisible(confirmOf(), false)
+end
+
+local function writePrice(price: number?)
+	local confirm = confirmOf()
+	if confirm then
+		setText(Find.path(confirm, "SellPrice"), if price then string.format(SELL_TEXTS.PriceText, Format.money(price)) else SELL_TEXTS.WaitText)
+	end
+end
+
+-- SellButton : Confirm rempli pour l'objet `uid` et montré ; le prix est demandé au serveur, qui décide de tout.
+local function openConfirm(uid: string)
+	local confirm = confirmOf()
+	if confirm == nil or net == nil then
+		return
+	end
+	local entry: InventoryState.ItemEntry? = nil
+	for _, item in state.Items do
+		if item.Uid == uid then
+			entry = item
+		end
+	end
+	local def = if entry then Items.ById[entry.ItemId] else nil
+	if def == nil then
+		return
+	end
+	local rarity = Rarities.ById[def.Rarity]
+	local texture = textureOf(def.Id)
+	if texture then
+		setImage(Find.path(confirm, "ItemIcon"), texture)
+	end
+	setText(Find.path(confirm, "ItemRarity"), if rarity then rarity.DisplayNameUpper else def.Rarity)
+	setText(Find.path(confirm, "ItemName"), string.upper(def.DisplayName))
+	selling = { uid = uid, price = nil, sending = false }
+	writePrice(nil)
+	if not confirm.Visible then
+		confirm.Visible = true
+		pcall(Motion.Show, confirm)
+	end
+	net.Client.DisplayedSellAsk:Fire(uid)
+end
+
+-- YesButton : la vente part, une fois le prix du serveur reçu (et une seule fois).
+local function confirmSell()
+	local current = selling
+	if current == nil or current.price == nil or current.sending or net == nil then
+		return
+	end
+	current.sending = true
+	net.Client.DisplayedSell:Fire(current.uid)
+end
+
+-- Réponse à DisplayedSellAsk (aussi celles demandées par UI_Displayed : ignorées si ce n'est pas notre objet).
+local function onSellPrice(uid: string, price: number, sellable: boolean)
+	local current = selling
+	if current == nil or current.uid ~= uid then
+		return
+	end
+	if not sellable then
+		hideConfirm()
+		return
+	end
+	current.price = price
+	writePrice(price)
+end
+
+-- Réponse à DisplayedSell : Confirm se cache ; vendu, la carte part avec l'état de l'inventaire.
+local function onSold(uid: string, _amount: number, _sold: boolean)
+	local current = selling
+	if current ~= nil and current.uid == uid then
+		hideConfirm()
+	end
+end
+
 local function paintItem(view: CardView, entry: InventoryState.ItemEntry, free: number)
 	local def = Items.ById[entry.ItemId]
 	if def == nil then
@@ -1187,6 +1315,21 @@ local function paintItem(view: CardView, entry: InventoryState.ItemEntry, free: 
 	view.handlers.PlaceButton = if displayed then nil else place
 	view.handlers.UnequipButton = if displayed then unplace else nil
 	view.handlers.Card = if displayed then unplace else place
+	-- a478 (L-380) : en main (objet pas exposé : HeldItemService refuse un exposé) et vente (s'il y a Confirm).
+	local held = heldItemUid() == uid
+	setVisible(refs.HoldButton, not displayed)
+	setVisible(refs.HeldPill, held)
+	view.handlers.HoldButton = if displayed then nil else function()
+		if not held then
+			close() -- l'objet arrive en main : on le voit
+		end
+		InventoryController.HoldItem(uid)
+	end
+	local canSell = confirmOf() ~= nil
+	setVisible(refs.SellButton, canSell)
+	view.handlers.SellButton = if canSell then function()
+		openConfirm(uid)
+	end else nil
 end
 
 local function paintTool(view: CardView, card: ToolCard, held: Tool?)
@@ -1463,6 +1606,7 @@ end
 close = function()
 	isOpen = false
 	tickToken += 1
+	hideConfirm() -- a478 : fermer l'écran annule la vente en attente
 	local current = screen
 	if current then
 		-- Cartes retirées une fois l'écran éteint ; une réouverture d'ici là les remet d'accord.
@@ -1483,6 +1627,11 @@ local function bind(gui: ScreenGui)
 	isOpen = false
 	tickToken += 1
 	gui.Enabled = false -- fermé jusqu'au bouton du HUD
+	-- a478 (L-380) : l'écran entre dans le groupe « Menu » si Clément ne lui en a pas donné (comme UI_Displayed) : il
+	-- ferme les autres menus à l'ouverture, et un autre menu qui s'ouvre le ferme.
+	if SCREEN_GROUP ~= "" and gui:GetAttribute(GROUP_ATTRIBUTE) == nil then
+		gui:SetAttribute(GROUP_ATTRIBUTE, SCREEN_GROUP)
+	end
 	Motion.SetCloser(gui, close) -- un autre écran du groupe ScreenGroup s'ouvre (L-089)
 	local name = gui.Name
 
@@ -1549,9 +1698,12 @@ local function bind(gui: ScreenGui)
 		trackSize = if track then track.Size else UDim2.new(),
 		counter = Find.path(gui, "Counter"),
 		displays = Find.path(gui, "Displays"),
+		confirm = guiObject(gui, CONFIRM), -- a478 : facultatif (sans lui, pas de vente depuis l'inventaire)
 		sections = sections,
 		connections = {},
 	}
+	selling = nil
+	setVisible(current.confirm, false)
 	screen = current
 	local function keep(connection: RBXScriptConnection?)
 		if connection then
@@ -1569,6 +1721,16 @@ local function bind(gui: ScreenGui)
 	keep(onClick(equipBest, function()
 		InventoryController.EquipBest()
 	end))
+	-- a478 (L-380) : YesButton et NoButton de la confirmation de vente.
+	local confirm = current.confirm
+	if confirm then
+		local yes = Find.path(confirm, "YesButton")
+		local no = Find.path(confirm, "NoButton")
+		hover(yes)
+		hover(no)
+		keep(onClick(yes, confirmSell))
+		keep(onClick(no, hideConfirm))
+	end
 	for _, tabName in TAB_ORDER do
 		local button = sections[tabName].button
 		hover(button)
@@ -1708,9 +1870,8 @@ local function watchCharacter(character: Model?)
 			if child.Parent == character and not isHeldItem(child) then
 				stopPlacing() -- agent a142 : l'objet tenu (sous antivol) garde son mode pose
 			end
-			local current = screen
-			if current and isOpen then
-				refreshTools(current)
+			if screen and isOpen then
+				refresh() -- a478 : outils, et HeldPill des objets (L-380)
 			end
 			changed()
 		end
@@ -1974,11 +2135,51 @@ function InventoryController.UsePotion(id: string)
 	usePotion(id)
 end
 
+-- a478 (L-380) : le bouton du sac (DisplayedController) ouvre l'inventaire seulement si l'écran est là.
+function InventoryController.HasScreen(): boolean
+	return currentScreen() ~= nil
+end
+
+function InventoryController.IsOpen(): boolean
+	return isOpen
+end
+
+function InventoryController.Sell(itemUid: string)
+	openConfirm(itemUid)
+end
+
+function InventoryController.ConfirmSell()
+	confirmSell()
+end
+
+function InventoryController.CancelSell()
+	hideConfirm()
+end
+
+function InventoryController.GetSellState(): { Uid: string?, Price: number?, Sending: boolean, Shown: boolean }
+	local current = selling
+	local confirm = confirmOf()
+	return {
+		Uid = if current then current.uid else nil,
+		Price = if current then current.price else nil,
+		Sending = current ~= nil and current.sending,
+		Shown = confirm ~= nil and confirm.Visible,
+	}
+end
+
 function InventoryController.Start()
 	hideHotbar() -- tout de suite : la barre ne doit pas apparaître le temps des remotes
 	-- Peut attendre que le serveur ait créé les remotes.
 	net = require(Shared:WaitForChild("Net"):WaitForChild("Net") :: ModuleScript) :: any
 	animation = loadAnimationController()
+	-- a478 (L-380) : réponses du serveur à la vente depuis l'inventaire (remotes d'a314, partagés avec UI_Displayed).
+	local sellWired, sellError = pcall(function()
+		net.Client.DisplayedSellPrice:Connect(onSellPrice)
+		net.Client.DisplayedSold:Connect(onSold)
+	end)
+	if not sellWired then
+		reportOnce("sellRemotes", `[Inventory] remotes de vente absents : un objet ne se vend pas depuis l'inventaire ({sellError})`)
+	end
 
 	readState()
 	localPlayer:GetAttributeChangedSignal(InventoryState.Attribute):Connect(function()

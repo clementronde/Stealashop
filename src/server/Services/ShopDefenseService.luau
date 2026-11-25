@@ -2,8 +2,9 @@
 -- ShopDefenseService (vague GC6, a408 ; MAJ 5 « Défense de la boutique », Cantin 23/11 : tout maintenant) : les tuiles
 -- « Soon » de l'arbre de compétences devenues jouables, sur la boutique d'un vrai joueur (jamais celle du bot).
 -- Valeurs : Config/ShopDefense (V0 proposés, Cantin, 23/11) ; prix et niveaux : Config/SkillTree ; interrupteurs :
--- Features.Bodyguards, Features.DoorGuard, Features.CameraRadar. GuardService et BotService ne sont pas touchés : l'IA
--- reprend en plus simple celle du bot qui défend (L-146 ; BotService, chemin par la porte) et la capture du vigile
+-- Features.Bodyguards, Features.DoorGuard, Features.CameraRadar, ou leur variante …Dev dans le jeu DEV (a467, L-163,
+-- C2 : SkillTree.DefenseOn). GuardService et BotService ne sont pas touchés : l'IA reprend en plus simple celle du bot
+-- qui défend (L-146 ; BotService, chemin par la porte) et la capture du vigile
 -- (Balance.Guard.CatchDistance, animation Catch au marqueur Impact).
 --
 -- Agents (modèles proposés à Clément, facultatifs : ReplicatedStorage/Assets/Guards/NPC_Bodyguard et NPC_DoorGuard,
@@ -50,7 +51,7 @@ local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage.Shared
 local Bat = require(Shared.Config.Bat)
-local Features = require(Shared.Config.Features)
+local SkillTree = require(Shared.Config.SkillTree) -- a467 (L-163, A2) : SkillTree.DefenseOn
 local ShopDefense = require(Shared.Config.ShopDefense)
 local CatchReach = require(Shared.CatchReach)
 local Find = require(Shared.Contract.Find)
@@ -174,7 +175,7 @@ local function effect(owner: Player, id: string): number?
 end
 
 local function enabled(kind: Kind): boolean
-	return if kind == "Body" then Features.Bodyguards == true else Features.DoorGuard == true
+	return SkillTree.DefenseOn(if kind == "Body" then "Bodyguards" else "DoorGuard")
 end
 
 local function isThief(player: Player, owner: Player): boolean
@@ -763,7 +764,7 @@ end
 
 -- Un voleur a pris un objet de `victim` : l'agent de sa boutique part après lui ; Cameras 3 relance le radar.
 local function onTheftStarted(thief: Player, victim: Player, _itemId: string)
-	if Features.CameraRadar == true and level(victim, "Cameras") >= R.Level then
+	if SkillTree.DefenseOn("CameraRadar") and SkillTree.DefenseOn("Cameras") and level(victim, "Cameras") >= R.Level then
 		local duration = effect(victim, "Cameras")
 		if duration and duration > 0 then
 			local ok, err = pcall(function()
@@ -1025,11 +1026,10 @@ function ShopDefenseService.Init()
 			task.defer(sync)
 		end
 	end)
-	log(
-		`agents : Bodyguards {if Features.Bodyguards then "allumé" else "coupé"}, DoorGuard {if Features.DoorGuard
-			then "allumé"
-			else "coupé"}, radar des caméras {if Features.CameraRadar then "allumé" else "coupé"}`
-	)
+	local function onOff(name: SkillTree.DefenseSwitch): string
+		return if SkillTree.DefenseOn(name) then "allumé" else "coupé"
+	end
+	log(`agents : Bodyguards {onOff("Bodyguards")}, DoorGuard {onOff("DoorGuard")}, radar des caméras {onOff("CameraRadar")}`)
 end
 
 function ShopDefenseService.Start()

@@ -353,6 +353,7 @@ local Attributes = require(Shared.Contract.Attributes)
 local Net = require(Shared.Net.Net)
 local Announce = require(Shared.Announce) -- a254 (L-240 point 3)
 local ShelfOpenState = require(Shared.ShelfOpenState)
+local OpenLuck = require(Shared.OpenLuck) -- a476 (L-374) : formule de la chance d'une ouverture
 local Features = require(Shared.Config.Features)
 -- a241 : Chase.ChaseOnEmptyExit ; Config/Chase absent (bancs à arbre partiel) : la règle d'avant.
 local Chase: any = if Shared.Config:FindFirstChild("Chase") then require(Shared.Config.Chase) :: any else {}
@@ -2594,9 +2595,13 @@ end
 -- sortie programmée.
 local function startOpening(player: Player, slot: Slot, box: ShelfBox)
 	local store = slot.Store
-	local luck = drawLuck() * (Workspace:GetAttribute("LiveEventShelfLuck") :: number? or 1) -- a167 : chance d'un événement live (EventService)
-	local serverLuck = Workspace:GetAttribute("ServerLuck") -- a247 : chance du serveur achetée en Robux (MonetizationService)
-	luck *= if type(serverLuck) == "number" and serverLuck >= 1 and serverLuck < math.huge then serverLuck else 1
+	-- a476 (L-374) : la formule commune (Shared/OpenLuck) : tirage × événement (a167) × chance du serveur (a247) × BoxLuck.
+	local luck = OpenLuck.Combine({
+		Table = drawLuck(),
+		Event = Workspace:GetAttribute("LiveEventShelfLuck"),
+		Server = Workspace:GetAttribute("ServerLuck"),
+		Skill = OpenLuck.SkillFactorOf(player),
+	})
 	local forced = luckOverride
 	if forced and not store.Event then -- vague 42 : pas d'accroche du tuto sur un rayon d'événement
 		-- Accroche du tuto (a107, SetLuckOverride) : une chance finie ≥ 1, sinon le tirage normal.
@@ -2920,11 +2925,13 @@ local function startReveal(player: Player, slot: Slot, box: ShelfBox)
 	local store = slot.Store
 	local config = ShelfOpen.Reveal
 	-- La chance liée au temps (montée, police) n'existe pas ici ; le bonus des événements est coupé par V0.
-	local luck = if config.TableLuck then drawLuck() else 1
-	if config.EventLuck then
-		luck *= finiteOr(Workspace:GetAttribute("LiveEventShelfLuck"), 1, 1e-3)
-	end
-	luck *= finiteOr(Workspace:GetAttribute("ServerLuck"), 1, 1) -- a247 : chance du serveur achetée en Robux (MonetizationService), toujours comptée
+	-- a476 (L-374) : la formule commune (Shared/OpenLuck) ; chance du serveur (a247) et BoxLuck toujours comptées.
+	local luck = OpenLuck.Combine({
+		Table = if config.TableLuck then drawLuck() else 1,
+		Event = if config.EventLuck then Workspace:GetAttribute("LiveEventShelfLuck") else nil,
+		Server = Workspace:GetAttribute("ServerLuck"),
+		Skill = OpenLuck.SkillFactorOf(player),
+	})
 	local forced = luckOverride
 	if forced then
 		local drawn: OverrideInfo = { StoreId = store.Id, SlotId = slot.Id, Zone = store.Zone, Rarity = box.Rarity, ItemId = "" }
@@ -3035,9 +3042,14 @@ local function startReveal(player: Player, slot: Slot, box: ShelfBox)
 				local chance = ItemOdds.Chance(final.ItemId, final.Mutation)
 				odds = if chance then Formulas.UnboxOdds(chance) else nil
 			end
+			-- a462 (décision de Cantin, 25/11) : interrupteur allumé, le colis monte jusqu'à la rareté de l'objet, ni plus ni moins.
+			local climb: boolean? = nil
+			upgrades, climb = UnboxPlan.shelfClimb(box.Rarity, final.Rarity, upgrades)
+			-- a462 (L-376) : la chance de l'ouvreur va dans le plan (« ×N LUCK » pendant les coups), interrupteur allumé.
+			local planLuck: number? = if UnboxPlan.luckClimbs() == true then luck else nil
 			local drawn = UnboxPlan.draw(final.Rarity, function(n: number): number
 				return 1 + math.floor(random:NextNumber() * n)
-			end, box.Rarity, upgrades, odds)
+			end, box.Rarity, upgrades, odds, climb, planLuck)
 			local parsed = UnboxPlan.parse(drawn)
 			return drawn, UnboxPlan.serverMaxSeconds(final.Rarity, sizeClass, if parsed then #parsed.Steps else nil)
 		end)

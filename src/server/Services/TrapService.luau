@@ -1,7 +1,7 @@
 --!strict
 -- TrapService (vague 72, a243 ; liaison L-218, L-216 point 11) : pièges de la boutique d'un joueur, côté serveur.
--- Contrat et valeurs (toutes V0, à valider par Clément) : Config/Traps ; interrupteur Features.Traps (false : aucun
--- piège posé, la tuile Traps de l'arbre reste « Soon »).
+-- Contrat et valeurs (toutes V0, à valider par Clément) : Config/Traps ; interrupteur Features.Traps, ou TrapsDev
+-- dans le jeu DEV (a467, L-163, C2 : SkillTree.DefenseOn ; coupé : aucun piège posé, la tuile Traps reste « Soon »).
 --
 -- Achat : la tuile Traps de l'arbre (Config/SkillTree, SkillTreeService : prix, renaissance, OpensWhen). Son
 -- Effects[niveau] = nombre de pièges posés. Rien d'autre ne s'achète ici, aucun remote : le client ne demande rien.
@@ -35,7 +35,7 @@
 --   TrapService.IsEnabled() -> boolean
 --
 -- Tester dans Studio (barre de commande serveur, en Play) :
---   workspace:SetAttribute("TrapsTest", true)     allume les pièges sans toucher Features.Traps
+--   workspace:SetAttribute("TrapsTest", true)     allume les pièges sans toucher Features.Traps ni TrapsDev
 --   workspace:SetAttribute("TrapsTest", "self")   pareil, et le propriétaire est pris par ses propres pièges
 --   workspace:SetAttribute("SkillTest", "<joueur> Traps 4")   4 pièges posés dans sa boutique (SkillTreeService)
 --   workspace:SetAttribute("NewTrapsTest", true)  a286 : disposition Traps.SlotLayoutNew (a293 : colle, banane, portique, trappe ; sert à tester sans Features.NewTraps ni le jeu DEV)
@@ -48,6 +48,7 @@ local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage.Shared
 local Features = require(Shared.Config.Features)
+local SkillTree = require(Shared.Config.SkillTree) -- a467 (L-163, A2) : SkillTree.DefenseOn("Traps")
 local Traps = require(Shared.Config.Traps)
 local Net = require(Shared.Net.Net)
 -- a296 : Config/ProductIds chargé s'il est là, comme dans Config/Monetization (a294) ; sans lui, IsDev faux (PROD).
@@ -110,7 +111,7 @@ local function notify(player: Player, message: string, kind: string)
 end
 
 function TrapService.IsEnabled(): boolean
-	return Features.Traps == true or (IS_STUDIO and Workspace:GetAttribute(TEST_ATTRIBUTE) ~= nil)
+	return SkillTree.DefenseOn("Traps") or (IS_STUDIO and Workspace:GetAttribute(TEST_ATTRIBUTE) ~= nil)
 end
 
 local function ownerCanTrigger(): boolean
@@ -641,7 +642,7 @@ function TrapService.Init()
 			TrapService.Step()
 		end
 	end)
-	log(`pièges {if TrapService.IsEnabled() then "allumés" else "coupés (Features.Traps)"}, {#Traps.List} genres, disposition {table.concat(slotLayout(), ", ")}`)
+	log(`pièges {if TrapService.IsEnabled() then "allumés" else "coupés (Features.Traps, TrapsDev)"}, {#Traps.List} genres, disposition {table.concat(slotLayout(), ", ")}`)
 end
 
 return TrapService

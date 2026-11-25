@@ -56,7 +56,12 @@ local Features = {
 	-- workspace:SetAttribute("TrapsTest", true) les allume sans toucher à cette ligne.
 	-- Vague 80 (a267, Cantin 20/11 « Pièges et coffre ») : true en DEV ; les 3 modèles de Clément (L-218) sont
 	-- branchés, un modèle absent est remplacé par le repli de TrapService, un TrapSlot absent = pas de piège.
-	Traps = true,
+	-- a467 (L-163, A2 ; décision C2 de Cantin, 24/11 : T-247 pas encore passé) : interrupteur PROD (partout), false ;
+	-- allumé en DEV par TrapsDev. Lu par SkillTree.DefenseOn (Config/SkillTree), comme les 3 défenses plus bas.
+	-- NewTraps / NewTrapsDev (disposition) ne comptent que si les pièges sont allumés.
+	Traps = false,
+	-- a467 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	TrapsDev = true,
 	-- Vague 80 (a266, DEV-132, UI-130) : quêtes quotidiennes (Config/Quests, QuestService, QuestController ; écran UI_Quests et
 	-- bouton UI_HUD.QuestsButton de Clément, facultatifs) ; false = rien n'est compté, aucun attribut, bouton caché.
 	Quests = true,
@@ -122,9 +127,19 @@ local Features = {
 	-- a408 (vague GC6, MAJ 5 « Défense de la boutique », Cantin 23/11 : tout maintenant ; V0 à valider par Clément) :
 	-- tuiles de l'arbre devenues achetables (Config/SkillTree, Config/ShopDefense, ShopDefenseService) ; false = la
 	-- tuile reste « Soon » et rien n'est posé.
-	Bodyguards = true, -- agent de sécurité qui poursuit le voleur (Partie 2, section 2)
-	DoorGuard = true, -- garde à la porte qui repousse le voleur (L-163)
-	CameraRadar = true, -- Cameras niveau 3 : voleur en rouge vif et son de radar, sans flèche (L-163, L-175)
+	-- a467 (L-163, A2 ; décision C2 de Cantin, 24/11 : T-285 pas encore passé) : interrupteurs PROD (partout), false ;
+	-- chacun allumé en DEV par sa variante …Dev (Config/ProductIds.IsDev). Lus par SkillTree.DefenseOn (Config/SkillTree).
+	Bodyguards = false, -- agent de sécurité qui poursuit le voleur (Partie 2, section 2)
+	BodyguardsDev = true,
+	DoorGuard = false, -- garde à la porte qui repousse le voleur (L-163)
+	DoorGuardDev = true,
+	CameraRadar = false, -- Cameras niveau 3 : voleur en rouge vif et son de radar, sans flèche (L-163, L-175)
+	CameraRadarDev = true,
+	-- a467 (L-373, Clément 25/11 : défenses reportées, « Coming soon » ; C2) : tuile Cameras de l'arbre,
+	-- niveaux 1 et 2 (alerte au 1er coup, voleur surligné : SkillTreeService) ; interrupteur PROD (partout),
+	-- false = tuile « Soon », rien ne s'achète, aucun effet ; allumée en DEV par CamerasDev. Lu par SkillTree.DefenseOn.
+	Cameras = false,
+	CamerasDev = true,
 	-- a411 (vague GC6, L-113, feuille de route MAJ 4) : cabine d'essayage (Config/Disguise, DisguiseService, DisguiseController ;
 	-- tuile FittingRoom de Config/SkillTree achetable) : se déguiser en passant d'une zone, dénoncer un magasin, être démasqué
 	-- d'un coup de batte. V0 proposé (Cantin, 23/11) : true en DEV ; false = tuile « Soon », remotes Disguise et Denounce ignorés.
@@ -140,6 +155,24 @@ local Features = {
 	ShopGlassThrow = false,
 	-- a315 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
 	ShopGlassThrowDev = true,
+	-- a468 (Cantin, 25/11 : « c'est un truc qui a été fait au tout début du jeu parce qu'avant il n'y avait pas les
+	-- vitres ») : plus de sortie forcée « Only the owner can be inside this shop. » d'une boutique à la porte intacte
+	-- (PvPService, ejectStep) ; on se faisait sortir en passant derrière une boutique du niveau 1 (son volume Bounds
+	-- dépasse de 32 studs derrière son mur du fond). Restent : la sortie d'un joueur interdit de voler cette boutique
+	-- (RobCooldown) et celle de la reconstruction de la porte (DoorBack). Interrupteur PROD (partout) : false (règle C2,
+	-- pas encore de test humain) ; false = la sortie d'avant, intacte.
+	NoIntactDoorEject = false,
+	-- a468 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	NoIntactDoorEjectDev = true,
+	-- a468 (correctif du 25/11, petit chef et grand chef) : « dans la boutique » = dans son volume Bounds ET devant son
+	-- mur du fond posé (niveau 1 : ShopGrowth.MinBack ; sinon StageDepth ; boutique entière : Bounds seul), pour tous les
+	-- lecteurs de Bounds qui jugent « dedans » (Shared/ShopInside) : plus de vol à travers le mur du fond, ni de passant
+	-- frappé, interdit ou sorti derrière une boutique. Avec NoIntactDoorEject, la sortie « porte intacte » ne vise plus
+	-- que qui est vraiment dans les murs (boutique qui a grandi autour de lui). Interrupteur PROD (partout) : false
+	-- (règle C2) ; false = Bounds seul, la règle d'avant.
+	ShopInsideBackWall = false,
+	-- a468 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	ShopInsideBackWallDev = true,
 	-- a426 (L-319, décision de Clément du 23/11) : dans une zone `SafeZone`, la même vitesse pour tous et un léger
 	-- ralenti pour qui porte un objet pris chez un joueur (Balance.SafeZoneSpeed, StatsService). V0 proposé (Cantin,
 	-- 24/11) : true ; false = vitesse de la formule partout et vitesse fixe Carry.StolenItemWalkSpeed, comme avant.
@@ -155,6 +188,12 @@ local Features = {
 	ItemsV3 = false,
 	-- a429 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
 	ItemsV3Dev = true,
+	-- a481 (Cantin, 25/11) : nœuds OfflineTime1 et OfflineTime2 de l'arbre de compétences achetables, +30 min de gains
+	-- hors ligne chacun (Config/Offline.CapHours, 5 h au plus ; plafond appliqué par OfflineService). Interrupteur PROD
+	-- (partout) : false (règle C2 : pas encore de test humain) ; false = tuiles « Soon », plafond de 4 h pour tous.
+	SkillOfflineTime = false,
+	-- a481 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	SkillOfflineTimeDev = true,
 	-- a446 (L-305, L-344, Clément 23/11 et 24/11) : contours « façon BD » sur ce qui est interactif (Config/Outlines,
 	-- OutlineController) : FX_Outline de Clément sur les éléments proches, FX_OutlineFocus (blanc) sur celui dont l'invite
 	-- est affichée ; les colis y entrent (leur OutlineHighlight est retiré côté client). Interrupteur PROD (partout) :
@@ -162,8 +201,133 @@ local Features = {
 	BdOutlines = false,
 	-- a446 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
 	BdOutlinesDev = true,
+	-- a473 (L-369, Clément 25/11) : contours « façon BD » toujours visibles (Config/Outlines.MaxPinned, en plus des
+	-- MaxOutlines de près) : dans la zone safe, les 6 stands du hub et les éléments de la boutique du joueur local ;
+	-- partout, son outil en main et l'objet porté au-dessus de sa tête. Demande aussi BdOutlines ou BdOutlinesDev.
+	-- Interrupteur PROD (partout) : false (règle C2) ; false = règle de L-305 seule (de près), comme avant.
+	BdOutlinesHub = false,
+	-- a473 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev).
+	BdOutlinesHubDev = true,
+	-- a483 (décision de Cantin du 25/11, remplace la règle 6.1) : le contour rouge d'un objet volé à un joueur n'est vu
+	-- que par la victime (Shared/StolenOutline : plus posé par CarryService, posé par le client de la victime seule,
+	-- TheftAlertController) ; vol chez le bot : personne. Interrupteur PROD (partout) : false (règle C2) ; false = vu de
+	-- tous, comme avant.
+	StolenOutlineVictimOnly = false,
+	-- a483 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev).
+	StolenOutlineVictimOnlyDev = true,
+	-- a465 (L-340, Clément 24/11 : « un peu d'UI de tension ») : tension pendant un braquage (Config/HeistTension,
+	-- Shared/HeistTension, TensionController) : chevrons FX_ChaseChevron au sol jusqu'à sa boutique tant qu'on porte un
+	-- objet volé, vigile en HL_ChaseGuard, DropButton gardé dans le HUD vidé de la poursuite, chrono HeistTimer gardé
+	-- pendant la phase discrète (même sous l'écran de révélation), flash jaune d'arrivée 0 → 0,6 → 1. Tout est côté
+	-- client. Interrupteur PROD (partout) : false (règle C2 : pas encore de test humain, T-303) ; false = comme avant.
+	HeistTension = false,
+	-- a465 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	HeistTensionDev = true,
+	-- a477 (L-377, L-385, Clément 25/11) : musique du vol (Config/Music.Steal, MusicController) : MUS_Steal tant qu'on
+	-- porte un objet volé (magasin PNJ ou boutique de joueur), MUS_Victim chez le joueur volé, MUS_Heist dès le 1er coup
+	-- sur la porte d'une boutique de joueur, bascules rapides. Interrupteur PROD (partout) : false (règle C2 : pas encore
+	-- de test humain) ; false = musiques comme avant (MUS_Chase, MUS_Heist au chrono PNJ, MUS_Truck, fond).
+	StealMusic = false,
+	-- a477 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	StealMusicDev = true,
+	-- a480 (Clément via Cantin, 25/11) : le gain du tapis sort autour du joueur dans le monde 3D (copies de BB_Gain),
+	-- nombre final sans « ×N », 6 fois plus d'apparitions et un son à chacune (Config/TreadmillFX.GainPops, Shared/GainPops,
+	-- GainController). Interrupteur PROD (partout) : false (règle C2) ; false = le « +X » 2D qui vole au compteur, comme avant.
+	TreadmillGainPops = false,
+	-- a480 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	TreadmillGainPopsDev = true,
+	-- a472 (L-365 point 5, Clément 25/11) : le client prévoit le ramassage d'une de ses plaques (Shared/PadZone, la même
+	-- règle que le serveur) et joue le son Cash_Pad et le voile UI_CashFlash sans attendre le remote CashCollect
+	-- (Config/CashFlash.Predict, GainController) ; l'argent, le compteur et « +$X » restent ceux du serveur. Interrupteur
+	-- PROD (partout) : false (règle C2 : pas encore de test humain) ; false = son et voile au remote, comme avant (a422).
+	PadPredict = false,
+	-- a472 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	PadPredictDev = true,
+	-- a484 (Cantin, 25/11) : Equip Best pose les objets du meilleur au moins bon dans l'ordre des présentoirs vu depuis
+	-- l'entrée (rez-de-chaussée puis étage ; mur gauche puis mur droit, puis ceux du milieu (Config/Displayed.EquipBestOrder) ; du plus près de l'entrée au fond ; Shared/
+	-- DisplayOrder) et réordonne aussi les objets déjà exposés (DisplayService.EquipBest). Interrupteur PROD (partout) :
+	-- false (règle C2 : pas encore de test humain) ; false = Equip Best d'avant (un exposé parmi les meilleurs reste en
+	-- place, les autres remplissent les trous du plus petit numéro au plus grand).
+	EquipBestOrder = false,
+	-- a484 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	EquipBestOrderDev = true,
+	-- a478 (L-380, Clément 25/11 : « le bouton inventaire n'ouvre pas le display ») : UI_Hotbar.Bar.InventoryButton ouvre
+	-- l'écran d'inventaire UI_Inventory (InventoryController : tenir en main, exposer, vendre) au lieu des objets exposés
+	-- (UI_Displayed garde son propre bouton, RightRail.DisplayedButton, L-364). Écran absent de PlayerGui : le bouton
+	-- ouvre encore les objets exposés. Calculé dans Config/Displayed.InventoryScreen. Interrupteur PROD (partout) : false
+	-- (règle C2 : pas encore de test humain) ; false = le bouton ouvre les objets exposés, comme avant.
+	InventoryScreen = false,
+	-- a478 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	InventoryScreenDev = true,
+	-- a475 (L-371, Clément 25/11) : à chaque objet ramené en zone safe (rangé par UnboxService ou déposé par PvPService),
+	-- feux d'artifice aux points FireworksPoint de la map, vus par tous (CelebrationService, remote Fireworks,
+	-- VfxController.Fireworks, Config/Vfx.Fireworks). Interrupteur PROD (partout) : false (règle C2) ; false = comme avant
+	-- (seul FX_Escape aux pieds du joueur).
+	SecuredFireworks = false,
+	-- a475 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	SecuredFireworksDev = true,
+	-- a475 (L-372, Clément 25/11) : annonces de valeur à tout le serveur (UI_Announce, Shared/Announce, CelebrationService) :
+	-- objet de grande valeur ramené en zone safe, objet de grande valeur en fuite, valeur dans le texte du vol chez un
+	-- joueur (Config/Announce.Value*). Interrupteur PROD (partout) : false (règle C2) ; false = annonces d'avant.
+	ValueAnnounce = false,
+	-- a475 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	ValueAnnounceDev = true,
+	-- a476 (L-374, Clément 25/11) : tuile BoxLuck de l'arbre de compétences achetable, chance des colis ouverts par le
+	-- joueur × Effects[niveau] (Config/SkillTree, Shared/OpenLuck). Interrupteur PROD (partout) : false (règle C2 : pas
+	-- encore de test humain) ; false = tuile « Soon », aucun effet (un niveau acheté en DEV ne compte pas).
+	SkillBoxLuck = false,
+	-- a476 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	SkillBoxLuckDev = true,
+	-- a476 (L-375) : chance du serveur en Robux, produits ServerLuck2, 4 et 8 (Config/Monetization.ServerLuck, codée par
+	-- a247) vendue avec la boutique Robux (Features.RobuxShop). Interrupteur PROD (partout) : false (règle C2) ; false =
+	-- cartes cachées et reçus refusés (NotProcessedYet), comme avant (SERVER_LUCK = false).
+	ServerLuck = false,
+	-- a476 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	ServerLuckDev = true,
+	-- a462 (L-356 Q4, réponse de Clément du 24/11 à L-281) : pendant les coups de l'ouverture de la caisse exclusive, le
+	-- colis monte d'une rareté à chaque action jusqu'à celle tirée par le serveur (MonetizationService, UnboxPlan.draw), et
+	-- le colis montré (caisse, colis de rayon amélioré) prend le modèle BOX_<Rareté> de Clément de sa rareté
+	-- (Controllers/Reveal/Unbox). Interrupteur PROD (partout) : false (règle C2 : pas encore de test humain) ; false = le
+	-- colis de la caisse reste Épique et seules les silhouettes montent, scotch recoloré, comme avant.
+	UnboxBoxClimb = false,
+	-- a462 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	UnboxBoxClimbDev = true,
+	-- a462 (L-376, Clément 25/11) : pendant les coups sur le colis, c'est la chance (luck) de l'ouvreur qui monte et
+	-- s'affiche (« ×N LUCK » sur BB_UnboxOdds.Odds, de ×1 à la chance tirée par le serveur, StoreHeistService) ; le
+	-- « 1 IN N » n'apparaît qu'à l'éclatement et monte sur les silhouettes jusqu'à la vraie cote (Shared/UnboxPlan,
+	-- Controllers/Reveal/Unbox). Interrupteur PROD (partout) : false (règle C2) ; false = la cote monte pendant les coups
+	-- (a287), comme avant.
+	UnboxLuckClimb = false,
+	-- a462 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	UnboxLuckClimbDev = true,
+	-- a462 (décision de Cantin, 25/11) : la montée de rareté d'un colis de rayon pendant les coups suit l'objet tiré : un
+	-- objet plus rare que le colis le fait monter d'une rareté par action, juste avant le coup final, jusqu'à la sienne
+	-- exactement ; même rareté ou en dessous : aucune montée (comme la caisse exclusive, UnboxBoxClimb). Le tirage de
+	-- l'objet et de la chance ne change pas (Shared/UnboxPlan.shelfClimb, StoreHeistService.startReveal). Interrupteur
+	-- PROD (partout) : false (règle C2) ; false = améliorations tirées à part de l'objet (UnboxPlan.upgrades), comme avant.
+	UnboxClimbMatchesItem = false,
+	-- a462 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	UnboxClimbMatchesItemDev = true,
 }
 
 export type Features = typeof(Features)
 
-return DeepFreeze(Features)
+local frozen = DeepFreeze(Features)
+
+-- a442 (25/11, check-up a417 P5, décision C2 de Cantin) : dans un vrai jeu Roblox, la table vivante de Shared/LiveFeatures
+-- (surcharges sans republier : ConfigService, commande d'admin ; voir son en-tête) ; ailleurs (bancs hors Studio, outils,
+-- Edit) ou sans ce module : la table gelée du fichier, comme avant. Les lignes ci-dessus restent la valeur par défaut.
+if type(game) == "userdata" then
+	local module = script.Parent.Parent:FindFirstChild("LiveFeatures")
+	if module ~= nil and module:IsA("ModuleScript") then
+		local ok, wrapped = pcall(function(): any
+			return (require(module :: any) :: any).Wrap(frozen, script)
+		end)
+		if ok and type(wrapped) == "table" then
+			return wrapped :: Features
+		end
+		warn(`[Features] Shared/LiveFeatures en erreur, le fichier seul : {wrapped}`)
+	end
+end
+
+return frozen

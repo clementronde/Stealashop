@@ -68,10 +68,12 @@ local Vfx = {
 		-- de Clément plus haut).
 		Fountain = {
 			Enabled = true, -- a401 : interrupteur (false = comme avant)
-			PopTime = 0.13,
-			HoverTime = 0.2,
+			-- a472 (L-365 point 2, Clément 25/11) : billets plus rapides, le 1er arrive au compteur vers 0,34 s au lieu de
+			-- 0,68 s (a401 : PopTime 0,13, HoverTime 0,2, FlyTime 0,35).
+			PopTime = 0.08,
+			HoverTime = 0.04,
 			Drift = { 0.3, 0.5 },
-			FlyTime = 0.35,
+			FlyTime = 0.22,
 			FlyJitter = 0.02,
 		},
 	},
@@ -148,6 +150,20 @@ local Vfx = {
 		LabelPoint = "LabelPoint", -- Attachment du billboard
 		Billboard = "BB_RarestDisplay", -- Clément (Assets/UI) ; absent : BB_Rarest sur LabelPoint
 	},
+
+	-- 7. a475 (L-371, Clément 25/11) : feux d'artifice aux coins de la zone safe, vus par tous, à chaque objet ramené en
+	-- zone safe (remote Fireworks de CelebrationService ; Features.SecuredFireworks ou SecuredFireworksDev). Une copie
+	-- du modèle sur chaque point taggé PointTag de la map jouée (posés par Clément : FireworksPoint_N et _S), au plus
+	-- MaxPoints, et un seul tir à la fois par point : tant que la copie d'avant est là (Duration du modèle), le point
+	-- ne tire pas. Modèle comme FX_Escape (EmitCount, FadeTime, Duration) ; un émetteur avec l'attribut Delay (s)
+	-- n'émet qu'au bout de ce délai (fusée, puis gerbe). Modèle absent : Fallback (FX_Escape), une ligne en Studio.
+	Fireworks = {
+		Model = "FX_Fireworks", -- V0 proposé à Clément (chef VFX, L-371)
+		Fallback = "FX_Escape", -- en attendant FX_Fireworks : l'effet d'évasion de Clément
+		PointTag = "FireworksPoint", -- Clément : pièces FireworksPoint_N et _S (Map/Hub/Zones), attribut Side
+		MaxPoints = 2, -- V0 : coût borné (deux coins)
+	},
+	DelayAttribute = "Delay", -- a475 : sur un ParticleEmitter d'un FX_ (s avant son Emit ; absent : tout de suite)
 }
 
 return DeepFreeze(Vfx)

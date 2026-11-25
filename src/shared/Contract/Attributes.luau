@@ -77,6 +77,7 @@ local Attributes = {
 		{ Name = "EmitEvery", On = "effet de l'ouverture d'un colis", By = "Reveal/Unbox" },
 		{ Name = "FadeTime", On = "lumière de FX_Escape", By = "Config/Vfx, GlassThrowController" },
 		{ Name = "Duration", On = "modèle FX_ (FX_Escape, FX_TruckDust…)", By = "Config/Vfx, GlassThrowController" },
+		{ Name = "Delay", On = "ParticleEmitter d'un FX_ en gerbe (s avant son Emit, a475 : FX_Fireworks)", By = "Config/Vfx, VfxController" },
 		{ Name = "WeldTo", On = "pièce d'un FX_ de cosmétique (nom d'une pièce R15, L-206)", By = "CosmeticService" },
 		{ Name = "ReferenceSize", On = "dossier des effets de mutation (Assets/FX)", By = "MutationFxController" },
 		{ Name = "KeepColor", On = "fantôme d'un style de mutation", By = "MutationFxController" },

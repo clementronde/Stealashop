@@ -251,10 +251,13 @@ local Unbox = {
 			Divine = { 150000, 900000 },
 		} :: { [string]: { number } },
 		OddsText = "1 IN %s", -- L-236 (anglais)
+		-- a462 (L-376, Features.UnboxLuckClimb / UnboxLuckClimbDev) : pendant les coups, BB_UnboxOdds.Odds montre la chance
+		-- de l'ouvreur qui monte, au même format que BB_ShelfOpen.Row.Luck (ShelfOpen/Logic.luckText).
+		LuckText = "×%.2f LUCK",
 		OddsRoll = 0.35, -- V0 : durée du défilement d'une cote à la suivante
 		OddsTick = 0.07, -- V0 : un changement de chiffre toutes les 67 à 100 ms (Throw a Seed)
-		OddsTickSound = "UI_Click", -- L-229 : les tics du compteur, de plus en plus aigus
-		OddsTickPitch = 0.06, -- V0 : + 6 % par tic
+		OddsTickSound = "Unbox_OddsTick", -- L-386 (Clément, 25/11 : plus de « bulles ») : les tics du compteur, à la hauteur du son de Clément (avant : UI_Click, L-229)
+		OddsTickPitch = 0, -- L-386 : plus de montée par tic (avant : 0,06, + 6 % par tic) ; 0 = le PlaybackSpeed du son de Clément gardé
 		OddsPop = 1.25, -- V0 : le texte gonfle à cette échelle au moment fort (créé : UIScale « UnboxPop »)
 		FinalOddsAbove = 1.6, -- V0 : à la révélation, la cote finale se place à cette hauteur (studs) au-dessus de BB_Reveal
 		FinalOddsHold = 1.6, -- V0 : … et y reste ce temps
@@ -282,7 +285,7 @@ local Unbox = {
 		StartRarity = "Common", -- V0 : rareté de départ d'un colis de rareté inconnue
 		UpgradeGrow = 1.16, -- L-236 : le colis grossit à chaque amélioration
 		UpgradeShow = 0.9, -- V0 : durée d'affichage de BB_UnboxOdds.Upgrade (« UPGRADE! »)
-		UpgradeSound = "Unbox_Tier", -- L-229
+		UpgradeSound = "Unbox_TierNote", -- L-386 (Clément, 25/11) : la note du palier (avant : Unbox_Tier, cloche aiguë, L-229)
 		TapeNames = { "Tape", "Tint" }, -- V0 : pièces du colis qui prennent la couleur de la rareté (le scotch)
 
 		-- Zoom (FieldOfView × (1 − valeur)) et fondu des bords UI_Unbox.EdgeGlow (ImageTransparency), chez l'ouvreur.

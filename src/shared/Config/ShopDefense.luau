@@ -1,7 +1,8 @@
 --!strict
 -- Défense de la boutique d'un joueur (MAJ 5, vague GC6, a408) : les tuiles « Soon » de l'arbre devenues jouables.
 -- Serveur : ShopDefenseService ; client : CameraAlertController (Cameras niveau 3). Prix et niveaux : Config/SkillTree.
--- Interrupteurs : Features.Bodyguards, Features.DoorGuard, Features.CameraRadar.
+-- Interrupteurs : Features.Bodyguards, Features.DoorGuard, Features.CameraRadar, ou leur variante …Dev en DEV
+-- (a467, L-163, C2 : SkillTree.DefenseOn).
 -- Tout ce qui n'est ni dans la Partie 2 (section 2) ni dans la liaison est « V0 proposé (Cantin, 23/11) ».
 
 local DeepFreeze = require(script.Parent.DeepFreeze)

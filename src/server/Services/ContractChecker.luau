@@ -1216,7 +1216,7 @@ end
 -- UI (2.2) ---------------------------------------------------------------------
 
 -- Doublons voulus (UI.Twins, L-099 point 1) : `name` de cet écran apparaît au plus une fois dans
--- chaque cadre de Containers (LeftRail, LeftRailTouch), et chaque exemplaire est dans l'un d'eux.
+-- chaque cadre de Containers (LeftRail, LeftRailTouch, RightRail, RightRailTouch), et chaque exemplaire est dans l'un d'eux.
 local function wantedTwins(screenName: string, name: string, matches: { Instance }): boolean
 	local twins = (UI :: any).Twins
 	local spec = if type(twins) == "table" then twins[screenName] else nil

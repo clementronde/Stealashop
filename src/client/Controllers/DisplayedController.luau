@@ -59,6 +59,11 @@
 --     disparaît (puis la liste suit l'état de l'inventaire). NoButton, CloseButton, la fermeture de l'écran ou un
 --     refus du serveur : Confirm se cache, rien ne change. Survol et clic : UiFeelController et Motion, comme les
 --     autres boutons.
+--   - a478 (L-380, Clément 25/11 : « le bouton inventaire n'ouvre pas le display ») : avec Config/Displayed.InventoryScreen
+--     (Features.InventoryScreen, ou InventoryScreenDev dans le jeu DEV) et l'écran UI_Inventory dans PlayerGui,
+--     UI_Hotbar.Bar.InventoryButton ouvre et ferme l'inventaire (InventoryController.Toggle) au lieu de cet écran, qui
+--     s'ouvre alors par RightRail.DisplayedButton seul (L-364). Sans UI_Inventory, ou interrupteur coupé : comme avant.
+--     La pastille InventoryAlert du bouton compte alors comme vu ce qui entre pendant que l'inventaire est ouvert.
 -- Tout vient des attributs du Player posés par le serveur : InventoryState (Shared/InventoryState,
 -- InventoryService), DisplaySlotsUnlocked et DisplayReserve (DisplayService). Le client ne décide rien.
 -- Seuls sont touchés : Enabled de l'écran, son attribut ScreenGroup s'il n'en a pas (vague 75), Visible de
@@ -574,6 +579,45 @@ local function placeOnFloor(uid: string)
 	end
 end
 
+-- a478 (L-380) : InventoryController (facultatif), chargé au premier besoin.
+type InventoryApi = { HasScreen: () -> boolean, IsOpen: () -> boolean, Toggle: () -> () }
+local inventoryApi: InventoryApi? = nil
+local function inventoryModule(): InventoryApi?
+	if inventoryApi then
+		return inventoryApi
+	end
+	local module = script.Parent:FindFirstChild("InventoryController")
+	local ok, result = pcall(function(): any
+		return if module and module:IsA("ModuleScript") then require(module) else nil
+	end)
+	if ok and type(result) == "table" and type(result.HasScreen) == "function" and type(result.IsOpen) == "function" and type(result.Toggle) == "function" then
+		inventoryApi = result :: any
+	end
+	return inventoryApi
+end
+
+-- a478 : le bouton du sac ouvre-t-il l'écran d'inventaire (interrupteur allumé et UI_Inventory dans PlayerGui) ?
+local function inventoryTakesButton(): InventoryApi?
+	if DisplayedConfig.InventoryScreen ~= true then
+		return nil
+	end
+	local api = inventoryModule()
+	if api and api.HasScreen() then
+		return api
+	end
+	reportOnce("inventoryScreen", "[Displayed] InventoryScreen allumé mais UI_Inventory absent de PlayerGui : le bouton du sac ouvre encore les objets exposés")
+	return nil
+end
+
+-- a478 : l'écran d'inventaire est ouvert (pastille : ce qui entre pendant ce temps est vu).
+local function inventoryOpen(): boolean
+	local api = inventoryApi
+	if DisplayedConfig.InventoryScreen ~= true or api == nil then
+		return false
+	end
+	return api.IsOpen()
+end
+
 -- `offset` (a286, liste unique) : nombre de lignes d'objets exposés au-dessus, ajouté au LayoutOrder (0 sinon).
 local function buildReserve(current: Screen, list: { Entry }, offset: number)
 	local key = `{offset}|{keyOf(list)}`
@@ -649,7 +693,7 @@ local function refresh()
 	local current = screen
 	local items = inventory()
 	local stock = reserved(items)
-	updateAlert(stock, isOpen and current ~= nil and current.gui.Enabled)
+	updateAlert(stock, (isOpen and current ~= nil and current.gui.Enabled) or inventoryOpen())
 	if current == nil then
 		return
 	end
@@ -914,6 +958,15 @@ local function bindHotbar(gui: ScreenGui)
 	for _, inst in Find.all(gui, HOTBAR_BUTTON) do
 		if inst:IsA("GuiButton") then
 			table.insert(hotbarConnections, Motion.Activated(inst :: GuiButton):Connect(function()
+				local api = inventoryTakesButton() -- a478 (L-380) : l'inventaire, s'il est allumé et livré
+				if api then
+					if isOpen then
+						DisplayedController.Close()
+					end
+					api.Toggle()
+					refresh() -- pastille : inventaire ouvert, tout est vu
+					return
+				end
 				DisplayedController.Toggle()
 			end))
 			for _, badge in AlertBadge.Find(inst, HOTBAR_ALERT) do
