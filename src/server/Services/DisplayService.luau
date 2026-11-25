@@ -1442,7 +1442,7 @@ local function medianSideOf(rarityId: string): number?
 end
 
 -- a459 (L-354) ; a459b, a459c (L-367, règle finale de Cantin du 25/11) : échelle (Model:ScaleTo) de `model` (pas encore
--- mis à l'échelle) sur un présentoir : sa vraie taille × le facteur de sa rareté (minimum / modèle médian), remontée au
+-- mis à l'échelle) sur un présentoir : sa vraie taille × le facteur de sa rareté (minimum / modèle médian, au moins ×1), remontée au
 -- minimum si elle reste en dessous (DisplaySize.BaseFactor), puis grossie par le poids (DisplaySize.GrowthFor : ×1 au
 -- poids minimal, le maximum de sa rareté au poids maximal). Aucun plafond ici : seule la place physique réduit ensuite
 -- (standBox, fitFactor). nil si la rareté n'a pas de minimum ou si le modèle n'a aucune pièce visible (taille du poids,

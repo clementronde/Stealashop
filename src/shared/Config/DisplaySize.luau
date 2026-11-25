@@ -6,9 +6,11 @@
 -- Règle, sur un présentoir :
 --   1. Facteur de la rareté (BaseFactor) : minimum de la rareté (MinByRarity) / taille du modèle médian de cette
 --      rareté (Median des plus grandes dimensions des modèles ITM_ livrés du catalogue actif, exclusifs compris,
---      mesurés par DisplayService). Le même facteur pour tous les modèles d'une rareté : les écarts sont gardés.
+--      mesurés par DisplayService), jamais sous ×1 (Cantin, 25/11 : le facteur ne réduit jamais un modèle). Le même
+--      facteur pour tous les modèles d'une rareté : les écarts sont gardés.
 --   2. Taille de base : la vraie taille du modèle (sa plus grande dimension, pièces visibles) × ce facteur ; un objet
---      qui reste sous le minimum de sa rareté est remonté à ce minimum (le modèle médian y est tout juste).
+--      qui reste sous le minimum de sa rareté est remonté à ce minimum (le modèle médian y est tout juste, sauf si
+--      le médian dépasse déjà le minimum : facteur ×1, vraie taille).
 --   3. Grossissement par le poids : ×1 au poids minimal (Weight.Min), jusqu'à GrowthByRarity au poids maximal
 --      (Weight.Max) seulement, entre les deux la forme de Weight.ScaleCurve (courbe logarithmique douce) ramenée à
 --      cet écart.
@@ -100,16 +102,17 @@ function DisplaySize.Median(sides: { number }): number?
 end
 
 -- a459c (L-367) : échelle (×) de la taille de base d'un modèle de rareté `rarityId` dont la plus grande dimension est
--- `side` : le facteur de la rareté (minimum / `median`, taille du modèle médian de la rareté), relevé juste assez
--- pour que l'objet atteigne le minimum s'il reste en dessous. Sans médiane lisible : `side` sert de médiane (l'objet
--- est mis tout juste au minimum). nil pour une rareté sans minimum ou une taille illisible.
+-- `side` : le facteur de la rareté (minimum / `median`, taille du modèle médian de la rareté), jamais sous ×1 (Cantin,
+-- 25/11 : le facteur ne réduit jamais un modèle), relevé juste assez pour que l'objet atteigne le minimum s'il reste
+-- en dessous. Sans médiane lisible : `side` sert de médiane (l'objet est remonté au minimum s'il est plus petit, sinon
+-- gardé à sa vraie taille). nil pour une rareté sans minimum ou une taille illisible.
 function DisplaySize.BaseFactor(rarityId: any, side: any, median: any): number?
 	local minimum = DisplaySize.MinFor(rarityId)
 	if type(minimum) ~= "number" or not (minimum > 0) or type(side) ~= "number" or not (side > 0 and side < math.huge) then
 		return nil
 	end
 	local middle = if type(median) == "number" and median > 0 and median < math.huge then median else side
-	return math.max(minimum / middle, minimum / side)
+	return math.max(1, minimum / middle, minimum / side)
 end
 
 -- Grossissement (×, de 1 à GrowthByRarity) d'un objet de rareté `rarityId` qui pèse `kg` : la forme de
