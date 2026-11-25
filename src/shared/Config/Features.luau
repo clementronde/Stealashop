@@ -162,6 +162,19 @@ local Features = {
 	BdOutlines = false,
 	-- a446 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
 	BdOutlinesDev = true,
+	-- a475 (L-371, Clément 25/11) : à chaque objet ramené en zone safe (rangé par UnboxService ou déposé par PvPService),
+	-- feux d'artifice aux points FireworksPoint de la map, vus par tous (CelebrationService, remote Fireworks,
+	-- VfxController.Fireworks, Config/Vfx.Fireworks). Interrupteur PROD (partout) : false (règle C2) ; false = comme avant
+	-- (seul FX_Escape aux pieds du joueur).
+	SecuredFireworks = false,
+	-- a475 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	SecuredFireworksDev = true,
+	-- a475 (L-372, Clément 25/11) : annonces de valeur à tout le serveur (UI_Announce, Shared/Announce, CelebrationService) :
+	-- objet de grande valeur ramené en zone safe, objet de grande valeur en fuite, valeur dans le texte du vol chez un
+	-- joueur (Config/Announce.Value*). Interrupteur PROD (partout) : false (règle C2) ; false = annonces d'avant.
+	ValueAnnounce = false,
+	-- a475 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	ValueAnnounceDev = true,
 }
 
 export type Features = typeof(Features)
