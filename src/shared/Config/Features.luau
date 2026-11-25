@@ -230,6 +230,14 @@ local Features = {
 	EquipBestOrder = false,
 	-- a484 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
 	EquipBestOrderDev = true,
+	-- a478 (L-380, Clément 25/11 : « le bouton inventaire n'ouvre pas le display ») : UI_Hotbar.Bar.InventoryButton ouvre
+	-- l'écran d'inventaire UI_Inventory (InventoryController : tenir en main, exposer, vendre) au lieu des objets exposés
+	-- (UI_Displayed garde son propre bouton, RightRail.DisplayedButton, L-364). Écran absent de PlayerGui : le bouton
+	-- ouvre encore les objets exposés. Calculé dans Config/Displayed.InventoryScreen. Interrupteur PROD (partout) : false
+	-- (règle C2 : pas encore de test humain) ; false = le bouton ouvre les objets exposés, comme avant.
+	InventoryScreen = false,
+	-- a478 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	InventoryScreenDev = true,
 }
 
 export type Features = typeof(Features)

@@ -412,10 +412,35 @@ for _, section in { "ItemsSection", "ToolsSection" } do
 		table.insert(inventoryElements, { Path = `{section}.Cards.Template.{element.Path}`, Class = element.Class })
 	end
 end
+-- a478 (L-380, Clément 25/11) : l'inventaire revient (le bouton du sac UI_Hotbar.Bar.InventoryButton l'ouvre, avec
+-- Features.InventoryScreen ou InventoryScreenDev). Nouveaux éléments : tenir en main, objet tenu, vendre avec une
+-- confirmation (mêmes noms que Dock.Confirm d'UI_Displayed). Le nouvel écran est encore à dessiner : tous les éléments
+-- d'UI_Inventory deviennent facultatifs (InventoryController ne fait rien sans chacun d'eux, avertissement orange).
+for _, element in {
+	{ Path = "ItemsSection.Cards.Template.HoldButton", Class = BUTTON, Note = "pas de « tenir en main » depuis l'inventaire (la barre du bas le fait)" },
+	{ Path = "ItemsSection.Cards.Template.HeldPill", Note = "l'objet tenu en main n'est pas marqué" },
+	{ Path = "ItemsSection.Cards.Template.SellButton", Class = BUTTON, Note = "pas de vente depuis l'inventaire" },
+	{ Path = "Confirm", Class = "GuiObject", Note = "pas de vente depuis l'inventaire (SellButton caché)" },
+	{ Path = "Confirm.ItemIcon", Class = "GuiObject", Note = "confirmation sans icône" },
+	{ Path = "Confirm.ItemRarity", Note = "confirmation sans rareté" },
+	{ Path = "Confirm.ItemName", Note = "confirmation sans nom" },
+	{ Path = "Confirm.SellPrice", Note = "confirmation sans prix" },
+	{ Path = "Confirm.YesButton", Class = BUTTON, Note = "la vente ne se confirme pas" },
+	{ Path = "Confirm.NoButton", Class = BUTTON, Note = "la confirmation se ferme avec l'écran seulement" },
+} :: { Element } do
+	table.insert(inventoryElements, element)
+end
+for _, element in inventoryElements do
+	if not element.Optional then
+		element.Optional = true
+		element.Note = element.Note or "élément pas branché (écran à venir, L-380)"
+	end
+end
 table.insert(UI.Screens, {
 	Name = "UI_Inventory",
 	Class = "ScreenGui",
 	-- Vague 59 (L-182 point 5) : inventaire archivé, Clément range l'écran hors de StarterGui ; absent, rien à dire.
+	-- a478 (L-380) : l'écran revient (à dessiner) ; tant qu'il est absent, le bouton du sac ouvre UI_Displayed.
 	Optional = true,
 	Elements = inventoryElements,
 })
