@@ -249,7 +249,8 @@ local UiMotion = {
 		MinGap = 0.25, -- prototype gain_proto.luau (GainBurstGap) : un BB_Gain au plus par 0,25 s, les gains entre deux s'additionnent
 		-- Retour de Clément en Play (L-091, 2026-11-11) : environ 1 s entre deux « +$X » de ramassage (deux
 		-- textes se superposaient) ; les ramassages entre deux s'additionnent.
-		CashMinGap = 1,
+		-- a472 (L-365 point 4, Clément 25/11) : un « +$X » à chaque plaque, sans attendre : 1 → 0,25, comme MinGap.
+		CashMinGap = 0.25,
 		-- Couleur de Row.Amount selon l'attribut GainKind posé sur la copie (L-092 3e : un seul BB_Gain) ;
 		-- prototype de Clément tools/clement/gain_proto.luau, lignes 151 à 153.
 		KindAttribute = "GainKind",

@@ -68,10 +68,12 @@ local Vfx = {
 		-- de Clément plus haut).
 		Fountain = {
 			Enabled = true, -- a401 : interrupteur (false = comme avant)
-			PopTime = 0.13,
-			HoverTime = 0.2,
+			-- a472 (L-365 point 2, Clément 25/11) : billets plus rapides, le 1er arrive au compteur vers 0,34 s au lieu de
+			-- 0,68 s (a401 : PopTime 0,13, HoverTime 0,2, FlyTime 0,35).
+			PopTime = 0.08,
+			HoverTime = 0.04,
 			Drift = { 0.3, 0.5 },
-			FlyTime = 0.35,
+			FlyTime = 0.22,
 			FlyJitter = 0.02,
 		},
 	},
