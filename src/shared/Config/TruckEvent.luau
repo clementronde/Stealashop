@@ -38,6 +38,8 @@ local TruckEvent = {
 
 	-- Colis --------------------------------------------------------------------------------------
 	-- 12 colis, un par BoxSpawn_01 à _12, répartis au hasard sur les points.
+	-- a440 (Features.ZoneBoxEverywhere) : chaque type devient un colis de zone (règle Config/Rewards.TierZoneBox : Standard
+	-- → Zone, Premium → BestZone, Luxe → NextZone), zone de référence = celle du camion ; mêmes nombres.
 	Boxes = {
 		{ Tier = "Standard", Count = 6 }, -- V0 provisoire, décision d'Ironix du 2026-11-07
 		{ Tier = "Premium", Count = 4 }, -- V0 provisoire, décision d'Ironix du 2026-11-07
