@@ -245,7 +245,8 @@ local function onProfileReleasing(player: Player)
 	if type(offline) == "table" and type(offline.Income) == "number" and offline.Income == offline.Income then
 		income = math.max(0, offline.Income)
 	end
-	local seconds = Offline.MaxHours * 3600
+	-- a481 : plafond du joueur (nœuds OfflineTime de son arbre, Config/Offline.CapHours), 4 h sans eux.
+	local seconds = Offline.CapHours(if data then (data :: any).SkillTree else nil) * 3600
 	local amount = income * seconds * Offline.Rate
 	local nextEvent = LiveEvents.NextWeeklyStart(now)
 	local eventName: string? = nil

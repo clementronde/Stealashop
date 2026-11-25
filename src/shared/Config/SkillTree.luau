@@ -31,6 +31,8 @@ export type SkillId =
 	"Walls"
 	| "GlassThickness"
 	| "GlassRegen"
+	| "OfflineTime1" -- a481 (bloc à part, après Removed)
+	| "OfflineTime2" -- a481
 	| "Cameras"
 	| "Bodyguards"
 	| "PotionLuck"
@@ -282,6 +284,62 @@ local Renamed: { [string]: SkillId } = {
 local Removed: { [string]: string } = {
 	Safe = "Tile_Next4",
 }
+
+-- a481 (Cantin, 25/11) : branche « hors ligne », 2 nœuds à +30 min de gains hors ligne chacun (4 h de base, 5 h au
+-- plus). Bloc à part, ajouté à la fin de List. Effects[1] = heures ajoutées au plafond (Config/Offline.SkillBonusHours) ;
+-- le plafond est calculé et appliqué par le serveur seul (Config/Offline.CapHours, OfflineService), d'après le profil.
+-- Achetables avec Features.SkillOfflineTime, ou SkillOfflineTimeDev dans le jeu DEV (Config/Offline.SkillsEnabled) ;
+-- sinon « Soon », aucun effet. Tuiles Tile_OfflineTime1 et Tile_OfflineTime2 proposées à Clément, facultatives tant
+-- qu'elles ne sont pas livrées. Prix et place : V0 proposé le 25/11 (a481), à revoir avec l'économie d'a479.
+do
+	-- Config/Offline chargé s'il est là (bancs à liste de modules fixe, comme ProductIds dans Config/Items) ; sans lui,
+	-- les deux nœuds restent « Soon ».
+	local found, module = pcall(function(): any
+		return script.Parent:FindFirstChild("Offline")
+	end)
+	local ok, Offline: any = false, nil
+	if found and module ~= nil then
+		ok, Offline = pcall(require, module :: any)
+	end
+	local enabled = ok and type(Offline) == "table" and Offline.SkillsEnabled == true
+	local bonus: number = if ok and type(Offline) == "table" and type(Offline.SkillBonusHours) == "number"
+		then Offline.SkillBonusHours
+		else 0.5
+	local offlineSkills: { Skill } = {
+		{
+			Id = "OfflineTime1",
+			Tile = "Tile_OfflineTime1",
+			TileOptional = true,
+			DisplayName = "Offline Time", -- V0 proposé le 25/11 (a481)
+			Stat = "Offline cash", -- V0 proposé le 25/11 (a481)
+			Description = "Your shop keeps earning 30 more minutes while you are offline.", -- V0 proposé le 25/11 (a481)
+			MaxLevel = 1,
+			Prices = { 250_000 }, -- V0 proposé le 25/11 (a481)
+			Effects = { bonus },
+			Labels = { [0] = "4h max", "4h30 max" },
+			Coded = if enabled then 1 else 0,
+			OpensWhen = { Id = "GlassRegen", Level = 1 }, -- V0 proposé le 25/11 (a481) : tuile voisine (ancienne place de Tile_Next4)
+		},
+		{
+			Id = "OfflineTime2",
+			Tile = "Tile_OfflineTime2",
+			TileOptional = true,
+			DisplayName = "Offline Time 2", -- V0 proposé le 25/11 (a481)
+			Stat = "Offline cash", -- V0 proposé le 25/11 (a481)
+			Description = "Your shop keeps earning 30 more minutes while you are offline.", -- V0 proposé le 25/11 (a481)
+			MaxLevel = 1,
+			Prices = { 2_500_000 }, -- V0 proposé le 25/11 (a481)
+			Effects = { bonus },
+			Labels = { [0] = "4h30 max", "5h max" },
+			Coded = if enabled then 1 else 0,
+			OpensWhen = { Id = "OfflineTime1", Level = 1 }, -- V0 proposé le 25/11 (a481)
+		},
+	}
+	for _, skill in offlineSkills do
+		table.insert(List, skill)
+		ById[skill.Id] = skill
+	end
+end
 
 -- Visuels de la boutique liés à une compétence (règle de Cantin du 2026-11-13) : cachés tant que le propriétaire
 -- n'a pas Level dans Id, quel que soit le niveau de la boutique (ShopWallsService). Reconnus par le nom de la pièce

@@ -1669,6 +1669,11 @@ table.insert(UI.Screens, {
 for _, screenDef in UI.Screens do
 	if screenDef.Name == "UI_SkillTree" then
 		table.insert(screenDef.Elements, { Path = "Tree.Tile_FittingRoom", Class = BUTTON, Optional = true, Note = "la cabine d'essayage s'achète par l'écran de la cabine" })
+		-- a481 (Cantin, 25/11) : tuiles des nœuds hors ligne (Config/SkillTree OfflineTime1 et OfflineTime2, +30 min chacun),
+		-- mêmes calques que les autres tuiles ; noms proposés à Clément, pas encore livrés : facultatives.
+		for _, tile in { "Tile_OfflineTime1", "Tile_OfflineTime2" } do
+			table.insert(screenDef.Elements, { Path = `Tree.{tile}`, Class = BUTTON, Optional = true, Note = "ce nœud hors ligne ne s'achète pas" })
+		end
 	end
 end
 -- a431 (L-332, Cantin, 24/11) : phrase de la compétence choisie (Description de Config/SkillTree), sous Header ; nom
