@@ -48,6 +48,14 @@ local Displayed = {
 		WaitText = "for ...", -- V0 : en attendant le prix du serveur (YesButton ne vend pas encore)
 	},
 
+	-- a484 (Cantin, 25/11) : ordre d'Equip Best (Shared/DisplayOrder). À chaque étage, un présentoir est « contre un mur »
+	-- quand son écart à l'axe porte → fond est à moins de WallBand studs de celui du présentoir le plus écarté de cet
+	-- étage ; les autres sont « au milieu » et passent après les deux murs de leur étage (sur PLOT_Shop : murs à ±24,
+	-- présentoirs 21 à 24 du gamepass à ±9 sur l'étage). V0 proposé (studs).
+	EquipBestOrder = {
+		WallBand = 4,
+	},
+
 	-- « +$X/s » de l'objet qui vole de son présentoir jusqu'à l'argent du HUD (L-192 Q2), une fois par pose
 	-- (à la main, « Exposer les meilleurs », depuis la réserve), jamais pendant une poursuite (GainController).
 	IncomeFly = {

@@ -126,6 +126,10 @@
 --       soit le joueur, sans yield. Renvoie le nombre d'objets posés sur un présentoir (0 : rien à
 --       changer, ou pas de parcelle).
 --       Vague 63 (a206, L-192 Q3) : un exposé remplacé va aussi dans la RÉSERVE (au bout, du meilleur au moins bon).
+--       a484 (Cantin, 25/11 ; Features.EquipBestOrder, EquipBestOrderDev) : allumé, les mêmes meilleurs (même critère)
+--       prennent les présentoirs utilisables dans l'ordre de Shared/DisplayOrder, vu depuis l'entrée (rez-de-chaussée puis
+--       étage ; à chaque étage mur gauche, mur droit, puis les présentoirs du milieu ; du plus près de l'entrée au fond) : le meilleur sur le premier, déjà exposés
+--       compris (ils se réordonnent). Renvoie alors le nombre d'objets posés ou déplacés.
 --   Réserve (vague 63, a206 ; L-192 Q3, L-202 point 4 ; Config/Displayed) : champ Reserve du profil, liste d'uids
 --   d'objets ni exposés, ni au coffre-fort, ni sous antivol, au plus ReserveMax (V0 : 30 ; pleine, un objet remplacé
 --   reste hors liste, dans Items). Nettoyée à chaque usage ; publiée dans l'attribut DisplayReserve du Player (uids
@@ -282,6 +286,7 @@ local PlotService = require(script.Parent.PlotService)
 local ShopGrowth = require(ReplicatedStorage.Shared.Config.ShopGrowth) -- a280 : 2e étage
 local ShopFloor = require(ReplicatedStorage.Shared.ShopFloor) -- a280
 local PadZone = require(ReplicatedStorage.Shared.PadZone) -- a472 (L-365) : volume des plaques, partagé avec le client
+local DisplayOrder = require(ReplicatedStorage.Shared.DisplayOrder) -- a484 : ordre des présentoirs d'Equip Best
 
 type Data = ProfileTypes.Data
 type ItemEntry = ProfileTypes.Item
@@ -2462,7 +2467,29 @@ function DisplayService.GetSlotStates(player: Player): { [number]: SlotState }
 	return states
 end
 
--- Equip Best (règle V0 dans l'en-tête). Sans yield.
+-- a484 : présentoirs `slots` dans l'ordre de présentation (Shared/DisplayOrder) : position de chacun dans le repère du
+-- pivot de la boutique, axe donné par sa porte PlotDoor, étage = dans le Floor_2.
+local DOOR_NAME = "PlotDoor"
+local function presentationOrder(plot: Model, refs: PlotRefs, slots: { number }): { number }
+	local stands: { DisplayOrder.Stand } = {}
+	local floor = refs.floor
+	for _, index in slots do
+		local attachment = refs.slots[index]
+		if attachment then
+			table.insert(stands, { index = index, position = attachment.WorldPosition, upper = floor ~= nil and attachment:IsDescendantOf(floor) })
+		end
+	end
+	local door = plot:FindFirstChild(DOOR_NAME)
+	local doorAt: Vector3? = nil
+	if door and door:IsA("BasePart") then
+		doorAt = (door :: BasePart).Position
+	elseif door and door:IsA("Model") then
+		doorAt = (door :: Model):GetPivot().Position
+	end
+	return DisplayOrder.Sort(plot:GetPivot(), doorAt, stands)
+end
+
+-- Equip Best (règle V0 dans l'en-tête ; a484 : ordre des présentoirs avec Features.EquipBestOrder). Sans yield.
 function DisplayService.EquipBest(player: Player): number
 	local data, account, plot = context(player)
 	if data == nil or account == nil or plot == nil then
@@ -2531,8 +2558,45 @@ function DisplayService.EquipBest(player: Player): number
 	for _, candidate in bumped do
 		addToReserve(data, candidate.uid, inHandOf(player))
 	end
-	-- … et les meilleurs pas encore exposés prennent les présentoirs libres, dans l'ordre.
 	local moved = 0
+	if DisplayOrder.Enabled() then
+		-- a484 (Cantin, 25/11 ; Features.EquipBestOrder) : les meilleurs, du meilleur au moins bon, prennent les
+		-- présentoirs dans l'ordre vu depuis l'entrée (Shared/DisplayOrder), déjà exposés compris. Tout est calculé
+		-- avant d'écrire, sans yield : chaque meilleur a un seul présentoir, aucun objet n'est perdu ni en double.
+		local order = presentationOrder(plot, refs, slots)
+		local target: { [string]: number } = {}
+		local rank = 0
+		for _, candidate in candidates do
+			if best[candidate.uid] and rank < #order then
+				rank += 1
+				target[candidate.uid] = order[rank]
+			end
+		end
+		local before: { [number]: string } = {}
+		for _, index in order do
+			local key = tostring(index)
+			before[index] = data.Display[key]
+			data.Display[key] = nil
+		end
+		for key, uid in table.clone(data.Display) do
+			if target[uid] ~= nil then
+				data.Display[key] = nil -- jamais le même objet sur deux présentoirs
+			end
+		end
+		for uid, index in target do
+			data.Display[tostring(index)] = uid
+			if before[index] ~= uid then
+				moved += 1
+			end
+		end
+		reconcile(player, account, data, plot)
+		refreshInventory(player)
+		if IS_STUDIO then
+			print(`[DisplayService] {player.Name} : Equip Best (ordre des présentoirs), {moved} objet(s) posé(s) ou déplacé(s), revenu {Format.money(account.income)}/s`)
+		end
+		return moved
+	end
+	-- … et les meilleurs pas encore exposés prennent les présentoirs libres, dans l'ordre.
 	local position = 1
 	for _, candidate in candidates do
 		if best[candidate.uid] and displayedAt[candidate.uid] == nil then
