@@ -2,17 +2,19 @@
 -- Interrupteurs des fonctions pas encore livrées (DEV-021 ; décision d'Ironix du 2026-11-07,
 -- liaison L-026). false = la fonction n'existe pas encore : ses éléments d'UI sont cachés
 -- (HudController). Repasser un interrupteur à true suffit à les réafficher, tels que Clément
--- les a posés (le code ne force jamais Visible = true ; ReturnToBase n'a plus d'UI, vague 38). NightCycle et ReturnToBase coupent aussi
--- leur service serveur (NightCycleService, ReturnBaseService) et le ciel animé (SkyController).
+-- les a posés (le code ne force jamais Visible = true). NightCycle coupe aussi son service serveur (NightCycleService)
+-- et le ciel animé (SkyController). Le retour base (DEV-045, ReturnToBase) est retiré du code (a438, 24/11).
 -- TruckEvent n'a pas d'UI : false coupe TruckEventService (aucun camion) et TruckController.
 -- RobuxShop coupe aussi toute la boutique Robux (DEV-100) : MonetizationService (ni ProcessReceipt,
 -- ni gamepass, ni bonus de revenus, ni effet) et RobuxShopController (écran UI_RobuxShop, comptoir).
 -- Aperçus (L-071, décision de Clément du 2026-11-08 : les boutons Shop, Index et Rebirth du HUD sont
 -- visibles dès maintenant) : RobuxShopPreview montre le bouton Shop et ouvre UI_RobuxShop en vitrine
 -- tant que RobuxShop est false (RobuxShopController : aucun achat, aucun appel à MarketplaceService ;
--- le serveur reste coupé) ; RebirthPreview montre le bouton Rebirth et ouvre UI_Rebirth en aperçu
--- (RebirthController : la prochaine renaissance, sans confirmation) quand Rebirth est false (DEV-120 ; la
--- renaissance est codée et allumée depuis a244, vague 72). Index passe à true (L-071) : l'index est codé par IndexController.
+-- le serveur reste coupé). Index passe à true (L-071) : l'index est codé par IndexController.
+-- a438 (24/11, lot 5 du check-up a417, R1 et R9) : retirés avec leur ancien chemin, car toujours dans le même état
+-- depuis longtemps : RebirthPreview (inutile depuis Rebirth = true), SingleBoxReveal (l'ouverture et les mutations de
+-- taille d'avant la vague 62), NewAuras (la boutique des 6 anciennes auras ; leur migration reste), RebirthTools
+-- (outils de renaissance d'a407, coupés en fusion98 : L-173, plus d'outil à la renaissance) et ReturnToBase.
 
 local DeepFreeze = require(script.Parent.DeepFreeze)
 
@@ -23,10 +25,8 @@ local Features = {
 	RobuxCrateDev = true, -- a294 (validé par Cantin, 21/11) : la caisse exclusive allumée dans le jeu DEV seulement (Config/ProductIds.IsDev, Monetization.Crate.Live), même boutique coupée ; PROD : RobuxCrate seul (false = cachée, invendue)
 	Index = true, -- MAJ 2, index des objets : UI_HUD.IndexButton (L-071 : visible dès maintenant, IndexController)
 	Rebirth = true, -- MAJ 3, renaissance (DEV-120, codée en V0 vague 51 : RebirthService, remote Rebirth) : UI_HUD.RebirthButton ; true depuis la vague 72 (a244 ; L-216 point 5, L-231 : au lancement, décision de Cantin)
-	RebirthPreview = true, -- L-071 : UI_HUD.RebirthButton visible et UI_Rebirth en aperçu (RebirthController), sans renaissance
 	NightCycle = true, -- DEV-047, cycle jour/nuit (5.12) : UI_HUD.NightCountdown, NightCycleService, SkyController
 	AntiCheat = true, -- DEV-060, contrôle des déplacements (9.6, Config/AntiCheat) : false coupe AntiCheatService (Allow et Verify ne font rien), aucune UI
-	ReturnToBase = false, -- DEV-045, retour base : ReturnBaseService (remote ReturnToBase) ; plus de bouton UI_HUD.ReturnBaseButton depuis le 2026-11-14 (L-135 point 3, vague 38) ; false depuis la vague 41 (audit de sécurité du 14/11) : le remote, que plus aucun client n'envoie, est refusé sans effet par le serveur
 	TruckEvent = true, -- L-049, événement camion (Config/TruckEvent) : TruckEventService, TruckController
 	Settings = true, -- L-095 point 2, réglages : UI_HUD.SettingsButton (montré par SettingsController) et écran UI_Settings ; à false, les réglages sauvegardés s'appliquent quand même (sons, effets)
 	-- a443 (Cantin, 24/11 : refonte de la poursuite, fiche docs/references/Poursuite.md) : poursuite « V3 » (Config/Chase.V3,
@@ -48,16 +48,6 @@ local Features = {
 	-- Vague 80 (a267, Cantin 20/11 « Pièges et coffre ») : true en DEV ; sans UI_Rewards.WeeklyChest de Clément, les jours
 	-- se comptent mais rien ne se montre (ni cadre ni pastille : RewardsController).
 	WeeklyChest = true, -- MAJ 1, coffre hebdomadaire (DEV-101, Partie 2 3.3 ; Config/Rewards.Weekly) : RewardService (remote ClaimWeekly), RewardsController (UI_Rewards.WeeklyChest, facultatif) ; false = rien ne change en jeu ; en Studio, workspace:SetAttribute("WeeklyChestTest", true) l'allume
-	-- Vague 62 (Cantin et Clément, 2026-11-15, L-198) : un seul colis par braquage, cinématique d'ouverture, poids des
-	-- objets (Config/Weight, Shared/ItemWeight : taille, revenu, Huge et Colossal par le poids) ; false = l'ouverture
-	-- et les mutations de taille d'avant (Tiny, Big, Huge, Colossal tirées à part).
-	SingleBoxReveal = true, -- vague 62 (Cantin et Clément, 2026-11-15 ; L-198) : un seul colis par braquage, tirage par la boîte seule, cinématique d'ouverture vue par tous (RevealController, Config/Reveal), objet pris d'office ; false = l'ouverture d'avant (aucun RevealStarted, RevealController ne fait rien)
-	-- Vague 63 (a210, L-205) : les 8 auras de Clément (Shine à Chained) à la place des 6 anciennes, proposition à
-	-- valider par Clément (Config/Cosmetics.NewAuras) ; true = boutique des 8 et migration des anciennes au chargement
-	-- du profil (Cosmetics.Migration, CosmeticService) ; false = la boutique d'aujourd'hui, rien ne change.
-	-- Vague 66 (a218, L-210 point 8) : true, prix validés par Clément (L-210 : « OK à tout ») ; le simulateur v2
-	-- tourne avec les 8 auras (tools/ironix/equilibrage, RAPPORT=v2).
-	NewAuras = true,
 	-- Vague 66 (a221, L-210 point 4) : la foule de PNJ qui filme et photographie le voleur à sa sortie d'un magasin PNJ
 	-- (Config/Witness.Crowd, WitnessCrowdController, client seul, aucun remote) ; false = rien ne change.
 	WitnessCrowd = true,
@@ -124,12 +114,6 @@ local Features = {
 	-- récompense la semaine suivante (Config/WeeklyLeaderboard, WeeklyLeaderboardService ; panneaux de Clément
 	-- facultatifs). true en DEV ; false = rien n'est compté ni écrit.
 	WeeklyLeaderboards = true,
-	-- a407 (vague GC6, 23/11, MAJ 3 : renaissances 5 à 10) : outils de renaissance de Config/Tools (Marteau-piqueur à la
-	-- 5e, Bélier à la 7e ; RequiresRebirth), vendus à la boutique d'armes, gardés à la renaissance, le Bélier ×3 sur les
-	-- portes de boutique (Tools.DoorHits). V0 proposé (Cantin, 23/11) : true ; false = ni l'un ni l'autre en jeu.
-	-- Fusion98 (24/11, accord du grand chef) : COUPÉ, la décision de Clément du 15/11 (L-173 : plus d'outil à la
-	-- renaissance) gagne sur la table de la Partie 2 ; question posée à Clément (liaison). Code en veille.
-	RebirthTools = false,
 	-- a414 (vague GC7, 23/11, demande de Cantin) : mesures du lancement dans le tableau de bord Roblox (AnalyticsService) :
 	-- entonnoirs de Config/Funnels (FunnelService, FunnelController ; le tutoriel garde l'onboarding), événements
 	-- WindowBroken, HighRarityOpened, ItemSold, LoadingTime, gains pas encore comptés (receleur, codes, dons du tuto,

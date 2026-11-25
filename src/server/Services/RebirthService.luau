@@ -20,8 +20,7 @@
 --
 -- Ce que la renaissance fait (proposition 1.1 et 1.2, V0) :
 --   remis à zéro  argent (plaques encaissées d'abord), Speed et Strength, tapis, banc et présentoirs
---                 achetés (retour à Balance.Display.StartSlots), outils (Fists ; a407 : sauf les outils de
---                 renaissance, Config/Tools.KeepOnRebirth, et le meilleur revient en main), auras et trails, coffre-fort
+--                 achetés (retour à Balance.Display.StartSlots), outils (Fists), auras et trails, coffre-fort
 --                 du profil (Vault), réserve (Reserve, vague 72), gains hors ligne pas réclamés, et tous les
 --                 objets sauf Rebirths.KeepItems ;
 --                 l'objet requis est remis (la copie qui rapporte le moins) et ne compte pas dans les 3
@@ -70,7 +69,6 @@ local Items = require(Shared.Config.Items)
 local Mutations = require(Shared.Config.Mutations)
 local Offline = require(Shared.Config.Offline) -- vague 75
 local Rebirths = require(Shared.Config.Rebirths)
-local Tools = require(Shared.Config.Tools) -- a407 : outils gardés (KeepOnRebirth)
 local Format = require(Shared.Format)
 local Net = require(Shared.Net.Net)
 local ProfileTypes = require(Shared.Types.Profile)
@@ -368,19 +366,8 @@ local function commit(player: Player, data: Data, level: number, remitted: strin
 	data.Upgrades.Treadmill = 0
 	data.Upgrades.Bench = 0
 	data.Upgrades.DisplaySlots = 0
-	-- a407 (MAJ 3) : les outils de renaissance (Config/Tools.KeepOnRebirth : Marteau-piqueur, Bélier) restent.
-	local keptTools: { string } = {}
-	for _, id in data.Tools.Owned do
-		local def = Tools.ById[id]
-		if def ~= nil and def.KeepOnRebirth == true and not table.find(keptTools, id) then
-			table.insert(keptTools, id)
-		end
-	end
 	table.clear(data.Tools.Owned)
 	table.insert(data.Tools.Owned, DEFAULT_TOOL)
-	for _, id in keptTools do
-		table.insert(data.Tools.Owned, id)
-	end
 	data.Tools.Equipped = DEFAULT_TOOL
 	table.clear(data.Cosmetics.Auras)
 	table.clear(data.Cosmetics.Trails)
@@ -412,19 +399,6 @@ local function refreshServices(player: Player, keptUids: { string }, fromBoxes: 
 		CosmeticService.Refresh(player)
 	end)
 	step("ToolService", function()
-		-- a407 : le meilleur outil gardé (outil de renaissance) revient en main ; sinon les poings.
-		local data = DataService.Get(player)
-		local owned: { string } = if data then data.Tools.Owned else {}
-		local best: Tools.Tool? = nil
-		for _, id in owned do
-			local tool = Tools.ById[id]
-			if tool ~= nil and tool.KeepOnRebirth == true and (best == nil or tool.Order > best.Order) then
-				best = tool
-			end
-		end
-		if best ~= nil then
-			ToolService.Equip(player, best.Id)
-		end
 		ToolService.RefreshDamage(player)
 	end)
 	step("ShopService", function()

@@ -35,8 +35,8 @@
 --     ReturnBaseButton est sorti du contrat et n'est plus lu ici (s'il reste dans l'écran, caché par Clément, le
 --     code n'y touche pas). Avant : un clic envoyait ReturnToBase et la recharge s'affichait (DEV-045).
 --   - Cache les éléments des fonctions pas encore livrées (Config/Features) : RobuxShopButton,
---     IndexButton, RebirthButton, NightCountdown. Shop et Rebirth restent visibles
---     pendant leur aperçu (RobuxShopPreview, RebirthPreview : L-071, les trois boutons de gauche sont
+--     IndexButton, RebirthButton, NightCountdown. Shop reste visible
+--     pendant son aperçu (RobuxShopPreview : L-071, les trois boutons de gauche sont
 --     visibles dès maintenant) ; leur clic est branché par RobuxShopController, IndexController et
 --     RebirthController, pas ici.
 --   - Vague 52 (a170) : la retenue du revenu pendant l'ouverture d'un colis en base (HoldIncome) est
@@ -187,13 +187,13 @@ local BOX_GRADIENT = "UIGradient"
 local POLICE_TEXT_COLOR = "PoliceTextColor"
 
 -- Éléments cachés tant que leur fonction n'existe pas (Config/Features, liaison L-026). Les boutons
--- Shop et Rebirth restent visibles pendant leur aperçu (L-071).
+-- Shop reste visible pendant son aperçu (L-071).
 local GATED: { { Element: string, Enabled: boolean } } = {
 	{ Element = "RobuxShopButton", Enabled = Features.RobuxShop or Features.RobuxShopPreview },
 	{ Element = "IndexButton", Enabled = Features.Index },
 	-- Visible dans Studio depuis le 2026-11-14 (L-159) : sans les réglages, l'engrenage ne doit rien montrer.
 	{ Element = "SettingsButton", Enabled = Features.Settings },
-	{ Element = "RebirthButton", Enabled = Features.Rebirth or Features.RebirthPreview },
+	{ Element = "RebirthButton", Enabled = Features.Rebirth },
 	{ Element = "NightCountdown", Enabled = Features.NightCycle },
 	-- Vague 80 (a266) : boutons des quêtes et de la roue (facultatifs ; QuestController, WheelController).
 	{ Element = "QuestsButton", Enabled = Features.Quests },

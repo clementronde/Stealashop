@@ -1,8 +1,8 @@
 --!strict
 -- RevealController (client, vague 62, a204 ; décision de Cantin et Clément du 2026-11-15, liaison L-198 ; valeurs :
 -- Config/Reveal ; noms : Contract/Animations.Reveal, Contract/Models (Ceiling), Contract/UI (BB_Reveal)) : la
--- cinématique d'ouverture d'un colis sur son rayon, vue par tous. Interrupteur : Features.SingleBoxReveal (faux :
--- rien ne se branche).
+-- cinématique d'ouverture d'un colis sur son rayon, vue par tous. Toujours branché (a438 : plus de
+-- Features.SingleBoxReveal).
 --
 -- Le serveur (a202) décide de tout et envoie RevealStarted à tous les clients (ouvreur, magasin, rayon, objet,
 -- rareté, mutation d'effet, poids, taille finale, classe de taille, id), puis RevealEnded à la fin de la phase.
@@ -49,7 +49,6 @@ local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = Shared:WaitForChild("Config")
-local Features = require(Config:WaitForChild("Features"))
 local Reveal = require(Config:WaitForChild("Reveal"))
 local Items = require(Config:WaitForChild("Items"))
 local Rarities = require(Config:WaitForChild("Rarities"))
@@ -1605,9 +1604,6 @@ local function unwatchStore(inst: Instance)
 end
 
 function RevealController.Start()
-	if Features.SingleBoxReveal ~= true then
-		return
-	end
 	local ok, loaded = pcall(function()
 		return require(Shared:WaitForChild("Net"):WaitForChild("Net")) :: any
 	end)

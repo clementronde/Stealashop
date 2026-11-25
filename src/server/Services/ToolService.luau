@@ -36,9 +36,6 @@
 --   ToolService.Grant(player, toolId) -> boolean
 --       Ajoute l'outil aux outils possédés, sans l'équiper (boutique d'armes, DEV-031).
 --   ToolService.Owns(player, toolId) -> boolean
---   ToolService.GetDoorHits(player) -> number
---       a407 : coups comptés par frappe sur une porte de boutique de joueur (Config/Tools.DoorHits de l'outil
---       équipé, Bélier 3 ; 1 sinon), lu par WindowService.
 --   ToolService.GetEquippedId(player) -> string?
 --       Outil équipé ; un outil enregistré inconnu ou pas possédé compte comme les poings.
 --   ToolService.IsHoldingTool(player) -> boolean
@@ -322,17 +319,6 @@ function ToolService.GetHitDamage(player: Player): number
 		return 0
 	end
 	return Formulas.HitDamage(equippedDef(data).Power, auraMultiplier(player))
-end
-
--- a407 (Bélier, Config/Tools.DoorHits) : coups comptés par frappe sur la porte d'une boutique de joueur, selon l'outil
--- équipé ; 1 sans le champ ou sans profil.
-function ToolService.GetDoorHits(player: Player): number
-	local data = DataService.Get(player)
-	local hits = if data then equippedDef(data).DoorHits else nil
-	if type(hits) ~= "number" or hits ~= hits or hits < 1 or hits == math.huge then
-		return 1
-	end
-	return math.floor(hits)
 end
 
 function ToolService.Equip(player: Player, toolId: string): boolean

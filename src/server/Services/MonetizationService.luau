@@ -728,7 +728,7 @@ local function startReveal(
 	kind: string -- "Crate" ou "Gift"
 ): string?
 	local config = CRATE.Reveal
-	if config.Enabled ~= true or Features.SingleBoxReveal ~= true then
+	if config.Enabled ~= true then
 		return "ouverture coupée"
 	end
 	if player.Parent ~= Players then
@@ -831,7 +831,7 @@ end
 -- L'ouverture d'un lot de la caisse : l'objet le plus rare, sa cote dans la caisse, la rareté de départ de Crate.Reveal.
 local function startCrateReveal(player: Player, got: { string }): string?
 	local config = CRATE.Reveal
-	if config.Enabled ~= true or Features.SingleBoxReveal ~= true then
+	if config.Enabled ~= true then
 		return "ouverture coupée"
 	end
 	if player.Parent ~= Players then

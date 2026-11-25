@@ -47,7 +47,7 @@ ShelfOpenState.RevealAtAttribute = "ShelfRevealAt"
 ShelfOpenState.ReservedByAttribute = "ShelfReservedBy"
 ShelfOpenState.ReservedUntilAttribute = "ShelfReservedUntil"
 
--- Vague 62 (Features.SingleBoxReveal, Config/ShelfOpen.Reveal) : pendant la cinématique d'un colis (remotes
+-- Vague 62 (Config/ShelfOpen.Reveal) : pendant la cinématique d'un colis (remotes
 -- RevealStarted et RevealEnded), le serveur ne pose AUCUN des attributs ci-dessus sur le colis (a204 :
 -- l'ouverture d'avant ne doit pas jouer chez le client par-dessus la cinématique) ; à la fin, le colis disparaît
 -- et l'objet est porté par l'ouvreur. Sur le Player de l'ouvreur, de RevealStarted à RevealEnded :

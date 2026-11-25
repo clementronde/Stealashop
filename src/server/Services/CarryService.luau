@@ -618,7 +618,7 @@ local function itemLabel(itemId: string, mutation: Mutations.Mutation?, income: 
 	fill(gui, "Rarity", rarity.DisplayNameUpper, rarity.Color)
 	fill(gui, "Income", Format.income(income))
 	-- Vague 62 (a203) : poids « 1,250 kg » dans l'élément facultatif Weight de BB_Carry (nom proposé à Clément), caché sans poids connu.
-	local kg = if ItemWeight.Enabled() then ItemWeight.Sanitize(weight) else nil
+	local kg = ItemWeight.Sanitize(weight)
 	fill(gui, WeightConfig.Field, if kg then ItemWeight.Format(kg) else nil)
 	return gui
 end
@@ -698,7 +698,7 @@ local function buildVisual(payload: Payload): Visual
 	local mutation = Mutations.Sanitize(payload.Mutation)
 	model:SetAttribute("MutationSize", if mutation then mutation.Size else nil)
 	model:SetAttribute("MutationEffect", if mutation then mutation.Effect else nil)
-	model:SetAttribute(WeightConfig.Attribute, if ItemWeight.Enabled() then ItemWeight.Sanitize(payload.Weight) else nil) -- vague 62 (a203)
+	model:SetAttribute(WeightConfig.Attribute, ItemWeight.Sanitize(payload.Weight)) -- vague 62 (a203)
 	CollectionService:AddTag(model, CARRIED_ITEM_TAG)
 	return { model = model, anchor = anchor, offset = offset }
 end

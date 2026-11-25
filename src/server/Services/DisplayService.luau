@@ -1471,7 +1471,7 @@ local function addBillboard(
 	-- avec le vrai poids, en capitales comme sur son étiquette (« 20 KG », ItemWeight.Format sans autre formule), et
 	-- reste caché sans poids (ou sans ItemWeight).
 	local weightField = Find.path(billboard, WeightConfig.Field)
-	if ItemWeight.Enabled() and type(weight) == "number" then
+	if type(weight) == "number" then
 		setText(billboard, WeightConfig.Field, string.upper(ItemWeight.Format(weight)))
 		if weightField ~= nil and weightField:IsA("GuiObject") then
 			(weightField :: GuiObject).Visible = true
@@ -1583,7 +1583,7 @@ local function buildItemModel(
 	display:SetAttribute(MUTATION_SIZE_ATTRIBUTE, if mutation then mutation.Size else nil)
 	display:SetAttribute(MUTATION_EFFECT_ATTRIBUTE, if mutation then mutation.Effect else nil)
 	-- Vague 62 (a203) : poids (kg) lu par les contrôleurs (deux mains, socle « BEST ITEM »), absent sans le poids.
-	display:SetAttribute(WeightConfig.Attribute, if ItemWeight.Enabled() then weight else nil)
+	display:SetAttribute(WeightConfig.Attribute, weight)
 	return display, income
 end
 

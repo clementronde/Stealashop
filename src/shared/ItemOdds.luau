@@ -54,17 +54,10 @@ end
 
 -- Probabilité (0 à 1) de la classe de taille `sizeId` (nil : ni Huge ni Colossal) à la chance `luck`.
 local function sizeChance(sizeId: string?, luck: number): number
-	if ItemWeight.Enabled() then
-		if sizeId then
-			return ItemWeight.SizeChance(sizeId, luck) / 100
-		end
-		return 1 - (ItemWeight.SizeChance("Huge", luck) + ItemWeight.SizeChance("Colossal", luck)) / 100
+	if sizeId then
+		return ItemWeight.SizeChance(sizeId, luck) / 100
 	end
-	local size = if sizeId then Mutations.SizeById[sizeId] else nil
-	if size then
-		return size.Chance / 100
-	end
-	return 1 - familyTotal(Mutations.Sizes) / 100
+	return 1 - (ItemWeight.SizeChance("Huge", luck) + ItemWeight.SizeChance("Colossal", luck)) / 100
 end
 
 function ItemOdds.Chance(itemId: string, mutation: any): number?

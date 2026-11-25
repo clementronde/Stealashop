@@ -814,7 +814,7 @@ end
 -- Nuit raccourcie (liaison L-078, décision d'Ironix du 2026-11-08) : la nuit sert surtout aux
 -- joueurs restés dans le couloir (finir un vol, rentrer). Dès qu'il n'y en a plus aucun (passage de
 -- nuit : allowed, tenu à jour à chaque tick par guardCorridor, donc capture, renvoi chez soi, mort,
--- déconnexion, bouton Retour base ou retour à pied derrière le mur), il ne reste au plus que
+-- déconnexion ou retour à pied derrière le mur), il ne reste au plus que
 -- Night.EmptyCorridorRemaining s. Le couloir ne se remplit plus de la nuit (mur à sens unique) : le
 -- raccourci ne se défait jamais.
 local function shortenIfCorridorEmpty()

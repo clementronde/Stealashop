@@ -106,7 +106,7 @@ local function rollFamily(list: { Entry }, rng: Random): string?
 	return nil
 end
 
--- Vague 62 (a203, Cantin) : avec le poids (ItemWeight.Enabled), les tailles sont des paliers de poids
+-- Vague 62 (a203, Cantin) : avec le poids, les tailles sont des paliers de poids
 -- (ItemWeight.SizeMutationFor) : seules Huge et Colossal existent encore ; Tiny et Big, gardées dans les vieux
 -- profils, ne sont plus ni lues, ni écrites, ni tirées (leur revenu passe par le poids, Config/Weight.Legacy).
 local WEIGHT_SIZES: { [string]: boolean } = { Huge = true, Colossal = true }
@@ -122,7 +122,7 @@ end
 
 local function sizeOf(value: any): Entry?
 	local id = rawSizeId(value)
-	if id == nil or (ItemWeight.Enabled() and not WEIGHT_SIZES[id]) then
+	if id == nil or not WEIGHT_SIZES[id] then
 		return nil
 	end
 	return SIZE_BY_ID[id]
@@ -146,12 +146,11 @@ local Mutations = {
 -- Tirage des deux familles (serveur). nil quand aucune ne sort : rien à sauvegarder.
 -- Vague 62 : avec le poids, la taille n'est plus tirée ici (l'appelant pose Size = ItemWeight.SizeMutationFor(poids)).
 function Mutations.Roll(rng: Random): Mutation?
-	local size = if ItemWeight.Enabled() then nil else rollFamily(SIZES, rng)
 	local effect = rollFamily(EFFECTS, rng)
-	if size == nil and effect == nil then
+	if effect == nil then
 		return nil
 	end
-	return { Size = size, Effect = effect }
+	return { Effect = effect }
 end
 
 -- Copie propre d'une mutation venue du profil ou d'un payload : seuls les Id connus restent. nil si
@@ -195,22 +194,14 @@ end
 function Mutations.IncomeMultiplier(mutation: any, weight: number?): number
 	local effect = effectOf(mutation)
 	local effectFactor = if effect then effect.IncomeMultiplier else 1
-	if ItemWeight.Enabled() then
-		return ItemWeight.IncomeFactor(ItemWeight.Effective(weight, rawSizeId(mutation))) * effectFactor
-	end
-	local size = sizeOf(mutation)
-	return (if size then size.IncomeMultiplier else 1) * effectFactor
+	return ItemWeight.IncomeFactor(ItemWeight.Effective(weight, rawSizeId(mutation))) * effectFactor
 end
 
 -- Échelle du modèle exposé : celle de la taille, 1 sinon.
 -- Vague 62 (a203) : avec le poids, ItemWeight.ScaleFor(weight) (même repli que IncomeMultiplier), au plus
 -- Config/Weight.DisplayMaxScale.
 function Mutations.Scale(mutation: any, weight: number?): number
-	if ItemWeight.Enabled() then
-		return ItemWeight.CappedScale(ItemWeight.Effective(weight, rawSizeId(mutation)), Weight.DisplayMaxScale)
-	end
-	local size = sizeOf(mutation)
-	return if size then size.Scale else 1
+	return ItemWeight.CappedScale(ItemWeight.Effective(weight, rawSizeId(mutation)), Weight.DisplayMaxScale)
 end
 
 -- Étiquette en capitales (BB_Box, champ Mutation de BB_Item ou BB_Carry s'il existe) : « BIG · GOLD »,

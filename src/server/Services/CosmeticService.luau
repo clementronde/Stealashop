@@ -47,9 +47,9 @@
 --     CosmeticFx, CosmeticId et le tag CosmeticPiece (mouvement Spin, Orbit, Tumble, Period : CosmeticController) ;
 --     ses pièces et Attachments portent CosmeticFx (et, pour une aura, le tag CosmeticAura et FullRate). Retirés
 --     avec l'aura, au changement et à la mort.
---   - auras de Clément (vague 63, Features.NewAuras, proposition a210) : au chargement du profil, chaque ancienne
+--   - auras de Clément (vague 63, proposition a210 ; en jeu depuis la vague 66) : au chargement du profil, chaque ancienne
 --     aura possédée ou équipée devient sa remplaçante (Config/Cosmetics.Migration) ; Grant, Equip et Owns lisent
---     l'Id à jour (Cosmetics.Current). Avec NewAuras à false : rien ne change.
+--     l'Id à jour (Cosmetics.Current).
 -- Le serveur décide tout. Un refus qu'un joueur honnête peut rencontrer (objet pas possédé,
 -- sauvegarde pas encore chargée) reçoit un Notify en anglais (L-036) ; un Id inconnu, impossible
 -- depuis l'UI, n'est écrit que dans la sortie, en Studio.
@@ -89,7 +89,6 @@ local RunService = game:GetService("RunService")
 
 local Shared = ReplicatedStorage.Shared
 local Cosmetics = require(Shared.Config.Cosmetics)
-local Features = require(Shared.Config.Features)
 local Find = require(Shared.Contract.Find)
 local Net = require(Shared.Net.Net)
 local ProfileTypes = require(Shared.Types.Profile)
@@ -242,13 +241,10 @@ local function equippedDef(data: Data, kind: Kind): Cosmetic?
 	return nil
 end
 
--- Vague 63 (a210, proposition) : avec Features.NewAuras, chaque ancienne aura possédée devient sa remplaçante de même
--- multiplicateur (Config/Cosmetics.Migration), l'aura équipée aussi. Sans doublon ; rien sans NewAuras. Renvoie le
+-- Vague 63 (a210, proposition) : chaque ancienne aura possédée devient sa remplaçante de même
+-- multiplicateur (Config/Cosmetics.Migration), l'aura équipée aussi. Sans doublon. Renvoie le
 -- nombre d'auras remplacées.
 local function migrateLegacyAuras(data: Data): number
-	if not Features.NewAuras then
-		return 0
-	end
 	local owned = data.Cosmetics.Auras
 	local kept: { string } = {}
 	local replaced = 0
@@ -949,7 +945,7 @@ function CosmeticService.Init()
 		end
 		local migrated = migrateLegacyAuras(data)
 		if IS_STUDIO and migrated > 0 then
-			print(`[CosmeticService] {player.Name} : {migrated} ancienne(s) aura(s) remplacée(s) (Features.NewAuras)`)
+			print(`[CosmeticService] {player.Name} : {migrated} ancienne(s) aura(s) remplacée(s) (Cosmetics.Migration)`)
 		end
 		writeAttributes(player, data)
 		applyEffects(player)

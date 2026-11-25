@@ -127,28 +127,7 @@ UI.Screens = {
 			{ Path = "Template.Label" },
 		},
 	},
-	-- Boutique Robux (MAJ 1, 5.9 ; Partie 2, 3.1) : noms de Clément validés par Ironix (L-047, sans
-	-- GiftButton depuis L-051), branchés par RobuxShopController (DEV-100). Price est dans BuyButton ;
-	-- Owned = coche et bouton gris d'un gamepass possédé.
-	{
-		Name = "UI_RobuxShop",
-		Class = "ScreenGui",
-		Elements = {
-			{ Path = "CloseButton", Class = BUTTON },
-			{ Path = "Tabs.OffersTab" },
-			{ Path = "Tabs.GamepassesTab" },
-			{ Path = "Tabs.CashTab" },
-			{ Path = "Tabs.BoostsTab" },
-			{ Path = "List", Class = "ScrollingFrame" },
-			{ Path = "List.Template", Template = true },
-			{ Path = "List.Template.Icon" },
-			{ Path = "List.Template.ItemName" },
-			{ Path = "List.Template.Effect" },
-			{ Path = "List.Template.Price" },
-			{ Path = "List.Template.BuyButton", Class = BUTTON },
-			{ Path = "List.Template.Owned" },
-		},
-	},
+	-- Boutique Robux : l'ancien écran UI_RobuxShop est retiré (a438, 24/11 ; UI.Retired) ; UI_RobuxShop_v2, plus bas.
 	-- Écran de poursuite (liaison L-071, point 6 ; a42, en cours chez Clément : sirènes rouges et
 	-- bleues, liseré rouge, avertissement). Ses noms internes ne sont pas fixés : le code n'allume et
 	-- n'éteint que l'écran (ChaseController, pendant qu'un vigile poursuit le joueur local).
@@ -939,6 +918,8 @@ UI.Retired = {
 		["UI_HUD.MenuArea"] = "menu « More » retiré (L-202), les boutons sont dans LeftRail et TopLeftRow",
 		-- Vague 72 (a242, L-213) : « Claim All » de l'index retiré de l'écran par Clément.
 		["UI_Index_v3.UnlockedBar.ClaimAllButton"] = "« Claim All » de l'index retiré par Clément (L-213)",
+		-- a438 (24/11, lot 5 du check-up a417) : l'ancienne boutique Robux, remplacée par UI_RobuxShop_v2 (vague 63).
+		["UI_RobuxShop"] = "ancienne boutique Robux, remplacée par UI_RobuxShop_v2 (a438)",
 	},
 	Billboards = {
 		BB_OpenTimer = BOX_GONE,
@@ -1264,8 +1245,8 @@ for _, screenDef in UI.Screens do
 	end
 end
 
--- Boutique Robux v2 (vague 63, a208 ; L-200, noms v3 de L-204) : facultative. RobuxShopController la préfère à
--- UI_RobuxShop quand elle est là : une seule liste List qui défile, les onglets y font défiler jusqu'à leur
+-- Boutique Robux v2 (vague 63, a208 ; L-200, noms v3 de L-204) : a438 (24/11) : le seul écran de la boutique Robux,
+-- donc obligatoire (l'ancien UI_RobuxShop est retiré) : une seule liste List qui défile, les onglets y font défiler jusqu'à leur
 -- section ; chaque section remplit sa Grid depuis son Template ; Featured = pack de départ ; Crate = caisse
 -- exclusive (cachée tant que Features.RobuxCrate est à false).
 do
@@ -1299,7 +1280,6 @@ do
 	table.insert(UI.Screens, {
 		Name = "UI_RobuxShop_v2",
 		Class = "ScreenGui",
-		Optional = true,
 		Elements = elements,
 	})
 end

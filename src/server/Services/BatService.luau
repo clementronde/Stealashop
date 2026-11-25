@@ -122,7 +122,7 @@ local Shared = ReplicatedStorage.Shared
 local Balance = require(Shared.Config.Balance)
 local Bat = require(Shared.Config.Bat)
 local CatchReach = require(Shared.CatchReach)
--- Vague 62 (Features.SingleBoxReveal) : ouvreur protégé pendant sa cinématique, attribut RevealProtected du Player
+-- Vague 62 : ouvreur protégé pendant sa cinématique, attribut RevealProtected du Player
 -- posé par StoreHeistService (contrat : Shared/ShelfOpenState.ProtectedAttribute). Lu ici sans require : les faux
 -- arbres de bancs plus anciens n'ont pas les modules partagés de la vague 62.
 local RevealState = {}
@@ -400,7 +400,7 @@ local function candidateFor(
 		return nil, "pas de personnage vivant"
 	end
 	if RevealState.IsProtected(other) then
-		return nil, "protégé par sa cinématique d'ouverture" -- vague 62 (Features.SingleBoxReveal)
+		return nil, "protégé par sa cinématique d'ouverture" -- vague 62
 	end
 	local offset = root.Position - hitterRoot.Position
 	local distance = offset.Magnitude

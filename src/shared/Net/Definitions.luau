@@ -241,13 +241,6 @@ local List: { RemoteDef } = {
 		RatePerSecond = 6, -- doc 9.4 : ≤ 6 taps/s au tapis ; le ≤ 3/s du banc reste au TrainingService
 	},
 	{
-		Name = "ReturnToBase",
-		Direction = "ClientToServer",
-		Reliable = true,
-		Args = {},
-		RatePerSecond = 1, -- V0 proposé, absent du doc ; la recharge de 90 s (9.4) reste au service
-	},
-	{
 		Name = "TutorialSkip",
 		Direction = "ClientToServer",
 		Reliable = true,

@@ -279,7 +279,7 @@ local function stateFrom(player: Player, data: Data): InventoryState.State
 				Size = if mutation then mutation.Size else nil,
 				Effect = if mutation then mutation.Effect else nil,
 				AntiTheft = if antiTheft then true else nil,
-				Weight = if ItemWeight.Enabled() then ItemWeight.Sanitize(entry.Weight) else nil,
+				Weight = ItemWeight.Sanitize(entry.Weight),
 			},
 		})
 	end

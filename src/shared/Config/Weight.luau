@@ -4,8 +4,7 @@
 -- présentoir). Le poids fait la taille du modèle et le revenu, et remplace les mutations de taille : Huge et
 -- Colossal deviennent des paliers de poids (Tiny et Big n'existent plus) ; les mutations d'effet (Gold, Neon…)
 -- restent un tirage à part (Config/Mutations). Les calculs sont dans Shared/ItemWeight ; ce module n'a que les
--- valeurs. Interrupteur : Features.SingleBoxReveal (false = ni poids, ni taille par le poids : les mutations de
--- taille d'avant, telles quelles).
+-- valeurs. Toujours actif (a438 : plus de Features.SingleBoxReveal).
 --
 -- Origine de chaque valeur : « Cantin » = décision de Cantin du 2026-11-15 ; V0 = proposé par a203 au simulateur
 -- (bash tools/ironix/equilibrage/run.sh, RAPPORT=poids), absent du doc, à régler en jeu.
