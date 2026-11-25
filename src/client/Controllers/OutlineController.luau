@@ -31,9 +31,8 @@
 --   - boutique : PlotDoor d'une parcelle PlayerPlot, les tapis (tag Treadmill), les objets exposés (tag de code
 --     DisplayItem), le présentoir à acheter du joueur local (UpgradeController.GetBuyableStand) et les panneaux
 --     UpgradeSign posés par UpgradeController ;
---   - couloir : la Window de chaque magasin NPCStore tant qu'elle n'est pas cassée, les colis (Model BOX_*, Contract/
---     Models.Box : rayons, camion, coffre de la Fortune Tower, portés, au sol), les objets sortis (tag ShelfItem) et au
---     sol (tag FloorItem) ;
+--   - couloir : la Window de chaque magasin NPCStore tant qu'elle n'est pas cassée, les colis (tag ShelfBox), les objets
+--     sortis (tag ShelfItem) et au sol (tag FloorItem) ;
 --   - jamais : CollectPad_xx, classements, arches, décor ; ni rien sous un dossier dont le nom commence par « _ »
 --     (dossiers de travail de Clément : _SHOWROOM_CLEMENT, _PREVIEW_…). Le camion (EventTruck) et le coffre
 --     (FortuneVault) gardent leur propre contour (OutlineHighlight, rareté du camion, éteint à la casse par le serveur) :
@@ -41,6 +40,10 @@
 -- Colis (L-344) : leur Highlight `OutlineHighlight` (Config/ShelfBoxes.OutlineName) est retiré côté client à son
 -- arrivée, pour qu'il n'y ait jamais deux contours sur un colis ; ShelfBoxController ne les suit plus (il suit encore
 -- ceux du camion, du coffre et du fourgon, comme avant).
+-- a451 (Play de fusion101) : un colis se reconnaît au tag ShelfBox que StoreHeistService pose sur chaque colis qu'il
+-- crée (makeBoxModel : rayons des magasins, et rayons d'événement du camion et du coffre de la Fortune Tower), et pas
+-- au nom : en jeu, le modèle BOX_<Rareté> de Clément est renommé ShelfBox_xx (« jamais BOX_… dans la map »). Depuis
+-- la vague 50 (a158), il n'y a plus de colis porté ni posé au sol : ce qui se porte ou tombe est un objet (ITM_).
 --
 -- API (client) :
 --   OutlineController.GetStats() -> { Enabled, Pool, Candidates, Active, Focused, Template }
@@ -58,6 +61,7 @@ local Outlines = require(Config:WaitForChild("Outlines"))
 
 -- Noms et tags hors du contrat (posés par le code ou nom d'un enfant du contrat), mêmes noms que là-bas.
 local DISPLAY_TAG = "DisplayItem" -- DisplayService
+local SHELF_BOX_TAG = "ShelfBox" -- StoreHeistService.makeBoxModel, sur chaque colis (même nom là-bas)
 local SHELF_ITEM_TAG = "ShelfItem" -- StoreHeistService (Shared/ShelfOpenState.ItemTag)
 local FLOOR_ITEM_TAG = "FloorItem" -- UnboxService, DisplayService
 local WINDOW_NAME = "Window" -- enfant d'un magasin PNJ (Contract/Models.Store)
@@ -117,7 +121,7 @@ local standApi: any = nil
 local standTarget: Instance? = nil
 
 -- Noms et tags du contrat (Contract/Models), lus au départ.
-local BOX_PREFIX = "BOX_"
+local BOX_PREFIX = "BOX_" -- nom des modèles de Clément (pas celui d'un colis en jeu : ShelfBox_xx, a451)
 local VENDOR_PREFIX = "Vendor_"
 local STORE_TAG = "NPCStore"
 local PLOT_TAG = "PlayerPlot"
@@ -152,6 +156,7 @@ local function loadNames()
 	TAGS[tagOf(m.RobuxShopCounter, "RobuxShop")] = "Stall"
 	TAGS[tagOf(m.PawnShopStall, "PawnShop")] = "Stall"
 	TAGS[DISPLAY_TAG] = "DisplayItem"
+	TAGS[SHELF_BOX_TAG] = "Box"
 	TAGS[SHELF_ITEM_TAG] = "ShelfItem"
 	TAGS[FLOOR_ITEM_TAG] = "FloorItem"
 	local vendorsModule = Config:FindFirstChild("Vendors")
@@ -241,6 +246,15 @@ local function hasTaggedAncestor(inst: Instance, tag: string, sameName: boolean?
 	return false
 end
 
+-- Colis : son OutlineHighlight est retiré en local (L-344 : un seul contour par colis).
+local function dropBoxOutline(highlight: Instance)
+	task.defer(function()
+		if highlight.Parent ~= nil then
+			highlight:Destroy()
+		end
+	end)
+end
+
 local function register(target: Instance, kind: string)
 	if candidates[target] or not (target:IsA("Model") or target:IsA("BasePart")) then
 		return
@@ -249,6 +263,14 @@ local function register(target: Instance, kind: string)
 		return
 	end
 	candidates[target] = { Target = target, Kind = kind, Probe = nil, Slot = nil, Distance = math.huge, Focus = false }
+	if kind == "Box" then
+		-- a451 : aussi ici, que le tag soit vu avant ou après l'arrivée de son Highlight.
+		for _, d in target:GetDescendants() do
+			if d.Name == BOX_OUTLINE_NAME and d:IsA("Highlight") then
+				dropBoxOutline(d)
+			end
+		end
+	end
 end
 
 local function release(candidate: Candidate)
@@ -268,17 +290,25 @@ end
 local function unregister(target: Instance)
 	local candidate = candidates[target]
 	if candidate then
+		local slot = candidate.Slot
 		release(candidate)
+		if slot and slot.Highlight.Adornee == target then
+			-- a451 : plus dans la liste (tag retiré, ou sorti du jeu avant que son Parent soit vidé) : ne pas le retenir
+			slot.Highlight.Adornee = nil
+		end
 		candidates[target] = nil
 	end
 end
 
--- Colis : son OutlineHighlight est retiré en local (L-344 : un seul contour par colis).
+-- Le colis qui contient `inst`, ou nil. a451 : en jeu, par le tag ShelfBox (le colis s'appelle ShelfBox_xx) ; sinon
+-- un modèle de Clément resté sous son nom BOX_* (copies d'un dossier de travail, comme _SHOWROOM_CLEMENT/COLIS).
 local function boxOf(inst: Instance): Instance?
 	local current = inst.Parent
 	while current ~= nil and current ~= Workspace and current ~= game do
-		if current:IsA("Model") then
-			return if startsWith(current.Name, BOX_PREFIX) then current else nil
+		if CollectionService:HasTag(current, SHELF_BOX_TAG) then
+			return current
+		elseif current:IsA("Model") and startsWith(current.Name, BOX_PREFIX) then
+			return current
 		end
 		current = current.Parent
 	end
@@ -289,18 +319,12 @@ local function consider(inst: Instance)
 	local name = inst.Name
 	if inst:IsA("Highlight") then
 		if name == BOX_OUTLINE_NAME and boxOf(inst) ~= nil then
-			task.defer(function()
-				if inst.Parent ~= nil then
-					inst:Destroy()
-				end
-			end)
+			dropBoxOutline(inst)
 		end
 		return
 	end
 	if inst:IsA("Model") then
-		if startsWith(name, BOX_PREFIX) then
-			register(inst, "Box")
-		elseif HUB_NAMES[name] then
+		if HUB_NAMES[name] then
 			register(inst, "Hub")
 		elseif startsWith(name, VENDOR_PREFIX) then
 			register(inst, "Vendor")
