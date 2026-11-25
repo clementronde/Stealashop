@@ -61,14 +61,13 @@ V2.Auras = {
 	{ Id = "Galaxy", Multiplier = 12, Price = 1_500_000_000, Zones = { 5, 5 } }, -- palier du milieu de la zone 5
 	{ Id = "Royal", Multiplier = 20, Price = 11_000_000_000, Zones = { 6, 6 } },
 }
--- Vague 66 (a218) : avec Features.NewAuras, les 8 auras de Clément (Config/Cosmetics) remplacent ces 6 ; le
+-- Vague 66 (a218) : les 8 auras de Clément (Config/Cosmetics) remplacent ces 6 ; le
 -- rééquilibrage v2 est déjà dans Config (vague 40) : on les y lit telles quelles. Les kits de V2.Zones gardent les
 -- anciens Id, traduits par Cosmetics.Current (même multiplicateur).
-if Config.Features.NewAuras then
-	V2.Auras = {}
-	for _, aura in Config.Cosmetics.Auras do
-		table.insert(V2.Auras, { Id = aura.Id, Multiplier = aura.Multiplier, Price = aura.Price, Zones = aura.TargetZones })
-	end
+-- fusion102 : toujours (a438 a retiré Features.NewAuras ; lu à nil, le simulateur gardait les 6 anciennes et s'arrêtait).
+V2.Auras = {}
+for _, aura in Config.Cosmetics.Auras do
+	table.insert(V2.Auras, { Id = aura.Id, Multiplier = aura.Multiplier, Price = aura.Price, Zones = aura.TargetZones })
 end
 
 -- Remplacerait Cosmetics.Trails : le trail multiplie la Speed affichée (mêmes paliers que les auras).

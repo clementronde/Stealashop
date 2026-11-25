@@ -862,7 +862,7 @@ function Modele.Jouer(eco, profil, seed, maxSeconds, options)
 				end
 			end
 		end
-		if A.Truck and s.t - aid.truckAt >= A.TruckEvery and s.t % Night.CycleDuration < Night.DayDuration then
+		if A.Truck and s.t - aid.truckAt >= A.TruckEvery and s.t % (Night.DayDuration + Night.NightDuration) < Night.DayDuration then
 			aid.truckAt = s.t
 			local zone = math.floor(random() * zoneCount) + 1
 			if zone <= s.zone and eco.Zones[zone].TeamHits == nil then
@@ -888,7 +888,7 @@ function Modele.Jouer(eco, profil, seed, maxSeconds, options)
 		if A ~= nil then
 			aides()
 		end
-		local cycle = s.t // Night.CycleDuration
+		local cycle = s.t // (Night.DayDuration + Night.NightDuration)
 		if cycle ~= s.cycle then
 			s.cycle = cycle
 			restock() -- les rayons se remplissent à la nuit (5.12)
@@ -899,7 +899,7 @@ function Modele.Jouer(eco, profil, seed, maxSeconds, options)
 		target = if s.zone < zoneCount then s.zone + 1 else nil
 
 		-- Où braquer : sa meilleure zone, sinon celle d'en dessous, s'il y reste des colis pour lui.
-		local isDay = s.t % Night.CycleDuration < Night.DayDuration
+		local isDay = s.t % (Night.DayDuration + Night.NightDuration) < Night.DayDuration
 		local heistZone, heistTier = nil, nil
 		local hunted = if isDay and O.Chasse ~= nil then O.Chasse(s, out) else nil
 		if hunted ~= nil and hunted <= s.zone and pickTier(hunted) ~= nil then
