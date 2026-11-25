@@ -162,6 +162,14 @@ local Features = {
 	BdOutlines = false,
 	-- a446 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
 	BdOutlinesDev = true,
+	-- a484 (Cantin, 25/11) : Equip Best pose les objets du meilleur au moins bon dans l'ordre des présentoirs vu depuis
+	-- l'entrée (rez-de-chaussée puis étage ; mur gauche puis mur droit ; du plus près de l'entrée au fond ; Shared/
+	-- DisplayOrder) et réordonne aussi les objets déjà exposés (DisplayService.EquipBest). Interrupteur PROD (partout) :
+	-- false (règle C2 : pas encore de test humain) ; false = Equip Best d'avant (un exposé parmi les meilleurs reste en
+	-- place, les autres remplissent les trous du plus petit numéro au plus grand).
+	EquipBestOrder = false,
+	-- a484 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	EquipBestOrderDev = true,
 }
 
 export type Features = typeof(Features)
