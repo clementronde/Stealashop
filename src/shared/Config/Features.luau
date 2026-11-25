@@ -170,6 +170,14 @@ local Features = {
 	UnboxBoxClimb = false,
 	-- a462 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
 	UnboxBoxClimbDev = true,
+	-- a462 (L-376, Clément 25/11) : pendant les coups sur le colis, c'est la chance (luck) de l'ouvreur qui monte et
+	-- s'affiche (« ×N LUCK » sur BB_UnboxOdds.Odds, de ×1 à la chance tirée par le serveur, StoreHeistService) ; le
+	-- « 1 IN N » n'apparaît qu'à l'éclatement et monte sur les silhouettes jusqu'à la vraie cote (Shared/UnboxPlan,
+	-- Controllers/Reveal/Unbox). Interrupteur PROD (partout) : false (règle C2) ; false = la cote monte pendant les coups
+	-- (a287), comme avant.
+	UnboxLuckClimb = false,
+	-- a462 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	UnboxLuckClimbDev = true,
 }
 
 export type Features = typeof(Features)

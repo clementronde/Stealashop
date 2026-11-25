@@ -28,6 +28,9 @@
 -- a287 (2026-11-21, Cantin ; New.OddsClimb) : la cote de BB_UnboxOdds monte à chaque Impact, reste visible à
 -- l'éclatement et pendant les silhouettes (un pas à chacune), puis finit sur la vraie cote à la révélation : jamais
 -- vers le bas (UnboxPlan.climb). Coupé : la cote d'avant (plage de la rareté montrée, cachée pendant les silhouettes).
+-- a462 (L-376, UnboxPlan.luckClimbs) : pendant les coups, BB_UnboxOdds.Odds montre la chance de l'ouvreur (« ×N LUCK », de
+-- ×1 à plan.Luck, un pas par Impact) ; à l'éclatement, la cote prend sa place à Start et monte sur les silhouettes seules.
+-- a462 (L-356 Q4, UnboxPlan.boxClimbs) : le colis montré prend le modèle BOX_<Rareté> de la rareté montrée.
 -- Tout élément de Clément est facultatif : effet, outil, objet jeté ou billboard absent = rien (BB_UnboxOdds : un
 -- billboard du code aux mêmes noms).
 
@@ -124,6 +127,7 @@ export type State = {
 	oddsFrom: number,
 	oddsTo: number,
 	oddsT: number, -- avancement du défilement, < 0 : aucun
+	luckShown: boolean, -- a462 (L-376) : BB_UnboxOdds.Odds montre la chance (« ×N LUCK »), pas la cote
 	oddsTicks: number,
 	upgradeLeft: number,
 	finalLeft: number, -- temps restant de la cote finale, après la révélation
@@ -786,7 +790,7 @@ local function showOdds(state: State, value: number)
 	state.odds = value
 	local text = state.oddsLabel
 	if text then
-		text.Text = UnboxPlan.oddsText(value)
+		text.Text = if state.luckShown then UnboxPlan.luckText(value) else UnboxPlan.oddsText(value)
 	end
 end
 
@@ -796,6 +800,15 @@ local function rollOdds(state: State, target: number)
 	state.oddsTo = math.max(target, state.odds)
 	state.oddsT = 0
 	state.oddsTicks = 0
+end
+
+-- a462 (L-376) : la chance défile comme la cote, seulement si elle monte et se voit (×1 tout du long, ou caisse sans
+-- chance : ni défilement ni tics).
+local function rollLuck(state: State, target: number)
+	local text = state.oddsLabel
+	if target > state.odds + 1e-6 and text ~= nil and text.Visible then
+		rollOdds(state, target)
+	end
 end
 
 local function buildBoard(state: State)
@@ -816,7 +829,17 @@ local function buildBoard(state: State)
 		state.oddsScale = popScale(state.oddsLabel)
 	end
 	showRarity(state, state.tier)
-	showOdds(state, UnboxPlan.startOdds(state.ctx.Plan)) -- a287 : Start de New.OddsClimb, sinon la plage d'avant
+	if UnboxPlan.luckClimbs() then
+		-- a462 (L-376) : pendant les coups, la chance de l'ouvreur (×1 au départ) ; sans chance dans le plan (caisse
+		-- exclusive, colis offert) : rien pendant les coups, la cote vient à l'éclatement.
+		state.luckShown = true
+		showOdds(state, 1)
+		if state.oddsLabel and state.ctx.Plan.Luck == nil then
+			state.oddsLabel.Visible = false
+		end
+	else
+		showOdds(state, UnboxPlan.startOdds(state.ctx.Plan)) -- a287 : Start de New.OddsClimb, sinon la plage d'avant
+	end
 	board.Parent = state.ctx.Folder
 	table.insert(state.created, board)
 end
@@ -1131,7 +1154,15 @@ local function burst(state: State)
 	if upgrade then
 		upgrade.Visible = false
 	end
-	if climbs then
+	if state.luckShown then
+		-- a462 (L-376) : la chance laisse la place à la cote, qui part de Start et monte sur les silhouettes.
+		state.luckShown = false
+		state.oddsT = -1
+		if text then
+			text.Visible = climbs
+		end
+		showOdds(state, UnboxPlan.startOdds(state.ctx.Plan))
+	elseif climbs then
 		rollOdds(state, UnboxPlan.climbHit(state.ctx.Plan, state.index, 1, 1)) -- a287 : le coup qui casse compte aussi
 	else
 		state.oddsT = -1
@@ -1161,7 +1192,11 @@ local function momentFort(state: State)
 		return
 	end
 	-- a287 : New.OddsClimb, l'action entière sur la courbe qui finit à la vraie cote ; sinon la plage de la rareté.
-	rollOdds(state, if UnboxPlan.climbs() then UnboxPlan.climbHit(plan, state.index, 1, 1) else UnboxPlan.oddsAt(plan, state.index))
+	if state.luckShown then
+		rollLuck(state, UnboxPlan.luckHit(plan, state.index, 1, 1)) -- a462 (L-376) : la chance monte
+	else
+		rollOdds(state, if UnboxPlan.climbs() then UnboxPlan.climbHit(plan, state.index, 1, 1) else UnboxPlan.oddsAt(plan, state.index))
+	end
 	local rarity = plan.Steps[state.index].Rarity
 	if rarity ~= state.tier then
 		state.tier = rarity
@@ -1234,6 +1269,9 @@ local function onImpact(state: State)
 	end
 	if strong then
 		momentFort(state)
+	elseif not state.strong and state.luckShown then
+		-- a462 (L-376) : chaque coup fait monter la chance d'un pas.
+		rollLuck(state, UnboxPlan.luckHit(state.ctx.Plan, state.index, state.impacts, #action.Impacts))
 	elseif not state.strong and UnboxPlan.climbs() then
 		-- a287 (Cantin, 21/11 : « casser plusieurs fois la boîte pour augmenter la chance ») : chaque coup fait monter
 		-- la cote d'un pas ; le moment fort finit l'action.
@@ -1858,6 +1896,7 @@ function Unbox.Begin(ctx: Context): State
 		oddsFrom = 1,
 		oddsTo = 1,
 		oddsT = -1,
+		luckShown = false,
 		oddsTicks = 0,
 		upgradeLeft = 0,
 		finalLeft = 0,
@@ -1955,7 +1994,8 @@ local function stepOdds(state: State, dt: number)
 			state.oddsTicks = ticks
 			showOdds(state, state.oddsFrom * (state.oddsTo / state.oddsFrom) ^ f)
 			if state.ctx.Opener then
-				sound(state, New.OddsTickSound, 1 + New.OddsTickPitch * ticks)
+				-- a462 (L-386) : OddsTickPitch à 0, aucune hauteur imposée (le PlaybackSpeed 0,8 du son de Clément reste).
+				sound(state, New.OddsTickSound, if New.OddsTickPitch ~= 0 then 1 + New.OddsTickPitch * ticks else nil)
 			end
 		end
 		local scale = state.oddsScale
@@ -2307,6 +2347,7 @@ function Unbox.GetState(state: State): { [string]: any }
 		Odds = state.odds,
 		OddsText = if text then text.Text else nil,
 		OddsVisible = text ~= nil and text.Visible, -- a287
+		LuckShown = state.luckShown, -- a462 (L-376)
 		RarityText = if rarityText and rarityText.Visible then rarityText.Text else nil,
 		Upgrade = upgrade ~= nil and upgrade.Visible,
 		BoxScale = state.tierScale,

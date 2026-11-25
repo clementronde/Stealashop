@@ -3035,9 +3035,11 @@ local function startReveal(player: Player, slot: Slot, box: ShelfBox)
 				local chance = ItemOdds.Chance(final.ItemId, final.Mutation)
 				odds = if chance then Formulas.UnboxOdds(chance) else nil
 			end
+			-- a462 (L-376) : la chance de l'ouvreur va dans le plan (« ×N LUCK » pendant les coups), interrupteur allumé.
+			local planLuck: number? = if UnboxPlan.luckClimbs() == true then luck else nil
 			local drawn = UnboxPlan.draw(final.Rarity, function(n: number): number
 				return 1 + math.floor(random:NextNumber() * n)
-			end, box.Rarity, upgrades, odds)
+			end, box.Rarity, upgrades, odds, nil, planLuck)
 			local parsed = UnboxPlan.parse(drawn)
 			return drawn, UnboxPlan.serverMaxSeconds(final.Rarity, sizeClass, if parsed then #parsed.Steps else nil)
 		end)
