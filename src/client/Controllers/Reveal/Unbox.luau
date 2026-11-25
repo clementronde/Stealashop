@@ -629,25 +629,47 @@ local function poseBox(state: State, dt: number)
 	state.anchor.CFrame = CFrame.new(pivot.Position + UP * math.max(state.boxHeight * state.tierScale - New.OddsBelowTop, 0))
 end
 
-local function buildBox(state: State)
-	local ctx = state.ctx
-	local source = ctx.ShelfBox
-	local box: Model? = nil
+-- a462 (L-356 Q4, UnboxPlan.boxClimbs) : modèle BOX_<Rareté> de Clément (ReplicatedStorage/Assets), ou nil.
+local BOX_PREFIX = "BOX_" -- Contract/Models.Box.Prefix
+local function boxTemplate(rarity: string): Instance?
+	local assets = ReplicatedStorage:FindFirstChild("Assets")
+	local found = if assets then assets:FindFirstChild(BOX_PREFIX .. rarity, true) else nil
+	if found and (found:IsA("Model") or found:IsA("BasePart")) then
+		return found
+	end
+	return nil
+end
+
+local function copyOf(source: Instance?): Model?
 	if source and (source:IsA("Model") or source:IsA("BasePart")) then
 		local ok, copy = pcall(function()
 			return source:Clone()
 		end)
 		if ok and copy then
-			box = asModel(copy)
+			return asModel(copy)
 		end
 	end
-	local model = box or block(Vector3.new(2, 1.6, 2), KRAFT)
+	return nil
+end
+
+-- Prend `model` comme colis montré. `height` : sa hauteur à la taille de départ (le modèle est mis à l'échelle pour
+-- l'avoir) ; nil : sa propre hauteur.
+local function adoptBox(state: State, model: Model, height: number?)
 	inert(model)
 	model.Name = "UnboxBox"
+	if height and height > 0 then
+		local natural = extents(model).Y
+		if natural > 0 then
+			scaleTo(model, scaleOf(model) * height / natural)
+		end
+	end
 	state.box = model
 	state.boxScale0 = scaleOf(model)
 	state.appliedScale = state.boxScale0
-	state.boxHeight = extents(model).Y
+	state.boxHeight = if height and height > 0 then height else extents(model).Y
+	state.lid = nil
+	state.lidOffset = CFrame.identity
+	table.clear(state.tapes)
 	local lid = model:FindFirstChild("Lid", true)
 	if lid and lid:IsA("PVInstance") then
 		state.lid = lid
@@ -658,8 +680,39 @@ local function buildBox(state: State)
 			table.insert(state.tapes, part)
 		end
 	end
-	model.Parent = ctx.Folder
+	model.Parent = state.ctx.Folder
 	table.insert(state.created, model)
+end
+
+local function buildBox(state: State)
+	local ctx = state.ctx
+	local box = copyOf(ctx.ShelfBox)
+	-- a462 : sans colis de rayon (caisse exclusive, colis offert), le modèle BOX_ de la rareté montrée au départ.
+	if box == nil and UnboxPlan.boxClimbs() then
+		box = copyOf(boxTemplate(ctx.Plan.Steps[1].Rarity))
+	end
+	adoptBox(state, box or block(Vector3.new(2, 1.6, 2), KRAFT))
+end
+
+-- a462 (L-356 Q4) : la rareté montrée change : le colis prend le modèle BOX_<Rareté>, à la même hauteur de départ (la
+-- croissance UpgradeGrow continue de s'appliquer). false sans modèle ou coupé : le scotch est recoloré, comme avant.
+local function swapBox(state: State, rarity: string): boolean
+	if not UnboxPlan.boxClimbs() then
+		return false
+	end
+	local copy = copyOf(boxTemplate(rarity))
+	local old = state.box
+	if copy == nil or old == nil then
+		if copy then
+			copy:Destroy()
+		end
+		return false
+	end
+	local height = state.boxHeight
+	state.box = nil
+	old:Destroy()
+	adoptBox(state, copy, height)
+	return true
 end
 
 local function dropBox(state: State)
@@ -1114,8 +1167,10 @@ local function momentFort(state: State)
 		state.tier = rarity
 		state.tierScale *= New.UpgradeGrow
 		local color = colorOf(rarity)
-		for _, tape in state.tapes do
-			tape.Color = color
+		if not swapBox(state, rarity) then
+			for _, tape in state.tapes do
+				tape.Color = color
+			end
 		end
 		showRarity(state, rarity)
 		local upgrade = state.upgradeLabel

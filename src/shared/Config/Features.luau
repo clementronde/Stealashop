@@ -162,6 +162,14 @@ local Features = {
 	BdOutlines = false,
 	-- a446 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
 	BdOutlinesDev = true,
+	-- a462 (L-356 Q4, réponse de Clément du 24/11 à L-281) : pendant les coups de l'ouverture de la caisse exclusive, le
+	-- colis monte d'une rareté à chaque action jusqu'à celle tirée par le serveur (MonetizationService, UnboxPlan.draw), et
+	-- le colis montré (caisse, colis de rayon amélioré) prend le modèle BOX_<Rareté> de Clément de sa rareté
+	-- (Controllers/Reveal/Unbox). Interrupteur PROD (partout) : false (règle C2 : pas encore de test humain) ; false = le
+	-- colis de la caisse reste Épique et seules les silhouettes montent, scotch recoloré, comme avant.
+	UnboxBoxClimb = false,
+	-- a462 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	UnboxBoxClimbDev = true,
 }
 
 export type Features = typeof(Features)

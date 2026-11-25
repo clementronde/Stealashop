@@ -48,6 +48,24 @@ local function speed(): number
 	return math.max(New.ActionSpeed, 0.1)
 end
 
+-- a462 (L-356 Q4, Clément 24/11) : interrupteur Features.UnboxBoxClimb (partout) ou UnboxBoxClimbDev (jeu DEV seulement,
+-- Config/ProductIds.IsDev) : le colis de la caisse exclusive monte d'une rareté à chaque action jusqu'à celle tirée
+-- (MonetizationService), et le colis montré prend le modèle BOX_<Rareté> de la rareté montrée (Controllers/Reveal/Unbox).
+function UnboxPlan.boxClimbs(): boolean
+	local ok, on = pcall(function(): boolean
+		local Features = require(Config:WaitForChild("Features")) :: any
+		if Features.UnboxBoxClimb == true then
+			return true
+		end
+		if Features.UnboxBoxClimbDev ~= true then
+			return false
+		end
+		local ProductIds = require(Config:WaitForChild("ProductIds")) :: any
+		return ProductIds.IsDev == true
+	end)
+	return ok and on == true
+end
+
 function UnboxPlan.action(id: string): Action?
 	return actionsById[id]
 end
@@ -98,7 +116,11 @@ end
 -- nil si la Config ne permet aucun plan (FinalAction inconnue, rareté inconnue, aucune autre action).
 -- Vague 75 (a259, L-262 point 1) : `odds` (la vraie chance de l'objet, Formulas.UnboxOdds, calculée par le serveur) est
 -- la cote finale ; absente ou illisible : tirée dans la plage de `finalRarity`, comme avant.
-function UnboxPlan.draw(finalRarity: string, pick: (n: number) -> number, startRarity: string?, upgrades: number?, odds: number?): string?
+-- a462 (L-356 Q4, Clément 24/11 : « le colis change de rareté à chaque coup, jusqu'à celle tirée, pour le suspense ») :
+-- `everyAction` = les améliorations tombent aux `upgrades` actions juste avant le coup final, à la suite (une rareté de
+-- plus à chaque action, la rareté tirée atteinte à l'avant-dernière) au lieu d'actions tirées au hasard ; sans tirage
+-- de plus (mêmes actions, même cote).
+function UnboxPlan.draw(finalRarity: string, pick: (n: number) -> number, startRarity: string?, upgrades: number?, odds: number?, everyAction: boolean?): string?
 	local final = Rarities.ById[finalRarity]
 	local finalAction = actionsById[New.FinalAction]
 	if final == nil or finalAction == nil then
@@ -144,7 +166,7 @@ function UnboxPlan.draw(finalRarity: string, pick: (n: number) -> number, startR
 		table.insert(slots, index)
 	end
 	while #slots > u do
-		table.remove(slots, choose(#slots))
+		table.remove(slots, if everyAction == true then 1 else choose(#slots))
 	end
 	local parts: { string } = {}
 	local done = 0

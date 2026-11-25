@@ -758,9 +758,20 @@ local function startReveal(
 	local plan: string? = nil
 	local maxSeconds = 0
 	if why == nil then
+		local start = startRarity or config.StartRarity
+		-- a462 (L-356 Q4, Features.UnboxBoxClimb / UnboxBoxClimbDev) : la caisse monte d'une rareté à chaque action, de
+		-- sa rareté de départ à celle de l'objet tiré, aux actions juste avant le coup final (UnboxPlan.draw, everyAction) ;
+		-- coupé (ou colis offert) : aucune amélioration, comme avant.
+		local upgrades = 0
+		local climb = kind == "Crate" and plans.boxClimbs() == true
+		if climb then
+			local from = Rarities.ById[start]
+			local to = Rarities.ById[def.Rarity]
+			upgrades = if from and to then math.max(to.Order - from.Order, 0) else 0
+		end
 		plan = plans.draw(def.Rarity, function(n: number): number
 			return 1 + math.floor(crateRandom:NextNumber() * n)
-		end, startRarity or config.StartRarity, 0, odds)
+		end, start, upgrades, odds, climb)
 		local parsed = plans.parse(plan)
 		if parsed == nil then
 			why = "plan impossible"
