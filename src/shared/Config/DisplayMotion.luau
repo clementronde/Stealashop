@@ -39,8 +39,10 @@ local DisplayMotion = {
 	-- BB_Item accroché au sommet de la boîte de l'objet, BillboardTopOffset stud plus bas (validé par Clément :
 	-- l'étiquette touche presque l'objet), StudsOffset (0, BillboardStudsOffset, 0). Avant : au pied, avec le StudsOffset
 	-- de Clément (2,2, L-027).
+	-- a459 (L-354, Clément 24/11 : « son bas à +0,8 stud au-dessus du haut réel de l'objet ») : BillboardTopOffset passe de
+	-- −0,15 à 0,8 ; DisplayService pose le BAS de l'étiquette sur ce point, quel que soit le SizeOffset de BB_Item.
 	BillboardAtTop = true, -- V0
-	BillboardTopOffset = -0.15, -- V0 (L-304)
+	BillboardTopOffset = 0.8, -- Clément (L-354) ; avant −0,15 (L-304)
 	BillboardStudsOffset = 0, -- V0 (L-304)
 
 	-- Hauteur gardée libre au-dessus de l'objet quand DisplayService le met à la taille du FitSize de son présentoir

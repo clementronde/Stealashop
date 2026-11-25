@@ -274,6 +274,11 @@ local DisplayMotion: any = if motionModule and motionModule:IsA("ModuleScript") 
 local FLOAT: boolean = DisplayMotion ~= nil and DisplayMotion.Enabled == true
 local idleModule = ReplicatedStorage.Shared.Config:FindFirstChild("ItemIdle")
 local ItemIdleConfig: any = if idleModule and idleModule:IsA("ModuleScript") then require(idleModule) :: any else nil
+-- a459 (L-354) : taille d'affichage par rareté (Config/DisplaySize, Features.DisplayRaritySize / DisplayRaritySizeDev).
+-- Facultatif : bancs plus anciens (sans lui, la taille du poids, comme avant).
+local sizeModule = ReplicatedStorage.Shared.Config:FindFirstChild("DisplaySize")
+local DisplaySize: any = if sizeModule and sizeModule:IsA("ModuleScript") then require(sizeModule) :: any else nil
+local RARITY_SIZE: boolean = DisplaySize ~= nil and DisplaySize.Enabled == true
 local UI = require(ReplicatedStorage.Shared.Contract.UI)
 local Net = require(ReplicatedStorage.Shared.Net.Net)
 local ProfileTypes = require(ReplicatedStorage.Shared.Types.Profile)
@@ -1377,6 +1382,46 @@ local function fitFactor(model: Model, pivot: CFrame, fit: Vector3): number
 	return factor
 end
 
+-- a459 (L-354) : plus grande dimension (studs) des pièces visibles de `model` (Transparency < 1, comme fitFactor),
+-- mesurée dans le repère de son pivot ; 0 sans pièce visible.
+local function largestSide(model: Model): number
+	local pivot = model:GetPivot()
+	local minX: number, minY: number, minZ: number = math.huge, math.huge, math.huge
+	local maxX: number, maxY: number, maxZ: number = -math.huge, -math.huge, -math.huge
+	for _, d in model:GetDescendants() do
+		if not d:IsA("BasePart") or (d :: BasePart).Transparency >= 1 then
+			continue
+		end
+		local part = d :: BasePart
+		local half = part.Size / 2
+		for _, corner in CORNERS do
+			local p: Vector3 = (pivot:PointToObjectSpace(part.CFrame * (half * corner)))
+			minX = math.min(minX, p.X)
+			minY = math.min(minY, p.Y)
+			minZ = math.min(minZ, p.Z)
+			maxX = math.max(maxX, p.X)
+			maxY = math.max(maxY, p.Y)
+			maxZ = math.max(maxZ, p.Z)
+		end
+	end
+	if maxX < minX then
+		return 0
+	end
+	return math.max(maxX - minX, maxY - minY, maxZ - minZ)
+end
+
+-- a459 (L-354) : échelle (Model:ScaleTo) qui met la plus grande dimension de `model` à la taille d'affichage de sa
+-- rareté (Config/DisplaySize.TargetFor, poids compris), au plus Weight.DisplayMaxScale ; nil si la rareté n'a pas
+-- de taille ou si le modèle n'a aucune pièce visible (taille du poids, comme avant).
+local function raritySizeScale(model: Model, rarityId: string, weight: number): number?
+	local target = DisplaySize.TargetFor(rarityId, weight)
+	local side = largestSide(model)
+	if type(target) ~= "number" or not (target > 0) or not (side > 0) then
+		return nil
+	end
+	return math.min(model:GetScale() * target / side, WeightConfig.DisplayMaxScale)
+end
+
 -- a234 : portée de chaque lumière du modèle (PointLight, SpotLight, SurfaceLight) avant sa mise à l'échelle.
 local function lightRanges(model: Model): { [Light]: number }
 	local ranges: { [Light]: number } = {}
@@ -1426,6 +1471,9 @@ local function addBillboard(
 	-- Mutation de taille (DEV-131) : BB_Item de Clément monte (ou descend) de ce que l'objet a gagné en
 	-- hauteur, pour garder le même écart au-dessus de lui (V0 proposé). Le V0 suit déjà le sommet.
 	local scale = Mutations.Scale(mutation, weight) * fit
+	if RARITY_SIZE then
+		scale = model:GetScale() -- a459 : taille d'affichage de la rareté (le modèle ITM_ est à l'échelle 1 au départ)
+	end
 	local lift = boxSize.Y - boxSize.Y / scale
 	local top = boxCFrame.Position + Vector3.new(0, boxSize.Y / 2, 0)
 	-- a317 (L-304 point 3, validé par Clément) : BB_Item de Clément accroché au sommet de la boîte de l'objet,
@@ -1438,6 +1486,9 @@ local function addBillboard(
 		else top
 	if atTop and gui then
 		gui.StudsOffset = Vector3.new(0, DisplayMotion.BillboardStudsOffset, 0)
+		-- a459 (L-354, L-363, Clément) : ce point est à BillboardTopOffset (0,8) stud au-dessus du haut réel de l'objet, sa
+		-- taille montrée comprise ; BB_Item de Clément (5 × 2,4, SizeOffset (0 ; 0,5), UIListLayout aligné en bas) y pose
+		-- le BAS de l'étiquette : la dernière ligne montrée (Weight, sinon Mutation ou Income) touche ce point.
 	end
 
 	if gui == nil then
@@ -1523,6 +1574,12 @@ local function buildItemModel(
 	local rawMutation = entry.Mutation
 	local weight = ItemWeight.Effective(entry.Weight, if rawMutation then rawMutation.Size else nil)
 	local scale = Mutations.Scale(mutation, weight)
+	-- a459 (L-354, Clément) : sur un présentoir, la taille d'affichage de la rareté remplace celle du poids (le poids la
+	-- place dans la fourchette de la rareté, Config/DisplaySize) ; le FitSize plus bas plafonne toujours. Seulement sur un
+	-- présentoir (`billboard`, joueur ou bot) : l'objet sous antivol posé au sol (BuildFloorItem) garde la taille de son poids.
+	if RARITY_SIZE and billboard then
+		scale = raritySizeScale(display, def.Rarity, weight) or scale
+	end
 	-- a234 : échelle et portées d'avant toute mise à l'échelle, seulement s'il faudra peut-être réduire
 	local baseScale = if fitSize then display:GetScale() else 1
 	local ranges = if fitSize then lightRanges(display) else nil

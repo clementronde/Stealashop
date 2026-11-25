@@ -162,6 +162,18 @@ local Features = {
 	BdOutlines = false,
 	-- a446 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
 	BdOutlinesDev = true,
+	-- a459 (L-354, Clément 24/11) : sur un présentoir, l'objet est mis à la taille d'affichage de sa rareté (Config/DisplaySize :
+	-- plus grande dimension de 4 à 9 studs, le poids le place dans la fourchette, FitSize plafonne), au lieu de la taille de
+	-- son poids. Interrupteur PROD (partout) : false (règle C2 : pas encore de test humain) ; false = taille du poids, comme avant.
+	DisplayRaritySize = false,
+	-- a459 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	DisplayRaritySizeDev = true,
+	-- a459 (L-306, Cantin 25/11) : l'objet du socle du plus rare (RarestDisplay, copie RarestItem de VfxController) flotte
+	-- exactement comme sur les présentoirs (ItemIdleController, Config/DisplayMotion). Interrupteur PROD (partout) : false
+	-- (règle C2) ; false = l'objet du socle reste immobile, comme avant.
+	RarestFloat = false,
+	-- a459 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	RarestFloatDev = true,
 }
 
 export type Features = typeof(Features)

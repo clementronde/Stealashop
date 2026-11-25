@@ -82,6 +82,8 @@
 --   ItemIdleController.WithRest(model, fn)     appelle fn() avec les pièces de `model` à leur place de repos (copie
 --       de l'objet pour le socle « BEST ITEM », VfxController), puis les replace aussitôt.
 --   ItemIdleController.GetPose(model) -> { Lift: number, Phase: number, Spinning: boolean }?   pour les tests.
+-- a459 (L-306, Cantin 25/11) : la copie de l'objet du socle du plus rare (tag RarestItem, VfxController) est suivie
+-- comme un objet exposé (Features.RarestFloat / RarestFloatDev) : elle flotte pareil, sans tour ni saut.
 
 local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -96,6 +98,30 @@ local DisplayMotion: any = if motionModule and motionModule:IsA("ModuleScript") 
 local FLOAT: boolean = DisplayMotion ~= nil and DisplayMotion.Enabled == true
 local Attributes = require(Shared:WaitForChild("Contract"):WaitForChild("Attributes"))
 local Models = require(Shared:WaitForChild("Contract"):WaitForChild("Models"))
+
+-- a459 (L-306, Cantin 25/11 : « l'objet du socle du plus rare flotte exactement comme sur les présentoirs ») : la copie
+-- locale du socle RarestDisplay (VfxController, tag Config/Vfx.Rarest.CopyTag, « RarestItem ») est suivie ici comme un
+-- objet exposé : même flottement, mêmes réglages (Config/DisplayMotion, Config/ItemIdle), même Idle et pièces Spin_ /
+-- Wave_ ; pas de tour ni de saut (aucune plaque). Interrupteurs Features.RarestFloat (partout) et RarestFloatDev (jeu
+-- DEV, Config/ProductIds.IsDev) ; coupé, ou sans flottement (DisplayMotion), la copie reste immobile comme avant.
+-- Modules facultatifs (bancs à liste de modules fixe : sans eux, comme avant).
+local function optionalConfig(name: string): any
+	local module = Shared:WaitForChild("Config"):FindFirstChild(name)
+	if module == nil or not module:IsA("ModuleScript") then
+		return nil
+	end
+	local ok, result = pcall(require, module :: any)
+	return if ok and type(result) == "table" then result else nil
+end
+local FeaturesConfig: any = optionalConfig("Features")
+local ProductIdsConfig: any = optionalConfig("ProductIds")
+local VfxConfig: any = optionalConfig("Vfx")
+local RAREST_FLOAT: boolean = FLOAT
+	and FeaturesConfig ~= nil
+	and (FeaturesConfig.RarestFloat == true or (FeaturesConfig.RarestFloatDev == true and ProductIdsConfig ~= nil and ProductIdsConfig.IsDev == true))
+local RAREST_TAG: string? = if RAREST_FLOAT
+	then (if VfxConfig and type(VfxConfig.Rarest) == "table" and type(VfxConfig.Rarest.CopyTag) == "string" then VfxConfig.Rarest.CopyTag else "RarestItem")
+	else nil
 
 -- Posés par DisplayService (mêmes noms là-bas).
 local DISPLAY_TAG = "DisplayItem"
@@ -573,7 +599,8 @@ end
 local function rebuild(entry: Entry)
 	local model = entry.model
 	untrack(model) -- remet les pièces au repos avant de les relire
-	if CollectionService:HasTag(model, DISPLAY_TAG) and model:IsDescendantOf(Workspace) then
+	local tagged = CollectionService:HasTag(model, DISPLAY_TAG) or (RAREST_TAG ~= nil and CollectionService:HasTag(model, RAREST_TAG))
+	if tagged and model:IsDescendantOf(Workspace) then
 		track(model)
 	end
 end
@@ -674,6 +701,18 @@ function ItemIdleController.Start()
 	end)
 	for _, inst in CollectionService:GetTagged(DISPLAY_TAG) do
 		track(inst)
+	end
+	-- a459 (L-306) : copie du socle du plus rare, suivie comme un objet exposé (voir l'en-tête de RAREST_TAG).
+	if RAREST_TAG ~= nil then
+		CollectionService:GetInstanceAddedSignal(RAREST_TAG):Connect(track)
+		CollectionService:GetInstanceRemovedSignal(RAREST_TAG):Connect(function(inst: Instance)
+			if inst:IsA("Model") then
+				untrack(inst :: Model)
+			end
+		end)
+		for _, inst in CollectionService:GetTagged(RAREST_TAG) do
+			track(inst)
+		end
 	end
 	RunService.Heartbeat:Connect(onHeartbeat)
 end
