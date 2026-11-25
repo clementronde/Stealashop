@@ -308,6 +308,28 @@ local Features = {
 	UnboxClimbMatchesItem = false,
 	-- a462 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
 	UnboxClimbMatchesItemDev = true,
+	-- a486 (Cantin, 25/11 ; note d'a479 « économie B/T ») : table 2 de l'économie (Config/Economy : raretés × 60, zone 6 à
+	-- Speed 30T, tapis à 6 crédits par seconde et 25 niveaux, prix refaits, classements à part, profils convertis au
+	-- chargement dans les deux sens). Lu par Config/Economy seul, au chargement : chaque module de Config prend ses
+	-- nombres dans la table active, aucun service ne lit cet interrupteur. Interrupteur PROD (partout) : false (règle
+	-- C2 : pas encore de test humain) ; false = la table 1, l'économie d'avant, intacte. Pas dans LiveFeatures.Hot :
+	-- une clé Feature_EconomyBT du Creator Hub est prise au prochain serveur.
+	EconomyBT = false,
+	-- a486 : la même chose allumée dans le jeu DEV seulement (game.GameId = DevGameId, Config/Economy.IsDev) ; le jeu
+	-- DEV lit alors un store de profils neuf (Economy, DevStoreName de la table 2 : profils DEV remis à zéro).
+	EconomyBTDev = true,
+	-- a486 (Cantin, 25/11) : la renaissance avec la table 2 de l'économie. false partout, DEV compris : avec la table 2
+	-- la renaissance est coupée (montants à resimuler), quel que soit Features.Rebirth (Config/Rebirths.Enabled). Avec
+	-- la table 1, Features.Rebirth garde seul son effet.
+	RebirthBT = false,
+	-- a486 (Cantin, 25/11 ; note d'a479, section 5) : modèle de chance « R2, sans plafond » (Config/ShelfOpen.LuckV2,
+	-- Shared/OpenLuck) : chance achetée = personnelle (×3, 30 min) × arbre (BoxLuck) × serveur ; à l'ouverture d'un
+	-- colis les taux du ×8 et du ×10 sont multipliés par elle (pris sur le ×1) et le ×N tiré aussi ; la chance du
+	-- serveur augmente en plus la rareté des colis mis en rayon, les mutations d'effet et, avec la chance personnelle,
+	-- la roue. Indépendant de EconomyBT. Interrupteur PROD (partout) : false (règle C2) ; false = la chance d'a476.
+	LuckModelV2 = false,
+	-- a486 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	LuckModelV2Dev = true,
 }
 
 export type Features = typeof(Features)
