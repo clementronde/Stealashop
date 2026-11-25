@@ -7,6 +7,22 @@
 
 local DeepFreeze = require(script.Parent.DeepFreeze)
 
+-- a480 : module de Config chargé s'il est là (bancs à liste de modules fixe), comme Config/Outlines.
+local function optional(name: string): any
+	local found, module = pcall(function(): any
+		return script.Parent:FindFirstChild(name)
+	end)
+	if found and module ~= nil then
+		local ok, result = pcall(require, module :: any)
+		if ok and type(result) == "table" then
+			return result
+		end
+	end
+	return {}
+end
+local Features: any = optional("Features")
+local ProductIds: any = optional("ProductIds")
+
 local TreadmillFX = {
 	-- Défilement de Belt.BeltTexture.OffsetStudsV pendant la course (note Ice, reprise pour tous :
 	-- « 3 studs/s à vide, 9 avec un joueur dessus »).
@@ -80,6 +96,36 @@ local TreadmillFX = {
 		PopCount = 30,
 		PopGap = { Min = 0.4, Max = 1 },
 		TrailOffset = Vector3.new(0.8, -1.5, 0.4),
+	},
+	-- a480 (Clément via Cantin, 25/11) : le gain du tapis sort AUTOUR du joueur, dans le monde 3D (copies de BB_Gain de
+	-- Clément posées à des angles et hauteurs variés autour du HumanoidRootPart), au lieu du « +X » 2D qui volait vers le
+	-- compteur (Config/Hud.TrainGainFly). Le nombre affiché est la Speed finale (Formulas.ShownSpeed, trail compris), sans
+	-- « ×N ». PerSecond fois plus d'apparitions qu'avant (Hud.TreadmillGain.ChunksPerSecond = 1), même total : seul
+	-- l'affichage est découpé, le serveur verse toujours le gain d'une seconde d'un coup (TrainingService, TREADMILL_TICK).
+	-- Un son à chaque apparition, sans saturer (MaxVoices, VolumeScale). Logique pure : Shared/GainPops. Unités : studs, s.
+	GainPops = {
+		-- Interrupteur : Features.TreadmillGainPops (partout) ou TreadmillGainPopsDev (jeu DEV seulement, ProductIds.IsDev).
+		Enabled = Features.TreadmillGainPops == true
+			or (Features.TreadmillGainPopsDev == true and ProductIds.IsDev == true),
+		PerSecond = 6, -- Cantin 25/11 : 6 fois plus d'apparitions (1 par seconde avant)
+		Period = 1, -- s couvertes par les apparitions d'une seconde : TREADMILL_TICK de TrainingService
+		MinPiece = 0.1, -- plus petit morceau affiché (Format.short montre des dixièmes) : moins d'apparitions en dessous
+		Life = 0.75, -- V0 : durée de vie d'une apparition (comme Hud.TreadmillGain.Life)
+		Rise = 1.5, -- V0 : montée pendant sa vie
+		-- Placement autour du joueur (repère du monde, centré sur le HumanoidRootPart) : distance horizontale entre
+		-- RadiusMin et Radius, angle au hasard, hauteur entre HeightMin et HeightMax (V0).
+		RadiusMin = 2,
+		Radius = 4,
+		HeightMin = -0.5,
+		HeightMax = 3,
+		MinSpacing = 1.8, -- V0 : écart minimal avec les apparitions encore visibles (Tries essais, sinon la plus éloignée)
+		Tries = 10,
+		Scale = 1, -- V0 : échelle de la copie de BB_Gain
+		-- Son : Assets/Sounds/<Sound> (Train_Gain existe ; retiré du tapis par L-118 point 7, repris pour cette demande).
+		Sound = "Train_Gain",
+		VolumeScale = 0.6, -- V0 : volume du modèle × VolumeScale à chaque apparition
+		MaxVoices = 3, -- V0 : au plus 3 copies en même temps ; au-delà, l'apparition reste muette
+		PitchJitter = 0.06, -- V0 : hauteur × (1 ± PitchJitter)
 	},
 	Fire = {
 		Brazier = { Base = 2, Amplitude = 0.7 }, -- f = 0,5·sin 11t + 0,3·sin 23t + 0,2·sin 5t
