@@ -154,7 +154,11 @@ local function card(c, lipName, colors, window)
 end
 
 -- grille : cases 1 à 6 en 3 × 2 à gauche, la 7e en carré sur toute la hauteur à droite ; ratio = largeur / hauteur
-local function grid(ratio)
+-- jackpot = true (page Playtime, Clément le 25/11 : « oui » aux deux gros lots de 20 min et de 1 h) : la rangée du bas
+-- devient [case 4, gros lot de 20 min, large] [case 5] [case 6] ; la lecture reste dans l'ordre du temps
+-- (5, 10, 15 en haut ; 20, 30, 45 en bas ; 1 h en grand carré à droite).
+local JACKPOT_SHARE = 0.4667 -- part de la rangée du bas prise par la case 4 (les cases 5 et 6 se partagent le reste)
+local function grid(ratio, jackpot)
 	local h7 = 1 / LIP
 	local x7 = ratio - h7
 	local colW = (x7 - 3 * GAP) / 3
@@ -163,6 +167,15 @@ local function grid(ratio)
 	for i = 1, 6 do
 		local col, row = (i - 1) % 3, (i - 1) // 3
 		slots[i] = { x = col * (colW + GAP) / ratio, y = row * (rowH * LIP + GAP), w = colW / ratio, h = rowH }
+	end
+	if jackpot then
+		local y = rowH * LIP + GAP
+		local s = 3 * colW
+		local w4 = s * JACKPOT_SHARE
+		local w56 = (s - w4) / 2
+		slots[4] = { x = 0, y = y, w = w4 / ratio, h = rowH }
+		slots[5] = { x = (w4 + GAP) / ratio, y = y, w = w56 / ratio, h = rowH }
+		slots[6] = { x = (w4 + GAP + w56 + GAP) / ratio, y = y, w = w56 / ratio, h = rowH }
 	end
 	slots[7] = { x = x7 / ratio, y = 0, w = h7 / ratio, h = h7 }
 	return slots
@@ -248,7 +261,7 @@ local function playtimeCard(t, window, big)
 	t.Icon.BackgroundTransparency = 1
 	local desc = child(t, "TextLabel", "RewardDesc")
 	desc.FontFace = t.RewardName.FontFace
-	box(desc, Vector2.new(0.5, 0), UDim2.fromScale(0.5, if big then 0.67 else 0.57), UDim2.fromScale(0.9, if big then 0.12 else 0.2), 8)
+	box(desc, Vector2.new(0.5, 0), UDim2.fromScale(0.5, if big then 0.67 else 0.57), UDim2.fromScale(0.9, if big then 0.12 else 0.17), 8)
 	text(desc, "Reward", WHITE, 8)
 	-- minuteur : pastille sombre à cheval sur le bas de la carte
 	local timer = t.Timer
@@ -260,12 +273,30 @@ local function playtimeCard(t, window, big)
 	local pad = child(timer, "UIPadding", "UIPadding")
 	pad.PaddingTop = UDim.new(0.08, 0)
 	pad.PaddingBottom = UDim.new(0.08, 0)
-	-- bouton CLAIM au même endroit, plus gros : il cache la pastille quand le cadeau est prêt
+	-- bouton CLAIM (correctif du 25/11, vu par Habiller l'UI : sur téléphone la case fait 89 px de haut, et un
+	-- bouton de 44 px au minimum débordait de la case et cachait le gain). Le bouton couvre maintenant TOUTE la
+	-- case, transparent : la zone à toucher dépasse toujours 44 px, et c'est toute la case prête qu'on touche. Seule
+	-- sa pastille visible (Lip, Face, Shade, ClaimLabel, mêmes noms, mêmes parents) est dessinée en bas, à la
+	-- place du minuteur : le nom, l'icône et le gain restent visibles au-dessus.
 	local claimBtn = t.ClaimButton
-	box(claimBtn, Vector2.new(0.5, 0.5), UDim2.fromScale(0.5, 0.9), UDim2.fromScale(if big then 0.6 else 0.86, if big then 0.15 else 0.26), 10)
-	for _, c in claimBtn:GetDescendants() do
+	box(claimBtn, Vector2.new(0, 0), UDim2.fromScale(0, 0), UDim2.fromScale(1, 1), 10)
+	claimBtn.BackgroundTransparency = 1
+	local pillW, pillH = if big then 0.6 else 0.86, if big then 0.13 else 0.22
+	local pillX, pillY = (1 - pillW) / 2, 0.97 - pillH
+	for _, c in claimBtn:GetChildren() do
 		if c:IsA("GuiObject") then
-			c.ZIndex = 10 + (if c.Name == "ClaimLabel" then 2 elseif c.Name == "Shade" then 1 else 0)
+			if c.Name == "Face" then
+				box(c, Vector2.new(0, 0), UDim2.fromScale(pillX, pillY), UDim2.fromScale(pillW, pillH * 0.86), 11)
+			elseif c.Name == "ClaimLabel" then
+				box(c, Vector2.new(0.5, 0.5), UDim2.fromScale(0.5, pillY + pillH * 0.43), UDim2.fromScale(pillW * 0.86, pillH * 0.62), 12)
+			else
+				box(c, Vector2.new(0, 0), UDim2.fromScale(pillX, pillY), UDim2.fromScale(pillW, pillH), if c.Name == "Shade" then 11 else 10)
+			end
+		end
+	end
+	for _, c in claimBtn:GetDescendants() do
+		if c:IsA("GuiObject") and c.Parent ~= claimBtn then
+			c.ZIndex = 11
 		end
 	end
 	-- réclamé : voile sombre sur toute la carte, coche et « CLAIMED » au centre, comme les jours
@@ -311,7 +342,7 @@ local function playtime(page, window)
 	if layout then
 		layout:Destroy() -- les cases sont posées à leur place
 	end
-	local slots = grid(GRID_SIZE.X.Scale * PAGE_RATIO / GRID_SIZE.Y.Scale)
+	local slots = grid(GRID_SIZE.X.Scale * PAGE_RATIO / GRID_SIZE.Y.Scale, true)
 	local template = list.Template
 	slot(template, slots[1])
 	playtimeCard(template, window, false)
@@ -403,10 +434,18 @@ local function finish(gui, window)
 	if PLAYTIME_SLOTS then
 		-- 7e cadeau (la boîte Épique) : comme le jour 2, violet, reflet et rayons
 		local p7 = window.PlaytimePage.List:FindFirstChild("Preview_7")
-		if p7 then
-			card(p7, "Lip", PURPLE, window)
-			p7:SetAttribute("Gleam", "Loop")
-			sunburst(p7, 0.41, 1.1, "#F6E6FF")
+		-- Gros lots (Clément, 25/11 : « oui » à « cases de 20 min et de 1 h plus grandes, dorées, avec des rayons ») :
+		-- case 4 (20 min, large) et case 7 (1 h, grand carré) dorées, reflet en boucle et rayons qui tournent.
+		-- Le code d'Ironix doit mettre ses deux lots exceptionnels sur les rangs 4 et 7.
+		local list = window.PlaytimePage.List
+		for _, n in { 4, 7 } do
+			local p = list:FindFirstChild("Preview_" .. n)
+			if p then
+				card(p, "Lip", GOLD, window)
+				p:SetAttribute("Gleam", "Loop")
+				p:SetAttribute("Jackpot", true)
+				sunburst(p, if n == 7 then 0.41 else 0.38, if n == 7 then 1.1 else 1.25, "#FFFBE6")
+			end
 		end
 	end
 end
