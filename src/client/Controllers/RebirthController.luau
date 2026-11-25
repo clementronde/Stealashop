@@ -63,7 +63,6 @@ local RunService = game:GetService("RunService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = Shared:WaitForChild("Config")
-local Features = require(Config:WaitForChild("Features"))
 local Items = require(Config:WaitForChild("Items"))
 local Rarities = require(Config:WaitForChild("Rarities"))
 local Rebirths = require(Config:WaitForChild("Rebirths"))
@@ -462,7 +461,7 @@ local function bindHud(gui: Instance)
 end
 
 function RebirthController.Start()
-	if not Features.Rebirth then
+	if not Rebirths.Enabled then
 		return -- renaissance coupée : rien n'est branché
 	end
 	localPlayer:GetAttributeChangedSignal(CASH_ATTRIBUTE):Connect(function()

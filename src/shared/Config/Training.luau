@@ -3,13 +3,32 @@
 -- Rééquilibrage v2 (Cantin, 2026-11-14) : plus de banc ni de Force. Gain du tapis par seconde =
 -- GainPerSecond × GainGrowth^(niveau affiché − 1), niveau affiché de 1 à 20 = niveau enregistré de
 -- Upgrades.Treadmill + 1 (calcul dans Formulas.TreadmillGain) : 1, 2, 4… 524 288 par seconde.
+-- a486 (économie « B/T », Config/Economy) : avec la table 2, 6 crédits par seconde au niveau 1 et 25 niveaux
+-- affichés : 6, 12, 24… 100M par seconde. Le serveur garde un seul versement par seconde (TrainingService) ; les
+-- 6 apparitions par seconde sont un affichage (Config/TreadmillFX.GainPops, Shared/GainPops).
 
 local DeepFreeze = require(script.Parent.DeepFreeze)
+
+-- a486 : table active de l'économie (Config/Economy.Active), chargée si le module est là (bancs à liste de modules
+-- fixe, comme dans Config/Items) ; sans lui, nil : les nombres écrits dans ce fichier, qui sont ceux de la table 1.
+local ECO: any = (function(): any
+	local found, module = pcall(function(): any
+		return script.Parent:FindFirstChild("Economy")
+	end)
+	if found and module ~= nil then
+		local ok, result = pcall(require, module :: any)
+		if ok and type(result) == "table" then
+			return result.Active
+		end
+	end
+	return nil
+end)()
 
 local Training = {
 	-- Tapis sans invite depuis L-071 (2026-11-08), par sa zone depuis L-093 (TrainingService).
 	Treadmill = {
-		GainPerSecond = 1, -- Cantin, 2026-11-14 : le niveau 1 rapporte 1 de Vitesse par seconde…
+		-- a486 : pris dans la table active de l'économie (table 1 : 1 ; table 2 : 6).
+		GainPerSecond = (if ECO then ECO.TreadmillGainPerSecond else 1) :: number, -- Cantin, 2026-11-14 : le niveau 1 rapporte 1 de Vitesse par seconde…
 		GainGrowth = 2, -- … multiplié par 2 à chaque niveau du tapis
 		TapBonus = 0.5, -- taper l'écran donne +50 % de gain
 		TapBonusWindow = 1, -- V0 proposé, absent du doc : durée du bonus après un tap

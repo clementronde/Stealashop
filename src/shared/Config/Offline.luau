@@ -30,6 +30,14 @@ local function optional(name: string): any
 end
 local Features: any = optional("Features")
 local ProductIds: any = optional("ProductIds")
+-- a486 : table active de l'économie (Config/Economy.Active ; nil sans le module : la part écrite ici, celle de la table 1).
+local ECO: any = optional("Economy").Active
+
+-- a486 (Cantin, 25/11) : la part des revenus gagnée hors ligne est une valeur de la table de l'économie
+-- (Config/Economy, OfflineRate), à côté des prix du tapis avec lesquels elle est réglée : table 1 = 1 (100 %),
+-- table 2 = 1 aussi tant que Clément n'a pas répondu à L-413 (50 %). La changer : une valeur de Config/Economy.
+local RATE: number = if ECO then ECO.OfflineRate else 1
+assert(type(RATE) == "number", "Config/Offline : OfflineRate absent de Config/Economy")
 
 -- Plafond de base de l'absence comptée, en heures (doc, Partie 2 ; redit par Cantin le 25/11 : 4 h de base).
 local MAX_HOURS = 4
@@ -64,7 +72,8 @@ end
 
 local Offline = {
 	-- Part des revenus gagnée hors ligne : 1 = 100 % (Clément, L-084 ; validé par Ironix le 2026-11-09).
-	Rate = 1,
+	-- a486 : lue dans la table active de l'économie (voir RATE plus haut).
+	Rate = RATE,
 	-- Plafond de base de l'absence comptée, en heures (Cantin, 25/11 : 4 h de base) ; un joueur peut avoir plus avec
 	-- les nœuds de l'arbre : CapHours(profil.SkillTree) fait foi.
 	MaxHours = MAX_HOURS,

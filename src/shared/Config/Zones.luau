@@ -31,6 +31,21 @@ local Balance = require(script.Parent.Balance)
 local Cosmetics = require(script.Parent.Cosmetics)
 local Tools = require(script.Parent.Tools)
 
+-- a486 : table active de l'économie (Config/Economy.Active), chargée si le module est là (bancs à liste de modules
+-- fixe, comme dans Config/Items) ; sans lui, nil : les nombres écrits dans ce fichier, qui sont ceux de la table 1.
+local ECO: any = (function(): any
+	local found, module = pcall(function(): any
+		return script.Parent:FindFirstChild("Economy")
+	end)
+	if found and module ~= nil then
+		local ok, result = pcall(require, module :: any)
+		if ok and type(result) == "table" then
+			return result.Active
+		end
+	end
+	return nil
+end)()
+
 export type Zone = {
 	Index: number,
 	Theme: string, -- nom affiché de la zone, en anglais (catalogue 10.5, liaison L-036)
@@ -176,14 +191,21 @@ for index, base in List do
 		auraMultiplier = aura.Multiplier
 	end
 	local damage = tool.Power * auraMultiplier
-	local walk = walkFor(base.SpeedRequired)
+	-- a486 : Speed demandée prise dans la table active de l'économie (table 2 : 15K, 1,6M, 170M, 19B, 30T ; marche aux
+	-- panneaux 22, 28, 34, 40 comme avant, 49,4 en zone 6 ; les PV des vitrines ne bougent pas, les armes non plus).
+	local speedRequired: number = base.SpeedRequired
+	if ECO ~= nil then
+		speedRequired = ECO.SpeedRequired[index]
+		assert(type(speedRequired) == "number", `Config/Zones : SpeedRequired de la zone {index} absent de Config/Economy`)
+	end
+	local walk = walkFor(speedRequired)
 	Zones[index] = {
 		Index = base.Index,
 		Theme = base.Theme,
 		City = base.City,
 		Stores = base.Stores,
 		StoreIds = base.StoreIds,
-		SpeedRequired = base.SpeedRequired,
+		SpeedRequired = speedRequired,
 		Kit = base.Kit,
 		WindowHP = base.WindowHP or math.round((if index == #List then LAST_HP_PER_DAMAGE else SOLO_HP_PER_DAMAGE) * damage),
 		AdvisedDamage = damage,

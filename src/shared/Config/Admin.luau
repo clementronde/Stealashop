@@ -20,6 +20,21 @@
 
 local DeepFreeze = require(script.Parent.DeepFreeze)
 
+-- a486 : table active de l'économie (Config/Economy.Active), chargée si le module est là (bancs à liste de modules
+-- fixe, comme dans Config/Items) ; sans lui, nil : les nombres écrits dans ce fichier, qui sont ceux de la table 1.
+local ECO: any = (function(): any
+	local found, module = pcall(function(): any
+		return script.Parent:FindFirstChild("Economy")
+	end)
+	if found and module ~= nil then
+		local ok, result = pcall(require, module :: any)
+		if ok and type(result) == "table" then
+			return result.Active
+		end
+	end
+	return nil
+end)()
+
 export type Command = {
 	Id: string,
 	Section: string,
@@ -86,7 +101,10 @@ local Admin = {
 	-- En Studio, tout le monde est admin.
 	StudioEveryone = true,
 	-- Borne des montants donnés (l'échelle des stats va vers les milliards, L-108 point 1).
-	MaxAmount = 1e15,
+	-- a486 : pris dans la table active de l'économie (Config/Economy) : 1e15 (1Qa) avec la table 1 ; 1e30 avec la
+	-- table 2, au-dessus de tout montant possible (un gros joueur y atteint 33Qi en 30 jours). La même borne pour
+	-- `value` du remote AdminCommand (Net/Definitions) ; AdminService revalide toujours le montant.
+	MaxAmount = (if ECO then ECO.AdminMaxAmount else 1e15) :: number,
 	-- Mot envoyé par le client au second clic de ResetProfileButton.
 	ResetConfirm = "RESET",
 	-- Événements de StartEvent (Rain plus tard). Vague 39 : Fortune (une vitrine de la Fortune Tower tout de suite,

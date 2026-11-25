@@ -6,6 +6,21 @@
 
 local DeepFreeze = require(script.Parent.DeepFreeze)
 
+-- a486 : table active de l'économie (Config/Economy.Active), chargée si le module est là (bancs à liste de modules
+-- fixe, comme dans Config/Items) ; sans lui, nil : les nombres écrits dans ce fichier, qui sont ceux de la table 1.
+local ECO: any = (function(): any
+	local found, module = pcall(function(): any
+		return script.Parent:FindFirstChild("Economy")
+	end)
+	if found and module ~= nil then
+		local ok, result = pcall(require, module :: any)
+		if ok and type(result) == "table" then
+			return result.Active
+		end
+	end
+	return nil
+end)()
+
 export type BoxTier = "Standard" | "Premium" | "Luxe"
 
 export type BoxTierInfo = {
@@ -43,8 +58,11 @@ local Balance = {
 		RealSpeedScale = REAL_SPEED_SCALE, -- vague 61, voir plus haut (V0)
 		BaseWalkSpeed = 16, -- à l'échelle 1
 		MaxWalkSpeed = 70, -- à l'échelle 1 (plafond réel : 70 × RealSpeedScale) ; une sécurité : Speed 3,2Qa
-		WalkPerDecade = 4, -- V0 proposé (note v2) : WalkSpeed gagné chaque fois que la Speed affichée est multipliée par 10
-		SpeedScale = 100, -- V0 proposé (note v2) : Speed affichée à partir de laquelle la marche commence à monter
+		-- a486 : ces deux nombres viennent de la table active de l'économie (Config/Economy) ; table 1 : 4 et 100 ;
+		-- table 2 : 2,95 et 140 (Speed des zones × 107 environ par zone : la marche aux panneaux des zones 2 à 5 reste
+		-- 22, 28, 34, 40 ; plafond de 70 atteint vers Speed 284Qi).
+		WalkPerDecade = (if ECO then ECO.WalkPerDecade else 4) :: number, -- V0 proposé (note v2) : WalkSpeed gagné chaque fois que la Speed affichée est multipliée par 10
+		SpeedScale = (if ECO then ECO.SpeedScale else 100) :: number, -- V0 proposé (note v2) : Speed affichée à partir de laquelle la marche commence à monter
 	},
 
 	-- 5.2 : slot 1 = outil de casse équipé, slot 2 = batte
@@ -141,8 +159,12 @@ local Balance = {
 	-- revenir, DevStoreName = "PlayerData". Pour une nouvelle remise à zéro du DEV : un nouveau nom.
 	Profiles = {
 		StoreName = "PlayerData", -- PROD : ne jamais le changer (un autre nom = profils vides)
-		DevGameId = 10774974820, -- « Steal a Shop [DEV] » (liaison, L-001)
-		DevStoreName = "PlayerData_DEV_20261114",
+		DevGameId = 10774974820, -- « Steal a Shop [DEV] » (liaison, L-001) ; le même nombre dans Config/Economy (DevGameId)
+		-- a486 (Cantin, 25/11 : profils DEV remis à zéro avec l'économie « B/T ») : le nom vient de la table active de
+		-- l'économie (Config/Economy, DevStoreName) : table 1, le store du 14/11 ; table 2, un store neuf. Rien n'est
+		-- effacé : revenir à la table 1 dans le jeu DEV relit les profils du 14/11, intacts. StoreName (PROD) ne
+		-- dépend jamais de la table.
+		DevStoreName = (if ECO then ECO.DevStoreName else "PlayerData_DEV_20261114") :: string,
 	},
 
 	-- 5.4 : séquence de casse, simulée côté client

@@ -7,9 +7,25 @@
 -- Codage des valeurs dans l'OrderedDataStore (entiers seulement, 2^53 au plus sans perte) :
 --   Income : un revenu peut dépasser 2^53 (Format va jusqu'à Dc = 1e33) : on range
 --            round(log10(1 + revenu) × LogScale), croissant comme le revenu ; relu à 1e-12 près ;
---   Speed  : la Vitesse entraînée (Stats.Speed), arrondie vers le bas.
+--   Speed  : la Vitesse entraînée (Stats.Speed), arrondie vers le bas ; a486 : en logarithme comme Income avec la
+--            table 2 de l'économie (Stats.Speed.Log, Config/Economy).
 
 local DeepFreeze = require(script.Parent.DeepFreeze)
+
+-- a486 : table active de l'économie (Config/Economy.Active), chargée si le module est là (bancs à liste de modules
+-- fixe, comme dans Config/Items) ; sans lui, nil : les nombres écrits dans ce fichier, qui sont ceux de la table 1.
+local ECO: any = (function(): any
+	local found, module = pcall(function(): any
+		return script.Parent:FindFirstChild("Economy")
+	end)
+	if found and module ~= nil then
+		local ok, result = pcall(require, module :: any)
+		if ok and type(result) == "table" then
+			return result.Active
+		end
+	end
+	return nil
+end)()
 
 export type StatId = "Income" | "Speed"
 
@@ -21,6 +37,14 @@ export type StatSpec = {
 
 local LOG_SCALE = 1e13 -- V0 : log10(1e36) × 1e13 = 3,6e14 < 2^53
 
+-- a486 (économie « B/T », Config/Economy) : les valeurs d'une table de l'économie ne se comparent pas à celles de
+-- l'autre : chaque table a ses propres OrderedDataStore (EconomySuffix ajouté au nom ; table 1 : aucun suffixe, les
+-- classements d'avant, qui restent en place ; table 2 : « _E2 », remplis à la première écriture). Avec la table 2, le
+-- classement Speed est rangé en logarithme comme Income (SpeedLog) : une Speed peut dépasser 2^53 (9Qa), le dernier
+-- entier exact, et tous les gros joueurs seraient à égalité.
+local ECONOMY_SUFFIX: string = if ECO then ECO.LeaderboardSuffix else ""
+local SPEED_LOG: boolean = if ECO then ECO.LeaderboardSpeedLog else false
+
 local Leaderboard = {
 	Tag = "Leaderboard", -- L-165 : tag des panneaux
 	StatAttribute = "Stat", -- L-165 : attribut texte du panneau, Income ou Speed
@@ -30,9 +54,10 @@ local Leaderboard = {
 	Template = "Template", -- L-165 : List.Template invisible (Rank, Avatar, PlayerName, Value)
 	RowName = "Row_%02d", -- V0 : nom des copies de Template
 	Stats = {
-		Income = { Title = "Most money/s", Store = "Leaderboard_Income", Log = true },
-		Speed = { Title = "Fastest", Store = "Leaderboard_Speed", Log = false },
+		Income = { Title = "Most money/s", Store = "Leaderboard_Income" .. ECONOMY_SUFFIX, Log = true },
+		Speed = { Title = "Fastest", Store = "Leaderboard_Speed" .. ECONOMY_SUFFIX, Log = SPEED_LOG },
 	} :: { [string]: StatSpec },
+	EconomySuffix = ECONOMY_SUFFIX, -- a486 : déjà dans Stats[…].Store (voir plus haut)
 	DevSuffix = "_DEV", -- V0 : ajouté au nom des stores quand les profils sont ceux du jeu DEV
 	Rows = 10, -- V0 : lignes affichées par panneau
 	WriteInterval = 120, -- V0 : secondes entre deux écritures des joueurs du serveur

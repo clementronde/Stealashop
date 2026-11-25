@@ -14,6 +14,21 @@
 
 local DeepFreeze = require(script.Parent.DeepFreeze)
 
+-- a486 : table active de l'économie (Config/Economy.Active), chargée si le module est là (bancs à liste de modules
+-- fixe, comme dans Config/Items) ; sans lui, nil : les nombres écrits dans ce fichier, qui sont ceux de la table 1.
+local ECO: any = (function(): any
+	local found, module = pcall(function(): any
+		return script.Parent:FindFirstChild("Economy")
+	end)
+	if found and module ~= nil then
+		local ok, result = pcall(require, module :: any)
+		if ok and type(result) == "table" then
+			return result.Active
+		end
+	end
+	return nil
+end)()
+
 export type StatSpec = {
 	Title: string, -- Board.Title du panneau (anglais)
 	Store: string, -- préfixe du nom de l'OrderedDataStore (suffixe DEV puis « _W<semaine> »)
@@ -31,10 +46,15 @@ export type RewardTier = {
 
 local LOG_SCALE = 1e13 -- même codage que Config/Leaderboard (log10(1e36) × 1e13 < 2^53)
 
+-- a486 (économie « B/T », Config/Economy) : comme Config/Leaderboard, le classement des revenus a ses propres
+-- OrderedDataStore par table de l'économie (table 1 : aucun suffixe ; table 2 : « _E2 »). Le classement des vols
+-- compte des vols, pas des dollars : il ne dépend pas de la table et garde son nom.
+local ECONOMY_SUFFIX: string = if ECO then ECO.LeaderboardSuffix else ""
+
 local WeeklyLeaderboard = {
 	Stats = {
 		-- Meilleur revenu par seconde atteint dans la semaine (sans les boosts du moment, comme « Most money/s »).
-		WeeklyIncome = { Title = "Money/s this week", Store = "LeaderboardWeek_Income", Log = true, RankAttribute = "WeeklyIncomeRank" },
+		WeeklyIncome = { Title = "Money/s this week", Store = "LeaderboardWeek_Income" .. ECONOMY_SUFFIX, Log = true, RankAttribute = "WeeklyIncomeRank" },
 		-- Vols de la semaine : seulement les vols chez un autre joueur (Lifetime.Steals). a430 : réponse (1) de Clément
 		-- en L-325, les braquages de magasins (Lifetime.Heists) ne comptent plus.
 		WeeklySteals = { Title = "Steals this week", Store = "LeaderboardWeek_Steals", Log = false, RankAttribute = "WeeklyStealsRank" },

@@ -77,6 +77,22 @@ local MAX_INDEX = 100
 -- V0 proposé, absent du doc : longueur maximale d'un message Notify.
 local MAX_MESSAGE_LENGTH = 200
 
+-- a486 : borne de `value` du remote AdminCommand = Config/Admin.MaxAmount, pris dans la table active de l'économie
+-- (Config/Economy, AdminMaxAmount : 1e15 avec la table 1, 1e30 avec la table 2). Module chargé s'il est là (bancs à
+-- liste de modules fixe) ; sans lui, 1e15. Ce n'est que la forme de l'appel : AdminService revalide chaque montant.
+local ADMIN_MAX_VALUE: number = (function(): number
+	local found, module = pcall(function(): any
+		return (script.Parent :: any).Parent:FindFirstChild("Config"):FindFirstChild("Economy")
+	end)
+	if found and module ~= nil then
+		local ok, result = pcall(require, module :: any)
+		if ok and type(result) == "table" and type(result.Active) == "table" and type(result.Active.AdminMaxAmount) == "number" then
+			return result.Active.AdminMaxAmount
+		end
+	end
+	return 1e15
+end)()
+
 local function id(name: string): ArgSpec
 	return { Name = name, Kind = "string", Max = MAX_ID_LENGTH }
 end
@@ -577,7 +593,7 @@ local List: { RemoteDef } = {
 		Args = {
 			{ Name = "commandId", Kind = "string", Max = 32 },
 			{ Name = "target", Kind = "Player", Optional = true },
-			{ Name = "value", Kind = "number", Min = 0, Max = 1e15, Optional = true },
+			{ Name = "value", Kind = "number", Min = 0, Max = ADMIN_MAX_VALUE, Optional = true }, -- a486 : 1e15, ou 1e30 avec la table 2 de l'économie
 			{ Name = "text", Kind = "string", Min = 0, Max = MAX_ID_LENGTH, Optional = true },
 			{ Name = "text2", Kind = "string", Min = 0, Max = MAX_ID_LENGTH, Optional = true },
 		},

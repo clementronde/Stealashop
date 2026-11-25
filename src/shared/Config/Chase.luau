@@ -42,6 +42,21 @@
 local DeepFreeze = require(script.Parent.DeepFreeze)
 local Balance = require(script.Parent.Balance)
 
+-- a486 : table active de l'économie (Config/Economy.Active), chargée si le module est là (bancs à liste de modules
+-- fixe, comme dans Config/Items) ; sans lui, nil : les nombres écrits dans ce fichier, qui sont ceux de la table 1.
+local ECO: any = (function(): any
+	local found, module = pcall(function(): any
+		return script.Parent:FindFirstChild("Economy")
+	end)
+	if found and module ~= nil then
+		local ok, result = pcall(require, module :: any)
+		if ok and type(result) == "table" then
+			return result.Active
+		end
+	end
+	return nil
+end)()
+
 local K = Balance.Stats.RealSpeedScale
 
 export type AboveRequired = "Hold" | "Gain"
@@ -77,7 +92,9 @@ local Chase = {
 	-- (Tutorial.TrainDuration 10 s × Training.Treadmill.GainPerSecond 1, sans taper) : un joueur qui a fait le tutoriel
 	-- est au minimum (gardé à distance), un joueur à 0 est rattrapé. Le premier braquage du tutoriel ne suit pas cette
 	-- règle (GetSpeedOverride : vigile lent, Tutorial.GuardSpeed). 0 = sans minimum (avant a249).
-	Zone1SpeedRequired = 10,
+	-- a486 : pris dans la table active de l'économie (Config/Economy) : 10 avec la table 1 ; 60 avec la table 2 (le
+	-- tapis y donne 6 crédits par seconde : 10 s de tapis au niveau 1 = 60).
+	Zone1SpeedRequired = (if ECO then ECO.Zone1SpeedRequired else 10) :: number,
 	NightGuardRequiredFactor = 2, -- vigile de nuit : minimum = Speed effective actuelle du voleur × ceci (Cantin)
 	PoliceRequiredFactor = 2, -- policier : minimum = Speed effective actuelle du voleur × ceci (Cantin)
 	DriverGrowthPerSecond = 0.02 * K, -- conducteur : + 2 % de la marche du voleur par seconde depuis la fin de la ruée (× k)

@@ -27,6 +27,21 @@
 local DeepFreeze = require(script.Parent.DeepFreeze)
 local Features = require(script.Parent.Features)
 
+-- a486 : table active de l'économie (Config/Economy.Active), chargée si le module est là (bancs à liste de modules
+-- fixe, comme dans Config/Items) ; sans lui, nil : les nombres écrits dans ce fichier, qui sont ceux de la table 1.
+local ECO: any = (function(): any
+	local found, module = pcall(function(): any
+		return script.Parent:FindFirstChild("Economy")
+	end)
+	if found and module ~= nil then
+		local ok, result = pcall(require, module :: any)
+		if ok and type(result) == "table" then
+			return result.Active
+		end
+	end
+	return nil
+end)()
+
 -- a467 (L-163, A2 ; décision C2 de Cantin, 24/11) : Config/ProductIds chargé s'il est là (bancs à liste de modules
 -- fixe, comme dans Config/Items) ; sans lui, IsDev faux (PROD). Lu aussi par a476 (L-374, BoxLuck).
 local ProductIds: any = (function(): any
@@ -392,6 +407,18 @@ do
 	for _, skill in offlineSkills do
 		table.insert(List, skill)
 		ById[skill.Id] = skill
+	end
+end
+
+-- a486 : prix de chaque compétence pris dans la table active de l'économie (Config/Economy, SkillPrices ; table 2 :
+-- un prix garde sa valeur comptée en armes). Une compétence sans prix (Prices vide) n'y est pas.
+if ECO ~= nil then
+	for _, skill in List do
+		if #skill.Prices > 0 then
+			local prices = ECO.SkillPrices[skill.Id]
+			assert(type(prices) == "table" and #prices == #skill.Prices, `Config/SkillTree : prix de {skill.Id} absents de Config/Economy`)
+			skill.Prices = prices
+		end
 	end
 end
 

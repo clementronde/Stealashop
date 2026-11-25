@@ -11,6 +11,21 @@
 
 local DeepFreeze = require(script.Parent.DeepFreeze)
 
+-- a486 : table active de l'économie (Config/Economy.Active), chargée si le module est là (bancs à liste de modules
+-- fixe, comme dans Config/Items) ; sans lui, nil : les nombres écrits dans ce fichier, qui sont ceux de la table 1.
+local ECO: any = (function(): any
+	local found, module = pcall(function(): any
+		return script.Parent:FindFirstChild("Economy")
+	end)
+	if found and module ~= nil then
+		local ok, result = pcall(require, module :: any)
+		if ok and type(result) == "table" then
+			return result.Active
+		end
+	end
+	return nil
+end)()
+
 local ShopGrowth = {
 	-- false : la boutique reprend tout de suite la taille entière de chaque niveau, comme avant la vague 55.
 	Enabled = true, -- V0
@@ -62,8 +77,9 @@ local ShopGrowth = {
 		Slots = 8, -- L-294 : DisplaySlot_31 à _38
 		-- V0 proposé (Cantin, 23/11) : la suite des prix du bas (Config/Upgrades, DisplaySlots, Costs[5] à [13]) : l'étage
 		-- au prix de l'ancien 9e présentoir, ses 8 places à ceux des anciens 10e à 17e.
-		Cost = 2_800,
-		Costs = { 3_600, 4_800, 9_800, 20_000, 42_000, 72_000, 120_000, 300_000 },
+		-- a486 : pris dans la table active de l'économie (Config/Economy ; table 2 : 140K, puis 230K à 18B).
+		Cost = (if ECO then ECO.Floor2Cost else 2_800) :: number,
+		Costs = (if ECO then ECO.Floor2Costs else { 3_600, 4_800, 9_800, 20_000, 42_000, 72_000, 120_000, 300_000 }) :: { number },
 	},
 }
 

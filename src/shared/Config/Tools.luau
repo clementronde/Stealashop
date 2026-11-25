@@ -12,6 +12,21 @@
 
 local DeepFreeze = require(script.Parent.DeepFreeze)
 
+-- a486 : table active de l'économie (Config/Economy.Active), chargée si le module est là (bancs à liste de modules
+-- fixe, comme dans Config/Items) ; sans lui, nil : les nombres écrits dans ce fichier, qui sont ceux de la table 1.
+local ECO: any = (function(): any
+	local found, module = pcall(function(): any
+		return script.Parent:FindFirstChild("Economy")
+	end)
+	if found and module ~= nil then
+		local ok, result = pcall(require, module :: any)
+		if ok and type(result) == "table" then
+			return result.Active
+		end
+	end
+	return nil
+end)()
+
 export type ToolId =
 	"Fists"
 	| "Wrench"
@@ -47,6 +62,16 @@ local List: { Tool } = {
 	{ Id = "FireAxe", Order = 6, DisplayName = "Fire Axe", Power = 60_000, Price = 9_900_000, TargetZones = { 5, 5 }, HitAnimation = "HitWindowHeavy", Asset = "TOOL_HacheDIncendie" }, -- V0 proposé (Cantin, 20/11), avant : 1_000_000_000
 	{ Id = "AngleGrinder", Order = 7, DisplayName = "Angle Grinder", Power = 100_000, Price = 69_000_000, TargetZones = { 6, 6 }, HitAnimation = "HitWindowHeavy", Asset = "TOOL_Disqueuse" }, -- V0 proposé (Cantin, 20/11), avant : 7_000_000_000
 }
+
+-- a486 : prix pris dans la table active de l'économie (table 2 : Hammer 450K, Sledgehammer 400M, Fire Axe 36B, Angle
+-- Grinder 160B ; Wrench et Crowbar gardent leur prix). Les puissances ne dépendent pas de la table.
+if ECO ~= nil then
+	for _, tool in List do
+		local price = ECO.ToolPrices[tool.Id]
+		assert(type(price) == "number", `Config/Tools : prix de {tool.Id} absent de Config/Economy`)
+		tool.Price = price
+	end
+end
 
 local ById: { [string]: Tool } = {}
 for _, tool in List do

@@ -9,6 +9,21 @@
 
 local DeepFreeze = require(script.Parent.DeepFreeze)
 
+-- a486 : table active de l'économie (Config/Economy.Active), chargée si le module est là (bancs à liste de modules
+-- fixe, comme dans Config/Items) ; sans lui, nil : les nombres écrits dans ce fichier, qui sont ceux de la table 1.
+local ECO: any = (function(): any
+	local found, module = pcall(function(): any
+		return script.Parent:FindFirstChild("Economy")
+	end)
+	if found and module ~= nil then
+		local ok, result = pcall(require, module :: any)
+		if ok and type(result) == "table" then
+			return result.Active
+		end
+	end
+	return nil
+end)()
+
 export type RarityId = "Common" | "Uncommon" | "Rare" | "Epic" | "Legendary" | "Mythic" | "Secret" | "Divine"
 
 -- Halo de rareté autour d'un colis porté ou d'un objet exposé (5.6)
@@ -170,6 +185,15 @@ local List: { Rarity } = {
 		SlowMotion = true, -- V0 : même ralenti que le Secret ; son Unbox_Reveal_Divine s'il est livré
 	},
 }
+
+-- a486 : $/s de base de chaque rareté pris dans la table active de l'économie (table 2 : échelle × 60, Secret à 50B).
+if ECO ~= nil then
+	for _, rarity in List do
+		local income = ECO.Income[rarity.Id]
+		assert(type(income) == "number", `Config/Rarities : Income de {rarity.Id} absent de Config/Economy`)
+		rarity.Income = income
+	end
+end
 
 local ById: { [string]: Rarity } = {}
 for _, rarity in List do
