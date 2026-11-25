@@ -120,7 +120,23 @@ La liste qui fait foi est dans le code, dossier `src/shared/Contract/` (`Tags.lu
 - Répondre en français.
 - Avant une tâche, citer son ID : ligne de la liaison (`L-0NN`) ou, pour une ancienne tâche, ID du backlog (`MOD-012`, `UI-001`, `DEV-018`…) et relire ses colonnes « Fini quand… » et « Dépend de ». Les statuts des backlogs (sections 12 et 13) ne sont plus tenus depuis le 14/11.
 - Une décision nouvelle se note dans le journal des décisions du doc partagé (section 15), pas seulement dans le chat. Si elle change ce qu'est le jeu (une règle, un système ajouté ou retiré, un interrupteur PROD), la section 0 « Le jeu aujourd'hui » se corrige dans le même tour.
-- Git : messages de commit en français, préfixés `Docs :`, `Modèle :`, `UI :` ou `Code :`. Ne jamais pousser sur `main` sans accord explicite.
+- Git : messages de commit en français, préfixés `Docs :`, `Modèle :`, `UI :` ou `Code :`. Ne jamais pousser sur `main` sans accord explicite (côté Clément, l'accord permanent ci-dessous en tient lieu pour le Chef de projet).
+
+## Organisation des sessions de Clément (depuis le 25/11/2026)
+
+Valable pour les sessions Claude de Clément (`git config user.name` = `Clement`). Ironix garde sa propre façon de faire.
+
+- **Un seul interlocuteur** : la session « Chef de projet Steal a Shop (Clément) ». Elle seule pose des questions à Clément : une seule liste groupée, avec des choix, deux fois par jour au plus (sauf blocage réel). Les autres sessions ne demandent rien à Clément : elles envoient leur question au Chef de projet. Si Clément répond lui-même dans une autre fenêtre, cette session prévient le Chef de projet.
+- **6 sessions de domaine** : Map (hub, zones, magasins), 3D et objets (tapis, boutique du joueur, objets, armes, véhicules), UI, VFX et son, Animation, Vidéo et marketing. Chacune fait le travail elle-même, avec ses agents (Agent tool). Elle n'ouvre pas de nouvelle session sans l'accord du Chef de projet. La direction artistique (règles de style, références) est relue par le Chef de projet avant chaque livraison visuelle.
+- **Un seul qui pousse : le Chef de projet.**
+  - Une session de domaine ne commite ni ne pousse. Quand un travail est fini, elle envoie au Chef de projet un **paquet** : la liste des fichiers (scripts dans `tools/clement/`, notes), le texte de liaison et de test **sans numéro**, et ce qui a changé dans Studio.
+  - Le Chef de projet fait `git pull`, vérifie qu'aucun paquet n'en contredit un autre ni un commit récent (`git log` des fichiers et des objets touchés), donne les numéros L-/T- au moment d'écrire, commite et pousse en un seul envoi, depuis un dossier temporaire (`git worktree`) à jour de `origin/main`.
+  - **Accord permanent de Clément (25/11)** : le Chef de projet pousse sur `main` sans redemander les commits `Docs :`, `Modèle :` et `UI :` quand le ContractChecker n'a aucune ligne rouge. Clément ne valide que le contenu : ce qu'on voit et ce qu'on ressent en jeu. Jamais de `src/`, jamais de PROD.
+- **Studio** :
+  - Avant de toucher un objet, lire [docs/claude/journal-studio.md](docs/claude/journal-studio.md) ; après chaque changement, y ajouter une ligne : date, session, objets touchés, sauvegarde (`ServerStorage/MapBackups/...`). Le Chef de projet le pousse avec les paquets.
+  - Play, captures et caméra : une seule session à la fois. Le jeton est donné par le Chef de projet et noté en tête du journal ; on le rend dès la fin.
+- **Tests** : Clément teste en Play par lot, avec la liste « Tests à faire » de la liaison, que le Chef de projet lui présente groupée.
+- **Avant de refaire quelque chose** : chercher dans la liaison, le journal de Studio et `git log` si une autre session l'a déjà fait ou défait. Une demande que Clément a refusée ne revient pas.
 - **Avant chaque push** : `git pull`, puis relire la section 3.5 de la [liaison](docs/Liaison-Code-Visuel.md) (ce que le Claude de Clément ne touche jamais). Un hook du projet (`.claude/settings.json`) refuse tout push qui modifie `src/` quand `git config user.name` n'est pas `Ironix` : ne jamais le contourner, retirer les changements de `src/` et noter le besoin dans la liaison.
 
 ## Lexique
