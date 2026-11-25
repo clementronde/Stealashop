@@ -1584,6 +1584,11 @@ end
 -- entre deux planches du rayon d'en face et la caméra de la révélation (14 studs pour l'objet de base ×2) finissait
 -- DANS ce rayon, sous sa planche du haut. Une sphère de rayon CAM.Room suit le même trajet : touchée assez loin, la
 -- caméra s'arrête devant (Margin) ; plus près que MinDistance, elle reste où le rayon l'a mise (rien de plus caché).
+-- a451 (Play de fusion101) : une pièce frôlée plus près que MinDistance (le sol sous un petit objet : la sphère part
+-- de son point visé, à moins de Room du sol ; le bord d'un rayon) ne coupait plus seulement ce contact : elle arrêtait
+-- tout le test, et le meuble d'en face, plus loin sur le trajet, n'était jamais vu. Elle est maintenant écartée comme un
+-- volume invisible (la ligne de vue est déjà dégagée par clearLine), et la sphère continue.
+local ROOM_TRIES = 12 -- contacts écartés au plus (sol en dalles, bords de rayon, volumes invisibles) avant d'abandonner
 local function roomy(state: State, cam: Vector3, focus: Vector3): Vector3
 	local radius = CAM.Room
 	local offset = cam - focus
@@ -1591,7 +1596,7 @@ local function roomy(state: State, cam: Vector3, focus: Vector3): Vector3
 		return cam
 	end
 	local exclude = excluded(state, state.ctx)
-	for _ = 1, 6 do
+	for _ = 1, ROOM_TRIES do
 		local hit = spherecast(focus, radius, offset, exclude)
 		if hit == nil then
 			return cam
@@ -1604,7 +1609,7 @@ local function roomy(state: State, cam: Vector3, focus: Vector3): Vector3
 		if hit.Distance - CAM.Margin >= CAM.MinDistance then
 			return focus + offset.Unit * (hit.Distance - CAM.Margin)
 		end
-		return cam
+		table.insert(exclude, part) -- frôlé tout près : ni recul, ni pièce cachée ; on cherche plus loin
 	end
 	return cam
 end
