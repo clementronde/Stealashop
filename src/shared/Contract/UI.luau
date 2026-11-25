@@ -603,9 +603,19 @@ table.insert(UI.Screens, {
 -- Le code branche chaque exemplaire ; le ContractChecker accepte un exemplaire par cadre de Containers.
 UI.Twins = {
 	UI_HUD = {
-		Containers = { "LeftRail", "LeftRailTouch" },
+		-- a471 (L-364, Clément 24/11) : RightRail (PC) et RightRailTouch (téléphone), miroir de la colonne de gauche,
+		-- portent chacun DisplayedButton, SpeedBoostButton et SleepButton.
+		Containers = { "LeftRail", "LeftRailTouch", "RightRail", "RightRailTouch" },
 		-- Vague 70 (a230, L-189 point 8) : InventoryButton retiré (inventaire archivé, UI.Retired).
-		Names = { "RobuxShopButton", "IndexButton", "RebirthButton", "SkillTreeButton" },
+		Names = {
+			"RobuxShopButton",
+			"IndexButton",
+			"RebirthButton",
+			"SkillTreeButton",
+			"DisplayedButton",
+			"SpeedBoostButton",
+			"SleepButton",
+		},
 	},
 } :: { [string]: { Containers: { string }, Names: { string } } }
 
@@ -1042,6 +1052,8 @@ table.insert(UI.Screens, {
 		{ Path = "SleepButton.Price.Amount", Class = "TextLabel", Optional = true, Note = "le prix Robux n'est pas écrit" },
 		{ Path = "SleepButton.Cooldown", Class = "TextLabel", Optional = true, Note = "la recharge n'est pas affichée" },
 		{ Path = "CashSpent", Class = "TextLabel", Optional = true, Note = "l'argent décompte sans « -$X » à côté" },
+		-- a471 (L-364) : colonne de droite du téléphone (miroir de LeftRailTouch), montrée à la place de RightRail.
+		{ Path = "RightRailTouch", Optional = true, Note = "sur téléphone, la colonne de droite garde la taille du PC" },
 		-- Vague 63 (a205, L-202 point 1) : cadre des petites icônes, dans la barre de Roblox.
 		{ Path = "TopLeftRow", Optional = true, Note = "les petites icônes restent où Clément les a mises" },
 	} :: { Element },
