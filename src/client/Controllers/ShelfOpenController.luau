@@ -54,7 +54,6 @@ local Logic = require(script.Parent:WaitForChild("ShelfOpen"):WaitForChild("Logi
 -- Noms posés par StoreHeistService et par Clément (mêmes noms là-bas).
 local SHELF_BOX_TAG = "ShelfBox"
 local SLOT_ID_ATTRIBUTE = "SlotId"
-local OUTLINE_SELECTION = "Outline" -- arêtes noires des BOX_* (SelectionBox)
 local BOX_LABEL = "BB_Box"
 local LUCK_BOARD = "BB_ShelfOpen"
 local ITEM_BOARD = "BB_Item"

@@ -99,7 +99,9 @@ local Steps: { Step } = {
 -- d'une bulle. Depuis le 2026-11-12 (Cantin, doc 6.4), la boutique est braquable dès le départ : le
 -- bouclier ne protège plus que le colis porté. Texte V0 d'Ironix, à valider par Clément (L-115).
 local SHIELD_END_MESSAGE = "Beginner protection is over: keep your bat close!"
-local NIGHT_BUBBLE = "Night is falling: hurry home!" -- 5.12, pour les nouveaux joueurs
+-- 5.12, pour les nouveaux joueurs : bulle de la nuit, montrée par l'indice Hints.Night (TutorialService, phases Warning
+-- et Night, joueur du tuto dans le couloir).
+local NIGHT_BUBBLE = "Night is falling: hurry home!"
 
 -- Vague 60 (a197, T-099 : « je savais pas qu'est-ce qu'il fallait qu'on fasse, où on en était et pourquoi ») :
 -- textes de la liste des tâches (TutorialController, Shared/TutorialTasks). Anglais, V0 proposés, absents du doc.
@@ -173,8 +175,6 @@ local Tutorial = {
 	TasksAhead = 1, -- V0 : tâches à venir montrées après la tâche en cours
 	TasksMax = 5, -- V0 : lignes au plus dans la liste (les plus anciennes tâches faites partent d'abord)
 	SkipReplyTimeout = 3, -- V0 : s après Passer sans réponse du serveur, la bulle revient (client)
-	BubbleMaxWords = 8,
-	FirstStoreDistance = 60, -- flèche vers la Supérette, à 60 studs
 
 	-- 5.11 : résultats garantis
 	-- Vague 76 : plus de FirstBoxTier (les colis des rayons n'ont plus de type ; zone 1 : colis Communs, l'objet
@@ -225,7 +225,6 @@ local Tutorial = {
 
 	-- Textes écrits dans le doc, traduits en anglais (L-036)
 	ShieldEndMessage = SHIELD_END_MESSAGE,
-	NightBubble = NIGHT_BUBBLE,
 
 	-- Indices de phase : TutorialService choisit l'indice (remote TutorialStep), TutorialController
 	-- affiche son texte à la place de la bulle de l'étape. En anglais (L-036), 8 mots au plus ; V0

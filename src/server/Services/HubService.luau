@@ -5,7 +5,7 @@
 -- Bonus d'amis (décision de Clément : +15 % d'argent par ami) : par ami Roblox du joueur présent dans le serveur,
 -- au plus Hub.FriendBonus.MaxFriends amis (V0 : 4, +60 %). Ajouté à DisplayService.GetIncomeBonus (les bonus en
 -- pour cent s'additionnent : Premium, index…), donc au revenu des objets exposés, relu chaque seconde. Amitié
--- lue une fois par paire de joueurs à l'arrivée (Player:IsFriendsWith, dans un pcall, tâche à part ; une erreur
+-- lue une fois par paire de joueurs à l'arrivée (Player:IsFriendsWithAsync, dans un pcall, tâche à part ; une erreur
 -- = pas amis) ; un départ retire la paire. Attributs du Player pour le HUD : FriendsInServer (amis présents) et
 -- FriendBonus (fraction, plafond compris). Il n'existait pas encore de bonus d'amis ni de bonus de groupe.
 --
@@ -81,7 +81,7 @@ local function link(a: Player, b: Player)
 end
 
 local function isFriends(a: Player, b: Player): boolean
-	return a:IsFriendsWith(b.UserId)
+	return a:IsFriendsWithAsync(b.UserId)
 end
 
 local function onPlayerAdded(player: Player)

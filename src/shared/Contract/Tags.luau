@@ -98,7 +98,7 @@ Tags.CodeTags = {
 -- a436 (P4) : tags qui ne sont plus au contrat, avec ce qui les a retirés. Encore posés dans la map, ils sont
 -- signalés en orange (à retirer quand Clément veut), jamais comme « inconnus ».
 Tags.Retired = {
-	Bench = "plus de banc depuis le rééquilibrage v2 (14/11) ; TrainingService coupe seulement l'invite du modèle resté",
+	Bench = "plus de banc depuis le rééquilibrage v2 (14/11) ; plus aucun code ne lit ce tag (a437)",
 	CashPad = "plaques CollectPad_xx trouvées par leur nom depuis L-091 point 4 (10/11)",
 } :: { [string]: string }
 
