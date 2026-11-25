@@ -681,7 +681,10 @@ local function cleanCopy(model: Model, sources: { BasePart }): (Model, { [BasePa
 			CollectionService:RemoveTag(d, tag)
 		end
 		for name in d:GetAttributes() do
-			d:SetAttribute(name, nil)
+			-- L-382 : les attributs RBX* (RBX_ReimportId posé par l'import de Studio) sont réservés au moteur.
+			if string.sub(name, 1, 3) ~= "RBX" then
+				d:SetAttribute(name, nil)
+			end
 		end
 		if d:IsA("BasePart") then
 			local part = d :: BasePart
