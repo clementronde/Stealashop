@@ -155,6 +155,12 @@ local Features = {
 	ItemsV3 = false,
 	-- a429 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
 	ItemsV3Dev = true,
+	-- a481 (Cantin, 25/11) : nœuds OfflineTime1 et OfflineTime2 de l'arbre de compétences achetables, +30 min de gains
+	-- hors ligne chacun (Config/Offline.CapHours, 5 h au plus ; plafond appliqué par OfflineService). Interrupteur PROD
+	-- (partout) : false (règle C2 : pas encore de test humain) ; false = tuiles « Soon », plafond de 4 h pour tous.
+	SkillOfflineTime = false,
+	-- a481 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	SkillOfflineTimeDev = true,
 	-- a446 (L-305, L-344, Clément 23/11 et 24/11) : contours « façon BD » sur ce qui est interactif (Config/Outlines,
 	-- OutlineController) : FX_Outline de Clément sur les éléments proches, FX_OutlineFocus (blanc) sur celui dont l'invite
 	-- est affichée ; les colis y entrent (leur OutlineHighlight est retiré côté client). Interrupteur PROD (partout) :

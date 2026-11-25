@@ -57,8 +57,8 @@
 -- sont comptés en premier dans l'encaissement qui suit le Claim (le versement du Claim lui-même).
 --
 -- API (côté serveur) :
---   OfflineService.ComputeEarnings(lastSeenAt, now, income) -> (gain, seconds)
---       Le calcul seul, sans rien toucher : seconds = absence comptée (0 à MaxHours × 3600), gain =
+--   OfflineService.ComputeEarnings(lastSeenAt, now, income, maxHours?) -> (gain, seconds)
+--       Le calcul seul, sans rien toucher : seconds = absence comptée (0 à maxHours × 3600 ; maxHours absent : Offline.MaxHours), gain =
 --       seconds × income × Rate ; (0, 0) pour une heure inconnue, dans le futur ou illisible. À garder
 --       séparé : si un jour les gains hors ligne vont sur les plaques de chaque présentoir, on
 --       l'appellera par présentoir, avec le revenu de chacun.
@@ -72,6 +72,11 @@
 --
 -- Choix V0 (Config/Offline) : Rate = 1 et MaxHours = 4, à valider avec Clément (le doc dit 10 % pendant
 -- 4 h, Clément « tout l'argent » ; plafond repris du doc). SnapshotInterval = 5 s, OpenDelay = 3 s.
+--
+-- a481 (Cantin, 25/11) : 4 h de base, +30 min par nœud OfflineTime1 et OfflineTime2 de l'arbre, 5 h au plus. Au retour
+-- (et au crochet OfflineTest), le plafond = Offline.CapHours(profil.SkillTree) : niveaux lus dans le profil, écrits par
+-- SkillTreeService seul (BuySkill validé) ; aucun remote, aucune valeur venue du client. ComputeEarnings borne en plus
+-- tout plafond à Offline.MaxCapHours. Interrupteur coupé (Features.SkillOfflineTime / SkillOfflineTimeDev) : 4 h pour tous.
 --
 -- Tester dans Studio : workspace:SetAttribute("OfflineTest", "<joueur> <secondes>") (barre de commande
 -- serveur ; joueur = nom ou UserId) simule une absence de ce nombre de secondes, avec le revenu actuel :
@@ -174,14 +179,15 @@ end
 -- Calcul
 ------------------------------------------------------------------------------
 
-function OfflineService.ComputeEarnings(lastSeenAt: number, now: number, income: number): (number, number)
+function OfflineService.ComputeEarnings(lastSeenAt: number, now: number, income: number, maxHours: number?): (number, number)
 	if not (isFinite(lastSeenAt) and isFinite(now) and isFinite(income)) then
 		return 0, 0
 	end
 	if lastSeenAt <= 0 or now <= lastSeenAt or income <= 0 then
 		return 0, 0
 	end
-	local cap = math.max(0, Offline.MaxHours) * 3600
+	local hours = if type(maxHours) == "number" and maxHours == maxHours then maxHours else Offline.MaxHours
+	local cap = math.max(0, math.min(hours, Offline.MaxCapHours)) * 3600
 	local seconds = math.min(now - lastSeenAt, cap)
 	local gain = seconds * income * math.max(0, Offline.Rate)
 	if not isFinite(gain) or gain <= 0 then
@@ -233,7 +239,7 @@ end
 
 -- Ajoute les dollars entiers de `gain` à Offline.Pending (en attente du Claim). `test` : crochet de Studio.
 -- Sans yield.
-local function stash(player: Player, data: Data, gain: number, seconds: number, absence: number, income: number, test: boolean)
+local function stash(player: Player, data: Data, gain: number, seconds: number, absence: number, income: number, capHours: number, test: boolean)
 	local offline = offlineOf(data)
 	local whole = math.floor(gain)
 	local total = pendingOf(player, offline) + math.max(0, whole)
@@ -241,7 +247,7 @@ local function stash(player: Player, data: Data, gain: number, seconds: number, 
 		offline.Pending = total
 	end
 	publish(player, total)
-	local capped = if seconds < absence then `, comptées {duration(seconds)} (plafond {Offline.MaxHours} h)` else ""
+	local capped = if seconds < absence then `, comptées {duration(seconds)} (plafond {string.format("%g", capHours)} h)` else ""
 	local label = if test then "test : absence simulée" else "absent"
 	print(
 		`[OfflineService] {player.Name} {label} {duration(absence)}{capped}, revenu {Format.money(income)}/s × {string.format("%g", Offline.Rate)} : {Format.money(gain)}, {Format.money(total)} en attente du Claim`
@@ -288,6 +294,8 @@ local function onProfileLoaded(player: Player)
 	local offline = offlineOf(data)
 	local lastSeenAt, income = offline.LastSeenAt, offline.Income
 	local now = os.time()
+	-- a481 : plafond du joueur, d'après les nœuds OfflineTime de son arbre sauvegardés dans son profil (serveur seul).
+	local capHours = Offline.CapHours(data.SkillTree)
 	-- Tout de suite : un 2e chargement (ou un plantage juste après) ne redonne rien.
 	offline.LastSeenAt = now
 	if isFinite(lastSeenAt) and lastSeenAt > now then
@@ -295,9 +303,9 @@ local function onProfileLoaded(player: Player)
 		publish(player, pendingOf(player, offline))
 		return
 	end
-	local gain, seconds = OfflineService.ComputeEarnings(lastSeenAt, now, income)
+	local gain, seconds = OfflineService.ComputeEarnings(lastSeenAt, now, income, capHours)
 	if gain > 0 then
-		stash(player, data, gain, seconds, now - lastSeenAt, income, false)
+		stash(player, data, gain, seconds, now - lastSeenAt, income, capHours, false)
 	else
 		-- Montant d'une session d'avant, pas réclamé : montré de nouveau.
 		publish(player, pendingOf(player, offline))
@@ -376,12 +384,13 @@ local function onTestAttribute()
 	end
 	local now = os.time()
 	local income = OfflineService.GetIncome(player)
-	local gain, seconds = OfflineService.ComputeEarnings(now - absence, now, income)
+	local capHours = Offline.CapHours(data.SkillTree) -- a481 : même plafond qu'un vrai retour
+	local gain, seconds = OfflineService.ComputeEarnings(now - absence, now, income, capHours)
 	if gain <= 0 then
 		print(`[OfflineService] test : {player.Name}, revenu {Format.money(income)}/s : aucun gain hors ligne`)
 		return
 	end
-	stash(player, data, gain, seconds, absence, income, true)
+	stash(player, data, gain, seconds, absence, income, capHours, true)
 end
 
 ------------------------------------------------------------------------------
@@ -409,7 +418,7 @@ function OfflineService.Init()
 	if IS_STUDIO then
 		Workspace:GetAttributeChangedSignal(Offline.TestAttribute):Connect(onTestAttribute)
 	end
-	print(`[OfflineService] gains hors ligne : {string.format("%g", Offline.Rate * 100)} % des revenus, {Offline.MaxHours} h au plus, versés au Claim (écran UI_Offline)`)
+	print(`[OfflineService] gains hors ligne : {string.format("%g", Offline.Rate * 100)} % des revenus, {Offline.MaxHours} h au plus (jusqu'à {Offline.MaxCapHours} h avec les nœuds OfflineTime de l'arbre : {if Offline.SkillsEnabled then "allumés" else "coupés"}), versés au Claim (écran UI_Offline)`)
 end
 
 return OfflineService
