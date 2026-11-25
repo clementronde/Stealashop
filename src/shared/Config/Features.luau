@@ -162,6 +162,13 @@ local Features = {
 	BdOutlines = false,
 	-- a446 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
 	BdOutlinesDev = true,
+	-- a477 (L-377, L-385, Clément 25/11) : musique du vol (Config/Music.Steal, MusicController) : MUS_Steal tant qu'on
+	-- porte un objet volé (magasin PNJ ou boutique de joueur), MUS_Victim chez le joueur volé, MUS_Heist dès le 1er coup
+	-- sur la porte d'une boutique de joueur, bascules rapides. Interrupteur PROD (partout) : false (règle C2 : pas encore
+	-- de test humain) ; false = musiques comme avant (MUS_Chase, MUS_Heist au chrono PNJ, MUS_Truck, fond).
+	StealMusic = false,
+	-- a477 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	StealMusicDev = true,
 }
 
 export type Features = typeof(Features)
