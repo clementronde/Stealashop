@@ -209,6 +209,12 @@ local Features = {
 	StealMusic = false,
 	-- a477 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
 	StealMusicDev = true,
+	-- a480 (Clément via Cantin, 25/11) : le gain du tapis sort autour du joueur dans le monde 3D (copies de BB_Gain),
+	-- nombre final sans « ×N », 6 fois plus d'apparitions et un son à chacune (Config/TreadmillFX.GainPops, Shared/GainPops,
+	-- GainController). Interrupteur PROD (partout) : false (règle C2) ; false = le « +X » 2D qui vole au compteur, comme avant.
+	TreadmillGainPops = false,
+	-- a480 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	TreadmillGainPopsDev = true,
 }
 
 export type Features = typeof(Features)
