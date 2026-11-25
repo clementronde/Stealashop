@@ -74,20 +74,106 @@ local WeightConfig = require(Config:WaitForChild("Weight"))
 local ItemWeight = require(Shared:WaitForChild("ItemWeight"))
 local Format = require(Shared:WaitForChild("Format"))
 
--- a459b (L-367, règle de Cantin) : taille par rareté allumée (Config/DisplaySize.Enabled) ? Lu à la première copie
--- du socle (facultatif : bancs plus anciens sans le module, comme avant).
+-- a459b (L-367, règle de Cantin) : taille par rareté allumée (Config/DisplaySize.Enabled) ? Avec elle, hauteur du
+-- flottement gardée libre (Config/DisplayMotion.Headroom) et nom de l'attribut Idle (Contract/Attributes). Lus à la
+-- première copie du socle (facultatifs : bancs plus anciens sans ces modules, comme avant).
 local raritySizeOn: boolean? = nil
+local socleHeadroom = 0
+local idleAttribute: string? = nil
+local function optionalModule(folder: Instance?, name: string): any
+	local module = if folder then folder:FindFirstChild(name) else nil
+	if module and module:IsA("ModuleScript") then
+		local ok, result = pcall(require, module :: ModuleScript)
+		if ok and type(result) == "table" then
+			return result
+		end
+	end
+	return nil
+end
 local function raritySize(): boolean
 	if raritySizeOn == nil then
-		local module = Config:FindFirstChild("DisplaySize")
-		local on = false
-		if module and module:IsA("ModuleScript") then
-			local ok, size = pcall(require, module :: ModuleScript)
-			on = ok and type(size) == "table" and (size :: any).Enabled == true
-		end
-		raritySizeOn = on
+		local size = optionalModule(Config, "DisplaySize")
+		local motion = optionalModule(Config, "DisplayMotion")
+		local attributes = optionalModule(Shared:FindFirstChild("Contract"), "Attributes")
+		raritySizeOn = size ~= nil and size.Enabled == true
+		socleHeadroom = if motion and motion.Enabled == true and type(motion.Headroom) == "number" then motion.Headroom else 0
+		idleAttribute = if attributes and attributes.Idle then attributes.Idle.Name else nil
 	end
 	return raritySizeOn == true
+end
+
+-- a459b (L-367) : place du grand socle dans le repère d'ItemPoint : hauteur jusqu'à LabelPoint (flottement retiré),
+-- largeur et profondeur jusqu'au bord le plus proche de la pièce qui porte ItemPoint (le plateau). Vector3 (math.huge
+-- sur un côté sans limite), ou nil sans aucune limite lisible. Rien en dur : ItemPoint et LabelPoint du contrat.
+local function socleRoom(slot: Attachment, label: Attachment): Vector3?
+	local frame = slot.WorldCFrame
+	local height = frame:PointToObjectSpace(label.WorldPosition).Y - socleHeadroom
+	local halfX, halfZ = math.huge, math.huge
+	local plate = slot.Parent
+	if plate and plate:IsA("BasePart") then
+		local part = plate :: BasePart
+		local rel = frame:ToObjectSpace(part.CFrame)
+		local half = part.Size / 2
+		local function extent(axis: (Vector3) -> number): number
+			return math.abs(axis(rel.XVector)) * half.X + math.abs(axis(rel.YVector)) * half.Y + math.abs(axis(rel.ZVector)) * half.Z
+		end
+		halfX = extent(function(v: Vector3): number return v.X end) - math.abs(rel.Position.X)
+		halfZ = extent(function(v: Vector3): number return v.Z end) - math.abs(rel.Position.Z)
+	end
+	if not (height > 0) then
+		height = math.huge
+	end
+	if not (halfX > 0) then
+		halfX = math.huge
+	end
+	if not (halfZ > 0) then
+		halfZ = math.huge
+	end
+	if halfX == math.huge and halfZ == math.huge and height == math.huge then
+		return nil
+	end
+	return Vector3.new(halfX * 2, height, halfZ * 2)
+end
+
+-- a459b (L-367) : facteur (au plus 1) qui fait tenir `model`, posé en `frame`, dans `room` (centrée sur le pivot en X
+-- et Z, de 0 à room.Y en hauteur), comme fitFactor de DisplayService : pièces visibles seulement ; un objet qui tourne
+-- (Idle Spin ou SpinBob) tient par son rayon dans le plus petit côté.
+local function roomFactor(model: Model, frame: CFrame, room: Vector3): number
+	local idle = if idleAttribute then model:GetAttribute(idleAttribute) else nil
+	local spins = idle == "Spin" or idle == "SpinBob"
+	local maxX, maxY, maxZ, maxRadius = 0, 0, 0, 0
+	for _, d in model:GetDescendants() do
+		if not d:IsA("BasePart") or (d :: BasePart).Transparency >= 1 then
+			continue
+		end
+		local part = d :: BasePart
+		local half = part.Size / 2
+		for _, sx in { -1, 1 } do
+			for _, sy in { -1, 1 } do
+				for _, sz in { -1, 1 } do
+					local p = frame:PointToObjectSpace(part.CFrame * Vector3.new(half.X * sx, half.Y * sy, half.Z * sz))
+					maxX = math.max(maxX, math.abs(p.X))
+					maxY = math.max(maxY, p.Y)
+					maxZ = math.max(maxZ, math.abs(p.Z))
+					maxRadius = math.max(maxRadius, math.sqrt(p.X * p.X + p.Z * p.Z))
+				end
+			end
+		end
+	end
+	local factor = 1
+	local function limit(size: number, free: number)
+		if size > free and size > 0 then
+			factor = math.min(factor, free / size)
+		end
+	end
+	if spins then
+		limit(maxRadius, math.min(room.X, room.Z) / 2)
+	else
+		limit(maxX, room.X / 2)
+		limit(maxZ, room.Z / 2)
+	end
+	limit(maxY, room.Y)
+	return factor
 end
 
 local IS_STUDIO = RunService:IsStudio()
@@ -788,8 +874,10 @@ local function placeRarestItem(entry: RarestEntry, best: Best)
 	local shown = copy:GetScale()
 	local fit = source:GetAttribute(WeightConfig.FitScaleAttribute)
 	local wanted = if type(fit) == "number" and fit > 0 and fit < 1 then shown / fit else shown
-	-- a459b (L-367) : taille par rareté allumée : l'objet n'est jamais réduit, pas de plafond RarestMaxScale.
-	if not raritySize() then
+	-- a459b (L-367) : grand socle et taille par rareté allumée : pas de plafond RarestMaxScale, seulement la place du
+	-- socle (socleRoom), plus bas.
+	local roomed = entry.Large and raritySize()
+	if not roomed then
 		wanted = math.min(wanted, WeightConfig.RarestMaxScale)
 	end
 	if math.abs(wanted - shown) > 1e-3 then
@@ -797,6 +885,15 @@ local function placeRarestItem(entry: RarestEntry, best: Best)
 	end
 	local rotation = if entry.Large then slot.WorldCFrame.Rotation else source:GetPivot().Rotation
 	copy:PivotTo(CFrame.new(slot.WorldPosition) * rotation)
+	-- a459b (L-367) : réduit juste assez pour tenir sous LabelPoint et sur son plateau.
+	if roomed then
+		local room = socleRoom(slot, entry.Point)
+		local factor = if room then roomFactor(copy, slot.WorldCFrame, room) else 1
+		if factor < 1 then
+			pcall(copy.ScaleTo, copy, copy:GetScale() * factor)
+			copy:PivotTo(CFrame.new(slot.WorldPosition) * rotation)
+		end
+	end
 	copy.Parent = entry.Holder
 	entry.Item = copy
 end

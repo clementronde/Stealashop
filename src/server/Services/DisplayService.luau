@@ -1410,18 +1410,95 @@ local function largestSide(model: Model): number
 	return math.max(maxX - minX, maxY - minY, maxZ - minZ)
 end
 
--- a459 (L-354) ; a459b (L-367, règle de Cantin du 25/11) : échelle (Model:ScaleTo) de `model` (pas encore mis à
--- l'échelle) sur un présentoir : sa vraie taille, agrandie jusqu'au minimum de sa rareté (Config/DisplaySize.MinFor)
--- s'il est plus petit, jamais réduite, sans plafond (le minimum est toujours atteint). Ne dépend ni du poids ni des
--- autres modèles. nil si la rareté n'a pas de minimum ou si le modèle n'a aucune pièce visible (taille du poids, comme
--- avant).
-local function raritySizeScale(model: Model, rarityId: string): number?
-	local minimum = DisplaySize.MinFor(rarityId)
-	local side = largestSide(model)
-	if type(minimum) ~= "number" or not (minimum > 0) or not (side > 0) then
+-- a459c (L-367, règle finale de Cantin du 25/11) : taille (largestSide) du modèle médian de chaque rareté, sur les
+-- modèles ITM_ livrés du catalogue actif, exclusifs compris (Config/Items.ById, itemTemplate), DisplaySize.Median.
+-- Mesurée une fois, à la première exposition (Assets est déjà dans la place), puis gardée. Rareté sans modèle : nil.
+local medianSides: { [string]: number }? = nil
+local function medianSideOf(rarityId: string): number?
+	if medianSides == nil then
+		local sides: { [string]: { number } } = {}
+		for _, def in ItemsConfig.ById do
+			local template = itemTemplate(def)
+			local side = 0
+			if template and template:IsA("Model") then
+				side = largestSide(template :: Model)
+			elseif template and template:IsA("BasePart") and (template :: BasePart).Transparency < 1 then
+				local size = (template :: BasePart).Size
+				side = math.max(size.X, size.Y, size.Z)
+			end
+			if side > 0 then
+				local list = sides[def.Rarity] or {}
+				table.insert(list, side)
+				sides[def.Rarity] = list
+			end
+		end
+		local found: { [string]: number } = {}
+		for id, list in sides do
+			found[id] = DisplaySize.Median(list)
+		end
+		medianSides = found
+	end
+	return (medianSides :: { [string]: number })[rarityId]
+end
+
+-- a459 (L-354) ; a459b, a459c (L-367, règle finale de Cantin du 25/11) : échelle (Model:ScaleTo) de `model` (pas encore
+-- mis à l'échelle) sur un présentoir : sa vraie taille × le facteur de sa rareté (minimum / modèle médian), remontée au
+-- minimum si elle reste en dessous (DisplaySize.BaseFactor), puis grossie par le poids (DisplaySize.GrowthFor : ×1 au
+-- poids minimal, le maximum de sa rareté au poids maximal). Aucun plafond ici : seule la place physique réduit ensuite
+-- (standBox, fitFactor). nil si la rareté n'a pas de minimum ou si le modèle n'a aucune pièce visible (taille du poids,
+-- comme avant).
+local function raritySizeScale(model: Model, rarityId: string, weight: number): number?
+	local factor = DisplaySize.BaseFactor(rarityId, largestSide(model), medianSideOf(rarityId))
+	if factor == nil then
 		return nil
 	end
-	return model:GetScale() * math.max(1, minimum / side)
+	return model:GetScale() * factor * DisplaySize.GrowthFor(rarityId, weight)
+end
+
+-- a459b (L-367) : place libre d'un présentoir jusqu'à ses voisins, dans le repère de son Attachment DisplaySlot_xx :
+-- pour chaque autre DisplaySlot_xx de la parcelle au même étage (écart de hauteur sous la hauteur FitSize.Y du
+-- présentoir ; sans FitSize, tous comptent), la moitié de l'écart le long de l'axe où il est le plus loin (X ou Z) :
+-- chaque objet garde sa moitié, deux voisins ne se touchent jamais. Vector3 (largeur X, 0, profondeur Z ; math.huge
+-- = pas de voisin sur cet axe), ou nil sans aucun voisin. Rien en dur : seules les places du contrat (DisplaySlot_xx).
+local function neighborRoom(slots: { [number]: Attachment? }, slot: number, fitSize: Vector3?): Vector3?
+	local here = slots[slot]
+	if here == nil then
+		return nil
+	end
+	local frame = here.WorldCFrame
+	local halfX, halfZ = math.huge, math.huge
+	for other, attachment in slots do
+		if other == slot or attachment == nil or attachment.Parent == nil then
+			continue
+		end
+		local d = frame:PointToObjectSpace(attachment.WorldPosition)
+		local ax, az = math.abs(d.X), math.abs(d.Z)
+		if (fitSize and math.abs(d.Y) >= fitSize.Y) or math.max(ax, az) < 1e-3 then
+			continue -- autre étage, ou même place
+		end
+		if ax >= az then
+			halfX = math.min(halfX, ax / 2)
+		else
+			halfZ = math.min(halfZ, az / 2)
+		end
+	end
+	if halfX == math.huge and halfZ == math.huge then
+		return nil
+	end
+	return Vector3.new(halfX * 2, 0, halfZ * 2)
+end
+
+-- a459b (L-367) : boîte de la place physique (repère du présentoir, comme FitSize) : hauteur FitSize.Y (plafond du
+-- présentoir), largeur et profondeur jusqu'aux voisins (`room`) ; math.huge sur un côté sans limite ; nil sans aucune.
+local function standBox(fitSize: Vector3?, room: Vector3?): Vector3?
+	if fitSize == nil and room == nil then
+		return nil
+	end
+	return Vector3.new(
+		if room then room.X else math.huge,
+		if fitSize then fitSize.Y else math.huge,
+		if room then room.Z else math.huge
+	)
 end
 
 -- a234 : portée de chaque lumière du modèle (PointLight, SpotLight, SurfaceLight) avant sa mise à l'échelle.
@@ -1557,7 +1634,8 @@ local function buildItemModel(
 	entry: ItemEntry,
 	def: ItemDef,
 	billboard: boolean,
-	fitSize: Vector3?
+	fitSize: Vector3?,
+	neighbors: Vector3? -- a459b : largeur (X) et profondeur (Z) libres jusqu'aux présentoirs voisins (neighborRoom)
 ): (Model, number)
 	local rarity = Rarities.ById[def.Rarity]
 	local income = itemIncome(def, entry, uid)
@@ -1576,21 +1654,24 @@ local function buildItemModel(
 	local rawMutation = entry.Mutation
 	local weight = ItemWeight.Effective(entry.Weight, if rawMutation then rawMutation.Size else nil)
 	local scale = Mutations.Scale(mutation, weight)
-	-- a459 (L-354, Clément) ; a459b (L-367, règle de Cantin) : sur un présentoir, la vraie taille du modèle, agrandie
-	-- jusqu'au minimum de sa rareté (Config/DisplaySize), remplace celle du poids ; l'objet n'est alors jamais réduit,
-	-- ni ici ni par le FitSize plus bas (raritySized). Seulement sur un présentoir (`billboard`, joueur ou bot) : l'objet
-	-- sous antivol posé au sol (BuildFloorItem) garde la taille de son poids.
+	-- a459 (L-354, Clément) ; a459b, a459c (L-367, règle de Cantin) : sur un présentoir, la vraie taille du modèle × le
+	-- facteur de sa rareté, au moins le minimum, puis grossie par le poids (Config/DisplaySize), remplace la taille du poids ; seule la place
+	-- physique la réduit ensuite (raritySized). Seulement sur un présentoir (`billboard`, joueur ou bot) : l'objet sous
+	-- antivol posé au sol (BuildFloorItem) garde la taille de son poids.
 	local raritySized = false
 	if RARITY_SIZE and billboard then
-		local sized = raritySizeScale(display, def.Rarity)
+		local sized = raritySizeScale(display, def.Rarity, weight)
 		if sized ~= nil then
 			scale = sized
 			raritySized = true
 		end
 	end
+	-- a459b (L-367) : taille par rareté posée : la place physique seule (hauteur sous le plafond, FitSize.Y ; largeur
+	-- jusqu'aux présentoirs voisins, `neighbors`) ; sinon le FitSize entier, comme avant.
+	local fitBox = if raritySized then standBox(fitSize, neighbors) else fitSize
 	-- a234 : échelle et portées d'avant toute mise à l'échelle, seulement s'il faudra peut-être réduire
-	local baseScale = if fitSize then display:GetScale() else 1
-	local ranges = if fitSize then lightRanges(display) else nil
+	local baseScale = if fitBox then display:GetScale() else 1
+	local ranges = if fitBox then lightRanges(display) else nil
 	if scale ~= 1 then
 		local ok, problem = pcall(display.ScaleTo, display, scale)
 		if not ok then
@@ -1605,7 +1686,6 @@ local function buildItemModel(
 	-- a317 (L-304 Q2, validé par Cantin le 23/11) : la hauteur du flottement et du saut (DisplayMotion.Headroom, plus
 	-- ItemIdle.BobHeight pour un Idle Bob ou SpinBob) est retirée de la hauteur du FitSize lu sur le présentoir, quelle
 	-- que soit la courbe d'échelle : l'objet le plus haut ne touche jamais le plancher de l'étage. Rien sans FitSize.
-	local fitBox = fitSize
 	if fitBox and FLOAT then
 		local idle = display:GetAttribute(Attributes.Idle.Name)
 		local bob = if (idle == "Bob" or idle == "SpinBob") and ItemIdleConfig then ItemIdleConfig.BobHeight else 0
@@ -1614,8 +1694,8 @@ local function buildItemModel(
 			fitBox = Vector3.new(fitBox.X, room, fitBox.Z)
 		end
 	end
-	-- a459b (L-367) : taille par rareté (raritySized) : aucune réduction FitSize, l'objet garde au moins son minimum.
-	local fit = if fitBox and not raritySized then fitFactor(display, pivot, fitBox) else 1
+	-- a459b (L-367) : sous la taille par rareté, réduit juste assez pour tenir dans la place physique (fitBox ci-dessus).
+	local fit = if fitBox then fitFactor(display, pivot, fitBox) else 1
 	if fit < 1 then
 		local shown = display:GetScale() * fit
 		local ok, problem = pcall(display.ScaleTo, display, shown)
@@ -1657,7 +1737,9 @@ local function buildVisual(ownerUserId: number, refs: PlotRefs, slot: number, ui
 	-- présentoir vérifié par sanitize
 	local attachment = refs.slots[slot] :: Attachment
 	local pivot = attachment.WorldCFrame
-	local display, income = buildItemModel(ownerUserId, pivot, string.format(MODEL_FORMAT, slot), uid, entry, def, true, fitSizeOf(attachment))
+	local fitSize = fitSizeOf(attachment)
+	local room = if RARITY_SIZE then neighborRoom(refs.slots, slot, fitSize) else nil
+	local display, income = buildItemModel(ownerUserId, pivot, string.format(MODEL_FORMAT, slot), uid, entry, def, true, fitSize, room)
 	display:SetAttribute("DisplaySlot", slot)
 	CollectionService:AddTag(display, DISPLAY_TAG)
 	return { model = display, uid = uid, itemId = def.Id, income = income }
