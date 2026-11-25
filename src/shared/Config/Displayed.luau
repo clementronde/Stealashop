@@ -7,7 +7,27 @@
 
 local DeepFreeze = require(script.Parent.DeepFreeze)
 
+-- a478 : module de Config chargé s'il est là (bancs à liste de modules fixe), comme Config/Outlines.
+local function optional(name: string): any
+	local found, module = pcall(function(): any
+		return script.Parent:FindFirstChild(name)
+	end)
+	if found and module ~= nil then
+		local ok, result = pcall(require, module :: any)
+		if ok and type(result) == "table" then
+			return result
+		end
+	end
+	return {}
+end
+local Features: any = optional("Features")
+local ProductIds: any = optional("ProductIds")
+
 local Displayed = {
+	-- a478 (L-380) : UI_Hotbar.Bar.InventoryButton ouvre l'écran d'inventaire UI_Inventory (InventoryController) au lieu
+	-- de cet écran, s'il est dans PlayerGui (sinon, cet écran comme avant). Allumé partout (Features.InventoryScreen) ou
+	-- dans le jeu DEV seulement (InventoryScreenDev et ProductIds.IsDev).
+	InventoryScreen = Features.InventoryScreen == true or (Features.InventoryScreenDev == true and ProductIds.IsDev == true),
 	-- Réserve (L-192 Q3) : un objet remplacé par « Exposer les meilleurs » y va ; elle est listée dans
 	-- UI_Displayed.Panel.Reserve (DisplayedController), d'où DisplayButton le remet sur un présentoir libre.
 	ReserveMax = 30, -- V0 : comme Balance.Display.InventoryMax (5.8, objets non exposés) ; au-delà, l'objet reste hors liste
