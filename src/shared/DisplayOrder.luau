@@ -5,10 +5,13 @@
 --
 -- Ordre, vu depuis l'entrée de la boutique en regardant vers le fond :
 --   1. étage : rez-de-chaussée d'abord, puis l'étage (Floor_2) ;
---   2. côté : tout le mur GAUCHE, puis le milieu (présentoir à moins de SIDE_TOLERANCE de l'axe porte → fond), puis
---      tout le mur DROIT ;
---   3. distance à l'entrée, mesurée le long de l'axe porte → fond : le plus près d'abord ;
---   4. à égalité : le plus petit numéro de présentoir.
+--   2. contre un mur, puis au milieu (Cantin, 25/11 : les présentoirs 21 à 24 du milieu de l'étage passent après les
+--      deux murs) : à chaque étage, un présentoir est contre un mur quand son écart à l'axe porte → fond est à moins de
+--      Config/Displayed.EquipBestOrder.WallBand studs de celui du présentoir le plus écarté de cet étage ;
+--   3. côté : GAUCHE, puis sur l'axe (à moins de SIDE_TOLERANCE de l'axe porte → fond), puis DROITE ;
+--   4. distance à l'entrée, mesurée le long de l'axe porte → fond : le plus près d'abord ;
+--   5. à égalité : le plus petit numéro de présentoir.
+-- Donc : rez-de-chaussée (mur gauche, mur droit, milieu), puis étage (mur gauche, mur droit, milieu).
 -- Aucun numéro de présentoir en dur : seule la position compte, dans le repère de la boutique (son pivot), jamais en
 -- coordonnées monde ; une boutique tournée garde le même ordre.
 --
@@ -36,6 +39,9 @@ local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
 local Features = require(script.Parent.Config.Features) :: any
+local Displayed = require(script.Parent.Config.Displayed)
+
+local WALL_BAND: number = Displayed.EquipBestOrder.WallBand
 
 local TEST_ATTRIBUTE = "EquipBestOrderTest"
 -- Pas une règle de jeu : un présentoir à moins d'un demi-stud de l'axe porte → fond est « au milieu ».
@@ -94,31 +100,43 @@ local function frame(pivot: CFrame, door: Vector3?): (Vector3, Vector3)
 	return Vector3.zero, Vector3.zAxis
 end
 
-local function keyIn(pivot: CFrame, entry: Vector3, forward: Vector3, position: Vector3): (number, number)
+-- Côté (0 gauche, 1 sur l'axe, 2 droite), distance à l'entrée et écart (signé) à l'axe porte → fond.
+local function keyIn(pivot: CFrame, entry: Vector3, forward: Vector3, position: Vector3): (number, number, number)
 	local p = pivot:PointToObjectSpace(position)
 	local rel = Vector3.new(p.X, 0, p.Z) - entry
 	local right = forward:Cross(Vector3.yAxis)
 	local lateral = rel:Dot(right)
 	local side = if lateral < -SIDE_TOLERANCE then 0 elseif lateral > SIDE_TOLERANCE then 2 else 1
-	return side, rel:Dot(forward)
+	return side, rel:Dot(forward), lateral
 end
 
 function DisplayOrder.Key(pivot: CFrame, door: Vector3?, position: Vector3): (number, number)
 	local entry, forward = frame(pivot, door)
-	return keyIn(pivot, entry, forward, position)
+	local side, depth = keyIn(pivot, entry, forward, position)
+	return side, depth
 end
 
 function DisplayOrder.Sort(pivot: CFrame, door: Vector3?, stands: { Stand }): { number }
 	local entry, forward = frame(pivot, door)
-	type Row = { index: number, level: number, side: number, depth: number }
+	type Row = { index: number, level: number, side: number, depth: number, offset: number, middle: boolean }
 	local rows: { Row } = {}
+	local widest: { [number]: number } = {} -- [étage] = plus grand écart à l'axe
 	for _, stand in stands do
-		local side, depth = keyIn(pivot, entry, forward, stand.position)
-		table.insert(rows, { index = stand.index, level = if stand.upper then 1 else 0, side = side, depth = depth })
+		local side, depth, lateral = keyIn(pivot, entry, forward, stand.position)
+		local level = if stand.upper then 1 else 0
+		local offset = math.abs(lateral)
+		table.insert(rows, { index = stand.index, level = level, side = side, depth = depth, offset = offset, middle = false })
+		widest[level] = math.max(widest[level] or 0, offset)
+	end
+	for _, row in rows do
+		row.middle = row.offset < widest[row.level] - WALL_BAND
 	end
 	table.sort(rows, function(a: Row, b: Row): boolean
 		if a.level ~= b.level then
 			return a.level < b.level
+		end
+		if a.middle ~= b.middle then
+			return not a.middle
 		end
 		if a.side ~= b.side then
 			return a.side < b.side

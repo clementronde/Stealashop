@@ -128,7 +128,7 @@
 --       Vague 63 (a206, L-192 Q3) : un exposé remplacé va aussi dans la RÉSERVE (au bout, du meilleur au moins bon).
 --       a484 (Cantin, 25/11 ; Features.EquipBestOrder, EquipBestOrderDev) : allumé, les mêmes meilleurs (même critère)
 --       prennent les présentoirs utilisables dans l'ordre de Shared/DisplayOrder, vu depuis l'entrée (rez-de-chaussée puis
---       étage, mur gauche puis mur droit, du plus près de l'entrée au fond) : le meilleur sur le premier, déjà exposés
+--       étage ; à chaque étage mur gauche, mur droit, puis les présentoirs du milieu ; du plus près de l'entrée au fond) : le meilleur sur le premier, déjà exposés
 --       compris (ils se réordonnent). Renvoie alors le nombre d'objets posés ou déplacés.
 --   Réserve (vague 63, a206 ; L-192 Q3, L-202 point 4 ; Config/Displayed) : champ Reserve du profil, liste d'uids
 --   d'objets ni exposés, ni au coffre-fort, ni sous antivol, au plus ReserveMax (V0 : 30 ; pleine, un objet remplacé
