@@ -162,6 +162,18 @@ local Features = {
 	BdOutlines = false,
 	-- a446 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
 	BdOutlinesDev = true,
+	-- a476 (L-374, Clément 25/11) : tuile BoxLuck de l'arbre de compétences achetable, chance des colis ouverts par le
+	-- joueur × Effects[niveau] (Config/SkillTree, Shared/OpenLuck). Interrupteur PROD (partout) : false (règle C2 : pas
+	-- encore de test humain) ; false = tuile « Soon », aucun effet (un niveau acheté en DEV ne compte pas).
+	SkillBoxLuck = false,
+	-- a476 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	SkillBoxLuckDev = true,
+	-- a476 (L-375) : chance du serveur en Robux, produits ServerLuck2, 4 et 8 (Config/Monetization.ServerLuck, codée par
+	-- a247) vendue avec la boutique Robux (Features.RobuxShop). Interrupteur PROD (partout) : false (règle C2) ; false =
+	-- cartes cachées et reçus refusés (NotProcessedYet), comme avant (SERVER_LUCK = false).
+	ServerLuck = false,
+	-- a476 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	ServerLuckDev = true,
 }
 
 export type Features = typeof(Features)

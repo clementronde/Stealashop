@@ -1641,5 +1641,12 @@ for _, screenDef in UI.Screens do
 		table.insert(screenDef.Elements, { Path = "InfoPanel.NodeDesc", Class = "TextLabel", Optional = true, Note = "la phrase de la compétence n'est pas écrite" })
 	end
 end
+-- a476 (L-374, 25/11) : tuile de la compétence BoxLuck (Config/SkillTree, chance des colis ouverts), mêmes calques que les
+-- autres tuiles ; nom proposé à Clément, pas encore livré : facultatif (absente, la compétence ne s'achète pas).
+for _, screenDef in UI.Screens do
+	if screenDef.Name == "UI_SkillTree" then
+		table.insert(screenDef.Elements, { Path = "Tree.Tile_BoxLuck", Class = BUTTON, Optional = true, Note = "la compétence Box Luck ne s'achète pas" })
+	end
+end
 
 return UI
