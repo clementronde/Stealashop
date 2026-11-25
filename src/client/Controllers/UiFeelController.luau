@@ -35,6 +35,8 @@
 --     Vague 46 (a154) : même effet pour un OBJET sorti d'un colis (remote ItemSecured d'UnboxService) :
 --     BoxIcon = icône de l'objet (ICON_<ItemId>), sinon ICON_BOX_<Rareté> ; Title = SafeFlash.ItemTitle et
 --     Subtitle = « <Rareté> <Nom> » le temps de l'écran, puis les textes de Clément reviennent.
+--     a465 (L-340 point 5) : avec la tension du braquage (Shared/HeistTension), Flash passe par les pas de
+--     Config/HeistTension.Flash (0 → 0,6 → 1 en 0,35 s) au lieu de FlashFrom → 1 ; le reste ne change pas.
 --   - Révélation d'un colis ouvert sur le rayon (vague 46, ShelfOpenController, chez l'ouvreur) :
 --     RevealFlash, le même flash d'UI_Escape et le même zoom, sans la bannière (Banner à l'échelle 0 par un
 --     UIScale passager), sans son ni FX_Escape. Une arrivée en cours garde sa bannière (seul le flash
@@ -605,6 +607,72 @@ local function escapeFlash(state: Escape, from: number, info: TweenInfo)
 	end
 end
 
+-- a465 (L-340 point 5) : avec la tension du braquage (Shared/HeistTension), le flash d'arrivée passe par les pas de
+-- Config/HeistTension.Flash (0 → 0,6 → 1 en 0,35 s ; couleur de Clément, jaune). Rend false si la tension est coupée ou
+-- absente (bancs sans elle) : le flash d'avant est joué.
+local tensionApi: any = false -- false = pas encore cherché ; nil = absent
+local function tensionModules(): any
+	if tensionApi == false then
+		tensionApi = nil
+		local switchModule = Shared:FindFirstChild("HeistTension")
+		local configModule = Shared:WaitForChild("Config"):FindFirstChild("HeistTension")
+		local folder = script.Parent:FindFirstChild("Tension")
+		local pathModule = if folder then folder:FindFirstChild("Path") else nil
+		if
+			switchModule and switchModule:IsA("ModuleScript")
+			and configModule and configModule:IsA("ModuleScript")
+			and pathModule and pathModule:IsA("ModuleScript")
+		then
+			local okS, switch = pcall(require, switchModule)
+			local okC, config = pcall(require, configModule)
+			local okP, path = pcall(require, pathModule)
+			if okS and okC and okP and type(switch) == "table" and type(config) == "table" and type(path) == "table" then
+				tensionApi = { Switch = switch, Config = config, Path = path }
+			end
+		end
+	end
+	return tensionApi
+end
+
+local function tensionFlash(state: Escape): boolean
+	local api = tensionModules()
+	if api == nil then
+		return false
+	end
+	local ok, on = pcall(api.Switch.Enabled)
+	if not ok or on ~= true then
+		return false
+	end
+	local flash = Find.path(state.screen, "Flash")
+	if flash == nil or not flash:IsA("GuiObject") then
+		return true -- pas de Flash livré : rien, comme avant
+	end
+	local spec = api.Config.Flash
+	local style = (Enum.EasingStyle :: any)[spec.Style] or Enum.EasingStyle.Quad
+	local start, steps = api.Path.FlashSteps(spec.Keys, spec.Times)
+	if state.transparencies[flash] == nil then
+		state.transparencies[flash] = flash.BackgroundTransparency
+	end
+	flash.BackgroundTransparency = start
+	local function play(index: number)
+		local step = steps[index]
+		if step == nil or escape ~= state then
+			return
+		end
+		local tween = TweenService:Create(flash, TweenInfo.new(step.Time, style, Enum.EasingDirection.Out), {
+			BackgroundTransparency = step.To,
+		})
+		tween.Completed:Once(function(playbackState: Enum.PlaybackState)
+			if playbackState == Enum.PlaybackState.Completed then
+				play(index + 1)
+			end
+		end)
+		escapePlay(state, tween)
+	end
+	play(1)
+	return true
+end
+
 -- Éteint l'écran au bout de `delay` s s'il montre toujours `state`.
 local function closeEscapeLater(state: Escape, delay: number)
 	task.delay(delay, function()
@@ -624,7 +692,9 @@ local function escapeScreen(tier: string?, rarity: string?, itemId: string?)
 		return
 	end
 	local state = newEscape(screen, "Escape")
-	escapeFlash(state, SAFE.FlashFrom, SAFE_FLASH_INFO)
+	if not tensionFlash(state) then -- a465 (L-340) : 0 → 0,6 → 1 avec la tension
+		escapeFlash(state, SAFE.FlashFrom, SAFE_FLASH_INFO)
+	end
 
 	-- Objet ramené (vague 46) : Title et Subtitle passagers, remis par resetEscape.
 	local itemRarity, itemText = itemInfo(itemId)

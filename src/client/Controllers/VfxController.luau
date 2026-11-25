@@ -5,6 +5,9 @@
 --
 --   1. FX_ChaseHighlight : une copie dans le vigile qui poursuit le joueur local (ChaseController.GetGuard),
 --      vue de lui seul, retirée à la fin de la poursuite (et reposée si le vigile revient par le streaming).
+--      a465 (L-340) : avec la tension du braquage (Shared/HeistTension), une copie de HL_ChaseGuard de Clément à la
+--      place (Config/HeistTension.GuardHighlight ; absent : FX_ChaseHighlight) ; ChaseFeelController ne pose plus alors
+--      son Highlight V0, le vigile n'en porte qu'un.
 --      Tant qu'elle est là, ShelfBoxController garde Vfx.Chase.Reserve contour(s) de colis en moins
 --      (ShelfBoxController.Reserve) : fait du temps où l'on croyait Roblox limité à 31 Highlight ; la limite est de 255
 --      par client (L-305), ce n'est plus nécessaire, mais sans danger.
@@ -137,6 +140,22 @@ local itemIdle: any = nil -- a317 : WithRest (copie de l'objet du socle sans son
 local landedListeners: { (amount: number) -> () } = {} -- a317 : OnCollectLanded
 local chaseGuard: Model? = nil
 local chaseCopy: Highlight? = nil
+local chaseSource = "" -- a465 : nom du modèle copié sur le vigile (FX_ChaseHighlight, ou HL_ChaseGuard avec la tension)
+-- a465 (L-340) : tension du braquage (Shared/HeistTension, Config/HeistTension), si elle est là (bancs sans elle : coupée).
+local tensionSwitch: any = nil
+local tensionConfig: any = nil
+do
+	local switchModule = Shared:FindFirstChild("HeistTension")
+	local configModule = Config:FindFirstChild("HeistTension")
+	if switchModule and switchModule:IsA("ModuleScript") and configModule and configModule:IsA("ModuleScript") then
+		local okSwitch, switch = pcall(require, switchModule)
+		local okConfig, config = pcall(require, configModule)
+		if okSwitch and okConfig and type(switch) == "table" and type(config) == "table" then
+			tensionSwitch = switch
+			tensionConfig = config
+		end
+	end
+end
 local rarest: { [Instance]: RarestEntry } = {} -- [parcelle] = billboard posé
 local sinceRarest = math.huge
 local clock = 0
@@ -588,6 +607,25 @@ local function clearChase()
 	end
 end
 
+-- a465 (L-340 point 2) : avec la tension, HL_ChaseGuard de Clément (Config/HeistTension.GuardHighlight) s'il est livré
+-- en Highlight ; sinon FX_ChaseHighlight, comme avant.
+local function chaseTemplateName(): string
+	local switch = tensionSwitch
+	local config = tensionConfig
+	if switch and config and type(config.GuardHighlight) == "string" then
+		local ok, on = pcall(switch.Enabled)
+		if ok and on == true then
+			local folder = folderOf(Vfx.FxFolder)
+			local found = if folder then folder:FindFirstChild(config.GuardHighlight, true) else nil
+			if found and found:IsA("Highlight") then
+				return config.GuardHighlight
+			end
+			sayOnce("tensionGuard", `{config.GuardHighlight} (Highlight) introuvable : {Vfx.Chase.Highlight} sur le vigile`)
+		end
+	end
+	return Vfx.Chase.Highlight
+end
+
 local function stepChase()
 	local guard: Model? = nil
 	if chase and type(chase.GetGuard) == "function" then
@@ -600,15 +638,17 @@ local function stepChase()
 		clearChase()
 		return
 	end
+	local wantedName = chaseTemplateName()
 	local copy = chaseCopy
-	if guard == chaseGuard and copy ~= nil and copy.Parent == guard then
+	if guard == chaseGuard and copy ~= nil and copy.Parent == guard and chaseSource == wantedName then
 		return
 	end
 	clearChase()
-	local source = template(Vfx.FxFolder, Vfx.Chase.Highlight, "Highlight")
+	local source = template(Vfx.FxFolder, wantedName, "Highlight")
 	if source == nil then
 		return
 	end
+	chaseSource = wantedName
 	local highlight = source:Clone() :: Highlight
 	highlight.Name = Vfx.Chase.CopyName
 	highlight.Adornee = guard
