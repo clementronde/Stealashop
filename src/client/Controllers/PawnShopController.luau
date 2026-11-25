@@ -8,9 +8,10 @@
 --     Open) ; fermeture quand il en descend (Leave), s'éloigne à plus de CLOSE_DISTANCE studs de la plaque, ou
 --     par LeaveButton (le vendeur dit alors « Come back anytime! », qui reste FarewellTime s dans la bulle).
 --     Un autre écran du groupe ScreenGroup qui s'ouvre le ferme aussi (Motion.SetCloser) ;
---   - à l'ouverture et à chaque changement de l'inventaire (attribut InventoryState) ou du portage (Carrying),
---     demande l'offre au serveur (PawnAsk) ; PawnOffer remplit les prix : SellHeldButton.Price (objet tenu),
---     SellAllButton.Price (tout l'inventaire hors objets exposés), en Format.money ;
+--   - à l'ouverture et à chaque changement de l'inventaire (attribut InventoryState), du portage (Carrying) ou de
+--     l'objet tenu en main (HeldItem, a470), demande l'offre au serveur (PawnAsk) ; PawnOffer remplit les prix :
+--     SellHeldButton.Price (objet tenu en main, HeldItemService), SellAllButton.Price (tout l'inventaire hors objets
+--     exposés, objet tenu compris), en Format.money ;
 --   - Dialog.Choices : SellHeldButton (1), SellAllButton (2), LeaveButton (3) ; DealButton (1) et NoDealButton (2)
 --     les remplacent pour une confirmation : objet tenu de rareté Pawn.ConfirmFrom ou plus (« A Mythic? I'll give
 --     you $1.44M. Deal? »), et chaque « tout vendre » (« 9 items for $2.1M. Deal? »). NoDealButton ramène les
@@ -105,6 +106,7 @@ local HOVER_LABELS = { KeyLabel = true, ChoiceLabel = true }
 local ROOT_PART = "HumanoidRootPart"
 local INVENTORY_ATTRIBUTE = InventoryState.Attribute
 local CARRYING_ATTRIBUTE = "Carrying" -- CarryService
+local HELD_ATTRIBUTE = "HeldItem" -- a470 : HeldItemService (Config/HeldItem.PlayerAttribute), uid de l'objet tenu en main
 
 -- V0 proposés, absents du doc : distance (studs) à la plaque au-delà de laquelle l'écran se ferme (si la sortie
 -- de la plaque n'a pas été vue) ; regroupement (s) des demandes d'offre ; attente (s) d'une réponse PawnSold
@@ -719,6 +721,7 @@ function PawnShopController.Start()
 	net.Client.PawnSold:Connect(onSold)
 
 	localPlayer:GetAttributeChangedSignal(INVENTORY_ATTRIBUTE):Connect(ask)
+	localPlayer:GetAttributeChangedSignal(HELD_ATTRIBUTE):Connect(ask) -- a470 : objet pris en main ou rangé, écran ouvert
 	localPlayer:GetAttributeChangedSignal(CARRYING_ATTRIBUTE):Connect(function()
 		if mode ~= "Closed" then
 			render()
