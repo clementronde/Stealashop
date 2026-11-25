@@ -8,22 +8,25 @@
 --   /feature                     état : ConfigService, surcharges en vigueur, interrupteurs à chaud (Hot)
 --   /feature <Nom> on|off        surcharge d'admin sur ce serveur (interrupteurs de Config/LiveFeatures.Hot seulement)
 --   /feature <Nom> reset         retire la surcharge d'admin (retour à ConfigService, ou au fichier)
--- Qui : LiveFeatures.IsAdmin (Studio : tout le monde ; en ligne : Config/LiveFeatures.AdminUserIds). L'auteur est lu
--- par le serveur dans TextSource.UserId, jamais dans le texte ; un non-admin est refusé (une ligne dans la sortie,
--- aucun effet). Hors Studio, sans aucun UserId dans AdminUserIds, la commande n'est pas créée. Réponse au seul
--- admin par le remote Notify existant (aucun remote neuf). Aucun client ne peut changer un interrupteur autrement.
+-- Qui : la règle du panneau admin, AdminService.IsAdmin (Config/Admin : tout le monde en Studio, Admin.UserIds, rang
+-- Admin.MinGroupRank du groupe du studio, rang lu et relu par AdminService), branchée dans Init par
+-- LiveFeatures.SetAdminRule (require d'AdminService ici, côté serveur : pas de boucle, Shared/LiveFeatures ne le lit
+-- pas). L'auteur est lu par le serveur dans TextSource.UserId, jamais dans le texte ; un non-admin est refusé (une
+-- ligne dans la sortie, aucun effet). Réponse au seul admin par le remote Notify existant (aucun remote neuf). Aucun
+-- client ne peut changer un interrupteur autrement.
 --
 -- API (bancs) : LiveFeaturesService.Handle(player, text) -> (boolean, string)
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local RunService = game:GetService("RunService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Features = require(Shared.Config.Features)
 local Settings = require(Shared.Config.LiveFeatures)
 local LiveFeatures = require(Shared.LiveFeatures)
 local Net = require(Shared.Net.Net)
+
+local AdminService = require(script.Parent.AdminService)
 
 local COMMAND_NAME = "LiveFeaturesCommand"
 local MAX_REPLY = 200 -- caractères montrés dans la notification (Notify)
@@ -92,11 +95,6 @@ local function reply(player: Player, ok: boolean, message: string)
 end
 
 local function createCommand()
-	local studio = RunService:IsStudio()
-	if not (studio and Settings.StudioEveryone == true) and #Settings.AdminUserIds == 0 then
-		print("[LiveFeaturesService] aucun admin des interrupteurs en ligne (Config/LiveFeatures.AdminUserIds vide) : commande pas créée")
-		return
-	end
 	local ok, err = pcall(function()
 		local TextChatService = game:GetService("TextChatService")
 		local old = TextChatService:FindFirstChild(COMMAND_NAME)
@@ -133,6 +131,8 @@ function LiveFeaturesService.Init()
 	if Settings.Enabled ~= true then
 		return
 	end
+	-- La règle du panneau admin, décidée et revalidée par AdminService côté serveur (Config/Admin).
+	LiveFeatures.SetAdminRule(AdminService.IsAdmin)
 	createCommand()
 end
 

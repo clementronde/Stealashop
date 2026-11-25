@@ -67,8 +67,9 @@ for _, command in Commands do
 end
 
 local Admin = {
-	-- UserId des admins hors Studio (V0 : vide).
-	UserIds = {} :: { number },
+	-- UserId des admins hors Studio. 296770611 : le compte IRONIX01 (décision de Cantin du 25/11, a442). Vaut aussi
+	-- pour la commande /feature des interrupteurs (LiveFeaturesService).
+	UserIds = { 296770611 } :: { number },
 	-- Groupe du studio : 0 = le groupe propriétaire du jeu (game.CreatorId) ; pas de contrôle par groupe si le jeu
 	-- n'appartient pas à un groupe.
 	GroupId = 0,

@@ -35,11 +35,9 @@ local LiveFeatures = {
 		ShopGlassThrow = true, -- GlassThrowService.IsEnabled, au coup du propriétaire
 		ShopGlassThrowDev = true,
 	} :: { [string]: boolean },
-	-- Commande d'admin (chat, ChatAlias) : UserId permis hors Studio. Clément et Ironix, à confirmer et à remplir
-	-- (V0 : vide = personne en ligne ; la commande n'est alors même pas créée hors Studio).
-	AdminUserIds = {} :: { number },
-	-- En Studio, tout le monde est admin de cette commande (comme Config/Admin.StudioEveryone).
-	StudioEveryone = true,
+	-- Qui peut se servir de la commande d'admin : la même règle que le panneau admin (AdminService.IsAdmin, réglée
+	-- dans Config/Admin : tout le monde en Studio, Admin.UserIds, rang Admin.MinGroupRank du groupe du studio) ; pas
+	-- de liste à part ici (décision du 25/11).
 	-- Commande de chat : « /feature » (état), « /feature <Nom> on|off » (surcharge de ce serveur), « /feature <Nom> reset ».
 	ChatAlias = "/feature",
 	-- Textes du jeu (anglais), montrés au seul admin (remote Notify).

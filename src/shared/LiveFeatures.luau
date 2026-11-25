@@ -33,7 +33,9 @@
 --   LiveFeatures.On(name) -> boolean             Get(name) == true, ou Get(name .. "Dev") == true dans le jeu DEV
 --   LiveFeatures.Source(name) -> string          "File", "Config", "Admin" (serveur) ; "File" ou "Server" (client)
 --   LiveFeatures.OnChanged(fn(name, value)) -> () -> ()   changement à chaud d'un interrupteur ; rend la déconnexion
---   LiveFeatures.IsAdmin(player) -> boolean      serveur : Studio (StudioEveryone) ou Config/LiveFeatures.AdminUserIds
+--   LiveFeatures.SetAdminRule(rule)              serveur : qui est admin de la commande (LiveFeaturesService y branche
+--                                                AdminService.IsAdmin, la règle de Config/Admin) ; sans règle, personne
+--   LiveFeatures.IsAdmin(player) -> boolean      serveur : la règle branchée (jamais le client, jamais un attribut)
 --   LiveFeatures.SetAdmin(player, name, value?) -> (boolean, string)
 --       serveur, admin, interrupteur de Hot ; value nil = retire la surcharge d'admin (retour à ConfigService ou au fichier)
 --   LiveFeatures.Status() -> Status              état pour la sortie (LiveFeaturesService)
@@ -46,7 +48,6 @@ export type Settings = typeof(Settings)
 -- Environnement d'une instance (le vrai jeu : realEnv ; les bancs : un faux).
 export type Env = {
 	side: string, -- "server" ou "client"
-	studio: boolean,
 	settings: any, -- Config/LiveFeatures
 	module: any, -- Config/Features : SetAttribute, GetAttribute, AttributeChanged (nil : aucun attribut)
 	configService: any, -- ConfigService (serveur ; nil : service absent)
@@ -72,6 +73,7 @@ export type Live = {
 	Source: (name: string) -> string,
 	On: (name: string) -> boolean,
 	OnChanged: (fn: (name: string, value: any) -> ()) -> () -> (),
+	SetAdminRule: (rule: (player: any) -> boolean) -> (),
 	IsAdmin: (player: any) -> boolean,
 	SetAdmin: (player: any, name: string, value: boolean?) -> (boolean, string),
 	Status: () -> Status,
@@ -399,17 +401,23 @@ function LiveFeatures.new(raw: { [string]: any }, env: Env): Live
 		end
 	end
 
+	-- Qui est admin : la règle que le serveur branche (LiveFeaturesService : AdminService.IsAdmin, Config/Admin) ;
+	-- pas de liste à part ici, et un require d'AdminService depuis ce module serait circulaire (il lit Config/Features).
+	local adminRule: ((player: any) -> boolean)? = nil
+
+	function live.SetAdminRule(rule: (player: any) -> boolean)
+		if env.side == "server" and type(rule) == "function" then
+			adminRule = rule
+		end
+	end
+
 	function live.IsAdmin(player: any): boolean
-		if env.side ~= "server" then
+		local rule = adminRule
+		if env.side ~= "server" or rule == nil then
 			return false
 		end
-		if env.studio and settings.StudioEveryone == true then
-			return true
-		end
-		local ok, userId = pcall(function(): any
-			return player.UserId
-		end)
-		return ok and type(userId) == "number" and table.find(settings.AdminUserIds, userId) ~= nil
+		local ok, allowed = pcall(rule, player)
+		return ok and allowed == true
 	end
 
 	function live.SetAdmin(player: any, name: string, value: boolean?): (boolean, string)
@@ -496,7 +504,6 @@ local function realEnv(module: any): Env?
 	local devCache: boolean? = nil
 	return {
 		side = if isServer then "server" else "client",
-		studio = RunService:IsStudio(),
 		settings = Settings,
 		module = module,
 		configService = configService,
@@ -592,6 +599,13 @@ function LiveFeatures.OnChanged(fn: (name: string, value: any) -> ()): () -> ()
 		return function() end
 	end
 	return l.OnChanged(fn)
+end
+
+function LiveFeatures.SetAdminRule(rule: (player: any) -> boolean)
+	local l = live()
+	if l ~= nil then
+		l.SetAdminRule(rule)
+	end
 end
 
 function LiveFeatures.IsAdmin(player: any): boolean
