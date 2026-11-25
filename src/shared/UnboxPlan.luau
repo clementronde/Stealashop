@@ -20,7 +20,7 @@ local UnboxPlan = {}
 
 export type Action = Unbox.Action
 export type Step = { Action: Action, Rarity: string }
-export type Plan = { Steps: { Step }, Odds: number }
+export type Plan = { Steps: { Step }, Odds: number, Luck: number? } -- Luck : a462 (L-376)
 export type Move = { Action: Action, Place: string, Teleport: boolean } -- vague 74 (a257, L-258)
 
 UnboxPlan.MaxSteps = 12
@@ -46,6 +46,58 @@ end
 
 local function speed(): number
 	return math.max(New.ActionSpeed, 0.1)
+end
+
+-- a462 (L-356 Q4, Clément 24/11) : interrupteur Features.UnboxBoxClimb (partout) ou UnboxBoxClimbDev (jeu DEV seulement,
+-- Config/ProductIds.IsDev) : le colis de la caisse exclusive monte d'une rareté à chaque action jusqu'à celle tirée
+-- (MonetizationService), et le colis montré prend le modèle BOX_<Rareté> de la rareté montrée (Controllers/Reveal/Unbox).
+local function featureOn(name: string): boolean
+	local ok, on = pcall(function(): boolean
+		local Features = require(Config:WaitForChild("Features")) :: any
+		if Features[name] == true then
+			return true
+		end
+		if Features[name .. "Dev"] ~= true then
+			return false
+		end
+		local ProductIds = require(Config:WaitForChild("ProductIds")) :: any
+		return ProductIds.IsDev == true
+	end)
+	return ok and on == true
+end
+
+function UnboxPlan.boxClimbs(): boolean
+	return featureOn("UnboxBoxClimb")
+end
+
+-- a462 (L-376, Clément 25/11 : « quand notre joueur tape sur le colis, ça doit être la luck qui doit augmenter et pas
+-- une chance sur deux ») : interrupteur Features.UnboxLuckClimb (partout) ou UnboxLuckClimbDev (jeu DEV seulement).
+-- Allumé : le serveur ajoute sa chance (luck) au plan (draw, `luck`) ; pendant les coups, BB_UnboxOdds.Odds montre
+-- « ×N LUCK » qui monte de ×1 à cette chance (luckHit) ; le « 1 IN N » n'apparaît qu'à l'éclatement et monte sur les
+-- silhouettes seules (HitsShare compté 0) jusqu'à la vraie cote. Coupé : la cote monte pendant les coups (a287).
+function UnboxPlan.luckClimbs(): boolean
+	return featureOn("UnboxLuckClimb")
+end
+
+-- a462 (décision de Cantin, 25/11 : montées visuelles cohérentes avec l'objet) : interrupteur
+-- Features.UnboxClimbMatchesItem (partout) ou UnboxClimbMatchesItemDev (jeu DEV seulement).
+function UnboxPlan.climbMatchesItem(): boolean
+	return featureOn("UnboxClimbMatchesItem")
+end
+
+-- a462 : montée d'un colis de rayon (StoreHeistService.startReveal), rendue avec le drapeau `everyAction` de draw.
+-- Interrupteur allumé : autant de crans que de raretés entre le colis `boxRarity` et l'objet `finalRarity` (0 si l'objet
+-- est de même rareté ou en dessous), une rareté par action juste avant le coup final : le colis finit exactement à la
+-- rareté de l'objet. Coupé : `drawn` (UnboxPlan.upgrades, tiré à part de l'objet) et aucun drapeau, comme avant.
+function UnboxPlan.shelfClimb(boxRarity: string, finalRarity: string, drawn: number): (number, boolean?)
+	if not UnboxPlan.climbMatchesItem() then
+		return drawn, nil
+	end
+	local from, to = orderOf(boxRarity), orderOf(finalRarity)
+	if from < 1 or to < 1 then
+		return 0, true
+	end
+	return math.max(to - from, 0), true
 end
 
 function UnboxPlan.action(id: string): Action?
@@ -98,7 +150,11 @@ end
 -- nil si la Config ne permet aucun plan (FinalAction inconnue, rareté inconnue, aucune autre action).
 -- Vague 75 (a259, L-262 point 1) : `odds` (la vraie chance de l'objet, Formulas.UnboxOdds, calculée par le serveur) est
 -- la cote finale ; absente ou illisible : tirée dans la plage de `finalRarity`, comme avant.
-function UnboxPlan.draw(finalRarity: string, pick: (n: number) -> number, startRarity: string?, upgrades: number?, odds: number?): string?
+-- a462 (L-356 Q4, Clément 24/11 : « le colis change de rareté à chaque coup, jusqu'à celle tirée, pour le suspense ») :
+-- `everyAction` = les améliorations tombent aux `upgrades` actions juste avant le coup final, à la suite (une rareté de
+-- plus à chaque action, la rareté tirée atteinte à l'avant-dernière) au lieu d'actions tirées au hasard ; sans tirage
+-- de plus (mêmes actions, même cote).
+function UnboxPlan.draw(finalRarity: string, pick: (n: number) -> number, startRarity: string?, upgrades: number?, odds: number?, everyAction: boolean?, luck: number?): string?
 	local final = Rarities.ById[finalRarity]
 	local finalAction = actionsById[New.FinalAction]
 	if final == nil or finalAction == nil then
@@ -144,7 +200,7 @@ function UnboxPlan.draw(finalRarity: string, pick: (n: number) -> number, startR
 		table.insert(slots, index)
 	end
 	while #slots > u do
-		table.remove(slots, choose(#slots))
+		table.remove(slots, if everyAction == true then 1 else choose(#slots))
 	end
 	local parts: { string } = {}
 	local done = 0
@@ -162,6 +218,10 @@ function UnboxPlan.draw(finalRarity: string, pick: (n: number) -> number, startR
 		lo, hi = math.floor(lo), math.floor(hi)
 		cote = lo + choose(hi - lo + 1) - 1
 	end
+	-- a462 (L-376) : la chance de l'ouvreur (luck), en 3e partie « |1.50 », quand elle est donnée.
+	if type(luck) == "number" and luck >= 1 and luck < 1e6 then
+		return `{table.concat(parts, ",")}|{cote}|{string.format("%.2f", luck)}`
+	end
 	return `{table.concat(parts, ",")}|{cote}`
 end
 
@@ -171,8 +231,17 @@ function UnboxPlan.parse(text: any): Plan?
 		return nil
 	end
 	local body, oddsText = string.match(text, "^([^|]+)|(%d+)$")
+	local luckText: string? = nil
+	if body == nil then
+		-- a462 (L-376) : chance de l'ouvreur en 3e partie.
+		body, oddsText, luckText = string.match(text, "^([^|]+)|(%d+)|(%d+%.%d+)$")
+	end
 	local odds = if oddsText then tonumber(oddsText) else nil
 	if body == nil or odds == nil or odds < 1 or odds >= math.huge then
+		return nil
+	end
+	local luck = if luckText then tonumber(luckText) else nil
+	if luck and (luck < 1 or luck >= 1e6) then
 		return nil
 	end
 	local steps: { Step } = {}
@@ -190,7 +259,7 @@ function UnboxPlan.parse(text: any): Plan?
 	if #steps == 0 then
 		return nil
 	end
-	return { Steps = steps, Odds = odds }
+	return { Steps = steps, Odds = odds, Luck = luck }
 end
 
 -- Cote montrée avant la première action (index 0), puis au moment fort de l'action `index` : un nombre de la plage
@@ -228,6 +297,9 @@ function UnboxPlan.climbs(): boolean
 end
 
 local function share(): number
+	if UnboxPlan.luckClimbs() then
+		return 0 -- a462 (L-376) : les coups font monter la chance, la cote monte sur les silhouettes seules
+	end
 	local value = New.OddsClimb.HitsShare
 	return if value == value then math.clamp(value, 0, 1) else 0.5
 end
@@ -258,6 +330,22 @@ function UnboxPlan.climbSilhouette(plan: Plan, index: number, count: number): nu
 	local c = math.max(count, 1)
 	local s = share()
 	return UnboxPlan.climb(plan, s + (1 - s) * math.clamp(index, 0, c) / (c + 1))
+end
+
+-- a462 (L-376) : chance (luck) montrée après le coup `hit` (sur `hits` attendus) de l'action `index` : de ×1 à la chance
+-- du plan (plan.Luck ; ×1 sans elle), d'un facteur égal à chaque coup ; atteinte au moment fort de l'avant-dernière
+-- action (au coup final, le colis éclate et la cote prend la place de la chance).
+function UnboxPlan.luckHit(plan: Plan, index: number, hit: number, hits: number): number
+	local n = math.max(#plan.Steps - 1, 1)
+	local part = if hits > 0 then math.clamp(hit / hits, 0, 1) else 1
+	local done = (math.clamp(index, 1, n) - 1 + part) / n
+	local luck = plan.Luck or 1
+	return luck ^ math.clamp(done, 0, 1)
+end
+
+-- Texte « ×1.50 LUCK » (New.LuckText, comme BB_ShelfOpen.Row.Luck).
+function UnboxPlan.luckText(value: number): string
+	return string.format(New.LuckText, value)
 end
 
 -- Cote montrée au départ (avant la première action).

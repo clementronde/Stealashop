@@ -269,6 +269,30 @@ local Features = {
 	ServerLuck = false,
 	-- a476 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
 	ServerLuckDev = true,
+	-- a462 (L-356 Q4, réponse de Clément du 24/11 à L-281) : pendant les coups de l'ouverture de la caisse exclusive, le
+	-- colis monte d'une rareté à chaque action jusqu'à celle tirée par le serveur (MonetizationService, UnboxPlan.draw), et
+	-- le colis montré (caisse, colis de rayon amélioré) prend le modèle BOX_<Rareté> de Clément de sa rareté
+	-- (Controllers/Reveal/Unbox). Interrupteur PROD (partout) : false (règle C2 : pas encore de test humain) ; false = le
+	-- colis de la caisse reste Épique et seules les silhouettes montent, scotch recoloré, comme avant.
+	UnboxBoxClimb = false,
+	-- a462 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	UnboxBoxClimbDev = true,
+	-- a462 (L-376, Clément 25/11) : pendant les coups sur le colis, c'est la chance (luck) de l'ouvreur qui monte et
+	-- s'affiche (« ×N LUCK » sur BB_UnboxOdds.Odds, de ×1 à la chance tirée par le serveur, StoreHeistService) ; le
+	-- « 1 IN N » n'apparaît qu'à l'éclatement et monte sur les silhouettes jusqu'à la vraie cote (Shared/UnboxPlan,
+	-- Controllers/Reveal/Unbox). Interrupteur PROD (partout) : false (règle C2) ; false = la cote monte pendant les coups
+	-- (a287), comme avant.
+	UnboxLuckClimb = false,
+	-- a462 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	UnboxLuckClimbDev = true,
+	-- a462 (décision de Cantin, 25/11) : la montée de rareté d'un colis de rayon pendant les coups suit l'objet tiré : un
+	-- objet plus rare que le colis le fait monter d'une rareté par action, juste avant le coup final, jusqu'à la sienne
+	-- exactement ; même rareté ou en dessous : aucune montée (comme la caisse exclusive, UnboxBoxClimb). Le tirage de
+	-- l'objet et de la chance ne change pas (Shared/UnboxPlan.shelfClimb, StoreHeistService.startReveal). Interrupteur
+	-- PROD (partout) : false (règle C2) ; false = améliorations tirées à part de l'objet (UnboxPlan.upgrades), comme avant.
+	UnboxClimbMatchesItem = false,
+	-- a462 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	UnboxClimbMatchesItemDev = true,
 }
 
 export type Features = typeof(Features)
