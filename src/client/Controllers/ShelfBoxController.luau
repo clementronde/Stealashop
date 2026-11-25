@@ -13,7 +13,8 @@
 -- (contour rouge d'un objet volé, StolenOutline) ne sont pas touchés.
 -- a446 (L-305, L-344 ; Config/Outlines.Enabled, Features.BdOutlines / BdOutlinesDev) : allumé, les colis passent aux
 -- contours « façon BD » d'OutlineController, qui retire leur OutlineHighlight en local ; ce contrôleur ne suit plus que
--- les OutlineHighlight qui ne sont pas dans un BOX_* (camion, coffre, fourgon), comme avant. Coupé : rien ne change.
+-- les OutlineHighlight qui ne sont pas dans un colis (a451 : tag ShelfBox), soit ceux du camion, du coffre et du
+-- fourgon, comme avant. Coupé : rien ne change.
 --
 -- Étiquettes. Chaque colis d'un rayon (tag ShelfBox, posé par StoreHeistService) porte BB_Box,
 -- en AlwaysOnTop chez Clément : on la verrait à travers les rayons voisins. Elle n'est active que
@@ -62,7 +63,7 @@ local function bdOutlines(): boolean
 	return ok and type(result) == "table" and (result :: any).Enabled == true
 end
 local BD_OUTLINES = bdOutlines()
-local BOX_PREFIX = "BOX_" -- Contract/Models.Box.Prefix
+local BOX_PREFIX = "BOX_" -- Contract/Models.Box.Prefix : copies de Clément ; en jeu, un colis est un ShelfBox_xx (a451)
 
 -- Posés par StoreHeistService et CarryService (mêmes noms là-bas).
 local SHELF_BOX_TAG = "ShelfBox"
@@ -156,12 +157,15 @@ end
 
 -- Contours -------------------------------------------------------------------------------------
 
--- a446 : le Highlight est dans un colis (premier Model au-dessus de lui nommé BOX_*).
+-- a446 : le Highlight est dans un colis. a451 : en jeu, un colis porte le tag ShelfBox (StoreHeistService) et
+-- s'appelle ShelfBox_xx, jamais BOX_* ; le nom BOX_* ne reste qu'aux copies de Clément (dossier de travail).
 local function inBox(instance: Instance): boolean
 	local current = instance.Parent
 	while current ~= nil and current ~= Workspace do
-		if current:IsA("Model") then
-			return string.sub(current.Name, 1, #BOX_PREFIX) == BOX_PREFIX
+		if CollectionService:HasTag(current, SHELF_BOX_TAG) then
+			return true
+		elseif current:IsA("Model") and string.sub(current.Name, 1, #BOX_PREFIX) == BOX_PREFIX then
+			return true
 		end
 		current = current.Parent
 	end
