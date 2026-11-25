@@ -25,6 +25,18 @@
 --           base − walk, sans ruée ni frein, jusqu'à la capture ;
 --         voleur qui s'arrête ou ralentit : v ≥ walk (sa marche, pas sa vitesse du moment) : attrapé en D / walk s au plus.
 --       Une marche nulle (voleur immobilisé) : v = base.
+--   ChaseLaw.Lead(cfg, walk, away) -> number
+--       a487 (Cantin, 25/11 : « on n'arrive pas à se faire attraper par un vigile qui est plus rapide que nous ») : de
+--       combien de studs le vigile vise au-delà du voleur, sur la droite vigile → voleur : AimLeadSeconds × la part de
+--       sa vitesse reçue qui l'éloigne du vigile (`away`, bornée entre 0 et sa marche). 0 s'il ne s'éloigne pas (arrêté,
+--       demi-tour), sans marche ou sans AimLeadSeconds (la visée d'avant, sur le voleur). Pourquoi : GuardService.
+--   ChaseLaw.Approach(cfg, speed, away, gap, lag) -> number
+--       a487 : la vitesse `speed` de la loi, bornée en arrivant sur un voleur qui s'éloigne (`away` > 0) : au plus
+--       away + gap ÷ lag, `lag` = le retard compensé (s) entre ce que fait le vigile et ce que le serveur sait que le
+--       joueur en a vu. Le serveur ne décide la capture que `lag` s après que le vigile est arrivé à portée : sans cette
+--       borne, un vigile bien plus rapide (ou un voleur qui ralentit) dépasse pendant ce temps la place où le joueur se
+--       voit. Avec elle, il s'en approche de moins en moins vite et n'y passe jamais ; loin (gap > (speed − away) × lag),
+--       rien ne change. Sans AimLeadSeconds, sans retard ou voleur qui ne s'éloigne pas : `speed`.
 
 local ChaseLaw = {}
 
@@ -35,6 +47,7 @@ export type Config = {
 	ReturnSurplusFactor: number,
 	FleeLow: number,
 	FleeHigh: number,
+	AimLeadSeconds: number?,
 }
 
 local function positive(value: any): boolean
@@ -79,6 +92,22 @@ function ChaseLaw.Speed(cfg: Config, base: number, walk: number, gap: number, aw
 	local top = math.max(own, theirs * (1 + surplus))
 	local speed = math.clamp(math.max(floor, back), 0, top)
 	return if speed == speed then speed else own, distance
+end
+
+function ChaseLaw.Lead(cfg: Config, walk: number, away: number): number
+	local seconds = cfg.AimLeadSeconds
+	if seconds == nil or not positive(seconds) or not positive(walk) or away ~= away then
+		return 0
+	end
+	return math.clamp(away, 0, walk) * seconds
+end
+
+function ChaseLaw.Approach(cfg: Config, speed: number, away: number, gap: number, lag: number): number
+	local seconds = cfg.AimLeadSeconds
+	if seconds == nil or not positive(seconds) or not positive(lag) or not positive(away) or gap ~= gap then
+		return speed
+	end
+	return math.min(speed, away + math.max(gap, 0) / lag)
 end
 
 return ChaseLaw
