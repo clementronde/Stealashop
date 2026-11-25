@@ -5,7 +5,8 @@
 -- Une boutique = un Model taggé PlayerPlot (PlotService), avec sa porte à casser `PlotDoor/Window`
 -- (la vitrine « Plot_<PlotIndex> » de WindowService ; L-163 : elle se casse en PvP.DoorHits coups, le même
 -- nombre pour tous, plus Reinforced Door de l'arbre ; porte du bot joueur : PvP.DoorHits ; verrou : SkillTreeService ;
--- régénération 3 %/s), son volume `Bounds`, sa `DepositZone` et ses `DisplaySlot_01` à `_20`.
+-- réparation après PvP.DoorRepairDelay s sans coup, au taux de Door Repair : a467), son volume `Bounds`, sa
+-- `DepositZone` et ses `DisplaySlot_01` à `_20`.
 --
 -- Le vol, dans l'ordre (6.1) :
 --   1. Repérage : panneau côté client (PvPController), rien ici. Ce service publie sur la parcelle
@@ -1204,7 +1205,7 @@ local function shopRefusal(player: Player, plot: Model): (string?, string?, stri
 	end
 	local shop = shops[plot]
 	if shop == nil or shop.Victim ~= victim then
-		return "boutique fermée (porte intacte ou 10 s écoulées)", nil, nil
+		return "boutique fermée (porte intacte ou reconstruite)", nil, nil
 	end
 	if not present(player) or (victim and not present(victim)) then
 		return "départ en cours", nil, nil

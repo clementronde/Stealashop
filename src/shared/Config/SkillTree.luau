@@ -27,8 +27,8 @@
 local DeepFreeze = require(script.Parent.DeepFreeze)
 local Features = require(script.Parent.Features)
 
--- a476 (L-374) : Config/ProductIds chargé s'il est là (bancs à liste de modules fixe, comme dans Config/Items) ; sans
--- lui, IsDev est faux, comme en PROD.
+-- a467 (L-163, A2 ; décision C2 de Cantin, 24/11) : Config/ProductIds chargé s'il est là (bancs à liste de modules
+-- fixe, comme dans Config/Items) ; sans lui, IsDev faux (PROD). Lu aussi par a476 (L-374, BoxLuck).
 local ProductIds: any = (function(): any
 	local found, module = pcall(function(): any
 		return script.Parent:FindFirstChild("ProductIds")
@@ -43,6 +43,17 @@ local ProductIds: any = (function(): any
 end)()
 -- a476 (L-374) : tuile BoxLuck achetable partout (Features.SkillBoxLuck) ou dans le jeu DEV seulement (SkillBoxLuckDev).
 local BOX_LUCK: boolean = Features.SkillBoxLuck == true or (Features.SkillBoxLuckDev == true and ProductIds.IsDev == true)
+
+-- a467 (L-163, A2 ; L-373, Cameras) : les défenses de la boutique, chacune allumée partout (Features.<nom>) ou dans le
+-- jeu DEV seulement (Features.<nom>Dev et Config/ProductIds.IsDev), comme ItemsV3 / ItemsV3Dev. Seule lecture de ces
+-- interrupteurs : SkillTree (Coded) ; SkillTreeService, ShopDefenseService, TrapService et CameraAlertController passent
+-- par SkillTree.DefenseOn.
+export type DefenseSwitch = "Traps" | "Bodyguards" | "DoorGuard" | "CameraRadar" | "Cameras"
+
+local function defenseOn(name: DefenseSwitch): boolean
+	local features: any = Features
+	return features[name] == true or (features[name .. "Dev"] == true and ProductIds.IsDev == true)
+end
 
 export type SkillId =
 	"Walls"
@@ -143,7 +154,9 @@ local List: { Skill } = {
 		-- N3 flèche, distance et son jusqu'au voleur. Effects[n] = durée du surlignage (s). a408 (vague GC6, L-163, V0 de
 		-- L-175 : plus aucune flèche) : N3 = voleur surligné en rouge vif et son de radar qui accélère en approchant
 		-- (CameraAlertController, Config/ShopDefense.CameraRadar), relancé quand il prend un objet (ShopDefenseService) ;
-		-- achetable avec Features.CameraRadar (sinon 2 niveaux).
+		-- achetable avec Features.CameraRadar, ou CameraRadarDev en DEV (sinon 2 niveaux).
+		-- a467 (L-373, Clément 25/11 : défenses reportées) : toute la tuile avec Features.Cameras, ou CamerasDev en DEV
+		-- (sinon « Soon », 0 niveau).
 		Id = "Cameras",
 		Tile = "Tile_Cameras",
 		DisplayName = "Cameras",
@@ -155,12 +168,13 @@ local List: { Skill } = {
 		Prices = { 980, 5_300, 100_000 }, -- V0 proposé (Cantin, 20/11), avant : { 5_000, 150_000, 5_000_000 }
 		Effects = { 0, 30, 30 },
 		Labels = { "hit alert", "30s x-ray", "30s radar" }, -- a431 : avant « I » à « III »
-		Coded = if Features.CameraRadar then 3 else 2,
+		Coded = if not defenseOn("Cameras") then 0 elseif defenseOn("CameraRadar") then 3 else 2,
 		Icon = "rbxassetid://130895616275969",
 	},
 	{
 		-- Partie 2 (MAJ 3) : agent PNJ dans la boutique ; Effects[n] = sa vitesse (à l'échelle 1). a408 (vague GC6) :
-		-- ShopDefenseService, Config/ShopDefense.Bodyguard ; achetable avec Features.Bodyguards (sinon « Soon »).
+		-- ShopDefenseService, Config/ShopDefense.Bodyguard ; achetable avec Features.Bodyguards,
+		-- ou BodyguardsDev en DEV (sinon « Soon »).
 		Id = "Bodyguards",
 		Tile = "Tile_Guards",
 		DisplayName = "Guards",
@@ -171,7 +185,7 @@ local List: { Skill } = {
 		Prices = { 3_800, 49_000, 530_000, 7_900_000, 160_000_000 }, -- V0 proposé (Cantin, 20/11), avant : { 100_000, 2_000_000, 40_000_000, 800_000_000, 16_000_000_000 }
 		Effects = { 20, 28, 36, 44, 52 },
 		Labels = { "speed 20", "speed 28", "speed 36", "speed 44", "speed 52" }, -- a431 : Effects ; avant « I » à « V »
-		Coded = if Features.Bodyguards then 5 else 0,
+		Coded = if defenseOn("Bodyguards") then 5 else 0,
 		Icon = "rbxassetid://133701105676131",
 	},
 	{
@@ -212,7 +226,8 @@ local List: { Skill } = {
 	},
 	{
 		-- L-163 : « un garde à la porte qui repousse le voleur toutes les X s ». a408 (vague GC6) : Effects[1] = X (s) ;
-		-- ShopDefenseService, Config/ShopDefense.DoorGuard ; achetable avec Features.DoorGuard (sinon « Soon »).
+		-- ShopDefenseService, Config/ShopDefense.DoorGuard ; achetable avec Features.DoorGuard,
+		-- ou DoorGuardDev en DEV (sinon « Soon »).
 		Id = "DoorGuard",
 		Tile = "Tile_DoorGuard",
 		DisplayName = "Door Guard",
@@ -223,7 +238,7 @@ local List: { Skill } = {
 		Prices = { 530_000 }, -- V0 proposé (Cantin, 23/11) : le prix du niveau 3 de Guards
 		Effects = { 4 }, -- V0 proposé (Cantin, 23/11) : une poussée toutes les 4 s au plus
 		Labels = { "push/4s" }, -- a431 : avant « 4s »
-		Coded = if Features.DoorGuard then 1 else 0,
+		Coded = if defenseOn("DoorGuard") then 1 else 0,
 		OpensWhen = { Id = "Bodyguards", Level = 1 },
 		RequiresRebirth = 3, -- V0 (L-173)
 		Icon = "rbxassetid://133701105676131",
@@ -249,7 +264,8 @@ local List: { Skill } = {
 	{
 		-- Partie 2 (MAJ 4) : pièges derrière la vitrine. Ouvre à Walls 2 (Shop Level 2 du prototype de Clément).
 		-- Vague 72 (a243, L-218 ; V0 à valider par Clément) : Effects[n] = pièges posés sur TrapSlot_01 à _0n
-		-- (TrapService, genres de Config/Traps.SlotLayout) ; achetable seulement avec Features.Traps (sinon « Soon »).
+		-- (TrapService, genres de Config/Traps.SlotLayout) ; achetable avec Features.Traps,
+		-- ou TrapsDev en DEV (sinon « Soon »).
 		Id = "Traps",
 		Tile = "Tile_Next1",
 		DisplayName = "Traps",
@@ -260,7 +276,7 @@ local List: { Skill } = {
 		Prices = { 27_000, 180_000, 1_100_000, 9_900_000 }, -- V0 proposé (Cantin, 20/11), avant : { 1_000_000, 10_000_000, 100_000_000, 1_000_000_000 }
 		Effects = { 1, 2, 3, 4 },
 		Labels = { [0] = "0 traps", "1 trap", "2 traps", "3 traps", "4 traps" }, -- a431 : unité ajoutée
-		Coded = if Features.Traps then 4 else 0,
+		Coded = if defenseOn("Traps") then 4 else 0,
 		OpensWhen = { Id = "Walls", Level = 2 },
 		RequiresRebirth = 4, -- V0 (L-173)
 	},
@@ -473,6 +489,9 @@ local SkillTree = {
 	RebirthsOf = rebirthsOf,
 	NeedsRebirth = needsRebirth,
 	UnlockedBy = unlockedBy,
+	-- a467 (L-163, A2 ; L-373) : une défense allumée ici (Features.<nom>, ou <nom>Dev dans le jeu DEV).
+	-- Lue par SkillTreeService, ShopDefenseService, TrapService et CameraAlertController.
+	DefenseOn = defenseOn,
 }
 
 export type SkillTree = typeof(SkillTree)

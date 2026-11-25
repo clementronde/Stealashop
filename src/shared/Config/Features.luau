@@ -56,7 +56,12 @@ local Features = {
 	-- workspace:SetAttribute("TrapsTest", true) les allume sans toucher à cette ligne.
 	-- Vague 80 (a267, Cantin 20/11 « Pièges et coffre ») : true en DEV ; les 3 modèles de Clément (L-218) sont
 	-- branchés, un modèle absent est remplacé par le repli de TrapService, un TrapSlot absent = pas de piège.
-	Traps = true,
+	-- a467 (L-163, A2 ; décision C2 de Cantin, 24/11 : T-247 pas encore passé) : interrupteur PROD (partout), false ;
+	-- allumé en DEV par TrapsDev. Lu par SkillTree.DefenseOn (Config/SkillTree), comme les 3 défenses plus bas.
+	-- NewTraps / NewTrapsDev (disposition) ne comptent que si les pièges sont allumés.
+	Traps = false,
+	-- a467 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	TrapsDev = true,
 	-- Vague 80 (a266, DEV-132, UI-130) : quêtes quotidiennes (Config/Quests, QuestService, QuestController ; écran UI_Quests et
 	-- bouton UI_HUD.QuestsButton de Clément, facultatifs) ; false = rien n'est compté, aucun attribut, bouton caché.
 	Quests = true,
@@ -122,9 +127,19 @@ local Features = {
 	-- a408 (vague GC6, MAJ 5 « Défense de la boutique », Cantin 23/11 : tout maintenant ; V0 à valider par Clément) :
 	-- tuiles de l'arbre devenues achetables (Config/SkillTree, Config/ShopDefense, ShopDefenseService) ; false = la
 	-- tuile reste « Soon » et rien n'est posé.
-	Bodyguards = true, -- agent de sécurité qui poursuit le voleur (Partie 2, section 2)
-	DoorGuard = true, -- garde à la porte qui repousse le voleur (L-163)
-	CameraRadar = true, -- Cameras niveau 3 : voleur en rouge vif et son de radar, sans flèche (L-163, L-175)
+	-- a467 (L-163, A2 ; décision C2 de Cantin, 24/11 : T-285 pas encore passé) : interrupteurs PROD (partout), false ;
+	-- chacun allumé en DEV par sa variante …Dev (Config/ProductIds.IsDev). Lus par SkillTree.DefenseOn (Config/SkillTree).
+	Bodyguards = false, -- agent de sécurité qui poursuit le voleur (Partie 2, section 2)
+	BodyguardsDev = true,
+	DoorGuard = false, -- garde à la porte qui repousse le voleur (L-163)
+	DoorGuardDev = true,
+	CameraRadar = false, -- Cameras niveau 3 : voleur en rouge vif et son de radar, sans flèche (L-163, L-175)
+	CameraRadarDev = true,
+	-- a467 (L-373, Clément 25/11 : défenses reportées, « Coming soon » ; C2) : tuile Cameras de l'arbre,
+	-- niveaux 1 et 2 (alerte au 1er coup, voleur surligné : SkillTreeService) ; interrupteur PROD (partout),
+	-- false = tuile « Soon », rien ne s'achète, aucun effet ; allumée en DEV par CamerasDev. Lu par SkillTree.DefenseOn.
+	Cameras = false,
+	CamerasDev = true,
 	-- a411 (vague GC6, L-113, feuille de route MAJ 4) : cabine d'essayage (Config/Disguise, DisguiseService, DisguiseController ;
 	-- tuile FittingRoom de Config/SkillTree achetable) : se déguiser en passant d'une zone, dénoncer un magasin, être démasqué
 	-- d'un coup de batte. V0 proposé (Cantin, 23/11) : true en DEV ; false = tuile « Soon », remotes Disguise et Denounce ignorés.
