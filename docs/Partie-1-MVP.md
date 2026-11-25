@@ -1124,6 +1124,7 @@ Chaque étape est envoyée une seule fois par joueur avec `AnalyticsService:LogO
 
 | Date | Décision | Par |
 | --- | --- | --- |
+| 2026-11-25 | **Récompenses et bouton Display** : récompenses du jour en grille de 6 cases plus le jour 7 en grand carré ; le jour 2 devient une boîte Épique avec un montant minimum (minimum à préciser) ; le temps de jeu passe à 7 cadeaux dans le même style, le dernier en grand (valeurs proposées, à valider) ; cartes à plat, reflets et rayons sur les gros lots. Sur PC, le bouton Display reste carré, à sa taille d'origine, centré verticalement à droite. Liaison L-362 et L-364. | Clément |
 | 2026-11-25 | Les tapis de course gardent leur taille d'origine : les tapis agrandis avec une arche sont refusés (« On retire ce que tu as fait. »). Les socles des objets exposés restent à 1 stud. Liaison L-354. | Clément |
 | 2026-11-24 | Les textures d'auras et de trails venues de packs d'autres créateurs sont toutes redessinées avec nos propres textures (5 textures de trails, 6 auras), dès maintenant et pas seulement celles qui ratent : le compromis qui gardait le reste des packs pour le lancement est écarté. | Clément |
 | 2026-11-24 | Les 5 trails validés le 14/11 (Poussière, Vent, Turbo, Comète, Hyperespace) remplacent les anciens dans le jeu. Un trail s'arrête quand le joueur est immobile et reprend quand il bouge ; c'est à coder par Ironix. Liaison L-355. | Clément |
