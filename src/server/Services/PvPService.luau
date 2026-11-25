@@ -117,7 +117,8 @@
 --   - 10 fois par seconde : un non-propriétaire dans Bounds d'une boutique dont la porte n'est pas
 --     cassée et dont la fenêtre de vol est fermée (rien n'y entre sans casser la porte ; boutique
 --     libre comprise, où il serait enfermé), et, porte cassée ou non, un joueur interdit de voler
---     cette boutique (voir plus haut). Un joueur qui part (profil libéré) n'est pas déplacé ;
+--     cette boutique (voir plus haut). Un joueur qui part (profil libéré) n'est pas déplacé. a468 (Cantin,
+--     25/11) : la première sortie (porte intacte) est coupée par Features.NoIntactDoorEject / …Dev ;
 --   - à la reconstruction de la porte (WindowService.OnRebuilt) : tout non-propriétaire encore
 --     dedans (le point d'attente fait qu'il n'y a d'habitude plus personne ; une reconstruction forcée,
 --     WindowService.Rebuild ou départ du propriétaire, sort même un voleur chargé) ; la fenêtre de vol se ferme.
@@ -933,12 +934,28 @@ local function ejectFrom(plot: Model, owner: Player?, only: ((Player) -> boolean
 	return moved
 end
 
+-- a468 (Cantin, 25/11) : la sortie « porte intacte » ci-dessous est coupée par Features.NoIntactDoorEject (…Dev dans le
+-- jeu DEV, Config/ProductIds.IsDev) ; les vitres et les murs suffisent. Restent la sortie d'un joueur interdit (plus bas)
+-- et celle de la reconstruction de la porte (onRebuilt). Config/ProductIds chargé s'il est là ; sans lui, PROD.
+local EjectFeatures = require(Shared.Config.Features)
+local ejectInDevGame: boolean = (function(): boolean
+	local module = Shared.Config:FindFirstChild("ProductIds")
+	if module == nil then
+		return false
+	end
+	local ok, result = pcall(require, module :: any)
+	return ok and type(result) == "table" and (result :: any).IsDev == true
+end)()
+local function intactDoorEject(): boolean
+	return not (EjectFeatures.NoIntactDoorEject == true or (EjectFeatures.NoIntactDoorEjectDev == true and ejectInDevGame))
+end
+
 local function ejectStep()
 	for _, plot in PlotService.GetPlots() do
 		-- Parcelle libre comprise : ses murs et sa porte sont solides pour tous, on y serait enfermé.
 		local owner = PlotService.GetOwner(plot)
 		local windowId = WindowService.GetWindowId(plot)
-		if shops[plot] == nil and windowId ~= nil and not WindowService.IsBroken(windowId) then
+		if shops[plot] == nil and windowId ~= nil and not WindowService.IsBroken(windowId) and intactDoorEject() then
 			for _, player in ejectFrom(plot, owner) do
 				notice(player, "NotYourShop", MESSAGES.NotYourShop)
 				log(`{player.Name} sorti de {plot.Name} : porte intacte, ce n'est pas sa boutique`)
@@ -946,7 +963,8 @@ local function ejectStep()
 			continue
 		end
 		-- Porte cassée ou boutique ouverte au vol : on entre librement jusqu'à la reconstruction, sauf un
-		-- joueur interdit de voler cette boutique (défense par le propriétaire).
+		-- joueur interdit de voler cette boutique (défense par le propriétaire). a468 : porte intacte aussi, quand la
+		-- sortie d'au-dessus est coupée (le joueur interdit sort toujours).
 		local function banned(player: Player): boolean
 			return banLeft(player, plot) > 0
 		end

@@ -140,6 +140,15 @@ local Features = {
 	ShopGlassThrow = false,
 	-- a315 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
 	ShopGlassThrowDev = true,
+	-- a468 (Cantin, 25/11 : « c'est un truc qui a été fait au tout début du jeu parce qu'avant il n'y avait pas les
+	-- vitres ») : plus de sortie forcée « Only the owner can be inside this shop. » d'une boutique à la porte intacte
+	-- (PvPService, ejectStep) ; on se faisait sortir en passant derrière une boutique du niveau 1 (son volume Bounds
+	-- dépasse de 32 studs derrière son mur du fond). Restent : la sortie d'un joueur interdit de voler cette boutique
+	-- (RobCooldown) et celle de la reconstruction de la porte (DoorBack). Interrupteur PROD (partout) : false (règle C2,
+	-- pas encore de test humain) ; false = la sortie d'avant, intacte.
+	NoIntactDoorEject = false,
+	-- a468 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	NoIntactDoorEjectDev = true,
 	-- a426 (L-319, décision de Clément du 23/11) : dans une zone `SafeZone`, la même vitesse pour tous et un léger
 	-- ralenti pour qui porte un objet pris chez un joueur (Balance.SafeZoneSpeed, StatsService). V0 proposé (Cantin,
 	-- 24/11) : true ; false = vitesse de la formule partout et vitesse fixe Carry.StolenItemWalkSpeed, comme avant.
