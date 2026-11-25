@@ -52,6 +52,8 @@
 --   Bodyguards et DoorGuard (a408) : agents de la boutique, ShopDefenseService (Config/ShopDefense).
 --   PotionLuck et PotionTime (vague 28) : lus par PotionService avec GetEffect (délai entre deux potions
 --                   × Effects[niveau], durée d'un effet × Effects[niveau]) ; rien à brancher ici.
+--   BoxLuck         (a476, L-374 ; Features.SkillBoxLuck / SkillBoxLuckDev) : chance de chaque colis que le joueur ouvre
+--                   × Effects[niveau], lue par StoreHeistService dans l'attribut Skill_BoxLuck (Shared/OpenLuck) ; rien ici.
 -- Les compétences « Soon » (Coded = 0) n'ont aucun effet.
 --
 -- API (serveur) :

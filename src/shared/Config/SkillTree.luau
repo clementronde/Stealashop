@@ -27,6 +27,23 @@
 local DeepFreeze = require(script.Parent.DeepFreeze)
 local Features = require(script.Parent.Features)
 
+-- a476 (L-374) : Config/ProductIds chargé s'il est là (bancs à liste de modules fixe, comme dans Config/Items) ; sans
+-- lui, IsDev est faux, comme en PROD.
+local ProductIds: any = (function(): any
+	local found, module = pcall(function(): any
+		return script.Parent:FindFirstChild("ProductIds")
+	end)
+	if found and module ~= nil then
+		local ok, result = pcall(require, module :: any)
+		if ok and type(result) == "table" then
+			return result
+		end
+	end
+	return {}
+end)()
+-- a476 (L-374) : tuile BoxLuck achetable partout (Features.SkillBoxLuck) ou dans le jeu DEV seulement (SkillBoxLuckDev).
+local BOX_LUCK: boolean = Features.SkillBoxLuck == true or (Features.SkillBoxLuckDev == true and ProductIds.IsDev == true)
+
 export type SkillId =
 	"Walls"
 	| "GlassThickness"
@@ -41,6 +58,7 @@ export type SkillId =
 	| "PotionTime"
 	| "Traps"
 	| "FittingRoom"
+	| "BoxLuck"
 
 export type Opens = { Id: SkillId, Level: number }
 
@@ -245,6 +263,26 @@ local List: { Skill } = {
 		Coded = if Features.Traps then 4 else 0,
 		OpensWhen = { Id = "Walls", Level = 2 },
 		RequiresRebirth = 4, -- V0 (L-173)
+	},
+	{
+		-- a476 (L-374, Clément, session de test du 25/11 : « amélioration de luck ») : chance des ouvertures de colis du
+		-- joueur. Effects[n] = facteur de la chance de chaque colis qu'il ouvre (Shared/OpenLuck, StoreHeistService :
+		-- Table × Event × Server × Skill), rayons de magasin et d'événement. Branche « chance » : s'ouvre après Potion Luck 1,
+		-- sans renaissance. Tuile Tile_BoxLuck proposée à Clément, facultative tant qu'elle n'est pas livrée.
+		-- Achetable seulement avec Features.SkillBoxLuck (ou SkillBoxLuckDev dans le jeu DEV) ; sinon « Soon », aucun effet.
+		Id = "BoxLuck",
+		Tile = "Tile_BoxLuck",
+		TileOptional = true,
+		DisplayName = "Box Luck",
+		Stat = "Box luck", -- V0 proposé le 25/11 (a476)
+		Description = "Boxes you open give rarer items more often.", -- V0 proposé le 25/11 (a476)
+		MaxLevel = 5, -- V0 proposé le 25/11 (a476)
+		Prices = { 6_000, 50_000, 450_000, 4_000_000, 35_000_000 }, -- V0 proposé le 25/11 (a476)
+		Effects = { 1.1, 1.2, 1.3, 1.4, 1.5 }, -- V0 proposé le 25/11 (a476)
+		Labels = { [0] = "×1", "×1.1", "×1.2", "×1.3", "×1.4", "×1.5" },
+		Coded = if BOX_LUCK then 5 else 0,
+		OpensWhen = { Id = "PotionLuck", Level = 1 }, -- V0 proposé le 25/11 (a476)
+		-- Placée avant FittingRoom : la cabine reste la dernière de la liste (banc a411).
 	},
 	{
 		-- a411 (vague GC6, L-113, feuille de route MAJ 4) : cabine d'essayage. Niveau 1 = la cabine de sa boutique est
