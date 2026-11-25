@@ -10,9 +10,17 @@
 -- connu du catalogue, pas au coffre-fort, déjà révélé), sans les objets exposés, revérifiés dans le profil.
 -- Jamais un colis (pas encore ouvert) ni ce qui est porté au-dessus de la tête (colis PNJ, objet volé en cours
 -- de vol : ils ne sont pas dans Items du joueur, ou sont exposés chez la victime).
---   - objet « tenu en main » : seulement l'objet dans la main (Clément, L-117 point 1). Depuis L-079, un objet
---     ne se tient jamais en main (un clic sur sa case le pose) : il n'y en a donc aucun, PawnOffer l'envoie
---     vide, le vendeur répond Lines.NothingHeld et PawnSellHeld est toujours refusé ; « tout vendre » reste ;
+--   - objet « tenu en main » : seulement l'objet dans la main (Clément, L-117 point 1), celui que donne
+--     HeldItemService.GetHeld (vague 44, a142 et a152 : objet de l'inventaire tenu en main). a470 (bug vu par Cantin
+--     le 25/11 : « You're holding nothing, pal. » avec le Golden Taxi en main) : avant, ce service croyait encore
+--     qu'aucun objet ne se tenait en main (L-079) et envoyait toujours l'objet tenu vide. Il est offert seulement
+--     s'il est vendable par les mêmes règles que « tout vendre » (dans la liste ci-dessous : à lui, dans Items,
+--     montré par l'inventaire, ni exposé, ni au coffre-fort ; donc jamais un objet volé en cours de vol ni un
+--     colis), à un prix plus grand que 0, et sans portage en cours (attribut Carrying). Vendu : il quitte la main
+--     (HeldItemService.Stow), puis Items, puis l'argent est versé, dans la même exécution, sans yield ;
+--   - « tout vendre » : tout l'inventaire montré, objet tenu compris (écran : « Sell my whole inventory », prix =
+--     les objets de l'inventaire sans ceux qui sont exposés ; l'objet tenu y reste, il n'est compté qu'une fois).
+--     Vendu, l'objet tenu quitte aussi la main avant Items et l'argent ;
 --   - prix d'un objet : math.floor(Pawn.PriceFactor × $/s), $/s = Formulas.ItemIncome(objet) ×
 --     Mutations.IncomeMultiplier (même règle que l'inventaire et DisplayService ; vague 76 : rareté, zone et
 --     rang de l'objet), sans les bonus du joueur.
@@ -26,8 +34,10 @@
 -- taggé PawnShop (sinon de son pivot ; stands rangés dans un dossier de travail en « _ » ignorés, Find.inMap).
 -- Loin du stand ou profil pas chargé : ignoré (une ligne en Studio). Vente refusée parce que l'offre a changé :
 -- PawnSold(0, 0) puis la nouvelle PawnOffer.
--- Vente : chaque objet est retiré de Items du profil, puis l'argent est versé par DataService.AddCash, dans la
--- même exécution, sans yield (pas de vente en double). Puis InventoryService.Refresh (écran et barre du bas).
+-- Vente : l'objet tenu en main, s'il est vendu, est d'abord rangé (HeldItemService.Stow) ; chaque objet est
+-- retiré de Items du profil, puis l'argent est versé par DataService.AddCash, dans la même exécution, sans yield
+-- (pas de vente en double). Puis InventoryService.Refresh (écran et barre du bas). HeldItemService est chargé au
+-- premier appel, require protégé (les bancs d'essai du receleur ne l'ont pas toujours : rien en main).
 --
 --
 -- a314 (L-292, L-271 : bouton SellButton d'une ligne de UI_Displayed, confirmation YES / NO ; DisplayedController) :
@@ -79,6 +89,12 @@ type DisplayApi = {
 	IsHeld: (player: Player, itemUid: string) -> boolean,
 }
 
+-- a470 : ce que le receleur utilise de HeldItemService (chargé au premier appel, require protégé).
+type HeldApi = {
+	GetHeld: (player: Player) -> string?,
+	Stow: (player: Player) -> (),
+}
+
 export type Offer = {
 	HeldUid: string?,
 	HeldItemId: string?,
@@ -91,6 +107,7 @@ export type Offer = {
 local PAWN_TAG = "PawnShop"
 local PAD_NAME = "ShopPad"
 local ROOT_PART = "HumanoidRootPart"
+local CARRYING_ATTRIBUTE = "Carrying" -- CarryService : portage en cours (colis, objet volé)
 
 local IS_STUDIO = RunService:IsStudio()
 
@@ -108,6 +125,27 @@ local function log(message: string)
 	if IS_STUDIO then
 		print(`[PawnShopService] {message}`)
 	end
+end
+
+-- a470 : HeldItemService, chargé au premier appel (il ne charge pas ce service).
+local heldApi: HeldApi? = nil
+local function heldItems(): HeldApi?
+	if heldApi == nil then
+		local module = script.Parent:FindFirstChild("HeldItemService")
+		if module and module:IsA("ModuleScript") then
+			local ok, result = pcall(require, module)
+			if ok and type(result) == "table" then
+				heldApi = result :: any
+			end
+		end
+	end
+	return heldApi
+end
+
+-- Uid de l'objet tenu en main (nil : rien en main, ou HeldItemService absent).
+local function heldUidOf(player: Player): string?
+	local api = heldItems()
+	return if api then api.GetHeld(player) else nil
 end
 
 ------------------------------------------------------------------------------
@@ -196,11 +234,25 @@ local function computeOffer(player: Player, data: Data): Offer
 	for _, uid in uids do
 		total += priceOfEntry(data.Items[uid]) or 0
 	end
-	-- Aucun objet en main dans ce jeu (L-117 point 1) : rien à vendre « tenu ».
+	-- a470 : l'objet tenu en main (HeldItemService), s'il est dans la liste de « tout vendre » (mêmes règles), à un
+	-- prix plus grand que 0 et sans portage en cours. Sinon rien « tenu » (Lines.NothingHeld chez le client).
+	local heldUid: string? = nil
+	local heldItemId: string? = nil
+	local heldPrice = 0
+	local candidate = heldUidOf(player)
+	if candidate ~= nil and player:GetAttribute(CARRYING_ATTRIBUTE) == nil and table.find(uids, candidate) ~= nil then
+		local entry = data.Items[candidate]
+		local price = priceOfEntry(entry)
+		if price ~= nil and price > 0 then
+			heldUid = candidate
+			heldItemId = (entry :: any).Id
+			heldPrice = price
+		end
+	end
 	return {
-		HeldUid = nil,
-		HeldItemId = nil,
-		HeldPrice = 0,
+		HeldUid = heldUid,
+		HeldItemId = heldItemId,
+		HeldPrice = heldPrice,
 		AllUids = uids,
 		AllPrice = total,
 	}
@@ -232,12 +284,24 @@ local function sell(player: Player, data: Data, uids: { string }): number
 	local total = 0
 	local count = 0
 	local rarity: string? = nil
+	local heldUid = heldUidOf(player) -- a470
 	for _, uid in uids do
 		local entry = data.Items[uid]
 		local price = priceOfEntry(entry)
 		if price then
 			local def = Items.ById[(entry :: any).Id]
 			rarity = if def then def.Rarity else nil
+			if uid == heldUid then
+				-- a470 : l'objet vendu quitte d'abord la main (Tool détruit, attribut HeldItem retiré). Sans yield.
+				local api = heldItems()
+				if api then
+					local ok, err = pcall(api.Stow :: any, player) -- :: any : l'ancien solveur croit que pcall ne renvoie qu'une valeur
+					if not ok then
+						warn(`[PawnShopService] objet tenu de {player.Name} pas rangé : {err}`)
+					end
+				end
+				heldUid = nil
+			end
 			data.Items[uid] = nil
 			total += price
 			count += 1
