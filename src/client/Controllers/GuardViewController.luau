@@ -14,6 +14,12 @@
 -- animations de Clément, jouées par le serveur, continuent telles quelles sur le corps décalé (Cantin, 24/11 : l'image
 -- qui attend garde l'animation du serveur, aucune animation jouée ici). Aucune instance créée, aucun script dans le
 -- modèle ; écart nul : le joint retrouve sa valeur d'origine.
+-- a450 (Play de fusion101) : les 10 modèles de vigiles de Clément relient le corps au HumanoidRootPart par une
+-- AnimationConstraint « Root » (pas un Motor6D) : le corps est alors posé à Attachment0.WorldCFrame × Transform ×
+-- Attachment1.CFrame⁻¹ ; l'Animator écrit Transform, donc c'est le CFrame de l'Attachment porté par le HumanoidRootPart
+-- qui est décalé (même calcul que C0, ou C1 s'il est monté à l'envers), chez ce joueur seulement. Sans aucun lien (ou
+-- corps hors de l'assemblage du HumanoidRootPart : contrainte non cinématique) : image non freinée, un avertissement
+-- en Studio, et la retenue au contact (plus bas) se fait sur la vraie place du vigile.
 -- Pas d'écriture du CFrame du HumanoidRootPart (la réplication la réécrit, et un vigile immobile ne la réécrit plus :
 -- on ne saurait plus lire sa vraie place), pas de copie locale (un second modèle à animer et à nettoyer).
 --
@@ -52,7 +58,9 @@ local HOLD_STEP = "GuardContactHold"
 
 local IS_STUDIO = RunService:IsStudio()
 
-type Joint = { joint: JointInstance, first: boolean, original: CFrame }
+-- Un lien entre le HumanoidRootPart et le corps : Motor6D ou Weld (`joint` : C0 si `first`, sinon C1), ou
+-- AnimationConstraint (`attachment` : celui que porte le HumanoidRootPart). `body` : la pièce de l'autre bout.
+type Joint = { instance: Instance, joint: JointInstance?, attachment: Attachment?, first: boolean, original: CFrame, body: BasePart }
 
 type Entry = {
 	model: Model,
@@ -89,20 +97,52 @@ local function number(value: any, default: number): number
 	return if type(value) == "number" and value == value then value else default
 end
 
--- Les joints qui accrochent le corps au HumanoidRootPart (Motor6D « Root » d'un R15 ; Weld d'un accessoire porté par lui).
+local function link(instance: Instance, joint: JointInstance?, attachment: Attachment?, first: boolean, original: CFrame, body: BasePart): Joint
+	return { instance = instance, joint = joint, attachment = attachment, first = first, original = original, body = body }
+end
+
+-- Les liens qui accrochent le corps au HumanoidRootPart : Motor6D « Root » d'un R15, Weld d'un accessoire porté par
+-- lui, ou AnimationConstraint « Root » (a450 : les modèles de vigiles de Clément).
 local function jointsOf(model: Model, root: BasePart): { Joint }
 	local found: { Joint } = {}
 	for _, descendant in model:GetDescendants() do
 		if descendant:IsA("JointInstance") then
 			local joint = descendant :: JointInstance
-			if joint.Part0 == root and joint.Part1 ~= nil then
-				table.insert(found, { joint = joint, first = true, original = joint.C0 })
-			elseif joint.Part1 == root and joint.Part0 ~= nil then
-				table.insert(found, { joint = joint, first = false, original = joint.C1 })
+			local part0, part1 = joint.Part0, joint.Part1
+			if part0 == root and part1 ~= nil then
+				table.insert(found, link(joint, joint, nil, true, joint.C0, part1))
+			elseif part1 == root and part0 ~= nil then
+				table.insert(found, link(joint, joint, nil, false, joint.C1, part0))
+			end
+		elseif descendant:IsA("AnimationConstraint") then
+			local constraint = descendant :: AnimationConstraint
+			local a0, a1 = constraint.Attachment0, constraint.Attachment1
+			local part0 = if a0 then a0.Parent else nil
+			local part1 = if a1 then a1.Parent else nil
+			if a0 and a1 and part0 and part1 and part0 ~= part1 and part0:IsA("BasePart") and part1:IsA("BasePart") then
+				if part0 == root then
+					table.insert(found, link(constraint, nil, a0, true, a0.CFrame, part1 :: BasePart))
+				elseif part1 == root then
+					table.insert(found, link(constraint, nil, a1, false, a1.CFrame, part0 :: BasePart))
+				end
 			end
 		end
 	end
 	return found
+end
+
+-- Écrit un lien : `value` = décalage × valeur d'origine (la valeur d'origine pour le rétablir).
+local function write(item: Joint, value: CFrame)
+	local attachment, joint = item.attachment, item.joint
+	if attachment then
+		attachment.CFrame = value
+	elseif joint then
+		if item.first then
+			joint.C0 = value
+		else
+			joint.C1 = value
+		end
+	end
 end
 
 local function restore(entry: Entry)
@@ -112,12 +152,8 @@ local function restore(entry: Entry)
 	end
 	entry.applied = false
 	for _, item in entry.joints do
-		if item.joint.Parent ~= nil then
-			if item.first then
-				item.joint.C0 = item.original
-			else
-				item.joint.C1 = item.original
-			end
+		if item.instance.Parent ~= nil then
+			write(item, item.original)
 		end
 	end
 end
@@ -212,15 +248,35 @@ local function stepEntry(entry: Entry, dt: number, mine: BasePart?): boolean
 			constrained = math.abs(real.Y - at.Y) <= number(display.HeightMax, math.huge) and dx * dx + dz * dz <= range * range
 		end
 	end
-	-- Le HumanoidRootPart doit porter l'assemblage (sinon décaler son joint le déplacerait, lui, au lieu du corps).
-	if root.AssemblyRootPart ~= root then
-		note(`root:{entry.model.Name}`, `{entry.model.Name} : son HumanoidRootPart ne porte pas l'assemblage, image non freinée`)
+	local contact = hold ~= nil and not entry.releasing and entry.model:GetAttribute(LAW_ATTRIBUTE) == true
+	-- Le HumanoidRootPart doit porter l'assemblage (sinon décaler son lien le déplacerait, lui, au lieu du corps), et le
+	-- corps en faire partie (a450 : une AnimationConstraint non cinématique laisse le corps dans son propre assemblage,
+	-- que la réplication replace). Sinon, ou sans aucun lien : image non freinée ; la retenue au contact (a443) reste,
+	-- sur la vraie place du vigile (sans elle, le joueur qui fait demi-tour traverse le vigile avant la capture).
+	local reason: string? = nil
+	if #entry.joints == 0 then
+		reason = "aucun lien (Motor6D, Weld ou AnimationConstraint) entre son HumanoidRootPart et son corps"
+	elseif root.AssemblyRootPart ~= root then
+		reason = "son HumanoidRootPart ne porte pas l'assemblage"
+	else
+		for _, item in entry.joints do
+			if item.body.AssemblyRootPart ~= root then
+				reason = `{item.instance.ClassName} {item.instance.Name} : {item.body.Name} n'est pas dans l'assemblage de son HumanoidRootPart`
+				break
+			end
+		end
+	end
+	if reason then
+		note(`root:{entry.model.Name}`, `{entry.model.Name} : {reason}, image non freinée`)
 		GuardView.Reset(entry.state)
 		restore(entry)
+		if contact and mine then
+			checkContact(real.X, real.Z, real.Y, mine)
+		end
 		return true
 	end
 	local x, z = GuardView.Step(entry.state, display, real.X, real.Z, px, pz, dt, constrained)
-	if mine and hold ~= nil and not entry.releasing and entry.model:GetAttribute(LAW_ATTRIBUTE) == true then
+	if contact and mine then
 		checkContact(x, z, real.Y, mine) -- a443 (Chase.V3.ContactHold)
 	end
 	local ox, oz = GuardView.Offset(entry.state)
@@ -240,11 +296,7 @@ local function stepEntry(entry: Entry, dt: number, mine: BasePart?): boolean
 	end
 	local shift = frame:ToObjectSpace(shown)
 	for _, item in entry.joints do
-		if item.first then
-			item.joint.C0 = shift * item.original
-		else
-			item.joint.C1 = shift * item.original
-		end
+		write(item, shift * item.original)
 	end
 	entry.applied = true
 	entry.offset = Vector3.new(ox, 0, oz)
@@ -282,11 +334,8 @@ local function follow(model: Model)
 	if root == nil or not root:IsA("BasePart") then
 		return
 	end
+	-- a450 : sans aucun lien, le vigile est suivi quand même (stepEntry : avertissement, retenue au contact seule).
 	local joints = jointsOf(model, root :: BasePart)
-	if #joints == 0 then
-		note(`joints:{model.Name}`, `{model.Name} : aucun joint entre son HumanoidRootPart et son corps, image non freinée`)
-		return
-	end
 	entries[model] = {
 		model = model,
 		root = root :: BasePart,
