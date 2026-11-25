@@ -1124,6 +1124,7 @@ Chaque étape est envoyée une seule fois par joueur avec `AnalyticsService:LogO
 
 | Date | Décision | Par |
 | --- | --- | --- |
+| 2026-11-25 | Encaissement sur une plaque : le « ching » du kaching sonne dès le pas (son déjà au contact depuis a422, début du fichier sauté), les billets volent deux fois plus vite, le compteur reste juste et arrive environ une demi-seconde après ; « +$X » à chaque plaque, sans attendre. Retour de Clément du 24/11 : la latence d'environ 1 s de L-299 était trop forte. Liaison L-365. | Clément |
 | 2026-11-25 | Les cadeaux de temps de jeu doivent donner un lot exceptionnel à 20 min et à 1 h, pour la rétention : les valeurs proposées pour les 7 paliers sont refusées. Ironix propose un V0 à montrer à Clément avant de le coder. Liaison L-362. | Clément |
 | 2026-11-25 | **Récompenses et bouton Display** : récompenses du jour en grille de 6 cases plus le jour 7 en grand carré ; le jour 2 devient une boîte Épique avec un montant minimum (minimum à préciser) ; le temps de jeu passe à 7 cadeaux dans le même style, le dernier en grand (valeurs proposées, à valider) ; cartes à plat, reflets et rayons sur les gros lots. Sur PC, le bouton Display reste carré, à sa taille d'origine, centré verticalement à droite. Liaison L-362 et L-364. | Clément |
 | 2026-11-25 | Les tapis de course gardent leur taille d'origine : les tapis agrandis avec une arche sont refusés (« On retire ce que tu as fait. »). Les socles des objets exposés restent à 1 stud. Liaison L-354. | Clément |
