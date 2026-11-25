@@ -318,6 +318,20 @@ local Features = {
 	ZoneBoxEverywhere = false,
 	-- a440 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
 	ZoneBoxEverywhereDev = true,
+	-- a459 (L-354, Clément 24/11) ; a459b, a459c (L-367, règle finale de Cantin 25/11) : sur un présentoir, la vraie taille
+	-- du modèle × le facteur de sa rareté (minimum / modèle médian de la rareté, au moins ×1, Config/DisplaySize : 4, 5 ou 7 studs),
+	-- remontée au minimum si elle reste en dessous, puis grossie par le poids (×1 à ×1,25 / ×1,5 / ×2), réduite seulement
+	-- par la place physique (plafond du présentoir, voisins), au lieu de la taille de son poids.
+	-- Interrupteur PROD (partout) : false (règle C2 : pas encore de test humain) ; false = taille du poids et FitSize, comme avant.
+	DisplayRaritySize = false,
+	-- a459 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	DisplayRaritySizeDev = true,
+	-- a459 (L-306, Cantin 25/11) : l'objet du socle du plus rare (RarestDisplay, copie RarestItem de VfxController) flotte
+	-- exactement comme sur les présentoirs (ItemIdleController, Config/DisplayMotion). Interrupteur PROD (partout) : false
+	-- (règle C2) ; false = l'objet du socle reste immobile, comme avant.
+	RarestFloat = false,
+	-- a459 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	RarestFloatDev = true,
 }
 
 export type Features = typeof(Features)
