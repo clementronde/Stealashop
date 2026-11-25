@@ -215,6 +215,13 @@ local Features = {
 	TreadmillGainPops = false,
 	-- a480 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
 	TreadmillGainPopsDev = true,
+	-- a472 (L-365 point 5, Clément 25/11) : le client prévoit le ramassage d'une de ses plaques (Shared/PadZone, la même
+	-- règle que le serveur) et joue le son Cash_Pad et le voile UI_CashFlash sans attendre le remote CashCollect
+	-- (Config/CashFlash.Predict, GainController) ; l'argent, le compteur et « +$X » restent ceux du serveur. Interrupteur
+	-- PROD (partout) : false (règle C2 : pas encore de test humain) ; false = son et voile au remote, comme avant (a422).
+	PadPredict = false,
+	-- a472 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	PadPredictDev = true,
 }
 
 export type Features = typeof(Features)

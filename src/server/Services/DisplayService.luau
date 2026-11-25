@@ -225,7 +225,7 @@
 --     CanTouch). Une arrivée = un seul ramassage de tout ce que la plaque contient (vague 24, retour
 --     de Cantin du 2026-11-11 : ça ramassait plusieurs fois). Rester dessus ne ramasse pas davantage :
 --     les Touched répétés des pieds ne comptent pas, et le joueur ne quitte la plaque qu'une fois son
---     HumanoidRootPart hors d'une zone de sortie plus large (PAD_EXIT_MARGIN, PAD_EXIT_ABOVE) pendant
+--     HumanoidRootPart hors d'une zone de sortie plus large (PAD_EXIT_MARGIN, PAD_EXIT_ABOVE : Shared/PadZone) pendant
 --     PAD_EXIT_DELAY s : marcher ou sauter sur la plaque ne la fait pas « quitter ». Passer sur une
 --     autre plaque la ramasse tout de suite (plaques indépendantes). Délai par plaque (L-106 point 12,
 --     remplace L-091 : deux textes de gain se superposaient) : une même plaque attend PAD_COOLDOWN s
@@ -281,6 +281,7 @@ local DataService = require(script.Parent.DataService)
 local PlotService = require(script.Parent.PlotService)
 local ShopGrowth = require(ReplicatedStorage.Shared.Config.ShopGrowth) -- a280 : 2e étage
 local ShopFloor = require(ReplicatedStorage.Shared.ShopFloor) -- a280
+local PadZone = require(ReplicatedStorage.Shared.PadZone) -- a472 (L-365) : volume des plaques, partagé avec le client
 
 type Data = ProfileTypes.Data
 type ItemEntry = ProfileTypes.Item
@@ -370,20 +371,12 @@ local PAD_CHECK_INTERVAL = 0.1
 -- V0 proposé, absent du doc : délai entre deux recherches des plaques d'une parcelle quand un
 -- présentoir débloqué n'a pas la sienne (voir l'en-tête).
 local PAD_RESCAN_INTERVAL = 5
--- V0 proposé, absent du doc : volume où l'on ramasse : l'emprise de la plaque élargie de PAD_MARGIN,
--- de PAD_BELOW sous son dessus à PAD_ABOVE au-dessus (le HumanoidRootPart d'un R15 debout est à
--- environ 3 studs du sol).
-local PAD_MARGIN = 0.5
-local PAD_BELOW = 1
-local PAD_ABOVE = 6
--- V0 proposés, absents du doc (vague 24) : zone de sortie, plus large que la zone d'arrivée, et
--- temps passé hors d'elle avant de pouvoir ramasser de nouveau la même plaque (un saut monte
--- d'environ 7 studs, le HumanoidRootPart d'un R15 qui marche oscille).
-local PAD_EXIT_MARGIN = 2
-local PAD_EXIT_ABOVE = 12
-local PAD_EXIT_DELAY = 0.3
--- L-106 point 12 (Clément, 2026-11-12) : délai d'1 s par plaque entre deux ramassages de la même plaque.
-local PAD_COOLDOWN = 1
+-- a472 (L-365 point 5) : volume où l'on ramasse (PadZone.Margin, Below, Above), zone de sortie (ExitMargin,
+-- ExitAbove, ExitDelay) et délai d'une plaque (Cooldown) dans Shared/PadZone, pour que le client prévoie le ramassage
+-- avec la même règle ; valeurs inchangées (V0 proposés, absents du doc ; vague 24 ; L-106 point 12 de Clément,
+-- 2026-11-12 : délai d'1 s par plaque entre deux ramassages de la même plaque).
+local PAD_EXIT_DELAY = PadZone.ExitDelay
+local PAD_COOLDOWN = PadZone.Cooldown
 -- V0 proposé, absent du doc : borne de la recherche des présentoirs bonus (DisplaySlot_21 et
 -- suivants, DEV-100) ; pas une règle de jeu, le gamepass en donne 4 (Config/Monetization).
 local BONUS_SLOT_LIMIT = 10
@@ -1050,38 +1043,9 @@ local function isOnPlot(player: Player, plot: Model, refs: PlotRefs): boolean
 	return math.abs(p.X) <= boxSize.X / 2 and math.abs(p.Z) <= boxSize.Z / 2
 end
 
--- `position` dans le volume de la plaque élargi de `margin` sur les côtés, jusqu'à `above` au-dessus.
--- La hauteur se lit sur l'axe de la plaque le plus tourné vers le ciel : Clément pose ses plaques à plat avec
--- l'épaisseur sur Y ou sur Z (plaques carrées tournées vers la porte, L-091), dans un sens ou dans l'autre.
-local function isOnPad(position: Vector3, pad: BasePart, margin: number?, above: number?): boolean
-	local side = margin or PAD_MARGIN
-	local cf = pad.CFrame
-	local p = cf:PointToObjectSpace(position)
-	local half = pad.Size / 2
-	-- Le haut du monde vu dans le repère de la plaque : composante verticale de ses axes X, Y et Z.
-	local up = cf:PointToObjectSpace(cf.Position + Vector3.new(0, 1, 0))
-	local ups = { up.X, up.Y, up.Z }
-	local coords = { p.X, p.Y, p.Z }
-	local halves = { half.X, half.Y, half.Z }
-	local axis = 1
-	for i = 2, 3 do
-		if math.abs(ups[i]) > math.abs(ups[axis]) then
-			axis = i
-		end
-	end
-	for i = 1, 3 do
-		if i ~= axis and math.abs(coords[i]) > halves[i] + side then
-			return false
-		end
-	end
-	local height = if ups[axis] >= 0 then coords[axis] else -coords[axis]
-	return height >= halves[axis] - PAD_BELOW and height <= halves[axis] + (above or PAD_ABOVE)
-end
-
--- `position` encore dans la zone de sortie de la plaque (voir l'en-tête).
-local function isNearPad(position: Vector3, pad: BasePart): boolean
-	return isOnPad(position, pad, PAD_EXIT_MARGIN, PAD_EXIT_ABOVE)
-end
+-- `position` dans le volume d'arrivée de la plaque, ou dans sa zone de sortie (voir l'en-tête) : Shared/PadZone (a472).
+local isOnPad = PadZone.isOnPad
+local isNearPad = PadZone.isNearPad
 
 ------------------------------------------------------------------------------
 -- Plaques de ramassage CollectPad_xx (voir l'en-tête)

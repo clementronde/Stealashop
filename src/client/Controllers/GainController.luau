@@ -87,6 +87,10 @@
 --   GainController.FlashRank(précédent, depuis) -> number   rang de la plaque dans la tournée
 --   GainController.FlashGoal(posée, rang) -> number         transparence d'une bande du voile au plus fort
 --   GainController.GetPadState() -> { Rank, Notes, Waiting, FlashToken }   pour les bancs
+--   a472 (L-365, Config/CashFlash.SoundStart et Predict, Features.PadPredict / PadPredictDev) : Cash_Pad lu à partir de
+--   SoundStart s ; le client prévoit l'arrivée sur une de ses plaques (Shared/PadZone, la règle du serveur) et joue son
+--   et voile sans attendre le remote, qui ne les rejoue pas ; l'argent, le compteur et « +$X » restent ceux du serveur.
+--   GainController.GetPredictState() -> { On, Predicted, Confirmed, Pads, Waiting }   pour les bancs
 -- Pour un test dans Studio (barre de commande côté client) :
 --   GainController.GetActive() -> { Gains: number, Flyers: number, Pops: number, Bills: number, IncomeFlies: number, TrainFlies: number }
 --   GainController.GetPops() -> { Offsets: { Vector3 }, Voices: number }   a480 : apparitions autour du joueur encore
@@ -1452,6 +1456,14 @@ local function padSound()
 				local jitter: number = CashFlash.PitchJitter
 				local base: number = template.PlaybackSpeed
 				played.PlaybackSpeed = base * (1 + (random:NextNumber() * 2 - 1) * jitter)
+				-- a472 (L-365 point 1) : lu à partir de SoundStart s, pour sauter le « cha » du fichier (le fichier n'est
+				-- pas touché). pcall : un Sound qui refuserait la position joue du début, comme avant.
+				local start: any = CashFlash.SoundStart
+				if type(start) == "number" and start > 0 then
+					pcall(function()
+						played.TimePosition = start
+					end)
+				end
 			end
 			return
 		end
@@ -1575,9 +1587,8 @@ local function padOrClassic(total: number, releases: { () -> () })
 	end)
 end
 
--- DisplayController.OnCollect : une de ses plaques vidée par le joueur local.
-local function onPadCollect()
-	local now = os.clock()
+-- Au contact d'une plaque : son (a422) et voile ; renvoie true si le son est parti.
+local function contactFx(now: number): boolean
 	-- a422 (Cantin, 24/11) : le son part au contact, avant tout le reste ; gains hors ligne ouverts : classic le joue.
 	local sounded = CONTACT_SOUND and not screenOpen(offline)
 	if sounded then
@@ -1589,6 +1600,188 @@ local function onPadCollect()
 	local ok, err = pcall(flashVeil :: any, rank)
 	if not ok then
 		warnOnce("cashFlashError", `[Gains] voile de la plaque : {err}`)
+	end
+	return sounded
+end
+
+------------------------------------------------------------------------------
+-- a472 (L-365 point 5) : ramassage prévu par le client (Config/CashFlash.Predict, Shared/PadZone)
+------------------------------------------------------------------------------
+-- Chaque image, le HumanoidRootPart du joueur local est comparé aux plaques CollectPad_xx de SA parcelle avec la règle
+-- du serveur (PadZone.step, et PadZone.touched au Touched d'une plaque) : arrivée, délai de la plaque écoulé, plaque
+-- affichée (AmountGui allumé). Alors contactFx tout de suite (son et voile) et la plaque est notée `predicted` ; son
+-- remote CashCollect, arrivé moins de ConfirmWindow s après, ne rejoue ni l'un ni l'autre et fait le reste comme avant
+-- (compteur retenu jusqu'au premier billet, « +$X » à la hausse de Cash du serveur). Rien n'est prévu de l'argent.
+
+local PREDICT: any = if CashFlash and type(CashFlash.Predict) == "table" then CashFlash.Predict else nil
+local PREDICT_ON: boolean = FLASH_ON and CONTACT_SOUND and PREDICT ~= nil and PREDICT.Enabled == true
+local PLOT_TAG = "PlayerPlot" -- Contract/Models.Plot.Tag
+local OWNER_ATTRIBUTE = "OwnerUserId" -- posé par PlotService sur la parcelle
+local PAD_PATTERN = "^CollectPad_(%d+)$" -- comme DisplayService
+local AMOUNT_GUI = "AmountGui" -- comme DisplayService : allumé quand la plaque porte au moins 1 $
+local PLOT_RECHECK = 1 -- V0 proposé, absent du doc : s entre deux recherches de sa parcelle
+local padZone: any = nil -- Shared/PadZone
+local predictTracker: any = nil
+local predicted: { [number]: number } = {} -- [plaque] = os.clock() du son prévu, en attente de son remote
+local ownPlot: Instance? = nil
+local ownPads: { [number]: BasePart } = {}
+local padsDirty = true
+local plotCheckedAt = -math.huge
+local plotLinks: { RBXScriptConnection } = {}
+local predictCount = 0 -- pour les bancs : sons prévus
+local confirmCount = 0 -- pour les bancs : remotes qui ont confirmé une prévision
+
+local function padShown(slot: number): boolean
+	local pad = ownPads[slot]
+	local gui = if pad then Find.path(pad, AMOUNT_GUI) else nil
+	return gui ~= nil and gui:IsA("LayerCollector") and (gui :: LayerCollector).Enabled
+end
+
+local function predictPad(slot: number)
+	if screenOpen(offline) then
+		return -- gains hors ligne ouverts : l'encaissement d'avant (classic) joue Cash_Collect au remote
+	end
+	local now = os.clock()
+	predicted[slot] = now
+	predictCount += 1
+	contactFx(now)
+end
+
+local function localRoot(): BasePart?
+	local character = localPlayer.Character
+	local root = if character then character:FindFirstChild("HumanoidRootPart") else nil
+	return if root and root:IsA("BasePart") then root :: BasePart else nil
+end
+
+local function onOwnPadTouched(slot: number, hit: BasePart)
+	local character = localPlayer.Character
+	local root = localRoot()
+	if character == nil or root == nil or not hit:IsDescendantOf(character) or not ownPads[slot] then
+		return
+	end
+	local zone: any = padZone
+	local found = zone.touched(predictTracker, os.clock(), root.Position, ownPads, slot, padShown)
+	if found then
+		predictPad(found)
+	end
+end
+
+local touchLinked: { [BasePart]: boolean } = setmetatable({}, { __mode = "k" }) :: any
+
+local function scanOwnPads()
+	padsDirty = false
+	local pads: { [number]: BasePart } = {}
+	local plot = ownPlot
+	if plot then
+		for _, descendant in plot:GetDescendants() do
+			local digits = string.match(descendant.Name, PAD_PATTERN)
+			local slot = if digits then tonumber(digits) else nil
+			if slot and descendant:IsA("BasePart") and not pads[slot] then
+				local part = descendant :: BasePart
+				pads[slot] = part
+				if not touchLinked[part] then
+					touchLinked[part] = true
+					-- Contact d'un pied, comme le Touched du serveur (pcall : une plaque sans Touched compte à l'image).
+					pcall(function()
+						part.Touched:Connect(function(hit: BasePart)
+							if ownPads[slot] == part then
+								onOwnPadTouched(slot, hit)
+							end
+						end)
+					end)
+				end
+			end
+		end
+	end
+	ownPads = pads
+end
+
+local function setOwnPlot(plot: Instance?)
+	if plot == ownPlot then
+		return
+	end
+	for _, link in plotLinks do
+		link:Disconnect()
+	end
+	table.clear(plotLinks)
+	ownPlot = plot
+	padsDirty = true
+	if predictTracker then
+		predictTracker.onSlot = nil
+	end
+	if plot then
+		local function mark(inst: Instance)
+			if string.match(inst.Name, PAD_PATTERN) then
+				padsDirty = true
+			end
+		end
+		table.insert(plotLinks, plot.DescendantAdded:Connect(mark))
+		table.insert(plotLinks, plot.DescendantRemoving:Connect(mark))
+	end
+end
+
+local function predictTick()
+	local now = os.clock()
+	if now - plotCheckedAt >= PLOT_RECHECK then
+		plotCheckedAt = now
+		local mine: Instance? = nil
+		for _, plot in CollectionService:GetTagged(PLOT_TAG) do
+			if plot:GetAttribute(OWNER_ATTRIBUTE) == localPlayer.UserId then
+				mine = plot
+				break
+			end
+		end
+		setOwnPlot(mine)
+	end
+	if padsDirty then
+		scanOwnPads()
+	end
+	for slot, at in predicted do
+		if now - at > PREDICT.ConfirmWindow then
+			predicted[slot] = nil -- pas de remote : le serveur a refusé, rien d'autre ne bouge
+		end
+	end
+	if next(ownPads) == nil then
+		return
+	end
+	local root = localRoot()
+	local zone: any = padZone
+	local found = zone.step(predictTracker, now, if root then root.Position else nil, ownPads, padShown)
+	if found then
+		predictPad(found)
+	end
+end
+
+-- Pour les bancs : ramassages prévus par le client.
+function GainController.GetPredictState(): { On: boolean, Predicted: number, Confirmed: number, Pads: number, Waiting: number }
+	local pads = 0
+	for _ in ownPads do
+		pads += 1
+	end
+	local waiting = 0
+	for _ in predicted do
+		waiting += 1
+	end
+	return { On = PREDICT_ON and padZone ~= nil, Predicted = predictCount, Confirmed = confirmCount, Pads = pads, Waiting = waiting }
+end
+
+-- DisplayController.OnCollect : une de ses plaques vidée par le joueur local (remote CashCollect).
+local function onPadCollect(_amount: number?, slot: number?)
+	local now = os.clock()
+	local sounded: boolean
+	local at = if type(slot) == "number" then predicted[slot] else nil
+	if at and slot and now - at <= PREDICT.ConfirmWindow then
+		predicted[slot] = nil -- a472 : son et voile déjà partis à l'arrivée prévue
+		confirmCount += 1
+		sounded = true
+	else
+		if at and slot then
+			predicted[slot] = nil -- prévision trop vieille (le serveur l'avait refusée) : ce remote est un autre ramassage
+		end
+		sounded = contactFx(now)
+	end
+	if predictTracker and type(slot) == "number" then
+		padZone.confirm(predictTracker, slot, now) -- le délai de la plaque repart, comme au serveur
 	end
 	local note: PadNote = { at = now, landed = not vfxLands, claimed = false, sounded = sounded, onLand = nil }
 	pruneNotes()
@@ -2165,6 +2358,25 @@ function GainController.Start()
 		local onCollect: any = if display then display.OnCollect else nil
 		if type(onCollect) == "function" then
 			(onCollect :: any)(onPadCollect)
+			-- a472 (L-365 point 5) : ramassage prévu par le client (Features.PadPredict / PadPredictDev).
+			if PREDICT_ON then
+				local module = Shared:FindFirstChild("PadZone")
+				local okZone, zone = pcall(function(): any
+					return if module and module:IsA("ModuleScript") then require(module) :: any else nil
+				end)
+				if okZone and type(zone) == "table" then
+					padZone = zone
+					predictTracker = (zone :: any).newTracker()
+					RunService.Heartbeat:Connect(function()
+						local ok, err = pcall(predictTick :: any) -- :: any : sans lui, l'ancien solveur croit que pcall ne renvoie qu'une valeur
+						if not ok then
+							warnOnce("padPredict", `[Gains] ramassage prévu : {err}`)
+						end
+					end)
+				else
+					warnOnce("padPredict", "[Gains] Shared/PadZone absent : son et voile au remote CashCollect, comme avant")
+				end
+			end
 		end
 	end
 	onInventory() -- première lecture : rien ne vole
