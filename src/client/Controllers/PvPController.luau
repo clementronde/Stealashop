@@ -64,6 +64,15 @@ local Find = require(Contract:WaitForChild("Find"))
 local Icons = require(Contract:WaitForChild("Icons"))
 local UI = require(Contract:WaitForChild("UI"))
 local Format = require(Shared:WaitForChild("Format"))
+-- a468 : invite du vol seulement « dans la boutique » (Shared/ShopInside, la règle du serveur : dans Bounds et, sous
+-- Features.ShopInsideBackWall / …Dev, devant le mur du fond posé). require protégé : sans le module (anciens bancs), Bounds seul.
+local ShopInsideModule = Shared:FindFirstChild("ShopInside")
+local ShopInside: { Contains: (Instance, BasePart, Vector3, number?) -> boolean }? = if ShopInsideModule
+	then (function(): any
+		local ok, result = pcall(require, ShopInsideModule :: any)
+		return if ok and type(result) == "table" then result else nil
+	end)()
+	else nil
 
 -- Ce que ce contrôleur utilise d'AnimationController et de WindowController.
 type AnimationApi = {
@@ -306,7 +315,7 @@ local function canStealIn(watch: PlotWatch, root: BasePart?): boolean
 		return false
 	end
 	local bounds = boundsOf(watch)
-	return root ~= nil and bounds ~= nil and inside(bounds, root.Position)
+	return root ~= nil and bounds ~= nil and (if ShopInside then ShopInside.Contains(plot, bounds, root.Position) else inside(bounds, root.Position))
 end
 
 local function mainPart(model: Model): BasePart?

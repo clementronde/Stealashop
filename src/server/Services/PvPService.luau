@@ -117,7 +117,9 @@
 --   - 10 fois par seconde : un non-propriétaire dans Bounds d'une boutique dont la porte n'est pas
 --     cassée et dont la fenêtre de vol est fermée (rien n'y entre sans casser la porte ; boutique
 --     libre comprise, où il serait enfermé), et, porte cassée ou non, un joueur interdit de voler
---     cette boutique (voir plus haut). Un joueur qui part (profil libéré) n'est pas déplacé ;
+--     cette boutique (voir plus haut). Un joueur qui part (profil libéré) n'est pas déplacé. a468 (Cantin,
+--     25/11) : la première sortie (porte intacte) est coupée par Features.NoIntactDoorEject / …Dev, sauf
+--     pour qui est vraiment dans les murs quand Features.ShopInsideBackWall / …Dev est allumé (Shared/ShopInside) ;
 --   - à la reconstruction de la porte (WindowService.OnRebuilt) : tout non-propriétaire encore
 --     dedans (le point d'attente fait qu'il n'y a d'habitude plus personne ; une reconstruction forcée,
 --     WindowService.Rebuild ou départ du propriétaire, sort même un voleur chargé) ; la fenêtre de vol se ferme.
@@ -526,6 +528,11 @@ local function inside(part: BasePart, point: Vector3): boolean
 	return math.abs(p.X) <= h.X and math.abs(p.Y) <= h.Y and math.abs(p.Z) <= h.Z
 end
 
+-- a468 : « dans la boutique » (sortie, intrus, alerte, interdiction après une mort, portée du vol, porte gardée
+-- cassée) = Shared/ShopInside : dans Bounds et, sous Features.ShopInsideBackWall / …Dev, devant le mur du fond posé.
+-- `inside` (Bounds seul) reste pour le dépôt chez soi.
+local ShopInside = require(Shared.ShopInside)
+
 -- Dans l'emprise au sol de la pièce (sa hauteur n'est pas lue) : la DepositZone « couvre tout le sol
 -- intérieur » (relevé Studio), sa hauteur exacte ne compte pas ; le volume Bounds dit qu'on est dedans.
 local function overFootprint(part: BasePart, point: Vector3): boolean
@@ -774,7 +781,7 @@ local function rebuildGate(_windowId: string, model: Model?): boolean
 	for _, player in Players:GetPlayers() do
 		if player ~= owner and present(player) and DataService.Get(player) ~= nil then
 			local root = rootOf(player)
-			if root and inside(bounds, root.Position) then
+			if root and ShopInside.Contains(model, bounds, root.Position) then
 				return false
 			end
 		end
@@ -811,7 +818,7 @@ local function currentIntruders(shop: Shop, victim: Player): { Player }
 		if root == nil then
 			continue
 		end
-		if inside(bounds, root.Position) or (player == shop.Breaker and near(bounds, root.Position, PvP.ScoutDistance)) then
+		if ShopInside.Contains(plot, bounds, root.Position) or (player == shop.Breaker and near(bounds, root.Position, PvP.ScoutDistance)) then
 			table.insert(list, player)
 		end
 	end
@@ -900,7 +907,7 @@ end
 -- Sort `player` de la boutique `plot` s'il est dans son volume Bounds. true s'il a été sorti.
 local function putOut(player: Player, plot: Model, bounds: BasePart): boolean
 	local root = rootOf(player)
-	if root == nil or not inside(bounds, root.Position) or not PlotService.PutOutside(player, plot) then
+	if root == nil or not ShopInside.Contains(plot, bounds, root.Position) or not PlotService.PutOutside(player, plot) then
 		return false
 	end
 	local theft = thefts[player]
@@ -933,12 +940,30 @@ local function ejectFrom(plot: Model, owner: Player?, only: ((Player) -> boolean
 	return moved
 end
 
+-- a468 (Cantin, 25/11) : la sortie « porte intacte » ci-dessous est coupée par Features.NoIntactDoorEject (…Dev dans le
+-- jeu DEV, Config/ProductIds.IsDev) ; les vitres et les murs suffisent. Restent la sortie d'un joueur interdit (plus bas)
+-- et celle de la reconstruction de la porte (onRebuilt). Config/ProductIds chargé s'il est là ; sans lui, PROD.
+-- Avec Shared/ShopInside allumé (mur du fond), elle reste pour qui est vraiment dans les murs, porte intacte : un
+-- passant derrière une boutique qui grandit autour de lui (nouveau mur du fond posé derrière lui) n'y est pas enfermé.
+local EjectFeatures = require(Shared.Config.Features)
+local ejectInDevGame: boolean = (function(): boolean
+	local module = Shared.Config:FindFirstChild("ProductIds")
+	if module == nil then
+		return false
+	end
+	local ok, result = pcall(require, module :: any)
+	return ok and type(result) == "table" and (result :: any).IsDev == true
+end)()
+local function intactDoorEject(): boolean
+	return not (EjectFeatures.NoIntactDoorEject == true or (EjectFeatures.NoIntactDoorEjectDev == true and ejectInDevGame))
+end
+
 local function ejectStep()
 	for _, plot in PlotService.GetPlots() do
 		-- Parcelle libre comprise : ses murs et sa porte sont solides pour tous, on y serait enfermé.
 		local owner = PlotService.GetOwner(plot)
 		local windowId = WindowService.GetWindowId(plot)
-		if shops[plot] == nil and windowId ~= nil and not WindowService.IsBroken(windowId) then
+		if shops[plot] == nil and windowId ~= nil and not WindowService.IsBroken(windowId) and (intactDoorEject() or ShopInside.Enabled()) then
 			for _, player in ejectFrom(plot, owner) do
 				notice(player, "NotYourShop", MESSAGES.NotYourShop)
 				log(`{player.Name} sorti de {plot.Name} : porte intacte, ce n'est pas sa boutique`)
@@ -946,7 +971,8 @@ local function ejectStep()
 			continue
 		end
 		-- Porte cassée ou boutique ouverte au vol : on entre librement jusqu'à la reconstruction, sauf un
-		-- joueur interdit de voler cette boutique (défense par le propriétaire).
+		-- joueur interdit de voler cette boutique (défense par le propriétaire). a468 : porte intacte aussi, quand la
+		-- sortie d'au-dessus est coupée (le joueur interdit sort toujours).
 		local function banned(player: Player): boolean
 			return banLeft(player, plot) > 0
 		end
@@ -1213,7 +1239,7 @@ local function shopRefusal(player: Player, plot: Model): (string?, string?, stri
 	if bounds == nil then
 		return "boutique sans volume Bounds", nil, nil
 	end
-	if not inside(bounds, root.Position) then
+	if not ShopInside.Contains(plot, bounds, root.Position) then
 		return "hors du volume Bounds", nil, nil
 	end
 	return nil, nil, nil
@@ -1575,7 +1601,7 @@ local function isIntruder(hitter: Player, target: Player): boolean
 	local bounds = if plot then refsFor(plot).Bounds else nil
 	local root = rootOf(target)
 	-- Vague 55 (a177, Cantin, 2026-11-15) : ou celui qui casse sa porte, dehors devant elle (WindowService.IsBreaking).
-	return (bounds ~= nil and root ~= nil and inside(bounds, root.Position))
+	return (bounds ~= nil and root ~= nil and ShopInside.Contains(plot :: Model, bounds, root.Position))
 		or (plot ~= nil and breaking(plot, target))
 end
 
@@ -1719,7 +1745,7 @@ local function onDeath(player: Player, character: Model)
 			continue
 		end
 		local bounds = refsFor(plot).Bounds
-		if bounds and inside(bounds, position) then
+		if bounds and ShopInside.Contains(plot, bounds, position) then
 			ban(player, plot, "mort dans la boutique")
 			notify(player, cooldownMessage(MESSAGES.Eliminated, PvP.KickRobCooldown), "Alert")
 			return
