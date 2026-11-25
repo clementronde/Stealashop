@@ -11,7 +11,8 @@
 --   - bande du tapis : la pièce ou le modèle Belt (contrat 10.4), sinon FALLBACK_BELT_SIZE posée sur le
 --     UsePoint ;
 --   - cœur de la machine (pour monter, et remonter après une séance sans sortir de la zone) : l'emprise au
---     sol de la bande élargie en travers de Training.Treadmill.SideEntryMargin (tapis, a310), ou
+--     sol de la bande élargie de Training.Treadmill.SideEntryMargin au-delà de chaque bord de
+--     Training.Treadmill.EntryEdges (tapis : côtés depuis a310, arrière depuis a454), ou
 --     REENTRY_RADIUS studs autour du UsePoint, à l'horizontale (banc) ;
 --   - place du joueur : debout, pieds sur le UsePoint, tourné vers son axe −Z.
 
@@ -138,45 +139,142 @@ function TrainingZone.overBelt(zone: Zone, position: Vector3, margin: number, ab
 		and p.Y <= half.Y + above
 end
 
--- a310 (Cantin, 22/11 : « il suffit d'arriver contre un grand côté ») : emprise d'entrée d'un tapis, dans le
--- repère de sa bande : la bande élargie de Training.Treadmill.SideEntryMargin en travers seulement (ses deux
--- grands côtés), stricte aux deux bouts. Renvoie la boîte de la bande, les demi-largeurs de l'emprise en X
--- et en Z, et true si le tapis court le long de Z (grands côtés en ±X). L'axe du tapis est celui des deux
--- axes horizontaux de la bande le plus proche du −Z du UsePoint.
-function TrainingZone.entryBox(zone: Zone): (CFrame, Vector3, number, number, boolean)
+-- a454 (Cantin, 25/11 : « tu acceptes aussi qu'on puisse monter par derrière ») : emprise d'entrée d'un tapis,
+-- dans le repère de course de sa bande. Bords de la bande : ses deux côtés (« Side », le long de la course),
+-- son avant (« Front », vers où regarde le coureur : le LookVector du UsePoint, lu du modèle) et son arrière
+-- (« Back », à l'opposé). Chaque bord de Training.Treadmill.EntryEdges s'élargit vers l'extérieur de
+-- Training.Treadmill.SideEntryMargin, sur la seule longueur de ce bord (a310 pour les côtés) ; les autres
+-- restent stricts. L'emprise est donc la bande et un bras par bord compté, sans les coins (un coin n'est pas
+-- un bord). Chaque bras est rogné à la zone d'entrée (UseZone, sinon zone de secours) : un bras qui en
+-- sortirait cacherait l'entrée (le contrôle d'avant l'entrée, hors de la zone, serait déjà dans le bras).
+-- L'axe de course est celui des deux axes horizontaux de la bande le plus proche du LookVector du UsePoint.
+type Entry = {
+	cframe: CFrame, -- boîte de la bande
+	alongZ: boolean, -- la course suit l'axe Z de la bande (côtés en ±X)
+	backSign: number, -- signe, sur cet axe, du côté de l'arrière
+	halfAcross: number, -- demi-largeur de la bande (en travers)
+	halfAlong: number, -- demi-longueur de la bande (le long de la course)
+	side: number, -- distance du centre de la bande au bord de l'emprise, en travers…
+	back: number, -- … vers l'arrière…
+	front: number, -- … vers l'avant
+}
+
+-- Distance du centre de la bande (dans la zone) au bord de l'emprise au sol de la zone, dans la direction
+-- `localDir` (vecteur unité dans le repère de la bande).
+local function reach(zoneCFrame: CFrame, zoneSize: Vector3, beltCFrame: CFrame, localDir: Vector3): number
+	local o = zoneCFrame:PointToObjectSpace(beltCFrame.Position)
+	local d = zoneCFrame:PointToObjectSpace(beltCFrame * localDir) - o
+	local t = math.huge
+	if math.abs(d.X) > 1e-6 then
+		t = math.min(t, ((if d.X > 0 then zoneSize.X / 2 else -zoneSize.X / 2) - o.X) / d.X)
+	end
+	if math.abs(d.Z) > 1e-6 then
+		t = math.min(t, ((if d.Z > 0 then zoneSize.Z / 2 else -zoneSize.Z / 2) - o.Z) / d.Z)
+	end
+	return t
+end
+
+local function entry(zone: Zone): Entry
 	local cframe, size = TrainingZone.beltBox(zone)
 	local point = zone.usePoint.WorldCFrame
 	local axis = cframe:PointToObjectSpace(point.Position + point.LookVector) - cframe:PointToObjectSpace(point.Position)
+	local alongZ = math.abs(axis.Z) >= math.abs(axis.X)
+	local forward = if alongZ then axis.Z else axis.X
+	local backSign = if forward > 0 then -1 else 1
+	local halfAcross = if alongZ then size.X / 2 else size.Z / 2
+	local halfAlong = if alongZ then size.Z / 2 else size.X / 2
 	local margin = math.max(0, Training.Treadmill.SideEntryMargin)
-	if math.abs(axis.Z) >= math.abs(axis.X) then
-		return cframe, size, size.X / 2 + margin, size.Z / 2, true
+	local side, back, front = halfAcross, halfAlong, halfAlong
+	for _, edge in Training.Treadmill.EntryEdges do
+		if edge == "Side" then
+			side = halfAcross + margin
+		elseif edge == "Back" then
+			back = halfAlong + margin
+		elseif edge == "Front" then
+			front = halfAlong + margin
+		end
 	end
-	return cframe, size, size.X / 2, size.Z / 2 + margin, false
+	local zoneCFrame, zoneSize = TrainingZone.zoneBox(zone)
+	local acrossDir = if alongZ then Vector3.new(1, 0, 0) else Vector3.new(0, 0, 1)
+	local backDir = if alongZ then Vector3.new(0, 0, backSign) else Vector3.new(backSign, 0, 0)
+	side = math.max(
+		halfAcross,
+		math.min(side, reach(zoneCFrame, zoneSize, cframe, acrossDir), reach(zoneCFrame, zoneSize, cframe, -acrossDir))
+	)
+	back = math.max(halfAlong, math.min(back, reach(zoneCFrame, zoneSize, cframe, backDir)))
+	front = math.max(halfAlong, math.min(front, reach(zoneCFrame, zoneSize, cframe, -backDir)))
+	return {
+		cframe = cframe,
+		alongZ = alongZ,
+		backSign = backSign,
+		halfAcross = halfAcross,
+		halfAlong = halfAlong,
+		side = side,
+		back = back,
+		front = front,
+	}
+end
+
+-- `position` dans le repère de course : distance au milieu en travers (≥ 0), et position le long de la
+-- course (positive vers l'arrière).
+local function runCoords(e: Entry, position: Vector3): (number, number)
+	local p = e.cframe:PointToObjectSpace(position)
+	if e.alongZ then
+		return math.abs(p.X), p.Z * e.backSign
+	end
+	return math.abs(p.Z), p.X * e.backSign
+end
+
+local function inEntry(e: Entry, across: number, along: number): boolean
+	return (across <= e.side and math.abs(along) <= e.halfAlong)
+		or (across <= e.halfAcross and along <= e.back and along >= -e.front)
 end
 
 -- `position` est-elle au-dessus du cœur de la machine (à l'horizontale, à n'importe quelle hauteur) :
--- l'emprise d'entrée du tapis (TrainingZone.entryBox, a310), ou REENTRY_RADIUS autour du UsePoint (banc) ?
+-- l'emprise d'entrée du tapis (a310, a454), ou REENTRY_RADIUS autour du UsePoint (banc) ?
 function TrainingZone.inCore(zone: Zone, position: Vector3): boolean
 	if zone.kind == "Treadmill" then
-		local cframe, _, halfX, halfZ = TrainingZone.entryBox(zone)
-		local p = cframe:PointToObjectSpace(position)
-		return math.abs(p.X) <= halfX and math.abs(p.Z) <= halfZ
+		local e = entry(zone)
+		return inEntry(e, runCoords(e, position))
 	end
 	local offset = position - zone.usePoint.WorldPosition
 	return Vector3.new(offset.X, 0, offset.Z).Magnitude <= TrainingZone.REENTRY_RADIUS
+end
+
+-- a454 : bord de l'emprise d'entrée que `position` (hors de l'emprise) a franchi pour y entrer : « Side »,
+-- « Back » ou « Front » ; nil si `position` est déjà dans l'emprise, ou dans un coin de sa boîte (à côté d'un
+-- bras, hors de tout bras). Hors de la boîte, on compare de combien `position` en déborde en travers et en
+-- long (règle d'a310) : le plus grand débord dit le bord franchi.
+function TrainingZone.entryEdge(zone: Zone, position: Vector3): string?
+	local e = entry(zone)
+	local across, along = runCoords(e, position)
+	if inEntry(e, across, along) then
+		return nil
+	end
+	local outAcross = across - e.side
+	local outAlong = if along >= 0 then along - e.back else -along - e.front
+	if outAcross <= 0 and outAlong <= 0 then
+		return nil -- coin
+	end
+	if outAcross > outAlong then
+		return "Side"
+	end
+	return if along >= 0 then "Back" else "Front"
 end
 
 -- a180 (Cantin, 2026-11-15 : « seulement quand tu vas sur le côté du tapis et pas quand tu passes
 -- devant ») : on ne monte sur un tapis que le HumanoidRootPart au-dessus de sa bande ET arrivé sur elle
 -- par un de ses deux grands côtés. Entrée par un bout (avant ou arrière) : rien, même en restant sur la
 -- bande, tant qu'on n'en est pas ressorti. a310 (Cantin, 22/11) : « la bande » est ici son emprise d'entrée
--- (TrainingZone.entryBox), élargie en travers : arriver contre un grand côté suffit, le jeu place le joueur
--- sur la bande. Le serveur et le client tiennent chacun un Approach par
--- joueur et l'avancent à chaque contrôle (TrainingZone.track) : mêmes positions, même décision.
+-- (TrainingZone.inCore), élargie en travers : arriver contre un grand côté suffit, le jeu place le joueur
+-- sur la bande. a454 (Cantin, 25/11) : « un grand côté » se lit désormais « un bord de
+-- Training.Treadmill.EntryEdges » (les côtés et l'arrière ; { "Side" } = la règle d'a310). Le serveur et le
+-- client tiennent chacun un Approach par joueur et l'avancent à chaque contrôle (TrainingZone.track) : mêmes
+-- positions, même décision.
 export type Approach = {
 	lastPosition: Vector3?, -- position au contrôle précédent (nil : aucune, ex. nouveau perso)
 	zone: Zone?, -- tapis dont la bande contenait lastPosition (nil : hors de toute bande)
-	fromSide: boolean, -- l'entrée sur la bande de `zone` s'est faite par un grand côté
+	fromSide: boolean, -- l'entrée sur la bande de `zone` s'est faite par un bord permis (EntryEdges, a454)
 }
 
 -- V0 proposé, absent du doc (a180) : hauteur (studs) au-dessus du dessus de la bande jusqu'à laquelle
@@ -187,26 +285,16 @@ function TrainingZone.newApproach(): Approach
 	return { lastPosition = nil, zone = nil, fromSide = false }
 end
 
--- `position`, hors de l'emprise d'entrée (TrainingZone.entryBox), en a-t-elle franchi un grand côté plutôt
--- qu'un bout ? On compare de combien `position` déborde de l'emprise (élargie en travers, a310) en travers et
--- en long : dans un coin (dans la marge en travers mais au-delà d'un bout), seul le bout déborde.
+-- `position`, hors de l'emprise d'entrée, en a-t-elle franchi un bord permis (Training.Treadmill.EntryEdges,
+-- a454 ; un grand côté avant a454) ? Voir TrainingZone.entryEdge.
 function TrainingZone.fromSide(zone: Zone, position: Vector3): boolean
-	local cframe, _, halfX, halfZ, alongZ = TrainingZone.entryBox(zone)
-	local p = cframe:PointToObjectSpace(position)
-	local outX = math.abs(p.X) - halfX
-	local outZ = math.abs(p.Z) - halfZ
-	if outX <= 0 and outZ <= 0 then
-		return false -- déjà dans l'emprise (pas de bord franchi)
-	end
-	if alongZ then
-		return outX > outZ -- tapis le long de Z : les grands côtés sont en ±X
-	end
-	return outZ > outX
+	local edge = TrainingZone.entryEdge(zone, position)
+	return edge ~= nil and table.find(Training.Treadmill.EntryEdges, edge) ~= nil
 end
 
 -- Avance `approach` avec la position `position` du HumanoidRootPart et la machine `zone` choisie à cet
 -- endroit (nil : aucune) ; true si l'on peut y monter : banc toujours (règle inchangée), tapis
--- seulement sur sa bande (son emprise d'entrée, a310), entré par un grand côté. L'entrée se décide au
+-- seulement sur sa bande (son emprise d'entrée, a310), entré par un bord permis (a454). L'entrée se décide au
 -- premier contrôle dans l'emprise (TrainingZone.inCore), d'après la position du contrôle précédent, hors de
 -- l'emprise.
 function TrainingZone.track(approach: Approach, zone: Zone?, position: Vector3): boolean
