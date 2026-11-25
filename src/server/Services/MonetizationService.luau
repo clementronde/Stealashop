@@ -47,8 +47,12 @@
 --                      Training devient ×4 Training, et l'accroche prend le plus fort de ×2 Speed et ×4 Training
 --                      (Monetization.TrainingMultiplier) ; coupé : les deux ×2 se multiplient, comme avant
 --   +4 présentoirs     a485 (Features.ExtraStandsGate / ExtraStandsGateDev, Monetization.ExtraStands) : attribut
---   (vente)            ExtraStandsReady du Player = true quand la boutique a ses présentoirs bonus DisplaySlot_21 à
---                      20 + Stands (DisplayService.GetSlots, Floor_2 compris) ; la carte est cachée sans lui
+--   (vente)            ExtraStandsReady du Player = true quand ses présentoirs bonus DisplaySlot_21 à 20 + Stands sont
+--                      utilisables (DisplayService.ExtraStandsOpen : posés dans la parcelle, ou dans le Floor_2 une fois
+--                      l'étage ACHETÉ, Cantin le 25/11 ; un étage seulement posé ne suffit pas) ; la carte est cachée
+--                      sans lui (sauf gamepass possédé) et la fenêtre d'achat est ouverte par le serveur (remote
+--                      PromptExtraStands), qui la refuse dans ce cas. Roblox vend aussi un gamepass hors de cette
+--                      fenêtre (site, client tricheur) : possédé avant l'étage, ses présentoirs s'ouvrent avec l'étage
 --   Encaissement auto  DisplayService.HasAutoCollect : la caisse se vide chaque seconde, où que soit
 --                      le joueur
 --   Ouverture rapide   vague 52 (a170) : plus de colis posé (a158) ; Fast Open ne raccourcit plus que
@@ -165,7 +169,6 @@ local Shared = ReplicatedStorage.Shared
 local Features = require(Shared.Config.Features)
 local Items = require(Shared.Config.Items)
 local Monetization = require(Shared.Config.Monetization)
-local Balance = require(Shared.Config.Balance) -- a485 : Display.MaxSlots (présentoirs bonus du gamepass +4 Displays)
 local Rarities = require(Shared.Config.Rarities)
 local Tools = require(Shared.Config.Tools)
 local Format = require(Shared.Format)
@@ -232,7 +235,11 @@ local MESSAGES = {
 	OpenNowCreditUsedItem = "Open Now: your new item's anti-theft is %s shorter!",
 	StarterPack = "Starter Pack: +%s, a Hammer and ×2 Cash for 1 hour!",
 	-- a285 (21/11) : un message par objet sorti de la caisse exclusive (rareté, nom). V0 proposé, absent du doc.
-	CrateItem = "Exclusive Crate: you got %s %s %s!", -- a412 : article, rareté (DisplayName), objet
+	-- a485 (L-415) : le nom de la caisse vient de Monetization.Crate.DisplayName (V0 « Exclusive Crate », une seule valeur).
+	-- Texte d'origine, gardé pour la détection d'a412 par les lanceurs de bancs : CrateItem = "Exclusive Crate: you got %s %s %s!"
+	CrateItem = Monetization.Crate.DisplayName .. ": you got %s %s %s!", -- a412 : article, rareté (DisplayName), objet
+	-- a485 (L-351, Cantin le 25/11) : achat de +4 Displays refusé tant que l'étage de la boutique n'est pas acheté. V0.
+	ExtraStandsFloor = "Buy your shop's 2nd floor first!",
 }
 
 local MonetizationService = {}
@@ -256,7 +263,7 @@ local CRATE_PRODUCT: Product = {
 	Key = "Crate",
 	Tab = "Offers",
 	Order = 0,
-	DisplayName = "Exclusive Crate",
+	DisplayName = CRATE.DisplayName, -- a485 (L-415) : V0 « Exclusive Crate », réglé dans Monetization.Crate
 	Effect = "",
 	Icon = "",
 	Price = CRATE.UnitPrice,
@@ -502,24 +509,38 @@ local function longestWait(player: Player): (string?, number?)
 	return bench, latest
 end
 
--- a485 (brief L-351 point 5, Monetization.ExtraStands) : la boutique du joueur a-t-elle les présentoirs bonus du gamepass
--- +4 Displays (DisplaySlot_21 à 20 + Stands, posés dans la parcelle ou dans son Floor_2 : DisplayService.GetSlots) ?
-local function extraStandsPlaced(player: Player): boolean
+-- a485 (brief L-351 point 5, Monetization.ExtraStands ; Cantin le 25/11) : les présentoirs bonus du gamepass +4 Displays
+-- (DisplaySlot_21 à 20 + Stands) sont-ils utilisables ? Posés dans la parcelle, ou dans son Floor_2 une fois l'étage
+-- acheté (DisplayService.ExtraStandsOpen ; un étage seulement posé ne suffit pas).
+local function extraStandsReady(player: Player): boolean
 	local stands = passValue("ExtraStands", "Stands", 0)
 	if stands <= 0 then
 		return false
 	end
-	local ok, slots = pcall(DisplayService.GetSlots :: any, player) -- :: any : absent d'un DisplayService de banc → false
-	if not ok or type(slots) ~= "table" then
-		return false
+	-- :: any : absent d'un DisplayService de banc → false
+	local ok, open = pcall((DisplayService :: any).ExtraStandsOpen, player, stands)
+	return ok and open == true
+end
+
+-- a485 (L-351, Cantin le 25/11) : remote PromptExtraStands, la carte +4 Displays demande la fenêtre d'achat (Gate
+-- allumé). Ouverte ici seulement si le gamepass est en vente, pas encore possédé et ses présentoirs utilisables
+-- (extraStandsReady) ; sinon refus (message si c'est l'étage), jamais sur la foi du client.
+local function onPromptExtraStands(player: Player)
+	local pass = Monetization.PassByKey.ExtraStands
+	if not enabled or pass == nil or not pass.Ready or pass.Id == 0 or hasPass(player, pass.Key) then
+		return
 	end
-	local max = Balance.Display.MaxSlots
-	for index = max + 1, max + stands do
-		if slots[index] == nil then
-			return false
-		end
+	if not extraStandsReady(player) then
+		log(`{player.Name} : +4 Displays refusé (présentoirs bonus pas utilisables : étage pas acheté)`)
+		notify(player, MESSAGES.ExtraStandsFloor)
+		return
 	end
-	return true
+	local ok, err = pcall(function()
+		MarketplaceService:PromptGamePassPurchase(player, pass.Id)
+	end)
+	if not ok then
+		warn(`[MonetizationService] fenêtre d'achat de +4 Displays pour {player.Name} : {err}`)
+	end
 end
 
 -- Une fois par seconde : boost (profil et attribut), fin de l'offre, colis qui attend le plus.
@@ -551,8 +572,8 @@ local function tickPlayer(player: Player, state: State)
 	end
 	local _, latest = longestWait(player)
 	setAttribute(player, OPEN_NOW_ATTRIBUTE, latest)
-	if Monetization.ExtraStands.Gate then -- a485 : carte +4 Displays montrée seulement avec ses présentoirs posés
-		setAttribute(player, Monetization.ExtraStands.Attribute, if extraStandsPlaced(player) then true else nil)
+	if Monetization.ExtraStands.Gate then -- a485 : carte +4 Displays montrée seulement avec ses présentoirs utilisables
+		setAttribute(player, Monetization.ExtraStands.Attribute, if extraStandsReady(player) then true else nil)
 	end
 end
 
@@ -1720,6 +1741,14 @@ function MonetizationService.Init()
 	local passes, products = buildSales()
 	MarketplaceService.ProcessReceipt = processReceipt
 	MarketplaceService.PromptGamePassPurchaseFinished:Connect(onGamePassPurchaseFinished)
+	if Monetization.ExtraStands.Gate then -- a485 (L-351) : achat de +4 Displays ouvert par le serveur
+		local promptOk, promptErr = pcall(function()
+			(Net.Server :: any).PromptExtraStands:Connect(onPromptExtraStands)
+		end)
+		if not promptOk then
+			warn(`[MonetizationService] Net.Server.PromptExtraStands : {promptErr}`)
+		end
+	end
 	if IS_STUDIO then
 		Workspace:GetAttributeChangedSignal(TEST_ATTRIBUTE):Connect(onTestAttribute)
 	end

@@ -306,8 +306,10 @@ local Monetization = {
 	TrainingLadder = TRAINING_X4,
 	-- a485 (brief L-351 point 5) : +4 Displays proposé seulement si la boutique du joueur a ses présentoirs bonus.
 	-- Gate (Features.ExtraStandsGate dans ce jeu) : MonetizationService pose l'attribut Attribute du Player (true = les
-	-- présentoirs DisplaySlot_21 à 20 + Stands sont posés, Floor_2 compris ; absent sinon) et RobuxShopController cache la
-	-- carte sans lui (sauf gamepass possédé). Gate à false : carte toujours montrée, attribut jamais posé, comme avant.
+	-- présentoirs DisplaySlot_21 à 20 + Stands sont utilisables : posés dans la parcelle, ou dans le Floor_2 une fois
+	-- l'étage acheté, Cantin le 25/11 ; absent sinon) et RobuxShopController cache la carte sans lui (sauf gamepass
+	-- possédé) ; son achat passe par le serveur (remote PromptExtraStands), qui le refuse sans lui. Gate à false : carte
+	-- toujours montrée, attribut jamais posé, fenêtre d'achat ouverte par le client, comme avant.
 	ExtraStands = {
 		Gate = switchOn("ExtraStandsGate"),
 		Attribute = "ExtraStandsReady",
@@ -325,6 +327,10 @@ local Monetization = {
 	-- (Config/ProductIds.IsDev) ; vendue si Live et Ready, même boutique coupée (Features.RobuxShop = false) ; sans Ready, ou sans Id (0) dans ce jeu,
 	-- ses boutons restent « Soon ».
 	Crate = {
+		-- a485 (L-351, V0 de Cantin du 25/11 en attendant Clément, L-415) : nom affiché de la caisse, en anglais, la seule
+		-- valeur à changer : produit de la caisse et message de l'objet reçu (MonetizationService, « <nom>: you got … »).
+		-- Le titre de la carte (Crate.Title de UI_RobuxShop_v2) est le texte de Clément, pas écrit par le code.
+		DisplayName = "Exclusive Crate",
 		Ready = true, -- a285 : contenu et don codés (vendue seulement avec Live : Features.RobuxCrate, RobuxCrateDev en DEV)
 		Live = false, -- a294 : posé plus bas (l'interrupteur de ce jeu), ne pas l'écrire ici
 		UnitPrice = 99, -- prix d'une caisse seule : OldPrice d'un lot = UnitPrice × Count (caché sans remise)

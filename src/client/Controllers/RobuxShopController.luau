@@ -525,8 +525,9 @@ local function notForSale(offer: Offer, id: number?): boolean
 end
 
 -- a485 (brief L-351 point 5, Monetization.ExtraStands.Gate : Features.ExtraStandsGate) : la carte +4 Displays seulement si
--- le serveur a vu les présentoirs bonus dans la boutique du joueur (attribut ExtraStandsReady), ou si le gamepass est déjà
--- possédé (carte « Owned ») ; Gate coupé : toujours, comme avant.
+-- le serveur a vu les présentoirs bonus utilisables dans la boutique du joueur (attribut ExtraStandsReady ; dans le
+-- Floor_2 : une fois l'étage acheté, Cantin le 25/11), ou si le gamepass est déjà possédé (carte « Owned ») ; Gate
+-- coupé : toujours, comme avant.
 local function extraStandsShown(offer: Offer): boolean
 	local gate = Monetization.ExtraStands
 	if offer.key ~= "ExtraStands" or not gate.Gate then
@@ -890,9 +891,18 @@ local function buy(card: Card)
 		showSoon(card)
 		return
 	end
-	showPurchaseGlow()
+	-- a485 (L-351, Cantin le 25/11) : +4 Displays avec Monetization.ExtraStands.Gate, fenêtre d'achat ouverte par le
+	-- serveur, qui la refuse tant que l'étage de la boutique n'est pas acheté (MonetizationService, remote
+	-- PromptExtraStands) ; lueur seulement si le serveur a dit oui à la carte (attribut), sinon elle resterait Timeout s.
+	local viaServer = isPass and offer.key == "ExtraStands" and Monetization.ExtraStands.Gate
+	if not viaServer or localPlayer:GetAttribute(Monetization.ExtraStands.Attribute) == true then
+		showPurchaseGlow()
+	end
 	local ok, err = pcall(function()
-		if isPass then
+		if viaServer then
+			local Net = require(Shared:WaitForChild("Net"):WaitForChild("Net")) :: any
+			Net.Client.PromptExtraStands:Fire()
+		elseif isPass then
 			MarketplaceService:PromptGamePassPurchase(localPlayer, id)
 		else
 			MarketplaceService:PromptProductPurchase(localPlayer, id)
