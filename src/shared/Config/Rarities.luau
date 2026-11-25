@@ -182,6 +182,8 @@ end
 -- dans Rarities.ZoneOdds). Cette table ne sert plus qu'aux colis qui gardent un type : camion, tour de la fortune,
 -- colis offerts (récompenses, codes ; UnboxService.GiveItem), aux mêmes chances qu'avant (V0), limitées aux raretés
 -- de la zone par ShelfBoxes.OddsFor.
+-- a440 : avec Features.ZoneBoxEverywhere, plus aucun de ces colis n'a de type (colis de zone, Shared/ZoneBoxEverywhere) :
+-- seule la Config/FortuneTower.RarityOdds la lit encore au chargement, sans s'en servir ; à supprimer avec l'interrupteur.
 -- Divine : 0 partout tant que le catalogue n'a aucun objet Divine (Items.AllZones.Divine vide).
 -- V0 proposé, absent du doc, à poser quand Clément livre les premiers objets Divine : Luxe = 0,02 %
 -- (1 colis Luxe sur 5 000, le dixième du Secret), pris sur Rare (40 → 39,98) ; Standard et Premium 0.

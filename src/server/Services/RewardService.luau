@@ -39,6 +39,8 @@
 --          (inventaire plein : refusé, rien de noté, Notify ItemsFull) ; puis, après la note, la scène d'ouverture de la
 --          caisse exclusive (MonetizationService.StartGiftReveal, zone safe seulement). Scène lancée : pas de message
 --          pour l'objet montré ; sinon le message « <Rareté> Item: <nom> » tout de suite.
+--   a440 (Features.ZoneBoxEverywhere, Shared/ZoneBoxEverywhere) : un Box avec Tier (J2, J4) passe par ZoneBox, règle
+--          Rewards.TierZoneBox[Tier] (zoneBoxOf) ; coupé, comme avant. J7 (BoxRarity) n'est jamais converti.
 -- Idempotence : la vérification, le don et la note de la réclamation (Streak et LastDay, ou
 -- Claimed[minutes]) se font dans la même exécution, sans yield : un double clic trouve la réclamation
 -- déjà notée. ProfileStore n'ouvre un profil que sur un seul serveur à la fois (verrou de session) : un
@@ -105,6 +107,14 @@ local DisplayService = require(script.Parent.DisplayService)
 local MonetizationService = require(script.Parent.MonetizationService)
 local TelemetryService = require(script.Parent.TelemetryService)
 local UnboxService = require(script.Parent.UnboxService)
+
+-- a440 (Features.ZoneBoxEverywhere) : chargé s'il est là ; absent (faux arbres des bancs plus anciens) : coupé.
+local ZoneBoxEverywhere: any = (function(): any
+	local ok, result = pcall(function(): any
+		return require(Shared.ZoneBoxEverywhere)
+	end)
+	return if ok and type(result) == "table" then result else nil
+end)()
 
 type Data = ProfileTypes.Data
 type RewardsData = ProfileTypes.Rewards
@@ -432,10 +442,25 @@ local function give(player: Player, data: Data, reward: Reward): (boolean, strin
 	return false, MESSAGES.Unavailable, 0, nil
 end
 
+-- a440 (lot 6 du check-up a417, R13 ; Features.ZoneBoxEverywhere) : un colis d'un type (Kind « Box » avec Tier, sans
+-- BoxRarity : J2, J4) devient le colis de zone de la règle Rewards.TierZoneBox[Tier] (ouvert tout de suite, comme les
+-- paliers de 15 et 60 min). Coupé, type sans règle, ou colis de rareté (BoxRarity : J7, coffre de la semaine) : tel quel.
+local function zoneBoxOf(reward: Reward): Reward
+	if reward.Kind ~= "Box" or reward.BoxRarity ~= nil or ZoneBoxEverywhere == nil or not ZoneBoxEverywhere.Enabled() then
+		return reward
+	end
+	local name = ZoneBoxEverywhere.RuleName(reward.Tier or "Standard")
+	if name == nil then
+		return reward
+	end
+	return { Kind = "ZoneBox", Rule = name }
+end
+
 -- Donne `reward`, puis appelle mark() (note la réclamation dans le profil), dans la même exécution.
 -- Refus propre (inventaire plein…) : rien n'est noté, le joueur reçoit la raison. Erreur pendant le don :
 -- noté quand même (jamais deux fois le même don), avertissement. Sans yield.
 local function claim(player: Player, data: Data, reward: Reward, source: Source, sku: string, mark: () -> ()): boolean
+	reward = zoneBoxOf(reward) -- a440
 	local ok, given, message, amount, reveal = pcall(give, player, data, reward)
 	if not ok then
 		warn(`[RewardService] {player.Name} : erreur pendant le don de {sku} ({given}) : réclamation notée quand même, à compenser à la main si rien n'est arrivé`)

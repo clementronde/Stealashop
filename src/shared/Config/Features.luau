@@ -308,6 +308,16 @@ local Features = {
 	UnboxClimbMatchesItem = false,
 	-- a462 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
 	UnboxClimbMatchesItemDev = true,
+	-- a440 (lot 6 du check-up a417, R13 ; décision C1 de Cantin, 24/11 : « colis de zone partout ») : plus de types de
+	-- colis Standard / Premium / Luxe hors des rayons. Le camion, les cadeaux du jour J2 et J4 et les codes « Item »
+	-- donnent un colis de zone (Shared/ZoneBoxOdds ; ancien type → règle : Config/Rewards.TierZoneBox), la Fortune Tower
+	-- tire ses caisses dans Config/FortuneTower.ZoneBox (Shared/ZoneBoxEverywhere). J7 est un colis Épique ou mieux,
+	-- allumé comme coupé ; aucune migration de profil (aucun colis typé n'y reste). Interrupteur PROD (partout) : false
+	-- (règle C2 : pas encore de test humain) ; false = les types et leurs tables (Balance.Heist.BoxTiers,
+	-- Rarities.BoxOdds), comme avant.
+	ZoneBoxEverywhere = false,
+	-- a440 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	ZoneBoxEverywhereDev = true,
 }
 
 export type Features = typeof(Features)

@@ -109,6 +109,13 @@ local FortuneTower = {
 	-- sont toutes zones (Items.AllZones). Un colis porte la zone de son objet (règle de CarryService).
 	LootZones = { 2, 3, 4, 5, ZONE },
 	RarityOdds = lootOdds(), -- { Mythic = 90, Secret = 10, Divine = 0 }
+	-- a440 (Features.ZoneBoxEverywhere ; lot 6 du check-up a417, décision C1 de Cantin, 24/11 : plus de types de colis) :
+	-- à la place de RarityOdds, la rareté de chaque caisse est celle d'un colis de zone de la zone Zone (Shared/ZoneBoxOdds :
+	-- raretés et chances lues dans Rarities.ZoneOdds au moment du tirage), réduit à ses 2 meilleures raretés aux poids de
+	-- RarityOdds d'aujourd'hui (Mythique 90, Secret 10 : les 1,8 et 0,2 de l'ancien colis Luxe ; L-108, L-145 validés par
+	-- Clément) : les mêmes chances qu'avant, sans Rarities.BoxOdds. Divine exclue (Cantin, 25/11 : gardée pour une
+	-- prochaine MAJ) : sans cela, l'arrivée d'une Divine dans ZoneOdds[6] pousserait le Mythique hors des 2 meilleures.
+	ZoneBox = { ZoneStep = 0, TopCount = 2, TopWeights = { 90, 10 }, Exclude = { "Divine" } },
 	-- Vague 42 : les colis s'ouvrent sur place comme sur un rayon (Cantin) : RarityOdds y tire la rareté de la
 	-- CAISSE, minimum de l'objet (la chance ne fait que monter) ; SizeOdds y remplace le tirage de taille du
 	-- rayon (L-145 (a), valeurs validées par Clément). Vague 62 (a203) : le poids de l'objet est ensuite tiré dans le
