@@ -1,24 +1,19 @@
 --!strict
--- Taille d'affichage des objets exposés par rareté (a459, liaison L-354, demande de Clément du 2026-11-24 après
--- comparaison avec les jeux du genre). Lu par DisplayService (côté serveur) ; le socle du plus rare (RarestDisplay,
--- VfxController) montre la même taille, sans la réduction du présentoir (attribut FitScale, comme avant).
+-- Taille d'affichage des objets exposés : un minimum par rareté (a459, liaison L-354, demande de Clément du 2026-11-24 ;
+-- a459b, L-367, règle de Cantin du 25/11 : « ça ne devrait pas être cappé pour le maximum, mais pour le minimum oui »).
+-- Lu par DisplayService (côté serveur) ; le socle « BEST ITEM » (RarestDisplay, VfxController) montre la même taille.
 --
--- Règle : sur un présentoir, la plus grande dimension de l'objet (pièces visibles) est mise à la taille de sa rareté,
--- de Min à Max studs. a459b (L-367, décision de Cantin du 25/11) : c'est la taille réelle de son modèle qui le place
--- dans cette fourchette, plus son poids. Taille réelle = plus grande dimension des pièces visibles du modèle ITM_
--- d'origine, avant toute mise à l'échelle. DisplayService la compare à celle du plus petit et du plus grand ITM_ livrés
--- de la même rareté (Config/Items, catalogue actif) : le plus petit va à Min, le plus grand à Max, les autres entre les
--- deux selon leur taille relative (échelle logarithmique : un modèle deux fois plus grand que le plus petit monte
--- d'autant qu'un modèle deux fois plus petit que le plus grand descend), bornée à [Min, Max]. Le poids ne change plus
--- la taille exposée (il reste écrit dans BB_Item/Weight et sert ailleurs, Config/Weight).
--- Ensuite, comme avant, l'objet est réduit pour tenir dans le FitSize de son présentoir (6,5 × 12,5 × 6, hauteur du
--- flottement retirée) et jamais au-delà de Weight.DisplayMaxScale. Aucun ITM n'est réexporté : c'est une échelle
--- d'affichage. L'objet porté, en main, au sol et à l'ouverture du colis gardent la taille de leur poids (Config/Weight).
+-- Règle : sur un présentoir, l'objet garde la vraie taille de son modèle ITM_ (sa plus grande dimension, pièces
+-- visibles, telle que livrée). S'il est plus petit que le minimum de sa rareté, il est agrandi jusqu'à ce minimum ; il
+-- n'est jamais réduit (ni par la rareté, ni par le FitSize du présentoir). Le poids ne change pas la taille exposée
+-- (il reste écrit dans BB_Item/Weight et garde la taille au sol, portée, en main et à l'ouverture du colis,
+-- Config/Weight). Aucun ITM n'est réexporté : c'est une échelle d'affichage. Chaque objet est traité seul : les autres
+-- modèles de sa rareté (exclusifs de la caisse compris) ne changent rien à sa taille.
 --
 -- Interrupteurs : Features.DisplayRaritySize (partout, PROD compris) et Features.DisplayRaritySizeDev (jeu DEV seulement,
--- Config/ProductIds.IsDev). Coupé : la taille du poids, comme avant (Weight.ScaleCurve, puis FitSize).
+-- Config/ProductIds.IsDev). Coupé : comme avant (taille du poids, Weight.ScaleCurve, puis réduction FitSize).
 --
--- Origine des valeurs : « Clément » = L-354 ; V0 = proposé par a459 ou a459b, absent du doc.
+-- Origine des valeurs : « Clément » = bas des fourchettes de L-354 ; Divin : Cantin (25/11), comme Mythique et Secret.
 -- Unités : studs.
 
 local DeepFreeze = require(script.Parent.DeepFreeze)
@@ -40,57 +35,27 @@ end
 local Features: any = optional("Features")
 local ProductIds: any = optional("ProductIds")
 
-export type Range = {
-	Min: number, -- studs, plus grande dimension montrée du plus petit modèle ITM_ de la rareté
-	Max: number, -- studs, celle du plus grand
-}
-
-local BY_RARITY: { [Rarities.RarityId]: Range } = {
-	Common = { Min = 4, Max = 5 }, -- Clément
-	Uncommon = { Min = 4, Max = 5 }, -- Clément
-	Rare = { Min = 4, Max = 5 }, -- Clément
-	Epic = { Min = 5, Max = 6 }, -- Clément
-	Legendary = { Min = 5, Max = 6 }, -- Clément
-	Mythic = { Min = 7, Max = 9 }, -- Clément
-	Secret = { Min = 7, Max = 9 }, -- Clément
-	Divine = { Min = 7, Max = 9 }, -- V0 : comme Mythique et Secret (Clément n'a pas donné le Divin, aucun objet encore)
+-- Plus grande dimension minimale (studs) d'un objet exposé, par rareté.
+local MIN_BY_RARITY: { [Rarities.RarityId]: number } = {
+	Common = 4, -- Clément
+	Uncommon = 4, -- Clément
+	Rare = 4, -- Clément
+	Epic = 5, -- Clément
+	Legendary = 5, -- Clément
+	Mythic = 7, -- Clément
+	Secret = 7, -- Clément
+	Divine = 7, -- Cantin (25/11)
 }
 
 local DisplaySize = {
 	-- Allumé partout (DisplayRaritySize) ou dans le jeu DEV seulement (DisplayRaritySizeDev et ProductIds.IsDev).
 	Enabled = Features.DisplayRaritySize == true or (Features.DisplayRaritySizeDev == true and ProductIds.IsDev == true),
-	ByRarity = BY_RARITY,
-	-- a459b (L-367) : place dans la fourchette (0 = Min, 1 = Max) d'un objet seul de sa rareté, quand tous les modèles
-	-- de sa rareté ont la même taille ou quand aucun n'est mesurable (V0 : le milieu).
-	SinglePosition = 0.5,
+	MinByRarity = MIN_BY_RARITY,
 }
 
-local function valid(x: any): boolean
-	return type(x) == "number" and x == x and x > 0 and x < math.huge
-end
-
--- a459b (L-367) : place (de 0 à 1) dans la fourchette d'un modèle dont la plus grande dimension réelle est `side`
--- studs, quand le plus petit modèle livré de sa rareté mesure `smallest` et le plus grand `largest` (échelle
--- logarithmique, bornée à [0, 1]). SinglePosition si l'écart est nul ou illisible. Ne dépend pas du poids.
-function DisplaySize.PositionFor(side: any, smallest: any, largest: any): number
-	if not (valid(side) and valid(smallest) and valid(largest)) or not (largest > smallest) then
-		return DisplaySize.SinglePosition
-	end
-	local t = math.log(math.clamp(side, smallest, largest) / smallest) / math.log(largest / smallest)
-	return math.clamp(t, 0, 1)
-end
-
--- Taille visée (studs, plus grande dimension) d'un objet de rareté `rarityId` placé à `position` (0 = Min, 1 = Max,
--- bornée) dans sa fourchette ; nil pour une rareté inconnue. Une place illisible compte comme SinglePosition.
-function DisplaySize.TargetAt(rarityId: any, position: any): number?
-	local range = if type(rarityId) == "string" then (BY_RARITY :: any)[rarityId] :: Range? else nil
-	if range == nil then
-		return nil
-	end
-	local t = if type(position) == "number" and position == position
-		then math.clamp(position, 0, 1)
-		else DisplaySize.SinglePosition
-	return range.Min + (range.Max - range.Min) * t
+-- Plus grande dimension minimale (studs) d'un objet de rareté `rarityId` ; nil pour une rareté inconnue.
+function DisplaySize.MinFor(rarityId: any): number?
+	return if type(rarityId) == "string" then (MIN_BY_RARITY :: any)[rarityId] :: number? else nil
 end
 
 export type DisplaySize = typeof(DisplaySize)

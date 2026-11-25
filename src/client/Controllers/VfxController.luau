@@ -74,6 +74,22 @@ local WeightConfig = require(Config:WaitForChild("Weight"))
 local ItemWeight = require(Shared:WaitForChild("ItemWeight"))
 local Format = require(Shared:WaitForChild("Format"))
 
+-- a459b (L-367, règle de Cantin) : taille par rareté allumée (Config/DisplaySize.Enabled) ? Lu à la première copie
+-- du socle (facultatif : bancs plus anciens sans le module, comme avant).
+local raritySizeOn: boolean? = nil
+local function raritySize(): boolean
+	if raritySizeOn == nil then
+		local module = Config:FindFirstChild("DisplaySize")
+		local on = false
+		if module and module:IsA("ModuleScript") then
+			local ok, size = pcall(require, module :: ModuleScript)
+			on = ok and type(size) == "table" and (size :: any).Enabled == true
+		end
+		raritySizeOn = on
+	end
+	return raritySizeOn == true
+end
+
 local IS_STUDIO = RunService:IsStudio()
 local PLOT_TAG = "PlayerPlot" -- contrat 2.1 (Contract/Tags)
 
@@ -772,7 +788,10 @@ local function placeRarestItem(entry: RarestEntry, best: Best)
 	local shown = copy:GetScale()
 	local fit = source:GetAttribute(WeightConfig.FitScaleAttribute)
 	local wanted = if type(fit) == "number" and fit > 0 and fit < 1 then shown / fit else shown
-	wanted = math.min(wanted, WeightConfig.RarestMaxScale)
+	-- a459b (L-367) : taille par rareté allumée : l'objet n'est jamais réduit, pas de plafond RarestMaxScale.
+	if not raritySize() then
+		wanted = math.min(wanted, WeightConfig.RarestMaxScale)
+	end
 	if math.abs(wanted - shown) > 1e-3 then
 		pcall(copy.ScaleTo, copy, wanted)
 	end

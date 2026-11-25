@@ -1410,56 +1410,18 @@ local function largestSide(model: Model): number
 	return math.max(maxX - minX, maxY - minY, maxZ - minZ)
 end
 
--- a459b (L-367, Cantin 25/11) : plus petite et plus grande taille réelle (largestSide) des modèles ITM_ livrés de la
--- rareté `rarityId` (Config/Items, catalogue actif, exclusifs compris), mesurées une fois sur les modèles d'origine
--- (jamais mis à l'échelle) puis gardées ; nil, nil si aucun n'est livré. Ne dépend que des modèles livrés.
-type ModelSides = { Smallest: number, Largest: number } -- Largest 0 : aucun modèle livré mesurable
-local rarityModelSides: { [string]: ModelSides } = {}
-local function modelSidesOf(rarityId: string): (number?, number?)
-	local known: ModelSides? = rarityModelSides[rarityId]
-	if known == nil then
-		local smallest, largest = math.huge, 0
-		for _, def in ItemsConfig.ById do
-			if def.Rarity ~= rarityId then
-				continue
-			end
-			local template = itemTemplate(def)
-			local side = 0
-			if template ~= nil and template:IsA("Model") then
-				side = largestSide(template :: Model)
-			elseif template ~= nil and template:IsA("BasePart") and (template :: BasePart).Transparency < 1 then
-				local size = (template :: BasePart).Size
-				side = math.max(size.X, size.Y, size.Z)
-			end
-			if side > 0 then
-				smallest = math.min(smallest, side)
-				largest = math.max(largest, side)
-			end
-		end
-		local measured: ModelSides = { Smallest = if largest > 0 then smallest else 0, Largest = largest }
-		rarityModelSides[rarityId] = measured
-		known = measured
-	end
-	local sides = known :: ModelSides
-	if sides.Largest > 0 then
-		return sides.Smallest, sides.Largest
-	end
-	return nil, nil
-end
-
--- a459 (L-354) : échelle (Model:ScaleTo) qui met la plus grande dimension de `model` à la taille d'affichage de sa
--- rareté, au plus Weight.DisplayMaxScale ; nil si la rareté n'a pas de taille ou si le modèle n'a aucune pièce
--- visible (taille du poids, comme avant). a459b (L-367) : la place dans la fourchette vient de la taille réelle du
--- modèle (`model` pas encore mis à l'échelle) comparée aux autres ITM_ de sa rareté (Config/DisplaySize.PositionFor),
--- plus du poids.
+-- a459 (L-354) ; a459b (L-367, règle de Cantin du 25/11) : échelle (Model:ScaleTo) de `model` (pas encore mis à
+-- l'échelle) sur un présentoir : sa vraie taille, agrandie jusqu'au minimum de sa rareté (Config/DisplaySize.MinFor)
+-- s'il est plus petit, jamais réduite, sans plafond (le minimum est toujours atteint). Ne dépend ni du poids ni des
+-- autres modèles. nil si la rareté n'a pas de minimum ou si le modèle n'a aucune pièce visible (taille du poids, comme
+-- avant).
 local function raritySizeScale(model: Model, rarityId: string): number?
+	local minimum = DisplaySize.MinFor(rarityId)
 	local side = largestSide(model)
-	local smallest, largest = modelSidesOf(rarityId)
-	local target = DisplaySize.TargetAt(rarityId, DisplaySize.PositionFor(side, smallest, largest))
-	if type(target) ~= "number" or not (target > 0) or not (side > 0) then
+	if type(minimum) ~= "number" or not (minimum > 0) or not (side > 0) then
 		return nil
 	end
-	return math.min(model:GetScale() * target / side, WeightConfig.DisplayMaxScale)
+	return model:GetScale() * math.max(1, minimum / side)
 end
 
 -- a234 : portée de chaque lumière du modèle (PointLight, SpotLight, SurfaceLight) avant sa mise à l'échelle.
@@ -1614,12 +1576,17 @@ local function buildItemModel(
 	local rawMutation = entry.Mutation
 	local weight = ItemWeight.Effective(entry.Weight, if rawMutation then rawMutation.Size else nil)
 	local scale = Mutations.Scale(mutation, weight)
-	-- a459 (L-354, Clément) : sur un présentoir, la taille d'affichage de la rareté remplace celle du poids (a459b, L-367 :
-	-- la taille réelle du modèle la place dans la fourchette de la rareté, Config/DisplaySize ; le poids n'y joue plus) ;
-	-- le FitSize plus bas plafonne toujours. Seulement sur un présentoir (`billboard`, joueur ou bot) : l'objet sous
-	-- antivol posé au sol (BuildFloorItem) garde la taille de son poids.
+	-- a459 (L-354, Clément) ; a459b (L-367, règle de Cantin) : sur un présentoir, la vraie taille du modèle, agrandie
+	-- jusqu'au minimum de sa rareté (Config/DisplaySize), remplace celle du poids ; l'objet n'est alors jamais réduit,
+	-- ni ici ni par le FitSize plus bas (raritySized). Seulement sur un présentoir (`billboard`, joueur ou bot) : l'objet
+	-- sous antivol posé au sol (BuildFloorItem) garde la taille de son poids.
+	local raritySized = false
 	if RARITY_SIZE and billboard then
-		scale = raritySizeScale(display, def.Rarity) or scale
+		local sized = raritySizeScale(display, def.Rarity)
+		if sized ~= nil then
+			scale = sized
+			raritySized = true
+		end
 	end
 	-- a234 : échelle et portées d'avant toute mise à l'échelle, seulement s'il faudra peut-être réduire
 	local baseScale = if fitSize then display:GetScale() else 1
@@ -1647,7 +1614,8 @@ local function buildItemModel(
 			fitBox = Vector3.new(fitBox.X, room, fitBox.Z)
 		end
 	end
-	local fit = if fitBox then fitFactor(display, pivot, fitBox) else 1
+	-- a459b (L-367) : taille par rareté (raritySized) : aucune réduction FitSize, l'objet garde au moins son minimum.
+	local fit = if fitBox and not raritySized then fitFactor(display, pivot, fitBox) else 1
 	if fit < 1 then
 		local shown = display:GetScale() * fit
 		local ok, problem = pcall(display.ScaleTo, display, shown)

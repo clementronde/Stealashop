@@ -162,10 +162,10 @@ local Features = {
 	BdOutlines = false,
 	-- a446 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
 	BdOutlinesDev = true,
-	-- a459 (L-354, Clément 24/11) : sur un présentoir, l'objet est mis à la taille d'affichage de sa rareté (Config/DisplaySize :
-	-- plus grande dimension de 4 à 9 studs, la taille réelle du modèle ITM_ le place dans la fourchette (a459b, L-367),
-	-- FitSize plafonne), au lieu de la taille de
-	-- son poids. Interrupteur PROD (partout) : false (règle C2 : pas encore de test humain) ; false = taille du poids, comme avant.
+	-- a459 (L-354, Clément 24/11) ; a459b (L-367, Cantin 25/11) : sur un présentoir, l'objet garde la vraie taille de son
+	-- modèle, agrandie jusqu'au minimum de sa rareté (Config/DisplaySize : 4, 5 ou 7 studs de plus grande dimension), jamais
+	-- réduite (ni FitSize ni plafond), au lieu de la taille de son poids.
+	-- Interrupteur PROD (partout) : false (règle C2 : pas encore de test humain) ; false = taille du poids et FitSize, comme avant.
 	DisplayRaritySize = false,
 	-- a459 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
 	DisplayRaritySizeDev = true,
