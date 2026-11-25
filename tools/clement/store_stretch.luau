@@ -522,7 +522,9 @@ local function compactFrontRow(model, interior, piv0)
 		if #list > 0 then local mn, mx = bbox(list, piv0); table.insert(racks, { mn = mn, mx = mx }) end
 	end
 	for _, d in model:GetDescendants() do
-		if d:IsA("BasePart") and not taken[d] and not d.Name:match("^Shelf_") and not matchesAny(d.Name, NOT_CONTENT) then
+		-- (une pièce nommée Shelf_* hors d'Interior, comme les vitres `ShowCases/Shelf_A_L_Glass` de la zone 4, est prise
+		-- aussi : le 2026-11-25, Clément a vu ces vitres décalées de leurs rayons)
+		if d:IsA("BasePart") and not taken[d] and not matchesAny(d.Name, NOT_CONTENT) then
 			local top = d
 			while top.Parent ~= model do top = top.Parent end
 			if not NOT_CONTENT_ROOTS[top.Name] then
