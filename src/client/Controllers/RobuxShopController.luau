@@ -524,10 +524,21 @@ local function notForSale(offer: Offer, id: number?): boolean
 	return true
 end
 
+-- a485 (brief L-351 point 5, Monetization.ExtraStands.Gate : Features.ExtraStandsGate) : la carte +4 Displays seulement si
+-- le serveur a vu les présentoirs bonus dans la boutique du joueur (attribut ExtraStandsReady), ou si le gamepass est déjà
+-- possédé (carte « Owned ») ; Gate coupé : toujours, comme avant.
+local function extraStandsShown(offer: Offer): boolean
+	local gate = Monetization.ExtraStands
+	if offer.key ~= "ExtraStands" or not gate.Gate then
+		return true
+	end
+	return localPlayer:GetAttribute(gate.Attribute) == true or owns(offer)
+end
+
 local function offersOf(current: Tab): { Offer }
 	local list: { Offer } = {}
 	for _, offer in offers do
-		if offer.tab == current and (offer.key ~= "StarterPack" or starterOffered()) then
+		if offer.tab == current and (offer.key ~= "StarterPack" or starterOffered()) and extraStandsShown(offer) then
 			table.insert(list, offer)
 		end
 	end
@@ -1094,7 +1105,14 @@ end
 -- Cartes ---------------------------------------------------------------------------------------
 
 local function v2State(): string
-	return (if starterOffered() then "S" else "-") .. (if crateShown() then "C" else "-")
+	-- a485 : carte +4 Displays montrée ou non (extraStandsShown) : les cartes sont refaites quand elle change.
+	local extra = "-"
+	for _, offer in offers do
+		if offer.key == "ExtraStands" and extraStandsShown(offer) then
+			extra = "E"
+		end
+	end
+	return (if starterOffered() then "S" else "-") .. (if crateShown() then "C" else "-") .. extra
 end
 
 -- v2 : toutes les sections à la fois, le pack de départ et la caisse.
@@ -1727,7 +1745,7 @@ function RobuxShopController.Start()
 		end)
 	end
 
-	local watched = { INCOME_ATTRIBUTE, STARTER_ATTRIBUTE, OPEN_NOW_ATTRIBUTE }
+	local watched = { INCOME_ATTRIBUTE, STARTER_ATTRIBUTE, OPEN_NOW_ATTRIBUTE, Monetization.ExtraStands.Attribute } -- a485
 	for _, pass in Monetization.Passes do
 		table.insert(watched, PASS_ATTRIBUTE_PREFIX .. pass.Key)
 	end
