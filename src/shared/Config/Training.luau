@@ -27,6 +27,13 @@ local Training = {
 		-- 0,78 de rebord + ~1 stud de demi-épaisseur du perso + une demi-stud de jeu (arrivée en biais). Emprise
 		-- des tapis de Clément : 5,16 + 2 × 2,25 = 9,66 studs en travers, dans leur UseZone de 12,8.
 		SideEntryMargin = 2.25,
+		-- a454 (Cantin, 25/11 : « pour le tapis, tu acceptes aussi qu'on puisse monter par derrière ») : bords de
+		-- la bande par lesquels on monte. "Side" = les deux côtés (le long de la course), "Back" = l'arrière (dans
+		-- le dos du coureur : à l'opposé du LookVector du UsePoint, lu du modèle ; le bout qui fait face à la
+		-- boutique), "Front" = l'avant (la console). Chaque bord de la liste s'élargit de la marge ci-dessus, sur
+		-- sa seule longueur, rognée à la UseZone (arrière des tapis de Clément : 1,82 stud) ; les coins et les
+		-- bords absents ne déclenchent rien. { "Side" } = règle d'a310 et a311 (côtés seulement).
+		EntryEdges = { "Side", "Back" },
 		-- a200 (Cantin, 2026-11-15 : « quand on l'améliore, parfois ça nous arrête […] il faudrait que ça
 		-- continue ») : quand MachineVariantService remplace le tapis (nouveau palier), la séance passe sur le
 		-- nouveau tapis de la même parcelle sans s'arrêter. V0 proposé, absent du doc : délai (s) pendant

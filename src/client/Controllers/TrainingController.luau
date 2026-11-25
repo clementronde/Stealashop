@@ -7,7 +7,8 @@
 --   - montée instantanée (a115, Cantin 2026-11-13 : 1 à 2 s de décalage avant) : à chaque image, le
 --     client regarde si son HumanoidRootPart entre dans la zone d'une machine de SA parcelle (a180 : sur
 --     la bande, arrivé par un de ses grands côtés, jamais par un bout ; a310 : arriver contre un grand côté
---     suffit, Training.Treadmill.SideEntryMargin : TrainingZone.track ; mêmes
+--     suffit, Training.Treadmill.SideEntryMargin ; a454 : l'arrière aussi, Training.Treadmill.EntryEdges :
+--     TrainingZone.track ; mêmes
 --     calculs que le serveur : Shared/TrainingZone, même blocage « pas de remontée en boucle »). Si oui,
 --     sans attendre le serveur, il se place lui-même sur le UsePoint (le client possède la physique de
 --     son perso), se fige (WalkSpeed 0 et AutoRotate coupé, en local) et joue l'animation. Le serveur,

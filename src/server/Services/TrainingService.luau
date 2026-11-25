@@ -9,8 +9,8 @@
 --     Shared/TrainingZone (mêmes calculs chez le client, qui se met en place sans attendre :
 --     TrainingController). Le serveur seul décide : à chaque Heartbeat (CHECK_INTERVAL = 0), il regarde où
 --     est le HumanoidRootPart de chaque joueur. Dans la zone (même en marchant, sans attente :
---     START_DWELL = 0, a115) et, a180, sur la bande, arrivé par un de ses grands côtés (passer devant ou
---     derrière ne déclenche rien : TrainingZone.track), le joueur monte sur le tapis : placé sur le UsePoint (debout, tourné vers son
+--     START_DWELL = 0, a115) et, a180, sur la bande, arrivé par un de ses grands côtés (a454 : ou par
+--     l'arrière, Training.Treadmill.EntryEdges ; passer devant ne déclenche rien : TrainingZone.track), le joueur monte sur le tapis : placé sur le UsePoint (debout, tourné vers son
 --     axe −Z). Zones qui se recouvrent : la machine au UsePoint le plus proche ;
 --   - le tapis garde le joueur en place : vitesse 0 par le modificateur « Training » de StatsService, sans
 --     rotation (a115 : il ne glisse plus hors de la bande en bougeant un peu) ;
@@ -27,8 +27,8 @@
 --   - pas de remontée en boucle : une séance finie (descendu, Stop, état…) ou un refus bloque ce tapis
 --     pour ce joueur. Débloqué s'il sort de la zone (son emprise au sol, à n'importe quelle hauteur :
 --     sauter sur place ne débloque rien), ou (a115, la zone de Clément couvre tout le modèle) s'il quitte
---     le cœur de la machine (TrainingZone.inCore : la bande du tapis, élargie en travers de
---     Training.Treadmill.SideEntryMargin depuis a310) puis y revient : il remonte aussitôt ;
+--     le cœur de la machine (TrainingZone.inCore : la bande du tapis, élargie de
+--     Training.Treadmill.SideEntryMargin en travers depuis a310, vers l'arrière depuis a454) puis y revient : il remonte aussitôt ;
 --   - seul le propriétaire de la parcelle qui contient le tapis s'y entraîne (attribut OwnerUserId de la
 --     parcelle, posé par PlotService) ; un autre joueur est refusé et reçoit NOT_OWNER_MESSAGE, au plus
 --     une fois toutes les NOT_OWNER_COOLDOWN s (on passe souvent à côté des machines des autres). Porter
