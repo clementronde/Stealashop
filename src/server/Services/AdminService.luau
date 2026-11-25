@@ -86,6 +86,7 @@ local SkillTree = require(Shared.Config.SkillTree)
 local Upgrades = require(Shared.Config.Upgrades)
 local Zones = require(Shared.Config.Zones)
 local Format = require(Shared.Format)
+local Find = require(Shared.Contract.Find) -- a436 : Find.inMap, « dans la map jouée »
 local Net = require(Shared.Net.Net)
 local ProfileTypes = require(Shared.Types.Profile)
 
@@ -338,17 +339,8 @@ local function newUid(list: { [string]: any }): string
 	return uid
 end
 
--- La carte jouée : dans le Workspace, hors des dossiers de travail (_INBOX_CLEMENT, _SHOWROOM_CLEMENT…).
-local function inMap(instance: Instance): boolean
-	if not instance:IsDescendantOf(Workspace) then
-		return false
-	end
-	local node: Instance? = instance
-	while node ~= nil and node.Parent ~= Workspace do
-		node = node.Parent
-	end
-	return node ~= nil and string.sub(node.Name, 1, 1) ~= "_"
-end
+-- La carte jouée : dans le Workspace, hors des dossiers de travail (règle commune, Find.inMap).
+local inMap = Find.inMap
 
 -- Point de téléport d'une zone : milieu des magasins PNJ de la zone, posé au sol.
 local function zonePoint(zone: number): Vector3?

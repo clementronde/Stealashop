@@ -2,9 +2,9 @@
 -- SafeZone (a157, vague 49, demande de Cantin du 2026-11-14) : « le joueur est-il en zone safe ? », un seul point
 -- de vérité pour les événements des magasins PNJ (chrono de police de WindowService, chrono HEIST de
 -- StoreHeistService, attente du départ des vigiles de GuardService, témoins de WitnessService). Même règle que
--- GuardService depuis DEV-018 : un objet taggé `SafeZone` (contrat 2.1), dans la map (Workspace, hors
--- _INBOX_CLEMENT) ; son volume = la pièce elle-même, sinon son enfant direct `Bounds` (pas ceux des parcelles
--- qu'il contient peut-être), sinon la boîte englobante du modèle (gardée en cache). Serveur et client.
+-- GuardService depuis DEV-018 : un objet taggé `SafeZone` (contrat 2.1), dans la map jouée (règle de Contract/Find.inMap) ;
+-- son volume = la pièce elle-même, sinon son enfant direct `Bounds` (pas ceux des parcelles qu'il contient peut-être),
+-- sinon la boîte englobante du modèle (gardée en cache). Serveur et client.
 --
 -- API :
 --   SafeZone.Contains(position) -> boolean        `position` est dans une zone safe
@@ -16,24 +16,32 @@ local Workspace = game:GetService("Workspace")
 
 local TAG = "SafeZone" -- contrat 2.1 (Contract/Tags)
 local BOUNDS = "Bounds"
-local INBOX_NAME = "_INBOX_CLEMENT"
+local WORK_PREFIX = "_" -- dossiers de travail (inMap)
 
 local boxCache: { [Instance]: { cframe: CFrame, size: Vector3 } } = setmetatable({}, { __mode = "k" }) :: any
 
 local SafeZone = {}
 
-local function inMap(inst: Instance): boolean
-	if not inst:IsDescendantOf(Workspace) then
+-- a436 (check-up a417 I12) : dans la map jouée, même règle que Contract/Find.inMap (dans le Workspace, aucun ancêtre en
+-- « _ ») ; recopiée ici pour que SafeZone reste sans dépendance (des bancs le chargent seul).
+local function inMap(instance: Instance): boolean
+	if not instance:IsDescendantOf(Workspace) then
 		return false
 	end
-	local inbox = Workspace:FindFirstChild(INBOX_NAME)
-	return inbox == nil or not inst:IsDescendantOf(inbox)
+	local node: Instance? = instance
+	while node ~= nil and node ~= Workspace do
+		if string.sub(node.Name, 1, #WORK_PREFIX) == WORK_PREFIX then
+			return false
+		end
+		node = node.Parent
+	end
+	return true
 end
 
 -- a282 (audit a271, point 4) : zones gardées en cache au lieu d'un GetTagged (nouveau tableau) à chaque appel. La
 -- liste suit les signaux du tag (Added / Removed, mêmes règles que GetTagged : une zone sortie du jeu en est retirée) ;
--- `inMap` est gardé par zone et recalculé après son AncestryChanged (zone déplacée, dans _INBOX_CLEMENT ou hors de
--- Workspace). Sans ces signaux (faux Roblox des bancs) : l'ancien parcours, inchangé. API inchangée.
+-- `inMap` est gardé par zone et recalculé après son AncestryChanged (zone déplacée, dans un dossier de travail ou hors
+-- de Workspace). Sans ces signaux (faux Roblox des bancs) : l'ancien parcours, inchangé. API inchangée.
 type ZoneState = { inMap: boolean?, watched: boolean, conn: RBXScriptConnection? }
 local zones: { [Instance]: ZoneState }? = nil
 local noSignals = false

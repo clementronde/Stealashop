@@ -22,8 +22,8 @@
 --     sur la plaque compte comme une descente (l'écran se ferme) ; finie, le joueur encore dessus = une montée ;
 --   - une seule boutique ouverte à la fois : les écrans des boutiques sont du groupe ScreenGroup « Menu »
 --     (Clément), Motion.Open ferme les autres ; l'invite « Shop » des comptoirs reste ;
---   - comptoirs rangés dans _INBOX_CLEMENT ignorés ; comptoir sans plaque : rien (le ContractChecker
---     le signale) ; plaque qui arrive ou repart avec le streaming : suivie.
+--   - comptoirs rangés dans un dossier de travail en « _ » ignorés (Find.inMap) ; comptoir sans plaque : rien
+--     (le ContractChecker le signale) ; plaque qui arrive ou repart avec le streaming : suivie.
 -- Côté client seulement : ouvrir un écran n'a rien de sensible, le serveur revérifie chaque achat.
 --
 -- API (client) : aucune.
@@ -32,7 +32,6 @@ local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
-local Workspace = game:GetService("Workspace")
 
 local Find = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Contract"):WaitForChild("Find"))
 
@@ -63,8 +62,6 @@ local SHOPS: { { Tag: string, Controller: string } } = {
 	{ Tag = "RobuxShop", Controller = "RobuxShopController" },
 	{ Tag = "PawnShop", Controller = "PawnShopController" }, -- vague 29, DEV-034
 }
-local INBOX_NAME = "_INBOX_CLEMENT" -- livraisons pas encore posées
-local SHOWROOM_NAME = "_SHOWROOM_CLEMENT" -- vague 29 : copies de présentation de Clément, pas en jeu
 local ROOT_PART = "HumanoidRootPart"
 
 -- V0 proposé, absent du doc : volume de la plaque, le même que celui des plaques CollectPad_xx de DisplayService
@@ -105,14 +102,8 @@ local function sibling(name: string): ShopApi?
 	return nil
 end
 
-local function inMap(inst: Instance): boolean
-	if not inst:IsDescendantOf(Workspace) then
-		return false
-	end
-	local inbox = Workspace:FindFirstChild(INBOX_NAME)
-	local showroom = Workspace:FindFirstChild(SHOWROOM_NAME)
-	return (inbox == nil or not inst:IsDescendantOf(inbox)) and (showroom == nil or not inst:IsDescendantOf(showroom))
-end
+-- a436 : règle commune « dans la map jouée » (hors des dossiers de travail en « _ » : livraisons, vitrine de Clément…).
+local inMap = Find.inMap
 
 -- La plaque du comptoir (le premier descendant nommé ShopPad, s'il est une pièce), ou nil.
 local function padOf(inst: Instance): BasePart?

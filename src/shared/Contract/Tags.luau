@@ -2,8 +2,8 @@
 -- Contrat : tags posés par Clément et lus par le code (doc, section 2.1).
 -- Source unique : le code et le ContractChecker lisent cette liste, jamais un nom recopié.
 --
--- Count = nombre exact attendu dans la map (Workspace, hors _INBOX_CLEMENT et
--- _SANDBOX_IRONIX) ; absent quand le doc ne donne pas de nombre.
+-- Count = nombre exact attendu dans la map jouée (Workspace, hors des dossiers de travail en « _ » : Contract/Find.inMap) ;
+-- absent quand le doc ne donne pas de nombre.
 -- PerZone = nombre attendu pour chaque valeur de l'attribut Zone (1 à 6).
 -- NeedsZone = chaque exemplaire porte l'attribut Zone.
 
@@ -64,6 +64,42 @@ Tags.List = {
 	-- a430 (L-331) : statues ENV_Hub_LeaderboardStatue du n° 1 des classements de la semaine (attribut Stat), habillées
 	-- par LeaderboardStatueService. Facultatif.
 	{ Tag = "LeaderboardStatue", For = "statues du n° 1 des classements de la semaine ENV_Hub_LeaderboardStatue (facultatif)" },
+	-- a436 (lot101, check-up a417 I6) : points d'apparition du camion d'événement (Attachment, pièce ou Model, attribut
+	-- Zone), lus par TruckEventService (un point de la zone au hasard). Facultatif : sans lui, le camion se pose entre les
+	-- magasins de la zone. 6 posés par Clément au 23/11 ; le doc ne donne pas de nombre.
+	{ Tag = "TruckSpawn", NeedsZone = true, For = "points d'apparition du camion d'événement (facultatif)" },
+	-- a436 (I6) : pièces lumineuses des lampadaires (BasePart), allumées la nuit et éteintes le jour par SkyController
+	-- (néon et lumières enfants). Facultatif ; 642 posés au 23/11, pas de nombre au doc.
+	{ Tag = "NightLight", For = "pièces lumineuses des lampadaires, allumées la nuit (facultatif)" },
 } :: { TagSpec }
+
+-- a436 (lot101, check-up a417 P4) : tags posés par le code lui-même sur ses copies, jamais par Clément. Le
+-- ContractChecker ne les compte pas comme « inconnus » s'il en trouve dans la map.
+Tags.CodeTags = {
+	"ArmoredVan", -- ArmoredVanService
+	"CarriedItem", -- CarryService (Config/HeldItem.CarriedTag)
+	"CarryRainbow", -- CarryService, colis arc-en-ciel
+	"CosmeticAura", -- CosmeticService
+	"CosmeticPiece", -- CosmeticService
+	"DisplayItem", -- DisplayService
+	"EventShelf", -- StoreHeistService
+	"EventTruck", -- TruckEventService
+	"FloorItem", -- DisplayService
+	"FortuneVault", -- FortuneTowerService
+	"HitTarget", -- WindowService
+	"PlotTrap", -- TrapService (Config/Traps.Tag)
+	"RarestItem", -- VfxController (Config/Vfx, copie de l'objet du socle)
+	"RevealItem", -- RevealController, objet sorti d'un colis (client)
+	"ShelfBox", -- StoreHeistService
+	"ShelfItem", -- StoreHeistService (Shared/ShelfOpenState.ItemTag)
+	"WitnessNpc", -- WitnessService, DisguiseService (Shared/WitnessGauge.Tag)
+} :: { string }
+
+-- a436 (P4) : tags qui ne sont plus au contrat, avec ce qui les a retirés. Encore posés dans la map, ils sont
+-- signalés en orange (à retirer quand Clément veut), jamais comme « inconnus ».
+Tags.Retired = {
+	Bench = "plus de banc depuis le rééquilibrage v2 (14/11) ; TrainingService coupe seulement l'invite du modèle resté",
+	CashPad = "plaques CollectPad_xx trouvées par leur nom depuis L-091 point 4 (10/11)",
+} :: { [string]: string }
 
 return Tags
