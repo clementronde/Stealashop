@@ -162,6 +162,13 @@ local Features = {
 	BdOutlines = false,
 	-- a446 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
 	BdOutlinesDev = true,
+	-- a473 (L-369, Clément 25/11) : contours « façon BD » toujours visibles (Config/Outlines.MaxPinned, en plus des
+	-- MaxOutlines de près) : dans la zone safe, les 6 stands du hub et les éléments de la boutique du joueur local ;
+	-- partout, son outil en main et l'objet porté au-dessus de sa tête. Demande aussi BdOutlines ou BdOutlinesDev.
+	-- Interrupteur PROD (partout) : false (règle C2) ; false = règle de L-305 seule (de près), comme avant.
+	BdOutlinesHub = false,
+	-- a473 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev).
+	BdOutlinesHubDev = true,
 }
 
 export type Features = typeof(Features)
