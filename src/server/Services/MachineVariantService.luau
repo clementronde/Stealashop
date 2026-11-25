@@ -173,7 +173,7 @@ local function swap(state: PlotState, template: Model, variant: string)
 	local copy = template:Clone()
 	copy.Name = TREADMILL_NAME
 	for key, value in state.base:GetAttributes() do
-		if copy:GetAttribute(key) == nil then
+		if string.sub(key, 1, 3) ~= "RBX" and copy:GetAttribute(key) == nil then -- L-382 : RBX* réservés
 			copy:SetAttribute(key, value)
 		end
 	end
