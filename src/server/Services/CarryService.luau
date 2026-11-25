@@ -174,6 +174,15 @@ local UI = require(Shared.Contract.UI)
 local Format = require(Shared.Format)
 local RarityHalo = require(Shared.RarityHalo)
 local CarryTypes = require(Shared.Types.Carry)
+-- a483 (Cantin, 25/11) : contour rouge de l'objet volé pour la victime seule (Shared/StolenOutline). require protégé :
+-- un faux arbre de banc sans ce module garde la règle 6.1 (vu de tous).
+local StolenOutlineModule = Shared:FindFirstChild("StolenOutline")
+local stolenOutlineVictimOnly: boolean = if StolenOutlineModule
+	then (function(): boolean
+		local ok, result = pcall(require, StolenOutlineModule :: any)
+		return ok and type(result) == "table" and (result :: any).VictimOnly() == true
+	end)()
+	else false
 
 local StatsService = require(script.Parent.StatsService)
 
@@ -637,7 +646,7 @@ local function addLabel(model: Model, anchor: BasePart, top: CFrame, payload: Pa
 	gui.Parent = point
 end
 
--- Contour rouge de l'objet volé, visible par tous (6.1).
+-- Contour rouge de l'objet volé, visible par tous (6.1) ; a483 : plus posé quand Shared/StolenOutline.VictimOnly().
 local function addOutline(model: Model)
 	local outline = Instance.new("Highlight")
 	outline.Name = "StolenOutline"
@@ -687,7 +696,7 @@ local function buildVisual(payload: Payload): Visual
 	local height = model:GetExtentsSize().Y
 	RarityHalo.AddCarried(anchor, offset * CFrame.new(0, height / 2, 0), rarity, RarityHalo.NoEffects)
 	addLabel(model, anchor, offset * CFrame.new(0, height, 0), payload, rarity)
-	if payload.Kind == "PlayerItem" then
+	if payload.Kind == "PlayerItem" and not stolenOutlineVictimOnly then -- a483 : sinon, posé par le client de la victime
 		addOutline(model)
 	end
 	if rarity.Rainbow then

@@ -187,6 +187,13 @@ local Features = {
 	BdOutlinesHub = false,
 	-- a473 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev).
 	BdOutlinesHubDev = true,
+	-- a483 (décision de Cantin du 25/11, remplace la règle 6.1) : le contour rouge d'un objet volé à un joueur n'est vu
+	-- que par la victime (Shared/StolenOutline : plus posé par CarryService, posé par le client de la victime seule,
+	-- TheftAlertController) ; vol chez le bot : personne. Interrupteur PROD (partout) : false (règle C2) ; false = vu de
+	-- tous, comme avant.
+	StolenOutlineVictimOnly = false,
+	-- a483 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev).
+	StolenOutlineVictimOnlyDev = true,
 }
 
 export type Features = typeof(Features)
