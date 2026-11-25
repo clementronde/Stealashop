@@ -98,8 +98,8 @@ local Badges = {
 		},
 		{
 			Key = "Secret",
-			Id = 0,
-			DevId = 0,
+			Id = 12482347170482,
+			DevId = 1046738162941963,
 			Rule = "Rarity",
 			Rarity = "Secret",
 			Name = "Secret Finder",
@@ -108,8 +108,8 @@ local Badges = {
 		},
 		{
 			Key = "Zone6",
-			Id = 0,
-			DevId = 0,
+			Id = 2376081713577200,
+			DevId = 1615804164972793,
 			Rule = "ZoneItem",
 			Zone = 6,
 			Name = "End of the Street",
@@ -118,8 +118,8 @@ local Badges = {
 		},
 		{
 			Key = "Reborn",
-			Id = 0,
-			DevId = 0,
+			Id = 3486392182556727,
+			DevId = 1191932509312544,
 			Rule = "Rebirths",
 			Min = 1,
 			Name = "Reborn",
@@ -128,8 +128,8 @@ local Badges = {
 		},
 		{
 			Key = "Millionaire",
-			Id = 0,
-			DevId = 0,
+			Id = 1297138662347094,
+			DevId = 2825808733331096,
 			Rule = "BestIncome",
 			Min = 1_000_000,
 			Name = "Millionaire Shop",
