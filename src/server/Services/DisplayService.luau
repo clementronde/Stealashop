@@ -2592,6 +2592,32 @@ function DisplayService.GetSlots(player: Player): { [number]: Attachment }
 	return slots
 end
 
+-- a485 (L-351, Cantin le 25/11 ; MonetizationService, Features.ExtraStandsGate) : les `count` présentoirs bonus
+-- (DisplaySlot_21 à 20 + count) sont-ils posés et utilisables par le joueur ? Boutique avec un étage (places d'étage
+-- ouvertes, floorStands) : seulement une fois l'étage acheté (Shared/ShopFloor.Bought, la règle d'extraSlots) ; un étage
+-- seulement posé ne suffit pas. Sans étage : oui, sauf s'ils sont dans un Floor_2 sans place d'étage (jamais montré).
+-- Ne dit rien de la possession du gamepass (MonetizationService). Sans yield.
+function DisplayService.ExtraStandsOpen(player: Player, count: number): boolean
+	local data = DataService.Get(player)
+	local refs = playerRefs(player)
+	if data == nil or refs == nil or count ~= count or count <= 0 or refs.extra < count then
+		return false
+	end
+	local stands = floorStands(data, refs)
+	if stands > 0 then
+		return ShopFloor.Bought(standsLevel(data), stands)
+	end
+	local floor = refs.floor
+	local max = Balance.Display.MaxSlots
+	for index = max + 1, max + math.floor(count) do
+		local slot = refs.slots[index]
+		if floor and slot and slot:IsDescendantOf(floor) then
+			return false
+		end
+	end
+	return true
+end
+
 function DisplayService.GetSlotStates(player: Player): { [number]: SlotState }
 	local states: { [number]: SlotState } = {}
 	local data = DataService.Get(player)

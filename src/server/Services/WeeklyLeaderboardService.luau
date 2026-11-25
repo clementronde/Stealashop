@@ -28,10 +28,18 @@
 --     LeaderboardStatueService (avatar sur la statue, seulement quand il change).
 --   - Protégé : chaque appel DataStore dans un pcall, budget vérifié ; Studio sans accès aux API : rien n'est lu ni
 --     écrit (une ligne), le classement de la semaine montre les joueurs présents.
+--   - a485 (L-351 question 6, V0 gardé par Clément le 25/11 ; Features.WeeklyNoPrivate, WeeklyNoPrivateDev en DEV) :
+--     serveur privé payant (game.PrivateServerOwnerId ≠ 0 ; un serveur réservé, OwnerId 0, compte comme un public) :
+--     rien n'y compte pour la semaine. Aucune écriture dans les OrderedDataStore ; le revenu de la semaine (BestIncome)
+--     n'y monte pas ; les vols faits là ne comptent pas (StealsAt suit Lifetime.Steals : le compte de la semaine reste
+--     celui de l'arrivée, sauvegardé tel quel). Les panneaux et les récompenses dues des semaines finies restent lus et
+--     donnés (gagnés ailleurs). Coupé : comme avant.
 --
 -- Crochet de test, STUDIO SEULEMENT, barre de commande serveur :
 --   workspace:SetAttribute("WeeklyBoardTest", "Rollover")  -- avance l'horloge du service d'une semaine : la semaine en
 --                                                          -- cours devient la précédente, récompenses tout de suite
+--   workspace:SetAttribute("WeeklyBoardTest", "Private")   -- a485 : ce serveur fait comme un serveur privé (avec
+--                                                          -- Features.WeeklyNoPrivate dans ce jeu) ; « Public » : retour
 --
 -- API (serveur) :
 --   WeeklyLeaderboardService.ValueOf(player, stat) -> number   valeur de la semaine (0 sans profil)
@@ -68,6 +76,41 @@ local INCOME_ATTRIBUTE = "Income" -- attribut du Player posé par DisplayService
 local TEST_ATTRIBUTE = "WeeklyBoardTest" -- Studio seulement
 local IS_STUDIO = RunService:IsStudio()
 local ENABLED: boolean = (Features :: any).WeeklyLeaderboards == true
+
+-- a485 (L-351 question 6) : Features.WeeklyNoPrivate partout, ou WeeklyNoPrivateDev dans le jeu DEV (Config/ProductIds.IsDev,
+-- comme les autres nouveautés ; module absent d'un banc : faux, comme en PROD).
+local NO_PRIVATE: boolean = (function(): boolean
+	local raw = Features :: any
+	if raw.WeeklyNoPrivate == true then
+		return true
+	end
+	if raw.WeeklyNoPrivateDev ~= true then
+		return false
+	end
+	local module = Shared.Config:FindFirstChild("ProductIds")
+	if module == nil then
+		return false
+	end
+	local ok, ids = pcall(require, module :: any) -- comme Config/Monetization
+	return ok and type(ids) == "table" and (ids :: any).IsDev == true
+end)()
+local privateTest = false -- Studio : WeeklyBoardTest = « Private »
+-- [joueur] = { week, count } : vols de la semaine au moment où il est arrivé dans ce serveur privé (gelés).
+local frozenSteals: { [Player]: { week: number, count: number } } = {}
+
+-- a485 : ce serveur ne compte pas pour les classements de la semaine (serveur privé payant, voir l'en-tête).
+local function privateServer(): boolean
+	if not NO_PRIVATE then
+		return false
+	end
+	if privateTest then
+		return true
+	end
+	local ok, owner = pcall(function(): any
+		return (game :: any).PrivateServerOwnerId
+	end)
+	return ok and type(owner) == "number" and owner ~= 0
+end
 
 local WeeklyLeaderboardService = {}
 WeeklyLeaderboardService.Priority = 240 -- V0 : après LeaderboardService (100) et UnboxService
@@ -141,7 +184,26 @@ function WeeklyLeaderboardService.ValueOf(player: Player, stat: string): number
 	if data == nil then
 		return 0
 	end
-	local board = boardOf(data, weekNow())
+	local week = weekNow()
+	local board = boardOf(data, week)
+	if privateServer() then
+		-- a485 : serveur privé : le revenu de la semaine ne monte pas ; les vols faits ici sont retirés du compte (StealsAt
+		-- avance avec eux), qui reste celui de l'arrivée (nouvelle semaine : 0).
+		local lifetime: any = if type((data :: any).Lifetime) == "table" then (data :: any).Lifetime else {}
+		local steals = count(lifetime.Steals)
+		local frozen = frozenSteals[player]
+		if frozen == nil or frozen.week ~= week then
+			frozen = { week = week, count = math.max(steals - board.StealsAt, 0) }
+			frozenSteals[player] = frozen
+		end
+		board.StealsAt = math.max(steals - frozen.count, 0)
+		if stat == "WeeklyIncome" then
+			return board.BestIncome
+		elseif stat == "WeeklySteals" then
+			return steals - board.StealsAt
+		end
+		return 0
+	end
 	if stat == "WeeklyIncome" then
 		local ok, income = pcall(LeaderboardService.RecordIncome, player)
 		if ok and type(income) == "number" and income > board.BestIncome and income < math.huge then
@@ -196,6 +258,9 @@ local function valuesOf(player: Player): { [string]: number }
 end
 
 local function writePlayer(userId: number, week: number, values: { [string]: number })
+	if privateServer() then
+		return -- a485 : serveur privé : rien n'est écrit dans les classements de la semaine
+	end
 	for stat, encoded in values do
 		local key = `{week}:{encoded}`
 		local mine = written[userId]
@@ -538,6 +603,7 @@ function WeeklyLeaderboardService.Init()
 		-- Pas de yield ici : valeurs lues maintenant, écrites en tâche de fond.
 		local userId, week, values = player.UserId, weekNow(), valuesOf(player)
 		fullSaid[player] = nil
+		frozenSteals[player] = nil -- a485 : StealsAt déjà posé par valuesOf (serveur privé), sauvegardé avec le profil
 		task.spawn(function()
 			writePlayer(userId, week, values)
 			written[userId] = nil
@@ -561,6 +627,10 @@ function WeeklyLeaderboardService.Start()
 				offset += 7 * Weekly.DayLength
 				nextWrite, nextRead = 0, 0
 				print(`[WeeklyLeaderboardService] test : horloge avancée d'une semaine (semaine {weekNow()})`)
+			elseif value == "Private" or value == "Public" then -- a485 : serveur privé simulé (Features.WeeklyNoPrivate)
+				privateTest = value == "Private"
+				table.clear(frozenSteals)
+				print(`[WeeklyLeaderboardService] test : serveur {if privateServer() then "privé : la semaine ne compte rien ici" else "public : la semaine compte"}{if NO_PRIVATE then "" else " (Features.WeeklyNoPrivate coupé dans ce jeu)"}`)
 			end
 		end)
 	end
@@ -568,6 +638,9 @@ function WeeklyLeaderboardService.Start()
 	nextWrite = start + Weekly.FirstReadDelay
 	nextRead = start + Weekly.FirstReadDelay + 2 -- après la première écriture
 	print(`[WeeklyLeaderboardService] classements de la semaine {weekNow()} : top {Weekly.Top} en $/s et en vols, remise à zéro le lundi 00:00 UTC`)
+	if privateServer() then -- a485
+		print("[WeeklyLeaderboardService] serveur privé : la semaine ne compte rien ici (Features.WeeklyNoPrivate), panneaux et récompenses dues seulement")
+	end
 	while true do
 		local ok, problem = pcall(function()
 			WeeklyLeaderboardService.Step(os.clock())

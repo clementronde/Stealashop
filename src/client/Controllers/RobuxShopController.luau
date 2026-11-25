@@ -524,10 +524,22 @@ local function notForSale(offer: Offer, id: number?): boolean
 	return true
 end
 
+-- a485 (brief L-351 point 5, Monetization.ExtraStands.Gate : Features.ExtraStandsGate) : la carte +4 Displays seulement si
+-- le serveur a vu les présentoirs bonus utilisables dans la boutique du joueur (attribut ExtraStandsReady ; dans le
+-- Floor_2 : une fois l'étage acheté, Cantin le 25/11), ou si le gamepass est déjà possédé (carte « Owned ») ; Gate
+-- coupé : toujours, comme avant.
+local function extraStandsShown(offer: Offer): boolean
+	local gate = Monetization.ExtraStands
+	if offer.key ~= "ExtraStands" or not gate.Gate then
+		return true
+	end
+	return localPlayer:GetAttribute(gate.Attribute) == true or owns(offer)
+end
+
 local function offersOf(current: Tab): { Offer }
 	local list: { Offer } = {}
 	for _, offer in offers do
-		if offer.tab == current and (offer.key ~= "StarterPack" or starterOffered()) then
+		if offer.tab == current and (offer.key ~= "StarterPack" or starterOffered()) and extraStandsShown(offer) then
 			table.insert(list, offer)
 		end
 	end
@@ -879,9 +891,18 @@ local function buy(card: Card)
 		showSoon(card)
 		return
 	end
-	showPurchaseGlow()
+	-- a485 (L-351, Cantin le 25/11) : +4 Displays avec Monetization.ExtraStands.Gate, fenêtre d'achat ouverte par le
+	-- serveur, qui la refuse tant que l'étage de la boutique n'est pas acheté (MonetizationService, remote
+	-- PromptExtraStands) ; lueur seulement si le serveur a dit oui à la carte (attribut), sinon elle resterait Timeout s.
+	local viaServer = isPass and offer.key == "ExtraStands" and Monetization.ExtraStands.Gate
+	if not viaServer or localPlayer:GetAttribute(Monetization.ExtraStands.Attribute) == true then
+		showPurchaseGlow()
+	end
 	local ok, err = pcall(function()
-		if isPass then
+		if viaServer then
+			local Net = require(Shared:WaitForChild("Net"):WaitForChild("Net")) :: any
+			Net.Client.PromptExtraStands:Fire()
+		elseif isPass then
 			MarketplaceService:PromptGamePassPurchase(localPlayer, id)
 		else
 			MarketplaceService:PromptProductPurchase(localPlayer, id)
@@ -1094,7 +1115,14 @@ end
 -- Cartes ---------------------------------------------------------------------------------------
 
 local function v2State(): string
-	return (if starterOffered() then "S" else "-") .. (if crateShown() then "C" else "-")
+	-- a485 : carte +4 Displays montrée ou non (extraStandsShown) : les cartes sont refaites quand elle change.
+	local extra = "-"
+	for _, offer in offers do
+		if offer.key == "ExtraStands" and extraStandsShown(offer) then
+			extra = "E"
+		end
+	end
+	return (if starterOffered() then "S" else "-") .. (if crateShown() then "C" else "-") .. extra
 end
 
 -- v2 : toutes les sections à la fois, le pack de départ et la caisse.
@@ -1727,7 +1755,7 @@ function RobuxShopController.Start()
 		end)
 	end
 
-	local watched = { INCOME_ATTRIBUTE, STARTER_ATTRIBUTE, OPEN_NOW_ATTRIBUTE }
+	local watched = { INCOME_ATTRIBUTE, STARTER_ATTRIBUTE, OPEN_NOW_ATTRIBUTE, Monetization.ExtraStands.Attribute } -- a485
 	for _, pass in Monetization.Passes do
 		table.insert(watched, PASS_ATTRIBUTE_PREFIX .. pass.Key)
 	end

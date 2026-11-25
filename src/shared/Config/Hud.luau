@@ -115,7 +115,8 @@ local Hud = {
 	--   CashBoost     : « x2 » avec le pass ×2 Cash (PassDoubleCash) ou le boost ×2 argent (CashBoostEndsAt), « x4 » avec
 	--                   les deux (même produit que MonetizationService) ; Timer = temps restant du boost ;
 	--   TrainingBoost : « x2 » avec le pass ×2 Training (PassDoubleTraining) ou ×2 Speed (PassDoubleSpeed, a319), « x4 »
-	--                   avec les deux (mêmes gains du tapis, MonetizationService).
+	--                   avec les deux (mêmes gains du tapis, MonetizationService) ; a485 : avec Features.TrainingX4,
+	--                   « x4 » avec ×4 Training (seul ou avec ×2 Speed), « x2 » avec ×2 Speed seul (Monetization.TrainingMultiplier).
 	-- Les trois derniers sont cachés sans leur bonus ; seuls Visible et les textes sont écrits.
 	BottomRow = {
 		Friend = "FriendBoost",

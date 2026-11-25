@@ -2,8 +2,14 @@
 -- MonetizationService (DEV-100) : boutique Robux, gamepasses et produits développeur (Partie 2,
 -- sections 3.1 et 4 ; Partie 1, sections 7.1, 9.5 et 9.6 ; offres, prix et valeurs :
 -- Config/Monetization ; écran : RobuxShopController, côté client). MAJ 1, derrière
--- Features.RobuxShop : à false (jusqu'à la MAJ 1), ce service ne branche rien (ni ProcessReceipt, ni
--- accroche, ni attribut, ni bonus Premium) et l'écrit une fois dans la sortie.
+-- Features.RobuxShop : à false (jusqu'à la MAJ 1), ce service ne branche rien (ni accroche, ni attribut,
+-- ni bonus Premium) et l'écrit une fois dans la sortie.
+-- a485 (25/11, risque Robux d'a442) : ProcessReceipt est TOUJOURS branché au démarrage, boutique et caisse coupées
+-- comprises (Features.RobuxShop, RobuxCrate, RobuxCrateDev, ou un Feature_* de ConfigService). Boutique coupée, un reçu
+-- qui n'est pas un lot de la caisse allumée répond NotProcessedYet avec une ligne dans la sortie : Roblox le garde et le
+-- rappelle, il sera livré sur un serveur où la boutique est allumée. Avant, un serveur démarré boutique coupée et caisse
+-- pas prête ne branchait rien : un reçu en attente venu d'un autre serveur n'avait personne pour le traiter. Pas
+-- d'interrupteur : c'est le filet des interrupteurs Robux eux-mêmes ; il ne livre rien de plus (réponses NotProcessedYet).
 --
 -- Offre active : Features.RobuxShop, Id ≠ 0 (créée sur le Creator Hub au nom du groupe du studio) et
 -- Ready (effet codé). Un Id à 0 désactive l'offre sans erreur.
@@ -37,6 +43,16 @@
 --   ×2 Entraînement    TrainingService.GetGainMultiplier × 2 (tapis et banc)
 --   ×2 Vitesse         a319 (L-303) : même accroche, × 2 de plus (× 4 avec ×2 Entraînement) ; à la place du boost de
 --                      10 min SpeedBoost de Config/Boosts, jamais vendu (aucun reçu, aucun temps de boost à garder)
+--   ×4 Entraînement    a485 (L-351 question 2, Features.TrainingX4 / TrainingX4Dev, Monetization.TrainingLadder) : ×2
+--                      Training devient ×4 Training, et l'accroche prend le plus fort de ×2 Speed et ×4 Training
+--                      (Monetization.TrainingMultiplier) ; coupé : les deux ×2 se multiplient, comme avant
+--   +4 présentoirs     a485 (Features.ExtraStandsGate / ExtraStandsGateDev, Monetization.ExtraStands) : attribut
+--   (vente)            ExtraStandsReady du Player = true quand ses présentoirs bonus DisplaySlot_21 à 20 + Stands sont
+--                      utilisables (DisplayService.ExtraStandsOpen : posés dans la parcelle, ou dans le Floor_2 une fois
+--                      l'étage ACHETÉ, Cantin le 25/11 ; un étage seulement posé ne suffit pas) ; la carte est cachée
+--                      sans lui (sauf gamepass possédé) et la fenêtre d'achat est ouverte par le serveur (remote
+--                      PromptExtraStands), qui la refuse dans ce cas. Roblox vend aussi un gamepass hors de cette
+--                      fenêtre (site, client tricheur) : possédé avant l'étage, ses présentoirs s'ouvrent avec l'étage
 --   Encaissement auto  DisplayService.HasAutoCollect : la caisse se vide chaque seconde, où que soit
 --                      le joueur
 --   Ouverture rapide   vague 52 (a170) : plus de colis posé (a158) ; Fast Open ne raccourcit plus que
@@ -49,7 +65,8 @@
 --   Packs d'argent     Minutes des revenus actuels, ceux du HUD, bonus compris (6 packs, de 10 min à
 --                      12 h, vague 63), au moins CashPacks.MinPerMinute $ par minute (Monetization.CashPackAmount)
 --   Ouvrir maintenant  un produit par palier de prix (Monetization.OpenNowTier, que l'écran choisit
---                      selon l'attente du colis qui attend le plus) ; le reçu retire jusqu'à Skip s à
+--                      selon l'attente du colis qui attend le plus ; a485 : 2 paliers en vente, les paliers 3 et 4
+--                      coupés restent livrés s'il en arrive un reçu, RetiredTiers) ; le reçu retire jusqu'à Skip s à
 --                      ce colis. Aucun colis en attente : les secondes payées vont dans
 --                      Monetization.OpenNowCredit du profil, retirées des prochains colis posés
 --   Vague 31 (L-112 ; décision de Cantin du 2026-11-12) : les deux mêmes achats valent pour
@@ -74,15 +91,16 @@
 -- (TelemetryService.LogEconomy, SKU = clé du produit).
 --
 -- Pas codés, juste listés (Ready = false : ni affichés ni vendus) :
---   VIP                tag de chat, aura VIP, +10 % de revenus, rideau +30 s (plus de coffre-fort, vague 54) : attend
---                      l'aura VIP (Clément) et les défenses de la MAJ 2
---   Gants hydrauliques outil exclusif, puissance = 2,5 × le meilleur outil acheté : attend son modèle
---                      TOOL_ et sa règle de puissance dans ToolService
+--   VIP                tag de chat, aura VIP, +10 % de revenus, rideau +10 s (a485, L-351 question 7 : avant +30 s ;
+--                      VIP.CurtainBonus) (plus de coffre-fort, vague 54) : attend l'aura VIP (Clément) et les défenses
+--   Gants hydrauliques outil exclusif, puissance = 1,5 × le meilleur outil acheté, jamais plus que l'Angle Grinder
+--                      (a485, L-351 question 4 : avant 2,5 × ; PowerFactor, PowerCap) : attend son modèle TOOL_ et sa
+--                      règle de puissance dans ToolService
 --   Vengeance          téléport derrière le voleur pendant une poursuite : règle à écrire (PvP)
 --   Rideau instantané  rideau de sa boutique sans attendre la recharge : MAJ 2 (DefenseService)
 --   Chance ×3          raretés boostées 15 min : cotes affichées, et offre cachée si
 --                      PolicyService:GetPolicyInfoForPlayerAsync dit ArePaidRandomItemsRestricted
---   Bouclier 30 min    boutique inviolable, une fois par session : règle à écrire (PvP)
+--   (Bouclier 30 min   a485, L-351 question 5 : retiré pour de bon, jamais créé, à ne jamais créer)
 --
 -- Attributs du Player, lus par l'écran (heures serveur = Workspace:GetServerTimeNow()) :
 --   Pass<Clé>          true si le gamepass est possédé (PassDoubleCash…), absent sinon
@@ -109,15 +127,16 @@
 --       a309 (Cantin, 22/11) : la scène d'ouverture de la caisse exclusive (Crate.Reveal, mêmes règles) pour un
 --       colis offert déjà donné (paliers de temps de jeu, RewardService) ; true si elle est lancée. Sans yield.
 --
--- Boutique coupée (Features.RobuxShop = false) : ni reçu, ni gamepass, ni bonus Premium, ni pack de
--- départ, ni Ouvrir maintenant, ni crochet de test. Seul le boost ×2 argent reste branché (DEV-101, les
+-- Boutique coupée (Features.RobuxShop = false) : ni reçu livré (a485 : ProcessReceipt branché, NotProcessedYet), ni
+-- gamepass, ni bonus Premium, ni pack de départ, ni Ouvrir maintenant, ni crochet de test. Seul le boost ×2 argent reste
+-- branché (DEV-101, les
 -- récompenses quotidiennes et de temps de jeu le donnent, Partie 2, 3.3) : temps restant gardé dans
 -- Boosts.Cash, compté seulement en jeu, attribut CashBoostEndsAt, ×2 dans DisplayService.GetIncomeMultiplier.
 --
 -- Crochet de test, STUDIO SEULEMENT (Ids encore à 0 : aucun achat réel possible) :
 -- workspace:SetAttribute("MonetizationTest", "<joueur> <Clé>") (barre de commande serveur ; joueur =
 -- nom ou UserId). Une clé de gamepass le donne pour la session, comme un achat ; une clé de produit
--- (OpenNow1 à OpenNow4 pour un palier d'Ouvrir maintenant) passe par le même don qu'un reçu, avec un
+-- (OpenNow1 et OpenNow2 pour un palier d'Ouvrir maintenant en vente) passe par le même don qu'un reçu, avec un
 -- faux PurchaseId « STUDIO-<GUID du Play>-n » (a297 : unique d'un Play à l'autre, le profil DEV garde ses
 -- Purchases). Hors de Studio, l'attribut n'est pas écouté.
 -- a285 (21/11) : Crate1, Crate3 et Crate10 pour un lot de la caisse exclusive, avec Features.RobuxCrate, même
@@ -130,7 +149,7 @@
 -- autres produits (PurchaseId noté avec le don, sauvegarde attendue).
 -- a294 (21/11, Cantin) : vendue quand Monetization.Crate.Live et Ready (Features.RobuxCrate partout, ou RobuxCrateDev
 -- dans le jeu DEV), même boutique coupée : ProcessReceipt est alors branché pour les seuls lots de la caisse (tout
--- autre reçu : NotProcessedYet). Ouverture (Crate.Reveal, V0 de Cantin) : après le don, RevealStarted à tous avec un
+-- autre reçu : NotProcessedYet ; a485 : ProcessReceipt branché dans tous les cas). Ouverture (Crate.Reveal, V0 de Cantin) : après le don, RevealStarted à tous avec un
 -- plan tiré ici (Shared/UnboxPlan : nombre de coups de la rareté tirée, cote finale = 100 / sa chance), pour l'objet le
 -- plus rare du lot, colis posé devant l'acheteur (ShopId Crate.Reveal.ShopId : aucun magasin) ; acheteur immobilisé
 -- (StatsService, clé CrateReveal) et protégé (attribut RevealProtected) jusqu'à son RevealDone, sa mort, son départ
@@ -203,7 +222,7 @@ local TICK = 1
 -- Messages lus par le joueur (Notify « Info »), en anglais (L-036). V0 proposés, absents du doc.
 local MESSAGES = {
 	PassUnlocked = "%s unlocked!",
-	FastOpen = "Fast Open: anti-theft 2× shorter!",
+	FastOpen = "Quick Lock: anti-theft 2× shorter!", -- a485 (L-351 question 3) : avant « Fast Open: … »
 	CashPack = "+%s added to your cash!",
 	-- Vague 53 : plus de colis en base, ces textes parlent aussi de l'antivol d'un objet (V0, anglais).
 	OpenNowReady = "Your item is UNLOCKED!",
@@ -216,7 +235,11 @@ local MESSAGES = {
 	OpenNowCreditUsedItem = "Open Now: your new item's anti-theft is %s shorter!",
 	StarterPack = "Starter Pack: +%s, a Hammer and ×2 Cash for 1 hour!",
 	-- a285 (21/11) : un message par objet sorti de la caisse exclusive (rareté, nom). V0 proposé, absent du doc.
-	CrateItem = "Exclusive Crate: you got %s %s %s!", -- a412 : article, rareté (DisplayName), objet
+	-- a485 (L-415) : le nom de la caisse vient de Monetization.Crate.DisplayName (V0 « Exclusive Crate », une seule valeur).
+	-- Texte d'origine, gardé pour la détection d'a412 par les lanceurs de bancs : CrateItem = "Exclusive Crate: you got %s %s %s!"
+	CrateItem = Monetization.Crate.DisplayName .. ": you got %s %s %s!", -- a412 : article, rareté (DisplayName), objet
+	-- a485 (L-351, Cantin le 25/11) : achat de +4 Displays refusé tant que l'étage de la boutique n'est pas acheté. V0.
+	ExtraStandsFloor = "Buy your shop's 2nd floor first!",
 }
 
 local MonetizationService = {}
@@ -240,7 +263,7 @@ local CRATE_PRODUCT: Product = {
 	Key = "Crate",
 	Tab = "Offers",
 	Order = 0,
-	DisplayName = "Exclusive Crate",
+	DisplayName = CRATE.DisplayName, -- a485 (L-415) : V0 « Exclusive Crate », réglé dans Monetization.Crate
 	Effect = "",
 	Icon = "",
 	Price = CRATE.UnitPrice,
@@ -486,6 +509,40 @@ local function longestWait(player: Player): (string?, number?)
 	return bench, latest
 end
 
+-- a485 (brief L-351 point 5, Monetization.ExtraStands ; Cantin le 25/11) : les présentoirs bonus du gamepass +4 Displays
+-- (DisplaySlot_21 à 20 + Stands) sont-ils utilisables ? Posés dans la parcelle, ou dans son Floor_2 une fois l'étage
+-- acheté (DisplayService.ExtraStandsOpen ; un étage seulement posé ne suffit pas).
+local function extraStandsReady(player: Player): boolean
+	local stands = passValue("ExtraStands", "Stands", 0)
+	if stands <= 0 then
+		return false
+	end
+	-- :: any : absent d'un DisplayService de banc → false
+	local ok, open = pcall((DisplayService :: any).ExtraStandsOpen, player, stands)
+	return ok and open == true
+end
+
+-- a485 (L-351, Cantin le 25/11) : remote PromptExtraStands, la carte +4 Displays demande la fenêtre d'achat (Gate
+-- allumé). Ouverte ici seulement si le gamepass est en vente, pas encore possédé et ses présentoirs utilisables
+-- (extraStandsReady) ; sinon refus (message si c'est l'étage), jamais sur la foi du client.
+local function onPromptExtraStands(player: Player)
+	local pass = Monetization.PassByKey.ExtraStands
+	if not enabled or pass == nil or not pass.Ready or pass.Id == 0 or hasPass(player, pass.Key) then
+		return
+	end
+	if not extraStandsReady(player) then
+		log(`{player.Name} : +4 Displays refusé (présentoirs bonus pas utilisables : étage pas acheté)`)
+		notify(player, MESSAGES.ExtraStandsFloor)
+		return
+	end
+	local ok, err = pcall(function()
+		MarketplaceService:PromptGamePassPurchase(player, pass.Id)
+	end)
+	if not ok then
+		warn(`[MonetizationService] fenêtre d'achat de +4 Displays pour {player.Name} : {err}`)
+	end
+end
+
 -- Une fois par seconde : boost (profil et attribut), fin de l'offre, colis qui attend le plus.
 local function tickPlayer(player: Player, state: State)
 	local data = DataService.Get(player)
@@ -515,6 +572,9 @@ local function tickPlayer(player: Player, state: State)
 	end
 	local _, latest = longestWait(player)
 	setAttribute(player, OPEN_NOW_ATTRIBUTE, latest)
+	if Monetization.ExtraStands.Gate then -- a485 : carte +4 Displays montrée seulement avec ses présentoirs utilisables
+		setAttribute(player, Monetization.ExtraStands.Attribute, if extraStandsReady(player) then true else nil)
+	end
 end
 
 ------------------------------------------------------------------------------
@@ -1190,6 +1250,12 @@ local function handleReceipt(receipt: { [string]: any }): Enum.ProductPurchaseDe
 	end
 	local sale = salesById[productId]
 	if sale == nil then
+		if not enabled then
+			-- a485 : boutique coupée sur ce serveur (seuls les lots de la caisse allumée y sont vendus) : le reçu est gardé
+			-- par Roblox et livré plus tard, sur un serveur où la boutique est allumée.
+			warn(`[MonetizationService] reçu {purchaseId} : produit {productId}, boutique coupée sur ce serveur (Features.RobuxShop = false) : gardé pour plus tard (NotProcessedYet)`)
+			return Enum.ProductPurchaseDecision.NotProcessedYet
+		end
 		warn(`[MonetizationService] reçu {purchaseId} : produit {productId} absent de Config/Monetization, pas traité`)
 		return Enum.ProductPurchaseDecision.NotProcessedYet
 	end
@@ -1429,7 +1495,7 @@ local function onTestAttribute()
 		end
 	elseif tierIndex then
 		local openNow = Monetization.ProductByKey.OpenNow
-		local tier = if openNow.Tiers then openNow.Tiers[tierIndex] else nil
+		local tier = if openNow.Tiers then openNow.Tiers[tierIndex] else nil -- a485 : paliers en vente seulement
 		if tier then
 			sale = { product = openNow, tier = tier }
 		end
@@ -1440,7 +1506,7 @@ local function onTestAttribute()
 		end
 	end
 	if sale == nil or not sale.product.Ready then
-		warn(`[MonetizationService] test : « {key} » n'est ni un gamepass ni un produit codé (OpenNow1 à OpenNow4 pour Ouvrir maintenant ; Crate1, Crate3, Crate10 avec Monetization.Crate.Live : Features.RobuxCrate, ou RobuxCrateDev dans le jeu DEV)`)
+		warn(`[MonetizationService] test : « {key} » n'est ni un gamepass ni un produit codé (OpenNow1 et OpenNow2 pour Ouvrir maintenant ; Crate1, Crate3, Crate10 avec Monetization.Crate.Live : Features.RobuxCrate, ou RobuxCrateDev dans le jeu DEV)`)
 		return
 	end
 	local data = DataService.Get(player)
@@ -1541,6 +1607,10 @@ local function buildSales(crateOnly: boolean?): (number, number)
 			for _, tier in tiers do
 				add(tier.Id, { product = product, tier = tier })
 			end
+			-- a485 : paliers coupés (RetiredTiers) : plus jamais proposés, mais leurs reçus en attente sont livrés.
+			for _, tier in product.RetiredTiers or {} do
+				add(tier.Id, { product = product, tier = tier })
+			end
 		else
 			add(product.Id, { product = product, tier = nil })
 		end
@@ -1573,11 +1643,12 @@ local function installHooks()
 	end
 	local baseGain = TrainingService.GetGainMultiplier
 	TrainingService.GetGainMultiplier = function(player: Player, kind: any): number
-		local multiplier = if hasPass(player, "DoubleTraining") then passValue("DoubleTraining", "Multiplier", 1) else 1
 		-- a319 (L-303) : ×2 Speed, permanent, multiplié avec ×2 Training (comme le boost SpeedBoost qu'il remplace).
-		if hasPass(player, "DoubleSpeed") then
-			multiplier *= passValue("DoubleSpeed", "Multiplier", 1)
-		end
+		-- a485 (L-351 question 2) : avec Monetization.TrainingLadder (Features.TrainingX4), ×4 Training et le plus fort
+		-- des deux seulement ; le calcul est celui du HUD (Monetization.TrainingMultiplier).
+		local multiplier = Monetization.TrainingMultiplier(function(key: string): boolean
+			return hasPass(player, key)
+		end)
 		return baseGain(player, kind) * multiplier
 	end
 	-- Vague 31 (L-112, Cantin 2026-11-12) : Fast Open raccourcit l'antivol d'un objet posé au sol. Vague 52 (a170) :
@@ -1660,14 +1731,17 @@ function MonetizationService.Init()
 	end)
 
 	if not enabled then
-		print("[MonetizationService] Features.RobuxShop = false : boutique Robux coupée (ni reçu, ni gamepass, ni bonus de revenus) ; seul le boost ×2 argent des récompenses reste")
+		print("[MonetizationService] Features.RobuxShop = false : boutique Robux coupée (ni gamepass, ni bonus de revenus) ; seul le boost ×2 argent des récompenses reste")
+		-- a294 : caisse allumée (Monetization.Crate.Live : jeu DEV avec Features.RobuxCrateDev, ou Features.RobuxCrate)
+		-- et boutique coupée : ses seuls lots sont vendus (reçus idempotents comme les autres).
+		-- a485 (risque Robux d'a442) : ProcessReceipt branché dans tous les cas, caisse coupée comprise : tout autre reçu
+		-- répond NotProcessedYet (gardé par Roblox, livré sur un serveur où la boutique est allumée), jamais perdu.
+		local _, crateProducts = buildSales(true)
+		MarketplaceService.ProcessReceipt = processReceipt
 		if CRATE_PRODUCT.Ready then
-			-- a294 : caisse allumée (Monetization.Crate.Live : jeu DEV avec Features.RobuxCrateDev, ou Features.RobuxCrate)
-			-- et boutique coupée : ProcessReceipt branché pour ses seuls lots (reçus idempotents comme les autres).
-			local _, crateProducts = buildSales(true)
-			MarketplaceService.ProcessReceipt = processReceipt
 			print(`[MonetizationService] caisse exclusive allumée sans la boutique : {crateProducts} lot(s) en vente (Ids à 0 = « Soon »)`)
 		end
+		print("[MonetizationService] ProcessReceipt branché boutique coupée : les reçus hors caisse sont gardés pour plus tard (NotProcessedYet)")
 		if IS_STUDIO and CRATE_PRODUCT.Ready then
 			-- a285 : la caisse exclusive se teste en Studio sans la boutique (aucun achat réel, aucun reçu).
 			Workspace:GetAttributeChangedSignal(TEST_ATTRIBUTE):Connect(onTestAttribute)
@@ -1678,6 +1752,14 @@ function MonetizationService.Init()
 	local passes, products = buildSales()
 	MarketplaceService.ProcessReceipt = processReceipt
 	MarketplaceService.PromptGamePassPurchaseFinished:Connect(onGamePassPurchaseFinished)
+	if Monetization.ExtraStands.Gate then -- a485 (L-351) : achat de +4 Displays ouvert par le serveur
+		local promptOk, promptErr = pcall(function()
+			(Net.Server :: any).PromptExtraStands:Connect(onPromptExtraStands)
+		end)
+		if not promptOk then
+			warn(`[MonetizationService] Net.Server.PromptExtraStands : {promptErr}`)
+		end
+	end
 	if IS_STUDIO then
 		Workspace:GetAttributeChangedSignal(TEST_ATTRIBUTE):Connect(onTestAttribute)
 	end
