@@ -31,6 +31,12 @@
 --                              (UiMotionController) : sans effet si rien ne change ; une copie neuve de l'écran
 --                              (ResetOnSpawn) s'écarte à son tour. Seule la Position est touchée, le temps de l'écart.
 --   HudMask.GetAway() -> (away, éléments écartés ou en mouvement)   pour un banc
+--   HudMask.SetSpare(key, spare?)   (a465, L-340) spare = { [écran] = { noms } } : ces éléments restent à l'écran sous
+--                              tout masque à liste (KeepScreens, Partial) qui les cacherait : un écran masqué devient
+--                              partiel (seulement eux, leurs ancêtres et descendants), un écran partiel les garde en
+--                              plus. nil retire. Sans masque, rien ne change ; les masques inverses (HideScreens) ne
+--                              sont pas touchés. Exemple : UI_HUD.HeistTimer pendant la phase discrète d'un braquage
+--                              (TensionController).
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -61,6 +67,7 @@ local HudMask = {}
 
 local localPlayer = Players.LocalPlayer
 local masks: { [string]: Spec } = {}
+local spares: { [string]: { [string]: { string } } } = {} -- a465 : SetSpare
 local order: { string } = {}
 local screens: { [ScreenGui]: Saved } = {}
 local objects: { [GuiObject]: Saved } = {}
@@ -161,9 +168,38 @@ local function restoreAll()
 	end
 end
 
+-- a465 : `extra` ajouté à `list` (sans doublon), dans une copie.
+local function union(list: { string }, extra: { string }): { string }
+	local merged = table.clone(list)
+	for _, element in extra do
+		if table.find(merged, element) == nil then
+			table.insert(merged, element)
+		end
+	end
+	return merged
+end
+
+-- a465 : les éléments de cet écran que SetSpare garde (réunion de toutes les clés), ou nil.
+local function spareOf(name: string): { string }?
+	local out: { string } = {}
+	local found = false
+	for _, spec in spares do
+		local list = spec[name]
+		if list then
+			found = true
+			out = union(out, list)
+		end
+	end
+	if found then
+		return out
+	end
+	return nil
+end
+
 -- Ce que les masques veulent pour cet écran : "Hide", "Keep" ou une liste de noms gardés (intersection).
 local function wanted(name: string): ("Hide" | "Keep" | "Partial", { string }?)
 	local lists: { { string } } = {}
+	local spare = spareOf(name) -- a465
 	for _, key in order do
 		local spec = masks[key]
 		local hideList = spec.HideScreens
@@ -177,9 +213,17 @@ local function wanted(name: string): ("Hide" | "Keep" | "Partial", { string }?)
 		local kept = table.find(keepList, name) ~= nil
 		local partial = if spec.Partial then spec.Partial[name] else nil
 		if partial then
-			table.insert(lists, partial)
+			-- a465 : la liste du masque, plus les éléments gardés par SetSpare
+			local merged: { string } = partial
+			if spare then
+				merged = union(partial, spare)
+			end
+			table.insert(lists, merged)
 		elseif not kept then
-			return "Hide", nil
+			if spare == nil then
+				return "Hide", nil
+			end
+			table.insert(lists, spare) -- a465 : écran masqué, sauf ces éléments
 		end
 	end
 	if #lists == 0 then
@@ -310,6 +354,21 @@ function HudMask.Pop(key: string)
 		table.remove(order, index)
 	end
 	HudMask.Refresh()
+end
+
+-- a465 (L-340) : voir l'en-tête. Revoit les écrans tout de suite s'il y a un masque.
+function HudMask.SetSpare(key: string, spare: { [string]: { string } }?)
+	if spare == nil and spares[key] == nil then
+		return
+	end
+	if spare then
+		spares[key] = spare
+	else
+		spares[key] = nil
+	end
+	if anyMask() then
+		HudMask.Refresh()
+	end
 end
 
 function HudMask.IsActive(key: string?): boolean

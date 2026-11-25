@@ -21,6 +21,8 @@
 --      seulement LeftRail, LeftRailTouch et UI_Hotbar (ChaseFeel.Rails, Hotbar et BarsRefresh ne sont plus lus) ;
 --   4. vague 59 : le vigile qui poursuit le joueur passe en rouge, un Highlight (HeistFeel.Highlight) posé par ce
 --      client dans le modèle du vigile, que lui seul voit ; il part avec la bulle.
+--   a465 (L-340, tension du braquage, Shared/HeistTension) : allumée, ce Highlight V0 n'est plus posé (le vigile porte
+--      HL_ChaseGuard, VfxController) et UI_HUD garde aussi Config/HeistTension.ExtraKeepHud (DropButton).
 -- À la fin de la poursuite (fin, capture, mort, renvoi : ChaseState(false)) : bulle et Highlight détruits, le HUD
 -- revient. Un son ou BB_GuardShout absent : rien (une ligne en Studio, une fois).
 -- Rien n'est envoyé au serveur. Ne touche ni aux écrans de StarterGui ni aux modèles de Clément.
@@ -39,6 +41,31 @@ local ChaseFeel = require(Shared:WaitForChild("Config"):WaitForChild("ChaseFeel"
 local MarkerSounds = require(Shared:WaitForChild("Anim"):WaitForChild("MarkerSounds"))
 local HeistFeel = require(Shared:WaitForChild("Config"):WaitForChild("HeistFeel"))
 local HudMask = require(script.Parent:WaitForChild("UI"):WaitForChild("HudMask"))
+
+-- a465 (L-340) : tension du braquage (Shared/HeistTension, Config/HeistTension), si elle est là (bancs sans elle : coupée).
+local tensionSwitch: any = nil
+local tensionConfig: any = nil
+do
+	local switchModule = Shared:FindFirstChild("HeistTension")
+	local configModule = Shared:WaitForChild("Config"):FindFirstChild("HeistTension")
+	if switchModule and switchModule:IsA("ModuleScript") and configModule and configModule:IsA("ModuleScript") then
+		local okSwitch, switch = pcall(require, switchModule)
+		local okConfig, config = pcall(require, configModule)
+		if okSwitch and okConfig and type(switch) == "table" and type(config) == "table" then
+			tensionSwitch = switch
+			tensionConfig = config
+		end
+	end
+end
+
+local function tensionOn(): boolean
+	local switch = tensionSwitch
+	if switch == nil then
+		return false
+	end
+	local ok, on = pcall(switch.Enabled)
+	return ok and on == true
+end
 
 -- Ce que ce contrôleur utilise de ChaseController.
 type ChaseApi = {
@@ -173,6 +200,11 @@ end
 -- Vague 59 (L-182 point 9) : Highlight rouge dans le modèle du vigile qui poursuit, côté client seulement ; il
 -- suit le vigile (streaming, changement de vigile) indépendamment de la bulle.
 local function markGuard(guard: Model?)
+	if tensionOn() then
+		-- a465 (L-340) : le vigile prend HL_ChaseGuard de Clément (VfxController) ; pas de second Highlight ici.
+		clearHighlight()
+		return
+	end
 	local current = highlight
 	if current and guard and current.Parent == guard and current.Adornee == guard then
 		return
@@ -321,9 +353,19 @@ end
 
 local function maskHud()
 	local spec = HeistFeel.ChaseMask
+	local keepHud: { string } = spec.KeepHud
+	if tensionOn() and tensionConfig then
+		-- a465 (L-340 point 3) : DropButton reste aussi (Config/HeistTension.ExtraKeepHud).
+		keepHud = table.clone(keepHud)
+		for _, name in tensionConfig.ExtraKeepHud do
+			if table.find(keepHud, name) == nil then
+				table.insert(keepHud, name)
+			end
+		end
+	end
 	HudMask.Push(MASK_KEY, {
 		KeepScreens = spec.KeepScreens,
-		Partial = { [spec.Hud] = spec.KeepHud },
+		Partial = { [spec.Hud] = keepHud },
 	})
 end
 

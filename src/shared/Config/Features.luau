@@ -162,6 +162,14 @@ local Features = {
 	BdOutlines = false,
 	-- a446 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
 	BdOutlinesDev = true,
+	-- a465 (L-340, Clément 24/11 : « un peu d'UI de tension ») : tension pendant un braquage (Config/HeistTension,
+	-- Shared/HeistTension, TensionController) : chevrons FX_ChaseChevron au sol jusqu'à sa boutique tant qu'on porte un
+	-- objet volé, vigile en HL_ChaseGuard, DropButton gardé dans le HUD vidé de la poursuite, chrono HeistTimer gardé
+	-- pendant la phase discrète (même sous l'écran de révélation), flash jaune d'arrivée 0 → 0,6 → 1. Tout est côté
+	-- client. Interrupteur PROD (partout) : false (règle C2 : pas encore de test humain, T-303) ; false = comme avant.
+	HeistTension = false,
+	-- a465 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	HeistTensionDev = true,
 }
 
 export type Features = typeof(Features)
