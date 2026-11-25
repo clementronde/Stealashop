@@ -12,8 +12,9 @@
 
 local DeepFreeze = require(script.Parent.DeepFreeze)
 
--- a486 : table active de l'économie (Config/Economy.Active), chargée si le module est là (bancs à liste de modules
--- fixe, comme dans Config/Items) ; sans lui, nil : les nombres écrits dans ce fichier, qui sont ceux de la table 1.
+-- a486 : table de l'économie à appliquer par-dessus les nombres de ce fichier (Config/Economy.Override : la table 2
+-- quand elle est active). nil avec la table 1, ou sans le module (bancs à liste de modules fixe, comme dans
+-- Config/Items) : les nombres écrits dans ce fichier, qui SONT la table 1, ne sont jamais remplacés.
 local ECO: any = (function(): any
 	local found, module = pcall(function(): any
 		return script.Parent:FindFirstChild("Economy")
@@ -21,7 +22,7 @@ local ECO: any = (function(): any
 	if found and module ~= nil then
 		local ok, result = pcall(require, module :: any)
 		if ok and type(result) == "table" then
-			return result.Active
+			return result.Override
 		end
 	end
 	return nil

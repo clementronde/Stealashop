@@ -73,8 +73,9 @@ local function optional(name: string): any
 end
 local Features: any = optional("Features")
 local Economy: any = optional("Economy")
--- a486 : table active de l'économie (nil sans le module : les montants écrits ici, ceux de la table 1).
-local ECO: any = Economy.Active
+-- a486 : table de l'économie à appliquer (Economy.Override : la table 2 quand elle est active ; nil avec la table 1
+-- ou sans le module : les montants écrits ici, qui sont la table 1).
+local ECO: any = Economy.Override
 -- a486 (Cantin, 25/11) : la renaissance est allumée par Features.Rebirth, et coupée avec la table 2 de l'économie tant
 -- que Features.RebirthBT est false (Economy.RebirthAllowed : montants de la table 2 à resimuler). Seule lecture de
 -- ces interrupteurs : RebirthService, RebirthController et le HUD lisent Rebirths.Enabled.

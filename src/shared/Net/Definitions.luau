@@ -78,16 +78,16 @@ local MAX_INDEX = 100
 local MAX_MESSAGE_LENGTH = 200
 
 -- a486 : borne de `value` du remote AdminCommand = Config/Admin.MaxAmount, pris dans la table active de l'économie
--- (Config/Economy, AdminMaxAmount : 1e15 avec la table 1, 1e30 avec la table 2). Module chargé s'il est là (bancs à
--- liste de modules fixe) ; sans lui, 1e15. Ce n'est que la forme de l'appel : AdminService revalide chaque montant.
+-- (Config/Economy.Override, AdminMaxAmount : 1e30 avec la table 2). Avec la table 1, ou sans le module (bancs à
+-- liste de modules fixe) : 1e15, écrit ici. Ce n'est que la forme de l'appel : AdminService revalide chaque montant.
 local ADMIN_MAX_VALUE: number = (function(): number
 	local found, module = pcall(function(): any
 		return (script.Parent :: any).Parent:FindFirstChild("Config"):FindFirstChild("Economy")
 	end)
 	if found and module ~= nil then
 		local ok, result = pcall(require, module :: any)
-		if ok and type(result) == "table" and type(result.Active) == "table" and type(result.Active.AdminMaxAmount) == "number" then
-			return result.Active.AdminMaxAmount
+		if ok and type(result) == "table" and type(result.Override) == "table" and type(result.Override.AdminMaxAmount) == "number" then
+			return result.Override.AdminMaxAmount
 		end
 	end
 	return 1e15

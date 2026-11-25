@@ -30,11 +30,12 @@ local function optional(name: string): any
 end
 local Features: any = optional("Features")
 local ProductIds: any = optional("ProductIds")
--- a486 : table active de l'économie (Config/Economy.Active ; nil sans le module : la part écrite ici, celle de la table 1).
-local ECO: any = optional("Economy").Active
+-- a486 : table de l'économie à appliquer par-dessus les nombres de ce fichier (Config/Economy.Override : la table 2
+-- quand elle est active ; nil avec la table 1 ou sans le module : la part écrite ici, celle de la table 1).
+local ECO: any = optional("Economy").Override
 
 -- a486 (Cantin, 25/11) : la part des revenus gagnée hors ligne est une valeur de la table de l'économie
--- (Config/Economy, OfflineRate), à côté des prix du tapis avec lesquels elle est réglée : table 1 = 1 (100 %),
+-- (Config/Economy, OfflineRate), à côté des prix du tapis avec lesquels elle est réglée : table 1 = 1 (100 %), écrite ici,
 -- table 2 = 1 aussi tant que Clément n'a pas répondu à L-413 (50 %). La changer : une valeur de Config/Economy.
 local RATE: number = if ECO then ECO.OfflineRate else 1
 assert(type(RATE) == "number", "Config/Offline : OfflineRate absent de Config/Economy")

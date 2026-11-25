@@ -15,6 +15,12 @@
 -- (Shared/LiveFeatures) ; elle n'est pas dans LiveFeatures.Hot, donc prise au prochain serveur. Un profil sauvegardé
 -- dans l'autre table est converti à son chargement, dans les deux sens (Shared/EconomyProfile, DataService).
 --
+-- Comment un module lit la table : par Economy.Override, la table à appliquer PAR-DESSUS les nombres de son fichier.
+-- Avec la table 1, Override vaut nil : rien n'est remplacé, les nombres écrits dans chaque module restent seuls en
+-- jeu, exactement comme avant a486 (les anciens bancs qui retouchent ces nombres dans une copie de src gardent aussi
+-- leur effet). Tables[1] en est la copie : elle sert à la conversion des profils, et le banc a486 vérifie qu'elle
+-- vaut les nombres des modules. Avec la table 2, Override = Tables[2] : chaque module y prend ses nombres.
+--
 -- Le jeu DEV est reconnu ici par game.GameId = DevGameId, la règle de Config/ProductIds en « Auto » et du choix du
 -- store des profils (DataService). Ce module ne peut pas lire ProductIds.IsDev : ProductIds exige Balance, et
 -- Balance lit ce module (boucle de require). DevGameId est donc écrit une seconde fois ici ; le banc a486 vérifie
@@ -26,6 +32,8 @@
 -- API :
 --   Economy.Version: number            1 ou 2, la table active
 --   Economy.Active: Table              Economy.Tables[Economy.Version]
+--   Economy.Override: Table?           la table à appliquer par-dessus les nombres des modules : nil avec la table 1,
+--                                      Economy.Active sinon (voir plus haut)
 --   Economy.Tables: { Table }          les deux tables
 --   Economy.IsDev: boolean             ce serveur est le jeu DEV
 --   Economy.RebirthAllowed: boolean    la renaissance peut s'allumer avec la table active (table 2 : seulement avec
@@ -93,7 +101,8 @@ export type Table = {
 	DevStoreName: string,
 }
 
--- Table 1 : l'économie d'avant. Les mêmes nombres que ceux écrits dans chaque module de Config (banc a486).
+-- Table 1 : l'économie d'avant. Les mêmes nombres que ceux écrits dans chaque module de Config (banc a486) ; jamais
+-- appliquée aux modules (Economy.Override), lue par la conversion des profils.
 local TABLE_1: Table = {
 	Version = 1,
 	Income = { Common = 1, Uncommon = 8, Rare = 60, Epic = 450, Legendary = 3_500, Mythic = 25_000, Secret = 150_000, Divine = 750_000 },
@@ -263,6 +272,8 @@ local VERSION = versionFor(Features, GAME_ID)
 local Economy = {
 	Version = VERSION,
 	Active = TABLES[VERSION],
+	-- La table à appliquer par-dessus les nombres des modules : aucune avec la table 1 (voir l'en-tête).
+	Override = (if VERSION ~= 1 then TABLES[VERSION] else nil) :: Table?,
 	Tables = TABLES,
 	IsDev = isDevGame(GAME_ID),
 	DevGameId = DEV_GAME_ID,
