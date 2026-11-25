@@ -225,7 +225,7 @@
 --     CanTouch). Une arrivée = un seul ramassage de tout ce que la plaque contient (vague 24, retour
 --     de Cantin du 2026-11-11 : ça ramassait plusieurs fois). Rester dessus ne ramasse pas davantage :
 --     les Touched répétés des pieds ne comptent pas, et le joueur ne quitte la plaque qu'une fois son
---     HumanoidRootPart hors d'une zone de sortie plus large (Shared/PadZone.ExitMargin, ExitAbove) pendant
+--     HumanoidRootPart hors d'une zone de sortie plus large (PAD_EXIT_MARGIN, PAD_EXIT_ABOVE : Shared/PadZone) pendant
 --     PAD_EXIT_DELAY s : marcher ou sauter sur la plaque ne la fait pas « quitter ». Passer sur une
 --     autre plaque la ramasse tout de suite (plaques indépendantes). Délai par plaque (L-106 point 12,
 --     remplace L-091 : deux textes de gain se superposaient) : une même plaque attend PAD_COOLDOWN s
