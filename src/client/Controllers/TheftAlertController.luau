@@ -55,6 +55,7 @@
 --       (ItemOutlines, a483 : contours rouges d'objet volé posés par ce client, Shared/StolenOutline.VictimOnly())
 --       Ce qui est affiché, pour un test dans Studio (barre de commande côté client).
 --   TheftAlertController.IsShown() -> boolean
+--   TheftAlertController.IsRobbed() -> boolean   a477 (L-385) : un voleur porte un objet du joueur (MUS_Victim)
 --       L'alerte est à l'écran (pour ZoneBannerController, qui ne s'affiche pas par-dessus ; Cantin, 2026-11-13).
 
 local Players = game:GetService("Players")
@@ -714,6 +715,17 @@ end
 
 function TheftAlertController.IsShown(): boolean
 	return shown
+end
+
+-- a477 (L-385 point 4) : un voleur porte-t-il un objet du joueur local (vol annoncé avec un objet, voleur encore là) ?
+-- L'alerte d'intrusion seule (porte cassée, sans objet) ne compte pas. Lu par MusicController (MUS_Victim).
+function TheftAlertController.IsRobbed(): boolean
+	for _, theft in thefts do
+		if theft.ItemId ~= "" and stillThere(theft.Thief) then
+			return true
+		end
+	end
+	return false
 end
 
 function TheftAlertController.Start()

@@ -62,8 +62,8 @@
 --     sans effet la 2e fois) ; appui et relâché T.31-32 par Motion.Pop (× Press.To puis retour en
 --     Release.Time, Back Out) : Motion.Button doublerait le son UI_Hover de HoverCard ; réussite T.33
 --     par Motion.Pop (× Success.From → 1 en Success.Time) sur la case d'un outil qui arrive en main ;
---   - un outil arrive en main (barre, touche, écran, près d'une vitrine…) : son UI_Equip et message vert
---     « <outil> equipped! » (NotifyController.Show, catégorie Success ; UI_Toast passe derrière Notify) ;
+--   - un outil arrive en main (barre, touche, écran, près d'une vitrine…) : son UI_Equip et réussite T.33 sur sa
+--     case ; a477 (L-378, Clément 25/11 : « ça sert à rien ») : plus de message « <outil> equipped! » ;
 --     un objet de l'inventaire (a142) : son UI_Equip et réussite T.33 sur sa case, sans message ;
 --   - Enabled de l'écran = branché et pas en poursuite (ChaseController.IsChased), revu toutes les TICK s :
 --     ChaseFeelController cache la barre pendant la poursuite, ce code ne la rallume jamais tant qu'elle
@@ -132,7 +132,6 @@ type InventoryApi = {
 	NeedsAction: ((uid: string) -> boolean)?, -- vague 34 : pastille SlotAlert (absente : éteinte)
 }
 type ChaseApi = { IsChased: () -> boolean }
-type NotifyApi = { Show: (message: string, kind: string?) -> () }
 
 -- "Tool", "Bat", "Item" ou "Empty" (une chaîne : l'ancien solveur suit mal les unions de chaînes fixes).
 type Kind = string
@@ -214,10 +213,8 @@ local CARD_ITEM = "Item_"
 local CARD_TOOL = "Tool_"
 local CARD_BAT = "Tool_Bat"
 
--- Textes, en anglais (L-036) : prototype de Clément (« $22.5K/s », « Crown equipped! »).
+-- Textes, en anglais (L-036) : prototype de Clément (« $22.5K/s »). a477 (L-378) : plus de « … equipped! ».
 local INCOME_TEXT = "%s/s"
-local EQUIPPED_TEXT = "%s equipped!"
-local SUCCESS_KIND = "Success" -- catégorie du message vert (NotifyController, UI_Toast)
 local EQUIP_SOUND = "UI_Equip" -- ReplicatedStorage/Assets/Sounds/UI/UI_Equip
 local DARKEN = 0.45 -- Clip : couleur de la rareté assombrie de 45 % (ligne 23)
 local TICK = 0.25 -- V0 proposé, absent du doc : s entre deux vérifications de la poursuite
@@ -248,7 +245,6 @@ local HotbarController = {}
 local localPlayer = Players.LocalPlayer
 local inventory: InventoryApi? = nil
 local chase: ChaseApi? = nil
-local notify: NotifyApi? = nil
 local net: any = nil
 local screen: Screen? = nil
 local slots: { Slot } = {}
@@ -1259,12 +1255,11 @@ local function bind(gui: ScreenGui)
 end
 
 ------------------------------------------------------------------------------
--- Outil en main : son, message, réussite
+-- Outil en main : son, réussite (plus de message, L-378)
 ------------------------------------------------------------------------------
 
 local function onEquipped(tool: Tool)
 	local key: string
-	local name: string
 	local heldUid = tool:GetAttribute(HeldItem.ToolAttribute)
 	if type(heldUid) == "string" then
 		-- Agent a142 : objet de l'inventaire en main : son et réussite T.33 sur sa case, sans message.
@@ -1277,18 +1272,13 @@ local function onEquipped(tool: Tool)
 		return
 	end
 	if tool:GetAttribute(BAT_ATTRIBUTE) == true then
-		key, name = "Bat", Bat.DisplayName
+		key = "Bat"
 	elseif tool:GetAttribute(TOOL_ID_ATTRIBUTE) ~= nil then
 		key = "Tool"
-		name = toolName(tool)
 	else
 		return
 	end
-	Motion.PlaySound(EQUIP_SOUND)
-	local api = notify
-	if api then
-		pcall(api.Show, string.format(EQUIPPED_TEXT, name), SUCCESS_KIND)
-	end
+	Motion.PlaySound(EQUIP_SOUND) -- a477 (L-378) : plus de message « … equipped! » ; son et réussite T.33 restent
 	local current = screen
 	local view = if current then current.views[key] else nil
 	if view and view.frame.Parent ~= nil then
@@ -1362,7 +1352,6 @@ function HotbarController.Start()
 	local api = require(module :: ModuleScript) :: any
 	inventory = api
 	chase = sibling("ChaseController")
-	notify = sibling("NotifyController")
 	api.OnChanged(queueRefresh)
 	api.SetSlotKeys(onSlotKey)
 	api.SetCardDrag({ Press = onCardPress, Suppress = suppressed }) -- glisser une carte de UI_Inventory (vague 25)

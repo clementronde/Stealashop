@@ -1793,6 +1793,10 @@ end
 
 -- Tick -----------------------------------------------------------------------------------------------------------
 
+local function warnSubStep(err: any)
+	warn(`[PvPService] tick : {err}\n{debug.traceback()}`)
+end
+
 local function step()
 	local now = os.clock()
 	for player, hold in table.clone(holds) do
@@ -1835,10 +1839,10 @@ local function step()
 			closeShop(shop, "départ du bot")
 		end
 	end
-	deathStep()
-	ejectStep()
-	repairStep()
-	intrusionStep()
+	-- a477 (L-377) : chaque étape à part, une étape en erreur ne coupe plus les suivantes (l'alerte d'intrusion en dernier).
+	for _, sub in { deathStep, ejectStep, repairStep, intrusionStep } do
+		xpcall(sub, warnSubStep)
+	end
 	publishCount += 1
 	if publishCount >= PUBLISH_EVERY then
 		publishCount = 0
