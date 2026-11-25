@@ -79,6 +79,27 @@ function UnboxPlan.luckClimbs(): boolean
 	return featureOn("UnboxLuckClimb")
 end
 
+-- a462 (décision de Cantin, 25/11 : montées visuelles cohérentes avec l'objet) : interrupteur
+-- Features.UnboxClimbMatchesItem (partout) ou UnboxClimbMatchesItemDev (jeu DEV seulement).
+function UnboxPlan.climbMatchesItem(): boolean
+	return featureOn("UnboxClimbMatchesItem")
+end
+
+-- a462 : montée d'un colis de rayon (StoreHeistService.startReveal), rendue avec le drapeau `everyAction` de draw.
+-- Interrupteur allumé : autant de crans que de raretés entre le colis `boxRarity` et l'objet `finalRarity` (0 si l'objet
+-- est de même rareté ou en dessous), une rareté par action juste avant le coup final : le colis finit exactement à la
+-- rareté de l'objet. Coupé : `drawn` (UnboxPlan.upgrades, tiré à part de l'objet) et aucun drapeau, comme avant.
+function UnboxPlan.shelfClimb(boxRarity: string, finalRarity: string, drawn: number): (number, boolean?)
+	if not UnboxPlan.climbMatchesItem() then
+		return drawn, nil
+	end
+	local from, to = orderOf(boxRarity), orderOf(finalRarity)
+	if from < 1 or to < 1 then
+		return 0, true
+	end
+	return math.max(to - from, 0), true
+end
+
 function UnboxPlan.action(id: string): Action?
 	return actionsById[id]
 end

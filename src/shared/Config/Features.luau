@@ -178,6 +178,14 @@ local Features = {
 	UnboxLuckClimb = false,
 	-- a462 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
 	UnboxLuckClimbDev = true,
+	-- a462 (décision de Cantin, 25/11) : la montée de rareté d'un colis de rayon pendant les coups suit l'objet tiré : un
+	-- objet plus rare que le colis le fait monter d'une rareté par action, juste avant le coup final, jusqu'à la sienne
+	-- exactement ; même rareté ou en dessous : aucune montée (comme la caisse exclusive, UnboxBoxClimb). Le tirage de
+	-- l'objet et de la chance ne change pas (Shared/UnboxPlan.shelfClimb, StoreHeistService.startReveal). Interrupteur
+	-- PROD (partout) : false (règle C2) ; false = améliorations tirées à part de l'objet (UnboxPlan.upgrades), comme avant.
+	UnboxClimbMatchesItem = false,
+	-- a462 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	UnboxClimbMatchesItemDev = true,
 }
 
 export type Features = typeof(Features)
