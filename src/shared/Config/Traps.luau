@@ -1,6 +1,7 @@
 --!strict
 -- Pièges de boutique (vague 72, a243 ; liaison L-218, L-216 point 11, L-229 partie Pièges). Tout est V0 proposé,
--- absent du doc, à valider par Clément ; interrupteur Features.Traps (false : aucun piège posé, tuile « Soon »).
+-- absent du doc, à valider par Clément ; interrupteur Features.Traps, ou TrapsDev en DEV
+-- (a467, L-163, C2 : SkillTree.DefenseOn ; coupé : aucun piège posé, tuile « Soon »).
 --
 -- Contrat partagé entre le serveur (TrapService) et le client (TrapController) :
 --   - modèles de Clément : ReplicatedStorage/Assets/Traps/TRAP_<Id> (Id = GlueMat, NetBox, AlarmGate ; L-218 ; a286 : BananaPeel, TrapDoor, L-268) :

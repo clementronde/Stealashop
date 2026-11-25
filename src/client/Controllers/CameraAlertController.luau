@@ -13,11 +13,11 @@
 -- déjà surligné par l'alerte de vol (TheftAlertHighlight de TheftAlertController) ne l'est pas deux fois.
 --
 -- a408 (vague GC6, Cameras niveau 3, L-163 ; V0 de L-175 : sans flèche ; Config/ShopDefense.CameraRadar,
--- Features.CameraRadar) : quand le joueur a Cameras 3 (attribut Skill_Cameras posé par le serveur), le surlignage
--- passe en rouge vif et un bip de radar sonne (son CameraRadar_Beep, en 2D ; absent : muet) tant qu'un attaquant
--- surligné est en vie, de plus en plus vite quand il est proche du joueur (de MaxInterval s à FarDistance studs ou
--- plus jusqu'à MinInterval s à NearDistance studs ou moins). Le serveur relance CameraSpotted quand le voleur prend
--- un objet (ShopDefenseService) : le radar suit toute la fuite.
+-- Features.CameraRadar, ou CameraRadarDev en DEV) : quand le joueur a Cameras 3 (attribut Skill_Cameras posé par le
+-- serveur), le surlignage passe en rouge vif et un bip de radar sonne (son CameraRadar_Beep, en 2D ; absent : muet)
+-- tant qu'un attaquant surligné est en vie, de plus en plus vite quand il est proche du joueur (de MaxInterval s à
+-- FarDistance studs ou plus jusqu'à MinInterval s à NearDistance studs ou moins). Le serveur relance
+-- CameraSpotted quand le voleur prend un objet (ShopDefenseService) : le radar suit toute la fuite.
 --
 -- API (client) :
 --   CameraAlertController.GetState() -> { Spotted = nombre d'attaquants suivis, Highlights = nombre posés }
@@ -242,7 +242,15 @@ function CameraAlertController.Start()
 	local defense = load(config, "ShopDefense")
 	local features = load(config, "Features")
 	radarConfig = if defense then defense.CameraRadar else nil
-	radarFeature = features ~= nil and features.CameraRadar == true
+	-- a467 (L-163, A2) : Features.CameraRadar, ou CameraRadarDev dans le jeu DEV, lus par SkillTree.DefenseOn (comme le
+	-- serveur) ; sans Config/SkillTree (bancs), Features.CameraRadar seul, comme avant.
+	local skillTree = load(config, "SkillTree")
+	local defenseOn: any = if skillTree ~= nil then skillTree.DefenseOn else nil
+	if type(defenseOn) == "function" then
+		radarFeature = (defenseOn :: any)("CameraRadar") == true
+	else
+		radarFeature = features ~= nil and features.CameraRadar == true
+	end
 	markerSounds = load(Shared:FindFirstChild("Anim"), "MarkerSounds")
 	RunService.Heartbeat:Connect(function(dt: number)
 		xpcall(radarStep, function(err: any)
