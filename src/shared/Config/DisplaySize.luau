@@ -4,21 +4,25 @@
 -- VfxController) montre la même taille, sans la réduction du présentoir (attribut FitScale, comme avant).
 --
 -- Règle : sur un présentoir, la plus grande dimension de l'objet (pièces visibles) est mise à la taille de sa rareté,
--- de Min à Max studs ; le poids place l'objet dans cette fourchette (1 kg = Min, 10 000 kg = Max, droite en échelle
--- logarithmique du poids : 10 kg ≈ Min + 25 % de l'écart, 250 kg ≈ 60 %). Ensuite, comme avant, l'objet est réduit
--- pour tenir dans le FitSize de son présentoir (6,5 × 12,5 × 6, hauteur du flottement retirée) et jamais au-delà de
--- Weight.DisplayMaxScale. Aucun ITM n'est réexporté : c'est une échelle d'affichage. L'objet porté, en main, au sol
--- et à l'ouverture du colis gardent la taille de leur poids (Config/Weight).
+-- de Min à Max studs. a459b (L-367, décision de Cantin du 25/11) : c'est la taille réelle de son modèle qui le place
+-- dans cette fourchette, plus son poids. Taille réelle = plus grande dimension des pièces visibles du modèle ITM_
+-- d'origine, avant toute mise à l'échelle. DisplayService la compare à celle du plus petit et du plus grand ITM_ livrés
+-- de la même rareté (Config/Items, catalogue actif) : le plus petit va à Min, le plus grand à Max, les autres entre les
+-- deux selon leur taille relative (échelle logarithmique : un modèle deux fois plus grand que le plus petit monte
+-- d'autant qu'un modèle deux fois plus petit que le plus grand descend), bornée à [Min, Max]. Le poids ne change plus
+-- la taille exposée (il reste écrit dans BB_Item/Weight et sert ailleurs, Config/Weight).
+-- Ensuite, comme avant, l'objet est réduit pour tenir dans le FitSize de son présentoir (6,5 × 12,5 × 6, hauteur du
+-- flottement retirée) et jamais au-delà de Weight.DisplayMaxScale. Aucun ITM n'est réexporté : c'est une échelle
+-- d'affichage. L'objet porté, en main, au sol et à l'ouverture du colis gardent la taille de leur poids (Config/Weight).
 --
 -- Interrupteurs : Features.DisplayRaritySize (partout, PROD compris) et Features.DisplayRaritySizeDev (jeu DEV seulement,
 -- Config/ProductIds.IsDev). Coupé : la taille du poids, comme avant (Weight.ScaleCurve, puis FitSize).
 --
--- Origine des valeurs : « Clément » = L-354 ; V0 = proposé par a459, absent du doc.
--- Unités : studs, kg.
+-- Origine des valeurs : « Clément » = L-354 ; V0 = proposé par a459 ou a459b, absent du doc.
+-- Unités : studs.
 
 local DeepFreeze = require(script.Parent.DeepFreeze)
 local Rarities = require(script.Parent.Rarities)
-local Weight = require(script.Parent.Weight)
 
 -- Module de Config chargé s'il est là (bancs à liste de modules fixe, comme dans Config/Items).
 local function optional(name: string): any
@@ -37,8 +41,8 @@ local Features: any = optional("Features")
 local ProductIds: any = optional("ProductIds")
 
 export type Range = {
-	Min: number, -- studs, plus grande dimension de l'objet au poids le plus léger (Weight.Min)
-	Max: number, -- studs, au poids le plus lourd (Weight.Max)
+	Min: number, -- studs, plus grande dimension montrée du plus petit modèle ITM_ de la rareté
+	Max: number, -- studs, celle du plus grand
 }
 
 local BY_RARITY: { [Rarities.RarityId]: Range } = {
@@ -56,21 +60,36 @@ local DisplaySize = {
 	-- Allumé partout (DisplayRaritySize) ou dans le jeu DEV seulement (DisplayRaritySizeDev et ProductIds.IsDev).
 	Enabled = Features.DisplayRaritySize == true or (Features.DisplayRaritySizeDev == true and ProductIds.IsDev == true),
 	ByRarity = BY_RARITY,
-	-- Poids qui donnent Min et Max (V0 : tout l'écart des poids tirés, Config/Weight).
-	WeightLow = Weight.Min,
-	WeightHigh = Weight.Max,
+	-- a459b (L-367) : place dans la fourchette (0 = Min, 1 = Max) d'un objet seul de sa rareté, quand tous les modèles
+	-- de sa rareté ont la même taille ou quand aucun n'est mesurable (V0 : le milieu).
+	SinglePosition = 0.5,
 }
 
--- Taille visée (studs, plus grande dimension) d'un objet de rareté `rarityId` qui pèse `kg` ; nil pour une rareté
--- inconnue. Un poids absent ou illisible compte comme Weight.Reference.
-function DisplaySize.TargetFor(rarityId: any, kg: any): number?
+local function valid(x: any): boolean
+	return type(x) == "number" and x == x and x > 0 and x < math.huge
+end
+
+-- a459b (L-367) : place (de 0 à 1) dans la fourchette d'un modèle dont la plus grande dimension réelle est `side`
+-- studs, quand le plus petit modèle livré de sa rareté mesure `smallest` et le plus grand `largest` (échelle
+-- logarithmique, bornée à [0, 1]). SinglePosition si l'écart est nul ou illisible. Ne dépend pas du poids.
+function DisplaySize.PositionFor(side: any, smallest: any, largest: any): number
+	if not (valid(side) and valid(smallest) and valid(largest)) or not (largest > smallest) then
+		return DisplaySize.SinglePosition
+	end
+	local t = math.log(math.clamp(side, smallest, largest) / smallest) / math.log(largest / smallest)
+	return math.clamp(t, 0, 1)
+end
+
+-- Taille visée (studs, plus grande dimension) d'un objet de rareté `rarityId` placé à `position` (0 = Min, 1 = Max,
+-- bornée) dans sa fourchette ; nil pour une rareté inconnue. Une place illisible compte comme SinglePosition.
+function DisplaySize.TargetAt(rarityId: any, position: any): number?
 	local range = if type(rarityId) == "string" then (BY_RARITY :: any)[rarityId] :: Range? else nil
 	if range == nil then
 		return nil
 	end
-	local weight = if type(kg) == "number" and kg == kg and kg > 0 and kg < math.huge then kg else Weight.Reference
-	local low, high = DisplaySize.WeightLow, DisplaySize.WeightHigh
-	local t = math.log(math.clamp(weight, low, high) / low) / math.log(high / low)
+	local t = if type(position) == "number" and position == position
+		then math.clamp(position, 0, 1)
+		else DisplaySize.SinglePosition
 	return range.Min + (range.Max - range.Min) * t
 end
 
