@@ -791,13 +791,6 @@ end
 
 -- Alerte d'intrusion (voir l'en-tête) ---------------------------------------------------------------------
 
--- Dans le volume `part` agrandi de `margin` studs de chaque côté.
-local function near(part: BasePart, point: Vector3, margin: number): boolean
-	local p = part.CFrame:PointToObjectSpace(point)
-	local h = part.Size / 2 + Vector3.new(margin, margin, margin)
-	return math.abs(p.X) <= h.X and math.abs(p.Y) <= h.Y and math.abs(p.Z) <= h.Z
-end
-
 -- Intrus de la boutique `shop` de `victim` maintenant (ordre de Players:GetPlayers).
 local function currentIntruders(shop: Shop, victim: Player): { Player }
 	local list: { Player } = {}
@@ -818,7 +811,9 @@ local function currentIntruders(shop: Shop, victim: Player): { Player }
 		if root == nil then
 			continue
 		end
-		if ShopInside.Contains(plot, bounds, root.Position) or (player == shop.Breaker and near(bounds, root.Position, PvP.ScoutDistance)) then
+		-- a483 (Cantin, 25/11 : contour rouge sur un passant) : le casseur aussi par Shared/ShopInside (a468), à
+		-- PvP.ScoutDistance studs : plus compté jusqu'à 47 studs derrière le mur du fond (Bounds + 15).
+		if ShopInside.Contains(plot, bounds, root.Position) or (player == shop.Breaker and ShopInside.Contains(plot, bounds, root.Position, PvP.ScoutDistance)) then
 			table.insert(list, player)
 		end
 	end
