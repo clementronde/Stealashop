@@ -201,7 +201,7 @@ local Passes: { Pass } = {
 	{ Key = "VIP", Id = 0, Order = 4, Price = 249, Ready = false, CardColor = Color3.fromHex("8A5CF0"), CurtainBonus = 10, DisplayName = "VIP", Effect = "+10% income, aura, chat tag, +10s lock", Icon = "UI_Icon_GP_VIP" },
 	{ Key = "AutoCollect", Id = 2099027027, Order = 5, Price = 99, Ready = true, CardColor = Color3.fromHex("FFC928"), DisplayName = "Auto Collect", Effect = "Cash collects itself, anywhere", Icon = "UI_Icon_GP_AutoCollect" },
 	-- a485 (L-351 question 3) : « Quick Lock » (avant « Fast Open ») ; clé, attribut PassFastOpen et icône inchangés.
-	{ Key = "FastOpen", Id = 2099039016, Order = 6, Price = 299, Ready = true, CardColor = Color3.fromHex("2FA8F0"), DelayFactor = 0.5, DisplayName = "Quick Lock", Effect = "Anti-theft 2× shorter", Icon = "UI_Icon_GP_FastOpen" },
+	{ Key = "FastOpen", Id = 2099039016, Order = 6, Price = 99, Ready = true, CardColor = Color3.fromHex("2FA8F0"), DelayFactor = 0.5, DisplayName = "Quick Lock", Effect = "Anti-theft 2× shorter", Icon = "UI_Icon_GP_FastOpen" },
 	{ Key = "ExtraStands", Id = 2099033063, Order = 7, Price = 349, Ready = true, CardColor = Color3.fromHex("E05AD8"), Stands = 4, DisplayName = "+4 Displays", Effect = "4 extra displays", Icon = "UI_Icon_GP_Displays" },
 	-- Texte V0 proposé, absent de la maquette. a485 (L-351 question 4) : 1,5 × le meilleur outil (avant 2,5 ×), jamais
 	-- plus que l'Angle Grinder ; effet pas encore codé (Ready = false).
