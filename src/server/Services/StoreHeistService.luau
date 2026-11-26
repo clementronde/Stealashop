@@ -878,6 +878,12 @@ local function drawRarity(zone: number): string?
 	if odds == nil then
 		return nil
 	end
+	-- a486 (chance « R2 », OpenLuck.V2) : avec la chance du serveur, les raretés au-dessus de la plus basse de la zone
+	-- sont multipliées par elle, prises sur la plus basse (note d'a479, 5.0 point 4) ; sans V2 ni chance : rien ne change.
+	local serverLuck = if OpenLuck.V2 then OpenLuck.Bought({ Server = Workspace:GetAttribute("ServerLuck") }) else 1
+	if serverLuck > 1 then
+		odds = OpenLuck.StockOdds(odds, Rarities.List, serverLuck)
+	end
 	local total = 0
 	for _, rarity in Rarities.List do
 		total += odds[rarity.Id] or 0
@@ -914,6 +920,13 @@ local function drawMutation(itemId: string): Mutations.Mutation?
 	local item = Items.ById[itemId]
 	if item == nil or item.TutorialOnly then
 		return nil
+	end
+	-- a486 (chance « R2 », OpenLuck.V2) : les mutations d'effet × la chance du serveur (Config/Mutations.Roll).
+	if OpenLuck.V2 then
+		local serverLuck = OpenLuck.Bought({ Server = Workspace:GetAttribute("ServerLuck") })
+		if serverLuck > 1 then
+			return Mutations.Roll(random, serverLuck)
+		end
 	end
 	return Mutations.Roll(random)
 end
@@ -2339,6 +2352,38 @@ local function drawLuck(): number
 	return last -- arrondi des nombres à virgule : la dernière chance possible
 end
 
+-- a486 (Cantin, 25/11 ; note d'a479, section 5 : règle « R2, sans plafond ») : la chance d'une ouverture avec
+-- OpenLuck.V2. Chance achetée = personnelle (×3 Luck) × BoxLuck × serveur ; le ×N est tiré dans la table de la règle R2
+-- (OpenLuck.LuckTable : ×8 et ×10 multipliés par la chance achetée, pris sur ×1), puis multiplié par la chance achetée
+-- et par le bonus d'événement `event` (nil : ×1). `tableOn` = false : ×N = 1 (Config/ShelfOpen.Reveal.TableLuck).
+local function drawLuckV2(player: Player, tableOn: boolean, event: any): number
+	local personal = OpenLuck.PersonalFactorOf(player)
+	local server = Workspace:GetAttribute("ServerLuck")
+	local skill = OpenLuck.SkillFactorOf(player)
+	local drawn = 1
+	if tableOn then
+		local entries = OpenLuck.LuckTable(ShelfOpen.LuckTable, OpenLuck.Bought({ Server = server, Skill = skill, Personal = personal }))
+		local total = 0
+		for _, entry in entries do
+			total += math.max(entry.Weight, 0)
+		end
+		if total > 0 then
+			local roll = random:NextNumber() * total
+			for _, entry in entries do
+				local weight = math.max(entry.Weight, 0)
+				if weight > 0 then
+					drawn = math.max(entry.Luck, 1)
+					if roll < weight then
+						break
+					end
+					roll -= weight
+				end
+			end
+		end
+	end
+	return OpenLuck.Combine({ Table = drawn, Event = event, Server = server, Skill = skill, Personal = personal })
+end
+
 -- Un objet de la rareté `rarityId` pour un magasin de la zone `zone` : de sa zone, sinon de la zone la
 -- plus proche qui en a un (zone + 1, puis zone − 1, zone + 2…) ; un Secret ou une Divine, toutes zones
 -- (Items.Pick) ; jamais un objet TutorialOnly. nil si aucune zone n'en a.
@@ -2602,6 +2647,10 @@ local function startOpening(player: Player, slot: Slot, box: ShelfBox)
 		Server = Workspace:GetAttribute("ServerLuck"),
 		Skill = OpenLuck.SkillFactorOf(player),
 	})
+	-- a486 : modèle de chance R2 (OpenLuck.V2) à la place, chance personnelle comprise ; coupé : la ligne d'au-dessus.
+	if OpenLuck.V2 then
+		luck = drawLuckV2(player, true, Workspace:GetAttribute("LiveEventShelfLuck"))
+	end
 	local forced = luckOverride
 	if forced and not store.Event then -- vague 42 : pas d'accroche du tuto sur un rayon d'événement
 		-- Accroche du tuto (a107, SetLuckOverride) : une chance finie ≥ 1, sinon le tirage normal.
@@ -2932,6 +2981,10 @@ local function startReveal(player: Player, slot: Slot, box: ShelfBox)
 		Server = Workspace:GetAttribute("ServerLuck"),
 		Skill = OpenLuck.SkillFactorOf(player),
 	})
+	-- a486 : modèle de chance R2 (OpenLuck.V2) à la place, chance personnelle comprise ; coupé : la ligne d'au-dessus.
+	if OpenLuck.V2 then
+		luck = drawLuckV2(player, config.TableLuck, if config.EventLuck then Workspace:GetAttribute("LiveEventShelfLuck") else nil)
+	end
 	local forced = luckOverride
 	if forced then
 		local drawn: OverrideInfo = { StoreId = store.Id, SlotId = slot.Id, Zone = store.Zone, Rarity = box.Rarity, ItemId = "" }

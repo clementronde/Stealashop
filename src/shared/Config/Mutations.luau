@@ -29,7 +29,8 @@
 -- API :
 --   Mutations.Sizes, Mutations.Effects: { Entry }      dans l'ordre, du plus courant au plus rare
 --   Mutations.SizeById, Mutations.EffectById: { [Id]: Entry }
---   Mutations.Roll(rng) -> Mutation?                   un tirage des deux familles ; nil = aucune
+--   Mutations.Roll(rng, luck?) -> Mutation?            un tirage des deux familles ; nil = aucune (a486 : luck = chance
+--                                                      du serveur du modèle R2, chances d'effet × luck)
 --   Mutations.Sanitize(value) -> Mutation?             copie propre d'une mutation lue (profil,
 --                                                      payload) : Id inconnus retirés ; nil si vide
 --   Mutations.IsValid(value) -> boolean                nil, ou table aux seuls champs Size/Effect connus
@@ -106,6 +107,26 @@ local function rollFamily(list: { Entry }, rng: Random): string?
 	return nil
 end
 
+-- a486 (chance « R2 », Features.LuckModelV2 ; note d'a479, 5.0 point 4) : la même famille, chaque chance × `luck` (chance du
+-- serveur), prise sur « aucune » (100 − total) ; « aucune » vide : le total ramené à 100 %. Sans plafond. Un seul
+-- NextNumber, comme rollFamily.
+local function rollFamilyLuck(list: { Entry }, rng: Random, luck: number): string?
+	local boosted = 0
+	for _, entry in list do
+		boosted += entry.Chance * luck
+	end
+	local total = boosted + math.max(0, 100 - boosted)
+	local roll = rng:NextNumber() * total
+	for _, entry in list do
+		local chance = entry.Chance * luck
+		if roll < chance then
+			return entry.Id
+		end
+		roll -= chance
+	end
+	return nil
+end
+
 -- Vague 62 (a203, Cantin) : avec le poids, les tailles sont des paliers de poids
 -- (ItemWeight.SizeMutationFor) : seules Huge et Colossal existent encore ; Tiny et Big, gardées dans les vieux
 -- profils, ne sont plus ni lues, ni écrites, ni tirées (leur revenu passe par le poids, Config/Weight.Legacy).
@@ -145,8 +166,11 @@ local Mutations = {
 
 -- Tirage des deux familles (serveur). nil quand aucune ne sort : rien à sauvegarder.
 -- Vague 62 : avec le poids, la taille n'est plus tirée ici (l'appelant pose Size = ItemWeight.SizeMutationFor(poids)).
-function Mutations.Roll(rng: Random): Mutation?
-	local effect = rollFamily(EFFECTS, rng)
+-- a486 : `luck` (facultatif) = chance du serveur du modèle R2 (StoreHeistService, avec OpenLuck.V2) ; absent, illisible ou
+-- ≤ 1 : le tirage d'avant, à l'identique.
+function Mutations.Roll(rng: Random, luck: number?): Mutation?
+	local boost = if type(luck) == "number" and luck == luck and luck > 1 and luck < math.huge then luck else nil
+	local effect = if boost then rollFamilyLuck(EFFECTS, rng, boost) else rollFamily(EFFECTS, rng)
 	if effect == nil then
 		return nil
 	end

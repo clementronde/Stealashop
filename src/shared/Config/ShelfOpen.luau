@@ -129,6 +129,23 @@ local ShelfOpen = {
 		Secret = 120,
 		Divine = 180,
 	} :: { [string]: number },
+
+	-- a486 (Cantin, 25/11 ; note d'a479, section 5 : règle « R2, sans plafond ») : modèle de chance allumé par
+	-- Features.LuckModelV2 (partout) ou LuckModelV2Dev (jeu DEV) ; Shared/OpenLuck. Chance achetée = personnelle (×3 Luck,
+	-- attributs du Player plus bas) × arbre (BoxLuck) × serveur (ServerLuck). À l'ouverture, les poids des entrées de
+	-- LuckTable à partir de BoostedMinLuck (le ×8 et le ×10) sont multipliés par la chance achetée, pris sur l'entrée ×1 ;
+	-- ×1 vide : le reste est ramené à 100 %. Le ×N tiré est ensuite multiplié par la chance achetée. Aucun plafond.
+	LuckV2 = {
+		BoostedMinLuck = 8, -- note d'a479 (Cantin, 25/11) : « seuls ×8 et ×10 multipliés par la chance »
+		-- Chance personnelle (gamepass ×3 Luck, 30 min) : posée sur le Player par le serveur seul (MonetizationService, à
+		-- l'achat), lue ici tant que PersonalLuckEndsAt (heure de Workspace:GetServerTimeNow) n'est pas passée.
+		PersonalAttribute = "PersonalLuck",
+		PersonalEndsAtAttribute = "PersonalLuckEndsAt",
+		-- Dose du gamepass ×3 Luck (Config/Monetization, Luck3) : décision de Cantin, 25/11. À poser à l'achat :
+		-- PersonalLuck = PersonalFactor, PersonalLuckEndsAt = Workspace:GetServerTimeNow() + PersonalMinutes × 60.
+		PersonalFactor = 3,
+		PersonalMinutes = 30,
+	},
 }
 
 export type ShelfOpenConfig = typeof(ShelfOpen)

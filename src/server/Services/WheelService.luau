@@ -172,6 +172,56 @@ local function draw(random: Random?): number
 	return #Wheel.Sectors
 end
 
+-- a486 (Cantin, 25/11 ; note d'a479, 5.1 e ; V0 confirmé par Cantin) : avec le modèle de chance R2 (Shared/OpenLuck.V2),
+-- les secteurs de poids au plus Config/Wheel.LuckRareMaxWeight × (chance du serveur × chance personnelle du joueur),
+-- pris sur le secteur le plus lourd ; vide : le reste ramené à 100 %. Sans plafond. nil : pas de V2 (module absent,
+-- interrupteur coupé) ou aucune chance : le tirage d'avant (draw).
+local OpenLuck: any = (function(): any
+	local found = Shared:FindFirstChild("OpenLuck")
+	if found == nil then
+		return nil
+	end
+	local ok, module = pcall(require, found :: any)
+	return if ok and type(module) == "table" then module else nil
+end)()
+
+local function drawLucky(player: Player): number?
+	if OpenLuck == nil or OpenLuck.V2 ~= true then
+		return nil
+	end
+	local luck = OpenLuck.Bought({ Server = Workspace:GetAttribute("ServerLuck"), Personal = OpenLuck.PersonalFactorOf(player) })
+	local rareMax = (Wheel :: any).LuckRareMaxWeight
+	if luck <= 1 or type(rareMax) ~= "number" then
+		return nil
+	end
+	local weights: { number } = {}
+	local heaviest = 1
+	for index, sector in Wheel.Sectors do
+		weights[index] = math.max(0, sector.Weight)
+		if weights[index] > weights[heaviest] then
+			heaviest = index
+		end
+	end
+	local shifted = OpenLuck.Shift(weights, heaviest, function(index: number): boolean
+		return weights[index] <= rareMax
+	end, luck)
+	local total = 0
+	for _, weight in shifted do
+		total += weight
+	end
+	if total <= 0 then
+		return nil
+	end
+	local pick = rng:NextNumber() * total
+	for index, weight in shifted do
+		pick -= weight
+		if pick < 0 then
+			return index
+		end
+	end
+	return #Wheel.Sectors
+end
+
 local function onSpinWheel(player: Player)
 	if not on() or not present[player] then
 		return
@@ -186,6 +236,10 @@ local function onSpinWheel(player: Player)
 		notify(player, MESSAGES.NoSpin, "Warning")
 		publish(player)
 		return
+	end
+	-- a486 : tirage avec la chance R2 (drawLucky), sauf secteur imposé par un banc ; nil : le tirage d'avant.
+	if forced == nil then
+		forced = drawLucky(player)
 	end
 	local index = forced or draw()
 	forced = nil
