@@ -1297,6 +1297,12 @@ local function processSale(player: Player, data: Data, sale: Sale, purchaseId: s
 end
 
 local function handleReceipt(receipt: { [string]: any }): Enum.ProductPurchaseDecision
+	if Monetization.PurchasesDisabled then
+		-- a500 (26/11, Cantin) : jeu TEST, achats coupés (Config/ProductIds.PurchasesDisabled, tous les Ids à 0) : aucun reçu
+		-- accordé ; refusé proprement (NotProcessedYet : Roblox le garde, rien n'est livré ni perdu).
+		warn(`[MonetizationService] reçu {tostring(receipt.PurchaseId)} : jeu TEST, achats coupés : pas traité (NotProcessedYet)`)
+		return Enum.ProductPurchaseDecision.NotProcessedYet
+	end
 	local productId, purchaseId, userId = receipt.ProductId, receipt.PurchaseId, receipt.PlayerId
 	if type(productId) ~= "number" or type(purchaseId) ~= "string" or purchaseId == "" or type(userId) ~= "number" then
 		warn(`[MonetizationService] reçu mal formé (ProductId {tostring(productId)}, PurchaseId {tostring(purchaseId)})`)

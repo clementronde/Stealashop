@@ -307,6 +307,11 @@ local ACTIVE = Features.RobuxShop or Features.RobuxShopPreview
 -- a294 (L-276, Cantin 21/11) : caisse allumée = Monetization.Crate.Live (jeu DEV avec Features.RobuxCrateDev, ou
 -- Features.RobuxCrate partout) ; ses lots se vendent même boutique coupée (vitrine), les autres offres restent « Soon ».
 local CRATE_FEATURE = Monetization.Crate.Live == true
+-- a500 (26/11, Cantin) : jeu TEST (Monetization.PurchasesDisabled, dit par le serveur de Config : Config/ProductIds) : la
+-- boutique reste visible, chaque carte écrit TEST_TEXT dans son Price à la place du prix et un clic ne lance rien
+-- (aucune fenêtre d'achat de Roblox, aucune lueur). Texte en anglais (L-036), demandé par Cantin.
+local PURCHASES_OFF = Monetization.PurchasesDisabled == true
+local TEST_TEXT = "Not available in test"
 
 -- Achat réel permis pour cette offre : boutique ouverte, ou lot de la caisse allumée.
 local function liveFor(offer: Offer): boolean
@@ -806,7 +811,9 @@ local function refreshCard(card: Card)
 	end
 	local soonUntil = card.soonUntil
 	local unsold = notForSale(offer, id) -- vague 66 (a218) : « Soon » en permanence
-	if unsold then
+	if PURCHASES_OFF then
+		setText(card.frame, "Price", TEST_TEXT) -- a500 : jeu TEST, jamais de prix ni de « Soon »
+	elseif unsold then
 		setText(card.frame, "Price", SOON_TEXT)
 	elseif soonUntil and os.clock() < soonUntil then
 		setText(card.frame, "Price", card.soonText or SOON_TEXT)
@@ -866,6 +873,10 @@ end
 
 local function buy(card: Card)
 	local offer = card.offer
+	if PURCHASES_OFF then
+		reportOnce("test", `[RobuxShop] jeu TEST (Config/ProductIds.PurchasesDisabled) : pas d'achat, « {TEST_TEXT} »`)
+		return
+	end
 	local id, isPass = purchaseOf(offer)
 	local product = offer.product
 	if id == nil and product and product.Tiers and not notForSale(offer, id) then

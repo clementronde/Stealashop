@@ -132,11 +132,30 @@ type Store = {
 -- gardent Balance.Profiles.StoreName (« PlayerData », ne jamais le changer : un autre nom = profils vides) ;
 -- seul le jeu DEV (game.GameId = DevGameId) lit DevStoreName (remise à zéro des profils DEV de Cantin,
 -- 2026-11-14). Aucune DataStore n'est effacée : l'ancienne « PlayerData » du jeu DEV reste intacte.
+-- a500 (26/11) : le jeu TEST (copie du DEV pour les testeurs) lit lui aussi DevStoreName, dans sa propre DataStore
+-- (un autre jeu Roblox) : DEV ou TEST dit par Config/GameEnv.IsDevLikeFor ; sans GameEnv (bancs à liste de modules
+-- fixe), le jeu DEV seul, comme avant.
+local GameEnv: any = (function(): any
+	local found, module = pcall(function(): any
+		return ReplicatedStorage.Shared.Config:FindFirstChild("GameEnv")
+	end)
+	if found and module ~= nil then
+		local ok, result = pcall(require, module :: any)
+		if ok and type(result) == "table" and type(result.IsDevLikeFor) == "function" then
+			return result
+		end
+	end
+	return nil
+end)()
+
 local function storeNameFor(gameId: number?): string
 	local profiles = Balance.Profiles
 	local base: string = profiles.StoreName
 	local devName: string = profiles.DevStoreName
-	if gameId ~= nil and gameId ~= 0 and gameId == profiles.DevGameId and devName ~= "" then
+	local devLike = if GameEnv ~= nil
+		then GameEnv.IsDevLikeFor(gameId) == true
+		else gameId ~= nil and gameId ~= 0 and gameId == profiles.DevGameId
+	if devLike and devName ~= "" then
 		return devName
 	end
 	return base

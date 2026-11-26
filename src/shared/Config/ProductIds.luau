@@ -18,10 +18,31 @@
 -- pour les paliers d'Ouvrir maintenant en vente (OpenNow3 et OpenNow4 : paliers coupés, Monetization RetiredTiers),
 -- Crate1, Crate3 et Crate10 pour les lots de la caisse exclusive. Une clé absente vaut 0.
 --
--- API : ProductIds.IsDev: boolean ; ProductIds.Pick(key, prodId) -> number (l'Id à utiliser dans ce jeu).
+-- a500 (26/11, Cantin) : le jeu DEV et le jeu TEST sont reconnus par Config/GameEnv (le seul endroit qui le dit). En
+-- « Auto », le jeu TEST (copie du DEV pour les testeurs) se comporte comme le DEV (IsDev vrai : variantes …Dev,
+-- catalogue v3…), mais achats coupés : les Ids du DEV n'y existent pas, Pick y renvoie 0 pour toute offre (rien n'est
+-- vendu, IsTest et PurchasesDisabled vrais). « Dev » et « Prod » forcent comme avant (jamais TEST).
+--
+-- API : ProductIds.IsDev: boolean ; ProductIds.IsTest: boolean ; ProductIds.PurchasesDisabled: boolean ;
+-- ProductIds.Pick(key, prodId) -> number (l'Id à utiliser dans ce jeu) ; IsDevFor et IsTestFor(environment, gameId) (bancs).
 
 local DeepFreeze = require(script.Parent.DeepFreeze)
 local Balance = require(script.Parent.Balance)
+
+-- a500 : Config/GameEnv chargé s'il est là ; sans lui (bancs à liste de modules fixe), le jeu DEV seul, par
+-- Balance.Profiles.DevGameId, comme avant a500.
+local GameEnv: any = (function(): any
+	local found, module = pcall(function(): any
+		return script.Parent:FindFirstChild("GameEnv")
+	end)
+	if found and module ~= nil then
+		local ok, result = pcall(require, module :: any)
+		if ok and type(result) == "table" then
+			return result
+		end
+	end
+	return nil
+end)()
 
 export type Environment = "Auto" | "Dev" | "Prod"
 
@@ -78,20 +99,36 @@ local function isDev(environment: Environment, gameId: number?): boolean
 	elseif environment == "Prod" then
 		return false
 	end
+	if GameEnv ~= nil then
+		return GameEnv.IsDevLikeFor(gameId) == true -- a500 : DEV ou TEST
+	end
 	local devGameId = Balance.Profiles.DevGameId
 	return gameId ~= nil and gameId ~= 0 and gameId == devGameId
 end
 
-local IS_DEV = isDev(ENVIRONMENT, currentGameId())
+-- a500 : le jeu TEST, en « Auto » seulement : traité comme le DEV, achats coupés.
+local function isTest(environment: Environment, gameId: number?): boolean
+	return environment == "Auto" and GameEnv ~= nil and GameEnv.IsTestFor(gameId) == true
+end
+
+local GAME_ID = currentGameId()
+local IS_DEV = isDev(ENVIRONMENT, GAME_ID)
+local IS_TEST = isTest(ENVIRONMENT, GAME_ID)
 
 local ProductIds = {
 	Environment = ENVIRONMENT,
 	IsDev = IS_DEV,
+	IsTest = IS_TEST,
+	-- a500 : achats Robux coupés sur ce serveur (jeu TEST) : aucun Id, aucune fenêtre d'achat, aucun reçu accordé.
+	PurchasesDisabled = IS_TEST,
 	Dev = Dev,
 }
 
 -- L'Id à utiliser dans ce jeu pour l'offre `key` dont l'Id PROD est `prodId`.
 function ProductIds.Pick(key: string, prodId: number): number
+	if IS_TEST then
+		return 0 -- a500 : jeu TEST, rien n'est vendu
+	end
 	if not IS_DEV then
 		return prodId
 	end
@@ -102,6 +139,10 @@ end
 -- Bancs : le même choix pour un réglage et un GameId donnés.
 function ProductIds.IsDevFor(environment: Environment, gameId: number?): boolean
 	return isDev(environment, gameId)
+end
+
+function ProductIds.IsTestFor(environment: Environment, gameId: number?): boolean
+	return isTest(environment, gameId)
 end
 
 export type ProductIds = typeof(ProductIds)

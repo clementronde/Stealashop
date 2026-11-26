@@ -22,6 +22,21 @@ local ECO: any = (function(): any
 	return nil
 end)()
 
+-- a500 : Config/GameEnv (le seul endroit qui dit DEV, TEST ou PROD) chargé s'il est là ; Profiles.DevGameId n'en est
+-- plus qu'un alias (repli sans lui : le même nombre, bancs à liste de modules fixe).
+local GAME_ENV: any = (function(): any
+	local found, module = pcall(function(): any
+		return script.Parent:FindFirstChild("GameEnv")
+	end)
+	if found and module ~= nil then
+		local ok, result = pcall(require, module :: any)
+		if ok and type(result) == "table" and type(result.DevGameId) == "number" then
+			return result
+		end
+	end
+	return nil
+end)()
+
 export type BoxTier = "Standard" | "Premium" | "Luxe"
 
 export type BoxTierInfo = {
@@ -159,7 +174,9 @@ local Balance = {
 	-- revenir, DevStoreName = "PlayerData". Pour une nouvelle remise à zéro du DEV : un nouveau nom.
 	Profiles = {
 		StoreName = "PlayerData", -- PROD : ne jamais le changer (un autre nom = profils vides)
-		DevGameId = 10774974820, -- « Steal a Shop [DEV] » (liaison, L-001)
+		-- « Steal a Shop [DEV] » (liaison, L-001) ; a500 : alias de Config/GameEnv.DevGameId. Le jeu TEST (GameEnv.TestGameId)
+		-- lit aussi DevStoreName (DataService, par GameEnv.IsDevLikeFor).
+		DevGameId = if GAME_ENV ~= nil then GAME_ENV.DevGameId :: number else 10774974820,
 		DevStoreName = "PlayerData_DEV_20261114",
 	},
 

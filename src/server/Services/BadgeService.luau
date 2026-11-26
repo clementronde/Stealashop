@@ -38,7 +38,7 @@ type Data = ProfileTypes.Data
 type Badge = Badges.Badge
 
 -- Config/ProductIds chargé s'il est là (comme TrapService) ; sans lui, jeu PROD.
-local ProductIds: { IsDev: boolean? } = (function(): any
+local ProductIds: { IsDev: boolean?, IsTest: boolean? } = (function(): any
 	local module = Shared.Config:FindFirstChild("ProductIds")
 	if module and module:IsA("ModuleScript") then
 		local ok, result = pcall(require, module)
@@ -132,6 +132,9 @@ function BadgeService.Earned(data: Data, badge: Badge): boolean
 end
 
 function BadgeService.IdOf(badge: Badge): number
+	if ProductIds.IsTest == true then
+		return 0 -- a500 : jeu TEST, aucun badge (ni Id DEV ni Id PROD n'y existe) : aucun appel d'attribution
+	end
 	local id = if ProductIds.IsDev == true then badge.DevId else badge.Id
 	return if type(id) == "number" and id > 0 then id else 0
 end

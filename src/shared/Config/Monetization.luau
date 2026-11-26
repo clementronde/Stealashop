@@ -54,7 +54,7 @@ local Boosts = require(script.Parent.Boosts)
 local Features = require(script.Parent.Features)
 -- a285 : Config/ProductIds chargé s'il est là (bancs d'essai à liste de modules fixe) ; sans lui, les Ids de PROD.
 -- a294 : IsDev lu aussi (sans le module : faux, comme en PROD).
-local ProductIds: { Pick: (key: string, prodId: number) -> number, IsDev: boolean? } = (function(): any
+local ProductIds: { Pick: (key: string, prodId: number) -> number, IsDev: boolean?, PurchasesDisabled: boolean? } = (function(): any
 	local module = script.Parent:FindFirstChild("ProductIds")
 	if module ~= nil then
 		local ok, result = pcall(require, module :: any)
@@ -308,6 +308,9 @@ local Monetization = {
 	PassByKey = PassByKey, -- clé = PassKey ; une clé inconnue renvoie nil
 	ProductByKey = ProductByKey, -- clé = ProductKey
 	ShopBoosts = ShopBoosts, -- vague 63 : boosts du HUD dans l'onglet Boosts (même produit, Config/Boosts)
+	-- a500 (26/11, Cantin) : achats Robux coupés sur ce serveur (jeu TEST, Config/ProductIds.PurchasesDisabled) : tous les
+	-- Ids y valent 0 ; la boutique reste visible, chaque carte dit « Not available in test » et ne lance rien.
+	PurchasesDisabled = ProductIds.PurchasesDisabled == true,
 	-- a485 (L-351 question 2) : true (Features.TrainingX4 dans ce jeu) = les gains du tapis prennent le plus fort de
 	-- ×2 Speed et ×4 Training, sans les cumuler ; false = leur produit, comme avant (TrainingMultiplier plus bas).
 	TrainingLadder = TRAINING_X4,

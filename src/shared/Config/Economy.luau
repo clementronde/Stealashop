@@ -25,6 +25,8 @@
 -- store des profils (DataService). Ce module ne peut pas lire ProductIds.IsDev : ProductIds exige Balance, et
 -- Balance lit ce module (boucle de require). DevGameId est donc écrit une seconde fois ici ; le banc a486 vérifie
 -- qu'il vaut Balance.Profiles.DevGameId et que Economy.IsDev suit ProductIds.IsDev.
+-- a500 (26/11) : le jeu est maintenant reconnu par Config/GameEnv (module feuille, sans boucle) : le jeu TEST compte comme
+-- le DEV (EconomyBTDev, table 2). DEV_GAME_ID ne sert plus que de repli sans GameEnv (bancs à liste de modules fixe).
 --
 -- Changer un nombre de la table 2 (taux du hors ligne, prix d'un niveau du tapis…) : une valeur ci-dessous, aucun
 -- code à toucher. Ne jamais changer la table 1 : c'est l'économie des profils de PROD et le repère de la conversion.
@@ -35,7 +37,8 @@
 --   Economy.Override: Table?           la table à appliquer par-dessus les nombres des modules : nil avec la table 1,
 --                                      Economy.Active sinon (voir plus haut)
 --   Economy.Tables: { Table }          les deux tables
---   Economy.IsDev: boolean             ce serveur est le jeu DEV
+--   Economy.IsDev: boolean             ce serveur est le jeu DEV ou le jeu TEST (a500)
+--   Economy.IsTest: boolean            ce serveur est le jeu TEST (a500)
 --   Economy.RebirthAllowed: boolean    la renaissance peut s'allumer avec la table active (table 2 : seulement avec
 --                                      Features.RebirthBT ; lu par Config/Rebirths.Enabled)
 --   Economy.VersionFor(features, gameId) -> number    le même choix pour des interrupteurs et un GameId donnés (bancs)
@@ -255,8 +258,14 @@ local TABLE_2: Table = {
 
 local TABLES: { Table } = { TABLE_1, TABLE_2 }
 
--- « Steal a Shop [DEV] » : le même nombre que Balance.Profiles.DevGameId (voir l'en-tête).
-local DEV_GAME_ID = 10774974820
+-- a500 : Config/GameEnv chargé s'il est là (voir l'en-tête) ; sans lui, le jeu DEV seul, comme avant.
+local GameEnv: any = (function(): any
+	local env = optional("GameEnv")
+	return if type(env.IsDevLikeFor) == "function" then env else nil
+end)()
+
+-- « Steal a Shop [DEV] » : GameEnv.DevGameId ; repli sans GameEnv : le même nombre que Balance.Profiles.DevGameId.
+local DEV_GAME_ID: number = if GameEnv ~= nil then GameEnv.DevGameId else 10774974820
 
 local function currentGameId(): number?
 	local ok, id = pcall(function(): any
@@ -266,6 +275,9 @@ local function currentGameId(): number?
 end
 
 local function isDevGame(gameId: number?): boolean
+	if GameEnv ~= nil then
+		return GameEnv.IsDevLikeFor(gameId) == true -- a500 : DEV ou TEST
+	end
 	return gameId ~= nil and gameId ~= 0 and gameId == DEV_GAME_ID
 end
 
@@ -289,6 +301,7 @@ local Economy = {
 	Override = (if VERSION ~= 1 then TABLES[VERSION] else nil) :: Table?,
 	Tables = TABLES,
 	IsDev = isDevGame(GAME_ID),
+	IsTest = GameEnv ~= nil and GameEnv.IsTestFor(GAME_ID) == true,
 	DevGameId = DEV_GAME_ID,
 	-- Renaissance coupée avec la table 2 (décision de Cantin, 25/11 : à resimuler), sauf Features.RebirthBT.
 	RebirthAllowed = VERSION ~= 2 or Features.RebirthBT == true,
