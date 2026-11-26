@@ -358,6 +358,16 @@ local Features = {
 	BiggerTrophies = false,
 	-- a491 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
 	BiggerTrophiesDev = true,
+	-- a496 (règle de Cantin, 26/11 ; Config/DisplaySize, étapes 1 à 3) : le minimum de taille par rareté (facteur du modèle
+	-- médian, minimum 4, 5 ou 7 studs, grossissement par le poids) vaut partout : en main (HeldItemService), porté
+	-- (CarryService), au sol (DisplayService.BuildFloorItem) et à l'ouverture dans le magasin PNJ (StoreHeistService :
+	-- l'objet du rayon et la taille envoyée à RevealController). Hors présentoir, l'objet prend la plus grande des deux
+	-- tailles (rareté, poids), sans plafond (ni Weight.HeldMaxScale ni Weight.CarryMaxScale) ; le présentoir et le socle
+	-- « BEST ITEM » ne changent pas. Interrupteur PROD (partout) : false (règle C2 : pas encore de test humain) ;
+	-- false = la taille du poids et ses plafonds, comme avant.
+	RaritySizeEverywhere = false,
+	-- a496 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	RaritySizeEverywhereDev = true,
 	-- a459 (L-306, Cantin 25/11) : l'objet du socle du plus rare (RarestDisplay, copie RarestItem de VfxController) flotte
 	-- exactement comme sur les présentoirs (ItemIdleController, Config/DisplayMotion). Interrupteur PROD (partout) : false
 	-- (règle C2) ; false = l'objet du socle reste immobile, comme avant.

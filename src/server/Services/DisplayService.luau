@@ -288,6 +288,8 @@ local TROPHIES: boolean = DisplaySize ~= nil
 	and type(DisplaySize.Trophies) == "table"
 	and DisplaySize.Trophies.Enabled == true
 	and type(DisplaySize.TrophyFactor) == "function"
+-- a496 (Cantin, 26/11 ; Features.RaritySizeEverywhere / RaritySizeEverywhereDev) : minimum par rareté hors présentoir.
+local EVERYWHERE: boolean = DisplaySize ~= nil and DisplaySize.Everywhere == true
 local UI = require(ReplicatedStorage.Shared.Contract.UI)
 local Net = require(ReplicatedStorage.Shared.Net.Net)
 local ProfileTypes = require(ReplicatedStorage.Shared.Types.Profile)
@@ -1466,6 +1468,18 @@ local function raritySizeScale(model: Model, rarityId: string, weight: number, f
 	return if floor ~= nil and floor > scale then floor else scale
 end
 
+-- a496 (règle de Cantin, 26/11 ; DisplaySize.Everywhere) : échelle (Model:ScaleTo, même unité que `floor`) de `model`
+-- (pas encore mis à l'échelle) hors présentoir : la taille par rareté de raritySizeScale (étapes 1 à 3 de
+-- Config/DisplaySize), jamais sous `floor` (l'échelle de son poids). Aucun plafond. `floor` tel quel si la rareté n'a pas
+-- de minimum, si le modèle n'a aucune pièce visible ou si la mesure échoue. La seule formule : raritySizeScale.
+local function sizeScale(model: Model, rarityId: string, weight: number, floor: number): number
+	local ok, sized = pcall(raritySizeScale, model, rarityId, weight, floor)
+	if ok and type(sized) == "number" and sized > 0 and sized < math.huge then
+		return sized
+	end
+	return floor
+end
+
 -- a459b (L-367) : place libre d'un présentoir jusqu'à ses voisins, dans le repère de son Attachment DisplaySlot_xx :
 -- pour chaque autre DisplaySlot_xx de la parcelle au même étage (écart de hauteur sous la hauteur FitSize.Y du
 -- présentoir ; sans FitSize, tous comptent), la moitié de l'écart le long de l'axe où il est le plus loin (X ou Z) :
@@ -1691,6 +1705,10 @@ local function buildItemModel(
 			scale = sized
 			raritySized = true
 		end
+	elseif EVERYWHERE and not billboard then
+		-- a496 (Cantin, 26/11) : hors présentoir (au sol, et donc en main : HeldItemService part de BuildFloorItem), la plus
+		-- grande des deux tailles (rareté, poids), sans plafond ni place physique (aucun FitSize ici).
+		scale = sizeScale(display, def.Rarity, weight, scale)
 	end
 	-- a459b (L-367) : taille par rareté posée : la place physique seule (hauteur sous le plafond, FitSize.Y ; largeur
 	-- jusqu'aux présentoirs voisins, `neighbors`) ; sinon le FitSize entier, comme avant.
@@ -3077,6 +3095,21 @@ function DisplayService.BuildBotItem(plot: Model, slotIndex: number, itemUid: st
 		return nil
 	end
 	return (result :: Visual).model
+end
+
+-- a496 (Cantin, 26/11) : true quand le minimum par rareté vaut aussi hors présentoir (DisplaySize.Everywhere).
+function DisplayService.RaritySizeEverywhere(): boolean
+	return EVERYWHERE
+end
+
+-- a496 (Cantin, 26/11) : échelle hors présentoir (porté, ouverture dans le magasin PNJ) de `model`, une copie ou un
+-- modèle ITM_ pas encore mis à l'échelle de son poids : la plus grande de la taille par rareté (sizeScale) et de
+-- `floor` (l'échelle de son poids, Model:ScaleTo), sans plafond. Interrupteur coupé : `floor`, comme avant.
+function DisplayService.SizeScale(model: Model, rarityId: string, weight: number, floor: number): number
+	if not EVERYWHERE then
+		return floor
+	end
+	return sizeScale(model, rarityId, weight, floor)
 end
 
 function DisplayService.BuildFloorItem(ownerUserId: number, pivot: CFrame, itemUid: string, entry: ItemEntry): Model?

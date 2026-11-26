@@ -66,6 +66,7 @@ type ItemEntry = ProfileTypes.Item
 type DisplayApi = {
 	BuildFloorItem: (ownerUserId: number, pivot: CFrame, itemUid: string, entry: ItemEntry) -> Model?,
 	IsHeld: (player: Player, itemUid: string) -> boolean,
+	RaritySizeEverywhere: (() -> boolean)?, -- a496 (absent dans les bancs plus anciens : comme avant)
 }
 
 type Held = {
@@ -252,9 +253,13 @@ local function buildTool(player: Player, uid: string, entry: ItemEntry): Tool?
 	-- pour ne pas cacher le joueur. Échec : la taille du présentoir, sans bruit.
 	-- a491 (L-429 point 1) : plafond compté depuis l'échelle propre du modèle livré (attribut Weight.BaseScaleAttribute
 	-- posé par DisplayService, absent = 1) ; un modèle à l'échelle 1 : comme avant.
+	-- a496 (Cantin, 26/11 ; DisplaySize.Everywhere) : plus aucun plafond en main ; l'objet garde la taille de BuildFloorItem
+	-- (la plus grande de sa taille par rareté et de celle de son poids).
+	local everywhere = api.RaritySizeEverywhere
+	local uncapped = type(everywhere) == "function" and everywhere() == true
 	local okBase, base = pcall(model.GetAttribute, model, WeightConfig.BaseScaleAttribute)
 	local cap = WeightConfig.HeldMaxScale * (if okBase and type(base) == "number" and base > 0 and base < math.huge then base else 1)
-	if model:GetScale() > cap then
+	if not uncapped and model:GetScale() > cap then
 		pcall(model.ScaleTo, model, cap)
 	end
 	-- a178 (Cantin, 15/11) : objet encore sous antivol (profil : AntiTheft, UnlockAt) : UnboxController y montre

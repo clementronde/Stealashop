@@ -745,6 +745,43 @@ local function warnOnce(key: string, message: string)
 	warn(`[StoreHeistService] {message}`)
 end
 
+-- a496 (règle de Cantin, 26/11 ; DisplaySize.Everywhere) : à l'ouverture dans le magasin PNJ, l'objet prend la plus grande
+-- de sa taille par rareté et de celle de son poids, sans plafond (DisplayService.SizeScale, la formule du présentoir sans
+-- la place physique). DisplayService est chargé au premier appel (pas de require croisé au chargement) ; absent ou sans
+-- ces fonctions (bancs plus anciens) : la taille du poids, comme avant.
+local sizeApiCache: any = nil
+local sizeApiTried = false
+local function sizeApi(): any
+	if not sizeApiTried then
+		sizeApiTried = true
+		local module = script.Parent:FindFirstChild("DisplayService")
+		if module and module:IsA("ModuleScript") then
+			local ok, result = pcall(require, module)
+			if ok and type(result) == "table" and type(result.RaritySizeEverywhere) == "function" and type(result.SizeScale) == "function" then
+				sizeApiCache = result
+			end
+		end
+	end
+	return sizeApiCache
+end
+
+-- a496 : échelle relative (× l'échelle propre de `model`, pas encore mis à l'échelle) d'un objet de rareté `rarityId` qui
+-- pèse `kg`, dont l'échelle du poids est `scale` (relative aussi) : jamais sous `scale`. Coupé ou en échec : `scale`.
+local function everywhereScale(model: Instance?, rarityId: string, kg: number, scale: number): number
+	local api = sizeApi()
+	if api == nil or model == nil or not model:IsA("Model") then
+		return scale
+	end
+	local ok, value = pcall(function(): number
+		if api.RaritySizeEverywhere() ~= true then
+			return scale
+		end
+		local base = (model :: Model):GetScale()
+		return api.SizeScale(model, rarityId, kg, base * scale) / base
+	end)
+	return if ok and type(value) == "number" and value >= scale and value < math.huge then value else scale
+end
+
 -- Prise (ou ouverture, `remote` = "OpenShelfBox") refusée : signalée en Studio seulement (aide au
 -- test), une ligne par seconde et par joueur.
 local function refuse(player: Player, slotId: string, reason: string, remote: string?)
@@ -1267,6 +1304,8 @@ local function makeItemModel(slot: Slot, info: ItemInfo): Model
 	if weight ~= nil then
 		local ok, value = pcall(ItemWeight.ScaleFor, weight)
 		scale = if ok and type(value) == "number" and value > 0 and value < math.huge then value else 1
+		-- a496 (Cantin, 26/11) : au moins la taille par rareté, comme à la révélation (même échelle que RevealStarted)
+		scale = everywhereScale(object, content.Rarity, weight, scale)
 	end
 	if scale ~= 1 then
 		-- a491 (L-429 point 1, bug d'échelle) : à partir de l'échelle propre du modèle livré (3,57 pour 37 objets du lot
@@ -3052,8 +3091,12 @@ local function startReveal(player: Player, slot: Slot, box: ShelfBox)
 	end
 	local final = content :: Content
 	local weight = final.Weight or config.TutorialWeight
-	local scale = scaleFor(weight)
-	local sizeClass = sizeClassFor(weight, freeHeightAbove(slot), modelHeightOf(final.ItemId))
+	local weightScale = scaleFor(weight)
+	-- a496 (Cantin, 26/11 ; DisplaySize.Everywhere) : au moins la taille par rareté, sans plafond ; la classe de taille suit
+	-- la taille montrée (un objet remonté par sa rareté qui touche le plafond du magasin est Large et le casse, a220).
+	local finalDef = Items.ById[final.ItemId]
+	local scale = everywhereScale(if finalDef then boxTemplate(finalDef.Asset) else nil, final.Rarity, weight, weightScale)
+	local sizeClass = sizeClassFor(weight, freeHeightAbove(slot), modelHeightOf(final.ItemId) * (scale / weightScale))
 	local openAt = Workspace:GetServerTimeNow()
 	local opening: Opening = { ByUserId = player.UserId, Luck = luck, OpenAt = openAt, Cinematic = true }
 	box.Opening = opening
