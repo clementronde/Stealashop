@@ -74,6 +74,8 @@ end)()
 -- validé prix, durées et cumul ; true = 3 cartes de plus dans Boosts (une 2e rangée, comme l'onglet Argent).
 -- a476 (L-375) : allumé partout avec Features.ServerLuck, ou dans le jeu DEV seulement avec ServerLuckDev (règle C2).
 local SERVER_LUCK = Features.ServerLuck == true or (Features.ServerLuckDev == true and ProductIds.IsDev == true)
+-- a499 (L-401) : la dose ×3 Luck (Luck3) ne se vend que si le modèle de chance R2 la lit (sinon reçu NotProcessedYet).
+local LUCK_V2 = Features.LuckModelV2 == true or (Features.LuckModelV2Dev == true and ProductIds.IsDev == true)
 
 -- Onglets de l'écran (3.1 : Offres, Gamepasses, Argent, Boosts ; Tabs.OffersTab… de L-047).
 export type Tab = "Offers" | "Gamepasses" | "Cash" | "Boosts"
@@ -199,7 +201,7 @@ local Passes: { Pass } = {
 	{ Key = "VIP", Id = 0, Order = 4, Price = 249, Ready = false, CardColor = Color3.fromHex("8A5CF0"), CurtainBonus = 10, DisplayName = "VIP", Effect = "+10% income, aura, chat tag, +10s lock", Icon = "UI_Icon_GP_VIP" },
 	{ Key = "AutoCollect", Id = 2099027027, Order = 5, Price = 99, Ready = true, CardColor = Color3.fromHex("FFC928"), DisplayName = "Auto Collect", Effect = "Cash collects itself, anywhere", Icon = "UI_Icon_GP_AutoCollect" },
 	-- a485 (L-351 question 3) : « Quick Lock » (avant « Fast Open ») ; clé, attribut PassFastOpen et icône inchangés.
-	{ Key = "FastOpen", Id = 2099039016, Order = 6, Price = 99, Ready = true, CardColor = Color3.fromHex("2FA8F0"), DelayFactor = 0.5, DisplayName = "Quick Lock", Effect = "Anti-theft 2× shorter", Icon = "UI_Icon_GP_FastOpen" },
+	{ Key = "FastOpen", Id = 2099039016, Order = 6, Price = 299, Ready = true, CardColor = Color3.fromHex("2FA8F0"), DelayFactor = 0.5, DisplayName = "Quick Lock", Effect = "Anti-theft 2× shorter", Icon = "UI_Icon_GP_FastOpen" },
 	{ Key = "ExtraStands", Id = 2099033063, Order = 7, Price = 349, Ready = true, CardColor = Color3.fromHex("E05AD8"), Stands = 4, DisplayName = "+4 Displays", Effect = "4 extra displays", Icon = "UI_Icon_GP_Displays" },
 	-- Texte V0 proposé, absent de la maquette. a485 (L-351 question 4) : 1,5 × le meilleur outil (avant 2,5 ×), jamais
 	-- plus que l'Angle Grinder ; effet pas encore codé (Ready = false).
@@ -252,7 +254,7 @@ local Products: { Product } = {
 	-- a486 (Cantin, 25/11 ; note d'a479 : dose personnelle ×3 pendant 30 min ; prix inchangé, à valider par Clément, L-401) :
 	-- 30 min au lieu de 15. Facteur et durée : Config/ShelfOpen.LuckV2 (PersonalFactor, PersonalMinutes), lus par le modèle
 	-- de chance R2 ; le don à l'achat (attributs PersonalLuck et PersonalLuckEndsAt) reste à brancher avec le produit.
-	{ Key = "Luck3", Id = 0, Tab = "Boosts", Order = 6, Price = 79, Ready = false, DisplayName = "×3 Luck", Effect = "Rarer boxes for 30 min", Icon = "UI_Icon_DP_Luck3" },
+	{ Key = "Luck3", Id = 3736589743, Tab = "Boosts", Order = 6, Price = 79, Ready = LUCK_V2, DisplayName = "×3 Luck", Effect = "Rarer boxes for 30 min", Icon = "UI_Icon_DP_Luck3" },
 	-- a485 (L-351 question 5, V0 gardé) : Shield30 (« 30 Min Shield », boutique inviolable 30 min) retiré pour de bon. Il
 	-- n'a jamais été créé (Id 0 en DEV et en PROD) : aucun reçu possible. Ne jamais le créer sur le Creator Hub.
 	-- Vague 72 (a247, L-216 point 8) : chance du serveur (comme le ×2, ×4, ×8 de Steal a Brainrot). V0 proposé,
