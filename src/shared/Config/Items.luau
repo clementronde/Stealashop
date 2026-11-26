@@ -70,7 +70,8 @@
 -- 11 objets hors tirage (Item.OutOfDraw : dans List et ById, avec leur revenu, jamais dans ByZone ni tirés ; l'Index
 -- ne les compte pas). Plus d'objet TutorialOnly en v3 : l'objet du tuto est le meilleur Peu commun de la zone 1
 -- (TUTORIAL_V3), qui se tire aussi normalement ; le Ramen de feu devient un Rare de la zone 3. V2ToV3 reste celui
--- d'a429 (INDEX_ORDER_V3_A429). La v2 (PROD) ne change pas.
+-- d'a429 (INDEX_ORDER_V3_A429), sauf le Pot de nouilles du tuto, qui devient l'objet du tuto v3 (Cantin, 26/11). La v2
+-- (PROD) ne change pas.
 
 local DeepFreeze = require(script.Parent.DeepFreeze)
 local Rarities = require(script.Parent.Rarities)
@@ -962,6 +963,10 @@ do
 	end
 	assert(count == #INDEX_ORDER_V3_A429[1] + #INDEX_ORDER_V3_A429[2] + #INDEX_ORDER_V3_A429[3] + #INDEX_ORDER_V3_A429[4] + #INDEX_ORDER_V3_A429[5] + #INDEX_ORDER_V3_A429[6] + #SECRETS_V3, "Config.Items : v2 et v3 n'ont pas le même nombre d'objets")
 end
+-- a497 (Cantin, 26/11) : le Pot de nouilles (objet du tuto v2) devient l'objet du tuto v3 (Jelly Double-Decker) quand le
+-- catalogue v3 s'allume, et non le Ramen de feu de même rang. Sens v2 → v3 seulement : V3ToV2 garde Ramen → Pot de
+-- nouilles et Bus → Peluche géante (catalogue v2 rallumé).
+V2_TO_V3.Z1_PotDeNouilles = "Z2_BusEnGelatine"
 
 -- a429 : modèles ITM_ de l'autre catalogue (ContractChecker : ni attendus ni « pas au catalogue »).
 local OTHER_ASSETS: { [string]: boolean } = {}
