@@ -179,10 +179,11 @@ local TABLE_2: Table = {
 	TreadmillGainPerSecond = 6,
 	-- 25 niveaux affichés. Découpage de Cantin : niveaux 1 à 3 en zone 1, 4 à 8 en zone 2, 9 à 12 en zone 3, 13 à 16
 	-- en zone 4, 17 à 25 en zone 5, avec un grand saut à l'entrée de chaque zone (230K, 95M, 9,5B). Niveaux 19 à 25 :
-	-- au moins une absence complète de 5 h du joueur moyen (la règle du hors ligne, en zone 5 seulement). Ces prix et
-	-- OfflineRate vont ensemble (question ouverte L-413 : hors ligne à 50 %).
+	-- au moins une absence complète de 5 h du joueur moyen, payée à 50 % (la règle du hors ligne, en zone 5 seulement).
+	-- Ces prix et OfflineRate vont ensemble : variante 50 % de la note d'a479 (V.C, V.I), niveaux 19 à 25 environ deux
+	-- fois moins chers que la passe 4 (L-413, Clément d'accord le 26/11 ; a490).
 	TreadmillMaxLevel = 24,
-	TreadmillCosts = { 150, 450, 590, 1_200, 2_200, 4_000, 8_100, 230_000, 450_000, 810_000, 1_400_000, 95_000_000, 200_000_000, 420_000_000, 880_000_000, 9_500_000_000, 29_000_000_000, 340_000_000_000, 690_000_000_000, 1.1e12, 1.7e12, 2.6e12, 3.9e12, 5.9e12 },
+	TreadmillCosts = { 150, 450, 590, 1_200, 2_200, 4_000, 8_100, 230_000, 450_000, 810_000, 1_400_000, 95_000_000, 200_000_000, 420_000_000, 880_000_000, 9_500_000_000, 29_000_000_000, 180_000_000_000, 330_000_000_000, 520_000_000_000, 780_000_000_000, 1.2e12, 1.8e12, 2.7e12 },
 	DisplaySlotCosts = { 450, 1_200, 900, 1_800, 140_000, 230_000, 360_000, 84_000_000, 190_000_000, 380_000_000, 2_100_000_000, 5_300_000_000, 18_000_000_000, 40e9, 100e9, 250e9 },
 	Floor2Cost = 140_000,
 	Floor2Costs = { 230_000, 360_000, 84_000_000, 190_000_000, 380_000_000, 2_100_000_000, 5_300_000_000, 18_000_000_000 },
@@ -234,8 +235,9 @@ local TABLE_2: Table = {
 	LeaderboardSpeedLog = true,
 	LeaderboardSuffix = "_E2",
 	AdminMaxAmount = 1e30,
-	-- Cantin, 25/11 : 100 %, comme la table 1, tant que Clément n'a pas répondu à L-413 (50 %).
-	OfflineRate = 1,
+	-- L-413 (Cantin le 25/11, Clément le 26/11 ; a490) : 50 % des revenus, 4 h au plus (Config/Offline.MaxHours, +30 min
+	-- par nœud OfflineTime de l'arbre).
+	OfflineRate = 0.5,
 	-- Décision de Cantin (25/11) : profils du jeu DEV remis à zéro avec cette table.
 	DevStoreName = "PlayerData_DEV_BT_20261125",
 }
