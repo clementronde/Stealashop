@@ -76,6 +76,18 @@ local DisplaySize = {
 	Enabled = Features.DisplayRaritySize == true or (Features.DisplayRaritySizeDev == true and ProductIds.IsDev == true),
 	MinByRarity = MIN_BY_RARITY,
 	GrowthByRarity = GROWTH_BY_RARITY,
+	-- a491 (L-429, trophées plus gros, idée 10 validée par Clément le 26/11 ; mesures du chef 3D à côté d'un R15 de
+	-- 5 studs). Allumé partout (Features.BiggerTrophies) ou dans le jeu DEV seulement (BiggerTrophiesDev et IsDev).
+	Trophies = {
+		Enabled = Features.BiggerTrophies == true or (Features.BiggerTrophiesDev == true and ProductIds.IsDev == true),
+		-- L-429 point 3 : hauteur d'un objet exposé à l'échelle ×1 du poids (10 kg = ×2 : 5 studs, la taille du perso)
+		BaseHeight = 2.5,
+		-- L-429 point 3 (objets plats) : la moitié du plus grand côté compte comme hauteur quand elle est plus grande.
+		-- V0 a491 : règle générale à la place de la liste des 10 objets plats de L-429 (aucun nom en dur).
+		FlatShare = 0.5,
+		-- L-429 point 2 : hauteur du colis de l'ouverture au départ (0,6 fois le perso), avant les améliorations
+		OpenBoxHeight = 3,
+	},
 }
 
 -- Plus grande dimension minimale (studs) d'un objet de rareté `rarityId` ; nil pour une rareté inconnue.
@@ -131,6 +143,19 @@ function DisplaySize.GrowthFor(rarityId: any, kg: any): number
 	end
 	local t = math.clamp(math.log(Weight.ScaleAt(weight) / low) / math.log(high / low), 0, 1)
 	return top ^ t
+end
+
+-- a491 (L-429 point 3) : facteur (×, au moins 1) qui donne à un modèle haut de `height` studs, de plus grand côté
+-- `side`, au moins Trophies.BaseHeight de haut à ×1 : max(1, BaseHeight / max(hauteur, FlatShare × plus grand côté)).
+-- Jamais sous ×1 : un objet déjà assez haut garde sa taille. 1 pour des mesures illisibles.
+function DisplaySize.TrophyFactor(height: any, side: any): number
+	local h = if type(height) == "number" and height > 0 and height < math.huge then height else 0
+	local s = if type(side) == "number" and side > 0 and side < math.huge then side else 0
+	local reference = math.max(h, s * DisplaySize.Trophies.FlatShare)
+	if not (reference > 0) then
+		return 1
+	end
+	return math.max(1, DisplaySize.Trophies.BaseHeight / reference)
 end
 
 export type DisplaySize = typeof(DisplaySize)

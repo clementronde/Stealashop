@@ -1269,6 +1269,14 @@ local function makeItemModel(slot: Slot, info: ItemInfo): Model
 		scale = if ok and type(value) == "number" and value > 0 and value < math.huge then value else 1
 	end
 	if scale ~= 1 then
+		-- a491 (L-429 point 1, bug d'échelle) : à partir de l'échelle propre du modèle livré (3,57 pour 37 objets du lot
+		-- Meshy) ; un modèle à l'échelle 1 : rien ne change. Échelle illisible (faux modèle) : 1.
+		local okBase, base = pcall(function(): number
+			return object:GetScale()
+		end)
+		if okBase and type(base) == "number" and base > 0 and base < math.huge then
+			scale *= base
+		end
 		local ok, problem = pcall(object.ScaleTo, object, scale)
 		if not ok then
 			warnOnce(`scale.{content.ItemId}`, `{content.ItemId} : Model:ScaleTo({scale}) a échoué ({problem}), taille normale`)

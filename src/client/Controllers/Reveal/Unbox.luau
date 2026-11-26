@@ -50,6 +50,20 @@ local UI = require(Shared:WaitForChild("Contract"):WaitForChild("UI"))
 local AnimPlayer = require(Shared:WaitForChild("Anim"):WaitForChild("AnimPlayer"))
 local MarkerSounds = require(Shared:WaitForChild("Anim"):WaitForChild("MarkerSounds"))
 local UnboxPlan = require(Shared:WaitForChild("UnboxPlan"))
+-- a491 (L-429 point 2, Features.BiggerTrophies / BiggerTrophiesDev) : hauteur du colis de l'ouverture au départ
+-- (Config/DisplaySize.Trophies.OpenBoxHeight) ; nil = la hauteur de son modèle, comme avant. Module facultatif (bancs).
+local OPEN_BOX_HEIGHT: number? = nil
+do
+	local module = Config:FindFirstChild("DisplaySize")
+	if module and module:IsA("ModuleScript") then
+		local ok, size = pcall(require, module :: any)
+		local trophies = if ok and type(size) == "table" then (size :: any).Trophies else nil
+		local height = if type(trophies) == "table" and trophies.Enabled == true then trophies.OpenBoxHeight else nil
+		if type(height) == "number" and height > 0 then
+			OPEN_BOX_HEIGHT = height
+		end
+	end
+end
 
 local New = UnboxConfig.New
 local REACT = New.React
@@ -695,7 +709,9 @@ local function buildBox(state: State)
 	if box == nil and UnboxPlan.boxClimbs() then
 		box = copyOf(boxTemplate(ctx.Plan.Steps[1].Rarity))
 	end
-	adoptBox(state, box or block(Vector3.new(2, 1.6, 2), KRAFT))
+	-- a491 (L-429 point 2) : trophées plus gros allumés : le colis montré a OPEN_BOX_HEIGHT de haut (swapBox garde cette
+	-- hauteur, UpgradeGrow s'y ajoute) ; le vrai colis du rayon, caché en local, ne change pas.
+	adoptBox(state, box or block(Vector3.new(2, 1.6, 2), KRAFT), OPEN_BOX_HEIGHT)
 end
 
 -- a462 (L-356 Q4) : la rareté montrée change : le colis prend le modèle BOX_<Rareté>, à la même hauteur de départ (la
@@ -1767,7 +1783,15 @@ local function placeCharacter(state: State)
 	local right = aisle:Cross(UP)
 	local side = right
 	local probe = foot + UP * 2
-	local reach = New.StandSide + 1.5
+	-- a491 (L-429 point 2) : colis de l'ouverture agrandi (OPEN_BOX_HEIGHT) : le perso se tient au moins à la moitié de
+	-- sa plus grande largeur + 1 stud (la moitié du perso) du centre, pour ne pas entrer dedans. Coupé : StandSide.
+	local standSide = New.StandSide
+	local shownBox = state.box
+	if OPEN_BOX_HEIGHT ~= nil and shownBox ~= nil then
+		local size = extents(shownBox)
+		standSide = math.max(standSide, math.max(size.X, size.Z) / 2 + 1)
+	end
+	local reach = standSide + 1.5
 	local hitRight = raycast(probe, right * reach, exclude, true)
 	local hitLeft = raycast(probe, -right * reach, exclude, true)
 	local freeRight = if hitRight then (hitRight.Position - probe).Magnitude else reach
@@ -1788,7 +1812,7 @@ local function placeCharacter(state: State)
 	local height = if humanoid then humanoid.HipHeight + root.Size.Y / 2 else 3
 	state.standHeight = height
 	local function standOn(direction: Vector3, room: number): CFrame
-		local at = foot + direction * math.min(New.StandSide, math.max(room, 1.5) - 0.5) + UP * height
+		local at = foot + direction * math.min(standSide, math.max(room, 1.5) - 0.5) + UP * height
 		return CFrame.lookAt(at, Vector3.new(foot.X, at.Y, foot.Z))
 	end
 	local stand = standOn(side, free)

@@ -987,7 +987,11 @@ local function placeRarestItem(entry: RarestEntry, best: Best)
 	copy:AddTag(spec.CopyTag)
 	-- Vague 62 (a203) : un objet très lourd est plafonné à Weight.RarestMaxScale sur le socle (V0).
 	-- a234 (L-220) : vraie taille sur le socle : la réduction FitSize de son présentoir (attribut FitScale) est retirée.
-	local shown = copy:GetScale()
+	-- a491 (L-429 point 1) : échelles comptées depuis celle du modèle livré (attribut Weight.BaseScaleAttribute posé par
+	-- DisplayService, absent = 1 : comme avant), pour que le plafond RarestMaxScale ne réduise pas les modèles Meshy.
+	local baseValue = source:GetAttribute(WeightConfig.BaseScaleAttribute)
+	local base = if type(baseValue) == "number" and baseValue > 0 and baseValue < math.huge then baseValue else 1
+	local shown = copy:GetScale() / base
 	local fit = source:GetAttribute(WeightConfig.FitScaleAttribute)
 	local wanted = if type(fit) == "number" and fit > 0 and fit < 1 then shown / fit else shown
 	-- a459b (L-367) : grand socle et taille par rareté allumée : pas de plafond RarestMaxScale, seulement la place du
@@ -997,7 +1001,7 @@ local function placeRarestItem(entry: RarestEntry, best: Best)
 		wanted = math.min(wanted, WeightConfig.RarestMaxScale)
 	end
 	if math.abs(wanted - shown) > 1e-3 then
-		pcall(copy.ScaleTo, copy, wanted)
+		pcall(copy.ScaleTo, copy, wanted * base)
 	end
 	local rotation = if entry.Large then slot.WorldCFrame.Rotation else source:GetPivot().Rotation
 	copy:PivotTo(CFrame.new(slot.WorldPosition) * rotation)
