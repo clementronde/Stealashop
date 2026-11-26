@@ -27,7 +27,7 @@
 --   EconomyProfile.ConvertMoney(value, from, to) -> number        un montant en dollars
 --   EconomyProfile.ConvertShownSpeed(shown, from, to) -> number   une Speed affichée
 --   EconomyProfile.ConvertSpeed(speed, trail, from, to) -> number une Speed entraînée (trail = multiplicateur ≥ 1)
---   EconomyProfile.IncomeRatio(items, from, to) -> number?        revenu de `items` ({ { Rarity, Factor } }) dans
+--   EconomyProfile.IncomeRatio(items, from, to) -> number?        revenu de `items` ({ IncomeRow } ; a497 : Before, After) dans
 --                                                                 `to` ÷ dans `from` ; nil sans objet ou illisible
 --   EconomyProfile.Convert(data, want, context) -> { string }?    convertit `data` vers la table `want` ; nil si déjà
 --                                                                 dans cette table, sinon les lignes du journal.
@@ -38,6 +38,10 @@
 local Economy = require(script.Parent.Config.Economy)
 
 type Table = any
+
+-- Un objet exposé pour IncomeRatio : sa rareté et la part de son revenu qui ne dépend pas de la table (Factor) ; a497 :
+-- ou ses deux revenus, dans la table de départ (Before) et dans celle d'arrivée (After).
+export type IncomeRow = { Rarity: string, Factor: number, Before: number?, After: number? }
 
 -- Les 6 armes payantes, dans l'ordre de leur prix (le même dans les deux tables, vérifié plus bas).
 local function weaponAnchors(tableData: Table, order: { string }): { number }
@@ -145,17 +149,29 @@ function EconomyProfile.ConvertSpeed(speed: number, trail: number?, from: number
 	return EconomyProfile.ConvertShownSpeed(speed * multiplier, from, to) / multiplier
 end
 
-function EconomyProfile.IncomeRatio(items: { { Rarity: string, Factor: number } }, from: number, to: number): number?
+-- a497 : une ligne peut donner directement le revenu de l'objet dans chaque table (Before dans `from`, After dans `to` :
+-- Formulas.ItemIncomeIn), puisque la zone ne compte plus de la même façon dans les deux tables (+25 % par zone, × 10 par
+-- zone) ; sinon, comme avant, Income de la rareté de chaque table × Factor.
+function EconomyProfile.IncomeRatio(items: { IncomeRow }, from: number, to: number): number?
 	local fromTable: Table, toTable: Table = Economy.Tables[from], Economy.Tables[to]
 	if fromTable == nil or toTable == nil then
 		return nil
 	end
 	local before, after = 0, 0
 	for _, item in items do
-		local a, b = fromTable.Income[item.Rarity], toTable.Income[item.Rarity]
-		if isFinite(a) and isFinite(b) and isFinite(item.Factor) and item.Factor > 0 then
-			before += a * item.Factor
-			after += b * item.Factor
+		local a: any, b: any
+		if item.Before ~= nil or item.After ~= nil then
+			a, b = item.Before, item.After
+			if isFinite(a) and isFinite(b) and a > 0 and b > 0 then
+				before += a
+				after += b
+			end
+		else
+			a, b = fromTable.Income[item.Rarity], toTable.Income[item.Rarity]
+			if isFinite(a) and isFinite(b) and isFinite(item.Factor) and item.Factor > 0 then
+				before += a * item.Factor
+				after += b * item.Factor
+			end
 		end
 	end
 	if before > 0 and isFinite(after) then

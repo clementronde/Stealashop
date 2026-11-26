@@ -781,10 +781,11 @@ local function switchEconomy(data: any, log: MigrationLog)
 			end
 		end
 	end
-	-- Objets exposés : leur rareté et la part de leur revenu qui ne dépend pas de la table (zone, rang).
+	-- Objets exposés : leur rareté et la part de leur revenu qui ne dépend pas de la table (zone, rang) ; a497 : et leur
+	-- revenu dans chaque table (Formulas.ItemIncomeIn), la zone ne comptant pas de la même façon dans les deux.
 	local Rarities = require(ReplicatedStorage.Shared.Config.Rarities) :: any
 	local Formulas = require(ReplicatedStorage.Shared.Config.Formulas) :: any
-	local shown: { { Rarity: string, Factor: number } } = {}
+	local shown: { { Rarity: string, Factor: number, Before: number?, After: number? } } = {}
 	if type(data.Display) == "table" and type(data.Items) == "table" then
 		for _, uid in data.Display do
 			local entry = if type(uid) == "string" then data.Items[uid] else nil
@@ -792,8 +793,15 @@ local function switchEconomy(data: any, log: MigrationLog)
 			local rarity = if item then Rarities.ById[item.Rarity] else nil
 			if item and rarity and type(rarity.Income) == "number" and rarity.Income > 0 then
 				local ok, income = pcall(Formulas.ItemIncome, item.Id)
+				local okBefore, before = pcall(Formulas.ItemIncomeIn, item.Id, Economy.Tables[have])
+				local okAfter, after = pcall(Formulas.ItemIncomeIn, item.Id, Economy.Tables[want])
 				if ok and type(income) == "number" then
-					local row: { Rarity: string, Factor: number } = { Rarity = item.Rarity :: string, Factor = (income :: number) / rarity.Income }
+					local row: { Rarity: string, Factor: number, Before: number?, After: number? } = {
+						Rarity = item.Rarity :: string,
+						Factor = (income :: number) / rarity.Income,
+						Before = if okBefore and type(before) == "number" then before else nil,
+						After = if okAfter and type(after) == "number" then after else nil,
+					}
 					table.insert(shown, row)
 				end
 			end

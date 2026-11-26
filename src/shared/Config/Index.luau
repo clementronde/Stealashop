@@ -19,6 +19,7 @@
 --                       IndexController (texte d'Index.Encode)
 --   Index.ZoneCount     6 : les zones du couloir (Config/Zones), onglets Zone1Tab à Zone6Tab
 --   Index.Total         objets du catalogue, Secrets compris (83) : le compteur « 23 / 83 discovered »
+--                       (a497 : sans les objets hors tirage, Items.Item.OutOfDraw ; Index.Listed = ces objets)
 --   Index.ByZone[zone]  objets de la zone, dans l'ordre du catalogue, objet du tuto compris (le Pot de
 --                       nouilles compte en zone 1 : 13 objets, comme la maquette « MINI MART 9 / 13 »)
 --   Index.Secrets       les Secrets (onglet SecretsTab) : hors des zones, comptés dans le total
@@ -65,8 +66,16 @@ for zone = 1, ZONE_COUNT do
 end
 -- Objets sans zone : les Secrets, et aussi les Divins quand le catalogue en aura (L-106 ; même
 -- section SecretsSection tant que Clément n'en ajoute pas une à UI_Index_v3).
+-- a497 (Cantin, 26/11) : un objet hors tirage (Items.Item.OutOfDraw) n'est pas dans l'Index : ni dans une zone, ni
+-- dans le total, ni dans une zone complète (on ne peut plus le trouver). S'il est dans un profil, il y reste découvert
+-- (Encode, Decode le gardent).
 local secrets: { Item } = {}
+local listed: { Item } = {}
 for _, item in Items.List do
+	if item.OutOfDraw then
+		continue
+	end
+	table.insert(listed, item)
 	local zone = item.Zone
 	if zone == nil then
 		table.insert(secrets, item)
@@ -139,7 +148,8 @@ local Index = {
 	Attribute = "IndexDiscovered", -- V0 proposé, absent du doc : nom de l'attribut du Player
 	ClaimedAttribute = "IndexClaimed", -- V0 proposé, absent du doc : zones dont la prime est réclamée (L-127)
 	ZoneCount = ZONE_COUNT,
-	Total = #Items.List,
+	Total = #listed, -- a497 : sans les objets hors tirage
+	Listed = listed, -- a497 : les objets de l'Index (Items.List sans les hors tirage), dans l'ordre du catalogue
 	ByZone = byZone,
 	Secrets = secrets,
 	-- Écran UI_Index_v3 (L-095 point 1 ; IndexController, client seulement). Valeurs du prototype de
@@ -176,7 +186,7 @@ function Index.CountSecrets(discovered: Discovered): (number, number)
 end
 
 function Index.CountAll(discovered: Discovered): number
-	return (count(Items.List, discovered))
+	return (count(listed, discovered))
 end
 
 function Index.IsZoneComplete(discovered: Discovered, zone: number): boolean

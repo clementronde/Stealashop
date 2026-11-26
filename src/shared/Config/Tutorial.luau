@@ -13,8 +13,9 @@ local PvP = require(script.Parent.PvP) -- AnyoneCanRob lit le nombre de coups de
 local Tools = require(script.Parent.Tools) -- vague 61 : prix de la clé à molette (don de l'étape 7)
 local Cosmetics = require(script.Parent.Cosmetics) -- vague 61 : prix de l'aura la moins chère (don de l'étape 8)
 
--- a429 (L-327 point 3) : objet du tuto du catalogue actif (Config/Items.TutorialItemId : Pot de nouilles en v2, Ramen
--- de feu en v3) ; Config/Items lu s'il est là (bancs à liste de modules fixe : le Pot de nouilles, comme avant).
+-- a429 (L-327 point 3) : objet du tuto du catalogue actif (Config/Items.TutorialItemId : Pot de nouilles en v2 ; a497 :
+-- Jelly Double-Decker en v3, le meilleur Peu commun de la zone 1, qui se tire aussi normalement) ; Config/Items lu s'il
+-- est là (bancs à liste de modules fixe : le Pot de nouilles, comme avant).
 local TUTORIAL_ITEM_ID: string = (function(): string
 	local ok, id = pcall(function(): any
 		local module = script.Parent:FindFirstChild("Items")
@@ -178,13 +179,15 @@ local Tutorial = {
 
 	-- 5.11 : résultats garantis
 	-- Vague 76 : plus de FirstBoxTier (les colis des rayons n'ont plus de type ; zone 1 : colis Communs, l'objet
-	-- imposé reste le Pot de nouilles, Rare).
+	-- imposé reste le Pot de nouilles, Rare ; a497 : en v3, Jelly Double-Decker, Peu commun).
 	GuardSpeed = 12, -- vigile lent du tuto
 	-- Objet du premier colis (catalogue v2, L-045) : le Pot de nouilles, Rare de la zone 1, marqué
 	-- TutorialOnly dans Config/Items : il ne sort d'aucun tirage, Items.Pick(1, "Rare") ne le donne
 	-- pas. TutorialService le passe en ItemId à StoreHeistService.SetContentOverride (une Rarity
 	-- seule tirerait dans la zone, où aucun Rare n'est tirable).
-	-- a429 : Z1_RamenDeFeu avec le catalogue v3 (Features.ItemsV3, ItemsV3Dev).
+	-- a429 puis a497 (Cantin, 26/11) : catalogue v3 (Features.ItemsV3, ItemsV3Dev) : Z2_BusEnGelatine (Jelly Double-Decker),
+	-- le meilleur Peu commun de la zone 1 (≈ 30 $/s avec la table 2), un objet ordinaire qui sort aussi des colis ; le
+	-- contenu imposé n'a pas de mutation (StoreHeistService.contentFor). Plus d'objet Rare ni d'objet à part dans le tuto.
 	GuaranteedItemId = TUTORIAL_ITEM_ID,
 	-- Vague 31 (L-112 ; a107). Le Pot de nouilles est l'objet SORTI du premier colis ouvert
 	-- sur le rayon (SetContentOverride, appliqué à la sortie ; contenu imposé : aucun cran de rareté).

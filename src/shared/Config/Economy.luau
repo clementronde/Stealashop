@@ -61,6 +61,9 @@ export type Table = {
 	Version: number,
 	-- Config/Rarities : Income[RarityId], $/s de base de la rareté.
 	Income: { [string]: number },
+	-- a497 : règle de zone du revenu (Config/Rarities.IncomeRules.ZoneRule ; Formulas.ItemIncome) : × ZoneFactor par zone de
+	-- l'objet ; Secret et Divin en zone NoZone, caisse exclusive en zone ExclusiveZone. nil (table 1) : +25 % par zone.
+	IncomeRule: { ZoneFactor: number, NoZone: number, ExclusiveZone: number }?,
 	-- Config/Zones : SpeedRequired des zones 1 à 6 (Speed affichée du panneau).
 	SpeedRequired: { number },
 	-- Config/Balance.Stats : WalkSpeed = min(Max, Base + WalkPerDecade × log10(1 + Speed affichée / SpeedScale)).
@@ -165,12 +168,17 @@ local TABLE_1: Table = {
 	DevStoreName = "PlayerData_DEV_20261114",
 }
 
--- Table 2 : l'économie « B/T » (note d'a479, passe 4, validée par Cantin le 25/11). Chaque nombre vient de la « Liste
--- exacte des valeurs de Config à changer » de la note ; n'en changer aucun sans elle.
+-- Table 2 : l'économie « B/T » (note d'a479, passe 4, validée par Cantin le 25/11). a497 (Cantin, 26/11 ; note
+-- a497-note-gains-zone, sections 1 et 5) : revenus × 25 par rareté et × 10 par zone (IncomeRule), et les prix recalés sur
+-- ces revenus : la zone 6 vers 20 h pour le joueur moyen, et la force d'une zone (son kit) en autant de temps que sa
+-- vitesse. Chaque nombre vient des notes ; n'en changer aucun sans elles.
 local TABLE_2: Table = {
 	Version = 2,
-	-- Échelle régulière, × 60 par rareté ; Divine = 5 × Secret (aucun objet encore).
-	Income = { Common = 1, Uncommon = 60, Rare = 3_600, Epic = 220_000, Legendary = 13_000_000, Mythic = 800_000_000, Secret = 50_000_000_000, Divine = 250_000_000_000 },
+	-- a497 : × 25 par rareté (25^rareté, Commun = 1), le revenu de base d'un objet de zone 1 ; la zone multiplie par 10
+	-- (IncomeRule ; Formulas.ItemIncome). Avant (a486) : × 60 par rareté et +25 % par zone.
+	Income = { Common = 1, Uncommon = 25, Rare = 625, Epic = 15_625, Legendary = 390_625, Mythic = 9_765_625, Secret = 244_140_625, Divine = 6_103_515_625 },
+	-- a497 (Cantin, 26/11) : × 10 par zone de l'objet ; Secret et Divin comptent en zone 6, la caisse exclusive en zone 5,5.
+	IncomeRule = { ZoneFactor = 10, NoZone = 6, ExclusiveZone = 5.5 },
 	-- × 107 environ par zone jusqu'à la zone 5 ; zone 6 à 30T (décision de Cantin : le joueur moyen y arrive en 20 h).
 	SpeedRequired = { 0, 15_000, 1_600_000, 170_000_000, 19_000_000_000, 30_000_000_000_000 },
 	-- Calés sur les zones 2 à 5 : la marche aux panneaux reste 22, 28, 34, 40 ; zone 6 : 49,4 (avant 46).
@@ -178,59 +186,61 @@ local TABLE_2: Table = {
 	SpeedScale = 140,
 	TreadmillGainPerSecond = 6,
 	-- 25 niveaux affichés. Découpage de Cantin : niveaux 1 à 3 en zone 1, 4 à 8 en zone 2, 9 à 12 en zone 3, 13 à 16
-	-- en zone 4, 17 à 25 en zone 5, avec un grand saut à l'entrée de chaque zone (230K, 95M, 9,5B). Niveaux 19 à 25 :
-	-- au moins une absence complète de 5 h du joueur moyen, payée à 50 % (la règle du hors ligne, en zone 5 seulement).
-	-- Ces prix et OfflineRate vont ensemble : variante 50 % de la note d'a479 (V.C, V.I), niveaux 19 à 25 environ deux
-	-- fois moins chers que la passe 4 (L-413, Clément d'accord le 26/11 ; a490).
+	-- en zone 4, 17 à 25 en zone 5, avec un grand saut à l'entrée de chaque zone. Niveaux 19 à 25 : au moins une absence
+	-- complète de 5 h du joueur moyen, payée à 50 % (la règle du hors ligne, en zone 5 seulement ; OfflineRate). a497 :
+	-- prix recalés sur les revenus × 25 / × 10 (avant, a490 : 150, 450, 590, 1,2K … 2,7T) ; 93T et 500T au lieu de 94T
+	-- et 490T (note a497) pour garder × 1,5 au moins d'un niveau au suivant de 19 à 25.
 	TreadmillMaxLevel = 24,
-	TreadmillCosts = { 150, 450, 590, 1_200, 2_200, 4_000, 8_100, 230_000, 450_000, 810_000, 1_400_000, 95_000_000, 200_000_000, 420_000_000, 880_000_000, 9_500_000_000, 29_000_000_000, 180_000_000_000, 330_000_000_000, 520_000_000_000, 780_000_000_000, 1.2e12, 1.8e12, 2.7e12 },
-	DisplaySlotCosts = { 450, 1_200, 900, 1_800, 140_000, 230_000, 360_000, 84_000_000, 190_000_000, 380_000_000, 2_100_000_000, 5_300_000_000, 18_000_000_000, 40e9, 100e9, 250e9 },
-	Floor2Cost = 140_000,
-	Floor2Costs = { 230_000, 360_000, 84_000_000, 190_000_000, 380_000_000, 2_100_000_000, 5_300_000_000, 18_000_000_000 },
-	-- Les puissances ne changent pas ; Wrench et Crowbar gardent leur prix (le tutoriel reste juste).
-	ToolPrices = { Fists = 0, Wrench = 300, Crowbar = 3_100, Hammer = 450_000, Sledgehammer = 400_000_000, FireAxe = 36_000_000_000, AngleGrinder = 160_000_000_000 },
+	TreadmillCosts = { 150, 450, 17_000, 35_000, 63_000, 120_000, 240_000, 1_200_000, 2_400_000, 4_400_000, 7_800_000, 3.6e9, 7.6e9, 16e9, 34e9, 1.7e12, 5.3e12, 33e12, 60e12, 93e12, 140e12, 220e12, 330e12, 500e12 },
+	DisplaySlotCosts = { 600, 1_600, 17_000, 34_000, 3_100_000, 5_200_000, 8_300_000, 3.3e9, 7.4e9, 15e9, 650e9, 1.6e12, 5.5e12, 12e12, 30e12, 75e12 },
+	Floor2Cost = 3_100_000,
+	Floor2Costs = { 5_200_000, 8_300_000, 3.3e9, 7.4e9, 15e9, 650e9, 1.6e12, 5.5e12 },
+	-- Les puissances ne changent pas. a497 : le kit d'une zone (arme et aura de Config/Zones.Kit) coûte ce qu'il faut pour
+	-- que sa force arrive en même temps que sa vitesse ; Wrench et Shine (zone 2) restent payés par les dons du tuto.
+	ToolPrices = { Fists = 0, Wrench = 400, Crowbar = 550_000, Hammer = 250_000_000, Sledgehammer = 350e9, FireAxe = 160e12, AngleGrinder = 1.2e15 },
 	CosmeticPrices = {
-		Shine = 100,
-		Fire = 1_800,
-		Storm = 180_000,
-		Poison = 450_000,
-		Tornado = 400_000_000,
-		Angel = 19_000_000_000,
-		Demon = 74_000_000_000,
-		Chained = 160_000_000_000,
+		Shine = 130,
+		Fire = 320_000,
+		Storm = 83_000_000,
+		Poison = 250_000_000,
+		Tornado = 350e9,
+		Angel = 66e12,
+		Demon = 420e12,
+		Chained = 1.2e15,
 		-- Anciennes auras : le prix de leur équivalente (Config/Cosmetics.Migration).
-		Spark = 100,
-		Flame = 1_800,
-		Lightning = 450_000,
-		Plasma = 400_000_000,
-		Galaxy = 19_000_000_000,
-		Royal = 160_000_000_000,
+		Spark = 130,
+		Flame = 320_000,
+		Lightning = 250_000_000,
+		Plasma = 350e9,
+		Galaxy = 66e12,
+		Royal = 1.2e15,
 		Dust = 100,
-		Wind = 1_300,
-		Turbo = 360_000,
-		Comet = 320_000_000,
-		Hyperspace = 120_000_000_000,
+		Wind = 37_000,
+		Turbo = 2_000_000,
+		Comet = 12e9,
+		Hyperspace = 21e12,
 	},
-	-- Un prix garde sa valeur comptée en armes (courbe « ancien dollar → nouveau dollar », arrondie à 2 chiffres).
+	-- Un prix garde sa valeur comptée en revenus (courbe « dollar de la passe 4 → nouveau dollar », a497, arrondie à
+	-- 2 chiffres).
 	SkillPrices = {
-		Walls = { 1_300, 13_000, 1_000_000, 740_000_000 },
-		GlassThickness = { 1_900, 17_000, 450_000, 75_000_000, 12_000_000_000 },
-		GlassRegen = { 2_600, 32_000, 630_000, 75_000_000, 8_400_000_000 },
-		Cameras = { 980, 6_900, 630_000 },
-		Bodyguards = { 4_200, 190_000, 48_000_000, 22_000_000_000, 370_000_000_000 },
-		PotionLuck = { 1_700, 23_000, 1_800_000 },
-		Curtain = { 2_600, 78_000 },
-		DoorGuard = { 48_000_000 },
-		PotionTime = { 4_200, 190_000 },
-		Traps = { 78_000, 2_900_000, 320_000_000, 36_000_000_000 },
-		BoxLuck = { 8_300, 190_000, 31_000_000, 5_200_000_000, 95_000_000_000 },
-		FittingRoom = { 190_000 },
+		Walls = { 1_700, 30_000, 22_000_000, 31e9 },
+		GlassThickness = { 2_600, 58_000, 9_400_000, 2.4e9, 1.8e12 },
+		GlassRegen = { 3_500, 280_000, 13_000_000, 2.4e9, 1e12 },
+		Cameras = { 1_300, 9_300, 13_000_000 },
+		Bodyguards = { 5_600, 3_800_000, 1.5e9, 4.2e12, 110e12 },
+		PotionLuck = { 2_300, 120_000, 41_000_000 },
+		Curtain = { 3_500, 1_500_000 },
+		DoorGuard = { 1.5e9 },
+		PotionTime = { 5_600, 3_800_000 },
+		Traps = { 1_500_000, 67_000_000, 12e9, 8.6e12 },
+		BoxLuck = { 11_000, 3_800_000, 900_000_000, 520e9, 29e12 },
+		FittingRoom = { 3_800_000 },
 		-- 1 h du revenu de référence de la zone 3, puis de la zone 5.
-		OfflineTime1 = { 5_400_000 },
-		OfflineTime2 = { 130_000_000_000 },
+		OfflineTime1 = { 120_000_000 },
+		OfflineTime2 = { 39e12 },
 	},
-	-- V0 d'attente : la renaissance est coupée avec cette table (Features.RebirthBT), à resimuler.
-	RebirthCash = { 390e9, 9.7e12, 26e12, 39e12, 51e12, 63e12, 97e12, 140e12, 150e12, 180e12 },
+	-- V0 d'attente : la renaissance est coupée avec cette table (Features.RebirthBT), à resimuler (a497 : courbe).
+	RebirthCash = { 120e12, 3e15, 8e15, 12e15, 16e15, 19e15, 30e15, 43e15, 46e15, 55e15 },
 	Zone1SpeedRequired = 60,
 	LeaderboardSpeedLog = true,
 	LeaderboardSuffix = "_E2",
@@ -238,8 +248,9 @@ local TABLE_2: Table = {
 	-- L-413 (Cantin le 25/11, Clément le 26/11 ; a490) : 50 % des revenus, 4 h au plus (Config/Offline.MaxHours, +30 min
 	-- par nœud OfflineTime de l'arbre).
 	OfflineRate = 0.5,
-	-- Décision de Cantin (25/11) : profils du jeu DEV remis à zéro avec cette table.
-	DevStoreName = "PlayerData_DEV_BT_20261125",
+	-- Décision de Cantin (25/11) : profils du jeu DEV remis à zéro avec cette table. a497 (V0 de la note, question 9) :
+	-- encore une fois avec les revenus × 25 / × 10 (avant : PlayerData_DEV_BT_20261125).
+	DevStoreName = "PlayerData_DEV_BT_20261126",
 }
 
 local TABLES: { Table } = { TABLE_1, TABLE_2 }

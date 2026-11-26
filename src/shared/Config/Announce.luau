@@ -70,7 +70,7 @@ local Announce = {
 
 -- a486 (économie « B/T », Config/Economy ; V0 d'a486 gardé par le petit chef, 26/11) : ValueMinIncome est « le revenu
 -- d'un Mythique de base » ; avec la table 2 (raretés × 60), il suit le revenu de base du Mythique de cette table
--- (800M $/s), remplacé ici, après coup : sinon un Épique (220K $/s) serait annoncé à tout le serveur. Table 1 (ou sans
+-- (a497 : celui de la zone 6, 976,6B $/s), remplacé ici, après coup : sinon un Épique (220K $/s) serait annoncé à tout le serveur. Table 1 (ou sans
 -- Config/Economy) : la ligne plus haut, 25 000, comme avant.
 do
 	local found, module = pcall(function(): any
@@ -84,6 +84,12 @@ do
 	if type(ECO) == "table" and type(ECO.Version) == "number" then
 		local mythic = ECO.Income and ECO.Income.Mythic
 		assert(type(mythic) == "number" and mythic > 0, "Config/Announce : Income.Mythic absent de Config/Economy")
+		-- a497 (table 2, revenus × 10 par zone) : le Mythique de base est celui de la zone 6 (rang 1 ; Formulas.ItemIncome),
+		-- 9 765 625 × 10^5 = 976 562 500 000 $/s.
+		local rule = ECO.IncomeRule
+		if type(rule) == "table" and type(rule.ZoneFactor) == "number" and type(rule.NoZone) == "number" then
+			mythic *= rule.ZoneFactor ^ (rule.NoZone - 1)
+		end
 		Announce.ValueMinIncome = mythic
 	end
 end

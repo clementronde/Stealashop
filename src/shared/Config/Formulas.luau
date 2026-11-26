@@ -63,6 +63,24 @@ end
 --   × M global (renaissances, gamepasses, groupe, amis : 1 par défaut).
 -- Ex. : Canette de soda 1 $/s ; un Peu commun de zone 3 au rang 1 : 8 × 1,25 = 10 $/s. Un Secret (sans zone) : Income
 -- de sa rareté au rang 1. Objet inconnu : erreur (les appelants vérifient Items.ById avant).
+-- a497 (Cantin, 26/11) : avec la table 2 de l'économie (Rarities.IncomeRules.ZoneRule), la zone multiplie par 10 au
+-- lieu d'ajouter 25 % : Income de sa rareté (25^rareté, Commun = 1) × 10^(zone de l'objet − 1) × 1,1^(rang − 1) × M.
+-- Ex. : Commun de zone 1 au rang 1 : 1 ; Commun de zone 2 : 10 ; Rare de zone 3 : 62 500 ; Mythique de zone 6 :
+-- 976 562 500 000. Secret et Divin : zone 6 ; objet de la caisse exclusive : zone 5,5 (Épique : 15 625 × 10^4,5).
+type IncomeItem = { Rarity: string, Zone: number?, Rank: number, Exclusive: boolean? }
+
+local function baseIncome(item: IncomeItem, rarityIncome: number, zoneRule: Rarities.ZoneRule?): number
+	local rules = Rarities.IncomeRules
+	local rank = (1 + rules.RankStep) ^ (item.Rank - 1)
+	if zoneRule ~= nil then
+		local zone = item.Zone or (if item.Exclusive == true then zoneRule.ExclusiveZone else zoneRule.NoZone)
+		return rarityIncome * zoneRule.ZoneFactor ^ (zone - 1) * rank
+	end
+	local first = Rarities.FirstZone[item.Rarity]
+	local above = if item.Zone and first then math.max(item.Zone - first, 0) else 0
+	return rarityIncome * (1 + rules.ZoneStep * above) * rank
+end
+
 function Formulas.ItemIncome(itemId: string, globalMultiplier: number?): number
 	-- Config/Items chargé au premier appel seulement : Formulas reste lisible sans le catalogue (bancs).
 	local Items = require(script.Parent.Items)
@@ -70,10 +88,27 @@ function Formulas.ItemIncome(itemId: string, globalMultiplier: number?): number
 	assert(item, `Formulas.ItemIncome : objet inconnu {itemId}`)
 	local rarity = Rarities.ById[item.Rarity]
 	assert(rarity, `Formulas.ItemIncome : rareté inconnue {item.Rarity}`)
-	local rules = Rarities.IncomeRules
-	local first = Rarities.FirstZone[item.Rarity]
-	local above = if item.Zone and first then math.max(item.Zone - first, 0) else 0
-	return rarity.Income * (1 + rules.ZoneStep * above) * (1 + rules.RankStep) ^ (item.Rank - 1) * (globalMultiplier or 1)
+	return baseIncome(
+		{ Rarity = item.Rarity, Zone = item.Zone, Rank = item.Rank, Exclusive = item.Exclusive },
+		rarity.Income,
+		Rarities.IncomeRules.ZoneRule
+	) * (globalMultiplier or 1)
+end
+
+-- a497 : revenu de base (M global = 1, avant mutation et poids) de l'objet `itemId` dans la table `economy` de
+-- l'économie (Config/Economy.Tables[n] : son Income et sa règle de zone IncomeRule, nil = la règle de la table 1),
+-- quelle que soit la table active : conversion des profils d'une table à l'autre (DataService, EconomyProfile).
+-- nil si l'objet ou sa rareté sont inconnus de cette table.
+function Formulas.ItemIncomeIn(itemId: string, economy: any): number?
+	local Items = require(script.Parent.Items)
+	local item = Items.ById[itemId]
+	local income = if item and type(economy) == "table" and type(economy.Income) == "table" then economy.Income[item.Rarity] else nil
+	if item == nil or type(income) ~= "number" then
+		return nil
+	end
+	local rule: any = economy.IncomeRule
+	local zoneRule: Rarities.ZoneRule? = if type(rule) == "table" then { ZoneFactor = rule.ZoneFactor, NoZone = rule.NoZone, ExclusiveZone = rule.ExclusiveZone } else nil
+	return baseIncome({ Rarity = item.Rarity, Zone = item.Zone, Rank = item.Rank, Exclusive = item.Exclusive }, income, zoneRule)
 end
 
 -- Coût du niveau n = C0 × g^n, avec n = niveau déjà possédé (0 pour le premier achat,

@@ -25,6 +25,27 @@ local ECO: any = (function(): any
 	return nil
 end)()
 
+-- a497 : catalogue d'objets actif, même règle que Config/Items (qui vérifie qu'ils s'accordent) : v3 avec Features.ItemsV3
+-- (partout) ou Features.ItemsV3Dev dans le jeu DEV (ProductIds.IsDev) ; sans ces modules (bancs) : v2. Les raretés des
+-- zones 1 et 2 suivent le catalogue (ZONE_ODDS_V3, plus bas).
+local CATALOG_V3: boolean = (function(): boolean
+	local function optional(name: string): any
+		local found, module = pcall(function(): any
+			return script.Parent:FindFirstChild(name)
+		end)
+		if found and module ~= nil then
+			local ok, result = pcall(require, module :: any)
+			if ok and type(result) == "table" then
+				return result
+			end
+		end
+		return {}
+	end
+	local features: any = optional("Features")
+	local productIds: any = optional("ProductIds")
+	return features.ItemsV3 == true or (features.ItemsV3Dev == true and productIds.IsDev == true)
+end)()
+
 export type RarityId = "Common" | "Uncommon" | "Rare" | "Epic" | "Legendary" | "Mythic" | "Secret" | "Divine"
 
 -- Halo de rareté autour d'un colis porté ou d'un objet exposé (5.6)
@@ -196,6 +217,16 @@ if ECO ~= nil then
 	end
 end
 
+-- a497 : règle de zone du revenu de la table active (Config/Economy.IncomeRule ; voir IncomeRules plus bas).
+export type ZoneRule = { ZoneFactor: number, NoZone: number, ExclusiveZone: number }
+local INCOME_ZONE_RULE: ZoneRule? = nil
+if ECO ~= nil and type(ECO.IncomeRule) == "table" then
+	local rule = ECO.IncomeRule
+	assert(type(rule.ZoneFactor) == "number" and rule.ZoneFactor > 0, "Config/Rarities : IncomeRule.ZoneFactor illisible")
+	assert(type(rule.NoZone) == "number" and type(rule.ExclusiveZone) == "number", "Config/Rarities : IncomeRule.NoZone ou ExclusiveZone illisible")
+	INCOME_ZONE_RULE = { ZoneFactor = rule.ZoneFactor, NoZone = rule.NoZone, ExclusiveZone = rule.ExclusiveZone }
+end
+
 local ById: { [string]: Rarity } = {}
 for _, rarity in List do
 	ById[rarity.Id] = rarity
@@ -241,6 +272,15 @@ local ZONE_ODDS: ZoneOdds = {
 	[5] = { Uncommon = 38.7, Rare = 37.5, Epic = 21, Legendary = 2.8 }, -- V0 proposé (Cantin, 20/11), avant : U 55, R 30, E 12, L 3
 	[6] = { Rare = 38.9, Epic = 36.4, Legendary = 24.235, Mythic = 0.42, Secret = 0.045 }, -- V0 proposé (Cantin, 20/11), avant : R 55, E 30, L 14,47, M 0,5, S 0,03
 }
+
+-- a497 (Cantin, 26/11 ; note a497-note-gains-zone, section 2) : avec le catalogue v3 (Config/Items, LAYOUT_V3 : des
+-- Peu communs en zone 1, un Rare en zone 2), les colis des zones 1 et 2 visent : zone 1, 97 % d'objets Communs et 3 % de
+-- Peu communs ; zone 2, 80 % de Communs, 19 % de Peu communs et 1 % de Rares (avant : 100 % de Communs, puis 98 / 2).
+-- Les zones 3 à 6 ne changent pas. Catalogue v2 : la table plus haut, telle quelle.
+if CATALOG_V3 then
+	ZONE_ODDS[1] = { Common = 97, Uncommon = 3 }
+	ZONE_ODDS[2] = { Common = 74, Uncommon = 24.8, Rare = 1.2 }
+end
 
 -- [zone] = raretés de la zone, de la plus basse à la plus haute (List) ; [zone][RarityId] = true.
 local ZONE_RARITIES: { [number]: { string } } = {}
@@ -302,10 +342,16 @@ local Rarities = {
 	-- Vague 76 (Cantin et Clément, 19/11) : revenu d'un objet (Formulas.ItemIncome) = Income de sa rareté
 	-- × (1 + ZoneStep × zones au-dessus de la première zone où la rareté existe, FirstZone)
 	-- × (1 + RankStep) ^ (rang dans sa zone et sa rareté − 1, ordre de l'index : Items.Item.Rank).
+	-- a497 (Cantin, 26/11) : avec une table de l'économie qui a sa règle de zone (Config/Economy.IncomeRule : la table
+	-- 2), ZoneRule remplace ZoneStep : Income de sa rareté (25^rareté) × ZoneFactor^(zone de l'objet − 1) × (1 + RankStep)
+	-- ^ (rang − 1) ; un Secret ou un Divin compte en zone NoZone, un objet de la caisse exclusive en zone ExclusiveZone.
+	-- nil avec la table 1 (ZoneStep, comme avant).
 	IncomeRules = {
 		ZoneStep = 0.25, -- V0 (Cantin et Clément, 19/11) : +25 % par zone, ajoutés (pas composés)
 		RankStep = 0.1, -- V0 (Cantin et Clément, 19/11) : +10 % par rang, composés
+		ZoneRule = INCOME_ZONE_RULE,
 	},
+	CatalogV3 = CATALOG_V3, -- a497 : catalogue v3 actif (les raretés des zones 1 et 2 le suivent ; Config/Items le vérifie)
 }
 
 export type Rarities = typeof(Rarities)
