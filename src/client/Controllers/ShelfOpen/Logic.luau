@@ -76,6 +76,32 @@ function Logic.luckText(luck: number): string
 	return string.format("×%.2f LUCK", luck)
 end
 
+-- a494 (Cantin, affichage seul) : chance montrée en fin de montée = vraie chance entière + un décalage
+-- de ±0,01 à ±0,49 (jamais 0), tiré d'un hash de l'ouverture (ShelfOpenAt + emplacement) : même nombre pour
+-- tous les joueurs, et son arrondi redonne la vraie chance. ×1 et chance non entière : inchangées.
+function Logic.finalLuck(luck: number, openAt: number, key: string?): number
+	if luck <= 1 or luck ~= math.floor(luck) then
+		return luck
+	end
+	local h = 2166136261
+	local s = string.format("%.3f|%s", openAt, key or "")
+	for i = 1, #s do
+		h = bit32.bxor(h, string.byte(s, i))
+		h = (h * 16777619) % 4294967296
+	end
+	local step = h % 98 -- 0..97 → ±(0,01 à 0,49)
+	local offset = (step % 49 + 1) / 100
+	return if step < 49 then luck - offset else luck + offset
+end
+
+-- Chance affichée pendant la montée (de 1 à `luck`) remise à l'échelle pour finir sur `final`, sans saut.
+function Logic.displayLuck(shown: number, luck: number, final: number): number
+	if luck <= 1 then
+		return shown
+	end
+	return 1 + (shown - 1) * (final - 1) / (luck - 1)
+end
+
 -- Fin de la montée : heure du serveur où la chance s'arrête (ShelfRevealAt, que le serveur peut avancer ;
 -- sans lui, ShelfOpenAt + revealDelay).
 function Logic.stopAt(openAt: number, luck: number, revealAt: number?): number
