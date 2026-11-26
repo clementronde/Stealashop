@@ -198,8 +198,10 @@ local function priceOfEntry(entry: any): number?
 	if def == nil then
 		return nil
 	end
-	local income = Formulas.ItemIncome(def.Id) -- vague 76 : rareté, zone et rang de l'objet
-		* Mutations.IncomeMultiplier(entry.Mutation, entry.Weight) -- vague 62 : poids compris
+	local income = Formulas.RoundIncome( -- a493 : le prix suit le $/s arrondi de la boutique
+		Formulas.ItemIncome(def.Id) -- vague 76 : rareté, zone et rang de l'objet
+			* Mutations.IncomeMultiplier(entry.Mutation, entry.Weight) -- vague 62 : poids compris
+	)
 	local price = math.floor(Pawn.PriceFactor * income)
 	if price ~= price or price < 0 or price == math.huge then
 		return nil

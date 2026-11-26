@@ -1142,13 +1142,13 @@ local function itemIncome(zone: number, content: Content): number
 	local base = if Items.ById[content.ItemId] then Formulas.ItemIncome(content.ItemId) else 0 -- vague 76 : rareté, zone, rang
 	local weight = content.Weight
 	if weight == nil then
-		return base * Mutations.IncomeMultiplier(content.Mutation)
+		return Formulas.RoundIncome(base * Mutations.IncomeMultiplier(content.Mutation)) -- a493 : sans décimales
 	end
 	local mutation = content.Mutation
 	local effect = Mutations.IncomeMultiplier(if mutation and mutation.Effect then { Effect = mutation.Effect } else nil)
 	local ok, factor = pcall(ItemWeight.IncomeFactor, weight)
 	local safe = if ok and type(factor) == "number" and factor >= 0 and factor < math.huge then factor else 1
-	return base * effect * safe
+	return Formulas.RoundIncome(base * effect * safe) -- a493 : sans décimales, comme la boutique
 end
 
 -- a286 (L-216 point 10, Features.HeistPartnerBonus) : prime au complice ------------------------------------

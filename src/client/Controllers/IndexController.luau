@@ -686,7 +686,7 @@ end
 -- Revenu affiché dans la fiche : « $X/s » (vague 76 : Formulas.ItemIncome, rareté, zone et rang de l'objet ;
 -- un Secret a un seul revenu).
 local function incomeText(item: Item): string
-	return `{Format.money(Formulas.ItemIncome(item.Id))}/s`
+	return `{Format.money(Formulas.RoundIncome(Formulas.ItemIncome(item.Id)))}/s` -- a493 : sans décimales
 end
 
 ------------------------------------------------------------------------------
