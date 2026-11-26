@@ -34,6 +34,8 @@ export type BoxTierInfo = {
 local TIER_ORDER: { BoxTier } = { "Standard", "Premium", "Luxe" }
 
 -- Clé = BoxTier (valeur de l'attribut `Tier` des ShelfSlot, 10.4)
+-- a440 : avec Features.ZoneBoxEverywhere, plus rien ne lit BOX_TIERS ni TIER_ORDER en jeu (camion, cadeaux du jour, codes
+-- en colis de zone) ; à supprimer quand l'interrupteur sera allumé en PROD (liste : rapport d'a440).
 local BOX_TIERS: { [string]: BoxTierInfo } = {
 	Standard = { DisplayName = "Standard", Look = "Carton brun", Count = 6, GrabTime = 0.3 },
 	Premium = { DisplayName = "Premium", Look = "Carton bleu scellé", Count = 3, GrabTime = 0.6 },

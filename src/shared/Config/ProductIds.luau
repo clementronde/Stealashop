@@ -7,11 +7,16 @@
 --   "Auto"  le jeu DEV (game.GameId = Balance.Profiles.DevGameId, comme la DataStore des profils) prend
 --           les Ids de Dev ; tout autre jeu (PROD, Studio hors ligne, bancs) garde ceux de PROD ;
 --   "Dev"   toujours les Ids de Dev ;  "Prod"  toujours ceux de PROD.
--- 0 = offre pas encore créée dans ce jeu : rien n'est vendu (comme aujourd'hui, tous les Ids valent 0).
+-- 0 = offre pas encore créée dans ce jeu : rien n'est vendu.
+-- a485 (25/11) : état au 25/11 : les Ids des offres prêtes sont posés dans les deux jeux depuis a444 (24/11, commit
+-- f1555856) : ×2 Cash, ×2/×4 Training, ×2 Speed, Auto Collect, Quick Lock (FastOpen), +4 Displays, Starter Pack, les 6 packs
+-- d'argent et les 4 paliers d'Open Now. À 0 (pas créés, ne pas créer avant leur code) : VIP, Hydraulic Gloves, Revenge,
+-- Instant Shutter, ×3 Luck, Server Luck ×2/×4/×8, caisse exclusive ×1/×3/×10, Sleeping Guards. Règle : un Id posé ne se
+-- supprime ni ne se réutilise jamais ; une offre retirée garde son Id, vente coupée sur le Creator Hub (Open Now 3 et 4).
 --
--- Clés de Dev : la clé de l'offre (PassKey, ProductKey, clé d'un boost de Config/Boosts), OpenNow1 à OpenNow4
--- pour les paliers d'Ouvrir maintenant, Crate1, Crate3 et Crate10 pour les lots de la caisse exclusive. Une clé
--- absente vaut 0.
+-- Clés de Dev : la clé de l'offre (PassKey, ProductKey, clé d'un boost de Config/Boosts), OpenNow1 et OpenNow2
+-- pour les paliers d'Ouvrir maintenant en vente (OpenNow3 et OpenNow4 : paliers coupés, Monetization RetiredTiers),
+-- Crate1, Crate3 et Crate10 pour les lots de la caisse exclusive. Une clé absente vaut 0.
 --
 -- API : ProductIds.IsDev: boolean ; ProductIds.Pick(key, prodId) -> number (l'Id à utiliser dans ce jeu).
 
@@ -26,7 +31,7 @@ local Dev: { [string]: number } = {
 	-- Gamepasses
 	DoubleCash = 2099561059,
 	DoubleTraining = 2098985017,
-	DoubleSpeed = 2099495015, -- a319 (L-303) : x2 SPEED, gamepass permanent (149 R$)
+	DoubleSpeed = 2099495015, -- a319 (L-303) : x2 SPEED, gamepass permanent (a485 : 49 R$, Config/Monetization)
 	VIP = 0,
 	AutoCollect = 2101906271,
 	FastOpen = 2098265079,
@@ -42,12 +47,12 @@ local Dev: { [string]: number } = {
 	Cash720 = 3735788027,
 	OpenNow1 = 3735788091,
 	OpenNow2 = 3735788288,
-	OpenNow3 = 3735788351,
-	OpenNow4 = 3735788532,
+	OpenNow3 = 3735788351, -- a485 : palier coupé, ne jamais réutiliser ni supprimer (reçus en attente encore livrés)
+	OpenNow4 = 3735788532, -- a485 : palier coupé, ne jamais réutiliser ni supprimer (reçus en attente encore livrés)
 	Revenge = 0,
 	InstantShutter = 0,
 	Luck3 = 0,
-	Shield30 = 0,
+	-- a485 (L-351) : Shield30 retiré pour de bon (jamais créé) : plus de clé.
 	ServerLuck2 = 0,
 	ServerLuck4 = 0,
 	ServerLuck8 = 0,
@@ -55,7 +60,8 @@ local Dev: { [string]: number } = {
 	Crate1 = 0,
 	Crate3 = 0,
 	Crate10 = 0,
-	-- Boosts du HUD (Config/Boosts) ; a319 : SpeedBoost retiré (devenu le gamepass DoubleSpeed, jamais créé)
+	-- Boosts du HUD (Config/Boosts) ; a319 : SpeedBoost retiré (devenu le gamepass DoubleSpeed ; le produit SpeedBoost n'a
+	-- jamais été créé)
 	SleepGuards = 0,
 }
 

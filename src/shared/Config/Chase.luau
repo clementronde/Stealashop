@@ -261,7 +261,8 @@ local Chase = {
 	-- policier : marche du voleur + leur rapprochement d'avant (ClosingSpeedMax × (1 − 1 / facteur) : ils attrapent
 	-- toujours, décision de Cantin du 14/11).
 	-- « écart » = distance à plat jusqu'à la position estimée du voleur (ClientView.Estimate : là où il se voit). Le
-	-- vigile vise le voleur tout droit (pas un point devant lui) : il reste derrière lui et coupe les virages.
+	-- vigile vise le voleur tout droit (pas un point devant lui) : il reste derrière lui et coupe les virages. a487 : sur
+	-- un voleur qui avance, le point visé est au-delà de lui sur cette même droite (AimLeadSeconds, plus bas).
 	-- Pas pour le conducteur du camion (sa règle d'avant), ni pour la vitesse imposée par le tutoriel.
 	-- Capture : toujours décidée par le serveur, au contact vu par le joueur (ClientView.Seen : positions reçues et relevé
 	-- du vigile, rien d'estimé).
@@ -285,6 +286,21 @@ local Chase = {
 		ReturnSurplusFactor = 2.5,
 		FleeLow = 0.5, -- V0 proposé (Cantin, 24/11) : part de sa marche sous laquelle le voleur « ne fuit plus »
 		FleeHigh = 0.9, -- V0 proposé (Cantin, 24/11) : part de sa marche au-dessus de laquelle il « fuit »
+		-- a487 (Cantin, 25/11 : « on n'arrive pas à se faire attraper par un vigile qui est plus rapide que nous » ; Play du
+		-- 25/11 : vigile à 68,7 contre 60,7, 9 s de course sans capture). Le vigile visait le voleur lui-même
+		-- (Humanoid:MoveTo sur sa position estimée) : il « arrivait » à son point entre deux visées (0,1 s), freinait,
+		-- repartait, et sa vitesse moyenne ne dépassait donc jamais celle du voleur. Sur un voleur qui avance, il vise
+		-- maintenant ce temps de course du voleur au-delà de lui, sur la même droite vigile → voleur (il reste derrière lui
+		-- et coupe les virages comme avant) : AimLeadSeconds × la part de la vitesse du voleur qui l'éloigne du vigile
+		-- (Guard/ChaseLaw.Lead ; à 60 studs/s : 30 studs), jamais en zone safe ni derrière un mur (moitié, quart, puis le
+		-- voleur lui-même). Voleur arrêté ou qui revient vers lui : rien ne change. V0 proposé, absent du doc ; il faut plus
+		-- que vitesse du vigile ÷ marche du voleur × le temps entre deux visées (0,1 à 0,3 s selon les images/s du
+		-- serveur). Comme plus rien ne l'arrête alors à la place où le joueur se voit, sa vitesse y est bornée
+		-- (Guard/ChaseLaw.Approach) : au plus la vitesse à laquelle le voleur s'éloigne + écart ÷ retard compensé
+		-- (ClientView.Lag). Il arrive de moins en moins vite sur cette place et n'y passe jamais avant la capture, que le
+		-- serveur décide un retard après son arrivée à portée ; à plus de quelques studs, rien ne change.
+		-- 0 : la visée et la vitesse d'avant (le défaut revient).
+		AimLeadSeconds = 0.5,
 		-- Le client du joueur poursuivi retient sa marche au contact de l'image du vigile en poursuite V3 (attribut ChaseLaw
 		-- du modèle ; client/Controllers/GuardViewController) : à Reach studs au plus à plat, même étage (ClientView.Display.
 		-- HeightMax), sa direction de marche est mise à zéro (Humanoid:Move après le pas du ControlModule) pendant Seconds s au

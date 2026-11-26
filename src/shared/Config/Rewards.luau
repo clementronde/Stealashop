@@ -64,6 +64,9 @@ export type PlaytimeTier = {
 
 local Rewards = {
 	-- Calendrier de 7 jours (3.3), une réclamation par jour, dans l'ordre J1 à J7.
+	-- a440 : avec Features.ZoneBoxEverywhere, J2 et J4 donnent le colis de zone de leur type (TierZoneBox : Zone,
+	-- BestZone), ouvert tout de suite comme les paliers de temps de jeu (RewardService). J7 n'a plus de type (Cantin,
+	-- 25/11) : un colis de rareté, allumé comme coupé.
 	Daily = {
 		{ Kind = "Cash", Minutes = 5 }, -- 3.3 : J1, 5 min de revenus
 		{ Kind = "Box", Tier = "Standard" }, -- 3.3 : J2, colis Standard
@@ -71,9 +74,10 @@ local Rewards = {
 		{ Kind = "Box", Tier = "Premium" }, -- 3.3 : J4, colis Premium
 		{ Kind = "Boost", Minutes = 15 }, -- 3.3 : J5, boost ×2 argent 15 min
 		{ Kind = "Cash", Minutes = 30 }, -- 3.3 : J6, 30 min de revenus
-		-- 3.3 : J7, colis Luxe garanti Épique ou mieux ; V0 3.3 : zone 2 au moins (la zone 1 n'a que des
-		-- Communs, L-033).
-		{ Kind = "Box", Tier = "Luxe", MinRarity = "Epic", MinZone = 2 },
+		-- 3.3 : J7, garanti Épique ou mieux ; V0 3.3 : zone 2 au moins (la zone 1 n'a que des Communs, L-033).
+		-- a440 (Cantin, 25/11) : un colis Épique ou mieux, comme le coffre de la semaine (Weekly.Reward, BoxRarity :
+		-- UnboxService.GiveBoxRarityItem), allumé comme coupé ; avant : colis Luxe avec MinRarity Epic.
+		{ Kind = "Box", BoxRarity = "Epic", MinZone = 2 },
 	} :: { Reward },
 
 	-- Paliers de temps de jeu dans la journée UTC (V0 3.3), du plus court au plus long. a309 (Cantin, 22/11 ; remplace les
@@ -88,6 +92,10 @@ local Rewards = {
 	-- a309 (validé par Cantin, 22/11) : règles des colis de zone (Kind = "ZoneBox"), lues au moment du tirage par
 	-- Shared/ZoneBoxOdds. Zone de référence = la plus haute parmi les objets du joueur (zone 1 sans objet).
 	ZoneBox = {
+		-- a440 (Features.ZoneBoxEverywhere) : un colis de la zone de référence, aux chances des rayons de cette zone
+		-- (Rarities.ZoneOdds), sans rien changer : le « Box » du fourgon (Config/ArmoredVan.Rewards, V0 proposé par Cantin,
+		-- 23/11). L'équivalent de l'ancien colis Standard (TierZoneBox, plus bas).
+		Zone = { ZoneStep = 0 },
 		-- 15 min : un colis de la zone de référence, aux chances des rayons de cette zone (Rarities.ZoneOdds) améliorées :
 		-- chance de la rareté la plus haute de la zone × 1,5, l'écart pris sur la plus basse (zone 3 : Rare 2 → 3 %,
 		-- Commun 33 → 32 %) ; zone à une seule rareté (zone 1) : rien ne change. Secret compris (zone 6), comme les rayons
@@ -99,6 +107,18 @@ local Rewards = {
 		-- Commun 67, Peu commun 33).
 		NextZone = { ZoneStep = 1, TopCount = 3, TopWeights = { 60, 30, 10 }, Exclude = { "Secret" } },
 	} :: { [string]: ZoneBoxRule },
+
+	-- a440 (lot 6 du check-up a417, R13 ; décision C1 de Cantin, 24/11) : avec Features.ZoneBoxEverywhere, l'ancien type
+	-- d'un colis (Standard, Premium, Luxe) devient le colis de zone de cette règle (ZoneBox plus haut) : cadeaux du jour J2
+	-- et J4 (Daily), codes « Item » (CodeService), colis du camion (Config/TruckEvent.Boxes, zone de référence = celle du
+	-- camion). L'échelle du fourgon (Config/ArmoredVan.Rewards, Cantin 23/11 : « Box », « Big Box », « Top 3 Box » pour
+	-- « Luxe pour le top 3 »), gardée par Cantin le 25/11 : Standard = les chances des rayons, Premium = la règle de
+	-- 15 min, Luxe = celle de 60 min.
+	TierZoneBox = {
+		Standard = "Zone",
+		Premium = "BestZone",
+		Luxe = "NextZone",
+	} :: { [string]: string },
 
 	-- V0 3.3 : « X min de revenus » rapporte au moins 50 $ par minute (J1 : 250 $ au moins).
 	MinCashPerMinute = 50,

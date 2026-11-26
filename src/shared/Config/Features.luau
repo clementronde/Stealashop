@@ -5,8 +5,9 @@
 -- les a posés (le code ne force jamais Visible = true). NightCycle coupe aussi son service serveur (NightCycleService)
 -- et le ciel animé (SkyController). Le retour base (DEV-045, ReturnToBase) est retiré du code (a438, 24/11).
 -- TruckEvent n'a pas d'UI : false coupe TruckEventService (aucun camion) et TruckController.
--- RobuxShop coupe aussi toute la boutique Robux (DEV-100) : MonetizationService (ni ProcessReceipt,
--- ni gamepass, ni bonus de revenus, ni effet) et RobuxShopController (écran UI_RobuxShop, comptoir).
+-- RobuxShop coupe aussi toute la boutique Robux (DEV-100) : MonetizationService (ni gamepass, ni bonus de
+-- revenus, ni effet ; a485 : ProcessReceipt reste branché et garde chaque reçu pour plus tard, NotProcessedYet) et
+-- RobuxShopController (écran UI_RobuxShop, comptoir).
 -- Aperçus (L-071, décision de Clément du 2026-11-08 : les boutons Shop, Index et Rebirth du HUD sont
 -- visibles dès maintenant) : RobuxShopPreview montre le bouton Shop et ouvre UI_RobuxShop en vitrine
 -- tant que RobuxShop est false (RobuxShopController : aucun achat, aucun appel à MarketplaceService ;
@@ -330,6 +331,50 @@ local Features = {
 	LuckModelV2 = false,
 	-- a486 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
 	LuckModelV2Dev = true,
+	-- a440 (lot 6 du check-up a417, R13 ; décision C1 de Cantin, 24/11 : « colis de zone partout ») : plus de types de
+	-- colis Standard / Premium / Luxe hors des rayons. Le camion, les cadeaux du jour J2 et J4 et les codes « Item »
+	-- donnent un colis de zone (Shared/ZoneBoxOdds ; ancien type → règle : Config/Rewards.TierZoneBox), la Fortune Tower
+	-- tire ses caisses dans Config/FortuneTower.ZoneBox (Shared/ZoneBoxEverywhere). J7 est un colis Épique ou mieux,
+	-- allumé comme coupé ; aucune migration de profil (aucun colis typé n'y reste). Interrupteur PROD (partout) : false
+	-- (règle C2 : pas encore de test humain) ; false = les types et leurs tables (Balance.Heist.BoxTiers,
+	-- Rarities.BoxOdds), comme avant.
+	ZoneBoxEverywhere = false,
+	-- a440 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	ZoneBoxEverywhereDev = true,
+	-- a459 (L-354, Clément 24/11) ; a459b, a459c (L-367, règle finale de Cantin 25/11) : sur un présentoir, la vraie taille
+	-- du modèle × le facteur de sa rareté (minimum / modèle médian de la rareté, au moins ×1, Config/DisplaySize : 4, 5 ou 7 studs),
+	-- remontée au minimum si elle reste en dessous, puis grossie par le poids (×1 à ×1,25 / ×1,5 / ×2), réduite seulement
+	-- par la place physique (plafond du présentoir, voisins), au lieu de la taille de son poids.
+	-- Interrupteur PROD (partout) : false (règle C2 : pas encore de test humain) ; false = taille du poids et FitSize, comme avant.
+	DisplayRaritySize = false,
+	-- a459 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	DisplayRaritySizeDev = true,
+	-- a459 (L-306, Cantin 25/11) : l'objet du socle du plus rare (RarestDisplay, copie RarestItem de VfxController) flotte
+	-- exactement comme sur les présentoirs (ItemIdleController, Config/DisplayMotion). Interrupteur PROD (partout) : false
+	-- (règle C2) ; false = l'objet du socle reste immobile, comme avant.
+	RarestFloat = false,
+	-- a459 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	RarestFloatDev = true,
+	-- a485 (L-351 question 2, réponse de Clément du 25/11 : V0 gardés) : le gamepass ×2 Training devient « ×4 Training »
+	-- (×4, nom et effet de Config/Monetization) et ne se cumule plus avec ×2 Speed : le plus fort des deux compte
+	-- (Monetization.TrainingMultiplier, lu par MonetizationService et HudMenuController). Interrupteur PROD (partout) :
+	-- false (règle C2) ; false = « ×2 Training » et ×2 Speed font chacun ×2 et se multiplient (×4 avec les deux), comme avant.
+	TrainingX4 = false,
+	-- a485 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	TrainingX4Dev = true,
+	-- a485 (L-351, brief point 5) : la carte « +4 Displays » de la boutique Robux ne se montre que si la boutique du joueur a
+	-- ses présentoirs bonus DisplaySlot_21 à _24 (Floor_2 compris ; attribut ExtraStandsReady posé par MonetizationService,
+	-- lu par RobuxShopController ; gamepass déjà possédé : carte « Owned » montrée). Interrupteur PROD (partout) : false
+	-- (règle C2) ; false = la carte se montre toujours, comme avant.
+	ExtraStandsGate = false,
+	-- a485 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	ExtraStandsGateDev = true,
+	-- a485 (L-351 question 6) : dans un serveur privé payant (game.PrivateServerOwnerId ≠ 0), les classements de la semaine
+	-- ne comptent rien : aucune écriture, ni revenu ni vol de la semaine qui monte (WeeklyLeaderboardService). Interrupteur
+	-- PROD (partout) : false (règle C2) ; false = un serveur privé compte comme les autres, comme avant.
+	WeeklyNoPrivate = false,
+	-- a485 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	WeeklyNoPrivateDev = true,
 }
 
 export type Features = typeof(Features)

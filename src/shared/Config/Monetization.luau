@@ -10,8 +10,8 @@
 -- Config). Une fois un Id écrit ici, ne jamais supprimer ni recréer le produit sur le Creator Hub
 -- (liaison 3.5, règle 9).
 -- Ready : l'effet est codé. false = ni affichée ni vendue, même avec un Id : VIP, Gants hydrauliques,
--- Vengeance, Rideau instantané, Chance ×3 et Bouclier 30 min attendent des modèles, des règles ou la
--- MAJ 2 (liste dans l'en-tête de MonetizationService). Un reçu d'une offre pas codée n'est jamais
+-- Vengeance, Rideau instantané et Chance ×3 attendent des modèles, des règles ou la MAJ 2 (liste dans
+-- l'en-tête de MonetizationService ; a485 : le Bouclier 30 min est retiré, L-351). Un reçu d'une offre pas codée n'est jamais
 -- accepté (NotProcessedYet) : on ne garde pas des Robux pour rien.
 -- Prix : ceux du doc (4.1, 4.2), en Robux ; l'écran affiche celui de Roblox quand l'Id existe.
 -- Textes : en anglais (L-036) ; noms et lignes d'effet des gamepasses repris de la maquette de Clément
@@ -33,6 +33,21 @@
 -- a294 (21/11, Cantin ; L-276) : chances validées (Épique au moins), caisse allumée dans le jeu DEV seulement
 -- (Features.RobuxCrateDev et Config/ProductIds.IsDev : Crate.Live), toujours coupée en PROD (Features.RobuxCrate) ;
 -- ouverture des colis réutilisée (Crate.Reveal, MonetizationService).
+-- a485 (25/11 ; L-351, réponse de Clément « bloque pas l'ouverture » : les 7 V0 gardés ; prix décidés par Cantin le 25/11,
+-- encore à valider par Clément en L-401) :
+--   - PRIX DE SECOURS : le prix affiché est celui de Roblox (Creator Hub) dès que l'Id existe ; Price ne sert que si Roblox
+--     ne répond pas, et pour le bouton x2 SPEED du HUD. Une valeur par offre, sur sa ligne : facile à changer ;
+--   - ×2 Training devient « ×4 Training » avec Features.TrainingX4 (TrainingX4Dev en DEV) : ×4, et le plus fort de
+--     ×2 Speed et ×4 Training compte (TrainingLadder, TrainingMultiplier plus bas) ; coupé : ×2 et ×2 qui se multiplient ;
+--   - Fast Open s'appelle « Quick Lock » (texte : la clé FastOpen, l'attribut PassFastOpen et l'icône ne changent pas) ;
+--   - Hydraulic Gloves (pas codé) : 1,5 × le meilleur outil, jamais plus que l'Angle Grinder (PowerFactor, PowerCap) ;
+--   - VIP (pas codé) : verrou de la boutique +10 s au lieu de +30 s (CurtainBonus) ;
+--   - Shield30 (bouclier 30 min) retiré pour de bon : jamais créé (Id 0 en DEV et en PROD), à ne jamais créer ;
+--   - Open Now : 2 paliers en vente (19 et 39 R$ ; l'antivol le plus long fait 180 s, ShelfOpen.AntiTheft) ; les paliers
+--     3 et 4 sont coupés (RetiredTiers : plus jamais proposés, mais un reçu en attente reste livré) ;
+--   - Starter Pack : plus de fausse remise (OldPrice = nil : ni ancien prix ni « 75% OFF ») ;
+--   - +4 Displays : carte montrée seulement si la boutique a ses présentoirs bonus, avec Features.ExtraStandsGate
+--     (ExtraStands.Gate, MonetizationService et RobuxShopController).
 
 local DeepFreeze = require(script.Parent.DeepFreeze)
 local Boosts = require(script.Parent.Boosts)
@@ -76,7 +91,6 @@ export type ProductKey =
 	| "InstantShutter"
 	| "StarterPack"
 	| "Luck3"
-	| "Shield30"
 	| "ServerLuck2"
 	| "ServerLuck4"
 	| "ServerLuck8"
@@ -96,6 +110,12 @@ export type Pass = {
 	Multiplier: number?, -- ×2 Argent (revenus), ×2 Entraînement et ×2 Vitesse (gains du tapis ; plus de banc, v2)
 	DelayFactor: number?, -- Ouverture rapide : facteur des attentes d'ouverture des colis PNJ
 	Stands: number?, -- +4 présentoirs : présentoirs au-delà du maximum
+	-- a485 (L-351 question 4, V0 gardé ; pas encore codé) : Gants hydrauliques, puissance = PowerFactor × le meilleur outil
+	-- acheté, jamais plus que l'outil PowerCap (Config/Tools), pour que la zone 6 reste à deux joueurs.
+	PowerFactor: number?,
+	PowerCap: string?,
+	-- a485 (L-351 question 7, V0 gardé ; pas encore codé) : VIP, secondes ajoutées au verrou de la boutique (tuile Curtain).
+	CurtainBonus: number?,
 	-- a319 (L-303) : bouton de UI_HUD qui vend aussi ce gamepass (HudMenuController) : Price.Amount = Price ; caché
 	-- s'il est possédé, si l'Id vaut 0, si la boutique est coupée ou tant que le serveur n'a pas eu la réponse de
 	-- Roblox (attribut PassKnown<Key>).
@@ -124,6 +144,9 @@ export type Product = {
 	CardColor: Color3?, -- couleur de sa carte dans UI_RobuxShop_v2 (L-204) ; nil = celle du Template
 	Minutes: number?, -- pack d'argent : minutes des revenus actuels (doc 4.2 : 10, 60, 300 ; 30, 180 et 720 : V0, L-196)
 	Tiers: { OpenNowTier }?, -- Ouvrir maintenant
+	-- a485 (25/11, Cantin) : paliers coupés, par leur numéro d'origine (clé OpenNow<n> de Config/ProductIds) : jamais
+	-- proposés ni choisis par OpenNowTier, mais un reçu en attente de l'un d'eux est encore livré (MonetizationService).
+	RetiredTiers: { [number]: OpenNowTier }?,
 	Luck: number?, -- vague 72 (a247) : chance du serveur, facteur de la chance des colis pour tout le serveur
 	LuckMinutes: number?, -- vague 72 (a247) : sa durée (min)
 }
@@ -148,38 +171,54 @@ export type CratePack = {
 	Id: number, -- produit développeur ; 0 = pas encore créé
 }
 
+-- a485 (L-351) : interrupteurs de ce jeu, posés avant le gel comme Crate.Live (X partout, ou XDev dans le jeu DEV).
+local function switchOn(name: string): boolean
+	local raw = Features :: any
+	return raw[name] == true or (raw[name .. "Dev"] == true and ProductIds.IsDev == true)
+end
+-- a485 : ×2 Training devient ×4 Training, et le plus fort de ×2 Speed et ×4 Training compte (Features.TrainingX4).
+local TRAINING_X4 = switchOn("TrainingX4")
+
 -- Gamepasses (4.1), dans l'ordre de la maquette (×2 CASH, ×2 TRAINING, VIP, AUTO COLLECT, FAST OPEN,
 -- +4 DISPLAYS), puis les Gants hydrauliques. a319 (L-303) : ×2 Speed en 3e, juste après ×2 Training (même famille,
 -- gains du tapis), les suivants décalés d'un rang.
+-- a485 (25/11) : Price = prix de secours (Cantin, 25/11 ; à valider par Clément, L-401), voir l'en-tête.
 local Passes: { Pass } = {
-	{ Key = "DoubleCash", Id = 2098559046, Order = 1, Price = 449, Ready = true, CardColor = Color3.fromHex("45D63A"), Multiplier = 2, DisplayName = "×2 Cash", Effect = "Doubles all your income", Icon = "UI_Icon_GP_x2Cash" },
-	{ Key = "DoubleTraining", Id = 2099849032, Order = 2, Price = 299, Ready = true, CardColor = Color3.fromHex("FF9A2E"), Multiplier = 2, DisplayName = "×2 Training", Effect = "×2 treadmill gains", Icon = "UI_Icon_GP_x2Training" },
-	-- a319 (23/11, L-303, décision de Cantin) : « x2 SPEED » du HUD, gamepass permanent à 149 R$ (prix V0 validé par
-	-- Cantin), à la place du boost de 10 min à 29 R$ (Config/Boosts, retiré). Même effet que ce boost : × 2 sur les
-	-- gains du tapis, multiplié par ×2 Training (× 4 avec les deux) et par les événements ; les trails n'y changent
-	-- rien (ils multiplient la Speed affichée, pas le gain). Id à créer par Cantin au nom du groupe (0 = rien en vente).
+	{ Key = "DoubleCash", Id = 2098559046, Order = 1, Price = 299, Ready = true, CardColor = Color3.fromHex("45D63A"), Multiplier = 2, DisplayName = "×2 Cash", Effect = "Doubles all your income", Icon = "UI_Icon_GP_x2Cash" },
+	-- a485 (L-351 question 2) : « ×4 Training » à ×4 avec Features.TrainingX4 ; coupé : « ×2 Training » à ×2, comme avant.
+	-- Icône inchangée (UI_Icon_GP_x2Training, Clément).
+	{ Key = "DoubleTraining", Id = 2099849032, Order = 2, Price = 149, Ready = true, CardColor = Color3.fromHex("FF9A2E"), Multiplier = if TRAINING_X4 then 4 else 2, DisplayName = if TRAINING_X4 then "×4 Training" else "×2 Training", Effect = if TRAINING_X4 then "×4 treadmill gains" else "×2 treadmill gains", Icon = "UI_Icon_GP_x2Training" },
+	-- a319 (23/11, L-303, décision de Cantin) : « x2 SPEED » du HUD, gamepass permanent (prix : a485 plus bas), à la place
+	-- du boost de 10 min à 29 R$ (Config/Boosts, retiré). Même effet que ce boost : × 2 sur les gains du tapis, multiplié par
+	-- ×2 Training (× 4 avec les deux ; a485 : avec Features.TrainingX4, le plus fort des deux compte) et par les
+	-- événements ; les trails n'y changent rien (ils multiplient la Speed affichée, pas le gain).
 	-- Nom, effet, icône et couleur : ceux de l'ancienne carte « ×2 Speed » de l'onglet Boosts (L-204).
-	{ Key = "DoubleSpeed", Id = 2101984255, Order = 3, Price = 149, Ready = true, CardColor = Color3.fromHex("F2553A"), Multiplier = 2, DisplayName = "×2 Speed", Effect = "×2 speed on the treadmill", Icon = "UI_Icon_SpeedBoost", HudButton = "SpeedBoostButton" },
-	{ Key = "VIP", Id = 0, Order = 4, Price = 249, Ready = false, CardColor = Color3.fromHex("8A5CF0"), DisplayName = "VIP", Effect = "+10% income, aura, chat tag", Icon = "UI_Icon_GP_VIP" },
-	{ Key = "AutoCollect", Id = 2099027027, Order = 5, Price = 199, Ready = true, CardColor = Color3.fromHex("FFC928"), DisplayName = "Auto Collect", Effect = "Cash collects itself, anywhere", Icon = "UI_Icon_GP_AutoCollect" },
-	{ Key = "FastOpen", Id = 2099039016, Order = 6, Price = 299, Ready = true, CardColor = Color3.fromHex("2FA8F0"), DelayFactor = 0.5, DisplayName = "Fast Open", Effect = "Anti-theft 2× shorter", Icon = "UI_Icon_GP_FastOpen" },
+	-- a485 : 49 R$ (avant 149), aussi écrit par le bouton x2 SPEED du HUD (HudButton).
+	{ Key = "DoubleSpeed", Id = 2101984255, Order = 3, Price = 49, Ready = true, CardColor = Color3.fromHex("F2553A"), Multiplier = 2, DisplayName = "×2 Speed", Effect = "×2 speed on the treadmill", Icon = "UI_Icon_SpeedBoost", HudButton = "SpeedBoostButton" },
+	-- a485 (L-351 question 7) : verrou +10 s (avant +30 s) ; effet pas encore codé (Ready = false).
+	{ Key = "VIP", Id = 0, Order = 4, Price = 249, Ready = false, CardColor = Color3.fromHex("8A5CF0"), CurtainBonus = 10, DisplayName = "VIP", Effect = "+10% income, aura, chat tag, +10s lock", Icon = "UI_Icon_GP_VIP" },
+	{ Key = "AutoCollect", Id = 2099027027, Order = 5, Price = 99, Ready = true, CardColor = Color3.fromHex("FFC928"), DisplayName = "Auto Collect", Effect = "Cash collects itself, anywhere", Icon = "UI_Icon_GP_AutoCollect" },
+	-- a485 (L-351 question 3) : « Quick Lock » (avant « Fast Open ») ; clé, attribut PassFastOpen et icône inchangés.
+	{ Key = "FastOpen", Id = 2099039016, Order = 6, Price = 99, Ready = true, CardColor = Color3.fromHex("2FA8F0"), DelayFactor = 0.5, DisplayName = "Quick Lock", Effect = "Anti-theft 2× shorter", Icon = "UI_Icon_GP_FastOpen" },
 	{ Key = "ExtraStands", Id = 2099033063, Order = 7, Price = 349, Ready = true, CardColor = Color3.fromHex("E05AD8"), Stands = 4, DisplayName = "+4 Displays", Effect = "4 extra displays", Icon = "UI_Icon_GP_Displays" },
-	-- Texte V0 proposé, absent de la maquette.
-	{ Key = "HydraulicGloves", Id = 0, Order = 8, Price = 499, Ready = false, DisplayName = "Hydraulic Gloves", Effect = "Exclusive tool: 2.5× your best tool", Icon = "UI_Icon_GP_HydraulicGloves" },
+	-- Texte V0 proposé, absent de la maquette. a485 (L-351 question 4) : 1,5 × le meilleur outil (avant 2,5 ×), jamais
+	-- plus que l'Angle Grinder ; effet pas encore codé (Ready = false).
+	{ Key = "HydraulicGloves", Id = 0, Order = 8, Price = 499, Ready = false, PowerFactor = 1.5, PowerCap = "AngleGrinder", DisplayName = "Hydraulic Gloves", Effect = "Exclusive tool: 1.5× your best tool, max Angle Grinder", Icon = "UI_Icon_GP_HydraulicGloves" },
 }
 
 -- Produits développeur (4.2). Noms et lignes d'effet : V0 proposés, absents de la maquette.
 local Products: { Product } = {
 	{ Key = "StarterPack", Id = 3735788614, Tab = "Offers", Order = 1, Price = 99, Ready = true, DisplayName = "Starter Pack", Effect = "×2 Cash 1h + Hammer + $2.6K", Icon = "UI_Icon_DP_StarterPack" },
 	-- 6 packs d'argent (L-196 point 1), du plus petit au plus gros. 10 min, 1 h et 5 h : doc 4.2 ; 30 min,
-	-- 3 h et 12 h : V0 proposé, absent du doc (prix par minute qui baisse avec la taille du pack : 4,9 ; 4,3 ;
-	-- 3,3 ; 2,8 ; 2,7 ; 2,2 R$). Couleurs du vert à l'or (L-204 ; 2, 4 et 6 : V0 entre celles de Clément).
-	{ Key = "Cash10", Id = 3735788763, Tab = "Cash", Order = 1, Price = 49, Ready = true, CardColor = Color3.fromHex("5BCB3A"), Minutes = 10, DisplayName = "10 Minutes of Cash", Effect = "10 min of income", Icon = "UI_Icon_DP_Cash_1" },
-	{ Key = "Cash30", Id = 3735788830, Tab = "Cash", Order = 2, Price = 129, Ready = true, CardColor = Color3.fromHex("3EBA4A"), Minutes = 30, DisplayName = "30 Minutes of Cash", Effect = "30 min of income", Icon = "UI_Icon_DP_Cash_2" },
-	{ Key = "Cash60", Id = 3735788938, Tab = "Cash", Order = 3, Price = 199, Ready = true, CardColor = Color3.fromHex("22A85A"), Minutes = 60, DisplayName = "1 Hour of Cash", Effect = "1 hour of income", Icon = "UI_Icon_DP_Cash_3" },
-	{ Key = "Cash180", Id = 3735789144, Tab = "Cash", Order = 4, Price = 499, Ready = true, CardColor = Color3.fromHex("85A739"), Minutes = 180, DisplayName = "3 Hours of Cash", Effect = "3 hours of income", Icon = "UI_Icon_DP_Cash_4" },
-	{ Key = "Cash300", Id = 3735789195, Tab = "Cash", Order = 5, Price = 799, Ready = true, CardColor = Color3.fromHex("E8A618"), Minutes = 300, DisplayName = "5 Hours of Cash", Effect = "5 hours of income", Icon = "UI_Icon_DP_Cash_5" },
-	{ Key = "Cash720", Id = 3735789566, Tab = "Cash", Order = 6, Price = 1599, Ready = true, CardColor = Color3.fromHex("FFC21A"), Minutes = 720, DisplayName = "12 Hours of Cash", Effect = "12 hours of income", Icon = "UI_Icon_DP_Cash_6" },
+	-- 3 h et 12 h : V0 proposé, absent du doc. Couleurs du vert à l'or (L-204 ; 2, 4 et 6 : V0 entre celles de Clément).
+	-- a485 (25/11, Cantin ; à valider par Clément, L-401) : 29, 69, 119, 249, 349 et 699 R$ (avant 49 à 1 599) : de 2,9 à
+	-- 0,97 R$ la minute (rapport monetisation-2026-11-24, section 3.1).
+	{ Key = "Cash10", Id = 3735788763, Tab = "Cash", Order = 1, Price = 29, Ready = true, CardColor = Color3.fromHex("5BCB3A"), Minutes = 10, DisplayName = "10 Minutes of Cash", Effect = "10 min of income", Icon = "UI_Icon_DP_Cash_1" },
+	{ Key = "Cash30", Id = 3735788830, Tab = "Cash", Order = 2, Price = 69, Ready = true, CardColor = Color3.fromHex("3EBA4A"), Minutes = 30, DisplayName = "30 Minutes of Cash", Effect = "30 min of income", Icon = "UI_Icon_DP_Cash_2" },
+	{ Key = "Cash60", Id = 3735788938, Tab = "Cash", Order = 3, Price = 119, Ready = true, CardColor = Color3.fromHex("22A85A"), Minutes = 60, DisplayName = "1 Hour of Cash", Effect = "1 hour of income", Icon = "UI_Icon_DP_Cash_3" },
+	{ Key = "Cash180", Id = 3735789144, Tab = "Cash", Order = 4, Price = 249, Ready = true, CardColor = Color3.fromHex("85A739"), Minutes = 180, DisplayName = "3 Hours of Cash", Effect = "3 hours of income", Icon = "UI_Icon_DP_Cash_4" },
+	{ Key = "Cash300", Id = 3735789195, Tab = "Cash", Order = 5, Price = 349, Ready = true, CardColor = Color3.fromHex("E8A618"), Minutes = 300, DisplayName = "5 Hours of Cash", Effect = "5 hours of income", Icon = "UI_Icon_DP_Cash_5" },
+	{ Key = "Cash720", Id = 3735789566, Tab = "Cash", Order = 6, Price = 699, Ready = true, CardColor = Color3.fromHex("FFC21A"), Minutes = 720, DisplayName = "12 Hours of Cash", Effect = "12 hours of income", Icon = "UI_Icon_DP_Cash_6" },
 	{
 		Key = "OpenNow",
 		Id = 0, -- inutilisé : un Id par palier, plus bas
@@ -193,18 +232,26 @@ local Products: { Product } = {
 		Icon = "UI_Icon_DP_OpenNow",
 		-- V0 proposé, absent du doc : 4 paliers, de l'attente d'un Rare (45 s) à celle d'un Secret
 		-- (15 min, table 7.3), au prix du doc (19 à 99).
+		-- a485 (25/11, Cantin : 2 paliers seulement ; l'antivol le plus long fait 180 s, ShelfOpen.AntiTheft) : les paliers
+		-- 1 et 2 restent en vente (19 et 39 R$).
 		Tiers = {
 			{ Id = 3735789930, Price = 19, Skip = 60 }, -- jusqu'à 1 min (Commun à Rare)
 			{ Id = 3735790062, Price = 39, Skip = 180 }, -- jusqu'à 3 min (Épique, Légendaire)
-			{ Id = 3735790266, Price = 59, Skip = 480 }, -- jusqu'à 8 min (Mythique)
-			{ Id = 3735790374, Price = 99, Skip = 900 }, -- jusqu'à 15 min (Secret)
+		},
+		-- a485 (25/11, Cantin) : paliers 3 et 4 COUPÉS (vente coupée sur le Creator Hub), JAMAIS RÉUTILISER NI SUPPRIMER
+		-- leurs Ids (PROD 3735790266 et 3735790374 ; DEV : OpenNow3 et OpenNow4 de Config/ProductIds). Plus jamais proposés ;
+		-- un reçu en attente de l'un d'eux est encore livré (même don, Skip s retirées), jamais perdu.
+		RetiredTiers = {
+			[3] = { Id = 3735790266, Price = 59, Skip = 480 }, -- coupé, ne jamais réutiliser ni supprimer
+			[4] = { Id = 3735790374, Price = 99, Skip = 900 }, -- coupé, ne jamais réutiliser ni supprimer
 		},
 	},
 	-- Pas codés (Ready = false) : voir l'en-tête de MonetizationService.
 	{ Key = "Revenge", Id = 0, Tab = "Boosts", Order = 4, Price = 25, Ready = false, DisplayName = "Revenge", Effect = "Teleport behind your thief", Icon = "UI_Icon_DP_Revenge" },
 	{ Key = "InstantShutter", Id = 0, Tab = "Boosts", Order = 5, Price = 29, Ready = false, DisplayName = "Instant Shutter", Effect = "Close your shop right now", Icon = "UI_Icon_DP_InstantShutter" },
 	{ Key = "Luck3", Id = 0, Tab = "Boosts", Order = 6, Price = 79, Ready = false, DisplayName = "×3 Luck", Effect = "Rarer boxes for 15 min", Icon = "UI_Icon_DP_Luck3" },
-	{ Key = "Shield30", Id = 0, Tab = "Boosts", Order = 7, Price = 99, Ready = false, DisplayName = "30 Min Shield", Effect = "Nobody can rob your shop", Icon = "UI_Icon_DP_Shield30" },
+	-- a485 (L-351 question 5, V0 gardé) : Shield30 (« 30 Min Shield », boutique inviolable 30 min) retiré pour de bon. Il
+	-- n'a jamais été créé (Id 0 en DEV et en PROD) : aucun reçu possible. Ne jamais le créer sur le Creator Hub.
 	-- Vague 72 (a247, L-216 point 8) : chance du serveur (comme le ×2, ×4, ×8 de Steal a Brainrot). V0 proposé,
 	-- absent du doc : 15 min chacune ; 149, 399 et 999 R$ (le plus cher du jeu après le pack de 12 h) ; couleurs,
 	-- et textes. Vague 73 (a253, L-240 point 2) : icône UI_Icon_DP_Luck3, celle de la carte SERVER LUCK de Clément
@@ -256,6 +303,19 @@ local Monetization = {
 	PassByKey = PassByKey, -- clé = PassKey ; une clé inconnue renvoie nil
 	ProductByKey = ProductByKey, -- clé = ProductKey
 	ShopBoosts = ShopBoosts, -- vague 63 : boosts du HUD dans l'onglet Boosts (même produit, Config/Boosts)
+	-- a485 (L-351 question 2) : true (Features.TrainingX4 dans ce jeu) = les gains du tapis prennent le plus fort de
+	-- ×2 Speed et ×4 Training, sans les cumuler ; false = leur produit, comme avant (TrainingMultiplier plus bas).
+	TrainingLadder = TRAINING_X4,
+	-- a485 (brief L-351 point 5) : +4 Displays proposé seulement si la boutique du joueur a ses présentoirs bonus.
+	-- Gate (Features.ExtraStandsGate dans ce jeu) : MonetizationService pose l'attribut Attribute du Player (true = les
+	-- présentoirs DisplaySlot_21 à 20 + Stands sont utilisables : posés dans la parcelle, ou dans le Floor_2 une fois
+	-- l'étage acheté, Cantin le 25/11 ; absent sinon) et RobuxShopController cache la carte sans lui (sauf gamepass
+	-- possédé) ; son achat passe par le serveur (remote PromptExtraStands), qui le refuse sans lui. Gate à false : carte
+	-- toujours montrée, attribut jamais posé, fenêtre d'achat ouverte par le client, comme avant.
+	ExtraStands = {
+		Gate = switchOn("ExtraStandsGate"),
+		Attribute = "ExtraStandsReady",
+	},
 
 	-- Vague 63 (L-200, L-204) : caisse exclusive de UI_RobuxShop_v2 (section Crate). Montrée seulement avec
 	-- Features.RobuxCrate, des chances pour chaque case (Odds) et là où Roblox permet les objets payants au
@@ -269,6 +329,10 @@ local Monetization = {
 	-- (Config/ProductIds.IsDev) ; vendue si Live et Ready, même boutique coupée (Features.RobuxShop = false) ; sans Ready, ou sans Id (0) dans ce jeu,
 	-- ses boutons restent « Soon ».
 	Crate = {
+		-- a485 (L-351, V0 de Cantin du 25/11 en attendant Clément, L-415) : nom affiché de la caisse, en anglais, la seule
+		-- valeur à changer : produit de la caisse et message de l'objet reçu (MonetizationService, « <nom>: you got … »).
+		-- Le titre de la carte (Crate.Title de UI_RobuxShop_v2) est le texte de Clément, pas écrit par le code.
+		DisplayName = "Exclusive Crate",
 		Ready = true, -- a285 : contenu et don codés (vendue seulement avec Live : Features.RobuxCrate, RobuxCrateDev en DEV)
 		Live = false, -- a294 : posé plus bas (l'interrupteur de ce jeu), ne pas l'écrire ici
 		UnitPrice = 99, -- prix d'une caisse seule : OldPrice d'un lot = UnitPrice × Count (caché sans remise)
@@ -371,7 +435,9 @@ local Monetization = {
 		-- Vague 73 (a253, L-242 point 3) : ancien prix (Robux) écrit dans Featured.OldPrice ; la remise de
 		-- Featured.DiscountTag.DiscountLabel (« 75% OFF ») en est tirée avec le prix affiché. V0 proposé, absent du doc,
 		-- à valider par Clément ; nil (ou pas plus cher que le prix) = ni ancien prix ni étiquette.
-		OldPrice = 399 :: number?,
+		-- a485 (L-351, rapport monetisation 6.3) : nil (avant 399, « 75% OFF ») : le pack n'a jamais été vendu 399 et Roblox
+		-- interdit les remises qui ne sont pas réelles. Ne remettre un ancien prix que pour une vraie baisse de prix.
+		OldPrice = nil :: number?,
 	},
 
 	-- Packs d'argent (4.2) : V0 proposé, absent du doc : au moins 50 $ par minute, la proposition V0
@@ -427,6 +493,11 @@ for _, product in Products do
 			tier.Id = ProductIds.Pick(`{product.Key}{index}`, tier.Id)
 		end
 	end
+	if product.RetiredTiers then -- a485 : par leur numéro d'origine (OpenNow3, OpenNow4)
+		for index, tier in product.RetiredTiers do
+			tier.Id = ProductIds.Pick(`{product.Key}{index}`, tier.Id)
+		end
+	end
 end
 for _, pack in Monetization.Crate.Packs do
 	pack.Id = ProductIds.Pick(`{Monetization.Crate.KeyPrefix}{pack.Count}`, pack.Id)
@@ -449,6 +520,24 @@ function Monetization.OpenNowTier(remaining: number): OpenNowTier?
 		end
 	end
 	return tiers[#tiers]
+end
+
+-- a485 (L-351 question 2) : multiplicateur des gains du tapis venu des gamepasses ×2 Training (×4 Training) et ×2 Speed,
+-- `owns(clé)` disant s'il est possédé. TrainingLadder : le plus fort des deux (×4 avec ×4 Training, ×2 avec ×2 Speed
+-- seul) ; sinon leur produit, comme avant (×4 avec les deux). 1 sans gamepass. Même calcul côté serveur
+-- (MonetizationService, TrainingService.GetGainMultiplier) et client (HudMenuController, pastille TrainingBoost).
+local TRAINING_PASSES = { "DoubleTraining", "DoubleSpeed" }
+function Monetization.TrainingMultiplier(owns: (key: string) -> boolean): number
+	local result = 1
+	for _, key in TRAINING_PASSES do
+		if owns(key) then
+			local pass = PassByKey[key]
+			local value = if pass then pass.Multiplier else nil
+			local factor = if type(value) == "number" and value == value and value > 0 and value < math.huge then value else 1
+			result = if Monetization.TrainingLadder then math.max(result, factor) else result * factor
+		end
+	end
+	return result
 end
 
 -- Argent d'un pack de `minutes` minutes pour un revenu de `incomePerSecond` $/s (celui du HUD, bonus

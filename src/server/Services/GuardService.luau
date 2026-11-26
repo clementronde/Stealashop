@@ -1998,6 +1998,16 @@ GuardService._LawSpeed = function(guard: Guard, player: Player, targetAt: Vector
 	end
 	local speed, distance = GuardService._ChaseLaw.Speed(Chase.V3, base, walk, gap, away)
 	guard.holdTarget = distance
+	-- `:: any` : _LawMoving est défini plus bas dans ce fichier (champ, lu à l'exécution).
+	if GuardService._ClientView and (GuardService :: any)._LawMoving(guard, targetRoot) == true then
+		-- a487 (Chase.V3.AimLeadSeconds, Guard/ChaseLaw.Approach) : depuis qu'il vise au-delà du voleur (_LawAim), plus
+		-- rien ne l'arrête à la place où le joueur se voit (`targetAt`) : il s'en approche au plus à écart ÷ retard
+		-- compensé, en plus de la vitesse à laquelle le voleur s'éloigne, et n'y passe donc jamais avant la capture, que
+		-- le serveur ne décide qu'un retard après. À moins d'1 stud de cette place, le cap est celui de la course du
+		-- voleur (comme _LawAim). Loin de lui, ou voleur qui revient vers lui : rien ne change.
+		local receding = if gap > 1 then away else math.min(flat(targetRoot.AssemblyLinearVelocity).Magnitude, walk)
+		speed = (GuardService._ChaseLaw :: any).Approach(Chase.V3, speed, receding, gap, GuardService._ClientView.Lag(player))
+	end
 	return math.max(speed, Chase.HoldMinSpeed)
 end
 
@@ -2870,6 +2880,44 @@ GuardService._LawMoving = function(guard: Guard, targetRoot: BasePart): boolean
 	return flat(targetRoot.AssemblyLinearVelocity).Magnitude >= (if isPositiveNumber(limit) then limit else 0)
 end
 
+-- a487 (Cantin, 25/11 : « on n'arrive pas à se faire attraper par un vigile qui est plus rapide que nous » ;
+-- Chase.V3.AimLeadSeconds) : point visé d'une poursuite V3 sur un voleur qui avance. Avant, le vigile visait `targetAt`
+-- (la position estimée du voleur) : son Humanoid « arrivait » à ce point avant la visée suivante (0,1 s), freinait,
+-- repartait : en moyenne il n'allait jamais plus vite que le voleur, quelle que soit sa WalkSpeed, et restait 4 à 15
+-- studs derrière le point à atteindre pour la capture (Play du 25/11 : 68,7 contre 60,7, 9 s sans capture). Il vise
+-- maintenant au-delà du voleur, sur la droite vigile → voleur (même cap qu'avant : il reste derrière lui, il coupe les
+-- virages), de Guard/ChaseLaw.Lead studs : AimLeadSeconds × la part de la vitesse reçue du voleur qui l'éloigne du
+-- vigile. Voleur qui revient vers lui ou qui n'avance plus dans ce sens : 0, la visée d'avant. Jamais en zone safe ni
+-- derrière un mur ou un meuble bas, vus du voleur (centre et genoux : `kneeDrop`) : la moitié, le quart, puis `targetAt`.
+-- Vigile à moins d'1 stud de `targetAt` : le cap est celui de la course du voleur. La capture reste décidée comme
+-- avant (ce que le joueur a vu, ou le croisement) : elle part avant qu'il ait dépassé le voleur à l'écran.
+-- Champ et non locale (limite des 200 locales).
+GuardService._LawAim = function(guard: Guard, targetRoot: BasePart, targetHumanoid: Humanoid, targetAt: Vector3, kneeDrop: number): Vector3
+	local law: any = GuardService._ChaseLaw
+	if law == nil then
+		return targetAt
+	end
+	local velocity = flat(targetRoot.AssemblyLinearVelocity)
+	local offset = flat(targetAt - guard.root.Position)
+	local direction: Vector3? = if offset.Magnitude > 1 then offset.Unit elseif velocity.Magnitude > 1e-3 then velocity.Unit else nil
+	if direction == nil then
+		return targetAt
+	end
+	local lead: number = law.Lead(Chase.V3, targetHumanoid.WalkSpeed, velocity:Dot(direction))
+	local knee = Vector3.new(0, kneeDrop, 0)
+	for _ = 1, 3 do
+		if lead < 1 then
+			break
+		end
+		local aim = targetAt + direction * lead
+		if not isInSafeZone(aim) and clearLine(targetAt, aim) and clearLine(targetAt - knee, aim - knee) then
+			return aim
+		end
+		lead /= 2
+	end
+	return targetAt
+end
+
 local function chaseInSight(guard: Guard, targetRoot: BasePart, targetHumanoid: Humanoid, velocity: Vector3, now: number, targetAt: Vector3?)
 	guard.waypoints = nil -- jamais un point de chemin périmé quand il voit sa cible
 	guard.lastSeen = targetRoot.Position
@@ -2884,11 +2932,17 @@ local function chaseInSight(guard: Guard, targetRoot: BasePart, targetHumanoid: 
 	guard.nextAimAt = now + CHASE_REAIM_INTERVAL
 	local kneeDrop = targetHumanoid.HipHeight + targetRoot.Size.Y / 2 - KNEE_HEIGHT
 	local fresh = interceptPoint(guard, targetRoot, velocity, kneeDrop, targetAt)
+	local lawMoving = GuardService._LawMoving(guard, targetRoot)
+	if lawMoving and targetAt then
+		-- a487 (Chase.V3.AimLeadSeconds) : voleur qui avance : il vise au-delà de lui, sur la même droite (sinon son
+		-- Humanoid arrive au point visé entre deux visées et freine : un vigile plus rapide n'attrapait jamais).
+		fresh = GuardService._LawAim(guard, targetRoot, targetHumanoid, fresh, kneeDrop)
+	end
 	if GuardService._Sidestep then
 		-- f70c3b (T-217) : un poteau fin sur un de ses flancs : d'abord à côté de lui.
 		fresh = GuardService._Sidestep.Aim(guard.root.Position, fresh, 0.75 * guard.agentRadius, guard.rootHeight - KNEE_HEIGHT, rayParams, isInSafeZone)
 	end
-	if GuardService._ClientView and targetAt and not GuardService._LawMoving(guard, targetRoot) then
+	if GuardService._ClientView and targetAt and not lawMoving then
 		-- a416 (Chase.ClientView) : il traverse le joueur ; droit sur un voleur à l'arrêt, il s'arrête StandOff studs avant.
 		-- a443 : pas en poursuite V3 sur un voleur qui avance encore (voir chaseStep).
 		fresh = GuardService._ClientView.StandOff(guard.root, targetRoot, fresh, targetAt)

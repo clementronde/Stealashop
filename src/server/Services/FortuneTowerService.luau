@@ -31,7 +31,9 @@
 --      dès que l'alerte de la nuit commence (ou la nuit, si on y saute : Messages.SealedNight).
 --   4. À 0 PV (WindowService.OnBroken, Kind « Event ») : ouverte. Sa vitre Window (et ses pièces) devient
 --      invisible et ne bloque plus rien, son contour OutlineHighlight s'éteint, attribut OpenedAt (heure
---      serveur, pour un effet de Clément). Butin : LootCount caisses LootTier (Luxe) sur un rayon
+--      serveur, pour un effet de Clément). a440 (Features.ZoneBoxEverywhere) : la rareté des caisses est celle d'un
+--      colis de zone (FortuneTower.ZoneBox, mêmes chances que RarityOdds ; lootOdds) au lieu de RarityOdds.
+--      Butin : LootCount caisses LootTier (Luxe) sur un rayon
 --      d'événement de StoreHeistService (AddEventShelf, vague 42, demande de Cantin du 2026-11-14 ; StoreId
 --      « Truck_Fortune_<n> », préfixe Truck_ : la convention des colis d'événement sans magasin, GuardService
 --      n'envoie pas de vigile ; TelemetryService les compte à part, en « Fortune », vague 39). Un ShelfSlot
@@ -81,6 +83,14 @@ local FortuneTower = require(Shared.Config.FortuneTower)
 local Rarities = require(Shared.Config.Rarities)
 local Find = require(Shared.Contract.Find)
 local Net = require(Shared.Net.Net)
+
+-- a440 (Features.ZoneBoxEverywhere) : chargé s'il est là ; absent (faux arbres des bancs plus anciens) : coupé.
+local ZoneBoxEverywhere: any = (function(): any
+	local ok, result = pcall(function(): any
+		return require(Shared.ZoneBoxEverywhere)
+	end)
+	return if ok and type(result) == "table" then result else nil
+end)()
 
 local NightCycleService = require(script.Parent.NightCycleService)
 local WindowService = require(script.Parent.WindowService)
@@ -499,6 +509,18 @@ local function roll(odds: { [string]: number }, order: { string }): string?
 	return last
 end
 
+-- a440 (Features.ZoneBoxEverywhere) : chances des caisses du coffre : un colis de zone (règle FortuneTower.ZoneBox, zone
+-- FortuneTower.Zone, lues au moment de l'ouverture), sinon FortuneTower.RarityOdds, comme avant. Renvoie aussi le mot du
+-- journal.
+local function lootOdds(): ({ [string]: number }, string)
+	local rule = (FortuneTower :: any).ZoneBox
+	if ZoneBoxEverywhere == nil or not ZoneBoxEverywhere.Enabled() or type(rule) ~= "table" then
+		return FortuneTower.RarityOdds, FortuneTower.LootTier
+	end
+	local zone, odds = ZoneBoxEverywhere.Odds(rule, FortuneTower.Zone)
+	return odds, `de zone (zone {tostring(zone)})`
+end
+
 local RARITY_ORDER: { string } = {}
 for _, rarity in Rarities.List do
 	table.insert(RARITY_ORDER, rarity.Id)
@@ -557,7 +579,7 @@ local function openVault(vault: Vault, breaker: Player?)
 	model:SetAttribute(OPENED_AT_ATTRIBUTE, Workspace:GetServerTimeNow())
 
 	local storeId = `{STORE_PREFIX}{vault.Number}`
-	local tier = FortuneTower.LootTier
+	local odds, tier = lootOdds() -- a440 : colis de zone avec Features.ZoneBoxEverywhere
 	local points = lootPoints(model, FortuneTower.LootCount)
 	local placed: { string } = {}
 	-- Vague 42 (demande de Cantin) : colis à ouvrir sur place, comme sur un rayon (StoreHeistService).
@@ -566,9 +588,9 @@ local function openVault(vault: Vault, breaker: Player?)
 	local spots: { any } = {}
 	local rotation = model:GetPivot().Rotation
 	for _, point in points do
-		local rarity = roll(FortuneTower.RarityOdds, RARITY_ORDER)
+		local rarity = roll(odds, RARITY_ORDER)
 		if rarity then
-			table.insert(spots, { CFrame = CFrame.new(point) * rotation, Tier = tier, Rarity = rarity })
+			table.insert(spots, { CFrame = CFrame.new(point) * rotation, Tier = if tier == FortuneTower.LootTier then tier else nil, Rarity = rarity }) -- a440 : pas de type pour un colis de zone
 			table.insert(placed, rarity)
 		end
 	end

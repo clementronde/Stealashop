@@ -28,6 +28,14 @@ local MonetizationService = require(script.Parent.MonetizationService)
 local PotionService = require(script.Parent.PotionService)
 local UnboxService = require(script.Parent.UnboxService)
 
+-- a440 (Features.ZoneBoxEverywhere) : chargé s'il est là ; absent (faux arbres des bancs plus anciens) : coupé.
+local ZoneBoxEverywhere: any = (function(): any
+	local ok, result = pcall(function(): any
+		return require(Shared.ZoneBoxEverywhere)
+	end)
+	return if ok and type(result) == "table" then result else nil
+end)()
+
 type Data = ProfileTypes.Data
 type CodeReward = Codes.CodeReward
 export type Status = "Redeemed" | "Invalid" | "AlreadyUsed" | "Expired" | "Unavailable"
@@ -72,6 +80,14 @@ local function give(player: Player, data: Data, reward: CodeReward): boolean
 		return PotionService.AddStock(player, reward.PotionId or "", reward.Count or 1)
 	elseif kind == "Item" then
 		local zone = math.max(bestZone(data), reward.MinZone or 1)
+		-- a440 (Features.ZoneBoxEverywhere) : le colis de zone de la règle Config/Rewards.TierZoneBox[Tier], depuis cette
+		-- zone de référence, sans scène (comme avant) ; MinRarity ne compte plus. Coupé, ou type sans règle : comme avant.
+		if ZoneBoxEverywhere ~= nil and ZoneBoxEverywhere.Enabled() then
+			local _, rule = ZoneBoxEverywhere.Rule(reward.Tier or "Standard")
+			if rule ~= nil then
+				return UnboxService.GiveZoneBoxItem(player, rule, zone) ~= nil
+			end
+		end
 		local itemUid = UnboxService.GiveItem(player, reward.Tier or "Standard", zone, reward.MinRarity)
 		return itemUid ~= nil
 	end

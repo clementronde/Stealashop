@@ -254,10 +254,10 @@ local function bonusState(key: string, now: number): (boolean, string, string)
 		end
 		return multiplier > 1, string.format(BONUS.MultiplierText, multiplier), if left > 0 then clockText(left) else ""
 	end
-	local multiplier = if hasPass("DoubleTraining") then passMultiplier("DoubleTraining") else 1
-	if hasPass("DoubleSpeed") then
-		multiplier *= passMultiplier("DoubleSpeed") -- a319 : mêmes gains du tapis (× 4 avec les deux)
-	end
+	-- a319 : mêmes gains du tapis (× 4 avec les deux). a485 (L-351 question 2) : avec Monetization.TrainingLadder
+	-- (Features.TrainingX4), « x4 » avec ×4 Training, « x2 » avec ×2 Speed seul, « x4 » avec les deux (le plus fort) :
+	-- le calcul du serveur (Monetization.TrainingMultiplier).
+	local multiplier = Monetization.TrainingMultiplier(hasPass)
 	return multiplier > 1, string.format(BONUS.MultiplierText, multiplier), ""
 end
 

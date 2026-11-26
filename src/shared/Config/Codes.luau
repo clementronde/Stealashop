@@ -14,7 +14,9 @@
 --   Cash    Amount $ (DataService.AddCash) ;
 --   Potion  Count potion(s) PotionId dans l'inventaire des potions (PotionService.AddStock, plafond MaxStock) ;
 --   Item    l'objet d'un colis Tier (UnboxService.GiveItem, comme les colis du calendrier), zone = la plus
---           haute des objets du joueur, au moins MinZone ; MinRarity facultatif.
+--           haute des objets du joueur, au moins MinZone ; MinRarity facultatif. a440 (Features.ZoneBoxEverywhere) :
+--           le colis de zone de la règle Config/Rewards.TierZoneBox[Tier] depuis cette zone (UnboxService.GiveZoneBoxItem),
+--           MinRarity ne compte plus.
 
 local DeepFreeze = require(script.Parent.DeepFreeze)
 local LiveEvents = require(script.Parent.LiveEvents)

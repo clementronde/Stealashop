@@ -73,7 +73,9 @@
 --        BoxSpawn_01 à _12 (BlastPoint pour un point qui manque), tirés à l'apparition : rareté selon
 --        ShelfBoxes.OddsFor de la zone du camion (zone 1 : Communs seulement, L-033), sans les raretés qui
 --        finissaient en colis vide, ramenée à 100 (truckOdds, a295), repli sur la rareté tirable la plus proche en
---        dessous (comme StoreHeistService). Chaque colis a son point d'arrivée au
+--        dessous (comme StoreHeistService). a440 (Features.ZoneBoxEverywhere) : la rareté voulue est celle d'un colis
+--        de zone (règle Config/Rewards.TierZoneBox du type, zone de référence = celle du camion ; zoneBoxPick), sans
+--        Rarities.BoxOdds ni Balance.Heist.BoxTiers ; même repli vers le bas. Chaque colis a son point d'arrivée au
 --        sol, de ScatterMinRadius à ScatterRadius studs du centre du camion, du côté de son point de sortie
 --        (ScatterSpread), et jamais sur un autre : au moins BoxGap studs bord à bord entre deux colis, d'après
 --        la largeur des modèles BOX_<Rareté>, sinon BOX_<Tier> (cône élargi, puis cercles plus grands si la
@@ -132,6 +134,14 @@ local CarryService = require(script.Parent.CarryService)
 local NightCycleService = require(script.Parent.NightCycleService)
 local WindowService = require(script.Parent.WindowService)
 
+-- a440 (Features.ZoneBoxEverywhere) : chargé s'il est là ; absent (faux arbres des bancs plus anciens) : coupé.
+local ZoneBoxEverywhere: any = (function(): any
+	local ok, result = pcall(function(): any
+		return require(Shared.ZoneBoxEverywhere)
+	end)
+	return if ok and type(result) == "table" then result else nil
+end)()
+
 type TruckState = "Active" | "Exploding"
 
 -- Collisions d'une pièce du camion, coupées pendant l'arrivée (a97), remises à la fin.
@@ -139,7 +149,8 @@ type SavedCollision = { CanCollide: boolean, CanTouch: boolean }
 
 -- Un colis du chargement, tiré à l'apparition du camion (a79, L-097 point 3). Rarity et ItemId nil :
 -- aucun objet ne peut sortir de ce colis dans la zone (Config incohérente), colis sauté à l'explosion.
-type Load = { Tier: string, Rarity: string?, ItemId: string?, Mutation: Mutations.Mutation? }
+-- a440 : Rule = règle de colis de zone du colis (Features.ZoneBoxEverywhere ; nil : coupé, rareté par le type Tier).
+type Load = { Tier: string, Rule: string?, Rarity: string?, ItemId: string?, Mutation: Mutations.Mutation? }
 
 type Truck = {
 	Number: number, -- 1, 2, 3… depuis le démarrage du serveur
@@ -933,6 +944,27 @@ local function finishArrival(truck: Truck)
 	end
 end
 
+-- a440 : colis de zone du camion (Features.ZoneBoxEverywhere) -------------------------------------------
+-- Allumé : la rareté de chaque colis est celle d'un colis de zone (Shared/ZoneBoxOdds), règle Config/Rewards.TierZoneBox
+-- de son type (Config/TruckEvent.Boxes : 6 Standard → Zone, 4 Premium → BestZone, 2 Luxe → NextZone), zone de
+-- référence = la zone du camion ; puis l'objet comme avant (contentOf : Items.Pick dans la zone du camion, sinon la
+-- rareté tirable la plus proche en dessous). Ni Balance.Heist.BoxTiers ni Rarities.BoxOdds ne sont lus. Renvoie le
+-- tirage à passer à drawLoad (rareté voulue et nom de la règle) ; nil si l'interrupteur est coupé ou le module absent.
+type ZonePick = (tier: string, zone: number) -> (string?, string?)
+local function zoneBoxPick(): ZonePick?
+	if ZoneBoxEverywhere == nil or not ZoneBoxEverywhere.Enabled() then
+		return nil
+	end
+	return function(tier: string, zone: number): (string?, string?)
+		local name, rule = ZoneBoxEverywhere.Rule(tier)
+		local rarity = if rule then ZoneBoxEverywhere.DrawRarity(rule, zone, random) else nil
+		if rarity == nil then
+			warnOnce(`zonebox.{tier}.{zone}`, `colis de zone du camion : type {tier} sans règle ({tostring(name)}) ou zone {zone} sans rareté (Config/Rewards.TierZoneBox, ZoneBox, Rarities.ZoneOdds) : colis sauté`)
+		end
+		return rarity, name
+	end
+end
+
 -- Tirage (comme un rayon de la zone, StoreHeistService) ------------------------------------------------
 
 -- La rareté `rarityId` a-t-elle un objet qu'Items.Pick peut rendre en zone `zone` ? (Secret : seulement les zones qui
@@ -999,12 +1031,9 @@ local function drawRarity(tier: string, zone: number): string?
 	return last -- arrondi des nombres à virgule : la dernière rareté possible
 end
 
--- Rareté et objet d'un colis de type `tier` en zone `zone`, ou nil (Config incohérente).
-local function drawContent(tier: string, zone: number): (string?, string?)
-	local rarity = drawRarity(tier, zone)
-	if rarity == nil then
-		return nil, nil
-	end
+-- Rareté et objet d'un colis de rareté voulue `rarity` en zone `zone` (la rareté tirable la plus proche en dessous si
+-- la zone n'en a pas), ou nil (Config incohérente). a440 : séparé de drawContent, pour les colis de zone.
+local function contentOf(rarity: string, zone: number): (string?, string?)
 	local item = Items.Pick(zone, rarity :: Rarities.RarityId, random)
 	if item then
 		return item.Rarity, item.Id
@@ -1031,6 +1060,15 @@ local function drawContent(tier: string, zone: number): (string?, string?)
 	return nil, nil
 end
 
+-- Rareté et objet d'un colis de type `tier` en zone `zone`, ou nil (Config incohérente).
+local function drawContent(tier: string, zone: number): (string?, string?)
+	local rarity = drawRarity(tier, zone)
+	if rarity == nil then
+		return nil, nil
+	end
+	return contentOf(rarity, zone)
+end
+
 -- Types des colis (Config.Boxes), mélangés : le n-ième sort de BoxSpawn_n.
 local function boxTiers(): { string }
 	local list: { string } = {}
@@ -1049,15 +1087,26 @@ end
 -- Chargement d'un camion de la zone `zone` : types mélangés (boxTiers), contenu tiré comme sur un rayon
 -- (drawContent), mutation par Mutations.Roll (DEV-131, jamais pour un objet TutorialOnly). Tiré à
 -- l'apparition (a79) au lieu de l'explosion : mêmes chances, mais le modèle du camion en dépend.
-local function drawLoad(zone: number): { Load }
+-- a440 : `pick` (zoneBoxPick, Features.ZoneBoxEverywhere) donne la rareté voulue de chaque colis (colis de zone) et le
+-- nom de sa règle, à la place du tirage par type (drawContent) ; l'objet suit le même chemin (contentOf).
+local function drawLoad(zone: number, pick: ((tier: string, zone: number) -> (string?, string?))?): { Load }
 	local load: { Load } = {}
 	for _, tier in boxTiers() do
-		local rarity, itemId = drawContent(tier, zone)
+		local rarity: string?, itemId: string?, rule: string? = nil, nil, nil
+		if pick then
+			local wanted: string?
+			wanted, rule = pick(tier, zone)
+			if wanted then
+				rarity, itemId = contentOf(wanted, zone)
+			end
+		else
+			rarity, itemId = drawContent(tier, zone)
+		end
 		local mutation: Mutations.Mutation? = nil
 		if itemId and not Items.ById[itemId].TutorialOnly then
 			mutation = Mutations.Roll(random)
 		end
-		table.insert(load, { Tier = tier, Rarity = rarity, ItemId = itemId, Mutation = mutation })
+		table.insert(load, { Tier = tier, Rule = rule, Rarity = rarity, ItemId = itemId, Mutation = mutation })
 	end
 	return load
 end
@@ -1191,7 +1240,7 @@ local function spawnTruck(zone: number): boolean
 		return false
 	end
 	-- Chargement tiré dès l'apparition (a79, L-097 point 3) : le camion prend le modèle de sa rareté la plus haute.
-	local load = drawLoad(zone)
+	local load = drawLoad(zone, zoneBoxPick()) -- a440 : colis de zone avec Features.ZoneBoxEverywhere
 	local found, asset = pickTemplate(load)
 	if found == nil then
 		return false
@@ -1367,8 +1416,25 @@ local function explode(truck: Truck, impactPoint: Vector3?, breaker: Player?)
 	end
 	notifyAll(TruckEvent.Messages.Exploded, "Info")
 	local parts: { string } = {}
-	for _, tier in Balance.Heist.TierOrder do
-		table.insert(parts, `{byTier[tier] or 0} {tier}`)
+	-- a440 : colis de zone (Load.Rule) : les types dans l'ordre de Config/TruckEvent.Boxes, avec leur règle ; sinon
+	-- l'ordre des types (Balance.Heist.TierOrder), comme avant.
+	local zoned = false
+	for _, entry in truck.Load do
+		zoned = zoned or entry.Rule ~= nil
+	end
+	local order: { string } = {}
+	if zoned then
+		for _, entry in TruckEvent.Boxes do
+			table.insert(order, entry.Tier)
+		end
+	else
+		for _, tier in Balance.Heist.TierOrder do
+			table.insert(order, tier)
+		end
+	end
+	for _, tier in order do
+		local rule = if zoned and ZoneBoxEverywhere then ZoneBoxEverywhere.RuleName(tier) else nil
+		table.insert(parts, `{byTier[tier] or 0} {tier}{if rule then " → " .. rule else ""}`)
 	end
 	log(
 		`camion n° {truck.Number} cassé{if breaker then " par " .. breaker.Name else ""} : explosion, {placed} colis lâchés ({table.concat(parts, ", ")}), zone {truck.Zone}`
