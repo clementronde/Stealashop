@@ -28,6 +28,10 @@
 --   - Vague 74 (a258, L-259 b, Config/UiMotion.Veil) : voile noir de Clément (UI_Veil.Veil) allumé sous la fenêtre à
 --     flou la plus haute (DisplayOrder − 1), fondu à sa transparence de Studio, retiré à la fermeture ; un clic dessus
 --     ferme la fenêtre (Motion.Dismiss, V0), seulement hors de ses cadres (correctif f73c1, T-422). Sans UI_Veil : flou seul.
+--   - a492 (L-430, Features.PanelFocus / PanelFocusDev, Controllers/UI/PanelFocus) : allumé, le masque HudHide.MaskKey
+--     cache TOUT le reste de l'UI tant qu'une fenêtre (PanelFocus.IsPanel) est ouverte, au lieu de HudHide.Hide ; il reste
+--     posé pendant une poursuite mais lui cède (YieldTo), et une fenêtre que la poursuite tient cachée compte encore comme
+--     ouverte (HudMask.IsShown) : rien ne réapparaît entre deux images à la fin de la poursuite. Coupé : comme avant.
 -- Connexions : une par écran pour Enabled, DescendantAdded et AncestryChanged, et une ou deux par élément qui porte
 -- un attribut d'animation ; toutes coupées quand l'élément quitte l'écran ou que l'écran quitte le PlayerGui.
 -- Aucun script dans l'UI ; aucune valeur de Clément changée durablement.
@@ -52,8 +56,9 @@ type ChaseApi = { IsChased: () -> boolean }
 -- HudMask (vague 64) : lu s'il est là (un banc qui ne monte que Motion et Appear : pas de barre qui s'écarte).
 type HudMaskApi = {
 	SetAway: (boolean, boolean?) -> (),
-	Push: (string, { HideScreens: { string }? }) -> (),
+	Push: (string, { HideScreens: { string }?, KeepScreens: { string }?, YieldTo: { string }? }) -> (),
 	Pop: (string) -> (),
+	IsShown: ((ScreenGui) -> boolean)?, -- a492
 }
 local hudMask: HudMaskApi? = (function(): HudMaskApi?
 	local module = UI:FindFirstChild("HudMask")
@@ -98,6 +103,21 @@ for window, kept in HIDE.Keep do
 	HIDE_KEEP[window] = set
 end
 local hideScreens: { [ScreenGui]: boolean } = {}
+-- a492 (L-430, Controllers/UI/PanelFocus, Features.PanelFocus) : lu s'il est là (banc sans lui : HudHide d'avant).
+type PanelFocusApi = {
+	Enabled: () -> boolean,
+	IsPanel: (Instance) -> boolean,
+	Spec: ({ ScreenGui }, { string }) -> { KeepScreens: { string }, YieldTo: { string } },
+}
+local panelFocus: PanelFocusApi? = (function(): PanelFocusApi?
+	local module = UI:FindFirstChild("PanelFocus")
+	if module == nil or not module:IsA("ModuleScript") then
+		return nil
+	end
+	local ok, result = pcall(require, module)
+	return if ok and type(result) == "table" then result :: any else nil
+end)()
+local panelScreens: { [ScreenGui]: boolean } = {} -- a492 : fenêtres de PanelFocus.IsPanel suivies
 local hideKey = "" -- écrans de Hide masqués en ce moment, joints par des virgules ("" : masque retiré)
 local awayWanted = false
 local awayRecheck = 0
@@ -487,7 +507,57 @@ local function wantedHide(): { string }
 	return list
 end
 
+-- a492 (L-430, Features.PanelFocus) : allumé, le masque HudHide.MaskKey garde seulement les fenêtres et ce que
+-- PanelFocus.Spec garde, tant qu'une fenêtre est ouverte pour son code (HudMask.IsShown : une fenêtre cachée par la
+-- poursuite compte encore ; son masque cède alors à celui de la poursuite, YieldTo). Rend true s'il a décidé.
+local function updateFocus(): boolean
+	local focus = panelFocus
+	local api = hudMask
+	if focus == nil or api == nil or not focus.Enabled() then
+		return false
+	end
+	local open: { ScreenGui } = {}
+	local known: { string } = {}
+	for gui in panelScreens do
+		if gui.Parent == nil then
+			continue
+		end
+		table.insert(known, gui.Name)
+		local shown = gui.Enabled
+		local isShown = api.IsShown
+		if not shown and isShown then
+			shown = isShown(gui)
+		end
+		if shown then
+			table.insert(open, gui)
+		end
+	end
+	local key = ""
+	if #open > 0 then
+		table.sort(known)
+		local names: { string } = {}
+		for _, gui in open do
+			table.insert(names, gui.Name)
+		end
+		table.sort(names)
+		key = `focus:{table.concat(names, ",")}|{table.concat(known, ",")}`
+	end
+	if key == hideKey then
+		return true
+	end
+	hideKey = key
+	if #open > 0 then
+		api.Push(HIDE.MaskKey, focus.Spec(open, known) :: any) -- remplace le masque d'avant (même clé)
+	else
+		api.Pop(HIDE.MaskKey)
+	end
+	return true
+end
+
 local function updateHide()
+	if updateFocus() then
+		return
+	end
 	local list = wantedHide()
 	local key = table.concat(list, ",")
 	if key == hideKey then
@@ -525,6 +595,14 @@ local function updateBlur(dt: number?)
 	end
 	for gui in hideScreens do
 		if gui.Enabled then
+			anyOpen = true
+			break
+		end
+	end
+	local focus = panelFocus
+	local isShown = if hudMask ~= nil and focus ~= nil and focus.Enabled() then hudMask.IsShown else nil
+	for gui in panelScreens do -- a492 : aussi une fenêtre ouverte que la poursuite tient cachée (sa fermeture se voit ici)
+		if gui.Enabled or (isShown ~= nil and isShown(gui)) then
 			anyOpen = true
 			break
 		end
@@ -637,6 +715,7 @@ local function unwatchScreen(screen: Instance)
 		blurScreens[screen :: ScreenGui] = nil
 		awayScreens[screen :: ScreenGui] = nil
 		hideScreens[screen :: ScreenGui] = nil
+		panelScreens[screen :: ScreenGui] = nil
 	end
 	updateBlur()
 end
@@ -657,6 +736,10 @@ local function watchScreen(screen: Instance)
 	if HIDE.Enabled and (HIDE_SCREENS[gui.Name] or gui:GetAttribute(HIDE.Attribute) == true) then
 		hideScreens[gui] = true
 	end
+	local focus = panelFocus
+	if focus ~= nil and focus.IsPanel(gui) then
+		panelScreens[gui] = true -- a492 : suivie même interrupteur coupé (il peut se rallumer en route)
+	end
 	table.insert(list, gui:GetPropertyChangedSignal("Enabled"):Connect(function()
 		if gui.Enabled then
 			Appear.Open(gui)
@@ -671,7 +754,7 @@ local function watchScreen(screen: Instance)
 				reveal.Disarm(gui)
 			end
 		end
-		if blurScreens[gui] or awayScreens[gui] or hideScreens[gui] then
+		if blurScreens[gui] or awayScreens[gui] or hideScreens[gui] or panelScreens[gui] then
 			updateBlur()
 		end
 	end))
@@ -687,7 +770,7 @@ local function watchScreen(screen: Instance)
 	for _, descendant in gui:GetDescendants() do
 		watchObject(descendant, gui)
 	end
-	if blurScreens[gui] or awayScreens[gui] or hideScreens[gui] then
+	if blurScreens[gui] or awayScreens[gui] or hideScreens[gui] or panelScreens[gui] then
 		updateBlur()
 	end
 end
