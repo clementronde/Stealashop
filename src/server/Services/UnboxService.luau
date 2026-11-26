@@ -958,9 +958,11 @@ local function stowItem(player: Player, data: Data, payload: any)
 	local heists = countHeist(player, data) -- d'un seul tenant avec l'objet : sauvegardés ensemble
 	log(`{player.Name} : objet {def.Id} ({def.Rarity}) rangé sous antivol ({itemUid} ; braquages réussis : {heists or "?"})`)
 	notify(player, MESSAGES.ItemStowed, SUCCESS_KIND)
-	-- Arrivée en zone safe (UI_Escape, L-095 point 4) ; vague 46 : remote ItemSecured, icône et nom de l'objet.
+	-- Arrivée en zone safe (UI_Escape, L-095 point 4) ; vague 46 : remote ItemSecured, icône et nom de l'objet ;
+	-- a502 : et son revenu, celui de la boutique (mutation et poids compris).
+	local okIncome, income = pcall(itemIncomeOf, data.Items[itemUid])
 	local secured, securedErr = pcall(function()
-		Net.Server.ItemSecured:Fire(player, def.Id)
+		Net.Server.ItemSecured:Fire(player, def.Id, if okIncome then income else nil)
 	end)
 	if not secured then
 		warn(`[UnboxService] ItemSecured vers {player.Name} : {securedErr}`)

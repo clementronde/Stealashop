@@ -680,7 +680,12 @@ local List: { RemoteDef } = {
 		Name = "ItemSecured",
 		Direction = "ServerToClient",
 		Reliable = true,
-		Args = { id("itemId") },
+		Args = {
+			id("itemId"),
+			-- a502 (Cantin, 26/11) : revenu de l'objet ($/s, entier, mutation et poids compris, Formulas.RoundIncome)
+			-- calculé par le serveur ; la carte « ITEM SECURED! » le montre tel quel ; absent : le client le calcule.
+			{ Name = "income", Kind = "int", Min = 0, Optional = true },
+		},
 	},
 	{
 		-- Vague 44 (a152, Cantin, 2026-11-14), absent du tableau 9.4 : invite « Take » (touche E) sur un objet

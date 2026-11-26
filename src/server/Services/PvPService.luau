@@ -200,6 +200,7 @@ local Balance = require(Shared.Config.Balance)
 local AntiCheat = require(Shared.Config.AntiCheat)
 local HeldItem = require(Shared.Config.HeldItem) -- vague 44 (a152) : DepositToHand
 local Items = require(Shared.Config.Items)
+local Formulas = require(Shared.Config.Formulas) -- a502 : revenu de l'objet déposé (ItemSecured)
 local Mutations = require(Shared.Config.Mutations)
 local PvP = require(Shared.Config.PvP)
 local ShopGrowth = require(Shared.Config.ShopGrowth) -- a280 : places du 2e étage (Floor_2)
@@ -1136,8 +1137,15 @@ local function deposit(theft: Theft, root: BasePart)
 	CarryService.Consume(thief, "Deposited")
 	-- Vague 50 (a158) : l'arrivée en zone safe (UI_Escape, remote ItemSecured, a154) part aussi pour un objet volé
 	-- à un joueur ou au bot et déposé chez soi ; une fois par dépôt (le vol est déjà retiré de `thefts`).
+	-- a502 : avec son revenu, celui de la boutique (mutation et poids compris, comme InventoryService.incomeOf).
+	local stolen = thiefData.Items[theft.Uid]
+	local okIncome, income = pcall(function(): number
+		return Formulas.RoundIncome(
+			Formulas.ItemIncome(theft.ItemId) * Mutations.IncomeMultiplier(stolen.Mutation, stolen.Weight)
+		)
+	end)
 	local secured, securedErr = pcall(function()
-		Net.Server.ItemSecured:Fire(thief, theft.ItemId)
+		Net.Server.ItemSecured:Fire(thief, theft.ItemId, if okIncome then income else nil)
 	end)
 	if not secured then
 		warn(`[PvPService] ItemSecured vers {thief.Name} : {securedErr}`)

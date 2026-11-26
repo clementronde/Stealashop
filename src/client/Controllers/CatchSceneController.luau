@@ -727,7 +727,7 @@ local function isNew(itemId: string): boolean
 	return at ~= nil and os.clock() - at <= HeistFeel.Card.NewWindow
 end
 
-local function fillCard(itemId: string)
+local function fillCard(itemId: string, serverIncome: number?)
 	local playerGui = localPlayer:FindFirstChildOfClass("PlayerGui")
 	local screen = if playerGui then playerGui:FindFirstChild("UI_Escape") else nil
 	if screen == nil or not screen:IsA("ScreenGui") then
@@ -761,8 +761,12 @@ local function fillCard(itemId: string)
 		RarityFx.Apply(rarityLabel, def.Rarity)
 	end
 	local income = element(escape, "Card.Income", "TextLabel") :: TextLabel?
-	if income then
-		-- Vague 76 : Formulas.ItemIncome (rareté, zone et rang de l'objet) ; un Secret a aussi un revenu unique.
+	if income and serverIncome ~= nil then
+		-- a502 (Cantin, 26/11) : le revenu du serveur, celui de la boutique (mutation et poids compris), tel quel.
+		income.Text = `+{Format.money(serverIncome)}/s`
+		income.Visible = true
+	elseif income then
+		-- Repli (ancien serveur) : vague 76, Formulas.ItemIncome (rareté, zone et rang de l'objet), sans mutation ni poids.
 		local ok, value = pcall(Formulas.ItemIncome, def.Id, nil)
 		income.Text = if ok then `+{Format.money(Formulas.RoundIncome(value))}/s` else "" -- a493 : sans décimales
 		income.Visible = ok
@@ -816,9 +820,11 @@ function CatchSceneController.Start()
 			local catcher = if typeof(by) == "Instance" then by else nil -- a252 : celui qui attrape (plan large)
 			CatchSceneController.Play(night == true, tostring(outcome), if type(homeIn) == "number" then homeIn else 0, itemId, catcher)
 		end)
-		Net.Client.ItemSecured:Connect(function(itemId: string)
+		Net.Client.ItemSecured:Connect(function(itemId: string, income: number?)
 			if type(itemId) == "string" then
-				fillCard(itemId)
+				-- a502 : revenu du serveur, s'il est lisible (nombre fini, ≥ 0) ; sinon le repli de fillCard
+				local valid = type(income) == "number" and income == income and income >= 0 and income < math.huge
+				fillCard(itemId, if valid then income else nil)
 			end
 		end)
 	end)
