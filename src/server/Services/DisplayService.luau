@@ -739,8 +739,10 @@ end
 -- Revenu d'un objet ($/s), formule 7.1, mutation comprise (DEV-131 : taille × effet du champ
 -- Mutation de Items[uid], 1 sans champ) ; le M global s'applique au total (Account.multiplier).
 local function itemIncome(def: ItemDef, entry: ItemEntry, uid: string): number
-	return Formulas.ItemIncome(def.Id) * -- vague 76 : rareté, zone et rang de l'objet
-		Mutations.IncomeMultiplier(entry.Mutation, entry.Weight) -- vague 62 : poids compris
+	return Formulas.RoundIncome( -- a493 : sans décimales, au moins 1 $/s
+		Formulas.ItemIncome(def.Id) * -- vague 76 : rareté, zone et rang de l'objet
+			Mutations.IncomeMultiplier(entry.Mutation, entry.Weight) -- vague 62 : poids compris
+	)
 end
 
 ------------------------------------------------------------------------------
@@ -2050,6 +2052,11 @@ local function reconcile(player: Player, account: Account, data: Data, plot: Mod
 		income += visual.income
 	end
 	local multiplier = incomeMultiplier(player)
+	-- a493 : total des plaques après le M global arrondi (Formulas.RoundIncome) ; le facteur gardé est celui qui donne ce
+	-- total, pour que les plaques (accrue) reçoivent exactement ce que montre l'attribut Income.
+	if income > 0 then
+		multiplier = Formulas.RoundIncome(income * multiplier) / income
+	end
 	if income ~= account.income or multiplier ~= account.multiplier then
 		account.income = income -- l'ancien revenu a compté jusqu'à maintenant (accrue, plus haut)
 		account.multiplier = multiplier

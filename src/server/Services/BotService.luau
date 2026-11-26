@@ -372,7 +372,7 @@ local function newItem(current: State, slot: number)
 	local item: BotItem = {
 		Uid = HttpService:GenerateGUID(false),
 		ItemId = def.Id,
-		Income = Formulas.ItemIncome(def.Id), -- vague 76 : rareté, zone et rang de l'objet
+		Income = Formulas.RoundIncome(Formulas.ItemIncome(def.Id)), -- a493 : sans décimales ; vague 76 : rareté, zone et rang de l'objet
 		Model = nil,
 	}
 	if show(current, slot, item) then

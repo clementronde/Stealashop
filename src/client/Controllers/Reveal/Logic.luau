@@ -18,6 +18,7 @@ export type Payload = {
 	SizeClass: SizeClass,
 	RevealId: string,
 	Plan: string?, -- vague 73 (a251, L-236) : plan de la nouvelle ouverture (Shared/UnboxPlan), absent : cinématique d'avant
+	Income: number?, -- a493 : $/s de l'objet calculé par le serveur (celui de la boutique) ; absent : calcul du client
 }
 
 local function finite(value: any, default: number): number
@@ -61,6 +62,7 @@ function Logic.parse(first: any, ...: any): Payload?
 			SizeClass = rest[8],
 			RevealId = rest[9],
 			Plan = rest[10],
+			Income = rest[11],
 		}
 	end
 	local revealId, itemId, shopId = t.RevealId, t.ItemId, t.ShopId
@@ -91,6 +93,9 @@ function Logic.parse(first: any, ...: any): Payload?
 		SizeClass = Logic.sizeClass(t.SizeClass),
 		RevealId = revealId,
 		Plan = if type(t.Plan) == "string" and t.Plan ~= "" then t.Plan else nil,
+		Income = if type(t.Income) == "number" and t.Income == t.Income and t.Income >= 0 and t.Income < math.huge
+			then t.Income
+			else nil,
 	}
 end
 

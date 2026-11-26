@@ -1142,13 +1142,13 @@ local function itemIncome(zone: number, content: Content): number
 	local base = if Items.ById[content.ItemId] then Formulas.ItemIncome(content.ItemId) else 0 -- vague 76 : rareté, zone, rang
 	local weight = content.Weight
 	if weight == nil then
-		return base * Mutations.IncomeMultiplier(content.Mutation)
+		return Formulas.RoundIncome(base * Mutations.IncomeMultiplier(content.Mutation)) -- a493 : sans décimales
 	end
 	local mutation = content.Mutation
 	local effect = Mutations.IncomeMultiplier(if mutation and mutation.Effect then { Effect = mutation.Effect } else nil)
 	local ok, factor = pcall(ItemWeight.IncomeFactor, weight)
 	local safe = if ok and type(factor) == "number" and factor >= 0 and factor < math.huge then factor else 1
-	return base * effect * safe
+	return Formulas.RoundIncome(base * effect * safe) -- a493 : sans décimales, comme la boutique
 end
 
 -- a286 (L-216 point 10, Features.HeistPartnerBonus) : prime au complice ------------------------------------
@@ -2877,6 +2877,23 @@ local function fireReveal(name: string, ...: any)
 	end
 end
 
+-- a493 (Cantin, 26/11 : « +$X/s » de l'ouverture différent du $/s exposé) : revenu de l'objet `content` tel que la
+-- boutique le comptera une fois rangé (UnboxService.stowItem : mutation et poids nettoyés, aucun pour un objet du tuto ;
+-- DisplayService.itemIncome), envoyé avec RevealStarted ; le client le montre tel quel. nil si illisible.
+local function revealIncome(content: Content): number?
+	local ok, value = pcall(function(): any
+		local def = Items.ById[content.ItemId]
+		local tutorial = def ~= nil and def.TutorialOnly == true
+		local mutation = if tutorial then nil else Mutations.Sanitize(content.Mutation)
+		local weight = if tutorial then nil else ItemWeight.Sanitize(content.Weight)
+		return Formulas.RoundIncome(Formulas.ItemIncome(content.ItemId) * Mutations.IncomeMultiplier(mutation, weight))
+	end)
+	if ok and type(value) == "number" and value == value and value >= 0 and value < math.huge then
+		return value
+	end
+	return nil
+end
+
 -- Chrono du braquage repris pour l'ouvreur à la fin de sa cinématique, s'il n'a pas pu porter son objet
 -- (repli) : celui qu'il lui restait au début, ou le vigile de fin de chrono tout de suite s'il était fini.
 -- Avec son objet sur la tête, rien : le vigile lié à l'objet le poursuit déjà (GuardService, a114).
@@ -3147,7 +3164,7 @@ local function startReveal(player: Player, slot: Slot, box: ShelfBox)
 			warnOnce("unbox.plan", `plan de la nouvelle ouverture impossible ({text}) : cinématique d'avant`)
 		end
 	end
-	fireReveal("RevealStarted", player, store.Id, slot.Name, final.ItemId, final.Rarity, effect, math.min(weight, 1_000_000), math.min(scale, 100), sizeClass, id, plan)
+	fireReveal("RevealStarted", player, store.Id, slot.Name, final.ItemId, final.Rarity, effect, math.min(weight, 1_000_000), math.min(scale, 100), sizeClass, id, plan, revealIncome(final))
 	task.delay(maxSeconds, function()
 		finishReveal(session, "plafond de temps")
 	end)

@@ -787,6 +787,9 @@ local List: { RemoteDef } = {
 			-- Vague 73 (a251, L-236) : plan de la nouvelle ouverture (Shared/UnboxPlan : actions, rareté montrée après chacune,
 			-- cote finale), tiré par le serveur ; absent : la cinématique d'avant.
 			{ Name = "plan", Kind = "string", Min = 0, Max = 256, Optional = true },
+			-- a493 (Cantin, 26/11) : revenu de l'objet ($/s) tel que la boutique le comptera une fois rangé, calculé par le
+			-- serveur (BB_Reveal.Income le montre tel quel) ; absent : le client le calcule comme avant.
+			{ Name = "income", Kind = "number", Min = 0, Optional = true },
 		},
 	},
 	{

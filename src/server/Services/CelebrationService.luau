@@ -66,7 +66,7 @@ function CelebrationService.ValueOf(payload: any): number?
 		return if type(income) == "number" and income == income and income >= 0 then income else nil
 	end
 	local ok, value = pcall(function(): number
-		return Formulas.ItemIncome(payload.ItemId) * Mutations.IncomeMultiplier(payload.Mutation, payload.Weight)
+		return Formulas.RoundIncome(Formulas.ItemIncome(payload.ItemId) * Mutations.IncomeMultiplier(payload.Mutation, payload.Weight)) -- a493
 	end)
 	return if ok and type(value) == "number" and value == value then value else nil
 end

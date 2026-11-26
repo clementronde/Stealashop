@@ -203,8 +203,10 @@ end
 
 -- Revenu d'un objet ($/s, sans bonus), même règle que DisplayService (7.1).
 local function incomeOf(entry: ProfileTypes.Item, def: Items.Item): number
-	return Formulas.ItemIncome(def.Id) * -- vague 76 : rareté, zone et rang de l'objet
-		Mutations.IncomeMultiplier(entry.Mutation, entry.Weight) -- vague 62 : poids compris
+	return Formulas.RoundIncome( -- a493 : sans décimales, comme la boutique
+		Formulas.ItemIncome(def.Id) * -- vague 76 : rareté, zone et rang de l'objet
+			Mutations.IncomeMultiplier(entry.Mutation, entry.Weight) -- vague 62 : poids compris
+	)
 end
 
 -- Vague 31 (L-112) : objet sous antivol (Types/Profile : AntiTheft, UnlockAt, Spot).

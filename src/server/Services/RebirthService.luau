@@ -179,7 +179,7 @@ local function incomeOf(id: string, zone: number?, mutation: Mutation?, weight: 
 	if not ok or type(value) ~= "number" or value ~= value then
 		return 0
 	end
-	return value * Mutations.IncomeMultiplier(mutation, weight) -- vague 62 : poids compris
+	return Formulas.RoundIncome(value * Mutations.IncomeMultiplier(mutation, weight)) -- vague 62 : poids compris ; a493 : sans décimales
 end
 
 local function exposedSet(data: Data): { [string]: boolean }

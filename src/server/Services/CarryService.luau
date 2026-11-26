@@ -605,8 +605,10 @@ end
 -- $/s d'un objet sorti d'un colis (L-112), comme une fois exposé (DisplayService) : Formulas.ItemIncome (vague 76 :
 -- rareté, zone et rang de l'objet), mutation comprise.
 local function npcItemIncome(payload: NPCItemPayload): number
-	return Formulas.ItemIncome(payload.ItemId) -- vague 76 : rareté, zone et rang de l'objet
-		* Mutations.IncomeMultiplier(payload.Mutation, payload.Weight) -- vague 62 : poids compris
+	return Formulas.RoundIncome( -- a493 : sans décimales, comme la boutique
+		Formulas.ItemIncome(payload.ItemId) -- vague 76 : rareté, zone et rang de l'objet
+			* Mutations.IncomeMultiplier(payload.Mutation, payload.Weight) -- vague 62 : poids compris
+	)
 end
 
 -- Étiquette BB_Carry d'un objet porté (objet volé à un joueur, 6.1 ; objet sorti d'un colis, L-112) :

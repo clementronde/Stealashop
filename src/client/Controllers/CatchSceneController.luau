@@ -764,7 +764,7 @@ local function fillCard(itemId: string)
 	if income then
 		-- Vague 76 : Formulas.ItemIncome (rareté, zone et rang de l'objet) ; un Secret a aussi un revenu unique.
 		local ok, value = pcall(Formulas.ItemIncome, def.Id, nil)
-		income.Text = if ok then `+{Format.money(value)}/s` else ""
+		income.Text = if ok then `+{Format.money(Formulas.RoundIncome(value))}/s` else "" -- a493 : sans décimales
 		income.Visible = ok
 	end
 	local badge = element(escape, "Card.NewBadge", "GuiObject") :: GuiObject?

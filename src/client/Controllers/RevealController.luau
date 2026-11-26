@@ -852,6 +852,11 @@ end
 -- l'objet révélé, « +$3/s », comme une fois exposé (DisplayService : Formulas.ItemIncome × Mutations.IncomeMultiplier,
 -- l'effet de la mutation et le poids compris, sans le multiplicateur du joueur) ; nil si illisible (ligne cachée).
 local function incomeText(payload: Payload): string?
+	-- a493 (Cantin, 26/11) : le nombre du serveur, celui de la boutique, tel quel ; absent (ancien serveur, caisse
+	-- Robux) : le calcul d'a287 ci-dessous.
+	if payload.Income ~= nil then
+		return `+{Format.money(payload.Income)}/s`
+	end
 	local ok, base = pcall(Formulas.ItemIncome, payload.ItemId, nil)
 	if not ok or type(base) ~= "number" or base ~= base or base < 0 or base >= math.huge then
 		return nil
@@ -859,7 +864,7 @@ local function incomeText(payload: Payload): string?
 	local mutation = if payload.Mutation then { Effect = payload.Mutation } else nil
 	local okFactor, factor = pcall(Mutations.IncomeMultiplier, mutation, if payload.Weight > 0 then payload.Weight else nil)
 	local safe = if okFactor and type(factor) == "number" and factor == factor and factor >= 0 and factor < math.huge then factor else 1
-	return `+{Format.money(base * safe)}/s`
+	return `+{Format.money(Formulas.RoundIncome(base * safe))}/s` -- a493 : même arrondi que la boutique
 end
 
 local function showBoard(scene: Scene)
