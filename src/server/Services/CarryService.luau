@@ -648,6 +648,28 @@ local function addLabel(model: Model, anchor: BasePart, top: CFrame, payload: Pa
 	gui.Parent = point
 end
 
+-- a496 (Cantin, 26/11) : ce que l'objet porté utilise de DisplayService, chargé au premier appel (pas de require croisé
+-- au chargement) ; absent ou sans ces fonctions (bancs plus anciens) : nil, la taille du poids comme avant.
+type SizeApi = {
+	RaritySizeEverywhere: () -> boolean,
+	SizeScale: (model: Model, rarityId: string, weight: number, floor: number) -> number,
+}
+local sizeApiCache: SizeApi? = nil
+local sizeApiTried = false
+local function sizeApi(): SizeApi?
+	if not sizeApiTried then
+		sizeApiTried = true
+		local module = script.Parent:FindFirstChild("DisplayService")
+		if module and module:IsA("ModuleScript") then
+			local ok, result = pcall(require, module)
+			if ok and type(result) == "table" and type((result :: any).RaritySizeEverywhere) == "function" and type((result :: any).SizeScale) == "function" then
+				sizeApiCache = result :: any
+			end
+		end
+	end
+	return sizeApiCache
+end
+
 -- Contour rouge de l'objet volé, visible par tous (6.1) ; a483 : plus posé quand Shared/StolenOutline.VictimOnly().
 local function addOutline(model: Model)
 	local outline = Instance.new("Highlight")
@@ -667,7 +689,24 @@ end
 local function scaleVisual(model: Model, offset: CFrame, payload: Payload): CFrame
 	local ok, value = pcall(Mutations.Scale, payload.Mutation, payload.Weight)
 	local scale = if ok and type(value) == "number" and value == value and value > 0 and value < math.huge then value else 1
-	scale = math.min(scale, WeightConfig.CarryMaxScale)
+	-- a496 (Cantin, 26/11 ; DisplaySize.Everywhere) : la plus grande de la taille par rareté (DisplayService.SizeScale, la
+	-- formule du présentoir sans la place physique) et de celle du poids, sans plafond CarryMaxScale. Coupé : comme avant.
+	local sized: number? = nil
+	local api = sizeApi()
+	if api ~= nil then
+		pcall(function()
+			if api.RaritySizeEverywhere() then
+				local base = model:GetScale()
+				local mutation: any = payload.Mutation
+				local kg = ItemWeight.Effective(payload.Weight, if type(mutation) == "table" then mutation.Size else nil)
+				local wanted = api.SizeScale(model, payload.Rarity, kg, base * scale) / base
+				if type(wanted) == "number" and wanted > 0 and wanted < math.huge then
+					sized = wanted
+				end
+			end
+		end)
+	end
+	scale = if sized ~= nil then sized else math.min(scale, WeightConfig.CarryMaxScale)
 	-- a491 (L-429 point 1) : échelle propre du modèle livré (3,57 pour 37 objets du lot Meshy) notée sur la copie, pour le
 	-- fondu CarryFadeFromScale (CarryController) ; absente pour un modèle à l'échelle 1, comme avant.
 	pcall(function()

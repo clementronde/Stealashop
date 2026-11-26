@@ -18,8 +18,12 @@
 --      plafond du présentoir (FitSize.Y, flottement retiré) et la largeur jusqu'aux présentoirs voisins (déborder du
 --      présentoir sur un côté sans voisin est permis ; le tour de l'encaissement, DisplayMotion.SpinTime, ne compte
 --      pas). Un objet qui déborde est réduit juste assez pour tenir.
--- Aucun ITM n'est réexporté : c'est une échelle d'affichage. L'objet porté, en main, au sol et à l'ouverture du colis
--- gardent la taille de leur poids (Config/Weight).
+-- Aucun ITM n'est réexporté : c'est une échelle d'affichage.
+-- a496 (règle de Cantin, 26/11 ; Everywhere ci-dessous, Features.RaritySizeEverywhere / RaritySizeEverywhereDev) : les
+-- étapes 1 à 3 valent partout. En main, porté, au sol et à l'ouverture du colis dans le magasin PNJ, l'objet prend la plus
+-- grande des deux tailles (celle des étapes 1 à 3, celle de son poids, Config/Weight), sans aucun plafond ; l'étape 4 ne
+-- vaut que sur un présentoir (le socle « BEST ITEM » garde aussi le sien). Une seule fonction partout
+-- (DisplayService.SizeScale). Coupé : hors présentoir, la taille du poids et ses plafonds, comme avant.
 --
 -- Interrupteurs : Features.DisplayRaritySize (partout, PROD compris) et Features.DisplayRaritySizeDev (jeu DEV seulement,
 -- Config/ProductIds.IsDev). Coupé : comme avant (taille du poids, Weight.ScaleCurve, puis réduction FitSize).
@@ -76,6 +80,10 @@ local DisplaySize = {
 	Enabled = Features.DisplayRaritySize == true or (Features.DisplayRaritySizeDev == true and ProductIds.IsDev == true),
 	MinByRarity = MIN_BY_RARITY,
 	GrowthByRarity = GROWTH_BY_RARITY,
+	-- a496 (Cantin, 26/11) : minimum par rareté partout (hors présentoir), allumé partout (Features.RaritySizeEverywhere)
+	-- ou dans le jeu DEV seulement (RaritySizeEverywhereDev et IsDev).
+	Everywhere = Features.RaritySizeEverywhere == true
+		or (Features.RaritySizeEverywhereDev == true and ProductIds.IsDev == true),
 	-- a491 (L-429, trophées plus gros, idée 10 validée par Clément le 26/11 ; mesures du chef 3D à côté d'un R15 de
 	-- 5 studs). Allumé partout (Features.BiggerTrophies) ou dans le jeu DEV seulement (BiggerTrophiesDev et IsDev).
 	Trophies = {
