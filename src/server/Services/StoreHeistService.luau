@@ -2878,7 +2878,7 @@ local function revealIncome(content: Content): number?
 		local tutorial = def ~= nil and def.TutorialOnly == true
 		local mutation = if tutorial then nil else Mutations.Sanitize(content.Mutation)
 		local weight = if tutorial then nil else ItemWeight.Sanitize(content.Weight)
-		return Formulas.ItemIncome(content.ItemId) * Mutations.IncomeMultiplier(mutation, weight)
+		return Formulas.RoundIncome(Formulas.ItemIncome(content.ItemId) * Mutations.IncomeMultiplier(mutation, weight))
 	end)
 	if ok and type(value) == "number" and value == value and value >= 0 and value < math.huge then
 		return value

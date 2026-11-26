@@ -47,6 +47,14 @@ function Formulas.MaxWalkSpeed(): number
 	return Balance.Stats.MaxWalkSpeed * Balance.Stats.RealSpeedScale
 end
 
+-- a493 (Cantin, 26/11 : « aucun $/s n'a de décimales ») : arrondi du revenu final d'un objet (mutation et poids
+-- compris) et du total des plaques après le M global, à l'entier le plus proche (,5 monte), au moins 1 $/s (V0).
+-- Seul arrondi des $/s : DisplayService.itemIncome, UnboxService.itemIncomeOf, StoreHeistService.revealIncome et le
+-- total de DisplayService (reconcile) l'appellent ; personne ne l'applique deux fois.
+function Formulas.RoundIncome(value: number): number
+	return math.max(1, math.floor(value + 0.5))
+end
+
 -- Revenu d'un objet ($/s), vague 76 (Cantin et Clément, 19/11), avant mutation et poids (qui multiplient le résultat,
 -- Mutations.IncomeMultiplier) :
 --   Income de sa rareté (Config/Rarities)

@@ -487,8 +487,10 @@ local function itemIncomeOf(entry: any): number
 	if def == nil then
 		return 0
 	end
-	return Formulas.ItemIncome(def.Id) * -- vague 76 : rareté, zone et rang de l'objet
-		Mutations.IncomeMultiplier(entry.Mutation, entry.Weight) -- vague 62 : poids compris (mutation brute : repli de l'ancienne taille)
+	return Formulas.RoundIncome( -- a493 : sans décimales, au moins 1 $/s (comme DisplayService)
+		Formulas.ItemIncome(def.Id) * -- vague 76 : rareté, zone et rang de l'objet
+			Mutations.IncomeMultiplier(entry.Mutation, entry.Weight) -- vague 62 : poids compris (mutation brute : repli de l'ancienne taille)
+	)
 end
 
 local function emitItem(list: { ItemListener }, player: Player, itemUid: string, itemId: string)

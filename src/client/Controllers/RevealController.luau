@@ -864,7 +864,7 @@ local function incomeText(payload: Payload): string?
 	local mutation = if payload.Mutation then { Effect = payload.Mutation } else nil
 	local okFactor, factor = pcall(Mutations.IncomeMultiplier, mutation, if payload.Weight > 0 then payload.Weight else nil)
 	local safe = if okFactor and type(factor) == "number" and factor == factor and factor >= 0 and factor < math.huge then factor else 1
-	return `+{Format.money(base * safe)}/s`
+	return `+{Format.money(Formulas.RoundIncome(base * safe))}/s` -- a493 : même arrondi que la boutique
 end
 
 local function showBoard(scene: Scene)
