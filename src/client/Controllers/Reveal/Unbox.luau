@@ -50,6 +50,10 @@ local UI = require(Shared:WaitForChild("Contract"):WaitForChild("UI"))
 local AnimPlayer = require(Shared:WaitForChild("Anim"):WaitForChild("AnimPlayer"))
 local MarkerSounds = require(Shared:WaitForChild("Anim"):WaitForChild("MarkerSounds"))
 local UnboxPlan = require(Shared:WaitForChild("UnboxPlan"))
+-- a494b : chance finale à décimales (ShelfOpen/Logic.finalLuck, displayLuck) ; absent (faux arbres des bancs) : valeur brute
+local shelfLogicModule = script.Parent.Parent:FindFirstChild("ShelfOpen")
+shelfLogicModule = if shelfLogicModule then shelfLogicModule:FindFirstChild("Logic") else nil
+local ShelfLogic = if shelfLogicModule and shelfLogicModule:IsA("ModuleScript") then require(shelfLogicModule) :: any else nil
 -- a491 (L-429 point 2, Features.BiggerTrophies / BiggerTrophiesDev) : hauteur du colis de l'ouverture au départ
 -- (Config/DisplaySize.Trophies.OpenBoxHeight) ; nil = la hauteur de son modèle, comme avant. Module facultatif (bancs).
 local OPEN_BOX_HEIGHT: number? = nil
@@ -806,7 +810,12 @@ local function showOdds(state: State, value: number)
 	state.odds = value
 	local text = state.oddsLabel
 	if text then
-		text.Text = if state.luckShown then UnboxPlan.luckText(value) else UnboxPlan.oddsText(value)
+		local luck = state.ctx.Plan.Luck or 1
+		text.Text = if state.luckShown
+			then UnboxPlan.luckText(
+				if ShelfLogic == nil then value else ShelfLogic.displayLuck(value, luck, ShelfLogic.finalLuck(luck, 0, state.ctx.Id .. "|" .. state.ctx.ItemId))
+			)
+			else UnboxPlan.oddsText(value)
 	end
 end
 
