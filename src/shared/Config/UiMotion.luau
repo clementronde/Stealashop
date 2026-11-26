@@ -747,6 +747,29 @@ local UiMotion = {
 		-- que si TOUTES les grandes fenêtres allumées le gardent. Flou et ouverture de ces fenêtres : inchangés.
 		Keep = { UI_Displayed = { "UI_Hotbar" } } :: { [string]: { string } }, -- V0 proposé, absent du doc
 	},
+	-- a492 (L-430, Features.PanelFocus / PanelFocusDev ; Controllers/UI/PanelFocus) : une fenêtre ouverte cache TOUT le
+	-- reste de l'UI, à la place de HudHide.Hide (même masque HudHide.MaskKey, mêmes images d'allumage et d'extinction).
+	-- Fenêtres : HudHide.Screens (Windows), Extra, et tout ScreenGui qui porte l'attribut Attribute (L-425 : Focus = true)
+	-- ou HudHide.Attribute = true. Une seule à la fois : Motion.Open de l'une ferme les autres (comme ScreenGroup).
+	-- Restent à l'écran : la fenêtre, les autres fenêtres (fermées, prêtes à s'ouvrir), Keep, HeistFeel.NeverMask
+	-- (UI_Notify, UI_Toast, UI_TheftAlert, UI_Tutorial, UI_Admin, UI_Loading), les écrans que HudHide.Keep garde pour toutes
+	-- les fenêtres ouvertes, et ce que Roblox affiche lui-même (rien n'est touché hors des ScreenGui UI_*).
+	-- Pendant un masque de YieldTo (poursuite), ce masque ne compte pas : la poursuite décide seule, comme avant.
+	PanelFocus = {
+		-- V0 proposé (L-430 : « admin ») : fenêtres hors de Windows. « Get a copy? » (L-406) : à ajouter ici, ou attribut
+		-- Focus = true sur son écran, quand il existera.
+		Extra = { "UI_Admin", "UI_FittingRoom" },
+		Attribute = "Focus", -- L-425 (catalogue FrameWisp : « Focus = true sur un écran »)
+		-- V0 proposé : voile de la fenêtre (UI_Veil), alertes de poursuite (UI_Chase, « RUN! »), lueur d'achat Robux, bulle
+		-- d'aide, repère du tutoriel, et les écrans des scènes qui ont leur propre masque (capture, ITEM SECURED, ouverture
+		-- d'un colis) : la scène décide alors seule, comme sans fenêtre.
+		Keep = {
+			"UI_Veil", "UI_Chase", "UI_PurchaseGlow", "UI_Tip", "UI_TutorialFocus",
+			"UI_Caught", "UI_Caught_V0", "UI_Escape", "UI_Unbox",
+		},
+		YieldTo = { "Chase" }, -- clé du masque de ChaseFeelController
+		TestAttribute = "PanelFocusTest", -- Studio : workspace:SetAttribute("PanelFocusTest", true ou false) force l'interrupteur
+	},
 	HoverFit = {
 		Enabled = true,
 		Inset = 2, -- V0 proposé, absent du doc : px gardés entre le bouton grossi et le bord de la carte

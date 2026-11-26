@@ -375,6 +375,14 @@ local Features = {
 	WeeklyNoPrivate = false,
 	-- a485 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
 	WeeklyNoPrivateDev = true,
+	-- a492 (L-430, Clément 26/11 : « Quand un panneau est ouvert, tous les autres UI doivent disparaître. ») : tant qu'une
+	-- fenêtre est ouverte (Config/UiMotion.Windows, PanelFocus.Extra, ou un ScreenGui avec l'attribut Focus ou HideHud =
+	-- true), tous les autres écrans UI_* sont cachés (Controllers/UI/PanelFocus, HudMask) sauf PanelFocus.Keep et
+	-- HeistFeel.NeverMask, puis remis tels qu'ils étaient ; en ouvrir une ferme l'autre (UI/Motion). Client seul.
+	-- Interrupteur PROD (partout) : false (règle C2) ; false = HudHide d'avant (seuls UI_HUD et UI_Hotbar cachés), intact.
+	PanelFocus = false,
+	-- a492 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	PanelFocusDev = true,
 }
 
 export type Features = typeof(Features)

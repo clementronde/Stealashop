@@ -85,6 +85,7 @@ local Attributes = {
 		{ Name = "StrokeColor", On = "style de mutation (Color3)", By = "MutationFxController" },
 		-- UI
 		{ Name = "ScreenGroup", On = "ScreenGui UI_* (une seule fenêtre ouverte par groupe)", By = "UI/Motion" },
+		{ Name = "Focus", On = "ScreenGui UI_* : fenêtre qui cache le reste de l'UI (booléen, L-430, L-425)", By = "UI/PanelFocus" },
 		{ Name = "Gleam", On = "GuiObject : Loop ou Hover (L-272)", By = "UI/UiAttrFx" },
 		{ Name = "IconHover", On = "bouton ou carte : Jump, Lean ou Spring (L-272)", By = "UI/UiAttrFx, UI/Motion" },
 		{ Name = "Idle", On = "GuiObject : Wiggle ou Fall (pas les valeurs d'un ITM_, plus haut)", By = "UI/UiAttrFx" },

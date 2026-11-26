@@ -37,6 +37,11 @@
 --                              plus. nil retire. Sans masque, rien ne change ; les masques inverses (HideScreens) ne
 --                              sont pas touchés. Exemple : UI_HUD.HeistTimer pendant la phase discrète d'un braquage
 --                              (TensionController).
+--   a492 (L-430) : spec.YieldTo = { clés } : ce masque est ignoré tant qu'un masque de ces clés est posé (le masque des
+--                              fenêtres, PanelFocus, laisse la poursuite décider seule) ; il revient au Pop de ce masque,
+--                              dans le même Refresh (aucune image entre les deux).
+--   HudMask.IsShown(screen) -> boolean   (a492) allumé pour son code : Enabled, ou la valeur gardée s'il est masqué
+--   HudMask.NoteClosed(screen)   (a492) son code l'a fermé pendant le masque (UI/Motion.Close) : rendu éteint
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -52,6 +57,7 @@ export type Spec = {
 	KeepScreens: { string }?,
 	Partial: { [string]: { string } }?,
 	HideScreens: { string }?,
+	YieldTo: { string }?, -- a492 (L-430) : ce masque ne compte pas tant qu'un de ces masques est là (PanelFocus : "Chase")
 }
 
 type Saved = { value: boolean, connection: RBXScriptConnection? }
@@ -106,6 +112,10 @@ local function hideScreen(screen: ScreenGui)
 		local saved: Saved = { value = screen.Enabled, connection = nil }
 		screens[screen] = saved
 		watch(screen, "Enabled", saved)
+	elseif screen.Enabled then
+		-- a492 : déjà masqué et pourtant allumé : un autre code l'a rallumé et sa connexion n'a pas encore tourné (un
+		-- Refresh lancé avant elle, signaux différés) : sa valeur à lui est gardée, comme le fait watch.
+		(screens[screen] :: Saved).value = true
 	end
 	if screen.Enabled then
 		writing = true
@@ -119,6 +129,8 @@ local function hideObject(object: GuiObject)
 		local saved: Saved = { value = object.Visible, connection = nil }
 		objects[object] = saved
 		watch(object, "Visible", saved)
+	elseif object.Visible then
+		(objects[object] :: Saved).value = true -- a492 : comme pour un écran (voir hideScreen)
 	end
 	if object.Visible then
 		writing = true
@@ -196,12 +208,29 @@ local function spareOf(name: string): { string }?
 	return nil
 end
 
+-- a492 (L-430) : ce masque cède-t-il à un autre en ce moment ?
+local function yields(spec: Spec): boolean
+	local list = spec.YieldTo
+	if list == nil then
+		return false
+	end
+	for _, other in list do
+		if masks[other] ~= nil then
+			return true
+		end
+	end
+	return false
+end
+
 -- Ce que les masques veulent pour cet écran : "Hide", "Keep" ou une liste de noms gardés (intersection).
 local function wanted(name: string): ("Hide" | "Keep" | "Partial", { string }?)
 	local lists: { { string } } = {}
 	local spare = spareOf(name) -- a465
 	for _, key in order do
 		local spec = masks[key]
+		if yields(spec) then
+			continue -- a492 : un masque de YieldTo est posé
+		end
 		local hideList = spec.HideScreens
 		if hideList then
 			if table.find(hideList, name) ~= nil then
@@ -382,6 +411,25 @@ end
 -- avec le masque toutes les 0,25 s : clignotement possible).
 function HudMask.IsMasked(screen: ScreenGui): boolean
 	return screens[screen] ~= nil
+end
+
+-- a492 (L-430) : UiMotionController le lit pour qu'une fenêtre cachée par la poursuite compte encore comme ouverte (son
+-- masque reste posé, il cède seulement : à la fin de la poursuite, rien ne réapparaît entre deux images).
+-- a492 (L-430) : UI/Motion.Close d'un écran masqué (son Enabled est déjà faux, la fermeture ne se voit pas) : il sera
+-- rendu éteint. Rien s'il n'est pas masqué.
+function HudMask.NoteClosed(screen: ScreenGui)
+	local saved = screens[screen]
+	if saved then
+		saved.value = false
+	end
+end
+
+function HudMask.IsShown(screen: ScreenGui): boolean
+	local saved = screens[screen]
+	if saved then
+		return saved.value
+	end
+	return screen.Enabled
 end
 
 ------------------------------------------------------------------------------

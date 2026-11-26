@@ -81,6 +81,9 @@
 --                               chemin : état « ouvert », lignes à retirer…), appelée quand un
 --                               autre écran du même groupe s'ouvre ; nil la retire.
 --
+-- a492 (L-430, Features.PanelFocus / PanelFocusDev) : allumé, toutes les fenêtres (Controllers/UI/PanelFocus.IsPanel :
+-- Config/UiMotion.Windows, PanelFocus.Extra, attribut Focus ou HideHud) forment aussi un seul groupe : en ouvrir une
+-- (Motion.Open, Motion.CloseGroup) ferme les autres, de la même façon. Éteint : seulement ScreenGroup, comme avant.
 -- Un seul écran à la fois (liaison L-089 point 4) : les ScreenGui qui portent l'attribut
 -- ScreenGroup (posé par Clément, ex. « Menu ») forment un groupe. Motion.Open d'un tel écran ferme
 -- d'abord les autres écrans allumés du même groupe, rangés à côté de lui (PlayerGui) : par la
@@ -878,17 +881,39 @@ local function leave(inst: Instance, transition: Transition, after: (() -> ())?)
 	end)
 end
 
+-- a492 (L-430, Features.PanelFocus) : Controllers/UI/PanelFocus s'il est là (false s'il manque : bancs sans lui).
+local panelFocus: any = nil
+
+local function focusOn(): boolean
+	if panelFocus == nil then
+		local module = script.Parent:FindFirstChild("PanelFocus")
+		local ok: boolean, result: any = false, nil
+		if module and module:IsA("ModuleScript") then
+			ok, result = pcall(require, module)
+		end
+		panelFocus = if ok and type(result) == "table" then result else false
+	end
+	return panelFocus ~= false and panelFocus.Enabled()
+end
+
+local function focusPanel(gui: ScreenGui): any
+	return if focusOn() and panelFocus.IsPanel(gui) then panelFocus else nil
+end
+
 -- Ferme les autres écrans allumés du groupe de `gui` (même attribut ScreenGroup, même parent),
 -- sauf ceux déjà en train de se fermer.
+-- a492 (L-430) : PanelFocus allumé, toutes les fenêtres de PanelFocus.IsPanel forment un seul groupe en plus du leur.
 local function closeGroup(gui: ScreenGui)
 	local group = gui:GetAttribute(GROUP_ATTRIBUTE)
 	local parent = gui.Parent
-	if type(group) ~= "string" or group == "" or parent == nil then
+	local focus = focusPanel(gui)
+	if parent == nil or ((type(group) ~= "string" or group == "") and focus == nil) then
 		return
 	end
 	for _, other in parent:GetChildren() do
 		if other ~= gui and other:IsA("ScreenGui") and (other :: ScreenGui).Enabled
-			and other:GetAttribute(GROUP_ATTRIBUTE) == group then
+			and ((type(group) == "string" and group ~= "" and other:GetAttribute(GROUP_ATTRIBUTE) == group)
+				or (focus ~= nil and focus.IsPanel(other))) then
 			local entry = entries[other]
 			if entry == nil or entry.phase ~= "Closing" then
 				local closer = closers[other]
@@ -987,6 +1012,14 @@ function Motion.Close(gui: ScreenGui, after: (() -> ())?)
 	-- Vague 26 : UI_Close seulement pour une fenêtre ouverte, et pas si elle part à l'ouverture d'une autre.
 	local closing = not groupClosing and isWindow(gui) and isShown(gui) and gui.Parent ~= nil and entry ~= nil
 		and (entry.phase == "Open" or entry.phase == "Opening")
+	-- a492 (L-430, PanelFocus allumé) : un écran tenu caché par HudMask (fenêtre ouverte, poursuite) que son code ferme
+	-- ne revient pas allumé quand le masque s'en va (son Enabled est déjà faux : HudMask ne verrait pas la fermeture).
+	if masked(gui) and focusOn() then
+		local api: any = hudMask
+		pcall(function()
+			api.NoteClosed(gui)
+		end)
+	end
 	leave(gui, CLOSE, after)
 	if closing then
 		Motion.PlaySound(UiMotion.Sounds.Close)
