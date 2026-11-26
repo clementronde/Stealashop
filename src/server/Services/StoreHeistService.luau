@@ -2352,6 +2352,17 @@ local function drawLuck(): number
 	return last -- arrondi des nombres à virgule : la dernière chance possible
 end
 
+-- a486 : la dernière chance tirée par drawLuck (×N de la table), pour que drawLuckV2 la reprenne sans second tirage
+-- quand rien n'est acheté (même table) : une ouverture ne consomme qu'un nombre au hasard, comme avant.
+local lastTableLuck = 1
+do
+	local drawLuckV1 = drawLuck
+	drawLuck = function(): number
+		lastTableLuck = drawLuckV1()
+		return lastTableLuck
+	end
+end
+
 -- a486 (Cantin, 25/11 ; note d'a479, section 5 : règle « R2, sans plafond ») : la chance d'une ouverture avec
 -- OpenLuck.V2. Chance achetée = personnelle (×3 Luck) × BoxLuck × serveur ; le ×N est tiré dans la table de la règle R2
 -- (OpenLuck.LuckTable : ×8 et ×10 multipliés par la chance achetée, pris sur ×1), puis multiplié par la chance achetée
@@ -2361,8 +2372,14 @@ local function drawLuckV2(player: Player, tableOn: boolean, event: any): number
 	local server = Workspace:GetAttribute("ServerLuck")
 	local skill = OpenLuck.SkillFactorOf(player)
 	local drawn = 1
-	if tableOn then
-		local entries = OpenLuck.LuckTable(ShelfOpen.LuckTable, OpenLuck.Bought({ Server = server, Skill = skill, Personal = personal }))
+	local bought = OpenLuck.Bought({ Server = server, Skill = skill, Personal = personal })
+	local tableLuck = lastTableLuck
+	lastTableLuck = 1
+	if tableOn and not (type(bought) == "number" and bought > 1) then
+		-- Rien d'acheté : la table de la règle R2 est celle d'avant ; on garde le ×N que drawLuck vient de tirer.
+		drawn = tableLuck
+	elseif tableOn then
+		local entries = OpenLuck.LuckTable(ShelfOpen.LuckTable, bought)
 		local total = 0
 		for _, entry in entries do
 			total += math.max(entry.Weight, 0)

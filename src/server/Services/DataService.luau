@@ -756,13 +756,20 @@ end
 -- et un profil d'avant (sans champ Economy), rien n'est écrit. Sur une copie : en cas d'erreur, le profil reste tel
 -- quel (et sera converti au chargement suivant).
 local function switchEconomy(data: any, log: MigrationLog)
-	local Economy = require(ReplicatedStorage.Shared.Config.Economy) :: any -- lus ici seulement, comme ItemWeight
-	local EconomyProfile = require(ReplicatedStorage.Shared.EconomyProfile) :: any
+	-- Lus ici seulement, comme ItemWeight ; un arbre sans Config/Economy (ou sans Shared/EconomyProfile) n'a qu'une table.
+	local economyModule = ReplicatedStorage.Shared.Config:FindFirstChild("Economy")
+	if economyModule == nil then
+		return
+	end
+	local Economy = require(economyModule :: any) :: any
 	local want: number = Economy.Version
-	local have: number = EconomyProfile.ProfileVersion(data)
+	-- Même règle qu'EconomyProfile.ProfileVersion : champ absent ou table inconnue = table 1.
+	local stored = data.Economy
+	local have: number = if type(stored) == "number" and Economy.Tables[stored] ~= nil then stored else 1
 	if have == want then
 		return
 	end
+	local EconomyProfile = require(ReplicatedStorage.Shared.EconomyProfile) :: any
 	-- Meilleur trail possédé (multiplicateur de la Speed affichée ; le même dans les deux tables).
 	local Cosmetics = require(ReplicatedStorage.Shared.Config.Cosmetics) :: any
 	local trail = 1
