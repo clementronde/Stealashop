@@ -132,6 +132,9 @@ export type Monetization = {
 -- Boosts temporaires (v3) : secondes restantes, comptées seulement pendant le jeu.
 export type Boosts = {
 	Cash: number, -- boost ×2 argent (pack de départ ; récompenses plus tard)
+	-- a489 : fin de la dose de chance personnelle Luck3 (heure serveur, Workspace:GetServerTimeNow ; comptée même hors ligne) ;
+	-- absente : aucune dose (MonetizationService)
+	PersonalLuckEndsAt: number?,
 }
 
 -- Gains hors ligne (v6, DEV-102 ; OfflineService, Config/Offline). Écrit par le serveur seulement :
