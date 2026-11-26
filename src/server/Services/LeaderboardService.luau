@@ -173,6 +173,13 @@ local function storeOf(stat: string): any
 	if okSuffix and type(suffix) == "string" then
 		name ..= suffix
 	end
+	if #name > 50 then -- un nom de DataStore Roblox fait 50 caractères au plus
+		if not said[`long:{stat}`] then
+			said[`long:{stat}`] = true
+			warn(`[LeaderboardService] nom de store trop long (« {name} », {#name} caractères) : coupé à 50`)
+		end
+		name = string.sub(name, 1, 50)
+	end
 	local ok, result = pcall(function(): any
 		return DataStoreService:GetOrderedDataStore(name)
 	end)

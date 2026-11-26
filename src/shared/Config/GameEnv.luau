@@ -28,7 +28,8 @@ local PROD_GAME_ID = 10774998269
 -- Le jeu TEST a ses propres DataStores : les profils dans TestStoreName, les classements (tous et de la semaine) avec
 -- TestDataSuffix au bout de leur nom ; un seul nom à changer remet tout à zéro. DEV et PROD ne sont pas touchés.
 local TEST_STORE_NAME = "PlayerData_TEST_20261126"
-local TEST_DATA_SUFFIX = "_" .. TEST_STORE_NAME
+-- Suffixe court (« _T20261126 ») : un nom de DataStore Roblox fait 50 caractères au plus.
+local TEST_DATA_SUFFIX = "_T" .. (string.match(TEST_STORE_NAME, "(%d+)$") or TEST_STORE_NAME)
 
 local function known(gameId: number?): boolean
 	return type(gameId) == "number" and gameId ~= 0
