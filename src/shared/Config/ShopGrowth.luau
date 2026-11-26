@@ -11,6 +11,22 @@
 
 local DeepFreeze = require(script.Parent.DeepFreeze)
 
+-- a486 : table de l'économie à appliquer par-dessus les nombres de ce fichier (Config/Economy.Override : la table 2
+-- quand elle est active). nil avec la table 1, ou sans le module (bancs à liste de modules fixe, comme dans
+-- Config/Items) : les nombres écrits dans ce fichier, qui SONT la table 1, ne sont jamais remplacés.
+local ECO: any = (function(): any
+	local found, module = pcall(function(): any
+		return script.Parent:FindFirstChild("Economy")
+	end)
+	if found and module ~= nil then
+		local ok, result = pcall(require, module :: any)
+		if ok and type(result) == "table" and type(result.Override) == "table" and type(result.Override.Version) == "number" then
+			return result.Override
+		end
+	end
+	return nil
+end)()
+
 local ShopGrowth = {
 	-- false : la boutique reprend tout de suite la taille entière de chaque niveau, comme avant la vague 55.
 	Enabled = true, -- V0
@@ -66,5 +82,13 @@ local ShopGrowth = {
 		Costs = { 3_600, 4_800, 9_800, 20_000, 42_000, 72_000, 120_000, 300_000 },
 	},
 }
+
+-- a486 (économie « B/T », Config/Economy) : avec la table 2, prix de l'étage (140K) et de ses 8 places (230K à 18B),
+-- remplacés ici, après coup : les lignes Cost et Costs plus haut restent la table 1.
+if ECO ~= nil then
+	assert(type(ECO.Floor2Cost) == "number" and type(ECO.Floor2Costs) == "table", "Config/ShopGrowth : Floor2Cost ou Floor2Costs absent de Config/Economy")
+	ShopGrowth.Floor2.Cost = ECO.Floor2Cost
+	ShopGrowth.Floor2.Costs = ECO.Floor2Costs
+end
 
 return DeepFreeze(ShopGrowth)

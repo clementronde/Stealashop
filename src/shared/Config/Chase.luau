@@ -42,6 +42,22 @@
 local DeepFreeze = require(script.Parent.DeepFreeze)
 local Balance = require(script.Parent.Balance)
 
+-- a486 : table de l'économie à appliquer par-dessus les nombres de ce fichier (Config/Economy.Override : la table 2
+-- quand elle est active). nil avec la table 1, ou sans le module (bancs à liste de modules fixe, comme dans
+-- Config/Items) : les nombres écrits dans ce fichier, qui SONT la table 1, ne sont jamais remplacés.
+local ECO: any = (function(): any
+	local found, module = pcall(function(): any
+		return script.Parent:FindFirstChild("Economy")
+	end)
+	if found and module ~= nil then
+		local ok, result = pcall(require, module :: any)
+		if ok and type(result) == "table" and type(result.Override) == "table" and type(result.Override.Version) == "number" then
+			return result.Override
+		end
+	end
+	return nil
+end)()
+
 local K = Balance.Stats.RealSpeedScale
 
 export type AboveRequired = "Hold" | "Gain"
@@ -525,6 +541,14 @@ local Chase = {
 		TruckDriver = true, -- conducteur du camion
 	},
 }
+
+-- a486 (économie « B/T », Config/Economy) : avec la table 2, le minimum de la zone 1 vaut 60 (le tapis y donne 6
+-- crédits par seconde : 10 s de tapis au niveau 1 = 60). Remplacé ici, après coup : la ligne Zone1SpeedRequired plus
+-- haut reste la table 1.
+if ECO ~= nil then
+	assert(type(ECO.Zone1SpeedRequired) == "number", "Config/Chase : Zone1SpeedRequired absent de Config/Economy")
+	Chase.Zone1SpeedRequired = ECO.Zone1SpeedRequired
+end
 
 export type Chase = typeof(Chase)
 

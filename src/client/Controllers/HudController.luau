@@ -92,6 +92,18 @@ local UiMotion = require(Config:WaitForChild("UiMotion"))
 -- Vague 59 (a190) : facultatif (bancs plus anciens sans Config/Hud) : sans lui, pas de décompte après un achat.
 local hudConfigModule = Config:FindFirstChild("Hud")
 local HudConfig: any = if hudConfigModule and hudConfigModule:IsA("ModuleScript") then require(hudConfigModule) :: any else nil
+-- a486 : la renaissance est-elle allumée ? Config/Rebirths.Enabled (Features.Rebirth ; coupée avec la table 2 de
+-- l'économie sans Features.RebirthBT). Module facultatif (bancs plus anciens) : sans lui, Features.Rebirth seul.
+local REBIRTH_ENABLED: boolean = (function(): boolean
+	local module = Config:FindFirstChild("Rebirths")
+	if module and module:IsA("ModuleScript") then
+		local ok, result = pcall(require, module :: any)
+		if ok and type(result) == "table" and type((result :: any).Enabled) == "boolean" then
+			return (result :: any).Enabled
+		end
+	end
+	return Features.Rebirth == true
+end)()
 
 -- Ce que ce contrôleur utilise de HeistController (a10) et de ChaseController (a12).
 type HeistApi = {
@@ -193,7 +205,7 @@ local GATED: { { Element: string, Enabled: boolean } } = {
 	{ Element = "IndexButton", Enabled = Features.Index },
 	-- Visible dans Studio depuis le 2026-11-14 (L-159) : sans les réglages, l'engrenage ne doit rien montrer.
 	{ Element = "SettingsButton", Enabled = Features.Settings },
-	{ Element = "RebirthButton", Enabled = Features.Rebirth },
+	{ Element = "RebirthButton", Enabled = REBIRTH_ENABLED },
 	{ Element = "NightCountdown", Enabled = Features.NightCycle },
 	-- Vague 80 (a266) : boutons des quêtes et de la roue (facultatifs ; QuestController, WheelController).
 	{ Element = "QuestsButton", Enabled = Features.Quests },

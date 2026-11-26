@@ -20,6 +20,22 @@
 
 local DeepFreeze = require(script.Parent.DeepFreeze)
 
+-- a486 : table de l'économie à appliquer par-dessus les nombres de ce fichier (Config/Economy.Override : la table 2
+-- quand elle est active). nil avec la table 1, ou sans le module (bancs à liste de modules fixe, comme dans
+-- Config/Items) : les nombres écrits dans ce fichier, qui SONT la table 1, ne sont jamais remplacés.
+local ECO: any = (function(): any
+	local found, module = pcall(function(): any
+		return script.Parent:FindFirstChild("Economy")
+	end)
+	if found and module ~= nil then
+		local ok, result = pcall(require, module :: any)
+		if ok and type(result) == "table" and type(result.Override) == "table" and type(result.Override.Version) == "number" then
+			return result.Override
+		end
+	end
+	return nil
+end)()
+
 export type Command = {
 	Id: string,
 	Section: string,
@@ -108,6 +124,15 @@ local Admin = {
 	Commands = Commands,
 	ById = ById,
 }
+
+-- a486 (économie « B/T », Config/Economy) : avec la table 2, la borne des montants donnés vaut 1e30, au-dessus de tout
+-- montant possible (un gros joueur y atteint 33Qi en 30 jours). Remplacée ici, après coup : la ligne MaxAmount plus
+-- haut reste la table 1 (1e15). La même borne pour `value` du remote AdminCommand (Net/Definitions) ; AdminService
+-- revalide toujours le montant.
+if ECO ~= nil then
+	assert(type(ECO.AdminMaxAmount) == "number", "Config/Admin : AdminMaxAmount absent de Config/Economy")
+	Admin.MaxAmount = ECO.AdminMaxAmount
+end
 
 export type Admin = typeof(Admin)
 

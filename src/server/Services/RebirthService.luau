@@ -3,6 +3,8 @@
 -- section 3.2 ; règles V0 de docs/claude/notes/renaissance-proposition.md, 1.1 à 1.3, tableau dans
 -- Config/Rebirths). Rien n'est décidé (liaison L-158) : TOUT est V0 et reste coupé.
 --
+-- a486 : interrupteur lu dans Config/Rebirths.Enabled (Features.Rebirth ; avec la table 2 de l'économie,
+-- Config/Economy, la renaissance reste coupée tant que Features.RebirthBT est false).
 -- Interrupteur : Features.Rebirth (false). Coupé, ce service n'installe aucune accroche, ne pose aucun
 -- attribut et ignore le remote Rebirth : le jeu ne change pas. En Studio seulement, on l'allume pour les
 -- tests sans toucher à Features. Vague 72 (a244 ; L-216 point 5, L-231, Cantin) : Features.Rebirth = true, la
@@ -63,7 +65,6 @@ local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage.Shared
-local Features = require(Shared.Config.Features)
 local Formulas = require(Shared.Config.Formulas)
 local Items = require(Shared.Config.Items)
 local Mutations = require(Shared.Config.Mutations)
@@ -139,7 +140,7 @@ local function log(message: string)
 end
 
 local function isEnabled(): boolean
-	return Features.Rebirth == true or (IS_STUDIO and testOn)
+	return Rebirths.Enabled == true or (IS_STUDIO and testOn)
 end
 
 local function notify(player: Player, message: string, kind: string)
@@ -574,7 +575,7 @@ function RebirthService.Request(player: Player, level: number): (boolean, string
 end
 
 function RebirthService.Init()
-	if not (Features.Rebirth or IS_STUDIO) then
+	if not (Rebirths.Enabled or IS_STUDIO) then
 		-- Coupé hors Studio : aucune accroche, aucun attribut ; le remote est ignoré.
 		Net.Server.Rebirth:Connect(function() end)
 		return
@@ -593,7 +594,7 @@ function RebirthService.Init()
 end
 
 function RebirthService.Start()
-	if not (Features.Rebirth or IS_STUDIO) then
+	if not (Rebirths.Enabled or IS_STUDIO) then
 		return
 	end
 	while true do

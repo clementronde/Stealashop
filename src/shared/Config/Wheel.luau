@@ -58,6 +58,11 @@ local Wheel = {
 		{ Label = "60 MIN CASH", Icon = "WHEEL_Jackpot", Weight = 3, Prize = { Kind = "Cash", Minutes = 60 } }, -- V0 proposé (Cantin, 20/11)
 	} :: { Sector },
 
+	-- a486 (chance « R2 », Features.LuckModelV2 ; note d'a479, 5.1 e, V0 confirmé par Cantin) : les secteurs de poids au plus
+	-- LuckRareMaxWeight (Rare Box, les 2 potions, 60 min de cash) sont multipliés par la chance du serveur × la chance
+	-- personnelle du joueur, pris sur le secteur le plus lourd (5 min de cash) ; vide : le reste ramené à 100 %. Sans plafond.
+	LuckRareMaxWeight = 7,
+
 	-- V0 proposé (Cantin, 20/11) : lot donné à la place d'un lot refusé (inventaire ou stock de potions plein).
 	Fallback = { Kind = "Cash", Minutes = 5 } :: Prize,
 

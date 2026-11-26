@@ -16,6 +16,15 @@ Color3 = {
 	end,
 }
 
+-- Config/Bubbles (lu par Outil/simulateur_bt) cite Enum.EasingStyle : un faux Enum, sans effet sur l'équilibrage.
+local EnumMT = {}
+EnumMT.__index = function(self, key)
+	local value = setmetatable({}, EnumMT)
+	rawset(self, key, value)
+	return value
+end
+Enum = setmetatable({}, EnumMT)
+
 -- Config/Unbox (lu par Outil/chance) a un Vector3 : sans effet sur l'équilibrage.
 Vector3 = {
 	new = function(x, y, z)
@@ -82,4 +91,4 @@ Config = setmetatable({}, {
 })
 Format = charge("Format")
 
-charge(if OPTIONS.Rapport == "v2" then "Outil/rapport_v2" elseif OPTIONS.Rapport == "renaissance" then "Outil/rapport_renaissance" elseif OPTIONS.Rapport == "poids" then "Outil/poids" else "Outil/rapport")
+charge(if OPTIONS.Rapport == "v2" then "Outil/rapport_v2" elseif OPTIONS.Rapport == "renaissance" then "Outil/rapport_renaissance" elseif OPTIONS.Rapport == "poids" then "Outil/poids" elseif OPTIONS.Rapport == "bt" then "Outil/rapport_bt" else "Outil/rapport")

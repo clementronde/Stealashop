@@ -748,6 +748,70 @@ local function deepCopy<T>(value: T): T
 	return (copy :: any) :: T
 end
 
+-- a486 (Cantin, 25/11 ; note d'a479 « économie B/T », section 9) : un profil sauvegardé dans une autre table de
+-- l'économie que celle du serveur (Config/Economy.Version) y est converti au chargement, dans les deux sens, sans
+-- changement de version (champ Economy du profil, absent = 1 ; Shared/EconomyProfile) : argent par la courbe des
+-- armes, Speed par la courbe des panneaux (avec le meilleur trail possédé), meilleurs revenus au rapport du revenu
+-- des objets exposés. Objets, armes, auras, trails, niveaux, arbre et achats ne sont jamais touchés. Avec la table 1
+-- et un profil d'avant (sans champ Economy), rien n'est écrit. Sur une copie : en cas d'erreur, le profil reste tel
+-- quel (et sera converti au chargement suivant).
+local function switchEconomy(data: any, log: MigrationLog)
+	-- Lus ici seulement, comme ItemWeight ; un arbre sans Config/Economy (ou sans Shared/EconomyProfile) n'a qu'une table.
+	local economyModule = ReplicatedStorage.Shared.Config:FindFirstChild("Economy")
+	if economyModule == nil then
+		return
+	end
+	local Economy = require(economyModule :: any) :: any
+	local want: number = Economy.Version
+	-- Même règle qu'EconomyProfile.ProfileVersion : champ absent ou table inconnue = table 1.
+	local stored = data.Economy
+	local have: number = if type(stored) == "number" and Economy.Tables[stored] ~= nil then stored else 1
+	if have == want then
+		return
+	end
+	local EconomyProfile = require(ReplicatedStorage.Shared.EconomyProfile) :: any
+	-- Meilleur trail possédé (multiplicateur de la Speed affichée ; le même dans les deux tables).
+	local Cosmetics = require(ReplicatedStorage.Shared.Config.Cosmetics) :: any
+	local trail = 1
+	if type(data.Cosmetics) == "table" and type(data.Cosmetics.Trails) == "table" then
+		for _, id in data.Cosmetics.Trails do
+			local cosmetic = if type(id) == "string" then Cosmetics.ById[id] else nil
+			if cosmetic and cosmetic.Kind == "Trail" and type(cosmetic.Multiplier) == "number" then
+				trail = math.max(trail, cosmetic.Multiplier)
+			end
+		end
+	end
+	-- Objets exposés : leur rareté et la part de leur revenu qui ne dépend pas de la table (zone, rang).
+	local Rarities = require(ReplicatedStorage.Shared.Config.Rarities) :: any
+	local Formulas = require(ReplicatedStorage.Shared.Config.Formulas) :: any
+	local shown: { { Rarity: string, Factor: number } } = {}
+	if type(data.Display) == "table" and type(data.Items) == "table" then
+		for _, uid in data.Display do
+			local entry = if type(uid) == "string" then data.Items[uid] else nil
+			local item = if type(entry) == "table" and type(entry.Id) == "string" then Catalog.ById[entry.Id] else nil
+			local rarity = if item then Rarities.ById[item.Rarity] else nil
+			if item and rarity and type(rarity.Income) == "number" and rarity.Income > 0 then
+				local ok, income = pcall(Formulas.ItemIncome, item.Id)
+				if ok and type(income) == "number" then
+					local row: { Rarity: string, Factor: number } = { Rarity = item.Rarity :: string, Factor = (income :: number) / rarity.Income }
+					table.insert(shown, row)
+				end
+			end
+		end
+	end
+	local copy = deepCopy(data)
+	local lines = EconomyProfile.Convert(copy, want, {
+		TrailMultiplier = trail,
+		IncomeRatio = EconomyProfile.IncomeRatio(shown, have, want),
+	})
+	for key, value in copy do
+		data[key] = value
+	end
+	for _, line in lines or {} do
+		log(line)
+	end
+end
+
 local function isSaving(): boolean
 	return ProfileStore.DataStoreState == "Access"
 end
@@ -855,6 +919,11 @@ local function loadProfile(player: Player)
 	local switched, switchProblem = pcall(switchCatalog :: any, profile.Data, migrationLog)
 	if not switched then
 		warn(`[DataService] {player.Name} ({key}) : passage au catalogue v{Catalog.Version} impossible ({switchProblem}), objets gardés tels quels`)
+	end
+	-- a486 : profil dans la table de l'économie du serveur (switchEconomy), après le catalogue (ItemId à jour).
+	local switchedEconomy, economyProblem = pcall(switchEconomy :: any, profile.Data, migrationLog)
+	if not switchedEconomy then
+		warn(`[DataService] {player.Name} ({key}) : conversion de l'économie impossible ({economyProblem}), profil gardé tel quel`)
 	end
 	-- Vague 31 (L-112) : colis déjà rangés → objets de l'inventaire (convertBoxes), avant tout écouteur.
 	-- Vague 50 (a158) : sans condition (plus aucun colis rangé ni ouvert en base, quel que soit Features.ShelfOpen).

@@ -6,6 +6,22 @@
 
 local DeepFreeze = require(script.Parent.DeepFreeze)
 
+-- a486 : table de l'économie à appliquer par-dessus les nombres de ce fichier (Config/Economy.Override : la table 2
+-- quand elle est active). nil avec la table 1, ou sans le module (bancs à liste de modules fixe, comme dans
+-- Config/Items) : les nombres écrits dans ce fichier, qui SONT la table 1, ne sont jamais remplacés.
+local ECO: any = (function(): any
+	local found, module = pcall(function(): any
+		return script.Parent:FindFirstChild("Economy")
+	end)
+	if found and module ~= nil then
+		local ok, result = pcall(require, module :: any)
+		if ok and type(result) == "table" and type(result.Override) == "table" and type(result.Override.Version) == "number" then
+			return result.Override
+		end
+	end
+	return nil
+end)()
+
 export type BoxTier = "Standard" | "Premium" | "Luxe"
 
 export type BoxTierInfo = {
@@ -235,6 +251,23 @@ local Balance = {
 		CheckInterval = 0.2,
 	},
 }
+
+-- a486 (économie « B/T », Config/Economy) : avec la table 2, trois nombres sont remplacés ici, après coup (les lignes
+-- d'origine plus haut ne changent pas : ce sont la table 1, et d'anciens bancs les retouchent par leur texte) :
+--   Stats.WalkPerDecade et Stats.SpeedScale : 2,95 et 140 (Speed des zones × 107 environ par zone : la marche aux
+--     panneaux des zones 2 à 5 reste 22, 28, 34, 40 ; plafond de 70 atteint vers Speed 284Qi) ;
+--   Profiles.DevStoreName : un store neuf pour le jeu DEV (Cantin, 25/11 : profils DEV remis à zéro avec la table 2).
+--     Rien n'est effacé : revenir à la table 1 dans le jeu DEV relit le store du 14/11, intact. StoreName (PROD) ne
+--     dépend jamais de la table.
+if ECO ~= nil then
+	assert(
+		type(ECO.WalkPerDecade) == "number" and type(ECO.SpeedScale) == "number" and type(ECO.DevStoreName) == "string",
+		"Config/Balance : WalkPerDecade, SpeedScale ou DevStoreName absent de Config/Economy"
+	)
+	Balance.Stats.WalkPerDecade = ECO.WalkPerDecade
+	Balance.Stats.SpeedScale = ECO.SpeedScale
+	Balance.Profiles.DevStoreName = ECO.DevStoreName
+end
 
 export type Balance = typeof(Balance)
 

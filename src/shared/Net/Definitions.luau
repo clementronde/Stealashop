@@ -993,6 +993,31 @@ local List: { RemoteDef } = {
 	},
 }
 
+-- a486 (économie « B/T ») : avec la table 2 de l'économie, la borne de `value` du remote AdminCommand suit
+-- Config/Admin.MaxAmount (Config/Economy.Override, AdminMaxAmount : 1e30). Remplacée ici, après coup : la ligne
+-- Max = 1e15 plus haut reste la table 1. Module chargé s'il est là (bancs à liste de modules fixe) ; avec la table 1
+-- ou sans lui, rien ne change. Ce n'est que la forme de l'appel : AdminService revalide chaque montant.
+do
+	local found, module = pcall(function(): any
+		return (script.Parent :: any).Parent:FindFirstChild("Config"):FindFirstChild("Economy")
+	end)
+	if found and module ~= nil then
+		local ok, result = pcall(require, module :: any)
+		local override: any = if ok and type(result) == "table" then (result :: any).Override else nil
+		if type(override) == "table" and type(override.Version) == "number" and type(override.AdminMaxAmount) == "number" then
+			for _, def in List do
+				if def.Name == "AdminCommand" then
+					for _, arg in def.Args do
+						if arg.Name == "value" then
+							arg.Max = override.AdminMaxAmount
+						end
+					end
+				end
+			end
+		end
+	end
+end
+
 return {
 	List = List,
 	Budgets = Budgets,

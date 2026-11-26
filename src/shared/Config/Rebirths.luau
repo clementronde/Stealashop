@@ -30,6 +30,8 @@
 -- géante Peu commune ; PC gamer Rare ; Couronne Épique. La difficulté des paliers 4 à 6 change : à revoir avec Cantin.
 --
 -- API (serveur et client) :
+--   Rebirths.Enabled       a486 : la renaissance est allumée (Features.Rebirth ; avec la table 2 de l'économie,
+--                          Config/Economy, seulement si Features.RebirthBT)
 --   Rebirths.IncomeBonus   0.5 : +50 % de revenus permanents par renaissance, additionnés
 --   Rebirths.CashGrowth    1.3 (V0, non simulé) : au-delà du tableau, l'argent requis ×1,3 à chaque fois
 --   Rebirths.KeepItems     3 : objets gardés à la renaissance (Partie 2 ; règle de choix dans RebirthService)
@@ -49,6 +51,35 @@ local DeepFreeze = require(script.Parent.DeepFreeze)
 local Items = require(script.Parent.Items)
 local Rarities = require(script.Parent.Rarities)
 local SkillTree = require(script.Parent.SkillTree)
+
+-- a486 : modules de Config chargés s'ils sont là (bancs à liste de modules fixe, comme dans Config/Items).
+local function optional(name: string): any
+	local found, module = pcall(function(): any
+		return script.Parent:FindFirstChild(name)
+	end)
+	if not found or module == nil then
+		-- Harnais de banc sans FindFirstChild : l'enfant par son nom, comme require(script.Parent.Features).
+		found, module = pcall(function(): any
+			return (script.Parent :: any)[name]
+		end)
+	end
+	if found and module ~= nil then
+		local ok, result = pcall(require, module :: any)
+		if ok and type(result) == "table" then
+			return result
+		end
+	end
+	return {}
+end
+local Features: any = optional("Features")
+local Economy: any = optional("Economy")
+-- a486 : table de l'économie à appliquer (Economy.Override : la table 2 quand elle est active ; nil avec la table 1
+-- ou sans le module : les montants écrits ici, qui sont la table 1).
+local ECO: any = Economy.Override
+-- a486 (Cantin, 25/11) : la renaissance est allumée par Features.Rebirth, et coupée avec la table 2 de l'économie tant
+-- que Features.RebirthBT est false (Economy.RebirthAllowed : montants de la table 2 à resimuler). Seule lecture de
+-- ces interrupteurs : RebirthService, RebirthController et le HUD lisent Rebirths.Enabled.
+local ENABLED: boolean = Features.Rebirth == true and Economy.RebirthAllowed ~= false
 
 export type Tier = {
 	Level: number, -- numéro de la renaissance (1 = la première)
@@ -194,6 +225,13 @@ for index, tier in TIERS do
 		tier.ItemId = Items.V2ToV3[tier.ItemId] or tier.ItemId
 	end
 	assert(tier.Level == index, `Config.Rebirths : la ligne {index} porte le niveau {tier.Level}`)
+	-- a486 : argent requis pris dans la table active de l'économie (Config/Economy, RebirthCash ; table 2 : 390B à
+	-- 180T, V0 d'attente tant que la renaissance y est coupée).
+	if ECO ~= nil then
+		local cash = ECO.RebirthCash[index]
+		assert(type(cash) == "number", `Config.Rebirths : argent de la renaissance {index} absent de Config/Economy`)
+		tier.Cash = cash
+	end
 	local item = Items.ById[tier.ItemId]
 	assert(item ~= nil, `Config.Rebirths : renaissance {index}, objet inconnu de Config/Items ({tier.ItemId})`)
 	assert(
@@ -249,6 +287,8 @@ local function titleText(done: number): string?
 end
 
 local Rebirths = {
+	-- a486 : la renaissance est allumée (Features.Rebirth, et Features.RebirthBT avec la table 2 de l'économie).
+	Enabled = ENABLED,
 	IncomeBonus = INCOME_BONUS,
 	CashGrowth = CASH_GROWTH,
 	KeepItems = KEEP_ITEMS,

@@ -95,6 +95,20 @@ local Offline = {
 	TestAttribute = "OfflineTest",
 }
 
+-- a486 (Cantin, 25/11) : la part des revenus gagnée hors ligne est une valeur de la table de l'économie
+-- (Config/Economy, OfflineRate), à côté des prix du tapis avec lesquels elle est réglée : table 1 = 1 (100 %, la ligne
+-- Rate plus haut), table 2 = 1 aussi tant que Clément n'a pas répondu à L-413 (50 %). Avec la table 2, Rate est
+-- remplacé ici, après coup, par la valeur de la table : la changer = une valeur de Config/Economy. MaxHours ne dépend
+-- pas de la table (4 h pour les deux).
+do
+	-- Config/Economy.Override : la table 2 quand elle est active ; nil avec la table 1 ou sans le module.
+	local ECO: any = optional("Economy").Override
+	if type(ECO) == "table" and type(ECO.Version) == "number" then
+		assert(type(ECO.OfflineRate) == "number", "Config/Offline : OfflineRate absent de Config/Economy")
+		Offline.Rate = ECO.OfflineRate
+	end
+end
+
 export type Offline = typeof(Offline)
 
 return DeepFreeze(Offline)

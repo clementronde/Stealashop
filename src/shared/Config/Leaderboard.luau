@@ -11,6 +11,22 @@
 
 local DeepFreeze = require(script.Parent.DeepFreeze)
 
+-- a486 : table de l'économie à appliquer par-dessus les nombres de ce fichier (Config/Economy.Override : la table 2
+-- quand elle est active). nil avec la table 1, ou sans le module (bancs à liste de modules fixe, comme dans
+-- Config/Items) : les nombres écrits dans ce fichier, qui SONT la table 1, ne sont jamais remplacés.
+local ECO: any = (function(): any
+	local found, module = pcall(function(): any
+		return script.Parent:FindFirstChild("Economy")
+	end)
+	if found and module ~= nil then
+		local ok, result = pcall(require, module :: any)
+		if ok and type(result) == "table" and type(result.Override) == "table" and type(result.Override.Version) == "number" then
+			return result.Override
+		end
+	end
+	return nil
+end)()
+
 export type StatId = "Income" | "Speed"
 
 export type StatSpec = {
@@ -41,7 +57,25 @@ local Leaderboard = {
 	MinBudget = 5, -- V0 : sous ce budget de requêtes DataStore, l'écriture ou la lecture attend le tour suivant
 	LogScale = LOG_SCALE,
 	ThumbnailSize = "Size150x150", -- Enum.ThumbnailSize (GetUserThumbnailAsync, HeadShot)
+	EconomySuffix = "", -- a486 : suffixe des stores de la table de l'économie en jeu (« _E2 » avec la table 2 ; posé plus bas)
 }
+
+-- a486 (économie « B/T », Config/Economy) : les valeurs d'une table de l'économie ne se comparent pas à celles de
+-- l'autre. Avec la table 2, remplacé ici, après coup (les lignes de Stats plus haut restent la table 1) :
+--   chaque classement a ses propres OrderedDataStore : EconomySuffix (« _E2 ») ajouté au nom ; les classements de la
+--   table 1 gardent leur nom et restent en place, ceux de la table 2 se remplissent à la première écriture ;
+--   le classement Speed est rangé en logarithme comme Income : une Speed peut dépasser 2^53 (9Qa), le dernier entier
+--   exact, et tous les gros joueurs seraient à égalité.
+if ECO ~= nil then
+	assert(type(ECO.LeaderboardSuffix) == "string" and type(ECO.LeaderboardSpeedLog) == "boolean", "Config/Leaderboard : LeaderboardSuffix ou LeaderboardSpeedLog absent de Config/Economy")
+	Leaderboard.EconomySuffix = ECO.LeaderboardSuffix
+	for id, spec in Leaderboard.Stats do
+		spec.Store ..= ECO.LeaderboardSuffix
+		if id == "Speed" then
+			spec.Log = ECO.LeaderboardSpeedLog
+		end
+	end
+end
 
 -- Valeur d'un joueur -> entier rangé dans l'OrderedDataStore (0 pour une valeur invalide ou négative).
 function Leaderboard.Encode(stat: string, value: number): number

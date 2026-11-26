@@ -14,6 +14,22 @@
 
 local DeepFreeze = require(script.Parent.DeepFreeze)
 
+-- a486 : table de l'économie à appliquer par-dessus les nombres de ce fichier (Config/Economy.Override : la table 2
+-- quand elle est active). nil avec la table 1, ou sans le module (bancs à liste de modules fixe, comme dans
+-- Config/Items) : les nombres écrits dans ce fichier, qui SONT la table 1, ne sont jamais remplacés.
+local ECO: any = (function(): any
+	local found, module = pcall(function(): any
+		return script.Parent:FindFirstChild("Economy")
+	end)
+	if found and module ~= nil then
+		local ok, result = pcall(require, module :: any)
+		if ok and type(result) == "table" and type(result.Override) == "table" and type(result.Override.Version) == "number" then
+			return result.Override
+		end
+	end
+	return nil
+end)()
+
 export type StatSpec = {
 	Title: string, -- Board.Title du panneau (anglais)
 	Store: string, -- préfixe du nom de l'OrderedDataStore (suffixe DEV puis « _W<semaine> »)
@@ -84,6 +100,19 @@ local WeeklyLeaderboard = {
 	},
 	ScrollRefresh = 1, -- V0 proposé (Cantin, 24/11) : client, secondes entre deux contrôles des panneaux à défilement
 }
+
+-- a486 (économie « B/T », Config/Economy) : comme Config/Leaderboard, avec la table 2 le classement des revenus de la
+-- semaine a ses propres OrderedDataStore (suffixe « _E2 » ajouté ici, après coup ; la ligne WeeklyIncome plus haut
+-- reste la table 1). Le classement des vols compte des vols, pas des dollars : il ne dépend pas de la table et garde
+-- son nom.
+if ECO ~= nil then
+	assert(type(ECO.LeaderboardSuffix) == "string", "Config/WeeklyLeaderboard : LeaderboardSuffix absent de Config/Economy")
+	for id, spec in WeeklyLeaderboard.Stats do
+		if id == "WeeklyIncome" then
+			spec.Store ..= ECO.LeaderboardSuffix
+		end
+	end
+end
 
 -- Semaine (lundi 00:00 UTC) de l'heure `unix` (os.time()).
 function WeeklyLeaderboard.WeekOf(unix: number): number

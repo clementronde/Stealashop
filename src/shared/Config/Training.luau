@@ -6,6 +6,22 @@
 
 local DeepFreeze = require(script.Parent.DeepFreeze)
 
+-- a486 : table de l'économie à appliquer par-dessus les nombres de ce fichier (Config/Economy.Override : la table 2
+-- quand elle est active). nil avec la table 1, ou sans le module (bancs à liste de modules fixe, comme dans
+-- Config/Items) : les nombres écrits dans ce fichier, qui SONT la table 1, ne sont jamais remplacés.
+local ECO: any = (function(): any
+	local found, module = pcall(function(): any
+		return script.Parent:FindFirstChild("Economy")
+	end)
+	if found and module ~= nil then
+		local ok, result = pcall(require, module :: any)
+		if ok and type(result) == "table" and type(result.Override) == "table" and type(result.Override.Version) == "number" then
+			return result.Override
+		end
+	end
+	return nil
+end)()
+
 local Training = {
 	-- Tapis sans invite depuis L-071 (2026-11-08), par sa zone depuis L-093 (TrainingService).
 	Treadmill = {
@@ -41,6 +57,15 @@ local Training = {
 		SwapGrace = 0.5,
 	},
 }
+
+-- a486 (économie « B/T », Config/Economy) : avec la table 2, 6 crédits par seconde au niveau 1 (et 25 niveaux
+-- affichés, Config/Upgrades) : 6, 12, 24… 100M par seconde. Remplacé ici, après coup : la ligne GainPerSecond plus
+-- haut reste la table 1. Le serveur garde un seul versement par seconde (TrainingService) ; les 6 apparitions par
+-- seconde sont un affichage (Config/TreadmillFX.GainPops, Shared/GainPops).
+if ECO ~= nil then
+	assert(type(ECO.TreadmillGainPerSecond) == "number", "Config/Training : TreadmillGainPerSecond absent de Config/Economy")
+	Training.Treadmill.GainPerSecond = ECO.TreadmillGainPerSecond
+end
 
 export type Training = typeof(Training)
 

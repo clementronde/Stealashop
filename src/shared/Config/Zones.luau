@@ -31,6 +31,22 @@ local Balance = require(script.Parent.Balance)
 local Cosmetics = require(script.Parent.Cosmetics)
 local Tools = require(script.Parent.Tools)
 
+-- a486 : table de l'économie à appliquer par-dessus les nombres de ce fichier (Config/Economy.Override : la table 2
+-- quand elle est active). nil avec la table 1, ou sans le module (bancs à liste de modules fixe, comme dans
+-- Config/Items) : les nombres écrits dans ce fichier, qui SONT la table 1, ne sont jamais remplacés.
+local ECO: any = (function(): any
+	local found, module = pcall(function(): any
+		return script.Parent:FindFirstChild("Economy")
+	end)
+	if found and module ~= nil then
+		local ok, result = pcall(require, module :: any)
+		if ok and type(result) == "table" and type(result.Override) == "table" and type(result.Override.Version) == "number" then
+			return result.Override
+		end
+	end
+	return nil
+end)()
+
 export type Zone = {
 	Index: number,
 	Theme: string, -- nom affiché de la zone, en anglais (catalogue 10.5, liaison L-036)
@@ -163,6 +179,17 @@ local SOLO_HP_PER_DAMAGE = hpPerDamage(1, rule.SoloBreakTime) -- zones 1 à 5 : 
 local LAST_HP_PER_DAMAGE = hpPerDamage(rule.LastZoneTeamSize, rule.LastZoneBreakTime)
 -- Vigile de jour (note 4.1) : 0,9 × marche conseillée + 1, arrondi à 0,1.
 local GUARD_MARGIN = 1
+
+-- a486 (économie « B/T », Config/Economy) : avec la table 2, la Speed demandée de chaque zone est remplacée ici, avant
+-- le calcul (les lignes SpeedRequired de List plus haut restent la table 1) : 15K, 1,6M, 170M, 19B, 30T ; marche aux
+-- panneaux 22, 28, 34, 40 comme avant, 49,4 en zone 6 ; les PV des vitrines ne bougent pas, les armes non plus.
+if ECO ~= nil then
+	for index, base in List do
+		local speedRequired = ECO.SpeedRequired[index]
+		assert(type(speedRequired) == "number", `Config/Zones : SpeedRequired de la zone {index} absent de Config/Economy`)
+		base.SpeedRequired = speedRequired
+	end
+end
 
 local Zones: { Zone } = {}
 for index, base in List do

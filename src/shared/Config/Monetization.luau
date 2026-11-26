@@ -249,7 +249,10 @@ local Products: { Product } = {
 	-- Pas codés (Ready = false) : voir l'en-tête de MonetizationService.
 	{ Key = "Revenge", Id = 0, Tab = "Boosts", Order = 4, Price = 25, Ready = false, DisplayName = "Revenge", Effect = "Teleport behind your thief", Icon = "UI_Icon_DP_Revenge" },
 	{ Key = "InstantShutter", Id = 0, Tab = "Boosts", Order = 5, Price = 29, Ready = false, DisplayName = "Instant Shutter", Effect = "Close your shop right now", Icon = "UI_Icon_DP_InstantShutter" },
-	{ Key = "Luck3", Id = 0, Tab = "Boosts", Order = 6, Price = 79, Ready = false, DisplayName = "×3 Luck", Effect = "Rarer boxes for 15 min", Icon = "UI_Icon_DP_Luck3" },
+	-- a486 (Cantin, 25/11 ; note d'a479 : dose personnelle ×3 pendant 30 min ; prix inchangé, à valider par Clément, L-401) :
+	-- 30 min au lieu de 15. Facteur et durée : Config/ShelfOpen.LuckV2 (PersonalFactor, PersonalMinutes), lus par le modèle
+	-- de chance R2 ; le don à l'achat (attributs PersonalLuck et PersonalLuckEndsAt) reste à brancher avec le produit.
+	{ Key = "Luck3", Id = 0, Tab = "Boosts", Order = 6, Price = 79, Ready = false, DisplayName = "×3 Luck", Effect = "Rarer boxes for 30 min", Icon = "UI_Icon_DP_Luck3" },
 	-- a485 (L-351 question 5, V0 gardé) : Shield30 (« 30 Min Shield », boutique inviolable 30 min) retiré pour de bon. Il
 	-- n'a jamais été créé (Id 0 en DEV et en PROD) : aucun reçu possible. Ne jamais le créer sur le Creator Hub.
 	-- Vague 72 (a247, L-216 point 8) : chance du serveur (comme le ×2, ×4, ×8 de Steal a Brainrot). V0 proposé,

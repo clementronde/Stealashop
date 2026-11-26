@@ -174,6 +174,8 @@ local Tools = require(Shared.Config.Tools)
 local Format = require(Shared.Format)
 local Net = require(Shared.Net.Net)
 local Announce = require(Shared.Announce) -- a254 (L-240 point 3)
+local OpenLuck = require(Shared.OpenLuck) -- a489 : interrupteur du modèle R2 (OpenLuck.V2), qui lit la dose Luck3
+local ShelfOpen = require(Shared.Config.ShelfOpen) -- a489 : dose Luck3 (ShelfOpen.LuckV2)
 local ProfileTypes = require(Shared.Types.Profile)
 
 local DataService = require(script.Parent.DataService)
@@ -240,7 +242,18 @@ local MESSAGES = {
 	CrateItem = Monetization.Crate.DisplayName .. ": you got %s %s %s!", -- a412 : article, rareté (DisplayName), objet
 	-- a485 (L-351, Cantin le 25/11) : achat de +4 Displays refusé tant que l'étage de la boutique n'est pas acheté. V0.
 	ExtraStandsFloor = "Buy your shop's 2nd floor first!",
+	-- a489 : dose de chance personnelle Luck3 donnée (facteur, minutes). V0 proposé, absent du doc.
+	PersonalLuck = "×%s Luck for %s min: rarer boxes!",
 }
+
+-- a489 (décision de Cantin, a479) : dose de chance personnelle du produit Luck3 (Config/ShelfOpen.LuckV2). Don seulement
+-- avec le modèle de chance R2 (OpenLuck.V2 : Features.LuckModelV2, ou LuckModelV2Dev dans le jeu DEV), qui seul la lit ;
+-- coupé, un reçu Luck3 répond NotProcessedYet (rien noté). Attributs du Player PersonalLuck (facteur) et PersonalLuckEndsAt
+-- (heure serveur de fin), écrits par ce service seul ; fin gardée dans le profil (Boosts.PersonalLuckEndsAt, heure serveur) :
+-- la dose continue de passer hors ligne et revient au retour tant qu'elle n'est pas finie. 2e achat pendant une dose : la
+-- fin repart de maintenant + PersonalMinutes, le facteur ne se cumule pas (V0).
+local PERSONAL_LUCK_KEY = "Luck3"
+local LUCK_V2 = ShelfOpen.LuckV2
 
 local MonetizationService = {}
 -- Après les services dont il remplace les accroches (100) ; avant TutorialService (200) et
@@ -309,6 +322,12 @@ local function setAttribute(player: Player, name: string, value: any)
 	if player.Parent == Players and player:GetAttribute(name) ~= value then
 		player:SetAttribute(name, value)
 	end
+end
+
+-- a489 : attributs de la dose Luck3 (nil, nil : aucune dose).
+local function publishPersonalLuck(player: Player, factor: number?, endsAt: number?)
+	setAttribute(player, LUCK_V2.PersonalAttribute, factor)
+	setAttribute(player, LUCK_V2.PersonalEndsAtAttribute, endsAt)
 end
 
 -- Tables v3 du profil (DataService) ; nil si le profil est absent ou abîmé.
@@ -562,6 +581,16 @@ local function tickPlayer(player: Player, state: State)
 			setAttribute(player, BOOST_ATTRIBUTE, nil)
 			log(`{player.Name} : boost ×2 argent fini`)
 		end
+	end
+	-- a489 : dose Luck3 finie : attributs retirés (OpenLuck l'ignore déjà) et fin effacée du profil.
+	local luckEndsAt = player:GetAttribute(LUCK_V2.PersonalEndsAtAttribute)
+	if type(luckEndsAt) == "number" and luckEndsAt <= serverNow() then
+		publishPersonalLuck(player, nil, nil)
+		local boosts = boostsOf(data)
+		if boosts and finite(boosts.PersonalLuckEndsAt) <= serverNow() then
+			boosts.PersonalLuckEndsAt = nil
+		end
+		log(`{player.Name} : chance personnelle finie`)
 	end
 	if not enabled then
 		return -- boutique coupée : le boost seul (voir l'en-tête)
@@ -994,6 +1023,16 @@ local function cannotGrant(player: Player, data: Data, sale: Sale): string?
 		if not CRATE.IgnoreInventoryMax and not DisplayService.HasInventoryRoom(player) then
 			return "inventaire plein"
 		end
+	elseif key == PERSONAL_LUCK_KEY then
+		if not OpenLuck.V2 then
+			return "dose de chance personnelle coupée (Features.LuckModelV2, LuckModelV2Dev en DEV)"
+		end
+		if boostsOf(data) == nil then
+			return "profil sans Boosts"
+		end
+		if finite(LUCK_V2.PersonalFactor) < 1 or finite(LUCK_V2.PersonalMinutes) <= 0 then
+			return "dose mal réglée (ShelfOpen.LuckV2 : PersonalFactor ≥ 1, PersonalMinutes > 0)"
+		end
 	elseif sale.product.Luck ~= nil then
 		local minutes = finite(sale.product.LuckMinutes)
 		if finite(sale.product.Luck) < 1 or minutes <= 0 then
@@ -1087,6 +1126,19 @@ local function grantServerLuck(player: Player, product: Product): string
 	return `chance du serveur {label} {length}{if running and running > multiplier then ` en attente derrière ×{running}` else ""} ({#luckQueue} tranche(s))`
 end
 
+-- a489 : dose Luck3 : fin = maintenant + PersonalMinutes (un 2e achat la fait repartir, sans cumul du facteur). Sans yield.
+local function grantPersonalLuck(player: Player, data: Data): string
+	local boosts = boostsOf(data) :: ProfileTypes.Boosts
+	local factor, minutes = LUCK_V2.PersonalFactor, LUCK_V2.PersonalMinutes
+	local now = serverNow()
+	local before = finite(boosts.PersonalLuckEndsAt) - now
+	local endsAt = now + minutes * 60
+	boosts.PersonalLuckEndsAt = endsAt
+	publishPersonalLuck(player, factor, endsAt)
+	notify(player, string.format(MESSAGES.PersonalLuck, tostring(factor), tostring(minutes)))
+	return `chance personnelle ×{factor} {minutes} min{if before > 0 then ` (dose en cours, {duration(before)} restantes : repart à {minutes} min)` else ""}`
+end
+
 -- Donne l'outil et l'équipe s'il est plus fort que l'outil équipé (même règle que la boutique d'armes).
 local function giveTool(player: Player, toolId: string): string
 	if not ToolService.Grant(player, toolId) then
@@ -1174,6 +1226,8 @@ local function grant(player: Player, data: Data, sale: Sale): string
 		return grantOpenNow(player, data, sale.tier :: Tier)
 	elseif key == "Crate" then
 		return grantCrate(player, data, sale.pack :: CratePack)
+	elseif key == PERSONAL_LUCK_KEY then
+		return grantPersonalLuck(player, data)
 	elseif sale.product.Luck ~= nil then
 		return grantServerLuck(player, sale.product)
 	end
@@ -1408,6 +1462,12 @@ local function onProfileLoaded(player: Player)
 		state.boostEndsAt = serverNow() + saved
 		setAttribute(player, BOOST_ATTRIBUTE, state.boostEndsAt)
 	end
+	-- a489 : dose Luck3 encore en cours (heure serveur) : attributs remis ; finie ou modèle R2 coupé : rien.
+	local luckEndsAt = if boosts then finite(boosts.PersonalLuckEndsAt) else 0
+	if OpenLuck.V2 and luckEndsAt > serverNow() then
+		publishPersonalLuck(player, LUCK_V2.PersonalFactor, luckEndsAt)
+		log(`{player.Name} : chance personnelle ×{LUCK_V2.PersonalFactor} encore {duration(luckEndsAt - serverNow())}`)
+	end
 	local left = if enabled then starterLeft(data, state) else 0
 	if left > 0 then
 		state.starterEndsAt = serverNow() + left
@@ -1474,7 +1534,8 @@ local function onTestAttribute()
 	end
 	local crateDigits: string? = string.match(key, `^{CRATE.KeyPrefix}(%d+)$`)
 	local crateCount = if crateDigits then tonumber(crateDigits) else nil
-	if not enabled and crateCount == nil then
+	local personalLuckTest = key == PERSONAL_LUCK_KEY and OpenLuck.V2 -- a489 : dose Luck3 (pas en vente) testable en Studio
+	if not enabled and crateCount == nil and not personalLuckTest then
 		warn(`[MonetizationService] test : boutique coupée (Features.RobuxShop = false) : seule la caisse exclusive se teste (Crate1, Crate3, Crate10)`)
 		return
 	end
@@ -1505,7 +1566,7 @@ local function onTestAttribute()
 			sale = { product = product, tier = nil }
 		end
 	end
-	if sale == nil or not sale.product.Ready then
+	if sale == nil or not (sale.product.Ready or personalLuckTest) then
 		warn(`[MonetizationService] test : « {key} » n'est ni un gamepass ni un produit codé (OpenNow1 et OpenNow2 pour Ouvrir maintenant ; Crate1, Crate3, Crate10 avec Monetization.Crate.Live : Features.RobuxCrate, ou RobuxCrateDev dans le jeu DEV)`)
 		return
 	end
@@ -1742,10 +1803,16 @@ function MonetizationService.Init()
 			print(`[MonetizationService] caisse exclusive allumée sans la boutique : {crateProducts} lot(s) en vente (Ids à 0 = « Soon »)`)
 		end
 		print("[MonetizationService] ProcessReceipt branché boutique coupée : les reçus hors caisse sont gardés pour plus tard (NotProcessedYet)")
-		if IS_STUDIO and CRATE_PRODUCT.Ready then
+		if IS_STUDIO and (CRATE_PRODUCT.Ready or OpenLuck.V2) then
 			-- a285 : la caisse exclusive se teste en Studio sans la boutique (aucun achat réel, aucun reçu).
+			-- a489 : la dose Luck3 aussi, avec le modèle R2 (OpenLuck.V2).
 			Workspace:GetAttributeChangedSignal(TEST_ATTRIBUTE):Connect(onTestAttribute)
-			print("[MonetizationService] Studio : caisse exclusive testable (MonetizationTest « <joueur> Crate1|Crate3|Crate10 »)")
+			if CRATE_PRODUCT.Ready then
+				print("[MonetizationService] Studio : caisse exclusive testable (MonetizationTest « <joueur> Crate1|Crate3|Crate10 »)")
+			end
+			if OpenLuck.V2 then
+				print("[MonetizationService] Studio : dose Luck3 testable (MonetizationTest « <joueur> Luck3 »)")
+			end
 		end
 		return
 	end

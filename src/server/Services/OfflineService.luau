@@ -109,6 +109,25 @@ type State = {
 
 local IS_STUDIO = RunService:IsStudio()
 
+-- a486 (économie « B/T ») : table active de l'économie et conversion d'un montant d'une table à l'autre
+-- (Config/Economy, Shared/EconomyProfile), chargées si elles sont là (bancs à liste de modules fixe). Sans elles, une
+-- absence est payée comme avant.
+local ECONOMY_VERSION: number?, CONVERT_MONEY: ((number, number, number) -> number)? = nil, nil
+do
+	local ok, economy, profile = pcall(function(): (any, any)
+		local shared = ReplicatedStorage.Shared :: any
+		local config = shared.Config:FindFirstChild("Economy")
+		local module = shared:FindFirstChild("EconomyProfile")
+		if config == nil or module == nil then
+			return nil, nil
+		end
+		return require(config) :: any, require(module) :: any
+	end)
+	if ok and type(economy) == "table" and type(profile) == "table" and type(economy.Version) == "number" then
+		ECONOMY_VERSION, CONVERT_MONEY = economy.Version, profile.ConvertMoney
+	end
+end
+
 local OfflineService = {}
 
 local states: { [Player]: State } = {}
@@ -234,6 +253,10 @@ local function snapshot(player: Player, data: Data, withIncome: boolean)
 	offline.LastSeenAt = os.time()
 	if withIncome and PlotService.GetPlot(player) ~= nil then
 		offline.Income = OfflineService.GetIncome(player)
+		-- a486 : revenu noté dans la table du serveur.
+		if (offline :: any).IncomeEconomy ~= nil then
+			(offline :: any).IncomeEconomy = nil
+		end
 	end
 end
 
@@ -304,6 +327,17 @@ local function onProfileLoaded(player: Player)
 		return
 	end
 	local gain, seconds = OfflineService.ComputeEarnings(lastSeenAt, now, income, capHours)
+	-- a486 : absence notée dans l'autre table de l'économie (profil converti au chargement, Offline.IncomeEconomy) :
+	-- gain calculé avec l'ancien $/s, puis converti par la courbe des armes (Shared/EconomyProfile). Le marqueur reste
+	-- jusqu'au prochain relevé du revenu (snapshot) : une absence qui suit sans relevé est convertie de même.
+	local noted = (offline :: any).IncomeEconomy
+	if gain > 0 and type(noted) == "number" and ECONOMY_VERSION ~= nil and CONVERT_MONEY ~= nil and noted ~= ECONOMY_VERSION then
+		local converted = (CONVERT_MONEY :: any)(gain, noted, ECONOMY_VERSION)
+		if isFinite(converted) and converted > 0 then
+			print(`[OfflineService] {player.Name} : absence notée dans la table {noted} de l'économie : {Format.money(gain)} → {Format.money(converted)}`)
+			gain = converted
+		end
+	end
 	if gain > 0 then
 		stash(player, data, gain, seconds, now - lastSeenAt, income, capHours, false)
 	else

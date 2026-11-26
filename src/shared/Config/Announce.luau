@@ -68,4 +68,24 @@ local Announce = {
 	StealValueText = "{thief} stole {a} {rarity} {item} worth {value} from {victim}!", -- V0
 }
 
+-- a486 (économie « B/T », Config/Economy ; V0 d'a486 gardé par le petit chef, 26/11) : ValueMinIncome est « le revenu
+-- d'un Mythique de base » ; avec la table 2 (raretés × 60), il suit le revenu de base du Mythique de cette table
+-- (800M $/s), remplacé ici, après coup : sinon un Épique (220K $/s) serait annoncé à tout le serveur. Table 1 (ou sans
+-- Config/Economy) : la ligne plus haut, 25 000, comme avant.
+do
+	local found, module = pcall(function(): any
+		return script.Parent:FindFirstChild("Economy")
+	end)
+	local ok, economy = false, nil
+	if found and module ~= nil then
+		ok, economy = pcall(require, module :: any)
+	end
+	local ECO: any = if ok and type(economy) == "table" then economy.Override else nil
+	if type(ECO) == "table" and type(ECO.Version) == "number" then
+		local mythic = ECO.Income and ECO.Income.Mythic
+		assert(type(mythic) == "number" and mythic > 0, "Config/Announce : Income.Mythic absent de Config/Economy")
+		Announce.ValueMinIncome = mythic
+	end
+end
+
 return Announce

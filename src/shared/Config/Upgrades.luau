@@ -6,6 +6,22 @@
 
 local DeepFreeze = require(script.Parent.DeepFreeze)
 
+-- a486 : table de l'économie à appliquer par-dessus les nombres de ce fichier (Config/Economy.Override : la table 2
+-- quand elle est active). nil avec la table 1, ou sans le module (bancs à liste de modules fixe, comme dans
+-- Config/Items) : les nombres écrits dans ce fichier, qui SONT la table 1, ne sont jamais remplacés.
+local ECO: any = (function(): any
+	local found, module = pcall(function(): any
+		return script.Parent:FindFirstChild("Economy")
+	end)
+	if found and module ~= nil then
+		local ok, result = pcall(require, module :: any)
+		if ok and type(result) == "table" and type(result.Override) == "table" and type(result.Override.Version) == "number" then
+			return result.Override
+		end
+	end
+	return nil
+end)()
+
 -- L-086 (2026-11-08) : plus d'établis d'ouverture, les colis s'ouvrent sur les présentoirs.
 -- L'amélioration « Workbenches » (UnboxBenches) n'est plus vendue ; son niveau reste dans le profil
 -- (Upgrades.UnboxBenches, Types/Profile), sans effet.
@@ -57,6 +73,22 @@ local List: { Upgrade } = {
 	},
 }
 
+-- a486 : niveaux et prix pris dans la table active de l'économie (Config/Economy). Table 2 : tapis à 24 achats (25
+-- niveaux affichés, gain × 2 par niveau, 6 crédits par seconde au niveau 1), prix par zone avec un grand saut à l'entrée
+-- de chaque zone (niveaux 9, 13 et 17), niveaux 19 à 25 au prix d'une absence complète ; présentoirs refaits.
+if ECO ~= nil then
+	for _, upgrade in List do
+		if upgrade.Id == "Treadmill" then
+			assert(type(ECO.TreadmillMaxLevel) == "number" and type(ECO.TreadmillCosts) == "table", "Config/Upgrades : tapis absent de Config/Economy")
+			upgrade.MaxLevel = ECO.TreadmillMaxLevel
+			upgrade.Costs = ECO.TreadmillCosts
+		elseif upgrade.Id == "DisplaySlots" then
+			assert(type(ECO.DisplaySlotCosts) == "table", "Config/Upgrades : présentoirs absents de Config/Economy")
+			upgrade.Costs = ECO.DisplaySlotCosts
+		end
+	end
+end
+
 local ById: { [string]: Upgrade } = {}
 for _, upgrade in List do
 	assert(upgrade.Costs == nil or #upgrade.Costs == upgrade.MaxLevel, `Config.Upgrades : {upgrade.Id}, Costs doit avoir MaxLevel prix`)
@@ -72,6 +104,8 @@ end
 -- Palier du niveau AFFICHÉ n (v2 : niveau enregistré + 1) = TreadmillVariants[floor(n / TreadmillTierEvery) + 1],
 -- le dernier au-delà. Un palier toutes les 2 améliorations : Base au niveau 1, Silver aux niveaux 2 et 3…
 -- Void au niveau 20, le dernier (note v2, 4.2).
+-- a486 : avec la table 2 de l'économie (25 niveaux), les niveaux 21 à 25 gardent Void (MachineVariantService borne
+-- l'indice à la liste).
 local TreadmillTierEvery = 2
 local TreadmillVariants: { string } = {
 	"Base",
