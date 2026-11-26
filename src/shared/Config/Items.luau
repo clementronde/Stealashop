@@ -29,7 +29,7 @@
 --   Items.ById: { [ItemId]: Item }
 --   Items.ByZone[zone][rarity]: { Item }
 --       Objets tirables de cette zone et de cette rareté, dans l'ordre de l'index, sans les
---       TutorialOnly. Existe pour les 6 raretés de Commun à Mythique (pas pour Secret) ; liste
+--       TutorialOnly ni les hors tirage (OutOfDraw, a497). Existe pour les 6 raretés de Commun à Mythique (pas pour Secret) ; liste
 --       vide s'il n'y a aucun objet (raretés absentes de la zone, Rarities.ZoneOdds).
 --   Items.Secrets: { Item }
 --       Tirés quand la rareté est Secret, quelle que soit la zone.
@@ -64,6 +64,14 @@
 --   Items.OtherAssets: { [string]: boolean }
 --       Modèles ITM_ de l'autre catalogue : encore rangés dans Assets/Items, ni attendus ni signalés « pas au catalogue »
 --       (ContractChecker) ; leurs icônes ICON_ non plus.
+--
+-- a497 (Cantin, 26/11 ; note a497-note-gains-zone) : rangement du catalogue v3 refait dans LAYOUT_V3, seul endroit à
+-- changer : 12 objets tirés par zone (11 en zone 6, plus le Secret), des Peu communs en zone 1, un Rare en zone 2,
+-- 11 objets hors tirage (Item.OutOfDraw : dans List et ById, avec leur revenu, jamais dans ByZone ni tirés ; l'Index
+-- ne les compte pas). Plus d'objet TutorialOnly en v3 : l'objet du tuto est le meilleur Peu commun de la zone 1
+-- (TUTORIAL_V3), qui se tire aussi normalement ; le Ramen de feu devient un Rare de la zone 3. V2ToV3 reste celui
+-- d'a429 (INDEX_ORDER_V3_A429), sauf le Pot de nouilles du tuto, qui devient l'objet du tuto v3 (Cantin, 26/11). La v2
+-- (PROD) ne change pas.
 
 local DeepFreeze = require(script.Parent.DeepFreeze)
 local Rarities = require(script.Parent.Rarities)
@@ -95,12 +103,16 @@ export type Item = {
 	Category: string, -- catégorie affichée, en anglais (étiquette BB_Box) ; « ??? » pour le Secret
 	CategoryId: string, -- identifiant de la catégorie, sans accent (« Legumes ») ; « Secret » pour le Secret (V0)
 	TutorialOnly: boolean, -- ne sort que du premier colis du tuto, jamais d'un tirage (Pot de nouilles)
+	OutOfDraw: boolean, -- a497 (v3) : hors tirage : gardé dans les profils, avec son revenu, mais jamais tiré ni compté par l'Index
+	Exclusive: boolean, -- a497 : objet de la caisse exclusive (Items.Exclusives) ; revenu en zone IncomeRules.ExclusiveZone
 	Rank: number, -- vague 76 : rang dans sa rareté et sa zone, dans l'ordre de l'index (1 = le moins rentable)
 	DrawWeight: number, -- vague 76 : poids au tirage dans sa rareté et sa zone, 1 / 1,1^(Rank − 1) (Items.Pick)
 }
 
 type Entry = { Id: string, Name: string, Rarity: Rarities.RarityId, TutorialOnly: boolean? }
 type CategoryEntry = { Id: string, Name: string, Items: { Entry } }
+-- a497 : une ligne du rangement d'une zone (LAYOUT_V3) : l'objet, sa rareté dans le jeu, hors tirage ou non.
+type Slot = { Id: string, Rarity: Rarities.RarityId, OutOfDraw: boolean? }
 
 -- Raretés tirées dans une zone, dans l'ordre (le Secret est tiré toutes zones confondues).
 local ZONE_RARITIES: { Rarities.RarityId } = { "Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic" }
@@ -465,7 +477,7 @@ local CATALOG_V3: { { CategoryEntry } } = {
 				{ Id = "Z1_PouletALunettes", Name = "Cool Fried Chicken", Rarity = "Common" },
 				{ Id = "Z1_PastequeMewing", Name = "Mewing Watermelon", Rarity = "Common" },
 				{ Id = "Z1_OeufBoudeur", Name = "Grumpy Fried Egg", Rarity = "Common" },
-				{ Id = "Z1_RamenDeFeu", Name = "Fire Ramen", Rarity = "Rare", TutorialOnly = true }, -- tuto seulement
+				{ Id = "Z1_RamenDeFeu", Name = "Fire Ramen", Rarity = "Rare" }, -- a497 : Rare de la zone 3, tiré (LAYOUT_V3)
 			},
 		},
 		{
@@ -718,9 +730,10 @@ local CATALOG_V3: { { CategoryEntry } } = {
 	},
 }
 
--- a429 : ordre de l'index v3, celui des tableaux de la note (rareté, puis ligne) ; même règle que INDEX_ORDER_V2 (rang
--- dans la rareté = revenu +10 % par rang et poids au tirage). V0 proposé (Cantin, 24/11) : l'ordre des lignes de la note.
-local INDEX_ORDER_V3: { { string } } = {
+-- a429 : ordre de l'index v3 de départ, celui des tableaux de la note (rareté, puis ligne). a497 : ce n'est plus le
+-- rangement du jeu (LAYOUT_V3, plus bas) ; gardé tel quel, avec les raretés écrites dans CATALOG_V3, pour le seul
+-- renommage v2 ↔ v3 des profils (V2ToV3 : même zone, même rareté, même rang dans CE rangement), qui ne bouge plus.
+local INDEX_ORDER_V3_A429: { { string } } = {
 	{ -- Zone 1 : 12 Communs, puis le Ramen de feu (tuto)
 		"Z1_ChocolatDeDubai", "Z1_BoissonSigma", "Z1_Canette67", "Z1_BananeScotchee", "Z1_ChipsMystere",
 		"Z1_PouletALunettes", "Z1_GlaceArcEnCiel", "Z1_SlushieArcEnCiel", "Z1_SachetSurprise", "Z1_PastequeMewing",
@@ -757,14 +770,150 @@ local INDEX_ORDER_V3: { { string } } = {
 	},
 }
 
+-- a497 (Cantin, 26/11) : LA répartition du catalogue v3, seul endroit à changer pour déplacer un objet, changer sa
+-- rareté, son rang ou le sortir du tirage (aucun code à toucher autour). Chaque zone : ses objets, dans l'ordre de
+-- l'index (le rang d'un objet dans sa rareté et sa zone = l'ordre de ses lignes ; il fixe son revenu, +10 % par rang,
+-- et son poids au tirage), puis ceux qui sont hors tirage :
+--   Id         un objet de CATALOG_V3 (son nom affiché et sa catégorie y restent) ; chacun figure ici une fois ;
+--   Rarity     sa rareté dans le jeu (celle de CATALOG_V3 ne sert plus qu'au renommage v2 ↔ v3) ; elle doit exister
+--              dans la zone (Rarities.ZoneOdds) ;
+--   OutOfDraw  true : hors tirage (Cantin, 26/11). L'objet garde son modèle, sa place dans les profils et un revenu
+--              (son rang suit ceux des objets tirés de sa rareté), mais ne sort d'aucun colis et l'Index ne le
+--              compte pas (Config/Index).
+-- L'ItemId garde le préfixe de sa zone d'origine (V0 du 26/11 : rien à renommer) ; le revenu prend la zone d'ici
+-- (Formulas.ItemIncome). Vérifié au chargement : 8 à 12 objets tirés par zone, aucune rareté de la zone sans objet tiré.
+local LAYOUT_V3: { { Slot } } = {
+	{ -- Zone 1 : 9 Communs et 3 Peu communs tirés
+		{ Id = "Z1_ChocolatDeDubai", Rarity = "Common" },
+		{ Id = "Z1_BoissonSigma", Rarity = "Common" },
+		{ Id = "Z1_Canette67", Rarity = "Common" },
+		{ Id = "Z1_BananeScotchee", Rarity = "Common" },
+		{ Id = "Z1_ChipsMystere", Rarity = "Common" },
+		{ Id = "Z1_PouletALunettes", Rarity = "Common" },
+		{ Id = "Z1_GlaceArcEnCiel", Rarity = "Common" },
+		{ Id = "Z1_SachetSurprise", Rarity = "Common" },
+		{ Id = "Z1_PastequeMewing", Rarity = "Common" },
+		{ Id = "Z2_OursGelifieGeant", Rarity = "Uncommon" }, -- de la zone 2
+		{ Id = "Z2_MachineABonbons", Rarity = "Uncommon" }, -- de la zone 2
+		{ Id = "Z2_BusEnGelatine", Rarity = "Uncommon" }, -- de la zone 2 ; objet du tuto (TUTORIAL_V3)
+		{ Id = "Z1_SlushieArcEnCiel", Rarity = "Common", OutOfDraw = true },
+		{ Id = "Z1_OeufBoudeur", Rarity = "Common", OutOfDraw = true },
+		{ Id = "Z1_TicketGagnant", Rarity = "Common", OutOfDraw = true },
+	},
+	{ -- Zone 2 : 7 Communs, 4 Peu communs et 1 Rare tirés
+		{ Id = "Z2_CanardRoyal", Rarity = "Common" },
+		{ Id = "Z2_Squishy", Rarity = "Common" },
+		{ Id = "Z2_Slime", Rarity = "Common" },
+		{ Id = "Z2_SucetteTourbillon", Rarity = "Common" },
+		{ Id = "Z2_BarbeAPapaNuage", Rarity = "Common" },
+		{ Id = "Z2_BonbonPiquant", Rarity = "Common" },
+		{ Id = "Z2_FigurineSurprise", Rarity = "Common" },
+		{ Id = "Z2_CapybaraOrange", Rarity = "Uncommon" },
+		{ Id = "Z2_AxolotlEnPeluche", Rarity = "Uncommon" },
+		{ Id = "Z2_PelucheMonstre", Rarity = "Uncommon" },
+		{ Id = "Z2_BlasterAMousse", Rarity = "Uncommon" },
+		{ Id = "Z3_Hoverboard", Rarity = "Rare" }, -- de la zone 3
+		{ Id = "Z2_PopIt", Rarity = "Common", OutOfDraw = true },
+	},
+	{ -- Zone 3 : 4 Communs, 5 Peu communs et 3 Rares tirés
+		{ Id = "Z3_ChatQuiTourne", Rarity = "Common" },
+		{ Id = "Z3_CasqueOreillesDeChat", Rarity = "Common" },
+		{ Id = "Z3_TelephonePliant", Rarity = "Common" },
+		{ Id = "Z3_ClavierRgb", Rarity = "Common" },
+		{ Id = "Z3_MicroDeStreamer", Rarity = "Uncommon" },
+		{ Id = "Z3_RobotChien", Rarity = "Uncommon" },
+		{ Id = "Z3_LampeALave", Rarity = "Uncommon" },
+		{ Id = "Z3_AppareilPhotoInstantane", Rarity = "Uncommon" },
+		{ Id = "Z2_TheiereDansante", Rarity = "Uncommon" }, -- de la zone 2
+		{ Id = "Z1_RamenDeFeu", Rarity = "Rare" }, -- de la zone 1 (ancien objet du tuto), à la place du Galaxy Projector
+		{ Id = "Z3_SushiNinja", Rarity = "Rare" },
+		{ Id = "Z4_TropheeDeStar", Rarity = "Rare" }, -- de la zone 4
+		{ Id = "Z3_ManetteQuiTranspire", Rarity = "Common", OutOfDraw = true },
+		{ Id = "Z3_EnseigneNeon", Rarity = "Uncommon", OutOfDraw = true },
+		{ Id = "Z3_PcGamerQuiFume", Rarity = "Rare", OutOfDraw = true },
+		{ Id = "Z3_ProjecteurGalaxie", Rarity = "Rare", OutOfDraw = true },
+	},
+	{ -- Zone 4 : 4 Communs, 2 Peu communs, 3 Rares et 3 Épiques tirés
+		{ Id = "Z4_LunettesDeStar", Rarity = "Common" },
+		{ Id = "Z4_BraceletDAmitie", Rarity = "Common" },
+		{ Id = "Z4_CasquetteAStrass", Rarity = "Common" },
+		{ Id = "Z4_FauxOnglesEnOr", Rarity = "Common" },
+		{ Id = "Z4_ChaineDrip", Rarity = "Uncommon" },
+		{ Id = "Z4_BasketsLumineuses", Rarity = "Uncommon" },
+		{ Id = "Z4_GrillzEnDiamant", Rarity = "Rare" },
+		{ Id = "Z4_BasketsEnOr", Rarity = "Rare" },
+		{ Id = "Z4_PerruquePresidentielle", Rarity = "Rare" },
+		{ Id = "Z4_MontreDiamant", Rarity = "Epic" },
+		{ Id = "Z4_GuitareNeon", Rarity = "Epic" },
+		{ Id = "Z4_ChihuahuaEnDiamants", Rarity = "Epic" },
+	},
+	{ -- Zone 5 : 3 Peu communs, 3 Rares, 3 Épiques et 3 Légendaires tirés
+		{ Id = "Z5_TableauPixelArt", Rarity = "Uncommon" },
+		{ Id = "Z4_MicroDePopStar", Rarity = "Uncommon" }, -- de la zone 4
+		{ Id = "Z4_MontreGlacee", Rarity = "Uncommon" }, -- de la zone 4
+		{ Id = "Z5_JocondeSelfie", Rarity = "Rare" },
+		{ Id = "Z5_StatueMewing", Rarity = "Rare" },
+		{ Id = "Z5_EpeeDansLaPierre", Rarity = "Rare" },
+		{ Id = "Z5_CramponsDores", Rarity = "Epic" },
+		{ Id = "Z5_OeufDeDinoFossile", Rarity = "Epic" },
+		{ Id = "Z5_StatueDeChatGeant", Rarity = "Epic" },
+		{ Id = "Z5_GoldenBall", Rarity = "Legendary" },
+		{ Id = "Z5_OeufDeDragon", Rarity = "Legendary" },
+		{ Id = "Z5_CroissantRequin", Rarity = "Legendary" },
+		{ Id = "Z5_BaguetteEnOr", Rarity = "Uncommon", OutOfDraw = true },
+		{ Id = "Z5_BeretDeMime", Rarity = "Uncommon", OutOfDraw = true },
+	},
+	{ -- Zone 6 : 3 Rares, 3 Épiques, 3 Légendaires et 2 Mythiques tirés (plus le Secret, SECRETS_V3)
+		{ Id = "Z6_LingotGeant", Rarity = "Rare" },
+		{ Id = "Z6_ValiseDeBillets", Rarity = "Rare" },
+		{ Id = "Z6_CarteNoireInfinie", Rarity = "Rare" },
+		{ Id = "Z6_LiberteEnOr", Rarity = "Epic" },
+		{ Id = "Z6_TaxiEnOr", Rarity = "Epic" },
+		{ Id = "Z6_CapybaraDore", Rarity = "Epic" },
+		{ Id = "Z6_CouronneCosmique", Rarity = "Legendary" },
+		{ Id = "Z6_CoffreADents", Rarity = "Legendary" },
+		{ Id = "Z6_BilletQuiCourt", Rarity = "Legendary" },
+		{ Id = "Z6_DragonDeDiamant", Rarity = "Mythic" },
+		{ Id = "Z6_PigeonEnOr", Rarity = "Mythic" },
+		{ Id = "Z6_CerveauDore", Rarity = "Mythic", OutOfDraw = true },
+	},
+}
+-- a497 (Cantin, 26/11) : objet du tuto du catalogue v3 = le dernier objet tiré (le meilleur) de cette zone et de cette
+-- rareté dans LAYOUT_V3 (Jelly Double-Decker). Il se tire aussi normalement ; le tuto le donne sans mutation, au poids de
+-- repère (ShelfOpen.Reveal.TutorialWeight, revenu × 1).
+local TUTORIAL_V3 = { Zone = 1, Rarity = "Uncommon" }
+local DRAWN_PER_ZONE_V3 = { Min = 8, Max = 12 } -- a497 (Cantin, 26/11) : objets tirés par zone
+
 local SECRETS_V3: { Entry } = {
 	{ Id = "Secret_ToilettesEnOr", Name = "Solid Gold Toilet", Rarity = "Secret" },
 }
 
--- a429 : le catalogue actif (Features.ItemsV3, ItemsV3Dev).
+-- a429 : le catalogue actif (Features.ItemsV3, ItemsV3Dev). a497 : son rangement (zone, rareté, rang, tirage) est
+-- LAYOUT_V3 en v3 ; en v2, l'ordre de l'index et les raretés de CATALOG_V2, comme avant (aucun objet hors tirage).
 local CATALOG: { { CategoryEntry } } = if V3 then CATALOG_V3 else CATALOG_V2
-local INDEX_ORDER: { { string } } = if V3 then INDEX_ORDER_V3 else INDEX_ORDER_V2
 local SECRETS: { Entry } = if V3 then SECRETS_V3 else SECRETS_V2
+local function layoutOf(catalog: { { CategoryEntry } }, order: { { string } }): { { Slot } }
+	local entryOf: { [string]: Entry } = {}
+	for _, categories in catalog do
+		for _, category in categories do
+			for _, entry in category.Items do
+				entryOf[entry.Id] = entry
+			end
+		end
+	end
+	local layout: { { Slot } } = {}
+	for zone, ids in order do
+		local slots: { Slot } = {}
+		for _, id in ids do
+			local entry = entryOf[id]
+			assert(entry ~= nil, `Config.Items : {id} dans l'ordre de l'index sans être au catalogue`)
+			table.insert(slots, { Id = id, Rarity = entry.Rarity })
+		end
+		layout[zone] = slots
+	end
+	return layout
+end
+local LAYOUT: { { Slot } } = if V3 then LAYOUT_V3 else layoutOf(CATALOG_V2, INDEX_ORDER_V2)
 
 -- a429 : clé « zone:rareté:rang » de chaque objet d'un catalogue (rang dans l'ordre de l'index, comme Rank ; le
 -- Secret : « Secret:<rang> »), pour le renommage v2 ↔ v3 des profils (même zone, même rareté, même rang).
@@ -798,7 +947,7 @@ local V2_TO_V3: { [string]: string } = {}
 local V3_TO_V2: { [string]: string } = {}
 do
 	local byKeyV3: { [string]: string } = {}
-	for id, key in rankKeys(CATALOG_V3, INDEX_ORDER_V3, SECRETS_V3) do
+	for id, key in rankKeys(CATALOG_V3, INDEX_ORDER_V3_A429, SECRETS_V3) do
 		byKeyV3[key] = id
 	end
 	local count = 0
@@ -812,8 +961,12 @@ do
 	for key, id in byKeyV3 do
 		assert(V3_TO_V2[id] ~= nil, `Config.Items : {id} ({key}) sans objet v2 de même zone, rareté et rang`)
 	end
-	assert(count == #INDEX_ORDER_V3[1] + #INDEX_ORDER_V3[2] + #INDEX_ORDER_V3[3] + #INDEX_ORDER_V3[4] + #INDEX_ORDER_V3[5] + #INDEX_ORDER_V3[6] + #SECRETS_V3, "Config.Items : v2 et v3 n'ont pas le même nombre d'objets")
+	assert(count == #INDEX_ORDER_V3_A429[1] + #INDEX_ORDER_V3_A429[2] + #INDEX_ORDER_V3_A429[3] + #INDEX_ORDER_V3_A429[4] + #INDEX_ORDER_V3_A429[5] + #INDEX_ORDER_V3_A429[6] + #SECRETS_V3, "Config.Items : v2 et v3 n'ont pas le même nombre d'objets")
 end
+-- a497 (Cantin, 26/11) : le Pot de nouilles (objet du tuto v2) devient l'objet du tuto v3 (Jelly Double-Decker) quand le
+-- catalogue v3 s'allume, et non le Ramen de feu de même rang. Sens v2 → v3 seulement : V3ToV2 garde Ramen → Pot de
+-- nouilles et Bus → Peluche géante (catalogue v2 rallumé).
+V2_TO_V3.Z1_PotDeNouilles = "Z2_BusEnGelatine"
 
 -- a429 : modèles ITM_ de l'autre catalogue (ContractChecker : ni attendus ni « pas au catalogue »).
 local OTHER_ASSETS: { [string]: boolean } = {}
@@ -838,51 +991,67 @@ local function add(item: Item, listed: boolean?)
 	ById[item.Id] = item
 end
 
+-- Fiche de chaque objet des zones du catalogue actif (nom affiché, catégorie, tuto) et la zone où le catalogue l'écrit.
+type Written = { entry: Entry, category: CategoryEntry, zone: number }
+local written: { [string]: Written } = {}
 for zone, categories in CATALOG do
+	for _, category in categories do
+		for _, entry in category.Items do
+			assert(string.sub(entry.Id, 1, 3) == `Z{zone}_`, `Config.Items : {entry.Id} écrit en zone {zone}`)
+			assert(written[entry.Id] == nil, `Config.Items : ItemId en double {entry.Id}`)
+			written[entry.Id] = { entry = entry, category = category, zone = zone }
+		end
+	end
+end
+
+-- Vague 76 : objets de chaque zone dans l'ordre de l'index (a497 : LAYOUT), rang dans leur rareté et poids au tirage.
+-- a497 : en v3, la zone, la rareté et le tirage viennent de LAYOUT_V3 (un objet peut y changer de zone) ; en v2, un
+-- objet reste dans la zone où CATALOG_V2 l'écrit.
+local placed: { [string]: boolean } = {}
+for zone, slots in LAYOUT do
 	local byRarity: { [string]: { Item } } = {}
 	for _, rarity in ZONE_RARITIES do
 		byRarity[rarity] = {}
 	end
 	ByZone[zone] = byRarity
-	local made: { [string]: Item } = {}
-	local count = 0
-	for _, category in categories do
-		for _, entry in category.Items do
-			assert(string.sub(entry.Id, 1, 3) == `Z{zone}_`, `Config.Items : {entry.Id} rangé en zone {zone}`)
-			assert(made[entry.Id] == nil, `Config.Items : ItemId en double {entry.Id}`)
-			made[entry.Id] = {
-				Id = entry.Id,
-				DisplayName = entry.Name,
-				Zone = zone,
-				Rarity = entry.Rarity,
-				Asset = `ITM_{entry.Id}`,
-				Category = category.Name,
-				CategoryId = category.Id,
-				TutorialOnly = entry.TutorialOnly == true,
-				Rank = 1,
-				DrawWeight = 1,
-			}
-			count += 1
-		end
-	end
-	-- Vague 76 : objets de la zone dans l'ordre de l'index (INDEX_ORDER), rang dans leur rareté et poids au tirage.
-	local order = INDEX_ORDER[zone]
-	assert(order ~= nil and #order == count, `Config.Items : INDEX_ORDER[{zone}] ne liste pas les {count} objets de la zone`)
 	local ranks: { [string]: number } = {}
-	for _, id in order do
-		local item = made[id]
-		assert(item ~= nil, `Config.Items : INDEX_ORDER[{zone}] cite {id}, absent de la zone ou en double`)
-		made[id] = nil
-		assert(item.TutorialOnly or Rarities.Allows(zone, item.Rarity), `Config.Items : {id} est {item.Rarity}, rareté absente de la zone {zone} (Rarities.ZoneOdds)`)
-		local rank = (ranks[item.Rarity] or 0) + 1
-		ranks[item.Rarity] = rank
-		item.Rank = rank
-		item.DrawWeight = 1 / (1 + Rarities.IncomeRules.RankStep) ^ (rank - 1)
+	local drawn = 0
+	for _, slot in slots do
+		local id = slot.Id
+		local info = written[id]
+		assert(info ~= nil, `Config.Items : la zone {zone} du rangement cite {id}, absent du catalogue`)
+		assert(placed[id] == nil, `Config.Items : {id} rangé deux fois`)
+		placed[id] = true
+		assert(V3 or info.zone == zone, `Config.Items : {id} rangé en zone {zone}, écrit en zone {info.zone}`)
+		local entry = info.entry
+		-- a497 : en v3, plus aucun objet à part (l'objet du tuto est TUTORIAL_V3, tiré normalement).
+		assert(not (V3 and entry.TutorialOnly == true), `Config.Items : {id} TutorialOnly dans le catalogue v3`)
+		local tutorialOnly = entry.TutorialOnly == true
+		local outOfDraw = slot.OutOfDraw == true
+		local rarity = slot.Rarity
+		assert(tutorialOnly or Rarities.Allows(zone, rarity), `Config.Items : {id} est {rarity}, rareté absente de la zone {zone} (Rarities.ZoneOdds)`)
+		local rank = (ranks[rarity] or 0) + 1
+		ranks[rarity] = rank
+		local item: Item = {
+			Id = id,
+			DisplayName = entry.Name,
+			Zone = zone,
+			Rarity = slot.Rarity,
+			Asset = `ITM_{id}`,
+			Category = info.category.Name,
+			CategoryId = info.category.Id,
+			TutorialOnly = tutorialOnly,
+			OutOfDraw = outOfDraw,
+			Exclusive = false,
+			Rank = rank,
+			DrawWeight = if outOfDraw then 0 else 1 / (1 + Rarities.IncomeRules.RankStep) ^ (rank - 1),
+		}
 		add(item)
-		local drawable = byRarity[item.Rarity]
-		assert(drawable ~= nil, `Config.Items : {item.Id} ({item.Rarity}) ne peut pas être rangé dans une zone`)
-		if not item.TutorialOnly then
+		local drawable = byRarity[rarity]
+		assert(drawable ~= nil, `Config.Items : {id} ({rarity}) ne peut pas être rangé dans une zone`)
+		if not tutorialOnly and not outOfDraw then
 			table.insert(drawable, item)
+			drawn += 1
 		end
 	end
 	-- Chaque rareté de la zone (sauf Secret et Divine, toutes zones) a au moins un objet tirable.
@@ -891,6 +1060,14 @@ for zone, categories in CATALOG do
 		local drawable = byRarity[rarityId]
 		assert(drawable == nil or #drawable > 0, `Config.Items : aucun objet {rarityId} tirable en zone {zone}`)
 	end
+	-- a497 (Cantin, 26/11) : de 8 à 12 objets tirés par zone (catalogue v3).
+	if V3 then
+		assert(drawn >= DRAWN_PER_ZONE_V3.Min and drawn <= DRAWN_PER_ZONE_V3.Max, `Config.Items : {drawn} objets tirés en zone {zone} (de {DRAWN_PER_ZONE_V3.Min} à {DRAWN_PER_ZONE_V3.Max})`)
+	end
+end
+assert(#LAYOUT == #CATALOG, `Config.Items : {#LAYOUT} zones rangées pour {#CATALOG} zones au catalogue`)
+for id in written do
+	assert(placed[id], `Config.Items : {id} au catalogue, rangé dans aucune zone`)
 end
 
 -- Objets sans zone (Secret, Divine) : `rarity` est la seule rareté admise dans `entries`.
@@ -906,6 +1083,8 @@ local function addAllZones(entries: { Entry }, into: { Item }, rarity: Rarities.
 			Category = category,
 			CategoryId = categoryId,
 			TutorialOnly = false,
+			OutOfDraw = false,
+			Exclusive = false,
 			Rank = index, -- vague 76 : rang dans la liste, comme dans une zone
 			DrawWeight = 1 / (1 + Rarities.IncomeRules.RankStep) ^ (index - 1),
 		}
@@ -927,7 +1106,9 @@ for _, entry in EXCLUSIVES do
 		Category = EXCLUSIVE_CATEGORY,
 		CategoryId = EXCLUSIVE_CATEGORY_ID,
 		TutorialOnly = false,
-		Rank = 1, -- seul de sa rareté dans la caisse : revenu de base de la rareté (Formulas.ItemIncome)
+		OutOfDraw = false,
+		Exclusive = true,
+		Rank = 1, -- seul de sa rareté dans la caisse (Formulas.ItemIncome ; a497 : table 2, zone IncomeRules.ExclusiveZone)
 		DrawWeight = 0, -- jamais tiré par Items.Pick ; la caisse tire par Monetization.Crate.Odds
 	}
 	add(item, false)
@@ -948,7 +1129,8 @@ for old, new in RETIRED_V1 do
 	assert(ById[old] == nil and V2_TO_V3[old] == nil and V2_TO_V3[new] ~= nil, `Config.Items : remplacement v1 {old} → {new} incohérent`)
 end
 
--- a429 : l'objet du tuto du catalogue actif (un seul TutorialOnly).
+-- a429 : l'objet du tuto du catalogue actif. v2 : le seul TutorialOnly (Pot de nouilles). a497 (v3) : le dernier objet
+-- tiré (le meilleur) de TUTORIAL_V3.Zone et TUTORIAL_V3.Rarity dans LAYOUT_V3, un objet ordinaire (Jelly Double-Decker).
 local tutorialItemId: string? = nil
 for _, item in List do
 	if item.TutorialOnly then
@@ -956,9 +1138,16 @@ for _, item in List do
 		tutorialItemId = item.Id
 	end
 end
-assert(tutorialItemId ~= nil, "Config.Items : aucun objet TutorialOnly (objet du tuto)")
+if V3 then
+	local byRarity = ByZone[TUTORIAL_V3.Zone]
+	local drawable: { Item }? = if byRarity then byRarity[TUTORIAL_V3.Rarity] else nil
+	assert(drawable ~= nil and #drawable > 0, `Config.Items : aucun objet {TUTORIAL_V3.Rarity} tiré en zone {TUTORIAL_V3.Zone} pour le tuto`)
+	tutorialItemId = drawable[#drawable].Id
+end
+assert(tutorialItemId ~= nil, "Config.Items : aucun objet du tuto")
 
--- a429 : l'objet actif pour un ItemId de la v2 ou de la v3 (même zone, même rareté) ; nil s'il n'est dans aucun.
+-- a429 : l'objet actif pour un ItemId de la v2 ou de la v3 (même rareté ; a497 : la zone peut changer, LAYOUT_V3) ; nil
+-- s'il n'est dans aucun.
 local function resolve(id: string): Item?
 	local item = ById[id]
 	if item ~= nil then

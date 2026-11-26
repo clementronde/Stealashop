@@ -41,7 +41,7 @@ local IndexMutations = {
 }
 
 function IndexMutations.Counts(item: Item): boolean
-	return not (item :: any).TutorialOnly
+	return not (item :: any).TutorialOnly and not (item :: any).OutOfDraw -- a497 : ni les hors tirage (Config/Index)
 end
 
 function IndexMutations.EffectOf(mutation: any): string?

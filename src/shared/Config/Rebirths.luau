@@ -223,6 +223,16 @@ for index, tier in TIERS do
 	-- (Items.V2ToV3, V0 proposé (Cantin, 24/11)) ; le tableau garde les ItemId v2.
 	if Items.Version == 3 then
 		tier.ItemId = Items.V2ToV3[tier.ItemId] or tier.ItemId
+		-- a497 (V0) : objet devenu hors tirage ou rangé dans une autre zone (Config/Items, LAYOUT_V3) : le meilleur objet
+		-- tiré de la zone et de la rareté de la ligne (renaissance coupée avec la table 2, à resimuler).
+		local mapped = Items.ById[tier.ItemId]
+		if mapped == nil or mapped.OutOfDraw or mapped.Zone ~= tier.Zone then
+			local byRarity = Items.ByZone[tier.Zone]
+			local drawable = if byRarity then byRarity[tier.Rarity] else nil
+			if drawable ~= nil and #drawable > 0 then
+				tier.ItemId = drawable[#drawable].Id
+			end
+		end
 	end
 	assert(tier.Level == index, `Config.Rebirths : la ligne {index} porte le niveau {tier.Level}`)
 	-- a486 : argent requis pris dans la table active de l'économie (Config/Economy, RebirthCash ; table 2 : 390B à

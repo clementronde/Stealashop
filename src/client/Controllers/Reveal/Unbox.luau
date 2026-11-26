@@ -1053,7 +1053,7 @@ local function silhouetteItem(state: State, rarity: string, index: number): stri
 		list = everywhere
 	else
 		for _, item in Items.List do
-			if item.Rarity == rarity and not item.TutorialOnly then
+			if item.Rarity == rarity and not item.TutorialOnly and not item.OutOfDraw then -- a497 : jamais un hors tirage
 				table.insert(list, item)
 			end
 		end

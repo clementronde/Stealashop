@@ -955,7 +955,7 @@ local function refreshHeader(current: Screen)
 		end
 	end
 	if current.v3 then
-		for _, item in Items.List do
+		for _, item in Index.Listed do -- a497 : sans les objets hors tirage (Index.Total)
 			if isFound(current, item) then
 				all += 1
 			end
