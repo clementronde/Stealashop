@@ -146,6 +146,9 @@ export type Offline = {
 	-- l'écran UI_Offline (remote ClaimOffline). Champ facultatif, sans changement de version (comme
 	-- IndexRewards) : absent = 0. Remis à 0 au Claim, dans la même exécution que le versement ; pas réclamé,
 	-- il reste là et le gain du retour suivant s'y ajoute
+	IncomeEconomy: number?, -- a486 : table de l'économie (Config/Economy) dans laquelle Income a été noté, posée par la
+	-- conversion du profil (Shared/EconomyProfile) ; absent = la table du serveur. OfflineService convertit le gain d'une
+	-- absence notée dans l'autre table, et l'efface en relevant un nouveau Income.
 }
 
 -- Calendrier de 7 jours (v8, DEV-101 ; RewardService, Config/Rewards). Jour UTC = os.time() // 86400.
@@ -300,6 +303,10 @@ export type Data = {
 	-- envoyée. Champ facultatif, sans changement de version, absent du gabarit : créé par FunnelService au chargement.
 	ItemCatalog: number?, -- a429 (L-327) : catalogue des ItemId du profil, 2 ou 3 (Config/Items.Version) ; 2 dans le gabarit
 	-- (absent = 2), passé au catalogue actif au chargement par DataService (switchCatalog). Sans changement de version.
+	Economy: number?, -- a486 : table de l'économie des montants du profil, 1 ou 2 (Config/Economy.Version) ; absent = 1
+	-- (hors du gabarit) ; passé à la table du serveur au chargement par DataService (switchEconomy, Shared/EconomyProfile).
+	EconomyBackup: any?, -- a486 : { From, To, Before, After } : montants d'avant et d'après la dernière conversion, pour
+	-- un retour exact (Shared/EconomyProfile). Sans changement de version.
 	-- Partie 2 : Defenses, Rebirths, ajoutés par migration (Version = 9 et suivantes : la v2 est prise
 	-- par le catalogue d'objets v2, la v3 par la boutique Robux, la v4 par l'index, la v5 par les colis
 	-- sur les présentoirs, la v6 par les gains hors ligne, la v7 par les colis dans l'inventaire, la v8
