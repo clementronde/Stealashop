@@ -13,14 +13,14 @@ Every thumbnail shows ONE moment of the game, at its peak, understandable at a g
 - He steals an item from another player's shop and runs off with it.
 - The item sits on display in his own shop and earns money.
 - At night, a wall closes the shop street and night guards patrol it.
-- He trains: treadmills for speed, benches for strength.
+- He trains on treadmills to gain speed.
 The shops are in six zones along one street, each more precious than the last: a corner convenience store, London, Tokyo, Los Angeles, Paris, New York. The hub is a sunny garden plaza with two-tone green checkered grass and the players' shops around it.
 
 ## THE PLAYER'S SHOP
 - A luxury boutique with a big glass storefront.
 - Inside: a light gray floor, a long carpet in the owner's color with gold edges from the door to the back, museum plinths in brown velvet, marble and gold along the walls, and neon light strips on the ceiling.
 - The stolen items float above the plinths and glow in their rarity color. Big green studded cash plates sit on dark gray bases.
-- Training is never in a gym: the treadmills and weight benches stand outdoors, on the hub's sunny lawn.
+- Training is never in a gym: the treadmills stand outdoors, on the hub's sunny lawn. There are no weight benches in the game.
 
 ## THE THIEF (always the same character)
 - A blocky Roblox R15 bacon hair avatar, laughing, cheeky or determined.
@@ -34,7 +34,7 @@ The shops are in six zones along one street, each more precious than the last: a
 - Other players: blocky Roblox avatars in their own outfits, never the thief's outfit.
 
 ## THE STOLEN ITEM
-- One big, shiny, desirable object, about 35 to 50 % of the image height: in the thief's arms, above his head, or behind the glass.
+- One big, shiny, desirable object, always bigger than the thief himself, even when the real object is small (a PC, a phone): about 35 to 50 % of the image height, in his arms, above his head, or behind the glass.
 - The item's icon is attached to the request: reproduce that exact item (shape, colors, details) as a big 3D object. Never replace it with another item. Without an icon, draw a simple chunky version of the item named in the request.
 - Its glow uses the game's rarity colors: Rare blue #2F9BFF, Epic purple #A855F7, Legendary gold #FFC21A with golden rays, Mythic red-pink #FF3B5C with rays, Secret rainbow (red, gold, green, blue, purple).
 - Chunky simple shapes, solid colors, details in relief.
@@ -55,9 +55,10 @@ The shops are in six zones along one street, each more precious than the last: a
 
 ### 3. NO TEXT, NO SYMBOLS
 - No text, letters, numbers, game title, money counters, arrows or exclamation marks. We add the money, the arrows and the "!!" afterwards.
+- No onomatopoeia or comic sound words either (no "zzZ", "BAM", "POW"), and no eggs anywhere.
 - No letters anywhere in the scene either: shop signs, facades, banks, banners, posters, phone booths and screens stay blank or show a simple pictogram.
 - Exception: text the user explicitly asks for, or text from a reference image they ask to keep (for example a "SHOP" sign).
-- Leave one upper corner (left or right, about a third of the width and a quarter of the height) empty of faces and of the item, for the money added afterwards.
+- Leave one upper corner (left or right, about 45 % of the width and a quarter of the height) empty of faces and of the item, for the money per second and the arrow pointing to the item, added afterwards (never a word like HOT or RUN).
 - Keep the bottom fifth of the image free of anything important.
 
 ### 4. FORMAT
@@ -83,7 +84,7 @@ The shops are in six zones along one street, each more precious than the last: a
 1. The thief runs toward the camera, laughing, a crystal dragon glowing red-pink in his arms. Two police officers chase him from the left on sunny grass. A small shop sits at the right edge.
 2. The thief runs out of a pink luxury shop with a red chest overflowing with diamonds. A guard runs behind him.
 3. The thief swings a giant purple sledgehammer into a shop window, and glass shards explode toward the camera. Behind the glass, a golden crown glows on a red cushion.
-4. The thief carries a huge purple egg with gold bands across green grass under a blue sky. Two police officers run behind him.
+4. The thief runs across green grass under a blue sky, holding up a glowing golden cash briefcase bigger than his body. Two police officers run behind him.
 5. On a Tokyo street with cherry trees and two neon signs, the thief lifts a giant glowing gaming PC above his head. A police officer chases him.
 
 ## CONVERSATION RULES
