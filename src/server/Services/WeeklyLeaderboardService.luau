@@ -227,6 +227,11 @@ local function storeOf(stat: string, week: number): any
 	if name == nil then
 		return nil
 	end
+	-- a501 : stores à part sur le jeu TEST (suffixe de Config/GameEnv, "" sur DEV et PROD).
+	local okSuffix, suffix = pcall(DataService.GetDataSuffix)
+	if okSuffix and type(suffix) == "string" then
+		name ..= suffix
+	end
 	local existing = stores[name]
 	if existing ~= nil then
 		return existing

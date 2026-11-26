@@ -135,6 +135,7 @@ type Store = {
 -- a500 (26/11) : le jeu TEST (copie du DEV pour les testeurs) lit lui aussi DevStoreName, dans sa propre DataStore
 -- (un autre jeu Roblox) : DEV ou TEST dit par Config/GameEnv.IsDevLikeFor ; sans GameEnv (bancs à liste de modules
 -- fixe), le jeu DEV seul, comme avant.
+-- a501 (26/11) : le jeu TEST lit désormais GameEnv.TestStoreName (et suffixe ses classements, voir dataSuffixFor).
 local GameEnv: any = (function(): any
 	local found, module = pcall(function(): any
 		return ReplicatedStorage.Shared.Config:FindFirstChild("GameEnv")
@@ -152,6 +153,14 @@ local function storeNameFor(gameId: number?): string
 	local profiles = Balance.Profiles
 	local base: string = profiles.StoreName
 	local devName: string = profiles.DevStoreName
+	-- a501 (26/11, Cantin) : le jeu TEST a sa propre DataStore de profils, GameEnv.TestStoreName (reset du TEST =
+	-- changer ce nom dans Config/GameEnv et republier la place TEST).
+	if GameEnv ~= nil and GameEnv.IsTestFor(gameId) == true then
+		local testName: any = GameEnv.TestStoreName
+		if type(testName) == "string" and testName ~= "" then
+			return testName
+		end
+	end
 	local devLike = if GameEnv ~= nil
 		then GameEnv.IsDevLikeFor(gameId) == true
 		else gameId ~= nil and gameId ~= 0 and gameId == profiles.DevGameId
@@ -159,6 +168,17 @@ local function storeNameFor(gameId: number?): string
 		return devName
 	end
 	return base
+end
+
+-- a501 : suffixe des autres DataStores (classements) ; GameEnv.TestDataSuffix sur le jeu TEST, "" partout ailleurs.
+local function dataSuffixFor(gameId: number?): string
+	if GameEnv ~= nil and GameEnv.IsTestFor(gameId) == true then
+		local suffix: any = GameEnv.TestDataSuffix
+		if type(suffix) == "string" then
+			return suffix
+		end
+	end
+	return ""
 end
 
 local function currentGameId(): number?
@@ -169,6 +189,7 @@ local function currentGameId(): number?
 end
 
 local STORE_NAME = storeNameFor(currentGameId())
+local DATA_SUFFIX = dataSuffixFor(currentGameId())
 -- Délai par défaut de WaitFor, en secondes. V0 proposé, absent du doc : ProfileStore
 -- reprend une session bloquée sur un autre serveur au bout d'environ 40 s.
 local DEFAULT_WAIT_TIMEOUT = 60
@@ -748,6 +769,15 @@ function DataService.StoreNameFor(gameId: number?): string
 	return storeNameFor(gameId)
 end
 
+-- a501 : suffixe à ajouter au nom des autres DataStores du jeu (classements) : non vide sur le jeu TEST seulement.
+function DataService.GetDataSuffix(): string
+	return DATA_SUFFIX
+end
+
+function DataService.DataSuffixFor(gameId: number?): string
+	return dataSuffixFor(gameId)
+end
+
 local store: Store? = nil
 local profiles: { [Player]: StoreProfile } = {}
 local loading: { [Player]: boolean } = {}
@@ -1190,7 +1220,10 @@ function DataService.Start()
 		task.wait()
 	end
 	local state = ProfileStore.DataStoreState
-	if STORE_NAME ~= Balance.Profiles.StoreName then
+	if DATA_SUFFIX ~= "" then
+		-- a501 : jeu TEST, ses propres DataStores (profils et classements).
+		print(`[DataService] jeu TEST : profils lus dans « {STORE_NAME} », classements suffixés « {DATA_SUFFIX} » (reset du TEST = changer Config/GameEnv.TestStoreName et republier)`)
+	elseif STORE_NAME ~= Balance.Profiles.StoreName then
 		-- Vague 40 : jeu DEV, profils remis à zéro (Balance.Profiles) ; l'ancienne DataStore reste intacte.
 		print(`[DataService] jeu DEV : profils lus dans « {STORE_NAME} » (remise à zéro du 2026-11-14) ; « {Balance.Profiles.StoreName} » n'est ni lue ni effacée`)
 	end

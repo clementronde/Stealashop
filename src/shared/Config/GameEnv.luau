@@ -4,7 +4,7 @@
 --
 --   DEV   « Steal a Shop [DEV] »   GameId 10774974820 (liaison, L-001)
 --   TEST  « Steal a shop [TEST] »  GameId 10778712931, copie du DEV pour les testeurs : traité comme le DEV
---         (Config/ProductIds.IsDev, Config/Economy.IsDev, store des profils DevStoreName, variantes …Dev), mais achats
+--         (Config/ProductIds.IsDev, Config/Economy.IsDev, variantes …Dev), mais achats
 --         Robux et badges coupés (ProductIds.IsTest, ProductIds.PurchasesDisabled : les Ids du DEV n'y existent pas)
 --   PROD  tout autre jeu : la PROD (GameId 10774998269), Studio hors ligne (GameId 0), les bancs
 --
@@ -17,10 +17,18 @@
 --   GameEnv.IsDevLikeFor(gameId) -> boolean    DEV ou TEST (tout ce qui se comporte comme le DEV)
 --   GameEnv.GameId: number?                    game.GameId de ce serveur (nil s'il est illisible)
 --   GameEnv.IsDev, GameEnv.IsTest, GameEnv.IsDevLike: boolean    les mêmes règles pour ce serveur
+--   GameEnv.TestStoreName: string              DataStore des profils du jeu TEST (a501)
+--   GameEnv.TestDataSuffix: string             suffixe des autres DataStores du jeu TEST (classements), tiré du même nom
 
 local DEV_GAME_ID = 10774974820
 local TEST_GAME_ID = 10778712931
 local PROD_GAME_ID = 10774998269
+
+-- a501 (26/11, Cantin) : reset du TEST = changer TestStoreName et republier la place TEST.
+-- Le jeu TEST a ses propres DataStores : les profils dans TestStoreName, les classements (tous et de la semaine) avec
+-- TestDataSuffix au bout de leur nom ; un seul nom à changer remet tout à zéro. DEV et PROD ne sont pas touchés.
+local TEST_STORE_NAME = "PlayerData_TEST_20261126"
+local TEST_DATA_SUFFIX = "_" .. TEST_STORE_NAME
 
 local function known(gameId: number?): boolean
 	return type(gameId) == "number" and gameId ~= 0
@@ -51,6 +59,8 @@ local GameEnv = {
 	DevGameId = DEV_GAME_ID,
 	TestGameId = TEST_GAME_ID,
 	ProdGameId = PROD_GAME_ID,
+	TestStoreName = TEST_STORE_NAME,
+	TestDataSuffix = TEST_DATA_SUFFIX,
 	IsDevFor = isDevFor,
 	IsTestFor = isTestFor,
 	IsDevLikeFor = isDevLikeFor,

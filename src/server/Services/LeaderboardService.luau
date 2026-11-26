@@ -168,6 +168,11 @@ local function storeOf(stat: string): any
 	if name == nil then
 		return nil
 	end
+	-- a501 : stores à part sur le jeu TEST (suffixe de Config/GameEnv, "" sur DEV et PROD).
+	local okSuffix, suffix = pcall(DataService.GetDataSuffix)
+	if okSuffix and type(suffix) == "string" then
+		name ..= suffix
+	end
 	local ok, result = pcall(function(): any
 		return DataStoreService:GetOrderedDataStore(name)
 	end)
