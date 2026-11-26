@@ -995,7 +995,8 @@ local function updateOpening(session: Session, serverNow: number, clock: number)
 	end
 	local label = session.LuckLabel
 	if label then
-		label.Text = Logic.luckText(shown)
+		label.Text =
+			Logic.luckText(Logic.displayLuck(shown, session.Luck, Logic.finalLuck(session.Luck, session.OpenAt, session.SlotId)))
 	end
 	local rowScale = session.RowScale
 	if rowScale then
