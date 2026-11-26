@@ -51,7 +51,7 @@ local Dev: { [string]: number } = {
 	OpenNow4 = 3735788532, -- a485 : palier coupé, ne jamais réutiliser ni supprimer (reçus en attente encore livrés)
 	Revenge = 0,
 	InstantShutter = 0,
-	Luck3 = 0,
+	Luck3 = 3736587667,
 	-- a485 (L-351) : Shield30 retiré pour de bon (jamais créé) : plus de clé.
 	ServerLuck2 = 0,
 	ServerLuck4 = 0,
