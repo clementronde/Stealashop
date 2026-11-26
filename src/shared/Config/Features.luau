@@ -349,6 +349,15 @@ local Features = {
 	DisplayRaritySize = false,
 	-- a459 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
 	DisplayRaritySizeDev = true,
+	-- a491 (L-429, idée 10 de « pousser un œuf », validée par Clément le 26/11 ; Config/DisplaySize.Trophies) : trophées
+	-- plus gros. Sur un présentoir, un objet a au moins 2,5 studs de haut à ×1 (5 studs à 10 kg, la hauteur du perso) ; un
+	-- objet plat est compté par la moitié de son plus grand côté. Avec la taille par rareté (DisplayRaritySize) : la plus
+	-- grande des deux tailles. Puis la place physique réduit, comme avant. Le colis de l'ouverture a 3 studs de haut au
+	-- départ (0,6 fois le perso), puis grossit de UpgradeGrow par amélioration, comme avant ; les colis des rayons ne
+	-- changent pas. Interrupteur PROD (partout) : false (règle C2 : pas encore de test humain) ; false = comme avant.
+	BiggerTrophies = false,
+	-- a491 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	BiggerTrophiesDev = true,
 	-- a459 (L-306, Cantin 25/11) : l'objet du socle du plus rare (RarestDisplay, copie RarestItem de VfxController) flotte
 	-- exactement comme sur les présentoirs (ItemIdleController, Config/DisplayMotion). Interrupteur PROD (partout) : false
 	-- (règle C2) ; false = l'objet du socle reste immobile, comme avant.

@@ -283,6 +283,11 @@ local ItemIdleConfig: any = if idleModule and idleModule:IsA("ModuleScript") the
 local sizeModule = ReplicatedStorage.Shared.Config:FindFirstChild("DisplaySize")
 local DisplaySize: any = if sizeModule and sizeModule:IsA("ModuleScript") then require(sizeModule) :: any else nil
 local RARITY_SIZE: boolean = DisplaySize ~= nil and DisplaySize.Enabled == true
+-- a491 (L-429, Features.BiggerTrophies / BiggerTrophiesDev) : trophées plus gros (Config/DisplaySize.Trophies).
+local TROPHIES: boolean = DisplaySize ~= nil
+	and type(DisplaySize.Trophies) == "table"
+	and DisplaySize.Trophies.Enabled == true
+	and type(DisplaySize.TrophyFactor) == "function"
 local UI = require(ReplicatedStorage.Shared.Contract.UI)
 local Net = require(ReplicatedStorage.Shared.Net.Net)
 local ProfileTypes = require(ReplicatedStorage.Shared.Types.Profile)
@@ -1379,6 +1384,41 @@ local function largestSide(model: Model): number
 	return math.max(maxX - minX, maxY - minY, maxZ - minZ)
 end
 
+-- a491 (L-429) : échelle propre de `model` (Model:GetScale ; 3,57 pour 37 modèles du lot Meshy), 1 si elle est illisible.
+local function scaleOf(model: Model): number
+	local ok, value = pcall(function(): number
+		return model:GetScale()
+	end)
+	return if ok and type(value) == "number" and value > 0 and value < math.huge then value else 1
+end
+
+-- a491 (L-429 point 3, Features.BiggerTrophies) : facteur des trophées de `model` (pas encore mis à l'échelle) :
+-- hauteur (Y) et plus grand côté de ses pièces visibles, dans le repère de son pivot (comme largestSide), passés à
+-- DisplaySize.TrophyFactor. 1 si la mesure échoue.
+local function trophyFactor(model: Model): number
+	local ok, value = pcall(function(): number
+		local pivot = model:GetPivot()
+		local low, high = math.huge, -math.huge
+		for _, d in model:GetDescendants() do
+			if not d:IsA("BasePart") or (d :: BasePart).Transparency >= 1 then
+				continue
+			end
+			local part = d :: BasePart
+			local half = part.Size / 2
+			for _, corner in CORNERS do
+				local y = (pivot:PointToObjectSpace(part.CFrame * (half * corner))).Y
+				low = math.min(low, y)
+				high = math.max(high, y)
+			end
+		end
+		if high < low then
+			return 1
+		end
+		return DisplaySize.TrophyFactor(high - low, largestSide(model))
+	end)
+	return if ok and type(value) == "number" and value >= 1 and value < math.huge then value else 1
+end
+
 -- a459c (L-367, règle finale de Cantin du 25/11) : taille (largestSide) du modèle médian de chaque rareté, sur les
 -- modèles ITM_ livrés du catalogue actif, exclusifs compris (Config/Items.ById, itemTemplate), DisplaySize.Median.
 -- Mesurée une fois, à la première exposition (Assets est déjà dans la place), puis gardée. Rareté sans modèle : nil.
@@ -1416,12 +1456,14 @@ end
 -- poids minimal, le maximum de sa rareté au poids maximal). Aucun plafond ici : seule la place physique réduit ensuite
 -- (standBox, fitFactor). nil si la rareté n'a pas de minimum ou si le modèle n'a aucune pièce visible (taille du poids,
 -- comme avant).
-local function raritySizeScale(model: Model, rarityId: string, weight: number): number?
+-- a491 (L-429, Features.BiggerTrophies) : `floor` (échelle des trophées, même unité) : jamais en dessous ; nil = aucun.
+local function raritySizeScale(model: Model, rarityId: string, weight: number, floor: number?): number?
 	local factor = DisplaySize.BaseFactor(rarityId, largestSide(model), medianSideOf(rarityId))
 	if factor == nil then
 		return nil
 	end
-	return model:GetScale() * factor * DisplaySize.GrowthFor(rarityId, weight)
+	local scale = model:GetScale() * factor * DisplaySize.GrowthFor(rarityId, weight)
+	return if floor ~= nil and floor > scale then floor else scale
 end
 
 -- a459b (L-367) : place libre d'un présentoir jusqu'à ses voisins, dans le repère de son Attachment DisplaySlot_xx :
@@ -1623,13 +1665,28 @@ local function buildItemModel(
 	local rawMutation = entry.Mutation
 	local weight = ItemWeight.Effective(entry.Weight, if rawMutation then rawMutation.Size else nil)
 	local scale = Mutations.Scale(mutation, weight)
+	-- a491 (L-429 point 3, Features.BiggerTrophies) : sur un présentoir, au moins DisplaySize.Trophies.BaseHeight de haut à
+	-- ×1 (trophyFactor, mesuré avant toute mise à l'échelle). Plancher de la taille par rareté (plus bas), sinon taille.
+	if TROPHIES and billboard then
+		scale *= trophyFactor(display)
+	end
+	-- a491 (L-429 point 1, bug d'échelle, corrigé sans interrupteur) : l'échelle du poids part de l'échelle propre du
+	-- modèle livré (3,57 pour 37 objets du lot Meshy, qui s'affichaient à 56 % de leur taille), comme CarryService.
+	-- Un modèle à l'échelle 1 : rien ne change. Échelle propre notée sur la copie (Weight.BaseScaleAttribute), si elle
+	-- n'est pas 1, pour les plafonds lus ailleurs (en main, socle « BEST ITEM »).
+	local templateScale = scaleOf(display)
+	if templateScale ~= 1 then
+		scale *= templateScale
+		display:SetAttribute(WeightConfig.BaseScaleAttribute, templateScale)
+	end
+	local trophyFloor: number? = if TROPHIES and billboard then scale else nil
 	-- a459 (L-354, Clément) ; a459b, a459c (L-367, règle de Cantin) : sur un présentoir, la vraie taille du modèle × le
 	-- facteur de sa rareté, au moins le minimum, puis grossie par le poids (Config/DisplaySize), remplace la taille du poids ; seule la place
 	-- physique la réduit ensuite (raritySized). Seulement sur un présentoir (`billboard`, joueur ou bot) : l'objet sous
 	-- antivol posé au sol (BuildFloorItem) garde la taille de son poids.
 	local raritySized = false
 	if RARITY_SIZE and billboard then
-		local sized = raritySizeScale(display, def.Rarity, weight)
+		local sized = raritySizeScale(display, def.Rarity, weight, trophyFloor) -- a491 : jamais sous les trophées
 		if sized ~= nil then
 			scale = sized
 			raritySized = true

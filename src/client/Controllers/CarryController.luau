@@ -194,7 +194,10 @@ local function fadeBig(model: Instance)
 	local ok, scale = pcall(function()
 		return (model :: Model):GetScale()
 	end)
-	if not ok or type(scale) ~= "number" or scale < WeightConfig.CarryFadeFromScale then
+	-- a491 (L-429 point 1) : seuil compté depuis l'échelle propre du modèle livré (attribut posé par CarryService, absent = 1).
+	local okBase, base = pcall(model.GetAttribute, model, WeightConfig.BaseScaleAttribute)
+	local from = WeightConfig.CarryFadeFromScale * (if okBase and type(base) == "number" and base > 0 and base < math.huge then base else 1)
+	if not ok or type(scale) ~= "number" or scale < from then
 		return
 	end
 	local record = hidden[model]

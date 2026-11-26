@@ -666,6 +666,14 @@ local function scaleVisual(model: Model, offset: CFrame, payload: Payload): CFra
 	local ok, value = pcall(Mutations.Scale, payload.Mutation, payload.Weight)
 	local scale = if ok and type(value) == "number" and value == value and value > 0 and value < math.huge then value else 1
 	scale = math.min(scale, WeightConfig.CarryMaxScale)
+	-- a491 (L-429 point 1) : échelle propre du modèle livré (3,57 pour 37 objets du lot Meshy) notée sur la copie, pour le
+	-- fondu CarryFadeFromScale (CarryController) ; absente pour un modèle à l'échelle 1, comme avant.
+	pcall(function()
+		local base = model:GetScale()
+		if math.abs(base - 1) > 1e-6 then
+			model:SetAttribute(WeightConfig.BaseScaleAttribute, base)
+		end
+	end)
 	if math.abs(scale - 1) < 1e-3 then
 		return offset
 	end

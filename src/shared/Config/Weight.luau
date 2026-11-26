@@ -149,6 +149,10 @@ local Weight = {
 	-- a234 : attribut posé par DisplayService sur un objet exposé réduit pour tenir dans le FitSize de son présentoir
 	-- (nombre < 1, la réduction ; absent : aucune). VfxController le retire de la copie du socle « BEST ITEM ».
 	FitScaleAttribute = "FitScale",
+	-- a491 (L-429, bug d'échelle) : échelle propre du modèle livré (Model:GetScale de l'ITM : 3,57 pour 37 objets du lot
+	-- Meshy), posée par DisplayService et CarryService sur la copie quand elle n'est pas 1 (absente : 1). Les échelles du
+	-- poids et leurs plafonds (HeldMaxScale, RarestMaxScale, CarryFadeFromScale) se comptent à partir d'elle.
+	BaseScaleAttribute = "BaseScale",
 	Field = "Weight",
 }
 

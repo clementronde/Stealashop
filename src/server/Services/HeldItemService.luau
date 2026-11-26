@@ -250,8 +250,12 @@ local function buildTool(player: Player, uid: string, entry: ItemEntry): Tool?
 	model.Name = HeldItem.ModelName
 	-- Vague 62 (a203) : un objet lourd (poids, Config/Weight) se tient à sa taille, au plus Weight.HeldMaxScale (V0),
 	-- pour ne pas cacher le joueur. Échec : la taille du présentoir, sans bruit.
-	if model:GetScale() > WeightConfig.HeldMaxScale then
-		pcall(model.ScaleTo, model, WeightConfig.HeldMaxScale)
+	-- a491 (L-429 point 1) : plafond compté depuis l'échelle propre du modèle livré (attribut Weight.BaseScaleAttribute
+	-- posé par DisplayService, absent = 1) ; un modèle à l'échelle 1 : comme avant.
+	local okBase, base = pcall(model.GetAttribute, model, WeightConfig.BaseScaleAttribute)
+	local cap = WeightConfig.HeldMaxScale * (if okBase and type(base) == "number" and base > 0 and base < math.huge then base else 1)
+	if model:GetScale() > cap then
+		pcall(model.ScaleTo, model, cap)
 	end
 	-- a178 (Cantin, 15/11) : objet encore sous antivol (profil : AntiTheft, UnlockAt) : UnboxController y montre
 	-- le même verrou qu'au sol (BB_AntiTheft), jusqu'à la fin de l'antivol. Visuel seulement. Posé avant le tag.
