@@ -258,16 +258,18 @@ local function attach(lock: Lock)
 	if store == nil then
 		return -- pas encore arrivé (streaming) : GetInstanceAddedSignal
 	end
+	-- a504 : écoute posée même quand le rideau est là, gardée jusqu'à la fin : un rideau qui sort seul du streaming
+	-- (le magasin reste) revient en nouvel objet, à recacher (avant, seul un rideau absent au départ était écouté).
+	if lock.watch == nil then
+		local watched: Model = store
+		lock.watch = watched.DescendantAdded:Connect(function(descendant: Instance)
+			if descendant.Name == SHUTTER_NAME and locks[lock.id] == lock then
+				task.defer(attach, lock)
+			end
+		end)
+	end
 	local real = findShutter(store)
 	if real == nil then
-		if lock.watch == nil then
-			local watched: Model = store
-			lock.watch = watched.DescendantAdded:Connect(function(descendant: Instance)
-				if descendant.Name == SHUTTER_NAME and locks[lock.id] == lock then
-					task.defer(attach, lock)
-				end
-			end)
-		end
 		return
 	end
 	if lock.clone then

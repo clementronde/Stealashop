@@ -387,6 +387,21 @@ local function removeEntry(entry: Entry)
 	emitId(removedListeners, entry.Id)
 end
 
+local track: (model: Instance) -> () -- défini plus bas ; rappelé quand la vitre sort du streaming (a504)
+
+-- Modèle encore dans la map et encore tagué : sa vitre peut revenir (a504).
+local function stillWatched(model: Instance): boolean
+	if not model:IsDescendantOf(Workspace) then
+		return false
+	end
+	for _, tag in WINDOW_TAGS do
+		if CollectionService:HasTag(model, tag) then
+			return true
+		end
+	end
+	return false
+end
+
 local function addEntry(id: string, window: Instance, model: Model)
 	local previous = entries[id]
 	if previous then
@@ -446,6 +461,12 @@ local function addEntry(id: string, window: Instance, model: Model)
 		window.AncestryChanged:Connect(function()
 			if window.Parent == nil then
 				removeEntry(entry) -- vitre retirée du modèle
+				-- a504 : la pièce Window sort seule du streaming (le modèle reste là et tagué) ; elle revient en
+				-- nouvel objet avec le même WindowId. On réécoute le modèle (track) pour refaire la barre à son
+				-- retour ; les PV connus restent dans hpById.
+				if stillWatched(model) then
+					track(model)
+				end
 			end
 		end)
 	)
@@ -462,7 +483,7 @@ local function stopWaiting(model: Instance)
 end
 
 -- Enregistre la vitre du modèle dès qu'elle a son WindowId (elle peut arriver plus tard : streaming).
-local function track(model: Instance)
+function track(model: Instance)
 	if not model:IsA("Model") or entryByModel[model] ~= nil then
 		return
 	end
