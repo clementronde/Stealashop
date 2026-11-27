@@ -102,6 +102,9 @@
 --   compteur Speed n'est plus retenu : il monte à la hausse de l'attribut et pulse à chaque apparition. Les bulles ×N
 --   (BubbleGain) gardent leur affichage.
 --   GainController.Superscript(text) -> string   « ×2 » en exposant Unicode (a178)
+-- a507 (L-476, correctif sans interrupteur) : dans les copies de BB_Gain (au-dessus du joueur, autour de lui, et la copie
+--   de Row qui vole), Row.Amount prend la largeur de son texte (Shared/GainFit) : le « +N » et l'icône sont centrés
+--   ensemble, quelle que soit la longueur du nombre (fitAmount).
 
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
@@ -223,6 +226,8 @@ local GainPops: any = optionalModule(Shared, "GainPops")
 local POPS: any = if treadmillFx and GainPops and treadmillFx.GainPops and treadmillFx.GainPops.Enabled == true
 	then treadmillFx.GainPops
 	else nil
+-- a507 (L-476) : largeur de Row.Amount à celle de son texte (Shared/GainFit ; facultatif : bancs plus anciens).
+local GainFit: any = optionalModule(Shared, "GainFit")
 
 -- Vague 59 (a192) : gains ponctuels qui volent (Config/HeistFeel.BillFly).
 local BILL = HeistFeel.BillFly
@@ -455,6 +460,66 @@ local function addExponent(amountLabel: TextLabel, head: string, tail: string, t
 	return label
 end
 
+-- a507 (L-476, Clément 27/11 sur le tapis : le nombre et la chaussure doivent être collés et centrés ensemble) : dans une
+-- copie de BB_Gain, Row.Amount (TextScaled) gardait la largeur de Clément, son texte collé à droite ; un nombre court
+-- laissait le groupe décalé à droite. Une fois la copie à l'écran, Amount prend la largeur de son texte à sa taille
+-- rendue (Shared/GainFit, + 2 %), au plus celle de Clément, et l'UIListLayout centré de Row recentre le tout ; refait
+-- quand Row change de taille (pop, distance). Seulement Amount enfant direct de Row, Row avec un UIListLayout
+-- horizontal centré, largeur d'Amount en Scale pure, ni UIAspectRatioConstraint ni AutomaticSize : sinon rien ne change.
+-- Le modèle de Clément n'est pas touché (copie seulement) ; aucun nom ne change.
+local function fitAmount(row: GuiObject?, label: TextLabel?)
+	local fit = GainFit
+	if fit == nil or row == nil or label == nil or label.Parent ~= row then
+		return
+	end
+	local amountLabel: TextLabel = label
+	local rowObject: GuiObject = row
+	-- Conditions et mesures lues sous pcall : une propriété illisible laisse le gain tel quel, jamais d'erreur.
+	local okLayout, eligible = pcall(function(): boolean
+		local layout = rowObject:FindFirstChildOfClass("UIListLayout")
+		return layout ~= nil
+			and layout.FillDirection == Enum.FillDirection.Horizontal
+			and layout.HorizontalAlignment == Enum.HorizontalAlignment.Center
+			and amountLabel:FindFirstChildOfClass("UIAspectRatioConstraint") == nil
+			and amountLabel.AutomaticSize == Enum.AutomaticSize.None
+	end)
+	if not okLayout or eligible ~= true then
+		return
+	end
+	local base = amountLabel.Size
+	if base.X.Scale <= 0 or base.X.Offset ~= 0 then
+		return
+	end
+	local text = if amountLabel.RichText then (string.gsub(amountLabel.Text, "<[^>]*>", "")) else amountLabel.Text
+	task.spawn(function()
+		local widthAt100 = textWidth(amountLabel, text) -- 1er appel d'un texte : attend la mesure, puis en cache
+		local function apply()
+			if amountLabel.Parent ~= rowObject then
+				return
+			end
+			pcall(function()
+				local limit = amountLabel:FindFirstChildOfClass("UITextSizeConstraint")
+				local scale = fit.WidthScale(
+					rowObject.AbsoluteSize.X,
+					amountLabel.AbsoluteSize.Y,
+					widthAt100,
+					amountLabel.TextScaled,
+					amountLabel.TextSize,
+					if limit then limit.MaxTextSize else nil,
+					base.X.Scale
+				)
+				if scale ~= nil and math.abs(scale - amountLabel.Size.X.Scale) > 1e-4 then
+					amountLabel.Size = UDim2.new(scale, 0, base.Y.Scale, base.Y.Offset)
+				end
+			end)
+		end
+		apply()
+		pcall(function() -- lien coupé quand la copie est détruite
+			rowObject:GetPropertyChangedSignal("AbsoluteSize"):Connect(apply)
+		end)
+	end)
+end
+
 -- Habille une copie (BB_Gain, sa Row, ou UI_HUD.TrainGainFly.Template de la vague 64) : texte, couleur, icône et « ×2 »
 -- du trail. `source` est le modèle qui porte les attributs <Sorte>Color et <Sorte>Icon de Clément.
 type Dressed = { amount: TextLabel?, icon: ImageLabel?, multiplier: TextLabel?, exponent: TextLabel? }
@@ -575,6 +640,7 @@ local function floatGain(kind: Kind, amount: number, info: TweenInfo?, text: str
 	end
 
 	billboard.Parent = gui
+	fitAmount(row, amountLabel) -- a507 (L-476)
 	active.Gains += 1
 	local look = COLLECT_TEXT
 	if kind == CASH and look and row then
@@ -739,6 +805,7 @@ local function popWorld(text: string): boolean
 		end
 	end
 	billboard.Parent = gui
+	fitAmount(row, dressed.amount) -- a507 (L-476)
 	active.Gains += 1
 	if row then
 		local scale = Instance.new("UIScale")
@@ -2060,6 +2127,10 @@ local function flyGain(
 	flyer.AnchorPoint = Vector2.new(0.5, 0.5)
 	flyer.Position = UDim2.fromOffset(from.X, from.Y)
 	flyer.Parent = screen
+	local amountParent = if built and dressed.amount then dressed.amount.Parent else nil
+	if amountParent and amountParent:IsA("GuiObject") then
+		fitAmount(amountParent :: GuiObject, dressed.amount) -- a507 (L-476) : copie de BB_Gain.Row, comme au-dessus du joueur
+	end
 	local scale = Instance.new("UIScale")
 	scale.Name = COPY_SCALE
 	scale.Scale = spec.PopFrom
