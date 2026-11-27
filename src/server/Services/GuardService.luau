@@ -151,6 +151,20 @@
 -- revole tel quel sur son rayon (CarryService.FailNoDrop « Caught », comme une capture dans son magasin ;
 -- StoreHeistService le pose sur un autre rayon libre du magasin si le sien est pris). Le compteur s'efface quand
 -- le portage finit sans chute (rangé en zone safe, revenu au rayon) ou quand l'objet resté au sol revole.
+-- a518 (27/11), chacun derrière son interrupteur (Config/Features, X en PROD et XDev en DEV et TEST ; Config/Guards) :
+--   - L-437 (GuardScale, Guard/Scale) : chaque clone de vigile de magasin et de nuit passe à Model:ScaleTo(Guards.Scale.Size,
+--     1,5 × un joueur) avant d'être posé ; agent du chemin plafonné (Scale.AgentRadiusMax). Capture, vitesses et poussée
+--     ne changent pas (mesurées entre HumanoidRootPart ; rythme des pas à l'échelle, comme avant).
+--   - L-438 (GuardDayPatrol, Guard/DayPatrol) : un vigile de jour par magasin PNJ de la map, sans cible ni voleur (owner
+--     nil), fait sa ronde dedans (état Patrol, en boucle, attribut GuardPatrol, hors plafonds de 9.7, ignoré par le rideau
+--     de StoreHeistService), posé par _DayPatrolTick quand le magasin n'a aucun vigile de jour en jeu. Un vol (prise, ou
+--     ChaseIntruder) le réveille (_WakePatroller : Wait puis Chase, comme un vigile apparu) au lieu d'en sortir un neuf ;
+--     rentré à son GuardSpawn, il reprend la ronde (_ResumePatrol, OnGuardGone pour son voleur) au lieu de s'effacer, s'il
+--     n'y a pas déjà un vigile de ronde dans ce magasin. Un objet lié repris pendant sa ronde le fait repartir.
+--   - L-426 (GuardCatchRagdoll, Guard/CatchRagdoll) : à la capture par un vigile de magasin, une fois l'objet tombé, le
+--     voleur part en ragdoll loin du vigile (au lieu de l'éjection V3 et de la poussée d'Impact) ; à la fin de Catch, le
+--     vigile laisse l'objet au sol et rentre (CatchRagdoll.GuardReturns), toujours lié à l'objet : il fait demi-tour si
+--     quelqu'un le reprend. La 3e capture (retour au rayon, a174) ne change pas.
 --
 -- Vigiles de nuit (DEV-047, section 5.12), lancés par NightCycleService à la tombée de la nuit
 -- (StartNightPatrol) et retirés à l'aube (StopNightPatrol). Même poursuite, même capture, mêmes
@@ -462,6 +476,7 @@ type Guard = {
 	alive: boolean,
 	driver: DriverChase?, -- conducteur du camion : sa poursuite ; nil pour un vigile
 	revealFrozenAt: number?, -- vague 62 : figé depuis (os.clock()) : sa cible est dans sa cinématique d'ouverture
+	thrown: boolean?, -- a518 (L-426, Guard/CatchRagdoll) : sa dernière capture a projeté le voleur en ragdoll (pas de Settle)
 }
 
 -- Noms du contrat (2.1, 10.4) lus ici.
@@ -672,6 +687,28 @@ end)() :: any
 GuardService._ChaseV3 = (function(): any
 	local ok, result = pcall(function(): any
 		return require((Shared :: any).ChaseV3)
+	end)
+	return if ok and type(result) == "table" then result else nil
+end)() :: any
+-- a518 (27/11, L-437, L-438, L-426) : vigiles 1,5 fois plus grands (Guard/Scale), ronde de jour dans le magasin
+-- (Guard/DayPatrol), voleur attrapé projeté en ragdoll et vigile qui rentre (Guard/CatchRagdoll) ; chacun derrière son
+-- interrupteur (Features.GuardScale, GuardDayPatrol, GuardCatchRagdoll, et leurs …Dev). Absents (faux arbres des bancs
+-- plus anciens) : la règle d'avant. Champs et non locales, comme _CatchShow.
+GuardService._Scale = (function(): any
+	local ok, result = pcall(function(): any
+		return require((script.Parent :: any).Guard.Scale)
+	end)
+	return if ok and type(result) == "table" then result else nil
+end)() :: any
+GuardService._DayPatrol = (function(): any
+	local ok, result = pcall(function(): any
+		return require((script.Parent :: any).Guard.DayPatrol)
+	end)
+	return if ok and type(result) == "table" then result else nil
+end)() :: any
+GuardService._CatchRagdoll = (function(): any
+	local ok, result = pcall(function(): any
+		return require((script.Parent :: any).Guard.CatchRagdoll)
 	end)
 	return if ok and type(result) == "table" then result else nil
 end)() :: any
@@ -1303,6 +1340,10 @@ end
 -- Le calcul de chemin en cours continue (un seul à la fois par Path) ; son résultat sera jeté.
 local function setState(guard: Guard, state: GuardState)
 	guard.state = state
+	-- a518 (L-438) : vigile de jour en ronde dans son magasin ; StoreHeistService ne l'attend pas pour baisser le rideau.
+	if guard.kind == "Day" then
+		guard.model:SetAttribute("GuardPatrol", if state == "Patrol" then true else nil)
+	end
 	guard.pathToken += 1
 	guard.waypoints = nil
 	guard.pathGoal = nil
@@ -2524,6 +2565,14 @@ local function catch(guard: Guard, player: Player)
 	local track = guard.anims:Play("Catch")
 	guard.stateEndsAt = now + pauseFor(track, CATCH_PAUSE, CATCH_MAX)
 	log(`{guard.label} : {player.Name} rattrapé`)
+	-- a518 (L-426, Features.GuardCatchRagdoll) : vigile de magasin, le voleur part en ragdoll (plus bas, une fois l'objet
+	-- tombé) au lieu de l'éjection V3 et de la poussée du marqueur Impact.
+	local throw = guard.kind == "Day" and guard.driver == nil and GuardService._CatchRagdoll ~= nil
+		and GuardService._CatchRagdoll.On() and not RevealState.IsProtected(player)
+	guard.thrown = nil
+	if throw then
+		guard.ejectFrom = nil
+	end
 	GuardService._EjectNow(guard, player) -- a443 (Chase.V3.Eject)
 
 	-- Colis, étourdissement, message : décidés ici, au moment de la capture, dans leur propre tâche
@@ -2617,7 +2666,7 @@ local function catch(guard: Guard, player: Player)
 	else
 		if guard.ejected == true then
 			guard.ejected = nil -- a443 : déjà éjecté à la capture
-		else
+		elseif not throw then
 			knockback(player, guard.root.Position)
 		end
 		if pickUp then
@@ -2634,6 +2683,20 @@ local function catch(guard: Guard, player: Player)
 			local ok, err = pcall(fail :: any, player, "Caught")
 			if not ok then
 				warn(`[GuardService] CarryService.Fail({player.Name}, "Caught") : {err}`)
+			end
+		end
+		-- a518 (L-426) : l'objet est tombé là où il était ; le voleur part en ragdoll, loin du vigile. Réussi : la poussée
+		-- du marqueur Impact n'a plus lieu (ejected) ; raté sans Catch livrée : la poussée d'avant, tout de suite.
+		if throw then
+			local from = guard.root.Position
+			if GuardService._CatchRagdoll.Throw(player, from, AntiCheatService, KNOCKBACK_NAME) then
+				guard.thrown = true
+				if track then
+					guard.ejected = true
+				end
+				log(`{guard.label} : {player.Name} projeté en ragdoll`)
+			elseif track == nil then
+				knockback(player, from)
 			end
 		end
 		stun(player, Balance.Guard.CatchStunDuration)
@@ -3370,7 +3433,8 @@ end
 
 local function startPatrol(guard: Guard, now: number)
 	setState(guard, "Patrol")
-	setWalkSpeed(guard, Night.PatrolSpeed)
+	-- a518 (L-438) : la ronde de jour, dans le magasin, à DayPatrol.Speed.
+	setWalkSpeed(guard, if guard.kind == "Day" and GuardService._DayPatrol then GuardService._DayPatrol.Speed() else Night.PatrolSpeed)
 	guard.pauseUntil = 0
 	guard.progressPos = guard.root.Position
 	guard.progressAt = now
@@ -3389,7 +3453,9 @@ end
 -- Point suivant de l'aller-retour ; le calcul de chemin en cours est périmé.
 local function nextPatrolPoint(guard: Guard, now: number)
 	local count = #guard.patrol
-	if count > 1 then
+	if count > 1 and guard.kind == "Day" then
+		guard.patrolIndex = guard.patrolIndex % count + 1 -- a518 (L-438) : le tour du magasin, en boucle
+	elseif count > 1 then
 		local index = guard.patrolIndex + guard.patrolStep
 		if index < 1 or index > count then
 			guard.patrolStep = -guard.patrolStep
@@ -3428,9 +3494,15 @@ local function patrolStep(guard: Guard, now: number)
 	local goal = guard.patrol[guard.patrolIndex]
 	if flat(goal - position).Magnitude <= ARRIVE_DISTANCE then
 		stop(guard)
+		local day = if guard.kind == "Day" then GuardService._DayPatrol else nil
 		if count > 1 then
-			guard.pauseUntil = now + Night.PatrolPause
+			guard.pauseUntil = now + (if day then day.Pause() else Night.PatrolPause)
 			guard.anims:Stop("Walk")
+			local store = guard.store
+			local look = if day and store then day.LookPoint(store, position) else nil
+			if look then
+				moveTo(guard, look) -- a518 (L-438) : un petit pas vers la vitrine, pour s'y tourner pendant la pause
+			end
 		end
 		return
 	end
@@ -3617,11 +3689,52 @@ end
 
 -- Retour d'un vigile de jour (voir l'en-tête, point 5) : il s'efface en fondu à l'arrivée, ou
 -- plus tôt là où il est (retour trop long, aucun chemin, bloqué devant la porte).
+-- a518 (L-438, Features.GuardDayPatrol) : le vigile de jour `guard` (rentré à son GuardSpawn, ou tout juste posé) devient
+-- le vigile de ronde de son magasin, s'il n'en a pas déjà un : il ne s'efface plus. Son voleur est prévenu comme s'il
+-- était parti (OnGuardGone : le magasin se rouvre pour lui) et le compte de la réouverture repart (lastGoneAt). false :
+-- ronde coupée, pas de magasin, ou un autre vigile y fait déjà la ronde (celui-ci s'efface, comme avant).
+GuardService._ResumePatrol = function(guard: Guard, now: number): boolean
+	local day = GuardService._DayPatrol
+	local store = guard.store
+	if day == nil or store == nil or guard.kind ~= "Day" or guard.driver ~= nil or not day.On() then
+		return false
+	end
+	for _, other in guards do
+		if other ~= guard and other.alive and other.store == store and other.state == "Patrol" then
+			return false
+		end
+	end
+	endChase(guard)
+	releaseFollow(guard)
+	if #guard.patrol == 0 then
+		guard.patrol = day.Points(store, guard.home)
+	end
+	guard.patrolIndex = 1
+	guard.patrolStep = 1
+	guard.intruder = false
+	guard.intruderUntil = nil
+	guard.thrown = nil
+	local owner = guard.owner
+	guard.owner = nil
+	startPatrol(guard, now)
+	if owner then
+		lastGoneAt[store] = os.clock() -- comme à son départ (StoreReadyToReopen)
+		for _, listener in table.clone(goneListeners) do
+			task.spawn(listener, owner, store)
+		end
+	end
+	log(`{guard.label} : fait sa ronde dans {store.Name} ({#guard.patrol} points)`)
+	return true
+end
+
 local function dayReturnStep(guard: Guard, now: number)
 	local position = guard.root.Position
 	local atDoor = guard.returnTo == "Door"
 	local arrive = if atDoor then DOOR_ARRIVE_DISTANCE else ARRIVE_DISTANCE
 	if flat(guard.returnGoal - position).Magnitude <= arrive then
+		if not atDoor and GuardService._ResumePatrol(guard, now) then
+			return -- a518 (L-438) : il reprend sa ronde
+		end
 		startFade(guard, now, "rentré", if atDoor then guard.doorStep else nil)
 		return
 	end
@@ -3754,7 +3867,7 @@ local function update(guard: Guard, now: number)
 	elseif state == "Follow" then
 		followStep(guard, now)
 	elseif state == "Catch" or state == "Tired" then
-		if state == "Catch" and GuardService._ClientView then
+		if state == "Catch" and GuardService._ClientView and guard.thrown ~= true then -- a518 : voleur projeté, rien à rejoindre
 			-- a416 (Chase.ClientView) : le joueur immobilisé glisse encore sur son élan : le vigile le rejoint à
 			-- SettleSpeed jusqu'à StandOff studs, pendant SettleSeconds s au plus (jamais par la zone safe).
 			local to, speed = GuardService._ClientView.Settle(guard.root, now)
@@ -3768,9 +3881,14 @@ local function update(guard: Guard, now: number)
 		if now >= guard.stateEndsAt then
 			-- a114 : son objet lié a été repris pendant Catch : il repart vers le porteur au lieu de rentrer.
 			local carrier = if state == "Catch" then linkedCarrier(guard) else nil
+			-- a518 (L-426, CatchRagdoll.GuardReturns) : il laisse l'objet tombé et rentre ; il reste lié à l'objet (demi-tour
+			-- si quelqu'un le reprend, onLinkedPickup).
+			local returns = state == "Catch" and guard.kind == "Day" and guard.driver == nil
+				and GuardService._CatchRagdoll ~= nil and GuardService._CatchRagdoll.GuardReturns()
+			guard.thrown = nil
 			if carrier then
 				retargetLinked(guard, carrier)
-			elseif not (state == "Catch" and followAfterCatch(guard)) then
+			elseif not (state == "Catch" and not returns and followAfterCatch(guard)) then
 				-- Sinon (Cantin, 2026-11-13) : l'objet tombé à la capture est au sol, il va le garder (Follow).
 				releaseFollow(guard)
 				startReturn(guard, now)
@@ -3790,6 +3908,10 @@ local function update(guard: Guard, now: number)
 end
 
 local function step()
+	local patrolTick = GuardService._DayPatrolTick
+	if patrolTick then
+		patrolTick(os.clock()) -- a518 (L-438) : vigiles de ronde posés ou retirés
+	end
 	if #guards == 0 and #nightGuards == 0 and #driverGuards == 0 then
 		return
 	end
@@ -3840,7 +3962,7 @@ end
 local function countActive(): number
 	local count = 0
 	for _, guard in guards do
-		if guard.state ~= "Fade" then
+		if guard.state ~= "Fade" and guard.state ~= "Patrol" then -- a518 (L-438) : la ronde de jour ne compte pas
 			count += 1
 		end
 	end
@@ -3887,20 +4009,31 @@ local function spawnSpot(store: Model): CFrame
 end
 
 -- Crée le vigile du voleur `player` dans le magasin `store`. N'attend pas.
-local function spawnGuard(player: Player, store: Model, zone: number, template: Model, label: string, intruder: boolean?): Guard?
-	if chasedBy[player] ~= nil then
-		return nil -- un vigile par voleur (Balance.Guard.PerThief)
-	end
-	if countChasing(store) >= Balance.Guard.MaxPerStore then
-		log(`{store.Name} : déjà {Balance.Guard.MaxPerStore} vigiles en poursuite, pas de vigile pour {player.Name}`)
-		return nil
-	end
-	if countActive() >= Balance.Guard.MaxActivePerServer and not freeSlot() then
-		log(`déjà {Balance.Guard.MaxActivePerServer} vigiles en poursuite sur le serveur (9.7), pas de vigile pour {player.Name}`)
-		return nil
+-- a518 (L-438) : `player` nil = le vigile de ronde du magasin (hors plafonds, comme les vigiles de nuit), posé au
+-- GuardSpawn en état Patrol (GuardService._DayPatrolTick). Avec la ronde allumée, un vol réveille d'abord ce vigile-là
+-- (GuardService._WakePatroller) au lieu d'en faire sortir un nouveau du GuardSpawn.
+local function spawnGuard(player: Player?, store: Model, zone: number, template: Model, label: string, intruder: boolean?): Guard?
+	if player then
+		if chasedBy[player] ~= nil then
+			return nil -- un vigile par voleur (Balance.Guard.PerThief)
+		end
+		if countChasing(store) >= Balance.Guard.MaxPerStore then
+			log(`{store.Name} : déjà {Balance.Guard.MaxPerStore} vigiles en poursuite, pas de vigile pour {player.Name}`)
+			return nil
+		end
+		if countActive() >= Balance.Guard.MaxActivePerServer and not freeSlot() then
+			log(`déjà {Balance.Guard.MaxActivePerServer} vigiles en poursuite sur le serveur (9.7), pas de vigile pour {player.Name}`)
+			return nil
+		end
+		local woken = GuardService._WakePatroller(player, store, zone, intruder)
+		if woken then
+			return woken
+		end
 	end
 
 	local model = template:Clone()
+	-- a518 (L-437, Guard/Scale) : à la taille voulue avant tout calcul (pose, agent, rythme des pas).
+	local scaled = GuardService._Scale ~= nil and GuardService._Scale.Apply(model, false)
 	local humanoid, root = prepare(model, label)
 	if humanoid == nil or root == nil then
 		warnOnce(`bad:{label}`, `{label} : Humanoid ou HumanoidRootPart manquant, vigile non créé`)
@@ -3909,17 +4042,22 @@ local function spawnGuard(player: Player, store: Model, zone: number, template: 
 	end
 	local scale = scaleOf(model)
 	local agent = agentFor(model)
+	if scaled then
+		GuardService._Scale.Agent(agent)
+	end
 
 	-- Placement : pieds sur le point d'apparition.
-	local frame = spawnSpot(store)
+	local frame = if player then spawnSpot(store) else spawnFrame(store)
 	local rootHeight = humanoid.HipHeight + root.Size.Y / 2
 	local offset = model:GetPivot():ToObjectSpace(root.CFrame)
 	model:PivotTo(frame * CFrame.new(0, rootHeight, 0) * offset:Inverse())
 
-	model:SetAttribute(TARGET_ATTRIBUTE, player.UserId)
+	model:SetAttribute(TARGET_ATTRIBUTE, if player then player.UserId else 0)
 	pcall(function()
-		model.ModelStreamingMode = Enum.ModelStreamingMode.PersistentPerPlayer
-		model:AddPersistentPlayer(player)
+		if player then
+			model.ModelStreamingMode = Enum.ModelStreamingMode.PersistentPerPlayer
+			model:AddPersistentPlayer(player)
+		end
 	end)
 	humanoid.BreakJointsOnDeath = false
 	humanoid.WalkSpeed = 0
@@ -3950,7 +4088,7 @@ local function spawnGuard(player: Player, store: Model, zone: number, template: 
 		store = store,
 		home = frame.Position,
 		zone = zone,
-		speed = chaseSpeed(player, zone),
+		speed = if player then chaseSpeed(player, zone) else Zones[zone].GuardSpeed,
 		target = player,
 		state = "Wait",
 		spawnedAt = now,
@@ -4005,12 +4143,129 @@ local function spawnGuard(player: Player, store: Model, zone: number, template: 
 	guard.anims:Play("Idle")
 
 	table.insert(guards, guard)
+	if player == nil then
+		-- a518 (L-438) : le vigile de ronde, posé au GuardSpawn, part tout de suite sur sa ronde.
+		if not GuardService._ResumePatrol(guard, now) then
+			despawn(guard, "ronde de jour inutile")
+			return nil
+		end
+		log(`vigile de ronde ({label}) posé dans {store.Name}, zone {zone}, {sizeText(scale, agent)}`)
+		return guard
+	end
 	chasedBy[player] = guard
 	refreshChaseState(player)
 	log(
 		`vigile ({label}) lancé sur {player.Name} depuis {store.Name}, zone {zone}, {chaseSpeedText(guard, player, `vitesse {Format.short(guard.speed)}`)}, {sizeText(scale, agent)} ({#guards} en jeu)`
 	)
 	return guard
+end
+
+-- a518 (L-438, Features.GuardDayPatrol) : le vigile de ronde de `store` part pour le voleur `player` (Wait, puis Chase,
+-- comme un vigile qui vient d'apparaître au GuardSpawn ; mêmes plafonds, vérifiés avant par spawnGuard). nil : ronde
+-- coupée ou aucun vigile en ronde dans ce magasin (un nouveau sort du GuardSpawn, comme avant).
+GuardService._WakePatroller = function(player: Player, store: Model, zone: number, intruder: boolean?): Guard?
+	local day = GuardService._DayPatrol
+	if day == nil or not day.On() then
+		return nil
+	end
+	local guard: Guard? = nil
+	for _, other in guards do
+		if other.alive and other.store == store and other.state == "Patrol" and other.kind == "Day" then
+			guard = other
+			break
+		end
+	end
+	if guard == nil then
+		return nil
+	end
+	local woken = guard :: Guard
+	local now = os.clock()
+	woken.target = player
+	woken.owner = player
+	woken.intruder = intruder == true
+	woken.intruderUntil = nil
+	woken.zone = zone
+	woken.speed = chaseSpeed(player, zone)
+	woken.spawnedAt = now
+	woken.pauseUntil = 0
+	chasedBy[player] = woken
+	woken.model:SetAttribute(TARGET_ATTRIBUTE, player.UserId)
+	pcall(function()
+		woken.model.ModelStreamingMode = Enum.ModelStreamingMode.PersistentPerPlayer
+		woken.model:AddPersistentPlayer(player)
+	end)
+	setState(woken, "Wait")
+	stop(woken)
+	woken.anims:Stop("Walk")
+	woken.anims:Stop("Run")
+	woken.anims:Stop("Tired")
+	setWalkSpeed(woken, 0)
+	woken.stateEndsAt = now + startDelay() -- a249 : Chase.StartDelay, comme à l'apparition
+	refreshChaseState(player)
+	log(`{woken.label} : quitte sa ronde, poursuit {player.Name} (vitesse {Format.short(woken.speed)})`)
+	return woken
+end
+
+-- a518 (L-438) : un vigile de ronde dans chaque magasin PNJ de la map qui n'a aucun vigile de jour en jeu (ronde
+-- allumée), toutes les DayPatrol.CheckInterval s ; ronde coupée : ceux qui font la ronde s'effacent. Appelé par step.
+-- Bloc do : ses deux locales ne comptent pas dans la limite des 200 locales de ce fichier.
+do
+local patrolSpawning: { [Model]: boolean } = {}
+local nextPatrolCheck = 0
+GuardService._DayPatrolTick = function(now: number)
+	local day = GuardService._DayPatrol
+	if day == nil or now < nextPatrolCheck then
+		return
+	end
+	nextPatrolCheck = now + day.CheckInterval()
+	if not day.On() then
+		for _, guard in table.clone(guards) do
+			if guard.alive and guard.state == "Patrol" then
+				startFade(guard, now, "ronde de jour coupée", nil)
+			end
+		end
+		return
+	end
+	for _, inst in CollectionService:GetTagged(STORE_TAG) do
+		if not inst:IsA("Model") or not inMap(inst) or patrolSpawning[inst :: Model] then
+			continue
+		end
+		local store = inst :: Model
+		local zone = store:GetAttribute(ZONE_ATTRIBUTE)
+		if type(zone) ~= "number" or Zones[zone] == nil or Find.path(store, GUARD_SPAWN) == nil then
+			continue
+		end
+		local present = false
+		for _, guard in guards do
+			if guard.alive and guard.store == store and guard.state ~= "Fade" then
+				present = true
+				break
+			end
+		end
+		if present then
+			continue
+		end
+		patrolSpawning[store] = true
+		-- Hors de l'image : le rig de remplacement peut demander d'attendre.
+		task.spawn(function()
+			local ok, err = pcall(function()
+				local template = findTemplate(zone)
+				if template and not isUsable(template) then
+					template = nil
+				end
+				local label = if template then template:GetFullName() else FALLBACK_NAME
+				template = template or getFallback()
+				if template and day.On() then
+					spawnGuard(nil, store, zone, template, label)
+				end
+			end)
+			patrolSpawning[store] = nil
+			if not ok then
+				warn(`[GuardService] vigile de ronde de {store.Name} non créé : {err}`)
+			end
+		end)
+	end
+end
 end
 
 -- Vigiles de nuit : apparition ---------------------------------------------------------------
@@ -4113,6 +4368,7 @@ end
 local function spawnNightGuard(zone: number, number: number, points: { Vector3 }, startIndex: number, template: Model, label: string, fallback: boolean)
 	local model = template:Clone()
 	model.Name = string.format(NIGHT_CLONE_NAME, zone, number)
+	local scaled = GuardService._Scale ~= nil and GuardService._Scale.Apply(model, true) -- a518 (L-437)
 	local humanoid, root = prepare(model, label)
 	if humanoid == nil or root == nil then
 		warnOnce(`bad:{label}`, `{label} : Humanoid ou HumanoidRootPart manquant, vigile de nuit non créé`)
@@ -4121,6 +4377,9 @@ local function spawnNightGuard(zone: number, number: number, points: { Vector3 }
 	end
 	local scale = scaleOf(model)
 	local agent = agentFor(model)
+	if scaled then
+		GuardService._Scale.Agent(agent)
+	end
 
 	-- Sur son point, tourné vers le suivant ; à côté si un autre vigile de nuit y est déjà.
 	local start = points[startIndex]
@@ -4487,7 +4746,7 @@ local function onLinkedPickup(player: Player, payload: any, link: Link)
 			return -- update : retargetLinked à la fin de Catch
 		elseif (state == "Wait" or state == "Chase") and guard.target == player then
 			return
-		elseif state == "Tired" or state == "Return" then
+		elseif state == "Tired" or state == "Return" or (state == "Patrol" and guard.kind == "Day") then -- a518 : ou en ronde
 			local store = guard.store
 			if other == nil and store and countChasing(store) >= Balance.Guard.MaxPerStore then
 				log(`{store.Name} : déjà {Balance.Guard.MaxPerStore} vigiles en poursuite, {guard.label} ne fait pas demi-tour pour {player.Name}`)
@@ -4631,7 +4890,7 @@ end
 -- dernier parti depuis au moins Balance.Guard.ReopenAfterReturn s.
 function GuardService.StoreReadyToReopen(store: Model): boolean
 	for _, guard in guards do
-		if guard.alive and guard.store == store then
+		if guard.alive and guard.store == store and guard.state ~= "Patrol" then -- a518 : la ronde de jour n'empêche rien
 			return false
 		end
 	end
