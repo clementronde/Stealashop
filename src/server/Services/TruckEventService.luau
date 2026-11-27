@@ -105,7 +105,7 @@
 --   Le service lit l'attribut, l'efface et agit, même de nuit ; un camion présent est remplacé sans
 --   message. Hors de Studio, l'attribut n'est pas écouté.
 --
--- API (serveur) : aucune. Posé par ce service, lu par TruckController : le tag EventTruck et les
+-- API (serveur) : TruckEventService.LandingPoint et BoxWidth (a516, voir la fin du fichier). Posé par ce service, lu par TruckController : le tag EventTruck et les
 -- attributs du camion (Zone, TruckNumber, SpawnedAt, ArriveUpright, ArriveEndsAt, ExplodedAt, LeftAt ; WindowId, MaxHP, HP et Broken venant de
 -- WindowService), les attributs des colis du camion (plus haut).
 
@@ -1777,6 +1777,17 @@ function TruckEventService.Start()
 			warn(`[TruckEventService] tick : {err}\n{debug.traceback()}`)
 		end)
 	end
+end
+
+-- a516 (fourgon blindé V2) : le placement des colis du camion, repris par ArmoredVanService (12 colis au sol à la casse)
+-- plutôt que recopié. Point d'arrivée au sol (landingPoint) d'un colis de largeur `width` sorti en `from` d'un véhicule
+-- centré en `center`, loin des colis de `taken` ; largeur au sol d'un colis BOX_<Rareté> (boxWidth).
+function TruckEventService.LandingPoint(from: Vector3, center: Vector3, width: number, taken: { Landing }): Vector3
+	return landingPoint(from, center, width, taken)
+end
+
+function TruckEventService.BoxWidth(rarity: string): number
+	return boxWidth(rarity, "Standard")
 end
 
 return TruckEventService

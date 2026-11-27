@@ -123,6 +123,12 @@ local Features = {
 	ArmoredVanBurst = false,
 	-- a509 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
 	ArmoredVanBurstDev = true,
+	-- a516 (décision de Cantin, 27/11) : fourgon V2, jauge en 6 paliers de 25 s (zone 6 au départ, zone 1 à la fin), seuils
+	-- de dégâts fixes, 12 colis de la zone du palier au sol pour tous à la casse (Config/ArmoredVan.V2, ArmoredVanService).
+	-- Allumé, il l'emporte sur ArmoredVanBurst. Interrupteur PROD (partout) : false (règle C2) ; false = le fourgon d'avant.
+	ArmoredVanV2 = false,
+	-- a516 : la même chose allumée dans le jeu DEV (et TEST) seulement (Config/ProductIds.IsDev).
+	ArmoredVanV2Dev = true,
 	-- GC6 (a409, MAJ 6, DEV-140) : classements hebdomadaires, top 100 en $/s et en vols, remis à zéro le lundi 00:00 UTC,
 	-- récompense la semaine suivante (Config/WeeklyLeaderboard, WeeklyLeaderboardService ; panneaux de Clément
 	-- facultatifs). true en DEV ; false = rien n'est compté ni écrit.
