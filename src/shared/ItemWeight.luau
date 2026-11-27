@@ -7,7 +7,8 @@
 -- Contrat de la vague 62 (a202 tire, a204 montre, a203 calcule ; ne pas changer sans le dire) :
 --   ItemWeight.Roll(rng, luck) -> number               poids tiré (kg), `luck` = multiplicateur de chance de la
 --                                                      boîte (×1 à ×8, celui de la rareté) : il multiplie les
---                                                      chances des paliers lourds, sans rien garantir
+--                                                      chances des paliers lourds, sans rien garantir (paliers V2,
+--                                                      a513 v2 : × luck ^ LuckExponent, progressif)
 --   ItemWeight.ScaleFor(kg) -> number                  échelle du modèle (courbe Config/Weight.ScaleCurve ; 10 kg = ×2, a418)
 --   ItemWeight.IncomeFactor(kg) -> number              multiplicateur du revenu (10 kg = ×1)
 --   ItemWeight.SizeMutationFor(kg) -> string?          "Huge", "Colossal" ou nil (Id de Config/Mutations)
@@ -56,14 +57,18 @@ local function rounded(kg: number): number
 	return math.floor(kg + 1e-6)
 end
 
--- Chances relatives de chaque palier pour cette chance (paliers lourds × luck), et leur total.
+-- Chances relatives de chaque palier pour cette chance, et leur total. Paliers V2 (a513 v2, LuckExponent posé) : chance
+-- × luck ^ LuckExponent (progressive) ; paliers d'avant : paliers lourds (Min >= LuckFrom) × luck.
 local function weightsFor(luck: any): ({ number }, number)
 	local boost = cleanLuck(luck)
 	local list: { number } = {}
 	local total = 0
 	for index, tier in Weight.Tiers do
 		local chance = math.max(tier.Chance, 0)
-		if tier.Min >= Weight.LuckFrom then
+		local exponent = tier.LuckExponent
+		if exponent ~= nil then
+			chance *= boost ^ math.max(exponent, 0)
+		elseif tier.Min >= Weight.LuckFrom then
 			chance *= boost
 		end
 		list[index] = chance
