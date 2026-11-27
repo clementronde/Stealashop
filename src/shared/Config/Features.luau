@@ -410,6 +410,13 @@ local Features = {
 	BatFreePvP = false,
 	-- a503 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
 	BatFreePvPDev = true,
+	-- a456 (L-334, Clément 24/11 : « tes vitres te bloquent aussi, tu sors par la porte ») : dans sa boutique, le
+	-- propriétaire ne traverse plus que sa porte (PlotDoor/Window) ; les murs invisibles PlotBarrier et Stage_j/Barriers
+	-- restent solides pour lui comme pour les autres (PlotDoorController, client seul). Interrupteur PROD (partout) :
+	-- false (règle C2 : pas encore de test humain) ; false = le propriétaire traverse ses murs, comme avant (L-050).
+	OwnerSolidWalls = false,
+	-- a456 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	OwnerSolidWallsDev = true,
 }
 
 export type Features = typeof(Features)

@@ -16,9 +16,17 @@
 -- Ma boutique = le modèle taggé `PlayerPlot` dont l'attribut `OwnerUserId` (PlotService) vaut mon
 -- UserId. Les pièces arrivent par le streaming et la porte est refaite par le serveur après une
 -- casse : tout est revu quand une pièce apparaît ou que le serveur remet `CanCollide`.
+--
+-- a456 (L-334, Clément 24/11 : « tes vitres te bloquent aussi, tu sors par la porte ») : avec Features.OwnerSolidWalls
+-- (partout) ou OwnerSolidWallsDev (jeu DEV, Config/ProductIds.IsDev), le propriétaire ne traverse plus que sa porte
+-- (`PlotDoor`/`Window`) : `PlotBarrier` et `Stage_j/Barriers` ne sont plus touchés ici et restent solides pour lui,
+-- comme pour les autres. `PlotBarrier` laisse libre l'ouverture de la porte (Barrier_FL, Barrier_FR, Barrier_FTop) et
+-- le propriétaire réapparaît dans sa boutique (SpawnPoint). Les vitres `Pane_*` restent sans collision dans le modèle
+-- (GlassThrowService, L-291) : rien ne change pour les autres joueurs ni pour l'intrus projeté. Coupé : comme avant.
 
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
 local PLOT_TAG = "PlayerPlot"
@@ -50,6 +58,33 @@ type Mine = {
 local PlotDoorController = {}
 
 local mine: Mine? = nil
+local wallsSolid = false -- a456 (L-334) : murs invisibles solides pour moi aussi (lu une fois, au Start)
+
+-- a456 : Features.OwnerSolidWalls (partout) ou OwnerSolidWallsDev dans le jeu DEV (Config/ProductIds.IsDev).
+local function solidWallsEnabled(): boolean
+	local shared = ReplicatedStorage:FindFirstChild("Shared")
+	local config = if shared then shared:FindFirstChild("Config") else nil
+	local featuresModule = if config then config:FindFirstChild("Features") else nil
+	if config == nil or featuresModule == nil then
+		return false
+	end
+	local ok, features = pcall(require, featuresModule :: any)
+	if not ok or type(features) ~= "table" then
+		return false
+	end
+	if (features :: any).OwnerSolidWalls == true then
+		return true
+	end
+	if (features :: any).OwnerSolidWallsDev ~= true then
+		return false
+	end
+	local idsModule = config:FindFirstChild("ProductIds")
+	if idsModule == nil then
+		return false
+	end
+	local iok, ids = pcall(require, idsModule :: any)
+	return iok and type(ids) == "table" and (ids :: any).IsDev == true
+end
 
 local function isMine(plot: Instance): boolean
 	return plot:IsA("Model") and plot:GetAttribute(OWNER_ATTRIBUTE) == player.UserId
@@ -96,18 +131,21 @@ local function collectLeaves(state: Mine, window: Instance)
 	end
 end
 
--- Tout ce qui doit me laisser passer dans ma boutique : murs invisibles et porte.
+-- Tout ce qui doit me laisser passer dans ma boutique : la porte, et les murs invisibles tant que
+-- Features.OwnerSolidWalls est coupé (a456, L-334 : allumé, ils restent solides pour moi aussi).
 local function scan(state: Mine)
 	local plot = state.plot
-	local barrier = plot:FindFirstChild(BARRIER_NAME, true)
-	if barrier then
-		passContainer(state, barrier)
-	end
-	-- Grands murs invisibles des niveaux 2 et plus : `Stage_j/Barriers`, copiés par ShopStageService (L-096).
-	for _, child in plot:GetChildren() do
-		local walls = if string.match(child.Name, STAGE_PATTERN) then child:FindFirstChild(STAGE_BARRIERS) else nil
-		if walls then
-			passContainer(state, walls)
+	if not wallsSolid then
+		local barrier = plot:FindFirstChild(BARRIER_NAME, true)
+		if barrier then
+			passContainer(state, barrier)
+		end
+		-- Grands murs invisibles des niveaux 2 et plus : `Stage_j/Barriers`, copiés par ShopStageService (L-096).
+		for _, child in plot:GetChildren() do
+			local walls = if string.match(child.Name, STAGE_PATTERN) then child:FindFirstChild(STAGE_BARRIERS) else nil
+			if walls then
+				passContainer(state, walls)
+			end
 		end
 	end
 	local door = plot:FindFirstChild(DOOR_NAME, true)
@@ -239,6 +277,7 @@ local function step(dt: number)
 end
 
 function PlotDoorController.Start()
+	wallsSolid = solidWallsEnabled()
 	for _, plot in CollectionService:GetTagged(PLOT_TAG) do
 		track(plot)
 	end
