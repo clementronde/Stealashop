@@ -42,6 +42,12 @@
 --                              dans le même Refresh (aucune image entre les deux).
 --   HudMask.IsShown(screen) -> boolean   (a492) allumé pour son code : Enabled, ou la valeur gardée s'il est masqué
 --   HudMask.NoteClosed(screen)   (a492) son code l'a fermé pendant le masque (UI/Motion.Close) : rendu éteint
+--   a508 (L-461) : spec.Also = { écrans } : écrans de HeistFeel.NeverMask que CE masque gère comme les autres (masqués
+--                              sauf s'il les garde) ; les autres masques ne les touchent toujours pas (PanelFocus :
+--                              UI_Tutorial, caché sous une fenêtre ouverte mais jamais par la poursuite).
+--   HudMask.SetShown(screen, on)   (a508, L-461) son code veut l'écran allumé ou éteint : masqué, la valeur est
+--                              seulement gardée (rendue à la fin du masque, aucune image allumée entre-temps) ;
+--                              sinon Enabled est écrit (UI_Disguise de DisguiseController).
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -58,6 +64,7 @@ export type Spec = {
 	Partial: { [string]: { string } }?,
 	HideScreens: { string }?,
 	YieldTo: { string }?, -- a492 (L-430) : ce masque ne compte pas tant qu'un de ces masques est là (PanelFocus : "Chase")
+	Also: { string }?, -- a508 (L-461) : écrans de NeverMask gérés par ce masque seul (PanelFocus : "UI_Tutorial")
 }
 
 type Saved = { value: boolean, connection: RBXScriptConnection? }
@@ -222,14 +229,36 @@ local function yields(spec: Spec): boolean
 	return false
 end
 
+-- a508 (L-461) : ce masque gère-t-il cet écran de NeverMask (spec.Also) ?
+local function claims(spec: Spec, name: string): boolean
+	local also = spec.Also
+	return also ~= nil and table.find(also, name) ~= nil
+end
+
+-- a508 : un masque posé (et qui ne cède pas) gère cet écran de NeverMask.
+local function claimed(name: string): boolean
+	for _, key in order do
+		local spec = masks[key]
+		if not yields(spec) and claims(spec, name) then
+			return true
+		end
+	end
+	return false
+end
+
 -- Ce que les masques veulent pour cet écran : "Hide", "Keep" ou une liste de noms gardés (intersection).
+-- a508 : un écran de NeverMask n'est jugé que par les masques qui le gèrent (spec.Also).
 local function wanted(name: string): ("Hide" | "Keep" | "Partial", { string }?)
 	local lists: { { string } } = {}
 	local spare = spareOf(name) -- a465
+	local never = NEVER[name] == true
 	for _, key in order do
 		local spec = masks[key]
 		if yields(spec) then
 			continue -- a492 : un masque de YieldTo est posé
+		end
+		if never and not claims(spec, name) then
+			continue -- a508
 		end
 		local hideList = spec.HideScreens
 		if hideList then
@@ -314,10 +343,14 @@ local function apply()
 	local hideSet: { [GuiObject]: boolean } = {}
 	if playerGui then
 		for _, child in playerGui:GetChildren() do
-			if not child:IsA("ScreenGui") or string.sub(child.Name, 1, #SCREEN_PREFIX) ~= SCREEN_PREFIX or NEVER[child.Name] then
+			if not child:IsA("ScreenGui") or string.sub(child.Name, 1, #SCREEN_PREFIX) ~= SCREEN_PREFIX then
 				continue
 			end
 			local screen = child :: ScreenGui
+			if NEVER[screen.Name] and not claimed(screen.Name) then
+				restoreScreen(screen) -- a508 : plus géré (masque retiré, ou qui cède) : rendu ; rien s'il n'était pas masqué
+				continue
+			end
 			local mode, names = wanted(screen.Name)
 			if mode == "Hide" then
 				hideScreen(screen)
@@ -421,6 +454,18 @@ function HudMask.NoteClosed(screen: ScreenGui)
 	local saved = screens[screen]
 	if saved then
 		saved.value = false
+	end
+end
+
+-- a508 (L-461) : voir l'en-tête.
+function HudMask.SetShown(screen: ScreenGui, on: boolean)
+	local saved = screens[screen]
+	if saved then
+		saved.value = on
+		return
+	end
+	if screen.Enabled ~= on then
+		screen.Enabled = on
 	end
 end
 

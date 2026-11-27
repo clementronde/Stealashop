@@ -91,8 +91,13 @@ type DayFrame = {
 	claimed: GuiObject?,
 }
 
+-- a508 (L-474) : dégradé gris d'un bouton réclamé, et l'Enabled d'origine des dégradés qu'il remplace.
+type Grey = { gradient: UIGradient, enabled: boolean, others: { [UIGradient]: boolean } }
+
 -- Écran branché.
 type Screen = {
+	dailyGrey: Grey?, -- a508 : DailyClaimButton…ClaimedGradient
+	weeklyGrey: Grey?, -- a508 : WeeklyClaimButton…ClaimedGradient
 	gui: ScreenGui,
 	dailyPage: GuiObject?,
 	playtimePage: GuiObject?,
@@ -194,6 +199,62 @@ local function textOf(element: Instance?): string?
 	local holder = textHolder(element)
 	local text = if holder then (holder :: any).Text else nil
 	return if type(text) == "string" and text ~= "" then text else nil
+end
+
+-- a508 (L-474 point 1, Features.RewardsClaimedGrey / RewardsClaimedGreyDev) : bouton réclamé en gris. Le UIGradient
+-- ClaimedGradient de Clément (n'importe où dans le bouton, par exemple Face.ClaimedGradient) s'allume, ses UIGradient
+-- voisins (même parent) s'éteignent ; pas réclamé : chacun reprend l'Enabled relevé au branchement. Rien d'autre.
+local CLAIMED_GRADIENT = "ClaimedGradient"
+
+local claimedGreyOn = (function(): boolean
+	local features = require(Config:WaitForChild("Features")) :: any
+	if features.RewardsClaimedGrey == true then
+		return true
+	end
+	if features.RewardsClaimedGreyDev ~= true then
+		return false
+	end
+	local module = Config:FindFirstChild("ProductIds")
+	if module == nil or not module:IsA("ModuleScript") then
+		return false
+	end
+	local ok, result = pcall(require, module :: any)
+	return ok and type(result) == "table" and (result :: any).IsDev == true
+end)()
+
+-- Le dégradé gris d'un bouton et l'état d'origine de chaque dégradé qu'il remplace, ou nil.
+local function greyOf(button: Instance?): Grey?
+	local found = if button and claimedGreyOn then Find.path(button, CLAIMED_GRADIENT) else nil
+	if found == nil or not found:IsA("UIGradient") then
+		return nil
+	end
+	local gradient = found :: UIGradient
+	local grey: Grey = { gradient = gradient, enabled = gradient.Enabled, others = {} }
+	local parent = gradient.Parent
+	if parent then
+		for _, child in parent:GetChildren() do
+			if child ~= gradient and child:IsA("UIGradient") then
+				grey.others[child :: UIGradient] = (child :: UIGradient).Enabled
+			end
+		end
+	end
+	return grey
+end
+
+local function paintGrey(grey: Grey?, claimed: boolean)
+	if grey == nil then
+		return
+	end
+	local on = if claimed then true else grey.enabled
+	if grey.gradient.Enabled ~= on then
+		grey.gradient.Enabled = on
+	end
+	for other, enabled in grey.others do
+		local wanted = if claimed then false else enabled
+		if other.Enabled ~= wanted then
+			other.Enabled = wanted
+		end
+	end
 end
 
 local function setVisible(element: GuiObject?, visible: boolean)
@@ -365,6 +426,7 @@ local function paintDaily(current: Screen, status: Status)
 	end
 	-- a286 : « LOCKED » tant que le tuto n'est pas fini (le clic part quand même : le serveur répond par un Notify).
 	setText(current.claimLabel, if status.dailyClaimed then CLAIMED_TEXT elseif status.dailyLocked then LOCKED_TEXT else current.claimText)
+	paintGrey(current.dailyGrey, status.dailyClaimed) -- a508
 end
 
 -- a303 : gain du palier dans RewardDesc, sinon dans RewardName (« 5 min: $1.2K cash ») ; setText n'écrit que s'il change.
@@ -403,6 +465,7 @@ local function paintWeekly(current: Screen, status: Status)
 	end
 	local text = if status.weeklyClaimed then CLAIMED_TEXT elseif weeklyPending(status) then current.weeklyClaimText else LOCKED_TEXT
 	setText(current.weeklyLabel, text)
+	paintGrey(current.weeklyGrey, status.weeklyClaimed) -- a508
 end
 
 local function refresh()
@@ -589,6 +652,8 @@ local function bind(gui: ScreenGui)
 		weeklyLabel = weeklyLabel or weeklyButton,
 		weeklyClaimText = textOf(weeklyLabel or weeklyButton) or CLAIM_TEXT,
 		weeklyButton = weeklyButton,
+		dailyGrey = greyOf(claimButton), -- a508
+		weeklyGrey = greyOf(weeklyButton), -- a508
 	}
 	for index = 1, WEEKLY.DaysNeeded do
 		current.weeklyDays[index] = if weekly then guiObject(weekly, `WeekDays.Day{index}.Done`) else nil

@@ -86,7 +86,8 @@ end
 -- Reste à l'écran : toutes les fenêtres (l'ouverte, et les autres pour qu'elles puissent s'ouvrir sans être recachées),
 -- Keep, et les écrans que HudHide.Keep garde pour TOUTES les fenêtres ouvertes (UI_Displayed garde UI_Hotbar).
 -- HeistFeel.NeverMask n'est jamais touché par HudMask. Le masque ne compte pas pendant un masque de YieldTo.
-function PanelFocus.Spec(open: { ScreenGui }, known: { string }): { KeepScreens: { string }, YieldTo: { string } }
+-- a508 (L-461) : Also = UiMotion.PanelFocus.Also, écrans de NeverMask cachés aussi par ce masque (bandeau du tuto).
+function PanelFocus.Spec(open: { ScreenGui }, known: { string }): { KeepScreens: { string }, YieldTo: { string }, Also: { string } }
 	local keep: { string } = {}
 	for name in PANELS do
 		add(keep, name)
@@ -115,7 +116,7 @@ function PanelFocus.Spec(open: { ScreenGui }, known: { string }): { KeepScreens:
 		end
 	end
 	table.sort(keep)
-	return { KeepScreens = keep, YieldTo = table.clone(SETTINGS.YieldTo) }
+	return { KeepScreens = keep, YieldTo = table.clone(SETTINGS.YieldTo), Also = table.clone(SETTINGS.Also) }
 end
 
 return PanelFocus

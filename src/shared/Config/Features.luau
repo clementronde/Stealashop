@@ -410,6 +410,20 @@ local Features = {
 	BatFreePvP = false,
 	-- a503 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
 	BatFreePvPDev = true,
+	-- a508 (L-474 point 1, chef UI 26/11) : récompense réclamée, DailyClaimButton et WeeklyClaimButton de UI_Rewards prennent
+	-- le dégradé gris ClaimedGradient de Clément (UIGradient caché dans le bouton, par exemple Face.ClaimedGradient) à la
+	-- place de leurs autres UIGradient voisins, rendus tels quels ensuite (RewardsController). Sans ClaimedGradient : rien ne
+	-- change. Interrupteur PROD (partout) : false (règle C2) ; false = le bouton d'avant, intact.
+	RewardsClaimedGrey = false,
+	-- a508 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	RewardsClaimedGreyDev = true,
+	-- a508 (L-475 point 2, Clément 26/11 : textes des tuiles de 5 à 8 px sur téléphone) : sur téléphone (tactile sans
+	-- clavier), l'arbre de compétences s'ouvre zoomé à UiMotion.SkillTree.PhoneZoom, centré sur la dernière tuile achetée ;
+	-- le glisser déplace, le pincement va jusqu'à PhoneZoomMax (SkillTreeController, SkillTree/Nav). Interrupteur PROD
+	-- (partout) : false (règle C2) ; false = l'ouverture d'avant (zoom StartTilePx, centre de l'arbre), intacte.
+	SkillTreePhoneZoom = false,
+	-- a508 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	SkillTreePhoneZoomDev = true,
 }
 
 export type Features = typeof(Features)

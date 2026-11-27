@@ -1690,5 +1690,24 @@ for _, screenDef in UI.Screens do
 		table.insert(screenDef.Elements, { Path = "Tree.Tile_BoxLuck", Class = BUTTON, Optional = true, Note = "la compétence Box Luck ne s'achète pas" })
 	end
 end
+-- a508 (L-474 point 1) : dégradé gris d'un bouton de récompense réclamée (Features.RewardsClaimedGrey), posé caché
+-- (Enabled = false) par le chef UI n'importe où dans le bouton, par exemple Face.ClaimedGradient ; pas encore livré :
+-- facultatif (absent, le bouton garde son dégradé).
+for _, screenDef in UI.Screens do
+	if screenDef.Name == "UI_Rewards" then
+		table.insert(screenDef.Elements, { Path = "DailyPage.DailyClaimButton.ClaimedGradient", Class = "UIGradient", Optional = true, Note = "le jour réclamé garde le dégradé du bouton" })
+		table.insert(screenDef.Elements, { Path = "WeeklyChest.WeeklyClaimButton.ClaimedGradient", Class = "UIGradient", Optional = true, Note = "le coffre réclamé garde le dégradé du bouton" })
+	end
+end
+-- a508 (L-475 point 1, Clément 26/11) : UI_Index et UI_Index_v2 ne sont plus lus (IndexController : UI_Index_v3 seul) ;
+-- encore livrés, une note (rangés par le chef UI dans ServerStorage/_OLD_UI).
+for index = #UI.Screens, 1, -1 do
+	local name = UI.Screens[index].Name
+	if name == "UI_Index" or name == "UI_Index_v2" then
+		table.remove(UI.Screens, index)
+	end
+end
+UI.Retired.Screens["UI_Index"] = "ancien index, plus lu : UI_Index_v3 seul (a508, L-475)"
+UI.Retired.Screens["UI_Index_v2"] = "ancien index v2, plus lu : UI_Index_v3 seul (a508, L-475)"
 
 return UI

@@ -490,6 +490,10 @@ local UiMotion = {
 		ZoomMin = 0.75,
 		ZoomMax = 1.8,
 		StartTilePx = 100, -- zoom à l'ouverture : 1, ou plus pour que les tuiles fassent au moins 100 px
+		-- a508 (L-475 point 2, Features.SkillTreePhoneZoom) : sur téléphone (tactile sans clavier), zoom à l'ouverture,
+		-- centré sur la dernière tuile achetée (Clément : « environ ×2,2 », textes de 5 à 8 px → 11 px au moins).
+		PhoneZoom = 2.2,
+		PhoneZoomMax = 3, -- V0 proposé (Cantin, 2026-11-27), absent du doc : pincement jusque-là sur téléphone (ZoomMax 1,8 sinon)
 		-- Couche NavLayer posée par le code (T.74) : au-dessus de l'arbre, sous le panneau, l'argent et Close
 		-- (ZIndex du prototype).
 		NavLayerZIndex = 15,
@@ -752,13 +756,19 @@ local UiMotion = {
 	-- Fenêtres : HudHide.Screens (Windows), Extra, et tout ScreenGui qui porte l'attribut Attribute (L-425 : Focus = true)
 	-- ou HudHide.Attribute = true. Une seule à la fois : Motion.Open de l'une ferme les autres (comme ScreenGroup).
 	-- Restent à l'écran : la fenêtre, les autres fenêtres (fermées, prêtes à s'ouvrir), Keep, HeistFeel.NeverMask
-	-- (UI_Notify, UI_Toast, UI_TheftAlert, UI_Tutorial, UI_Admin, UI_Loading), les écrans que HudHide.Keep garde pour toutes
+	-- (UI_Notify, UI_Toast, UI_TheftAlert, UI_Tutorial, UI_Admin, UI_Loading ; a508 : sauf ceux d'Also, cachés aussi),
+	-- les écrans que HudHide.Keep garde pour toutes
 	-- les fenêtres ouvertes, et ce que Roblox affiche lui-même (rien n'est touché hors des ScreenGui UI_*).
 	-- Pendant un masque de YieldTo (poursuite), ce masque ne compte pas : la poursuite décide seule, comme avant.
 	PanelFocus = {
 		-- V0 proposé (L-430 : « admin ») : fenêtres hors de Windows. « Get a copy? » (L-406) : à ajouter ici, ou attribut
 		-- Focus = true sur son écran, quand il existera.
-		Extra = { "UI_Admin", "UI_FittingRoom" },
+		-- a508 (L-461 point 3) : UI_Offline (« Welcome back ») cache aussi le reste ; ajouté ici et pas dans Windows,
+		-- pour que HudHide d'avant (interrupteur coupé) ne change pas.
+		Extra = { "UI_Admin", "UI_FittingRoom", "UI_Offline" },
+		-- a508 (L-461 point 1) : écrans de HeistFeel.NeverMask cachés aussi tant qu'une fenêtre est ouverte, puis rendus ;
+		-- la poursuite et les autres masques ne les touchent toujours pas (HudMask, spec.Also). Le bandeau du tuto.
+		Also = { "UI_Tutorial" },
 		Attribute = "Focus", -- L-425 (catalogue FrameWisp : « Focus = true sur un écran »)
 		-- V0 proposé : voile de la fenêtre (UI_Veil), alertes de poursuite (UI_Chase, « RUN! »), lueur d'achat Robux, bulle
 		-- d'aide, repère du tutoriel, et les écrans des scènes qui ont leur propre masque (capture, ITEM SECURED, ouverture
