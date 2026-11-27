@@ -2137,6 +2137,10 @@ function IndexController.Start()
 			bindV4(child :: ScreenGui) -- vague 59 : la v4 passe avant les autres (bindV4 les éteint)
 			return
 		end
+		if table.find(RETIRED_SCREENS, child.Name) then
+			(child :: ScreenGui).Enabled = false -- a508 : un écran retiré, même arrivé après la v3, reste éteint
+			return
+		end
 		local rank = screenRank(child.Name)
 		if rank ~= nil then
 			local current = screen
