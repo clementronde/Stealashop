@@ -32,7 +32,7 @@
 --      billets à CashPoint). a425 (L-325 réponse 2) : inventaire plein, le colis tombe derrière le fourgon (rayon
 --      d'événement StoreHeistService.AddEventShelf, StoreId « Truck_ArmoredVan_<n>_<UserId> », DropLifetime s), à
 --      ouvrir par n'importe qui ; rareté tirée ici par la même règle (Shared/ZoneBoxOdds). Sans rayon : perdu (Lost).
---      a509 (L-457, BurstBoxes) : le colis de chaque casseur récompensé jaillit du fourgon (depuis BlastPoint, sinon
+--      a509 (L-457, Features.ArmoredVanBurst / ArmoredVanBurstDev et BurstBoxes) : le colis de chaque casseur récompensé jaillit du fourgon (depuis BlastPoint, sinon
 --      le centre du modèle) et retombe derrière lui sur ce même rayon d'événement, à ouvrir sur place comme les colis
 --      du camion, au lieu d'aller dans l'inventaire ; sans rayon d'événement, l'objet va dans l'inventaire.
 --   6. Échappé (fin du trajet ou alerte de la nuit) : annonce, retrait, rien n'est donné.
@@ -121,6 +121,16 @@ local GROUND_RAY_UP = 30 -- V0 : sol cherché de 30 studs au-dessus…
 local GROUND_RAY_DOWN = 60 -- … à 60 en dessous du point
 local IS_STUDIO = RunService:IsStudio()
 local ENABLED: boolean = (Features :: any).ArmoredVan == true
+-- a509 (L-457) : colis qui jaillissent, Features.ArmoredVanBurst (partout) ou ArmoredVanBurstDev (jeu DEV, Config/ProductIds
+-- chargé s'il est là ; sans lui, jeu PROD), et le réglage Config/ArmoredVan.BurstBoxes. Coupé : inventaire, comme avant.
+local IS_DEV: boolean = (function(): boolean
+	local ok, ids = pcall(function(): any
+		return require(Shared.Config.ProductIds)
+	end)
+	return ok and type(ids) == "table" and ids.IsDev == true
+end)()
+local BURST: boolean = ArmoredVan.BurstBoxes == true
+	and ((Features :: any).ArmoredVanBurst == true or ((Features :: any).ArmoredVanBurstDev == true and IS_DEV))
 
 local ArmoredVanService = {}
 ArmoredVanService.Priority = 135 -- V0 : après NightCycleService (120) et TruckEventService (130)
@@ -646,7 +656,7 @@ local function reward(player: Player, place: Place, drops: { Drop }): boolean
 		return false
 	end
 	-- a509 (L-457) : le colis jaillit du fourgon, à ouvrir sur place (posé et annoncé après la boucle, placeDrops).
-	if ArmoredVan.BurstBoxes and heistApi ~= nil then
+	if BURST and heistApi ~= nil then
 		local drop = dropFor(player, tier, bestZone(data), place, true)
 		if drop then
 			table.insert(drops, drop)
@@ -666,8 +676,11 @@ local function placeDrops(current: Van, drops: { Drop }): number
 	local pivot = model:GetPivot()
 	local _, size = model:GetBoundingBox()
 	local blast = model:FindFirstChild(BLAST_POINT, true)
-	-- a509 : sans BlastPoint, les colis jaillissent du centre du modèle (comme l'explosion).
-	local from: Vector3 = if blast and blast:IsA("Attachment") then (blast :: Attachment).WorldPosition else model:GetBoundingBox().Position
+	-- a509 : colis qui jaillissent (BURST) sans BlastPoint : du centre du modèle (comme l'explosion).
+	local from: Vector3? = if blast and blast:IsA("Attachment")
+		then (blast :: Attachment).WorldPosition
+		elseif BURST then model:GetBoundingBox().Position
+		else nil
 	-- Avant vers −Z (LookVector) : l'arrière est de l'autre côté.
 	local behind = pivot.Position - pivot.LookVector * (size.Z / 2 + ArmoredVan.DropBehind)
 	local offsets = ArmoredVanService.DropOffsets(#drops)

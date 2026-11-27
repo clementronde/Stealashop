@@ -101,7 +101,8 @@ local ArmoredVan = {
 	-- à la casse, le colis de chaque casseur récompensé jaillit du fourgon (vol depuis BlastPoint) et retombe derrière lui
 	-- (DropBehind, DropSpacing, DropLifetime), à ouvrir sur place comme les colis du camion ; n'importe qui peut l'ouvrir,
 	-- comme le colis d'inventaire plein (L-325). Sans rayon d'événement : l'objet va dans l'inventaire comme avant.
-	-- false : l'objet va tout droit dans l'inventaire (avant a509).
+	-- Réglage seulement : rien ne jaillit sans l'interrupteur Features.ArmoredVanBurst (partout) ou ArmoredVanBurstDev
+	-- (jeu DEV). false, ou interrupteur coupé : l'objet va tout droit dans l'inventaire (avant a509).
 	BurstBoxes = true, -- V0 proposé (Cantin, 27/11)
 
 	-- Bannière d'événement (a425, L-318 Q2 ; UI_EventBanner de Clément, EventBannerController) : quand aucun événement
