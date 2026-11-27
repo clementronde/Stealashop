@@ -97,6 +97,12 @@ local ArmoredVan = {
 	DropLifetime = 60, -- V0 proposé (Cantin, 24/11) : comme TruckEvent.BoxLifetime, puis il disparaît
 	DropBehind = 5, -- V0 proposé (Cantin, 24/11) : studs derrière l'arrière du fourgon
 	DropSpacing = 4, -- V0 proposé (Cantin, 24/11) : studs entre deux colis côte à côte
+	-- a509 (L-457, Clément : « les boîtes qui explosent et qui donnent la possibilité de les ouvrir », comme le camion) :
+	-- à la casse, le colis de chaque casseur récompensé jaillit du fourgon (vol depuis BlastPoint) et retombe derrière lui
+	-- (DropBehind, DropSpacing, DropLifetime), à ouvrir sur place comme les colis du camion ; n'importe qui peut l'ouvrir,
+	-- comme le colis d'inventaire plein (L-325). Sans rayon d'événement : l'objet va dans l'inventaire comme avant.
+	-- false : l'objet va tout droit dans l'inventaire (avant a509).
+	BurstBoxes = true, -- V0 proposé (Cantin, 27/11)
 
 	-- Bannière d'événement (a425, L-318 Q2 ; UI_EventBanner de Clément, EventBannerController) : quand aucun événement
 	-- live n'y est, le fourgon s'y montre avec un minuteur : StateAttribute du Workspace = "Soon" (départ annoncé,
@@ -124,6 +130,8 @@ local ArmoredVan = {
 		-- a425 (L-325 réponse 2) : %s = nom du colis (Label). V0 proposé (Cantin, 24/11).
 		Full = "Heist of the century: inventory full! Your %s fell behind the van, anyone can grab it!",
 		Lost = "Heist of the century: inventory full, your box is lost!", -- a425 : seulement si le colis n'a pas pu tomber
+		-- a509 (L-457) : colis jailli (BurstBoxes) ; rang, part, nom du colis (Label). V0 proposé (Cantin, 27/11).
+		Burst = "Heist of the century: #%d (%d%% of the damage)! Your %s burst out of the van, open it!",
 	},
 	AnnounceIcon = "ICON_Event_ArmoredVan", -- V0 : icône de l'annonce (Decal de Clément), facultative
 }

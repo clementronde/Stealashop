@@ -32,6 +32,9 @@
 --      billets à CashPoint). a425 (L-325 réponse 2) : inventaire plein, le colis tombe derrière le fourgon (rayon
 --      d'événement StoreHeistService.AddEventShelf, StoreId « Truck_ArmoredVan_<n>_<UserId> », DropLifetime s), à
 --      ouvrir par n'importe qui ; rareté tirée ici par la même règle (Shared/ZoneBoxOdds). Sans rayon : perdu (Lost).
+--      a509 (L-457, BurstBoxes) : le colis de chaque casseur récompensé jaillit du fourgon (depuis BlastPoint, sinon
+--      le centre du modèle) et retombe derrière lui sur ce même rayon d'événement, à ouvrir sur place comme les colis
+--      du camion, au lieu d'aller dans l'inventaire ; sans rayon d'événement, l'objet va dans l'inventaire.
 --   6. Échappé (fin du trajet ou alerte de la nuit) : annonce, retrait, rien n'est donné.
 --
 -- Crochet de test, STUDIO SEULEMENT (barre de commande serveur) :
@@ -134,8 +137,8 @@ local vanCount = 0
 -- a425 : StoreHeistService (AddEventShelf), chargé dans Init, protégé (absent d'un banc : colis perdu).
 local heistApi: { AddEventShelf: (options: any) -> Model? }? = nil
 
--- Un colis gagné qui n'entre pas dans l'inventaire (a425, L-325 réponse 2).
-type Drop = { Player: Player, Label: string, Zone: number, Rarity: string }
+-- Un colis gagné qui n'entre pas dans l'inventaire (a425, L-325 réponse 2), ou qui jaillit du fourgon (a509, Burst).
+type Drop = { Player: Player, Label: string, Zone: number, Rarity: string, Burst: boolean, Place: Place }
 
 local function log(message: string)
 	if IS_STUDIO then
@@ -587,7 +590,7 @@ local function bestZone(data: any): number
 end
 
 -- a425 (L-325 réponse 2) : zone et rareté du colis qui tombe, par la règle du colis gagné (comme GiveZoneBoxItem).
-local function dropFor(player: Player, tier: ArmoredVan.RewardTier, best: number): Drop?
+local function dropFor(player: Player, tier: ArmoredVan.RewardTier, best: number, place: Place, burst: boolean): Drop?
 	local ok, zone, rarity = pcall(function(): (number?, string?)
 		local z = ZoneBoxOdds.Zone(tier.Rule :: any, best)
 		if z == nil then
@@ -600,27 +603,19 @@ local function dropFor(player: Player, tier: ArmoredVan.RewardTier, best: number
 		warnOnce("drop", `colis tombé du fourgon : aucune rareté pour {player.Name} (zone {tostring(best)})`)
 		return nil
 	end
-	return { Player = player, Label = tier.Label, Zone = zone, Rarity = rarity }
+	return { Player = player, Label = tier.Label, Zone = zone, Rarity = rarity, Burst = burst, Place = place }
 end
 
-local function reward(player: Player, place: Place, drops: { Drop }): boolean
-	local tier = place.Tier
+-- L'objet du colis tout droit dans l'inventaire ; inventaire plein : le colis tombe derrière le fourgon (drops).
+local function giveItem(player: Player, place: Place, tier: ArmoredVan.RewardTier, data: any, drops: { Drop }): boolean
 	local percent = math.round(place.Share * 100)
-	if tier == nil then
-		notify(player, ArmoredVan.Messages.TooLittle, "Info")
-		return false
-	end
-	local data = DataService.Get(player)
-	if data == nil then
-		return false
-	end
 	local ok, itemUid, reason, itemId = pcall(function(): (string?, string?, string?)
 		local uid, why, id = UnboxService.GiveZoneBoxItem(player, tier.Rule, bestZone(data))
 		return uid, why, id
 	end)
 	if not ok or itemUid == nil or itemId == nil then
 		if ok and reason == "InventoryFull" then
-			local drop = dropFor(player, tier, bestZone(data))
+			local drop = dropFor(player, tier, bestZone(data), place, false)
 			if drop then
 				table.insert(drops, drop) -- posé et annoncé après la boucle (placeDrops)
 			else
@@ -640,6 +635,27 @@ local function reward(player: Player, place: Place, drops: { Drop }): boolean
 	return true
 end
 
+local function reward(player: Player, place: Place, drops: { Drop }): boolean
+	local tier = place.Tier
+	if tier == nil then
+		notify(player, ArmoredVan.Messages.TooLittle, "Info")
+		return false
+	end
+	local data = DataService.Get(player)
+	if data == nil then
+		return false
+	end
+	-- a509 (L-457) : le colis jaillit du fourgon, à ouvrir sur place (posé et annoncé après la boucle, placeDrops).
+	if ArmoredVan.BurstBoxes and heistApi ~= nil then
+		local drop = dropFor(player, tier, bestZone(data), place, true)
+		if drop then
+			table.insert(drops, drop)
+			return false
+		end
+	end
+	return giveItem(player, place, tier, data, drops)
+end
+
 -- a425 (L-325 réponse 2) : chaque colis qui n'est pas entré dans l'inventaire tombe derrière le fourgon arrêté, côte à
 -- côte, sur un rayon d'événement à lui (n'importe qui l'ouvre et prend l'objet). Renvoie le nombre de colis posés.
 local function placeDrops(current: Van, drops: { Drop }): number
@@ -650,7 +666,8 @@ local function placeDrops(current: Van, drops: { Drop }): number
 	local pivot = model:GetPivot()
 	local _, size = model:GetBoundingBox()
 	local blast = model:FindFirstChild(BLAST_POINT, true)
-	local from: Vector3? = if blast and blast:IsA("Attachment") then (blast :: Attachment).WorldPosition else nil
+	-- a509 : sans BlastPoint, les colis jaillissent du centre du modèle (comme l'explosion).
+	local from: Vector3 = if blast and blast:IsA("Attachment") then (blast :: Attachment).WorldPosition else model:GetBoundingBox().Position
 	-- Avant vers −Z (LookVector) : l'arrière est de l'autre côté.
 	local behind = pivot.Position - pivot.LookVector * (size.Z / 2 + ArmoredVan.DropBehind)
 	local offsets = ArmoredVanService.DropOffsets(#drops)
@@ -669,10 +686,25 @@ local function placeDrops(current: Van, drops: { Drop }): number
 			})
 			shelf = if ok then result else nil
 		end
-		if shelf then
+		if shelf and drop.Burst then
+			placed += 1
+			notify(drop.Player, string.format(ArmoredVan.Messages.Burst, drop.Place.Rank, math.round(drop.Place.Share * 100), drop.Label), "Success")
+			log(`{drop.Player.Name} : #{drop.Place.Rank}, {drop.Label} ({drop.Rarity}, zone {drop.Zone}) jailli du fourgon`)
+		elseif shelf then
 			placed += 1
 			notify(drop.Player, string.format(ArmoredVan.Messages.Full, drop.Label), "Warning")
 			log(`{drop.Player.Name} : inventaire plein, {drop.Label} ({drop.Rarity}, zone {drop.Zone}) tombé derrière le fourgon`)
+		elseif drop.Burst then
+			-- a509 : rayon refusé, l'objet va dans l'inventaire comme avant (plein : perdu, le rayon manque).
+			local data = DataService.Get(drop.Player)
+			local tier = drop.Place.Tier
+			local full: { Drop } = {}
+			if data and tier and giveItem(drop.Player, drop.Place, tier, data, full) then
+				placed += 1
+			elseif #full > 0 then
+				notify(drop.Player, ArmoredVan.Messages.Lost, "Warning")
+			end
+			warnOnce("noburst", "StoreHeistService.AddEventShelf refusé : colis du fourgon mis dans l'inventaire")
 		else
 			notify(drop.Player, ArmoredVan.Messages.Lost, "Warning")
 			warnOnce("noshelf", "StoreHeistService.AddEventShelf indisponible ou refusé : colis du fourgon perdu (inventaire plein)")
