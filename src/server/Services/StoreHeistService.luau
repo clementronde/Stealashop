@@ -1744,7 +1744,8 @@ local function shutterBlocker(store: Store): string?
 	if guards then
 		for _, guard in guards:GetChildren() do
 			local root = if guard:IsA("Model") then guard:FindFirstChild("HumanoidRootPart") else nil
-			if root and root:IsA("BasePart") and inside(bounds, root.Position) then
+			-- a518 (L-438) : le vigile qui fait sa ronde dans le magasin (attribut GuardPatrol, GuardService) y reste.
+			if root and root:IsA("BasePart") and inside(bounds, root.Position) and guard:GetAttribute("GuardPatrol") ~= true then
 				return `vigile {guard.Name}`
 			end
 		end
@@ -1834,7 +1835,8 @@ local function curtainBlocker(store: Store): string?
 			-- Un vigile qui rentre et qui est déjà dans le volume Bounds est passé derrière le rideau : il ne
 			-- le traversera plus (celui qui vient d'attraper le voleur dans le magasin, Cantin 2026-11-11).
 			if root and root:IsA("BasePart") and distanceTo(bounds, root.Position) <= CURTAIN_GUARD_MARGIN
-				and not (table.find(returning, root) ~= nil and inside(bounds, root.Position)) then
+				and not (table.find(returning, root) ~= nil and inside(bounds, root.Position))
+				and guard:GetAttribute("GuardPatrol") ~= true then -- a518 (L-438) : la ronde du magasin ne retient rien
 				return `vigile {guard.Name} dans le magasin`
 			end
 		end

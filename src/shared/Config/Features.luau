@@ -463,6 +463,24 @@ local Features = {
 	SkillTreePhoneZoom = false,
 	-- a508 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
 	SkillTreePhoneZoomDev = true,
+	-- a518 (L-437, Clément 27/11 : « les vigiles doivent être 1,5 fois plus gros que les joueurs ») : chaque vigile de
+	-- magasin et de nuit en jeu est mis à Config/Guards.Scale.Size (Model:ScaleTo du clone, jamais le modèle de Clément),
+	-- agent du chemin plafonné (Guard/Scale). Interrupteur PROD : false (règle C2) ; false = la taille des modèles.
+	GuardScale = false,
+	-- a518 : la même chose allumée dans le jeu DEV (et TEST) seulement (Config/ProductIds.IsDev).
+	GuardScaleDev = true,
+	-- a518 (L-438, Clément 27/11 : « les vigiles doivent tourner dans le magasin au lieu qu'ils apparaissent de nulle
+	-- part ») : un vigile par magasin PNJ fait sa ronde dedans (Guard/DayPatrol, Config/Guards.DayPatrol) ; c'est lui qui
+	-- part au vol, et il reprend sa ronde en rentrant. PROD : false (C2) ; false = le vigile qui sort du GuardSpawn au vol.
+	GuardDayPatrol = false,
+	-- a518 : la même chose allumée dans le jeu DEV (et TEST) seulement (Config/ProductIds.IsDev).
+	GuardDayPatrolDev = true,
+	-- a518 (L-426, Clément 25/11 et 26/11) : attrapé par un vigile de magasin, le voleur part en ragdoll assez loin
+	-- (Guard/CatchRagdoll, Config/Guards.CatchRagdoll), l'objet reste au sol et le vigile rentre au GuardSpawn ; il
+	-- revient si quelqu'un reprend l'objet. PROD : false (C2) ; false = la poussée d'avant, le vigile garde l'objet.
+	GuardCatchRagdoll = false,
+	-- a518 : la même chose allumée dans le jeu DEV (et TEST) seulement (Config/ProductIds.IsDev).
+	GuardCatchRagdollDev = true,
 }
 
 export type Features = typeof(Features)

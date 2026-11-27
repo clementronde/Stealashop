@@ -36,7 +36,13 @@ local LiveFeatures = {
 		ShopGlassThrowDev = true,
 		BatFreePvP = true, -- a503 : BatService, à chaque coup de batte (règle, immunité, ragdoll)
 		BatFreePvPDev = true,
-	} :: { [string]: boolean },
+		GuardScale = true, -- a518 : GuardService, à l'apparition de chaque vigile (Guard/Scale)
+		GuardScaleDev = true,
+		GuardDayPatrol = true, -- a518 : GuardService, à chaque image (Guard/DayPatrol : ronde posée ou retirée)
+		GuardDayPatrolDev = true,
+		GuardCatchRagdoll = true, -- a518 : GuardService, à chaque capture par un vigile de magasin (Guard/CatchRagdoll)
+		GuardCatchRagdollDev = true,
+	} ::{ [string]: boolean },
 	-- Qui peut se servir de la commande d'admin : la même règle que le panneau admin (AdminService.IsAdmin, réglée
 	-- dans Config/Admin : tout le monde en Studio, Admin.UserIds, rang Admin.MinGroupRank du groupe du studio) ; pas
 	-- de liste à part ici (décision du 25/11).
