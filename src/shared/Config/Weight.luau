@@ -50,6 +50,40 @@ local function scaleAt(kg: number): number
 	return a.Scale * (math.max(kg, 1e-6) / a.Kg) ^ slope
 end
 
+-- a513 (Cantin, 27/11 ; L-444 b, V0) : paliers du poids V2 (Weight.TiersV2). Sous 10 kg, ceux d'avant (42 %). De 10 à
+-- 10 000 kg, une courbe régulière : la chance d'avoir au moins w kg vaut 58 % × (w / 10) ^ −s (loi de puissance), et ce
+-- qui reste à 10 000 kg forme le palier « 10 000 kg pile » : 0,2 %, 1 sur 500 (Cantin) ; s = log(290) / log(1000)
+-- ≈ 0,821. Somme : 100 (arrondis au plus près ; le palier de 10 à 20 kg prend l'arrondi).
+local TIERS_V2: { Tier } = {
+	{ Min = 1, Max = 2, Chance = 6 },
+	{ Min = 2, Max = 5, Chance = 14 },
+	{ Min = 5, Max = 10, Chance = 22 },
+	{ Min = 10, Max = 20, Chance = 25.167 },
+	{ Min = 20, Max = 50, Chance = 17.36 },
+	{ Min = 50, Max = 100, Chance = 6.72 },
+	{ Min = 100, Max = 250, Chance = 4.63 },
+	{ Min = 250, Max = 500, Chance = 1.79 },
+	{ Min = 500, Max = 1000, Chance = 1.01 },
+	{ Min = 1000, Max = 2500, Chance = 0.7 },
+	{ Min = 2500, Max = 5000, Chance = 0.27 },
+	{ Min = 5000, Max = 10000, Chance = 0.153 },
+	{ Min = 10000, Max = 10000, Chance = 0.2 },
+}
+
+-- a513 : poids V2 allumé par Config/Economy.WeightIncomeV2 (Features.WeightIncomeV2 ou WeightIncomeV2Dev, avec la table 2
+-- seulement). Allumé : Tiers = TiersV2 et IncomeExponent = IncomeExponentV2 (fin du fichier) ; coupé, ou sans
+-- Config/Economy (bancs à liste de modules fixe) : les valeurs écrites plus bas, à l'identique.
+local WEIGHT_V2: boolean = (function(): boolean
+	local found, module = pcall(function(): any
+		return script.Parent:FindFirstChild("Economy")
+	end)
+	if not found or module == nil then
+		return false
+	end
+	local ok, economy = pcall(require, module :: any)
+	return ok and type(economy) == "table" and (economy :: any).WeightIncomeV2 == true
+end)()
+
 local Weight = {
 	Min = 1, -- Cantin : de 1 kg…
 	Max = 10000, -- Cantin : … à 10 000 kg
@@ -79,6 +113,12 @@ local Weight = {
 	-- total est ramené à 100 % : rien n'est garanti, ×8 rend les paliers lourds 8 fois plus probables que les
 	-- légers. V0 : « lourd » = un palier qui commence à LuckFrom kg ou plus.
 	LuckFrom = 50,
+	-- a513 (Cantin et Clément, 27/11 ; L-444 b) : le poids V2. TiersV2 : paliers (plus haut) ; IncomeExponentV2 = 1, le
+	-- revenu suit le poids (1 kg ×0,1, 10 kg ×1, 100 kg ×10, 1 000 kg ×100, 10 000 kg ×1 000 ; Reference gardé à 10 kg).
+	-- IncomeV2 : vrai quand ils remplacent Tiers et IncomeExponent sur ce serveur (Config/Economy.WeightIncomeV2).
+	TiersV2 = TIERS_V2,
+	IncomeExponentV2 = 1,
+	IncomeV2 = WEIGHT_V2,
 
 	-- Taille du modèle (échelle ×, 10 kg = ×2 depuis a418) : courbe par points (ScaleAt, plus bas), droite entre deux
 	-- points en échelle logarithmique (kg et taille). a418 (décision de Cantin 23/11, variante A2 : l'objet de base à
@@ -155,6 +195,12 @@ local Weight = {
 	BaseScaleAttribute = "BaseScale",
 	Field = "Weight",
 }
+
+-- a513 : le poids V2 remplace les paliers et l'exposant du revenu (coupé : rien ne change).
+if WEIGHT_V2 then
+	Weight.Tiers = Weight.TiersV2
+	Weight.IncomeExponent = Weight.IncomeExponentV2
+end
 
 export type WeightConfig = typeof(Weight)
 
