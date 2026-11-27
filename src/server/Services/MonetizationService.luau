@@ -69,6 +69,10 @@
 --                      coupés restent livrés s'il en arrive un reçu, RetiredTiers) ; le reçu retire jusqu'à Skip s à
 --                      ce colis. Aucun colis en attente : les secondes payées vont dans
 --                      Monetization.OpenNowCredit du profil, retirées des prochains colis posés
+--                      a520 (L-410, Features.OpenNowOnLocked / OpenNowOnLockedDev) : E (OpenBox) sur son objet posé
+--                      encore sous antivol ouvre ici la fenêtre d'achat du palier de CET objet
+--                      (UnboxService.OfferSkip, Monetization.LockedSkipTier) ; le reçu de ce palier retire alors
+--                      le temps à cet objet s'il attend encore (sinon à celui qui attend le plus, comme avant)
 --   Vague 31 (L-112 ; décision de Cantin du 2026-11-12) : les deux mêmes achats valent pour
 --                      l'antivol d'un objet posé au sol, par le même chemin : UnboxService.GetWaiting et
 --                      SkipWait le comptent comme un colis en attente (Ouvrir maintenant, crédit, Fast Open à
@@ -1195,8 +1199,42 @@ local function isFloorItem(player: Player, uid: string): boolean
 	return ok and item ~= nil
 end
 
+-- a520 (L-410) : objet visé par la dernière fenêtre d'Open Now ouverte par E (offerLockedSkip), avec l'Id du palier
+-- proposé ; servi une fois par le reçu de ce même palier, oublié au départ du joueur (rien n'est sauvegardé).
+local skipTargets: { [Player]: { uid: string, id: number } } = {}
+
+-- a520 (L-410) : UnboxService.OfferSkip. Le serveur choisit le palier d'après l'attente réelle de l'objet
+-- (Monetization.LockedSkipTier) et ouvre la fenêtre d'achat ; rien n'est donné ici (le reçu, idempotent, le fait).
+local function offerLockedSkip(player: Player, itemUid: string, remaining: number): boolean
+	if not enabled or UnboxService.GetWaiting(player)[itemUid] == nil then
+		return false
+	end
+	local tier = Monetization.LockedSkipTier(remaining)
+	if tier == nil then
+		return false
+	end
+	local ok, err = pcall(function()
+		MarketplaceService:PromptProductPurchase(player, tier.Id)
+	end)
+	if not ok then
+		warn(`[MonetizationService] fenêtre d'Open Now pour {player.Name} : {err}`)
+		return false
+	end
+	skipTargets[player] = { uid = itemUid, id = tier.Id }
+	log(`{player.Name} : E sur l'objet {itemUid} sous antivol ({duration(remaining)} restantes) : Open Now {tier.Price} R$ proposé`)
+	return true
+end
+
 local function grantOpenNow(player: Player, data: Data, tier: Tier): string
 	local bench = longestWait(player)
+	-- a520 (L-410) : reçu du palier proposé par E : le temps va à l'objet visé, s'il attend encore.
+	local target = skipTargets[player]
+	if target and target.id == tier.Id then
+		skipTargets[player] = nil
+		if UnboxService.GetWaiting(player)[target.uid] ~= nil then
+			bench = target.uid
+		end
+	end
 	if bench then
 		local isItem = isFloorItem(player, bench) -- vague 31 : l'antivol d'un objet au sol, même chemin
 		local left = UnboxService.SkipWait(player, bench, tier.Skip)
@@ -1760,6 +1798,16 @@ local function installHooks()
 			return baseAntiTheft(player, itemId) * factor
 		end
 	end
+	-- a520 (L-410) : E sur son objet sous antivol propose Open Now (offerLockedSkip) ; sinon l'offre d'avant (refus).
+	local baseOfferSkip = UnboxService.OfferSkip
+	if (baseOfferSkip :: any) ~= nil then -- absent d'un UnboxService de banc
+		UnboxService.OfferSkip = function(player: Player, itemUid: string, remaining: number): boolean
+			if offerLockedSkip(player, itemUid, remaining) then
+				return true
+			end
+			return baseOfferSkip(player, itemUid, remaining) == true
+		end
+	end
 end
 
 function MonetizationService.Init()
@@ -1779,6 +1827,7 @@ function MonetizationService.Init()
 		task.defer(function()
 			states[player] = nil
 		end)
+		skipTargets[player] = nil -- a520 : un reçu plus tard (autre serveur) va à l'objet qui attend le plus
 		local reveal = crateRevealOf[player] -- a294 : son ouverture de caisse en cours, finie (RevealEnded pour les autres)
 		if reveal then
 			reveal.pending = {} -- a297 : joueur parti, aucun message (Parent vaut encore Players pendant PlayerRemoving)

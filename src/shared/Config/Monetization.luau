@@ -530,6 +530,29 @@ function Monetization.OpenNowTier(remaining: number): OpenNowTier?
 	return tiers[#tiers]
 end
 
+-- a520 (L-410) : E sur son objet encore sous antivol propose-t-il Open Now ? Features.OpenNowOnLocked (partout) ou
+-- OpenNowOnLockedDev (jeu DEV et TEST), lus à chaque appel (surcharges sans republier, Shared/LiveFeatures).
+function Monetization.OpenNowOnLocked(): boolean
+	local features = Features :: any
+	return features.OpenNowOnLocked == true or (features.OpenNowOnLockedDev == true and ProductIds.IsDev == true)
+end
+
+-- a520 (L-410) : le palier d'Open Now que E propose pour un objet qui attend encore `remaining` s, ou nil (rien de
+-- proposé) : boutique Robux allumée (Features.RobuxShop), OpenNowOnLocked, achats permis sur ce serveur (pas le jeu
+-- TEST), Open Now codé (Ready) et un palier créé (Id ≠ 0) au-delà de OpenNow.MinRemaining. Même règle côté client
+-- (invite) et serveur (fenêtre d'achat, MonetizationService), qui seul décide.
+function Monetization.LockedSkipTier(remaining: number): OpenNowTier?
+	if (Features :: any).RobuxShop ~= true or not Monetization.OpenNowOnLocked() or Monetization.PurchasesDisabled then
+		return nil
+	end
+	local product = ProductByKey.OpenNow
+	if product == nil or not product.Ready then
+		return nil
+	end
+	local tier = Monetization.OpenNowTier(remaining)
+	return if tier and tier.Id ~= 0 then tier else nil
+end
+
 -- a485 (L-351 question 2) : multiplicateur des gains du tapis venu des gamepasses ×2 Training (×4 Training) et ×2 Speed,
 -- `owns(clé)` disant s'il est possédé. TrainingLadder : le plus fort des deux (×4 avec ×4 Training, ×2 avec ×2 Speed
 -- seul) ; sinon leur produit, comme avant (×4 avec les deux). 1 sans gamepass. Même calcul côté serveur

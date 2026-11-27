@@ -489,6 +489,15 @@ local Features = {
 	StrikeFeel = false,
 	-- a519 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
 	StrikeFeelDev = true,
+	-- a520 (L-410, Clément 25/11 : « skip le temps en cliquant sur E ») : E sur son objet posé encore sous antivol ouvre
+	-- la fenêtre d'achat d'Open Now (palier choisi par le serveur selon l'attente de CET objet, qui reçoit le temps
+	-- payé) au lieu de ne rien proposer (UnboxController, UnboxService.OfferSkip, MonetizationService). Seulement avec la
+	-- boutique Robux allumée (Features.RobuxShop). Interrupteur PROD (partout) : false (règle C2) ; false = « Take »
+	-- caché tant que l'antivol tourne, comme avant. Lu au moment de l'appui, client et serveur
+	-- (Monetization.OpenNowOnLocked) : pourrait entrer dans Config/LiveFeatures.Hot (pas fait).
+	OpenNowOnLocked = false,
+	-- a520 : la même chose allumée dans le jeu DEV (et TEST) seulement (Config/ProductIds.IsDev).
+	OpenNowOnLockedDev = true,
 }
 
 export type Features = typeof(Features)

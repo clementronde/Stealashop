@@ -86,6 +86,11 @@
 --       Chance du joueur pour l'amélioration d'un colis offert (GiveItem ; box : Tier, Zone, ItemId, Rarity).
 --       1 par défaut. Remplaçable comme GetAntiTheftDelay ; 0 = aucun cran. Ne doit pas yield. Une valeur qui
 --       n'est pas un nombre fini ≥ 0 est ignorée (chance 1).
+--   UnboxService.OfferSkip(player, itemUid, remaining) -> boolean
+--       a520 (L-410) : OpenBox(itemUid) sur son objet posé encore sous antivol (`remaining` s d'attente, à portée,
+--       pas tenu) : true si une offre pour passer le temps a été ouverte (MonetizationService : fenêtre d'achat
+--       d'Open Now), et le refus « ItemLocked » n'est pas envoyé. false par défaut. Remplaçable comme
+--       GetAntiTheftDelay ; ne doit pas yield ; une erreur vaut false.
 --   UnboxService.RollUpgrades(box, luck, rng?) -> { RarityId }
 --       Le tirage de l'amélioration (règle plus haut), sans rien changer : les raretés atteintes, cran par
 --       cran (vide : aucun cran). Pur, sans yield ; rng = un Random (celui du service par défaut).
@@ -1160,6 +1165,15 @@ local function takeFloorItem(player: Player, session: Session, itemUid: string, 
 	end
 	local unlockAt = entry.UnlockAt
 	if not isFinite(unlockAt) or serverNow() < unlockAt then
+		-- a520 (L-410) : E pendant l'antivol propose de passer le temps (UnboxService.OfferSkip, MonetizationService).
+		if isFinite(unlockAt) then
+			local ok, offered = pcall(UnboxService.OfferSkip, player, itemUid, unlockAt - serverNow())
+			if not ok then
+				warn(`[UnboxService] OfferSkip ({player.Name}, {itemUid}) : {offered}`)
+			elseif offered == true then
+				return
+			end
+		end
 		notify(player, MESSAGES.ItemLocked)
 		return
 	end
@@ -1231,6 +1245,12 @@ end
 
 function UnboxService.GetLuck(_player: Player, _box: Box): number
 	return 1
+end
+
+-- a520 (L-410) : offre pour passer l'antivol restant d'un objet posé (voir l'en-tête) ; remplaçable par
+-- MonetizationService (Open Now). false : aucune offre, le refus d'avant. Ne doit pas yield.
+function UnboxService.OfferSkip(_player: Player, _itemUid: string, _remaining: number): boolean
+	return false
 end
 
 function UnboxService.RollUpgrades(box: Box, luck: number, rng: Random?): { string }

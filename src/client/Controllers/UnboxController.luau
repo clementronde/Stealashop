@@ -15,6 +15,9 @@
 --     l'inventaire) ; chez les autres, « Steal » (maintien PvP.StealGrabTime) pendant l'antivol, boutique
 --     ouverte au vol (StealOpen de la parcelle) et mains vides → StealFloorItem(plotIndex, itemUid) au début
 --     et à la fin du maintien, animation Grab. Le serveur revérifie tout.
+--     a520 (L-410, Features.OpenNowOnLocked / OpenNowOnLockedDev, boutique Robux allumée) : pendant l'antivol,
+--     l'invite du propriétaire s'appelle « Open Now » et envoie le même OpenBox : le serveur ouvre la fenêtre
+--     d'achat d'Open Now pour cet objet (MonetizationService), ou refuse comme avant.
 --     UnboxController.GetFloorView(model) -> { TimeText, ItemText, OwnerPrompt, StealPrompt, Chains }? (bancs).
 --   - vague 34 (L-127 point 4, Clément) : sur cet objet encore sous antivol à son arrivée, les chaînes et le
 --     cadenas du kit ReplicatedStorage/Assets/FX/FX_AntiTheft, posés une fois côté client autour de l'objet
@@ -49,6 +52,16 @@ local Unbox = require(Config:WaitForChild("Unbox"))
 local HeldItem = require(Config:WaitForChild("HeldItem"))
 local Find = require(Shared:WaitForChild("Contract"):WaitForChild("Find"))
 local UI = require(Shared:WaitForChild("Contract"):WaitForChild("UI"))
+-- a520 (L-410) : Open Now sur E pendant l'antivol (Monetization.LockedSkipTier) ; absent (faux arbres des bancs) :
+-- jamais proposé, « Take » caché pendant l'antivol comme avant.
+local LockedSkip: any = (function(): any
+	local module = Config:FindFirstChild("Monetization")
+	if module == nil or not module:IsA("ModuleScript") then
+		return nil
+	end
+	local ok, result = pcall(require, module :: any)
+	return if ok and type(result) == "table" and type((result :: any).LockedSkipTier) == "function" then result else nil
+end)()
 local UnboxFolder = script.Parent:WaitForChild("Unbox")
 -- Vague 34 : module d'aide des chaînes ; absent (faux arbres des bancs d'avant la vague 34), pas de chaînes.
 local AntiTheftChains = if UnboxFolder:FindFirstChild("AntiTheftChains")
@@ -106,6 +119,7 @@ local UNLOCK_SOUND = "UI_Success"
 -- PvPController) et cadence (s) du minuteur.
 local TAKE_TEXT = "Take" -- vague 44 (a152) : l'objet débloqué se reprend (en main ou dans l'inventaire), « Display » avant
 local STEAL_TEXT = "Steal"
+local OPEN_NOW_TEXT = "Open Now" -- a520 (L-410) : nom de l'offre (Monetization, produit OpenNow), V0
 local STEAL_DISTANCE_MARGIN = 0.5
 -- a265 (vague 79), V0 proposé, absent du doc : relâché plus de 0,1 s avant la fin du maintien = annulé ("Cancel"
 -- envoyé au serveur, qui vide le maintien). La marge évite d'annuler un maintien conclu si le relâché arrive avant Triggered.
@@ -288,7 +302,14 @@ local function refreshFloorView(view: FloorView, now: number, origin: Vector3?)
 	end
 	local ownerPrompt = view.ownerPrompt
 	if ownerPrompt then
-		ownerPrompt.Enabled = unlocked
+		-- a520 (L-410) : pendant l'antivol, l'invite propose Open Now quand le serveur l'ouvrirait aussi (même règle,
+		-- Monetization.LockedSkipTier) ; OpenBox part pareil, le serveur décide (fenêtre d'achat ou refus).
+		local skip = not unlocked and LockedSkip ~= nil and LockedSkip.LockedSkipTier(remaining) ~= nil
+		ownerPrompt.Enabled = unlocked or skip
+		local text = if unlocked then TAKE_TEXT else OPEN_NOW_TEXT
+		if ownerPrompt.ActionText ~= text then
+			ownerPrompt.ActionText = text
+		end
 	end
 	local stealPrompt = view.stealPrompt
 	if stealPrompt then
