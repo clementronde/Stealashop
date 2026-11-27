@@ -113,4 +113,62 @@ local Wheel = {
 
 export type Wheel = typeof(Wheel)
 
+-- a511 (L-481 ; règle Roblox des objets payants au hasard, create.roblox.com/docs/production/monetization/paid-random-items :
+-- les chances affichées sont les vraies, mises à jour tant qu'une chance agit) : poids du tirage avec la chance achetée
+-- `luck` (Shared/OpenLuck.Bought : serveur × personnelle), une seule règle pour le tirage (WheelService) et les chances
+-- affichées (WheelController). Les secteurs de poids au plus LuckRareMaxWeight × luck, pris sur le plus lourd
+-- (`shift` = OpenLuck.Shift, passé pour ne pas charger OpenLuck ici). luck ≤ 1 ou illisible, sans shift : les poids de Sectors.
+function Wheel.LuckyWeights(luck: any, shift: any): { number }
+	local weights: { number } = {}
+	local heaviest = 1
+	for index, sector in Wheel.Sectors do
+		weights[index] = math.max(0, sector.Weight)
+		if weights[index] > weights[heaviest] then
+			heaviest = index
+		end
+	end
+	local rareMax = Wheel.LuckRareMaxWeight
+	if type(shift) ~= "function" or type(luck) ~= "number" or luck ~= luck or luck <= 1 then
+		return weights
+	end
+	local apply = shift :: (...any) -> { number }
+	return apply(weights, heaviest, function(index: number): boolean
+		return weights[index] <= rareMax
+	end, luck)
+end
+
+-- a511 : chances en pour cent, à une décimale, des poids `weights`, de somme exactement 100 (plus fort reste : la liste
+-- affichée fait 100 %, comme le veut la règle Roblox) ; total nul : tout à 0.
+function Wheel.Percents(weights: { number }): { number }
+	local total = 0
+	for _, weight in weights do
+		total += math.max(0, weight)
+	end
+	local out: { number } = {}
+	if total <= 0 then
+		for index in weights do
+			out[index] = 0
+		end
+		return out
+	end
+	local rest: { { index: number, frac: number } } = {}
+	local used = 0
+	for index, weight in weights do
+		local tenths = math.max(0, weight) / total * 1000
+		out[index] = math.floor(tenths)
+		used += out[index]
+		table.insert(rest, { index = index, frac = tenths - out[index] })
+	end
+	table.sort(rest, function(a: { index: number, frac: number }, b: { index: number, frac: number }): boolean
+		return if a.frac == b.frac then a.index < b.index else a.frac > b.frac
+	end)
+	for step = 1, math.min(1000 - used, #rest) do
+		out[rest[step].index] += 1
+	end
+	for index in out do
+		out[index] /= 10
+	end
+	return out
+end
+
 return DeepFreeze(Wheel)

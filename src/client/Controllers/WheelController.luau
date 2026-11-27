@@ -17,10 +17,17 @@
 --     tourne Config/Wheel.Turns tours puis s'arrête avec ce secteur sous Pointer (SpinSeconds, Quint Out), puis Result
 --     montre le message pendant ResultSeconds. Sans Result, ou écran fermé, le message part en notification ;
 --   - BuySpinButton.PriceLabel (facultatifs) : « Soon » tant que Config/Wheel.ExtraSpin.ProductId = 0 (aucun achat).
+--     a511 (L-481, règle Roblox des objets payants au hasard) : avec un produit, BuySpinButton n'est visible que si
+--     PolicyService permet les objets payants au hasard à ce joueur (ArePaidRandomItemsRestricted faux ; pas encore lu
+--     ou erreur : caché, comme la caisse de RobuxShopController) et si les 8 Chance sont là (chances vues avant l'achat).
+--     Le futur achat doit passer par WheelController.CanBuySpins().
+--   - a511 : Chance = la vraie chance du joueur (Config/Wheel.LuckyWeights avec la chance du serveur × la chance
+--     personnelle, comme le tirage de WheelService), à une décimale, somme 100 %, remise à jour tant que l'écran est ouvert.
 -- Angles : le centre de chaque segment autour du centre de Wheel (mise en page de Clément, sans la rotation) et celui
 -- de Pointer ; un segment centré sur la roue (cadre plein tourné) prend sa Rotation ; sans mise en page lisible,
 -- Segment_01 en haut et les suivants dans le sens des aiguilles d'une montre, Pointer en haut.
--- Seuls sont touchés : Enabled de l'écran, les textes, Visible de Result, l'image des Icon et Wheel.Rotation.
+-- Seuls sont touchés : Enabled de l'écran, les textes, Visible de Result et de BuySpinButton (a511), l'image des Icon
+-- et Wheel.Rotation.
 --
 -- API (client) :
 --   WheelController.Open()                                  ouvre l'écran (roue allumée et écran présent)
@@ -51,6 +58,7 @@ type Screen = {
 	spinText: string, -- texte de SpinLabel posé par Clément
 	timer: Instance?,
 	segments: { GuiObject? },
+	buy: GuiObject?, -- a511 : BuySpinButton (facultatif)
 	connections: { RBXScriptConnection },
 }
 
@@ -83,6 +91,18 @@ local reported: { [string]: boolean } = {}
 local hudBound: { [Instance]: boolean } = setmetatable({}, { __mode = "k" }) :: any
 local alerts: { GuiObject } = {}
 local rng = Random.new()
+-- a511 (L-481) : règle Roblox des objets payants au hasard, lue une fois quand un produit de tours existe.
+local spinPolicy: "unknown" | "allowed" | "restricted" = "unknown"
+
+-- a511 : Shared/OpenLuck chargé s'il est là (comme WheelService) ; absent : chances sans chance achetée.
+local OpenLuck: any = (function(): any
+	local found = Shared:FindFirstChild("OpenLuck")
+	if found == nil then
+		return nil
+	end
+	local ok, module = pcall(require, found :: any)
+	return if ok and type(module) == "table" then module else nil
+end)()
 
 local function reportOnce(key: string, message: string)
 	if IS_STUDIO and not reported[key] then
@@ -184,11 +204,71 @@ end
 -- Peinture
 ------------------------------------------------------------------------------
 
-local function paintSegments(current: Screen)
-	local total = 0
-	for _, sector in Wheel.Sectors do
-		total += math.max(0, sector.Weight)
+-- a511 (L-481) : la chance achetée qui pèse sur ce joueur (comme drawLucky de WheelService) ; 1 sans modèle R2.
+local function boughtLuck(): number
+	if OpenLuck == nil or OpenLuck.V2 ~= true then
+		return 1
 	end
+	local ok, luck = pcall(function(): any
+		return OpenLuck.Bought({ Server = Workspace:GetAttribute("ServerLuck"), Personal = OpenLuck.PersonalFactorOf(localPlayer) })
+	end)
+	return if ok and type(luck) == "number" then luck else 1
+end
+
+-- a511 : chances affichées (pour cent, une décimale, somme 100), les vraies du prochain tour.
+local function chances(): { number }
+	return Wheel.Percents(Wheel.LuckyWeights(boughtLuck(), if OpenLuck then OpenLuck.Shift else nil))
+end
+
+local function formatChance(percent: number): string
+	return string.format("%g%%", percent)
+end
+
+local function paintChances(current: Screen)
+	local percents = chances()
+	for index in Wheel.Sectors do
+		local segment = current.segments[index]
+		local chance = if segment then Find.path(segment, "Chance") else nil
+		if chance then
+			setText(chance, formatChance(percents[index] or 0))
+		end
+	end
+end
+
+-- a511 : toutes les chances sont écrites à l'écran (chaque Segment_NN a son Chance).
+local function chancesShown(current: Screen): boolean
+	for index in Wheel.Sectors do
+		local segment = current.segments[index]
+		if segment == nil or textHolder(Find.path(segment, "Chance")) == nil then
+			return false
+		end
+	end
+	return true
+end
+
+-- a511 (L-481) : un tour en plus peut être proposé à l'achat (produit créé, PolicyService d'accord, chances affichées).
+local function canBuySpins(current: Screen?): boolean
+	return Features.Wheel == true
+		and Wheel.ExtraSpin.ProductId ~= 0
+		and spinPolicy == "allowed"
+		and current ~= nil
+		and chancesShown(current)
+end
+
+local function paintBuy(current: Screen)
+	local buy = current.buy
+	if buy == nil then
+		return
+	end
+	if Wheel.ExtraSpin.ProductId == 0 then
+		setText(Find.path(buy, "PriceLabel") or buy, MESSAGES.Soon)
+		return
+	end
+	setText(Find.path(buy, "PriceLabel") or buy, `R$ {Wheel.ExtraSpin.Price}`)
+	setVisible(buy, canBuySpins(current))
+end
+
+local function paintSegments(current: Screen)
 	for index, sector in Wheel.Sectors do
 		local segment = current.segments[index]
 		if segment == nil then
@@ -196,16 +276,14 @@ local function paintSegments(current: Screen)
 			continue
 		end
 		setText(Find.path(segment, "Amount"), sector.Label)
-		local chance = Find.path(segment, "Chance")
-		if chance and total > 0 then
-			setText(chance, `{math.floor(sector.Weight / total * 100 + 0.5)}%`)
-		end
 		local icon = Find.path(segment, "Icon")
 		local texture = if sector.Icon then Icons.get(sector.Icon) else nil
 		if texture and icon and (icon:IsA("ImageLabel") or icon:IsA("ImageButton")) then
 			(icon :: any).Image = texture
 		end
 	end
+	paintChances(current)
+	paintBuy(current)
 end
 
 local function refresh()
@@ -238,6 +316,9 @@ local function refresh()
 		setText(current.spinLabel, clock(left))
 	end
 	setText(current.timer, if ready then "" else string.format(MESSAGES.NextIn, clock(left)))
+	-- a511 (L-481) : chances et bouton d'achat suivis tant que l'écran est ouvert (une chance qui commence ou finit).
+	paintChances(current)
+	paintBuy(current)
 end
 
 ------------------------------------------------------------------------------
@@ -426,6 +507,7 @@ local function bind(gui: ScreenGui)
 		spinText = textOf(spinLabel or spinButton) or SPIN_TEXT,
 		timer = Find.path(gui, "Timer"),
 		segments = {},
+		buy = guiObject(gui, "BuySpinButton"),
 		connections = {},
 	}
 	for index = 1, #Wheel.Sectors do
@@ -436,12 +518,7 @@ local function bind(gui: ScreenGui)
 	end
 	screen = current
 	setVisible(current.result, false)
-	paintSegments(current)
-	local buy = Find.path(gui, "BuySpinButton")
-	if buy then
-		local price = Find.path(buy, "PriceLabel") or buy
-		setText(price, if Wheel.ExtraSpin.ProductId == 0 then MESSAGES.Soon else `R$ {Wheel.ExtraSpin.Price}`)
-	end
+	paintSegments(current) -- a511 : peint aussi les chances et BuySpinButton (paintBuy)
 	local spinConnection = onClick(spinButton, spin)
 	if spinConnection then
 		table.insert(current.connections, spinConnection)
@@ -511,6 +588,17 @@ function WheelController.Open()
 	end
 end
 
+-- a511 (L-481) : un tour en plus peut être acheté maintenant (produit créé, PolicyService d'accord, chances affichées).
+-- Le futur achat (PromptProductPurchase) doit le vérifier avant d'ouvrir la fenêtre de Roblox.
+function WheelController.CanBuySpins(): boolean
+	return canBuySpins(screen)
+end
+
+-- a511 : chances affichées (pour cent, somme 100), pour les bancs et la barre de commande.
+function WheelController.GetChances(): { number }
+	return chances()
+end
+
 function WheelController.GetState(): { Open: boolean, Spinning: boolean, FreeReady: boolean, Extra: number, LastSector: number?, LastMessage: string?, Rotation: number? }
 	local current = screen
 	return {
@@ -530,6 +618,21 @@ function WheelController.Start()
 	end
 	net = require(Shared:WaitForChild("Net"):WaitForChild("Net") :: ModuleScript) :: any
 	net.Client.WheelResult:Connect(onWheelResult)
+	-- a511 (L-481) : PolicyService lu une fois, seulement quand un produit de tours existe ; erreur : achat caché.
+	if Wheel.ExtraSpin.ProductId ~= 0 then
+		task.spawn(function()
+			local ok, info = pcall(function(): any
+				return game:GetService("PolicyService"):GetPolicyInfoForPlayerAsync(localPlayer)
+			end)
+			if ok and type(info) == "table" and type(info.ArePaidRandomItemsRestricted) == "boolean" then
+				spinPolicy = if info.ArePaidRandomItemsRestricted then "restricted" else "allowed"
+			else
+				spinPolicy = "restricted"
+				reportOnce("policy", `PolicyService pas lu ({if ok then "réponse inattendue" else tostring(info)}) : achat de tours caché`)
+			end
+			refresh()
+		end)
+	end
 	local playerGui = localPlayer:WaitForChild("PlayerGui")
 	playerGui.ChildAdded:Connect(function(child: Instance)
 		if child.Name == SCREEN and child:IsA("ScreenGui") then

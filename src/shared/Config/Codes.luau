@@ -1,7 +1,9 @@
 --!strict
 -- Codes cadeaux et compte à rebours de la prochaine MAJ (MAJ 0, docs/claude/notes/feuille-de-route-maj.md ;
 -- agent a162, vague 50). Lu par CodeService (serveur : codes) et CodeController (client : compte à rebours,
--- messages). Tout est V0 proposé, absent du doc, sauf le 1er code (MAJ 0 : boost ×2 argent 15 min).
+-- messages). Tout est V0 proposé, absent du doc. a511 (L-481, Cantin, 27/11) : le 1er code (LAUNCH, boost ×2 argent
+-- 15 min) est retiré ; un code annoncé hors du jeu ne donne rien de ce qui se vend en Robux (Boost, Cash) et a des dates
+-- publiques (StartsAt, EndsAt).
 --
 -- a274 (audit a272, M2) : la liste des codes n'est plus ici (ReplicatedStorage, lisible par tout client) mais côté
 -- serveur, dans ServerScriptService/Server/Services/Code/GiftCodes (src/server/Services/Code/GiftCodes.luau).

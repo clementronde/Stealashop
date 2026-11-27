@@ -13,9 +13,9 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Codes = require(ReplicatedStorage.Shared.Config.Codes)
 
-local List: { Codes.GiftCode } = {
-	-- MAJ 0 : boost ×2 argent 15 min. Le nom du code et l'absence de date de fin : V0.
-	{ Code = "LAUNCH", Reward = { Kind = "Boost", Minutes = 15 } },
-}
+-- a511 (L-481, Cantin, 27/11) : code LAUNCH (boost ×2 argent 15 min) retiré, sans remplacement : un code annoncé hors du
+-- jeu ne donne rien de ce qui se vend en Robux (le ×2 argent est vendu) et ses dates sont publiques (règle Roblox
+-- « Promo Offers for Virtual Rewards », lue par le chef marketing le 26/11). Liste vide : tout code répond « Invalid ».
+local List: { Codes.GiftCode } = {}
 
 return table.freeze(List)

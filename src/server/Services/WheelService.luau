@@ -18,7 +18,8 @@
 -- Profil (champ facultatif Wheel, sans nouvelle version, créé et réparé ici) :
 --   Wheel = { FreeDay = jour UTC du dernier tour gratuit (0 = jamais), Extra = tours en plus gardés }
 -- Tours en plus en Robux : coupés tant que Config/Wheel.ExtraSpin.ProductId = 0 ; WheelService.AddSpins est prêt
--- pour le jour où MonetizationService aura un produit (rien n'est branché).
+-- pour le jour où MonetizationService aura un produit (rien n'est branché). a511 (L-481) : un tour payant est un objet
+-- payant au hasard pour Roblox : l'achat ne s'ouvre que si WheelController.CanBuySpins() (PolicyService, chances affichées).
 --
 -- Télémétrie : argent gagné en économie (genre WheelReward, SKU Wheel_<secteur>) ; chaque tour en événement WheelSpin
 -- (champs Sector, Gift, Spin = Free ou Extra).
@@ -194,17 +195,9 @@ local function drawLucky(player: Player): number?
 	if luck <= 1 or type(rareMax) ~= "number" then
 		return nil
 	end
-	local weights: { number } = {}
-	local heaviest = 1
-	for index, sector in Wheel.Sectors do
-		weights[index] = math.max(0, sector.Weight)
-		if weights[index] > weights[heaviest] then
-			heaviest = index
-		end
-	end
-	local shifted = OpenLuck.Shift(weights, heaviest, function(index: number): boolean
-		return weights[index] <= rareMax
-	end, luck)
+	-- a511 (L-481) : la règle est dans Config/Wheel.LuckyWeights, que WheelController lit aussi pour afficher les vraies
+	-- chances (règle Roblox des objets payants au hasard).
+	local shifted = Wheel.LuckyWeights(luck, OpenLuck.Shift)
 	local total = 0
 	for _, weight in shifted do
 		total += weight
