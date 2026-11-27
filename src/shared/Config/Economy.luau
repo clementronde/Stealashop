@@ -99,9 +99,11 @@ export type Table = {
 	LeaderboardSuffix: string,
 	-- Config/Admin.MaxAmount et borne `value` du remote AdminCommand (Net/Definitions).
 	AdminMaxAmount: number,
-	-- Config/Offline.Rate : part des revenus gagnée hors ligne (1 = 100 %). Le plafond d'heures (MaxHours) reste dans
-	-- Config/Offline, le même pour les deux tables.
+	-- Config/Offline.Rate : part des revenus gagnée hors ligne (1 = 100 %). Le plafond d'heures : OfflineMaxHours.
 	OfflineRate: number,
+	-- a515 (Cantin, 27/11) : Config/Offline.MaxHours, plafond de base de l'absence comptée, en heures (+30 min par nœud
+	-- OfflineTime de l'arbre).
+	OfflineMaxHours: number,
 	-- Config/Balance.Profiles.DevStoreName : store des profils du jeu DEV (un nouveau nom = profils DEV remis à zéro,
 	-- comme le 14/11 ; rien n'est effacé, l'autre store reste intact). Le store de PROD ne dépend jamais de la table.
 	DevStoreName: string,
@@ -168,6 +170,7 @@ local TABLE_1: Table = {
 	LeaderboardSuffix = "",
 	AdminMaxAmount = 1e15,
 	OfflineRate = 1,
+	OfflineMaxHours = 4,
 	DevStoreName = "PlayerData_DEV_20261114",
 }
 
@@ -248,9 +251,10 @@ local TABLE_2: Table = {
 	LeaderboardSpeedLog = true,
 	LeaderboardSuffix = "_E2",
 	AdminMaxAmount = 1e30,
-	-- L-413 (Cantin le 25/11, Clément le 26/11 ; a490) : 50 % des revenus, 4 h au plus (Config/Offline.MaxHours, +30 min
-	-- par nœud OfflineTime de l'arbre).
+	-- L-413 (Cantin le 25/11, Clément le 26/11 ; a490) : 50 % des revenus ; a515 (Cantin, 27/11) : 2 h au plus au lieu de
+	-- 4 h (Config/Offline.MaxHours, +30 min par nœud OfflineTime de l'arbre : 3 h avec les deux).
 	OfflineRate = 0.5,
+	OfflineMaxHours = 2,
 	-- Décision de Cantin (25/11) : profils du jeu DEV remis à zéro avec cette table. a497 (V0 de la note, question 9) :
 	-- encore une fois avec les revenus × 25 / × 10 (avant : PlayerData_DEV_BT_20261125).
 	DevStoreName = "PlayerData_DEV_BT_20261126",

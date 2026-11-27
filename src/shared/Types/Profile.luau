@@ -310,6 +310,8 @@ export type Data = {
 	-- (hors du gabarit) ; passé à la table du serveur au chargement par DataService (switchEconomy, Shared/EconomyProfile).
 	EconomyBackup: any?, -- a486 : { From, To, Before, After } : montants d'avant et d'après la dernière conversion, pour
 	-- un retour exact (Shared/EconomyProfile). Sans changement de version.
+	DefensesRetired: boolean?, -- a515 (Cantin, 27/11) : true quand DataService a retiré Bodyguards et DoorGuard de
+	-- SkillTree (profils DEV et TEST seulement, une fois) ; false dans le gabarit. Sans changement de version.
 	-- Partie 2 : Defenses, Rebirths, ajoutés par migration (Version = 9 et suivantes : la v2 est prise
 	-- par le catalogue d'objets v2, la v3 par la boutique Robux, la v4 par l'index, la v5 par les colis
 	-- sur les présentoirs, la v6 par les gains hors ligne, la v7 par les colis dans l'inventaire, la v8

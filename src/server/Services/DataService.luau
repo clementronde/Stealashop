@@ -243,6 +243,9 @@ local TEMPLATE: Data = {
 	-- a429 (L-327 point 2) : catalogue d'objets des ItemId du profil (2 ou 3), passé à celui de Config/Items au
 	-- chargement (switchCatalog) ; 2 pour tout profil d'avant. Sans changement de version.
 	ItemCatalog = 2,
+	-- a515 (Cantin, 27/11) : garde du corps et garde de porte retirés des profils DEV et TEST (removeRetiredDefenses) ;
+	-- true une fois fait. Sans changement de version.
+	DefensesRetired = false,
 }
 
 -- Journal d'une migration : chaque ligne part dans la sortie, préfixée du joueur et de sa clé.
@@ -869,6 +872,33 @@ local function switchEconomy(data: any, log: MigrationLog)
 	end
 end
 
+-- a515 (Cantin, 27/11) : le garde du corps (Bodyguards) et le garde de porte (DoorGuard) sont retirés du jeu pour la V1
+-- (Features.Bodyguards / BodyguardsDev et DoorGuard / DoorGuardDev coupés) ; ceux qui les ont achetés sur DEV ou TEST
+-- les perdent, sans remboursement : leurs niveaux sont retirés du champ SkillTree du profil (le seul où ils sont gardés ;
+-- ShopDefenseService ne sauvegarde rien), une fois par profil (DefensesRetired = true ensuite, même sans rien à
+-- retirer). Jamais dans le store de PROD (Balance.Profiles.StoreName, « PlayerData ») : seulement les profils DEV et
+-- TEST, chargés par ProfileStore (storeName = celui de ce serveur). Les autres nœuds de l'arbre restent (DoorGuard
+-- s'ouvrait avec Bodyguards 1 : tous deux retirés). Renvoie le nombre de niveaux retirés (nil : pas lancée).
+local RETIRED_DEFENSES = { "Bodyguards", "DoorGuard" }
+local function removeRetiredDefenses(data: any, log: MigrationLog, storeName: string): number?
+	if storeName == Balance.Profiles.StoreName or data.DefensesRetired == true then
+		return nil
+	end
+	local removed = 0
+	local tree = data.SkillTree
+	if type(tree) == "table" then
+		for _, id in RETIRED_DEFENSES do
+			if tree[id] ~= nil then
+				log(`défenses retirées (a515) : {id} niveau {tostring(tree[id])} retiré, sans remboursement`)
+				tree[id] = nil
+				removed += 1
+			end
+		end
+	end
+	data.DefensesRetired = true
+	return removed
+end
+
 local function isSaving(): boolean
 	return ProfileStore.DataStoreState == "Access"
 end
@@ -981,6 +1011,11 @@ local function loadProfile(player: Player)
 	local switchedEconomy, economyProblem = pcall(switchEconomy :: any, profile.Data, migrationLog)
 	if not switchedEconomy then
 		warn(`[DataService] {player.Name} ({key}) : conversion de l'économie impossible ({economyProblem}), profil gardé tel quel`)
+	end
+	-- a515 : garde du corps et garde de porte retirés des profils DEV et TEST, une fois (removeRetiredDefenses).
+	local retired, retiredProblem = pcall(removeRetiredDefenses :: any, profile.Data, migrationLog, STORE_NAME)
+	if not retired then
+		warn(`[DataService] {player.Name} ({key}) : retrait des défenses impossible ({retiredProblem}), profil gardé tel quel`)
 	end
 	-- Vague 31 (L-112) : colis déjà rangés → objets de l'inventaire (convertBoxes), avant tout écouteur.
 	-- Vague 50 (a158) : sans condition (plus aucun colis rangé ni ouvert en base, quel que soit Features.ShelfOpen).
