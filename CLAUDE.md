@@ -146,7 +146,7 @@ Valable pour les sessions Claude de Clément (`git config user.name` = `Clement`
 | Boutique | La parcelle-magasin d'un joueur, où il expose ses objets |
 | Magasin PNJ | Un magasin du couloir que l'on braque |
 | Couloir | La rue des 6 zones de magasins PNJ |
-| Zone safe | Le lobby avec les 6 parcelles ; pas de vigile PNJ, mais le PvP y reste possible |
+| Zone safe | Le lobby avec les 6 parcelles ; pas de vigile PNJ ; pas de coups, sauf la défense de sa boutique (dans le couloir, tout le monde frappe tout le monde) |
 | Colis | La caisse `BOX_<Rareté>` sur le rayon d'un magasin PNJ ; on l'ouvre sur place (le perso s'acharne dessus, la rareté peut monter) et on vole l'objet qui en sort. Plus de types Standard, Premium ou Luxe sur les rayons depuis le 20/11 |
 | Rareté | Commun, Peu commun, Rare, Épique, Légendaire, Mythique, Secret ; une 8e, Divin, est prévue (aucun objet encore) |
 | Interrupteur | Une ligne de `Config/Features` qui allume ou éteint une fonction ; certaines ont une variante `…Dev` allumée seulement dans le jeu DEV |
