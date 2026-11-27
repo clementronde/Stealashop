@@ -1167,9 +1167,7 @@ local function goods(m, cf, t)
 		for i, h in { 0.6, 1.0, 1.4 } do
 			Vc(m, cf, "CoinStack_" .. i, -7.2 + i * 1.2, 4.2, 4.2 + h, -3.3, 1.0, GOLD_L, { decor = true, refl = 0.2 })
 		end
-		Vc(m, cf, "BigCoinStand", 0, 4.2, 4.6, -3.2, 1.2, DARK, D)
-		-- pièces sans texte (L-165 : plus aucun texte écrit sur les modèles)
-		P(m, "BigCoin", cf * CFrame.new(0, 6.4, -3.2) * ROT_FACE, Vector3.new(0.6, 3.6, 3.6), GOLD_L, { shape = CYL, refl = 0.2, decor = true })
+		-- BigCoin et BigCoinStand retirés à la demande de Clément (27/11) : la grosse pièce cachait le vendeur du stand Robux
 		for i, x in { 3.6, 5.6 } do
 			B("GiftBox_" .. i, x - 0.8, 4.2, -4.0, x + 0.8, 5.6, -2.6, rgb(52, 168, 90), D)
 			B("GiftRibbonA_" .. i, x - 0.15, 4.2, -4.05, x + 0.15, 5.65, -2.55, GOLD_L, D)

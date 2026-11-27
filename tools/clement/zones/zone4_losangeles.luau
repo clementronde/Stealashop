@@ -932,7 +932,7 @@ do
 		t.Parent = bg
 		g.Parent = panel
 	end
-	billboard("Billboard_N", 376, 406, 38.25, -1, 31.5, 43.5, "WHO STEALS AN EGG\nSTEALS A DIAMOND EGG", rgb(255, 150, 60), rgb(220, 60, 140), rgb(90, 20, 70))
+	-- Billboard_N (pub « WHO STEALS AN EGG / STEALS A DIAMOND EGG ») retiré à la demande de Clément (repasse du 26/11)
 	billboard("Billboard_S", 486, 516, -38.25, 1, 31.5, 43.5, "IT'S HEIST\nO'CLOCK", rgb(40, 190, 210), rgb(30, 40, 110), rgb(10, 20, 60))
 
 	-- Entrée de la zone (arche x = 368) : couronne « LOS ANGELES » au-dessus de l'arche, sur ses propres poteaux

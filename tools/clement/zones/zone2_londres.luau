@@ -148,8 +148,9 @@ do
 		local p = gz2:FindFirstChild(nm)
 		if p then p.CFrame = p.CFrame - p.Position + Vector3.new(x, p.Position.Y, 0) end
 	end
-	g.Street.Material = Enum.Material.Cobblestone; g.Street.MaterialVariant = ""
-	g.Street.Color = rgb(58, 60, 70); g.Street.Reflectance = 0.12
+	-- Repasse du 26/11 (Clément) : plus de Cobblestone, trop réaliste ; Plastic à tenons, gris-bleu des pavés anglais
+	g.Street.Material = Enum.Material.Plastic; g.Street.MaterialVariant = "Studs"
+	g.Street.Color = rgb(84, 88, 100); g.Street.Reflectance = 0
 	for _, p in { g.Side_N, g.Side_S } do p.Material = Enum.Material.Plastic; p.MaterialVariant = "Studs"; p.Color = GROUND end
 	local gate = gz2.ZoneGate_2
 	if math.abs(gate:GetScale() - K) > 1e-4 then gate:ScaleTo(K) end

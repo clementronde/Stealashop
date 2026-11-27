@@ -14,7 +14,7 @@ Références : `StealAShop-Art/References/VFX/Auras/` (`images/` de Clément, `v
 1. **Benchmark avant de construire.** Montrer des références réelles (packs, autres jeux), le laisser choisir un style, puis seulement construire. Ne jamais partir d'une idée à soi.
 2. **Un éclair n'est jamais un tube.** Pas de cylindres bout à bout, pas de mesh extrudé, pas de contour épais. Un éclair est une **texture dessinée**, en planche animée, très brève.
 3. **Rien qui fait « PNG plat ».** Une image fixe qui monte, descend ou tourne est refusée. Il faut du changement d'image (planche animée ou plusieurs textures qui alternent), de la profondeur (plusieurs couches à des distances différentes) et du mouvement varié.
-4. **Le sol est discret.** Hors des moments forts, rien au sol. « Mieux vaut aucun effet au sol que trop gros. » Pas de cercle magique géant par défaut.
+4. **Un vrai effet au sol** (règle changée par Clément le 2026-11-25, après le benchmark Sol's RNG : « Un vrai effet au sol ») : chaque aura a quelque chose au sol, comme dans Sol's RNG (disque brûlé ou flaque sombre, anneau lumineux, petites flammes ou cristaux, braises). Il ne cache pas les pieds. Avant le 25/11, la règle était « sol discret » : les auras livrées avant (Éclair, Chained…) ne sont pas à refaire pour ça sans demande.
 5. **Toon seulement là où il le demande.** Sur l'aura Éclair : seul le nuage est toon. Ne pas « tooniser » le reste de sa propre initiative.
 6. **Le personnage reste visible.** Une aura qui cache le joueur est refusée.
 7. **Relire ses propres captures avant d'envoyer** (grille en section 10). Ne jamais envoyer une image qu'on n'a pas regardée d'un œil critique.
@@ -86,12 +86,49 @@ Une bonne aura = **2 à 4 grands motifs lisibles** + 2 ou 3 couches de finition.
 - **Intensité dans le RVB, couverture dans l'alpha** : cœur à 1,0, lueur vers 0,1. Avec une `Color` saturée × `Brightness` 8 à 10, le cœur sature en blanc et la lueur garde la couleur, en un seul émetteur (c'est l'astuce de B04).
 - Planches d'éclair et d'arcs à nous : `StealAShop-Art/FX/Aura3D/_src/bolt_flipbook.py` (les textures « lightning » de B04 ne sont pas un éclair ramifié).
 - Les planches coûtent de la mémoire ; les vieux téléphones les coupent. **Réutiliser les mêmes textures** entre auras, préférer 512 à 1024.
+- `FlipbookFramerate` est une plage (par exemple 14 à 23), tirée par particule : les copies ne battent pas ensemble (tuto 04). `FlipbookLayout` `Custom` pour une grille non carrée (tuto 02). Import limité à 1024 px : une 4×4 = cases de 256 px (tuto 05).
+
+**Appris des 28 tutos du 26/11** (fiches dans `StealAShop-Art/_Vault/VFX/Tutos/`, à tester chez nous avant de les tenir pour sûrs) :
+- **Paire sombre/claire sur la même texture** : une copie `LightEmission` 0, couleur foncée du thème, 2 fois plus grande, sous la copie claire `LightEmission` 1 ; ordre par `ZOffset` 0,001 / 0,002 (le plus haut devant). C'est ce qui fait tenir une aura de jour (tutos 08 et 09).
+- Deux couches superposées qui scintillent : `SpreadAngle` 0,001 (tuto 08).
+- **Couronne de feu au sol** en 3 émetteurs `VelocityPerpendicular`, `Speed` 0,01 : rayons couchés + copie noire + flammes 4×4 en `Loop` à 15 images/s, `Rotation` −360 à 360 et `RotSpeed` 60 pour casser la régularité (tuto 08). **Anneau au sol** : `Lifetime` 1, `Rate` 2, taille 1 → 5, transparence 0 jusqu'à la moitié puis 1 (on voit toujours 2 anneaux).
+- **Feu toon procédural qui ne fait pas « horrible »** (Blender) : 3 bruits qui défilent à deux vitesses (`#frame*-0.02` et ×2), mélanges Soft Light, hauteur ajoutée à 0,5 pour vider le haut, rampe `Constant` à 0,611 (tuto 13). Liseré sombre fin sans contour épais : coupe de la transparence à 0,5 et de la couleur à 0,677, la bande entre les deux est le liseré (tuto 14).
+- **Impact** : un flash dure ≈ 0,05 s (« si on voit sa forme, il est trop long », tuto 12) ; le rayon touche en 2 images, 3 ondes à 1 image d'écart (tuto 17).
+- **Couches qui tournent à des vitesses différentes** (grand, moyen, petit) : le contraste de mouvement fait le volume (tuto 18).
+- Le « mesh flipbook » des tutos est surtout **un mesh fixe dont la texture change par script** ou un Beam qui défile : sans code, prendre le Beam (tutos 01 et 15).
+- **Beams superposés** : un `ZOffset` chacun, espacés de 0,1, sinon ils scintillent. Un Beam noir (`Color` 0,0,0, `LightEmission` 0) qui défile dans un rayon clair lui donne du relief (tuto 21).
+- **Courbes d'un impact** : taille en Ease Out Expo, transparence en Ease In Expo, particule figée (`Speed` 0,01, `Lifetime` 1, `Rate` 1), 5 émetteurs émis ensemble ; ≈ 0,5 s, pic à 0,1–0,2 s (tuto 23). **Rythme d'un coup « cher »** : montée 0,1 s, pic 0,2 s, éclats 0,4 s, trace fine 0,4 s ; de jour, ce sont les **éclats noirs opaques** qui le rendent lisible (vitrine Blox Fruits, tuto 25) → modèle pour la casse de vitrine et le colis.
+- **Sol's RNG construit en 3 étages** : un motif au sol qui tourne, le corps, un grand motif au-dessus (tuto 26). Ce qui tient de jour : meshes opaques sombres ou fumée sombre (sans cacher le perso).
+- **À tester chez nous** : `LightEmission` négatif (−4 à −8) assombrit le bord d'une particule, un contour sombre en un seul émetteur (tuto 24, non documenté par Roblox) ; Beam `Brightness` jusqu'à 25 avec `TextureLength` 0,1 (tuto 22).
+- **Contre-exemple** : sur une map claire comme la nôtre, une aura toute claire et additive blanchit le perso et paraît figée (Aura Craft, tuto 28).
+
+**Appris des kits UIverse (26/11, `_Vault/VFX/Kits_UIverse/_Synthese_kits.md`)**
+- **Confettis qui volettent** : `Squash` qui ondule de ±0,5 à ±0,7 toutes les 0,1 de vie, `RotSpeed` ±360, `Drag` 5, gravité −10, couleur qui alterne la teinte et une teinte claire ; `LightEmission` 0,25 et `LightInfluence` 0,5 pour les lire de jour (Top Donators).
+- **Scintillement sans planche** : `Size` en dents de scie (un pic puis 0 toutes les 0,05 de vie, chaque pic 10 % plus bas), ou une `ColorSequence` qui alterne teinte et blanc toutes les 0,1 de vie (Top Donators).
+- **Grand éclat de rayons** : 3 couronnes (`Lifetime` 1, 1 à 1,5 et 1 à 2 s ; `RotSpeed` 0, ±5 et ±10) et 1 grand rayon derrière qui culmine à 0,1 de vie, `EmitCount` 1 chacun. Tout part à la même image : le rythme vient des courbes (pic à 0,1 de vie pour le coup, à 0,5 pour les couronnes, ondes en 0,2 à 1 s).
+- **Un seul jeu d'émetteurs pour tous les paliers** : le code règle une échelle (taille ×0,45 à ×1,7, débit = base × min(1,6 ; 0,5 + 0,6 × échelle)) et des couches qui n'entrent qu'à partir d'un palier (`MinRarity` sur chaque émetteur). Plafond d'environ 60 particules au plus haut palier.
+- **Au sol, toujours une couche éclairée** : une onde à plat additive (0 → N en 0,2 s) **plus** un anneau de poussière en `LightEmission` 0, `LightInfluence` 1, `Drag` 10. Un éclat 100 % additif a forcé Top Donators à mettre la nuit sur tout le serveur pour qu'on le voie.
+- **Trails en couches** : palier bas 1 ruban, moyen 2, haut 3, sur les mêmes Attachments (rubans debout à ±1,2 stud ; 2 additifs `LightEmission` 0,65 et `Brightness` 4, 1 cœur opaque `LightEmission` 0 ; `Lifetime` 0,5 ; transparence 1 → 0 à 10 % → 1 ; largeur 1 → 0). La gamme change de forme en montant, pas seulement de couleur (Steal Egg).
+- **Un trail ne cache pas le perso** : transparence 1 contre le corps, 0,1 au milieu, 1 au bout, largeur 0,6 → 1. Longueur affichée = `Lifetime` × vitesse : régler le `Lifetime` d'après la `WalkSpeed` (0,2 s ≈ 3 studs à 16 de vitesse, 24 studs à 120).
+- **Attente discrète** (colis, socle, coffre) : `Rate` 4, `Lifetime` 1 à 2, `Acceleration` +1,9 vers le haut, `Drag` 1, taille 0,43 → 0, `LightEmission` 0,75 : environ 6 particules vivantes, sans `PointLight`.
+**Appris du trailer d'un jeu RNG (26/11, `_Vault/VFX/Inspi_trailer_RNG_auras.md`)**
+- **Une signature au sol par aura** : un cercle gravé propre à l'aura (runes, segments de HUD, anneau d'or), 1 particule à plat qui tourne lentement (`RotSpeed` 10 à 20), plus sa copie sombre dessous. C'est le « vrai effet au sol » en une seule couche lisible.
+- **Une couleur dominante par aura**, plus du blanc. Le perso reste une silhouette au centre.
+- **Les paliers hauts ont un grand motif dans le dos** (cadran, roue de lames, constellation), translucide (≈ 0,5), `LockedToPart`, et jamais devant le perso.
+- **Le noir comme sujet** : un disque opaque (`LightEmission` 0) cerclé d'une couronne de couleur se lit sur n'importe quel fond.
+- **Le rythme d'une révélation** : charge 0,3 s (un orbe à anneaux qui monte), contraction 1 image, flare à 4 branches 0,1 s, éclat 2 images, trace 0,4 s (des pics qui sortent du sol, une onde). L'impact se marque sur 1 image (un flash ou une image en négatif), jamais plus de 2.
+- **Le suspense** se fait par le vide (noir ou silence 0,25 s, un seul point de lumière) avant le moment fort.
+- **Contre-exemple** : leurs révélations ne marchent que sur fond noir, avec la caméra prise. Sur notre map de jour, il faut toujours une couche opaque.
+
+- **Ne pas ralentir un éclat par `TimeScale`** : la durée devient `Lifetime` / `TimeScale` et, à débit égal, il y a 1/`TimeScale` fois plus de particules vivantes.
 
 **Beams**
 - Courbe de Bézier : P1 = `CurveSize0` studs dans le +X de l'Attachment0, P2 = `CurveSize1` studs dans le −X de l'Attachment1. Tourner les Attachments pour orienter la courbe ; un second Beam en miroir avec la courbe négative.
 - `Segments` 20 ou plus, `FaceCamera` pour être vu de partout.
 - La texture d'un Beam doit **toucher les deux bords** de l'image, sinon elle se morcelle. Son axe vertical court le long du ruban (mémoire `roblox-ribbon-texture-orientation`).
-- **Rotation sans script** : des anneaux de Beams dont la texture défile (`TextureSpeed`) donnent une tornade ou un vortex qui tourne. Un cercle en 2 Beams : Attachments en ±r, axes opposés, `CurveSize` ≈ 1,1 × r… à régler à l'œil (à vérifier pour un cercle parfait).
+- **Rotation sans script** : des anneaux de Beams dont la texture défile (`TextureSpeed`) donnent une tornade ou un vortex qui tourne. Un cercle en 2 Beams : Attachments en ±r, axes opposés, **`CurveSize` = 4/3 × r** (= 2/3 du diamètre ; tutos 11 et 12 du 26/11 : r 5,67 → ±7,6 lu à l'écran, et la règle dite à voix haute).
+- `Brightness` d'un Beam n'apparaît qu'avec `LightInfluence` < 1 (tuto 11) : avec notre `LightInfluence` 0, elle est toujours là.
+- Un seul trait qui court le long d'un arc, sans script : `TextureMode` Static + `TextureSpeed` 2 à 5 (tuto 11). Anneau au sol en 2 Beams : texture en simple dégradé, mode Stretch (Static fait des défauts).
 - Les **Trails** ne se dessinent pas en Edit : il faut un Play.
 
 ## 4. Lisibilité de jour et de nuit
@@ -153,6 +190,7 @@ Sauf l'Éclair (validé), ce sont des points de départ tirés des références,
 - 8 joueurs peuvent porter une aura en même temps : multiplier par 8.
 - Meshes : nuage ≤ 5 000 triangles, contour ≤ 1 600.
 - Mobile d'abord : planches en 512, textures partagées entre auras.
+- **Un éclat ponctuel** (colis, présentoir, ligne safe) : ≈ 60 particules au plus. Repères des kits UIverse : un grand moment de Top Donators monte à 1 600 à 5 000 particules, Steal Egg à environ 500 vivantes. C'est ce qu'il ne faut pas faire.
 
 ## 8. Sécurité des packs du Creator Store
 
@@ -182,7 +220,7 @@ Regarder sa capture à côté de la référence et répondre honnêtement :
 2. L'effet se lit-il à 30 studs **en plein jour** ? Et de nuit ?
 3. Y a-t-il un élément plat qui fait PNG (image fixe, aplat, anneau épais) ?
 4. Y a-t-il un tube, un contour épais, un trait droit qui ressemble à un bug ?
-5. Le sol attire-t-il l'œil plus que le reste ?
+5. Y a-t-il un vrai effet au sol, qui ne cache pas les pieds et n'écrase pas le reste ?
 6. Le moment fort donne-t-il un « boum » sans masquer le joueur ?
 7. Tout a-t-il un fondu d'entrée et de sortie ? Les vitesses sont-elles variées ?
 8. Ai-je ajouté du toon, un sol ou un motif que Clément n'a pas demandé ?

@@ -98,7 +98,7 @@ Après chaque étape (repérage, lot), `save_place` (mémoire studio-save-previe
 - Étalonnage : `grade=1` (par défaut) ou `grade=2` (un peu plus de contraste, vignette légère). Jamais plus sombre : notre identité est claire et saturée (DA).
 - Trailer en 16:9 (session trailer de lancement) : plans avec `roll = false`, et montage sans `transpose` ni recadrage 9:16 (`trim`, `setpts=(PTS-STARTPTS)/slow`, `scale=1920:1080`).
 - Regarder la miniature (Read), puis envoyer la vidéo à Clément (SendUserFile).
-- Pour une rafale de plusieurs plans : couper chaque plan sur la grille de 1/3, 1/2, 2/3 ou 1 s (`-ss`, `-t`), puis `concat` ; les textes et la musique se font avec l'agent `video-tiktok`.
+- Pour une rafale de plusieurs plans : couper chaque plan sur la grille de 1, 1,5 ou 2 s (`-ss`, `-t`), puis `concat` ; les textes et les bruitages se font avec l'agent `video-tiktok` ; pas de plan sous 1 s.
 - Fichiers vidéo hors Git ; dans le dépôt, seulement les scripts et les découpages.
 
 ## 6 bis. Plans fidèles au jeu (couche `T.real`, vérifié le 2026-11-25)

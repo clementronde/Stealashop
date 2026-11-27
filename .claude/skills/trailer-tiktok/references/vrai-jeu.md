@@ -2,7 +2,7 @@
 
 Relevé le 2026-11-25 dans le code (`origin/main` 38842278) et dans un Play de la place DEV, après le retour de Clément sur la série « plans naturels » : « ça montre une idéalisation du jeu, pas le vrai jeu ». **Un plan de trailer doit montrer ce qui est ici, rien de plus, rien de moins.** Référence filmée : `StealAShop-Art/Trailers/2026-11-25_analyse_jeu/vraie_partie_casse_colis_poursuite.mp4` (casse, colis, poursuite et capture en 27 s, avec le son).
 
-**DEV et PROD diffèrent** (`Config/Features.luau`, « Dev » = GameId 10774974820) : en DEV, poursuite V3, contours BD, catalogue v3 et éjection à travers la vitre (GlassThrow) sont allumés ; en PROD non. Filmer ce que le lancement montrera : demander à Clément quelle version.
+**DEV et PROD diffèrent** (`Config/Features.luau`, « Dev » = GameId 10774974820) : en DEV, poursuite V3, contours BD, catalogue v3 et éjection à travers la vitre (GlassThrow) sont allumés ; en PROD non. On montre tout le jeu DEV, y compris ce qui est éteint en PROD (règle de Clément), sauf ce qu'interdit la skill : personne de couché, personne qui traverse une vitre.
 
 ## Sommaire
 
@@ -69,8 +69,8 @@ Fichiers dans `StealAShop-Art/Video/Trailer/bruitages/<Nom>.wav` (enregistrés d
 | Foule | `Crowd_Cheer`, `Crowd_Clap`, `Crowd_Gasp`, `Crowd_Shout`, `Crowd_Scream` |
 | Ouverture du colis | `Unbox_Windup` `Unbox_Swing` `Unbox_HammerHit` ; `Unbox_Saw` ; `Unbox_CrowbarWedge/Creak/Crack` ; `Unbox_Drill` ; `Unbox_KickWhoosh` `Unbox_Kick` `Unbox_BoxSlide` ; `Unbox_Rummage` `Unbox_Toss` ; `Unbox_Rattle`, `Unbox_Smoke`, `Unbox_Tier` |
 | Révélation | `Unbox_Burst`, `Unbox_Silhouette`, `Unbox_Suspense`, `Unbox_UpgradePop`, `Unbox_Confetti`, puis `Reveal_RarityLow` / `Mid` / `High`, `Reveal_Grow*`, `Reveal_Land*`, `Ceiling_Crash`, `Shelf_Break` |
-| Poursuite | `Heist_Grab`, `Chase_Whistle`, `Guard_Radio`, `Chase_Heartbeat`, `MUS_Chase` |
-| Capture | `Catch_Impact`, `Catch_Slam`, `Knockdown_Land` |
+| Poursuite | `Heist_Grab`, `Chase_Whistle`, `Guard_Radio`, `Chase_Heartbeat`, `MUS_Chase` (musique du jeu : jamais dans nos montages) |
+| Capture | `Catch_Impact`, `Catch_Slam`, `Knockdown_Land` (jamais à l'image : on coupe avant la chute) |
 | Objet sauvé | `Heist_SafeFlash`, `Heist_Escape` |
 | Batte | `SwingBat_Impact` (le souffle), `SwingBat_Hit` |
 | Vol dans une boutique | `TheftAlert_Siren`, `Grab_Grab` ; éjection : `Throw_Hit` `Throw_Whoosh` `Throw_GlassBurst` |

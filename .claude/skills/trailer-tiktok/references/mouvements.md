@@ -21,7 +21,7 @@ Le recadrage 9:16 enlève le haut de l'image (`coupe=haut`, à cause du cube de 
 
 - **La caméra ne s'arrête jamais** : le plus lent avance encore de 1,5 % de sa distance au sujet par seconde.
 - **Vitesse constante** dans 22 plans sur 29 : on coupe au milieu d'un long mouvement, sans montrer ni le départ ni l'arrêt. Donc `ease = "linear"` pour les plans qu'on coupera court ; `sine` ou `outCubic` seulement quand on garde l'arrivée.
-- **Durées sur une grille** de 1/3, 1/2, 2/3 et 1 s au montage (0,8 s en moyenne, 0,57 s au plus serré). On tourne toujours 3 à 4 s pour choisir.
+- **Durées sur une grille** de 1, 1,5 et 2 s au montage (jamais moins d'1 s ; les références mesurées coupaient à 0,8 s en moyenne : on ne les suit pas). On tourne toujours 3 à 4 s pour choisir.
 - **Ras du sol** (2 à 5 studs) pour presque tout ; haut (40 à 100 studs) seulement pour les plans larges.
 - **Un sujet par plan, centré** en largeur, sa base dans le tiers bas.
 - **Avancer de k %** veut dire : la caméra parcourt k % de sa distance au sujet par seconde (indépendant du champ). Un latéral, lui, paraît 3,2 fois plus rapide en 9:16 qu'en 16:9 à la même vitesse en studs : rester sous 0,25 × la distance au sujet par seconde.
@@ -55,10 +55,10 @@ Ajouts :
 ## Rythme d'un trailer de 15 à 25 s
 
 Deux manières (mesurées) :
-1. **Montage nerveux** (ref1) : accroche large de 2,5 s, 18 à 20 plans de 0,33 à 1 s (0,57 s au plus serré), fin en recul de 2,5 s qui retombe sur l'accroche. Coupes sèches sur le temps de la musique (environ 120 battements par minute : un plan = 1 ou 2 temps).
+1. **Montage nerveux** (ref1) : accroche large de 2,5 s, 18 à 20 plans de 0,33 à 1 s (0,57 s au plus serré), fin en recul de 2,5 s qui retombe sur l'accroche. Coupes sèches sur le temps de la musique (environ 120 battements par minute : un plan = 1 ou 2 temps). Pas pour nous tel quel : plans d'1 s au moins, coupés sur les impacts des bruitages, pas sur la musique.
 2. **Plan continu à stations** (ref7) : une caméra qui va de sujet en sujet, une station toutes les 1,7 s, environ 10 stations pour 20 s.
 
-**Couper court** : chaque prise de 3 à 4 s ne donne au montage que 10 à 30 images (0,33 à 1 s) autour de son meilleur moment (l'impact, le passage au plus près, la révélation). Un trailer de 20 s demande donc 15 à 20 sujets différents : prévoir la liste des plans en conséquence (comparaison du chef vidéo, `StealAShop-Art/Trailers/references/2026-11-24_comparaison-teaser-soon.md`).
+**Couper court** : chaque prise de 3 à 4 s ne donne au montage que 30 à 60 images (1 à 2 s) autour de son meilleur moment (l'impact, le passage au plus près, la révélation). Un trailer de 20 s demande donc 10 à 15 sujets différents : prévoir la liste des plans en conséquence (comparaison du chef vidéo, `StealAShop-Art/Trailers/references/2026-11-24_comparaison-teaser-soon.md`).
 
 **Le mot en masque** (validé par la DA le 2026-11-24) : un mot fixe et énorme au centre, dont les lettres montrent l'image inversée (ffmpeg `negate` + `alphamerge`), sert de fil entre les plans. On reprend la technique, **jamais le mot « SOON » ni sa mise en page** : notre mot et notre police (par exemple le nom du jeu ou « COMING SOON » dans notre style).
 

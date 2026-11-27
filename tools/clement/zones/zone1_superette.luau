@@ -259,15 +259,26 @@ do
 		P(G, "BusZigZag_" .. (k + 1), CFrame.new((xa + xb) / 2, 0.015, (za + zb) / 2) * CFrame.Angles(0, math.atan2(-(zb - za), xb - xa), 0),
 			Vector3.new(len + 0.18, 0.03, 0.22), rgb(255, 200, 0), { decor = true, noShadow = true })
 	end
-	-- Tapis peint aux quatre couleurs de la zone, juste après l'arche (et une bande à la sortie, vers Londres)
-	local cols = { RED, CREAM, BLUE, MINT }
-	for row = 0, 1 do
-		for i = 0, 9 do
-			local z0 = -22.5 + i * 4.5
-			paint("EntryMat_" .. (row * 10 + i + 1), 32.5 + row * 3.5, z0, 36 + row * 3.5, z0 + 4.5, cols[(i + row * 2) % 4 + 1])
+	-- Repasse du 26/11 (Clément) : une seule bande de départ lisible à la place de la mosaïque EntryMat_/ExitMat_
+	-- (dalles de 4 couleurs en travers de la rue). Juste après l'arche : bande blanche en damier noir sur deux rangs
+	-- (ligne de départ) ; à la sortie vers Londres : la même sur un rang.
+	local function startLine(name, x0, rows)
+		local cell = 1.5
+		paint(name, x0, -22.5, x0 + rows * cell, 22.5, WHITE)
+		local n = 0
+		for r = 0, rows - 1 do
+			for i = 0, 29 do
+				if (i + r) % 2 == 0 then
+					n += 1
+					local z0 = -22.5 + i * cell
+					local p = paint(name .. "_Cell_" .. n, x0 + r * cell, z0, x0 + (r + 1) * cell, z0 + cell, rgb(30, 32, 38))
+					if p then p.Size += Vector3.new(0, 0.01, 0); p.Position += Vector3.new(0, 0.005, 0) end -- dessus 0,01 au-dessus de la bande : pas de scintillement
+				end
+			end
 		end
 	end
-	for i = 0, 9 do local z0 = -22.5 + i * 4.5; paint("ExitMat_" .. (i + 1), 113, z0, 116, z0 + 4.5, cols[(i + 1) % 4 + 1]) end
+	startLine("StartLine", 32.5, 2)
+	startLine("ExitLine", 113, 1)
 end
 flush(G)
 

@@ -1,0 +1,45 @@
+Square game icon for a Roblox heist game in the "Steal a ..." genre. Generate the finished image, with no explanation.
+
+SCENE
+A chase in a shop street, seen from very close, at the peak of the action. The thief runs straight toward the camera, TERRIFIED and funny at the same time: eyes wide open with tiny pupils, eyebrows raised high, mouth wide open screaming, a sweat drop flying off. He hugs a HUGE glowing diamond against his chest with both arms: a big brilliant-cut diamond, pale cyan and white, sparkling, about as big as his torso, the brightest thing in the image. Right behind him, a HUGE shop guard chases him, at least 1.5 times taller and much wider than the thief: a blocky Roblox avatar in a blue guard uniform and a blue cap with a gold badge, beige skin, a FURIOUS face (angry slanted eyebrows, gritted teeth, shouting), both big hands reaching forward just above the thief's head. The two faces are close together and read together.
+
+COMPOSITION
+- Square 1:1 format, tight framing, no empty border.
+- The thief is in the lower left part of the image, big, cut at the thighs by the bottom edge, leaning toward the camera, one fist swinging toward the lower left corner, close to the lens.
+- The guard fills the upper right part of the image, his head and hands just behind and above the thief's head: one strong diagonal from the upper right to the lower left.
+- The thief's head is about one third of the image width, the guard's head and shoulders about one half.
+- Low camera, slightly tilted, one-point perspective: the street, the shop windows and the ground lines run toward one vanishing point behind the thief's head. Speed lines and dust puffs on the ground.
+- No other item and no furniture in the scene.
+
+STREET
+{STREET}
+
+THE THIEF
+- A blocky Roblox R15 avatar who reads instantly as a cartoon burglar.
+- Classic burglar outfit: a black-and-white horizontally striped long-sleeve shirt, black pants, black gloves, black sneakers, and a black domino eye mask (a black band across the eyes with two eye holes), so the eyes and the eyebrows stay big and expressive.
+- {AVATAR}
+- Beige skin on the face and the neck. Never white skin.
+
+STYLE
+- A premium, glossy, stylized cartoon 3D Roblox render: blocky bodies, smooth plastic surfaces, simple Roblox hands. Never LEGO, never realistic humans, never flat or hand-drawn.
+- A thick dark navy-black outline around every character and object, like a comic.
+- Few colors: the street palette, the guard's blue, the thief's black-and-white stripes, and the diamond's white-cyan sparkle. The faces, the teeth, the eyes and the diamond are the lightest things; the edges of the image are darker, so the two faces pop.
+- Strong warm rim light on both characters.
+- Readable at 64 x 64 pixels: two big faces with clear expressions, nothing small that matters.
+
+RULES
+- No text, letters, numbers or logos anywhere: shop signs and neon signs show simple pictograms only.
+- Funny, cartoon chase: no blood, no injuries, never horror.
+- Never reproduce characters, items or images from other existing games.
+
+---- Variantes (STREET, AVATAR) ----
+(27/11, Clément : vraie tenue de voleur, rayures noir et blanc, pas forcément de cagoule ; pas que le bacon hair. Plus de photo de tenue jointe.)
+
+V1 (Tokyo, nuit) : A Tokyo shop street at night: glass shop windows lit from inside, glowing pink and red neon signs with simple pictograms (a cherry blossom, a cat face, a ramen bowl), paper lanterns, wet dark asphalt reflecting the neons. Dominant colors: deep red, pink and warm gold.
+   AVATAR : His hair: brown-orange bacon hair falling over the forehead, under a black knitted beanie.
+
+V2 (New York, crépuscule) : A New York luxury shop street at dusk: tall golden shop windows full of light, warm orange and gold neon signs with simple pictograms (a diamond, a star, a crown shape), a yellow taxi far away at the vanishing point, steam from a manhole. Dominant colors: warm gold, orange and dark brown.
+   AVATAR : His hair: short spiky black hair, no hat.
+
+V3 (Paris, nuit) : A Paris shop street at night: elegant shop windows with gold frames and red awnings, warm street lamps, a small Eiffel Tower silhouette far away at the vanishing point, red and gold neon pictograms (a perfume bottle, a heart). Dominant colors: red, gold and deep purple.
+   AVATAR : His head: a black knitted beanie pulled low over the forehead, no visible hair.

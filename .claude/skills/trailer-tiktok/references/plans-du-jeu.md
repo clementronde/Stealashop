@@ -49,7 +49,7 @@ Après le retour de Clément sur la série naturelle (« une idéalisation du je
 | `t09_encaisse` | plaque d'encaissement, bords verts, l'objet tourne et saute | fixe |
 | `t10_porte_40` | la porte d'une boutique « 5/40 » → SMASHED!, BB_ShopInfo | fixe |
 | `t11_vol_contour` | « Steal » : La Joconde sur la tête, contour rouge, sirène | cadreur |
-| `t12_batte_ejection` | coup de batte : le voleur éjecté à travers la vitre (version DEV) | fixe + secousse |
+| `t12_batte_ejection` | coup de batte : le voleur éjecté à travers la vitre (version DEV) ; plus à monter : personne ne traverse une vitre | fixe + secousse |
 | `t13_temoin_police` | Galerie d'art : témoin qui photographie, « POLICE IN 8s », « -60K » | fixe |
 
 ## Série « plans naturels » (`tools/clement/trailer/shots_naturels.luau`)

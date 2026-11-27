@@ -1401,6 +1401,8 @@ end
 	local function camAt(S, t)
 		local pos, look, fov = S.shot.cam(t, S)
 		local cf = CFrame.lookAt(pos, look)
+		-- roulis léger des plans de poursuite (Clément, 26/11 : 4 à 6° au plus, en douceur) : shot.tilt(t) en degrés
+		if S.shot.tilt then cf *= CFrame.Angles(0, 0, math.rad(S.shot.tilt(t))) end
 		if S.shot.roll ~= false then cf *= CFrame.Angles(0, 0, math.rad(90)) end
 		return { cf = cf, focus = CFrame.new(look), fov = fov }
 	end
@@ -2208,6 +2210,904 @@ end
 		for _, f in { "h", "v" } do
 			local b = T.shots.couloir_drone
 			T.shots["L_couloir_drone_" .. f] = { dur = b.dur, roll = f == "v", cam = b.cam, setup = b.setup, update = b.update }
+		end
+	end
+end)()
+
+------------------------------------------------------------------------------------------------
+-- Objet volé réglable (2026-11-26 ; Clément a choisi la Cosmic Crown pour la v5, réglée à la fin de ce bloc) : la Couronne (Z4_Couronne) n'est plus
+-- au catalogue actif (v3) ; la Cosmic Crown (Z6_CouronneCosmique, Légendaire de la zone 6) peut la remplacer.
+--   T.launch.useItem("Z6_CouronneCosmique")   -- avant T.prepare ; T.launch.useItem("Z4_Couronne") pour revenir
+-- Le modèle ITM_<Id> remplace ITM_Z4_Couronne partout (porté, sorti du colis, posé en boutique), à la même taille
+-- (boîte englobante comparée) ; l'étiquette BB_Carry est remplie comme CarryService : Items.ById[Id].DisplayName,
+-- rareté (DisplayNameUpper, Color de Config/Rarities), Format.income(Formulas.ItemIncome(Id)). Les présentoirs des
+-- boutiques prennent alors des objets du catalogue actif de la même zone (modèles présents dans Assets/Items).
+------------------------------------------------------------------------------------------------
+;(function()
+	local Shared = game:GetService("ReplicatedStorage"):WaitForChild("Shared")
+	local Items = require(Shared.Config.Items)
+	local Rarities = require(Shared.Config.Rarities)
+	local Formulas = require(Shared.Config.Formulas)
+	local Format = require(Shared.Format)
+	local RarityHalo = require(Shared.RarityHalo)
+	local BASE = "Z4_Couronne"
+	L.HERO_ITEM = L.HERO_ITEM or BASE
+	local function sizeOf(name)
+		local m = Assets.Items:FindFirstChild(name, true)
+		if not (m and m:IsA("Model")) then return nil end
+		local _, s = m:GetBoundingBox()
+		return math.max(s.X, s.Y, s.Z)
+	end
+	function L.useItem(id: string)
+		assert(Assets.Items:FindFirstChild("ITM_" .. id, true), "modèle introuvable : ITM_" .. id)
+		L.HERO_ITEM = id
+		local a, b = sizeOf("ITM_" .. BASE), sizeOf("ITM_" .. id)
+		L.HERO_FIT = if a and b and b > 0 then a / b else 1
+		return ("objet volé : %s (%s), taille × %.2f"):format(id, L.itemText(id).income, L.HERO_FIT)
+	end
+	function L.itemText(id: string)
+		local it = Items.ById[id]
+		if not it then return { name = "Crown", rarity = "LEGENDARY", color = Color3.fromHex("#FFC21A"), income = "+$22.5K/s" } end -- v4
+		local r = Rarities.ById[it.Rarity]
+		return { name = it.DisplayName or it.Name or id, rarity = r.DisplayNameUpper, color = r.Color, income = Format.income(Formulas.ItemIncome(id)) }
+	end
+	local prop0 = L._propItem0 or L.prop
+	L._propItem0 = prop0
+	L.prop = function(folder, name: string, scale: number?)
+		if name == "ITM_" .. BASE and L.HERO_ITEM ~= BASE then
+			return prop0(folder, "ITM_" .. L.HERO_ITEM, (scale or 1) * (L.HERO_FIT or 1))
+		end
+		return prop0(folder, name, scale)
+	end
+	L.itemLabel = function(model: Model, stolen: boolean?)
+		if model:FindFirstChild("_Label", true) then return end
+		local tx = L.itemText(L.HERO_ITEM)
+		local cf, size = model:GetBoundingBox()
+		local part
+		for _, d in model:GetDescendants() do
+			if d:IsA("BasePart") and (not part or d.Size.Magnitude > part.Size.Magnitude) then part = d end
+		end
+		if not part then return end
+		local b = Assets.UI.BB_Carry:Clone()
+		b.Name = "_Label"
+		for _, d in b:GetDescendants() do
+			if d:IsA("TextLabel") then
+				if d.Name == "ItemName" then d.Text = tx.name
+				elseif d.Name == "Rarity" then d.Text = tx.rarity d.TextColor3 = tx.color
+				elseif d.Name == "Income" then d.Text = tx.income
+				elseif d.Name == "Mutation" or d.Name == "Weight" then d.Visible = false end
+			elseif d:IsA("LuaSourceContainer") then d:Destroy() end
+		end
+		b.Adornee = part
+		b.StudsOffset = Vector3.zero
+		b.StudsOffsetWorldSpace = V(0, (cf.Position.Y + size.Y / 2) - part.Position.Y + 1.4, 0)
+		b.Parent = model
+		-- halo de rareté de l'objet porté ou sorti d'un colis : Shared/RarityHalo.AddCarried, comme CarryService.buildVisual
+		-- (point d'accroche : CarryAttachment, sinon PrimaryPart ou la 1re pièce ; centre à mi-hauteur ; NoEffects)
+		local it = Items.ById[L.HERO_ITEM]
+		if it and not model:FindFirstChild("HaloPoint", true) then
+			local att = model:FindFirstChild("CarryAttachment", true)
+			local anchor, offset
+			if att and att:IsA("Attachment") and att.Parent and att.Parent:IsA("BasePart") then
+				anchor, offset = att.Parent, att.CFrame
+			else
+				anchor = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart", true)
+				offset = anchor and anchor.CFrame:ToObjectSpace(model:GetPivot())
+			end
+			if anchor then
+				local height = model:GetExtentsSize().Y
+				RarityHalo.AddCarried(anchor, offset * CFrame.new(0, height / 2, 0), Rarities.ById[it.Rarity], RarityHalo.NoEffects)
+			end
+		end
+		-- contour rouge : seulement pour un objet volé à un joueur (PlayerItem, plans braquage_* et vol_ami) ; l'objet sorti d'un colis
+		-- de magasin PNJ (NPCItem) n'en a pas (CarryService, en-tête : « sans contour rouge »)
+		local pvp = T.state and T.state.name and (string.find(T.state.name, "braquage", 1, true) ~= nil
+			or string.find(T.state.name, "vol_ami", 1, true) ~= nil)
+		if stolen and pvp then
+			local h = Instance.new("Highlight")
+			h.Name = "StolenOutline"
+			h.FillTransparency = 1
+			h.OutlineColor = Color3.fromHex("#E8413C") -- CarryService.OUTLINE_COLOR
+			h.OutlineTransparency = 0
+			h.DepthMode = Enum.HighlightDepthMode.Occluded
+			h.Parent = model
+		end
+		if L.rollFix then L.rollFix(b) end
+	end
+	-- présentoirs : objets du catalogue actif de la zone de l'objet volé (du plus rare au plus commun), modèle présent
+	local fill0 = L._fillPlot0 or L.fillPlot
+	L._fillPlot0 = fill0
+	L.fillPlot = function(plot: Instance, skip)
+		local hero = Items.ById[L.HERO_ITEM]
+		if not hero then return fill0(plot, skip) end
+		local list = {}
+		for id, it in Items.ById do
+			if it.Zone == hero.Zone and id ~= L.HERO_ITEM and Assets.Items:FindFirstChild("ITM_" .. id, true) then table.insert(list, it) end
+		end
+		table.sort(list, function(a, b)
+			local ra, rb = Rarities.ById[a.Rarity].Order, Rarities.ById[b.Rarity].Order
+			if ra ~= rb then return ra > rb end
+			return a.Id < b.Id
+		end)
+		table.insert(list, 1, hero)
+		for i = 1, 20 do
+			if not (skip and skip[i]) then
+				local slot = plot:FindFirstChild(("DisplaySlot_%02d"):format(i), true)
+				if slot and #list > 0 then
+					local it = list[((i - 1) % #list) + 1]
+					local m = prop0("Items", "ITM_" .. it.Id, 2.5 * (if it == hero then (L.HERO_FIT or 1) else 1))
+					L.setOn(m, slot.WorldPosition, 180)
+				end
+			end
+		end
+	end
+	-- décision de Clément (26/11) : l'objet volé de la v5 est la Cosmic Crown (catalogue v3), braquage gardé à la Bijouterie
+	L.useItem("Z6_CouronneCosmique")
+end)()
+
+------------------------------------------------------------------------------------------------
+-- Zone 6 (Clément, 26/11) : le braquage se fait à la Banque (STORE_Z6_Banque), là où sort la Cosmic Crown.
+-- La Banque est du même côté de la rue que la Bijouterie (nord, vitrine à z = 54,8), même modèle et même orientation,
+-- décalée de +376 en x (vitrine 442 → 818, ShelfSlot_01 433,1 → 809,1, GuardSpawn 410,5 → 786,5) : les cadrages validés
+-- en zone 4 sont repris tels quels, décalés. Porte de zone : ZoneGate_4 (x = 368) → ZoneGate_6 (x = 718), +350.
+-- Vigile Guard_Z6, arme de la zone 6 : la Disqueuse (Config/Tools AngleGrinder, TOOL_Disqueuse, HitWindowHeavy).
+-- Les noms des plans ne changent pas (coupes_v5.csv). Rue de New York : façades FacadeNY et Tenement le long de la fuite.
+------------------------------------------------------------------------------------------------
+;(function()
+	local D, DG = V(376, 0, 0), V(350, 0, 0)
+	local STORE6, GUARD6, TOOL6 = "STORE_Z6_Banque", "guard:Guard_Z6", "TOOL_Disqueuse"
+	local Break = require(game:GetService("ReplicatedStorage").Shared.Config.Shatter).Break
+	local function bank() return store(STORE6) end
+	local function hideW6()
+		local z = workspace.Map:FindFirstChild("Zone_6")
+		local w = z and z:FindFirstChild("Witnesses")
+		if w then L.hide(w) end
+	end
+	local function hero(id)
+		local p = L.fresh(id or "braqueur", "bacon")
+		L.hold(p, "Tools", TOOL6)
+		return p
+	end
+	-- arrivée devant la Banque, le vigile devant la vitrine
+	local P06 = { { 0, V(424, 0.4, 44) + D }, { 3, V(438, 0.4, 47) + D } }
+	def("facade_bijouterie", {
+		dur = 3,
+		cam = function() return M.travelling({ from = V(458, 5, 18) + D, look = V(458, 9, 54.75) + D, dir = "droite", dist = 22, dur = 3, ease = "linear", fov = 48 }) end,
+		setup = function(S)
+			hideW6()
+			local p = hero()
+			S.actors.p1 = p
+			p:follow(P06, 0)
+			p:play("Walk", { fade = 0 })
+			local g = L.fresh("vigile_z6", GUARD6)
+			S.actors.g1 = g
+			g:place(V(447.5, 0.4, 48.6) + D, V(-1, 0, -0.3))
+			g:play("Idle", { fade = 0 })
+		end,
+		update = function(S, t)
+			local p = S.actors.p1
+			p:follow(P06, t)
+			once(S, "stop", t, 2.6, function() p:stop("Walk", 0.15) p:play("Idle", { fade = 0.15 }) end)
+		end,
+	})
+	def("rideau_monte", {
+		dur = 3,
+		cam = function() return M.travelling({ from = V(442, 3, 26) + D, look = V(442, 7, 54.8) + D, dir = "avant", dist = 7, dur = 3, ease = "linear", fov = 50 }) end,
+		setup = function(S)
+			hideW6()
+			local real = bank():FindFirstChild("Shutter")
+			local copy = real:Clone()
+			for _, d in copy:GetDescendants() do
+				if d:IsA("LuaSourceContainer") then
+					d:Destroy()
+				elseif d:IsA("BasePart") then
+					d.Anchored = true
+					d.CanCollide, d.CanQuery, d.CanTouch = false, false, false
+				end
+			end
+			copy.Parent = fxFolder()
+			L.hide(real)
+			for _, d in copy:GetDescendants() do if d:IsA("BasePart") then d.LocalTransparencyModifier = 0 end end
+			S.shutter = { m = copy, up = real:GetPivot(), down = real:GetPivot() - V(0, 11.8, 0) }
+			copy:PivotTo(S.shutter.down)
+			local p = hero()
+			S.actors.p1 = p
+			p:place(V(442, 0.4, 48.5) + D, V(0, 0, 1))
+			p:play("Idle", { fade = 0 })
+		end,
+		update = function(S, t)
+			local sh = S.shutter
+			sh.m:PivotTo(sh.down:Lerp(sh.up, T.ease.outCubic(math.clamp((t - 0.4) / 1.2, 0, 1))))
+		end,
+	})
+	-- casse en 5 coups (L.smash), avec ou sans le vigile figé à côté
+	local function smash6(S, withGuard)
+		hideW6()
+		local p = hero()
+		S.actors.p1 = p
+		p:place(V(442, 0.4, 50.2) + D, V(0, 0, 1))
+		p:play("Idle", { fade = 0 })
+		if withGuard then
+			local g = L.fresh("vigile_z6", GUARD6)
+			S.actors.g1 = g
+			g:place(V(450.2, 0.4, 50.8) + D, V(-1, 0, -0.2))
+			g:play("Idle", { fade = 0 })
+		end
+	end
+	local function smashUpdate(S, t) L.smash(S, S.actors.p1, t, { store = bank(), at = 0.2, every = 0.25, hits = 5 }) end
+	def("vigile_fige", {
+		dur = 2.6,
+		cam = function() return M.shake(M.travelling({ from = V(455.5, 4.8, 37.5) + D, look = V(446, 4.6, 51) + D, dir = "avant", dist = 4.5, dur = 2.6, ease = "linear", fov = 48 }), { atKey = "breakAt", dur = Break.ShakeDuration, amp = Break.ShakeAmplitude }) end,
+		setup = function(S) smash6(S, true) end,
+		update = smashUpdate,
+	})
+	def("casse_orbite", {
+		dur = 3,
+		cam = function() return M.shake(M.orbit({ center = V(442, 4.5, 51) + D, radius = 10, height = -1.2, from = 130, to = 60, dur = 3, ease = "sine", fov = 48, lookUp = 0.5 }), { atKey = "breakAt", dur = Break.ShakeDuration, amp = Break.ShakeAmplitude }) end,
+		setup = function(S) smash6(S, false) end,
+		update = smashUpdate,
+	})
+	-- colis : la caisse au bout du pied de biche, sur la planche 2 du rayon A de la Banque ; la Cosmic Crown en sort
+	local BOX0, OUT3 = V(434.15, 2.77, 77.5) + D, V(435.5, 4.3, 77.0) + D
+	local function tipOf(p)
+		local m = p.held.model
+		local rh = p.model:FindFirstChild("RightHand")
+		local cf, size = m:GetBoundingBox()
+		if not rh then return cf.Position end
+		local best, tip = -1, cf.Position
+		for _, sx in { -1, 1 } do
+			for _, sy in { -1, 1 } do
+				for _, sz in { -1, 1 } do
+					local c = cf:PointToWorldSpace(Vector3.new(sx * size.X / 2, sy * size.Y / 2, sz * size.Z / 2))
+					local d = (c - rh.Position).Magnitude
+					if d > best then best, tip = d, c end
+				end
+			end
+		end
+		return tip
+	end
+	def("colis_legendaire", {
+		dur = 3.2,
+		cam = function() return M.path({ keys = {
+			{ 0, V(439.6, 3.9, 71.8) + D, BOX0 + V(0, 0.6, 0) },
+			{ 1.6, V(439.4, 4.2, 72.0) + D, BOX0 + V(0.5, 1.2, 0) },
+			{ 3.2, V(442.2, 5.6, 69.6) + D, V(435.9, 6.2, 78.2) + D },
+		}, ease = "linear", fov = 48 }) end,
+		setup = function(S)
+			hideW6()
+			local rp = RaycastParams.new()
+			rp.FilterType = Enum.RaycastFilterType.Exclude
+			rp.FilterDescendantsInstances = { T.root() }
+			for _, y in { 3.2, 4.4 } do
+				local g = workspace:Raycast(V(437, y, 77.5) + D, V(-5, 0, 0), rp)
+				if g and g.Instance.Name:match("Glass") then L.hide(g.Instance) end
+			end
+			local p = L.fresh("ouvreur", "bacon")
+			S.actors.p1 = p
+			L.hold(p, "Unbox", "TOOL_Unbox_Crowbar")
+			local P = V(436.1, 0.52, 78.75) + D
+			p:place(P, (BOX0 - P) * Vector3.new(1, 0, 1))
+			local tr = p:play("Unbox_Crowbar", { looped = false, fade = 0 })
+			if tr.Length > 0 then tr.TimePosition = tr.Length * 0.45 end
+			p.animator:StepAnimations(0)
+			T.fx.updateCarry(p)
+			local tip = tipOf(p)
+			S.boxPos = V(math.clamp(tip.X, 433.6 + D.X, 434.25 + D.X), 2.77, math.clamp(tip.Z, 76.6, 78.4))
+			p:stop("Unbox_Crowbar", 0)
+			p.animator:StepAnimations(0)
+			p:play("Idle", { fade = 0 })
+			S.box = L.prop("Boxes", "BOX_Legendary")
+			L.setOn(S.box, S.boxPos, 90)
+		end,
+		update = function(S, t)
+			local p = S.actors.p1
+			once(S, "pry", t, 0.2, function() p:stop("Idle", 0.1) p:play("Unbox_Crowbar", { looped = false, fade = 0.1 }) end)
+			once(S, "open", t, 1.3, function()
+				S.box:Destroy()
+				L.emit("FX_Unbox_Burst", CFrame.new(S.boxPos + V(0, 0.6, 0)))
+				L.emit("FX_Unbox_Reveal", CFrame.new(OUT3))
+				S.item = L.prop("Items", "ITM_Z4_Couronne", 2.4)
+				S.openAt = t
+			end)
+			if S.item and not S.grabbed then
+				L.setOn(S.item, S.boxPos:Lerp(OUT3 - V(0, 0.4, 0), T.ease.outBack(math.clamp((t - S.openAt) / 0.55, 0, 1))), t * 140)
+				L.itemLabel(S.item, false)
+			end
+			once(S, "grab", t, 2.2, function() p:play("Grab", { looped = false, fade = 0.08 }) end)
+			once(S, "take", t, 2.55, function()
+				S.grabbed = true
+				S.item:Destroy()
+				if p.held then p.held.model:Destroy() p.held = nil end
+				L.carry(p, "ITM_Z4_Couronne", 2.4)
+				L.itemLabel(p.carried.model, false)
+				p:play("CarryIdle", { fade = 0.1 })
+			end)
+		end,
+	})
+	-- le vigile surgit du fond de la Banque, en criant
+	local G12 = { { 0, V(445, 0, 96) + D }, { 2.6, V(443, 0, 56) + D } }
+	def("vigile_surgit", {
+		dur = 2.6,
+		cam = function() return M.travelling({ from = V(441, 2.6, 40) + D, look = V(443, 4.5, 75) + D, dir = "avant", dist = 3, dur = 2.6, ease = "linear", fov = 48 }) end,
+		setup = function(S)
+			L.hide(bank():FindFirstChild("Window"))
+			hideW6()
+			local g = L.fresh("vigile_z6", GUARD6)
+			S.actors.g1 = g
+			g:follow(G12, 0)
+			g:play("Run", { fade = 0 })
+		end,
+		update = function(S, t)
+			S.actors.g1:follow(G12, t)
+			once(S, "shout", t, 0.5, function() L.billboard("BB_GuardShout", S.actors.g1.model:FindFirstChild("Head")) end)
+		end,
+	})
+	-- poursuite le long des façades du nord (FacadeNY, Tenement), avec un roulis léger
+	local P13 = { { 0, V(430, 0, 44) + D }, { 3.6, V(384, 0, 44) + D } }
+	local G13 = { { 0, V(446, 0, 40.5) + D }, { 3.6, V(393, 0, 40.5) + D } }
+	def("poursuite_z4", {
+		dur = 3.6,
+		cam = function() return M.follow({ actor = "p1", offset = V(8, -1.2, -16), offsetTo = V(6.5, -1.4, -11), dur = 3.6, ease = "sine", lookOffset = V(3, 2.4, 3), lag = 0.12, fov = 52 }) end,
+		setup = function(S)
+			local p = L.fresh("voleur", "bacon")
+			S.actors.p1 = p
+			L.carry(p, "ITM_Z4_Couronne", 2.4)
+			L.itemLabel(p.carried.model, false)
+			p:follow(P13, 0)
+			p:play("Run", { fade = 0 })
+			p:play("CarryRun", { fade = 0 })
+			local g = L.fresh("vigile_z6", GUARD6)
+			S.actors.g1 = g
+			g:follow(G13, 0)
+			g:play("Run", { fade = 0 })
+			L.billboard("BB_GuardShout", g.model:FindFirstChild("Head"))
+		end,
+		update = function(S, t)
+			S.actors.p1:follow(P13, t)
+			S.actors.g1:follow(G13, t)
+		end,
+	})
+	for _, f in { "h", "v" } do
+		-- roulis : 4,5° au plus, une demi-oscillation lente par 1,8 s, depuis 0 (aucun à-coup à la coupe)
+		T.shots["L_poursuite_z4_" .. f].tilt = function(t) return 4.5 * math.sin(math.pi * t / 1.8) end
+	end
+	-- la porte de la zone 6 (ZoneGate_6, x = 718)
+	local P05 = { { 0, V(348, 0, -10) + DG }, { 3, V(392, 0, -10) + DG } }
+	def("porte_zone4", {
+		dur = 3,
+		cam = function() return M.follow({ actor = "p1", offset = V(1.5, 2.2, 11), offsetTo = V(1.5, 2.6, 13), dur = 3, ease = "linear", lookOffset = V(10, 2, 0), lag = 0.12, fov = 50 }) end,
+		setup = function(S)
+			local p = hero()
+			S.actors.p1 = p
+			p:follow(P05, 0)
+			p:play("Run", { fade = 0 })
+		end,
+		update = function(S, t) S.actors.p1:follow(P05, t) end,
+	})
+end)()
+
+------------------------------------------------------------------------------------------------
+-- v6 (26/11, Clément : « on ne comprend pas ce qui se passe ») : le trailer raconte la boucle en 6 étapes, un texte
+-- par étape (coupes_v6.csv). Plans ajoutés ou retouchés ici :
+--   - tapis_orbite2 : les gains du tapis comme dans le jeu (Config/TreadmillFX.GainPops : 6 copies de BB_Gain par
+--     seconde autour du joueur, angles et hauteurs au hasard, montée de 1,5 stud en 0,75 s), « +X » =
+--     Format.short(Formulas.TreadmillGain(niveau) / 6), à la couleur et à l'icône Speed de BB_Gain ; plus gros que dans
+--     le jeu (L.GAIN_SCALE) pour se lire sur téléphone ; cadre plus serré sur le héros ;
+--   - vol_ami (neuf) : un autre bacon hair (tenue de départ « guitare ») prend l'objet d'un présentoir de la boutique
+--     d'un ami (PLOT_Shop_01) : objet porté avec son étiquette et le contour rouge PlayerItem, puis il ressort en courant
+--     vers la porte. Ni batte ni chute.
+------------------------------------------------------------------------------------------------
+;(function()
+	local RS = game:GetService("ReplicatedStorage")
+	local TFX = require(RS.Shared.Config.TreadmillFX).GainPops
+	local Formulas = require(RS.Shared.Config.Formulas)
+	local Format = require(RS.Shared.Format)
+	L.GAIN_SCALE = L.GAIN_SCALE or 1.8 -- × la taille du BB_Gain de Clément
+	L.TRAIN_LEVEL = L.TRAIN_LEVEL or 10 -- niveau affiché du tapis du héros (Formulas.TreadmillGain)
+	local rng = Random.new(11)
+
+	-- une apparition de gain autour de l'acteur, qui monte et s'efface en TFX.Life s (temps du plan)
+	local function gainPop(S, actor)
+		local src = Assets.UI:FindFirstChild("BB_Gain")
+		if not src then return end
+		local b = src:Clone()
+		for _, d in b:GetDescendants() do if d:IsA("LuaSourceContainer") then d:Destroy() end end
+		local amount = Formulas.TreadmillGain(L.TRAIN_LEVEL) / TFX.PerSecond
+		local row = b:FindFirstChild("Row", true)
+		local label = row and row:FindFirstChild("Amount")
+		local icon = row and row:FindFirstChild("Icon")
+		if label then
+			label.Text = "+" .. Format.short(amount)
+			local c = src:GetAttribute("SpeedColor")
+			if typeof(c) == "Color3" then label.TextColor3 = c end
+		end
+		if icon then
+			local im = src:GetAttribute("SpeedIcon")
+			if type(im) == "string" and im ~= "" then icon.Image = im end
+		end
+		b.Size = UDim2.new(b.Size.X.Scale * L.GAIN_SCALE * TFX.Scale, b.Size.X.Offset * L.GAIN_SCALE, b.Size.Y.Scale * L.GAIN_SCALE * TFX.Scale, b.Size.Y.Offset * L.GAIN_SCALE)
+		local holder = Instance.new("Part")
+		holder.Name = "GainPop"
+		holder.Size = Vector3.one * 0.1
+		holder.Transparency = 1
+		holder.Anchored = true
+		holder.CanCollide, holder.CanQuery, holder.CanTouch = false, false, false
+		local a = rng:NextNumber(0, math.pi * 2)
+		local r = rng:NextNumber(TFX.RadiusMin, TFX.Radius)
+		local base = actor.root.Position + Vector3.new(math.cos(a) * r, rng:NextNumber(TFX.HeightMin, TFX.HeightMax), math.sin(a) * r)
+		holder.Position = base
+		holder.Parent = fxFolder()
+		b.Adornee = holder
+		b.AlwaysOnTop = true
+		b.Parent = holder
+		L.rollFix(b)
+		local age = 0
+		local f
+		f = { step = function(dt)
+			if f.done then return end
+			age += dt
+			local u = math.clamp(age / TFX.Life, 0, 1)
+			holder.Position = base + Vector3.new(0, TFX.Rise * u, 0)
+			local fade = math.clamp((u - 0.6) / 0.4, 0, 1)
+			for _, d in b:GetDescendants() do
+				if d:IsA("TextLabel") then d.TextTransparency = fade d.TextStrokeTransparency = math.max(fade, d.TextStrokeTransparency) end
+				if d:IsA("ImageLabel") then d.ImageTransparency = fade end
+				if d:IsA("UIStroke") then d.Transparency = fade end
+			end
+			if u >= 1 then holder:Destroy() f.done = true end
+		end }
+		table.insert(S.fx, f)
+	end
+	L.gainPop = gainPop
+
+	local TM = V(-151.7, 0, 15.4) -- tapis de la boutique 03 (celui de tapis_orbite)
+	def("tapis_orbite2", {
+		dur = 2.5,
+		-- plus serré qu'en v5 (rayon 10 → 6,5), un peu plus bas : le héros et les gains remplissent le cadre
+		cam = function() return M.orbit({ center = TM + V(0, 3.2, 0), radius = 6.5, height = 0.8, from = 25, to = 60, dur = 2.5, ease = "linear", fov = 45 }) end,
+		setup = function(S)
+			local a = L.fresh("coureur", "bacon")
+			S.actors.s1 = a
+			a:place(TM, V(1, 0, 0))
+			a:play("TreadmillRun", { fade = 0, looped = true })
+			S.nextPop = 0
+		end,
+		update = function(S, t)
+			while t >= S.nextPop do
+				gainPop(S, S.actors.s1)
+				S.nextPop += 1 / TFX.PerSecond
+			end
+		end,
+	})
+
+	-- vol chez un ami : boutique PLOT_Shop_01, présentoir 01 (là où la couronne est exposée dans argent_plaque)
+	local SLOT = V(-66, 2.7, 184)
+	local OUT = { { 0.55, V(-64.4, 0, 182.2) }, { 1.6, V(-50, 0, 180.6) }, { 2.2, V(-43, 0, 178) } } -- vers la porte (x = -42)
+	def("vol_ami", {
+		dur = 2.2,
+		cam = function() return M.orbit({ center = V(-60.5, 3.2, 182.2), radius = 9.5, height = 0.9, from = 215, to = 190, dur = 2.2, ease = "sine", fov = 48, lookUp = 0.8 }) end,
+		setup = function(S)
+			L.fillPlot(store("PLOT_Shop_01"), { [1] = true })
+			S.item = L.prop("Items", "ITM_Z4_Couronne", 2.5)
+			L.setOn(S.item, SLOT, 180)
+			local a = L.fresh("ami", "bacon_guitare")
+			S.actors.p1 = a
+			a:place(OUT[1][2], SLOT - OUT[1][2])
+			L.toVisibleGround(a)
+			a:play("Idle", { fade = 0 })
+		end,
+		update = function(S, t)
+			local a = S.actors.p1
+			once(S, "grab", t, 0.1, function() a:play("Grab", { looped = false, fade = 0.08 }) end)
+			once(S, "take", t, 0.45, function()
+				if S.item then S.item:Destroy() S.item = nil end
+				L.carry(a, "ITM_Z4_Couronne", 2.5)
+				L.itemLabel(a.carried.model, true) -- PlayerItem : étiquette et contour rouge (CarryService.addOutline)
+				a:play("CarryIdle", { fade = 0.1 })
+			end)
+			once(S, "run", t, 0.55, function()
+				a:stop("Idle", 0.1)
+				a:play("Run", { fade = 0.12 })
+				a:play("CarryRun", { fade = 0.12 })
+			end)
+			if t >= 0.55 then
+				a:follow(OUT, t)
+				L.toVisibleGround(a)
+			end
+		end,
+	})
+end)()
+
+------------------------------------------------------------------------------------------------
+-- v6, suite (chef vidéo, 26/11) : l'étape 6 se passe chez un AMI, pas dans la boutique du héros (PLOT_Shop_01, celle de
+-- COLLECT YOUR CASH) : la boutique voisine PLOT_Shop_02 (pivot (-143,1 ; 147,8), tournée de 45°). Les cadrages faits
+-- dans la boutique 01 y sont reportés par changement de repère (pivot à pivot, L.plotMap). Ses présentoirs portent
+-- d'autres objets (catalogue actif, zone 5) ; l'objet volé est un des siens (L.FRIEND_ITEM, Légendaire, jamais un œuf),
+-- avec sa vraie étiquette. C'est le HÉROS (bacon, sa vraie tenue) qui casse la porte et vole ; l'ami (tenue « guitare »)
+-- (tenue « blond ») est au fond de sa boutique, debout (jamais couché). Aucun œuf sur ses présentoirs.
+------------------------------------------------------------------------------------------------
+;(function()
+	local RS = game:GetService("ReplicatedStorage")
+	local Items = require(RS.Shared.Config.Items)
+	local Rarities = require(RS.Shared.Config.Rarities)
+	local Formulas = require(RS.Shared.Config.Formulas)
+	local Format = require(RS.Shared.Format)
+	L.FRIEND_PLOT = L.FRIEND_PLOT or "PLOT_Shop_02"
+	L.FRIEND_ITEM = "Z5_CroissantRequin" -- Légendaire de la zone 5 ; jamais un œuf (règle de Clément : un œuf nous range avec Steal an Egg)
+	L.FRIEND_ZONE = L.FRIEND_ZONE or 5
+
+	-- d'un point (ou d'une direction) de la boutique 01 au même endroit d'une autre boutique
+	function L.plotMap(toName: string, fromName: string?)
+		local a = store(fromName or "PLOT_Shop_01"):GetPivot()
+		local b = store(toName):GetPivot()
+		local pt = function(p: Vector3) return b:PointToWorldSpace(a:PointToObjectSpace(p)) end
+		local dir = function(d: Vector3) return b:VectorToWorldSpace(a:VectorToObjectSpace(d)) end
+		return pt, dir
+	end
+
+	-- étiquette BB_Carry d'un objet donné (même rendu que L.itemLabel, autre objet)
+	function L.itemLabelFor(model: Model, id: string, stolen: boolean?)
+		local keep = L.HERO_ITEM
+		L.HERO_ITEM = id
+		local ok, err = pcall(L.itemLabel, model, stolen)
+		L.HERO_ITEM = keep
+		if not ok then warn("[Trailer] étiquette : " .. tostring(err)) end
+	end
+
+	-- présentoirs d'une boutique : objets du catalogue actif d'une zone (modèle présent), du plus rare au plus commun
+	function L.fillPlotZone(plot: Instance, zone: number, skip)
+		local list = {}
+		for id, it in Items.ById do
+			local egg = string.find(string.lower(id), "oeuf", 1, true) or string.find(string.lower(it.DisplayName or ""), "egg", 1, true)
+			if it.Zone == zone and not egg and id ~= L.FRIEND_ITEM and Assets.Items:FindFirstChild("ITM_" .. id, true) then table.insert(list, it) end
+		end
+		table.sort(list, function(x, y)
+			local rx, ry = Rarities.ById[x.Rarity].Order, Rarities.ById[y.Rarity].Order
+			if rx ~= ry then return rx > ry end
+			return x.Id < y.Id
+		end)
+		local yaw = math.deg(math.atan2(-plot:GetPivot().LookVector.X, -plot:GetPivot().LookVector.Z))
+		for i = 1, 20 do
+			if not (skip and skip[i]) then
+				local slot = plot:FindFirstChild(("DisplaySlot_%02d"):format(i), true)
+				if slot and #list > 0 then
+					local it = list[((i - 1) % #list) + 1]
+					local m = (L._propItem0 or L.prop)("Items", "ITM_" .. it.Id, 2.5)
+					L.setOn(m, slot.WorldPosition, 180 + yaw)
+				end
+			end
+		end
+	end
+
+	-- 6a. un ami casse la vitre de la porte de la boutique 02 (5 coups, comme la vitrine)
+	for _, f in { "h", "v" } do
+		local sp = T.shots["L_braquage_porte_" .. f]
+		local cam0 = M.orbit({ center = V(-42, 4.5, 175.5), radius = 10, height = -1, from = 120, to = 60, dur = 3, ease = "sine", fov = 48, lookUp = 0.5 })
+		sp.cam = function(t, S)
+			local pt = L.plotMap(L.FRIEND_PLOT)
+			local p, l, fv = cam0(t, S)
+			return pt(p), pt(l), fv
+		end
+		sp.setup = function(S)
+			local pt, dir = L.plotMap(L.FRIEND_PLOT)
+			L.fillPlotZone(store(L.FRIEND_PLOT), L.FRIEND_ZONE)
+			local p = L.fresh("braqueur", "bacon")
+			S.actors.p1 = p
+			L.hold(p, "Tools", "TOOL_Disqueuse")
+			p:place(pt(V(-42, 0, 174.3)), dir(V(0, 0, 1)))
+			p:play("Idle", { fade = 0 })
+		end
+		sp.update = function(S, t)
+			local door = store(L.FRIEND_PLOT):FindFirstChild("PlotDoor")
+			L.smash(S, S.actors.p1, t, { store = door, win = door:FindFirstChild("Window"), at = 0.2, every = 0.25, hits = 5 })
+		end
+	end
+
+	-- 6b. il prend l'objet de l'ami sur le présentoir 01 et ressort en courant vers la porte
+	local SLOT01 = V(-66, 2.7, 184)
+	local OUT01 = { { 0.55, V(-64.4, 0, 182.2) }, { 1.6, V(-50, 0, 180.6) }, { 2.2, V(-43, 0, 178) } }
+	def("vol_ami", {
+		dur = 2.2,
+		cam = function()
+			local c0 = M.orbit({ center = V(-60.5, 3.2, 182.2), radius = 9.5, height = 0.9, from = 215, to = 190, dur = 2.2, ease = "sine", fov = 48, lookUp = 0.8 })
+			return function(t, S)
+				local pt = L.plotMap(L.FRIEND_PLOT)
+				local p, l, fv = c0(t, S)
+				return pt(p), pt(l), fv
+			end
+		end,
+		setup = function(S)
+			local pt, dir = L.plotMap(L.FRIEND_PLOT)
+			local plot = store(L.FRIEND_PLOT)
+			L.fillPlotZone(plot, L.FRIEND_ZONE, { [1] = true })
+			local slot = plot:FindFirstChild("DisplaySlot_01", true)
+			assert(slot, L.FRIEND_PLOT .. " : DisplaySlot_01 absent")
+			S.slot = slot.WorldPosition
+			S.item = (L._propItem0 or L.prop)("Items", "ITM_" .. L.FRIEND_ITEM, 2.5)
+			L.setOn(S.item, S.slot, 0)
+			S.out = {}
+			for k, e in OUT01 do S.out[k] = { e[1], pt(e[2]) } end
+			local a = L.fresh("braqueur", "bacon")
+			S.actors.p1 = a
+			a:place(S.out[1][2], (S.slot - S.out[1][2]) * Vector3.new(1, 0, 1))
+			L.toVisibleGround(a)
+			a:play("Idle", { fade = 0 })
+			-- l'ami, propriétaire, au fond de sa boutique, dans une autre tenue ; debout
+			local o = L.fresh("ami", "blond")
+			S.actors.p2 = o
+			o:place(pt(V(-72, 0, 196)), dir(V(1, 0, -0.6)))
+			L.toVisibleGround(o)
+			o:play("Idle", { fade = 0 })
+		end,
+		update = function(S, t)
+			local a = S.actors.p1
+			once(S, "grab", t, 0.1, function() a:play("Grab", { looped = false, fade = 0.08 }) end)
+			once(S, "take", t, 0.45, function()
+				if S.item then S.item:Destroy() S.item = nil end
+				local m = (L._propItem0 or L.prop)("Items", "ITM_" .. L.FRIEND_ITEM, 2.5)
+				local bb, size = m:GetBoundingBox()
+				local head = a.model:FindFirstChild("Head")
+				a.carried = { model = m, offset = m:GetPivot():ToObjectSpace(bb), lift = head.Size.Y / 2 + size.Y / 2 + 0.5 }
+				L.itemLabelFor(m, L.FRIEND_ITEM, true) -- PlayerItem : étiquette et contour rouge (CarryService.addOutline)
+				a:play("CarryIdle", { fade = 0.1 })
+			end)
+			once(S, "run", t, 0.55, function()
+				a:stop("Idle", 0.1)
+				a:play("Run", { fade = 0.12 })
+				a:play("CarryRun", { fade = 0.12 })
+			end)
+			if t >= 0.55 then
+				a:follow(S.out, t)
+				L.toVisibleGround(a)
+			end
+		end,
+	})
+	-- TRAIN TO RUN FASTER chez le héros : le tapis de sa boutique (PLOT_Shop_01), reporté depuis celui de la boutique 03
+	do
+		local TM3 = V(-151.7, 0, 15.4)
+		local c0 = M.orbit({ center = TM3 + V(0, 3.2, 0), radius = 6.5, height = 0.8, from = 25, to = 60, dur = 2.5, ease = "linear", fov = 45 })
+		for _, f in { "h", "v" } do
+			local sh = T.shots["L_tapis_orbite2_" .. f]
+			sh.cam = function(t, S)
+				local pt = L.plotMap("PLOT_Shop_01", "PLOT_Shop_03")
+				local p, l, fv = c0(t, S)
+				return pt(p), pt(l), fv
+			end
+			sh.setup = function(S)
+				local pt, dir = L.plotMap("PLOT_Shop_01", "PLOT_Shop_03")
+				local a = L.fresh("coureur", "bacon")
+				S.actors.s1 = a
+				a:place(pt(TM3), dir(V(1, 0, 0)))
+				a:play("TreadmillRun", { fade = 0, looped = true })
+				S.nextPop = 0
+			end
+		end
+	end
+end)()
+
+------------------------------------------------------------------------------------------------
+-- Réglages trouvés sur la planche v6 (26/11, images fixes dans la vraie vue 3D) :
+--   - BB_Gain garde son StudsOffset de 3,4 studs (les gains sortent au-dessus de la tête) : en repère monde, pour la 9:16 ;
+--   - tapis : à 13 studs (la boîte du tapis fait 12,8), plus haut et plus large, le héros en bas, les gains au milieu ;
+--   - casse : caméra fixe de trois quarts avant gauche, toute la vitrine de la Banque et le héros de profil.
+------------------------------------------------------------------------------------------------
+;(function()
+	local rf0 = L._rollFixGain or L.rollFix
+	L._rollFixGain = rf0
+	L.rollFix = function(b)
+		if b and b:IsA("BillboardGui") and b.StudsOffset.Magnitude > 0 then
+			b.StudsOffsetWorldSpace = b.StudsOffset
+			b.StudsOffset = Vector3.zero
+		end
+		return rf0(b)
+	end
+	local Break = require(game:GetService("ReplicatedStorage").Shared.Config.Shatter).Break
+	local TM3 = V(-151.7, 0, 15.4)
+	local ct = M.orbit({ center = TM3 + V(0, 7.0, 0), radius = 13, height = -1.2, from = 25, to = 55, dur = 2.5, ease = "linear", fov = 46 })
+	local cc = M.shake(M.travelling({ from = V(807, 4.6, 36), look = V(818, 5.6, 54.5), dir = "droite", dist = 2.5, dur = 3, ease = "linear", fov = 46 }), { atKey = "breakAt", dur = Break.ShakeDuration, amp = Break.ShakeAmplitude })
+	for _, f in { "h", "v" } do
+		T.shots["L_tapis_orbite2_" .. f].cam = function(t, S)
+			local pt = L.plotMap("PLOT_Shop_01", "PLOT_Shop_03")
+			local p, l, fv = ct(t, S)
+			return pt(p), pt(l), fv
+		end
+		T.shots["L_casse_orbite_" .. f].cam = cc
+	end
+end)()
+
+------------------------------------------------------------------------------------------------
+-- v6, 2e passage (planche du 26/11) : cadres refaits.
+--   - BREAK : caméra DANS la Banque, face à la vitrine : on voit le héros frapper à travers le verre, les creux, puis
+--     les éclats qui volent vers l'objectif (ils partent vers l'intérieur du magasin, comme dans le jeu) ;
+--   - STEAL : caméra reculée et plus haute, l'étiquette de la Cosmic Crown dans le cadre jusqu'au bout ;
+--   - RUN : le vigile surgit plus grand (caméra juste derrière la vitrine, focale plus longue) ;
+--   - FRIENDS porte : trois quarts avant, dehors, sans regarder à travers la vitre de la porte ;
+--   - FRIENDS vol : caméra dans la boutique de l'ami, plus large : le présentoir, le héros, l'étiquette, l'ami au fond.
+------------------------------------------------------------------------------------------------
+;(function()
+	local D = V(376, 0, 0)
+	local Break = require(game:GetService("ReplicatedStorage").Shared.Config.Shatter).Break
+	local function setCam(name, cam)
+		for _, f in { "h", "v" } do
+			local sh = T.shots["L_" .. name .. "_" .. f]
+			sh._cam0 = nil
+			sh.cam = cam
+		end
+	end
+	-- BREAK, depuis l'intérieur de la Banque (vitrine à z = 54,8 ; rayons à partir de z ≈ 70)
+	setCam("casse_orbite", M.shake(M.travelling({ from = V(447.5, 4.4, 66) + D, look = V(442, 4.8, 52) + D, dir = "gauche", dist = 2.5, dur = 3, ease = "linear", fov = 50 }),
+		{ atKey = "breakAt", dur = Break.ShakeDuration, amp = Break.ShakeAmplitude }))
+	-- STEAL : plus loin et plus haut ; à la fin, l'étiquette au-dessus de la couronne sur la tête
+	local BOX0 = V(434.15, 2.77, 77.5) + D
+	setCam("colis_legendaire", M.path({ keys = {
+		{ 0, V(444.2, 4.4, 68.6) + D, BOX0 + V(0.2, 2.0, 0) },
+		{ 1.6, V(444.0, 4.6, 68.8) + D, BOX0 + V(0.8, 2.6, 0) },
+		{ 3.2, V(445.6, 5.6, 67.0) + D, V(436.4, 6.6, 78.4) + D },
+	}, ease = "linear", fov = 54 }))
+	-- RUN : le vigile surgit, contre-plongée ; mesuré par WorldToViewportPoint sur le temps monté (0,4 à 1,4 s) :
+	-- bulle BB_GuardShout entière (haut entre 35 et 17 % de l'image), tête 58 → 44 %, pieds 80 → 84 % ; texte RUN à MOTS_Y ≈ 0,10
+	setCam("vigile_surgit", M.travelling({ from = V(441.5, 3.4, 58) + D, look = V(444, 10.4, 88) + D, dir = "arriere", dist = 2, dur = 2.6, ease = "linear", fov = 50 }))
+	-- FRIENDS porte (repère de la boutique 01, reporté chez l'ami par L.plotMap) : trois quarts avant, dehors
+	local camDoor = M.travelling({ from = V(-53, 4.6, 165.5), look = V(-42, 5.2, 176.5), dir = "droite", dist = 2, dur = 3, ease = "linear", fov = 48 })
+	setCam("braquage_porte", function(t, S) local pt = L.plotMap(L.FRIEND_PLOT) local p, l, fv = camDoor(t, S) return pt(p), pt(l), fv end)
+	-- FRIENDS vol : dans la boutique, plus large ; l'ami est reposé derrière le présentoir, visible
+	-- le regard suit le héros dès la prise (sinon il sort à droite avec l'étiquette avant 1,5 s) ; mesuré sur 0 à 1,5 s :
+	-- héros x 47 → 61 %, étiquette y 23 → 28 %, ami visible jusqu'à 0,9 s ; texte FRIENDS à MOTS_Y ≈ 0,10
+	local camVol = M.travelling({ from = V(-49.5, 5.6, 193.5), look = V(-61, 5.4, 183.5), dir = "gauche", dist = 1.5, dur = 2.2, ease = "linear", fov = 58 })
+	setCam("vol_ami", function(t, S)
+		local pt = L.plotMap(L.FRIEND_PLOT)
+		local p, l, fv = camVol(t, S)
+		p, l = pt(p), pt(l)
+		local a = S.actors and S.actors.p1
+		local hrp = a and a.model and a.model:FindFirstChild("HumanoidRootPart")
+		if hrp then
+			local w = math.clamp((t - 0.3) / 0.6, 0, 1)
+			w = w * w * (3 - 2 * w) * 0.75
+			l = l:Lerp(hrp.Position + V(0, 3.4, 0), w)
+		end
+		return p, l, fv
+	end)
+	for _, f in { "h", "v" } do
+		local sh = T.shots["L_vol_ami_" .. f]
+		local s0 = sh._setupV6c or sh.setup
+		sh._setupV6c = s0
+		sh.setup = function(S)
+			s0(S)
+			local pt, dir = L.plotMap(L.FRIEND_PLOT)
+			local o = S.actors.p2
+			if o then
+				o:place(pt(V(-70.5, 0, 188.5)), dir(V(1, 0, -0.4)))
+				L.toVisibleGround(o)
+			end
+		end
+	end
+	if L.compensateViewport then L.compensateViewport() end
+end)()
+
+------------------------------------------------------------------------------------------------
+-- v6, CASH (chef vidéo, 26/11) : le compteur d'argent du HUD monte pendant que les billets arrivent sur la plaque.
+-- Copie du panneau d'argent de UI_HUD (BottomLeft.StatsPanel.CashRow) dans CoreGui/_TrailerHUD : StarterGui n'est pas
+-- touché, et rien n'est laissé (T.stop et L.hudCashOff retirent la copie). Le cadre suit la zone gardée au montage :
+-- 16:9 = le milieu 1514 × 852 de la vue ; 9:16 = la même zone, tournée de 90° (CanvasGroup), car la caméra des plans
+-- « _v » est roulée et decouper_marque.py fait transpose=2. Revenu affiché = somme des ItemIncome des objets exposés
+-- dans la boutique du héros, écrit par Format.income ; argent par Format.money.
+------------------------------------------------------------------------------------------------
+;(function()
+	local CoreGui = game:GetService("CoreGui")
+	local Shared = game:GetService("ReplicatedStorage"):WaitForChild("Shared")
+	local Formulas = require(Shared.Config.Formulas)
+	local Items = require(Shared.Config.Items)
+	local Format = require(Shared.Format)
+	local SG = game:GetService("StarterGui")
+	local CASH0 = 1.25e9 -- argent au début du plan
+	local COLLECT = 60 -- la plaque rend une minute de revenus
+
+	function L.hudCashOff()
+		local g = CoreGui:FindFirstChild("_TrailerHUD")
+		if g then g:Destroy() end
+	end
+
+	local function plotIncome(plot)
+		local pv = plot:GetPivot().Position
+		local sum = 0
+		for _, d in workspace:GetDescendants() do
+			if d:IsA("Model") and d.Name:sub(1, 4) == "ITM_" and not d:IsDescendantOf(workspace.Map) then
+				local id = d.Name:sub(5)
+				if Items.ById[id] and (d:GetPivot().Position - pv).Magnitude < 45 then sum += Formulas.ItemIncome(id) end
+			end
+		end
+		return sum
+	end
+
+	function L.hudCash(fmt: string)
+		L.hudCashOff()
+		local vp = workspace.CurrentCamera.ViewportSize
+		local cw, ch = math.floor(math.min(vp.X, vp.Y * 16 / 9)), math.floor(math.min(vp.Y, vp.X * 9 / 16))
+		local g = Instance.new("ScreenGui")
+		g.Name = "_TrailerHUD"
+		g.IgnoreGuiInset = true
+		g.ScreenInsets = Enum.ScreenInsets.None
+		g.DisplayOrder = 50
+		local crop = Instance.new("Frame")
+		crop.Name = "Crop"
+		crop.BackgroundTransparency = 1
+		crop.AnchorPoint = Vector2.new(0.5, 0.5)
+		crop.Position = UDim2.fromScale(0.5, 0.5)
+		crop.Parent = g
+		local holder = crop
+		if fmt == "v" then
+			-- écran portrait (ch × cw) tourné de +90° : après transpose=2 (rotation de −90°), il est droit
+			crop.Size = UDim2.fromOffset(cw, ch)
+			local cg = Instance.new("CanvasGroup")
+			cg.Name = "Portrait"
+			cg.BackgroundTransparency = 1
+			cg.AnchorPoint = Vector2.new(0.5, 0.5)
+			cg.Position = UDim2.fromScale(0.5, 0.5)
+			cg.Size = UDim2.fromOffset(ch, cw)
+			cg.Rotation = 90
+			cg.Parent = crop
+			holder = cg
+		else
+			crop.Size = UDim2.fromOffset(cw, ch)
+		end
+		local bl = SG.UI_HUD.BottomLeft:Clone()
+		for _, d in bl:GetDescendants() do
+			if d:IsA("LuaSourceContainer") then d:Destroy() end
+		end
+		bl.BottomRow.Visible = false
+		bl.StatsPanel.StrengthDamageRow.Visible = false
+		bl.StatsPanel.SpeedRow.Visible = false
+		bl.Parent = holder
+		local row = bl.StatsPanel.CashRow
+		local pop = SG.UI_HUD.CashFly.CounterPop:Clone()
+		pop.Visible = false
+		pop.Parent = holder
+		local cash = row.Cash
+		local px, py = 0.0198 + 0.08, 0.80
+		pop.AnchorPoint = Vector2.new(0, 1)
+		pop.Position = UDim2.fromScale(px, py)
+		if row.Income:FindFirstChild("CashSpent") then row.Income.CashSpent.Visible = false end
+		g.Parent = CoreGui
+		return { gui = g, cash = cash, income = row.Income, pop = pop }
+	end
+
+	for _, f in { "h", "v" } do
+		local sh = T.shots["L_argent_plaque_" .. f]
+		local s0 = sh._setupCash or sh.setup
+		local u0 = sh._updateCash or sh.update
+		sh._setupCash, sh._updateCash = s0, u0
+		sh.setup = function(S)
+			s0(S)
+			local plot = workspace.Map:FindFirstChild("PLOT_Shop_01", true)
+			S.income = plotIncome(plot)
+			S.hud = L.hudCash(f)
+			S.hud.income.Text = Format.income(S.income)
+			S.hud.cash.Text = Format.money(CASH0)
+		end
+		sh.update = function(S, t, dt)
+			u0(S, t, dt)
+			local h = S.hud
+			if not h then return end
+			-- les 18 billets et pièces arrivent entre 1,05 et 1,9 s (L.fly : départ 1,0 + i·0,05, vol 0,6 s, voir setup) ;
+			-- le compteur monte avec eux, en pente douce (ease out), puis tient
+			local u = math.clamp((t - 1.6) / 0.95, 0, 1)
+			u = 1 - (1 - u) ^ 3
+			local gain = S.income * COLLECT
+			h.cash.Text = Format.money(CASH0 + gain * u)
+			local show = t >= 1.6 and t < 2.9
+			h.pop.Visible = show
+			if show then
+				h.pop.Text = "+" .. Format.money(gain)
+				local k = math.clamp((t - 1.6) / 0.25, 0, 1)
+				h.pop.TextTransparency = if t > 2.6 then (t - 2.6) / 0.3 else 0
+				h.pop.Position = UDim2.fromScale(0.0198 + 0.08, 0.80 - 0.03 * k)
+			end
+		end
+		local st0 = sh._stopCash or sh.stop
+		sh._stopCash = st0
+		sh.stop = function(S)
+			L.hudCashOff()
+			if st0 then st0(S) end
 		end
 	end
 end)()
