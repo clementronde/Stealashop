@@ -463,6 +463,14 @@ local Features = {
 	SkillTreePhoneZoom = false,
 	-- a508 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
 	SkillTreePhoneZoomDev = true,
+	-- a519 (L-448, Clément 26/11, repasse animation point 12) : coups plus secs et course portée calée, sur le joueur local
+	-- (Shared/Anim/StrikeFeel, valeurs Config/AnimFeel) : fondu court au lancement des coups (animations au marqueur Impact),
+	-- arrêt sur image de la seule piste du coup à son marqueur Impact, CarryRun jouée à la vitesse au sol. Les animations de
+	-- Clément ne sont pas retouchées. Interrupteur PROD (partout) : false (règle C2) ; false = fondu de 0,1 s, aucun arrêt au
+	-- marqueur Impact, CarryRun à sa vitesse d'origine, comme avant.
+	StrikeFeel = false,
+	-- a519 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	StrikeFeelDev = true,
 }
 
 export type Features = typeof(Features)

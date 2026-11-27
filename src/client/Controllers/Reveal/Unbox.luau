@@ -49,6 +49,16 @@ local Find = require(Shared:WaitForChild("Contract"):WaitForChild("Find"))
 local UI = require(Shared:WaitForChild("Contract"):WaitForChild("UI"))
 local AnimPlayer = require(Shared:WaitForChild("Anim"):WaitForChild("AnimPlayer"))
 local MarkerSounds = require(Shared:WaitForChild("Anim"):WaitForChild("MarkerSounds"))
+-- a519 (L-448, Features.StrikeFeel) : fondu court et arrêt sur image à chaque Impact, sur la piste Unbox_* seule.
+-- Absent ou en erreur : comme avant.
+local strikeFeel: any = (function(): any
+	local module = Shared:WaitForChild("Anim"):FindFirstChild("StrikeFeel")
+	if module == nil or not module:IsA("ModuleScript") then
+		return nil
+	end
+	local ok, result = pcall(require, module :: any)
+	return if ok and type(result) == "table" then result else nil
+end)()
 local UnboxPlan = require(Shared:WaitForChild("UnboxPlan"))
 -- a494b : chance finale à décimales (ShelfOpen/Logic.finalLuck, displayLuck) ; absent (faux arbres des bancs) : valeur brute
 local shelfLogicModule = script.Parent.Parent:FindFirstChild("ShelfOpen")
@@ -1359,6 +1369,9 @@ local function startAction(state: State, index: number)
 	local track = loaded :: AnimationTrack
 	table.insert(state.connections, track:GetMarkerReachedSignal("Impact"):Connect(function()
 		if state.track == track and not state.destroyed then
+			if strikeFeel then
+				pcall(strikeFeel.impact, action.Anim, track)
+			end
 			onImpact(state)
 		end
 	end))
@@ -1376,7 +1389,7 @@ local function startAction(state: State, index: number)
 	state.track = track
 	state.mode = "Anim"
 	pcall(function()
-		track:Play(0.1)
+		track:Play(if strikeFeel then strikeFeel.fade(action.Anim, 0.1) else 0.1)
 		track:AdjustSpeed(math.max(New.ActionSpeed, 0.1))
 	end)
 end

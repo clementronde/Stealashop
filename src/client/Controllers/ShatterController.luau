@@ -93,6 +93,16 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"):WaitForChild("Shatter"))
 local Settings = require(Shared:WaitForChild("Config"):WaitForChild("Settings"))
 local MarkerSounds = require(Shared:WaitForChild("Anim"):WaitForChild("MarkerSounds"))
+-- a519 (L-448) : arrêt sur image partagé avec l'arrêt au marqueur Impact (Shared/Anim/StrikeFeel.hold), pour que deux
+-- arrêts en même temps ne laissent pas une piste figée. Absent : l'arrêt d'avant, tel quel.
+local strikeHold: ((track: AnimationTrack, duration: number) -> ())? = (function()
+	local module = Shared:WaitForChild("Anim"):FindFirstChild("StrikeFeel")
+	if module == nil or not module:IsA("ModuleScript") then
+		return nil
+	end
+	local ok, result = pcall(require, module :: any)
+	return if ok and type(result) == "table" and type((result :: any).hold) == "function" then (result :: any).hold else nil
+end)()
 
 local Assets = Config.Assets
 local Sounds = Config.Sounds
@@ -1201,6 +1211,13 @@ local function hitstop(duration: number)
 	local humanoid = if character then character:FindFirstChildOfClass("Humanoid") else nil
 	local animator = if humanoid then humanoid:FindFirstChildOfClass("Animator") else nil
 	if animator == nil then
+		return
+	end
+	local hold = strikeHold
+	if hold then
+		for _, track in animator:GetPlayingAnimationTracks() do
+			hold(track, duration)
+		end
 		return
 	end
 	local frozen: { [AnimationTrack]: number } = {}

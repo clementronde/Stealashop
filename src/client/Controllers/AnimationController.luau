@@ -46,6 +46,24 @@ local Animations = require(Shared:WaitForChild("Contract"):WaitForChild("Animati
 
 type AnimPlayer = AnimPlayer.AnimPlayer
 
+-- a519 (L-448, Features.StrikeFeel / StrikeFeelDev) : coups plus secs (fondu court, arrêt au marqueur Impact sur la piste
+-- du coup) et CarryRun à la vitesse au sol. Absent ou en erreur : comme avant.
+type StrikeFeel = {
+	fade: (name: string, fallback: number?) -> number?,
+	isStrike: (name: string) -> boolean,
+	impact: (name: string, track: AnimationTrack) -> (),
+	setSpeed: (track: AnimationTrack, speed: number) -> (),
+	runRate: (name: string, groundSpeed: number) -> number?,
+}
+local strikeFeel: StrikeFeel? = (function(): StrikeFeel?
+	local module = AnimFolder:FindFirstChild("StrikeFeel")
+	if module == nil or not module:IsA("ModuleScript") then
+		return nil
+	end
+	local ok, result = pcall(require, module :: any)
+	return if ok and type(result) == "table" then result :: any else nil
+end)()
+
 -- Branchement d'un autre contrôleur sur un marqueur, rebranché à chaque vie du personnage.
 type Sub = { anim: string, marker: string, callback: () -> (), off: (() -> ())? }
 
@@ -151,7 +169,8 @@ function AnimationController.PlayPlayer(name: string, fadeTime: number?): Animat
 	if anims == nil then
 		return nil
 	end
-	local track = anims:Play(name, fadeTime)
+	local feel = strikeFeel
+	local track = anims:Play(name, if feel then feel.fade(name, fadeTime) else fadeTime)
 	if track and name == GRAB_ANIMATION then
 		onGrabStarted(track)
 	end
@@ -231,9 +250,25 @@ local function setCarryAnim(name: string?, fadeTime: number?)
 	end
 end
 
+-- a519 (L-448) : la course portée jouée à la vitesse au sol (StrikeFeel.runRate ; éteint : rien ne change).
+local function matchRunSpeed(speed: number)
+	local feel = strikeFeel
+	local name = carryAnim
+	local anims = current
+	if feel == nil or name == nil or anims == nil then
+		return
+	end
+	local rate = feel.runRate(name, speed)
+	local track = anims.tracks[name]
+	if rate and track and track.IsPlaying then
+		feel.setSpeed(track, rate)
+	end
+end
+
 local function updateCarry(speed: number, fadeTime: number?)
 	if carrying and carryReady then
 		setCarryAnim(if speed > CARRY_RUN_SPEED then "CarryRun" else "CarryIdle", fadeTime)
+		matchRunSpeed(speed)
 	else
 		setCarryAnim(nil)
 	end
@@ -417,6 +452,22 @@ function AnimationController.Start()
 	AnimationController.OnMarker(GRAB_ANIMATION, GRAB_MARKER, function()
 		grabReached(grabPlays)
 	end)
+	-- a519 (L-448) : arrêt sur image de la seule piste du coup, à son marqueur Impact (StrikeFeel.impact ; éteint : rien).
+	local feel = strikeFeel
+	if feel then
+		for _, spec in Animations.Player do
+			local name = spec.Name
+			if feel.isStrike(name) then
+				AnimationController.OnMarker(name, spec.Marker or "Impact", function()
+					local anims = current
+					local track = if anims then anims.tracks[name] else nil
+					if track then
+						feel.impact(name, track)
+					end
+				end)
+			end
+		end
+	end
 
 	player:GetAttributeChangedSignal(TRAINING_MACHINE):Connect(applyTreadmill)
 
