@@ -44,6 +44,8 @@
 --        tirage ramène le total à 100 %. factor ≤ 1 ou illisible : une copie inchangée.
 --   OpenLuck.LuckTable(entries, bought) -> entries           la table du ×N de la règle R2
 --   OpenLuck.StockOdds(odds, list, factor) -> odds          rareté des colis en rayon avec la chance du serveur
+--   OpenLuck.Additive: boolean                              a513 : bonus additifs (Features.LuckAdditive, LuckAdditiveDev
+--        en DEV et TEST) : Bought = somme des bonus actifs (×1 sans aucun) et Combine = Table × Event × Bought ; coupé : les produits
 
 local Config = script.Parent:WaitForChild("Config")
 local SkillTree = require(Config:WaitForChild("SkillTree"))
@@ -80,7 +82,33 @@ local function factor(value: any, minimum: number): number
 	return 1
 end
 
+-- a513 (Cantin, 27/11) : bonus additifs (Features.LuckAdditive partout, ou LuckAdditiveDev en DEV et TEST) : les bonus
+-- (serveur, arbre, personnelle) s'additionnent comme le joueur les lit : la somme des bonus actifs (au-dessus de ×1),
+-- ×3 et ×2 donnent ×5 (exemple de Cantin), ×1 sans aucun bonus, un bonus seul inchangé ; le ×N tiré (Table) et
+-- l'événement (Event) multiplient ensuite ce total (×4 tiré avec ×5 de bonus = ×20). Coupé : le produit d'avant, à
+-- l'identique.
+OpenLuck.Additive = Features.LuckAdditive == true or (Features.LuckAdditiveDev == true and ProductIds.IsDev == true)
+
+-- Total des bonus achetés ou gagnés (chaque facteur ≥ 1) : leur produit, ou, avec OpenLuck.Additive, la somme de ceux
+-- qui sont actifs (> ×1), ×1 s'il n'y en a aucun.
+local function stack(server: any, skill: any, personal: any): number
+	local a, b, c = factor(server, 1), factor(skill, 1), factor(personal, 1)
+	if OpenLuck.Additive then
+		local total = 0
+		for _, bonus in { a, b, c } do
+			if bonus > 1 then
+				total += bonus
+			end
+		end
+		return if total > 0 then total else 1
+	end
+	return c * b * a
+end
+
 function OpenLuck.Combine(parts: Parts): number
+	if OpenLuck.Additive then
+		return factor(parts.Table, 1) * factor(parts.Event, 1e-3) * stack(parts.Server, parts.Skill, parts.Personal)
+	end
 	local luck = factor(parts.Table, 1) * factor(parts.Event, 1e-3) * factor(parts.Server, 1) * factor(parts.Skill, 1)
 	if parts.Personal ~= nil then
 		luck *= factor(parts.Personal, 1)
@@ -89,7 +117,7 @@ function OpenLuck.Combine(parts: Parts): number
 end
 
 function OpenLuck.Bought(parts: { Server: any, Skill: any, Personal: any? }): number
-	return factor(parts.Personal, 1) * factor(parts.Skill, 1) * factor(parts.Server, 1)
+	return stack(parts.Server, parts.Skill, parts.Personal)
 end
 
 function OpenLuck.PersonalFactor(value: any, endsAt: any, now: number): number

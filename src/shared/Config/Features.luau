@@ -331,6 +331,22 @@ local Features = {
 	LuckModelV2 = false,
 	-- a486 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
 	LuckModelV2Dev = true,
+	-- a513 (Cantin, 27/11 ; liaison L-444 b) : poids → revenu proportionnel (10 kg ×1, 100 kg ×10, 10 000 kg ×1 000 :
+	-- Config/Weight.IncomeExponentV2), paliers de poids V2 (10 000 kg à 1 sur 500 : Weight.TiersV2) et prix de la table 2
+	-- remis à l'échelle (Config/Economy, TABLE_2_WEIGHT_V2). Lu par Config/Economy seul (Economy.WeightIncomeV2), au
+	-- chargement, et seulement avec la table 2 : avec la table 1 (PROD), rien ne change. Interrupteur PROD : false (règle
+	-- C2) ; false = le poids d'aujourd'hui (racine cubique) et les prix de la table 2 d'aujourd'hui.
+	WeightIncomeV2 = false,
+	-- a513 : la même chose allumée dans le jeu DEV et le jeu TEST seulement (Config/Economy.IsDev).
+	WeightIncomeV2Dev = true,
+	-- a513 (Cantin, 27/11, « tout V0 ») : les bonus de chance s'additionnent comme le joueur les lit (×3 et ×2 donnent
+	-- ×5 : la somme des bonus actifs, ×1 sans aucun) au lieu de se multiplier : arbre (BoxLuck), chance du serveur (×2, ×4, ×8),
+	-- chance personnelle (×3 Luck) ; la chance tirée à l'ouverture (×1 à ×10) multiplie ensuite ce total (×4 tiré avec
+	-- ×5 de bonus = ×20). Shared/OpenLuck (Combine, Bought). Indépendant de WeightIncomeV2. Interrupteur PROD : false
+	-- (règle C2) ; false = les bonus multipliés, comme avant.
+	LuckAdditive = false,
+	-- a513 : la même chose allumée dans le jeu DEV et le jeu TEST seulement (Config/ProductIds.IsDev).
+	LuckAdditiveDev = true,
 	-- a440 (lot 6 du check-up a417, R13 ; décision C1 de Cantin, 24/11 : « colis de zone partout ») : plus de types de
 	-- colis Standard / Premium / Luxe hors des rayons. Le camion, les cadeaux du jour J2 et J4 et les codes « Item »
 	-- donnent un colis de zone (Shared/ZoneBoxOdds ; ancien type → règle : Config/Rewards.TierZoneBox), la Fortune Tower

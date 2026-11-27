@@ -256,6 +256,68 @@ local TABLE_2: Table = {
 	DevStoreName = "PlayerData_DEV_BT_20261126",
 }
 
+-- a513 (Cantin, 27/11 ; L-444 b) : table 2 du poids V2 (Features.WeightIncomeV2 / WeightIncomeV2Dev ; Tables[2] quand
+-- Economy.WeightIncomeV2). Avec le revenu proportionnel au poids (Config/Weight, ×9 en moyenne à ×1 au lieu de ×1,22),
+-- les prix de la table 2 sont remis à l'échelle pour que le joueur moyen du simulateur entre dans chaque zone au même
+-- temps qu'aujourd'hui (9 min, 41 min, 1 h 51, 6 h 01, 21 h 01 ; note a513-page). Règle : prix de la table 2 × le facteur
+-- de sa bande, arrondi à 2 chiffres : moins de 10K ×1 (le début ne change pas), 10K à 100K ×2, 100K à 1M ×3,5, 1M à 1B
+-- ×1,2, 1B à 600B ×3, 600B et plus ×5. Exceptions : niveaux 21 et 24 du tapis à 460T et 1,65Qa (× 1,5 au moins d'un
+-- niveau au suivant, comme a497). Renaissances et arbre : la même règle (non simulés). Tout le reste : la table 2.
+local WEIGHT_V2_PRICES = {
+	TreadmillCosts = { 150, 450, 34_000, 70_000, 130_000, 420_000, 840_000, 1_400_000, 2_900_000, 5_300_000, 9_400_000, 11e9, 23e9, 48e9, 100e9, 8.5e12, 27e12, 170e12, 300e12, 460e12, 700e12, 1.1e15, 1.65e15, 2.5e15 },
+	DisplaySlotCosts = { 600, 1_600, 34_000, 68_000, 3_700_000, 6_200_000, 10_000_000, 9.9e9, 22e9, 45e9, 3.3e12, 8e12, 28e12, 60e12, 150e12, 380e12 },
+	Floor2Cost = 3_700_000,
+	Floor2Costs = { 6_200_000, 10_000_000, 9.9e9, 22e9, 45e9, 3.3e12, 8e12, 28e12 },
+	ToolPrices = { Fists = 0, Wrench = 400, Crowbar = 1_900_000, Hammer = 300_000_000, Sledgehammer = 1.1e12, FireAxe = 800e12, AngleGrinder = 6e15 },
+	CosmeticPrices = {
+		Shine = 130,
+		Fire = 1_100_000,
+		Storm = 100_000_000,
+		Poison = 300_000_000,
+		Tornado = 1.1e12,
+		Angel = 330e12,
+		Demon = 2.1e15,
+		Chained = 6e15,
+		Spark = 130,
+		Flame = 1_100_000,
+		Lightning = 300_000_000,
+		Plasma = 1.1e12,
+		Galaxy = 330e12,
+		Royal = 6e15,
+		Dust = 100,
+		Wind = 74_000,
+		Turbo = 2_400_000,
+		Comet = 36e9,
+		Hyperspace = 110e12,
+	},
+	SkillPrices = {
+		Walls = { 1_700, 60_000, 26_000_000, 93e9 },
+		GlassThickness = { 2_600, 120_000, 11_000_000, 7.2e9, 9e12 },
+		GlassRegen = { 3_500, 980_000, 16_000_000, 7.2e9, 5e12 },
+		Cameras = { 1_300, 9_300, 16_000_000 },
+		Bodyguards = { 5_600, 4_600_000, 4.5e9, 21e12, 550e12 },
+		PotionLuck = { 2_300, 420_000, 49_000_000 },
+		Curtain = { 3_500, 1_800_000 },
+		DoorGuard = { 4.5e9 },
+		PotionTime = { 5_600, 4_600_000 },
+		Traps = { 1_800_000, 80_000_000, 36e9, 43e12 },
+		BoxLuck = { 22_000, 4_600_000, 1.1e9, 1.6e12, 150e12 },
+		FittingRoom = { 4_600_000 },
+		OfflineTime1 = { 140_000_000 },
+		OfflineTime2 = { 200e12 },
+	},
+	RebirthCash = { 600e12, 15e15, 40e15, 60e15, 80e15, 95e15, 150e15, 220e15, 230e15, 280e15 },
+}
+local TABLE_2_WEIGHT_V2: Table = table.clone(TABLE_2)
+TABLE_2_WEIGHT_V2.TreadmillCosts = WEIGHT_V2_PRICES.TreadmillCosts
+TABLE_2_WEIGHT_V2.DisplaySlotCosts = WEIGHT_V2_PRICES.DisplaySlotCosts
+TABLE_2_WEIGHT_V2.Floor2Cost = WEIGHT_V2_PRICES.Floor2Cost
+TABLE_2_WEIGHT_V2.Floor2Costs = WEIGHT_V2_PRICES.Floor2Costs
+TABLE_2_WEIGHT_V2.ToolPrices = WEIGHT_V2_PRICES.ToolPrices
+TABLE_2_WEIGHT_V2.CosmeticPrices = WEIGHT_V2_PRICES.CosmeticPrices
+TABLE_2_WEIGHT_V2.SkillPrices = WEIGHT_V2_PRICES.SkillPrices
+TABLE_2_WEIGHT_V2.RebirthCash = WEIGHT_V2_PRICES.RebirthCash
+
 local TABLES: { Table } = { TABLE_1, TABLE_2 }
 
 -- a500 : Config/GameEnv chargé s'il est là (voir l'en-tête) ; sans lui, le jeu DEV seul, comme avant.
@@ -294,6 +356,19 @@ end
 local GAME_ID = currentGameId()
 local VERSION = versionFor(Features, GAME_ID)
 
+-- a513 (Cantin, 27/11 ; L-444 b) : poids → revenu proportionnel (Config/Weight lit Economy.WeightIncomeV2), avec la
+-- table 2 seulement : Features.WeightIncomeV2 (partout) ou WeightIncomeV2Dev (DEV et TEST). Allumé, la table 2 prend
+-- les prix remis à l'échelle (TABLE_2_WEIGHT_V2) ; coupé, ou avec la table 1, tout est comme avant.
+local function weightV2For(features: any, gameId: number?): boolean
+	return type(features) == "table"
+		and versionFor(features, gameId) == 2
+		and (features.WeightIncomeV2 == true or (features.WeightIncomeV2Dev == true and isDevGame(gameId)))
+end
+local WEIGHT_V2 = weightV2For(Features, GAME_ID)
+if WEIGHT_V2 then
+	TABLES[2] = TABLE_2_WEIGHT_V2
+end
+
 local Economy = {
 	Version = VERSION,
 	Active = TABLES[VERSION],
@@ -306,6 +381,11 @@ local Economy = {
 	-- Renaissance coupée avec la table 2 (décision de Cantin, 25/11 : à resimuler), sauf Features.RebirthBT.
 	RebirthAllowed = VERSION ~= 2 or Features.RebirthBT == true,
 	VersionFor = versionFor,
+	-- a513 : le poids V2 est allumé sur ce serveur (table 2 et Features.WeightIncomeV2 / WeightIncomeV2Dev) ; la table 2
+	-- remise à l'échelle (Tables[2] quand WeightIncomeV2 est vrai) ; le même choix pour des interrupteurs donnés (bancs).
+	WeightIncomeV2 = WEIGHT_V2,
+	WeightV2Table = TABLE_2_WEIGHT_V2,
+	WeightV2For = weightV2For,
 }
 
 export type Economy = typeof(Economy)
