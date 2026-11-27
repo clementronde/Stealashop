@@ -131,9 +131,12 @@ local Features = {
 	-- a467 (L-163, A2 ; décision C2 de Cantin, 24/11 : T-285 pas encore passé) : interrupteurs PROD (partout), false ;
 	-- chacun allumé en DEV par sa variante …Dev (Config/ProductIds.IsDev). Lus par SkillTree.DefenseOn (Config/SkillTree).
 	Bodyguards = false, -- agent de sécurité qui poursuit le voleur (Partie 2, section 2)
-	BodyguardsDev = true,
+	-- a515 (Cantin, 27/11) : garde du corps et garde de porte retirés du jeu pour la V1 : coupés partout, DEV et TEST compris
+	-- (tuiles « Soon », achat refusé par SkillTreeService, aucun agent posé) ; le code reste. Niveaux déjà achetés en DEV
+	-- ou TEST : retirés des profils au chargement, une fois, sans remboursement (DataService, removeRetiredDefenses).
+	BodyguardsDev = false,
 	DoorGuard = false, -- garde à la porte qui repousse le voleur (L-163)
-	DoorGuardDev = true,
+	DoorGuardDev = false, -- a515 : voir BodyguardsDev
 	CameraRadar = false, -- Cameras niveau 3 : voleur en rouge vif et son de radar, sans flèche (L-163, L-175)
 	CameraRadarDev = true,
 	-- a467 (L-373, Clément 25/11 : défenses reportées, « Coming soon » ; C2) : tuile Cameras de l'arbre,
@@ -190,8 +193,8 @@ local Features = {
 	-- a429 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
 	ItemsV3Dev = true,
 	-- a481 (Cantin, 25/11) : nœuds OfflineTime1 et OfflineTime2 de l'arbre de compétences achetables, +30 min de gains
-	-- hors ligne chacun (Config/Offline.CapHours, 5 h au plus ; plafond appliqué par OfflineService). Interrupteur PROD
-	-- (partout) : false (règle C2 : pas encore de test humain) ; false = tuiles « Soon », plafond de 4 h pour tous.
+	-- hors ligne chacun (Config/Offline.CapHours, 5 h au plus, 3 h avec la table 2 de l'économie, a515 ; plafond appliqué par OfflineService). Interrupteur PROD
+	-- (partout) : false (règle C2 : pas encore de test humain) ; false = tuiles « Soon », plafond de base pour tous (Config/Offline.MaxHours).
 	SkillOfflineTime = false,
 	-- a481 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
 	SkillOfflineTimeDev = true,

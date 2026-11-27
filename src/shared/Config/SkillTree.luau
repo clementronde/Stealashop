@@ -356,7 +356,7 @@ local Removed: { [string]: string } = {
 }
 
 -- a481 (Cantin, 25/11) : branche « hors ligne », 2 nœuds à +30 min de gains hors ligne chacun (4 h de base, 5 h au
--- plus). Bloc à part, ajouté à la fin de List. Effects[1] = heures ajoutées au plafond (Config/Offline.SkillBonusHours) ;
+-- plus ; a515 : 2 h et 3 h avec la table 2 de l'économie). Bloc à part, ajouté à la fin de List. Effects[1] = heures ajoutées au plafond (Config/Offline.SkillBonusHours) ;
 -- le plafond est calculé et appliqué par le serveur seul (Config/Offline.CapHours, OfflineService), d'après le profil.
 -- Achetables avec Features.SkillOfflineTime, ou SkillOfflineTimeDev dans le jeu DEV (Config/Offline.SkillsEnabled) ;
 -- sinon « Soon », aucun effet. Tuiles Tile_OfflineTime1 et Tile_OfflineTime2 proposées à Clément, facultatives tant
@@ -375,6 +375,14 @@ do
 	local bonus: number = if ok and type(Offline) == "table" and type(Offline.SkillBonusHours) == "number"
 		then Offline.SkillBonusHours
 		else 0.5
+	-- a515 (Cantin, 27/11) : étiquettes tirées du plafond de base (Config/Offline.MaxHours : 4 h, 2 h avec la table 2 de
+	-- l'économie) : « 2h max », « 2h30 max », « 3h max ».
+	local base: number = if ok and type(Offline) == "table" and type(Offline.MaxHours) == "number" then Offline.MaxHours else 4
+	local function hoursLabel(hours: number): string
+		local whole = math.floor(hours)
+		local minutes = math.floor((hours - whole) * 60 + 0.5)
+		return if minutes > 0 then string.format("%dh%02d max", whole, minutes) else string.format("%dh max", whole)
+	end
 	local offlineSkills: { Skill } = {
 		{
 			Id = "OfflineTime1",
@@ -386,7 +394,7 @@ do
 			MaxLevel = 1,
 			Prices = { 250_000 }, -- V0 proposé le 25/11 (a481)
 			Effects = { bonus },
-			Labels = { [0] = "4h max", "4h30 max" },
+			Labels = { [0] = hoursLabel(base), hoursLabel(base + bonus) },
 			Coded = if enabled then 1 else 0,
 			OpensWhen = { Id = "GlassRegen", Level = 1 }, -- V0 proposé le 25/11 (a481) : tuile voisine (ancienne place de Tile_Next4)
 		},
@@ -400,7 +408,7 @@ do
 			MaxLevel = 1,
 			Prices = { 2_500_000 }, -- V0 proposé le 25/11 (a481)
 			Effects = { bonus },
-			Labels = { [0] = "4h30 max", "5h max" },
+			Labels = { [0] = hoursLabel(base + bonus), hoursLabel(base + 2 * bonus) },
 			Coded = if enabled then 1 else 0,
 			OpensWhen = { Id = "OfflineTime1", Level = 1 }, -- V0 proposé le 25/11 (a481)
 		},

@@ -31,8 +31,12 @@ end
 local Features: any = optional("Features")
 local ProductIds: any = optional("ProductIds")
 
--- Plafond de base de l'absence comptée, en heures (doc, Partie 2 ; redit par Cantin le 25/11 : 4 h de base).
-local MAX_HOURS = 4
+-- Plafond de base de l'absence comptée, en heures (doc, Partie 2 ; redit par Cantin le 25/11 : 4 h de base). a515 (Cantin,
+-- 27/11) : 2 h avec la table 2 de l'économie (Config/Economy, OfflineMaxHours, DEV et TEST) ; 4 h avec la table 1 (PROD).
+local ECONOMY: any = optional("Economy").Override
+local MAX_HOURS: number = if type(ECONOMY) == "table" and type(ECONOMY.OfflineMaxHours) == "number"
+	then ECONOMY.OfflineMaxHours
+	else 4
 -- a481 (Cantin, 25/11) : 2 nœuds de l'arbre de compétences (Config/SkillTree, Id ci-dessous), +30 min hors ligne
 -- chacun, soit 5 h au plus. Comptés par le serveur seul, au retour du joueur (OfflineService), d'après les niveaux
 -- sauvegardés dans son profil (champ SkillTree) : un client ne peut rien y changer. Allumés partout
@@ -42,7 +46,9 @@ local SKILLS_ENABLED: boolean = Features.SkillOfflineTime == true
 	or (Features.SkillOfflineTimeDev == true and ProductIds.IsDev == true)
 local SKILL_IDS = { "OfflineTime1", "OfflineTime2" } -- V0 proposé le 25/11 (a481)
 local SKILL_BONUS_HOURS = 0.5 -- Cantin, 25/11 : +30 min par nœud
-local MAX_CAP_HOURS = 5 -- Cantin, 25/11 : 5 h au plus, nœuds compris (garde-fou)
+-- Cantin, 25/11 : 5 h au plus, nœuds compris (garde-fou) ; a515 (Cantin, 27/11) : le plafond de base plus les deux
+-- nœuds, 5 h avec la table 1, 3 h avec la table 2.
+local MAX_CAP_HOURS = MAX_HOURS + #SKILL_IDS * SKILL_BONUS_HOURS
 
 -- a481 : plafond (h) d'un joueur d'après les niveaux de son arbre (champ SkillTree du profil, [Id] = niveau) :
 -- MAX_HOURS, plus SKILL_BONUS_HOURS par nœud de SKILL_IDS acheté (niveau ≥ 1) quand SKILLS_ENABLED, borné à
@@ -99,7 +105,7 @@ local Offline = {
 -- (Config/Economy, OfflineRate), à côté des prix du tapis avec lesquels elle est réglée : table 1 = 1 (100 %, la ligne
 -- Rate plus haut), table 2 = 1 aussi tant que Clément n'a pas répondu à L-413 (50 %). Avec la table 2, Rate est
 -- remplacé ici, après coup, par la valeur de la table : la changer = une valeur de Config/Economy. MaxHours ne dépend
--- pas de la table (4 h pour les deux).
+-- pas de cette ligne : a515, Config/Economy.OfflineMaxHours, lu plus haut (4 h, 2 h avec la table 2).
 do
 	-- Config/Economy.Override : la table 2 quand elle est active ; nil avec la table 1 ou sans le module.
 	local ECO: any = optional("Economy").Override
