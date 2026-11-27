@@ -724,6 +724,25 @@ local function fireRevealRemote(name: string, ...: any)
 	end
 end
 
+-- a512 (L-444 c) : $/s de l'objet ouvert (caisse ou colis offert) tel que la boutique le comptera, calculé ici comme
+-- StoreHeistService.revealIncome (Formulas.ItemIncome × Mutations.IncomeMultiplier, arrondi Formulas.RoundIncome) et
+-- envoyé avec RevealStarted ; le client le montre tel quel (BB_Reveal.Income). nil si illisible : le calcul du client.
+local function revealIncomeOf(itemId: string, effect: string?, weight: number?): number?
+	local formulas = lazy("Formulas", Shared.Config, "Formulas")
+	local mutations = lazy("Mutations", Shared.Config, "Mutations")
+	if formulas == nil or mutations == nil then
+		return nil
+	end
+	local ok, value = pcall(function(): any
+		local mutation = if type(effect) == "string" and effect ~= "" then { Effect = effect } else nil
+		return formulas.RoundIncome(formulas.ItemIncome(itemId) * mutations.IncomeMultiplier(mutation, weight))
+	end)
+	if ok and type(value) == "number" and value == value and value >= 0 and value < math.huge then
+		return value
+	end
+	return nil
+end
+
 local function setRevealHold(player: Player, on: boolean)
 	pcall(function()
 		player:SetAttribute(PROTECTED_ATTRIBUTE, if on then true else nil)
@@ -919,7 +938,8 @@ local function startReveal(
 		math.clamp(scale, 0, 100),
 		"Small",
 		reveal.id,
-		plan
+		plan,
+		revealIncomeOf(itemId, effect, weight) -- a512 : revenu du serveur, comme le colis du rayon (a493)
 	)
 	task.delay(maxSeconds, function()
 		finishCrateReveal(reveal, "plafond de temps")
