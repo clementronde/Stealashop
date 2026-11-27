@@ -110,6 +110,29 @@
 --       listener(plot, target, usage, payload?) après chaque coup réussi du bot (PvPService : sortie de
 --       la boutique et PvP.KickRobCooldown s sans la voler, comme après un coup du propriétaire). Les
 --       écouteurs d'OnHit ne sont pas appelés : le bot n'est pas un Player.
+--   BatService.IsRagdolled(player) -> boolean   a503 : au sol après un coup de batte libre (avant le relevé)
+--
+-- a503 (décision de Cantin du 26/11) : PvP libre à la batte, sous Features.BatFreePvP (PROD) ou Features.BatFreePvPDev
+-- (jeu DEV, Config/ProductIds.IsDev), lu à chaque coup (Config/LiveFeatures.Hot). Coupé : tout ce qui précède, intact.
+-- Allumé, ce qui change :
+--   - usage « Free » : ni le frappeur ni la cible en zone safe, la cible ne porte rien : touchée (sauf bouclier
+--     débutant, NightCycleService.IsShielded : refus et Notify Bat.Messages.TargetShieldedFree). Les porteurs gardent
+--     leurs usages (Box, Thief) ; en zone safe, seuls Defend et Intruder (propriétaire ou bot) restent permis ;
+--   - plus d'immunité (Bat.HitImmunity ni posée ni lue) ;
+--   - cibles protégées (busyReason) : RevealProtected (ouverture d'un colis, caisse Robux : déjà vrai coupé), au sol ou
+--     assommée par la batte (ragdolls, stunTokens), projetée à travers une vitre (GlassThrowService.IsThrown),
+--     attrapée par un vigile, la police ou un conducteur, scène de capture comprise (GuardService.IsStunned, et
+--     GuardService._CatchShow.IsPending : objet en route vers la main du vigile), dans le tuto (TutorialService.IsActive ;
+--     pas pour le bot, qui joue sa poursuite du tuto) ;
+--   - effet : la cible hors zone safe (tout usage sauf Intruder, que PvPService sort de la boutique comme avant, et Unmask, que
+--     DisguiseService rhabille par ApplyDescription) part
+--     en ragdoll (Shared/Ragdoll, réglages de Config/GlassThrow) : le serveur prend son personnage, lui donne une
+--     vitesse dans le sens du coup (Bat.RagdollBackSpeed) et vers le haut (Bat.RagdollAirTime s en l'air sur sol plat,
+--     Workspace.Gravity), bornées par le premier mur ou plafond à Bat.RagdollWallMargin (rayon) ; relevé debout
+--     Bat.RagdollTime s après le coup (Motor6D, CanCollide, PlatformStand et propriétaire réseau rendus, état
+--     GettingUp), assommé jusqu'à Bat.StunDuration. Ce qui tombe ne change pas (colis PNJ au sol, objet volé rendu).
+--     BatStun : « Knockback » (Box, Free) ou « Stun » (les autres), mêmes animations et même son (SwingBat_Hit)
+--     chez les clients.
 
 local CollectionService = game:GetService("CollectionService")
 local Debris = game:GetService("Debris")
@@ -144,6 +167,28 @@ local ShopInside: { Contains: (Instance, BasePart, Vector3, number?) -> boolean 
 	end)()
 	else nil
 
+-- a503 : modules lus sans faire échouer un faux arbre de banc plus ancien (absents : PvP libre coupé, sans ragdoll).
+local function optional(find: () -> Instance?): any
+	local found, module = pcall(find)
+	if not found or module == nil then
+		return nil
+	end
+	local ok, result = pcall(require, module :: any)
+	return if ok and type(result) == "table" then result else nil
+end
+local Features: any = optional(function(): Instance?
+	return Shared.Config:FindFirstChild("Features")
+end)
+local ProductIds: any = optional(function(): Instance?
+	return Shared.Config:FindFirstChild("ProductIds")
+end)
+local GlassThrowConfig: any = optional(function(): Instance?
+	return Shared.Config:FindFirstChild("GlassThrow")
+end)
+local Ragdoll: any = optional(function(): Instance?
+	return Shared:FindFirstChild("Ragdoll")
+end)
+
 local AntiCheatService = require(script.Parent.AntiCheatService)
 local CarryService = require(script.Parent.CarryService)
 local NightCycleService = require(script.Parent.NightCycleService)
@@ -152,7 +197,7 @@ local ToolService = require(script.Parent.ToolService)
 
 type Payload = CarryTypes.Payload
 
-export type Usage = "Defend" | "Box" | "Intruder" | "Thief" | "Unmask"
+export type Usage = "Defend" | "Box" | "Intruder" | "Thief" | "Unmask" | "Free" -- a503 : « Free », PvP libre
 export type HitListener = (hitter: Player, target: Player, usage: Usage, payload: Payload?) -> ()
 export type BotHitListener = (plot: Model, target: Player, usage: Usage, payload: Payload?) -> ()
 
@@ -167,6 +212,18 @@ type Candidate = {
 }
 
 type Hold = { DropId: string, StartedAt: number }
+
+-- a503 : une cible au sol après un coup libre (Shared/Ragdoll remplit Joints et Collide).
+type Fallen = {
+	Player: Player,
+	Character: Model,
+	Root: BasePart,
+	Humanoid: Humanoid,
+	Joints: { any },
+	Collide: { [BasePart]: boolean },
+	PlatformStand: boolean,
+	Look: Vector3, -- relevé face au frappeur
+}
 
 -- Noms du contrat (2.1) lus ici.
 local SAFE_ZONE_TAG = "SafeZone"
@@ -198,6 +255,14 @@ local GROUND_RAY_DOWN = 50
 -- V0 proposé, absent du doc : au plus un Notify « bouclier » toutes les 3 s par frappeur.
 local SHIELD_NOTICE_INTERVAL = 3
 local SHIELD_REFUSAL = "bouclier débutant"
+local SHIELD_REFUSAL_FREE = "bouclier débutant (mains vides)" -- a503 : usage « Free »
+-- a503 : pièces du ragdoll posées par ce service (Shared/Ragdoll), et relevé posé LAND_LIFT studs au-dessus du sol
+-- (comme GlassThrowService) ; sol cherché LAND_RAY_DOWN studs sous le HumanoidRootPart.
+local RAGDOLL_NAME = "BatRagdoll"
+local LAND_LIFT = 0.2
+local LAND_RAY_DOWN = 30
+-- a503 : Workspace.Gravity illisible (faux Roblox) : la gravité par défaut de Roblox.
+local DEFAULT_GRAVITY = 196.2
 -- V0 proposé, absent du doc : un coup dans le vide note dans la sortie (Studio) les joueurs à deux
 -- fois la portée au plus, avec la raison du refus.
 local REFUSAL_LOG_RANGE = 2
@@ -213,6 +278,8 @@ local immuneUntil: { [Player]: number } = {}
 local stunTokens: { [Player]: number } = {}
 local batDrops: { [string]: boolean } = {} -- colis posés au sol par un coup de batte, encore au sol
 local holds: { [Player]: Hold } = {}
+local fallen: { [Player]: Fallen } = {} -- a503 : au sol, avant le relevé
+local lazyServices: { [string]: any } = {} -- a503 : services lus au moment du coup (false : absent)
 local lastRefusal: { [Player]: number } = {}
 local lastShieldNotice: { [Player]: number } = {}
 local hitListeners: { HitListener } = {}
@@ -332,6 +399,60 @@ local function shielded(player: Player): boolean
 	return value == true
 end
 
+-- a503 : PvP libre allumé (Features.BatFreePvP, ou BatFreePvPDev dans le jeu DEV), lu à chaque coup.
+local function freePvP(): boolean
+	local features = Features
+	if features == nil then
+		return false
+	end
+	return features.BatFreePvP == true or (features.BatFreePvPDev == true and ProductIds ~= nil and ProductIds.IsDev == true)
+end
+
+-- a503 : un service voisin, require au moment du coup (tous déjà chargés par le Loader : pas de boucle de require).
+local function service(name: string): any
+	local cached = lazyServices[name]
+	if cached == nil then
+		cached = optional(function(): Instance?
+			return script.Parent:FindFirstChild(name)
+		end) or false
+		lazyServices[name] = cached
+	end
+	return if cached == false then nil else cached
+end
+
+-- a503 : `api[method](player)` vaut true (absent ou en erreur : false).
+local function says(api: any, method: string, player: Player): boolean
+	local fn = if api ~= nil then api[method] else nil
+	if type(fn) ~= "function" then
+		return false
+	end
+	local ok, value = pcall(fn, player)
+	return ok and value == true
+end
+
+-- a503 (PvP libre) : la cible est dans une animation où on ne la frappe pas ; la raison, sinon nil. `byBot` : coup du
+-- bot, qui frappe aussi pendant le tuto (sa poursuite en fait partie). L'ouverture d'un colis (RevealProtected) est
+-- refusée avant, interrupteur coupé ou non.
+local function busyReason(target: Player, byBot: boolean): string?
+	if fallen[target] ~= nil or stunTokens[target] ~= nil then
+		return "déjà au sol ou assommé par la batte"
+	end
+	if says(service("GlassThrowService"), "IsThrown", target) then
+		return "projeté à travers une vitre"
+	end
+	local guard = service("GuardService")
+	if says(guard, "IsStunned", target) then
+		return "attrapé (vigile, police ou conducteur), scène de capture"
+	end
+	if guard ~= nil and type(guard._CatchShow) == "table" and says(guard._CatchShow, "IsPending", target) then
+		return "objet en route vers la main du vigile"
+	end
+	if not byBot and says(service("TutorialService"), "IsActive", target) then
+		return "dans le tuto"
+	end
+	return nil
+end
+
 -- Point d'accroche (voir l'en-tête), remplacé par PvPService.
 function BatService.IsIntruder(_hitter: Player, _target: Player): boolean
 	return false
@@ -369,6 +490,10 @@ end
 
 function BatService.IsStunned(player: Player): boolean
 	return stunTokens[player] ~= nil
+end
+
+function BatService.IsRagdolled(player: Player): boolean
+	return fallen[player] ~= nil
 end
 
 function BatService.OnHit(listener: HitListener): () -> ()
@@ -411,6 +536,13 @@ local function candidateFor(
 	if RevealState.IsProtected(other) then
 		return nil, "protégé par sa cinématique d'ouverture" -- vague 62
 	end
+	local free = freePvP() -- a503
+	if free then
+		local busy = busyReason(other, hitter == nil)
+		if busy then
+			return nil, busy
+		end
+	end
 	local offset = root.Position - hitterRoot.Position
 	local distance = offset.Magnitude
 	-- Audit du 2026-11-14 (a146, shared/CatchReach) : à l'horizontale, avec un écart en hauteur toléré.
@@ -445,7 +577,17 @@ local function candidateFor(
 	elseif payload == nil and not hitterSafe and not isInSafeZone(root.Position) and select(2, pcall(BatService.IsDisguised, other)) == true then
 		usage = "Unmask" -- a411 (L-113 point 5) : faux passant démasqué
 	elseif payload == nil then
-		return nil, "ne porte rien"
+		if not free then
+			return nil, "ne porte rien"
+		end
+		-- a503 : PvP libre, hors zone safe seulement ; le bouclier débutant protège encore qui ne porte rien.
+		if hitterSafe or isInSafeZone(root.Position) then
+			return nil, "zone safe"
+		end
+		if shielded(other) then
+			return nil, SHIELD_REFUSAL_FREE
+		end
+		usage = "Free"
 	elseif hitterSafe or isInSafeZone(root.Position) then
 		return nil, "zone safe"
 	elseif payload.Kind == "NPCItem" then
@@ -458,7 +600,7 @@ local function candidateFor(
 	else
 		usage = "Thief"
 	end
-	if (immuneUntil[other] or -math.huge) > now then
+	if not free and (immuneUntil[other] or -math.huge) > now then -- a503 : plus d'immunité en PvP libre
 		return nil, `immunité de {Bat.HitImmunity} s`
 	end
 	-- Mur entre eux : la cible reste touchée, perchée sur un meuble bas ou dans un mur (shared/CatchReach).
@@ -522,10 +664,124 @@ local function stun(player: Player, kind: string)
 	end)
 end
 
+-- a503 : ragdoll du coup libre ------------------------------------------------------------------------------------
+
+local function gravity(): number
+	local ok, value = pcall(function(): any
+		return Workspace.Gravity
+	end)
+	return if ok and type(value) == "number" and value > 0 then value else DEFAULT_GRAVITY
+end
+
+-- Distance jusqu'au premier obstacle sur `ray` depuis `origin` (rayParams), sinon nil.
+local function obstacle(origin: Vector3, ray: Vector3): number?
+	local hit = Workspace:Raycast(origin, ray, rayParams())
+	return if hit then (hit.Position - origin).Magnitude else nil
+end
+
+-- Vitesse d'éjection : Bat.RagdollBackSpeed dans le sens du coup, et vers le haut de quoi rester Bat.RagdollAirTime s
+-- en l'air sur sol plat ; chacune réduite pour s'arrêter à Bat.RagdollWallMargin du premier mur ou plafond.
+local function ejectVelocity(root: BasePart, direction: Vector3): Vector3
+	local g = gravity()
+	local air = math.max(Bat.RagdollAirTime, 1e-3)
+	local margin = Bat.RagdollWallMargin
+	local speed = Bat.RagdollBackSpeed
+	local wall = if speed > 0 then obstacle(root.Position, direction * (speed * air + margin)) else nil
+	if wall then
+		speed = math.max(wall - margin, 0) / air
+	end
+	local up = g * air / 2
+	local peak = up * up / (2 * g)
+	local ceiling = if peak > 0 then obstacle(root.Position, Vector3.new(0, peak + margin, 0)) else nil
+	if ceiling then
+		up = math.sqrt(2 * g * math.max(ceiling - margin, 0))
+	end
+	return direction * speed + Vector3.new(0, up, 0)
+end
+
+-- Relevé (`landed`) ou fin interrompue (mort, départ, personnage changé) : tout est rendu comme avant le coup.
+local function standUp(state: Fallen, landed: boolean)
+	if fallen[state.Player] ~= state then
+		return
+	end
+	fallen[state.Player] = nil
+	local player, character, root, humanoid = state.Player, state.Character, state.Root, state.Humanoid
+	if Ragdoll then
+		Ragdoll.Restore(state)
+	end
+	local alive = character.Parent ~= nil and humanoid.Health > 0
+	if alive then
+		humanoid.PlatformStand = state.PlatformStand
+	end
+	if landed and alive and player.Parent == Players and player.Character == character then
+		-- Debout, face au frappeur, les pieds au sol (comme le relevé de GlassThrowService).
+		local ground = Workspace:Raycast(root.Position + Vector3.new(0, 2, 0), Vector3.new(0, -LAND_RAY_DOWN, 0), rayParams())
+		local hip = if humanoid.RigType == Enum.HumanoidRigType.R15 then humanoid.HipHeight else 2
+		local position = if ground then ground.Position + Vector3.new(0, hip + root.Size.Y / 2 + LAND_LIFT, 0) else root.Position
+		AntiCheatService.Allow(player, 0, "BatService (relevé du ragdoll)")
+		character:PivotTo(CFrame.lookAt(position, position + state.Look) * root.CFrame:ToObjectSpace(character:GetPivot()))
+		root.AssemblyLinearVelocity = Vector3.zero
+		root.AssemblyAngularVelocity = Vector3.zero
+		pcall(function()
+			humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+		end)
+	end
+	if character.Parent ~= nil and Ragdoll then
+		Ragdoll.SetOwner(character, if player.Parent == Players then player else nil)
+	end
+end
+
+-- La cible part en ragdoll dans `direction` (horizontale, unitaire) ; relevée Bat.RagdollTime s plus tard. false :
+-- rien n'est fait (module absent, déjà au sol, pas de personnage).
+local function knockDown(player: Player, root: BasePart, humanoid: Humanoid, direction: Vector3): boolean
+	local character = player.Character
+	if Ragdoll == nil or GlassThrowConfig == nil or character == nil or fallen[player] ~= nil then
+		return false
+	end
+	local state: Fallen = {
+		Player = player,
+		Character = character,
+		Root = root,
+		Humanoid = humanoid,
+		Joints = {},
+		Collide = {},
+		PlatformStand = humanoid.PlatformStand,
+		Look = -direction,
+	}
+	fallen[player] = state
+	AntiCheatService.Allow(player, Bat.RagdollTime + 0.5, "BatService (ragdoll du coup)") -- déplacement du code (DEV-060)
+	Ragdoll.Apply(character, root, {
+		Name = RAGDOLL_NAME,
+		UpperAngle = GlassThrowConfig.RagdollUpperAngle,
+		Twist = GlassThrowConfig.RagdollTwist,
+	}, state)
+	humanoid.PlatformStand = true
+	pcall(function()
+		humanoid:ChangeState(Enum.HumanoidStateType.Physics)
+	end)
+	Ragdoll.SetOwner(character, nil) -- le serveur simule le vol
+	local velocity = ejectVelocity(root, direction)
+	for _, part in character:GetDescendants() do
+		if part:IsA("BasePart") and not (part :: BasePart).Anchored then
+			(part :: BasePart).AssemblyLinearVelocity = velocity
+		end
+	end
+	task.delay(Bat.RagdollTime, function()
+		standUp(state, true)
+	end)
+	return true
+end
+
 -- L'effet du coup (`who` : nom du frappeur pour la sortie de Studio). Les écouteurs sont prévenus par l'appelant.
 local function applyHit(who: string, hitterRoot: BasePart, target: Candidate, now: number)
 	local player = target.player
-	immuneUntil[player] = now + Bat.HitImmunity
+	-- a503 : PvP libre, plus d'immunité ; la cible hors zone safe part en ragdoll (sauf l'intrus, que PvPService
+	-- sort de la boutique comme avant, et le faux passant démasqué, que DisguiseService rhabille : ApplyDescription).
+	local free = freePvP()
+	if not free then
+		immuneUntil[player] = now + Bat.HitImmunity
+	end
+	local eject = free and target.usage ~= "Intruder" and target.usage ~= "Unmask" and not isInSafeZone(target.root.Position)
 	local direction = flat(target.root.Position - hitterRoot.Position)
 	if direction.Magnitude < 1e-3 then
 		direction = flat(hitterRoot.CFrame.LookVector)
@@ -537,11 +793,22 @@ local function applyHit(who: string, hitterRoot: BasePart, target: Candidate, no
 		if dropId then
 			batDrops[dropId] = true
 		end
-		AntiCheatService.Allow(player, Bat.KnockbackDuration, "BatService (knockback)") -- poussée du code (DEV-060)
-		knockback(target.root, direction)
+		if not (eject and knockDown(player, target.root, target.humanoid, direction)) then
+			AntiCheatService.Allow(player, Bat.KnockbackDuration, "BatService (knockback)") -- poussée du code (DEV-060)
+			knockback(target.root, direction)
+		end
 		stun(player, "Knockback")
 		Net.Server.Notify:Fire(player, Bat.Messages.BoxKnockedDown, "Alert") -- avertissement, pas un refus : sans UI_Deny (L-106 point 6)
 		log(`{who} frappe {player.Name} : objet {payload.Rarity} au sol ({dropId or "?"})`)
+	elseif target.usage == "Free" then
+		-- a503 : PvP libre, la cible ne porte rien : ragdoll et assommée, rien ne tombe (sans ragdoll possible : le
+		-- recul de l'usage 2).
+		if not (eject and knockDown(player, target.root, target.humanoid, direction)) then
+			AntiCheatService.Allow(player, Bat.KnockbackDuration, "BatService (knockback)") -- poussée du code (DEV-060)
+			knockback(target.root, direction)
+		end
+		stun(player, "Knockback")
+		log(`{who} frappe {player.Name} (PvP libre) : ragdoll`)
 	elseif target.usage == "Intruder" or target.usage == "Unmask" then
 		-- Rien ne tombe : PvPService le sort de la boutique (OnHit).
 		stun(player, "Stun")
@@ -550,6 +817,9 @@ local function applyHit(who: string, hitterRoot: BasePart, target: Candidate, no
 		local ground = groundBelow(target.root, target.humanoid)
 		-- Objet volé : il ne tombe pas, PvPService le rend à son présentoir (OnCarryEnded « Bat »).
 		CarryService.Drop(player, ground)
+		if eject then
+			knockDown(player, target.root, target.humanoid, direction) -- a503
+		end
 		stun(player, "Stun")
 		log(`{who} frappe {player.Name} ({target.usage}) : l'objet volé retourne chez son propriétaire`)
 	end
@@ -587,6 +857,7 @@ local function onSwingBat(player: Player)
 	local best: Candidate? = nil
 	local refusals: { string } = {} -- joueurs à portée refusés, pour la sortie
 	local shieldRefused = false
+	local freeShieldRefused = false -- a503
 	for _, other in Players:GetPlayers() do
 		if other == player then
 			continue
@@ -609,6 +880,7 @@ local function onSwingBat(player: Player)
 			if otherRoot and (otherRoot.Position - root.Position).Magnitude <= Bat.Range * REFUSAL_LOG_RANGE then
 				table.insert(refusals, `{other.Name} : {reason}`)
 				shieldRefused = shieldRefused or reason == SHIELD_REFUSAL
+				freeShieldRefused = freeShieldRefused or reason == SHIELD_REFUSAL_FREE
 			end
 		end
 	end
@@ -617,9 +889,9 @@ local function onSwingBat(player: Player)
 		if #refusals > 0 then
 			log(`{player.Name} frappe dans le vide ({table.concat(refusals, " ; ")})`)
 		end
-		if shieldRefused and now - (lastShieldNotice[player] or -math.huge) >= SHIELD_NOTICE_INTERVAL then
+		if (shieldRefused or freeShieldRefused) and now - (lastShieldNotice[player] or -math.huge) >= SHIELD_NOTICE_INTERVAL then
 			lastShieldNotice[player] = now
-			Net.Server.Notify:Fire(player, Bat.Messages.TargetShielded, "Info")
+			Net.Server.Notify:Fire(player, if shieldRefused then Bat.Messages.TargetShielded else Bat.Messages.TargetShieldedFree, "Info")
 		end
 		return
 	end
@@ -774,6 +1046,12 @@ local function step()
 			holds[player] = nil
 		end
 	end
+	-- a503 : au sol, puis mort, parti ou personnage changé avant le relevé : tout est rendu tout de suite.
+	for player, state in table.clone(fallen) do
+		if state.Character.Parent == nil or state.Humanoid.Health <= 0 or player.Character ~= state.Character then
+			standUp(state, false)
+		end
+	end
 	for dropId in batDrops do
 		if CarryService.GetDrop(dropId) == nil then
 			batDrops[dropId] = nil -- ramassé ou retiré ailleurs
@@ -794,6 +1072,10 @@ function BatService.Init()
 		holds[player] = nil
 		lastRefusal[player] = nil
 		lastShieldNotice[player] = nil
+		local state = fallen[player]
+		if state then
+			standUp(state, false) -- a503
+		end
 	end)
 end
 

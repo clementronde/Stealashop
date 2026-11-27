@@ -402,6 +402,14 @@ local Features = {
 	PanelFocus = false,
 	-- a492 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
 	PanelFocusDev = true,
+	-- a503 (décision de Cantin du 26/11) : PvP libre à la batte dans le couloir. Hors zone safe, n'importe qui frappe
+	-- n'importe qui à tout moment ; en zone safe, seule la défense de sa boutique (propriétaire ou bot) ; plus
+	-- d'immunité après un coup ; un coup dans le couloir éjecte la cible en ragdoll puis l'assomme (BatService,
+	-- Config/Bat, Shared/Ragdoll). Interrupteur PROD (partout) : false (règle C2) ; false = la batte d'avant, intacte
+	-- (porteurs seulement, immunité de 3 s, recul sans ragdoll). Lu à chaque coup (Config/LiveFeatures.Hot).
+	BatFreePvP = false,
+	-- a503 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	BatFreePvPDev = true,
 }
 
 export type Features = typeof(Features)

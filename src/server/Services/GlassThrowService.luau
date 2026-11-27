@@ -47,6 +47,7 @@ local Features = require(Shared.Config.Features)
 local GlassThrow = require(Shared.Config.GlassThrow)
 local ShopGlass = require(Shared.ShopGlass)
 local Net = require(Shared.Net.Net)
+local Ragdoll = require(Shared.Ragdoll) -- a503 : ragdoll commun avec BatService
 -- Config/ProductIds chargé s'il est là (comme TrapService, a296) ; sans lui, IsDev faux (PROD).
 local ProductIds: { IsDev: boolean? } = (function(): any
 	local module = Shared.Config:FindFirstChild("ProductIds")
@@ -66,8 +67,14 @@ local IS_STUDIO = RunService:IsStudio()
 local DEFAULT_GROUP = "Default"
 local PART_NAME = "GlassThrow" -- Attachment, LinearVelocity et pièces du ragdoll posés par ce service
 local LAND_LIFT = 0.2
+-- Réglages du ragdoll (Shared/Ragdoll) : ceux de Config/GlassThrow, sous le nom PART_NAME (comme avant a503).
+local RAGDOLL_SETTINGS: Ragdoll.Settings = {
+	Name = PART_NAME,
+	UpperAngle = GlassThrow.RagdollUpperAngle,
+	Twist = GlassThrow.RagdollTwist,
+}
 
-type Joint = { Motor: Motor6D, Made: { Instance } }
+type Joint = Ragdoll.Joint
 
 type Throw = {
 	Victim: Player,
@@ -223,76 +230,20 @@ end
 
 -- Ragdoll -------------------------------------------------------------------------------------------------------
 
+-- a503 : le ragdoll est dans Shared/Ragdoll (commun avec BatService), sorti tel quel d'ici.
 local function ragdoll(throw: Throw)
 	if not GlassThrow.Ragdoll then
 		return
 	end
-	for _, motor in throw.Character:GetDescendants() do
-		if not motor:IsA("Motor6D") or motor.Name == "Root" or motor.Name == "Neck" then
-			continue
-		end
-		local m = motor :: Motor6D
-		local part0, part1 = m.Part0, m.Part1
-		if part0 == nil or part1 == nil or not m.Enabled then
-			continue
-		end
-		local a0 = Instance.new("Attachment")
-		a0.Name = PART_NAME
-		a0.CFrame = m.C0
-		a0.Parent = part0
-		local a1 = Instance.new("Attachment")
-		a1.Name = PART_NAME
-		a1.CFrame = m.C1
-		a1.Parent = part1
-		local socket = Instance.new("BallSocketConstraint")
-		socket.Name = PART_NAME
-		socket.Attachment0 = a0
-		socket.Attachment1 = a1
-		socket.LimitsEnabled = true
-		socket.UpperAngle = GlassThrow.RagdollUpperAngle
-		socket.TwistLimitsEnabled = true
-		socket.TwistLowerAngle = -GlassThrow.RagdollTwist
-		socket.TwistUpperAngle = GlassThrow.RagdollTwist
-		socket.Parent = part0
-		m.Enabled = false
-		table.insert(throw.Joints, { Motor = m, Made = { socket, a0, a1 } })
-	end
-	-- Les membres heurtent le sol (le Humanoid les laisse traverser d'habitude).
-	for _, part in throw.Character:GetDescendants() do
-		if part:IsA("BasePart") and part ~= throw.Root then
-			local p = part :: BasePart
-			throw.Collide[p] = p.CanCollide
-			p.CanCollide = true
-		end
-	end
+	Ragdoll.Apply(throw.Character, throw.Root, RAGDOLL_SETTINGS, throw)
 end
 
 local function unragdoll(throw: Throw)
-	for _, joint in throw.Joints do
-		for _, made in joint.Made do
-			made:Destroy()
-		end
-		if joint.Motor.Parent ~= nil then
-			joint.Motor.Enabled = true
-		end
-	end
-	table.clear(throw.Joints)
-	for part, collide in throw.Collide do
-		if part.Parent ~= nil then
-			part.CanCollide = collide
-		end
-	end
-	table.clear(throw.Collide)
+	Ragdoll.Restore(throw)
 end
 
 local function setOwner(character: Model, owner: Player?)
-	for _, part in character:GetDescendants() do
-		if part:IsA("BasePart") and not (part :: BasePart).Anchored then
-			pcall(function()
-				(part :: BasePart):SetNetworkOwner(owner)
-			end)
-		end
-	end
+	Ragdoll.SetOwner(character, owner)
 end
 
 -- Poussée -------------------------------------------------------------------------------------------------------

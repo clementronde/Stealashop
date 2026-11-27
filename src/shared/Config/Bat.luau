@@ -5,6 +5,7 @@
 -- Usage 1 : le propriétaire frappe le voleur de sa boutique (même en zone safe).
 -- Usage 2 : n'importe qui frappe un porteur de colis PNJ hors zone safe ; le colis tombe au sol.
 -- Un objet volé à un joueur ne tombe jamais au sol : il revole vers le présentoir de son propriétaire.
+-- a503 (Features.BatFreePvP / …Dev) : hors zone safe, n'importe qui frappe n'importe qui, sans immunité, en ragdoll.
 -- Valeurs sans mention : celles du doc. « V0 » : V0 proposé, absent du doc, à régler en jeu.
 -- Unités : secondes, studs, studs/s, degrés.
 
@@ -29,6 +30,18 @@ local Bat = {
 	KnockbackVerticalSpeed = 20, -- V0 proposé, absent du doc : studs/s vers le haut
 	KnockbackDuration = 0.15, -- V0 : durée de la poussée (celle du coup du vigile)
 
+	-- a503 (décision de Cantin du 26/11) : PvP libre à la batte dans le couloir, sous Features.BatFreePvP (PROD) ou
+	-- Features.BatFreePvPDev (jeu DEV). Hors zone safe, n'importe qui frappe n'importe qui (usage « Free » : cible qui
+	-- ne porte rien), plus d'immunité après un coup (HitImmunity ignorée), et chaque coup dans le couloir éjecte la
+	-- cible en ragdoll (mécanique de la référence « Steal an Egg », docs/references/Poursuite.md) : poussée dans le
+	-- sens du coup, vers le haut, RagdollAirTime s en l'air, couchée, relevée RagdollTime s après le coup, assommée
+	-- jusqu'à StunDuration. Une cible déjà au sol ou assommée par la batte ne se refrappe pas. Coupé : comme avant.
+	RagdollAirTime = 0.45, -- V0 proposé (Cantin, 26/11) : temps de vol jusqu'à la hauteur de départ, sur sol plat ; couché, le corps finit ≈ 0,04 s plus bas (référence : 0,45 à 0,5 s en l'air)
+	RagdollBackSpeed = 20, -- V0 proposé (Cantin, 26/11) : studs/s à l'horizontale dans le sens du coup (≈ 10 studs en l'air)
+	RagdollTime = 2, -- V0 proposé (Cantin, 26/11) : du coup au relevé, à la fin de StunDuration (référence : relevé 2 à 2,5 s après le coup)
+	RagdollWallMargin = 2, -- V0 proposé (Cantin, 26/11) : la poussée s'arrête à 2 studs d'un mur ou d'un plafond (rayon)
+	-- Articulations du ragdoll : celles de Config/GlassThrow (RagdollUpperAngle, RagdollTwist), même module Shared/Ragdoll.
+
 	-- Colis au sol après un coup (usage 2)
 	DroppedLifetime = 15, -- sans être ramassé, il retourne sur son rayon d'origine
 	DroppedGrabTime = 0.5, -- prise en 0,5 s, mains vides, quel que soit le type de colis
@@ -45,6 +58,7 @@ local Bat = {
 		-- Vague 50 (a158) : ce qui tombe est un objet (le colis porté n'existe plus) ; les clés gardent leur nom.
 		BoxKnockedDown = "You got hit! Your item fell to the ground.", -- V0 : au porteur frappé (usage 2)
 		TargetShielded = "Beginner shield: you can't knock their item down yet.", -- V0 : au frappeur (6.4)
+		TargetShieldedFree = "Beginner shield: you can't hit them yet.", -- a503, V0 : au frappeur, cible qui ne porte rien
 	},
 }
 

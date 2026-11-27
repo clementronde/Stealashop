@@ -34,6 +34,8 @@ local LiveFeatures = {
 		IndexMutations = true, -- IndexController, à l'affichage de l'index
 		ShopGlassThrow = true, -- GlassThrowService.IsEnabled, au coup du propriétaire
 		ShopGlassThrowDev = true,
+		BatFreePvP = true, -- a503 : BatService, à chaque coup de batte (règle, immunité, ragdoll)
+		BatFreePvPDev = true,
 	} :: { [string]: boolean },
 	-- Qui peut se servir de la commande d'admin : la même règle que le panneau admin (AdminService.IsAdmin, réglée
 	-- dans Config/Admin : tout le monde en Studio, Admin.UserIds, rang Admin.MinGroupRank du groupe du studio) ; pas
