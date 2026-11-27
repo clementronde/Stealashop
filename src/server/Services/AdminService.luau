@@ -15,7 +15,8 @@
 -- Remote AdminCommand(commandId, target?, value?, text?, text2?) (Net a contrôlé forme et débit). Dans l'ordre :
 --   1. appelant pas admin : ignoré, une ligne dans la sortie, aucune réponse ;
 --   2. commande inconnue de Config/Admin.ById : refusée ;
---   3. StudioOnly hors de Studio : refusée (« Studio only for now. ») ;
+--   3. StudioOnly hors de Studio : refusée (« Studio only for now. »), sauf une commande DevOnline sur un serveur
+--      en ligne des jeux DEV et TEST (a506, Config/GameEnv.IsDevLike ; jamais en PROD) ;
 --   4. cible : `target` s'il est un joueur présent sur le serveur, sinon refusée ; absente = l'appelant ;
 --   5. chaque argument revalidé (entier, bornes, Id connu de Config) ; un argument faux = refus, rien ne change ;
 --   6. l'action, par les services existants (aucune logique recopiée) ;
@@ -39,11 +40,12 @@
 --                                      rareté). Vague 50 (a158) : plus de colis rangé (Boxes), le nom de la commande
 --                                      reste (bouton BoxKindButton de UI_Admin). Refusé si l'inventaire est plein
 --   GiveAura, GiveTrail                text = Id de Config/Cosmetics : CosmeticService.Grant puis Equip
---   GivePotion (Studio)                text = Id de Config/Potions : crochet PotionTest « <UserId> give <Id> »
---   GiveGamepass (Studio)              text = clé de Config/Monetization.Passes : crochet MonetizationTest (drapeau
+--   GivePotion (Studio, DEV, TEST)     text = Id de Config/Potions : crochet PotionTest « <UserId> give <Id> »
+--   GiveGamepass (Studio, DEV, TEST)   text = clé de Config/Monetization.Passes : crochet MonetizationTest (drapeau
 --                                      de la session ; jamais un produit, un achat ni un reçu). Refusé si la
 --                                      boutique Robux est coupée (Features.RobuxShop)
---   SetSkill (Studio)                  text = Id de Config/SkillTree, value = niveau : crochet SkillTest
+--   SetSkill (Studio, DEV, TEST)       text = Id de Config/SkillTree, value = niveau : crochet SkillTest
+--                                      (hors Studio, a506 : les mêmes dons par l'API du service, voir plus bas)
 --   StartEvent                         text = Truck (value = zone, au hasard sinon : crochet TruckSpawnNow), Night
 --                                      ou Day (value = durée en s, facultative : NightCycleService.SkipTo) ;
 --                                      vague 39 : Fortune, FortuneOpen, FortuneSeal (FortuneTowerService.Force :
@@ -61,6 +63,10 @@
 --
 -- Crochets Studio : écouter des attributs du Workspace ne vaut qu'en Studio (en-têtes de ces services) ; les
 -- commandes qui en dépendent sont StudioOnly. Les ouvrir en ligne : une ligne par service, à décider.
+-- a506 (Cantin, 27/11 : vidéos de Clément sur TEST) : GivePotion, GiveGamepass et SetSkill sont DevOnline. En ligne sur
+-- DEV ou TEST, aucun crochet n'est posé ni écouté : AdminService appelle PotionService.AdminGive,
+-- MonetizationService.AdminGrantPass (possession du gamepass pour la session, comme le crochet : ni MarketplaceService,
+-- ni reçu, ni PurchaseId) et SkillTreeService.AdminSetLevel. En Studio, le crochet comme avant.
 
 local CollectionService = game:GetService("CollectionService")
 local HttpService = game:GetService("HttpService")
@@ -140,6 +146,19 @@ local FORTUNE_ACTIONS: { [string]: string } = { Fortune = "Spawn", FortuneOpen =
 local FORTUNE_VAULT_TAG = "FortuneVault"
 
 local IS_STUDIO = RunService:IsStudio()
+
+-- a506 : serveur des jeux DEV ou TEST (Config/GameEnv.IsDevLike, par game.GameId ; jamais la PROD, ni Studio hors
+-- ligne). Sans le module (bancs à liste de modules fixe) : faux, comme la PROD.
+local DEV_LIKE: boolean = (function(): boolean
+	local found, module = pcall(function(): any
+		return Shared.Config:FindFirstChild("GameEnv")
+	end)
+	if not found or module == nil then
+		return false
+	end
+	local ok, result = pcall(require, module :: any)
+	return ok and type(result) == "table" and (result :: any).IsDevLike == true
+end)()
 
 local AdminService = {}
 AdminService.Priority = 1000 -- en dernier : son OnProfileReleasing passe après celui des autres services
@@ -531,7 +550,11 @@ handlers.GivePotion = function(call: Call): (boolean, string)
 	if potion == nil then
 		return false, "Unknown potion."
 	end
-	setHook(POTION_HOOK, `{call.target.UserId} give {potion.Id}`)
+	if IS_STUDIO then
+		setHook(POTION_HOOK, `{call.target.UserId} give {potion.Id}`)
+	elseif not require(script.Parent.PotionService).AdminGive(call.target, potion.Id) then
+		return false, "Player not ready." -- a506 : en ligne (DEV, TEST), l'effet par le service
+	end
 	return true, `Gave {potion.DisplayName} potion to {call.target.Name}`
 end
 
@@ -544,7 +567,11 @@ handlers.GiveGamepass = function(call: Call): (boolean, string)
 	if not MonetizationService.IsEnabled() then
 		return false, "Robux shop is off (Features.RobuxShop)."
 	end
-	setHook(PASS_HOOK, `{call.target.UserId} {pass.Key}`)
+	if IS_STUDIO then
+		setHook(PASS_HOOK, `{call.target.UserId} {pass.Key}`)
+	elseif not MonetizationService.AdminGrantPass(call.target, pass.Key) then
+		return false, "Player not ready." -- a506 : en ligne (DEV, TEST), possession pour la session, sans achat
+	end
 	return true, `Gave {pass.DisplayName} to {call.target.Name} (this session)`
 end
 
@@ -557,7 +584,11 @@ handlers.SetSkill = function(call: Call): (boolean, string)
 	if not isInt(call.value, 0, skill.MaxLevel) then
 		return false, `Level must be 0 to {skill.MaxLevel}.`
 	end
-	setHook(SKILL_HOOK, `{call.target.UserId} {skill.Id} {call.value}`)
+	if IS_STUDIO then
+		setHook(SKILL_HOOK, `{call.target.UserId} {skill.Id} {call.value}`)
+	elseif not require(script.Parent.SkillTreeService).AdminSetLevel(call.target, skill.Id, call.value :: number) then
+		return false, "Profile not loaded." -- a506 : en ligne (DEV, TEST), le niveau par le service
+	end
 	return true, `{call.target.Name}: {skill.DisplayName} level {call.value}`
 end
 
@@ -723,7 +754,7 @@ function AdminService.Run(admin: Player, commandId: string, target: Player?, val
 	if command == nil or handler == nil then
 		return finish(false, "Unknown command.")
 	end
-	if command.StudioOnly and not IS_STUDIO then
+	if command.StudioOnly and not IS_STUDIO and not (command.DevOnline and DEV_LIKE) then -- a506 : DevOnline
 		return finish(false, Admin.Messages.StudioOnly)
 	end
 	local chosen = admin

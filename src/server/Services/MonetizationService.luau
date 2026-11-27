@@ -1605,6 +1605,19 @@ function MonetizationService.HasPass(player: Player, key: string): boolean
 	return hasPass(player, key)
 end
 
+-- a506 : le gamepass `key` pour la session, comme le crochet de test (acquirePass : possession notée, cache du profil,
+-- effets) ; jamais MarketplaceService, ni reçu, ni PurchaseId. Pour AdminService (GiveGamepass en ligne sur DEV et
+-- TEST, qui décide qui y a droit). false : boutique coupée, clé inconnue ou joueur pas encore suivi.
+function MonetizationService.AdminGrantPass(player: Player, key: string): boolean
+	local pass = Monetization.PassByKey[key]
+	if not enabled or pass == nil or states[player] == nil then
+		return false
+	end
+	acquirePass(player, pass, "admin DEV/TEST")
+	print(`[MonetizationService] admin : gamepass {key} donné à {player.Name} pour la session`)
+	return true
+end
+
 function MonetizationService.GetIncomeMultiplier(player: Player): number
 	return (1 + incomeBonus(player)) * incomeMultiplier(player)
 end

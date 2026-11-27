@@ -309,6 +309,21 @@ function SkillTreeService.GetLevel(player: Player, id: string): number
 	return levelIn(data, skill)
 end
 
+-- a506 : met la compétence `id` au niveau `level` (borné), comme « <Id> <niveau> » du crochet ; pour AdminService
+-- (SetSkill en ligne sur DEV et TEST : le crochet n'y est pas écouté). false : Id inconnu ou profil pas chargé.
+function SkillTreeService.AdminSetLevel(player: Player, id: string, level: number): boolean
+	local skill = SkillTree.ById[id]
+	local data = DataService.Get(player)
+	if skill == nil or data == nil then
+		return false
+	end
+	local clamped = math.clamp(math.floor(level), 0, skill.MaxLevel)
+	setLevel(player, data, skill, clamped)
+	emitChanged(player, skill.Id, clamped)
+	print(`[SkillTreeService] admin : {player.Name} {skill.Id} au niveau {clamped}`)
+	return true
+end
+
 function SkillTreeService.GetEffect(player: Player, id: string): number?
 	local skill = SkillTree.ById[id]
 	local level = SkillTreeService.GetLevel(player, id)

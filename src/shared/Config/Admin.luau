@@ -15,8 +15,10 @@
 --   Réponse au seul admin : AdminResult(commandId, ok, message), affiché dans UI_Admin.Root.StatusLabel.
 --
 -- Une commande : Id, Section (section de UI_Admin), Target (agit sur un joueur), StudioOnly (passe par un crochet
--- de test Studio : refusée sur un serveur en ligne pour l'instant), Args (texte lisible : ce que portent value,
--- text et text2). Les listes de choix (objets, raretés, auras…) viennent de Shared/AdminLists.
+-- de test Studio : refusée sur un serveur en ligne pour l'instant), DevOnline (a506 : une commande StudioOnly aussi
+-- permise sur un serveur en ligne des jeux DEV et TEST, Config/GameEnv.IsDevLike, jamais en PROD ; AdminService y
+-- appelle le service directement, sans crochet), Args (texte lisible : ce que portent value, text et text2). Les
+-- listes de choix (objets, raretés, auras…) viennent de Shared/AdminLists.
 
 local DeepFreeze = require(script.Parent.DeepFreeze)
 
@@ -41,6 +43,7 @@ export type Command = {
 	Section: string,
 	Target: boolean,
 	StudioOnly: boolean?,
+	DevOnline: boolean?,
 	Args: string,
 }
 
@@ -59,11 +62,12 @@ local Commands: { Command } = {
 	{ Id = "GiveBox", Section = "Give", Target = true, Args = "text = rarity Id, value = zone (optional)" },
 	{ Id = "GiveAura", Section = "Give", Target = true, Args = "text = aura Id" },
 	{ Id = "GiveTrail", Section = "Give", Target = true, Args = "text = trail Id" },
-	{ Id = "GivePotion", Section = "Give", Target = true, StudioOnly = true, Args = "text = potion Id" },
+	-- a506 (Cantin, 27/11 : vidéos de Clément sur TEST) : GivePotion, GiveGamepass et SetSkill aussi en ligne sur DEV et TEST.
+	{ Id = "GivePotion", Section = "Give", Target = true, StudioOnly = true, DevOnline = true, Args = "text = potion Id" },
 	-- Drapeau de test pour la session (crochet MonetizationTest) : jamais un achat ni un reçu.
-	{ Id = "GiveGamepass", Section = "Give", Target = true, StudioOnly = true, Args = "text = pass key (VIP…)" },
+	{ Id = "GiveGamepass", Section = "Give", Target = true, StudioOnly = true, DevOnline = true, Args = "text = pass key (VIP…)" },
 	-- Pas encore à l'écran : niveau d'une compétence de l'arbre.
-	{ Id = "SetSkill", Section = "Base", Target = true, StudioOnly = true, Args = "text = skill Id, value = level" },
+	{ Id = "SetSkill", Section = "Base", Target = true, StudioOnly = true, DevOnline = true, Args = "text = skill Id, value = level" },
 	-- EventsSection : Truck (value = zone, au hasard sinon), Night ou Day (value = durée en s, facultative),
 	-- Fortune, FortuneOpen, FortuneSeal (vague 39, Fortune Tower ; sans value) : Studio seulement (refusés en ligne
 	-- par AdminService). Vague 51 (a167) : un Id de Config/LiveEvents (événement live sur ce serveur, tout de suite)
@@ -84,8 +88,9 @@ end
 
 local Admin = {
 	-- UserId des admins hors Studio. 296770611 : le compte IRONIX01 (décision de Cantin du 25/11, a442). Vaut aussi
-	-- pour la commande /feature des interrupteurs (LiveFeaturesService).
-	UserIds = { 296770611 } :: { number },
+	-- pour la commande /feature des interrupteurs (LiveFeaturesService). 5011925897 : le compte charmentvideo de
+	-- Clément, propriétaire du groupe RoundStone Studio, qui tourne ses vidéos sur le jeu TEST (Cantin, 27/11, a506).
+	UserIds = { 296770611, 5011925897 } :: { number },
 	-- Groupe du studio : 0 = le groupe propriétaire du jeu (game.CreatorId) ; pas de contrôle par groupe si le jeu
 	-- n'appartient pas à un groupe.
 	GroupId = 0,

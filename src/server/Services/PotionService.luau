@@ -787,6 +787,20 @@ local function findPlayer(who: string): Player?
 	return nil
 end
 
+-- a506 : l'effet `potionId` tout de suite, sans potion, comme « give » du crochet ; pour AdminService (GivePotion en
+-- ligne sur DEV et TEST : le crochet n'y est pas écouté). false : potion inconnue ou joueur pas encore suivi.
+function PotionService.AdminGive(player: Player, potionId: string): boolean
+	local potion = Potions.ById[potionId]
+	local state = states[player]
+	if potion == nil or state == nil then
+		return false
+	end
+	local remaining = applyEffect(player, state, potion)
+	notify(player, effectMessage(potion, remaining))
+	print(`[PotionService] admin : {player.Name} reçoit l'effet {potion.Id} ({math.round(remaining)} s)`)
+	return true
+end
+
 local function onTestAttribute()
 	local value = Workspace:GetAttribute(TEST_ATTRIBUTE)
 	if value == nil then
