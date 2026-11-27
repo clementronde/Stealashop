@@ -35,6 +35,9 @@
 --     Vague 46 (a154) : même effet pour un OBJET sorti d'un colis (remote ItemSecured d'UnboxService) :
 --     BoxIcon = icône de l'objet (ICON_<ItemId>), sinon ICON_BOX_<Rareté> ; Title = SafeFlash.ItemTitle et
 --     Subtitle = « <Rareté> <Nom> » le temps de l'écran, puis les textes de Clément reviennent.
+--     a507 (L-407, bug) : un objet ne montre jamais une caisse. Son icône ICON_<ItemId> absente, BoxIcon est caché le
+--     temps de l'écran (l'image de Clément y est une caisse), puis remis ; en Studio, la sortie dit quelle icône manque.
+--     ICON_BOX_<Rareté> ne sert plus qu'à une arrivée sans objet (Escape(tier, rarity), test en Studio).
 --     a465 (L-340 point 5) : avec la tension du braquage (Shared/HeistTension), Flash passe par les pas de
 --     Config/HeistTension.Flash (0 → 0,6 → 1 en 0,35 s) au lieu de FlashFrom → 1 ; le reste ne change pas.
 --   - Révélation d'un colis ouvert sur le rayon (vague 46, ShelfOpenController, chez l'ouvreur) :
@@ -45,7 +48,7 @@
 -- Ce qui est touché, et rien d'autre : ce que fait Motion (UIScale passagers, Shade, HoverOutline, Icon
 -- des cartes, tous remis ensuite), la transparence des bords de UI_Chase et RunBanner pendant la poursuite,
 -- Camera.FieldOfView, et dans UI_Escape : Enabled, Flash.BackgroundTransparency, Title.Rotation, Title.Text
--- et Subtitle.Text (remis), BoxIcon.Image. Aucun objet n'est laissé une fois l'animation finie.
+-- et Subtitle.Text (remis), BoxIcon.Image et BoxIcon.Visible (a507, remis). Aucun objet n'est laissé une fois l'animation finie.
 --
 -- API (client) :
 --   UiFeelController.Escape(tier?, rarity?, itemId?)  joue l'arrivée en zone safe (aussi pour un test en Studio)
@@ -539,15 +542,30 @@ end
 
 -- Icône de BoxIcon : celle de l'objet (ICON_<ItemId>, vague 46) s'il y en a un, sinon ICON_BOX_<Rareté>
 -- (L-097 point 3), sinon ICON_BOX_<Tier>.
-local function boxIcon(tier: string?, rarity: string?, itemId: string?): string?
+-- a507 (L-407, bug : « on voit pas l'icon de l'item mais la box ») : un objet (itemId) ne prend plus jamais l'icône
+-- d'un colis. Son icône absente : nil, et le 2e résultat (true) dit de cacher BoxIcon. Les icônes de colis restent
+-- pour une arrivée sans objet.
+local missingSaid: { [string]: boolean } = {}
+local function boxIcon(tier: string?, rarity: string?, itemId: string?): (string?, boolean)
+	local isItem = type(itemId) == "string" and itemId ~= ""
 	local ok, texture = pcall(function()
 		local Icons = require(Shared:WaitForChild("Contract"):WaitForChild("Icons")) :: any
-		local byItem = if type(itemId) == "string" and itemId ~= "" then Icons.get(itemId) else nil
+		if isItem then
+			return Icons.get(itemId)
+		end
 		local byRarity = if type(rarity) == "string" and rarity ~= "" then Icons.get(SAFE.BoxIconPrefix .. rarity) else nil
 		local byTier = if type(tier) == "string" and tier ~= "" then Icons.get(SAFE.BoxIconPrefix .. tier) else nil
-		return byItem or byRarity or byTier
+		return byRarity or byTier
 	end)
-	return if ok and type(texture) == "string" then texture else nil
+	local found = if ok and type(texture) == "string" and texture ~= "" then texture else nil
+	if found == nil and isItem and IS_STUDIO then
+		local id = itemId :: string
+		if not missingSaid[id] then
+			missingSaid[id] = true
+			print(`[UiFeel] icône ICON_{id} absente d'Assets/Icons : BoxIcon caché sur UI_Escape (pas de caisse, L-407)`)
+		end
+	end
+	return found, found == nil and isItem
 end
 
 -- Objet du catalogue (vague 46) : sa rareté et « <Rareté> <Nom> » (SafeFlash.ItemSubtitle) ; nil s'il est inconnu.
@@ -722,12 +740,19 @@ local function escapeScreen(tier: string?, rarity: string?, itemId: string?)
 			escapeText(state, Find.path(banner, "Subtitle"), itemText)
 		end
 		local icon = Find.path(banner, "BoxIcon")
-		local texture = boxIcon(tier, itemRarity or rarity, itemId)
+		local texture, hide = boxIcon(tier, itemRarity or rarity, itemId)
 		if texture and icon and (icon:IsA("ImageLabel") or icon:IsA("ImageButton")) then
 			if state.images[icon] == nil then
 				state.images[icon] = (icon :: any).Image
 			end
 			(icon :: any).Image = texture
+		elseif hide and icon and icon:IsA("GuiObject") then
+			-- a507 (L-407) : objet sans icône livrée, jamais la caisse de Clément ; Visible remis par resetEscape.
+			local object = icon :: GuiObject
+			if state.visibles[object] == nil then
+				state.visibles[object] = object.Visible
+			end
+			object.Visible = false
 		end
 		for rank, name in SAFE.Parts do
 			local part = Find.path(banner, name)
