@@ -450,6 +450,25 @@ end
 -- Chrono
 ------------------------------------------------------------------------------
 
+-- a508 (L-461) : Controllers/UI/HudMask, lu au premier besoin s'il est là (banc sans lui : Enabled écrit comme avant).
+type HudMaskApi = { SetShown: (ScreenGui, boolean) -> () }
+local hudMaskApi: HudMaskApi | false | nil = nil
+
+local function hudMask(): HudMaskApi?
+	if hudMaskApi == nil then
+		hudMaskApi = false
+		local ui = script.Parent:FindFirstChild("UI")
+		local module = if ui then ui:FindFirstChild("HudMask") else nil
+		if module and module:IsA("ModuleScript") then
+			local ok, result = pcall(require, module :: any)
+			if ok and type(result) == "table" and type((result :: any).SetShown) == "function" then
+				hudMaskApi = result :: any
+			end
+		end
+	end
+	return if hudMaskApi then hudMaskApi else nil
+end
+
 local function refreshTimer(disguised: boolean)
 	local playerGui = player:FindFirstChildOfClass("PlayerGui")
 	if playerGui == nil then
@@ -477,7 +496,12 @@ local function refreshTimer(disguised: boolean)
 	if gui == nil then
 		return
 	end
-	if gui.Enabled ~= disguised then
+	-- a508 (L-461 point 2) : sous une fenêtre ouverte (PanelFocus), UI_Disguise est masqué comme le HUD : son état est
+	-- gardé par HudMask (rendu à la fermeture) au lieu d'être rallumé ici à chaque tour.
+	local mask = hudMask()
+	if mask then
+		mask.SetShown(gui, disguised)
+	elseif gui.Enabled ~= disguised then
 		gui.Enabled = disguised
 	end
 	local timer = if disguised then Find.path(gui, "Timer") else nil

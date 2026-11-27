@@ -47,6 +47,11 @@ export type Nav = {
 	-- Décale l'arbre (borné, sans élastique) ; pour un test ou la barre de commande.
 	panBy: (delta: Vector2) -> (),
 	view: () -> (number, Vector2), -- zoom et décalage visés
+	-- a508 (L-475, Features.SkillTreePhoneZoom) : zoom `zoom` (borné), `tile` amenée au point d'ancrage de Tree (le
+	-- centre de la vue) ; lu sur la mise en page affichée : appelé une image après reset. time : lissage (0 : d'un coup).
+	focus: (tile: GuiObject, zoom: number, time: number?) -> (),
+	-- a508 : zoom le plus fort (molette, pincement, focus) ; nil : UiMotion.SkillTree.ZoomMax.
+	setZoomMax: (zoomMax: number?) -> (),
 	tileAt: (point: Vector2) -> GuiObject?,
 	-- Point d'un InputObject dans le repère des AbsolutePosition de l'écran.
 	pointOf: (input: InputObject) -> Vector2,
@@ -110,6 +115,7 @@ function Nav.new(gui: ScreenGui, tree: GuiObject, handlers: Handlers): Nav
 
 	local zoom = 1
 	local pan = Vector2.zero
+	local zoomMax = M.ZoomMax -- a508 : PhoneZoomMax sur téléphone (setZoomMax)
 	local pointers: { [any]: Vector2 } = {}
 	local downPoint: Vector2? = nil
 	local panStart = Vector2.zero
@@ -187,7 +193,7 @@ function Nav.new(gui: ScreenGui, tree: GuiObject, handlers: Handlers): Nav
 	end
 
 	local function zoomAt(point: Vector2, wanted: number)
-		local target = math.clamp(wanted, M.ZoomMin, M.ZoomMax)
+		local target = math.clamp(wanted, M.ZoomMin, zoomMax)
 		local ratio = target / zoom
 		pan += (point - anchorPoint()) * (1 - ratio)
 		zoom = target
@@ -370,6 +376,30 @@ function Nav.new(gui: ScreenGui, tree: GuiObject, handlers: Handlers): Nav
 		end,
 		view = function(): (number, Vector2)
 			return zoom, pan
+		end,
+		focus = function(tile: GuiObject, wanted: number, time: number?)
+			-- Écart (au zoom 1) entre le centre de la tuile et le point d'ancrage de Tree, mesuré sur la même image : le
+			-- point d'ancrage de la tuile ne bouge pas avec son propre UIScale (le « bop »), son centre s'en déduit.
+			local scale = zoomScale.Scale
+			if scale <= 0 then
+				return
+			end
+			local own = tile:FindFirstChild(M.ScaleName)
+			local ownScale = if own and own:IsA("UIScale") then (own :: UIScale).Scale else 1
+			local size = tile.AbsoluteSize
+			local anchor = tile.AbsolutePosition + size * tile.AnchorPoint
+			local center = anchor
+			if ownScale > 0 then
+				center += (size / ownScale) * (Vector2.new(0.5, 0.5) - tile.AnchorPoint)
+			end
+			local treeAnchor = tree.AbsolutePosition + tree.AbsoluteSize * tree.AnchorPoint
+			local offset = (center - treeAnchor) / scale
+			zoom = math.clamp(wanted, M.ZoomMin, zoomMax)
+			pan = clampPan(offset * -zoom, zoom, false)
+			apply(time)
+		end,
+		setZoomMax = function(value: number?)
+			zoomMax = math.max(value or M.ZoomMax, M.ZoomMin)
 		end,
 		tileAt = tileAt,
 		pointOf = pointOf,

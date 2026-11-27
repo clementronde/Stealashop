@@ -173,6 +173,7 @@ local selected: string? = nil -- nom de la tuile choisie
 local hovered: GuiObject? = nil
 local known: { [string]: number } = {} -- dernier niveau vu, par Id
 local pending: { [string]: number } = {} -- envoi BuySkill en attente (os.clock), par Id
+local lastBought: string? = nil -- a508 (L-475) : Id de la dernière compétence dont le niveau est monté (cette session)
 local net: any = nil
 local reported: { [string]: boolean } = {}
 local hudBound: { [Instance]: boolean } = setmetatable({}, { __mode = "k" }) :: any
@@ -579,6 +580,9 @@ local function onSkillChanged(skill: Skill)
 	if old ~= new then
 		pending[skill.Id] = nil
 	end
+	if old ~= nil and new > old then
+		lastBought = skill.Id -- a508
+	end
 	local current = screen
 	if current == nil or current.gui.Parent == nil then
 		return
@@ -852,6 +856,46 @@ local function currentScreen(): Screen?
 	return nil
 end
 
+-- a508 (L-475 point 2, Features.SkillTreePhoneZoom / SkillTreePhoneZoomDev ; Config/ProductIds.IsDev) : sur téléphone
+-- (tactile sans clavier, comme la colonne du HUD), zoom de départ M.PhoneZoom centré sur la dernière tuile achetée.
+local phoneZoomFeature = (function(): boolean
+	local features = require(Config:WaitForChild("Features")) :: any
+	if features.SkillTreePhoneZoom == true then
+		return true
+	end
+	if features.SkillTreePhoneZoomDev ~= true then
+		return false
+	end
+	local module = Config:FindFirstChild("ProductIds")
+	if module == nil or not module:IsA("ModuleScript") then
+		return false
+	end
+	local ok, result = pcall(require, module :: any)
+	return ok and type(result) == "table" and (result :: any).IsDev == true
+end)()
+
+local function phoneZoomOn(): boolean
+	return phoneZoomFeature and UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
+end
+
+-- La tuile visée au zoom de téléphone : la dernière achetée cette session (niveau encore au-dessus de 0), sinon
+-- l'achetée la plus loin du centre (anneau le plus grand ; V0 proposé, le serveur ne garde pas la dernière achetée),
+-- sinon la tuile choisie, sinon la première qu'on peut choisir.
+local function focusTile(current: Screen): Tile?
+	local last = lastBought
+	if last and levelOf(last) > 0 and current.bySkill[last] then
+		return current.bySkill[last]
+	end
+	local best: Tile? = nil
+	for _, skill in SkillTree.List do
+		local tile = current.bySkill[skill.Id]
+		if tile and levelOf(skill.Id) > 0 and (best == nil or tile.ring > (best :: Tile).ring) then
+			best = tile
+		end
+	end
+	return best or selectedTile(current) or defaultTile(current)
+end
+
 local function open()
 	local current = currentScreen()
 	if current == nil then
@@ -870,7 +914,18 @@ local function open()
 	Motion.Open(current.gui)
 	local nav = current.nav
 	if nav then
+		local phone = phoneZoomOn() -- a508
+		nav.setZoomMax(if phone then M.PhoneZoomMax else nil)
 		current.tileWidth = nav.reset()
+		local target = if phone then focusTile(current) else nil
+		if target then
+			-- Une image plus tard : la mise en page de l'ouverture est alors celle qu'on voit (Nav.focus la lit).
+			task.delay(0, function()
+				if isOpen and screen == current and current.nav == nav and target.button.Parent ~= nil then
+					nav.focus(target.button, M.PhoneZoom, M.ZoomTime)
+				end
+			end)
+		end
 	end
 	local tile = selectedTile(current)
 	if tile == nil or not choose(current, tile, false) then

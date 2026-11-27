@@ -3,6 +3,8 @@
 -- l'Index du jeu de référence, docs/claude/notes/ui-index-v3.md), avec repli sur UI_Index_v2 (L-083,
 -- points 5 et 6), puis sur l'ancien UI_Index (onglets, maquette UI-111), tant que la v3 n'est pas dans
 -- PlayerGui. Partie 2, section 3.4 ; règles : Config/Index ; découvertes : IndexService.
+-- a508 (L-475 point 1, Clément 26/11) : ces replis sont retirés ; seul UI_Index_v3 est lu (ou un UI_Index_v4), les
+-- anciens écrans encore livrés restent éteints.
 -- Vague 59 (a191, L-183) : UI_Index_v4 (ou UI_Index refait, reconnu à Cards et Footer.Pager) passe avant
 -- tous les autres, qui restent lus tant qu'il n'est pas dans PlayerGui. Une zone à la fois (onglets
 -- Tabs.Zone1Tab…Zone6Tab, SecretsTab : Selected allumé sur l'onglet choisi, ZoneAlert = sa récompense à
@@ -215,9 +217,12 @@ type Screen = {
 }
 
 local SCREEN = "UI_Index_v3"
-local V2_SCREEN = "UI_Index_v2" -- repli, tant que la v3 n'est pas livrée
-local LEGACY_SCREEN = "UI_Index" -- repli, tant que la v2 n'est pas livrée
-local SCREEN_ORDER = { SCREEN, V2_SCREEN, LEGACY_SCREEN } -- du plus récent au plus ancien
+-- a508 (L-475 point 1, Clément 26/11) : plus de repli. UI_Index_v2 et UI_Index (rangés par le chef UI dans
+-- ServerStorage/_OLD_UI) ne sont plus lus ; encore livrés dans PlayerGui, ils restent éteints (RETIRED_SCREENS).
+local V2_SCREEN = "UI_Index_v2"
+local LEGACY_SCREEN = "UI_Index"
+local SCREEN_ORDER = { SCREEN } -- a508 : seul écran lu (avant : v3, puis v2, puis l'ancien UI_Index)
+local RETIRED_SCREENS = { V2_SCREEN, LEGACY_SCREEN } -- a508 : gardés éteints s'ils sont encore livrés
 local HUD = "UI_HUD"
 local HUD_BUTTON = "IndexButton"
 local CARD_FORMAT = "Item_%02d_%s" -- nom des cartes clonées (jamais « Template »)
@@ -1305,8 +1310,10 @@ local function disableOlder(gui: ScreenGui)
 	if rank == nil or parent == nil then
 		return
 	end
-	for older = rank + 1, #SCREEN_ORDER do
-		local other = parent:FindFirstChild(SCREEN_ORDER[older])
+	local older: { string } = table.move(SCREEN_ORDER, rank + 1, #SCREEN_ORDER, 1, {})
+	table.move(RETIRED_SCREENS, 1, #RETIRED_SCREENS, #older + 1, older) -- a508
+	for _, name in older do
+		local other = parent:FindFirstChild(name)
 		if other and other:IsA("ScreenGui") then
 			(other :: ScreenGui).Enabled = false
 		end
@@ -1562,10 +1569,10 @@ local function isV4(inst: Instance): boolean
 	if inst.Name == V4_SCREEN then
 		return true
 	end
-	return inst.Name == LEGACY_SCREEN and Find.path(inst, "Cards") ~= nil and Find.path(inst, "Footer.Pager") ~= nil
+	return false -- a508 (L-475) : l'ancien UI_Index refait en v4 n'est plus lu
 end
 
--- L'écran à brancher dans PlayerGui : UI_Index_v3, sinon UI_Index_v2, sinon l'ancien UI_Index (jamais un v4).
+-- L'écran à brancher dans PlayerGui : UI_Index_v3 (a508 : plus de repli ; jamais un v4).
 local function findScreen(playerGui: Instance): ScreenGui?
 	for _, name in SCREEN_ORDER do
 		local gui = playerGui:FindFirstChild(name)
@@ -1595,7 +1602,7 @@ end
 local function open()
 	local current = currentScreen()
 	if current == nil then
-		reportOnce("screen", `[Index] écran {SCREEN} (ou {V2_SCREEN}, {LEGACY_SCREEN}) absent de PlayerGui : l'index ne s'ouvre pas`)
+		reportOnce("screen", `[Index] écran {SCREEN} absent de PlayerGui : l'index ne s'ouvre pas (a508 : {V2_SCREEN} et {LEGACY_SCREEN} ne sont plus lus)`)
 		return
 	end
 	readDiscovered()
@@ -1666,7 +1673,7 @@ local v4Page = 1
 local zoneArts: { [string]: string | false } = {} -- [nom du Decal] = image (false : pas livrée)
 
 local function findV4(playerGui: Instance): ScreenGui?
-	for _, name in { V4_SCREEN, LEGACY_SCREEN } do
+	for _, name in { V4_SCREEN } do -- a508 : plus l'ancien UI_Index refait
 		local gui = playerGui:FindFirstChild(name)
 		if gui and isV4(gui) then
 			return gui :: ScreenGui
@@ -1892,7 +1899,7 @@ local function bindV4(gui: ScreenGui)
 	-- Les écrans d'avant, rangés à côté, restent éteints.
 	local parent = gui.Parent
 	if parent then
-		for _, name in SCREEN_ORDER do
+		for _, name in table.move(RETIRED_SCREENS, 1, #RETIRED_SCREENS, #SCREEN_ORDER + 1, table.clone(SCREEN_ORDER)) do -- a508 : et les retirés
 			local other = parent:FindFirstChild(name)
 			if other and other ~= gui and other:IsA("ScreenGui") then
 				(other :: ScreenGui).Enabled = false
