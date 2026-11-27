@@ -16,6 +16,9 @@ export type Tier = {
 	Min: number, -- kg, compris
 	Max: number, -- kg, non compris (Min = Max : ce poids exact)
 	Chance: number, -- pour cent à ×1 (somme des paliers : 100)
+	-- a513 v2 : chance progressive (paliers V2) : la chance du palier × luck ^ LuckExponent ; absent (paliers d'avant) :
+	-- × luck si Min >= LuckFrom, sinon rien.
+	LuckExponent: number?,
 }
 
 export type ScalePoint = {
@@ -50,24 +53,28 @@ local function scaleAt(kg: number): number
 	return a.Scale * (math.max(kg, 1e-6) / a.Kg) ^ slope
 end
 
--- a513 (Cantin, 27/11 ; L-444 b, V0) : paliers du poids V2 (Weight.TiersV2). Sous 10 kg, ceux d'avant (42 %). De 10 à
--- 10 000 kg, une courbe régulière : la chance d'avoir au moins w kg vaut 58 % × (w / 10) ^ −s (loi de puissance), et ce
--- qui reste à 10 000 kg forme le palier « 10 000 kg pile » : 0,2 %, 1 sur 500 (Cantin) ; s = log(290) / log(1000)
--- ≈ 0,821. Somme : 100 (arrondis au plus près ; le palier de 10 à 20 kg prend l'arrondi).
+-- a513 v2 (décision de Cantin, 27/11 ; L-444 b) : paliers du poids V2 (Weight.TiersV2), total 100 % à ×1 ; 10 000 kg
+-- pile à 0,2 % (1 sur 500). Chance PROGRESSIVE : avec la chance L de la boîte (déjà additionnée, Shared/OpenLuck), la
+-- chance de chaque palier est multipliée par L ^ LuckExponent, puis le total est ramené à 100 % (Shared/ItemWeight).
+-- LuckExponent = 0 jusqu'au palier de 10 à 20 kg compris, puis 1/9 (20 à 50 kg), 2/9 (50 à 100 kg)… 9/9 (10 000 kg) :
+-- plus le palier est lourd, plus la chance le pousse. 10 000 kg : 0,2 % à ×1, ≈ 1,3 % à ×8, ≈ 4,2 % à ×36, ≈ 9,4 % à
+-- ×125 (où 5 000 à 10 000 kg, ≈ 9,7 %, le dépasse un peu) ; à ×1, 10 à 20 kg reste le plus probable.
+-- (a513 v1, remplacé : 10 à 10 000 kg en loi de puissance, 10 000 kg à 0,2 %, et ×L sur tous les paliers de 50 kg et plus.)
+local LUCK_STEP_V2 = 1 / 9 -- pas de l'exposant d'un palier lourd au suivant (Cantin)
 local TIERS_V2: { Tier } = {
-	{ Min = 1, Max = 2, Chance = 6 },
-	{ Min = 2, Max = 5, Chance = 14 },
-	{ Min = 5, Max = 10, Chance = 22 },
-	{ Min = 10, Max = 20, Chance = 25.167 },
-	{ Min = 20, Max = 50, Chance = 17.36 },
-	{ Min = 50, Max = 100, Chance = 6.72 },
-	{ Min = 100, Max = 250, Chance = 4.63 },
-	{ Min = 250, Max = 500, Chance = 1.79 },
-	{ Min = 500, Max = 1000, Chance = 1.01 },
-	{ Min = 1000, Max = 2500, Chance = 0.7 },
-	{ Min = 2500, Max = 5000, Chance = 0.27 },
-	{ Min = 5000, Max = 10000, Chance = 0.153 },
-	{ Min = 10000, Max = 10000, Chance = 0.2 },
+	{ Min = 1, Max = 2, Chance = 6, LuckExponent = 0 },
+	{ Min = 2, Max = 5, Chance = 14, LuckExponent = 0 },
+	{ Min = 5, Max = 10, Chance = 22, LuckExponent = 0 },
+	{ Min = 10, Max = 20, Chance = 24, LuckExponent = 0 },
+	{ Min = 20, Max = 50, Chance = 17.95, LuckExponent = 1 * LUCK_STEP_V2 },
+	{ Min = 50, Max = 100, Chance = 6.5, LuckExponent = 2 * LUCK_STEP_V2 },
+	{ Min = 100, Max = 250, Chance = 4.5, LuckExponent = 3 * LUCK_STEP_V2 },
+	{ Min = 250, Max = 500, Chance = 2.0, LuckExponent = 4 * LUCK_STEP_V2 },
+	{ Min = 500, Max = 1000, Chance = 1.2, LuckExponent = 5 * LUCK_STEP_V2 },
+	{ Min = 1000, Max = 2500, Chance = 0.8, LuckExponent = 6 * LUCK_STEP_V2 },
+	{ Min = 2500, Max = 5000, Chance = 0.5, LuckExponent = 7 * LUCK_STEP_V2 },
+	{ Min = 5000, Max = 10000, Chance = 0.35, LuckExponent = 8 * LUCK_STEP_V2 },
+	{ Min = 10000, Max = 10000, Chance = 0.2, LuckExponent = 9 * LUCK_STEP_V2 },
 }
 
 -- a513 : poids V2 allumé par Config/Economy.WeightIncomeV2 (Features.WeightIncomeV2 ou WeightIncomeV2Dev, avec la table 2
@@ -112,9 +119,10 @@ local Weight = {
 	-- paliers lourds, comme celles des raretés au-dessus de la caisse (ShelfOpen.LuckBoost « AboveBox »), puis le
 	-- total est ramené à 100 % : rien n'est garanti, ×8 rend les paliers lourds 8 fois plus probables que les
 	-- légers. V0 : « lourd » = un palier qui commence à LuckFrom kg ou plus.
-	LuckFrom = 50,
-	-- a513 (Cantin et Clément, 27/11 ; L-444 b) : le poids V2. TiersV2 : paliers (plus haut) ; IncomeExponentV2 = 1, le
-	-- revenu suit le poids (1 kg ×0,1, 10 kg ×1, 100 kg ×10, 1 000 kg ×100, 10 000 kg ×1 000 ; Reference gardé à 10 kg).
+	LuckFrom = 50, -- a513 v2 : paliers d'avant seulement (les paliers V2 ont leur LuckExponent)
+	-- a513 (Cantin et Clément, 27/11 ; L-444 b) : le poids V2. TiersV2 : paliers et chance progressive (plus haut) ;
+	-- IncomeExponentV2 = 1, le revenu suit le poids (1 kg ×0,1, 10 kg ×1, 100 kg ×10, 1 000 kg ×100, 10 000 kg ×1 000 ;
+	-- Reference gardé à 10 kg).
 	-- IncomeV2 : vrai quand ils remplacent Tiers et IncomeExponent sur ce serveur (Config/Economy.WeightIncomeV2).
 	TiersV2 = TIERS_V2,
 	IncomeExponentV2 = 1,
