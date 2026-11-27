@@ -32,7 +32,17 @@
 --      billets à CashPoint). a425 (L-325 réponse 2) : inventaire plein, le colis tombe derrière le fourgon (rayon
 --      d'événement StoreHeistService.AddEventShelf, StoreId « Truck_ArmoredVan_<n>_<UserId> », DropLifetime s), à
 --      ouvrir par n'importe qui ; rareté tirée ici par la même règle (Shared/ZoneBoxOdds). Sans rayon : perdu (Lost).
+--      a509 (L-457, Features.ArmoredVanBurst / ArmoredVanBurstDev et BurstBoxes) : le colis de chaque casseur récompensé jaillit du fourgon (depuis BlastPoint, sinon
+--      le centre du modèle) et retombe derrière lui sur ce même rayon d'événement, à ouvrir sur place comme les colis
+--      du camion, au lieu d'aller dans l'inventaire ; sans rayon d'événement, l'objet va dans l'inventaire.
 --   6. Échappé (fin du trajet ou alerte de la nuit) : annonce, retrait, rien n'est donné.
+--   7. a516 (Cantin, 27/11 ; Features.ArmoredVanV2 / ArmoredVanV2Dev, Config/ArmoredVan.V2 ; l'emporte sur le point 5 et
+--      sur ArmoredVanBurst) : plus de PV selon les joueurs présents ni de classement. Trajet en 6 paliers de 25 s (zone 6
+--      au départ, zone 1 à la fin) ; les dégâts de tous s'additionnent depuis le départ et le fourgon casse dès que ce
+--      total atteint le seuil fixe du palier en cours (V2Threshold), au coup ou au changement de palier. Jauge au-dessus
+--      (BB_VanGauge de Clément ou repli). À la casse : 12 colis de la zone du palier (règles NextZone, Zone, BestZone de
+--      Config/Rewards.ZoneBox) au sol sur un rayon d'événement, placés comme ceux du camion (TruckEventService.LandingPoint),
+--      ouverts sur place par n'importe qui, chance au moins ×3 (MinLuck), objet de la zone du palier ; annonce « Zone N ».
 --
 -- Crochet de test, STUDIO SEULEMENT (barre de commande serveur) :
 --   workspace:SetAttribute("ArmoredVanNow", true)       -- un fourgon tout de suite (même de nuit)
@@ -48,6 +58,9 @@
 --   ArmoredVanService.BlocksTruck(untilDeparture, active, waiting, sinceVan) -> boolean   règle pure (bancs)
 --   ArmoredVanService.TruckAllowsVan(truckInPlay, sinceTruck) -> boolean                  règle pure (bancs)
 --   ArmoredVanService.DropOffsets(count) -> { number }   écarts latéraux des colis tombés (bancs)
+--   ArmoredVanService.V2Threshold(zone) -> number        a516 : seuil fixe de la zone (bancs)
+--   ArmoredVanService.V2Step(elapsed) -> (palier, zone)  a516 : palier en cours `elapsed` s après le départ (bancs)
+--   ArmoredVanService.V2BreakAt(perSecond) -> (palier?, s?)   a516 : casse d'un serveur à ce débit de dégâts (bancs)
 
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
@@ -93,6 +106,11 @@ type Van = {
 	Names: { [number]: string },
 	Done: boolean,
 	Heartbeat: RBXScriptConnection?,
+	-- a516 (V2) : total des dégâts reçus depuis le départ, palier en cours (1 à #V2.StepZones), jauge à rafraîchir.
+	V2: boolean,
+	Total: number,
+	Step: number,
+	Refresh: (() -> ())?,
 }
 
 local TAG = "ArmoredVan" -- posé par le code, hors du contrat 2.1
@@ -118,6 +136,32 @@ local GROUND_RAY_UP = 30 -- V0 : sol cherché de 30 studs au-dessus…
 local GROUND_RAY_DOWN = 60 -- … à 60 en dessous du point
 local IS_STUDIO = RunService:IsStudio()
 local ENABLED: boolean = (Features :: any).ArmoredVan == true
+-- a509 (L-457) : colis qui jaillissent, Features.ArmoredVanBurst (partout) ou ArmoredVanBurstDev (jeu DEV, Config/ProductIds
+-- chargé s'il est là ; sans lui, jeu PROD), et le réglage Config/ArmoredVan.BurstBoxes. Coupé : inventaire, comme avant.
+local IS_DEV: boolean = (function(): boolean
+	local ok, ids = pcall(function(): any
+		return require(Shared.Config.ProductIds)
+	end)
+	return ok and type(ids) == "table" and ids.IsDev == true
+end)()
+local BURST: boolean = ArmoredVan.BurstBoxes == true
+	and ((Features :: any).ArmoredVanBurst == true or ((Features :: any).ArmoredVanBurstDev == true and IS_DEV))
+-- a516 (décision de Cantin, 27/11) : fourgon V2, Features.ArmoredVanV2 (partout) ou ArmoredVanV2Dev (jeu DEV et TEST) ;
+-- l'emporte sur BURST. Coupé : tout le reste de ce fichier, comme avant.
+local V2CFG = ArmoredVan.V2
+local V2: boolean = (Features :: any).ArmoredVanV2 == true or ((Features :: any).ArmoredVanV2Dev == true and IS_DEV)
+-- a516 : Config/Rewards (règles des colis de zone) et Config/TruckEvent (durée au sol des colis du camion), protégés
+-- (absents d'un faux arbre de banc : V2 sans colis, durée DropLifetime).
+local function optional(get: () -> any): any
+	local ok, result = pcall(get)
+	return if ok and type(result) == "table" then result else nil
+end
+local RewardsConfig: any = optional(function(): any
+	return require(Shared.Config.Rewards) :: any
+end)
+local TruckConfig: any = optional(function(): any
+	return require(Shared.Config.TruckEvent) :: any
+end)
 
 local ArmoredVanService = {}
 ArmoredVanService.Priority = 135 -- V0 : après NightCycleService (120) et TruckEventService (130)
@@ -133,9 +177,11 @@ local vanEndedAt = -math.huge -- a425 : os.clock() de la fin du dernier fourgon 
 local vanCount = 0
 -- a425 : StoreHeistService (AddEventShelf), chargé dans Init, protégé (absent d'un banc : colis perdu).
 local heistApi: { AddEventShelf: (options: any) -> Model? }? = nil
+-- a516 : placement des colis du camion (TruckEventService.LandingPoint, BoxWidth), chargé dans Init, protégé (absent : en rang).
+local truckApi: { LandingPoint: (from: Vector3, center: Vector3, width: number, taken: { any }) -> Vector3, BoxWidth: (rarity: string) -> number }? = nil
 
--- Un colis gagné qui n'entre pas dans l'inventaire (a425, L-325 réponse 2).
-type Drop = { Player: Player, Label: string, Zone: number, Rarity: string }
+-- Un colis gagné qui n'entre pas dans l'inventaire (a425, L-325 réponse 2), ou qui jaillit du fourgon (a509, Burst).
+type Drop = { Player: Player, Label: string, Zone: number, Rarity: string, Burst: boolean, Place: Place }
 
 local function log(message: string)
 	if IS_STUDIO then
@@ -231,6 +277,41 @@ function ArmoredVanService.DropOffsets(count: number): { number }
 		table.insert(offsets, (index - (n + 1) / 2) * ArmoredVan.DropSpacing)
 	end
 	return offsets
+end
+
+-- a516 (V2) : seuil fixe d'une zone (Config/ArmoredVan.V2 : 3 joueurs × 5 coups/s × 20 s × Zones[zone].AdvisedDamage,
+-- la table active) ; 0 pour une zone inconnue.
+function ArmoredVanService.V2Threshold(zone: number): number
+	local info = (Zones :: any)[zone]
+	local damage = if type(info) == "table" then info.AdvisedDamage else nil
+	if type(damage) ~= "number" or damage ~= damage or damage <= 0 or damage == math.huge then
+		return 0
+	end
+	return V2CFG.ThresholdPlayers * V2CFG.ThresholdHitsPerSecond * V2CFG.ThresholdSeconds * damage
+end
+
+-- a516 (V2) : palier (1 à #StepZones) et zone de ses colis, `elapsed` s après le départ.
+function ArmoredVanService.V2Step(elapsed: number): (number, number)
+	local count = #V2CFG.StepZones
+	local index = math.clamp(math.floor(math.max(elapsed, 0) / V2CFG.StepTime) + 1, 1, count)
+	return index, V2CFG.StepZones[index]
+end
+
+-- a516 (V2) : un serveur qui frappe sans arrêt à `perSecond` dégâts par seconde casse le fourgon au palier rendu, à la
+-- seconde rendue (après le départ) ; nil s'il s'échappe (bancs, tableau du rapport).
+function ArmoredVanService.V2BreakAt(perSecond: number): (number?, number?)
+	if type(perSecond) ~= "number" or perSecond ~= perSecond or perSecond <= 0 then
+		return nil, nil
+	end
+	for index, zone in V2CFG.StepZones do
+		local from = (index - 1) * V2CFG.StepTime
+		local to = math.min(index * V2CFG.StepTime, ArmoredVan.TravelTime)
+		local at = math.max(from, ArmoredVanService.V2Threshold(zone) / perSecond)
+		if at < to then
+			return index, at
+		end
+	end
+	return nil, nil
 end
 
 -- Carte ---------------------------------------------------------------------------------------------------------
@@ -468,6 +549,122 @@ local function attachBar(model: Model, maxHP: number)
 	model:GetAttributeChangedSignal(HP_ATTRIBUTE):Connect(refresh)
 end
 
+-- a516 (V2) : jauge en 6 paliers au-dessus du fourgon, copie de BB_VanGauge de Clément (Assets/UI) ou repli construit ici
+-- (Title, Steps/Step_n avec Current et Done, Bar/Fill, ProgressText ; Config/ArmoredVan.V2). Renvoie la fonction qui la
+-- remplit (palier en cours, part du seuil atteinte), appelée par le serveur (répliquée).
+local function attachGauge(model: Model, current: Van): () -> ()
+	local point = model:FindFirstChild(HEALTH_BAR_POINT, true)
+	local adornee: Instance? = if point and point:IsA("Attachment") then point else model.PrimaryPart
+	local count = #V2CFG.StepZones
+	local gui: BillboardGui
+	local template = findAsset(V2CFG.GaugeAsset)
+	if template and template:IsA("BillboardGui") then
+		gui = (template :: BillboardGui):Clone()
+	else
+		gui = Instance.new("BillboardGui")
+		gui.Size = UDim2.fromScale(V2CFG.GaugeSize.X, V2CFG.GaugeSize.Y)
+		gui.AlwaysOnTop = true
+		gui.MaxDistance = ArmoredVan.BillboardMaxDistance
+		local title = Instance.new("TextLabel")
+		title.Name = "Title"
+		title.BackgroundTransparency = 1
+		title.Size = UDim2.fromScale(1, 0.4)
+		title.Font = Enum.Font.FredokaOne
+		title.TextScaled = true
+		title.TextColor3 = Color3.fromRGB(255, 210, 60)
+		title.TextStrokeTransparency = 0
+		title.Parent = gui
+		local steps = Instance.new("Frame")
+		steps.Name = "Steps"
+		steps.BackgroundTransparency = 1
+		steps.Position = UDim2.fromScale(0, 0.42)
+		steps.Size = UDim2.fromScale(1, 0.18)
+		steps.Parent = gui
+		for index = 1, count do
+			local step = Instance.new("Frame")
+			step.Name = `Step_{index}`
+			step.Position = UDim2.fromScale((index - 1) / count, 0)
+			step.Size = UDim2.new(1 / count, -2, 1, 0)
+			step.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+			step.BorderSizePixel = 0
+			step.Parent = steps
+			local marks: { [string]: Color3 } = { Done = Color3.fromRGB(25, 25, 25), Current = Color3.fromRGB(255, 196, 40) }
+			for markName, color in marks do
+				local frame = Instance.new("Frame")
+				frame.Name = markName
+				frame.Size = UDim2.fromScale(1, 1)
+				frame.BackgroundColor3 = color
+				frame.BorderSizePixel = 0
+				frame.Visible = false
+				frame.Parent = step
+			end
+		end
+		local bar = Instance.new("Frame")
+		bar.Name = "Bar"
+		bar.Position = UDim2.fromScale(0, 0.64)
+		bar.Size = UDim2.fromScale(1, 0.36)
+		bar.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+		bar.Parent = gui
+		local fill = Instance.new("Frame")
+		fill.Name = "Fill"
+		fill.Size = UDim2.fromScale(0, 1)
+		fill.BackgroundColor3 = Color3.fromRGB(230, 70, 60)
+		fill.BorderSizePixel = 0
+		fill.Parent = bar
+		local text = Instance.new("TextLabel")
+		text.Name = "ProgressText"
+		text.BackgroundTransparency = 1
+		text.Size = UDim2.fromScale(1, 1)
+		text.Font = Enum.Font.FredokaOne
+		text.TextScaled = true
+		text.TextColor3 = Color3.new(1, 1, 1)
+		text.TextStrokeTransparency = 0
+		text.ZIndex = 2
+		text.Parent = bar
+	end
+	gui.Name = BAR_NAME -- éteinte à la casse comme la barre de vie
+	if adornee == nil or not adornee:IsA("Attachment") then
+		local _, size = model:GetBoundingBox()
+		gui.StudsOffsetWorldSpace = Vector3.new(0, size.Y / 2 + 3, 0)
+	end
+	if adornee then
+		gui.Adornee = adornee
+	end
+	gui.Parent = adornee or model
+	local title = gui:FindFirstChild("Title", true)
+	local fill = gui:FindFirstChild("Fill", true)
+	local text = gui:FindFirstChild("ProgressText", true)
+	local marks: { { Current: Instance?, Done: Instance? } } = {}
+	for index = 1, count do
+		local step = gui:FindFirstChild(`Step_{index}`, true)
+		marks[index] = {
+			Current = if step then step:FindFirstChild("Current") else nil,
+			Done = if step then step:FindFirstChild("Done") else nil,
+		}
+	end
+	return function()
+		local zone = V2CFG.StepZones[current.Step]
+		local threshold = ArmoredVanService.V2Threshold(zone)
+		if title and title:IsA("TextLabel") then
+			title.Text = string.format(V2CFG.ZoneText, zone)
+		end
+		if fill and fill:IsA("GuiObject") then
+			fill.Size = UDim2.fromScale(math.clamp(current.Total / math.max(threshold, 1), 0, 1), fill.Size.Y.Scale)
+		end
+		if text and text:IsA("TextLabel") then
+			text.Text = `{Format.short(math.min(current.Total, threshold))} / {Format.short(threshold)}`
+		end
+		for index, mark in marks do
+			if mark.Current and mark.Current:IsA("GuiObject") then
+				(mark.Current :: GuiObject).Visible = index == current.Step
+			end
+			if mark.Done and mark.Done:IsA("GuiObject") then
+				(mark.Done :: GuiObject).Visible = index < current.Step
+			end
+		end
+	end
+end
+
 -- Fourgon ---------------------------------------------------------------------------------------------------------
 
 -- a425 (L-318 Q2) : état lu par la bannière (EventBannerController) ; nil efface.
@@ -503,6 +700,9 @@ local function escape(current: Van)
 	log("fourgon échappé : rien n'est donné")
 end
 
+-- a516 (V2) : rafraîchit la jauge et casse le fourgon si le total atteint le seuil du palier (défini après breakVan).
+local checkV2: (current: Van) -> ()
+
 local function spawnVan(): boolean
 	if van ~= nil then
 		return false
@@ -525,6 +725,10 @@ local function spawnVan(): boolean
 		end
 	end
 	local maxHP = ArmoredVanService.MaxHP(damages)
+	if V2 then
+		-- a516 : PV de la cible = le seuil du premier palier (le plus haut) ; la casse vient du total (checkV2) avant.
+		maxHP = math.max(1, ArmoredVanService.V2Threshold(V2CFG.StepZones[1]))
+	end
 	model:PivotTo(frameAt(points, 0))
 	local endsAt = Workspace:GetServerTimeNow() + ArmoredVan.TravelTime
 	model:SetAttribute(ENDS_AT_ATTRIBUTE, endsAt)
@@ -535,7 +739,6 @@ local function spawnVan(): boolean
 		model:Destroy()
 		return false
 	end
-	attachBar(model, maxHP)
 	local current: Van = {
 		Model = model,
 		WindowId = windowId,
@@ -547,7 +750,18 @@ local function spawnVan(): boolean
 		Names = {},
 		Done = false,
 		Heartbeat = nil,
+		V2 = V2,
+		Total = 0,
+		Step = 1,
+		Refresh = nil,
 	}
+	if V2 then
+		local refresh = attachGauge(model, current)
+		current.Refresh = refresh
+		refresh()
+	else
+		attachBar(model, maxHP)
+	end
 	van = current
 	vanCount += 1
 	setState("Road", endsAt)
@@ -555,15 +769,28 @@ local function spawnVan(): boolean
 		if current.Done then
 			return
 		end
-		local t = (os.clock() - current.From) / ArmoredVan.TravelTime
+		local elapsed = os.clock() - current.From
+		local t = elapsed / ArmoredVan.TravelTime
 		if t >= 1 then
 			escape(current)
 			return
 		end
 		model:PivotTo(frameAt(current.Path, t * current.Length))
+		if current.V2 then
+			-- a516 : nouveau palier : seuil plus bas, la jauge change, et un total déjà assez haut casse tout de suite.
+			local step = ArmoredVanService.V2Step(elapsed)
+			if step ~= current.Step then
+				current.Step = step
+				checkV2(current)
+			end
+		end
 	end)
-	announce(ArmoredVan.Messages.Started, ArmoredVan.Messages.StartedDetail)
-	log(`fourgon ({origin}) : {maxHP} PV, {math.round(current.Length)} studs en {ArmoredVan.TravelTime} s`)
+	if V2 then
+		announce(ArmoredVan.Messages.Started, V2CFG.Messages.StartedDetail)
+	else
+		announce(ArmoredVan.Messages.Started, ArmoredVan.Messages.StartedDetail)
+	end
+	log(`fourgon ({origin}) : {maxHP} PV{if V2 then " (V2, paliers)" else ""}, {math.round(current.Length)} studs en {ArmoredVan.TravelTime} s`)
 	return true
 end
 
@@ -587,7 +814,7 @@ local function bestZone(data: any): number
 end
 
 -- a425 (L-325 réponse 2) : zone et rareté du colis qui tombe, par la règle du colis gagné (comme GiveZoneBoxItem).
-local function dropFor(player: Player, tier: ArmoredVan.RewardTier, best: number): Drop?
+local function dropFor(player: Player, tier: ArmoredVan.RewardTier, best: number, place: Place, burst: boolean): Drop?
 	local ok, zone, rarity = pcall(function(): (number?, string?)
 		local z = ZoneBoxOdds.Zone(tier.Rule :: any, best)
 		if z == nil then
@@ -600,27 +827,19 @@ local function dropFor(player: Player, tier: ArmoredVan.RewardTier, best: number
 		warnOnce("drop", `colis tombé du fourgon : aucune rareté pour {player.Name} (zone {tostring(best)})`)
 		return nil
 	end
-	return { Player = player, Label = tier.Label, Zone = zone, Rarity = rarity }
+	return { Player = player, Label = tier.Label, Zone = zone, Rarity = rarity, Burst = burst, Place = place }
 end
 
-local function reward(player: Player, place: Place, drops: { Drop }): boolean
-	local tier = place.Tier
+-- L'objet du colis tout droit dans l'inventaire ; inventaire plein : le colis tombe derrière le fourgon (drops).
+local function giveItem(player: Player, place: Place, tier: ArmoredVan.RewardTier, data: any, drops: { Drop }): boolean
 	local percent = math.round(place.Share * 100)
-	if tier == nil then
-		notify(player, ArmoredVan.Messages.TooLittle, "Info")
-		return false
-	end
-	local data = DataService.Get(player)
-	if data == nil then
-		return false
-	end
 	local ok, itemUid, reason, itemId = pcall(function(): (string?, string?, string?)
 		local uid, why, id = UnboxService.GiveZoneBoxItem(player, tier.Rule, bestZone(data))
 		return uid, why, id
 	end)
 	if not ok or itemUid == nil or itemId == nil then
 		if ok and reason == "InventoryFull" then
-			local drop = dropFor(player, tier, bestZone(data))
+			local drop = dropFor(player, tier, bestZone(data), place, false)
 			if drop then
 				table.insert(drops, drop) -- posé et annoncé après la boucle (placeDrops)
 			else
@@ -640,6 +859,27 @@ local function reward(player: Player, place: Place, drops: { Drop }): boolean
 	return true
 end
 
+local function reward(player: Player, place: Place, drops: { Drop }): boolean
+	local tier = place.Tier
+	if tier == nil then
+		notify(player, ArmoredVan.Messages.TooLittle, "Info")
+		return false
+	end
+	local data = DataService.Get(player)
+	if data == nil then
+		return false
+	end
+	-- a509 (L-457) : le colis jaillit du fourgon, à ouvrir sur place (posé et annoncé après la boucle, placeDrops).
+	if BURST and heistApi ~= nil then
+		local drop = dropFor(player, tier, bestZone(data), place, true)
+		if drop then
+			table.insert(drops, drop)
+			return false
+		end
+	end
+	return giveItem(player, place, tier, data, drops)
+end
+
 -- a425 (L-325 réponse 2) : chaque colis qui n'est pas entré dans l'inventaire tombe derrière le fourgon arrêté, côte à
 -- côte, sur un rayon d'événement à lui (n'importe qui l'ouvre et prend l'objet). Renvoie le nombre de colis posés.
 local function placeDrops(current: Van, drops: { Drop }): number
@@ -650,7 +890,11 @@ local function placeDrops(current: Van, drops: { Drop }): number
 	local pivot = model:GetPivot()
 	local _, size = model:GetBoundingBox()
 	local blast = model:FindFirstChild(BLAST_POINT, true)
-	local from: Vector3? = if blast and blast:IsA("Attachment") then (blast :: Attachment).WorldPosition else nil
+	-- a509 : colis qui jaillissent (BURST) sans BlastPoint : du centre du modèle (comme l'explosion).
+	local from: Vector3? = if blast and blast:IsA("Attachment")
+		then (blast :: Attachment).WorldPosition
+		elseif BURST then model:GetBoundingBox().Position
+		else nil
 	-- Avant vers −Z (LookVector) : l'arrière est de l'autre côté.
 	local behind = pivot.Position - pivot.LookVector * (size.Z / 2 + ArmoredVan.DropBehind)
 	local offsets = ArmoredVanService.DropOffsets(#drops)
@@ -669,16 +913,127 @@ local function placeDrops(current: Van, drops: { Drop }): number
 			})
 			shelf = if ok then result else nil
 		end
-		if shelf then
+		if shelf and drop.Burst then
+			placed += 1
+			notify(drop.Player, string.format(ArmoredVan.Messages.Burst, drop.Place.Rank, math.round(drop.Place.Share * 100), drop.Label), "Success")
+			log(`{drop.Player.Name} : #{drop.Place.Rank}, {drop.Label} ({drop.Rarity}, zone {drop.Zone}) jailli du fourgon`)
+		elseif shelf then
 			placed += 1
 			notify(drop.Player, string.format(ArmoredVan.Messages.Full, drop.Label), "Warning")
 			log(`{drop.Player.Name} : inventaire plein, {drop.Label} ({drop.Rarity}, zone {drop.Zone}) tombé derrière le fourgon`)
+		elseif drop.Burst then
+			-- a509 : rayon refusé, l'objet va dans l'inventaire comme avant (plein : perdu, le rayon manque).
+			local data = DataService.Get(drop.Player)
+			local tier = drop.Place.Tier
+			local full: { Drop } = {}
+			if data and tier and giveItem(drop.Player, drop.Place, tier, data, full) then
+				placed += 1
+			elseif #full > 0 then
+				notify(drop.Player, ArmoredVan.Messages.Lost, "Warning")
+			end
+			warnOnce("noburst", "StoreHeistService.AddEventShelf refusé : colis du fourgon mis dans l'inventaire")
 		else
 			notify(drop.Player, ArmoredVan.Messages.Lost, "Warning")
 			warnOnce("noshelf", "StoreHeistService.AddEventShelf indisponible ou refusé : colis du fourgon perdu (inventaire plein)")
 		end
 	end
 	return placed
+end
+
+-- a516 (V2) : règle d'un colis (Config/Rewards.ZoneBox[nom], celles des colis de zone du camion), nil si absente.
+local function v2Rule(name: string): ZoneBoxOdds.Rule?
+	local rules = if RewardsConfig then RewardsConfig.ZoneBox else nil
+	local rule = if type(rules) == "table" then rules[name] else nil
+	return if type(rule) == "table" then rule :: any else nil
+end
+
+-- a516 (V2) : rareté d'un colis de règle `rule`, zone de référence `zone` (ZoneBoxOdds, comme dropFor et le camion).
+local function v2Rarity(rule: ZoneBoxOdds.Rule, zone: number): string?
+	local ok, rarity = pcall(function(): string?
+		local z = ZoneBoxOdds.Zone(rule, zone)
+		local drawn = if z then ZoneBoxOdds.Draw(ZoneBoxOdds.Chances(rule, z), math.random()) else nil
+		return if drawn then drawn.Id else nil
+	end)
+	return if ok then rarity else nil
+end
+
+-- a516 (V2) : les colis de la zone du palier (V2.Boxes) tombent autour du fourgon sur un seul rayon d'événement, à
+-- ouvrir sur place par n'importe qui (au moins V2.MinLuck de chance, objet de la zone du palier), placés comme ceux du
+-- camion (TruckEventService.LandingPoint ; absent : en rang derrière le fourgon), même durée au sol que le camion.
+local function breakV2(current: Van)
+	local step = ArmoredVanService.V2Step(math.min(os.clock() - current.From, ArmoredVan.TravelTime - 1e-3))
+	current.Step = math.max(current.Step, step)
+	local zone = V2CFG.StepZones[current.Step]
+	local model = current.Model
+	local pivot = model:GetPivot()
+	local _, size = model:GetBoundingBox()
+	local blast = model:FindFirstChild(BLAST_POINT, true)
+	local from: Vector3 = if blast and blast:IsA("Attachment")
+		then (blast :: Attachment).WorldPosition
+		else model:GetBoundingBox().Position
+	local rarities: { string } = {}
+	for _, entry in V2CFG.Boxes do
+		local rule = v2Rule(entry.Rule)
+		if rule == nil then
+			warnOnce(`v2rule:{entry.Rule}`, `V2 : règle Config/Rewards.ZoneBox.{entry.Rule} absente : ces colis sont sautés`)
+			continue
+		end
+		for _ = 1, entry.Count do
+			local rarity = v2Rarity(rule, zone)
+			if rarity then
+				table.insert(rarities, rarity)
+			else
+				warnOnce(`v2rarity:{entry.Rule}:{zone}`, `V2 : aucune rareté pour un colis {entry.Rule} de zone {zone}`)
+			end
+		end
+	end
+	local spots: { any } = {}
+	local taken: { any } = {}
+	local behind = pivot.Position - pivot.LookVector * (size.Z / 2 + ArmoredVan.DropBehind)
+	local offsets = ArmoredVanService.DropOffsets(#rarities)
+	for index, rarity in rarities do
+		local landing: Vector3? = nil
+		local api = truckApi
+		if api then
+			local ok, result = pcall(function(): Vector3
+				local width = api.BoxWidth(rarity)
+				local point = api.LandingPoint(from, pivot.Position, width, taken)
+				table.insert(taken, { Position = point, Width = width })
+				return point
+			end)
+			landing = if ok then result else nil
+		end
+		if landing == nil then
+			local point = behind + pivot.RightVector * offsets[index]
+			landing = Vector3.new(point.X, groundY(point, { model }), point.Z)
+		end
+		table.insert(spots, { CFrame = CFrame.new(landing :: Vector3), Rarity = rarity, From = from })
+	end
+	local lifetime = if TruckConfig and type(TruckConfig.FlightTime) == "number" and type(TruckConfig.BoxLifetime) == "number"
+		then TruckConfig.FlightTime + TruckConfig.BoxLifetime
+		else ArmoredVan.DropLifetime
+	local addShelf = if heistApi then heistApi.AddEventShelf else nil
+	local placed = 0
+	if addShelf and #spots > 0 then
+		local ok, shelf = pcall(addShelf, {
+			Id = `{DROP_PREFIX}{vanCount}`,
+			Zone = zone,
+			Spots = spots,
+			Lifetime = lifetime,
+			-- L'objet sort de la zone du palier seulement, comme au camion (les 10 % de zone suivante : retirés, Cantin 27/11).
+			NextZoneChance = 0,
+			MinLuck = V2CFG.MinLuck,
+		})
+		if ok and shelf then
+			placed = #spots
+		else
+			warnOnce("v2shelf", "V2 : StoreHeistService.AddEventShelf refusé : le fourgon casse sans colis")
+		end
+	elseif #spots > 0 then
+		warnOnce("v2noshelf", "V2 : StoreHeistService indisponible : le fourgon casse sans colis")
+	end
+	announce(string.format(V2CFG.Messages.Broken, zone), string.format(V2CFG.Messages.BrokenDetail, placed))
+	log(`fourgon V2 cassé au palier {current.Step} (zone {zone}) : {math.round(current.Total)} dégâts, {placed} colis au sol`)
 end
 
 local function breakVan(current: Van)
@@ -697,6 +1052,10 @@ local function breakVan(current: Van)
 		end
 	end
 	model:SetAttribute(EXPLODED_AT_ATTRIBUTE, Workspace:GetServerTimeNow())
+	if current.V2 then
+		breakV2(current)
+		return
+	end
 	local places = ArmoredVanService.Ranking(current.Damage, current.MaxHP)
 	local top: { string } = {}
 	local rewarded = 0
@@ -713,6 +1072,23 @@ local function breakVan(current: Van)
 	rewarded += placeDrops(current, drops)
 	announce(string.format(ArmoredVan.Messages.Broken, table.concat(top, ", ")), string.format(ArmoredVan.Messages.BrokenDetail, rewarded))
 	log(`fourgon cassé : {#places} casseur(s), {rewarded} colis donné(s)`)
+end
+
+checkV2 = function(current: Van)
+	if current.Done then
+		return
+	end
+	local elapsed = os.clock() - current.From
+	if elapsed >= ArmoredVan.TravelTime then
+		return -- il s'échappe (Heartbeat)
+	end
+	current.Step = math.max(current.Step, (ArmoredVanService.V2Step(elapsed)))
+	if current.Refresh then
+		current.Refresh()
+	end
+	if current.Total >= ArmoredVanService.V2Threshold(V2CFG.StepZones[current.Step]) then
+		breakVan(current)
+	end
 end
 
 -- Horaire ---------------------------------------------------------------------------------------------------------
@@ -778,6 +1154,10 @@ local function onHit(player: Player, windowId: string, _kind: string, _model: Mo
 	if type(damage) == "number" and damage > 0 and damage < math.huge then
 		current.Damage[player.UserId] = (current.Damage[player.UserId] or 0) + damage
 		current.Names[player.UserId] = player.Name
+		if current.V2 then
+			current.Total += damage -- a516 : dégâts de tous, cumulés depuis le départ
+			checkV2(current)
+		end
 	end
 end
 
@@ -839,6 +1219,16 @@ function ArmoredVanService.Init()
 		local ok, api = pcall(require, module)
 		if ok and type(api) == "table" and type((api :: any).AddEventShelf) == "function" then
 			heistApi = api :: any
+		end
+	end
+	-- a516 (V2) : placement des colis du camion (TruckEventService), protégé comme StoreHeistService.
+	if V2 then
+		local truckModule = script.Parent:FindFirstChild("TruckEventService")
+		if truckModule and truckModule:IsA("ModuleScript") then
+			local ok, api = pcall(require, truckModule)
+			if ok and type(api) == "table" and type((api :: any).LandingPoint) == "function" and type((api :: any).BoxWidth) == "function" then
+				truckApi = api :: any
+			end
 		end
 	end
 	NightCycleService.OnPhaseChanged(onPhaseChanged :: any)

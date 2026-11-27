@@ -116,6 +116,19 @@ local Features = {
 	-- les 30 min à heure fixe dans le couloir, PV partagés, un colis de zone selon ses dégâts (Config/ArmoredVan,
 	-- ArmoredVanService) ; modèle ENV_Event_ArmoredVan de Clément facultatif (repli en blocs). true en DEV ; false = aucun fourgon.
 	ArmoredVan = true,
+	-- a509 (L-457, Clément 26/11) : à la casse du fourgon, le colis de chaque casseur récompensé jaillit derrière lui et
+	-- s'ouvre sur place comme ceux du camion (n'importe qui peut l'ouvrir ; Config/ArmoredVan.BurstBoxes, ArmoredVanService).
+	-- Interrupteur PROD (partout) : false (règle C2 : pas encore de test humain) ; false = l'objet va tout droit dans
+	-- l'inventaire, comme avant (colis au sol seulement si l'inventaire est plein).
+	ArmoredVanBurst = false,
+	-- a509 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	ArmoredVanBurstDev = true,
+	-- a516 (décision de Cantin, 27/11) : fourgon V2, jauge en 6 paliers de 25 s (zone 6 au départ, zone 1 à la fin), seuils
+	-- de dégâts fixes, 12 colis de la zone du palier au sol pour tous à la casse (Config/ArmoredVan.V2, ArmoredVanService).
+	-- Allumé, il l'emporte sur ArmoredVanBurst. Interrupteur PROD (partout) : false (règle C2) ; false = le fourgon d'avant.
+	ArmoredVanV2 = false,
+	-- a516 : la même chose allumée dans le jeu DEV (et TEST) seulement (Config/ProductIds.IsDev).
+	ArmoredVanV2Dev = true,
 	-- GC6 (a409, MAJ 6, DEV-140) : classements hebdomadaires, top 100 en $/s et en vols, remis à zéro le lundi 00:00 UTC,
 	-- récompense la semaine suivante (Config/WeeklyLeaderboard, WeeklyLeaderboardService ; panneaux de Clément
 	-- facultatifs). true en DEV ; false = rien n'est compté ni écrit.

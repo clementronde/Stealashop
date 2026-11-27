@@ -515,6 +515,7 @@ type Store = {
 	ItemZones: { number }?,
 	SizeOdds: { [string]: number }?, -- tailles garanties de l'événement (nil : celles de Mutations.Roll)
 	NextZoneChance: number?, -- vague 56 (a181, L-166 Q5) : voir EventShelfOptions
+	MinLuck: number?, -- a516 : voir EventShelfOptions
 }
 
 -- Vague 62 : cinématique d'ouverture en cours d'un joueur (voir l'en-tête).
@@ -2727,6 +2728,11 @@ local function startOpening(player: Player, slot: Slot, box: ShelfBox)
 			warn(`[StoreHeistService] accroche SetLuckOverride : {value}`)
 		end
 	end
+	-- a516 : rayon d'événement à chance minimale (fourgon blindé V2, EventShelfOptions.MinLuck).
+	local minLuck = store.MinLuck
+	if minLuck and minLuck > luck and minLuck < math.huge then
+		luck = minLuck
+	end
 	local delay = ShelfOpenState.revealDelay(luck)
 	local openAt = Workspace:GetServerTimeNow()
 	local opening: Opening = { ByUserId = player.UserId, Luck = luck, OpenAt = openAt }
@@ -3802,6 +3808,8 @@ export type EventShelfOptions = {
 	-- Vague 56 (a181, L-166 Q5, camion) : à chaque sortie, objet de Zone + 1 avec cette probabilité, sinon de Zone ;
 	-- jamais d'une autre zone (rareté absente : la rareté en dessous ; Secret et Divine : toutes zones). nil : ItemZones.
 	NextZoneChance: number?,
+	-- a516 (fourgon blindé V2) : chance de chaque ouverture au moins MinLuck (×3 : la chance tirée, sinon 3). nil : la chance tirée.
+	MinLuck: number?,
 	Spots: { EventSpot },
 	Lifetime: number, -- s, puis tout est retiré
 }
@@ -3886,6 +3894,7 @@ local function addEventShelf(options: EventShelfOptions): Model?
 		ItemZones = options.ItemZones,
 		SizeOdds = options.SizeOdds,
 		NextZoneChance = options.NextZoneChance,
+		MinLuck = options.MinLuck,
 	}
 	for number, spot in options.Spots do
 		local name = string.format(SLOT_FORMAT, number)

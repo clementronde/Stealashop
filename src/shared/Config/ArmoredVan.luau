@@ -97,6 +97,13 @@ local ArmoredVan = {
 	DropLifetime = 60, -- V0 proposé (Cantin, 24/11) : comme TruckEvent.BoxLifetime, puis il disparaît
 	DropBehind = 5, -- V0 proposé (Cantin, 24/11) : studs derrière l'arrière du fourgon
 	DropSpacing = 4, -- V0 proposé (Cantin, 24/11) : studs entre deux colis côte à côte
+	-- a509 (L-457, Clément : « les boîtes qui explosent et qui donnent la possibilité de les ouvrir », comme le camion) :
+	-- à la casse, le colis de chaque casseur récompensé jaillit du fourgon (vol depuis BlastPoint) et retombe derrière lui
+	-- (DropBehind, DropSpacing, DropLifetime), à ouvrir sur place comme les colis du camion ; n'importe qui peut l'ouvrir,
+	-- comme le colis d'inventaire plein (L-325). Sans rayon d'événement : l'objet va dans l'inventaire comme avant.
+	-- Réglage seulement : rien ne jaillit sans l'interrupteur Features.ArmoredVanBurst (partout) ou ArmoredVanBurstDev
+	-- (jeu DEV). false, ou interrupteur coupé : l'objet va tout droit dans l'inventaire (avant a509).
+	BurstBoxes = true, -- V0 proposé (Cantin, 27/11)
 
 	-- Bannière d'événement (a425, L-318 Q2 ; UI_EventBanner de Clément, EventBannerController) : quand aucun événement
 	-- live n'y est, le fourgon s'y montre avec un minuteur : StateAttribute du Workspace = "Soon" (départ annoncé,
@@ -124,8 +131,52 @@ local ArmoredVan = {
 		-- a425 (L-325 réponse 2) : %s = nom du colis (Label). V0 proposé (Cantin, 24/11).
 		Full = "Heist of the century: inventory full! Your %s fell behind the van, anyone can grab it!",
 		Lost = "Heist of the century: inventory full, your box is lost!", -- a425 : seulement si le colis n'a pas pu tomber
+		-- a509 (L-457) : colis jailli (BurstBoxes) ; rang, part, nom du colis (Label). V0 proposé (Cantin, 27/11).
+		Burst = "Heist of the century: #%d (%d%% of the damage)! Your %s burst out of the van, open it!",
 	},
 	AnnounceIcon = "ICON_Event_ArmoredVan", -- V0 : icône de l'annonce (Decal de Clément), facultative
+
+	-- V2 (a516, décision de Cantin du 27/11 ; Features.ArmoredVanV2 / ArmoredVanV2Dev, l'emporte sur ArmoredVanBurst) ----
+	-- Plus de classement, de Top 3, de Big Box, de « meilleure zone du joueur » ni de PV selon les joueurs présents. Le
+	-- trajet (TravelTime) est coupé en paliers de StepTime s : palier n = zone StepZones[n] (zone 6 au départ, zone 1 à la
+	-- fin). Les dégâts reçus s'additionnent depuis le départ ; le fourgon casse dès que ce total atteint le seuil du palier
+	-- en cours (un palier qui commence avec un total déjà assez haut casse tout de suite). Pas cassé au bout de TravelTime s :
+	-- il s'échappe sans rien donner, comme avant.
+	-- Seuil d'une zone, fixe (le même quel que soit le serveur) = ThresholdPlayers × ThresholdHitsPerSecond ×
+	-- ThresholdSeconds × Zones[zone].AdvisedDamage (la table active, lue par ArmoredVanService) : trois joueurs de la
+	-- puissance de la zone le cassent en 20 s s'ils frappent sans arrêt.
+	-- À la casse : les colis de la zone du palier tombent au sol autour du fourgon (rayon d'événement de StoreHeistService,
+	-- placement du camion, TruckEventService.LandingPoint ; même durée au sol que le camion), à ouvrir sur place par
+	-- n'importe qui, sans plafond par joueur.
+	V2 = {
+		StepTime = 25, -- Cantin (27/11) : 6 paliers de 25 s sur les 150 s du trajet
+		StepZones = { 6, 5, 4, 3, 2, 1 }, -- Cantin (27/11) : zone des colis de chaque palier, dans l'ordre du trajet
+		ThresholdPlayers = 3, -- Cantin (27/11) : groupe de référence des seuils
+		ThresholdHitsPerSecond = 5, -- Cantin (27/11) : Balance.Hit.MaxHitsPerSecond
+		ThresholdSeconds = 20, -- Cantin (27/11)
+		-- Cantin (27/11) : 12 colis, règles de Config/Rewards.ZoneBox comme les colis de zone du camion (TierZoneBox), zone de
+		-- référence = celle du palier : NextZone (zone au-dessus, ses 3 meilleures raretés 60/30/10, jamais Secret ; zone 6 :
+		-- les 3 meilleures de la zone 6), Zone (les chances des rayons), BestZone (meilleure rareté de la zone × 1,5).
+		Boxes = {
+			{ Rule = "NextZone", Count = 3 },
+			{ Rule = "Zone", Count = 5 },
+			{ Rule = "BestZone", Count = 4 },
+		},
+		MinLuck = 3, -- Cantin (27/11) : au moins ×3 de chance à l'ouverture de chaque colis
+		-- L'objet sort toujours de la zone du palier, comme au camion (les 10 % de zone suivante sont retirés : Cantin, 27/11).
+		-- Jauge au-dessus du fourgon : BB_VanGauge de Clément (Assets/UI, facultatif) ou repli construit par le code :
+		-- Title (TextLabel, « ZONE 6 »), Bar/Fill (GuiObject, part du seuil du palier déjà atteinte), ProgressText (TextLabel,
+		-- facultatif), Steps/Step_1 à Step_6 (GuiObject, palier n ; facultatifs), chacun avec Current (palier en cours) et Done
+		-- (palier passé), GuiObject facultatifs que le code montre ou cache.
+		GaugeAsset = "BB_VanGauge", -- V0 proposé (Cantin, 27/11) : nom à confirmer par Clément
+		GaugeSize = Vector2.new(16, 4), -- V0 : repli, en studs
+		ZoneText = "ZONE %d", -- V0 proposé (Cantin, 27/11)
+		Messages = {
+			StartedDetail = "Break it early for better boxes!", -- V0 proposé (Cantin, 27/11)
+			Broken = "Armored van broken: Zone %d boxes!", -- Cantin (27/11) : %d = zone du palier
+			BrokenDetail = "%d boxes on the ground, anyone can open them", -- V0 proposé (Cantin, 27/11) : %d = colis posés
+		},
+	},
 }
 
 return DeepFreeze(ArmoredVan)
