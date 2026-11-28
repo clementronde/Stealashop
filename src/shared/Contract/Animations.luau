@@ -22,12 +22,29 @@ local Animations = {}
 Animations.FolderName = "Animations"
 Animations.PlayerFolder = { "Assets", "Animations", "Player" }
 
--- 26 animations du joueur (15 avant le retrait d'Unbox et de Celebrate, vague 52 ; BenchLift et BenchIdle
+-- 40 animations du joueur (les 14 Hit_* de L-505, a538 ; 15 avant le retrait d'Unbox et de Celebrate, vague 52 ; BenchLift et BenchIdle
 -- retirés en v2 ; HoldItem ajoutée en vague 56 ; TrapStuck et TrapNetted en vague 72 ; les 7 Unbox_* de L-237 ;
 -- Unbox_Stomp et Unbox_Slam en vague 74 ; TrapSlip, a286).
 Animations.Player = {
 	{ Name = "HitWindow", Loop = false, Priority = "Action", Marker = "Impact" },
 	{ Name = "HitWindowHeavy", Loop = false, Priority = "Action", Marker = "Impact" },
+	-- a538 (L-505, Clément 27/11, livrées dans Studio v1476 à v1499) : coups variés, une série par arme (Config/Tools.HitAnimations),
+	-- tirée au hasard à chaque frappe par HitController (Features.HitVariants / HitVariantsDev) ; Action, sans boucle, 0,4 s,
+	-- Impact à 0,133 s. Absente : HitWindow ou HitWindowHeavy à sa place.
+	{ Name = "Hit_Fists_Jab", Loop = false, Priority = "Action", Marker = "Impact" },
+	{ Name = "Hit_Fists_Hook", Loop = false, Priority = "Action", Marker = "Impact" },
+	{ Name = "Hit_Fists_Kick", Loop = false, Priority = "Action", Marker = "Impact" },
+	{ Name = "Hit_Light_Overhead", Loop = false, Priority = "Action", Marker = "Impact" },
+	{ Name = "Hit_Light_Side", Loop = false, Priority = "Action", Marker = "Impact" },
+	{ Name = "Hit_Light_Backhand", Loop = false, Priority = "Action", Marker = "Impact" },
+	{ Name = "Hit_Crowbar_Overhead", Loop = false, Priority = "Action", Marker = "Impact" },
+	{ Name = "Hit_Crowbar_Thrust", Loop = false, Priority = "Action", Marker = "Impact" },
+	{ Name = "Hit_Crowbar_Side", Loop = false, Priority = "Action", Marker = "Impact" },
+	{ Name = "Hit_Grinder_Cut", Loop = false, Priority = "Action", Marker = "Impact" },
+	{ Name = "Hit_Grinder_Sweep", Loop = false, Priority = "Action", Marker = "Impact" },
+	{ Name = "Hit_Heavy_Overhead", Loop = false, Priority = "Action", Marker = "Impact" },
+	{ Name = "Hit_Heavy_Side", Loop = false, Priority = "Action", Marker = "Impact" },
+	{ Name = "Hit_Heavy_Rising", Loop = false, Priority = "Action", Marker = "Impact" },
 	{ Name = "Grab", Loop = false, Priority = "Action", Marker = "Grab" },
 	{ Name = "CarryIdle", Loop = true, Priority = "Action", UpperBodyOnly = true },
 	{ Name = "CarryRun", Loop = true, Priority = "Action", UpperBodyOnly = true },

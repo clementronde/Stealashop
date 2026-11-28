@@ -44,7 +44,11 @@ export type Tool = {
 	Power: number, -- P outil de la formule des dégâts (7.1)
 	Price: number, -- en $ du jeu, 0 = gratuit et possédé dès le départ
 	TargetZones: { number }, -- { première, dernière } zone visée
-	HitAnimation: "HitWindow" | "HitWindowHeavy", -- animation joueur jouée à chaque coup (2.4)
+	HitAnimation: "HitWindow" | "HitWindowHeavy", -- animation joueur jouée à chaque coup (2.4) ; repli des HitAnimations
+	-- a538 (L-505, Clément 27/11) : série de coups de l'arme, un tiré au hasard à chaque frappe, jamais le même deux fois de
+	-- suite (HitController, Features.HitVariants / HitVariantsDev ; noms dans Contract/Animations.Player, marqueur Impact).
+	-- Éteint, ou coup pas encore livré : HitAnimation, comme avant.
+	HitAnimations: { string },
 	Asset: string?, -- nil pour les poings
 }
 
@@ -55,13 +59,13 @@ export type Tool = {
 -- simulateur (RAPPORT=v2 COURT=1 bash tools/ironix/equilibrage/run.sh). Avant : 40, 300, 2 500, 20 000 de puissance ;
 -- 40 K$, 1 M$, 20 M$, 250 M$, 5 B$ de prix.
 local List: { Tool } = {
-	{ Id = "Fists", Order = 1, DisplayName = "Fists", Power = 1, Price = 0, TargetZones = { 1, 1 }, HitAnimation = "HitWindow", Asset = nil },
-	{ Id = "Wrench", Order = 2, DisplayName = "Wrench", Power = 5, Price = 300, TargetZones = { 2, 2 }, HitAnimation = "HitWindow", Asset = "TOOL_CleAMolette" },
-	{ Id = "Crowbar", Order = 3, DisplayName = "Crowbar", Power = 100, Price = 3_100, TargetZones = { 3, 3 }, HitAnimation = "HitWindow", Asset = "TOOL_PiedDeBiche" }, -- V0 proposé (Cantin, 20/11), avant : 80_000
-	{ Id = "Hammer", Order = 4, DisplayName = "Hammer", Power = 2_000, Price = 88_000, TargetZones = { 4, 4 }, HitAnimation = "HitWindowHeavy", Asset = "TOOL_Marteau" }, -- V0 proposé (Cantin, 20/11), avant : 4_000_000
-	{ Id = "Sledgehammer", Order = 5, DisplayName = "Sledgehammer", Power = 40_000, Price = 1_200_000, TargetZones = { 5, 5 }, HitAnimation = "HitWindowHeavy", Asset = "TOOL_Masse" }, -- V0 proposé (Cantin, 20/11), avant : 120_000_000
-	{ Id = "FireAxe", Order = 6, DisplayName = "Fire Axe", Power = 60_000, Price = 9_900_000, TargetZones = { 5, 5 }, HitAnimation = "HitWindowHeavy", Asset = "TOOL_HacheDIncendie" }, -- V0 proposé (Cantin, 20/11), avant : 1_000_000_000
-	{ Id = "AngleGrinder", Order = 7, DisplayName = "Angle Grinder", Power = 100_000, Price = 69_000_000, TargetZones = { 6, 6 }, HitAnimation = "HitWindowHeavy", Asset = "TOOL_Disqueuse" }, -- V0 proposé (Cantin, 20/11), avant : 7_000_000_000
+	{ Id = "Fists", Order = 1, DisplayName = "Fists", Power = 1, Price = 0, TargetZones = { 1, 1 }, HitAnimation = "HitWindow", HitAnimations = { "Hit_Fists_Jab", "Hit_Fists_Hook", "Hit_Fists_Kick" }, Asset = nil },
+	{ Id = "Wrench", Order = 2, DisplayName = "Wrench", Power = 5, Price = 300, TargetZones = { 2, 2 }, HitAnimation = "HitWindow", HitAnimations = { "Hit_Light_Overhead", "Hit_Light_Side", "Hit_Light_Backhand" }, Asset = "TOOL_CleAMolette" },
+	{ Id = "Crowbar", Order = 3, DisplayName = "Crowbar", Power = 100, Price = 3_100, TargetZones = { 3, 3 }, HitAnimation = "HitWindow", HitAnimations = { "Hit_Crowbar_Overhead", "Hit_Crowbar_Thrust", "Hit_Crowbar_Side" }, Asset = "TOOL_PiedDeBiche" }, -- V0 proposé (Cantin, 20/11), avant : 80_000
+	{ Id = "Hammer", Order = 4, DisplayName = "Hammer", Power = 2_000, Price = 88_000, TargetZones = { 4, 4 }, HitAnimation = "HitWindowHeavy", HitAnimations = { "Hit_Heavy_Overhead", "Hit_Heavy_Side", "Hit_Heavy_Rising" }, Asset = "TOOL_Marteau" }, -- V0 proposé (Cantin, 20/11), avant : 4_000_000
+	{ Id = "Sledgehammer", Order = 5, DisplayName = "Sledgehammer", Power = 40_000, Price = 1_200_000, TargetZones = { 5, 5 }, HitAnimation = "HitWindowHeavy", HitAnimations = { "Hit_Heavy_Overhead", "Hit_Heavy_Side", "Hit_Heavy_Rising" }, Asset = "TOOL_Masse" }, -- V0 proposé (Cantin, 20/11), avant : 120_000_000
+	{ Id = "FireAxe", Order = 6, DisplayName = "Fire Axe", Power = 60_000, Price = 9_900_000, TargetZones = { 5, 5 }, HitAnimation = "HitWindowHeavy", HitAnimations = { "Hit_Heavy_Overhead", "Hit_Heavy_Side", "Hit_Heavy_Rising" }, Asset = "TOOL_HacheDIncendie" }, -- V0 proposé (Cantin, 20/11), avant : 1_000_000_000
+	{ Id = "AngleGrinder", Order = 7, DisplayName = "Angle Grinder", Power = 100_000, Price = 69_000_000, TargetZones = { 6, 6 }, HitAnimation = "HitWindowHeavy", HitAnimations = { "Hit_Grinder_Cut", "Hit_Grinder_Sweep" }, Asset = "TOOL_Disqueuse" }, -- V0 proposé (Cantin, 20/11), avant : 7_000_000_000
 }
 
 -- a486 : prix pris dans la table active de l'économie (table 2 : Hammer 450K, Sledgehammer 400M, Fire Axe 36B, Angle

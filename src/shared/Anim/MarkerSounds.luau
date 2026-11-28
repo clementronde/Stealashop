@@ -38,6 +38,22 @@ local SOUND_MAX_LIFETIME = 10
 MarkerSounds.Player = {
 	{ Anim = "HitWindow", Marker = "Impact", Sound = "HitWindow_Impact" },
 	{ Anim = "HitWindowHeavy", Marker = "Impact", Sound = "HitWindowHeavy_Impact" },
+	-- a538 (L-505) : coups variés, même son de casse que le coup d'avant (légers : HitWindow_Impact ; lourds et disqueuse :
+	-- HitWindowHeavy_Impact).
+	{ Anim = "Hit_Fists_Jab", Marker = "Impact", Sound = "HitWindow_Impact" },
+	{ Anim = "Hit_Fists_Hook", Marker = "Impact", Sound = "HitWindow_Impact" },
+	{ Anim = "Hit_Fists_Kick", Marker = "Impact", Sound = "HitWindow_Impact" },
+	{ Anim = "Hit_Light_Overhead", Marker = "Impact", Sound = "HitWindow_Impact" },
+	{ Anim = "Hit_Light_Side", Marker = "Impact", Sound = "HitWindow_Impact" },
+	{ Anim = "Hit_Light_Backhand", Marker = "Impact", Sound = "HitWindow_Impact" },
+	{ Anim = "Hit_Crowbar_Overhead", Marker = "Impact", Sound = "HitWindow_Impact" },
+	{ Anim = "Hit_Crowbar_Thrust", Marker = "Impact", Sound = "HitWindow_Impact" },
+	{ Anim = "Hit_Crowbar_Side", Marker = "Impact", Sound = "HitWindow_Impact" },
+	{ Anim = "Hit_Grinder_Cut", Marker = "Impact", Sound = "HitWindowHeavy_Impact" },
+	{ Anim = "Hit_Grinder_Sweep", Marker = "Impact", Sound = "HitWindowHeavy_Impact" },
+	{ Anim = "Hit_Heavy_Overhead", Marker = "Impact", Sound = "HitWindowHeavy_Impact" },
+	{ Anim = "Hit_Heavy_Side", Marker = "Impact", Sound = "HitWindowHeavy_Impact" },
+	{ Anim = "Hit_Heavy_Rising", Marker = "Impact", Sound = "HitWindowHeavy_Impact" },
 	{ Anim = "Grab", Marker = "Grab", Sound = "Grab_Grab" },
 	{ Anim = "Place", Marker = "Release", Sound = "Place_Release" },
 	-- BenchLift/Top : plus de son (L-118 point 7, Clément : rien ne sonne à l'entraînement).
