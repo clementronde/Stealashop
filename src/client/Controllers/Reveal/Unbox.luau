@@ -90,6 +90,22 @@ do
 		end
 	end
 end
+-- a536 : interrupteur `name` de Config/Features allumé partout, ou `name`Dev allumé dans le jeu DEV
+-- (Config/ProductIds.IsDev). Module absent ou en erreur (bancs) : éteint.
+local function featureOn(name: string): boolean
+	local ok, on = pcall(function(): boolean
+		local Features = require(Config:WaitForChild("Features")) :: any
+		if Features[name] == true then
+			return true
+		end
+		if Features[name .. "Dev"] ~= true then
+			return false
+		end
+		local ProductIds = require(Config:WaitForChild("ProductIds")) :: any
+		return ProductIds.IsDev == true
+	end)
+	return ok and on == true
+end
 
 local New = UnboxConfig.New
 local REACT = New.React
@@ -113,6 +129,7 @@ export type Context = {
 	SizeClass: string,
 	ItemId: string,
 	ItemScale: number, -- taille de départ de l'objet (comme à sa révélation)
+	ItemFinalScale: number?, -- a536 (L-504) : taille de l'objet à la fin de sa croissance (payload.Scale) ; nil : ItemScale
 	Plan: UnboxPlan.Plan,
 	LowEnd: boolean,
 	Folder: Instance, -- où poser ce qui est créé (Workspace/_RevealFX)
@@ -152,6 +169,14 @@ export type State = {
 	boxScale0: number,
 	boxHeight: number, -- à la taille de départ
 	tierScale: number,
+	-- a536 (L-502, L-504, Features.UnboxSpacingV2) : espacement v2 ; grown : le colis a sa taille d'ouverture
+	-- (OPEN_BOX_HEIGHT × UpgradeGrow^n), toujours vrai sans v2 ; growPending : UpgradeGrow^n gardé jusqu'au grossissement.
+	spacing: boolean,
+	grown: boolean,
+	growPending: number,
+	endT: number, -- temps depuis l'éclatement du déplacement au sol (L-504), < 0 : aucun
+	endStage: number, -- 0 : rien encore, 1 : disparu, 2 : réapparu à sa place de fin
+	endHold: CFrame?, -- où l'ouvreur reste jusqu'à sa disparition
 	appliedScale: number,
 	lid: PVInstance?,
 	lidOffset: CFrame,
@@ -189,6 +214,8 @@ export type State = {
 	strong: boolean, -- moment fort de l'action passé
 	tool: PVInstance?,
 	toolOffset: CFrame,
+	toolGrip: CFrame, -- a536 (L-508, Features.UnboxToolGrip) : Grip:Inverse() d'un TOOL_Unbox_* livré en Tool, sinon identity
+	toolGripOn: boolean,
 	mark: BillboardGui?,
 	runFx: Instance?,
 	runEvery: number,
@@ -745,7 +772,66 @@ local function buildBox(state: State)
 	end
 	-- a491 (L-429 point 2) : trophées plus gros allumés : le colis montré a OPEN_BOX_HEIGHT de haut (swapBox garde cette
 	-- hauteur, UpgradeGrow s'y ajoute) ; le vrai colis du rayon, caché en local, ne change pas.
-	adoptBox(state, box or block(Vector3.new(2, 1.6, 2), KRAFT), OPEN_BOX_HEIGHT)
+	-- a536 (L-502) : espacement v2 : le colis garde la taille de son modèle jusqu'au grossissement (growTarget).
+	if state.grown then
+		adoptBox(state, box or block(Vector3.new(2, 1.6, 2), KRAFT), OPEN_BOX_HEIGHT)
+	else
+		adoptBox(state, box or block(Vector3.new(2, 1.6, 2), KRAFT), nil)
+	end
+end
+
+-- a536 (L-502) : tierScale du colis grossi : OPEN_BOX_HEIGHT (ou sa hauteur) × UpgradeGrow par amélioration passée.
+local function growTarget(state: State): number
+	local height = OPEN_BOX_HEIGHT
+	local base = if height and state.boxHeight > 0 then height / state.boxHeight else 1
+	return base * state.growPending
+end
+
+-- a536 (L-502) : le colis grossit de 1 à growTarget (× GrowBounce au plus fort, f de 0 à 1 puis g de 0 à 1 : retour).
+local function setGrow(state: State, f: number, g: number)
+	local target = growTarget(state)
+	local bounce = math.max(New.GrowBounce, 1)
+	local function ease(x: number): number
+		local c = math.clamp(x, 0, 1)
+		return (1 - math.cos(math.pi * c)) / 2
+	end
+	local peak = target * bounce
+	state.tierScale = if g <= 0 then 1 + (peak - 1) * ease(f) else peak + (target - peak) * ease(g)
+end
+
+local function finishGrow(state: State)
+	if state.grown then
+		return
+	end
+	state.tierScale = growTarget(state)
+	state.growPending = 1
+	state.grown = true
+end
+
+-- a536 (L-502) : chaque image, avant la dernière action : pendant la téléportation qui la précède, de Vanish à Appear
+-- (le perso est dans le nuage), puis le rebond revient jusqu'à Teleport ; sans téléportation, pendant la pause ; une
+-- seule action sans téléportation : pendant l'Intro. startAction(dernière) le finit au plus tard.
+local function stepGrow(state: State)
+	if state.grown then
+		return
+	end
+	local last = #state.moves
+	local speed = math.max(New.ActionSpeed, 0.1)
+	if state.phase == "Gap" and state.index + 1 == last then
+		if state.teleport then
+			local places = New.Places
+			local a, b, c = places.Vanish / speed, places.Appear / speed, places.Teleport / speed
+			if state.t < b then
+				setGrow(state, (state.t - a) / math.max(b - a, 1e-3), 0)
+			else
+				setGrow(state, 1, (state.t - b) / math.max(c - b, 1e-3))
+			end
+		else
+			setGrow(state, state.t / math.max(UnboxPlan.transition(false), 1e-3), 0)
+		end
+	elseif state.phase == "Intro" and last == 1 and not state.moves[1].Teleport then
+		setGrow(state, state.t / math.max(New.Intro, 1e-3), 0)
+	end
 end
 
 -- a462 (L-356 Q4) : la rareté montrée change : le colis prend le modèle BOX_<Rareté>, à la même hauteur de départ (la
@@ -762,7 +848,8 @@ local function swapBox(state: State, rarity: string): boolean
 		end
 		return false
 	end
-	local height = state.boxHeight
+	-- a536 (L-502) : avant le grossissement (espacement v2), chaque BOX_ garde sa propre taille.
+	local height = if state.grown then state.boxHeight else nil
 	state.box = nil
 	old:Destroy()
 	adoptBox(state, copy, height)
@@ -1097,7 +1184,8 @@ local function poseTool(state: State)
 		local angles = New.ToolGripAngles
 		frame = hand.CFrame * CFrame.Angles(math.rad(angles[1]), math.rad(angles[2]), math.rad(angles[3]))
 	end
-	local target = frame * state.toolOffset
+	-- a536 (L-508) : un Tool livré avec son Grip est tenu comme Roblox le tient en main (Handle = prise × Grip⁻¹).
+	local target = frame * state.toolGrip * state.toolOffset
 	pcall(function()
 		tool:PivotTo(target)
 	end)
@@ -1118,10 +1206,29 @@ local function takeTool(state: State, name: string?)
 	dropTool(state)
 	local folder = walk(New.ToolFolder)
 	local template = if folder and name then folder:FindFirstChild(name) else nil
-	if template == nil or not template:IsA("PVInstance") then
+	state.toolGrip = CFrame.identity
+	local copy: PVInstance
+	if template and template:IsA("Tool") and state.toolGripOn then
+		-- a536 (L-508) : un Tool n'est pas un PVInstance (ni GetPivot ni PivotTo) : ses enfants passent dans un Model,
+		-- pivot sur le Handle, et son Grip est gardé pour poseTool. Coupé : un Tool n'est pas posé, comme avant.
+		local source = template:Clone()
+		local model = Instance.new("Model")
+		model.Name = source.Name
+		state.toolGrip = source.Grip:Inverse()
+		for _, child in source:GetChildren() do
+			child.Parent = model
+		end
+		source:Destroy()
+		local main = model:FindFirstChild("Handle", true)
+		if main and main:IsA("BasePart") then
+			model.PrimaryPart = main
+		end
+		copy = model
+	elseif template and template:IsA("PVInstance") then
+		copy = template:Clone()
+	else
 		return
 	end
-	local copy = template:Clone()
 	inert(copy)
 	local handle = copy:FindFirstChild("Handle", true)
 	state.toolOffset = if handle and handle:IsA("BasePart") then handle.CFrame:ToObjectSpace(copy:GetPivot()) else CFrame.identity
@@ -1369,7 +1476,15 @@ local function burst(state: State)
 	else
 		state.oddsT = -1
 	end
-	state.recoilLeft = New.RecoilTime
+	if state.spacing then
+		-- a536 (L-504) : plus de recul ; l'ouvreur va au sol face à l'objet, dans un nuage (stepEnd).
+		state.endT = 0
+		state.endStage = 0
+		local root = rootOf(state)
+		state.endHold = if root then root.CFrame else nil
+	else
+		state.recoilLeft = New.RecoilTime
+	end
 	stopSounds(state, nil) -- vague 75 (L-261) : la scie, la perceuse… s'arrêtent en fondu ; puis l'éclatement et la fumée
 	for _, name in SOUNDS.Burst do
 		sound(state, name)
@@ -1405,7 +1520,11 @@ local function momentFort(state: State)
 	local rarity = plan.Steps[state.index].Rarity
 	if rarity ~= state.tier then
 		state.tier = rarity
-		state.tierScale *= New.UpgradeGrow
+		if state.grown then
+			state.tierScale *= New.UpgradeGrow
+		else
+			state.growPending *= New.UpgradeGrow -- a536 (L-502) : gardé pour le grossissement avant la dernière action
+		end
 		local color = colorOf(rarity)
 		if not swapBox(state, rarity) then
 			for _, tape in state.tapes do
@@ -1499,6 +1618,9 @@ local function startAction(state: State, index: number)
 	state.strong = false
 	state.mode = "Fallback"
 	state.trackStopped = false
+	if index >= #state.moves then
+		finishGrow(state) -- a536 (L-502) : la dernière action joue sur le colis grossi
+	end
 	local action = state.moves[index].Action
 	takeTool(state, action.Tool)
 	dropMark(state)
@@ -1748,6 +1870,94 @@ local function stepPlaces(state: State, dt: number)
 	end
 end
 
+-- a536 (L-504) : demi-largeur (studs) de l'objet à sa taille finale : plus grand côté à plat de son modèle (son
+-- orientation à la révélation n'est pas connue ici) × ItemFinalScale ; sans modèle : 1.
+local function itemHalfWidth(state: State): number
+	local ctx = state.ctx
+	local template = itemTemplate(ctx.ItemId)
+	local size = Vector3.new(2, 2, 2)
+	if template and template:IsA("Model") then
+		size = extents(template)
+	elseif template and template:IsA("BasePart") then
+		size = template.Size
+	end
+	local scale = ctx.ItemFinalScale or ctx.ItemScale
+	return math.max(size.X, size.Z) / 2 * math.max(scale, 0)
+end
+
+-- a536 (L-504) : place de fin de l'ouvreur, au sol : D = max(EndStandMin, demi-largeur + EndStandGap) du centre de
+-- l'objet, du côté Side s'il a la place, sinon de l'autre ; sinon la plus grande place, au moins demi-largeur +
+-- EndStandMinGap ; tourné vers l'objet (même hauteur).
+local function endStand(state: State): CFrame
+	local foot = state.base.Position
+	local half = itemHalfWidth(state)
+	local want = math.max(New.EndStandMin, half + New.EndStandGap)
+	local probe = foot + UP * 2
+	local exclude = excluded(state, state.ctx)
+	local function room(direction: Vector3): number
+		local hit = raycast(probe, direction * (want + 0.5), exclude, true)
+		return if hit then (hit.Position - probe).Magnitude - 0.5 else want
+	end
+	local direction = state.side0
+	local distance = want
+	local first = room(direction)
+	if first < want then
+		local second = room(-direction)
+		if second >= want then
+			direction = -direction
+		else
+			if second > first then
+				direction = -direction
+				first = second
+			end
+			distance = math.max(first, half + New.EndStandMinGap)
+		end
+	end
+	local at = foot + direction * distance + UP * state.standHeight
+	return CFrame.lookAt(at, Vector3.new(foot.X, at.Y, foot.Z))
+end
+
+-- a536 (L-504) : après l'éclatement, comme une téléportation (Places : nuage, disparition à Vanish, réapparition à
+-- Appear à la place de fin) ; l'ouvreur reste où il était jusqu'à sa disparition.
+local function stepEnd(state: State, dt: number)
+	if state.endT < 0 then
+		return
+	end
+	state.endT += dt
+	local places = New.Places
+	local speed = math.max(New.ActionSpeed, 0.1)
+	local root = rootOf(state)
+	local opener = state.ctx.Opener
+	if state.endStage == 0 then
+		state.endStage = 1
+		puff(state)
+	end
+	if state.endStage == 1 and state.endT >= places.Vanish / speed then
+		state.endStage = 2
+		hideCharacter(state)
+	end
+	if state.endStage <= 2 and opener and root and state.endHold then
+		local hold = state.endHold :: CFrame
+		pcall(function()
+			root.AssemblyLinearVelocity = Vector3.zero
+			root.CFrame = hold
+		end)
+	end
+	if state.endStage == 2 and state.endT >= places.Appear / speed then
+		state.endStage = 3
+		state.endT = -1
+		if opener and root then
+			local stand = endStand(state)
+			pcall(function()
+				root.AssemblyLinearVelocity = Vector3.zero
+				root.CFrame = stand
+			end)
+		end
+		showCharacter(state)
+		puff(state)
+	end
+end
+
 local function endAction(state: State)
 	if state.phase ~= "Action" then
 		return
@@ -1985,7 +2195,18 @@ local function placeCharacter(state: State)
 	-- sa plus grande largeur + 1 stud (la moitié du perso) du centre, pour ne pas entrer dedans. Coupé : StandSide.
 	local standSide = New.StandSide
 	local shownBox = state.box
-	if OPEN_BOX_HEIGHT ~= nil and shownBox ~= nil then
+	if state.spacing and shownBox ~= nil then
+		-- a536 (L-502) : espacement v2 : StandSide, ou la demi-largeur du colis dans l'axe du perso + StandFaceGap.
+		local ok, frame, size = pcall(function()
+			return shownBox:GetBoundingBox()
+		end)
+		if ok and typeof(frame) == "CFrame" and typeof(size) == "Vector3" then
+			local half = (math.abs(frame.RightVector:Dot(right)) * size.X
+				+ math.abs(frame.UpVector:Dot(right)) * size.Y
+				+ math.abs(frame.LookVector:Dot(right)) * size.Z) / 2
+			standSide = math.max(standSide, half + New.StandFaceGap)
+		end
+	elseif OPEN_BOX_HEIGHT ~= nil and shownBox ~= nil then
 		local size = extents(shownBox)
 		standSide = math.max(standSide, math.max(size.X, size.Z) / 2 + 1)
 	end
@@ -2078,6 +2299,7 @@ function Unbox.Begin(ctx: Context): State
 	if shelfBox and shelfBox:IsA("PVInstance") then
 		home = shelfBox:GetPivot()
 	end
+	local spacing = featureOn("UnboxSpacingV2") -- a536 (L-502, L-504)
 	local state: State = {
 		ctx = ctx,
 		phase = "Intro",
@@ -2103,6 +2325,12 @@ function Unbox.Begin(ctx: Context): State
 		boxScale0 = 1,
 		boxHeight = 1.6,
 		tierScale = 1,
+		spacing = spacing,
+		grown = not (spacing and New.GrowAt == "TopTeleport"),
+		growPending = 1,
+		endT = -1,
+		endStage = 0,
+		endHold = nil,
 		appliedScale = 1,
 		lid = nil,
 		lidOffset = CFrame.identity,
@@ -2138,6 +2366,8 @@ function Unbox.Begin(ctx: Context): State
 		strong = false,
 		tool = nil,
 		toolOffset = CFrame.identity,
+		toolGrip = CFrame.identity,
+		toolGripOn = featureOn("UnboxToolGrip"),
 		mark = nil,
 		runFx = nil,
 		runEvery = 0.06,
@@ -2177,6 +2407,12 @@ function Unbox.Begin(ctx: Context): State
 		smoked = false,
 		created = { anchor },
 	}
+	-- a536 (L-502) : le colis grossit dans le nuage de la téléportation sur le couvercle avant Unbox_Slam : après un
+	-- Stomp sur le couvercle, la dernière action y est aussi précédée d'une téléportation (Top à Top).
+	local lastMove = state.moves[#state.moves]
+	if not state.grown and #state.moves >= 2 and lastMove and lastMove.Place == "Top" and not lastMove.Teleport then
+		state.moves[#state.moves] = { Action = lastMove.Action, Place = lastMove.Place, Teleport = true }
+	end
 	-- a523 (L-462) : Impacts attendus avant le coup final (ceux de la Config : les mêmes chez tous les joueurs).
 	for index = 1, #state.moves - 1 do
 		state.hitImpacts += #state.moves[index].Action.Impacts
@@ -2327,6 +2563,7 @@ function Unbox.Step(state: State, dt: number): string?
 	stepSounds(state, dt) -- vague 75 (L-261)
 	state.spin += RevealConfig.Fallback.Spin * dt
 	local phase = state.phase
+	stepGrow(state) -- a536 (L-502)
 	if phase == "Intro" then
 		if state.t >= New.Intro then
 			local first = state.moves[1]
@@ -2415,6 +2652,7 @@ function Unbox.Step(state: State, dt: number): string?
 			silhouette:PivotTo((state.silhouetteHome + shake) * CFrame.Angles(0, angle, 0))
 		end)
 	end
+	stepEnd(state, dt) -- a536 (L-504)
 	if state.recoilLeft > 0 and state.ctx.Opener then
 		local slice = math.min(dt, state.recoilLeft)
 		state.recoilLeft -= slice
@@ -2599,6 +2837,7 @@ function Unbox.GetState(state: State): { [string]: any }
 		RarityText = if rarityText and rarityText.Visible then rarityText.Text else nil,
 		Upgrade = upgrade ~= nil and upgrade.Visible,
 		BoxScale = state.tierScale,
+		Grown = state.grown, -- a536 (L-502)
 		Box = state.box,
 		Tool = state.tool,
 		Mark = state.mark,
