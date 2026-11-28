@@ -843,7 +843,8 @@ local function showOdds(state: State, value: number)
 		local plan = state.ctx.Plan
 		local luck = plan.Luck or 1
 		if state.luckShown then
-			-- a523 (L-462) : avec les gains des coups, la vraie chance du moment, sans décalage d'affichage (a494).
+			-- a523 (L-462) : avec les gains des coups, base × (1 + gains montrés), sans décalage d'affichage (a494) ;
+			-- a526 : visuel, le tirage garde la chance de base (Cantin 28/11) ; la cote (1 IN N) reste la vraie.
 			local shown = if plan.Hits ~= nil or ShelfLogic == nil
 				then value
 				else ShelfLogic.displayLuck(value, luck, ShelfLogic.finalLuck(luck, 0, state.ctx.Id .. "|" .. state.ctx.ItemId))

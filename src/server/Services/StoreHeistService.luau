@@ -3150,35 +3150,6 @@ local function startReveal(player: Player, slot: Slot, box: ShelfBox)
 	local pending: Content = { Rarity = box.Rarity, ItemId = "", Mutation = nil }
 	local given = contentFor(player, slot, pending)
 	local imposed = given ~= pending
-	-- a523 (L-462, Shared/UnboxPlan.hitLuck) : les gains des coups tirés ici, d'avance et AVANT l'objet ; l'objet, son
-	-- poids et ses mutations sont tirés avec la chance finale (base × (1 + gains), UnboxPlan.hitsFinal), celle que les
-	-- joueurs voient à la fin des coups (règle de Roblox : la chance affichée est la vraie). La base (chance tirée) va
-	-- dans le plan avec les gains. Jamais sur un contenu ou une chance imposés (tuto), ni sans plan à montrer.
-	local baseLuck = luck
-	local hits: { string }? = nil
-	local hitModule: any = Shared:FindFirstChild("UnboxPlan")
-	if not imposed and not luckForced and hitModule and (Unbox :: any).New and (Unbox :: any).New.Enabled == true and luck < 1e6 then
-		local ok, drawnHits, final = pcall(function(): (any, any)
-			local UnboxPlan = require(hitModule) :: any
-			if not UnboxPlan.hitLuck() then
-				return nil, nil
-			end
-			local list = UnboxPlan.hitsDraw(function(): number
-				return random:NextNumber()
-			end)
-			baseLuck = UnboxPlan.planLuck(luck)
-			return list, UnboxPlan.hitsFinal(baseLuck, list)
-		end)
-		if ok and type(drawnHits) == "table" and type(final) == "number" and final >= 1 and final < math.huge then
-			hits = drawnHits
-			luck = final
-		else
-			baseLuck = luck
-			if not ok then
-				warnOnce("unbox.hits", `gains des coups impossibles ({drawnHits}) : chance tirée seule`)
-			end
-		end
-	end
 	local content: Content? = nil
 	local drawnRarity = box.Rarity
 	if imposed then
@@ -3197,6 +3168,38 @@ local function startReveal(player: Player, slot: Slot, box: ShelfBox)
 				Mutation = Mutations.Sanitize({ Size = sizeMutationFor(weight), Effect = effect }),
 				Weight = weight,
 			}
+		end
+	end
+	-- a523 (L-462, Shared/UnboxPlan.hitLuck), a526 : gains des coups visuels, le tirage garde la chance de base (Cantin
+	-- 28/11). Tirés ici par le serveur, APRÈS l'objet, sa rareté, son poids et ses mutations (tirés juste au-dessus avec
+	-- `luck`, la chance de base, exactement comme interrupteur coupé : mêmes graines, même tirage). Ils ne servent qu'à
+	-- l'affichage (« +0.2 LUCK », séries, SUPER LUCK!, compteur jusqu'à « ×F LUCK », F = UnboxPlan.hitsFinal) : `luck`
+	-- n'est jamais remplacée, la cote (1 IN N), Info.Luck, Opening.Luck et les améliorations gardent la vraie chance.
+	-- La base (2 décimales) va dans le plan avec les gains. Jamais sur un contenu ou une chance imposés (tuto).
+	local baseLuck = luck
+	local shownLuck = luck -- a526 : chance affichée à la fin des coups (visuel seulement : journal)
+	local hits: { string }? = nil
+	local hitModule: any = Shared:FindFirstChild("UnboxPlan")
+	if content ~= nil and not imposed and not luckForced and hitModule and (Unbox :: any).New and (Unbox :: any).New.Enabled == true and luck < 1e6 then
+		local ok, drawnHits, shown = pcall(function(): (any, any)
+			local UnboxPlan = require(hitModule) :: any
+			if not UnboxPlan.hitLuck() then
+				return nil, nil
+			end
+			local list = UnboxPlan.hitsDraw(function(): number
+				return random:NextNumber()
+			end)
+			baseLuck = UnboxPlan.planLuck(luck)
+			return list, UnboxPlan.hitsFinal(baseLuck, list)
+		end)
+		if ok and type(drawnHits) == "table" and type(shown) == "number" and shown >= 1 and shown < math.huge then
+			hits = drawnHits
+			shownLuck = shown
+		else
+			baseLuck = luck
+			if not ok then
+				warnOnce("unbox.hits", `gains des coups impossibles ({drawnHits}) : chance tirée seule`)
+			end
 		end
 	end
 	if content == nil then
@@ -3285,7 +3288,8 @@ local function startReveal(player: Player, slot: Slot, box: ShelfBox)
 			upgrades, climb = UnboxPlan.shelfClimb(box.Rarity, final.Rarity, upgrades)
 			-- a462 (L-376) : la chance de l'ouvreur va dans le plan (« ×N LUCK » pendant les coups), interrupteur allumé.
 			local planLuck: number? = if UnboxPlan.luckClimbs() == true then luck else nil
-			-- a523 (L-462) : avec les gains des coups, la base et les gains (le client montre la base, puis chaque gain).
+			-- a523 (L-462), a526 : avec les gains des coups (visuels, le tirage garde la chance de base, Cantin 28/11), la
+			-- base et les gains (le client montre la base, puis chaque gain).
 			if hits then
 				planLuck = baseLuck
 			end
@@ -3319,7 +3323,7 @@ local function startReveal(player: Player, slot: Slot, box: ShelfBox)
 		elseif drawnRarity ~= final.Rarity then ` (tirée : {drawnRarity}, aucun objet nulle part)`
 		else ""
 	local mutation = Mutations.Label(final.Mutation)
-	log(`{player.Name} ouvre la caisse {box.Rarity} {slot.Name} de {store.Id} : cinématique {id}, chance ×{luck}{if hits then ` (base ×{baseLuck}, gains des coups {table.concat(hits)})` else ""}, objet {final.Rarity} ({final.ItemId}){how}, {weight} kg, taille ×{scale}, classe {sizeClass}{if mutation then ", " .. mutation else ""}, {maxSeconds} s au plus{if plan then `, plan {plan}` else ""}`)
+	log(`{player.Name} ouvre la caisse {box.Rarity} {slot.Name} de {store.Id} : cinématique {id}, {if hits then `chance de tirage ×{luck} (gains visuels {table.concat(hits)}, affiché ×{shownLuck})` else `chance ×{luck}`}, objet {final.Rarity} ({final.ItemId}){how}, {weight} kg, taille ×{scale}, classe {sizeClass}{if mutation then ", " .. mutation else ""}, {maxSeconds} s au plus{if plan then `, plan {plan}` else ""}`)
 end
 
 -- RevealDone(revealId) : l'ouvreur a fini de voir sa cinématique. Seule la sienne, en cours ; sinon ignoré.

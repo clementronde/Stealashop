@@ -345,10 +345,10 @@ local Unbox = {
 		MarkImpact = "!",
 
 		-- a523 (L-462, Features.UnboxHitLuck / UnboxHitLuckDev ; Clément 26/11, paquet H idée 1) : la chance qui monte
-		-- pendant les coups d'un colis de rayon. Le serveur tire Hits gains d'avance (Shared/UnboxPlan.hitsDraw), avant
-		-- l'objet : chaque gain vaut Step × la chance tirée (la base) × le niveau de série (1 à StreakMax : « x2 STREAK »),
-		-- ou SuperGain × la base pour « SUPER LUCK! » ; le total des gains reste sous MaxBonus × la base ; l'objet est tiré
-		-- avec base × (1 + total), la chance montrée à la fin des coups. Le client répartit les Hits gains sur les Impacts
+		-- pendant les coups d'un colis de rayon. Le serveur tire Hits gains d'avance (Shared/UnboxPlan.hitsDraw), après
+		-- l'objet (a526 : visuel, le tirage garde la chance de base, Cantin 28/11) : chaque gain vaut Step × la chance tirée (la base) × le niveau de série (1 à StreakMax : « x2 STREAK »),
+		-- ou SuperGain × la base pour « SUPER LUCK! » ; le total des gains reste sous MaxBonus × la base ; le compteur
+		-- finit sur base × (1 + total), affichage seulement (l'objet est tiré avec la base). Le client répartit les Hits gains sur les Impacts
 		-- de la scène avant le coup final (plusieurs gains sur un Impact s'il y en a moins). Valeurs : V0 proposé (a523, 28/11).
 		HitLuck = {
 			Hits = 6, -- V0 : nombre de gains tirés (à peu près les Impacts d'un colis Rare avant la masse)
