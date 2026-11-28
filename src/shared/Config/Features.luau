@@ -111,6 +111,13 @@ local Features = {
 	-- Vague GC6 (a410, MAJ 7, Partie 2 section 3.4) : mutations déjà obtenues de chaque objet dans l'index (catégorie
 	-- MUTATIONS d'UI_Index_v3, IndexController ; notées par IndexService même à false). V0 proposé (Cantin, 23/11) : true.
 	IndexMutations = true,
+	-- a542 (L-512, Clément 28/11 : « l'effet diamant, tout est bleu ») : sur les objets texturés, une mutation dont
+	-- FX_Mutation_<Id> porte TextureMode = "Tint" teint aussi la texture (MutationFxController : SurfaceAppearance.Color à
+	-- la couleur de la pièce, TextureID d'une MeshPart vidé pendant la mutation, tout remis ensuite). Interrupteur PROD
+	-- (partout) : false (règle C2 : pas encore de test humain, T-462) ; false = seule la couleur des pièces, comme avant.
+	MutationTextureTint = false,
+	-- a542 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev).
+	MutationTextureTintDev = true,
 	-- a280 (vague GC2, lot C de l'audit a270 ; L-217, L-231, L-277) : 2e étage de la boutique, Model `Floor_2` de Clément
 	-- (Config/ShopGrowth.Floor2, Shared/ShopFloor, ShopStageService ; règle de L-294 : 8 présentoirs en bas, puis l'étage
 	-- acheté et ses 8 places) ; true : sans Floor_2 livré, rien ne change ; false = pas d'étage, l'amélioration Display Stands
