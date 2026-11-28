@@ -98,6 +98,10 @@ local Features = {
 	-- (PlayerCollisionService) ; ils touchent toujours le décor, les vigiles, le bot, les PNJ, le mur de nuit, les
 	-- vitrines et les portes. false = les joueurs se traversent ; true = le contact entre joueurs d'avant.
 	PlayerCollision = false,
+	-- a539 (L-506) : le robot de la boutique (BotService) joue Walk en revenant à sa place, au lieu de Run ; T-453 pas encore
+	-- passé (C2) : false en PROD, allumé en DEV par BotWalkDev (Config/ProductIds.IsDev). false = Run au retour, comme avant.
+	BotWalk = false,
+	BotWalkDev = true,
 	-- a413 (vague GC7, 23/11) : badges du jeu (BadgeService, Config/Badges ; Id à 0 = badge sauté) ; V0 proposé (Cantin, 23/11) : true ; false = aucun badge donné.
 	Badges = true,
 	-- Vague GC6 (a410, MAJ 7) : notifications Roblox hors du jeu (Config/Notifications, NotificationService, demande de
@@ -107,6 +111,13 @@ local Features = {
 	-- Vague GC6 (a410, MAJ 7, Partie 2 section 3.4) : mutations déjà obtenues de chaque objet dans l'index (catégorie
 	-- MUTATIONS d'UI_Index_v3, IndexController ; notées par IndexService même à false). V0 proposé (Cantin, 23/11) : true.
 	IndexMutations = true,
+	-- a542 (L-512, Clément 28/11 : « l'effet diamant, tout est bleu ») : sur les objets texturés, une mutation dont
+	-- FX_Mutation_<Id> porte TextureMode = "Tint" teint aussi la texture (MutationFxController : SurfaceAppearance.Color à
+	-- la couleur de la pièce, TextureID d'une MeshPart vidé pendant la mutation, tout remis ensuite). Interrupteur PROD
+	-- (partout) : false (règle C2 : pas encore de test humain, T-462) ; false = seule la couleur des pièces, comme avant.
+	MutationTextureTint = false,
+	-- a542 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev).
+	MutationTextureTintDev = true,
 	-- a280 (vague GC2, lot C de l'audit a270 ; L-217, L-231, L-277) : 2e étage de la boutique, Model `Floor_2` de Clément
 	-- (Config/ShopGrowth.Floor2, Shared/ShopFloor, ShopStageService ; règle de L-294 : 8 présentoirs en bas, puis l'étage
 	-- acheté et ses 8 places) ; true : sans Floor_2 livré, rien ne change ; false = pas d'étage, l'amélioration Display Stands
@@ -197,6 +208,12 @@ local Features = {
 	ShopInsideBackWall = false,
 	-- a468 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
 	ShopInsideBackWallDev = true,
+	-- a540 (L-509, Clément 27/11) : boutique coupée, les pièces fines du fond (ShopStageService) sont posées
+	-- ShopGrowth.BackPieceOffset derrière le nouveau fond : plus de scintillement du fond vu de derrière.
+	-- Interrupteur PROD (partout) : false (règle C2) ; false = posées pile sur le fond, comme avant.
+	ShopBackPieceOffset = false,
+	-- a540 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev).
+	ShopBackPieceOffsetDev = true,
 	-- a426 (L-319, décision de Clément du 23/11) : dans une zone `SafeZone`, la même vitesse pour tous et un léger
 	-- ralenti pour qui porte un objet pris chez un joueur (Balance.SafeZoneSpeed, StatsService). V0 proposé (Cantin,
 	-- 24/11) : true ; false = vitesse de la formule partout et vitesse fixe Carry.StolenItemWalkSpeed, comme avant.
@@ -290,6 +307,14 @@ local Features = {
 	SecuredFireworks = false,
 	-- a475 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
 	SecuredFireworksDev = true,
+	-- a541 (L-511, piste A, Clément 28/11) : pendant qu'un joueur porte (attribut Carrying du Player, CarryService), chez
+	-- tous les joueurs, chaque Attachment de son aura (CosmeticFx) marqué CarryMode par Clément : « Off » = émetteurs,
+	-- lumières et Beams éteints ; « Dim » = débit × Cosmetics.CarryAura.DimRate et Brightness × DimLight ; tout revient à
+	-- la fin du port (CosmeticController). Interrupteur PROD (partout) : false (règle C2 : pas encore de test humain,
+	-- T-461) ; false = aura entière pendant le port, comme avant (seule la piste B de Clément, sans code).
+	AuraCarryMode = false,
+	-- a541 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	AuraCarryModeDev = true,
 	-- a521 (L-405, Clément 25 et 26/11) : carte ITEM SECURED spectaculaire (Controllers/Escape/SecuredCard, réglages
 	-- Config/SecuredCard) : l'objet en 3D dans Card.Preview, le sunburst (Rays, RaysBack, Burst, Rain) teint à la couleur
 	-- de la rareté et réglé par palier (Normal, Légendaire, Grand : Mythique et plus, gros objet, coup de chance),
@@ -354,8 +379,9 @@ local Features = {
 	UnboxClimbMatchesItemDev = true,
 	-- a523 (L-462, Clément 26/11 : « chaque coup de l'animation fait monter la luck ») : pendant l'ouverture d'un colis de
 	-- rayon, la chance tirée est la base, puis des coups font monter la chance (« +0.2 LUCK », séries « x2 STREAK »,
-	-- rarement « SUPER LUCK! ») ; tout est tiré d'avance par le serveur AVANT l'objet, et l'objet est tiré avec la chance
-	-- finale (celle qu'on voit à la fin des coups). Config/Unbox.New.HitLuck, Shared/UnboxPlan (hitsDraw, hitsBonus),
+	-- rarement « SUPER LUCK! ») ; a526 : visuel, le tirage garde la chance de base (Cantin 28/11) : les gains sont tirés
+	-- par le serveur après l'objet, qui est tiré avec la chance de base comme interrupteur coupé ; les chances affichées
+	-- (1 IN N, odds) restent la vraie chance. Config/Unbox.New.HitLuck, Shared/UnboxPlan (hitsDraw, hitsBonus),
 	-- StoreHeistService.startReveal, Controllers/Reveal/Unbox (BB_UnboxLuckGain). Interrupteur PROD (partout) : false
 	-- (règle C2 : pas encore de test humain) ; false = la chance d'avant (L-376 : ×1 qui monte jusqu'à la chance tirée).
 	UnboxHitLuck = false,
@@ -399,6 +425,13 @@ local Features = {
 	WeightIncomeV2 = false,
 	-- a513 : la même chose allumée dans le jeu DEV et le jeu TEST seulement (Config/Economy.IsDev).
 	WeightIncomeV2Dev = true,
+	-- a528 (Cantin, 28/11) : poids sans limite au-dessus de 10 000 kg. a528a : étiquettes Titan (Weight.TitanFrom) et
+	-- Cosmic (Weight.CosmicFrom) au-dessus de Colossal, taille du modèle plafonnée (Weight.MaxVisualScale), poids écrit
+	-- en K/M/B (Weight.ShortFormatFrom) ; a528b : le tirage au-delà de 10 000 kg. Lu par Config/Weight (Weight.Tail).
+	-- Interrupteur PROD : false (règle C2) ; false = 10 000 kg au plus, comme avant.
+	WeightTail = false,
+	-- a528 : la même chose allumée dans le jeu DEV et le jeu TEST seulement (Config/GameEnv.IsDevLike).
+	WeightTailDev = true,
 	-- a513 (Cantin, 27/11, « tout V0 ») : les bonus de chance s'additionnent comme le joueur les lit (×3 et ×2 donnent
 	-- ×5 : la somme des bonus actifs, ×1 sans aucun) au lieu de se multiplier : arbre (BoxLuck), chance du serveur (×2, ×4, ×8),
 	-- chance personnelle (×3 Luck) ; la chance tirée à l'ouverture (×1 à ×10) multiplie ensuite ce total (×4 tiré avec
@@ -434,6 +467,21 @@ local Features = {
 	BiggerTrophies = false,
 	-- a491 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
 	BiggerTrophiesDev = true,
+	-- a536 (L-502 et L-504, recette du chef animation du 28/11 ; Config/Unbox.New StandFaceGap à EndStandMinGap,
+	-- Controllers/Reveal/Unbox) : espacement v2 de l'ouverture. Le colis garde la taille de son BOX_ pendant les coups,
+	-- le perso se tient à la demi-largeur du colis + 2 studs, et le colis grossit (OpenBoxHeight × UpgradeGrow) dans le
+	-- nuage de la téléportation qui précède Unbox_Slam ; à l'éclatement, le perso va au sol à 4,5 studs au moins de
+	-- l'objet, tourné vers lui (au lieu du recul). Interrupteur PROD (partout) : false (règle C2 : pas encore de test
+	-- humain) ; false = colis grossi dès le départ, StandSide, recul, comme avant.
+	UnboxSpacingV2 = false,
+	-- a536 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev).
+	UnboxSpacingV2Dev = true,
+	-- a536 (L-508, Controllers/Reveal/Unbox.takeTool et poseTool) : un TOOL_Unbox_* livré en Tool est posé dans la main
+	-- avec son Grip (Handle = RightGripAttachment × Grip⁻¹, comme Roblox pour un Tool en main). Interrupteur PROD
+	-- (partout) : false (règle C2) ; false = un Tool n'est pas posé (seuls les Model et les pièces le sont), comme avant.
+	UnboxToolGrip = false,
+	-- a536 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev).
+	UnboxToolGripDev = true,
 	-- a496 (règle de Cantin, 26/11 ; Config/DisplaySize, étapes 1 à 3) : le minimum de taille par rareté (facteur du modèle
 	-- médian, minimum 4, 5 ou 7 studs, grossissement par le poids) vaut partout : en main (HeldItemService), porté
 	-- (CarryService), au sol (DisplayService.BuildFloorItem) et à l'ouverture dans le magasin PNJ (StoreHeistService :
@@ -525,6 +573,13 @@ local Features = {
 	GuardCatchRagdoll = false,
 	-- a518 : la même chose allumée dans le jeu DEV (et TEST) seulement (Config/ProductIds.IsDev).
 	GuardCatchRagdollDev = true,
+	-- a537 (L-501, Clément 28/11 : « Ragdoll seul ») : à la capture de jour en ragdoll (GuardCatchRagdoll ci-dessus), seul
+	-- le ragdoll se joue : plus de Knockdown pendant le ragdoll (ChaseController), GetUp gardé une fois relevé, ni plan de
+	-- capture ni écran « CAUGHT! » (remote CatchScene pas envoyé, CatchSceneController). Nuit, batte, policier : inchangés.
+	-- PROD : false (C2) ; false = Knockdown et la mise en scène de capture pendant le ragdoll, comme avant.
+	GuardCatchRagdollOnly = false,
+	-- a537 : la même chose allumée dans le jeu DEV (et TEST) seulement (Config/ProductIds.IsDev).
+	GuardCatchRagdollOnlyDev = true,
 	-- a519 (L-448, Clément 26/11, repasse animation point 12) : coups plus secs et course portée calée, sur le joueur local
 	-- (Shared/Anim/StrikeFeel, valeurs Config/AnimFeel) : fondu court au lancement des coups (animations au marqueur Impact),
 	-- arrêt sur image de la seule piste du coup à son marqueur Impact, CarryRun jouée à la vitesse au sol. Les animations de
@@ -533,6 +588,12 @@ local Features = {
 	StrikeFeel = false,
 	-- a519 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
 	StrikeFeelDev = true,
+	-- a538 (L-505, Clément 27/11) : coups variés, une série de Hit_* par arme (Config/Tools.HitAnimations), tirée au hasard
+	-- à chaque frappe de vitrine, jamais le même deux fois de suite (HitController, lu à chaque coup ; StrikeFeel et son au
+	-- marqueur Impact comme avant). Interrupteur PROD (partout) : false (règle C2) ; false = HitWindow ou HitWindowHeavy.
+	HitVariants = false,
+	-- a538 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev).
+	HitVariantsDev = true,
 	-- a520 (L-410, Clément 25/11 : « skip le temps en cliquant sur E ») : E sur son objet posé encore sous antivol ouvre
 	-- la fenêtre d'achat d'Open Now (palier choisi par le serveur selon l'attente de CET objet, qui reçoit le temps
 	-- payé) au lieu de ne rien proposer (UnboxController, UnboxService.OfferSkip, MonetizationService). Seulement avec la
@@ -598,7 +659,13 @@ local Features = {
 	-- BB_UnboxOdds, repli du code sans lui). Interrupteur PROD (partout) : false (règle C2) ; false = aucune étiquette.
 	BoxZoneTag = false,
 	-- a517 : la même chose allumée dans le jeu DEV (et TEST) seulement (Config/ProductIds.IsDev).
-	BoxZoneTagDev = false,
+	BoxZoneTagDev = true, -- a530 (Cantin, 28/11) : rallumé, l'objet est tiré dans la zone de l'étiquette
+	-- a527 (Cantin, 28/11, pour une vidéo) : commande d'admin ForceNextUnbox (Config/Admin, AdminService) : l'admin choisit
+	-- l'objet, le poids et la mutation de SON prochain colis de rayon (StoreHeistService.SetAdminContentOverride, avant
+	-- l'accroche du tuto) ; toute l'ouverture normale se joue. Interrupteur PROD (partout) : false ; false = commande refusée.
+	AdminForceUnbox = false,
+	-- a527 : la même chose allumée dans le jeu DEV (et TEST) seulement (Config/ProductIds.IsDev).
+	AdminForceUnboxDev = true,
 }
 
 export type Features = typeof(Features)

@@ -24,7 +24,9 @@ local Settings = require(Shared:WaitForChild("Config"):WaitForChild("Announce"))
 local Find = require(Shared:WaitForChild("Contract"):WaitForChild("Find"))
 local Icons = require(Shared:WaitForChild("Contract"):WaitForChild("Icons"))
 
-type Entry = { Message: string, Detail: string, Icon: string, Plain: string, Hold: number?, Scroll: boolean? } -- a457 : Hold et Scroll de cette annonce
+-- a543 (L-495) : objet d'une annonce venue d'un autre serveur (remote BigAnnounce), montré dans BigAnnounce.
+type Big = { ItemId: string, Who: string, Name: string, Income: number, Weight: number }
+type Entry = { Message: string, Detail: string, Icon: string, Plain: string, Hold: number?, Scroll: boolean?, Big: Big? } -- a457 : Hold et Scroll de cette annonce
 
 local AnnounceController = {}
 
@@ -104,6 +106,86 @@ local function fill(gui: ScreenGui, entry: Entry): boolean
 	return true
 end
 
+-- a543 (L-495) : UI_Announce.BigAnnounce de Clément (copie de UI_Escape.Card) : Message, Detail, ItemName, Rarity,
+-- Income, Weight, ItemIcon, et l'objet en 3D dans Preview (Escape/SecuredCard, info.Card). Rend le cadre montré, nil si
+-- BigAnnounce manque (Banner sert).
+local function text(parent: Instance, name: string, value: string): TextLabel?
+	local found = Find.path(parent, name)
+	if found and found:IsA("TextLabel") then
+		found.Text = value
+		return found
+	end
+	return nil
+end
+
+local function fillBig(gui: ScreenGui, entry: Entry): GuiObject?
+	local big = entry.Big
+	local found = Find.path(gui, "BigAnnounce")
+	if big == nil or found == nil or not found:IsA("GuiObject") then
+		return nil
+	end
+	local card = found :: GuiObject
+	local config = Shared:WaitForChild("Config")
+	local Items = require(config:WaitForChild("Items")) :: any
+	local Rarities = require(config:WaitForChild("Rarities")) :: any
+	local Format = require(Shared:WaitForChild("Format")) :: any
+	local def = Items.ById[big.ItemId]
+	local rarity = if def then Rarities.ById[def.Rarity] else nil
+	text(card, "Message", big.Who)
+	text(card, "Detail", entry.Detail)
+	text(card, "ItemName", if big.Name ~= "" then big.Name elseif def then def.DisplayName else "")
+	text(card, "Income", `+{Format.money(big.Income)}/s`)
+	local weightText = ""
+	local weightModule = Shared:FindFirstChild("ItemWeight")
+	if big.Weight > 0 and weightModule and weightModule:IsA("ModuleScript") then
+		local ok, formatted = pcall(function(): any
+			return (require(weightModule) :: any).Format(big.Weight)
+		end)
+		weightText = if ok and type(formatted) == "string" then formatted else ""
+	end
+	text(card, "Weight", weightText)
+	local rarityLabel = text(card, "Rarity", if rarity then rarity.DisplayNameUpper else "")
+	local ui = script.Parent:FindFirstChild("UI")
+	local fx = if ui then ui:FindFirstChild("RarityFx") else nil
+	if fx and fx:IsA("ModuleScript") and def then
+		pcall(function()
+			local apply = (require(fx) :: any).Apply
+			local name = Find.path(card, "ItemName")
+			if name and name:IsA("TextLabel") then
+				apply(name, def.Rarity)
+			end
+			if rarityLabel then
+				apply(rarityLabel, def.Rarity)
+			end
+		end)
+	end
+	local icon = Find.path(card, "ItemIcon")
+	if icon and icon:IsA("ImageLabel") and entry.Icon ~= "" then
+		local texture = iconTexture(entry.Icon)
+		if texture then
+			icon.Image = texture
+		end
+	end
+	local escape = script.Parent:FindFirstChild("Escape")
+	local module = if escape then escape:FindFirstChild("SecuredCard") else nil
+	if module and module:IsA("ModuleScript") then
+		pcall(function()
+			(require(module) :: any).Play(gui, { ItemId = big.ItemId, Income = big.Income, Card = card })
+		end)
+	end
+	return card
+end
+
+local function stopBig()
+	local escape = script.Parent:FindFirstChild("Escape")
+	local module = if escape then escape:FindFirstChild("SecuredCard") else nil
+	if module and module:IsA("ModuleScript") then
+		pcall(function()
+			(require(module) :: any).Stop()
+		end)
+	end
+end
+
 local function motion(): any
 	local folder = script.Parent:FindFirstChild("UI")
 	local module = if folder then folder:FindFirstChild("Motion") else nil
@@ -177,7 +259,32 @@ local function pump()
 		restoreScroll(pendingScroll) -- a457 (L-379) : Message remis à sa place avant d'être rempli
 		pendingScroll = nil
 		local gui = screen()
-		if gui == nil or not fill(gui, entry) then
+		local bigCard = if gui then fillBig(gui, entry) else nil
+		if gui and bigCard then
+			-- a543 (L-495) : BigAnnounce à la place de Banner, le temps de cette annonce ; tout est remis ensuite.
+			local banner = Find.path(gui, "Banner")
+			local bannerShown = if banner and banner:IsA("GuiObject") then banner.Visible else nil
+			if banner and banner:IsA("GuiObject") then
+				banner.Visible = false
+			end
+			bigCard.Visible = true
+			shown = entry.Plain
+			local hold = math.max(entry.Hold or Settings.Hold, 0)
+			lastHold = hold
+			lastExit = "Close"
+			setShown(gui, true)
+			task.wait(hold)
+			shown = nil
+			if gui.Parent ~= nil then
+				setShown(gui, false)
+			end
+			task.wait(math.max(Settings.Gap, 0))
+			stopBig()
+			bigCard.Visible = false
+			if banner and banner:IsA("GuiObject") and bannerShown ~= nil then
+				banner.Visible = bannerShown
+			end
+		elseif gui == nil or not fill(gui, entry) then
 			fallback(entry)
 		else
 			shown = entry.Plain
@@ -197,7 +304,7 @@ local function pump()
 	running = false
 end
 
-function AnnounceController.Push(message: string, detail: string?, icon: string?, plain: string?, hold: number?, scroll: boolean?)
+function AnnounceController.Push(message: string, detail: string?, icon: string?, plain: string?, hold: number?, scroll: boolean?, big: Big?)
 	if type(message) ~= "string" or message == "" then
 		return
 	end
@@ -209,11 +316,39 @@ function AnnounceController.Push(message: string, detail: string?, icon: string?
 		-- a457 (L-335) : durée envoyée par le serveur (l'aube : 5 s), bornée ; absente : Config/Announce.Hold.
 		Hold = if type(hold) == "number" and hold == hold and hold > 0 and hold <= 30 then hold else nil,
 		Scroll = scroll == true, -- a457 (L-379) : sortie qui défile (annonce de l'aube)
+		Big = if type(big) == "table" then big else nil, -- a543 (L-495) : jamais par le remote Announce (6 arguments)
 	})
 	while #queue > math.max(Settings.MaxQueue, 1) do
 		table.remove(queue, 1)
 	end
 	task.spawn(pump)
+end
+
+-- a543 (L-495) : remote BigAnnounce (CrossServerAnnounce) ; sans BigAnnounce chez Clément : Banner, comme Push.
+function AnnounceController.PushBig(
+	message: string,
+	detail: string?,
+	icon: string?,
+	plain: string?,
+	itemId: string,
+	who: string?,
+	name: string?,
+	income: number?,
+	weight: number?
+)
+	local cfg = Shared:WaitForChild("Config"):FindFirstChild("SecuredCard")
+	local ok, settings = pcall(require, cfg :: any)
+	local hold = if ok and type(settings) == "table" and settings.Cross then settings.Cross.BigHold else nil
+	local big: Big? = if type(itemId) == "string"
+		then {
+			ItemId = itemId,
+			Who = if type(who) == "string" then who else "",
+			Name = if type(name) == "string" then name else "",
+			Income = if type(income) == "number" then income else 0,
+			Weight = if type(weight) == "number" then weight else 0,
+		}
+		else nil
+	AnnounceController.Push(message, detail, icon, plain, if type(hold) == "number" and hold > 0 then hold else nil, nil, big)
 end
 
 function AnnounceController.GetState(): { Shown: string?, Queue: number, Fallbacks: number }
@@ -231,6 +366,9 @@ end
 function AnnounceController.Start()
 	local Net = require(Shared:WaitForChild("Net"):WaitForChild("Net")) :: any
 	Net.Client.Announce:Connect(AnnounceController.Push)
+	if Net.Client.BigAnnounce then
+		Net.Client.BigAnnounce:Connect(AnnounceController.PushBig)
+	end
 end
 
 return AnnounceController

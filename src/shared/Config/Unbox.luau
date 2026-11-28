@@ -200,6 +200,21 @@ local Unbox = {
 		StandSide = 3.2, -- V0 : le perso se tient à cette distance du colis, sur le côté (le long du rayon), face à lui
 		Recoil = 2, -- V0 : recul (studs) du perso quand le colis éclate
 		RecoilTime = 0.25, -- V0
+		-- a536 (L-502, L-504, recette du chef animation du 28/11 ; Features.UnboxSpacingV2 / UnboxSpacingV2Dev) :
+		-- espacement v2. Pendant les actions, le colis garde la taille de son BOX_ ; le perso se tient à
+		-- max(StandSide ; demi-largeur du colis dans son axe + StandFaceGap) du centre.
+		StandFaceGap = 2.0, -- V0 (L-502) : studs entre la face du colis et le HumanoidRootPart
+		-- "TopTeleport" : le colis grossit (jusqu'à Config/DisplaySize.Trophies.OpenBoxHeight × UpgradeGrow par
+		-- amélioration) dans le nuage de la téléportation sur le couvercle qui précède Unbox_Slam (de Places.Vanish à
+		-- Places.Appear) ; autre valeur : grossi dès le départ, comme a491.
+		GrowAt = "TopTeleport", -- V0 (L-502)
+		GrowBounce = 1.08, -- V0 (L-502) : rebond du grossissement, revenu à 1 à la fin de Places.Teleport ; 1 : aucun
+		-- À l'éclatement, plus de Recoil : le perso va au sol dans un nuage (Places), à D = max(EndStandMin ; demi-largeur
+		-- de l'objet à sa taille finale + EndStandGap) du centre de l'objet, tourné vers lui ; sans place : la plus grande
+		-- possible, au moins demi-largeur + EndStandMinGap.
+		EndStandMin = 4.5, -- V0 (L-504)
+		EndStandGap = 2.0, -- V0 (L-504)
+		EndStandMinGap = 1.0, -- V0 (L-504)
 		AnimEndFade = 0.3, -- V0 (f70c4) : s ; la dernière action (la masse) n'est pas arrêtée à son coup : elle finit en
 		-- fondu vers la pose d'attente du perso au lieu de s'arrêter net à sa dernière image
 		Camera = {
@@ -345,10 +360,10 @@ local Unbox = {
 		MarkImpact = "!",
 
 		-- a523 (L-462, Features.UnboxHitLuck / UnboxHitLuckDev ; Clément 26/11, paquet H idée 1) : la chance qui monte
-		-- pendant les coups d'un colis de rayon. Le serveur tire Hits gains d'avance (Shared/UnboxPlan.hitsDraw), avant
-		-- l'objet : chaque gain vaut Step × la chance tirée (la base) × le niveau de série (1 à StreakMax : « x2 STREAK »),
-		-- ou SuperGain × la base pour « SUPER LUCK! » ; le total des gains reste sous MaxBonus × la base ; l'objet est tiré
-		-- avec base × (1 + total), la chance montrée à la fin des coups. Le client répartit les Hits gains sur les Impacts
+		-- pendant les coups d'un colis de rayon. Le serveur tire Hits gains d'avance (Shared/UnboxPlan.hitsDraw), après
+		-- l'objet (a526 : visuel, le tirage garde la chance de base, Cantin 28/11) : chaque gain vaut Step × la chance tirée (la base) × le niveau de série (1 à StreakMax : « x2 STREAK »),
+		-- ou SuperGain × la base pour « SUPER LUCK! » ; le total des gains reste sous MaxBonus × la base ; le compteur
+		-- finit sur base × (1 + total), affichage seulement (l'objet est tiré avec la base). Le client répartit les Hits gains sur les Impacts
 		-- de la scène avant le coup final (plusieurs gains sur un Impact s'il y en a moins). Valeurs : V0 proposé (a523, 28/11).
 		HitLuck = {
 			Hits = 6, -- V0 : nombre de gains tirés (à peu près les Impacts d'un colis Rare avant la masse)

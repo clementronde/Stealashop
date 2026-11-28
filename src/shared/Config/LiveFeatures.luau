@@ -42,6 +42,8 @@ local LiveFeatures = {
 		GuardDayPatrolDev = true,
 		GuardCatchRagdoll = true, -- a518 : GuardService, à chaque capture par un vigile de magasin (Guard/CatchRagdoll)
 		GuardCatchRagdollDev = true,
+		GuardCatchRagdollOnly = true, -- a537 : GuardService et Guard/CatchRagdoll, à chaque capture en ragdoll (L-501)
+		GuardCatchRagdollOnlyDev = true,
 	} ::{ [string]: boolean },
 	-- Qui peut se servir de la commande d'admin : la même règle que le panneau admin (AdminService.IsAdmin, réglée
 	-- dans Config/Admin : tout le monde en Studio, Admin.UserIds, rang Admin.MinGroupRank du groupe du studio) ; pas

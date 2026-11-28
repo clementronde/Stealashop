@@ -88,6 +88,19 @@ local SkillTree = require(ReplicatedStorage.Shared.Config.SkillTree)
 local Features = require(ReplicatedStorage.Shared.Config.Features)
 local ShopFloor = require(ReplicatedStorage.Shared.ShopFloor) -- a280 : 2e étage
 
+-- a540 (L-509) : jeu DEV (Config/ProductIds.IsDev), lu sans planter si le module manque (bancs).
+local isDev = (function(): boolean
+	local module = ReplicatedStorage.Shared.Config:FindFirstChild("ProductIds")
+	if module ~= nil then
+		local ok, result = pcall(require, module :: any)
+		if ok and type(result) == "table" then
+			return (result :: any).IsDev == true
+		end
+	end
+	return false
+end)()
+local backPieceOffsetOn = Features.ShopBackPieceOffset == true or (Features.ShopBackPieceOffsetDev == true and isDev)
+
 -- Noms de Clément (L-096, plot_shop_builder) ; StageLevel et StageDepth : V0 proposés, absents du doc.
 local TEMPLATE_NAME = "PLOT_Shop"
 local STAGE_PATTERN = "^Stage_(%d+)$"
@@ -217,7 +230,9 @@ local function cutPart(part: BasePart, cut: Cut): boolean
 	end
 	local nearBack = back - z1 <= ShopGrowth.BackZone
 	if nearBack and z0 >= back - ShopGrowth.BackZone and z1 - z0 <= ShopGrowth.BackThickness then
-		part.CFrame = cut.pivot * (cf + Vector3.new(0, 0, depth - back)) -- pièce fine du fond : elle avance avec lui
+		-- pièce fine du fond : elle avance avec lui ; a540 (L-509) : boutique coupée, BackPieceOffset derrière le fond
+		local offset = if backPieceOffsetOn and depth < back - EPS then ShopGrowth.BackPieceOffset else 0
+		part.CFrame = cut.pivot * (cf + Vector3.new(0, 0, depth - back + offset))
 		return true
 	end
 	if cut.rowCut then

@@ -66,6 +66,8 @@ local SHOP_ICON_PREFIXES: { string } = { "ICON_Aura_", "ICON_Trail_" }
 -- Modèle du vigile de nuit (Assets/Guards/NightGuard, nom lu aussi par GuardService) : sa liste
 -- d'animations a Arrest en plus (Animations.NightGuard, L-076).
 local NIGHT_GUARD_NAME = "NightGuard"
+-- a539 (L-506) : gardes de boutique (Contract/Models.ShopGuards), vérifiés avec Animations.ShopGuard, pas les vigiles.
+local SHOP_GUARD_NAMES: { string } = Models.ShopGuards.Names or { "NPC_Bodyguard", "NPC_DoorGuard" }
 -- Témoins de Clément (Map/Zone_<n>/Witnesses/NPC_Witness_Z<n>_0<k>, L-111) : leur liste est Animations.Witness.
 local WITNESS_PREFIX = "NPC_Witness"
 -- Foule de Clément (Assets/Crowd/Models/NPC_Crowd_01 à _12, L-223) : leur liste est Animations.Crowd.
@@ -1508,6 +1510,7 @@ local function checkAnimatedModels(scanned: { Instance }, jobs: { Job })
 		local driver = isDriver(inst) -- a42 : conducteur du camion, Idle seulement
 		local witness = string.sub(inst.Name, 1, #WITNESS_PREFIX) == WITNESS_PREFIX -- L-111
 		local crowd = string.sub(inst.Name, 1, #CROWD_PREFIX) == CROWD_PREFIX -- L-223
+		local shopGuard = table.find(SHOP_GUARD_NAMES, inst.Name) ~= nil -- a539 (L-506) : Animations.ShopGuard
 		if humanoid:FindFirstChildOfClass("Animator") == nil then
 			problem("Animations", `{label}.Humanoid : Animator manquant (10.4)`)
 		end
@@ -1520,13 +1523,14 @@ local function checkAnimatedModels(scanned: { Instance }, jobs: { Job })
 				elseif witness then Animations.Witness
 				elseif crowd then Animations.Crowd
 				elseif vendor then Animations.Vendor
+				elseif shopGuard then Animations.ShopGuard
 				elseif inst.Name == NIGHT_GUARD_NAME then Animations.NightGuard
 				else Animations.Guard
 			local names: { string } = {}
 			for _, spec in specs do
 				table.insert(names, spec.Name)
 			end
-			local kind = if driver then "conducteur" elseif witness then "témoin" elseif crowd then "foule" elseif vendor then "vendeur" else "vigile"
+			local kind = if driver then "conducteur" elseif witness then "témoin" elseif crowd then "foule" elseif vendor then "vendeur" elseif shopGuard then "garde de boutique" else "vigile"
 			pending(
 				"Animations",
 				`{label}.{Animations.FolderName} absent : animations de {kind} pas encore livrées ({table.concat(names, ", ")})`
@@ -1539,6 +1543,7 @@ local function checkAnimatedModels(scanned: { Instance }, jobs: { Job })
 					elseif witness then Animations.Witness
 					elseif crowd then Animations.Crowd
 					elseif vendor then Animations.Vendor
+					elseif shopGuard then Animations.ShopGuard
 					elseif inst.Name == NIGHT_GUARD_NAME then Animations.NightGuard
 					else Animations.Guard,
 				jobs

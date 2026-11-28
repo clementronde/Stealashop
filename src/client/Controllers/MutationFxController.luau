@@ -135,6 +135,28 @@ local CACHE_FLAGS = Perf.MutationFxCacheFlags == true
 local ON_SCREEN_ONLY = Perf.MutationFxOnScreenOnly == true
 local SCREEN_MARGIN: number = if type(Perf.MutationFxScreenMargin) == "number" then Perf.MutationFxScreenMargin else 0
 
+-- a542 (L-512) : FX_Mutation_<Id> avec l'attribut TextureMode = "Tint" teint aussi la texture des pièces : une
+-- SurfaceAppearance prend Color = la couleur calculée de la pièce (Roblox multiplie la texture par elle), une MeshPart
+-- à TextureID le perd pendant la mutation (la couleur se voit) ; tout est remis exactement quand l'effet part.
+-- Interrupteurs Features.MutationTextureTint (partout) et MutationTextureTintDev (jeu DEV, Config/ProductIds.IsDev).
+-- Modules facultatifs (bancs à liste de modules fixe : sans eux, comme avant).
+local function optionalConfig(name: string): any
+	local module = Config:FindFirstChild(name)
+	if module == nil or not module:IsA("ModuleScript") then
+		return nil
+	end
+	local ok, result = pcall(require, module :: any)
+	return if ok and type(result) == "table" then result else nil
+end
+local FeaturesConfig: any = optionalConfig("Features")
+local ProductIdsConfig: any = optionalConfig("ProductIds")
+local TEXTURE_TINT: boolean = FeaturesConfig ~= nil
+	and (
+		FeaturesConfig.MutationTextureTint == true
+		or (FeaturesConfig.MutationTextureTintDev == true and ProductIdsConfig ~= nil and ProductIdsConfig.IsDev == true)
+	)
+local TEXTURE_MODE_TINT = "Tint"
+
 type Motion = "None" | "Shine" | "Pulse" | "Glitch" | "Scan" | "Spin" | string
 
 ------------------------------------------------------------------------------
@@ -176,6 +198,11 @@ type PartState = {
 	origColor: Color3,
 	origMaterial: Enum.Material,
 	origReflectance: number,
+	-- a542 (TextureMode = "Tint") : TextureID d'origine de la MeshPart (vidé pendant l'effet), SurfaceAppearance teinte
+	-- et sa couleur d'origine
+	origTextureId: string?,
+	surface: SurfaceAppearance?,
+	origSurfaceColor: Color3?,
 }
 
 type GhostPart = { part: BasePart, source: BasePart, rel: CFrame }
@@ -731,6 +758,59 @@ end
 -- Objets : habiller, animer, déshabiller
 ------------------------------------------------------------------------------
 
+-- a542 : couleur d'une pièce de l'objet, et de sa SurfaceAppearance teinte (TextureMode = "Tint").
+local function paintPart(p: PartState, color: Color3)
+	p.part.Color = color
+	local surface = p.surface
+	if surface then
+		(surface :: any).Color = color
+	end
+end
+
+-- a542 : pose la teinte de la texture (couleur déjà posée sur la pièce), en gardant l'état d'origine.
+local function tintTexture(state: PartState)
+	local part = state.part
+	if part:IsA("MeshPart") then
+		local mesh = part :: MeshPart
+		local id: any = mesh.TextureID
+		if type(id) == "string" and id ~= "" then
+			state.origTextureId = id
+			mesh.TextureID = ""
+		end
+	end
+	local surface = part:FindFirstChildWhichIsA("SurfaceAppearance")
+	if surface then
+		local sa = surface :: SurfaceAppearance
+		local color: any = (sa :: any).Color
+		state.surface = sa
+		state.origSurfaceColor = if typeof(color) == "Color3" then color :: Color3 else WHITE
+		;(sa :: any).Color = part.Color
+	end
+end
+
+-- a542 : remet la texture d'origine (TextureID, couleur de la SurfaceAppearance).
+local function restoreTexture(p: PartState)
+	local id = p.origTextureId
+	if id ~= nil and p.part:IsA("MeshPart") then
+		(p.part :: MeshPart).TextureID = id
+	end
+	local surface = p.surface
+	if surface and p.origSurfaceColor then
+		(surface :: any).Color = p.origSurfaceColor
+	end
+end
+
+-- a542 : remet la texture teinte (après ClonePristine).
+local function reapplyTexture(p: PartState)
+	if p.origTextureId ~= nil and p.part:IsA("MeshPart") then
+		(p.part :: MeshPart).TextureID = ""
+	end
+	local surface = p.surface
+	if surface then
+		(surface :: any).Color = p.part.Color
+	end
+end
+
 local function syncGhostColors(fx: Fx)
 	for _, ghost in fx.ghosts do
 		if ghost.keepColor then
@@ -889,6 +969,7 @@ local function buildFx(model: Model, id: string): Fx?
 	local shadeMin = numberAttribute(style, "ShadeMin", 1)
 	local material = materialOf(stringAttribute(style, "Material", ""))
 	local reflectance = numberAttribute(style, "Reflectance", -1)
+	local tintTextures = TEXTURE_TINT and stringAttribute(style, "TextureMode", "") == TEXTURE_MODE_TINT
 	local anchorCFrame = anchor.CFrame
 	local anchorInverse = anchorCFrame:Inverse()
 
@@ -978,6 +1059,9 @@ local function buildFx(model: Model, id: string): Fx?
 		end
 		state.color = p.Color
 		state.h, state.s, state.v = p.Color:ToHSV()
+		if tintTextures then
+			tintTexture(state)
+		end
 		table.insert(parts, state)
 	end
 
@@ -1134,6 +1218,7 @@ local function removeFx(fx: Fx)
 		p.part.Color = p.origColor
 		p.part.Material = p.origMaterial
 		p.part.Reflectance = p.origReflectance
+		restoreTexture(p)
 	end
 	fx.holder:Destroy()
 	local jumpModel = fx.jumpModel
@@ -1156,7 +1241,7 @@ local function updateFx(fx: Fx, t: number)
 			if motion == "Rainbow" then
 				local c = Color3.fromHSV((t / fx.period) % 1, 0.85, 1)
 				for _, p in fx.parts do
-					p.part.Color = Color3.new(c.R * p.shade, c.G * p.shade, c.B * p.shade)
+					paintPart(p, Color3.new(c.R * p.shade, c.G * p.shade, c.B * p.shade))
 				end
 				syncGhostColors(fx)
 				local light = fx.light
@@ -1167,7 +1252,7 @@ local function updateFx(fx: Fx, t: number)
 				local wave = math.sin(t * TAU / fx.period) -- −1 à 1
 				local f = 0.875 + 0.125 * wave
 				for _, p in fx.parts do
-					p.part.Color = Color3.fromHSV(p.h, p.s, p.v * f)
+					paintPart(p, Color3.fromHSV(p.h, p.s, p.v * f))
 				end
 				syncGhostColors(fx)
 				for _, ghost in fx.ghosts do
@@ -1521,10 +1606,14 @@ function MutationFxController.ClonePristine(model: Model): Model
 		local part = p.part
 		table.insert(saved, { part = part, color = part.Color, material = part.Material, reflectance = part.Reflectance })
 		part.Color, part.Material, part.Reflectance = p.origColor, p.origMaterial, p.origReflectance
+		restoreTexture(p)
 	end
 	local copy = model:Clone()
 	for _, s in saved do
 		s.part.Color, s.part.Material, s.part.Reflectance = s.color, s.material, s.reflectance
+	end
+	for _, p in fx.parts do
+		reapplyTexture(p)
 	end
 	return copy
 end

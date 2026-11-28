@@ -697,6 +697,15 @@ for _, kind in { "Item", "Box", "Aura", "Trail", "Potion", "Gamepass" } do
 	table.insert(adminElements, { Path = `GiveSection.KindRow.{kind}KindButton`, Class = BUTTON })
 	table.insert(adminElements, { Path = `GiveSection.KindRow.{kind}KindButton.Selected` })
 end
+-- a527 (Cantin, 28/11) : ForceSection (prochain colis de l'admin, commande ForceNextUnbox) ; facultative : absente,
+-- AdminController la construit (version grise) sous GiveSection ; l'objet et la mutation sont ceux choisis dans GiveSection.
+for _, entry in {
+	{ Path = "ForceSection.WeightBox", Class = "TextBox" },
+	{ Path = "ForceSection.ForceButton", Class = BUTTON },
+	{ Path = "ForceSection.ClearButton", Class = BUTTON },
+} do
+	table.insert(adminElements, { Path = entry.Path, Class = entry.Class, Optional = true, Note = "ForceSection construite par le code (a527)" })
+end
 table.insert(UI.Screens, {
 	Name = "UI_Admin",
 	Class = "ScreenGui",
@@ -1504,6 +1513,8 @@ table.insert(UI.Screens, {
 		{ Path = "Banner.Icon", Class = "ImageLabel", Optional = true, Note = "pas d'icône dans l'annonce" },
 		{ Path = "Banner.Message", Class = "TextLabel" },
 		{ Path = "Banner.Detail", Class = "TextLabel", Optional = true, Note = "pas de petite ligne sous le message" },
+		-- a543 (L-495) : carte d'une annonce venue d'un autre serveur (AnnounceController.PushBig).
+		{ Path = "BigAnnounce", Class = "GuiObject", Optional = true, Note = "annonce entre serveurs dans Banner" },
 	} :: { Element },
 })
 -- Nouvelle ouverture du colis (vague 73, a251 ; Clément, L-236 et L-246 ; Config/Unbox.New ; Controllers/Reveal/Unbox).

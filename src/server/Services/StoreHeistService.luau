@@ -287,6 +287,12 @@
 --       Vague 31 : appelée à la sortie de l'objet, pour l'ouvreur, avant tout tirage ;
 --       drawn.Rarity = rareté de la caisse et drawn.ItemId = "" (contenu pas encore tiré, vague 32) ;
 --       un override avec ItemId ou Rarity donne l'objet sorti tel quel, sans tirage ni mutation.
+--   StoreHeistService.SetAdminContentOverride(fn?)  (a527, Cantin 28/11, pour une vidéo)
+--       Accroche admin (AdminService, commande ForceNextUnbox), une seule ; même forme que SetContentOverride, appelée
+--       AVANT elle (et avant SetLuckOverride) pour l'ouvreur, sur un rayon PNJ comme d'événement. override =
+--       { ItemId, Weight, Mutation? } : objet de tout le catalogue (toute zone), poids ItemWeight.IsValidKg, mutation
+--       d'effet (la taille suit le poids). L'objet est traité comme un objet tiré (coups, gains visuels, montée de la
+--       caisse jusqu'à sa rareté, vraie cote) ; la caisse garde la rareté du rayon. nil retire l'accroche.
 --   StoreHeistService.SetLuckOverride(fn?)  (vague 31, a107)
 --       Accroche du tuto : fn(player, drawn) -> number?, appelée au lancement de chaque ouverture sur
 --       le rayon, sans yield ; un nombre fini ≥ 1 remplace la chance tirée ; nil ou une valeur invalide
@@ -395,10 +401,13 @@ export type OverrideInfo = {
 	ItemId: string,
 }
 
--- Ce que l'accroche du tuto remplace (champs absents = inchangés).
+-- Ce que l'accroche du tuto remplace (champs absents = inchangés). a527 : Weight et Mutation ne sont lus que pour
+-- l'accroche admin (SetAdminContentOverride) ; l'accroche du tuto les ignore (jamais de poids tiré ni de mutation).
 export type OverrideResult = {
 	Rarity: string?,
 	ItemId: string?,
+	Weight: number?,
+	Mutation: Mutations.Mutation?,
 }
 
 export type ContentOverride = (player: Player, drawn: OverrideInfo) -> OverrideResult?
@@ -445,6 +454,8 @@ type ShelfBox = {
 	Landed: boolean, -- false tant que le colis rendu vole vers le rayon
 	StopFlight: (() -> ())?,
 	Opening: Opening?, -- L-112 : en cours d'ouverture ; nil = fermé
+	-- a530 (Cantin, 28/11) : zone écrite « ZONE N » sur le colis (attribut BoxZone), où son objet est tiré ; nil : zone du rayon.
+	Zone: number?,
 }
 
 -- Ce qui décrit un objet sorti d'un colis (L-112), sur son rayon comme une fois porté ou au sol.
@@ -455,6 +466,7 @@ type ItemInfo = {
 	OpenerId: number, -- UserId de l'ouvreur
 	ReservedUntil: number, -- os.clock() : avant, seul l'ouvreur peut le prendre
 	ReservedUntilServer: number, -- la même heure, à l'horloge du serveur (attribut ShelfReservedUntil)
+	Zone: number?, -- a530 : zone de l'objet tiré dans un colis étiqueté (ShelfBox.Zone) ; nil : zone du magasin
 }
 
 -- Objet sorti, posé à la place de son colis (ou en vol de retour vers elle).
@@ -709,6 +721,7 @@ local lastCallNotice: { [Player]: number } = {} -- dernier Notify « les témoin
 local witnessApi: WitnessApi? = nil -- WitnessService, s'il existe (Init)
 
 local contentOverride: ContentOverride? = nil
+local adminOverride: ContentOverride? = nil -- a527 : accroche admin (AdminService, ForceNextUnbox), appelée avant celle du tuto
 local luckOverride: LuckOverride? = nil -- accroche du tuto (a107), voir SetLuckOverride
 local lastRefusal: { [Player]: number } = {}
 local lastGreedy: { [Player]: number } = {} -- dernier message « un seul braquage à la fois »
@@ -1124,12 +1137,17 @@ end
 -- caisse (le contenu est tiré à la sortie, vague 32). a517 : `boxZone`, zone du colis connue à l'apparition (rayon
 -- d'événement, EventSpot.Zone) : attribut BoxZone si elle est plus haute que celle du rayon (Shared/BoxZoneTag) ; un
 -- rayon PNJ n'a que des colis de sa zone (rien à passer).
+-- a530 (Cantin, 28/11) : l'objet d'un colis étiqueté est tiré dans la zone de l'étiquette (ShelfBox.Zone, reveal) ;
+-- étiquette éteinte ou zone pas plus haute : aucune, l'objet sort de la zone du rayon comme avant.
 local function placeBox(slot: Slot, rarity: string, from: Vector3?, boxZone: number?)
 	local model = makeBoxModel(slot, rarity)
+	local tagZone: number? = nil
 	if BoxZoneTag then
-		model:SetAttribute(BoxZoneTag.Attribute, BoxZoneTag.Shown(boxZone, slot.Store.Zone))
+		local shown = BoxZoneTag.Shown(boxZone, slot.Store.Zone)
+		tagZone = if type(shown) == "number" and Zones[shown] ~= nil then shown else nil
+		model:SetAttribute(BoxZoneTag.Attribute, tagZone)
 	end
-	local box: ShelfBox = { Rarity = rarity, Model = model, Landed = false, StopFlight = nil }
+	local box: ShelfBox = { Rarity = rarity, Model = model, Landed = false, StopFlight = nil, Zone = tagZone }
 	local target = slot.Attachment.WorldCFrame
 	slot.Box = box
 	if from == nil then
@@ -2385,6 +2403,61 @@ local function contentFor(player: Player, slot: Slot, base: Content): Content
 	return content
 end
 
+-- a527 (Cantin, 28/11, pour une vidéo) : contenu choisi par l'admin pour son prochain colis (AdminService, commande
+-- ForceNextUnbox), ou nil. Appelée pour l'ouvreur avant l'accroche du tuto, sur un rayon PNJ comme sur un rayon
+-- d'événement. L'accroche (une seule, posée par SetAdminContentOverride) rend le choix une fois puis l'efface ; elle
+-- a déjà tout vérifié, revérifié ici : objet du catalogue (toute zone, Secrets compris), poids dans un palier
+-- (ItemWeight.IsValidKg), mutation d'effet connue ; la taille vient du poids (ItemWeight.SizeMutationFor), comme un
+-- tirage. Un choix invalide est ignoré (avertissement) : le tirage normal.
+local function adminContentFor(player: Player, slot: Slot, boxRarity: string): Content?
+	local override = adminOverride
+	if override == nil then
+		return nil
+	end
+	local store = slot.Store
+	local drawn: OverrideInfo = { StoreId = store.Id, SlotId = slot.Id, Zone = store.Zone, Rarity = boxRarity, ItemId = "" }
+	local ok, result = pcall(override, player, drawn)
+	if not ok then
+		warn(`[StoreHeistService] accroche SetAdminContentOverride : {result}`)
+		return nil
+	end
+	if result == nil then
+		return nil
+	end
+	local function invalid(reason: string): Content?
+		warn(`[StoreHeistService] choix admin de {player.Name} ignoré : {reason}`)
+		return nil
+	end
+	if type(result) ~= "table" then
+		return invalid(`l'accroche renvoie un {type(result)}, pas une table`)
+	end
+	local item = if type(result.ItemId) == "string" then Items.ById[result.ItemId] else nil
+	if item == nil then
+		return invalid(`objet inconnu ({result.ItemId})`)
+	end
+	local kg = result.Weight
+	local validKg = false
+	pcall(function()
+		validKg = ItemWeight.IsValidKg(kg) == true
+	end)
+	if not validKg or type(kg) ~= "number" then
+		return invalid(`poids invalide ({kg})`)
+	end
+	local wanted = result.Mutation
+	local effect = if type(wanted) == "table" then wanted.Effect else nil
+	if effect ~= nil and Mutations.EffectById[effect] == nil then
+		return invalid(`mutation inconnue ({effect})`)
+	end
+	local okSize, size = pcall(ItemWeight.SizeMutationFor, kg)
+	local content: Content = {
+		Rarity = item.Rarity,
+		ItemId = item.Id,
+		Mutation = Mutations.Sanitize({ Size = if okSize and type(size) == "string" then size else nil, Effect = effect }),
+		Weight = kg,
+	}
+	return content
+end
+
 -- Ouverture sur le rayon (L-112 ; voir l'en-tête) -------------------------------------------------
 
 -- Payload NPCItem de l'objet `info` sorti du colis de `slot` (prise sur le rayon, ou portage d'office à la fin de
@@ -2397,7 +2470,7 @@ local function payloadFor(slot: Slot, info: ItemInfo): NPCItemPayload
 		ItemId = content.ItemId,
 		Rarity = content.Rarity,
 		Mutation = content.Mutation,
-		Zone = store.Zone,
+		Zone = info.Zone or store.Zone, -- a530 : zone de l'étiquette pour un colis étiqueté (revenu d'un Secret)
 		StoreId = store.Id,
 		SlotId = slot.Id,
 		Luck = info.Luck,
@@ -2718,7 +2791,11 @@ local function reveal(slot: Slot, box: ShelfBox, luck: number)
 	-- Accroche du tuto d'abord, sans tirage : un contenu imposé est l'objet sorti tel quel (voir l'en-tête).
 	local pending: Content = { Rarity = box.Rarity, ItemId = "", Mutation = nil }
 	local imposed: Content? = nil
-	if opener and not store.Event then -- vague 42 : pas d'accroche du tuto sur un rayon d'événement
+	-- a527 : choix de l'admin (ForceNextUnbox) d'abord, sur un rayon d'événement aussi ; poids et mutation compris.
+	local adminContent = if opener then adminContentFor(opener, slot, box.Rarity) else nil
+	if adminContent then
+		imposed = adminContent
+	elseif opener and not store.Event then -- vague 42 : pas d'accroche du tuto sur un rayon d'événement
 		local given = contentFor(opener, slot, pending)
 		if given ~= pending then
 			imposed = given
@@ -2732,7 +2809,12 @@ local function reveal(slot: Slot, box: ShelfBox, luck: number)
 		if nextChance then
 			zones = if random:NextNumber() < nextChance and Zones[store.Zone + 1] then { store.Zone + 1 } else { store.Zone }
 		end
-		final, drawnRarity = drawShelfContent(box.Rarity, store.Zone, luck, zones, store.Event, store.SizeOdds, nextChance ~= nil)
+		-- a530 (Cantin, 28/11) : colis étiqueté « ZONE N » (camion, fourgon V2) : l'objet est tiré dans cette zone seule.
+		local itemZone = box.Zone or store.Zone
+		if box.Zone then
+			zones = { box.Zone }
+		end
+		final, drawnRarity = drawShelfContent(box.Rarity, itemZone, luck, zones, store.Event, store.SizeOdds, nextChance ~= nil or box.Zone ~= nil)
 	end
 	box.Model:SetAttribute(ShelfOpenState.StateAttribute, "Revealed")
 	discard(box)
@@ -2751,13 +2833,15 @@ local function reveal(slot: Slot, box: ShelfBox, luck: number)
 		OpenerId = opening.ByUserId,
 		ReservedUntil = os.clock() + ShelfOpen.ReserveTime,
 		ReservedUntilServer = Workspace:GetServerTimeNow() + ShelfOpen.ReserveTime,
+		Zone = if imposed then nil else box.Zone, -- a530 : zone de l'objet d'un colis étiqueté
 	}
 	placeItem(slot, info, nil)
 	if openingCount(store) == 0 then
 		calmWitnesses(store) -- c'était la dernière ouverture en cours dans ce magasin
 	end
 	local mutation = Mutations.Label(final.Mutation)
-	local how = if imposed then " (contenu imposé par le tuto, sans tirage)"
+	local how = if adminContent then " (choix de l'admin, ForceNextUnbox)"
+		elseif imposed then " (contenu imposé par le tuto, sans tirage)"
 		elseif drawnRarity ~= final.Rarity then ` (tirée : {drawnRarity}, aucun objet nulle part)`
 		else ""
 	log(`{slot.Id} : l'objet sort, chance ×{luck}, caisse {box.Rarity} → objet {final.Rarity} ({final.ItemId}){how}{if mutation then ", " .. mutation else ""}, réservé {ShelfOpen.ReserveTime} s à {if opener then opener.Name else opening.ByUserId}`)
@@ -3135,7 +3219,14 @@ local function startReveal(player: Player, slot: Slot, box: ShelfBox)
 	if OpenLuck.V2 then
 		luck = drawLuckV2(player, config.TableLuck, if config.EventLuck then Workspace:GetAttribute("LiveEventShelfLuck") else nil)
 	end
+	-- a527 : choix de l'admin d'abord (ForceNextUnbox), avant les accroches du tuto (ni sa chance ni son objet ne passent
+	-- par-dessus). L'objet choisi est traité comme un objet tiré : coups, gains visuels, montée de la caisse jusqu'à sa
+	-- rareté, vraie cote, carte ITEM SECURED ; seule la chance de l'ouverture reste celle tirée ici.
+	local adminContent = adminContentFor(player, slot, box.Rarity)
 	local forced = luckOverride
+	if adminContent then
+		forced = nil -- a527 : pas de chance du tuto sur un choix de l'admin
+	end
 	local luckForced = false
 	if forced then
 		local drawn: OverrideInfo = { StoreId = store.Id, SlotId = slot.Id, Zone = store.Zone, Rarity = box.Rarity, ItemId = "" }
@@ -3148,40 +3239,14 @@ local function startReveal(player: Player, slot: Slot, box: ShelfBox)
 		end
 	end
 	local pending: Content = { Rarity = box.Rarity, ItemId = "", Mutation = nil }
-	local given = contentFor(player, slot, pending)
+	local given = if adminContent then pending else contentFor(player, slot, pending)
 	local imposed = given ~= pending
-	-- a523 (L-462, Shared/UnboxPlan.hitLuck) : les gains des coups tirés ici, d'avance et AVANT l'objet ; l'objet, son
-	-- poids et ses mutations sont tirés avec la chance finale (base × (1 + gains), UnboxPlan.hitsFinal), celle que les
-	-- joueurs voient à la fin des coups (règle de Roblox : la chance affichée est la vraie). La base (chance tirée) va
-	-- dans le plan avec les gains. Jamais sur un contenu ou une chance imposés (tuto), ni sans plan à montrer.
-	local baseLuck = luck
-	local hits: { string }? = nil
-	local hitModule: any = Shared:FindFirstChild("UnboxPlan")
-	if not imposed and not luckForced and hitModule and (Unbox :: any).New and (Unbox :: any).New.Enabled == true and luck < 1e6 then
-		local ok, drawnHits, final = pcall(function(): (any, any)
-			local UnboxPlan = require(hitModule) :: any
-			if not UnboxPlan.hitLuck() then
-				return nil, nil
-			end
-			local list = UnboxPlan.hitsDraw(function(): number
-				return random:NextNumber()
-			end)
-			baseLuck = UnboxPlan.planLuck(luck)
-			return list, UnboxPlan.hitsFinal(baseLuck, list)
-		end)
-		if ok and type(drawnHits) == "table" and type(final) == "number" and final >= 1 and final < math.huge then
-			hits = drawnHits
-			luck = final
-		else
-			baseLuck = luck
-			if not ok then
-				warnOnce("unbox.hits", `gains des coups impossibles ({drawnHits}) : chance tirée seule`)
-			end
-		end
-	end
 	local content: Content? = nil
 	local drawnRarity = box.Rarity
-	if imposed then
+	if adminContent then
+		content = adminContent
+		drawnRarity = adminContent.Rarity
+	elseif imposed then
 		-- Contenu imposé par le tuto, sans tirage : ni mutation, ni poids tiré.
 		content = { Rarity = given.Rarity, ItemId = given.ItemId, Mutation = nil, Weight = config.TutorialWeight }
 	else
@@ -3197,6 +3262,38 @@ local function startReveal(player: Player, slot: Slot, box: ShelfBox)
 				Mutation = Mutations.Sanitize({ Size = sizeMutationFor(weight), Effect = effect }),
 				Weight = weight,
 			}
+		end
+	end
+	-- a523 (L-462, Shared/UnboxPlan.hitLuck), a526 : gains des coups visuels, le tirage garde la chance de base (Cantin
+	-- 28/11). Tirés ici par le serveur, APRÈS l'objet, sa rareté, son poids et ses mutations (tirés juste au-dessus avec
+	-- `luck`, la chance de base, exactement comme interrupteur coupé : mêmes graines, même tirage). Ils ne servent qu'à
+	-- l'affichage (« +0.2 LUCK », séries, SUPER LUCK!, compteur jusqu'à « ×F LUCK », F = UnboxPlan.hitsFinal) : `luck`
+	-- n'est jamais remplacée, la cote (1 IN N), Info.Luck, Opening.Luck et les améliorations gardent la vraie chance.
+	-- La base (2 décimales) va dans le plan avec les gains. Jamais sur un contenu ou une chance imposés (tuto).
+	local baseLuck = luck
+	local shownLuck = luck -- a526 : chance affichée à la fin des coups (visuel seulement : journal)
+	local hits: { string }? = nil
+	local hitModule: any = Shared:FindFirstChild("UnboxPlan")
+	if content ~= nil and not imposed and not luckForced and hitModule and (Unbox :: any).New and (Unbox :: any).New.Enabled == true and luck < 1e6 then
+		local ok, drawnHits, shown = pcall(function(): (any, any)
+			local UnboxPlan = require(hitModule) :: any
+			if not UnboxPlan.hitLuck() then
+				return nil, nil
+			end
+			local list = UnboxPlan.hitsDraw(function(): number
+				return random:NextNumber()
+			end)
+			baseLuck = UnboxPlan.planLuck(luck)
+			return list, UnboxPlan.hitsFinal(baseLuck, list)
+		end)
+		if ok and type(drawnHits) == "table" and type(shown) == "number" and shown >= 1 and shown < math.huge then
+			hits = drawnHits
+			shownLuck = shown
+		else
+			baseLuck = luck
+			if not ok then
+				warnOnce("unbox.hits", `gains des coups impossibles ({drawnHits}) : chance tirée seule`)
+			end
 		end
 	end
 	if content == nil then
@@ -3285,7 +3382,8 @@ local function startReveal(player: Player, slot: Slot, box: ShelfBox)
 			upgrades, climb = UnboxPlan.shelfClimb(box.Rarity, final.Rarity, upgrades)
 			-- a462 (L-376) : la chance de l'ouvreur va dans le plan (« ×N LUCK » pendant les coups), interrupteur allumé.
 			local planLuck: number? = if UnboxPlan.luckClimbs() == true then luck else nil
-			-- a523 (L-462) : avec les gains des coups, la base et les gains (le client montre la base, puis chaque gain).
+			-- a523 (L-462), a526 : avec les gains des coups (visuels, le tirage garde la chance de base, Cantin 28/11), la
+			-- base et les gains (le client montre la base, puis chaque gain).
 			if hits then
 				planLuck = baseLuck
 			end
@@ -3315,11 +3413,12 @@ local function startReveal(player: Player, slot: Slot, box: ShelfBox)
 	task.delay(maxSeconds, function()
 		finishReveal(session, "plafond de temps")
 	end)
-	local how = if imposed then " (contenu imposé par le tuto, sans tirage)"
+	local how = if adminContent then " (choix de l'admin, ForceNextUnbox)"
+		elseif imposed then " (contenu imposé par le tuto, sans tirage)"
 		elseif drawnRarity ~= final.Rarity then ` (tirée : {drawnRarity}, aucun objet nulle part)`
 		else ""
 	local mutation = Mutations.Label(final.Mutation)
-	log(`{player.Name} ouvre la caisse {box.Rarity} {slot.Name} de {store.Id} : cinématique {id}, chance ×{luck}{if hits then ` (base ×{baseLuck}, gains des coups {table.concat(hits)})` else ""}, objet {final.Rarity} ({final.ItemId}){how}, {weight} kg, taille ×{scale}, classe {sizeClass}{if mutation then ", " .. mutation else ""}, {maxSeconds} s au plus{if plan then `, plan {plan}` else ""}`)
+	log(`{player.Name} ouvre la caisse {box.Rarity} {slot.Name} de {store.Id} : cinématique {id}, {if hits then `chance de tirage ×{luck} (gains visuels {table.concat(hits)}, affiché ×{shownLuck})` else `chance ×{luck}`}, objet {final.Rarity} ({final.ItemId}){how}, {weight} kg, taille ×{scale}, classe {sizeClass}{if mutation then ", " .. mutation else ""}, {maxSeconds} s au plus{if plan then `, plan {plan}` else ""}`)
 end
 
 -- RevealDone(revealId) : l'ouvreur a fini de voir sa cinématique. Seule la sienne, en cours ; sinon ignoré.
@@ -4117,6 +4216,11 @@ end
 
 function StoreHeistService.SetLuckOverride(override: LuckOverride?)
 	luckOverride = override
+end
+
+-- a527 : accroche admin (AdminService, ForceNextUnbox), voir adminContentFor.
+function StoreHeistService.SetAdminContentOverride(override: ContentOverride?)
+	adminOverride = override
 end
 
 function StoreHeistService.GetStoreId(model: Instance): string?

@@ -11,7 +11,7 @@
 --   Réception (SubscribeAsync) : un message d'un AUTRE serveur (JobId différent), revérifié (objet du catalogue, nombres
 --   finis, nom coupé à MaxNameLength et sans balises) : bannière UI_Announce (Shared/Announce.send) à tous les joueurs,
 --   Cross.Text et Cross.Detail ; au plus une toutes les Cross.ShowGap s (les autres sautent). La variante BigAnnounce
---   (objet en 3D) attend Clément : la bannière d'aujourd'hui sert.
+--   (objet en 3D, a543, L-495) part par le remote BigAnnounce ; le client garde Banner si BigAnnounce manque.
 -- MessagingService absent ou en erreur (Studio sans accès, bancs) : une ligne dans la sortie, rien d'autre.
 --
 -- API (serveur, bancs) :
@@ -20,6 +20,7 @@
 --   CrossServerAnnounce.Receive(data) -> boolean              montré à tous ?
 --   CrossServerAnnounce.GetState() -> { Sent, Received, Shown }
 
+local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
@@ -79,16 +80,16 @@ local function cleanName(value: any): string?
 	return if text ~= "" then text else nil
 end
 
-function CrossServerAnnounce.Message(data: any): (string?, string?)
+function CrossServerAnnounce.Message(data: any): (string?, string?, string?, string?)
 	if type(data) ~= "table" then
-		return nil, nil
+		return nil, nil, nil, nil
 	end
 	local item = if type(data.ItemId) == "string" then Items.ById[data.ItemId] else nil
 	local rarity = if item then Rarities.ById[item.Rarity] else nil
 	local name = cleanName(data.Player)
 	local value = finite(data.Value)
 	if item == nil or rarity == nil or name == nil or value == nil then
-		return nil, nil
+		return nil, nil, nil, nil
 	end
 	local mutation = if type(data.Mutation) == "string" then Mutations.Sanitize(data.Mutation) else nil
 	local okName, named = pcall(function(): string
@@ -109,7 +110,29 @@ function CrossServerAnnounce.Message(data: any): (string?, string?)
 	}
 	local plain = fill(template, values)
 	values.rarity = Announce.rarityText(rarity)
-	return fill(template, values), plain
+	-- a543 (L-495) : Message et ItemName de BigAnnounce.
+	local who = fill(CROSS.BigMessage or "{player} got {a}", values)
+	return fill(template, values), plain, who, values.item
+end
+
+-- a543 (L-495) : la carte BigAnnounce de Clément (remote BigAnnounce, AnnounceController ; repli Banner chez le
+-- client) ; Config/Announce.Enabled coupé ou remote absent : Announce.send d'avant (bannière ou Notify).
+local function sendBig(data: any, message: string, plain: string, who: string, name: string): boolean
+	if AnnounceSettings.Enabled ~= true then
+		return false
+	end
+	local ok = pcall(function()
+		local remote = (require(Shared:WaitForChild("Net"):WaitForChild("Net")) :: any).Server.BigAnnounce
+		local icon = AnnounceSettings.ItemIconPrefix .. data.ItemId
+		local income = finite(data.Value) or 0
+		local weight = finite(data.Weight) or 0
+		for _, player in Players:GetPlayers() do
+			pcall(function()
+				remote:Fire(player, message, CROSS.Detail, icon, plain, data.ItemId, who, name, income, weight)
+			end)
+		end
+	end)
+	return ok
 end
 
 function CrossServerAnnounce.Receive(data: any): boolean
@@ -117,8 +140,8 @@ function CrossServerAnnounce.Receive(data: any): boolean
 	if not SecuredTier.On("CrossServerAnnounce") then
 		return false
 	end
-	local message, plain = CrossServerAnnounce.Message(data)
-	if message == nil then
+	local message, plain, who, name = CrossServerAnnounce.Message(data)
+	if message == nil or plain == nil then
 		return false
 	end
 	local now = os.clock()
@@ -126,7 +149,9 @@ function CrossServerAnnounce.Receive(data: any): boolean
 		return false
 	end
 	lastShownAt = now
-	Announce.send(message, CROSS.Detail, AnnounceSettings.ItemIconPrefix .. data.ItemId, plain)
+	if not sendBig(data, message, plain, who or "", name or "") then
+		Announce.send(message, CROSS.Detail, AnnounceSettings.ItemIconPrefix .. data.ItemId, plain)
+	end
 	counts.Shown += 1
 	return true
 end

@@ -81,7 +81,8 @@ end
 
 -- a523 (L-462, Clément 26/11 : « chaque coup de l'animation fait monter la luck ») : interrupteur Features.UnboxHitLuck
 -- (partout) ou UnboxHitLuckDev (jeu DEV seulement). Allumé : le serveur tire d'avance les gains des coups (hitsDraw),
--- AVANT l'objet, et tire l'objet avec la chance finale (hitsFinal) : la chance montrée à la fin des coups est la vraie.
+-- a526 : visuel, le tirage garde la chance de base (Cantin 28/11) : tirés après l'objet, qui garde la chance de base ;
+-- la chance montrée à la fin des coups (hitsFinal) n'est qu'un affichage.
 -- Le plan porte la chance tirée (la base) et les gains en 4e partie (« |1.50|112S10 ») ; le client les montre aux
 -- Impacts (hitsUpTo). Coupé : la chance d'avant (luckClimbs, L-376).
 function UnboxPlan.hitLuck(): boolean
@@ -143,13 +144,13 @@ function UnboxPlan.hitsBonus(hits: { string }, count: number?): number
 	return sum
 end
 
--- Chance de base telle que le plan l'écrit (2 décimales) : le serveur tire l'objet avec elle, le client affiche la
--- même, au centième près.
+-- Chance de base telle que le plan l'écrit (2 décimales) : le client affiche la même que le serveur, au centième près
+-- (a526 : le serveur tire l'objet avec la chance de base non arrondie, comme sans gains).
 function UnboxPlan.planLuck(luck: number): number
 	return tonumber(string.format("%.2f", luck)) or luck
 end
 
--- Chance après les `count` premiers coups : base × (1 + gains) ; sans `count`, la chance finale, celle de l'objet.
+-- Chance après les `count` premiers coups : base × (1 + gains) ; sans `count`, la chance finale affichée (a526 : visuel, le tirage garde la chance de base, Cantin 28/11).
 function UnboxPlan.hitsFinal(base: number, hits: { string }, count: number?): number
 	return base * (1 + UnboxPlan.hitsBonus(hits, count))
 end

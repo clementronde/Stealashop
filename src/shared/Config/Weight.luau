@@ -77,6 +77,32 @@ local TIERS_V2: { Tier } = {
 	{ Min = 10000, Max = 10000, Chance = 0.2, LuckExponent = 9 * LUCK_STEP_V2 },
 }
 
+-- Module de Config chargé s'il est là (bancs à liste de modules fixe : absent = nil).
+local function optional(name: string): any
+	local found, module = pcall(function(): any
+		return script.Parent:FindFirstChild(name)
+	end)
+	if not found or module == nil then
+		return nil
+	end
+	local ok, result = pcall(require, module :: any)
+	return if ok and type(result) == "table" then result else nil
+end
+
+-- a528 (Cantin, 28/11) : poids au-dessus de 10 000 kg, Features.WeightTail (partout) ou WeightTailDev (jeu DEV et jeu
+-- TEST, Config/GameEnv.IsDevLike). Coupé, ou sans Features (bancs à liste de modules fixe) : tout comme avant.
+local WEIGHT_TAIL: boolean = (function(): boolean
+	local features = optional("Features")
+	if features == nil then
+		return false
+	end
+	if features.WeightTail == true then
+		return true
+	end
+	local env = optional("GameEnv")
+	return features.WeightTailDev == true and env ~= nil and env.IsDevLike == true
+end)()
+
 -- a513 : poids V2 allumé par Config/Economy.WeightIncomeV2 (Features.WeightIncomeV2 ou WeightIncomeV2Dev, avec la table 2
 -- seulement). Allumé : Tiers = TiersV2 et IncomeExponent = IncomeExponentV2 (fin du fichier) ; coupé, ou sans
 -- Config/Economy (bancs à liste de modules fixe) : les valeurs écrites plus bas, à l'identique.
@@ -150,6 +176,22 @@ local Weight = {
 	-- cinématique (la caméra sort du magasin).
 	HugeFrom = 250,
 	ColossalFrom = 2500,
+	-- a528 (Cantin, 28/11), avec Tail seulement : deux étiquettes au-dessus de Colossal, comme Huge et Colossal
+	-- (Shared/ItemWeight.SizeMutationFor, Config/Mutations). Sans Tail, aucun poids ne dépasse Max : jamais vues.
+	TitanFrom = 50000, -- Cantin
+	CosmicFrom = 100000, -- Cantin
+	-- a528 : poids au-dessus de 10 000 kg allumé (Features.WeightTail / WeightTailDev, plus haut).
+	Tail = WEIGHT_TAIL,
+	-- a528, avec Tail : garde-fou technique du poids (kg) ; au-delà, ramené ici (Cantin : 1e12 kg au plus).
+	TailMax = 1e12,
+	-- a528 (Cantin), avec Tail : taille du modèle au plus ×MaxVisualScale, celle du Colossal le plus lourd (10 000 kg,
+	-- haut de ScaleCurve) ; un Titan ou un Cosmic n'est pas plus grand. Cantin et Clément peuvent la changer ici :
+	-- plus haut, les objets de plus de 10 000 kg grandissent encore (pente du dernier segment de ScaleCurve) ; plus
+	-- bas, les plus gros Colossal rapetissent aussi.
+	MaxVisualScale = 16,
+	-- a528 (V0), avec Tail : à partir de ce poids, il s'écrit en K, M, B (Shared/Format.short : « 10K kg », « 1M kg ») ;
+	-- en dessous, comme avant (« 1,250 kg »).
+	ShortFormatFrom = 10000,
 
 	-- V0 : poids donné à un objet du profil qui n'en a pas (DataService, au chargement), selon sa mutation de
 	-- taille d'avant ; chacun garde au moins son revenu d'avant (taille et effet) et Huge, Colossal restent dans

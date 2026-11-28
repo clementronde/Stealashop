@@ -166,7 +166,7 @@ local ArmoredVan = {
 			{ Rule = "BestZone", Count = 4 },
 		},
 		MinLuck = 3, -- Cantin (27/11) : au moins ×3 de chance à l'ouverture de chaque colis
-		-- L'objet sort toujours de la zone du palier, comme au camion (les 10 % de zone suivante sont retirés : Cantin, 27/11).
+		-- L'objet sort de la zone du palier (les 10 % de zone suivante sont retirés : Cantin, 27/11), sauf les 3 colis NextZone : a530 (Cantin, 28/11), objet tiré dans la zone de leur étiquette « ZONE N+1 » (Shared/BoxZoneTag allumé).
 		-- Jauge au-dessus du fourgon : BB_VanGauge de Clément (Assets/UI, facultatif) ou repli construit par le code :
 		-- Title (TextLabel, « ZONE 6 »), Bar/Fill (GuiObject, progression : part du seuil atteinte), ProgressText (TextLabel,
 		-- facultatif, « 42 % »), Steps/Step_1 à Step_6 (GuiObject, palier n ; facultatifs), chacun avec Current (palier en cours) et Done

@@ -11,12 +11,31 @@ local AnimFeel = {
 	-- Fondu (s) du lancement d'un coup : les animations du joueur au marqueur Impact, sans boucle (Contract/Animations :
 	-- HitWindow, HitWindowHeavy, SwingBat, Unbox_*). L-448 : « de 0 à 0,03 s au lieu de 0,1 s » ; V0 : 0,03.
 	StrikeFade = 0.03,
+	-- a538 (L-505) : fondu (s) d'arrêt du coup précédent quand le coup suivant de la série est un autre (HitController,
+	-- Features.HitVariants). V0 : 0,05, assez court pour 5 coups par seconde.
+	VariantStopFade = 0.05,
 	-- Arrêt sur impact (s) au marqueur Impact, sur la piste du coup seule (L-448 : « 40, 70 ou 100 ms selon le coup »).
 	-- V0 : léger 40 ms (coups répétés vite), moyen 70 ms, lourd 100 ms (coup final ou outil lourd).
 	Hitstop = {
 		Default = 0.04, -- V0 : tout coup absent de la liste ci-dessous
 		HitWindow = 0.04, -- V0 : léger, jusqu'à 5 coups par seconde
 		HitWindowHeavy = 0.1, -- V0 : lourd (Marteau à la Disqueuse)
+		-- a538 (L-505) : coups variés ; légers (poings, clé à molette, pied-de-biche) comme HitWindow, lourds et disqueuse
+		-- comme HitWindowHeavy, pour garder le ressenti de chaque arme.
+		Hit_Fists_Jab = 0.04,
+		Hit_Fists_Hook = 0.04,
+		Hit_Fists_Kick = 0.04,
+		Hit_Light_Overhead = 0.04,
+		Hit_Light_Side = 0.04,
+		Hit_Light_Backhand = 0.04,
+		Hit_Crowbar_Overhead = 0.04,
+		Hit_Crowbar_Thrust = 0.04,
+		Hit_Crowbar_Side = 0.04,
+		Hit_Grinder_Cut = 0.1,
+		Hit_Grinder_Sweep = 0.1,
+		Hit_Heavy_Overhead = 0.1,
+		Hit_Heavy_Side = 0.1,
+		Hit_Heavy_Rising = 0.1,
 		SwingBat = 0.07, -- V0 : moyen
 		Unbox_Kick = 0.07, -- V0 : moyen
 		Unbox_Stomp = 0.07, -- V0 : moyen

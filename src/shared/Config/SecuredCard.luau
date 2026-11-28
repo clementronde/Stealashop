@@ -78,6 +78,8 @@ return DeepFreeze({
 		ShowGap = 8, -- V0 proposé : s au moins entre deux annonces reçues montrées (beaucoup de serveurs : les autres sautent)
 		Text = "{player} got {a} {rarity} {item} worth {value} ({weight})!", -- V0 proposé, sous 70 caractères
 		Detail = "On another server", -- V0 proposé
+		BigMessage = "{player} got {a}", -- a543 (L-495) : Message de UI_Announce.BigAnnounce (« Charment got a » de Clément)
+		BigHold = nil :: number?, -- a543 : s à l'écran de BigAnnounce (nil = Config/Announce.Hold)
 		MaxNameLength = 40, -- V0 proposé : nom du joueur tronqué au-delà (message reçu d'un autre serveur)
 	},
 })

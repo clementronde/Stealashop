@@ -78,6 +78,10 @@ local Commands: { Command } = {
 	-- DangerSection : text = ResetConfirm (le client l'envoie au second clic). Le joueur est renvoyé du serveur,
 	-- son profil est vidé juste avant la sauvegarde (achats Robux gardés).
 	{ Id = "ResetProfile", Section = "Danger", Target = true, Args = "text = ResetConfirm" },
+	-- a527 (Cantin, 28/11, pour une vidéo ; Features.AdminForceUnbox / AdminForceUnboxDev) : ForceSection. Le prochain colis
+	-- que l'admin ouvre LUI-MÊME (rayon PNJ ou d'événement) donne cet objet, à ce poids, avec cette mutation d'effet ;
+	-- une seule fois, puis effacé (aussi au départ du joueur). text = ForceClear : choix effacé.
+	{ Id = "ForceNextUnbox", Section = "Force", Target = false, Args = "text = ItemId (or ForceClear), value = kg, text2 = effect mutation Id (optional)" },
 }
 
 local ById: { [string]: Command } = {}
@@ -110,6 +114,8 @@ local Admin = {
 	MaxAmount = 1e15,
 	-- Mot envoyé par le client au second clic de ResetProfileButton.
 	ResetConfirm = "RESET",
+	-- a527 : texte de ForceNextUnbox qui efface le choix (ClearButton de ForceSection) ; jamais un ItemId (banc a527).
+	ForceClear = "Clear",
 	-- Événements de StartEvent (Rain plus tard). Vague 39 : Fortune (une vitrine de la Fortune Tower tout de suite,
 	-- remplace celle en jeu), FortuneOpen (la vitrine fermée en jeu s'ouvre, butin), FortuneSeal (elle se referme).
 	Events = { "Truck", "Night", "Day", "Fortune", "FortuneOpen", "FortuneSeal" },

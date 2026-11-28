@@ -10,7 +10,9 @@
 -- que 3,5 coups par seconde (un clic sur deux), sous les 4,2 qu'il faut pour casser une vitrine à son
 -- niveau dans le chrono de police de 8 s (Config/Zones) ; avec, il donne 5 coups par seconde. Le plafond reste celui du serveur (Net). Il joue tout de suite l'animation du coup (5.2), même dans
 -- le vide : HitWindow, ou HitWindowHeavy du Marteau à la Disqueuse (2.4, champ HitAnimation
--- de Config.Tools), via AnimationController s'il est là. Sur une vitrine, il passe aussi le
+-- de Config.Tools), via AnimationController s'il est là. Coups variés (a538, L-505, Features.HitVariants) : un coup de
+-- la série HitAnimations de l'arme, tiré au hasard, jamais le même deux fois de suite (Shared/Anim/HitVariants) ;
+-- même marqueur Impact, donc même moment du coup, même son et même arrêt sur image (StrikeFeel) qu'avant. Sur une vitrine, il passe aussi le
 -- coup à ShatterController.LocalHit (retour local : mini-éclats, son de verre, léger
 -- tremblement, au marqueur Impact de l'animation). Le serveur valide, applique les PV et les
 -- renvoie à tous (WindowService).
@@ -55,10 +57,27 @@ local Config = Shared:WaitForChild("Config")
 local Balance = require(Config:WaitForChild("Balance"))
 local Shatter = require(Config:WaitForChild("Shatter"))
 local Tools = require(Config:WaitForChild("Tools"))
+-- a538 (L-505) : coups variés (Shared/Anim/HitVariants, Features.HitVariants / HitVariantsDev, séries de Config/Tools).
+-- Module absent (arbre partiel) : pas de coups variés, HitWindow ou HitWindowHeavy comme avant.
+type HitVariantsApi = {
+	on: () -> boolean,
+	pick: (series: { string }, last: string?) -> string?,
+	StopFade: number,
+}
+local hitVariants: HitVariantsApi? = (function(): HitVariantsApi?
+	local anim = Shared:FindFirstChild("Anim")
+	local module = if anim then anim:FindFirstChild("HitVariants") else nil
+	if module == nil or not module:IsA("ModuleScript") then
+		return nil
+	end
+	local ok, result = pcall(require, module :: any)
+	return if ok and type(result) == "table" then result :: any else nil
+end)()
 
 -- Ce que ce contrôleur utilise d'AnimationController (a09).
 type AnimationApi = {
 	PlayPlayer: (name: string) -> AnimationTrack?,
+	StopPlayer: (name: string, fadeTime: number?) -> (),
 }
 
 -- Ce que ce contrôleur utilise de ShatterController (a16, DEV-016).
@@ -114,6 +133,7 @@ local truck: TruckApi? = nil
 local lastHitAt = -math.huge -- heure « de rythme » du dernier coup (voir onActivated)
 local queuedClick = false -- un clic trop tôt attend la fin de l'intervalle (voir l'en-tête)
 local pending: PendingHit? = nil -- un seul à la fois
+local lastVariant: string? = nil -- a538 : dernier coup de la série joué (jamais deux fois de suite)
 local hookedTools = setmetatable({} :: { [Tool]: boolean }, { __mode = "k" })
 
 local function windowBox(object: Instance): (CFrame?, Vector3?)
@@ -194,7 +214,26 @@ local function playHit(tool: Tool): AnimationTrack?
 	end
 	local toolId = tool:GetAttribute(TOOL_ID_ATTRIBUTE)
 	local def = if type(toolId) == "string" then Tools.ById[toolId] else nil
-	local ok, track = pcall(api.PlayPlayer, if def then def.HitAnimation else DEFAULT_ANIMATION)
+	local fallback = if def then def.HitAnimation else DEFAULT_ANIMATION
+	-- a538 (L-505) : allumé, un coup de la série de l'arme tiré au hasard, jamais le même deux fois de suite ; le coup
+	-- d'avant, s'il joue encore, s'arrête (une autre piste ne repart pas du début comme la même). Pas livré : le repli.
+	local series = if def then def.HitAnimations else nil
+	local variants = hitVariants
+	if variants and series and #series > 0 and variants.on() then
+		local name = variants.pick(series, lastVariant)
+		if name then
+			local previous = lastVariant
+			if previous and previous ~= name then
+				pcall(api.StopPlayer, previous, variants.StopFade)
+			end
+			lastVariant = name
+			local ok, track = pcall(api.PlayPlayer, name)
+			if ok and track then
+				return track
+			end
+		end
+	end
+	local ok, track = pcall(api.PlayPlayer, fallback)
 	return if ok then track else nil
 end
 

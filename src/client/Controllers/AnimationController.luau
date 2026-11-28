@@ -99,7 +99,7 @@ local HOLD_ANIMATION = "HoldItem"
 local HELD_TOOL_ATTRIBUTE = "HeldItemUid"
 local HELD_MODEL_NAME = "HeldItem"
 local SIZE_ATTRIBUTE = "MutationSize"
-local TWO_HAND_SIZES: { [string]: boolean } = { Big = true, Huge = true, Colossal = true }
+local TWO_HAND_SIZES: { [string]: boolean } = { Big = true, Huge = true, Colossal = true, Titan = true, Cosmic = true } -- a528 : Titan, Cosmic
 -- Vague 62 (a203) : avec le poids, attribut Weight (kg) du modèle (DisplayService) : deux mains dès TWO_HANDS_FROM kg (mêmes
 -- valeurs que Config/Weight.Attribute et .TwoHandsFrom, lues ici sans require, comme les noms ci-dessus).
 local WEIGHT_ATTRIBUTE = "Weight"
