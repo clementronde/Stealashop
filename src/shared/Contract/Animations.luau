@@ -208,6 +208,10 @@ Animations.ShopGuard = {
 	{ Name = "Idle", Loop = true, Priority = "Idle" },
 	{ Name = "Run", Loop = true, Priority = "Movement" },
 	{ Name = "Catch", Loop = false, Priority = "Action", Marker = "Impact" },
+	-- a539 (L-506, proposition du chef animation, 27/11) : posées par Clément dans les deux gardes (Walk : celle des
+	-- vigiles), pas encore jouées par ShopDefenseService (gardes retirés de la V1, L-488). Réglages V0 comme les vigiles.
+	{ Name = "Walk", Loop = true, Priority = "Movement" },
+	{ Name = "Hit", Loop = false, Priority = "Action" },
 } :: { Anim }
 
 -- a429 (L-339, Clément 24/11) : petite animation en boucle des objets du catalogue v3, ITM_<ItemId>/Animations/Boucle,
