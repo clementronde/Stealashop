@@ -526,6 +526,13 @@ local Features = {
 	GuardCatchRagdoll = false,
 	-- a518 : la même chose allumée dans le jeu DEV (et TEST) seulement (Config/ProductIds.IsDev).
 	GuardCatchRagdollDev = true,
+	-- a537 (L-501, Clément 28/11 : « Ragdoll seul ») : à la capture de jour en ragdoll (GuardCatchRagdoll ci-dessus), seul
+	-- le ragdoll se joue : plus de Knockdown pendant le ragdoll (ChaseController), GetUp gardé une fois relevé, ni plan de
+	-- capture ni écran « CAUGHT! » (remote CatchScene pas envoyé, CatchSceneController). Nuit, batte, policier : inchangés.
+	-- PROD : false (C2) ; false = Knockdown et la mise en scène de capture pendant le ragdoll, comme avant.
+	GuardCatchRagdollOnly = false,
+	-- a537 : la même chose allumée dans le jeu DEV (et TEST) seulement (Config/ProductIds.IsDev).
+	GuardCatchRagdollOnlyDev = true,
 	-- a519 (L-448, Clément 26/11, repasse animation point 12) : coups plus secs et course portée calée, sur le joueur local
 	-- (Shared/Anim/StrikeFeel, valeurs Config/AnimFeel) : fondu court au lancement des coups (animations au marqueur Impact),
 	-- arrêt sur image de la seule piste du coup à son marqueur Impact, CarryRun jouée à la vitesse au sol. Les animations de

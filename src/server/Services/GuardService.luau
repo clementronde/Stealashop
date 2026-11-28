@@ -2570,6 +2570,13 @@ local function catch(guard: Guard, player: Player)
 	-- tombé) au lieu de l'éjection V3 et de la poussée du marqueur Impact.
 	local throw = guard.kind == "Day" and guard.driver == nil and GuardService._CatchRagdoll ~= nil
 		and GuardService._CatchRagdoll.On() and not RevealState.IsProtected(player)
+	-- a537 (L-501, Features.GuardCatchRagdollOnly, Clément 28/11 « Ragdoll seul ») : ragdoll prévu, pas de mise en scène
+	-- (remote CatchScene : ni plan de capture, ni écran « CAUGHT! ») ; si le ragdoll rate, elle est envoyée comme avant.
+	local ragdollOnly = false
+	if throw then
+		local catchRagdoll: any = GuardService._CatchRagdoll
+		ragdollOnly = catchRagdoll.RagdollOnly() == true
+	end
 	guard.thrown = nil
 	if throw then
 		guard.ejectFrom = nil
@@ -2656,7 +2663,9 @@ local function catch(guard: Guard, player: Player)
 			if pickUp then
 				GuardService._CatchShow.Impact(caught) -- a252
 			end
-			sendCatchScene(caught, false, outcome, homeIn, sceneItem, guard.model)
+			if not ragdollOnly then -- a537 (L-501) : ragdoll seul, pas de mise en scène
+				sendCatchScene(caught, false, outcome, homeIn, sceneItem, guard.model)
+			end
 			sendHomeLater(caught)
 		end
 		task.delay(impactMaxWait(track), function()
@@ -2673,7 +2682,9 @@ local function catch(guard: Guard, player: Player)
 		if pickUp then
 			GuardService._CatchShow.Impact(player) -- a252
 		end
-		sendCatchScene(player, false, outcome, homeIn, sceneItem, guard.model)
+		if not ragdollOnly then -- a537 (L-501) : ragdoll seul, pas de mise en scène
+			sendCatchScene(player, false, outcome, homeIn, sceneItem, guard.model)
+		end
 		sendHomeLater(player)
 	end
 
@@ -2696,8 +2707,13 @@ local function catch(guard: Guard, player: Player)
 					guard.ejected = true
 				end
 				log(`{guard.label} : {player.Name} projeté en ragdoll`)
-			elseif track == nil then
-				knockback(player, from)
+			else
+				if track == nil then
+					knockback(player, from)
+				end
+				if ragdollOnly then
+					sendCatchScene(player, false, outcome, homeIn, sceneItem, guard.model) -- a537 : ragdoll raté, comme avant
+				end
 			end
 		end
 		stun(player, Balance.Guard.CatchStunDuration)

@@ -14,6 +14,8 @@
 -- Coup du vigile : quand GuardService pousse le joueur rattrapé (Attachment GuardKnockback posé
 -- dans son HumanoidRootPart), joue Knockback puis Stunned jusqu'à la fin de l'étourdissement
 -- (Balance.Guard.CatchStunDuration), via AnimationController s'il est là (rien sinon).
+-- a537 (L-501) : signal avec l'attribut RagdollOnly (capture en ragdoll, « ragdoll seul ») : rien pendant le ragdoll,
+-- GetUp quand le signal est retiré au relevé.
 --
 -- Écran de poursuite (liaison L-071, point 6 ; contrat 2.2) : PlayerGui/UI_Chase de Clément (copié
 -- depuis StarterGui) est allumé pendant la poursuite et éteint sinon, avec l'entrée et la sortie de
@@ -53,6 +55,7 @@ type MotionApi = {
 
 -- Mêmes noms que dans GuardService (serveur) : les changer dans les deux fichiers.
 local KNOCKBACK_NAME = "GuardKnockback"
+local RAGDOLL_ONLY = "RagdollOnly" -- a537 : attribut du signal GuardKnockback, même nom dans Guard/CatchRagdoll
 local ARREST_NAME = "GuardArrest" -- même nom dans GuardService (arrestation de nuit, L-076)
 local ACTIVE_FOLDER = "ActiveGuards"
 local TARGET_ATTRIBUTE = "TargetUserId"
@@ -479,6 +482,33 @@ local function onKnockback()
 	end)
 end
 
+-- a537 (L-501, Clément 28/11 « Ragdoll seul » ; Features.GuardCatchRagdollOnly, décidé par le serveur) : signal posé par
+-- Guard/CatchRagdoll avec l'attribut RAGDOLL_ONLY : rien pendant le ragdoll (Knockdown tirerait sur les Motor6D coupés),
+-- GetUp quand le signal s'en va (relevé : Motor6D déjà remis par le serveur).
+local function onRagdollOnly(cue: Instance)
+	stunToken += 1
+	local token = stunToken
+	local function getUp()
+		local anim = animation
+		if token == stunToken and anim then
+			anim.PlayPlayer("GetUp")
+		end
+	end
+	if cue.Parent == nil then
+		getUp()
+		return
+	end
+	local connection: RBXScriptConnection? = nil
+	connection = cue.AncestryChanged:Connect(function(_, parent: Instance?)
+		if parent == nil then
+			if connection then
+				connection:Disconnect()
+			end
+			getUp()
+		end
+	end)
+end
+
 local function watchCharacter(character: Model)
 	local previous = rootConnection
 	if previous then
@@ -490,7 +520,9 @@ local function watchCharacter(character: Model)
 		return
 	end
 	rootConnection = root.ChildAdded:Connect(function(child: Instance)
-		if child.Name == KNOCKBACK_NAME then
+		if child.Name == KNOCKBACK_NAME and child:GetAttribute(RAGDOLL_ONLY) == true then
+			onRagdollOnly(child) -- a537 (L-501)
+		elseif child.Name == KNOCKBACK_NAME then
 			onKnockback()
 		elseif child.Name == ARREST_NAME then
 			-- Arrestation de nuit (L-076) : le vigile joue Arrest, le joueur Arrested, puis il est renvoyé chez lui.
