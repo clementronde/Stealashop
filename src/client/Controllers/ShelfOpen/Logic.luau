@@ -71,8 +71,24 @@ function Logic.quadOut(t: number): number
 	return 1 - (1 - x) * (1 - x)
 end
 
+-- a523 (L-442, Features.LuckTiers) : allumé, au format de Shared/LuckTiers (×9.99, ×99.9, ×999, ×1.5K…), le même sous
+-- ×10. Module absent (faux arbres des bancs) : le format d'avant.
+local luckTiers: any = (function(): any
+	local found, module = pcall(function(): any
+		return Shared:FindFirstChild("LuckTiers")
+	end)
+	if not found or module == nil then
+		return nil
+	end
+	local ok, result = pcall(require, module :: any)
+	return if ok and type(result) == "table" then result else nil
+end)()
+
 -- Texte de BB_ShelfOpen.Row.Luck : « ×1.25 LUCK ».
 function Logic.luckText(luck: number): string
+	if luckTiers and luckTiers.on() then
+		return luckTiers.text(luck)
+	end
 	return string.format("×%.2f LUCK", luck)
 end
 

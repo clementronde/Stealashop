@@ -345,6 +345,23 @@ local Features = {
 	UnboxClimbMatchesItem = false,
 	-- a462 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
 	UnboxClimbMatchesItemDev = true,
+	-- a523 (L-462, Clément 26/11 : « chaque coup de l'animation fait monter la luck ») : pendant l'ouverture d'un colis de
+	-- rayon, la chance tirée est la base, puis des coups font monter la chance (« +0.2 LUCK », séries « x2 STREAK »,
+	-- rarement « SUPER LUCK! ») ; tout est tiré d'avance par le serveur AVANT l'objet, et l'objet est tiré avec la chance
+	-- finale (celle qu'on voit à la fin des coups). Config/Unbox.New.HitLuck, Shared/UnboxPlan (hitsDraw, hitsBonus),
+	-- StoreHeistService.startReveal, Controllers/Reveal/Unbox (BB_UnboxLuckGain). Interrupteur PROD (partout) : false
+	-- (règle C2 : pas encore de test humain) ; false = la chance d'avant (L-376 : ×1 qui monte jusqu'à la chance tirée).
+	UnboxHitLuck = false,
+	-- a523 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	UnboxHitLuckDev = true,
+	-- a523 (L-442, Clément 27/11 : « plein de versions en fonction des paliers de luck ») : le compteur « ×N LUCK »
+	-- (BB_ShelfOpen.Row.Luck, BB_UnboxOdds.Odds) prend le style du palier de Clément (Assets/UI/LuckTiers/Tier_NN : dernier
+	-- MinLuck ≤ la chance affichée), au format ×9.99, ×99.9, ×999, ×1.5K, ×250M, ×3.2T ; au passage d'un palier en montée,
+	-- rebond Pop et FX_LuckTier_<BurstLevel>. Shared/LuckTiers, Controllers/ShelfOpen/LuckTierStyle. Interrupteur PROD
+	-- (partout) : false (règle C2) ; false = « ×%.2f LUCK » blanc, comme avant.
+	LuckTiers = false,
+	-- a523 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	LuckTiersDev = true,
 	-- a486 (Cantin, 25/11 ; note d'a479 « économie B/T ») : table 2 de l'économie (Config/Economy : raretés × 60, zone 6 à
 	-- Speed 30T, tapis à 6 crédits par seconde et 25 niveaux, prix refaits, classements à part, profils convertis au
 	-- chargement dans les deux sens). Lu par Config/Economy seul, au chargement : chaque module de Config prend ses

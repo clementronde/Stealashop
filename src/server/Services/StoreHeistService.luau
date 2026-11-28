@@ -3136,11 +3136,13 @@ local function startReveal(player: Player, slot: Slot, box: ShelfBox)
 		luck = drawLuckV2(player, config.TableLuck, if config.EventLuck then Workspace:GetAttribute("LiveEventShelfLuck") else nil)
 	end
 	local forced = luckOverride
+	local luckForced = false
 	if forced then
 		local drawn: OverrideInfo = { StoreId = store.Id, SlotId = slot.Id, Zone = store.Zone, Rarity = box.Rarity, ItemId = "" }
 		local ok, value = pcall(forced, player, drawn)
 		if ok and type(value) == "number" and value >= 1 and value < math.huge then
 			luck = value
+			luckForced = true -- a523 : chance imposée par le tuto, aucun gain des coups par-dessus
 		elseif not ok then
 			warn(`[StoreHeistService] accroche SetLuckOverride : {value}`)
 		end
@@ -3148,6 +3150,35 @@ local function startReveal(player: Player, slot: Slot, box: ShelfBox)
 	local pending: Content = { Rarity = box.Rarity, ItemId = "", Mutation = nil }
 	local given = contentFor(player, slot, pending)
 	local imposed = given ~= pending
+	-- a523 (L-462, Shared/UnboxPlan.hitLuck) : les gains des coups tirés ici, d'avance et AVANT l'objet ; l'objet, son
+	-- poids et ses mutations sont tirés avec la chance finale (base × (1 + gains), UnboxPlan.hitsFinal), celle que les
+	-- joueurs voient à la fin des coups (règle de Roblox : la chance affichée est la vraie). La base (chance tirée) va
+	-- dans le plan avec les gains. Jamais sur un contenu ou une chance imposés (tuto), ni sans plan à montrer.
+	local baseLuck = luck
+	local hits: { string }? = nil
+	local hitModule: any = Shared:FindFirstChild("UnboxPlan")
+	if not imposed and not luckForced and hitModule and (Unbox :: any).New and (Unbox :: any).New.Enabled == true and luck < 1e6 then
+		local ok, drawnHits, final = pcall(function(): (any, any)
+			local UnboxPlan = require(hitModule) :: any
+			if not UnboxPlan.hitLuck() then
+				return nil, nil
+			end
+			local list = UnboxPlan.hitsDraw(function(): number
+				return random:NextNumber()
+			end)
+			baseLuck = UnboxPlan.planLuck(luck)
+			return list, UnboxPlan.hitsFinal(baseLuck, list)
+		end)
+		if ok and type(drawnHits) == "table" and type(final) == "number" and final >= 1 and final < math.huge then
+			hits = drawnHits
+			luck = final
+		else
+			baseLuck = luck
+			if not ok then
+				warnOnce("unbox.hits", `gains des coups impossibles ({drawnHits}) : chance tirée seule`)
+			end
+		end
+	end
 	local content: Content? = nil
 	local drawnRarity = box.Rarity
 	if imposed then
@@ -3254,9 +3285,13 @@ local function startReveal(player: Player, slot: Slot, box: ShelfBox)
 			upgrades, climb = UnboxPlan.shelfClimb(box.Rarity, final.Rarity, upgrades)
 			-- a462 (L-376) : la chance de l'ouvreur va dans le plan (« ×N LUCK » pendant les coups), interrupteur allumé.
 			local planLuck: number? = if UnboxPlan.luckClimbs() == true then luck else nil
+			-- a523 (L-462) : avec les gains des coups, la base et les gains (le client montre la base, puis chaque gain).
+			if hits then
+				planLuck = baseLuck
+			end
 			local drawn = UnboxPlan.draw(final.Rarity, function(n: number): number
 				return 1 + math.floor(random:NextNumber() * n)
-			end, box.Rarity, upgrades, odds, climb, planLuck)
+			end, box.Rarity, upgrades, odds, climb, planLuck, hits)
 			local parsed = UnboxPlan.parse(drawn)
 			return drawn, UnboxPlan.serverMaxSeconds(final.Rarity, sizeClass, if parsed then #parsed.Steps else nil)
 		end)
@@ -3284,7 +3319,7 @@ local function startReveal(player: Player, slot: Slot, box: ShelfBox)
 		elseif drawnRarity ~= final.Rarity then ` (tirée : {drawnRarity}, aucun objet nulle part)`
 		else ""
 	local mutation = Mutations.Label(final.Mutation)
-	log(`{player.Name} ouvre la caisse {box.Rarity} {slot.Name} de {store.Id} : cinématique {id}, chance ×{luck}, objet {final.Rarity} ({final.ItemId}){how}, {weight} kg, taille ×{scale}, classe {sizeClass}{if mutation then ", " .. mutation else ""}, {maxSeconds} s au plus{if plan then `, plan {plan}` else ""}`)
+	log(`{player.Name} ouvre la caisse {box.Rarity} {slot.Name} de {store.Id} : cinématique {id}, chance ×{luck}{if hits then ` (base ×{baseLuck}, gains des coups {table.concat(hits)})` else ""}, objet {final.Rarity} ({final.ItemId}){how}, {weight} kg, taille ×{scale}, classe {sizeClass}{if mutation then ", " .. mutation else ""}, {maxSeconds} s au plus{if plan then `, plan {plan}` else ""}`)
 end
 
 -- RevealDone(revealId) : l'ouvreur a fini de voir sa cinématique. Seule la sienne, en cours ; sinon ignoré.

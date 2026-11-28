@@ -1115,4 +1115,11 @@ local DisplayPlaceFx: ModelSpec = {
 Models.DisplayPlaceFx = DisplayPlaceFx
 table.insert(Models.List, table.find(Models.List, WeaponShopCounter) or #Models.List + 1, DisplayPlaceFx)
 
+-- a523 (L-462, L-442) : éclat du SUPER LUCK! (FX_Unbox_SuperLuck, chef VFX v1263) et éclats des paliers du compteur
+-- « ×N LUCK » (FX_LuckTier_1 à _6) : mêmes règles que les autres effets de l'ouverture (Root facultatif).
+for _, name in { "FX_Unbox_SuperLuck", "FX_LuckTier_1", "FX_LuckTier_2", "FX_LuckTier_3", "FX_LuckTier_4", "FX_LuckTier_5", "FX_LuckTier_6" } do
+	table.insert(UnboxFx.Names :: { string }, name)
+	table.insert(UnboxFx.Expected :: { string }, name)
+end
+
 return Models

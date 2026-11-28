@@ -50,6 +50,17 @@ local ShelfOpenState = require(Shared:WaitForChild("ShelfOpenState"))
 local MarkerSounds = require(Shared:WaitForChild("Anim"):WaitForChild("MarkerSounds"))
 local Find = require(Shared:WaitForChild("Contract"):WaitForChild("Find"))
 local Logic = require(script.Parent:WaitForChild("ShelfOpen"):WaitForChild("Logic"))
+-- a523 (L-442, Features.LuckTiers) : style des paliers du compteur (ShelfOpen/LuckTierStyle) ; absent (bancs) : rien.
+local LuckTierStyle: any = (function(): any
+	local found, module = pcall(function(): any
+		return script.Parent:WaitForChild("ShelfOpen"):FindFirstChild("LuckTierStyle")
+	end)
+	if not found or module == nil then
+		return nil
+	end
+	local ok, result = pcall(require, module :: any)
+	return if ok and type(result) == "table" then result else nil
+end)()
 
 -- Noms posés par StoreHeistService et par Clément (mêmes noms là-bas).
 local SHELF_BOX_TAG = "ShelfBox"
@@ -135,6 +146,8 @@ type Session = {
 	LuckLabel: TextLabel?,
 	Icon: GuiObject?,
 	IconRotation: number,
+	Tier: any, -- a523 (L-442) : LuckTierStyle du compteur, nil sans paliers
+	TierClock: number,
 	LastTick: number,
 	BoxGone: boolean,
 	WaitSince: number,
@@ -454,6 +467,14 @@ local function createBoard(session: Session)
 	local label = session.LuckLabel
 	if label then
 		label.Text = Logic.luckText(1)
+		if LuckTierStyle then
+			-- a523 (L-442) : éclat d'un palier franchi au-dessus du colis.
+			session.Tier = LuckTierStyle.new(label, session.Icon, function(): CFrame?
+				local core = session.Core
+				return if core then CFrame.new((core.CFrame * CFrame.new(session.TopLocal)).Position + Vector3.new(0, 1, 0)) else nil
+			end)
+			session.TierClock = os.clock()
+		end
 	end
 end
 
@@ -930,6 +951,8 @@ local function startSession(box: Model): Session?
 		LuckLabel = nil,
 		Icon = nil,
 		IconRotation = 0,
+		Tier = nil,
+		TierClock = 0,
 		LastTick = 0,
 		BoxGone = false,
 		WaitSince = 0,
@@ -995,13 +1018,21 @@ local function updateOpening(session: Session, serverNow: number, clock: number)
 	end
 	local label = session.LuckLabel
 	if label then
-		label.Text =
-			Logic.luckText(Logic.displayLuck(shown, session.Luck, Logic.finalLuck(session.Luck, session.OpenAt, session.SlotId)))
+		local display = Logic.displayLuck(shown, session.Luck, Logic.finalLuck(session.Luck, session.OpenAt, session.SlotId))
+		label.Text = Logic.luckText(display)
+		local tier = session.Tier
+		if tier then
+			-- a523 (L-442) : palier de la chance affichée, son mouvement.
+			LuckTierStyle.Set(tier, display)
+			LuckTierStyle.Step(tier, math.max(clock - session.TierClock, 0))
+			session.TierClock = clock
+		end
 	end
 	local rowScale = session.RowScale
 	if rowScale then
 		local q = if session.RowPopAt > 0 then (clock - session.RowPopAt) / Logic.RowPopTime else 1
-		rowScale.Scale = if q >= 1 then 1 else Logic.RowPopFrom + (1 - Logic.RowPopFrom) * Logic.backOut(q)
+		rowScale.Scale = (if q >= 1 then 1 else Logic.RowPopFrom + (1 - Logic.RowPopFrom) * Logic.backOut(q))
+			* (if session.Tier then LuckTierStyle.Scale(session.Tier) else 1) -- a523 (L-442) : TextScale du palier
 	end
 	local boardScale = session.BoardScale
 	if boardScale and session.Board then

@@ -1735,4 +1735,23 @@ for _, billboard in UI.Billboards do
 		table.insert(billboard.Elements, { Path = "ZoneTag", Class = "GuiObject", Optional = true, Note = "« ZONE N » écrit par le repli du code (a517)" })
 	end
 end
+
+-- a523 (L-462, Features.UnboxHitLuck) : gain des coups de l'ouverture d'un colis, au-dessus du compteur « ×N LUCK » ; noms
+-- proposés (Figma page 44), pas encore livrés : facultatif (absent, un billboard du code aux mêmes noms).
+--   Amount (« +0.2 LUCK »), Streak (« x2 STREAK », caché sauf en série), SuperLuck (Frame cachée : Label « SUPER LUCK! »,
+--   Gain « +2.0 », Total « ×3.40 »).
+table.insert(UI.Billboards, {
+	Name = "BB_UnboxLuckGain",
+	Class = "BillboardGui",
+	Optional = true,
+	Elements = {
+		{ Path = "Amount", Class = "TextLabel" },
+		{ Path = "Streak", Class = "TextLabel", Optional = true, Note = "pas de « x2 STREAK » affiché" },
+		{ Path = "SuperLuck", Class = "Frame", Optional = true, Note = "pas de cadre SUPER LUCK! (le gain seul)" },
+		{ Path = "SuperLuck.Label", Class = "TextLabel", Optional = true },
+		{ Path = "SuperLuck.Gain", Class = "TextLabel", Optional = true },
+		{ Path = "SuperLuck.Total", Class = "TextLabel", Optional = true },
+	} :: { Element },
+})
+
 return UI
