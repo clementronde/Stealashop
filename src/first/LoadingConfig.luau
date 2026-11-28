@@ -19,6 +19,16 @@ export type LoadingConfig = {
 	Preload: { { string } },
 	PreloadClasses: { string },
 	Tips: { string },
+	MaxWait: number,
+	CheckInterval: number,
+	DoneAttribute: string,
+	ProfileAttribute: string,
+	StepOrder: { string },
+	StepWeights: { [string]: number },
+	StepText: { [string]: string },
+	Screens: { string },
+	RealPreload: { { string } },
+	RealPreloadClasses: { string },
 }
 
 local LoadingConfig: LoadingConfig = {
@@ -55,9 +65,45 @@ local LoadingConfig: LoadingConfig = {
 		"Auras boost your strength, trails boost your speed.",
 		"Other players can rob your shop too. Lock it and hit thieves with your bat!",
 	},
+	-- a532 (Cantin, 28/11) : vrai déroulé (Features.LoadingReal / LoadingRealDev, lu dès que ReplicatedStorage/Shared
+	-- est là ; éteint : le déroulé ci-dessus, inchangé). LoadingFlow (même dossier) suit les étapes de StepOrder.
+	MaxWait = 45, -- V0 : au-delà, on entre quand même ; une ligne dans la sortie dit les étapes pas finies
+	CheckInterval = 0.1, -- V0 : secondes entre deux relevés des étapes
+	-- Attribut du Player posé à la fermeture de l'écran (Skip, fin, MaxWait, écran absent) ; même nom que
+	-- Shared/LoadingGate.Attribute (lu par le tuto et l'écran des gains hors ligne).
+	DoneAttribute = "LoadingDone",
+	ProfileAttribute = "ProfileLoaded", -- posé par DataService (serveur) quand le profil est chargé
+	StepOrder = { "Screen", "Game", "Profile", "Character", "Screens", "Stream", "Assets" },
+	-- Part de la barre de chaque étape (somme 1), V0.
+	StepWeights = { Screen = 0.05, Game = 0.2, Profile = 0.15, Character = 0.1, Screens = 0.1, Stream = 0.1, Assets = 0.3 },
+	-- Texte de l'étape en cours : Root.Step de Clément s'il existe, sinon après le pourcentage (repli), V0.
+	StepText = {
+		Screen = "Loading",
+		Game = "Loading the street",
+		Profile = "Loading your save",
+		Character = "Spawning",
+		Screens = "Loading the HUD",
+		Stream = "Loading the area",
+		Assets = "Loading assets",
+	},
+	Screens = { "UI_HUD", "UI_Hotbar" }, -- attendus dans le PlayerGui (s'ils sont dans StarterGui), puis préchargés
+	-- Ajoutés à Preload et PreloadClasses dans le vrai déroulé : les sons de base de l'UI.
+	RealPreload = {
+		{ "Assets", "Sounds", "UI" },
+	},
+	RealPreloadClasses = { "Sound" },
 }
 
 table.freeze(LoadingConfig.Weights)
+table.freeze(LoadingConfig.StepOrder)
+table.freeze(LoadingConfig.StepWeights)
+table.freeze(LoadingConfig.StepText)
+table.freeze(LoadingConfig.Screens)
+for _, path in LoadingConfig.RealPreload do
+	table.freeze(path)
+end
+table.freeze(LoadingConfig.RealPreload)
+table.freeze(LoadingConfig.RealPreloadClasses)
 for _, path in LoadingConfig.Preload do
 	table.freeze(path)
 end

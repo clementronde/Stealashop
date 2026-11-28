@@ -15,9 +15,14 @@
 -- MinSpacing studs au moins l'un de l'autre, rangés dans l'ordre du tour du magasin (angle autour du centre de Bounds,
 -- en partant du GuardSpawn). Tous à la hauteur des pieds au GuardSpawn (un magasin = un seul étage).
 --
+-- a529 (L-494, Play du lot 3 : ronde qui bute partout) : avec `clearance` (largeur du vigile), un point devant un rayon
+-- qui tombe dans un meuble ou contre lui est déplacé à la première place libre autour du slot (directions TURNS,
+-- ShelfOffset puis SearchStep plus loin, SearchSteps fois), sinon sauté. GuardService retire aussi de la ronde un point
+-- où le vigile reste bloqué (dit une fois dans la sortie).
+--
 -- API :
 --   DayPatrol.On() -> boolean
---   DayPatrol.Points(store, spawn) -> { Vector3 }   spawn : les pieds au GuardSpawn
+--   DayPatrol.Points(store, spawn, clearance?) -> { Vector3 }   spawn : les pieds au GuardSpawn
 --   DayPatrol.Pause() -> number                      durée d'une pause (s)
 --   DayPatrol.LookPoint(store, from) -> Vector3?     le petit pas vers la vitrine, à la pause
 --   DayPatrol.Speed() -> number ; DayPatrol.CheckInterval() -> number
@@ -34,6 +39,14 @@ local SHELF_SLOT = "ShelfSlot_%02d" -- contrat 10.4 (Contract/Models)
 local SHELF_SLOTS = 10
 local BOUNDS = "Bounds"
 local WINDOW = "Window"
+
+local Workspace = game:GetService("Workspace")
+
+-- a529 (L-494) : directions essayées autour du slot pour trouver une place libre (degrés, depuis le centre de Bounds).
+local TURNS = { 0, 45, -45, 90, -90, 135, -135, 180 }
+
+-- a529 (L-494) : la largeur du vigile, pour garder ses points à l'écart des meubles (Points).
+export type Clearance = { radius: number, height: number, exclude: { Instance }, spacing: number? }
 
 local random = Random.new()
 
@@ -88,7 +101,35 @@ local function clampInside(box: BasePart, point: Vector3, inset: number): Vector
 	return box.CFrame * clamped
 end
 
-function DayPatrol.Points(store: Model, spawn: Vector3): { Vector3 }
+-- a529 (L-494) : la place autour de `p` (pieds) est-elle libre ? Pavé de 2 × radius de côté, de FootClearance au-dessus
+-- des pieds (le sol, les marches) à `height` ; seules les pièces solides (CanCollide) comptent. Sans la fonction
+-- (vieux moteur, banc) : libre.
+local function isFree(p: Vector3, clearance: Clearance): boolean
+	local bottom = p.Y + cfg().FootClearance
+	local top = p.Y + clearance.height
+	if top <= bottom or clearance.radius <= 0 then
+		return true
+	end
+	local params = OverlapParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = clearance.exclude
+	params.RespectCanCollide = true
+	local size = Vector3.new(2 * clearance.radius, top - bottom, 2 * clearance.radius)
+	local ok, parts = pcall(function(): { BasePart }
+		return Workspace:GetPartBoundsInBox(CFrame.new(p.X, (bottom + top) / 2, p.Z), size, params)
+	end)
+	if not ok or type(parts) ~= "table" then
+		return true
+	end
+	for _, part in parts do
+		if part.CanCollide then
+			return false
+		end
+	end
+	return true
+end
+
+function DayPatrol.Points(store: Model, spawn: Vector3, clearance: Clearance?): { Vector3 }
 	local c = cfg()
 	local floorY = spawn.Y
 	local function onFloor(p: Vector3): Vector3
@@ -110,6 +151,8 @@ function DayPatrol.Points(store: Model, spawn: Vector3): { Vector3 }
 	local box = if bounds and bounds:IsA("BasePart") then bounds :: BasePart else nil
 	local center = if box then box.Position else spawn
 	local points: { Vector3 } = { onFloor(spawn) }
+	-- a529 (L-494) : jamais plus près l'un de l'autre que la distance d'arrivée du vigile (sinon deux pauses sur place).
+	local spacing = math.max(c.MinSpacing, if clearance and clearance.spacing then clearance.spacing else 0)
 	for index = 1, SHELF_SLOTS do
 		local at = positionOf(Find.path(store, string.format(SHELF_SLOT, index)))
 		if at then
@@ -119,9 +162,38 @@ function DayPatrol.Points(store: Model, spawn: Vector3): { Vector3 }
 				p = clampInside(box, p, c.BoundsInset)
 			end
 			p = onFloor(p)
+			-- a529 (L-494) : point dans un meuble ou collé à lui (rayon au milieu du magasin, slot du côté opposé au
+			-- centre) : on cherche une place libre autour du slot, de plus en plus loin, sinon le slot est sauté.
+			if clearance and not isFree(p, clearance) then
+				local base = if inward.Magnitude > 1e-3 then inward.Unit else flat(spawn - at)
+				base = if base.Magnitude > 1e-3 then base.Unit else Vector3.xAxis
+				local found: Vector3? = nil
+				for ring = 0, c.SearchSteps do
+					local reach = c.ShelfOffset + ring * c.SearchStep
+					for _, turn in TURNS do
+						local dir = CFrame.Angles(0, math.rad(turn), 0) * base
+						local q = at + dir * reach
+						if box then
+							q = clampInside(box, q, c.BoundsInset)
+						end
+						q = onFloor(q)
+						if isFree(q, clearance) then
+							found = q
+							break
+						end
+					end
+					if found then
+						break
+					end
+				end
+				if found == nil then
+					continue
+				end
+				p = found
+			end
 			local tooClose = false
 			for _, other in points do
-				if flat(other - p).Magnitude < c.MinSpacing then
+				if flat(other - p).Magnitude < spacing then
 					tooClose = true
 					break
 				end

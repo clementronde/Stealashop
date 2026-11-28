@@ -38,8 +38,9 @@
 --   6. Échappé (fin du trajet ou alerte de la nuit) : annonce, retrait, rien n'est donné.
 --   7. a516 (Cantin, 27/11 ; Features.ArmoredVanV2 / ArmoredVanV2Dev, Config/ArmoredVan.V2 ; l'emporte sur le point 5 et
 --      sur ArmoredVanBurst) : plus de PV selon les joueurs présents ni de classement. Trajet en 6 paliers de 25 s (zone 6
---      au départ, zone 1 à la fin) ; les dégâts de tous s'additionnent depuis le départ et le fourgon casse dès que ce
---      total atteint le seuil fixe du palier en cours (V2Threshold), au coup ou au changement de palier. Jauge au-dessus
+--      au départ, zone 1 à la fin) ; chaque coup ajoute dégâts / seuil fixe du palier en cours (V2Threshold) à une
+--      progression gardée d'un palier à l'autre (bornée à V2.CarryMax, a533) ; le fourgon casse au coup qui la fait
+--      atteindre 100 %, jamais au changement de palier (a533, Cantin 28/11). Jauge au-dessus
 --      (BB_VanGauge de Clément ou repli). À la casse : 12 colis de la zone du palier (règles NextZone, Zone, BestZone de
 --      Config/Rewards.ZoneBox) au sol sur un rayon d'événement, placés comme ceux du camion (TruckEventService.LandingPoint),
 --      ouverts sur place par n'importe qui, chance au moins ×3 (MinLuck), objet de la zone du palier ; annonce « Zone N ».
@@ -61,6 +62,7 @@
 --   ArmoredVanService.V2Threshold(zone) -> number        a516 : seuil fixe de la zone (bancs)
 --   ArmoredVanService.V2Step(elapsed) -> (palier, zone)  a516 : palier en cours `elapsed` s après le départ (bancs)
 --   ArmoredVanService.V2BreakAt(perSecond) -> (palier?, s?)   a516 : casse d'un serveur à ce débit de dégâts (bancs)
+--   ArmoredVanService.V2Carry(progress) -> number        a533 : progression gardée au changement de palier (bancs)
 
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
@@ -106,9 +108,11 @@ type Van = {
 	Names: { [number]: string },
 	Done: boolean,
 	Heartbeat: RBXScriptConnection?,
-	-- a516 (V2) : total des dégâts reçus depuis le départ, palier en cours (1 à #V2.StepZones), jauge à rafraîchir.
+	-- a516 (V2) : total des dégâts reçus depuis le départ (journal), palier en cours (1 à #V2.StepZones), jauge à
+	-- rafraîchir ; a533 : progression (part du seuil, 0 à 1), seule à décider de la casse et à remplir la jauge.
 	V2: boolean,
 	Total: number,
+	Progress: number,
 	Step: number,
 	Refresh: (() -> ())?,
 }
@@ -297,19 +301,35 @@ function ArmoredVanService.V2Step(elapsed: number): (number, number)
 	return index, V2CFG.StepZones[index]
 end
 
+-- a533 (Cantin, 28/11) : progression gardée au changement de palier, bornée à V2.CarryMax (toujours < 1 : pas de
+-- casse sans coup).
+function ArmoredVanService.V2Carry(progress: number): number
+	if type(progress) ~= "number" or progress ~= progress or progress <= 0 then
+		return 0
+	end
+	return math.min(progress, V2CFG.CarryMax, 0.999999)
+end
+
 -- a516 (V2) : un serveur qui frappe sans arrêt à `perSecond` dégâts par seconde casse le fourgon au palier rendu, à la
--- seconde rendue (après le départ) ; nil s'il s'échappe (bancs, tableau du rapport).
+-- seconde rendue (après le départ) ; nil s'il s'échappe (bancs, tableau du rapport). a533 : progression en part du
+-- seuil du palier en cours, gardée d'un palier à l'autre (V2Carry).
 function ArmoredVanService.V2BreakAt(perSecond: number): (number?, number?)
 	if type(perSecond) ~= "number" or perSecond ~= perSecond or perSecond <= 0 then
 		return nil, nil
 	end
+	local progress = 0
 	for index, zone in V2CFG.StepZones do
 		local from = (index - 1) * V2CFG.StepTime
 		local to = math.min(index * V2CFG.StepTime, ArmoredVan.TravelTime)
-		local at = math.max(from, ArmoredVanService.V2Threshold(zone) / perSecond)
+		if from >= to then
+			break
+		end
+		local threshold = math.max(ArmoredVanService.V2Threshold(zone), 1)
+		local at = from + (1 - progress) * threshold / perSecond
 		if at < to then
 			return index, at
 		end
+		progress = ArmoredVanService.V2Carry(progress + perSecond * (to - from) / threshold)
 	end
 	return nil, nil
 end
@@ -644,15 +664,16 @@ local function attachGauge(model: Model, current: Van): () -> ()
 	end
 	return function()
 		local zone = V2CFG.StepZones[current.Step]
-		local threshold = ArmoredVanService.V2Threshold(zone)
 		if title and title:IsA("TextLabel") then
 			title.Text = string.format(V2CFG.ZoneText, zone)
 		end
+		-- a533 : la progression (part du seuil, gardée d'un palier à l'autre), pas le total : pas de saut au changement.
+		local progress = math.clamp(current.Progress, 0, 1)
 		if fill and fill:IsA("GuiObject") then
-			fill.Size = UDim2.fromScale(math.clamp(current.Total / math.max(threshold, 1), 0, 1), fill.Size.Y.Scale)
+			fill.Size = UDim2.fromScale(progress, fill.Size.Y.Scale)
 		end
 		if text and text:IsA("TextLabel") then
-			text.Text = `{Format.short(math.min(current.Total, threshold))} / {Format.short(threshold)}`
+			text.Text = `{math.floor(progress * 100)} %`
 		end
 		for index, mark in marks do
 			if mark.Current and mark.Current:IsA("GuiObject") then
@@ -700,8 +721,22 @@ local function escape(current: Van)
 	log("fourgon échappé : rien n'est donné")
 end
 
--- a516 (V2) : rafraîchit la jauge et casse le fourgon si le total atteint le seuil du palier (défini après breakVan).
+-- a516 (V2) : rafraîchit la jauge et casse le fourgon si la progression atteint 100 % (défini après breakVan ; a533 :
+-- appelé seulement après un coup).
 local checkV2: (current: Van) -> ()
+
+-- a533 (Cantin, 28/11) : passe au palier du moment ; à un nouveau palier, la progression est gardée (V2Carry, toujours
+-- < 1 : aucune casse ici). Vrai si le palier a changé.
+local function advanceV2(current: Van): boolean
+	local elapsed = math.min(os.clock() - current.From, ArmoredVan.TravelTime - 1e-3)
+	local step = ArmoredVanService.V2Step(elapsed)
+	if step <= current.Step then
+		return false
+	end
+	current.Step = step
+	current.Progress = ArmoredVanService.V2Carry(current.Progress)
+	return true
+end
 
 local function spawnVan(): boolean
 	if van ~= nil then
@@ -726,8 +761,14 @@ local function spawnVan(): boolean
 	end
 	local maxHP = ArmoredVanService.MaxHP(damages)
 	if V2 then
-		-- a516 : PV de la cible = le seuil du premier palier (le plus haut) ; la casse vient du total (checkV2) avant.
-		maxHP = math.max(1, ArmoredVanService.V2Threshold(V2CFG.StepZones[1]))
+		-- a516 : la casse vient de la progression (checkV2), pas des PV de la cible. a533 : PV = deux fois la somme des
+		-- seuils, plus que tous les dégâts possibles avant 100 % (au plus un seuil par palier) : WindowService ne casse
+		-- jamais le fourgon avant la progression.
+		local sum = 0
+		for _, zone in V2CFG.StepZones do
+			sum += ArmoredVanService.V2Threshold(zone)
+		end
+		maxHP = math.max(1, 2 * sum)
 	end
 	model:PivotTo(frameAt(points, 0))
 	local endsAt = Workspace:GetServerTimeNow() + ArmoredVan.TravelTime
@@ -752,6 +793,7 @@ local function spawnVan(): boolean
 		Heartbeat = nil,
 		V2 = V2,
 		Total = 0,
+		Progress = 0,
 		Step = 1,
 		Refresh = nil,
 	}
@@ -777,11 +819,9 @@ local function spawnVan(): boolean
 		end
 		model:PivotTo(frameAt(current.Path, t * current.Length))
 		if current.V2 then
-			-- a516 : nouveau palier : seuil plus bas, la jauge change, et un total déjà assez haut casse tout de suite.
-			local step = ArmoredVanService.V2Step(elapsed)
-			if step ~= current.Step then
-				current.Step = step
-				checkV2(current)
+			-- a516 : nouveau palier : seuil plus bas, la jauge change. a533 : même pourcentage, jamais de casse ici.
+			if advanceV2(current) and current.Refresh then
+				current.Refresh()
 			end
 		end
 	end)
@@ -1090,11 +1130,11 @@ checkV2 = function(current: Van)
 	if elapsed >= ArmoredVan.TravelTime then
 		return -- il s'échappe (Heartbeat)
 	end
-	current.Step = math.max(current.Step, (ArmoredVanService.V2Step(elapsed)))
+	advanceV2(current)
 	if current.Refresh then
 		current.Refresh()
 	end
-	if current.Total >= ArmoredVanService.V2Threshold(V2CFG.StepZones[current.Step]) then
+	if current.Progress >= 1 - 1e-9 then -- a533 : 100 % atteint par ce coup (à l'arrondi près)
 		breakVan(current)
 	end
 end
@@ -1163,7 +1203,11 @@ local function onHit(player: Player, windowId: string, _kind: string, _model: Mo
 		current.Damage[player.UserId] = (current.Damage[player.UserId] or 0) + damage
 		current.Names[player.UserId] = player.Name
 		if current.V2 then
-			current.Total += damage -- a516 : dégâts de tous, cumulés depuis le départ
+			current.Total += damage -- a516 : dégâts de tous, cumulés depuis le départ (journal)
+			-- a533 : le coup compte en part du seuil du palier où il tombe.
+			advanceV2(current)
+			local threshold = ArmoredVanService.V2Threshold(V2CFG.StepZones[current.Step])
+			current.Progress += damage / math.max(threshold, 1)
 			checkV2(current)
 		end
 	end

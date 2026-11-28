@@ -204,6 +204,7 @@ local CASH_ATTRIBUTE = "Cash"
 -- Fusion57 (vague 63, a209) : solde de diamants publié pour DiamondBalance (Config/ShopFx.Diamonds.Attribute) ; aucun
 -- code ne change encore les diamants : publié au chargement du profil seulement.
 local DIAMONDS_ATTRIBUTE = "Diamonds"
+local PROFILE_LOADED_ATTRIBUTE = "ProfileLoaded" -- a532 : true quand le profil est chargé (écran de chargement)
 
 -- Modèle d'un nouveau profil, schéma v8 (forme de la section 9.5, plus la boutique Robux, l'index, les
 -- gains hors ligne, les colis rangés par uid et les récompenses).
@@ -1071,6 +1072,8 @@ local function loadProfile(player: Player)
 	for _, listener in table.clone(loadedListeners) do
 		task.spawn(listener, player)
 	end
+	-- a532 : profil prêt, pour l'écran de chargement du client (LoadingConfig.ProfileAttribute).
+	player:SetAttribute(PROFILE_LOADED_ATTRIBUTE, true)
 end
 
 local function releaseProfile(player: Player)

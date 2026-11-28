@@ -42,6 +42,16 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Offline = require(Shared:WaitForChild("Config"):WaitForChild("Offline"))
 local Find = require(Shared:WaitForChild("Contract"):WaitForChild("Find"))
 local Format = require(Shared:WaitForChild("Format"))
+-- a532 : Shared/LoadingGate (absent, anciens arbres : rien n'attend).
+local loadingGateModule = Shared:FindFirstChild("LoadingGate")
+local LoadingGate: any = nil
+if loadingGateModule then
+	local ok, gate = pcall(require, loadingGateModule :: any)
+	LoadingGate = if ok then gate else nil
+end
+local function loadingDone(): boolean
+	return LoadingGate == nil or LoadingGate.IsDone(Players.LocalPlayer)
+end
 local Motion = require(script.Parent:WaitForChild("UI"):WaitForChild("Motion"))
 
 -- Ce que ce contrôleur utilise de NotifyController.
@@ -255,7 +265,8 @@ local function check()
 	if claiming and now - claimSentAt > CLAIM_TIMEOUT then
 		claiming = false -- pas de versement : le Claim pourra repartir
 	end
-	if readyAt == nil and localPlayer.Character ~= nil then
+	-- a532 : OpenDelay compte depuis la fermeture de l'écran de chargement (LoadingGate ; éteint : comme avant).
+	if readyAt == nil and localPlayer.Character ~= nil and loadingDone() then
 		readyAt = now + math.max(0, Offline.OpenDelay)
 	end
 	local ready = readyAt

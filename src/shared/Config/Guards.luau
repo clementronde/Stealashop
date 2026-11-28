@@ -33,6 +33,12 @@ local Guards = {
 		ShelfOffset = 3.5,
 		BoundsInset = 2,
 		MinSpacing = 3,
+		-- a529 (L-494) : point dans un meuble ou contre lui : place libre cherchée autour du slot, SearchStep studs plus
+		-- loin à chaque tour, SearchSteps tours ; le sol et les marches (FootClearance studs au-dessus des pieds) ne
+		-- comptent pas.
+		SearchStep = 1.5,
+		SearchSteps = 3,
+		FootClearance = 1,
 		LookStep = 0.6, -- V0 : à la pause, un pas de cette longueur vers la vitrine (Window), pour s'y tourner (studs)
 	},
 

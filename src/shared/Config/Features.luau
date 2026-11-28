@@ -138,6 +138,13 @@ local Features = {
 	-- WindowBroken, HighRarityOpened, ItemSold, LoadingTime, gains pas encore comptés (receleur, codes, dons du tuto,
 	-- prime au complice). Sous Config/Telemetry.Enabled. false = rien de cela.
 	Analytics = true,
+	-- a532 (Cantin, 28/11) : vrai écran de chargement (ReplicatedFirst/First/LoadingScreen et LoadingFlow) : on entre
+	-- dans le jeu quand le jeu, le profil, le personnage, les écrans principaux, la zone streamée et les assets clés sont
+	-- prêts (Skip, ou au plus tard LoadingConfig.MaxWait s) ; barre et pourcentage suivent ces étapes ; le tuto et les
+	-- gains hors ligne attendent l'attribut LoadingDone (Shared/LoadingGate). false = le déroulé d'a187. Lu par le
+	-- client au chargement (pris au prochain serveur). LoadingRealDev : jeu DEV et TEST (Config/ProductIds.IsDev).
+	LoadingReal = false,
+	LoadingRealDev = true,
 	-- a408 (vague GC6, MAJ 5 « Défense de la boutique », Cantin 23/11 : tout maintenant ; V0 à valider par Clément) :
 	-- tuiles de l'arbre devenues achetables (Config/SkillTree, Config/ShopDefense, ShopDefenseService) ; false = la
 	-- tuile reste « Soon » et rien n'est posé.
@@ -563,6 +570,13 @@ local Features = {
 	HeldIncomeAll = false,
 	-- a469 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
 	HeldIncomeAllDev = true,
+	-- a531 (L-500, Cantin 28/11) : objet de l'inventaire tenu en main redressé (Config/HeldItem.Pitch et Roll : il tourne
+	-- sur lui-même, à la même place devant la main, pour rester droit malgré la pose « outil en main » de Roblox ;
+	-- HeldItemService.gripOf). Les outils TOOL_* ne changent pas. Interrupteur PROD (partout) : false (règle C2 : pas
+	-- encore de test humain) ; false = Tool.Grip exactement comme avant (objet penché avec la main).
+	HeldItemLevel = false,
+	-- a531 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev).
+	HeldItemLevelDev = true,
 	-- a524 (L-447, Clément 26/11, repasse point 11) : les billets d'un gain ponctuel (récompense, prime de l'index) et
 	-- des gains hors ligne réclamés s'écartent d'abord (Config/HeistFeel.BillFly.SpreadTime, Quad Out) puis volent au
 	-- compteur ; à l'arrivée du premier, CashRow.CashIcon rebondit (BillFly.IconPop) avec le sursaut du nombre

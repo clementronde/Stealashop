@@ -62,6 +62,18 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Tutorial = require(Shared:WaitForChild("Config"):WaitForChild("Tutorial"))
 local Find = require(Shared:WaitForChild("Contract"):WaitForChild("Find"))
 local TutorialTasks = require(Shared:WaitForChild("TutorialTasks"))
+-- a532 : bulle cachée tant que l'écran de chargement n'est pas fermé (Features.LoadingReal / LoadingRealDev).
+-- Shared/LoadingGate absent (anciens arbres) : rien n'attend.
+local loadingGateModule = Shared:FindFirstChild("LoadingGate")
+local LoadingGate: any = nil
+if loadingGateModule then
+	local ok, gate = pcall(require, loadingGateModule :: any)
+	LoadingGate = if ok then gate else nil
+end
+local localPlayerForGate = Players.LocalPlayer
+local function loadingDone(): boolean
+	return LoadingGate == nil or LoadingGate.IsDone(localPlayerForGate)
+end
 
 -- Écran de Clément et ses éléments (contrat 2.2). SkipButton : nom proposé, pas encore au contrat.
 local SCREEN_NAME = "UI_Tutorial"
@@ -223,6 +235,9 @@ local function isStoreWindow(target: Vector3): boolean
 end
 
 local function covered(): boolean
+	if not loadingDone() then
+		return true -- a532 : sous l'écran de chargement
+	end
 	local gui = playerGui()
 	if gui == nil then
 		return false

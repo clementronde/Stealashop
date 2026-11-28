@@ -44,6 +44,18 @@ local HeldItem = {
 	LargeBelowHand = 0.6, -- V0 proposé, absent du doc : studs entre le bas d'un gros objet et la main
 	LargeCenterShift = 1.5, -- V0 proposé, absent du doc : studs vers la gauche (gros objet centré devant le corps)
 	Yaw = 0, -- V0 proposé, absent du doc : degrés
+	-- a531 (L-500, Cantin 28/11 : « tous les objets tenus en main sont penchés ») : inclinaison qui redresse l'objet
+	-- tenu, en degrés. La pose « outil en main » de Roblox (animation toolnone du script Animate R15) tient la main un
+	-- peu plus bas que l'horizontale : l'objet, posé droit dans le repère de la main, penche avec elle. Il reste à la
+	-- même place devant la main (Forward, LargeBelowHand, LargeCenterShift inchangés) et tourne sur son centre.
+	--   Pitch : autour de l'axe X de la main (gauche-droite). Haut de l'objet penché vers l'avant (loin du joueur) :
+	--           augmenter Pitch ; penché vers l'arrière (vers le joueur) : le baisser (négatif permis).
+	--   Roll  : autour de l'axe avant de la main (-Z). Haut de l'objet penché vers la gauche du joueur : augmenter
+	--           Roll ; penché vers sa droite : le baisser (négatif permis).
+	-- Régler par pas de 2 à 5 degrés. Pitch = Roll = 0 : l'objet tenu comme avant. Lu seulement si Level est vrai
+	-- (Features.HeldItemLevel partout, ou HeldItemLevelDev dans le jeu DEV) ; coupé : Tool.Grip exactement comme avant.
+	Pitch = 0, -- V0 : 0 (Chef de projet de Clément, 28/11 : l'objet droit viendra de ToolIdle, L-510 ; a531 avait proposé 10), absent du doc : degrés
+	Roll = 0, -- V0 calculé sans Play (a531), absent du doc : degrés
 	-- Revérification de l'objet tenu (encore à lui, pas exposé, pas vendu, pas au coffre-fort, pas posé au sol).
 	-- Chaque changement de l'inventaire la fait aussi tout de suite.
 	CheckInterval = 0.25, -- V0 proposé, absent du doc : secondes
@@ -68,6 +80,8 @@ local HeldItem = {
 	-- (Features.HeldIncomeAllDev et ProductIds.IsDev) ; coupé : rien n'est posé, le porteur seul le voit (comme avant).
 	IncomeForAll = Features.HeldIncomeAll == true or (Features.HeldIncomeAllDev == true and ProductIds.IsDev == true),
 	IncomeAttribute = "HeldIncome", -- sur le Tool : $/s de l'objet (nombre), écrit par le serveur seul
+	-- a531 : inclinaison Pitch et Roll appliquée (Features.HeldItemLevel partout, HeldItemLevelDev dans le jeu DEV).
+	Level = Features.HeldItemLevel == true or (Features.HeldItemLevelDev == true and ProductIds.IsDev == true),
 }
 
 export type HeldItem = typeof(HeldItem)
