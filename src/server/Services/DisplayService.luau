@@ -2614,6 +2614,9 @@ function DisplayService.GetExposed(player: Player): { [number]: ExposedItem }
 end
 
 -- Objets exposés (présentoirs distincts) et objets de l'inventaire (ni exposés ni au coffre-fort).
+-- a534 (Cantin, 28/11 : « inventaire plein » avec une case libre dans la barre) : un objet de l'inventaire est compté
+-- par la règle partagée InventoryState.Listed, celle des objets montrés (écran, compteur, barre du bas) ; avant, un
+-- objet à l'ItemId inconnu du catalogue actif ou sous antivol posé au sol prenait une place sans être montré.
 local function counts(data: Data): (number, number)
 	local placed: { [string]: boolean } = {}
 	local displayed = 0
@@ -2627,8 +2630,9 @@ local function counts(data: Data): (number, number)
 		placed[uid] = true
 	end
 	local stored = 0
-	for uid in data.Items do
-		if not placed[uid] then
+	for uid, entry in data.Items do
+		local known = type(entry) == "table" and ItemsConfig.ById[entry.Id] ~= nil
+		if not placed[uid] and InventoryState.Listed(uid, entry, known) then
 			stored += 1
 		end
 	end

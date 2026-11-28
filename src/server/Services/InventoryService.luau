@@ -261,12 +261,12 @@ local function stateFrom(player: Player, data: Data): InventoryState.State
 		end
 		-- Vague 31 (L-112) : un objet sous antivol posé au sol de sa boutique n'est plus dans l'inventaire
 		-- (UnboxService l'affiche au sol) ; dans l'inventaire, il est marqué (à poser au sol, pas exposable).
+		-- a534 : même règle que DisplayService.HasInventoryRoom (InventoryState.Listed).
 		local antiTheft = isAntiTheft(entry)
-		if antiTheft and (entry :: any).Spot ~= nil then
-			continue
-		end
-		if not InventoryState.IsSafeId(uid) then
-			once(`uid:{uid}`, `objet « {uid} » : uid illisible pour l'écran, pas montré`)
+		if not InventoryState.Listed(uid, entry, true) then
+			if not InventoryState.IsSafeId(uid) then
+				once(`uid:{uid}`, `objet « {uid} » : uid illisible pour l'écran, pas montré`)
+			end
 			continue
 		end
 		local mutation = Mutations.Sanitize(entry.Mutation)
