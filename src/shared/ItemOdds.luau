@@ -52,12 +52,20 @@ local function familyTotal(list: { any }): number
 	return total
 end
 
+-- Paliers de taille du poids (ItemWeight.SizeMutationFor).
+local SIZED: { string } = { "Huge", "Colossal", "Titan", "Cosmic" }
+
 -- Probabilité (0 à 1) de la classe de taille `sizeId` (nil : ni Huge ni Colossal) à la chance `luck`.
 local function sizeChance(sizeId: string?, luck: number): number
 	if sizeId then
 		return ItemWeight.SizeChance(sizeId, luck) / 100
 	end
-	return 1 - (ItemWeight.SizeChance("Huge", luck) + ItemWeight.SizeChance("Colossal", luck)) / 100
+	-- a528 : Titan et Cosmic aussi (0 tant qu'ItemWeight.SizeChance ne les connaît pas)
+	local sized = 0
+	for _, id in SIZED do
+		sized += ItemWeight.SizeChance(id, luck)
+	end
+	return 1 - sized / 100
 end
 
 function ItemOdds.Chance(itemId: string, mutation: any): number?

@@ -399,6 +399,13 @@ local Features = {
 	WeightIncomeV2 = false,
 	-- a513 : la même chose allumée dans le jeu DEV et le jeu TEST seulement (Config/Economy.IsDev).
 	WeightIncomeV2Dev = true,
+	-- a528 (Cantin, 28/11) : poids sans limite au-dessus de 10 000 kg. a528a : étiquettes Titan (Weight.TitanFrom) et
+	-- Cosmic (Weight.CosmicFrom) au-dessus de Colossal, taille du modèle plafonnée (Weight.MaxVisualScale), poids écrit
+	-- en K/M/B (Weight.ShortFormatFrom) ; a528b : le tirage au-delà de 10 000 kg. Lu par Config/Weight (Weight.Tail).
+	-- Interrupteur PROD : false (règle C2) ; false = 10 000 kg au plus, comme avant.
+	WeightTail = false,
+	-- a528 : la même chose allumée dans le jeu DEV et le jeu TEST seulement (Config/GameEnv.IsDevLike).
+	WeightTailDev = true,
 	-- a513 (Cantin, 27/11, « tout V0 ») : les bonus de chance s'additionnent comme le joueur les lit (×3 et ×2 donnent
 	-- ×5 : la somme des bonus actifs, ×1 sans aucun) au lieu de se multiplier : arbre (BoxLuck), chance du serveur (×2, ×4, ×8),
 	-- chance personnelle (×3 Luck) ; la chance tirée à l'ouverture (×1 à ×10) multiplie ensuite ce total (×4 tiré avec

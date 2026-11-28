@@ -45,7 +45,7 @@ local DeepFreeze = require(script.Parent.DeepFreeze)
 local ItemWeight = require(script.Parent.Parent.ItemWeight)
 local Weight = require(script.Parent.Weight)
 
-export type SizeId = "Tiny" | "Big" | "Huge" | "Colossal"
+export type SizeId = "Tiny" | "Big" | "Huge" | "Colossal" | "Titan" | "Cosmic" -- a528 : Titan, Cosmic avec Weight.Tail
 export type EffectId = "Shiny" | "Gold" | "Neon" | "Diamond" | "Glitch" | "Hacked" | "Rainbow"
 
 -- Mutation d'un objet ou d'un colis, telle qu'elle est sauvegardée (Types/Profile, Types/Carry).
@@ -69,6 +69,13 @@ local SIZES: { Entry } = {
 	{ Id = "Huge", DisplayName = "Huge", DisplayNameUpper = "HUGE", Scale = 2, IncomeMultiplier = 5, Chance = 4 }, -- L-084 ; chance L-084c
 	{ Id = "Colossal", DisplayName = "Colossal", DisplayNameUpper = "COLOSSAL", Scale = 3, IncomeMultiplier = 10, Chance = 1 }, -- L-084 ; chance L-084c
 }
+-- a528 (Cantin, 28/11), avec Config/Weight.Tail seulement : paliers de poids au-dessus de Colossal (Weight.TitanFrom,
+-- CosmicFrom ; ItemWeight.SizeMutationFor). Comme Huge et Colossal : étiquette et effet « Size » de Clément, jamais
+-- tirés ici (Chance = 0), aucun revenu en plus (le poids le fait) ; Scale et IncomeMultiplier ne sont plus lus.
+if Weight.Tail then
+	table.insert(SIZES, { Id = "Titan", DisplayName = "Titan", DisplayNameUpper = "TITAN", Scale = 3, IncomeMultiplier = 1, Chance = 0 })
+	table.insert(SIZES, { Id = "Cosmic", DisplayName = "Cosmic", DisplayNameUpper = "COSMIC", Scale = 3, IncomeMultiplier = 1, Chance = 0 })
+end
 
 local EFFECTS: { Entry } = {
 	{ Id = "Shiny", DisplayName = "Shiny", DisplayNameUpper = "SHINY", Scale = 1, IncomeMultiplier = 1.5, Chance = 6 }, -- L-084 ; chance L-084c
@@ -130,7 +137,8 @@ end
 -- Vague 62 (a203, Cantin) : avec le poids, les tailles sont des paliers de poids
 -- (ItemWeight.SizeMutationFor) : seules Huge et Colossal existent encore ; Tiny et Big, gardées dans les vieux
 -- profils, ne sont plus ni lues, ni écrites, ni tirées (leur revenu passe par le poids, Config/Weight.Legacy).
-local WEIGHT_SIZES: { [string]: boolean } = { Huge = true, Colossal = true }
+-- a528 : avec Weight.Tail, aussi Titan et Cosmic.
+local WEIGHT_SIZES: { [string]: boolean } = { Huge = true, Colossal = true, Titan = Weight.Tail, Cosmic = Weight.Tail }
 
 -- Id de taille tel qu'il est écrit (même Tiny ou Big), pour le poids d'un objet d'avant le poids.
 local function rawSizeId(value: any): string?

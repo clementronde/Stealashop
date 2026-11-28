@@ -11,7 +11,8 @@
 --                                                      a513 v2 : × luck ^ LuckExponent, progressif)
 --   ItemWeight.ScaleFor(kg) -> number                  échelle du modèle (courbe Config/Weight.ScaleCurve ; 10 kg = ×2, a418)
 --   ItemWeight.IncomeFactor(kg) -> number              multiplicateur du revenu (10 kg = ×1)
---   ItemWeight.SizeMutationFor(kg) -> string?          "Huge", "Colossal" ou nil (Id de Config/Mutations)
+--   ItemWeight.SizeMutationFor(kg) -> string?          "Huge", "Colossal" ou nil (Id de Config/Mutations) ; a528, avec
+--                                                      Weight.Tail : aussi "Titan" (TitanFrom) et "Cosmic" (CosmicFrom)
 --   ItemWeight.SizeClassFor(kg, freeHeight, modelHeight) -> "Small" | "Large" | "Colossal"
 --        Colossal : palier Colossal (la caméra sort du magasin) ; Large : l'objet grandi (modelHeight, hauteur du
 --        modèle à l'échelle 1, × ScaleFor) atteint freeHeight (hauteur libre sous le plafond, studs) ; Small sinon.
@@ -25,7 +26,10 @@
 --   ItemWeight.Effective(weight?, sizeId?) -> number   le poids s'il est lisible, sinon LegacyFor(sizeId)
 --   ItemWeight.CappedScale(kg, cap) -> number          ScaleFor(kg), au plus cap
 --   ItemWeight.Migrate(items) -> number                Items du profil : Weight posé là où il manque, Tiny et Big retirées (DataService)
---   ItemWeight.Format(kg) -> string                    « 3.4 kg », « 12 kg », « 1,250 kg »
+--   ItemWeight.Format(kg) -> string                    « 3.4 kg », « 12 kg », « 1,250 kg » ; a528, avec Weight.Tail :
+--                                                      « 10K kg », « 1M kg », « 2.5B kg » dès Weight.ShortFormatFrom
+-- a528a (Weight.Tail) : ScaleFor, SizeMutationFor et Format lisent les poids jusqu'à Weight.TailMax ; la taille du
+-- modèle reste au plus Weight.MaxVisualScale (celle du Colossal). Coupé : tout comme avant (10 000 kg au plus).
 
 local Config = script.Parent.Config
 local Weight = require(Config.Weight)
@@ -43,6 +47,17 @@ local function clampKg(kg: any): number
 		return Weight.Reference
 	end
 	return math.clamp(kg, Weight.Min, Weight.Max)
+end
+
+-- a528 : poids lu par la taille, l'étiquette et le texte : jusqu'à Weight.TailMax avec Weight.Tail, sinon clampKg.
+local function tailKg(kg: any): number
+	if not Weight.Tail then
+		return clampKg(kg)
+	end
+	if not finite(kg) then
+		return Weight.Reference
+	end
+	return math.clamp(kg, Weight.Min, Weight.TailMax)
 end
 
 local function cleanLuck(luck: any): number
@@ -174,6 +189,10 @@ function ItemWeight.SizeChance(sizeId: string, luck: number): number
 end
 
 function ItemWeight.ScaleFor(kg: number): number
+	if Weight.Tail then
+		-- a528 : au plus Weight.MaxVisualScale (taille du Colossal), même au-delà de 10 000 kg
+		return math.min(Weight.ScaleAt(tailKg(kg)), Weight.MaxVisualScale)
+	end
 	return Weight.ScaleAt(clampKg(kg)) -- a234 : courbe par points de Config/Weight (ScaleCurve)
 end
 
@@ -187,8 +206,12 @@ function ItemWeight.CappedScale(kg: number, cap: number): number
 end
 
 function ItemWeight.SizeMutationFor(kg: number): string?
-	local w = clampKg(kg)
-	if w >= Weight.ColossalFrom then
+	local w = tailKg(kg)
+	if Weight.Tail and w >= Weight.CosmicFrom then
+		return "Cosmic" -- a528
+	elseif Weight.Tail and w >= Weight.TitanFrom then
+		return "Titan" -- a528
+	elseif w >= Weight.ColossalFrom then
 		return "Colossal"
 	elseif w >= Weight.HugeFrom then
 		return "Huge"
@@ -285,10 +308,29 @@ end
 
 -- Texte du poids (élément Weight des billboards et cases) : une décimale sous 100 kg si elle n'est pas nulle
 -- (« 3.4 kg », « 12 kg »), le kilo entier au-delà (« 1,250 kg »), toujours arrondi vers le bas.
+-- a528 : Shared/Format (le format court des nombres du jeu), chargé à la demande ; nil sans lui (bancs).
+local shortFormat: ((number) -> string)? = nil
+local function formatShort(value: number): string?
+	if shortFormat == nil then
+		local ok, module = pcall(function(): any
+			return require(script.Parent.Format) -- absent (bancs) : erreur rattrapée, nil plus bas
+		end)
+		if not ok or type(module) ~= "table" or type(module.short) ~= "function" then
+			return nil
+		end
+		shortFormat = module.short
+	end
+	local short = shortFormat :: (number) -> string
+	return short(value)
+end
+
 function ItemWeight.Format(kg: number): string
-	local w = clampKg(kg)
+	local w = tailKg(kg)
 	local text: string
-	if w < 100 then
+	local short = if Weight.Tail and w >= Weight.ShortFormatFrom then formatShort(w) else nil
+	if short then
+		text = short -- a528 : « 1M kg »
+	elseif w < 100 then
 		local tenths = math.floor(w * 10 + 1e-6)
 		text = if tenths % 10 == 0 then tostring(tenths // 10) else string.format("%d.%d", tenths // 10, tenths % 10)
 	else
