@@ -12,16 +12,19 @@
 --
 -- API (client) :
 --   AnnounceController.GetState() -> { Shown: string?, Queue: number, Fallbacks: number }   (bancs, tests en Play)
+--   AnnounceController.GetLastHold() -> number?   a457 : durée de la dernière annonce montée à l'écran (bancs)
+--   AnnounceController.GetLastExit() -> string?   a457 (L-379) : "Scroll" (sortie qui défile) ou "Close" (bancs)
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Settings = require(Shared:WaitForChild("Config"):WaitForChild("Announce"))
 local Find = require(Shared:WaitForChild("Contract"):WaitForChild("Find"))
 local Icons = require(Shared:WaitForChild("Contract"):WaitForChild("Icons"))
 
-type Entry = { Message: string, Detail: string, Icon: string, Plain: string }
+type Entry = { Message: string, Detail: string, Icon: string, Plain: string, Hold: number?, Scroll: boolean? } -- a457 : Hold et Scroll de cette annonce
 
 local AnnounceController = {}
 
@@ -29,6 +32,9 @@ local queue: { Entry } = {}
 local shown: string? = nil
 local running = false
 local fallbacks = 0
+local lastHold: number? = nil -- a457 : durée de la dernière annonce montrée
+local lastExit: string? = nil -- a457 (L-379) : "Scroll" ou "Close", sortie de la dernière annonce montrée
+local pendingScroll: any = nil -- a457 : Message à remettre en place (ScrollState) avant la prochaine annonce
 local defaultImages: { [Instance]: string } = {} -- image de Clément de chaque Icon vu
 
 -- Module frère chargé seulement s'il est là (bancs réduits).
@@ -119,6 +125,48 @@ local function setShown(gui: ScreenGui, on: boolean)
 	end
 end
 
+-- a457 (L-379, Clément 25/11 : « partir au bout de 5 secondes en défilement comme du texte par message ») : Message
+-- monte de Config/Announce.ScrollShift hauteurs et s'efface en ScrollTime s ; rendu à sa place et à sa transparence
+-- par restoreScroll une fois l'écran fermé. Le bandeau (Banner) ne bouge jamais.
+type ScrollState = { Label: TextLabel, Position: UDim2, Text: number, Stroke: number }
+local function scrollOut(gui: ScreenGui): ScrollState?
+	local message = Find.path(gui, "Banner.Message")
+	if message == nil or not message:IsA("TextLabel") then
+		return nil
+	end
+	local label = message :: TextLabel
+	local settings: any = Settings
+	local time = if type(settings.ScrollTime) == "number" then math.max(settings.ScrollTime, 0) else 0
+	local shift = if type(settings.ScrollShift) == "number" then settings.ScrollShift else -1
+	local state: ScrollState = {
+		Label = label,
+		Position = label.Position,
+		Text = label.TextTransparency,
+		Stroke = label.TextStrokeTransparency,
+	}
+	local target = state.Position + UDim2.fromScale(0, shift * label.Size.Y.Scale) + UDim2.fromOffset(0, shift * label.Size.Y.Offset)
+	local ok = pcall(function()
+		TweenService:Create(label, TweenInfo.new(time, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+			Position = target,
+			TextTransparency = 1,
+			TextStrokeTransparency = 1,
+		}):Play()
+	end)
+	if not ok then
+		label.Position, label.TextTransparency, label.TextStrokeTransparency = target, 1, 1
+	end
+	task.wait(time)
+	return state
+end
+
+local function restoreScroll(state: ScrollState?)
+	if state then
+		state.Label.Position = state.Position
+		state.Label.TextTransparency = state.Text
+		state.Label.TextStrokeTransparency = state.Stroke
+	end
+end
+
 local function pump()
 	if running then
 		return
@@ -126,24 +174,30 @@ local function pump()
 	running = true
 	while #queue > 0 do
 		local entry = table.remove(queue, 1) :: Entry
+		restoreScroll(pendingScroll) -- a457 (L-379) : Message remis à sa place avant d'être rempli
+		pendingScroll = nil
 		local gui = screen()
 		if gui == nil or not fill(gui, entry) then
 			fallback(entry)
 		else
 			shown = entry.Plain
+			lastHold = math.max(entry.Hold or Settings.Hold, 0)
 			setShown(gui, true)
-			task.wait(math.max(Settings.Hold, 0))
+			task.wait(math.max(entry.Hold or Settings.Hold, 0)) -- a457 : l'aube a sa propre durée (DawnBoxHold)
+			local scrolled = if entry.Scroll == true and gui.Parent ~= nil then scrollOut(gui) else nil -- a457 (L-379)
+			lastExit = if scrolled then "Scroll" else "Close"
 			shown = nil
 			if gui.Parent ~= nil then
 				setShown(gui, false)
 			end
+			pendingScroll = scrolled -- rendu avant la prochaine annonce (le texte reste effacé pendant la fermeture)
 			task.wait(math.max(Settings.Gap, 0))
 		end
 	end
 	running = false
 end
 
-function AnnounceController.Push(message: string, detail: string?, icon: string?, plain: string?)
+function AnnounceController.Push(message: string, detail: string?, icon: string?, plain: string?, hold: number?, scroll: boolean?)
 	if type(message) ~= "string" or message == "" then
 		return
 	end
@@ -152,6 +206,9 @@ function AnnounceController.Push(message: string, detail: string?, icon: string?
 		Detail = if type(detail) == "string" then detail else "",
 		Icon = if type(icon) == "string" then icon else "",
 		Plain = if type(plain) == "string" and plain ~= "" then plain else (string.gsub(message, "<[^>]*>", "")),
+		-- a457 (L-335) : durée envoyée par le serveur (l'aube : 5 s), bornée ; absente : Config/Announce.Hold.
+		Hold = if type(hold) == "number" and hold == hold and hold > 0 and hold <= 30 then hold else nil,
+		Scroll = scroll == true, -- a457 (L-379) : sortie qui défile (annonce de l'aube)
 	})
 	while #queue > math.max(Settings.MaxQueue, 1) do
 		table.remove(queue, 1)
@@ -161,6 +218,14 @@ end
 
 function AnnounceController.GetState(): { Shown: string?, Queue: number, Fallbacks: number }
 	return { Shown = shown, Queue = #queue, Fallbacks = fallbacks }
+end
+
+function AnnounceController.GetLastHold(): number?
+	return lastHold
+end
+
+function AnnounceController.GetLastExit(): string?
+	return lastExit
 end
 
 function AnnounceController.Start()

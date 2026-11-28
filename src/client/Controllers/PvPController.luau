@@ -19,7 +19,9 @@
 --   - Panneau de repérage (6.1, point 1) : à PvP.ScoutDistance studs ou moins du volume Bounds de la
 --     boutique d'un autre joueur, un panneau au-dessus de sa porte (PlotDoor/Window ; vague 55 : devant elle, côté
 --     rue, PvP.ShopPanelForward studs), vu par le
---     joueur local seul (rangé dans son PlayerGui) :
+--     joueur local seul (rangé dans son PlayerGui) ; a457 (L-335 point 3, Features.ShopInfoSafeZone / …Dev) : aussi
+--     dès que le joueur local est dans une zone safe (Shared/SafeZone), quelle que soit la distance ;
+--     panneau d'une boutique :
 --       OwnerName  « Alice's Shop » ;
 --       Income     valeur exposée, attribut ExposedIncome du propriétaire (DisplayService, sinon
 --                  Income) : « +$12.4K/s » ;
@@ -188,6 +190,25 @@ local itemWatches: { [Instance]: ItemWatch } = {}
 local plotWatches: { [Instance]: PlotWatch } = {}
 local avatars: { [number]: string } = {} -- miniature par UserId ; "" = demandée, pas (encore) reçue
 local icons: { [string]: string } = {} -- a316 (L-296) : image ICON_ par ItemId ; "" = pas livrée (cherchée une fois)
+
+-- a457 (L-335 point 3, Clément 24/11 ; Features.ShopInfoSafeZone partout, ou ShopInfoSafeZoneDev dans le jeu DEV) :
+-- les panneaux des boutiques des autres s'allument dès que le joueur local est dans une zone safe (Shared/SafeZone),
+-- en plus de la règle PvP.ScoutDistance. Modules chargés s'ils sont là (bancs à liste de modules fixe).
+local function optionalModule(parent: Instance, name: string): any
+	local module = parent:FindFirstChild(name)
+	if module and module:IsA("ModuleScript") then
+		local ok, result = pcall(require, module)
+		if ok and type(result) == "table" then
+			return result
+		end
+	end
+	return nil
+end
+local FeaturesCfg: any = optionalModule(Config, "Features") or {}
+local ProductIdsCfg: any = optionalModule(Config, "ProductIds") or {}
+local SafeZoneApi: any = optionalModule(Shared, "SafeZone")
+local SAFE_ZONE_PANELS: boolean = SafeZoneApi ~= nil
+	and (FeaturesCfg.ShopInfoSafeZone == true or (FeaturesCfg.ShopInfoSafeZoneDev == true and ProductIdsCfg.IsDev == true))
 
 -- Outils ----------------------------------------------------------------------------------------
 
@@ -652,11 +673,12 @@ local function refreshExtras(gui: BillboardGui, plot: Model, text: PanelText)
 	end
 end
 
-local function refreshPanel(watch: PlotWatch, root: BasePart?)
+local function refreshPanel(watch: PlotWatch, root: BasePart?, safe: boolean?)
 	local plot = watch.Plot
 	local name, income = shopOwner(plot)
 	local bounds = boundsOf(watch)
-	if name == nil or isMine(plot) or root == nil or bounds == nil or distanceTo(bounds, root.Position) > PvP.ScoutDistance then
+	local far = bounds ~= nil and root ~= nil and safe ~= true and distanceTo(bounds, root.Position) > PvP.ScoutDistance
+	if name == nil or isMine(plot) or root == nil or bounds == nil or far then
 		hidePanel(watch)
 		return
 	end
@@ -771,9 +793,11 @@ end
 
 local function refreshAll()
 	local root = localRoot()
+	-- a457 (L-335 point 3) : joueur local en zone safe, calculé une fois par tour.
+	local safe = SAFE_ZONE_PANELS and root ~= nil and SafeZoneApi.Contains(root.Position) == true
 	for _, watch in plotWatches do
 		updatePlot(watch, root)
-		refreshPanel(watch, root)
+		refreshPanel(watch, root, safe)
 	end
 	for _, watch in itemWatches do
 		refreshItem(watch)

@@ -498,6 +498,27 @@ local Features = {
 	OpenNowOnLocked = false,
 	-- a520 : la même chose allumée dans le jeu DEV (et TEST) seulement (Config/ProductIds.IsDev).
 	OpenNowOnLockedDev = true,
+	-- a457 (L-335 point 2, Clément 24/11) : l'annonce des caisses rares part au lever du jour (fin de la nuit), une seule
+	-- phrase « A LEGENDARY box is in Zone 6! » (Config/Announce.DawnBoxText, la plus rare encore sur un rayon), plus quand
+	-- les colis apparaissent la nuit ; l'annonce de jour (Mythique et plus) prend la même phrase. Interrupteur PROD
+	-- (partout) : false (règle C2 : pas encore de test humain, T-299) ; false = annonce de nuit groupée, comme avant.
+	DawnBoxAnnounce = false,
+	-- a457 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	DawnBoxAnnounceDev = true,
+	-- a457 (L-335 point 3, Clément 24/11) : les panneaux BB_ShopInfo des boutiques des autres s'allument dès que le joueur
+	-- local est dans une zone `SafeZone` (Shared/SafeZone), et plus seulement à PvP.ScoutDistance de la boutique
+	-- (PvPController) ; dans le couloir, la règle d'avant. Interrupteur PROD (partout) : false (règle C2, T-299) ;
+	-- false = panneau à PvP.ScoutDistance seulement, comme avant.
+	ShopInfoSafeZone = false,
+	-- a457 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev).
+	ShopInfoSafeZoneDev = true,
+	-- a522 (L-455, Clément 26/11) : un objet ramené en zone safe fait entendre aux autres joueurs le son de victoire du
+	-- serveur Heist_ServerWin, en 3D à l'endroit où le porteur passe la ligne safe (Config/Announce.ServerWin : au plus un
+	-- toutes les 2 s ; CelebrationService, ServerWinController). Interrupteur PROD (partout) : false (règle C2 : pas encore
+	-- de test humain, T-395) ; false = comme avant (seul le porteur entend Heist_Escape).
+	ServerWinSound = false,
+	-- a522 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev).
+	ServerWinSoundDev = true,
 }
 
 export type Features = typeof(Features)

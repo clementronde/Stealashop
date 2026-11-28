@@ -13,10 +13,14 @@
 --      b. en fuite (CarryService.OnCarryStarted) : CarryText, une fois par objet (le même objet repris après une chute
 --         ou passé à un autre n'est pas réannoncé), à tous sauf le porteur et sa victime.
 --      Anti-spam : Config/Announce.ValueGap s au moins entre deux annonces du même genre (a, b) ; celle de trop part pas.
+--   3. a522 (L-455, Features.ServerWinSound ou ServerWinSoundDev) : objet ramené en zone safe (le même « Consumed ») :
+--      remote ServerWin à tous sauf le porteur, avec la position de son HumanoidRootPart (là où il passe la ligne safe),
+--      envoyé avant les feux d'artifice ; ServerWinController y joue Heist_ServerWin en 3D. Au plus un toutes les
+--      Config/Announce.ServerWin.Gap s (2) sur tout le serveur ; celui de trop ne part pas.
 --
 -- API (serveur, bancs) :
 --   CelebrationService.ValueOf(payload) -> number?        $/s de l'objet porté (nil : objet inconnu)
---   CelebrationService.GetState() -> { Fireworks: number, Secured: number, Carry: number }   envois depuis le démarrage
+--   CelebrationService.GetState() -> { Fireworks: number, Secured: number, Carry: number, ServerWin: number }   envois depuis le démarrage
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -38,7 +42,8 @@ local CelebrationService = {}
 
 local lastAt: { [string]: number } = {} -- dernier envoi de chaque genre d'annonce (os.clock)
 local announced: { [any]: boolean } = setmetatable({}, { __mode = "k" }) :: any -- payloads déjà annoncés en fuite
-local counts = { Fireworks = 0, Secured = 0, Carry = 0 }
+local counts = { Fireworks = 0, Secured = 0, Carry = 0, ServerWin = 0 }
+local lastServerWin: number? = nil -- a522 : os.clock du dernier remote ServerWin
 
 local function isDev(): boolean
 	local module = Config:FindFirstChild("ProductIds")
@@ -51,6 +56,11 @@ end
 
 local function fireworksOn(): boolean
 	return Features.SecuredFireworks == true or (Features.SecuredFireworksDev == true and isDev())
+end
+
+-- a522 (L-455) : son de victoire du serveur allumé (Features.ServerWinSound, ou ServerWinSoundDev dans le jeu DEV).
+local function serverWinOn(): boolean
+	return Features.ServerWinSound == true or (Features.ServerWinSoundDev == true and isDev())
 end
 
 local function net(): any
@@ -100,9 +110,43 @@ local function victimOf(payload: any): Player?
 	return Players:GetPlayerByUserId(payload.VictimUserId)
 end
 
+-- a522 (L-455) : son de victoire du serveur, aux autres joueurs, à l'endroit où `player` passe la ligne safe
+-- (Config/Announce.ServerWin.Gap s au moins entre deux, sur tout le serveur).
+local function serverWin(player: Player)
+	local character = player.Character
+	local root = if character then character:FindFirstChild("HumanoidRootPart") else nil
+	if root == nil or not root:IsA("BasePart") then
+		return
+	end
+	local spec = if type(Settings.ServerWin) == "table" then Settings.ServerWin else {}
+	local gap = if type(spec.Gap) == "number" then spec.Gap else 0
+	local now = os.clock()
+	local last = lastServerWin
+	if last ~= nil and now - last < gap then
+		return
+	end
+	lastServerWin = now
+	local remote = net().Server.ServerWin
+	local position = (root :: BasePart).Position
+	for _, other in Players:GetPlayers() do
+		if other ~= player then
+			remote:Fire(other, position)
+		end
+	end
+	counts.ServerWin += 1
+end
+
 local function onEnded(player: Player, payload: any, result: string, _reason: string)
 	if result ~= CONSUMED or type(payload) ~= "table" then
 		return
+	end
+	if serverWinOn() then -- a522 : avant les feux d'artifice (L-455)
+		local ok, err = pcall(function()
+			serverWin(player)
+		end)
+		if not ok then
+			warn(`[CelebrationService] ServerWin : {err}`)
+		end
 	end
 	if fireworksOn() then
 		local ok, err = pcall(function()
@@ -148,8 +192,8 @@ local function onStarted(player: Player, payload: any)
 	counts.Carry += 1
 end
 
-function CelebrationService.GetState(): { Fireworks: number, Secured: number, Carry: number }
-	return { Fireworks = counts.Fireworks, Secured = counts.Secured, Carry = counts.Carry }
+function CelebrationService.GetState(): { Fireworks: number, Secured: number, Carry: number, ServerWin: number }
+	return { Fireworks = counts.Fireworks, Secured = counts.Secured, Carry = counts.Carry, ServerWin = counts.ServerWin }
 end
 
 function CelebrationService.Start()
